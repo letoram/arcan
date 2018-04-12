@@ -779,9 +779,10 @@ void arcan_tui_reset(struct tui_context*);
 
 /*
  * modify the current flags/state bitmask with the values of tui_flags ( |= )
+ * returns the mask as it.
  * see tuisym.h for enum tui_flags
  */
-void arcan_tui_set_flags(struct tui_context*, int tui_flags);
+int arcan_tui_set_flags(struct tui_context*, int tui_flags);
 
 /*
  * modify the current flags/state bitmask and unset the values of tui (& ~)
@@ -847,6 +848,13 @@ void arcan_tui_reset_all_tabstops(struct tui_context*);
  */
 void arcan_tui_scrollhint(
 	struct tui_context*, size_t n_regions, struct tui_region*);
+
+/*
+ * Build a dynamically allocated state description string that can be
+ * combined with other debug information to assist in troubleshooting.
+ * Caller assumes ownership of returned string.
+ */
+char* arcan_tui_statedescr(struct tui_context*);
 
 /*
  * move the cursor either absolutely or a number of steps,
@@ -937,6 +945,7 @@ typedef void (* PTUIERASEHOMETOCURSOR)(struct tui_context*, bool);
 typedef void (* PTUIERASECURRENTLINE)(struct tui_context*, bool);
 typedef void (* PTUIERASECHARS)(struct tui_context*, size_t);
 typedef void (* PTUIERASEREGION)(struct tui_context*, size_t, size_t, size_t, size_t, bool);
+typedef char* (* PTUISTATEDESCR)(struct tui_context*);
 
 static PTUIDEFAULTS arcan_tui_defaults;
 static PTUISETUP arcan_tui_setup;
@@ -997,6 +1006,7 @@ static PTUIERASECURSORTOEND arcan_tui_erase_cursor_to_end;
 static PTUIERASEHOMETOCURSOR arcan_tui_erase_home_to_cursor;
 static PTUIERASECURRENTLINE arcan_tui_erase_current_line;
 static PTUIERASECHARS arcan_tui_erase_chars;
+static PTUISTATEDESCR arcan_tui_statedescr;
 
 /* dynamic loading function */
 static bool arcan_tui_dynload(void*(*lookup)(void*, const char*), void* tag)
@@ -1062,6 +1072,7 @@ M(PTUIERASECURSORTOEND,arcan_tui_erase_cursor_to_end);
 M(PTUIERASEHOMETOCURSOR,arcan_tui_erase_home_to_cursor);
 M(PTUIERASECURRENTLINE,arcan_tui_erase_current_line);
 M(PTUIERASECHARS,arcan_tui_erase_chars);
+M(PTUISTATEDESCR, arcan_tui_statedescr);
 #undef M
 
 	return true;

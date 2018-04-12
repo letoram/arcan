@@ -51,9 +51,9 @@ _Static_assert(PIPE_BUF >= 4, "pipe atomic write should be >= 4");
 #include "arcan_ttf.h"
 #endif
 
+#include "tui_draw.h"
 #include "libtsm.h"
 #include "libtsm_int.h"
-#include "tui_draw.h"
 
 #ifdef WITH_HARFBUZZ
 static bool enable_harfbuzz = false;
@@ -240,7 +240,7 @@ struct tui_context {
 	bool cursor_off; /* current blink state */
 	bool cursor_hard_off; /* user / state toggle */
 	bool cursor_upd; /* invalidation, need to draw- old / new */
-	long cursor_period; /* blink setting */
+	int cursor_period; /* blink setting */
 	enum tui_cursors cursor; /* visual style */
 
 	uint8_t alpha;
@@ -259,6 +259,47 @@ struct tui_context {
 /* caller- event handlers */
 	struct tui_cbcfg handlers;
 };
+
+char* arcan_tui_statedescr(struct tui_context* tui)
+{
+	char* ret;
+	if (!tui)
+		return NULL;
+
+	int tfl = tui->screen->flags;
+
+	if (-1 == asprintf(&ret,
+		"frame: %d alpha: %d dblbuf: %d "
+		"scroll-lock: %d "
+		"rows: %d cols: %d cell_w: %d cell_h: %d pad_w: %d pad_h: %d "
+		"ppcm: %f font_sz: %f font_sz_delta: %d hint: %d bmp: %d "
+		"scrollback: %d sbofs: %d inscroll: %d "
+		"mods: %d iact: %d "
+		"cursor_x: %d cursor_y: %d off: %d hard_off: %d period: %d "
+		"(screen)age: %d margin_top: %u margin_bottom: %u "
+		"cursor_x: %u cursor_y: %u flags: %s%s%s%s%s%s",
+		(int) tui->fstamp, (int) tui->alpha, (int) tui->dbl_buf,
+		(int) tui->scroll_lock,
+		tui->rows, tui->cols, tui->cell_w, tui->cell_h, tui->pad_w, tui->pad_h,
+		tui->ppcm, tui->font_sz, tui->font_sz_delta, tui->hint, tui->force_bitmap,
+		tui->scrollback, tui->sbofs, tui->in_scroll,
+		tui->modifiers, tui->inact_timer,
+		tui->cursor_x, tui->cursor_y,
+		tui->cursor_off, tui->cursor_hard_off, tui->cursor_period,
+		(int) tui->screen->age, tui->screen->margin_top, tui->screen->margin_bottom,
+		tui->screen->cursor_x, tui->screen->cursor_y,
+		(tfl & TSM_SCREEN_INSERT_MODE) ? "insert " : "",
+		(tfl & TSM_SCREEN_AUTO_WRAP) ? "autowrap " : "",
+		(tfl & TSM_SCREEN_REL_ORIGIN) ? "relorig " : "",
+		(tfl & TSM_SCREEN_INVERSE) ? "inverse " : "",
+		(tfl & TSM_SCREEN_FIXED_POS) ? "fixed " : "",
+		(tfl & TSM_SCREEN_ALTERNATE) ? "alternate " : ""
+		)
+	)
+		return NULL;
+
+	return ret;
+}
 
 /* additional state synch that needs negotiation and may need to be
  * re-built in the event of a RESET request */
@@ -3444,16 +3485,18 @@ void arcan_tui_erase_chars(struct tui_context* c, size_t num)
 	}
 }
 
-void arcan_tui_set_flags(struct tui_context* c, int flags)
+int arcan_tui_set_flags(struct tui_context* c, int flags)
 {
-	if (c){
-		bool oldv = c->cursor_hard_off;
-		c->cursor_hard_off = flags & TUI_HIDE_CURSOR;
-		if (oldv != c->cursor_hard_off)
-			flag_cursor(c);
+	if (!c)
+		return -1;
 
-		tsm_screen_set_flags(c->screen, flags);
-	}
+	bool oldv = c->cursor_hard_off;
+	c->cursor_hard_off = flags & TUI_HIDE_CURSOR;
+	if (oldv != c->cursor_hard_off)
+		flag_cursor(c);
+
+	tsm_screen_set_flags(c->screen, flags);
+	return (int) tsm_screen_get_flags(c->screen);
 }
 
 void arcan_tui_reset_flags(struct tui_context* c, int flags)
@@ -3536,6 +3579,7 @@ void arcan_tui_scroll_down(struct tui_context* c, size_t n)
 	int ss = tsm_screen_sb_down(c->screen, n);
 	if (c->smooth_scroll && ss)
 		c->scroll_backlog += ss;
+
 	flag_cursor(c);
 }
 

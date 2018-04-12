@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <poll.h>
 #include "tsm/libtsm.h"
+#include "tsm/libtsm_int.h"
 #include "tsm/shl-pty.h"
 
 static struct {
@@ -203,7 +204,9 @@ static void str_callback(struct tsm_vte* vte, enum tsm_vte_group group,
 	}
 
 	debug_log(vte,
-		"unhandled OSC command (PS: %d), len: %zu\n", (int)msg[0], len);
+		"%d:unhandled OSC command (PS: %d), len: %zu\n",
+		vte->log_ctr++, (int)msg[0], len
+	);
 /* 4 : change color */
 /* 5 : special color */
 /* 52 : clipboard contents */

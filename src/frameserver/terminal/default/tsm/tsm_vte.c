@@ -46,11 +46,9 @@
  * often used sequences, too. Feel free to add further.
  */
 
-#include "arcan_shmif.h"
-#include "arcan_tui.h"
 #include <errno.h>
 #include <stdarg.h>
-#include "libtsm.h"
+#include <inttypes.h>
 #include "libtsm_int.h"
 
 /* Input parser states */
@@ -75,7 +73,7 @@ enum parser_state {
 
 /* Input parser actions */
 enum parser_action {
-	ACTION_NONE,		/* placeholder */
+	ACTION_NONE = 0, /* placeholder */
 	ACTION_IGNORE,		/* ignore the character entirely */
 	ACTION_PRINT,		/* print the character on the console */
 	ACTION_EXECUTE,		/* execute single control character (C0/C1) */
@@ -90,16 +88,24 @@ enum parser_action {
 	ACTION_OSC_START,	/* start of OSC data */
 	ACTION_OSC_COLLECT,	/* collect OSC data */
 	ACTION_OSC_END,		/* end of OSC data */
-	ACTION_NUM
 };
 
-enum mouse_data {
-	MOUSE_BUTTON = 1,
-	MOUSE_DRAG   = 2,
-	MOUSE_MOTION = 4,
-	MOUSE_SGR    = 8,
-	MOUSE_X10    = 16,
-	MOUSE_RXVT   = 32
+static const char* action_lut[] = {
+	"none",
+	"ignore",
+	"print",
+	"execute",
+	"clear",
+	"collect",
+	"param",
+	"esc",
+	"csi",
+	"dcs_s",
+	"dcs_c",
+	"dcs_e",
+	"osc_s",
+	"osc_c",
+	"osc_e",
 };
 
 const static int MOUSE_PROTO = MOUSE_SGR | MOUSE_X10 | MOUSE_RXVT;
@@ -116,9 +122,6 @@ const static int MOUSE_PROTO = MOUSE_SGR | MOUSE_X10 | MOUSE_RXVT;
 #define CSI_PLUS	0x0100		/* CSI: + */
 #define CSI_POPEN	0x0200		/* CSI: ( */
 #define CSI_PCLOSE	0x0400		/* CSI: ) */
-
-/* max CSI arguments */
-#define CSI_ARG_MAX 16
 
 /* terminal flags */
 #define FLAG_CURSOR_KEY_MODE			0x00000001 /* DEC cursor key mode */
@@ -140,77 +143,6 @@ const static int MOUSE_PROTO = MOUSE_SGR | MOUSE_X10 | MOUSE_RXVT;
 #define FLAG_PREPEND_ESCAPE			0x00010000 /* Prepend escape character to next output */
 #define FLAG_TITE_INHIBIT_MODE			0x00020000 /* Prevent switching to alternate screen buffer */
 #define FLAG_PASTE_BRACKET 0x00040000 /* Bracketed Paste mode */
-
-struct vte_saved_state {
-	size_t cursor_x;
-	size_t cursor_y;
-	size_t mouse_x;
-	size_t mouse_y;
-	enum mouse_data mouse_state;
-	struct tui_screen_attr cattr;
-	bool faint;
-	int c_fgcode, c_bgcode;
-	int d_fgcode, d_bgcode;
-
-	tsm_vte_charset **gl;
-	tsm_vte_charset **gr;
-	bool wrap_mode;
-	bool origin_mode;
-};
-
-#define DEBUG_HISTORY 10
-struct tsm_vte {
-	unsigned long ref;
-
-	tsm_str_cb strcb;
-	void *strcb_data;
-	size_t colbuf_sz;
-	size_t colbuf_pos;
-	char *colbuf;
-
-	struct tui_context *con;
-
-	struct tui_context* debug;
-	char* debug_lines[DEBUG_HISTORY];
-	size_t debug_pos;
-
-	tsm_vte_write_cb write_cb;
-	void *data;
-	char *palette_name;
-
-	struct tsm_utf8_mach *mach;
-	unsigned long parse_cnt;
-
-	unsigned int state;
-	enum mouse_data mstate;
-	int mbutton;
-
-	unsigned int csi_argc;
-	int csi_argv[CSI_ARG_MAX];
-	unsigned int csi_flags;
-
-	uint8_t palette[VTE_COLOR_NUM][3];
-	struct tui_screen_attr def_attr;
-	struct tui_screen_attr cattr;
-	int c_fgcode, c_bgcode;
-	int d_fgcode, d_bgcode;
-	bool faint;
-
-	unsigned int flags;
-
-	tsm_vte_charset **gl;
-	tsm_vte_charset **gr;
-	tsm_vte_charset **glt;
-	tsm_vte_charset **grt;
-	tsm_vte_charset *g0;
-	tsm_vte_charset *g1;
-	tsm_vte_charset *g2;
-	tsm_vte_charset *g3;
-
-	struct vte_saved_state saved_state;
-	size_t alt_cursor_x;
-	size_t alt_cursor_y;
-};
 
 static uint8_t color_palette[VTE_COLOR_NUM][3] = {
 	[VTE_COLOR_BLACK]         = {   0,   0,   0 }, /* black */
@@ -320,6 +252,8 @@ void debug_log(struct tsm_vte* vte, const char* msg, ...)
 	if (!vte || !vte->debug)
 		return;
 
+	vte->debug_ofs = 0;
+
 	char* out;
 	ssize_t len;
 
@@ -341,8 +275,55 @@ void debug_log(struct tsm_vte* vte, const char* msg, ...)
 	tsm_vte_update_debug(vte);
 }
 
+#define DEBUG_LOG(X, Y, ...) debug_log(X, "%d:" Y, (X)->log_ctr++, ##__VA_ARGS__)
+
+#define STEP_ROW() { \
+	crow++; \
+	if (crow < rows)\
+		 arcan_tui_move_to(vte->debug, 0, crow);\
+	else\
+		goto out;\
+	}
+
+static size_t wrap_write(struct tsm_vte* vte, size_t crow, const char* msg)
+{
+	if (!msg || strlen(msg) == 0)
+		return crow;
+
+	size_t rows = 0, cols = 0;
+	arcan_tui_dimensions(vte->debug, &rows, &cols);
+
+	size_t xpos = 0;
+	const char* cur = msg;
+	while (*cur){
+		size_t next = 0;
+
+		while (cur[next] && (cur[next] != ' ' || (next == 0 || cur[next-1] == ':')))
+			next++;
+
+		if (next >= cols && cols > 1){
+			next = cols-1;
+		}
+
+		if (xpos + next >= cols){
+			xpos = 0;
+			STEP_ROW();
+		}
+
+		arcan_tui_writeu8(vte->debug, (uint8_t*) cur, next, NULL);
+		xpos += next;
+		cur += next;
+	}
+
+	STEP_ROW();
+out:
+	return crow;
+}
+
 void tsm_vte_update_debug(struct tsm_vte* vte)
 {
+	char* msg = NULL;
+
 	if (!vte || !vte->debug)
 		return;
 
@@ -358,17 +339,9 @@ void tsm_vte_update_debug(struct tsm_vte* vte)
 	arcan_tui_dimensions(vte->debug, &rows, &cols);
 	arcan_tui_move_to(vte->debug, 0, 0);
 
-#define STEP_ROW(Y) { \
-	crow++; \
-	if (crow < rows)\
-		 arcan_tui_move_to(vte->debug, 0, crow);\
-	else\
-		goto out;\
-	}
-
-	char linebuf[cols];
+	char linebuf[256];
 	unsigned fl = vte->csi_flags;
-	snprintf(linebuf, sizeof(linebuf), "CSI: %s%s%s%s%s%s%s%s%s%s%s",
+	snprintf(linebuf, sizeof(linebuf), "CSI: %s%s%s%s%s%s%s%s%s%s%s debug: %s",
 		(fl & CSI_BANG) ? "!" : "",
 		(fl & CSI_CASH) ? "$" : "",
 		(fl & CSI_WHAT) ? "?" : "",
@@ -379,7 +352,8 @@ void tsm_vte_update_debug(struct tsm_vte* vte)
 		(fl & CSI_MULT) ? "*" : "",
 		(fl & CSI_PLUS) ? "+" : "",
 		(fl & CSI_PLUS) ? "(" : "",
-		(fl & CSI_PLUS) ? ")" : ""
+		(fl & CSI_PLUS) ? ")" : "",
+		(vte->debug_verbose) ? "verbose" : "normal"
 	);
 	arcan_tui_writeu8(vte->debug, (uint8_t*) linebuf, strlen(linebuf), NULL);
 	STEP_ROW();
@@ -403,6 +377,7 @@ void tsm_vte_update_debug(struct tsm_vte* vte)
 		case STATE_ST_IGNORE:	state = "st-ignore"; break;
 	}
 	fl = vte->flags;
+
 	snprintf(linebuf, sizeof(linebuf), "State: %s Flags:"
 		" %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s", state,
 		(fl & FLAG_CURSOR_KEY_MODE) ? "ckey " : "",
@@ -425,8 +400,7 @@ void tsm_vte_update_debug(struct tsm_vte* vte)
 		(fl & FLAG_TITE_INHIBIT_MODE) ? "alt_inhibit " : "",
 		(fl & FLAG_PASTE_BRACKET) ? "bpaste " : ""
 	);
-	arcan_tui_writeu8(vte->debug, (uint8_t*) linebuf, strlen(linebuf), NULL);
-	STEP_ROW();
+	crow = wrap_write(vte, crow, linebuf);
 
 	fl = vte->mstate;
 	snprintf(linebuf, sizeof(linebuf), "Mouse @(x,y): %zu, %zu Btn: %d State: "
@@ -439,21 +413,38 @@ void tsm_vte_update_debug(struct tsm_vte* vte)
 		(fl & MOUSE_X10) ? "x10 " : "",
 		(fl & MOUSE_RXVT) ? "rxvt " : ""
 	);
-	arcan_tui_writeu8(vte->debug, (uint8_t*) linebuf, strlen(linebuf), NULL);
-	STEP_ROW();
+	crow = wrap_write(vte, crow, linebuf);
+
+/* since this can be arbitrarily long, split on space unless preceeded by a
+ * colon, unless the window is so small that the word doesn't fit, since it's
+ * debugging data, just ignore utf8 - normal TUI applications would use either
+ * autowrap or apply their own wrapping rules */
+	msg = arcan_tui_statedescr(vte->con);
+	crow = wrap_write(vte, crow, msg);
 
 /* fill out with history logent */
 	size_t pos = vte->debug_pos > 0 ? vte->debug_pos - 1 : DEBUG_HISTORY - 1;
 	char* ent;
-	while ( (ent = vte->debug_lines[pos]) && pos != vte->debug_pos){
+
+	size_t row_lim = rows - crow;
+	crow = rows - 1;
+
+	for (size_t i = 0; i < vte->debug_ofs; i++)
+		pos = pos > 0 ? pos - 1 : DEBUG_HISTORY - 1;
+
+/* should reverse this direction */
+	while ( row_lim-- && (ent = vte->debug_lines[pos]) && pos != vte->debug_pos){
+		arcan_tui_move_to(vte->debug, 0, crow);
 		arcan_tui_writeu8(vte->debug, (uint8_t*)ent, strlen(ent), NULL);
-		STEP_ROW();
+		crow--;
 		pos = pos > 0 ? pos - 1 : DEBUG_HISTORY - 1;
 	}
 
 #undef STEP_ROW
 out:
 	arcan_tui_refresh(vte->debug);
+	if (msg)
+		free(msg);
 
 /* last n warnings depending on how many rows we have
  * inputs before last synch
@@ -579,7 +570,7 @@ int tsm_vte_new(struct tsm_vte **out, struct tui_context *con,
 	tsm_vte_reset(vte);
 	arcan_tui_erase_screen(vte->con, false);
 
-	debug_log(vte, "new vte object");
+	DEBUG_LOG(vte, "new vte object");
 	arcan_tui_refinc(vte->con);
 	*out = vte;
 	return 0;
@@ -722,7 +713,7 @@ static void vte_write_debug(struct tsm_vte *vte, const char *u8, size_t len,
 	if (!raw) {
 		for (i = 0; i < len; ++i) {
 			if (u8[i] & 0x80)
-				debug_log(vte,
+				DEBUG_LOG(vte,
 					"sending 8bit character inline to client in %s:%d", file, line);
 		}
 	}
@@ -1084,7 +1075,7 @@ static void do_execute(struct tsm_vte *vte, uint32_t ctrl)
 		/* nothing to do here */
 		break;
 	default:
-		debug_log(vte, "unhandled control char %u", ctrl);
+		DEBUG_LOG(vte, "unhandled control char %u", ctrl);
 	}
 }
 
@@ -1273,7 +1264,7 @@ static void do_esc(struct tsm_vte *vte, uint32_t data)
 
 	/* everything below is only valid without CSI flags */
 	if (vte->csi_flags) {
-		debug_log(vte, "unhandled escape seq %u", data);
+		DEBUG_LOG(vte, "unhandled escape seq %u", data);
 		return;
 	}
 
@@ -1351,7 +1342,7 @@ static void do_esc(struct tsm_vte *vte, uint32_t data)
 		restore_state(vte);
 		break;
 	default:
-		debug_log(vte, "unhandled escape seq %u", data);
+		DEBUG_LOG(vte, "unhandled escape seq %u", data);
 	}
 }
 
@@ -1422,6 +1413,9 @@ static void csi_attribute(struct tsm_vte *vte)
 		case 27:
 			vte->cattr.inverse = 0;
 			break;
+		case 29:
+/* 'not crossed out' */
+		break;
 		case 30:
 			set_rgb(vte, &vte->cattr, true, VTE_COLOR_BLACK);
 			break;
@@ -1537,7 +1531,7 @@ static void csi_attribute(struct tsm_vte *vte)
 			if (vte->csi_argv[i + 1] == 5) { // 256color mode
 				if (i + 2 >= vte->csi_argc ||
 					vte->csi_argv[i + 2] < 0) {
-					debug_log(vte, "invalid 256color SGR");
+					DEBUG_LOG(vte, "invalid 256color SGR");
 					break;
 				}
 				code = vte->csi_argv[i + 2];
@@ -1564,7 +1558,7 @@ static void csi_attribute(struct tsm_vte *vte)
 					vte->csi_argv[i + 2] < 0 ||
 					vte->csi_argv[i + 3] < 0 ||
 					vte->csi_argv[i + 4] < 0) {
-						debug_log(vte, "invalid true color SGR");
+						DEBUG_LOG(vte, "invalid true color SGR");
 						break;
 					}
 				cr = vte->csi_argv[i + 2];
@@ -1573,7 +1567,7 @@ static void csi_attribute(struct tsm_vte *vte)
 				code = -1;
 				i += 4;
 			} else {
-				debug_log(vte, "invalid SGR");
+				DEBUG_LOG(vte, "invalid SGR");
 				break;
 			}
 			if (val == 38) {
@@ -1599,7 +1593,7 @@ static void csi_attribute(struct tsm_vte *vte)
 			}
 			break;
 		default:
-			debug_log(vte, "unhandled SGR attr %i",
+			DEBUG_LOG(vte, "unhandled SGR attr %i",
 				   vte->csi_argv[i]);
 		}
 	}
@@ -1650,7 +1644,7 @@ static void csi_compat_mode(struct tsm_vte *vte)
 		vte->g0 = &tsm_vte_unicode_lower;
 		vte->g1 = &tsm_vte_dec_supplemental_graphics;
 	} else {
-		debug_log(vte, "unhandled DECSCL 'p' CSI %i, switching to utf-8 mode again",
+		DEBUG_LOG(vte, "unhandled DECSCL 'p' CSI %i, switching to utf-8 mode again",
 			   vte->csi_argv[0]);
 	}
 }
@@ -1696,7 +1690,7 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 					       FLAG_LINE_FEED_NEW_LINE_MODE);
 				continue;
 			default:
-				debug_log(vte, "unknown non-DEC (Re)Set-Mode %d",
+				DEBUG_LOG(vte, "unknown non-DEC (Re)Set-Mode %d",
 					   vte->csi_argv[i]);
 				continue;
 			}
@@ -1769,32 +1763,6 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 		case 9: /* X10 mouse compatibility mode */
 			// set_reset_flag(vte, set, FLAG_ */
 			continue;
-		case 1000:
-			vte->mstate = MOUSE_BUTTON;
-			if (0)
-		case 1002:
-			vte->mstate = MOUSE_DRAG;
-			if (0)
-		case 1003:
-			vte->mstate = MOUSE_MOTION;
-			vte->mstate |= MOUSE_X10;
-			if (!set)
-				vte->mstate = 0;
-			continue;
-		case 1004:
-/* TODO: report focus event */
-			continue;
-		case 1005:
-/* TODO: UTF-8 Mouse Mode? */
-			continue;
-		case 1006:
-			vte->mstate = (vte->mstate & (~MOUSE_PROTO)) |
-				( set ? MOUSE_SGR : MOUSE_X10);
-			continue;
-		case 1015:
-			vte->mstate = (vte->mstate & (~MOUSE_PROTO)) |
-				( set ? MOUSE_RXVT : MOUSE_X10);
-		break;
 		case 12: /* blinking cursor */
 			/* TODO: implement */
 			continue;
@@ -1809,6 +1777,9 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 			 * scrolling region only. We have no printer so ignore
 			 * this mode. */
 			continue;
+
+/* 20: CRLF mode */
+
 		case 25: /* DECTCEM */
 			set_reset_flag(vte, set, FLAG_TEXT_CURSOR_MODE);
 			if (set)
@@ -1818,31 +1789,66 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 				arcan_tui_set_flags(vte->con,
 						TUI_HIDE_CURSOR);
 			continue;
+
+/* 40: 80 -> 132 mode */
+
 		case 42: /* DECNRCM */
 			set_reset_flag(vte, set, FLAG_NATIONAL_CHARSET_MODE);
 			continue;
+
+/* 45: reverse wrap-around */
+
 		case 47: /* Alternate screen buffer */
 			if (vte->flags & FLAG_TITE_INHIBIT_MODE)
 				continue;
 
 			if (set)
-				arcan_tui_set_flags(vte->con,
-						     TUI_ALTERNATE);
+				arcan_tui_set_flags(vte->con, TUI_ALTERNATE);
 			else
-				arcan_tui_reset_flags(vte->con,
-						       TUI_ALTERNATE);
+				arcan_tui_reset_flags(vte->con, TUI_ALTERNATE);
+		continue;
+
+/* 59: kanji terminal
+ * 66: app keypad
+ * 67: backspace as bs not del
+ * 69: l/r margins */
+
+		case 1000:
+			vte->mstate = MOUSE_BUTTON;
+			if (0)
+		case 1002:
+			vte->mstate = MOUSE_DRAG;
+			if (0)
+		case 1003:
+			vte->mstate = MOUSE_MOTION;
+			vte->mstate |= MOUSE_X10;
+			if (!set)
+				vte->mstate = 0;
 			continue;
+		case 1006:
+			vte->mstate = (vte->mstate & (~MOUSE_PROTO)) |
+				( set ? MOUSE_SGR : MOUSE_X10);
+			continue;
+		case 1015:
+			vte->mstate = (vte->mstate & (~MOUSE_PROTO)) |
+				( set ? MOUSE_RXVT : MOUSE_X10);
+		break;
+
+/* 1001: x-mouse highlight
+ * 1004: report focus event
+ * 1005: UTF-8 mouse mode
+ * 1012: set home on input
+ * 1015: mouse-ext
+ */
 		case 1047: /* Alternate screen buffer with post-erase */
 			if (vte->flags & FLAG_TITE_INHIBIT_MODE)
 				continue;
 
 			if (set) {
-				arcan_tui_set_flags(vte->con,
-						     TUI_ALTERNATE);
+				arcan_tui_set_flags(vte->con, TUI_ALTERNATE);
 			} else {
 				arcan_tui_erase_screen(vte->con, false);
-				arcan_tui_reset_flags(vte->con,
-						       TUI_ALTERNATE);
+				arcan_tui_reset_flags(vte->con, TUI_ALTERNATE);
 			}
 			continue;
 		case 1048: /* Set/Reset alternate-screen buffer cursor */
@@ -1850,11 +1856,9 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 				continue;
 
 			if (set) {
-					arcan_tui_cursorpos(vte->con,
-						&vte->alt_cursor_x, &vte->alt_cursor_y);
+					arcan_tui_cursorpos(vte->con, &vte->alt_cursor_x, &vte->alt_cursor_y);
 			} else {
-				arcan_tui_move_to(vte->con, vte->alt_cursor_x,
-						   vte->alt_cursor_y);
+				arcan_tui_move_to(vte->con, vte->alt_cursor_x, vte->alt_cursor_y);
 			}
 			continue;
 		case 1049: /* Alternate screen buffer with pre-erase+cursor */
@@ -1862,23 +1866,20 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 				continue;
 
 			if (set) {
-				arcan_tui_cursorpos(vte->con,
-					&vte->alt_cursor_x, &vte->alt_cursor_y);
-				arcan_tui_set_flags(vte->con,
-						     TUI_ALTERNATE);
+				arcan_tui_cursorpos(vte->con, &vte->alt_cursor_x, &vte->alt_cursor_y);
+				arcan_tui_set_flags(vte->con, TUI_ALTERNATE);
 				arcan_tui_erase_screen(vte->con, false);
 			} else {
-				arcan_tui_reset_flags(vte->con,
-						       TUI_ALTERNATE);
-				arcan_tui_move_to(vte->con, vte->alt_cursor_x,
-						   vte->alt_cursor_y);
+				arcan_tui_erase_screen(vte->con, false);
+				arcan_tui_reset_flags(vte->con, TUI_ALTERNATE);
+				arcan_tui_move_to(vte->con, vte->alt_cursor_x, vte->alt_cursor_y);
 			}
 			continue;
 		case 2004: /* Bracketed paste mode, pref.postf.paste with \e[200~ \e[201~ */
 			set_reset_flag(vte, set, FLAG_PASTE_BRACKET);
 			continue;
 		default:
-			debug_log(vte, "unknown DEC %set-Mode %d",
+			DEBUG_LOG(vte, "unknown DEC %set-Mode %d",
 				   set?"S":"Res", vte->csi_argv[i]);
 			continue;
 		}
@@ -1897,7 +1898,7 @@ static void csi_dev_attr(struct tsm_vte *vte)
 		}
 	}
 
-	debug_log(vte, "unhandled DA: %x %d %d %d...", vte->csi_flags,
+	DEBUG_LOG(vte, "unhandled DA: %x %d %d %d...", vte->csi_flags,
 		   vte->csi_argv[0], vte->csi_argv[1], vte->csi_argv[2]);
 }
 
@@ -2015,7 +2016,7 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		else if (vte->csi_argv[0] == 2)
 			arcan_tui_erase_screen(vte->con, protect);
 		else
-			debug_log(vte, "unknown parameter to CSI-J: %d",
+			DEBUG_LOG(vte, "unknown parameter to CSI-J: %d",
 				   vte->csi_argv[0]);
 		break;
 	case 'K':
@@ -2034,7 +2035,7 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 /* CL: 0, y, size_x - 1, y, protect */
 			arcan_tui_erase_current_line(vte->con, protect);
 		else
-			debug_log(vte, "unknown parameter to CSI-K: %d",
+			DEBUG_LOG(vte, "unknown parameter to CSI-K: %d",
 				   vte->csi_argv[0]);
 		break;
 	case 'X': /* ECH */
@@ -2107,7 +2108,7 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		else if (num == 3)
 			arcan_tui_reset_all_tabstops(vte->con);
 		else
-			debug_log(vte, "invalid parameter %d to TBC CSI", num);
+			DEBUG_LOG(vte, "invalid parameter %d to TBC CSI", num);
 		break;
 	case '@': /* ICH */
 		/* insert characters */
@@ -2156,7 +2157,7 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		arcan_tui_scroll_down(vte->con, num);
 		break;
 	default:
-		debug_log(vte, "unhandled CSI sequence %c", data);
+		DEBUG_LOG(vte, "unhandled CSI sequence %c", data);
 	}
 }
 
@@ -2190,6 +2191,9 @@ static uint32_t vte_map(struct tsm_vte *vte, uint32_t val)
 static void do_action(struct tsm_vte *vte, uint32_t data, int action)
 {
 	tsm_symbol_t sym;
+	if (vte->debug && vte->debug_verbose && action != ACTION_PRINT){
+		DEBUG_LOG(vte, "%s(%"PRIu32")", action_lut[action], data);
+	}
 
 	switch (action) {
 		case ACTION_NONE:
@@ -2243,7 +2247,7 @@ static void do_action(struct tsm_vte *vte, uint32_t data, int action)
 			}
 			break;
 		default:
-			debug_log(vte, "invalid action %d", action);
+			DEBUG_LOG(vte, "invalid action %d", action);
 	}
 }
 
@@ -2626,7 +2630,7 @@ static void parse_data(struct tsm_vte *vte, uint32_t raw)
 		return;
 	}
 
-	debug_log(vte, "unhandled input %u in state %d", raw, vte->state);
+	DEBUG_LOG(vte, "unhandled input %u in state %d", raw, vte->state);
 }
 
 SHL_EXPORT
@@ -2643,7 +2647,7 @@ void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 	for (i = 0; i < len; ++i) {
 		if (vte->flags & FLAG_7BIT_MODE) {
 			if (u8[i] & 0x80)
-				debug_log(vte, "receiving 8bit character U+%d from pty while in 7bit mode",
+				DEBUG_LOG(vte, "receiving 8bit character U+%d from pty while in 7bit mode",
 					   (int)u8[i]);
 			parse_data(vte, u8[i] & 0x7f);
 		} else if (vte->flags & FLAG_8BIT_MODE) {
@@ -2659,11 +2663,39 @@ void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 	}
 }
 
+static void on_key(struct tui_context* c, uint32_t keysym,
+	uint8_t scancode, uint8_t mods, uint16_t subid, void* t)
+{
+	struct tsm_vte* in = t;
+	if (keysym == TUIK_TAB){
+		in->debug_verbose = !in->debug_verbose;
+	}
+	else if (keysym == TUIK_J || keysym == TUIK_DOWN){
+		in->debug_ofs++;
+	}
+	else if (keysym == TUIK_K || keysym == TUIK_UP){
+		if (in->debug_ofs > 0)
+			in->debug_ofs--;
+	}
+	else if (keysym == TUIK_ESCAPE){
+		for (size_t i = 0; i < DEBUG_HISTORY; i++){
+			if (in->debug_lines[i]){
+				free(in->debug_lines[i]);
+				in->debug_lines[i] = NULL;
+			}
+		}
+		in->debug_ofs = 0;
+		in->debug_pos = 0;
+	}
+}
+
 SHL_EXPORT void tsm_vte_debug(struct tsm_vte* in, arcan_tui_conn* conn)
 {
 /* don't need any callbacks as the always do a full reprocess in update_debug,
  * where the processing etc. takes place */
 	struct tui_cbcfg cbcfg = {
+		.tag = in,
+		.input_key = on_key
 	};
 	struct tui_settings cfg = arcan_tui_defaults(conn, in->con);
 	struct tui_context* newctx =
@@ -3099,7 +3131,7 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 		if (vte->flags & FLAG_7BIT_MODE) {
 			val = unicode;
 			if (unicode & 0x80) {
-				debug_log(vte, "invalid keyboard input in 7bit mode U+%x; mapping to '?'",
+				DEBUG_LOG(vte, "invalid keyboard input in 7bit mode U+%x; mapping to '?'",
 					   unicode);
 				val = '?';
 			}
@@ -3107,7 +3139,7 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 		} else if (vte->flags & FLAG_8BIT_MODE) {
 			val = unicode;
 			if (unicode > 0xff) {
-				debug_log(vte, "invalid keyboard input in 8bit mode U+%x; mapping to '?'",
+				DEBUG_LOG(vte, "invalid keyboard input in 8bit mode U+%x; mapping to '?'",
 					   unicode);
 				val = '?';
 			}
