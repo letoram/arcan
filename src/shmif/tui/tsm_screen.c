@@ -80,75 +80,6 @@
 #include "libtsm.h"
 #include "libtsm_int.h"
 
-struct cell {
-	tsm_symbol_t ch;
-	unsigned int width;
-	struct tui_screen_attr attr;
-	tsm_age_t age;
-};
-
-struct line {
-	struct line *next;
-	struct line *prev;
-
-	unsigned int size;
-	struct cell *cells;
-	uint64_t sb_id;
-	tsm_age_t age;
-};
-
-#define SELECTION_TOP -1
-struct selection_pos {
-	struct line *line;
-	unsigned int x;
-	int y;
-};
-
-struct tsm_screen {
-	size_t ref;
-	unsigned int opts;
-	unsigned int flags;
-	struct tsm_symbol_table *sym_table;
-
-	/* default attributes for new cells */
-	struct tui_screen_attr def_attr;
-
-	/* ageing */
-	tsm_age_t age_cnt;
-	unsigned int age_reset : 1;
-
-	/* current buffer */
-	unsigned int size_x;
-	unsigned int size_y;
-	unsigned int margin_top;
-	unsigned int margin_bottom;
-	unsigned int line_num;
-	struct line **lines;
-	struct line **main_lines;
-	struct line **alt_lines;
-	tsm_age_t age;
-
-	/* scroll-back buffer */
-	unsigned int sb_count;		/* number of lines in sb */
-	struct line *sb_first;		/* first line; was moved first */
-	struct line *sb_last;		/* last line; was moved last*/
-	unsigned int sb_max;		/* max-limit of lines in sb */
-	struct line *sb_pos;		/* current position in sb or NULL */
-	uint64_t sb_last_id;		/* last id given to sb-line */
-
-	/* cursor */
-	unsigned int cursor_x;
-	unsigned int cursor_y;
-
-	/* tab ruler */
-	bool *tab_ruler;
-
-	/* selection */
-	bool sel_active;
-	struct selection_pos sel_start;
-	struct selection_pos sel_end;
-};
-
 static void inc_age(struct tsm_screen *con)
 {
 	if (!++con->age_cnt) {
@@ -610,30 +541,6 @@ void tsm_screen_unref(struct tsm_screen *con)
 	free(con->tab_ruler);
 	tsm_symbol_table_unref(con->sym_table);
 	free(con);
-}
-
-void tsm_screen_set_opts(struct tsm_screen *scr, unsigned int opts)
-{
-	if (!scr || !opts)
-		return;
-
-	scr->opts |= opts;
-}
-
-void tsm_screen_reset_opts(struct tsm_screen *scr, unsigned int opts)
-{
-	if (!scr || !opts)
-		return;
-
-	scr->opts &= ~opts;
-}
-
-unsigned int tsm_screen_get_opts(struct tsm_screen *scr)
-{
-	if (!scr)
-		return 0;
-
-	return scr->opts;
 }
 
 SHL_EXPORT

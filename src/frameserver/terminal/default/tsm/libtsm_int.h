@@ -27,6 +27,10 @@
 #define TSM_LIBTSM_INT_H
 
 #include <stdlib.h>
+#include "arcan_shmif.h"
+#include "arcan_tui.h"
+#include "arcan_tuisym.h"
+#include "libtsm.h"
 
 #define SHL_EXPORT __attribute__((visibility("default")))
 
@@ -87,5 +91,91 @@ extern tsm_vte_charset tsm_vte_unicode_lower;
 extern tsm_vte_charset tsm_vte_unicode_upper;
 extern tsm_vte_charset tsm_vte_dec_supplemental_graphics;
 extern tsm_vte_charset tsm_vte_dec_special_graphics;
+
+enum mouse_data {
+	MOUSE_BUTTON = 1,
+	MOUSE_DRAG   = 2,
+	MOUSE_MOTION = 4,
+	MOUSE_SGR    = 8,
+	MOUSE_X10    = 16,
+	MOUSE_RXVT   = 32
+};
+/* max CSI arguments */
+#define CSI_ARG_MAX 16
+
+struct vte_saved_state {
+	size_t cursor_x;
+	size_t cursor_y;
+	size_t mouse_x;
+	size_t mouse_y;
+	enum mouse_data mouse_state;
+	struct tui_screen_attr cattr;
+	bool faint;
+	int c_fgcode, c_bgcode;
+	int d_fgcode, d_bgcode;
+
+	tsm_vte_charset **gl;
+	tsm_vte_charset **gr;
+	bool wrap_mode;
+	bool origin_mode;
+};
+
+#define DEBUG_HISTORY 40
+struct tsm_vte {
+	unsigned long ref;
+
+	tsm_str_cb strcb;
+	void *strcb_data;
+	size_t colbuf_sz;
+	size_t colbuf_pos;
+	char *colbuf;
+
+	struct tui_context *con;
+
+	struct tui_context* debug;
+	bool debug_verbose;
+	size_t debug_ofs;
+	char* debug_lines[DEBUG_HISTORY];
+	size_t debug_pos;
+	int log_ctr;
+
+	tsm_vte_write_cb write_cb;
+	void *data;
+	char *palette_name;
+
+	struct tsm_utf8_mach *mach;
+	unsigned long parse_cnt;
+
+	unsigned int state;
+	enum mouse_data mstate;
+	int mbutton;
+
+	unsigned int csi_argc;
+	int csi_argv[CSI_ARG_MAX];
+	unsigned int csi_flags;
+
+	uint8_t palette[VTE_COLOR_NUM][3];
+	struct tui_screen_attr def_attr;
+	struct tui_screen_attr cattr;
+	int c_fgcode, c_bgcode;
+	int d_fgcode, d_bgcode;
+	bool faint;
+
+	unsigned int flags;
+
+	tsm_vte_charset **gl;
+	tsm_vte_charset **gr;
+	tsm_vte_charset **glt;
+	tsm_vte_charset **grt;
+	tsm_vte_charset *g0;
+	tsm_vte_charset *g1;
+	tsm_vte_charset *g2;
+	tsm_vte_charset *g3;
+
+	struct vte_saved_state saved_state;
+	size_t alt_cursor_x;
+	size_t alt_cursor_y;
+};
+
 
 #endif /* TSM_LIBTSM_INT_H */

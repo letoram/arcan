@@ -53,13 +53,16 @@
  * below for comments on each helper.
  */
 
-struct tui_screen_attr;
-
 #include <errno.h>
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include "wcwidth.h"
+#include "arcan_shmif.h"
+#include "arcan_tui.h"
+#include "arcan_tuisym.h"
 #include "libtsm.h"
 #include "libtsm_int.h"
 #include "shl_array.h"
