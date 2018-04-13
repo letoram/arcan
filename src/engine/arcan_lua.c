@@ -11195,6 +11195,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	struct { const char* key; int val; } consttbl[] = {
 {"EXIT_SUCCESS", EXIT_SUCCESS},
 {"EXIT_FAILURE", EXIT_FAILURE},
+{"EXIT_SILENT", 256},
+
 /* these two constants are an old left-over from easier times when there was no
  * multi-monitor support, and should be phased out with a support script that
  * uses physical- dimensions (mm) and output display pixel density to calculate
