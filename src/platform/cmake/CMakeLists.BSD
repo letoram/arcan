@@ -30,7 +30,7 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
 	endif()
 	list(APPEND ARCAN_PLATFORM
 		${PLATFORM_PATH}/ffsll.c
-		${PLATFORM_PATH}/open.c
+		${PLATFORM_PATH}/psep_open.c
 	)
 else()
 	list(APPEND ARCAN_PLATFORM ${PLATFORM_PATH}/open.c)
