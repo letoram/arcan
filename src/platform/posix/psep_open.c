@@ -66,6 +66,7 @@ struct whitelist {
  * instance with an appl that dumps the input events and there you go.
  */
 struct whitelist whitelist[] = {
+#ifdef __LINUX
 	{"/dev/input/", -1, MODE_PREFIX},
 	{"/dev/dri/card0", -1, MODE_DRM},
 	{"/dev/dri/card1", -1, MODE_DRM},
@@ -75,6 +76,52 @@ struct whitelist whitelist[] = {
 	{"/sys/class/backlight/", -1, MODE_PREFIX},
 	{"/sys/class/tty/", -1, MODE_PREFIX},
 	{"/dev/tty", -1, MODE_PREFIX},
+#else
+	{"/dev/wsmouse", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/wsmouse0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/wsmouse1", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/wsmouse2", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/wsmouse3", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/uhid0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/uhid1", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/uhid2", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/uhid3", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/tty00", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/tty01", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/tty02", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/tty03", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/tty04", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttya", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyb", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyc", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyd", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/wskbd", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/wskbd0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/wskbd1", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/wskbd2", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/wskbd3", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyC0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyC1", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyC2", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyC3", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyC4", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyC5", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyC6", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyC7", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyD0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyE0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyF0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyG0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyH0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyI0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/ttyJ0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/pci", -1, O_RDWR | O_NONBLOCK | O_EXCL},
+	{"/dev/drm0", -1, O_RDWR },
+	{"/dev/drm1", -1, O_RDWR },
+	{"/dev/drm2", -1, O_RDWR },
+	{"/dev/drm3", -1, O_RDWR },
+	{"/dev/amdmsr", -1, O_RDWR | O_EXCL},
+#endif
 };
 
 static int access_device(const char* path, bool release, bool* keep)
@@ -168,6 +215,7 @@ static void data_in(pid_t child, int child_conn)
 		close(fd);
 }
 
+#ifdef __LINUX
 static void check_netlink(pid_t child, int child_conn, int netlink)
 {
 	char buf[8192];
@@ -206,6 +254,11 @@ static void check_netlink(pid_t child, int child_conn, int netlink)
 
 	write(child_conn, &pkg, sizeof(pkg));
 }
+#else
+static void check_netlink(pid_t child, int child_conn, int netlink)
+{
+}
+#endif
 
 static void parent_loop(pid_t child, int child_conn, int netlink)
 {
@@ -345,6 +398,7 @@ void platform_device_init()
 		return;
 	}
 
+#ifdef __LINUX
 /* bind netlink for display event detection */
 	struct sockaddr_nl sa = {
 		.nl_family = AF_NETLINK,
@@ -363,6 +417,9 @@ void platform_device_init()
 	sigset_t mask;
 	sigfillset(&mask);
 	sigprocmask(SIG_SETMASK, &mask, NULL);
+#else
+	int netlink = -1;
+#endif
 
 	while(true)
 		parent_loop(pid, sockets[1], netlink);
