@@ -47,7 +47,7 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 		${ARCAN_ROOT_DIR}/src/platform/posix/time.c
 	)
 	set(LIBRARIES ${LIBRARIES} ${LIBUSB_1_LIBRARIES})
-	include_directories(${LIBUSB_1_INCLUDE_DIR})
+	include_directories(${LIBUSB_1_INCLUDE_DIRS})
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	find_library(IOKIT NAMES IOKit)
@@ -59,8 +59,10 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	set(LIBRARIES ${LIBRARIES} ${IOKIT} ${COREFOUNDATION})
 
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "BSD" OR ${CMAKE_SYSTEM_NAME}} MATCHES "DragonFly")
+	find_package(libusb-1.0 REQUIRED)
 	add_definitions(-DLIBUSB_BSD)
-	set(LIBRARIES ${LIBRARIES} usb usbhid)
+	set(LIBRARIES ${LIBRARIES} iconv ${LIBUSB_1_LIBRARIES})
+	include_directories(${LIBUSB_1_INCLUDE_DIRS})
 	set(PLATFORM_SOURCES
 		${ARCAN_ROOT_DIR}/src/platform/posix/time.c
 		${ARCAN_ROOT_DIR}/external/hidapi/hid.c
@@ -91,3 +93,5 @@ endif()
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 target_link_libraries(${PROJECT_NAME} ${LIBRARIES})
+
+install(TARGETS ${PROJECT_NAME} DESTINATION bin)
