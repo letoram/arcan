@@ -1,5 +1,5 @@
 /*
- * Copyright 2016, Björn Ståhl
+ * Copyright 2016-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description: VR interfacing tool
@@ -33,11 +33,30 @@ struct limb_runner {
 };
 unsigned long long epoch;
 
+/*
+ * normally, this is supposed to be started by arcan via the ext_vr config
+ * mechanism - but for testing and debugging purposes it might make sense
+ * to run from a console (stdin == tty). If that happens, 'fake' a working
+ * vr context.
+ */
+static struct arcan_shmif_vr* vr_context;
+static bool debug_offline;
+static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static void* limb_runner(void* arg)
 {
 	struct limb_runner* meta = arg;
 
 	while (in_init){}
+
+	if (debug_offline){
+		while (meta->dev->alive){
+			meta->dev->sample(meta->dev, meta->limb, meta->limb_id);
+			pthread_mutex_lock(&mutex);
+			printf("debug(%d) sampled\n", (int)meta->limb_id);
+			pthread_mutex_unlock(&mutex);
+		}
+	}
 
 	while (meta->dev->alive){
 /* expected to block until limb has been updated, the timestamp is when
@@ -116,11 +135,8 @@ static size_t device_rescan(struct arcan_shmif_vr* vr, struct arg_arr* arg)
 struct vr_limb* vrbridge_alloc_limb(
 	struct dev_ent* dev, enum avatar_limbs limb, unsigned id)
 {
-	struct arcan_shmif_vr* vr = arcan_shmif_substruct(
-		arcan_shmif_primary(SHMIF_INPUT), SHMIF_META_VR).vr;
-
 	uint64_t lv = (uint64_t)1 << (uint64_t)limb;
-	uint64_t map = atomic_load(&vr->limb_mask);
+	uint64_t map = atomic_load(&vr_context->limb_mask);
 	if (map & (1 << lv)){
 		debug_print(0,
 			"device tried to allocate existing limb %d (id: %d)", limb, id);
@@ -131,13 +147,13 @@ struct vr_limb* vrbridge_alloc_limb(
 	if (!thctx)
 		return NULL;
 
-	atomic_fetch_or(&vr->limb_mask, lv);
-	map = atomic_load(&vr->limb_mask);
+	atomic_fetch_or(&vr_context->limb_mask, lv);
+	map = atomic_load(&vr_context->limb_mask);
 	debug_print(0,
 		"allocated limb slot %d, id: %d (mask: %"PRIu64")", limb, id, map);
 	*thctx = (struct limb_runner){
-		.vr = vr,
-		.limb = &vr->limbs[limb],
+		.vr = vr_context,
+		.limb = &vr_context->limbs[limb],
 		.dev = dev,
 		.limb_ind = limb,
 		.limb_id = id
@@ -150,13 +166,13 @@ struct vr_limb* vrbridge_alloc_limb(
 	pthread_t nanny;
 	if (0 != pthread_create(&nanny, &nanny_attr, limb_runner, thctx)){
 		free(thctx);
-		atomic_fetch_and(&vr->limb_mask, ~lv);
+		atomic_fetch_and(&vr_context->limb_mask, ~lv);
 		return NULL;
 	}
 
 	pthread_attr_destroy(&nanny_attr);
 
-	return &vr->limbs[limb];
+	return &vr_context->limbs[limb];
 }
 
 static void control_cmd(int cmd)
@@ -169,9 +185,32 @@ static void control_cmd(int cmd)
 	}
 }
 
+static int console_main()
+{
+	debug_offline = true;
+	printf("console detected, switching to arcan-less mode\n");
+	vr_context = malloc(sizeof(struct arcan_shmif_vr));
+	*vr_context = (struct arcan_shmif_vr){};
+
+	while(device_rescan(vr_context, NULL) == 0){
+		printf("vrbridge:setup() - ""no controllers found, sleep/rescan");
+		sleep(5);
+	}
+
+	printf("vr bridge running in offline mode\n");
+	vr_context->ready = true;
+	while (1){}
+
+	return EXIT_SUCCESS;
+}
+
 int main(int argc, char** argv)
 {
 	struct arg_arr* arg;
+
+	if (isatty(STDIN_FILENO)){
+		return console_main();
+	}
 
 	struct arcan_shmif_cont con = arcan_shmif_open(
 		SEGID_SENSOR, SHMIF_ACQUIRE_FATALFAIL | SHMIF_NOAUTO_RECONNECT, &arg);
@@ -197,15 +236,15 @@ int main(int argc, char** argv)
 		.meta = SHMIF_META_VR
 	});
 
-	struct arcan_shmif_vr* vr = arcan_shmif_substruct(&con, SHMIF_META_VR).vr;
-	if (!vr){
+	vr_context = arcan_shmif_substruct(&con, SHMIF_META_VR).vr;
+	if (!vr_context){
 		debug_print(0, "couldn't retrieve VR substructure");
 		return EXIT_FAILURE;
 	}
 
-	if (vr->version != VR_VERSION){
+	if (vr_context->version != VR_VERSION){
 		debug_print(0, "header/shmif-vr version mismatch "
-			"(in: %d, want: %d)", vr->version, VR_VERSION);
+			"(in: %d, want: %d)", vr_context->version, VR_VERSION);
 		return EXIT_FAILURE;
 	}
 
@@ -229,7 +268,7 @@ int main(int argc, char** argv)
  * Allocate- a test-vr setup with nonsens parameters to be able to run
  * the entire chain from engine<->vrbridge<->avatar.
  */
-	while(device_rescan(vr, arg) == 0){
+	while(device_rescan(vr_context, arg) == 0){
 		debug_print(0, "vrbridge:setup() - "
 				"no controllers found, sleep/rescan");
 		sleep(5);
@@ -247,7 +286,7 @@ int main(int argc, char** argv)
 	arcan_event ev;
 	in_init = false;
 	epoch = arcan_timemillis();
-	vr->ready = true;
+	vr_context->ready = true;
 	debug_print(0, "vrbridge:setup completed, entering loop\n");
 
 	while (arcan_shmif_wait(&con, &ev) > 0){

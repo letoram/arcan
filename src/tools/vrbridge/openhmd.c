@@ -112,7 +112,8 @@ bool openhmd_init(struct dev_ent* ent,
 /* should likely just sweep unless we explicitly get index set */
 	long devind = 0;
 	const char(* str);
-	if (arg_lookup(arg, "ohmd_index", 0, &str)){
+
+	if (arg && arg_lookup(arg, "ohmd_index", 0, &str)){
 		devind = strtol(str, NULL, 10) % INT_MAX;
 	}
 
