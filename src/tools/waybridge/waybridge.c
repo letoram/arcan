@@ -201,6 +201,7 @@ static inline void trace(int level, const char* msg, ...)
  *
  * This is how UAF vulns with call-into-libc 'sploits are born
  */
+#include "structs.h"
 #include "boilerplate.c"
 
 /*
