@@ -82,7 +82,7 @@ if (NOT DEFINED ENGINE_BUILDTAG)
 			string(STRIP ${GIT_BRANCH} GIT_BRANCH)
 		endif()
 
-		if (${GIT_VERSION} STREQUAL "")
+		if (GIT_VERSION STREQUAL "")
 			amsg("${CLB_RED}missing git_version, using 'relukn' for build tag${CL_RST}")
 			set(ENGINE_BUILDTAG arcan-relukn-${VERSION})
 		else()
