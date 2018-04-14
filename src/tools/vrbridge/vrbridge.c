@@ -198,6 +198,8 @@ static int console_main()
 	}
 
 	printf("vr bridge running in offline mode\n");
+	in_init = false;
+	epoch = arcan_timemillis();
 	vr_context->ready = true;
 	while (1){}
 
