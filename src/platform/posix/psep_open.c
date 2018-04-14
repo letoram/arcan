@@ -267,7 +267,15 @@ static void parent_loop(pid_t child, int child_conn, int netlink)
  * monitoring over here as well to simplify the evdev.c implementation
  * but more ground work first.
  */
+
+/* here is a decent place to actually track the DRM devices that are open
+ * and restore their scanout status so that we will not risk leaving a broken
+ * tty. */
 	int st;
+	if (waitpid(child, &st, WNOHANG) > 0)
+		if (WIFEXITED(st) || WIFSIGNALED(st))
+			_exit(EXIT_SUCCESS);
+
 	struct pollfd pfd[2] = {
 		{
 			.fd = child_conn,
@@ -287,13 +295,6 @@ static void parent_loop(pid_t child, int child_conn, int netlink)
 
 	else if (pfd[0].revents & (~POLLIN))
 		_exit(EXIT_SUCCESS);
-
-/* here is a decent place to actually track the DRM devices that are open
- * and restore their scanout status so that we will practically leave a
- * broken vty */
-	if (waitpid(child, &st, WNOHANG) > 0)
-		if (WIFEXITED(st) || WIFSIGNALED(st))
-			_exit(EXIT_SUCCESS);
 
 /* could add other commands here as well, but what we concern ourselves with
  * at the moment is only GPU changed events, these match the pattern:
@@ -414,12 +415,13 @@ void platform_device_init()
 
 	close(sockets[0]);
 
-	sigset_t mask;
-	sigfillset(&mask);
-	sigprocmask(SIG_SETMASK, &mask, NULL);
 #else
 	int netlink = -1;
 #endif
+
+	sigset_t mask;
+	sigfillset(&mask);
+	sigprocmask(SIG_SETMASK, &mask, NULL);
 
 	while(true)
 		parent_loop(pid, sockets[1], netlink);
