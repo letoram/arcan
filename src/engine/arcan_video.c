@@ -2497,8 +2497,10 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, size_t w, size_t h)
 	float oy = (float)vobj->origh*vobj->current.scale.y;
 	float sfx = ox / (float)w;
 	float sfy = oy / (float)h;
-	rescale_origwh(vobj,
-		sfx / vobj->current.scale.x, sfy / vobj->current.scale.y);
+	if (vobj->current.scale.x > 0 && vobj->current.scale.y > 0){
+		rescale_origwh(vobj,
+			sfx / vobj->current.scale.x, sfy / vobj->current.scale.y);
+	}
 
 /* "initial" base dimensions, important when dimensions change for objects that
  * have a shared storage elsewhere but where scale differs. */
