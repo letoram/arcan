@@ -750,7 +750,7 @@ int MAIN_REDIR(int argc, char* argv[])
 	arcan_led_shutdown();
 	arcan_event_deinit(evctx);
 	arcan_audio_shutdown();
-	arcan_video_shutdown(exit_code == 256);
+	arcan_video_shutdown(exit_code != 256);
 	arcan_mem_free(dbfname);
 	if (dbhandle){
 		arcan_db_close(&dbhandle);
