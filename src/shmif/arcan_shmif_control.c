@@ -1639,7 +1639,10 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
  * behavior have been verified properly */
 	FORCE_SYNCH();
 	arg->addr->resized = 1;
-	arcan_sem_wait(arg->vsem);
+	do{
+		arcan_sem_wait(arg->vsem);
+	}
+	while (arg->addr->resized);
 
 /*
  * spin until acknowledged, re-using the "wait on sync-fd" approach might be
