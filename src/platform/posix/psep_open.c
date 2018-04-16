@@ -47,7 +47,15 @@ struct packet {
 };
 
 enum device_mode {
+/* Points to a single device, nothing fancy here */
+	MODE_DEFAULT = 0,
+
+/* Interpret the path as a prefix to whatever device the user wants to
+ * open (assuming the device has a nice and wholesome name */
 	MODE_PREFIX = 1,
+
+/* This is an experimental-not-really-in-use mode where the device never
+ * gets closed and we just lock/release the drmMaster if needed */
 	MODE_DRM = 2
 };
 
@@ -77,50 +85,50 @@ struct whitelist whitelist[] = {
 	{"/sys/class/tty/", -1, MODE_PREFIX},
 	{"/dev/tty", -1, MODE_PREFIX},
 #else
-	{"/dev/wsmouse", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/wsmouse0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/wsmouse1", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/wsmouse2", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/wsmouse3", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/uhid0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/uhid1", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/uhid2", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/uhid3", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/tty00", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/tty01", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/tty02", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/tty03", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/tty04", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttya", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyb", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyc", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyd", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/wskbd", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/wskbd0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/wskbd1", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/wskbd2", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/wskbd3", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyC0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyC1", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyC2", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyC3", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyC4", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyC5", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyC6", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyC7", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyD0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyE0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyF0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyG0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyH0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyI0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/ttyJ0", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/pci", -1, O_RDWR | O_NONBLOCK | O_EXCL},
-	{"/dev/drm0", -1, O_RDWR },
-	{"/dev/drm1", -1, O_RDWR },
-	{"/dev/drm2", -1, O_RDWR },
-	{"/dev/drm3", -1, O_RDWR },
-	{"/dev/amdmsr", -1, O_RDWR | O_EXCL},
+	{"/dev/wsmouse", -1, MODE_DEFAULT},
+	{"/dev/wsmouse0", -1, MODE_DEFAULT},
+	{"/dev/wsmouse1", -1, MODE_DEFAULT},
+	{"/dev/wsmouse2", -1, MODE_DEFAULT},
+	{"/dev/wsmouse3", -1, MODE_DEFAULT},
+	{"/dev/uhid0", -1, MODE_DEFAULT},
+	{"/dev/uhid1", -1, MODE_DEFAULT},
+	{"/dev/uhid2", -1, MODE_DEFAULT},
+	{"/dev/uhid3", -1, MODE_DEFAULT},
+	{"/dev/tty00", -1, MODE_DEFAULT},
+	{"/dev/tty01", -1, MODE_DEFAULT},
+	{"/dev/tty02", -1, MODE_DEFAULT},
+	{"/dev/tty03", -1, MODE_DEFAULT},
+	{"/dev/tty04", -1, MODE_DEFAULT},
+	{"/dev/ttya", -1, MODE_DEFAULT},
+	{"/dev/ttyb", -1, MODE_DEFAULT},
+	{"/dev/ttyc", -1, MODE_DEFAULT},
+	{"/dev/ttyd", -1, MODE_DEFAULT},
+	{"/dev/wskbd", -1, MODE_DEFAULT},
+	{"/dev/wskbd0", -1, MODE_DEFAULT},
+	{"/dev/wskbd1", -1, MODE_DEFAULT},
+	{"/dev/wskbd2", -1, MODE_DEFAULT},
+	{"/dev/wskbd3", -1, MODE_DEFAULT},
+	{"/dev/ttyC0", -1, MODE_DEFAULT},
+	{"/dev/ttyC1", -1, MODE_DEFAULT},
+	{"/dev/ttyC2", -1, MODE_DEFAULT},
+	{"/dev/ttyC3", -1, MODE_DEFAULT},
+	{"/dev/ttyC4", -1, MODE_DEFAULT},
+	{"/dev/ttyC5", -1, MODE_DEFAULT},
+	{"/dev/ttyC6", -1, MODE_DEFAULT},
+	{"/dev/ttyC7", -1, MODE_DEFAULT},
+	{"/dev/ttyD0", -1, MODE_DEFAULT},
+	{"/dev/ttyE0", -1, MODE_DEFAULT},
+	{"/dev/ttyF0", -1, MODE_DEFAULT},
+	{"/dev/ttyG0", -1, MODE_DEFAULT},
+	{"/dev/ttyH0", -1, MODE_DEFAULT},
+	{"/dev/ttyI0", -1, MODE_DEFAULT},
+	{"/dev/ttyJ0", -1, MODE_DEFAULT},
+	{"/dev/pci", -1, MODE_DEFAULT},
+	{"/dev/drm0", -1, MODE_DEFAULT},
+	{"/dev/drm1", -1, MODE_DEFAULT},
+	{"/dev/drm2", -1, MODE_DEFAULT},
+	{"/dev/drm3", -1, MODE_DEFAULT},
+	{"/dev/amdmsr", -1, MODE_DEFAULT}
 #endif
 };
 
@@ -152,7 +160,7 @@ static int access_device(const char* path, bool release, bool* keep)
 		if (stat(path, &devst) < 0 || !(devst.st_mode & S_IFCHR))
 			return -1;
 
-/* already "open" (really only drm devices and it's for relase) */
+/* already "open" (really only drm devices and it's for release) */
 		if (whitelist[ind].fd != -1){
 			if (release){
 				drmDropMaster(whitelist[ind].fd);

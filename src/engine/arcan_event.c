@@ -104,8 +104,10 @@ int arcan_event_poll(arcan_evctx* ctx, struct arcan_event* dst)
  * wake the guard thread that will try to safely shut down */
 	if (ctx->local == false){
 		FORCE_SYNCH();
-		if ( *(ctx->front) > PP_QUEUE_SZ )
+		if ( *(ctx->front) > PP_QUEUE_SZ ){
 			pull_killswitch(ctx);
+			return 0;
+		}
 		else {
 			*dst = ctx->eventbuf[ *(ctx->front) ];
 			*(ctx->front) = (*(ctx->front) + 1) % PP_QUEUE_SZ;

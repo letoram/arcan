@@ -252,6 +252,20 @@ int platform_device_pollfd();
 void platform_device_init();
 
 /*
+ * check if there is any hotplug device event to be interpreted.
+ * return values:
+ *
+ * -1 : connection invalid (platform not in privsep mode)
+ *  0 : nothing
+ *  1 : display event [ no identifier set ]
+ *  2 : input event [ identifier set, caller takes over allocation ]
+ *
+ * if [fd] is not null, a descriptor will be returned that can be used for i/o
+ * multiplexing
+ */
+int platform_device_poll(char** identifier, int* fd);
+
+/*
  * Some platforms have a costly and intrusive detection process for new devices
  * and in such cases, this should be invoked explicitly in safe situations when
  * the render-loop is permitted to stall.
