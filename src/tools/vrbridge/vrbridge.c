@@ -11,6 +11,7 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <inttypes.h>
+#include <stdarg.h>
 
 #include "vrbridge.h"
 #include "avr_test.h"
@@ -42,6 +43,20 @@ unsigned long long epoch;
 static struct arcan_shmif_vr* vr_context;
 static bool debug_offline;
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+static int debug_level;
+
+void debug_print_fn(int lvl, const char* fmt, ...)
+{
+	if (lvl >= debug_level)
+		return;
+
+	pthread_mutex_lock(&mutex);
+	va_list ap;
+	va_start(ap, fmt);
+		vfprintf(stderr, fmt, ap);
+	va_end(ap);
+	pthread_mutex_unlock(&mutex);
+}
 
 static void* limb_runner(void* arg)
 {
@@ -52,9 +67,6 @@ static void* limb_runner(void* arg)
 	if (debug_offline){
 		while (meta->dev->alive){
 			meta->dev->sample(meta->dev, meta->limb, meta->limb_id);
-			pthread_mutex_lock(&mutex);
-			printf("debug(%d) sampled\n", (int)meta->limb_id);
-			pthread_mutex_unlock(&mutex);
 		}
 	}
 
@@ -191,6 +203,7 @@ static int console_main()
 	printf("console detected, switching to arcan-less mode\n");
 	vr_context = malloc(sizeof(struct arcan_shmif_vr));
 	*vr_context = (struct arcan_shmif_vr){};
+	debug_level = 10;
 
 	while(device_rescan(vr_context, NULL) == 0){
 		printf("vrbridge:setup() - ""no controllers found, sleep/rescan");
@@ -256,6 +269,10 @@ int main(int argc, char** argv)
  * than 'non-standard' stuff because server- side already does DPMS state
  * management and scanning / mapping to outputs.
  */
+	const char* argm;
+	if (arg_lookup(arg, "debug", 0, &argm)){
+		debug_level = strtoul(argm, NULL, 10);
+	}
 
 /*
  * will get test.c driver to return true, and since it's at the top of the
