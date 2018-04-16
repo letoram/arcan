@@ -10,17 +10,10 @@ enum ctrl_cmd {
 	RESET_REFERENCE = 3,
 };
 
-#ifndef DEBUG
-#ifdef _DEBUG
-#define DEBUG 1
-#else
-#define DEBUG 0
-#endif
-#endif
-
+void debug_print_fn(int lvl, const char* fmt, ...);
 #define debug_print(lvl, fmt, ...) \
-            do { if (lvl < DEBUG) fprintf(stderr, "%s:%d:%s(): " fmt "\n", \
-						"vrbridge:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+		do { debug_print_fn(lvl, "%s:%d:%s(): " fmt "\n",\
+			"", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 struct dev_ent;
 

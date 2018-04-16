@@ -67,13 +67,9 @@ some restraint is probably best until we see something concrete from OpenXR.
   - [x] metadata
   - [x] head tracking
 	- [ ] misc. events (buttons, ...)
-- [ ] PSVR bringup (most deployed, reasonably priced HW)
-- [ ] Vive (via [libsurvive](https://github.com/cnlohr/libsurvive)
-- [p] Demo- Appl scripts
-  - [x] interactive/vrtest ( map model to hmd )
-	- [ ] interactive/vrtest2 ( shader distortion pipeline )
-	- [ ] interactive/vrtest3 ( distortion mesh pipeline )
-	- [ ] distill vrtest3 pipeline into a support script
+- [ ] Arbitrary
+- [ ] Special Cameras to shmif segments
+- [ ] Adafruit 9-DOF BNO055 to arbitrary limb
 
 # Experiments
 
