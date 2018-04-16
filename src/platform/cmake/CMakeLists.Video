@@ -59,6 +59,9 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 	if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 		list(APPEND VIDEO_PLATFORM_SOURCES
 				${PLATFORM_ROOT}/egl-dri/libbacklight.c)
+	elseif (${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
+		list(APPEND VIDEO_PLATFORM_SOURCES
+				${PLATFORM_ROOT}/openbsd/libbacklight.c)
 	else()
 		list(APPEND VIDEO_PLATFORM_SOURCES
 				${PLATFORM_ROOT}/stub/libbacklight.c)
