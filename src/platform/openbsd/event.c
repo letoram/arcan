@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
+#include <sys/sysctl.h>
 #include <errno.h>
 #include <dev/wscons/wsconsio.h>
 #include <dev/wscons/wsksymdef.h>
@@ -351,7 +352,6 @@ void platform_event_deinit(arcan_evctx* ctx)
 
 void platform_event_reset(arcan_evctx* ctx)
 {
-	platform_event_deinit(ctx);
 }
 
 void platform_device_lock(int devind, bool state)
