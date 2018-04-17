@@ -12,7 +12,6 @@
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
-#include <sys/event.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -22,6 +21,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#ifdef __OpenBSD__
+#include <sys/event.h>
+#endif
 
 #ifdef __LINUX
 #include <linux/rtnetlink.h>
