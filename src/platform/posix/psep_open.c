@@ -2,14 +2,17 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <ctype.h>
 #include <grp.h>
 #include <sys/param.h>
 #include <sys/uio.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/event.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -124,10 +127,10 @@ struct whitelist whitelist[] = {
 	{"/dev/ttyI0", -1, MODE_DEFAULT},
 	{"/dev/ttyJ0", -1, MODE_DEFAULT},
 	{"/dev/pci", -1, MODE_DEFAULT},
-	{"/dev/drm0", -1, MODE_DEFAULT},
-	{"/dev/drm1", -1, MODE_DEFAULT},
-	{"/dev/drm2", -1, MODE_DEFAULT},
-	{"/dev/drm3", -1, MODE_DEFAULT},
+	{"/dev/drm0", -1, MODE_DRM},
+	{"/dev/drm1", -1, MODE_DRM},
+	{"/dev/drm2", -1, MODE_DRM},
+	{"/dev/drm3", -1, MODE_DRM},
 	{"/dev/amdmsr", -1, MODE_DEFAULT}
 #endif
 };
@@ -195,7 +198,7 @@ static int access_device(const char* path, bool release, bool* keep)
 	return -1;
 }
 
-static void data_in(pid_t child, int child_conn)
+static int data_in(pid_t child, int child_conn)
 {
 	struct {
 			struct packet cmd;
@@ -203,10 +206,10 @@ static void data_in(pid_t child, int child_conn)
 		} inb = {.nb = 0};
 
 	if (read(child_conn, &inb.cmd, sizeof(inb.cmd)) != sizeof(inb.cmd))
-		return;
+		return -1;
 
 	if (!(inb.cmd.cmd_ch == OPEN_DEVICE || inb.cmd.cmd_ch == RELEASE_DEVICE))
-		return;
+		return -1;
 
 /* need to keep so we can release on VT sw */
 	bool keep;
@@ -219,8 +222,11 @@ static void data_in(pid_t child, int child_conn)
 		write(child_conn, &inb.cmd, sizeof(inb.cmd));
 		arcan_pushhandle(fd, child_conn);
 	}
-	if (!keep)
+	if (!keep){
 		close(fd);
+		return -1;
+	}
+	return fd;
 }
 
 #ifdef __LINUX
@@ -268,6 +274,56 @@ static void check_netlink(pid_t child, int child_conn, int netlink)
 }
 #endif
 
+#ifdef __OpenBSD__
+static void parent_loop(pid_t child, int child_conn, int netlink)
+{
+	static bool init_kq;
+	static int kq;
+	static struct kevent ev[3];
+	static int kused;
+
+	if (!init_kq){
+		init_kq = true;
+		kq = kqueue();
+		EV_SET(&ev[0], child_conn, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, 0);
+		EV_SET(&ev[1], child, EVFILT_PROC, EV_ADD | EV_ENABLE, 0, 0, 0);
+		kused = 2;
+	}
+
+	struct kevent changed[kused];
+	memset(changed, '\0', sizeof(struct kevent) * kused);
+	ssize_t nret;
+	if ((nret = kevent(kq, ev, kused, changed, kused, NULL)) < 0){
+		return;
+	}
+
+	for (size_t i = 0; i < nret; i++){
+		int st;
+		if (changed[i].flags & EV_ERROR){
+			_exit(EXIT_FAILURE);
+		}
+		if (changed[i].ident == child){
+			if (waitpid(child, &st, WNOHANG) > 0)
+				if (WIFEXITED(st) || WIFSIGNALED(st))
+					_exit(EXIT_SUCCESS);
+		}
+		else if (changed[i].ident == child_conn){
+			int fd = data_in(child, child_conn);
+			if (-1 != fd){
+				kused = 3;
+				EV_SET(&ev[2], fd, EVFILT_DEVICE, EV_ADD | EV_ENABLE | EV_CLEAR, NOTE_CHANGE, 0, 0);
+			}
+		}
+		else {
+			struct packet pkg = {
+				.cmd_ch = DISPLAY_CONNECTOR_STATE
+			};
+			write(child_conn, &pkg, sizeof(pkg));
+		}
+	}
+}
+
+#else
 static void parent_loop(pid_t child, int child_conn, int netlink)
 {
 /*
@@ -312,6 +368,7 @@ static void parent_loop(pid_t child, int child_conn, int netlink)
 
 	check_netlink(child, child_conn, netlink);
 }
+#endif
 
 /*
  * PARENT SIDE FUNCTIONS, we split even if there is no root- state (i.e. a
