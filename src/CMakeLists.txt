@@ -610,7 +610,21 @@ add_sanitizers(arcan_db)
 target_link_libraries(arcan_db ${STDLIB} ${SQLITE3_LIBRARIES})
 target_include_directories(arcan_db PRIVATE ${INCLUDE_DIRS})
 target_compile_definitions(arcan_db PRIVATE ARCAN_DB_STANDALONE)
-install(TARGETS arcan arcan_db DESTINATION bin)
+
+if (VIDEO_PLATFORM STREQUAL "egl-dri")
+	amsg("${CLB_WHT} egl-dri+privsep platform, installing main binary SUID ${CL_RST}")
+	install(TARGETS arcan DESTINATION bin
+		PERMISSIONS
+			SETUID
+			OWNER_WRITE OWNER_READ OWNER_EXECUTE
+			GROUP_READ GROUP_EXECUTE
+			WORLD_READ WORLD_EXECUTE
+	)
+else()
+install(TARGETS arcan DESTINATION bin)
+endif()
+
+install(TARGETS arcan_db DESTINATION bin)
 
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/../data/appl
 	DESTINATION ${APPL_DEST}
