@@ -416,6 +416,7 @@ void platform_device_init()
 			if (euid != 0)
 				_exit(EXIT_FAILURE);
 
+			setsid();
 /* ugly tradeof here, setting the supplementary groups to only the gid
  * would subtly break certain sudo configurations in terminals spawned
  * from the normal privileged process, the best?! thing we can do is
@@ -487,12 +488,20 @@ void platform_device_init()
 	int netlink = -1;
 #endif
 
+#ifdef __OpenBSD__
+	if (-1 == pledge("stdio drm sendfd proc rpath wpath", NULL)){
+		fprintf(stderr, "couldn't pledge\n");
+		_exit(EXIT_FAILURE);
+	}
+#endif
+
 	sigset_t mask;
 	sigfillset(&mask);
 	sigprocmask(SIG_SETMASK, &mask, NULL);
 
-	while(true)
+	while(true){
 		parent_loop(pid, sockets[1], netlink);
+	}
 }
 
 /*

@@ -621,6 +621,15 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	libvlc_audio_set_callbacks(decctx.player,
 		audio_play, /*pause*/ NULL, /*resume*/ NULL, audio_flush, audio_drain,NULL);
 
+/* hostile parsers start here, or well slightly later as the whole plugin
+ * system gets in the way, with the possiblity of playlists, loops etc. so
+ * the pledge isn't very strong. Same is that we still lack the proper use
+ * of the _net frameserver so that we can externalize requests for online
+ * resources */
+#ifdef __OpenBSD__
+	pledge(SHMIF_PLEDGE_PREFIX " protexec", "");
+#endif
+
 	libvlc_media_player_play(decctx.player);
 
 	if (position > 0.0)
