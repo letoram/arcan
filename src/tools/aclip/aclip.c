@@ -1,6 +1,6 @@
 /*
  * arcan-clipboard (aclip)
- * Copyright 2017, Björn Ståhl
+ * Copyright 2017-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Description: Clipboard Integration tool
  */

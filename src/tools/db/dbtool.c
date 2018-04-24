@@ -686,6 +686,10 @@ int main(int argc, char* argv[])
 	char* dbfile = NULL;
 	int startind = 1;
 
+#ifdef __OpenBSD__
+	pledge("stdio cpath rpath wpath flock", "");
+#endif
+
 	if (strcmp(argv[1], "-d") == 0){
 		if (argc < 3){
 			arcan_warning("got -d but missing database file argument\n");

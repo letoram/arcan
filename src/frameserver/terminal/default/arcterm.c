@@ -427,6 +427,10 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
+#ifdef __OpenBSD__
+	pledge(SHMIF_PLEDGE_PREFIX " tty", NULL);
+#endif
+
 	term.alive = true;
 
 /* the better latency tactic would be to align against the falling edge, but

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017, Björn Ståhl
+ * Copyright 2017-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository
  * Reference: http://arcan-fe.com, README.MD
  * Description: fork()+sandbox asynch- image loading wrapper around stbi
@@ -131,6 +131,13 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt, int p)
 	setrlimit(RLIMIT_FSIZE, &(struct rlimit){});
 	setrlimit(RLIMIT_NOFILE, &(struct rlimit){});
 	setrlimit(RLIMIT_NPROC, &(struct rlimit){});
+
+#ifdef __OpenBSD__
+	if(-1 == pledge("stdio", "")){
+		_exit(EXIT_FAILURE);
+	}
+
+#endif
 
 #ifdef ENABLE_SECCOMP
 	if (!disable_syscall_flt){

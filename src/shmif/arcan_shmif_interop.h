@@ -1,7 +1,7 @@
 /*
  Arcan Shared Memory Interface, Interoperability definitions
 
- Copyright (c) 2014-2017, Bjorn Stahl
+ Copyright (c) 2014-2018, Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
@@ -52,6 +52,8 @@
 	(((double)(sz_mm)) /  0.352778) * \
 	(((double)(ppcm))  / 28.346566) \
 ))
+
+#define SHMIF_PLEDGE_PREFIX "stdio unix sendfd recvfd proc ps rpath wpath cpath"
 
 /*
  * For porting the shmpage interface, these functions need to be implemented
