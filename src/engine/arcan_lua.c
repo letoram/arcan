@@ -9102,8 +9102,18 @@ static int nulltarget(lua_State* ctx)
 	if (state->tag != ARCAN_TAG_FRAMESERV)
 		arcan_fatal("define_nulltarget(), nulltarget (1) " FATAL_MSG_FRAMESERV);
 
+	const char* type = "clipboard";
+	if (lua_type(ctx, 2) == LUA_TSTRING)
+		type = luaL_checkstring(ctx, 2);
+
+	int encoder_type = SEGID_ENCODER;
+	if (strcmp(type, "clipboard") == 0)
+		encoder_type = SEGID_CLIPBOARD_PASTE;
+	else
+		arcan_warning("define_nulltarget(), unknown subtype, assuming encoder.\n");
+
 	arcan_frameserver* rv = spawn_subsegment(
-		(arcan_frameserver*) state->ptr, SEGID_ENCODER, 0, 1, 1);
+		(arcan_frameserver*) state->ptr, encoder_type, 0, 1, 1);
 
 	if (!rv){
 		lua_pushvid(ctx, ARCAN_EID);

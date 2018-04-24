@@ -1,13 +1,15 @@
 -- define_nulltarget
 -- @short: Push an output subsegment into a target frameserver
--- @inargs: fsrv, cbfun
+-- @inargs: vid:fsrv, func:callback
+-- @inargs: vid:fsrv, string:type, func:callback
 -- @outargs: vid
--- @longdescr: For the corner cases (clipboard) where one might need to
--- spawn a subsegment in a frameserver connection that has output
--- characteristics but lacks a feedcopy like source or the rendertarget
--- complexity of recordtargets, this function can be used to create a
--- new passive subsegment that will neither push audio nor video but
--- can be used for state transfers, messages etc.
+-- @longdescr: For certain corner cases (typically clipboard) one might
+-- need to spawn a subsegment in a frameserver connection that has output
+-- characteristics, but other related functions such as define_feedtarget
+-- etc. doesn't need to be used as the generic buffer transfer methods
+-- aren't in use. The optional *type* argument is reserved for future/
+-- other custom use targets, and the default type is that of the
+-- clipboard paste operation.
 -- @group: targetcontrol
 -- @cfunction: nulltarget
 -- @related: define_feedtarget, define_rendertarget
