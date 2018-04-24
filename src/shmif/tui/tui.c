@@ -2229,7 +2229,10 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 	case TARGET_COMMAND_NEWSEGMENT:
 		if (ev->ioevs[2].iv != SEGID_TUI && ev->ioevs[2].iv != SEGID_POPUP &&
 			ev->ioevs[2].iv != SEGID_HANDOVER && ev->ioevs[2].iv != SEGID_DEBUG &&
-			ev->ioevs[2].iv != SEGID_ACCESSIBILITY)
+			ev->ioevs[2].iv != SEGID_ACCESSIBILITY &&
+			ev->ioevs[2].iv != SEGID_CLIPBOARD_PASTE &&
+			ev->ioevs[2].iv != SEGID_CLIPBOARD
+		)
 			return;
 
 /* input segment, assumed clipboard */
