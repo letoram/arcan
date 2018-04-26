@@ -982,6 +982,12 @@ void tsm_screen_set_def_attr(struct tsm_screen *con,
 }
 
 SHL_EXPORT
+struct tui_screen_attr tsm_screen_get_def_attr(struct tsm_screen* con)
+{
+	return con->def_attr;
+}
+
+SHL_EXPORT
 void tsm_screen_reset(struct tsm_screen *con)
 {
 	unsigned int i;

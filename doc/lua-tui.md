@@ -1,4 +1,4 @@
-# Arcan-TUI - lua Bindings
+# Arcan-TUI - lua Binding => attrtbls
 
 # Introduction
 
@@ -11,9 +11,9 @@ You create a new connection with the following function:
 
     tui_open(title_string, identity_string, (handler_table)) => context_table
 
-The title string is the immutable title of your application, while-as the identity
-string can reflect some dynamic state, e.g. the name of a file being edited, the
-current path for a shell and so on.
+The title string is the immutable title of your application, while-as the
+identity string can reflect some dynamic state, e.g. the name of a file being
+edited, the current path for a shell and so on.
 
 When the function call returns, you either have a connection represented by the
 context table, or nil as an indication of failure.
@@ -58,9 +58,9 @@ _close_ which takes an optional "last\_words" string that may tell the user
 
 # Drawing
 
-In contrast to curses and similar APIs, anything updates you do to the output
-state of the context will not be immediately visible. First you prepare all
-the visually related output changes by updating the relevant cells using the
+In contrast to curses and similar APIs, any of the updates you do to the output
+state of the context will not be immediately visible. First you prepare all the
+visually related output changes by updating the relevant cells using the
 drawcalls that are available. When you are finished, you explicitly commit by
 calling _refresh_. This function may well return immediately, or, if you are
 being too frisky (multiple refress and not interleaving with process), it may
@@ -99,13 +99,13 @@ left corner, or if it specifies in rows, cols. This is a very common pitfall.
 
 ## Specialized Attributes
 
-When writing into a cell, both the data (character) and the formatting attributes
-will be added to the contents of a cell. The attributes can be specified
-explicitly or implicitly by setting a default attribute.
+When writing into a cell, both the data (character) and the formatting
+attributes will be added to the contents of a cell. The attributes can be
+specified explicitly or implicitly by setting a default attribute.
 
-The default attribute can be set via:
+The default attribute can be set and retreived via:
 
-    set_default_attr(attrtbl)
+    set_default_attr(attrtbl) => attrtbl
 
 The attrtbl argument can be constructed via the global function:
 
