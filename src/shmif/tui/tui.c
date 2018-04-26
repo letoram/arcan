@@ -1810,20 +1810,22 @@ static void update_screensize(struct tui_context* tui, bool clear)
 /* NOTE/FIXME: this only considers the active screen and not any alternate
  * screens that are around, which is probably not what we want. */
 		tsm_screen_resize(tui->screen, cols, rows);
+		resize_cellbuffer(tui);
 
 		if (tui->handlers.resized)
 			tui->handlers.resized(tui,
 				tui->acon.w, tui->acon.h, cols, rows, tui->handlers.tag);
+	}
+	else {
+/* if we have TUI- based screen buffering for smooth-scrolling,
+ * double-buffered rendering and text shaping, that one needs to be rebuilt */
+		resize_cellbuffer(tui);
 	}
 
 /* will enforce full redraw, and full redraw will also update padding.  the
  * resized- mark will also force front/back buffer resynch to avoid black or
  * corrupted smooth scroll areas */
 	tui->dirty |= DIRTY_PENDING_FULL;
-
-/* if we have TUI- based screen buffering for smooth-scrolling,
- * double-buffered rendering and text shaping, that one needs to be rebuilt */
-	resize_cellbuffer(tui);
 
 	if (clear)
 		draw_box(&tui->acon, 0, 0, tui->acon.w, tui->acon.h, col);
@@ -3110,6 +3112,15 @@ void arcan_tui_set_color(
 	if (group <= TUI_COL_INACTIVE && group >= TUI_COL_PRIMARY){
 		memcpy(tui->colors[group].rgb, rgb, 3);
 	}
+}
+
+void arcan_tui_update_handlers(
+	struct tui_context* tui, const struct tui_cbcfg* cbs, size_t cbs_sz)
+{
+	if (!tui || !cbs || cbs_sz > sizeof(struct tui_cbcfg))
+		return;
+
+	memcpy(&tui->handlers, cbs, cbs_sz);
 }
 
 bool arcan_tui_switch_screen(struct tui_context* ctx, unsigned ind)

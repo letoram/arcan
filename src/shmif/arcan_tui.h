@@ -663,6 +663,15 @@ struct tui_cell arcan_tui_getxy(struct tui_context*, size_t x, size_t y,bool f);
 void arcan_tui_request_subwnd(struct tui_context*, unsigned type, uint16_t id);
 
 /*
+ * Replace (copy over) the active handler table with a new one.
+ * if the provided cbcfg is NULL, no change to the active set will be
+ * performed, to drop all callbacks, instead, use:
+ * arcan_tui_update_handlers(tui, &(struct tui_cbcfg){}, sizeof(struct tui_cbcfg));
+ */
+void arcan_tui_update_handlers(
+	struct tui_context*, const struct tui_cbcfg*, size_t cb_sz);
+
+/*
  * Signal visibility and position intent for a subwindow [wnd] relative
  * to a possible parent [par].
  *
@@ -899,6 +908,7 @@ typedef bool (* PTUICOPY)(struct tui_context*, const char*);
 typedef void (* PTUIIDENT)(struct tui_context*, const char*);
 typedef struct tui_cell (* PTUIGETXY)(struct tui_context*, size_t, size_t, bool);
 typedef void (* PTUIREQSUB)(struct tui_context*, unsigned, uint16_t);
+typedef void (* PTUIUPDHND)(struct tui_context*, const struct tui_cbcfg*, size_t);
 typedef void (* PTUIWNDHINT)(struct tui_context*, struct tui_context*, int, int, int);
 typedef int (* PTUIALLOCSCR)(struct tui_context*);
 typedef bool (* PTUISWSCR)(struct tui_context*, unsigned);
@@ -962,6 +972,7 @@ static PTUICOPY arcan_tui_copy;
 static PTUIIDENT arcan_tui_ident;
 static PTUIGETXY arcan_tui_getxy;
 static PTUIREQSUB arcan_tui_request_subwnd;
+static PTUIUPDHND arcan_tui_update_handlers;
 static PTUIWNDHINT arcan_tui_wndhint;
 static PTUIALLOCSCR arcan_tui_alloc_screen;
 static PTUISWSCR arcan_tui_switch_screen;
@@ -1028,6 +1039,7 @@ M(PTUICOPY,arcan_tui_copy);
 M(PTUIIDENT,arcan_tui_ident);
 M(PTUIGETXY,arcan_tui_getxy);
 M(PTUIREQSUB,arcan_tui_request_subwnd);
+M(PTUIUPDHND,arcan_tui_update_handlers);
 M(PTUIWNDHINT,arcan_tui_wndhint);
 M(PTUIALLOCSCR,arcan_tui_alloc_screen);
 M(PTUISWSCR,arcan_tui_switch_screen);
