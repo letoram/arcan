@@ -94,7 +94,7 @@ static void sighuph(int num)
 		term.pty = (shl_pty_close(term.pty), NULL);
 }
 
-static void on_subwindow(struct tui_context* c,
+static bool on_subwindow(struct tui_context* c,
 	arcan_tui_conn* newconn, uint32_t id, uint8_t type, void* tag)
 {
 	struct tui_cbcfg cbcfg = {};
@@ -102,14 +102,9 @@ static void on_subwindow(struct tui_context* c,
 /* only bind the debug type and bind it to the terminal emulator state machine */
 	if (type == TUI_WND_DEBUG){
 		tsm_vte_debug(term.vte, newconn);
+		return true;
 	}
-	else{
-		struct tui_settings cfg = arcan_tui_defaults(newconn, c);
-		struct tui_context* newctx = arcan_tui_setup(
-			newconn, &cfg, &cbcfg, sizeof(cbcfg));
-		if (newctx)
-			arcan_tui_destroy(newctx, NULL);
-	}
+	return false;
 }
 
 static void on_mouse_motion(struct tui_context* c,
