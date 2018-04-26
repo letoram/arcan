@@ -318,15 +318,15 @@ static void on_resize(struct tui_context* c,
 	END_HREF;
 }
 
-static void on_subwindow(struct tui_context* c,
+static bool on_subwindow(struct tui_context* c,
 	arcan_tui_conn* new, uint32_t id, uint8_t type, void* t)
 {
-	SETUP_HREF("subwindow",);
+	SETUP_HREF("subwindow",false);
 	id ^= req_cookie;
 
 /* indicates that there's something wrong with the connection */
 	if (id >= 8 || !(meta->pending_mask & (1 << id)))
-		return;
+		return false;
 
 	intptr_t cb = meta->pending[id];
 	meta->pending[id] = 0;
@@ -337,7 +337,7 @@ static void on_subwindow(struct tui_context* c,
 	if (!new){
 		lua_call(L, 1, 0);
 		END_HREF;
-		return;
+		return false;
 	}
 
 /* let the caller be responsible for updating the handlers */
@@ -347,14 +347,14 @@ static void on_subwindow(struct tui_context* c,
 	if (!ctx){
 		lua_call(L, 1, 0);
 		END_HREF;
-		return;
+		return true;
 	}
 
 	struct tui_lmeta* nud = lua_newuserdata(L, sizeof(struct tui_lmeta));
 	if (!nud){
 		lua_call(L, 1, 0);
 		END_HREF;
-		return;
+		return true;
 	}
 
 	nud->tui = ctx;
@@ -366,6 +366,7 @@ static void on_subwindow(struct tui_context* c,
 
 	lua_call(L, 2, 0);
 	END_HREF;
+	return true;
 }
 
 static bool query_label(struct tui_context* ctx,

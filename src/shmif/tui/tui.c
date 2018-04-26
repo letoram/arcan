@@ -2235,8 +2235,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 		)
 			return;
 
-/* input segment, assumed clipboard */
-		if (ev->ioevs[1].iv == 1){
+		if (ev->ioevs[2].iv == SEGID_CLIPBOARD_PASTE){
 			if (!tui->clip_in.vidp){
 				tui->clip_in = arcan_shmif_acquire(
 					&tui->acon, NULL, SEGID_CLIPBOARD_PASTE, 0);
@@ -2244,7 +2243,9 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 			else
 				LOG("multiple paste- clipboards received, likely appl. error\n");
 		}
-/* output segment */
+/*
+ * the requested clipboard has arrived
+ */
 		else if (ev->ioevs[1].iv == 0 && ev->ioevs[3].iv == 0xfeedface){
 			if (!tui->clip_out.vidp){
 				tui->clip_out = arcan_shmif_acquire(
@@ -2253,6 +2254,9 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 			else
 				LOG("multiple clipboards received, likely appl. error\n");
 		}
+/*
+ * special handling for our pasteboard window
+ */
 		else if (ev->ioevs[3].iv == REQID_COPYWINDOW && tui->pending_copy_window){
 			struct arcan_shmif_cont acon =
 				arcan_shmif_acquire(&tui->acon, NULL, ev->ioevs[2].iv, 0);
@@ -2272,10 +2276,12 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 			if ((can_push || user_defined) && tui->handlers.subwindow){
 				struct arcan_shmif_cont acon = arcan_shmif_acquire(
 					&tui->acon, NULL, ev->ioevs[2].iv, 0);
-				tui->handlers.subwindow(tui, &acon,
+				if (!tui->handlers.subwindow(tui, &acon,
 					(uint32_t)ev->ioevs[3].iv & 0xffff,
 					ev->ioevs[2].iv, tui->handlers.tag
-				);
+				)){
+					arcan_shmif_defimpl(&tui->acon, &acon, ev->ioevs[2].iv);
+				}
 			}
 		}
 	break;

@@ -470,12 +470,15 @@ struct tui_cbcfg {
 	void (*recolor)(struct tui_context*, void*);
 
 /*
- * A new subwindow has arrived or the request has failed (=NULL). If there's a
- * new subwindow, ALWAYS run the normal setup sequence (e.g. _defaults() ->
- * setup()) EVEN if the window is no longer needed. On such occasions, simply
- * destroy the tui_context immediately after setup.
+ * A new subwindow has arrived or the request has failed (=NULL). This should
+ * either be bound to a new tui context via the arcan_tui_setup() call using
+ * the provided connection argument here and return true, OR don't touch it
+ * and return false.
+ *
+ * WARNING: mapping the connection via arcan_tui_setup and returning FALSE
+ * may cause use-after-free or other memory corruption issues.
  */
-	void (*subwindow)(
+	bool (*subwindow)(
 		struct tui_context*, arcan_tui_conn*, uint32_t id, uint8_t type, void*);
 
 /*

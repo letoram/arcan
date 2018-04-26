@@ -274,6 +274,16 @@ static void fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
 #include "arcan_shmif_debugif.h"
 #endif
 
+void arcan_shmif_defimpl(
+	struct arcan_shmif_cont* parent, struct arcan_shmif_cont* newchild, int type)
+{
+#ifdef SHMIF_DEBUG_IF
+	if (arcan_shmif_debugint_spawn(newchild))
+		return;
+#endif
+	arcan_shmif_drop(newchild);
+}
+
 /*
  * reset pending- state tracking
  */
@@ -2231,6 +2241,9 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 	file_handle dpipe;
 	uint64_t ts = arcan_timemillis();
 
+	if (outarg)
+		*outarg = NULL;
+
 	char* resource = getenv("ARCAN_ARG");
 	char* keyfile = NULL;
 	char* conn_src = getenv("ARCAN_CONNPATH");
@@ -2324,10 +2337,6 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 		ret.priv->args = arg_unpack(resource);
 		if (outarg)
 			*outarg = ret.priv->args;
-	}
-	else{
-		if (outarg)
-			*outarg = NULL;
 	}
 
 	ret.epipe = dpipe;

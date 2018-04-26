@@ -168,6 +168,17 @@ bool arcan_shmif_descrevent(struct arcan_event*);
 void arcan_shmif_guid(struct arcan_shmif_cont*, uint64_t[2]);
 
 /*
+ * Take a subsegment carrying event and forward to a possible default
+ * implementation of it. This is an extreme corner case use intended primarily
+ * for the TUI implementation where a user may request a subsegment that it he
+ * doesn't want to handle, and we want to fall-back to the default
+ * implementation that is dormant inside shmif and would be activated when a
+ * subsegment request isn't mapped.
+ */
+void arcan_shmif_defimpl(
+	struct arcan_shmif_cont* parent, struct arcan_shmif_cont* newchild, int type);
+
+/*
  * Try and enqueue the element to the queue. If the context is set to lossless,
  * enqueue may block, sleep (or spinlock).
  *
