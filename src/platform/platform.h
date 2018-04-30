@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2017, Björn Ståhl
+ * Copyright 2014-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -222,10 +222,16 @@ char* platform_dbstore_path();
 void platform_event_process(struct arcan_evctx* ctx);
 
 /*
- * on some platforms, this is simply a wrapper around open() - and for others
+ * On some platforms, this is simply a wrapper around open() - and for others
  * there might be an intermediate process that act as a device proxy.
  */
 int platform_device_open(const char* identifier, int flags);
+
+/*
+ * special devices, typically gpu nodes and ttys, need and explicit privilege
+ * side release- action as well. The idhint is special for TTY-swap
+ */
+void platform_device_release(const char* identifier, int idhint);
 
 /*
  * detects if any new devices have appeared, and stores a copy into identifier
@@ -236,6 +242,9 @@ int platform_device_open(const char* identifier, int flags);
  *  0 : no new device events
  *  1 : new input device provided in identifier
  *  2 : display device event pending (monitor hotplug)
+ *  3 : suspend/release
+ *  4 : restore/rebuild
+ *  5 : terminate
  */
 int platform_device_poll(char** identifier);
 

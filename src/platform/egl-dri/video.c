@@ -2880,8 +2880,16 @@ void platform_video_reset(int id, int swap)
 	if (!in_external)
 		return;
 
-/* only swap has any real behavior here and only if there are fallback- card
- * nodes set for a specific GPU */
+/* 0. prepare_external (will flush GPU resources, possibly suspend clients)
+ * 1. find the card matching the ID, disable all displays on it
+ * 2. reload/rebuild AGP functions (this can dynamically update openGL)
+ * 3. restore_external (rebuild GPU resources, this will emit display reset event)
+ */
+
+/* if swap is specified and the card has a second GPU, we also need to:
+ * 1. out-affinity all vstores (disable the first card)
+ * 2. build/setup the new card
+ */
 }
 
 /*
@@ -3112,19 +3120,60 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * only takes care of an invalid or severed connection, moving device disc.
  * to a supervisory process would also require something in event.c */
 	int pv = platform_device_poll(NULL);
-	if (2 == pv){
-		arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
-			.category = EVENT_VIDEO,
-			.vid.kind = EVENT_VIDEO_DISPLAY_CHANGED,
-		});
-	}
-	else if (-1 == pv){
+	switch(pv){
+	case -1:
+		debug_print("parent connection severed\n");
 		arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
 			.category = EVENT_SYSTEM,
 			.sys.kind = EVENT_SYSTEM_EXIT,
 			.sys.errcode = EXIT_FAILURE
 		});
+	break;
+	case 5:
+		debug_print("parent requested termination\n");
+		arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
+			.category = EVENT_SYSTEM,
+			.sys.kind = EVENT_SYSTEM_EXIT,
+			.sys.errcode = EXIT_FAILURE
+		});
+	break;
+	case 4:
+/* restore / rebuild out of context */
+		debug_print("received restore while not in suspend state");
+	break;
+	case 3:{
+/* suspend / release, if the parent connection is severed while in this
+ * state, we'll leave it to restore external to shutdown */
+		debug_print("received tty switch request");
+		platform_device_release("TTY", -1);
+		arcan_video_prepare_external();
+		int sock = platform_device_pollfd();
+
+		while (true){
+			poll(&(struct pollfd){
+				.fd = sock, .events = POLLIN | POLLERR | POLLHUP | POLLNVAL} , 1, -1);
+
+			pv = platform_device_poll(NULL);
+
+			if (pv == 4 || pv == -1){
+				debug_print("received restore request (%d)", pv);
+				arcan_video_restore_external();
+				break;
+			}
+		}
 	}
+	break;
+	case 2:
+/* new display event */
+		arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
+			.category = EVENT_VIDEO,
+			.vid.kind = EVENT_VIDEO_DISPLAY_CHANGED,
+		});
+	break;
+	default:
+	break;
+	}
+
 	if (post)
 		post();
 }
@@ -3418,7 +3467,7 @@ static void update_display(struct dispout* d)
 			if (!d->device->eglenv.stream_consumer_acquire_attrib(
 				d->device->display, d->buffer.stream, attr)){
 				d->device->vsynch_method = VSYNCH_CLOCK;
-				debug_print("egl-dri(streams) - no acq-attr, revert to clock\n");
+				debug_print("egl-dri(streams) - no acq-attr, revert to clock");
 			}
 		}
 /* dumb buffer, will never change */

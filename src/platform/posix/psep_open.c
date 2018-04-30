@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <grp.h>
 #include <sys/param.h>
+#include <sys/ioctl.h>
 #include <sys/uio.h>
 #include <sys/types.h>
 #include <sys/time.h>
@@ -24,6 +25,7 @@
 
 #ifdef __OpenBSD__
 #include <sys/event.h>
+/* wsdisplay_usl_io? */
 #endif
 
 #ifdef __LINUX
@@ -31,6 +33,10 @@
 #include <linux/netlink.h>
 #include <sys/inotify.h>
 #include <sys/fsuid.h>
+#include <linux/kd.h>
+#include <linux/input.h>
+#include <linux/vt.h>
+#include <linux/major.h>
 #endif
 
 #include <assert.h>
@@ -38,17 +44,27 @@
 
 #include "platform.h"
 
+#ifndef KDSKBMUTE
+#define KDSKBMUTE 0x4851
+#endif
+
+static int child_conn = -1;
+
 enum command {
 	NO_OP = 0,
 	OPEN_DEVICE = 'o',
 	RELEASE_DEVICE = 'r',
 	OPEN_FAILED = '#',
 	NEW_INPUT_DEVICE = 'i',
-	DISPLAY_CONNECTOR_STATE = 'd'
+	DISPLAY_CONNECTOR_STATE = 'd',
+	SYSTEM_STATE_RELEASE = '1',
+	SYSTEM_STATE_ACQUIRE = '2',
+	SYSTEM_STATE_TERMINATE = '3',
 };
 
 struct packet {
 	enum command cmd_ch;
+	int arg;
 	char path[MAXPATHLEN];
 };
 
@@ -61,8 +77,12 @@ enum device_mode {
 	MODE_PREFIX = 1,
 
 /* This is an experimental-not-really-in-use mode where the device never
- * gets closed and we just lock/release the drmMaster if needed */
-	MODE_DRM = 2
+ * gets closed and we just lock/release the drmMaster if needed. */
+	MODE_DRM = 2,
+
+/* For tty devices, we track those that are opened and restore their state
+ * when shutting down so that we don't risk leaving a broken tty. */
+	MODE_TTY = 4,
 };
 
 struct whitelist {
@@ -89,7 +109,7 @@ struct whitelist whitelist[] = {
 	{"/dev/dri/", -1, MODE_PREFIX},
 	{"/sys/class/backlight/", -1, MODE_PREFIX},
 	{"/sys/class/tty/", -1, MODE_PREFIX},
-	{"/dev/tty", -1, MODE_PREFIX},
+	{"/dev/tty", -1, MODE_PREFIX | MODE_TTY},
 #else
 	{"/dev/wsmouse", -1, MODE_DEFAULT},
 	{"/dev/wsmouse0", -1, MODE_DEFAULT},
@@ -138,10 +158,179 @@ struct whitelist whitelist[] = {
 #endif
 };
 
-static int access_device(const char* path, bool release, bool* keep)
+/*
+ * All of the following (set/release tty, signal handlers etc) is to manage the
+ * meta-modeset that is done on tty devices in addition to the normal modeset
+ * to get control of graphics.
+ *
+ * The sequence is:
+ *  a. privsep-child requests a device that is flagged as TTY, the first such
+ *  request saves the current state of the device. We don't do the probing
+ *  for a tty here as it is somewhat OS dependent and the client config
+ *  might specify a different tty device to be used. These are needed when
+ *  jumping in from something else than the normal CLI TTY, so a pty from
+ *  a shell or script.
+ *
+ *  b. after the state is saved, we disable local keyboard input (or all input
+ *  done in the UI will potentially be mirrored inside the TTY) and register
+ *  three signal handlers. TERM, USR1 and USR2. All these just forward the
+ *  type of the signal to the child.
+ *
+ *  c. when the user presses [some combination] that should indicate a tty-sw,
+ *  it 'reopens' the tty device with an argument of the indicated number to
+ *  switch to. The VT_ACTIVATE ioctl is used on the tty, telling the kernel
+ *  that we want to switch.
+ *
+ *  d. the kernel sends a signal to release, which we forward to the client.
+ *  the client, when in a safe state(!) will read this, release as much
+ *  resources as possible and send a release on the tty device. the client
+ *  goes into a sleep-loop, waiting for a signal that it can resume.
+ *
+ *  e. the release gets mapped to a corresponding VT_RELDISP which should
+ *  prompt the kernel to allow the next TTY to take over.
+ *
+ *  f. the acquire signal gets forwarded, the client wakes from its loop,
+ *  re-opens its terminal device and rebuilds its GPU state, while we send
+ *  and ACKACQ to the tty that we have resumed control over the TTY.
+ */
+static struct {
+	bool active;
+	unsigned long kbmode;
+	int mode;
+	int leds;
+	int ind;
+} got_tty;
+
+/*
+ * Next time client reaches video poll state, it will find these, switch to
+	 * the relevant state and mark a release of the related tty device
+ */
+static void sigusr_acq(int sign, siginfo_t* info, void* ctx)
+{
+	write(child_conn,
+		&(struct packet){.cmd_ch = SYSTEM_STATE_ACQUIRE}, sizeof(struct packet));
+}
+
+static void sigusr_rel(int sign, siginfo_t* info, void* ctx)
+{
+	write(child_conn,
+		&(struct packet){.cmd_ch = SYSTEM_STATE_RELEASE}, sizeof(struct packet));
+}
+
+static void sigusr_term(int sign)
+{
+	write(child_conn,
+		&(struct packet){.cmd_ch = SYSTEM_STATE_TERMINATE}, sizeof(struct packet));
+}
+
+static void set_tty(int i)
+{
+/* This will (hopefully) make the kernel try and initiate the switch
+ * related signals, taking care of release / acquire sequence */
+	int dfd = whitelist[got_tty.ind].fd;
+	if (-1 == dfd)
+		return;
+
+	if (i >= 0){
+		ioctl(dfd, VT_ACTIVATE, i);
+		return;
+	}
+
+/* already setup, client just reopened the device for some reason */
+	if (got_tty.active){
+		ioctl(dfd, VT_ACTIVATE, VT_ACKACQ);
+		return;
+	}
+	got_tty.active = true;
+
+/* one subtle note here, the LED controller for the keyboard LEDs assume that
+ * we can access that property via the evdev path, since even though we do have
+ * access to the tty fd in the child process, we don't have permissions to ioctl */
+	ioctl(dfd, KDGETMODE, &got_tty.mode);
+	ioctl(dfd, KDGETLED, &got_tty.leds);
+	ioctl(dfd, KDGKBMODE, &got_tty.kbmode);
+	ioctl(dfd, KDSETLED, 0);
+	ioctl(dfd, KDSKBMUTE, 1);
+	ioctl(dfd, KDSKBMODE, K_OFF);
+	ioctl(dfd, KDSETMODE, KD_GRAPHICS);
+
+/* register signal handlers that forward the desired action to the client,
+ * and set the tty to try and signal acquire/release when a VT switch is
+ * supposed to occur */
+	sigaction(SIGTERM, &(struct sigaction){
+		.sa_handler = sigusr_term
+		}, NULL
+	);
+
+	sigaction(SIGUSR1, &(struct sigaction){
+		.sa_sigaction = sigusr_acq,
+		.sa_flags = SA_SIGINFO
+		}, NULL
+	);
+
+	sigaction(SIGUSR2, &(struct sigaction){
+		.sa_sigaction = sigusr_rel,
+		.sa_flags = SA_SIGINFO
+		}, NULL
+	);
+
+	ioctl(dfd, VT_SETMODE, &(struct vt_mode){
+		.mode = VT_PROCESS,
+		.acqsig = SIGUSR1,
+		.relsig = SIGUSR2
+	});
+}
+
+static void release_device(int i, bool shutdown)
+{
+	if (whitelist[i].fd == -1)
+		return;
+
+	if (whitelist[i].mode & MODE_DRM){
+		drmDropMaster(whitelist[i].fd);
+
+/* if we have a saved KMS mode, we could try and restore */
+		if (!shutdown)
+			return;
+	}
+
+/* will always be released on shutdown, so use that to restore */
+	if (whitelist[i].mode & MODE_TTY){
+		if (shutdown){
+			ioctl(whitelist[i].fd, KDSKBMUTE, 0);
+			ioctl(whitelist[i].fd, KDSETMODE, KD_TEXT);
+			ioctl(whitelist[i].fd, KDSKBMODE,
+				got_tty.kbmode == K_OFF ? K_XLATE : got_tty.kbmode);
+			ioctl(whitelist[i].fd, KDSETLED, got_tty.leds);
+			close(whitelist[i].fd);
+			whitelist[i].fd = -1;
+		}
+		else{
+			ioctl(whitelist[i].fd, VT_RELDISP, 1);
+		}
+	}
+}
+
+static void release_devices()
+{
+	for (size_t i = 0; i < COUNT_OF(whitelist); i++)
+		release_device(i, true);
+}
+
+static int access_device(const char* path, int arg, bool release, bool* keep)
 {
 	struct stat devst;
 	*keep = false;
+
+/* special case, substitute TTY for the active tty device (if known) */
+	if (strcmp(path, "TTY") == 0){
+		if (!got_tty.active)
+			return -1;
+		path = whitelist[got_tty.ind].name;
+		if (release && arg >= 0){
+			set_tty(arg);
+		}
+	}
 
 /* safeguard check against a whitelist, this would require an attack path that
  * goes from code exec inside arcan which is mostly a game over for the user,
@@ -162,38 +351,47 @@ static int access_device(const char* path, bool release, bool* keep)
 		else if (strcmp(whitelist[ind].name, path) != 0)
 			continue;
 
-/* and only allow character devices */
-		if (stat(path, &devst) < 0 || !(devst.st_mode & S_IFCHR))
+/* only allow character devices, with the exception of linux sysfs paths */
+		if (stat(path, &devst) < 0 ||
+			(strncmp(path, "/sys", 4) != 0 && !(devst.st_mode & S_IFCHR)))
 			return -1;
 
-/* already "open" (really only drm devices and it's for release) */
+/* already "open" (drm devices and ttys) */
 		if (whitelist[ind].fd != -1){
 			if (release){
-				drmDropMaster(whitelist[ind].fd);
+				release_device(ind, false);
 				return -1;
 			}
 			*keep = true;
-			drmSetMaster(whitelist[ind].fd);
+			if (whitelist[ind].mode & MODE_DRM){
+				drmSetMaster(whitelist[ind].fd);
+			}
 			return whitelist[ind].fd;
 		}
 
 /* recipient will set real flags, including cloexec etc. */
 		int fd = open(path, O_RDWR);
-		if (-1 == fd || !(whitelist[ind].mode & MODE_DRM))
-			return fd;
+		if (-1 == fd)
+			return -1;
 
-/* finally, DRM devices may need to be 'master' flagged, though we try anyway
- * if we are not root as some platforms allow us to do this if there's no one
- * else that's using it */
-		if (0 != drmSetMaster(fd)){
-			if (getuid() == 0){
-				close(fd);
-				return -1;
-			}
+		if (whitelist[ind].fd != -1)
+			close(whitelist[ind].fd);
+
+		if (whitelist[ind].mode & MODE_TTY){
+			whitelist[ind].fd = fd;
+			got_tty.ind = ind;
+			set_tty(arg);
+			*keep = true;
+			return fd;
 		}
 
-		whitelist[ind].fd = fd;
-		*keep = true;
+		if (whitelist[ind].mode & MODE_DRM){
+			drmSetMaster(fd);
+			whitelist[ind].fd = fd;
+			*keep = true;
+			return fd;
+		}
+
 		return fd;
 	}
 
@@ -201,28 +399,25 @@ static int access_device(const char* path, bool release, bool* keep)
 	return -1;
 }
 
-static int data_in(pid_t child, int child_conn)
+static int data_in(pid_t child)
 {
-	struct {
-			struct packet cmd;
-			uint8_t nb;
-		} inb = {.nb = 0};
+	struct packet cmd;
 
-	if (read(child_conn, &inb.cmd, sizeof(inb.cmd)) != sizeof(inb.cmd))
+	if (read(child_conn, &cmd, sizeof(cmd)) != sizeof(cmd))
 		return -1;
 
-	if (!(inb.cmd.cmd_ch == OPEN_DEVICE || inb.cmd.cmd_ch == RELEASE_DEVICE))
+	if (!(cmd.cmd_ch == OPEN_DEVICE || cmd.cmd_ch == RELEASE_DEVICE))
 		return -1;
 
 /* need to keep so we can release on VT sw */
 	bool keep;
-	int fd = access_device(inb.cmd.path, inb.cmd.cmd_ch == RELEASE_DEVICE,&keep);
+	int fd = access_device(cmd.path, cmd.arg, cmd.cmd_ch == RELEASE_DEVICE, &keep);
 	if (-1 == fd){
-		inb.cmd.cmd_ch = OPEN_FAILED;
-		write(child_conn, &inb.cmd, sizeof(inb.cmd));
+		cmd.cmd_ch = OPEN_FAILED;
+		write(child_conn, &cmd, sizeof(cmd));
 	}
 	else{
-		write(child_conn, &inb.cmd, sizeof(inb.cmd));
+		write(child_conn, &cmd, sizeof(cmd));
 		arcan_pushhandle(fd, child_conn);
 	}
 	if (!keep){
@@ -233,7 +428,7 @@ static int data_in(pid_t child, int child_conn)
 }
 
 #ifdef __LINUX
-static void check_netlink(pid_t child, int child_conn, int netlink)
+static void check_netlink(pid_t child, int netlink)
 {
 	char buf[8192];
 	char cred[CMSG_SPACE(sizeof(struct ucred))];
@@ -272,13 +467,35 @@ static void check_netlink(pid_t child, int child_conn, int netlink)
 	write(child_conn, &pkg, sizeof(pkg));
 }
 #else
-static void check_netlink(pid_t child, int child_conn, int netlink)
+static void check_netlink(pid_t child, int netlink)
 {
 }
 #endif
 
+static void check_child(pid_t child, bool die)
+{
+	int st;
+	int ec = EXIT_FAILURE;
+
+/* child dead? */
+	if (waitpid(child, &st, WNOHANG) > 0){
+		if (WIFEXITED(st) || WIFSIGNALED(st)){
+			ec = WEXITSTATUS(st);
+			die = true;
+		}
+	}
+/* or we want the child to soft-die? */
+	else if (die)
+		kill(SIGTERM, child);
+
+	if (die){
+		release_devices();
+		_exit(WEXITSTATUS(st));
+	}
+}
+
 #ifdef __OpenBSD__
-static void parent_loop(pid_t child, int child_conn, int netlink)
+static void parent_loop(pid_t child, int netlink)
 {
 	static bool init_kq;
 	static int kq;
@@ -303,15 +520,13 @@ static void parent_loop(pid_t child, int child_conn, int netlink)
 	for (size_t i = 0; i < nret; i++){
 		int st;
 		if (changed[i].flags & EV_ERROR){
-			_exit(EXIT_FAILURE);
+			check_child(child, true);
 		}
 		if (changed[i].ident == child){
-			if (waitpid(child, &st, WNOHANG) > 0)
-				if (WIFEXITED(st) || WIFSIGNALED(st))
-					_exit(EXIT_SUCCESS);
+			check_child(child, false);
 		}
 		else if (changed[i].ident == child_conn){
-			int fd = data_in(child, child_conn);
+			int fd = data_in(child);
 			if (-1 != fd){
 				kused = 3;
 				EV_SET(&ev[2], fd, EVFILT_DEVICE, EV_ADD | EV_ENABLE | EV_CLEAR, NOTE_CHANGE, 0, 0);
@@ -327,7 +542,7 @@ static void parent_loop(pid_t child, int child_conn, int netlink)
 }
 
 #else
-static void parent_loop(pid_t child, int child_conn, int netlink)
+static void parent_loop(pid_t child, int netlink)
 {
 /*
  * Should really refactor / move both the TTY management and the inotify
@@ -339,9 +554,7 @@ static void parent_loop(pid_t child, int child_conn, int netlink)
  * and restore their scanout status so that we will not risk leaving a broken
  * tty. */
 	int st;
-	if (waitpid(child, &st, WNOHANG) > 0)
-		if (WIFEXITED(st) || WIFSIGNALED(st))
-			_exit(EXIT_SUCCESS);
+	check_child(child, false);
 
 	struct pollfd pfd[2] = {
 		{
@@ -354,14 +567,18 @@ static void parent_loop(pid_t child, int child_conn, int netlink)
 		}
 	};
 
-	if (poll(pfd, netlink == -1 ? 1 : 2, 1000) <= 0)
+	int rv = poll(pfd, netlink == -1 ? 1 : 2, 1000);
+	if (-1 == rv && (errno != EAGAIN && errno != EINTR))
+		check_child(child, true); /* don't to stronger than this */
+
+	if (rv == 0)
 		return;
 
-	if (pfd[0].revents & POLLIN)
-		data_in(child, child_conn);
+	if (pfd[0].revents & ~POLLIN)
+		check_child(child, true);
 
-	else if (pfd[0].revents & (~POLLIN))
-		_exit(EXIT_SUCCESS);
+	if (pfd[0].revents & POLLIN)
+		data_in(child);
 
 /* could add other commands here as well, but what we concern ourselves with
  * at the moment is only GPU changed events, these match the pattern:
@@ -369,7 +586,7 @@ static void parent_loop(pid_t child, int child_conn, int netlink)
 		if (-1 == netlink || !(pfd[1].revents & POLLIN))
 			return;
 
-	check_netlink(child, child_conn, netlink);
+	check_netlink(child, netlink);
 }
 #endif
 
@@ -495,12 +712,16 @@ void platform_device_init()
 	}
 #endif
 
-	sigset_t mask;
-	sigfillset(&mask);
-	sigprocmask(SIG_SETMASK, &mask, NULL);
+	int sigset[] = {
+		SIGHUP, SIGINT, SIGQUIT, SIGILL, SIGABRT, SIGFPE,
+		SIGPIPE, SIGALRM, SIGTERM, SIGUSR1, SIGUSR2, SIGCHLD,
+		SIGCONT, SIGSTOP, SIGTSTP, SIGTTIN, SIGTTOU};
+	for (size_t i = 0; i < COUNT_OF(sigset); i++)
+		sigaction(sigset[i], &(struct sigaction){.sa_handler = SIG_IGN}, NULL);
+	child_conn = sockets[1];
 
 	while(true){
-		parent_loop(pid, sockets[1], netlink);
+		parent_loop(pid, netlink);
 	}
 }
 
@@ -509,10 +730,22 @@ void platform_device_init()
  */
 struct packet pkg_queue[1];
 
+void platform_device_release(const char* const name, int ind)
+{
+	struct packet pkg = {
+		.cmd_ch = RELEASE_DEVICE,
+		.arg = ind
+	};
+
+	snprintf(pkg.path, sizeof(pkg.path), "%s", name);
+	write(psock, &pkg, sizeof(pkg));
+}
+
 int platform_device_open(const char* const name, int flags)
 {
 	struct packet pkg = {
-		.cmd_ch = OPEN_DEVICE
+		.cmd_ch = OPEN_DEVICE,
+		.arg = -1
 	};
 	snprintf(pkg.path, sizeof(pkg.path), "%s", name);
 	if (-1 == write(psock, &pkg, sizeof(pkg)))
@@ -568,15 +801,35 @@ int platform_device_poll(char** identifier)
 	if (poll(&pfd, 1, 0) <= 0)
 		return 0;
 
-	if (!(pfd.revents & POLLIN)){
+	if ((pfd.revents & ~POLLIN)){
 		return -1;
 	}
 
+/* translate from the visible command format to the internal one */
 	struct packet pkg;
 	while (sizeof(struct packet) == read(psock, &pkg, sizeof(struct packet))){
-		assert(pkg.cmd_ch != OPEN_DEVICE);
-		assert(pkg.cmd_ch != NEW_INPUT_DEVICE);
-		return 2;
+		switch(pkg.cmd_ch){
+		case NEW_INPUT_DEVICE:
+/* not properly handled right now as we have other hotplug mechanisms in place
+ * via inotify in the evdev layer, the problem is that we need to cache new
+ * input names until we get a call where there's an identifier provided */
+		break;
+		case DISPLAY_CONNECTOR_STATE:
+			return 2;
+		break;
+		case SYSTEM_STATE_RELEASE:
+			return 3;
+		break;
+		case SYSTEM_STATE_ACQUIRE:
+			return 4;
+		break;
+		case SYSTEM_STATE_TERMINATE:
+			return 5;
+		break;
+		default:
+			return 0;
+		break;
+		}
 	}
 
 	return 0;
