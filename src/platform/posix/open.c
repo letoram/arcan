@@ -15,6 +15,10 @@ int platform_device_poll(char** identifier)
 	return 0;
 }
 
+void platform_device_release(const char* const identifier, int ind)
+{
+}
+
 int platform_device_pollfd()
 {
 	return -1;

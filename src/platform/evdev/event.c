@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2017, Björn Ståhl
+ * Copyright 2014-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -33,10 +33,7 @@
 #include "arcan_videoint.h"
 #include "keycode_xlate.h"
 
-#include <linux/vt.h>
-#include <linux/major.h>
 #include <linux/kd.h>
-#include <signal.h>
 #include <sys/inotify.h>
 
 #ifdef HAVE_XKBCOMMON
@@ -87,34 +84,25 @@ static struct {
 } pending[8];
 
 static struct {
-	unsigned long kbmode;
-	int mode;
-	unsigned char leds;
 	bool mute, init;
 	int tty, notify;
-	int sigpipe[2];
 	int pending;
-	struct pollfd sigpipe_p;
 }
 gstate = {
-	.mode = KD_TEXT,
-	.tty = STDIN_FILENO,
+
 	.notify = -1,
-	.sigpipe = {-1, -1}
 };
 
 static const char* envopts[] = {
-	"no_mutetty", "Don't disable terminal or SIGINT",
 	"scandir=path/to/folder", "Directory to monitor for device node hotplug "
 		"(Default: "NOTIFY_SCAN_DIR")",
-	"tty_override=path/to/dev", "Force a specific tty- device",
 	"disable_ttyswap", "Disable tty- swapping signal handler",
 #ifdef HAVE_XKBCOMMON
 	"", "",
 	"[XKB-ARGUMENTS]", "[these are ENV- only (fwd to libxkbcommon)]",
 	"XKB_DEFAULT_LAYOUT=lang", "enable XKB translation maps for keyboards",
 	"XKB_DEFAULT_VARIANT=variant", "define XKB layout variant",
-	"XKB_DEFAULT_MODEL=pc101", "definine XKB keyboard model",
+	"XKB_DEFAULT_MODEL=pc101", "define XKB keyboard model",
 #endif
 	NULL
 };
@@ -216,34 +204,6 @@ struct devnode {
 		int fds[2];
 	} led;
 };
-
-static const char vt_acq = 'x';
-static const char vt_rel = 'y';
-static const char vt_trm = 'z';
-
-static void sigusr_acq(int sign, siginfo_t* info, void* ctx)
-{
-	int s_errn = errno;
-	if (write(gstate.sigpipe[1], &vt_acq, 1) == 1)
-		;
-	errno = s_errn;
-}
-
-static void sigusr_rel(int sign, siginfo_t* info, void* ctx)
-{
-	int s_errn = errno;
-	if (write(gstate.sigpipe[1], &vt_rel, 1))
-		;
-	errno = s_errn;
-}
-
-static void sigusr_term(int sign, siginfo_t* info, void* ctx)
-{
-	int s_errn = errno;
-	if (write(gstate.sigpipe[1], &vt_trm, 1))
-		;
-	errno = s_errn;
-}
 
 static void got_device(struct arcan_evctx* ctx, int fd, const char*);
 
@@ -732,47 +692,6 @@ void platform_event_process(struct arcan_evctx* ctx)
 
 	if (gstate.pending)
 		process_pending(ctx);
-
-	if (gstate.sigpipe[0] != -1 && poll(&gstate.sigpipe_p, 1, 0) > 0){
-		char ch;
-		if (1 != read(gstate.sigpipe[0], &ch, 1))
-			;
-		else if (ch == vt_trm){
-			arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
-				.category = EVENT_SYSTEM,
-				.sys.kind = EVENT_SYSTEM_EXIT,
-				.sys.errcode = EXIT_SUCCESS
-			});
-		}
-		else if (ch == vt_rel){
-			arcan_video_prepare_external();
-			ioctl(gstate.tty, VT_RELDISP, 1);
-/* poor name, but video_prepare_external should be the trigger for
- * both audio, video and event deinit/release */
-			while(true)
-				if(poll(&gstate.sigpipe_p, 1, -1) <= 0)
-					continue;
-				else if (1 == read(gstate.sigpipe[0], &ch, 1) && ch == vt_acq){
-					ioctl(gstate.tty, VT_RELDISP, VT_ACKACQ);
-					arcan_video_restore_external();
-
-/* We have a state problem here, when returning from virtual terminal stop, the
- * CTRL and ALT events are enqueued as pressed and there's no great way of
- * ensuring that the related lua scripts know how to recover. The current
- * approach is that video_restore_external sends a reset event to the display
- * entry point. The other option of enqeueing release- events had the problem
- * of introducing multiple- release events. */
-				break;
-			}
-			else{
-				arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
-					.category = EVENT_SYSTEM,
-					.sys.kind = EVENT_SYSTEM_EXIT,
-					.sys.errcode = EXIT_SUCCESS
-				});
-			}
-		}
-	}
 
 	int nr = poll(iodev.pollset, iodev.sz_nodes * 2, 0);
 	if (nr <= 0)
@@ -1404,10 +1323,9 @@ static void defhandler_kbd(struct arcan_evctx* out,
  * more advanced config here to limit # of eligible devices and change
  * combination, and option to disable the thing entirely because it is
  * just terrible */
-		if (gstate.tty != -1 && gstate.sigpipe[0] != -1 &&
-			(node->keyboard.state == (ARKMOD_LALT | ARKMOD_LCTRL)) &&
+		if ((node->keyboard.state == (ARKMOD_LALT | ARKMOD_LCTRL)) &&
 			inev[i].code >= KEY_F1 && inev[i].code <= KEY_F10 && inev[i].value != 0){
-			ioctl(gstate.tty, VT_ACTIVATE, inev[i].code - KEY_F1 + 1);
+			platform_device_release("TTY", inev[i].code - KEY_F1 + 1);
 		}
 
 /* Feed layout statemachine, try to get a translation out of it. Since we
@@ -1809,11 +1727,6 @@ const char* platform_event_devlabel(int devid)
 	return node->label;
 }
 
-/* ajax @ xorg-dev ml, [PATCH] linux: Prefer ioctl(KDSKBMUTE), ... */
-#ifndef KDSKBMUTE
-#define KDSKBMUTE 0x4B51
-#endif
-
 /*
  * note, this do not currently save/restore individual options between
  * init/deinit sessions, which is needed for virtual terminal switching
@@ -1824,76 +1737,9 @@ void platform_event_reset(struct arcan_evctx* ctx)
 
 }
 
-/*
- * We use a signalling pipe to forward signals to their respective internal
- * events. The VTTY switching is uncomfortably involved here, consuming both
- * SIGUSR- slots for a race-condition prone piece of legacy. Essentially we
- * don't know anything about the world when we come back from a VT switch, and
- * due to the devices we manage, it is not safe to just blindly release all
- * resources - we need time. Since there's a timeout for the switch/ack
- * process, our deferred release may hit that interval and leave us in an
- * unknown state.
- */
-static void setup_signals()
-{
-	if (0 != pipe(gstate.sigpipe)){
-		arcan_fatal("couldn't create internal signal pipe, "
-			"code: %d, reason: %s\n", errno, strerror(errno));
-	}
-
-	fcntl(gstate.sigpipe[0], F_SETFD, FD_CLOEXEC);
-	fcntl(gstate.sigpipe[1], F_SETFD, FD_CLOEXEC);
-
-	uintptr_t tag;
-	cfg_lookup_fun get_config = platform_config_lookup(&tag);
-	bool nottyswap = get_config("event_disable_ttyswap", 0, NULL, tag);
-
-	struct sigaction er_sh = {.sa_handler = SIG_IGN};
-	sigaction(SIGINT, &er_sh, NULL);
-
-	er_sh.sa_handler = NULL;
-	er_sh.sa_sigaction = sigusr_term;
-	er_sh.sa_flags = SA_RESTART;
-	sigaction(SIGTERM, &er_sh, NULL);
-
-	if (!nottyswap){
-		struct vt_mode mode = {
-			.mode = VT_PROCESS,
-			.acqsig = SIGUSR1,
-			.relsig = SIGUSR2
-		};
-		gstate.sigpipe_p.fd = gstate.sigpipe[0];
-		gstate.sigpipe_p.events = POLLIN;
-
-		er_sh.sa_handler = NULL;
-		er_sh.sa_sigaction = sigusr_acq;
-		er_sh.sa_flags = SA_SIGINFO;
-		sigaction(SIGUSR1, &er_sh, NULL);
-
-		er_sh.sa_sigaction = sigusr_rel;
-		sigaction(SIGUSR2, &er_sh, NULL);
-		ioctl(gstate.tty, VT_SETMODE, &mode);
-	}
-}
-
 void platform_event_deinit(struct arcan_evctx* ctx)
 {
-	if (isatty(gstate.tty) && gstate.mute){
-		ioctl(gstate.tty, KDSKBMUTE, 0);
-		if (-1 == ioctl(gstate.tty, KDSETMODE, KD_TEXT)){
-			arcan_warning("reset TTY failed %s\n", strerror(errno));
-		}
-
-		gstate.kbmode = gstate.kbmode == K_OFF ? K_XLATE : gstate.kbmode;
-		ioctl(gstate.tty, KDSKBMODE, gstate.kbmode);
-		ioctl(gstate.tty, KDSETLED, gstate.leds);
-		gstate.mute = false;
-	}
-
-	if (gstate.tty != STDIN_FILENO){
-		close(gstate.tty);
-		gstate.tty = STDIN_FILENO;
-	}
+	platform_device_release("TTY", -1);
 
 /* note, we purposely leak (let it disappear on close) to avoid the races and
  * interactions that come from TTY switching -> deinit -> signal -> init */
@@ -1968,7 +1814,13 @@ const char** platform_input_envopts()
 	return (const char**) envopts;
 }
 
-static int find_tty()
+/*
+ * most of this is done priv-side, it is just the actual tty device to use and
+ * control that is of importance as the privilege side keeps track of the first
+ * TTY marked device that was opened as use that for the special 'TTY' name
+ * later on release requests.
+ */
+static void find_tty()
 {
 /* first, check if the env. defines a specific TTY device to use and try that */
 	const char* newtty = NULL;
@@ -2005,8 +1857,6 @@ static int find_tty()
 			fclose(fpek);
 		}
 	}
-
-	return tty == -1 ? STDIN_FILENO : tty;
 }
 
 void platform_event_preinit()
@@ -2028,25 +1878,7 @@ void platform_event_init(arcan_evctx* ctx)
 	if (!notify_scan_dir)
 		notify_scan_dir = strdup(NOTIFY_SCAN_DIR);
 
-	gstate.tty = find_tty();
-
-	if (isatty(gstate.tty)){
-		debug_print("found tty, resetting");
-		ioctl(gstate.tty, KDGETMODE, &gstate.mode);
-		ioctl(gstate.tty, KDGETLED, &gstate.leds);
-		ioctl(gstate.tty, KDGKBMODE, &gstate.kbmode);
-		ioctl(gstate.tty, KDSETLED, 0);
-
-		if (!get_config("event_no_mutetty", 0, NULL, tag)){
-			ioctl(gstate.tty, KDSKBMUTE, 1);
-			ioctl(gstate.tty, KDSKBMODE, K_OFF);
-			ioctl(gstate.tty, KDSETMODE, KD_GRAPHICS);
-		}
-		gstate.mute = true;
-	}
-
-	if (gstate.sigpipe[0] == -1)
-		setup_signals();
+	find_tty();
 
 	char* newsd;
 	if (get_config("event_scandir", 0, &newsd, tag) && newsd){
