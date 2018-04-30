@@ -207,24 +207,25 @@ static struct {
  */
 static void sigusr_acq(int sign, siginfo_t* info, void* ctx)
 {
-	write(child_conn,
-		&(struct packet){.cmd_ch = SYSTEM_STATE_ACQUIRE}, sizeof(struct packet));
+	if (-1 == write(child_conn,
+		&(struct packet){.cmd_ch = SYSTEM_STATE_ACQUIRE}, sizeof(struct packet))){}
 }
 
 static void sigusr_rel(int sign, siginfo_t* info, void* ctx)
 {
-	write(child_conn,
-		&(struct packet){.cmd_ch = SYSTEM_STATE_RELEASE}, sizeof(struct packet));
+	if (-1 == write(child_conn,
+		&(struct packet){.cmd_ch = SYSTEM_STATE_RELEASE}, sizeof(struct packet))){}
 }
 
 static void sigusr_term(int sign)
 {
-	write(child_conn,
-		&(struct packet){.cmd_ch = SYSTEM_STATE_TERMINATE}, sizeof(struct packet));
+	if (-1 == write(child_conn,
+		&(struct packet){.cmd_ch = SYSTEM_STATE_TERMINATE}, sizeof(struct packet))){}
 }
 
 static void set_tty(int i)
 {
+#ifdef __LINUX
 /* This will (hopefully) make the kernel try and initiate the switch
  * related signals, taking care of release / acquire sequence */
 	int dfd = whitelist[got_tty.ind].fd;
@@ -253,10 +254,12 @@ static void set_tty(int i)
 	ioctl(dfd, KDSKBMUTE, 1);
 	ioctl(dfd, KDSKBMODE, K_OFF);
 	ioctl(dfd, KDSETMODE, KD_GRAPHICS);
+#endif
 
 /* register signal handlers that forward the desired action to the client,
  * and set the tty to try and signal acquire/release when a VT switch is
  * supposed to occur */
+
 	sigaction(SIGTERM, &(struct sigaction){
 		.sa_handler = sigusr_term
 		}, NULL
@@ -274,11 +277,13 @@ static void set_tty(int i)
 		}, NULL
 	);
 
+#ifdef __LINUX
 	ioctl(dfd, VT_SETMODE, &(struct vt_mode){
 		.mode = VT_PROCESS,
 		.acqsig = SIGUSR1,
 		.relsig = SIGUSR2
 	});
+#endif
 }
 
 static void release_device(int i, bool shutdown)
@@ -296,6 +301,7 @@ static void release_device(int i, bool shutdown)
 
 /* will always be released on shutdown, so use that to restore */
 	if (whitelist[i].mode & MODE_TTY){
+#ifdef __LINUX
 		if (shutdown){
 			ioctl(whitelist[i].fd, KDSKBMUTE, 0);
 			ioctl(whitelist[i].fd, KDSETMODE, KD_TEXT);
@@ -308,6 +314,7 @@ static void release_device(int i, bool shutdown)
 		else{
 			ioctl(whitelist[i].fd, VT_RELDISP, 1);
 		}
+#endif
 	}
 }
 
