@@ -44,7 +44,7 @@ bool arcan_isfile(const char* fn)
 		return false;
 
 	if (stat(fn, &buf) == 0)
-		rv = S_ISREG(buf.st_mode) || S_ISFIFO(buf.st_mode);
+		rv = S_ISREG(buf.st_mode) || S_ISFIFO(buf.st_mode) || S_ISSOCK(buf.st_mode);
 
 	return rv;
 }

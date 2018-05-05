@@ -15,6 +15,7 @@
 -- @note: This function is blocking, and should only be used where
 -- possible I/O stalls is desired.
 -- @group: resource
+-- @deprecated:open_nonblock
 -- @cfunction: rawresource
 -- @related: close_rawresource, read_rawresource, zap_rawresource, open_nonblock
 function main()
