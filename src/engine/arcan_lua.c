@@ -1471,21 +1471,29 @@ static int bufread(lua_State* ctx, struct nonblock_io* ib, bool nonbuffered)
 	if (-1 == nr && errno != EINTR && errno != EAGAIN){
 		lua_pushlstring(ctx, ib->buf, ib->ofs);
 		lua_pushboolean(ctx, false);
-		return 2;
 		ib->ofs = 0;
+		return 2;
 	}
 
 	if (nonbuffered){
-		if (!ib->ofs)
-			return 0;
+		if (!ib->ofs){
+			lua_pushnil(ctx);
+			lua_pushboolean(ctx, true);
+			return 2;
+		}
 
 		lua_pushlstring(ctx, ib->buf, ib->ofs);
 		ib->ofs = 0;
 		lua_pushboolean(ctx, true);
 		return 2;
 	}
-	else
-		return bufcheck(ctx, ib);
+	else{
+		if (0 == bufcheck(ctx, ib)){
+			lua_pushnil(ctx);
+			lua_pushboolean(ctx, true);
+		}
+		return 2;
+	}
 }
 
 static int nbio_close(struct nonblock_io** ib)
