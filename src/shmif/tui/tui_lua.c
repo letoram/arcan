@@ -189,7 +189,7 @@ static void on_mouse_button(struct tui_context* c,
 		lua_pushnumber(L, x);
 		lua_pushnumber(L, y);
 		lua_pushnumber(L, modifiers);
-		lua_call(L, 6, 0);
+		lua_call(L, 5, 0);
 	END_HREF;
 }
 

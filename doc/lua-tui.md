@@ -2,8 +2,11 @@
 
 # Introduction
 
-These bindings can be brought into your own lua projects or run separately
-via the ltui binary.
+These bindings expose the Arcan TUI API for creating text oriented
+user-interfaces. This document merely describes the Lua exposed functions, not
+how to embed the bindings into other projects. For that, in-source embed
+the arcan/src/shmif/tui/tui\_lua.c implementation and call tui\_lua\_expose
+on the context.
 
 # Setting up a connection
 
@@ -63,7 +66,7 @@ state of the context will not be immediately visible. First you prepare all
 the visually related output changes by updating the relevant cells using the
 drawcalls that are available. When you are finished, you explicitly commit by
 calling _refresh_. This function may well return immediately, or, if you are
-being too frisky (multiple refress and not interleaving with process), it may
+being too frisky (multiple refresh and not interleaving with process), it may
 block for an indefinite time.
 
 The current size of this grid can be extracted via:
@@ -471,7 +474,7 @@ to integrate with some kind of data import/export path (like a file manager).
 The decision to opt for an extension rather than some MIME-like notion of type
 is simply the stance that it is always dangerous to believe or assume that a
 a metadata type tag authenticates its data, integrity and origin. Parsers should
-always assume broken data first, and respond aggressively - in constrast to the
+always assume broken data first, and respond aggressively - in contrast to the
 often adopted doctrine of 'Postel's Principle'.
 
 vpaste and apaste are special as they also need to be bundled with functions
