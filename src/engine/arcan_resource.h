@@ -13,7 +13,7 @@ typedef struct {
 } map_region;
 
 typedef struct {
-	file_handle fd;
+	int fd;
 	off_t start;
 	off_t len;
 	char* source;

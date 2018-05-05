@@ -52,6 +52,8 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <math.h>
 
 #include <assert.h>
@@ -293,6 +295,8 @@ struct nonblock_io {
 	char buf[4096];
 	off_t ofs;
 	int fd;
+	mode_t mode;
+	char* unlink_fn;
 	char* pending;
 };
 
@@ -1018,9 +1022,9 @@ static int zapresource(lua_State* ctx)
 	char* path = findresource(luaL_checkstring(ctx, 1), RESOURCE_APPL_TEMP);
 
 	if (path && unlink(path) != -1)
-		lua_pushboolean(ctx, false);
-	else
 		lua_pushboolean(ctx, true);
+	else
+		lua_pushboolean(ctx, false);
 
 	arcan_mem_free(path);
 
@@ -1049,7 +1053,7 @@ static int opennonblock_tgt(lua_State* ctx, bool wr)
 /* in any scenario where this would fail, "blocking" behavior is acceptable */
 	int flags = fcntl(src, F_GETFL);
 	if (-1 != flags)
-		fcntl(src, F_SETFL, flags | O_NONBLOCK);
+		fcntl(src, F_SETFL, flags | O_NONBLOCK | O_CLOEXEC);
 
 	if (ARCAN_OK != platform_fsrv_pushfd(fsrv, &(struct arcan_event){
 		.category = EVENT_TARGET,
@@ -1070,24 +1074,29 @@ static int opennonblock_tgt(lua_State* ctx, bool wr)
 		return 0;
 	}
 
+	conn->mode = wr ? O_WRONLY : O_RDONLY;
 	conn->fd = src;
 	conn->pending = NULL;
 
 	uintptr_t* dp = lua_newuserdata(ctx, sizeof(uintptr_t));
 	*dp = (uintptr_t) conn;
-	luaL_getmetatable(ctx, wr ? "nonblockIOw" : "nonblockIOr");
+	luaL_getmetatable(ctx, "nonblockIO");
 	lua_setmetatable(ctx, -2);
 
 	return 1;
 }
 
+/*
+ * ugly little thing, should really be refactored into different typed versions
+ */
 static int opennonblock(lua_State* ctx)
 {
 	LUA_TRACE("open_nonblock");
 
-	const char* metatable = NULL;
+	const char* metatable = "nonblockIO";
+	char* unlink_fn = NULL;
 	bool wrmode = luaL_optbnumber(ctx, 2, 0);
-	bool fifo = false, ignerr = false;
+	bool fifo = false, ignerr = false, use_socket = false;
 	char* path;
 	int fd;
 
@@ -1101,13 +1110,16 @@ static int opennonblock(lua_State* ctx)
 		fifo = true;
 		str++;
 	}
+	else if (str[0] == '='){
+		use_socket = true;
+		str++;
+	}
 
 /* note on file-system races: it is an explicit contract that the namespace
  * provided for RESOURCE_APPL_TEMP is single- user (us) only. Anyhow, this
  * code turned out a lot messier than needed, refactor when time permits. */
 	if (wrmode){
 		struct stat fi;
-		metatable = "nonblockIOw";
 		path = findresource(str, RESOURCE_APPL_TEMP);
 
 /* we require a zap_resource call if the file already exists, except for in
@@ -1132,6 +1144,7 @@ static int opennonblock(lua_State* ctx)
 					LUA_ETRACE("open_nonblock", "mkfifo failed", 0);
 				}
 			}
+			unlink_fn = strdup(path);
 			ignerr = true;
 		}
 		else
@@ -1144,10 +1157,62 @@ static int opennonblock(lua_State* ctx)
 			LUA_ETRACE("open_nonblock", "opened file not fifo", 0);
 		}
 	}
-	else{
+/* recall, socket binding is supposed to go to a 'safe' namespace, so the
+ * normal filesystem races are less than a concern than normally */
+	else if (use_socket){
+		struct sockaddr_un addr = {
+			.sun_family = AF_UNIX
+		};
+		size_t lim = COUNT_OF(addr.sun_path);
+		path = findresource(str, RESOURCE_APPL_TEMP);
+		if (path || !(path = arcan_expand_resource(str, RESOURCE_APPL_TEMP))){
+			arcan_warning("open_nonblock(), refusing to overwrite file\n");
+			LUA_ETRACE("open_nonblock", "couldn't create socket", 0);
+		}
+
+		if (strlen(path) > COUNT_OF(addr.sun_path) -1){
+			arcan_warning("open_nonblock(), socket path too long\n");
+			LUA_ETRACE("open_nonblock", "socket path too lpng", 0);
+		}
+		snprintf(addr.sun_path, COUNT_OF(addr.sun_path), "%s", path);
+
+		metatable = "nonblockIOs";
+
+		fd = socket(AF_UNIX, SOCK_STREAM, 0);
+		if (-1 == fd){
+			arcan_warning("open_nonblock(): couldn't create socket\n");
+			arcan_mem_free(path);
+			LUA_ETRACE("open_nonblock", "couldn't create socket", 0);
+		}
+		fchmod(fd, S_IRWXU);
+
+#ifdef __APPLE__
+		int val = 1;
+		setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
+#endif
+
+		int flags = fcntl(fd, F_GETFL);
+		if (-1 != flags)
+			fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+		if (-1 != (flags = fcntl(fd, F_GETFD)))
+			fcntl(fd, F_SETFD, flags | O_CLOEXEC);
+
+		int rv = bind(fd, (struct sockaddr*) &addr, sizeof(addr));
+		if (-1 == rv){
+			close(fd);
+			arcan_mem_free(path);
+			arcan_warning(
+				"open_nonblock(): bind (%s) failed: %s\n", path, strerror(errno));
+			LUA_ETRACE("open_nonblock", "couldn't bind socket", 0);
+		}
+		listen(fd, 5);
+		unlink_fn = path;
+		path = NULL; /* don't mark as pending */
+	}
+	else {
 retryopen:
 		path = findresource(str, fifo ? RESOURCE_APPL_TEMP : DEFAULT_USERMASK);
-		metatable = "nonblockIOr";
 
 		if (!path){
 			if (fifo && (path = arcan_expand_resource(str, RESOURCE_APPL_TEMP))){
@@ -1167,8 +1232,8 @@ retryopen:
 		path = NULL;
 	}
 
-
 	if (fd < 0 && !ignerr){
+		arcan_mem_free(path);
 		LUA_ETRACE("open_nonblock", "couldn't open file", 0);
 	}
 
@@ -1176,7 +1241,16 @@ retryopen:
 			ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	conn->fd = fd;
+
+/* this little crutch was better than differentiating the userdata as the
+ * support for polymorphism there is rather clunky */
+	if (wrmode)
+		conn->mode = O_WRONLY;
+	else
+		conn->mode = O_RDONLY;
+
 	conn->pending = path;
+	conn->unlink_fn = unlink_fn;
 
 	uintptr_t* dp = lua_newuserdata(ctx, sizeof(uintptr_t));
 	*dp = (uintptr_t) conn;
@@ -1348,7 +1422,7 @@ static char* streamtype(int num)
 
 static int push_resstr(lua_State* ctx, struct nonblock_io* ib, off_t ofs)
 {
-	size_t in_sz = COUNT_OF(luactx.rawres.buf);
+	size_t in_sz = COUNT_OF(ib->buf);
 
 	lua_pushlstring(ctx, ib->buf, ofs);
 
@@ -1361,13 +1435,13 @@ static int push_resstr(lua_State* ctx, struct nonblock_io* ib, off_t ofs)
 		ib->ofs -= ofs + 1;
 	}
 
-	return 1;
+	lua_pushboolean(ctx, true);
+	return 2;
 }
 
 static size_t bufcheck(lua_State* ctx, struct nonblock_io* ib)
 {
-	size_t in_sz = COUNT_OF(luactx.rawres.buf);
-
+	size_t in_sz = COUNT_OF(ib->buf);
 	for (size_t i = 0; i < ib->ofs; i++){
 		if (ib->buf[i] == '\n')
 			return push_resstr(ctx, ib, i);
@@ -1379,7 +1453,7 @@ static size_t bufcheck(lua_State* ctx, struct nonblock_io* ib)
 	return 0;
 }
 
-static int bufread(lua_State* ctx, struct nonblock_io* ib)
+static int bufread(lua_State* ctx, struct nonblock_io* ib, bool nonbuffered)
 {
 	size_t buf_sz = COUNT_OF(ib->buf);
 
@@ -1394,46 +1468,122 @@ static int bufread(lua_State* ctx, struct nonblock_io* ib)
 	if ( (nr = read(ib->fd, ib->buf + ib->ofs, buf_sz - ib->ofs - 1)) > 0)
 		ib->ofs += nr;
 
-	return bufcheck(ctx, ib);
-}
-
-static int nbio_closer(lua_State* ctx)
-{
-	LUA_TRACE("open_nonblock:close");
-	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIOr");
-	if (*ib == NULL){
-		LUA_ETRACE("open_nonblock:close", "missing updata", 0);
+	if (-1 == nr && errno != EINTR && errno != EAGAIN){
+		lua_pushlstring(ctx, ib->buf, ib->ofs);
+		lua_pushboolean(ctx, false);
+		return 2;
+		ib->ofs = 0;
 	}
 
+	if (nonbuffered){
+		if (!ib->ofs)
+			return 0;
+
+		lua_pushlstring(ctx, ib->buf, ib->ofs);
+		ib->ofs = 0;
+		lua_pushboolean(ctx, true);
+		return 2;
+	}
+	else
+		return bufcheck(ctx, ib);
+}
+
+static int nbio_close(struct nonblock_io** ib)
+{
 	if (-1 != (*ib)->fd)
 		close((*ib)->fd);
+
+	if ((*ib)->unlink_fn){
+		unlink((*ib)->unlink_fn);
+		arcan_mem_free((*ib)->unlink_fn);
+	}
 	free((*ib)->pending);
 	free(*ib);
 	*ib = NULL;
+	return 0;
+}
 
+/*
+ * same function, just different lookup strings for the Lua- udata types
+ */
+static int nbio_closer(lua_State* ctx)
+{
+	LUA_TRACE("open_nonblock:close");
+	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIO");
+	if (!(*ib))
+		LUA_ETRACE("open_nonblock:close", "already closed", 0);
+
+	nbio_close(ib);
 	LUA_ETRACE("open_nonblock:close", NULL, 0);
 }
 
-static int nbio_closew(lua_State* ctx)
+static int nbio_socketclose(lua_State* ctx)
 {
-	LUA_TRACE("open_nonblock:close_write");
-	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIOw");
-	if (*ib == NULL){
-		LUA_ETRACE("open_nonblock:close_write", "missing udata", 0);
+	LUA_TRACE("open_nonblock:close");
+	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIOs");
+	if (!(*ib))
+		LUA_ETRACE("open_nonblock:close", "already closed", 0);
+
+	nbio_close(ib);
+	LUA_ETRACE("open_nonblock:close", NULL, 0);
+}
+
+static int nbio_socketaccept(lua_State* ctx)
+{
+	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIOs");
+	if (!(*ib))
+		LUA_ETRACE("open_nonblock:accept", "already closed", 0);
+
+	struct nonblock_io* is = *ib;
+	int newfd = accept(is->fd, NULL, NULL);
+	if (-1 == newfd)
+		LUA_ETRACE("open_nonblock:accept", NULL, 0);
+
+	int flags = fcntl(newfd, F_GETFL);
+	if (-1 != flags)
+		fcntl(newfd, F_SETFL, flags | O_NONBLOCK);
+
+	if (-1 != (flags = fcntl(newfd, F_GETFD)))
+		fcntl(newfd, F_SETFD, flags | O_CLOEXEC);
+
+	struct nonblock_io* conn = arcan_alloc_mem(
+		sizeof(struct nonblock_io), ARCAN_MEM_BINDING, 0, ARCAN_MEMALIGN_NATURAL);
+
+	(*conn) = (struct nonblock_io){
+		.fd = newfd,
+		.mode = O_RDWR,
+	};
+
+	if (!conn){
+		close(newfd);
+		LUA_ETRACE("open_nonblock:accept", "out of memory", 0);
 	}
 
-	close((*ib)->fd);
-	free(*ib);
-	*ib = NULL;
+	uintptr_t* dp = lua_newuserdata(ctx, sizeof(uintptr_t));
+	if (!dp){
+		close(newfd);
+		arcan_mem_free(conn);
+		LUA_ETRACE("open_nonblock:accept", "couldn't alloc UD", 0);
+	}
 
-	LUA_ETRACE("open_nonblock:close_write", NULL, 0);
+	*dp = (uintptr_t) conn;
+	luaL_getmetatable(ctx, "nonblockIO");
+	lua_setmetatable(ctx, -2);
+	LUA_ETRACE("open_nonblock:accept", NULL, 1);
 }
 
 static int nbio_write(lua_State* ctx)
 {
 	LUA_TRACE("open_nonblock:write");
-	struct nonblock_io** ud = luaL_checkudata(ctx, 1, "nonblockIOw");
+	struct nonblock_io** ud = luaL_checkudata(ctx, 1, "nonblockIO");
 	struct nonblock_io* iw = *ud;
+
+	if (!iw)
+		LUA_ETRACE("open_nonblock:close", "already closed", 0);
+
+	if (iw->mode == O_RDONLY)
+		LUA_ETRACE("open_nonblock:write", "invalid mode (r) for write", 0);
+
 	const char* buf = luaL_checkstring(ctx, 2);
 	size_t len = strlen(buf);
 	off_t of = 0;
@@ -1448,10 +1598,9 @@ static int nbio_write(lua_State* ctx)
 
 /* and if not, don't try to write */
 			if (-1 != fstat(iw->fd, &fi) && !S_ISFIFO(fi.st_mode)){
-				close(iw->fd);
-				iw->fd = -1;
 				lua_pushnumber(ctx, 0);
-				LUA_ETRACE("open_nonblock:write", NULL, 1);
+				lua_pushboolean(ctx, false);
+				LUA_ETRACE("open_nonblock:write", NULL, 2);
 			}
 		}
 	}
@@ -1459,35 +1608,43 @@ static int nbio_write(lua_State* ctx)
 /* non-block, so don't allow too many attempts, but we push the
  * responsibility of buffering to the caller */
 	int retc = 5;
+	bool rc = true;
 	while (retc && (len - of)){
 		size_t nw = write(iw->fd, buf + of, len - of);
+
 		if (-1 == nw){
 			if (errno == EAGAIN || errno == EINTR){
 				retc--;
 				continue;
 			}
-			else{
-				close(iw->fd);
-				iw->fd = -1;
-			}
-				break;
+			rc = false;
+			break;
 		}
 		else
 			of += nw;
 	}
 
 	lua_pushnumber(ctx, of);
-	LUA_ETRACE("open_nonblock:write", NULL, 1);
+	lua_pushboolean(ctx, rc);
+
+	LUA_ETRACE("open_nonblock:write", NULL, 2);
 }
 
 static int nbio_read(lua_State* ctx)
 {
 	LUA_TRACE("open_nonblock:read");
-	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIOr");
-	if (*ib == NULL)
-		LUA_ETRACE("open_nonblock:read", NULL, 0);
+	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIO");
+	struct nonblock_io* ir = *ib;
 
-	int nr = bufread(ctx, *ib);
+	if (!ir)
+		LUA_ETRACE("open_nonblock:read", "already closed", 0);
+
+	if (ir->mode == O_WRONLY)
+		LUA_ETRACE("open_nonblock:read", "invalid mode (w) for read", 0);
+
+	bool nonbuffered = luaL_optbnumber(ctx, 2, 0);
+	int	nr = bufread(ctx, *ib, nonbuffered);
+
 	LUA_ETRACE("open_nonblock:read", NULL, nr);
 }
 
@@ -1499,7 +1656,7 @@ static int readrawresource(lua_State* ctx)
 		LUA_ETRACE("read_rawresource", "no open file", 0);
 	}
 
-	int n = bufread(ctx, &luactx.rawres);
+	int n = bufread(ctx, &luactx.rawres, false);
 	LUA_ETRACE("read_rawresource", NULL, n);
 }
 
@@ -10835,25 +10992,27 @@ static const luaL_Reg resfuns[] = {
 #undef EXT_MAPTBL_RESOURCE
 	register_tbl(ctx, resfuns);
 
-	luaL_newmetatable(ctx, "nonblockIOr");
+	luaL_newmetatable(ctx, "nonblockIO");
 	lua_pushvalue(ctx, -1);
 	lua_setfield(ctx, -2, "__index");
 	lua_pushcfunction(ctx, nbio_read);
 	lua_setfield(ctx, -2, "read");
+	lua_pushcfunction(ctx, nbio_write);
+	lua_setfield(ctx, -2, "write");
 	lua_pushcfunction(ctx, nbio_closer);
 	lua_setfield(ctx, -2, "__gc");
 	lua_pushcfunction(ctx, nbio_closer);
 	lua_setfield(ctx, -2, "close");
 	lua_pop(ctx, 1);
 
-	luaL_newmetatable(ctx, "nonblockIOw");
+	luaL_newmetatable(ctx, "nonblockIOs");
 	lua_pushvalue(ctx, -1);
 	lua_setfield(ctx, -2, "__index");
-	lua_pushcfunction(ctx, nbio_write);
-	lua_setfield(ctx, -2, "write");
-	lua_pushcfunction(ctx, nbio_closew);
+	lua_pushcfunction(ctx, nbio_socketaccept);
+	lua_setfield(ctx, -2, "accept");
+	lua_pushcfunction(ctx, nbio_socketclose);
 	lua_setfield(ctx, -2, "close");
-	lua_pushcfunction(ctx, nbio_closew);
+	lua_pushcfunction(ctx, nbio_socketclose);
 	lua_setfield(ctx, -2, "_gc");
 	lua_pop(ctx, 1);
 

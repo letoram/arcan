@@ -6,6 +6,7 @@
 -- @note: This is not intended as a primary I/O mechanism, just as a
 -- fallback for logging and code/configuration generation in a purposely
 -- limited fashion. Furthermore, it is synchronously blocking.
+-- @deprecated:open_nonblock
 -- @group: resource
 -- @cfunction: writerawresource
 -- @related: open_rawresource, read_rawresource, close_rawresource

@@ -1,8 +1,9 @@
 -- read_rawresource
 -- @short: Read a line from the globally shared raw resource handle.
 -- @outargs: line
--- @note: Each "line" is constrained to a maximum of 256 characters.
+-- @note: Each "line" is constrained to a maximum of 4096 characters.
 -- @note: Leading and trailing whitespace is removed.
+-- @deprecated:open_nonblock
 -- @group: resource
 -- @cfunction: readrawresource
 -- @related: open_rawresource, write_rawresource, close_rawresource
