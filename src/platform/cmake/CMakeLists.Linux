@@ -47,7 +47,6 @@ endif()
 set(ARCAN_PLATFORM
 	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/fmt_open.c
-	${PLATFORM_PATH}/psep_open.c
 	${PLATFORM_PATH}/glob.c
 	${PLATFORM_PATH}/map_resource.c
 	${PLATFORM_PATH}/resource_io.c
@@ -93,6 +92,8 @@ else()
 endif()
 
 set(LWA_PLATFORM ${ARCAN_PLATFORM})
+list(APPEND LWA_PLATFORM ${PLATFORM_PATH}/open.c)
+list(APPEND ARCAN_PLATFORM ${PLATFORM_PATH}/psep_open.c)
 
 # we don't want these coming along in LWA_PLATFORM
 list(APPEND PLATFORM_SOURCES
