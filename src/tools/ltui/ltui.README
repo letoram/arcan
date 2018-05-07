@@ -1,4 +1,5 @@
 Ltui is a patched version of the normal lua command-line interpreter that adds
-the TUI- C bindings in order to run the tui related tests and examples.
+the TUI- Lua bindings in order to run the tui related tests and examples.
 
-The full documentation is in the arcan source tree, as doc/lua-tui.md
+The full documentation can be found in <arcan source tree>/doc/lua-tui.md
+You can also find a number of examples in the tests subdirectory.

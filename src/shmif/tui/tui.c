@@ -3377,10 +3377,16 @@ void arcan_tui_refdec(struct tui_context* c)
 	tsm_screen_unref(c->screen);
 }
 
-void arcan_tui_defattr(struct tui_context* c, struct tui_screen_attr* attr)
+struct tui_screen_attr
+	arcan_tui_defattr(struct tui_context* c, struct tui_screen_attr* attr)
 {
-	if (c)
-	tsm_screen_set_def_attr(c->screen, (struct tui_screen_attr*) attr);
+	if (!c)
+		return (struct tui_screen_attr){};
+
+	if (attr)
+		tsm_screen_set_def_attr(c->screen, (struct tui_screen_attr*) attr);
+
+	return tsm_screen_get_def_attr(c->screen);
 }
 
 void arcan_tui_write(struct tui_context* c, uint32_t ucode,

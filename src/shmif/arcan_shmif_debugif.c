@@ -3,10 +3,24 @@
 #include <pthread.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <ctype.h>
+
+/*
+ * ideally all this would be fork/asynch-signal safe
+ */
 
 #define ARCAN_TUI_DYNAMIC
 #include "arcan_tui.h"
 
+#ifndef COUNT_OF
+#define COUNT_OF(x) \
+	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+#endif
+
+/*
+ * menu code here is really generic enough that it should be move elsewhere,
+ * frameserver/util or a single-header TUI suppl file possibly
+ */
 struct debug_ctx {
 	struct arcan_shmif_cont cont;
 	struct tui_context* tui;
@@ -14,14 +28,23 @@ struct debug_ctx {
 	int outfd;
 };
 
-struct menu_ent {
-	const char* label;
-	void (*fptr)(struct debug_ctx*);
+struct menu_ctx {
+	struct debug_ctx* debugctx;
+	struct menu_ent* entries;
+	size_t n_entries;
+	size_t position;
+	void (*destroy)(struct menu_ctx*);
 };
 
-/*
- *
- */
+struct menu_ent;
+struct menu_ent {
+	const char* label;
+	char shortcut;
+	const char* menukey;
+	void (*action)(struct debug_ctx*, struct menu_ent* self);
+	bool (*eval)(struct debug_ctx*, struct menu_ent* self);
+	struct tui_cbcfg handlers;
+};
 
 static bool fd_redirect(struct debug_ctx*, int fd);
 
@@ -43,20 +66,114 @@ static void flush_io(struct debug_ctx* ctx)
 	}
 }
 
+/* pretty much run whenever, the front/back buffers will make sure
+ * that only cells that are truly different will be synched */
+static void menu_refresh(struct tui_context* c, struct menu_ctx* dst)
+{
+	struct tui_screen_attr attr = arcan_tui_defattr(c, NULL);
+	arcan_tui_get_color(c, TUI_COL_HIGHLIGHT, attr.fc);
+	arcan_tui_get_color(c, TUI_COL_BG, attr.bc);
+	arcan_tui_erase_screen(c, false);
+
+/* simple path: no paging. */
+	if (dst->n_entries){
+	}
+}
+
+static void menu_key(struct tui_context* c, uint32_t keysym,
+	uint8_t scancode, uint8_t mods, uint16_t subid, void* t)
+{
+	struct menu_ctx* dst = t;
+	int last_pos = dst->position;
+
+	if (keysym == TUIK_J || keysym == TUIK_DOWN){
+		dst->position = (dst->position + 1) % dst->n_entries;
+	}
+	else if (keysym == TUIK_K || keysym == TUIK_UP){
+		if (dst->position > 0)
+			dst->position--;
+		else
+			dst->position = dst->n_entries - 1;
+	}
+	else if (keysym == TUIK_KP_ENTER || keysym == TUIK_RETURN){
+/* deallocate and activate menu entry */
+	}
+	else if (keysym == TUIK_ESCAPE){
+/* deallocate and go back up menu stack */
+	}
+	else {
+/* check character for match against shortcut, TUIK_ values
+ * if printable match ASCII so easy enough */
+		if (!isprint(keysym))
+			return;
+
+		for (size_t i = 0; i < dst->n_entries; i++){
+		}
+	}
+
+/* update the cursor and paging */
+	if (dst->position != last_pos)
+		menu_refresh(c, dst);
+}
+
+static bool run_menu(struct debug_ctx* ctx,
+	struct menu_ent menu[], size_t n_menu, void (*cancel)(struct menu_ctx*))
+{
+	struct menu_ctx* menuctx = malloc(sizeof(struct menu_ctx));
+	if (!menuctx)
+		return false;
+
+	size_t n_flt = 0;
+	struct menu_ent* menuflt = malloc(sizeof(struct menu_ent));
+	if (!menuflt){
+		free(menuctx);
+		return false;
+	}
+
+	for (size_t i = 0; i < n_menu; i++){
+		if (menu[i].eval && menu[i].eval(ctx, &menu[i])){
+			menuflt[n_flt++] = menu[i];
+		}
+	}
+
+	if (!n_flt){
+		free(menuctx);
+		free(menuflt);
+		return false;
+	}
+
+	*menuctx = (struct menu_ctx){
+		.debugctx = ctx,
+		.entries = menuflt,
+		.n_entries = n_flt,
+		.position = 0,
+		.destroy = cancel
+	};
+
+	struct tui_cbcfg menu_handlers = {
+		.tag = ctx,
+		.input_key = menu_key,
+	};
+
+	arcan_tui_update_handlers(ctx->tui, &menu_handlers, sizeof(menu_handlers));
+	menu_refresh(ctx->tui, menuctx);
+	return true;
+}
+
+static struct menu_ent* get_menu_tree(const char* key, size_t* count);
+
 static void* debug_thread(void* thr)
 {
 	struct debug_ctx* dctx = thr;
-	struct tui_cbcfg cbcfg = {
-		.tag = thr
-	};
+	struct tui_cbcfg cbcfg = {};
+	size_t n_root;
+	struct menu_ent* root = get_menu_tree("root", &n_root);
 
-/* we already have a 'display' in the sense of the shmif connection, since
- * tui is designed to not explicitly rely on shmif */
 	arcan_tui_conn* c = (arcan_tui_conn*) &dctx->cont;
 	struct tui_settings cfg = arcan_tui_defaults(c, NULL);
 	dctx->tui = arcan_tui_setup(c, &cfg, &cbcfg, sizeof(cbcfg));
 
-	if (!dctx->tui){
+	if (!dctx->tui || !root){
 		arcan_shmif_drop(&dctx->cont);
 		free(thr);
 		return NULL;
@@ -79,6 +196,7 @@ static void* debug_thread(void* thr)
 		}
 	}
 
+	arcan_tui_destroy(dctx->tui, NULL);
 	free(thr);
 	return NULL;
 }
@@ -154,4 +272,71 @@ static bool fd_redirect(struct debug_ctx* dctx, int fd)
 	}
 
 	return true;
+
+}
+
+void intercept_stderr(struct debug_ctx* ctx, struct menu_ent* self)
+{
+}
+
+void interactive_fd_menu(struct debug_ctx* ctx, struct menu_ent* self)
+{
+	static struct menu_ent menut[] = {
+	{
+		.label = "stderr",
+		.shortcut = '2',
+		.action = intercept_stderr
+	}
+	};
+
+/* can use the "huge pollset" trick to get a list of open descriptors */
+}
+
+void passive_fd_menu(struct debug_ctx* ctx, struct menu_ent* self)
+{
+
+}
+
+/* ---------------- MENU DEFINITIONS BELOW --------------------- */
+
+static struct menu_ent fd_menu[] = {
+{
+	.label = "Active",
+	.shortcut = 'a',
+	.action = interactive_fd_menu
+},
+{
+	.label = "Passive",
+	.shortcut = 'p',
+	.action = passive_fd_menu
+}
+};
+
+static struct menu_ent root_menu[] = {
+{
+	.label = "File Descriptors",
+	.shortcut = 'f',
+	.menukey = "fd_menu"
+}
+/*
+ * debugger
+ * memory (live / snapshot)
+ * process (snapshot)
+ */
+};
+
+static struct menu_ent* get_menu_tree(const char* key, size_t* count)
+{
+	if (strcmp(key, "root") == 0){
+		*count = COUNT_OF(root_menu);
+		return root_menu;
+	}
+
+	if (strcmp(key, "fd_menu") == 0){
+		*count = COUNT_OF(fd_menu);
+		return fd_menu;
+	}
+
+	*count = 0;
+	return NULL;
 }

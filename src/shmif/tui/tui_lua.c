@@ -399,6 +399,28 @@ static int intblint(lua_State* ctx, int ind, const char* field)
 	return rv;
 }
 
+static void add_attr_tbl(lua_State* L, struct tui_screen_attr attr)
+{
+	lua_newtable(L);
+
+/* key-integer value */
+#define SET_KIV(K, V) do { lua_pushstring(L, K); \
+	lua_pushnumber(L, V); lua_rawset(L, -3); } while (0)
+
+#define SET_BIV(K, V) do { lua_pushstring(L, K); \
+	lua_pushboolean(L, V); lua_rawset(L, -3); } while (0)
+
+	SET_KIV("fr", attr.fr); SET_KIV("fg", attr.fg); SET_KIV("fb", attr.fb);
+	SET_KIV("br", attr.br); SET_KIV("bg", attr.bg); SET_KIV("bb", attr.bb);
+	SET_BIV("bold", attr.bold); SET_BIV("underline", attr.underline);
+	SET_BIV("protect", attr.protect); SET_BIV("blink", attr.blink);
+	SET_BIV("strikethrough", attr.strikethrough);
+	SET_BIV("break", attr.shape_break); SET_KIV("id", attr.custom_id);
+
+#undef SET_KIV
+#undef SET_BIV
+}
+
 static void apply_table(lua_State* L, int ind, struct tui_screen_attr* attr)
 {
 	attr->bold = intblbool(L, ind, "bold");
@@ -437,21 +459,7 @@ static int tui_attr(lua_State* L)
 	if (lua_type(L, ci) == LUA_TTABLE)
 		apply_table(L, ci, &attr);
 
-	lua_newtable(L);
-
-/* key-integer value */
-#define SET_KIV(K, V) do { lua_pushstring(L, K); \
-	lua_pushnumber(L, V); lua_rawset(L, -3); } while (0)
-
-#define SET_BIV(K, V) do { lua_pushstring(L, K); \
-	lua_pushboolean(L, V); lua_rawset(L, -3); } while (0)
-
-	SET_KIV("fr", attr.fr); SET_KIV("fg", attr.fg); SET_KIV("fb", attr.fb);
-	SET_KIV("br", attr.br); SET_KIV("bg", attr.bg); SET_KIV("bb", attr.bb);
-	SET_BIV("bold", attr.bold); SET_BIV("underline", attr.underline);
-	SET_BIV("protect", attr.protect); SET_BIV("blink", attr.blink);
-	SET_BIV("strikethrough", attr.strikethrough);
-	SET_BIV("break", attr.shape_break); SET_KIV("id", attr.custom_id);
+	add_attr_tbl(L, attr);
 
 	return 1;
 }
@@ -459,13 +467,16 @@ static int tui_attr(lua_State* L)
 static int defattr(lua_State* L)
 {
 	TUI_UDATA;
-	struct tui_screen_attr attr = {};
+	if (lua_istable(L, 2)){
+		struct tui_screen_attr rattr = {};
+		apply_table(L, 2, &rattr);
+		add_attr_tbl(L,
+			arcan_tui_defattr(ib->tui, &rattr));
+	}
+	else
+		add_attr_tbl(L, arcan_tui_defattr(ib->tui, NULL));
 
-	if (lua_istable(L, 2))
-		apply_table(L, 2, &attr);
-
-	arcan_tui_defattr(ib->tui, &attr);
-	return 0;
+	return 1;
 }
 
 static int set_tabstop(lua_State* L)
