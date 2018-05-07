@@ -1,7 +1,7 @@
 /*
  TUI Lua Bindings
 
- Copyright (c) 2017, Bjorn Stahl
+ Copyright (c) 2017-2018, Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
@@ -54,9 +54,21 @@ struct tui_attr {
 	struct tui_screen_attr attr;
 };
 
+#ifdef ARCAN_LUA_TUI_DYNAMIC
+typedef void (* PLTUIEXPOSE)(lua_State*);
+static PLTUIEXPOSE tui_lua_expose;
+
+static bool arcan_tui_dynload(void*(*lookup)(void*, const char*), void* tag)
+{
+	return ( tui_lua_expose = lookup(tag, "tui_lua_expose") ) != NULL;
+}
+
+#else
+
 /*
  * apply/add the TUI/Lua bindings to a lua VM context
  */
 void tui_lua_expose(lua_State*);
+#endif
 
 #endif

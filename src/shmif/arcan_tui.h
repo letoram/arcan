@@ -1,7 +1,7 @@
 /*
  Arcan Text-Oriented User Interface Library
 
- Copyright (c) 2014-2017, Bjorn Stahl
+ Copyright (c) 2014-2018, Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
@@ -889,7 +889,8 @@ void arcan_tui_dimensions(struct tui_context*, size_t* rows, size_t* cols);
 /*
  * override the default attributes that apply to resets etc.
  */
-void arcan_tui_defattr(struct tui_context*, struct tui_screen_attr*);
+struct tui_screen_attr arcan_tui_defattr(
+	struct tui_context*, struct tui_screen_attr*);
 void arcan_tui_refinc(struct tui_context*);
 void arcan_tui_refdec(struct tui_context*);
 
@@ -943,7 +944,8 @@ typedef void (* PTUIMOVERIGHT)(struct tui_context*, size_t);
 typedef void (* PTUIMOVELINEEND)(struct tui_context*);
 typedef void (* PTUIMOVELINEHOME)(struct tui_context*);
 typedef void (* PTUIDIMENSIONS)(struct tui_context*, size_t*, size_t*);
-typedef void (* PTUIDEFATTR)(struct tui_context*, struct tui_screen_attr*);
+typedef struct tui_screen_attr
+	(* PTUIDEFATTR)(struct tui_context*, struct tui_screen_attr*);
 typedef void (* PTUIREFINC)(struct tui_context*);
 typedef void (* PTUIREFDEC)(struct tui_context*);
 typedef int (* PTUISETMARGINS)(struct tui_context*, size_t, size_t);
