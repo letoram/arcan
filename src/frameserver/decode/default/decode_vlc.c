@@ -1,22 +1,24 @@
 /*
  * Decode Reference Frameserver Archetype
- * Copyright 2014-2016, Björn Ståhl
+ * Copyright 2014-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
- * Depends: LibVLC (LGPL)
- * Description: Default VLC based player. Still in quite a terrible shape
- * with few features mapped - all missing:
- * subtitle control, subtitle as subsegment, playlists, descriptor passing,
- * stream switching, attenuation, accelerated handle passing,
- * mouse cursor handling for menu navigation, audio/video
- * filters, ssing still, accelerated audio passthrough control,
- * exposing chapters / titles, ...
+ * Depends: LibVLC (LGPL) LibUVC (optional)
+ * Description:
+ * This is a simple wrapper around libvlc player along with some added
+ * optionals over time. The purpose of the _decode step is not to be a
+ * fully fledged media player, but a 'good enough' decoder that can be
+ * used to throw things at and see what sticks for all the media cases
+ * where a full-spec player is not needed - it's a data source and not
+ * a player in itself.
  *
- * It is not certain if this is a good default to run with either due to the
- * horrible plugin/api/callback structure. A better future strategy would be
- * providing a more simple / lightweight decoder using only ffmpeg now that the
- * libav/debian fiasco is slowly fixing itself, and have an advanced version be
- * a player more in the lines of mpv, possibly with buffer passing as default.
+ * There are a number of 'good todos' here, the biggest one being to
+ * try and either squeeze GL textures out of VLC directly, or at least
+ * use that as transfer mechanism if we start with access to the gpu
+ * (extract from shmif_initial).
+ *
+ * This could probably be done by exposing ourselves as a plugin to
+ * vlc and set ourselves as the video output method.
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -36,6 +38,10 @@
 #include <arcan_shmif.h>
 #include <arcan_tuisym.h>
 #include "frameserver.h"
+
+#ifdef HAVE_UVC
+#include "uvc_support.h"
+#endif
 
 static struct {
 	libvlc_instance_t* vlc;
@@ -372,6 +378,11 @@ static void dump_help()
 		" width   \t outw      \t scale output to a specific width\n"
 		" height  \t outh      \t scale output to a specific height\n"
 		" loop    \t           \t reset playback upon completion\n"
+#ifdef HAVE_UVC
+		"---------\t-----------\t----------------\n");
+	uvc_append_help(stdout);
+	fprintf(stdout,
+#endif
 		"---------\t-----------\t----------------\n"
 	);
 }
@@ -546,6 +557,13 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			}
 	}
 
+#ifdef HAVE_UVC
+	if (arg_lookup(args, "capture", 0, &val)){
+		if (uvc_support_activate(cont, args))
+			return EXIT_SUCCESS;
+	}
+#endif
+
 	decctx.vlc = libvlc_new(COUNT_OF(vargs)-pad, vargs);
   if (decctx.vlc == NULL){
   	LOG("Couldn't initialize VLC session, giving up.\n");
@@ -564,6 +582,10 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
  * mode that propagates available ones upwards, otherwise we have the
  * semantics like; v4l2:// dshow:// qtcapture:// etc. */
 	else if (arg_lookup(args, "capture", 0, &val)){
+#ifdef HAVE_UVC_SUPPORT
+
+#endif
+
 		unsigned devind = 0;
 		int desw = 0, desh = 0;
 		float fps = -1;
