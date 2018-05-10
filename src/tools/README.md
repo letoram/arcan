@@ -4,6 +4,12 @@ This folder contains optional tools that extend or complement Arcan
 extending its feature-set or providing command-line wrappers for
 engine features.
 
+## Acfgfs
+This tools is built separately and provides a virtual filesystem
+for working with the format that durden (and others) provide over
+a domain socket as means of accessing configuration 'as a file'.
+It depends on FUSE3 and an OS that has an implementation for it.
+
 ## Aclip
 This tool is built separately and provides clipboard integration,
 similarly to how 'xclip' works for Xorg.
