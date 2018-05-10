@@ -2,13 +2,14 @@ For some build-environments where you want tight control over which dependencies
 that are linked statically / dynamically and how these libraries are configured,
 some additional measures are needed.
 
-On systems with the dependencies for [video/input platforms] fulfilled,
-the only needed libraries should be openctm, openal, freetype, sqlite3, and luajit.
+On systems with the dependencies for [video/input platforms] fulfilled, the only
+needed libraries should be openctm, openal, freetype, sqlite3, and lua51 or
+luajit.
 
 For openal/freetype/luajit, there is a bash script in external/git/clone.sh that
-downloads the repositories. CMake will check for the corresponding folders during
-configuration, and for the ones that are found, the normal FindModule will be
-side-stepped.
+clones the repositories needed for a static build. CMake will check for the
+corresponding folders during configuration, and for the ones that are found,
+the normal FindModule will be side-stepped.
 
 To set up manually, just make sure that the following git mapping is correct:
 
@@ -18,3 +19,7 @@ git://github.com/mirros/openal-soft.git external/openal
 
 Note that for OpenAL, only LWA will use the git mirror (in order to apply
 patches) by default. For regular arcan, -DSTATIC_OPENAL=ON must also be specified.
+
+The download script also includes 'libuvc' for portable USB based video camera
+support. This is not used unless explicitly built into the decode frameserver
+as a build-time option (default=Off).
