@@ -119,6 +119,22 @@ static void move_cursor(struct tsm_screen *con, unsigned int x, unsigned int y)
 	con->cursor_y = y;
 }
 
+/*
+ * this is to not age cells where there isn't a difference, saves some poor
+ * use of _clear screen + refresh even when a small portion has changed
+ */
+static void cell_init_chg(struct tsm_screen *con, struct cell *cell)
+{
+	if (cell->ch == 0 && tui_attr_equal(cell->attr, con->def_attr)){
+		return;
+	}
+
+	cell->ch = 0;
+	cell->width = 1;
+	cell->age = con->age_cnt;
+	memcpy(&cell->attr, &con->def_attr, sizeof(cell->attr));
+}
+
 static void cell_init(struct tsm_screen *con, struct cell *cell)
 {
 	cell->ch = 0;
@@ -448,7 +464,7 @@ void tsm_screen_erase_region(struct tsm_screen *con,
 			if (protect && line->cells[x_from].attr.protect)
 				continue;
 
-			cell_init(con, &line->cells[x_from]);
+			cell_init_chg(con, &line->cells[x_from]);
 		}
 		x_from = 0;
 	}
@@ -1711,8 +1727,8 @@ void tsm_screen_erase_chars(struct tsm_screen *con, unsigned int num)
 	else
 		x = con->cursor_x;
 
-	tsm_screen_erase_region(con, x, con->cursor_y, x + num - 1, con->cursor_y,
-			     false);
+	tsm_screen_erase_region(
+		con, x, con->cursor_y, x + num - 1, con->cursor_y, false);
 }
 
 SHL_EXPORT
@@ -1731,21 +1747,20 @@ void tsm_screen_erase_cursor_to_end(struct tsm_screen *con,
 	else
 		x = con->cursor_x;
 
-	tsm_screen_erase_region(con, x, con->cursor_y, con->size_x - 1,
-			     con->cursor_y, protect);
+	tsm_screen_erase_region(con,
+		x, con->cursor_y, con->size_x - 1, con->cursor_y, protect);
 }
 
 SHL_EXPORT
-void tsm_screen_erase_home_to_cursor(struct tsm_screen *con,
-					 bool protect)
+void tsm_screen_erase_home_to_cursor(struct tsm_screen *con, bool protect)
 {
 	if (!con)
 		return;
 
 	inc_age(con);
 
-	tsm_screen_erase_region(con, 0, con->cursor_y, con->cursor_x,
-			     con->cursor_y, protect);
+	tsm_screen_erase_region(con,
+		0, con->cursor_y, con->cursor_x, con->cursor_y, protect);
 }
 
 SHL_EXPORT
@@ -1757,8 +1772,8 @@ void tsm_screen_erase_current_line(struct tsm_screen *con,
 
 	inc_age(con);
 
-	tsm_screen_erase_region(con, 0, con->cursor_y, con->size_x - 1,
-			     con->cursor_y, protect);
+	tsm_screen_erase_region(con,
+		0, con->cursor_y, con->size_x - 1, con->cursor_y, protect);
 }
 
 SHL_EXPORT
@@ -1789,8 +1804,8 @@ void tsm_screen_erase_cursor_to_screen(struct tsm_screen *con,
 	else
 		x = con->cursor_x;
 
-	tsm_screen_erase_region(con, x, con->cursor_y, con->size_x - 1,
-			     con->size_y - 1, protect);
+	tsm_screen_erase_region(con,
+		x, con->cursor_y, con->size_x - 1, con->size_y - 1, protect);
 }
 
 SHL_EXPORT
@@ -1799,10 +1814,8 @@ void tsm_screen_erase_screen(struct tsm_screen *con, bool protect)
 	if (!con)
 		return;
 
-	inc_age(con);
-
-	tsm_screen_erase_region(con, 0, 0, con->size_x - 1, con->size_y - 1,
-			     protect);
+	tsm_screen_erase_region(con,
+		0, 0, con->size_x - 1, con->size_y - 1, protect);
 }
 
 /*

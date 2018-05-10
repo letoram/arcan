@@ -3332,27 +3332,25 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
  */
 void arcan_tui_erase_screen(struct tui_context* c, bool protect)
 {
-	if (c){
-		tsm_screen_inc_age(c->screen);
-		tsm_screen_erase_screen(c->screen, protect);
-	}
+	if (!c)
+		return;
+
+	tsm_screen_erase_screen(c->screen, protect);
 }
 
 void arcan_tui_erase_region(struct tui_context* c,
 	size_t x1, size_t y1, size_t x2, size_t y2, bool protect)
 {
-	if (c){
-		tsm_screen_inc_age(c->screen);
-		tsm_screen_erase_region(c->screen, x1, y1, x2, y2, protect);
-	}
+	if (!c)
+		return;
+
+	tsm_screen_erase_region(c->screen, x1, y1, x2, y2, protect);
 }
 
 void arcan_tui_erase_sb(struct tui_context* c)
 {
-	if (c){
-		tsm_screen_inc_age(c->screen);
+	if (!c)
 		tsm_screen_clear_sb(c->screen);
-	}
 }
 
 void arcan_tui_scrollhint(
@@ -3418,7 +3416,7 @@ void arcan_tui_ident(struct tui_context* c, const char* ident)
 }
 
 bool arcan_tui_writeu8(struct tui_context* c,
-	uint8_t* u8, size_t len, struct tui_screen_attr* attr)
+	const uint8_t* u8, size_t len, struct tui_screen_attr* attr)
 {
 	if (!(c && u8 && len > 0))
 		return false;
@@ -3431,6 +3429,13 @@ bool arcan_tui_writeu8(struct tui_context* c,
 		}
 	}
 	return true;
+}
+
+bool arcan_tui_writestr(struct tui_context* c,
+	const char* str, struct tui_screen_attr* attr)
+{
+	size_t len = strlen(str);
+	return arcan_tui_writeu8(c, (const uint8_t*) str, len, attr);
 }
 
 void arcan_tui_cursorpos(struct tui_context* c, size_t* x, size_t* y)
