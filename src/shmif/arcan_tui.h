@@ -249,6 +249,30 @@ struct tui_screen_attr {
 	uint8_t custom_id;
 };
 
+/* _Static_assert(sizeof(tui_screen_attr) == 8) */
+
+static inline bool tui_attr_equal(
+	struct tui_screen_attr a, struct tui_screen_attr b)
+{
+	return (
+		a.fr == b.fr &&
+		a.fg == b.fg &&
+		a.fb == b.fb &&
+		a.br == b.br &&
+		a.bg == b.bg &&
+		a.bb == b.bb &&
+		a.bold == b.bold &&
+		a.underline == b.underline &&
+		a.italic == b.italic &&
+		a.inverse == b.inverse &&
+		a.protect == b.protect &&
+		a.blink == b.blink &&
+		a.strikethrough == b.strikethrough &&
+		a.shape_break == b.shape_break &&
+		a.custom_id == b.custom_id
+	);
+}
+
 struct tui_cell {
 /* drawing properties */
 	struct tui_screen_attr attr;
@@ -436,6 +460,11 @@ struct tui_cbcfg {
 		const char* a3_country, const char* a3_language, void*);
 
 /*
+ * [EXPERIMENTAL]
+ * Marked as experimental due to the possibility of explicitly require a
+ * differently typed surface as the actual carrier (maybe a subseg
+ * with a media type acting as tileset would suffice..).
+ *
  * This is used to indicate that custom- drawn cells NEEDS to be updated
  * [invalidated=true], and to query if the specified regions has been updated
  * (return true). Use type-unique IDs and stick to continous regions as to not
@@ -687,8 +716,11 @@ void arcan_tui_wndhint(struct tui_context* wnd,
 	struct tui_context* par, int anch_row, int anch_col,
 	int wndflags);
 
-/* clear cells to default state, if protect toggle is set,
- * cells marked with a protected attribute will be ignored */
+/*
+ * Clear all cells (or cells not marked protected) to the default attribute.
+ * This MAY invalidate the entire screen for redraw. Prefer to only erase
+ * regions that should actually be cleared and updated.
+ */
 void arcan_tui_erase_screen(struct tui_context*, bool protect);
 void arcan_tui_erase_region(struct tui_context*,
 	size_t x1, size_t y1, size_t x2, size_t y2, bool protect);
@@ -734,19 +766,32 @@ bool arcan_tui_delete_screen(struct tui_context*, unsigned ind);
 uint32_t arcan_tui_screens(struct tui_context*);
 
 /*
- * insert a new UCS4* (tsm uses an internal format with a hash-table for
- * metadata, but UCS4 is acceptable right now) at the current cursor position
- * with the specified attribute mask.
+ * Insert a new unicode codepoint (expressed as UCS4) at the current cursor
+ * position. If an attribute is provided (!null) it will be used for the
+ * write operation, otherwise, the current default will be used.
  */
 void arcan_tui_write(struct tui_context*,
 	uint32_t ucode, struct tui_screen_attr*);
 
 /*
- * similar to insert UCS4*, but takes a utf8- string and converts it before
- * mapping to corresponding UCS4* inserts. Thus, _tui_write should be preferred
+ * (Helper function)
+ * This converts [n] bytes from [u8] as UTF-8 into multiple UCS4 writes.
+ * It is a more expensive form of arcan_tui_write. If the UTF-8 failed to
+ * validate completely, the function will return false - but codepoints
+ * leading up to the failed sequence may have already been written. If all
+ * [n] bytes were consumed, the function returns true.
  */
 bool arcan_tui_writeu8(struct tui_context*,
-	uint8_t* u8, size_t, struct tui_screen_attr*);
+	const uint8_t* u8, size_t n, struct tui_screen_attr*);
+
+/*
+ * (Helper function)
+ * This calculates the length of the provided character array and forwards
+ * into arcan_tui_writeu8, same encoding and return rules apply.
+ */
+bool arcan_tui_writestr(
+	struct tui_context*, const char* str, struct tui_screen_attr*);
+
 
 /*
  * retrieve the current cursor position into the [x:col] and [y:row] field
@@ -916,7 +961,8 @@ typedef bool (* PTUISWSCR)(struct tui_context*, unsigned);
 typedef bool (* PTUIDELSCR)(struct tui_context*, unsigned);
 typedef uint32_t (* PTUISCREENS)(struct tui_context*);
 typedef void (* PTUIWRITE)(struct tui_context*, uint32_t, struct tui_screen_attr*);
-typedef bool (* PTUIWRITEU8)(struct tui_context*, uint8_t*, size_t, struct tui_screen_attr*);
+typedef bool (* PTUIWRITEU8)(struct tui_context*, const uint8_t*, size_t, struct tui_screen_attr*);
+typedef bool (* PTUIWRITESTR)(struct tui_context*, const char*, struct tui_screen_attr*);
 typedef void (* PTUICURSORPOS)(struct tui_context*, size_t*, size_t*);
 typedef void (* PTUIGETCOLOR)(struct tui_context* tui, int, uint8_t*);
 typedef void (* PTUISETCOLOR)(struct tui_context* tui, int, uint8_t*);
@@ -982,6 +1028,7 @@ static PTUIDELSCR arcan_tui_delete_screen;
 static PTUISCREENS arcan_tui_screens;
 static PTUIWRITE arcan_tui_write;
 static PTUIWRITEU8 arcan_tui_writeu8;
+static PTUIWRITESTR arcan_tui_writestr;
 static PTUICURSORPOS arcan_tui_cursorpos;
 static PTUIGETCOLOR arcan_tui_get_color;
 static PTUISETCOLOR arcan_tui_set_color;
@@ -1049,6 +1096,7 @@ M(PTUIDELSCR,arcan_tui_delete_screen);
 M(PTUISCREENS,arcan_tui_screens);
 M(PTUIWRITE,arcan_tui_write);
 M(PTUIWRITEU8,arcan_tui_writeu8);
+M(PTUIWRITESTR,arcan_tui_writestr);
 M(PTUICURSORPOS,arcan_tui_cursorpos);
 M(PTUIGETCOLOR,arcan_tui_get_color);
 M(PTUISETCOLOR,arcan_tui_set_color);
