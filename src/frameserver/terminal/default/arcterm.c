@@ -20,7 +20,7 @@ static struct {
 	pid_t child;
 
 	bool alive;
-	int cap_refresh;
+	long last_input;
 } term;
 
 static inline void trace(const char* msg, ...)
@@ -48,7 +48,12 @@ void pump_pty()
 		else if (rv == -EAGAIN){
 			continue;
 		}
-		else break;
+		else if (rv > 0){
+			term.last_input = arcan_timemillis();
+			break;
+		}
+		else
+			break;
 	}
 }
 
@@ -142,7 +147,6 @@ static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 	if (shl_pty_write(term.pty, (char*) buf, len) < 0)
 		term.alive = false;
 
-	//term.cap_refresh = 8;
 	return true;
 }
 
@@ -151,7 +155,6 @@ static void on_utf8_paste(struct tui_context* c,
 {
 	trace("utf8-paste(%s):%d", str, (int) cont);
 	tsm_vte_paste(term.vte, (char*)str, len);
-	//term.cap_refresh = 8;
 }
 
 static unsigned long long last_frame;
@@ -320,10 +323,14 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 /* 24 ms + font rendering time should put us at a passive refresh rate of
  * about 30Hz, then we short this if we get keyboard input */
-	int def_refresh = 24;
+	int cap_refresh = 24;
+	int cap_timeout = 200;
 
 	if (arg_lookup(args, "min_upd", 0, &val))
-		def_refresh = strtol(val, NULL, 10);
+		cap_refresh = strtol(val, NULL, 10);
+
+	if (arg_lookup(args, "min_wait", 0, &val))
+		cap_timeout = strtol(val, NULL, 10);
 
 	struct tui_cbcfg cbcfg = {
 		.input_mouse_motion = on_mouse_motion,
@@ -334,7 +341,10 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.resized = on_resize,
 		.subwindow = on_subwindow,
 		.exec_state = on_exec_state
-//		.substitute = on_subst
+/*
+ * for advanced rendering, but not that interesting
+ * .substitute = on_subst
+ */
 	};
 
 	struct tui_settings cfg = arcan_tui_defaults(con, NULL);
@@ -434,21 +444,26 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	while (term.alive){
 		do {
 			int delta = arcan_timemillis() - last_frame;
-			if (delta < term.cap_refresh)
-				delta = term.cap_refresh - delta;
+			if (delta < cap_refresh)
+				delta = cap_refresh - delta;
 			else
 				delta = 0;
 
+			int ptyfd = shl_pty_get_fd(term.pty);
 			pump_pty();
-			struct tui_process_res res = arcan_tui_process(&term.screen, 1, NULL, 0, delta);
+			struct tui_process_res res =
+				arcan_tui_process(&term.screen, 1, &ptyfd, 1, delta);
+
 			if (res.errc < TUI_ERRC_OK || res.bad){
 				goto out;
 			}
 		}
-		while (arcan_timemillis() - last_frame < term.cap_refresh);
+		while (
+			arcan_timemillis() - term.last_input < cap_refresh &&
+			arcan_timemillis() - last_frame < cap_timeout
+		);
 
 /* and on an actually successful update, reset the user-input flag and timing */
-		pump_pty();
 		int rc = arcan_tui_refresh(term.screen);
 		tsm_vte_update_debug(term.vte);
 
@@ -456,8 +471,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 			last_frame = arcan_timemillis();
 		else if (rc == -1 && (errno == EINVAL))
 			break;
-
-		term.cap_refresh = def_refresh;
 	}
 
 /* might have been destroyed already, just in case */
