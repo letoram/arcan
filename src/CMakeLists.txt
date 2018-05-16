@@ -124,7 +124,7 @@ option(ENABLE_SIMD_ALIGNED "Assert that SIMD data sources are 16-byte aligned" O
 
 amsg("")
 amsg("${CL_WHT}Audio/Video/Input Support:")
-amsg("${CL_YEL}(req.)\t-DVIDEO_PLATFORM=${CL_GRN}${VPLATFORM_STR}${CL_RST}")
+amsg("${CL_YEL}\t-DVIDEO_PLATFORM=${CL_GRN}${VPLATFORM_STR}${CL_RST}")
 amsg("${CL_YEL}\t-DAGP_PLATFORM=${CL_GRN}${AGPPLATFORM_STR}${CL_RST}")
 amsg("")
 amsg("${CL_WHT}Cmake Options:${CL_RST}")
@@ -148,8 +148,8 @@ amsg("${CL_YEL}\t-DNO_FSRV=${CL_GRN}[Off|On]${CL_RST} - Build Arcan without supp
 amsg("${CL_YEL}\t-DSHMIF_TUI_ACCEL=${CL_GRN}[Off|On]${CL_RST} - Build Tui with GPU support (ARCAN_ARG=accel=1)")
 amsg("")
 amsg("${CL_WHT}Frameserver flags:${CL_RST}")
-amsg("${CL_WHT}Decode:\${CL_RST}")
-amsg("${CL_YEL}\t-DFSRV_DECODE_UVC={$CL_GRN}[Off|On]${CL_RST} - Add support for libuvc- USB video camera")
+amsg("${CL_WHT}Decode:${CL_RST}")
+amsg("${CL_YEL}\t-DFSRV_DECODE_UVC=${CL_GRN}[Off|On]${CL_RST} - Add support for libuvc- UB video camera")
 amsg("")
 amsg("${CL_WHT}Install / Autodetection Overrides:${CL_RST}")
 amsg("${CL_YEL}\t-D(DISABLE_FSRV_ (encode, decode, net, remoting, terminal, game)=ON ${CL_RST}")
@@ -387,7 +387,7 @@ if (NOT DISABLE_JIT)
 endif()
 
 if (NOT LUA_LIBRARY OR DISABLE_JIT AND NOT BUILTIN_LUA)
-	find_package(Lua51 QUIET)
+	find_package(Lua51 QUIET REQUIRED)
 endif()
 
 if (NOT LUA_LIBRARIES OR BUILTIN_LUA)
