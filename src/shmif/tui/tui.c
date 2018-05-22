@@ -273,7 +273,7 @@ char* arcan_tui_statedescr(struct tui_context* tui)
 		"scroll-lock: %d "
 		"rows: %d cols: %d cell_w: %d cell_h: %d pad_w: %d pad_h: %d "
 		"ppcm: %f font_sz: %f font_sz_delta: %d hint: %d bmp: %d "
-		"scrollback: %d sbofs: %d inscroll: %d "
+		"scrollback: %d sbofs: %d inscroll: %d backlog: %d "
 		"mods: %d iact: %d "
 		"cursor_x: %d cursor_y: %d off: %d hard_off: %d period: %d "
 		"(screen)age: %d margin_top: %u margin_bottom: %u "
@@ -282,7 +282,7 @@ char* arcan_tui_statedescr(struct tui_context* tui)
 		(int) tui->scroll_lock,
 		tui->rows, tui->cols, tui->cell_w, tui->cell_h, tui->pad_w, tui->pad_h,
 		tui->ppcm, tui->font_sz, tui->font_sz_delta, tui->hint, tui->force_bitmap,
-		tui->scrollback, tui->sbofs, tui->in_scroll,
+		tui->scrollback, tui->sbofs, tui->in_scroll, tui->scroll_backlog,
 		tui->modifiers, tui->inact_timer,
 		tui->cursor_x, tui->cursor_y,
 		tui->cursor_off, tui->cursor_hard_off, tui->cursor_period,
@@ -1121,6 +1121,9 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 
 static bool page_up(struct tui_context* tui)
 {
+	if (!tui || (tui->flags & TUI_ALTERNATE))
+		return true;
+
 	tui->cursor_upd = true;
 	tui->cursor_off = true;
 	tui->sbofs += tui->rows;
@@ -1130,6 +1133,9 @@ static bool page_up(struct tui_context* tui)
 
 static bool page_down(struct tui_context* tui)
 {
+	if (!tui || (tui->flags & TUI_ALTERNATE))
+		return true;
+
 	if (tui->sbofs > 0){
 		tui->sbofs -= tui->rows;
 		tui->sbofs = tui->sbofs < 0 ? 0 : tui->sbofs;
@@ -1175,6 +1181,9 @@ static bool copy_window(struct tui_context* tui)
 
 static bool scroll_up(struct tui_context* tui)
 {
+	if (!tui || (tui->flags & TUI_ALTERNATE))
+		return true;
+
 	int nf = mod_to_scroll(tui->modifiers, tui->rows);
 	arcan_tui_scroll_up(tui, nf);
 	tui->sbofs += nf;
@@ -1183,6 +1192,9 @@ static bool scroll_up(struct tui_context* tui)
 
 static bool scroll_down(struct tui_context* tui)
 {
+	if (!tui || (tui->flags & TUI_ALTERNATE))
+		return true;
+
 	int nf = mod_to_scroll(tui->modifiers, tui->rows);
 	if (tui->sbofs > 0){
 		arcan_tui_scroll_down(tui, nf);
@@ -3527,7 +3539,12 @@ int arcan_tui_set_flags(struct tui_context* c, int flags)
 		flag_cursor(c);
 
 	tsm_screen_set_flags(c->screen, flags);
-	return (int) tsm_screen_get_flags(c->screen);
+	c->flags = tsm_screen_get_flags(c->screen);
+
+	if (c->flags & TUI_ALTERNATE)
+		tsm_screen_sb_reset(c->screen);
+
+	return (int) c->flags;
 }
 
 void arcan_tui_reset_flags(struct tui_context* c, int flags)
@@ -3595,7 +3612,8 @@ void arcan_tui_tab_left(struct tui_context* c, size_t n)
 
 void arcan_tui_scroll_up(struct tui_context* c, size_t n)
 {
-	if (!c) return;
+	if (!c || (c->flags & TUI_ALTERNATE))
+		return;
 
 	int ss = tsm_screen_sb_up(c->screen, n);
 	if (c->smooth_scroll && ss)
@@ -3606,7 +3624,9 @@ void arcan_tui_scroll_up(struct tui_context* c, size_t n)
 
 void arcan_tui_scroll_down(struct tui_context* c, size_t n)
 {
-	if (!c) return;
+	if (!c || (c->flags & TUI_ALTERNATE))
+		return;
+
 	int ss = tsm_screen_sb_down(c->screen, n);
 	if (c->smooth_scroll && ss)
 		c->scroll_backlog += ss;
