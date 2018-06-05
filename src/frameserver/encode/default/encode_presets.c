@@ -379,7 +379,7 @@ struct codec_ent encode_getvcodec(const char* const req, int flags)
 
 	a.storage.video.context = avcodec_alloc_context3( a.storage.video.codec );
 	if (flags & AVFMT_GLOBALHEADER)
-		a.storage.video.context->flags |= CODEC_FLAG_GLOBAL_HEADER;
+		a.storage.video.context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
 	return a;
 }
@@ -397,7 +397,7 @@ struct codec_ent encode_getacodec(const char* const req, int flags)
 
 	res.storage.audio.context = avcodec_alloc_context3( res.storage.audio.codec);
 	if ( (flags & AVFMT_GLOBALHEADER) > 0){
-		res.storage.audio.context->flags |= CODEC_FLAG_GLOBAL_HEADER;
+		res.storage.audio.context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 	}
 
 	return res;
