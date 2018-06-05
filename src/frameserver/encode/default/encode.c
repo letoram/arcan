@@ -1,6 +1,6 @@
 /*
  * Encode reference frameserver archetype
- * Copyright 2012-2016, Björn Ståhl
+ * Copyright 2012-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Depends: FFMPEG (GPLv2,v3,LGPL)
@@ -298,8 +298,8 @@ forceencode:
  * and then re-use the encode / conversion code
  */
 		if (!forcetog &&
-			((ctx->flags & CODEC_CAP_SMALL_LAST_FRAME) > 0 ||
-				(ctx->flags & CODEC_CAP_VARIABLE_FRAME_SIZE) > 0)){
+			((ctx->flags & AV_CODEC_CAP_SMALL_LAST_FRAME) > 0 ||
+				(ctx->flags & AV_CODEC_CAP_VARIABLE_FRAME_SIZE) > 0)){
 			recctx.aframe_insz = recctx.encabuf_ofs;
 			recctx.aframe_smplcnt = recctx.aframe_insz >> 2;
 			frame = av_frame_alloc();
@@ -309,7 +309,7 @@ forceencode:
 			goto forceencode;
 		}
 
-		if ( (ctx->flags & CODEC_CAP_DELAY) > 0 ){
+		if ( (ctx->flags & AV_CODEC_CAP_DELAY) > 0 ){
 			int gotpkt;
 			do {
 				AVPacket flushpkt = {0};
@@ -509,19 +509,11 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 #endif
 	av_log_set_callback(log_callback);
 
-	static bool initialized = false;
-
 	if (desw % 2 != 0 || desh % 2 != 0){
 		LOG("(encode) source image format (%"PRIu16" * %"PRIu16") must be evenly"
 		"	divisible by 2.\n", shared->w, shared->h);
 
 		return false;
-	}
-
-	if (!initialized){
-		avcodec_register_all();
-		av_register_all();
-		initialized = true;
 	}
 
 /* codec stdvals, these may be overridden by the codec- options,
@@ -638,7 +630,7 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
  * for float conversion, we need to double afterwards
  */
 
-			if ( (recctx.acodec->capabilities & CODEC_CAP_VARIABLE_FRAME_SIZE) > 0){
+			if ( (recctx.acodec->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE) > 0){
 				recctx.aframe_smplcnt = recctx.acontext->frame_size ?
 					recctx.acontext->frame_size : round( samplerate / fps );
 			}
@@ -731,9 +723,10 @@ int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 		if (ev.category == EVENT_TARGET){
 			switch (ev.tgt.kind){
-/* nothing happens until the first FDtransfer, and consequtive ones should
- * really only be "useful" in streaming situations, and perhaps not even there,
- * so consider that scenario untested */
+
+/* on the first one, we get the target for storage - but there is also the case
+ * where we get a DEVICEHINT (extend to accelerated) and then zero-copy platform
+ * handles if/where supported */
 			case TARGET_COMMAND_STORE:
 				recctx.lastfd = dup(ev.tgt.ioevs[0].iv);
 				LOG("received file-descriptor, setting up encoder.\n");
