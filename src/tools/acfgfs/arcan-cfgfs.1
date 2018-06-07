@@ -1,0 +1,61 @@
+.\" groff -man -Tascii aclip.1
+.TH arcan-cfgfs 1 "May 2018" arcan-cfgfs "User manual"
+.SH NAME
+arcan-cfgfs \- FUSE file system driver for window manager automation
+.SH SYNOPSIS
+.B arcan-cfgfs [OPTIONS] --control=/path/to/control /path/to/mount
+
+.SH DESCRIPTION
+This tool provides a FUSE (userspace filesystem) module for the simple line
+protocol used by durden and other window managers to provide an interface
+for external control and testing. It is still in an early stage, and breaking
+changes might occur.
+
+The contents of the filesystem will vary with the window manager, and some
+configuration in the window manager itself might be needed for the feature
+to be accessible.
+
+.SH PERFORMANCE NOTES
+At the moment, this is quite slow. The actual response time of the commands
+will vary with the refresh rate of the display. There are two big factors that
+contribute to this problem, one fixable and another inherent to the design.
+
+The inherent problem is that all filesystem operations are aligned to the state
+of the active output displays. Since there is an intimate relationship between
+the GPU, its displays and the active arcan window manager, many operations
+depend on asynchronous operations on the GPU. To avoid triggering undefined
+behaviors in the GL graphics API or causing severe performance degradation due
+to artificially triggered pipeline stalls, virtual file system operations are
+deferred until a point where current pipeline has been synchronized with the
+output displays.
+
+The other problem is that the FUSE driver itself is very poor at caching
+lookups. This means that actions such as listing a directory may contain
+multiple operations that will repeatedly run into the synchronization problem
+above.
+
+.SH SECURITY
+Since this tool can be used to automate and explore contents of the active
+window manager, it has far reaching privacy and security implications. It is up
+to the user to make sure that only the ones that should have this capability
+has access to the mount point and the file system.
+
+.SH OPTIONS
+All arguments can be listed via the '-h' or '--help' command line switch,
+the exact details will vary with the FUSE implementation on your system.
+
+There is one necessary argument, and that is --control. This should point to
+the control domain socket used by the window manager to implement the
+underlying protocol and data format.
+
+.SH TYPICAL-USE
+
+.B arcan-cfgfs --control=/home/void/.arcan/appl-out/durden/ipc/control /mnt/desktop
+
+.SH COPYRIGHT
+Copyright  ©  2018 Bjorn Stahl. 3-clause BSD licensed. This is free software:
+you are free  to  change and redistribute it. There is NO WARRANTY,
+to the extent permitted by law.
+
+.SH AUTHOR
+Bjorn Stahl <contact at arcan-fe dot com>
