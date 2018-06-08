@@ -418,7 +418,7 @@ int main(int argc, char *argv[])
 	if (fuse_opt_parse(&args, &options, option_spec, NULL) == -1)
 		return 1;
 
-	if (!options.control){
+	if (!options.control || !(options.control = realpath(options.control, NULL))){
 		fprintf(stderr, "control socket missing, use --control=/path/to/control\n");
 		return EXIT_FAILURE;
 	}
