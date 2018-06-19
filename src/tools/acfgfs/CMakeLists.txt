@@ -1,4 +1,4 @@
-PROJECT( arcan-cfgfs )
+PROJECT( arcan_cfgfs )
 cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/cmake/modules)
 
@@ -35,7 +35,7 @@ install(TARGETS ${PROJECT_NAME} DESTINATION bin)
 target_include_directories(${PROJECT_NAME} PUBLIC ${ARCAN_SHMIF_INCLUDE_DIR} ${FUSE3_INCLUDE_DIRS})
 
 if (CMAKE_SYSTEM_NAME MATCHES "(FreeBSD|NetBSD|OpenBSD)")
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/arcan-cfgfs.1 DESTINATION man/man1)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/arcan_cfgfs.1 DESTINATION man/man1)
 else()
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/arcan-cfgfs.1 DESTINATION share/man/man1)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/arcan_cfgfs.1 DESTINATION share/man/man1)
 endif()
