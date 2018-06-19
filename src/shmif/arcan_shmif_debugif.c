@@ -4,6 +4,8 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <ctype.h>
+#include <limits.h>
+#include <poll.h>
 
 /*
  * ideally all this would be fork/asynch-signal safe
@@ -41,6 +43,7 @@ struct menu_ent {
 	const char* label;
 	char shortcut;
 	const char* menukey;
+	uint64_t tag;
 	void (*action)(struct debug_ctx*, struct menu_ent* self);
 	bool (*eval)(struct debug_ctx*, struct menu_ent* self);
 	struct tui_cbcfg handlers;
@@ -75,9 +78,23 @@ static void menu_refresh(struct tui_context* c, struct menu_ctx* dst)
 	arcan_tui_get_color(c, TUI_COL_BG, attr.bc);
 	arcan_tui_erase_screen(c, false);
 
+	size_t rows, cols;
+	arcan_tui_dimensions(c, &rows, &cols);
+
+/* fixme, dynamic content refresh? */
+
+/* clamp cursor to current set- size */
+
 /* simple path: no paging. */
-	if (dst->n_entries){
+	size_t sofs = 0;
+	if (dst->n_entries < rows){
 	}
+	else{
+/* otherwise, find which page the current position puts us at */
+	}
+
+/* write each row (we're in nowrap, nocursor) and pick attr based on
+ * highlight status */
 }
 
 static void menu_key(struct tui_context* c, uint32_t keysym,
@@ -85,6 +102,7 @@ static void menu_key(struct tui_context* c, uint32_t keysym,
 {
 	struct menu_ctx* dst = t;
 	int last_pos = dst->position;
+	printf("input: %d\n", keysym);
 
 	if (keysym == TUIK_J || keysym == TUIK_DOWN){
 		dst->position = (dst->position + 1) % dst->n_entries;
@@ -131,7 +149,7 @@ static bool run_menu(struct debug_ctx* ctx,
 	}
 
 	for (size_t i = 0; i < n_menu; i++){
-		if (menu[i].eval && menu[i].eval(ctx, &menu[i])){
+		if (!menu[i].eval || menu[i].eval(ctx, &menu[i])){
 			menuflt[n_flt++] = menu[i];
 		}
 	}
@@ -179,10 +197,12 @@ static void* debug_thread(void* thr)
 		return NULL;
 	}
 
+	run_menu(dctx, root, n_root, NULL);
+
 /* normal event->cb dispatch loop, menu navigation is used to
  * mutate the meaning of the debug window and the set of applicable
  * handlers */
-	while (1){
+	while (dctx->tui){
 		struct tui_process_res res =
 			arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
 
@@ -267,7 +287,7 @@ static bool fd_redirect(struct debug_ctx* dctx, int fd)
 
 	if (-1 == dup2(fd, fd_copy)){
 /* really not much of an escape from this without maybe some fork
- * magic, we broke stderr - sorry */
+ * magic, we broke the fd - sorry */
 		return false;
 	}
 
@@ -275,26 +295,71 @@ static bool fd_redirect(struct debug_ctx* dctx, int fd)
 
 }
 
-void intercept_stderr(struct debug_ctx* ctx, struct menu_ent* self)
+static void intercept_fdent(struct debug_ctx* ctx, struct menu_ent* self)
 {
+
 }
 
-void interactive_fd_menu(struct debug_ctx* ctx, struct menu_ent* self)
+static void build_fd_menu(struct debug_ctx* ctx, struct menu_ent* self)
 {
-	static struct menu_ent menut[] = {
-	{
-		.label = "stderr",
-		.shortcut = '2',
-		.action = intercept_stderr
+/* to avoid relying on proc and so on for probing file descriptors,
+ * we go with just building a big pollset, and just check which ones
+ * are nval */
+	struct rlimit rlim;
+	int lim = 512;
+	if (0 == getrlimit(RLIMIT_NOFILE, &rlim))
+		lim = rlim.rlim_cur;
+	size_t fds_sz = sizeof(struct pollfd) * lim;
+	struct pollfd* fds = malloc(fds_sz);
+	if (!fds)
+		return;
+
+	memset(fds, '\0', fds_sz);
+
+	for (size_t i = 0; i < lim; i++)
+		fds[i].fd = i;
+
+	size_t nfd = 0;
+	poll(fds, lim, 0);
+	for (size_t i = 0; i <lim; i++)
+		if (!(fds[i].revents & POLLNVAL))
+			nfd++;
+
+/* more hazzle here since it is a dynamic menu that calls for dynamic
+ * deallocation, so we don't go through run_menu but rather just mimic */
+	size_t nent = nfd + 1;
+	struct menu_ent* new_menu = malloc(sizeof(struct menu_ent) * nent);
+	nent = 0;
+	if (!new_menu){
+		free(fds);
+		return;
 	}
+
+	for (size_t i = 0; i < lim; i++){
+		if (fds[i].revents & POLLNVAL)
+			continue;
+
+		new_menu[nent++] = (struct menu_ent){
+		};
+	}
+
+	struct menu_ctx* menuctx = malloc(sizeof(struct menu_ctx));
+	if (!menuctx)
+		return;
+
+	*menuctx = (struct menu_ctx){
+		.debugctx = ctx,
+		.entries = new_menu,
 	};
 
-/* can use the "huge pollset" trick to get a list of open descriptors */
+	free(fds);
 }
 
-void passive_fd_menu(struct debug_ctx* ctx, struct menu_ent* self)
+static bool eval_senseye(struct debug_ctx* ctx, struct menu_ent* self)
 {
-
+/* check for the senseye-rwstat support library and use that to add
+ * support for sense-mem and sense-file like behavior */
+	return false;
 }
 
 /* ---------------- MENU DEFINITIONS BELOW --------------------- */
@@ -303,12 +368,21 @@ static struct menu_ent fd_menu[] = {
 {
 	.label = "Active",
 	.shortcut = 'a',
-	.action = interactive_fd_menu
+	.tag = 1,
+	.action = build_fd_menu
 },
 {
 	.label = "Passive",
 	.shortcut = 'p',
-	.action = passive_fd_menu
+	.tag = 0,
+	.action = build_fd_menu
+},
+{
+	.label = "Senseye",
+	.shortcut = 's',
+	.tag = 2,
+	.action = build_fd_menu,
+	.eval = eval_senseye
 }
 };
 
@@ -320,6 +394,9 @@ static struct menu_ent root_menu[] = {
 }
 /*
  * debugger
+ *  -> OS specific prctls etc. to allow easy attach, then spawn process
+ *     with the right attachment? (possible fork + sleep + signal + ...
+ *
  * memory (live / snapshot)
  * process (snapshot)
  */

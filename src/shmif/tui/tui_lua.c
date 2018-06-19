@@ -1135,7 +1135,8 @@ void tui_lua_expose(lua_State* L)
 	{"warning", TUI_COL_WARNING},
 	{"error", TUI_COL_ERROR},
 	{"alert", TUI_COL_ALERT},
-	{"inactive", TUI_COL_INACTIVE}
+	{"inactive", TUI_COL_INACTIVE},
+	{"reference", TUI_COL_REFERENCE}
 	};
 
 	lua_newtable(L);
