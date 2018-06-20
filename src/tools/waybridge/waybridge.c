@@ -993,7 +993,8 @@ static void sigchld_handler()
 int main(int argc, char* argv[])
 {
 	struct arg_arr* aarr;
-	char dtemp_prefix[] = "/tmp/awl_XXXXXX";
+	char def_prefix[] = "/tmp/awl_XXXXXX";
+	char* dtemp_prefix = def_prefix;
 	int exit_code = EXIT_SUCCESS;
 	int force_width = 0;
 	int force_height = 0;
@@ -1042,6 +1043,18 @@ int main(int argc, char* argv[])
 			}
 			arg_i++;
 			wl.trace_log = strtoul(argv[arg_i], NULL, 10);
+		}
+		else if (strcmp(argv[arg_i], "-prefix") == 0){
+			if (arg_i == argc-1){
+				return show_use("missing path to prefix path", "");
+			}
+			arg_i++;
+			dtemp_prefix = argv[arg_i];
+			size_t len = strlen(dtemp_prefix);
+			if (strlen(len) <= 7 ||
+				strcmp(dtemp_prefix[len-7], "XXXXXX") != 0){
+				return show_use("prefix path must end with XXXXXX");
+			}
 		}
 		else if (strcmp(argv[arg_i], "-dir") == 0){
 			if (arg_i == argc-1){
