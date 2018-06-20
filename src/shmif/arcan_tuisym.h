@@ -87,20 +87,46 @@ enum tui_subwnd_type {
  * abstract groups.
  */
 enum tui_color_group {
-/* 0 / 1 are reserved */
+/* 0 / 1 are reserved values */
+
+/* Primary and secondary colors are hints to a caller that have preset colors
+ * to chose from and want guidance on which ones to pick. */
 	TUI_COL_PRIMARY = 2,
 	TUI_COL_SECONDARY,
+
+/* the reference background color */
 	TUI_COL_BG,
+
+/* majority of text */
 	TUI_COL_TEXT,
+
+/* cursor in two states, normal (client interprets combinations) and
+ * 'alternate' where defaults take presedence */
 	TUI_COL_CURSOR,
 	TUI_COL_ALTCURSOR,
+
+/* text that indicate some form of marking/selection status */
 	TUI_COL_HIGHLIGHT,
+
+/* type/category indicators */
 	TUI_COL_LABEL,
+
+/* three levels of special colors for trying to get user attention to some
+ * relevant (warning) important (error) or serious (alert) content change */
 	TUI_COL_WARNING,
 	TUI_COL_ERROR,
 	TUI_COL_ALERT,
+
+/* color to indicate content that reference some external data or navigation
+ * option, should work well with highlight (selection status) and inactive
+ * (known reference but currently inaccessible) */
+	TUI_COL_REFERENCE,
+
+/* the other side of 'highlight' indicating something that could normally
+ * have been highlighted but is inaccessible for some reason */
 	TUI_COL_INACTIVE
-};
+}
+;
 
 enum tui_cursors {
 	CURSOR_BLOCK = 0,
