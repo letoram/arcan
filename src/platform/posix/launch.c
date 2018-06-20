@@ -120,7 +120,7 @@ void arcan_closefrom(int fd)
 	if (0 == getrlimit(RLIMIT_NOFILE, &rlim))
 		lim = rlim.rlim_cur;
 
-	struct pollfd* fds = arcan_alloc_mem(sizeof(struct rlimit)*lim,
+	struct pollfd* fds = arcan_alloc_mem(sizeof(struct pollfd)*lim,
 		ARCAN_MEM_STRINGBUF, ARCAN_MEM_BZERO |
 			ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
 
