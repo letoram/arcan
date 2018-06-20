@@ -3173,6 +3173,32 @@ bool arcan_tui_delete_screen(struct tui_context* ctx, unsigned ind)
  */
 static void set_builtin_palette(struct tui_context* ctx)
 {
+	ctx->colors[TUI_COL_CURSOR].rgb = (uint8_t)[3]{0, 0, 0};
+	ctz->colors[TUI_COL_HIGHLIGHT].rgb = (uint8_t)[3]{0, 0, 0};
+	ctx->colors[TUI_COL_BACKGROUND].rgb = (uint8_t)[3]{0, 0, 0};
+	ctx->colors[TUI_COL_PRIMARY].rgb = (uint8_t)[3]{0, 0, 0};
+	ctx->colors[TUI_COL_SECONDARY].rgb = (uint8_t)[3]{0, 0, 0};
+	ctx->colors[TUI_COL_TEXT].rgb = (uint8_t)[3]{0, 0, 0};
+	ctx->colors[TUI_COL_LABEL].rgb = (uint8_t)[3]{0, 0, 0};
+	ctx->colors[TUI_COL_WARNING].rgb = (uint8_t)[3]{0, 0, 0};
+	ctx->colors[TUI_COL_ERROR].rgb = (uint8_t)[3]{0, 0, 0};
+	ctx->colors[TUI_COL_ALERT].rgb = (uint8_t)[3]{0, 0, 0};
+	ctx->colors[TUI_COL_INACTIVE].rgb = (uint8_t)[3]{0, 0, 0};
+
+/* "window" : 2b2b2b
+ * background: 212121
+ * foreground: dddddd
+ * base: 131313
+ * alternate-base: 42403b
+ * light: 444444
+ * midlight: 333333
+ * button: 292929
+ * mid: 252525
+ * dark: 202020
+ * shadow: 1d1d1d1d
+ * highlight: 268bd2
+ */
+
 /* index 2+:
  * PRIMARY, SECONDARY, BG, TEXT, CURSOR, ALTCURSOR, HIGHLIGHT,
  * LABEL, WARNING, ERROR, ALERT, INACTIVE
