@@ -124,6 +124,10 @@ typedef void (*tui_draw_fun)(
  * data gets copy/pasted */
 static volatile _Atomic int paste_destination = -1;
 
+struct color {
+	uint8_t rgb[3];
+};
+
 struct tui_context;
 struct tui_context {
 /* cfg->nal / state control */
@@ -232,9 +236,7 @@ struct tui_context {
 	int modifiers;
 	bool got_custom; /* track if we have any on-screen dynamic cells */
 
-	struct {
-		uint8_t rgb[3];
-	} colors[TUI_COL_INACTIVE];
+	struct color colors[TUI_COL_INACTIVE+1];
 
 	int cursor_x, cursor_y; /* last cached position */
 	bool cursor_off; /* current blink state */
@@ -3173,36 +3175,19 @@ bool arcan_tui_delete_screen(struct tui_context* ctx, unsigned ind)
  */
 static void set_builtin_palette(struct tui_context* ctx)
 {
-	ctx->colors[TUI_COL_CURSOR].rgb = (uint8_t)[3]{0, 0, 0};
-	ctz->colors[TUI_COL_HIGHLIGHT].rgb = (uint8_t)[3]{0, 0, 0};
-	ctx->colors[TUI_COL_BACKGROUND].rgb = (uint8_t)[3]{0, 0, 0};
-	ctx->colors[TUI_COL_PRIMARY].rgb = (uint8_t)[3]{0, 0, 0};
-	ctx->colors[TUI_COL_SECONDARY].rgb = (uint8_t)[3]{0, 0, 0};
-	ctx->colors[TUI_COL_TEXT].rgb = (uint8_t)[3]{0, 0, 0};
-	ctx->colors[TUI_COL_LABEL].rgb = (uint8_t)[3]{0, 0, 0};
-	ctx->colors[TUI_COL_WARNING].rgb = (uint8_t)[3]{0, 0, 0};
-	ctx->colors[TUI_COL_ERROR].rgb = (uint8_t)[3]{0, 0, 0};
-	ctx->colors[TUI_COL_ALERT].rgb = (uint8_t)[3]{0, 0, 0};
-	ctx->colors[TUI_COL_INACTIVE].rgb = (uint8_t)[3]{0, 0, 0};
-
-/* "window" : 2b2b2b
- * background: 212121
- * foreground: dddddd
- * base: 131313
- * alternate-base: 42403b
- * light: 444444
- * midlight: 333333
- * button: 292929
- * mid: 252525
- * dark: 202020
- * shadow: 1d1d1d1d
- * highlight: 268bd2
- */
-
-/* index 2+:
- * PRIMARY, SECONDARY, BG, TEXT, CURSOR, ALTCURSOR, HIGHLIGHT,
- * LABEL, WARNING, ERROR, ALERT, INACTIVE
- */
+	ctx->colors[TUI_COL_CURSOR] = (struct color){0x00, 0xff, 0x00};
+	ctx->colors[TUI_COL_ALTCURSOR] = (struct color){0x00, 0xff, 0x00};
+	ctx->colors[TUI_COL_HIGHLIGHT] = (struct color){0x26, 0x8b, 0xd2};
+	ctx->colors[TUI_COL_BG] = (struct color){0x2b, 0x2b, 0x2b};
+	ctx->colors[TUI_COL_PRIMARY] = (struct color){0x13, 0x13, 0x13};
+	ctx->colors[TUI_COL_SECONDARY] = (struct color){0x42, 0x40, 0x3b};
+	ctx->colors[TUI_COL_TEXT] = (struct color){0xff, 0xff, 0xff};
+	ctx->colors[TUI_COL_LABEL] = (struct color){0x44, 0x44, 0x44};
+	ctx->colors[TUI_COL_WARNING] = (struct color){0xaa, 0xaa, 0x00};
+	ctx->colors[TUI_COL_ERROR] = (struct color){0xaa, 0x00, 0x00};
+	ctx->colors[TUI_COL_ALERT] = (struct color){0xaa, 0x00, 0xaa};
+	ctx->colors[TUI_COL_REFERENCE] = (struct color){0x20, 0x30, 0x20};
+	ctx->colors[TUI_COL_INACTIVE] = (struct color){0x20, 0x20, 0x20};
 }
 
 uint32_t arcan_tui_screens(struct tui_context* ctx)
