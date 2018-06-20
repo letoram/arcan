@@ -4,6 +4,8 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <ctype.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 #include <limits.h>
 #include <poll.h>
 
