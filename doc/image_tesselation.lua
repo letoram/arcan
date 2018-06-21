@@ -3,7 +3,9 @@
 -- @inargs: vid:id,
 -- @inargs: vid:id, func:callback
 -- @inargs: vid:id, float:s, float:t
+-- @inargs: vid:id, float:s, float:t, bool:depth
 -- @inargs: vid:id, float:s, float:t, func:callback
+-- @inargs: vid:id, float:s, float:t, bool:depth, func:callback
 -- @outargs:
 -- @longdescr: This function is used to convert a normal vid to a pseudo-3D
 -- object in the sense that it becomes a tesselated plane with *s* steps in one
@@ -18,6 +20,10 @@
 -- shape is deallocated. Updating the mesh shape to *s* > 1 and *t* > 1 will
 -- regenerate and repopulate the individual attributes for vertices and texture
 -- coordinates.
+--
+-- By setting the boolean *depth* argument after the *s* and *t* forms to
+-- false, image drawing will not require a depth buffer, avoiding the costly
+-- switch between 2D and 3D style processing.
 --
 -- The vertices will be distributed in the -1..1 range (-1,-1 in upper left
 -- corner, 1,1 in lower right) while the texture coordinates go in the 0..1

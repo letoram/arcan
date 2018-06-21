@@ -5191,11 +5191,13 @@ static int imagetess(lua_State* ctx)
 	int arg1 = lua_type(ctx, 2);
 	size_t s = 0;
 	size_t t = 0;
+	bool depth = true;
 
 /* either num, num, fun or fun - anything else is terminal */
 	if (arg1 == LUA_TNUMBER){
 		s = luaL_checknumber(ctx, 2);
 		t = luaL_checknumber(ctx, 3);
+		depth = luaL_optbnumber(ctx, 4, true);
 		if (s > MAX_SURFACEW || t > MAX_SURFACEH)
 			arcan_fatal("image_tesselation(vid,s,t) illegal s or t value");
 	}
@@ -5209,11 +5211,11 @@ static int imagetess(lua_State* ctx)
 /* user want access? */
 	struct agp_mesh_store* ms;
 	if (LUA_NOREF == ref){
-		arcan_video_defineshape(sid, s, t, &ms);
+		arcan_video_defineshape(sid, s, t, &ms, depth);
 		lua_pushboolean(ctx, (ms && ms->verts != NULL) || s == 1 || t == 1);
 	}
 	else {
-		arcan_video_defineshape(sid, s, t, &ms);
+		arcan_video_defineshape(sid, s, t, &ms, depth);
 		lua_pushboolean(ctx, (ms && ms->verts != NULL) || s == 1 || t == 1);
 /* invoke callback for ms, when finished, empty the userdata store */
 		if (ms && ms->verts){
