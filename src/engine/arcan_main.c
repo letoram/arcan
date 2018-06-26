@@ -716,7 +716,6 @@ int MAIN_REDIR(int argc, char* argv[])
 	if (adopt){
 		arcan_lua_setglobalint(main_lua_context, "CLOCK", evctx->c_ticks);
 		arcan_lua_adopt(main_lua_context);
-		platform_video_recovery();
 		in_recover = false;
 	}
 	else if (stdin_connpoint){
