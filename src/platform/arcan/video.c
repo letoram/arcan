@@ -228,8 +228,10 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 void platform_video_shutdown()
 {
 	for (size_t i=0; i < MAX_DISPLAYS; i++)
-		if (disp[i].conn.addr)
+		if (disp[i].conn.addr){
 			arcan_shmif_drop(&disp[i].conn);
+			disp[i] = (struct display){};
+		}
 }
 
 size_t platform_video_displays(platform_display_id* dids, size_t* lim)
@@ -432,10 +434,17 @@ bool platform_video_map_display(
 	if (id > MAX_DISPLAYS)
 		return false;
 
+	if (!disp[id].conn.addr){
+		arcan_warning("platform_video_map_display(), attempt to map "
+			"unconnected display.\n");
+		return false;
+	}
+
 	if (id < MAX_DISPLAYS && disp[id].vstore){
-		if (disp[id].vstore != arcan_vint_world())
+		if (disp[id].vstore != arcan_vint_world()){
 			arcan_vint_drop_vstore(disp[id].vstore);
-		disp[id].vstore = NULL;
+			disp[id].vstore = NULL;
+		}
 	}
 
 	disp[id].mapped = false;
@@ -1051,8 +1060,10 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 				arcan_event_enqueue(ctx, &ev);
 				free(d->conn.user);
 				arcan_shmif_drop(&d->conn);
-				if (d->vstore)
+				if (d->vstore){
 					arcan_vint_drop_vstore(d->vstore);
+					d->vstore = NULL;
+				}
 
 				memset(d, '\0', sizeof(struct display));
 			}
@@ -1120,7 +1131,7 @@ void platform_video_recovery()
 	arcan_event_enqueue(evctx, &ev);
 
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){
-		platform_video_map_display(ARCAN_VIDEO_WORLDID, i, HINT_NONE);
+		disp[i].vstore = arcan_vint_world();
 		ev.vid.source = -1;
 		ev.vid.displayid = i;
 		arcan_event_enqueue(evctx, &ev);
