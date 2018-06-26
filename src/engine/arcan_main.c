@@ -410,16 +410,12 @@ int MAIN_REDIR(int argc, char* argv[])
 	if (!arcan_verifyload_appl(argv[optind], &err_msg)){
 		appl_user_warning(argv[optind], err_msg);
 
-		if (fallback){
-			if (strcmp(fallback, ":self") == 0)
-				arcan_warning("trying to fallback to the same appl\n");
-			else{
-				arcan_warning("trying to load fallback appl (%s)\n", fallback);
-				if (!arcan_verifyload_appl(fallback, &err_msg)){
-					arcan_warning("fallback application failed to load (%s), giving up.\n",
-						err_msg);
-					goto error;
-				}
+		if (fallback && strcmp(fallback, ":self") != 0){
+			arcan_warning("trying to load fallback appl (%s)\n", fallback);
+			if (!arcan_verifyload_appl(fallback, &err_msg)){
+				arcan_warning("fallback application failed to load (%s), giving up.\n",
+					err_msg);
+				goto error;
 			}
 		}
 		else
@@ -672,6 +668,9 @@ int MAIN_REDIR(int argc, char* argv[])
 		const char* errmsg;
 		arcan_lua_cbdrop();
 		arcan_lua_shutdown(main_lua_context);
+		if (strcmp(fallback, ":self") == 0)
+			fallback = argv[optind];
+
 		if (!arcan_verifyload_appl(fallback, &errmsg)){
 			arcan_warning("Lua VM error fallback, failure loading (%s), reason: %s\n",
 				fallback, errmsg);
