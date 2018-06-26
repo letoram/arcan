@@ -322,7 +322,7 @@ static struct {
 	char* pending_socket_label;
 	int pending_socket_descr;
 
-	const char* last_crash_source;
+	char* last_crash_source;
 
 	lua_State* last_ctx;
 } luactx = {0};
@@ -6896,10 +6896,8 @@ lua_State* arcan_lua_alloc()
 
 /* in the future, we need a hook here to
  * limit / "null-out" the undesired subset of the LUA API */
-	if (res){
+	if (res)
 		luaL_openlibs(res);
-		arcan_lua_pushglobalconsts(res);
-	}
 
 	luactx.last_ctx = res;
 	return res;
@@ -6950,7 +6948,7 @@ static void panic(lua_State* ctx)
 	arcan_warning("LUA VM is in a panic state, "
 		"recovery handover might be impossible.\n");
 
-	luactx.last_crash_source = "VM panic";
+	luactx.last_crash_source = strdup("VM panic");
 	longjmp(arcanmain_recover_state, 3);
 }
 
@@ -6998,7 +6996,7 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
 	arcan_warning("\nHanding over to recovery script "
 		"(or shutdown if none present).\n");
 
-	luactx.last_crash_source = src;
+	luactx.last_crash_source = strdup(mesg);
 	longjmp(arcanmain_recover_state, 3);
 }
 
@@ -11554,6 +11552,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 
 	if (luactx.last_crash_source){
 		arcan_lua_setglobalstr(ctx, "CRASH_SOURCE", luactx.last_crash_source);
+		free(luactx.last_crash_source);
 		luactx.last_crash_source = NULL;
 	}
 }
