@@ -73,6 +73,8 @@ add_executable(arcan_lwa
 	${PLATFORM_ROOT}/arcan/video.c
 )
 
+add_sanitizers(arcan_lwa)
+
 if (${VIDEO_PLATFORM} MATCHES "egl-dri")
 	set_property(SOURCE ${PLATFORM_ROOT}/arcan/video.c
 		APPEND PROPERTY COMPILE_DEFINITIONS EGL_DMA_BUF)
