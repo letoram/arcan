@@ -724,6 +724,14 @@ arcan_errc arcan_video_alterreadback(arcan_vobj_id did, int readback);
 arcan_errc arcan_video_rendertarget_setnoclear(arcan_vobj_id did, bool value);
 
 /*
+ * Define the range of valid, resolved, order values that will actually be
+ * drawn for the rendertarget. A negative number or where max < min will
+ * revert the rendertarget to draw all attached objects.
+ */
+arcan_errc arcan_video_rendertarget_range(
+	arcan_vobj_id did, ssize_t min, ssize_t max);
+
+/*
  * Disables the WORLDID rendertarget processing and deallocates its store.
  * This is for limited hardware platforms where we only want drawing on the
  * default backbuffer or where we only want drawing on indirect rendertargets.

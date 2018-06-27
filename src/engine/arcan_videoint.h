@@ -98,6 +98,12 @@ struct rendertarget {
 /* each rendertarget can have one possible camera attached to it which affects
  * the 3d pipe. This is defaulted to BADID until a vobj is explicitly camtaged */
 	arcan_vobj_id camtag;
+
+/*
+ * to be able to temporarily cut off certain order values from being drawn,
+ * we need to track the lower accepted bounds and the max accepted bounds.
+ */
+	size_t min_order, max_order;
 };
 
 enum vobj_flags {
@@ -446,6 +452,11 @@ void arcan_vint_applyhint(arcan_vobject* src, enum blitting_hint hint,
 	float* txcos_in, float* txcos_out,
 	size_t* out_x, size_t* out_y,
 	size_t* out_w, size_t* out_h, size_t* blackframes);
+
+/*
+ * accessor for the rendertarget currently (thread_local) marked as active
+ */
+struct rendertarget* arcan_vint_current_rt();
 
 /*
  * used by the video platform layer for "accelerated" cursor drawing,

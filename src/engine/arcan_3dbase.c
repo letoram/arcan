@@ -344,6 +344,12 @@ static arcan_vobject_litem* process_scene_infinite(
 	enum agp_mesh_flags flags)
 {
 	arcan_vobject_litem* current = cell;
+	struct rendertarget* rtgt = arcan_vint_current_rt();
+	ssize_t min = 0, max = 65536;
+	if (rtgt){
+		min = rtgt->min_order;
+		max = rtgt->max_order;
+	}
 
 	while (current){
 		arcan_vobject* cvo = current->elem;
@@ -351,6 +357,15 @@ static arcan_vobject_litem* process_scene_infinite(
 		arcan_3dmodel* obj3d = cvo->feed.state.ptr;
 
 		if (cvo->order >= 0 || obj3d->flags.infinite == false)
+			break;
+
+		ssize_t abs_o = cvo->order * -1;
+		if (cvo->order < min){
+			current = current->next;
+			continue;
+		}
+
+		if (cvo->order > max)
 			break;
 
 		surface_properties dprops;
@@ -369,12 +384,28 @@ static void process_scene_normal(arcan_vobject_litem* cell,
 	float lerp, float* modelview, enum agp_mesh_flags flags)
 {
 	arcan_vobject_litem* current = cell;
+	struct rendertarget* rtgt = arcan_vint_current_rt();
+	ssize_t min = 0, max = 65536;
+	if (rtgt){
+		min = rtgt->min_order;
+		max = rtgt->max_order;
+	}
+
 	while (current){
 		arcan_vobject* cvo = current->elem;
 
 /* non-negative => 2D part of the pipeline, there's nothing
  * more after this point */
 		if (cvo->order >= 0)
+			break;
+
+		ssize_t abs_o = cvo->order * -1;
+		if (cvo->order < min){
+			current = current->next;
+			continue;
+		}
+
+		if (cvo->order > max)
 			break;
 
 		surface_properties dprops;

@@ -2158,6 +2158,35 @@ arcan_errc arcan_video_alterreadback(arcan_vobj_id did, int readback)
 	return ARCAN_OK;
 }
 
+arcan_errc arcan_video_rendertarget_range(
+	arcan_vobj_id did, ssize_t min, ssize_t max)
+{
+	struct rendertarget* rtgt;
+
+	if (did == ARCAN_VIDEO_WORLDID)
+		rtgt = &current_context->stdoutp;
+	else {
+		arcan_vobject* vobj = arcan_video_getobject(did);
+		if (!vobj)
+			return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+		rtgt = arcan_vint_findrt(vobj);
+	}
+
+	if (!rtgt)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (min < 0 || max < min){
+		min = 0;
+		max = 65536;
+	}
+
+	rtgt->min_order = min;
+	rtgt->max_order = max;
+
+	return ARCAN_OK;
+}
+
 arcan_errc arcan_video_rendertarget_setnoclear(arcan_vobj_id did, bool value)
 {
 	struct rendertarget* rtgt;
@@ -2239,6 +2268,8 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 	dst->art = agp_setup_rendertarget(vobj->vstore, format);
 	dst->order3d = arcan_video_display.order3d;
 	dst->vppcm = dst->hppcm = 28.346456692913385;
+	dst->min_order = 0;
+	dst->max_order = 65536;
 
 	static int rendertarget_id;
 	rendertarget_id = (rendertarget_id + 1) % (INT_MAX-1);
@@ -4813,6 +4844,12 @@ static inline bool setup_shallow_texclip(arcan_vobject* elem,
 	return true;
 }
 
+_Thread_local static struct rendertarget* current_rendertarget;
+struct rendertarget* arcan_vint_current_rt()
+{
+	return current_rendertarget;
+}
+
 static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 {
 	arcan_vobject_litem* current;
@@ -4828,6 +4865,7 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 		(!tgt->link && tgt->dirtyc == 0 && tgt->transfc == 0))
 		return 0;
 
+	current_rendertarget = tgt;
 	agp_activate_rendertarget(tgt->art);
 	agp_shader_envv(RTGT_ID, &tgt->id, sizeof(int));
 
@@ -4857,6 +4895,14 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 
 	while (current && current->elem->order >= 0){
 		arcan_vobject* elem = current->elem;
+
+		if (current->elem->order < tgt->min_order){
+			current = current->next;
+			continue;
+		}
+
+		if (current->elem->order > tgt->max_order)
+			break;
 
 /* calculate coordinate system translations, world cannot be masked */
 		surface_properties dprops = empty_surface();
@@ -5038,6 +5084,7 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 	arcan_video_display.ignore_dirty = true;
 	process_rendertarget(tgt, arcan_video_display.c_lerp);
 	arcan_video_display.ignore_dirty = id;
+	current_rendertarget = NULL;
 	agp_activate_rendertarget(NULL);
 
 	if (tgt->readback != 0){
@@ -5127,6 +5174,7 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 
 /* reset the bound rendertarget, otherwise we may be in an undefined
  * state if world isn't dirty or with pending transfers */
+	current_rendertarget = NULL;
 	agp_activate_rendertarget(NULL);
 
 	current_context->stdoutp.dirtyc += arcan_video_display.dirty;
