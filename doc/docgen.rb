@@ -588,13 +588,12 @@ when "mangen" then
 # add the functions of each group to a section in the
 # overview file
 	$grouptbl.each_pair{|key, val|
-		gotc = false
 		outf << ".SH #{key}\n"
 		val.each{|i|
 			outf << "\\&\\fI#{i}\\fR\\|(3)\n"
 
-			if File.exists?("#{fname}.lua")
-				funtoman(i, File.new("mantmp/#{fname}.3", IO::CREAT | IO::RDWR))
+			if File.exists?("#{i}.lua")
+				funtoman(i, File.new("mantmp/#{i}.3", IO::CREAT | IO::RDWR))
 			end
 		}
 	}
