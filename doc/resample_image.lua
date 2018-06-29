@@ -1,23 +1,30 @@
 -- resample_image
 -- @short: scale an image to new dimensions using a shader
--- @inargs: vid, shid, desired width, desired height
--- @longdescr: This function serves two purposes,
--- a. to populate a textured backing store with the output
--- of a shader and b. to use a shader in order to create an
--- upscaled or downscaled version.
--- @note: The resampled storage is subject to the same
--- limitations as other image functions that create a
--- storage buffer, exceeding MAX_SOURCEW, MAX_SOURCEH is
--- a terminal state transition.
--- @note: This function internally aggregates several
--- regular calls into one and presented here more for a
--- convenience use of a complex setup. The flow can be
--- modeled as: 1. create temporary renderbuffer with a
--- temporary output and a null object reusing the
--- storage in vid. 2. apply shader, do an off-screen
--- pass into the renderbuffer. 3. switch glstore
--- from temporary into vid, readback into local buffer
--- and update initial state values (width, height, ..).
+-- @inargs: vid:src, shid:shader, int:width, int:height, bool:nosynch
+-- @inargs: vid:src, shid:shader, int:width, int:height, vid:dst
+-- @inargs: vid:src, shid:shader, int:width, int:height, vid:dst, bool:nosynch
+-- @longdescr:
+-- This function takes the textured object referenced by *src*
+-- and resamples to *width* and *height* output using the shader
+-- specified in *shader*.
+-- If the second argument form is used, the backing store of *dst*
+-- will be replaced with the resampled output rather than the backing
+-- store of *src*.
+-- If the *nosynch* argument is specified (default to false), the local memory
+-- copy of the backing store will be ignored. This means that the backing
+-- can't be reconstructed if the engine suspends to an external
+-- source which might lead to the data being lost or the time to
+-- suspend increases to account for creation of the local copy.
+-- @note: The resampled storage is subject to the same limitations
+-- as other image functions that create a storage buffer, exceeding
+-- MAX_SOURCEW, MAX_SOURCEH is a terminal state transition.
+-- @note: This function internally aggregates several regular calls
+-- into one and presented here more for a convenience use of a complex setup.
+-- The flow can be modeled as: 1. create temporary renderbuffer with a
+-- temporary output and a null object reusing the storage in vid.
+-- 2. apply shader, do an off-screen pass into the renderbuffer.
+-- 3. switch glstore from temporary into vid, readback into local
+-- buffer and update initial state values (width, height, ..).
 -- @group: image
 -- @cfunction: resampleimage
 -- @related:

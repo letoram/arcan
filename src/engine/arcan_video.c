@@ -933,30 +933,22 @@ static arcan_vobj_id video_allocid(
 }
 
 arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
-	int neww, int newh, agp_shader_id shid)
+	arcan_vobj_id did, size_t neww, size_t newh, agp_shader_id shid,
+	bool nocopy)
 {
 	arcan_vobject* vobj = arcan_video_getobject(vid);
 	if (!vobj)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
+	if (neww < 0 || newh < 0)
+		return ARCAN_ERRC_OUT_OF_SPACE;
+
 	if (vobj->vstore->txmapped != TXSTATE_TEX2D)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-/* allocate a temporary storage object,
- * a temporary transfer object,
- * and a temporary rendertarget */
-	size_t new_sz = neww * newh * sizeof(av_pixel);
-	av_pixel* dstbuf = arcan_alloc_mem(new_sz,
-		ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
-
-	if (!dstbuf)
-		return ARCAN_ERRC_OUT_OF_SPACE;
-
 	arcan_vobj_id xfer = arcan_video_nullobject(neww, newh, 0);
-	if (xfer == ARCAN_EID){
-		arcan_mem_free(dstbuf);
+	if (xfer == ARCAN_EID)
 		return ARCAN_ERRC_OUT_OF_SPACE;
-	}
 
 /* dstbuf is now managed by the glstore in xfer */
 	arcan_video_shareglstore(vid, xfer);
@@ -964,17 +956,63 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
 	arcan_video_setprogram(xfer, shid);
 
 	img_cons cons = {.w = neww, .h = newh, .bpp = sizeof(av_pixel)};
-	arcan_vobj_id dst = arcan_video_rawobject(dstbuf, cons, neww, newh, 1);
+	arcan_vobj_id dst;
+	arcan_vobject* dobj;
 
-	if (dst == ARCAN_EID){
-		arcan_video_deleteobject(xfer);
-		arcan_mem_free(dstbuf);
-		return ARCAN_ERRC_OUT_OF_SPACE;
+/* if we want to sample into another dstore, some more safeguard checks
+ * are needed so that we don't break other state (textured backend, not
+ * a rendertarget) */
+	if (did != ARCAN_EID){
+		arcan_vobject* dvobj = arcan_video_getobject(did);
+		if (!dvobj){
+			arcan_video_deleteobject(xfer);
+			return ARCAN_ERRC_OUT_OF_SPACE;
+		}
+
+		bool is_rtgt = arcan_vint_findrt(dvobj) != NULL;
+		if (vobj->vstore->txmapped != TXSTATE_TEX2D){
+			arcan_video_deleteobject(xfer);
+			return ARCAN_ERRC_UNACCEPTED_STATE;
+		}
+
+/* create another intermediate object to act as our rendertarget as
+ * that is an irreversible state transform which we can't do to did */
+		arcan_vobj_id rtgt = arcan_video_nullobject(neww, newh, 0);
+		if (rtgt == ARCAN_EID){
+			arcan_video_deleteobject(xfer);
+			return ARCAN_ERRC_OUT_OF_SPACE;
+		}
+
+/* and now swap and the rest of the function should behave as normal */
+		if (dvobj->vstore->w != neww || dvobj->vstore->h != newh){
+			agp_resize_vstore(dvobj->vstore, neww, newh);
+		}
+		arcan_video_shareglstore(did, rtgt);
+		dst = rtgt;
+	}
+	else{
+/* new intermediate storage that the FBO will draw into */
+		size_t new_sz = neww * newh * sizeof(av_pixel);
+		av_pixel* dstbuf = arcan_alloc_mem(new_sz,
+			ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+
+		if (!dstbuf){
+			arcan_video_deleteobject(xfer);
+			return ARCAN_ERRC_OUT_OF_SPACE;
+		}
+
+/* bind that to the destination object */
+		dst = arcan_video_rawobject(dstbuf, cons, neww, newh, 1);
+		if (dst == ARCAN_EID){
+			arcan_mem_free(dstbuf);
+			arcan_video_deleteobject(xfer);
+			return ARCAN_ERRC_OUT_OF_SPACE;
+		}
 	}
 
 /* set up a rendertarget and a proxy transfer object */
 	arcan_errc rts = arcan_video_setuprendertarget(
-		dst, 0, -1, true, RENDERTARGET_COLOR);
+		dst, 0, -1, false, RENDERTARGET_COLOR);
 
 	if (rts != ARCAN_OK){
 		arcan_video_deleteobject(dst);
@@ -982,20 +1020,26 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
 		return rts;
 	}
 
-	vobj->origw = neww;
-	vobj->origh = newh;
-
 /* draw, transfer storages and cleanup, xfer will
  * be deleted implicitly when dst cascades */
 	arcan_video_attachtorendertarget(dst, xfer, true);
 	arcan_video_forceupdate(dst);
-	arcan_video_shareglstore(dst, vid);
+
+/* in the call mode where caller specifies destination storage, we don't
+ * share / overriged (or update the dimensions of the storage) */
+	if (did == ARCAN_EID){
+		vobj->origw = neww;
+		vobj->origh = newh;
+		arcan_video_shareglstore(dst, vid);
+		arcan_video_objectscale(vid, 1.0, 1.0, 1.0, 0);
+	}
 	arcan_video_deleteobject(dst);
-	arcan_video_objectscale(vid, 1.0, 1.0, 1.0, 0);
 
 /* readback so we can survive push/pop and restore external */
-	struct agp_vstore* dstore = vobj->vstore;
-	agp_readback_synchronous(dstore);
+	if (!nocopy){
+		struct agp_vstore* dstore = vobj->vstore;
+		agp_readback_synchronous(dstore);
+	}
 
 	return ARCAN_OK;
 }
@@ -1847,7 +1891,6 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 	arcan_vint_drop_vstore(dst->vstore);
-
 	dst->vstore = src->vstore;
 	dst->vstore->refcount++;
 

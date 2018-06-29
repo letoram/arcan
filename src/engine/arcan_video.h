@@ -561,10 +561,11 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh);
 /*
  * Create a new storage based on the one in used by [id] and resampled
  * using the shader specified with [prg]. Associate this new storage with
- * the [id] container.
+ * the [id] container. If [did] is set to a valid id, its storage will
+ * be replaced with the resampled output.
  */
-arcan_errc arcan_video_resampleobject(arcan_vobj_id id,
-	int neww, int newh, agp_shader_id prg);
+arcan_errc arcan_video_resampleobject(arcan_vobj_id id, arcan_vobj_id did,
+		size_t neww, size_t newh, agp_shader_id prg, bool nocopy);
 
 /* Object hierarchy related functions */
 arcan_errc arcan_video_linkobjs(arcan_vobj_id src, arcan_vobj_id parent,
@@ -1006,7 +1007,8 @@ arcan_errc arcan_video_copyprops(arcan_vobj_id sid, arcan_vobj_id did);
 
 /*
  * This will dereference and possibly deallocate the texture data backing
- * store in [did] and reference the one preset in [sid].
+ * store in [did] and reference the one preset in [sid] unless [copy] is set
+ * to true, where a valid copy will be generated.
  */
 arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did);
 
