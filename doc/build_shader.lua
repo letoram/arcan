@@ -32,7 +32,8 @@
 -- trans_move (float, 0.0 .. 1.0), trans_scale (float, 0.0 .. 1.0)
 -- trans_rotate (float, 0.0 .. 1.0), obj_input_sz (vec2, orig w/h)
 -- obj_output_sz (vec2, current w/h), obj_storage_sz (vec2, texture
--- storage w/h), obj_opacity(float, 0.0 .. 1.0) and rtgt_id (uint)
+-- storage w/h), obj_opacity(float, 0.0 .. 1.0), obj_col (vec3, 0.0 .. 1.0)
+-- and rtgt_id (uint)
 -- @group: vidsys
 -- @related: shader_uniform, image_shader, shader_ugroup, delete_shader
 -- @cfunction: buildshader

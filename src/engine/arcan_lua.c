@@ -1973,6 +1973,15 @@ static int resampleimage(lua_State* ctx)
 	agp_shader_lookup(luaL_checkstring(ctx, 2)) : luaL_checknumber(ctx, 2);
 	size_t width = abs((int)luaL_checknumber(ctx, 3));
 	size_t height = abs((int)luaL_checknumber(ctx, 4));
+	bool nosynch = false;
+
+	arcan_vobj_id did = lua_type(ctx, 5) ==
+		LUA_TNUMBER ? luaL_checkvid(ctx, 5, NULL) : ARCAN_EID;
+
+	if (lua_type(ctx, 5) == LUA_TBOOLEAN)
+		nosynch = lua_toboolean(ctx, 5);
+	else if (lua_type(ctx, 6) == LUA_TBOOLEAN)
+		nosynch = lua_toboolean(ctx, 6);
 
 	if (width == 0 || width > MAX_SURFACEW || height == 0|| height > MAX_SURFACEH)
 		arcan_fatal("resample_image(), illegal dimensions"
@@ -1984,7 +1993,7 @@ static int resampleimage(lua_State* ctx)
 		arcan_warning("arcan_video_setprogram(%d, %d) -- couldn't set shader,"
 			"invalid vobj or shader id specified.\n", sid, shid);
 	else
-		arcan_video_resampleobject(sid, width, height, shid);
+		arcan_video_resampleobject(sid, did, width, height, shid, nosynch);
 
 	LUA_ETRACE("resample_image", NULL, 0);
 }

@@ -1,12 +1,17 @@
 -- image_sharestorage
 -- @short: Setup two VIDs to use the same texture store.
--- @inargs: src, dst
--- @longdescr: Multiple objects can be set to use the same underlying
--- texture storage (internally reference counted) to work around some
--- of the restrictions inherent to instance_image and similar functions.
+-- @inargs: vid:src, vid:dst
+-- @outargs: bool
+-- @longdescr: A vid contains a number of metadata states such as position and
+-- orientation, along with the idea of a 'storage' which is the textual, image
+-- or external source tied to the vid. As a means of preventing multiple views
+-- of the same storage, this function can be used to share the storage of vid
+-- as the storage of dst.
 -- @note: texture coordinates are initially copied over but are otherwise
 -- managed separately in each object.
--- @note: WORLDID is a valid src argument, (WORLDID as dst is undefined) but any surface that shares storage with WORLDID should not be part of a visible rendertarget.
+-- @note: WORLDID is a valid src argument, (WORLDID as dst is undefined) but
+-- any surface that shares storage with WORLDID should not be part of a visible
+-- rendertarget.
 -- @note: video image post processing (scale, flips and filtermode) are bound
 -- to the texture store and not to any- single object.
 -- @note: non-textured objects (null, color, instances and persistant) cannot
