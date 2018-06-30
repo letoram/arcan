@@ -575,7 +575,8 @@ static char* extract_vidref(struct text_format* prev, char* base, bool ext)
 		return NULL;
 	}
 
-	if (vobj->vstore->txmapped != TXSTATE_TEX2D){
+	struct agp_vstore* vs = vobj->vstore;
+	if (vs->txmapped != TXSTATE_TEX2D){
 		arcan_warning(
 			"arcan_video_renderstring(\\evid), invalid backing store for vid-ref\n");
 		return NULL;
@@ -589,7 +590,6 @@ static char* extract_vidref(struct text_format* prev, char* base, bool ext)
 	}
 
 /* if ext, also get x1, y1, x2, y2 */
-	img_cons cons = {.w = w, .h = h};
 	unsigned long x1 = 0, y1 = 0, x2 = 0, y2 = 0;
 	if (ext){
 		if (
@@ -604,65 +604,71 @@ static char* extract_vidref(struct text_format* prev, char* base, bool ext)
 /* no local copy? readback - the 'nice' thing here for memory conservative use
  * would be to drop the cpu- local copy as well, but for something like an icon
  * blit-copy-cache, it might not be worthwhile */
-	if (!vobj->vstore->vinf.text.raw){
-		agp_readback_synchronous(vobj->vstore);
-		if (!vobj->vstore->vinf.text.raw){
+	if (!vs->vinf.text.raw){
+		agp_readback_synchronous(vs);
+		if (!vs->vinf.text.raw){
 			arcan_warning("arcan_video_renderstring(), couldn't synch vid-ref store\n");
 			return NULL;
 		}
 	}
 
-	struct agp_vstore* store = vobj->vstore;
-	if (cons.w > TEXT_EMBEDDEDICON_MAXW ||
-		(cons.w == 0 && store->w > TEXT_EMBEDDEDICON_MAXW))
-		cons.w = TEXT_EMBEDDEDICON_MAXW;
+	size_t dw = w, dh = h;
+	if (w > TEXT_EMBEDDEDICON_MAXW ||
+		(w == 0 && vs->w > TEXT_EMBEDDEDICON_MAXW))
+		dw = TEXT_EMBEDDEDICON_MAXW;
+	else if (w == 0)
+		dw = vs->w;
 
-	if (cons.h > TEXT_EMBEDDEDICON_MAXH ||
-		(cons.h == 0 && store->h > TEXT_EMBEDDEDICON_MAXH))
-		cons.h = TEXT_EMBEDDEDICON_MAXH;
+	if (h > TEXT_EMBEDDEDICON_MAXH ||
+		(h == 0 && vs->h > TEXT_EMBEDDEDICON_MAXH))
+		dh = TEXT_EMBEDDEDICON_MAXH;
+	else if (h == 0)
+		dh = vs->h;
 
-	unsigned char* inbuf = (unsigned char*) store->vinf.text.raw;
+	unsigned char* inbuf = (unsigned char*) vs->vinf.text.raw;
 
 /* stretch + copy or just copy */
-	if (ext || (
-		(cons.w != 0 && cons.h != 0) && (store->w != cons.w || store->h != cons.h))){
-		prev->surf.buf = arcan_alloc_mem(cons.w * cons.h * sizeof(av_pixel),
-			ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+	size_t dsz = dw * dh * sizeof(av_pixel);
+	prev->surf.buf = arcan_alloc_mem(dsz,
+		ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+	if (!prev->surf.buf)
+		return NULL;
+
+	if (!ext && dw == vs->w && dh == vs->h){
+		memcpy(prev->surf.buf, vs->vinf.text.raw, dsz);
+		prev->surf.w = dw;
+		prev->surf.h = dh;
+		return base;
+	}
 
 /* adjust offsets to match x1/y1/x2/y2 */
-		size_t dw = cons.w;
-		size_t dh = cons.h;
-		size_t stride = 0;
+	size_t stride = 0;
+	if (ext){
+/* but first clamp */
+		if (x1 > x2)
+			x1 = 0;
+		if (y1 > y2)
+			y1 = 0;
+		if (y2 > vs->h || y2 == 0)
+			y2 = vs->h;
+		if (x2 > vs->w || x2 == 0)
+			x2 = vs->w;
 
-		if (ext && x1 < x2 && y1 < y2 && x2 - x1 < dw && y2 - y1 < dh){
-			dw = x2 - x1;
-			dh = y2 - y1;
-			stride = cons.w * sizeof(av_pixel);
-			inbuf += stride * y1 + x1 * sizeof(av_pixel);
-		}
-
-/* and blit */
-		stbir_resize_uint8(inbuf, dw, dh, stride,
-			(unsigned char*) prev->surf.buf, cons.w, cons.h, 0, sizeof(av_pixel));
-
-		prev->surf.w = cons.w;
-		prev->surf.h = cons.h;
+		stride = vs->w * sizeof(av_pixel);
+		inbuf += y1 * stride + x1 * sizeof(av_pixel);
 	}
-/* otherwise just keep the entire buffer */
 	else {
-		prev->surf.buf = arcan_alloc_mem(store->vinf.text.s_raw,
-			ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
-		if (prev->surf.buf){
-			prev->surf.w = store->w;
-			prev->surf.h = store->h;
-			memcpy(prev->surf.buf, store->vinf.text.raw, store->vinf.text.s_raw);
-		}
+		x2 = vs->w;
+		y2 = vs->h;
 	}
+/* and blit */
+	stbir_resize_uint8(inbuf, (x2 - x1), (y2 - y1), stride,
+		(unsigned char*) prev->surf.buf, dw, dh, 0, sizeof(av_pixel));
 
-	if (prev->surf.buf){
-		prev->imgcons.w = prev->surf.w;
-		prev->imgcons.h = prev->surf.h;
-	}
+	prev->surf.w = dw;
+	prev->surf.h = dh;
+	prev->imgcons.w = prev->surf.w;
+	prev->imgcons.h = prev->surf.h;
 
 	return base;
 }
