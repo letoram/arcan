@@ -1,6 +1,6 @@
 testlines_normal = {
 	[[\fdefault.ttf,14\#ffffffTest1:Backslash:\\]],
-	[[\f,20\#aaaaaa\!bReuse previous as default]],
+	[[\f,20\#aaaaaa\!bReuse previous as default, !j"]],
 	[[Test2:\#ff00ffMulti_\#ff0000c\#00ff00o\#0000ffl\#ff00ffo\#ffffffr]],
 	[[Multiline_test\nMultiline_test]],
 	[[Multiline_test\n\rShould_be_CR]],
@@ -27,15 +27,18 @@ testlines_error = {
 
 function fonttest()
 	yofs = 0;
+	local img = load_image("fonttest.png");
+
+	table.insert(testlines_normal,
+		string.format([[and embedded from a vid: \e%d,16,16,]], img));
+	table.insert(testlines_normal,
+		string.format([[and sliced from a vid: \E%d,16,16,256,256,300,300,]], img));
 
 	for i=1,#testlines_normal do
 		print("(" ..i .. ")" .. testlines_normal[i]);
-		print(testlines_normal);
-
-		vid, lines = render_text(testlines_normal[i]);
-		for j=1,#lines do
-			print(lines[j]);
-		end
+		vid, lines, width, height, ascent = render_text(testlines_normal[i]);
+		print(string.format("#lines: %d, width: %d, height: %d, asc: %d",
+			#lines, width, height, ascent));
 
 		show_image(vid);
 		move_image(vid, 0, yofs, 0);
