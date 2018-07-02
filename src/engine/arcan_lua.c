@@ -8348,6 +8348,16 @@ static int renderreconf(lua_State* ctx)
 	LUA_ETRACE("rendertarget_reconfigure", NULL, 0);
 }
 
+static int rendertargetrange(lua_State* ctx)
+{
+	LUA_TRACE("rendertarget_range");
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
+	ssize_t min = luaL_optnumber(ctx, 2, -1);
+	ssize_t max = luaL_optnumber(ctx, 3, -1);
+	arcan_video_rendertarget_range(did, min, max);
+	LUA_ETRACE("rendertarget_range", NULL, 0);
+}
+
 static int rendertargetid(lua_State* ctx)
 {
 	LUA_TRACE("rendertarget_id");
@@ -11077,6 +11087,7 @@ static const luaL_Reg tgtfuns[] = {
 {"rendertarget_noclear",       rendernoclear            },
 {"rendertarget_reconfigure",   renderreconf             },
 {"rendertarget_id",            rendertargetid           },
+{"rendertarget_range",         rendertargetrange        },
 {"load_movie",                 loadmovie                },
 {"launch_decode",              loadmovie                },
 {"launch_avfeed",              launchavfeed             },
