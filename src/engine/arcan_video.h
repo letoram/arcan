@@ -636,9 +636,11 @@ arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid);
  * If [store] is provided and you access / modify its contents, make sure to
  * also set ->dirty = true so that any caching being done on the AGP level
  * gets invalidated.
+ *
+ * If [depth] is set,
  */
 arcan_errc arcan_video_defineshape(arcan_vobj_id dst,
-	size_t n_s, size_t n_t, struct agp_mesh_store** store);
+	size_t n_s, size_t n_t, struct agp_mesh_store** store, bool depth);
 
 /*
  * Specify automatic management of active frameset frame. If [mode] is

@@ -198,16 +198,7 @@ typedef struct arcan_vobject {
 	struct arcan_vobject* parent;
 	struct arcan_vobject** children;
 
-	union {
 	struct vobject_frameset* frameset;
-
-	struct {
-		char active;
-		size_t index;
-	} cl_frameset;
-
-	};
-
 	struct agp_vstore* vstore;
 
 	enum vobj_flags flags;
@@ -225,7 +216,6 @@ typedef struct arcan_vobject {
 
 /* if NULL, a default mapping will be used */
 	float* txcos;
-	uint8_t tess_s, tess_t;
 	enum arcan_blendfunc blendmode;
 
 /* position */

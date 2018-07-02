@@ -3815,7 +3815,7 @@ static struct agp_mesh_store tesselate_2d(size_t n_s, size_t n_t)
 }
 
 arcan_errc arcan_video_defineshape(arcan_vobj_id dst,
-	size_t n_s, size_t n_t, struct agp_mesh_store** store)
+	size_t n_s, size_t n_t, struct agp_mesh_store** store, bool depth)
 {
 	arcan_vobject* vobj = arcan_video_getobject(dst);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -3865,6 +3865,8 @@ arcan_errc arcan_video_defineshape(arcan_vobj_id dst,
 	}
 
 	*(vobj->shape) = ns;
+	vobj->shape->nodepth = depth;
+
 /* dirty- flag here if we support meshing into VBO */
 	if (store)
 		*store = vobj->shape;
@@ -4569,11 +4571,15 @@ static inline void draw_texsurf(struct rendertarget* dst,
  * used for such fringe cases that it's only a problem when measured as such.
  */
 	if (src->shape){
-		agp_pipeline_hint(PIPELINE_3D);
+		if (!src->shape->nodepth)
+			agp_pipeline_hint(PIPELINE_3D);
+
 		setup_shape_surf(dst, &prop, src, &mvm);
 		agp_shader_envv(MODELVIEW_MATR, mvm, sizeof(float) * 16);
 		agp_submit_mesh(src->shape, MESH_FACING_BOTH);
-		agp_pipeline_hint(PIPELINE_2D);
+
+		if (!src->shape->nodepth)
+			agp_pipeline_hint(PIPELINE_2D);
 	}
 	else {
 		setup_surf(dst, &prop, src, &mvm);
