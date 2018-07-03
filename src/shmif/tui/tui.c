@@ -2852,6 +2852,9 @@ void arcan_tui_destroy(struct tui_context* tui, const char* message)
 	if (tui->clip_out.vidp)
 		arcan_shmif_drop(&tui->clip_out);
 
+	if (message)
+		arcan_shmif_last_words(&tui->acon, message);
+
 	arcan_shmif_drop(&tui->acon);
 	tsm_utf8_mach_free(tui->ucsconv);
 #ifndef SIMPLE_RENDERING

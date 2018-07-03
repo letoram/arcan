@@ -1611,8 +1611,7 @@ static bool load_resource(const char* resname)
 		data_source res = arcan_open_resource(resname);
 		map_region map = arcan_map_resource(&res, true);
 		if (!map.ptr){
-			snprintf(retro.shmcont.addr->last_words, 32,
-				"couldn't open/mmap resource");
+			arcan_shmif_last_words(&retro.shmcont, "Couldn't open/map resource");
 			LOG("couldn't map (%s)\n", resname ? resname : "");
 //			return false;
 		}
@@ -1622,8 +1621,7 @@ static bool load_resource(const char* resname)
 
 	bool res = retro.load_game(&retro.gameinfo);
 	if (!res){
-		snprintf(retro.shmcont.addr->last_words, 32,
-			"core.load_game failed on resource");
+		arcan_shmif_last_words(&retro.shmcont, "Core couldn't load resource");
 		LOG("libretro core rejected the resource\n");
 		return false;
 	}
@@ -1766,9 +1764,8 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		globallib = dlopen(NULL, RTLD_LAZY);
 
 	if (!lastlib){
-		snprintf(retro.shmcont.addr->last_words, 32,
-			"couldn't load/open core");
-			LOG("couldn't open library (%s), giving up.\n", libname);
+		arcan_shmif_last_words(&retro.shmcont, "Couldn't load/open core");
+		LOG("couldn't open library (%s), giving up.\n", libname);
 		exit(EXIT_FAILURE);
 	}
 

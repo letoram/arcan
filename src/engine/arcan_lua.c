@@ -1391,7 +1391,7 @@ static void slim_utf8_push(char* dst, int ulim, char* inmsg)
 	uint32_t codepoint = 0;
 	size_t i = 0;
 
-	for (; inmsg[i] != '\0', i < ulim; i++){
+	for (; inmsg[i] != '\0' && i < ulim; i++){
 		dst[i] = inmsg[i];
 
 		if (utf8_decode(&state, &codepoint, (uint8_t)(inmsg[i])) == UTF8_REJECT)

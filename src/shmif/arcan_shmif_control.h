@@ -971,7 +971,7 @@ struct arcan_shmif_page {
  * Short user-readable utf8- message to indicate a possible reason for a
  * crash, failure or otherwise unexpected termination
  */
-	char last_words[32];
+	volatile char last_words[32];
 
 /*
  * Begin of apad/apad_type negotiated block. For the actual calculations here,
