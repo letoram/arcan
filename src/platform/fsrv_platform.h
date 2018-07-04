@@ -144,6 +144,12 @@ size_t platform_fsrv_default_abufsize(size_t new_sz);
 size_t platform_fsrv_display_limit(size_t new_sz);
 
 /*
+ * Try and populate [dst] with the contents of the frameserver last words.
+ * Requires [n] > 0 and sizeof(dst) to be at least [n].
+ */
+bool platform_fsrv_lastwords(struct arcan_frameserver*, char* dst, size_t n);
+
+/*
  * Release any shared memory resources associated with the frameserver
  */
 void platform_fsrv_dropshared(struct arcan_frameserver* ctx);

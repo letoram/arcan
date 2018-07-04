@@ -165,6 +165,29 @@ static bool fd_avail(int fd, bool* term)
 	return false;
 }
 
+bool platform_fsrv_lastwords(struct arcan_frameserver* src, char* dst, size_t n)
+{
+	if (!src || !src->shm.ptr)
+		goto out;
+
+	jmp_buf buf;
+	if (0 != setjmp(buf))
+		goto out;
+
+	platform_fsrv_enter(src, buf);
+	size_t lw_sz = COUNT_OF(src->shm.ptr->last_words);
+	if (n > lw_sz)
+		n = lw_sz;
+	snprintf(dst, n, "%s", src->shm.ptr->last_words);
+	platform_fsrv_leave();
+	return true;
+
+out:
+	if (n > 0)
+		*dst = '\0';
+	return false;
+}
+
 bool platform_fsrv_destroy(arcan_frameserver* src)
 {
 	if (!src)

@@ -792,7 +792,6 @@ bool arcan_tui_writeu8(struct tui_context*,
 bool arcan_tui_writestr(
 	struct tui_context*, const char* str, struct tui_screen_attr*);
 
-
 /*
  * retrieve the current cursor position into the [x:col] and [y:row] field
  */

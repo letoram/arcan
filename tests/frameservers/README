@@ -59,5 +59,10 @@ for debugging coordinate translation issues
 
 glcube/ a quick port of robclark/kmscube
 
-bgtbar/ draw client-side decorated window for testing with autocrop
-        inputs and resize
+btbar/ draw client-side decorated window for testing with
+        autocrop inputs and resize
+
+lastword/ test the handling of client provided notifications, alerts
+          and the last_words mechanism for conveying a termination
+					message.
+

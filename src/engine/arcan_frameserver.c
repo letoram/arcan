@@ -102,11 +102,14 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	}
 	src->alocks = NULL;
 
-/* will free, so no UAF here */
+	char msg[32];
+	if (!platform_fsrv_lastwords(src, msg, COUNT_OF(msg)))
+		snprintf(msg, COUNT_OF(msg), "Couldn't access metadata (SIGBUS?)");
+
+/* will free, so no UAF here - only time the function returns false is when we
+ * are somehow running it twice one the same src */
 	if (!platform_fsrv_destroy(src))
 		return ARCAN_ERRC_UNACCEPTED_STATE;
-
-	char msg[32] = "SIGBUS on free";
 
 	arcan_audio_stop(aid);
 	vfunc_state emptys = {0};
@@ -121,7 +124,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 		.fsrv.audio = aid,
 		.fsrv.otag = tag
 	};
-	memcpy(&sevent.fsrv.message, msg, 32);
+	memcpy(&sevent.fsrv.message, msg, COUNT_OF(msg));
 	arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
 
 	return ARCAN_OK;

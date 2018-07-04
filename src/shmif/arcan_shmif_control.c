@@ -2021,6 +2021,19 @@ int arcan_shmif_dupfd(int fd, int dstnum, bool blocking)
 	return rfd;
 }
 
+void arcan_shmif_last_words(
+	struct arcan_shmif_cont* cont, const char* msg)
+{
+	if (!cont || !msg)
+		return;
+
+	size_t lim = COUNT_OF(cont->addr->last_words);
+	size_t i = 0;
+	for (; i < lim-1 && msg[i] != '\0'; i++)
+		cont->addr->last_words[i] = msg[i];
+	cont->addr->last_words[i] = '\0';
+}
+
 size_t arcan_shmif_initial(struct arcan_shmif_cont* cont,
 	struct arcan_shmif_initial** out)
 {

@@ -362,7 +362,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
  * configure the terminal state machine
  */
 	if (tsm_vte_new(&term.vte, term.screen, write_callback, NULL) < 0){
-		LOG("failed to setup terminal emulator, giving up\n");
+		arcan_tui_destroy(term.screen, "Couldn't setup terminal emulator");
 		return EXIT_FAILURE;
 	}
 
@@ -406,7 +406,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	arcan_tui_dimensions(term.screen, &rows, &cols);
 	term.child = shl_pty_open(&term.pty, read_callback, NULL, cols, rows);
 	if (term.child < 0){
-		LOG("couldn't spawn child terminal.\n");
+		arcan_tui_destroy(term.screen, "Shell process died unexpectedly");
 		return EXIT_FAILURE;
 	}
 

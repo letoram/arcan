@@ -277,6 +277,12 @@ void arg_cleanup(struct arg_arr*);
 int arcan_shmif_dupfd(int fd, int dstnum, bool blocking);
 
 /*
+ * Update the short ~(32b) message that the connection will try and forward
+ * should the client crash or be terminated in some other abnormal way.
+ */
+void arcan_shmif_last_words(struct arcan_shmif_cont* cont, const char* msg);
+
+/*
  * Used as helper to avoid dealing with all of the permutations of
  * devkind == EVENT_IDEVKIND_MOUSE for datatype == EVENT_IDATATYPE_ANALOG.
  * If >true< the status of have changed since last time.
