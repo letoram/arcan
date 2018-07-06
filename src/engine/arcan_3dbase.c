@@ -360,12 +360,12 @@ static arcan_vobject_litem* process_scene_infinite(
 			break;
 
 		ssize_t abs_o = cvo->order * -1;
-		if (cvo->order < min){
+		if (abs_o < min){
 			current = current->next;
 			continue;
 		}
 
-		if (cvo->order > max)
+		if (abs_o > max)
 			break;
 
 		surface_properties dprops;
@@ -400,12 +400,12 @@ static void process_scene_normal(arcan_vobject_litem* cell,
 			break;
 
 		ssize_t abs_o = cvo->order * -1;
-		if (cvo->order < min){
+		if (abs_o < min){
 			current = current->next;
 			continue;
 		}
 
-		if (cvo->order > max)
+		if (abs_o > max)
 			break;
 
 		surface_properties dprops;
