@@ -940,7 +940,7 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
 	if (!vobj)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (neww < 0 || newh < 0)
+	if (neww <= 0 || newh <= 0)
 		return ARCAN_ERRC_OUT_OF_SPACE;
 
 	if (vobj->vstore->txmapped != TXSTATE_TEX2D)
