@@ -6335,7 +6335,10 @@ static int videomapping(lua_State* ctx)
 	LUA_TRACE("map_video_display");
 
 	arcan_vobj_id vid = luavid_tovid( luaL_checknumber(ctx, 1) );
-	platform_display_id id = luaL_checknumber(ctx, 2);
+	int id = luaL_checknumber(ctx, 2);
+	if (id < 0)
+		arcan_fatal("map_video_display(), invalid target display id (%d)\n", id);
+
 	enum blitting_hint hint = luaL_optnumber(ctx, 3, HINT_NONE);
 
 	if (hint < HINT_NONE){
@@ -6936,8 +6939,16 @@ static int alua_shutdown(lua_State *ctx)
 
 	size_t tlen;
 	const char* str = filter_text((char*)luaL_optstring(ctx, 1, ""), &tlen);
-	if (tlen > 0)
-		arcan_warning("%s\n", str);
+	if (tlen > 0){
+#ifdef ARCAN_LWA
+		struct arcan_shmif_cont* cont = arcan_shmif_primary(SHMIF_INPUT);
+		if (cont){
+			arcan_shmif_last_words(cont, str);
+		}
+		else
+#endif
+			arcan_warning("%s\n", str);
+	}
 
 	LUA_ETRACE("shutdown", NULL, 0);
 }
