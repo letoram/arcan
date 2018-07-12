@@ -117,7 +117,7 @@ int arcan_conductor_run(arcan_tick_cb tick)
 {
 	arcan_evctx* evctx = arcan_event_defaultctx();
 	outcb = tick;
-	int exit_code;
+	int exit_code = EXIT_FAILURE;
 
 	for(;;){
 		arcan_video_pollfeed();
