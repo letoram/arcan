@@ -710,7 +710,11 @@ bool arcan_event_feed(struct arcan_evctx* ctx,
 			break;
 		}
 	}
-	return (ctx->state_fl & EVSTATE_DEAD) == 0;
+
+	if (ctx->state_fl & EVSTATE_DEAD)
+		return arcan_event_feed(ctx, hnd, exit_code);
+	else
+		return true;
 }
 
 void arcan_event_setdrain(arcan_evctx* ctx, arcan_event_handler drain)
