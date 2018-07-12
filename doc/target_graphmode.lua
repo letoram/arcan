@@ -6,16 +6,24 @@
 -- @inargs: vid:dst, int:modeid, float:mval, float:mval2, float:mval3
 -- @inargs: vid:dst, int:modeid, float:mval, float:mval2, float:mval3, float:mval4
 -- @longdescr: Hint that rendering state for a specific mode-ID should be changed.
--- This is segment type dependent with the most prominent use being for sending
--- color mapping information to TUI segments.
 --
--- For TUI, the arguments are interpreted as follow:
--- modeid - commit (0) or buffer (1)
--- mode is set to buffer, the mval argument is interpreted as color label index,
--- matching the enumeration constants present in the tui symbol tables. Currently,
--- these are:
+-- This is segment type dependent, with special semantics for the primary segment
+-- and for TUI associated subsegments. The currently defined such semantics are
+-- used to hint color preferences.
+--
+-- For all types, *modeid* of 0 is a 'commit and apply', while 1 is 'buffer until
+-- commit'. Then, for color preferences, the defined *modeid* values are:
+--
 -- primary (2), secondary (3), background (4), text (5), cursor (6), altcursor (7),
--- hilight (8), label (9), warning (10), error (11), alert (12), inactive (13).
+-- hilight (8), label (9), warning (10), error (11), alert (12), inactive (13),
+-- reference (14).
+--
+-- These all map *mval* to red (0..255), *mval2* to green (0..255) and *mval3*
+-- to blue (0..255). If no values are provided for the specified channel, it will
+-- default to 0.
+--
+-- For other recipients, the values are implementation defined and primarily
+-- intended for custom projects.
 --
 -- @group: targetcontrol
 -- @cfunction: targetgraph
