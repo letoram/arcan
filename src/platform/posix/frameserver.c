@@ -282,6 +282,9 @@ void platform_fsrv_dropshared(arcan_frameserver* src)
 		src->sockkey = NULL;
 	}
 
+	sem_destroy(src->async);
+	sem_destroy(src->vsync);
+	sem_destroy(src->esync);
 
 	struct arcan_shmif_page* shmpage = src->shm.ptr;
 
