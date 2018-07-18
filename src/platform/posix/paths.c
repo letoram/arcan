@@ -60,7 +60,8 @@ static char* pathks[] = {
 	"path_font",
 	"path_bin",
 	"path_lib",
-	"path_log"
+	"path_log",
+	"path_script"
 };
 
 static char* pinks[] = {
@@ -74,7 +75,8 @@ static char* pinks[] = {
 	"pin_font",
 	"pin_bin",
 	"pin_lib",
-	"pin_log"
+	"pin_log",
+	"pin_script"
 };
 
 static char* envvs[] = {
@@ -88,7 +90,8 @@ static char* envvs[] = {
 	"ARCAN_FONTPATH",
 	"ARCAN_BINPATH",
 	"ARCAN_LIBPATH",
-	"ARCAN_LOGPATH"
+	"ARCAN_LOGPATH",
+	"ARCAN_SCRIPTPATH",
 };
 
 static char* pinvs[] = {
@@ -102,7 +105,8 @@ static char* pinvs[] = {
 	"ARCAN_FONTPIN",
 	"ARCAN_BINPIN",
 	"ARCAN_LIBPIN",
-	"ARCAN_LOGPIN"
+	"ARCAN_LOGPIN",
+	"ARCAN_SCRIPTPIN"
 };
 
 static char* alloc_cat(char* a, char* b)
@@ -194,6 +198,19 @@ static char* binpath_unix()
 	return binpath;
 }
 
+static char* scriptpath_unix()
+{
+	char* scrpath = NULL;
+
+	if (arcan_isdir("/usr/local/share/arcan/scripts"))
+		scrpath = "/usr/local/share/arcan/scripts";
+	else if (arcan_isdir("/usr/share/arcan/scripts"))
+		scrpath = "/usr/share/arcan/scripts";
+	else
+		;
+	return scrpath;
+}
+
 static char* libpath_unix()
 {
 	char* libpath = NULL;
@@ -272,6 +289,8 @@ void arcan_set_namespace_defaults()
 		if (getenv(pinvs[i]) || get_config(pinks[i], 0, NULL, tag))
 			arcan_pin_namespace(1 << i);
 	}
+
+	arcan_softoverride_namespace(tmp = scriptpath_unix(), RESOURCE_SYS_SCRIPTS);
 
 /*
  * legacy mapping from the < 0.5 days

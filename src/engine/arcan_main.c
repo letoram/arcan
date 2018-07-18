@@ -124,7 +124,7 @@ static void vplatform_usage()
 
 static void usage()
 {
-printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
+printf("Usage: arcan [-whfmWMOqspTBtHbdgaSV] applname "
 	"[appl specific arguments]\n\n"
 "-w\t--width       \tdesired initial canvas width (auto: 0)\n"
 "-h\t--height      \tdesired initial canvas height (auto: 0)\n"
@@ -146,6 +146,7 @@ printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 "-0\t--pipe-stdin  \t(for pipe-mode) accept requests for an initial connection\n"
 "-p\t--rpath       \tchange default searchpath for shared resources\n"
 "-t\t--applpath    \tchange default searchpath for applications\n"
+"-T\t--scriptpath  \tchange default searchpath for builtin (system) scripts\n"
 "-H\t--hook        \trun a post-appl() script from (SHARED namespace)\n"
 "-b\t--fallback    \tset a recovery/fallback application if appname crashes\n"
 "-d\t--database    \tsqlite database (default: arcandb.sqlite)\n"
@@ -326,7 +327,7 @@ int MAIN_REDIR(int argc, char* argv[])
 	int ch;
 
 	while ((ch = getopt_long(argc, argv,
-		"w:h:mx:y:fsW:d:Sq:a:p:b:B:M:O:t:H:g01V", longopts, NULL)) >= 0){
+		"w:h:mx:y:fsW:d:Sq:a:p:b:B:M:O:t:T:H:g01V", longopts, NULL)) >= 0){
 	switch (ch) {
 	case '?' :
 		usage();
@@ -365,6 +366,7 @@ int MAIN_REDIR(int argc, char* argv[])
 	case '0' : stdin_connpoint = true; break;
 	case 'q' : settings.timedump = strtol(optarg, NULL, 10); break;
 	case 'p' : override_resspaces(optarg); break;
+	case 'T' : arcan_override_namespace(optarg, RESOURCE_SYS_SCRIPTS); break;
 	case 'b' : fallback = strdup(optarg); break;
 	case 'V' : fprintf(stdout, "%s\nshmif-%" PRIu64"\nluaapi-%d:%d\n",
 		ARCAN_BUILDVERSION, arcan_shmif_cookie(), LUAAPI_VERSION_MAJOR,

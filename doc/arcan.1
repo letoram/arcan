@@ -72,6 +72,10 @@ game, terminal, remoting).
 Change default searchpath for applications, see the \fInamespaces\fR
 section below for additional details.
 
+.IP "\fB-T, --scriptpath \fIpath\fR"
+Change the default search path for builtin system scripts, see the
+\fInamespaces\fR section below for additional details.
+
 .IP "\fB-H, --hook\fR" \fIscript\fR"
 Specify a post-init (after running applname()) hook script that will be
 loaded and executed. The script is expected to be specified relative to
@@ -158,24 +162,31 @@ this path will be blocked, but a user can explicitly map
 (symlink, bind-mounts or similar) other paths into this namespace
 and the engine will allow it.
 
-Scripts gets read- access to resources within the \fBRESOURCEPATH\fR and
-can explicitly request to search either or both namespaces when opening
-a resource. By default, a namespace collision (the same resource existing
-in multiple namespaces) gives priority to \fBAPPLBASE/APPNAME\fR.
+Scripts are treated as an overlay namespace where there is a priority order in
+the event of a collision. By default, scripts are treated in the order of
+APPLTEMP -> APPLBASE -> SCRIPTPATH. More paranoid builds will want to disable
+APPLTEMP to prevent the creation of a unpacker scripts / code generation.
 
 The most fine-grained control can be obtained by setting a number of
 environment variables:
 
-.IP "\fBARCAN_RESOURCEPATH\fR\"
+.IP "\fBARCAN_RESOURCEPATH\fR"
 Shared resources, as described above.
 
-.IP "\fBARCAN_APPLTEMPPATH\fR\"
+.IP "\fBARCANSCRIPTPATH\fR"
+The system script namespace contains shared scripts that are part of the
+general Arcan package to promote optional re-use of higher level analysis
+like mouse gestures. The default search-path for this is would be the
+share/arcan/scripts install path, though you might want to override this
+for custom setups or development purposes.
+
+.IP "\fBARCAN_APPLTEMPPATH\fR"
 Used when there is a need to split the folder that an appl can use as a
 writable (delete, create, update) backing store. By default, this is resolved
 to the same folder as the appl is - but can be unmapped to prevent an appl from
 killing or modifying itself.
 
-.IP "\fBARCAN_APPLBASEPATH\fR\"
+.IP "\fBARCAN_APPLBASEPATH\fR"
 This path is used to search for appls but may be ignored for absolute
 paths specified on the command-line.
 
@@ -188,6 +199,11 @@ but this can be split into a separate store. This will then expand as
 The default setting is to map this to RESOURCEPATH/savestates and will
 then be shared between all appls (which holds true whenever STATEBASE
 is set to a subdirectory of RESOURCEPATH).
+
+.IP "\fBARCAN_SCRIPTPATH\fR"
+This should point to the fallback search path for scripts that are part
+of the distribution, typically for opt-in higher-level input analysis,
+management and debugging.
 
 .IP "\fBARCAN_FONTPATH\fR"
 The default setting is to map this to the APPLPATH/fonts with fallback
