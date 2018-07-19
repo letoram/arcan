@@ -425,12 +425,14 @@ int MAIN_REDIR(int argc, char* argv[])
 	}
 
 	if (!arcan_verify_namespaces(false)){
-		arcan_warning("\x1b[32m Couldn't verify filesystem namespaces.\x1b[39m\n");
+		arcan_warning("\x1b[32mCouldn't verify filesystem namespaces.\x1b[39m\n");
 /* with debuglevel, we have separate reporting. */
 		if (!debuglevel){
-			arcan_warning("\x1b[33m Look through the following list and note the "
-				"entries marked broken, \ncheck the manpage for config and environment "
-				"variables or try the -p <path> and -d <path/to/database> arguments."
+			arcan_warning("\x1b[33mLook through the following list and note the "
+				"entries marked broken, \nCheck the manpage for config and environment "
+				"variables, or try the arguments: \n"
+				"\t <system-scripts> : -t path/to/arcan/data/scripts\n"
+				"\t <application-shared> : -p any/valid/user/path\n"
 				"\x1b[39m\n"
 			);
 			arcan_verify_namespaces(true);
