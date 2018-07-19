@@ -17,7 +17,7 @@ function drawline(text, size)
 end
 
 function eventtest()
-	symtable = system_load("scripts/symtable.lua")();
+	symtable = system_load("builtin/keyboard.lua")();
 
 	analabel = drawline([[\bAnalog]], 18);
 	digilabel = drawline([[\bDigital]], 18);

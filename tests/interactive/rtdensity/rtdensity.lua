@@ -1,5 +1,5 @@
 function rtdensity()
-	symtable = system_load("symtable.lua")();
+	symtable = system_load("builtin/keyboard.lua")();
 	rt_1 = alloc_surface(VRESW, VRESH * 0.5);
 	rt_2 = alloc_surface(VRESW, VRESH * 0.5);
 	move_image(rt_2, 0, VRESH * 0.5);

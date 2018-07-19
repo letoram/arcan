@@ -60,7 +60,7 @@ function outputs()
 	img = load_image("images/icons/arcanicon.png");
 	resize_image(img, 64, 64);
 	show_image(img);
-	symtable = system_load("scripts/symtable.lua")();
+	symtable = system_load("builtin/keyboard.lua")();
 	modes[mode_ind](true);
 end
 

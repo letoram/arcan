@@ -16,7 +16,7 @@
 -- z = delete the intermediate disp_2,3 (will likely terminate script)
 --
 function mdispcl()
-	symtable = system_load("scripts/symtable.lua")();
+	symtable = system_load("builtin/keyboard.lua")();
 	bg = load_image("images/icons/arcanicon.png");
 	disp_img = {
 		load_image("images/icons/ok.png"),

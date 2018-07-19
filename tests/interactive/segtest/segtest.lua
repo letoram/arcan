@@ -9,7 +9,7 @@ function seg2(source, status)
 end
 
 function segtest()
-	symtable = system_load("scripts/symtable.lua")();
+	symtable = system_load("builtin/keyboard.lua")();
 
 	test = launch_avfeed("", "avfeed", function(source, status)
 		print(status.kind);

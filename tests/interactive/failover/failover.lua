@@ -1,6 +1,6 @@
 function failover()
 	a = list_games({})
-	symtbl = system_load("scripts/symtable.lua")();
+	symtbl = system_load("builtin/keyboard.lua")();
 
 	system_context_size(10);
 	pop_video_context();

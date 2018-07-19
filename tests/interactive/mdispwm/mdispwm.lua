@@ -20,7 +20,7 @@ meta_key = "LCTRL";
 function mdispwm()
 	system_load("scripts/composition_surface.lua")();
 	system_load("scripts/mouse.lua")();
-	symtable = system_load("scripts/symtable.lua")();
+	symtable = system_load("builtin/keyboard.lua")();
 
 -- ugly red square as mouse cursor
 	cursimg = fill_surface(16, 16, 255, 0, 0, 16, 16);

@@ -13,7 +13,7 @@ bgmusic_id = 0;
 symtable = {}
 
 function soundtest()
-	local sfun = system_load("scripts/symtable.lua");
+	local sfun = system_load("builtin/keyboard.lua");
 	symtable = sfun();
 
 	vid = render_text( [[\ffonts/default.ttf,14\#ffffffSoundtest:\n\r\bKey:\tAction:\!b\n\r]] ..

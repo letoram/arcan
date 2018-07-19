@@ -11,7 +11,7 @@
 --
 
 function picktest()
-	symtable = system_load("scripts/symtable.lua")();
+	symtable = system_load("builtin/keyboard.lua")();
 
 	local b1 = fill_surface(64, 64, 255, 0, 0);
 	show_image(b1);
