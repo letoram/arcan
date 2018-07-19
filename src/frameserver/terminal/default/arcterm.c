@@ -259,13 +259,16 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 	while (arg_lookup(argarr, "env", ind++, &val))
 		putenv(strdup(val));
 
-/* signal default handlers persist across exec, reset */
-	int sigs[] = {
-		SIGCHLD, SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGALRM
-	};
+#ifndef NSIG
+#define NSIG 32
+#endif
 
-	for (int i = 0; i < sizeof(sigs) / sizeof(sigs[0]); i++)
-		signal(sigs[i], SIG_DFL);
+	sigset_t sigset;
+	sigemptyset(&sigset);
+	pthread_sigmask(SIG_SETMASK, &sigset, NULL);
+
+	for (size_t i = 1; i < NSIG; i++)
+		signal(i, SIG_DFL);
 
 	execvp(args[0], args);
 	exit(EXIT_FAILURE);
