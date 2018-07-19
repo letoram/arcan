@@ -1,5 +1,5 @@
 function canvasresize()
-	keysym = system_load("scripts/symtable.lua")();
+	keysym = system_load("builtin/keyboard.lua")();
 	a = fill_surface(VRESW, VRESH, 255, 0, 0);
 	resize_video_canvas(VRESW, VRESH);
 	show_image(a);

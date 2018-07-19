@@ -204,7 +204,7 @@ end
 
 function vrtest2(args)
 -- this is in -p arcan/data/resources
-	symtable = system_load("scripts/symtable.lua"){};
+	symtable = system_load("builtin/keyboard.lua"){};
 
 -- FIXME: parse from args
 	local l_eye_res_w = VRESW;

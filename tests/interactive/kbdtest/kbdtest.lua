@@ -3,7 +3,7 @@ function kbdtest()
 		render_text([[\ffonts/default.ttf,18 KBDTest:
 	\n\rF1 period(0), delay(0), F2 inc. period
 	F3 dec. period, F4 inc. delay, F5 dec.delay]]));
-	symtable = system_load("scripts/symtable.lua")();
+	symtable = system_load("builtin/keyboard.lua")();
 	last_event = 500;
 	history = {};
 	let = null_surface(1, 1);

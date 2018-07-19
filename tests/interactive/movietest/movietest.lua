@@ -21,7 +21,7 @@ cursor = {x = 0, y = 0};
 symtable = {}
 
 function movietest()
-	local symfun = system_load("scripts/symtable.lua");
+	local symfun = system_load("builtin/keyboard.lua");
 	symtable = symfun();
 
 	local text_vid = render_text( [[\ffonts/default.ttf,14\#ffffffMovietest:\n\r\bKey:\tAction:\!b\n\r]] ..

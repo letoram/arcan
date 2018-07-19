@@ -2,7 +2,7 @@ local step = {WORLDID, BADID};
 local ofs = 1;
 
 function scan()
-	symtable = system_load("scripts/symtable.lua")();
+	symtable = system_load("builtin/keyboard.lua")();
 	a = load_image("images/icons/arcanicon.png");
 	table.insert(step, a);
 

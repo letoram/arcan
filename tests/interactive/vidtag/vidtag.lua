@@ -1,7 +1,7 @@
 function vidtag()
 	fname = arguments[1];
 	vfc = 0;
-	symtable = system_load("scripts/symtable.lua")();
+	symtable = system_load("builtin/keyboard.lua")();
 	timestamp = benchmark_timestamp();
 
 	movie = load_movie(fname, FRAMESERVER_NOLOOP, function(source, status)

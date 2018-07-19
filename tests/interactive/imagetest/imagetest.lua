@@ -20,7 +20,7 @@ imagefun = load_image;
 stacksize = 1024;
 
 function imagetest()
-	local symfun = system_load("scripts/symtable.lua");
+	local symfun = system_load("builtin/keyboard.lua");
 	symtable = symfun();
 	drawmenu();
 

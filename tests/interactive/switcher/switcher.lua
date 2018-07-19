@@ -1,5 +1,5 @@
 function switcher()
-	symtable = system_load("scripts/symtable.lua")();
+	symtable = system_load("builtin/keyboard.lua")();
 
 	list = glob_resource("*", SYS_APPL_RESOURCE);
 	a = render_text( [[\ffonts/default.ttf,18 ]] .. table.concat(list, [[\n\r]]) )
