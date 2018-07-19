@@ -55,6 +55,10 @@ if (NOT APPL_DEST)
 	set(APPL_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
 endif()
 
+if (NOT SCRIPTS_DEST)
+	set(SCRIPTS_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
+endif()
+
 if (NOT RES_DEST)
 	set(RES_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
 endif()
