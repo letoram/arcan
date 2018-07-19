@@ -1,14 +1,30 @@
+-- various symbol table conversions for handling underlying input
+-- layer deficiencies, customized remapping etc.
 --
--- No Copyright Claimed, Public Domain
+-- also basic support for keymaps and translations.
 --
+-- Translations are managed globally and built using a symbol- level
+-- mash of modifiers and symbol squashed into a string index with utf8 out.
+-- They are stored in the k/v database in the appl_ specific domain.
+--
+-- Translations can also be shadowed by a switchable overlay of
+-- translations (for context- specific remapping)
+--
+-- Keymaps work on a local level and are tied to input platform and uses
+-- other, low-level fields (devid, subid, scancode, modifiers). They can
+-- be used to provide keysym and the default utf8 result, and are stored
+-- in SYMTABLE_DOMAIN as .lua files.
+--
+-- [iotbl] -> patch(iotbl, keymap) -> translation -> out.
+--
+-- the higher-level [label] remapping is not performed here.
 
--- Directly conversion of the SDL_keysym.h
+-- modify to use other namespace
+local SYMTABLE_DOMAIN = APPL_RESOURCE;
+local GLOBPATH = "devmaps/keyboard/";
 
+-- for legacy reasons, we provide an sdl compatible symtable
 local symtable = {};
- symtable[0] = "UNKNOWN";
- symtable["UNKNOWN"] = 0;
- symtable[0] = "FIRST";
- symtable["FIRST"] = 0;
  symtable[8] = "BACKSPACE";
  symtable["BACKSPACE"] = 8;
  symtable[9] = "TAB";
@@ -481,16 +497,257 @@ local symtable = {};
  tmptbl[271] = nil;
  tmptbl[272] = "=";
 
-	symtable.tochar = function(ind)
-		if (ind >= 32 and ind <= 122) then
-			return symtable[ind];
-		elseif (ind >= 256 and ind <= 265) then
-			return symtable[ (ind - 256) + 48 ];
-		elseif (ind >= 266 and ind <= 272) then
-			return tmptbl[ind];
+symtable.tochar = function(ind)
+	if (ind >= 32 and ind <= 122) then
+		return symtable[ind];
+	elseif (ind >= 256 and ind <= 265) then
+		return symtable[ (ind - 256) + 48 ];
+	elseif (ind >= 266 and ind <= 272) then
+		return tmptbl[ind];
+	else
+		return nil;
+	end
+end
+
+symtable.u8lut = {};
+symtable.u8basic = {};
+symtable.symlut = {};
+
+symtable.patch = function(tbl, iotbl)
+	local mods = table.concat(decode_modifiers(iotbl.modifiers), "_");
+	iotbl.old_utf8 = iotbl.utf8;
+
+-- apply utf8 translation and modify supplied utf8 with keymap
+	if (tbl.keymap) then
+		local m = tbl.keymap.map;
+		local ind = iotbl.modifiers == 0 and "plain" or mods;
+			if (m[ind] and m[ind][iotbl.subid]) then
+				iotbl.utf8 = m[ind][iotbl.subid];
+			end
+		end
+
+-- other symbols are described relative to the internal sdl symbols
+	local sym = tbl.symlut[iotbl.number] and
+		tbl.symlut[iotbl.number] or tbl[iotbl.keysym];
+	if (not sym) then
+		sym = "UNKN" .. tostring(iotbl.number);
+	else
+		iotbl.keysym = tbl[sym];
+	end
+	local lutsym = string.len(mods) > 0 and (mods .."_" .. sym) or sym;
+
+-- two support layers at the moment, normal press or with modifiers.
+	if (iotbl.active) then
+		if (tbl.u8lut[lutsym]) then
+			iotbl.utf8 = tbl.u8lut[lutsym];
+		elseif (tbl.u8lut[sym]) then
+			iotbl.utf8 = tbl.u8lut[sym];
+		end
+	else
+		iotbl.utf8 = "";
+	end
+
+	return sym, lutsym;
+end
+
+-- used for tracking repeat etc. where we don't want meta keys to
+-- trigger repeated input
+local metak = {
+	LALT = true,
+	RALT = true,
+	LCTRL = true,
+	RCTRL = true,
+	LSHIFT = true,
+	RSHIFT = true
+};
+
+symtable.is_modifier = function(symtable, iotbl)
+	return metak[symtable[iotbl.keysym]] ~= nil;
+end
+
+-- for filling the utf8- field with customized bindings
+symtable.add_translation = function(tbl, combo, u8)
+	if (not combo) then
+		print("tried to add broken combo:", debug.traceback());
+		return;
+	end
+
+	tbl.u8lut[combo] = u8;
+	tbl.u8basic[combo] = u8;
+end
+
+-- uses the utf8k_ind:key=value for escaping
+symtable.load_translation = function(tbl)
+	for i,v in ipairs(match_keys("utf8k_%")) do
+		local pos, stop = string.find(v, "=", 1);
+		local npos, nstop = string.find(v, string.char(255), stop+1);
+		if (not npos) then
+			warning("removing broken binding for " .. v);
+			store_key(v, "");
 		else
+			local key = string.sub(v, stop+1, npos-1);
+			local val = string.sub(v, nstop+1);
+			tbl:add_translation(key, val);
+		end
+	end
+end
+
+symtable.update_map = function(tbl, iotbl, u8)
+	if (not tbl.keymap) then
+		tbl.keymap = {
+			name = "unknown",
+			map = {
+				plain = {}
+			},
+			diac = {},
+			diac_ind = 0
+		};
+	end
+
+	local m = tbl.keymap.map;
+	if (iotbl.modifiers == 0) then
+		m.plain[iotbl.subid] = u8;
+	else
+		local mods = table.concat(decode_modifiers(iotbl.modifiers), "_");
+		if (not m[mods]) then
+			m[mods] = {};
+		end
+		m[mods][iotbl.subid] = u8;
+	end
+end
+
+symtable.store_translation = function(tbl)
+-- drop current list
+	local rst = {};
+	for i,v in ipairs(match_keys("utf8k_%")) do
+		local pos, stop = string.find(v, "=", 1);
+		local key = string.sub(v, 1, pos-1);
+		rst[key] = "";
+	end
+	store_key(rst);
+
+-- use numeric indices due to restrictions on key values and use the
+-- invalid 255 char as split
+	local ind = 1;
+	local out = {};
+	for k,v in pairs(tbl.u8basic) do
+		out["utf8k_" .. tostring(ind)] = k .. string.char(255) .. v;
+	end
+	store_key(out);
+end
+
+local function tryload(km)
+	local kmp = GLOBPATH .. km;
+	if (not resource(kmp)) then
+		warning("couldn't locate keymap (" .. GLOBPATH .. "): " .. km);
+		return;
+	end
+
+	local res = system_load(kmp, 0);
+	if (not res) then
+		warning("parsing error loading keymap (" .. GLOBPATH .. "): " .. km);
+		return;
+	end
+
+	local okstate, map = pcall(res);
+	if (not okstate) then
+		warning("execution error loading keymap: " .. km);
+		return;
+	end
+	if (map and type(map) == "table"
+		and map.name and string.len(map.name) > 0) then
+
+		if (map.platform_flt and not map.platform_flt()) then
+			warning("platform filter rejected keymap: " .. km);
 			return nil;
 		end
- end
+
+		map.dctind = 0;
+		return map;
+	end
+end
+
+symtable.list_keymaps = function(tbl, cached)
+	local res = {};
+	local list = glob_resource(GLOBPATH .. "*.lua", SYMTABLE_DOMAIN);
+
+	if (list and #list > 0) then
+		for k,v in ipairs(list) do
+			local map = tryload(v);
+			if (map) then
+				table.insert(res, map.name);
+			end
+		end
+	end
+
+	table.sort(res);
+	return res;
+end
+
+symtable.load_keymap = function(tbl, km)
+	if (resource(GLOBPATH .. km, SYMTABLE_DOMAIN)) then
+		local res = tryload(km);
+		if (tryload(km)) then
+			symtable.keymap = res;
+			symtable.symlut = res.symmap and res.symmap or {};
+			return true;
+		end
+	end
+
+	return false;
+end
+
+symtable.reset = function(tbl)
+	tbl.keymap = nil;
+	tbl.u8basic = {};
+end
+
+-- switch overlay (for multiple windows with different remapping)
+symtable.translation_overlay = function(tbl, combotbl)
+	tbl.u8lut = {};
+	for k,v in pairs(tbl.u8basic) do
+		tbl.u8lut[k] = v;
+	end
+
+	for k,v in pairs(combotbl) do
+		tbl.u8lut[k] = v;
+	end
+end
+
+-- store the current utf-8 keymap + added translations into a
+-- file (ignore the overlay)
+symtable.save_keymap = function(tbl, name)
+	assert(name and type(name) == "string" and string.len(name) > 0);
+	local dst = GLOBPATH .. name .. ".lua";
+	if (resource(dst,SYMTABLE_DOMAIN)) then
+		zap_resource(dst);
+	end
+
+	local wout = open_nonblock(dst, 1);
+	if (not wout) then
+		warning("symtable/save: couldn't open " .. name .. " for writing.");
+		return false;
+	end
+
+	wout:write(string.format("local res = { name = [[%s]], ", name));
+	wout:write("dctbl = {}, symmap = {}, map = { plain = {} } };\n");
+
+	if (tbl.keymap) then
+		for k,v in pairs(tbl.keymap.map) do
+			wout:write(string.format("res.map[\"%s\"] = {};\n", k));
+			for i,j in pairs(v) do
+				wout:write(string.format(
+					"res.map[\"%s\"][%d] = %q;\n", k, tonumber(i), j));
+			end
+		end
+	end
+
+	for k,v in pairs(tbl.symlut) do
+		wout:write(string.format("res.symmap[%d] = %q;\n", k, v));
+	end
+
+	wout:write("return res;\n");
+	wout:close();
+end
 
 return symtable;

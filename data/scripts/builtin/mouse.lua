@@ -1,10 +1,12 @@
 --
--- Copyright 2014-2017, Björn Ståhl
+-- Copyright 2014-2018, Björn Ståhl
 -- License: 3-Clause BSD.
 -- Reference: http://arcan-fe.com
 --
 -- All functions are prefixed with mouse_ and ignores devid.
--- This means we only support one global mouse cursor.
+-- This means we only support one global mouse cursor currently,
+-- though this should really be factored out to have a version
+-- that takes an explicit context.
 --
 -- setup (takes control of vid):
 --  setup_native(vid, hs_x, hs_y) or
@@ -100,6 +102,7 @@ local mstate = {
 	btns_remap = {},
 	cur_over = {},
 	hover_track = {},
+	active_list = {},
 	autohide = false,
 	hide_base = 40,
 	hide_count = 40,
@@ -556,6 +559,48 @@ function mouse_xy()
 	end
 end
 
+function mouse_cursortag_drop()
+	if (mstate.cursortag) then
+		mstate.cursortag.handler(mstate.cursortag.ref, false);
+		if (valid_vid(mstate.cursortag.vid)) then
+			delete_image(mstate.cursortag.vid);
+		end
+	end
+end
+
+-- primitive for drag and drop style behavior, tag the cursor with
+-- a container and a vid that will be destroyed when the tag have been
+-- provided as a 'drop'
+function mouse_cursortag(ref, id, handler, vid)
+	if (type(handler) ~= "function") then
+		return;
+	end
+
+	mouse_cursortag_drop();
+
+	if (not valid_vid(vid)) then
+		return;
+	end
+
+	link_image(vid, mstate.cursor);
+	image_inherit_order(vid, true);
+	order_image(vid, -1);
+	center_image(vid, mstate.cursor);
+
+	mstate.cursortag = {
+		vid = vid,
+		ref = ref,
+		handler = handler
+	};
+end
+
+-- visually update the accept or no-accept state
+function mouse_cursortag_state(accept)
+	if (mstate.cursortag and valid_vid(mstate.cursortag.vid)) then
+		blend_image(mstate.cursortag.vid, accept and 0.5 or 1.0, 5);
+	end
+end
+
 local function mouse_drag(x, y)
 	if (mstate.eventtrace) then
 		warning(string.format("mouse_drag(%d, %d)", x, y));
@@ -634,7 +679,7 @@ local function lmbhandler(hists, press)
 			for key, val in pairs(mstate.drag.list) do
 				local res = linear_find_vid(mstate.handlers.drop, val, "drop");
 				if (res) then
-					if (res:drop(val, mstate.x, mstate.y)) then
+					if (res:drop(val, mstate.x, mstate.y, mstate.cursor_tag)) then
 						return;
 					end
 				end
@@ -715,6 +760,9 @@ function mouse_button_input(ind, active)
 		return;
 	end
 
+-- reset auto-hide counter/timer
+	mstate.hide_count = mstate.hide_base;
+
 	if (mstate.lockvid) then
 		mstate.btns[ind] = active;
 		mstate.btns_clock[ind] = CLOCK;
@@ -737,17 +785,44 @@ function mouse_button_input(ind, active)
 		for key, val in pairs(hists) do
 			local res = linear_find_vid(mstate.handlers.button, val, "button");
 			if (res) then
+				if (active) then
+					if (not mstate.active_list[ind]) then
+						mstate.active_list[ind] = {};
+					end
+					table.insert(mstate.active_list[ind], {res, val});
+				elseif (mstate.active_list[ind]) then
+					for i,v in ipairs(mstate.active_list[ind]) do
+						if (v[2] == val) then
+							table.remove(mstate.active_list[ind], i);
+							break;
+						end
+					end
+				end
+
+-- uncertain, but possible that we should not emit the release event on surfaces
+-- where we don't also have the 'press' event, most layers just ignore this
 				res:button(val, ind, active, mstate.x, mstate.y);
+			end
+		end
+
+-- make sure that the 'release' side of buttons gets sent to all sources that
+-- received a 'press' even if they are not in the currently 'over' list.
+		if (not active) then
+			if (mstate.active_list[ind]) then
+				for i,v in ipairs(mstate.active_list[ind]) do
+					v[1]:button(v[2], ind, false, mstate.x, mstate.y);
+				end
+				mstate.active_list[ind] = {};
 			end
 		end
 	end
 
 	mstate.in_handler = true;
-	if (ind == 1 and active ~= mstate.btns[1]) then
+	if (ind == MOUSE_LBUTTON and active ~= mstate.btns[MOUSE_LBUTTON]) then
 		lmbhandler(hists, active);
 	end
 
-	if (ind == 3 and active ~= mstate.btns[3]) then
+	if (ind == MOUSE_RBUTTON and active ~= mstate.btns[MOUSE_RBUTTON]) then
 		rmbhandler(hists, active);
 	end
 
@@ -759,17 +834,17 @@ end
 
 local function mbh(hists, state)
 -- change in left mouse-button state?
-	if (state[1] ~= mstate.btns[1]) then
-		lmbhandler(hists, state[1]);
+	if (state[MOUSE_LBUTTON] ~= mstate.btns[MOUSE_LBUTTON]) then
+		lmbhandler(hists, state[MOUSE_LBUTTON]);
 
-	elseif (state[3] ~= mstate.btns[3]) then
-		rmbhandler(hists, state[3]);
+	elseif (state[MOUSE_RBUTTON] ~= mstate.btns[MOUSE_RBUTTON]) then
+		rmbhandler(hists, state[MOUSE_RBUTTON]);
 	end
 
 -- remember the button states for next time
-	mstate.btns[1] = state[1];
-	mstate.btns[2] = state[2];
-	mstate.btns[3] = state[3];
+	mstate.btns[MOUSE_LBUTTON] = state[MOUSE_LBUTTON];
+	mstate.btns[MOUSE_MBUTTON] = state[MOUSE_MBUTTON];
+	mstate.btns[MOUSE_RBUTTON] = state[MOUSE_RBUTTON];
 end
 
 function mouse_reveal_hook(state)
@@ -926,7 +1001,7 @@ function mouse_input(x, y, state, noinp)
 			table.insert(mstate.cur_over, hists[i]);
 			local res = linear_find_vid(mstate.handlers.over, hists[i], "over");
 			if (res) then
-				res:over(hists[i], mstate.x, mstate.y);
+				res:over(hists[i], mstate.x, mstate.y, mstate.cursortag);
 			end
 		end
 	end
@@ -999,6 +1074,9 @@ function mouse_addlistener(tbl, events)
 			insert_unique(mstate.handlers[val], tbl);
 		elseif (tbl[val] ~= nil) then
 			warning("mouse_addlistener(), unknown event function: " .. val);
+			if (DEBUGLEVEL > 0) then
+				print("add_listener traceback: ", debug.traceback());
+			end
 		end
 	end
 end
@@ -1250,6 +1328,9 @@ function mouse_querytarget(rt)
 	if (mstate.native) then
 	else
 		rendertarget_attach(rt, mstate.cursor, RENDERTARGET_DETACH);
+		if (mstate.cursortag and mstate.cursortag.vid) then
+			rendertarget_attach(rt, mstate.cursortag.vid, RENDERTARGET_DETACH);
+		end
 	end
 	mstate.max_x = props.width;
 	mstate.max_y = props.height;

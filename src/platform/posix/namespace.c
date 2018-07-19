@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016, Björn Ståhl
+ * Copyright 2014-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -35,12 +35,13 @@ static struct {
 			char* bins;
 			char* libs;
 			char* debug;
+			char* sysscr;
 		};
-		char* paths[11];
+		char* paths[12];
 	};
 
-	int flags[11];
-	int lenv[11];
+	int flags[12];
+	int lenv[12];
 
 } namespaces = {0};
 
@@ -55,7 +56,8 @@ static const char* lbls[] = {
 	"system-font",
 	"system-binaries",
 	"system-libraries(hijack)",
-	"system-debugoutput"
+	"system-debugoutput",
+	"system-scripts"
 };
 
 static unsigned i_log2(uint32_t n)

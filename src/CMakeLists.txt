@@ -153,7 +153,7 @@ amsg("${CL_YEL}\t-DFSRV_DECODE_UVC=${CL_GRN}[Off|On]${CL_RST} - Add support for 
 amsg("")
 amsg("${CL_WHT}Install / Autodetection Overrides:${CL_RST}")
 amsg("${CL_YEL}\t-D(DISABLE_FSRV_ (encode, decode, net, remoting, terminal, game)=ON ${CL_RST}")
-amsg("${CL_YEL}\t-D(APPL_DEST, RES_DEST, APIMAN_DEST, MAN_DEST)=/some/path ${CL_RST}")
+amsg("${CL_YEL}\t-D(APPL_DEST, RES_DEST, APIMAN_DEST, MAN_DEST, SCRIPTS_DEST)=/some/path ${CL_RST}")
 amsg("")
 
 # no other audio platforms supported currently
@@ -633,6 +633,13 @@ install(TARGETS arcan_db DESTINATION bin)
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/../data/appl
 	DESTINATION ${APPL_DEST}
 	DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR}
+	FILE_PERMISSIONS ${SHARED_PERMISSIONS}
+	PATTERN ".gitignore" EXCLUDE
+)
+
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/../data/scripts
+	DESTINATION ${SCRIPTS_DEST}
+	DIRECTORY_PERMISSIONS ${SHARED_PERMISSIONS_DIR}
 	FILE_PERMISSIONS ${SHARED_PERMISSIONS}
 	PATTERN ".gitignore" EXCLUDE
 )

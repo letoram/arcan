@@ -79,9 +79,16 @@ enum arcan_namespaces {
 	RESOURCE_SYS_DEBUG = 1024,
 
 /*
+ * shared scripts that can be system_loaded, should be RO and
+ * updated / controlled with distribution versioning or through
+ * explicit developer overrides
+ */
+	RESOURCE_SYS_SCRIPTS = 2048,
+
+/*
  * must be set to the vale of the last element
  */
-	RESOURCE_SYS_ENDM = 1024
+	RESOURCE_SYS_ENDM = 2048
 };
 
 /*
