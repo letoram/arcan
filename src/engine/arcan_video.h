@@ -1054,10 +1054,12 @@ arcan_errc arcan_video_updateslices(
 arcan_errc arcan_video_transformcycle(arcan_vobj_id, bool active);
 
 /*
- * Immediately remove all pending transform chains, storing the number
- * of individual transforms that are dropped in the output [drop] argument.
+ * Immediately cancel all pending transforms, leaving the surface in its
+ * current state. The left array will be populated with the remaining on
+ * the next transform in the chain, ordered as:
+ * [blend, move, rotate], 0 if no transform is chained in that slot.
  */
-arcan_errc arcan_video_zaptransform(arcan_vobj_id id, float* drop);
+arcan_errc arcan_video_zaptransform(arcan_vobj_id id, unsigned left[3]);
 
 /*
  * Associate a tag with the specified transform, and a mask of
