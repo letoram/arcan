@@ -2790,7 +2790,7 @@ arcan_errc arcan_video_setlife(arcan_vobj_id id, unsigned lifetime)
 	return rv;
 }
 
-arcan_errc arcan_video_zaptransform(arcan_vobj_id id, float* dropped)
+arcan_errc arcan_video_zaptransform(arcan_vobj_id id, unsigned left[3])
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
@@ -2799,31 +2799,24 @@ arcan_errc arcan_video_zaptransform(arcan_vobj_id id, float* dropped)
 
 	surface_transform* current = vobj->transform;
 
-	float count = 0;
 	float ct = arcan_video_display.c_ticks;
 
-	if (current){
-		float max = current->move.endt;
-		if (current->scale.endt > max)
-			max = current->scale.endt;
-		if (current->rotate.endt > max)
-			max = current->rotate.endt;
-		if (current->blend.endt > max)
-			max = current->blend.endt;
-
-		max /= ct;
-		count += max;
+	if (left){
+		if (current){
+			left[0] = current->blend.endt - current->blend.startt;
+			left[1] = current->move.endt - current->blend.startt;
+			left[2] = current->rotate.endt - current->blend.startt;
+		}
+		else{
+			left[0] = left[1] = left[2] = 0;
+		}
 	}
+
 	while (current){
 		surface_transform* next = current->next;
-
 		arcan_mem_free(current);
 		current = next;
-		count++;
 	}
-
-	if (dropped)
-		*dropped = count;
 
 	vobj->transform = NULL;
 
