@@ -12,7 +12,7 @@
  *     set of modifiers - likely done by the platform side of mesa-egl impl.
  *
  * [ ] Add the corresponding work to the zwp_... dma_buf
- *
+*
  * [ ] Implement multi-buffer repack reblit support function, add both here
  *     and in waybridge so that we can work around the problem with the lack
  *     of shader 'variants' to deal with all the different ugly sampler fmts.
@@ -31,8 +31,10 @@
  * [ ] Add an extended version of the map_... function that allows a plane
  *     index as part of the mapping function for layered compositing,
  *     bonus points for mimicking the heuristics used by surface flinger for
- *     switching between GL composited and MDP composition
+ *     switching between GL composited and MDP composition, this might also
+ *     need a type field (like for cursor)
  */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -139,6 +141,7 @@ typedef EGLBoolean (EGLAPIENTRY* PFNEGLGETCONFIGSPROC)
 typedef const char* (EGLAPIENTRY* PFNEGLQUERYSTRINGPROC)(EGLDisplay, EGLenum);
 typedef EGLBoolean (EGLAPIENTRY* PFNEGLSTREAMCONSUMERACQUIREATTRIBNVPROC)(EGLDisplay,
 	EGLStreamKHR, const EGLAttrib*);
+typedef EGLBoolean (EGLAPIENTRY* PFNEGLGETCONFIGATTRIBPROC)(EGLDisplay, EGLConfig, EGLint, EGLint*);
 
 struct egl_env {
 /* EGLImage */
@@ -179,6 +182,7 @@ struct egl_env {
 	PFNEGLQUERYSTRINGPROC query_string;
 	PFNEGLSWAPBUFFERSPROC swap_buffers;
 	PFNEGLSWAPINTERVALPROC swap_interval;
+	PFNEGLGETCONFIGATTRIBPROC get_config_attrib;
 };
 
 static void map_ext_functions(struct egl_env* denv,
@@ -276,13 +280,18 @@ struct dev_node {
 	EGLDeviceEXT egldev;
 	struct gbm_device* gbm;
 
-/*
- * NOTE: possible that these should be moved and managed per struct dispout
- * rather than shared between all displays.
- */
-	EGLConfig config;
-	EGLContext context;
+/* Display is the display system connection, not to be confused with our normal
+ * display, for that we have configs derived from the display which match the
+ * visual of our underlying buffer method - these combined give the surface
+ * within the context */
+	EGLint attrtbl[24];
 	EGLDisplay display;
+
+/* Each display has its own context in order to have different framebuffer out
+ * configuration, then an outer headless context that all the other resources
+ * are allocated with */
+	EGLContext context;
+	const char* context_state;
 
 /*
  * to deal with multiple GPUs and multiple vendor libraries, these contexts are
@@ -313,8 +322,9 @@ enum disp_state {
 static struct dev_node nodes[VIDEO_MAX_NODES];
 
 enum output_format {
-	output_888 = 0,
-	output_10b = 1
+	OUTPUT_888 = 0,
+	OUTPUT_10b = 1,
+	OUTPUT_565 = 2
 };
 
 /*
@@ -330,10 +340,13 @@ struct dispout {
  * method, i.e. different for normal gbm, headless gbm and eglstreams */
 	struct {
 		int in_flip, in_destroy;
+		EGLConfig config;
+		EGLContext context;
 		EGLSurface esurf;
 		EGLStreamKHR stream;
 		struct gbm_bo* cur_bo, (* next_bo);
 		uint32_t cur_fb;
+		int format;
 		struct gbm_surface* surface;
 		struct drm_mode_map_dumb dumb;
 		size_t dumb_pitch;
@@ -509,6 +522,20 @@ static void release_card(size_t i)
 	nodes[i].active = false;
 }
 
+static void set_device_context(struct dev_node* node)
+{
+	node->eglenv.make_current(node->display,
+		EGL_NO_SURFACE, EGL_NO_SURFACE, node->context);
+	node->context_state = "device";
+}
+
+static void set_display_context(struct dispout* d)
+{
+	d->device->eglenv.make_current(d->device->display,
+		d->buffer.esurf, d->buffer.esurf, d->buffer.context);
+	d->device->context_state = "display";
+}
+
 void setup_backlight_ledmap()
 {
 	if (pipe(egl_dri.ledpair) == -1)
@@ -671,21 +698,55 @@ static int setup_buffers_stream(struct dispout* d)
 		return -1;
 	}
 
+/* 4. Get config and context */
+	EGLint nc;
+	d->device->eglenv.get_configs(d->device->display, NULL, 0, &nc);
+	if (nc < 1){
+		debug_print("no configurations found (%s)", egl_errstr());
+		return -1;
+	}
+
+	EGLConfig configs[nc];
+	d->device->eglenv.get_configs(d->device->display, configs, nc * sizeof(EGLConfig), &nc);
+	if (!d->device->eglenv.choose_config(
+		d->device->display, d->device->attrtbl, &d->buffer.config, 1, &nc)){
+		debug_print("couldn't chose a configuration (%s)", egl_errstr());
+		return -1;
+	}
+
+	const EGLint context_attribs[] = {
+		EGL_CONTEXT_CLIENT_VERSION, 2,
+		EGL_NONE
+	};
+
+	d->buffer.context = d->device->eglenv.create_context(
+		d->device->display, configs[1], d->device->context, context_attribs);
+
+	if (d->buffer.context == NULL) {
+		debug_print("couldn't create display context");
+		return false;
+	}
+
 /*
- * 4. Create stream-bound surface
+ * 5. Create stream-bound surface
  */
 	d->buffer.esurf = d->device->eglenv.create_stream_producer_surface(
-		d->device->display, d->device->config, d->buffer.stream, surface_attrs);
+		d->device->display, d->buffer.config, d->buffer.stream, surface_attrs);
+
 	if (!d->buffer.esurf){
 		d->device->eglenv.destroy_stream(d->device->display, d->buffer.stream);
 		d->buffer.stream = EGL_NO_STREAM_KHR;
+		d->device->eglenv.destroy_context(d->device->display, d->buffer.context);
+		d->buffer.context = NULL;
 		debug_print("EGLstreams - couldn't create output surface");
 		return -1;
 	}
 
+/*
+ * 6. Activate context and buffers
+ */
 	egl_dri.last_display = d;
-	d->device->eglenv.make_current(d->device->display,
-		d->buffer.esurf, d->buffer.esurf, d->device->context);
+	set_display_context(d);
 
 /*
  * 5. Set synchronization attributes on stream
@@ -698,6 +759,8 @@ static int setup_buffers_stream(struct dispout* d)
 		d->device->eglenv.stream_consumer_acquire_attrib(
 			d->device->display, d->buffer.stream, attr);
 	}
+
+	set_device_context(d->device);
 	return 0;
 }
 
@@ -711,34 +774,123 @@ static int setup_buffers_gbm(struct dispout* d)
 			lookup_call, d->device->eglenv.get_proc_address);
 	}
 
-	if (d->output_format == 1){
-		d->buffer.surface = gbm_surface_create(d->device->gbm,
-			d->display.mode->hdisplay, d->display.mode->vdisplay,
-			GBM_FORMAT_XRGB2101010, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING
-		);
+	int gbm_formats[] = {
+		-1, /* 565 */
+		-1, /* 10-bit, X */
+		-1, /* 10-bit, A */
+		GBM_FORMAT_XRGB8888,
+		GBM_FORMAT_ARGB8888
+	};
 
-		if (!d->buffer.surface)
-			debug_print("libgbm(), 10-bit output\
-				requested but no suitable scanout, trying 8-bit\n");
+	const char* fmt_lbls[] = {
+		"RGB565 16-bit",
+		"xRGB 30-bit",
+		"aRGB 30-bit",
+		"xRGB 24-bit",
+		"aRGB 24-bit"
+	};
+
+/*
+ * 10-bit output has very spotty driver support, so only allow it if it has
+ * been explicitly set as interesting - big note is that the creation order
+ * is somewhat fucked, the gbm output buffer defines the configuration of
+ * the EGL node, note the other way around.
+ */
+	if (d->output_format == OUTPUT_565){
+		gbm_formats[0] = GBM_FORMAT_RGB565;
 	}
 
-	if (!d->buffer.surface)
-		d->buffer.surface = gbm_surface_create(d->device->gbm,
-			d->display.mode->hdisplay, d->display.mode->vdisplay,
-			GBM_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING
-		);
+	if (d->output_format == OUTPUT_10b){
+		gbm_formats[1] = GBM_FORMAT_XRGB2101010;
+		gbm_formats[2] = GBM_FORMAT_ARGB8888;
+	}
 
-	d->buffer.esurf = d->device->eglenv.create_window_surface(
-		d->device->display, d->device->config, (uintptr_t)d->buffer.surface, NULL);
+/* first get the set of configs from the display */
+	EGLint nc;
+	d->device->eglenv.get_configs(d->device->display, NULL, 0, &nc);
+	if (nc < 1){
+		debug_print("no configurations found for display, (%s)", egl_errstr());
+		return false;
+	}
 
-	if (d->buffer.esurf == EGL_NO_SURFACE){
-		debug_print("couldn't create a window surface.");
+	EGLConfig configs[nc];
+	EGLint match = 0;
+
+/* filter them based on the desired attributes from the device itself */
+	d->device->eglenv.choose_config(d->device->display, d->device->attrtbl, configs, nc, &match);
+	if (!match)
+		return -1;
+
+/* then sweep the formats in desired order and look for a matching visual */
+	for (size_t i = 0; i < COUNT_OF(gbm_formats); i++){
+		if (gbm_formats[i] == -1)
+			continue;
+
+		bool got_config = false;
+		for (size_t j = 0; j < nc && !got_config; j++){
+			EGLint id;
+			if (!d->device->eglenv.get_config_attrib(
+				d->device->display, configs[j], EGL_NATIVE_VISUAL_ID, &id))
+					continue;
+
+			if (id == gbm_formats[i]){
+				d->buffer.config = configs[j];
+				got_config = true;
+			}
+		}
+
+/* first time device setup will call this function in two stages, so there
+ * might be a buffer already set when we get called the second time and it is
+ * safe to actually bind the buffer to an EGL surface as the config should be
+ * the right one */
+		if (!d->buffer.surface)
+			d->buffer.surface = gbm_surface_create(d->device->gbm,
+				d->display.mode->hdisplay, d->display.mode->vdisplay,
+				gbm_formats[i], GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+
+		if (!d->buffer.surface)
+			continue;
+
+		if (!d->buffer.esurf)
+			d->buffer.esurf = d->device->eglenv.create_window_surface(
+				d->device->display, d->buffer.config,(uintptr_t)d->buffer.surface,NULL);
+
+/* we can accept buffer setup failure in this stage if we are being init:ed
+ * and the EGL configuration doesn't exist */
+		if (d->buffer.esurf != EGL_NO_SURFACE){
+			d->buffer.format = gbm_formats[i];
+			debug_print("(gbm) picked output buffer format %s", fmt_lbls[i]);
+			break;
+		}
+
+		gbm_surface_destroy(d->buffer.surface);
+		d->buffer.surface = NULL;
+	}
+
+	if (!d->buffer.surface){
+		debug_print("couldn't find a gbm buffer format matching EGL display");
+		return -1;
+	}
+
+/* finally, build the display- specific context with the new surface and
+ * context - might not always use it due to direct-scanout vs. shaders etc.
+ * but still needed */
+	const EGLint context_attribs[] = {
+		EGL_CONTEXT_CLIENT_VERSION, 2,
+		EGL_NONE
+	};
+
+	d->buffer.context = d->device->eglenv.create_context(
+		d->device->display, d->buffer.config, d->device->context, context_attribs);
+
+	if (!d->buffer.context){
+		debug_print("couldn't create display-buffer context");
+		gbm_surface_destroy(d->buffer.surface);
 		return -1;
 	}
 
 	egl_dri.last_display = d;
-	d->device->eglenv.make_current(d->device->display,
-		d->buffer.esurf, d->buffer.esurf, d->device->context);
+	set_device_context(d->device);
 
 	return 0;
 }
@@ -1017,6 +1169,8 @@ static void map_ext_functions(struct egl_env* denv,
 static void map_functions(struct egl_env* denv,
 	void*(lookup)(void* tag, const char* sym, bool req), void* tag)
 {
+	denv->get_config_attrib =
+		(PFNEGLGETCONFIGATTRIBPROC) lookup(tag, "eglGetConfigAttrib", true);
 	denv->destroy_surface =
 		(PFNEGLDESTROYSURFACEPROC) lookup(tag, "eglDestroySurface", true);
 	denv->get_error =
@@ -1440,35 +1594,40 @@ static bool setup_node(struct dev_node* node)
 	}
 
 /*
- * grab and activate config
+ * now copy the attributes that match our choice in API etc. so that the
+ * correct buffers can be selected
+ */
+	memcpy(node->attrtbl, attrtbl, sizeof(attrtbl));
+
+/*
+ * now build the headless context that we will share with our heads as
+ * they arrive. First by just pikcing the first config that match the
+ * attrtbl.
  */
 	EGLint nc;
 	node->eglenv.get_configs(node->display, NULL, 0, &nc);
 	if (nc < 1){
-		debug_print("no configurations found (%s)", egl_errstr());
+		debug_print("no configurations found for display, (%s)", egl_errstr());
 		return false;
 	}
 
-	EGLint selv;
-	debug_print("%d configurations found", (int) nc);
+/* filter them based on the desired attributes from the device itself */
+	EGLConfig configs[nc];
+	EGLint match = 0;
+	node->eglenv.choose_config(node->display, node->attrtbl, configs, 1, &match);
+	if (!match)
+		return false;
 
-	if (!node->eglenv.choose_config(
-		node->display, attrtbl, &node->config, 1, &selv)){
-		debug_print("couldn't chose a configuration (%s)", egl_errstr());
+	node->context = node->eglenv.create_context(
+		node->display, configs[0], EGL_NO_CONTEXT, context_attribs);
+
+	if (!node->context){
+		debug_print(
+			"couldn't build an EGL context on the display, (%s)", egl_errstr());
 		return false;
 	}
 
-/*
- * create a context to match, and if the output mode is streams,
- * a matching EGLstream
- */
-	node->context = node->eglenv.create_context(node->display,
-		node->config, EGL_NO_CONTEXT, context_attribs);
-	if (node->context == NULL) {
-		debug_print("couldn't create a context");
-		return false;
-	}
-
+	set_device_context(node);
 	return true;
 }
 
@@ -1624,7 +1783,7 @@ static int setup_node_gbm(struct dev_node* node, const char* path, int fd)
 	if (node->eglenv.get_platform_display){
 		debug_print("gbm, using eglGetPlatformDisplayEXT");
 		node->display = node->eglenv.get_platform_display(
-			EGL_PLATFORM_GBM_MESA, (void*)(node->gbm), NULL);
+			EGL_PLATFORM_GBM_KHR, (void*)(node->gbm), NULL);
 	}
 	else{
 		debug_print("gbm, building display using native handle only");
@@ -2400,12 +2559,12 @@ static void disable_display(struct dispout* d, bool dealloc)
 		egl_dri.destroy_pending |= 1 << d->id;
 		return;
 	}
+
 /*
-	if (egl_dri.last_display == d){
-		egl_dri.last_display = NULL;
-		d->device->eglenv.make_current(d->device->display,
-			EGL_NO_SURFACE, EGL_NO_SURFACE, d->device->context);
-	}
+ * This triggered driver bugs (?) and hard-to-attribute UAFs, reasonably
+ * sure it wasn't our fault - but there's a lot of state to take into account
+ *
+ * set_device_context(d->device);
  */
 
 	d->device->refc--;
@@ -2638,7 +2797,7 @@ static bool try_node(int fd, const char* pathref,
 		return false;
 	}
 
-	drmDropMaster(node->fd);
+/*	drmDropMaster(node->fd);
 	if (0 != drmSetMaster(node->fd)){
 		debug_print("set drmMaster on [%d](%d:%s) failed, reason: %s",
 			dst_ind, fd, pathref ? pathref : "(no path)", strerror(errno));
@@ -2647,6 +2806,7 @@ static bool try_node(int fd, const char* pathref,
 			return false;
 		}
 	}
+*/
 
 	nodes->force_master = force_master;
 	struct dispout* d = allocate_display(node);
@@ -2660,7 +2820,7 @@ static bool try_node(int fd, const char* pathref,
 		return false;
 	}
 
-	if (setup_buffers(d) != 0){
+	if (setup_buffers(d) == -1){
 		disable_display(d, true);
 		release_card(dst_ind);
 		return false;
@@ -3307,7 +3467,7 @@ bool platform_video_map_display(
 			d->display.con->connector_id,
 			d->display.mode ? d->display.mode->hdisplay : 0,
 			d->display.mode ? d->display.mode->vdisplay : 0) ||
-			setup_buffers(d) != 0){
+			setup_buffers(d) == -1){
 			debug_print("map_display(%d->%d) alloc/map failed", (int)id, (int)disp);
 			return false;
 		}
@@ -3423,14 +3583,14 @@ static void update_display(struct dispout* d)
 	d->last_update = arcan_timemillis();
 
 /*
- * make sure we target the right GL context
+ * Make sure we target the right GL context
+ * Notice that the context being set is that of the display buffer,
+ * not the shared outer "headless" context.
+ *
  * MULTIGPU> will also need to set the agp- current rendertarget
  */
-	if (egl_dri.last_display != d){
-		d->device->eglenv.make_current(d->device->display,
-			d->buffer.esurf, d->buffer.esurf, d->device->context);
-		egl_dri.last_display = d;
-	}
+	set_display_context(d);
+	egl_dri.last_display = d;
 
 /* activated- rendertarget covers scissor regions etc. so we want to reset */
 	agp_blendstate(BLEND_NONE);
@@ -3478,7 +3638,7 @@ static void update_display(struct dispout* d)
 		d->buffer.next_bo = gbm_surface_lock_front_buffer(d->buffer.surface);
 		if (!d->buffer.next_bo){
 			verbose_print("(%d) update, failed to lock front buffer", (int)d->id);
-			return;
+			goto out;
 		}
 		next_fb = get_gbm_fd(d, d->buffer.next_bo);
 	}
@@ -3524,6 +3684,9 @@ static void update_display(struct dispout* d)
 				(int)d->id, (uintptr_t) d->buffer.cur_fb, (uintptr_t)next_fb);
 		}
 	}
+
+out:
+	set_device_context(d->device);
 }
 
 void platform_video_prepare_external()
@@ -3572,7 +3735,7 @@ void platform_video_restore_external()
 					"(%d) restore external failed on kms setup", (int)displays[i].id);
 				disable_display(&displays[i], true);
 			}
-			else if (setup_buffers(&displays[i]) != 0){
+			else if (setup_buffers(&displays[i]) == -1){
 				debug_print(
 					"(%d) restore external failed on buffer alloc", (int)displays[i].id);
 				disable_display(&displays[i], true);
