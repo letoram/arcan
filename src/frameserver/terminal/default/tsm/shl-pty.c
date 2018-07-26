@@ -450,6 +450,11 @@ int shl_pty_write(struct shl_pty *pty, const char *u8, size_t len)
 
 int shl_pty_signal(struct shl_pty *pty, int sig)
 {
+/* TIOCSIG isn't in any pledge profile */
+#ifdef __OpenBSD__
+	return -1;
+#endif
+
 	if (!shl_pty_is_open(pty))
 		return -ENODEV;
 
