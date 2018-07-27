@@ -76,13 +76,15 @@ static void flush_io(struct debug_ctx* ctx)
 static void menu_refresh(struct tui_context* c, struct menu_ctx* dst)
 {
 	struct tui_screen_attr attr = arcan_tui_defattr(c, NULL);
-	arcan_tui_get_color(c, TUI_COL_HIGHLIGHT, attr.fc);
-	arcan_tui_get_color(c, TUI_COL_BG, attr.bc);
+	struct tui_screen_attr attr_sel = attr;
+	arcan_tui_get_color(c, TUI_COL_HIGHLIGHT, attr_sel.fc);
+	arcan_tui_get_color(c, TUI_COL_BG, attr_sel.bc);
 	arcan_tui_erase_screen(c, false);
 
 	size_t rows, cols;
 	arcan_tui_dimensions(c, &rows, &cols);
 
+	printf("menu refresh\n");
 /* fixme, dynamic content refresh? */
 
 /* clamp cursor to current set- size */
@@ -95,6 +97,13 @@ static void menu_refresh(struct tui_context* c, struct menu_ctx* dst)
 /* otherwise, find which page the current position puts us at */
 	}
 
+	size_t y = 0;
+	for(; sofs + y < dst->n_entries && y < rows; y++){
+		arcan_tui_move_to(c, 0, y);
+		printf("write: %s\n", dst->entries[sofs+y].label);
+		arcan_tui_writestr(c, dst->entries[sofs+y].label, &attr);
+	}
+
 /* write each row (we're in nowrap, nocursor) and pick attr based on
  * highlight status */
 }
@@ -104,7 +113,7 @@ static void menu_key(struct tui_context* c, uint32_t keysym,
 {
 	struct menu_ctx* dst = t;
 	int last_pos = dst->position;
-	printf("input: %d\n", keysym);
+	printf("input: %d, %d, %d\n", keysym, dst->position, dst->n_entries);
 
 	if (keysym == TUIK_J || keysym == TUIK_DOWN){
 		dst->position = (dst->position + 1) % dst->n_entries;
@@ -116,17 +125,20 @@ static void menu_key(struct tui_context* c, uint32_t keysym,
 			dst->position = dst->n_entries - 1;
 	}
 	else if (keysym == TUIK_KP_ENTER || keysym == TUIK_RETURN){
+		printf("activate\n");
 /* deallocate and activate menu entry */
 	}
 	else if (keysym == TUIK_ESCAPE){
 /* deallocate and go back up menu stack */
+		printf("escape\n");
 	}
 	else {
-/* check character for match against shortcut, TUIK_ values
- * if printable match ASCII so easy enough */
+/* check character for match against shortcut or prefix, TUIK_
+ * values if printable match ASCII so easy enough */
 		if (!isprint(keysym))
 			return;
 
+		printf("shortcut scan\n");
 		for (size_t i = 0; i < dst->n_entries; i++){
 		}
 	}
@@ -162,6 +174,8 @@ static bool run_menu(struct debug_ctx* ctx,
 		return false;
 	}
 
+	printf("run menu landed in: %d\n", n_flt);
+
 	*menuctx = (struct menu_ctx){
 		.debugctx = ctx,
 		.entries = menuflt,
@@ -171,7 +185,7 @@ static bool run_menu(struct debug_ctx* ctx,
 	};
 
 	struct tui_cbcfg menu_handlers = {
-		.tag = ctx,
+		.tag = menuctx,
 		.input_key = menu_key,
 	};
 
@@ -199,7 +213,11 @@ static void* debug_thread(void* thr)
 		return NULL;
 	}
 
-	run_menu(dctx, root, n_root, NULL);
+	if (!run_menu(dctx, root, n_root, NULL)){
+		arcan_shmif_drop(&dctx->cont);
+		free(thr);
+		return NULL;
+	}
 
 /* normal event->cb dispatch loop, menu navigation is used to
  * mutate the meaning of the debug window and the set of applicable
@@ -390,9 +408,14 @@ static struct menu_ent fd_menu[] = {
 
 static struct menu_ent root_menu[] = {
 {
-	.label = "File Descriptors",
+	.label = "Intercept",
 	.shortcut = 'f',
 	.menukey = "fd_menu"
+},
+{
+	.label = "Debugger",
+	.shortcut = 'f',
+	.menukey = "debug_menu"
 }
 /*
  * debugger
