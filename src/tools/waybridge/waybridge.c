@@ -1051,9 +1051,9 @@ int main(int argc, char* argv[])
 			arg_i++;
 			dtemp_prefix = argv[arg_i];
 			size_t len = strlen(dtemp_prefix);
-			if (strlen(len) <= 7 ||
-				strcmp(dtemp_prefix[len-7], "XXXXXX") != 0){
-				return show_use("prefix path must end with XXXXXX");
+			if (len <= 7 ||
+				strcmp(&dtemp_prefix[len-7], "XXXXXX") != 0){
+				return show_use("prefix path must end with XXXXXX", "");
 			}
 		}
 		else if (strcmp(argv[arg_i], "-dir") == 0){
