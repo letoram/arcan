@@ -482,12 +482,10 @@ static void check_netlink(pid_t child, int netlink)
 static void check_child(pid_t child, bool die)
 {
 	int st;
-	int ec = EXIT_FAILURE;
 
 /* child dead? */
 	if (waitpid(child, &st, WNOHANG) > 0){
 		if (WIFEXITED(st) || WIFSIGNALED(st)){
-			ec = WEXITSTATUS(st);
 			die = true;
 		}
 	}
