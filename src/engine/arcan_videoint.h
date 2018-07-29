@@ -454,6 +454,12 @@ void arcan_vint_applyhint(arcan_vobject* src, enum blitting_hint hint,
 	size_t* out_w, size_t* out_h, size_t* blackframes);
 
 /*
+ * explicitly force a re-poll/render step, typically only used for a
+ * frameserver in resize-ack state as it resets the feed-cookie
+ */
+arcan_errc arcan_vint_pollfeed(arcan_vobj_id vid);
+
+/*
  * accessor for the rendertarget currently (thread_local) marked as active
  */
 struct rendertarget* arcan_vint_current_rt();

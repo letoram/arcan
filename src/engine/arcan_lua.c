@@ -7583,6 +7583,7 @@ enum target_flags {
 	TARGET_FLAG_ALLOW_INPUT,
 	TARGET_FLAG_ALLOW_GPUAUTH,
 	TARGET_FLAG_LIMIT_SIZE,
+	TARGET_FLAG_SYNCH_SIZE,
 	TARGET_FLAG_ENDM
 };
 
@@ -7664,6 +7665,10 @@ static void updateflag(arcan_vobj_id vid, enum target_flags flag, bool toggle)
 
 /* handle elsewhere */
 	case TARGET_FLAG_LIMIT_SIZE:
+	break;
+
+	case TARGET_FLAG_SYNCH_SIZE:
+		fsrv->flags.rz_ack = toggle;
 	break;
 
 	case TARGET_FLAG_ENDM:
@@ -7863,6 +7868,18 @@ static int targetstepframe(lua_State* ctx)
  * the ffunc handler (arcan_frameserver_backend.c)
  */
 	if (state->tag == ARCAN_TAG_FRAMESERV && !rtgt){
+		arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
+		if (fsrv->flags.rz_ack && nframes == 0){
+			if (!fsrv->rz_known){
+				LUA_ETRACE("stepframe_target", "rz_ack not in rz_known state", 0);
+			}
+
+/* force update / upload */
+			fsrv->rz_known++;
+			arcan_vint_pollfeed(tgt);
+			LUA_ETRACE("stepframe_target", NULL, 0);
+		}
+
 		arcan_event ev = {
 			.category = EVENT_TARGET,
 			.tgt.kind = TARGET_COMMAND_STEPFRAME
@@ -11454,6 +11471,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"TARGET_ALLOWINPUT", TARGET_FLAG_ALLOW_INPUT},
 {"TARGET_ALLOWGPU", TARGET_FLAG_ALLOW_GPUAUTH},
 {"TARGET_LIMITSIZE", TARGET_FLAG_LIMIT_SIZE},
+{"TARGET_SYNCHSIZE", TARGET_FLAG_SYNCH_SIZE},
 {"DISPLAY_STANDBY", ADPMS_STANDBY},
 {"DISPLAY_OFF", ADPMS_OFF},
 {"DISPLAY_SUSPEND", ADPMS_SUSPEND},

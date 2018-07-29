@@ -27,22 +27,26 @@ int main(int argc, char** argv)
 
 	int frames = 0;
 	while(running){
-	if (frames++ > 1000){
-		arcan_shmif_resize(&cont, 128 + (rand() % 1024), 128 + (rand() % 1024));
-		frames = 0;
-		printf("resize\n");
-	}
+		if (frames++ > 200){
+			printf("send resize\n");
+			arcan_shmif_resize(&cont, 128 + (rand() % 1024), 128 + (rand() % 1024));
+			printf("unlock resize\n");
+			frames = 0;
+		}
 
-	for (size_t row = 0; row < cont.h; row++)
-		for (size_t col = 0; col < cont.w; col++)
-			cont.vidp[ row * cont.addr->w + col ] = SHMIF_RGBA(step_r, step_g, step_b, 0xff);
-			step_r++;
-			step_g += step_r == 255;
-			step_b += step_g == 255;
+		printf("frame(%zu, %zu)\n", cont.w, cont.h);
+		for (size_t row = 0; row < cont.h; row++)
+			for (size_t col = 0; col < cont.w; col++){
+				cont.vidp[ row * cont.addr->w + col ] = SHMIF_RGBA(step_r, step_g, step_b, 0xff);
+				step_r++;
+				step_g += step_r == 255;
+				step_b += step_g == 255;
+			}
 
 		arcan_shmif_signal(&cont, SHMIF_SIGVID);
 
-		while (arcan_shmif_poll(&cont, &ev) == 1){
+		int rv;
+		while ( (rv = arcan_shmif_poll(&cont, &ev)) == 1){
 			if (ev.category == EVENT_TARGET)
 			switch (ev.tgt.kind){
 			case TARGET_COMMAND_EXIT:
