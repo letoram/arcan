@@ -9,6 +9,9 @@
 -- when stepframe_target comes as an implementation of a received clock event
 -- (see ref:launch_target), where it should be passed to help the frameserver
 -- to match the timer request to some internal handler.
+-- @note: IF the target has had the 'SYNCHSIZE' flag set (see ref:target_flags),
+-- the next buffer update is deferred until a stepframe_target call with a
+-- framecount of 0 has been provided.
 -- @note: n_frames (default:1) is a hint, relative to the current position and
 -- the actual behavior is implementation defined in the target frameserver
 -- or internal object.

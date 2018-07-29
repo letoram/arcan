@@ -6,14 +6,14 @@
 -- through the use of this function. The flag argument is used to specify
 -- the feature in question, and the optional toggle argument is if the
 -- state should be set to on or off (boolean, default: on).
--- The special max_w and max_h argument interpreation is only for the
+-- The special max_w and max_h argument interpretation is only for the
 -- TARGET_FORCESIZE flag.
 --
 -- The possible flags are:
 -- TARGET_VSTORE_SYNCH, TARGET_SYNCHRONOUS, TARGET_NOALPHA,
 -- TARGET_AUTOCLOCK, TARGET_VERBOSE, TARGET_NOBUFFERPASS, TARGET_ALLOWCM,
 -- TARGET_ALLOWLODEF, TARGET_ALLOWHDR, TARGET_ALLOWVECTOR, TARGET_ALLOWINPUT,
--- TARGET_FORCESIZE, TARGET_ALLOWGPU.
+-- TARGET_FORCESIZE, TARGET_ALLOWGPU, TARGET_LIMITSIZE, TARGET_SYNCHSIZE
 -- Optional *toggle* argument is by default set to on, to turn off a
 -- specific flag, set *toggle* to 0.
 -- @note: flag, TARGET_VSTORE_SYNCH makes sure that there is a local
@@ -68,6 +68,10 @@
 -- @note: flag: TARGET_LIMITSIZE sets an upper limit to the dimensions that
 -- the client can negotiate. This is primarily to prevent accidental absurd
 -- behavior, such as 8192x8192 sized mouse cursors.
+-- @note: flag: TARGET_SYNCHSIZE changes the semantics for the 'resized' event to
+-- block the client, pending a ref:stepframe_target call to release. It is not
+-- stable to toggle this flag on as the off state can be activated with a synch
+-- pending. On stepframe, the next update will contain the new buffer contents.
 -- @group: targetcontrol
 -- @cfunction: targetflags
 -- @related:

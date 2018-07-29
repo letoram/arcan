@@ -169,7 +169,7 @@ static bool arcan_frameserver_control_chld(arcan_frameserver* src){
 	return true;
 }
 
-static void push_buffer(arcan_frameserver* src,
+static bool push_buffer(arcan_frameserver* src,
 	struct agp_vstore* store, struct arcan_shmif_region* dirty)
 {
 	struct stream_meta stream = {.buf = NULL};
@@ -186,11 +186,7 @@ static void push_buffer(arcan_frameserver* src,
  * because the backing store might have changed somehwere else. */
 	if (src->desc.width != store->w || src->desc.height != store->h ||
 		src->desc.hints != src->desc.pending_hints || src->desc.rz_flag){
-		src->desc.hints = src->desc.pending_hints;
-		store->vinf.text.d_fmt = (src->desc.hints & SHMIF_RHINT_IGNORE_ALPHA) ||
-			src->flags.no_alpha_copy ? GL_NOALPHA_PIXEL_FORMAT : GL_STORE_PIXEL_FORMAT;
 
-		arcan_video_resizefeed(src->vid, src->desc.width, src->desc.height);
 		arcan_event rezev = {
 			.category = EVENT_FSRV,
 			.fsrv.kind = EVENT_FSRV_RESIZED,
@@ -201,6 +197,30 @@ static void push_buffer(arcan_frameserver* src,
 			.fsrv.otag = src->tag,
 			.fsrv.glsource = src->desc.hints & SHMIF_RHINT_ORIGO_LL
 		};
+
+		if (src->flags.rz_ack){
+/* mark ack and send event */
+			if (src->rz_known == 0){
+				arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
+				src->rz_known = 1;
+				return false;
+			}
+/* still no response, wait */
+			else if (src->rz_known == 1){
+				return false;
+			}
+/* ack:ed, continue with resize */
+			else
+				src->rz_known = 0;
+		}
+		else
+			arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
+
+		src->desc.hints = src->desc.pending_hints;
+		store->vinf.text.d_fmt = (src->desc.hints & SHMIF_RHINT_IGNORE_ALPHA) ||
+			src->flags.no_alpha_copy ? GL_NOALPHA_PIXEL_FORMAT : GL_STORE_PIXEL_FORMAT;
+
+		arcan_video_resizefeed(src->vid, src->desc.width, src->desc.height);
 
 		src->desc.rz_flag = false;
 		arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
@@ -252,6 +272,7 @@ static void push_buffer(arcan_frameserver* src,
 	agp_stream_commit(store, stream);
 commit_mask:
 	atomic_fetch_and(&src->shm.ptr->vpending, vmask);
+	return true;
 }
 
 enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD
@@ -497,11 +518,29 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 			arcan_event_defaultctx(), &tgt->inqueue, tgt->queue_mask, 0.5, tgt);
 
 		struct arcan_vobject* vobj = arcan_video_getobject(tgt->vid);
+
+/* frameset can be set to round-robin rotate, so with a frameset we first
+ * find the related vstore and if not, the default */
 		struct agp_vstore* dst_store = vobj->frameset ?
 			vobj->frameset->frames[vobj->frameset->index].frame : vobj->vstore;
 		struct arcan_shmif_region dirty = atomic_load(&shmpage->dirty);
-		push_buffer(tgt, dst_store,
-			shmpage->hints & SHMIF_RHINT_SUBREGION ? &dirty : NULL);
+
+/* while we're here, check if audio should be processed as well */
+		do_aud = (atomic_load(&tgt->shm.ptr->aready) > 0 &&
+			atomic_load(&tgt->shm.ptr->apending) > 0);
+
+/* sometimes, the buffer transfer is forcibly deferred and this needs
+ * to be repeat until it succeeds - this mechanism could/should(?) also
+ * be used with the vpts- below, simply defer until the deadline has
+ * passed */
+		if (!push_buffer(tgt, dst_store,
+				shmpage->hints & SHMIF_RHINT_SUBREGION ? &dirty : NULL)){
+			goto no_out;
+		}
+
+/* for tighter latency management, here is where the estimated next
+ * synch deadline for any output it is used on could/should be set,
+ * though it feeds back into the need of the conductor- refactor */
 		dst_store->vinf.text.vpts = shmpage->vpts;
 
 /* for some connections, we want additional statistics */
@@ -520,9 +559,6 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 				.tgt.ioevs[1].iv = 0
 			});
 		}
-
-		do_aud = (atomic_load(&tgt->shm.ptr->aready) > 0 &&
-			atomic_load(&tgt->shm.ptr->apending) > 0);
 	break;
 
 	case FFUNC_ADOPT:

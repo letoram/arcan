@@ -4649,6 +4649,19 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 	return;
 }
 
+arcan_errc arcan_vint_pollfeed(arcan_vobj_id vid)
+{
+	arcan_vobject* vobj = arcan_video_getobject(vid);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+/* this will always invalidate, so calling this multiple times per
+ * frame is implementation defined behavior */
+	ffunc_process(vobj, vobj->feed.pcookie+1);
+
+	return ARCAN_OK;
+}
+
 /*
  * For large Ns this approach 'should' be rather dumb in the sense
  * that we could arguably well just have a set of descriptors and

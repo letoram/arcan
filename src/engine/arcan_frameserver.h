@@ -128,6 +128,7 @@ struct arcan_frameserver {
 		bool autoclock : 1;
 		bool gpu_auth : 1;
 		bool no_dms_free : 1;
+		bool rz_ack : 1;
 	} flags;
 
 /* if autoclock is set, track and use as metric for firing events */
@@ -195,6 +196,9 @@ struct arcan_frameserver {
 	size_t abuf_cnt;
 	size_t abuf_sz;
 	size_t vbuf_cnt;
+
+/* for use with rz_ack */
+	int rz_known;
 	shmif_pixel* vbufs[FSRV_MAX_VBUFC];
 	shmif_asample* abufs[FSRV_MAX_ABUFC];
 
