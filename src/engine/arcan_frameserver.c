@@ -159,8 +159,18 @@ static bool arcan_frameserver_control_chld(arcan_frameserver* src){
 	}
 
 	if (!alive){
+/*
+ * This one is really ugly and kept around here as a note. The previous idea
+ * was that there might still be relevant content in the queue, e.g. descriptor
+ * transfers etc. that one might want to preserve, but combined with the drain-
+ * enqueue approach to deal with queue saturation and high-priority event like
+ * frameserver could lead to an order issue where there are EXTERNAL_ events
+ * on the queue after the corresponding frameserver has been terminated, leading
+ * to a possible invalid-tag deref into scripting WM.
+ *
 		arcan_event_queuetransfer(
 			arcan_event_defaultctx(), &src->inqueue, src->queue_mask, 0.5, src);
+ */
 
 		arcan_frameserver_free(src);
 		return false;
