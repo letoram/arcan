@@ -115,6 +115,10 @@
 	(RESOURCE_SYS_LIBS)
 #endif
 
+#define STRJOIN2(X) #X
+#define STRJOIN(X) STRJOIN2(X)
+#define LINE_TAG STRJOIN(__LINE__)
+
 /*
  * defined in engine/arcan_main.c, rather than terminating directly
  * we'll longjmp to this and hopefully the engine can switch scripts
@@ -160,12 +164,22 @@ typedef int acoord;
 
 /*
  * ETRACE is used in stead of a normal return and is used to both track
- * non-fatal non-warning script invocation errors and to check for unbalanced
- * stacks. Example:
+ * non-fatal non-warning script invocation errors and to check for
+ * unbalanced stacks.
+ * Example:
  * static int lasttop = 0;
- * define LUA_TRACE(fsym) top lasttop = lua_gettop(ctx);
+ * define LUA_TRACE(fsym) lasttop = lua_gettop(ctx);
  * define LUA_ETRACE(fsym, reason, argc){fprintf(stdout, "%s, %d\n",
 		fsym, (int)(lasttop - lua_gettop(ctx) + argc)); return argc;}
+ *
+ * Other example is measuring calls that are particularly slow to find
+ * blocking issues:
+ * #define LUA_TRACE(fsym) long long ts_in = arcan_timemillis();
+ * #define LUA_ETRACE(fsym, reason, argc){\
+ *  if (arcan_timemillis() - ts_in > 2){\
+ *    fprintf(stderr, "slow: %s, %lld\n", fsym, arcan_timemillis() - ts_in);\
+ *  return argc;\
+ * }
  */
 #define LUA_ETRACE(fsym,reason, X){ return X; }
 
@@ -396,7 +410,8 @@ static intptr_t find_lua_callback(lua_State* ctx)
 	for (size_t i = 1; i <= nargs; i++)
 		if (lua_isfunction(ctx, i) && !lua_iscfunction(ctx, i)){
 			lua_pushvalue(ctx, i);
-			return luaL_ref(ctx, LUA_REGISTRYINDEX);
+			intptr_t ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
+			return ref;
 		}
 
 	return (intptr_t) LUA_NOREF;
@@ -525,7 +540,16 @@ static lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
 		return opt;
 }
 
-static void wraperr(struct arcan_luactx* ctx, int errc, const char* src);
+/*
+ * Arcan to Lua call with a version that provides more detailed stack data
+ * on error, this is primarily for the case where we have C->lua->callback
+ * and later C->callback->error where stack unwinding clears data.
+ *
+ * The details are only added on a debug build as this is invoked quite
+ * frequently and it is not cheap.
+ */
+static void alua_call(
+	struct arcan_luactx* ctx, int nargs, int retc, const char* src);
 
 /*
  * iterate all vobject and drop any known tag-cb associations that
@@ -829,7 +853,7 @@ void arcan_lua_tick(lua_State* ctx, size_t nticks, size_t global)
 	if (grabapplfunction(ctx, "clock_pulse", 11)){
 		lua_pushnumber(ctx, global);
 		lua_pushnumber(ctx, nticks);
-		wraperr(ctx, lua_pcall(ctx, 2, 0, 0),"event loop: clock pulse");
+		alua_call(ctx, 2, 0, LINE_TAG":clock_pulse");
 	}
 }
 
@@ -884,7 +908,7 @@ bool arcan_lua_launch_cp(
 	lua_pushvid(ctx, ARCAN_EID);
 	lua_pushboolean(ctx, true);
 
-	wraperr(ctx, lua_pcall(ctx, 5, 1, 0), "adopt");
+	alua_call(ctx, 5, 1, LINE_TAG":adopt");
 	if (lua_type(ctx, -1) == LUA_TBOOLEAN && lua_toboolean(ctx, -1)){
 		lua_pop(ctx, 1);
 		return true;
@@ -953,7 +977,7 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 			lua_pushvid(ctx, fsrv->parent.vid);
 			lua_pushboolean(ctx, count < n_fsrv-1);
 
-			wraperr(ctx, lua_pcall(ctx, 5, 1, 0), "adopt");
+			alua_call(ctx, 5, 1, LINE_TAG":adopt");
 
 /* if we don't get an explicit accept, assume deletion */
 			if (lua_type(ctx, -1) == LUA_TBOOLEAN &&
@@ -1538,6 +1562,8 @@ static int nbio_socketclose(lua_State* ctx)
 
 static int nbio_socketaccept(lua_State* ctx)
 {
+	LUA_TRACE("open_nonblock:accept");
+
 	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIOs");
 	if (!(*ib))
 		LUA_ETRACE("open_nonblock:accept", "already closed", 0);
@@ -4099,7 +4125,7 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 			lua_pushnumber(ctx, ev->vid.vppcm);
 			lua_pushnumber(ctx, ev->vid.flags);
 			lua_pushnumber(ctx, ev->vid.displayid);
-			wraperr(ctx, lua_pcall(ctx, 5, 0, 0), "event loop: lwa-displayhint");
+			alua_call(ctx, 5, 0, LINE_TAG":(lwa) VRES_AUTORES");
 		}
 	}
 	else if (ev->vid.source == -2){
@@ -4110,7 +4136,7 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 			lua_pushnumber(ctx, ev->vid.vppcm);
 			lua_pushnumber(ctx, ev->vid.width);
 			lua_pushnumber(ctx, ev->vid.displayid);
-			wraperr(ctx, lua_pcall(ctx, 3, 0, 0), "event loop: lwa-autofont");
+			alua_call(ctx, 3, 0, LINE_TAG":(lwa) VRES_AUTOFONT");
 		}
 	};
 #else
@@ -4118,11 +4144,8 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
 		return;
 
-	LUA_TRACE("_display_state (reset)");
 	lua_pushstring(ctx, "reset");
-
-	wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "event loop: display state");
-	LUA_TRACE("");
+	alua_call(ctx, 1, 0, LINE_TAG":display_state:reset");
 #endif
 }
 
@@ -4131,7 +4154,6 @@ static void display_added(lua_State* ctx, arcan_event* ev)
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
 		return;
 
-	LUA_TRACE("_display_state (add)");
 	lua_pushstring(ctx, "added");
 	lua_pushnumber(ctx, ev->vid.displayid);
 
@@ -4147,8 +4169,7 @@ static void display_added(lua_State* ctx, arcan_event* ev)
 	lua_pushnumber(ctx, ev->vid.cardid);
 	lua_rawset(ctx, top);
 
-	wraperr(ctx, lua_pcall(ctx, 3, 0, 0), "event loop: display state");
-	LUA_TRACE("");
+	alua_call(ctx, 3, 0, LINE_TAG":display_state:added");
 }
 
 static void display_changed(lua_State* ctx, arcan_event* ev)
@@ -4156,10 +4177,8 @@ static void display_changed(lua_State* ctx, arcan_event* ev)
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
 		return;
 
-	LUA_TRACE("_display_state (changed)");
 	lua_pushstring(ctx, "changed");
-	wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "event loop: display state");
-	LUA_TRACE("");
+	alua_call(ctx, 1, 0, LINE_TAG":display_state:changed");
 }
 
 static void display_removed(lua_State* ctx, arcan_event* ev)
@@ -4167,11 +4186,9 @@ static void display_removed(lua_State* ctx, arcan_event* ev)
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
 		return;
 
-	LUA_TRACE("_display_state (remove)");
 	lua_pushstring(ctx, "removed");
 	lua_pushnumber(ctx, ev->vid.displayid);
-	wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: display state");
-	LUA_TRACE("");
+	alua_call(ctx, 2, 0, LINE_TAG":display_state:removed");
 }
 
 static void do_preroll(lua_State* ctx, intptr_t ref,
@@ -4193,7 +4210,7 @@ static void do_preroll(lua_State* ctx, intptr_t ref,
 		tblstr(ctx, "segkind", fsrvtos(fsrv->segid), top);
 		tblnum(ctx, "source_audio", aid, top);
 		luactx.cb_source_tag = vid;
-		wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event(preroll)");
+		alua_call(ctx, 2, 0, LINE_TAG":frameserver:preroll");
 		luactx.cb_source_kind = CB_SOURCE_PREROLL;
 	}
 
@@ -4288,7 +4305,7 @@ static void emit_segreq(
 
 	luactx.cb_source_tag = ev->source;
 	luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
-	wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_external");
+	alua_call(ctx, 2, 0, LINE_TAG":frameserver:segment_request");
 	luactx.cb_source_kind = CB_SOURCE_NONE;
 
 /* call into callback, if we have been consumed,
@@ -4511,7 +4528,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				"ignoring IO event: %i\n",ev->io.kind);
 		}
 
-		wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "push event( input )");
+		alua_call(ctx, 1, 0, LINE_TAG":event:input");
 	}
 	else if (ev->category == EVENT_NET){
 		arcan_vobject* vobj = arcan_video_getobject(ev->net.source);
@@ -4579,7 +4596,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 			luactx.cb_source_tag  = ev->ext.source;
 			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
-			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_net");
+			alua_call(ctx, 2, 0, LINE_TAG":event:net");
 
 			luactx.cb_source_kind = CB_SOURCE_NONE;
 		}
@@ -4598,8 +4615,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		if (fsrv->tag == LUA_NOREF){
 			return;
 		}
-		intptr_t dst_cb = fsrv->tag;
-		lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
+		lua_getref(ctx, fsrv->tag);
 		lua_pushvid(ctx, ev->ext.source);
 
 		lua_newtable(ctx);
@@ -4792,7 +4808,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		luactx.cb_source_tag  = ev->ext.source;
 		luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
-		wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_external");
+		alua_call(ctx, 2, 0, LINE_TAG":frameserver:event");
 		luactx.cb_source_kind = CB_SOURCE_NONE;
 /* special: external connection + connected->registered sequence finished */
 		if (preroll)
@@ -4802,29 +4818,35 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		arcan_vobject* vobj = arcan_video_getobject(ev->fsrv.video);
 
 /* this can happen if the frameserver has died and been enqueued but
- * delete_image was called in between, in that case, we still want tod drop the
+ * delete_image was called in between, in that case, we still want to drop the
  * reference. */
 		if (!vobj){
-			if (ev->fsrv.otag != LUA_NOREF)
-				luaL_unref(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
+			if (ev->fsrv.otag != LUA_NOREF){
+				lua_unref(ctx, ev->fsrv.otag);
+			}
 			return;
 		}
 
-/* the backing frameserver is already free:d at this point */
+/* the backing frameserver is already free:d at this point, hence why we need
+ * the reference to stay on the queue so that we can unref accordingly */
+
 		if (ev->fsrv.kind == EVENT_FSRV_TERMINATED){
 			if (ev->fsrv.otag == LUA_NOREF)
 				return;
-			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
+
+/* function, source, status */
+			lua_getref(ctx, ev->fsrv.otag);
 			lua_pushvid(ctx, ev->fsrv.video);
 			lua_newtable(ctx);
+
 			int top = lua_gettop(ctx);
 			tblstr(ctx, "kind", "terminated", top);
 			MSGBUF_UTF8(ev->fsrv.message);
 			tblstr(ctx, "last_words", msgbuf, top);
 			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
-			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
+			alua_call(ctx, 2, 0, LINE_TAG":frameserver:event");
 			luactx.cb_source_kind = CB_SOURCE_NONE;
-			luaL_unref(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
+			lua_unref(ctx, ev->fsrv.otag);
 			return;
 		}
 
@@ -4836,7 +4858,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			if (ev->fsrv.otag == LUA_NOREF)
 				return;
 
-			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
+			lua_getref(ctx, ev->fsrv.otag);
 			lua_pushvid(ctx, ev->fsrv.video);
 			lua_newtable(ctx);
 			int top = lua_gettop(ctx);
@@ -4851,7 +4873,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblstr(ctx, "name", limb_name(ev->fsrv.limb), top);
 			}
 			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
-			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
+			alua_call(ctx, 2, 0, LINE_TAG":frameserver:vr");
 			luactx.cb_source_kind = CB_SOURCE_NONE;
 			return;
 		}
@@ -4867,13 +4889,12 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			do_preroll(ctx, fsrv->tag, fsrv->vid, fsrv->aid);
 			return;
 		}
-/*
- * placeholder slot for adding the callback function reference
- */
-		lua_pushnumber(ctx, 0);
 
+/* function, source, status */
+		lua_getref(ctx, ev->fsrv.otag);
 		lua_pushvid(ctx, ev->fsrv.video);
 		lua_newtable(ctx);
+
 		int top = lua_gettop(ctx);
 
 		tblnum(ctx, "source_audio", ev->fsrv.audio, top);
@@ -4930,9 +4951,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		luactx.cb_source_tag = ev->fsrv.video;
 		luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
-			lua_rawgeti(ctx, LUA_REGISTRYINDEX, fsrv->tag);
-			lua_replace(ctx, 1);
-			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
+		alua_call(ctx, 2, 0, LINE_TAG":frameserver:event");
 		luactx.cb_source_kind = CB_SOURCE_NONE;
 	}
 	else if (ev->category == EVENT_VIDEO){
@@ -5005,7 +5024,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			luactx.cb_source_tag = ev->vid.source;
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
 			lua_replace(ctx, 1);
-			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), evmsg);
+			alua_call(ctx, 2, 0, evmsg);
 		}
 		else
 			lua_settop(ctx, 0);
@@ -5230,7 +5249,7 @@ static int imagetess(lua_State* ctx)
 			lua_pushnumber(ctx, ms->vertex_size);
 			ud->mesh = ms;
 			ud->vobj = vobj;
-			wraperr(ctx, lua_pcall(ctx, 3, 0, 0), "tessimage_cb");
+			alua_call(ctx, 3, 0, LINE_TAG":tesselate_image");
 			ud->mesh = NULL;
 		}
 	}
@@ -5421,6 +5440,7 @@ static bool stack_to_farray(lua_State* ctx,
 
 static int rawmesh(lua_State* ctx, arcan_vobj_id did, int nmaps)
 {
+	LUA_TRACE("add_3dmesh_rawmesh");
 	const char* labels[6] = {
 		"normals", "txcos", "txcos_2", "tangents", "colors", "weights"};
 	size_t factors[6] = {3, 2, 2, 4, 4};
@@ -5499,7 +5519,7 @@ fail:
 		arcan_mem_free(vertices);
 		lua_pushboolean(ctx, false);
 	}
-	LUA_ETRACE("add_3dmesh", NULL, 1);
+	LUA_ETRACE("add_3dmesh_rawmesh", NULL, 1);
 }
 
 static int loadmesh(lua_State* ctx)
@@ -6179,6 +6199,7 @@ static int pull_fsrv_ramp(lua_State* dst, arcan_frameserver* src, int ind)
 
 static int fsrv_gamma(lua_State* ctx, arcan_vobject* fsrv_dst)
 {
+	LUA_TRACE("fsrv_gamma");
 	if (fsrv_dst->feed.state.tag != ARCAN_TAG_FRAMESERV)
 		arcan_fatal("video_displaygamma(), tried to set gamma on a vobj with "
 			"no valid frameserver backing");
@@ -6955,27 +6976,6 @@ static int alua_shutdown(lua_State *ctx)
 	LUA_ETRACE("shutdown", NULL, 0);
 }
 
-static void panic(lua_State* ctx)
-{
-	luactx.debug = 2;
-
-	if (luactx.cb_source_kind != CB_SOURCE_NONE){
-		char vidbuf[64] = {0};
-		snprintf(vidbuf, 63, "script error in callback for VID (%"PRIxVOBJ")",
-			luactx.lua_vidbase + luactx.cb_source_tag);
-		wraperr(ctx, -1, vidbuf);
-	} else{
-		luactx.in_panic = true;
-		wraperr(ctx, -1, "(panic)");
-	}
-
-	arcan_warning("LUA VM is in a panic state, "
-		"recovery handover might be impossible.\n");
-
-	luactx.last_crash_source = strdup("VM panic");
-	longjmp(arcanmain_recover_state, 3);
-}
-
 /*
  * never call wraperr with a dynamic src argument, it needs to be
  * available for the lifespan of the program as it us also used to
@@ -6985,9 +6985,6 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
 {
 	if (luactx.debug)
 		luactx.lastsrc = src;
-
-	if (errc == 0)
-		return;
 
 	const char* mesg = luactx.in_panic ? "Lua VM state broken, panic" :
 		luaL_optstring(ctx, -1, "unknown");
@@ -7023,6 +7020,60 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
 	luactx.last_crash_source = strdup(mesg);
 	longjmp(arcanmain_recover_state, 3);
 }
+
+static void alua_call(
+	struct arcan_luactx* ctx, int nargs, int retc, const char* src)
+{
+/* Safeguard against mismanaged alua_call stack, if the first argument isn't a
+ * function - somebody screwed up. The fatal/shutdown action in those cases are
+ * "difficult" to say the least" */
+	if (lua_type(ctx, 1) != LUA_TFUNCTION){
+		arcan_warning("alua_call(), first argument is not a function (%s)\n", src);
+		lua_pop(ctx, nargs);
+		return;
+	}
+
+#ifdef _DEBUG
+	dump_stack(ctx);
+	lua_getglobal(ctx, "debug");
+	lua_getfield(ctx, -1, "getregistry");
+	lua_remove(ctx, -2);
+	int errindex = -nargs -2;
+	lua_insert(ctx, errindex);
+	int errc = lua_pcall(ctx, nargs, retc, errindex);
+	lua_remove(ctx, 1);
+	if (errc != 0){
+		wraperr(ctx, errc, src);
+	}
+#else
+	int errc = lua_pcall(ctx, nargs, retc, 0);
+	if (errc != 0){
+		wraperr(ctx, errc, src);
+	}
+#endif
+}
+
+static void panic(lua_State* ctx)
+{
+	luactx.debug = 2;
+
+	if (luactx.cb_source_kind != CB_SOURCE_NONE){
+		char vidbuf[64] = {0};
+		snprintf(vidbuf, 63, "script error in callback for VID (%"PRIxVOBJ")",
+			luactx.lua_vidbase + luactx.cb_source_tag);
+		wraperr(ctx, -1, vidbuf);
+	} else{
+		luactx.in_panic = true;
+		wraperr(ctx, -1, "(panic)");
+	}
+
+	arcan_warning("LUA VM is in a panic state, "
+		"recovery handover might be impossible.\n");
+
+	luactx.last_crash_source = strdup("VM panic");
+	longjmp(arcanmain_recover_state, 3);
+}
+
 
 struct globs{
 	lua_State* ctx;
@@ -7118,7 +7169,7 @@ bool arcan_lua_callvoidfun(lua_State* ctx,
 			lua_rawset(ctx, top);
 		}
 
-		wraperr(ctx, lua_pcall(ctx, 1, 0, 0), fun);
+		alua_call(ctx, 1, 0, fun);
 		return true;
 	}
 	else if (warn)
@@ -7144,9 +7195,10 @@ static int targethandler(lua_State* ctx)
 			" associated with a frameserver.");
 
 	if (fsrv->tag != (intptr_t)LUA_NOREF){
-		luaL_unref(ctx, LUA_REGISTRYINDEX, fsrv->tag);
+		lua_unref(ctx, fsrv->tag);
 	}
 
+/* takes care of the type checking or setting an empty ref */
 	intptr_t ref = find_lua_callback(ctx);
 
 	fsrv->tag = ref;
@@ -9015,7 +9067,7 @@ enum arcan_ffunc_rv arcan_lua_proctarget FFUNC_HEAD
 
  	lua_pushnumber(src->ctx, width);
 	lua_pushnumber(src->ctx, height);
-	wraperr(src->ctx, lua_pcall(src->ctx, 3, 0, 0), "proctarget_cb");
+	alua_call(src->ctx, 3, 0, "calc_target:callback");
 
 /*
  * Even if the lua function maintains a reference to this userdata,
@@ -9073,7 +9125,7 @@ static int imagestorage(lua_State* ctx)
 	lua_pushnumber(ctx, ud->width);
 	lua_pushnumber(ctx, ud->height);
 
-	wraperr(ctx, lua_pcall(ctx, 3, 0, 0), "proctarget_cb");
+	alua_call(ctx, 3, 0, "calctarget:callback");
 
 	lua_pushboolean(ctx, true);
 	LUA_ETRACE("image_access_storage", NULL, 1);
@@ -9343,6 +9395,7 @@ static int nulltarget(lua_State* ctx)
  * the event-loop so it can be used to push messages etc. */
 	arcan_video_alterfeed(rv->vid, FFUNC_NULLFRAME, fftag);
 	rv->tag = find_lua_callback(ctx);
+
 	lua_pushvid(ctx, rv->vid);
 	LUA_ETRACE("define_nulltarget", NULL, 1);
 }
