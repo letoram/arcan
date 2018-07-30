@@ -7029,12 +7029,12 @@ static void alua_call(
  * "difficult" to say the least" */
 	if (lua_type(ctx, 1) != LUA_TFUNCTION){
 		arcan_warning("alua_call(), first argument is not a function (%s)\n", src);
-		lua_pop(ctx, nargs);
+		dump_stack(ctx);
+		lua_pop(ctx, nargs+1);
 		return;
 	}
 
 #ifdef _DEBUG
-	dump_stack(ctx);
 	lua_getglobal(ctx, "debug");
 	lua_getfield(ctx, -1, "getregistry");
 	lua_remove(ctx, -2);
