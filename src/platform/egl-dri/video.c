@@ -98,12 +98,12 @@
 #endif
 
 #define debug_print(fmt, ...) \
-            do { if (DEBUG) arcan_warning("%s:%d:%s(): " fmt "\n", \
-						"egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+            do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
+						arcan_timemillis(), "egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 /* very noisy, enable for specific kinds of debugging */
-#define verbose_print
-/* #define verbose_print debug_print */
+// #define verbose_print
+#define verbose_print debug_print
 
 /*
  * Dynamically load all EGL function use, and look them up with dlsym if we're
@@ -285,6 +285,7 @@ struct dev_node {
  * visual of our underlying buffer method - these combined give the surface
  * within the context */
 	EGLint attrtbl[24];
+	EGLConfig config;
 	EGLDisplay display;
 
 /* Each display has its own context in order to have different framebuffer out
@@ -532,7 +533,8 @@ static void set_device_context(struct dev_node* node)
 static void set_display_context(struct dispout* d)
 {
 	d->device->eglenv.make_current(d->device->display,
-		d->buffer.esurf, d->buffer.esurf, d->buffer.context);
+		d->buffer.esurf, d->buffer.esurf,
+		d->buffer.context ? d->buffer.context : d->device->context);
 	d->device->context_state = "display";
 }
 
@@ -622,6 +624,7 @@ static const char* egl_errstr()
 
 static int setup_buffers_stream(struct dispout* d)
 {
+	debug_print("EGLStream, building buffers for display");
 	if (!d->device->eglenv.create_stream ||
 		!d->device->eglenv.query_devices ||
 		!d->device->eglenv.query_device_string ||
@@ -698,16 +701,12 @@ static int setup_buffers_stream(struct dispout* d)
 		return -1;
 	}
 
-/* 4. Get config and context */
+/* 4. Get config and context,
+ * two possible variants here - one is separating between the device and
+ * display context, though that didn't seem stable with the versions of the
+ * driver we tested against, so just null this and rely on the config that
+ * was set for the device
 	EGLint nc;
-	d->device->eglenv.get_configs(d->device->display, NULL, 0, &nc);
-	if (nc < 1){
-		debug_print("no configurations found (%s)", egl_errstr());
-		return -1;
-	}
-
-	EGLConfig configs[nc];
-	d->device->eglenv.get_configs(d->device->display, configs, nc * sizeof(EGLConfig), &nc);
 	if (!d->device->eglenv.choose_config(
 		d->device->display, d->device->attrtbl, &d->buffer.config, 1, &nc)){
 		debug_print("couldn't chose a configuration (%s)", egl_errstr());
@@ -720,12 +719,14 @@ static int setup_buffers_stream(struct dispout* d)
 	};
 
 	d->buffer.context = d->device->eglenv.create_context(
-		d->device->display, configs[1], d->device->context, context_attribs);
+		d->device->display, d->buffer.config, d->device->context, context_attribs);
 
 	if (d->buffer.context == NULL) {
 		debug_print("couldn't create display context");
 		return false;
 	}
+	*/
+	d->buffer.context = EGL_NO_CONTEXT;
 
 /*
  * 5. Create stream-bound surface
@@ -737,7 +738,7 @@ static int setup_buffers_stream(struct dispout* d)
 		d->device->eglenv.destroy_stream(d->device->display, d->buffer.stream);
 		d->buffer.stream = EGL_NO_STREAM_KHR;
 		d->device->eglenv.destroy_context(d->device->display, d->buffer.context);
-		d->buffer.context = NULL;
+		d->buffer.context = EGL_NO_CONTEXT;
 		debug_print("EGLstreams - couldn't create output surface");
 		return -1;
 	}
@@ -759,6 +760,14 @@ static int setup_buffers_stream(struct dispout* d)
 		d->device->eglenv.stream_consumer_acquire_attrib(
 			d->device->display, d->buffer.stream, attr);
 	}
+
+/*
+ * 8. make the drm node non-blocking (might be needed for
+ * multiscreen, somewhat uncertain)
+ */
+	int flags = fcntl(d->device->fd, F_GETFL);
+	if (-1 != flags)
+		fcntl(d->device->fd, F_SETFL, flags | O_NONBLOCK);
 
 	set_device_context(d->device);
 	return 0;
@@ -1599,27 +1608,10 @@ static bool setup_node(struct dev_node* node)
  */
 	memcpy(node->attrtbl, attrtbl, sizeof(attrtbl));
 
-/*
- * now build the headless context that we will share with our heads as
- * they arrive. First by just pikcing the first config that match the
- * attrtbl.
- */
-	EGLint nc;
-	node->eglenv.get_configs(node->display, NULL, 0, &nc);
-	if (nc < 1){
-		debug_print("no configurations found for display, (%s)", egl_errstr());
-		return false;
-	}
-
-/* filter them based on the desired attributes from the device itself */
-	EGLConfig configs[nc];
 	EGLint match = 0;
-	node->eglenv.choose_config(node->display, node->attrtbl, configs, 1, &match);
-	if (!match)
-		return false;
-
+	node->eglenv.choose_config(node->display, node->attrtbl, &node->config, 1, &match);
 	node->context = node->eglenv.create_context(
-		node->display, configs[0], EGL_NO_CONTEXT, context_attribs);
+		node->display, node->config, EGL_NO_CONTEXT, context_attribs);
 
 	if (!node->context){
 		debug_print(
@@ -2587,9 +2579,18 @@ static void disable_display(struct dispout* d, bool dealloc)
 
 	d->state = DISP_CLEANUP;
 
+	set_display_context(d);
 	debug_print("(%d) destroying EGL surface", (int)d->id);
 	d->device->eglenv.destroy_surface(d->device->display, d->buffer.esurf);
 	d->buffer.esurf = NULL;
+
+/* destroying the context has triggered driver bugs and hard to attribute UAFs
+ * in the past, monitor this closely */
+	if (d->buffer.context != EGL_NO_CONTEXT){
+		set_device_context(d->device);
+		d->device->eglenv.destroy_context(d->device->display, d->buffer.context);
+		d->buffer.context = EGL_NO_CONTEXT;
+	}
 
 	if (d->buffer.cur_fb){
 		drmModeRmFB(d->device->fd, d->buffer.cur_fb);
@@ -2598,7 +2599,7 @@ static void disable_display(struct dispout* d, bool dealloc)
 
 	if (IS_GBM_DISPLAY(d->device)){
 		if (d->buffer.surface){
-			debug_print("destroy gbm dislay");
+			debug_print("destroy gbm surface");
 
 			if (d->buffer.cur_bo)
 				gbm_surface_release_buffer(d->buffer.surface, d->buffer.cur_bo);
@@ -2797,7 +2798,8 @@ static bool try_node(int fd, const char* pathref,
 		return false;
 	}
 
-/*	drmDropMaster(node->fd);
+/* [ shouldn't be done by us anymore since the fork() parent has that job ]
+ * drmDropMaster(node->fd);
 	if (0 != drmSetMaster(node->fd)){
 		debug_print("set drmMaster on [%d](%d:%s) failed, reason: %s",
 			dst_ind, fd, pathref ? pathref : "(no path)", strerror(errno));
