@@ -53,6 +53,10 @@
 	(((double)(ppcm))  / 28.346566) \
 ))
 
+/*
+ * ideally both rpath and wpath could be dropped when the semaphores becomes
+ * futex- only as the set now is too permissive to be comfortable
+ */
 #define SHMIF_PLEDGE_PREFIX "stdio unix sendfd recvfd proc ps rpath wpath cpath"
 
 /*
@@ -281,6 +285,82 @@ int arcan_shmif_dupfd(int fd, int dstnum, bool blocking);
  * should the client crash or be terminated in some other abnormal way.
  */
 void arcan_shmif_last_words(struct arcan_shmif_cont* cont, const char* msg);
+
+/*
+ * Take a pending HANDOVER segment allocation and inherit into a new
+ * process.
+ *
+ * If [detach] is set, the exec will double fork.
+ * Regardless of [detach] the caller is responsible for cleaning up pid_t
+ * via waitpid or similar.
+ *
+ * If either path or argv is empty, the function with fail with -1.
+ * If env is empty, the ONLY environment that will propagate is the
+ * handover relevant variables.
+ *
+ * NOTE:
+ * call from event dispatch immediately upon receiving a NEWSEGMENT with
+ * a HANDOVER type, the function will assume allocation responsibility.
+ */
+pid_t arcan_shmif_handover_exec(
+	struct arcan_shmif_cont* cont, struct arcan_event ev,
+	const char* path, char* const argv[], char* const env[],
+	bool detach);
+
+/*
+ * Mark, for the current frame (this is reset each signal on sigvid) buffer
+ * contents as updated. Note that this does not guarantee that only the dirty
+ * regions will be synched to the next receiver in the chain, the buffer
+ * contents are required to be fully intact.
+ *
+ * This requires that the segment has been resized with the flags
+ * SHMIF_RHINT_SUBREGION (or _CHAIN) or it will have no effect.
+ *
+ * Depending on if the segment is in SHMIF_RHINT_SUBREGION or
+ * SHMIF_RHINT_SUBREGION_CHAIN, the behavior will be different.
+ *
+ * For SHMIF_RHINT_SUBREGION, the function returns 0 on success or -1 if the
+ * context is dead / broken. You are still required to use shmif_signal calls
+ * to synchronize the contents. Only the set of damaged regions will grow.
+ *
+ * [ Not yet implemented ]
+ * This interface combines a number of latency and performance sensitive
+ * usecases, with the ideal should re-add the possibility of run-ahead or
+ * a run-behind the beam on a single buffered output.
+ *
+ * For SHMIF_RHINT_SUBREGION_CHAIN, the options to the flags function are:
+ * SHMIF_DIRTY_NONBLOCK, SHMIF_DIRTY_PARTIAL and SHMIF_DIRTY_SIGNAL.
+ * Bitmask behavior is: NONBLOCK | (PARTIAL ^ SIGNAL).
+ *
+ * If NONBLOCK is set, the function returns SHMIF_DIRTY_EWOULDBLOCK if the
+ * operation would block and in that case, the dirty region won't register.
+ *
+ * if PARTIAL is set, the update will be synched to whatever output the
+ * connection may be mapped to but no other notification about the update will
+ * be triggered. Instead, if SIGNAL is set, when the region has been synched,
+ * other subsystems will be alerted as to a logical 'frame' update.
+ *
+ * This is used in order to allow 'per scanline' like updates but without
+ * storming subsystems that reason on a "logical buffer" update where the
+ * cost per frame might be too high to be invoked in smaller chunks.
+ *
+ * If the dirty region provides invalid constraints (x1 >= x2, y1 >= y2,
+ * x2 > cont->w, y2 > cont->h) the values will be clamped to the size of
+ * the segment.
+ */
+int arcan_shmif_dirty(struct arcan_shmif_cont*,
+	size_t x1, size_t y1, size_t x2, size_t y2, int fl);
+
+/*
+ * Get an estimate on how many MICROSECONDS left until the next ideal time
+ * to synch. Possible [errc] values:
+ *  -1, invalid / dead context
+ *  -2, context in a blocked state
+ *  -3, no deadline information available
+ * This is primarily intended for clients with special timing needs due to
+ * latency concerns, typically games and multimedia.
+ */
+unsigned arcan_shmif_deadline(struct arcan_shmif_cont*, int* errc);
 
 /*
  * Used as helper to avoid dealing with all of the permutations of

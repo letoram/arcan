@@ -522,8 +522,8 @@ enum blitting_hint {
 	HINT_ENDM = 32
 };
 
-bool platform_video_map_display(
-	arcan_vobj_id id, platform_display_id disp, enum blitting_hint);
+bool platform_video_map_display(arcan_vobj_id id,
+	platform_display_id disp, enum blitting_hint);
 
 void platform_video_shutdown();
 
