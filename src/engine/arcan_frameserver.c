@@ -233,7 +233,6 @@ static bool push_buffer(arcan_frameserver* src,
 		arcan_video_resizefeed(src->vid, src->desc.width, src->desc.height);
 
 		src->desc.rz_flag = false;
-		arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
 		explicit = true;
 	}
 
