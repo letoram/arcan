@@ -643,6 +643,7 @@ signed arcan_video_pushcontext()
 	current_context->stdoutp.refresh = 1;
 	current_context->stdoutp.vppcm = current_context->stdoutp.hppcm = 28;
 	current_context->stdoutp.color = &current_context->world;
+	current_context->stdoutp.max_order = 65536;
 	current_context->vitem_limit = arcan_video_display.default_vitemlim;
 	current_context->vitems_pool = arcan_alloc_mem(
 		sizeof(struct arcan_vobject) * current_context->vitem_limit,
@@ -1624,6 +1625,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	current_context->stdoutp.order3d = arcan_video_display.order3d;
 	current_context->stdoutp.refreshcnt = 1;
 	current_context->stdoutp.refresh = -1;
+	current_context->stdoutp.max_order = 65536;
 	current_context->stdoutp.vppcm = current_context->stdoutp.hppcm;
 /*
  * By default, expected video output display matches canvas 1:1,
