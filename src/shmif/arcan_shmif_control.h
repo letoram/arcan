@@ -688,13 +688,17 @@ struct arcan_shmif_cont {
 	size_t samplerate;
 
 /*
- * Presentation hints:
+ * Presentation and buffer content / format hints:
+ *
  * SHMIF_RHINT_ORIGO_UL (or LL),
  * SHMIF_RHINT_IGNORE_ALPHA
  * SHMIF_RHINT_SUBREGION (only synch dirty region below)
+ * SHMIF_RHINT_SUBREGION_CHAIN (reserved, not in use)
  * SHMIF_RHINT_CSPACE_SRGB (non-linear color space)
  * SHMIF_RHINT_AUTH_TOK
  * SHMIF_RHINT_VSIGNAL_EV (get frame- delivery notification via STEPFRAME)
+ *
+ * Write only, SYNCH on shmif_resize() calls.
  */
 	uint8_t hints;
 
@@ -703,6 +707,7 @@ struct arcan_shmif_cont {
  * [Hints & SHMIF_RHINT_SUBREGION] and (X2>X1,(X2-X1)<=W,Y2>Y1,(Y2-Y1<=H))
  * valid, [ARCAN] MAY synch only the specified region.
  * Caller manipulates this field, will be copied to shmpage during synch.
+ * This is slated for deprecation,
  */
   struct arcan_shmif_region dirty;
 
@@ -814,7 +819,17 @@ enum rhint_mask {
  * possible. If the incoming eventqueue is closing in on becoming saturated,
  * the STEPFRAME event will not be emitted.
  */
-	SHMIF_RHINT_VSIGNAL_EV = 32
+	SHMIF_RHINT_VSIGNAL_EV = 32,
+
+/*
+ * [Reserved, not yet used]
+ * Change the buffer contents management method to be a chain of dirty
+ * rectangles rather than one continous buffer. This means that the contents of
+ * the normal vidp, stride and pitch members may mutate between calls to
+ * arcan_shmif_dirty and that it is write only, you can't use it for reliable
+ * blending etc. Setting this bit will invalidate SHMIF_RHINT_SUBREGION.
+ */
+	SHMIF_RHINT_SUBREGION_CHAIN = 64
 };
 
 struct arcan_shmif_page;

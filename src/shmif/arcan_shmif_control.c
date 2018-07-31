@@ -664,7 +664,8 @@ checkfd:
 					else {
 						if (fallback_migrate(
 							c, dst->tgt.message, false) != SHMIF_MIGRATE_OK){
-							rv = 1;
+							rv = -1;
+							goto done;
 						}
 						else
 							goto reset;
@@ -2557,4 +2558,137 @@ bool arcan_shmif_mousestate(
 	}
 	else
 		return false;
+}
+
+pid_t arcan_shmif_handover_exec(
+	struct arcan_shmif_cont* cont, struct arcan_event ev,
+	const char* path, char* const argv[], char* const env[],
+	bool detach)
+{
+	if (!cont || !cont->addr || ev.category != EVENT_TARGET || ev.tgt.kind
+		!= TARGET_COMMAND_NEWSEGMENT || ev.tgt.ioevs[2].iv != SEGID_HANDOVER)
+		return -1;
+
+/* Prepare env even if there isn't env as we need to propagate connection
+ * primitives etc. Since we don't know the inherit intent behind the exec
+ * we need to rely on dup to create the new connection socket.
+ * Append: ARCAN_SHMKEY, ARCAN_SOCKIN_FD, ARCAN_HANDOVER */
+	size_t nelem = 4;
+	if (env){
+		for (; env[nelem]; nelem++){}
+	}
+	int dup_fd = dup(ev.tgt.ioevs[0].iv);
+	char** new_env = malloc(nelem * sizeof(char*) + 1);
+	if (!new_env){
+		close(dup_fd);
+		return -1;
+	}
+
+	new_env[nelem] = NULL;
+	int ofs = 0;
+
+#define CLEAN_ENV() {\
+		for (ofs = ofs - 1; ofs - 1 >= 0; ofs--){\
+			free(new_env[ofs]);\
+		}\
+		free(new_env);\
+		close(dup_fd);\
+	}
+
+/* duplicate the input environment */
+	if (env){
+		for (; ofs < nelem - 4; ofs++){
+			new_env[ofs] = strdup(env[ofs]);
+			if (!new_env[ofs]){
+				CLEAN_ENV();
+				return -1;
+			}
+		}
+	}
+
+/* expand with information about the connection primitives */
+	char tmpbuf[sizeof("ARCAN_SOCKIN_FD=65536") + COUNT_OF(ev.tgt.message)];
+	snprintf(tmpbuf, sizeof(tmpbuf), "ARCAN_SHMKEY=%s", ev.tgt.message);
+
+	if (NULL == (new_env[ofs++] = strdup(tmpbuf))){
+		CLEAN_ENV();
+		return -1;
+	}
+
+	snprintf(tmpbuf, sizeof(tmpbuf), "ARCAN_SOCKIN_FD=%d", dup_fd);
+	if (NULL == (new_env[ofs++] = strdup(tmpbuf))){
+		CLEAN_ENV();
+		return -1;
+	}
+
+	if (NULL == (new_env[ofs++] = strdup("ARCAN_HANDOVER=1"))){
+		CLEAN_ENV();
+		return -1;
+	}
+
+	pid_t pid = fork();
+	if (pid > 0){
+		if (detach && (pid = fork()) != 0)
+			exit(pid > 0 ? EXIT_SUCCESS : EXIT_FAILURE);
+
+/* GNU or BSD4.2 */
+		execve(path, argv, new_env);
+		exit(EXIT_FAILURE);
+	}
+
+	CLEAN_ENV();
+	return detach ? -1 : pid;
+}
+
+unsigned arcan_shmif_deadline(struct arcan_shmif_cont* c, int* errc)
+{
+	if (!c || !c->addr)
+		return -1;
+
+	if (c->addr->vready)
+		return -2;
+
+/*
+ * no actual deadline information yet, just first part in hooking it up
+ */
+	return -3;
+}
+
+int arcan_shmif_dirty(struct arcan_shmif_cont* cont,
+	size_t x1, size_t y1, size_t x2, size_t y2, int fl)
+{
+	if (!cont || !cont->addr)
+		return -1;
+
+	cont->hints |= SHMIF_RHINT_SUBREGION;
+
+	if (x1 >= x2)
+		x1 = 0;
+
+	if (y1 >= y2)
+		y1 = 0;
+
+	if (x1 < cont->dirty.x1)
+		cont->dirty.x1 = x1;
+
+	if (x2 > cont->dirty.x2)
+		cont->dirty.x2 = x2;
+
+	if (y1 < cont->dirty.y1)
+		cont->dirty.y1 = y1;
+
+	if (y2 > cont->dirty.y2)
+		cont->dirty.y2 = y2;
+
+	return 0;
+
+/*
+ * Missing: special behavior for SHMIF_RHINT_SUBREGION_CHAIN, setup chain of
+ * atomic [uint32_t, bitfl] and walk from first position to last free. Bitfl
+ * marks both the server side "I know this" and client side "synch this or
+ * wait".
+ *
+ * If there's not enough store left to walk on, signal video and wait (unless
+ * noblock flag is set)
+ */
 }

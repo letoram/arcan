@@ -962,6 +962,11 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 
 	platform_fsrv_pushevent(ctx, &keyev);
 
+/*
+ * This special case is worth noting, should a HANDOVER subsegment be provided,
+ * we detach the parent relationship as the sheer purpose is to act as a proxy
+ * for a client that can't retrieve a connection by some other means.
+ */
 	if (segid == SEGID_HANDOVER){
 		newseg->segid = SEGID_UNKNOWN;
 		newseg->parent.ptr = NULL;
