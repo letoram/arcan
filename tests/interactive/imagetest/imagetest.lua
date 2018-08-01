@@ -31,7 +31,7 @@ end
 -- Using persist, so draw once and present in all contexts.
 function drawmenu()
 	local total, used = current_context_usage();
-	system_load("scripts/legacy.lua")();
+	system_load("builtin/legacy.lua")();
 	text_vid = render_text( [[\ffonts/default.ttf,14\#ffffff\bImagetest:\n\r]] ..
 	[[\b\!i(1)\t\!binstancing test\n\r]] ..
 	[[\b\!i(2)\t\!border + transform-stress test\n\r]] ..

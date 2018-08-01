@@ -66,6 +66,11 @@ otherwise it will be automatically deleted.
 Invoked when there has been a change in the output display configuration
 state, typically in response to hotplug events.
 
+.IP "\fBxxx_fatal(msg)\fr"
+Invoked on a scripting error that is fatal, as a final means of saving
+state and conveying a message. The returned string will be attached to
+crash dump output.
+
 .IP "\fBxxx_shutdown()\fR"
 This entrypoint will be triggered as a final state before the arcan
 process will exit. The most reasonable use for this entrypoint is

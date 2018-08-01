@@ -7001,7 +7001,7 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
 		if (luactx.debug >= 1)
 			dump_call_trace(ctx);
 
-		if (luactx.debug > 0)
+		if (luactx.debug >= 1)
 			dump_stack(ctx);
 
 		if (luactx.debug > 2){
@@ -7034,23 +7034,32 @@ static void alua_call(
 		return;
 	}
 
-#ifdef _DEBUG
-	lua_getglobal(ctx, "debug");
-	lua_getfield(ctx, -1, "getregistry");
-	lua_remove(ctx, -2);
-	int errindex = -nargs -2;
-	lua_insert(ctx, errindex);
-	int errc = lua_pcall(ctx, nargs, retc, errindex);
-	lua_remove(ctx, 1);
-	if (errc != 0){
-		wraperr(ctx, errc, src);
+/* appl- specific debugging hook, don't want this being the default due to
+ * the extra cost in high-frequency invocation - but the option to tag data
+ * is helpful - first, lookup and add to the top of the stack */
+	int errind = 0;
+	if (luactx.debug > 0){
+		errind = lua_gettop(ctx) - nargs;
+		if (grabapplfunction(ctx, "fatal", 5)){
+		}
+		else{
+			lua_getglobal(ctx, "debug");
+			lua_getfield(ctx, -1, "traceback");
+			lua_remove(ctx, -2);
+		}
+		lua_insert(ctx, errind);
+		int errc = lua_pcall(ctx, nargs, retc, errind);
+		lua_remove(ctx, errind);
+		if (errc != 0){
+			wraperr(ctx, errc, src);
+		}
 	}
-#else
-	int errc = lua_pcall(ctx, nargs, retc, 0);
-	if (errc != 0){
-		wraperr(ctx, errc, src);
+	else {
+		int errc = lua_pcall(ctx, nargs, retc, errind);
+		if (errc != 0){
+			wraperr(ctx, errc, src);
+		}
 	}
-#endif
 }
 
 static void panic(lua_State* ctx)
