@@ -375,13 +375,14 @@ static void luaL_nil_banned(struct arcan_luactx* ctx)
 		rv = lua_pcall(ctx, 0, 0, 0);
 }
 
-static void dump_call_trace(lua_State* ctx)
+static char* dump_call_trace(lua_State* ctx, bool copy)
 {
 /*
  * we can't trust debug.traceback to be present or in an intact state,
  * the user script might try to hide something from us -- so reset
  * the lua namespace then re-apply the restrictions.
  */
+	char* res = NULL;
 	luaL_openlibs(ctx);
 
 	lua_settop(ctx, -2);
@@ -396,10 +397,13 @@ static void dump_call_trace(lua_State* ctx)
 			lua_call(ctx, 0, 1);
 			const char* str = lua_tostring(ctx, -1);
 			arcan_warning("%s\n", str);
+			if (copy)
+				res = strdup(str);
 		}
 	}
 
 	luaL_nil_banned(ctx);
+	return res;
 }
 
 /* slightly more flexible argument management, just find the first callback */
@@ -576,7 +580,6 @@ void lua_rectrigger(const char* msg, ...)
 	va_list args;
 	va_start(args, msg);
 
-#ifndef ARCAN_LUA_NOCOLOR
 	lua_State* ctx = luactx.last_ctx;
 	char msg_buf[256];
 	vsnprintf(msg_buf, sizeof(msg_buf), msg, args);
@@ -584,12 +587,13 @@ void lua_rectrigger(const char* msg, ...)
 	arcan_warning("\n\x1b[1mImproper API use from Lua script"
 		":\n\t\x1b[32m%s\x1b[39m\n", msg_buf);
 
-	dump_call_trace(ctx);
-
+	char* copy = dump_call_trace(ctx, true);
 	arcan_warning("\x1b[0m\n");
-#else
-	arcan_warning(msg, args);
-#endif
+
+	char outmsg[256];
+	snprintf(outmsg, 256, "%s\n%s", msg_buf, copy ? copy : "");
+	free(copy);
+	luactx.last_crash_source = strdup(outmsg);
 
 /* we got redirected here from an arcan_fatal macro- based redirection
  * so expand in order to get access to the actual call */
@@ -609,7 +613,7 @@ static void frozen_warning(lua_State* ctx, arcan_vobject* vobj)
 {
 	arcan_warning("access of frozen object (%s):\n",
 		vobj->tracetag? vobj->tracetag : "untagged");
-	dump_call_trace(ctx);
+	dump_call_trace(ctx, false);
 }
 #endif
 
@@ -6999,7 +7003,7 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
 		arcan_warning("Warning: wraperr((), %s, from %s\n", mesg, src);
 
 		if (luactx.debug >= 1)
-			dump_call_trace(ctx);
+			dump_call_trace(ctx, false);
 
 		if (luactx.debug >= 1)
 			dump_stack(ctx);
@@ -7034,11 +7038,12 @@ static void alua_call(
 		return;
 	}
 
-/* appl- specific debugging hook, don't want this being the default due to
- * the extra cost in high-frequency invocation - but the option to tag data
- * is helpful - first, lookup and add to the top of the stack */
+/* Performance note, we keep this allowed (for now) as the benefits of proper
+ * error message propagation is just too huge, a possible optimization would
+ * perhaps be to do this once and just keep it on the stack forever. If it
+ * turns out worse than tolerable, increase the debuglevel requirement. */
 	int errind = 0;
-	if (luactx.debug > 0){
+//	if (luactx.debug > 0){
 		errind = lua_gettop(ctx) - nargs;
 		if (grabapplfunction(ctx, "fatal", 5)){
 		}
@@ -7053,13 +7058,14 @@ static void alua_call(
 		if (errc != 0){
 			wraperr(ctx, errc, src);
 		}
-	}
+/*	}
 	else {
 		int errc = lua_pcall(ctx, nargs, retc, errind);
 		if (errc != 0){
 			wraperr(ctx, errc, src);
 		}
 	}
+*/
 }
 
 static void panic(lua_State* ctx)
