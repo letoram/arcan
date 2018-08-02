@@ -102,8 +102,8 @@
 						arcan_timemillis(), "egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 /* very noisy, enable for specific kinds of debugging */
-// #define verbose_print
-#define verbose_print debug_print
+#define verbose_print
+// #define verbose_print debug_print
 
 /*
  * Dynamically load all EGL function use, and look them up with dlsym if we're
@@ -221,6 +221,7 @@ static char* egl_envopts[] = {
 	"device_libs=lib1:lib2", "libs used for device",
 	"device_connector=ind", "primary display connector index",
 	"device_wait", "loop until an active connector is found",
+	"display_context=1", "set outer shared headless context, per display contexts",
 	NULL
 };
 
@@ -292,6 +293,7 @@ struct dev_node {
  * configuration, then an outer headless context that all the other resources
  * are allocated with */
 	EGLContext context;
+	int context_refc;
 	const char* context_state;
 
 /*
@@ -484,7 +486,7 @@ static void dpms_set(struct dispout* d, int level)
 /*
  * free, dealloc, possibly re-index displays
  */
-static void disable_display(struct dispout*, bool);
+static void disable_display(struct dispout*, bool dealloc);
 
 /*
  * assumes that the video pipeline is in a state to safely
@@ -492,10 +494,17 @@ static void disable_display(struct dispout*, bool);
  */
 static void update_display(struct dispout*);
 
+/*
+ * Assumes that the individual displays allocated on the card have already
+ * been properly disabled(disable_display(ptr, true))
+ */
 static void release_card(size_t i)
 {
 	if (!nodes[i].active)
 		return;
+
+	nodes[i].eglenv.make_current(nodes[i].display,
+		EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 
 	if (nodes[i].context != EGL_NO_CONTEXT){
 		nodes[i].eglenv.destroy_context(nodes[i].display, nodes[i].context);
@@ -507,6 +516,7 @@ static void release_card(size_t i)
 			gbm_device_destroy(nodes[i].gbm);
 		nodes[i].gbm = NULL;
 	}
+/* do nothing for streams? */
 	else {
 	}
 
@@ -520,6 +530,7 @@ static void release_card(size_t i)
 		nodes[i].display = EGL_NO_DISPLAY;
 	}
 
+	nodes[i].context_refc = 0;
 	nodes[i].active = false;
 }
 
@@ -889,14 +900,57 @@ static int setup_buffers_gbm(struct dispout* d)
 		EGL_NONE
 	};
 
-	d->buffer.context = d->device->eglenv.create_context(
-		d->device->display, d->buffer.config, d->device->context, context_attribs);
+/*
+ * Unfortunately there seem to be many strange driver issues with using a
+ * headless shared context and doing the buffer swaps and scanout on the
+ * others, we can solve that in two ways, one is simply force even the WORLDID
+ * to be a FBO - with was already the default in the lwa backend.  This would
+ * require making the vint_world() RT double-buffered with a possible 'do I
+ * have a non-default shader' extra blit stage and then the drm_add_fb2 call.
+ * It's a scanout path that we likely need anyway.
+ */
+	uintptr_t tag;
+	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	size_t devind = 0;
+	for (; devind < MAX_DISPLAYS; devind++)
+		if (&displays[devind] == d)
+			break;
 
-	if (!d->buffer.context){
-		debug_print("couldn't create display-buffer context");
+/* DEFAULT: per device context: let first display drive choice of config
+ * and hope that other displays have the same preferred format */
+	bool shared_dev = !get_config("video_display_context", devind, NULL, tag);
+	if (shared_dev && d->device->context_refc > 0){
+		d->buffer.context = EGL_NO_CONTEXT;
+		egl_dri.last_display = d;
+		set_device_context(d->device);
+		d->device->context_refc++;
+		return 0;
+	}
+
+	EGLContext context = d->device->eglenv.create_context(
+		d->device->display, d->buffer.config,
+		shared_dev ? NULL : d->device->context, context_attribs
+	);
+
+	if (!context){
+		debug_print("couldn't create egl context for display");
 		gbm_surface_destroy(d->buffer.surface);
 		return -1;
 	}
+	set_device_context(d->device);
+
+/* per device context */
+	if (shared_dev){
+		d->buffer.context = EGL_NO_CONTEXT;
+		d->device->context_refc++;
+		d->device->eglenv.destroy_context(d->device->display, d->device->context);
+		d->device->context = context;
+		egl_dri.last_display = d;
+		return 0;
+	}
+
+/* per display (not EGLDisplay) context */
+	d->buffer.context = context;
 
 	egl_dri.last_display = d;
 	set_device_context(d->device);
@@ -3006,6 +3060,7 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	if (setup_cards_db(w, h) ||
 		setup_cards_inherit(w, h) || setup_cards_basic(w, h)){
 		struct dispout* d = egl_dri.last_display;
+		set_display_context(d);
 		egl_dri.canvasw = d->display.mode->hdisplay;
 		egl_dri.canvash = d->display.mode->vdisplay;
 		build_orthographic_matrix(d->projection, 0,
