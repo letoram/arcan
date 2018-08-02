@@ -168,6 +168,7 @@ struct devnode {
 		struct {
 			unsigned short axes;
 			unsigned short buttons;
+			unsigned short relofs;
 			char hats[16];
 			struct axis_opts* adata;
 		} game;
@@ -873,19 +874,27 @@ static char* to_utf8(uint16_t utf16, uint8_t out[4])
 static void map_axes(int fd, size_t bitn, struct devnode* node)
 {
 	unsigned long bits[ bit_count(ABS_MAX) ];
-
-	if (-1 == ioctl(fd, EVIOCGBIT(bitn, ABS_MAX), bits))
-		return;
+	unsigned long rel_bits[ bit_count(REL_MAX) ];
 
 	assert(node->type == DEVNODE_GAME);
 	if (node->game.adata)
 		return;
-
 	node->game.axes = 0;
 
-	for (size_t i = 0; i < ABS_MAX; i++){
-		if (bit_isset(bits, i))
-			node->game.axes++;
+	if (-1 != ioctl(fd, EVIOCGBIT(bitn, ABS_MAX), bits)){
+		for (size_t i = 0; i < ABS_MAX; i++){
+			if (bit_isset(bits, i))
+				node->game.axes++;
+		}
+	}
+
+	node->game.relofs = node->game.axes;
+	if (-1 != ioctl(fd, EVIOCGBIT(bitn, REL_MAX), rel_bits)){
+		for (size_t i = 0; i < REL_MAX; i++){
+			if (bit_isset(bits, i)){
+				node->game.axes++;
+			}
+		}
 	}
 
 	if (node->game.axes == 0)
@@ -1563,29 +1572,47 @@ static void defhandler_game(struct arcan_evctx* ctx,
 			arcan_event_enqueue(ctx, &newev);
 		break;
 
+		case EV_REL:
 		case EV_ABS:
 			if (node->hnd.axis_mask && inev[i].code <= 64 &&
 				( (node->hnd.axis_mask >> inev[i].code) & 1) )
 				continue;
 
-			if (inev[i].code >= ABS_HAT0X && inev[i].code <= ABS_HAT3Y)
+			if (inev[i].code >= ABS_HAT0X && inev[i].code <= ABS_HAT3Y){
+				printf("not a hat\n");
 				decode_hat(ctx, node, inev[i].code - ABS_HAT0X, inev[i].value);
+			}
 			else if (inev[i].code < node->game.axes &&
 				process_axis(ctx,
 				&node->game.adata[inev[i].code], inev[i].value, &samplev)){
 				newev.io.kind = EVENT_IO_AXIS_MOVE;
 				newev.io.datatype = EVENT_IDATATYPE_ANALOG;
-				newev.io.input.analog.gotrel = false;
+				newev.io.input.analog.gotrel = inev[i].type == EV_REL;
 				newev.io.subid = inev[i].code;
 				newev.io.devid = node->devnum;
 				newev.io.input.analog.axisval[0] = samplev;
 				newev.io.input.analog.nvalues = 2;
-
 				arcan_event_enqueue(ctx, &newev);
 			}
 			else if ((inev[i].code >= ABS_X && inev[i].code <= ABS_Y) ||
-				(inev[i].code >= ABS_MT_SLOT && inev[i].code <= ABS_MT_TOOL_Y))
+				(inev[i].code >= ABS_MT_SLOT && inev[i].code <= ABS_MT_TOOL_Y)){
 				decode_mt(ctx, node, inev[i].code, inev[i].value);
+			}
+/* though we do reserve axis slots for the relative bits, there is no actual
+ * filter set to them other than the the mask used above */
+			else if (inev[i].code == REL_X ||
+				inev[i].code == REL_Y || inev[i].code == REL_DIAL){
+				newev.io.kind = EVENT_IO_AXIS_MOVE;
+				newev.io.datatype = EVENT_IDATATYPE_ANALOG;
+				newev.io.input.analog.gotrel = true;
+				newev.io.subid = inev[i].code;
+				newev.io.devid = node->devnum;
+				newev.io.input.analog.axisval[0] = inev[i].value;
+				newev.io.input.analog.nvalues = 1;
+				arcan_event_enqueue(ctx, &newev);
+			}
+			else
+				;
 		break;
 
 		case EV_SYN:
