@@ -1186,6 +1186,20 @@ static void setup_culling(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 		env->disable(GL_DEPTH_TEST);
 	}
 	else{
+		switch (base->depth_func){
+		case AGP_DEPTH_LESS: env->depth_func(GL_LESS); break;
+		case AGP_DEPTH_LESSEQUAL: env->depth_func(GL_LEQUAL); break;
+		case AGP_DEPTH_GREATER: env->depth_func(GL_GREATER); break;
+		case AGP_DEPTH_GREATEREQUAL: env->depth_func(GL_GEQUAL); break;
+		case AGP_DEPTH_EQUAL: env->depth_func(GL_EQUAL); break;
+		case AGP_DEPTH_NOTEQUAL: env->depth_func(GL_NOTEQUAL); break;
+		case AGP_DEPTH_ALWAYS: env->depth_func(GL_ALWAYS); break;
+		case AGP_DETPH_NEVER: env->depth_func(GL_NEVER); break;
+		default:
+			env->depth_func(GL_ALWAYS);
+		break;
+		}
+
 		env->enable(GL_DEPTH_TEST);
 		env->depth_func(base->depth_func);
 	}
