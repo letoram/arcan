@@ -7031,7 +7031,7 @@ static void alua_call(
 /* Safeguard against mismanaged alua_call stack, if the first argument isn't a
  * function - somebody screwed up. The fatal/shutdown action in those cases are
  * "difficult" to say the least" */
-	if (lua_type(ctx, 1) != LUA_TFUNCTION){
+	if (lua_type(ctx, -(nargs+1)) != LUA_TFUNCTION){
 		arcan_warning("alua_call(), first argument is not a function (%s)\n", src);
 		dump_stack(ctx);
 		lua_pop(ctx, nargs+1);
