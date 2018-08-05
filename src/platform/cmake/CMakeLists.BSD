@@ -20,10 +20,34 @@
 #
 
 set (PLATFORM_PATH ${PLATFORM_ROOT}/posix)
+
+# first the shared sources and use that as a base for LWA
+list(APPEND ARCAN_PLATFORM
+	${PLATFORM_PATH}/mem.c
+	${PLATFORM_PATH}/fmt_open.c
+	${PLATFORM_PATH}/glob.c
+	${PLATFORM_PATH}/map_resource.c
+	${PLATFORM_PATH}/resource_io.c
+	${PLATFORM_PATH}/strip_traverse.c
+	${PLATFORM_PATH}/paths.c
+	${PLATFORM_PATH}/dbpath.c
+	${PLATFORM_PATH}/base64.c
+	${PLATFORM_PATH}/sem.c
+	${PLATFORM_PATH}/fsrv_guard.c
+	${PLATFORM_PATH}/time.c
+	${PLATFORM_PATH}/appl.c
+	${PLATFORM_PATH}/warning.c
+	${PLATFORM_PATH}/frameserver.c
+	${PLATFORM_PATH}/fdpassing.c
+	${PLATFORM_PATH}/namespace.c
+	${PLATFORM_PATH}/launch.c
+	${PLATFORM_PATH}/config.c
+	${PLATFORM_PATH}/random.c
+)
 set(LWA_PLATFORM ${ARCAN_PLATFORM})
 
+# then the variant specific changes
 if (${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
-
 # force these options here for now
 	set(ENABLE_LWA OFF)
 
@@ -47,7 +71,6 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
 		${PLATFORM_PATH}/ffsll.c
 	)
 else()
-	list(APPEND ARCAN_PLATFORM ${PLATFORM_PATH}/open.c)
 	set(BSD_VARIANT_DEFINITIONS
 		-DCLOCK_MONOTONIC_RAW=CLOCK_REALTIME_FAST)
 	set(BSD_VARIANT_LIBS
@@ -73,28 +96,6 @@ add_definitions(
 	${BSD_VARIANT_DEFINITIONS}
 )
 
-list(APPEND ARCAN_PLATFORM
-	${PLATFORM_PATH}/mem.c
-	${PLATFORM_PATH}/fmt_open.c
-	${PLATFORM_PATH}/glob.c
-	${PLATFORM_PATH}/map_resource.c
-	${PLATFORM_PATH}/resource_io.c
-	${PLATFORM_PATH}/strip_traverse.c
-	${PLATFORM_PATH}/paths.c
-	${PLATFORM_PATH}/dbpath.c
-	${PLATFORM_PATH}/base64.c
-	${PLATFORM_PATH}/sem.c
-	${PLATFORM_PATH}/fsrv_guard.c
-	${PLATFORM_PATH}/time.c
-	${PLATFORM_PATH}/appl.c
-	${PLATFORM_PATH}/warning.c
-	${PLATFORM_PATH}/frameserver.c
-	${PLATFORM_PATH}/fdpassing.c
-	${PLATFORM_PATH}/namespace.c
-	${PLATFORM_PATH}/launch.c
-	${PLATFORM_PATH}/config.c
-	${PLATFORM_PATH}/random.c
-)
 find_library(ICONV NAMES iconv REQUIRED)
 LIST(APPEND ARCAN_LIBRARIES ${ICONV})
 
@@ -113,7 +114,7 @@ set (SHMIF_PLATFORM
 	${PLATFORM_PATH}/fdpassing.c
 )
 
-set (LWA_PLATFORM_SOURCES
+list (APPEND LWA_PLATFORM	
 	${PLATFORM_SOURCES}
 	${SHMIF_SOURCES}
 	${PLATFORM_PATH}/open.c
