@@ -3780,7 +3780,9 @@ static void emit_transform_event(arcan_vobj_id src,
  */
 static struct agp_mesh_store tesselate_2d(size_t n_s, size_t n_t)
 {
-	struct agp_mesh_store res = {};
+	struct agp_mesh_store res = {
+		.depth_func = AGP_DEPTH_LESS
+	};
 
 	float step_s = 2.0 / (n_s-1);
 	float step_t = 2.0 / (n_t-1);

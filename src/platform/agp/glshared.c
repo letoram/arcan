@@ -1182,7 +1182,7 @@ static void setup_culling(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 {
 	struct agp_fenv* env = agp_env();
 
-	if (fl & MESH_FACING_NODEPTH){
+	if (fl & MESH_FACING_NODEPTH || base->nodepth){
 		env->disable(GL_DEPTH_TEST);
 	}
 	else{
@@ -1196,12 +1196,11 @@ static void setup_culling(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 		case AGP_DEPTH_ALWAYS: env->depth_func(GL_ALWAYS); break;
 		case AGP_DETPH_NEVER: env->depth_func(GL_NEVER); break;
 		default:
-			env->depth_func(GL_ALWAYS);
+			env->depth_func(GL_LESS);
 		break;
 		}
 
 		env->enable(GL_DEPTH_TEST);
-		env->depth_func(base->depth_func);
 	}
 
 	if (fl & MESH_FACING_BOTH){
