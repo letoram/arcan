@@ -33,9 +33,15 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
 	if(${INPUT_PLATFORM} STREQUAL "evdev")
 		SET(INPUT_PLATFORM openbsd)
 	endif()
+
+	if (VIDEO_PLATFORM STREQUAL "egl-dri")
+		list(APPEND ARCAN_PLATFORM ${PLATFORM_PATH}/psep_open.c)
+	else()
+		list(APPEND ARCAN_PLATFORM ${PLATFORM_PATH}/open.c)
+	endif()
+
 	list(APPEND ARCAN_PLATFORM
 		${PLATFORM_PATH}/ffsll.c
-		${PLATFORM_PATH}/psep_open.c
 	)
 	list(APPEND LWA_PLATFORM
 		${PLATFORM_PATH}/ffsll.c
@@ -49,6 +55,11 @@ else()
 	)
 	if(${INPUT_PLATFORM} STREQUAL "evdev")
 		SET(INPUT_PLATFORM freebsd)
+	endif()
+	if (VIDEO_PLATFORM STREQUAL "egl-dri")
+		list(APPEND ARCAN_PLATFORM ${PLATFORM_PATH}/psep_open.c)
+	else()
+		list(APPEND ARCAN_PLATFORM ${PLATFORM_PATH}/open.c)
 	endif()
 endif()
 

@@ -97,7 +97,12 @@ endif()
 
 set(LWA_PLATFORM ${ARCAN_PLATFORM})
 list(APPEND LWA_PLATFORM ${PLATFORM_PATH}/open.c)
-list(APPEND ARCAN_PLATFORM ${PLATFORM_PATH}/psep_open.c)
+
+if (VIDEO_PLATFORM STREQUAL "egl-dri")
+	list(APPEND ARCAN_PLATFORM ${PLATFORM_PATH}/psep_open.c)
+else()
+	list(APPEND ARCAN_PLATFORM ${PLATFORM_PATH}/open.c)
+endif()
 
 # we don't want these coming along in LWA_PLATFORM
 list(APPEND PLATFORM_SOURCES
