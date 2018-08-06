@@ -1,3 +1,10 @@
+/*
+ * Copyright 2018, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: https://arcan-fe.com
+ * Description: platform_open implementation that takes the option of
+ * privilege separation into account.
+ */
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -23,9 +30,15 @@
 #include <string.h>
 #include <unistd.h>
 
-#ifdef __OpenBSD__
+#if defined(__OpenBSD__) || defined(__FreeBSD__)
 #include <sys/event.h>
 /* wsdisplay_usl_io? */
+#if defined(__FreeBSD__)
+#include <termios.h>
+#include <sys/consio.h>
+#include <sys/kbio.h>
+struct termios termios_tty;
+#endif
 #endif
 
 #ifdef __LINUX
@@ -110,7 +123,7 @@ struct whitelist whitelist[] = {
 	{"/sys/class/backlight/", -1, MODE_PREFIX},
 	{"/sys/class/tty/", -1, MODE_PREFIX},
 	{"/dev/tty", -1, MODE_PREFIX | MODE_TTY},
-#else
+#elif defined(__OpenBSD__)
 	{"/dev/wsmouse", -1, MODE_DEFAULT},
 	{"/dev/wsmouse0", -1, MODE_DEFAULT},
 	{"/dev/wsmouse1", -1, MODE_DEFAULT},
@@ -155,6 +168,16 @@ struct whitelist whitelist[] = {
 	{"/dev/drm2", -1, MODE_DRM},
 	{"/dev/drm3", -1, MODE_DRM},
 	{"/dev/amdmsr", -1, MODE_DEFAULT}
+#elif defined(__FreeBSD__)
+	{"/dev/input/", -1, MODE_PREFIX},
+	{"/dev/sysmouse", -1, MODE_DEFAULT},
+	{"/dev/dri/card0", -1, MODE_DRM},
+	{"/dev/dri/card1", -1, MODE_DRM},
+	{"/dev/dri/card2", -1, MODE_DRM},
+	{"/dev/dri/card3", -1, MODE_DRM},
+	{"/dev/dri/card4", -1, MODE_DRM}
+#else
+	fatal_posix_psep_open_but_no_ostable
 #endif
 };
 
@@ -284,6 +307,18 @@ static void set_tty(int i)
 		.relsig = SIGUSR2
 	});
 #endif
+
+/* this is treated special and is actually not triggered as part of the
+ * whitelist (though there might be reason to add it) as we get the tty
+ * from STDIN directly */
+#ifdef __FreeBSD__
+	tcgetattr(STDIN_FILENO, &termios_tty);
+	ioctl(i, VT_SETMODE, &(struct vt_mode){
+		.mode = VT_PROCESS,
+		.acqsig = SIGUSR1,
+		.relsig = SIGUSR2
+	});
+#endif
 }
 
 static void release_device(int i, bool shutdown)
@@ -322,6 +357,13 @@ static void release_devices()
 {
 	for (size_t i = 0; i < COUNT_OF(whitelist); i++)
 		release_device(i, true);
+
+/* For FreeBSD, we use the STDIN_FILENO and assume it is the tty */
+#ifdef __FreeBSD__
+	tcsetattr(STDIN_FILENO, TCSAFLUSH, &termios_tty);
+	ioctl(STDIN_FILENO, KDSETMODE, KD_TEXT);
+	ioctl(STDIN_FILENO, KDSKBMODE, K_XLATE);
+#endif
 }
 
 static int access_device(const char* path, int arg, bool release, bool* keep)
@@ -499,7 +541,7 @@ static void check_child(pid_t child, bool die)
 	}
 }
 
-#ifdef __OpenBSD__
+#if defined(__OpenBSD__) || defined(__FreeBSD__)
 static void parent_loop(pid_t child, int netlink)
 {
 	static bool init_kq;
@@ -511,7 +553,12 @@ static void parent_loop(pid_t child, int netlink)
 		init_kq = true;
 		kq = kqueue();
 		EV_SET(&ev[0], child_conn, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, 0);
+#ifdef __OpenBSD__
 		EV_SET(&ev[1], child, EVFILT_PROC, EV_ADD | EV_ENABLE, 0, 0, 0);
+#else
+		EV_SET(&ev[1], child, EVFILT_PROC,
+			EV_ADD | EV_ENABLE | EV_ONESHOT, NOTE_EXIT, 0, 0);
+#endif
 		kused = 2;
 	}
 
@@ -533,8 +580,10 @@ static void parent_loop(pid_t child, int netlink)
 		else if (changed[i].ident == child_conn){
 			int fd = data_in(child);
 			if (-1 != fd){
+#ifdef __OpenBSD__
 				kused = 3;
 				EV_SET(&ev[2], fd, EVFILT_DEVICE, EV_ADD | EV_ENABLE | EV_CLEAR, NOTE_CHANGE, 0, 0);
+#endif
 			}
 		}
 		else {
@@ -614,6 +663,15 @@ void platform_device_init()
 	int sockets[2];
 	if (socketpair(AF_LOCAL, SOCK_STREAM, PF_UNSPEC, sockets) == -1)
 		_exit(EXIT_FAILURE);
+
+/*
+ * The 'low-priv' side of arcan does this as well, but since we want to be
+ * able to restore should that crash, we need to do something about that
+ * here and before fork so we don't race.
+ */
+#ifdef __FreeBSD__
+	set_tty(STDIN_FILENO);
+#endif
 
 	pid_t pid = fork();
 	if (pid < 0)
