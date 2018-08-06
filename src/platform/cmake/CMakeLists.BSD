@@ -36,6 +36,7 @@ list(APPEND ARCAN_PLATFORM
 	${PLATFORM_PATH}/fsrv_guard.c
 	${PLATFORM_PATH}/time.c
 	${PLATFORM_PATH}/appl.c
+	${PLATFORM_PATH}/setproctitle.c
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/frameserver.c
 	${PLATFORM_PATH}/fdpassing.c
@@ -76,8 +77,11 @@ else()
 	set(BSD_VARIANT_LIBS
 		rt
 	)
+# come FreeBSD 12 this is actually a bit hairier as the setup can
+# be either evdev or freebsd, so we need to check if the build args
+# actually meant evdev or if it came from the video platform setup.
 	if(${INPUT_PLATFORM} STREQUAL "evdev")
-		SET(INPUT_PLATFORM freebsd)
+		SET(INPUT_PLATFORM "freebsd")
 	endif()
 	if (VIDEO_PLATFORM STREQUAL "egl-dri")
 		list(APPEND ARCAN_PLATFORM ${PLATFORM_PATH}/psep_open.c)
