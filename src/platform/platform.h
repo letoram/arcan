@@ -142,6 +142,11 @@ bool arcan_pushhandle(int fd, int channel);
 void arcan_closefrom(int num);
 
 /*
+ * Update the process title to better identify the current process
+ */
+void arcan_process_title(const char* new_title);
+
+/*
  * Don't have much need for more fine-grained data model in regards to the
  * filesystem other than 'is it possible that this, at the moment, refers
  * to a file (loadable resource) or a container of files? Trace calls to this

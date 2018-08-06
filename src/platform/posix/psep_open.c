@@ -625,6 +625,8 @@ void platform_device_init()
 		if (-1 != fl)
 			fcntl(psock, F_SETFD, fl | FD_CLOEXEC);
 
+		arcan_process_title("device manager");
+
 		close(sockets[1]);
 
 /* in case of suid, drop to user now */

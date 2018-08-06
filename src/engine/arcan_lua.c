@@ -11672,6 +11672,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalstr(ctx, "APPLID", arcan_appl_id());
 	arcan_lua_setglobalstr(ctx, "API_ENGINE_BUILD", ARCAN_BUILDVERSION);
 
+	arcan_process_title(arcan_appl_id());
+
 	if (luactx.last_crash_source){
 		arcan_lua_setglobalstr(ctx, "CRASH_SOURCE", luactx.last_crash_source);
 		free(luactx.last_crash_source);
