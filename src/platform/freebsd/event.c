@@ -1,7 +1,10 @@
 /*
- * Copyright 2016, Björn Ståhl
+ * Copyright 2016-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: https://arcan-fe.com
+ * Description: Quick and dirty FreeBSD specific event input layer. It seems
+ * like they will be moving, at least partially, to an evdev implementation so
+ * this is kept as minimal effort.
  */
 #include <stdlib.h>
 #include <limits.h>
@@ -29,18 +32,6 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"
-
-/*
- * TODO:
- * 1. handle multiple keyboards with individual maps
- *  . keyboard repeat tracking (emit release), modifier subtable
- *    downside is that we essentially need to implement usbhid
- * 2. trackpad / touch devices (synaptic?)
- * 3. joystick devices w/ analog filtering
- * 4. filtering for mouse axes too
- * 5. device hotplug detection
- * 6. vtswitching (can be copied from evdev)
- */
 
 enum devtype {
 /* use the TTY from /dev/console, user-specific device-node on rescan
@@ -653,7 +644,7 @@ const char** platform_input_envopts()
 
 void platform_event_deinit(arcan_evctx* ctx)
 {
-/* restore TTY settings */
+/* this is also performed in psep_open */
 	if (-1 != evctx.tty){
 		tcsetattr(evctx.tty, TCSAFLUSH, &evctx.ttystate);
 		ioctl(evctx.tty, KDSETMODE, KD_TEXT);
@@ -667,14 +658,6 @@ void platform_device_lock(int devind, bool state)
 
 void platform_event_preinit()
 {
-/* drop privileges dance that might be needed on some video platforms */
-	if (setgid(getgid()) == -1){
-		fprintf(stderr, "event_preinit() - couldn't setgid(drop on suid)\n");
-		exit(EXIT_FAILURE);
-	}
-	if (setuid(getuid()) == -1){
-		fprintf(stderr, "event_preinit() - couldn't setuid(drop on suid)\n");
-	}
 }
 
 void platform_event_init(arcan_evctx* ctx)
@@ -691,9 +674,13 @@ void platform_event_init(arcan_evctx* ctx)
 	if (getenv("ARCAN_INPUT_KEYMAPS")){
 		load_keymap(&evctx.keyb, getenv("ARCAN_INPUT_KEYMAPS"));
 	}
+/* just pick a layout, chances are the user can't / won't see the error so
+ * better to do something. Other (real) option should be to check rc.conf or
+ * rc.conf.local after the keymap variable and load that */
 	else{
-		arcan_fatal("platform/freebsd: no keymap defined! set "
-			"ARCAN_INPUT_KEYMAPS=/usr/share/syscons/keymap/???.kbd");
+		arcan_warning("platform/freebsd: no keymap defined! set "
+			"ARCAN_INPUT_KEYMAPS=/usr/share/syscons/keymaps/???.kbd");
+		load_keymap(&evctx.keyb, "/usr/share/syscons/keymaps/us.iso.kbd");
 	}
 
 	if (getenv("ARCAN_INPUT_IGNORETTY")){
@@ -712,7 +699,7 @@ void platform_event_init(arcan_evctx* ctx)
 	cfmakeraw(&raw);
 	tcsetattr(evctx.tty, TCSAFLUSH, &raw);
 
-	evctx.mdev.fd = open("/dev/sysmouse", O_RDWR);
+	evctx.mdev.fd = platform_device_open("/dev/sysmouse", O_RDWR);
 	if (-1 != evctx.mdev.fd){
 		int level = 1;
 		if (-1 == ioctl(evctx.mdev.fd, MOUSE_SETLEVEL, &level)){
@@ -759,24 +746,6 @@ sigset:
 		er_sh.sa_flags = SA_RESTART;
 		sigaction(SIGTERM, &er_sh, NULL);
 	}
-/* ignore VT switching for now, more pressing matters to fix first
-		struct vt_mode mode = {
-			.mode = VT_PROCESS,
-			.acqsig = SIGUSR1,
-			.relsig = SIGUSR2
-		};
-		gstate.sigpipe_p.fd = gstate.sigpipe[0];
-		gstate.sigpipe_p.events = POLLIN;
-
-		er_sh.sa_handler = NULL;
-		er_sh.sa_sigaction = sigusr_acq;
-		er_sh.sa_flags = SA_SIGINFO;
-		sigaction(SIGUSR1, &er_sh, NULL);
-
-		er_sh.sa_sigaction = sigusr_rel;
-		sigaction(SIGUSR2, &er_sh, NULL);
-		ioctl(gstate.tty, VT_SETMODE, &mode);
-*/
 }
 
 void platform_event_reset(arcan_evctx* ctx)
