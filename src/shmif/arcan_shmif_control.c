@@ -751,6 +751,16 @@ int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
 	return rv;
 }
 
+int arcan_shmif_wait_timed(
+	struct arcan_shmif_cont*, unsigned* time_us, struct arcan_event* dst)
+{
+	if (!c || !c->priv || !c->priv->alive)
+		return 0;
+
+	if (c->priv->valid_initial)
+		drop_initial(c);
+}
+
 int arcan_shmif_wait(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
 	if (!c || !c->priv || !c->priv->alive)
@@ -2650,8 +2660,9 @@ unsigned arcan_shmif_deadline(struct arcan_shmif_cont* c, int* errc)
 
 /*
  * no actual deadline information yet, just first part in hooking it up
+ * then modify shmif_signal / dirty to use the vpts field to retrieve
  */
-	return -3;
+	return 0;
 }
 
 int arcan_shmif_dirty(struct arcan_shmif_cont* cont,
