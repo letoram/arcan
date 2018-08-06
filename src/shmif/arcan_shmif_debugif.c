@@ -156,7 +156,7 @@ static bool run_menu(struct debug_ctx* ctx,
 		return false;
 
 	size_t n_flt = 0;
-	struct menu_ent* menuflt = malloc(sizeof(struct menu_ent));
+	struct menu_ent* menuflt = malloc(sizeof(struct menu_ent) * n_menu);
 	if (!menuflt){
 		free(menuctx);
 		return false;
@@ -173,8 +173,6 @@ static bool run_menu(struct debug_ctx* ctx,
 		free(menuflt);
 		return false;
 	}
-
-	printf("run menu landed in: %d\n", n_flt);
 
 	*menuctx = (struct menu_ctx){
 		.debugctx = ctx,
