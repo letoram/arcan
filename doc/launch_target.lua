@@ -1,6 +1,6 @@
 -- launch_target
 -- @short: Setup and launch an external program.
--- @inargs: target, configuration, *mode*, *handler(sourcevid,statustbl)*, *argstr*
+-- @inargs: target, configuration, *mode*, *handler(sourcevid,statustbl,...)*, *argstr*
 -- @outargs: *vid* or *rcode, timev*
 -- @longdescr: Launch Target uses the database to build an execution environment
 -- for the specific tuple (target, configuration). The mode can be set to either
@@ -67,11 +67,19 @@
 -- @note: "failure" {message} - some internal operation has failed, non-terminal
 -- error indication.
 --
--- @note: "cursor" {id, x, y, button_n} - hint that there is a local
--- visible cursor at the specific position (local coordinate system)
+-- @note: "cursor_input" {id, x, y, button_n} - hint that there is a local
+-- visible cursor at the specific position (local coordinate system). It is
+-- a simplified form of input with a legacy from the remoting frameserver.
 --
 -- @note: "key_input" {id, keysym, active} - frameserver would like to
--- provide input (typically for VNC and similar remoting services).
+-- provide input (typically for VNC and similar remoting services). It is
+-- a simplified form if onput with a legacy from the remoting frameserver.
+--
+-- @note: "input" - Provides an extended table as a third argument to the
+-- callback. This table is compatible with the normal _input event handler
+-- from the global scope. By redirecting to _G[APPLNAME.."_input"](tbl) the
+-- frameserver can act as a regular input device. Be careful with devid
+-- collisions as that namespace is only 16-bits.
 --
 -- @note: "segment_request" {kind, width, height, cookie, type} -
 -- frameserver would like an additional segment to work with, see target_alloc

@@ -56,11 +56,12 @@
 -- textures, and metadata for specifying content in a GPU friendly triangle-
 -- soup format. Like with allow-lodef/hdr, this will not work well with
 -- feedtargets or directly accessing storage.
--- @note: flag: TARGET_ALLOWINPUT allows a client to access the EVENT_IO
--- group. This can be used for input injection, with all the dangers that
--- entails so it should be used very restrictively and obviously not from
--- a non-authoritative (target_alloc instead of launch_target) connection
--- if input manipulation is considered a threat.
+-- @note: flag: TARGET_ALLOWINPUT remaps any _IO events received unto the
+-- main event queue rather than being delivered in the normal frameserver
+-- bound callback. This allows for semi-transparent controlled IO injection
+-- with all the implications that might have. It is only intended for the
+-- cases where overhead needs to be minimized over having a forward from
+-- the normal event handler to the appl_input(iotbl) one.
 -- @note: flag: TARGET_ALLOWGPU allows a client to authenticate a platform
 -- specific token that can provide higher levels of GPU access than the
 -- implementation defined default. This is a security tradeoff as it may

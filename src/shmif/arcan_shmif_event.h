@@ -924,17 +924,41 @@ enum ARCAN_TARGET_SKIPMODE {
 		EVENT_AUDIO_INVALID_OBJECT_REFERENCED
 	};
 
-	enum ARCAN_EVENT_FSRV {
+/*
+ * Meta- events concerning a single frameserver connection
+ */
+	enum ARCAN_EVENT_FSRV
+{
+/* External connection established but not yet active */
 		EVENT_FSRV_EXTCONN,
+
+/* Backing store dimensions has changed */
 		EVENT_FSRV_RESIZED,
+
+/* External process has shut down */
 		EVENT_FSRV_TERMINATED,
+
+/* Deadline- exceeded threshold, discarded */
 		EVENT_FSRV_DROPPEDFRAME,
+
+/* Emitted in extended reporting mode for better server-side statistics */
 		EVENT_FSRV_DELIVEREDFRAME,
+
+/* Event-buffer synch- stage, follows extcon */
 		EVENT_FSRV_PREROLL,
+
+/* Protocol mask has been renegotiated */
 		EVENT_FSRV_APROTO,
+
+/* Gamma ramp synchronization provided */
 		EVENT_FSRV_GAMMARAMP,
+
+/* VR subsystem events */
 		EVENT_FSRV_ADDVRLIMB,
-		EVENT_FSRV_LOSTVRLIMB
+		EVENT_FSRV_LOSTVRLIMB,
+
+/* Nested, contains an arcan_ioevent from an external source */
+		EVENT_FSRV_IONESTED
 	};
 	/* -- end internal -- */
 
@@ -1086,6 +1110,7 @@ enum ARCAN_TARGET_SKIPMODE {
 			struct {
 				unsigned limb;
 			};
+			arcan_ioevent input;
 		};
 
 		int64_t video;
@@ -1148,6 +1173,10 @@ enum ARCAN_TARGET_SKIPMODE {
 
 	typedef struct arcan_tgtevent {
 		enum ARCAN_TARGET_COMMAND kind;
+
+/* questionable separation, it is quite some work changing the format at this
+ * stage, but it would be possible to split up into multiple unions for each
+ * type/pattern projected over the ioevs */
 		union {
 			uint32_t uiv;
 			int32_t iv;
