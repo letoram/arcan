@@ -597,18 +597,6 @@ void arcan_vint_drawcursor(bool erase)
 	agp_deactivate_vstore();
 }
 
-arcan_vobj_id arcan_video_fsrvbycookie(uint32_t cookie)
-{
-	for (size_t i = 1; i < current_context->vitem_limit; i++){
-		arcan_vobject* vobj = &current_context->vitems_pool[i];
-		if (vobj->feed.state.tag == ARCAN_TAG_FRAMESERV && vobj->feed.state.ptr &&
-			((struct arcan_frameserver*)vobj->feed.state.ptr)->cookie == cookie)
-			return vobj->cellid;
-	}
-
-	return ARCAN_EID;
-}
-
 signed arcan_video_pushcontext()
 {
 	arcan_vobject empty_vobj = {
