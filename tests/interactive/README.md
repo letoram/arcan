@@ -65,3 +65,4 @@ vrtest2 - test hmd setup, distortion pipeline , ...
 
 vrtest3 - extended scratchpad on vrtest2
 
+itest - two different kinds of externally provided input injection
