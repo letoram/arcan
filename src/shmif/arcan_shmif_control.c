@@ -292,7 +292,7 @@ static void consume(struct arcan_shmif_cont* c)
 	if (!c->priv->pev.consumed)
 		return;
 
-		LOG("acquire: %d, %d, %d, %d\n",
+		LOG("(shmif) acquire: %d, %d, %d, %d\n",
 			c->priv->pev.fd,
 			c->priv->pev.ev.category,
 			c->priv->pev.ev.tgt.kind,
