@@ -1685,7 +1685,8 @@ static bool setup_node(struct dev_node* node)
  * don't know and don't want the restriction when it comes to switching between
  * test drivers etc.
  */
-static int setup_node_egl(struct dev_node* node, const char* lib, int fd)
+static int setup_node_egl(
+	int dst_ind, struct dev_node* node, const char* lib, int fd)
 {
 	if (!node->eglenv.query_string){
 		debug_print("EGLStreams, couldn't get EGL extension string");
@@ -1790,7 +1791,8 @@ static void cleanup_node_gbm(struct dev_node* node)
 	node->gbm = NULL;
 }
 
-static int setup_node_gbm(struct dev_node* node, const char* path, int fd)
+static int setup_node_gbm(
+	int devind, struct dev_node* node, const char* path, int fd)
 {
 	SET_SEGV_MSG("libdrm(), open device failed (check permissions) "
 		" or use ARCAN_VIDEO_DEVICE environment.\n");
@@ -1835,6 +1837,19 @@ static int setup_node_gbm(struct dev_node* node, const char* path, int fd)
 		debug_print("gbm, building display using native handle only");
 		node->display = node->eglenv.get_display((void*)(node->gbm));
 	}
+
+/* This is kept optional as not all drivers have it, and not all drivers
+ * work well with it. The current state is opt-in at a certain cost, but
+ * don't want the bug reports. */
+	uintptr_t tag;
+	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	char* devstr, (* cfgstr), (* altstr);
+	node->atomic =
+		get_config("video_device_atomic", devind, NULL, tag) && (
+		drmSetClientCap(node->fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1) == 0 &&
+		drmSetClientCap(node->fd, DRM_CLIENT_CAP_ATOMIC, 1) == 0
+	);
+	debug_print("gbm, node in atomic mode: %s", node->atomic ? "yes" : "no");
 
 /* Set the render node environment variable here, this is primarily for legacy
  * clients that gets launched through arcan - the others should get the
@@ -2258,20 +2273,35 @@ retry:
 
 /* find a matching output-plane for atomic/streams */
 	if (d->device->atomic){
+		bool ok = true;
 		if (!find_plane(d)){
 			debug_print("(%d) setup_kms, atomic-find_plane fail", (int)d->id);
-			goto drop_disp;
+			ok = false;
 		}
-		if (!set_dumb_fb(d)){
+		else if (!set_dumb_fb(d)){
 			debug_print("(%d) setup_kms, atomic dumb-fb fail", (int)d->id);
-			goto drop_disp;
+			ok = false;
 		}
-		if (!atomic_set_mode(d)){
+		else if (!atomic_set_mode(d)){
 			debug_print("(%d) setup_kms, atomic modeset fail", (int)d->id);
 			drmModeRmFB(d->device->fd, d->buffer.cur_fb);
 			d->buffer.cur_fb = 0;
-			goto drop_disp;
+			ok = false;
 		}
+/* just disable atomic */
+		if (!ok && IS_GBM_DISPLAY(d->device)){
+			debug_print("(%d) setup_kms, disabling atomic modeset, reverting\n", d->id);
+			d->device->atomic = false;
+			drmModeFreeConnector(d->display.con);
+			d->display.con = NULL;
+			d->device->crtc_alloc &= ~(1 << d->display.crtc_ind);
+			drmModeFreeResources(res);
+			drmSetClientCap(d->device->fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 0);
+			drmSetClientCap(d->device->fd, DRM_CLIENT_CAP_ATOMIC, 0);
+			return setup_kms(d, conn_id, w, h);
+		}
+		else if (!ok)
+			goto drop_disp;
 	}
 
 	dpms_set(d, DRM_MODE_DPMS_ON);
@@ -2828,7 +2858,7 @@ static bool try_node(int fd, const char* pathref,
 	map_ext_functions(&node->eglenv, lookup_call, node->eglenv.get_proc_address);
 
 	if (gbm){
-		if (0 != setup_node_gbm(node, pathref, fd)){
+		if (0 != setup_node_gbm(dst_ind, node, pathref, fd)){
 			node->eglenv.get_proc_address = NULL;
 			debug_print("couldn't open (%d:%s) in GBM mode",
 				fd, pathref ? pathref : "(no path)");
@@ -2837,7 +2867,7 @@ static bool try_node(int fd, const char* pathref,
 		}
 	}
 	else {
-		if (0 != setup_node_egl(node, pathref, fd)){
+		if (0 != setup_node_egl(dst_ind, node, pathref, fd)){
 			debug_print("couldn't open (%d:%s) in EGLStreams mode",
 				fd, pathref ? pathref : "(no path)");
 			release_card(dst_ind);
