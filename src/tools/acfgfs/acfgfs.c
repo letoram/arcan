@@ -36,6 +36,11 @@
 _Static_assert(sizeof(uint64_t) >= sizeof(uintptr_t), "filehandle can't hold pointer");
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/* current 'multithreading' is rather pointless, but if the asynch- callback
+ * changes to main arcan won't pan out - we'll need to do something here */
+static pthread_mutex_t in_command = PTHREAD_MUTEX_INITIALIZER;
+
 static void debug_print_fn(const char* fmt, ...)
 {
 	pthread_mutex_lock(&mutex);
@@ -116,6 +121,7 @@ static int wait_for_command(const char* cmd,
 
 /* buffered write */
 	size_t ofs = 0;
+	pthread_mutex_lock(&in_command);
 	while(ntw){
 		ssize_t nw = write(options.con, &buf[ofs], ntw);
 		if (-1 == nw){
@@ -123,6 +129,7 @@ static int wait_for_command(const char* cmd,
 				debug_print("write to parent failed, connection broken");
 				close(options.con);
 				options.con = -1;
+				pthread_mutex_unlock(&in_command);
 				return -errno;
 			}
 			continue;
@@ -138,6 +145,7 @@ static int wait_for_command(const char* cmd,
 			if (errno != EAGAIN && errno != EINTR){
 				close(options.con);
 				options.con = -1;
+				pthread_mutex_unlock(&in_command);
 				return -errno;
 			}
 			continue;
@@ -147,9 +155,11 @@ static int wait_for_command(const char* cmd,
 			buf[ofs] = '\0';
 			ofs = 0;
 			if (strcmp(buf, "OK") == 0){
+				pthread_mutex_unlock(&in_command);
 				return 0;
 			}
 			else if (strncmp(buf, "EINVAL", 6) == 0){
+				pthread_mutex_unlock(&in_command);
 				return -ENOENT;
 			}
 			linecb(buf, tag);
@@ -158,10 +168,12 @@ static int wait_for_command(const char* cmd,
 
 		ofs++;
 		if (ofs == sizeof(buf)){
+			pthread_mutex_unlock(&in_command);
 			return -EINVAL;
 		}
 	}
 
+	pthread_mutex_unlock(&in_command);
 	return 0;
 }
 
@@ -269,7 +281,6 @@ static void rent(char* str, void* tag)
 	if (!ntw)
 		return;
 
-	debug_print("rent, add: %s\n", str);
 /* nulled at init */
 	memcpy(&dst->buffer[dst->used], str, ntw);
 	dst->used += ntw;
