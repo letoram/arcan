@@ -1921,12 +1921,13 @@ static int resettransform(lua_State* ctx)
 {
 	LUA_TRACE("reset_image_transform");
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	unsigned left[3];
+	unsigned left[4];
 	arcan_video_zaptransform(id, left);
 	lua_pushnumber(ctx, left[0]);
 	lua_pushnumber(ctx, left[1]);
 	lua_pushnumber(ctx, left[2]);
-	LUA_ETRACE("reset_image_transform", NULL, 3);
+	lua_pushnumber(ctx, left[3]);
+	LUA_ETRACE("reset_image_transform", NULL, 4);
 }
 
 static int instanttransform(lua_State* ctx)

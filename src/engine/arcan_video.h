@@ -1051,9 +1051,9 @@ arcan_errc arcan_video_transformcycle(arcan_vobj_id, bool active);
  * Immediately cancel all pending transforms, leaving the surface in its
  * current state. The left array will be populated with the remaining on
  * the next transform in the chain, ordered as:
- * [blend, move, rotate], 0 if no transform is chained in that slot.
+ * [blend, move, rotate, scale], 0 if no transform is chained in that slot.
  */
-arcan_errc arcan_video_zaptransform(arcan_vobj_id id, unsigned left[3]);
+arcan_errc arcan_video_zaptransform(arcan_vobj_id id, unsigned left[4]);
 
 /*
  * Associate a tag with the specified transform, and a mask of
