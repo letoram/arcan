@@ -649,7 +649,6 @@ int MAIN_REDIR(int argc, char* argv[])
 			adopt = true;
 		}
 		arcan_event_clearmask(evctx);
-		platform_video_recovery();
 	}
 /* fallback recovery with adoption */
 	else if (jumpcode == 3){
@@ -721,6 +720,11 @@ int MAIN_REDIR(int argc, char* argv[])
 	if (adopt){
 		arcan_lua_setglobalint(main_lua_context, "CLOCK", evctx->c_ticks);
 		arcan_lua_adopt(main_lua_context);
+
+/* re-issue video recovery here as adopt CLEARS THE EVENTQUEUE, this is quite a
+ * complex pattern as the work in selectively recovering the event-queue after
+ * an error is much too dangerous */
+		platform_video_recovery();
 		in_recover = false;
 	}
 	else if (stdin_connpoint){
