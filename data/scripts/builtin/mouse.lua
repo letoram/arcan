@@ -116,6 +116,7 @@ local mstate = {
 	hover_ticks  = 30, -- time of inactive cursor before hover is triggered
 	hover_thresh = 12, -- pixels movement before hover is released
 	click_timeout= 14; -- maximum number of ticks before we won't emit click
+	animation_speed = 20; -- used for cursor-tag and hide/reveal
 	click_cnt    = 0,
 	counter      = 0,
 	hover_count  = 0,
@@ -160,43 +161,45 @@ local function lock_constrain()
 -- locking to surface is slightly odd in that we still need to return
 -- valid relative motion which may or may not come from a relative source
 -- and still handle constraints e.g. warp/clamp
-	if (valid_vid(mstate.lockvid)) then
-		local props = image_surface_resolve_properties(mstate.lockvid);
-		local ul_x = props.x;
-		local ul_y = props.y;
-		local lr_x = props.x + props.width;
-		local lr_y = props.y + props.height;
+	if (not valid_vid(mstate.lockvid)) then
+		return;
+	end
 
-		if (mstate.warp) then
-			local cpx = math.floor(props.x + 0.5 * props.width);
-			local cpy = math.floor(props.y + 0.5 * props.height);
-			input_samplebase(mstate.dev, cpx, cpy);
-			mstate.x = cpx;
-			mstate.y = cpy;
-		else
-			mstate.x = mstate.x < ul_x and ul_x or mstate.x;
-			mstate.y = mstate.y < ul_y and ul_y or mstate.y;
-			mstate.x = mstate.x > lr_x and lr_x or mstate.x;
-			mstate.y = mstate.y > lr_y and lr_y or mstate.y;
-		end
+	local props = image_surface_resolve_properties(mstate.lockvid);
+	local ul_x = props.x;
+	local ul_y = props.y;
+	local lr_x = props.x + props.width;
+	local lr_y = props.y + props.height;
+
+	if (mstate.warp) then
+		local cpx = math.floor(props.x + 0.5 * props.width);
+		local cpy = math.floor(props.y + 0.5 * props.height);
+		input_samplebase(mstate.dev, cpx, cpy);
+		mstate.x = cpx;
+		mstate.y = cpy;
+	else
+		mstate.x = mstate.x < ul_x and ul_x or mstate.x;
+		mstate.y = mstate.y < ul_y and ul_y or mstate.y;
+		mstate.x = mstate.x > lr_x and lr_x or mstate.x;
+		mstate.y = mstate.y > lr_y and lr_y or mstate.y;
+	end
 
 -- when we always get absolute coordinates even with relative motion,
 -- we need to track the spill and offset..
 	local nx = mstate.x;
 	local ny = mstate.y;
-		mstate.rel_x = (mstate.rel_x + mstate.x) < ul_x
-			and (mstate.x - ul_x) or mstate.rel_x;
-		mstate.rel_x = mstate.rel_x + mstate.x > lr_x
-			and lr_x - mstate.x or mstate.rel_x;
-		mstate.rel_y = mstate.rel_y + mstate.y < ul_y
-			and mstate.y - ul_y or mstate.rel_y;
-		mstate.rel_y = mstate.rel_y + mstate.y > lr_y
-			and lr_y - mstate.y or mstate.rel_y;
+	mstate.rel_x = (mstate.rel_x + mstate.x) < ul_x
+		and (mstate.x - ul_x) or mstate.rel_x;
+	mstate.rel_x = mstate.rel_x + mstate.x > lr_x
+		and lr_x - mstate.x or mstate.rel_x;
+	mstate.rel_y = mstate.rel_y + mstate.y < ul_y
+		and mstate.y - ul_y or mstate.rel_y;
+	mstate.rel_y = mstate.rel_y + mstate.y > lr_y
+		and lr_y - mstate.y or mstate.rel_y;
 
--- resolve properties is expensive so return the values in the hope that they
--- might be re-usable by some other part
-		return ul_x, ul_y, lr_x, lr_y;
-	end
+-- resolve properties is expensive so return the values in the hope that
+-- they might be re-usable by some other part
+	return ul_x, ul_y, lr_x, lr_y;
 end
 
 local function mouse_cursorupd(x, y)
@@ -501,7 +504,7 @@ function mouse_absinput(x, y, nofwd)
 	mstate.x = x + (arx - rx);
 	mstate.y = y + (ary - ry);
 -- also need to constrain the relative coordinates when we clamp
-	local ulx, uly, lrx, lry = lock_constrain();
+	lock_constrain();
 
 	if (mstate.native) then
 		move_cursor(mstate.x, mstate.y);
@@ -559,12 +562,17 @@ function mouse_xy()
 	end
 end
 
-function mouse_cursortag_drop()
+function mouse_cursortag_drop(accept, state)
 	if (mstate.cursortag) then
-		mstate.cursortag.handler(mstate.cursortag.ref, false);
+		mstate.cursortag.handler(mstate.cursortag.ref, accept, state);
 		if (valid_vid(mstate.cursortag.vid)) then
+			expire_image(mstate.cursortag.vid, mstate.animation_speed);
+			local lb, _, _ = reset_image_transform(mstate.cursortag.vid);
+			blend_image(mstate.cursortag.vid,
+				0.0, mstate.animation_speed - lb, INTERP_EXPOUT);
 			delete_image(mstate.cursortag.vid);
 		end
+		mstate.cursortag = nil;
 	end
 end
 
@@ -582,10 +590,11 @@ function mouse_cursortag(ref, id, handler, vid)
 		return;
 	end
 
-	link_image(vid, mstate.cursor);
+	image_mask_set(vid, MASK_UNPICKABLE);
+	link_image(vid, mstate.cursor, ANCOR_LR);
 	image_inherit_order(vid, true);
 	order_image(vid, -1);
-	center_image(vid, mstate.cursor);
+	local props = image_surface_properties(vid);
 
 	mstate.cursortag = {
 		vid = vid,
@@ -597,7 +606,9 @@ end
 -- visually update the accept or no-accept state
 function mouse_cursortag_state(accept)
 	if (mstate.cursortag and valid_vid(mstate.cursortag.vid)) then
-		blend_image(mstate.cursortag.vid, accept and 0.5 or 1.0, 5);
+		local lb, _, _ = reset_image_transform(mstate.cursortag.vid);
+		blend_image(mstate.cursortag.vid,
+			accept and 0.5 or 1.0, mstate.animation_speed - lb);
 	end
 end
 
@@ -1279,7 +1290,7 @@ function mouse_tick(val)
 			mstate.hidden = true;
 			instant_image_transform(mstate.cursor);
 			mstate.hide_count = mstate.hide_base;
-			blend_image(mstate.cursor, 0.0, 20, INTERP_EXPOUT);
+			blend_image(mstate.cursor, 0.0, mstate.animation_speed, INTERP_EXPOUT);
 			return;
 		end
 	end
