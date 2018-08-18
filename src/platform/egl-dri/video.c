@@ -661,8 +661,8 @@ static int setup_buffers_stream(struct dispout* d)
 	}
 
 	EGLAttrib layer_attrs[] = {
-		EGL_DRM_PLANE_EXT,
-		d->display.plane_id,
+		EGL_DRM_CRTC_EXT,
+		d->display.crtc_ind,
 		EGL_NONE
 	};
 
@@ -3154,7 +3154,7 @@ void platform_video_recovery()
 	arcan_evctx* evctx = arcan_event_defaultctx();
 	arcan_event_enqueue(evctx, &ev);
 
-	for (size_t i = 0; i < MAX_DISPLAYS; i++){
+	for (size_t i = 1; i < MAX_DISPLAYS; i++){
 		if (displays[i].state == DISP_MAPPED){
 			platform_video_map_display(
 				ARCAN_VIDEO_WORLDID, displays[i].id, HINT_NONE);
