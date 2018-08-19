@@ -102,11 +102,11 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 		bfmt = BFRM_RETRO;
 	else if (strcmp(argv[fi], "SHELL") == 0)
 		bfmt = BFRM_SHELL;
-	else if (strcmp(argv[fi], "EXTERN") == 0)
+	else if (strcmp(argv[fi], "EXTERNAL") == 0)
 		bfmt = BFRM_EXTERN;
 	else {
 		printf("add_target(name (-tag) *bfrm* executable argv\n"
-			"unknown bfrm, %s - accepted (BIN, LWA, RETRO).\n", argv[fi]);
+			"unknown bfrm, %s - accepted (BIN, LWA, RETRO, SHELL, EXTERNAL).\n", argv[fi]);
 
 		return EXIT_FAILURE;
 	}
