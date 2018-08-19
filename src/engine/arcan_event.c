@@ -267,7 +267,6 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 					.category = EVENT_FSRV,
 					.fsrv.kind = EVENT_FSRV_IONESTED,
 					.fsrv.otag = tgt->tag,
-					.fsrv.audio = tgt->aid,
 					.fsrv.video = tgt->vid,
 					.fsrv.input = inev.io
 				};
