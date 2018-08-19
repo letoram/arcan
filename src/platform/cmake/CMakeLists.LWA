@@ -91,10 +91,6 @@ target_compile_definitions(arcan_lwa PRIVATE
 	${ARCAN_DEFINITIONS}
 )
 
-if(STATIC_FREETYPE)
-	add_dependencies(arcan_lwa Freetype)
-endif()
-
 add_dependencies(arcan_lwa openal_lwa)
 
 target_include_directories(arcan_lwa PRIVATE ${INCLUDE_DIRS})
