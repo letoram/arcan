@@ -153,8 +153,8 @@ amsg("${CL_WHT}Decode:${CL_RST}")
 amsg("${CL_YEL}\t-DFSRV_DECODE_UVC=${CL_GRN}[Off|On]${CL_RST} - Add support for libuvc- UB video camera")
 amsg("")
 amsg("${CL_WHT}Install / Autodetection Overrides:${CL_RST}")
-amsg("${CL_YEL}\t-D(DISABLE_FSRV_ (encode, decode, net, remoting, terminal, game)=ON ${CL_RST}")
-amsg("${CL_YEL}\t-D(APPL_DEST, RES_DEST, APIMAN_DEST, MAN_DEST, SCRIPTS_DEST)=/some/path ${CL_RST}")
+amsg("${CL_YEL}\t-D(DISABLE_FSRV_ (encode, decode, net, remoting, terminal, game)${CL_GRN}=ON${CL_RST}")
+amsg("${CL_YEL}\t-D(APPL_DEST, RES_DEST, APIMAN_DEST, MAN_DEST, SCRIPTS_DEST)=${CL_GRN}/some/path${CL_RST}")
 amsg("")
 
 # no other audio platforms supported currently
@@ -615,7 +615,7 @@ target_include_directories(arcan_db PRIVATE ${INCLUDE_DIRS})
 target_compile_definitions(arcan_db PRIVATE ARCAN_DB_STANDALONE)
 
 if (VIDEO_PLATFORM STREQUAL "egl-dri")
-	amsg("${CLB_WHT} egl-dri+privsep platform, installing main binary SUID ${CL_RST}")
+	amsg("${CLB_RED} egl-dri+privsep platform, installing main binary SUID ${CL_RST}")
 	install(TARGETS arcan DESTINATION bin
 		PERMISSIONS
 			SETUID
