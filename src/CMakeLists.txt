@@ -379,21 +379,17 @@ if (NOT DISABLE_JIT)
 	else()
 		find_package(Lua51JIT QUIET)
 	endif()
+endif()
 
-	if (LUA_LIBRARY)
-		set(LUA_VSTR "lua5.1 (JIT)")
+# implicitly true for DISABLE_JIT
+if (NOT LUA_LIBRARY)
+	if (NOT BUILTIN_LUA)
+		find_package(Lua51 QUIET REQUIRED)
+	else()
+		add_subdirectory(${EXTERNAL_SRC_DIR}/lua ${CMAKE_CURRENT_BINARY_DIR}/lua)
+		set(LUA_INCLUDE_DIR ${EXTERNAL_SRC_DIR}/lua)
+		set(LUA_LIBRARIES lua51)
 	endif()
-endif()
-
-if (NOT LUA_LIBRARY OR DISABLE_JIT AND NOT BUILTIN_LUA)
-	find_package(Lua51 QUIET REQUIRED)
-endif()
-
-if (NOT LUA_LIBRARIES OR BUILTIN_LUA)
-	add_subdirectory(${EXTERNAL_SRC_DIR}/lua ${CMAKE_CURRENT_BINARY_DIR}/lua)
-	set(LUA_INCLUDE_DIR ${EXTERNAL_SRC_DIR}/lua)
-	set(LUA_LIBRARIES lua51)
-	set(LUA_VSTR "lua5.1 (interp)")
 endif()
 
 LIST (APPEND
