@@ -54,6 +54,7 @@ static PFNEGLCREATEIMAGEKHRPROC create_image;
 static PFNEGLEXPORTDMABUFIMAGEQUERYMESAPROC query_image_format;
 static PFNEGLEXPORTDMABUFIMAGEMESAPROC export_dmabuf;
 static PFNEGLDESTROYIMAGEKHRPROC destroy_image;
+static PFNEGLGETPLATFORMDISPLAYEXTPROC get_platform_display;
 
 /* note: should also get:
  * eglCreateSyncKHR,
@@ -111,7 +112,10 @@ static bool check_functions(void*(*lookup)(void*, const char*), void* tag)
 		lookup(tag, "eglExportDMABUFImageQueryMESA");
 	export_dmabuf = (PFNEGLEXPORTDMABUFIMAGEMESAPROC)
 		lookup(tag, "eglExportDMABUFImageMESA");
-	return create_image && destroy_image && query_image_format && export_dmabuf;
+	get_platform_display = (PFNEGLGETPLATFORMDISPLAYEXTPROC)
+		lookup(tag, "eglGetPlatformDisplayEXT");
+	return create_image && destroy_image &&
+		query_image_format && export_dmabuf && get_platform_display;
 }
 
 static void zap_vstore(struct agp_vstore* vstore)
@@ -369,7 +373,14 @@ enum shmifext_setup_status arcan_shmifext_setup(
 		return SHMIFEXT_NO_DISPLAY;
 
 	ctx = con->privext->internal;
-	ctx->display = eglGetDisplay((EGLNativeDisplayType) display);
+
+	if (get_platform_display){
+		ctx->display = get_platform_display(
+			EGL_PLATFORM_GBM_KHR, (void*) display, NULL);
+	}
+	else
+		ctx->display = eglGetDisplay((EGLNativeDisplayType) display);
+
 	if (!ctx->display)
 		return SHMIFEXT_NO_DISPLAY;
 

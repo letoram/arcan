@@ -46,7 +46,7 @@ endif()
 # static base version, manually mantained
 set(MAJOR_VERSION 0)
 set(MINOR_VERSION 5)
-set(PATCH_LEVEL 4)
+set(PATCH_LEVEL 5)
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 set(PLATFORM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/platform)
 set(ENGINE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
@@ -153,8 +153,8 @@ amsg("${CL_WHT}Decode:${CL_RST}")
 amsg("${CL_YEL}\t-DFSRV_DECODE_UVC=${CL_GRN}[Off|On]${CL_RST} - Add support for libuvc- UB video camera")
 amsg("")
 amsg("${CL_WHT}Install / Autodetection Overrides:${CL_RST}")
-amsg("${CL_YEL}\t-D(DISABLE_FSRV_ (encode, decode, net, remoting, terminal, game)=ON ${CL_RST}")
-amsg("${CL_YEL}\t-D(APPL_DEST, RES_DEST, APIMAN_DEST, MAN_DEST, SCRIPTS_DEST)=/some/path ${CL_RST}")
+amsg("${CL_YEL}\t-D(DISABLE_FSRV_ (encode, decode, net, remoting, terminal, game)${CL_GRN}=ON${CL_RST}")
+amsg("${CL_YEL}\t-D(APPL_DEST, RES_DEST, APIMAN_DEST, MAN_DEST, SCRIPTS_DEST)=${CL_GRN}/some/path${CL_RST}")
 amsg("")
 
 # no other audio platforms supported currently
@@ -268,10 +268,19 @@ if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype AND STATIC_FREETYPE)
 		-DWITH_HarfBuzz=OFF
 		-DWITH_BZip2=OFF
 	)
+
 	if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-		set(FREETYPE_STATIC_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/lib/libfreetyped.a")
+		set(FREETYPE_LIBFILE "libfreetyped.a")
 	else()
-		set(FREETYPE_STATIC_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/lib/libfreetype.a")
+		set(FREETYPE_LIBFILE "libfreetype.a")
+	endif()
+
+	set(FREETYPE_LIB64 "${CMAKE_CURRENT_BINARY_DIR}/lib64/${FREETYPE_LIBFILE}")
+	set(FREETYPE_LIB "${CMAKE_CURRENT_BINARY_DIR}/lib/${FREETYPE_LIBFILE}")
+	if (EXISTS "${FREETYPE_LIB64}")
+		set(FREETYPE_STATIC_LIBRARY "${FREETYPE_LIB64}")
+	else()
+		set(FREETYPE_STATIC_LIBRARY "${FREETYPE_LIB}")
 	endif()
 
 	set(FREETYPE_STATIC_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include/freetype2")
@@ -370,21 +379,17 @@ if (NOT DISABLE_JIT)
 	else()
 		find_package(Lua51JIT QUIET)
 	endif()
+endif()
 
-	if (LUA_LIBRARY)
-		set(LUA_VSTR "lua5.1 (JIT)")
+# implicitly true for DISABLE_JIT
+if (NOT LUA_LIBRARY)
+	if (NOT BUILTIN_LUA)
+		find_package(Lua51 QUIET REQUIRED)
+	else()
+		add_subdirectory(${EXTERNAL_SRC_DIR}/lua ${CMAKE_CURRENT_BINARY_DIR}/lua)
+		set(LUA_INCLUDE_DIR ${EXTERNAL_SRC_DIR}/lua)
+		set(LUA_LIBRARIES lua51)
 	endif()
-endif()
-
-if (NOT LUA_LIBRARY OR DISABLE_JIT AND NOT BUILTIN_LUA)
-	find_package(Lua51 QUIET REQUIRED)
-endif()
-
-if (NOT LUA_LIBRARIES OR BUILTIN_LUA)
-	add_subdirectory(${EXTERNAL_SRC_DIR}/lua ${CMAKE_CURRENT_BINARY_DIR}/lua)
-	set(LUA_INCLUDE_DIR ${EXTERNAL_SRC_DIR}/lua)
-	set(LUA_LIBRARIES lua51)
-	set(LUA_VSTR "lua5.1 (interp)")
 endif()
 
 LIST (APPEND
@@ -606,7 +611,7 @@ target_include_directories(arcan_db PRIVATE ${INCLUDE_DIRS})
 target_compile_definitions(arcan_db PRIVATE ARCAN_DB_STANDALONE)
 
 if (VIDEO_PLATFORM STREQUAL "egl-dri")
-	amsg("${CLB_WHT} egl-dri+privsep platform, installing main binary SUID ${CL_RST}")
+	amsg("${CLB_RED} egl-dri+privsep platform, installing main binary SUID ${CL_RST}")
 	install(TARGETS arcan DESTINATION bin
 		PERMISSIONS
 			SETUID

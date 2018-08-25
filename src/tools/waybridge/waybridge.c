@@ -930,7 +930,7 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-shell         disable the shell protocol\n"
 "\t-no-shm           disable the shm protocol\n"
 "\t-no-seat          disable the seat protocol\n"
-"\t-no-xdg           disable the xdg protocol\n"
+"\t-allow-xdg        enable the xdg protocol (default off)\n"
 "\t-no-zxdg          disable the zxdg protocol\n"
 "\t-no-output        disable the output protocol\n"
 "\nDebugging Tools:\n"
@@ -1013,7 +1013,7 @@ int main(int argc, char* argv[])
 		.egl = 1,
 		.zxdg = 1,
 #ifdef HAVE_XDG_SHELL
-		.xdg = 1,
+		.xdg = 0,
 #endif
 #ifdef HAVE_DMA_BUF
 		.dma = 1,
@@ -1112,8 +1112,8 @@ int main(int argc, char* argv[])
 			protocols.dma = 0;
 #endif
 #ifdef HAVE_XDG_SHELL
-		else if (strcmp(argv[arg_i], "-no-xdg") == 0)
-			protocols.xdg = 0;
+		else if (strcmp(argv[arg_i], "-allow-xdg") == 0)
+			protocols.xdg = 1;
 #endif
 		else if (strcmp(argv[arg_i], "-no-subcompositor") == 0)
 			protocols.subcomp = 0;

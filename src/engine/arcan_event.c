@@ -257,14 +257,30 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 		if (arcan_event_poll(srcqueue, &inev) == 0)
 			break;
 
+/* ioevents have special behavior as the routed path (via frameserver
+ * callback or global event handler) can be decided here */
+		if (inev.category == EVENT_IO && tgt){
+			if (inev.category & allowed)
+				;
+			else {
+				inev = (struct arcan_event){
+					.category = EVENT_FSRV,
+					.fsrv.kind = EVENT_FSRV_IONESTED,
+					.fsrv.otag = tgt->tag,
+					.fsrv.video = tgt->vid,
+					.fsrv.input = inev.io
+				};
+			}
+		}
+/* a custom mask to allow certain events to be passed through or not */
+		else if ((inev.category & allowed) == 0 )
+			continue;
+
 /*
  * update / translate to make sure the corresponding frameserver<->lua mapping
  * can be found and tracked, there are also a few events that should be handled
  * here rather than propagated (bufferstream for instance).
  */
-		if ((inev.category & allowed) == 0 )
-			continue;
-
 		if (inev.category == EVENT_EXTERNAL && tgt){
 			switch(inev.ext.kind){
 
@@ -330,7 +346,9 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 			}
 			inev.ext.source = tgt->vid;
 		}
-
+		else if (inev.category == EVENT_IO && tgt){
+			inev.io.subid = tgt->vid;
+		}
 		else if (inev.category == EVENT_NET && tgt){
 			inev.net.source = tgt->vid;
 		}
