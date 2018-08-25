@@ -319,8 +319,9 @@ static bool identify(int fd, const char* path,
 			continue;
 		}
 
-/* 16-bit clamp is legacy in the scripting layer */
-	unsigned short devnum = hash;
+/* 16-bit clamp is legacy in the scripting layer, also leave the highest
+ * bit unset as that is reserved for synthetic devices */
+	unsigned short devnum = hash % ((uint16_t) 0xfffe);
 	if (devnum < MAX_DEVICES)
 		devnum += MAX_DEVICES;
 

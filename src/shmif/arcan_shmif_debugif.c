@@ -84,7 +84,6 @@ static void menu_refresh(struct tui_context* c, struct menu_ctx* dst)
 	size_t rows, cols;
 	arcan_tui_dimensions(c, &rows, &cols);
 
-	printf("menu refresh\n");
 /* fixme, dynamic content refresh? */
 
 /* clamp cursor to current set- size */
@@ -100,7 +99,6 @@ static void menu_refresh(struct tui_context* c, struct menu_ctx* dst)
 	size_t y = 0;
 	for(; sofs + y < dst->n_entries && y < rows; y++){
 		arcan_tui_move_to(c, 0, y);
-		printf("write: %s\n", dst->entries[sofs+y].label);
 		arcan_tui_writestr(c, dst->entries[sofs+y].label, &attr);
 	}
 
@@ -113,7 +111,6 @@ static void menu_key(struct tui_context* c, uint32_t keysym,
 {
 	struct menu_ctx* dst = t;
 	int last_pos = dst->position;
-	printf("input: %d, %d, %d\n", keysym, dst->position, dst->n_entries);
 
 	if (keysym == TUIK_J || keysym == TUIK_DOWN){
 		dst->position = (dst->position + 1) % dst->n_entries;
@@ -125,12 +122,10 @@ static void menu_key(struct tui_context* c, uint32_t keysym,
 			dst->position = dst->n_entries - 1;
 	}
 	else if (keysym == TUIK_KP_ENTER || keysym == TUIK_RETURN){
-		printf("activate\n");
 /* deallocate and activate menu entry */
 	}
 	else if (keysym == TUIK_ESCAPE){
 /* deallocate and go back up menu stack */
-		printf("escape\n");
 	}
 	else {
 /* check character for match against shortcut or prefix, TUIK_
@@ -138,7 +133,6 @@ static void menu_key(struct tui_context* c, uint32_t keysym,
 		if (!isprint(keysym))
 			return;
 
-		printf("shortcut scan\n");
 		for (size_t i = 0; i < dst->n_entries; i++){
 		}
 	}

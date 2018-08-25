@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2017, Björn Ståhl
+ * Copyright 2003-2018, Björn Ståhl
  * License: GPLv2+, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -1921,12 +1921,13 @@ static int resettransform(lua_State* ctx)
 {
 	LUA_TRACE("reset_image_transform");
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	unsigned left[3];
+	unsigned left[4];
 	arcan_video_zaptransform(id, left);
 	lua_pushnumber(ctx, left[0]);
 	lua_pushnumber(ctx, left[1]);
 	lua_pushnumber(ctx, left[2]);
-	LUA_ETRACE("reset_image_transform", NULL, 3);
+	lua_pushnumber(ctx, left[3]);
+	LUA_ETRACE("reset_image_transform", NULL, 4);
 }
 
 static int instanttransform(lua_State* ctx)
@@ -4414,124 +4415,134 @@ static const char* domain_str(int num)
  */
 #define MSGBUF_UTF8(X) slim_utf8_push(msgbuf, COUNT_OF((X))-1, (char*)(X))
 #define FLTPUSH(X,Y,Z) fltpush(msgbuf, COUNT_OF((X))-1, (char*)((X)), Y, Z)
+
+/*
+ * Repack an ioevent into a table that will be added to the out stack,
+ * primarly used for the normal appl_input callback, but may also come
+ * nested from a frameserver.
+ */
+static void append_iotable(lua_State* ctx, arcan_ioevent* ev)
+{
+	int top = funtable(ctx, ev->kind);
+
+	lua_pushstring(ctx, "kind");
+	if (ev->label[0] && ev->kind != EVENT_IO_STATUS &&
+		ev->label[COUNT_OF(ev->label)-1] == '\0'){
+		tblstr(ctx, "label", ev->label, top);
+	}
+
+	switch (ev->kind){
+	case EVENT_IO_TOUCH:
+		lua_pushstring(ctx, "touch");
+		lua_rawset(ctx, top);
+
+		tblbool(ctx, "touch", true, top);
+		tblnum(ctx, "devid", ev->devid, top);
+		tblnum(ctx, "subid", ev->subid, top);
+		tblnum(ctx, "pressure", ev->input.touch.pressure, top);
+		tblbool(ctx, "active", ev->input.touch.active, top);
+		tblnum(ctx, "size", ev->input.touch.size, top);
+		tblnum(ctx, "x", ev->input.touch.x, top);
+		tblnum(ctx, "y", ev->input.touch.y, top);
+	break;
+
+	case EVENT_IO_STATUS:{
+		const char* lbl = platform_event_devlabel(ev->devid);
+		lua_pushstring(ctx, "status");
+		lua_rawset(ctx, top);
+		tblbool(ctx, "status", true, top);
+		tblnum(ctx, "devid", ev->devid, top);
+		tblnum(ctx, "subid", ev->subid, top);
+		if (lbl)
+			tblstr(ctx, "extlabel", lbl, top);
+
+		tblstr(ctx, "devkind", kindstr(ev->input.status.devkind), top);
+		tblstr(ctx, "label", ev->label, top);
+		tblnum(ctx, "devref", ev->input.status.devref, top);
+		tblstr(ctx, "domain", domain_str(ev->input.status.domain), top);
+		tblstr(ctx, "action", (ev->input.status.action == EVENT_IDEV_ADDED ?
+			"added" : (ev->input.status.action == EVENT_IDEV_REMOVED ?
+				"removed" : "blocked")), top);
+	}
+	break;
+
+	case EVENT_IO_AXIS_MOVE:
+		lua_pushstring(ctx, "analog");
+		lua_rawset(ctx, top);
+		if (ev->devkind == EVENT_IDEVKIND_MOUSE){
+			tblbool(ctx, "mouse", true, top);
+			tblstr(ctx, "source", "mouse", top);
+		}
+		else
+			tblstr(ctx, "source", "joystick", top);
+
+		tblnum(ctx, "devid", ev->devid, top);
+		tblnum(ctx, "subid", ev->subid, top);
+		tblbool(ctx, "active", true, top);
+		tblbool(ctx, "analog", true, top);
+		tblbool(ctx, "relative", ev->input.analog.gotrel,top);
+
+		lua_pushstring(ctx, "samples");
+		lua_createtable(ctx, ev->input.analog.nvalues, 0);
+		int top2 = lua_gettop(ctx);
+			for (size_t i = 0; i < ev->input.analog.nvalues; i++){
+				lua_pushnumber(ctx, i + 1);
+				lua_pushnumber(ctx, ev->input.analog.axisval[i]);
+				lua_rawset(ctx, top2);
+			}
+		lua_rawset(ctx, top);
+	break;
+
+	case EVENT_IO_BUTTON:
+		lua_pushstring(ctx, "digital");
+		lua_rawset(ctx, top);
+		tblbool(ctx, "digital", true, top);
+
+		if (ev->devkind == EVENT_IDEVKIND_KEYBOARD){
+			tblbool(ctx, "translated", true, top);
+			tblnum(ctx, "number", ev->input.translated.scancode, top);
+			tblnum(ctx, "keysym", ev->input.translated.keysym, top);
+			tblnum(ctx, "modifiers", ev->input.translated.modifiers, top);
+			tblnum(ctx, "devid", ev->devid, top);
+			tblnum(ctx, "subid", ev->subid, top);
+			tblstr(ctx, "utf8", (char*)ev->input.translated.utf8, top);
+			tblbool(ctx, "active", ev->input.translated.active, top);
+			tblstr(ctx, "device", "translated", top);
+			tblbool(ctx, "keyboard", true, top);
+		}
+		else if (ev->devkind == EVENT_IDEVKIND_MOUSE ||
+			ev->devkind == EVENT_IDEVKIND_GAMEDEV){
+			if (ev->devkind == EVENT_IDEVKIND_MOUSE){
+				tblbool(ctx, "mouse", true, top);
+				tblstr(ctx, "source", "mouse", top);
+			}
+			else {
+				tblbool(ctx, "joystick", true, top);
+				tblstr(ctx, "source", "joystick", top);
+			}
+			tblbool(ctx, "translated", false, top);
+			tblnum(ctx, "devid", ev->devid, top);
+			tblnum(ctx, "subid", ev->subid, top);
+ 			tblbool(ctx, "active", ev->input.digital.active, top);
+		}
+		else;
+	break;
+
+	default:
+		lua_pushstring(ctx, "unknown");
+		lua_rawset(ctx, top);
+		arcan_warning("Engine -> Script: "
+			"ignoring IO event: %i\n",ev->kind);
+	}
+}
+
 void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
 	bool adopt_check = false;
 	char msgbuf[sizeof(arcan_event)+1];
 
 	if (ev->category == EVENT_IO && grabapplfunction(ctx, "input", 5)){
-		int top = funtable(ctx, ev->io.kind);
-
-		lua_pushstring(ctx, "kind");
-		if (ev->io.label[0] && ev->io.kind != EVENT_IO_STATUS &&
-			ev->io.label[COUNT_OF(ev->io.label)-1] == '\0'){
-			tblstr(ctx, "label", ev->io.label, top);
-		}
-
-		switch (ev->io.kind){
-		case EVENT_IO_TOUCH:
-			lua_pushstring(ctx, "touch");
-			lua_rawset(ctx, top);
-
-			tblbool(ctx, "touch", true, top);
-			tblnum(ctx, "devid", ev->io.devid, top);
-			tblnum(ctx, "subid", ev->io.subid, top);
-			tblnum(ctx, "pressure", ev->io.input.touch.pressure, top);
-			tblbool(ctx, "active", ev->io.input.touch.active, top);
-			tblnum(ctx, "size", ev->io.input.touch.size, top);
-			tblnum(ctx, "x", ev->io.input.touch.x, top);
-			tblnum(ctx, "y", ev->io.input.touch.y, top);
-		break;
-
-		case EVENT_IO_STATUS:{
-			const char* lbl = platform_event_devlabel(ev->io.devid);
-			lua_pushstring(ctx, "status");
-			lua_rawset(ctx, top);
-			tblbool(ctx, "status", true, top);
-			tblnum(ctx, "devid", ev->io.devid, top);
-			tblnum(ctx, "subid", ev->io.subid, top);
-			if (lbl)
-				tblstr(ctx, "extlabel", lbl, top);
-
-			tblstr(ctx, "devkind", kindstr(ev->io.input.status.devkind), top);
-			tblstr(ctx, "label", ev->io.label, top);
-			tblnum(ctx, "devref", ev->io.input.status.devref, top);
-			tblstr(ctx, "domain", domain_str(ev->io.input.status.domain), top);
-			tblstr(ctx, "action", (ev->io.input.status.action == EVENT_IDEV_ADDED ?
-				"added" : (ev->io.input.status.action == EVENT_IDEV_REMOVED ?
-					"removed" : "blocked")), top);
-		}
-		break;
-
-		case EVENT_IO_AXIS_MOVE:
-			lua_pushstring(ctx, "analog");
-			lua_rawset(ctx, top);
-			if (ev->io.devkind == EVENT_IDEVKIND_MOUSE){
-				tblbool(ctx, "mouse", true, top);
-				tblstr(ctx, "source", "mouse", top);
-			}
-			else
-				tblstr(ctx, "source", "joystick", top);
-
-			tblnum(ctx, "devid", ev->io.devid, top);
-			tblnum(ctx, "subid", ev->io.subid, top);
-			tblbool(ctx, "active", true, top);
-			tblbool(ctx, "analog", true, top);
-			tblbool(ctx, "relative", ev->io.input.analog.gotrel,top);
-
-			lua_pushstring(ctx, "samples");
-			lua_createtable(ctx, ev->io.input.analog.nvalues, 0);
-				int top2 = lua_gettop(ctx);
-				for (size_t i = 0; i < ev->io.input.analog.nvalues; i++){
-					lua_pushnumber(ctx, i + 1);
-					lua_pushnumber(ctx, ev->io.input.analog.axisval[i]);
-					lua_rawset(ctx, top2);
-				}
-			lua_rawset(ctx, top);
-		break;
-
-		case EVENT_IO_BUTTON:
-			lua_pushstring(ctx, "digital");
-			lua_rawset(ctx, top);
-			tblbool(ctx, "digital", true, top);
-
-			if (ev->io.devkind == EVENT_IDEVKIND_KEYBOARD){
-				tblbool(ctx, "translated", true, top);
-				tblnum(ctx, "number", ev->io.input.translated.scancode, top);
-				tblnum(ctx, "keysym", ev->io.input.translated.keysym, top);
-				tblnum(ctx, "modifiers", ev->io.input.translated.modifiers, top);
-				tblnum(ctx, "devid", ev->io.devid, top);
-				tblnum(ctx, "subid", ev->io.subid, top);
-				tblstr(ctx, "utf8", (char*)ev->io.input.translated.utf8, top);
-				tblbool(ctx, "active", ev->io.input.translated.active, top);
-				tblstr(ctx, "device", "translated", top);
-				tblbool(ctx, "keyboard", true, top);
-			}
-			else if (ev->io.devkind == EVENT_IDEVKIND_MOUSE ||
-				ev->io.devkind == EVENT_IDEVKIND_GAMEDEV){
-				if (ev->io.devkind == EVENT_IDEVKIND_MOUSE){
-					tblbool(ctx, "mouse", true, top);
-					tblstr(ctx, "source", "mouse", top);
-				}
-				else {
-					tblbool(ctx, "joystick", true, top);
-					tblstr(ctx, "source", "joystick", top);
-				}
-				tblbool(ctx, "translated", false, top);
-				tblnum(ctx, "devid", ev->io.devid, top);
-				tblnum(ctx, "subid", ev->io.subid, top);
- 				tblbool(ctx, "active", ev->io.input.digital.active, top);
-			}
-			else;
-		break;
-
-		default:
-			lua_pushstring(ctx, "unknown");
-			lua_rawset(ctx, top);
-			arcan_warning("Engine -> Script: "
-				"ignoring IO event: %i\n",ev->io.kind);
-		}
-
+		append_iotable(ctx, &ev->io);
 		alua_call(ctx, 1, 0, LINE_TAG":event:input");
 	}
 	else if (ev->category == EVENT_NET){
@@ -4899,6 +4910,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		lua_pushvid(ctx, ev->fsrv.video);
 		lua_newtable(ctx);
 
+		int argc = 2;
 		int top = lua_gettop(ctx);
 
 		tblnum(ctx, "source_audio", ev->fsrv.audio, top);
@@ -4924,6 +4936,11 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblstr(ctx, "kind", "frame", top);
 			tblnum(ctx, "pts", ev->fsrv.pts, top);
 			tblnum(ctx, "number", ev->fsrv.counter, top);
+		break;
+		case EVENT_FSRV_IONESTED:
+			tblstr(ctx, "kind", "input", top);
+			append_iotable(ctx, &ev->fsrv.input);
+			argc = 3;
 		break;
 		case EVENT_FSRV_DROPPEDFRAME :
 			tblstr(ctx, "kind", "dropped_frame", top);
@@ -4955,7 +4972,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		luactx.cb_source_tag = ev->fsrv.video;
 		luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
-		alua_call(ctx, 2, 0, LINE_TAG":frameserver:event");
+		alua_call(ctx, argc, 0, LINE_TAG":frameserver:event");
 		luactx.cb_source_kind = CB_SOURCE_NONE;
 	}
 	else if (ev->category == EVENT_VIDEO){

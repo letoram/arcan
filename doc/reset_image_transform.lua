@@ -1,7 +1,7 @@
 -- reset_image_transform
 -- @short: Drop all ongoing transformations.
 -- @inargs: vid
--- @outargs: left_blend, left_move, left_rotate
+-- @outargs: left_blend, left_move, left_rotate, left_scale
 -- @longdescr: At times there may be queued events that should be
 -- cancelled out due to unforeseen changes, this is especially typical
 -- when transformations are initated as part as some input or client event

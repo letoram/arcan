@@ -597,18 +597,6 @@ void arcan_vint_drawcursor(bool erase)
 	agp_deactivate_vstore();
 }
 
-arcan_vobj_id arcan_video_fsrvbycookie(uint32_t cookie)
-{
-	for (size_t i = 1; i < current_context->vitem_limit; i++){
-		arcan_vobject* vobj = &current_context->vitems_pool[i];
-		if (vobj->feed.state.tag == ARCAN_TAG_FRAMESERV && vobj->feed.state.ptr &&
-			((struct arcan_frameserver*)vobj->feed.state.ptr)->cookie == cookie)
-			return vobj->cellid;
-	}
-
-	return ARCAN_EID;
-}
-
 signed arcan_video_pushcontext()
 {
 	arcan_vobject empty_vobj = {
@@ -2792,7 +2780,7 @@ arcan_errc arcan_video_setlife(arcan_vobj_id id, unsigned lifetime)
 	return rv;
 }
 
-arcan_errc arcan_video_zaptransform(arcan_vobj_id id, unsigned left[3])
+arcan_errc arcan_video_zaptransform(arcan_vobj_id id, unsigned left[4])
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
@@ -2808,9 +2796,10 @@ arcan_errc arcan_video_zaptransform(arcan_vobj_id id, unsigned left[3])
 			left[0] = ct > current->blend.endt ? 0 : current->blend.endt - ct;
 			left[1] = ct > current->move.endt ? 0 : current->move.endt - ct;
 			left[2] = ct > current->rotate.endt ? 0 : current->rotate.endt - ct;
+			left[3] = ct > current->scale.endt ? 0 : current->scale.endt - ct;
 		}
 		else{
-			left[0] = left[1] = left[2] = 0;
+			left[0] = left[1] = left[2] = left[3] = 4;
 		}
 	}
 

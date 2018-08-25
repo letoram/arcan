@@ -366,7 +366,10 @@ static bool update_cube(
 	env->tex_param_i(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	env->tex_param_i(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	env->tex_param_i(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+#if !defined(GLES2)
 	env->tex_param_i(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+#endif
 
 	for (size_t i = 0; i < n_slices; i++){
 		struct agp_vstore* s = slices[i];

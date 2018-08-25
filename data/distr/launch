@@ -1,30 +1,31 @@
 #!/bin/sh
-# simple script for setting up paths, namespaces etc.
 
 arcan_base=${HOME}/.arcan
 applname="$(basename $0)"
+distargs=""
 
 if [ ! -z "${XDG_DATA_HOME}" ]; then
 	arcan_base=${XDG_DATA_HOME}/arcan
-	distargs="-b \"${HOME}/.config/arcan.sqlite\""
+	distargs="-d ${HOME}/.config/arcan.sqlite"
 fi
 
 if [ ! -z "${XDG_CONFIG_HOME}" ]; then
-	distargs="-b ${XDG_CONFIG_HOME}/arcan.sqlite"
+	distargs="-d ${XDG_CONFIG_HOME}/arcan.sqlite"
 fi
 
 arcan_applbase=$arcan_base/appl
 arcan_applout=$arcan_base/appl-out
 arcan_resources=$arcan_base/resources
+arcan_logpath=$arcan_base/logs
 
 # a dev would've overridden this one
-if [ ! -d "$arcan_applbase/durden" ]; then
+if [ ! -d "$arcan_applbase/$applname" ]; then
 	mkdir -p "$arcan_applbase"
-	ln -s /usr/share/durden/durden "$arcan_applbase/durden"
+	ln -s "/usr/share/$applname/$applname" "$arcan_applbase/$applname"
 fi
 
-if [ ! -d "$arcan_applout/durden" ]; then
-	mkdir -p "$arcan_applout/durden"
+if [ ! -d "$arcan_applout/$applname" ]; then
+	mkdir -p "$arcan_applout/$applname"
 fi
 
 # read-only resource access for browser, note that the presence
@@ -70,6 +71,11 @@ if [ ! -z "${XDG_VIDEOS_DIR}" ] && [ ! -d "${arcan_resources}/Videos" ]; then
 	ln -s "${XDG_VIDEOS_DIR}" "${arcan_resources}/Videos"
 fi
 
+# this is opt-in, user must make this directory himself as it can get quite verbose
+if [ -d "${arcan_logpath}" ]; then
+	export ARCAN_LOGPATH=${1:-$arcan_logpath}
+fi
+
 # setup namespace mapping
 export ARCAN_APPLBASEPATH=${1:-$arcan_applbase}
 export ARCAN_APPLSTOREPATH=${1:-$arcan_applout}
@@ -78,7 +84,7 @@ export ARCAN_RESOURCEPATH=${1:-$arcan_resources}
 # local writable custom / saved scripts that should shadow the builtin ones
 overlay=$ARCAN_APPLSTOREPATH/$applname
 if [ ! -d "$overlay/output" ]; then
-	overrides="output ipc devmaps/display devmaps/keyboard devmaps/game devmaps/led devmaps/schemes devmaps/touch tools widgets"
+	overrides="output ipc debug devmaps/display devmaps/keyboard devmaps/game devmaps/led devmaps/schemes devmaps/touch tools widgets"
 	for i in $overrides; do
 		mkdir -p "$overlay/$i"
 	done
@@ -90,9 +96,17 @@ fi
 # snap due to the possibility of sensitive data)
 while true; do
 	starttime=$(date +%s)
-	if /usr/bin/arcan "${distargs}" -b $applname $applname "$@"; then
-		exit
+
+	if [ -d "${arcan_logpath}" ]; then
+		if arcan ${distargs} -b "$applname" "$applname" "$@" >"${arcan_logpath}/${applname}_${starttime}.log" 2>&1; then
+			exit
+		fi
+	else
+		if arcan ${distargs} -b "$applname" "$applname" "$@"; then
+			exit
+		fi
 	fi
+
 	stoptime=$(date +%s)
 	elapsed=$((stoptime - starttime))
 	if [ $elapsed -lt 10 ]; then

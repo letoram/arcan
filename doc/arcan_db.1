@@ -89,9 +89,9 @@ response to each command (while stdout will contained the more detailed error
 description).
 
 .SH BINARY FORMATS
-The currently supported binary formats are \fBBIN\fR, \fBLWA\fR and
-\fBRETRO\fR. Binary format specifies how the new process will be created when
-launching a target/configuration pair.
+The currently supported binary formats are \fBBIN\fR, \fBLWA\fR, \fBSHELL\fR,
+\fBEXTERNAL\fR and \fBRETRO\fR. Binary format specifies how the new process
+will be created when launching a target/configuration pair.
 
 For \fBBIN\fR, the argv, envv and libs are treated with expanding namespaces.
 This means that all entries will have [ARCAN_XXXPATH] fields being replaced with
@@ -103,7 +103,7 @@ For \fBSHELL\fR, the \fBBIN\fR expansion rules apply, but indicate that it
 should be launched / monitored as a shell. This currently has no further
 semantic meaning (and is internally aliased as BIN) but reserved for future use.
 
-For \fBEXTERN\fR, the \fBBIN\fR expansion rules apply, but indicate that the
+For \fBEXTERNAL\fR, the \fBBIN\fR expansion rules apply, but indicate that the
 engine should suspend all operations (or maintain an audio/video/frameserver-
 less pipeline) and release as much resources as possible,
 until the target/configuration has finished executing.
@@ -134,7 +134,7 @@ used and a list of files (with permissions) in applpath and
 resourcepath might also be relevant.
 
 .SH COPYRIGHT
-Copyright  ©  2014-2017  Bjorn Stahl. License 3-clause BSD. This is free software:
+Copyright  ©  2014-2018  Bjorn Stahl. License 3-clause BSD. This is free software:
 you are free  to  change  and  redistribute  it. There is NO WARRANTY,
 to the extent permitted by law.
 
