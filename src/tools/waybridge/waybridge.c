@@ -62,6 +62,13 @@ static void rebuild_client(struct bridge_client*);
 static void reset_group_slot(int group, int slot);
 
 /*
+ * return the next allocated surface in group with the specific type starting
+ * at index *pos, returns the index found. If type is set to 0, the next
+ * allocated surface will be returned.
+ */
+static struct comp_surf* find_surface_group(int group, char type, size_t* pos);
+
+/*
  * This is one of the ugliest things around, so the client is supposed to
  * handle its own keymaps - why should it be easy for the compositor to know
  * what the f is going on. Anyhow, the idea is that you take and compile an
@@ -459,6 +466,7 @@ static bool request_surface(
 
 static void destroy_comp_surf(struct comp_surf* surf, bool clean)
 {
+	STEP_SERIAL();
 	if (!surf)
 		return;
 
@@ -466,6 +474,15 @@ static void destroy_comp_surf(struct comp_surf* surf, bool clean)
 	if (surf->l_bufrem_a){
 		surf->l_bufrem_a = false;
 		wl_list_remove(&surf->l_bufrem.link);
+	}
+
+/* destroy any dangling listeners */
+	for (size_t i = 0; i < COUNT_OF(surf->scratch) && surf->frames_pending; i++){
+		if (surf->scratch[i].type == 1){
+			wl_resource_destroy(surf->scratch[i].res);
+			surf->frames_pending--;
+			surf->scratch[i] = (struct scratch_req){};
+		}
 	}
 
 	if (surf->acon.addr){
@@ -489,6 +506,26 @@ static void destroy_comp_surf(struct comp_surf* surf, bool clean)
 		memset(surf, '\0', sizeof(struct comp_surf));
 		free(surf);
 	}
+}
+
+static struct comp_surf* find_surface_group(int group, char type, size_t* pos)
+{
+	if (group < 0 || group < wl.n_groups)
+		return NULL;
+
+	for (size_t i = (*pos); i < sizeof(wl.groups[i].alloc)*8; i++){
+		if (!((1 << i) & wl.groups[group].alloc) ||
+			wl.groups[group].slots[i].type != SLOT_TYPE_SURFACE ||
+			!wl.groups[group].slots[i].surface)
+			continue;
+
+		if (type == 0 || wl.groups[group].slots[i].idch == type){
+			*pos = i;
+			return wl.groups[group].slots[i].surface;
+		}
+	}
+
+	return NULL;
 }
 
 /*

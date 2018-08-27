@@ -96,6 +96,12 @@ struct frame_cb {
 	struct wl_list link;
 };
 
+struct scratch_req {
+	int type;
+	struct wl_resource* res;
+	uint32_t id;
+};
+
 #define SURF_TAGLEN 16
 struct comp_surf {
 	struct wl_listener l_bufrem;
@@ -130,11 +136,7 @@ struct comp_surf {
  * useless resources that may or may not be assigned to something useful
  * crapola).
  */
-	struct {
-		int type;
-		struct wl_resource* res;
-		uint32_t id;
-	} scratch[64];
+	struct scratch_req scratch[64];
 	size_t frames_pending, subsurf_pending;
 
 /*
@@ -160,7 +162,6 @@ struct comp_surf {
 	int acc_x, acc_y;
 
 	struct surf_state states;
-	uint32_t cb_id;
 /* return [true] if the event was consumed and shouldn't be processed by the
  * default handler */
 	bool (*dispatch)(struct comp_surf*, struct arcan_event* ev);
