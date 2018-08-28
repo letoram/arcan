@@ -2569,15 +2569,22 @@ pid_t arcan_shmif_handover_exec(
 		!= TARGET_COMMAND_NEWSEGMENT || ev.tgt.ioevs[2].iv != SEGID_HANDOVER)
 		return -1;
 
+/* Copy the descriptor as the other is CLOEXEC and will be handled by the
+ * caller or as part of _shmif_control on a non-mapped segment. */
+	int dup_fd = dup(ev.tgt.ioevs[0].iv);
+	if (-1 == dup_fd)
+		return -1;
+
 /* Prepare env even if there isn't env as we need to propagate connection
  * primitives etc. Since we don't know the inherit intent behind the exec
  * we need to rely on dup to create the new connection socket.
  * Append: ARCAN_SHMKEY, ARCAN_SOCKIN_FD, ARCAN_HANDOVER */
-	size_t nelem = 4;
+	size_t nelem = 0;
 	if (env){
 		for (; env[nelem]; nelem++){}
 	}
-	int dup_fd = dup(ev.tgt.ioevs[0].iv);
+	nelem += 4;
+
 	char** new_env = malloc(nelem * sizeof(char*) + 1);
 	if (!new_env){
 		close(dup_fd);
@@ -2597,7 +2604,7 @@ pid_t arcan_shmif_handover_exec(
 
 /* duplicate the input environment */
 	if (env){
-		for (; ofs < nelem - 4; ofs++){
+		for (; ofs < nelem - 4 && env[ofs]; ofs++){
 			new_env[ofs] = strdup(env[ofs]);
 			if (!new_env[ofs]){
 				CLEAN_ENV();
@@ -2627,7 +2634,7 @@ pid_t arcan_shmif_handover_exec(
 	}
 
 	pid_t pid = fork();
-	if (pid > 0){
+	if (pid == 0){
 		if (detach && (pid = fork()) != 0)
 			exit(pid > 0 ? EXIT_SUCCESS : EXIT_FAILURE);
 
