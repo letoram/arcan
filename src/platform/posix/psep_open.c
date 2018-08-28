@@ -122,6 +122,9 @@ struct whitelist whitelist[] = {
 	{"/dev/dri/", -1, MODE_PREFIX},
 	{"/sys/class/backlight/", -1, MODE_PREFIX},
 	{"/sys/class/tty/", -1, MODE_PREFIX},
+/* we need better patterns to deal with this one but it
+ * is needed for backlight controls as backlight resolves here */
+	{"/sys/devices/", -1, MODE_PREFIX},
 	{"/dev/tty", -1, MODE_PREFIX | MODE_TTY},
 #elif defined(__OpenBSD__)
 	{"/dev/wsmouse", -1, MODE_DEFAULT},
@@ -420,8 +423,12 @@ static int access_device(const char* path, int arg, bool release, bool* keep)
 
 /* recipient will set real flags, including cloexec etc. */
 		int fd = open(path, O_RDWR);
-		if (-1 == fd)
-			return -1;
+		if (-1 == fd){
+			fd = open(path, O_RDONLY);
+			if (-1 == fd){
+				return -1;
+			}
+		}
 
 		if (whitelist[ind].fd != -1)
 			close(whitelist[ind].fd);
@@ -812,6 +819,7 @@ int platform_device_open(const char* const name, int flags)
 		.cmd_ch = OPEN_DEVICE,
 		.arg = -1
 	};
+
 	snprintf(pkg.path, sizeof(pkg.path), "%s", name);
 	if (-1 == write(psock, &pkg, sizeof(pkg)))
 		return -1;
