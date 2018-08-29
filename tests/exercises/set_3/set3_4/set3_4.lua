@@ -7,7 +7,7 @@ local btns = {
 };
 
 function set3_4()
-	symtable = system_load("scripts/symtable.lua")();
+	symtable = system_load("builtin/keyboard.lua")();
 	cursor_setstorage(fill_surface(8, 8, 0, 255, 0));
 	resize_cursor(8, 8);
 end
