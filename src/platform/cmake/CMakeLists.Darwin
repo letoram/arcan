@@ -99,7 +99,7 @@ set(ARCAN_PLATFORM
 	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/../darwin/time.c
 	${PLATFORM_PATH}/../stub/fsrv_guard.c
-	${PLATFORM_PATH}/posix/setproctitle.c
+	${PLATFORM_PATH}/../stub/setproctitle.c
 	${PLATFORM_PATH}/launch.c
 	${PLATFORM_PATH}/namespace.c
 	${PLATFORM_PATH}/warning.c
