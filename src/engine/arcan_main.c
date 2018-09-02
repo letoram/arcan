@@ -432,7 +432,7 @@ int MAIN_REDIR(int argc, char* argv[])
 			arcan_warning("\x1b[33mLook through the following list and note the "
 				"entries marked broken, \nCheck the manpage for config and environment "
 				"variables, or try the arguments: \n"
-				"\t <system-scripts> : -t path/to/arcan/data/scripts\n"
+				"\t <system-scripts> : -T path/to/arcan/data/scripts\n"
 				"\t <application-shared> : -p any/valid/user/path\n"
 				"\x1b[39m\n"
 			);
