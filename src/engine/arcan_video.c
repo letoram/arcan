@@ -1270,7 +1270,10 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 			dst->color ? dst->color->cellid : -1, video_tracetag(dst->color),
 			dst->color->extrefc.attachments, src->extrefc.attachments);
 
-		assert(dst->color->extrefc.attachments >= 0);
+		if (dst->color->extrefc.attachments < 0){
+			arcan_warning(
+				"[bug] attach-count (%d) < 0", dst->color->extrefc.attachments);
+		}
 	} else {
 		src->extrefc.attachments--;
 		trace("(detach) (%ld:%s) removed from stdout, attached to: %d\n",
@@ -3045,7 +3048,10 @@ static void drop_rtarget(arcan_vobject* vobj)
 
 /* found one, disassociate with the context */
 	current_context->n_rtargets--;
-	assert(current_context->n_rtargets >= 0);
+	if (current_context->n_rtargets < 0){
+		arcan_warning(
+			"[bug] rtgt count (%d) < 0\n", current_context->n_rtargets);
+	}
 
 	if (vobj->tracetag)
 		arcan_warning("(arcan_video_deleteobject(reference-pass) -- "
@@ -3076,8 +3082,16 @@ static void drop_rtarget(arcan_vobject* vobj)
 			"	rendertarget (%d:%s), left: %d:%d\n",
 			current->elem->cellid, video_tracetag(current->elem), vobj->cellid,
 			video_tracetag(vobj),vobj->extrefc.attachments,base->extrefc.attachments);
-		assert(base->extrefc.attachments >= 0);
-		assert(vobj->extrefc.attachments >= 0);
+
+		if (base->extrefc.attachments < 0){
+			arcan_warning(
+				"[bug] obj-attach-refc (%d) < 0\n", base->extrefc.attachments);
+		}
+
+		if (vobj->extrefc.attachments < 0){
+			arcan_warning(
+				"[bug] rtgt-ext-refc (%d) < 0\n", vobj->extrefc.attachments);
+		}
 
 /* cleanup and unlink before moving on */
 		arcan_vobject_litem* last = current;
@@ -3101,7 +3115,9 @@ static void drop_rtarget(arcan_vobject* vobj)
 	vobj->extrefc.attachments--;
 	trace("(deleteobject::drop_rtarget) remove self reference from "
 		"rendertarget (%d:%s)\n", vobj->cellid, video_tracetag(vobj));
-	assert(vobj->extrefc.attachments == 0);
+	if (vobj->extrefc.attachments != 0){
+		arcan_warning("[bug] vobj refc (%d) != 0\n", vobj->extrefc.attachments);
+	}
 
 /* sweep the list of rendertarget children, and see if we have the
  * responsibility of cleaning it up */
