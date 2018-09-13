@@ -135,6 +135,7 @@ static void surf_frame(
 			surf->frames_pending--;
 			surf->scratch[i].res = NULL;
 			surf->scratch[i].id = 0;
+			surf->scratch[i].type = 0;
 		}
 
 		if (surf->scratch[i].type == 0){
