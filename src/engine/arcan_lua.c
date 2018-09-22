@@ -12030,8 +12030,10 @@ src->frameset ? lut_framemode(src->frameset->mode) : "",
 (int) src->extrefc.attachments,
 (int) src->extrefc.links,
 #endif
-(src->vstore->txmapped && src->vstore->vinf.text.source) ?
-	src->vstore->vinf.text.source : "unknown",
+src->vstore->txmapped ? (
+	src->vstore->vinf.text.kind == STORAGE_IMAGE_URI ?
+	src->vstore->vinf.text.source : "text/text-array" )
+	: "color",
 (int) src->vstore->vinf.text.s_raw,
 (int) src->vstore->w,
 (int) src->vstore->h,
@@ -12048,7 +12050,6 @@ lut_filtermode(src->vstore->filtermode),
 vobj_flags(src),
 mask,
 lut_kind(src));
-
 	fprintf(dst, "tracetag = ");
 	fput_luasafe_str(dst, src->tracetag ? src->tracetag : "no tag");
 	fputs(",\n", dst);
@@ -12061,6 +12062,20 @@ lut_kind(src));
 		fprintf(dst, "vobj.glstore_glid = %d;\n\
 vobj.glstore_refc = %zu;\n", src->vstore->vinf.text.glid,
 			src->vstore->refcount);
+		if (src->vstore->vinf.text.kind == STORAGE_TEXT &&
+			src->vstore->vinf.text.source){
+			fprintf(dst, "vobj.text = ");
+			fput_luasafe_str(dst, src->vstore->vinf.text.source);
+		}
+		else if (src->vstore->vinf.text.kind == STORAGE_TEXTARRAY){
+			fprintf(dst, "vobj.text_array = {\n");
+			char** str = src->vstore->vinf.text.source_arr;
+			while (str && *str){
+				fput_luasafe_str(dst, *str++);
+				fputs(",\n", dst);
+			}
+			fprintf(dst, "};\n");
+		}
 	} else {
 		fprintf_float(dst, "vobj.glstore_col = {", src->vstore->vinf.col.r, ", ");
 		fprintf_float(dst, "", src->vstore->vinf.col.g, ", ");
