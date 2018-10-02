@@ -67,7 +67,7 @@ if (EXISTS "${WAYLANDPROTOCOLS_PATH}/stable/xdg-shell/xdg-shell.xml")
 	add_definitions(-DHAVE_XDG_SHELL)
 	list(APPEND sources ${src})
 else()
-	message("xdg-shell-stable protocol not found, diasabled")
+	message("xdg-shell-stable protocol not found, disabled")
 endif()
 
 foreach(proto ${PROTOCOLS})

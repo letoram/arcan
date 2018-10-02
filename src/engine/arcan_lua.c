@@ -4630,7 +4630,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		if (fsrv->tag == LUA_NOREF){
 			return;
 		}
-		lua_getref(ctx, fsrv->tag);
+		lua_rawgeti(ctx, LUA_REGISTRYINDEX, fsrv->tag);
 		lua_pushvid(ctx, ev->ext.source);
 
 		lua_newtable(ctx);
@@ -4837,7 +4837,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
  * reference. */
 		if (!vobj){
 			if (ev->fsrv.otag != LUA_NOREF){
-				lua_unref(ctx, ev->fsrv.otag);
+				luaL_unref(ctx, ev->fsrv.otag);
 			}
 			return;
 		}
@@ -4850,7 +4850,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				return;
 
 /* function, source, status */
-			lua_getref(ctx, ev->fsrv.otag);
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 			lua_pushvid(ctx, ev->fsrv.video);
 			lua_newtable(ctx);
 
@@ -4861,7 +4861,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
 			alua_call(ctx, 2, 0, LINE_TAG":frameserver:event");
 			luactx.cb_source_kind = CB_SOURCE_NONE;
-			lua_unref(ctx, ev->fsrv.otag);
+			luaL_unref(ctx, ev->fsrv.otag);
 			return;
 		}
 
@@ -4873,7 +4873,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			if (ev->fsrv.otag == LUA_NOREF)
 				return;
 
-			lua_getref(ctx, ev->fsrv.otag);
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 			lua_pushvid(ctx, ev->fsrv.video);
 			lua_newtable(ctx);
 			int top = lua_gettop(ctx);
@@ -4906,7 +4906,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		}
 
 /* function, source, status */
-		lua_getref(ctx, ev->fsrv.otag);
+		lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 		lua_pushvid(ctx, ev->fsrv.video);
 		lua_newtable(ctx);
 
@@ -7227,7 +7227,7 @@ static int targethandler(lua_State* ctx)
 			" associated with a frameserver.");
 
 	if (fsrv->tag != (intptr_t)LUA_NOREF){
-		lua_unref(ctx, fsrv->tag);
+		luaL_unref(ctx, fsrv->tag);
 	}
 
 /* takes care of the type checking or setting an empty ref */
