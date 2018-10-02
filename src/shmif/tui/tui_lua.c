@@ -1118,7 +1118,6 @@ void tui_lua_expose(lua_State* L)
 	for (size_t i = 0; i < COUNT_OF(flagtbl); i++){
 		lua_pushstring(L, flagtbl[i].key);
 		lua_pushnumber(L, flagtbl[i].val);
-		printf("%zu, %s, %d\n", i, flagtbl[i].key, flagtbl[i].val);
 		lua_rawset(L, -3);
 	}
 	lua_setglobal(L, "tui_flags");
