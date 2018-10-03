@@ -4837,7 +4837,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
  * reference. */
 		if (!vobj){
 			if (ev->fsrv.otag != LUA_NOREF){
-				luaL_unref(ctx, ev->fsrv.otag);
+				luaL_unref(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 			}
 			return;
 		}
@@ -4861,7 +4861,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
 			alua_call(ctx, 2, 0, LINE_TAG":frameserver:event");
 			luactx.cb_source_kind = CB_SOURCE_NONE;
-			luaL_unref(ctx, ev->fsrv.otag);
+			luaL_unref(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 			return;
 		}
 
@@ -7227,7 +7227,7 @@ static int targethandler(lua_State* ctx)
 			" associated with a frameserver.");
 
 	if (fsrv->tag != (intptr_t)LUA_NOREF){
-		luaL_unref(ctx, fsrv->tag);
+		luaL_unref(ctx, LUA_REGISTRYINDEX, fsrv->tag);
 	}
 
 /* takes care of the type checking or setting an empty ref */
