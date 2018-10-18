@@ -3328,6 +3328,10 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 			init->fonts[1].fd = BADFD;
 		}
 	}
+	else if (init->fonts[0].size_mm > 0){
+		res->font_sz = init->fonts[0].size_mm;
+		setup_font(res, BADFD, res->font_sz, 0);
+	}
 	else
 		setup_font(res, BADFD, res->font_sz, 0);
 
