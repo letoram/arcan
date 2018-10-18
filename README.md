@@ -74,21 +74,23 @@ for building some of these dependencies statically:
       -DSTATIC_SQLITE3=ON -DSTATIC_OPENAL=ON -DSTATIC_FREETYPE=ON ../src
      make -j 12
 
-You can then test the build with:
+his tells us to use shared scripts from the ../data/scripts directory
+(which implements keymaps, mouse gestures etc.), to use shared resources
+from the ../data/resourcrs directory and launch an application that resides
+at ../data/appl/welcome.
 
-     ./arcan -p ../data/resources/ ../data/appl/welcome
-
-Which tells us to use shared resources from the ../data/resources directory,
-and launch an application that resides as ../data/appl/welcome. If this path
-isn't specified relative to current path (./ or ../) or absolute (/path/to),
-the engine will try and search in the default 'applbase'. This path varies
-with the OS, but is typically something like /usr/local/share/arcan/appl
-or to the current user: /path/to/home/.arcan/appl
+If these paths aren't specified relative to current path (./ or ../) or
+absolute (/path/to) the engine will try and search in the default 'applbase'.
+This path varies with the OS, but is typically something like
+/usr/local/share/arcan/appl or to the current user: /path/to/home/.arcan/appl
 
 The 'recommended' setup is to have a .arcan folder in your user home directory
 with a resources and appl subdirectory. Symlink/bind-mount the data you want
 accessible into the .arcan/resources path, and have the runable appls in
 .arcan/appl.
+
+There are other, more XDG compatible, setups - with some template for a
+support launcher script that can be found in data/distr/launch.
 
 A big note about compilation is how central the 'shmif' set of libraries are.
 These are used for all external tools, but are tied to the inner workings of
