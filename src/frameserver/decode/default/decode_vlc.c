@@ -33,6 +33,8 @@
 #include <fcntl.h>
 
 #include <vlc/vlc.h>
+#include <vlc/libvlc_version.h>
+
 #include <pthread.h>
 #include <kiss_fftr.h>
 #include <arcan_shmif.h>
@@ -335,8 +337,13 @@ static void player_event(const struct libvlc_event_t* event, void* ud)
 		decctx.finished = true;
 	break;
 
+/* thanks for removing debugging features, *sigh* */
 	default:
+#if LIBVLC_VERSION_MAJOR >= 4
+		LOG("unhandled event (%d)\n", event->type);
+#else
 		LOG("unhandled event (%s)\n", libvlc_event_type_name(event->type));
+#endif
 	}
 }
 
@@ -399,7 +406,11 @@ static void seek_relative(int seconds)
 	time_v += seconds;
 	time_v = time_v > 0 ? time_v : 0;
 
-	libvlc_media_player_set_time(decctx.player, time_v);
+	libvlc_media_player_set_time(decctx.player, time_v
+#if LIBVLC_VERSION_MAJOR >= 4
+		, true
+#endif
+);
 }
 
 /*
@@ -480,7 +491,11 @@ static bool dispatch(arcan_event* ev)
 				seek_relative(ev->tgt.ioevs[1].fv);
 		else{
 			LOG("non-relative seek\n");
-			libvlc_media_player_set_position(decctx.player, ev->tgt.ioevs[1].fv);
+			libvlc_media_player_set_position(decctx.player, ev->tgt.ioevs[1].fv
+#if LIBVLC_VERSION_MAJOR >= 4
+		, true
+#endif
+			);
 		}
 	break;
 
@@ -655,7 +670,11 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	libvlc_media_player_play(decctx.player);
 
 	if (position > 0.0)
-		libvlc_media_player_set_position(decctx.player, position);
+		libvlc_media_player_set_position(decctx.player, position
+#if LIBVLC_VERSION_MAJOR >= 4
+		, true
+#endif
+		);
 
 /* video playback finish will pull this or seek back to beginning on loop */
 	arcan_event ev;

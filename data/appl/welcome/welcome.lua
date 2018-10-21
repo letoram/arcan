@@ -1,5 +1,5 @@
 function welcome()
-	local symfun = system_load("scripts/symtable.lua");
+	local symfun = system_load("builtin/keyboard.lua");
 	if (symfun ~= nil) then
 		symtable = symfun();
 	end

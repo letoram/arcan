@@ -1,5 +1,5 @@
 function set3_3()
-	symtable = system_load("scripts/symtable.lua")();
+	symtable = system_load("builtin/keyboard.lua")();
 end
 
 function set3_3_input(iotbl)

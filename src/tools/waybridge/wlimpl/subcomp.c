@@ -34,6 +34,8 @@ static bool subcomp_defer_handler(
 	surf->cookie = 0xfeedface;
 	surf->shell_res = subsurf;
 	surf->dispatch = subsurf_shmifev_handler;
+	surf->sub_parent_res = req->parent;
+
 	snprintf(surf->tracetag, SURF_TAGLEN, "subsurf");
 
 	if (req->parent){

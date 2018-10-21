@@ -4630,7 +4630,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		if (fsrv->tag == LUA_NOREF){
 			return;
 		}
-		lua_getref(ctx, fsrv->tag);
+		lua_rawgeti(ctx, LUA_REGISTRYINDEX, fsrv->tag);
 		lua_pushvid(ctx, ev->ext.source);
 
 		lua_newtable(ctx);
@@ -4837,7 +4837,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
  * reference. */
 		if (!vobj){
 			if (ev->fsrv.otag != LUA_NOREF){
-				lua_unref(ctx, ev->fsrv.otag);
+				luaL_unref(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 			}
 			return;
 		}
@@ -4850,7 +4850,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				return;
 
 /* function, source, status */
-			lua_getref(ctx, ev->fsrv.otag);
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 			lua_pushvid(ctx, ev->fsrv.video);
 			lua_newtable(ctx);
 
@@ -4861,7 +4861,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
 			alua_call(ctx, 2, 0, LINE_TAG":frameserver:event");
 			luactx.cb_source_kind = CB_SOURCE_NONE;
-			lua_unref(ctx, ev->fsrv.otag);
+			luaL_unref(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 			return;
 		}
 
@@ -4873,7 +4873,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			if (ev->fsrv.otag == LUA_NOREF)
 				return;
 
-			lua_getref(ctx, ev->fsrv.otag);
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 			lua_pushvid(ctx, ev->fsrv.video);
 			lua_newtable(ctx);
 			int top = lua_gettop(ctx);
@@ -4906,7 +4906,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		}
 
 /* function, source, status */
-		lua_getref(ctx, ev->fsrv.otag);
+		lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 		lua_pushvid(ctx, ev->fsrv.video);
 		lua_newtable(ctx);
 
@@ -7227,7 +7227,7 @@ static int targethandler(lua_State* ctx)
 			" associated with a frameserver.");
 
 	if (fsrv->tag != (intptr_t)LUA_NOREF){
-		lua_unref(ctx, fsrv->tag);
+		luaL_unref(ctx, LUA_REGISTRYINDEX, fsrv->tag);
 	}
 
 /* takes care of the type checking or setting an empty ref */
@@ -12030,8 +12030,10 @@ src->frameset ? lut_framemode(src->frameset->mode) : "",
 (int) src->extrefc.attachments,
 (int) src->extrefc.links,
 #endif
-(src->vstore->txmapped && src->vstore->vinf.text.source) ?
-	src->vstore->vinf.text.source : "unknown",
+src->vstore->txmapped ? (
+	src->vstore->vinf.text.kind == STORAGE_IMAGE_URI ?
+	src->vstore->vinf.text.source : "text/text-array" )
+	: "color",
 (int) src->vstore->vinf.text.s_raw,
 (int) src->vstore->w,
 (int) src->vstore->h,
@@ -12048,7 +12050,6 @@ lut_filtermode(src->vstore->filtermode),
 vobj_flags(src),
 mask,
 lut_kind(src));
-
 	fprintf(dst, "tracetag = ");
 	fput_luasafe_str(dst, src->tracetag ? src->tracetag : "no tag");
 	fputs(",\n", dst);
@@ -12061,6 +12062,20 @@ lut_kind(src));
 		fprintf(dst, "vobj.glstore_glid = %d;\n\
 vobj.glstore_refc = %zu;\n", src->vstore->vinf.text.glid,
 			src->vstore->refcount);
+		if (src->vstore->vinf.text.kind == STORAGE_TEXT &&
+			src->vstore->vinf.text.source){
+			fprintf(dst, "vobj.text = ");
+			fput_luasafe_str(dst, src->vstore->vinf.text.source);
+		}
+		else if (src->vstore->vinf.text.kind == STORAGE_TEXTARRAY){
+			fprintf(dst, "vobj.text_array = {\n");
+			char** str = src->vstore->vinf.text.source_arr;
+			while (str && *str){
+				fput_luasafe_str(dst, *str++);
+				fputs(",\n", dst);
+			}
+			fprintf(dst, "};\n");
+		}
 	} else {
 		fprintf_float(dst, "vobj.glstore_col = {", src->vstore->vinf.col.r, ", ");
 		fprintf_float(dst, "", src->vstore->vinf.col.g, ", ");
