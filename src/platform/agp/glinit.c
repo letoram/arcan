@@ -295,6 +295,7 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 		(void(*)(void))
 			lookup(tag, "glFlush");
 
+	dst->last_store_mode = GL_TEXTURE_2D;
 #undef lookup_opt
 #undef lookup
 

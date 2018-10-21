@@ -120,6 +120,7 @@ static void surf_frame(
 		return;
 	}
 
+	STEP_SERIAL();
 	struct wl_resource* cbres =
 		wl_resource_create(cl, &wl_callback_interface, 1, cb);
 
@@ -129,6 +130,14 @@ static void surf_frame(
 	}
 
 	for (size_t i = 0; i < COUNT_OF(surf->scratch); i++){
+		if (surf->scratch[i].type == 1){
+			wl_resource_destroy(surf->scratch[i].res);
+			surf->frames_pending--;
+			surf->scratch[i].res = NULL;
+			surf->scratch[i].id = 0;
+			surf->scratch[i].type = 0;
+		}
+
 		if (surf->scratch[i].type == 0){
 			surf->frames_pending++;
 			surf->scratch[i].res = cbres;
@@ -216,6 +225,7 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * condition in the client or support libs that end very SIGSEGVy
  */
 	if (surf->last_buf){
+		try_frame_callback(surf, acon);
 		wl_buffer_send_release(surf->last_buf);
 		surf->last_buf = NULL;
 	}

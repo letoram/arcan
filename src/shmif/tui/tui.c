@@ -2666,6 +2666,28 @@ struct arcan_shmif_cont* arcan_tui_acon(struct tui_context* c)
 	return &c->acon;
 }
 
+size_t arcan_tui_get_handles(
+	struct tui_context** contexts, size_t n_contexts,
+	int fddst[], size_t fddst_lim)
+{
+	size_t ret = 0;
+	if (!fddst || !contexts)
+		return 0;
+
+	for (size_t i = 0; i < n_contexts && ret < fddst_lim; i++){
+		if (!contexts[i]->acon.addr)
+			continue;
+
+		fddst[ret++] = contexts[i]->acon.epipe;
+
+		if (contexts[i]->clip_in.addr && ret < fddst_lim){
+			fddst[ret++] = contexts[i]->clip_in.epipe;
+		}
+	}
+
+	return ret;
+}
+
 struct tui_process_res arcan_tui_process(
 	struct tui_context** contexts, size_t n_contexts,
 	int* fdset, size_t fdset_sz, int timeout)
@@ -3305,6 +3327,10 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 			setup_font(res, init->fonts[1].fd, res->font_sz, 1);
 			init->fonts[1].fd = BADFD;
 		}
+	}
+	else if (init->fonts[0].size_mm > 0){
+		res->font_sz = init->fonts[0].size_mm;
+		setup_font(res, BADFD, res->font_sz, 0);
 	}
 	else
 		setup_font(res, BADFD, res->font_sz, 0);

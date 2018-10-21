@@ -19,6 +19,14 @@ announcements, releases, videos / presentations and so on.
 
 For developer contact, check out the IRC channel #arcan on irc.freenode.net.
 
+The current release version is roughly that the master branch will always have
+bugfixes pushed as soon as possible, and after a new (0.n.m.p) update to the m
+version number - a blog post is pushed and then a set of the next big features
+gets selected, and each pushed as a new branch. When that feature is completed
+we interactive-rebase-squish-merge unto the main branch and tag a '.p' version
+update. When there are no branches left, the 'm' version gets a new update and
+the cycle repeats anew.
+
 # Table of Contents
 1. [Getting Started](#started)
     1. [Compiling](#compiling)
@@ -66,21 +74,23 @@ for building some of these dependencies statically:
       -DSTATIC_SQLITE3=ON -DSTATIC_OPENAL=ON -DSTATIC_FREETYPE=ON ../src
      make -j 12
 
-You can then test the build with:
+his tells us to use shared scripts from the ../data/scripts directory
+(which implements keymaps, mouse gestures etc.), to use shared resources
+from the ../data/resourcrs directory and launch an application that resides
+at ../data/appl/welcome.
 
-     ./arcan -p ../data/resources/ ../data/appl/welcome
-
-Which tells us to use shared resources from the ../data/resources directory,
-and launch an application that resides as ../data/appl/welcome. If this path
-isn't specified relative to current path (./ or ../) or absolute (/path/to),
-the engine will try and search in the default 'applbase'. This path varies
-with the OS, but is typically something like /usr/local/share/arcan/appl
-or to the current user: /path/to/home/.arcan/appl
+If these paths aren't specified relative to current path (./ or ../) or
+absolute (/path/to) the engine will try and search in the default 'applbase'.
+This path varies with the OS, but is typically something like
+/usr/local/share/arcan/appl or to the current user: /path/to/home/.arcan/appl
 
 The 'recommended' setup is to have a .arcan folder in your user home directory
 with a resources and appl subdirectory. Symlink/bind-mount the data you want
 accessible into the .arcan/resources path, and have the runable appls in
 .arcan/appl.
+
+There are other, more XDG compatible, setups - with some template for a
+support launcher script that can be found in data/distr/launch.
 
 A big note about compilation is how central the 'shmif' set of libraries are.
 These are used for all external tools, but are tied to the inner workings of
@@ -163,7 +173,7 @@ The following example attempts to illustrate how this works:
         arcan_db db.sqlite add_target example_app /some/binary -some -args
         arcan_db db.sqlite add_config example_app more_args -yes -why -not
         arcan_db add_target mycore RETRO [ARCAN_RESOURCEPATH]/.cores/core.so
-				arcan_db add_config mycore myconfig RETRO [ARCAN_RESOURCEPATH]/.assets/somefile
+        arcan_db add_config mycore myconfig RETRO /path/to/somefile
 
 An arcan application should now be able to:
 
@@ -210,10 +220,10 @@ a display server:
 
 1. Arcan-LWA - this allows for nested execution of different scripts, if
    the dependencies were fulfilled during compile time, you should already
-	 have this binary.
+   have this binary.
 
-2. Wayland - use the separate tool found in src/tools/waybridge to enable
-   on a per- client or as a translation service.
+2. Wayland - use the separate tool found in src/tools/waybridge to
+   enable on a per- client basis or as a translation service.
 
 3. XArcan - there is a patched Xorg server at
    https://github.com/letoram/xarcan
@@ -223,7 +233,7 @@ a display server:
 
 5. SDL2 - there is a patched SDL2 backend at
    https://github.com/letoram/SDL2
-	 but it is better to run SDL2 applications through wayland.
+   but it is better to run SDL2 applications through wayland.
 
 There is also the option of using hijack (LD\_PRELOAD and similar) for
 hacky ways to access legacy software, should XArcan/Wayland not work.
@@ -312,7 +322,7 @@ To try out durden or prio:
     arcan -p /my/home /path/to/checkout/durden/durden
 
     git clone https://github.com/letoram/prio.git
-		arcan -p /my/home /path/to/checkout/prio
+    arcan -p /my/home /path/to/checkout/prio
 
 The basic format for starting is arcan:
     [engine arguments] applname [appl arguments]
@@ -348,16 +358,19 @@ The git-tree has the following structure:
         frameserver/ -- individual frameservers and support functions
         hijack/ -- interpositioning libraries for different data sources
         platform/ -- os/audio/video/etc. interfacing
-				tools/ -- database tools, keymap conversion, protocol/device bridges
+        tools/ -- database tools, keymap conversion, protocol/device bridges
         shmif/ -- engine<->frameserver IPC
 
-    tests/ -- (fairly incomplete, development focus target now)
+    tests/
           api_coverage -- dynamically populated with contents from doc/
           benchmark -- scripts to pinpoint bottlenecks, driver problems etc.
+          core -- for core libraries (shmif-server etc.)
           interactive -- quick/messy tests that are thrown together during
                          development to test/experiment with some features.
+          frameservers -- specialized testing clients
           security -- fuzzing tools, regression tests for possible CVEs etc.
           regression -- populated with test-cases that highlight reported bugs.
           exercises -- solutions to the exercises in the wiki.
           examples -- quick examples / snippets
+          modules -- system_load()able lua extensions
 

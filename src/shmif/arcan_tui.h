@@ -622,6 +622,18 @@ struct tui_process_res arcan_tui_process(
 	int* fdset, size_t fdset_sz, int timeout);
 
 /*
+ * Extract the current set of pollable descriptors (for custom
+ * multiplexing) and store at most [fddst_lim] into [fdset].
+ *
+ * This set can change between _tui_process calls, and thus need
+ * to be repopulated. Returns the number of descriptors that have
+ * been stored.
+ */
+size_t arcan_tui_get_handles(
+	struct tui_context** contexts, size_t n_contexts,
+	int fddst[], size_t fddst_lim);
+
+/*
  * Update and synch the specified context.
  * Returns:
  *  1 on success
