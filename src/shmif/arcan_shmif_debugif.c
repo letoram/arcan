@@ -42,7 +42,7 @@ struct menu_ctx {
 
 struct menu_ent;
 struct menu_ent {
-	const char* label;
+	const char label[64];
 	char shortcut;
 	const char* menukey;
 	uint64_t tag;
@@ -52,6 +52,7 @@ struct menu_ent {
 };
 
 static bool fd_redirect(struct debug_ctx*, int fd);
+static struct menu_ent* get_menu_tree(const char* key, size_t* count);
 
 static void flush_io(struct debug_ctx* ctx)
 {
@@ -99,7 +100,8 @@ static void menu_refresh(struct tui_context* c, struct menu_ctx* dst)
 	size_t y = 0;
 	for(; sofs + y < dst->n_entries && y < rows; y++){
 		arcan_tui_move_to(c, 0, y);
-		arcan_tui_writestr(c, dst->entries[sofs+y].label, &attr);
+		arcan_tui_writestr(c,
+			dst->entries[sofs+y].label, dst->position == y ? &attr_sel : &attr);
 	}
 
 /* write each row (we're in nowrap, nocursor) and pick attr based on
@@ -129,9 +131,20 @@ static void menu_key(struct tui_context* c, uint32_t keysym,
 	}
 	else if (keysym == TUIK_KP_ENTER || keysym == TUIK_RETURN){
 /* deallocate and activate menu entry */
+		if (dst->entries[dst->position].action){
+			dst->entries[dst->position].action(
+				dst->debugctx, &dst->entries[dst->position]);
+		}
+		else if (dst->entries[dst->position].menukey){
+			size_t n_node;
+			struct menu_ent* new_node = get_menu_tree(
+				dst->entries[dst->position].menukey, &n_node);
+			run_menu(dctx, new_node, n_node, NULL);
+		}
 	}
 	else if (keysym == TUIK_ESCAPE){
 /* deallocate and go back up menu stack */
+		printf("give up\n");
 	}
 	else {
 /* check character for match against shortcut or prefix, TUIK_
@@ -139,6 +152,7 @@ static void menu_key(struct tui_context* c, uint32_t keysym,
 		if (!isprint(keysym))
 			return;
 
+		printf("move cursor based on pattern\n");
 		for (size_t i = 0; i < dst->n_entries; i++){
 		}
 	}
@@ -192,8 +206,6 @@ static bool run_menu(struct debug_ctx* ctx,
 	menu_refresh(ctx->tui, menuctx);
 	return true;
 }
-
-static struct menu_ent* get_menu_tree(const char* key, size_t* count);
 
 static void* debug_thread(void* thr)
 {
@@ -288,6 +300,7 @@ static bool fd_redirect(struct debug_ctx* dctx, int fd)
 /* pipe-redirect -if that hasn't already happened- by first duping
  * stderr to somewhere, creating a pipe-pair, duping over and fwd
  * to the debug- thread */
+	printf("request redirect on %d\n", fd);
 
 	int fd_copy = dup(fd);
 	if (-1 == fd_copy)
@@ -418,6 +431,9 @@ static struct menu_ent root_menu[] = {
  *  -> OS specific prctls etc. to allow easy attach, then spawn process
  *     with the right attachment? (possible fork + sleep + signal + ...
  *
+ *   - we'd also want to provide ourselves as a hand-over if that can be
+ *     arranged, but more difficult
+ *
  * memory (live / snapshot)
  * process (snapshot)
  */
@@ -425,6 +441,8 @@ static struct menu_ent root_menu[] = {
 
 static struct menu_ent* get_menu_tree(const char* key, size_t* count)
 {
+	printf("requested menu %s\n", key);
+
 	if (strcmp(key, "root") == 0){
 		*count = COUNT_OF(root_menu);
 		return root_menu;
