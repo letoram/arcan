@@ -258,6 +258,7 @@ if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype AND STATIC_FREETYPE)
 	amsg("${CL_YEL}Building Freetype static from external/git mirror${CL_RST}")
 	find_package(PNG REQUIRED QUIET)
 	find_package(BZip2 REQUIRED QUIET)
+	find_package(HarfBuzz REQUIRED QUIET)
 	ExternalProject_Add(Freetype
 		SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/freetype"
 		UPDATE_COMMAND ""
@@ -265,7 +266,6 @@ if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype AND STATIC_FREETYPE)
 		${EXTERNAL_DEFS}
 		${CMAKE_EXTERNAL_DEFS}
 		-DWITH_ZLIB=OFF
-		-DWITH_HarfBuzz=OFF
 		-DWITH_BZip2=OFF
 	)
 
@@ -288,6 +288,7 @@ if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype AND STATIC_FREETYPE)
 		${FREETYPE_STATIC_LIBRARY}
 		${PNG_LIBRARIES}
 		${BZIP2_LIBRARIES}
+		${HARFBUZZ_LIBRARIES}
 	)
 	set(FREETYPE_DEFAULT_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include/freetype2")
 	list(APPEND MAIN_DEPS Freetype)
