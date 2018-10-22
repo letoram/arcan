@@ -106,6 +106,12 @@ static void menu_refresh(struct tui_context* c, struct menu_ctx* dst)
  * highlight status */
 }
 
+static void menu_resized(struct tui_context* c,
+	size_t neww, size_t newh, size_t col, size_t row, void* t)
+{
+	menu_refresh(c, t);
+}
+
 static void menu_key(struct tui_context* c, uint32_t keysym,
 	uint8_t scancode, uint8_t mods, uint16_t subid, void* t)
 {
@@ -179,6 +185,7 @@ static bool run_menu(struct debug_ctx* ctx,
 	struct tui_cbcfg menu_handlers = {
 		.tag = menuctx,
 		.input_key = menu_key,
+		.resized = menu_resized
 	};
 
 	arcan_tui_update_handlers(ctx->tui, &menu_handlers, sizeof(menu_handlers));
@@ -191,13 +198,8 @@ static struct menu_ent* get_menu_tree(const char* key, size_t* count);
 static void* debug_thread(void* thr)
 {
 	struct debug_ctx* dctx = thr;
-	struct tui_cbcfg cbcfg = {};
 	size_t n_root;
 	struct menu_ent* root = get_menu_tree("root", &n_root);
-
-	arcan_tui_conn* c = (arcan_tui_conn*) &dctx->cont;
-	struct tui_settings cfg = arcan_tui_defaults(c, NULL);
-	dctx->tui = arcan_tui_setup(c, &cfg, &cbcfg, sizeof(cbcfg));
 
 	if (!dctx->tui || !root){
 		arcan_shmif_drop(&dctx->cont);
@@ -233,29 +235,7 @@ static void* debug_thread(void* thr)
 	return NULL;
 }
 
-static bool spawn_debugint(struct arcan_shmif_cont* c, int in, int out)
-{
-	pthread_t pth;
-	pthread_attr_t pthattr;
-	pthread_attr_init(&pthattr);
-	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-
-	struct debug_ctx* hgs = malloc(sizeof(struct debug_ctx));
-	*hgs = (struct debug_ctx){
-		.infd = in,
-		.outfd = out,
-		.cont = *c
-	};
-
-	if (-1 == pthread_create(&pth, &pthattr, debug_thread, hgs)){
-		free(hgs);
-		return false;
-	}
-
-	return true;
-}
-
-bool arcan_shmif_debugint_spawn(struct arcan_shmif_cont* c)
+bool arcan_shmif_debugint_spawn(struct arcan_shmif_cont* c, void* tuitag)
 {
 /* make sure we have the TUI functions for the debug thread */
 	if (!arcan_tui_setup){
@@ -271,7 +251,36 @@ bool arcan_shmif_debugint_spawn(struct arcan_shmif_cont* c)
 			return false;
 	}
 
-	return spawn_debugint(c, -1, -1);
+	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	struct tui_settings cfg = arcan_tui_defaults(c, tuitag);
+	struct debug_ctx* hgs = malloc(sizeof(struct debug_ctx));
+	if (!hgs)
+		return false;
+
+	*hgs = (struct debug_ctx){
+		.infd = -1,
+		.outfd = -1,
+		.cont = *c,
+		.tui = arcan_tui_setup(c,
+			&cfg, &(struct tui_cbcfg){}, sizeof(struct tui_cbcfg))
+	};
+
+	if (!hgs->tui){
+		free(hgs);
+		return false;
+	}
+
+	arcan_tui_set_flags(hgs->tui, TUI_HIDE_CURSOR);
+
+	if (-1 == pthread_create(&pth, &pthattr, debug_thread, hgs)){
+		free(hgs);
+		return false;
+	}
+
+	return true;
 }
 
 static bool fd_redirect(struct debug_ctx* dctx, int fd)
@@ -304,11 +313,6 @@ static bool fd_redirect(struct debug_ctx* dctx, int fd)
 	}
 
 	return true;
-
-}
-
-static void intercept_fdent(struct debug_ctx* ctx, struct menu_ent* self)
-{
 
 }
 
@@ -406,7 +410,7 @@ static struct menu_ent root_menu[] = {
 },
 {
 	.label = "Debugger",
-	.shortcut = 'f',
+	.shortcut = 'd',
 	.menukey = "debug_menu"
 }
 /*
