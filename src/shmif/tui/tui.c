@@ -2296,7 +2296,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 					(uint32_t)ev->ioevs[3].iv & 0xffff,
 					ev->ioevs[2].iv, tui->handlers.tag
 				)){
-					arcan_shmif_defimpl(&tui->acon, &acon, ev->ioevs[2].iv);
+					arcan_shmif_defimpl(&acon, ev->ioevs[2].iv, tui);
 				}
 			}
 		}
@@ -3328,7 +3328,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 			init->fonts[1].fd = BADFD;
 		}
 	}
-	else if (init->fonts[0].size_mm > 0){
+	else if (init && init->fonts[0].size_mm > 0){
 		res->font_sz = init->fonts[0].size_mm;
 		setup_font(res, BADFD, res->font_sz, 0);
 	}

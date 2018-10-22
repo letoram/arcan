@@ -275,11 +275,13 @@ static void fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
 #endif
 
 void arcan_shmif_defimpl(
-	struct arcan_shmif_cont* parent, struct arcan_shmif_cont* newchild, int type)
+	struct arcan_shmif_cont* newchild, int type, void* typetag)
 {
 #ifdef SHMIF_DEBUG_IF
-	if (arcan_shmif_debugint_spawn(newchild))
+	if (type == SEGID_DEBUG && arcan_shmif_debugint_spawn(newchild, typetag)){
+		printf("taking over newchild\n");
 		return;
+	}
 #endif
 	arcan_shmif_drop(newchild);
 }
@@ -321,7 +323,7 @@ static void consume(struct arcan_shmif_cont* c)
 			LOG("debug subsegment received\n");
 			struct arcan_shmif_cont pcont = arcan_shmif_acquire(c,NULL,SEGID_DEBUG,0);
 			if (pcont.addr){
-				if (!arcan_shmif_debugint_spawn(&pcont)){
+				if (!arcan_shmif_debugint_spawn(&pcont, NULL)){
 					arcan_shmif_drop(&pcont);
 				}
 				return;
@@ -752,13 +754,15 @@ int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
 }
 
 int arcan_shmif_wait_timed(
-	struct arcan_shmif_cont*, unsigned* time_us, struct arcan_event* dst)
+	struct arcan_shmif_cont* c, unsigned* time_us, struct arcan_event* dst)
 {
 	if (!c || !c->priv || !c->priv->alive)
 		return 0;
 
 	if (c->priv->valid_initial)
 		drop_initial(c);
+
+	return 0;
 }
 
 int arcan_shmif_wait(struct arcan_shmif_cont* c, struct arcan_event* dst)
@@ -2657,7 +2661,8 @@ pid_t arcan_shmif_handover_exec(
 	return detach ? -1 : pid;
 }
 
-unsigned arcan_shmif_deadline(struct arcan_shmif_cont* c, int* errc)
+int arcan_shmif_deadline(
+	struct arcan_shmif_cont* c, unsigned last_cost, int* jitter, int* errc)
 {
 	if (!c || !c->addr)
 		return -1;

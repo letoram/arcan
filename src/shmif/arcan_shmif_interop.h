@@ -190,7 +190,7 @@ void arcan_shmif_guid(struct arcan_shmif_cont*, uint64_t[2]);
  * subsegment request isn't mapped.
  */
 void arcan_shmif_defimpl(
-	struct arcan_shmif_cont* parent, struct arcan_shmif_cont* newchild, int type);
+	struct arcan_shmif_cont* newchild, int type, void* pref);
 
 /*
  * Try and enqueue the element to the queue. If the context is set to lossless,
