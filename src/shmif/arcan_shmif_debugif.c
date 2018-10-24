@@ -42,7 +42,7 @@ struct menu_ctx {
 
 struct menu_ent;
 struct menu_ent {
-	const char label[64];
+	char label[64];
 	char shortcut;
 	const char* menukey;
 	uint64_t tag;
@@ -53,6 +53,8 @@ struct menu_ent {
 
 static bool fd_redirect(struct debug_ctx*, int fd);
 static struct menu_ent* get_menu_tree(const char* key, size_t* count);
+static bool run_menu(struct debug_ctx* ctx,
+	struct menu_ent menu[], size_t n_menu, void (*cancel)(struct menu_ctx*));
 
 static void flush_io(struct debug_ctx* ctx)
 {
@@ -139,7 +141,7 @@ static void menu_key(struct tui_context* c, uint32_t keysym,
 			size_t n_node;
 			struct menu_ent* new_node = get_menu_tree(
 				dst->entries[dst->position].menukey, &n_node);
-			run_menu(dctx, new_node, n_node, NULL);
+			run_menu(dst->debugctx, new_node, n_node, NULL);
 		}
 	}
 	else if (keysym == TUIK_ESCAPE){
@@ -384,6 +386,10 @@ static void build_fd_menu(struct debug_ctx* ctx, struct menu_ent* self)
 	free(fds);
 }
 
+static void load_senseye_sensors(struct debug_ctx* ctx, struct menu_ent* self)
+{
+}
+
 static bool eval_senseye(struct debug_ctx* ctx, struct menu_ent* self)
 {
 /* check for the senseye-rwstat support library and use that to add
@@ -398,19 +404,19 @@ static struct menu_ent fd_menu[] = {
 	.label = "Active",
 	.shortcut = 'a',
 	.tag = 1,
-	.action = build_fd_menu
+	.action = build_fd_menu,
 },
 {
 	.label = "Passive",
 	.shortcut = 'p',
 	.tag = 0,
-	.action = build_fd_menu
+	.action = build_fd_menu,
 },
 {
 	.label = "Senseye",
 	.shortcut = 's',
 	.tag = 2,
-	.action = build_fd_menu,
+	.action = load_senseye_sensors,
 	.eval = eval_senseye
 }
 };
