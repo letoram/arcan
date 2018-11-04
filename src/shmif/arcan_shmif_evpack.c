@@ -370,6 +370,24 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 			(int)ev.io.input.analog.axisval[3]
 		);
 	break;
+	case EVENT_IDATATYPE_EYES:
+		snprintf(work, dsz,"EYE:(%s)[eye(%d)] %d: head:%f,%f,%f ang: %f,%f,%f"
+			"gaze_1: %f,%f gaze_2: %f,%f",
+			ev.io.label,
+			ev.io.devid,
+			ev.io.subid,
+			ev.io.input.eyes.head_pos[0],
+			ev.io.input.eyes.head_pos[1],
+			ev.io.input.eyes.head_pos[2],
+			ev.io.input.eyes.head_ang[0],
+			ev.io.input.eyes.head_ang[1],
+			ev.io.input.eyes.head_ang[2],
+			ev.io.input.eyes.gaze_x1,
+			ev.io.input.eyes.gaze_y1,
+			ev.io.input.eyes.gaze_x2,
+			ev.io.input.eyes.gaze_y2
+		);
+	break;
 	case EVENT_IDATATYPE_TOUCH:
 		snprintf(work, dsz,"IO:(%s)[touch(%d)] %d: @%d,%d pressure: %f, size: %f",
 			ev.io.label,

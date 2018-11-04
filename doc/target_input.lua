@@ -30,10 +30,12 @@
 --
 -- If *kind* is set to *touch* the required additional fields are:
 -- pressure (0..1, linear scale), size (px), x (px) and y (px)
+--
 -- If *kind* is set to *analog* the required additional fields are:
 -- relative (true/_false_), samples (indexed table of up to 4 int16_t
 -- ranged values). These values are all the same for generic analog
 -- sources, such as game device axes.
+--
 -- If *kind* is set to *analog* the possible additional fields are:
 -- *mouse* (true/_false_), indicate if the samples come from a cursor-
 -- type device or not. If so, the interpretation of sample values is
@@ -45,6 +47,7 @@
 -- while the other is a result of some state estimator and can therefore
 -- be less accurate. All permutations of relative, absolute, two samples
 -- or four samples need to be accounted for.
+--
 -- If *kind* is set to *digital*, the required additional fields are:
 -- active (true/_false_), if the button is in a pressed state or not
 -- and the possible additional fields are:
@@ -54,6 +57,14 @@
 -- (16 bit bitfield), *utf8* (single unicode character as utf-8)
 -- *number* (undescript field, typically used to carry on device or
 -- OS specific code).
+--
+-- If *kind* is set to *eye*, the required additional fields are:
+-- blink_left, blink_right (true/false) if the eye lids are closed or not
+-- gaze_x1, gaze_y1 (float) screen coordinates for first gaze point
+-- gaze_x2, gaze_y2 (float) screen coordinates for second gaze point
+-- present (true/false) if the user is by the screen or not
+-- head_x, head_y, head_z (float) head position relative to the tracker
+-- head_rx, head_ry, head_rz (float) euler-angle for head
 --
 -- @note: instead of preparing these tables manually, it's recommended to
 -- inplace modify those you get from the applname_input event handler
