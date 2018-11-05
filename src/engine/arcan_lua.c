@@ -3951,6 +3951,9 @@ static int targetinput(lua_State* ctx)
 	if (intblbool(ctx, tblind, "digital"))
 		goto digital;
 
+	if (intblbool(ctx, tblind, "eyes"))
+		goto eyes;
+
 	const char* kindlbl = intblstr(ctx, tblind, "kind");
 	if (kindlbl == NULL)
 		goto kinderr;
@@ -3990,6 +3993,25 @@ touch:
 		ev.io.input.touch.y = intblint(ctx, tblind, "y");
 		ev.io.input.touch.pressure = intblfloat(ctx, tblind, "pressure");
 		ev.io.input.touch.size = intblfloat(ctx, tblind, "size");
+	}
+	else if (strcmp(kindlbl, "eye") == 0){
+eyes:
+		ev.io.kind = EVENT_IO_EYES;
+		ev.io.devkind = EVENT_IDEVKIND_EYETRACKER;
+		ev.io.datatype = EVENT_IDATATYPE_EYES;
+		ev.io.input.eyes.head_pos[0] = intblfloat(ctx, tblind, "head_x");
+		ev.io.input.eyes.head_pos[1] = intblfloat(ctx, tblind, "head_y");
+		ev.io.input.eyes.head_pos[2] = intblfloat(ctx, tblind, "head_z");
+		ev.io.input.eyes.head_ang[0] = intblfloat(ctx, tblind, "head_rx");
+		ev.io.input.eyes.head_ang[1] = intblfloat(ctx, tblind, "head_ry");
+		ev.io.input.eyes.head_ang[2] = intblfloat(ctx, tblind, "head_rz");
+		ev.io.input.eyes.present = intblbool(ctx, tblind, "present");
+		ev.io.input.eyes.gaze_x1 = intblfloat(ctx, tblind, "x1");
+		ev.io.input.eyes.gaze_y1 = intblfloat(ctx, tblind, "y1");
+		ev.io.input.eyes.gaze_x2 = intblfloat(ctx, tblind, "x2");
+		ev.io.input.eyes.gaze_y2 = intblfloat(ctx, tblind, "y2");
+		ev.io.input.eyes.blink_left = intblbool(ctx, tblind, "blink_left");
+		ev.io.input.eyes.blink_right = intblbool(ctx, tblind, "blink_right");
 	}
 	else if (strcmp(kindlbl, "digital") == 0){
 digital:
@@ -4408,6 +4430,7 @@ static const char* kindstr(int num)
 	case EVENT_IDEVKIND_MOUSE: return "mouse";
 	case EVENT_IDEVKIND_GAMEDEV: return "game";
 	case EVENT_IDEVKIND_TOUCHDISP: return "touch";
+	case EVENT_IDEVKIND_EYETRACKER: return "eyetracker";
 	case EVENT_IDEVKIND_LEDCTRL: return "led";
 	default:
 		return "broken";
@@ -4462,6 +4485,28 @@ static void append_iotable(lua_State* ctx, arcan_ioevent* ev)
 		tblnum(ctx, "size", ev->input.touch.size, top);
 		tblnum(ctx, "x", ev->input.touch.x, top);
 		tblnum(ctx, "y", ev->input.touch.y, top);
+	break;
+
+	case EVENT_IO_EYES:
+		lua_pushstring(ctx, "eyes");
+		lua_rawset(ctx, top);
+
+		tblbool(ctx, "eyes", true, top);
+		tblnum(ctx, "devid", ev->devid, top);
+		tblnum(ctx, "subid", ev->subid, top);
+		tblnum(ctx, "head_x", ev->input.eyes.head_pos[0], top);
+		tblnum(ctx, "head_y", ev->input.eyes.head_pos[1], top);
+		tblnum(ctx, "head_z", ev->input.eyes.head_pos[1], top);
+		tblnum(ctx, "head_rx", ev->input.eyes.head_ang[0], top);
+		tblnum(ctx, "head_ry", ev->input.eyes.head_ang[1], top);
+		tblnum(ctx, "head_rz", ev->input.eyes.head_ang[2], top);
+		tblnum(ctx, "x1", ev->input.eyes.gaze_x1, top);
+		tblnum(ctx, "y1", ev->input.eyes.gaze_y1, top);
+		tblnum(ctx, "x2", ev->input.eyes.gaze_x2, top);
+		tblnum(ctx, "y2", ev->input.eyes.gaze_y2, top);
+		tblbool(ctx, "present", ev->input.eyes.present, top);
+		tblbool(ctx, "blink_left", ev->input.eyes.blink_left, top);
+		tblbool(ctx, "blink_right", ev->input.eyes.blink_right, top);
 	break;
 
 	case EVENT_IO_STATUS:{

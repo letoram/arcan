@@ -820,6 +820,7 @@ enum ARCAN_TARGET_SKIPMODE {
 		EVENT_IO_AXIS_MOVE,
 		EVENT_IO_TOUCH,
 		EVENT_IO_STATUS,
+		EVENT_IO_EYES,
 		EVENT_IO_ULIM = INT_MAX
 	};
 
@@ -838,6 +839,7 @@ enum ARCAN_TARGET_SKIPMODE {
 		EVENT_IDEVKIND_GAMEDEV,
 		EVENT_IDEVKIND_TOUCHDISP,
 		EVENT_IDEVKIND_LEDCTRL,
+		EVENT_IDEVKIND_EYETRACKER,
 		EVENT_IDEVKIND_STATUS,
 		EVENT_IDEVKIND_ULIM = INT_MAX
 	};
@@ -853,6 +855,7 @@ enum ARCAN_TARGET_SKIPMODE {
 		EVENT_IDATATYPE_DIGITAL,
 		EVENT_IDATATYPE_TRANSLATED,
 		EVENT_IDATATYPE_TOUCH,
+		EVENT_IDATATYPE_EYES,
 		EVENT_IDATATYPE_ULIM = INT_MAX
 	};
 
@@ -999,6 +1002,17 @@ enum ARCAN_TARGET_SKIPMODE {
 			int16_t x, y;
 			float pressure, size;
 		} touch;
+
+/* presence indicates the presence of a user in front of the screen */
+/* head describes the detected head position and angle to the tracker as origo */
+/* gaze indicates the possible gaze-points */
+		struct {
+			float head_pos[3];
+			float head_ang[3];
+			float gaze_x1, gaze_y1, gaze_x2, gaze_y2;
+			uint8_t blink_left, blink_right;
+			uint8_t present;
+		} eyes;
 
 		struct {
 	/* match ARCAN_IDEV_STATUS */
