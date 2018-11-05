@@ -4382,10 +4382,13 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp,
 		case ANCHORP_LL:
 			props->position.y += vobj->parent->origh * vobj->parent->current.scale.y;
 		break;
+		case ANCHORP_CR:
+			props->position.y += vobj->parent->origh * vobj->parent->current.scale.y * 0.5;
+			props->position.x += vobj->parent->origw * vobj->parent->current.scale.x;
+		break;
 		case ANCHORP_C:
 		case ANCHORP_UC:
 		case ANCHORP_CL:
-		case ANCHORP_CR:
 		case ANCHORP_LC:{
 			float mid_y = (vobj->parent->origh * vobj->parent->current.scale.y) * 0.5;
 			float mid_x = (vobj->parent->origw * vobj->parent->current.scale.x) * 0.5;
@@ -4393,8 +4396,7 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp,
 				vobj->p_anchor == ANCHORP_LC || vobj->p_anchor == ANCHORP_C)
 				props->position.x += mid_x;
 
-			if (vobj->p_anchor == ANCHORP_CR ||
-				vobj->p_anchor == ANCHORP_CL || vobj->p_anchor == ANCHORP_C)
+			if (vobj->p_anchor == ANCHORP_CL || vobj->p_anchor == ANCHORP_C)
 				props->position.y += mid_y;
 
 			if (vobj->p_anchor == ANCHORP_LC)
