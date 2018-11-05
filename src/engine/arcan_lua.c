@@ -4305,6 +4305,24 @@ static void emit_segreq(
 	tblnum(ctx, "reqid", ev->segreq.id, top);
 	tblnum(ctx, "xofs", ev->segreq.xofs, top);
 	tblnum(ctx, "yofs", ev->segreq.yofs, top);
+	switch(ev->segreq.dir){
+	case 1:
+		tblstr(ctx, "split-dir", "left", top);
+	break;
+	case 2:
+		tblstr(ctx, "split-dir", "right", top);
+	break;
+	case 3:
+		tblstr(ctx, "split-dir", "top", top);
+	break;
+	case 4:
+		tblstr(ctx, "split-dir", "bottom", top);
+	break;
+	default:
+		tblstr(ctx, "split-dir", "none", top);
+	break;
+	}
+
 	tblnum(ctx, "parent", parent->cookie, top);
 	tblstr(ctx, "segkind", fsrvtos(ev->segreq.kind), top);
 

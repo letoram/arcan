@@ -21,7 +21,7 @@
 -- perform a resize to ignore these values, but it saves a possible
 -- displayhint->resize cycle with the initial 1-2 frame setup latency
 -- that would impose.
--- The optional argument *handler* sets the event handler for the
+-- The optional argument *callback* sets the event handler for the
 -- new segment, but can also be changed with calls to
 -- ref:target_updatehandler.
 -- On success, the function returns reference handles to the new audio
