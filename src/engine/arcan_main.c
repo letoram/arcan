@@ -306,7 +306,9 @@ int MAIN_REDIR(int argc, char* argv[])
 #ifndef ARCAN_LWA
 	if (getenv("ARCAN_CONNPATH")){
 		if (fork() == 0){
-			execvp("arcan_lwa", argv);
+			if (fork() == 0){
+				execvp("arcan_lwa", argv);
+			}
 		}
 		exit(EXIT_SUCCESS);
 	}
