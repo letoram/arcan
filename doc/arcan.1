@@ -173,7 +173,7 @@ environment variables:
 .IP "\fBARCAN_RESOURCEPATH\fR"
 Shared resources, as described above.
 
-.IP "\fBARCANSCRIPTPATH\fR"
+.IP "\fBARCAN_SCRIPTPATH\fR"
 The system script namespace contains shared scripts that are part of the
 general Arcan package to promote optional re-use of higher level analysis
 like mouse gestures. The default search-path for this is would be the
@@ -199,11 +199,6 @@ but this can be split into a separate store. This will then expand as
 The default setting is to map this to RESOURCEPATH/savestates and will
 then be shared between all appls (which holds true whenever STATEBASE
 is set to a subdirectory of RESOURCEPATH).
-
-.IP "\fBARCAN_SCRIPTPATH\fR"
-This should point to the fallback search path for scripts that are part
-of the distribution, typically for opt-in higher-level input analysis,
-management and debugging.
 
 .IP "\fBARCAN_FONTPATH\fR"
 The default setting is to map this to the APPLPATH/fonts with fallback
