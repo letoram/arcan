@@ -606,7 +606,8 @@ int MAIN_REDIR(int argc, char* argv[])
 	arcan_event_init(evctx);
 
 	if (hookscript){
-		char* tmphook = arcan_expand_resource(hookscript, RESOURCE_APPL_SHARED);
+		char* tmphook = arcan_expand_resource(
+			hookscript, RESOURCE_APPL_SHARED | RESOURCE_SYS_SCRIPTS);
 		free(hookscript);
 		hookscript = NULL;
 
