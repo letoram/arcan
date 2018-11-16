@@ -445,7 +445,7 @@ struct tui_cbcfg {
 
 /*
  * only reset levels that should require action on behalf of the caller are
- * being forwarded, this covers levels > 1.
+ * being forwarded, this covers levels >= 1.
  */
 	void (*reset)(struct tui_context*, int level, void*);
 

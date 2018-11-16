@@ -737,6 +737,20 @@ static int ascii_test(struct tsm_screen *con, tsm_symbol_t inch)
 	return !(nch == 1 && isspace(u8_ch[0]));
 }
 
+struct tui_screen_attr tsm_attr_at_cursor(
+	struct tsm_screen *con, tsm_symbol_t* out)
+{
+	struct cell* cell = get_cursor_cell(con);
+	*out = 0;
+
+	if (!cell)
+		return con->def_attr;
+
+	*out = cell->ch;
+
+	return con->def_attr;
+}
+
 SHL_EXPORT
 int tsm_screen_get_word(struct tsm_screen *con,
 								unsigned x, unsigned y,
