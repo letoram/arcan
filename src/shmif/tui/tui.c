@@ -1852,6 +1852,12 @@ struct bgthread_context {
 	struct tsm_save_buf* buf;
 	bool invalidated;
 	int iopipes[2];
+	bool edit_mode;
+
+/* button that triggered the select state */
+	int in_select;
+	int last_x;
+	int last_y;
 };
 
 static void drop_pending(struct tsm_save_buf** tui)
@@ -1864,23 +1870,6 @@ static void drop_pending(struct tsm_save_buf** tui)
 	free((*tui)->screen);
 	free(*tui);
 	*tui = NULL;
-}
-
-static bool bgscreen_label(struct tui_context* c,
-	const char* label, bool active, void* t)
-{
-	struct bgthread_context* ctx = t;
-	if (!ctx->tui)
-		return false;
-
-/* atomically grab the only 'paste' target slot */
-	if (strcmp(label, "PASTE_SELECT") == 0){
-		if (active){
-			atomic_store(&paste_destination, ctx->iopipes[1]);
-		}
-		return true;
-	}
-	return false;
 }
 
 /* synch the buffer copy before so we don't lose pasted contents */
@@ -1910,20 +1899,207 @@ static void bgscreen_resized(struct tui_context* c,
 	tsm_screen_load(ctx->tui->screen, ctx->buf, 0, 0, 0);
 }
 
-static void* bgscreen_thread_proc(void* ctxptr)
+static void bgscreen_set_labels(
+	struct tui_context* c, struct bgthread_context* t)
 {
-	struct bgthread_context* ctx = ctxptr;
-
-	arcan_shmif_enqueue(&ctx->tui->acon, &(struct arcan_event){
+	arcan_shmif_enqueue(&c->acon, &(struct arcan_event){
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(LABELHINT),
 		.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL,
 		.ext.labelhint.label = "PASTE_SELECT",
-		.ext.labelhint.descr = "Mark window as copy recipient",
-		.ext.labelhint.initial = TUIK_RETURN
+		.ext.labelhint.descr = "Mark window as clipboard recipient",
+		.ext.labelhint.initial = TUIK_RETURN,
+		.ext.labelhint.modifiers = TUIM_LMETA
 	});
+	arcan_shmif_enqueue(&c->acon, &(struct arcan_event){
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(LABELHINT),
+		.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL,
+		.ext.labelhint.label = "EDIT_TOGGLE",
+		.ext.labelhint.descr = "Toggle highlight/edit mode",
+		.ext.labelhint.initial = TUIK_ESCAPE,
+		.ext.labelhint.modifiers = TUIM_LMETA
+	});
+}
+
+static void bgscreen_set_ident(
+	struct tui_context *c, struct bgthread_context* tag)
+{
+	char buf[20];
+	snprintf(buf, sizeof(buf), "Copy%s", tag->edit_mode ? ":Edit" : "");
+	arcan_tui_ident(c, buf);
+}
+
+static bool bgscreen_utf8(struct tui_context* c,
+	const char* u8, size_t len, void* t)
+{
+	struct bgthread_context* ctx = t;
+	if (!ctx->tui || !ctx->edit_mode)
+		return false;
+
+/* some setups map backspace to ascii */
+	if (u8[0] == 8){
+		arcan_tui_erase_chars(c, 1);
+		arcan_tui_move_left(c, 1);
+		return true;
+	}
+	else
+	if (u8[0]){
+		if (arcan_tui_writeu8(c, (const uint8_t*) u8, len, NULL)){
+			return true;
+		}
+	}
+/* edit at current cursor position, then move */
+	return false;
+}
+
+static void bgscreen_step_mouse(
+	struct tui_context* c, struct bgthread_context* tag)
+{
+	switch (tag->in_select){
+/* trigger mark */
+	case 1:{
+		tsm_symbol_t ch;
+		struct tui_screen_attr attr =	tsm_attr_at_cursor(c->screen, &ch);
+		if (attr.inverse == 1)
+			attr.inverse = 0;
+		else
+			attr.inverse = 1;
+		arcan_tui_write(c, ch, &attr);
+	}
+	break;
+/* revert erased? */
+	case 2:
+		arcan_tui_erase_chars(c, 1);
+	break;
+/* erase */
+	case 3:
+	break;
+/* switch color */
+	case 4:
+	break;
+/* default color (invert) */
+	case 5:
+	break;
+	default:
+		return;
+	break;
+	}
+}
+
+static void bgscreen_key(struct tui_context* c,
+	uint32_t keysym, uint8_t scancode, uint8_t mods, uint16_t subid, void* tag)
+{
+	if (keysym == TUIK_UP){
+		arcan_tui_move_up(c, 1, false);
+	}
+	else if (keysym == TUIK_DOWN){
+		arcan_tui_move_down(c, 1, false);
+	}
+	else if (keysym == TUIK_LEFT){
+		arcan_tui_move_left(c, 1);
+	}
+	else if (keysym == TUIK_RIGHT){
+		arcan_tui_move_right(c, 1);
+	}
+	else if (keysym == TUIK_BACKSPACE || keysym == TUIK_CLEAR){
+		arcan_tui_erase_chars(c, 1);
+		arcan_tui_move_left(c, 1);
+	}
+}
+
+static void bgscreen_mouse_motion(struct tui_context* c,
+	bool relative, int x, int y, int modifiers, void* t)
+{
+/* update cursor x, y to match mouse if in edit mode */
+	struct bgthread_context* ctx = t;
+	if (!ctx->tui || !ctx->edit_mode)
+		return;
+
+	arcan_tui_move_to(c, x, y);
+	if (ctx->in_select && (x != ctx->last_x || y != ctx->last_y)){
+		ctx->last_x = x;
+		ctx->last_y = y;
+		bgscreen_step_mouse(c, ctx);
+	}
+}
+
+static void bgscreen_mouse_button(struct tui_context* c,
+	int last_x, int last_y, int button, bool active, int modifiers,
+	void *t)
+{
+	struct bgthread_context* ctx = t;
+	if (!ctx->tui || !ctx->edit_mode)
+		return;
+
+	if (ctx->in_select == button){
+		if (active){
+			return; /* nop, contact bounce or repeat */
+		}
+/* stop with mouse- mode */
+		else {
+			ctx->in_select = -1;
+			return;
+		}
+	}
+
+	if (!active)
+		return;
+
+	ctx->in_select = button;
+
+/* right now only playing with inverse state, maybe also allow
+ * different marker colors (primary and from the active palette) */
+	ctx->last_x = last_x;
+	ctx->last_y = last_y;
+	bgscreen_step_mouse(c, ctx);
+}
+
+static bool bgscreen_label(struct tui_context* c,
+	const char* label, bool active, void* t)
+{
+	struct bgthread_context* ctx = t;
+	if (!ctx->tui)
+		return false;
+
+/* atomically grab the only 'paste' target slot */
+	if (strcmp(label, "PASTE_SELECT") == 0){
+		if (active){
+			atomic_store(&paste_destination, ctx->iopipes[1]);
+		}
+		bgscreen_set_ident(c, ctx);
+		return true;
+	}
+	else if (strcmp(label, "EDIT_TOGGLE") == 0){
+		if (!active)
+			return true;
+
+		if (ctx->edit_mode){
+			c->mouse_forward = ctx->edit_mode = false;
+			arcan_tui_set_flags(c, TUI_HIDE_CURSOR);
+		}
+		else {
+			c->mouse_forward = ctx->edit_mode = true;
+			arcan_tui_set_flags(c, 0);
+		}
+		bgscreen_set_ident(c, ctx);
+		return true;
+	}
+	return false;
+}
+
+static void bgscreen_reset(struct tui_context* c, int level, void* tag)
+{
+	bgscreen_set_labels(c, (struct bgthread_context*) tag);
+	bgscreen_set_ident(c, (struct bgthread_context*) tag);
+}
+
+static void* bgscreen_thread_proc(void* ctxptr)
+{
+	struct bgthread_context* ctx = ctxptr;
 
 	tsm_screen_load(ctx->tui->screen, ctx->buf, 0, 0, TSM_LOAD_RESIZE);
+	bgscreen_reset(ctx->tui, 1, ctx);
 	ctx->tui->cursor_hard_off = true;
 	int exp = -1;
 
@@ -1998,7 +2174,12 @@ static void bgscreen_thread(
 		.tag = ctxptr,
 		.resize = bgscreen_resize,
 		.resized = bgscreen_resized,
-		.input_label = bgscreen_label
+		.input_label = bgscreen_label,
+		.input_mouse_motion = bgscreen_mouse_motion,
+		.input_mouse_button = bgscreen_mouse_button,
+		.input_utf8 = bgscreen_utf8,
+		.input_key = bgscreen_key,
+		.reset = bgscreen_reset
 	};
 	struct tui_settings cfg = arcan_tui_defaults(con, src);
 	ctxptr->tui = arcan_tui_setup(con, &cfg, &cbs, sizeof(cbs));
@@ -2112,6 +2293,8 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 /* hard reset / crash recovery (server-side state lost) */
 		case 2:
 		case 3:
+			if (tui->handlers.reset)
+				tui->handlers.reset(tui, ev->ioevs[0].iv, tui->handlers.tag);
 			arcan_shmif_drop(&tui->clip_in);
 			arcan_shmif_drop(&tui->clip_out);
 			queue_requests(tui, true, true);
@@ -2441,6 +2624,8 @@ static void queue_requests(struct tui_context* tui, bool clipboard, bool ident)
 
 	if (ident && tui->last_ident.ext.kind != 0)
 		arcan_shmif_enqueue(&tui->acon, &tui->last_ident);
+
+	expose_labels(tui);
 }
 
 #ifndef SIMPLE_RENDERING
@@ -3328,7 +3513,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 			init->fonts[1].fd = BADFD;
 		}
 	}
-	else if (init->fonts[0].size_mm > 0){
+	else if (init && init->fonts[0].size_mm > 0){
 		res->font_sz = init->fonts[0].size_mm;
 		setup_font(res, BADFD, res->font_sz, 0);
 	}
@@ -3340,7 +3525,6 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 		return NULL;
 	}
 
-	expose_labels(res);
 	tsm_screen_set_def_attr(res->screen,
 		&(struct tui_screen_attr){
 			.fr = res->colors[TUI_COL_TEXT].rgb[0],
@@ -3439,8 +3623,8 @@ struct tui_screen_attr
 	return tsm_screen_get_def_attr(c->screen);
 }
 
-void arcan_tui_write(struct tui_context* c, uint32_t ucode,
-	struct tui_screen_attr* attr)
+void arcan_tui_write(struct tui_context* c,
+	uint32_t ucode, struct tui_screen_attr* attr)
 {
 	if (!c)
 		return;
