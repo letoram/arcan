@@ -2178,6 +2178,9 @@ static void bgscreen_reset(struct tui_context* c, int level, void* tag)
 static void* bgscreen_thread_proc(void* ctxptr)
 {
 	struct bgthread_context* ctx = ctxptr;
+	ctx->bgc[0] = ctx->tui->colors[TUI_COL_CURSOR].rgb[0];
+	ctx->bgc[1] = ctx->tui->colors[TUI_COL_CURSOR].rgb[1];
+	ctx->bgc[2] = ctx->tui->colors[TUI_COL_CURSOR].rgb[2];
 
 	tsm_screen_load(ctx->tui->screen, ctx->buf, 0, 0, TSM_LOAD_RESIZE);
 	bgscreen_reset(ctx->tui, 1, ctx);
