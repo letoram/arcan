@@ -1847,17 +1847,40 @@ static void update_screensize(struct tui_context* tui, bool clear)
 	update_screen(tui, true);
 }
 
+static uint8_t color_palette[][3] = {
+	{   0,   0,   0 }, /* black */
+	{ 205,   0,   0 }, /* red */
+	{   0, 205,   0 }, /* green */
+	{ 205, 205,   0 }, /* yellow */
+	{   0,   0, 238 }, /* blue */
+	{ 205,   0, 205 }, /* magenta */
+	{   0, 205, 205 }, /* cyan */
+	{ 229, 229, 229 }, /* light grey */
+	{ 127, 127, 127 }, /* dark grey */
+	{ 255,   0,   0 }, /* light red */
+	{   0, 255,   0 }, /* light green */
+	{ 255, 255,   0 }, /* light yellow */
+	{  92,  92, 255 }, /* light blue */
+	{ 255,   0, 255 }, /* light magenta */
+	{   0, 255, 255 }, /* light cyan */
+	{ 255, 255, 255 }, /* white */
+	{ 229, 229, 229 }, /* light grey */
+	{   0,   0,   0 }, /* black */
+};
+
 struct bgthread_context {
 	struct tui_context* tui;
 	struct tsm_save_buf* buf;
 	bool invalidated;
 	int iopipes[2];
 	bool edit_mode;
+	uint8_t bgc[3];
+	uint8_t color_index;
 
 /* button that triggered the select state */
 	int in_select;
-	int last_x;
-	int last_y;
+	int last_x, last_y;
+	int last_mx, last_my;
 };
 
 static void drop_pending(struct tsm_save_buf** tui)
@@ -1937,11 +1960,10 @@ static bool bgscreen_utf8(struct tui_context* c,
 	if (!ctx->tui || !ctx->edit_mode)
 		return false;
 
-/* some setups map backspace to ascii */
-	if (u8[0] == 8){
-		arcan_tui_erase_chars(c, 1);
-		arcan_tui_move_left(c, 1);
-		return true;
+/* some collisions between text input and symbol input where we want
+ * the symbol input to be dominant over the text input */
+	if (u8[0] == 8 || u8[0] == '\r' || u8[0] == '\n'){
+		return false;
 	}
 	else
 	if (u8[0]){
@@ -1953,24 +1975,30 @@ static bool bgscreen_utf8(struct tui_context* c,
 	return false;
 }
 
+static void bgscreen_mark_cell(
+	struct tui_context* c, struct bgthread_context* tag)
+{
+	tsm_symbol_t ch;
+	struct tui_screen_attr attr =	tsm_attr_at_cursor(c->screen, &ch);
+	attr.bc[0] = color_palette[tag->color_index][0];
+	attr.bc[1] = color_palette[tag->color_index][1];
+	attr.bc[2] = color_palette[tag->color_index][2];
+	arcan_tui_write(c, ch, &attr);
+	tag->invalidated = true;
+}
+
 static void bgscreen_step_mouse(
 	struct tui_context* c, struct bgthread_context* tag)
 {
 	switch (tag->in_select){
 /* trigger mark */
 	case 1:{
-		tsm_symbol_t ch;
-		struct tui_screen_attr attr =	tsm_attr_at_cursor(c->screen, &ch);
-		if (attr.inverse == 1)
-			attr.inverse = 0;
-		else
-			attr.inverse = 1;
-		arcan_tui_write(c, ch, &attr);
+		bgscreen_mark_cell(c, tag);
 	}
 	break;
-/* revert erased? */
 	case 2:
 		arcan_tui_erase_chars(c, 1);
+		tag->invalidated = true;
 	break;
 /* erase */
 	case 3:
@@ -1987,24 +2015,73 @@ static void bgscreen_step_mouse(
 	}
 }
 
+static void bgscreen_color(
+	struct tui_context* c, struct bgthread_context* ctx)
+{
+	ctx->bgc[0] = color_palette[ctx->color_index][0];
+	ctx->bgc[1] = color_palette[ctx->color_index][1];
+	ctx->bgc[2] = color_palette[ctx->color_index][2];
+	c->colors[TUI_COL_CURSOR].rgb[0] = ctx->bgc[0];
+	c->colors[TUI_COL_CURSOR].rgb[1] = ctx->bgc[1];
+	c->colors[TUI_COL_CURSOR].rgb[2] = ctx->bgc[2];
+	flag_cursor(c);
+}
+
 static void bgscreen_key(struct tui_context* c,
 	uint32_t keysym, uint8_t scancode, uint8_t mods, uint16_t subid, void* tag)
 {
+	struct bgthread_context* ctx = tag;
 	if (keysym == TUIK_UP){
-		arcan_tui_move_up(c, 1, false);
+		if (mods & (TUIM_LSHIFT | TUIM_RSHIFT))
+			bgscreen_mark_cell(c, ctx);
+		else
+			arcan_tui_move_up(c, 1, false);
 	}
 	else if (keysym == TUIK_DOWN){
-		arcan_tui_move_down(c, 1, false);
+		if (mods & (TUIM_LSHIFT | TUIM_RSHIFT))
+			bgscreen_mark_cell(c, ctx);
+		else
+			arcan_tui_move_down(c, 1, false);
 	}
 	else if (keysym == TUIK_LEFT){
-		arcan_tui_move_left(c, 1);
+		if (mods & (TUIM_LSHIFT | TUIM_RSHIFT))
+			bgscreen_mark_cell(c, ctx);
+		else
+			arcan_tui_move_left(c, 1);
 	}
 	else if (keysym == TUIK_RIGHT){
-		arcan_tui_move_right(c, 1);
+		if (mods & (TUIM_LSHIFT | TUIM_RSHIFT))
+			bgscreen_mark_cell(c, ctx);
+		else
+			arcan_tui_move_right(c, 1);
+	}
+	else if (keysym == TUIK_RETURN){
+		ctx->last_my++;
+		arcan_tui_move_to(c, ctx->last_mx, ctx->last_my);
+		flag_cursor(c);
 	}
 	else if (keysym == TUIK_BACKSPACE || keysym == TUIK_CLEAR){
 		arcan_tui_erase_chars(c, 1);
 		arcan_tui_move_left(c, 1);
+		ctx->invalidated = true;
+	}
+/* copy color at cursor (maybe switch style as well since it will get
+ * hard to see where the cursor is, so using a contrast border + hollow
+ * will help with the marking */
+	else if (keysym == TUIK_ESCAPE){
+		tsm_symbol_t ch;
+		struct tui_screen_attr attr =	tsm_attr_at_cursor(c->screen, &ch);
+		c->colors[TUI_COL_CURSOR].rgb[0] = attr.bc[0];
+		c->colors[TUI_COL_CURSOR].rgb[0] = attr.bc[1];
+		c->colors[TUI_COL_CURSOR].rgb[0] = attr.bc[2];
+		ctx->bgc[0] = attr.bc[0];
+		ctx->bgc[1] = attr.bc[1];
+		ctx->bgc[2] = attr.bc[2];
+		flag_cursor(c);
+	}
+	else if (keysym >= TUIK_F1 && keysym <= TUIK_F10){
+		ctx->color_index = keysym - TUIK_F1;
+		bgscreen_color(c, ctx);
 	}
 }
 
@@ -2017,6 +2094,8 @@ static void bgscreen_mouse_motion(struct tui_context* c,
 		return;
 
 	arcan_tui_move_to(c, x, y);
+	ctx->last_mx = x;
+	ctx->last_my = y;
 	if (ctx->in_select && (x != ctx->last_x || y != ctx->last_y)){
 		ctx->last_x = x;
 		ctx->last_y = y;
