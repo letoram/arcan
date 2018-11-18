@@ -58,7 +58,7 @@
 -- *number* (undescript field, typically used to carry on device or
 -- OS specific code).
 --
--- If *kind* is set to *eye*, the required additional fields are:
+-- If *kind* is set to *eyes*, the required additional fields are:
 -- blink_left, blink_right (true/false) if the eye lids are closed or not
 -- gaze_x1, gaze_y1 (float) screen coordinates for first gaze point
 -- gaze_x2, gaze_y2 (float) screen coordinates for second gaze point
