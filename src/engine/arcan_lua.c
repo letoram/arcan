@@ -3994,7 +3994,7 @@ touch:
 		ev.io.input.touch.pressure = intblfloat(ctx, tblind, "pressure");
 		ev.io.input.touch.size = intblfloat(ctx, tblind, "size");
 	}
-	else if (strcmp(kindlbl, "eye") == 0){
+	else if (strcmp(kindlbl, "eyes") == 0){
 eyes:
 		ev.io.kind = EVENT_IO_EYES;
 		ev.io.devkind = EVENT_IDEVKIND_EYETRACKER;
