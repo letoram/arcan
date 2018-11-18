@@ -1142,9 +1142,11 @@ static bool page_down(struct tui_context* tui)
 		tui->sbofs -= tui->rows;
 		tui->sbofs = tui->sbofs < 0 ? 0 : tui->sbofs;
 		tui->cursor_upd = true;
-		tui->cursor_off = true;
+		tui->cursor_off = tui->sbofs > 0;
 		arcan_tui_scroll_down(tui, tui->rows);
+		flag_cursor(tui);
 	}
+
 	return true;
 }
 
