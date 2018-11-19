@@ -51,6 +51,11 @@ _Static_assert(PIPE_BUF >= 4, "pipe atomic write should be >= 4");
 #include "arcan_ttf.h"
 #endif
 
+#ifndef COUNT_OF
+#define COUNT_OF(x) \
+	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+#endif
+
 #include "tui_draw.h"
 #include "libtsm.h"
 #include "libtsm_int.h"
@@ -1484,6 +1489,11 @@ static const struct lent labels[] = {
 static void expose_labels(struct tui_context* tui)
 {
 	const struct lent* cur = labels;
+	arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(LABELHINT),
+		.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL
+	};
 
 /*
  * NOTE: We do not currently expose a suggested default
@@ -1494,21 +1504,31 @@ static void expose_labels(struct tui_context* tui)
 		if (!tui->subseg && (cur->ctx & 1) == 0)
 			continue;
 
-		arcan_event ev = {
-			.category = EVENT_EXTERNAL,
-			.ext.kind = ARCAN_EVENT(LABELHINT),
-			.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL
-		};
 		snprintf(ev.ext.labelhint.label,
-			COUNT_OF(ev.ext.labelhint.label),
-			"%s", cur->lbl
-		);
+			COUNT_OF(ev.ext.labelhint.label), "%s", cur->lbl);
 		snprintf(ev.ext.labelhint.descr,
-			COUNT_OF(ev.ext.labelhint.descr),
-			"%s", cur->descr
-		);
+			COUNT_OF(ev.ext.labelhint.descr), "%s", cur->descr);
 		cur++;
 		arcan_shmif_enqueue(&tui->acon, &ev);
+	}
+
+	size_t ind = 0;
+	if (tui->handlers.query_label){
+		while (true){
+			struct tui_labelent dstlbl = {};
+			if (!tui->handlers.query_label(tui,
+			ind++, "ENG", "ENG", &dstlbl, tui->handlers.tag))
+				break;
+
+			snprintf(ev.ext.labelhint.label,
+				COUNT_OF(ev.ext.labelhint.label), "%s", dstlbl.label);
+			snprintf(ev.ext.labelhint.descr,
+				COUNT_OF(ev.ext.labelhint.descr), "%s", dstlbl.descr);
+			ev.ext.labelhint.subv = dstlbl.subv;
+			ev.ext.labelhint.idatatype = dstlbl.idatatype;
+			ev.ext.labelhint.modifiers = dstlbl.modifiers;
+			ev.ext.labelhint.initial = dstlbl.initial;
+		}
 	}
 }
 
