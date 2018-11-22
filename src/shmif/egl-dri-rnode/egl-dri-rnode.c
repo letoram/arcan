@@ -70,7 +70,7 @@ struct shmif_ext_hidden_int {
 
 /* with the gbm- buffer passing, we pretty much need double-buf */
 	struct agp_vstore buf_a, buf_b, (* buf_cur);
-	bool nopass, swap;
+	bool swap;
 
 	EGLImage image;
 	int dmabuf;
@@ -522,8 +522,8 @@ void arcan_shmifext_bufferfail(struct arcan_shmif_cont* con, bool st)
 	if (!con || !con->privext || !con->privext->internal)
 		return;
 
-	con->privext->internal->nopass =
-		getenv("ARCAN_VIDEO_NO_FDPASS") ? 1 : st;
+	con->privext->state_fl |= STATE_NOACCEL *
+		(getenv("ARCAN_VIDEO_NO_FDPASS") ? 1 : st);
 }
 
 int arcan_shmifext_dev(struct arcan_shmif_cont* con,
@@ -610,8 +610,7 @@ bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 
 		memset(con->privext->internal, '\0', sizeof(struct shmif_ext_hidden_int));
 		con->privext->internal->dmabuf = -1;
-		con->privext->internal->nopass = getenv("ARCAN_VIDEO_NO_FDPASS") ?
-			true : false;
+		con->privext->state_fl = STATE_NOACCEL * (getenv("ARCAN_VIDEO_NO_FDPASS") ? 1 : 0);
 		if (NULL == (con->privext->internal->dev = gbm_create_device(dfd))){
 			gbm_drop(con);
 			return false;
@@ -734,9 +733,7 @@ bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
 
 int arcan_shmifext_isext(struct arcan_shmif_cont* con)
 {
-	if (con && con->privext && con->privext->internal)
-		return con->privext->internal->nopass ? 2 : 1;
-	return 0;
+	return (con && con->privext && con->privext->internal);
 }
 
 int arcan_shmifext_signal(struct arcan_shmif_cont* con,
@@ -762,7 +759,7 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 
 /* vidp- to texture upload, rather than FBO indirection, but only
  * if handle passing is still working */
-		if (con->privext->internal->nopass)
+		if (con->privext->state_fl & STATE_NOACCEL)
 			goto fallback;
 
 /* mark this so the backing GLID / PBOs gets reallocated */
@@ -793,11 +790,18 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 		tex_id = ctx->buf_cur->vinf.text.glid;
 
 /*
+ * IF we don't have the extension for GBM- style buffer swapping, or the server
+ * has told us that the handle we're receiving don't work - go with a readback
+ * to vidp. Can happen with multiple incompatible GPUs.
+ */
+	if ((con->privext->state_fl & STATE_NOACCEL) || !create_image)
+		goto fallback;
+
+/*
  * Swap active rendertarget (if one exists) or there's a possible data-race(?)
  * where server-side has the color attachment bound and drawing when we update
  */
 		if (ctx->rtgt_cur){
-
 /* IF the rendertarget is double-buffered, swap the buffers and get the ID of
  * the last FRONT. IF we have double- rendertargets, swap the destination */
 			tex_id = agp_rendertarget_swap(ctx->rtgt_cur);
@@ -807,14 +811,6 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 		else
 			ctx->buf_cur = (ctx->buf_cur == &ctx->buf_a ? &ctx->buf_b : &ctx->buf_a);
 	}
-
-/*
- * IF we don't have the extension for GBM- style buffer swapping, or the server
- * has told us that the handle we're receiving don't work - go with a readback
- * to vidp. Can happen with multiple incompatible GPUs.
- */
-	if (con->privext->internal->nopass || !create_image)
-		goto fallback;
 
 	int fd, fourcc;
 	size_t stride;
@@ -832,23 +828,23 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
  */
 fallback:
 	if (1){
-	struct agp_vstore vstore = {
-		.w = con->w,
-		.h = con->h,
-		.txmapped = TXSTATE_TEX2D,
-		.vinf.text = {
-			.glid = tex_id,
-			.raw = (void*) con->vidp
-		},
-	};
+		struct agp_vstore vstore = {
+			.w = con->w,
+			.h = con->h,
+			.txmapped = TXSTATE_TEX2D,
+			.vinf.text = {
+				.glid = tex_id,
+				.raw = (void*) con->vidp
+			},
+		};
 
-	if (ctx->rtgt_cur){
-		agp_activate_rendertarget(NULL);
-		agp_readback_synchronous(&vstore);
-		agp_activate_rendertarget(ctx->rtgt_cur);
-	}
-	else
-		agp_readback_synchronous(&vstore);
+		if (ctx->rtgt_cur){
+			agp_activate_rendertarget(NULL);
+			agp_readback_synchronous(&vstore);
+			agp_activate_rendertarget(ctx->rtgt_cur);
+		}
+		else
+			agp_readback_synchronous(&vstore);
 	}
 	res = arcan_shmif_signal(con, mask);
 	return res > INT_MAX ? INT_MAX : res;
