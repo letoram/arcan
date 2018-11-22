@@ -238,6 +238,9 @@ static bool push_buffer(arcan_frameserver* src,
 
 	if (-1 != src->vstream.handle){
 		bool failev = src->vstream.dead;
+
+/* the vstream can die because of a format mismatch, platform validation failure
+ * or triggered by manually disabling it for this frameserver */
 		if (!failev){
 			stream.handle = src->vstream.handle;
 			store->vinf.text.stride = src->vstream.stride;
@@ -245,6 +248,7 @@ static bool push_buffer(arcan_frameserver* src,
 			stream = agp_stream_prepare(store, stream, STREAM_HANDLE);
 			failev = !stream.state;
 		}
+
 /* buffer passing failed, mark that as an unsupported mode for some reason, log
  * and send back to client to revert to shared memory and extra copies */
 		if (failev){
@@ -258,6 +262,8 @@ static bool push_buffer(arcan_frameserver* src,
  * will need to be fixed */
 			arcan_event_enqueue(&src->outqueue, &ev);
 			src->vstream.dead = true;
+			close(src->vstream.handle);
+			src->vstream.handle = -1;
 		}
 		else
 			agp_stream_commit(store, stream);
