@@ -83,13 +83,13 @@ if (NOT DEFINED ENGINE_BUILDTAG)
 		endif()
 
 		if (GIT_VERSION STREQUAL "")
-			amsg("${CLB_RED}missing git_version, using 'relukn' for build tag${CL_RST}")
+			amsg("${CL_RED}missing git_version, using 'relukn' for build tag${CL_RST}")
 			set(ENGINE_BUILDTAG arcan-relukn-${VERSION})
 		else()
 			set(ENGINE_BUILDTAG arcan-git-${GIT_BRANCH}-${GIT_VERSION})
 		endif()
 	else()
-		amsg("${CLB_RED}git not found, using 'relukn' for build tag${CL_RST}")
+		amsg("${CL_RED}git not found, using 'relukn' for build tag${CL_RST}")
 		set(ENGINE_BUILDTAG arcan-relukn-${VERSION})
 	endif()
 endif()
@@ -144,13 +144,13 @@ amsg("")
 amsg("${CL_WHT}Optional engine flags:${CL_RST}")
 amsg("${CL_YEL}\t-DENABLE_LWA=${CL_GRN}[Off|On]${CL_RST} - Build LWA Arcan client (nesting support)")
 amsg("${CL_YEL}\t-DDISABLE_JIT=${CL_GRN}[Off|On]${CL_RST} - Don't Link with luajit51 (even if found)")
-amsg("${CL_YEL}\t\t-DBUILTIN_LUA=${CL_GRN}[Off|On]${CL_RST} - Static build lua51 (with disable_jit)")
+amsg("${CL_YEL}\t-DBUILTIN_LUA=${CL_GRN}[Off|On]${CL_RST} - Static build lua51 (with disable_jit)")
 amsg("${CL_YEL}\t-DNO_FSRV=${CL_GRN}[Off|On]${CL_RST} - Build Arcan without support for frameservers")
 amsg("${CL_YEL}\t-DSHMIF_TUI_ACCEL=${CL_GRN}[Off|On]${CL_RST} - Build Tui with GPU support (ARCAN_ARG=accel=1)")
 amsg("")
 amsg("${CL_WHT}Frameserver flags:${CL_RST}")
 amsg("${CL_WHT}Decode:${CL_RST}")
-amsg("${CL_YEL}\t-DFSRV_DECODE_UVC=${CL_GRN}[Off|On]${CL_RST} - Add support for libuvc- UB video camera")
+amsg("${CL_YEL}\t-DFSRV_DECODE_UVC=${CL_GRN}[Off|On]${CL_RST} - Add support for libuvc- USB video cameras")
 amsg("")
 amsg("${CL_WHT}Install / Autodetection Overrides:${CL_RST}")
 amsg("${CL_YEL}\t-D(DISABLE_FSRV_ (encode, decode, net, remoting, terminal, game)${CL_GRN}=ON${CL_RST}")
@@ -168,11 +168,11 @@ if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
 		COMMAND ${CMAKE_C_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
 
 	if (NOT (GCC_VERSION VERSION_GREATER 4.6 OR GCC_VERSION VERSION_EQUAL 4.6))
-		message(FATAL_ERROR "${CLB_RED}Ancient GCC Version detected, Arcan should be compiled with Clang-3.3+ or gcc 4.7+${CL_RST}")
+		message(FATAL_ERROR "${CL_RED}Ancient GCC Version detected, Arcan should be compiled with Clang-3.3+ or gcc 4.7+${CL_RST}")
 	endif()
 
 	if (GCC_VERSION VERSION_LESS 4.7)
-		amsg("${CLB_RED}Ancient GCC Version (4.6.x) detected, switch to a less terrible distribution or be prepared for side-effects${CL_RST}")
+		amsg("${CL_RED}Ancient GCC Version (4.6.x) detected, switch to a less terrible distribution or be prepared for side-effects${CL_RST}")
 		include_directories(${PLATFORM_ROOT}/freebsd) # stdalign.h placeholder
 		set(CSTD gnu1x)
 		add_compile_options("-D_Alignas(X)=")
@@ -189,7 +189,7 @@ elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
 		-Wno-unused-variable
 	)
 else()
-	message(FATAL_ERROR "${CLB_RED}Arcan requires an ISO C 9899:2011 capable compiler (Clang-3.3+ or gcc 4.7+)${CL_RST}")
+	message(FATAL_ERROR "${CL_RED}Arcan requires an ISO C 9899:2011 capable compiler (Clang-3.3+ or gcc 4.7+)${CL_RST}")
 endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
@@ -226,7 +226,7 @@ if (ENABLE_LTO)
 endif()
 
 if (NOT VIDEO_PLATFORM)
-	message(FATAL_ERROR "${CLB_RED}Video Platform missing, see -DVIDEO_PLATFORM= above${CL_RST}")
+	message(FATAL_ERROR "${CL_RED}Video Platform missing, see -DVIDEO_PLATFORM= above${CL_RST}")
 endif()
 
 add_compile_options(-std=${CSTD})
@@ -357,9 +357,10 @@ set(BSD_BUILD TRUE)
 set(EXTMAKE_CMD gmake)
 endif()
 
+set(LUA_LINKTYPE "dynamic")
+
 if (NOT DISABLE_JIT)
 	if (EXISTS ${EXTERNAL_SRC_DIR}/git/luajit)
-		amsg("${CL_YEL}Building Luajit static from external/git mirror${CL_RST}")
 		ExternalProject_Add(luajit
 			SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/luajit
 			GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/luajit"
@@ -376,6 +377,7 @@ if (NOT DISABLE_JIT)
 		set(LUA51_JIT ON)
 		set(LUA_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/luajit/src")
 		list(APPEND MAIN_DEPS luajit)
+		set(LUA_LINKTYPE "static")
 	else()
 		find_package(Lua51JIT QUIET)
 	endif()
@@ -389,6 +391,7 @@ if (NOT LUA_LIBRARY)
 		add_subdirectory(${EXTERNAL_SRC_DIR}/lua ${CMAKE_CURRENT_BINARY_DIR}/lua)
 		set(LUA_INCLUDE_DIR ${EXTERNAL_SRC_DIR}/lua)
 		set(LUA_LIBRARIES lua51)
+		set(LUA_LINKTYPE "static")
 	endif()
 endif()
 
@@ -511,19 +514,19 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	set(PKGCONFIG_DIR lib/pkgconfig)
 
 else()
-	message(FATAL_ERROR "${CLB_RED}Unsupported OS(${CMAKE_SYSTEM_NAME}) detected, abandon ship!${CL_RST}")
+	message(FATAL_ERROR "${CL_RED}Unsupported OS(${CMAKE_SYSTEM_NAME}) detected, abandon ship!${CL_RST}")
 endif()
 
 amsg("\n${CL_WHT}---- Configuration results:${CL_RST}")
-amsg("${CL_YEL}Compiler\t${CLB_GRN}${CMAKE_C_COMPILER_ID}${CL_RST}")
-amsg("${CL_YEL}Video   \t${CLB_GRN}${VIDEO_PLATFORM}${CL_RST}")
-amsg("${CL_YEL}AGP     \t${CLB_GRN}${AGP_PLATFORM}${CL_RST}")
-amsg("${CL_YEL}Audio   \t${CLB_GRN}${AUDIO_PLATFORM}${CL_RST}")
-amsg("${CL_YEL}Input   \t${CLB_GRN}${INPUT_PLATFORM}${CL_RST}")
-amsg("${CL_YEL}Headless\t${CLB_GRN}${LWA_PLATFORM_STR}${CL_RST}")
-amsg("${CL_YEL}Lua     \t${CLB_GRN}${LUA_TAG}${LUA_TAG_MODE}${CL_RST}${CL_RST}")
+amsg("${CL_YEL}compiler\t${CL_GRN}${CMAKE_C_COMPILER_ID}${CL_RST}")
+amsg("${CL_YEL}video   \t${CL_GRN}${VIDEO_PLATFORM}${CL_RST}")
+amsg("${CL_YEL}accel   \t${CL_GRN}${AGP_PLATFORM}${CL_RST}")
+amsg("${CL_YEL}audio   \t${CL_GRN}${AUDIO_PLATFORM}${CL_RST}")
+amsg("${CL_YEL}input   \t${CL_GRN}${INPUT_PLATFORM}${CL_RST}")
+amsg("${CL_YEL}headless\t${CL_GRN}${LWA_PLATFORM_STR}${CL_RST}")
+amsg("${CL_YEL}lua     \t${CL_GRN}${LUA_TAG}${LUA_TAG_MODE} ${LUA_LINKTYPE}${CL_RST}")
 
-amsg("\n${CL_WHT}-- Stage 2, Frameservers / Hijack${CLT_RST}")
+amsg("\n${CL_WHT}-- Stage 2, Frameservers / Hijack${CL_RST}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 set(SHMIF_TUI true)
@@ -532,7 +535,7 @@ include_directories(${ARCAN_SHMIF_INCLUDE_DIR})
 
 if (NO_FSRV)
 	set(FSRV_DISABLE DISABLE_FRAMESERVERS)
-	amsg("${CL_YEL}Frameservers:\t${CLB_GRN}Disabled${CL_RST}")
+	amsg("${CL_YEL}frameservers\t${CL_RED}disabled${CL_RST}")
 else()
 	add_subdirectory(frameserver)
 endif()
@@ -540,7 +543,7 @@ endif()
 if (NOT DISABLE_HIJACK)
 	add_subdirectory(hijack)
 else()
-	amsg("${CL_YEL}Hijack Libraries:\t${CLB_GRN}Disabled${CL_RST}")
+	amsg("${CL_YEL}hijack      \t${CL_RED}default-disabled${CL_RST}")
 endif()
 
 set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c
@@ -560,7 +563,7 @@ else()
 	amsg("\n${CL_WHT}-- Stage 3, LWA Build (omitted, see external/README)${CL_RST}")
 endif()
 
-amsg("\n${CL_WHT}-- Stage 4, Linking / Packaging${CL_RST}")
+amsg("\n${CL_WHT}-- Stage 4, Linking / Packaging (=>${CMAKE_INSTALL_PREFIX})${CL_RST}")
 
 add_executable(arcan
 	${SOURCES}
@@ -611,7 +614,7 @@ target_include_directories(arcan_db PRIVATE ${INCLUDE_DIRS})
 target_compile_definitions(arcan_db PRIVATE ARCAN_DB_STANDALONE)
 
 if (VIDEO_PLATFORM STREQUAL "egl-dri")
-	amsg("${CLB_RED} egl-dri+privsep platform, installing main binary SUID ${CL_RST}")
+	amsg("${CL_YEL}egl-dri+privsep${CL_RST}\t${CL_GRN}installing SUID${CL_RST}")
 	install(TARGETS arcan DESTINATION bin
 		PERMISSIONS
 			SETUID
@@ -683,6 +686,7 @@ endif()
 # for the correct ruby version
 #
 if (APIMAN_DEST AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../doc/mantmp)
+	amsg("${CL_YEL}manpages\t${CL_GRN}mantmp found")
 	file(GLOB MANTMP ${CMAKE_CURRENT_SOURCE_DIR}/../doc/mantmp/*.3)
 	install(FILES
 		${MANTMP}
@@ -690,5 +694,7 @@ if (APIMAN_DEST AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../doc/mantmp)
 		PERMISSIONS ${SHARED_PERMISSIONS}
 	)
 else()
-	amsg("${CLB_WHT} mantmp output not found, run:\n\t ${CL_YEL} cd ${CMAKE_CURRENT_SOURCE_DIR}/../doc ; ruby docgen.rb mangen\n ${CLB_WHT} and reconfigure for manpage generation. ${CL_RST}")
+	amsg("${CL_YEL}manpages\t${CL_RED}no mantmp, run ruby docgen.rb in arcan/doc${CL_RST}")
 endif()
+amsg("")
+

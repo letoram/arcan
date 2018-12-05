@@ -17,7 +17,7 @@ set (GAME_INCLUDE_DIRS
 )
 
 if ((NOT LWA_PLATFORM_STR STREQUAL "broken") AND LWA_PLATFORM_STR)
-	amsg("(game/libretro) Enabling 3D support.")
+	amsg("${CL_YEL}game/retro\t${CL_GRN}3D support (lwa)${CL_RST}")
 	list(APPEND SOURCE_LIST
 		${AGP_SOURCES}
 		${HEADLESS_PLATFORM}
@@ -40,7 +40,7 @@ if ((NOT LWA_PLATFORM_STR STREQUAL "broken") AND LWA_PLATFORM_STR)
 		PARENT_SCOPE
 	)
 else()
-	amsg("(game/libretro) no LWA platform, 3D disabled.")
+	amsg("${CL_YEL}game/retro\t${CL_RED}No 3D (missing lwa platform)${CL_RST}")
 endif()
 
 set(GAME_SOURCES ${SOURCE_LIST} PARENT_SCOPE)
