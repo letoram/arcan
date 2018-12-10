@@ -2246,11 +2246,10 @@ retry:
 			continue;
 
 		debug_print("(%d) picked crtc (%d) from encoder", (int)d->id, enc->crtc_id);
-		crtc_found = true;
 		d->display.crtc = enc->crtc_id;
 		drmModeCrtc* crtc = drmModeGetCrtc(d->device->fd, d->display.crtc);
 
-		if (crtc->mode_valid && try_inherited_mode){
+		if (crtc && crtc->mode_valid && try_inherited_mode){
 			d->display.mode = crtc->mode;
 			d->display.mode_set = 0;
 
@@ -2266,7 +2265,10 @@ retry:
 		}
 
 		drmModeFreeEncoder(enc);
-		break;
+		if (enc && crtc){
+			crtc_found = true;
+			break;
+		}
 	}
 
 	if (!crtc_found){
