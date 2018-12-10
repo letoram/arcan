@@ -1210,23 +1210,30 @@ enum ARCAN_TARGET_SKIPMODE {
 		int64_t source;
 
 		union {
-	/*
-	 * For events that set one or multiple short messages:
-	 * MESSAGE, IDENT, CURSORHINT, ALERT
-	 * Only MESSAGE and ALERT type has any multipart meaning
-	 * (data) - UTF-8 (complete, valid)
-	 * (multipart) - !0 (more to come, terminated with 0)
-	 */
-			struct {
-				uint8_t data[78];
-				uint8_t multipart;
-			} message;
+/*
+ * For events that set one or multiple short messages:
+ * MESSAGE, IDENT, CURSORHINT, ALERT
+ * Only MESSAGE and ALERT type has any multipart meaning
+ * (data) - UTF-8 (complete, valid)
+ * (multipart) - !0 (more to come, terminated with 0)
+ */
+		struct {
+			uint8_t data[78];
+			uint8_t multipart;
+		} message;
 
-	/*
-	 * For user-toggleable options that can be persistantly tracked,
-	 * per segment related key/value store
-	 * (index) - setting index
-	 * (type)  - setting type, 0: key, 1: description, 2: value, 3: current value,
+/*
+ * For user-toggleable options that can be persistantly tracked,
+ * per segment related key/value store.
+ *
+ * (index) - setting index
+ * (type)  - setting type:
+ *           0 - key,
+ *           1 - description,
+ *           2 - value
+ *           3 - current value,
+ *           4 - forget option
+ *
  * (data)  - UTF-8 encoded, type specific value. Limitations on key are similar
  *           to arcan database key (see arcan_db man)
  */
@@ -1314,6 +1321,10 @@ enum ARCAN_TARGET_SKIPMODE {
 /*
  * Indicate that the connection supports abstract input labels, along
  * with the expected data type (match EVENT_IDATATYPE_*)
+ *
+ * Sending a labelhint without a description means to REMOVE a previosly
+ * existing labelhint.
+ *
  * (label)     - 7-bit ASCII filtered to alnum and _
  * (initial)   - suggested default sym from the table used in
  *               arcan_shmif_tuisym.
@@ -1374,7 +1385,7 @@ enum ARCAN_TARGET_SKIPMODE {
  *	                   to save connection setup overhead.
  *
  *	(focused)        - Hint that for all the hierarchies in the connection,
- *	                   this is the one that should have focus.
+ *	                   this is the one that should have the input-focus grab.
  *
  *  (anchor-edge)    - enable anchoring to parent.
  *
