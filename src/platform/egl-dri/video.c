@@ -2117,6 +2117,25 @@ static bool find_plane(struct dispout* d)
 	return d->display.plane_id != 0;
 }
 
+/*
+ * sweep all displays, and see if the referenced CRTC id is in use.
+ */
+static struct dispout* crtc_used(struct dev_node* dev, int crtc)
+{
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
+		if (displays[i].state == DISP_UNUSED)
+			continue;
+
+		if (displays[i].device != dev)
+			continue;
+
+		if (displays[i].display.crtc == crtc)
+			return &displays[i];
+	}
+
+	return NULL;
+}
+
 static int setup_kms(struct dispout* d, int conn_id, size_t w, size_t h)
 {
 	SET_SEGV_MSG("egl-dri(), enumerating connectors on device failed.\n");
@@ -2175,7 +2194,7 @@ retry:
 	for (ssize_t i = 0, area = w*h; i < d->display.con->count_modes; i++){
 		drmModeModeInfo* cm = &d->display.con->modes[i];
 		ssize_t dist = (cm->hdisplay - w) * (cm->vdisplay - h);
-		if (dist > 0 && (dist < area || (dist == area && cm->vrefresh > vrefresh))){
+		if ((dist > 0 && dist < area) || (dist == area && cm->vrefresh > vrefresh)){
 			d->display.mode = *cm;
 			d->display.mode_set = i;
 			d->dispw = cm->hdisplay;
@@ -2183,6 +2202,8 @@ retry:
 			vrefresh = cm->vrefresh;
 			area = dist;
 			try_inherited_mode = false;
+			debug_print(
+				"(%d) best mode sofar: %d*%d@%dHz", d->id, d->dispw, d->disph, vrefresh);
 		}
 	}
 /*
@@ -2234,48 +2255,75 @@ retry:
 	}
 
 /*
- * find encoder and use that to grab CRTC, question is if we need to track
- * encoder use as well or the crtc_alloc is sufficient.
+ * foreach(encoder)
+ *  check_default_crtc -> not used ? allocate -> go
+ *   foreach possible_crtc -> first not used ? allocate -> go
+ *
+ *  note that practically, the crtc search must also find a crtcs that supports
+ *  a certain 'plane configuration' that match the render configuration we want
+ *  to perform, which triggers on each setup where we have a change in vid to
+ *  display mappings (similar to defered modeset).
  */
 	SET_SEGV_MSG("libdrm(), setting matching encoder failed.\n");
 	bool crtc_found = false;
+
+/* mimic x11 modesetting driver use, sweep all encoders and pick the crtcs
+ * that all of them support, and bias against inherited crtc on the first
+ * encoder that aren't already mapped */
+	uint64_t mask = 0;
+	mask = ~mask;
 
 	for (int i = 0; i < res->count_encoders; i++){
 		drmModeEncoder* enc = drmModeGetEncoder(d->device->fd, res->encoders[i]);
 		if (!enc)
 			continue;
 
-		debug_print("(%d) picked crtc (%d) from encoder", (int)d->id, enc->crtc_id);
-		d->display.crtc = enc->crtc_id;
-		drmModeCrtc* crtc = drmModeGetCrtc(d->device->fd, d->display.crtc);
-
-		if (crtc && crtc->mode_valid && try_inherited_mode){
-			d->display.mode = crtc->mode;
-			d->display.mode_set = 0;
-
-			for (size_t i = 0; i < d->display.con->count_modes; i++){
-				if (memcmp(&d->display.con->modes[i], &d->display.mode, sizeof(drmModeModeInfo)) == 0){
-					d->display.mode_set = i;
-					break;
-				}
-			}
-
-			d->dispw = d->display.mode.hdisplay;
-			d->disph = d->display.mode.vdisplay;
-		}
-
+		mask &= enc->possible_crtcs;
 		drmModeFreeEncoder(enc);
-		if (enc && crtc){
+	}
+
+/* now sweep the list of possible crtcs and pick the first one we don't have
+ * already allocated to a display, uncertain if the crtc size was 32 or 64
+ * bit so might as well go for the higher */
+	for (uint64_t i = 0; i < 64; i++){
+		if (mask & ((uint64_t)1 << i)){
+			uint32_t crtc_val = res->crtcs[i];
+			struct dispout* crtc_disp = crtc_used(d->device, crtc_val);
+			if (crtc_disp)
+				continue;
+
+			d->display.crtc = crtc_val;
 			crtc_found = true;
 			break;
 		}
 	}
 
+	debug_print("(%d) picked crtc (%d) from encoder", (int)d->id, d->display.crtc);
+	drmModeCrtc* crtc = drmModeGetCrtc(d->device->fd, d->display.crtc);
+	if (!crtc){
+		debug_print("couldn't retrieve chose crtc, giving up");
+		goto drop_disp;
+	}
+
+	if (crtc->mode_valid && try_inherited_mode){
+		d->display.mode = crtc->mode;
+		d->display.mode_set = 0;
+
+		for (size_t i = 0; i < d->display.con->count_modes; i++){
+			if (memcmp(&d->display.con->modes[i],
+				&d->display.mode, sizeof(drmModeModeInfo)) == 0){
+				d->display.mode_set = i;
+				break;
+			}
+		}
+
+		d->dispw = d->display.mode.hdisplay;
+		d->disph = d->display.mode.vdisplay;
+	}
+
 	if (!crtc_found){
 		debug_print("(%d) setup-kms, no working encoder/crtc", (int)d->id);
-		drmModeFreeConnector(d->display.con);
-		d->display.con = NULL;
-		drmModeFreeResources(res);
+		goto drop_disp;
 		return -1;
 	}
 
