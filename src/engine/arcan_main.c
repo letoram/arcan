@@ -155,7 +155,7 @@ printf("Usage: arcan [-whfmWMOqspTBtHbdgaSV] applname "
 "-S\t--nosound     \tdisable audio output\n"
 "-V\t--version     \tdisplay a version string then exit\n\n");
 
-	const char** cur = platform_video_synchopts();
+	const char** cur = arcan_conductor_synchopts();
 	if (*cur){
 	printf("Video platform synchronization options (-W strat):\n");
 	while(1){
@@ -342,6 +342,10 @@ int MAIN_REDIR(int argc, char* argv[])
 	char* dbfname = NULL;
 	int ch;
 
+/* initialize conductor by setting the default profile, we need to
+ * do this early as it affects buffer management and so on */
+	arcan_conductor_setsynch("vsynch");
+
 	while ((ch = getopt_long(argc, argv,
 		"w:h:mx:y:fsW:d:Sq:a:p:b:B:M:O:t:T:H:g01V", longopts, NULL)) >= 0){
 	switch (ch) {
@@ -354,7 +358,7 @@ int MAIN_REDIR(int argc, char* argv[])
 	case 'm' : conservative = true; break;
 	case 'f' : fullscreen = true; break;
 	case 's' : windowed = true; break;
-	case 'W' : platform_video_setsynch(optarg); break;
+	case 'W' : arcan_conductor_setsynch(optarg); break;
 	case 'd' : dbfname = strdup(optarg); break;
 	case 'S' : nosound = true; break;
 #ifdef ARCAN_LWA

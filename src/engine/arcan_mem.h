@@ -167,29 +167,6 @@ void* arcan_alloc_mem(size_t,
  */
 void arcan_mem_init();
 
-/*
- * Grow or shrink a specific region with a specific number of bytes.
- *
- * Requires that (src) comes from a block previously allocated with
- * arcan_mem_alloc and possibly resized with arcan_mem_grow/trunc.
- *
- * Requires that (nz) matches the last known size of (src) and verifies
- * that against the known allocation, thus the abilitiy to track or
- * calculate this value is a hidden state machine as an early detection
- * mechanism for some memory corruption.
- *
- * Only hints suported are BZERO and NONFATAL.
- *
- * Not all allocation types are allowed to be resized, attempting to
- * grow / shrink static-sized types is a terminal state transition.
- *
- * Non-matching nz/src are terminal state transitions. Failure to grow
- * or truncate is also a terminal state state transition unless
- * ARCAN_MEM_NONFATAL is specified.
- */
-void* arcan_mem_grow(void* src, size_t nz, size_t nb, enum arcan_memhint);
-void* arcan_mem_trunc(void* src, size_t nz, size_t nb, enum arcan_memhint);
-
 struct arcan_strarr {
 	size_t count;
 	size_t limit;

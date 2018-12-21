@@ -304,15 +304,6 @@ void platform_video_prepare_external();
 void platform_video_restore_external();
 
 /*
- * get a (NULL terminated) array of synchronization options that are valid
- * arguments to _setsynch(). It should follow the pattern
- * {"synchopt1", "description1",
- *  "synchopt2", "description2",
- *  NULL};
- */
-const char** platform_video_synchopts();
-
-/*
  * get a (NULL terminated) array of environment options that can be set during
  * the command line, this is primarily used to populate command-line help.
  */
@@ -324,12 +315,6 @@ const char** platform_video_envopts();
  * determining how such functions should be found.
  */
 void* platform_video_gfxsym(const char* sym);
-
-/*
- * switch active synchronization strategy (if possible), strat must be a valid
- * result from platform_video_synchopts and can change dynamically.
- */
-void platform_video_setsynch(const char* strat);
 
 /*
  * take the received handle and associate it with the specified backing store.

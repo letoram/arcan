@@ -48,6 +48,8 @@
 	}
 #endif
 
+static int g_buffers_locked;
+
 static inline void emit_deliveredframe(arcan_frameserver* src,
 	unsigned long long pts, unsigned long long framecount);
 static inline void emit_droppedframe(arcan_frameserver* src,
@@ -192,8 +194,8 @@ static bool push_buffer(arcan_frameserver* src,
 	vready = (vready <= 0 || vready > src->vbuf_cnt) ? 0 : vready - 1;
 	shmif_pixel* buf = src->vbufs[vready];
 
-/* Need to do this check here as-well as in the regular frameserver tick control
- * because the backing store might have changed somehwere else. */
+/* Need to do this check here as-well as in the regular frameserver tick
+ * control because the backing store might have changed somehwere else. */
 	if (src->desc.width != store->w || src->desc.height != store->h ||
 		src->desc.hints != src->desc.pending_hints || src->desc.rz_flag){
 
@@ -468,6 +470,35 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 	return FRV_NOFRAME;
 }
 
+void arcan_frameserver_lock_buffers(int state)
+{
+	g_buffers_locked = state;
+}
+
+int arcan_frameserver_releaselock(struct arcan_frameserver* tgt)
+{
+	if (!tgt->flags.release_pending){
+		return 0;
+	}
+
+	tgt->flags.release_pending = false;
+	TRAMP_GUARD(0, tgt);
+
+	atomic_store_explicit(&tgt->shm.ptr->vready, 0, memory_order_release);
+	arcan_sem_post( tgt->vsync );
+		if (tgt->desc.hints & SHMIF_RHINT_VSIGNAL_EV){
+			platform_fsrv_pushevent(tgt, &(struct arcan_event){
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_STEPFRAME,
+				.tgt.ioevs[0].iv = 1,
+				.tgt.ioevs[1].iv = 0
+			});
+		}
+
+	platform_fsrv_leave();
+	return 0;
+}
+
 enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 {
 	int rv = FRV_NOFRAME;
@@ -516,7 +547,8 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 
 /* caller uses this hint to determine if a transfer should be
  * initiated or not */
-		rv = tgt->shm.ptr->vready ? FRV_GOTFRAME : FRV_NOFRAME;
+		rv = (tgt->shm.ptr->vready &&
+			!tgt->flags.release_pending) ? FRV_GOTFRAME : FRV_NOFRAME;
 	break;
 
 	case FFUNC_TICK:
@@ -548,8 +580,8 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
  * to be repeat until it succeeds - this mechanism could/should(?) also
  * be used with the vpts- below, simply defer until the deadline has
  * passed */
-		if (!push_buffer(tgt, dst_store,
-				shmpage->hints & SHMIF_RHINT_SUBREGION ? &dirty : NULL)){
+		if (g_buffers_locked == 1 || tgt->flags.locked || !push_buffer(tgt,
+				dst_store, shmpage->hints & SHMIF_RHINT_SUBREGION ? &dirty : NULL)){
 			goto no_out;
 		}
 
@@ -560,20 +592,26 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 
 /* for some connections, we want additional statistics */
 		if (tgt->desc.callback_framestate)
-			emit_deliveredframe(tgt, shmpage->vpts, tgt->desc.framecount++);
+			emit_deliveredframe(tgt, shmpage->vpts, tgt->desc.framecount);
+		tgt->desc.framecount++;
 
 /* interactive frameserver blocks on vsemaphore only,
  * so set monitor flags and wake up */
-		atomic_store_explicit(&shmpage->vready, 0, memory_order_release);
-		arcan_sem_post( tgt->vsync );
-		if (tgt->desc.hints & SHMIF_RHINT_VSIGNAL_EV){
-			platform_fsrv_pushevent(tgt, &(struct arcan_event){
-				.category = EVENT_TARGET,
-				.tgt.kind = TARGET_COMMAND_STEPFRAME,
-				.tgt.ioevs[0].iv = 1,
-				.tgt.ioevs[1].iv = 0
-			});
+		if (g_buffers_locked != 2){
+			atomic_store_explicit(&shmpage->vready, 0, memory_order_release);
+
+			arcan_sem_post( tgt->vsync );
+			if (tgt->desc.hints & SHMIF_RHINT_VSIGNAL_EV){
+				platform_fsrv_pushevent(tgt, &(struct arcan_event){
+					.category = EVENT_TARGET,
+					.tgt.kind = TARGET_COMMAND_STEPFRAME,
+					.tgt.ioevs[0].iv = 1,
+					.tgt.ioevs[1].iv = 0
+				});
+			}
 		}
+		else
+			tgt->flags.release_pending = true;
 	break;
 
 	case FFUNC_ADOPT:

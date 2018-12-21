@@ -46,24 +46,10 @@ static struct {
 	.blackframes = 2
 };
 
-static char* synchopts[] = {
-	"dynamic", "herustic driven balancing latency, performance and utilization",
-	"vsync", "let display vsync dictate speed",
-	"processing", "minimal synchronization, prioritize speed",
-	NULL
-};
-
 static char* envopts[] = {
 	"ARCAN_VIDEO_MULTISAMPLES=1", "attempt to enable multisampling",
 	NULL
 };
-
-static enum {
-	DYNAMIC = 0,
-	VSYNC = 1,
-	PROCESSING = 2,
-	ENDMARKER
-} synchopt;
 
 void platform_video_shutdown()
 {
@@ -93,9 +79,6 @@ static bool rebuild_screen()
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_ShowCursor(SDL_DISABLE);
 
-/* SDL2 FIXME: swap control, compare synchopt
- * SDL_GL_SstSwapInterval() - can be used dynamically
-*/
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
 
@@ -215,18 +198,13 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * nvidia and friends from time to time where multiple swaps in short
  * regression in combination with 'only redraw' adds bubbles */
 	int delta = arcan_frametime() - sdl.last;
-	if (synchopt == DYNAMIC && delta >= 0 && delta < 8){
+	if (delta >= 0 && delta < 8){
 		arcan_timesleep(16 - delta);
 	}
 
 	sdl.last = arcan_frametime();
 	if (post)
 		post();
-}
-
-const char** platform_video_synchopts()
-{
-	return (const char**) synchopts;
 }
 
 const char** platform_video_envopts()
@@ -244,21 +222,6 @@ size_t platform_video_displays(platform_display_id* dids, size_t* lim)
 		*lim = 1;
 
 	return 1;
-}
-
-void platform_video_setsynch(const char* arg)
-{
-	int ind = 0;
-
-	while(synchopts[ind]){
-		if (strcmp(synchopts[ind], arg) == 0){
-			synchopt = (ind > 0 ? ind / 2 : ind);
-			arcan_warning("synchronisation strategy set to (%s)\n", synchopts[ind]);
-			break;
-		}
-
-		ind += 2;
-	}
 }
 
 enum dpms_state platform_video_dpms(

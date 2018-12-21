@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2016, Björn Ståhl
+ * Copyright 2003-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -129,6 +129,8 @@ struct arcan_frameserver {
 		bool gpu_auth : 1;
 		bool no_dms_free : 1;
 		bool rz_ack : 1;
+		bool locked : 1;
+		bool release_pending : 1;
 	} flags;
 
 /* if autoclock is set, track and use as metric for firing events */
@@ -388,6 +390,28 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 	struct frameserver_envp setup);
 
 arcan_errc arcan_frameserver_free(arcan_frameserver*);
+
+/*
+ * Prevent any attempt at pushing or forwarding buffers from going through.
+ * This effectively locks clients that are waiting for ack on a buffer transfer
+ * to continue.
+ *
+ * If [state] is set to 0, buffer transfers are always permitted
+ * If [state] is set to 1, buffer transfers are not permitted
+ * If [state] is set to 2, buffer transfers are permitted, but clients are
+ * held until explicitly released via arcan_frameserver_releaselock
+ *
+ * Toggling buffer access on or off does not immediately trigger any evaluation
+ * on pending clients, that should be managed elsewhere (arcan_video_pollfeed).
+ */
+void arcan_frameserver_lock_buffers(int state);
+
+/*
+ * IF the frameserver is in pending-release state, this will send signals
+ * unlock semaphores and clear the flag. This is used in combination with
+ * lock_buffers by the conductor.
+ */
+int arcan_frameserver_releaselock(struct arcan_frameserver* tgt);
 
 /*
  * helper functions that tie together the platform/.../frameserver.c

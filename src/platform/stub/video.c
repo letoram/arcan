@@ -17,11 +17,6 @@
 static SDL_Surface* screen;
 static int sdlarg;
 
-static char* synchopts[] = {
-	"default", "skeleton driver has no synchronization strategy",
-	NULL
-};
-
 static enum {
 	DEFAULT = 0,
 	ENDMARKER
@@ -86,11 +81,6 @@ int platform_video_cardhandle(int cardn)
 	return -1;
 }
 
-const char** platform_video_synchopts()
-{
-	return (const char**) synchopts;
-}
-
 static void envopts[] = {
 	NULL
 };
@@ -98,21 +88,6 @@ static void envopts[] = {
 const char** platform_video_envopts()
 {
 	return (const char**) envopts;
-}
-
-void platform_video_setsynch(const char* arg)
-{
-	int ind = 0;
-
-	while(synchopts[ind]){
-		if (strcmp(synchopts[ind], arg) == 0){
-			synchopt = (ind > 0 ? ind / 2 : ind);
-			arcan_warning("synchronisation strategy set to (%s)\n", synchopts[ind]);
-			break;
-		}
-
-		ind += 2;
-	}
 }
 
 platform_display_id* platform_video_query_displays(size_t* count)

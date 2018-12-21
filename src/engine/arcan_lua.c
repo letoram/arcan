@@ -5150,15 +5150,19 @@ static int videosynch(lua_State* ctx)
 	const char* newstrat = luaL_optstring(ctx, 1, NULL);
 
 	if (!newstrat){
-		const char** opts = platform_video_synchopts();
+		const char** opts = arcan_conductor_synchopts();
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
 		size_t count = 0;
 
-/* platform definition requires opts to be [k,d, ... ,NULL,NULL] */
+/* platform definition requires opts to be [k,d, ... ,NULL,NULL]
+ * so allow the table to be dual-indexed */
 		while(opts[count*2]){
 			lua_pushnumber(ctx, count+1);
 			lua_pushstring(ctx, opts[count*2]);
+			lua_rawset(ctx, top);
+			lua_pushstring(ctx, opts[count*2]);
+			lua_pushstring(ctx, opts[count*2+1]);
 			lua_rawset(ctx, top);
 			count++;
 		}
@@ -5166,7 +5170,7 @@ static int videosynch(lua_State* ctx)
 		LUA_ETRACE("video_synchronization", NULL, 1);
 	}
 	else
-		platform_video_setsynch(newstrat);
+		arcan_conductor_setsynch(newstrat);
 
 	LUA_ETRACE("video_synchronization", NULL, 0);
 }
@@ -8023,7 +8027,7 @@ static int targetstepframe(lua_State* ctx)
 
 /* force update / upload */
 			fsrv->rz_known++;
-			arcan_vint_pollfeed(tgt);
+			arcan_vint_pollfeed(tgt, true);
 			LUA_ETRACE("stepframe_target", NULL, 0);
 		}
 
@@ -8293,6 +8297,7 @@ static int targetalloc(lua_State* ctx)
 		LUA_ETRACE("target_alloc", NULL, 2);
 	}
 
+	arcan_conductor_register_frameserver(newref);
 	lua_pushvid(ctx, newref->vid);
 	lua_pushaid(ctx, newref->aid);
 	trace_allocation(ctx, "target", newref->vid);
@@ -10451,6 +10456,26 @@ static int singlequery(lua_State* ctx, int devid, int axid)
 	return 1;
 }
 
+static int targetfocus(lua_State* ctx)
+{
+	LUA_TRACE("focus_target");
+	arcan_vobject* vobj;
+	arcan_vobj_id checkv = luaL_optnumber(ctx, 1, ARCAN_VIDEO_WORLDID);
+	if (checkv == ARCAN_VIDEO_WORLDID){
+		arcan_conductor_focus(NULL);
+	}
+	else {
+		arcan_vobj_id id = luaL_checkvid(ctx, 1, &vobj);
+		if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
+			arcan_fatal("focus_target(fsrv) fsrv arg. not tied to a frameserver");
+
+		arcan_frameserver* fsrv = vobj->feed.state.ptr;
+		arcan_conductor_focus(fsrv);
+	}
+
+	LUA_ETRACE("focus_target", NULL, 0);
+}
+
 static int inputanalogquery(lua_State* ctx)
 {
 	LUA_TRACE("inputanalog_query");
@@ -11237,6 +11262,7 @@ static const luaL_Reg tgtfuns[] = {
 {"restore_target",             targetrestore            },
 {"bond_target",                targetbond               },
 {"reset_target",               targetreset              },
+{"focus_target",               targetfocus              },
 {"target_portconfig",          targetportcfg            },
 {"target_framemode",           targetskipmodecfg        },
 {"target_verbose",             targetverbose            },
