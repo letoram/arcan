@@ -196,7 +196,15 @@ struct tui_settings {
 
 /* see: enum tui_cursors */
 	int cursor;
+
+/* should the built-in implementation take care of the mouse [=false] or
+ * should the events be forwarded to the registered handlers [=true] */
 	bool mouse_fwd;
+
+/* if true, inertia is added to direction switch (stabilization) and one-cell
+ * 'skips' in press+drag motions will be filtered to make horizontal and
+ * vertical selection more stable */
+	bool mouse_filter;
 
 /* simulate refresh-rate to balance
  * throughput, responsiveness, power consumption */
@@ -445,7 +453,7 @@ struct tui_cbcfg {
 
 /*
  * only reset levels that should require action on behalf of the caller are
- * being forwarded, this covers levels > 1.
+ * being forwarded, this covers levels >= 1.
  */
 	void (*reset)(struct tui_context*, int level, void*);
 

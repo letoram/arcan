@@ -606,6 +606,13 @@ checkfd:
 				}
 				break;
 
+			case TARGET_COMMAND_BUFFER_FAIL:
+/* we can't call bufferfail immediately from here as that would pull in a
+ * dependency to shmifext which in turn pulls in GL libraries and so on. */
+				c->privext->state_fl = STATE_NOACCEL;
+				goto reset;
+			break;
+
 			case TARGET_COMMAND_EXIT:
 /* While tempting to run _drop here to prevent caller from leaking resources,
  * we can't as the event- loop might be running in a different thread than A/V

@@ -53,7 +53,7 @@ SET(SOURCES
 	leddec.c
 )
 
-install(TARGETS ${PROJECT_NAME} DESTINATION bin)
-
 add_executable(${PROJECT_NAME} ${SOURCES} ${SHMIF_SOURCES})
 target_link_libraries(${PROJECT_NAME} ${LIBRARIES})
+
+install(TARGETS ${PROJECT_NAME} DESTINATION bin)

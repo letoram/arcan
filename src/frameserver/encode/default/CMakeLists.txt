@@ -28,10 +28,11 @@ endif()
 
 if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}encode " PARENT_SCOPE)
+	set(ENC_MISSING "")
+	set(ENC_FOUND "")
 
 	find_package(VNC)
 	if (LIBVNC_FOUND)
-		amsg("(${CL_GRN}encode${CL_RST}) building with ${CL_GRN}vnc${CL_RED} support ${CL_RST}")
 		set(ENC_AUX_SOURCES
 			${FSRV_ROOT}/util/vncserver.c
 			${FSRV_ROOT}/util/vncserver.h
@@ -41,11 +42,13 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 			HAVE_VNCSERVER
 			PARENT_SCOPE
 		)
+		set(ENC_FOUND "vnc ${ENC_FOUND}")
+	else()
+		set(ENC_MISSING "vnc ${ENC_MISSING}")
 	endif()
 
-	find_package(TESSERACT QUIET)
+	find_package(Tesseract)
 	if (Tesseract_FOUND)
-		amsg("(${CL_GRN}encode${CL_RST}) building with ${CL_GRN}tesseract/ocr${CL_RED} support ${CL_RST}")
 		set(ENC_AUX_SOURCES ${ENC_AUX_SOURCES}
 			${CMAKE_CURRENT_SOURCE_DIR}/ocr.c)
 		set(ENC_AUX_LIBS ${Tesseract_LIBRARIES} ${ENC_AUX_LIBS})
@@ -55,8 +58,13 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 			HAVE_OCR
 			PARENT_SCOPE
 		)
+		set(ENC_FOUND "tesseract+leptonica(ocr) ${ENC_FOUND}")
+	else()
+		set(ENC_MISSING "tesseract+leptonica(ocr) ${ENC_MISSING}")
 	endif()
 
+	amsg("${CL_YEL}encode+opts\t${CL_GRN}${ENC_FOUND}${CL_RST}")
+	amsg("${CL_YEL}encode-opts\t${CL_RED}${ENC_MISSING}${CL_RST}")
 	set(ENCODE_SOURCES
 		${CMAKE_CURRENT_SOURCE_DIR}/encode.c
 		${CMAKE_CURRENT_SOURCE_DIR}/encode_presets.h

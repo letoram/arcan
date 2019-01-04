@@ -8,7 +8,8 @@
 
 enum state_fl {
 	STATE_INDIRECT = 0,
-	STATE_DIRECT
+	STATE_DIRECT = 1,
+	STATE_NOACCEL = 2
 };
 
 struct shmif_ext_int;

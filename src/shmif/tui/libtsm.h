@@ -237,6 +237,8 @@ void tsm_screen_erase_region(struct tsm_screen *con,
 	 unsigned int x_to,
 	 unsigned int y_to,
 	 bool protect);
+struct tui_screen_attr tsm_attr_at_cursor(
+	struct tsm_screen *con, tsm_symbol_t* out);
 void tsm_screen_inc_age(struct tsm_screen *con);
 void tsm_screen_erase_cursor_to_end(struct tsm_screen *con,
 		bool protect);

@@ -26,7 +26,9 @@
 #else
 
 #include <GL/gl.h>
+#ifndef GL_GLEXT_VERSION
 #include "glext.h"
+#endif
 
 #endif
 #endif

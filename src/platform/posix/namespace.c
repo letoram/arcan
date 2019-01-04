@@ -55,7 +55,7 @@ static const char* lbls[] = {
 	"system-statebase",
 	"system-font",
 	"system-binaries",
-	"system-libraries(hijack)",
+	"system-libraries",
 	"system-debugoutput",
 	"system-scripts"
 };
