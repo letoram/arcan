@@ -1,0 +1,19 @@
+Planned changes for shmif to 0.5.6
+[ ] Deadline / Timing Functions:
+		the prototypes are already added into shmif itself, but they don't do
+		anything relevant yet. This also propagates to the related afsrv_decode
+    processes.
+
+[ ] Debug Interface
+    [ ] Finish the scratch 'menu' code already present
+		[ ] Add support for launching / attaching debugger
+
+[ ] debug-if
+    [ ] finish menu
+		    [ ] descriptor interception / editing
+				[ ] gdb / lldb spawn / attach
+
+[ ] Finish 'handover' support, should be one bug away
+[ ] Add support for eyetracking data to event model
+[ ] Add packing format for TUI
+[ ] Convery modifier-metadata over the existing vidb when in FD transfer mode
