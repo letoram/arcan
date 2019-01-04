@@ -14,7 +14,7 @@ function(amsg msg)
 endfunction()
 
 PROJECT(arcan)
-cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.1 FATAL_ERROR)
 
 SET(CMAKE_SKIP_BUILD_RPATH  FALSE)
 SET(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
@@ -697,5 +697,5 @@ if (APIMAN_DEST AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../doc/mantmp)
 else()
 	amsg("${CL_YEL}manpages\t${CL_RED}no mantmp, run ruby docgen.rb in arcan/doc${CL_RST}")
 endif()
-amsg("")
+amsg("${CL_RST}")
 

@@ -130,6 +130,10 @@ bool arcan_tui_readline_loadstate(
  *                or not. Modifications on a write_enabled buffer will be
  *                made clocked event-driven using the _input handlers.
  *
+ * Handlers will be overridden and masked, except for:
+ * on_label (forward unless consumed internally)
+ * on_destroy (chained and forwarded)
+ *
  * Returns:
  * An opaque context struct that needs to be forwarded in place of the tag
  * in the normal handlers in order to not collide with pre-existing caller
@@ -137,61 +141,17 @@ bool arcan_tui_readline_loadstate(
  *
  * This context is dynamically allocated, free using _bufferwnd_free.
  */
-struct tui_bufferwnd;
-struct tui_bufferwnd* arcan_tui_bufferwnd(
+void arcan_tui_bufferwnd_setup(
 	struct tui_context* ctx, uint8_t* buf, size_t buf_sz, bool write_enable);
-void arcan_tui_bufferwnd_free(struct tui_bufferwnd*);
 
 /*
- * Description:
- * Behaves like the _input_label handler in the normal tui input handlers.
- * See the description for that handler in the arcan_tui.h header file for
- * more information.
- *
- * Returns:
- * True of the label was consumed and related inputs can be ignored.
- *
- * Note:
- * The input keys follow the same flow as they do for normal handlers:
- * input_label -> input_utf8 -> input_key where each stage has a 'return true'
- * if consumed and chain should be cancelled.
+ * Take a context that has previously been setup via arcan_tui_bufferwnd_setup,
+ * and restore its set of handlers/tag (not the contents itself) to the state
+ * it was on the initial call. Normal deallocation might happen as part of the
+ * on_destroy event handler on the other hand, and in such cases _free should
+ * not be called.
  */
-bool arcan_tui_bufferwnd_input_label(
-	struct tui_bufferwnd*, const char* label, bool active);
-
-/*
- * Description:
- * Behaves like the _input_utf8 handler in the normal tui input handlers.
- * See the description for that handler in the arcan_tui.h header file for
- * more information.
- *
- * Returns:
- * True of the utf8 key(s) were consumed or false if a lower level input
- * is requested instead.
- */
-bool arcan_tui_bufferwnd_input_utf8(
-	struct tui_bufferwnd*, const char* u8, size_t len);
-
-/*
- * Description:
- * Behaves like the _input_key handler in the normal tui handlers.
- * See the description for that handler in the arcan_tui.h header file for
- * more information.
- */
-void arcan_tui_bufferwnd_input_key(struct tui_bufferwnd*,
-	uint32_t symest, uint8_t scanmode, uint8_t mods, uint16_t subid);
-
-/*
- * Description:
- * Behaves like the _input_mouse_button handler in the normal tui handlers.
- * See the description for that handler in the arcan_tui.h header file for
- * mode information.
- *
- * The effect is that, if valid, will move the input cursor to the position
- * defined by [lx, ly] if applicable (depends on active display mode).
- */
-void arcan_tui_bufferwnd_input_mbtn(
-	struct tui_bufferwnd*, int lx, int ly, int button, bool active, int mods);
+void arcan_tui_bufferwnd_free(struct tui_context*);
 
 struct tui_list_entry {
 	const char* label; /* user presentable UTF-8 string */

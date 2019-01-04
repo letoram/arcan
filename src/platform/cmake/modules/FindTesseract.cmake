@@ -1,5 +1,5 @@
 if(COMMAND pkg_check_modules)
-	pkg_check_modules(Tesseract tesseract lept)
+	pkg_check_modules(TESSERACT QUIET tesseract)
 endif()
 
 if (NOT Tesseract_FOUND)

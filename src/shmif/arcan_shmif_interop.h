@@ -106,6 +106,16 @@ int arcan_shmif_poll(struct arcan_shmif_cont*, struct arcan_event* dst);
 int arcan_shmif_wait(struct arcan_shmif_cont*, struct arcan_event* dst);
 
 /*
+ * wait for an incoming event for a maximum of ~time_us, and update it with
+ * the amount of microseconds left (if any) on the timer.
+ * If the call timed out, [time_us] will be 0.
+ * returns !0 when an event was successfully dequeued and placed in *dst
+ * 0 when the shmif_cont is unable to process events (terminal state)
+ */
+int arcan_shmif_wait_timed(
+	struct arcan_shmif_cont*, unsigned* time_us, struct arcan_event* dst);
+
+/*
  * When integrating with libraries assuming that a window can be created
  * synchronously, there is a problem with what to do with events that are
  * incoming while waiting for the accept- or reject to our request.
@@ -180,7 +190,7 @@ void arcan_shmif_guid(struct arcan_shmif_cont*, uint64_t[2]);
  * subsegment request isn't mapped.
  */
 void arcan_shmif_defimpl(
-	struct arcan_shmif_cont* parent, struct arcan_shmif_cont* newchild, int type);
+	struct arcan_shmif_cont* newchild, int type, void* pref);
 
 /*
  * Try and enqueue the element to the queue. If the context is set to lossless,
@@ -352,15 +362,41 @@ int arcan_shmif_dirty(struct arcan_shmif_cont*,
 	size_t x1, size_t y1, size_t x2, size_t y2, int fl);
 
 /*
- * Get an estimate on how many MICROSECONDS left until the next ideal time
- * to synch. Possible [errc] values:
- *  -1, invalid / dead context
- *  -2, context in a blocked state
- *  -3, no deadline information available
  * This is primarily intended for clients with special timing needs due to
  * latency concerns, typically games and multimedia.
+ *
+ * Get an estimate on how many MICROSECONDS left until the next ideal time
+ * to synch. These are relative to the current time, thus will tick down
+ * on multiple calls until a deadline has passed.
+ *
+ * The [cost_estimate] argument is an estimate on how much processing
+ * time you would need to prepare the next frame and it can simply be
+ * the value of how much was spent rendering the last one.
+ *
+ * Possible [errc] values:
+ *
+ *  -1, invalid / dead context
+ *  -2, context in a blocked state
+ *  -3, deadline information inaccurate, values returned are defaults.
+ *
+ * The optional [tolerance] argument provides an estimate as to how large
+ * margin for error that is reasonable (in MICROSECONDS). This MAY be
+ * derived from frame delivery timings or be adjusted by the consumer
+ * to balance latency, precision and accuracy.
+ *
+ * Thus, deadline - jitter = time left until synch should be called for
+ * a chance to have your contents be updated in time. This time can thus
+ * be used to delay synching and used as a timeout (pseudo-code):
+ *
+ * int left = arcan_shmif_deadline(cont, last_cost, &jout, &errc);
+ * if (last_frame_cost - left > jout){
+ *     while(poll_timeout(cont, left)){
+ *         process_event();
+ *     }
+ * }
  */
-unsigned arcan_shmif_deadline(struct arcan_shmif_cont*, int* errc);
+int arcan_shmif_deadline(
+	struct arcan_shmif_cont*, unsigned last_cost, int* jitter, int* errc);
 
 /*
  * Used as helper to avoid dealing with all of the permutations of

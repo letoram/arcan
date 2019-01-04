@@ -1,4 +1,4 @@
-#include <capi.h>
+#include <tesseract/capi.h>
 #include <leptonica/allheaders.h>
 #include <arcan_shmif.h>
 #include "util/utf8.c"
