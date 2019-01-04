@@ -1,6 +1,6 @@
 /*
  Arcan Text-Oriented User Inteface Library, Extensions
- Copyright: 2018, Bjorn Stahl
+ Copyright: 2018-2019, Bjorn Stahl
  License: 3-clause BSD
  Description: This header describes optional support components that
  extend TUI with some common helpers for input. They also server as
@@ -192,5 +192,42 @@ void arcan_tui_bufferwnd_input_key(struct tui_bufferwnd*,
  */
 void arcan_tui_bufferwnd_input_mbtn(
 	struct tui_bufferwnd*, int lx, int ly, int button, bool active, int mods);
+
+struct tui_list_entry {
+	const char* label; /* user presentable UTF-8 string */
+	char shortcut; /* ASCII visible set shortcut key */
+	const char* menukey; /* alnum identifier for path references */
+
+/* activated when menu- path is triggered, return a new menu if a submenu
+ * is navigated to */
+	struct tui_menu_entry**
+		(*action)(struct tui_context*, struct tui_menu_entry*);
+
+	uint64_t tag;
+};
+
+/*
+ * Take control over the context in [src] and use it to present a list/menu.
+ * The [list] arguments point to a NULL TERMINATED array of tui_list_entry
+ * entries.
+ *
+ * Pass sizeof(struct tui_list_entry) in the [struct_listent_sz] field,
+ * not the amount of elements.
+ *
+ * Handlers will be overridden and masked, except for:
+ * on_destroy
+ *
+ * which will be chained and forwarded (i.e.:
+ *  process -> event -> on_destroy(listwnd) -> on_destroy(owner)
+ */
+void arcan_tui_listwnd_setup(struct tui_context* src,
+	struct tui_list_entry** list, size_t struct_listent_sz);
+
+/*
+ * Takes a context that has previously been setup via listwnd_setup and
+ * restore its set of handlers/tag (not the contents itself) to the state
+ * it was on the initial call.
+ */
+void arcan_tui_listwnd_restore(struct tui_context* src);
 
 #endif
