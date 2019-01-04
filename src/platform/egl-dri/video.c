@@ -272,7 +272,6 @@ struct dev_node {
  * atomic is set if the driver kms side supports/needs atomic modesetting */
 	bool master, force_master, wait_connector;
 	int card_id;
-	uint32_t crtc_alloc;
 	bool atomic;
 
 /* method determines which of [stream,egldev] | [gbm] we use, this follows into
@@ -359,10 +358,10 @@ struct dispout {
 		bool reset_mode, primary;
 		drmModeConnector* con;
 		uint32_t con_id;
-		drmModeModeInfoPtr mode;
+		drmModeModeInfo mode;
+		int mode_set;
 		drmModeCrtcPtr old_crtc;
 		int crtc;
-		uint32_t crtc_ind;
 		int plane_id;
 		enum dpms_state dpms;
 		char* edid_blob;
@@ -662,13 +661,13 @@ static int setup_buffers_stream(struct dispout* d)
 
 	EGLAttrib layer_attrs[] = {
 		EGL_DRM_CRTC_EXT,
-		d->display.crtc_ind,
+		d->display.crtc,
 		EGL_NONE
 	};
 
 	EGLint surface_attrs[] = {
-		EGL_WIDTH, d->display.mode->hdisplay,
-		EGL_HEIGHT, d->display.mode->vdisplay,
+		EGL_WIDTH, d->display.mode.hdisplay,
+		EGL_HEIGHT, d->display.mode.vdisplay,
 		EGL_NONE
 	};
 
@@ -865,7 +864,7 @@ static int setup_buffers_gbm(struct dispout* d)
  * the right one */
 		if (!d->buffer.surface)
 			d->buffer.surface = gbm_surface_create(d->device->gbm,
-				d->display.mode->hdisplay, d->display.mode->vdisplay,
+				d->display.mode.hdisplay, d->display.mode.vdisplay,
 				gbm_formats[i], GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
 
 		if (!d->buffer.surface)
@@ -1014,20 +1013,22 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 	struct dispout* d = get_display(disp);
 
 	if (!d || d->state != DISP_MAPPED || mode >= d->display.con->count_modes)
-		return false;
 
-	if (d->display.mode == &d->display.con->modes[mode])
+	if (memcmp(&d->display.mode,
+		&d->display.con->modes[mode], sizeof(drmModeModeInfo)) == 0)
 		return true;
 
-	debug_print("(%d) schedule mode switch to %zu * %zu", (int) disp,
-		d->display.mode->hdisplay, d->display.mode->vdisplay);
-
 	d->display.reset_mode = true;
-	d->display.mode = &d->display.con->modes[mode];
+	d->display.mode = d->display.con->modes[mode];
+	d->display.mode_set = mode;
+
+	debug_print("(%d) schedule mode switch to %zu * %zu", (int) disp,
+		d->display.mode.hdisplay, d->display.mode.vdisplay);
+
 	build_orthographic_matrix(d->projection,
-		0, d->display.mode->hdisplay, d->display.mode->vdisplay, 0, 0, 1);
-	d->dispw = d->display.mode->hdisplay;
-	d->disph = d->display.mode->vdisplay;
+		0, d->display.mode.hdisplay, d->display.mode.vdisplay, 0, 0, 1);
+	d->dispw = d->display.mode.hdisplay;
+	d->disph = d->display.mode.vdisplay;
 
 /*
  * reset scanout buffers to match new crtc mode
@@ -1939,8 +1940,8 @@ static uint32_t get_gbm_fd(struct dispout* d, struct gbm_bo* bo)
 static bool set_dumb_fb(struct dispout* d)
 {
 	struct drm_mode_create_dumb create = {
-		.width = d->display.mode->hdisplay,
-		.height = d->display.mode->vdisplay,
+		.width = d->display.mode.hdisplay,
+		.height = d->display.mode.vdisplay,
 		.bpp = 32
 	};
 	int fd = d->device->fd;
@@ -1949,7 +1950,7 @@ static bool set_dumb_fb(struct dispout* d)
 		return false;
 	}
 	if (drmModeAddFB(fd,
-		d->display.mode->hdisplay, d->display.mode->vdisplay, 24, 32,
+		d->display.mode.hdisplay, d->display.mode.vdisplay, 24, 32,
 		create.pitch, create.handle, &d->buffer.cur_fb)){
 		debug_print("(%d) couldn't add dumb-fb", (int) d->id);
 		return false;
@@ -2003,7 +2004,7 @@ static bool atomic_set_mode(struct dispout* d)
 	int fd = d->device->fd;
 
 	if (0 != drmModeCreatePropertyBlob(fd,
-		d->display.mode, sizeof(drmModeModeInfo), &mode)){
+		&d->display.mode, sizeof(drmModeModeInfo), &mode)){
 		debug_print("(%d) atomic-modeset, failed to create mode-prop");
 		return false;
 	}
@@ -2041,8 +2042,8 @@ static bool atomic_set_mode(struct dispout* d)
 		goto cleanup;
 	}
 
-	unsigned width = d->display.mode->hdisplay << 16;
-	unsigned height = d->display.mode->vdisplay << 16;
+	unsigned width = d->display.mode.hdisplay << 16;
+	unsigned height = d->display.mode.vdisplay << 16;
 
 	AADD(d->display.plane_id, "SRC_X", 0);
 	AADD(d->display.plane_id, "SRC_Y", 0);
@@ -2095,7 +2096,7 @@ static bool find_plane(struct dispout* d)
 		}
 		uint32_t crtcs = plane->possible_crtcs;
 		drmModeFreePlane(plane);
-		if (0 == (crtcs & (1 << d->display.crtc_ind)))
+		if (0 == (crtcs & d->display.crtc))
 			continue;
 
 		uint64_t val;
@@ -2114,6 +2115,25 @@ static bool find_plane(struct dispout* d)
 	}
 	drmModeFreePlaneResources(plane_res);
 	return d->display.plane_id != 0;
+}
+
+/*
+ * sweep all displays, and see if the referenced CRTC id is in use.
+ */
+static struct dispout* crtc_used(struct dev_node* dev, int crtc)
+{
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
+		if (displays[i].state == DISP_UNUSED)
+			continue;
+
+		if (displays[i].device != dev)
+			continue;
+
+		if (displays[i].display.crtc == crtc)
+			return &displays[i];
+	}
+
+	return NULL;
 }
 
 static int setup_kms(struct dispout* d, int conn_id, size_t w, size_t h)
@@ -2164,43 +2184,43 @@ retry:
 	SET_SEGV_MSG("egl-dri(), enumerating connector/modes failed.\n");
 
 /*
- * If dimensions are specified, find the closest match
+ * If dimensions are specified, find the closest match and on collision,
+ * the one with the highest refresh rate.
  */
+	bool try_inherited_mode = true;
+	int vrefresh = 0;
+
 	if (w != 0 && h != 0)
 	for (ssize_t i = 0, area = w*h; i < d->display.con->count_modes; i++){
 		drmModeModeInfo* cm = &d->display.con->modes[i];
 		ssize_t dist = (cm->hdisplay - w) * (cm->vdisplay - h);
-		if (dist > 0 && dist < area){
-			d->display.mode = cm;
+		if ((dist > 0 && dist < area) || (dist == area && cm->vrefresh > vrefresh)){
+			d->display.mode = *cm;
+			d->display.mode_set = i;
 			d->dispw = cm->hdisplay;
 			d->disph = cm->vdisplay;
+			vrefresh = cm->vrefresh;
 			area = dist;
+			try_inherited_mode = false;
+			debug_print(
+				"(%d) best mode sofar: %d*%d@%dHz", d->id, d->dispw, d->disph, vrefresh);
 		}
 	}
 /*
- * If no dimensions are specified, grab the first one.
- * (according to drm documentation, that should be the most 'fitting')
+ * If no dimensions are specified, grab the first one.  (according to drm
+ * documentation, that should be the most 'fitting') but also allow the
+ * 'try_inherited_mode' using what is already on the connector.
  */
 	else if (d->display.con->count_modes >= 1){
 		drmModeModeInfo* cm = &d->display.con->modes[0];
-		d->display.mode = cm;
+		d->display.mode = *cm;
+		d->display.mode_set = 0;
 		d->dispw = cm->hdisplay;
 		d->disph = cm->vdisplay;
 	}
 
-	if (!d->display.mode) {
-		debug_print("(%d) setup-kms, could not find a suitable display mode");
-		drmModeFreeConnector(d->display.con);
-		d->display.con = NULL;
-		drmModeFreeResources(res);
-		return -1;
-	}
-
 	debug_print("(%d) setup-kms, picked %zu*%zu", (int)d->id,
-		(size_t)d->display.mode->hdisplay, (size_t)d->display.mode->vdisplay);
-
-	build_orthographic_matrix(d->projection,
-		0, d->display.mode->hdisplay, d->display.mode->vdisplay, 0, 0, 1);
+		(size_t)d->display.mode.hdisplay, (size_t)d->display.mode.vdisplay);
 
 /*
  * Grab any EDID data now as we've had issues trying to query it on some
@@ -2235,39 +2255,75 @@ retry:
 	}
 
 /*
- * find encoder and use that to grab CRTC, question is if we need to track
- * encoder use as well or the crtc_alloc is sufficient.
+ * foreach(encoder)
+ *  check_default_crtc -> not used ? allocate -> go
+ *   foreach possible_crtc -> first not used ? allocate -> go
+ *
+ *  note that practically, the crtc search must also find a crtcs that supports
+ *  a certain 'plane configuration' that match the render configuration we want
+ *  to perform, which triggers on each setup where we have a change in vid to
+ *  display mappings (similar to defered modeset).
  */
 	SET_SEGV_MSG("libdrm(), setting matching encoder failed.\n");
 	bool crtc_found = false;
+
+/* mimic x11 modesetting driver use, sweep all encoders and pick the crtcs
+ * that all of them support, and bias against inherited crtc on the first
+ * encoder that aren't already mapped */
+	uint64_t mask = 0;
+	mask = ~mask;
 
 	for (int i = 0; i < res->count_encoders; i++){
 		drmModeEncoder* enc = drmModeGetEncoder(d->device->fd, res->encoders[i]);
 		if (!enc)
 			continue;
 
-		for (int j = 0; j < res->count_crtcs; j++){
-			if (!(enc->possible_crtcs & (1 << j)))
+		mask &= enc->possible_crtcs;
+		drmModeFreeEncoder(enc);
+	}
+
+/* now sweep the list of possible crtcs and pick the first one we don't have
+ * already allocated to a display, uncertain if the crtc size was 32 or 64
+ * bit so might as well go for the higher */
+	for (uint64_t i = 0; i < 64; i++){
+		if (mask & ((uint64_t)1 << i)){
+			uint32_t crtc_val = res->crtcs[i];
+			struct dispout* crtc_disp = crtc_used(d->device, crtc_val);
+			if (crtc_disp)
 				continue;
 
-			debug_print("(%d) possible crtc: %d", (int)d->id, j);
-			if (!(d->device->crtc_alloc & (1 << j))){
-				d->display.crtc = res->crtcs[j];
-				d->display.crtc_ind = j;
-				d->device->crtc_alloc |= 1 << j;
-				crtc_found = true;
-				i = res->count_encoders;
+			d->display.crtc = crtc_val;
+			crtc_found = true;
+			break;
+		}
+	}
+
+	debug_print("(%d) picked crtc (%d) from encoder", (int)d->id, d->display.crtc);
+	drmModeCrtc* crtc = drmModeGetCrtc(d->device->fd, d->display.crtc);
+	if (!crtc){
+		debug_print("couldn't retrieve chose crtc, giving up");
+		goto drop_disp;
+	}
+
+	if (crtc->mode_valid && try_inherited_mode){
+		d->display.mode = crtc->mode;
+		d->display.mode_set = 0;
+
+		for (size_t i = 0; i < d->display.con->count_modes; i++){
+			if (memcmp(&d->display.con->modes[i],
+				&d->display.mode, sizeof(drmModeModeInfo)) == 0){
+				d->display.mode_set = i;
 				break;
 			}
-
 		}
+
+		d->dispw = d->display.mode.hdisplay;
+		d->disph = d->display.mode.vdisplay;
 	}
 
 	if (!crtc_found){
 		debug_print("(%d) setup-kms, no working encoder/crtc", (int)d->id);
-		drmModeFreeConnector(d->display.con);
-		d->display.con = NULL;
-		drmModeFreeResources(res);
+		goto drop_disp;
 		return -1;
 	}
 
@@ -2294,7 +2350,6 @@ retry:
 			d->device->atomic = false;
 			drmModeFreeConnector(d->display.con);
 			d->display.con = NULL;
-			d->device->crtc_alloc &= ~(1 << d->display.crtc_ind);
 			drmModeFreeResources(res);
 			drmSetClientCap(d->device->fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 0);
 			drmSetClientCap(d->device->fd, DRM_CLIENT_CAP_ATOMIC, 0);
@@ -2303,6 +2358,9 @@ retry:
 		else if (!ok)
 			goto drop_disp;
 	}
+
+	build_orthographic_matrix(d->projection,
+		0, d->display.mode.hdisplay, d->display.mode.vdisplay, 0, 0, 1);
 
 	dpms_set(d, DRM_MODE_DPMS_ON);
 	d->display.dpms = ADPMS_ON;
@@ -2313,7 +2371,6 @@ retry:
 drop_disp:
 	drmModeFreeConnector(d->display.con);
 	d->display.con = NULL;
-	d->device->crtc_alloc &= ~(1 << d->display.crtc_ind);
 	drmModeFreeResources(res);
 	return -1;
 }
@@ -2502,7 +2559,6 @@ struct monitor_mode* platform_video_query_modes(
 		mcache[i].phy_height = conn->mmHeight;
 		mcache[i].dynamic = false;
 		mcache[i].id = i;
-		mcache[i].primary = d->display.mode == &conn->modes[i];
 		mcache[i].depth = sizeof(av_pixel) * 8;
 	}
 
@@ -2710,12 +2766,11 @@ static void disable_display(struct dispout* d, bool dealloc)
 
 /* in extended suspend, we have no idea which displays we are returning to so
  * the only real option is to fully deallocate even in EXTSUSP */
-	debug_print("(%d) release crtc id (%d)", (int)d->id,(int)d->display.crtc_ind);
-	d->device->crtc_alloc &= ~(1 << d->display.crtc_ind);
+	debug_print("(%d) release crtc id (%d)", (int)d->id,(int)d->display.crtc);
 	if (d->display.old_crtc){
 		debug_print("(%d) old mode found, trying to reset", (int)d->id);
 		if (d->device->atomic){
-			d->display.mode = &d->display.old_crtc->mode;
+			d->display.mode = d->display.old_crtc->mode;
 			if (atomic_set_mode(d)){
 				debug_print("(%d) atomic-modeset failed on (%d)",
 					(int)d->id, (int)d->display.con_id);
@@ -2752,10 +2807,10 @@ static void disable_display(struct dispout* d, bool dealloc)
 	drmModeFreeConnector(d->display.con);
 	d->display.con = NULL;
 	d->display.con_id = 0;
+	d->display.mode_set = -1;
 
 	drmModeFreeCrtc(d->display.old_crtc);
 	d->display.old_crtc = NULL;
-	d->display.mode = NULL;
 
 /*	d->device = NULL; */
 	d->state = DISP_UNUSED;
@@ -2778,9 +2833,9 @@ struct monitor_mode platform_video_dimensions()
  * this is done to work around how gl- agp handles scissoring as there's no
  * version of platform_video_dimension that worked for the display out
  */
-	if (egl_dri.last_display && egl_dri.last_display->display.mode){
-		res.width = egl_dri.last_display->display.mode->hdisplay;
-		res.height = egl_dri.last_display->display.mode->vdisplay;
+	if (egl_dri.last_display && egl_dri.last_display->display.mode_set != -1){
+		res.width = egl_dri.last_display->display.mode.hdisplay;
+		res.height = egl_dri.last_display->display.mode.vdisplay;
 		if (egl_dri.last_display->display.con){
 			res.phy_width = egl_dri.last_display->display.con->mmWidth;
 			res.phy_height = egl_dri.last_display->display.con->mmHeight;
@@ -3091,8 +3146,8 @@ bool platform_video_init(uint16_t w, uint16_t h,
 		setup_cards_inherit(w, h) || setup_cards_basic(w, h)){
 		struct dispout* d = egl_dri.last_display;
 		set_display_context(d);
-		egl_dri.canvasw = d->display.mode->hdisplay;
-		egl_dri.canvash = d->display.mode->vdisplay;
+		egl_dri.canvasw = d->display.mode.hdisplay;
+		egl_dri.canvash = d->display.mode.vdisplay;
 		build_orthographic_matrix(d->projection, 0,
 			egl_dri.canvasw, egl_dri.canvash, 0, 0, 1);
 		memcpy(d->txcos, arcan_video_display.mirror_txcos, sizeof(float) * 8);
@@ -3552,8 +3607,8 @@ bool platform_video_map_display(
 		debug_print("map_display(%d->%d), known but unmapped", (int)id, (int)disp);
 		if (setup_kms(d,
 			d->display.con->connector_id,
-			d->display.mode ? d->display.mode->hdisplay : 0,
-			d->display.mode ? d->display.mode->vdisplay : 0) ||
+			d->display.mode_set != -1 ? d->display.mode.hdisplay : 0,
+			d->display.mode_set != -1 ? d->display.mode.vdisplay : 0) ||
 			setup_buffers(d) == -1){
 			debug_print("map_display(%d->%d) alloc/map failed", (int)id, (int)disp);
 			return false;
@@ -3742,13 +3797,16 @@ static void update_display(struct dispout* d)
 	}
 
 	if (new_crtc){
-		debug_print("(%d) deferred modeset, switch now", (int) d->id);
+		debug_print("(%d) deferred modeset, switch now (%d*%d => %d*%d@%d)",
+			(int) d->id, d->dispw, d->disph, d->display.mode.hdisplay,
+			d->display.mode.vdisplay, d->display.mode.vrefresh
+		);
 		if (d->device->atomic){
 			atomic_set_mode(d);
 		}
 		else {
 			int rv = drmModeSetCrtc(d->device->fd, d->display.crtc,
-				next_fb, 0, 0, &d->display.con_id, 1, d->display.mode);
+				next_fb, 0, 0, &d->display.con_id, 1, &d->display.mode);
 			if (rv < 0){
 				debug_print("(%d) error (%d) setting Crtc for %d:%d(con:%d)",
 					(int)d->id, errno, d->device->fd, d->display.crtc, d->display.con_id);

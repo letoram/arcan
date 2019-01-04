@@ -40,6 +40,7 @@ _Static_assert(PIPE_BUF >= 4, "pipe atomic write should be >= 4");
 
 #include "../arcan_shmif.h"
 #include "../arcan_tui.h"
+#include "tui_copywnd.h"
 
 #define REQID_COPYWINDOW 0xbaab
 
@@ -51,16 +52,17 @@ _Static_assert(PIPE_BUF >= 4, "pipe atomic write should be >= 4");
 #include "arcan_ttf.h"
 #endif
 
-#include "tui_draw.h"
+#ifndef COUNT_OF
+#define COUNT_OF(x) \
+	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+#endif
+
 #include "libtsm.h"
 #include "libtsm_int.h"
+#include "tui_draw.h"
+#include "tui_int.h"
 
 #ifdef WITH_HARFBUZZ
-static bool enable_harfbuzz = false;
-#include <harfbuzz/hb.h>
-#include <harfbuzz/hb-ft.h>
-#include <harfbuzz/hb-icu.h>
-
 static int render_glyph(PIXEL* dst,
 	size_t width, size_t height, int stride,
 	TTF_Font **font, size_t n,
@@ -99,168 +101,6 @@ static int render_glyph(PIXEL* dst,
 		advance, prev_index);
 }
 #endif
-
-enum dirty_state {
-	DIRTY_NONE = 0,
-	DIRTY_UPDATED = 1,
-	DIRTY_PENDING = 2,
-	DIRTY_PENDING_FULL = 4
-};
-
-struct shape_state {
-	unsigned ind;
-	int xofs;
-};
-
-typedef void (*tui_draw_fun)(
-		struct tui_context* tui,
-		size_t n_rows, size_t n_cols,
-		struct tui_cell* front, struct tui_cell* back,
-		struct tui_cell* custom,
-		int start_x, int start_y, bool synch
-	);
-
-/* globally shared 'local copy/paste' target where tsm- screen
- * data gets copy/pasted */
-static volatile _Atomic int paste_destination = -1;
-
-struct color {
-	uint8_t rgb[3];
-};
-
-struct tui_context;
-struct tui_context {
-/* cfg->nal / state control */
-	struct tsm_screen* screen;
-	struct tsm_utf8_mach* ucsconv;
-
-/*
- * allow a number of virtual screens for this context, these are allocated
- * when one is explicitly called, and swaps out the drawing into the output
- * context.
- * TODO: allow multiple- screens to be mapped in order onto the same buffer.
- */
-	struct tsm_screen* screens[32];
-	uint32_t screen_alloc;
-
-/* FRONT, BACK, CUSTOM ALIAS BASE. ONLY BASE IS AN ALLOCATION. used to quickly
- * detect changes when it is time to update as a means of allowing smooth
- * scrolling on single- line stepping and to cut down on possible processing
- * latency for terminals. Custom is used as a scratch buffer in order to batch
- * multiple cells with the same custom id together.
- *
- * the cell-buffers act as a cache for the draw-call cells with a front and a
- * back in order to do more advanced heuristics. These are used to detect if
- * scrolling has occured and to permit smooth scrolling, but also to get more
- * efficient draw-calls for custom-tagged cells, for more advanced font
- * rendering, to work around some of the quirks with tsms screen and get
- * multi-threaded rendering going.
- */
-	struct tui_cell* base;
-	struct tui_cell* front;
-	struct tui_cell* back;
-	struct tui_cell* custom;
-	shmif_pixel* blitbuffer;
-	int blitbuffer_dirty;
-	uint8_t fstamp;
-
-	unsigned flags;
-	bool focus, inactive, subseg;
-	int inact_timer;
-
-#ifndef SHMIF_TUI_DISABLE_GPU
-	bool is_accel;
-#endif
-
-/* font rendering / tracking - we support one main that defines cell size
- * and one secondary that can be used for alternative glyphs */
-#ifndef SIMPLE_RENDERING
-	TTF_Font* font[2];
-#ifdef WITH_HARFBUZZ
-	hb_font_t* hb_font;
-#endif
-#endif
-	struct tui_font_ctx* font_bitmap;
-	bool force_bitmap;
-	bool dbl_buf;
-
-/*
- * Two different kinds of drawing functions depending on the font-path taken.
- * One 'normal' mono-space and one 'extended' (expensive) where you also get
- * non-monospace, kerning and possibly shaping/ligatures
- */
-	tui_draw_fun draw_function;
-	tui_draw_fun shape_function;
-
-	float font_sz; /* size in mm */
-	int font_sz_delta; /* user requested step, pt */
-	int hint;
-	int render_flags;
-	int font_fd[2];
-	float ppcm;
-	enum dirty_state dirty;
-
-/* mouse and/or selection management */
-	int mouse_x, mouse_y;
-	uint32_t mouse_btnmask;
-	int lm_x, lm_y;
-	int bsel_x, bsel_y;
-	int last_dbl_x,last_dbl_y;
-	bool in_select;
-	int scrollback;
-	bool mouse_forward;
-	bool scroll_lock;
-	bool select_townd;
-
-/* if we receive a label set in mouse events, we switch to a different
- * interpreteation where drag, click, dblclick, wheelup, wheeldown work */
-	bool gesture_support;
-
-/* tracking when to reset scrollback */
-	int sbofs;
-
-/* set at config-time, enables scrollback for normal- line operations,
- * 0: disabled,
- *>0: step-size (px)
- */
-	unsigned smooth_scroll;
-	int scroll_backlog;
-	int in_scroll;
-	int scroll_px;
-	int smooth_thresh;
-
-/* color, cursor and other drawing states */
-	int rows;
-	int cols;
-	int cell_w, cell_h, pad_w, pad_h;
-	int modifiers;
-	bool got_custom; /* track if we have any on-screen dynamic cells */
-
-	struct color colors[TUI_COL_INACTIVE+1];
-
-	int cursor_x, cursor_y; /* last cached position */
-	bool cursor_off; /* current blink state */
-	bool cursor_hard_off; /* user / state toggle */
-	bool cursor_upd; /* invalidation, need to draw- old / new */
-	int cursor_period; /* blink setting */
-	enum tui_cursors cursor; /* visual style */
-
-	uint8_t alpha;
-
-/* track last time counter we did update on to avoid overdraw */
-	tsm_age_t age;
-
-/* upstream connection */
-	struct arcan_shmif_cont acon;
-	struct arcan_shmif_cont clip_in;
-	struct arcan_shmif_cont clip_out;
-	struct arcan_event last_ident;
-
-	struct tsm_save_buf* pending_copy_window;
-
-/* caller- event handlers */
-	struct tui_cbcfg handlers;
-};
 
 char* arcan_tui_statedescr(struct tui_context* tui)
 {
@@ -809,21 +649,6 @@ static void draw_monospace(struct tui_context* tui,
 /* FIXME: custom draw-call goes here */
 }
 
-static void clear_framebuffer(struct tui_context* tui)
-{
-	size_t npx = tui->acon.w * tui->acon.h;
-	shmif_pixel* dst = tui->acon.vidp;
-	shmif_pixel bgc = SHMIF_RGBA(
-		tui->colors[TUI_COL_BG].rgb[0],
-		tui->colors[TUI_COL_BG].rgb[1],
-		tui->colors[TUI_COL_BG].rgb[2],
-		tui->alpha
-	);
-
-	while (npx--)
-		*dst++ = bgc;
-}
-
 /*
  * blit the scroll-in and scroll-out buffers into the tui->acon vidp
  */
@@ -1162,7 +987,7 @@ static int mod_to_scroll(int mods, int screenh)
 	return rv;
 }
 
-static bool copy_window(struct tui_context* tui)
+static bool copy_wnd(struct tui_context* tui, bool full)
 {
 /* if no pending copy-window request, make a copy of the active screen
  * and spawn a dispatch thread for it */
@@ -1179,6 +1004,16 @@ static bool copy_window(struct tui_context* tui)
 	}
 
 	return true;
+}
+
+static bool copy_window_full(struct tui_context* tui)
+{
+	return copy_wnd(tui, true);
+}
+
+static bool copy_window(struct tui_context* tui)
+{
+	return copy_wnd(tui, false);
 }
 
 static bool scroll_up(struct tui_context* tui)
@@ -1474,7 +1309,8 @@ static const struct lent labels[] = {
 	{1 | 2, "SCROLL_LOCK", "Arrow- keys to pageup/down", scroll_lock},
 	{1 | 2, "UP", "(scroll-lock) page up, UP keysym", move_up},
 	{1 | 2, "DOWN", "(scroll-lock) page down, DOWN keysym", move_down},
-	{1, "COPY_WINDOW", "Copy to new passive window", copy_window},
+	{1, "COPY_WND", "Copy visible area to new passive window", copy_window},
+	{1, "COPY_WND_FULL", "Copy window and scrollback", copy_window_full},
 	{1 | 2, "INC_FONT_SZ", "Font size +1 pt", inc_fontsz},
 	{1 | 2, "DEC_FONT_SZ", "Font size -1 pt", dec_fontsz},
 	{1, "SELECT_TOGGLE", "Switch select destination (wnd, clipboard)", sel_sw},
@@ -1484,6 +1320,11 @@ static const struct lent labels[] = {
 static void expose_labels(struct tui_context* tui)
 {
 	const struct lent* cur = labels;
+	arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(LABELHINT),
+		.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL
+	};
 
 /*
  * NOTE: We do not currently expose a suggested default
@@ -1494,21 +1335,31 @@ static void expose_labels(struct tui_context* tui)
 		if (!tui->subseg && (cur->ctx & 1) == 0)
 			continue;
 
-		arcan_event ev = {
-			.category = EVENT_EXTERNAL,
-			.ext.kind = ARCAN_EVENT(LABELHINT),
-			.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL
-		};
 		snprintf(ev.ext.labelhint.label,
-			COUNT_OF(ev.ext.labelhint.label),
-			"%s", cur->lbl
-		);
+			COUNT_OF(ev.ext.labelhint.label), "%s", cur->lbl);
 		snprintf(ev.ext.labelhint.descr,
-			COUNT_OF(ev.ext.labelhint.descr),
-			"%s", cur->descr
-		);
+			COUNT_OF(ev.ext.labelhint.descr), "%s", cur->descr);
 		cur++;
 		arcan_shmif_enqueue(&tui->acon, &ev);
+	}
+
+	size_t ind = 0;
+	if (tui->handlers.query_label){
+		while (true){
+			struct tui_labelent dstlbl = {};
+			if (!tui->handlers.query_label(tui,
+			ind++, "ENG", "ENG", &dstlbl, tui->handlers.tag))
+				break;
+
+			snprintf(ev.ext.labelhint.label,
+				COUNT_OF(ev.ext.labelhint.label), "%s", dstlbl.label);
+			snprintf(ev.ext.labelhint.descr,
+				COUNT_OF(ev.ext.labelhint.descr), "%s", dstlbl.descr);
+			ev.ext.labelhint.subv = dstlbl.subv;
+			ev.ext.labelhint.idatatype = dstlbl.idatatype;
+			ev.ext.labelhint.modifiers = dstlbl.modifiers;
+			ev.ext.labelhint.initial = dstlbl.initial;
+		}
 	}
 }
 
@@ -1847,13 +1698,6 @@ static void update_screensize(struct tui_context* tui, bool clear)
 	update_screen(tui, true);
 }
 
-struct bgthread_context {
-	struct tui_context* tui;
-	struct tsm_save_buf* buf;
-	bool invalidated;
-	int iopipes[2];
-};
-
 static void drop_pending(struct tsm_save_buf** tui)
 {
 	if (!*tui)
@@ -1864,182 +1708,6 @@ static void drop_pending(struct tsm_save_buf** tui)
 	free((*tui)->screen);
 	free(*tui);
 	*tui = NULL;
-}
-
-static bool bgscreen_label(struct tui_context* c,
-	const char* label, bool active, void* t)
-{
-	struct bgthread_context* ctx = t;
-	if (!ctx->tui)
-		return false;
-
-/* atomically grab the only 'paste' target slot */
-	if (strcmp(label, "PASTE_SELECT") == 0){
-		if (active){
-			atomic_store(&paste_destination, ctx->iopipes[1]);
-		}
-		return true;
-	}
-	return false;
-}
-
-/* synch the buffer copy before so we don't lose pasted contents */
-static void bgscreen_resize(struct tui_context* c,
-	size_t neww, size_t newh, size_t col, size_t row, void* t)
-{
-	struct bgthread_context* ctx = t;
-	if (!ctx->tui)
-		return;
-
-	struct tsm_save_buf* newbuf;
-	if (ctx->invalidated && tsm_screen_save(ctx->tui->screen, true, &newbuf)){
-		drop_pending(&ctx->buf);
-		ctx->invalidated = false;
-		ctx->buf = newbuf;
-	}
-}
-
-static void bgscreen_resized(struct tui_context* c,
-	size_t neww, size_t newh, size_t col, size_t row, void* t)
-{
-	struct bgthread_context* ctx = t;
-	if (!ctx->tui)
-		return;
-
-	tsm_screen_erase_screen(ctx->tui->screen, false);
-	tsm_screen_load(ctx->tui->screen, ctx->buf, 0, 0, 0);
-}
-
-static void* bgscreen_thread_proc(void* ctxptr)
-{
-	struct bgthread_context* ctx = ctxptr;
-
-	arcan_shmif_enqueue(&ctx->tui->acon, &(struct arcan_event){
-		.category = EVENT_EXTERNAL,
-		.ext.kind = ARCAN_EVENT(LABELHINT),
-		.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL,
-		.ext.labelhint.label = "PASTE_SELECT",
-		.ext.labelhint.descr = "Mark window as copy recipient",
-		.ext.labelhint.initial = TUIK_RETURN
-	});
-
-	tsm_screen_load(ctx->tui->screen, ctx->buf, 0, 0, TSM_LOAD_RESIZE);
-	ctx->tui->cursor_hard_off = true;
-	int exp = -1;
-
-	while (true){
-/* take the paste-slot if no-one has it */
-		while(!atomic_compare_exchange_weak(
-			&paste_destination, &exp, ctx->iopipes[1]));
-
-		struct tui_process_res res =
-			arcan_tui_process(&ctx->tui, 1, &ctx->iopipes[0], 1, -1);
-
-		if (res.errc < TUI_ERRC_OK || res.bad)
-			break;
-
-/* paste into */
-		uint32_t ch;
-		while (4 == read(ctx->iopipes[0], &ch, 4)){
-			if (ch == '\n')
-				tsm_screen_newline(ctx->tui->screen);
-			else
-				arcan_tui_write(ctx->tui, ch, NULL);
-			ctx->invalidated = true;
-		}
-
-		if (-1 == arcan_tui_refresh(ctx->tui) && errno == EINVAL)
-			break;
-	}
-
-/* remove the paste destination if it happens to be us */
-	if (-1 != ctx->iopipes[0]){
-		while(!atomic_compare_exchange_weak(
-			&paste_destination, &ctx->iopipes[1], -1));
-		close(ctx->iopipes[0]);
-		close(ctx->iopipes[1]);
-	}
-
-	arcan_tui_destroy(ctx->tui, NULL);
-	drop_pending(&ctx->buf);
-	free(ctx);
-
-	return NULL;
-}
-
-/*
- * copy [src] into a background managed context that only handles clipboard,
- * scrollback etc. assume ownership over [con] and will spawn a new thread or
- * process.
- */
-static void bgscreen_thread(
-	struct tui_context* src, struct arcan_shmif_cont* con)
-{
-	struct bgthread_context* ctxptr = malloc(sizeof(struct bgthread_context));
-	*ctxptr = (struct bgthread_context){
-		.buf = src->pending_copy_window,
-		.iopipes = {-1, -1}
-	};
-	if (!ctxptr || -1 == pipe(ctxptr->iopipes)){
-		free(ctxptr);
-		arcan_shmif_drop(con);
-		drop_pending(&src->pending_copy_window);
-		return;
-	}
-
-/* pipes used to communicate local clipboard data */
-	fcntl(ctxptr->iopipes[0], F_SETFD, O_CLOEXEC);
-	fcntl(ctxptr->iopipes[0], F_SETFL, O_NONBLOCK);
-	fcntl(ctxptr->iopipes[1], F_SETFD, O_CLOEXEC);
-	fcntl(ctxptr->iopipes[1], F_SETFL, O_NONBLOCK);
-
-/* bind the context to a new tui session */
-	struct tui_cbcfg cbs = {
-		.tag = ctxptr,
-		.resize = bgscreen_resize,
-		.resized = bgscreen_resized,
-		.input_label = bgscreen_label
-	};
-	struct tui_settings cfg = arcan_tui_defaults(con, src);
-	ctxptr->tui = arcan_tui_setup(con, &cfg, &cbs, sizeof(cbs));
-	if (!ctxptr->tui){
-		arcan_shmif_drop(con);
-		close(ctxptr->iopipes[0]);
-		close(ctxptr->iopipes[1]);
-		free(ctxptr);
-		drop_pending(&src->pending_copy_window);
-		return;
-	}
-
-	ctxptr->tui->force_bitmap = src->force_bitmap;
-
-/* send the session to a new background thread that we detach and ignore */
-	pthread_attr_t bgattr;
-	pthread_attr_init(&bgattr);
-	pthread_attr_setdetachstate(&bgattr, PTHREAD_CREATE_DETACHED);
-
-	pthread_t bgthr;
-	if (0 != pthread_create(&bgthr, &bgattr, bgscreen_thread_proc, ctxptr)){
-		arcan_shmif_drop(con);
-		drop_pending(&src->pending_copy_window);
-		close(ctxptr->iopipes[0]);
-		close(ctxptr->iopipes[1]);
-		free(ctxptr);
-		return;
-	}
-
-/* responsibility handed over to thread */
-	src->pending_copy_window = NULL;
-}
-
-void arcan_tui_screencopy(
-	struct tui_context* src, struct tui_context* dst, bool cur, bool alt, bool sb)
-{
-/*
- * 1. resize [dst] to match cellcount from src
- * 2. delegate the copying to tsm_screen
- * 3. possibly resize "back"
- */
 }
 
 void arcan_tui_request_subwnd(
@@ -2112,6 +1780,8 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 /* hard reset / crash recovery (server-side state lost) */
 		case 2:
 		case 3:
+			if (tui->handlers.reset)
+				tui->handlers.reset(tui, ev->ioevs[0].iv, tui->handlers.tag);
 			arcan_shmif_drop(&tui->clip_in);
 			arcan_shmif_drop(&tui->clip_out);
 			queue_requests(tui, true, true);
@@ -2276,7 +1946,10 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 		else if (ev->ioevs[3].iv == REQID_COPYWINDOW && tui->pending_copy_window){
 			struct arcan_shmif_cont acon =
 				arcan_shmif_acquire(&tui->acon, NULL, ev->ioevs[2].iv, 0);
-			bgscreen_thread(tui, &acon);
+			if (acon.addr)
+				arcan_tui_copywnd(tui, acon);
+			else
+				drop_pending(&tui->pending_copy_window);
 		}
 /*
  * new caller requested segment, even though acon is auto- scope allocated
@@ -2441,6 +2114,8 @@ static void queue_requests(struct tui_context* tui, bool clipboard, bool ident)
 
 	if (ident && tui->last_ident.ext.kind != 0)
 		arcan_shmif_enqueue(&tui->acon, &tui->last_ident);
+
+	expose_labels(tui);
 }
 
 #ifndef SIMPLE_RENDERING
@@ -3340,7 +3015,6 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 		return NULL;
 	}
 
-	expose_labels(res);
 	tsm_screen_set_def_attr(res->screen,
 		&(struct tui_screen_attr){
 			.fr = res->colors[TUI_COL_TEXT].rgb[0],
@@ -3439,8 +3113,8 @@ struct tui_screen_attr
 	return tsm_screen_get_def_attr(c->screen);
 }
 
-void arcan_tui_write(struct tui_context* c, uint32_t ucode,
-	struct tui_screen_attr* attr)
+void arcan_tui_write(struct tui_context* c,
+	uint32_t ucode, struct tui_screen_attr* attr)
 {
 	if (!c)
 		return;

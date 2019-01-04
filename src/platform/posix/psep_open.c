@@ -651,6 +651,65 @@ static void parent_loop(pid_t child, int netlink)
 }
 #endif
 
+static bool drop_privileges()
+{
+/* in case of suid, drop to user now */
+	uid_t uid = getuid();
+	uid_t euid = geteuid();
+	gid_t gid = getgid();
+
+	if (uid == euid)
+		return true;
+
+/* no weird suid, drmMaster needs so this would be pointless */
+	if (euid != 0)
+		return false;
+
+	setsid();
+/* ugly tradeof here, setting the supplementary groups to only the gid
+ * would subtly break certain sudo configurations in terminals spawned
+ * from the normal privileged process, the best?! thing we can do is
+ * likely to filter out the egid out of the groups list and replace
+ * with just the gid -- and yes setgroups is a linux/BSD extension */
+	int ngroups = getgroups(0, NULL);
+	gid_t groups[ngroups];
+	gid_t egid = getegid();
+	if (getgroups(ngroups, groups)){
+		for (size_t i = 0; i < ngroups; i++){
+			if (groups[i] == egid)
+				groups[i] = gid;
+		}
+		setgroups(ngroups, groups);
+	}
+
+#ifdef __LINUX
+/* more diligence would take the CAPABILITIES crapola into account as well */
+	if (
+		setegid(gid) == -1 ||
+		setgid(gid) == -1 ||
+		setfsgid(gid) == -1 ||
+		setfsuid(uid) == -1 ||
+		seteuid(uid) == -1 ||
+		setuid(uid) == -1
+	)
+		return false;
+
+#else /* BSDs */
+	if (
+		setegid(gid) == -1 ||
+		setgid(gid) == -1 ||
+		seteuid(uid) == -1 ||
+		setuid(uid) == -1
+	)
+		return false;
+#endif
+
+	if (geteuid() != uid || getegid() != gid)
+		return false;
+
+	return true;
+}
+
 /*
  * PARENT SIDE FUNCTIONS, we split even if there is no root- state (i.e. a
  * system with user permissions on devices) in order to have the same interface
@@ -667,6 +726,15 @@ static void parent_loop(pid_t child, int netlink)
 static int psock = -1;
 void platform_device_init()
 {
+/*
+ * Nothing of this is needed if we need to chain into an arcan_lwa as
+ * there is already an arcan instance running (or at least we think so)
+ */
+	if (getenv("ARCAN_CONNPATH")){
+		drop_privileges();
+		return;
+	}
+
 	int sockets[2];
 	if (socketpair(AF_LOCAL, SOCK_STREAM, PF_UNSPEC, sockets) == -1)
 		_exit(EXIT_FAILURE);
@@ -694,57 +762,8 @@ void platform_device_init()
 
 		close(sockets[1]);
 
-/* in case of suid, drop to user now */
-		uid_t uid = getuid();
-		uid_t euid = geteuid();
-		gid_t gid = getgid();
-
-		if (uid != euid){
-
-/* no weird suid, drmMaster needs so this would be pointless */
-			if (euid != 0)
-				_exit(EXIT_FAILURE);
-
-			setsid();
-/* ugly tradeof here, setting the supplementary groups to only the gid
- * would subtly break certain sudo configurations in terminals spawned
- * from the normal privileged process, the best?! thing we can do is
- * likely to filter out the egid out of the groups list and replace
- * with just the gid -- and yes setgroups is a linux/BSD extension */
-				int ngroups = getgroups(0, NULL);
-				gid_t groups[ngroups];
-				gid_t egid = getegid();
-				if (getgroups(ngroups, groups)){
-					for (size_t i = 0; i < ngroups; i++){
-						if (groups[i] == egid)
-							groups[i] = gid;
-					}
-					setgroups(ngroups, groups);
-				}
-
-#ifdef __LINUX
-/* more diligence would take the CAPABILITIES crapola into account as well */
-			if (
-				setegid(gid) == -1 ||
-				setgid(gid) == -1 ||
-				setfsgid(gid) == -1 ||
-				setfsuid(uid) == -1 ||
-				seteuid(uid) == -1 ||
-				setuid(uid) == -1)
-				_exit(EXIT_FAILURE);
-
-#else /* BSDs */
-			if (
-				setegid(gid) == -1 ||
-				setgid(gid) == -1 ||
-				seteuid(uid) == -1 ||
-				setuid(uid) == -1)
-				_exit(EXIT_FAILURE);
-#endif
-
-			if (geteuid() != uid || getegid() != gid)
-				_exit(EXIT_FAILURE);
-
+		if (!drop_privileges()){
+			_exit(EXIT_FAILURE);
 		}
 
 /* privsep child can have STDOUT/STDERR, but prevent it from cascading */

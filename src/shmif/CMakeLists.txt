@@ -128,6 +128,7 @@ set_property(SOURCE ${ASD}/platform/posix/fdpassing.c
 #
 set(SHMIF_TUI_SOURCES
 	${ASD}/shmif/tui/tui.c
+	${ASD}/shmif/tui/tui_copywnd.c
 	${ASD}/shmif/tui/tui_draw.h
 	${ASD}/shmif/tui/tsm_screen.c
 	${ASD}/shmif/tui/tsm_unicode.c
@@ -192,12 +193,12 @@ if (SHMIF_TUI)
 	if (NOT FORCE_NOHARFBUZZ)
 		find_package(HarfBuzz)
 		if (HARFBUZZ_FOUND)
-			amsg("${CL_YEL}shmif-tui : Harfbuzz found, enabling shaper")
+			amsg("${CL_YEL}shmif-tui${CL_RST}\t${CL_GRN}shaping:harfbuzz${CL_RST}")
 			list(APPEND TUI_LIBRARIES ${HARFBUZZ_LIBRARIES})
 			list(APPEND TUI_INCLUDE_DIRS ${HARFBUZZ_INCLUDE_DIRS})
 			list(APPEND TUI_DEFINITIONS WITH_HARFBUZZ)
 		else()
-			amsg("${CL_YEL}shmif-tui : Harfbuzz not found, shaping disabled")
+			amsg("${CL_YEL}shmif-tui${CL_RST}\t${CL_RED}harfbuzz disabled${CL_RST}")
 		endif()
 	endif()
 

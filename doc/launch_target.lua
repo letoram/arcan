@@ -81,8 +81,12 @@
 -- frameserver can act as a regular input device. Be careful with devid
 -- collisions as that namespace is only 16-bits.
 --
--- @note: "segment_request" {kind, width, height, cookie, type} -
--- frameserver would like an additional segment to work with, see target_alloc
+-- @note: "segment_request" {kind, width, height, cookie, type, split-dir} -
+-- frameserver would like an additional segment to work with, see
+-- ref:accept_target for how to accept the request as the default is deny.
+-- The split-dir is a hint for tiling window management and for cases where
+-- the source-window can logically be split into two halves, with the new
+-- one best placed in one direction out of: left, right, top, bottom.
 --
 -- @note: "alert" {message} - version of "message" that hints a user-interface
 -- alert to the segment. If "message" is empty, alert is to be interpreted as
@@ -147,7 +151,7 @@
 -- @note: The initial states goes through the following transitions:
 -- "connected" (only on target_alloc, not launch_target) -> "registered" ->
 -- "preroll" -> "resized" -> [most events possible] -> "terminated"
---
+-- @related: target_accept, target_alloc
 -- @group: targetcontrol
 -- @alias: target_launch
 -- @cfunction: targetlaunch

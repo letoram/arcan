@@ -1,4 +1,4 @@
-#include <capi.h>
+#include <tesseract/capi.h>
 #include <leptonica/allheaders.h>
 #include <arcan_shmif.h>
 #include "util/utf8.c"
@@ -60,7 +60,6 @@ void ocr_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
 
 	const char* lang = "eng";
 	arg_lookup(args, "lang", 0, &lang);
-
 	if (TessBaseAPIInit3(handle, NULL, lang)){
 		LOG("encode-ocr: Couldn't initialize tesseract with lang (%s)\n", lang);
 		return;

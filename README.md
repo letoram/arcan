@@ -74,9 +74,13 @@ for building some of these dependencies statically:
       -DSTATIC_SQLITE3=ON -DSTATIC_OPENAL=ON -DSTATIC_FREETYPE=ON ../src
      make -j 12
 
-his tells us to use shared scripts from the ../data/scripts directory
+You can then test the build with:
+ 
+     ./arcan -T ../data/scripts/ -p ../data/resources/ ../data/appl/welcome
+
+This tells us to use shared scripts from the ../data/scripts directory
 (which implements keymaps, mouse gestures etc.), to use shared resources
-from the ../data/resourcrs directory and launch an application that resides
+from the ../data/resources directory and launch an application that resides
 at ../data/appl/welcome.
 
 If these paths aren't specified relative to current path (./ or ../) or

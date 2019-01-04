@@ -299,6 +299,21 @@ int MAIN_REDIR(int argc, char* argv[])
 	platform_video_preinit();
 	platform_event_preinit();
 
+/*
+ * Protect against launching the arcan instance from an environment where
+ * there already is indication of a connection destination.
+ */
+#ifndef ARCAN_LWA
+	if (getenv("ARCAN_CONNPATH")){
+		if (fork() == 0){
+			if (fork() == 0){
+				execvp("arcan_lwa", argv);
+			}
+		}
+		exit(EXIT_SUCCESS);
+	}
+#endif
+
 	arcan_log_destination(stderr, 0);
 
 	settings.in_monitor = getenv("ARCAN_MONITOR_FD") != NULL;
@@ -591,7 +606,8 @@ int MAIN_REDIR(int argc, char* argv[])
 	arcan_event_init(evctx);
 
 	if (hookscript){
-		char* tmphook = arcan_expand_resource(hookscript, RESOURCE_APPL_SHARED);
+		char* tmphook = arcan_expand_resource(
+			hookscript, RESOURCE_APPL_SHARED | RESOURCE_SYS_SCRIPTS);
 		free(hookscript);
 		hookscript = NULL;
 
@@ -754,6 +770,7 @@ int MAIN_REDIR(int argc, char* argv[])
 
 	free(hookscript);
 	arcan_lua_callvoidfun(main_lua_context, "shutdown", false, NULL);
+
 	arcan_led_shutdown();
 	arcan_event_deinit(evctx);
 	arcan_audio_shutdown();

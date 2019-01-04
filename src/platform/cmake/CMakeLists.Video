@@ -88,6 +88,16 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 		FIND_PACKAGE(OpenGL REQUIRED QUIET)
 		set(VIDEO_LIBRARIES ${VIDEO_LIBRARIES} ${OPENGL_gl_LIBRARY})
 		set(LWA_PLATFORM_STR "darwin")
+	elseif( ${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+		find_package(EGL REQUIRED QUIET)
+		find_package(GBMKMS REQUIRED QUIET)
+
+		list(APPEND VIDEO_LIBRARIES
+			${EGL_LIBRARIES}
+			${GBMKMS_LIBRARIES}
+		)
+		list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
+		set(LWA_PLATFORM_STR "egl-dri-rnode")
 	else()
 		set(LWA_PLATFORM_STR "x11")
 		FIND_PACKAGE(X11 REQUIRED QUIET)
@@ -125,13 +135,13 @@ endif()
 if (INPUT_PLATFORM STREQUAL "evdev")
 	find_package(XKB QUIET)
 	if (XKB_FOUND)
-		amsg("${CL_GRN}evdev: libxkbcommon found, enabling${CL_RST}")
+		amsg("${CL_YEL}evdev    \t${CL_GRN}libxkbcommon${CL_RST}")
 		set_property(SOURCE ${PLATFORM_ROOT}/evdev/event.c APPEND PROPERTY
 			COMPILE_DEFINITIONS HAVE_XKBCOMMON)
 		list(APPEND VIDEO_LIBRARIES ${XKB_LIBRARIES})
 		list(APPEND INCLUDE_DIRS ${XKB_INCLUDE_DIRS})
 	else()
-		amsg("${CL_YEL}evdev: libxkbcommon not found, disabling{CL_RST}")
+		amsg("${CL_YEL}evdev    \t${CL_RED}no libxkbcommon{CL_RST}")
 	endif()
 endif()
 
