@@ -53,6 +53,7 @@ set (TUI_HEADERS
 	${ASD}/shmif/arcan_tui.h
 	${ASD}/shmif/arcan_tuidefs.h
 	${ASD}/shmif/arcan_tuisym.h
+	${ASD}/shmif/arcan_tuiwdigets.h
 )
 
 set (SHMIF_HEADERS
@@ -134,6 +135,7 @@ set(SHMIF_TUI_SOURCES
 	${ASD}/shmif/tui/tsm_unicode.c
 	${ASD}/shmif/tui/shl_htable.c
 	${ASD}/shmif/tui/wcwidth.c
+	${ASD}/shmif/tui/tui_widgets.c
 	${ASD}/engine/arcan_ttf.c
 )
 
