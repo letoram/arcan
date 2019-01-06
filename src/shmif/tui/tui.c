@@ -2828,13 +2828,19 @@ void arcan_tui_set_color(
 	}
 }
 
-void arcan_tui_update_handlers(
-	struct tui_context* tui, const struct tui_cbcfg* cbs, size_t cbs_sz)
+bool arcan_tui_update_handlers(struct tui_context* tui,
+	const struct tui_cbcfg* cbs, struct tui_cbcfg* out, size_t cbs_sz)
 {
-	if (!tui || !cbs || cbs_sz > sizeof(struct tui_cbcfg))
-		return;
+	if (!tui || cbs_sz > sizeof(struct tui_cbcfg))
+		return false;
 
-	memcpy(&tui->handlers, cbs, cbs_sz);
+	if (out)
+		memcpy(out, &tui->handlers, cbs_sz);
+
+	if (cbs){
+		memcpy(&tui->handlers, cbs, cbs_sz);
+	}
+	return true;
 }
 
 bool arcan_tui_switch_screen(struct tui_context* ctx, unsigned ind)

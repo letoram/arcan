@@ -715,10 +715,17 @@ void arcan_tui_request_subwnd(struct tui_context*, unsigned type, uint16_t id);
  * Replace (copy over) the active handler table with a new one.
  * if the provided cbcfg is NULL, no change to the active set will be
  * performed, to drop all callbacks, instead, use:
- * arcan_tui_update_handlers(tui, &(struct tui_cbcfg){}, sizeof(struct tui_cbcfg));
+ * arcan_tui_update_handlers(tui,
+ *     &(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
+ *
+ * If [old] is provided, the old set of handlers will be stored there.
+ *
+ * Returns false if an invalid context was provided, or if the cb_sz was
+ * larger than the .so assumed size of the handler table (application linked
+ * to newer/wrong headers).
  */
-void arcan_tui_update_handlers(
-	struct tui_context*, const struct tui_cbcfg*, size_t cb_sz);
+bool arcan_tui_update_handlers(struct tui_context*,
+	const struct tui_cbcfg* new_handlers, struct tui_cbcfg* old, size_t cb_sz);
 
 /*
  * Signal visibility and position intent for a subwindow [wnd] relative
