@@ -29,7 +29,9 @@
  * the callback returns false or the number of returned responses go out
  * of bounds with whatever internal restrictions exist.
  *
- * If provided, popup will be used until the readline context is _freed
+ * If popup is also provided, the popup context will be used to provide
+ * the completion feedback in, using its input events to update the
+ * parent readline 'target' area.
  *
  * and editing similar
  * completion and validation feedback

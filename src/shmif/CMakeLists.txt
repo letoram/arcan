@@ -53,7 +53,7 @@ set (TUI_HEADERS
 	${ASD}/shmif/arcan_tui.h
 	${ASD}/shmif/arcan_tuidefs.h
 	${ASD}/shmif/arcan_tuisym.h
-	${ASD}/shmif/arcan_tuiwdigets.h
+	${ASD}/shmif/arcan_tuiwidgets.h
 )
 
 set (SHMIF_HEADERS
