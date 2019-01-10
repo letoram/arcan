@@ -712,12 +712,46 @@ struct tui_cell arcan_tui_getxy(struct tui_context*, size_t x, size_t y,bool f);
 void arcan_tui_request_subwnd(struct tui_context*, unsigned type, uint16_t id);
 
 /*
+ * Extended version of request_subwnd that allows you to also specify hints
+ * to the window manager.
+ *
+ * The argument interpretation is the same as for arcan_tui_request_subwnd,
+ * along with the common 'struct + sizeof(struct)' pattern for additional
+ * arguments.
+ *
+ * These additional arguments server as positioning and sizing hints to
+ * allow the window manager to make better decisions on where to place new
+ * windows and what its respectable sizes are.
+ */
+enum tui_subwnd_hint {
+	TUIWND_SPLIT_NONE = 0,
+	TUIWND_SPLIT_LEFT = 1,
+	TUIWND_SPLIT_RIGHT = 2,
+	TUIWND_SPLIT_TOP = 3,
+	TUIWND_SPLIT_BOTTOM = 4,
+	TUIWND_JOIN_LEFT = 5,
+	TUIWND_JOIN_RIGHT = 6,
+	TUIWND_JOIN_TOP = 7,
+	TUIWND_JOIN_DOWN = 8
+};
+
+struct tui_subwnd_req {
+	int dir;
+	size_t rows;
+	size_t columns;
+	enum tui_subwnd_hint hint;
+};
+
+void arcan_tui_request_subwnd_ext(struct tui_context*,
+	unsigned type, uint16_t id, struct tui_subwnd_req req, size_t req_sz);
+
+/*
  * Replace (copy over) the active handler table with a new one.
  * if the provided cbcfg is NULL, no change to the active set will be
  * performed, to drop all callbacks, instead, use:
  * arcan_tui_update_handlers(tui,
  *     &(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
- *
+ *:vs
  * If [old] is provided, the old set of handlers will be stored there.
  *
  * Returns false if an invalid context was provided, or if the cb_sz was

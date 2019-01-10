@@ -81,12 +81,18 @@
 -- frameserver can act as a regular input device. Be careful with devid
 -- collisions as that namespace is only 16-bits.
 --
--- @note: "segment_request" {kind, width, height, cookie, type, split-dir} -
+-- @note: "segment_request" {
+-- kind, width, height, cookie, type, (split-dir | position-dir)}
 -- frameserver would like an additional segment to work with, see
 -- ref:accept_target for how to accept the request as the default is deny.
+-- The hint- sizes are in pixels, even if the segment may operate in a cell-
+-- based mode (tui and terminal clients).
 -- The split-dir is a hint for tiling window management and for cases where
--- the source-window can logically be split into two halves, with the new
+-- the source-window can logically be split into two parts, with the new
 -- one best placed in one direction out of: left, right, top, bottom.
+-- Instead of a split-dir a position dir may be defined. This indicates that
+-- the window should be positioned relative to the parent, but that the parent
+-- should retain the same size, if possible.
 --
 -- @note: "alert" {message} - version of "message" that hints a user-interface
 -- alert to the segment. If "message" is empty, alert is to be interpreted as

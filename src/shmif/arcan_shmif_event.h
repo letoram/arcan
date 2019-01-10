@@ -1439,10 +1439,14 @@ enum ARCAN_TARGET_SKIPMODE {
  * (yofs)   - suggested offset relative to parent segment (parent hint)
  * (kind)   - desired type of the segment request, can be UNKNOWN
  * (dir)    - 0: no hint (xofs, yofs applied)
- *            1: split-hl : (ofs-ignore), split parent, new left
- *            2: split-hr : (ofs-ignore), split parent, new right
- *            3: split-vt : (ofs-ignore), split parent, new top
- *            4: split-vb : (ofs-ignore), split parent, new bottom
+ *            1: split-l : (ofs-ignore), split parent, new left
+ *            2: split-r : (ofs-ignore), split parent, new right
+ *            3: split-t : (ofs-ignore), split parent, new top
+ *            4: split-b : (ofs-ignore), split parent, new bottom
+ *            5: attach-l : (ofs-ignore), position left of parent
+ *            6: attach-r : (ofs-ignore), position right of parent
+ *            7: attach-t : (ofs-ignore), position top of parent
+ *            8: attach-b : (ofs-ignore), position below parent
  */
 		struct {
 			uint32_t id;
