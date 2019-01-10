@@ -1737,6 +1737,41 @@ void arcan_tui_request_subwnd(
 	});
 }
 
+void arcan_tui_request_subwnd_ext(struct tui_context* T,
+	unsigned type, uint16_t id, struct tui_subwnd_req req, size_t req_sz)
+{
+	if (!T || !T->acon.addr)
+		return;
+
+	switch (type){
+	case TUI_WND_TUI:
+	case TUI_WND_POPUP:
+	case TUI_WND_DEBUG:
+	case TUI_WND_HANDOVER:
+	break;
+	default:
+		return;
+	}
+
+	struct arcan_event ev = {
+		.ext.kind = ARCAN_EVENT(SEGREQ),
+		.ext.segreq.kind = type,
+		.ext.segreq.id = (uint32_t) id | (1 << 31),
+		.ext.segreq.width = T->acon.w,
+		.ext.segreq.height = T->acon.h
+	};
+
+/* in future revisions, go with offsetof to annotate the new fields */
+	if (req_sz == sizeof(struct tui_subwnd_req)){
+		ev.ext.segreq.width = req.columns * T->cell_w;
+		ev.ext.segreq.height = req.rows * T->cell_h;
+		ev.ext.segreq.dir = req.hint;
+		return;
+	}
+
+	arcan_shmif_enqueue(&T->acon, &ev);
+}
+
 static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 {
 	switch (ev->kind){
