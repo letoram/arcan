@@ -579,6 +579,26 @@ struct tui_process_res {
 	uint32_t bad;
 	int errc;
 };
+
+enum tui_subwnd_hint {
+	TUIWND_SPLIT_NONE = 0,
+	TUIWND_SPLIT_LEFT = 1,
+	TUIWND_SPLIT_RIGHT = 2,
+	TUIWND_SPLIT_TOP = 3,
+	TUIWND_SPLIT_BOTTOM = 4,
+	TUIWND_JOIN_LEFT = 5,
+	TUIWND_JOIN_RIGHT = 6,
+	TUIWND_JOIN_TOP = 7,
+	TUIWND_JOIN_DOWN = 8
+};
+
+struct tui_subwnd_req {
+	int dir;
+	size_t rows;
+	size_t columns;
+	enum tui_subwnd_hint hint;
+};
+
 #ifndef ARCAN_TUI_DYNAMIC
 
 /*
@@ -723,25 +743,6 @@ void arcan_tui_request_subwnd(struct tui_context*, unsigned type, uint16_t id);
  * allow the window manager to make better decisions on where to place new
  * windows and what its respectable sizes are.
  */
-enum tui_subwnd_hint {
-	TUIWND_SPLIT_NONE = 0,
-	TUIWND_SPLIT_LEFT = 1,
-	TUIWND_SPLIT_RIGHT = 2,
-	TUIWND_SPLIT_TOP = 3,
-	TUIWND_SPLIT_BOTTOM = 4,
-	TUIWND_JOIN_LEFT = 5,
-	TUIWND_JOIN_RIGHT = 6,
-	TUIWND_JOIN_TOP = 7,
-	TUIWND_JOIN_DOWN = 8
-};
-
-struct tui_subwnd_req {
-	int dir;
-	size_t rows;
-	size_t columns;
-	enum tui_subwnd_hint hint;
-};
-
 void arcan_tui_request_subwnd_ext(struct tui_context*,
 	unsigned type, uint16_t id, struct tui_subwnd_req req, size_t req_sz);
 
@@ -1014,6 +1015,8 @@ typedef bool (* PTUICOPY)(struct tui_context*, const char*);
 typedef void (* PTUIIDENT)(struct tui_context*, const char*);
 typedef struct tui_cell (* PTUIGETXY)(struct tui_context*, size_t, size_t, bool);
 typedef void (* PTUIREQSUB)(struct tui_context*, unsigned, uint16_t);
+typedef void (* PTUIREQSUBEXT)
+	(struct tui_context*, unsigned, uint16_t, struct tui_subwnd_req, size_t);
 typedef void (* PTUIUPDHND)(struct tui_context*, const struct tui_cbcfg*, size_t);
 typedef void (* PTUIWNDHINT)(struct tui_context*, struct tui_context*, int, int, int);
 typedef int (* PTUIALLOCSCR)(struct tui_context*);
@@ -1080,6 +1083,7 @@ static PTUICOPY arcan_tui_copy;
 static PTUIIDENT arcan_tui_ident;
 static PTUIGETXY arcan_tui_getxy;
 static PTUIREQSUB arcan_tui_request_subwnd;
+static PTUIREQSUBEXT arcan_tui_request_subwnd_ext;
 static PTUIUPDHND arcan_tui_update_handlers;
 static PTUIWNDHINT arcan_tui_wndhint;
 static PTUIALLOCSCR arcan_tui_alloc_screen;
@@ -1148,6 +1152,7 @@ M(PTUICOPY,arcan_tui_copy);
 M(PTUIIDENT,arcan_tui_ident);
 M(PTUIGETXY,arcan_tui_getxy);
 M(PTUIREQSUB,arcan_tui_request_subwnd);
+M(PTUIREQSUBEXT,arcan_tui_request_subwnd_ext);
 M(PTUIUPDHND,arcan_tui_update_handlers);
 M(PTUIWNDHINT,arcan_tui_wndhint);
 M(PTUIALLOCSCR,arcan_tui_alloc_screen);
