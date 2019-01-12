@@ -891,9 +891,15 @@ void arcan_tui_get_color(struct tui_context* tui, int group, uint8_t rgb[3]);
 void arcan_tui_set_color(struct tui_context* tui, int group, uint8_t rgb[3]);
 
 /*
- * reset state-tracking, scrollback buffers, ...
+ * Reset state-tracking, scrollback buffers, ...
+ * This does not reset/rebuild dynamic keybindings
  */
 void arcan_tui_reset(struct tui_context*);
+
+/*
+ * Reset and requery the list of active inputs
+ */
+void arcan_tui_reset_labels(struct tui_context*);
 
 /*
  * modify the current flags/state bitmask with the values of tui_flags ( |= )
@@ -1030,6 +1036,7 @@ typedef void (* PTUICURSORPOS)(struct tui_context*, size_t*, size_t*);
 typedef void (* PTUIGETCOLOR)(struct tui_context* tui, int, uint8_t*);
 typedef void (* PTUISETCOLOR)(struct tui_context* tui, int, uint8_t*);
 typedef void (* PTUIRESET)(struct tui_context*);
+typedef void (* PTUIRESETLABELS)(struct tui_context*);
 typedef void (* PTUISETFLAGS)(struct tui_context*, int);
 typedef void (* PTUIRESETFLAGS)(struct tui_context*, int);
 typedef void (* PTUISETTABSTOP)(struct tui_context*);
@@ -1097,6 +1104,7 @@ static PTUICURSORPOS arcan_tui_cursorpos;
 static PTUIGETCOLOR arcan_tui_get_color;
 static PTUISETCOLOR arcan_tui_set_color;
 static PTUIRESET arcan_tui_reset;
+static PTUIRESETLABELS arcan_tui_reset_labels;
 static PTUISETFLAGS arcan_tui_set_flags;
 static PTUIRESETFLAGS arcan_tui_reset_flags;
 static PTUISETTABSTOP arcan_tui_set_tabstop;
@@ -1166,6 +1174,7 @@ M(PTUICURSORPOS,arcan_tui_cursorpos);
 M(PTUIGETCOLOR,arcan_tui_get_color);
 M(PTUISETCOLOR,arcan_tui_set_color);
 M(PTUIRESET,arcan_tui_reset);
+M(PTUIRESETLABELS,arcan_tui_reset_labels);
 M(PTUISETFLAGS,arcan_tui_set_flags);
 M(PTUIRESETFLAGS,arcan_tui_reset_flags);
 M(PTUISETTABSTOP,arcan_tui_set_tabstop);

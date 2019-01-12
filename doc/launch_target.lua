@@ -108,14 +108,21 @@
 -- @note: "content_state" {rel_x, rel_y, x_size, y_size} - indicates that
 -- scrollbars could/should be shown
 --
--- @note: "input_label" {labelhint, datatype} - suggest that the target
--- supports customized abstract input labels for use with the target_input
--- function. May be called repeatedly, input_label values are restricted
--- to 16 characters in the [a-z,0-9_] set with ? values indicating that
--- the caller tried to add an invalid value. This also comes with an
--- initial and a description field, where initial suggest the initial
+-- @note: "input_label" {labelhint, datatype, initial, modifiers} -
+-- suggest that the target supports customized abstract input labels for use
+-- with the target_input function. May be called repeatedly, input_label values
+-- are restricted to 16 characters in the [a-z,0-9_] set with ? values
+-- indicating that the caller tried to add an invalid value. This also comes
+-- with an initial and a description field, where initial suggest the initial
 -- keybind if one should be available, and the description is a localized
 -- user-presentable string (UTF-8).
+-- The datatype field match the ones available from the input(iotbl) event
+-- handler. If initial is set (to > 0) a suggested default binding is provided
+-- with the corresponding keysym (see builtin/keyboard.lua for symbol table)
+-- and modifiers).
+-- Upon receiving an empty input label (#labelhint == 0) the previously
+-- accumulated set of labels are no longer accepted and and state tracking
+-- should be reset.
 --
 -- @note: "clock" (value, monotonic, once) - frameserver wants a periodic or
 -- fire-once stepframe event call. monotonic suggests the time-frame relative to
