@@ -1245,6 +1245,8 @@ struct lent {
 	const char* lbl;
 	const char* descr;
 	bool(*ptr)(struct tui_context*);
+	uint16_t initial;
+	uint16_t modifiers;
 };
 
 static bool setup_font(struct tui_context* tui,
@@ -1306,7 +1308,7 @@ static const struct lent labels[] = {
 	{1 | 2, "COPY_AT", "Copy word at cursor", select_at},
 	{1 | 2, "COPY_ROW", "Copy cursor row", select_row},
 	{1, "MOUSE_FORWARD", "Toggle mouse forwarding", mouse_forward},
-	{1 | 2, "SCROLL_LOCK", "Arrow- keys to pageup/down", scroll_lock},
+	{1 | 2, "SCROLL_LOCK", "Arrow- keys to pageup/down", scroll_lock, TUIK_SCROLLLOCK},
 	{1 | 2, "UP", "(scroll-lock) page up, UP keysym", move_up},
 	{1 | 2, "DOWN", "(scroll-lock) page down, DOWN keysym", move_down},
 	{1, "COPY_WND", "Copy visible area to new passive window", copy_window},
@@ -1326,9 +1328,7 @@ static void expose_labels(struct tui_context* tui)
 		.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL
 	};
 
-/*
- * NOTE: We do not currently expose a suggested default
- */
+/* expose a set of basic built-in controls shared by all users */
 	while(cur->lbl){
 		if (tui->subseg && (cur->ctx & 2) == 0)
 			continue;
@@ -1340,9 +1340,13 @@ static void expose_labels(struct tui_context* tui)
 		snprintf(ev.ext.labelhint.descr,
 			COUNT_OF(ev.ext.labelhint.descr), "%s", cur->descr);
 		cur++;
+
+		ev.ext.labelhint.initial = cur->initial;
+		ev.ext.labelhint.modifiers = cur->modifiers;
 		arcan_shmif_enqueue(&tui->acon, &ev);
 	}
 
+/* then forward to a possible callback handler */
 	size_t ind = 0;
 	if (tui->handlers.query_label){
 		while (true){
