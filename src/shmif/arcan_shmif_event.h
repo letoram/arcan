@@ -746,6 +746,11 @@ enum ARCAN_EVENT_EXTERNAL {
  * Hint that a specific input label is supported. Uses the labelhint
  * substructure and label is subject to A-Z,0-9_ normalization with * used
  * as wildchar character for incremental indexing.
+ *
+ * Multiple labels can be exposed, and it is up to the appl- layer to track
+ * these accordingly and tag outgoing input events. Sending an empty labelhint
+ * resets the tracked set.
+ *
  */
 	EVENT_EXTERNAL_LABELHINT,
 

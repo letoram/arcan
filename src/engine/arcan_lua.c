@@ -4052,7 +4052,8 @@ static const char* lookup_idatatype(int type)
 		"analog",
 		"digital",
 		"translated",
-		"touch"
+		"touch",
+		"eyes"
 	};
 
 	if (type < 0 || type > COUNT_OF(idatalut))

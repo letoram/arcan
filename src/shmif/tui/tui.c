@@ -1328,6 +1328,9 @@ static void expose_labels(struct tui_context* tui)
 		.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL
 	};
 
+/* send an empty label first as a reset */
+	arcan_shmif_enqueue(&tui->acon, &ev);
+
 /* expose a set of basic built-in controls shared by all users */
 	while(cur->lbl){
 		if (tui->subseg && (cur->ctx & 2) == 0)
@@ -3221,13 +3224,22 @@ void arcan_tui_cursorpos(struct tui_context* c, size_t* x, size_t* y)
 		*y = tsm_screen_get_cursor_y(c->screen);
 }
 
+void arcan_tui_reset_labels(struct tui_context* c)
+{
+	if (!c)
+		return;
+
+	expose_labels(c);
+}
+
 void arcan_tui_reset(struct tui_context* c)
 {
-	if (c){
-		tsm_utf8_mach_reset(c->ucsconv);
-		tsm_screen_reset(c->screen);
-		flag_cursor(c);
-	}
+	if (!c)
+		return;
+
+	tsm_utf8_mach_reset(c->ucsconv);
+	tsm_screen_reset(c->screen);
+	flag_cursor(c);
 }
 
 void arcan_tui_dimensions(struct tui_context* c, size_t* rows, size_t* cols)
