@@ -1331,24 +1331,6 @@ static void expose_labels(struct tui_context* tui)
 /* send an empty label first as a reset */
 	arcan_shmif_enqueue(&tui->acon, &ev);
 
-/* expose a set of basic built-in controls shared by all users */
-	while(cur->lbl){
-		if (tui->subseg && (cur->ctx & 2) == 0)
-			continue;
-		if (!tui->subseg && (cur->ctx & 1) == 0)
-			continue;
-
-		snprintf(ev.ext.labelhint.label,
-			COUNT_OF(ev.ext.labelhint.label), "%s", cur->lbl);
-		snprintf(ev.ext.labelhint.descr,
-			COUNT_OF(ev.ext.labelhint.descr), "%s", cur->descr);
-		cur++;
-
-		ev.ext.labelhint.initial = cur->initial;
-		ev.ext.labelhint.modifiers = cur->modifiers;
-		arcan_shmif_enqueue(&tui->acon, &ev);
-	}
-
 /* then forward to a possible callback handler */
 	size_t ind = 0;
 	if (tui->handlers.query_label){
@@ -1366,7 +1348,26 @@ static void expose_labels(struct tui_context* tui)
 			ev.ext.labelhint.idatatype = dstlbl.idatatype;
 			ev.ext.labelhint.modifiers = dstlbl.modifiers;
 			ev.ext.labelhint.initial = dstlbl.initial;
+			arcan_shmif_enqueue(&tui->acon, &ev);
 		}
+	}
+
+/* expose a set of basic built-in controls shared by all users */
+	while(cur->lbl){
+		if (tui->subseg && (cur->ctx & 2) == 0)
+			continue;
+		if (!tui->subseg && (cur->ctx & 1) == 0)
+			continue;
+
+		snprintf(ev.ext.labelhint.label,
+			COUNT_OF(ev.ext.labelhint.label), "%s", cur->lbl);
+		snprintf(ev.ext.labelhint.descr,
+			COUNT_OF(ev.ext.labelhint.descr), "%s", cur->descr);
+		cur++;
+
+		ev.ext.labelhint.initial = cur->initial;
+		ev.ext.labelhint.modifiers = cur->modifiers;
+		arcan_shmif_enqueue(&tui->acon, &ev);
 	}
 }
 
