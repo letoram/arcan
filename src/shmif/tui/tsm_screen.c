@@ -442,6 +442,7 @@ void tsm_screen_erase_region(struct tsm_screen *con,
 	unsigned int to;
 	struct line *line;
 
+	inc_age(con);
 	con->age = con->age_cnt;
 
 	if (y_to >= con->size_y)
@@ -1716,8 +1717,6 @@ void tsm_screen_erase_cursor(struct tsm_screen *con)
 	if (!con)
 		return;
 
-	inc_age(con);
-
 	if (con->cursor_x >= con->size_x)
 		x = con->size_x - 1;
 	else
@@ -1733,8 +1732,6 @@ void tsm_screen_erase_chars(struct tsm_screen *con, unsigned int num)
 
 	if (!con || !num)
 		return;
-
-	inc_age(con);
 
 	if (con->cursor_x >= con->size_x)
 		x = con->size_x - 1;
@@ -1754,8 +1751,6 @@ void tsm_screen_erase_cursor_to_end(struct tsm_screen *con,
 	if (!con)
 		return;
 
-	inc_age(con);
-
 	if (con->cursor_x >= con->size_x)
 		x = con->size_x - 1;
 	else
@@ -1771,8 +1766,6 @@ void tsm_screen_erase_home_to_cursor(struct tsm_screen *con, bool protect)
 	if (!con)
 		return;
 
-	inc_age(con);
-
 	tsm_screen_erase_region(con,
 		0, con->cursor_y, con->cursor_x, con->cursor_y, protect);
 }
@@ -1783,8 +1776,6 @@ void tsm_screen_erase_current_line(struct tsm_screen *con,
 {
 	if (!con)
 		return;
-
-	inc_age(con);
 
 	tsm_screen_erase_region(con,
 		0, con->cursor_y, con->size_x - 1, con->cursor_y, protect);
@@ -1797,8 +1788,6 @@ void tsm_screen_erase_screen_to_cursor(struct tsm_screen *con,
 	if (!con)
 		return;
 
-	inc_age(con);
-
 	tsm_screen_erase_region(con, 0, 0, con->cursor_x, con->cursor_y, protect);
 }
 
@@ -1810,8 +1799,6 @@ void tsm_screen_erase_cursor_to_screen(struct tsm_screen *con,
 
 	if (!con)
 		return;
-
-	inc_age(con);
 
 	if (con->cursor_x >= con->size_x)
 		x = con->size_x - 1;
