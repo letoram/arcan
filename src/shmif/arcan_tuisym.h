@@ -85,48 +85,36 @@ enum tui_subwnd_type {
  * strictly forced (outside cursor, bg, fg, ...) but rather intended as hints
  * so that the client can match colors accordingly, or just work with the
  * abstract groups.
+ *
+ * Flags:
+ * [R] : reference color, use for chosing custom colors, implied [D].
+ * [D] : foreground/background entry treated the same
+ * [B] : set_color and set_bgcolor will work on different values
+ *
+ * Even if the bgcolor isn't explicitly set (either by caller or via the
+ * display server), the elements that return a bgcolor
  */
 enum tui_color_group {
 /* 0 / 1 are reserved values */
 
 /* Primary and secondary colors are hints to a caller that have preset colors
  * to chose from and want guidance on which ones to pick. */
-	TUI_COL_PRIMARY = 2,
-	TUI_COL_SECONDARY,
-
-/* the reference background color */
-	TUI_COL_BG,
-
-/* majority of text */
-	TUI_COL_TEXT,
-
-/* cursor in two states, normal (client interprets combinations) and
- * 'alternate' where defaults take presedence */
-	TUI_COL_CURSOR,
-	TUI_COL_ALTCURSOR,
-
-/* text that indicate some form of marking/selection status */
-	TUI_COL_HIGHLIGHT,
-
-/* type/category indicators */
-	TUI_COL_LABEL,
-
-/* three levels of special colors for trying to get user attention to some
- * relevant (warning) important (error) or serious (alert) content change */
-	TUI_COL_WARNING,
-	TUI_COL_ERROR,
-	TUI_COL_ALERT,
-
-/* color to indicate content that reference some external data or navigation
- * option, should work well with highlight (selection status) and inactive
- * (known reference but currently inaccessible) */
-	TUI_COL_REFERENCE,
-
-/* the other side of 'highlight' indicating something that could normally
- * have been highlighted but is inaccessible for some reason */
-	TUI_COL_INACTIVE
-}
-;
+	TUI_COL_PRIMARY = 2, /* [R] Reference base color */
+	TUI_COL_SECONDARY,   /* [R] Reference alternate base color */
+	TUI_COL_BG,          /* [R] Reference background */
+	TUI_COL_TEXT,        /* [B] Default text */
+	TUI_COL_CURSOR,      /* [D] Cursor in normal state */
+	TUI_COL_ALTCURSOR,   /* [D] Cursor in special state (scrollback) */
+	TUI_COL_HIGHLIGHT,   /* [B] Copy / Paste selection */
+	TUI_COL_LABEL,       /* [B] Meta- text such as prompts */
+	TUI_COL_WARNING,     /* [B] Warnings, things to notice but not act on */
+	TUI_COL_ERROR,       /* [B] Indicate a problem that should be acted upon */
+	TUI_COL_ALERT,       /* [B] Grab attention attention */
+	TUI_COL_REFERENCE,   /* [B] External reference / link (e.g. url) */
+	TUI_COL_INACTIVE,    /* [B] Possible highlight/label but not in use due to
+													    some state dependent reason */
+	TUI_COL_UI           /* [B] internal UI elements / bars / ... */
+};
 
 enum tui_cursors {
 	CURSOR_BLOCK = 0,
@@ -137,43 +125,29 @@ enum tui_cursors {
 	CURSOR_END
 };
 
+/*
+ * [Deprecated] will be removed during renderer refactor
+ */
 enum tui_render_flags {
-/*
- * force the use of bitmapped built-in fonts
- */
 	TUI_RENDER_BITMAP = 1,
-
-/*
- * double-buffered rendering, may cut down on latency during shaped and
- * more advanced / custom rendering
- */
 	TUI_RENDER_DBLBUF = 2,
-
-/*
- * attempt GPU supported acceleration
- */
-	TUI_RENDER_ACCEL = 4,
-
-/*
- * enable a shaped based rendering approach, this is costly and requires
- * use of cell attributes for aligning / fitting text output
- */
+	TUI_RENDER_ACCEL  = 4,
 	TUI_RENDER_SHAPED = 8
 };
 
 /* bitmap derived from shmif_event, repeated here for namespace purity */
 enum {
-	TUIM_NONE = 0x0000,
+	TUIM_NONE   = 0x0000,
 	TUIM_LSHIFT = 0x0001,
 	TUIM_RSHIFT = 0x0002,
-	TUIM_LCTRL = 0x0040,
-	TUIM_RCTRL = 0x0080,
-	TUIM_LALT = 0x0100,
-	TUIM_RALT = 0x0200,
-	TUIM_ALT = 0x0300,
-	TUIM_LMETA = 0x0400,
-	TUIM_RMETA = 0x0800,
-	TUIM_META = 0x0c00,
+	TUIM_LCTRL  = 0x0040,
+	TUIM_RCTRL  = 0x0080,
+	TUIM_LALT   = 0x0100,
+	TUIM_RALT   = 0x0200,
+	TUIM_ALT    = 0x0300,
+	TUIM_LMETA  = 0x0400,
+	TUIM_RMETA  = 0x0800,
+	TUIM_META   = 0x0c00,
 	TUIM_REPEAT = 0x8000,
 } tuim_syms;
 

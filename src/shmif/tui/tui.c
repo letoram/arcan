@@ -2863,6 +2863,43 @@ void arcan_tui_get_color(
 	}
 }
 
+void arcan_tui_get_bgcolor(
+	struct tui_context* tui, int group, uint8_t rgb[3])
+{
+	switch (group){
+/* IF a background has been explicitly set for the color groups,
+ * enable it, otherwise fall back to the reference TUI_COL_BG */
+	case TUI_COL_TEXT:
+	case TUI_COL_HIGHLIGHT:
+	case TUI_COL_LABEL:
+	case TUI_COL_WARNING:
+	case TUI_COL_ERROR:
+	case TUI_COL_ALERT:
+	case TUI_COL_REFERENCE:
+	case TUI_COL_INACTIVE:
+	case TUI_COL_UI:
+		memcpy(rgb, tui->colors[group].bgset ?
+			tui->colors[group].bg : tui->colors[TUI_COL_BG].rgb, 3);
+	break;
+
+/* for the reference groups, we always take BG as BG color */
+	case TUI_COL_PRIMARY:
+	case TUI_COL_SECONDARY:
+	case TUI_COL_BG:
+	case TUI_COL_CURSOR:
+	case TUI_COL_ALTCURSOR:
+	default:
+		memcpy(rgb, tui->colors[TUI_COL_BG].rgb, 3);
+	break;
+	}
+}
+
+void arcan_tui_set_bgcolor(
+	struct tui_context* tui, int group, uint8_t rgb[3])
+{
+
+}
+
 void arcan_tui_set_color(
 	struct tui_context* tui, int group, uint8_t rgb[3])
 {

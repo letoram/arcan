@@ -880,13 +880,26 @@ void arcan_tui_readline(struct tui_context*,
 */
 
 /*
- * Fill out rgb[] with the current values of the specified color group.
- * see the enum tui_color_group for valid values.
+ * Fill out rgb[] with the current foreground values of the specified color
+ * group. see the enum tui_color_group for valid values.
  */
 void arcan_tui_get_color(struct tui_context* tui, int group, uint8_t rgb[3]);
 
 /*
- * Update the color field for the specified group. This
+ * Fill out rgb[] with the matching background value for the specified color
+ * group. see the enum tui_color_group for valid values. For some groups, the
+ * foreground and background color group slots are shared.
+ */
+void arcan_tui_get_bgcolor(struct tui_context* tui, int group, uint8_t rgb[3]);
+
+/*
+ * Update the foreground color field for the specified group.
+ */
+void arcan_tui_set_color(struct tui_context* tui, int group, uint8_t rgb[3]);
+
+/*
+ * Update the background color field for the specified group. For some groups,
+ * the foreground and background color group slots are shared.
  */
 void arcan_tui_set_color(struct tui_context* tui, int group, uint8_t rgb[3]);
 
@@ -1034,7 +1047,9 @@ typedef bool (* PTUIWRITEU8)(struct tui_context*, const uint8_t*, size_t, struct
 typedef bool (* PTUIWRITESTR)(struct tui_context*, const char*, struct tui_screen_attr*);
 typedef void (* PTUICURSORPOS)(struct tui_context*, size_t*, size_t*);
 typedef void (* PTUIGETCOLOR)(struct tui_context* tui, int, uint8_t*);
+typedef void (* PTUIGETBGCOLOR)(struct tui_context* tui, int, uint8_t*);
 typedef void (* PTUISETCOLOR)(struct tui_context* tui, int, uint8_t*);
+typedef void (* PTUISETBGCOLOR)(struct tui_context* tui, int, uint8_t*);
 typedef void (* PTUIRESET)(struct tui_context*);
 typedef void (* PTUIRESETLABELS)(struct tui_context*);
 typedef void (* PTUISETFLAGS)(struct tui_context*, int);
@@ -1102,7 +1117,9 @@ static PTUIWRITEU8 arcan_tui_writeu8;
 static PTUIWRITESTR arcan_tui_writestr;
 static PTUICURSORPOS arcan_tui_cursorpos;
 static PTUIGETCOLOR arcan_tui_get_color;
+static PTUIGETBGCOLOR arcan_tui_get_bgcolor;
 static PTUISETCOLOR arcan_tui_set_color;
+static PTUISETBGCOLOR arcan_tui_set_bgcolor;
 static PTUIRESET arcan_tui_reset;
 static PTUIRESETLABELS arcan_tui_reset_labels;
 static PTUISETFLAGS arcan_tui_set_flags;
@@ -1172,7 +1189,9 @@ M(PTUIWRITEU8,arcan_tui_writeu8);
 M(PTUIWRITESTR,arcan_tui_writestr);
 M(PTUICURSORPOS,arcan_tui_cursorpos);
 M(PTUIGETCOLOR,arcan_tui_get_color);
+M(PTUIGETBGCOLOR,arcan_tui_get_bgcolor);
 M(PTUISETCOLOR,arcan_tui_set_color);
+M(PTUISETBGCOLOR,arcan_tui_set_bgcolor);
 M(PTUIRESET,arcan_tui_reset);
 M(PTUIRESETLABELS,arcan_tui_reset_labels);
 M(PTUISETFLAGS,arcan_tui_set_flags);

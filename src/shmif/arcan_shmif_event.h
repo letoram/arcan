@@ -518,9 +518,11 @@ enum ARCAN_TARGET_COMMAND {
 
 /*
  * Graph- mode is a special case thing for switching between active
- * representation for a specific segment. It is implementation defined and
- * primarily used in custom LWA- targeted appls that need custom frameservers
- * as well (e.g. the Senseye project).
+ * representation for a specific segment. It is a reserved implementation
+ * defined command used for special segment types, typically TUI. See the
+ * definition for target_graphmode.lua and the corresponding tuisym.h for more
+ * details.
+ *
  * ioev[0].iv = mode,
  * ioev[1].fv .. ioev[4].fv = user defined, mode related values
  */

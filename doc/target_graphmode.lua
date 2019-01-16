@@ -12,15 +12,20 @@
 -- used to hint color preferences.
 --
 -- For all types, *modeid* of 0 is a 'commit and apply', while 1 is 'buffer until
--- commit'. Then, for color preferences, the defined *modeid* values are:
+-- commit'. Then, for foreground color preferences, the defined *modeid* values are:
 --
 -- primary (2), secondary (3), background (4), text (5), cursor (6), altcursor (7),
 -- hilight (8), label (9), warning (10), error (11), alert (12), inactive (13),
--- reference (14).
+-- reference (14), ui-background (15).
 --
 -- These all map *mval* to red (0..255), *mval2* to green (0..255) and *mval3*
 -- to blue (0..255). If no values are provided for the specified channel, it will
 -- default to 0.
+--
+-- Some of the color slots (5, 8, 9, 10, 11, 12, 13, 14) can have a custom
+-- background color as well, toggle the 8th bit (bit.bor(modeid, 255)) to set
+-- a different background color, otherwise the (4) or (15) category will be
+-- used by default.
 --
 -- For other recipients, the values are implementation defined and primarily
 -- intended for custom projects.
