@@ -589,7 +589,8 @@ enum tui_subwnd_hint {
 	TUIWND_JOIN_LEFT = 5,
 	TUIWND_JOIN_RIGHT = 6,
 	TUIWND_JOIN_TOP = 7,
-	TUIWND_JOIN_DOWN = 8
+	TUIWND_JOIN_DOWN = 8,
+	TUIWND_TAB = 9
 };
 
 struct tui_subwnd_req {
@@ -880,6 +881,15 @@ void arcan_tui_readline(struct tui_context*,
 */
 
 /*
+ * Convenience, get a filled out attr structure for the specific color group
+ * with the other properties being the 'default'. This consolidates:
+ * attr = arcan_tui_defattr(tui, NULL)
+ * arcan_tui_get_color(tui, group, attr.fg)
+ * arcan_tui_getbgcolor(tui, group, attr.bg)
+ */
+struct tui_screen_attr arcan_tui_defcattr(struct tui_context* tui, int group);
+
+/*
  * Fill out rgb[] with the current foreground values of the specified color
  * group. see the enum tui_color_group for valid values.
  */
@@ -1012,10 +1022,12 @@ int arcan_tui_set_margins(struct tui_context*, size_t top, size_t bottom);
 void arcan_tui_dimensions(struct tui_context*, size_t* rows, size_t* cols);
 
 /*
- * override the default attributes that apply to resets etc.
+ * override the default attributes that apply to resets etc.  This will return
+ * the previous default attribute. If the [attr] argument is null, no change
+ * will be performed.
  */
 struct tui_screen_attr arcan_tui_defattr(
-	struct tui_context*, struct tui_screen_attr*);
+	struct tui_context*, struct tui_screen_attr* attr);
 void arcan_tui_refinc(struct tui_context*);
 void arcan_tui_refdec(struct tui_context*);
 
@@ -1046,6 +1058,7 @@ typedef void (* PTUIWRITE)(struct tui_context*, uint32_t, struct tui_screen_attr
 typedef bool (* PTUIWRITEU8)(struct tui_context*, const uint8_t*, size_t, struct tui_screen_attr*);
 typedef bool (* PTUIWRITESTR)(struct tui_context*, const char*, struct tui_screen_attr*);
 typedef void (* PTUICURSORPOS)(struct tui_context*, size_t*, size_t*);
+typedef struct tui_screen_attr (* PTUIDEFCATTR)(struct tui_context*, int);
 typedef void (* PTUIGETCOLOR)(struct tui_context* tui, int, uint8_t*);
 typedef void (* PTUIGETBGCOLOR)(struct tui_context* tui, int, uint8_t*);
 typedef void (* PTUISETCOLOR)(struct tui_context* tui, int, uint8_t*);
@@ -1116,6 +1129,7 @@ static PTUIWRITE arcan_tui_write;
 static PTUIWRITEU8 arcan_tui_writeu8;
 static PTUIWRITESTR arcan_tui_writestr;
 static PTUICURSORPOS arcan_tui_cursorpos;
+static PTUIDEFCATTR arcan_tui_defcattr;
 static PTUIGETCOLOR arcan_tui_get_color;
 static PTUIGETBGCOLOR arcan_tui_get_bgcolor;
 static PTUISETCOLOR arcan_tui_set_color;
@@ -1188,6 +1202,7 @@ M(PTUIWRITE,arcan_tui_write);
 M(PTUIWRITEU8,arcan_tui_writeu8);
 M(PTUIWRITESTR,arcan_tui_writestr);
 M(PTUICURSORPOS,arcan_tui_cursorpos);
+M(PTUIDEFCATTR,arcan_tui_defcattr);
 M(PTUIGETCOLOR,arcan_tui_get_color);
 M(PTUIGETBGCOLOR,arcan_tui_get_bgcolor);
 M(PTUISETCOLOR,arcan_tui_set_color);

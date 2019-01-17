@@ -92,7 +92,8 @@
 -- one best placed in one direction out of: left, right, top, bottom.
 -- Instead of a split-dir a position dir may be defined. This indicates that
 -- the window should be positioned relative to the parent, but that the parent
--- should retain the same size, if possible.
+-- should retain the same size, if possible. This also has an added
+-- position-dir of 'tab'.
 --
 -- @note: "alert" {message} - version of "message" that hints a user-interface
 -- alert to the segment. If "message" is empty, alert is to be interpreted as
