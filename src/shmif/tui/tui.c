@@ -2897,7 +2897,29 @@ void arcan_tui_get_bgcolor(
 void arcan_tui_set_bgcolor(
 	struct tui_context* tui, int group, uint8_t rgb[3])
 {
+	switch (group){
+	case TUI_COL_PRIMARY:
+	case TUI_COL_SECONDARY:
+	case TUI_COL_ALTCURSOR:
+	case TUI_COL_CURSOR:
+	break;
 
+	case TUI_COL_BG:
+	case TUI_COL_TEXT:
+	case TUI_COL_HIGHLIGHT:
+	case TUI_COL_LABEL:
+	case TUI_COL_WARNING:
+	case TUI_COL_ERROR:
+	case TUI_COL_ALERT:
+	case TUI_COL_REFERENCE:
+	case TUI_COL_INACTIVE:
+	case TUI_COL_UI:
+		memcpy(tui->colors[group].bg, rgb, 3);
+		tui->colors[group].bgset = true;
+	break;
+	default:
+	break;
+	}
 }
 
 void arcan_tui_set_color(
@@ -3187,16 +3209,31 @@ void arcan_tui_refdec(struct tui_context* c)
 	tsm_screen_unref(c->screen);
 }
 
+struct tui_screen_attr tui_screen_defcattr(struct tui_context* c, int group)
+{
+	struct tui_screen_attr out = {};
+	if (!c)
+		return out;
+
+	out = tsm_screen_get_def_attr(c->screen);
+	arcan_tui_get_color(c, group, out.fc);
+	arcan_tui_get_bgcolor(c, group, out.bc);
+
+	return out;
+}
+
 struct tui_screen_attr
 	arcan_tui_defattr(struct tui_context* c, struct tui_screen_attr* attr)
 {
 	if (!c)
 		return (struct tui_screen_attr){};
 
+	struct tui_screen_attr out = tsm_screen_get_def_attr(c->screen);
+
 	if (attr)
 		tsm_screen_set_def_attr(c->screen, (struct tui_screen_attr*) attr);
 
-	return tsm_screen_get_def_attr(c->screen);
+	return out;
 }
 
 void arcan_tui_write(struct tui_context* c,

@@ -4353,6 +4353,9 @@ static void emit_segreq(
 	case 8:
 		tblstr(ctx, "position-dir", "bottom", top);
 	break;
+	case 9:
+		tblstr(ctx, "position-dir", "tab", top);
+	break;
 	default:
 		tblstr(ctx, "split-dir", "none", top);
 		tblstr(ctx, "position-dir", "none", top);
