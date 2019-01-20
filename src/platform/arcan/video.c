@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2017, Björn Ståhl
+ * Copyright 2014-2019, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description: Platform that draws to an arcan display server using the shmif.
@@ -51,6 +51,12 @@ static char* synchopts[] = {
 };
 
 static char* input_envopts[] = {
+	NULL
+};
+
+static char* video_envopts[] = {
+	"ARCAN_RENDER_NODE=/path/to/dev", "(env only) override accelerated GPU device",
+	"ARCAN_VIDEO_NO_FDPASS=1", "(env only) disable handle passing and force shm/readback",
 	NULL
 };
 
@@ -331,13 +337,9 @@ const char** platform_video_synchopts()
 	return (const char**) synchopts;
 }
 
-static const char* arcan_envopts[] = {
-	NULL
-};
-
 const char** platform_video_envopts()
 {
-	return arcan_envopts;
+	return (const char**) video_envopts;
 }
 
 const char** platform_input_envopts()
