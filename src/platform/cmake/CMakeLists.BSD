@@ -50,11 +50,10 @@ set(LWA_PLATFORM ${ARCAN_PLATFORM})
 # then the variant specific changes
 if (${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
 # force these options here for now
-	set(ENABLE_LWA OFF)
-
+	LIST(APPEND INCLUDE_DIRS /usr/X11R6/include)
 	set(BSD_VARIANT_DEFINITIONS
 		-DCLOCK_MONOTONIC_RAW=CLOCK_MONOTONIC)
-	set(BSD_VARIANT_LIBS)
+	set(BSD_VARIANT_LIBS c++ stdc++)
 	if(${INPUT_PLATFORM} STREQUAL "evdev")
 		SET(INPUT_PLATFORM openbsd)
 	endif()
@@ -118,7 +117,7 @@ set (SHMIF_PLATFORM
 	${PLATFORM_PATH}/fdpassing.c
 )
 
-list (APPEND LWA_PLATFORM	
+list (APPEND LWA_PLATFORM
 	${PLATFORM_SOURCES}
 	${SHMIF_SOURCES}
 	${PLATFORM_PATH}/open.c
