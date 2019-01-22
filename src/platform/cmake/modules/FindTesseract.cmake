@@ -1,6 +1,5 @@
-if(COMMAND pkg_check_modules)
-	pkg_check_modules(TESSERACT QUIET tesseract)
-endif()
+find_package(PkgConfig)
+pkg_check_modules(TESSERACT QUIET tesseract)
 
 if (NOT Tesseract_FOUND)
 	find_path(Tesseract_INCLUDE_DIR tesseract/baseapi.h
