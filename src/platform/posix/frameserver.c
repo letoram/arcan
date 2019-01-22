@@ -568,29 +568,31 @@ static bool setup_socket(
 	char* dst = (char*) &addr.sun_path;
 	int len = arcan_shmif_resolve_connpath(optkey, dst, lim);
 	if (len < 0){
-		arcan_warning("posix/frameserver.c:setup_socket, resolving path for "
-			"%s, failed -- too long (%d vs. %d)\n", optkey, abs(len), lim);
+		arcan_warning("posix/frameserver.c:setup_socket(), couldn't resolve path");
+		return false;
+	}
+	else if (len > lim){
+		arcan_warning("posix/frameserver.c:setup_socket(), expanded path "
+			"exceed build-time length (%d > %zu)", len, lim);
 		return false;
 	}
 
 	if (-1 == optdesc){
 /*
- * if we happen to have a stale listener, unlink it but only if it has been
+ * If we happen to have a stale listener, unlink it but only if it has been
  * used as a domain-socket in beforehand (so in the worst case, some lets a
- * user set this path and it is maliciously used to unlink files.
+ * user set this path and it is accidentally used to unlink another socket
+ * or race the deletion. Since it is not across a privilege barrier the
+ * risk is rather small.
  */
-		if (addr.sun_path[0] == '\0')
-			unlink(addr.sun_path);
-		else{
-			struct stat buf;
-			int rv = stat(addr.sun_path, &buf);
-			if ( (-1 == rv && errno != ENOENT)||(0 == rv && !S_ISSOCK(buf.st_mode))){
-				close(fd);
-				return false;
-			}
-			else if (0 == rv)
-				unlink(addr.sun_path);
+		struct stat buf;
+		int rv = stat(addr.sun_path, &buf);
+		if ( (-1 == rv && errno != ENOENT)||(0 == rv && !S_ISSOCK(buf.st_mode))){
+			close(fd);
+			return false;
 		}
+		else if (0 == rv)
+			unlink(addr.sun_path);
 
 		if (bind(fd, (struct sockaddr*) &addr, sizeof(addr)) != 0){
 			arcan_warning("posix/frameserver.c:shmalloc(), couldn't setup "
