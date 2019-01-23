@@ -612,6 +612,11 @@ void arcan_event_purge()
 	platform_event_reset(&default_evctx);
 }
 
+arcan_benchdata* arcan_bench_data()
+{
+	return &benchdata;
+}
+
 void arcan_bench_register_cost(unsigned cost)
 {
 	benchdata.framecost[(unsigned)benchdata.costofs] = cost;

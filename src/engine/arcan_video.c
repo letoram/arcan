@@ -4623,10 +4623,18 @@ static inline void draw_texsurf(struct rendertarget* dst,
 	}
 }
 
-static void ffunc_process(arcan_vobject* dst, int cookie)
+/*
+ * Perform an explicit poll pass of the object in question.
+ * Assumes [dst] is valid.
+ *
+ * [cookie] is used to protect against multiple frame triggers in the
+ * same cycle if the object happen to be instanced (rare but possible).
+ *
+ * [step] will also commit- the buffer and possible rotate frame-store
+ * and so on.
+ */
+static void ffunc_process(arcan_vobject* dst, int cookie, bool step)
 {
-/* we use an update cookie to make sure that we don't process
- * the same object multiple times when/if it is shared */
 	if (!dst->feed.ffunc || dst->feed.pcookie == cookie)
 		return;
 
@@ -4635,7 +4643,7 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 /* if there is a new frame available, we make sure to flag it
  * dirty so that it will be rendered */
 	if (dst->feed.ffunc && arcan_ffunc_lookup(dst->feed.ffunc)(FFUNC_POLL,
-		0, 0, 0, 0, 0, dst->feed.state, dst->cellid) == FRV_GOTFRAME){
+		0, 0, 0, 0, 0, dst->feed.state, dst->cellid) == FRV_GOTFRAME && step){
 		FLAG_DIRTY(dst);
 
 /* cycle active frame store (depending on how often we want to
@@ -4660,7 +4668,7 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 	return;
 }
 
-arcan_errc arcan_vint_pollfeed(arcan_vobj_id vid)
+arcan_errc arcan_vint_pollfeed(arcan_vobj_id vid, bool step)
 {
 	arcan_vobject* vobj = arcan_video_getobject(vid);
 	if (!vobj)
@@ -4668,7 +4676,7 @@ arcan_errc arcan_vint_pollfeed(arcan_vobj_id vid)
 
 /* this will always invalidate, so calling this multiple times per
  * frame is implementation defined behavior */
-	ffunc_process(vobj, vobj->feed.pcookie+1);
+	ffunc_process(vobj, vobj->feed.pcookie+1, step);
 
 	return ARCAN_OK;
 }
@@ -4688,7 +4696,7 @@ static void poll_list(arcan_vobject_litem* current, int cookie)
 		arcan_vobject* celem = current->elem;
 
 		if (celem->feed.ffunc)
-			ffunc_process(celem, cookie);
+			ffunc_process(celem, cookie, true);
 
 		current = current->next;
 	}

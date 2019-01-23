@@ -32,24 +32,10 @@ static struct {
 	.blackframes = 2
 };
 
-static char* synchopts[] = {
-	"dynamic", "herustic driven balancing latency, performance and utilization",
-	"vsync", "let display vsync dictate speed",
-	"processing", "minimal synchronization, prioritize speed",
-	NULL
-};
-
 static char* envopts[] = {
 	"ARCAN_VIDEO_MULTISAMPLES=1", "attempt to enable multisampling",
 	NULL
 };
-
-static enum {
-	DYNAMIC = 0,
-	VSYNC = 1,
-	PROCESSING = 2,
-	ENDMARKER
-} synchopt;
 
 void platform_video_shutdown()
 {
@@ -153,23 +139,18 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	if (nd)
 		SDL_GL_SwapBuffers();
 
-/* With dynamic, we run an artificial vsync if the time between swaps
- * become to low. This is a workaround for a driver issue spotted on
- * nvidia and friends from time to time where multiple swaps in short
- * regression in combination with 'only redraw' adds bubbles */
+/*
+ * This is the 'legacy- approach' to synching and should be reworked
+ * to match the changes inside the conductor
+ */
 	int delta = arcan_frametime() - sdl.last;
-	if (synchopt == DYNAMIC && delta >= 0 && delta < 8){
+	if (delta >= 0 && delta < 8){
 		arcan_timesleep(16 - delta);
 	}
 
 	sdl.last = arcan_frametime();
 	if (post)
 		post();
-}
-
-const char** platform_video_synchopts()
-{
-	return (const char**) synchopts;
 }
 
 const char** platform_video_envopts()
@@ -187,21 +168,6 @@ size_t platform_video_displays(platform_display_id* dids, size_t* lim)
 		*lim = 1;
 
 	return 1;
-}
-
-void platform_video_setsynch(const char* arg)
-{
-	int ind = 0;
-
-	while(synchopts[ind]){
-		if (strcmp(synchopts[ind], arg) == 0){
-			synchopt = (ind > 0 ? ind / 2 : ind);
-			arcan_warning("synchronisation strategy set to (%s)\n", synchopts[ind]);
-			break;
-		}
-
-		ind += 2;
-	}
 }
 
 enum dpms_state platform_video_dpms(
@@ -394,8 +360,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 /* some GL attributes have to be set before creating the video-surface */
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL,
-		(synchopt == PROCESSING || synchopt == DYNAMIC) ? 0 : 1);
+	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL, 0);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
 

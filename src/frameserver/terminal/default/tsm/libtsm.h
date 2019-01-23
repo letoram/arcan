@@ -146,4 +146,11 @@ void tsm_vte_mouse_button(struct tsm_vte *vte, int index, bool press, int mods);
 void tsm_vte_mouse_motion(struct tsm_vte *vte, int x, int y, int mods);
 void tsm_vte_paste(struct tsm_vte *vte, const char *u8, size_t len);
 
+/*
+ * Return true of the state machine is inside of an unfinished escape sequence
+ * and needs more data. The idea is to use this as an indicator to defer refresh
+ * or not.
+ */
+bool tsm_vte_inseq(struct tsm_vte *vte);
+
 #endif /* TSM_LIBTSM_H */

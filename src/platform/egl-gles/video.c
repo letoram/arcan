@@ -48,16 +48,6 @@ static char* egl_envopts[] = {
 	NULL
 };
 
-static char* egl_synchopts[] = {
-	"default", "driver default buffer swap",
-	NULL
-};
-
-enum {
-	DEFAULT,
-	ENDM
-}	synchopt;
-
 struct monitor_mode PLATFORM_SYMBOL(_video_dimensions)()
 {
 	struct monitor_mode res = {
@@ -281,22 +271,6 @@ bool PLATFORM_SYMBOL(_video_auth)(int cardn, unsigned token)
 	return false;
 }
 
-void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)
-{
-	int ind = 0;
-
-	while(egl_synchopts[ind]){
-		if (strcmp(egl_synchopts[ind], arg) == 0){
-			synchopt = (ind > 0 ? ind / 2 : ind);
-			arcan_warning("synchronisation strategy set to (%s)\n",
-				egl_synchopts[ind]);
-			break;
-		}
-
-		ind += 2;
-	}
-}
-
 struct monitor_mode* PLATFORM_SYMBOL(_video_query_modes)(
 	platform_display_id id, size_t* count)
 {
@@ -421,11 +395,6 @@ bool PLATFORM_SYMBOL(_video_get_display_gamma)(platform_display_id did,
 	size_t* n_ramps, uint16_t** outb)
 {
 	return false;
-}
-
-const char** PLATFORM_SYMBOL(_video_synchopts) ()
-{
-	return (const char**) egl_synchopts;
 }
 
 void PLATFORM_SYMBOL(_video_prepare_external) () {}

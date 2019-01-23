@@ -3,38 +3,6 @@
  * license: 3-clause bsd, see copying file in arcan source repository.
  * reference: http://arcan-fe.com
  */
-
-/*
- * Notes on further dma-buf improvements / things we are missing right now:
- *
- * [X] Add support for retrieving and sending modifier information to clients
- *     The client will then be responsible for picking a format that match the
- *     set of modifiers - likely done by the platform side of mesa-egl impl.
- *
- * [ ] Add the corresponding work to the zwp_... dma_buf
-*
- * [ ] Implement multi-buffer repack reblit support function, add both here
- *     and in waybridge so that we can work around the problem with the lack
- *     of shader 'variants' to deal with all the different ugly sampler fmts.
- *
- * [ ] Rework platform functions to accept sets of multiple descriptors and
- *     aggregate them in the frameserver- stage. Restrict the number of planes
- *     in this way to 4-5 or something equally low. (a wayland client can
- *     really gnaw file descriptors, think multiplanar subsurfaces for border..
- *
- * [d] Rework frameserver data aggregation to support multi-planar input format
- *     and tracking as direct scanout
- *
- * [d] Modify Shader Manager to support format variants for all the different
- *     kinds of samplers we need to be able to handle (y_uv, y_xuxv, y_u_v)
- *
- * [ ] Add an extended version of the map_... function that allows a plane
- *     index as part of the mapping function for layered compositing,
- *     bonus points for mimicking the heuristics used by surface flinger for
- *     switching between GL composited and MDP composition, this might also
- *     need a type field (like for cursor)
- */
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -90,6 +58,12 @@
 #include "../agp/glfun.h"
 #include "arcan_event.h"
 #include "libbacklight.h"
+
+/*
+ * mask out these types as they won't be useful,
+ */
+#define VIDEO_PLATFORM_IMPL
+#include "../../engine/arcan_conductor.h"
 
 #ifdef _DEBUG
 #define DEBUG 1
@@ -207,13 +181,6 @@ static void* lookup_call(void* tag, const char* sym, bool req)
 	return res;
 }
 
-static char* egl_synchopts[] = {
-	"default", "Display controls refresh",
-	"fast", "Clients refresh during display synch",
-	"conservative", "Load regulates refresh",
-	NULL
-};
-
 static char* egl_envopts[] = {
 	"[ for multiple devices, append _n to key (e.g. device_2=) ]", "",
 	"device=/path/to/dev", "for multiple devices suffix with _n (n = 2,3..)",
@@ -224,13 +191,6 @@ static char* egl_envopts[] = {
 	"display_context=1", "set outer shared headless context, per display contexts",
 	NULL
 };
-
-enum {
-	DEFAULT = 0,
-	FAST,
-	CONSERVATIVE,
-	ENDM
-} synchopt;
 
 enum dri_method {
 	M_GBM_SWAP,
@@ -374,6 +334,8 @@ struct dispout {
 /* internal v-store and system mappings, rules for drawing final output */
 	arcan_vobj_id vid;
 	size_t dispw, disph, dispx, dispy;
+	float vrefresh;
+
 	_Alignas(16) float projection[16];
 	_Alignas(16) float txcos[8];
 	enum blitting_hint hint;
@@ -491,7 +453,7 @@ static void disable_display(struct dispout*, bool dealloc);
  * assumes that the video pipeline is in a state to safely
  * blit, will take the mapped objects and schedule buffer transfer
  */
-static void update_display(struct dispout*);
+static bool update_display(struct dispout*);
 
 /*
  * Assumes that the individual displays allocated on the card have already
@@ -997,7 +959,7 @@ int platform_video_cardhandle(int cardn,
 		*metadata = NULL;
 	}
 	else if (metadata_sz && metadata){
-		debug_print("no format/modifiers query support, sending simple card\n");
+		debug_print("no format/modifiers query support, sending simple card");
 		*metadata_sz = 0;
 		*metadata = NULL;
 	}
@@ -2019,7 +1981,7 @@ static bool atomic_set_mode(struct dispout* d)
 	drmModeObjectPropertiesPtr pptr =
 		drmModeObjectGetProperties(fd, d->display.crtc, DRM_MODE_OBJECT_CRTC);
 	if (!pptr){
-		debug_print("(%d) etomic-modeset, failed to get crtc prop", (int) d->id);
+		debug_print("(%d) atomic-modeset, failed to get crtc prop", (int) d->id);
 		goto cleanup;
 	}
 	AADD(d->display.crtc, "MODE_ID", mode);
@@ -2199,7 +2161,7 @@ retry:
 			d->display.mode_set = i;
 			d->dispw = cm->hdisplay;
 			d->disph = cm->vdisplay;
-			vrefresh = cm->vrefresh;
+			vrefresh = d->vrefresh = cm->vrefresh;
 			area = dist;
 			try_inherited_mode = false;
 			debug_print(
@@ -2272,14 +2234,25 @@ retry:
  * encoder that aren't already mapped */
 	uint64_t mask = 0;
 	mask = ~mask;
+	uint64_t join = 0;
 
 	for (int i = 0; i < res->count_encoders; i++){
 		drmModeEncoder* enc = drmModeGetEncoder(d->device->fd, res->encoders[i]);
 		if (!enc)
 			continue;
 
-		mask &= enc->possible_crtcs;
+		for (int j = 0; j < res->count_crtcs; j++){
+			if (!(enc->possible_crtcs & (1 << j)))
+				mask &= enc->possible_crtcs;
+			join |= enc->possible_crtcs;
+		}
+
 		drmModeFreeEncoder(enc);
+	}
+
+	if (!mask){
+		debug_print("libdrm(), no shared mask of crtcs, take full set");
+		mask = join;
 	}
 
 /* now sweep the list of possible crtcs and pick the first one we don't have
@@ -2604,16 +2577,16 @@ static void query_card(struct dev_node* node)
 			debug_print("(%zu) lost, disabled", (int)i);
 			if (d){
 				debug_print("(%d) display lost, disabling", (int)d->id);
-				platform_display_id id = d->id;
 				disable_display(d, true);
 				arcan_event ev = {
 					.category = EVENT_VIDEO,
 					.vid.kind = EVENT_VIDEO_DISPLAY_REMOVED,
-					.vid.displayid = id,
+					.vid.displayid = d->id,
 					.vid.ledctrl = egl_dri.ledid,
 					.vid.ledid = d->id
 				};
 				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
+				arcan_conductor_release_display(d->device->card_id, d->id);
 			}
 			drmModeFreeConnector(con);
 			continue;
@@ -2657,6 +2630,9 @@ static void query_card(struct dev_node* node)
 			.vid.ledid = d->id,
 			.vid.cardid = d->device->card_id
 		};
+		arcan_conductor_register_display(
+			d->device->card_id, d->id, SYNCH_STATIC, d->vrefresh, d->vid);
+
 		arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 		continue; /* don't want to free con */
 	}
@@ -3240,46 +3216,48 @@ static void page_flip_handler(int fd, unsigned int frame,
 		d->buffer.cur_bo = d->buffer.next_bo;
 		d->buffer.next_bo = NULL;
 	}
+
+	float deadline = 1000.0f / (float)(d->vrefresh ? d->vrefresh : 60.0);
+	arcan_conductor_deadline(deadline);
+}
+
+static bool get_pending(bool primary_only)
+{
+	int i = 0;
+	int pending = 0;
+	struct dispout* d;
+
+	while((d = get_display(i++))){
+		if (!primary_only || d->display.primary)
+			pending |= d->buffer.in_flip;
+	}
+
+	return pending > 0;
 }
 
 /*
  * Real synchronization work is in this function. Go through all mapped
  * displays and wait for any pending events to finish, or the specified
  * timeout(ms) to elapse.
+ *
+ * Timeout is typically used for shutdown / cleanup operations where
+ * normal background processing need to be ignored anyhow.
  */
-extern void amain_clock_pulse(int nticks);
-extern void amain_process_event(arcan_event* ev, int drain);
-static void flush_display_events(int timeout)
+static void flush_display_events(int timeout, bool yield)
 {
-	int pending = 1;
 	struct dispout* d;
 	verbose_print("flush display events, timeout: %d", timeout);
 
-/*
- * Until we have a decent 'conductor' for managing synchronization for
- * all the different audio/video/input producers and consumers, keep
- * on processing audio input while we wait for displays to finish synch.
- */
 	unsigned long long start = arcan_timemillis();
 
-/*
- * First sweep the audio sources to figure out if we have any streaming
- * ones that we should take into account so that they don't run out during
- * vsync.
- */
-	size_t naud = synchopt == CONSERVATIVE ? 0 : arcan_audio_refresh();
-
-/*
- * the polling timeout depends on our synch- strategy, if we have any
- * dynamic content providers to take into account - we should take the
- * vysnc- time to sweep that list.
- */
-	int period;
+	int period = 4;
 	if (timeout > 0){
-		period = 4; /* arbitrary, should MOVE TO DATABASE */
-	}
-	else
 		period = timeout;
+	}
+/* only flush, don't iterate */
+	else if (timeout == -1){
+		period = 0;
+	}
 
 	drmEventContext evctx = {
 			.version = DRM_EVENT_CONTEXT_VERSION,
@@ -3299,123 +3277,41 @@ static void flush_display_events(int timeout)
 		};
 
 		int rv = poll(&fds, 1, period);
-		if (-1 == rv){
-			if (errno == EINTR || errno == EAGAIN)
-				continue;
-			arcan_fatal("platform/egl-dri() - poll on device failed.\n");
-		}
-/* IF we timeout, just continue with a new render pass as we might be dealing
- * with a faulty driver or an EGLStreams device that doesn't support drm-vsynch
- * integration */
-		else if (0 == rv){
-			unsigned long long now = arcan_timemillis();
-			if (timeout && now > start && now - start < timeout){
-				if (naud)
-					naud = arcan_audio_refresh();
-
-/* clamp the period so we don't exceed the timeout */
-				now = arcan_timemillis();
-				if (now - start < period)
-					period = now - start;
-				continue;
-			}
-			return;
-		}
-
+		if (rv == 1){
 /* If we get HUP on a card we have open, it is basically as bad as a fatal
  * state, unless - we support hotplugging multi-GPUs, then that decision needs
  * to be re-evaluated as it is essentially a drop_card + drop all displays */
-			if (fds.revents & (POLLHUP | POLLERR))
-			debug_print("(card-fd %d) broken/recovery missing", (int) nodes[0].fd);
-		else
-			drmHandleEvent(nodes[0].fd, &evctx);
+			if (fds.revents & (POLLHUP | POLLERR)){
+				debug_print("(card-fd %d) broken/recovery missing", (int) nodes[0].fd);
+				arcan_fatal("GPU device lost / broken");
+			}
+			else
+				drmHandleEvent(nodes[0].fd, &evctx);
 
 /* There is a special property here, 'PRIMARY'. The displays with this property
  * set are being used for synch, with the rest - we just accept the possibility
  * of tearing or ignore that display for another frame (extremes like 59.xx Hz
  * display main and a 30Hz secondary output) */
-		int i = 0;
-		pending = 0;
-		while((d = get_display(i++)))
-			if (d->display.primary)
-				pending |= d->buffer.in_flip;
-	}
-	while (pending);
-}
-
+		}
+		else if (yield) {
 /*
- * A lot more work / research is needed on this one to be able to handle all
- * weird edge-cases depending on the mapped displays and priorities (powersave?
- * tearfree? lowest possible latency in regards to other external clocks etc.)
- * - especially when mixing in future synch models that don't require VBlank
+ * With VFR changes, we should start passing the responsibility for dealing with
+ * synch period and timeout here before proceeding with the next pass / cycle.
  */
-void platform_video_synch(uint64_t tick_count, float fract,
-	video_synchevent pre, video_synchevent post)
-{
-	if (pre)
-		pre();
-
-/*
- * Destruction of hotplugged displays are deferred to this stage as it is hard
- * to know when it is actually safe to do in other places in the pipeline.
- * Wait until the queued transfers to a display have been finished before it is
- * put down.
- */
-	int i = 0;
-	struct dispout* d;
-	while (egl_dri.destroy_pending){
-		flush_display_events(30);
-		int ind = ffsll(egl_dri.destroy_pending) - 1;
-		debug_print("synch, %d - destroy %d", ind);
-		disable_display(&displays[ind], true);
-		egl_dri.destroy_pending &= ~(1 << ind);
-	}
-
-/* At this stage, the contents of all RTs have been synched, with nd == 0,
- * nothing has changed from what was draw last time - but since we normally run
- * double buffered it is easier to synch the same contents in both buffers, so
- * that when dirty updates are being tracked, we won't be corrupted. */
-	size_t nd;
-	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
-
-	static int last_nd;
-	bool update = nd || last_nd;
-	if (update){
-		while ( (d = get_display(i++)) ){
-			if (d->state == DISP_MAPPED && d->buffer.in_flip == 0){
-				update_display(d);
-			}
-/*
- * mostly added noise
- * else {
-				verbose_print("(%d) can't synch, flip pending", (int)d->id);
-			}
- */
+			int yv = arcan_conductor_yield(NULL, 0);
+			if (-1 == yv)
+				break;
+			else
+				period = yv;
 		}
 	}
-	last_nd = nd;
+/* 3 possible timeouts: exit directly, wait indefinitely, wait for fixed period */
+	while (timeout != -1 && get_pending(true) &&
+		(!timeout || (timeout && arcan_timemillis() - start < timeout)));
+}
 
-/*
- * The LEDs that are mapped as backlights via the internal pipe-led protocol
- * needs to be flushed separately, here is a decent time to get that out of
- * the way.
- */
-	flush_leds();
-
-/*
- * still use an artifical delay / timeout here, see previous notes about the
- * need for a real 'conductor' with synchronization- strategy support. As not
- * all displays report VSYNCH, some may need a simulated clock. We use poll
- * for that.
- */
-	static unsigned long long last_synch;
-	int lim = 16 - (arcan_timemillis() - last_synch);
-	if (lim < 0)
-		lim = 16;
-	flush_display_events(lim);
-
-	last_synch = arcan_timemillis();
-
+static void flush_parent_commands()
+{
 /* Changed but not enough information to actually specify which card we need
  * to rescan in order for the changes to be detected. This needs cooperation
  * with the scripts anyhow as they need to rate-limit / invoke rescan. This
@@ -3424,7 +3320,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	int pv = platform_device_poll(NULL);
 	switch(pv){
 	case -1:
-		debug_print("parent connection severed\n");
+		debug_print("parent connection severed");
 		arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
 			.category = EVENT_SYSTEM,
 			.sys.kind = EVENT_SYSTEM_EXIT,
@@ -3432,7 +3328,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		});
 	break;
 	case 5:
-		debug_print("parent requested termination\n");
+		debug_print("parent requested termination");
 		arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
 			.category = EVENT_SYSTEM,
 			.sys.kind = EVENT_SYSTEM_EXIT,
@@ -3475,6 +3371,124 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	default:
 	break;
 	}
+}
+
+/*
+ * A lot more work / research is needed on this one to be able to handle all
+ * weird edge-cases depending on the mapped displays and priorities (powersave?
+ * tearfree? lowest possible latency in regards to other external clocks etc.)
+ * - especially when mixing in future synch models that don't require VBlank
+ */
+void platform_video_synch(uint64_t tick_count, float fract,
+	video_synchevent pre, video_synchevent post)
+{
+	if (pre)
+		pre();
+
+/*
+ * Destruction of hotplugged displays are deferred to this stage as it is hard
+ * to know when it is actually safe to do in other places in the pipeline.
+ * Wait until the queued transfers to a display have been finished before it is
+ * put down.
+ */
+	int i = 0;
+	struct dispout* d;
+	while (egl_dri.destroy_pending){
+		flush_display_events(30, true);
+		int ind = ffsll(egl_dri.destroy_pending) - 1;
+		debug_print("synch, %d - destroy %d", ind);
+		disable_display(&displays[ind], true);
+		egl_dri.destroy_pending &= ~(1 << ind);
+	}
+
+/* Some strategies might leave us with a display still in pending flip state
+ * even though it has finished by now. If we don't flush those out, they will
+ * skip updating one frame, so do a quick no-yield flush first */
+	if (get_pending(false))
+		flush_display_events(-1, false);
+
+	size_t nd;
+	uint32_t cost_ms = arcan_vint_refresh(fract, &nd);
+
+/*
+ * At this stage, the contents of all RTs have been synched, with nd == 0,
+ * nothing has changed from what was draw last time - but since we normally run
+ * double buffered it is easier to synch the same contents in both buffers, so
+ * that when dirty updates are being tracked, we won't be corrupted.
+ *
+ * The damage tracking is currently binary, a dirty- region style flow should
+ * be added to the _agp layer in order to not miss anything (shaders, source-
+ * updates and so on)
+ */
+	arcan_bench_register_cost( cost_ms );
+
+	static int last_nd;
+	bool update = nd || last_nd;
+	bool clocked = false;
+	bool updated = false;
+	int method = 0;
+
+/*
+ * If we have a real update, the display timing will request a deadline based
+ * on whatever display that was updated so we can go with that
+ */
+	if (update){
+		while ( (d = get_display(i++)) ){
+			if (d->state == DISP_MAPPED && d->buffer.in_flip == 0){
+				updated |= update_display(d);
+				clocked |= d->device->vsynch_method == VSYNCH_CLOCK;
+			}
+		}
+/*
+ * Finally check for the callbacks, synchronize with the conductor and so on
+ * the clocked is a failsafe for devices that don't support giving a vsynch
+ * signal
+ */
+		if (get_pending(false) || updated)
+			flush_display_events(clocked ? 16 : 0, true);
+	}
+/*
+ * If there are no updates, just 'fake' synch to the display with the lowest
+ * refresh unless the yield function tells us to run in a processing- like
+ * state (useful for displayless like processing).
+ */
+	else {
+		float refresh = 60.0;
+		i = 0;
+		while ((d = get_display(i++))){
+			if (d->state == DISP_MAPPED){
+				if (d->vrefresh > 0 && d->vrefresh > refresh)
+					refresh = d->vrefresh;
+			}
+		}
+
+/*
+ * The other option would be to to set left as the deadline here, but that
+ * makes the platform even worse when it comes to testing strategies etc.
+ */
+		int left = 1000.0f / refresh;
+		arcan_conductor_deadline(-1);
+		int step;
+		while ((step = arcan_conductor_yield(NULL, 0)) != -1 && left > step){
+			arcan_timesleep(step);
+			left -= step;
+		}
+	}
+
+	last_nd = nd;
+
+/*
+ * The LEDs that are mapped as backlights via the internal pipe-led protocol
+ * needs to be flushed separately, here is a decent time to get that out of
+ * the way.
+ */
+	flush_leds();
+
+/*
+ * Since we outsource device access to a possibly privileged layer, here is
+ * the time to check for requests from the parent itself.
+ */
+	flush_parent_commands();
 
 	if (post)
 		post();
@@ -3498,30 +3512,15 @@ void platform_video_shutdown()
 
 	do{
 		for(size_t i = 0; i < MAX_DISPLAYS; i++){
-			unsigned long start = arcan_timemillis();
+			unsigned long long start = arcan_timemillis();
 			disable_display(&displays[i], true);
-			debug_print("shutdown (%d) took %lu ms", arcan_timemillis() - start);
+			debug_print("shutdown (%zu) took %d ms", i, (int)(arcan_timemillis() - start));
 		}
-		flush_display_events(17);
+		flush_display_events(30, false);
 	} while (egl_dri.destroy_pending && rc-- > 0);
 
 	for (size_t i = 0; i < sizeof(nodes)/sizeof(nodes[0]); i++)
 		release_card(i);
-}
-
-void platform_video_setsynch(const char* arg)
-{
-	int ind = 0;
-
-	while(egl_synchopts[ind]){
-		if (strcmp(egl_synchopts[ind], arg) == 0){
-			synchopt = (ind > 0 ? ind / 2 : ind);
-			debug_print("synchronisation strategy set to (%s)", egl_synchopts[ind]);
-			break;
-		}
-
-		ind += 2;
-	}
 }
 
 const char* platform_video_capstr()
@@ -3561,11 +3560,6 @@ const char* platform_video_capstr()
 	fclose(stream);
 
 	return buf;
-}
-
-const char** platform_video_synchopts()
-{
-	return (const char**) egl_synchopts;
 }
 
 const char** platform_video_envopts()
@@ -3621,6 +3615,8 @@ bool platform_video_map_display(
 		debug_print("setting display(%d) to unmapped", (int) disp);
 		d->display.dpms = ADPMS_OFF;
 		d->vid = id;
+		arcan_conductor_release_display(d->device->card_id, d->id);
+
 		return true;
 	}
 
@@ -3655,6 +3651,8 @@ bool platform_video_map_display(
 
 	d->hint = hint;
 	d->vid = id;
+	arcan_conductor_register_display(
+		d->device->card_id, d->id, SYNCH_STATIC, d->vrefresh, d->vid);
 
 	return true;
 }
@@ -3716,10 +3714,10 @@ static void draw_display(struct dispout* d)
 	agp_deactivate_vstore();
 }
 
-static void update_display(struct dispout* d)
+static bool update_display(struct dispout* d)
 {
 	if (d->display.dpms != ADPMS_ON)
-		return;
+		return false;
 
 /* we want to know how multiple- displays drift against eachother */
 	d->last_update = arcan_timemillis();
@@ -3812,6 +3810,8 @@ static void update_display(struct dispout* d)
 					(int)d->id, errno, d->device->fd, d->display.crtc, d->display.con_id);
 			}
 		}
+		arcan_conductor_register_display(
+			d->device->card_id, d->id, SYNCH_STATIC, d->vrefresh, d->vid);
 	}
 
 /* let DRM drive synch and wait for vsynch events on the file descriptor */
@@ -3829,9 +3829,11 @@ static void update_display(struct dispout* d)
 				(int)d->id, (uintptr_t) d->buffer.cur_fb, (uintptr_t)next_fb);
 		}
 	}
+	return true;
 
 out:
 	set_device_context(d->device);
+	return false;
 }
 
 void platform_video_prepare_external()
@@ -3845,7 +3847,7 @@ void platform_video_prepare_external()
 		for(size_t i = 0; i < MAX_DISPLAYS; i++)
 			disable_display(&displays[i], false);
 		if (egl_dri.destroy_pending)
-			flush_display_events(16);
+			flush_display_events(30, false);
 	} while(egl_dri.destroy_pending && rc-- > 0);
 
 	if (nodes[0].master)

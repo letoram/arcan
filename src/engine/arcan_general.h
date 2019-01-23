@@ -150,6 +150,7 @@ void arcan_state_dump(const char* prefix, const char* key, const char* src);
 void arcan_bench_register_tick(unsigned);
 void arcan_bench_register_cost(unsigned);
 void arcan_bench_register_frame();
+arcan_benchdata* arcan_bench_data();
 
 /*
  * LEGACY/REDESIGN

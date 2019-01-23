@@ -2268,6 +2268,11 @@ static const int exit_action[] = {
 	[STATE_NUM] = ACTION_NONE,
 };
 
+bool tsm_vte_inseq(struct tsm_vte *vte)
+{
+	return (vte->state != STATE_NONE && vte->state != STATE_GROUND);
+}
+
 /* perform state transition and dispatch related actions */
 static void do_trans(struct tsm_vte *vte, uint32_t data, int state, int act)
 {

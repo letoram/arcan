@@ -462,8 +462,10 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 			}
 		}
 		while (
-			arcan_timemillis() - term.last_input < cap_refresh &&
-			arcan_timemillis() - last_frame < cap_timeout
+			tsm_vte_inseq(term.vte) || (
+				arcan_timemillis() - term.last_input < cap_refresh &&
+				arcan_timemillis() - last_frame < cap_timeout
+			)
 		);
 
 /* and on an actually successful update, reset the user-input flag and timing */
