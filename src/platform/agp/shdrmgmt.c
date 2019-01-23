@@ -16,12 +16,12 @@
 
 #include "glfun.h"
 
+#include "platform.h"
+
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
-
-#include "video_platform.h"
 
 #ifdef HEADLESS_NOARCAN
 #undef FLAG_DIRTY

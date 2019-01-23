@@ -8,10 +8,7 @@
 #define _HAVE_ARCAN_GENERAL
 
 #define PRIxVOBJ "lld"
-#ifndef PLATFORM_HEADER
-#define PLATFORM_HEADER "../platform/platform.h"
-#endif
-#include PLATFORM_HEADER
+#include "../platform/platform.h"
 
 /*
  * update rate of 25 ms / tick,which amounts to a logical time-span of 40 fps,

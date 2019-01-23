@@ -1,35 +1,11 @@
-/*
- * Copyright 2014-2018, Björn Ståhl
- * License: 3-Clause BSD, see COPYING file in arcan source repository.
- * Reference: http://arcan-fe.com
- */
-
-/*
- * This file should define the generic types (and possibly header files) needed
- * for building / porting to a different platform. A working combination of all
- * platform/.h defined headers are needed for system integration.
- */
-#ifndef HAVE_PLATFORM_HEADER
-#define HAVE_PLATFORM_HEADER
-
-#include "platform_types.h"
-#include "agp_platform.h"
-#include "video_platform.h"
-#include "fsrv_platform.h"
-#include "os_platform.h"
-#include "event_platform.h"
+#ifndef OS_PLATFORM
+#define OS_PLATFORM
 
 /*
  * Retrieve the current time (in milliseconds) based on some unknown
  * epoch. Invoked frequently.
  */
 unsigned long long arcan_timemillis();
-
-/*
- * Both these functions expect [argv / envv] to be modifiable and their
- * internal contents dynamically allocated (hence will possible replace / free
- * existing ones due to platform specific expansion rules
- */
 
 /*
  * Execute and wait- for completion for the specified target.  This will shut
@@ -39,9 +15,6 @@ unsigned long long arcan_timemillis();
  * It returns the time spent waiting (in milliseconds) and the
  * return-code/exit-status in exitc.
  */
-struct arcan_strarr;
-struct arcan_evctx;
-
 unsigned long arcan_target_launch_external(
 	const char* fname,
 	struct arcan_strarr* argv,
@@ -49,6 +22,13 @@ unsigned long arcan_target_launch_external(
 	struct arcan_strarr* libs,
 	int* exitc
 );
+
+int arcan_sem_post(sem_handle sem);
+int arcan_sem_unlink(sem_handle sem, char* key);
+int arcan_sem_wait(sem_handle sem);
+int arcan_sem_trywait(sem_handle sem);
+int arcan_sem_init(sem_handle*, unsigned value);
+int arcan_sem_destroy(sem_handle);
 
 /*
  * Launch the specified program and bind its resources and control to the
@@ -86,13 +66,6 @@ typedef bool (*cfg_lookup_fun)(
  * is provided, the returned function will be NULL.
  */
 cfg_lookup_fun platform_config_lookup(uintptr_t* tag);
-
-/*
- * return a string (can be empty) matching the existing and allowed frameserver
- * archetypes (a filtered version of the FRAMSESERVER_MODESTRING buildtime var.
- * and which ones that resolve to valid and existing executables)
- */
-const char* arcan_frameserver_atypes();
 
 /* estimated time-waster in milisecond resolution, little reason for this
  * to be exact, but undershooting rather than overshooting is important */
@@ -138,6 +111,11 @@ bool arcan_isfile(const char*);
 bool arcan_isdir(const char*);
 
 /*
+ * get a NULL terminated list of input- platform specific environment options
+ * will only be presented to the user in a CLI like setting.
+ */
+
+/*
  * implemented in <platform>/warning.c regular fprintf(stderr, style trace
  * output logging.  slated for REDESIGN/REFACTOR.
  */
@@ -147,70 +125,5 @@ void arcan_fatal(const char* msg, ...);
 /* replace the thread_local logging output destination with outf.
  * This can be null (and by default is null) in order to disable log output */
 void arcan_log_destination(FILE* outf, int minlevel);
-
-enum PLATFORM_EVENT_CAPABILITIES platform_input_capabilities();
-
-/*
- * Update/get the active filter setting for the specific devid / axis (-1 for
- * all) lower_bound / upper_bound sets the [lower < n < upper] where only n
- * values are passed into the filter core (and later on, possibly as events)
- *
- * Buffer_sz is treated as a hint of how many samples in should be considered
- * before emitting a sample out.
- *
- * The implementation is left to the respective platform/input code to handle.
- */
-void platform_event_analogfilter(int devid,
-	int axisid, int lower_bound, int upper_bound, int deadzone,
-	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind);
-
-arcan_errc platform_event_analogstate(int devid, int axisid,
-	int* lower_bound, int* upper_bound, int* deadzone,
-	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode);
-
-/*
- * returns a [caller-managed COPY] of a OS- specific safe (read/writeable) path
- * to the database to use unless one has been provided at the command-line.
- */
-char* platform_dbstore_path();
-
-/*
- * On some platforms, this is simply a wrapper around open() - and for others
- * there might be an intermediate process that act as a device proxy.
- */
-int platform_device_open(const char* identifier, int flags);
-
-/*
- * special devices, typically gpu nodes and ttys, need and explicit privilege
- * side release- action as well. The idhint is special for TTY-swap
- */
-void platform_device_release(const char* identifier, int idhint);
-
-/*
- * detects if any new devices have appeared, and stores a copy into identifier
- * (caller assumes ownership) that can then be used in conjunction with _open
- * in order to get a handle to the device.
- *
- * -1 : discovery not possible, connection severed
- *  0 : no new device events
- *  1 : new input device provided in identifier
- *  2 : display device event pending (monitor hotplug)
- *  3 : suspend/release
- *  4 : restore/rebuild
- *  5 : terminate
- */
-int platform_device_poll(char** identifier);
-
-/*
- * retrieve a handle that can be used to I/O multiplex device discovery
- * instead of periodically calling _poll and checking the return state.
- */
-int platform_device_pollfd();
-
-/*
- * run before any other platform function, make sure that we are in a state
- * where we can negotiate access to device nodes for the event and video layers
- */
-void platform_device_init();
 
 #endif
