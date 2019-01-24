@@ -192,18 +192,19 @@ static char* egl_envopts[] = {
 	NULL
 };
 
-enum dri_method {
-	M_GBM_SWAP,
-	M_GBM_HEADLESS,
-	M_EGLSTREAMS
+enum buffer_method {
+	BUF_GBM,
+/* There is another option to running a 'display-less' EGL context and
+ * that is to build the display around a pbuffer, but there seem to be
+ * little utility to having that over this form of 'headless' */
+	BUF_HEADLESS,
+	BUF_STREAM
 };
 
 enum vsynch_method {
 	VSYNCH_FLIP = 0,
 	VSYNCH_CLOCK = 1
 };
-
-#define IS_GBM_DISPLAY(X)((X)->method == M_GBM_SWAP || (X)->method == M_GBM_HEADLESS)
 
 /*
  * Each open output device, can be shared between displays
@@ -234,11 +235,15 @@ struct dev_node {
 	int card_id;
 	bool atomic;
 
-/* method determines which of [stream,egldev] | [gbm] we use, this follows into
- * the platform-video-synch, setup and shutdown */
-	enum dri_method method;
-	EGLDeviceEXT egldev;
-	struct gbm_device* gbm;
+/*
+ * method is the key driver for most paths in here, see the M_ enum values
+ * above to indicate which of the elements here that are valid.
+ */
+	enum buffer_method buftype;
+	union {
+		EGLDeviceEXT egldev;
+		struct gbm_device* gbm;
+	} buffer;
 
 /* Display is the display system connection, not to be confused with our normal
  * display, for that we have configs derived from the display which match the
@@ -472,19 +477,27 @@ static void release_card(size_t i)
 		nodes[i].context = EGL_NO_CONTEXT;
 	}
 
-	if (IS_GBM_DISPLAY(&nodes[i])){
-		if (nodes[i].gbm)
-			gbm_device_destroy(nodes[i].gbm);
-		nodes[i].gbm = NULL;
-	}
-/* do nothing for streams? */
-	else {
+	switch (nodes[i].buftype){
+	case BUF_GBM:
+		if (nodes[i].buffer.gbm){
+			gbm_device_destroy(nodes[i].buffer.gbm);
+			nodes[i].buffer.gbm = NULL;
+		}
+	break;
+	case BUF_HEADLESS:
+/* Should be destroyed with the EGL context */
+	break;
+	case BUF_STREAM:
+/* Should be destroyed with the EGL context */
+	break;
 	}
 
-	if (nodes[i].master)
-		drmDropMaster(nodes[i].fd);
-	close(nodes[i].fd);
-	nodes[i].fd = -1;
+	if (nodes[i].fd != -1){
+		if (nodes[i].master)
+			drmDropMaster(nodes[i].fd);
+		close(nodes[i].fd);
+		nodes[i].fd = -1;
+	}
 
 	if (nodes[i].display != EGL_NO_DISPLAY){
 		nodes[i].eglenv.terminate(nodes[i].display);
@@ -798,7 +811,8 @@ static int setup_buffers_gbm(struct dispout* d)
 	EGLint match = 0;
 
 /* filter them based on the desired attributes from the device itself */
-	d->device->eglenv.choose_config(d->device->display, d->device->attrtbl, configs, nc, &match);
+	d->device->eglenv.choose_config(
+		d->device->display, d->device->attrtbl, configs, nc, &match);
 	if (!match)
 		return -1;
 
@@ -825,7 +839,7 @@ static int setup_buffers_gbm(struct dispout* d)
  * safe to actually bind the buffer to an EGL surface as the config should be
  * the right one */
 		if (!d->buffer.surface)
-			d->buffer.surface = gbm_surface_create(d->device->gbm,
+			d->buffer.surface = gbm_surface_create(d->device->buffer.gbm,
 				d->display.mode.hdisplay, d->display.mode.vdisplay,
 				gbm_formats[i], GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
 
@@ -921,10 +935,18 @@ static int setup_buffers_gbm(struct dispout* d)
 
 static int setup_buffers(struct dispout* d)
 {
-	if (IS_GBM_DISPLAY(d->device))
+	switch (d->device->buftype){
+	case BUF_GBM:
 		return setup_buffers_gbm(d);
-	else
+	break;
+	case BUF_HEADLESS:
+/* won't be needed, we only ever accept FBO management */
+		return 0;
+	break;
+	case BUF_STREAM:
 		return setup_buffers_stream(d);
+	break;
+	}
 }
 
 size_t platform_video_displays(platform_display_id* dids, size_t* lim)
@@ -965,7 +987,7 @@ int platform_video_cardhandle(int cardn,
 	}
 
 	if (buffer_method)
-		*buffer_method = nodes[cardn].method;
+		*buffer_method = nodes[cardn].buftype;
 
 	return nodes[cardn].client_meta.fd;
 }
@@ -1024,17 +1046,21 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 /*
  * setup / allocate a new set of buffers that match the new mode
  */
-	if (IS_GBM_DISPLAY(d->device)){
+	switch (d->device->buftype){
+	case BUF_GBM:
 		gbm_surface_destroy(d->buffer.surface);
 		d->buffer.surface = NULL;
 		if (setup_buffers_gbm(d) != 0)
 			return false;
-	}
-	else {
+	break;
+	case BUF_HEADLESS:
+	break;
+	case BUF_STREAM:
 		d->device->eglenv.destroy_stream(d->device->display, d->buffer.stream);
 		d->buffer.stream = EGL_NO_STREAM_KHR;
 		if (setup_buffers_stream(d) != 0)
 			return false;
+	break;
 	}
 
 	d->state = DISP_MAPPED;
@@ -1565,13 +1591,17 @@ static bool setup_node(struct dev_node* node)
 	};
 	int attrofs = 14;
 
-	if (node->method == M_EGLSTREAMS){
-		attrtbl[attrofs++] = EGL_SURFACE_TYPE;
-		attrtbl[attrofs++] = EGL_STREAM_BIT_KHR;
-	}
-	else {
+	switch (node->buftype){
+	case BUF_GBM:
 		attrtbl[attrofs++] = EGL_SURFACE_TYPE;
 		attrtbl[attrofs++] = EGL_WINDOW_BIT;
+	break;
+	case BUF_HEADLESS:
+	break;
+	case BUF_STREAM:
+		attrtbl[attrofs++] = EGL_SURFACE_TYPE;
+		attrtbl[attrofs++] = EGL_STREAM_BIT_KHR;
+	break;
 	}
 	attrtbl[attrofs++] = EGL_NONE;
 
@@ -1704,7 +1734,7 @@ static int setup_node_egl(
 		if (-1 == fd){
 			fd = lfd;
 			found = true;
-			node->egldev = devs[i];
+			node->buffer.egldev = devs[i];
 		}
 /* we we want to pair the incoming descriptor with the suggested one */
 		else {
@@ -1715,7 +1745,7 @@ static int setup_node_egl(
 			}
 			else{
 				found = true;
-				node->egldev = devs[i];
+				node->buffer.egldev = devs[i];
 			}
 		}
 	}
@@ -1728,12 +1758,12 @@ static int setup_node_egl(
 	if (found){
 		EGLint attribs[] = {EGL_DRM_MASTER_FD_EXT, fd, EGL_NONE};
 		node->fd = fd;
-		node->method = M_EGLSTREAMS;
+		node->buftype = BUF_STREAM;
 		node->atomic =
 			drmSetClientCap(fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1) == 0 &&
 			drmSetClientCap(fd, DRM_CLIENT_CAP_ATOMIC, 1) == 0;
 		node->display = node->eglenv.get_platform_display(
-			EGL_PLATFORM_DEVICE_EXT, node->egldev, attribs);
+			EGL_PLATFORM_DEVICE_EXT, node->buffer.egldev, attribs);
 		node->eglenv.swap_interval(node->display, 0);
 		return 0;
 	}
@@ -1749,9 +1779,9 @@ static void cleanup_node_gbm(struct dev_node* node)
 		close(node->client_meta.fd);
 	node->client_meta.fd = -1;
 	node->fd = -1;
-	if (node->gbm)
-		gbm_device_destroy(node->gbm);
-	node->gbm = NULL;
+	if (node->buffer.gbm)
+		gbm_device_destroy(node->buffer.gbm);
+	node->buffer.gbm = NULL;
 }
 
 static int setup_node_gbm(
@@ -1781,24 +1811,24 @@ static int setup_node_gbm(
 
 	SET_SEGV_MSG("libgbm(), create device failed catastrophically.\n");
 	fcntl(node->fd, F_SETFD, FD_CLOEXEC);
-	node->gbm = gbm_create_device(node->fd);
+	node->buffer.gbm = gbm_create_device(node->fd);
 
-	if (!node->gbm){
+	if (!node->buffer.gbm){
 		debug_print("gbm, couldn't create gbm device on node");
 		cleanup_node_gbm(node);
 		return -1;
 	}
 
-	node->method = M_GBM_SWAP;
+	node->buftype = BUF_GBM;
 
 	if (node->eglenv.get_platform_display){
 		debug_print("gbm, using eglGetPlatformDisplayEXT");
 		node->display = node->eglenv.get_platform_display(
-			EGL_PLATFORM_GBM_KHR, (void*)(node->gbm), NULL);
+			EGL_PLATFORM_GBM_KHR, (void*)(node->buffer.gbm), NULL);
 	}
 	else{
 		debug_print("gbm, building display using native handle only");
-		node->display = node->eglenv.get_display((void*)(node->gbm));
+		node->display = node->eglenv.get_display((void*)(node->buffer.gbm));
 	}
 
 /* This is kept optional as not all drivers have it, and not all drivers
@@ -2318,7 +2348,7 @@ retry:
 			ok = false;
 		}
 /* just disable atomic */
-		if (!ok && IS_GBM_DISPLAY(d->device)){
+		if (!ok && d->device->buftype == BUF_GBM){
 			debug_print("(%d) setup_kms, disabling atomic modeset, reverting\n", d->id);
 			d->device->atomic = false;
 			drmModeFreeConnector(d->display.con);
@@ -2491,11 +2521,17 @@ bool platform_video_map_handle(
  * otherwise we need a mechanism to activate the DEVICEHINT event for the
  * provider to indicate that we need a portable handle.
  */
-	if (IS_GBM_DISPLAY(&nodes[0]))
+	switch (nodes[0].buftype){
+	case BUF_GBM:
 		return map_handle_gbm(dst, handle);
-	else
+	break;
+	case BUF_STREAM:
 		return map_handle_stream(dst, handle);
-	return true;
+	break;
+	case BUF_HEADLESS:
+		return false;
+	break;
+	}
 }
 
 struct monitor_mode* platform_video_query_modes(
@@ -2713,7 +2749,7 @@ static void disable_display(struct dispout* d, bool dealloc)
 		d->buffer.cur_fb = 0;
 	}
 
-	if (IS_GBM_DISPLAY(d->device)){
+	if (d->device->buftype == BUF_STREAM){
 		if (d->buffer.surface){
 			debug_print("destroy gbm surface");
 
@@ -2875,8 +2911,8 @@ static void flush_leds()
 	}
 }
 
-static bool try_node(int fd, const char* pathref,
-	int dst_ind, bool gbm, bool force_master, int connid, int w, int h)
+static bool try_node(int fd, const char* pathref, int dst_ind,
+	enum buffer_method method, bool force_master, int connid, int w, int h)
 {
 /* set default lookup function if none has been provided */
 	if (!nodes[dst_ind].eglenv.get_proc_address){
@@ -2888,7 +2924,8 @@ static bool try_node(int fd, const char* pathref,
 	map_functions(&node->eglenv, lookup, NULL);
 	map_ext_functions(&node->eglenv, lookup_call, node->eglenv.get_proc_address);
 
-	if (gbm){
+	switch (method){
+	case BUF_GBM:
 		if (0 != setup_node_gbm(dst_ind, node, pathref, fd)){
 			node->eglenv.get_proc_address = NULL;
 			debug_print("couldn't open (%d:%s) in GBM mode",
@@ -2896,14 +2933,17 @@ static bool try_node(int fd, const char* pathref,
 				release_card(dst_ind);
 			return false;
 		}
-	}
-	else {
+	break;
+	case BUF_STREAM:
 		if (0 != setup_node_egl(dst_ind, node, pathref, fd)){
 			debug_print("couldn't open (%d:%s) in EGLStreams mode",
 				fd, pathref ? pathref : "(no path)");
 			release_card(dst_ind);
 			return false;
 		}
+	break;
+	case BUF_HEADLESS:
+	break;
 	}
 
 	if (!setup_node(node)){
@@ -3206,8 +3246,8 @@ static void page_flip_handler(int fd, unsigned int frame,
 
 	verbose_print("(%d) flip(frame: %u, @ %u.%u)", (int) d->id, frame, sec, usec);
 
-	if (IS_GBM_DISPLAY(d->device)){
-/* swap out front / back BO */
+	switch(d->device->buftype){
+	case BUF_GBM:{
 		if (d->buffer.cur_bo)
 			gbm_surface_release_buffer(d->buffer.surface, d->buffer.cur_bo);
 
@@ -3215,6 +3255,12 @@ static void page_flip_handler(int fd, unsigned int frame,
 			(int)d->id, (uintptr_t) d->buffer.cur_bo, (uintptr_t) d->buffer.next_bo);
 		d->buffer.cur_bo = d->buffer.next_bo;
 		d->buffer.next_bo = NULL;
+	}
+	break;
+	case BUF_STREAM:
+	break;
+	case BUF_HEADLESS:
+	break;
 	}
 
 	float deadline = 1000.0f / (float)(d->vrefresh ? d->vrefresh : 60.0);
@@ -3442,7 +3488,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 /*
  * Finally check for the callbacks, synchronize with the conductor and so on
  * the clocked is a failsafe for devices that don't support giving a vsynch
- * signal
+ * signal.
  */
 		if (get_pending(false) || updated)
 			flush_display_events(clocked ? 16 : 0, true);
@@ -3758,7 +3804,8 @@ static bool update_display(struct dispout* d)
 	verbose_print("(%d) swap", (int)d->id);
 
 	uint32_t next_fb = 0;
-	if (!IS_GBM_DISPLAY(d->device)){
+	switch(d->device->buftype){
+	case BUF_STREAM:{
 		EGLAttrib attr[] = {
 			EGL_DRM_FLIP_EVENT_DATA_NV, (EGLAttrib) d,
 			EGL_NONE,
@@ -3773,7 +3820,8 @@ static bool update_display(struct dispout* d)
 /* dumb buffer, will never change */
 		next_fb = d->buffer.cur_fb;
 	}
-	else {
+	break;
+	case BUF_GBM:{
 /* next/cur switching comes in the page-flip handler */
 		d->buffer.next_bo = gbm_surface_lock_front_buffer(d->buffer.surface);
 		if (!d->buffer.next_bo){
@@ -3781,6 +3829,10 @@ static bool update_display(struct dispout* d)
 			goto out;
 		}
 		next_fb = get_gbm_fd(d, d->buffer.next_bo);
+	}
+	break;
+	case BUF_HEADLESS:
+	break;
 	}
 
 	bool new_crtc = false;
