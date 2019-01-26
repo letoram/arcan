@@ -6527,7 +6527,8 @@ static int inputbase(lua_State* ctx)
 static int inputcap(lua_State* ctx)
 {
 	LUA_TRACE("input_capabilities");
-	enum PLATFORM_EVENT_CAPABILITIES pcap = platform_input_capabilities();
+	const char* pident;
+	enum PLATFORM_EVENT_CAPABILITIES pcap = platform_event_capabilities(&pident);
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
 	tblbool(ctx, "translated", (pcap & ACAP_TRANSLATED) > 0, top);
@@ -6536,7 +6537,8 @@ static int inputcap(lua_State* ctx)
 	tblbool(ctx, "touch", (pcap & ACAP_TOUCH) > 0, top);
 	tblbool(ctx, "position", (pcap & ACAP_POSITION) > 0, top);
 	tblbool(ctx, "orientation", (pcap & ACAP_ORIENTATION) > 0, top);
-	LUA_ETRACE("input_capabilities", NULL, 1);
+	lua_pushstring(ctx, pident);
+	LUA_ETRACE("input_capabilities", NULL, 2);
 }
 
 static int mousegrab(lua_State* ctx)

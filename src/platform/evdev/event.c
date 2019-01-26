@@ -1807,9 +1807,11 @@ void platform_device_lock(int devind, bool state)
  */
 }
 
-enum PLATFORM_EVENT_CAPABILITIES platform_input_capabilities()
+enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** out)
 {
 	enum PLATFORM_EVENT_CAPABILITIES rv = 0;
+	if (out)
+		*out = "evdev";
 
 	for (size_t i = 0; i < iodev.n_devs; i++){
 		if (iodev.nodes[i].handle)
@@ -1834,10 +1836,11 @@ enum PLATFORM_EVENT_CAPABILITIES platform_input_capabilities()
 			break;
 		}
 	}
+
 	return rv;
 }
 
-const char** platform_input_envopts()
+const char** platform_event_envopts()
 {
 	return (const char**) envopts;
 }

@@ -31,7 +31,7 @@ void platform_event_analogall(bool enable, bool mouse)
 enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** out)
 {
 	if (out)
-		*out = "stub";
+		*out = "headless";
 
 	return ACAP_TRANSLATED | ACAP_MOUSE | ACAP_TOUCH |
 		ACAP_POSITION | ACAP_ORIENTATION;

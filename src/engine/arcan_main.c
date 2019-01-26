@@ -176,7 +176,7 @@ printf("Usage: arcan [-whfmWMOqspTBtHbdgaSV] applname "
 	printf("\trecord=file - record input-layer events to file\n");
 	printf("\treplay=file - playback previous input recording\n");
 	printf("\tshutdown=keysym:modifiers - press to inject shutdown event\n");
-	cur = platform_input_envopts();
+	cur = platform_event_envopts();
 	if (*cur){
 	while(1){
 		const char* a = *cur++;
@@ -300,17 +300,20 @@ int MAIN_REDIR(int argc, char* argv[])
 	platform_event_preinit();
 
 /*
- * Protect against launching the arcan instance from an environment where
- * there already is indication of a connection destination.
+ * Protect against launching the main arcan instance from an environment
+ * where there already is indication of a connection destination.
  */
-#ifndef ARCAN_LWA
+#if defined(ARCAN_EGL_DRI)
+	if ((getenv("DISPLAY") || getenv("WAYLAND_DISPLAY"))){
+		execvp("arcan_sdl", argv);
+		exit(EXIT_FAILURE);
+	}
+#endif
+
+#if !defined(ARCAN_LWA) && !defined(ARCAN_HEADLESS)
 	if (getenv("ARCAN_CONNPATH")){
-		if (fork() == 0){
-			if (fork() == 0){
-				execvp("arcan_lwa", argv);
-			}
-		}
-		exit(EXIT_SUCCESS);
+		execvp("arcan_lwa", argv);
+		exit(EXIT_FAILURE);
 	}
 #endif
 

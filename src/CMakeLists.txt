@@ -122,10 +122,19 @@ option(ENABLE_LWA "Build LWA client (arcan-in-arcan)" ON)
 option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
 option(ENABLE_SIMD_ALIGNED "Assert that SIMD data sources are 16-byte aligned" OFF)
 
+if (VIDEO_PLATFORM STREQUAL "egl-dri")
+	option(HYBRID_SDL "Produce an arcan_sdl main binary as well" OFF)
+	option(HYBRID_HEADLESS "Produce a headless binary as well" OFF)
+endif()
+
 amsg("")
 amsg("${CL_WHT}Audio/Video/Input Support:")
 amsg("${CL_YEL}\t-DVIDEO_PLATFORM=${CL_GRN}${VPLATFORM_STR}${CL_RST}")
 amsg("${CL_YEL}\t-DAGP_PLATFORM=${CL_GRN}${AGPPLATFORM_STR}${CL_RST}")
+amsg("")
+amsg("${CL_WHT}VIDEO_PLATFORM=egl-dri options:${CL_RST}")
+amsg("${CL_YEL}\t-DHYBRID_SDL=${CL_GRN}[Off|On]${CL_RST} - Enable arcan_sdl output build")
+amsg("${CL_YEL}\t-DHYBRID_HEADLESS=${CL_GRN}[Off|On]${CL_RST} - Enable arcan_headless output build")
 amsg("")
 amsg("${CL_WHT}Cmake Options:${CL_RST}")
 amsg("${CL_YEL}\t-DCMAKE_BUILD_TYPE=${CL_GRN}[Debug|Release|Profile|DebugTrace]")
@@ -416,6 +425,7 @@ LIST (APPEND
 	${CMAKE_CURRENT_SOURCE_DIR}/engine
 )
 
+# Slated for deprecation / removal / migration to fsrv_decode
 add_subdirectory(${EXTERNAL_SRC_DIR}/openctm ${CMAKE_CURRENT_BINARY_DIR}/openctm)
 
 list (APPEND SOURCES
@@ -522,6 +532,12 @@ endif()
 amsg("\n${CL_WHT}---- Configuration results:${CL_RST}")
 amsg("${CL_YEL}compiler\t${CL_GRN}${CMAKE_C_COMPILER_ID}${CL_RST}")
 amsg("${CL_YEL}video   \t${CL_GRN}${VIDEO_PLATFORM}${CL_RST}")
+if (HYBRID_SDL)
+	amsg("\t        \t${CL_GRN}+support sdl platform${CL_RST}")
+endif()
+if (HYBRID_HEADLESS)
+	amsg("\t        \t${CL_GRN}+support headless platform${CL_RST}")
+endif()
 amsg("${CL_YEL}accel   \t${CL_GRN}${AGP_PLATFORM}${CL_RST}")
 amsg("${CL_YEL}audio   \t${CL_GRN}${AUDIO_PLATFORM}${CL_RST}")
 amsg("${CL_YEL}input   \t${CL_GRN}${INPUT_PLATFORM}${CL_RST}")
@@ -572,8 +588,11 @@ add_executable(arcan
 	${ARCAN_PLATFORM}
 	${AGP_SOURCES}
  	${PLATFORM_SOURCES}
+	${VIDEO_PLATFORM_SOURCES}
+	${PLATFORM_ROOT}/${INPUT_PLATFORM}/event.c
 )
 add_sanitizers(arcan)
+set(BIN_INSTALL)
 
 if (${FRAMESERVER_MODESTRING})
 string(STRIP ${FRAMESERVER_MODESTRING} FRAMESERVER_MODESTRING)
@@ -595,12 +614,97 @@ target_link_libraries(arcan
 	arcan_shmif_int
 )
 
+# Primarily used by the Darwin platform, since it is scanned before we
+# have the targets defined, we expose and add the property here
 if (ARCAN_LNK_FLAGS)
 set_property(TARGET arcan APPEND PROPERTY LINK_FLAGS ${ARCAN_LNK_FLAGS})
 endif()
 
 if (MAIN_DEPS)
 	add_dependencies(arcan ${MAIN_DEPS})
+endif()
+
+# Hybrid build is to allow the platform combination of egl-dri main with
+# fallback to SDL if X11 or Wayland is detected. We do this by resetting
+# and reusing the probe stage. It's not pretty, but beats a redesign.
+# Some cleanup possible by defining a function for taking [a,v,e,o] and
+# storing into a source/include/lib dir so that we can do that for both
+# arcan, the hybrids and lwa at the same time.
+if(VIDEO_PLATFORM STREQUAL "egl-dri")
+if(HYBRID_SDL)
+	amsg("-- Appending sdl platform build--")
+	set(VIDEO_PLATFORM "sdl")
+	set(INPUT_PLATFORM "sdl")
+	set(ARCAN_DEFINITIONS "")
+	set(ARCAN_NOLWA_DEFINITIONS "")
+	set(VIDEO_PLATFORM_SOURCES "")
+	set(INPUT_PLATFORM_SOURCES "")
+
+# HACK: Force- remove the psep-open from the platform and switch to the open
+	list(FIND ARCAN_PLATFORM "${PLATFORM_ROOT}/posix/psep_open.c" _index)
+	if (${_index} GREATER -1)
+		list(REMOVE_AT ARCAN_PLATFORM ${_index})
+		list(APPEND ARCAN_PLATFORM ${PLATFORM_ROOT}/posix/open.c)
+	endif()
+
+	include(${PLATFORM_ROOT}/cmake/CMakeLists.Video)
+	add_executable(arcan_sdl
+		${SOURCES}
+		${ARCAN_PLATFORM}
+		${AGP_SOURCES}
+		${PLATFORM_SOURCES}
+		${VIDEO_PLATFORM_SOURCES}
+		${PLATFORM_ROOT}/sdl/event.c
+	)
+	target_include_directories(arcan_sdl PRIVATE ${INCLUDE_DIRS})
+	target_compile_definitions(arcan_sdl PRIVATE
+		${ARCAN_DEFINITIONS} ${ARCAN_NOLWA_DEFINITIONS}
+		FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
+	)
+	target_link_libraries(arcan_sdl
+		${STDLIB} ${ARCAN_LIBRARIES} ${VIDEO_LIBRARIES} ${OPENAL_LIBRARY}
+		${AGP_LIBRARIES} arcan_shmif_int
+	)
+	list(APPEND BIN_INSTALL arcan_sdl)
+endif()
+
+# Hybrid headless is to allow an arcan setup where the normal egl drivers
+# etc. are being used, but the input platform is exposed as an connection
+# point in order to use it as a render server or client 'host' for remote
+# desktop like situations.
+if (HYBRID_HEADLESS)
+	amsg("-- Appending headless platform build--")
+	set(VIDEO_PLATFORM headless)
+	set(ARCAN_DEFINITIONS "")
+	include(${PLATFORM_ROOT}/cmake/CMakeLists.Video)
+
+# HACK: Force- remove the psep-open from the platform and switch to the open
+	list(FIND ARCAN_PLATFORM "${PLATFORM_ROOT}/posix/psep_open.c" _index)
+	if (${_index} GREATER -1)
+		list(REMOVE_AT ARCAN_PLATFORM ${_index})
+		list(APPEND ARCAN_PLATFORM ${PLATFORM_ROOT}/posix/open.c)
+	endif()
+
+	list(APPEND BIN_INSTALL arcan_headless)
+	add_executable(arcan_headless
+		${SOURCES}
+		${ARCAN_PLATFORM}
+		${AGP_SOURCES}
+		${PLATFORM_SOURCES}
+		${VIDEO_PLATFORM_SOURCES}
+		${PLATFORM_ROOT}/headless/event.c
+	)
+	target_include_directories(arcan_headless PRIVATE ${INCLUDE_DIRS})
+	target_compile_definitions(arcan_headless PRIVATE
+		${ARCAN_DEFINITIONS} ${ARCAN_NOLWA_DEFINITIONS} ARCAN_HEADLESS
+		FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
+	)
+	target_link_libraries(arcan_headless
+		${STDLIB} ${ARCAN_LIBRARIES} ${VIDEO_LIBRARIES} ${OPENAL_LIBRARY}
+		${AGP_LIBRARIES} arcan_shmif_int
+	)
+	list(APPEND BIN_INSTALL arcan_headless)
+endif()
 endif()
 
 #
@@ -614,7 +718,12 @@ add_sanitizers(arcan_db)
 target_link_libraries(arcan_db ${STDLIB} ${SQLITE3_LIBRARIES})
 target_include_directories(arcan_db PRIVATE ${INCLUDE_DIRS})
 target_compile_definitions(arcan_db PRIVATE ARCAN_DB_STANDALONE)
+list(APPEND BIN_INSTALL arcan_db)
 
+#
+# Special case, the egl-dri platform requires suid- for the chain-loader
+#
+#
 if (VIDEO_PLATFORM STREQUAL "egl-dri")
 	amsg("${CL_YEL}egl-dri+privsep${CL_RST}\t${CL_GRN}installing SUID${CL_RST}")
 	install(TARGETS arcan DESTINATION bin
@@ -628,7 +737,7 @@ else()
 install(TARGETS arcan DESTINATION bin)
 endif()
 
-install(TARGETS arcan_db DESTINATION bin)
+install(TARGETS ${BIN_INSTALL} DESTINATION bin)
 
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/../data/appl
 	DESTINATION ${APPL_DEST}

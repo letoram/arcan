@@ -310,7 +310,7 @@ const char** platform_video_envopts()
 	return (const char**) video_envopts;
 }
 
-const char** platform_input_envopts()
+const char** platform_event_envopts()
 {
 	return (const char**) input_envopts;
 }
@@ -1049,10 +1049,6 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 	return false;
 }
 
-void platform_input_help()
-{
-}
-
 void platform_event_keyrepeat(arcan_evctx* ctx, int* period, int* delay)
 {
 	*period = 0;
@@ -1077,8 +1073,11 @@ void platform_event_rescan_idev(arcan_evctx* ctx)
 {
 }
 
-enum PLATFORM_EVENT_CAPABILITIES platform_input_capabilities()
+enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** out)
 {
+	if (out)
+		*out = "lwa";
+
 	return ACAP_TRANSLATED | ACAP_MOUSE | ACAP_TOUCH |
 		ACAP_POSITION | ACAP_ORIENTATION;
 }

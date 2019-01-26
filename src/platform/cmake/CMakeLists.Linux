@@ -105,12 +105,6 @@ else()
 	list(APPEND ARCAN_PLATFORM ${PLATFORM_PATH}/open.c)
 endif()
 
-# we don't want these coming along in LWA_PLATFORM
-list(APPEND PLATFORM_SOURCES
-	${VIDEO_PLATFORM_SOURCES}
-	${PLATFORM_ROOT}/${INPUT_PLATFORM}/event.c
-)
-
 list(APPEND STDLIB
  m
  pthread

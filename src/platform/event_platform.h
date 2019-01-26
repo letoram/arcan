@@ -5,7 +5,7 @@
  * get a NULL terminated list of input- platform specific environment options
  * will only be presented to the user in a CLI like setting.
  */
-const char** platform_input_envopts();
+const char** platform_event_envopts();
 
 /*
  * Some platforms have a costly and intrusive detection process for new devices
@@ -86,5 +86,29 @@ void platform_event_samplebase(int devid, float xyz[3]);
  * poll / flush all incoming platform input event into specified context.
  */
 void platform_event_process(struct arcan_evctx* ctx);
+
+/*
+ * Return a list of possible input device types
+ */
+enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** dst);
+
+/*
+ * Update/get the active filter setting for the specific devid / axis (-1 for
+ * all) lower_bound / upper_bound sets the [lower < n < upper] where only n
+ * values are passed into the filter core (and later on, possibly as events)
+ *
+ * Buffer_sz is treated as a hint of how many samples in should be considered
+ * before emitting a sample out.
+ *
+ * The implementation is left to the respective platform/input code to handle.
+ */
+void platform_event_analogfilter(int devid,
+	int axisid, int lower_bound, int upper_bound, int deadzone,
+	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind);
+
+arcan_errc platform_event_analogstate(int devid, int axisid,
+	int* lower_bound, int* upper_bound, int* deadzone,
+	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode);
+
 
 #endif
