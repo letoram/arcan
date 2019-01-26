@@ -1,7 +1,7 @@
 -- input_capabilities
 -- @short: query platform layer for input capabilities
 -- @inargs:
--- @outargs: captbl
+-- @outargs: captbl, ident
 -- @longdescr: Depending on the system that arcan runs on, the knowledge
 -- about which specific input devices are available may be fixed or change
 -- as a response to external actions. This function tries to populate a

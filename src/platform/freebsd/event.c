@@ -617,8 +617,11 @@ void platform_event_keyrepeat(arcan_evctx* ctx, int* period, int* delay)
 	ioctl(evctx.keyb.fd, KDSETREPEAT, &rep);
 }
 
-enum PLATFORM_EVENT_CAPABILITIES platform_input_capabilities()
+enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** out)
 {
+	if (out)
+		*out = "freebsd";
+
 	return ACAP_TRANSLATED | ACAP_MOUSE | ACAP_TOUCH;
 }
 
@@ -637,7 +640,7 @@ static char* envopts[] = {
 	NULL
 };
 
-const char** platform_input_envopts()
+const char** platform_event_envopts()
 {
 	return (const char**) envopts;
 }

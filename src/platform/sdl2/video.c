@@ -304,8 +304,8 @@ struct monitor_mode platform_video_dimensions()
 	return res;
 }
 
-bool platform_video_map_display(arcan_vobj_id id, platform_display_id disp,
-	enum blitting_hint hint)
+bool platform_video_map_display(arcan_vobj_id id,
+	platform_display_id disp, enum blitting_hint hint)
 {
 	if (disp != 0)
 		return false;
@@ -400,7 +400,7 @@ bool platform_video_init(uint16_t width, uint16_t height,
 	sdl.caption = strdup(capt ? capt : "");
 
 	arcan_video_display.fullscreen = fs;
-	sdl.sdlarg = SDL_WINDOW_ALLOW_HIGHDPI |
+	sdl.sdlarg = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL |
 		(fs ? SDL_WINDOW_FULLSCREEN_DESKTOP : SDL_WINDOW_RESIZABLE) |
 		(frames ? SDL_WINDOW_BORDERLESS : 0);
 

@@ -176,69 +176,65 @@ if (NOT SHMIF_DISABLE_DEBUGIF)
 	target_compile_definitions(arcan_shmif_int PRIVATE SHMIF_DEBUG_IF)
 endif()
 
-# somewhat messy, if the engine is building a static freetype version we should
-# use that one and provide a tui to match, but we should also try and provide a
-# dynamic one.
-if (SHMIF_TUI)
-# if there's an accelerated GPU platform built, also build a TUI that can use
-# the shmif_ext libraries for GPU access.
-	set(TUI_INCLUDE_DIRS /opt/local/include)
-	if (SHMIF_TUI_ACCEL)
-		set(TUI_LIBRARIES arcan_shmif arcan_shmif_ext)
-	else()
-		set(TUI_LIBRARIES arcan_shmif)
-		set (TUI_DEFINITIONS SHMIF_TUI_DISABLE_GPU)
-	endif()
+# The TUI libraries / build setup is slated to change soonish when the TUI
+# refactor branch completes. This would push the freetype/harfbuzz etc. stage
+# to be a part of arcan instead and the library can be made to be quite tiny.
+set(TUI_INCLUDE_DIRS /opt/local/include)
+if (SHMIF_TUI_ACCEL)
+	set(TUI_LIBRARIES arcan_shmif arcan_shmif_ext)
+else()
+	set(TUI_LIBRARIES arcan_shmif)
+	set (TUI_DEFINITIONS SHMIF_TUI_DISABLE_GPU)
+endif()
 
-	if (NOT FORCE_NOHARFBUZZ)
-		find_package(HarfBuzz)
-		if (HARFBUZZ_FOUND)
-			amsg("${CL_YEL}shmif-tui${CL_RST}\t${CL_GRN}shaping:harfbuzz${CL_RST}")
-			list(APPEND TUI_LIBRARIES ${HARFBUZZ_LIBRARIES})
-			list(APPEND TUI_INCLUDE_DIRS ${HARFBUZZ_INCLUDE_DIRS})
-			list(APPEND TUI_DEFINITIONS WITH_HARFBUZZ)
-		else()
-			amsg("${CL_YEL}shmif-tui${CL_RST}\t${CL_RED}harfbuzz disabled${CL_RST}")
-		endif()
+if (NOT FORCE_NOHARFBUZZ)
+	find_package(HarfBuzz)
+	if (HARFBUZZ_FOUND)
+		amsg("${CL_YEL}shmif-tui${CL_RST}\t${CL_GRN}shaping:harfbuzz${CL_RST}")
+		list(APPEND TUI_LIBRARIES ${HARFBUZZ_LIBRARIES})
+		list(APPEND TUI_INCLUDE_DIRS ${HARFBUZZ_INCLUDE_DIRS})
+		list(APPEND TUI_DEFINITIONS WITH_HARFBUZZ)
+	else()
+		amsg("${CL_YEL}shmif-tui${CL_RST}\t${CL_RED}harfbuzz disabled${CL_RST}")
 	endif()
+endif()
 
 # STATIC_FREETYPE is inherited from the outer scope, means we have our own build
 # of freetype that we should link to statically
-	if (STATIC_FREETYPE)
-		add_library(arcan_tui STATIC ${SHMIF_TUI_SOURCES})
-		target_link_libraries(arcan_tui PRIVATE ${STDLIB} ${FREETYPE_DEFAULT_LIBRARIES} ${TUI_LIBRARIES})
-		find_package(Freetype QUIET)
-		if (FREETYPE_FOUND)
-			add_library(arcan_tuiext SHARED ${SHMIF_TUI_SOURCES})
-			target_link_libraries(arcan_tuiext PRIVATE
-				${STDLIB} ${FREETYPE_LIBRARIES} ${TUI_LIBRARIES})
-			set_target_properties(arcan_tuiext PROPERTIES
-				COMPILE_FLAGS -fPIC
-				OUTPUT_NAME arcan_tui
-				VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
-			)
-			target_compile_definitions(arcan_tuiext PRIVATE ${TUI_DEFINITIONS})
-			set(TARGET_LIST ${TARGET_LIST} arcan_tuiext)
-			target_include_directories(arcan_tuiext PRIVATE
-				${INCLUDE_DIRS} ${TUI_INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/engine ${ASD}/shmif)
+if (STATIC_FREETYPE)
+	add_library(arcan_tui STATIC ${SHMIF_TUI_SOURCES})
+	target_link_libraries(arcan_tui PRIVATE ${STDLIB} ${FREETYPE_DEFAULT_LIBRARIES} ${TUI_LIBRARIES})
+	find_package(Freetype QUIET)
+	if (FREETYPE_FOUND)
+		add_library(arcan_tuiext SHARED ${SHMIF_TUI_SOURCES})
+		target_link_libraries(arcan_tuiext PRIVATE
+			${STDLIB} ${FREETYPE_LIBRARIES} ${TUI_LIBRARIES})
+		set_target_properties(arcan_tuiext PROPERTIES
+			COMPILE_FLAGS -fPIC
+			OUTPUT_NAME arcan_tui
+			VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
+		)
+		target_compile_definitions(arcan_tuiext PRIVATE ${TUI_DEFINITIONS})
+		set(TARGET_LIST ${TARGET_LIST} arcan_tuiext)
+		target_include_directories(arcan_tuiext PRIVATE
+			${INCLUDE_DIRS} ${TUI_INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/engine ${ASD}/shmif)
 # Due to the accelerated- GPU flags, we also NEED to build a shared library
 # version as this likely pulls in libraries that we can't deal with statically
-		else()
-			amsg("${CL_YEL}only static freetype found, dynamic/accel shmif_tui disabled ${CL_RST}")
-		endif()
+	else()
+		amsg("${CL_YEL}only static freetype found, dynamic/accel shmif_tui disabled ${CL_RST}")
+	endif()
 # This means we already have a find-package for Freetype (parent requires it)
 # and we can inherit/use those flags. For the time being, we need to treat
 # Harfbuzz- style shaping separately though.
-	else()
-		add_library(arcan_tui SHARED ${SHMIF_TUI_SOURCES})
-		target_link_libraries(arcan_tui PRIVATE ${STDLIB} ${TUI_LIBRARIES} ${FREETYPE_LIBRARIES})
-		set_target_properties(arcan_tui PROPERTIES VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR})
-	endif()
+else()
+	add_library(arcan_tui SHARED ${SHMIF_TUI_SOURCES})
+	target_link_libraries(arcan_tui PRIVATE ${STDLIB} ${TUI_LIBRARIES} ${FREETYPE_LIBRARIES})
+	set_target_properties(arcan_tui PROPERTIES VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR})
+endif()
 
-	target_compile_definitions(arcan_tui PRIVATE ${TUI_DEFINITIONS})
-	target_include_directories(arcan_tui PRIVATE
-		${INCLUDE_DIRS} ${TUI_INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/shmif ${ASD}/engine)
-endif() # _TUI
+target_compile_definitions(arcan_tui PRIVATE ${TUI_DEFINITIONS})
+target_include_directories(arcan_tui PRIVATE
+	${INCLUDE_DIRS} ${TUI_INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/shmif ${ASD}/engine)
 
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})

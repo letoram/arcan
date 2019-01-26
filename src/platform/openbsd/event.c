@@ -103,8 +103,11 @@ void platform_event_analogall(bool enable, bool mouse)
 {
 }
 
-enum PLATFORM_EVENT_CAPABILITIES platform_input_capabilities()
+enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** out)
 {
+	if (out)
+		*out = "openbsd";
+
 	return ACAP_TRANSLATED | ACAP_MOUSE | ACAP_TOUCH |
 		ACAP_POSITION | ACAP_ORIENTATION;
 }
@@ -329,7 +332,7 @@ static char* envopts[] = {
 	NULL
 };
 
-const char** platform_input_envopts()
+const char** platform_event_envopts()
 {
 	return (const char**) envopts;
 }

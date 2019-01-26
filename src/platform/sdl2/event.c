@@ -27,7 +27,7 @@ static const char* envopts[] =
 
 static bool mouse_relative = false;
 
-const char** platform_input_envopts()
+const char** platform_event_envopts()
 {
 	return (const char**) envopts;
 }
@@ -734,8 +734,11 @@ void drop_joytbl(struct arcan_evctx* ctx)
 	}
 }
 
-enum PLATFORM_EVENT_CAPABILITIES platform_input_capabilities()
+enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** out)
 {
+	if (out)
+		*out = "sdl2";
+
 	return ACAP_TRANSLATED | ACAP_MOUSE | ACAP_GAMING;
 }
 

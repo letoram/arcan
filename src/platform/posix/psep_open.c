@@ -727,10 +727,11 @@ static int psock = -1;
 void platform_device_init()
 {
 /*
- * Nothing of this is needed if we need to chain into an arcan_lwa as
- * there is already an arcan instance running (or at least we think so)
+ * Signs of these environment variables indicate that we are in a context where
+ * other display servers exist, drop out immediately so that we don't risk
+ * interfering with their execution.
  */
-	if (getenv("ARCAN_CONNPATH")){
+	if (getenv("ARCAN_CONNPATH") || getenv("DISPLAY") || getenv("WAYLAND_DISPLAY")){
 		drop_privileges();
 		return;
 	}

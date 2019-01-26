@@ -12,6 +12,9 @@
 #  INCLUDE_DIRS
 #
 
+# reset if we are included multiple times with different video_platform
+set(VIDEO_LIBRARIES "")
+set(VIDEO_PLATFORM_SOURCES "")
 
 # legacy platform for weaker platforms that don't have/support KMS
 if(VIDEO_PLATFORM STREQUAL "egl-gles")
@@ -67,7 +70,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 				${PLATFORM_ROOT}/stub/libbacklight.c)
 	endif()
 	set(LWA_PLATFORM_STR "egl-dri-rnode")
-
+	list(APPEND ARCAN_DEFINITIONS ARCAN_EGL_DRI)
 #
 # only option on OSX/Windows currently, would also work for
 # drawing to Wayland compositors (though the list of dependencies
@@ -114,6 +117,12 @@ elseif(VIDEO_PLATFORM STREQUAL "sdl2")
 	list(APPEND INCLUDE_DIRS ${SDL2_INCLUDE_DIR})
 	list(APPEND VIDEO_LIBRARIES ${SDL2_LIBRARY})
 	set(VIDEO_PLATFORM_SOURCES ${PLATFORM_ROOT}/sdl2/video.c)
+
+elseif(VIDEO_PLATFORM STREQUAL "headless")
+	if (NOT INPUT_PLATFORM)
+		set(INPUT_PLATFORM "headless")
+	endif()
+	set(VIDEO_PLATFORM_SOURCES ${PLATFORM_ROOT}/headless/video.c)
 
 else()
 # there are a few things that is just <invective> when it comes

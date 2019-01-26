@@ -148,26 +148,6 @@ void arcan_fatal(const char* msg, ...);
  * This can be null (and by default is null) in order to disable log output */
 void arcan_log_destination(FILE* outf, int minlevel);
 
-enum PLATFORM_EVENT_CAPABILITIES platform_input_capabilities();
-
-/*
- * Update/get the active filter setting for the specific devid / axis (-1 for
- * all) lower_bound / upper_bound sets the [lower < n < upper] where only n
- * values are passed into the filter core (and later on, possibly as events)
- *
- * Buffer_sz is treated as a hint of how many samples in should be considered
- * before emitting a sample out.
- *
- * The implementation is left to the respective platform/input code to handle.
- */
-void platform_event_analogfilter(int devid,
-	int axisid, int lower_bound, int upper_bound, int deadzone,
-	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind);
-
-arcan_errc platform_event_analogstate(int devid, int axisid,
-	int* lower_bound, int* upper_bound, int* deadzone,
-	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode);
-
 /*
  * returns a [caller-managed COPY] of a OS- specific safe (read/writeable) path
  * to the database to use unless one has been provided at the command-line.
