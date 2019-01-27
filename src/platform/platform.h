@@ -68,7 +68,7 @@ struct arcan_frameserver* arcan_target_launch_internal(
  * to some implementation defined mechanism.
  *
  * Returns true if the key was found. If the key carried some associated value,
- * *res (if provided) will be set to a dynamically allocated string that the
+ * *val (if provided) will be set to a dynamically allocated string that the
  * caller assumes responsibility for, otherwise NULL.
  *
  * For keys that have multiple set values, [ind] can be walked and is assumed

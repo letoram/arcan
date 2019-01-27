@@ -90,6 +90,16 @@ void arcan_conductor_deadline(uint8_t next_deadline_ms);
  */
 void arcan_conductor_setsynch(const char* arg);
 
+/*
+ * [called from platform]
+ *
+ * This can occur when the platform needs to lock GPU resources but has no
+ * access to better display feedback control than a rough estimate as to how
+ * long the synch should take. It is used as an artificial constraint when
+ * running inside another display system, and when operating 'headless'.
+ */
+void arcan_conductor_fakesynch(uint8_t left_ms);
+
 #ifndef VIDEO_PLATFORM_IMPL
 /* Update the priority target to match the specified frameserver. This
  * means that heuristics driving synchronization will be biased towards
