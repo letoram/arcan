@@ -3330,11 +3330,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
  */
 		int left = 1000.0f / refresh;
 		arcan_conductor_deadline(-1);
-		int step;
-		while ((step = arcan_conductor_yield(NULL, 0)) != -1 && left > step){
-			arcan_timesleep(step);
-			left -= step;
-		}
+		arcan_conductor_fakesynch(left);
 	}
 
 	last_nd = nd;

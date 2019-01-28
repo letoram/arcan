@@ -268,7 +268,7 @@ static enum shmifext_setup_status add_context(
 		EGL_NONE, EGL_NONE, EGL_NONE, EGL_NONE, EGL_NONE, EGL_NONE,
 		EGL_NONE, EGL_NONE, EGL_NONE};
 
-	int ofs = 0;
+	int ofs = 2;
 	if (arg->api != API_GLES){
 		if (arg->major){
 			cas[ofs++] = EGL_CONTEXT_MAJOR_VERSION_KHR;

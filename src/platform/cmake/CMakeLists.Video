@@ -123,7 +123,13 @@ elseif(VIDEO_PLATFORM STREQUAL "headless")
 		set(INPUT_PLATFORM "headless")
 	endif()
 	set(VIDEO_PLATFORM_SOURCES ${PLATFORM_ROOT}/headless/video.c)
-
+	find_package(EGL REQUIRED QUIET)
+	find_package(GBMKMS REQUIRED QUIET)
+	list(APPEND VIDEO_LIBRARIES
+		${EGL_LIBRARIES}
+		${GBMKMS_LIBRARIES}
+	)
+	list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
 else()
 # there are a few things that is just <invective> when it comes
 # to CMake (outside the syntax itself and that it took 10+ years

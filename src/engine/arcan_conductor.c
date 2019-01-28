@@ -269,7 +269,6 @@ void arcan_conductor_setsynch(const char* arg)
 	while(synchopts[ind]){
 		if (strcmp(synchopts[ind], arg) == 0){
 			synchopt = (ind > 0 ? ind / 2 : ind);
-			arcan_warning("synchronisation strategy set to (%s)\n", synchopts[ind]);
 			break;
 		}
 
@@ -393,7 +392,7 @@ static bool preframe_synch(int next, int elapsed)
 	return true;
 }
 
-static int postframe_synch(int next)
+static uint64_t postframe_synch(uint64_t next)
 {
 	switch(synchopt){
 	case SYNCH_VSYNCH:
@@ -439,7 +438,8 @@ int arcan_conductor_run(arcan_tick_cb tick)
 	alloc_frameserver_struct();
 	uint64_t last_tickcount;
 	uint64_t last_synch = arcan_timemillis();
-	int next_synch = 0, sstate = -1;
+	uint64_t next_synch = 0;
+	int sstate = -1;
 
 	for(;;){
 /*
@@ -457,7 +457,8 @@ int arcan_conductor_run(arcan_tick_cb tick)
 		if (!arcan_event_feed(evctx, process_event, &exit_code))
 			break;
 
-/* Chunk the time left until the next batch and yield in small steps. */
+/* Chunk the time left until the next batch and yield in small steps. This
+ * puts us about 25fps, could probably go a little lower than that, say 12 */
 		if (synchopt == SYNCH_POWERSAVE && last_tickcount == conductor.tick_count){
 			internal_yield();
 			continue;
@@ -465,8 +466,7 @@ int arcan_conductor_run(arcan_tick_cb tick)
 
 /* Other processing modes deal with their poll/sleep synch inside video-synch
  * or based on another evaluation function */
-		else if (next_synch <= 0 || preframe_synch(next_synch, elapsed)){
-
+		else if (next_synch <= 0 || preframe_synch(next_synch - last_synch, elapsed)){
 /* A stall or other action caused us to miss the tight deadline and the herd
  * didn't get unlocked this pass, so perform one now to not block the clients
  * indefinitely */
@@ -484,10 +484,20 @@ int arcan_conductor_run(arcan_tick_cb tick)
 	return exit_code;
 }
 
+void arcan_conductor_fakesynch(uint8_t left)
+{
+	int real_left = left;
+	int step;
+	while ((step = arcan_conductor_yield(NULL, 0)) != -1 && left > step){
+		arcan_timesleep(step);
+		left -= step;
+	}
+}
+
 void arcan_conductor_deadline(uint8_t deadline)
 {
 	if (conductor.set_deadline == -1 || deadline < conductor.set_deadline)
-		conductor.set_deadline = deadline;
+		conductor.set_deadline = arcan_timemillis() + deadline;
 }
 
 static void conductor_cycle(int nticks)
