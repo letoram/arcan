@@ -45,8 +45,6 @@ enum arcan_ffunc {
 	FFUNC_SOCKPOLL
 };
 
-typedef uint8_t ffunc_ind;
-
 /*
  * Prototype and enumerations for frameserver- and other dynamic data sources
  */
@@ -72,6 +70,8 @@ typedef struct vfunc_state {
 	void* ptr;
 } vfunc_state;
 
+typedef uint8_t ffunc_ind;
+
 /*
  * This is used in the defined prototypes and the defined implementation for
  * each ffunc to ensure system name use and trigger compile errors if we ever
@@ -87,5 +87,18 @@ typedef enum arcan_ffunc_rv(*arcan_vfunc_cb) FFUNC_HEAD;
 void arcan_ffunc_initlut();
 
 arcan_vfunc_cb arcan_ffunc_lookup(ffunc_ind);
+
+/*
+ * Extend feed function lookup table with a custom entry, this will
+ * return an index that can be used to reference this function and
+ * will resolve on arcan_ffunc_lookup.
+ *
+ * Returns -1 if there are no free slots.
+ *
+ * Use this function cautiously as it affects which functions that
+ * are within simple reach from a sensitive context (frameserver
+ * struct evaluation, ...)
+ */
+int arcan_ffunc_register(arcan_vfunc_cb);
 
 #endif
