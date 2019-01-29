@@ -97,8 +97,53 @@ static void spawn_encode_output()
 	uintptr_t tag;
 	char* enc_arg;
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
-	if (1 || !get_config("encode", 0, &enc_arg, tag))
+	if (!get_config("encode", 0, &enc_arg, tag))
 		return;
+
+/*
+ * dvid = alloc_surface
+ */
+	arcan_vobj_id dst;
+	arcan_vobject* vobj = arcan_video_newvobject(&dst);
+	if (!vobj){
+		arcan_warning("(headless) couldn't allocate encode- storage\n");
+		return;
+	}
+
+	struct agp_vstore* ds = vobj->vstore;
+	agp_empty_vstoreext(ds, global.width, global.heightm 1);
+	ds->origw = global.width;
+	ds->origh = global.height;
+	ds->order = 0;
+	ds->blendmode = BLEND_NORMAL;
+	arcan_vint_attachobject(dst);
+
+/*
+ * interim = null_surface
+ */
+	arcan_vobj_id cont = arcan_video_nullobject(global.width, global.height, 1);
+	if (ARCAN_EID == cont){
+		arcan_warning("(headless) couldn't allocate proxy object\n");
+		arcan_video_deleteobject(dst);
+		return;
+	}
+
+/*
+ * show_image
+ * image_sharestorage
+ */
+	arcan_video_shareglstore(ARCAN_VIDEO_WORLDID, cont);
+
+/*
+ * define_recordtarget
+ */
+	if (ARCAN_OK != arcan_video_setuprendertarget(
+		dst, -1, -1, RENDERTARGET_NOSCALE, RENDERTARGET_COLOR)){
+		arcan_warning("(headless) couldn't bind a rendertarget\n");
+		arcan_video_deleteobject(cont);
+		arcan_video_deleteobject(dst);
+		return;
+	}
 
 /*
 	struct arcan_strarr arr_argv = {0}, arr_env = {0};
