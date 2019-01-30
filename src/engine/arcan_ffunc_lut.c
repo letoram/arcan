@@ -98,6 +98,37 @@ void arcan_ffunc_initlut()
 	mprotect(f_lut, system_page_size, PROT_READ);
 }
 
+int arcan_ffunc_register(arcan_vfunc_cb cb)
+{
+	int found = -1;
+
+/* sweep the adressable range, look for one entry that is not 0 or
+ * LWA and that references the fatal ffunc */
+	for (size_t i = 1; i < 256; i++){
+		if (f_lut[i] == fatal_ffunc && i != FFUNC_LWA){
+			found = i;
+			break;
+		}
+	}
+
+/* out of space */
+	if (found == -1)
+		return -1;
+
+/* protect against multiple register calls on the same function */
+	for (size_t i = 0; i < 256; i++){
+		if (f_lut[i] == cb)
+			return i;
+	}
+
+/* register (need to unprotect) */
+	mprotect(f_lut, system_page_size, PROT_READ | PROT_WRITE);
+	f_lut[found] = cb;
+	mprotect(f_lut, system_page_size, PROT_READ);
+
+	return found;
+}
+
 arcan_vfunc_cb arcan_ffunc_lookup(ffunc_ind ind)
 {
 	return f_lut[ind];
