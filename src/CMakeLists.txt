@@ -51,6 +51,12 @@ set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 set(PLATFORM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/platform)
 set(ENGINE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 
+if (BUILD_PRESET STREQUAL "everything")
+	set(VIDEO_PLATFORM "egl-dri")
+	set(HYBRID_SDL ON)
+	set(HYBRID_HEADLESS ON)
+endif()
+
 # distributions packaging a build should tag this accordingly so we
 # can take that into consideration for bug reports
 if (NOT DEFINED DISTR_TAG)
@@ -103,7 +109,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 		set(VIDEO_PLATFORM "sdl")
 	endif()
 else()
-	set(VPLATFORM_STR "egl-dri, sdl, egl-gles")
+	set(VPLATFORM_STR "egl-dri, sdl, sdl2, egl-gles")
 	if (NOT VIDEO_PLATFORM)
 		set(VIDEO_PLATFORM "egl-dri")
 	endif()
@@ -127,6 +133,9 @@ if (VIDEO_PLATFORM STREQUAL "egl-dri")
 	option(HYBRID_HEADLESS "Produce a headless binary as well" OFF)
 endif()
 
+amsg("")
+amsg("${CL_WHT}Build Presets:")
+amsg("${CL_YEL}\t-DBUILD_PRESET=${CL_GRN}everything${CL_RST}")
 amsg("")
 amsg("${CL_WHT}Audio/Video/Input Support:")
 amsg("${CL_YEL}\t-DVIDEO_PLATFORM=${CL_GRN}${VPLATFORM_STR}${CL_RST}")
@@ -208,8 +217,8 @@ if (CMAKE_BUILD_TYPE STREQUAL "Profile")
 endif(CMAKE_BUILD_TYPE STREQUAL "Profile")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-	amsg("${CL_WHT}------------------*Debug Build*--------------------${CL_RST}")
-	amsg("${CL_YEL}Debug Specific Setting:")
+	amsg("${CL_WHT}------------------*Debug Build*--------------------${CL_RST}\n")
+	amsg("${CL_WHT}Debug Specific Setting:${CL_YEL}")
 	amsg("\tLUA_TRACE_METHOD=${CL_RST}[${CL_GRN}off${CL_RST}|${CL_GRN}stderr${CL_RST}|${CL_GRN}coverage${CL_RST}]")
 	if (LUA_TRACE_METHOD STREQUAL "stderr")
 		set(LUA_TAG_MODE " trace-stderr")
@@ -239,6 +248,8 @@ if (NOT VIDEO_PLATFORM)
 endif()
 
 add_compile_options(-std=${CSTD})
+
+amsg("${CL_WHT}\n------------- Configuration Results ---------------${CL_RST}\n")
 
 amsg("\n${CL_WHT}-- Stage 1: dependencies and configuration${CL_RST}")
 
