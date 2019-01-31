@@ -23,6 +23,8 @@ static struct {
 	const char* pass[2];
 	pthread_mutex_t outsync;
 	rfbScreenInfoPtr server;
+	int last_x, last_y;
+	int last_mask;
 	struct arcan_shmif_cont shmcont;
 } vncctx = {0};
 
@@ -32,37 +34,69 @@ struct cl_track {
 
 static void server_pointer (int buttonMask,int x,int y,rfbClientPtr cl)
 {
-	arcan_event outev = {
-		.category = EVENT_EXTERNAL,
-		.ext.kind = EVENT_EXTERNAL_CURSORINPUT,
-		.ext.cursor.id = ((struct cl_track*)cl->clientData)->conn_id,
-		.ext.cursor.x = x,
-		.ext.cursor.y = y
-	};
+/*
+ * synch cursor position on change only
+ */
+	if (vncctx.last_x != x || vncctx.last_y != y){
+		arcan_shmif_enqueue(&vncctx.shmcont, &(struct arcan_event){
+			.category = EVENT_IO,
+			.io = {
+				.subid = 0,
+				.devid = getpid(),
+				.datatype = EVENT_IDATATYPE_ANALOG,
+				.devkind = EVENT_IDEVKIND_MOUSE,
+				.input.analog.gotrel = false,
+				.input.analog.nvalues = 2,
+				.input.analog.axisval = {x, y}
+			}
+		});
+		vncctx.last_x = x;
+		vncctx.last_y = y;
+	}
 
-	outev.ext.cursor.buttons[0] = buttonMask & (1 << 1);
-	outev.ext.cursor.buttons[1] = buttonMask & (1 << 2);
-	outev.ext.cursor.buttons[2] = buttonMask & (1 << 3);
-	outev.ext.cursor.buttons[3] = buttonMask & (1 << 4);
-	outev.ext.cursor.buttons[4] = buttonMask & (1 << 5);
-
-	arcan_shmif_enqueue(&vncctx.shmcont, &outev);
+/*
+ * synch button state on change
+ */
+	if (buttonMask != vncctx.last_mask){
+		for (size_t i = 0; i < 5; i++){
+			if (((1 << i) & buttonMask) != ((1 << i) & vncctx.last_mask)){
+				arcan_shmif_enqueue(&vncctx.shmcont, &(struct arcan_event){
+					.category = EVENT_IO,
+					.io = {
+						.kind = EVENT_IO_BUTTON,
+						.subid = i,
+						.datatype = EVENT_IDATATYPE_DIGITAL,
+						.devkind = EVENT_IDEVKIND_MOUSE,
+						.devid = getpid(),
+						.input.digital.active = !!((1 << i & buttonMask) > 0)
+					}
+				});
+			}
+		}
+		vncctx.last_mask = buttonMask;
+	}
 }
 
 static void server_key(rfbBool down,rfbKeySym key,rfbClientPtr cl)
 {
-	arcan_event outev = {
-		.category = EVENT_EXTERNAL,
-		.ext.kind = EVENT_EXTERNAL_KEYINPUT,
-		.ext.key.id = ((struct cl_track*)cl->clientData)->conn_id,
-		.ext.key.keysym = 0,
-		.ext.key.active = down
-	};
-
-	if (key < 65536)
-		outev.ext.key.keysym = symtbl_in[key];
-
-	arcan_shmif_enqueue(&vncctx.shmcont, &outev);
+/*
+ * A possible option here would be to time and track modifier keys and
+ * have a timed safety release etc. in the event of client errors (not
+ * uncommon).
+ */
+	arcan_shmif_enqueue(&vncctx.shmcont, &(struct arcan_event){
+		.category = EVENT_IO,
+		.io = {
+		.devid = getpid(),
+		.subid = key,
+			.devkind = EVENT_IDEVKIND_KEYBOARD,
+			.datatype = EVENT_IDATATYPE_TRANSLATED,
+			.input.translated = {
+				.active = down,
+				.keysym = (key < 65536 ? symtbl_in[key] : 0)
+			}
+		}
+	});
 }
 
 static void server_dropclient(rfbClientPtr cl)

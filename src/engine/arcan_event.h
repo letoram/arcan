@@ -128,6 +128,11 @@ void arcan_event_repl(struct arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY cat,
  */
 void arcan_event_purge();
 
+/* Try to remove at most one event from the ingoing slot of the event
+ * queue and put into *dst. returns 0 if there are no events to receive,
+ * or 1 if an event was successfully dequeued. */
+int arcan_event_poll(struct arcan_evctx*, struct arcan_event* dst);
+
 /*
  * Try and cleanly close down device drivers and other platform specifics.
  * Any pending events are lost rather than processed.

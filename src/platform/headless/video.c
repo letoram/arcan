@@ -7,6 +7,16 @@
  * verification and so on, with the option of exposing the default output via
  * the encode frameserver.
  */
+
+/*
+ * Checklist
+ * [ ] interp working
+ * [ ] input translation
+ * [ ] deal with frameserver death / relaunch
+ * [ ] defer synch / update until flag is set
+ * [ ] dirty- rectangle set in record store
+ * [ ] map_handle should be shared with egl-dri
+ */
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -26,6 +36,7 @@
 #include "arcan_audio.h"
 #include "arcan_frameserver.h"
 #include "arcan_conductor.h"
+#include "arcan_event.h"
 
 #include "../platform.h"
 
@@ -43,8 +54,12 @@
 static struct {
 	size_t width;
 	size_t height;
-	struct arcan_frameserver* outctx;
 	int deadline;
+
+	struct {
+		struct arcan_frameserver* outctx;
+		bool check_output;
+	} encode;
 
 	struct {
 		EGLDisplay disp;
@@ -55,111 +70,72 @@ static struct {
 		struct gbm_device* gbmdev;
 	} egl;
 
-	arcan_vobj_id mapped;
+	struct agp_vstore* mapped;
 } global = {
 	.deadline = 13
 };
 
 static char* envopts[] = {
+	"ARCAN_VIDEO_ENCODE=encode_args", "enable encode frameserver as virtual output",
 	NULL
 };
+
+static void step_encode_feed(av_pixel* buf, size_t buf_sz)
+{
+/* we are already in tramp_guard state */
+	if (!global.encode.outctx ||
+		!global.encode.outctx->shm.ptr || global.encode.outctx->shm.ptr->vready)
+		return;
+
+/* audio is just ignored for now, unfortunately we don't have the
+ * controls for PBO -> shm readback and currently we don't do handle-
+ * passing srv->encode yet. */
+}
 
 static void spawn_encode_output()
 {
 /*
  * Terminate a current / pending connection if one can be found
  */
-	if (global.outctx){
-		arcan_frameserver_free(global.outctx);
-		global.outctx = NULL;
+	if (global.encode.outctx){
+		arcan_frameserver_free(global.encode.outctx);
+		global.encode.outctx = NULL;
 	}
 
 /*
- * Build an 'encode' rendertarget with one VID that matches whatever is mapped
- * to the default output. This has a big caveat in that we currently don't have
- * a mechanism to block the Lua layer from finding and modifying it. As we move
- * more towards using shmif for internal separation (decode etc.)
- *
- * The corresponding lua code would be:
- * dvid = alloc_surface(w, h)
- * interim = null_surface(w, h)
- * show_image(interim)
- * image_sharestorage(mapped_vid, interim)
- * define_recordtarget(dvid,
- *     "", enc_arg, {interim}, {}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE,
- *     -1, function(source, status)
- *         end
- * )
- *
- * If this is mapped, we treat the recordtarget synch as 'vsynch' for the
- * platform, otherwise we go with a config appropriate one
+ * Get the parameters / options from the config- layer
  */
 	uintptr_t tag;
 	char* enc_arg;
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
-	if (!get_config("encode", 0, &enc_arg, tag))
+	if (!get_config("video_encode", 0, &enc_arg, tag))
 		return;
 
 /*
- * dvid = alloc_surface
+ * spawn the actual process
  */
-	arcan_vobj_id dst;
-	arcan_vobject* vobj = arcan_video_newvobject(&dst);
-	if (!vobj){
-		arcan_warning("(headless) couldn't allocate encode- storage\n");
-		return;
-	}
-
-	struct agp_vstore* ds = vobj->vstore;
-	agp_empty_vstoreext(ds, global.width, global.heightm 1);
-	ds->origw = global.width;
-	ds->origh = global.height;
-	ds->order = 0;
-	ds->blendmode = BLEND_NORMAL;
-	arcan_vint_attachobject(dst);
-
-/*
- * interim = null_surface
- */
-	arcan_vobj_id cont = arcan_video_nullobject(global.width, global.height, 1);
-	if (ARCAN_EID == cont){
-		arcan_warning("(headless) couldn't allocate proxy object\n");
-		arcan_video_deleteobject(dst);
-		return;
-	}
-
-/*
- * show_image
- * image_sharestorage
- */
-	arcan_video_shareglstore(ARCAN_VIDEO_WORLDID, cont);
-
-/*
- * define_recordtarget
- */
-	if (ARCAN_OK != arcan_video_setuprendertarget(
-		dst, -1, -1, RENDERTARGET_NOSCALE, RENDERTARGET_COLOR)){
-		arcan_warning("(headless) couldn't bind a rendertarget\n");
-		arcan_video_deleteobject(cont);
-		arcan_video_deleteobject(dst);
-		return;
-	}
-
-/*
-	struct arcan_strarr arr_argv = {0}, arr_env = {0};
 	struct frameserver_envp args = {
 		.use_builtin = true,
-		.args.builtind.mode = "encode",
+		.custom_feed = 0xfeedface,
+		.args.builtin.mode = "encode",
 		.args.builtin.resource = enc_arg,
-		.init_w = g_width,
-		.init_h = g_height
+		.init_w = global.width,
+		.init_h = global.height
 	};
+	struct arcan_frameserver* fsrv = platform_launch_fork(&args, 0);
+	if (!fsrv){
+		arcan_warning("(headless) couldn't spawn afsrv_encode\n");
+		return;
+	}
 
-	free(enc_arg); */
+	global.encode.outctx = fsrv;
 }
 
 void platform_video_shutdown()
 {
+	if (global.encode.outctx){
+		arcan_frameserver_free(global.encode.outctx);
+	}
 }
 
 void platform_video_prepare_external()
@@ -217,11 +193,103 @@ bool platform_video_specify_mode(platform_display_id disp, struct monitor_mode m
 	return false;
 }
 
+/*
+ * called as external from the headless input platform
+ */
+int headless_flush_encode_events()
+{
+	if (!global.encode.outctx)
+		return FRV_NOFRAME;
+
+	TRAMP_GUARD(FRV_NOFRAME, global.encode.outctx);
+	arcan_event inev;
+
+	while (arcan_event_poll(&global.encode.outctx->inqueue, &inev) > 0){
+
+/* allow IO events to be forwarded as if the encode frameserver was actually
+ * an input device (which in the remoting stage it is) */
+		if (inev.category == EVENT_IO){
+			arcan_event_enqueue(arcan_event_defaultctx(), &inev);
+			continue;
+		}
+
+		if (inev.category != EVENT_EXTERNAL)
+			continue;
+
+		switch (inev.ext.kind){
+		default:
+		break;
+		}
+	}
+
+	platform_fsrv_leave();
+	return FRV_NOFRAME;
+}
+
+static bool readback_encode()
+{
+/* other side is still encoding / synching so don't overwrite the buffer */
+	struct arcan_frameserver* out = global.encode.outctx;
+	TRAMP_GUARD(0, out);
+
+	if (out->shm.ptr->vready){
+		platform_fsrv_leave();
+		return false;
+	}
+
+	agp_activate_rendertarget(NULL);
+	struct agp_vstore* vs = global.mapped ? global.mapped : arcan_vint_world();
+	size_t row_len = vs->w > out->desc.width ? out->desc.width : vs->w;
+	size_t n_rows = vs->h > out->desc.height ? out->desc.height : vs->h;
+	size_t buf_sz = vs->w * vs->h * sizeof(av_pixel);
+
+/* recall, alloc_mem is default FATAL unless flagged otherwise */
+	if (buf_sz != vs->vinf.text.s_raw){
+		arcan_mem_free(vs->vinf.text.raw);
+		vs->vinf.text.s_raw = buf_sz;
+		vs->vinf.text.raw = arcan_alloc_mem(vs->vinf.text.s_raw,
+			ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE
+		);
+	}
+
+	agp_readback_synchronous(vs);
+
+/* flip and track dirty */
+	shmif_pixel* dst = out->vbufs[0];
+	for (size_t row = 0; row < n_rows; row++){
+		memcpy(
+			&dst[(n_rows - row - 1) * out->desc.width],
+			&vs->vinf.text.raw[row * row_len],
+			row_len * sizeof(av_pixel)
+		);
+	}
+
+	global.encode.outctx->shm.ptr->vready = true;
+
+	platform_fsrv_pushevent(global.encode.outctx, &(struct arcan_event){
+		.tgt.kind = TARGET_COMMAND_STEPFRAME,
+		.category = EVENT_TARGET,
+		.tgt.ioevs[0] = global.encode.outctx->vfcount++
+	});
+
+	platform_fsrv_leave();
+	return true;
+}
+
 void platform_video_synch(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
 {
 	if (pre)
 		pre();
+
+/*
+ * we can't spawn this in platform init as the agp_ and video stack context
+ * isn't available at that stage so it needs to be deferred here
+ */
+	if (!global.encode.check_output && !global.encode.outctx){
+		global.encode.check_output = true;
+		spawn_encode_output();
+	}
 
 /*
  * normal refresh cycle, then leave the next possible deadline to the conductor
@@ -230,13 +298,12 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
 
 /*
- * Fixme: wait for encode out synch and yield in the meanwhile
+ * if there is no encoder listening or it couldn't be synched to, run
+ * with the ~estimated fake synch of the platform default or user config
  */
-	if (global.outctx){
-		arcan_warning("encode stage missing\n");
-	}
-	else
+	if (!(global.encode.outctx && readback_encode())){
 		arcan_conductor_fakesynch(global.deadline);
+	}
 
 	if (post)
 		post();
@@ -308,9 +375,21 @@ struct monitor_mode* platform_video_query_modes(
 bool platform_video_map_display(
 	arcan_vobj_id id, platform_display_id disp, enum blitting_hint hint)
 {
-/* FIXME: update the recordtarget output to match the new obj- */
 	if (disp != 0)
 		return false;
+
+	arcan_warning("got map display %d, %d\n", id, disp);
+
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	bool isrt = arcan_vint_findrt(vobj) != NULL;
+	if (vobj && vobj->vstore->txmapped != TXSTATE_TEX2D){
+		arcan_warning("(headless) map display called with bad source vobj\n");
+		return false;
+	}
+
+	if (isrt){
+
+	}
 
 /* FIXME: modify the recordtarget interim- object to match */
 
@@ -319,7 +398,7 @@ bool platform_video_map_display(
 
 const char* platform_video_capstr()
 {
-	return "skeleton driver, no capabilities";
+	return "Video Platform (HEADLESS)";
 }
 
 void platform_video_preinit()
@@ -464,8 +543,6 @@ bool platform_video_init(uint16_t width,
 
 	eglMakeCurrent(
 		global.egl.disp, EGL_NO_SURFACE, EGL_NO_SURFACE, global.egl.ctx);
-
-	spawn_encode_output();
 
 	return true;
 }

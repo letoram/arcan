@@ -125,18 +125,6 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 				ev.ext.segreq.id, ev.ext.segreq.width, ev.ext.segreq.height,
 				ev.ext.segreq.xofs, ev.ext.segreq.yofs, ev.ext.segreq.kind);
 		break;
-		case EVENT_EXTERNAL_KEYINPUT:
-			snprintf(work, dsz,"EXT:CURSORINP(id: %"PRIu32", %"
-				PRIu32",%"PRIu32", %d%d%d%d%d)",
-				ev.ext.cursor.id, ev.ext.cursor.x, ev.ext.cursor.y,
-				ev.ext.cursor.buttons[0], ev.ext.cursor.buttons[1],
-				ev.ext.cursor.buttons[2], ev.ext.cursor.buttons[3],
-				ev.ext.cursor.buttons[4]);
-		break;
-		case EVENT_EXTERNAL_CURSORINPUT:
-			snprintf(work, dsz,"EXT:KEYINP(id: %"PRIu8", %"PRIu32", %"PRIu8")",
-				ev.ext.key.id, ev.ext.key.keysym, ev.ext.key.active);
-		break;
 		case EVENT_EXTERNAL_CURSORHINT:
 			snprintf(work, dsz,"EXT:CURSORHINT(%s)", ev.ext.message.data);
 		break;

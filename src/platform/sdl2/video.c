@@ -10,7 +10,6 @@
  * having to write a wayland client backend.
  *
  * Progress / missing:
- * 1. synch- strategy swapping
  * 2. resize- management
  * 3. dynamic display settings
  * 4. handle mapping (this needs platform specific ifdefs etc.

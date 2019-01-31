@@ -1580,7 +1580,6 @@ static void defhandler_game(struct arcan_evctx* ctx,
 				continue;
 
 			if (inev[i].code >= ABS_HAT0X && inev[i].code <= ABS_HAT3Y){
-				printf("not a hat\n");
 				decode_hat(ctx, node, inev[i].code - ABS_HAT0X, inev[i].value);
 			}
 			else if (inev[i].code < node->game.axes &&
