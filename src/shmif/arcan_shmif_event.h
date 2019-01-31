@@ -624,7 +624,7 @@ enum ARCAN_EVENT_EXTERNAL {
  * Specify that there is a possible key=value argument that could be set.
  * uses the message field to encode key and value pair.
  */
-	EVENT_EXTERNAL_COREOPT,
+	EVENT_EXTERNAL_COREOPT = 1,
 
 /*
  * [UNIQUE]
@@ -633,13 +633,13 @@ enum ARCAN_EVENT_EXTERNAL {
  * video sources redirecting to new url for instance).
  * uses the message field.
  */
-	EVENT_EXTERNAL_IDENT,
+	EVENT_EXTERNAL_IDENT = 2,
 
 /*
  * Hint that the previous I/O operation failed (for FDTRANSFER related
  * operations).
  */
-	EVENT_EXTERNAL_FAILURE,
+	EVENT_EXTERNAL_FAILURE = 3,
 
 /*
  * Similar to FDTRANSFER in that the server is expected to take responsibility
@@ -651,26 +651,26 @@ enum ARCAN_EVENT_EXTERNAL {
  *
  * This is managed by arcan_shmif_control.
  */
-	EVENT_EXTERNAL_BUFFERSTREAM,
+	EVENT_EXTERNAL_BUFFERSTREAM = 4,
 
 /* [UNIQUE]
  * Contains additional timing information about a delivered videoframe.
  * Uses framestatus substructure.
  */
-	EVENT_EXTERNAL_FRAMESTATUS,
+	EVENT_EXTERNAL_FRAMESTATUS = 5,
 
 /*
  * Decode playback discovered additional substreams that can be selected or
  * switched between. Uses the streaminf substructure.
  */
-	EVENT_EXTERNAL_STREAMINFO,
+	EVENT_EXTERNAL_STREAMINFO = 6,
 
 /*
  * [UNIQUE]
  * Playback information regarding completion, current time, estimated length
  * etc. Uses the streamstat substructure.
  */
-	EVENT_EXTERNAL_STREAMSTATUS,
+	EVENT_EXTERNAL_STREAMSTATUS = 7,
 
 /*
  * [UNIQUE]
@@ -678,30 +678,21 @@ enum ARCAN_EVENT_EXTERNAL {
  * much buffer data / which transfer limits that apply.
  * Uses the stateinf substructure.
  */
-	EVENT_EXTERNAL_STATESIZE,
+	EVENT_EXTERNAL_STATESIZE = 8,
 
 /*
  * [UNIQUE]
  * hint that any pending buffers on the audio device should be discarded.
  * used primarily for A/V synchronization.
  */
-	EVENT_EXTERNAL_FLUSHAUD,
+	EVENT_EXTERNAL_FLUSHAUD = 9,
 
 /*
  * Request an additional shm-if connection to be allocated, only one segment is
  * guaranteed per process. Tag with an ID for the parent to be able to accept-
  * or reject properly.  Uses the segreq- substructure.
  */
-	EVENT_EXTERNAL_SEGREQ,
-
-/*
- * Used to indicated that some external entity tries to provide input data
- * (e.g. a vnc client connected to an encode frameserver or cursor warping on
- * a CURSOR subsegment) uses the key and cursor substructure, not the full range
- * of ioevents.
- */
-	EVENT_EXTERNAL_KEYINPUT,
-	EVENT_EXTERNAL_CURSORINPUT,
+	EVENT_EXTERNAL_SEGREQ = 10,
 
 /*
  * [UNIQUE]
@@ -726,13 +717,13 @@ enum ARCAN_EVENT_EXTERNAL {
  * 'hidden-abs' : no visual change, but try to provide/bias absolute samples
  * 'hidden-hot:x:y' : for CURSOR subsegment, define the hotspot
  */
-	EVENT_EXTERNAL_CURSORHINT,
+	EVENT_EXTERNAL_CURSORHINT = 12,
 
 /*
  * Indicate spatial relationship and visibility details relative to some
  * fictive world anchor point or to an explicit relative parent.
  */
-	EVENT_EXTERNAL_VIEWPORT,
+	EVENT_EXTERNAL_VIEWPORT = 13,
 
 /*
  * [UNIQUE]
@@ -740,14 +731,14 @@ enum ARCAN_EVENT_EXTERNAL {
  * range and position of the currently active viewport.
  * Uses the content substructure.
  */
-	EVENT_EXTERNAL_CONTENT,
+	EVENT_EXTERNAL_CONTENT = 14,
 
 /*
  * Hint that a specific input label is supported. Uses the labelhint
  * substructure and label is subject to A-Z,0-9_ normalization with * used
  * as wildchar character for incremental indexing.
  */
-	EVENT_EXTERNAL_LABELHINT,
+	EVENT_EXTERNAL_LABELHINT = 15,
 
 /* [ONCE]
  * Specify the requested subtype of a segment, along with a descriptive UTF-8
@@ -761,20 +752,20 @@ enum ARCAN_EVENT_EXTERNAL {
  * Although possible to call this multiple times, attempts at switching SEGID
  * from the established type will be ignored.
  */
-	EVENT_EXTERNAL_REGISTER,
+	EVENT_EXTERNAL_REGISTER = 16,
 
 /*
  * Request attention to the segment or subsegment, uses the message substr
  * and multipart messages need to be properly terminated.
  */
-	EVENT_EXTERNAL_ALERT,
+	EVENT_EXTERNAL_ALERT = 17,
 
 /*
  * Request that the frameserver provide a monotonic update clock for events,
  * can be used both to drive the _shmif_signal calls and as a crude timer.
  * Uses the 'clock' substructure.
  */
-	EVENT_EXTERNAL_CLOCKREQ,
+	EVENT_EXTERNAL_CLOCKREQ = 18,
 
 /*
  * Update an estimate on how the connection will hand bchunk transfers.
@@ -782,7 +773,7 @@ enum ARCAN_EVENT_EXTERNAL {
  * This MAY prompt actions in the running appl, e.g. showing a file- open/
  * /save dialog.
  */
-	EVENT_EXTERNAL_BCHUNKSTATE,
+	EVENT_EXTERNAL_BCHUNKSTATE = 19,
 
 	EVENT_EXTERNAL_ULIM = INT_MAX
 };

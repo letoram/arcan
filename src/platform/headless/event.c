@@ -43,8 +43,10 @@ void platform_event_analogfilter(int devid,
 {
 }
 
+extern int headless_flush_encode_events();
 void platform_event_process(arcan_evctx* ctx)
 {
+	headless_flush_encode_events();
 }
 
 void platform_event_keyrepeat(arcan_evctx* ctx, int* rate, int* del)
