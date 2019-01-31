@@ -854,10 +854,15 @@ void arcan_lua_tick(lua_State* ctx, size_t nticks, size_t global)
 {
 	arcan_lua_setglobalint(ctx, "CLOCK", global);
 
+/* many applications misused the callback handler, ignoring the nticks and
+ * global fields causing timed tasks to drift more than desired, so we fall
+ * back to the more costly 'n invocations' approach. */
 	if (grabapplfunction(ctx, "clock_pulse", 11)){
-		lua_pushnumber(ctx, global);
-		lua_pushnumber(ctx, nticks);
-		alua_call(ctx, 2, 0, LINE_TAG":clock_pulse");
+		while (nticks--){
+			lua_pushnumber(ctx, global);
+			lua_pushnumber(ctx, 1);
+			alua_call(ctx, 2, 0, LINE_TAG":clock_pulse");
+		}
 	}
 }
 
