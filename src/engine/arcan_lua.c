@@ -855,15 +855,16 @@ void arcan_lua_tick(lua_State* ctx, size_t nticks, size_t global)
 	arcan_lua_setglobalint(ctx, "CLOCK", global);
 
 /* many applications misused the callback handler, ignoring the nticks and
- * global fields causing timed tasks to drift more than desired, so we fall
- * back to the more costly 'n invocations' approach. */
-	if (grabapplfunction(ctx, "clock_pulse", 11)){
-		while (nticks--){
-			lua_pushnumber(ctx, global);
-			lua_pushnumber(ctx, 1);
-			alua_call(ctx, 2, 0, LINE_TAG":clock_pulse");
-		}
+ * global fields causing timed tasks to drift more than desired, so we fail */
+	do {
+		if (!grabapplfunction(ctx, "clock_pulse", 11))
+			break;
+
+		lua_pushnumber(ctx, global);
+		lua_pushnumber(ctx, nticks);
+		alua_call(ctx, 2, 0, LINE_TAG":clock_pulse");
 	}
+	while (nticks-- > 0);
 }
 
 char* arcan_lua_main(lua_State* ctx, const char* inp, bool file)
@@ -4794,25 +4795,6 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx,"streaming",
 				ev->ext.streamstat.streaming!=0,top);
 		break;
-		case EVENT_EXTERNAL_CURSORINPUT:
-			tblstr(ctx, "kind", "cursor_input", top);
-			tblnum(ctx, "id", ev->ext.cursor.id, top);
-			tblnum(ctx, "x", ev->ext.cursor.x, top);
-			tblnum(ctx, "y", ev->ext.cursor.y, top);
-			tblbool(ctx, "button_1", ev->ext.cursor.buttons[0], top);
-			tblbool(ctx, "button_2", ev->ext.cursor.buttons[1], top);
-			tblbool(ctx, "button_3", ev->ext.cursor.buttons[2], top);
-			tblbool(ctx, "button_4", ev->ext.cursor.buttons[3], top);
-			tblbool(ctx, "button_5", ev->ext.cursor.buttons[4], top);
-		break;
-
-		case EVENT_EXTERNAL_KEYINPUT:
-			tblstr(ctx, "kind", "key_input", top);
-			tblnum(ctx, "id", ev->ext.cursor.id, top);
-			tblnum(ctx, "keysym", ev->ext.key.keysym, top);
-			tblbool(ctx, "active", ev->ext.key.active, top);
-		break;
-
 /* special semantics for segreq */
 		case EVENT_EXTERNAL_SEGREQ:
 			return emit_segreq(ctx, fsrv, &ev->ext);
