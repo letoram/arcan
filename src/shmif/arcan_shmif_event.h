@@ -518,9 +518,11 @@ enum ARCAN_TARGET_COMMAND {
 
 /*
  * Graph- mode is a special case thing for switching between active
- * representation for a specific segment. It is implementation defined and
- * primarily used in custom LWA- targeted appls that need custom frameservers
- * as well (e.g. the Senseye project).
+ * representation for a specific segment. It is a reserved implementation
+ * defined command used for special segment types, typically TUI. See the
+ * definition for target_graphmode.lua and the corresponding tuisym.h for more
+ * details.
+ *
  * ioev[0].iv = mode,
  * ioev[1].fv .. ioev[4].fv = user defined, mode related values
  */
@@ -737,6 +739,11 @@ enum ARCAN_EVENT_EXTERNAL {
  * Hint that a specific input label is supported. Uses the labelhint
  * substructure and label is subject to A-Z,0-9_ normalization with * used
  * as wildchar character for incremental indexing.
+ *
+ * Multiple labels can be exposed, and it is up to the appl- layer to track
+ * these accordingly and tag outgoing input events. Sending an empty labelhint
+ * resets the tracked set.
+ *
  */
 	EVENT_EXTERNAL_LABELHINT = 15,
 
@@ -1201,23 +1208,30 @@ enum ARCAN_TARGET_SKIPMODE {
 		int64_t source;
 
 		union {
-	/*
-	 * For events that set one or multiple short messages:
-	 * MESSAGE, IDENT, CURSORHINT, ALERT
-	 * Only MESSAGE and ALERT type has any multipart meaning
-	 * (data) - UTF-8 (complete, valid)
-	 * (multipart) - !0 (more to come, terminated with 0)
-	 */
-			struct {
-				uint8_t data[78];
-				uint8_t multipart;
-			} message;
+/*
+ * For events that set one or multiple short messages:
+ * MESSAGE, IDENT, CURSORHINT, ALERT
+ * Only MESSAGE and ALERT type has any multipart meaning
+ * (data) - UTF-8 (complete, valid)
+ * (multipart) - !0 (more to come, terminated with 0)
+ */
+		struct {
+			uint8_t data[78];
+			uint8_t multipart;
+		} message;
 
-	/*
-	 * For user-toggleable options that can be persistantly tracked,
-	 * per segment related key/value store
-	 * (index) - setting index
-	 * (type)  - setting type, 0: key, 1: description, 2: value, 3: current value,
+/*
+ * For user-toggleable options that can be persistantly tracked,
+ * per segment related key/value store.
+ *
+ * (index) - setting index
+ * (type)  - setting type:
+ *           0 - key,
+ *           1 - description,
+ *           2 - value
+ *           3 - current value,
+ *           4 - forget option
+ *
  * (data)  - UTF-8 encoded, type specific value. Limitations on key are similar
  *           to arcan database key (see arcan_db man)
  */
@@ -1305,6 +1319,10 @@ enum ARCAN_TARGET_SKIPMODE {
 /*
  * Indicate that the connection supports abstract input labels, along
  * with the expected data type (match EVENT_IDATATYPE_*)
+ *
+ * Sending a labelhint without a description means to REMOVE a previosly
+ * existing labelhint.
+ *
  * (label)     - 7-bit ASCII filtered to alnum and _
  * (initial)   - suggested default sym from the table used in
  *               arcan_shmif_tuisym.
@@ -1365,7 +1383,7 @@ enum ARCAN_TARGET_SKIPMODE {
  *	                   to save connection setup overhead.
  *
  *	(focused)        - Hint that for all the hierarchies in the connection,
- *	                   this is the one that should have focus.
+ *	                   this is the one that should have the input-focus grab.
  *
  *  (anchor-edge)    - enable anchoring to parent.
  *
@@ -1419,10 +1437,14 @@ enum ARCAN_TARGET_SKIPMODE {
  * (yofs)   - suggested offset relative to parent segment (parent hint)
  * (kind)   - desired type of the segment request, can be UNKNOWN
  * (dir)    - 0: no hint (xofs, yofs applied)
- *            1: split-hl : (ofs-ignore), split parent, new left
- *            2: split-hr : (ofs-ignore), split parent, new right
- *            3: split-vt : (ofs-ignore), split parent, new top
- *            4: split-vb : (ofs-ignore), split parent, new bottom
+ *            1: split-l : (ofs-ignore), split parent, new left
+ *            2: split-r : (ofs-ignore), split parent, new right
+ *            3: split-t : (ofs-ignore), split parent, new top
+ *            4: split-b : (ofs-ignore), split parent, new bottom
+ *            5: attach-l : (ofs-ignore), position left of parent
+ *            6: attach-r : (ofs-ignore), position right of parent
+ *            7: attach-t : (ofs-ignore), position top of parent
+ *            8: attach-b : (ofs-ignore), position below parent
  */
 		struct {
 			uint32_t id;

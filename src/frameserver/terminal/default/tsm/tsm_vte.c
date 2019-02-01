@@ -2694,7 +2694,7 @@ static void on_key(struct tui_context* c, uint32_t keysym,
 	}
 }
 
-SHL_EXPORT void tsm_vte_debug(struct tsm_vte* in, arcan_tui_conn* conn)
+SHL_EXPORT bool tsm_vte_debug(struct tsm_vte* in, arcan_tui_conn* conn)
 {
 /* don't need any callbacks as the always do a full reprocess in update_debug,
  * where the processing etc. takes place */
@@ -2707,12 +2707,11 @@ SHL_EXPORT void tsm_vte_debug(struct tsm_vte* in, arcan_tui_conn* conn)
 		arcan_tui_setup(conn, &cfg, &cbcfg, sizeof(cbcfg));
 
 	if (!newctx)
-		return;
+		return false;
 
-/* already have one, release the old */
+/* already have one, let other implementations take a stab at it */
 	if (in->debug){
-		arcan_tui_destroy(newctx, NULL);
-		return;
+		return false;
 	}
 
 /* no cursor, no scrollback, synch resize */
@@ -2720,6 +2719,7 @@ SHL_EXPORT void tsm_vte_debug(struct tsm_vte* in, arcan_tui_conn* conn)
 	arcan_tui_set_flags(in->debug, TUI_ALTERNATE | TUI_HIDE_CURSOR);
 
 	tsm_vte_update_debug(in);
+	return true;
 }
 
 SHL_EXPORT

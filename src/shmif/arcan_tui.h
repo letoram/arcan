@@ -579,6 +579,27 @@ struct tui_process_res {
 	uint32_t bad;
 	int errc;
 };
+
+enum tui_subwnd_hint {
+	TUIWND_SPLIT_NONE = 0,
+	TUIWND_SPLIT_LEFT = 1,
+	TUIWND_SPLIT_RIGHT = 2,
+	TUIWND_SPLIT_TOP = 3,
+	TUIWND_SPLIT_BOTTOM = 4,
+	TUIWND_JOIN_LEFT = 5,
+	TUIWND_JOIN_RIGHT = 6,
+	TUIWND_JOIN_TOP = 7,
+	TUIWND_JOIN_DOWN = 8,
+	TUIWND_TAB = 9
+};
+
+struct tui_subwnd_req {
+	int dir;
+	size_t rows;
+	size_t columns;
+	enum tui_subwnd_hint hint;
+};
+
 #ifndef ARCAN_TUI_DYNAMIC
 
 /*
@@ -712,13 +733,35 @@ struct tui_cell arcan_tui_getxy(struct tui_context*, size_t x, size_t y,bool f);
 void arcan_tui_request_subwnd(struct tui_context*, unsigned type, uint16_t id);
 
 /*
+ * Extended version of request_subwnd that allows you to also specify hints
+ * to the window manager.
+ *
+ * The argument interpretation is the same as for arcan_tui_request_subwnd,
+ * along with the common 'struct + sizeof(struct)' pattern for additional
+ * arguments.
+ *
+ * These additional arguments server as positioning and sizing hints to
+ * allow the window manager to make better decisions on where to place new
+ * windows and what its respectable sizes are.
+ */
+void arcan_tui_request_subwnd_ext(struct tui_context*,
+	unsigned type, uint16_t id, struct tui_subwnd_req req, size_t req_sz);
+
+/*
  * Replace (copy over) the active handler table with a new one.
  * if the provided cbcfg is NULL, no change to the active set will be
  * performed, to drop all callbacks, instead, use:
- * arcan_tui_update_handlers(tui, &(struct tui_cbcfg){}, sizeof(struct tui_cbcfg));
+ * arcan_tui_update_handlers(tui,
+ *     &(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
+ *:vs
+ * If [old] is provided, the old set of handlers will be stored there.
+ *
+ * Returns false if an invalid context was provided, or if the cb_sz was
+ * larger than the .so assumed size of the handler table (application linked
+ * to newer/wrong headers).
  */
-void arcan_tui_update_handlers(
-	struct tui_context*, const struct tui_cbcfg*, size_t cb_sz);
+bool arcan_tui_update_handlers(struct tui_context*,
+	const struct tui_cbcfg* new_handlers, struct tui_cbcfg* old, size_t cb_sz);
 
 /*
  * Signal visibility and position intent for a subwindow [wnd] relative
@@ -838,20 +881,48 @@ void arcan_tui_readline(struct tui_context*,
 */
 
 /*
- * Fill out rgb[] with the current values of the specified color group.
- * see the enum tui_color_group for valid values.
+ * Convenience, get a filled out attr structure for the specific color group
+ * with the other properties being the 'default'. This consolidates:
+ * attr = arcan_tui_defattr(tui, NULL)
+ * arcan_tui_get_color(tui, group, attr.fg)
+ * arcan_tui_getbgcolor(tui, group, attr.bg)
+ */
+struct tui_screen_attr arcan_tui_defcattr(struct tui_context* tui, int group);
+
+/*
+ * Fill out rgb[] with the current foreground values of the specified color
+ * group. see the enum tui_color_group for valid values.
  */
 void arcan_tui_get_color(struct tui_context* tui, int group, uint8_t rgb[3]);
 
 /*
- * Update the color field for the specified group. This
+ * Fill out rgb[] with the matching background value for the specified color
+ * group. see the enum tui_color_group for valid values. For some groups, the
+ * foreground and background color group slots are shared.
+ */
+void arcan_tui_get_bgcolor(struct tui_context* tui, int group, uint8_t rgb[3]);
+
+/*
+ * Update the foreground color field for the specified group.
  */
 void arcan_tui_set_color(struct tui_context* tui, int group, uint8_t rgb[3]);
 
 /*
- * reset state-tracking, scrollback buffers, ...
+ * Update the background color field for the specified group. For some groups,
+ * the foreground and background color group slots are shared.
+ */
+void arcan_tui_set_color(struct tui_context* tui, int group, uint8_t rgb[3]);
+
+/*
+ * Reset state-tracking, scrollback buffers, ...
+ * This does not reset/rebuild dynamic keybindings
  */
 void arcan_tui_reset(struct tui_context*);
+
+/*
+ * Reset and requery the list of active inputs
+ */
+void arcan_tui_reset_labels(struct tui_context*);
 
 /*
  * modify the current flags/state bitmask with the values of tui_flags ( |= )
@@ -951,10 +1022,12 @@ int arcan_tui_set_margins(struct tui_context*, size_t top, size_t bottom);
 void arcan_tui_dimensions(struct tui_context*, size_t* rows, size_t* cols);
 
 /*
- * override the default attributes that apply to resets etc.
+ * override the default attributes that apply to resets etc.  This will return
+ * the previous default attribute. If the [attr] argument is null, no change
+ * will be performed.
  */
 struct tui_screen_attr arcan_tui_defattr(
-	struct tui_context*, struct tui_screen_attr*);
+	struct tui_context*, struct tui_screen_attr* attr);
 void arcan_tui_refinc(struct tui_context*);
 void arcan_tui_refdec(struct tui_context*);
 
@@ -973,6 +1046,8 @@ typedef bool (* PTUICOPY)(struct tui_context*, const char*);
 typedef void (* PTUIIDENT)(struct tui_context*, const char*);
 typedef struct tui_cell (* PTUIGETXY)(struct tui_context*, size_t, size_t, bool);
 typedef void (* PTUIREQSUB)(struct tui_context*, unsigned, uint16_t);
+typedef void (* PTUIREQSUBEXT)
+	(struct tui_context*, unsigned, uint16_t, struct tui_subwnd_req, size_t);
 typedef void (* PTUIUPDHND)(struct tui_context*, const struct tui_cbcfg*, size_t);
 typedef void (* PTUIWNDHINT)(struct tui_context*, struct tui_context*, int, int, int);
 typedef int (* PTUIALLOCSCR)(struct tui_context*);
@@ -983,9 +1058,13 @@ typedef void (* PTUIWRITE)(struct tui_context*, uint32_t, struct tui_screen_attr
 typedef bool (* PTUIWRITEU8)(struct tui_context*, const uint8_t*, size_t, struct tui_screen_attr*);
 typedef bool (* PTUIWRITESTR)(struct tui_context*, const char*, struct tui_screen_attr*);
 typedef void (* PTUICURSORPOS)(struct tui_context*, size_t*, size_t*);
+typedef struct tui_screen_attr (* PTUIDEFCATTR)(struct tui_context*, int);
 typedef void (* PTUIGETCOLOR)(struct tui_context* tui, int, uint8_t*);
+typedef void (* PTUIGETBGCOLOR)(struct tui_context* tui, int, uint8_t*);
 typedef void (* PTUISETCOLOR)(struct tui_context* tui, int, uint8_t*);
+typedef void (* PTUISETBGCOLOR)(struct tui_context* tui, int, uint8_t*);
 typedef void (* PTUIRESET)(struct tui_context*);
+typedef void (* PTUIRESETLABELS)(struct tui_context*);
 typedef void (* PTUISETFLAGS)(struct tui_context*, int);
 typedef void (* PTUIRESETFLAGS)(struct tui_context*, int);
 typedef void (* PTUISETTABSTOP)(struct tui_context*);
@@ -1039,6 +1118,7 @@ static PTUICOPY arcan_tui_copy;
 static PTUIIDENT arcan_tui_ident;
 static PTUIGETXY arcan_tui_getxy;
 static PTUIREQSUB arcan_tui_request_subwnd;
+static PTUIREQSUBEXT arcan_tui_request_subwnd_ext;
 static PTUIUPDHND arcan_tui_update_handlers;
 static PTUIWNDHINT arcan_tui_wndhint;
 static PTUIALLOCSCR arcan_tui_alloc_screen;
@@ -1049,9 +1129,13 @@ static PTUIWRITE arcan_tui_write;
 static PTUIWRITEU8 arcan_tui_writeu8;
 static PTUIWRITESTR arcan_tui_writestr;
 static PTUICURSORPOS arcan_tui_cursorpos;
+static PTUIDEFCATTR arcan_tui_defcattr;
 static PTUIGETCOLOR arcan_tui_get_color;
+static PTUIGETBGCOLOR arcan_tui_get_bgcolor;
 static PTUISETCOLOR arcan_tui_set_color;
+static PTUISETBGCOLOR arcan_tui_set_bgcolor;
 static PTUIRESET arcan_tui_reset;
+static PTUIRESETLABELS arcan_tui_reset_labels;
 static PTUISETFLAGS arcan_tui_set_flags;
 static PTUIRESETFLAGS arcan_tui_reset_flags;
 static PTUISETTABSTOP arcan_tui_set_tabstop;
@@ -1107,6 +1191,7 @@ M(PTUICOPY,arcan_tui_copy);
 M(PTUIIDENT,arcan_tui_ident);
 M(PTUIGETXY,arcan_tui_getxy);
 M(PTUIREQSUB,arcan_tui_request_subwnd);
+M(PTUIREQSUBEXT,arcan_tui_request_subwnd_ext);
 M(PTUIUPDHND,arcan_tui_update_handlers);
 M(PTUIWNDHINT,arcan_tui_wndhint);
 M(PTUIALLOCSCR,arcan_tui_alloc_screen);
@@ -1117,9 +1202,13 @@ M(PTUIWRITE,arcan_tui_write);
 M(PTUIWRITEU8,arcan_tui_writeu8);
 M(PTUIWRITESTR,arcan_tui_writestr);
 M(PTUICURSORPOS,arcan_tui_cursorpos);
+M(PTUIDEFCATTR,arcan_tui_defcattr);
 M(PTUIGETCOLOR,arcan_tui_get_color);
+M(PTUIGETBGCOLOR,arcan_tui_get_bgcolor);
 M(PTUISETCOLOR,arcan_tui_set_color);
+M(PTUISETBGCOLOR,arcan_tui_set_bgcolor);
 M(PTUIRESET,arcan_tui_reset);
+M(PTUIRESETLABELS,arcan_tui_reset_labels);
 M(PTUISETFLAGS,arcan_tui_set_flags);
 M(PTUIRESETFLAGS,arcan_tui_reset_flags);
 M(PTUISETTABSTOP,arcan_tui_set_tabstop);

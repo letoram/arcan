@@ -106,8 +106,7 @@ static bool on_subwindow(struct tui_context* c,
 
 /* only bind the debug type and bind it to the terminal emulator state machine */
 	if (type == TUI_WND_DEBUG){
-		tsm_vte_debug(term.vte, newconn);
-		return true;
+		return tsm_vte_debug(term.vte, newconn);
 	}
 	return false;
 }
