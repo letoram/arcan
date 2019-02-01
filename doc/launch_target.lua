@@ -73,12 +73,19 @@
 -- frameserver can act as a regular input device. Be careful with devid
 -- collisions as that namespace is only 16-bits.
 --
--- @note: "segment_request" {kind, width, height, cookie, type, split-dir} -
+-- @note: "segment_request" {
+-- kind, width, height, cookie, type, (split-dir | position-dir)}
 -- frameserver would like an additional segment to work with, see
 -- ref:accept_target for how to accept the request as the default is deny.
+-- The hint- sizes are in pixels, even if the segment may operate in a cell-
+-- based mode (tui and terminal clients).
 -- The split-dir is a hint for tiling window management and for cases where
--- the source-window can logically be split into two halves, with the new
+-- the source-window can logically be split into two parts, with the new
 -- one best placed in one direction out of: left, right, top, bottom.
+-- Instead of a split-dir a position dir may be defined. This indicates that
+-- the window should be positioned relative to the parent, but that the parent
+-- should retain the same size, if possible. This also has an added
+-- position-dir of 'tab'.
 --
 -- @note: "alert" {message} - version of "message" that hints a user-interface
 -- alert to the segment. If "message" is empty, alert is to be interpreted as
@@ -94,14 +101,21 @@
 -- @note: "content_state" {rel_x, rel_y, x_size, y_size} - indicates that
 -- scrollbars could/should be shown
 --
--- @note: "input_label" {labelhint, datatype} - suggest that the target
--- supports customized abstract input labels for use with the target_input
--- function. May be called repeatedly, input_label values are restricted
--- to 16 characters in the [a-z,0-9_] set with ? values indicating that
--- the caller tried to add an invalid value. This also comes with an
--- initial and a description field, where initial suggest the initial
+-- @note: "input_label" {labelhint, datatype, initial, modifiers} -
+-- suggest that the target supports customized abstract input labels for use
+-- with the target_input function. May be called repeatedly, input_label values
+-- are restricted to 16 characters in the [a-z,0-9_] set with ? values
+-- indicating that the caller tried to add an invalid value. This also comes
+-- with an initial and a description field, where initial suggest the initial
 -- keybind if one should be available, and the description is a localized
 -- user-presentable string (UTF-8).
+-- The datatype field match the ones available from the input(iotbl) event
+-- handler. If initial is set (to > 0) a suggested default binding is provided
+-- with the corresponding keysym (see builtin/keyboard.lua for symbol table)
+-- and modifiers).
+-- Upon receiving an empty input label (#labelhint == 0) the previously
+-- accumulated set of labels are no longer accepted and and state tracking
+-- should be reset.
 --
 -- @note: "clock" (value, monotonic, once) - frameserver wants a periodic or
 -- fire-once stepframe event call. monotonic suggests the time-frame relative to

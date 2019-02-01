@@ -4058,7 +4058,8 @@ static const char* lookup_idatatype(int type)
 		"analog",
 		"digital",
 		"translated",
-		"touch"
+		"touch",
+		"eyes"
 	};
 
 	if (type < 0 || type > COUNT_OF(idatalut))
@@ -4346,8 +4347,24 @@ static void emit_segreq(
 	case 4:
 		tblstr(ctx, "split-dir", "bottom", top);
 	break;
+	case 5:
+		tblstr(ctx, "position-dir", "left", top);
+	break;
+	case 6:
+		tblstr(ctx, "position-dir", "right", top);
+	break;
+	case 7:
+		tblstr(ctx, "position-dir", "top", top);
+	break;
+	case 8:
+		tblstr(ctx, "position-dir", "bottom", top);
+	break;
+	case 9:
+		tblstr(ctx, "position-dir", "tab", top);
+	break;
 	default:
 		tblstr(ctx, "split-dir", "none", top);
+		tblstr(ctx, "position-dir", "none", top);
 	break;
 	}
 

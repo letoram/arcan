@@ -1245,6 +1245,8 @@ struct lent {
 	const char* lbl;
 	const char* descr;
 	bool(*ptr)(struct tui_context*);
+	uint16_t initial;
+	uint16_t modifiers;
 };
 
 static bool setup_font(struct tui_context* tui,
@@ -1306,7 +1308,7 @@ static const struct lent labels[] = {
 	{1 | 2, "COPY_AT", "Copy word at cursor", select_at},
 	{1 | 2, "COPY_ROW", "Copy cursor row", select_row},
 	{1, "MOUSE_FORWARD", "Toggle mouse forwarding", mouse_forward},
-	{1 | 2, "SCROLL_LOCK", "Arrow- keys to pageup/down", scroll_lock},
+	{1 | 2, "SCROLL_LOCK", "Arrow- keys to pageup/down", scroll_lock, TUIK_SCROLLLOCK},
 	{1 | 2, "UP", "(scroll-lock) page up, UP keysym", move_up},
 	{1 | 2, "DOWN", "(scroll-lock) page down, DOWN keysym", move_down},
 	{1, "COPY_WND", "Copy visible area to new passive window", copy_window},
@@ -1326,23 +1328,10 @@ static void expose_labels(struct tui_context* tui)
 		.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL
 	};
 
-/*
- * NOTE: We do not currently expose a suggested default
- */
-	while(cur->lbl){
-		if (tui->subseg && (cur->ctx & 2) == 0)
-			continue;
-		if (!tui->subseg && (cur->ctx & 1) == 0)
-			continue;
+/* send an empty label first as a reset */
+	arcan_shmif_enqueue(&tui->acon, &ev);
 
-		snprintf(ev.ext.labelhint.label,
-			COUNT_OF(ev.ext.labelhint.label), "%s", cur->lbl);
-		snprintf(ev.ext.labelhint.descr,
-			COUNT_OF(ev.ext.labelhint.descr), "%s", cur->descr);
-		cur++;
-		arcan_shmif_enqueue(&tui->acon, &ev);
-	}
-
+/* then forward to a possible callback handler */
 	size_t ind = 0;
 	if (tui->handlers.query_label){
 		while (true){
@@ -1359,7 +1348,26 @@ static void expose_labels(struct tui_context* tui)
 			ev.ext.labelhint.idatatype = dstlbl.idatatype;
 			ev.ext.labelhint.modifiers = dstlbl.modifiers;
 			ev.ext.labelhint.initial = dstlbl.initial;
+			arcan_shmif_enqueue(&tui->acon, &ev);
 		}
+	}
+
+/* expose a set of basic built-in controls shared by all users */
+	while(cur->lbl){
+		if (tui->subseg && (cur->ctx & 2) == 0)
+			continue;
+		if (!tui->subseg && (cur->ctx & 1) == 0)
+			continue;
+
+		snprintf(ev.ext.labelhint.label,
+			COUNT_OF(ev.ext.labelhint.label), "%s", cur->lbl);
+		snprintf(ev.ext.labelhint.descr,
+			COUNT_OF(ev.ext.labelhint.descr), "%s", cur->descr);
+		cur++;
+
+		ev.ext.labelhint.initial = cur->initial;
+		ev.ext.labelhint.modifiers = cur->modifiers;
+		arcan_shmif_enqueue(&tui->acon, &ev);
 	}
 }
 
@@ -1737,6 +1745,41 @@ void arcan_tui_request_subwnd(
 	});
 }
 
+void arcan_tui_request_subwnd_ext(struct tui_context* T,
+	unsigned type, uint16_t id, struct tui_subwnd_req req, size_t req_sz)
+{
+	if (!T || !T->acon.addr)
+		return;
+
+	switch (type){
+	case TUI_WND_TUI:
+	case TUI_WND_POPUP:
+	case TUI_WND_DEBUG:
+	case TUI_WND_HANDOVER:
+	break;
+	default:
+		return;
+	}
+
+	struct arcan_event ev = {
+		.ext.kind = ARCAN_EVENT(SEGREQ),
+		.ext.segreq.kind = type,
+		.ext.segreq.id = (uint32_t) id | (1 << 31),
+		.ext.segreq.width = T->acon.w,
+		.ext.segreq.height = T->acon.h
+	};
+
+/* in future revisions, go with offsetof to annotate the new fields */
+	if (req_sz == sizeof(struct tui_subwnd_req)){
+		ev.ext.segreq.width = req.columns * T->cell_w;
+		ev.ext.segreq.height = req.rows * T->cell_h;
+		ev.ext.segreq.dir = req.hint;
+		return;
+	}
+
+	arcan_shmif_enqueue(&T->acon, &ev);
+}
+
 static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 {
 	switch (ev->kind){
@@ -1969,7 +2012,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 					(uint32_t)ev->ioevs[3].iv & 0xffff,
 					ev->ioevs[2].iv, tui->handlers.tag
 				)){
-					arcan_shmif_defimpl(&tui->acon, &acon, ev->ioevs[2].iv);
+					arcan_shmif_defimpl(&acon, ev->ioevs[2].iv, tui);
 				}
 			}
 		}
@@ -2820,6 +2863,65 @@ void arcan_tui_get_color(
 	}
 }
 
+void arcan_tui_get_bgcolor(
+	struct tui_context* tui, int group, uint8_t rgb[3])
+{
+	switch (group){
+/* IF a background has been explicitly set for the color groups,
+ * enable it, otherwise fall back to the reference TUI_COL_BG */
+	case TUI_COL_TEXT:
+	case TUI_COL_HIGHLIGHT:
+	case TUI_COL_LABEL:
+	case TUI_COL_WARNING:
+	case TUI_COL_ERROR:
+	case TUI_COL_ALERT:
+	case TUI_COL_REFERENCE:
+	case TUI_COL_INACTIVE:
+	case TUI_COL_UI:
+		memcpy(rgb, tui->colors[group].bgset ?
+			tui->colors[group].bg : tui->colors[TUI_COL_BG].rgb, 3);
+	break;
+
+/* for the reference groups, we always take BG as BG color */
+	case TUI_COL_PRIMARY:
+	case TUI_COL_SECONDARY:
+	case TUI_COL_BG:
+	case TUI_COL_CURSOR:
+	case TUI_COL_ALTCURSOR:
+	default:
+		memcpy(rgb, tui->colors[TUI_COL_BG].rgb, 3);
+	break;
+	}
+}
+
+void arcan_tui_set_bgcolor(
+	struct tui_context* tui, int group, uint8_t rgb[3])
+{
+	switch (group){
+	case TUI_COL_PRIMARY:
+	case TUI_COL_SECONDARY:
+	case TUI_COL_ALTCURSOR:
+	case TUI_COL_CURSOR:
+	break;
+
+	case TUI_COL_BG:
+	case TUI_COL_TEXT:
+	case TUI_COL_HIGHLIGHT:
+	case TUI_COL_LABEL:
+	case TUI_COL_WARNING:
+	case TUI_COL_ERROR:
+	case TUI_COL_ALERT:
+	case TUI_COL_REFERENCE:
+	case TUI_COL_INACTIVE:
+	case TUI_COL_UI:
+		memcpy(tui->colors[group].bg, rgb, 3);
+		tui->colors[group].bgset = true;
+	break;
+	default:
+	break;
+	}
+}
+
 void arcan_tui_set_color(
 	struct tui_context* tui, int group, uint8_t rgb[3])
 {
@@ -2828,13 +2930,19 @@ void arcan_tui_set_color(
 	}
 }
 
-void arcan_tui_update_handlers(
-	struct tui_context* tui, const struct tui_cbcfg* cbs, size_t cbs_sz)
+bool arcan_tui_update_handlers(struct tui_context* tui,
+	const struct tui_cbcfg* cbs, struct tui_cbcfg* out, size_t cbs_sz)
 {
-	if (!tui || !cbs || cbs_sz > sizeof(struct tui_cbcfg))
-		return;
+	if (!tui || cbs_sz > sizeof(struct tui_cbcfg))
+		return false;
 
-	memcpy(&tui->handlers, cbs, cbs_sz);
+	if (out)
+		memcpy(out, &tui->handlers, cbs_sz);
+
+	if (cbs){
+		memcpy(&tui->handlers, cbs, cbs_sz);
+	}
+	return true;
 }
 
 bool arcan_tui_switch_screen(struct tui_context* ctx, unsigned ind)
@@ -3101,16 +3209,31 @@ void arcan_tui_refdec(struct tui_context* c)
 	tsm_screen_unref(c->screen);
 }
 
+struct tui_screen_attr tui_screen_defcattr(struct tui_context* c, int group)
+{
+	struct tui_screen_attr out = {};
+	if (!c)
+		return out;
+
+	out = tsm_screen_get_def_attr(c->screen);
+	arcan_tui_get_color(c, group, out.fc);
+	arcan_tui_get_bgcolor(c, group, out.bc);
+
+	return out;
+}
+
 struct tui_screen_attr
 	arcan_tui_defattr(struct tui_context* c, struct tui_screen_attr* attr)
 {
 	if (!c)
 		return (struct tui_screen_attr){};
 
+	struct tui_screen_attr out = tsm_screen_get_def_attr(c->screen);
+
 	if (attr)
 		tsm_screen_set_def_attr(c->screen, (struct tui_screen_attr*) attr);
 
-	return tsm_screen_get_def_attr(c->screen);
+	return out;
 }
 
 void arcan_tui_write(struct tui_context* c,
@@ -3176,13 +3299,22 @@ void arcan_tui_cursorpos(struct tui_context* c, size_t* x, size_t* y)
 		*y = tsm_screen_get_cursor_y(c->screen);
 }
 
+void arcan_tui_reset_labels(struct tui_context* c)
+{
+	if (!c)
+		return;
+
+	expose_labels(c);
+}
+
 void arcan_tui_reset(struct tui_context* c)
 {
-	if (c){
-		tsm_utf8_mach_reset(c->ucsconv);
-		tsm_screen_reset(c->screen);
-		flag_cursor(c);
-	}
+	if (!c)
+		return;
+
+	tsm_utf8_mach_reset(c->ucsconv);
+	tsm_screen_reset(c->screen);
+	flag_cursor(c);
 }
 
 void arcan_tui_dimensions(struct tui_context* c, size_t* rows, size_t* cols)

@@ -33,6 +33,8 @@ static volatile _Atomic int paste_destination = -1;
 
 struct color {
 	uint8_t rgb[3];
+	uint8_t bg[3];
+	bool bgset;
 };
 
 struct tui_context;

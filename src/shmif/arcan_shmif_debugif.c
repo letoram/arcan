@@ -42,7 +42,7 @@ struct menu_ctx {
 
 struct menu_ent;
 struct menu_ent {
-	const char* label;
+	char label[64];
 	char shortcut;
 	const char* menukey;
 	uint64_t tag;
@@ -52,6 +52,9 @@ struct menu_ent {
 };
 
 static bool fd_redirect(struct debug_ctx*, int fd);
+static struct menu_ent* get_menu_tree(const char* key, size_t* count);
+static bool run_menu(struct debug_ctx* ctx,
+	struct menu_ent menu[], size_t n_menu, void (*cancel)(struct menu_ctx*));
 
 static void flush_io(struct debug_ctx* ctx)
 {
@@ -99,11 +102,18 @@ static void menu_refresh(struct tui_context* c, struct menu_ctx* dst)
 	size_t y = 0;
 	for(; sofs + y < dst->n_entries && y < rows; y++){
 		arcan_tui_move_to(c, 0, y);
-		arcan_tui_writestr(c, dst->entries[sofs+y].label, &attr);
+		arcan_tui_writestr(c,
+			dst->entries[sofs+y].label, dst->position == y ? &attr_sel : &attr);
 	}
 
 /* write each row (we're in nowrap, nocursor) and pick attr based on
  * highlight status */
+}
+
+static void menu_resized(struct tui_context* c,
+	size_t neww, size_t newh, size_t col, size_t row, void* t)
+{
+	menu_refresh(c, t);
 }
 
 static void menu_key(struct tui_context* c, uint32_t keysym,
@@ -123,9 +133,20 @@ static void menu_key(struct tui_context* c, uint32_t keysym,
 	}
 	else if (keysym == TUIK_KP_ENTER || keysym == TUIK_RETURN){
 /* deallocate and activate menu entry */
+		if (dst->entries[dst->position].action){
+			dst->entries[dst->position].action(
+				dst->debugctx, &dst->entries[dst->position]);
+		}
+		else if (dst->entries[dst->position].menukey){
+			size_t n_node;
+			struct menu_ent* new_node = get_menu_tree(
+				dst->entries[dst->position].menukey, &n_node);
+			run_menu(dst->debugctx, new_node, n_node, NULL);
+		}
 	}
 	else if (keysym == TUIK_ESCAPE){
 /* deallocate and go back up menu stack */
+		printf("give up\n");
 	}
 	else {
 /* check character for match against shortcut or prefix, TUIK_
@@ -133,6 +154,7 @@ static void menu_key(struct tui_context* c, uint32_t keysym,
 		if (!isprint(keysym))
 			return;
 
+		printf("move cursor based on pattern\n");
 		for (size_t i = 0; i < dst->n_entries; i++){
 		}
 	}
@@ -150,7 +172,7 @@ static bool run_menu(struct debug_ctx* ctx,
 		return false;
 
 	size_t n_flt = 0;
-	struct menu_ent* menuflt = malloc(sizeof(struct menu_ent));
+	struct menu_ent* menuflt = malloc(sizeof(struct menu_ent) * n_menu);
 	if (!menuflt){
 		free(menuctx);
 		return false;
@@ -179,6 +201,7 @@ static bool run_menu(struct debug_ctx* ctx,
 	struct tui_cbcfg menu_handlers = {
 		.tag = menuctx,
 		.input_key = menu_key,
+		.resized = menu_resized
 	};
 
 	arcan_tui_update_handlers(ctx->tui, &menu_handlers, sizeof(menu_handlers));
@@ -186,18 +209,11 @@ static bool run_menu(struct debug_ctx* ctx,
 	return true;
 }
 
-static struct menu_ent* get_menu_tree(const char* key, size_t* count);
-
 static void* debug_thread(void* thr)
 {
 	struct debug_ctx* dctx = thr;
-	struct tui_cbcfg cbcfg = {};
 	size_t n_root;
 	struct menu_ent* root = get_menu_tree("root", &n_root);
-
-	arcan_tui_conn* c = (arcan_tui_conn*) &dctx->cont;
-	struct tui_settings cfg = arcan_tui_defaults(c, NULL);
-	dctx->tui = arcan_tui_setup(c, &cfg, &cbcfg, sizeof(cbcfg));
 
 	if (!dctx->tui || !root){
 		arcan_shmif_drop(&dctx->cont);
@@ -233,29 +249,7 @@ static void* debug_thread(void* thr)
 	return NULL;
 }
 
-static bool spawn_debugint(struct arcan_shmif_cont* c, int in, int out)
-{
-	pthread_t pth;
-	pthread_attr_t pthattr;
-	pthread_attr_init(&pthattr);
-	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-
-	struct debug_ctx* hgs = malloc(sizeof(struct debug_ctx));
-	*hgs = (struct debug_ctx){
-		.infd = in,
-		.outfd = out,
-		.cont = *c
-	};
-
-	if (-1 == pthread_create(&pth, &pthattr, debug_thread, hgs)){
-		free(hgs);
-		return false;
-	}
-
-	return true;
-}
-
-bool arcan_shmif_debugint_spawn(struct arcan_shmif_cont* c)
+bool arcan_shmif_debugint_spawn(struct arcan_shmif_cont* c, void* tuitag)
 {
 /* make sure we have the TUI functions for the debug thread */
 	if (!arcan_tui_setup){
@@ -271,7 +265,36 @@ bool arcan_shmif_debugint_spawn(struct arcan_shmif_cont* c)
 			return false;
 	}
 
-	return spawn_debugint(c, -1, -1);
+	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	struct tui_settings cfg = arcan_tui_defaults(c, tuitag);
+	struct debug_ctx* hgs = malloc(sizeof(struct debug_ctx));
+	if (!hgs)
+		return false;
+
+	*hgs = (struct debug_ctx){
+		.infd = -1,
+		.outfd = -1,
+		.cont = *c,
+		.tui = arcan_tui_setup(c,
+			&cfg, &(struct tui_cbcfg){}, sizeof(struct tui_cbcfg))
+	};
+
+	if (!hgs->tui){
+		free(hgs);
+		return false;
+	}
+
+	arcan_tui_set_flags(hgs->tui, TUI_HIDE_CURSOR);
+
+	if (-1 == pthread_create(&pth, &pthattr, debug_thread, hgs)){
+		free(hgs);
+		return false;
+	}
+
+	return true;
 }
 
 static bool fd_redirect(struct debug_ctx* dctx, int fd)
@@ -279,6 +302,7 @@ static bool fd_redirect(struct debug_ctx* dctx, int fd)
 /* pipe-redirect -if that hasn't already happened- by first duping
  * stderr to somewhere, creating a pipe-pair, duping over and fwd
  * to the debug- thread */
+	printf("request redirect on %d\n", fd);
 
 	int fd_copy = dup(fd);
 	if (-1 == fd_copy)
@@ -304,11 +328,6 @@ static bool fd_redirect(struct debug_ctx* dctx, int fd)
 	}
 
 	return true;
-
-}
-
-static void intercept_fdent(struct debug_ctx* ctx, struct menu_ent* self)
-{
 
 }
 
@@ -367,6 +386,10 @@ static void build_fd_menu(struct debug_ctx* ctx, struct menu_ent* self)
 	free(fds);
 }
 
+static void load_senseye_sensors(struct debug_ctx* ctx, struct menu_ent* self)
+{
+}
+
 static bool eval_senseye(struct debug_ctx* ctx, struct menu_ent* self)
 {
 /* check for the senseye-rwstat support library and use that to add
@@ -381,19 +404,19 @@ static struct menu_ent fd_menu[] = {
 	.label = "Active",
 	.shortcut = 'a',
 	.tag = 1,
-	.action = build_fd_menu
+	.action = build_fd_menu,
 },
 {
 	.label = "Passive",
 	.shortcut = 'p',
 	.tag = 0,
-	.action = build_fd_menu
+	.action = build_fd_menu,
 },
 {
 	.label = "Senseye",
 	.shortcut = 's',
 	.tag = 2,
-	.action = build_fd_menu,
+	.action = load_senseye_sensors,
 	.eval = eval_senseye
 }
 };
@@ -406,13 +429,16 @@ static struct menu_ent root_menu[] = {
 },
 {
 	.label = "Debugger",
-	.shortcut = 'f',
+	.shortcut = 'd',
 	.menukey = "debug_menu"
 }
 /*
  * debugger
  *  -> OS specific prctls etc. to allow easy attach, then spawn process
  *     with the right attachment? (possible fork + sleep + signal + ...
+ *
+ *   - we'd also want to provide ourselves as a hand-over if that can be
+ *     arranged, but more difficult
  *
  * memory (live / snapshot)
  * process (snapshot)
@@ -421,6 +447,8 @@ static struct menu_ent root_menu[] = {
 
 static struct menu_ent* get_menu_tree(const char* key, size_t* count)
 {
+	printf("requested menu %s\n", key);
+
 	if (strcmp(key, "root") == 0){
 		*count = COUNT_OF(root_menu);
 		return root_menu;
