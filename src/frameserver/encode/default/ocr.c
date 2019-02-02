@@ -71,7 +71,7 @@ void ocr_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
  * yield anything.
  */
 	arcan_event ev;
-	while(arcan_shmif_wait(&cont, &ev) != 0){
+	while(arcan_shmif_wait(&cont, &ev)){
 		if (ev.category == EVENT_TARGET){
 			switch (ev.tgt.kind){
 			case TARGET_COMMAND_STEPFRAME:{

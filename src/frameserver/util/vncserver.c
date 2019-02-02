@@ -32,24 +32,49 @@ struct cl_track {
 	unsigned conn_id;
 };
 
+static int vnc_btn_to_shmif(int i)
+{
+	switch (i){
+	case 0: return MBTN_LEFT_IND;
+	case 1: return MBTN_MIDDLE_IND;
+	case 2: return MBTN_RIGHT_IND;
+	case 3: return MBTN_WHEEL_DOWN_IND;
+	case 4: return MBTN_WHEEL_UP_IND;
+	}
+
+	return i;
+}
+
 static void server_pointer (int buttonMask,int x,int y,rfbClientPtr cl)
 {
 /*
- * synch cursor position on change only
+ * synch cursor position on change only, could theoretically allow multiple
+ * cursors here by differentiating subid with a cl- derived identifier
  */
 	if (vncctx.last_x != x || vncctx.last_y != y){
-		arcan_shmif_enqueue(&vncctx.shmcont, &(struct arcan_event){
+		struct arcan_event mouse = {
 			.category = EVENT_IO,
 			.io = {
-				.subid = 0,
+				.kind = EVENT_IO_AXIS_MOVE,
 				.devid = getpid(),
 				.datatype = EVENT_IDATATYPE_ANALOG,
 				.devkind = EVENT_IDEVKIND_MOUSE,
 				.input.analog.gotrel = false,
-				.input.analog.nvalues = 2,
-				.input.analog.axisval = {x, y}
+				.input.analog.nvalues = 1
 			}
-		});
+		};
+
+		if (vncctx.last_x != x){
+			mouse.io.input.analog.axisval[0] = x;
+			arcan_shmif_enqueue(&vncctx.shmcont, &mouse);
+		}
+
+		if (vncctx.last_y != y){
+			mouse.io.input.analog.axisval[0] = y;
+			mouse.io.subid = 1;
+			arcan_shmif_enqueue(&vncctx.shmcont, &mouse);
+		}
+
 		vncctx.last_x = x;
 		vncctx.last_y = y;
 	}
@@ -64,7 +89,7 @@ static void server_pointer (int buttonMask,int x,int y,rfbClientPtr cl)
 					.category = EVENT_IO,
 					.io = {
 						.kind = EVENT_IO_BUTTON,
-						.subid = i,
+						.subid = vnc_btn_to_shmif(i),
 						.datatype = EVENT_IDATATYPE_DIGITAL,
 						.devkind = EVENT_IDEVKIND_MOUSE,
 						.devid = getpid(),
@@ -89,6 +114,7 @@ static void server_key(rfbBool down,rfbKeySym key,rfbClientPtr cl)
 		.io = {
 		.devid = getpid(),
 		.subid = key,
+			.kind = EVENT_IO_BUTTON,
 			.devkind = EVENT_IDEVKIND_KEYBOARD,
 			.datatype = EVENT_IDATATYPE_TRANSLATED,
 			.input.translated = {
