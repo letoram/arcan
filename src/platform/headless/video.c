@@ -10,8 +10,6 @@
 
 /*
  * Checklist
- * [ ] interp working
- * [ ] input translation
  * [ ] deal with frameserver death / relaunch
  * [ ] defer synch / update until flag is set
  * [ ] dirty- rectangle set in record store
@@ -205,7 +203,6 @@ int headless_flush_encode_events()
 	arcan_event inev;
 
 	while (arcan_event_poll(&global.encode.outctx->inqueue, &inev) > 0){
-
 /* allow IO events to be forwarded as if the encode frameserver was actually
  * an input device (which in the remoting stage it is) */
 		if (inev.category == EVENT_IO){
@@ -237,9 +234,11 @@ static bool readback_encode()
 		return false;
 	}
 
+/* even if the store sizes have changed for some reason, we crop to the smallest */
 	agp_activate_rendertarget(NULL);
 	struct agp_vstore* vs = global.mapped ? global.mapped : arcan_vint_world();
 	size_t row_len = vs->w > out->desc.width ? out->desc.width : vs->w;
+	size_t row_sz = row_len * sizeof(av_pixel);
 	size_t n_rows = vs->h > out->desc.height ? out->desc.height : vs->h;
 	size_t buf_sz = vs->w * vs->h * sizeof(av_pixel);
 
@@ -254,14 +253,55 @@ static bool readback_encode()
 
 	agp_readback_synchronous(vs);
 
-/* flip and track dirty */
+	bool in_dirty = false;
+	size_t x1 = row_len - 1;
+	size_t x2 = 0, y1 = 0, y2 = 0;
+
 	shmif_pixel* dst = out->vbufs[0];
-	for (size_t row = 0; row < n_rows; row++){
-		memcpy(
-			&dst[(n_rows - row - 1) * out->desc.width],
-			&vs->vinf.text.raw[row * row_len],
-			row_len * sizeof(av_pixel)
-		);
+	shmif_pixel* src = vs->vinf.text.raw;
+
+	for (size_t row = 0, dst_row = n_rows - 1; row < n_rows; row++, dst_row--){
+		av_pixel acc = 0;
+
+		for (size_t px = 0; px < row_len; px++){
+			av_pixel a = src[row     * vs->w           + px];
+			av_pixel b = dst[dst_row * out->desc.width + px];
+			acc = acc | (a ^ b);
+		}
+
+		if (acc)
+			in_dirty = true;
+
+/* something is dirty */
+/* first time, start tracking row */
+/*		if (acc){
+		if (!in_dirty){
+			in_dirty = true;
+			y1 = row;
+		}
+		else {
+			y2 = row;
+		}
+*/
+/* now grow / shrink the left- side */
+/*		while (x1 > 0 && (src[dst_row * vs->w + x1] ^
+			dst[row * out->desc.width + x1]) == 0){
+			x1--;
+		}
+
+		while (x2 < row_len && (src[dst_row * vs->w + x2] ^
+			dst[row * out->desc.width + x2]) == 0){
+			x2++;
+		}
+
+	}
+*/
+		memcpy(&dst[dst_row * out->desc.width], &src[row * vs->w], row_sz);
+	}
+
+	if (!in_dirty){
+		platform_fsrv_leave();
+		return false;
 	}
 
 	global.encode.outctx->shm.ptr->vready = true;
@@ -301,7 +341,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * if there is no encoder listening or it couldn't be synched to, run
  * with the ~estimated fake synch of the platform default or user config
  */
-	if (!(global.encode.outctx && readback_encode())){
+	if (!nd || !(global.encode.outctx && readback_encode())){
 		arcan_conductor_fakesynch(global.deadline);
 	}
 
