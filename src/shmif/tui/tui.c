@@ -3209,7 +3209,7 @@ void arcan_tui_refdec(struct tui_context* c)
 	tsm_screen_unref(c->screen);
 }
 
-struct tui_screen_attr tui_screen_defcattr(struct tui_context* c, int group)
+struct tui_screen_attr arcan_tui_defcattr(struct tui_context* c, int group)
 {
 	struct tui_screen_attr out = {};
 	if (!c)
