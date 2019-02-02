@@ -33,6 +33,8 @@
 #include "vncserver.h"
 #endif
 
+void png_stream_run(struct arg_arr* args, struct arcan_shmif_cont cont);
+
 #ifdef HAVE_OCR
 void ocr_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont);
 #endif
@@ -45,7 +47,7 @@ void ocr_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont);
 static struct {
 /* IPC */
 	struct arcan_shmif_cont shmcont;
-	int lastfd;        /* sent from parent */
+	int last_fd;        /* sent from parent */
 
 /* Multiplexing / Output */
 	AVFormatContext* fcontext;
@@ -102,6 +104,45 @@ static struct {
 struct cl_track {
 	unsigned conn_id;
 };
+
+static bool encode_audio(bool);
+static int encode_video(bool);
+
+static void stop_output()
+{
+	if (recctx.last_fd == -1)
+		return;
+
+	if (recctx.acontext)
+		encode_audio(true);
+
+	if (recctx.vcontext)
+		encode_video(true);
+
+	av_write_trailer(recctx.fcontext);
+
+	if (recctx.astream){
+		LOG("(encode) closing audio stream\n");
+		avcodec_close(recctx.astream->codec);
+	}
+
+	if (recctx.vstream){
+		LOG("(encode) closing video stream\n");
+		avcodec_close(recctx.vstream->codec);
+	}
+
+/*
+ * good form says that we should do this, have received
+ * some crashes here though.
+ 	 if (!(recctx.fcontext->oformat->flags & AVFMT_NOFILE)){
+		avio_close(recctx.fcontext->pb);
+	}
+ */
+
+	avformat_free_context(recctx.fcontext);
+	close(recctx.last_fd);
+	recctx.last_fd = -1;
+}
 
 /* flush the audio buffer present in the shared memory page as
  * quick as possible, resample if necessary, then use the intermediate
@@ -455,38 +496,7 @@ static void encoder_atexit()
 	if (!recctx.fcontext)
 		return;
 
-	if (recctx.lastfd != -1){
-		if (recctx.acontext)
-			encode_audio(true);
-
-		if (recctx.vcontext)
-			encode_video(true);
-	}
-
-	av_write_trailer(recctx.fcontext);
-
-	if (recctx.astream){
-		LOG("(encode) closing audio stream\n");
-		avcodec_close(recctx.astream->codec);
-	}
-
-	if (recctx.vstream){
-		LOG("(encode) closing video stream\n");
-		avcodec_close(recctx.vstream->codec);
-	}
-
-/*
- * good form says that we should do this, have received
- * some crashes here though.
- 	 if (!(recctx.fcontext->oformat->flags & AVFMT_NOFILE)){
-		avio_close(recctx.fcontext->pb);
-	}
- */
-
-	avformat_free_context(recctx.fcontext);
-
-	LOG("(encode) atexit cleanup finished\n");
-	fflush(stderr);
+	stop_output();
 }
 
 static void log_callback(void* ptr, int level, const char* fmt, va_list vl)
@@ -579,12 +589,12 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 		}
 	}
 
-	struct codec_ent muxer = encode_getcontainer(cont,
-		recctx.lastfd, streamdst);
-	struct codec_ent video = encode_getvcodec(vck,
-		muxer.storage.container.format->flags);
-	struct codec_ent audio = encode_getacodec(ack,
-		muxer.storage.container.format->flags);
+	struct codec_ent muxer =
+		encode_getcontainer( cont, recctx.last_fd, streamdst);
+	struct codec_ent video = encode_getvcodec(
+		vck, muxer.storage.container.format->flags);
+	struct codec_ent audio = encode_getacodec(
+		ack, muxer.storage.container.format->flags);
 
 	if (!video.storage.container.context){
 		LOG("(encode) No valid output container found, aborting.\n");
@@ -668,16 +678,50 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 
 static void dump_help()
 {
-	fprintf(stdout, "afsrv_encode, feature status: vnc "
+	fprintf(stdout, "Encode should be run authoritatively (spawned from arcan)\n");
+	fprintf(stdout, "ARCAN_ARG (environment variable, "
+		"key1=value:key2:key3=value), arguments: \n"
+		"  key   \t   value   \t   description\n"
+		"--------\t-----------\t-----------------\n"
+		"protocol\t name      \t switch protocol/mode, default=video\n\n"
 #ifdef HAVE_VNCSERVER
-"(enabled)"
-#else
-"(disabled)"
+		"protocol=vnc\n"
+		"  key   \t   value   \t   description\n"
+		"--------\t-----------\t-----------------\n"
+		" name   \t string    \t set exported 'desktopName'\n"
+		" pass   \t string    \t set server password (insecure)\n"
+		" port   \t number    \t set server listen port\n\n"
 #endif
-	"\n");
-	fprintf(stdout, "Encode - frameserver is not currently supported "
-		" in non-authorative mode, this frameserver will be spawned on "
-		" demand by the main arcan process.\n");
+#ifdef HAVE_OCR
+		"protocol=ocr\n"
+		"  key   \t   value   \t   description\n"
+		"--------\t-----------\t-----------------\n"
+		" lang   \t string    \t set OCR engine language (default: eng)\n\n"
+#endif
+		"protocol=png\n"
+		"  key   \t   value   \t   description\n"
+		"--------\t-----------\t-----------------\n"
+		"prefix  \t filename  \t (png) set prefix_number.png\n"
+		"limit   \t number    \t stop after 'number' frames\n"
+		"skip    \t number    \t skip first 'number' frames\n\n"
+		"protocol=video\n"
+		"  key   \t   value   \t   description\n"
+		"----------\t-----------\t-----------------\n"
+		"vbitrate  \t kilobits  \t nominal video bitrate\n"
+		"abitrate  \t kilobits  \t nominal audio bitrate\n"
+		"vpreset   \t 1..10     \t video preset quality level\n"
+		"apreset   \t 1..10     \t audio preset quality level\n"
+		"fps       \t float     \t targeted framerate\n"
+		"noaudio   \t           \t ignore/omit audio encoding\n"
+		"vptsofs   \t ms        \t delay video presentation\n"
+		"aptsofs   \t ms        \t delay audio presentation\n"
+		"presilence\t ms        \t buffer audio with silence\n"
+		"vcodec    \t format    \t try to specify video codec\n"
+		"acodec    \t format    \t try to specify audio codec\n"
+		"container \t format    \t try to specify container format\n"
+		"stream    \t           \t enable remote streaming\n"
+		"streamdst \t rtmp://.. \t stream to server url\n\n"
+	);
 }
 
 int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
@@ -687,32 +731,45 @@ int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
-	recctx.shmcont = *cont;
-
 	const char* argval;
 	if (arg_lookup(args, "protocol", 0, &argval)){
 
 #ifdef HAVE_VNCSERVER
 		if (strcmp(argval, "vnc") == 0){
-			vnc_serv_run(args, recctx.shmcont);
+			vnc_serv_run(args, *cont);
 			return EXIT_SUCCESS;
 		}
 #endif
 
 #ifdef HAVE_OCR
 		if (strcmp(argval, "ocr") == 0){
-			ocr_serv_run(args, recctx.shmcont);
+			ocr_serv_run(args, *cont);
 			return EXIT_SUCCESS;
 		}
 #endif
 
-		LOG("unsupported encoding protocol (%s) specified, giving up.\n", argval);
-		return EXIT_FAILURE;
+		if (strcmp(argval, "png") == 0){
+			png_stream_run(args, *cont);
+			return EXIT_SUCCESS;
+		}
+		else if (strcmp(argval, "video") == 0){
+		}
+		else {
+			LOG("unsupported encoding protocol (%s) specified, giving up.\n", argval);
+			return EXIT_FAILURE;
+		}
 	}
 
+	recctx.shmcont = *cont;
 	bool firstframe = false;
-
-	recctx.lastfd = -1;
+	recctx.last_fd = -1;
+	if (arg_lookup(args, "file", 0, &argval) == 0 && argval){
+		recctx.last_fd = open(argval, O_CREAT | O_RDWR);
+		if (-1 == recctx.last_fd){
+			LOG("couldn't open output (%s)\n", argval);
+			return EXIT_FAILURE;
+		}
+	}
 
 	while (true){
 /* fail here means there's something wrong with
@@ -728,7 +785,7 @@ int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
  * where we get a DEVICEHINT (extend to accelerated) and then zero-copy platform
  * handles if/where supported */
 			case TARGET_COMMAND_STORE:
-				recctx.lastfd = dup(ev.tgt.ioevs[0].iv);
+				recctx.last_fd = dup(ev.tgt.ioevs[0].iv);
 				LOG("received file-descriptor, setting up encoder.\n");
 				atexit(encoder_atexit);
 				if (!setup_ffmpeg_encode(args, recctx.shmcont.addr->w,
@@ -763,8 +820,10 @@ int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 					recctx.starttime = arcan_timemillis();
 				}
 
+/* should practically never trigger, would require some weird OoO */
 				while(!recctx.shmcont.addr->vready){
 				}
+
 				arcan_frameserver_stepframe();
 			break;
 
