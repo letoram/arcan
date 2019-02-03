@@ -112,8 +112,8 @@ static void server_key(rfbBool down,rfbKeySym key,rfbClientPtr cl)
 	arcan_shmif_enqueue(&vncctx.shmcont, &(struct arcan_event){
 		.category = EVENT_IO,
 		.io = {
-		.devid = getpid(),
-		.subid = key,
+			.devid = getpid(),
+			.subid = key,
 			.kind = EVENT_IO_BUTTON,
 			.devkind = EVENT_IDEVKIND_KEYBOARD,
 			.datatype = EVENT_IDATATYPE_TRANSLATED,
@@ -200,40 +200,9 @@ void vnc_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
 	vncctx.server->newClientHook = server_newclient;
 	vncctx.server->kbdAddEvent = server_key;
 	vncctx.server->port = port;
-
-	if (SHMIF_RGBA(0xff, 0x00, 0x00, 0x00) == 0xff000000)
-		vncctx.server->serverFormat.redShift = 24;
-	else if (SHMIF_RGBA(0xff, 0x00, 0x00, 0x00) == 0x00ff0000)
-		vncctx.server->serverFormat.redShift = 16;
-	else if (SHMIF_RGBA(0xff, 0x00, 0x00, 0x00) == 0x0000ff00)
-		vncctx.server->serverFormat.redShift = 8;
-	else
-		vncctx.server->serverFormat.redShift = 0;
-
-	if (SHMIF_RGBA(0x00, 0xff, 0x00, 0x00) == 0xff000000)
-		vncctx.server->serverFormat.greenShift = 24;
-	else if (SHMIF_RGBA(0x00, 0xff, 0x00, 0x00) == 0x00ff0000)
-		vncctx.server->serverFormat.greenShift = 16;
-	else if (SHMIF_RGBA(0x00, 0xff, 0x00, 0x00) == 0x0000ff00)
-		vncctx.server->serverFormat.greenShift = 8;
-	else
-		vncctx.server->serverFormat.greenShift = 0;
-
-	if (SHMIF_RGBA(0x00, 0x00, 0xff, 0x00) == 0xff000000)
-		vncctx.server->serverFormat.blueShift = 24;
-	else if (SHMIF_RGBA(0x00, 0x00, 0xff, 0x00) == 0x00ff0000)
-		vncctx.server->serverFormat.blueShift = 16;
-	else if (SHMIF_RGBA(0x00, 0x00, 0xff, 0x00) == 0x0000ff00)
-		vncctx.server->serverFormat.blueShift = 8;
-	else
-		vncctx.server->serverFormat.blueShift = 0;
-
-	vncctx.server->serverFormat.redShift =
-		SHMIF_RGBA(0xff, 0x00, 0x00, 0x00) == 0xff000000 ? 24 : 0;
-	vncctx.server->serverFormat.greenShift =
-		SHMIF_RGBA(0x00, 0xff, 0x00, 0x00) == 0x00ff0000 ? 16 : 8;
-	vncctx.server->serverFormat.blueShift =
-		SHMIF_RGBA(0x00, 0x00, 0xff, 0x00) == 0x0000ff00 ? 8 : 16;
+	vncctx.server->serverFormat.redShift = SHMIF_RGBA_RSHIFT;
+	vncctx.server->serverFormat.greenShift = SHMIF_RGBA_GSHIFT;
+	vncctx.server->serverFormat.blueShift = SHMIF_RGBA_BSHIFT;
 
 /*
  * other hooks;
