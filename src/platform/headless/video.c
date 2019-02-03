@@ -9,12 +9,13 @@
  */
 
 /*
- * Checklist
+ * TODO:
  * [ ] deal with frameserver death / relaunch
- * [ ] defer synch / update until flag is set
- * [ ] dirty- rectangle set in record store
  * [ ] map_handle should be shared with egl-dri
+ * [ ] let DPMS state and map_handle(BADID) reflect in encode-output
+ * [ ] "resolution" switch reflect in encode output
  */
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -57,6 +58,8 @@ static struct {
 	struct {
 		struct arcan_frameserver* outctx;
 		bool check_output;
+		bool flip_y;
+		bool block;
 	} encode;
 
 	struct {
@@ -68,27 +71,19 @@ static struct {
 		struct gbm_device* gbmdev;
 	} egl;
 
-	struct agp_vstore* mapped;
+	struct agp_vstore* vstore;
 } global = {
-	.deadline = 13
+	.deadline = 13,
+	.encode = {
+		.flip_y = true
+	}
 };
 
 static char* envopts[] = {
-	"ARCAN_VIDEO_ENCODE=encode_args", "enable encode frameserver as virtual output",
+	"ARCAN_VIDEO_ENCODE=encode_args",
+	"Use encode frameserver as virtual output, see afsrv_encode for format",
 	NULL
 };
-
-static void step_encode_feed(av_pixel* buf, size_t buf_sz)
-{
-/* we are already in tramp_guard state */
-	if (!global.encode.outctx ||
-		!global.encode.outctx->shm.ptr || global.encode.outctx->shm.ptr->vready)
-		return;
-
-/* audio is just ignored for now, unfortunately we don't have the
- * controls for PBO -> shm readback and currently we don't do handle-
- * passing srv->encode yet. */
-}
 
 static void spawn_encode_output()
 {
@@ -223,20 +218,22 @@ int headless_flush_encode_events()
 	return FRV_NOFRAME;
 }
 
-static bool readback_encode()
+static int readback_encode()
 {
 /* other side is still encoding / synching so don't overwrite the buffer */
 	struct arcan_frameserver* out = global.encode.outctx;
 	TRAMP_GUARD(0, out);
 
-	if (out->shm.ptr->vready){
+/* not finished, fake it until we finish */
+	if (out->shm.ptr->vready || global.encode.block){
 		platform_fsrv_leave();
-		return false;
+		return 0;
 	}
 
 /* even if the store sizes have changed for some reason, we crop to the smallest */
 	agp_activate_rendertarget(NULL);
-	struct agp_vstore* vs = global.mapped ? global.mapped : arcan_vint_world();
+
+	struct agp_vstore* vs = global.vstore ? global.vstore : arcan_vint_world();
 	size_t row_len = vs->w > out->desc.width ? out->desc.width : vs->w;
 	size_t row_sz = row_len * sizeof(av_pixel);
 	size_t n_rows = vs->h > out->desc.height ? out->desc.height : vs->h;
@@ -251,6 +248,9 @@ static bool readback_encode()
 		);
 	}
 
+/* don't really guarantee color format and coding here when it is
+ * non-normal texture2D surfaces (where we statically pick formats
+ * to avoid repack). */
 	agp_readback_synchronous(vs);
 
 	bool in_dirty = false;
@@ -260,7 +260,15 @@ static bool readback_encode()
 	shmif_pixel* dst = out->vbufs[0];
 	shmif_pixel* src = vs->vinf.text.raw;
 
-	for (size_t row = 0, dst_row = n_rows - 1; row < n_rows; row++, dst_row--){
+	size_t dst_row = n_rows - 1;
+	int dst_step = -1;
+
+	if (!global.encode.flip_y){
+		dst_row = 0;
+		dst_step = 1;
+	}
+
+	for (size_t row = 0; row < n_rows; row++, dst_row += dst_step){
 		av_pixel acc = 0;
 
 		for (size_t px = 0; px < row_len; px++){
@@ -269,43 +277,55 @@ static bool readback_encode()
 			acc = acc | (a ^ b);
 		}
 
-		if (acc)
-			in_dirty = true;
+		if (!acc)
+			continue;
 
-/* something is dirty */
-/* first time, start tracking row */
-/*		if (acc){
 		if (!in_dirty){
 			in_dirty = true;
-			y1 = row;
+			y1 = dst_row;
+			y2 = dst_row;
 		}
-		else {
-			y2 = row;
-		}
-*/
-/* now grow / shrink the left- side */
-/*		while (x1 > 0 && (src[dst_row * vs->w + x1] ^
-			dst[row * out->desc.width + x1]) == 0){
-			x1--;
+		else
+			y1 = dst_row;
+
+/* grow / shrink the bounding volume */
+		for (size_t tx = 0; tx < x1; tx++){
+			if (
+					(dst[dst_row * out->desc.width + tx] ^
+					 src[row * out->desc.width + tx]) != 0){
+				x1 = tx;
+				break;
+			}
 		}
 
-		while (x2 < row_len && (src[dst_row * vs->w + x2] ^
-			dst[row * out->desc.width + x2]) == 0){
-			x2++;
+		for (size_t tx = row_len-1; tx > x2; tx--){
+			if (
+					(dst[dst_row * out->desc.width + tx] ^
+					 src[row * out->desc.width + tx]) != 0){
+				x2 = tx;
+				break;
+			}
 		}
 
-	}
-*/
 		memcpy(&dst[dst_row * out->desc.width], &src[row * vs->w], row_sz);
 	}
 
 	if (!in_dirty){
 		platform_fsrv_leave();
-		return false;
+		return 1;
 	}
 
-	global.encode.outctx->shm.ptr->vready = true;
+/* flag ok and commit dirty region */
+	global.encode.outctx->shm.ptr->hints |= SHMIF_RHINT_SUBREGION;
+	struct arcan_shmif_region dirty = {
+		.x1 = x1, .y1 = y1,
+		.x2 = x2, .y2 = y2
+	};
+	atomic_store(&global.encode.outctx->shm.ptr->dirty, dirty);
+	atomic_store_explicit(
+		&global.encode.outctx->shm.ptr->vready, true, memory_order_seq_cst);
 
+/* encode has more explicit frame signalling until we have futexes */
 	platform_fsrv_pushevent(global.encode.outctx, &(struct arcan_event){
 		.tgt.kind = TARGET_COMMAND_STEPFRAME,
 		.category = EVENT_TARGET,
@@ -313,7 +333,7 @@ static bool readback_encode()
 	});
 
 	platform_fsrv_leave();
-	return true;
+	return 1;
 }
 
 void platform_video_synch(uint64_t tick_count, float fract,
@@ -338,11 +358,23 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
 
 /*
- * if there is no encoder listening or it couldn't be synched to, run
- * with the ~estimated fake synch of the platform default or user config
+ * if there is no encoder listening run with the estimated fake synch
  */
-	if (!nd || !(global.encode.outctx && readback_encode())){
+	if (!nd || !global.encode.outctx){
 		arcan_conductor_fakesynch(global.deadline);
+	}
+/*
+ * if there is an encoder set, try to synch it or 'fake-+yield' until
+ * the deadline has elapsed or synch succeeded
+ */
+	else{
+		unsigned long deadline = arcan_timemillis() + global.deadline;
+
+		while (!readback_encode()){
+			unsigned step = arcan_conductor_yield(NULL, 0);
+			if (arcan_timemillis() + step < deadline)
+				arcan_timesleep(step);
+		}
 	}
 
 	if (post)
@@ -421,17 +453,48 @@ bool platform_video_map_display(
 	arcan_warning("got map display %d, %d\n", id, disp);
 
 	arcan_vobject* vobj = arcan_video_getobject(id);
-	bool isrt = arcan_vint_findrt(vobj) != NULL;
-	if (vobj && vobj->vstore->txmapped != TXSTATE_TEX2D){
+
+/*
+ * unmap any existing one
+ */
+	if (global.vstore && global.vstore != arcan_vint_world()){
+		arcan_vint_drop_vstore(global.vstore);
+		global.vstore = NULL;
+	}
+
+/*
+ * disable output temporarily if it's there
+ */
+	if (id == ARCAN_EID){
+		global.encode.block = true;
+		return true;
+	}
+
+	global.encode.block = false;
+
+/*
+ * switch to the global output
+ */
+	if (id == ARCAN_VIDEO_WORLDID || !vobj){
+		global.encode.flip_y = true;
+		return true;
+	}
+
+	if (vobj->vstore->txmapped != TXSTATE_TEX2D){
 		arcan_warning("(headless) map display called with bad source vobj\n");
 		return false;
 	}
 
-	if (isrt){
-
-	}
-
-/* FIXME: modify the recordtarget interim- object to match */
+/*
+ * Refcount the new and mark as mapped, this is the place to add an indirect
+ * rendertarget- apply/transform pass in order to handle mapping hints. Should
+ * possible be done in the AGP stage though in the same way we should handle
+ * repack-reblit
+ */
+	vobj->vstore->refcount++;
+	bool isrt = arcan_vint_findrt(vobj) != NULL;
+	global.encode.flip_y = isrt;
+	global.vstore = vobj->vstore;
 
 	return true;
 }
