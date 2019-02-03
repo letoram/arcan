@@ -12,6 +12,22 @@
 ((uint32_t) (b)) )
 #endif
 
+#ifndef SHMIF_RGBA_RSHIFT
+#define SHMIF_RGBA_RSHIFT 16
+#endif
+
+#ifndef SHMIF_RGBA_GSHIFT
+#define SHMIF_RGBA_GSHIFT 8
+#endif
+
+#ifndef SHMIF_RGBA_BSHIFT
+#define SHMIF_RGBA_BSHIFT 0
+#endif
+
+#ifndef SHMIF_RGBA_ASHIFT
+#define SHMIF_RGBA_ASHIFT 24
+#endif
+
 #ifndef SHMIF_RGBA_DECOMP
 static inline void SHMIF_RGBA_DECOMP(shmif_pixel val,
 	uint8_t* r, uint8_t* g, uint8_t* b, uint8_t* a)
