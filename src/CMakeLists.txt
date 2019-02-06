@@ -716,7 +716,8 @@ if (HYBRID_HEADLESS)
 	)
 	list(APPEND BIN_INSTALL arcan_headless)
 endif()
-endif()
+	set(VIDEO_PLATFORM egl-dri)
+endif() #egl-dri
 
 #
 # The database tool is a CLI for the engine/arcan_db with additional
