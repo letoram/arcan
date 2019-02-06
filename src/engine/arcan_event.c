@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2016, Björn Ståhl
+ * Copyright 2003-2019, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description: The event-queue interface has gone through a lot of hacks
@@ -46,8 +46,17 @@
 typedef struct queue_cell queue_cell;
 
 static arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
+
 static uint8_t eventfront = 0, eventback = 0;
 static int64_t epoch;
+
+static struct arcan_evctx default_evctx = {
+	.eventbuf = eventbuf,
+	.eventbuf_sz = ARCAN_EVENT_QUEUE_LIM,
+	.front = &eventfront,
+	.back = &eventback,
+	.local = true
+};
 
 #ifndef FORCE_SYNCH
 	#define FORCE_SYNCH() {\
@@ -59,22 +68,6 @@ static int64_t epoch;
 /* set through environment variable to ensure we can shut down
  * cleanly based on a certain keybinding */
 static int panic_keysym = -1, panic_keymod = -1;
-
-/* special cases, only enabled if the correct
- * environment has been set */
-static FILE* record_out;
-static map_region playback_in;
-static size_t playback_ofs;
-
-static void pack_rec_event(const struct arcan_event* const outev);
-
-static struct arcan_evctx default_evctx = {
-	.eventbuf = eventbuf,
-	.eventbuf_sz = ARCAN_EVENT_QUEUE_LIM,
-	.front = &eventfront,
-	.back = &eventback,
-	.local = true
-};
 
 arcan_evctx* arcan_event_defaultctx(){
 	return &default_evctx;
@@ -223,9 +216,6 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 		return arcan_event_enqueue(ctx, &ev);
 	}
 
-	if (ctx->local && src->category == EVENT_IO)
-			pack_rec_event(src);
-
 	ctx->eventbuf[(*ctx->back) % ctx->eventbuf_sz] = *src;
 	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
 
@@ -362,135 +352,6 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 		arcan_sem_post(srcqueue->synch.handle);
 }
 
-static long unpack_rec_event(char* bytep, size_t sz, arcan_event* tv,
-	int32_t* tickv)
-{
-	size_t nb = sizeof(int32_t) * 11;
-
-	if (sz < nb)
-		return -1;
-
-	int32_t buf[11];
-	memcpy(buf, bytep, nb);
-	*tickv = buf[0];
-
-	tv->category = EVENT_IO;
-	tv->io.kind = buf[1];
-	tv->io.devid = buf[2];
-	tv->io.subid = buf[3];
-
-	switch (buf[1]){
-	case EVENT_IO_TOUCH:
-		tv->io.input.touch.pressure = buf[4];
-		tv->io.input.touch.size = buf[5];
-		tv->io.input.touch.x = buf[6];
-		tv->io.input.touch.y = buf[7];
-	break;
-	case EVENT_IO_AXIS_MOVE:
-		tv->io.input.analog.gotrel = buf[4];
-		if (buf[5] < sizeof(buf) / sizeof(buf[0]) - 6){
-			for (size_t i = 0; i < buf[5]; i++)
-				tv->io.input.analog.axisval[i] = buf[6+i];
-			tv->io.input.analog.nvalues = buf[5];
-		}
-		else
-			buf[5] = 0;
-	break;
-	case EVENT_IO_BUTTON:
-		if (buf[4] == EVENT_IDEVKIND_KEYBOARD){
-			tv->io.devkind = EVENT_IDEVKIND_KEYBOARD;
-			tv->io.input.translated.active = buf[5];
-			tv->io.input.translated.scancode = buf[6];
-			tv->io.input.translated.keysym = buf[7];
-			tv->io.input.translated.modifiers = buf[8];
-		}
-		else if (buf[4] == EVENT_IDEVKIND_MOUSE||buf[4] == EVENT_IDEVKIND_GAMEDEV){
-			tv->io.devkind = buf[4];
-			tv->io.devid = buf[2];
-			tv->io.subid = buf[3];
-			tv->io.input.digital.active = buf[5];
-		}
-		else
-			return -1;
-	case EVENT_IO_STATUS:
-		if (buf[4] == EVENT_IDEVKIND_STATUS){
-			tv->io.devkind = EVENT_IDEVKIND_STATUS;
-			tv->io.input.status.action = buf[5];
-		}
-	break;
-	}
-
-	return nb;
-}
-
-/*
- * no heavy serialization effort here, the format is intended
- * for debugging and testing. shmif- event serialization should
- * be used for other purposes.
- */
-static void pack_rec_event(const struct arcan_event* const outev)
-{
-	if (!record_out)
-		return;
-
-	if (outev->category != EVENT_IO)
-		return;
-
-/* since this is a testing thing, we are not particularly considerate
- * in regards to compact representation */
-	int32_t ioarr[11] = {0};
-	ioarr[0] = arcan_frametime();
-	size_t nmemb = sizeof(ioarr) / sizeof(ioarr[0]);
-	ioarr[1] = outev->io.kind;
-	ioarr[2] = outev->io.devid;
-	ioarr[3] = outev->io.subid;
-
-	switch(outev->io.kind){
-	case EVENT_IO_TOUCH:
-		ioarr[4] = outev->io.input.touch.pressure;
-		ioarr[5] = outev->io.input.touch.size;
-		ioarr[6] = outev->io.input.touch.x;
-		ioarr[7] = outev->io.input.touch.y;
-	break;
-	case EVENT_IO_AXIS_MOVE:
-		ioarr[4] = outev->io.input.analog.gotrel;
-		for (size_t i = 0; i < nmemb - 6 &&
-			i < outev->io.input.analog.nvalues; i++){
-			ioarr[6+i] = outev->io.input.analog.axisval[i];
-			ioarr[5]++;
-		}
-	break;
-	case EVENT_IO_BUTTON:
-		if (outev->io.devkind == EVENT_IDEVKIND_KEYBOARD){
-			ioarr[4] = outev->io.devkind;
-			ioarr[5] = outev->io.input.translated.active;
-			ioarr[6] = outev->io.input.translated.scancode;
-			ioarr[7] = outev->io.input.translated.keysym;
-			ioarr[8] = outev->io.input.translated.modifiers;
-		}
-		else if (outev->io.devkind == EVENT_IDEVKIND_MOUSE ||
-			outev->io.devkind == EVENT_IDEVKIND_GAMEDEV){
-			ioarr[4] = outev->io.devkind;
-			ioarr[5] = outev->io.input.digital.active;
-		}
-		else
-			return;
-	break;
-	case EVENT_IO_STATUS:
-		if (outev->io.devkind == EVENT_IDEVKIND_STATUS){
-			ioarr[4] = outev->io.input.status.action;
-		}
-	break;
-	default:
-	break;
-	}
-
-	if (1 != fwrite(ioarr, sizeof(int32_t) * nmemb, 1, record_out)){
-		fclose(record_out);
-		record_out = NULL;
-	}
-}
-
 void arcan_event_blacklist(const char* idstr)
 {
 /* idstr comes from a trusted context, won't exceed stack size */
@@ -514,37 +375,6 @@ bool arcan_event_blacklisted(const char* idstr)
 	return rv;
 }
 
-static void inject_scheduled(arcan_evctx* ctx)
-{
-	if (!playback_in.ptr)
-		return;
-
-	static arcan_event next_ev;
-	static int32_t tickv = -1; /* -1 if no pending events */
-
-step:
-	if (tickv != -1){
-		if (tickv <= arcan_frametime()){
-			arcan_event_enqueue(ctx, &next_ev);
-			tickv = -1;
-		}
-		else
-			return;
-	}
-
-	ssize_t rv = unpack_rec_event(&playback_in.ptr[playback_ofs],
-		playback_in.sz - playback_ofs, &next_ev, &tickv);
-
-	if (-1 == rv){
-		arcan_release_map(playback_in);
-		memset(&playback_in, '\0', sizeof(playback_in));
-		return;
-	}
-
-	playback_ofs += rv;
-	goto step;
-}
-
 int64_t arcan_frametime()
 {
 	int64_t now = arcan_timemillis();
@@ -559,7 +389,6 @@ float arcan_event_process(arcan_evctx* ctx, arcan_tick_cb cb)
 	int64_t base = ctx->c_ticks * ARCAN_TIMER_TICK;
 	int64_t delta = arcan_frametime() - base;
 
-	inject_scheduled(ctx);
 	platform_event_process(ctx);
 
 	if (delta > ARCAN_TIMER_TICK){
@@ -649,17 +478,6 @@ void arcan_bench_register_frame()
 void arcan_event_deinit(arcan_evctx* ctx)
 {
 	platform_event_deinit(ctx);
-
-	if (record_out){
-		fclose(record_out);
-		record_out = NULL;
-	}
-
-	if (playback_in.ptr){
-		arcan_release_map(playback_in);
-		memset(&playback_in, '\0', sizeof(playback_in));
-		playback_ofs = 0;
-	}
 
 /*
  * Actually resetting the contents of the event queue is no longer a part of
@@ -779,20 +597,6 @@ void arcan_event_init(arcan_evctx* ctx)
 		else
 			arcan_warning("ARCAN_EVENT_SHUTDOWN=%s, malformed key "
 				"expecting number:number (keysym:modifiers).\n", panicbutton);
-	}
-
-	const char* fn;
-	if ((fn = getenv("ARCAN_EVENT_RECORD"))){
-		record_out = fopen(fn, "w+");
-		if (!record_out)
-			arcan_warning("ARCAN_EVENT_RECORD=%s, couldn't open file "
-				"for recording.\n", fn);
-	}
-
-	if ((fn = getenv("ARCAN_EVENT_REPLAY"))){
-		data_source source = arcan_open_resource(fn);
-		playback_in = arcan_map_resource(&source, false);
-		arcan_release_resource(&source);
 	}
 
 	epoch = arcan_timemillis() - ctx->c_ticks * ARCAN_TIMER_TICK;
