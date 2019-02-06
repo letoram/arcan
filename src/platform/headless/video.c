@@ -194,8 +194,28 @@ int headless_flush_encode_events()
 	if (!global.encode.outctx)
 		return FRV_NOFRAME;
 
+/* Prevent control_chld from emitting events about the state of the frameserver
+ * (it doesn't exist in the lua space) and instead substitute it with the exit
+ * request. Run silent so that it can launch with re-attach */
+	arcan_event_maskall(arcan_event_defaultctx());
+	if (!arcan_frameserver_control_chld(global.encode.outctx)){
+		arcan_warning("(headless) output encoder died\n");
+		global.encode.outctx = NULL;
+		arcan_event_clearmask(arcan_event_defaultctx());
+		arcan_event ev = {
+			.category = EVENT_SYSTEM,
+			.sys.kind = EVENT_SYSTEM_EXIT,
+			.sys.errcode = 256 /* EXIT_SILENT */
+		};
+		arcan_event_enqueue(arcan_event_defaultctx(), &ev);
+		return FRV_NOFRAME;
+	}
+	arcan_event_clearmask(arcan_event_defaultctx());
+
 	TRAMP_GUARD(FRV_NOFRAME, global.encode.outctx);
 	arcan_event inev;
+
+/* !arcan_frameserver_control_chld -> _free() -> TERMINATED event */
 
 	while (arcan_event_poll(&global.encode.outctx->inqueue, &inev) > 0){
 /* allow IO events to be forwarded as if the encode frameserver was actually
