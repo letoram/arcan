@@ -144,7 +144,7 @@ static void default_adoph(arcan_frameserver* tgt, arcan_vobj_id id)
 	tgt->vid = id;
 }
 
-static bool arcan_frameserver_control_chld(arcan_frameserver* src){
+bool arcan_frameserver_control_chld(arcan_frameserver* src){
 /* bunch of terminating conditions -- frameserver messes with the structure to
  * provoke a vulnerability, frameserver dying or timing out, ... */
 	bool alive = src->flags.alive && src->shm.ptr &&

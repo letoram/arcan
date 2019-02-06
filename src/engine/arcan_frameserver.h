@@ -348,6 +348,18 @@ enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD;
 #endif
 
 /*
+ * Used internally by tick_control, but for platform cases that want to
+ * run frameservers that aren't visible to the other graphics layers, the
+ * control_chld should be called directly to deal with liveness checks.
+ *
+ * Returns [true] if the [src] is alive and well.
+ * Returns [false], enqueues a terminated event and frees the frameserver
+ * if the attached resources or process fail to pass validation.
+ */
+bool arcan_frameserver_control_chld(arcan_frameserver* src);
+
+
+/*
  * Used as monitor hook for frameserver audio feeds, will be reworked
  * to a LUT- style callback system similar to that of videofeeds in 0.6
  */
