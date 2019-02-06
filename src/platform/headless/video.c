@@ -534,6 +534,12 @@ bool platform_video_init(uint16_t width,
 	global.width = width;
 	global.height = height;
 
+/* some trival default as default is -w 0 -h 0 */
+	if (!global.width)
+		global.width = 640;
+	if (!global.height)
+		global.height = 480;
+
 	const EGLint attribs[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
 		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
