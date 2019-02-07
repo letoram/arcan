@@ -793,7 +793,7 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 {
 	assert(c);
 	if (!c || !c->addr || !c->priv)
-		return 0;
+		return -1;
 
 /* this is dangerous territory: many _enqueue calls are done without checking
  * the return value, so chances are that some event will be dropped. In the
