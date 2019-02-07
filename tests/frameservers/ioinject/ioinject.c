@@ -34,7 +34,6 @@ int main(int argc, char** argv)
 				}
 			}
 		})){
-		printf("sent %d\n", id++);
 	}
 
 	printf("enqueue failed\n");

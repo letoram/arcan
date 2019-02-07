@@ -10,7 +10,6 @@
 
 /*
  * TODO:
- * [ ] deal with frameserver death / relaunch
  * [ ] map_handle should be shared with egl-dri
  * [ ] let DPMS state and map_handle(BADID) reflect in encode-output
  * [ ] "resolution" switch reflect in encode output

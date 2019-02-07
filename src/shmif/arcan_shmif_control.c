@@ -43,17 +43,25 @@
  * debug logging spam for external projects, and others where we want to
  * redefine the logging macro for shmif- only.
  */
+enum debug_level {
+	FATAL = 0,
+ 	INFO = 1,
+	DETAILED = 2
+};
+
 #ifdef _DEBUG
-#ifndef _DEBUG_NOLOG
-#define DLOG(...)
+#ifdef _DEBUG_NOLOG
+#define debug_print(...)
 #endif
 
-#ifndef DLOG
-#define DLOG(...) LOG(__VA_ARGS__)
+#ifndef debug_print
+#define debug_print(sev, ctx, fmt, ...) \
+            do { fprintf(stderr, "%s:%d:%s(): " fmt "\n", \
+						"shmif_control.c", __LINE__, __func__,##__VA_ARGS__); } while (0)
 #endif
 #else
-#ifndef DLOG
-#define DLOG(...)
+#ifndef debug_print
+#define debug_print(...)
 #endif
 #endif
 
@@ -294,17 +302,14 @@ static void consume(struct arcan_shmif_cont* c)
 	if (!c->priv->pev.consumed)
 		return;
 
-		LOG("(shmif) acquire: %d, %d, %d, %d\n",
-			c->priv->pev.fd,
-			c->priv->pev.ev.category,
-			c->priv->pev.ev.tgt.kind,
-			c->priv->pev.ev.tgt.ioevs[2].iv
-		);
+	debug_print(
+		DETAILED, c, "acquire: %s",
+		arcan_shmif_eventstr(&c->priv->pev.ev, NULL, 0)
+	);
 
 	if (BADFD != c->priv->pev.fd){
 		close(c->priv->pev.fd);
-		LOG("(shmif) closing unhandled/ignored/dup:ed state descriptor (%d)\n",
-			c->priv->pev.fd);
+		debug_print(DETAILED, c, "closing unhandled / ignored descriptor");
 	}
 
 	if (BADFD != c->priv->pseg.epipe){
@@ -320,7 +325,7 @@ static void consume(struct arcan_shmif_cont* c)
 			c->priv->pev.ev.category == EVENT_TARGET &&
 			c->priv->pev.ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT &&
 			c->priv->pev.ev.tgt.ioevs[2].iv == SEGID_DEBUG){
-			LOG("debug subsegment received\n");
+			debug_print(DETAILED, c, "debug subsegment received");
 			struct arcan_shmif_cont pcont = arcan_shmif_acquire(c,NULL,SEGID_DEBUG,0);
 			if (pcont.addr){
 				if (!arcan_shmif_debugint_spawn(&pcont, NULL)){
@@ -333,7 +338,7 @@ static void consume(struct arcan_shmif_cont* c)
 
 		close(c->priv->pseg.epipe);
 		c->priv->pseg.epipe = BADFD;
-		LOG("(shmif) closing unhandled / ignored subsegment descriptor\n");
+		debug_print(DETAILED, c, "closing unhandled subsegment descriptor");
 	}
 
 	c->priv->pev.fd = BADFD;
@@ -457,10 +462,10 @@ static enum shmif_migrate_status fallback_migrate(
 	switch (sv){
 	case SHMIF_MIGRATE_NOCON: break;
 	case SHMIF_MIGRATE_BADARG:
-		LOG("(shmif) recover process failed, broken alternate- path/key\n");
+		debug_print(FATAL, c, "recovery failed, broken path / key");
 	break;
 	case SHMIF_MIGRATE_TRANSFER_FAIL:
-		LOG("(shmif) the migration process failed during setup, can't recover\n");
+		debug_print(FATAL, c, "migration failed on setup");
 	break;
 
 /* set a reset event in the "to be dispatched next dequeue" slot */
@@ -540,13 +545,18 @@ checkfd:
 			priv->pev.fd = arcan_fetchhandle(c->epipe, blocking);
 
 		if (priv->pev.gotev){
-			LOG("(shmif) waiting for descriptor from %d parent (%d:%d)\n",
-				c->epipe, priv->pev.fd, blocking);
+			if (blocking){
+				debug_print(DETAILED, c, "waiting for parent descriptor");
+			}
+
 			if (priv->pev.fd != BADFD){
 				fd_event(c, dst);
 				rv = 1;
 			}
-			else if (blocking){ LOG("(shmif) blocking fd wait failed, %s\n", strerror(errno));}
+			else if (blocking){
+				debug_print(STATUS, c, "failure on blocking fd-wait: %s", strerror(errno));
+			}
+
 			goto done;
 		}
 	} while (priv->pev.gotev && *ks && c->addr->dms);
@@ -695,7 +705,7 @@ checkfd:
 			case TARGET_COMMAND_BCHUNK_IN:
 			case TARGET_COMMAND_BCHUNK_OUT:
 			case TARGET_COMMAND_NEWSEGMENT:
-				LOG("(shmif) got descriptor transfer related event\n");
+				debug_print(DETAILED, c, "got descriptor event");
 				priv->pev.gotev = true;
 				priv->pev.ev = *dst;
 				goto checkfd;
@@ -826,7 +836,7 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 #endif
 
 	while ( ((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
-		DLOG("arcan_event_enqueue(), going to sleep, eventqueue full\n");
+		debug_print(STATUS, c, "outqueue is full, waiting");
 		arcan_sem_wait(ctx->synch.handle);
 	}
 
@@ -895,8 +905,8 @@ static void map_shared(const char* shmkey, char force_unlink,
 	fd = shm_open(shmkey, O_RDWR, 0700);
 
 	if (-1 == fd){
-		LOG("arcan_frameserver(getshm) -- couldn't open "
-			"keyfile (%s), reason: %s\n", shmkey, strerror(errno));
+		debug_print(FATAL,
+			dst, "couldn't open keyfile (%s): %s", shmkey, strerror(errno));
 		return;
 	}
 
@@ -909,15 +919,15 @@ static void map_shared(const char* shmkey, char force_unlink,
 
 	if (MAP_FAILED == dst->addr){
 map_fail:
-		LOG("arcan_frameserver(getshm) -- couldn't map keyfile"
-			"	(%s), reason: %s\n", shmkey, strerror(errno));
+		debug_print(FATAL, dst, "couldn't map keyfile"
+			"	(%s), reason: %s", shmkey, strerror(errno));
 		dst->addr = NULL;
 		return;
 	}
 
 /* parent suggested a different size from the start, need to remap */
 	if (dst->addr->segment_size != (size_t) ARCAN_SHMPAGE_START_SZ){
-		DLOG("arcan_frameserver(getshm) -- different initial size, remapping.\n");
+		debug_print(STATUS, dst, "different initial size, remapping.");
 		size_t sz = dst->addr->segment_size;
 		munmap(dst->addr, ARCAN_SHMPAGE_START_SZ);
 		dst->addr = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -925,8 +935,7 @@ map_fail:
 			goto map_fail;
 	}
 
-	DLOG("arcan_frameserver(getshm) -- mapped to %" PRIxPTR
-		" \n", (uintptr_t) dst->addr);
+	debug_print(STATUS, dst, "segment mapped to %" PRIxPTR, (uintptr_t) dst->addr);
 
 /* step 2, semaphore handles */
 	size_t slen = strlen(shmkey) + 1;
@@ -951,8 +960,7 @@ map_fail:
 	}
 
 	if (dst->asem == 0x0 || dst->esem == 0x0 || dst->vsem == 0x0){
-		LOG("arcan_shmif_control(getshm) -- couldn't "
-			"map semaphores (basekey: %s), giving up.\n", shmkey);
+		debug_print(FATAL, dst, "couldn't map semaphores: %s", shmkey);
 		free(dst->addr);
 		dst->addr = NULL;
 		return;
@@ -987,7 +995,7 @@ map_fail:
 
 static void shmif_exit(int c)
 {
-	DLOG("(guard_thread::exit) - empty shmif_exit\n");
+	debug_print(FATAL, NULL, "guard thread empty");
 }
 
 char* arcan_shmif_connect(
@@ -999,7 +1007,7 @@ char* arcan_shmif_connect(
 	size_t lim = COUNT_OF(dst.sun_path);
 
 	if (!connpath){
-		DLOG("arcan_shmif_connect(), missing connpath, giving up.\n");
+		debug_print(FATAL, NULL, "missing connection path");
 		return NULL;
 	}
 
@@ -1007,8 +1015,7 @@ char* arcan_shmif_connect(
 	int len = arcan_shmif_resolve_connpath(connpath, (char*)&dst.sun_path, lim);
 
 	if (len < 0){
-		LOG("arcan_shmif_resolve_connpath(%s) - connection path too long"
-			" (%d vs %zu)\n", dst.sun_path, abs(len), lim);
+		debug_print(FATAL, NULL, "couldn't resolve connection path");
 		return NULL;
 	}
 
@@ -1021,17 +1028,14 @@ char* arcan_shmif_connect(
 #endif
 
 	if (-1 == sock){
-		DLOG("arcan_shmif_connect(), "
-			"couldn't allocate socket, reason: %s\n", strerror(errno));
+		debug_print(FATAL, NULL, "couldn't allocate socket: %s", strerror(errno));
 		goto end;
 	}
 
 /* connection or not, unlink the connection path */
 	if (connect(sock, (struct sockaddr*) &dst, sizeof(dst))){
-		DLOG("arcan_shmif_connect(%s), "
-			"couldn't connect to server, reason: %s.\n",
-			dst.sun_path, strerror(errno)
-		);
+		debug_print(FATAL, NULL,
+			"couldn't connect to (%s): %s", dst.sun_path, strerror(errno));
 		close(sock);
 		goto end;
 	}
@@ -1041,15 +1045,15 @@ char* arcan_shmif_connect(
 	if (connkey){
 		ssize_t nw = snprintf(wbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", connkey);
 		if (nw >= PP_SHMPAGE_SHMKEYLIM){
-			DLOG("arcan_shmif_connect(%s), ident string (%s) exceeds "
-				"limit (%d).\n", connpath, connkey, PP_SHMPAGE_SHMKEYLIM);
+			debug_print(FATAL, NULL,
+				"returned path (%s) exceeds limit (%d)", connpath, PP_SHMPAGE_SHMKEYLIM);
 			close(sock);
 			goto end;
 		}
 
 		if (write(sock, wbuf, nw) < nw){
-			DLOG("arcan_shmif_connect(), error sending connection "
-				"string, reason: %s\n", strerror(errno));
+			debug_print(FATAL, NULL,
+				"error sending connection string: %s", strerror(errno));
 			close(sock);
 			goto end;
 		}
@@ -1059,8 +1063,7 @@ char* arcan_shmif_connect(
 	size_t ofs = 0;
 	do {
 		if (-1 == read(sock, wbuf + ofs, 1)){
-			DLOG("arcan_shmif_connect(%s), "
-				"invalid response received during shmpage negotiation.\n", connpath);
+			debug_print(FATAL, NULL, "invalid response on negotiation");
 			close(sock);
 			goto end;
 		}
@@ -1148,7 +1151,7 @@ struct arcan_shmif_cont shmif_acquire_int(
 		map_shared(shmkey, !(flags & SHMIF_DONT_UNLINK), &res);
 
 	if (!res.addr){
-		LOG("(arcan_shmif) Couldn't acquire connection through (%s)\n", shmkey);
+		debug_print(FATAL, NULL, "couldn't connect through: %s", shmkey);
 
 		if (flags & SHMIF_ACQUIRE_FATALFAIL)
 			exit(EXIT_FAILURE);
@@ -1273,8 +1276,7 @@ static void* guard_thread(void* gs)
 			pthread_mutex_unlock(&gstr->guard.synch);
 			pthread_mutex_destroy(&gstr->guard.synch);
 			sleep(5);
-			DLOG("frameserver::guard_thread -- couldn't shut"
-				"	down gracefully, exiting.\n");
+			debug_print(FATAL, NULL, "guard thread activated, shutting down");
 
 			if (gstr->guard.exitf)
 				gstr->guard.exitf(EXIT_FAILURE);
@@ -1296,17 +1298,13 @@ bool arcan_shmif_integrity_check(struct arcan_shmif_cont* cont)
 
 	if (shmp->major != ASHMIF_VERSION_MAJOR ||
 		shmp->minor != ASHMIF_VERSION_MINOR){
-		LOG("frameserver::shmif integrity check failed, version mismatch\n");
+		debug_print(FATAL, cont, "integrity fail, version mismatch");
 		return false;
 	}
 
 	if (shmp->cookie != cont->cookie)
 	{
-		LOG("frameserver::shmif integrity check failed, non-matching cookies"
-			"(%llu) vs (%llu), this is a serious issue indicating either "
-			"data-corruption or compiler / interface version mismatch.\n",
-			(long long unsigned) shmp->cookie, (long long unsigned) cont->cookie);
-
+		debug_print(FATAL, cont, "integrity check fail, cookie mismatch");
 		return false;
 	}
 
@@ -1574,8 +1572,7 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 		close(inctx->privext->pending_fd);
 
 	if (inctx->priv->lock_refc > 0){
-		LOG("arcan_shmif_drop(), caller destroyed a segment with active locks,"
-			"this will likely result in undefined behavior.\n");
+		debug_print(FATAL, inctx, "destroy on segment with active locks, in-UB");
 	}
 	pthread_mutex_unlock(&inctx->priv->lock);
 	pthread_mutex_destroy(&inctx->priv->lock);
@@ -1677,7 +1674,7 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 		;
 
 	if (!arg->addr->dms || !alive){
-		DLOG("dead man switch pulled during resize, giving up.\n");
+		debug_print(FATAL, arg, "dead man switch pulled during resize");
 		return false;
 	}
 
@@ -1704,7 +1701,7 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 		arg->addr = mmap(NULL, arg->shmsize,
 			PROT_READ | PROT_WRITE, MAP_SHARED, arg->shmh, 0);
 		if (!arg->addr){
-			DLOG("arcan_shmif_resize() failed on segment remapping.\n");
+			debug_print(FATAL, arg, "segment couldn't be remapped");
 			return false;
 		}
 
@@ -1955,7 +1952,7 @@ bool arcan_shmif_acquireloop(struct arcan_shmif_cont* c,
 	}
 
 /* broken pool */
-	DLOG("pool broken: %zu / %zu\n", *evpool_sz, ul);
+	debug_print(FATAL, c, "eventpool is broken: %zu / %zu", *evpool_sz, ul);
 	*evpool_sz = -1;
 	free(*evpool);
 	*evpool = NULL;
@@ -2142,7 +2139,7 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	pthread_mutex_lock(&ret.priv->guard.synch);
 	if (alias != contaddr){
 		munmap(alias, ret.shmsize);
-		DLOG("Couldn't retain mapping, client-aliasing may break\n");
+		debug_print(STATUS, cont, "remapped base changed, beware of aliasing clients");
 	}
 /* we did manage to retain our old mapping, so switch the pointers,
  * including synchronization with the guard thread */
@@ -2260,7 +2257,7 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 		}
 	}
 
-	LOG("never got activate, connection died\n");
+	debug_print(FATAL, cont, "no-activate event, connection died/timed out");
 	cont->priv->valid_initial = true;
 	arcan_shmif_drop(cont);
 	return;
@@ -2301,13 +2298,12 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 			(flags & SHMIF_CONNECT_LOOP) > 0 && (sleep(1 << (step>4?4:step++)), 1));
 	}
 	else {
-		LOG("shmif_open() - No arcan-shmif connection, "
-			"check ARCAN_CONNPATH environment.\n\n");
+		debug_print(STATUS, &ret, "no connection: check ARCAN_CONNPATH");
 		goto fail;
 	}
 
 	if (!keyfile || -1 == dpipe){
-		LOG("shmif_open() - No valid connection key found, giving up.\n");
+		debug_print(STATUS, &ret, "no valid connection key on open");
 		goto fail;
 	}
 
@@ -2378,7 +2374,7 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 
 	ret.epipe = dpipe;
 	if (-1 == ret.epipe){
-		DLOG("shmif_open() - Could not retrieve event- pipe from parent.\n");
+		debug_print(FATAL, &ret, "couldn't get event pipe from parent");
 	}
 
 	if (conn_src)
@@ -2479,7 +2475,6 @@ bool arcan_shmif_mousestate(
 		inev->io.devkind != EVENT_IDEVKIND_MOUSE
 	)
 		return false;
-
 
 /* state switched between samples, reset tracking */
 	bool gotrel = inev->io.input.analog.gotrel;
