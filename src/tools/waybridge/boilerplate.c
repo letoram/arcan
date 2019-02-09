@@ -3,6 +3,9 @@
  * patched to retrieve the render node we are supposed to use
  */
 #include "wayland-wayland-drm-server-protocol.h"
+
+#include "wlimpl/xwl.c"
+
 #include "wlimpl/drm.c"
 
 #include "wlimpl/surf.c"

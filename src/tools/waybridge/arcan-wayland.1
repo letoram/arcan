@@ -6,8 +6,9 @@ arcan-wayland \- protocol bridge for Wayland support in Arcan
 .B arcan-wayland [OPTIONS]
 
 .SH DESCRIPTION
-This tool is used to provide a protocol bridge for Wayland clients, either
-as a single active process or as a per-client wrapper.
+This tool act as a protocol service that implements the Wayland protocol.
+It can be used to run Wayland conforming clients, and X clients if Xwayland
+if installed. It works either
 
 .SH OPTIONS
 .IP "\fB\-exec \fIbinary [args]\fR"
@@ -23,19 +24,20 @@ path is a temporary (memory mapped) filesystem, as the client may use it to
 allocate and transfer graphics buffers.
 
 .IP "\fB\-sandbox\fR"
-Enable syscall filtering and possibly other sandboxing mechanisms. This is not
-enabled by default as there is a possibility that changes to the wayland
-implementation libraries might require features that are blocked, and the user
-should be actively aware of it.
+Enable syscall filtering and possibly other sandboxing mechanisms. This is
+not enabled by default as there is a possibility that changes to the wayland
+implementation libraries might require features that are blocked, and the
+user should be actively aware of that..
 
 .IP "\fB\-defer-release\fR"
-This option is used as an option for certain clients that produce frames
+This argument is used as an option for certain clients that produce frames
 very aggressively. Many clients are written with double buffering in mind,
 one frame committed and locked while another is being processed. Since
 arcan-wayland essentially double-buffers internally, client submitted
 buffers will be released almost immediately. This breaks some clients,
-making them consume high CPU rates. With this argument, the release of
-one buffer will only be performed when another is submitted to replace it.
+making them consume high CPU rates or even crash. With this argument, the
+release of one buffer will only be performed when another is submitted to
+replace it.
 
 .IP "\fB\-shm-egl\fR"
 Normally, shared memory source buffers gets copied and forwarded to the
@@ -60,12 +62,15 @@ height.
 .SH PROTOCOL CONTROL
 Wayland is not a single protocol as much as it is a suite of possible protocols.
 Each client may have different sets of required protocols and may refuse to work
-or change behavior based on which ones that are available.
+or even change behavior based on which ones that are available.
 
-To help with this behavior, there are a number of arguments that are used to
-disable certain subprotocols. These arguments all follow the pattern -no-XXX
-where XXX is substituted with egl,compositor,shell,shm,seat,output,zxdg,dma,
-xdg,subcompositor,data-device.
+To assist working around such issues, most sub- protocols can be disabled on
+launch. Combined with the -exec option, this allows fine-grained segmentation
+of which clients have access to what features.
+
+To achieve that, look in the 'Protocol Filter' output when running arcan-wayland
+with the --help option and follow the pattern of --no-XXX where XXXX is
+substituted with the protocol in question.
 
 .SH DEBUGGING / TROUBLESHOOTING
 Wayland client support and conformance vary wildly, as does the conformance of
@@ -100,9 +105,14 @@ This example launches a single gtk3-demo session.
 
 .B arcan-wayland -sandbox -shm-egl -exec gtk3-demo
 
+This example requires both Xwayland arcan-xwayland-wm binaries to be present
+and reachable in PATH.
+
+.B arcan-wayland -xwl -exec xterm
+
 .SH COPYRIGHT
-Copyright  ©  2018 Bjorn Stahl. 3-clause BSD licensed. This is free software:
-you are free  to  change and redistribute it. There is NO WARRANTY,
+Copyright  ©  2018-2019 Bjorn Stahl. 3-clause BSD licensed. This is free
+software: you are free  to  change and redistribute it. There is NO WARRANTY,
 to the extent permitted by law.
 
 .SH AUTHOR

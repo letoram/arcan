@@ -137,12 +137,6 @@ static struct {
 	bool force_sz;
 
 /*
- * fork out new clients and only use this process as a display
- * discovery mechanism
- */
-	bool fork_mode;
-
-/*
  * all surfaces start with accel-transfer disabled, only sourced
  * dma-buffers will actully be passed on as-is
  */
@@ -154,6 +148,14 @@ static struct {
  * buffering as we already have a copy in one way or another.
  */
 	bool defer_release;
+
+/*
+ * needed to communicate window management events in the xwayland space, to
+ * pair compositor surfaces with xwayland- originating ones and so on. On-
+ * demand launch of the arcan-xwayland / arcan-xwayland-wm is found in
+ * wlimpl/xwl.c
+ */
+	bool use_xwayland;
 
 /*
  * accepted trace level
@@ -178,7 +180,8 @@ enum trace_levels {
 	TRACE_SEAT    = 64,
 	TRACE_SURF    = 128,
 	TRACE_DRM     = 256,
-	TRACE_ALERT   = 512
+	TRACE_ALERT   = 512,
+	TRACE_XWL     = 1024
 };
 
 static inline void trace(int level, const char* msg, ...)
@@ -947,6 +950,8 @@ static int show_use(const char* msg, const char* arg)
 	fprintf(stdout, "%s%s", msg, arg ? arg : "");
 	fprintf(stdout, "\nUse: arcan-wayland [arguments]\n"
 "     arcan-wayland [arguments] -exec /path/to/bin arg1 arg2 ...\n\n"
+"Compatibility:\n"
+"\t-xwl              enable XWayland\n\n"
 "Security/Performance:\n"
 "\t-exec bin arg1 .. end of arg parsing, single-client mode (recommended)\n"
 "\t-shm-egl          pass shm- buffers as gl textures (recommended)\n"
@@ -954,9 +959,8 @@ static int show_use(const char* msg, const char* arg)
 "\t-sandbox          filter syscalls, ...\n"
 #endif
 "\nWorkarounds:\n"
+"\t-prefix prefix    use with -exec, override XDG_RUNTIME_DIR/awl_XXXXXX prefix\n"
 "\t-defer-release    defer buffer releases, aggressive client workaround\n"
-"\t-prefix prefix    use with -exec, override /tmp/awl_XXXXXX prefix\n"
-"\t-dir dir          override XDG_RUNTIME_DIR with <dir>\n"
 "\t-width px         override display 'fullscreen' width\n"
 "\t-height px        override display 'fullscreen' height\n"
 "\t-force-fs         ignore displayhints and always configure to display size\n"
@@ -967,7 +971,7 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-shell         disable the shell protocol\n"
 "\t-no-shm           disable the shm protocol\n"
 "\t-no-seat          disable the seat protocol\n"
-"\t-allow-xdg        enable the xdg protocol (default off)\n"
+"\t-allow-xdg        disable the xdg protocol\n"
 "\t-no-zxdg          disable the zxdg protocol\n"
 "\t-no-output        disable the output protocol\n"
 "\nDebugging Tools:\n"
@@ -976,7 +980,7 @@ static int show_use(const char* msg, const char* arg)
 "\t\t1   - allocations   2 - digital-input    4 - analog-input\n"
 "\t\t8   - shell        16 - region-events   32 - data device\n"
 "\t\t64  - seat        128 - surface        256 - drm\n"
-"\t\t512 - alert\n");
+"\t\t512 - alert      1024 - xwayland\n");
 	return EXIT_FAILURE;
 }
 
@@ -1030,11 +1034,20 @@ static void sigchld_handler()
 int main(int argc, char* argv[])
 {
 	struct arg_arr* aarr;
-	char def_prefix[] = "/tmp/awl_XXXXXX";
-	char* dtemp_prefix = def_prefix;
 	int exit_code = EXIT_SUCCESS;
 	int force_width = 0;
 	int force_height = 0;
+
+/*
+ * There is a conflict between XDG_RUNTIME_DIR used for finding the Arcan
+ * setup, and the 'sandboxed' runtime-dir used with Wayland and other clients.
+ * To get around this we keep two around and flip-flop as needed.
+ */
+	if (!getenv("XDG_RUNTIME_DIR")){
+		return show_use("No XDG_RUNTIME_DIR environment could be found.", "");
+	}
+	char* arcan_runtime_dir = strdup(getenv("XDG_RUNTIME_DIR"));
+	char* wayland_runtime_dir = NULL;
 
 /* for each wayland protocol or subprotocol supported, add a corresponding
  * field here, and then command-line argument passing to disable said protocol.
@@ -1050,7 +1063,7 @@ int main(int argc, char* argv[])
 		.egl = 1,
 		.zxdg = 1,
 #ifdef HAVE_XDG_SHELL
-		.xdg = 0,
+		.xdg = 1,
 #endif
 #ifdef HAVE_DMA_BUF
 		.dma = 1,
@@ -1064,9 +1077,18 @@ int main(int argc, char* argv[])
 	bool sandbox = false;
 #endif
 
+/*
+ * Only used with -exec (but should be user controllable) in order to split
+ * the XDG_RUNTIME_DIR used by arcan and the one used by Wayland
+ */
+	char* xdgtemp_prefix;
+	asprintf(&xdgtemp_prefix, "%s/awl_XXXXXX", getenv("XDG_RUNTIME_DIR"));
+
 	size_t arg_i = 1;
 	for (; arg_i < argc; arg_i++){
-		if (strcmp(argv[arg_i], "-shm-egl") == 0){
+		if (strcmp(argv[arg_i], "-xwl") == 0)
+			wl.use_xwayland = true;
+		else if (strcmp(argv[arg_i], "-shm-egl") == 0){
 			wl.default_accel_surface = 0;
 		}
 #ifdef ENABLE_SECCOMP
@@ -1086,19 +1108,12 @@ int main(int argc, char* argv[])
 				return show_use("missing path to prefix path", "");
 			}
 			arg_i++;
-			dtemp_prefix = argv[arg_i];
-			size_t len = strlen(dtemp_prefix);
-			if (len <= 7 ||
-				strcmp(&dtemp_prefix[len-7], "XXXXXX") != 0){
+			size_t len = strlen(argv[arg_i]);
+			if (len <= 7 || strcmp(&argv[arg_i][len-7], "XXXXXX") != 0){
 				return show_use("prefix path must end with XXXXXX", "");
 			}
-		}
-		else if (strcmp(argv[arg_i], "-dir") == 0){
-			if (arg_i == argc-1){
-				return show_use("missing path to runtime dir", "");
-			}
-			arg_i++;
-			setenv("XDG_RUNTIME_DIR", argv[arg_i], 1);
+			free(xdgtemp_prefix);
+			xdgtemp_prefix = strdup(argv[arg_i]);
 		}
 		else if (strcmp(argv[arg_i], "-egl-device") == 0){
 			if (arg_i == argc-1){
@@ -1149,8 +1164,8 @@ int main(int argc, char* argv[])
 			protocols.dma = 0;
 #endif
 #ifdef HAVE_XDG_SHELL
-		else if (strcmp(argv[arg_i], "-allow-xdg") == 0)
-			protocols.xdg = 1;
+		else if (strcmp(argv[arg_i], "-no-xdg") == 0)
+			protocols.xdg = 0;
 #endif
 		else if (strcmp(argv[arg_i], "-no-subcompositor") == 0)
 			protocols.subcomp = 0;
@@ -1161,16 +1176,9 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[arg_i], "-no-relative-pointer") == 0)
 			protocols.relp = 0;
 		else if (strcmp(argv[arg_i], "-exec") == 0){
-			if (wl.fork_mode){
-				fprintf(stderr, "Can't use -exec with -fork\n");
-				return EXIT_FAILURE;
-			}
 			wl.exec_mode = true;
 			arg_i++;
 			break;
-		}
-		else if (strcmp(argv[arg_i], "-fork") == 0){
-			wl.fork_mode = true;
 		}
 		else if (strcmp(argv[arg_i], "-h") == 0 ||
 			strcmp(argv[arg_i], "--help") == 0 || strcmp(argv[arg_i], "-help")){
@@ -1186,52 +1194,38 @@ int main(int argc, char* argv[])
 		return EXIT_FAILURE;
 	}
 
-/* Generate temporary XDG_RUNTIME_DIR so we don't get any interference from
- * other clients looking in RUNTIME_DIR for the display and grabbing the same
- * one. Actual exec comes later */
-	char* newdir = NULL;
 	if (wl.exec_mode){
-		newdir = mkdtemp(dtemp_prefix);
-		if (!newdir){
-			fprintf(stderr,"-exec, couldn't create temporary in (%s)\n",dtemp_prefix);
+		wayland_runtime_dir = mkdtemp(xdgtemp_prefix);
+		if (!wayland_runtime_dir){
+			fprintf(stderr,
+				"-exec, couldn't create temporary in (%s)\n", xdgtemp_prefix);
 			return EXIT_FAILURE;
 		}
 
-		setenv("XDG_RUNTIME_DIR", newdir, 1);
-/*
- * Enable the other 'select wayland backend' environment variables we know of
- */
+/* Enable the other 'select wayland backend' environment variables we know of */
 		setenv("SDL_VIDEODRIVER", "wayland", 1);
 		setenv("QT_QPA_PLATFORM", "wayland", 1);
 		setenv("ECORE_EVAS_ENGINE",
 			protocols.egl ? "wayland_egl" : "wayland_shm", 1);
 	}
 
-	if (!getenv("XDG_RUNTIME_DIR")){
-		fprintf(stderr, "Missing environment variable: XDG_RUNTIME_DIR\n");
-		return EXIT_FAILURE;
-	}
 
 /*
- * The reason for running a control connection is to get access to the initial
- * state in terms of display, output etc. so we can answer those requests from
- * a client BEFORE actually allocating connections for each client. This makes
- * the multiplexing etc. a bit more annoying since we steer away from epoll or
- * kqueue or other OS specific multiplexation mechanisms.
+ * The purpose of having a 'control' bridge connection on which we never set
+ * clients is to have a window where we can monitor the state of the server
+ * and its clients, but also to get the initial display, figure out if we have
+ * accelerated graphics or not and so on.
  */
+	setenv("XDG_RUNTIME_DIR", arcan_runtime_dir, 1);
 	wl.control = arcan_shmif_open(
 		SEGID_BRIDGE_WAYLAND, SHMIF_ACQUIRE_FATALFAIL, &aarr);
-	if (!wl.control.addr){
-		fprintf(stderr, "Couldn't setup a bridge metadata connection\n");
-		return EXIT_FAILURE;
-	}
 
 	struct arcan_shmif_initial* init;
 	arcan_shmif_initial(&wl.control, &init);
 	wl.init = *init;
 	if (!init->display_width_px){
-		fprintf(stderr, "Bridge connection did not receive display information\n"
-			"make sure appl- sends target_displayhint/outputhint on preroll\n\n");
+		fprintf(stderr, "[Warning] "
+			"window manager provided no display/output information\n");
 		wl.init.display_width_px = wl.control.w;
 		wl.init.display_height_px = wl.control.h;
 	}
@@ -1287,7 +1281,17 @@ int main(int argc, char* argv[])
 			getenv("ARCAN_RENDER_NODE"), NULL, NULL, 0);
 	}
 
-	wl_display_add_socket_auto(wl.disp);
+/*
+ * add_socket auto will create the display in XDG_RUNTIME
+ */
+	if (wayland_runtime_dir){
+		setenv("XDG_RUNTIME_DIR", wayland_runtime_dir, 1);
+		wl_display_add_socket_auto(wl.disp);
+		setenv("XDG_RUNTIME_DIR", arcan_runtime_dir, 1);
+	}
+	else{
+		wl_display_add_socket_auto(wl.disp);
+	}
 
 /*
  * This approach of caller- control in regards to announced protocols helps
@@ -1349,9 +1353,21 @@ int main(int argc, char* argv[])
 		wl_event_loop_get_fd(wl_display_get_event_loop(wl.disp));
 	wl.groups[0].arcan->fd = wl.control.epipe;
 
-/*
- * chain-execute the single client that we want to handle
- */
+/* pipes from xwm etc, don't want that to kill us */
+	sigaction(SIGPIPE, &(struct sigaction){
+		.sa_handler = SIG_IGN, .sa_flags = 0}, 0);
+
+/* we can't actually use xwl_spawn blocking here as that would cause the wm
+ * process to wait for xwayland that is waiting for the wl_display here */
+	if (wl.use_xwayland){
+		if (wayland_runtime_dir)
+			setenv("XDG_RUNTIME_DIR", wayland_runtime_dir, 1);
+		xwl_spawn_wm(false, &argv[arg_i]);
+		setenv("XDG_RUNTIME_DIR", arcan_runtime_dir, 1);
+	}
+
+/* chain-execute the single client that we want to handle, this is handled
+ * by the wm in the use-xwayland mode so ignore here */
 	if (wl.exec_mode){
 		struct sigaction act = {
 			.sa_handler = &sigchld_handler
@@ -1359,30 +1375,33 @@ int main(int argc, char* argv[])
 		if (sigaction(SIGCHLD, &act, NULL) < 0){
 			wl.alive = false;
 		}
-		else {
+
+/* we'll spawn the xwayland-wm and child a little bit later */
+		if (!wl.use_xwayland){
+			if (wayland_runtime_dir)
+				setenv("XDG_RUNTIME_DIR", wayland_runtime_dir, 1);
+
 			int rc = fork();
 			if (rc == 0){
 				setpgid(0,0);
-
-				size_t nargs = argc - arg_i;
-				char* args[nargs+1];
-				for (size_t i = 0; arg_i + i < argc; i++)
-					args[i] = argv[arg_i+i];
-				args[nargs] = NULL;
-				if (-1 == execvp(argv[arg_i], args))
-					exit(EXIT_FAILURE);
+				execvp(argv[arg_i], &argv[arg_i]);
+				fprintf(stderr, "couldn't exec %s: %s\n", argv[arg_i], strerror(errno));
+				exit(EXIT_FAILURE);
 			}
 			else if (rc == -1){
 				wl.alive = false;
 			}
 		}
+
+		setenv("XDG_RUNTIME_DIR", arcan_runtime_dir, 1);
 	}
 
 #ifdef ENABLE_SECCOMP
 /* Unfortunately a rather obese list, part of it is our lack of control
  * over the whole FFI nonsense and the keylayout creation/transfer. You
  * need to be a rather shitty attacker not to manage with this set, but
- * we have our targets for reduction at least */
+ * we have our targets for reduction at least.
+ * either make it completely pointless or fail to relaunch WM. */
 	if (sandbox){
 		prctl(PR_SET_NO_NEW_PRIVS, 1);
 		scmp_filter_ctx flt = seccomp_init(SCMP_ACT_KILL);
@@ -1390,19 +1409,23 @@ int main(int argc, char* argv[])
 		seccomp_load(flt);
 	}
 #endif
-	while(wl.alive && process_group(&wl.groups[0])){}
+	while(wl.alive && process_group(&wl.groups[0])){
+
+/* Xwayland or the window manager might have died, restart in those cases */
+		if (wl.use_xwayland){
+			if (xwl_wm_pid == -1){
+				xwl_spawn_wm(false, NULL);
+			}
+			xwl_check_wm();
+		}
+
+	}
 
 cleanup:
 	if (wl.disp)
 		wl_display_destroy(wl.disp);
 	arcan_shmif_drop(&wl.control);
-
-/*
- * can at least try, don't be aggressive and opendir/glob/rm until it works
- */
-	if (newdir){
-		rmdir(newdir);
-	}
-
+	free(arcan_runtime_dir);
+	free(wayland_runtime_dir);
 	return exit_code;
 }

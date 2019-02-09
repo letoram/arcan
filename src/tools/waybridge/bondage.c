@@ -38,6 +38,7 @@ static void bind_seat(struct wl_client *client,
 	struct bridge_client* cl = find_client(client);
 	if (!cl){
 		wl_client_post_no_memory(client);
+		return;
 	}
 
 	wl_resource_set_implementation(res, &seat_if, cl, NULL);

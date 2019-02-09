@@ -19,6 +19,7 @@ else()
 endif()
 
 include_directories(
+	xwl
 	${ARCAN_SHMIF_INCLUDE_DIR}
 	${WAYLAND_SERVER_INCLUDE_DIRS}
 	${CMAKE_CURRENT_BINARY_DIR}
@@ -33,6 +34,7 @@ add_definitions(
 	-Wno-unused-function
 	-Wno-unused-const-variable
 	-Wno-unknown-warning-option
+	-pthread
 	-std=gnu11 # shmif-api requires this
 )
 
@@ -67,7 +69,7 @@ if (EXISTS "${WAYLANDPROTOCOLS_PATH}/stable/xdg-shell/xdg-shell.xml")
 	add_definitions(-DHAVE_XDG_SHELL)
 	list(APPEND sources ${src})
 else()
-	message("xdg-shell-stable protocol not found, disabled")
+	message("xdg-shell-stable protocol not found, diasabled")
 endif()
 
 foreach(proto ${PROTOCOLS})
@@ -80,7 +82,6 @@ set_source_files_properties(${sources} PROPERTIES GENERATED ON)
 add_library(wlprot STATIC ${sources})
 
 SET(LIBRARIES
-	pthread
 	rt
 	m
 	EGL
@@ -95,10 +96,14 @@ SET(SOURCES
 	waybridge.c
 )
 
-add_executable(${PROJECT_NAME} ${SOURCES})
-target_link_libraries(${PROJECT_NAME} ${LIBRARIES})
+add_executable(arcan-wayland ${SOURCES})
+add_executable(arcan-xwayland-wm xwlwm/xwlwm.c)
+target_link_libraries(arcan-wayland ${LIBRARIES})
+target_link_libraries(arcan-xwayland-wm xcb xcb-composite ${ARCAN_SHMIF_LIBRARY} pthread)
+
 add_sanitizers(${PROJECT_NAME})
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)
+install(TARGETS arcan-xwayland-wm DESTINATION bin)
 
 if (CMAKE_SYSTEM_NAME MATCHES "(FreeBSD|NetBSD|OpenBSD)")
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/arcan-wayland.1 DESTINATION man/man1)
