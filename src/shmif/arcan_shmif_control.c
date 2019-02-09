@@ -959,31 +959,30 @@ map_fail:
 	}
 }
 
-/* the rules for resolving the connection socket namespace are somewhat
- * complex, i.e. on linux we have the atrocious \0 prefix that defines a
- * separate socket namespace, if we don't specify an absolute path, the key
- * will resolve to be relative your HOME environment (BUT we also have an odd
- * size limitation to sun_path to take into consideration). */
-int arcan_shmif_resolve_connpath(const char* key,
-	char* dbuf, size_t dbuf_sz)
+/*
+ * The rules for socket sharing are shared between all
+ */
+ int arcan_shmif_resolve_connpath(
+	const char* key, char* dbuf, size_t dbuf_sz)
 {
-	size_t len;
-#ifdef __LINUX
-	if (ARCAN_SHMIF_PREFIX[0] == '\0'){
-		len = 1+snprintf(dbuf+1, dbuf_sz-1, "%s%s", &ARCAN_SHMIF_PREFIX[1], key);
-	}
-	else
-#endif
-	if (ARCAN_SHMIF_PREFIX[0] == '/')
-		len = snprintf(dbuf, dbuf_sz, "%s%s", ARCAN_SHMIF_PREFIX, key);
-	else
-		len = snprintf(dbuf, dbuf_sz, "%s/%s%s",
-			getenv("HOME"), ARCAN_SHMIF_PREFIX, key);
+	if (!key || key[0] == '\0')
+		return -1;
 
-	if (len >= dbuf_sz)
-		return len - dbuf_sz;
-	else
-		return len;
+/* 1. If the [key] is set to an absolute path, that will be respected. */
+	size_t len = strlen(key);
+	if (key[0] == '/')
+		return snprintf(dbuf, dbuf_sz, "%s", key);
+
+/* 2. Otherwise we check for an XDG_RUNTIME_DIR */
+	if (getenv("XDG_RUNTIME_DIR"))
+		return snprintf(dbuf, dbuf_sz, "%s/%s", getenv("XDG_RUNTIME_DIR"), key);
+
+/* 3. Last (before giving up), HOME + prefix */
+	if (getenv("HOME"))
+		return snprintf(dbuf, dbuf_sz, "%s/.%s", getenv("HOME"), key);
+
+/* no env no nothing? bad environment */
+	return -1;
 }
 
 static void shmif_exit(int c)
@@ -991,8 +990,8 @@ static void shmif_exit(int c)
 	DLOG("(guard_thread::exit) - empty shmif_exit\n");
 }
 
-char* arcan_shmif_connect(const char* connpath, const char* connkey,
-	file_handle* conn_ch)
+char* arcan_shmif_connect(
+	const char* connpath, const char* connkey, file_handle* conn_ch)
 {
 	struct sockaddr_un dst = {
 		.sun_family = AF_UNIX

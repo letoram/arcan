@@ -46,22 +46,11 @@
  */
 
 /*
- * These prefixes change the search and namespacing rules for how a
- * non-authoritative connection should find a running arcan server based
- * on a key. This need to match with the [target_alloc] behavior
- * (platform/posix/frameserver.c:listen_external) in Arcan.
+ * This prefix is used over HOME only if no explicit path was provided
+ * and there is no XDG_RUNTIME_DIR to use.
  */
-#ifdef __LINUX
-#ifndef ARCAN_SHMIF_PREFIX
-#define ARCAN_SHMIF_PREFIX "\0arcan_"
-#endif
-
-/* If the first character does not begin with /, HOME env will be used,
- * so default search path will use the safer default ("single-user") */
-#else
 #ifndef ARCAN_SHMIF_PREFIX
 #define ARCAN_SHMIF_PREFIX ".arcan/."
-#endif
 #endif
 
 /*
