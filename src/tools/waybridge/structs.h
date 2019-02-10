@@ -149,6 +149,7 @@ struct comp_surf {
 	struct arcan_shmif_cont acon;
 	struct arcan_shmif_cont* rcon;
 	struct wl_resource* buf;
+	uint32_t id;
 	uintptr_t cbuf;
 
 /* track size and positioning information so we can relay */

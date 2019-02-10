@@ -88,7 +88,7 @@ Notes and Issues
 2. Initial Control connection - this one should be deprecated and removed
    in favor of getting it from the client connection when it is created, the
    current form is a remnant from before the -exec refactor.
-   
+
 3. Dynamic resizes are a bit edgy due to how differently this stage is handled
    in arcan and the 'idea' in Wayland. This will be fixed when the 'conductor'
    refactoring in arcan finishes.
@@ -120,43 +120,39 @@ separately in the [arcan wiki](https://github.com/letoram/arcan/wiki/wayland).
 
 XWayland
 ====
+There are two ways of getting X support for Arcan. One is via the custom
+arcan backend to the xserver that is part of the XArcan setup. The other
+is by using XWayland, both has their respective tradeoffs.
 
-XWayland support is currently omitted for two reasons. One is that the Xarcan
-approach is more efficient and blends better with the current arcan WMs
-(durden/prio) due to the whole 'self contained' thing, along with the need to
-have sharing-interception and not be explicitly dependent on wayland for X
-support.
+XWayland can be used in two modes, normal and rootless. The normal one is
+similar to Xarcan, but is seems barely tested upstream compared to rootless,
+and deals poorly with resizing etc.
 
-The other is that for XWayland support, one must write an entire window manager
-(or import the one from weston or wlc, neither work flawlessly). Based on the
-'Why isn't Xwayland just a Wayland Client' post (wayland-devel, 2017-sept.) it
-seems like there's a chance we get patches that makes the special xwayland path
-unecessary and thus it is better to wait and see.
+The rootless one works 'transparently' but requires the Wayland side to
+implement a window manager. Weston et. al does this by pulling in all of xcb
+etc. into the compositor itself. This approach is not used here due to the
+poor separation that encourages.
 
-BUGS
-===
-1. gnome-apps, mouse motion registers but not button presses on some
-   popups, likely related to input regions and grabbing and the WM
-	 script-side being guilty.
-2. SDL2, buffer- size and mouse cursor alignment is off in ex. 0ad
-3. gnome-apps, visible with calculator - some interaction between durden
-   and subsurfaces etc. still seem to misbehave.
-4. The defunct wl- shell protocol is still in use in places like SDL2,
-   except the protocol lacks options for communicating when a shutdown
-   is initiated server-side, or it goes into a spinlock EXCEPT if some
-   Qt specific protocols are present
+Instead we have arcan-xwayland-wm that is responsible both for launching
+Xwayland and translating WM operations. This is sent as text commands over
+an inherited FIFO.
+
+Xwayland to arcan can be launched in two ways, as the example below shows:
+
+    arcan-wayland -xwl
+		> Listening on [display number]
+		DISPLAY=:[display number] xterm
+
+		arcan-wayland -xwl -exec xterm
+
+The first version multiplexes many clients unto one bridge working in service
+mode, and the other sets up a path to allow a single x client through. The
+later should be more secure, with some caveats that clients which spawn other
+clients might cease to work as the connection primitives are unlinked after the
+first surface is committed.
 
 TODO
 ====
-
-Rough estimate of planned changes and order:
-
-1. fork- mode
-2. input fixes (regions, D to A mouse wheel, ...)
-3. data-device to clipboard
-4. enforce stronger error handling (not allow surfaces to switch roles etc.)
-5. move more 'decisions' that is part of the durden atype handling
-6. make a simple automatable wayland-only WM appl
 
 (x - done, p - partial/possible-tuning, s - showstopper, i - ignored for now)
 + (for-each finished milestone, verify allocation/deallocation/validation)
@@ -185,7 +181,7 @@ determine if we are compliant or not, because Wayland.
       - [p] zxdg-v6 to xdg-shell mapping
     - [i] Application-test suite and automated tests (SDL, QT, GTK, ...),
           seems that canonical attempts to tackle this
-    - [i] XWayland (WM parts)
+    - [p] XWayland (WM parts)
 - [ ] Milestone 3, funky things
   - [x] SHM to GL texture mapping
 	- [x] Single-exec launch mode (./arcan-wayland -exec gtk3-demo)
