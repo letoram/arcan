@@ -395,8 +395,8 @@ int main (int argc, char **argv)
 	pid_t xwayland = fork();
 	if (0 == xwayland){
 		close(notification[0]);
-		char* argv[] = {"Xwayland", ":0", "-rootless", "-displayfd", NULL, NULL};
-		asprintf(&argv[4], "%d", notification[1]);
+		char* argv[] = {"Xwayland", "-rootless", "-displayfd", NULL, NULL};
+		asprintf(&argv[3], "%d", notification[1]);
 
 		execvp("Xwayland", argv);
 		exit(EXIT_FAILURE);
