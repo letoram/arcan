@@ -764,7 +764,7 @@ int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	bool firstframe = false;
 	recctx.last_fd = -1;
 	if (arg_lookup(args, "file", 0, &argval) == 0 && argval){
-		recctx.last_fd = open(argval, O_CREAT | O_RDWR);
+		recctx.last_fd = open(argval, O_CREAT | O_RDWR, 0600);
 		if (-1 == recctx.last_fd){
 			LOG("couldn't open output (%s)\n", argval);
 			return EXIT_FAILURE;
