@@ -971,7 +971,7 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-shell         disable the shell protocol\n"
 "\t-no-shm           disable the shm protocol\n"
 "\t-no-seat          disable the seat protocol\n"
-"\t-allow-xdg        disable the xdg protocol\n"
+"\t-no-xdg           disable the xdg protocol\n"
 "\t-no-zxdg          disable the zxdg protocol\n"
 "\t-no-output        disable the output protocol\n"
 "\nDebugging Tools:\n"
