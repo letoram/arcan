@@ -62,7 +62,7 @@
 
 /* very noisy, enable for specific kinds of debugging */
 #define verbose_print
-// #define verbose_print debug_print
+//#define verbose_print debug_print
 
 #include "egl.h"
 
@@ -231,6 +231,7 @@ struct dispout {
 		int mode_set;
 		drmModeCrtcPtr old_crtc;
 		int crtc;
+		int crtc_index;
 		int plane_id;
 		enum dpms_state dpms;
 		char* edid_blob;
@@ -364,6 +365,7 @@ static void disable_display(struct dispout*, bool dealloc);
  */
 static bool update_display(struct dispout*);
 
+static bool set_dumb_fb(struct dispout* d);
 /*
  * Assumes that the individual displays allocated on the card have already
  * been properly disabled(disable_display(ptr, true))
@@ -538,26 +540,18 @@ static int setup_buffers_stream(struct dispout* d)
 			return -1;
 	}
 
-	EGLAttrib layer_attrs[] = {
-		EGL_DRM_CRTC_EXT,
-		d->display.crtc,
-		EGL_NONE
+	EGLAttrib layer_attrs[3] = {};
+	if (d->display.plane_id){
+		layer_attrs[0] = EGL_DRM_PLANE_EXT;
+		layer_attrs[1] = d->display.plane_id;
+		layer_attrs[2] = EGL_NONE;
+	}
+	else {
+		layer_attrs[0] = EGL_DRM_CRTC_EXT;
+		layer_attrs[1] = d->display.crtc;
+		layer_attrs[3] = EGL_NONE;
 	};
 
-	EGLint surface_attrs[] = {
-		EGL_WIDTH, d->display.mode.hdisplay,
-		EGL_HEIGHT, d->display.mode.vdisplay,
-		EGL_NONE
-	};
-
-	EGLint stream_attrs[] = {
-		EGL_STREAM_FIFO_LENGTH_KHR, 1,
-//		EGL_CONSUMER_AUTO_ACQUIRE_EXT, EGL_FALSE,
- 		EGL_NONE
- 	};
-
-	const char* extension_string =
-		eglQueryString(d->device->display, EGL_EXTENSIONS);
 /*
  * 1. Match output layer to KMS plane
  */
@@ -572,6 +566,11 @@ static int setup_buffers_stream(struct dispout* d)
 /*
  * 2. Create stream
  */
+	EGLint stream_attrs[] = {
+		EGL_STREAM_FIFO_LENGTH_KHR, 1,
+		EGL_CONSUMER_AUTO_ACQUIRE_EXT, EGL_TRUE,
+		EGL_NONE
+	};
 	d->buffer.stream =
 		d->device->eglenv.create_stream(d->device->display, stream_attrs);
 	if (d->buffer.stream == EGL_NO_STREAM_KHR){
@@ -594,7 +593,7 @@ static int setup_buffers_stream(struct dispout* d)
  * two possible variants here - one is separating between the device and
  * display context, though that didn't seem stable with the versions of the
  * driver we tested against, so just null this and rely on the config that
- * was set for the device
+ * was set for the device */
 	EGLint nc;
 	if (!d->device->eglenv.choose_config(
 		d->device->display, d->device->attrtbl, &d->buffer.config, 1, &nc)){
@@ -614,12 +613,15 @@ static int setup_buffers_stream(struct dispout* d)
 		debug_print("couldn't create display context");
 		return false;
 	}
-	*/
-	d->buffer.context = EGL_NO_CONTEXT;
 
 /*
  * 5. Create stream-bound surface
  */
+	EGLint surface_attrs[] = {
+		EGL_WIDTH, d->display.mode.hdisplay,
+		EGL_HEIGHT, d->display.mode.vdisplay,
+		EGL_NONE
+	};
 	d->buffer.esurf = d->device->eglenv.create_stream_producer_surface(
 		d->device->display, d->buffer.config, d->buffer.stream, surface_attrs);
 
@@ -641,7 +643,7 @@ static int setup_buffers_stream(struct dispout* d)
 /*
  * 5. Set synchronization attributes on stream
  */
-	if (d->device->eglenv.stream_consumer_acquire_attrib){
+ if (d->device->eglenv.stream_consumer_acquire_attrib){
 		EGLAttrib attr[] = {
 			EGL_DRM_FLIP_EVENT_DATA_NV, (EGLAttrib) d,
 			EGL_NONE,
@@ -851,6 +853,7 @@ static int setup_buffers(struct dispout* d)
 		return setup_buffers_stream(d);
 	break;
 	}
+	return 0;
 }
 
 size_t platform_video_displays(platform_display_id* dids, size_t* lim)
@@ -1898,12 +1901,12 @@ static bool find_plane(struct dispout* d)
 		drmModePlanePtr plane =
 			drmModeGetPlane(d->device->fd, plane_res->planes[i]);
 		if (!plane){
-			debug_print("(%d) atomic-modeset, couldn't get plane plane (%zu)",(int)d->id,i);
+			debug_print("(%d) atomic-modeset, couldn't get plane (%zu)",(int)d->id,i);
 			return false;
 		}
 		uint32_t crtcs = plane->possible_crtcs;
 		drmModeFreePlane(plane);
-		if (0 == (crtcs & d->display.crtc))
+		if (0 == (crtcs & (1 << d->display.crtc_index)))
 			continue;
 
 		uint64_t val;
@@ -2111,6 +2114,7 @@ retry:
 				continue;
 
 			d->display.crtc = crtc_val;
+			d->display.crtc_index = i;
 			crtc_found = true;
 			break;
 		}
@@ -2163,7 +2167,7 @@ retry:
 			ok = false;
 		}
 /* just disable atomic */
-		if (!ok && d->device->buftype == BUF_GBM){
+		if (!ok){
 			debug_print("(%d) setup_kms, disabling atomic modeset, reverting\n", d->id);
 			d->device->atomic = false;
 			drmModeFreeConnector(d->display.con);
@@ -2347,6 +2351,7 @@ bool platform_video_map_handle(
 		return false;
 	break;
 	}
+	return false;
 }
 
 struct monitor_mode* platform_video_query_modes(
@@ -2863,7 +2868,8 @@ static bool try_card(size_t devind, int w, int h, size_t* dstind)
 		get_config("video_device_wait", devind, NULL, tag);
 
 	int fd = platform_device_open(devstr, O_RDWR | O_CLOEXEC);
-	if (try_node(fd, devstr, *dstind, gbm, force_master, connind, w, h)){
+	if (try_node(fd, devstr, *dstind,
+		gbm ? BUF_GBM : BUF_STREAM, force_master, connind, w, h)){
 		debug_print("card at %d added", *dstind);
 		nodes[*dstind].card_id = *dstind;
 		nodes[*dstind].fd = fd;
@@ -3612,6 +3618,7 @@ static bool update_display(struct dispout* d)
  * list that the draw_vobj calls append to.
  */
 	draw_display(d);
+	verbose_print("(%d) pre-swap", (int)d->id);
 	d->device->eglenv.swap_buffers(d->device->display, d->buffer.esurf);
 	verbose_print("(%d) swap", (int)d->id);
 
