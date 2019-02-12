@@ -1610,6 +1610,9 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	struct monitor_mode mode = platform_video_dimensions();
+	if (mode.width == 0 || mode.height == 0){
+		arcan_fatal("(video) platform error, invalid default mode\n");
+	}
 	arcan_video_resize_canvas(mode.width, mode.height);
 
 	identity_matrix(current_context->stdoutp.base);
