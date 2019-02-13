@@ -558,7 +558,7 @@ static bool xwl_pair_surface(struct comp_surf* surf, struct wl_resource* res)
 /* if so, allocate the corresponding arcan- side resource */
 	return request_surface(surf->client, &(struct surface_request){
 /* SEGID should be X11, but need to patch durden as well */
-			.segid = wnd->segid,
+			.segid = SEGID_BRIDGE_X11,
 			.target = res,
 			.trace = "xwl",
 			.dispatch = xwl_defer_handler,
