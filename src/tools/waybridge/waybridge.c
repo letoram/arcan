@@ -1202,11 +1202,14 @@ int main(int argc, char* argv[])
 			return EXIT_FAILURE;
 		}
 
-/* Enable the other 'select wayland backend' environment variables we know of */
-		setenv("SDL_VIDEODRIVER", "wayland", 1);
-		setenv("QT_QPA_PLATFORM", "wayland", 1);
-		setenv("ECORE_EVAS_ENGINE",
-			protocols.egl ? "wayland_egl" : "wayland_shm", 1);
+/* Enable the other 'select wayland backend' environment variables we know of,
+ * but only if we are not supposed to go via xwayland */
+		if (!wl.use_xwayland){
+			setenv("SDL_VIDEODRIVER", "wayland", 1);
+			setenv("QT_QPA_PLATFORM", "wayland", 1);
+			setenv("ECORE_EVAS_ENGINE",
+				protocols.egl ? "wayland_egl" : "wayland_shm", 1);
+		}
 	}
 
 
