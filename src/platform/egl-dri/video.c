@@ -549,7 +549,7 @@ static int setup_buffers_stream(struct dispout* d)
 	else {
 		layer_attrs[0] = EGL_DRM_CRTC_EXT;
 		layer_attrs[1] = d->display.crtc;
-		layer_attrs[3] = EGL_NONE;
+		layer_attrs[2] = EGL_NONE;
 	};
 
 /*

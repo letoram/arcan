@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2018, Björn Ståhl
+ * Copyright 2018-2019, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: https://github.com/letoram/arcan/wiki/wayland.md
  * Description: XWayland specific 'wnddow Manager' that deals with the special
@@ -10,6 +10,11 @@
  * Points:
  *  override_redirect : if set, don't focus window
  *
+ * Todo:
+ * [ ] Basic bringup still, particularly popups, XEmbed etc.
+ * [ ] Clipboard could/should be done with us inheriting an arcan segment
+ *     that is setup for clipboard, then we connect our clipboard manager
+ *     to the xserver and go at it like that, don't need to involve wayland.
  */
 #define _GNU_SOURCE
 #include <arcan_shmif.h>
@@ -482,6 +487,20 @@ int main (int argc, char **argv)
 			return EXIT_FAILURE;
 		}
 		else if (0 == rv){
+/* remove the display variable, but also unlink the parent socket for the
+ * normal 'default' display as some toolkits also fallback and check for it */
+			const char* disp = getenv("WAYLAND_DISPLAY");
+			if (!disp)
+				disp = "wayland-0";
+
+/* should be guaranteed here but just to be certain, length is at sun_path (108) */
+			if (getenv("XDG_RUNTIME_DIR")){
+				char path[128];
+				snprintf(path, 128, "%s/%s", getenv("XDG_RUNTIME_DIR"), disp);
+				unlink(path);
+			}
+
+			unsetenv("WAYLAND_DISPLAY");
 			execvp(argv[1], &argv[1]);
 			return EXIT_FAILURE;
 		}
