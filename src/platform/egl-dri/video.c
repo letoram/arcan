@@ -2404,7 +2404,7 @@ static struct dispout* match_connector(int fd, drmModeConnector* con)
 			continue;
 
 		if (d->device->fd == fd &&
-			d->display.con->connector_id == con->connector_id)
+			 (d->display.con ? d->display.con->connector_id : d->display.con_id) == con->connector_id)
 				return d;
 	}
 
@@ -2638,7 +2638,7 @@ static void disable_display(struct dispout* d, bool dealloc)
 
 	drmModeFreeConnector(d->display.con);
 	d->display.con = NULL;
-	d->display.con_id = 0;
+	d->display.con_id = -1;
 	d->display.mode_set = -1;
 
 	drmModeFreeCrtc(d->display.old_crtc);
@@ -3464,7 +3464,7 @@ bool platform_video_map_display(
 	if (d->state == DISP_KNOWN){
 		debug_print("map_display(%d->%d), known but unmapped", (int)id, (int)disp);
 		if (setup_kms(d,
-			d->display.con->connector_id,
+			d->display.con ? d->display.con->connector_id : -1,
 			d->display.mode_set != -1 ? d->display.mode.hdisplay : 0,
 			d->display.mode_set != -1 ? d->display.mode.vdisplay : 0) ||
 			setup_buffers(d) == -1){
