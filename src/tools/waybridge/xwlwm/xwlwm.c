@@ -21,13 +21,21 @@
 #include <inttypes.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdarg.h>
 
 /* #include <X11/XCursor/XCursor.h> */
 #include <xcb/xcb.h>
 #include <xcb/composite.h>
 #include <xcb/xfixes.h>
 #include <xcb/xcb_event.h>
+#include <xcb/xcb_icccm.h>
 #include <pthread.h>
+
+/*
+ * should we need to map window-id to struct
+#include "hash.h"
+static struct hash_table known_windows;
+ */
 
 static xcb_connection_t* dpy;
 static xcb_screen_t* screen;
@@ -35,6 +43,8 @@ static xcb_drawable_t root;
 static xcb_drawable_t wnd;
 static xcb_colormap_t colormap;
 static xcb_visualid_t visual;
+static int64_t input_grab = -1;
+static int64_t input_focus = -1;
 static volatile bool alive = true;
 
 #include "atoms.h"
@@ -139,7 +149,26 @@ static bool has_atom(
 	return false;
 }
 
-static int check_window_state(uint32_t id)
+static bool check_window_support(xcb_window_t wnd, xcb_atom_t atom)
+{
+	xcb_get_property_cookie_t cookie =
+		xcb_icccm_get_wm_protocols(dpy, wnd, atoms[WM_PROTOCOLS]);
+	xcb_icccm_get_wm_protocols_reply_t protocols;
+
+	if (xcb_icccm_get_wm_protocols_reply(dpy, cookie, &protocols, NULL) == 1){
+		for (size_t i = 0; i < protocols.atoms_len; i++){
+			if (protocols.atoms[i] == atom){
+				xcb_icccm_get_wm_protocols_reply_wipe(&protocols);
+				return true;
+			}
+		}
+	}
+
+	xcb_icccm_get_wm_protocols_reply_wipe(&protocols);
+	return false;
+}
+
+static const char* check_window_state(uint32_t id)
 {
 	xcb_get_property_cookie_t cookie = xcb_get_property(
 		dpy, 0, id, atoms[NET_WM_WINDOW_TYPE], XCB_ATOM_ANY, 0, 2048);
@@ -150,7 +179,7 @@ static int check_window_state(uint32_t id)
 	bool splash = false, tooltip = false, utility = false, dropdown = false;
 
 	if (!reply)
-		return -1;
+		return "unknown";
 
 	popup = has_atom(reply, NET_WM_WINDOW_TYPE_POPUP_MENU);
 	dnd = has_atom(reply, NET_WM_WINDOW_TYPE_DND);
@@ -162,17 +191,34 @@ static int check_window_state(uint32_t id)
 	utility = has_atom(reply, NET_WM_WINDOW_TYPE_UTILITY);
 	free(reply);
 
-	if (popup || menu)
-		return 1;
+	trace("wnd-state:%"PRIu32",popup=%d,menu=%d,dnd=%d,dropdown=%d,"
+		"notification=%d,splash=%d,tooltip=%d,utility=%d", id, popup, dnd,
+		dropdown, menu, notification, splash, tooltip, utility
+	);
 
-	if (dnd || dropdown || notification || splash || tooltip || utility)
-		return 2;
+/* just string- translate and leave for higher layers to deal with */
+	if (popup)
+		return "popup";
+	else if (dnd)
+		return "dnd";
+	else if (dropdown)
+		return "dropdown";
+	else if (menu)
+		return "menu";
+	else if (notification)
+		return "notification";
+	else if (splash)
+		return "splash";
+	else if (tooltip)
+		return "tooltip";
+	else if (utility)
+		return "utility";
 
-	return 0;
+	return "default";
 }
 
 static void send_updated_window(
-	const char* kind, uint32_t id, int32_t x, int32_t y)
+	const char* kind, uint32_t id, int32_t x, int32_t y, bool no_coord)
 {
 /*
  * metainformation about the window to better select a type and behavior.
@@ -180,12 +226,8 @@ static void send_updated_window(
  * _NET_WM_WINDOW_TYPE replaces MOTIF_WM_HINTS so we much prefer that as it
  * maps to the segment type.
  */
-	fprintf(stdout, "kind=%s:id=%"PRIu32, kind, id);
-	int ws = check_window_state(id);
-	if (ws == 1)
-		fprintf(stdout, ":type=popup");
-	else if (ws == 2)
-		fprintf(stdout, ":type=subsurface");
+	fprintf(stdout,
+		"kind=%s:id=%"PRIu32":type=%s", kind, id, check_window_state(id));
 
 	xcb_get_property_cookie_t cookie = xcb_get_property(dpy,
 		0, id, XCB_ATOM_WM_TRANSIENT_FOR, XCB_ATOM_WINDOW, 0, 2048);
@@ -211,12 +253,15 @@ static void send_updated_window(
  *  input, initial_state, pixmap, window, position, mask, group,
  *  message, urgency
  */
-	fprintf(stdout, ":x=%"PRId32":y=%"PRId32"\n", x, y);
+	if (no_coord)
+		fprintf(stdout, "\n");
+	else
+		fprintf(stdout, ":x=%"PRId32":y=%"PRId32"\n", x, y);
 }
 
 static void xcb_create_notify(xcb_create_notify_event_t* ev)
 {
-	send_updated_window("create", ev->window, ev->x, ev->y);
+	send_updated_window("create", ev->window, ev->x, ev->y, false);
 }
 
 static void xcb_map_notify(xcb_map_notify_event_t* ev)
@@ -233,6 +278,16 @@ static void xcb_map_notify(xcb_map_notify_event_t* ev)
 			"kind=parent:id=%"PRIu32":parent_id=%"PRIu32"\n", ev->window, *pwd);
 		free(reply);
 	}
+
+/*
+	if (-1 == input_focus){
+		input_focus = ev->window;
+		xcb_set_input_focus(dpy,
+			XCB_INPUT_FOCUS_POINTER_ROOT, ev->window, XCB_CURRENT_TIME);
+	}
+ */
+
+	send_updated_window("map", ev->window, -1, -1, true);
 }
 
 static void xcb_map_request(xcb_map_request_event_t* ev)
@@ -241,11 +296,27 @@ static void xcb_map_request(xcb_map_request_event_t* ev)
  * race with the wayland channel, the approach of detecting surface-
  * type and checking seems to work ok (xwl.c) */
 	xcb_map_window(dpy, ev->window);
-	/*send_updated_window("map", ev->window); */
+}
+
+static void xcb_reparent_notify(xcb_reparent_notify_event_t* ev)
+{
+	trace("reparent: %"PRIu32" new parent: %"PRIu32"%s",
+		ev->window, ev->parent, ev->override_redirect ? " override" : "");
+	if (ev->parent == root){
+		fprintf(stdout,
+			"kind=reparent:parent=root,override=%d\n", ev->override_redirect ? 1 : 0);
+	}
+	else
+		fprintf(stdout, "kind=reparent:id=%"PRIu32":parent=%"PRIu32"%s\n",
+			ev->window, ev->parent, ev->override_redirect ? ":override=1" : "");
 }
 
 static void xcb_unmap_notify(xcb_unmap_notify_event_t* ev)
 {
+	if (ev->window == input_focus)
+		input_focus = -1;
+	if (ev->window == input_grab)
+		input_grab = -1;
 	fprintf(stdout, "kind=unmap:id=%"PRIu32"\n", ev->window);
 }
 
@@ -267,6 +338,16 @@ static void xcb_client_message(xcb_client_message_event_t* ev)
 			ev->window, ev->data.data32[0]
 		);
 	}
+	else {
+		trace("client-message(unhandled) %"PRIu32"->%d", ev->window, ev->type);
+	}
+}
+
+static void xcb_destroy_notify(xcb_destroy_notify_event_t* ev)
+{
+	trace("destroy-notify:%"PRIu32, ev->window);
+	fprintf(stdout, "kind=destroy:id=%"PRIu32"\n",
+		((xcb_destroy_notify_event_t*) ev)->window);
 }
 
 static void xcb_configure_notify(xcb_configure_notify_event_t* ev)
@@ -280,6 +361,9 @@ static void xcb_configure_notify(xcb_configure_notify_event_t* ev)
 
 static void xcb_configure_request(xcb_configure_request_event_t* ev)
 {
+	trace("configure-request:%"PRIu32", for: %d,%d+%d,%d",
+			ev->window, ev->x, ev->y, ev->width, ev->height);
+
 /* this needs to translate to _resize calls and to VIEWPORT hint events */
 	fprintf(stdout,
 		"kind=configure:id=%"PRIu32":x=%d:y=%d:w=%d:h=%d\n",
@@ -295,16 +379,12 @@ static void xcb_configure_request(xcb_configure_request_event_t* ev)
 		XCB_CONFIG_WINDOW_BORDER_WIDTH,
 		(uint32_t[]){ev->x, ev->y, ev->width, ev->height, 0}
 	);
-
-/*
- * xcb_set_input_focus(dpy,
-		XCB_INPUT_FOCUS_POINTER_ROOT, ev->window, XCB_CURRENT_TIME);
- */
 }
 
 /* use stdin/popen/line based format to make debugging easier */
 static void process_wm_command(const char* arg)
 {
+	trace("wm_command: %s", arg);
 	struct arg_arr* args = arg_unpack(arg);
 	if (!args)
 		return;
@@ -336,25 +416,55 @@ static void process_wm_command(const char* arg)
 		size_t h = strtoul(dst, NULL, 10);
 		trace("srv-resize(%d)(%zu, %zu)", id, w, h);
 
-/* just don't configure popus / tooltips / ... */
-		if (check_window_state(id) <= 0)
+		const char* state = check_window_state(id);
+		if (strcmp(state, "default") == 0){
 			xcb_configure_window(dpy, id,
 				XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
 				XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
 				XCB_CONFIG_WINDOW_BORDER_WIDTH,
 				(uint32_t[]){0, 0, w, h, 0}
 			);
-		xcb_flush(dpy);
+			xcb_flush(dpy);
+		}
+/* just don't configure popups etc. */
+		else {
+			trace("srv->resize(%d), ignore (popup/...) : %s", id, state);
+		}
 	}
 	else if (strcmp(dst, "destroy") == 0){
-		trace("srv-destroy");
-		xcb_destroy_window(dpy, id);
+/* check if window support WM_DELETE_WINDOW, and if so: */
+		if (check_window_support(id, atoms[WM_DELETE_WINDOW])){
+			trace("srv-destroy, delete_window(%d)", id);
+			xcb_client_message_event_t ev = {
+				.response_type = XCB_CLIENT_MESSAGE,
+				.window = id,
+				.type = atoms[WM_PROTOCOLS],
+				.format = 32,
+				.data = {
+					.data32 = {atoms[WM_DELETE_WINDOW], XCB_CURRENT_TIME}
+				}
+			};
+			xcb_send_event(dpy, false, wnd, XCB_EVENT_MASK_NO_EVENT, (char*)&ev);
+			xcb_flush(dpy);
+		}
+		else {
+			trace("srv-destroy, delete_kill(%d)", id);
+			xcb_destroy_window(dpy, id);
+		}
+	}
+	else if (strcmp(dst, "unfocus") == 0){
+		trace("srv-unfocus(%d)", id);
+		input_focus = -1;
+		xcb_set_input_focus(dpy,
+			XCB_INPUT_FOCUS_POINTER_ROOT, XCB_NONE, XCB_CURRENT_TIME);
+		xcb_flush(dpy);
 	}
 	else if (strcmp(dst, "focus") == 0){
-		trace("srv-focus");
-
+		trace("srv-focus(%d)", id);
+		input_focus = id;
 		xcb_set_input_focus(dpy,
 			XCB_INPUT_FOCUS_POINTER_ROOT, id, XCB_CURRENT_TIME);
+		xcb_flush(dpy);
 	}
 
 cleanup:
@@ -365,11 +475,17 @@ static void* process_thread(void* arg)
 {
 	while (!ferror(stdin) && !feof(stdin) && alive){
 		char inbuf[1024];
-		if (fgets(inbuf, 1024, stdin))
+		if (fgets(inbuf, 1024, stdin)){
+/* trim */
+			size_t len = strlen(inbuf);
+			if (len && inbuf[len-1] == '\n')
+				inbuf[len-1] = '\0';
 			process_wm_command(inbuf);
+		}
 	}
 	fprintf(stdout, "kind=terminated\n");
 	fflush(stdout);
+	alive = false;
 	return NULL;
 }
 
@@ -512,9 +628,16 @@ int main (int argc, char **argv)
  * moveresize, state, fullscreen, maximized vert, maximized horiz, active window
  */
 	while( (ev = xcb_wait_for_event(dpy)) && alive){
+		if (ev->response_type == 0){
+			continue;
+		}
+
 		switch (ev->response_type & ~0x80) {
+/* the following are mostly relevant for "UI" events if the decorations are
+ * implemented in the context of X rather than at a higher level. Since this
+ * doesn't really apply to us, these can be ignored */
 		case XCB_BUTTON_PRESS:
-			trace("motion-notify");
+			trace("button-press");
 		break;
 		case XCB_MOTION_NOTIFY:
 			trace("motion-notify");
@@ -525,6 +648,12 @@ int main (int argc, char **argv)
 		case XCB_ENTER_NOTIFY:
 			trace("enter-notify");
 		break;
+		case XCB_LEAVE_NOTIFY:
+			trace("leave-notify\n");
+		break;
+/*
+ * end of 'UI notifications'
+ */
 		case XCB_CREATE_NOTIFY:
 			xcb_create_notify((xcb_create_notify_event_t*) ev);
 		break;
@@ -538,7 +667,7 @@ int main (int argc, char **argv)
 			xcb_unmap_notify((xcb_unmap_notify_event_t*) ev);
 		break;
     case XCB_REPARENT_NOTIFY:
-			trace("reparent-notify");
+			xcb_reparent_notify((xcb_reparent_notify_event_t*) ev);
 		break;
     case XCB_CONFIGURE_REQUEST:
 			xcb_configure_request((xcb_configure_request_event_t*) ev);
@@ -546,10 +675,8 @@ int main (int argc, char **argv)
     case XCB_CONFIGURE_NOTIFY:
 			xcb_configure_notify((xcb_configure_notify_event_t*) ev);
 		break;
-		case XCB_DESTROY_NOTIFY:{
-			fprintf(stdout, "kind=destroy:id=%"PRIu32"\n",
-				((xcb_destroy_notify_event_t*) ev)->window);
-		}
+		case XCB_DESTROY_NOTIFY:
+			xcb_destroy_notify((xcb_destroy_notify_event_t*) ev);
 		break;
 		case XCB_MAPPING_NOTIFY:
 			trace("mapping-notify");
@@ -558,14 +685,13 @@ int main (int argc, char **argv)
 			trace("property-notify");
 		break;
 		case XCB_CLIENT_MESSAGE:
-			trace("client-message");
 			xcb_client_message((xcb_client_message_event_t*) ev);
 		break;
 		case XCB_FOCUS_IN:
 			trace("focus-in");
 		break;
 		default:
-			trace("unhandled");
+			trace("unhandled: %"PRIu8, ev->response_type);
 		break;
 		}
 		xcb_flush(dpy);

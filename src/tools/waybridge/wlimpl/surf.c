@@ -199,10 +199,16 @@ static void surf_inputreg(struct wl_client* cl,
  */
 }
 
+static void buffer_release(struct comp_surf* surf, struct wl_resource* res)
+{
+	trace(TRACE_SURF, "%s (@%"PRIxPTR")->release", surf->tracetag, (uintptr_t)surf->cbuf);
+	wl_buffer_send_release(res);
+}
+
 static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 {
 	struct comp_surf* surf = wl_resource_get_user_data(res);
-	trace(TRACE_SURF, "%s (@%"PRIxPTR, surf->tracetag, (uintptr_t)surf->cbuf);
+	trace(TRACE_SURF, "%s (@%"PRIxPTR")->commit", surf->tracetag, (uintptr_t)surf->cbuf);
 	struct arcan_shmif_cont* acon = &surf->acon;
 
 	if (!surf){
@@ -226,7 +232,7 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  */
 	if (surf->last_buf){
 		try_frame_callback(surf, acon);
-		wl_buffer_send_release(surf->last_buf);
+		buffer_release(surf, surf->last_buf);
 		surf->last_buf = NULL;
 	}
 
@@ -269,7 +275,7 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 
 	if (!acon || !acon->addr){
 		trace(TRACE_SURF, "couldn't map to arcan connection");
-		wl_buffer_send_release(buf);
+		buffer_release(surf, buf);
 		return;
 	}
 
@@ -352,7 +358,7 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 				if (wl.defer_release)
 					surf->last_buf = buf;
 				else
-					wl_buffer_send_release(buf);
+					buffer_release(surf, buf);
 				return;
 			}
 		}
@@ -375,7 +381,7 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 		if (wl.defer_release)
 			surf->last_buf = buf;
 		else
-			wl_buffer_send_release(buf);
+			buffer_release(surf, buf);
 	}
 
 	trace(TRACE_SURF,
