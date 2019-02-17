@@ -97,13 +97,13 @@ SET(SOURCES
 )
 
 add_executable(arcan-wayland ${SOURCES})
-add_executable(arcan-xwayland-wm xwlwm/xwlwm.c)
+add_executable(arcan_xwm xwlwm/xwlwm.c)
 target_link_libraries(arcan-wayland ${LIBRARIES})
-target_link_libraries(arcan-xwayland-wm xcb xcb-composite ${ARCAN_SHMIF_LIBRARY} pthread)
+target_link_libraries(arcan_xwm xcb xcb-composite xcb-icccm ${ARCAN_SHMIF_LIBRARY} pthread)
 
 add_sanitizers(${PROJECT_NAME})
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)
-install(TARGETS arcan-xwayland-wm DESTINATION bin)
+install(TARGETS arcan_xwm DESTINATION bin)
 
 if (CMAKE_SYSTEM_NAME MATCHES "(FreeBSD|NetBSD|OpenBSD)")
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/arcan-wayland.1 DESTINATION man/man1)
