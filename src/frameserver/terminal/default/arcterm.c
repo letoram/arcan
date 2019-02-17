@@ -64,6 +64,8 @@ static void dump_help()
 		"Accepted packed_args:\n"
 		"    key      \t   value   \t   description\n"
 		"-------------\t-----------\t-----------------\n"
+		" env         \t key=val   \t override default environment (repeatable)\n"
+		" chdir       \t dir       \t change working dir before spawning shell\n"
 		" bgalpha     \t rv(0..255)\t background opacity (default: 255, opaque)\n"
 		" bgc         \t r,g,b     \t background color \n"
 		" fgc         \t r,g,b     \t foreground color \n"
@@ -257,6 +259,10 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 
 	while (arg_lookup(argarr, "env", ind++, &val))
 		putenv(strdup(val));
+
+	if (arg_lookup(argarr, "chdir", 0, &val)){
+		chdir(val);
+	}
 
 #ifndef NSIG
 #define NSIG 32
