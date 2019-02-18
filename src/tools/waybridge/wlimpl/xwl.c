@@ -11,12 +11,7 @@
  * job then is to pair these surfaces based on a window property
  * and just treat them as something altogether special by adding
  * a custom window-manager.
- *
- * The process we're using is that whenever a compositor surface
- * tries to commit, we check if we are running with xwayland and
- * then fires up a window manager on demand.
  */
-
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/types.h>
@@ -28,6 +23,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdarg.h>
 
 static FILE* wmfd_output = NULL;
 static pid_t xwl_wm_pid = -1;
@@ -50,9 +46,6 @@ struct xwl_window {
 
 /* Parent Xid for Window */
 	uint32_t parent_id;
-
-/* Resolved 'arcan' type */
-	int segid;
 
 /* Track viewport separate from comp_surf viewport as it can be
  * populated when there is still no surf to pair it to */
@@ -106,8 +99,27 @@ static struct xwl_window* xwl_find_alloc(uint32_t id)
 
 /* default to 'toplevel' like behavior */
 	wnd = xwl_find(0);
-	wnd->segid = SEGID_APPLICATION;
 	return wnd;
+}
+
+static void wnd_message(struct xwl_window* wnd, const char* fmt, ...)
+{
+	if (!wnd->surf){
+		trace(TRACE_XWL, "bad/broken window");
+		return;
+	}
+
+	struct arcan_event ev = {
+		.ext.kind = ARCAN_EVENT(MESSAGE)
+	};
+
+	va_list args;
+	va_start(args, fmt);
+		vsnprintf((char*)ev.ext.message.data,
+			COUNT_OF(ev.ext.message.data), fmt, args);
+	va_end(args);
+
+	arcan_shmif_enqueue(&wnd->surf->acon, &ev);
 }
 
 static void wnd_viewport(struct xwl_window* wnd)
@@ -194,27 +206,37 @@ static int process_input(const char* msg)
 			goto cleanup;
 
 		wnd->id = id;
+/* no type? plain old window */
 		if (arg_lookup(cmd, "type", 0, &arg)){
 			trace(TRACE_XWL, "mapped with type %s", arg);
 			if (strcmp(arg, "popup") == 0){
 				wnd->viewport.ext.viewport.focus = true;
-				wnd->segid = SEGID_POPUP;
+				wnd_message(wnd, "type=popup");
 			}
-			else
-				wnd->segid = SEGID_MEDIA;
+/* otherwise we assume we have a subsurface (tooltip, ...), since we know it
+ * comes from an X surface we could have more refined type- rules here */
+			else {
+				wnd->viewport.ext.viewport.focus = false;
+				wnd_message(wnd, "type=subsurface");
+			}
 		}
 		else
-			wnd->segid = SEGID_APPLICATION;
+			wnd_message(wnd, "type=toplevel");
 
 		if (arg_lookup(cmd, "parent", 0, &arg)){
 			uint32_t parent_id = strtoul(arg, NULL, 0);
 			struct xwl_window* wnd = xwl_find(parent_id);
-			if (wnd)
+			if (wnd){
+				trace(TRACE_XWL, "found parent surface: %"PRIu32, parent_id);
 				wnd->parent_id = parent_id;
+			}
 			else
 				trace(TRACE_XWL, "bad parent-id: "PRIu32, parent_id);
+
+			wnd_viewport(wnd);
 		}
 	}
+/* reparent */
 	else if (strcmp(arg, "parent") == 0){
 		if (!arg_lookup(cmd, "id", 0, &arg))
 			goto cleanup;
@@ -231,14 +253,16 @@ static int process_input(const char* msg)
 		wnd_viewport(wnd);
 	}
 	else if (strcmp(arg, "map") == 0){
-
+		trace(TRACE_XWL, "map");
 	}
 /* window goes from visibile to invisible state */
 	else if (strcmp(arg, "unmap") == 0){
-
+		trace(TRACE_XWL, "unmap");
 	}
 	else if (strcmp(arg, "terminated") == 0){
 		trace(TRACE_XWL, "xwayland died");
+		if (wl.exec_mode)
+			wl.alive = false;
 	}
 /* window changes position or hierarchy, the size part is tied to the
  * buffer in shmif- parlerance so we don't really care to match that
@@ -300,7 +324,7 @@ static void close_xwl()
 	wmfd_ofs = 0;
 	xwl_wm_pid = -1;
 	wmfd_input = -1;
-	trace(TRACE_XWL, "arcan-xwayland-wm died");
+	trace(TRACE_XWL, "arcan_xwm died");
 }
 
 static int xwl_read_wm(int (*callback)(const char* str))
@@ -401,7 +425,7 @@ static int xwl_spawn_wm(bool block, char** argv)
 
 /* need to prepend the binary name so top makes sense */
 		char* newargv[nargs+2];
-		newargv[0] = "arcan-xwayland-wm";
+		newargv[0] = "arcan_xwm";
 		newargv[nargs+1] = NULL;
 		for (size_t i = 0; i < nargs+1; i++){
 			newargv[i+1] = argv[i];
@@ -410,9 +434,9 @@ static int xwl_spawn_wm(bool block, char** argv)
 /* want to avoid the situation when building / working from a build dir, the
  * execvp approach would still the usr/bin one */
 #ifdef _DEBUG
-		execv("./arcan-xwayland-wm", newargv);
+		execv("./arcan_xwm", newargv);
 #endif
-		execvp("arcan-xwayland-wm", newargv);
+		execvp("arcan_xwm", newargv);
 		exit(EXIT_FAILURE);
 	}
 
@@ -481,7 +505,7 @@ static bool xwlsurf_shmifev_handler(
 		if (changed){
 			if (states.unfocused != surf->states.unfocused){
 				fprintf(wmfd_output, "id=%"PRIu32"%s\n",
-					surf->id, states.unfocused ? ":kind=unfocus" : ":kind=focus");
+					wnd->id, surf->states.unfocused ? ":kind=unfocus" : ":kind=focus");
 			}
 		}
 
@@ -538,7 +562,6 @@ static struct xwl_window*
 			return NULL;
 		}
 		wnd->surface_id = id;
-		wnd->segid = SEGID_APPLICATION;
 	}
 	else if (!wnd->paired){
 		trace(TRACE_XWL, "paired %"PRIu32, id);
@@ -557,7 +580,6 @@ static bool xwl_pair_surface(struct comp_surf* surf, struct wl_resource* res)
 
 /* if so, allocate the corresponding arcan- side resource */
 	return request_surface(surf->client, &(struct surface_request){
-/* SEGID should be X11, but need to patch durden as well */
 			.segid = SEGID_BRIDGE_X11,
 			.target = res,
 			.trace = "xwl",

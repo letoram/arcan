@@ -1379,7 +1379,7 @@ int main(int argc, char* argv[])
 			wl.alive = false;
 		}
 
-/* we'll spawn the xwayland-wm and child a little bit later */
+/* we'll spawn the X-wm and child a little bit later */
 		if (!wl.use_xwayland){
 			if (wayland_runtime_dir)
 				setenv("XDG_RUNTIME_DIR", wayland_runtime_dir, 1);
