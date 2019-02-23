@@ -1756,7 +1756,8 @@ static bool set_dumb_fb(struct dispout* d)
 	};
 	int fd = d->device->fd;
 	if (drmIoctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &create) < 0){
-		debug_print("(%d) create dumb-fb failed", (int) d->id);
+		debug_print("(%d) create dumb-fb (%d*%d@%d bpp) failed",
+			(int) d->id, create.width, create.height, create.bpp);
 		return false;
 	}
 	if (drmModeAddFB(fd,
@@ -2030,7 +2031,9 @@ retry:
 			debug_print("(%d) hand-picked (-w, -h): "
 				"%d*%d@%dHz", d->id, d->dispw, d->disph, vrefresh);
 		}
-/* but if not */
+/* but if not, drop the presets and return to auto-detect */
+		w = 0;
+		h = 0;
 	}
 
 /*
@@ -2041,7 +2044,7 @@ retry:
  * Note for ye who ventures in here, seems like some drivers still enjoy
  * returning ones that are actually 0*0, skip those.
  */
-	else if (d->display.con->count_modes >= 1){
+	if (w != 0 && d->display.con->count_modes >= 1){
 		bool found = false;
 
 		for (ssize_t i = 0; i < d->display.con->count_modes; i++){
