@@ -2014,26 +2014,33 @@ retry:
  * w and h comes from the old- style command-line to video_init calls
  * sets to 0 if the user didn't explicitly request anything else
  */
-	if (w != 0 && h != 0)
-	for (ssize_t i = 0; i < d->display.con->count_modes; i++){
-		drmModeModeInfo* cm = &d->display.con->modes[i];
+	if (w != 0 && h != 0){
+		bool found = false;
+
+		for (ssize_t i = 0; i < d->display.con->count_modes; i++){
+			drmModeModeInfo* cm = &d->display.con->modes[i];
 /*
  * prefer exact match at highest vrefresh, otherwise we'll fall back to
  * whatever we inherit from the console or 'first best'
  */
-		if (cm->hdisplay == w && cm->vdisplay == h && cm->vrefresh > vrefresh){
-			d->display.mode = *cm;
-			d->display.mode_set = i;
-			d->dispw = cm->hdisplay;
-			d->disph = cm->vdisplay;
-			vrefresh = d->vrefresh = cm->vrefresh;
-			try_inherited_mode = false;
-			debug_print("(%d) hand-picked (-w, -h): "
-				"%d*%d@%dHz", d->id, d->dispw, d->disph, vrefresh);
+			if (cm->hdisplay == w && cm->vdisplay == h && cm->vrefresh > vrefresh){
+				d->display.mode = *cm;
+				d->display.mode_set = i;
+				d->dispw = cm->hdisplay;
+				d->disph = cm->vdisplay;
+				vrefresh = d->vrefresh = cm->vrefresh;
+				try_inherited_mode = false;
+				found = true;
+				debug_print("(%d) hand-picked (-w, -h): "
+					"%d*%d@%dHz", d->id, d->dispw, d->disph, vrefresh);
+			}
 		}
+
+		if (!found){
 /* but if not, drop the presets and return to auto-detect */
-		w = 0;
-		h = 0;
+			w = 0;
+			h = 0;
+		}
 	}
 
 /*
@@ -2215,7 +2222,8 @@ retry:
 		}
 /* just disable atomic */
 		if (!ok){
-			debug_print("(%d) setup_kms, disabling atomic modeset, reverting\n", d->id);
+			debug_print("(%d) setup_kms, "
+				"atomic modeset failed, fallback to legacy", d->id);
 			d->device->atomic = false;
 			drmModeFreeConnector(d->display.con);
 			d->display.con = NULL;
