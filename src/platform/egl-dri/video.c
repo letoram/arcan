@@ -60,9 +60,9 @@
             do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
 						arcan_timemillis(), "egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
-/* very noisy, enable for specific kinds of debugging */
+/* very noisy, enable when troubleshooting */
 #define verbose_print
-//#define verbose_print debug_print
+// #define verbose_print debug_print
 
 #include "egl.h"
 
@@ -2000,37 +2000,78 @@ retry:
 	bool try_inherited_mode = true;
 	int vrefresh = 0;
 
-	if (w != 0 && h != 0)
-	for (ssize_t i = 0, area = w*h; i < d->display.con->count_modes; i++){
+/*
+ * will just nop- out unless verbose defined
+ */
+	for (ssize_t i = 0; i < d->display.con->count_modes; i++){
 		drmModeModeInfo* cm = &d->display.con->modes[i];
-		ssize_t dist = (cm->hdisplay - w) * (cm->vdisplay - h);
-		if ((dist > 0 && dist < area) || (dist == area && cm->vrefresh > vrefresh)){
+		verbose_print("(%d) mode (%zu): %d*%d@%d Hz",
+			d->id, i, cm->hdisplay, cm->vdisplay, cm->vrefresh);
+	}
+
+/*
+ * w and h comes from the old- style command-line to video_init calls
+ * sets to 0 if the user didn't explicitly request anything else
+ */
+	if (w != 0 && h != 0)
+	for (ssize_t i = 0; i < d->display.con->count_modes; i++){
+		drmModeModeInfo* cm = &d->display.con->modes[i];
+/*
+ * prefer exact match at highest vrefresh, otherwise we'll fall back to
+ * whatever we inherit from the console or 'first best'
+ */
+		if (cm->hdisplay == w && cm->vdisplay == h && cm->vrefresh > vrefresh){
 			d->display.mode = *cm;
 			d->display.mode_set = i;
 			d->dispw = cm->hdisplay;
 			d->disph = cm->vdisplay;
 			vrefresh = d->vrefresh = cm->vrefresh;
-			area = dist;
 			try_inherited_mode = false;
-			debug_print(
-				"(%d) best mode sofar: %d*%d@%dHz", d->id, d->dispw, d->disph, vrefresh);
+			debug_print("(%d) hand-picked (-w, -h): "
+				"%d*%d@%dHz", d->id, d->dispw, d->disph, vrefresh);
 		}
+/* but if not */
 	}
+
 /*
  * If no dimensions are specified, grab the first one.  (according to drm
  * documentation, that should be the most 'fitting') but also allow the
  * 'try_inherited_mode' using what is already on the connector.
+ *
+ * Note for ye who ventures in here, seems like some drivers still enjoy
+ * returning ones that are actually 0*0, skip those.
  */
 	else if (d->display.con->count_modes >= 1){
-		drmModeModeInfo* cm = &d->display.con->modes[0];
-		d->display.mode = *cm;
-		d->display.mode_set = 0;
-		d->dispw = cm->hdisplay;
-		d->disph = cm->vdisplay;
-	}
+		bool found = false;
 
-	debug_print("(%d) setup-kms, picked %zu*%zu", (int)d->id,
-		(size_t)d->display.mode.hdisplay, (size_t)d->display.mode.vdisplay);
+		for (ssize_t i = 0; i < d->display.con->count_modes; i++){
+			drmModeModeInfo* cm = &d->display.con->modes[i];
+			if (!cm->hdisplay || !cm->vdisplay)
+				continue;
+
+			d->display.mode = *cm;
+			d->display.mode_set = 0;
+			d->dispw = cm->hdisplay;
+			d->disph = cm->vdisplay;
+			vrefresh = d->vrefresh = cm->vrefresh;
+			found = true;
+			debug_print("(%d) default connector mode: %d*%d@%dHz",
+				d->id, d->dispw, d->disph, d->vrefresh);
+			break;
+		}
+
+/* everything is broken, just set a bad mode and let the rest of the error-
+ * paths take care of the less-than-graceful exit */
+		if (!found){
+			d->display.mode = d->display.con->modes[0];
+			d->display.mode_set = 0;
+			d->dispw = d->display.mode.hdisplay;
+			d->disph = d->display.mode.vdisplay;
+		}
+
+		debug_print("(%d) setup-kms, default-picked %zu*%zu", (int)d->id,
+			(size_t)d->display.mode.hdisplay, (size_t)d->display.mode.vdisplay);
+	}
 
 /*
  * Grab any EDID data now as we've had issues trying to query it on some
@@ -2106,7 +2147,7 @@ retry:
 /* now sweep the list of possible crtcs and pick the first one we don't have
  * already allocated to a display, uncertain if the crtc size was 32 or 64
  * bit so might as well go for the higher */
-	for (uint64_t i = 0; i < 64; i++){
+	for (uint64_t i = 0; i < 64 && i < res->count_crtcs; i++){
 		if (mask & ((uint64_t)1 << i)){
 			uint32_t crtc_val = res->crtcs[i];
 			struct dispout* crtc_disp = crtc_used(d->device, crtc_val);
@@ -2127,10 +2168,12 @@ retry:
 		goto drop_disp;
 	}
 
-	if (crtc->mode_valid && try_inherited_mode){
+/* sanity-check inherited mode (weird drivers + "non-graphical" defaults? */
+	if (crtc->mode_valid && try_inherited_mode && crtc->mode.hdisplay){
 		d->display.mode = crtc->mode;
 		d->display.mode_set = 0;
 
+/* find the matching index */
 		for (size_t i = 0; i < d->display.con->count_modes; i++){
 			if (memcmp(&d->display.con->modes[i],
 				&d->display.mode, sizeof(drmModeModeInfo)) == 0){
@@ -2141,6 +2184,7 @@ retry:
 
 		d->dispw = d->display.mode.hdisplay;
 		d->disph = d->display.mode.vdisplay;
+		debug_print("(%d) trying tty- inherited mode ", (int)d->id);
 	}
 
 	if (!crtc_found){
@@ -2811,10 +2855,6 @@ static bool try_node(int fd, const char* pathref, int dst_ind,
 		d->backlight_brightness = backlight_get_brightness(d->backlight);
 	return true;
 }
-
-/*
-		dump_connectors(stdout, &nodes[0], true);
- */
 
 /*
  * config/profile matching derived approach, for use when something more
