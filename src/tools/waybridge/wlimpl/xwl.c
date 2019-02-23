@@ -12,7 +12,6 @@
  * and just treat them as something altogether special by adding
  * a custom window-manager.
  */
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <sys/ipc.h>
@@ -57,6 +56,13 @@ struct xwl_window {
  * break stuff.
  */
 	bool paired;
+
+/*
+ * will be set to a valid MESSAGE and valid VIEWPORT if the pairing
+ * happens before we actually get events that tell us what it is for
+ */
+	struct arcan_event queued_message;
+
 	struct comp_surf* surf;
 };
 
@@ -104,11 +110,6 @@ static struct xwl_window* xwl_find_alloc(uint32_t id)
 
 static void wnd_message(struct xwl_window* wnd, const char* fmt, ...)
 {
-	if (!wnd->surf){
-		trace(TRACE_XWL, "bad/broken window");
-		return;
-	}
-
 	struct arcan_event ev = {
 		.ext.kind = ARCAN_EVENT(MESSAGE)
 	};
@@ -119,16 +120,21 @@ static void wnd_message(struct xwl_window* wnd, const char* fmt, ...)
 			COUNT_OF(ev.ext.message.data), fmt, args);
 	va_end(args);
 
+	if (!wnd->surf){
+		trace(TRACE_XWL, "message:%s on unpaired surface", ev.ext.message.data);
+		wnd->queued_message = ev;
+		return;
+	}
+
+	trace(TRACE_XWL, "message:%s", ev.ext.message.data);
 	arcan_shmif_enqueue(&wnd->surf->acon, &ev);
 }
 
 static void wnd_viewport(struct xwl_window* wnd)
 {
-	if (!wnd->surf)
-		return;
-
 /* always re-resolve parent token */
 	wnd->viewport.ext.viewport.parent = 0;
+
 	if (wnd->parent_id > 0){
 		struct xwl_window* pwnd = xwl_find(wnd->parent_id);
 		if (!pwnd || !pwnd->surf){
@@ -138,6 +144,9 @@ static void wnd_viewport(struct xwl_window* wnd)
 			wnd->viewport.ext.viewport.parent = pwnd->surf->acon.segment_token;
 		}
 	}
+
+	if (!wnd->surf)
+		return;
 
 	arcan_shmif_enqueue(&wnd->surf->acon, &wnd->viewport);
 
@@ -208,32 +217,27 @@ static int process_input(const char* msg)
 		wnd->id = id;
 /* no type? plain old window */
 		if (arg_lookup(cmd, "type", 0, &arg)){
-			trace(TRACE_XWL, "mapped with type %s", arg);
-			if (strcmp(arg, "popup") == 0){
-				wnd->viewport.ext.viewport.focus = true;
-				wnd_message(wnd, "type=popup");
-			}
+			trace(TRACE_XWL, "created with type %s", arg);
 /* otherwise we assume we have a subsurface (tooltip, ...), since we know it
  * comes from an X surface we could have more refined type- rules here */
-			else {
-				wnd->viewport.ext.viewport.focus = false;
-				wnd_message(wnd, "type=subsurface");
-			}
+			wnd_message(wnd, "type:%s", arg);
 		}
-		else
-			wnd_message(wnd, "type=toplevel");
+		else{
+			trace(TRACE_XWL, "malformed create argument: missing type");
+			goto cleanup;
+		}
 
+/* we only viewport when we have a grab or hierarchy relationship change */
 		if (arg_lookup(cmd, "parent", 0, &arg)){
 			uint32_t parent_id = strtoul(arg, NULL, 0);
 			struct xwl_window* wnd = xwl_find(parent_id);
 			if (wnd){
 				trace(TRACE_XWL, "found parent surface: %"PRIu32, parent_id);
 				wnd->parent_id = parent_id;
+				wnd_viewport(wnd);
 			}
 			else
 				trace(TRACE_XWL, "bad parent-id: "PRIu32, parent_id);
-
-			wnd_viewport(wnd);
 		}
 	}
 /* reparent */
@@ -252,12 +256,37 @@ static int process_input(const char* msg)
 		trace(TRACE_XWL, "reparent id:%"PRIu32" to %"PRIu32, id, parent_id);
 		wnd_viewport(wnd);
 	}
+/* invisible -> visible */
 	else if (strcmp(arg, "map") == 0){
 		trace(TRACE_XWL, "map");
+		if (!arg_lookup(cmd, "id", 0, &arg))
+			goto cleanup;
+		uint32_t id = strtoul(arg, NULL, 10);
+		struct xwl_window* wnd = xwl_find(id);
+		if (!wnd)
+			goto cleanup;
+
+		wnd->viewport.ext.viewport.invisible = false;
+		if (arg_lookup(cmd, "parent_id", 0, &arg)){
+			wnd->parent_id = strtoul(arg, NULL, 10);
+		}
+		if (!arg_lookup(cmd, "type", 0, &arg)){
+			trace(TRACE_XWL, "remap id:%"PRIu32", failed, no type information", id);
+			goto cleanup;
+		}
+		wnd_message(wnd, "type:%s", arg);
+		wnd_viewport(wnd);
 	}
-/* window goes from visibile to invisible state */
+/* window goes from visible to invisible state, but resources remain */
 	else if (strcmp(arg, "unmap") == 0){
 		trace(TRACE_XWL, "unmap");
+		uint32_t id = strtoul(arg, NULL, 10);
+		struct xwl_window* wnd = xwl_find(id);
+		if (!wnd)
+			goto cleanup;
+
+		wnd->viewport.ext.viewport.invisible = true;
+		wnd_viewport(wnd);
 	}
 	else if (strcmp(arg, "terminated") == 0){
 		trace(TRACE_XWL, "xwayland died");
@@ -539,6 +568,13 @@ static bool xwl_defer_handler(
 
 	struct xwl_window* wnd = (req->tag);
 	wnd->surf = surf;
+	wnd->viewport.ext.kind = ARCAN_EVENT(VIEWPORT);
+
+	if (wnd->queued_message.ext.kind == ARCAN_EVENT(MESSAGE)){
+		arcan_shmif_enqueue(con, &wnd->queued_message);
+		wnd->queued_message = (struct arcan_event){};
+	}
+
 	wnd_viewport(wnd);
 
 	return true;
@@ -567,6 +603,7 @@ static struct xwl_window*
 		trace(TRACE_XWL, "paired %"PRIu32, id);
 		wnd->paired = true;
 		wnd->surf = surf;
+		wnd_viewport(wnd);
 	}
 	return wnd;
 }
