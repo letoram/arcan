@@ -1,5 +1,5 @@
 /*
- * copyright 2014-2018, björn ståhl
+ * copyright 2014-2019, björn ståhl
  * license: 3-clause bsd, see copying file in arcan source repository.
  * reference: http://arcan-fe.com
  */
@@ -61,8 +61,8 @@
 						arcan_timemillis(), "egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 /* very noisy, enable when troubleshooting */
-#define verbose_print
-// #define verbose_print debug_print
+// #define verbose_print
+#define verbose_print debug_print
 
 #include "egl.h"
 
@@ -92,6 +92,7 @@ static char* egl_envopts[] = {
 	"device_libs=lib1:lib2", "libs used for device",
 	"device_connector=ind", "primary display connector index",
 	"device_wait", "loop until an active connector is found",
+	"device_nodpms", "set to disable power management controls",
 	"display_context=1", "set outer shared headless context, per display contexts",
 	NULL
 };
@@ -334,6 +335,12 @@ static bool check_ext(const char* needle, const char* haystack)
 
 static void dpms_set(struct dispout* d, int level)
 {
+	uintptr_t tag;
+	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+  if (get_config("video_device_nodpms", 0, NULL, tag)){
+		return;
+	}
+
 /*
  * FIXME: this needs to be deferred in the same way as disable / etc.
  */
@@ -542,11 +549,13 @@ static int setup_buffers_stream(struct dispout* d)
 
 	EGLAttrib layer_attrs[3] = {};
 	if (d->display.plane_id){
+		debug_print("(%d) match layer to drm plane (%d)", d->id, d->display.plane_id);
 		layer_attrs[0] = EGL_DRM_PLANE_EXT;
 		layer_attrs[1] = d->display.plane_id;
 		layer_attrs[2] = EGL_NONE;
 	}
 	else {
+		debug_print("(%d) match layer to crtc (%d)", d->id, d->display.crtc);
 		layer_attrs[0] = EGL_DRM_CRTC_EXT;
 		layer_attrs[1] = d->display.crtc;
 		layer_attrs[2] = EGL_NONE;
@@ -567,8 +576,10 @@ static int setup_buffers_stream(struct dispout* d)
  * 2. Create stream
  */
 	EGLint stream_attrs[] = {
-		EGL_STREAM_FIFO_LENGTH_KHR, 1,
-		EGL_CONSUMER_AUTO_ACQUIRE_EXT, EGL_TRUE,
+/*
+ * EGL_STREAM_FIFO_LENGTH_KHR, 1,
+ * EGL_CONSUMER_AUTO_ACQUIRE_EXT, EGL_TRUE,
+ */
 		EGL_NONE
 	};
 	d->buffer.stream =
@@ -2051,7 +2062,7 @@ retry:
  * Note for ye who ventures in here, seems like some drivers still enjoy
  * returning ones that are actually 0*0, skip those.
  */
-	if (w != 0 && d->display.con->count_modes >= 1){
+	if (w == 0 && d->display.con->count_modes >= 1){
 		bool found = false;
 
 		for (ssize_t i = 0; i < d->display.con->count_modes; i++){
@@ -2063,10 +2074,11 @@ retry:
 			d->display.mode_set = 0;
 			d->dispw = cm->hdisplay;
 			d->disph = cm->vdisplay;
-			vrefresh = d->vrefresh = cm->vrefresh;
+			d->vrefresh = cm->vrefresh;
+			vrefresh = d->vrefresh;
 			found = true;
 			debug_print("(%d) default connector mode: %d*%d@%dHz",
-				d->id, d->dispw, d->disph, d->vrefresh);
+				d->id, d->dispw, d->disph, vrefresh);
 			break;
 		}
 
@@ -2077,6 +2089,8 @@ retry:
 			d->display.mode_set = 0;
 			d->dispw = d->display.mode.hdisplay;
 			d->disph = d->display.mode.vdisplay;
+			d->vrefresh = 0;
+			debug_print("(%d) setup-kms, couldn't find any useful mode");
 		}
 
 		debug_print("(%d) setup-kms, default-picked %zu*%zu", (int)d->id,
@@ -2891,8 +2905,13 @@ static bool try_card(size_t devind, int w, int h, size_t* dstind)
 	}
 
 	if (get_config("video_device_buffer", devind, &cfgstr, tag)){
-		if (strcmp(cfgstr, "streams") == 0)
+		if (strcmp(cfgstr, "streams") == 0){
 			gbm = false;
+			debug_print("device_buffer forced to EGLstreams");
+		}
+		else {
+			debug_print("device_buffer fallback to GBM");
+		}
 		free(cfgstr);
 	}
 

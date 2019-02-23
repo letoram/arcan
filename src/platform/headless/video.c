@@ -579,7 +579,7 @@ bool platform_video_init(uint16_t width,
 
 /* this is not right for nvidia, and would possibly pick nouveau even in the
  * presence of the binary driver, we have the same issue with streams */
-	if (get_platform_display){
+	if (!get_config("video_disable_platform", 0, NULL, tag) && get_platform_display){
 		char* node;
 		int devfd = -1;
 
