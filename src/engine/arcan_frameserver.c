@@ -198,7 +198,7 @@ static bool push_buffer(arcan_frameserver* src,
  * control because the backing store might have changed somehwere else. */
 	if (src->desc.width != store->w || src->desc.height != store->h ||
 		src->desc.hints != src->desc.pending_hints || src->desc.rz_flag){
-
+		src->desc.hints = src->desc.pending_hints;
 		arcan_event rezev = {
 			.category = EVENT_FSRV,
 			.fsrv.kind = EVENT_FSRV_RESIZED,
@@ -229,7 +229,6 @@ static bool push_buffer(arcan_frameserver* src,
 		else
 			arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
 
-		src->desc.hints = src->desc.pending_hints;
 		store->vinf.text.d_fmt = (src->desc.hints & SHMIF_RHINT_IGNORE_ALPHA) ||
 			src->flags.no_alpha_copy ? GL_NOALPHA_PIXEL_FORMAT : GL_STORE_PIXEL_FORMAT;
 
