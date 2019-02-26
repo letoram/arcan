@@ -1645,9 +1645,6 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 			current_context->stdoutp.art = agp_setup_rendertarget(
 				current_context->world.vstore,
 				RENDERTARGET_COLOR_DEPTH_STENCIL
-#ifdef ARCAN_LWA
-				| RENDERTARGET_DOUBLEBUFFER
-#endif
 			);
 		}
 		else
@@ -1886,6 +1883,7 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 	)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
+/* remove the original target store, substitute in our own */
 	arcan_vint_drop_vstore(dst->vstore);
 	dst->vstore = src->vstore;
 	dst->vstore->refcount++;

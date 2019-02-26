@@ -184,7 +184,7 @@ void agp_readback_synchronous(struct agp_vstore* dst)
 		return;
 	struct agp_fenv* env = agp_env();
 
-	env->bind_texture(GL_TEXTURE_2D, dst->vinf.text.glid);
+	env->bind_texture(GL_TEXTURE_2D, agp_resolve_texid(dst));
 	env->get_tex_image(GL_TEXTURE_2D, 0,
 		GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dst->vinf.text.raw);
 	dst->update_ts = arcan_timemillis();
@@ -429,7 +429,7 @@ void agp_request_readback(struct agp_vstore* store)
 	if (!store->vinf.text.rid)
 		pbo_alloc_read(store);
 
-	env->bind_texture(GL_TEXTURE_2D, store->vinf.text.glid);
+	env->bind_texture(GL_TEXTURE_2D, agp_resolve_texid(store));
 	env->bind_buffer(GL_PIXEL_PACK_BUFFER, store->vinf.text.rid);
 	env->get_tex_image(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, NULL);
 	env->bind_buffer(GL_PIXEL_PACK_BUFFER, 0);

@@ -294,6 +294,7 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 					tgt->vstream.handle = arcan_fetchhandle(tgt->dpipe, false);
 					tgt->vstream.stride = inev.ext.bstream.pitch;
 					tgt->vstream.format = inev.ext.bstream.format;
+					wake = true;
 					continue;
 				break;
 
@@ -302,6 +303,7 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 					if (tgt->flags.autoclock && !inev.ext.clock.once){
 						tgt->clock.frame = inev.ext.clock.dynamic;
 						tgt->clock.left = tgt->clock.start = inev.ext.clock.rate;
+						wake = true;
 						continue;
 					}
 				break;
