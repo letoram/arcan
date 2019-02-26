@@ -22,6 +22,9 @@ extern jmp_buf arcanmain_recover_state;
 #include "../video_platform.h"
 #include "../agp/glfun.h"
 
+#define VIDEO_PLATFORM_IMPL
+#include "../../engine/arcan_conductor.h"
+
 #define WANT_ARCAN_SHMIF_HELPER
 #include "arcan_shmif.h"
 #include "arcan_math.h"
@@ -79,7 +82,7 @@ struct display {
 	enum dpms_state dpms;
 	struct agp_vstore* vstore;
 	float ppcm;
-	int id, dirty;
+	int id;
 
 /* only used for first display */
 	uint8_t subseg_alloc;
@@ -124,7 +127,8 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	}
 
 	struct arg_arr* shmarg;
-	disp[0].conn = arcan_shmif_open_ext(0, &shmarg, (struct shmif_open_ext){
+	disp[0].conn = arcan_shmif_open_ext(
+		SHMIF_NOACTIVATE_RESIZE, &shmarg, (struct shmif_open_ext){
 		.type = SEGID_LWA, .title = title,}, sizeof(struct shmif_open_ext)
 	);
 
@@ -331,6 +335,8 @@ bool platform_video_specify_mode(platform_display_id id,
 	if (!(id < MAX_DISPLAYS && disp[id].conn.addr))
 		return false;
 
+	return false;
+
 	primary_udata.resize_pending = 1;
 
 	if (!mode.width || !mode.height ||
@@ -341,7 +347,6 @@ bool platform_video_specify_mode(platform_display_id id,
 
 	bool rz = arcan_shmif_resize(&disp[id].conn, mode.width, mode.height);
 
-	disp[id].dirty = 2;
 	arcan_shmif_unlock(&disp[id].conn);
 	primary_udata.resize_pending = 0;
 
@@ -457,7 +462,6 @@ bool platform_video_map_display(
 
 	disp[id].vstore->refcount++;
 	disp[id].mapped = true;
-	disp[id].dirty = 2;
 
 	return true;
 }
@@ -559,86 +563,123 @@ static void synch_copy(struct display* disp, struct agp_vstore* vs)
 	store.vinf.text.raw = disp->conn.vidp;
 
 	agp_readback_synchronous(&store);
-	arcan_shmif_signal(&disp->conn, SHMIF_SIGVID);
+	arcan_shmif_signal(&disp->conn, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 }
 
+/*
+ * The three paths to consider here at the moment are:
+ * 1. update, contents to synch, visible
+ * 2. update, contents to synch, not visible
+ * 3. no contents to synch
+ */
 void platform_video_synch(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
 {
 	if (pre)
 		pre();
 
-	unsigned long long frametime = arcan_timemillis();
+	static size_t last_nupd;
+	size_t nupd;
+	size_t left = 0;
 
-	for (size_t i = 0; i < MAX_DISPLAYS; i++){
-		if (disp[i].dirty)
-			FLAG_DIRTY(NULL);
-	}
-
-	size_t platform_nupd;
-	arcan_bench_register_cost(arcan_vint_refresh(fract, &platform_nupd));
+	unsigned cost = arcan_vint_refresh(fract, &nupd);
+	arcan_bench_register_cost(cost);
 	agp_activate_rendertarget(NULL);
 
-	if (!platform_nupd){
+/* nothing to do, yield with the timestep the conductor prefers (fake 60hz
+ * now until the shmif_deadline communication is more robust) */
+	if (!nupd && !last_nupd){
+		glFlush();
+		left = cost > 16 ? 0 : 16 - cost;
 		goto pollout;
 	}
+	last_nupd = nupd;
 
-/* actually needed here or handle content will be broken */
-	glFlush();
+/* needed here or handle content will be broken, though what we would actually
+ * want is a fence on the last drawcall to each mapped rendercall and yield
+ * until finished */
+	glFinish();
 
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){
-		if (!(disp[i].dirty || (platform_nupd && disp[i].visible)))
+/* server-side controlled visibility or script controlled visibility */
+		if (!disp[i].visible || !disp[i].mapped || disp[i].dpms != ADPMS_ON)
 			continue;
-
-		if (!disp[i].mapped || disp[i].dpms != ADPMS_ON)
-			continue;
-
-		if (disp[i].dirty)
-			disp[i].dirty--;
 
 /*
- * Features missing:
- * - texture coordinates are not taken into account (would require RT
- *   indirection, manual resampling during synch-copy or shmif- rework to allow
- *   texture coordinates as part of signalling)
- * - no post-processing shader, same problem as with texture coordinates
+ * Missing features / issues:
+ *
+ * 1. texture coordinates are not taken into account (would require RT
+ *    indirection, manual resampling during synch-copy or shmif- rework
+ *    to allow texture coordinates as part of signalling)
+ *
+ * 2. no post-processing shader, also needs blit stage
+ *
+ * 3. same rendertarget CAN NOT! be mapped to different displays as the
+ *    frame-queueing would break
+ *
+ * solution would be extending the vstore- to have a 'repack/reblit/raster'
+ * state, which would be needed for server-side text anyhow
  */
 		struct rendertarget* rtgt = arcan_vint_findrt_vstore(disp[i].vstore);
 
 		if (disp[i].nopass || (disp[i].vstore && !rtgt))
-			synch_copy(&disp[i], disp[i].vstore? disp[i].vstore:arcan_vint_world());
+			synch_copy(&disp[i],
+				disp[i].vstore ? disp[i].vstore : arcan_vint_world());
+
 		else if (disp[i].vstore){
 /* there are conditions where could go with synch- handle + passing, but
  * with streaming sources we have no reliable way of knowing if its safe */
 			if (!rtgt)
 				synch_copy(&disp[i], disp[i].vstore);
 			else {
-				unsigned col = agp_rendertarget_swap(rtgt->art);
-				arcan_shmifext_signal(&disp[i].conn, 0, SHMIF_SIGVID, col);
+				bool swap;
+				unsigned col = agp_rendertarget_swap(rtgt->art, &swap);
+				if (swap)
+					arcan_shmifext_signal(
+						&disp[i].conn, 0, SHMIF_SIGVID | SHMIF_SIGBLK_NONE, col);
 			}
 		}
 		else {
-			unsigned col = agp_rendertarget_swap(arcan_vint_worldrt());
-			if (!disp[i].dirty)
-				arcan_shmifext_signal(&disp[i].conn, 0, SHMIF_SIGVID, col);
+			bool swap;
+			unsigned col = agp_rendertarget_swap(arcan_vint_worldrt(), &swap);
+			if (swap)
+				arcan_shmifext_signal(
+					&disp[i].conn, 0, SHMIF_SIGVID | SHMIF_SIGBLK_NONE, col);
 		}
 	}
 
-	unsigned long long synchtime;
-
+/* sweep-yield-poll, switch to the server-side demand request API when
+ * that is fully plugged in (~linux 5.0 should give the missing pieces) */
 pollout:
-	synchtime = arcan_timemillis() - frametime;
+	do {
+		bool waiting = false;
+		for (size_t i = 0; i < MAX_DISPLAYS; i++){
+			if (disp[i].conn.addr)
+				waiting |= arcan_shmif_signalstatus(&disp[i].conn) > 0;
+		}
 
-/*
- * missing synchronization strategy setting here entirely, this
- * is just based on an assumed ~16ish max delay using the rendertime
- */
-	if (synchtime < 16){
-		struct pollfd pfd = {
-			.fd = disp[0].conn.epipe,
-			.events = POLLIN | POLLERR | POLLHUP | POLLNVAL
-		};
-		poll(&pfd, 1, 16 - synchtime);
+/* without the futex- based monitoring option we're still stuck going
+ * with yield+sleep */
+		if (waiting){
+			int yv = arcan_conductor_yield(NULL, 0);
+			if (-1 == yv)
+				break;
+			else{
+				arcan_timesleep(yv);
+				left = left > yv ? left - yv : 0;
+			}
+		}
+/* no relevant updates, no screens pending, just let the conductor wait */
+		else {
+			arcan_conductor_fakesynch(left);
+			left = 0;
+		}
+	} while (left);
+
+/* place to add real deadline substitution, occurs with _yield saying
+ * we are in processing mode */
+	if (left){
+		arcan_conductor_deadline(8);
 	}
 
 	if (post)
@@ -741,7 +782,6 @@ static void map_window(struct arcan_shmif_cont* seg, arcan_evctx* ctx,
 	base->ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
 	base->dpms = ADPMS_ON;
 	base->visible = true;
-	base->dirty = 2;
 
 	arcan_event ev = {
 		.category = EVENT_VIDEO,
@@ -951,11 +991,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 			}
 
 			if (!(ev.tgt.ioevs[2].iv & 128)){
-				bool vss = !((ev.tgt.ioevs[2].iv & 2) > 0);
-				if (vss && !d->visible){
-					d->dirty = 2;
-				}
-				d->visible = vss;
+				d->visible = !((ev.tgt.ioevs[2].iv & 2) > 0);
 				d->focused = !((ev.tgt.ioevs[2].iv & 4) > 0);
 			}
 

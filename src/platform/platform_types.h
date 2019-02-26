@@ -187,6 +187,7 @@ struct agp_vstore {
 /* ID number connecting to AGP, this MAY be bound diretly to the glid
  * of a specific context, or act as a reference into multiple contexts */
 			unsigned glid;
+			unsigned* glid_proxy;
 
 /* used for PBO transfers */
 			unsigned rid, wid;

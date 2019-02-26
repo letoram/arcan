@@ -210,8 +210,9 @@ static bool push_buffer(arcan_frameserver* src,
 			.fsrv.glsource = src->desc.hints & SHMIF_RHINT_ORIGO_LL
 		};
 
+/* Manually enabled mode where the WM side wants access to the resized buffer
+ * but also wants to keep the client locked and waiting. */
 		if (src->flags.rz_ack){
-/* mark ack and send event */
 			if (src->rz_known == 0){
 				arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
 				src->rz_known = 1;

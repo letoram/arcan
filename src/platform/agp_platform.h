@@ -116,6 +116,14 @@ bool agp_slice_synch(
 	struct agp_vstore* backing, size_t n_slices, struct agp_vstore** slices);
 
 /*
+ * Return an accelerated graphics handle for referring to the final texture
+ * within the backing store. This is typically the same as the glid member,
+ * but can be set to a proxy and/or reblitting stage to deal with implicit
+ * format conversions. Should only have a use within AGP itself.
+ */
+unsigned agp_resolve_texid(struct agp_vstore* vs);
+
+/*
  * Extended form to allow internal platform choice in format used,
  * can be used to some rendertargets for improved performance and for
  * buffer-passing workarounds
@@ -320,23 +328,23 @@ enum rendertarget_mode {
  */
 struct agp_rendertarget;
 struct agp_fenv;
-struct agp_rendertarget* agp_setup_rendertarget(struct agp_vstore*,
-	enum rendertarget_mode mode);
+struct agp_rendertarget* agp_setup_rendertarget(
+	struct agp_vstore*, enum rendertarget_mode mode);
 
 /*
  * Break the opaqueness somewhat by exposing underlying handles, primarily for
  * frameservers that explicitly need to use GL and where we want to re-use the
  * underlying code.
  */
-void agp_rendertarget_ids(struct agp_rendertarget*, uintptr_t* tgt,
-	uintptr_t* col, uintptr_t* depth);
+void agp_rendertarget_ids(struct agp_rendertarget*,
+	uintptr_t* tgt, uintptr_t* col, uintptr_t* depth);
 
 /*
  * Drop and rebuild the current backing store, along with possible transfer
  * objects etc. with the >0 dimensions specified by neww / newh.
  */
-void agp_resize_rendertarget(struct agp_rendertarget*,
-	size_t neww, size_t newh);
+void agp_resize_rendertarget(
+	struct agp_rendertarget*, size_t neww, size_t newh);
 
 /*
  * Switch the currently active rendertarget to the one specified.  If set to
@@ -346,17 +354,20 @@ void agp_activate_rendertarget(struct agp_rendertarget*);
 void agp_drop_rendertarget(struct agp_rendertarget*);
 
 /*
- * Swap out the color attachment in the rendertarget between front/back,
- * this only has an effect if the mode of the rendertarget has the DOUBLEBUFFER
- * bit set.
- * Returns the last color attachment ID used
+ * Swap out the color attachment in the rendertarget, and return a graphics
+ * library buffer ID for the latest 'rendered-to' buffer. On the first call,
+ * this will internally make the rendertarget into a multi-buffered one,
+ * regardless of the default.
+ *
+ * [swap] is set to false if the frame should be skipped instead of forwarded
+ * / scanned out. This can happen following an initial setup or a resize.
  */
-unsigned agp_rendertarget_swap(struct agp_rendertarget*);
+uint64_t agp_rendertarget_swap(struct agp_rendertarget*, bool* swap);
 
 /*
- * Drop the rendertarget bound resources, this covers a possible DOUBLEBUFFER
- * backbuffer, but not the main vstore that was associated with the target.
- * That one has to be tracked and destroyed manually.
+ * Drop the rendertarget bound resources, and any intermediate back- buffers.
+ * The main vstore that was bound to the rendertarget is still alive and needs
+ * to be destroyed manually.
  */
 void agp_drop_rendertarget(struct agp_rendertarget*);
 
@@ -400,7 +411,7 @@ struct agp_mesh_store
 
 /*
  * [ VERTEX ATTRIBUTES ]
- * all these correspond to possible vertex attributes, NULL if not avaiable
+ * all these correspond to possible vertex attributes, NULL if not available
  */
 	float* verts;
 	float* txcos;

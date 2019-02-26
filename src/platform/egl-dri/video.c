@@ -61,8 +61,8 @@
 						arcan_timemillis(), "egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 /* very noisy, enable when troubleshooting */
-// #define verbose_print
-#define verbose_print debug_print
+#define verbose_print
+/* #define verbose_print debug_print */
 
 #include "egl.h"
 
@@ -337,7 +337,7 @@ static void dpms_set(struct dispout* d, int level)
 {
 	uintptr_t tag;
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
-  if (get_config("video_device_nodpms", 0, NULL, tag)){
+	if (get_config("video_device_nodpms", 0, NULL, tag)){
 		return;
 	}
 
@@ -382,6 +382,7 @@ static void release_card(size_t i)
 	if (!nodes[i].active)
 		return;
 
+	debug_print("release card (%d)", i);
 	nodes[i].eglenv.make_current(nodes[i].display,
 		EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 
@@ -393,6 +394,7 @@ static void release_card(size_t i)
 	switch (nodes[i].buftype){
 	case BUF_GBM:
 		if (nodes[i].buffer.gbm){
+			debug_print("destroying device/gbm buffers");
 			gbm_device_destroy(nodes[i].buffer.gbm);
 			nodes[i].buffer.gbm = NULL;
 		}
@@ -413,6 +415,7 @@ static void release_card(size_t i)
 	}
 
 	if (nodes[i].display != EGL_NO_DISPLAY){
+		debug_print("terminating card-egl display");
 		nodes[i].eglenv.terminate(nodes[i].display);
 		nodes[i].display = EGL_NO_DISPLAY;
 	}
@@ -945,6 +948,7 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 	}
 */
 /* the BOs should die with the surface */
+	debug_print("modeset, destroy surface");
 	d->state = DISP_CLEANUP;
 	d->device->eglenv.destroy_surface(d->device->display, d->buffer.esurf);
 	d->buffer.esurf = EGL_NO_SURFACE;
@@ -2486,6 +2490,8 @@ static struct dispout* match_connector(int fd, drmModeConnector* con)
  */
 static void query_card(struct dev_node* node)
 {
+	debug_print("check resources on %i\n", node->fd);
+
 	drmModeRes* res = drmModeGetResources(node->fd);
 	if (!res){
 		debug_print("couldn't get resources for rescan on %i", node->fd);
@@ -2574,7 +2580,8 @@ void platform_video_query_displays()
  */
 	for (size_t j = 0; j < COUNT_OF(nodes); j++){
 		debug_print("query_card: %zu", j);
-		query_card(&nodes[j]);
+		if (nodes[j].fd != -1)
+			query_card(&nodes[j]);
 	}
 }
 
@@ -2592,13 +2599,6 @@ static void disable_display(struct dispout* d, bool dealloc)
 		egl_dri.destroy_pending |= 1 << d->id;
 		return;
 	}
-
-/*
- * This triggered driver bugs (?) and hard-to-attribute UAFs, reasonably
- * sure it wasn't our fault - but there's a lot of state to take into account
- *
- * set_device_context(d->device);
- */
 
 	d->device->refc--;
 	if (d->buffer.in_destroy){
@@ -2627,15 +2627,18 @@ static void disable_display(struct dispout* d, bool dealloc)
 
 /* destroying the context has triggered driver bugs and hard to attribute UAFs
  * in the past, monitor this closely */
+	if (d->buffer.cur_fb){
+		debug_print("(%d) removing framebuffer", (int)d->id);
+		drmModeRmFB(d->device->fd, d->buffer.cur_fb);
+		d->buffer.cur_fb = 0;
+	}
+
 	if (d->buffer.context != EGL_NO_CONTEXT){
+		debug_print("(%d) EGL - set device"
+			"context, destroy display context", (int)d->id);
 		set_device_context(d->device);
 		d->device->eglenv.destroy_context(d->device->display, d->buffer.context);
 		d->buffer.context = EGL_NO_CONTEXT;
-	}
-
-	if (d->buffer.cur_fb){
-		drmModeRmFB(d->device->fd, d->buffer.cur_fb);
-		d->buffer.cur_fb = 0;
 	}
 
 	if (d->device->buftype == BUF_STREAM){
@@ -2658,6 +2661,7 @@ static void disable_display(struct dispout* d, bool dealloc)
  * since an external- launch then needs to figure out / manipulate them on its
  * own, losing color calibration and so on in the process */
 	if (d->display.orig_gamma){
+		debug_print("(%d) restoring device color LUTs");
 		drmModeCrtcSetGamma(d->device->fd, d->display.crtc,
 			d->display.gamma_size, d->display.orig_gamma,
 			&d->display.orig_gamma[1*d->display.gamma_size],
@@ -2705,6 +2709,7 @@ static void disable_display(struct dispout* d, bool dealloc)
 		d->display.orig_gamma = NULL;
 	}
 
+	debug_print("(%d) freeing display connector", (int)d->id);
 	drmModeFreeConnector(d->display.con);
 	d->display.con = NULL;
 	d->display.con_id = -1;
@@ -2717,6 +2722,7 @@ static void disable_display(struct dispout* d, bool dealloc)
 	d->state = DISP_UNUSED;
 
 	if (d->backlight){
+		debug_print("(%d) resetting display backlight", (int)d->id);
 		backlight_set_brightness(d->backlight, d->backlight_brightness);
 		backlight_destroy(d->backlight);
 		d->backlight = NULL;
@@ -3042,6 +3048,17 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	struct sigaction err_sh = {
 		.sa_handler = sigsegv_errmsg
 	};
+
+/*
+ * init after recovery etc. won't need seeding
+ */
+	static bool seeded;
+	if (!seeded){
+		for (size_t i = 0; i < VIDEO_MAX_NODES; i++){
+			nodes[i].fd = -1;
+		}
+		seeded = true;
+	}
 
 /*
  * temporarily override segmentation fault handler here because it has happened

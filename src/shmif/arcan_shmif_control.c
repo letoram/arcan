@@ -1480,7 +1480,8 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
  * check before running the step_v */
 	if (mask & SHMIF_SIGVID){
 		if (priv->log_event){
-			fprintf(stderr, "SIGVID (block: %d region: %zu,%zu-%zu,%zu)\n",
+			fprintf(stderr, "%lld: SIGVID (block: %d region: %zu,%zu-%zu,%zu)\n",
+				arcan_timemillis(),
 				(mask & SHMIF_SIGBLK_NONE) ? 0 : 1,
 				(size_t)ctx->dirty.x1, (size_t)ctx->dirty.y1,
 				(size_t)ctx->dirty.x2, (size_t)ctx->dirty.y2

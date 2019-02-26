@@ -804,7 +804,11 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 		if (ctx->rtgt_cur){
 /* IF the rendertarget is double-buffered, swap the buffers and get the ID of
  * the last FRONT. IF we have double- rendertargets, swap the destination */
-			tex_id = agp_rendertarget_swap(ctx->rtgt_cur);
+			bool swap;
+			tex_id = agp_rendertarget_swap(ctx->rtgt_cur, &swap);
+			if (!swap)
+				return 0;
+
 			if (ctx->rtgt_b)
 				ctx->rtgt_cur = ctx->rtgt_cur==ctx->rtgt_a ? ctx->rtgt_b : ctx->rtgt_a;
 		}

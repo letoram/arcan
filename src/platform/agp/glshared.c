@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2017, Björn Ståhl
+ * Copyright 2014-2019, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -45,6 +45,33 @@ GLuint st_last_fbo;
 	#define BIND_FRAMEBUFFER(X) env->bind_framebuffer(GL_FRAMEBUFFER, (X))
 #endif
 
+/*
+ * Typically 3 or 1 used:
+ *
+ *  - front (being presented somewhere)
+ *  - pending (scheduled to be presented)
+ *  - back (being drawn to)
+ *
+ * These affect any dirty target management, as any dirty changes need to apply
+ * to all 3. A more subtle thing would be that the image_sharestorage would get
+ * out of synch. The path that would provoke it:
+ *
+ *  1. create vobj
+ *  2. create rendertarget, output to vobj
+ *  3. map vobj to display or arcan_lwa outgoing (now next swap we have 3)
+ *  4. create vobj2
+ *  5. share vobj1 storage with vobj2
+ *
+ * there aren't many sane options to dealing with this case that wouldn't take
+ * expanding the vstore to track external references and manipulate them.
+ *
+ * The solution, for now, was to add another level of indirection, and have
+ * a resolve function for the GLID when it is actually used, which is mostly
+ * within AGP. This still won't fix other indirect bindings, i.e. being used
+ * for slices in a 3D texture or a cubemap.
+ */
+#define MAX_BUFFERS 4
+
 struct agp_rendertarget
 {
 	GLuint fbo;
@@ -59,16 +86,62 @@ struct agp_rendertarget
 	enum rendertarget_mode mode;
 	struct agp_vstore* store;
 
-	bool front_active;
-	struct agp_vstore* store_back;
+/* used for multi-buffering mode */
+	size_t n_stores;
+	size_t dirtyc;
+	size_t store_ind;
+	struct agp_vstore* stores[MAX_BUFFERS];
+	struct agp_vstore* shadow[MAX_BUFFERS];
 };
 
-unsigned agp_rendertarget_swap(struct agp_rendertarget* dst)
+static void erase_store(struct agp_vstore* os)
+{
+	if (!os)
+		return;
+
+	agp_null_vstore(os);
+	arcan_mem_free(os->vinf.text.raw);
+	os->vinf.text.raw = NULL;
+	os->vinf.text.s_raw = 0;
+}
+
+/*
+ * build alternate stores for rendertarget swapping
+ */
+static void setup_stores(struct agp_rendertarget* dst)
+{
+/* need this tracking because there's no external memory management for _back */
+	dst->n_stores = MAX_BUFFERS;
+	dst->stores[0] = dst->store;
+	dst->store_ind = 0;
+	dst->dirtyc = 3;
+
+/* build the current ones based on the reference store properties */
+	for (size_t i = 1; i < MAX_BUFFERS; i++){
+		dst->stores[i] = arcan_alloc_mem(sizeof(struct agp_vstore),
+			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+		dst->stores[i]->vinf.text.s_fmt = dst->store->vinf.text.s_fmt;
+		dst->stores[i]->vinf.text.d_fmt = dst->store->vinf.text.d_fmt;
+		agp_empty_vstore(dst->stores[i], dst->store->w, dst->store->h);
+	}
+
+/* with special handling for the first slot, used to reference the original */
+	dst->stores[0] = arcan_alloc_mem(sizeof(struct agp_vstore),
+		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+	dst->stores[0]->vinf = dst->store->vinf;
+}
+
+uint64_t agp_rendertarget_swap(struct agp_rendertarget* dst, bool* swap)
 {
 	struct agp_fenv* env = agp_env();
+	if (!dst || !dst->store){
+		*swap = false;
+		return 0;
+	}
 
-	if (!dst || !dst->store || !dst->store_back){
-		return dst->store ? dst->store->vinf.text.glid : 0;
+/* multi-buffer setup */
+	if (!dst->n_stores){
+		setup_stores(dst);
 	}
 
 	GLint cfbo;
@@ -83,25 +156,36 @@ unsigned agp_rendertarget_swap(struct agp_rendertarget* dst)
 	if (dst->fbo != cfbo)
 		BIND_FRAMEBUFFER(dst->fbo);
 
-/* we return the one that was used up to this point */
-	int rid = dst->front_active ?
-		(dst->store_back->vinf.text.glid) :
-		(dst->store->vinf.text.glid);
+	int old_front = dst->store_ind;
+	int front = dst->store_ind = (dst->store_ind + 1) % MAX_BUFFERS;
 
-/* and attach the one that was not used */
-	int did = dst->front_active ?
-		(dst->store->vinf.text.glid) :
-		(dst->store_back->vinf.text.glid);
-
-	dst->front_active = !dst->front_active;
+/* attach new front, update alias */
 	env->framebuffer_texture_2d(GL_FRAMEBUFFER,
-		GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,did, 0);
+		GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dst->stores[front]->vinf.text.glid, 0);
+	dst->store->vinf.text.glid_proxy = &dst->stores[front]->vinf.text.glid;
 
 /* and switch back to the old rendertarget */
 	if (dst->fbo != cfbo)
 		BIND_FRAMEBUFFER(cfbo);
 
-	return rid;
+	if (dst->dirtyc > 0){
+		dst->dirtyc--;
+		FLAG_DIRTY();
+		if (!dst->dirtyc){
+			for (size_t i = 0; i < MAX_BUFFERS; i++){
+				if (!dst->shadow[i])
+					continue;
+				erase_store(dst->shadow[i]);
+				arcan_mem_free(dst->shadow[i]);
+				dst->shadow[i] = NULL;
+			}
+		}
+		*swap = false;
+	}
+	else
+		*swap = true;
+
+	return dst->stores[old_front]->vinf.text.glid;
 }
 
 static void drop_msaa(struct agp_rendertarget* dst)
@@ -254,9 +338,9 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 		}
 
 		if (dst->fbo != GL_NONE)
-			env->delete_framebuffers(1,&dst->fbo);
+			env->delete_framebuffers(1, &dst->fbo);
 		if (dst->depth != GL_NONE)
-			env->delete_renderbuffers(1,&dst->depth);
+			env->delete_renderbuffers(1, &dst->depth);
 
 		dst->fbo = dst->depth = GL_NONE;
 		return false;
@@ -523,20 +607,6 @@ struct agp_rendertarget* agp_setup_rendertarget(
 	r->mode = m;
 	r->clearcol[3] = 1.0;
 
-/* need this tracking because there's no external memory management for _back */
-	r->front_active = true;
-
-	if (m & RENDERTARGET_DOUBLEBUFFER){
-		r->store_back = arcan_alloc_mem(sizeof(struct agp_vstore),
-			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-		r->store_back->vinf.text.s_fmt = vstore->vinf.text.s_fmt;
-		r->store_back->vinf.text.d_fmt = vstore->vinf.text.d_fmt;
-		if (vstore->txmapped == TXSTATE_CUBE)
-			agp_slice_vstore(r->store_back, 6, vstore->w, TXSTATE_CUBE);
-		else
-			agp_empty_vstore(r->store_back, vstore->w, vstore->h);
-	}
-
 	alloc_fbo(r, false);
 	return r;
 }
@@ -630,6 +700,19 @@ void agp_drop_rendertarget(struct agp_rendertarget* tgt)
 	tgt->fbo = GL_NONE;
 	tgt->depth = GL_NONE;
 
+/*
+ * a special detail here is that we can't also be paranoid and null the active
+ * vstores as they might be used externally, any changes to them would break
+ * upstream (though that might be desire)
+ */
+	if (tgt->n_stores){
+		for (size_t i = 1; i < tgt->n_stores; i++){
+			agp_drop_vstore(tgt->stores[i]);
+		}
+		tgt->n_stores = 0;
+		tgt->store->vinf.text.glid_proxy = NULL;
+	}
+
 	if (tgt->msaa_fbo != GL_NONE){
 		drop_msaa(tgt);
 	}
@@ -718,17 +801,7 @@ void agp_null_vstore(struct agp_vstore* store)
 
 	agp_env()->delete_textures(1, &store->vinf.text.glid);
 	store->vinf.text.glid = GL_NONE;
-}
-
-static void erase_store(struct agp_vstore* os)
-{
-	if (!os)
-		return;
-
-	agp_null_vstore(os);
-	arcan_mem_free(os->vinf.text.raw);
-	os->vinf.text.raw = NULL;
-	os->vinf.text.s_raw = 0;
+	store->vinf.text.glid_proxy = NULL;
 }
 
 void agp_resize_rendertarget(
@@ -743,20 +816,39 @@ void agp_resize_rendertarget(
 	if (tgt->store->w == neww && tgt->store->h == newh)
 		return;
 
-	erase_store(tgt->store);
-	erase_store(tgt->store_back);
-
 	struct agp_fenv* env = agp_env();
 
-	agp_empty_vstore(tgt->store, neww, newh);
-	if (tgt->store_back)
-		agp_empty_vstore(tgt->store_back, neww, newh);
+/*
+ * If the rendertarget is using multi-buffered (direct- to display
+ * scanout, shared to other processes and so on) we can't actually
+ * resize the current stores right away.
+ *
+ * Thus we move them to a 'shadow store' that gets flushed out as
+ * we swap, with possible visual corruption should we get OOM at
+ * hat point.
+ */
+	tgt->store->w = neww;
+	tgt->store->h = newh;
+
+	if (tgt->n_stores){
+		for (size_t i = 1; i < tgt->n_stores; i++){
+			tgt->shadow[i] = tgt->stores[i];
+			tgt->stores[i] = NULL;
+		}
+		setup_stores(tgt);
+	}
+	else {
+		erase_store(tgt->store);
+		agp_empty_vstore(tgt->store, neww, newh);
+	}
 
 /* we inplace- modify, want the refcounter intact */
 	env->delete_framebuffers(1,&tgt->fbo);
 	env->delete_renderbuffers(1,&tgt->depth);
 	tgt->fbo = GL_NONE;
 	tgt->depth = GL_NONE;
+
+/* and also rebuild the containing fbo */
 	alloc_fbo(tgt, false);
 }
 
@@ -767,7 +859,7 @@ void agp_activate_vstore_multi(struct agp_vstore** backing, size_t n)
 
 	for (int i = 0; i < n && i < 99; i++){
 		env->active_texture(GL_TEXTURE0 + i);
-		env->bind_texture(GL_TEXTURE_2D, backing[i]->vinf.text.glid);
+		env->bind_texture(GL_TEXTURE_2D, agp_resolve_texid(backing[i]));
 		if (i < 10)
 			buf[6] = '0' + i;
 		else{
@@ -801,6 +893,7 @@ void agp_update_vstore(struct agp_vstore* s, bool copy)
 
 		env->bind_texture(GL_TEXTURE_2D, s->vinf.text.glid);
 	}
+	s->vinf.text.glid_proxy = NULL;
 
 	env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
 		s->txu == ARCAN_VTEX_REPEAT ? GL_REPEAT : GL_CLAMP_TO_EDGE);
@@ -1279,6 +1372,9 @@ void agp_invalidate_mesh(struct agp_mesh_store* bs)
 void agp_activate_vstore(struct agp_vstore* s)
 {
 	struct agp_fenv* env = agp_env();
+	if (s->txmapped == TXSTATE_OFF){
+		return;
+	}
 	if (s->txmapped == TXSTATE_CUBE){
 		env->last_store_mode = GL_TEXTURE_CUBE_MAP;
 	}
@@ -1289,7 +1385,7 @@ void agp_activate_vstore(struct agp_vstore* s)
 		env->last_store_mode = GL_TEXTURE_2D;
 	}
 
-	agp_env()->bind_texture(env->last_store_mode, s->vinf.text.glid);
+	env->bind_texture(env->last_store_mode, agp_resolve_texid(s));
 }
 
 void agp_deactivate_vstore()
@@ -1352,4 +1448,12 @@ void agp_save_output(size_t w, size_t h, av_pixel* dst, size_t dsz)
 	assert(w * h * sizeof(av_pixel) == dsz);
 
 	env->read_pixels(0, 0, w, h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dst);
+}
+
+unsigned agp_resolve_texid(struct agp_vstore* vs)
+{
+	if (vs->vinf.text.glid_proxy)
+		return *vs->vinf.text.glid_proxy;
+	else
+		return vs->vinf.text.glid;
 }
