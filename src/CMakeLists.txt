@@ -52,9 +52,12 @@ set(PLATFORM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/platform)
 set(ENGINE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 
 if (BUILD_PRESET STREQUAL "everything")
-	set(VIDEO_PLATFORM "egl-dri")
-	set(HYBRID_SDL ON)
-	set(HYBRID_HEADLESS ON)
+	if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	else()
+		set(VIDEO_PLATFORM "egl-dri")
+		set(HYBRID_SDL ON)
+		set(HYBRID_HEADLESS ON)
+	endif()
 endif()
 
 # distributions packaging a build should tag this accordingly so we
@@ -128,10 +131,8 @@ option(ENABLE_LWA "Build LWA client (arcan-in-arcan)" ON)
 option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
 option(ENABLE_SIMD_ALIGNED "Assert that SIMD data sources are 16-byte aligned" OFF)
 
-if (VIDEO_PLATFORM STREQUAL "egl-dri")
-	option(HYBRID_SDL "Produce an arcan_sdl main binary as well" OFF)
-	option(HYBRID_HEADLESS "Produce a headless binary as well" OFF)
-endif()
+option(HYBRID_SDL "Produce an arcan_sdl main binary as well" OFF)
+option(HYBRID_HEADLESS "Produce a headless binary as well" OFF)
 
 amsg("")
 amsg("${CL_WHT}Build Presets:")
@@ -809,7 +810,7 @@ endif()
 # for the correct ruby version
 #
 if (APIMAN_DEST AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../doc/mantmp)
-	amsg("${CL_YEL}manpages\t${CL_GRN}mantmp found")
+	amsg("${CL_YEL}API- manpages\t${CL_GRN}mantmp found")
 	file(GLOB MANTMP ${CMAKE_CURRENT_SOURCE_DIR}/../doc/mantmp/*.3)
 	install(FILES
 		${MANTMP}
@@ -817,7 +818,7 @@ if (APIMAN_DEST AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../doc/mantmp)
 		PERMISSIONS ${SHARED_PERMISSIONS}
 	)
 else()
-	amsg("${CL_YEL}manpages\t${CL_RED}no mantmp, run ruby docgen.rb in arcan/doc${CL_RST}")
+	amsg("${CL_YEL}API- manpages\t${CL_RED}no mantmp, run ruby docgen.rb in arcan/doc${CL_RST}")
 endif()
 amsg("${CL_RST}")
 
