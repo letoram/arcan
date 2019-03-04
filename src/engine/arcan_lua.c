@@ -4760,6 +4760,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblstr(ctx, "kind", "content_state", top);
 			tblnum(ctx, "rel_x", (float)ev->ext.content.x_pos, top);
 			tblnum(ctx, "rel_y", (float)ev->ext.content.y_pos, top);
+			tblnum(ctx, "wnd_w", (float)ev->ext.content.width, top);
+			tblnum(ctx, "wnd_h", (float)ev->ext.content.height, top);
 			tblnum(ctx, "x_size", (float)ev->ext.content.x_sz, top);
 			tblnum(ctx, "y_size", (float)ev->ext.content.y_sz, top);
 		break;

@@ -1423,10 +1423,13 @@ enum ARCAN_TARGET_SKIPMODE {
  * is therefore in the range 0.00 <= n <= 1.0
  * (x,y_pos) - < 0.000, disable, +x_sz > 1.0 invalid (bad value)
  * (x,y_sz ) - < 0.000, invalid, > 1.0 invalid
+ * width, height is an estimate as to the relative size of the window
+ * (x_pos + width <= 1.0, y_pos + height <= 1.0)
  */
 		struct {
 			float x_pos, x_sz;
 			float y_pos, y_sz;
+			float width, height;
 		} content;
 
 /*

@@ -98,8 +98,9 @@
 -- rel_x, rel_y, anchor_w, anchor_h, edge, border[tldr]), parent) -
 -- indicate relative anchoring, positioning, view and focus metdata
 --
--- @note: "content_state" {rel_x, rel_y, x_size, y_size} - indicates that
--- scrollbars could/should be shown
+-- @note: "content_state" {rel_x, rel_y, wnd_w, wnd_h, x_size, y_size} -
+-- indicates that scrollbars could/should be shown, possibly mapped to
+-- target_seek calls. value ranges are 0..1.
 --
 -- @note: "input_label" {labelhint, datatype, initial, modifiers} -
 -- suggest that the target supports customized abstract input labels for use
