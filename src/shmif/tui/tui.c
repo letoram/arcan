@@ -1059,8 +1059,6 @@ static bool move_up(struct tui_context* tui)
 		return true;
 	}
  else */
-	if (tui->handlers.input_label)
-		return tui->handlers.input_label(tui, "UP", NULL, tui->handlers.tag);
 
 	return false;
 }
@@ -1084,9 +1082,6 @@ static bool move_down(struct tui_context* tui)
 	}
 	else
 */
-	if (tui->handlers.input_label)
-		return tui->handlers.input_label(tui, "DOWN", NULL, tui->handlers.tag);
-
 	return false;
 }
 
@@ -1376,9 +1371,13 @@ static bool consume_label(struct tui_context* tui,
 {
 	const struct lent* cur = labels;
 
+/* priority to our normal label handlers, and if those fail, forward */
 	while(cur->lbl){
 		if (strcmp(label, cur->lbl) == 0){
-			return cur->ptr(tui);
+			if (cur->ptr(tui))
+				return true;
+			else
+				break;
 		}
 		cur++;
 	}
@@ -1386,7 +1385,10 @@ static bool consume_label(struct tui_context* tui,
 	bool res = false;
 	if (tui->handlers.input_label){
 		res |= tui->handlers.input_label(tui, label, true, tui->handlers.tag);
-		res |= tui->handlers.input_label(tui, label, false, tui->handlers.tag);
+
+/* also send release if the forward was ok */
+		if (res)
+			tui->handlers.input_label(tui, label, false, tui->handlers.tag);
 	}
 
 	return res;
@@ -1428,6 +1430,9 @@ static void ioev_ctxtbl(struct tui_context* tui,
 		int sym = ioev->input.translated.keysym;
 		int oldm = tui->modifiers;
 		tui->modifiers = update_mods(tui->modifiers, sym, pressed);
+
+/* note that after this point we always fake 'release' and forward as a
+ * press->release on the same label within consume label */
 		if (!pressed)
 			return;
 
