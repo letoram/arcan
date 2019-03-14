@@ -1201,8 +1201,8 @@ struct tui_cell arcan_tui_getxy(
 		return (struct tui_cell){};
 
 	return fl ?
-		tui->front[y * tui->rows + x] :
-		tui->back[y * tui->rows + x];
+		tui->front[y * tui->cols + x] :
+		tui->back[y * tui->cols + x];
 }
 
 static bool select_at(struct tui_context* tui)
