@@ -850,7 +850,7 @@ static FT_Error Find_Glyph(
 	return retval;
 }
 
-static TTF_Font* Find_Glyph_fb(
+TTF_Font* TTF_FindGlyph(
 	TTF_Font** fonts, int n, uint32_t ch, int want, bool by_ind)
 {
 	for (size_t i = 0; i < n; i++){
@@ -1007,11 +1007,6 @@ char *TTF_FontFaceStyleName(const TTF_Font *font)
 }
 
 /*
-int TTF_GlyphIsProvided(const TTF_Font *font, uint32_t ch)
-{
-  return(FT_Get_Char_Index(font->face, ch));
-}
-
 int TTF_GlyphMetrics(TTF_Font *font, uint32_t ch,
                      int* minx, int* maxx, int* miny, int* maxy, int* advance)
 {
@@ -1133,7 +1128,7 @@ int TTF_SizeUNICODEchain(TTF_Font **font, size_t n,
 /* we ignore BOMs here as we've gone from UTF8 to native
  * and stripped away other paths */
 		uint32_t c = *ch;
-		TTF_Font* outf = Find_Glyph_fb(font, n, c, CACHED_METRICS, false);
+		TTF_Font* outf = TTF_FindGlyph(font, n, c, CACHED_METRICS, false);
 		if (!outf)
 			continue;
 		glyph = outf->current;
@@ -1504,7 +1499,7 @@ bool TTF_RenderUNICODEindex(PIXEL* dst,
 	bool usebg, bool use_kerning, int style,
 	int* advance, unsigned* prev_index)
 {
-	TTF_Font* outf = Find_Glyph_fb(font,
+	TTF_Font* outf = TTF_FindGlyph(font,
 		n, ch, CACHED_METRICS | CACHED_PIXMAP, true);
 	if (!outf)
 		return false;
@@ -1520,7 +1515,7 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
 	bool usebg, bool use_kerning, int style,
 	int* advance, unsigned* prev_index)
 {
-	TTF_Font* outf = Find_Glyph_fb(font,
+	TTF_Font* outf = TTF_FindGlyph(font,
 		n, ch, CACHED_METRICS|CACHED_PIXMAP, false);
 	if (!outf)
 		return false;

@@ -977,6 +977,14 @@ void arcan_tui_scroll_up(struct tui_context*, size_t);
 void arcan_tui_scroll_down(struct tui_context*, size_t);
 
 /*
+ * Determine of the specific UC4 unicode codepoint can be drawn with the
+ * current settings or not. This may be a costly operation and can generate
+ * false positives (but true negatives), the primary intended use is for 'icon'
+ * and box-drawing like operations with simple ascii fallbacks.
+ */
+bool arcan_tui_hasglyph(struct tui_context*, uint32_t);
+
+/*
  * remove the tabstop at the current position
  */
 void arcan_tui_reset_tabstop(struct tui_context*);

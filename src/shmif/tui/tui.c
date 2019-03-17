@@ -3285,6 +3285,24 @@ bool arcan_tui_writeu8(struct tui_context* c,
 	return true;
 }
 
+bool arcan_tui_hasglyph(struct tui_context* c, uint32_t cp)
+{
+	if (
+#ifndef SIMPLE_RENDERING
+			c->force_bitmap || !c->font[0]
+#else
+			1
+#endif
+	){
+		return has_ch_u32(c->font_bitmap, cp);
+	}
+
+#ifndef SIMPLE_RENDERING
+	return TTF_FindGlyph(
+		c->font, c->font[1] ? 2 : 1, cp, 0, false);
+#endif
+}
+
 bool arcan_tui_writestr(struct tui_context* c,
 	const char* str, struct tui_screen_attr* attr)
 {

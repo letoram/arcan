@@ -307,6 +307,16 @@ static struct tui_font_ctx* tui_draw_init(size_t lim)
 	return res;
 }
 
+static bool has_ch_u32(struct tui_font_ctx* ctx, uint32_t cp)
+{
+	if (!ctx->active_font)
+		return false;
+
+	struct glyph_ent* gent;
+	HASH_FIND_INT(ctx->active_font->ht, &cp, gent);
+	return gent != NULL;
+}
+
 static void draw_ch_u32(struct tui_font_ctx* ctx,
 	struct arcan_shmif_cont* c, uint32_t cp,
 	int x, int y, shmif_pixel fg, shmif_pixel bg,
