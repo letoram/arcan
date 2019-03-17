@@ -2995,7 +2995,7 @@ static void set_builtin_palette(struct tui_context* ctx)
 	ctx->colors[TUI_COL_PRIMARY] = (struct color){0x13, 0x13, 0x13};
 	ctx->colors[TUI_COL_SECONDARY] = (struct color){0x42, 0x40, 0x3b};
 	ctx->colors[TUI_COL_TEXT] = (struct color){0xff, 0xff, 0xff};
-	ctx->colors[TUI_COL_LABEL] = (struct color){0x44, 0x44, 0x44};
+	ctx->colors[TUI_COL_LABEL] = (struct color){0xff, 0xff, 0x00};
 	ctx->colors[TUI_COL_WARNING] = (struct color){0xaa, 0xaa, 0x00};
 	ctx->colors[TUI_COL_ERROR] = (struct color){0xaa, 0x00, 0x00};
 	ctx->colors[TUI_COL_ALERT] = (struct color){0xaa, 0x00, 0xaa};
