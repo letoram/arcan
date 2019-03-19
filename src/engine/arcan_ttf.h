@@ -125,7 +125,8 @@ char* TTF_FontFaceFamilyName(const TTF_Font *font);
 char* TTF_FontFaceStyleName(const TTF_Font *font);
 
 /* Check wether a glyph is provided by the font or not */
-int TTF_GlyphIsProvided(const TTF_Font *font, uint16_t ch);
+TTF_Font* TTF_FindGlyph(
+	TTF_Font** fonts, int n, uint32_t ch, int want, bool by_ind);
 
 /* Get the metrics (dimensions) of a glyph
  * To understand what these metrics mean, here is a useful link:
