@@ -131,6 +131,7 @@ set(SHMIF_TUI_SOURCES
 	${ASD}/shmif/tui/tui.c
 	${ASD}/shmif/tui/tui_copywnd.c
 	${ASD}/shmif/tui/tui_bufferwnd.c
+	${ASD}/shmif/tui/tui_listwnd.c
 	${ASD}/shmif/tui/tui_draw.h
 	${ASD}/shmif/tui/tsm_screen.c
 	${ASD}/shmif/tui/tsm_unicode.c
