@@ -619,6 +619,7 @@ checkfd:
 			case TARGET_COMMAND_BUFFER_FAIL:
 /* we can't call bufferfail immediately from here as that would pull in a
  * dependency to shmifext which in turn pulls in GL libraries and so on. */
+				debug_print(INFO, c, "buffer-fail, accelerated handle passing rejected");
 				c->privext->state_fl = STATE_NOACCEL;
 				goto reset;
 			break;
