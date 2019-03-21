@@ -46,6 +46,21 @@ typedef void (EGLAPIENTRY* PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)(GLenum target, G
 static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
 #endif
 
+#ifdef _DEBUG
+#define DEBUG 1
+#else
+#define DEBUG 0
+#endif
+
+#define debug_print(fmt, ...) \
+            do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
+						arcan_timemillis(), "platform-arcan:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+
+#define verbose_print debug_print
+#ifndef verbose_print
+#define verbose_print
+#endif
+
 static char* input_envopts[] = {
 	NULL
 };
@@ -126,9 +141,14 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		disp[i].nopass = in_config("video_no_fdpass", 0, NULL, config_tag);
 	}
 
+/* respect the command line provided dimensions if set, otherwise just
+ * go with whatever defaults we get from the activate- phase */
+	int flags = 0;
+	if (width > 32 && height > 32)
+		flags |= SHMIF_NOACTIVATE_RESIZE;
+
 	struct arg_arr* shmarg;
-	disp[0].conn = arcan_shmif_open_ext(
-		SHMIF_NOACTIVATE_RESIZE, &shmarg, (struct shmif_open_ext){
+	disp[0].conn = arcan_shmif_open_ext(flags, &shmarg, (struct shmif_open_ext){
 		.type = SEGID_LWA, .title = title,}, sizeof(struct shmif_open_ext)
 	);
 
@@ -208,7 +228,9 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		eglGetProcAddress("glEGLImageTargetTexture2DOES");
 #endif
 
-/* we provide our own cursor that is blended in the output */
+/* we provide our own cursor that is blended in the output, this might change
+ * when we allow map_ as layers, then we treat those as subsegments and
+ * viewport */
 	arcan_shmif_enqueue(&disp[0].conn, &(struct arcan_event){
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(CURSORHINT),
@@ -332,20 +354,23 @@ static struct monitor_mode* get_platform_mode(platform_mode_id mode)
 bool platform_video_specify_mode(platform_display_id id,
 	struct monitor_mode mode)
 {
-	if (!(id < MAX_DISPLAYS && disp[id].conn.addr))
+	if (!(id < MAX_DISPLAYS && disp[id].conn.addr)){
+		verbose_print("rejected bad id/connection (%d)", (int) id);
 		return false;
-
-	return false;
+	}
 
 	primary_udata.resize_pending = 1;
 
-	if (!mode.width || !mode.height ||
-		(mode.height == disp[id].conn.w && mode.height == disp[id].conn.h) ||
-		!arcan_shmif_lock(&disp[id].conn)){
+/* audio rejects */
+	if (!arcan_shmif_lock(&disp[id].conn)){
 		return false;
 	}
 
 	bool rz = arcan_shmif_resize(&disp[id].conn, mode.width, mode.height);
+	if (!rz){
+		verbose_print("display "
+			"id rejected resize (%d) => %zu*%zu",(int)id, mode.width, mode.height);
+	}
 
 	arcan_shmif_unlock(&disp[id].conn);
 	primary_udata.resize_pending = 0;
@@ -372,6 +397,8 @@ bool platform_video_set_mode(platform_display_id id, platform_mode_id newmode)
 	if (!mode)
 		return false;
 
+	verbose_print("set mode on (%d) to %zu*%zu",
+		(int) id, mode->width, mode->height);
 	return platform_video_specify_mode(id, *mode);
 }
 
@@ -578,6 +605,17 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	if (pre)
 		pre();
 
+/* first frame, fake rendertarget_swap so the first frame doesn't get
+ * lost into the vstore that doesn't get hidden buffers, for the rest
+* display mapped rendertargets case we can do that on-map */
+	static bool got_frame;
+	if (!got_frame){
+		bool swap;
+		got_frame = true;
+		verbose_print("first-frame swap");
+		agp_rendertarget_swap(arcan_vint_worldrt(), &swap);
+	}
+
 	static size_t last_nupd;
 	size_t nupd;
 	size_t left = 0;
@@ -589,8 +627,9 @@ void platform_video_synch(uint64_t tick_count, float fract,
 /* nothing to do, yield with the timestep the conductor prefers (fake 60hz
  * now until the shmif_deadline communication is more robust) */
 	if (!nupd && !last_nupd){
-		glFlush();
+		glFinish();
 		left = cost > 16 ? 0 : 16 - cost;
+		verbose_print("skip frame");
 		goto pollout;
 	}
 	last_nupd = nupd;
@@ -621,30 +660,44 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * state, which would be needed for server-side text anyhow
  */
 		struct rendertarget* rtgt = arcan_vint_findrt_vstore(disp[i].vstore);
-
-		if (disp[i].nopass || (disp[i].vstore && !rtgt))
+		if (disp[i].nopass || (disp[i].vstore && !rtgt)){
+			verbose_print("force-disable readback pass");
 			synch_copy(&disp[i],
 				disp[i].vstore ? disp[i].vstore : arcan_vint_world());
-
+		}
 		else if (disp[i].vstore){
 /* there are conditions where could go with synch- handle + passing, but
  * with streaming sources we have no reliable way of knowing if its safe */
-			if (!rtgt)
+			if (!rtgt){
+				verbose_print("synch-copy non-rt source");
 				synch_copy(&disp[i], disp[i].vstore);
+			}
 			else {
 				bool swap;
 				unsigned col = agp_rendertarget_swap(rtgt->art, &swap);
-				if (swap)
+				if (swap){
+					verbose_print("rendertarget signal: %u, pending: %d",
+						col, arcan_shmif_signalstatus(&disp[i].conn));
 					arcan_shmifext_signal(
 						&disp[i].conn, 0, SHMIF_SIGVID | SHMIF_SIGBLK_NONE, col);
+				}
+				else{
+					verbose_print("rendertarget-no-swap");
+				}
 			}
 		}
 		else {
 			bool swap;
 			unsigned col = agp_rendertarget_swap(arcan_vint_worldrt(), &swap);
-			if (swap)
+			if (swap){
+				verbose_print("rendertarget signal world-rt: %u, pending: %d",
+					col, arcan_shmif_signalstatus(&disp[i].conn));
 				arcan_shmifext_signal(
 					&disp[i].conn, 0, SHMIF_SIGVID | SHMIF_SIGBLK_NONE, col);
+			}
+			else {
+				verbose_print("world-rt-no-swap");
+			}
 		}
 	}
 

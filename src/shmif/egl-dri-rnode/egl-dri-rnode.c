@@ -1,5 +1,5 @@
 /*
- * Copyright 2016, Björn Ståhl
+ * Copyright 2016-2019, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description: egl-dri specific render-node based backend support
@@ -66,14 +66,15 @@ static PFNEGLGETPLATFORMDISPLAYEXTPROC get_platform_display;
 
 struct shmif_ext_hidden_int {
 	struct gbm_device* dev;
-	struct agp_rendertarget* rtgt_a, (* rtgt_b), (* rtgt_cur);
+	struct agp_rendertarget* rtgt;
+	struct agp_vstore buf;
 
-/* with the gbm- buffer passing, we pretty much need double-buf */
-	struct agp_vstore buf_a, buf_b, (* buf_cur);
-	bool swap;
-
-	EGLImage image;
-	int dmabuf;
+/* we buffer- queue the cleanup of these images (rtgt is already swapchain) */
+	struct {
+		EGLImage image;
+		int dmabuf;
+	} images[3];
+	size_t image_index;
 
 /* need to account for multiple contexts being created on the same setup */
 	uint64_t ctx_alloc;
@@ -125,6 +126,18 @@ static void zap_vstore(struct agp_vstore* vstore)
 	vstore->vinf.text.s_raw = 0;
 }
 
+static void free_image_index(
+	EGLDisplay* dpy, struct shmif_ext_hidden_int* in, size_t i)
+{
+	if (!in->images[i].image)
+		return;
+
+	destroy_image(dpy, in->images[i].image);
+	in->images[i].image = NULL;
+	close(in->images[i].dmabuf);
+	in->images[i].dmabuf = -1;
+}
+
 static void gbm_drop(struct arcan_shmif_cont* con)
 {
 	if (!con->privext->internal)
@@ -134,18 +147,13 @@ static void gbm_drop(struct arcan_shmif_cont* con)
 
 	if (in->dev){
 /* this will actually free the gbm- resources as well */
-		if (in->rtgt_cur){
-			agp_drop_rendertarget(in->rtgt_a);
-			agp_drop_rendertarget(in->rtgt_b);
-			agp_drop_vstore(&in->buf_a);
-			agp_drop_vstore(&in->buf_b);
-			zap_vstore(&in->buf_a);
-			zap_vstore(&in->buf_b);
-			in->rtgt_cur;
+		if (in->rtgt){
+			agp_drop_rendertarget(in->rtgt);
 		}
-		if (in->image){
-			destroy_image(in->display, in->image);
+		for (size_t i = 0; i < COUNT_OF(in->images); i++){
+			free_image_index(in->display, in, i);
 		}
+/* are we managing the context or is the user providing his own? */
 		if (in->managed){
 			eglMakeCurrent(in->display,
 				EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -154,11 +162,6 @@ static void gbm_drop(struct arcan_shmif_cont* con)
 			eglTerminate(in->display);
 		}
 		in->dev = NULL;
-	}
-
-	if (-1 != in->dmabuf){
-		close(in->dmabuf);
-		in->dmabuf = -1;
 	}
 
 	free(con->privext->internal);
@@ -179,7 +182,7 @@ struct arcan_shmifext_setup arcan_shmifext_defaults(
 		.red = 1, .green = 1, .blue = 1,
 		.alpha = 1, .depth = 16,
 		.api = API_OPENGL,
-		.builtin_fbo = 2,
+		.builtin_fbo = 1,
 		.major = 2, .minor = 1,
 		.shared_context = 0
 	};
@@ -411,40 +414,19 @@ enum shmifext_setup_status arcan_shmifext_setup(
 
 	arcan_shmifext_swap_context(con, ind);
 	ctx->surface = EGL_NO_SURFACE;
-
 	active_context = con;
 
-	if (arg.builtin_fbo || arg.vidp_pack){
-		agp_empty_vstore(&ctx->buf_a, con->w, con->h);
-		agp_empty_vstore(&ctx->buf_b, con->w, con->h);
-		ctx->buf_cur = &ctx->buf_a;
-
-/*
- * mode 3 : 1 FBO, swap attachments.
- * mode 2 : 2 FBOs, swap active.
- */
-		if (arg.builtin_fbo){
-			ctx->swap = arg.builtin_fbo == 3;
-
-			ctx->rtgt_a = agp_setup_rendertarget(
-				ctx->buf_cur, (arg.depth > 0 ?
-					RENDERTARGET_COLOR_DEPTH_STENCIL : RENDERTARGET_COLOR) |
-					(ctx->swap ? RENDERTARGET_DOUBLEBUFFER : 0)
-			);
-			if (arg.builtin_fbo == 2){
-				ctx->rtgt_b = agp_setup_rendertarget(
-					ctx->buf_cur, arg.depth > 0 ?
-						RENDERTARGET_COLOR_DEPTH_STENCIL : RENDERTARGET_COLOR
-				);
-			}
-			ctx->rtgt_cur = ctx->rtgt_a;
-			agp_activate_rendertarget(ctx->rtgt_cur);
-		}
-
-		if (arg.vidp_pack){
-			ctx->buf_a.vinf.text.s_fmt =
-				ctx->buf_b.vinf.text.s_fmt = arg.vidp_infmt;
-		}
+/* the built-in render targets act as a framebuffer object container that can
+ * also mutate into having a swapchain, with DOUBLEBUFFER that happens
+ * immediately */
+	if (arg.builtin_fbo){
+		ctx->buf = (struct agp_vstore){
+			.txmapped = TXSTATE_TEX2D,
+				.w = con->w,
+				.h = con->h
+		};
+		ctx->rtgt = agp_setup_rendertarget(&ctx->buf,
+			RENDERTARGET_DOUBLEBUFFER | RENDERTARGET_COLOR_DEPTH_STENCIL);
 	}
 
 	arcan_shmifext_make_current(con);
@@ -549,10 +531,10 @@ bool arcan_shmifext_gl_handles(struct arcan_shmif_cont* con,
 	uintptr_t* frame, uintptr_t* color, uintptr_t* depth)
 {
 	if (!con || !con->privext || !con->privext->internal ||
-		!con->privext->internal->display || !con->privext->internal->rtgt_cur)
+		!con->privext->internal->display || !con->privext->internal->rtgt)
 		return false;
 
-	agp_rendertarget_ids(con->privext->internal->rtgt_cur, frame, color, depth);
+	agp_rendertarget_ids(con->privext->internal->rtgt, frame, color, depth);
 	return true;
 }
 
@@ -609,7 +591,6 @@ bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 		}
 
 		memset(con->privext->internal, '\0', sizeof(struct shmif_ext_hidden_int));
-		con->privext->internal->dmabuf = -1;
 		con->privext->state_fl = STATE_NOACCEL * (getenv("ARCAN_VIDEO_NO_FDPASS") ? 1 : 0);
 		if (NULL == (con->privext->internal->dev = gbm_create_device(dfd))){
 			gbm_drop(con);
@@ -655,18 +636,12 @@ void arcan_shmifext_bind(struct arcan_shmif_cont* con)
 	if (active_context != con){
 		arcan_shmifext_make_current(con);
 	}
-/* for the vidp- as scratch, upload texture and send mode, the
- * resize is actually handled just prior to upload, not here */
-	else if (ctx->rtgt_cur){
-		if (ctx->buf_cur->w != con->w || ctx->buf_cur->h != con->h){
-			agp_activate_rendertarget(NULL);
 
-			agp_resize_rendertarget(ctx->rtgt_a, con->w, con->h);
-			if (ctx->rtgt_b)
-				agp_resize_rendertarget(ctx->rtgt_b, con->w, con->h);
-		}
-
-		agp_activate_rendertarget(ctx->rtgt_cur);
+/* with an internally managed rendertarget / swapchain, we try to resize on
+ * bind, this earlies out of the dimensions are already the same */
+	if (ctx->rtgt){
+		agp_resize_rendertarget(ctx->rtgt, con->w, con->h);
+		agp_activate_rendertarget(ctx->rtgt);
 	}
 }
 
@@ -699,35 +674,37 @@ bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
 	EGLDisplay* dpy = display == 0 ?
 		con->privext->internal->display : (EGLDisplay*) display;
 
-	if (ctx->image){
-		destroy_image(dpy, ctx->image);
-		close(ctx->dmabuf);
-		ctx->dmabuf = -1;
-	}
+/* step buffer, clean / free */
+	size_t next_i = (ctx->image_index + 1) % COUNT_OF(ctx->images);
+	free_image_index(dpy, ctx, next_i);
 
-	ctx->image = create_image(dpy, eglGetCurrentContext(),
+	EGLImage newimg = create_image(dpy, eglGetCurrentContext(),
 		EGL_GL_TEXTURE_2D_KHR, (EGLClientBuffer)(tex_id), NULL);
 
-	if (!ctx->image)
+	if (!newimg)
 		return false;
 
 	int fourcc, nplanes;
-	if (!query_image_format(dpy, ctx->image, &fourcc, &nplanes, NULL))
+	if (!query_image_format(dpy, newimg, &fourcc, &nplanes, NULL)){
+		destroy_image(dpy, newimg);
 		return false;
+	}
 
 /* currently unsupported */
 	if (nplanes != 1)
 		return false;
 
 	EGLint stride;
-	if (!export_dmabuf(dpy, ctx->image, dhandle, &stride, NULL)|| stride < 0){
-		destroy_image(dpy, ctx->image);
+	if (!export_dmabuf(dpy, newimg, dhandle, &stride, NULL)|| stride < 0){
+		destroy_image(dpy, newimg);
 		return false;
 	}
 
 	*dfmt = fourcc;
 	*dstride = stride;
-	ctx->dmabuf = *dhandle;
+	ctx->images[next_i].image = newimg;
+	ctx->images[next_i].dmabuf = *dhandle;
+	ctx->image_index = next_i;
 	return true;
 }
 
@@ -750,86 +727,27 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 	if (!dpy)
 		return -1;
 
+/* swap and forward the state of the builtin- rendertarget */
 	if (tex_id == SHMIFEXT_BUILTIN){
-		if (!ctx->managed)
-			return -1;
-
-		if (!ctx->rtgt_cur){
-			enum stream_type type = STREAM_RAW_DIRECT_SYNCHRONOUS;
-
-/* vidp- to texture upload, rather than FBO indirection, but only
- * if handle passing is still working */
-		if (con->privext->state_fl & STATE_NOACCEL)
-			goto fallback;
-
-/* mark this so the backing GLID / PBOs gets reallocated */
-			if (ctx->buf_cur->w != con->w || ctx->buf_cur->h != con->h)
-				type = STREAM_EXT_RESYNCH;
-
-/* bpp/format are set during the shmifext_setup */
-			ctx->buf_cur->w = con->w;
-			ctx->buf_cur->h = con->h;
-			ctx->buf_cur->vinf.text.raw = con->vidp;
-			ctx->buf_cur->vinf.text.stride = con->stride;
-			ctx->buf_cur->vinf.text.s_raw = con->w * con->h * sizeof(shmif_pixel);
-
-/* we ignore the dirty- updates here due to the double buffering */
-			struct stream_meta stream = {.buf = NULL};
-			stream.buf = con->vidp;
-			stream = agp_stream_prepare(ctx->buf_cur, stream, type);
-			agp_stream_commit(ctx->buf_cur, stream);
-			ctx->buf_cur->vinf.text.raw = NULL;
-			struct agp_fenv* env = agp_env();
-
-/* With MESA/amd, this seemed unavoidable or the extracted img won't be in a
- * synchronized state. Preferably we'd have another interface to do the texture
- * through */
-			env->flush();
-		}
-
-		tex_id = ctx->buf_cur->vinf.text.glid;
-
-/*
- * IF we don't have the extension for GBM- style buffer swapping, or the server
- * has told us that the handle we're receiving don't work - go with a readback
- * to vidp. Can happen with multiple incompatible GPUs.
- */
-	if ((con->privext->state_fl & STATE_NOACCEL) || !create_image)
-		goto fallback;
-
-/*
- * Swap active rendertarget (if one exists) or there's a possible data-race(?)
- * where server-side has the color attachment bound and drawing when we update
- */
-		if (ctx->rtgt_cur){
-/* IF the rendertarget is double-buffered, swap the buffers and get the ID of
- * the last FRONT. IF we have double- rendertargets, swap the destination */
-			bool swap;
-			tex_id = agp_rendertarget_swap(ctx->rtgt_cur, &swap);
-			if (!swap)
-				return 0;
-
-			if (ctx->rtgt_b)
-				ctx->rtgt_cur = ctx->rtgt_cur==ctx->rtgt_a ? ctx->rtgt_b : ctx->rtgt_a;
-		}
-		else
-			ctx->buf_cur = (ctx->buf_cur == &ctx->buf_a ? &ctx->buf_b : &ctx->buf_a);
+		bool swap;
+		tex_id = agp_rendertarget_swap(ctx->rtgt, &swap);
+		if (!swap)
+			return INT_MAX;
 	}
 
+/* begin extraction of the currently rendered-to buffer */
 	int fd, fourcc;
 	size_t stride;
-
-	if (!arcan_shmifext_gltex_handle(con, display, tex_id, &fd, &stride, &fourcc))
+	if (!arcan_shmifext_gltex_handle(
+		con, display, tex_id, &fd, &stride, &fourcc))
 		goto fallback;
 
 	unsigned res = arcan_shmif_signalhandle(con, mask, fd, stride, fourcc);
 
 	return res > INT_MAX ? INT_MAX : res;
 
-/*
- * this should really be switched to flipping PBOs, or even better,
- * somehow be able to mark/pin our output buffer for safe readback
- */
+/* handle-passing is disabled or broken, instead perform a manual readback into
+ * the shared memory segment and signal like a normal buffer */
 fallback:
 	if (1){
 		struct agp_vstore vstore = {
@@ -841,14 +759,7 @@ fallback:
 				.raw = (void*) con->vidp
 			},
 		};
-
-		if (ctx->rtgt_cur){
-			agp_activate_rendertarget(NULL);
-			agp_readback_synchronous(&vstore);
-			agp_activate_rendertarget(ctx->rtgt_cur);
-		}
-		else
-			agp_readback_synchronous(&vstore);
+		agp_readback_synchronous(&vstore);
 	}
 	res = arcan_shmif_signal(con, mask);
 	return res > INT_MAX ? INT_MAX : res;

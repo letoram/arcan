@@ -34,15 +34,33 @@
 #define GL_VERTEX_PROGRAM_POINT_SIZE GL_NONE
 #endif
 
+#ifdef _DEBUG
+#define DEBUG 1
+#else
+#define DEBUG 0
+#endif
+
+#define debug_print(fmt, ...) \
+            do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
+						arcan_timemillis(), "agp-glshared:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+
+#ifndef verbose_print
+#define verbose_print
+#endif
+
 /*
  * Workaround for missing GL_DRAW_FRAMEBUFFER_BINDING
  */
 #if defined(GLES2) || defined(GLES3)
-	#define BIND_FRAMEBUFFER(X) do { st_last_fbo = (X);\
+	GLuint st_last_fbo;
+	#define BIND_FRAMEBUFFER(X) do {\
+		verbose_print("bind fbo: %u", (unsigned)(X));\
+		st_last_fbo = (X);\
 		env->bind_framebuffer(GL_FRAMEBUFFER, (X)); } while(0)
-GLuint st_last_fbo;
 #else
-	#define BIND_FRAMEBUFFER(X) env->bind_framebuffer(GL_FRAMEBUFFER, (X))
+	#define BIND_FRAMEBUFFER(X) do {\
+		verbose_print("bind fbo: %u", (unsigned)(X));\
+		env->bind_framebuffer(GL_FRAMEBUFFER, (X)); } while(0)
 #endif
 
 /*
@@ -70,7 +88,7 @@ GLuint st_last_fbo;
  * within AGP. This still won't fix other indirect bindings, i.e. being used
  * for slices in a 3D texture or a cubemap.
  */
-#define MAX_BUFFERS 4
+#define MAX_BUFFERS 3
 
 struct agp_rendertarget
 {
@@ -87,6 +105,7 @@ struct agp_rendertarget
 	struct agp_vstore* store;
 
 /* used for multi-buffering mode */
+	bool rz_ack;
 	size_t n_stores;
 	size_t dirtyc;
 	size_t store_ind;
@@ -111,24 +130,18 @@ static void erase_store(struct agp_vstore* os)
 static void setup_stores(struct agp_rendertarget* dst)
 {
 /* need this tracking because there's no external memory management for _back */
-	dst->n_stores = MAX_BUFFERS;
-	dst->stores[0] = dst->store;
 	dst->store_ind = 0;
-	dst->dirtyc = 3;
+	dst->n_stores = MAX_BUFFERS;
+	dst->dirtyc = MAX_BUFFERS;
 
 /* build the current ones based on the reference store properties */
-	for (size_t i = 1; i < MAX_BUFFERS; i++){
+	for (size_t i = 0; i < MAX_BUFFERS; i++){
 		dst->stores[i] = arcan_alloc_mem(sizeof(struct agp_vstore),
 			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 		dst->stores[i]->vinf.text.s_fmt = dst->store->vinf.text.s_fmt;
 		dst->stores[i]->vinf.text.d_fmt = dst->store->vinf.text.d_fmt;
 		agp_empty_vstore(dst->stores[i], dst->store->w, dst->store->h);
 	}
-
-/* with special handling for the first slot, used to reference the original */
-	dst->stores[0] = arcan_alloc_mem(sizeof(struct agp_vstore),
-		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-	dst->stores[0]->vinf = dst->store->vinf;
 }
 
 uint64_t agp_rendertarget_swap(struct agp_rendertarget* dst, bool* swap)
@@ -141,7 +154,9 @@ uint64_t agp_rendertarget_swap(struct agp_rendertarget* dst, bool* swap)
 
 /* multi-buffer setup */
 	if (!dst->n_stores){
+		verbose_print("(%"PRIxPTR") first swap, alloc buffers", (uintptr_t) dst);
 		setup_stores(dst);
+		*swap = false;
 	}
 
 	GLint cfbo;
@@ -159,7 +174,12 @@ uint64_t agp_rendertarget_swap(struct agp_rendertarget* dst, bool* swap)
 	int old_front = dst->store_ind;
 	int front = dst->store_ind = (dst->store_ind + 1) % MAX_BUFFERS;
 
-/* attach new front, update alias */
+/* Attach new front, update alias. We use the alias on the normal store to make
+ * sure that 'image_sharestorage' calls will reference the currently active buffer
+ * and not drag behind */
+	verbose_print("(%"PRIxPTR") proxy+COLOR0 set to: %u",
+		(uintptr_t) dst, dst->stores[front]->vinf.text.glid);
+
 	env->framebuffer_texture_2d(GL_FRAMEBUFFER,
 		GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dst->stores[front]->vinf.text.glid, 0);
 	dst->store->vinf.text.glid_proxy = &dst->stores[front]->vinf.text.glid;
@@ -168,22 +188,41 @@ uint64_t agp_rendertarget_swap(struct agp_rendertarget* dst, bool* swap)
 	if (dst->fbo != cfbo)
 		BIND_FRAMEBUFFER(cfbo);
 
+/* the contents are dirty, check the swap- count until shadow buffer flush */
+	*swap = true;
 	if (dst->dirtyc > 0){
 		dst->dirtyc--;
 		FLAG_DIRTY();
+		verbose_print("(%"PRIxPTR") dirty left: %zu", (uintptr_t) dst, dst->dirtyc);
+
+/* now that we have 'dirtied out' and any external users should have received
+ * copies of our current buffers, we can clean them up */
 		if (!dst->dirtyc){
 			for (size_t i = 0; i < MAX_BUFFERS; i++){
 				if (!dst->shadow[i])
 					continue;
+
+				verbose_print("(%"PRIxPTR") shadow %zu:%u cleared",
+					(uintptr_t) dst, i, (unsigned)dst->shadow[i]->vinf.text.glid);
 				erase_store(dst->shadow[i]);
 				arcan_mem_free(dst->shadow[i]);
 				dst->shadow[i] = NULL;
 			}
 		}
-		*swap = false;
+
+/* defer the swapping one frame on a resize, seem to be a fence-synch like
+ * problem with some GPU drivers as we tend to get partial damage on the first
+ * frame after a swap, monitor this more closely */
+		if (dst->rz_ack){
+			verbose_print("(%"PRIxPTR") rz-ack defer swap", (uintptr_t) dst);
+			*swap = false;
+			dst->rz_ack = false;
+			return 0;
+		}
 	}
-	else
-		*swap = true;
+
+	verbose_print("(%"PRIxPTR") swap out glid: %u",
+		(uintptr_t) dst, (unsigned) dst->stores[old_front]->vinf.text.glid);
 
 	return dst->stores[old_front]->vinf.text.glid;
 }
@@ -195,6 +234,8 @@ static void drop_msaa(struct agp_rendertarget* dst)
 	env->delete_renderbuffers(1,&dst->msaa_depth);
 	env->delete_textures(1,&dst->msaa_color);
 	dst->msaa_fbo = dst->msaa_depth = dst->msaa_color = GL_NONE;
+
+	verbose_print("(%"PRIxPTR") drop MSAA", (uintptr_t) dst);
 }
 
 #ifndef GL_TEXTURE_2D_MULTISAMPLE
@@ -213,6 +254,9 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 		dst->mode = (dst->mode & ~RENDERTARGET_MSAA);
 		dst->mode |= RENDERTARGET_COLOR_DEPTH_STENCIL;
 	}
+
+	verbose_print(
+		"(%"PRIxPTR") build FBO, mode: %d", (uintptr_t) dst, mode);
 
 /*
  * we need two FBOs, one for the MSAA pass and one to resolve into
@@ -249,9 +293,11 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 
 	if (mode > RENDERTARGET_DEPTH)
 	{
+		env->framebuffer_texture_2d(GL_FRAMEBUFFER,
+			GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, agp_resolve_texid(dst->store), 0);
 
-		env->framebuffer_texture_2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-			GL_TEXTURE_2D, dst->store->vinf.text.glid, 0);
+		verbose_print("(%"PRIxPTR") COLOR0 set to %u",
+			(uintptr_t) dst, (unsigned) agp_resolve_texid(dst->store));
 
 /* need a Z buffer in the offscreen rendering but don't want
  * bo store it, so setup a renderbuffer */
@@ -267,6 +313,9 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 			env->framebuffer_renderbuffer(GL_FRAMEBUFFER,
 				GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, dst->depth);
 			env->bind_renderbuffer(GL_RENDERBUFFER, 0);
+
+			verbose_print("(%"PRIxPTR") built with depth+stencil @ %zu*%zu",
+				(uintptr_t) dst, dst->store->w, dst->store->h);
 		}
 	}
 	else {
@@ -299,6 +348,7 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 
 		env->framebuffer_texture_2d(GL_FRAMEBUFFER,
 			GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, store->vinf.text.glid, 0);
+		verbose_print("(%"PRIxPTR") switched to depth-only", (uintptr_t) dst);
 	}
 
 /* basic error handling / status checking
@@ -382,6 +432,8 @@ void agp_empty_vstore(struct agp_vstore* vs, size_t w, size_t h)
 	arcan_mem_free(vs->vinf.text.raw);
 	vs->vinf.text.raw = 0;
 	vs->vinf.text.s_raw = 0;
+
+	verbose_print("(%"PRIxPTR") cleared to %zu*%zu", (uintptr_t) vs, w, h);
 }
 
 bool agp_slice_vstore(struct agp_vstore* backing,
@@ -413,6 +465,9 @@ bool agp_slice_vstore(struct agp_vstore* backing,
 	backing->w = base;
 	backing->h = base;
 	backing->txmapped = txstate;
+
+	verbose_print("(%"PRIxPTR") switched to sliced: "
+		"%zu slices, %zu base, %d state", (uintptr_t) backing, n_slices, base, txstate);
 
 /* allocation / upload is deferred to slice stage */
 	return true;
@@ -455,6 +510,8 @@ static bool update_cube(
 	env->tex_param_i(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 #endif
 
+	verbose_print("(%"PRIxPTR") "
+		"update cube-map, slices: %zu", (uintptr_t) backing, n_slices);
 	for (size_t i = 0; i < n_slices; i++){
 		struct agp_vstore* s = slices[i];
 /* only update qualified slices - same size and updated after last synch */
@@ -529,43 +586,51 @@ void agp_empty_vstoreext(struct agp_vstore* vs,
 {
 	switch (hint){
 	case VSTORE_HINT_LODEF:
+		verbose_print("(%"PRIxPTR") empty fmt: lodef", (uintptr_t) vs);
 		vs->vinf.text.d_fmt = GL_UNSIGNED_SHORT_4_4_4_4;
 		vs->vinf.text.s_fmt = GL_RGBA;
 		vs->vinf.text.s_type = GL_UNSIGNED_SHORT;
 	break;
 	case VSTORE_HINT_LODEF_NOALPHA:
+		verbose_print("(%"PRIxPTR") empty fmt: lodef-no-alpha", (uintptr_t) vs);
 		vs->vinf.text.d_fmt = GL_UNSIGNED_SHORT_5_6_5;
 		vs->vinf.text.s_fmt = GL_RGB;
 		vs->vinf.text.s_type = GL_UNSIGNED_SHORT;
 	break;
 	case VSTORE_HINT_NORMAL:
 	case VSTORE_HINT_NORMAL_NOALPHA:
+		verbose_print("(%"PRIxPTR") empty fmt: normal", (uintptr_t) vs);
 		vs->vinf.text.d_fmt = GL_STORE_PIXEL_FORMAT;
 	break;
 #if !defined(GLES2) && !defined(GLES3)
 	case VSTORE_HINT_HIDEF:
 	case VSTORE_HINT_HIDEF_NOALPHA:
+		verbose_print("(%"PRIxPTR") empty fmt: hidef", (uintptr_t) vs);
 		vs->vinf.text.d_fmt = GL_UNSIGNED_INT_10_10_10_2;
 		vs->vinf.text.s_type = GL_UNSIGNED_INT_10_10_10_2;
 		vs->vinf.text.s_fmt = GL_UNSIGNED_INT;
 		vs->vinf.text.s_raw = sizeof(unsigned) * w * h * 4;
 	break;
 	case VSTORE_HINT_F16:
+		verbose_print("(%"PRIxPTR") empty fmt: half-float", (uintptr_t) vs);
 		vs->vinf.text.d_fmt = GL_RGB16F;
 		vs->vinf.text.s_type = GL_FLOAT;
 		vs->vinf.text.s_raw = w * h * sizeof(float) * 4;
 	break;
 	case VSTORE_HINT_F16_NOALPHA:
+		verbose_print("(%"PRIxPTR") empty fmt: half-float-no-alpha", (uintptr_t) vs);
 		vs->vinf.text.d_fmt = GL_RGBA16F;
 		vs->vinf.text.s_type = GL_FLOAT;
 		vs->vinf.text.s_raw = w * h * sizeof(float) * 4;
 	break;
 	case VSTORE_HINT_F32:
+		verbose_print("(%"PRIxPTR") empty fmt: float", (uintptr_t) vs);
 		vs->vinf.text.d_fmt = GL_RGBA32F;
 		vs->vinf.text.s_type = GL_FLOAT;
 		vs->vinf.text.s_raw = w * h * sizeof(float) * 4;
 	break;
 	case VSTORE_HINT_F32_NOALPHA:
+		verbose_print("(%"PRIxPTR") empty fmt: float-no-alpha", (uintptr_t) vs);
 		vs->vinf.text.d_fmt = GL_RGB32F;
 		vs->vinf.text.s_type = GL_FLOAT;
 		vs->vinf.text.s_raw = w * h * sizeof(float) * 4;
@@ -606,6 +671,8 @@ struct agp_rendertarget* agp_setup_rendertarget(
 	r->store = vstore;
 	r->mode = m;
 	r->clearcol[3] = 1.0;
+	verbose_print("vstore (%"PRIxPTR") bound to rendertarget "
+		"(%"PRIxPTR") in mode %d", (uintptr_t) vstore, (uintptr_t) r, (int) m);
 
 	alloc_fbo(r, false);
 	return r;
@@ -706,8 +773,17 @@ void agp_drop_rendertarget(struct agp_rendertarget* tgt)
  * upstream (though that might be desire)
  */
 	if (tgt->n_stores){
-		for (size_t i = 1; i < tgt->n_stores; i++){
+		verbose_print("dropping normal and shadow stores");
+		for (size_t i = 0; i < tgt->n_stores; i++){
 			agp_drop_vstore(tgt->stores[i]);
+/*
+ * might occur if the source is deleted while we are in an unflushed resize
+ */
+			if (tgt->shadow[i]){
+				agp_drop_vstore(tgt->shadow[i]);
+				arcan_mem_free(tgt->shadow[i]);
+				tgt->shadow[i] = NULL;
+			}
 		}
 		tgt->n_stores = 0;
 		tgt->store->vinf.text.glid_proxy = NULL;
@@ -717,6 +793,7 @@ void agp_drop_rendertarget(struct agp_rendertarget* tgt)
 		drop_msaa(tgt);
 	}
 
+	verbose_print("(%"PRIxPTR") rendertarget gone", (uintptr_t) tgt);
 	arcan_mem_free(tgt);
 }
 
@@ -756,6 +833,8 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 
 	env->scissor(0, 0, w, h);
 	env->viewport(0, 0, w, h);
+	verbose_print(
+		"rendertarget (%"PRIxPTR") %zu*%zu activated", (uintptr_t) tgt, w, h);
 #endif
 }
 
@@ -770,6 +849,7 @@ void agp_pipeline_hint(enum pipeline_mode mode)
 	switch (mode){
 	case PIPELINE_2D:
 		if (mode != env->mode){
+			verbose_print("pipeline -> 2d");
 			env->mode = mode;
 			env->disable(GL_CULL_FACE);
 			env->disable(GL_DEPTH_TEST);
@@ -783,6 +863,7 @@ void agp_pipeline_hint(enum pipeline_mode mode)
 
 	case PIPELINE_3D:
 		if (mode != env->mode){
+			verbose_print("pipeline -> 3d");
 			env->mode = mode;
 			env->enable(GL_DEPTH_TEST);
 			env->depth_mask(GL_TRUE);
@@ -800,6 +881,8 @@ void agp_null_vstore(struct agp_vstore* store)
 		return;
 
 	agp_env()->delete_textures(1, &store->vinf.text.glid);
+	verbose_print("cleared (%"PRIxPTR"), dropped %u",
+		(uintptr_t) store, store->vinf.text.glid);
 	store->vinf.text.glid = GL_NONE;
 	store->vinf.text.glid_proxy = NULL;
 }
@@ -816,6 +899,9 @@ void agp_resize_rendertarget(
 	if (tgt->store->w == neww && tgt->store->h == newh)
 		return;
 
+	verbose_print(
+		"resize (%"PRIxPTR") to %zu*%zu", (uintptr_t) tgt, neww, newh);
+
 	struct agp_fenv* env = agp_env();
 
 /*
@@ -825,17 +911,36 @@ void agp_resize_rendertarget(
  *
  * Thus we move them to a 'shadow store' that gets flushed out as
  * we swap, with possible visual corruption should we get OOM at
- * hat point.
+ * that point.
  */
 	tgt->store->w = neww;
 	tgt->store->h = newh;
+	tgt->store_ind = 0;
+	tgt->rz_ack = true;
 
 	if (tgt->n_stores){
-		for (size_t i = 1; i < tgt->n_stores; i++){
+		for (size_t i = 0; i < tgt->n_stores; i++){
+/*
+ * Multiple resizes in short succession with pending buffers still
+ * might possibly lead to bad frame contents being shown,
+ * experimentation needed.
+ */
+			if (tgt->shadow[i]){
+				verbose_print(
+					"in-rz shadow store %zu:%zu", i, tgt->shadow[i]->vinf.text.glid);
+				erase_store(tgt->shadow[i]);
+				arcan_mem_free(tgt->shadow[i]);
+				tgt->shadow[i] = NULL;
+			}
+
 			tgt->shadow[i] = tgt->stores[i];
 			tgt->stores[i] = NULL;
 		}
+
 		setup_stores(tgt);
+		tgt->store->vinf.text.glid_proxy = &tgt->stores[0]->vinf.text.glid;
+		verbose_print(
+			"shadows set, new proxy: %u", tgt->stores[0]->vinf.text.glid);
 	}
 	else {
 		erase_store(tgt->store);
@@ -856,6 +961,7 @@ void agp_activate_vstore_multi(struct agp_vstore** backing, size_t n)
 {
 	char buf[] = {'m', 'a', 'p', '_', 't', 'u', 0, 0, 0};
 	struct agp_fenv* env = agp_env();
+	verbose_print("vstore-set-multi: %zu", n);
 
 	for (int i = 0; i < n && i < 99; i++){
 		env->active_texture(GL_TEXTURE0 + i);
@@ -878,6 +984,8 @@ void agp_update_vstore(struct agp_vstore* s, bool copy)
 	if (s->txmapped == TXSTATE_OFF)
 		return;
 
+	verbose_print(
+		"update vstore (%"PRIxPTR"), copy: %d", (uintptr_t) s, (int) copy);
 	FLAG_DIRTY();
 
 	if (!copy)
@@ -917,21 +1025,25 @@ void agp_update_vstore(struct agp_vstore* s, bool copy)
 
 	switch (filtermode){
 	case ARCAN_VFILTER_NONE:
+		verbose_print("filter(none)");
 		env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	break;
 
 	case ARCAN_VFILTER_LINEAR:
+		verbose_print("filter(linear)");
 		env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	break;
 
 	case ARCAN_VFILTER_BILINEAR:
+		verbose_print("filter(bilinear)");
 		env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	break;
 
 	case ARCAN_VFILTER_TRILINEAR:
+		verbose_print("filter(trilinear), mipmap: %d", (int) mipmap);
 		if (mipmap){
 			env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
 				GL_LINEAR_MIPMAP_LINEAR);
@@ -960,6 +1072,7 @@ void agp_update_vstore(struct agp_vstore* s, bool copy)
 				s->vinf.text.s_type ? s->vinf.text.s_type : GL_UNSIGNED_BYTE,
 				s->vinf.text.raw
 			);
+		verbose_print("copied");
 	}
 
 #ifndef HEADLESS_NOARCAN
@@ -1023,6 +1136,7 @@ void agp_blendstate(enum arcan_blendfunc mode)
 	case BLEND_NONE: /* -dumb compiler- */
 	case BLEND_FORCE:
 	case BLEND_NORMAL:
+		verbose_print("blend-normal/force/none");
 		env->blend_func_separate(
 			GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
 			env->blend_src_alpha, env->blend_dst_alpha
@@ -1030,6 +1144,7 @@ void agp_blendstate(enum arcan_blendfunc mode)
 	break;
 
 	case BLEND_MULTIPLY:
+		verbose_print("blend-multiply");
 		env->blend_func_separate(
 			GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
 			env->blend_src_alpha, env->blend_dst_alpha
@@ -1037,6 +1152,7 @@ void agp_blendstate(enum arcan_blendfunc mode)
 	break;
 
 	case BLEND_ADD:
+		verbose_print("blend-add");
 		env->blend_func_separate(
 			GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
 			env->blend_src_alpha, env->blend_dst_alpha
@@ -1048,7 +1164,8 @@ void agp_blendstate(enum arcan_blendfunc mode)
 	}
 }
 
-void agp_draw_vobj(float x1, float y1, float x2, float y2,
+void agp_draw_vobj(
+	float x1, float y1, float x2, float y2,
 	const float* txcos, const float* model)
 {
 	GLfloat verts[] = {
@@ -1057,6 +1174,8 @@ void agp_draw_vobj(float x1, float y1, float x2, float y2,
 		x2, y2,
 		x1, y2
 	};
+
+	verbose_print("draw-vobj(%f,%f-%f,%f)", x1, y1, x2, y2);
 	bool settex = false;
 	struct agp_fenv* env = agp_env();
 
@@ -1089,6 +1208,8 @@ void agp_draw_vobj(float x1, float y1, float x2, float y2,
 static void toggle_debugstates(float* modelview)
 {
 	struct agp_fenv* env = agp_env();
+	verbose_print("3d-debug");
+
 	if (modelview){
 		float white[3] = {1.0, 1.0, 1.0};
 		env->depth_mask(GL_FALSE);
@@ -1112,7 +1233,7 @@ void agp_rendertarget_ids(struct agp_rendertarget* rtgt, uintptr_t* tgt,
 	if (tgt)
 		*tgt = rtgt->fbo;
 	if (col)
-		*col = rtgt->store->vinf.text.glid;
+		*col = agp_resolve_texid(rtgt->store);
 	if (depth)
 		*depth = rtgt->depth;
 }
@@ -1140,12 +1261,14 @@ static void setup_transfer(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 	if (attribs[0] == -1)
 		return;
 	else {
+		verbose_print("vertex");
 		env->enable_vertex_attrarray(attribs[0]);
 		env->vertex_attrpointer(attribs[0],
 			base->vertex_size, GL_FLOAT, GL_FALSE, 0, base->verts);
 	}
 
 	if (attribs[1] != -1 && base->normals){
+		verbose_print("normals");
 		env->enable_vertex_attrarray(attribs[1]);
 		env->vertex_attrpointer(attribs[1], 3, GL_FLOAT, GL_FALSE,0, base->normals);
 	}
@@ -1153,6 +1276,7 @@ static void setup_transfer(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 		attribs[1] = -1;
 
 	if (attribs[2] != -1 && base->txcos){
+		verbose_print("texture-coordinates");
 		env->enable_vertex_attrarray(attribs[2]);
 		env->vertex_attrpointer(attribs[2], 2, GL_FLOAT, GL_FALSE, 0, base->txcos);
 	}
@@ -1160,6 +1284,7 @@ static void setup_transfer(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 		attribs[2] = -1;
 
 	if (attribs[3] != -1 && base->colors){
+		verbose_print("colors");
 		env->enable_vertex_attrarray(attribs[3]);
 		env->vertex_attrpointer(attribs[3], 3, GL_FLOAT, GL_FALSE, 0, base->colors);
 	}
@@ -1167,6 +1292,7 @@ static void setup_transfer(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 		attribs[3] = -1;
 
 	if (attribs[4] != -1 && base->txcos2){
+		verbose_print("texture-coordinates-alt");
 		env->enable_vertex_attrarray(attribs[4]);
 		env->vertex_attrpointer(attribs[4], 2, GL_FLOAT, GL_FALSE, 0, base->txcos2);
 	}
@@ -1174,6 +1300,7 @@ static void setup_transfer(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 		attribs[4] = -1;
 
 	if (attribs[5] != -1 && base->tangents){
+		verbose_print("tangents");
 		env->enable_vertex_attrarray(attribs[5]);
 		env->vertex_attrpointer(attribs[5],4,GL_FLOAT,GL_FALSE,0,base->tangents);
 	}
@@ -1181,6 +1308,7 @@ static void setup_transfer(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 		attribs[5] = -1;
 
 	if (attribs[6] != -1 && base->bitangents){
+		verbose_print("bitangents");
 		env->enable_vertex_attrarray(attribs[6]);
 		env->vertex_attrpointer(attribs[6],4,GL_FLOAT,GL_FALSE,0,base->bitangents);
 	}
@@ -1188,6 +1316,7 @@ static void setup_transfer(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 		attribs[6] = -1;
 
 	if (attribs[7] != -1 && base->weights){
+		verbose_print("vertex-weights");
 		env->enable_vertex_attrarray(attribs[7]);
 		env->vertex_attrpointer(attribs[7], 4, GL_FLOAT, GL_FALSE, 0,base->weights);
 	}
@@ -1195,6 +1324,7 @@ static void setup_transfer(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 		attribs[7] = -1;
 
 	if (attribs[8] != -1 && base->joints){
+		verbose_print("vertex-joints");
 		env->enable_vertex_attrarray(attribs[8]);
 		env->vertex_iattrpointer(attribs[8], 4, GL_UNSIGNED_SHORT, 0, base->joints);
 	}
@@ -1217,13 +1347,19 @@ static void setup_transfer(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 				}
 				base->validated = true;
 			}
+			verbose_print(
+				"triangle-soup(indexed, %u indices)", (unsigned)base->n_indices);
 			env->draw_elements(GL_TRIANGLES,
 				base->n_indices, GL_UNSIGNED_INT, base->indices);
 		}
-		else
+		else{
+			verbose_print(
+				"triangle-soup(vertices, %u vertices)", (unsigned)base->n_vertices);
 			env->draw_arrays(GL_TRIANGLES, 0, base->n_vertices);
+		}
 	}
 	else if (base->type == AGP_MESH_POINTCLOUD){
+		verbose_print("point-cloud(%u points)", (unsigned)base->n_vertices);
 		env->enable(GL_VERTEX_PROGRAM_POINT_SIZE);
 		env->draw_arrays(GL_POINTS, 0, base->n_vertices);
 		env->disable(GL_VERTEX_PROGRAM_POINT_SIZE);
@@ -1271,6 +1407,7 @@ void agp_drop_vstore(struct agp_vstore* s)
 	}
 #endif
 
+	verbose_print("dropped (%"PRIxPTR")", (uintptr_t) s);
 	memset(s, '\0', sizeof(struct agp_vstore));
 }
 
@@ -1311,6 +1448,7 @@ static void setup_culling(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 		else
 			env->disable(GL_CULL_FACE);
 	}
+	verbose_print("depth func: %d, flags: %d", base->depth_func, fl);
 }
 
 void agp_submit_mesh(struct agp_mesh_store* base, enum agp_mesh_flags fl)
@@ -1367,6 +1505,7 @@ void agp_submit_mesh(struct agp_mesh_store* base, enum agp_mesh_flags fl)
  */
 void agp_invalidate_mesh(struct agp_mesh_store* bs)
 {
+	verbose_print("(%"PRIxPTR")", (uintptr_t) bs);
 }
 
 void agp_activate_vstore(struct agp_vstore* s)
@@ -1385,11 +1524,14 @@ void agp_activate_vstore(struct agp_vstore* s)
 		env->last_store_mode = GL_TEXTURE_2D;
 	}
 
+	verbose_print("(%"PRIxPTR") vstore, glid: %u",
+		(uintptr_t) s, (unsigned) agp_resolve_texid(s));
 	env->bind_texture(env->last_store_mode, agp_resolve_texid(s));
 }
 
 void agp_deactivate_vstore()
 {
+	verbose_print("");
 	agp_env()->bind_texture(GL_TEXTURE_2D, 0);
 }
 
@@ -1438,6 +1580,7 @@ void agp_drop_mesh(struct agp_mesh_store* s)
 		}
 	}
 
+	verbose_print("(%"PRIxPTR")", (uintptr_t) s);
 	memset(s, '\0', sizeof(struct agp_mesh_store));
 }
 
@@ -1447,6 +1590,7 @@ void agp_save_output(size_t w, size_t h, av_pixel* dst, size_t dsz)
 	env->read_buffer(GL_FRONT);
 	assert(w * h * sizeof(av_pixel) == dsz);
 
+	verbose_print("");
 	env->read_pixels(0, 0, w, h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dst);
 }
 

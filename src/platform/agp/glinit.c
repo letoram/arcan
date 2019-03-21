@@ -293,7 +293,7 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 			lookup(tag, "glDepthFunc");
 	dst->flush =
 		(void(*)(void))
-			lookup(tag, "glFlush");
+			lookup(tag, "glFinish");
 
 	dst->last_store_mode = GL_TEXTURE_2D;
 #undef lookup_opt
