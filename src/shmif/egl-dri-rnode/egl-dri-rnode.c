@@ -738,12 +738,11 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 /* begin extraction of the currently rendered-to buffer */
 	int fd, fourcc;
 	size_t stride;
-	if (!arcan_shmifext_gltex_handle(
-		con, display, tex_id, &fd, &stride, &fourcc))
+	if (con->privext->state_fl & STATE_NOACCEL ||
+			!arcan_shmifext_gltex_handle(con, display, tex_id, &fd, &stride, &fourcc))
 		goto fallback;
 
 	unsigned res = arcan_shmif_signalhandle(con, mask, fd, stride, fourcc);
-
 	return res > INT_MAX ? INT_MAX : res;
 
 /* handle-passing is disabled or broken, instead perform a manual readback into
