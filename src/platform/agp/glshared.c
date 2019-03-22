@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <dlfcn.h>
 #include <math.h>
+#include <inttypes.h>
 
 #include "glfun.h"
 
