@@ -26,6 +26,7 @@
 
 #define WANT_ARCAN_SHMIF_HELPER
 #include <arcan_shmif.h>
+extern arcan_log_destination(FILE* outf, int level);
 #include <inttypes.h>
 
 #ifdef __APPLE__
@@ -346,6 +347,7 @@ static struct arcan_shmif_cont* setup_connection()
 
 /* just give us render-node,depths,etc. based on what the connection wants */
 	struct arcan_shmifext_setup defs = arcan_shmifext_defaults(&con);
+	defs.builtin_fbo = 2;
 
 /* try to set it up */
 	enum shmifext_setup_status status = arcan_shmifext_setup(&con, defs);
@@ -361,7 +363,7 @@ static struct arcan_shmif_cont* setup_connection()
 
 	glClearColor(0.5, 0.5, 0.5, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
-	glFlush();
+	glFinish();
 	arcan_shmifext_signal(&con, 0, SHMIF_SIGVID, SHMIFEXT_BUILTIN);
 
 	*res = con;
@@ -387,8 +389,10 @@ static bool pump_connection(struct arcan_shmif_cont* con, int* i)
 	}
 
 	arcan_shmifext_make_current(con);
+	fprintf(stderr, "context current, draw frame\n");
 	draw(con, (*i)++);
-	glFlush();
+	glFinish();
+	fprintf(stderr, "drawn, signal\n");
 	arcan_shmifext_signal(con, 0, SHMIF_SIGVID, SHMIFEXT_BUILTIN);
 	return true;
 }
@@ -396,6 +400,11 @@ static bool pump_connection(struct arcan_shmif_cont* con, int* i)
 int main(int argc, char *argv[])
 {
 	int n_conn = 1;
+	arcan_log_destination(stderr, 0);
+
+	if (argc > 1){
+		n_conn = strtoul(argv[1], NULL, 10);
+	}
 
 	struct arcan_shmif_cont* con[n_conn];
 	int state[n_conn];

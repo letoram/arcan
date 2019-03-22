@@ -463,9 +463,7 @@ struct arcan_shmifext_setup {
 	uint64_t mask;
 
 /* 0 for self-managed fbo
- * 1 for single-buffered (likely to flicker)
- * 2 for double-buffer(default), flipping rendertargets
- * 3 for double-buffer, attachment-swapping one rendertarget */
+ * >0 for internal rendertarget that swaps out */
 	uint8_t builtin_fbo;
 
 	uint8_t supersample;
@@ -473,10 +471,10 @@ struct arcan_shmifext_setup {
 	uint8_t no_context;
 	uint64_t shared_context;
 
-/* mutually exclusive to builtin_fbo, shmifext_signal will take
- * one extra argument (in-fmt) and stream vidp- into color buffer */
-	uint8_t vidp_pack;
-	uint32_t vidp_infmt;
+/* deprecated members, but don't want to break abi, while still
+ * generating compiler visible errors for api break */
+	uint8_t _unused;
+	uint32_t __unused;
 
 /* workaround for versioning snafu with _setup not taking sizeof(...) */
 	uint8_t uintfl_reserve[6];

@@ -63,8 +63,25 @@ const char * defcvprg =
 " gl_Position = (projection * modelview) * vertex;\n"
 "}";
 
+#ifdef _DEBUG
+#define DEBUG 1
+#else
+#define DEBUG 0
+#endif
+
+#define debug_print(fmt, ...) \
+            do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
+						arcan_timemillis(), "agp-gl21:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+
+#ifndef verbose_print
+#define verbose_print
+#endif
+
 agp_shader_id agp_default_shader(enum SHADER_TYPES type)
 {
+	verbose_print("set shader: %s", type == BASIC_2D ? "basic_2d" :
+		(type == COLOR_2D ? "color_2d" : (type == BASIC_3D ? "basic_3d" : "invalid")));
+
 	static agp_shader_id shids[SHADER_TYPE_ENDM];
 	static bool defshdr_build;
 
@@ -132,6 +149,9 @@ static void pbo_alloc_read(struct agp_vstore* store)
 	env->buffer_data(GL_PIXEL_PACK_BUFFER,
 		store->w * store->h * store->bpp, NULL, GL_STREAM_COPY);
 	env->bind_buffer(GL_PIXEL_PACK_BUFFER, 0);
+
+	verbose_print("allocated %zu*%zu read-pbo",
+		(size_t) store->w, (size_t) store->h);
 }
 
 static void pbo_alloc_write(struct agp_vstore* store)
@@ -145,8 +165,10 @@ static void pbo_alloc_write(struct agp_vstore* store)
 	env->buffer_data(GL_PIXEL_UNPACK_BUFFER,
 		store->w * store->h * store->bpp, NULL, GL_STREAM_DRAW);
 	env->bind_buffer(GL_PIXEL_UNPACK_BUFFER, 0);
-}
 
+	verbose_print("allocated %zu*%zu write-pbo",
+		(size_t) store->w, (size_t) store->h);
+}
 
 static void rebuild_pbo(struct agp_vstore* s)
 {
@@ -168,6 +190,8 @@ static void set_pixel_store(size_t w, struct stream_meta const meta)
 	env->pixel_storei(GL_UNPACK_SKIP_ROWS, meta.y1);
 	env->pixel_storei(GL_UNPACK_SKIP_PIXELS, meta.x1);
 	env->pixel_storei(GL_UNPACK_ROW_LENGTH, w);
+	verbose_print(
+		"pixel store: skip %zu rows, %zu pixels, len: %zu", meta.x1, meta.y1, w);
 }
 
 static void reset_pixel_store()
@@ -176,6 +200,7 @@ static void reset_pixel_store()
 	env->pixel_storei(GL_UNPACK_SKIP_ROWS, 0);
 	env->pixel_storei(GL_UNPACK_SKIP_PIXELS, 0);
 	env->pixel_storei(GL_UNPACK_ROW_LENGTH, 0);
+	verbose_print("pixel store: reset");
 }
 
 void agp_readback_synchronous(struct agp_vstore* dst)
@@ -183,6 +208,9 @@ void agp_readback_synchronous(struct agp_vstore* dst)
 	if (!(dst->txmapped == TXSTATE_TEX2D) || !dst->vinf.text.raw)
 		return;
 	struct agp_fenv* env = agp_env();
+
+	verbose_print(
+		"synchronous readback from id: %u", (unsigned)agp_resolve_texid(dst));
 
 	env->bind_texture(GL_TEXTURE_2D, agp_resolve_texid(dst));
 	env->get_tex_image(GL_TEXTURE_2D, 0,
@@ -202,8 +230,10 @@ static void pbo_stream(struct agp_vstore* s,
 
 	av_pixel* ptr = env->map_buffer(GL_PIXEL_UNPACK_BUFFER,GL_WRITE_ONLY);
 
-	if (!ptr)
+	if (!ptr){
+		verbose_print("(%"PRIxPTR") failed to map PBO for writing", (uintptr_t) s);
 		return;
+	}
 
 	av_pixel* obuf = buf;
 
@@ -227,6 +257,9 @@ static void pbo_stream(struct agp_vstore* s,
 				*ptr++ = *buf++;
 	}
 
+	verbose_print(
+		"(%"PRIxPTR") pbo stream update %zu*%zu", (uintptr_t) s, s->w, s->h);
+
 	env->unmap_buffer(GL_PIXEL_UNPACK_BUFFER);
 
 	env->tex_subimage_2d(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
@@ -249,6 +282,12 @@ static void pbo_stream_sub(struct agp_vstore* s,
 	agp_activate_vstore(s);
 	size_t row_sz = meta->w * sizeof(av_pixel);
 	set_pixel_store(s->w, *meta);
+
+	verbose_print(
+		"(%"PRIxPTR") pbo stream sub-update %zu+%zu*%zu+%zu",
+		(uintptr_t) s, meta->x1, meta->w, meta->y1, meta->h
+	);
+
 	env->tex_subimage_2d(GL_TEXTURE_2D, 0, meta->x1, meta->y1, meta->w, meta->h,
 		s->vinf.text.s_fmt ? s->vinf.text.s_fmt : GL_PIXEL_FORMAT,
 		GL_UNSIGNED_BYTE, buf
@@ -291,6 +330,7 @@ static inline void setup_unpack_pbo(struct agp_vstore* s, void* buf)
 {
 	struct agp_fenv* env = agp_env();
 	agp_activate_vstore(s);
+	verbose_print("(%"PRIxPTR") build unpack", (uintptr_t) s);
 	env->gen_buffers(1, &s->vinf.text.wid);
 	env->bind_buffer(GL_PIXEL_UNPACK_BUFFER, s->vinf.text.wid);
 	env->buffer_data(GL_PIXEL_UNPACK_BUFFER,
@@ -307,6 +347,7 @@ static void alloc_buffer(struct agp_vstore* s)
 	}
 
 	if (!s->vinf.text.raw){
+		verbose_print("(%"PRIxPTR") alloc buffer", (uintptr_t) s);
 		s->vinf.text.s_raw = s->w * s->h * sizeof(av_pixel);
 		s->vinf.text.raw = arcan_alloc_mem(s->vinf.text.s_raw,
 			ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
@@ -323,6 +364,7 @@ struct stream_meta agp_stream_prepare(struct agp_vstore* s,
 
 	switch (type){
 	case STREAM_RAW:
+		verbose_print("(%"PRIxPTR") prepare upload (raw)", (uintptr_t) s);
 		if (!s->vinf.text.wid)
 			setup_unpack_pbo(s, NULL);
 
@@ -335,6 +377,7 @@ struct stream_meta agp_stream_prepare(struct agp_vstore* s,
 	case STREAM_RAW_DIRECT_COPY:
 		alloc_buffer(s);
 	case STREAM_RAW_DIRECT:
+		verbose_print("(%"PRIxPTR") prepare upload (raw/direct)", (uintptr_t) s);
 		if (!s->vinf.text.wid)
 			setup_unpack_pbo(s, meta.buf);
 
@@ -346,6 +389,7 @@ struct stream_meta agp_stream_prepare(struct agp_vstore* s,
 
 /* resynch: drop PBOs and GLid, alloc / upload and rebuild possible PBOs */
 	case STREAM_EXT_RESYNCH:
+		verbose_print("(%"PRIxPTR") resynch stream", (uintptr_t) s);
 		agp_null_vstore(s);
 		agp_update_vstore(s, true);
 		rebuild_pbo(s);
@@ -355,6 +399,8 @@ struct stream_meta agp_stream_prepare(struct agp_vstore* s,
 		agp_activate_vstore(s);
 
 		if (meta.dirty){
+			verbose_print("(%"PRIxPTR") raw synch sub (%zu+%zu*%zu+%zu)",
+				(uintptr_t) s, meta.x1, meta.w, meta.y1, meta.h);
 			set_pixel_store(s->w, meta);
 			env->tex_subimage_2d(GL_TEXTURE_2D, 0, meta.x1, meta.y1, meta.w, meta.h,
 				s->vinf.text.s_fmt ? s->vinf.text.s_fmt : GL_PIXEL_FORMAT,
@@ -363,7 +409,9 @@ struct stream_meta agp_stream_prepare(struct agp_vstore* s,
 			reset_pixel_store();
 		}
 		else
-			env->tex_subimage_2d(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
+			verbose_print(
+				"(%"PRIxPTR") raw synch (%zu*%zu)", (uintptr_t) s, meta.w, meta.h);
+				env->tex_subimage_2d(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
 				s->vinf.text.s_fmt ? s->vinf.text.s_fmt : GL_PIXEL_FORMAT,
 				GL_UNSIGNED_BYTE, meta.buf
 			);
@@ -389,6 +437,8 @@ void agp_stream_release(struct agp_vstore* s, struct stream_meta meta)
 		pbo_stream_sub(s, s->vinf.text.raw, &meta, false);
 	else
 		pbo_stream(s, s->vinf.text.raw, &meta, false);
+
+	verbose_print("(%"PRIxPTR") release", (uintptr_t) s);
 	env->unmap_buffer(GL_PIXEL_UNPACK_BUFFER);
 	env->bind_buffer(GL_PIXEL_UNPACK_BUFFER, GL_NONE);
 }
@@ -414,6 +464,7 @@ void agp_resize_vstore(struct agp_vstore* s, size_t w, size_t h)
 	s->h = h;
 	s->bpp = sizeof(av_pixel);
 
+	verbose_print("(%"PRIxPTR") resize to %zu * %zu", (uintptr_t) s, w, h);
 	alloc_buffer(s);
 	rebuild_pbo(s);
 
@@ -428,6 +479,9 @@ void agp_request_readback(struct agp_vstore* store)
 
 	if (!store->vinf.text.rid)
 		pbo_alloc_read(store);
+
+	verbose_print("(%"PRIxPTR":glid %u) getTexImage2D => PBO",
+		(uintptr_t) store, (unsigned) store->vinf.text.glid);
 
 	env->bind_texture(GL_TEXTURE_2D, agp_resolve_texid(store));
 	env->bind_buffer(GL_PIXEL_PACK_BUFFER, store->vinf.text.rid);
