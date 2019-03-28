@@ -43,15 +43,6 @@ struct tui_context {
 	struct tsm_screen* screen;
 	struct tsm_utf8_mach* ucsconv;
 
-/*
- * allow a number of virtual screens for this context, these are allocated
- * when one is explicitly called, and swaps out the drawing into the output
- * context.
- * TODO: allow multiple- screens to be mapped in order onto the same buffer.
- */
-	struct tsm_screen* screens[32];
-	uint32_t screen_alloc;
-
 /* FRONT, BACK, CUSTOM ALIAS BASE. ONLY BASE IS AN ALLOCATION. used to quickly
  * detect changes when it is time to update as a means of allowing smooth
  * scrolling on single- line stepping and to cut down on possible processing

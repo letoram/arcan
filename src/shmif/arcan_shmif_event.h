@@ -1254,17 +1254,6 @@ enum ARCAN_TARGET_SKIPMODE {
 			uint32_t type;
 		} stateinf;
 
-/* Used for remoting, indicate state of (possibly multiple) cursors:
- * (id)      - cursor identifier
- * (x, y)    - absolute coordinates, not necessarily clamped against surface
- * (buttons) - state list mask of active buttons
- */
-		struct {
-			uint32_t id;
-			uint32_t x, y;
-			uint8_t buttons[5];
-		} cursor;
-
 /* Used for remoting, indicate keyboard button state change:
  * (id)     - numeric key ID, for use when we have translation tables
  * (keysym) - currently horrible, XKeySym with SDL- related translation (legacy)

@@ -74,6 +74,27 @@
  *  output LGPL2.1+. The intent of the library and API itself is to be BSD
  *  licensed.
  *
+ * [ONTOLOGY]
+ *  Cell   - Smallest drawable unit, contains a UNCODE codepoint and
+ *           formatting attributes.
+ *
+ *  Glyph  - Character from a font which is mapped to the codepoint
+ *           of a cell in order to transform it to something visible
+ *           (drawing or 'blitting')
+ *
+ *  Screen - Buffer of cols*rows of cells.
+ *
+ *  Line   - Refers to a single sequence of columns.
+ *
+ *  Main Screen - A screen tied to the livespan of the TUI conncetion
+ *
+ *  [Sub] - Window - Additional screens with a dependency/relationship to
+ *                   the main screen. Allocated asynchronously and can be
+ *                   rejected. Use sparringly and with the assumption that
+ *                   an allocation is likely to fail.
+ *
+ *  Drawing command that operate on a screen also works for a window.
+ *
  * [USE]
  *  Display-server/backend specific connection setup/wrapper that
  *  provides the opaque arcan_tui_conn structure. All symbols and flag
@@ -102,6 +123,9 @@
  *  		break;
  * }
  *
+ * [ADVANCED EXAMPLES]
+ *  See the builtin widgets (arcan_tui_bufferwnd, arcan_tui_listwnd)
+ *
  * subwindows:
  * (in subwnd handler from cbs)
  *  arcan_tui_defaults(conn, wnd);
@@ -127,9 +151,6 @@
  *  reset_all_tabstops(ctx)
  *
  * Virtual Screen management:
- *  int ind = alloc_screen(ctx)
- *  switch_screen(ctx, ind)
- *  delete_screen(ctx, ind)
  *  scroll_up(ctx, n)
  *  scroll_down(ctx, n)
  *  set_margins(ctx, top, bottom)
@@ -468,38 +489,6 @@ struct tui_cbcfg {
 		const char* a3_country, const char* a3_language, void*);
 
 /*
- * [EXPERIMENTAL]
- * Marked as experimental due to the possibility of explicitly require a
- * differently typed surface as the actual carrier (maybe a subseg
- * with a media type acting as tileset would suffice..).
- *
- * This is used to indicate that custom- drawn cells NEEDS to be updated
- * [invalidated=true], and to query if the specified regions has been updated
- * (return true). Use type-unique IDs and stick to continous regions as to not
- * kill efficiency outright.
- *
- * A custom-draw call have the cell- attribute of a custom_id > 127
- * (0..127 are used for type-/metadata- annotation)
- *
- * This is grouped on continous columns only, and can be invoked by
- * multiple worker threads in parallel.
- *
- * The pixel format is fixed to BGRA in sRGB color space. A convenience
- * blit pattern is:
- * vidp[src_cy * ystep + src_cx] = TUI_PACK(R, G, B, 0xff or alpha)
- *
- * Note that vidp is aligned to actual start-row (can be at an offset in the
- * case of soft-scrolling) and cell_h can be less than the current cell height.
- *
- * return [true] if the designated region was updated. if invalidated is
- * set is set, the vidp is assumed to be updated regardless of return value.
- */
-	bool (*draw_call)(struct tui_context*, tui_pixel* vidp,
-		uint8_t custom_id, size_t ystep_index, uint8_t cell_yofs,
-		uint8_t cell_w, uint8_t cell_h, size_t cols,
-		bool invalidated, void*);
-
-/*
  * The color-mapping (palette) has been updated and new attributes
  * take this into account. If the program is running in the alternate-
  * screen mode, use this as a trigger to redraw and recolor.
@@ -798,35 +787,6 @@ void arcan_tui_erase_cursor_to_end(struct tui_context*, bool protect);
 void arcan_tui_erase_home_to_cursor(struct tui_context*, bool protect);
 void arcan_tui_erase_current_line(struct tui_context*, bool protect);
 void arcan_tui_erase_chars(struct tui_context*, size_t n);
-
-/*
- * Create an additional screen up to a fixed limit of 32.
- * Returns the new screen index (0 <= n <= 31) or -1 if all screen
- * slots have been allocated.
- */
-int arcan_tui_alloc_screen(struct tui_context*);
-
-/*
- * Switch active screen to [ind], return status indicates success/fail.
- * This will impose a render/block+synch operation.
- * Index [0] will always refer to the default screen.
- * If no screen exists at the specified [ind], the call will fail.
- */
-bool arcan_tui_switch_screen(struct tui_context*, unsigned ind);
-
-/*
- * Delete the screen specified by [ind], return status indicates success/fail.
- * Index [0] is guaranteed to always exist and cannot be deleted.
- * If the screen that is to be deleted is the same as the screen that is
- * active, index [0] will be activated first.
- * If no screen exists at the specified [ind], the call will fail.
- */
-bool arcan_tui_delete_screen(struct tui_context*, unsigned ind);
-
-/*
- * Get the screen allocation bitmap
- */
-uint32_t arcan_tui_screens(struct tui_context*);
 
 /*
  * Insert a new unicode codepoint (expressed as UCS4) at the current cursor
@@ -1129,10 +1089,6 @@ static PTUIREQSUB arcan_tui_request_subwnd;
 static PTUIREQSUBEXT arcan_tui_request_subwnd_ext;
 static PTUIUPDHND arcan_tui_update_handlers;
 static PTUIWNDHINT arcan_tui_wndhint;
-static PTUIALLOCSCR arcan_tui_alloc_screen;
-static PTUISWSCR arcan_tui_switch_screen;
-static PTUIDELSCR arcan_tui_delete_screen;
-static PTUISCREENS arcan_tui_screens;
 static PTUIWRITE arcan_tui_write;
 static PTUIWRITEU8 arcan_tui_writeu8;
 static PTUIWRITESTR arcan_tui_writestr;
@@ -1202,10 +1158,6 @@ M(PTUIREQSUB,arcan_tui_request_subwnd);
 M(PTUIREQSUBEXT,arcan_tui_request_subwnd_ext);
 M(PTUIUPDHND,arcan_tui_update_handlers);
 M(PTUIWNDHINT,arcan_tui_wndhint);
-M(PTUIALLOCSCR,arcan_tui_alloc_screen);
-M(PTUISWSCR,arcan_tui_switch_screen);
-M(PTUIDELSCR,arcan_tui_delete_screen);
-M(PTUISCREENS,arcan_tui_screens);
 M(PTUIWRITE,arcan_tui_write);
 M(PTUIWRITEU8,arcan_tui_writeu8);
 M(PTUIWRITESTR,arcan_tui_writestr);

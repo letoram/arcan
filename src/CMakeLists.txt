@@ -374,7 +374,7 @@ set(EXTMAKE_CMD make)
 
 # for the statically- linked external dependencies, we need to hint where
 # we need the gmake rather than make system
-if (${CMAKE_SYSTEM_NAME} MATCHES "BSD" OR ${CMAKE_SYSTEM_NAME}} MATCHES "DragonFly")
+if (${CMAKE_SYSTEM_NAME} MATCHES "BSD" OR ${CMAKE_SYSTEM_NAME} MATCHES "DragonFly")
 set(BSD_BUILD TRUE)
 set(EXTMAKE_CMD gmake)
 endif()
