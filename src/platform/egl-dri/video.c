@@ -63,7 +63,6 @@
             do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
 						arcan_timemillis(), "egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
-/* #define verbose_print debug_print */
 #ifndef verbose_print
 #define verbose_print
 #endif
@@ -113,6 +112,11 @@ enum buffer_method {
 enum vsynch_method {
 	VSYNCH_FLIP = 0,
 	VSYNCH_CLOCK = 1
+};
+
+enum display_update_state {
+	UPDATE_FLIP,
+	UPDATE_DIRECT
 };
 
 /*
@@ -248,6 +252,7 @@ struct dispout {
 
 /* internal v-store and system mappings, rules for drawing final output */
 	arcan_vobj_id vid;
+	bool force_compose;
 	size_t dispw, disph, dispx, dispy;
 	float vrefresh;
 
@@ -283,6 +288,9 @@ static struct dispout displays[MAX_DISPLAYS];
 
 static struct dispout* allocate_display(struct dev_node* node)
 {
+	uintptr_t tag;
+	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){
 		if (displays[i].state == DISP_UNUSED){
 			displays[i].device = node;
@@ -291,6 +299,14 @@ static struct dispout* allocate_display(struct dev_node* node)
 
 			node->refc++;
 			displays[i].state = DISP_KNOWN;
+
+/* we currently force composition on all displays unless
+ * explicitly turned on, as there seem to be some driver
+ * issues with scanning out fbo color attachments */
+			displays[i].force_compose =
+				!get_config("video_device_direct", 0, NULL, tag);
+			debug_print("(%zu) added, force composition? %d",
+				i, (int) displays[i].force_compose);
 			return &displays[i];
 		}
 	}
@@ -678,6 +694,13 @@ static int setup_buffers_stream(struct dispout* d)
 	if (-1 != flags)
 		fcntl(d->device->fd, F_SETFL, flags | O_NONBLOCK);
 
+/*
+ * 8. we don't have a path for streaming the FBO directly,
+ * (seems to be reasonably trivial though), so disable the
+ * optimization for now
+ */
+	d->force_compose = true;
+
 	set_device_context(d->device);
 	return 0;
 }
@@ -1024,8 +1047,8 @@ bool platform_video_set_display_gamma(platform_display_id did,
 	return rv == 0;
 }
 
-bool platform_video_get_display_gamma(platform_display_id did,
-	size_t* n_ramps, uint16_t** outb)
+bool platform_video_get_display_gamma(
+	platform_display_id did, size_t* n_ramps, uint16_t** outb)
 {
 	struct dispout* d = get_display(did);
 	if (!d || !n_ramps)
@@ -1735,35 +1758,139 @@ static bool lookup_drm_propval(int fd,
 	return false;
 }
 
-/*
- * we also have the option of drmModeAddFB2(
- *  fd,w,h,fmt,handles,pitches,ofsets, bufid, flags)
- * and match/extract a handle from the agp- rendertarget directly (though
- * we would have to make the rtgt- double buffered via the _swap call).
+/* We have a direct object that we want to push out rather than
+ * blitting to any specific gbm buffer. Do this by:
+ * 1. EGLImage from our texture,
+ * 2. Dmabuf from 1.
+ * 3. GBM-BO from DMAbuf.
+ *
+ * Then return that BO and attach it as a drm framebuffer
  */
-static uint32_t get_gbm_fd(struct dispout* d, struct gbm_bo* bo)
+static struct gbm_bo* vobj_to_bo(
+	struct dispout* d, arcan_vobject* vobj, uintptr_t glid)
 {
-	uint32_t new_fb;
-	uintptr_t old_fb = (uintptr_t) gbm_bo_get_user_data(bo);
-	if (old_fb)
-		return old_fb;
+/*
+ * For direct-mapping an external source, we already have img
+ * as the EGLimage to export, and we can go from there. It makes
+ * more sense to just retain the dmabuf data when we receive
+ * it though, but measure and see first if it is actually worth
+ * the refactoring.
+ *	vobj->vstore->vinf.text.tag = (uintptr_t) img;
+ *  vobj->vstore->vinf.text.handle = handle;
+ */
 
-	uint32_t handle = gbm_bo_get_handle(bo).u32;
-	uint32_t width  = gbm_bo_get_width(bo);
-	uint32_t height = gbm_bo_get_height(bo);
-	uint32_t stride = gbm_bo_get_stride(bo);
+/* 1. EGLImage from texture - we can omit this step if we already
+ *    have the appropriate dma-buffer-bound EGLimage in agp_vstore.
+ */
+	EGLImage newimg = d->device->eglenv.create_image(
+		d->device->display,
+		d->buffer.context ? d->buffer.context : d->device->context,
+		EGL_GL_TEXTURE_2D_KHR,
+		(EGLClientBuffer) glid, NULL
+	);
 
-	if (drmModeAddFB(d->device->fd, width, height, 24,
-		sizeof(av_pixel) * 8, stride, handle, &new_fb)){
-			debug_print("(%d) couldn't add framebuffer (%s)",
-				(int)d->id, strerror(errno));
-		gbm_surface_release_buffer(d->buffer.surface, bo);
-		return 0;
+	if (!newimg){
+		debug_print("(%d) failed to convert vobject to eglimage", (int)d->id);
+		return NULL;
 	}
 
-	old_fb = new_fb;
-	gbm_bo_set_user_data(bo, (void*)old_fb, NULL);
-	return new_fb;
+	struct gbm_bo* res = gbm_bo_import(
+		d->device->buffer.gbm,
+			GBM_BO_IMPORT_EGL_IMAGE, newimg, GBM_BO_USE_SCANOUT);
+
+	if (!res){
+		debug_print("(%d) dma-buf to gbm-scanout rejected", (int)d->id);
+		goto bad;
+	}
+
+	return res;
+
+bad:
+	d->device->eglenv.destroy_image(d->device->display, newimg);
+	return NULL;
+}
+
+/*
+ * called once per updated display per frame, as part of the normal
+ * draw / flip / ... cycle, bo is the returned gbm_surface_lock_front
+ */
+static int get_gbm_fb(struct dispout* d,
+	enum display_update_state dstate, struct gbm_bo* bo, uint32_t* dst)
+{
+	uint32_t new_fb;
+
+/* convert the currently mapped object */
+	if (dstate == UPDATE_DIRECT){
+		arcan_vobject* vobj = arcan_video_getobject(d->vid);
+		struct rendertarget* newtgt = arcan_vint_findrt(vobj);
+
+/* though the rendertarget might not be ready for the first frame */
+		if (newtgt){
+			bool swap;
+			unsigned col = agp_rendertarget_swap(newtgt->art, &swap);
+			if (!swap)
+				return 0;
+
+			bo = vobj_to_bo(d, vobj, col);
+		}
+		else
+			bo = vobj_to_bo(d, vobj, vobj->vstore->vinf.text.glid);
+	}
+
+	if (!bo)
+		return -1;
+
+/* Three possible paths for getting the framebuffer id that can then be
+ * scanned out: drmModeAddFB2WithModifiers, drmModeAddFB2 and drmModeAddFB
+ * success rate depend on driver and overall config */
+	ssize_t n_planes = gbm_bo_get_plane_count(bo);
+	if (n_planes < 0)
+		n_planes = 1;
+
+	uint32_t handles[n_planes];
+	uint32_t strides[n_planes];
+	uint32_t offsets[n_planes];
+	uint64_t modifiers[n_planes];
+
+	if (gbm_bo_get_handle_for_plane(bo, 0).s32 == -1){
+		handles[0] = gbm_bo_get_handle(bo).u32;
+		strides[0] = gbm_bo_get_stride(bo);
+		modifiers[0] = DRM_FORMAT_MOD_INVALID;
+	}
+	else {
+		for (ssize_t i = 0; i < n_planes; i++){
+			strides[i] = gbm_bo_get_stride_for_plane(bo, i);
+			handles[i] = gbm_bo_get_handle_for_plane(bo, i).u32;
+			offsets[i] = gbm_bo_get_offset(bo, i);
+			modifiers[i] = gbm_bo_get_modifier(bo);
+		}
+	}
+
+	size_t bo_width = gbm_bo_get_width(bo);
+	size_t bo_height = gbm_bo_get_height(bo);
+
+/* nop:ed for now, but the path for dealing with modifiers should be
+ * considered as soon as we have the other setup for direct-scanout
+ * of a client and metadata packing across the interface */
+	if (0){
+		if (drmModeAddFB2WithModifiers(d->device->fd,
+			bo_width, bo_height, gbm_bo_get_format(bo),
+			handles, strides, offsets, modifiers, dst, 0)){
+			return -1;
+		}
+	}
+	else if (drmModeAddFB2(d->device->fd, bo_width, bo_height,
+			gbm_bo_get_format(bo), handles, strides, offsets, dst, 0)){
+
+		if (drmModeAddFB(d->device->fd,
+			bo_width, bo_height, 24, 32, strides[0], handles[0], dst)){
+			debug_print(
+				"(%d) failed to add framebuffer (%s)", (int)d->id, strerror(errno));
+			return -1;
+		}
+	}
+
+	return 1;
 }
 
 static bool set_dumb_fb(struct dispout* d)
@@ -3053,6 +3180,11 @@ bool platform_video_init(uint16_t w, uint16_t h,
 		.sa_handler = sigsegv_errmsg
 	};
 
+	if (getenv("ARCAN_VIDEO_DEBUGSTALL")){
+		volatile static bool spinwait = true;
+		while (spinwait){}
+	}
+
 /*
  * init after recovery etc. won't need seeding
  */
@@ -3604,12 +3736,40 @@ bool platform_video_map_display(
 		d->display.dpms = ADPMS_ON;
 	}
 
-	d->hint = hint;
+/* need to remove this from the mapping hint so that it doesn't
+ * hit HINT_NONE tests */
+	d->hint = hint & ~(HINT_FL_PRIMARY);
 	d->vid = id;
 	arcan_conductor_register_display(
 		d->device->card_id, d->id, SYNCH_STATIC, d->vrefresh, d->vid);
 
+/* the rendertarget color attachment will need buffering in order
+ * to not have corruption or tearing, so enable that by swapping */
+	struct rendertarget* newtgt = arcan_vint_findrt(vobj);
+	if (newtgt){
+		bool swap;
+		unsigned col = agp_rendertarget_swap(newtgt->art, &swap);
+	}
+
+/* reset the 'force composition' output path, this may cost a frame
+ * being slightly delayed on map operations should the direct-scanout
+ * fail, causing force_composition to be set */
+	d->force_compose = false;
 	return true;
+}
+
+static void drop_swapchain(struct dispout* d)
+{
+	arcan_vobject* vobj = arcan_video_getobject(d->vid);
+	if (!vobj)
+		return;
+
+	struct rendertarget* newtgt = arcan_vint_findrt(vobj);
+	if (!newtgt)
+		return;
+
+	agp_rendertarget_dropswap(newtgt->art);
+	d->display.blackframes = 2;
 }
 
 static void fb_cleanup(struct gbm_bo* bo, void* data)
@@ -3622,21 +3782,42 @@ static void fb_cleanup(struct gbm_bo* bo, void* data)
 	disable_display(d, true);
 }
 
-static void draw_display(struct dispout* d)
+static enum display_update_state draw_display(struct dispout* d)
 {
+	bool swap_display = true;
 	arcan_vobject* vobj = arcan_video_getobject(d->vid);
 	agp_shader_id shid = agp_default_shader(BASIC_2D);
 
+/*
+ * If the following conditions are valid, we can simply add the source vid
+ * to the display directly, saving a full screen copy.
+ */
+	if (
+		vobj
+		&& vobj->vstore
+		&& vobj->program == shid
+		&& !vobj->txcos
+		&& d->hint == HINT_NONE
+		&& !d->force_compose
+		&& vobj->vstore->txmapped == TXSTATE_TEX2D
+	){
+		swap_display = false;
+		goto out;
+	}
+
+/*
+ * object invalid or mapped poorly, just reset to whatever the clear color is
+ */
 	if (!vobj) {
 		agp_rendertarget_clear();
-		return;
+		goto out;
 	}
 	else{
 		if (vobj->program > 0)
 			shid = vobj->program;
 
-		agp_activate_vstore(d->vid == ARCAN_VIDEO_WORLDID ?
-			arcan_vint_world() : vobj->vstore);
+		agp_activate_vstore(
+			d->vid == ARCAN_VIDEO_WORLDID ? arcan_vint_world() : vobj->vstore);
 	}
 
 /*
@@ -3667,6 +3848,17 @@ static void draw_display(struct dispout* d)
 	}
 
 	agp_deactivate_vstore();
+
+out:
+	if (swap_display){
+		verbose_print("(%d) pre-swap", (int)d->id);
+			d->device->eglenv.swap_buffers(d->device->display, d->buffer.esurf);
+		verbose_print("(%d) swapped", (int)d->id);
+		return UPDATE_FLIP;
+	}
+
+	verbose_print("(%d) direct- path selected");
+	return UPDATE_DIRECT;
 }
 
 static bool update_display(struct dispout* d)
@@ -3692,26 +3884,38 @@ static bool update_display(struct dispout* d)
 	agp_activate_rendertarget(NULL);
 
 /*
- * for when we map fullscreen, have multi-buffering and garbage from previous
- * mapping left in the crop area
+ * used on mode switching, display-object mapping changes, object size
+ * changes and so-on.
  */
 	if (d->display.blackframes){
 		verbose_print(
 			"(%d) update, blackframes: %d", (int)d->id, (int)d->display.blackframes);
 		agp_rendertarget_clear();
+
+		arcan_vobject* vobj = arcan_video_getobject(d->vid);
+		if (vobj){
+			struct rendertarget* newtgt = arcan_vint_findrt(vobj);
+			if (newtgt){
+				struct agp_vstore* store = vobj->vstore;
+				agp_rendertarget_dirty(newtgt->art, &(struct agp_region){
+						.x1 = 0,        .y1 = 0,
+						.x2 = store->w, .y2 = store->h
+				});
+			}
+		}
+
 		d->display.blackframes--;
+		arcan_video_display.ignore_dirty = d->display.blackframes > 0;
 	}
 
 /*
- * currently we only do binary damage / update tracking in that there are EGL
+ * Currently we only do binary damage / update tracking in that there are EGL
  * versions for saying 'this region is damaged, update that' to cut down on
  * fillrate/bw. This should likely be added to the agp_ layer as a simple dirty
- * list that the draw_vobj calls append to.
+ * list that the draw_vobj calls append to. Some is prepared for (see
+ * agp_rendertarget_dirty), but more is needed in the drawing logic itself.
  */
-	draw_display(d);
-	verbose_print("(%d) pre-swap", (int)d->id);
-	d->device->eglenv.swap_buffers(d->device->display, d->buffer.esurf);
-	verbose_print("(%d) swap", (int)d->id);
+	enum display_update_state dstate = draw_display(d);
 
 	uint32_t next_fb = 0;
 	switch(d->device->buftype){
@@ -3724,7 +3928,7 @@ static bool update_display(struct dispout* d)
 			if (!d->device->eglenv.stream_consumer_acquire_attrib(
 				d->device->display, d->buffer.stream, attr)){
 				d->device->vsynch_method = VSYNCH_CLOCK;
-				debug_print("egl-dri(streams) - no acq-attr, revert to clock");
+				debug_print("(%d) - no acq-attr, revert to clock", (int)d->id);
 			}
 		}
 /* dumb buffer, will never change */
@@ -3732,13 +3936,41 @@ static bool update_display(struct dispout* d)
 	}
 	break;
 	case BUF_GBM:{
-/* next/cur switching comes in the page-flip handler */
-		d->buffer.next_bo = gbm_surface_lock_front_buffer(d->buffer.surface);
-		if (!d->buffer.next_bo){
-			verbose_print("(%d) update, failed to lock front buffer", (int)d->id);
+		int rv;
+/* We use rendertarget_swap for implementing front/back buffering in the
+ * case of rendertarget scanout. */
+		if (dstate == UPDATE_DIRECT){
+			if ((rv = get_gbm_fb(d, dstate, NULL, &next_fb)) == -1){
+				debug_print("(%d) direct-scanout buffer "
+					"conversion failed, falling back to composition", true);
+				d->force_compose = true;
+				dstate = draw_display(d);
+
+/* This will cause a possible rendertarget to have a useless swapchain,
+ * so drop / remove that again and rebuild. This switch will also increment
+ * the number of 'blackframes' dirty prefill */
+				drop_swapchain(d);
+			}
+		}
+
+		if (dstate == UPDATE_FLIP){
+			d->buffer.next_bo = gbm_surface_lock_front_buffer(d->buffer.surface);
+			if (!d->buffer.next_bo){
+				verbose_print("(%d) update, failed to lock front buffer", (int)d->id);
+				goto out;
+			}
+			if ((rv = get_gbm_fb(d, dstate, d->buffer.next_bo, &next_fb)) == -1){
+				debug_print("(%d) - couldn't get framebuffer handle", (int)d->id);
+				gbm_surface_release_buffer(d->buffer.surface, d->buffer.next_bo);
+				goto out;
+			}
+		}
+
+		if (rv == 0){
+			gbm_surface_release_buffer(d->buffer.surface, d->buffer.next_bo);
+			verbose_print("(%d) - no update for display", (int)d->id);
 			goto out;
 		}
-		next_fb = get_gbm_fd(d, d->buffer.next_bo);
 	}
 	break;
 	case BUF_HEADLESS:
@@ -3791,6 +4023,7 @@ static bool update_display(struct dispout* d)
 				(int)d->id, (uintptr_t) d->buffer.cur_fb, (uintptr_t)next_fb);
 		}
 	}
+	set_device_context(d->device);
 	return true;
 
 out:

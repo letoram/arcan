@@ -145,6 +145,46 @@ static void setup_stores(struct agp_rendertarget* dst)
 	}
 }
 
+void agp_rendertarget_dropswap(struct agp_rendertarget* tgt)
+{
+	struct agp_fenv* env = agp_env();
+	if (!tgt->n_stores)
+		return;
+
+	verbose_print("dropping normal and shadow stores");
+	for (size_t i = 0; i < tgt->n_stores; i++){
+		agp_drop_vstore(tgt->stores[i]);
+/*
+ * might occur if the source is deleted while we are in an unflushed resize
+ */
+		if (tgt->shadow[i]){
+			agp_drop_vstore(tgt->shadow[i]);
+			arcan_mem_free(tgt->shadow[i]);
+			tgt->shadow[i] = NULL;
+		}
+	}
+	tgt->n_stores = 0;
+	tgt->store->vinf.text.glid_proxy = NULL;
+
+	BIND_FRAMEBUFFER(tgt->fbo);
+
+	env->framebuffer_texture_2d(GL_FRAMEBUFFER,
+		GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tgt->store->vinf.text.glid, 0);
+
+	BIND_FRAMEBUFFER(0);
+	tgt->dirtyc++;
+}
+
+size_t agp_rendertarget_dirty(
+	struct agp_rendertarget* dst, struct agp_region* dirty)
+{
+	if (dirty){
+/* missing, track / merge dirty rectangles */
+		dst->dirtyc++;
+	}
+	return dst->dirtyc;
+}
+
 uint64_t agp_rendertarget_swap(struct agp_rendertarget* dst, bool* swap)
 {
 	struct agp_fenv* env = agp_env();
@@ -837,6 +877,17 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 	verbose_print(
 		"rendertarget (%"PRIxPTR") %zu*%zu activated", (uintptr_t) tgt, w, h);
 #endif
+}
+
+void agp_rendertarget_dirty_reset(
+	struct agp_rendertarget* src, struct agp_region* dst)
+{
+	for (size_t i = 0; i < src->dirtyc; i++){
+		dst[i] = (struct agp_region){
+			.x1 = 0, .y1 = 0,
+			.x2 = src->store->w, .y2 = src->store->h
+		};
+	}
 }
 
 void agp_rendertarget_clear()
