@@ -1769,6 +1769,8 @@ static bool lookup_drm_propval(int fd,
 static struct gbm_bo* vobj_to_bo(
 	struct dispout* d, arcan_vobject* vobj, uintptr_t glid)
 {
+	struct gbm_bo* res = NULL;
+
 /*
  * For direct-mapping an external source, we already have img
  * as the EGLimage to export, and we can go from there. It makes
@@ -1794,20 +1796,71 @@ static struct gbm_bo* vobj_to_bo(
 		return NULL;
 	}
 
-	struct gbm_bo* res = gbm_bo_import(
-		d->device->buffer.gbm,
-			GBM_BO_IMPORT_EGL_IMAGE, newimg, GBM_BO_USE_SCANOUT);
+/* EGLImage to DMA-buf or direct to gbm_bo? */
+	if (0){
+		res = gbm_bo_import(
+			d->device->buffer.gbm,
+			GBM_BO_IMPORT_EGL_IMAGE, newimg,
+			GBM_BO_USE_SCANOUT
+		);
 
-	if (!res){
-		debug_print("(%d) dma-buf to gbm-scanout rejected", (int)d->id);
-		goto bad;
+		if (!res){
+			debug_print("(%d) dma-buf to gbm-scanout rejected", (int)d->id);
+			goto bad;
+		}
+	}
+	else {
+		int fourcc, nplanes;
+		if (!d->device->eglenv.query_image_format(
+			d->device->display, newimg, &fourcc, &nplanes, NULL)){
+			debug_print("(%d) couldn't query image format", (int) d->id);
+			goto bad;
+		}
+
+		EGLint stride;
+		int handle;
+		if (!d->device->eglenv.export_dmabuf(
+			d->device->display, newimg, &handle, &stride, NULL) || stride < 0){
+			debug_print("(%d) could not export dma-buffer", (int) d->id);
+			goto bad;
+		}
+
+		res = gbm_bo_import(d->device->buffer.gbm,
+			GBM_BO_IMPORT_FD, &(struct gbm_import_fd_data){
+			.width = vobj->vstore->w,
+			.height = vobj->vstore->h,
+			.format = fourcc,
+			.stride = stride,
+			.fd = handle
+			}, GBM_BO_USE_SCANOUT
+		);
+
+		if (!res){
+			uint8_t fcc[4] = {
+				fourcc & 0xff,
+				(fourcc >> 8) & 0xff,
+				(fourcc >> 16) & 0xff,
+				(fourcc >> 24) & 0xff
+			};
+
+			debug_print("(%d) couldn't convert dma-buffer, fourcc:"
+				"%"PRIu32"(%c%c%c%c) w: %zu, height: %zu, stride: %zu",
+				(int) d->id,
+				(uint32_t)fourcc,
+				fcc[0], fcc[1], fcc[2], fcc[3],
+				(size_t) vobj->vstore->w,
+				(size_t) vobj->vstore->h, (size_t) stride
+			);
+			close(handle);
+		}
 	}
 
-	return res;
-
+/* safe to destroy the backing EGLimage as the BO resource lifetime
+ * is independent, though we don't want to destroy it for the vobj
+ * as it might be mapped / used elsewhere */
 bad:
 	d->device->eglenv.destroy_image(d->device->display, newimg);
-	return NULL;
+	return res;
 }
 
 /*
@@ -3795,7 +3848,7 @@ static enum display_update_state draw_display(struct dispout* d)
 	if (
 		vobj
 		&& vobj->vstore
-		&& vobj->program == shid
+/*  && vobj->program == shid */
 		&& !vobj->txcos
 		&& d->hint == HINT_NONE
 		&& !d->force_compose
