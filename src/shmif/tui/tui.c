@@ -2616,10 +2616,6 @@ void arcan_tui_destroy(struct tui_context* tui, const char* message)
 
 	free(tui->base);
 
-	for (size_t i = 0; i < 32; i++)
-		if (tui->screens[i])
-			tsm_screen_unref(tui->screens[i]);
-
 	memset(tui, '\0', sizeof(struct tui_context));
 	free(tui);
 }
@@ -2812,28 +2808,6 @@ static void apply_arg(struct tui_settings* cfg,
 		cfg->render_flags |= TUI_RENDER_BITMAP;
 }
 
-int arcan_tui_alloc_screen(struct tui_context* ctx)
-{
-	int ind = ffs(~ctx->screen_alloc);
-	if (0 == ind)
-		return -1;
-
-	if (0 != tsm_screen_new(&ctx->screens[ind], tsm_log, ctx))
-		return -1;
-
-	uint8_t* fg = ctx->colors[TUI_COL_TEXT].rgb;
-	uint8_t* bg = ctx->colors[TUI_COL_BG].rgb;
-
-	tsm_screen_set_def_attr(ctx->screens[ind],
-		&(struct tui_screen_attr){
-			.fr = fg[0], .fg = fg[1], .fb = fg[2],
-			.br = bg[0], .bg = bg[1], .bb = bg[2]
-	});
-
-	ctx->screen_alloc |= 1 << ind;
-	return ind;
-}
-
 struct tui_settings arcan_tui_defaults(
 	arcan_tui_conn* conn, struct tui_context* ref)
 {
@@ -2957,37 +2931,6 @@ bool arcan_tui_update_handlers(struct tui_context* tui,
 	return true;
 }
 
-bool arcan_tui_switch_screen(struct tui_context* ctx, unsigned ind)
-{
-	if (ind > 31 || !(ctx->screen_alloc & (1 << ind)))
-		return false;
-
-	if (ctx->screens[ind] == ctx->screen)
-		return true;
-
-	ctx->dirty |= DIRTY_PENDING_FULL;
-	ctx->screen = ctx->screens[ind];
-	ctx->age = 0;
-	ctx->age = tsm_screen_draw(ctx->screen, tsm_draw_callback, ctx);
-
-	return true;
-}
-
-bool arcan_tui_delete_screen(struct tui_context* ctx, unsigned ind)
-{
-	if (ind > 31 || !(ctx->screen_alloc & (1 << ind) || ind == 0))
-		return false;
-
-	if (ctx->screen == ctx->screens[ind])
-		arcan_tui_switch_screen(ctx, 0);
-
-	ctx->screen_alloc &= ~(1 << ind);
-	tsm_screen_unref(ctx->screens[ind]);
-	ctx->screens[ind] = NULL;
-
-	return true;
-}
-
 /*
  * though we are supposed to be prerolled the colors from our display
  * server connection, it's best to have something that gets activated
@@ -3008,11 +2951,6 @@ static void set_builtin_palette(struct tui_context* ctx)
 	ctx->colors[TUI_COL_ALERT] = (struct color){0xaa, 0x00, 0xaa};
 	ctx->colors[TUI_COL_REFERENCE] = (struct color){0x20, 0x30, 0x20};
 	ctx->colors[TUI_COL_INACTIVE] = (struct color){0x20, 0x20, 0x20};
-}
-
-uint32_t arcan_tui_screens(struct tui_context* ctx)
-{
-	return ctx->screen_alloc;
 }
 
 struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
