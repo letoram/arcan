@@ -66,6 +66,8 @@ struct egl_env {
 /* DMA-Buf */
 	PFNEGLQUERYDMABUFFORMATSEXTPROC query_dmabuf_formats;
 	PFNEGLQUERYDMABUFMODIFIERSEXTPROC query_dmabuf_modifiers;
+	PFNEGLEXPORTDMABUFIMAGEMESAPROC export_dmabuf;
+	PFNEGLEXPORTDMABUFIMAGEQUERYMESAPROC query_image_format;
 
 /* EGLStreams */
 	PFNEGLQUERYDEVICESEXTPROC query_devices;
@@ -118,6 +120,10 @@ static void map_eglext_functions(struct egl_env* denv,
 		lookup(tag, "eglQueryDmaBufModifiersEXT", false);
 	denv->query_dmabuf_formats = (PFNEGLQUERYDMABUFFORMATSEXTPROC)
 		lookup(tag, "eglQueryDmaBufFormatsEXT", false);
+	denv->query_image_format = (PFNEGLEXPORTDMABUFIMAGEQUERYMESAPROC)
+		lookup(tag, "eglExportDMABUFImageQueryMESA", false);
+	denv->export_dmabuf = (PFNEGLEXPORTDMABUFIMAGEMESAPROC)
+		lookup(tag, "eglExportDMABUFImageMESA", false);
 
 /* EGLStreams */
 /* "EGL_EXT_device_query"

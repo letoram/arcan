@@ -365,11 +365,35 @@ void agp_drop_rendertarget(struct agp_rendertarget*);
 uint64_t agp_rendertarget_swap(struct agp_rendertarget*, bool* swap);
 
 /*
+ * Reset the internal extra resources indirectly allocated via a call to
+ * agp_rendertarget_swap.
+ */
+void agp_rendertarget_dropswap(struct agp_rendertarget*);
+
+/*
  * Drop the rendertarget bound resources, and any intermediate back- buffers.
  * The main vstore that was bound to the rendertarget is still alive and needs
  * to be destroyed manually.
  */
 void agp_drop_rendertarget(struct agp_rendertarget*);
+
+/*
+ * manually mark part of rendertarget as dirty, returns number of invalidations
+ * so far. if [dirty] is set to NULL, no changes will be marked, but counter
+ * will still be returned.
+ */
+struct agp_region {
+	size_t x1, y1, x2, y2;
+};
+size_t agp_rendertarget_dirty(
+	struct agp_rendertarget* dst, struct agp_region* dirty);
+
+/*
+ * flush the list of dirty regions, and store a copy inside [dst], if provided.
+ * The [dst] size can be probed using agp_rendertarget_dirty(src, NULL)
+ */
+void agp_rendertarget_dirty_reset(
+	struct agp_rendertarget* src, struct agp_region* dst);
 
 /*
  * reset the currently bound rendertarget output buffer

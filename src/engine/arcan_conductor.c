@@ -33,7 +33,9 @@
 /*
  * checklist:
  *  [ ] actual setup to realtime- plot the different timings and stages
- *      so it is easier (possible) to debug and evaluate the different strategies
+ *      so it is easier (possible) to debug and evaluate the different strategies,
+ *      for sake of comparison, pq has format+plotter for weston already, so use
+ *      that.
  *
  *  [ ] parallelize PBO uploads
  *      (thought: test the systemic effects of not doing shm->gpu in process but

@@ -56,7 +56,6 @@ static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
             do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
 						arcan_timemillis(), "platform-arcan:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
-#define verbose_print debug_print
 #ifndef verbose_print
 #define verbose_print
 #endif
