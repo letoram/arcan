@@ -970,6 +970,13 @@ static bool page_down(struct tui_context* tui)
 		tui->cursor_off = true;
 		arcan_tui_scroll_down(tui, tui->rows);
 	}
+
+	if (tui->sbofs == 0){
+		tui->cursor_off = false;
+		tui->cursor_upd = true;
+		flag_cursor(tui);
+	}
+
 	return true;
 }
 
