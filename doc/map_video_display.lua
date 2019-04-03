@@ -1,32 +1,35 @@
 -- map_video_display
--- @short: Specify virtual displays to physical displays mapping.
--- @inargs: vid, dispid, *blithint*
--- @outargs: success_bool
--- @longdescr: video_displaymodes provides a list of devices, outputs
--- and modes. This function provides the option to specify which
--- higher-level abstractions (video-objects) that are mapped to
--- each output. Note that vid can be any video object with a valid,
--- textured, backing store (including rendertargets, WORLDID or a
--- null_surface that subsamples a region of WORLDID).
--- Blithint can be any of (HINT_NONE, HINT_FIT, HINT_CROP, HINT_ROTATE_CW_90,
--- HINT_ROTATE_CCW_90, HINT_YFLIP) or:ed with the optional HINT_PRIMARY.
--- If PRIMARY is set, the platform will attempt to wait for synchronization
--- acknowledgement of one submitted update before sending the next. This can
--- reduce effective framerate to the least common denominator of all primary
--- flagged displays. The actual end-behavior is tied to the active synchronization
--- strategy, which is platform-defined.
--- @note: All sources are expected to have their Y coordinates inverted, with
--- origo in LL rather than UL, which is the case with rendertargets by default
--- but special consideration has to be taken for frameservers.
--- @note: Vid referencing an object with a feed- function
--- (recordtarget, frameserver, calctarget etc.) is a
--- terminal state transition
--- @note: Using this on arcan_lwa is a special case primarily intended
--- to test / debug display hotplugging and specific rendering effects
--- e.g. shaders, texture coordinates or blithint will not apply and
--- have to be performed manually through rendertargets. This mode will
--- also resize possible subsegments (which corresponds to displays)
--- to fit the dimensions of the backing store.
+-- @short: Specify virtual object to output mapping.
+-- @inargs: vid:src, number:display
+-- @inargs: vid:src, number:display, number:blithint
+-- @outargs: bool:success
+-- @longdescr: This functions updates the mapping between a higher level
+-- visual object *src* and an output *display*. This includes the currently
+-- set shader, custom texture coordinates and so on.
+-- The optional *blithint* argument (default: HINT_NONE) can be one of the
+-- following: HINT_FIT, HINT_CROP, HINT_ROTATE_CW_90, HINT_ROTATE_CCW_90,
+-- HINT_YFLIP. It is also possible to OR it with the optional HINT_PRIMARY.
+-- FIT and CROP determine the strategy to deal with for the case where the
+-- current mode on the *display* fail to match the storage dimensions of *src*.
+-- YFLIP, ROTATE_CW_90, ROTATE_CCW_90 deals with outputs that can have a
+-- varying physical rotation and supports accelerated mapping.
+-- HINT_PRIMARY tells the platform layer that the synchronisation to the
+-- display SHOULD be prioritized in the case of multiple displays.
+-- The function returns *true* if the object was successfully mapped to
+-- the display, and *false* if the underlying platform rejected it for some
+-- reason, as not all outputs can accept all kinds of sources.
+-- @note: A *src* referencing an object with a feed- function, such as
+-- one coming from ref:define_recordtarget, ref:define_calctarget and so
+-- on, is a terminal state transition.
+-- @note: Multiple output paths with varying performance characteristics
+-- may apply here, including forced repacking stages that are very costly.
+-- Avoid using custom texture coordinate sets, custom shaders or using the
+-- *src* object as part of other rendering operations to ensure that any
+-- fast scanout path can be applied.
+-- @note: A rendertarget as *src* has a different coordinate transform
+-- when going from 'as a texture' to 'as an output' behavior and may end
+-- up inverted. The engine will attempt to account for this, but only if
+-- no custom texture coordinate set has been defined for the object.
 -- @group: vidsys
 -- @cfunction: videomapping
 -- @related:
