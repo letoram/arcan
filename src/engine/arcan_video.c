@@ -1597,7 +1597,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		uintptr_t tag;
 		cfg_lookup_fun get_config = platform_config_lookup(&tag);
 		if (get_config("video_ignore_dirty", 0, NULL, tag)){
-			arcan_video_display.ignore_dirty = true;
+			arcan_video_display.ignore_dirty = SIZE_MAX >> 1;
 		}
 	}
 
@@ -4896,7 +4896,7 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 	else
 		current = tgt->first;
 
-	if (arcan_video_display.ignore_dirty == false &&
+	if (arcan_video_display.ignore_dirty == 0 &&
 		(!tgt->link && tgt->dirtyc == 0 && tgt->transfc == 0))
 		return 0;
 
@@ -5115,8 +5115,8 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 
 	FLAG_DIRTY(vobj);
 
-	bool id = arcan_video_display.ignore_dirty;
-	arcan_video_display.ignore_dirty = true;
+	size_t id = arcan_video_display.ignore_dirty;
+	arcan_video_display.ignore_dirty = 1;
 	process_rendertarget(tgt, arcan_video_display.c_lerp);
 	arcan_video_display.ignore_dirty = id;
 	current_rendertarget = NULL;
@@ -5199,6 +5199,9 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 /* active shaders with counter counts towards dirty */
 	arcan_video_display.dirty +=
 		agp_shader_envv(FRACT_TIMESTAMP_F, &fract, sizeof(float));
+
+	if (arcan_video_display.ignore_dirty > 0)
+		arcan_video_display.ignore_dirty--;
 
 /* rendertargets may be composed on world- output, begin there */
 	for (size_t ind = 0; ind < current_context->n_rtargets; ind++){

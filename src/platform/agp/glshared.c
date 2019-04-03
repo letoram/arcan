@@ -49,6 +49,8 @@
 #define verbose_print
 #endif
 
+static struct agp_rendertarget* active_rendertarget;
+
 /*
  * Workaround for missing GL_DRAW_FRAMEBUFFER_BINDING
  */
@@ -104,6 +106,8 @@ struct agp_rendertarget
 
 	enum rendertarget_mode mode;
 	struct agp_vstore* store;
+	bool (*proxy_state)(struct agp_rendertarget* tgt, uintptr_t tag);
+	uintptr_t proxy_tag;
 
 /* used for multi-buffering mode */
 	bool rz_ack;
@@ -178,6 +182,9 @@ void agp_rendertarget_dropswap(struct agp_rendertarget* tgt)
 size_t agp_rendertarget_dirty(
 	struct agp_rendertarget* dst, struct agp_region* dirty)
 {
+	if (!dst)
+		return 0;
+
 	if (dirty){
 /* missing, track / merge dirty rectangles */
 		dst->dirtyc++;
@@ -711,6 +718,9 @@ struct agp_rendertarget* agp_setup_rendertarget(
 
 	r->store = vstore;
 	r->mode = m;
+	r->clearcol[0] = 0.05;
+	r->clearcol[1] = 0.05;
+	r->clearcol[2] = 0.05;
 	r->clearcol[3] = 1.0;
 	verbose_print("vstore (%"PRIxPTR") bound to rendertarget "
 		"(%"PRIxPTR") in mode %d", (uintptr_t) vstore, (uintptr_t) r, (int) m);
@@ -801,7 +811,11 @@ void agp_drop_rendertarget(struct agp_rendertarget* tgt)
 {
 	if (!tgt)
 		return;
+
 	struct agp_fenv* env = agp_env();
+
+	if (tgt == active_rendertarget)
+		agp_activate_rendertarget(NULL);
 
 	env->delete_framebuffers(1,&tgt->fbo);
 	env->delete_renderbuffers(1,&tgt->depth);
@@ -838,8 +852,21 @@ void agp_drop_rendertarget(struct agp_rendertarget* tgt)
 	arcan_mem_free(tgt);
 }
 
+void agp_rendertarget_proxy(struct agp_rendertarget* tgt,
+	bool (*proxy_state)(struct agp_rendertarget*, uintptr_t tag), uintptr_t tag)
+{
+/*
+ * Store the proxy_state handler into the target, this will be called on
+ * rendertarget enter/leave if the rendertarget vstore is not in a
+ * disqualified state (shaders, txco based mapping, ...)
+ */
+	tgt->proxy_state = proxy_state;
+	tgt->proxy_tag = tag;
+}
+
 void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 {
+	verbose_print("set rendertarget: %"PRIxPTR, (uintptr_t)(void*)tgt);
 	size_t w, h;
 	struct agp_fenv* env = agp_env();
 	if (!tgt || !(tgt->mode & RENDERTARGET_RETAIN_ALPHA)){
@@ -864,12 +891,27 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 		BIND_FRAMEBUFFER(0);
 		env->clear_color(0, 0, 0, 1);
 	}
+/* Query the rendertarget proxy and determine if it has taken control
+ * over the context output (FBO0) or not. The Refcount test is also
+ * important as other uses NEED the indirection */
 	else {
-		w = tgt->store->w;
-		h = tgt->store->h;
-		BIND_FRAMEBUFFER(tgt->fbo);
-		env->clear_color(tgt->clearcol[0],
-			tgt->clearcol[1], tgt->clearcol[2], tgt->clearcol[3]);
+		if (tgt->store->refcount < 2 &&
+			tgt->proxy_state && tgt->proxy_state(tgt, tgt->proxy_tag)){
+			verbose_print("rendertarget-proxy");
+			BIND_FRAMEBUFFER(0);
+			env->clear_color(tgt->clearcol[0],
+				tgt->clearcol[1], tgt->clearcol[2], tgt->clearcol[3]);
+			w = tgt->store->w;
+			h = tgt->store->h;
+		}
+		else {
+			verbose_print("rendertarget-fbo(%d)", (int)tgt->fbo);
+			w = tgt->store->w;
+			h = tgt->store->h;
+			BIND_FRAMEBUFFER(tgt->fbo);
+			env->clear_color(tgt->clearcol[0],
+				tgt->clearcol[1], tgt->clearcol[2], tgt->clearcol[3]);
+		}
 	}
 
 	env->scissor(0, 0, w, h);
@@ -877,22 +919,26 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 	verbose_print(
 		"rendertarget (%"PRIxPTR") %zu*%zu activated", (uintptr_t) tgt, w, h);
 #endif
+	active_rendertarget = tgt;
 }
 
 void agp_rendertarget_dirty_reset(
 	struct agp_rendertarget* src, struct agp_region* dst)
 {
-	for (size_t i = 0; i < src->dirtyc; i++){
+	for (size_t i = 0; i < src->dirtyc && dst; i++){
 		dst[i] = (struct agp_region){
 			.x1 = 0, .y1 = 0,
 			.x2 = src->store->w, .y2 = src->store->h
 		};
 	}
+	src->dirtyc = 0;
 }
 
 void agp_rendertarget_clear()
 {
+	verbose_print("");
 	agp_env()->clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	agp_rendertarget_dirty(active_rendertarget, &(struct agp_region){});
 }
 
 void agp_pipeline_hint(enum pipeline_mode mode)
@@ -1255,6 +1301,8 @@ void agp_draw_vobj(
 
 		env->disable_vertex_attrarray(attrindv);
 	}
+
+	agp_rendertarget_dirty(active_rendertarget, &(struct agp_region){});
 }
 
 static void toggle_debugstates(float* modelview)
@@ -1549,6 +1597,7 @@ void agp_submit_mesh(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 	}
 
 	setup_transfer(base, fl);
+	agp_rendertarget_dirty(active_rendertarget, &(struct agp_region){});
 }
 
 /*

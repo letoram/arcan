@@ -96,6 +96,7 @@ static char* egl_envopts[] = {
 	"device_connector=ind", "primary display connector index",
 	"device_wait", "loop until an active connector is found",
 	"device_nodpms", "set to disable power management controls",
+	"device_direct", "enable direct rendertarget scanout (experimental)",
 	"display_context=1", "set outer shared headless context, per display contexts",
 	NULL
 };
@@ -116,7 +117,8 @@ enum vsynch_method {
 
 enum display_update_state {
 	UPDATE_FLIP,
-	UPDATE_DIRECT
+	UPDATE_DIRECT,
+	UPDATE_SKIP
 };
 
 /*
@@ -245,7 +247,6 @@ struct dispout {
 		enum dpms_state dpms;
 		char* edid_blob;
 		size_t blob_sz;
-		size_t blackframes;
 		size_t gamma_size;
 		uint16_t* orig_gamma;
 	} display;
@@ -253,6 +254,7 @@ struct dispout {
 /* internal v-store and system mappings, rules for drawing final output */
 	arcan_vobj_id vid;
 	bool force_compose;
+	bool skip_blit;
 	size_t dispw, disph, dispx, dispy;
 	float vrefresh;
 
@@ -332,6 +334,21 @@ static int adpms_to_dpms(enum dpms_state state)
 	default:
 		return -1;
 	}
+}
+
+static void set_device_context(struct dev_node* node)
+{
+	node->eglenv.make_current(node->display,
+		EGL_NO_SURFACE, EGL_NO_SURFACE, node->context);
+	node->context_state = "device";
+}
+
+static void set_display_context(struct dispout* d)
+{
+	d->device->eglenv.make_current(d->device->display,
+		d->buffer.esurf, d->buffer.esurf,
+		d->buffer.context ? d->buffer.context : d->device->context);
+	d->device->context_state = "display";
 }
 
 /*
@@ -444,19 +461,41 @@ static void release_card(size_t i)
 	nodes[i].active = false;
 }
 
-static void set_device_context(struct dev_node* node)
+static bool sane_direct_vobj(arcan_vobject* vobj)
 {
-	node->eglenv.make_current(node->display,
-		EGL_NO_SURFACE, EGL_NO_SURFACE, node->context);
-	node->context_state = "device";
+	return vobj
+	&& vobj->vstore
+	&& !vobj->txcos
+	&& (!vobj->program || vobj->program == agp_default_shader(BASIC_2D))
+	&& vobj->vstore->txmapped == TXSTATE_TEX2D
+	&& vobj->vstore->refcount == 1;
 }
 
-static void set_display_context(struct dispout* d)
+static bool display_rtgt_proxy(struct agp_rendertarget* tgt, uintptr_t tag)
 {
-	d->device->eglenv.make_current(d->device->display,
-		d->buffer.esurf, d->buffer.esurf,
-		d->buffer.context ? d->buffer.context : d->device->context);
-	d->device->context_state = "display";
+	struct dispout* d = (struct dispout*) tag;
+
+/* The dispouts come frome a static pool, so they can never go memory-
+ * wise UAF, though there are higher level states to consider, such as
+ * mapped or not. Point being: don't need to consider 'unregister'. */
+	if (d->state != DISP_MAPPED){
+		verbose_print("(%d) reject unmapped fastpath", (int)d->id);
+		return false;
+	}
+
+	arcan_vobject* vobj = arcan_video_getobject(d->vid);
+	if (!vobj || !sane_direct_vobj(vobj)){
+		verbose_print("(%d) reject unsound vobject", (int)d->id);
+		return false;
+	}
+/* We have a vobj that can be mapped directly, and we know that we
+ * have to compose into the egl display, so do that. */
+
+	verbose_print("fastpath, proxy rendertarget");
+	d->skip_blit = true;
+	set_display_context(d);
+
+	return true;
 }
 
 void setup_backlight_ledmap()
@@ -3556,9 +3595,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 /*
  * At this stage, the contents of all RTs have been synched, with nd == 0,
- * nothing has changed from what was draw last time - but since we normally run
- * double buffered it is easier to synch the same contents in both buffers, so
- * that when dirty updates are being tracked, we won't be corrupted.
+ * nothing has changed from what was draw last time.
  *
  * The damage tracking is currently binary, a dirty- region style flow should
  * be added to the _agp layer in order to not miss anything (shaders, source-
@@ -3566,8 +3603,6 @@ void platform_video_synch(uint64_t tick_count, float fract,
  */
 	arcan_bench_register_cost( cost_ms );
 
-	static int last_nd;
-	bool update = nd || last_nd;
 	bool clocked = false;
 	bool updated = false;
 	int method = 0;
@@ -3576,7 +3611,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * If we have a real update, the display timing will request a deadline based
  * on whatever display that was updated so we can go with that
  */
-	if (update){
+	if (nd > 0){
 		while ( (d = get_display(i++)) ){
 			if (d->state == DISP_MAPPED && d->buffer.in_flip == 0){
 				updated |= update_display(d);
@@ -3597,6 +3632,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * state (useful for displayless like processing).
  */
 	else {
+		verbose_print("nothing to update");
 		float refresh = 60.0;
 		i = 0;
 		while ((d = get_display(i++))){
@@ -3614,8 +3650,6 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		arcan_conductor_deadline(-1);
 		arcan_conductor_fakesynch(left);
 	}
-
-	last_nd = nd;
 
 /*
  * The LEDs that are mapped as backlights via the internal pipe-led protocol
@@ -3779,10 +3813,11 @@ bool platform_video_map_display(
 
 	d->display.primary = hint & HINT_FL_PRIMARY;
 	memcpy(d->txcos, txcos, sizeof(float) * 8);
+
+	size_t iframes = 0;
 	arcan_vint_applyhint(vobj, hint,
-		txcos, d->txcos, &d->dispx, &d->dispy, &d->dispw, &d->disph,
-		&d->display.blackframes
-	);
+		txcos, d->txcos, &d->dispx, &d->dispy, &d->dispw, &d->disph, &iframes);
+	arcan_video_display.ignore_dirty += iframes;
 
 	if (d->display.dpms == ADPMS_OFF){
 		dpms_set(d, DRM_MODE_DPMS_ON);
@@ -3796,18 +3831,41 @@ bool platform_video_map_display(
 	arcan_conductor_register_display(
 		d->device->card_id, d->id, SYNCH_STATIC, d->vrefresh, d->vid);
 
-/* the rendertarget color attachment will need buffering in order
- * to not have corruption or tearing, so enable that by swapping */
+/* we might have messed around with the projection, rebuild it to be sure */
 	struct rendertarget* newtgt = arcan_vint_findrt(vobj);
-	if (newtgt){
-		bool swap;
-		unsigned col = agp_rendertarget_swap(newtgt->art, &swap);
+	build_orthographic_matrix(
+		newtgt->projection, 0, vobj->origw, 0, vobj->origh, 0, 1);
+
+	if (newtgt && sane_direct_vobj(vobj)){
+/* the rendertarget color attachment will need buffering in order to not have
+ * tearing or implicit locks when attempting direct scanout, so enable that by
+ * running a swap here. */
+		if (!d->force_compose){
+			bool swap;
+			unsigned col = agp_rendertarget_swap(newtgt->art, &swap);
+		}
+
+/* even then we have an option for a mapped rendertarget, and that is to try
+ * and proxy it -> can we forego it and use the egl buffer directly? that's
+ * possible if the contents isn't used for anything else (recordtarget,
+ * multiple users, ...) */
+		else {
+			agp_rendertarget_proxy(newtgt->art,
+				display_rtgt_proxy, (uintptr_t)(void*)d);
+
+/* but this requires a different projection than the default */
+			build_orthographic_matrix(
+				newtgt->projection, 0, vobj->origw, vobj->origh, 0, 0, 1);
+		}
 	}
 
 /* reset the 'force composition' output path, this may cost a frame
  * being slightly delayed on map operations should the direct-scanout
  * fail, causing force_composition to be set */
-	d->force_compose = false;
+	uintptr_t tag;
+	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	d->force_compose = !get_config("video_device_direct", 0, NULL, tag);
+
 	return true;
 }
 
@@ -3822,7 +3880,7 @@ static void drop_swapchain(struct dispout* d)
 		return;
 
 	agp_rendertarget_dropswap(newtgt->art);
-	d->display.blackframes = 2;
+	arcan_video_display.ignore_dirty += 2;
 }
 
 static void fb_cleanup(struct gbm_bo* bo, void* data)
@@ -3845,15 +3903,7 @@ static enum display_update_state draw_display(struct dispout* d)
  * If the following conditions are valid, we can simply add the source vid
  * to the display directly, saving a full screen copy.
  */
-	if (
-		vobj
-		&& vobj->vstore
-/*  && vobj->program == shid */
-		&& !vobj->txcos
-		&& d->hint == HINT_NONE
-		&& !d->force_compose
-		&& vobj->vstore->txmapped == TXSTATE_TEX2D
-	){
+	if (sane_direct_vobj(vobj) && d->hint == HINT_NONE && !d->force_compose){
 		swap_display = false;
 		goto out;
 	}
@@ -3876,90 +3926,93 @@ static enum display_update_state draw_display(struct dispout* d)
 /*
  * This is an ugly sinner, due to the whole 'anything can be mapped as
  * anything' with a lot of potential candidates being in non scanout- capable
- * memory, we pay > a lot < for first drawing into a RT, drawing this RT unto
- * the EGLDisplay and then swapping the EGLDisplay. A full copy (and allocated
- * buffer) could be avoided if we a. accept no shaders on WORLDID, b. only do
- * this for RTs or WORLDID, c. transformations are simple position or
- * 90-deg.rotations
- */
-	agp_shader_activate(shid);
-	agp_shader_envv(PROJECTION_MATR, d->projection, sizeof(float)*16);
-	agp_draw_vobj(0, 0, d->dispw, d->disph, d->txcos, NULL);
-	verbose_print("(%d) draw, shader: %d, %zu*%zu",
-		(int)d->id, (int)shid, (size_t)d->dispw, (size_t)d->disph);
-
-/*
- * another rough corner case, if we have a store that is not world ID but
- * shared with different texture coordinates (to extend display), we need to
- * draw the cursor .. but if the texture coordinates indicate that we only draw
- * a subset, we need to check if the cursor is actually inside that area...
- * Seems more and more that accelerated cursors add to more state explosion
- * than they are worth ..
- */
-	if (vobj->vstore == arcan_vint_world()){
-		arcan_vint_drawcursor(false);
-	}
-
-	agp_deactivate_vstore();
-
-out:
-	if (swap_display){
-		verbose_print("(%d) pre-swap", (int)d->id);
-			d->device->eglenv.swap_buffers(d->device->display, d->buffer.esurf);
-		verbose_print("(%d) swapped", (int)d->id);
-		return UPDATE_FLIP;
-	}
-
-	verbose_print("(%d) direct- path selected");
-	return UPDATE_DIRECT;
-}
-
-static bool update_display(struct dispout* d)
-{
-	if (d->display.dpms != ADPMS_ON)
-		return false;
-
-/* we want to know how multiple- displays drift against eachother */
-	d->last_update = arcan_timemillis();
-
-/*
- * Make sure we target the right GL context
- * Notice that the context being set is that of the display buffer,
- * not the shared outer "headless" context.
+ * memory. The multi-display strategy with first drawing into a rendertarget(RT),
+ * then blitting this into the EGLDisplay here is very costly.
  *
- * MULTIGPU> will also need to set the agp- current rendertarget
+ * There is a 'proxy' path where the various other RT uses are probed and if
+ * the RT is not actually used for render-to-texture or other sharing /
+ * effects (custom shaders), we ignore the use as a RT and just compose to
+ * the underlying EGL bit. The flow for that is as follows:
+ *
+ *  map_display(obj) -> sanity check(is_rtgt?) -> set proxy.
+ *
+ *  in renderloop:
+ *     activate_rtgt, has proxy? -> registered callback()
+ *     in callback, if it is a valid direct target, switch the drawing
+ *     destination to the direct display instead of rendertarget, flag
+ *     the display as already drawn.
  */
-	set_display_context(d);
-	egl_dri.last_display = d;
-
-/* activated- rendertarget covers scissor regions etc. so we want to reset */
-	agp_blendstate(BLEND_NONE);
-	agp_activate_rendertarget(NULL);
-
-/*
- * used on mode switching, display-object mapping changes, object size
- * changes and so-on.
- */
-	if (d->display.blackframes){
-		verbose_print(
-			"(%d) update, blackframes: %d", (int)d->id, (int)d->display.blackframes);
-		agp_rendertarget_clear();
-
-		arcan_vobject* vobj = arcan_video_getobject(d->vid);
-		if (vobj){
-			struct rendertarget* newtgt = arcan_vint_findrt(vobj);
-			if (newtgt){
-				struct agp_vstore* store = vobj->vstore;
-				agp_rendertarget_dirty(newtgt->art, &(struct agp_region){
-						.x1 = 0,        .y1 = 0,
-						.x2 = store->w, .y2 = store->h
-				});
+		struct rendertarget* newtgt = arcan_vint_findrt(vobj);
+		if (newtgt){
+			size_t nd = agp_rendertarget_dirty(newtgt->art, NULL);
+			verbose_print("(%d) draw display, dirty regions: %zu", nd);
+			if (nd){
+				agp_rendertarget_dirty_reset(newtgt->art, NULL);
+			}
+			else{
+				verbose_print("(%d) no dirty, skip\n");
+				return UPDATE_SKIP;
 			}
 		}
 
-		d->display.blackframes--;
-		arcan_video_display.ignore_dirty = d->display.blackframes > 0;
+		if (d->skip_blit){
+			verbose_print("(%d) skip draw, already composed", (int)d->id);
+			d->skip_blit = false;
+		}
+		else {
+			agp_shader_activate(shid);
+			agp_shader_envv(PROJECTION_MATR, d->projection, sizeof(float)*16);
+			agp_draw_vobj(0, 0, d->dispw, d->disph, d->txcos, NULL);
+			verbose_print("(%d) draw, shader: %d, %zu*%zu",
+				(int)d->id, (int)shid, (size_t)d->dispw, (size_t)d->disph);
+		}
+	/*
+	 * another rough corner case, if we have a store that is not world ID but
+	 * shared with different texture coordinates (to extend display), we need to
+	 * draw the cursor .. but if the texture coordinates indicate that we only draw
+	 * a subset, we need to check if the cursor is actually inside that area...
+	 * Seems more and more that accelerated cursors add to more state explosion
+	 * than they are worth ..
+	 */
+		if (vobj->vstore == arcan_vint_world()){
+			arcan_vint_drawcursor(false);
+		}
+
+		agp_deactivate_vstore();
+
+	out:
+		if (swap_display){
+			verbose_print("(%d) pre-swap", (int)d->id);
+				d->device->eglenv.swap_buffers(d->device->display, d->buffer.esurf);
+			verbose_print("(%d) swapped", (int)d->id);
+			return UPDATE_FLIP;
+		}
+
+		verbose_print("(%d) direct- path selected");
+		return UPDATE_DIRECT;
 	}
+
+	static bool update_display(struct dispout* d)
+	{
+		if (d->display.dpms != ADPMS_ON)
+			return false;
+
+	/* we want to know how multiple- displays drift against eachother */
+		d->last_update = arcan_timemillis();
+
+	/*
+	 * Make sure we target the right GL context
+	 * Notice that the context being set is that of the display buffer,
+	 * not the shared outer "headless" context.
+	 *
+	 * MULTIGPU> will also need to set the agp- current rendertarget
+	 */
+		set_display_context(d);
+		egl_dri.last_display = d;
+
+	/* activated- rendertarget covers scissor regions etc. so we want to reset */
+		agp_blendstate(BLEND_NONE);
+		agp_activate_rendertarget(NULL);
 
 /*
  * Currently we only do binary damage / update tracking in that there are EGL
@@ -3989,7 +4042,7 @@ static bool update_display(struct dispout* d)
 	}
 	break;
 	case BUF_GBM:{
-		int rv;
+		int rv = -1;
 /* We use rendertarget_swap for implementing front/back buffering in the
  * case of rendertarget scanout. */
 		if (dstate == UPDATE_DIRECT){
