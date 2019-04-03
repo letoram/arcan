@@ -354,6 +354,15 @@ void agp_activate_rendertarget(struct agp_rendertarget*);
 void agp_drop_rendertarget(struct agp_rendertarget*);
 
 /*
+ * When processing a rendertarget for rendering, and the result gets mapped
+ * to a screen directly, and the rendertarget source isn't used for anything
+ * else, we can have a fast-path here where the output gets drawn to the
+ * platform screen immediately.
+ */
+void agp_rendertarget_proxy(struct agp_rendertarget* tgt,
+	bool (*proxy_state)(struct agp_rendertarget*, uintptr_t tag), uintptr_t tag);
+
+/*
  * Swap out the color attachment in the rendertarget, and return a graphics
  * library buffer ID for the latest 'rendered-to' buffer. On the first call,
  * this will internally make the rendertarget into a multi-buffered one,
@@ -389,8 +398,9 @@ size_t agp_rendertarget_dirty(
 	struct agp_rendertarget* dst, struct agp_region* dirty);
 
 /*
- * flush the list of dirty regions, and store a copy inside [dst], if provided.
- * The [dst] size can be probed using agp_rendertarget_dirty(src, NULL)
+ * Flush the list of dirty regions, and store a copy inside [dst], if provided.
+ * The [dst] size can be probed using agp_rendertarget_dirty(src, NULL).
+ * This will also set the dirty- counter for the rendertarget to 0.
  */
 void agp_rendertarget_dirty_reset(
 	struct agp_rendertarget* src, struct agp_region* dst);

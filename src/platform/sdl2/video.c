@@ -38,12 +38,9 @@ static struct {
 	size_t canvasw, canvash;
 	size_t draww, drawh, drawx, drawy;
 	arcan_vobj_id vid;
-	size_t blackframes;
 	uint64_t last;
 	float txcos[8];
-} sdl = {
-	.blackframes = 2
-};
+} sdl;
 
 static char* envopts[] = {
 	"ARCAN_VIDEO_MULTISAMPLES=1", "attempt to enable multisampling",
@@ -168,12 +165,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	size_t nd;
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
 	agp_shader_id shid = agp_default_shader(BASIC_2D);
-
 	agp_activate_rendertarget(NULL);
-	if (sdl.blackframes){
-		agp_rendertarget_clear();
-		sdl.blackframes--;
-	}
 
 	if (vobj->program > 0)
 		shid = vobj->program;
@@ -323,12 +315,13 @@ bool platform_video_map_display(arcan_vobj_id id,
  * (rts were initially used for 3d models, vobjs were drawin with inverted ys
  * and world normally etc. a huge mess)
  */
+	size_t iframes = 0;
 	if (isrt){
 		arcan_vint_applyhint(vobj, hint, vobj->txcos ? vobj->txcos :
 			arcan_video_display.mirror_txcos, sdl.txcos,
 			&sdl.drawx, &sdl.drawy,
 			&sdl.draww, &sdl.drawh,
-			&sdl.blackframes);
+			&iframes);
 	}
 /* direct VOBJ mapping, prepared for indirect drawying so flip yhint */
 	else {
@@ -337,9 +330,9 @@ bool platform_video_map_display(arcan_vobj_id id,
 		vobj->txcos ? vobj->txcos : arcan_video_display.default_txcos, sdl.txcos,
 		&sdl.drawx, &sdl.drawy,
 		&sdl.draww, &sdl.drawh,
-		&sdl.blackframes);
+		&iframes);
 	}
-
+	arcan_video_display.ignore_dirty += iframes;
 	sdl.vid = id;
 	return true;
 }

@@ -279,7 +279,7 @@ struct arcan_video_display {
 	bool suspended, fullscreen, conservative, in_video, no_stdout;
 
 	int dirty;
-	bool ignore_dirty;
+	size_t ignore_dirty;
 	enum arcan_order3d order3d;
 
 /*
