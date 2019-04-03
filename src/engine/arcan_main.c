@@ -98,6 +98,7 @@ static void vplatform_usage()
 	printf("Video platform configuration options:\n");
 	printf("(use ARCAN_VIDEO_XXX=val for env, or "
 		"arcan_db add_appl_kv arcan video_xxx for db)\n");
+	printf("\tignore_dirty - always update regardless of 'dirty' state\n");
 	while(1){
 		const char* a = *cur++;
 		if (!a) break;

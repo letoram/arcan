@@ -1590,6 +1590,15 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		arcan_vint_mirrormapping(arcan_video_display.mirror_txcos, 1.0, 1.0);
 		arcan_video_reset_fontcache();
 		firstinit = false;
+
+/* though it should not be the default, the option to turn of the
+ * 'block rendertarget drawing if not dirty' optimization may be
+ * useful for some cases and for troubleshooting */
+		uintptr_t tag;
+		cfg_lookup_fun get_config = platform_config_lookup(&tag);
+		if (get_config("video_ignore_dirty", 0, NULL, tag)){
+			arcan_video_display.ignore_dirty = true;
+		}
 	}
 
 	if (!platform_video_init(width, height, bpp, fs, frames, caption)){
