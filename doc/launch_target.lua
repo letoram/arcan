@@ -1,15 +1,19 @@
 -- launch_target
 -- @short: Setup and launch an external program.
--- @inargs: target, configuration, *mode*, *handler(sourcevid,statustbl,...)*, *argstr*
--- @outargs: *vid* or *rcode, timev*
+-- @inargs: int:target, int:configuration
+-- @inargs: int:target, int:configuration, int:mode
+-- @inargs: int:target, int:configuration, int:mode, function:handler
+-- @inargs: int:target, int:configuration, int:mode, function:handler, string:args
+-- @outargs: vid:new_vid
+-- @outargs: int:return_code, int:elapsed
 -- @longdescr: Launch Target uses the database to build an execution environment
--- for the specific tuple (target, configuration). The mode can be set to either
--- LAUNCH_INTERNAL or LAUNCH_EXTERNAL.
+-- for the specific tuple of *target* and *configuration*. The mode can be set to
+-- either LAUNCH_INTERNAL (default) or LAUNCH_EXTERNAL.
 --
 -- if (LAUNCH_INTERNAL) is set, arcan will set up a frameserver container,
--- launch the configuration and continue executing. The callback specified
--- with *handler* will be used to receive events connected with the new
--- frameserver, and the returned *vid* handle can be used to control and
+-- launch the configuration and continue executing as normal. The callback
+-- specified with *handler* will be used to receive events connected with the
+-- new frameserver, and the returned *vid* handle can be used to control and
 -- communicate with the frameserver. The notes section below covers events
 -- related to this callback.
 --
@@ -18,12 +22,12 @@
 -- code of the program will be returned as the function return along with the
 -- elapsed time in milliseconds. This call is blocking and is intended
 -- for suspend/resume and similar situations. It only works if the binary format
--- in the database entry has been set explicitly to EXTERNAL.
+-- in the database entry has also been set explicitly to EXTERNAL.
 --
--- Depending on the binary format of the specified configuration, an additional
--- *argstr* may be forwarded as the ARCAN_ARG environment variable and follows
--- the key1=value:key2:key3=value format (: delimiter, = indicates key value
--- pair, otherwise just key.
+-- Depending on the binary format of the specified target, an additional
+-- *args* string may be forwarded as the ARCAN_ARG environment variable and
+-- follows the key1=value:key2:key3=value format (: delimiter, = indicates key
+-- value pair, otherwise just key.
 --
 -- If the target:configuration tuple does not exist (if configuration is
 -- not specified, it will be forced to 'default') or the configuration
@@ -35,37 +39,35 @@
 -- "state_size", "viewport", "alert", "content_state", "resource_status",
 -- "registered", "clock", "cursor", "bchunkstate", "proto_update", "unknown"
 --
--- @note: "preroll" {segkind, source_audio} is an initial state where
--- the resources for the target have been reserved, and it is possible to
--- run some actions on the target to set up desired initial state, and valid
--- actions here are currently:
--- target\_displayhint, target\_outputhint, target\_fonthint,
--- target\_geohint.
+-- @note: "preroll" {string:segkind, aid:source_audio} is an initial state
+-- where the resources for the target have been reserved, and it is possible
+-- to run some actions on the target to set up desired initial state, and
+-- valid actions here are currently:
+-- ref:target\_displayhint, ref:target\_outputhint, ref:target\_fonthint,
+-- ref:target\_geohint.
 --
--- @note: "resized" {width, height, origo_ll} the underlying storage
--- has changed dimensions. If origo_ll is set, the source data is stored
--- with origo at lower left rather than upper left. To account for this,
--- look into ref:image_set_txcos_default
+-- @note: "resized" {int:width, int:height, bool:origo_ll} the underlying
+-- storage has changed dimensions. If origo_ll is set, the source data is
+-- stored with origo at lower left rather than upper left. To account for
+-- this, look into ref:image_set_txcos_default to flip the Y axis.
 --
--- @note: "message" {message, multipart} - generic text message (UTF-8) that
--- terminates when multipart is set to false. This mechanism is primarily for
--- customized hacks or, on special subsegments such as titlebar or popup, to
--- provide a textual representation of the contents.
+-- @note: "message" {string:message, bool:multipart} - generic text message
+-- (UTF-8) that terminates when multipart is set to false. This mechanism is
+-- primarily for customized hacks or, on special subsegments such as titlebar
+-- or popup, to provide a textual representation of the contents.
 --
--- @note: "framestatus" {frame,pts,acquired,fhint} - metadata about the last
--- delivered frame.
+-- @note: "framestatus" {int:frame,int:pts,int:acquired,int:fhint} - timing
+-- metadata about the last delivered frame.
 --
--- @note: "terminated" (last_words) - the underlying process has died,
--- no new data or events will be received.
+-- @note: "terminated" {string:last_words} - the underlying process has
+-- died, no new data or events will be received.
 --
--- @note: "streaminfo" {lang, streamid, type} - supports switching between
--- multiple datasources.
+-- @note: "streaminfo" {string:lang, int:streamid, string:type} - for decode/
+-- multimedia purposes, the source has multiplle selectable streams. type can
+-- be one of 'audio', 'video', 'text', 'overlay'.
 --
--- @note: "coreopt" {argument} - describe supported key/value configuration
--- for the child.
---
--- @note: "failure" {message} - some internal operation has failed, non-terminal
--- error indication.
+-- @note: "coreopt" {string:argument, int:slot, string:type} - the target
+-- supports key/value configuration persistance.
 --
 -- @note: "input" - Provides an extended table as a third argument to the
 -- callback. This table is compatible with the normal _input event handler
@@ -74,11 +76,13 @@
 -- collisions as that namespace is only 16-bits.
 --
 -- @note: "segment_request" {
--- kind, width, height, cookie, type, (split-dir | position-dir)}
--- frameserver would like an additional segment to work with, see
--- ref:accept_target for how to accept the request as the default is deny.
--- The hint- sizes are in pixels, even if the segment may operate in a cell-
--- based mode (tui and terminal clients).
+-- string:kind, number:width, number:height, number:parent,
+-- string:type, string:(split-dir | position-dir)}
+-- The source would like an additional segment to work with, see
+-- ref:accept_target for how to accept the request. If the request is not
+-- responded to during the scope of the handler execution, the request will
+-- be denied. The hint- sizes are in pixels, even if the segment may operate
+-- in a cell- based mode (tui and terminal clients).
 -- The split-dir is a hint for tiling window management and for cases where
 -- the source-window can logically be split into two parts, with the new
 -- one best placed in one direction out of: left, right, top, bottom.
@@ -87,29 +91,39 @@
 -- should retain the same size, if possible. This also has an added
 -- position-dir of 'tab'.
 --
--- @note: "alert" {message} - version of "message" that hints a user-interface
--- alert to the segment. If "message" is empty, alert is to be interpreted as
--- a request for focus. If "message" is a URI, alert is to be interpreted as
--- a request for the URI to be opened by some unspecified means. Otherwise,
--- message notifies about some user-readable event, i.e. the completion of
--- some state transfer.
+-- @note: "alert" {string:message} - version of "message" that hints a
+-- user-interface alert to the segment. If "message" is empty, alert is
+-- to be interpreted as a request for focus. If "message" is a URI, alert
+-- is to be interpreted as a request for the URI to be opened by some
+-- unspecified means. Otherwise, message notifies about some neutral/positive
+-- user-readable event, i.e. the completion of some state transfer.
 --
--- @note: "viewport" (invisible, focus, anchor_edge, anchor_pos, rel_order,
--- rel_x, rel_y, anchor_w, anchor_h, edge, border[tldr]), parent) -
--- indicate relative anchoring, positioning, view and focus metdata
+-- @note: "failure" {string:message} - some internal operation has failed,
+-- non-terminal error indication with a user presentable description of the
+-- failure.
 --
--- @note: "content_state" {rel_x, rel_y, wnd_w, wnd_h, x_size, y_size} -
--- indicates that scrollbars could/should be shown, possibly mapped to
--- target_seek calls. value ranges are 0..1.
+-- @note: "viewport" {bool:invisible, bool:focus, bool:anchor_edge,
+-- bool:anchor_pos, bool:embedded, int:rel_order, int:rel_x, int:rel_y,
+-- int:anch_w, int:anch_h, int:edge, inttbl:border[4], int:parent}
+-- this hint is the catch-all for embedding or positioning one segment
+-- relative to another.
+-- edge refers to the anchoring edge for popups etc, counted from:
+-- (free=0, UL, UC, UR, CL, C, CR, LL, LC, LR).
 --
--- @note: "input_label" {labelhint, datatype, initial, modifiers} -
--- suggest that the target supports customized abstract input labels for use
--- with the target_input function. May be called repeatedly, input_label values
--- are restricted to 16 characters in the [a-z,0-9_] set with ? values
--- indicating that the caller tried to add an invalid value. This also comes
--- with an initial and a description field, where initial suggest the initial
--- keybind if one should be available, and the description is a localized
--- user-presentable string (UTF-8).
+-- @note: "content_state" {number:rel_x, number:rel_y,
+-- number:wnd_w, number:wnd_h, number:x_size, number:y_size}
+-- indicates the values and range for a position marker such as scrollbars.
+-- rel_x/y are ranged to 0..1, w/h the stepping size (0..1) versus the window
+-- size (0..1).
+--
+-- @note: "input_label" {string:labelhint, string:datatype, int:initial,
+-- int:modifiers} - suggest that the target supports customized abstract input
+-- labels for use with the target_input function. May be called repeatedly,
+-- input_label values, are restricted to 16 characters in the [a-z,0-9_] set
+-- with ? values indicating that the caller tried to add an invalid value.
+-- This also comes with an initial and a description field, where initial suggest
+-- the initial keybind if one should be available, and the description is a
+-- localized user-presentable string (UTF-8).
 -- The datatype field match the ones available from the input(iotbl) event
 -- handler. If initial is set (to > 0) a suggested default binding is provided
 -- with the corresponding keysym (see builtin/keyboard.lua for symbol table)

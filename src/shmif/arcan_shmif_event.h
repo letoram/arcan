@@ -1374,6 +1374,10 @@ enum ARCAN_TARGET_SKIPMODE {
  *	(focused)        - Hint that for all the hierarchies in the connection,
  *	                   this is the one that should have the input-focus grab.
  *
+ *	(embedded)       - The segment will attach as a part of its parent.
+ *	                   This forces the edge to be UL and the segment contents
+ *	                   will be clipped against the parent surface.
+ *
  *  (anchor-edge)    - enable anchoring to parent.
  *
  *  (anchor-pos)     - enable anchor positioning selection within an area
@@ -1390,8 +1394,8 @@ enum ARCAN_TARGET_SKIPMODE {
  *
  *  (order)          - parent-relative drawing order (+- #segments)
  *
- *  viewports may become invalidated on shrinking resize, though
- *  border- properties for still-valid areas are retained.
+ *  Viewports may become invalidated on shrinking resize, though border-
+ *  properties for still-valid areas are retained.
  */
 		struct {
 			int32_t x, y;
@@ -1400,6 +1404,7 @@ enum ARCAN_TARGET_SKIPMODE {
 			uint8_t border[4];
 			uint8_t edge;
 			int8_t order;
+			uint8_t embedded : 1;
 			uint8_t invisible : 1;
 			uint8_t focus : 1;
 			uint8_t anchor_edge : 1;

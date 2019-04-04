@@ -4294,6 +4294,7 @@ static void push_view(lua_State* ctx, struct arcan_extevent* ev,
 	tblbool(ctx, "focus", ev->viewport.focus != 0, top);
 	tblbool(ctx, "anchor_edge", ev->viewport.anchor_edge != 0, top);
 	tblbool(ctx, "anchor_pos", ev->viewport.anchor_pos != 0, top);
+	tblbool(ctx, "embedded", ev->viewport.embedded != 0, top);
 	tblnum(ctx, "rel_order", ev->viewport.order, top);
 	tblnum(ctx, "rel_x", ev->viewport.x, top);
 	tblnum(ctx, "rel_y", ev->viewport.y, top);
