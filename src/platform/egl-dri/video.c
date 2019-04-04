@@ -97,6 +97,7 @@ static char* egl_envopts[] = {
 	"device_wait", "loop until an active connector is found",
 	"device_nodpms", "set to disable power management controls",
 	"device_direct", "enable direct rendertarget scanout (experimental)",
+	"device_no_rtproxy", "set to disable rendertarget proxying",
 	"display_context=1", "set outer shared headless context, per display contexts",
 	NULL
 };
@@ -254,6 +255,7 @@ struct dispout {
 /* internal v-store and system mappings, rules for drawing final output */
 	arcan_vobj_id vid;
 	bool force_compose;
+	bool disallow_rtproxy;
 	bool skip_blit;
 	size_t dispw, disph, dispx, dispy;
 	float vrefresh;
@@ -307,6 +309,8 @@ static struct dispout* allocate_display(struct dev_node* node)
  * issues with scanning out fbo color attachments */
 			displays[i].force_compose =
 				!get_config("video_device_direct", 0, NULL, tag);
+			displays[i].disallow_rtproxy =
+				get_config("video_device_no_rtproxy", 0, NULL, tag);
 			debug_print("(%zu) added, force composition? %d",
 				i, (int) displays[i].force_compose);
 			return &displays[i];
@@ -3849,7 +3853,7 @@ bool platform_video_map_display(
  * and proxy it -> can we forego it and use the egl buffer directly? that's
  * possible if the contents isn't used for anything else (recordtarget,
  * multiple users, ...) */
-		else {
+		else if (!d->disallow_rtproxy) {
 			agp_rendertarget_proxy(newtgt->art,
 				display_rtgt_proxy, (uintptr_t)(void*)d);
 
@@ -3962,6 +3966,7 @@ static enum display_update_state draw_display(struct dispout* d)
 		else {
 			agp_shader_activate(shid);
 			agp_shader_envv(PROJECTION_MATR, d->projection, sizeof(float)*16);
+			agp_rendertarget_clear();
 			agp_draw_vobj(0, 0, d->dispw, d->disph, d->txcos, NULL);
 			verbose_print("(%d) draw, shader: %d, %zu*%zu",
 				(int)d->id, (int)shid, (size_t)d->dispw, (size_t)d->disph);
