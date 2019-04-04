@@ -469,8 +469,6 @@ bool platform_video_map_display(
 	if (disp != 0)
 		return false;
 
-	arcan_warning("got map display %d, %d\n", id, disp);
-
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 /*
