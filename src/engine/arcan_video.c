@@ -620,6 +620,10 @@ signed arcan_video_pushcontext()
 	memcpy(&vcontext_stack[ ++vcontext_ind ], current_context,
 		sizeof(struct arcan_video_context));
 	deallocate_gl_context(current_context, false, empty_vobj.vstore);
+	if (current_context->world.vstore){
+		empty_vobj.origw = empty_vobj.vstore->w;
+		empty_vobj.origh = empty_vobj.vstore->h;
+	}
 
 	current_context = &vcontext_stack[ vcontext_ind ];
 	current_context->stdoutp.first = NULL;
@@ -1668,6 +1672,9 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 
 	memcpy(current_context->stdoutp.projection,
 		arcan_video_display.default_projection, sizeof(float) * 16);
+
+	current_context->world.origw = neww;
+	current_context->world.origh = newh;
 
 	FLAG_DIRTY(NULL);
 	arcan_video_forceupdate(ARCAN_VIDEO_WORLDID);
