@@ -889,7 +889,8 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 		w = mode.width;
 		h = mode.height;
 		BIND_FRAMEBUFFER(0);
-		env->clear_color(0, 0, 0, 1);
+		env->clear_color(0.05, 0.05, 0.05, 1);
+		verbose_print("no rendertarget");
 	}
 /* Query the rendertarget proxy and determine if it has taken control
  * over the context output (FBO0) or not. The Refcount test is also
@@ -906,12 +907,14 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 		}
 		else {
 			verbose_print("rendertarget-fbo(%d)", (int)tgt->fbo);
-			w = tgt->store->w;
-			h = tgt->store->h;
 			BIND_FRAMEBUFFER(tgt->fbo);
-			env->clear_color(tgt->clearcol[0],
-				tgt->clearcol[1], tgt->clearcol[2], tgt->clearcol[3]);
 		}
+		w = tgt->store->w;
+		h = tgt->store->h;
+		env->clear_color(tgt->clearcol[0],
+			tgt->clearcol[1], tgt->clearcol[2], tgt->clearcol[3]);
+		verbose_print("clear(%f, %f, %f, %f)",
+			tgt->clearcol[0], tgt->clearcol[1], tgt->clearcol[2], tgt->clearcol[3]);
 	}
 
 	env->scissor(0, 0, w, h);
@@ -937,6 +940,7 @@ void agp_rendertarget_dirty_reset(
 void agp_rendertarget_clear()
 {
 	verbose_print("");
+
 	agp_env()->clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	agp_rendertarget_dirty(active_rendertarget, &(struct agp_region){});
 }
