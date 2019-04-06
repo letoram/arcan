@@ -21,8 +21,8 @@ enum tui_list_entity_attributes {
 };
 
 struct tui_list_entry {
-	const char* label;    /* user presentable UTF-8 string */
-	const char* shortcut; /* single unicode codepoint (UTF-8) */
+	char* label;          /* user presentable UTF-8 string */
+	char* shortcut;       /* single unicode codepoint (UTF-8) */
 	uint8_t attributes;   /* bitmask from kind above */
 	uintptr_t tag;        /* index or other reference to pair trigger */
 };
@@ -46,7 +46,12 @@ struct tui_list_entry {
  * handlers. Use _listwnd_restore to return the context to the state it was
  * in before this function was called.
  *
- * Resize and Resized evenrs are forwarded, input labels flushed.
+ * Resize and Resized events are forwarded, input labels flushed.
+ *
+ * The list of entries that is provided will be aliased internally and treated
+ * as of static/fixed size, though items can be masked on/off with the
+ * list_hide attribute between listwnd_dirty calls as needed. The list will not
+ * be freed upon listwnd_restore.
  *
  * Note:
  * 1. After each input pass, check arcan_tui_listwnd_status. If it returns
@@ -82,8 +87,8 @@ void arcan_tui_listwnd_dirty(struct tui_context*);
 
 /*
  * Return the context to its original state. This may invoke multiple
- * handlers, e.g. resize and
+ * handlers, e.g. resize query_labels.
  */
-void arcan_tui_listwnd_restore(struct tui_context*);
+void arcan_tui_listwnd_release(struct tui_context*);
 
 #endif

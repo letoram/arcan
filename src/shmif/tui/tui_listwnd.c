@@ -272,11 +272,15 @@ void arcan_tui_listwnd_release(struct tui_context* T)
 /* requery label through original handles */
 	arcan_tui_reset_labels(T);
 
+	arcan_tui_update_handlers(T,
+		&meta->old_handlers, NULL, sizeof(struct tui_cbcfg));
+
 /* LTO could possibly do something about this, but basically just safeguard
  * on a safeguard (UAF detection) for the bufferwnd_meta after freeing it */
 	*meta = (struct listwnd_meta){
 		.magic = 0xdeadbeef
 	};
+
 	free(meta);
 }
 
