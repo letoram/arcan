@@ -2586,31 +2586,45 @@ pid_t arcan_shmif_handover_exec(
 		!= TARGET_COMMAND_NEWSEGMENT || ev.tgt.ioevs[2].iv != SEGID_HANDOVER)
 		return -1;
 
-/* Copy the descriptor as the other is CLOEXEC and will be handled by the
- * caller or as part of _shmif_control on a non-mapped segment. */
+/* protect against the caller sending in a bad / misplaced event */
+	if (cont->priv->pseg.epipe == BADFD)
+		return -1;
+
+/* clear the tracking in the same way as an _acquire would */
+	else{
+		cont->priv->pseg.epipe = BADFD;
+		memset(cont->priv->pseg.key, '\0', sizeof(cont->priv->pseg.key));
+
+/* reset pending descriptor state */
+		consume(cont);
+	}
+
+/* Dup to drop CLOEXEC and close the original */
 	int dup_fd = dup(ev.tgt.ioevs[0].iv);
+	close(ev.tgt.ioevs[0].iv);
 	if (-1 == dup_fd)
 		return -1;
 
 /* Prepare env even if there isn't env as we need to propagate connection
  * primitives etc. Since we don't know the inherit intent behind the exec
  * we need to rely on dup to create the new connection socket.
- * Append: ARCAN_SHMKEY, ARCAN_SOCKIN_FD, ARCAN_HANDOVER */
+ * Append: ARCAN_SHMKEY, ARCAN_SOCKIN_FD, ARCAN_HANDOVER, NULL */
 	size_t nelem = 0;
 	if (env){
 		for (; env[nelem]; nelem++){}
 	}
 	nelem += 4;
-
-	char** new_env = malloc(nelem * sizeof(char*) + 1);
+	size_t env_sz = nelem * sizeof(char*);
+	char** new_env = malloc(env_sz);
 	if (!new_env){
 		close(dup_fd);
 		return -1;
 	}
+	else
+		memset(new_env, '\0', env_sz);
 
-	new_env[nelem] = NULL;
-	int ofs = 0;
-
+/* sweep from the last set index downwards, free strdups, this is done to clean
+ * up after, as we can't dynamically allocate the args safely from fork() */
 #define CLEAN_ENV() {\
 		for (ofs = ofs - 1; ofs - 1 >= 0; ofs--){\
 			free(new_env[ofs]);\
@@ -2620,8 +2634,9 @@ pid_t arcan_shmif_handover_exec(
 	}
 
 /* duplicate the input environment */
+	int ofs = 0;
 	if (env){
-		for (; ofs < nelem - 4 && env[ofs]; ofs++){
+		for (; env[ofs]; ofs++){
 			new_env[ofs] = strdup(env[ofs]);
 			if (!new_env[ofs]){
 				CLEAN_ENV();
@@ -2649,6 +2664,9 @@ pid_t arcan_shmif_handover_exec(
 		CLEAN_ENV();
 		return -1;
 	}
+
+/* null- terminate or we have an invalid address on our hands */
+	new_env[ofs] = NULL;
 
 	pid_t pid = fork();
 	if (pid == 0){
