@@ -67,7 +67,12 @@ struct arcan_vr_ctx* arcan_vr_setup(
 	const char* appl;
 	struct arcan_dbh* dbh = arcan_db_get_shared(&appl);
 
+/* if not found, go with some known defaults */
 	char* kv = arcan_db_appl_val(dbh, appl, "ext_vr");
+	if (!kv){
+		char* base = arcan_fetch_namespace(RESOURCE_SYS_BINS);
+		asprintf(&kv, "%s/arcan_vr", base);
+	}
 	if (!kv)
 		return NULL;
 
