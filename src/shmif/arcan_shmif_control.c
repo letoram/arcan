@@ -2175,7 +2175,7 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	return SHMIF_MIGRATE_OK;
 }
 
-static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
+static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 {
 	arcan_event ev;
 	struct arcan_shmif_initial def = {
@@ -2206,7 +2206,7 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 			if (resize)
 				arcan_shmif_resize(cont, w, h);
 			cont->priv->initial = def;
-			return;
+			return true;
 		break;
 		case TARGET_COMMAND_DISPLAYHINT:
 			if (ev.tgt.ioevs[0].iv)
@@ -2262,7 +2262,7 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 	debug_print(FATAL, cont, "no-activate event, connection died/timed out");
 	cont->priv->valid_initial = true;
 	arcan_shmif_drop(cont);
-	return;
+	return false;
 }
 
 static bool is_output_segment(enum ARCAN_SEGID segid)
@@ -2384,7 +2384,9 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 
 	free(keyfile);
 	if (ext.type>0 && !is_output_segment(ext.type) && !(flags & SHMIF_NOACTIVATE))
-		wait_for_activation(&ret, !(flags & SHMIF_NOACTIVATE_RESIZE));
+		if (!wait_for_activation(&ret, !(flags & SHMIF_NOACTIVATE_RESIZE))){
+			goto fail;
+		}
 	return ret;
 
 fail:
