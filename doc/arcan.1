@@ -77,12 +77,9 @@ Change the default search path for builtin system scripts, see the
 \fInamespaces\fR section below for additional details.
 
 .IP "\fB-H, --hook\fR" \fIscript\fR"
-Specify a post-init (after running applname()) hook script that will be
-loaded and executed. The script is expected to be specified relative to
-the RESOURCEPATH namespace (APPL_SHARED) and is primarily intended for
-debugging / testing / measurements. The execution of these scripts is
-rather sensitive and troublesome to debug. Look in resources/scripts/hook
-for examples.
+Specify a post-init (after running applname()) hook script that will be loaded
+and executed. The scripts are fetched from the system scripts namespace (-T,
+--scriptpath). Providing multiple -H arguments is allowed.
 
 .IP "\fB-b, --fallback \fIapplname\fR"
 If the running application crashes due to scripting error or from misuse
