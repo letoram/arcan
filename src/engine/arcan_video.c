@@ -661,15 +661,20 @@ void arcan_video_recoverexternal(bool pop, int* saved,
 	*saved = 0;
 	*truncated = 0;
 
-/* pass, count contexts. */
+/* pass, count contexts and disable rendertarget proxies */
 	for (size_t i = 0; i <= vcontext_ind; i++){
 		struct arcan_video_context* ctx = &vcontext_stack[i];
 
-		for (size_t j = 1; j < ctx->vitem_limit; j++)
+		for (size_t j = 1; j < ctx->vitem_limit; j++){
 			if (FL_TEST(&(ctx->vitems_pool[j]), FL_INUSE)){
 				if (ctx->vitems_pool[j].feed.state.tag == ARCAN_TAG_FRAMESERV)
 					n_ext++;
 			}
+		}
+
+		for (size_t j = 0; j < ctx->n_rtargets; j++){
+			agp_rendertarget_proxy(ctx->rtargets[j].art, NULL, 0);
+		}
 	}
 
 	struct {
@@ -2890,7 +2895,23 @@ arcan_errc arcan_video_tagtransform(arcan_vobj_id id,
 	return ARCAN_OK;
 }
 
-arcan_errc arcan_video_instanttransform(arcan_vobj_id id){
+static void emit_transform_event(arcan_vobj_id src,
+	enum arcan_transform_mask slot, intptr_t tag)
+{
+	arcan_event_enqueue(arcan_event_defaultctx(),
+		&(struct arcan_event){
+			.category = EVENT_VIDEO,
+			.vid.kind = EVENT_VIDEO_CHAIN_OVER,
+			.vid.data = tag,
+			.vid.source = src,
+			.vid.slot = slot
+		}
+	);
+}
+
+arcan_errc arcan_video_instanttransform(
+	arcan_vobj_id id, enum tag_transform_methods method)
+{
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	if (!vobj)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -2898,19 +2919,56 @@ arcan_errc arcan_video_instanttransform(arcan_vobj_id id){
 	if (!vobj->transform)
 		return ARCAN_OK;
 
+/* step through the list of transforms */
 	surface_transform* current = vobj->transform;
+
+/* determine if any tag events should be produced or not, and if so, if we want
+ * all of them, or only the last. The last case is more complicated as there
+ * might be a ->next allocated for another transform so also need to check the
+ * time */
+	bool at_last;
 	while (current){
-		if (current->move.startt)
+
+		if (current->move.startt){
 			vobj->current.position = current->move.endp;
 
-		if (current->blend.startt)
+			at_last = (method == TAG_TRANSFORM_LAST) &&
+				!( current->next && current->next->move.startt );
+
+			if (current->move.tag && (method == TAG_TRANSFORM_ALL || at_last))
+				emit_transform_event(vobj->cellid, MASK_POSITION, current->move.tag);
+		}
+
+		if (current->blend.startt){
 			vobj->current.opa = current->blend.endopa;
 
-		if (current->rotate.startt)
+			at_last = (method == TAG_TRANSFORM_LAST) &&
+				!( current->next && current->next->blend.startt );
+
+			if (current->blend.tag && (method == TAG_TRANSFORM_ALL || at_last))
+				emit_transform_event(vobj->cellid, MASK_OPACITY, current->blend.tag);
+		}
+
+		if (current->rotate.startt){
 			vobj->current.rotation = current->rotate.endo;
 
-		if (current->scale.startt)
+			at_last = (method == TAG_TRANSFORM_LAST) &&
+				!( current->next && current->next->rotate.startt );
+
+			if (current->rotate.tag && (method == TAG_TRANSFORM_LAST || at_last))
+				emit_transform_event(
+					vobj->cellid, MASK_ORIENTATION, current->rotate.tag);
+		}
+
+		if (current->scale.startt){
 			vobj->current.scale = current->scale.endd;
+
+			at_last = (method == TAG_TRANSFORM_LAST) &&
+				!( current->next && current->next->scale.startt );
+
+			if (current->scale.tag && (method == TAG_TRANSFORM_LAST || at_last))
+				emit_transform_event(vobj->cellid, MASK_SCALE, current->scale.tag);
+		}
 
 		surface_transform* tokill = current;
 		current = current->next;
@@ -3781,20 +3839,6 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf,
 	}
 
 	return rv;
-}
-
-static void emit_transform_event(arcan_vobj_id src,
-	enum arcan_transform_mask slot, intptr_t tag)
-{
-	arcan_event tagev = {
-		.category = EVENT_VIDEO,
-		.vid.kind = EVENT_VIDEO_CHAIN_OVER,
-		.vid.data = tag,
-		.vid.source = src,
-		.vid.slot = slot
-	};
-
-	arcan_event_enqueue(arcan_event_defaultctx(), &tagev);
 }
 
 /*
@@ -4910,11 +4954,12 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 	current_rendertarget = tgt;
 	agp_activate_rendertarget(tgt->art);
 	agp_shader_envv(RTGT_ID, &tgt->id, sizeof(int));
+	agp_shader_envv(OBJ_OPACITY, &(float){1.0}, sizeof(float));
 
 	if (!FL_TEST(tgt, TGTFL_NOCLEAR))
 		agp_rendertarget_clear();
 
-	size_t pc = 0;
+	size_t pc = arcan_video_display.ignore_dirty ? 1 : 0;
 
 /* first, handle all 3d work (which may require multiple passes etc.) */
 	if (tgt->order3d == ORDER3D_FIRST && current && current->elem->order < 0){

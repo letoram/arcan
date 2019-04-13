@@ -987,7 +987,13 @@ arcan_errc arcan_video_setprogram(arcan_vobj_id id, agp_shader_id shid);
 /*
  * Apply all transformation chains instantly.
  */
-arcan_errc arcan_video_instanttransform(arcan_vobj_id id);
+enum tag_transform_methods {
+	TAG_TRANSFORM_SKIP = 0,
+	TAG_TRANSFORM_LAST = 1,
+	TAG_TRANSFORM_ALL  = 2
+};
+arcan_errc arcan_video_instanttransform(
+	arcan_vobj_id id, enum tag_transform_methods method);
 
 /*
  * Reassign the transformation chain being applied to [sid] so that it,

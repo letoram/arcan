@@ -1940,7 +1940,14 @@ static int instanttransform(lua_State* ctx)
 {
 	LUA_TRACE("instant_image_transform");
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	arcan_video_instanttransform(id);
+	bool last = luaL_optbnumber(ctx, 2, 0);
+	bool all = luaL_optbnumber(ctx, 3, 0);
+	int method = TAG_TRANSFORM_SKIP;
+	if (last)
+		method = TAG_TRANSFORM_LAST;
+	if (all)
+		method = TAG_TRANSFORM_ALL;
+	arcan_video_instanttransform(id, method);
 	LUA_ETRACE("instant_image_transform", NULL, 0);
 }
 

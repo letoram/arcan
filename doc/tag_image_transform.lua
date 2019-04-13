@@ -1,6 +1,6 @@
 -- tag_image_transform
 -- @short: Associate a callback with a transformation chain slot
--- @inargs: vid, slot_mask, callback
+-- @inargs: vid:dst, number:slot_mask, function:callback
 -- @outargs:
 -- @longdescr: This function can be used to associate a callback function
 -- with the last set transformation for one or several slots (using the
@@ -16,8 +16,12 @@
 -- @note: This should be used sparringly as each transformation completion
 -- will emit an event.
 -- @note: The callback allocation will not persist across transformation
--- cycles.
+-- cycles defined via ref:image_transform_cycle.
 -- @note: This can also be used as a rough timer.
+-- @note: Be careful when combining tagged transforms with calls to
+-- ref:instant_image_transform as callbacks might be masked or lose
+-- their chained pacing. Test tagged transforms for strong reactions
+-- when being omitted or stormed.
 -- @group: image
 -- @cfunction: tagtransform
 -- @related:
