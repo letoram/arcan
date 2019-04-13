@@ -51,6 +51,11 @@
 #include "arcan_conductor.h"
 
 /*
+ * list of scripts to inject
+ */
+static struct arcan_strarr arr_hooks = {0};
+
+/*
  * The arcanmain recover state is used either at the volition of the
  * running script (see system_collapse) or in wrapping a failing pcall.
  * This allows a simpler recovery script to adopt orphaned frameservers.
@@ -61,6 +66,13 @@ jmp_buf arcanmain_recover_state;
  * default, probed / replaced on some systems
  */
 extern int system_page_size;
+
+/*
+ * set manually from debugger to disable as much timing sensitive
+ * behavior as posible in order to minimise effects of breakpoints
+ */
+bool arcan_in_debug;
+
 struct arcan_luactx* main_lua_context;
 
 static const struct option longopts[] = {
@@ -279,6 +291,39 @@ static void main_cycle()
 		arcan_lua_stategrab(main_lua_context, "sample", settings.mon_infd);
 }
 
+static void add_hookscript(const char* instr)
+{
+/* convert to filesystem path */
+	char* expand = arcan_expand_resource(instr, RESOURCE_SYS_SCRIPTS);
+
+	if (!expand)
+		return;
+
+/* open for reading */
+	data_source src = arcan_open_resource(expand);
+	if (src.fd == BADFD){
+		free(expand);
+		return;
+	}
+
+/* get a memory mapping */
+	map_region reg = arcan_map_resource(&src, false);
+	if (!reg.ptr){
+		arcan_release_resource(&src);
+		return;
+	}
+
+/* and copy the final script into the array */
+	const char* dupscr = NULL;
+	if (arr_hooks.count + 1 >= arr_hooks.limit)
+		arcan_mem_growarr(&arr_hooks);
+
+	arr_hooks.data[arr_hooks.count++] = strdup(reg.ptr);
+
+	arcan_release_map(reg);
+	arcan_release_resource(&src);
+}
+
 /*
  * needed to be able to shift entry points on a per- target basis in cmake
  * (lwa/normal/sdl and other combinations all mess around with main as an entry
@@ -318,6 +363,8 @@ int MAIN_REDIR(int argc, char* argv[])
 	}
 #endif
 
+	arcan_mem_growarr(&arr_hooks);
+
 	arcan_log_destination(stderr, 0);
 
 	settings.in_monitor = getenv("ARCAN_MONITOR_FD") != NULL;
@@ -342,13 +389,19 @@ int MAIN_REDIR(int argc, char* argv[])
  * adopt our external connections
  */
 	char* fallback = NULL;
-	char* hookscript = NULL;
 	char* dbfname = NULL;
 	int ch;
 
 /* initialize conductor by setting the default profile, we need to
  * do this early as it affects buffer management and so on */
 	arcan_conductor_setsynch("vsynch");
+
+/*
+ * accumulation string-list for filenames provided via -H, can't
+ * add them to the hookscripts array immediately as the namespaces
+ * has not been resolved yet
+ */
+	struct arcan_strarr tmplist = {0};
 
 	while ((ch = getopt_long(argc, argv,
 		"w:h:mx:y:fsW:d:Sq:a:p:b:B:M:O:t:T:H:g01V", longopts, NULL)) >= 0){
@@ -398,7 +451,11 @@ int MAIN_REDIR(int argc, char* argv[])
 		);
 		exit(EXIT_SUCCESS);
 	break;
-	case 'H' : hookscript = strdup( optarg ); break;
+	case 'H' :
+		if (tmplist.count + 1 >= tmplist.limit)
+			arcan_mem_growarr(&tmplist);
+		tmplist.data[tmplist.count++] = strdup(optarg);
+	break;
 	case 'M' : settings.monitor_counter = settings.monitor =
 		abs( (int)strtol(optarg, NULL, 10) ); break;
 	case 'O' : monitor_arg = strdup( optarg ); break;
@@ -466,6 +523,15 @@ int MAIN_REDIR(int argc, char* argv[])
 
 	if (debuglevel > 1)
 		arcan_verify_namespaces(true);
+
+/* namespaces are resolved, time to figure out the hookscripts */
+	if (tmplist.count){
+		for (size_t i = 0; i < tmplist.count; i++){
+			if (tmplist.data[i])
+				add_hookscript(tmplist.data[i]);
+		}
+		arcan_mem_freearr(&tmplist);
+	}
 
 /* pipe to file, socket or launch script based on monitor output,
  * format will be LUA tables with the exception of each cell ending with
@@ -613,28 +679,6 @@ int MAIN_REDIR(int argc, char* argv[])
 	arcan_led_init();
 	arcan_event_init(evctx);
 
-	if (hookscript){
-		char* tmphook = arcan_expand_resource(
-			hookscript, RESOURCE_APPL_SHARED | RESOURCE_SYS_SCRIPTS);
-		free(hookscript);
-		hookscript = NULL;
-
-		if (tmphook){
-			data_source src = arcan_open_resource(tmphook);
-			if (src.fd != BADFD){
-				map_region reg = arcan_map_resource(&src, false);
-
-				if (reg.ptr){
-					hookscript = strdup(reg.ptr);
-					arcan_release_map(reg);
-				}
-
-				arcan_release_resource(&src);
-			}
-
-			free(tmphook);
-		}
-	}
 	system_page_size = sysconf(_SC_PAGE_SIZE);
 
 /*
@@ -673,6 +717,7 @@ int MAIN_REDIR(int argc, char* argv[])
 			adopt = true;
 		}
 		arcan_event_clearmask(evctx);
+		platform_video_recovery();
 	}
 /* fallback recovery with adoption */
 	else if (jumpcode == 3){
@@ -738,8 +783,10 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_fatal("couldn't load appl, missing %s function\n", arcan_appl_id() ?
 		arcan_appl_id() : "");
 
-	if (hookscript)
-		arcan_lua_dostring(main_lua_context, hookscript);
+	for (size_t i = 0; i < arr_hooks.count; i++){
+		if (arr_hooks.data[i])
+			arcan_lua_dostring(main_lua_context, arr_hooks.data[i]);
+	}
 
 	if (adopt){
 		arcan_lua_setglobalint(main_lua_context, "CLOCK", evctx->c_ticks);
@@ -776,9 +823,8 @@ int MAIN_REDIR(int argc, char* argv[])
 	bool done = false;
 	int exit_code = arcan_conductor_run(main_cycle);
 
-	free(hookscript);
 	arcan_lua_callvoidfun(main_lua_context, "shutdown", false, NULL);
-
+	arcan_mem_freearr(&arr_hooks);
 	arcan_led_shutdown();
 	arcan_event_deinit(evctx);
 	arcan_audio_shutdown();
