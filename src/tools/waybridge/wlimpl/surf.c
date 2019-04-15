@@ -152,19 +152,14 @@ static void setup_shmifext(
 	struct arcan_shmif_cont* acon, struct comp_surf* surf, int fmt)
 {
 	struct arcan_shmifext_setup setup = arcan_shmifext_defaults(acon);
-	setup.vidp_pack = true;
 	setup.builtin_fbo = false;
 	surf->accel_fmt = fmt;
 
 	switch(fmt){
 		case WL_SHM_FORMAT_RGB565:
 /* should set UNSIGNED_SHORT_5_6_5 as well */
-			setup.vidp_infmt = GL_RGB;
-		break;
 		case WL_SHM_FORMAT_XRGB8888:
 		case WL_SHM_FORMAT_ARGB8888:
-			setup.vidp_infmt = GL_BGRA_EXT;
-		break;
 		default:
 			surf->fail_accel = -1;
 			return;
