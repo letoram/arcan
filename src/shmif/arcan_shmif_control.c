@@ -149,6 +149,7 @@ struct shmif_hidden {
 
 	struct {
 		bool gotev, consumed;
+		bool handedover;
 		arcan_event ev;
 		file_handle fd;
 	} pev;
@@ -309,7 +310,13 @@ static void consume(struct arcan_shmif_cont* c)
 
 	if (BADFD != c->priv->pev.fd){
 		close(c->priv->pev.fd);
-		debug_print(DETAILED, c, "closing unhandled / ignored descriptor");
+		if (c->priv->pev.handedover){
+			debug_print(DETAILED, c,
+				"closing descriptor (%d:handover)", c->priv->pev.fd);
+		}
+		else
+			debug_print(DETAILED, c,
+				"closing descriptor (%d)", c->priv->pev.fd);
 	}
 
 	if (BADFD != c->priv->pseg.epipe){
@@ -344,6 +351,7 @@ static void consume(struct arcan_shmif_cont* c)
 	c->priv->pev.fd = BADFD;
 	c->priv->pev.gotev = false;
 	c->priv->pev.consumed = false;
+	c->priv->pev.handedover = false;
 }
 
 /*
@@ -554,7 +562,8 @@ checkfd:
 				rv = 1;
 			}
 			else if (blocking){
-				debug_print(STATUS, c, "failure on blocking fd-wait: %s", strerror(errno));
+				debug_print(STATUS, c,
+					"failure on blocking fd-wait: %s", strerror(errno));
 			}
 
 			goto done;
@@ -2596,6 +2605,7 @@ pid_t arcan_shmif_handover_exec(
 	else{
 		cont->priv->pseg.epipe = BADFD;
 		memset(cont->priv->pseg.key, '\0', sizeof(cont->priv->pseg.key));
+		cont->priv->pev.handedover = true;
 
 /* reset pending descriptor state */
 		consume(cont);
