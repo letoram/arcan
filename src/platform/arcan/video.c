@@ -198,14 +198,15 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
  * font size and so on.
  */
 	if (init->fonts[0].fd != -1){
-		arcan_video_defaultfont("arcan-default", init->fonts[0].fd, SHMIF_PT_SIZE(
-			init->density, init->fonts[0].size_mm), init->fonts[0].hinting, 0);
+		size_t pt_sz = (init->fonts[0].size_mm * 2.8346456693f);
+		arcan_video_defaultfont("arcan-default", init->fonts[0].fd,
+			pt_sz, init->fonts[0].hinting, 0);
 		init->fonts[0].fd = -1;
 
 		if (init->fonts[1].fd != -1){
+		size_t pt_sz = (init->fonts[1].size_mm * 2.8346456693f);
 			arcan_video_defaultfont("arcan-default", init->fonts[1].fd,
-				SHMIF_PT_SIZE(init->density, init->fonts[1].size_mm),
-				init->fonts[1].hinting, 1
+				pt_sz, init->fonts[1].hinting, 1
 			);
 			init->fonts[1].fd = -1;
 		}
