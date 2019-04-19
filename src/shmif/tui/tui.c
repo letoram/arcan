@@ -2278,8 +2278,12 @@ static bool setup_font(
 	if (!(font_sz > 0))
 		font_sz = tui->font_sz;
 
-	size_t pt_size = SHMIF_PT_SIZE(tui->ppcm, font_sz) + tui->font_sz_delta;
+/* bitmap font need the nearest size in px, with ttf we convert to pt */
+	size_t pt_size = (font_sz * 2.8346456693f) + tui->font_sz_delta;
 	size_t px_sz = ceilf((float)pt_size * 0.03527778 * tui->ppcm);
+	LOG("setup_font() request: %f (mm) "
+		"=> %zu ps-pt => %zu px@%f ppcm\n", font_sz, pt_size, px_sz, tui->ppcm);
+
 	if (pt_size < 4)
 		pt_size = 4;
 
@@ -2320,7 +2324,8 @@ static bool setup_font(
 	}
 
 #ifndef SIMPLE_RENDERING
-	TTF_Font* font = TTF_OpenFontFD(fd, pt_size, 72.0, 72.0);
+	float dpi = tui->ppcm * 2.54f;
+	TTF_Font* font = TTF_OpenFontFD(fd, pt_size, dpi, dpi);
 	if (!font){
 		LOG("failed to open font from descriptor (%d), "
 			"with size: %f\n", fd, font_sz);
@@ -3054,7 +3059,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 		res->font_sz = init->fonts[0].size_mm;
 		setup_font(res, init->fonts[0].fd, res->font_sz, 0);
 		init->fonts[0].fd = BADFD;
-		LOG("arcan_tui(), built-in font provided, size: %f\n", res->font_sz);
+		LOG("arcan_tui(), built-in font provided, size: %f (mm)\n", res->font_sz);
 
 		if (init->fonts[1].fd != BADFD){
 			setup_font(res, init->fonts[1].fd, res->font_sz, 1);
