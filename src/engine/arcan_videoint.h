@@ -42,6 +42,9 @@ struct rendertarget {
 	_Alignas(16) float base[16];
 	_Alignas(16) float projection[16];
 
+/* might be set by the platform layer, check when building projections */
+	bool inv_y;
+
 /* identifier for matching against shader */
 	int id;
 

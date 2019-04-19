@@ -2062,7 +2062,10 @@ static int imageresizestorage(lua_State* ctx)
 	struct rendertarget* rtgt = arcan_vint_findrt(vobj);
 	if (rtgt){
 		agp_resize_rendertarget(rtgt->art, w, h);
-		build_orthographic_matrix(rtgt->projection, 0, w, 0, h, 0, 1);
+		if (!rtgt->inv_y)
+			build_orthographic_matrix(rtgt->projection, 0, w, 0, h, 0, 1);
+		else
+			build_orthographic_matrix(rtgt->projection, 0, w, h, 0, 0, 1);
 	}
 	else
 		arcan_video_resizefeed(id, w, h);

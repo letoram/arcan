@@ -3360,23 +3360,28 @@ void platform_video_recovery()
 {
 	arcan_event ev = {
 		.category = EVENT_VIDEO,
-		.vid.kind = EVENT_VIDEO_DISPLAY_ADDED
+		.vid.kind = EVENT_VIDEO_DISPLAY_ADDED,
+		.vid.ledctrl = egl_dri.ledid
 	};
 	debug_print("video_recovery, injecting 'added' for mapped displays");
 	arcan_evctx* evctx = arcan_event_defaultctx();
 	arcan_event_enqueue(evctx, &ev);
 
-	for (size_t i = 1; i < MAX_DISPLAYS; i++){
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
 		if (displays[i].state == DISP_MAPPED){
 			platform_video_map_display(
 				ARCAN_VIDEO_WORLDID, displays[i].id, HINT_NONE);
+			displays[i].vid = ARCAN_VIDEO_WORLDID;
 			ev.vid.displayid = displays[i].id;
 			ev.vid.cardid = displays[i].device->card_id;
 			arcan_event_enqueue(evctx, &ev);
 		}
 	}
 
+/* rebuild so that we guaranteed have a rendertarget */
 	platform_video_query_displays();
+	arcan_video_display.no_stdout = false;
+	arcan_video_resize_canvas(displays[0].dispw, displays[0].disph);
 }
 
 static void page_flip_handler(int fd, unsigned int frame,
@@ -3837,6 +3842,7 @@ bool platform_video_map_display(
 
 /* we might have messed around with the projection, rebuild it to be sure */
 	struct rendertarget* newtgt = arcan_vint_findrt(vobj);
+	newtgt->inv_y = false;
 	build_orthographic_matrix(
 		newtgt->projection, 0, vobj->origw, 0, vobj->origh, 0, 1);
 
@@ -3853,11 +3859,11 @@ bool platform_video_map_display(
  * and proxy it -> can we forego it and use the egl buffer directly? that's
  * possible if the contents isn't used for anything else (recordtarget,
  * multiple users, ...) */
-		else if (!d->disallow_rtproxy) {
+		else if (!d->disallow_rtproxy && newtgt->art) {
 			agp_rendertarget_proxy(newtgt->art,
 				display_rtgt_proxy, (uintptr_t)(void*)d);
-
 /* but this requires a different projection than the default */
+			newtgt->inv_y = true;
 			build_orthographic_matrix(
 				newtgt->projection, 0, vobj->origw, vobj->origh, 0, 0, 1);
 		}
