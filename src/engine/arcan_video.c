@@ -704,41 +704,50 @@ void arcan_video_recoverexternal(bool pop, int* saved,
 
 	for (size_t i = 0; i <= vcontext_ind; i++){
 		struct arcan_video_context* ctx = &vcontext_stack[i];
-		for (size_t j = 1; j < ctx->vitem_limit; j++)
-			if (FL_TEST(&ctx->vitems_pool[j], FL_INUSE) &&
-				ctx->vitems_pool[j].feed.state.tag == ARCAN_TAG_FRAMESERV){
-				arcan_vobject* cobj = &ctx->vitems_pool[j];
+
+/* only care about frameservers */
+		for (size_t j = 1; j < ctx->vitem_limit; j++){
+			if (!FL_TEST(&ctx->vitems_pool[j], FL_INUSE) ||
+				ctx->vitems_pool[j].feed.state.tag != ARCAN_TAG_FRAMESERV)
+				continue;
+
+			arcan_vobject* cobj = &ctx->vitems_pool[j];
 
 /* some feedfunctions are dangerous to try and save */
-				if (cobj->feed.ffunc == FFUNC_SOCKVER ||
-					cobj->feed.ffunc == FFUNC_SOCKPOLL)
-					continue;
+			if (cobj->feed.ffunc == FFUNC_SOCKVER ||
+				cobj->feed.ffunc == FFUNC_SOCKPOLL)
+				continue;
+
+			arcan_frameserver* fsrv = cobj->feed.state.ptr;
+
+/* and some might want to opt-out of the whole thing */
+			if (fsrv->flags.no_adopt)
+				continue;
 
 /* only liberate if we have enough space left */
-				if (s_ofs < n_ext){
-					alim[s_ofs].state = cobj->feed.state;
-					alim[s_ofs].ffunc = cobj->feed.ffunc;
-					alim[s_ofs].gl_store = cobj->vstore;
-					alim[s_ofs].origw = cobj->origw;
-					alim[s_ofs].origh = cobj->origh;
-					alim[s_ofs].zv = i + 1;
-					alim[s_ofs].tracetag = cobj->tracetag ? strdup(cobj->tracetag) : NULL;
+			if (s_ofs < n_ext){
+				alim[s_ofs].state = cobj->feed.state;
+				alim[s_ofs].ffunc = cobj->feed.ffunc;
+				alim[s_ofs].gl_store = cobj->vstore;
+				alim[s_ofs].origw = cobj->origw;
+				alim[s_ofs].origh = cobj->origh;
+				alim[s_ofs].zv = i + 1;
+				alim[s_ofs].tracetag = cobj->tracetag ? strdup(cobj->tracetag) : NULL;
 
-					arcan_frameserver* fsrv = cobj->feed.state.ptr;
-					audbuf[s_ofs] = fsrv->aid;
+				audbuf[s_ofs] = fsrv->aid;
 
 /* disassociate with cobj (when killed in pop, free wont be called),
  * and increase refcount on storage (won't be killed in pop) */
-					cobj->vstore->refcount++;
-					cobj->feed.state.tag = ARCAN_TAG_NONE;
-					cobj->feed.ffunc = FFUNC_FATAL;
-					cobj->feed.state.ptr = NULL;
+				cobj->vstore->refcount++;
+				cobj->feed.state.tag = ARCAN_TAG_NONE;
+				cobj->feed.ffunc = FFUNC_FATAL;
+				cobj->feed.state.ptr = NULL;
 
-					s_ofs++;
-				}
-				else
-					(*truncated)++;
+				s_ofs++;
 			}
+			else
+				(*truncated)++;
+		}
 	}
 
 /* pop them all, will also create a new fresh

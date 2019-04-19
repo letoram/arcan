@@ -131,6 +131,7 @@ struct arcan_frameserver {
 		bool rz_ack : 1;
 		bool locked : 1;
 		bool release_pending : 1;
+		bool no_adopt : 1;
 	} flags;
 
 /* if autoclock is set, track and use as metric for firing events */

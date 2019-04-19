@@ -13,7 +13,8 @@
 -- TARGET_VSTORE_SYNCH, TARGET_SYNCHRONOUS, TARGET_NOALPHA,
 -- TARGET_AUTOCLOCK, TARGET_VERBOSE, TARGET_NOBUFFERPASS, TARGET_ALLOWCM,
 -- TARGET_ALLOWLODEF, TARGET_ALLOWHDR, TARGET_ALLOWVECTOR, TARGET_ALLOWINPUT,
--- TARGET_FORCESIZE, TARGET_ALLOWGPU, TARGET_LIMITSIZE, TARGET_SYNCHSIZE
+-- TARGET_FORCESIZE, TARGET_ALLOWGPU, TARGET_LIMITSIZE, TARGET_SYNCHSIZE,
+-- TARGET_BLOCKADOPT
 -- Optional *toggle* argument is by default set to on, to turn off a
 -- specific flag, set *toggle* to 0.
 -- @note: flag, TARGET_VSTORE_SYNCH makes sure that there is a local
@@ -73,6 +74,8 @@
 -- block the client, pending a ref:stepframe_target call to release. It is not
 -- stable to toggle this flag on as the off state can be activated with a synch
 -- pending. On stepframe, the next update will contain the new buffer contents.
+-- @note: flag: TARGET_BLOCKADOPT prevents the engine from preserving the target
+-- on calls to ref:system_collapse or on script-error recovery.
 -- @group: targetcontrol
 -- @cfunction: targetflags
 -- @related:
