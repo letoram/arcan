@@ -7754,6 +7754,7 @@ enum target_flags {
 	TARGET_FLAG_ALLOW_GPUAUTH,
 	TARGET_FLAG_LIMIT_SIZE,
 	TARGET_FLAG_SYNCH_SIZE,
+	TARGET_FLAG_NO_ADOPT,
 	TARGET_FLAG_ENDM
 };
 
@@ -7796,6 +7797,10 @@ static void updateflag(arcan_vobj_id vid, enum target_flags flag, bool toggle)
 
 	case TARGET_FLAG_NO_BUFFERPASS:
 		fsrv->vstream.dead = toggle;
+	break;
+
+	case TARGET_FLAG_NO_ADOPT:
+		fsrv->flags.no_adopt = toggle;
 	break;
 
 	case TARGET_FLAG_ALLOW_CM:
@@ -11665,6 +11670,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"TARGET_ALLOWGPU", TARGET_FLAG_ALLOW_GPUAUTH},
 {"TARGET_LIMITSIZE", TARGET_FLAG_LIMIT_SIZE},
 {"TARGET_SYNCHSIZE", TARGET_FLAG_SYNCH_SIZE},
+{"TARGET_BLOCKADOPT", TARGET_FLAG_NO_ADOPT},
 {"DISPLAY_STANDBY", ADPMS_STANDBY},
 {"DISPLAY_OFF", ADPMS_OFF},
 {"DISPLAY_SUSPEND", ADPMS_SUSPEND},
