@@ -977,8 +977,8 @@ static struct rcell* trystep(struct rcell* cnode, bool force)
 }
 
 /* a */
-static int build_textchain(char* message, struct rcell* root,
-	bool sizeonly, bool nolast)
+static int build_textchain(char* message,
+	struct rcell* root, bool sizeonly, bool nolast)
 {
 	int rv = 0;
 /*
@@ -986,6 +986,7 @@ static int build_textchain(char* message, struct rcell* root,
  * set_style(&curr_style, font_cache[0].data);
  */
 	struct text_format* curr_style = &last_style;
+	set_style(curr_style, &font_cache[0]);
 
 	struct rcell* cnode = root;
 	char* current = message;
