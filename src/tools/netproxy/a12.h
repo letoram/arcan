@@ -1,7 +1,7 @@
 /*
  A12, Arcan Line Protocol implementation
 
- Copyright (c) 2017, Bjorn Stahl
+ Copyright (c) 2017-2018, Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
@@ -57,20 +57,27 @@ a12_channel_close(struct a12_state*);
 
 /*
  * Take an incoming byte buffer and append to the current state of
- * the channel.
+ * the channel. Any received events will be pushed via the callback.
  */
-void
-a12_channel_unpack(struct a12_state*, const uint8_t*, size_t);
+void a12_channel_unpack(
+	struct a12_state*, const uint8_t*, size_t, void* tag, void (*on_event)
+		(struct arcan_shmif_cont* wnd, int chid, struct arcan_event*, void*));
+
+/*
+ * Set the specified context as the recipient of audio/video buffers
+ * for a specific channel id.
+ */
+void a12_set_destination(
+	struct a12_state*, struct arcan_shmif_cont* wnd, int chid);
 
 /*
  * Returns the number of bytes that are pending for output on the channel,
  * this needs to be rate-limited by the caller in order for events and data
  * streams to be interleaved and avoid a poor user experience.
  *
- * Unless flushed >often< in response to unpack/enqueue/signal, this will
- * grow and buffer until there's no more data to be had. Internally, a12
- * double-buffers and a12_channel_flush act as a buffer swap. The typical
- * use is therefore:
+ * Unless flushed >often< in response to unpack/enqueue/signal, this will grow
+ * and buffer until there's no more data to be had. Internally, a12 n-buffers
+ * and a12_channel_flush act as a buffer step. The typical use is therefore:
  *
  * 1. [build state machine, open or accept]
  * while active:
@@ -92,11 +99,51 @@ int
 a12_channel_poll(struct a12_state*);
 
 /*
- * forward an event over the channel, any associated descriptors etc. will be
- * taken over by the channel, and it is responsible for closing them on
- * completion.
+ * Forward an event over the channel, any associated descriptors etc.
+ * will be taken over by the channel, and it is responsible for closing
+ * them on completion.
  */
 void
 a12_channel_enqueue(struct a12_state*, struct arcan_event*);
+
+/*
+ * For sessions that support multiplexing operations for multiple
+ * channels, switch the active encoded channel to the specified ID.
+ */
+int
+a12_channel_setid(struct a12_state*, int chid);
+
+/*
+ * forward a vbuffer from shm
+ */
+enum a12_vframe_method {
+	VFRAME_METHOD_NORMAL = 0,
+	VFRAME_METHOD_RAW_NOALPHA,
+	VFRAME_METHOD_RAW_RGB565,
+	VFRAME_METHOD_DPNG,
+	VFRAME_METHOD_H264,
+};
+
+enum a12_vframe_compression_bias {
+	VFRAME_BIAS_LATENCY = 0,
+	VFRAME_BIAS_BALANCED,
+	VFRAME_BIAS_QUALITY
+};
+
+struct a12_vframe_opts {
+	enum a12_vframe_method method;
+	enum a12_vframe_compression_bias bias;
+	bool variable;
+	union {
+		float bitrate; /* !variable, Mbit */
+		int ratefactor; /* variable (ffmpeg scale) */
+	};
+};
+
+/* Enqueue a video frame as part of the specified channel */
+void
+a12_channel_vframe(
+	struct a12_state* S, uint8_t chid, struct shmifsrv_vbuffer* vb,
+	struct a12_vframe_opts opts);
 
 #endif

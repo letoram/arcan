@@ -12,7 +12,7 @@
 #include <iostream>
 #include <arpa/inet.h>
 #include <arcan_shmif.h>
-#include <udt.h>
+/* #include <udt.h> */
 
 extern "C" {
 #include <arcan_shmif_server.h>

@@ -1,112 +1,55 @@
 /*
- * Pipe-based implementation of the A12 protocol,
- * relying on pre-established secure channels and low
- * bandwidth demands.
+ * Simple implementation of a client/server proxy.
  */
 #include <arcan_shmif.h>
-#include <arcan_shmif_server.h>
 #include <errno.h>
 #include <unistd.h>
+#include <signal.h>
 #include <poll.h>
 #include <fcntl.h>
+#include <inttypes.h>
+#include <sys/wait.h>
+#include "a12_int.h"
 #include "a12.h"
+#include "a12_helper.h"
 
-static const short c_pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;
-
-static void server_mode(struct shmifsrv_client* a, struct a12_state* ast)
+static int run_shmif_server(
+	uint8_t* authk, size_t auth_sz, const char* cp, int fdin, int fdout)
 {
-/* 1. setup a12 in connect mode, _open */
-	struct pollfd fds[3] = {
-		{ .fd = shmifsrv_client_handle(a), .events = c_pollev },
-		{	.fd = STDIN_FILENO, .events = c_pollev },
-		{ .fd = STDOUT_FILENO, .events = POLLOUT }
-	};
+	int fd = -1;
 
-	bool alive = true;
+/* set to non-blocking */
+	int flags = fcntl(fdout, F_GETFL);
+	fcntl(fdout, F_SETFL, flags | O_NONBLOCK);
+	flags = fcntl(fdin, F_GETFL);
+	fcntl(fdin, F_SETFL, flags | O_NONBLOCK);
 
-	uint8_t* outbuf;
-	size_t outbuf_sz = 0;
-
-	while (alive){
-/* first, flush current outgoing and/or swap buffers */
-		int np = 2;
-		if (outbuf_sz || (outbuf_sz = a12_channel_flush(ast, &outbuf))){
-			ssize_t nw = write(STDOUT_FILENO, outbuf, outbuf_sz);
-			if (nw > 0)
-				outbuf_sz -= nw;
-			if (outbuf_sz)
-				np = 3;
-		}
-
-/* pollset is extended to cover STDOUT if we have an ongoing buffer */
-		int sv = poll(fds, np, 1000 / 15);
-		if (sv < 0){
-			if (sv == -1 && errno != EAGAIN && errno != EINTR)
-				alive = false;
-			continue;
-		}
-
-/* STDIN - update a12 state machine */
-		if (sv && fds[1].revents){
-			uint8_t inbuf[9000];
-			ssize_t nr = 0;
-			while ((nr = read(fds[1].fd, inbuf, 9000)) > 0){
-				a12_channel_unpack(ast, inbuf, nr);
-			}
-		}
-
-/* SHMIF-client - poll event queue, check/dispatch buffers */
-		if (sv && fds[0].revents){
-			struct arcan_event newev;
-			if (fds[0].revents != POLLIN){
-				alive = false;
-				continue;
-			}
-			while (shmifsrv_dequeue_events(a, &newev, 1)){
-				a12_channel_enqueue(ast, &newev);
-			}
-		}
-
-		switch(shmifsrv_poll(a)){
-			case CLIENT_DEAD:
-/* the descriptor will be gone so next poll will fail */
-			break;
-			case CLIENT_NOT_READY:
-/* do nothing */
-			break;
-			case CLIENT_VBUFFER_READY:
-				fprintf(stderr, "client got vbuffer, flush to state\n");
-/* copy + release if possible */
-				shmifsrv_video(a, true);
-			break;
-			case CLIENT_ABUFFER_READY:
-				fprintf(stderr, "client got abuffer\n");
-/* copy + release if possible */
-				shmifsrv_audio(a, NULL, 0);
-			break;
-/* do nothing */
-			break;
-			}
-		}
-	shmifsrv_free(a);
-}
-
-static int run_shmif_server(uint8_t* authk, size_t auth_sz, const char* cp)
-{
-	int fd = -1, sc = 0;
-
-/* repeatedly open the same connection point */
+/* repeatedly open the same connection point, then depending on if we are in piped
+ * mode (single client) or socketed mode we fork off a server */
 	while(true){
 		struct shmifsrv_client* cl =
-			shmifsrv_allocate_connpoint(cp, NULL, S_IRWXU, &fd, &sc, 0);
+			shmifsrv_allocate_connpoint(cp, NULL, S_IRWXU, fd);
 
 		if (!cl){
 			fprintf(stderr, "couldn't allocate connection point\n");
 			return EXIT_FAILURE;
 		}
 
+/* extract handle first time */
+		if (-1 == fd)
+			fd = shmifsrv_client_handle(cl);
+
+		if (-1 == fd){
+			fprintf(stderr,
+				"descriptor allocator failed, couldn't open connection point\n");
+			return EXIT_FAILURE;
+		}
+
 		struct pollfd pfd = { .fd = fd, .events = POLLIN | POLLERR | POLLHUP };
+		debug_print(1, "(srv) configured, polling");
 		if (poll(&pfd, 1, -1) == 1){
+			debug_print(1, "(srv) got connection");
+
 /* go through the accept step, now we can hand the connection over
  * and repeat the listening stage in some other execution context,
  * here's the point to thread or multiprocess */
@@ -114,10 +57,14 @@ static int run_shmif_server(uint8_t* authk, size_t auth_sz, const char* cp)
 				shmifsrv_poll(cl);
 
 /* build the a12 state and hand it over to the main loop */
-				server_mode(cl, a12_channel_open(authk, auth_sz));
+				a12helper_a12cl_shmifsrv(a12_channel_open(
+					authk, auth_sz), cl, fdin, fdout, (struct a12helper_opts){});
 			}
-			else
+
+			if (pfd.revents & (~POLLIN)){
+				debug_print(1, "(srv) poll failed, rebuilding");
 				shmifsrv_free(cl);
+			}
 		}
 /* SIGINTR */
 		else
@@ -128,76 +75,84 @@ static int run_shmif_server(uint8_t* authk, size_t auth_sz, const char* cp)
 	return EXIT_SUCCESS;
 }
 
-static int run_shmif_client(uint8_t* authk, size_t authk_sz)
+static int run_shmif_client(
+	uint8_t* authk, size_t authk_sz, int fdin, int fdout)
 {
-	struct arcan_shmif_cont wnd =
-		arcan_shmif_open(SEGID_UNKNOWN, SHMIF_NOACTIVATE, NULL);
-
 	struct a12_state* ast = a12_channel_build(authk, authk_sz);
-
-	struct pollfd fds[] = {
-		{ .fd = wnd.epipe, .events = c_pollev },
-		{	.fd = STDIN_FILENO, .events = c_pollev },
-		{ .fd = STDOUT_FILENO, .events = POLLOUT }
-	};
-
-	uint8_t* outbuf;
-	size_t outbuf_sz = 0;
-
-	bool alive;
-	while (alive){
-/* first, flush current outgoing and/or swap buffers */
-		int np = 2;
-		if (outbuf_sz || (outbuf_sz = a12_channel_flush(ast, &outbuf))){
-			ssize_t nw = write(STDOUT_FILENO, outbuf, outbuf_sz);
-			if (nw > 0)
-				outbuf_sz -= nw;
-			if (outbuf_sz)
-				np = 3;
-		}
-
-/* events from parent, nothing special - unless the carry a descriptor */
-		int sv = poll(fds, np, 1000 / 15);
-
-		if (sv < 0){
-			if (sv == -1 && errno != EAGAIN && errno != EINTR)
-				alive = false;
-			continue;
-		}
-
-		if (sv && fds[1].revents){
-			struct arcan_event newev;
-			int sc;
-			while (( sc = arcan_shmif_poll(&wnd, &newev)) > 0){
-			}
-			if (-1 == sc){
-				alive = false;
-			}
-		}
+	if (!ast){
+		fprintf(stderr, "Couldn't allocate client state machine\n");
+		return EXIT_FAILURE;
 	}
 
-	return EXIT_SUCCESS;
+	return a12helper_a12srv_shmifcl(ast, NULL, fdin, fdout);
+}
+
+static int killpipe[] = {-1, -1};
+static void test_handler()
+{
+	wait(NULL);
+	close(killpipe[0]);
+	close(killpipe[1]);
+}
+
+static int run_shmif_test(uint8_t* authk, size_t auth_sz, bool sp)
+{
+	signal(SIGCHLD, test_handler);
+	int clpipe[2];
+	int srvpipe[2];
+
+	pipe(clpipe);
+	pipe(srvpipe);
+
+/* just ugly- sleep and assume that the server has been setup */
+	if (fork() > 0){
+		if (sp){
+//			close(clpipe[1]); close(srvpipe[0]);
+			while (1)
+				run_shmif_client(authk, auth_sz, clpipe[0], srvpipe[1]);
+		}
+//		close(clpipe[0]); close(srvpipe[1]);
+		return run_shmif_server(authk, auth_sz, "test", srvpipe[0], clpipe[1]);
+	}
+
+#define STDERR_CHILD
+#ifdef STDERR_CHILD
+	fclose(stderr);
+	stderr = fopen("child.stderr", "w+");
+#else
+#endif
+	if (sp){
+		close(clpipe[0]); close(srvpipe[1]);
+		killpipe[0] = srvpipe[0]; killpipe[1] = clpipe[1];
+		return run_shmif_server(authk, auth_sz, "test", srvpipe[0], clpipe[1]);
+	}
+	close(clpipe[1]); close(srvpipe[0]);
+	killpipe[0] = clpipe[0]; killpipe[1] = srvpipe[1];
+	while (1)
+		run_shmif_client(authk, auth_sz, clpipe[0], srvpipe[1]);
 }
 
 static int show_usage(const char* n, const char* msg)
 {
-	fprintf(stderr, "%s\nUsage:\n\t%s shmif-client [-k authkfile(0<n<64b)] -c"
-	"\n\t%s shmif-server [-k authfile(0<n<64b)] -s connpoint\n", msg, n, n);
+	fprintf(stderr, "%s\nUsage:\n\t%s client mode: arcan-net -c"
+	"\n\t%s server mode: arcan-net -s connpoint\n"
+	"\t%s testing mode: arcan-net -t(server main) or -T (client main)"
+	"\nshared:"
+	"\n\t -k keyfile: authkey, use authentication key from [authkey]"
+	"\n\t -v method, force video compression (rgba, rgb, rgb565, dpng, h264)\n", msg, n, n, n);
 	return EXIT_FAILURE;
 }
 
 int main(int argc, char** argv)
 {
-	if (isatty(STDIN_FILENO) || isatty(STDOUT_FILENO))
-		return show_usage(argv[0], "[stdin] / [stdout] should not be TTYs\n");
-
 	uint8_t authk[64] = {0};
-	size_t authk_sz = 0;
+	size_t authk_sz = 64;
 
 	const char* cp = NULL;
 	int mode = 0;
 
-	for (size_t i = 1; i < argc; i++){
+	size_t i = 1;
+	for (; i < argc; i++){
 		if (strcmp(argv[i], "-k") == 0){
 			i++;
 			if (i == argc)
@@ -222,22 +177,38 @@ int main(int argc, char** argv)
 			mode = 2;
 			break;
 		}
+		else if (strcmp(argv[i], "--test") == 0 || strcmp(argv[i], "-t") == 0){
+			mode = 3;
+			break;
+		}
+		else if (strcmp(argv[i], "--TEST") == 0 || strcmp(argv[i], "-T") == 0){
+			mode = 4;
+			break;
+		}
 	}
 
-/* both stdin and stdout in non-blocking mode */
-	int flags = fcntl(STDOUT_FILENO, F_GETFL);
-	fcntl(STDOUT_FILENO, F_SETFL, flags | O_NONBLOCK);
-	flags = fcntl(STDIN_FILENO, F_GETFL);
-	fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+	if (mode == 3 || mode == 4){
+		if (!getenv("ARCAN_CONNPATH")){
+			fprintf(stderr, "Test mode: No ARCAN_CONNPATH env\n");
+			return EXIT_FAILURE;
+		}
+		return run_shmif_test(authk, authk_sz, mode == 3);
+	}
+
+	if (isatty(STDIN_FILENO) || isatty(STDOUT_FILENO))
+		return show_usage(argv[0], "[stdin] / [stdout] should not be TTYs\n");
 
 	if (mode == 0)
 		return show_usage(argv[0], "missing connection mode (-c or -s)");
 
+/*
+ * continue to sweep for a -x argument, if found, setup pipes, fork, exec.
+ */
 	if (mode == 1)
-		return run_shmif_server(authk, authk_sz, cp);
+		return run_shmif_server(authk, authk_sz, cp, STDIN_FILENO, STDOUT_FILENO);
 
 	if (mode == 2)
-		return run_shmif_client(authk, authk_sz);
+		return run_shmif_client(authk, authk_sz, STDIN_FILENO, STDOUT_FILENO);
 
 	return EXIT_SUCCESS;
 }
