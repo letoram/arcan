@@ -1,6 +1,6 @@
 /*
  Shmif- server library
- Copyright (c) 2017, Bjorn Stahl
+ Copyright (c) 2017-2018, Bjorn Stahl
  All rights reserved.
 
   Redistribution and use in source and binary forms,
@@ -104,25 +104,31 @@ struct shmifsrv_client*
  * the target socket. The function returns a valid server context or NULL with
  * the reason for failure in statuscode.
  *
- * [fd, can be NULL] is a state tracking file descriptor in order to reopen
- * the connection point after it having been consumed by a connection.
- * Example:
+ * Design / legacy quirk:
+ * The listening socket is contained within shmifsrv_client and should be
+ * extracted using shmifsrv_client_handle. If a client connects (see
+ * shmifsrv_poll), this handle with mutate internally to that of the accepted
+ * connection and it is the responsibility of the caller to either close
+ * the descriptor or use it as the [fd] argument to this function in order
+ * to re-open the connection point.
  *
- * int fdstate = -1;
- * int sc;
- * struct shmifsrv_client* cl = shmifsrv_allocate_connpoint(
- * 	"demo", NULL, S_IRWXU, &fdstate, &sc);
+ * Example use:
+ * struct shmifsrv_client* cl =
+ *   shmifsrv_allocate_connpoint("demo", NULL, S_IRWXU, -1);
  *
  * if (!cl)
- *    handle_allocation_error();
- *
- * ... poll [cl until connected] ..
- * shmifsrv_allocate_connpoint("demo", NULL, S_IRWXU, &fdstate, &sc);
+ *  error("couldn't allocate resources");
+
+ * int server_fd = shmifsrv_client_handler(cl);
+ * while(cl){
+ *    ... poll / wait in activity on server_fd ...
+ *    dispatch_client(cl); (have a thread/loop that runs shmifsrv_poll)
+ *    cl = shmifsrv_allocate_connpoint("demo", NULL, S_IRWXU, server_fd);
+ * }
  *
  */
-struct shmifsrv_client*
-	shmifsrv_allocate_connpoint(const char* name, const char* key,
-	mode_t permission, int* fd, int* statuscode, uint32_t idtok);
+struct shmifsrv_client* shmifsrv_allocate_connpoint(
+	const char* name, const char* key, mode_t permission, int fd);
 
 /*
  * Setup a connection-less frameserver, meaning that all primitives and
@@ -148,7 +154,7 @@ int shmifsrv_client_handle(struct shmifsrv_client*);
  * Internally, it verifies that the shared resources are in a healthy
  * state, forwards client- managed timers and so on.
  */
-void shmifsrv_tick(struct shmifsrv_client*);
+bool shmifsrv_tick(struct shmifsrv_client*);
 
 /*
  * Polling routine for pumping synchronization actions and determining
@@ -199,6 +205,11 @@ size_t shmifsrv_dequeue_events(
 	struct shmifsrv_client*, struct arcan_event* newev, size_t limit);
 
 /*
+ * Retrieve the currently registered type for a client
+ */
+enum ARCAN_SEGID shmifsrv_client_type(struct shmifsrv_client* cl);
+
+/*
  * Handle some of the normal state-tracking events (e.g. CLOCKREQ,
  * BUFFERSTREAM, FLUSHAUD). Returns true if the event was consumed and no
  * further action is needed.
@@ -211,11 +222,6 @@ enum vbuffer_status {
 	VBUFFER_NODATA = 0,
 	VBUFFER_OKDATA,
 	VBUFFER_HANDLE
-};
-
-enum abuffer_status {
-	ABUFFER_NODATA = 0,
-	ABUFFER_OKDATA
 };
 
 struct shmifsrv_vbuffer {
@@ -242,23 +248,12 @@ struct shmifsrv_vbuffer {
 	int planes[4];
 };
 
-struct shmifsrv_abuffer {
-	int state;
-	shmif_asample* buffer;
-	size_t bytes;
-	size_t limit;
-	size_t samples;
-	size_t samplerate;
-	uint8_t channels;
-};
-
 /*
  * [CRITICAL]
- * access the currently active video buffer slot in the client. If step is set,
+ * access the currently active video buffer slot in the client.
  * the buffer is returned to the client. The contents of the buffer are
  * a reference to shared memory, and should thus be explicitly copied out
- * before leaving critical. The buffer won't be unlocked until this function
- * have been called with step.
+ * before leaving critical.
  *
  * The [state] field of the returned structure will match vbuffer_status:
  * VBUFFER_OUTPUT - segment is configured for output, don't use this function.
@@ -270,24 +265,22 @@ struct shmifsrv_abuffer {
  * handle passing and accelerated. This server library does not currently
  * provide support functions for working with opaque handles.
  */
-struct shmifsrv_vbuffer shmifsrv_video(struct shmifsrv_client*, bool step);
+struct shmifsrv_vbuffer shmifsrv_video(struct shmifsrv_client*);
 
 /* [CRITICAL]
- * Copy out the currently active audio buffer slot in the client. This works
- * differently from the video transfer in that there is always an implied step
- * and the current buffer will be written out to shmifsrv abuffer.
- *
- * The [state] field of the returned structure will match abuffer_status:
- * ABUFFER_NODATA - nothing available.
- * ABUFFER_OKDATA - buffer is updated.
- *
- * If [dst] is provided, and [dst_sz] is of sufficient size (can be changed
- * during resize request), the destination copy buffer will be [dst] instead
- * of a [shmifsrv-_client] stored one. The [buffer] field in the returned
- * structure will match if provided.
+ * Forward that the last known video buffer is no longer interesting and
+ * signal a release to the client
  */
-struct shmifsrv_abuffer shmifsrv_audio(
-	struct shmifsrv_client*, shmif_asample* dst, size_t dst_sz);
+void shmifsrv_video_step(struct shmifsrv_client*);
+
+/* [CRITICAL]
+ * Flush all pending buffers to the provided drain function. In contrast to
+ * _video_step this function has an implicit step stage so all known buffers
+ * will be flushed and a waiting client will be woken up.
+ */
+void shmifsrv_audio(struct shmifsrv_client* cl,
+	void (*on_buffer)(shmif_asample* buf,
+		size_t n_samples, unsigned channels, unsigned rate, void* tag), void* tag);
 
 /*
  * [THREAD_UNSAFE]
