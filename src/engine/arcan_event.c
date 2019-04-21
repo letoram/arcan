@@ -49,7 +49,6 @@ static arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
 
 static uint8_t eventfront = 0, eventback = 0;
 static int64_t epoch;
-static arcan_frameserver* external_input;
 
 static struct arcan_evctx default_evctx = {
 	.eventbuf = eventbuf,
@@ -394,14 +393,6 @@ float arcan_event_process(arcan_evctx* ctx, arcan_tick_cb cb)
 
 	platform_event_process(ctx);
 
-/*
- * allow external input driver to multiplex unto the queue
- */
-	if (external_input){
-		arcan_event_queuetransfer(
-			ctx, &external_input->inqueue, EVENT_IO, 0.8, NULL);
-	}
-
 	if (delta > ARCAN_TIMER_TICK){
 		int nticks = delta / ARCAN_TIMER_TICK;
 		if (nticks > ARCAN_TICK_THRESHOLD){
@@ -490,10 +481,6 @@ void arcan_event_deinit(arcan_evctx* ctx)
 {
 	platform_event_deinit(ctx);
 
-	if (external_input){
-		arcan_frameserver_free(external_input);
-		external_input = NULL;
-	}
 /*
  * Actually resetting the contents of the event queue is no longer a part of
  * the eventqueue as it would introduce possible event-loss in the cases where
@@ -588,37 +575,6 @@ void arcan_event_init(arcan_evctx* ctx)
  */
 	if (!ctx->local){
 		return;
-	}
-
-/*
- * Similar setup tactic as in headless/video.c, we grab the binary
- * from the database, launch a frameserver that is detached from a vid
- * using an invalid custom_feed and then maintain the lifecycle for
- * the fsrv in our own process routine. The option here would be to go
- * with a normal launch-target for the IO driver but a better 'full UI'
- * integration mode like durden supports should be used then.
- */
-	const char* appl;
-	struct arcan_dbh* dbh = arcan_db_get_shared(&appl);
-	char* kv = arcan_db_appl_val(dbh, appl, "ext_io");
-	if (kv){
-		struct arcan_strarr arr_argv = {0}, arr_env = {0};
-		arcan_mem_growarr(&arr_argv);
-		struct frameserver_envp args = {
-			.use_builtin = false,
-			.args.external.fname = kv,
-			.args.external.envv = &arr_env,
-			.args.external.argv = &arr_argv,
-			.init_w = 32,
-			.init_h = 32,
-			.custom_feed = 0xfeedface
-		};
-		external_input = platform_launch_fork(&args, 0);
-		if (!external_input){
-			arcan_warning("(event) couldn't launch external io driver(%s)\n", kv);
-		}
-		arcan_mem_free(kv);
-		arcan_mem_freearr(&arr_argv);
 	}
 
 /*
