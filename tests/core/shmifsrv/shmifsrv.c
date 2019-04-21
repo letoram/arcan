@@ -4,14 +4,22 @@
 #include <unistd.h>
 #include <poll.h>
 
+static void on_abuffer(shmif_asample* buf,
+	size_t n_samples, unsigned channels, unsigned rate, void* tag)
+{
+	fprintf(stderr,
+		"abuffer, %zu samples, %u channels, %u rate\n",
+		n_samples, channels, rate
+	);
+}
+
 int main(int argc, char** argv)
 {
 	int fd = -1;
-	int sc = 0;
 
 /* setup listening point */
 	struct shmifsrv_client* cl =
-		shmifsrv_allocate_connpoint("shmifsrv", NULL, S_IRWXU, &fd, &sc, 0);
+		shmifsrv_allocate_connpoint("shmifsrv", NULL, S_IRWXU, fd);
 
 /* setup our clock */
 	shmifsrv_monotonic_rebase();
@@ -46,13 +54,12 @@ int main(int argc, char** argv)
 				break;
 			}
 			else if (sv == CLIENT_VBUFFER_READY){
-				struct shmifsrv_vbuffer buf = shmifsrv_video(cl, true);
+				struct shmifsrv_vbuffer buf = shmifsrv_video(cl);
+				shmifsrv_video_step(cl);
 				fprintf(stderr, "[video] : %zu*%zu\n", buf.w, buf.h);
 			}
 			else if (sv == CLIENT_ABUFFER_READY){
-				struct shmifsrv_abuffer buf = shmifsrv_audio(cl, NULL, 0);
-				fprintf(stderr,
-					"[audio], %zu samples @ %zu Hz", buf.samples, buf.samplerate);
+				shmifsrv_audio(cl, on_abuffer, NULL);
 			}
 		}
 

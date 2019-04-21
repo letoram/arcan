@@ -1,6 +1,8 @@
 #include "arcan_shmif.h"
 #include "arcan_shmif_server.h"
 #include <errno.h>
+#include <stdatomic.h>
+#include <math.h>
 
 /*
  * basic checklist:
@@ -18,7 +20,9 @@
  * engine/arcan_frameserver.c though.
  *
  * For that reason, we need to define some types that will actually never
- * really be used here, pending refactoring of the whole thing.
+ * really be used here, pending refactoring of the whole thing. In that refact.
+ * we should share all the code between the engine- side and the server lib -
+ * no reason for the two implementations.
  */
 typedef int shm_handle;
 struct arcan_aobj;
@@ -75,6 +79,13 @@ int shmifsrv_client_handle(struct shmifsrv_client* cl)
 	return cl->con->dpipe;
 }
 
+enum ARCAN_SEGID shmifsrv_client_type(struct shmifsrv_client* cl)
+{
+	if (!cl || !cl->con)
+		return SEGID_UNKNOWN;
+	return cl->con->segid;
+}
+
 struct shmifsrv_client*
 	shmifsrv_send_subsegment(struct shmifsrv_client* cl, int segid,
 	size_t init_w, size_t init_h, int reqid, uint32_t idtok)
@@ -98,17 +109,15 @@ struct shmifsrv_client*
 	return res;
 }
 
-struct shmifsrv_client*
-	shmifsrv_allocate_connpoint(const char* name, const char* key,
-	mode_t permission, int* fd, int* statuscode, uint32_t idtok)
+struct shmifsrv_client* shmifsrv_allocate_connpoint(
+	const char* name, const char* key, mode_t permission, int fd)
 {
-	int sc;
+	shmifsrv_monotonic_tick(NULL);
 	struct shmifsrv_client* res = alloc_client();
 	if (!res)
 		return NULL;
 
-	res->con = platform_fsrv_listen_external(
-		name, key, fd ? *fd : -1, permission, 0);
+	res->con = platform_fsrv_listen_external(name, key, fd, permission, 0);
 
 	if (!res->con){
 		free(res);
@@ -148,20 +157,6 @@ struct shmifsrv_client* shmifsrv_spawn_client(
 	return res;
 }
 
-bool shmifsrv_frameserver_tick(struct shmifsrv_client* cl)
-{
-/*
- * check:
- * shmifsrv_client_control_chld:
- *   sanity check:
- *    src->flags.alive, src->shm.ptr,
- *    src->shm.ptr->cookie == cookie
- * shmifsrv_client_validchild
- * shmifsrv_client_free on fail (though we just return false here)
- */
-	return false;
-}
-
 size_t shmifsrv_dequeue_events(
 	struct shmifsrv_client* cl, struct arcan_event* newev, size_t limit)
 {
@@ -185,6 +180,7 @@ size_t shmifsrv_dequeue_events(
 		asm volatile("": : :"memory");
 		__sync_synchronize();
 		cl->con->shm.ptr->parentevq.front = front;
+		arcan_sem_post(cl->con->esync);
 		shmifsrv_leave();
 		return count;
 	}
@@ -225,7 +221,6 @@ static void autoclock_frame(arcan_frameserver* tgt)
 		tgt->clock.left -= delta;
 	*/
 }
-
 
 bool shmifsrv_enqueue_event(
 	struct shmifsrv_client* cl, struct arcan_event* ev, int fd)
@@ -282,10 +277,11 @@ int shmifsrv_poll(struct shmifsrv_client* cl)
 				}
 				return CLIENT_NOT_READY;
 			}
-			int a = atomic_load(&cl->con->shm.ptr->aready);
-			int v = atomic_load(&cl->con->shm.ptr->vready);
+			int a = !!(atomic_load(&cl->con->shm.ptr->aready));
+			int v = !!(atomic_load(&cl->con->shm.ptr->vready));
 			shmifsrv_leave();
-			return (a * 1) | (v * 1);
+			return
+				(CLIENT_VBUFFER_READY * v) | (CLIENT_ABUFFER_READY * a);
 		}
 		else
 			cl->status = BROKEN;
@@ -332,12 +328,41 @@ void shmifsrv_set_protomask(struct shmifsrv_client* cl, unsigned mask)
 	cl->con->metamask = mask;
 }
 
-struct shmifsrv_vbuffer shmifsrv_video(struct shmifsrv_client* cl, bool step)
+void shmifsrv_audio_step(struct shmifsrv_client* cl)
+{
+
+}
+
+void shmifsrv_video_step(struct shmifsrv_client* cl)
+{
+/* signal that we're done with the buffer */
+	atomic_store_explicit(&cl->con->shm.ptr->vready, 0, memory_order_release);
+	arcan_sem_post(cl->con->vsync);
+
+/* If the frameserver has indicated that it wants a frame callback every time
+ * we consume. This is primarily for cases where a client needs to I/O mplex
+ * and the semaphores doesn't provide that */
+	if (cl->con->desc.hints & SHMIF_RHINT_VSIGNAL_EV){
+		platform_fsrv_pushevent(cl->con, &(struct arcan_event){
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_STEPFRAME,
+			.tgt.ioevs[0].iv = 1
+		});
+	}
+}
+
+/*
+ * The reference implementation for this is really in engine/arcan_frameserver
+ * with the vframe and push_buffer implementations in particular. Some of the
+ * changes is that we need to manage fewer states, like the rz_ack control.
+ */
+struct shmifsrv_vbuffer shmifsrv_video(struct shmifsrv_client* cl)
 {
 	struct shmifsrv_vbuffer res = {0};
 	if (!cl || cl->status != READY)
 		return res;
 
+	cl->con->desc.hints = cl->con->desc.pending_hints;
 	res.flags.origo_ll = cl->con->desc.hints & SHMIF_RHINT_ORIGO_LL;
 	res.flags.ignore_alpha = cl->con->desc.hints & SHMIF_RHINT_IGNORE_ALPHA;
 	res.flags.subregion = cl->con->desc.hints & SHMIF_RHINT_SUBREGION;
@@ -346,31 +371,26 @@ struct shmifsrv_vbuffer shmifsrv_video(struct shmifsrv_client* cl, bool step)
 	res.w = cl->con->desc.width;
 	res.h = cl->con->desc.height;
 
-/* samplerate, channels, vfthresh */
-
-	if (step){
-/* signal that we're done with the buffer */
-		atomic_store_explicit(&cl->con->shm.ptr->vready, 0, memory_order_release);
-		arcan_sem_post(cl->con->vsync);
-
-/* If the frameserver has indicated that it wants a frame callback every time
- * we consume. This is primarily for cases where a client needs to I/O mplex
- * and the semaphores doesn't provide that */
-		if (cl->con->desc.hints & SHMIF_RHINT_VSIGNAL_EV){
-			platform_fsrv_pushevent(cl->con, &(struct arcan_event){
-				.category = EVENT_TARGET,
-				.tgt.kind = TARGET_COMMAND_STEPFRAME,
-				.tgt.ioevs[0].iv = 1
-			});
-		}
-		return res;
-	}
-
 /*
- * copy the flags..
- * struct arcan_shmif_region dirty = atomic_load(&shmpage->dirty);
- *
+ * should have a better way of calculating this taking all the possible fmts
+ * into account, becomes more relevant when we have different vchannel types.
  */
+	res.stride = res.w * ARCAN_SHMPAGE_VCHANNELS;
+	res.pitch = res.w;
+
+/* vpending contains the latest region that was synched, so extract the ~vready
+ * mask to figure out which is the most recent buffer to work with in the case
+ * of 'n' buffering */
+	int vready = atomic_load_explicit(
+		&cl->con->shm.ptr->vready, memory_order_consume);
+	vready = (vready <= 0 || vready > cl->con->vbuf_cnt) ? 0 : vready - 1;
+
+	int vmask = ~atomic_load_explicit(
+		&cl->con->shm.ptr->vpending, memory_order_consume);
+
+	res.buffer = cl->con->vbufs[vready];
+	res.region = atomic_load(&cl->con->shm.ptr->dirty);
+
 	return res;
 }
 
@@ -381,9 +401,20 @@ bool shmifsrv_process_event(struct shmifsrv_client* cl, struct arcan_event* ev)
 
 	if (ev->category == EVENT_EXTERNAL){
 		switch (ev->ext.kind){
+
+/* default behavior for bufferstream is to simply send the reject, we can look
+ * into other options later but for now the main client is the network setup
+ * and accelerated buffer management is far on the list there */
 		case EVENT_EXTERNAL_BUFFERSTREAM:
-/* FIXME: used for handle passing, accumulate, grab descriptor,
- * use ext.bstream.* */
+			shmifsrv_enqueue_event(cl, &(struct arcan_event){
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_BUFFER_FAIL
+			}, -1);
+			if (cl->con->vstream.handle > 0){
+				close(cl->con->vstream.handle);
+				cl->con->vstream.handle = -1;
+			}
+			cl->con->vstream.handle = arcan_fetchhandle(cl->con->dpipe, false);
 			return true;
 		break;
 		case EVENT_EXTERNAL_CLOCKREQ:
@@ -400,20 +431,39 @@ bool shmifsrv_process_event(struct shmifsrv_client* cl, struct arcan_event* ev)
 	return false;
 }
 
-struct shmifsrv_abuffer shmifsrv_audio(
-	struct shmifsrv_client* cl, shmif_asample* buf, size_t buf_sz)
+void shmifsrv_audio(struct shmifsrv_client* cl,
+	void (*on_buffer)(shmif_asample* buf,
+		size_t n_samples, unsigned channels, unsigned rate, void* tag), void* tag)
 {
-	struct shmifsrv_abuffer res = {0};
 	volatile int ind = atomic_load(&cl->con->shm.ptr->aready) - 1;
 	volatile int amask = atomic_load(&cl->con->shm.ptr->apending);
-/* missing, copy buffer, re-use buf if possible, release if we're out
- * of buffers */
+
+/* sanity check, untrusted source
+	if (ind >= src->abuf_cnt || ind < 0){
+		platform_fsrv_leave(src);
+		return ARCAN_ERRC_NOTREADY;
+	}
+
+	int i = ind, prev;
+	do {
+		prev = i;
+		i--;
+		if (i < 0)
+			i = src->abuf_cnt-1;
+	} while (i != ind && ((1<<i)&amask) > 0);
+
+  sweep from oldest buffer (prev) up to i, yield to on_buffer, mask as consumed
+
+	atomic_store(&src->shm.ptr->abufused[prev], 0);
+	int last = atomic_fetch_and_explicit(&src->shm.ptr->apending,
+		~(1 << prev), memory_order_release);
+*/
+
 	atomic_store_explicit(&cl->con->shm.ptr->aready, 0, memory_order_release);
 	arcan_sem_post(cl->con->async);
-	return res;
 }
 
-void shmifsrv_tick(struct shmifsrv_client* cl)
+bool shmifsrv_tick(struct shmifsrv_client* cl)
 {
 /* want the event to be queued after resize so the possible reaction (i.e.
 	bool alive = src->flags.alive && src->shm.ptr &&
@@ -432,25 +482,42 @@ void shmifsrv_tick(struct shmifsrv_client* cl)
 		}
 	}
  */
+	return true;
 }
 
 static int64_t timebase, c_ticks;
 int shmifsrv_monotonic_tick(int* left)
 {
 	int64_t now = arcan_timemillis();
-	int64_t base = c_ticks * ARCAN_TIMER_TICK;
+	int n_ticks = 0;
+
 	if (now < timebase)
 		timebase = now - (timebase - now);
-	int64_t delta = now - timebase - base;
+	int64_t frametime = now - timebase;
 
-	if (left){
-		*left = (c_ticks+1) * ARCAN_TIMER_TICK - now - base;
+	int64_t base = c_ticks * ARCAN_TIMER_TICK;
+	int64_t delta = frametime - base;
+
+	if (delta > ARCAN_TIMER_TICK){
+		n_ticks = delta / ARCAN_TIMER_TICK;
+
+/* safeguard against stalls or clock issues */
+		if (n_ticks > ARCAN_TICK_THRESHOLD){
+			shmifsrv_monotonic_rebase();
+			return shmifsrv_monotonic_tick(left);
+		}
+
+		c_ticks += n_ticks;
 	}
 
-	return (float) delta / (float) ARCAN_TIMER_TICK;
+	if (left)
+		*left = ARCAN_TIMER_TICK - delta;
+
+	return n_ticks;
 }
 
 void shmifsrv_monotonic_rebase()
 {
 	timebase = arcan_timemillis();
+	c_ticks = 0;
 }
