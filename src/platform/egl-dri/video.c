@@ -3842,31 +3842,40 @@ bool platform_video_map_display(
 
 /* we might have messed around with the projection, rebuild it to be sure */
 	struct rendertarget* newtgt = arcan_vint_findrt(vobj);
-	newtgt->inv_y = false;
-	build_orthographic_matrix(
-		newtgt->projection, 0, vobj->origw, 0, vobj->origh, 0, 1);
+	if (newtgt){
+		newtgt->inv_y = false;
+		build_orthographic_matrix(
+			newtgt->projection, 0, vobj->origw, 0, vobj->origh, 0, 1);
 
-	if (newtgt && sane_direct_vobj(vobj)){
+		if (sane_direct_vobj(vobj)){
 /* the rendertarget color attachment will need buffering in order to not have
  * tearing or implicit locks when attempting direct scanout, so enable that by
  * running a swap here. */
-		if (!d->force_compose){
-			bool swap;
-			unsigned col = agp_rendertarget_swap(newtgt->art, &swap);
-		}
+			if (!d->force_compose){
+				bool swap;
+				unsigned col = agp_rendertarget_swap(newtgt->art, &swap);
+			}
 
 /* even then we have an option for a mapped rendertarget, and that is to try
  * and proxy it -> can we forego it and use the egl buffer directly? that's
  * possible if the contents isn't used for anything else (recordtarget,
  * multiple users, ...) */
-		else if (!d->disallow_rtproxy && newtgt->art) {
-			agp_rendertarget_proxy(newtgt->art,
-				display_rtgt_proxy, (uintptr_t)(void*)d);
+			else if (!d->disallow_rtproxy && newtgt->art) {
+				agp_rendertarget_proxy(newtgt->art,
+					display_rtgt_proxy, (uintptr_t)(void*)d);
 /* but this requires a different projection than the default */
-			newtgt->inv_y = true;
-			build_orthographic_matrix(
-				newtgt->projection, 0, vobj->origw, vobj->origh, 0, 0, 1);
+				newtgt->inv_y = true;
+				build_orthographic_matrix(
+					newtgt->projection, 0, vobj->origw, vobj->origh, 0, 0, 1);
+			}
 		}
+	}
+/* heuristics are needed here to determine if we can do the vobj- direct
+ * mapping with a render pass, these are not complete yet as we want to
+ * get the rendertarget- mapping more robust first */
+	else if (0 && sane_direct_vobj(vobj)){
+	}
+	else {
 	}
 
 /* reset the 'force composition' output path, this may cost a frame
