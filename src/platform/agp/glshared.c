@@ -112,7 +112,7 @@ struct agp_rendertarget
 /* used for multi-buffering mode */
 	bool rz_ack;
 	size_t n_stores;
-	size_t dirtyc;
+	size_t dirty_flip, dirty_region;
 	size_t store_ind;
 	struct agp_vstore* stores[MAX_BUFFERS];
 	struct agp_vstore* shadow[MAX_BUFFERS];
@@ -137,7 +137,8 @@ static void setup_stores(struct agp_rendertarget* dst)
 /* need this tracking because there's no external memory management for _back */
 	dst->store_ind = 0;
 	dst->n_stores = MAX_BUFFERS;
-	dst->dirtyc = MAX_BUFFERS;
+	dst->dirty_flip = MAX_BUFFERS;
+	dst->dirty_region = 0;
 
 /* build the current ones based on the reference store properties */
 	for (size_t i = 0; i < MAX_BUFFERS; i++){
@@ -176,7 +177,7 @@ void agp_rendertarget_dropswap(struct agp_rendertarget* tgt)
 		GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tgt->store->vinf.text.glid, 0);
 
 	BIND_FRAMEBUFFER(0);
-	tgt->dirtyc++;
+	tgt->dirty_flip++;
 }
 
 size_t agp_rendertarget_dirty(
@@ -187,9 +188,10 @@ size_t agp_rendertarget_dirty(
 
 	if (dirty){
 /* missing, track / merge dirty rectangles */
-		dst->dirtyc++;
+		dst->dirty_region++;
 	}
-	return dst->dirtyc;
+
+	return dst->dirty_region;
 }
 
 uint64_t agp_rendertarget_swap(struct agp_rendertarget* dst, bool* swap)
@@ -238,14 +240,14 @@ uint64_t agp_rendertarget_swap(struct agp_rendertarget* dst, bool* swap)
 
 /* the contents are dirty, check the swap- count until shadow buffer flush */
 	*swap = true;
-	if (dst->dirtyc > 0){
-		dst->dirtyc--;
+	if (dst->dirty_flip > 0){
+		dst->dirty_flip--;
 		FLAG_DIRTY();
-		verbose_print("(%"PRIxPTR") dirty left: %zu", (uintptr_t) dst, dst->dirtyc);
+		verbose_print("(%"PRIxPTR") dirty left: %zu", (uintptr_t) dst, dst->dirty_flip);
 
 /* now that we have 'dirtied out' and any external users should have received
  * copies of our current buffers, we can clean them up */
-		if (!dst->dirtyc){
+		if (!dst->dirty_flip){
 			for (size_t i = 0; i < MAX_BUFFERS; i++){
 				if (!dst->shadow[i])
 					continue;
@@ -928,13 +930,13 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 void agp_rendertarget_dirty_reset(
 	struct agp_rendertarget* src, struct agp_region* dst)
 {
-	for (size_t i = 0; i < src->dirtyc && dst; i++){
+	for (size_t i = 0; i < src->dirty_region && dst; i++){
 		dst[i] = (struct agp_region){
 			.x1 = 0, .y1 = 0,
 			.x2 = src->store->w, .y2 = src->store->h
 		};
 	}
-	src->dirtyc = 0;
+	src->dirty_region = 0;
 }
 
 void agp_rendertarget_clear()
