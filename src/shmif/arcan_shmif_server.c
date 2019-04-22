@@ -417,6 +417,13 @@ bool shmifsrv_process_event(struct shmifsrv_client* cl, struct arcan_event* ev)
 			cl->con->vstream.handle = arcan_fetchhandle(cl->con->dpipe, false);
 			return true;
 		break;
+/* need to track the type in order to be able to apply compression */
+		case EVENT_EXTERNAL_REGISTER:
+			if (cl->con->segid == SEGID_UNKNOWN){
+				cl->con->segid = ev->ext.registr.kind;
+				return false;
+			}
+		break;
 		case EVENT_EXTERNAL_CLOCKREQ:
 			if (cl->con->flags.autoclock && !ev->ext.clock.once){
 				cl->con->clock.frame = ev->ext.clock.dynamic;
