@@ -24,23 +24,27 @@ static struct a12_vframe_opts vopts_from_segment(
 {
 	switch (shmifsrv_client_type(C)){
 	case SEGID_LWA:
+		debug_print(1, "lwa -> h264, balanced");
 		return (struct a12_vframe_opts){
 			.method = VFRAME_METHOD_H264,
 			.bias = VFRAME_BIAS_BALANCED
 		};
 	case SEGID_GAME:
+		debug_print(1, "game -> h264, latency");
 		return (struct a12_vframe_opts){
 			.method = VFRAME_METHOD_H264,
 			.bias = VFRAME_BIAS_LATENCY
 		};
 	break;
 	case SEGID_MEDIA:
+		debug_print(1, "game -> h264, quality");
 		return (struct a12_vframe_opts){
 			.method = VFRAME_METHOD_H264,
 			.bias = VFRAME_BIAS_QUALITY
 		};
 	break;
 	case SEGID_CURSOR:
+		debug_print(1, "cursor -> normal (raw/png/...)");
 		return (struct a12_vframe_opts){
 			.method = VFRAME_METHOD_NORMAL
 		};
@@ -48,6 +52,7 @@ static struct a12_vframe_opts vopts_from_segment(
 	case SEGID_REMOTING:
 	case SEGID_VM:
 	default:
+		debug_print(1, "default (%d) -> dpng", shmifsrv_client_type(C));
 		return (struct a12_vframe_opts){
 			.method = VFRAME_METHOD_DPNG
 		};
@@ -196,8 +201,12 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
  * state and so on in flight. The real mechanism here could/should be able to
  * take type into account and balance queue and encoding parameters based on net-
  * load */
+			if (pv & CLIENT_VBUFFER_READY){
+				if (outbuf_sz){
+					debug_print(2, "video-buffer, but %zu bytes pending\n", outbuf_sz);
+					break;
+				}
 
-			if (!outbuf_sz && (pv & CLIENT_VBUFFER_READY)){
 /* two option, one is to map the dma-buf ourselves and do the readback, or with
  * streams map the stream and convert to h264 on gpu, but easiest now is to
  * just reject and let the caller do the readback. this is currently done by
