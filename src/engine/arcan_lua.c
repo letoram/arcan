@@ -8301,6 +8301,8 @@ static int targetalloc(lua_State* ctx)
 		if (!newref){
 			LUA_ETRACE("target_alloc", "couldn't listen on external", 0);
 		}
+
+		arcan_conductor_register_frameserver(newref);
 	}
 	else {
 		arcan_vobj_id srcfsrv = luaL_checkvid(ctx, 1, NULL);
@@ -8321,7 +8323,6 @@ static int targetalloc(lua_State* ctx)
 		LUA_ETRACE("target_alloc", NULL, 2);
 	}
 
-	arcan_conductor_register_frameserver(newref);
 	lua_pushvid(ctx, newref->vid);
 	lua_pushaid(ctx, newref->aid);
 	trace_allocation(ctx, "target", newref->vid);

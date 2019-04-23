@@ -477,7 +477,7 @@ void arcan_frameserver_lock_buffers(int state)
 
 int arcan_frameserver_releaselock(struct arcan_frameserver* tgt)
 {
-	if (!tgt->flags.release_pending){
+	if (!tgt->flags.release_pending || !tgt->shm.ptr){
 		return 0;
 	}
 

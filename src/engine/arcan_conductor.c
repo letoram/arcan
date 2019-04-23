@@ -77,6 +77,8 @@ static struct {
 	.timestep = 2
 };
 
+static ssize_t find_frameserver(struct arcan_frameserver* fsrv);
+
 /*
  * To add new options here,
  *
@@ -196,6 +198,19 @@ void arcan_conductor_register_frameserver(struct arcan_frameserver* fsrv)
 {
 	size_t dst_i = 0;
 	alloc_frameserver_struct();
+
+/* safeguard */
+	ssize_t src_i = find_frameserver(fsrv);
+	if (-1 != src_i){
+#ifdef DEBUG
+		arcan_warning("%lld:%s:%d: %s\n",
+			arcan_timemillis(), "conductor", __LINE__, __func__,
+			"register on known frameserver"
+		);
+#endif
+		return;
+
+	}
 
 /* check for a gap */
 	if (frameservers.used < frameservers.count){
@@ -329,11 +344,12 @@ void arcan_conductor_deregister_frameserver(struct arcan_frameserver* fsrv)
 {
 /* not all present frameservers will be registered with the conductor */
 	ssize_t dst_i = find_frameserver(fsrv);
-	if (!frameservers.count || -1 == dst_i){
+	if (!frameservers.used || -1 == dst_i){
+		arcan_warning("deregister_frameserver() on unknown fsrv @ %zd\n", dst_i);
 		return;
 	}
 	frameservers.ref[dst_i] = NULL;
-	frameservers.count--;
+	frameservers.used--;
 
 	if (fsrv == frameservers.focus){
 		frameservers.focus = NULL;
