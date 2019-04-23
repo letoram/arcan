@@ -288,7 +288,6 @@ void arcan_shmif_defimpl(
 {
 #ifdef SHMIF_DEBUG_IF
 	if (type == SEGID_DEBUG && arcan_shmif_debugint_spawn(newchild, typetag)){
-		printf("taking over newchild\n");
 		return;
 	}
 #endif
