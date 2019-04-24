@@ -5,7 +5,13 @@
 -- @outargs: int:meshindex
 -- @longdescr: This function can be used to setup and attach a mesh to an open
 -- model. If *source* is a string, it is treated as a resource that will be
--- passed through an internal model loader (CTM format as of now).
+-- passed through an internal model loader. Right now, this method of model
+-- loading is disabled and will always fail soft. The reason for that is that
+-- the parsing stage needs to move out of the main engine into the decode
+-- frameserver for safety and security. This is a temporary measure. The
+-- intermediate workaround for the time being is to use the table structure
+-- along with a mesh to .lua or mesh to .json along with the builtin/json.lua
+-- parser.
 --
 -- If *source* is a table, the following fields are expected:
 -- .vertices (indexed table) {x1, y1, z1, x2, y2, z2, ...}

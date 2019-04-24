@@ -1,5 +1,5 @@
 /*
- * Copyright 2009-2018, Björn Ståhl
+ * Copyright 2009-2019, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -16,8 +16,6 @@
 #include <inttypes.h>
 
 #include <assert.h>
-
-#include <openctm/openctm.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -1154,53 +1152,6 @@ static void invert_txcos(float* buf, unsigned bufs){
 }
 */
 
-/* undesired limits with this function is that it ignores
- * many possible vertex attributes (such as colour weighting)
- * and multiple UV maps. It should, furthermore, store these in an
- * interleaved way rather than planar. */
-static void loadmesh(struct geometry* dst, CTMcontext* ctx)
-{
-/* figure out dimensions */
-	dst->store.n_vertices = ctmGetInteger(ctx, CTM_VERTEX_COUNT);
-	dst->store.vertex_size = 3;
-	size_t n_triangles = ctmGetInteger(ctx, CTM_TRIANGLE_COUNT);
-	unsigned uvmaps = ctmGetInteger(ctx, CTM_UV_MAP_COUNT);
-	unsigned vrtsize = dst->store.n_vertices * 3 * sizeof(float);
-
-	const CTMfloat* verts   = ctmGetFloatArray(ctx, CTM_VERTICES);
-	const CTMfloat* normals = ctmGetFloatArray(ctx, CTM_NORMALS);
-	const CTMuint*  indices = ctmGetIntegerArray(ctx, CTM_INDICES);
-
-/* copy and repack */
-	if (normals)
-		dst->store.normals = arcan_alloc_fillmem(normals, vrtsize,
-		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
-
-	dst->store.verts = arcan_alloc_fillmem(verts, vrtsize,
-		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
-
-/* lots of memory to be saved, so worth the trouble */
-	if (indices){
-		dst->store.n_indices = n_triangles * 3;
-		uint32_t* buf = arcan_alloc_mem( dst->store.n_indices * sizeof(unsigned),
-			ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
-
-		for (unsigned i = 0; i < dst->store.n_indices; i++)
-			buf[i] = indices[i];
-
-		dst->store.indices = buf;
-	}
-
-/* we require the model to be presplit on texture,
- * so n maps but 1 set of txcos */
-	if (uvmaps > 0){
-		dst->nmaps = 1;
-		unsigned txsize = sizeof(float) * 2 * dst->store.n_vertices;
-		dst->store.txcos = arcan_alloc_fillmem(ctmGetFloatArray(ctx, CTM_UV_MAP_1),
-			txsize, ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
-	}
-}
-
 arcan_errc arcan_3d_meshshader(arcan_vobj_id dst,
 	agp_shader_id shid, unsigned slot)
 {
@@ -1233,45 +1184,6 @@ struct threadarg{
 	map_region datamap;
 	off_t readofs;
 };
-
-static CTMuint ctm_readfun(void* abuf, CTMuint acount, void* userdata)
-{
-	struct threadarg* reg = userdata;
-	size_t ntr = acount > reg->datamap.sz - reg->readofs ?
-		reg->datamap.sz - reg->readofs : acount;
-
-	memcpy(abuf, reg->datamap.ptr + reg->readofs, ntr);
-	reg->readofs += ntr;
-
-	return ntr;
-}
-
-static void* threadloader(void* arg)
-{
-	struct threadarg* threadarg = (struct threadarg*) arg;
-
-	CTMcontext ctx = ctmNewContext(CTM_IMPORT);
-	ctmLoadCustom(ctx, ctm_readfun, threadarg);
-	arcan_3dmodel* model = threadarg->model;
-
-	if (ctmGetError(ctx) == CTM_NONE){
-		loadmesh(threadarg->geom, ctx);
-	}
-
-/* nonetheless, unlock the slot for the main rendering loop,
- * or free ( which is locking deferred ) */
-	pthread_mutex_lock(&model->lock);
-	threadarg->geom->complete = true;
-	model->work_count--;
-	pthread_mutex_unlock(&threadarg->model->lock);
-
-	push_deferred(model);
-	ctmFreeContext(ctx);
-
-	arcan_mem_free(threadarg);
-
-	return NULL;
-}
 
 arcan_errc arcan_3d_addraw(arcan_vobj_id dst,
 	float* vertices, size_t n_vertices,
@@ -1336,12 +1248,14 @@ arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 
 	arcan_3dmodel* model = vobj->feed.state.ptr;
 
-	if (vobj->feed.state.tag != ARCAN_TAG_3DOBJ ||
+	if (1 ||
+		vobj->feed.state.tag != ARCAN_TAG_3DOBJ ||
 		model->flags.complete == true)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-/* 2d frameset and set of vids associated as textures
- * with models are weakly linked */
+/*
+ * commented out for now until we can add the model parsing to fsrv_decode
+ *
 	struct threadarg* arg = arcan_alloc_mem(sizeof(struct threadarg),
 		ARCAN_MEM_THREADCTX, 0, ARCAN_MEMALIGN_NATURAL);
 
@@ -1354,7 +1268,6 @@ arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 		return ARCAN_ERRC_BAD_RESOURCE;
 	}
 
-/* find last elem and add */
 	struct geometry** nextslot = &(model->geometry);
 	while (*nextslot)
 		nextslot = &((*nextslot)->next);
@@ -1372,7 +1285,7 @@ arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 	pthread_mutex_unlock(&model->lock);
 
 	arg->geom->threaded = true;
-	pthread_create(&arg->geom->worker, NULL, threadloader, (void*) arg);
+*/
 
 	return ARCAN_OK;
 }
