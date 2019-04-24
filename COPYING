@@ -16,7 +16,6 @@ Basic Engine Components:
  External Projects included or referenced:
  external/kissfft - 3-Clause BSD, (c) Mark Borgerdin
  external/hidapi - 3-Clause BSD, (c) Alan Ott
- external/openctm - 3-Clause BSD, (c) Marcus Geelnard
 
 engine/* 3-Claused BSD with exceptions / attribution as follows:
       /arcan_lua.c - GPLv2 as an artifical restriction
@@ -51,12 +50,12 @@ tools/netproxy/ See individual README.md
 
 examples/ Public Domain
 tests/ Public Domain
+distr/scripts/builtin/json.lua MIT (c) 2019 rxi (github.com/rxi)
 distr/scripts/ Public Domain
 
 Specific Platforms:
- SDL: (dependency) SDL1.2, optional SDL-image, LGPL.
+ SDL: (dependency) SDL1.2/SDL2, LGPL.
  EGL-DRI: (dependency) GLES, OpenGL3 or GLES3
- X11: (dependency) xlib
  LWA: LGPL- tainted build, as we statically link a modified openAL-soft backend
 
 Default Frameservers:
