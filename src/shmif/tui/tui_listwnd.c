@@ -227,8 +227,13 @@ static void key_input(struct tui_context* T, uint32_t keysym,
 	else if (keysym == TUIK_LEFT || keysym == TUIK_ESCAPE){
 			M->entry_state = -1;
 	}
-	else
-		;
+
+}
+
+static void input_mouse_button(struct tui_context* T, int last_x, int last_y, int button, bool active, int modifiers, void* tag) {
+	struct listwnd_meta* M = tag;
+	M->list_pos = last_y;
+	redraw(T, M);
 }
 
 bool arcan_tui_listwnd_status(struct tui_context* T, struct tui_list_entry** out)
@@ -352,6 +357,7 @@ bool arcan_tui_listwnd_setup(
 		.tick = tick,
 		.geohint = geohint,
 		.input_key = key_input,
+		.input_mouse_button = input_mouse_button,
 		.input_utf8 = u8
 	};
 
