@@ -88,21 +88,13 @@ struct tui_bufferwnd_opts {
 	uint64_t offset;
 };
 
+#ifndef ARCAN_TUI_DYNAMIC
 void arcan_tui_bufferwnd_setup(
 	struct tui_context* ctx, uint8_t* buf, size_t buf_sz,
 	struct tui_bufferwnd_opts*, size_t opts_sz
 );
 
-/*
- * Force- navigate the window to a specific position in the buffer and at
- * a specific offset within the window of that buffer.
- *
- * options:
- *  BUFFER_SEEK_FIXED : Ignore position, only seek to offset within current
- *                      window. Overflow / underflow will be ignored.
- */
-void arcan_tui_bufferwnd_seek(
-	struct tui_context* ctx, size_t pos, size_t ofs, int seek_opt);
+void arcan_tui_bufferwnd_release(struct tui_context* T);
 
 /*
  * Take a context that has previously been setup via arcan_tui_bufferwnd_setup,
@@ -111,5 +103,22 @@ void arcan_tui_bufferwnd_seek(
  * on_destroy event handler on the other hand, and in such cases _free should
  * not be called.
  */
-void arcan_tui_bufferwnd_free(struct tui_context*);
+#else
+typedef bool(* PTUIBUFFERWND_SETUP)(
+	struct tui_context*, struct tui_list_entry*, size_t n_entries);
+typedef void(* PTUIBUFFERWND_RELEASE)(
+	struct tui_context*);
+
+static PTUIBUFFERWND_SETUP arcan_tui_bufferwnd_setup;
+static PTUIBUFFERWND_RELEASE arcan_tui_bufferwnd_release;
+
+static bool arcan_tui_bufferwnd_dynload(
+	void*(*lookup)(void*, const char*), void* tag)
+{
+#define M(TYPE, SYM) if (! (SYM = (TYPE) lookup(tag, #SYM)) ) return false
+M(PTUILISTWND_SETUP, arcan_tui_bufferwnd_setup);
+M(PTUILISTWND_RELEASE, arcan_tui_bufferwnd_release);
+return true;
+}
+#endif
 #endif

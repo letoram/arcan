@@ -67,6 +67,7 @@ struct tui_list_entry {
  * Example:
  * See the #ifdef EXAMPLE block at the bottom of tui_listwnd.c
  */
+#ifndef ARCAN_TUI_DYNAMIC
 bool arcan_tui_listwnd_setup(
 	struct tui_context*, struct tui_list_entry*, size_t n_entries);
 
@@ -91,4 +92,31 @@ void arcan_tui_listwnd_dirty(struct tui_context*);
  */
 void arcan_tui_listwnd_release(struct tui_context*);
 
+/*
+ * The cases where we want to dynamically load the library as a plugin
+ */
+#else
+typedef bool(* PTUILISTWND_SETUP)(
+	struct tui_context*, struct tui_list_entry*, size_t n_entries);
+typedef bool(* PTUILISTWND_STATUS)(
+	struct tui_context*, struct tui_list_entry** out);
+typedef void(* PTUILISTWND_DIRTY)(struct tui_context*);
+typedef void(* PTUILISTWND_RELEASE)(struct tui_context*);
+
+static PTUILISTWND_SETUP arcan_tui_listwnd_setup;
+static PTUILISTWND_STATUS arcan_tui_listwnd_status;
+static PTUILISTWND_DIRTY arcan_tui_listwnd_dirty;
+static PTUILISTWND_RELEASE arcan_tui_listwnd_release;
+
+static bool arcan_tui_listwnd_dynload(
+	void*(*lookup)(void*, const char*), void* tag)
+{
+#define M(TYPE, SYM) if (! (SYM = (TYPE) lookup(tag, #SYM)) ) return false
+M(PTUILISTWND_SETUP, arcan_tui_listwnd_setup);
+M(PTUILISTWND_STATUS, arcan_tui_listwnd_status);
+M(PTUILISTWND_DIRTY, arcan_tui_listwnd_dirty);
+M(PTUILISTWND_RELEASE, arcan_tui_listwnd_release);
+return true;
+}
+#endif
 #endif
