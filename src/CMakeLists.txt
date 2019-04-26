@@ -420,7 +420,6 @@ endif()
 
 LIST (APPEND
 	ARCAN_LIBRARIES
-	openctm
 	${FREETYPE_DEFAULT_LIBRARIES}
 	${LUA_LIBRARIES}
 	${SQLITE3_LIBRARIES}
@@ -436,9 +435,6 @@ LIST (APPEND
 	${EXTERNAL_SRC_DIR}
 	${CMAKE_CURRENT_SOURCE_DIR}/engine
 )
-
-# Slated for deprecation / removal / migration to fsrv_decode
-add_subdirectory(${EXTERNAL_SRC_DIR}/openctm ${CMAKE_CURRENT_BINARY_DIR}/openctm)
 
 list (APPEND SOURCES
 	engine/arcan_event.c
