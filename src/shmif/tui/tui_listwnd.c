@@ -228,13 +228,11 @@ static void input_mouse_button(struct tui_context* T,
 	if (active) {
 		size_t rows, cols = 0;
 		arcan_tui_dimensions(T, &rows, &cols);
-		//if (last_y + M->list_pos <= M->list_sz) {
-			size_t page = M->list_pos / rows;
-			if((page * rows) + last_y < M->list_sz) {
-				M->list_pos = (page * rows) + last_y;
-				select_current(T, M);
-			}
-		//}
+		size_t page = M->list_pos / rows;
+		if((page * rows) + last_y < M->list_sz) {
+			M->list_pos = (page * rows) + last_y;
+			select_current(T, M);
+		}
 		redraw(T, M);
 	}
 }
@@ -341,10 +339,17 @@ bool arcan_tui_listwnd_setup(struct tui_context* T, struct tui_list_entry* L,
 	arcan_tui_reset_flags(T, ~0);
 	arcan_tui_set_flags(T, TUI_ALTERNATE | TUI_HIDE_CURSOR);
 
-	struct tui_cbcfg cbcfg = { .tag = meta, .resize = resize,
-			.resized = resized, .recolor = recolor, .tick = tick, .geohint =
-					geohint, .input_key = key_input, .input_mouse_button =
-					input_mouse_button, .input_utf8 = u8 };
+	struct tui_cbcfg cbcfg = {
+		.tag = meta,
+		.resize = resize,
+		.resized = resized,
+		.recolor = recolor,
+		.tick = tick,
+		.geohint = geohint,
+		.input_key = key_input,
+		.input_mouse_button = input_mouse_button,
+		.input_utf8 = u8
+	};
 
 	/* BOX DRAWINGS LIGHT HORIZONTAL U+2500 */
 	meta->line_ch = arcan_tui_hasglyph(T, 0x2500) ? 0x2500 : '-';
