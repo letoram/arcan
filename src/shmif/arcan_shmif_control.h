@@ -150,7 +150,7 @@ static const int ARCAN_SHMPAGE_MAXH = PP_SHMPAGE_MAXH;
 #endif
 
 #ifndef ARCAN_SHMPAGE_DEFAULT_PPCM
-#define ARCAN_SHMPAGE_DEFAULT_PPCM 243.84
+#define ARCAN_SHMPAGE_DEFAULT_PPCM 37.795276
 #endif
 
 static const float shmif_ppcm_default = ARCAN_SHMPAGE_DEFAULT_PPCM;
