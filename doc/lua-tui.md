@@ -260,20 +260,6 @@ normal mode.
 You are always expected to be able to handle any non-negative, non-zero amount
 of rows and columns.
 
-## Multiple Screens
-
-As mentioned, it is possible to have multiple screens that each track its own
-state in terms of cursor position and contents, though they do share the same
-size.
-
-To manage screens, we have the following functions on the connection context:
-
-    alloc_screen() => screen_id
-    switch_screen(screen_id)
-    delete_screen(screen_id)
-
-The initial screen (primary) always has index 0 and cannot be deleted.
-
 # Subwindows
 
 While it is entirely possible to open additional tui connections that will act

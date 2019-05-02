@@ -787,29 +787,6 @@ static int valid_flag(lua_State* L, int ind)
 	return 0;
 }
 
-static int screen_alloc(lua_State* L)
-{
-	TUI_UDATA;
-	lua_pushnumber(L, arcan_tui_alloc_screen(ib->tui));
-	return 0;
-}
-
-static int screen_delete(lua_State* L)
-{
-	TUI_UDATA;
-	unsigned screen = luaL_checknumber(L, 2);
-	arcan_tui_delete_screen(ib->tui, screen);
-	return 0;
-}
-
-static int screen_switch(lua_State* L)
-{
-	TUI_UDATA;
-	unsigned screen = luaL_checknumber(L, 2);
-	arcan_tui_switch_screen(ib->tui, screen);
-	return 0;
-}
-
 static int tuiclose(lua_State* L)
 {
 	TUI_UDATA;
@@ -1084,9 +1061,6 @@ void tui_lua_expose(lua_State* L)
 	REGISTER("dimensions", screen_dimensions);
 	REGISTER("invalidate", invalidate);
 	REGISTER("close", tuiclose);
-	REGISTER("switch_screen", screen_switch);
-	REGISTER("delete_screen", screen_delete);
-	REGISTER("alloc_screen", screen_alloc);
 	REGISTER("get_color", color_get);
 	REGISTER("set_color", color_set);
 	REGISTER("set_flags", set_flags);
