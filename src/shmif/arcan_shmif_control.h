@@ -366,7 +366,7 @@ char* arcan_shmif_connect(const char* connpath,
 	const char* connkey, file_handle* conn_ch);
 
 /*
- * This is used to migrate a currect connection, authoritative or not,
+ * This is used to migrate a current connection, authoritative or not,
  * to a non-authoritate connection, possibly using a different connection
  * path and primitive.
  *
