@@ -47,7 +47,7 @@ function(WAYLAND_ADD_PROTOCOL_CLIENT _sources _protocol _basename)
         DEPENDS ${_infile} VERBATIM)
 
     add_custom_command(OUTPUT "${_code}"
-        COMMAND ${WAYLAND_SCANNER_EXECUTABLE} code < ${_infile} > ${_code}
+        COMMAND ${WAYLAND_SCANNER_EXECUTABLE} public-code < ${_infile} > ${_code}
         DEPENDS ${_infile} VERBATIM)
 
     list(APPEND ${_sources} "${_client_header}" "${_code}")
@@ -69,7 +69,7 @@ function(WAYLAND_ADD_PROTOCOL_SERVER _sources _protocol _basename)
         DEPENDS ${_infile} VERBATIM)
 
     add_custom_command(OUTPUT "${_code}"
-        COMMAND ${WAYLAND_SCANNER_EXECUTABLE} code < ${_infile} > ${_code}
+        COMMAND ${WAYLAND_SCANNER_EXECUTABLE} public-code < ${_infile} > ${_code}
         DEPENDS ${_infile} VERBATIM)
 
     list(APPEND ${_sources} "${_server_header}" "${_code}")
