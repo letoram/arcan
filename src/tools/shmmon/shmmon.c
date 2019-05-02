@@ -114,9 +114,11 @@ static void dump_snapshot(struct arcan_shmif_page* page, int qlim)
 		(size_t) page->w, (size_t) page->h, (int) page->resized,
 		(int) page->vready, (int) page->vpending, (uint64_t) page->vpts
 	);
+	struct arcan_shmif_region dirty = atomic_load(&page->dirty);
+
 	printf("dirty region: %zu,%zu - %zu,%zu\n\t",
-		(size_t) page->dirty.x1, (size_t) page->dirty.y1,
-		(size_t) page->dirty.x2, (size_t) page->dirty.y2
+		(size_t) dirty.x1, (size_t) dirty.y1,
+		(size_t) dirty.x2, (size_t) dirty.y2
 	);
 
 	printf("render hints:\n\t\t");
