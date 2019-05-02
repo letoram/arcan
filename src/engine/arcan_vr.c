@@ -70,8 +70,13 @@ struct arcan_vr_ctx* arcan_vr_setup(
 /* if not found, go with some known defaults */
 	char* kv = arcan_db_appl_val(dbh, appl, "ext_vr");
 	if (!kv){
-		char* base = arcan_fetch_namespace(RESOURCE_SYS_BINS);
-		asprintf(&kv, "%s/arcan_vr", base);
+/* the default actually points to the chain-loader, so we need to crop */
+		if (arcan_isfile("/usr/local/bin/arcan_vr")){
+			kv = strdup("/usr/local/bin/arcan_vr");
+		}
+		else if (arcan_isfile("/usr/bin/arcan_vr")){
+			kv = strdup("/usr/bin/arcan_vr");
+		}
 	}
 	if (!kv)
 		return NULL;
@@ -126,7 +131,7 @@ struct arcan_vr_ctx* arcan_vr_setup(
 		return NULL;
 	}
 
-	debug_print(1, "vrbridge launched");
+	debug_print(1, "vrbridge launched (%s)", args.args.external.fname);
 	*vrctx = (struct arcan_vr_ctx){
 		.ctx = evctx,
 		.connection = mvctx
