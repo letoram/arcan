@@ -338,6 +338,7 @@ static struct {
 
 	char* last_crash_source;
 
+	const char** last_argv;
 	lua_State* last_ctx;
 } luactx = {0};
 
@@ -7277,6 +7278,10 @@ static int screencoord(lua_State* ctx)
 bool arcan_lua_callvoidfun(lua_State* ctx,
 	const char* fun, bool warn, const char** argv)
 {
+/* track this for later */
+	if (argv)
+		luactx.last_argv = argv;
+
 	if ( grabapplfunction(ctx, fun, strlen(fun)) ){
 		int argc = 0;
 		lua_newtable(ctx);
@@ -9839,6 +9844,22 @@ static int togglebench(lua_State* ctx)
 	LUA_ETRACE("benchmark_enable", NULL, 0);
 }
 
+static int getapplarguments(lua_State* ctx)
+{
+	LUA_TRACE("appl_arguments");
+	const char** argv = luactx.last_argv;
+	int argc = 0;
+	lua_newtable(ctx);
+	int top = lua_gettop(ctx);
+	while (argv && argv[argc]){
+		lua_pushnumber(ctx, argc+1);
+		lua_pushstring(ctx, argv[argc++]);
+		lua_rawset(ctx, top);
+	}
+
+	LUA_ETRACE("appl_arguments", NULL, 1);
+}
+
 static int getbenchvals(lua_State* ctx)
 {
 	LUA_TRACE("benchmark_data");
@@ -11492,6 +11513,7 @@ static const luaL_Reg sysfuns[] = {
 {"benchmark_enable",    togglebench      },
 {"benchmark_timestamp", timestamp        },
 {"benchmark_data",      getbenchvals     },
+{"appl_arguments",      getapplarguments },
 {"system_identstr",     getidentstr      },
 {"system_defaultfont",  setdefaultfont   },
 #ifdef _DEBUG
