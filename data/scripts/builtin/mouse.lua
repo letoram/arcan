@@ -821,7 +821,9 @@ function mouse_button_input(ind, active)
 		if (not active) then
 			if (mstate.active_list[ind]) then
 				for i,v in ipairs(mstate.active_list[ind]) do
-					v[1]:button(v[2], ind, false, mstate.x, mstate.y);
+					if (v[1].button) then
+						v[1]:button(v[2], ind, false, mstate.x, mstate.y);
+					end
 				end
 				mstate.active_list[ind] = {};
 			end
@@ -1114,14 +1116,23 @@ function mouse_dumphandlers()
 	warning("/mouse_dumphandlers()");
 end
 
-function mouse_droplistener(tbl)
-	for key, val in pairs( mstate.handlers ) do
-		for ind, vtbl in ipairs( val ) do
-			if (tbl == vtbl) then
-				table.remove(val, ind);
-				break;
-			end
+local function drop_match(intbl, match)
+	for ind, val in ipairs(intbl) do
+		if (val == match) then
+			table.remove(intbl, ind);
+			break;
 		end
+	end
+end
+
+function mouse_droplistener(tbl)
+
+	for key, val in pairs( mstate.handlers ) do
+		drop_match(val, tbl);
+	end
+
+	for i,v in pairs(mstate.active_list) do
+		drop_match(v, tbl);
 	end
 end
 
