@@ -15,14 +15,7 @@
 
 #include "vrbridge.h"
 #include "avr_test.h"
-
-#ifdef OPENHMD
 #include "avr_openhmd.h"
-#endif
-
-#ifdef PSVR
-#include "avr_psvr.h"
-#endif
 
 static volatile bool in_init = true;
 struct limb_runner {
@@ -94,20 +87,11 @@ static struct dev_ent dev_tbl[] =
 		.sample = test_sample,
 		.control = test_control
 	},
-#ifdef PSVR
-	{
-		.init = psvr_init,
-		.sample = psvr_sample,
-		.control = psvr_control
-	},
-#endif
-#ifdef OPENHMD
 	{
 		.init = openhmd_init,
 		.sample = openhmd_sample,
 		.control = openhmd_control
-	},
-#endif
+	}
 };
 
 static bool init_device(struct dev_ent* ent,

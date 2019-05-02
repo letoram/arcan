@@ -15,7 +15,6 @@ pkg_check_modules(ARCAN_SHMIF arcan-shmif)
 add_definitions(
 	-Wall
 	-D__UNIX
-	-DPSVR
 	-DPOSIX_C_SOURCE
 	-DGNU_SOURCE
   -Wno-unused-const-variable
@@ -73,21 +72,28 @@ endif()
 set(SOURCES
 	vrbridge.c
 	ahrs.c
-	psvr.c
+	openhmd.c
 	test.c
 	${ARCAN_ROOT_DIR}/src/engine/arcan_math.c
 	${PLATFORM_SOURCES}
 )
 
-find_package(OpenHMD)
-if (OPENHMD_FOUND)
-	include_directories(${OPENHMD_INCLUDE_DIRS})
-	list(APPEND LIBRARIES ${OPENHMD_LIBRARIES})
-	list(APPEND SOURCES openhmd.c)
-	add_definitions(-DOPENHMD)
+add_executable(${PROJECT_NAME} ${SOURCES})
+
+if (DEFINED NO_BUILTIN_OPENHMD)
+	find_package(OpenHMD REQUIRED)
+	if (OPENHMD_FOUND)
+		include_directories(${OPENHMD_INCLUDE_DIRS})
+		list(APPEND LIBRARIES ${OPENHMD_LIBRARIES})
+		list(APPEND SOURCES openhmd.c)
+		add_definitions(-DOPENHMD)
+	endif()
+else()
+	add_subdirectory("OpenHMD")
+	include_directories(${CMAKE_CURRENT_SOURCE_DIR}/OpenHMD)
+	list(APPEND LIBRARIES openhmd)
 endif()
 
-add_executable(${PROJECT_NAME} ${SOURCES})
 target_link_libraries(${PROJECT_NAME} ${LIBRARIES})
 
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)
