@@ -2757,11 +2757,6 @@ static void apply_arg(struct tui_settings* cfg,
 		cfg->render_flags |= TUI_RENDER_SHAPED;
 	}
 
-#ifndef SHMIF_TUI_DISABLE_GPU
-	if (arg_lookup(args, "accel", 0, &val))
-		cfg->render_flags |= TUI_RENDER_ACCEL;
-#endif
-
 	if (arg_lookup(args, "scroll", 0, &val) && val)
 		cfg->smooth_scroll = strtoul(val, NULL, 10);
 
@@ -3100,18 +3095,6 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	if (res->handlers.resized)
 		res->handlers.resized(res, res->acon.w, res->acon.h,
 			res->cols, res->rows, res->handlers.tag);
-
-#ifndef SHMIF_TUI_DISABLE_GPU
-	if (set->render_flags & TUI_RENDER_ACCEL){
-		struct arcan_shmifext_setup setup = arcan_shmifext_defaults(con);
-		setup.builtin_fbo = false;
-		setup.vidp_pack = true;
-		if (arcan_shmifext_setup(con, setup) == SHMIFEXT_OK){
-			LOG("arcan_tui(), accelerated connection established");
-			res->is_accel = true;
-		}
-	}
-#endif
 
 	return res;
 }
