@@ -267,16 +267,6 @@ static void on_apaste(struct tui_context* c,
  */
 }
 
-bool on_draw(struct tui_context* c, tui_pixel* vidp,
-	uint8_t custom_id, size_t ystep_index, uint8_t cell_yofs,
-	uint8_t cell_w, uint8_t cell_h, size_t cols,
-	bool invalidated, void* t)
-{
-/* need special code here to interface with shmif-server instead,
- * possibly as a support library */
-	return false;
-}
-
 static void on_tick(struct tui_context* c, void* t)
 {
 	SETUP_HREF("tick",);
@@ -751,7 +741,6 @@ static int tui_open(lua_State* L)
 		.resized = on_resized,
 		.subwindow = on_subwindow,
 		.recolor = on_recolor,
-		.draw_call = on_draw,
 		.reset = on_reset,
 		.tag = meta
 	};
