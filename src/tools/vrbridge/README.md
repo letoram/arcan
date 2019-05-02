@@ -10,15 +10,28 @@ the many possible instabilities, licensing issues, API variations and so- on
 that comes with an area that is so aggressively 'in flux' and in conflict with
 device manufacturers with an inherently open-source unfriendly bias.
 
-# Testing
+# Building / Testing
 
 Build like normal, e.g.
 
-          cmake -D../ ; make
+    cmake ../ ; make
 
 Set as vrbridge application:
 
-          arcan_db add_appl_kv arcan ext_vr /absolute/path/to/build/vrbridge
+    arcan_db add_appl_kv arcan ext_vr /absolute/path/to/build/vrbridge
+
+Or install into the normal /usr/local/bin or /usr/bin (linux/BSD). You can
+run the arcan\_vr tool directly from the command-line, and it will enter a
+debug- mode where some of the HMD sample outputs will be written. Use this
+to verify permissions and device access / support before using it in arcan.
+
+## OpenHMD
+
+The main dependency for input device support is via OpenHMD. The default build
+uses a manually maintained in-source build. To use OpenHMD as a normal library
+dependency, cmake with:
+
+    cmake -DNO_BUILTIN_OPENHMD ../ ; make
 
 # Model
 
@@ -66,7 +79,7 @@ some restraint is probably best until we see something concrete from OpenXR.
 - [p] OpenHMD support
   - [x] metadata
   - [x] head tracking
-	- [ ] misc. events (buttons, ...)
+  - [ ] misc. events (buttons, ...)
 - [ ] Arbitrary
 - [ ] Special Cameras to shmif segments
 - [ ] Adafruit 9-DOF BNO055 to arbitrary limb
