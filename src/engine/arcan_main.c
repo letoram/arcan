@@ -296,12 +296,15 @@ static void add_hookscript(const char* instr)
 /* convert to filesystem path */
 	char* expand = arcan_expand_resource(instr, RESOURCE_SYS_SCRIPTS);
 
-	if (!expand)
+	if (!expand){
+		arcan_warning("-H, couldn't expand hook-script: %s\n", instr ? instr : "");
 		return;
+	}
 
 /* open for reading */
 	data_source src = arcan_open_resource(expand);
 	if (src.fd == BADFD){
+		arcan_warning("-H, couldn't open hook-script: %s\n", expand);
 		free(expand);
 		return;
 	}
