@@ -341,6 +341,14 @@ commandline provides, or the built-in default of 500 ticks. When the timer
 fires, an asynchronous shutdown request will be queued. This allows for easier
 automation and testing.
 
+.IP "\fBhooks/external_input.lua\fR"
+This hookscript opens up a connection point where you can attach external input
+drivers. The default connection point for the first hook script will be
+extio_1, this will increment for each instance of the script that is added to
+the command line. The extio prefix can be tuned by adding the ext_io key to the
+database for the specific appl being run, and only one input provider can be
+attached to the connection point at a time.
+
 .SH DIAGNOSTICS
 There are a number of ways the engine can shut down, especially if the engine
 was built in Debug mode. A governing principle for user supplied scripts is
