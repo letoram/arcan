@@ -79,7 +79,8 @@ Change the default search path for builtin system scripts, see the
 .IP "\fB-H, --hook\fR" \fIscript\fR"
 Specify a post-init (after running applname()) hook script that will be loaded
 and executed. The scripts are fetched from the system scripts namespace (-T,
---scriptpath). Providing multiple -H arguments is allowed.
+--scriptpath). Providing multiple -H arguments is allowed. See the
+\fIhookscripts\fR section below for additional details.
 
 .IP "\fB-b, --fallback \fIapplname\fR"
 If the running application crashes due to scripting error or from misuse
@@ -310,6 +311,35 @@ one.
 The lwa build works just the same (although likely with fewer dependencies on
 external libraries) as the main version, except the ARCAN_CONNPATH environment
 need to be set to a connection point that the arcan instance exposes.
+
+.SH HEADLESS ARCAN
+
+Headless arcan is a specialized build of the engine that performs all rendering
+in memory, and normally do not try to output anything to the screen. It adds
+the option to use other software defined outputs via the capabilities of the
+encode frameserver. By setting the video platform argument for
+ARCAN_VIDEO_ENCODE=encode_args, the output can be recorded or streamed,
+interactively as well as non-interactively. See the afsrv_encode binary for the
+possible encoding options.
+
+A special detail with this build is that, since there is no strict output, the
+default virtual display dimensions have to be set explicitly via the -w and -h
+arguments.
+
+.SH HOOK SCRIPTS
+
+There is a built-in set of more generic and re-usable scripts being distributed
+along with the engine. These are normally installed as a 'scripts' subdirectory
+in the shared set of files, though this path can be changed with the -T argument.
+
+A hookscript is enabled via the -H command line argument, which can be repeated
+to chain them together.
+
+.IP "\fBhooks/shutdown.lua\fR"
+This hookscript sets a timer to whatever a shutdown=number argument on the
+commandline provides, or the built-in default of 500 ticks. When the timer
+fires, an asynchronous shutdown request will be queued. This allows for easier
+automation and testing.
 
 .SH DIAGNOSTICS
 There are a number of ways the engine can shut down, especially if the engine
