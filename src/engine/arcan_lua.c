@@ -7048,12 +7048,33 @@ lua_State* arcan_lua_alloc()
 	return res;
 }
 
+/*
+ * just adapted from lbaselib.c
+ */
+static int luaB_loadstring (lua_State* ctx) {
+  size_t l;
+  const char* s = luaL_checklstring(ctx, 1, &l);
+  const char* chunkname = luaL_optstring(ctx, 2, s);
+	if (0 == luaL_loadbuffer(ctx, s, l, chunkname))
+		return 1;
+	lua_pushnil(ctx);
+	lua_insert(ctx, -2);
+	return 2;
+}
+
 void arcan_lua_mapfunctions(lua_State* ctx, int debuglevel)
 {
 	luaL_nil_banned(ctx);
 	arcan_lua_exposefuncs(ctx, debuglevel);
 /* update with debuglevel etc. */
 	arcan_lua_pushglobalconsts(ctx);
+
+/* only allow eval() style operation in explicit debug modes */
+	if (luactx.debug){
+		lua_pushstring(ctx, "loadstring");
+		lua_pushcclosure(ctx, luaB_loadstring, 1);
+		lua_setglobal(ctx, "loadstring");
+	}
 }
 
 /* alua_ namespace due to winsock pollution */
