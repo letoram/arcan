@@ -151,6 +151,14 @@ enum {
 	TUIM_REPEAT = 0x8000,
 } tuim_syms;
 
+enum tuibtn_syms {
+	TUIBTN_LEFT = 1,
+	TUIBTN_RIGHT = 2,
+	TUIBTN_MIDDLE = 3,
+	TUIBTN_WHEEL_UP = 4,
+	TUIBTN_WHEEL_DOWN = 5
+};
+
 /*
  * Derived from the symtable used by SDL1.2, these should ideally rarely
  * be used and instead favor the label facility for announcing supported
