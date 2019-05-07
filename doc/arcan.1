@@ -55,10 +55,6 @@ Either specify LOG:filename for a text-based recipient or a valid
 \fIappl\fR for launching two arcan sessions where the monitoring snapshots
 are forwarded to the other instance for analysis and visualization.
 
-.IP "\fB-q, --timedump \fIticks\fR"
-After \fIticks\fR logical pulses, generate a snapshot similar to -M, --monitor
-and store in LOGPATH namespace as \fItimedump\fR. This is triggered only once.
-
 .IP "\fB-p, --rpath \fIpath\fR"
 Change default searchpath for shared resources, see the \fInamespaces\fR
 section below for additional details.
@@ -348,6 +344,12 @@ extio_1, this will increment for each instance of the script that is added to
 the command line. The extio prefix can be tuned by adding the ext_io key to the
 database for the specific appl being run, and only one input provider can be
 attached to the connection point at a time.
+
+.IP "\fBhooks/timed_dump.lua\fR"
+This script sets a timer to whatever dump_timer=number or dump_periodic=number
+on the command-line is set to. When the timer fires, it calls system_snapshot
+into 'timed_n.lua" or whatever dump_prefix is set to on the command-line.  The
+_n suffix corresponds to the dump sequence if on a periodic timer.
 
 .SH DIAGNOSTICS
 There are a number of ways the engine can shut down, especially if the engine

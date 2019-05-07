@@ -90,7 +90,6 @@ static const struct option longopts[] = {
 	{ "fallback",     required_argument, NULL, 'b'},
 	{ "database",     required_argument, NULL, 'd'},
 	{ "scalemode",    required_argument, NULL, 'r'},
-	{ "timedump",     required_argument, NULL, 'q'},
 	{ "nosound",      no_argument,       NULL, 'S'},
 	{ "hook",         required_argument, NULL, 'H'},
 #ifdef ARCAN_LWA
@@ -147,7 +146,6 @@ printf("Usage: arcan [-whfmWMOqspTBtHbdgaSV] applname "
 "-W\t--sync-strat  \tspecify video synchronization strategy (see below)\n"
 "-M\t--monitor     \tenable monitor session (arg: samplerate, ticks/sample)\n"
 "-O\t--monitor-out \tLOG:fname or applname\n"
-"-q\t--timedump    \twait n ticks, dump snapshot to resources/logs/timedump\n"
 "-s\t--windowed    \ttoggle borderless window mode\n"
 #ifdef DISABLE_FRAMESERVERS
 "-B\t--binpath     \tno-op, frameserver support was disabled compile-time\n"
@@ -264,7 +262,6 @@ static struct {
 	int monitor, monitor_counter;
 	int mon_infd;
 	FILE* mon_outf;
-	int timedump;
 } settings = {0};
 
 static void main_cycle()
@@ -277,14 +274,6 @@ static void main_cycle()
 			settings.monitor_counter = settings.monitor;
 			arcan_lua_statesnap(settings.mon_outf, buf, true);
 		}
-	}
-
-/* debugging functionality to generate a dump and abort after n ticks */
-	if (settings.timedump){
-		settings.timedump--;
-
-	if (!settings.timedump)
-		arcan_state_dump("timedump", "user requested a dump", __func__);
 	}
 
 	if (settings.in_monitor)
@@ -444,7 +433,6 @@ int MAIN_REDIR(int argc, char* argv[])
  * enough resources and context allocated to be able to do so. This does not
  * survive appl-switching */
 	case '0' : stdin_connpoint = true; break;
-	case 'q' : settings.timedump = strtol(optarg, NULL, 10); break;
 	case 'p' : override_resspaces(optarg); break;
 	case 'T' : arcan_override_namespace(optarg, RESOURCE_SYS_SCRIPTS); break;
 	case 'b' : fallback = strdup(optarg); break;

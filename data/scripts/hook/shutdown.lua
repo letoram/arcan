@@ -22,7 +22,7 @@ _G[APPLID .. "_clock_pulse"] = function(...)
 		left = left - 1
 	elseif left == 0 then
 		return shutdown("autoshutdown.lua finished", EXIT_SUCCESS)
-	else
+	elseif old_tick then
 		old_tick(...)
 	end
 end
