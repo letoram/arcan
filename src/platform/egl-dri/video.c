@@ -310,7 +310,7 @@ static struct dispout* allocate_display(struct dev_node* node)
 			displays[i].force_compose =
 				!get_config("video_device_direct", 0, NULL, tag);
 			displays[i].disallow_rtproxy =
-				get_config("video_device_no_rtproxy", 0, NULL, tag);
+				!get_config("video_device_rtproxy", 0, NULL, tag);
 			debug_print("(%zu) added, force composition? %d",
 				i, (int) displays[i].force_compose);
 			return &displays[i];
