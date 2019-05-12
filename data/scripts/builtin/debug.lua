@@ -57,7 +57,7 @@ local function Hook(Event)
   if not string.find(Running..Caller, "modules") then
     if Event == "call" then
       Depth = Depth + 1
-      io.stderr:write(Indent(Depth), "calling ", Running, " from ",Caller, "\n")
+      print(Indent(Depth), "calling ", Running, " from ",Caller, "\n")
     else
       local RetType
       if Event == "return" then
@@ -127,9 +127,6 @@ end
 -- Table Methods:
 --    tick() - invoke at monotonic rates,
 --             return true (pass) or false (fail)
---
---    report(min, max, avg, stddev) - called before increment_function,
---         default output is print to a csv style format
 --
 --    destroy() - reset global states, delete possible list of vobjects
 --
