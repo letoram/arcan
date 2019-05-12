@@ -238,6 +238,20 @@ static void push_deferred(arcan_3dmodel* model)
 	}
 }
 
+static void dump_matr(float* matr, const char* pref)
+{
+	printf("%s = {\n"
+"%.4f %.4f %.4f %.4f\n"
+"%.4f %.4f %.4f %.4f\n"
+"%.4f %.4f %.4f %.4f\n"
+"%.4f %.4f %.4f %.4f\n"
+"}\n", pref,
+matr[0], matr[4], matr[8], matr[12],
+matr[1], matr[5], matr[9], matr[13],
+matr[2], matr[6], matr[10], matr[14],
+matr[3], matr[7], matr[11], matr[15]);
+}
+
 /*
  * Render-loops, Pass control, Initialization
  */
@@ -250,7 +264,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 	if (props.opa < EPSILON || !src->flags.complete || src->work_count > 0)
 		return;
 
-/* build model matrix */
+/* transform order: scale */
 	float _Alignas(16) scale[16] = {
 		props.scale.x, 0.0, 0.0, 0.0,
 		0.0, props.scale.y, 0.0, 0.0,
@@ -258,11 +272,25 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 		0.0, 0.0, 0.0,           1.0
 	};
 
+  float ox = vobj->origo_ofs.x;
+	float oy = vobj->origo_ofs.y;
+	float oz = vobj->origo_ofs.z;
+
+/* point-translation to origo_ofs */
+	translate_matrix(scale, ox, oy, oz);
+
+/* rotate */
 	float _Alignas(16) orient[16];
 	matr_quatf(props.rotation.quaternion, orient);
 	float _Alignas(16) model[16];
-	translate_matrix(scale, props.position.x, props.position.y, props.position.z);
-	multiply_matrix(model, scale, orient);
+	multiply_matrix(model, orient, scale);
+
+/* object translation */
+	translate_matrix(model,
+		props.position.x - ox,
+		props.position.y - oy,
+		props.position.z - oz
+	);
 
 	float _Alignas(16) out[16];
 	multiply_matrix(out, view, model);
@@ -338,7 +366,7 @@ enum arcan_ffunc_rv arcan_ffunc_3dobj FFUNC_HEAD
 /* normal scene process, except stops after no objects with infinite
  * flag (skybox, skygeometry etc.) */
 static arcan_vobject_litem* process_scene_infinite(
-	arcan_vobject_litem* cell, float lerp, float* modelview,
+	arcan_vobject_litem* cell, float lerp, float* view,
 	enum agp_mesh_flags flags)
 {
 	arcan_vobject_litem* current = cell;
@@ -351,7 +379,6 @@ static arcan_vobject_litem* process_scene_infinite(
 
 	while (current){
 		arcan_vobject* cvo = current->elem;
-
 		arcan_3dmodel* obj3d = cvo->feed.state.ptr;
 
 		if (cvo->order >= 0 || obj3d->flags.infinite == false)
@@ -369,8 +396,8 @@ static arcan_vobject_litem* process_scene_infinite(
 		surface_properties dprops;
 
 		arcan_resolve_vidprop(cvo, lerp, &dprops);
-		rendermodel(cvo, obj3d, cvo->program,
-				dprops, modelview, flags | MESH_FACING_NODEPTH);
+		rendermodel(cvo,
+			obj3d, cvo->program, dprops, view, flags | MESH_FACING_NODEPTH);
 
 		current = current->next;
 	}
@@ -511,15 +538,20 @@ arcan_vobject_litem* arcan_3d_refresh(arcan_vobj_id camtag,
 	agp_shader_activate(agp_default_shader(BASIC_3D));
 	agp_shader_envv(PROJECTION_MATR, camera->projection, sizeof(float) * 16);
 
+/* scale */
 	identity_matrix(matr);
 	scale_matrix(matr, dprop.scale.x, dprop.scale.y, dprop.scale.z);
+
+/* rotate */
 	matr_quatf(norm_quat(dprop.rotation.quaternion), omatr);
 	multiply_matrix(dmatr, matr, omatr);
 	arcan_3dmodel* obj3d = cell->elem->feed.state.ptr;
 
+/* "infinite geometry" (skybox) */
 	if (obj3d->flags.infinite)
 		cell = process_scene_infinite(cell, fract, dmatr, camera->flags);
 
+/* object translate */
 	struct camtag_data* cdata = camobj->feed.state.ptr;
 	cdata->wpos = dprop.position;
 	translate_matrix(dmatr, dprop.position.x, dprop.position.y, dprop.position.z);
