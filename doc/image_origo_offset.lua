@@ -1,12 +1,12 @@
 -- image_origo_offset
 -- @short: Shift the current object rotation offset
--- @longdescr: By default, the rotation origo for each object
--- is set to its lokal center (0.5*w, 0.5*h). This function can
--- shift this to (0.5*w+ofs_x, 0.5*h+ofs_y).
--- @note: There is still no automatic way to have a dynamic
--- offset that is set relative to the center of the area of the
--- entire object hierarchy.
--- @inargs: vid, xofs, yofs, *zofs
+-- @inargs: vid:dst, number:xofs, number:yofs
+-- @inargs: vid:dst, number:xofs, number:yofs, number:zofs
+-- @longdescr: By default, the rotation origo for each object is set to its
+-- local center (0.5*w, 0.5*h).
+-- @note: This is relative to the local object itself. For complex object
+-- hierarchies, the bounding volume would have to be calculated and each
+-- object shifted.
 -- @group: image
 -- @cfunction: origoofs
 function main()
