@@ -1048,7 +1048,8 @@ static void step_cursor_s(struct tui_context* T, struct bufferwnd_meta* M)
 
 /* halfb- step-left, screen based update, then reset to halfb position */
 	if (M->cursor_halfb){
-		cx--;
+		if (cx)
+			cx--;
 		realign_update(T, M, cx, cy);
 		M->cursor_x++;
 		arcan_tui_move_to(T, M->cursor_x, M->cursor_y);
@@ -1075,7 +1076,8 @@ static void step_cursor_n(struct tui_context* T, struct bufferwnd_meta* M)
 
 /* halfb- step-left, screen based update, then reset to halfb position */
 	if (M->cursor_halfb){
-		cx--;
+		if (cx)
+			cx--;
 		realign_update(T, M, cx, cy);
 		M->cursor_x++;
 		arcan_tui_move_to(T, M->cursor_x, M->cursor_y);
@@ -1189,6 +1191,36 @@ static void on_key_input(struct tui_context* T, uint32_t keysym,
 	}
 	else
 		;
+}
+
+void arcan_tui_bufferwnd_synch(struct tui_context* T, uint8_t* buf, size_t buf_sz)
+{
+	if (!buf || !buf_sz || !validate_context(T))
+		return;
+
+	struct tui_cbcfg handlers;
+	arcan_tui_update_handlers(T, NULL, &handlers, sizeof(struct tui_cbcfg));
+	struct bufferwnd_meta* M = handlers.tag;
+
+	M->buffer = buf;
+	M->buffer_sz = buf_sz;
+	M->buffer_ofs = 0;
+	M->buffer_pos = 0;
+	M->cursor_x = 0;
+	M->cursor_y = 0;
+	M->cursor_halfb = 0;
+	M->cursor_ofs_col = 0;
+	M->cursor_ofs_row = 0;
+	M->cursor_ofs_row_end = 0;
+
+	redraw_bufferwnd(T, M);
+}
+
+void arcan_tui_bufferwnd_seek(struct tui_context* T, size_t buf_pos)
+{
+	if (!validate_context(T))
+		return;
+
 }
 
 void arcan_tui_bufferwnd_setup(struct tui_context* T,
