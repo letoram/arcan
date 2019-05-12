@@ -5459,6 +5459,10 @@ static int pushprop(lua_State* ctx,
 	lua_pushnumber(ctx, prop.scale.y);
 	lua_rawset(ctx, -3);
 
+	lua_pushstring(ctx, "depth");
+	lua_pushnumber(ctx, prop.scale.z);
+	lua_rawset(ctx, -3);
+
 	lua_pushstring(ctx, "angle");
 	lua_pushnumber(ctx, prop.rotation.roll);
 	lua_rawset(ctx, -3);

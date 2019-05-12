@@ -8,7 +8,7 @@
 -- used when compositing the output.
 -- @group: image
 -- @note: The fields used in proptbl are: (x, y, z, width, height,
--- angle, roll, pitch, yaw, opacity and order).
+-- depth, angle, roll, pitch, yaw, opacity and order).
 -- @note: this function has a highly variable cost since the rendering
 -- pipeline normallys caches both resolved properties and resulting
 -- transformation matrices, if possible.
