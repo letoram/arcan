@@ -63,10 +63,16 @@ void scale_matrix(float* m, float xs, float ys, float zs)
 
 void translate_matrix(float* m, float xt, float yt, float zt)
 {
-	m[12] = m[0] * xt + m[4] * yt + m[8] * zt + m[12];
-	m[13] = m[1] * xt + m[5] * yt + m[9] * zt + m[13];
-	m[14] = m[2] * xt + m[6] * yt + m[10]* zt + m[14];
+	m[12] += xt;
+	m[13] += yt;
+	m[14] += zt;
+/*
+ *
+ *m[12] = m[0] * xt + m[4] * yt + m[8] * zt + m[12];
+ 	m[13] = m[1] * xt + m[5] * yt + m[9] * zt + m[13];
+ 	m[14] = m[2] * xt + m[6] * yt + m[10]* zt + m[14];
 	m[15] = m[3] * xt + m[7] * yt + m[11]* zt + m[15];
+ */
 }
 
 static float midentity[] = {
