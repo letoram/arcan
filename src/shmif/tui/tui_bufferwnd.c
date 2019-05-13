@@ -75,7 +75,7 @@ struct bufferwnd_meta {
 
 static size_t screen_to_pos(struct tui_context*, struct bufferwnd_meta*);
 
-static bool validate_context(struct tui_context* T)
+static bool validate_context(struct tui_context* T, struct bufferwnd_meta** M)
 {
 	if (!T)
 		return false;
@@ -87,19 +87,18 @@ static bool validate_context(struct tui_context* T)
 	if (!ch || ch->magic != BUFFERWND_MAGIC)
 		return false;
 
+	*M = ch;
 	return true;
 }
 
 void arcan_tui_bufferwnd_release(struct tui_context* T)
 {
-	if (!validate_context(T))
+	struct bufferwnd_meta* meta;
+	if (!validate_context(T, &meta))
 		return;
 
 /* retrieve current handlers, get meta structure from the tag there and
  * use the handle- table in that structure to restore */
-	struct tui_cbcfg handlers;
-	arcan_tui_update_handlers(T, NULL, &handlers, sizeof(struct tui_cbcfg));
-	struct bufferwnd_meta* meta = handlers.tag;
 
 /* restore old flags */
 	arcan_tui_reset_flags(T, ~0);
@@ -1193,14 +1192,12 @@ static void on_key_input(struct tui_context* T, uint32_t keysym,
 		;
 }
 
-void arcan_tui_bufferwnd_synch(struct tui_context* T, uint8_t* buf, size_t buf_sz)
+void arcan_tui_bufferwnd_synch(
+	struct tui_context* T, uint8_t* buf, size_t buf_sz, size_t prefix_ofs)
 {
-	if (!buf || !buf_sz || !validate_context(T))
+	struct bufferwnd_meta* M;
+	if (!buf || !buf_sz || !validate_context(T, &M))
 		return;
-
-	struct tui_cbcfg handlers;
-	arcan_tui_update_handlers(T, NULL, &handlers, sizeof(struct tui_cbcfg));
-	struct bufferwnd_meta* M = handlers.tag;
 
 	M->buffer = buf;
 	M->buffer_sz = buf_sz;
@@ -1212,15 +1209,39 @@ void arcan_tui_bufferwnd_synch(struct tui_context* T, uint8_t* buf, size_t buf_s
 	M->cursor_ofs_col = 0;
 	M->cursor_ofs_row = 0;
 	M->cursor_ofs_row_end = 0;
+	M->opts.offset = prefix_ofs;
 
 	redraw_bufferwnd(T, M);
 }
 
 void arcan_tui_bufferwnd_seek(struct tui_context* T, size_t buf_pos)
 {
-	if (!validate_context(T))
+	struct bufferwnd_meta* M;
+	if (!validate_context(T, &M))
 		return;
 
+/* clamp */
+	if (buf_pos >= M->buffer_sz)
+		buf_pos = M->buffer_sz - 1;
+
+/* cursor_ofs_row gives us starting row,
+ * row_bytelen gives us the number of bytes per row
+ * cursor_ofs_row_end gives us the last row line
+ * so bytes per page:
+ */
+	size_t n_rows = M->cursor_ofs_row_end - M->cursor_ofs_row;
+	size_t bpp = n_rows * M->row_bytelen;
+
+/* first page */
+	if (buf_pos < bpp)
+		M->buffer_pos = 0;
+	else{
+		M->buffer_pos = (buf_pos / bpp) * bpp;
+		M->buffer_ofs = buf_pos - M->buffer_pos;
+	}
+
+	M->buffer_ofs = buf_pos;
+	redraw_bufferwnd(T, M);
 }
 
 void arcan_tui_bufferwnd_setup(struct tui_context* T,
