@@ -98,7 +98,8 @@ void arcan_tui_bufferwnd_setup(
  * Replace the active buffer with another. This may cause delta writes to
  * be synched if the commit write function has been provided.
  */
-void arcan_tui_bufferwnd_synch(struct tui_context* T, uint8_t* buf, size_t buf_sz);
+void arcan_tui_bufferwnd_synch(
+	struct tui_context* T, uint8_t* buf, size_t buf_sz, size_t prefix_ofs);
 
 /*
  * Move the cursor to point at a specific offset in the buffer (ofs < buf_sz),
@@ -119,7 +120,8 @@ void arcan_tui_bufferwnd_release(struct tui_context* T);
 typedef bool(* PTUIBUFFERWND_SETUP)(
 	struct tui_context*, struct tui_list_entry*, size_t n_entries);
 typedef void(* PTUIBUFFERWND_RELEASE)(struct tui_context*);
-typedef void(* PTUIBUFFERWND_SYNCH)(struct tui_context*, uint8_t* buf, size_t);
+typedef void(* PTUIBUFFERWND_SYNCH)(
+	struct tui_context*, uint8_t* buf, size_t, size_t);
 typedef void(* PTUIBUFFERWND_SEEK)(struct tui_context*, size_t);
 
 static PTUIBUFFERWND_SETUP arcan_tui_bufferwnd_setup;
