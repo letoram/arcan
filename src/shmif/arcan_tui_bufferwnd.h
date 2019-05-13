@@ -94,6 +94,18 @@ void arcan_tui_bufferwnd_setup(
 	struct tui_bufferwnd_opts*, size_t opts_sz
 );
 
+/*
+ * Replace the active buffer with another. This may cause delta writes to
+ * be synched if the commit write function has been provided.
+ */
+void arcan_tui_bufferwnd_synch(struct tui_context* T, uint8_t* buf, size_t buf_sz);
+
+/*
+ * Move the cursor to point at a specific offset in the buffer (ofs < buf_sz),
+ * this may cause a repagination.
+ */
+void arcan_tui_bufferwnd_seek(struct tui_context* T, size_t buf_ofs);
+
 void arcan_tui_bufferwnd_release(struct tui_context* T);
 
 /*
@@ -106,18 +118,23 @@ void arcan_tui_bufferwnd_release(struct tui_context* T);
 #else
 typedef bool(* PTUIBUFFERWND_SETUP)(
 	struct tui_context*, struct tui_list_entry*, size_t n_entries);
-typedef void(* PTUIBUFFERWND_RELEASE)(
-	struct tui_context*);
+typedef void(* PTUIBUFFERWND_RELEASE)(struct tui_context*);
+typedef void(* PTUIBUFFERWND_SYNCH)(struct tui_context*, uint8_t* buf, size_t);
+typedef void(* PTUIBUFFERWND_SEEK)(struct tui_context*, size_t);
 
 static PTUIBUFFERWND_SETUP arcan_tui_bufferwnd_setup;
 static PTUIBUFFERWND_RELEASE arcan_tui_bufferwnd_release;
+static PTUIBUFFERWND_SYNCH arcan_tui_bufferwnd_synch;
+static PTUIBUFFERWND_SEEK arcan_tui_bufferwnd_seek;
 
 static bool arcan_tui_bufferwnd_dynload(
 	void*(*lookup)(void*, const char*), void* tag)
 {
 #define M(TYPE, SYM) if (! (SYM = (TYPE) lookup(tag, #SYM)) ) return false
-M(PTUILISTWND_SETUP, arcan_tui_bufferwnd_setup);
-M(PTUILISTWND_RELEASE, arcan_tui_bufferwnd_release);
+M(PTUIBUFFERWND_SETUP, arcan_tui_bufferwnd_setup);
+M(PTUIBUFFERWND_RELEASE, arcan_tui_bufferwnd_release);
+M(PTUIBUFFERWND_SYNCH, arcan_tui_bufferwnd_synch);
+M(PTUIBUFFERWND_SEEK, arcan_tui_bufferwnd_seek);
 return true;
 }
 #endif
