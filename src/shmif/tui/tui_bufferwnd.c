@@ -1233,14 +1233,59 @@ void arcan_tui_bufferwnd_seek(struct tui_context* T, size_t buf_pos)
 	size_t bpp = n_rows * M->row_bytelen;
 
 /* first page */
-	if (buf_pos < bpp)
+	if (buf_pos < bpp){
 		M->buffer_pos = 0;
+		M->buffer_ofs = buf_pos;
+	}
 	else{
 		M->buffer_pos = (buf_pos / bpp) * bpp;
 		M->buffer_ofs = buf_pos - M->buffer_pos;
 	}
 
-	M->buffer_ofs = buf_pos;
+	redraw_bufferwnd(T, M);
+}
+
+static void mouse_button(struct tui_context* T,
+	int last_x, int last_y, int button, bool active, int modifiers, void* tag)
+{
+	struct bufferwnd_meta* M = tag;
+	if (!active)
+		return;
+
+	if (button == TUIBTN_WHEEL_UP){
+		step_cursor_n(T, M);
+		return;
+	}
+	else if (button == TUIBTN_WHEEL_DOWN){
+		step_cursor_s(T, M);
+		return;
+	}
+
+/* find the closest fitting buffer offset */
+	M->cursor_x = last_x;
+	M->cursor_y = last_y;
+
+/* for hex we know that the column should be % 3 == 0 */
+	if (M->opts.view_mode == BUFFERWND_VIEW_HEX_DETAIL
+		|| M->opts.view_mode == BUFFERWND_VIEW_HEX){
+		if (M->cursor_x && M->cursor_x % 3 != 0)
+			M->cursor_x -= M->cursor_x % 3;
+	}
+
+	size_t old_pos = M->buffer_ofs;
+	M->buffer_ofs = screen_to_pos(T, M);
+
+/* early out on nop */
+	if (old_pos == M->buffer_ofs)
+		return;
+
+/* and re-align based on offset */
+	size_t x, y;
+	pos_to_screen(T, M, &x, &y);
+	M->cursor_x = x;
+	M->cursor_y = y;
+
+/* and redraw for cursor to match */
 	redraw_bufferwnd(T, M);
 }
 
@@ -1273,6 +1318,7 @@ void arcan_tui_bufferwnd_setup(struct tui_context* T,
 		.query_label = on_label_query,
 		.input_label = on_label_input,
 		.input_key = on_key_input,
+		.input_mouse_button = mouse_button,
 		.input_utf8 = on_u8
 	};
 
