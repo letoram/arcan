@@ -5,14 +5,18 @@
 #include <ctype.h>
 #include <inttypes.h>
 #include <stdint.h>
+#include <string.h>
 
 /*
  * Useful enhancements missing:
  *  - scroll the current selected line on tick if cropped
  *  - expose scrollbar metadata
  *  - indicate sublevel / subnodes (can turn into tree-view through mask/unmask)
+ *    use an attribute for level so |-> can be added do sub-ones,
+ *    more difficult is adding an expand-collapse so selection would expand
  *  - handle accessibility subwindow (provide only selected item for t2s)
  *  - allow multiple column formats for wide windows
+ *  - prefix typing for searching
  */
 
 #ifndef COUNT_OF
@@ -20,25 +24,40 @@
 	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
 #endif
 
+#define INACTIVE_ITEM (LIST_SEPARATOR | LIST_PASSIVE | LIST_HIDE)
+#define HIDDEN_ITEM (LIST_HIDE)
+
 #define LISTWND_MAGIC 0xfadef00e
 struct listwnd_meta {
+/* debug-help, check against LISTWND_MAGIC */
 	uint32_t magic;
+
+/* actual entries, flags can mutate, size cannot */
 	struct tui_list_entry* list;
 	size_t list_sz;
-	size_t list_pos;
 
+/* current logical cursor position and resolved screen position */
+	size_t list_pos;
+	size_t list_row;
+
+/* first row start */
+	size_t list_ofs;
+
+/* set when user has made a selection, and the selected item */
 	int entry_state;
 	size_t entry_pos;
 
-	struct tui_cbcfg old_handlers;
-
+/* drawing characters for the flags */
 	uint32_t line_ch;
 	uint32_t check_ch;
 	uint32_t sub_ch;
 
+/* to restore the context */
+	struct tui_cbcfg old_handlers;
 	int old_flags;
 };
 
+/* context validation, perform on every exported symbol */
 static bool validate(struct tui_context* T)
 {
 	if (!T)
@@ -54,11 +73,19 @@ static bool validate(struct tui_context* T)
 	return true;
 }
 
+static size_t get_visible_offset(struct listwnd_meta* M)
+{
+	size_t ofs = 0;
+	for (size_t i = M->list_ofs; i < M->list_pos; i++){
+		if (M->list[i].attributes & HIDDEN_ITEM)
+			continue;
+		ofs++;
+	}
+	return ofs;
+}
+
 static void redraw(struct tui_context* T, struct listwnd_meta* M)
 {
-/* find the page with the current entry, O(n), need to do full sweep as
- * the LIST_HIDE flag will change pagination */
-	size_t page_start = 0;
 	size_t c_row = 0;
 	size_t rows, cols;
 	arcan_tui_dimensions(T, &rows, &cols);
@@ -66,17 +93,15 @@ static void redraw(struct tui_context* T, struct listwnd_meta* M)
 	if (!rows)
 		return;
 
+/* safeguard that we fit in the current screen, else we search */
+	for (size_t ofs = get_visible_offset(M); ofs > rows; M->list_ofs++){
+		ofs = get_visible_offset(M);
+	}
+
 	struct tui_screen_attr reset_def = arcan_tui_defattr(T, NULL);
 	struct tui_screen_attr def = arcan_tui_defcattr(T, TUI_COL_LABEL);
 	struct tui_screen_attr sel = arcan_tui_defcattr(T, TUI_COL_HIGHLIGHT);
 	struct tui_screen_attr inact = arcan_tui_defcattr(T, TUI_COL_INACTIVE);
-
-	for (size_t i = 0; i < M->list_sz && i != M->list_pos; i++){
-		if (M->list[i].attributes & LIST_HIDE)
-			continue;
-		if (++c_row % rows == 0)
-			page_start = c_row;
-	}
 
 /* erase the screen as well as the entries can be fewer than the number of rows */
 	arcan_tui_defattr(T, &def);
@@ -84,27 +109,32 @@ static void redraw(struct tui_context* T, struct listwnd_meta* M)
 
 /* now we can just clear / draw the items on the page */
 	c_row = 0;
-	for (size_t i = page_start; i < page_start + rows && i < M->list_sz; i++){
+	for (size_t i = M->list_ofs; rows && i < M->list_sz; i++){
 		int lattr = M->list[i].attributes;
 		const char* label = M->list[i].label;
-		size_t llen = strlen(label ? label : "");
 
-		if ((lattr & LIST_HIDE) || llen == 0)
+		if (lattr & HIDDEN_ITEM)
 			continue;
 
+		rows--;
 		arcan_tui_move_to(T, 0, c_row);
 
-		if (lattr & LIST_SEPARATOR){
-			for (size_t c = 0; c < cols; c++)
-				arcan_tui_write(T, M->line_ch, &inact);
-			continue;
+		struct tui_screen_attr* cattr = &def;
+		if (i == M->list_pos){
+			cattr = &sel;
+			M->list_row = c_row;
 		}
-
-		struct tui_screen_attr* cattr = i == M->list_pos ? &sel : &def;
 
 /* cursor state doesn't matter for passive */
 		if (lattr & LIST_PASSIVE){
 			cattr = &inact;
+		}
+
+		if (lattr & LIST_SEPARATOR){
+			for (size_t c = 0; c < cols; c++)
+				arcan_tui_write(T, M->line_ch, &inact);
+			c_row++;
+			continue;
 		}
 
 /* clear the target line with the attribute (as it can contain bgc) */
@@ -141,39 +171,116 @@ static void redraw(struct tui_context* T, struct listwnd_meta* M)
 static void select_current(struct tui_context* T, struct listwnd_meta* M)
 {
 	int flags = M->list[M->list_pos].attributes;
-	if (flags & (LIST_SEPARATOR | LIST_PASSIVE | LIST_HIDE))
+	if (flags & INACTIVE_ITEM)
 		return;
 	M->entry_state = 1;
 	M->entry_pos = M->list_pos;
 }
 
-static void step_cursor_s(struct tui_context* T, struct listwnd_meta* M)
+static void step_page_s(struct tui_context* T, struct listwnd_meta* M)
 {
-/* could be done more efficiently by simply toggle the above row on / off */
-	size_t current = M->list_pos;
-	do {
-		current = (current + 1) % M->list_sz;
-		if (!(M->list[current].attributes &
-			(LIST_PASSIVE | LIST_HIDE | LIST_SEPARATOR)))
-			break;
-	} while (current != M->list_pos);
+	size_t rows, cols;
+	arcan_tui_dimensions(T, &rows, &cols);
 
-	M->list_pos = current;
+	printf("step page south\n");
+/* increment offset half- a page */
+	rows = (rows >> 1) + 1;
+	size_t c_row;
+	for (c_row = M->list_ofs; c_row < M->list_sz && rows; c_row++){
+		if (M->list[c_row].attributes & INACTIVE_ITEM)
+			continue;
+
+		rows--;
+	}
+
+/* couldn't be done */
+	if (c_row == M->list_sz || M->list_pos == M->list_sz - 1){
+		M->list_ofs = 0;
+		M->list_pos = 0;
+	}
+	else{
+		M->list_ofs = c_row;
+		M->list_pos++;
+	}
+
+	printf("on new page, at current: %zu - %s\n", M->list_pos, M->list[M->list_pos].label);
+
+/* step cursor to next sane */
+	for (c_row = M->list_pos; c_row < M->list_sz; c_row++){
+		if (!(M->list[c_row].attributes & INACTIVE_ITEM)){
+			M->list_pos = c_row;
+			break;
+		}
+	}
+
 	redraw(T, M);
+}
+
+static void step_page_n(struct tui_context* T, struct listwnd_meta* M)
+{
+	printf("go page north\n");
 }
 
 static void step_cursor_n(struct tui_context* T, struct listwnd_meta* M)
 {
 	size_t current = M->list_pos;
+	size_t vis_step = 0;
 	do {
 		current = current > 0 ? current - 1 : M->list_sz - 1;
-		if (!(M->list[current].attributes &
-			(LIST_PASSIVE | LIST_HIDE | LIST_SEPARATOR)))
+		if (!(M->list[current].attributes & HIDDEN_ITEM))
+			vis_step++;
+
+		if (!(M->list[current].attributes & INACTIVE_ITEM))
 			break;
 
 	} while (current != M->list_pos);
 
+	if (M->list_row < vis_step){
+		step_page_n(T, M);
+		return;
+	}
+
 	M->list_pos = current;
+	redraw(T, M);
+}
+
+static void step_cursor_s(struct tui_context* T, struct listwnd_meta* M)
+{
+	size_t rows, cols;
+	arcan_tui_dimensions(T, &rows, &cols);
+
+/* find the next selectable item, and detect if it is on this page or not */
+	size_t current = M->list_pos;
+	size_t vis_step = 0, prev_vis = current;
+	bool new_page = false;
+
+	do {
+		current = (current + 1) % M->list_sz;
+		if (!(M->list[current].attributes & HIDDEN_ITEM)){
+			vis_step++;
+
+/* track the first visible on the next page */
+			if (vis_step + M->list_row >= rows && !new_page){
+				new_page = true;
+				prev_vis = current;
+			}
+		}
+
+		if (!(M->list[current].attributes & INACTIVE_ITEM))
+			break;
+
+/* end condition is wrap */
+	} while (current != M->list_pos);
+
+/* outside window, need to find the new list ofset as well, that is
+ * why we need to track the previous visible */
+	if (new_page || current < M->list_pos){
+		printf("set new ofs: %zu, vis: %zu\n", prev_vis, current);
+		M->list_ofs = prev_vis;
+	}
+
+	M->list_pos = current;
+
 	redraw(T, M);
 }
 
@@ -198,7 +305,7 @@ static bool u8(struct tui_context* T, const char* u8, size_t len, void* tag)
 	struct listwnd_meta* M = tag;
 	for (size_t i = 0; i < M->list_sz; i++){
 		if (M->list[i].shortcut && strcmp(M->list[i].shortcut, cp) == 0){
-			if (M->list[i].attributes & ~(LIST_PASSIVE | LIST_HIDE | LIST_SEPARATOR)){
+			if (M->list[i].attributes & ~(INACTIVE_ITEM)){
 				M->list_pos = i;
 				redraw(T, M);
 			}
@@ -220,6 +327,12 @@ static void key_input(struct tui_context* T, uint32_t keysym,
 	}
 	else if (keysym == TUIK_UP){
 		step_cursor_n(T, M);
+	}
+	else if (keysym == TUIK_PAGEDOWN){
+		step_page_s(T, M);
+	}
+	else if (keysym == TUIK_PAGEUP){
+		step_page_n(T, M);
 	}
 	else if (keysym == TUIK_RIGHT || keysym == TUIK_RETURN){
 		select_current(T, M);
@@ -317,6 +430,65 @@ static void geohint(struct tui_context* T,
 	}
 }
 
+static void mouse_motion(struct tui_context* T,
+	bool relative, int mouse_x, int mouse_y, int modifiers, void* tag)
+{
+	struct listwnd_meta* M = tag;
+
+/* uncommon but not impossible */
+	if (relative){
+		if (!mouse_y)
+			return;
+		if (mouse_y < 0){
+			for (int i = mouse_y; i != 0; i++)
+				step_cursor_n(T, M);
+		}
+		else{
+			for (int i = mouse_y; i != 0; i--)
+				step_cursor_s(T, M);
+		}
+		return;
+	}
+
+	for (size_t i = M->list_ofs, yp = 0; i < M->list_sz; i++){
+		if (M->list[i].attributes & HIDDEN_ITEM)
+			continue;
+
+/* find matching position */
+		if (yp == mouse_y){
+/* and move selection if it has changed */
+			if (M->list_pos != i){
+				M->list_pos = i;
+				redraw(T, M);
+			}
+			break;
+		}
+		yp++;
+	}
+}
+
+static void mouse_button(struct tui_context* T,
+	int last_x, int last_y, int button, bool active, int modifiers, void* tag)
+{
+	struct listwnd_meta* M = tag;
+	if (!active)
+		return;
+
+/* mouse motion preceeds the button, so we can just trigger */
+	if (button == TUIBTN_LEFT || button == TUIBTN_RIGHT){
+		select_current(T, M);
+	}
+	else if (button == TUIBTN_MIDDLE){
+		step_page_s(T, M);
+	}
+	else if (button == TUIBTN_WHEEL_UP){
+		step_cursor_n(T, M);
+	}
+	else if (button == TUIBTN_WHEEL_DOWN){
+		step_cursor_s(T, M);
+	}
+}
+
 static void recolor(struct tui_context* T, void* t)
 {
 	struct listwnd_meta* M = t;
@@ -352,6 +524,8 @@ bool arcan_tui_listwnd_setup(
 		.tick = tick,
 		.geohint = geohint,
 		.input_key = key_input,
+		.input_mouse_motion = mouse_motion,
+		.input_mouse_button = mouse_button,
 		.input_utf8 = u8
 	};
 
@@ -400,7 +574,7 @@ static struct tui_list_entry test_easy[] = {
 
 int main(int argc, char** argv)
 {
-	struct tui_cbcfg cbcfg = {};
+	struct tui_cbcfg cbcfg = {0};
 	arcan_tui_conn* conn = arcan_tui_open_display("test", "");
 	struct tui_settings cfg = arcan_tui_defaults(conn, NULL);
 	cfg.cursor_period = 0;
@@ -424,12 +598,16 @@ int main(int argc, char** argv)
 	case 1:{
 		struct tui_list_entry* ent = malloc(256 * sizeof(struct tui_list_entry));
 		for (size_t i = 0; i < 256; i++){
-			char buf[4];
-			snprintf(buf, 4, "%zu", i);
+			char buf[8];
+			snprintf(buf, 8, "%zu %c", i, (char)('a' + i % 10));
 			ent[i] = (struct tui_list_entry){
-				.label = strdup(buf),
+				.label = strdup((char*)buf),
 				.tag = i
 			};
+			if (i % 5 == 0)
+				ent[i].attributes = LIST_HIDE;
+			if (i % 3 == 0 || i % 4 == 0)
+				ent[i].attributes = LIST_PASSIVE;
 		}
 		arcan_tui_listwnd_setup(tui, ent, 256);
 	}
