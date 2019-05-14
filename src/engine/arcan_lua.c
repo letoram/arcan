@@ -7384,14 +7384,16 @@ static int targetpacify(lua_State* ctx)
 			"associated with a frameserver.");
 
 	arcan_frameserver* fsrv = vobj->feed.state.ptr;
-/*
- * don't want the event to propagate for terminated here
- */
-	fsrv->tag = (intptr_t) LUA_NOREF;
+	bool mask = luaL_optbnumber(ctx, 2, true);
+	if (mask){
+		fsrv->tag = (intptr_t) LUA_NOREF;
 
-	arcan_frameserver_free(fsrv);
-	vobj->feed.state.ptr = NULL;
-	vobj->feed.state.tag = ARCAN_TAG_IMAGE;
+		arcan_frameserver_free(fsrv);
+		vobj->feed.state.ptr = NULL;
+		vobj->feed.state.tag = ARCAN_TAG_IMAGE;
+	}
+	else
+		arcan_frameserver_free(fsrv);
 
 	LUA_ETRACE("pacify_target", NULL, 0);
 }

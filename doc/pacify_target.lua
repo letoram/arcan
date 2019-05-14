@@ -1,12 +1,19 @@
 -- pacify_target
--- @short: Frees frameserver related resources.
--- @inargs: vid
+-- @short: Sever frameserver connection from a video object
+-- @inargs: vid:src
+-- @inargs: vid:src, bool:mask
 -- @longdescr: By default, frameservers are freed when the
--- associated VID is deleted. In some circumstances however,
--- one might want to keep the VID and its internal state around,
--- but drop the frameserver related resources. For this purpose,
--- pacify_target can be used.
--- @note: calling pacify_target on a VID that is not associated
+-- associated video object is deleted. This behavior can be altered
+-- through the use of this function in two different ways. One of
+-- them is by converting the frameserver-tied object into a normal
+-- one. In that case the client side is terminated, the event loop
+-- handler is detached and nothing frameserver related functions
+-- will cease to work. The other way is by setting the *mask* argument
+-- to false (default is true). This will emulate a client initiated
+-- termination, triggering the 'terminated' event handler. This can
+-- be useful to trick the rest of your scripts that the client exited
+-- normally, even if it did not.
+-- @note: calling pacify_target on a vid that is not associated
 -- with an active frameserver is a terminal state transition.
 -- @group: targetcontrol
 -- @cfunction: targetpacify
