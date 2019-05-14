@@ -2052,7 +2052,7 @@ int arcan_shmif_dupfd(int fd, int dstnum, bool blocking)
 void arcan_shmif_last_words(
 	struct arcan_shmif_cont* cont, const char* msg)
 {
-	if (!cont || !msg)
+	if (!cont || !msg || !cont->addr)
 		return;
 
 	size_t lim = COUNT_OF(cont->addr->last_words);
