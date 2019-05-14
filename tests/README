@@ -1,47 +1,42 @@
-This folder contains miniature, hacked together, scripts
-used to assist in development or test some specific
-engine features and are not to be considered proper
-"examples of use" (see the examples/ folder for that).
+This folder contains miniature, hacked together, scripts used to assist in
+development or test some specific engine features and are not to be considered
+proper "examples of use" (see the examples/ folder for that).
 
-While most test can be invoked manually, the atest.rb script
-is intended to be used for batching / report generation and
-similar testing pursuits. Refer to the testing- and documentation
-side on the wiki for more detail.
+While most test can be invoked manually, the atest.rb script is intended to be
+used for batching / report generation and similar testing pursuits. Refer to
+the testing- and documentation side on the wiki for more detail.
 
-It is currently being refactored into the following
-substructure:
+It is currently being refactored into the following substructure:
 
-benchmark/ specialized non-interactive cases that
-attempt to quantify performance boundaries for various platforms.
-These primarily use the benchmark support script which uses
-a stepping function and an evaluation function. For each step,
-a certain number of frames are processed. If timing values are
-above a set lower threshold, the stepping function is increased
-and the timing data is logged.
+benchmark/ specialized non-interactive cases that attempt to quantify
+performance boundaries for various platforms.  These primarily use the
+benchmark support script which uses a stepping function and an evaluation
+function. For each step, a certain number of frames are processed. If timing
+values are above a set lower threshold, the stepping function is increased and
+the timing data is logged.
 
-frameservers/ supporting frameservers that need to be built
-in order to act as data-sources for some benchmarks and tests
-that requires it.
+frameservers/ supporting frameservers that need to be built in order to act as
+data-sources for some benchmarks and tests that requires it.
 
-The connection key for the corresponding test should be the same
-as the category the test is in (i.e. benchmark, regression, ...)
-or by having a database target/configuration that match.
+The connection key for the corresponding test should be the same as the
+category the test is in (i.e. benchmark, regression, ...) or by having a
+database target/configuration that match.
 
 modules/ system_load:able Lua modules for extending the built-in API.
 
-security/ (WIP) planned for fuzzing- tools on known interfaces,
-particularly for frameserver->arcan events and in possible future
-sad cases: CVE- reference + exploit PoC. Will also have specialized
-build options for getting access to functions that eases exploit
-development (which, in turn, eases evaluation of countermeasures).
+security/ (WIP) planned for fuzzing- tools on known interfaces, particularly
+for frameserver->arcan events and in possible future sad cases: CVE- reference
++ exploit PoC. Will also have specialized build options for getting access to
+functions that eases exploit development (which, in turn, eases evaluation of
+countermeasures).
 
 interactive/ quick hacks and experiments, particularly when developing a new-
 or refactoring an existing- interface or when we still need manual input.
 These are not expected to be particularly stable or easy to set up and use.
 
-regression/ for non-trivial bugs reported and fixed, and as a prelude
-to specific engine refactoring (flag all related APIs, make sure there
-are tests that cover the intended changes).
+regression/ for non-trivial bugs reported and fixed, and as a prelude to
+specific engine refactoring (flag all related APIs, make sure there are tests
+that cover the intended changes).
 
 core/ contains tests for the various core libraries, e.g. AGP, AEP and
 shmifsrv.

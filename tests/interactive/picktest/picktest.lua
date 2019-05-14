@@ -77,11 +77,20 @@ end
 
 function picktest_input(iotbl)
 	if (iotbl.kind == "analog" and iotbl.source == "mouse") then
-		if (iotbl.subid == 1) then
-			my = iotbl.samples[1];
+		if (iotbl.relative) then
+			if (iotbl.subid == 1) then
+				my = my + iotbl.samples[1];
+			else
+				mx = mx + iotbl.samples[1];
+			end
 		else
-			mx = iotbl.samples[1];
+			if (iotbl.subid == 1) then
+				my = iotbl.samples[1];
+			else
+				mx = iotbl.samples[1];
+			end
 		end
+
 		move_image(cursor, mx, my);
 
 		res = pick_items(mx, my);

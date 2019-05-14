@@ -1,6 +1,13 @@
-This folder only contains quick on-off tests for evaluating
-and debugging specific engine features that require user
-interaction.
+This folder only contains quick on-off tests for evaluating and debugging
+specific engine features that require user interaction.
+
+Running some of this natively with arcan as the primary display server
+takes some precaution if you don't want to ssh in and kill the instance,
+as most of the scripts lack a shutdown mechanism.
+
+To achieve that otherwise, you can use the hookscript, like so:
+
+    arcan -H hook/shutdown.lua appl
 
 bchunk - (requires fsrv) opening io streams to/from a client
          via the bchunk mechanism.
@@ -64,5 +71,7 @@ vrtest - test mapping limbs to reference geometry
 vrtest2 - test hmd setup, distortion pipeline , ...
 
 vrtest3 - extended scratchpad on vrtest2
+
+prim3d - single cube, directional lighting, mouse rotation and shifted origo
 
 itest - two different kinds of externally provided input injection
