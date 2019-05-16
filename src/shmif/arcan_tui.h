@@ -135,6 +135,8 @@
  * Normal use/drawing functions (all prefixed with arcan_tui_):
  *  erase_screen(ctx, prot)
  *  erase_region(ctx, x1, y1, x2, y2, prot)
+ *  eraseattr_region(ctx, x1, y1, x2, y2, prot, attr)
+ *  eraseattr_screen(ctx, prot, attr)
  *  erase_cursor_to_screen(ctx, prot)
  *  erase_home_to_cursor(ctx, prot)
  *  erase_current_line(ctgx)
@@ -740,9 +742,10 @@ void arcan_tui_request_subwnd_ext(struct tui_context*,
  * Replace (copy over) the active handler table with a new one.
  * if the provided cbcfg is NULL, no change to the active set will be
  * performed, to drop all callbacks, instead, use:
+ *
  * arcan_tui_update_handlers(tui,
  *     &(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
- *:vs
+ *
  * If [old] is provided, the old set of handlers will be stored there.
  *
  * Returns false if an invalid context was provided, or if the cb_sz was
@@ -774,9 +777,15 @@ void arcan_tui_wndhint(struct tui_context* wnd,
  * regions that should actually be cleared and updated.
  */
 void arcan_tui_erase_screen(struct tui_context*, bool protect);
+void arcan_tui_eraseattr_screen(
+	struct tui_context*, bool protect, struct tui_screen_attr);
+
 void arcan_tui_erase_region(struct tui_context*,
 	size_t x1, size_t y1, size_t x2, size_t y2, bool protect);
 void arcan_tui_erase_sb(struct tui_context*);
+
+void arcan_tui_eraseattr_region(struct tui_context*, size_t x1,
+	size_t y1, size_t x2, size_t y2, bool protect, struct tui_screen_attr);
 
 /*
  * helpers that match erase_region + invalidate + cursporpos
@@ -1062,7 +1071,10 @@ typedef void (* PTUIREFINC)(struct tui_context*);
 typedef void (* PTUIREFDEC)(struct tui_context*);
 typedef int (* PTUISETMARGINS)(struct tui_context*, size_t, size_t);
 typedef void (* PTUIERASESCREEN)(struct tui_context*, bool);
+typedef void (* PTUIERASEATTRSCREEN)(struct tui_context*, bool, struct tui_screen_attr);
 typedef void (* PTUIREGION)(struct tui_context*, size_t, size_t, size_t, size_t, bool);
+typedef void (* PTUIERASEATTRREGION)(
+	struct tui_context*, size_t, size_t, size_t, size_t, bool, struct tui_screen_attr);
 typedef void (* PTUIERASESB)(struct tui_context*);
 typedef void (* PTUIERASECURSORTOSCR)(struct tui_context*, bool);
 typedef void (* PTUIERASESCRTOCURSOR)(struct tui_context*, bool);
@@ -1129,6 +1141,8 @@ static PTUIREFDEC arcan_tui_refdec;
 static PTUISETMARGINS arcan_tui_set_margins;
 static PTUIERASESCREEN arcan_tui_erase_screen;
 static PTUIERASEREGION arcan_tui_erase_region;
+static PTUIERASEATTRREGION arcan_tui_eraseattr_region;
+static PTUIERASEATTRSCREEN arcan_tui_eraseattr_screen;
 static PTUIERASESB arcan_tui_erase_sb;
 static PTUIERASECURSORTOSCR arcan_tui_erase_cursor_to_screen;
 static PTUIERASESCRTOCURSOR arcan_tui_erase_screen_to_cursor;
@@ -1198,6 +1212,8 @@ M(PTUIREFDEC,arcan_tui_refdec);
 M(PTUISETMARGINS,arcan_tui_set_margins);
 M(PTUIERASESCREEN,arcan_tui_erase_screen);
 M(PTUIERASEREGION,arcan_tui_erase_region);
+M(PTUIERASEATTRREGION,arcan_tui_eraseattr_region);
+M(PTUIERASEATTRSCREEN,arcan_tui_eraseattr_screen);
 M(PTUIERASESB,arcan_tui_erase_sb);
 M(PTUIERASECURSORTOSCR,arcan_tui_erase_cursor_to_screen);
 M(PTUIERASESCRTOCURSOR,arcan_tui_erase_screen_to_cursor);

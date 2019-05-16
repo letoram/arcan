@@ -3110,6 +3110,31 @@ void arcan_tui_erase_screen(struct tui_context* c, bool protect)
 	tsm_screen_erase_screen(c->screen, protect);
 }
 
+void arcan_tui_eraseattr_screen(
+	struct tui_context* c, bool protect, struct tui_screen_attr attr)
+{
+	if (!c)
+		return;
+
+	struct tui_screen_attr reset_def = arcan_tui_defattr(c, NULL);
+	arcan_tui_defattr(c, &attr);
+	tsm_screen_erase_screen(c->screen, protect);
+	arcan_tui_defattr(c, &reset_def);
+}
+
+void arcan_tui_eraseattr_region(struct tui_context* c,
+	size_t x1, size_t y1, size_t x2, size_t y2,
+	bool protect, struct tui_screen_attr attr)
+{
+	if (!c)
+		return;
+
+	struct tui_screen_attr reset_def = arcan_tui_defattr(c, NULL);
+	arcan_tui_defattr(c, &attr);
+	tsm_screen_erase_region(c->screen, x1, y1, x2, y2, protect);
+	arcan_tui_defattr(c, &reset_def);
+}
+
 void arcan_tui_erase_region(struct tui_context* c,
 	size_t x1, size_t y1, size_t x2, size_t y2, bool protect)
 {
