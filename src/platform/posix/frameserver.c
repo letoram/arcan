@@ -957,6 +957,13 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 	keyev.tgt.ioevs[2].iv = segid;
 	keyev.tgt.ioevs[3].iv = reqid;
 
+/*
+ * Forward the segment token for the NEW segment as part of the event, the
+ * reason for this is to allow the trusted middle-man in a HANDOVER connection
+ * to be able to viewport-event the child without mapping it.
+ */
+	keyev.tgt.ioevs[4].uiv = newseg->cookie;
+
 	snprintf(keyev.tgt.message,
 		sizeof(keyev.tgt.message) / sizeof(keyev.tgt.message[1]),
 		"%s", newseg->shm.key
