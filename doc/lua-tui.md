@@ -32,7 +32,7 @@ If the identity part has changed, due to the program opening some document
 or external connection or something else that would distinguish it from other
 instances of the same program, this can be updated with:
 
-    context:
+    context:update_ident("myfile.pdf")
 
 The acccepted prototype for the process method looks like this:
 
@@ -61,26 +61,23 @@ _close_ which takes an optional "last\_words" string that may tell the user
 
 # Drawing
 
-In contrast to curses and similar APIs, any of the updates you do to the output
-state of the context will not be immediately visible. First you prepare all the
-visually related output changes by updating the relevant cells using the
-drawcalls that are available. When you are finished, you explicitly commit by
-calling _refresh_. This function may well return immediately, or, if you are
-being too frisky (multiple refresh and not interleaving with process), it may
-block for an indefinite time.
+Drawing in the TUI API means picking 'attributes' one or several unicode
+characters and writing them to a location. The process is simply that you
+prepare all the changes you want to make, apply them using the appropriate
+functions from the list below, and when you are finished, commit by calling
+the 'refresh' method on the context. This will block processing until the
+point where the server side has accepted your changes.
 
-The current size of this grid can be extracted via:
+The 'location' is a cell on a rectangular grid, referenced using 'rows' (y
+axis) and columns (x axis), thoough some functions take coordinates in x and y
+format.
 
     mycontext:dimensions() => w, h
 
 Drawing is targetting a currently active output abstract screen. The abstract
 screen is a grid of cells that carry a character and optional formatting
 attributes. The screen has a cursor, which is the current position output will
-be written to unless the draw call used explicitly manipulates the cursor. It
-is possible to have multiple screens (up to 64), though only one screen active
-at any time. They share the same logical size and this logical size is
-externally controlled, you are expected to handle any positive non-zero number
-of rows and columns.
+be written to unless the draw call used explicitly manipulates the cursor.
 
     write
     write_to
