@@ -3336,19 +3336,32 @@ bool platform_video_init(uint16_t w, uint16_t h,
 static bool in_external;
 void platform_video_reset(int id, int swap)
 {
-	if (!in_external)
+/* protect against some possible circular calls with VT switch invoked
+ * while we are also trying to already go external */
+	if (in_external)
 		return;
 
-/* 0. prepare_external (will flush GPU resources, possibly suspend clients)
- * 1. find the card matching the ID, disable all displays on it
- * 2. reload/rebuild AGP functions (this can dynamically update openGL)
- * 3. restore_external (rebuild GPU resources, this will emit display reset event)
- */
+/* if the context stack is broken, we are screwed */
+	if (-1 == arcan_video_pushcontext())
+		return;
 
-/* if swap is specified and the card has a second GPU, we also need to:
- * 1. out-affinity all vstores (disable the first card)
- * 2. build/setup the new card
- */
+	platform_video_prepare_external();
+/* at this stage, all the GPU resources are non-volatile */
+	if (id != -1 || swap){
+/* these case are more difficult as we also need to modify vstore affinity
+ * masks (so we don't synch to multiple GPUs), and verify that the swapped
+ * in GPU actually works */
+	}
+
+/* this is slightly incorrect as the agp_init function- environment,
+ * ideally we'd also terminate the agp environment and rebuild on the
+ * new / different card */
+	platform_video_restore_external();
+	platform_video_query_displays();
+	agp_shader_rebuild_all();
+	arcan_video_popcontext();
+
+	in_external = false;
 }
 
 /*
