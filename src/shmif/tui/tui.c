@@ -3559,3 +3559,24 @@ int arcan_tui_set_margins(struct tui_context* c, size_t top, size_t bottom)
 		return tsm_screen_set_margins(c->screen, top, bottom);
 	return -EINVAL;
 }
+
+size_t arcan_tui_printf(struct tui_context* ctx,
+	struct tui_screen_attr* attr, const char* msg, ...)
+{
+	va_list args;
+	size_t rows, cols;
+	arcan_tui_dimensions(ctx, &rows, &cols);
+	char buf[cols];
+
+	va_start(args, msg);
+	ssize_t nw = vsnprintf(buf, cols, msg, args);
+	if (nw > cols)
+		nw = cols;
+	va_end(args);
+
+	if (nw <= 0)
+		return 0;
+
+	arcan_tui_writeu8(ctx, (uint8_t*) buf, nw, attr);
+	return nw;
+}

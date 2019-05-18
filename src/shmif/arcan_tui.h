@@ -1008,6 +1008,13 @@ struct tui_screen_attr arcan_tui_defattr(
 void arcan_tui_refinc(struct tui_context*);
 void arcan_tui_refdec(struct tui_context*);
 
+/*
+ * This behaves similar to the normal printf class functions, except that
+ * it takes an optional [attr] and returns the number of characters written.
+ */
+size_t arcan_tui_printf(struct tui_context* ctx,
+	struct tui_screen_attr* attr, const char* msg, ...);
+
 #else
 typedef struct tui_settings(* PTUIDEFAULTS)(arcan_tui_conn*, struct tui_context*);
 typedef struct tui_context*(* PTUISETUP)(
@@ -1085,6 +1092,7 @@ typedef void (* PTUIERASECURRENTLINE)(struct tui_context*, bool);
 typedef void (* PTUIERASECHARS)(struct tui_context*, size_t);
 typedef void (* PTUIERASEREGION)(struct tui_context*, size_t, size_t, size_t, size_t, bool);
 typedef char* (* PTUISTATEDESCR)(struct tui_context*);
+typedef size_t (* PTUIPRINTF)(struct tui_context*, struct tui_screen_attr*, const char*, ...);
 
 static PTUIDEFAULTS arcan_tui_defaults;
 static PTUISETUP arcan_tui_setup;
@@ -1151,6 +1159,7 @@ static PTUIERASEHOMETOCURSOR arcan_tui_erase_home_to_cursor;
 static PTUIERASECURRENTLINE arcan_tui_erase_current_line;
 static PTUIERASECHARS arcan_tui_erase_chars;
 static PTUISTATEDESCR arcan_tui_statedescr;
+static PTUIPRINTF arcan_tui_printf;
 
 /* dynamic loading function */
 static bool arcan_tui_dynload(void*(*lookup)(void*, const char*), void* tag)
@@ -1222,6 +1231,7 @@ M(PTUIERASEHOMETOCURSOR,arcan_tui_erase_home_to_cursor);
 M(PTUIERASECURRENTLINE,arcan_tui_erase_current_line);
 M(PTUIERASECHARS,arcan_tui_erase_chars);
 M(PTUISTATEDESCR, arcan_tui_statedescr);
+M(PTUIPRINTF, arcan_tui_printf);
 #undef M
 
 	return true;
