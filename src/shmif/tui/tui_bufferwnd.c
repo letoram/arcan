@@ -1332,6 +1332,7 @@ void arcan_tui_bufferwnd_setup(struct tui_context* T,
 		&cbcfg, &meta->old_handlers, sizeof(struct tui_cbcfg));
 
 	arcan_tui_reset_labels(T);
+	redraw_bufferwnd(T, meta);
 }
 
 #ifdef EXAMPLE
