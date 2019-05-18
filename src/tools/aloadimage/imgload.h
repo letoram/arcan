@@ -27,6 +27,7 @@ struct img_state {
 	bool is_stdin;
 	int life;
 	float density;
+	bool stereo_right;
 
 /* SETUP_GET */
 	bool broken;

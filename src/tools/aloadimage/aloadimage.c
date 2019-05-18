@@ -1,5 +1,5 @@
 /*
- * Copyright 2017, Björn Ståhl
+ * Copyright 2017-2019, Björn Ståhl
  * Description: CLI image file viewer
  * License: 3-Clause BSD, see COPYING file in arcan source repository
  * Reference: http://arcan-fe.com, README.MD
@@ -25,18 +25,25 @@ int image_size_limit_mb = 64;
 bool disable_syscall_flt = false;
 
 /*
- * all the context needed for one window, could theoretically be used
- * for multiple windows with different playlists etc. but not much point
+ * all the context needed for one window, could theoretically be used for
+ * multiple windows with different playlists etc. stereo mode is a bit
+ * special as the state contains two target outputs
  */
 struct draw_state {
 	struct arcan_shmif_cont* con;
-	float dpi;
+
+/*
+ * stereoscopic rendering may need an extra context
+ */
+	struct arcan_shmif_cont* con_right;
+	bool stereo;
 
 /* blitting controls */
 	shmif_pixel pad_col;
 	int out_w, out_h;
 	bool aspect_ratio;
 	bool source_size;
+	float dpi;
 
 /* loading/ resource management state */
 	int wnd_lim, wnd_fwd, wnd_pending, wnd_act;
@@ -592,6 +599,7 @@ static int show_use(const char* msg)
 "-m num \t--limit-mem   \tSet loader process memory limit to [num] MB\n"
 "-r num \t--readahead   \tSet the playlist window queue size\n"
 "-T sec \t--timeout     \tSet unresponsive worker kill- timeout\n"
+"-H     \t--vr          \tSet stereoscopic mode, prefix files with l: or r:\n"
 #ifdef ENABLE_SECCOMP
 "-X    \t--no-sysflt   \tDisable seccomp- syscall filtering\n"
 #endif
@@ -632,6 +640,7 @@ static const struct option longopts[] = {
 	{"server-size", no_argument, NULL, 'S'},
 	{"display", no_argument, NULL, 'd'},
 	{"aspect", no_argument, NULL, 'a'},
+	{"vr180", no_argument, NULL, 'H'}
 };
 
 int main(int argc, char** argv)
@@ -651,9 +660,10 @@ int main(int argc, char** argv)
 
 	int ch;
 	bool interactive = false;
+	int segid = SEGID_MEDIA;
 
 	while((ch = getopt_long(argc, argv,
-		"p:ihlt:bd:T:m:r:XSd:a", longopts, NULL)) >= 0)
+		"p:ihlt:bd:T:m:r:XSHd:a", longopts, NULL)) >= 0)
 		switch(ch){
 		case 'h' : return show_use(""); break;
 		case 't' : ds.init_timer = strtoul(optarg, NULL, 10) * 5; break;
@@ -674,6 +684,7 @@ int main(int argc, char** argv)
 		case 'm' : image_size_limit_mb = strtoul(optarg, NULL, 10); break;
 		case 'r' : ds.wnd_lim = strtoul(optarg, NULL, 10); break;
 		case 'X' : disable_syscall_flt = true; break;
+		case 'H' : ds.stereo = true; segid = SEGID_MEDIA; break;
 		case 'S' : ds.source_size = false; break;
 		default:
 			fprintf(stderr, "unknown/ignored option: %c\n", ch);
@@ -681,14 +692,58 @@ int main(int argc, char** argv)
 		}
 	ds.step_timer = ds.init_timer;
 
-/* parse opts and update ds accordingly */
-	for (int i = optind; i < argc; i++){
-		playlist[ds.pl_size] = (struct img_state){
-			.fd = -1,
-			.fname = argv[i],
-			.is_stdin = strcmp(argv[i], "-") == 0
-		};
-		ds.pl_size++;
+/* parse opts and update ds accordingly, different interpretation for vr mode */
+	if (ds.stereo){
+		int rc = 0, lc = 0;
+		bool last_l = false;
+
+		for (int i = optind; i < argc; i++){
+			if ((argv[i][0] != 'l' && argv[i][0] != 'r') || argv[i][1] != ':'){
+				fprintf(stderr, "malformed entry (%d): %s\n"
+					"vr mode (-H,--vr) requires l: and r: prefix for each entry\n", i - optind + 1, argv[i]);
+				return EXIT_FAILURE;
+			}
+
+			if (argv[i][0] == 'l'){
+				if (last_l){
+					fprintf(stderr, "malformed l-entry (%d): %s\n"
+						"vr mode (-H,--vr) requires l: and r: to interleave\n", i - optind + 1, &argv[i][2]);
+				}
+				last_l = true;
+				lc++;
+			}
+			else{
+				if (!last_l){
+					fprintf(stderr, "malformed r-entry (%d): %s\n"
+						"vr mode (-H,--vr) requires l: and r: to interleave\n", i - optind + 1, &argv[i][2]);
+					return EXIT_FAILURE;
+				}
+				last_l = false;
+				rc++;
+			}
+
+			playlist[ds.pl_size++] = (struct img_state){
+				.fd = -1,
+				.stereo_right = argv[i][0] == 'r',
+				.fname = &argv[i][2],
+				.is_stdin = false
+			};
+		}
+		if (rc != lc){
+			fprintf(stderr, "malformed number of arguments (l=%d, r=%d)\n"
+				"vr mode (-X,--vr) requires an even number of l: and r: prefixed entries\n", lc, rc);
+			return EXIT_FAILURE;
+		}
+	}
+	else {
+		for (int i = optind; i < argc; i++){
+			playlist[ds.pl_size] = (struct img_state){
+				.fd = -1,
+				.fname = argv[i],
+				.is_stdin = strcmp(argv[i], "-") == 0
+			};
+			ds.pl_size++;
+		}
 	}
 
 /* sanity- clamp */
@@ -700,11 +755,13 @@ int main(int argc, char** argv)
 
 	struct arcan_shmif_cont cont = arcan_shmif_open_ext(
 		SHMIF_ACQUIRE_FATALFAIL, NULL, (struct shmif_open_ext){
-			.type = SEGID_MEDIA,
+			.type = segid,
 			.title = "aloadimage",
 			.ident = ""
 		}, sizeof(struct shmif_open_ext)
 	);
+	struct arcan_shmif_cont rcont;
+
 	struct arcan_shmif_initial* init;
 	arcan_shmif_initial(&cont, &init);
 	if (init && init->density > 0){
@@ -714,8 +771,43 @@ int main(int argc, char** argv)
 	ds.con = &cont;
 
 /* signal now so that some window managers can relayout and possibly
- * hint about new sizes, potentially saving us a reblit */
+ * hint about new sizes, potentially saving us a reblit - the contents
+ * will be default- null here (black + full alpha) */
 	arcan_shmif_signal(&cont, SHMIF_SIGVID);
+	arcan_event ev;
+
+/* request the right segment as well, wait for accept or reject, this is
+ * partially flawed as displayhint and other events gets ignored */
+	 if (ds.stereo){
+/*		arcan_shmif_enqueue(&cont, &(struct arcan_event){
+			.ext.kind = ARCAN_EVENT(SEGREQ),
+			.ext.segreq.kind = SEGID_HMD_R,
+			.ext.segreq.id = 0x6502
+		});
+	*/
+		while (arcan_shmif_wait(&cont, &ev)){
+			if (ev.category != EVENT_TARGET)
+				continue;
+
+/* got the reply we wanted, now we can draw into both */
+			else if (ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT){
+				if (ev.tgt.ioevs[0].iv == 0x6502){
+					rcont = arcan_shmif_acquire(&cont, NULL, SEGID_HMD_R, 0);
+					if (!rcont.addr){
+						fprintf(stderr, "error mapping server provided right eye output\n");
+						return EXIT_FAILURE;
+					}
+					ds.con_right = &rcont;
+					break;
+				}
+			}
+			else if (ev.tgt.kind == TARGET_COMMAND_REQFAIL){
+				arcan_shmif_drop(&cont);
+				fprintf(stderr, "server rejected right eye output for stereoscopic rendering\n");
+				return EXIT_FAILURE;
+			}
+		}
+	}
 
 /* dispatch workers */
 	set_playlist_pos(&ds, 0);
@@ -728,8 +820,6 @@ int main(int argc, char** argv)
 		.ext.clock.id = 0xfeed
 	});
 
-	arcan_event ev;
-
 /* Block for one event (our timer helps with that), then flush out any
  * burst. Blit on any change */
 	while (cont.addr && arcan_shmif_wait(&cont, &ev)){
@@ -738,11 +828,15 @@ int main(int argc, char** argv)
 			dirty |= dispatch_event(&cont, &ev, &ds);
 		dirty |= poll_pl(&ds, 0);
 
-/* blit and update title as playlist position might have changed, or
- * some other metadata we present as part of the ident/title */
+/* blit and update title as playlist position might have changed, or some other
+ * metadata we present as part of the ident/title - if we are in stereo mode we
+ * simply skip ahead one (l/r interleaved) and then send the second to the
+ * other context, can do on a secondary thread */
 		struct img_state* cur = &ds.playlist[ds.pl_ind];
+
 		if (dirty && !cur->broken && cur->out && cur->out->ready){
 			set_ident(ds.con, "", cur->fname);
+
 			blit(&cont, (struct img_data*) cur->out, &ds);
 		}
 	}
