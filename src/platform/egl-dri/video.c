@@ -3982,6 +3982,7 @@ static enum display_update_state draw_display(struct dispout* d)
 			agp_shader_activate(shid);
 			agp_shader_envv(PROJECTION_MATR, d->projection, sizeof(float)*16);
 			agp_rendertarget_clear();
+			agp_blendstate(BLEND_NONE);
 			agp_draw_vobj(0, 0, d->dispw, d->disph, d->txcos, NULL);
 			verbose_print("(%d) draw, shader: %d, %zu*%zu",
 				(int)d->id, (int)shid, (size_t)d->dispw, (size_t)d->disph);
