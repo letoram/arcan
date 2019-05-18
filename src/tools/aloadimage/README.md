@@ -29,6 +29,10 @@ connection point (where you point the ARCAN\_CONNPATH environment variable)
          make
          ARCAN_CONNPATH=something ./aloadimage file1.png file2.jpg file3.png
 
+Optional Dependencies include:
+- Exempi-2, used for VR180 in JPG decoding
+- Seccomp, used for sandboxing on linux
+
 Status
 ======
  - [x] Basic controls
@@ -36,10 +40,11 @@ Status
    - [x] Expiration timer
 	 - [x] Upper memory consumption cap (no gzip bombing)
 	 - [x] Seccmp- style syscall filtering
+	 - [x] Pledge port
 	 - [ ] Capsicum port
-	 - [ ] Pledge port
  - [x] Playlist
    - [x] Read/load-ahead
+ - [x] VR180 format
  - [ ] Drag/zoom/pan input
  - [ ] sRGB <-> Linear controls
  - [ ] Up/downsample filter controls
