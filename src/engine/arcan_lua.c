@@ -3168,8 +3168,8 @@ static int subsys_reset(lua_State* ctx)
 	LUA_TRACE("subsystem_reset");
 	const char* subsys = luaL_checkstring(ctx, 1);
 	if (strcmp(subsys, "video") == 0){
-		int card = luaL_optnumber(ctx, 1, -1);
-		int swap = luaL_optnumber(ctx, 1, 0);
+		int card = luaL_optnumber(ctx, 2, -1);
+		int swap = luaL_optbnumber(ctx, 3, 0);
 		platform_video_reset(card, swap);
 	}
 	else
