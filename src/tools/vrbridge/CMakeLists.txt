@@ -10,29 +10,30 @@ set(ARCAN_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../)
 set(CMAKE_MODULE_PATH ${ARCAN_ROOT_DIR}/src/platform/cmake/modules)
 
 include(FindPkgConfig)
-pkg_check_modules(ARCAN_SHMIF arcan-shmif)
+if (ARCAN_SOURCE_DIR)
+	add_subdirectory(${ARCAN_SOURCE_DIR}/shmif ashmif)
+else()
+	find_package(arcan_shmif REQUIRED)
+endif()
 
 add_definitions(
-	-Wall
 	-D__UNIX
 	-DPOSIX_C_SOURCE
 	-DGNU_SOURCE
-  -Wno-unused-const-variable
+	-Wall
+	-Wno-unused-const-variable
 	-Wno-unused-function
-	-std=gnu11 # shmif-api requires this
 )
 
 include_directories(
-	${ARCAN_SHMIF_INCLUDE_DIRS}
+	${ARCAN_SHMIF_INCLUDE_DIR}
 	${ARCAN_ROOT_DIR}/src/engine
-	${ARCAN_ROOT_DIR}/src/shmif
-	${ARCAN_ROOT_DIR}/external
 )
 
 SET(LIBRARIES
 	pthread
 	m
-	${ARCAN_SHMIF_LIBRARIES}
+	${ARCAN_SHMIF_LIBRARY}
 )
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
