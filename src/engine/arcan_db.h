@@ -9,11 +9,11 @@
 struct arcan_dbh;
 
 enum DB_BFORMAT {
-	BFRM_SHELL = 0x00,   /* shell script (/bin/sh)      */
-	BFRM_BIN   = 0x01,   /* normal executable           */
-	BFRM_LWA   = 0x02,   /* lightweight_arcan loader    */
-	BFRM_RETRO = 0x03,   /* frameserver_libretro loader */
-	BFRM_EXTERN= 0x04    /* external launch             */
+	BFRM_SHELL  = 0x00,   /* shell script (/bin/sh)      */
+	BFRM_BIN    = 0x01,   /* normal executable           */
+	BFRM_LWA    = 0x02,   /* lightweight_arcan loader    */
+	BFRM_GAME   = 0x03,   /* afsrv_game loader           */
+	BFRM_EXTERN = 0x04    /* external launch             */
 
 /* add more here to force interpreters and arguments */
 };
