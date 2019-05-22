@@ -404,7 +404,7 @@ function mouse_destroy()
 end
 
 function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden)
-	mstate.hidden = false;
+	mstate.hidden = hidden;
 	mstate.x = math.floor(mstate.max_x * 0.5);
 	mstate.y = math.floor(mstate.max_y * 0.5);
 
@@ -882,9 +882,13 @@ local mid_c = 0;
 local mid_v = {0, 0};
 
 function mouse_iotbl_input(iotbl)
+	if (not iotbl.mouse) then
+		return false;
+	end
+
 	if (iotbl.digital) then
 		mouse_button_input(iotbl.subid, iotbl.active);
-		return;
+		return true;
 	end
 
 	if (iotbl.relative) then
@@ -901,6 +905,8 @@ function mouse_iotbl_input(iotbl)
 			mid_c = 0;
 		end
 	end
+
+	return true;
 end
 
 if (API_VERSION_MAJOR == 0 and API_VERSION_MINOR < 11) then
