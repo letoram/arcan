@@ -82,7 +82,7 @@ static void dump_help()
 		" scroll      \t steps     \t (experimental) smooth scrolling, (default:0=off) steps px/upd\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 		"Built-in palettes:\n"
-		"default, solarized, solarized-black, solarized-white\n"
+		"default, solarized, solarized-black, solarized-white, srcery\n"
 		"---------\t-----------\t----------------\n"
 	);
 }

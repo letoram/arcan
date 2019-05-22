@@ -64,4 +64,5 @@ Default Frameservers:
         encode, 3-Clause BSD (depends: FFMPEG, GPLv2+ licensed)
         decode-vlc, 3-Clause BSD (depends: libvlc-, LGPL)
         remoting, 3-Clause BSD (depends: libvncserver, GPLv2+)
-  terminal, MIT (see COPYING in terminal/default/tsm), manually included dep.
+  terminal, MIT (see COPYING in terminal/default/tsm), manually included dep.)
+	          srcery-colorscheme, MIT
