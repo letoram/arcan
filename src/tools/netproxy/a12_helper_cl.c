@@ -28,7 +28,7 @@ static void on_cl_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
 	if (!cont){
-		debug_print(1, "ignore incoming event on unknown context");
+		a12int_trace(A12_TRACE_SYSTEM, "ignore incoming event on unknown context");
 		return;
 	}
 	if (arcan_shmif_descrevent(ev)){
@@ -36,11 +36,11 @@ static void on_cl_event(
  * Events needed to be handled here:
  * NEWSEGMENT, map it, add it to the context channel list.
  */
-		debug_print(1, "incoming descr- event ignored");
+		a12int_trace(A12_TRACE_SYSTEM, "incoming descr- event ignored");
 	}
 	else {
-		debug_print(2, "client event: %s on ch %d",
-			arcan_shmif_eventstr(ev, NULL, 0), chid);
+		a12int_trace(A12_TRACE_EVENT,
+			"client event: %s on ch %d", arcan_shmif_eventstr(ev, NULL, 0), chid);
 		arcan_shmif_enqueue(cont, ev);
 	}
 }
@@ -54,7 +54,7 @@ int a12helper_a12srv_shmifcl(
 		setenv("ARCAN_CONNPATH", cp, 1);
 
 	if (!cp){
-		debug_print(1, "No connection point was specified");
+		a12int_trace(A12_TRACE_SYSTEM, "No connection point was specified");
 		return -ENOENT;
 	}
 
@@ -64,11 +64,11 @@ int a12helper_a12srv_shmifcl(
 /* Open / set the primary connection */
 	cl_state.wnd[0] = arcan_shmif_open(SEGID_UNKNOWN, SHMIF_NOACTIVATE, NULL);
 	if (!cl_state.wnd[0].addr){
-		debug_print(1, "Couldn't connect to an arcan display server");
+		a12int_trace(A12_TRACE_SYSTEM, "Couldn't connect to an arcan display server");
 		return -ENOENT;
 	}
 	cl_state.n_segments = 1;
-	debug_print(1, "Segment connected");
+	a12int_trace(A12_TRACE_SYSTEM, "Segment connected");
 
 	a12_set_destination(S, &cl_state.wnd[0], 0);
 
@@ -78,14 +78,14 @@ int a12helper_a12srv_shmifcl(
 
 	uint8_t* outbuf;
 	size_t outbuf_sz = 0;
-	debug_print(1, "got proxy connection, waiting for source");
+	a12int_trace(A12_TRACE_SYSTEM, "got proxy connection, waiting for source");
 
 	int status;
 	while (-1 != (status = a12helper_poll_triple(
 		cl_state.wnd[0].epipe, fd_in, outbuf_sz ? fd_out : -1, 4))){
 
 		if (status & A12HELPER_WRITE_OUT){
-			if (outbuf_sz || (outbuf_sz = a12_channel_flush(S, &outbuf))){
+			if (outbuf_sz || (outbuf_sz = a12_flush(S, &outbuf))){
 				ssize_t nw = write(fd_out, outbuf, outbuf_sz);
 				if (nw > 0){
 					outbuf += nw;
@@ -98,12 +98,12 @@ int a12helper_a12srv_shmifcl(
 			uint8_t inbuf[9000];
 			ssize_t nr = read(fd_in, inbuf, 9000);
 			if (-1 == nr && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR){
-				debug_print(1, "failed to read from input: %d", errno);
+				a12int_trace(A12_TRACE_SYSTEM, "failed to read from input: %d", errno);
 				break;
 			}
 
-			debug_print(2, "unpack %zd bytes", nr);
-			a12_channel_unpack(S, inbuf, nr, NULL, on_cl_event);
+			a12int_trace(A12_TRACE_BTRANSFER, "unpack %zd bytes", nr);
+			a12_unpack(S, inbuf, nr, NULL, on_cl_event);
 		}
 
 /* 1 client can have multiple segments */
@@ -119,11 +119,14 @@ int a12helper_a12srv_shmifcl(
  * while others need to be forwarded as a binary- chunk stream and kept out-
  * of order on the other side */
 				if (arcan_shmif_descrevent(&newev)){
-					debug_print(1, "(cl:%zu) ign-descr-event: %s",
-						i, arcan_shmif_eventstr(&newev, NULL, 0));
+					a12int_trace(A12_TRACE_EVENT,
+						"(cl:%zu) ign-descr-event: %s",
+						i, arcan_shmif_eventstr(&newev, NULL, 0)
+					);
 				}
 				else {
-					debug_print(2, "enqueue %s", arcan_shmif_eventstr(&newev, NULL, 0));
+					a12int_trace(A12_TRACE_EVENT,
+						"enqueue %s", arcan_shmif_eventstr(&newev, NULL, 0));
 					a12_channel_enqueue(S, &newev);
 				}
 			}
@@ -131,9 +134,9 @@ int a12helper_a12srv_shmifcl(
 
 /* we might have gotten data to flush, so use that as feedback */
 		if (!outbuf_sz){
-			outbuf_sz = a12_channel_flush(S, &outbuf);
+			outbuf_sz = a12_flush(S, &outbuf);
 			if (outbuf_sz)
-				debug_print(2, "output buffer size: %zu", outbuf_sz);
+				a12int_trace(A12_TRACE_BTRANSFER, "output buffer size: %zu", outbuf_sz);
 		}
 	}
 

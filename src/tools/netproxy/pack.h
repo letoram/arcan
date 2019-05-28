@@ -27,6 +27,13 @@ static void unpack_u16(uint16_t* dst, uint8_t* inbuf)
 		((uint64_t)inbuf[1] <<  8);
 }
 
+static void unpack_s16(int16_t* dst, uint8_t* inbuf)
+{
+	*dst =
+		((int64_t)inbuf[0] << 0) |
+		((int64_t)inbuf[1] << 8);
+}
+
 static void pack_u64(uint64_t src, uint8_t* outb)
 {
 	outb[0] = (uint8_t)(src >> 0);
@@ -51,4 +58,10 @@ static void pack_u16(uint16_t src, uint8_t* outb)
 {
 	outb[0] = (uint16_t)(src >> 0);
 	outb[1] = (uint16_t)(src >> 8);
+}
+
+static void pack_s16(int16_t src, uint8_t* outb)
+{
+	outb[0] = (int16_t)(src >> 0);
+	outb[1] = (int16_t)(src >> 8);
 }

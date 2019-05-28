@@ -18,6 +18,8 @@
 #include <EGL/eglext.h>
 #include <GL/gl.h>
 #include <sys/mman.h>
+#include <sys/types.h>
+#include <dirent.h>
 #include <errno.h>
 #include <poll.h>
 #include <assert.h>
@@ -999,7 +1001,7 @@ static bool process_group(struct conn_group* group)
 		sv--;
 	}
 
-	for (size_t i = 0; i < N_GROUP_SLOTS && sv > 0; i++){
+	for (size_t i = 0; i < N_GROUP_SLOTS && sv > 0 && wl.alive; i++){
 		if (group->pg[i].revents){
 			sv--;
 			switch(group->slots[i].type){
@@ -1360,11 +1362,24 @@ int main(int argc, char* argv[])
 	sigaction(SIGPIPE, &(struct sigaction){
 		.sa_handler = SIG_IGN, .sa_flags = 0}, 0);
 
+/* intercept signals and forward to cleanup */
+	if (
+		(sigaction(SIGCHLD,
+		&(struct sigaction){.sa_handler = &sigchld_handler}, NULL) < 0) ||
+		(sigaction(SIGTERM,
+		&(struct sigaction){.sa_handler = &sigchld_handler}, NULL) < 0) ||
+		(sigaction(SIGINT,
+		&(struct sigaction){.sa_handler = &sigchld_handler}, NULL) < 0))
+	{
+			wl.alive = false;
+	}
+
 /* we can't actually use xwl_spawn blocking here as that would cause the wm
  * process to wait for xwayland that is waiting for the wl_display here */
 	if (wl.use_xwayland){
 		if (wayland_runtime_dir)
 			setenv("XDG_RUNTIME_DIR", wayland_runtime_dir, 1);
+		trace(TRACE_XWL, "spawning Xserver/wm");
 		xwl_spawn_wm(false, &argv[arg_i]);
 		setenv("XDG_RUNTIME_DIR", arcan_runtime_dir, 1);
 	}
@@ -1372,13 +1387,6 @@ int main(int argc, char* argv[])
 /* chain-execute the single client that we want to handle, this is handled
  * by the wm in the use-xwayland mode so ignore here */
 	if (wl.exec_mode){
-		struct sigaction act = {
-			.sa_handler = &sigchld_handler
-		};
-		if (sigaction(SIGCHLD, &act, NULL) < 0){
-			wl.alive = false;
-		}
-
 /* we'll spawn the X-wm and child a little bit later */
 		if (!wl.use_xwayland){
 			if (wayland_runtime_dir)
@@ -1417,6 +1425,7 @@ int main(int argc, char* argv[])
 /* Xwayland or the window manager might have died, restart in those cases */
 		if (wl.use_xwayland){
 			if (xwl_wm_pid == -1){
+				trace(TRACE_XWL, "respawning Xserver/wm");
 				xwl_spawn_wm(false, NULL);
 			}
 			xwl_check_wm();
@@ -1429,6 +1438,25 @@ cleanup:
 		wl_display_destroy(wl.disp);
 	arcan_shmif_drop(&wl.control);
 	free(arcan_runtime_dir);
-	free(wayland_runtime_dir);
+
+/* We have created a folder with temporary files and links, this comes with
+ * the -xwl and -exec modes and we treat this as authoritative. This should
+ * be shallow (only nodes by us or possibly symlinks so don't recurse */
+	if (wayland_runtime_dir){
+		DIR* d = opendir(wayland_runtime_dir);
+		if (d){
+			int fd = dirfd(d);
+			struct dirent* de;
+			while((de = readdir(d))){
+				if (de->d_name[0] == '.' &&
+					(!de->d_name[1] || (de->d_name[1] == '.')))
+					continue;
+
+				unlinkat(fd, de->d_name, 0);
+			}
+			unlinkat(fd, ".", AT_REMOVEDIR);
+		}
+		free(wayland_runtime_dir);
+	}
 	return exit_code;
 }

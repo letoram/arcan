@@ -31,7 +31,7 @@ static int run_shmif_server(
 			shmifsrv_allocate_connpoint(cp, NULL, S_IRWXU, fd);
 
 		if (!cl){
-			fprintf(stderr, "couldn't allocate connection point\n");
+			a12int_trace(A12_TRACE_SYSTEM, "couldn't allocate connection point\n");
 			return EXIT_FAILURE;
 		}
 
@@ -40,15 +40,15 @@ static int run_shmif_server(
 			fd = shmifsrv_client_handle(cl);
 
 		if (-1 == fd){
-			fprintf(stderr,
+			a12int_trace(A12_TRACE_SYSTEM,
 				"descriptor allocator failed, couldn't open connection point\n");
 			return EXIT_FAILURE;
 		}
 
 		struct pollfd pfd = { .fd = fd, .events = POLLIN | POLLERR | POLLHUP };
-		debug_print(1, "(srv) configured, polling");
+		a12int_trace(A12_TRACE_SYSTEM, "(srv) configured, polling");
 		if (poll(&pfd, 1, -1) == 1){
-			debug_print(1, "(srv) got connection");
+			a12int_trace(A12_TRACE_SYSTEM, "(srv) got connection");
 
 /* go through the accept step, now we can hand the connection over
  * and repeat the listening stage in some other execution context,
@@ -57,12 +57,12 @@ static int run_shmif_server(
 				shmifsrv_poll(cl);
 
 /* build the a12 state and hand it over to the main loop */
-				a12helper_a12cl_shmifsrv(a12_channel_open(
+				a12helper_a12cl_shmifsrv(a12_open(
 					authk, auth_sz), cl, fdin, fdout, (struct a12helper_opts){});
 			}
 
 			if (pfd.revents & (~POLLIN)){
-				debug_print(1, "(srv) poll failed, rebuilding");
+				a12int_trace(A12_TRACE_SYSTEM, "(srv) poll failed, rebuilding");
 				shmifsrv_free(cl);
 			}
 		}
@@ -78,9 +78,9 @@ static int run_shmif_server(
 static int run_shmif_client(
 	uint8_t* authk, size_t authk_sz, int fdin, int fdout)
 {
-	struct a12_state* ast = a12_channel_build(authk, authk_sz);
+	struct a12_state* ast = a12_build(authk, authk_sz);
 	if (!ast){
-		fprintf(stderr, "Couldn't allocate client state machine\n");
+		a12int_trace(A12_TRACE_SYSTEM, "Couldn't allocate client state machine\n");
 		return EXIT_FAILURE;
 	}
 
