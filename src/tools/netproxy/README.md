@@ -41,15 +41,17 @@ Milestone 1 - basic features (0.5.x)
 - [x] Control
 - [x] Netpipe (FIFO)
 - [x] net (TCP)
-- [x] Raw binary descriptor transfers
 - [x] Uncompressed Video / Video delta
 - [x] Uncompressed Audio / Audio delta
 - [x] Compressed Video
 	-  [x] x264
 	-  [x] xor-PNG
-	-  [ ] FLIF
+- [ ] Raw binary descriptor transfers
+- [ ] Interactive compression controls
 - [ ] Subsegments
 - [ ] Basic authentication / Cipher (blake+chaha20)
+- [ ] Basic privsep/sandboxing
+- [ ] Add to encode, remoting
 
 Milestone 2 - closer to useful (0.6.x)
 
@@ -58,29 +60,31 @@ Milestone 2 - closer to useful (0.6.x)
 - [ ] Quad-tree for DPNG
 - [ ] "MJPG" mode over DPNG
 - [ ] TUI- text channel
-  - [ ] Local echo prediction
-- [ ] A / V / E interleaving
-- [ ] Progressive encoding
+- [ ] btransfer caching
+- [ ] (Scheduling), better A / V / E interleaving
+- [ ] Progressive / threaded video encoding
 - [ ] Accelerated encoding of gpu-handles
 - [ ] Passthrough of video surfaces
 - [ ] Traffic monitoring tools
-- [ ] Output segments
-- [ ] Basic privsep/sandboxing
 - [ ] Splicing / Local mirroring
 
 Milestone 3 - big stretch (0.6.x)
 
-- [ ] UDP based carrier
+- [ ] Dynamic audio resampling
+- [ ] Output segments
+- [ ] UDP based carrier (UDT, SPDY)
 - [ ] curve25519 key exchange
 - [ ] 'ALT' arcan-lwa interfacing
 - [ ] ZSTD
 - [ ] Subprotocols (vobj, gamma, ...)
-- [ ] Open3DGC
+- [ ] Open3DGC (vr, obj mode)
+- [ ] HDR / gamma
 - [ ] Congestion control / dynamic encoding parameters
 - [ ] Side-channel Resistant
 - [ ] Local discovery Mechanism (pluggable)
-- [ ] Add to afsrv\_net, encode, remoting
-- [ ] Special provisions for agp/alt channels
+- [ ] Special provisions for agp channels
+- [ ] Add to arcan\_net
+- [ ] Secure keystore
 - [ ] Clean-up, RFC level documentation
 
 # Security/Safety
@@ -371,8 +375,8 @@ which should be absorbed and translated in each proxy.
 
 This command carries a 4 byte stream ID, which is the counter shared by all
 bstream, vstream and astreams. The code dictates if the cancel is due to the
-information being dated (0), encoded in an unhandled format (1) or data is
-already known (cached, 2).
+information being dated or undesired (0), encoded in an unhandled format (1)
+or data is already known (cached, 2).
 
 ### command - 4, define vstream
 - [18..21] : stream-id: uint32
@@ -417,20 +421,20 @@ The format fields determine the size of each sample, multiplied over the
 number of samples to get the size of the stream. The field in [22] follows
 the table:
 
-### command - 7, define bstream
+### command - 6, define bstream
 - [18..21] stream-id   : uint32
-- [22..29] stream-size : uint64 (0 on streaming source)
-- [29]     stream-type : uint8  (0: state, 1:bchunk, 2: font)
-- [30 +16] blake2-hash : blob (0 if unknown)
+- [22..29] total-size  : uint64 (0 on streaming source)
+- [30..33] block-size  : uint32
+- [34]     stream-type : uint8 (0: state, 1:bchunk, 2: font, 3: font-secondary)
+- [35]     stream-flags: uint8 (1: last)
+- [35 +16] blake2-hash : blob (0 if unknown)
 
-After the completion of a bstream transfer, there must always be an event
-packet with the corresponding event that is to 'consume' the binary stream,
-then the data itself. The hash is provided in order to let the other end cancel
-the transfer if there already is a local cache with it. Due to the possibility
-of cancellation, slow-starting a transfer for a round-trip or two might save
-some bandwidth.
+This defines a new or continued binary transfer stream. The block-size sets the
+number of continuous bytes in the stream until the point where another transfer
+can be interleaved. There can thus be multiple binary streams in flight in
+order to interrupt an ongoing one with a higher priority one.
 
-### command - 8, ping
+### command - 7, ping
 No extra data needed in the control command, just used as a periodic carrier
 to keep the connection alive and measure drift.
 

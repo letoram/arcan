@@ -50,6 +50,13 @@ struct a12_state*
 a12_build(uint8_t* authk, size_t authk_sz);
 
 /*
+ * Free the state block
+ * This will return false if there are still mapped/active channels
+ */
+bool
+a12_free(struct a12_state*);
+
+/*
  * Take an incoming byte buffer and append to the current state of
  * the channel. Any received events will be pushed via the callback.
  */
@@ -63,6 +70,11 @@ void a12_unpack(
  */
 void a12_set_destination(
 	struct a12_state*, struct arcan_shmif_cont* wnd, uint8_t chid);
+
+/*
+ * Set the active channel used for tagging outgoing packages
+ */
+void a12_set_channel(struct a12_state* S, uint8_t chid);
 
 /*
  * Returns the number of bytes that are pending for output on the channel,
@@ -218,8 +230,23 @@ a12_channel_vframe(
 	struct a12_vframe_opts opts
 );
 
-/* Close / destroy a channel, if this is the primary (0) all channels will
- * be closed and the connection terminated */
+/*
+ * Forward / start a new channel intended for the 'real' client. If this
+ * comes as a NEWSEGMENT event from the 'real' arcan instance, make sure
+ * to also tie this to the segment via 12_channel_set_destination.
+ *
+ * [chid] is the assigned channel ID for the connection.
+ * [output] is set to true for an output segment (server populates buffer)
+ *          and is commonly false. (ioev[1].iv)
+ * [segkind] matches a possible SEGID (ioev[2].iv)
+ * [cookie] is paired to a SEGREQ event from the other side (ioev[3].iv)
+ */
+void
+a12_channel_new(struct a12_state* S,
+	uint8_t chid, uint8_t segkind, uint32_t cookie);
+
+/* Close / destroy the active channel, if this is the primary (0) all
+ * channels will be closed and the connection terminated */
 void
 a12_channel_close(struct a12_state*);
 

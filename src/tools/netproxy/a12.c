@@ -35,7 +35,7 @@ size_t a12int_header_size(int kind)
 	return header_sizes[kind];
 }
 
-static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz)
+static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz, int ind)
 {
 	if (new_sz < *cur_sz)
 		return dst;
@@ -55,7 +55,8 @@ static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz)
 
 	new_sz = pow;
 
-	a12int_trace(A12_TRACE_ALLOC, "grow outqueue %zu => %zu", *cur_sz, new_sz);
+	a12int_trace(A12_TRACE_ALLOC,
+		"grow outqueue(%d) %zu => %zu", ind, *cur_sz, new_sz);
 	uint8_t* res = DYNAMIC_REALLOC(dst, new_sz);
 	if (!res){
 		a12int_trace(A12_TRACE_SYSTEM, "couldn't grow queue");
@@ -71,8 +72,6 @@ static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz)
 static void step_sequence(struct a12_state* S, uint8_t* outb)
 {
 	pack_u64(S->current_seqnr++, outb);
-/* DBEUG: replace sequence with 's' */
-	for (size_t i = 0; i < 8; i++) outb[i] = 's';
 }
 
 /*
@@ -127,7 +126,8 @@ void a12int_append_out(
 	S->bufs[S->buf_ind] = grow_array(
 		S->bufs[S->buf_ind],
 		&S->buf_sz[S->buf_ind],
-		required
+		required,
+		S->buf_ind
 	);
 
 /* and if that didn't work, fatal */
@@ -250,17 +250,38 @@ void
 a12_channel_close(struct a12_state* S)
 {
 	if (!S || S->cookie != 0xfeedface){
-
 		return;
 	}
 
-	a12int_trace(A12_TRACE_SYSTEM, "closing channel");
+	if (S->channels[S->out_channel].active){
+		S->channels[S->out_channel].cont = NULL;
+		S->channels[S->out_channel].active = false;
+	}
+
+	a12int_trace(A12_TRACE_SYSTEM, "closing channel (%"PRIu8")", S->out_channel);
+}
+
+bool
+a12_free(struct a12_state* S)
+{
+	if (!S || S->cookie != 0xfeedface){
+		return false;
+	}
+
+	for (size_t i = 0; i < 256; i++){
+		if (S->channels[S->out_channel].active){
+			a12int_trace(A12_TRACE_SYSTEM, "free with channel (%zu) active", i);
+			return false;
+		}
+	}
+
 	DYNAMIC_FREE(S->bufs[0]);
 	DYNAMIC_FREE(S->bufs[1]);
 	*S = (struct a12_state){};
 	S->cookie = 0xdeadbeef;
 
 	DYNAMIC_FREE(S);
+	return true;
 }
 
 /*
@@ -383,15 +404,32 @@ static void command_audioframe(struct a12_state* S)
 /* normal dynamic rate adjustment compensating for clock drift etc. go here */
 }
 
-static void command_newchannel(struct a12_state* S)
+static void command_newchannel(
+struct a12_state* S, void (*on_event)
+	(struct arcan_shmif_cont*, int chid, struct arcan_event*, void*), void* tag)
 {
-/*
- * uint8_t channel = S->decode[16];
- * uint8_t new_channel = S->decode[18];
- * uint8_t type = S->decode[19];
- * uint8_t direction = S->decode[20];
- * unpack_u32(&cookie, &S->decode[21]);
- */
+	uint8_t channel = S->decode[16];
+	uint8_t new_channel = S->decode[18];
+	uint8_t type = S->decode[19];
+	uint8_t direction = S->decode[20];
+	uint32_t cookie;
+	unpack_u32(&cookie, &S->decode[21]);
+
+	a12int_trace(A12_TRACE_ALLOC, "new channel: %"PRIu8" => %"PRIu8""
+		", kind: %"PRIu8", cookie: %"PRIu8"", channel, new_channel, type, cookie);
+
+/* helper srv need to perform the additional segment push here,
+ * so our 'file descriptor' in slot 0 is actually the new channel id */
+	struct arcan_event ev = {
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_NEWSEGMENT
+	};
+	ev.tgt.ioevs[0].iv = new_channel;
+	ev.tgt.ioevs[1].iv = direction != 0;
+	ev.tgt.ioevs[2].iv = type;
+	ev.tgt.ioevs[3].uiv = cookie;
+
+	on_event(S->channels[channel].cont, channel, &ev, tag);
 }
 
 static void command_videoframe(struct a12_state* S)
@@ -494,8 +532,32 @@ static void command_videoframe(struct a12_state* S)
 	}
 }
 
-static bool queue_binary_stream(struct a12_state* S, struct arcan_event* carrier)
+static bool queue_binary_stream(struct a12_state* S, struct arcan_event* ev)
 {
+	switch (ev->tgt.kind){
+		case TARGET_COMMAND_STORE:
+		case TARGET_COMMAND_BCHUNK_OUT:
+		case TARGET_COMMAND_RESTORE:
+		case TARGET_COMMAND_BCHUNK_IN:{
+			char msg[512];
+			a12int_trace(A12_TRACE_MISSING,
+				"ignoring descriptor event: %s", arcan_shmif_eventstr(ev, msg, 512));
+			return true;
+		}
+		break;
+		case TARGET_COMMAND_FONTHINT:
+		if (ev->tgt.ioevs[0].iv != -1){
+			a12int_trace(A12_TRACE_MISSING,
+				"ignoring font descriptor, should be blocking transfer");
+		}
+		case TARGET_COMMAND_NEWSEGMENT:
+			a12int_trace(A12_TRACE_SYSTEM,
+				"newsegment- event forwarded, api use error");
+		return false;
+		break;
+		default:
+		break;
+	}
 /* if S->binary_pending */
 	return false;
 }
@@ -504,7 +566,8 @@ static bool queue_binary_stream(struct a12_state* S, struct arcan_event* carrier
  * Control command,
  * current MAC calculation in s->mac_dec
  */
-static void process_control(struct a12_state* S)
+static void process_control(struct a12_state* S, void (*on_event)
+	(struct arcan_shmif_cont*, int chid, struct arcan_event*, void*), void* tag)
 {
 	if (!process_mac(S))
 		return;
@@ -528,12 +591,11 @@ static void process_control(struct a12_state* S)
 	/* terminate specific channel */
 	break;
 	case COMMAND_NEWCH:
-		command_newchannel(S);
+		command_newchannel(S, on_event, tag);
 	break;
 	case COMMAND_CANCELSTREAM:
 		a12int_trace(A12_TRACE_MISSING, "Stream cancellation");
 	break;
-	case COMMAND_FAILURE: break;
 	case COMMAND_PING:
 		a12int_trace(A12_TRACE_MISSING, "Check ping packet");
 	break;
@@ -762,13 +824,8 @@ struct a12_state* S, struct arcan_shmif_cont* wnd, uint8_t chid)
 		return;
 	}
 
-	if (chid != 0){
-		a12int_trace(A12_TRACE_MISSING, "multi-channel support unfinished");
-		return;
-	}
-
-	S->channels[0].cont = wnd;
-	S->channels[0].active = false;
+	S->channels[chid].cont = wnd;
+	S->channels[chid].active = wnd != NULL;
 }
 
 void
@@ -804,7 +861,7 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 		process_nopacket(S);
 	break;
 	case STATE_CONTROL_PACKET:
-		process_control(S);
+		process_control(S, on_event, tag);
 	break;
 	case STATE_VIDEO_PACKET:
 		process_video(S);
@@ -836,10 +893,11 @@ a12_flush(struct a12_state* S, uint8_t** buf)
 /* nothing in the outgoing buffer? then we can pull in whatever
  * data transfer is pending */
 	if (S->buf_ofs == 0){
-
+		return 0;
 	}
 
 	size_t rv = S->buf_ofs;
+	int old_ind = S->buf_ind;
 
 /* switch out "output buffer" and return how much there is to send, it is
  * expected that by the next non-0 returning channel_flush, its contents have
@@ -847,6 +905,7 @@ a12_flush(struct a12_state* S, uint8_t** buf)
 	*buf = S->bufs[S->buf_ind];
 	S->buf_ofs = 0;
 	S->buf_ind = (S->buf_ind + 1) % 2;
+	a12int_trace(A12_TRACE_ALLOC, "locked %d, new buffer: %d", old_ind, S->buf_ind);
 
 	return rv;
 }
@@ -861,7 +920,24 @@ a12_poll(struct a12_state* S)
 }
 
 void
-a12_channel_setid(struct a12_state* S, uint8_t chid)
+a12_channel_new(struct a12_state* S,
+	uint8_t chid, uint8_t segkind, uint32_t cookie)
+{
+	uint8_t outb[CONTROL_PACKET_SIZE] = {0};
+	step_sequence(S, outb);
+
+	outb[17] = 0;
+	outb[18] = chid;
+	outb[19] = segkind;
+	outb[20] = 0;
+	pack_u32(cookie, &outb[21]);
+	step_sequence(S, outb);
+
+	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+}
+
+void
+a12_set_channel(struct a12_state* S, uint8_t chid)
 {
 	S->out_channel = chid;
 }
@@ -934,14 +1010,11 @@ a12_channel_vframe(struct a12_state* S,
  * ignore_alpha - set pxfmt to 3
  * subregion - feed as information to the delta encoder
  * srgb - info to encoder, other leave be
- * vpts - possibly add as feedback to a scheduler and if there is
- *        near-deadline data, send that first or if it has expired,
- *        drop the frame. This is only a real target for game/decode
- *        but that decision can be pushed to the caller.
+ * vpts - tag into the system as it is used for other things
  *
- * then we have the problem of the meta- area
+ * then we have the problem of the meta- area that should take
+ * other package types when we get there
  */
-
 	a12int_trace(A12_TRACE_VIDEO,
 		"out vframe: %zu*%zu @%zu,%zu+%zu,%zu", vb->w, vb->h, w, h, x, y);
 #define argstr S, vb, opts, x, y, w, h, chunk_sz, S->out_channel
@@ -983,59 +1056,25 @@ static ssize_t get_file_size(int fd)
 	return fdinf.st_size;
 }
 
+static bool setup_new_channel(struct a12_state* S, struct arcan_event* ev)
+{
+	return true;
+}
+
 bool
 a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
 {
 	if (!S || S->cookie != 0xfeedface || !ev)
 		return false;
 
-	int transfer_fd = -1;
-	ssize_t transfer_sz = -1;
-
-/* ignore descriptor- passing events for the time being as they add
- * queueing requirements, possibly compression and so on */
+/* binary streams gets added to their own 'add when there is output space'
+ * while newsegment has its entirely own treatment */
 	if (arcan_shmif_descrevent(ev)){
-		char msg[512];
-		a12int_trace(A12_TRACE_MISSING,
-			"ignoring descriptor event: %s", arcan_shmif_eventstr(ev, msg, 512));
-
-		switch (ev->tgt.kind){
-			case TARGET_COMMAND_STORE:
-			case TARGET_COMMAND_BCHUNK_OUT:
-/* this means the OTHER side should provide us with data,
- * just wait for the corresponding bstream and synthesize the event */
-			break;
-			case TARGET_COMMAND_RESTORE:
-			case TARGET_COMMAND_BCHUNK_IN:
-				return queue_binary_stream(S, ev);
-			break;
-			case TARGET_COMMAND_FONTHINT:
-/* this MAY mean the OTHER side should receive data from us, since it is a font
- * we have reasonable expectations on the size and can just throw it in a
- * memory buffer by queueing it outright */
-			if (ev->tgt.ioevs[0].iv != -1){
-				transfer_fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, false);
-				transfer_sz = get_file_size(transfer_fd);
-				if (transfer_sz <= 0){
-					a12int_trace(A12_TRACE_SYSTEM,
-						"ignoring font-transfer, couldn't resolve source");
-					return false;
-				}
-				return queue_binary_stream(S, ev);
-/* we should also calculate a hash on the transfer_fd so the client
- * gets a chance to cancel the stream on the account of already having
- * it in cache */
-			}
-			break;
-			case TARGET_COMMAND_NEWSEGMENT:
-/* when forwarded, this means not more than relay the info about the event -
- * what is also needed is for the corresponding side (server or client) to set
- * new local primitives and treat them as a new channel */
-				return false;
-			break;
-			default:
-			break;
-		}
+/* this one should have already been handled through a12_channel_new */
+		if (ev->tgt.kind == TARGET_COMMAND_NEWSEGMENT)
+			return true;
+		else
+			return queue_binary_stream(S, ev);
 	}
 
 /*
