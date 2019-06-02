@@ -22,7 +22,7 @@ itself. Such options are stored under the reserved appl names "arcan" and
 "arcan_lwa" respectively.
 
 .SH COMMAND
-.IP "\fBadd_target\fR \fIname\fR \fIbfrm\fB \fIexecutable\fR \fIargv\fR"
+.IP "\fBadd_target\fR \fIname\fR \fI-tag\fR \fIbfrm\fR \fIexecutable\fR \fIargv\fR"
 Create a new target or update values for a pre-existing ones. The \fIname\fR
 field is a unique identifier that will be used to reference the target from
 within the engine. \fIexecutable\fR should point to the binary, folder or
@@ -30,7 +30,8 @@ specific data file to be launched. \fIbfrm\fR specifies the binary format
 to be loaded, where BIN corresponds to a native binary (e.g. ELF for POSIX
 systems and PE on windows), LWA for using arcan-in-arcan style execution and
 RETRO for a libretro- compatible core (.so or .dll).see \fIBINARY FORMATS\fR
-below for details.
+below for details. The optional \fItag\fR argument specifies ONE application
+defined selection tag. See the section on tags below for further guidance.
 
 \fIArgv\fR can be a variable number of arguments that will be set as the base
 arguments for the target. For bfrm LWA, these will be passed to the application
@@ -64,20 +65,57 @@ The arguments specified in \fIargv\fR are similar to
 those used in \fIadd_target\fR but will always be appended after
 the arguments associated with the target.
 
-.IP "\fBadd_config_kv\fR \fItargetname\fR \fIconfigname\fR \fIargv\fR"
+.IP "\fBadd_config_kv\fR \fItargetname\fR \fIconfigname\fR \fIkey\fR \fIval\fR"
 
-Add a key/value pair associated with a configuration, these values
-are accessible from the context of an arcan application.
+Add a key/value pair associated with a configuration. This pair will be
+accessible from the context of an arcan application, and may be used by
+an arcan application to track client configuration specific settings.
+
+.IP "\fBadd_config_env\fR \fItargetname\fR \fIconfigname\fR \fkey\fR \fIval\fR"
+
+Add a key/value pair associated with a configuration. This pair will be
+accessible from the environment of the executing client.
+
+.IP "\fBadd_appl_kv\fR \fIapplname\fR \fIkey\fR \fIval\fR"
+
+Add a key/value pair associated with an appl. This pair will be accessible
+from the context of a specific arcan application matching \fIapplname\fR and
+is intended for application specific persistent configuration.
 
 .IP "\fBdrop_config\fR \fItargetname\fR \fIconfigname\fR"
 
-Delete the specific config. This will also remove any key/values associated
+Delete a specific config. This will also remove any key/values associated
 with that config. The configname 'default' cannot be removed in this way.
+
+.IP "\fBdrop_all_configs\fR \fItargetname\fR"
+
+Delete all configs for the specific target. This act as a "for each config in
+target, drop_config" and will thus purge the keys associated with the configs
+as well.
 
 .IP "\fBdrop_target\fR \fItargetname\fR"
 
 Delete the specific target and all associated configurations, environment
 library and key/value pairs.
+
+.IP "\fIdrop_appl\fR \fIapplname\fR"
+
+Delete all keys associated with the specific application name.
+
+.SH TAGS
+Each target can be associated with a tag. These have application specific
+meaning, though a generalized suggested set of tags that are also respected
+by hook-scripts where applicable are as follows:
+
+\fBautorun\fR - Should be used to select targets that should be launched
+upon startup, this includes all configurations attached to that target.
+
+\fBhidden\fR - Should be used to prevent targets from being listed in
+user interfaces that allows the user to pick targets that can be launched.
+
+\fBautorun_hidden\fR - Combines the behavior from the tag 'autorun' and from
+the tag 'hidden'. This is suggested for hook scripts that want to manage
+external connection points that should be invisible to the running application.
 
 .SH SCRIPTING MODE
 To assist when using this program as a database interface for a script, a
@@ -90,7 +128,7 @@ description).
 
 .SH BINARY FORMATS
 The currently supported binary formats are \fBBIN\fR, \fBLWA\fR, \fBSHELL\fR,
-\fBEXTERNAL\fR and \fBRETRO\fR. Binary format specifies how the new process
+\fBEXTERNAL\fR and \fBGAME\fR. Binary format specifies how the new process
 will be created when launching a target/configuration pair.
 
 For \fBBIN\fR, the argv, envv and libs are treated with expanding namespaces.
@@ -111,7 +149,7 @@ until the target/configuration has finished executing.
 For \fBLWA\fR, (currently not implemented, scheduled for 0.6) arcan_lwa will
 be used as a loader, with similar expansion to envv. Libs- list will be ignored.
 
-For \fBRETRO\fR, the fsrv_game frameserver will be used as a chainloader. The
+For \fBGAME\fR, the fsrv_game frameserver will be used as a chainloader. The
 target executable with be expanded into the core to be run, the first (optional)
 argument aded to the \fBconfiguration\fR will be the resource to pass on and the
 seocond (also optional) argument defines the system- path.

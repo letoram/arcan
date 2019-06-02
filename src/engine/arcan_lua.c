@@ -8439,7 +8439,7 @@ static int targetlaunch(lua_State* ctx)
 		arcan_warning("bfrm_lwa() not yet supported\n");
 	break;
 
-	case BFRM_RETRO:
+	case BFRM_GAME:
 		if (lmode != 1){
 			arcan_warning("launch_target(), configuration specified game format"
 			" which is only possible in internal- mode.");
