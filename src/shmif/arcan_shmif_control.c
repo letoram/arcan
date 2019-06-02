@@ -714,7 +714,8 @@ checkfd:
 			case TARGET_COMMAND_BCHUNK_IN:
 			case TARGET_COMMAND_BCHUNK_OUT:
 			case TARGET_COMMAND_NEWSEGMENT:
-				debug_print(DETAILED, c, "got descriptor event");
+				debug_print(DETAILED, c,
+					"got descriptor event (%s)", arcan_shmif_eventstr(dst, NULL, 0));
 				priv->pev.gotev = true;
 				priv->pev.ev = *dst;
 				goto checkfd;
@@ -2007,7 +2008,8 @@ bool arcan_shmif_descrevent(struct arcan_event* ev)
 		TARGET_COMMAND_DEVICE_NODE,
 		TARGET_COMMAND_FONTHINT,
 		TARGET_COMMAND_BCHUNK_IN,
-		TARGET_COMMAND_BCHUNK_OUT
+		TARGET_COMMAND_BCHUNK_OUT,
+		TARGET_COMMAND_NEWSEGMENT
 	};
 
 	for (size_t i = 0; i < COUNT_OF(list); i++){
