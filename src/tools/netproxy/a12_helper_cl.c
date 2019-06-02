@@ -1,10 +1,13 @@
 /*
- * Copyright: 2018, Bjorn Stahl
+ * Copyright: 2018-2019, Bjorn Stahl
  * License: 3-Clause BSD
  * Description: Implements a support wrapper for the a12 function patterns used
  * to implement a single a12- server that translated to an a12- client
  * connection. This is the dispatch function that sets up a managed loop
  * handling one client. Thread or multiprocess it.
+ *
+ * This is the 'real' display server local to remote proxied client, so
+ * events like NEWSEGMENT etc. originate here.
  */
 #include <arcan_shmif.h>
 #include <errno.h>
@@ -14,28 +17,55 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <sys/wait.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <pthread.h>
 
 #include "a12_int.h"
 #include "a12.h"
 #include "a12_helper.h"
 
-struct cl_state {
-	struct arcan_shmif_cont wnd[256];
-	size_t n_segments;
-};
+/* [THREADING]
+ * Same strategy as with a12-helper-srv, we have one main thread that deals with
+ * the socket-in/-out, then we have a processing thread per segment that deals
+ * with the normal event loop and its translation.
+ */
+/* could've gone with an allocation bitmap, not worth the extra effort though*/
+
+#define BEGIN_CRITICAL(X, Y) do{pthread_mutex_lock(&((X)->giant_lock)); (X)->last_lock = Y;} while(0);
+#define END_CRITICAL(X) do{pthread_mutex_unlock(&(X)->giant_lock);} while(0);
+
+struct cl_state{
+	int kill_fd;
+	pthread_mutex_t giant_lock;
+	const char* last_lock;
+	uint8_t alloc[256];
+	_Atomic size_t buffer_out;
+} cl_state;
+
+int get_free_id(struct cl_state* state)
+{
+	for (int i = 0; i < 256; i++)
+		if (!state->alloc[i])
+			return i;
+
+	return -1;
+}
+
+bool spawn_thread(struct a12_state* S,
+	struct cl_state* cl, struct arcan_shmif_cont* c, uint8_t chid);
 
 static void on_cl_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
 	if (!cont){
-		a12int_trace(A12_TRACE_SYSTEM, "ignore incoming event on unknown context");
+		a12int_trace(A12_TRACE_SYSTEM,
+			"ignore incoming event (%s) on unknown context, channel: %d",
+			arcan_shmif_eventstr(ev, NULL, 0), chid
+		);
 		return;
 	}
 	if (arcan_shmif_descrevent(ev)){
-/*
- * Events needed to be handled here:
- * NEWSEGMENT, map it, add it to the context channel list.
- */
 		a12int_trace(A12_TRACE_SYSTEM, "incoming descr- event ignored");
 	}
 	else {
@@ -43,6 +73,182 @@ static void on_cl_event(
 			"client event: %s on ch %d", arcan_shmif_eventstr(ev, NULL, 0), chid);
 		arcan_shmif_enqueue(cont, ev);
 	}
+}
+
+struct shmif_thread_data {
+	struct arcan_shmif_cont* C;
+	struct a12_state* S;
+	struct cl_state* state;
+	uint8_t chid;
+};
+
+static void add_segment(struct shmif_thread_data* data, arcan_event* ev)
+{
+/* hit the 256 window / client limit? just ignore, shmif will cleanup */
+	int chid = get_free_id(&cl_state);
+	if (-1 == chid)
+		return;
+
+/* THREAD-CRITICAL */
+	BEGIN_CRITICAL(data->state, "add-segment");
+		int segkind = ev->tgt.ioevs[2].iv;
+		int cookie = ev->tgt.ioevs[3].iv;
+
+/* send the channel command before actually activating the thread so we don't
+ * risk any ordering issues (thread-preempt -> write before new) */
+		a12_channel_new(data->S, chid, segkind, cookie);
+
+/* temporary on-stack store, real will be alloc:ed in spawn thread */
+		struct arcan_shmif_cont cont =
+			arcan_shmif_acquire(data->C, NULL, segkind, 0);
+
+		if (!cont.addr){
+			a12_set_channel(data->S, chid);
+			a12_channel_close(data->S);
+			goto out;
+		}
+
+		if (!spawn_thread(data->S, data->state, &cont, chid)){
+			a12_set_channel(data->S, chid);
+			a12_channel_close(data->S);
+			arcan_shmif_drop(&cont);
+			goto out;
+		}
+
+/* A12- OUT: this will send the command to the other side that we have a
+ * new segment that may provide or receive data */
+		a12int_trace(A12_TRACE_ALLOC, "new client for channel %"PRIu8, chid);
+
+/* END OF THREAD-CRITICAL */
+out:
+	END_CRITICAL(data->state);
+}
+
+static bool dispatch_event(struct shmif_thread_data* data, arcan_event* ev)
+{
+	bool dirty = false;
+/* we got a descriptor passing event, some of these we could/should discard,
+ * while others need to be forwarded as a binary- chunk stream and kept out-
+ * of order on the other side */
+	if (ev->category == EVENT_TARGET &&
+		ev->tgt.kind == TARGET_COMMAND_NEWSEGMENT){
+		add_segment(data, ev);
+		return true;
+	}
+
+	BEGIN_CRITICAL(data->state, "process-event");
+		if (arcan_shmif_descrevent(ev)){
+			a12int_trace(A12_TRACE_EVENT,
+				"ign-descr-event: %s",
+					arcan_shmif_eventstr(ev, NULL, 0)
+		);
+		}
+		else {
+			a12int_trace(A12_TRACE_EVENT,
+				"enqueue %s", arcan_shmif_eventstr(ev, NULL, 0));
+			a12_set_channel(data->S, data->chid);
+			a12_channel_enqueue(data->S, ev);
+			dirty = true;
+		}
+	END_CRITICAL(data->state);
+
+	return dirty;
+}
+
+static void* client_thread(void* inarg)
+{
+	struct shmif_thread_data* data = inarg;
+	arcan_event newev;
+
+	static const short errmask = POLLERR | POLLNVAL | POLLHUP;
+	struct pollfd fds[2] = {
+		{.fd = data->C->epipe, POLLIN | errmask},
+		{.fd = data->state->kill_fd, errmask}
+	};
+
+/* normal "block then flush" style loop */
+	for(;;){
+
+/* break out and clean-up on pollset error */
+		if (
+				((-1 == poll(fds, 2, -1) && (errno != EAGAIN || errno != EINTR))) ||
+				(fds[0].revents & errmask) || (fds[1].revents & errmask)
+		){
+				break;
+		}
+
+		bool dirty = false;
+		while(arcan_shmif_poll(data->C, &newev) > 0)
+			dirty |= dispatch_event(data, &newev);
+
+/* and ping or die */
+		if (dirty){
+			if (-1 == write(data->state->kill_fd, &data->chid, 1))
+				break;
+		}
+	}
+
+/* free channel resources */
+	BEGIN_CRITICAL(data->state, "client-death");
+		data->state->alloc[data->chid] = 0;
+		a12_set_channel(data->S, data->chid);
+		a12_channel_close(data->S);
+		arcan_shmif_drop(data->C);
+
+/* and if the primary dies, all die */
+		if (data->chid == 0)
+			close(data->state->kill_fd);
+	END_CRITICAL(data->state);
+
+	free(data->C);
+	free(data);
+	return NULL;
+}
+
+bool spawn_thread(struct a12_state* S,
+	struct cl_state* cl, struct arcan_shmif_cont* c, uint8_t chid)
+{
+	struct shmif_thread_data* data = malloc(sizeof(struct shmif_thread_data));
+	if (!data){
+		a12int_trace(A12_TRACE_ALLOC, "could not setup thread data");
+		return false;
+	}
+
+/* alloc/copy context to heap block in order to pass into thread */
+	struct arcan_shmif_cont* cont = malloc(sizeof(struct arcan_shmif_cont));
+	if (!cont){
+		free(data);
+		a12int_trace(A12_TRACE_ALLOC, "could not setup content copy");
+		return false;
+	}
+	*cont = *c;
+	*data = (struct shmif_thread_data){
+		.C = cont,
+		.S = S,
+		.state = cl,
+		.chid = chid
+	};
+
+	a12_set_destination(S, cont, chid);
+
+/* and detach, cleanup is up to each thread */
+	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+
+	if (-1 == pthread_create(&pth, &pthattr, client_thread, data)){
+		BEGIN_CRITICAL(cl, "cleanup-spawn");
+			a12_set_channel(S, chid);
+			a12_channel_close(S);
+			a12int_trace(A12_TRACE_ALLOC, "could not spawn thread");
+		END_CRITICAL(cl);
+		free(data);
+		free(cont);
+		return false;
+	}
+
+	return true;
 }
 
 int a12helper_a12srv_shmifcl(
@@ -58,95 +264,122 @@ int a12helper_a12srv_shmifcl(
 		return -ENOENT;
 	}
 
-/* Channel - connection mapping */
-	struct cl_state cl_state = {};
+	struct cl_state cl = {
+		.giant_lock = PTHREAD_MUTEX_INITIALIZER
+	};
 
-/* Open / set the primary connection */
-	cl_state.wnd[0] = arcan_shmif_open(SEGID_UNKNOWN, SHMIF_NOACTIVATE, NULL);
-	if (!cl_state.wnd[0].addr){
+/* primary segment is created without any type or activation, as it is the remote
+ * client event that will map those events, just spawn a user thread for it */
+	struct arcan_shmif_cont cont =
+		arcan_shmif_open(SEGID_UNKNOWN, SHMIF_NOACTIVATE, NULL);
+
+	if (!cont.addr){
 		a12int_trace(A12_TRACE_SYSTEM, "Couldn't connect to an arcan display server");
 		return -ENOENT;
 	}
-	cl_state.n_segments = 1;
-	a12int_trace(A12_TRACE_SYSTEM, "Segment connected");
 
-	a12_set_destination(S, &cl_state.wnd[0], 0);
+	int pipe_pair[2];
+	if (-1 == pipe(pipe_pair))
+		return -EINVAL;
 
-/* set to non-blocking */
-	int flags = fcntl(fd_in, F_GETFL);
-	fcntl(fd_in, F_SETFL, flags | O_NONBLOCK);
+/* preset channel 0 to primary, it will close the kill_fd write end */
+	cl.alloc[0] = 1;
+	cl.kill_fd = pipe_pair[1];
+	cont.user = &cl;
+	spawn_thread(S, &cl, &cont, 0);
 
-	uint8_t* outbuf;
+	uint8_t inbuf[9000];
+	uint8_t* outbuf = NULL;
 	size_t outbuf_sz = 0;
 	a12int_trace(A12_TRACE_SYSTEM, "got proxy connection, waiting for source");
 
-	int status;
-	while (-1 != (status = a12helper_poll_triple(
-		cl_state.wnd[0].epipe, fd_in, outbuf_sz ? fd_out : -1, 4))){
+/*
+ * Socket in/out liveness, buffer flush / dispatch
+ */
+	size_t n_fd = 2;
+	static const short errmask = POLLERR | POLLNVAL | POLLHUP;
+	struct pollfd fds[3] = {
+		{.fd = fd_in,        .events = POLLIN  | errmask},
+		{.fd = pipe_pair[0], .events = POLLIN  | errmask},
+		{.fd = fd_out,       .events = POLLOUT | errmask}
+	};
 
-		if (status & A12HELPER_WRITE_OUT){
-			if (outbuf_sz || (outbuf_sz = a12_flush(S, &outbuf))){
-				ssize_t nw = write(fd_out, outbuf, outbuf_sz);
-				if (nw > 0){
-					outbuf += nw;
-					outbuf_sz -= nw;
-				}
+	while(-1 != poll(fds, n_fd, -1)){
+		if (
+			(fds[0].revents & errmask) ||
+			(fds[1].revents & errmask) ||
+			(n_fd == 3 && fds[1].revents & errmask)){
+			break;
+		}
+
+	/* flush wakeup data from threads */
+		if (fds[1].revents){
+			if (a12_trace_targets & A12_TRACE_TRANSFER){
+				BEGIN_CRITICAL(&cl, "flush-iopipe");
+					a12int_trace(
+						A12_TRACE_TRANSFER, "client thread wakeup");
+				END_CRITICAL(&cl);
+			}
+
+			read(fds[1].fd, inbuf, 9000);
+		}
+
+/* pending out, flush or grab next out buffer */
+		if (n_fd == 3 && (fds[2].revents & POLLOUT) && outbuf_sz){
+			ssize_t nw = write(fd_out, outbuf, outbuf_sz);
+
+			if (a12_trace_targets & A12_TRACE_TRANSFER){
+				BEGIN_CRITICAL(&cl, "buffer-out");
+					a12int_trace(
+						A12_TRACE_TRANSFER, "send %zd (left %zu) bytes", nw, outbuf_sz);
+				END_CRITICAL(&cl);
+			}
+
+			if (nw > 0){
+				outbuf += nw;
+				outbuf_sz -= nw;
 			}
 		}
 
-		if (status & A12HELPER_DATA_IN){
-			uint8_t inbuf[9000];
-			ssize_t nr = read(fd_in, inbuf, 9000);
+/* grab the lock from the other threads, unpack the data (which in turn will
+ * trigger on_cl_event, the lock is held while that happens */
+		if (fds[0].revents & POLLIN){
+			ssize_t nr = recv(fd_in, inbuf, 9000, 0);
 			if (-1 == nr && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR){
-				a12int_trace(A12_TRACE_SYSTEM, "failed to read from input: %d", errno);
+				BEGIN_CRITICAL(&cl, "read-buffer");
+					a12int_trace(A12_TRACE_SYSTEM, "failed to read from input: %d", errno);
+				END_CRITICAL(&cl);
+				break;
+			}
+/* we are not really interested in the 'half-open' scenario as the session is
+ * interactive by defintion, so it is reasonably safe to just break here and
+ * close the synchronization pipe */
+			else if (0 == nr){
+				BEGIN_CRITICAL(&cl, "read-buffer");
+					a12int_trace(A12_TRACE_SYSTEM, "other side closed the connection");
+				END_CRITICAL(&cl);
 				break;
 			}
 
-			a12int_trace(A12_TRACE_BTRANSFER, "unpack %zd bytes", nr);
-			a12_unpack(S, inbuf, nr, NULL, on_cl_event);
+			BEGIN_CRITICAL(&cl, "unpack-buffer");
+				a12int_trace(A12_TRACE_BTRANSFER, "unpack %zd bytes", nr);
+				a12_unpack(S, inbuf, nr, NULL, on_cl_event);
+			END_CRITICAL(&cl);
 		}
 
-/* 1 client can have multiple segments */
-		for (size_t i = 0, count = cl_state.n_segments; i < 256 && count; i++){
-			if (!cl_state.wnd[i].addr)
-				continue;
-
-			count--;
-			struct arcan_event newev;
-			int sc;
-			while (( sc = arcan_shmif_poll(&cl_state.wnd[i], &newev)) > 0){
-/* we got a descriptor passing event, some of these we could/should discard,
- * while others need to be forwarded as a binary- chunk stream and kept out-
- * of order on the other side */
-				if (arcan_shmif_descrevent(&newev)){
-					a12int_trace(A12_TRACE_EVENT,
-						"(cl:%zu) ign-descr-event: %s",
-						i, arcan_shmif_eventstr(&newev, NULL, 0)
-					);
-				}
-				else {
-					a12int_trace(A12_TRACE_EVENT,
-						"enqueue %s", arcan_shmif_eventstr(&newev, NULL, 0));
-					a12_channel_enqueue(S, &newev);
-				}
-			}
-		}
-
-/* we might have gotten data to flush, so use that as feedback */
+/* refill outgoing buffer if there is something left */
 		if (!outbuf_sz){
-			outbuf_sz = a12_flush(S, &outbuf);
-			if (outbuf_sz)
-				a12int_trace(A12_TRACE_BTRANSFER, "output buffer size: %zu", outbuf_sz);
+			BEGIN_CRITICAL(&cl, "step-buffer");
+				outbuf_sz = a12_flush(S, &outbuf);
+			END_CRITICAL(&cl);
 		}
+
+/* poll accordingly */
+		n_fd = outbuf_sz > 0 ? 3 : 2;
 	}
 
-/* though a proper cleanup would cascade, it doesn't help being careful */
-	for (size_t i = 0, count = cl_state.n_segments; i < 256 && count; i++){
-		if (!cl_state.wnd[i].addr)
-				continue;
-		arcan_shmif_drop(&cl_state.wnd[i]);
-		cl_state.wnd[i].addr = NULL;
-	}
-
+/* just spin until the rest understand */
+	close(pipe_pair[0]);
+	while(!a12_free(S)){}
 	return 0;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright: 2017-2018, Björn Ståhl
+ * Copyright: 2017-2019, Björn Ståhl
  * Description: A12 protocol state machine
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: https://arcan-fe.com
@@ -13,13 +13,6 @@
 #include "a12_int.h"
 #include "a12.h"
 #include "a12_encode.h"
-
-#ifdef LOG_FRAME_OUTPUT
-#define STB_IMAGE_WRITE_STATIC
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#define STB_IMAGE_IMPLEMENTATION
-#include "../../engine/external/stb_image_write.h"
-#endif
 
 /*
  * create the control packet
@@ -114,16 +107,6 @@ void a12int_encode_araw(struct a12_state* S,
 	for (size_t i = 0; i < n_samples; i++, pos += 2){
 		pack_s16(buf[i], &outb[pos]);
 	}
-
-	static FILE* fpeka;
-	if (!fpeka)
-		fpeka = fopen("/tmp/inb.raw", "w+");
-	fwrite(buf, n_samples * 2, 1, fpeka);
-
-	static FILE* fpeko;
-	if (!fpeko)
-		fpeko = fopen("/tmp/outb.raw", "w+");
-	fwrite(&outb[hdr_sz], pos - hdr_sz, 1, fpeko);
 
 /* then split it up (though likely we get fed much smaller chunks) */
 	a12int_append_out(S,
@@ -460,17 +443,6 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 	}
 
 	size_t out_sz;
-#ifdef LOG_FRAME_OUTPUT
-	static int count;
-	char fn[26];
-	snprintf(fn, 26, "deltaz_%d.png", count++);
-	FILE* fpek = fopen(fn, "w");
-	void* fbuf =
-		tdefl_write_image_to_png_file_in_memory(compress_in, *w, *h, 3, &out_sz);
-	fwrite(fbuf, out_sz, 1, fpek);
-	fclose(fpek);
-	free(fbuf);
-#endif
 
 	uint8_t* buf = tdefl_compress_mem_to_heap(
 			compress_in, compress_in_sz, &out_sz, 0);

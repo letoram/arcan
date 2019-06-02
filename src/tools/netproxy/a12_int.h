@@ -54,11 +54,10 @@ enum control_commands {
 	COMMAND_SHUTDOWN = 1,
 	COMMAND_NEWCH = 2,
 	COMMAND_CANCELSTREAM = 3,
-	COMMAND_FAILURE = 4,
-	COMMAND_VIDEOFRAME = 5,
-	COMMAND_AUDIOFRAME = 6,
-	COMMAND_BINARYSTREAM = 7,
-	COMMAND_PING = 8,
+	COMMAND_VIDEOFRAME = 4,
+	COMMAND_AUDIOFRAME = 5,
+	COMMAND_BINARYSTREAM = 6,
+	COMMAND_PING = 7,
 };
 
 #define SEQUENCE_NUMBER_SIZE 8
@@ -189,8 +188,12 @@ struct a12_state {
 #endif
 		};
 	} channels[256];
+	int out_channel;
 	int in_channel;
-	uint8_t out_channel;
+
+/* There is no "out_channel" as that state is thread-local
+ * modified via the a12_channel_setid. */
+	pthread_mutex_t outbuf_synch;
 
 /*
  * incoming buffer, size of the buffer == size of the type
