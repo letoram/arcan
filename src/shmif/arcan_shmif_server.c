@@ -5,16 +5,6 @@
 #include <math.h>
 
 /*
- * basic checklist:
- *  [ ] resize / resynch
- *  [ ] video buffer transfers
- *  [ ] audio buffer transfers
- *  [ ] subsegment allocation
- *  [ ] configure flags
- *  [ ] spawn internal
- */
-
-/*
  * This is needed in order to re-use some of the platform layer functions that
  * are rather heavy. This lib act as a replacement for the things that are in
  * engine/arcan_frameserver.c though.
@@ -328,11 +318,6 @@ void shmifsrv_set_protomask(struct shmifsrv_client* cl, unsigned mask)
 	cl->con->metamask = mask;
 }
 
-void shmifsrv_audio_step(struct shmifsrv_client* cl)
-{
-
-}
-
 void shmifsrv_video_step(struct shmifsrv_client* cl)
 {
 /* signal that we're done with the buffer */
@@ -438,36 +423,51 @@ bool shmifsrv_process_event(struct shmifsrv_client* cl, struct arcan_event* ev)
 	return false;
 }
 
-void shmifsrv_audio(struct shmifsrv_client* cl,
+bool shmifsrv_audio(struct shmifsrv_client* cl,
 	void (*on_buffer)(shmif_asample* buf,
 		size_t n_samples, unsigned channels, unsigned rate, void* tag), void* tag)
 {
-	volatile int ind = atomic_load(&cl->con->shm.ptr->aready) - 1;
-	volatile int amask = atomic_load(&cl->con->shm.ptr->apending);
+	struct arcan_shmif_page* src = cl->con->shm.ptr;
+	volatile int ind = atomic_load(&src->aready) - 1;
+	volatile int amask = atomic_load(&src->apending);
 
-/* sanity check, untrusted source
-	if (ind >= src->abuf_cnt || ind < 0){
-		platform_fsrv_leave(src);
-		return ARCAN_ERRC_NOTREADY;
+/* invalid indice, bad client */
+	if (ind >= cl->con->abuf_cnt || ind < 0){
+		return false;
 	}
 
+/* not readyy but signaled */
+	if (0 == amask || ((1 << ind) & amask) == 0){
+		atomic_store_explicit(&src->aready, 0, memory_order_release);
+		arcan_sem_post(cl->con->async);
+		return true;
+	}
+
+/* find oldest buffer */
 	int i = ind, prev;
 	do {
 		prev = i;
 		i--;
 		if (i < 0)
-			i = src->abuf_cnt-1;
+			i = cl->con->abuf_cnt-1;
 	} while (i != ind && ((1<<i)&amask) > 0);
 
-  sweep from oldest buffer (prev) up to i, yield to on_buffer, mask as consumed
 
-	atomic_store(&src->shm.ptr->abufused[prev], 0);
-	int last = atomic_fetch_and_explicit(&src->shm.ptr->apending,
-		~(1 << prev), memory_order_release);
-*/
+/* forward to the callback */
+	if (on_buffer && src->abufused[prev]){
+		on_buffer(cl->con->abufs[prev], src->abufused[prev],
+			cl->con->desc.channels, cl->con->desc.samplerate, tag);
+	}
 
-	atomic_store_explicit(&cl->con->shm.ptr->aready, 0, memory_order_release);
+/* mark as consumed */
+	atomic_store(&src->abufused[prev], 0);
+	int last = atomic_fetch_and_explicit(
+		&src->apending, ~(1 << prev), memory_order_release);
+
+/* and release the client */
+	atomic_store_explicit(&src->aready, 0, memory_order_release);
 	arcan_sem_post(cl->con->async);
+	return true;
 }
 
 bool shmifsrv_tick(struct shmifsrv_client* cl)

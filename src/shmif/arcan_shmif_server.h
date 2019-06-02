@@ -277,8 +277,10 @@ void shmifsrv_video_step(struct shmifsrv_client*);
  * Flush all pending buffers to the provided drain function. In contrast to
  * _video_step this function has an implicit step stage so all known buffers
  * will be flushed and a waiting client will be woken up.
+ *
+ * Returns false is the indices are out of negotiated bounds or corrupt.
  */
-void shmifsrv_audio(struct shmifsrv_client* cl,
+bool shmifsrv_audio(struct shmifsrv_client* cl,
 	void (*on_buffer)(shmif_asample* buf,
 		size_t n_samples, unsigned channels, unsigned rate, void* tag), void* tag);
 
