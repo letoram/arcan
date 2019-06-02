@@ -145,91 +145,113 @@ const static int MOUSE_PROTO = MOUSE_SGR | MOUSE_X10 | MOUSE_RXVT;
 #define FLAG_PASTE_BRACKET 0x00040000 /* Bracketed Paste mode */
 
 static uint8_t color_palette[VTE_COLOR_NUM][3] = {
-	[VTE_COLOR_BLACK]         = {   0,   0,   0 }, /* black */
-	[VTE_COLOR_RED]           = { 205,   0,   0 }, /* red */
-	[VTE_COLOR_GREEN]         = {   0, 205,   0 }, /* green */
-	[VTE_COLOR_YELLOW]        = { 205, 205,   0 }, /* yellow */
-	[VTE_COLOR_BLUE]          = {   0,   0, 238 }, /* blue */
-	[VTE_COLOR_MAGENTA]       = { 205,   0, 205 }, /* magenta */
-	[VTE_COLOR_CYAN]          = {   0, 205, 205 }, /* cyan */
-	[VTE_COLOR_LIGHT_GREY]    = { 229, 229, 229 }, /* light grey */
-	[VTE_COLOR_DARK_GREY]     = { 127, 127, 127 }, /* dark grey */
-	[VTE_COLOR_LIGHT_RED]     = { 255,   0,   0 }, /* light red */
-	[VTE_COLOR_LIGHT_GREEN]   = {   0, 255,   0 }, /* light green */
-	[VTE_COLOR_LIGHT_YELLOW]  = { 255, 255,   0 }, /* light yellow */
-	[VTE_COLOR_LIGHT_BLUE]    = {  92,  92, 255 }, /* light blue */
-	[VTE_COLOR_LIGHT_MAGENTA] = { 255,   0, 255 }, /* light magenta */
-	[VTE_COLOR_LIGHT_CYAN]    = {   0, 255, 255 }, /* light cyan */
-	[VTE_COLOR_WHITE]         = { 255, 255, 255 }, /* white */
+	[VTE_COLOR_BLACK]         = {   0,   0,   0 },
+	[VTE_COLOR_RED]           = { 205,   0,   0 },
+	[VTE_COLOR_GREEN]         = {   0, 205,   0 },
+	[VTE_COLOR_YELLOW]        = { 205, 205,   0 },
+	[VTE_COLOR_BLUE]          = {   0,   0, 238 },
+	[VTE_COLOR_MAGENTA]       = { 205,   0, 205 },
+	[VTE_COLOR_CYAN]          = {   0, 205, 205 },
+	[VTE_COLOR_LIGHT_GREY]    = { 229, 229, 229 },
+	[VTE_COLOR_DARK_GREY]     = { 127, 127, 127 },
+	[VTE_COLOR_LIGHT_RED]     = { 255,   0,   0 },
+	[VTE_COLOR_LIGHT_GREEN]   = {   0, 255,   0 },
+	[VTE_COLOR_LIGHT_YELLOW]  = { 255, 255,   0 },
+	[VTE_COLOR_LIGHT_BLUE]    = {  92,  92, 255 },
+	[VTE_COLOR_LIGHT_MAGENTA] = { 255,   0, 255 },
+	[VTE_COLOR_LIGHT_CYAN]    = {   0, 255, 255 },
+	[VTE_COLOR_WHITE]         = { 255, 255, 255 },
 
-	[VTE_COLOR_FOREGROUND]    = { 229, 229, 229 }, /* light grey */
-	[VTE_COLOR_BACKGROUND]    = {   0,   0,   0 }, /* black */
+	[VTE_COLOR_FOREGROUND]    = { 229, 229, 229 },
+	[VTE_COLOR_BACKGROUND]    = {   0,   0,   0 },
 };
 
 static uint8_t color_palette_solarized[VTE_COLOR_NUM][3] = {
-	[VTE_COLOR_BLACK]         = {   7,  54,  66 }, /* black */
-	[VTE_COLOR_RED]           = { 220,  50,  47 }, /* red */
-	[VTE_COLOR_GREEN]         = { 133, 153,   0 }, /* green */
-	[VTE_COLOR_YELLOW]        = { 181, 137,   0 }, /* yellow */
-	[VTE_COLOR_BLUE]          = {  38, 139, 210 }, /* blue */
-	[VTE_COLOR_MAGENTA]       = { 211,  54, 130 }, /* magenta */
-	[VTE_COLOR_CYAN]          = {  42, 161, 152 }, /* cyan */
-	[VTE_COLOR_LIGHT_GREY]    = { 238, 232, 213 }, /* light grey */
-	[VTE_COLOR_DARK_GREY]     = {   0,  43,  54 }, /* dark grey */
-	[VTE_COLOR_LIGHT_RED]     = { 203,  75,  22 }, /* light red */
-	[VTE_COLOR_LIGHT_GREEN]   = {  88, 110, 117 }, /* light green */
-	[VTE_COLOR_LIGHT_YELLOW]  = { 101, 123, 131 }, /* light yellow */
-	[VTE_COLOR_LIGHT_BLUE]    = { 131, 148, 150 }, /* light blue */
-	[VTE_COLOR_LIGHT_MAGENTA] = { 108, 113, 196 }, /* light magenta */
-	[VTE_COLOR_LIGHT_CYAN]    = { 147, 161, 161 }, /* light cyan */
-	[VTE_COLOR_WHITE]         = { 253, 246, 227 }, /* white */
+	[VTE_COLOR_BLACK]         = {   7,  54,  66 },
+	[VTE_COLOR_RED]           = { 220,  50,  47 },
+	[VTE_COLOR_GREEN]         = { 133, 153,   0 },
+	[VTE_COLOR_YELLOW]        = { 181, 137,   0 },
+	[VTE_COLOR_BLUE]          = {  38, 139, 210 },
+	[VTE_COLOR_MAGENTA]       = { 211,  54, 130 },
+	[VTE_COLOR_CYAN]          = {  42, 161, 152 },
+	[VTE_COLOR_LIGHT_GREY]    = { 238, 232, 213 },
+	[VTE_COLOR_DARK_GREY]     = {   0,  43,  54 },
+	[VTE_COLOR_LIGHT_RED]     = { 203,  75,  22 },
+	[VTE_COLOR_LIGHT_GREEN]   = {  88, 110, 117 },
+	[VTE_COLOR_LIGHT_YELLOW]  = { 101, 123, 131 },
+	[VTE_COLOR_LIGHT_BLUE]    = { 131, 148, 150 },
+	[VTE_COLOR_LIGHT_MAGENTA] = { 108, 113, 196 },
+	[VTE_COLOR_LIGHT_CYAN]    = { 147, 161, 161 },
+	[VTE_COLOR_WHITE]         = { 253, 246, 227 },
 
-	[VTE_COLOR_FOREGROUND]    = { 238, 232, 213 }, /* light grey */
-	[VTE_COLOR_BACKGROUND]    = {   7,  54,  66 }, /* black */
+	[VTE_COLOR_FOREGROUND]    = { 238, 232, 213 },
+	[VTE_COLOR_BACKGROUND]    = {   7,  54,  66 },
 };
 
 static uint8_t color_palette_solarized_black[VTE_COLOR_NUM][3] = {
-	[VTE_COLOR_BLACK]         = {   0,   0,   0 }, /* black */
-	[VTE_COLOR_RED]           = { 220,  50,  47 }, /* red */
-	[VTE_COLOR_GREEN]         = { 133, 153,   0 }, /* green */
-	[VTE_COLOR_YELLOW]        = { 181, 137,   0 }, /* yellow */
-	[VTE_COLOR_BLUE]          = {  38, 139, 210 }, /* blue */
-	[VTE_COLOR_MAGENTA]       = { 211,  54, 130 }, /* magenta */
-	[VTE_COLOR_CYAN]          = {  42, 161, 152 }, /* cyan */
-	[VTE_COLOR_LIGHT_GREY]    = { 238, 232, 213 }, /* light grey */
-	[VTE_COLOR_DARK_GREY]     = {   0,  43,  54 }, /* dark grey */
-	[VTE_COLOR_LIGHT_RED]     = { 203,  75,  22 }, /* light red */
-	[VTE_COLOR_LIGHT_GREEN]   = {  88, 110, 117 }, /* light green */
-	[VTE_COLOR_LIGHT_YELLOW]  = { 101, 123, 131 }, /* light yellow */
-	[VTE_COLOR_LIGHT_BLUE]    = { 131, 148, 150 }, /* light blue */
-	[VTE_COLOR_LIGHT_MAGENTA] = { 108, 113, 196 }, /* light magenta */
-	[VTE_COLOR_LIGHT_CYAN]    = { 147, 161, 161 }, /* light cyan */
-	[VTE_COLOR_WHITE]         = { 253, 246, 227 }, /* white */
+	[VTE_COLOR_BLACK]         = {   0,   0,   0 },
+	[VTE_COLOR_RED]           = { 220,  50,  47 },
+	[VTE_COLOR_GREEN]         = { 133, 153,   0 },
+	[VTE_COLOR_YELLOW]        = { 181, 137,   0 },
+	[VTE_COLOR_BLUE]          = {  38, 139, 210 },
+	[VTE_COLOR_MAGENTA]       = { 211,  54, 130 },
+	[VTE_COLOR_CYAN]          = {  42, 161, 152 },
+	[VTE_COLOR_LIGHT_GREY]    = { 238, 232, 213 },
+	[VTE_COLOR_DARK_GREY]     = {   0,  43,  54 },
+	[VTE_COLOR_LIGHT_RED]     = { 203,  75,  22 },
+	[VTE_COLOR_LIGHT_GREEN]   = {  88, 110, 117 },
+	[VTE_COLOR_LIGHT_YELLOW]  = { 101, 123, 131 },
+	[VTE_COLOR_LIGHT_BLUE]    = { 131, 148, 150 },
+	[VTE_COLOR_LIGHT_MAGENTA] = { 108, 113, 196 },
+	[VTE_COLOR_LIGHT_CYAN]    = { 147, 161, 161 },
+	[VTE_COLOR_WHITE]         = { 253, 246, 227 },
 
-	[VTE_COLOR_FOREGROUND]    = { 238, 232, 213 }, /* light grey */
-	[VTE_COLOR_BACKGROUND]    = {   0,   0,   0 }, /* black */
+	[VTE_COLOR_FOREGROUND]    = { 238, 232, 213 },
+	[VTE_COLOR_BACKGROUND]    = {   0,   0,   0 },
 };
 
 static uint8_t color_palette_solarized_white[VTE_COLOR_NUM][3] = {
-	[VTE_COLOR_BLACK]         = {   7,  54,  66 }, /* black */
-	[VTE_COLOR_RED]           = { 220,  50,  47 }, /* red */
-	[VTE_COLOR_GREEN]         = { 133, 153,   0 }, /* green */
-	[VTE_COLOR_YELLOW]        = { 181, 137,   0 }, /* yellow */
-	[VTE_COLOR_BLUE]          = {  38, 139, 210 }, /* blue */
-	[VTE_COLOR_MAGENTA]       = { 211,  54, 130 }, /* magenta */
-	[VTE_COLOR_CYAN]          = {  42, 161, 152 }, /* cyan */
-	[VTE_COLOR_LIGHT_GREY]    = { 238, 232, 213 }, /* light grey */
-	[VTE_COLOR_DARK_GREY]     = {   0,  43,  54 }, /* dark grey */
-	[VTE_COLOR_LIGHT_RED]     = { 203,  75,  22 }, /* light red */
-	[VTE_COLOR_LIGHT_GREEN]   = {  88, 110, 117 }, /* light green */
-	[VTE_COLOR_LIGHT_YELLOW]  = { 101, 123, 131 }, /* light yellow */
-	[VTE_COLOR_LIGHT_BLUE]    = { 131, 148, 150 }, /* light blue */
-	[VTE_COLOR_LIGHT_MAGENTA] = { 108, 113, 196 }, /* light magenta */
-	[VTE_COLOR_LIGHT_CYAN]    = { 147, 161, 161 }, /* light cyan */
-	[VTE_COLOR_WHITE]         = { 253, 246, 227 }, /* white */
+	[VTE_COLOR_BLACK]         = {   7,  54,  66 },
+	[VTE_COLOR_RED]           = { 220,  50,  47 },
+	[VTE_COLOR_GREEN]         = { 133, 153,   0 },
+	[VTE_COLOR_YELLOW]        = { 181, 137,   0 },
+	[VTE_COLOR_BLUE]          = {  38, 139, 210 },
+	[VTE_COLOR_MAGENTA]       = { 211,  54, 130 },
+	[VTE_COLOR_CYAN]          = {  42, 161, 152 },
+	[VTE_COLOR_LIGHT_GREY]    = { 238, 232, 213 },
+	[VTE_COLOR_DARK_GREY]     = {   0,  43,  54 },
+	[VTE_COLOR_LIGHT_RED]     = { 203,  75,  22 },
+	[VTE_COLOR_LIGHT_GREEN]   = {  88, 110, 117 },
+	[VTE_COLOR_LIGHT_YELLOW]  = { 101, 123, 131 },
+	[VTE_COLOR_LIGHT_BLUE]    = { 131, 148, 150 },
+	[VTE_COLOR_LIGHT_MAGENTA] = { 108, 113, 196 },
+	[VTE_COLOR_LIGHT_CYAN]    = { 147, 161, 161 },
+	[VTE_COLOR_WHITE]         = { 253, 246, 227 },
 
-	[VTE_COLOR_FOREGROUND]    = {   7,  54,  66 }, /* black */
-	[VTE_COLOR_BACKGROUND]    = { 238, 232, 213 }, /* light grey */
+	[VTE_COLOR_FOREGROUND]    = {   7,  54,  66 },
+	[VTE_COLOR_BACKGROUND]    = { 238, 232, 213 },
+};
+
+static uint8_t color_palette_srcery[VTE_COLOR_NUM][3] = {
+	[VTE_COLOR_BLACK]         = {  28,  27,  25 },
+	[VTE_COLOR_RED]           = { 239,  47,  39 },
+	[VTE_COLOR_GREEN]         = {  81, 159,  80 },
+	[VTE_COLOR_YELLOW]        = { 251, 184,  41 },
+	[VTE_COLOR_BLUE]          = {  44, 120, 190 },
+	[VTE_COLOR_MAGENTA]       = { 224,  44, 109 },
+	[VTE_COLOR_CYAN]          = {  10, 174, 179 },
+	[VTE_COLOR_LIGHT_GREY]    = { 145, 129, 117 },
+	[VTE_COLOR_DARK_GREY]     = {  45,  44,  41 },
+	[VTE_COLOR_LIGHT_RED]     = { 247,  83,  65 },
+	[VTE_COLOR_LIGHT_GREEN]   = { 152, 188,  55 },
+	[VTE_COLOR_LIGHT_YELLOW]  = { 254, 208, 110 },
+	[VTE_COLOR_LIGHT_BLUE]    = { 104, 168, 228 },
+	[VTE_COLOR_LIGHT_MAGENTA] = { 255,  92, 143 },
+	[VTE_COLOR_LIGHT_CYAN]    = {  83, 253, 233 },
+	[VTE_COLOR_WHITE]         = { 252, 232, 195 },
+
+	[VTE_COLOR_FOREGROUND]    = {0xfc,0xe8,0xc3 },
+	[VTE_COLOR_BACKGROUND]    = {0x12,0x12,0x12 },
 };
 
 static uint8_t (*get_palette(struct tsm_vte *vte))[3]
@@ -243,6 +265,8 @@ static uint8_t (*get_palette(struct tsm_vte *vte))[3]
 		return color_palette_solarized_black;
 	if (!strcmp(vte->palette_name, "solarized-white"))
 		return color_palette_solarized_white;
+	if (!strcmp(vte->palette_name, "srcery"))
+		return color_palette_srcery;
 
 	return color_palette;
 }
