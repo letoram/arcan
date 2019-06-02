@@ -1,1 +1,1 @@
-{"version":1,"ops":[{"author":{"id":"9eb510892d1accc0c715d21128d216b2e6f74967"},"files":null,"message":"The _reset card function should already work well for rebuilding the context in\nthe event of some loss. What is missing is checking the GL/EGL state and\nforward as a reset/devicehint event to connected frameservers.","timestamp":1559453635,"title":"(egl-dri) use KHR_context_robustness","type":1}]}
+{"version":1,"ops":[{"added":["enhancement"],"author":{"id":"9eb510892d1accc0c715d21128d216b2e6f74967"},"removed":null,"timestamp":1559453653,"type":5}]}
