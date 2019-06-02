@@ -73,7 +73,7 @@
  * must be 0 < PP_QUEUE_SZ < 256
  */
 #ifndef PP_QUEUE_SZ
-#define PP_QUEUE_SZ 32
+#define PP_QUEUE_SZ 255
 #endif
 static const int ARCAN_SHMIF_QUEUE_SZ = PP_QUEUE_SZ;
 
