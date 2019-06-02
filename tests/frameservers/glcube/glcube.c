@@ -24,9 +24,13 @@
 
 /* Based on a egl cube test app originally written by Arvin Schnell */
 
+/*
+ * This takes the good ol' egl-cube to try some different kinds of accelerated
+ * windows setups, mostly for stress/resize/gpu-swap testing and debugging.
+ */
 #define WANT_ARCAN_SHMIF_HELPER
 #include <arcan_shmif.h>
-extern arcan_log_destination(FILE* outf, int level);
+extern void arcan_log_destination(FILE* outf, int level);
 #include <inttypes.h>
 
 #ifdef __APPLE__
@@ -40,10 +44,13 @@ extern arcan_log_destination(FILE* outf, int level);
 #include <GLES3/gl3.h>
 #include <GLES3/gl3ext.h>
 #else
+#define GL_GLEXT_PROTOTYPES
 #include <GL/gl.h>
+#include <GL/glext.h>
 #endif
 #endif
 
+#include <pthread.h>
 #include "esUtil.h"
 
 static struct {
@@ -286,7 +293,7 @@ static int init_gl(void)
 
 	return 0;
 }
-static void draw(struct arcan_shmif_cont* con, uint32_t i)
+static void draw(struct arcan_shmif_cont* con, size_t i)
 {
 	ESMatrix modelview;
 	/* clear the color buffer */
@@ -333,24 +340,45 @@ static void draw(struct arcan_shmif_cont* con, uint32_t i)
 	glDrawArrays(GL_TRIANGLE_STRIP, 20, 4);
 }
 
-/*
- * Setup one accelerated GL connection (subdivided it like this to
- * be able to test multiple connections from the same process and
- * from multiple threads)
- */
-static struct arcan_shmif_cont* setup_connection()
+static bool pump_connection(struct arcan_shmif_cont* con, size_t* i)
 {
-	struct arg_arr* aarr;
-	struct arcan_shmif_cont con = arcan_shmif_open(SEGID_GAME,
-		SHMIF_ACQUIRE_FATALFAIL, &aarr);
-	struct arcan_shmif_cont* res = malloc(sizeof(struct arcan_shmif_cont));
+	arcan_event ev;
 
-/* just give us render-node,depths,etc. based on what the connection wants */
-	struct arcan_shmifext_setup defs = arcan_shmifext_defaults(&con);
-	defs.builtin_fbo = 2;
+	int ps;
+	arcan_shmifext_make_current(con);
+
+	while ( (ps = arcan_shmif_poll(con, &ev) ) > 0){
+		switch (ev.tgt.kind){
+		case TARGET_COMMAND_DISPLAYHINT:
+			if (ev.tgt.ioevs[0].iv && ev.tgt.ioevs[1].iv &&
+				(ev.tgt.ioevs[0].iv != con->w || ev.tgt.ioevs[1].iv != con->h)){
+				arcan_shmif_resize(con, ev.tgt.ioevs[0].iv, ev.tgt.ioevs[1].iv);
+			}
+		break;
+		default:
+		break;
+		}
+	}
+
+	if (ps == -1)
+		return false;
+
+	(*i)++;
+	draw(con, *i);
+	glFinish();
+
+	arcan_shmifext_signal(con, 0, SHMIF_SIGVID, SHMIFEXT_BUILTIN);
+	return true;
+}
+
+static struct arcan_shmif_cont* setup_segment(
+	struct arcan_shmif_cont* res, struct arcan_shmif_cont* parent)
+{
+	struct arcan_shmifext_setup defs = arcan_shmifext_defaults(NULL);
+	defs.builtin_fbo = 1;
 
 /* try to set it up */
-	enum shmifext_setup_status status = arcan_shmifext_setup(&con, defs);
+	enum shmifext_setup_status status = arcan_shmifext_setup(res, defs);
 
 	if (status != SHMIFEXT_OK){
 		printf("couldn't setup headless-GL, error: %d\n", status);
@@ -358,64 +386,128 @@ static struct arcan_shmif_cont* setup_connection()
 	}
 
 /* activate / switch to this context */
-	arcan_shmifext_make_current(&con);
+	arcan_shmifext_make_current(res);
 	init_gl();
 
 	glClearColor(0.5, 0.5, 0.5, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 	glFinish();
-	arcan_shmifext_signal(&con, 0, SHMIF_SIGVID, SHMIFEXT_BUILTIN);
+	arcan_shmifext_signal(res, 0, SHMIF_SIGVID, SHMIFEXT_BUILTIN);
 
-	*res = con;
 	return res;
 }
 
-static bool pump_connection(struct arcan_shmif_cont* con, int* i)
+/*
+ * Setup one accelerated GL connection (subdivided it like this to
+ * be able to test multiple connections from the same process and
+ * from multiple threads)
+ */
+static struct arcan_shmif_cont* setup_connection(struct arcan_shmif_cont* parent)
 {
-	arcan_event ev;
-	int ps = arcan_shmif_poll(con, &ev);
-	if (ps < 0)
-		return false;
+	struct arg_arr* aarr;
+	struct arcan_shmif_cont* res = malloc(sizeof(struct arcan_shmif_cont));
+	*res = (struct arcan_shmif_cont){};
 
-	switch (ev.tgt.kind){
-	case TARGET_COMMAND_DISPLAYHINT:
-		if (ev.tgt.ioevs[0].iv && ev.tgt.ioevs[1].iv &&
-			(ev.tgt.ioevs[0].iv != con->w || ev.tgt.ioevs[1].iv != con->h)){
-			arcan_shmif_resize(con, ev.tgt.ioevs[0].iv, ev.tgt.ioevs[1].iv);
+	if (parent){
+		printf("requesting new subsegment\n");
+		arcan_shmif_enqueue(parent,
+		&(struct arcan_event){
+			.category = EVENT_EXTERNAL,
+			.ext.kind = EVENT_EXTERNAL_SEGREQ,
+			.ext.segreq.kind = SEGID_GAME
+		});
+		arcan_event ev;
+		while (arcan_shmif_wait(parent, &ev)){
+			if (ev.category != EVENT_TARGET)
+				continue;
+			if (ev.tgt.kind == TARGET_COMMAND_REQFAIL){
+				fprintf(stderr, "request-failed on new segment request\n");
+				return res;
+			}
+			if (ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT){
+				fprintf(stderr, "mapped new subsegment\n");
+				*res = arcan_shmif_acquire(parent, NULL, SEGID_GAME, 0);
+				break;
+			}
 		}
-	break;
-	default:
-	break;
+	}
+	else{
+		printf("opening new connection\n");
+		*(res) = arcan_shmif_open(SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL, &aarr);
+		if (!res->addr){
+			fprintf(stderr, "shmif-open failed\n");
+			return res;
+		}
 	}
 
-	arcan_shmifext_make_current(con);
-	fprintf(stderr, "context current, draw frame\n");
-	draw(con, (*i)++);
-	glFinish();
-	fprintf(stderr, "drawn, signal\n");
-	arcan_shmifext_signal(con, 0, SHMIF_SIGVID, SHMIFEXT_BUILTIN);
-	return true;
+	return setup_segment(res, parent ? parent : res);
+}
+
+static void* client_thread(void* arg)
+{
+	struct arcan_shmif_cont* cont = arg;
+	size_t i = 0;
+	while(pump_connection(cont, &i)){}
+	arcan_shmif_drop(cont);
+	return NULL;
+}
+
+static void setup_connection_thread(struct arcan_shmif_cont* parent)
+{
+	struct arcan_shmif_cont* cont = setup_connection(parent);
+	if (!cont)
+		return;
+
+	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	pthread_create(&pth, &pthattr, client_thread, cont);
 }
 
 int main(int argc, char *argv[])
 {
 	int n_conn = 1;
 	arcan_log_destination(stderr, 0);
+	printf("glcube n_conn [mode, 0: serial, 1: serial-subseg 2: threaded, 3: threaded-subseg]\n");
 
 	if (argc > 1){
 		n_conn = strtoul(argv[1], NULL, 10);
 	}
 
-	struct arcan_shmif_cont* con[n_conn];
-	int state[n_conn];
+	int mode = 0;
+	if (argc > 2)
+		mode = strtoul(argv[2], NULL, 10);
 
-	for (size_t i = 0; i < n_conn; i++){
-		con[i] = setup_connection();
-		if (!con[i]){
-			fprintf(stderr, "couldn't setup connection (%zu)\n", i);
-			return EXIT_FAILURE;
+	if (n_conn <= 0){
+		printf("n_conn <= 0\n");
+		return EXIT_FAILURE;
+	}
+
+/* always at least 1 */
+	struct arcan_shmif_cont* con[n_conn];
+	size_t state[n_conn];
+	state[0] = rand() % 10000;
+	con[0] = setup_connection(NULL);
+
+	if (n_conn > 0){
+/* process in serial, framerate will decrease accordingly (sum of vsynch) */
+		if (mode == 0 || mode == 1){
+			for (size_t i = 1; i < n_conn; i++){
+				con[i] = setup_connection(mode == 1 ? con[0] : NULL);
+				if (!con[i]){
+					fprintf(stderr, "couldn't setup connection (%zu)\n", i);
+					return EXIT_FAILURE;
+				}
+				state[i] = rand() % 10000;
+			}
 		}
-		state[i] = rand() % 10000;
+		if (mode == 2 || mode == 3){
+			for (size_t i = 1; i < n_conn; i++){
+				setup_connection_thread(mode == 1 ? con[0] : NULL);
+			}
+			n_conn = 1;
+		}
 	}
 
 	while(1){
@@ -424,7 +516,6 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "connection (%zu) failed\n", i);
 				goto out;
 			}
-			printf("(%zu) @ (%zu * %zu)\n", i, con[i]->w, con[i]->h);
 		}
 	}
 
