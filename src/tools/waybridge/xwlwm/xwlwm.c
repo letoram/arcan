@@ -85,8 +85,7 @@ static void scan_atoms()
 			atoms[i] = reply->atom;
 		}
 		if (error){
-			fprintf(stderr,
-				"atom (%s) failed with code (%d)\n", atom_map[i], error->error_code);
+			trace("atom (%s) failed with code (%d)\n", atom_map[i], error->error_code);
 			free(error);
 		}
 		free(reply);
@@ -178,8 +177,10 @@ static const char* check_window_state(uint32_t id)
 	bool popup = false, dnd = false, menu = false, notification = false;
 	bool splash = false, tooltip = false, utility = false, dropdown = false;
 
-	if (!reply)
+	if (!reply){
+		trace("no reply on window type atom\n");
 		return "unknown";
+	}
 
 	popup = has_atom(reply, NET_WM_WINDOW_TYPE_POPUP_MENU);
 	dnd = has_atom(reply, NET_WM_WINDOW_TYPE_DND);
@@ -350,15 +351,25 @@ static void xcb_destroy_notify(xcb_destroy_notify_event_t* ev)
 		((xcb_destroy_notify_event_t*) ev)->window);
 }
 
+/*
+ * ConfigureNotify :
+ */
 static void xcb_configure_notify(xcb_configure_notify_event_t* ev)
 {
 	trace("configure-notify:%"PRIu32" @%d,%d", ev->window, ev->x, ev->y);
+
+	/* ev->x, ev->y, ev->width, ev->height, ev->override_redirect */
+
 	fprintf(stdout,
 		"kind=configure:id=%"PRIu32":x=%d:y=%d:w=%d:h=%d\n",
 		ev->window, ev->x, ev->y, ev->width, ev->height
 	);
 }
 
+/*
+ * ConfigureRequest : different client initiated a configure request
+ * (i.e. could practically be the result of ourselves saying 'configure'
+ */
 static void xcb_configure_request(xcb_configure_request_event_t* ev)
 {
 	trace("configure-request:%"PRIu32", for: %d,%d+%d,%d",
@@ -379,6 +390,32 @@ static void xcb_configure_request(xcb_configure_request_event_t* ev)
 		XCB_CONFIG_WINDOW_BORDER_WIDTH,
 		(uint32_t[]){ev->x, ev->y, ev->width, ev->height, 0}
 	);
+}
+
+static void update_focus(int64_t id)
+{
+	if (-1 == id){
+		xcb_set_input_focus(dpy,
+			XCB_INPUT_FOCUS_POINTER_ROOT, XCB_NONE, XCB_CURRENT_TIME);
+	}
+	else {
+		xcb_set_input_focus(dpy,
+			XCB_INPUT_FOCUS_POINTER_ROOT, id, XCB_CURRENT_TIME);
+	}
+		xcb_flush(dpy);
+}
+
+static void xcb_focus_in(xcb_focus_in_event_t* ev)
+{
+/*
+ * Do anything with these?
+	ev->mode == XCB_NOTIFY_MODE_GRAB ||
+	ev->mode == XCB_NOTIFY_MODE_UNGRAB
+ */
+
+	if (-1 == input_focus || ev->event != input_focus){
+		update_focus(input_focus);
+	}
 }
 
 /* use stdin/popen/line based format to make debugging easier */
@@ -455,16 +492,14 @@ static void process_wm_command(const char* arg)
 	else if (strcmp(dst, "unfocus") == 0){
 		trace("srv-unfocus(%d)", id);
 		input_focus = -1;
-		xcb_set_input_focus(dpy,
-			XCB_INPUT_FOCUS_POINTER_ROOT, XCB_NONE, XCB_CURRENT_TIME);
+		update_focus(-1);
+
 		xcb_flush(dpy);
 	}
 	else if (strcmp(dst, "focus") == 0){
 		trace("srv-focus(%d)", id);
 		input_focus = id;
-		xcb_set_input_focus(dpy,
-			XCB_INPUT_FOCUS_POINTER_ROOT, id, XCB_CURRENT_TIME);
-		xcb_flush(dpy);
+		update_focus(id);
 	}
 
 cleanup:
@@ -496,12 +531,25 @@ int main (int argc, char **argv)
 
 	xcb_generic_event_t *ev;
 
+	if (getenv("ARCAN_XWLWM_LOGOUT")){
+		freopen(getenv("ARCAN_XWLWM_LOGOUT"), "w+", stderr);
+	}
+
 	if (getenv("ARCAN_XWLWM_DEBUGSTALL")){
 		volatile bool sleeper = true;
 		while (sleeper){}
 	}
 
 	signal(SIGCHLD, on_chld);
+
+/* standalone mode is to test/debug the WM against an externally managed X,
+ * this runs without the normal inherited/rootless setup */
+	bool standalone = argc > 1 && strcmp(argv[1], "-standalone") == 0;
+	if (standalone){
+		argv--;
+		argv = &argv[1];
+		goto startx;
+	}
 
 /*
  * Now we spawn the XWayland instance with a pipe- pair so that we can read
@@ -519,6 +567,7 @@ int main (int argc, char **argv)
 		char* argv[] = {"Xwayland", "-rootless", "-displayfd", NULL, NULL};
 		asprintf(&argv[3], "%d", notification[1]);
 
+/* note, we have -terminate, -noreset, -wm (fd), -eglstream (?) */
 		execvp("Xwayland", argv);
 		exit(EXIT_FAILURE);
 	}
@@ -551,6 +600,7 @@ int main (int argc, char **argv)
 /*
  * since we have gotten a reply, the display should be ready, just connect
  */
+startx:
 	dpy = xcb_connect(NULL, NULL);
 	if ((code = xcb_connection_has_error(dpy))){
 		fprintf(stderr, "Couldn't open display (%d)\n", code);
@@ -596,7 +646,7 @@ int main (int argc, char **argv)
  * and unlink on connect should we want to avoid more clients connecting
  * to the display
  */
-	if (argc > 1){
+	if (!standalone && argc > 1){
 		int rv = fork();
 		if (-1 == rv){
 			fprintf(stderr, "-exec (%s), couldn't fork\n", argv[1]);
@@ -688,7 +738,7 @@ int main (int argc, char **argv)
 			xcb_client_message((xcb_client_message_event_t*) ev);
 		break;
 		case XCB_FOCUS_IN:
-			trace("focus-in");
+			xcb_focus_in((xcb_focus_in_event_t*) ev);
 		break;
 		default:
 			trace("unhandled: %"PRIu8, ev->response_type);

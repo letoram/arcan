@@ -23,6 +23,7 @@
 #include <errno.h>
 #include <poll.h>
 #include <assert.h>
+#include <stdatomic.h>
 
 #include <xkbcommon/xkbcommon.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
@@ -160,9 +161,10 @@ static struct {
 	bool use_xwayland;
 
 /*
- * accepted trace level
+ * accepted trace level and destination file
  */
 	int trace_log;
+	FILE* trace_dst;
 
 /*
  * single- client exit- on terminate mode
@@ -188,15 +190,15 @@ enum trace_levels {
 
 static inline void trace(int level, const char* msg, ...)
 {
-	if (!wl.trace_log || !(level & wl.trace_log))
+	if (!wl.trace_log || !(level & wl.trace_log) || !wl.trace_dst)
 		return;
 
 	va_list args;
-	va_start( args, msg );
-		vfprintf(stderr,  msg, args );
-		fprintf(stderr, "\n");
-	va_end( args);
-	fflush(stderr);
+	va_start(args, msg);
+		vfprintf(wl.trace_dst,  msg, args);
+		fprintf(wl.trace_dst, "\n");
+	va_end(args);
+	fflush(wl.trace_dst);
 }
 
 #define __FILENAME__ (strrchr(__FILE__, '/')?strrchr(__FILE__, '/') + 1 : __FILE__)

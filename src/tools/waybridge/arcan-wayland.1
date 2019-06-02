@@ -8,13 +8,20 @@ arcan-wayland \- protocol bridge for Wayland support in Arcan
 .SH DESCRIPTION
 This tool act as a protocol service that implements the Wayland protocol.
 It can be used to run Wayland conforming clients, and X clients if Xwayland
-if installed. It works either
+if installed. You can run it as a persistent service managing multiple
+clients, or as a 'per application' chain loader.
 
 .SH OPTIONS
 .IP "\fB\-exec \fIbinary [args]\fR"
 This argument sets the bridge to work in single client mode, and it is the
 execution mode with the strongest separation between clients. All argument
 processing after exec will be forwarded to the specified binary.
+
+.IP "\fB\-xwl"
+This enabled X- wayland mode, which spawns an X server (Xwayland) along with
+a window manager (arcan_xwm) that implements X specific behavior. As some
+applications radically change their behavior depending on if an X server is
+available or not, the safest and best option is to pair this with -exec.
 
 .IP "\fB\-dir \fI/prefix/path\fR"
 Setting this argument changes the scratch directory that is used to set up
@@ -44,8 +51,7 @@ Normally, shared memory source buffers gets copied and forwarded to the
 main arcan instance as is. This costs an extra copy, but allows the bridge
 to run without GPU access. By setting this flag, the cost of uploading a
 shared memory buffer to the GPU will be absorbed by the bridge, forwarding
-an accelerated handle onwards. This might affect system stability depending
-on the quality of your GPU drivers.
+an accelerated handle onwards.
 
 .IP "\fB\-width px -height px\fR"
 Normally, the default output provided to wayland clients will get its values
@@ -57,7 +63,7 @@ poorly to configure events.
 .IP "\fB\-force-fs\fR"
 This extends the -width and -height arguments with the option to make sure
 that all configure events from the server are reset to the set initial width/
-height.
+height, essentially disabling resize behavior.
 
 .SH PROTOCOL CONTROL
 Wayland is not a single protocol as much as it is a suite of possible protocols.
@@ -95,6 +101,15 @@ signal to the process in order to get a snapshot of the allocation mask. This
 is often useful as the allocation and deallocation rules and behaviors in
 Wayland are much too complicated.
 
+When running X clients via the waybridge you have additional environment
+variables to log the state output of the window manager process. These are
+ARCAN_XWLWM_LOGOUT that sets its output to stderr, which should be the same
+stderr as that of waybridge process. The other is ARCAN_XWLWM_DEBUGSTALL which
+enters a while(volatile_var){} loop before setting up Xwayland and connecting
+the WM. This allows you to attach a debugger and release the variable manually
+instead of relying on debugging the bridge and having the debugger survive the
+fork and exec steps.
+
 If you have access to the arcan source repository, there is also a tool that
 can be built (shmmon) which allows inspection of data on the various surfaces.
 
@@ -105,7 +120,7 @@ This example launches a single gtk3-demo session.
 
 .B arcan-wayland -sandbox -shm-egl -exec gtk3-demo
 
-This example requires both Xwayland arcan-xwayland-wm binaries to be present
+This example requires both Xwayland arcan_xwm binaries to be present
 and reachable in PATH.
 
 .B arcan-wayland -xwl -exec xterm
