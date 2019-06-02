@@ -1854,7 +1854,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		.ext.message = "hidden"
 	});
 
-	while (flush_eventq() != -1){
+	while (flush_eventq() >= 0){
 		if (retro.skipmode >= TARGET_SKIP_FASTFWD)
 			libretro_skipnframes(retro.skipmode -
 				TARGET_SKIP_FASTFWD + 1, true);
