@@ -696,7 +696,7 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 		if (decctx.finished){
 			if (decctx.loop){
-				libvlc_media_player_stop(decctx.player);
+/*				libvlc_media_player_stop(decctx.player); */
 				libvlc_media_player_play(decctx.player);
 				decctx.finished = false;
 			}
@@ -705,7 +705,7 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		}
 	}
 
-	libvlc_media_player_stop(decctx.player);
+/*	libvlc_media_player_stop(decctx.player); */
 	libvlc_media_player_release(decctx.player);
 	libvlc_release(decctx.vlc);
 	arcan_shmif_drop(&decctx.shmcont);
