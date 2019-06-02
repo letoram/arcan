@@ -9791,15 +9791,15 @@ static int recordset(lua_State* ctx)
 			arcan_aobj_id setaid = luaaid_toaid( lua_tonumber(ctx, -1) );
 			lua_pop(ctx, 1);
 
-			if (arcan_audio_kind(setaid) != AOBJ_STREAM && arcan_audio_kind(setaid)
-				!= AOBJ_CAPTUREFEED){
+			if (arcan_audio_kind(setaid) != AOBJ_STREAM &&
+				arcan_audio_kind(setaid) != AOBJ_CAPTUREFEED){
 				arcan_warning("recordset(%d), unsupported AID source type,"
 					" only STREAMs currently supported. Audio recording disabled.\n");
 				free(aidlocks);
 				aidlocks = NULL;
 				naids = 0;
-				char* ol = arcan_alloc_mem(strlen(argl) + sizeof(":noaudio=true"),
-					ARCAN_MEM_STRINGBUF, 0, ARCAN_MEMALIGN_NATURAL);
+				char* ol = arcan_alloc_mem(strlen(argl ? argl : "") + sizeof(
+					":noaudio=true"), ARCAN_MEM_STRINGBUF, 0, ARCAN_MEMALIGN_NATURAL);
 
 				sprintf(ol, "%s%s", argl, ":noaudio=true");
 				free(argl);
@@ -9811,9 +9811,12 @@ static int recordset(lua_State* ctx)
 		}
 	}
 
-	if (naids == 0 && !strstr(argl, "noaudio=true")){
-		char* ol = arcan_alloc_mem(strlen(argl) + sizeof(":noaudio=true"),
-			ARCAN_MEM_STRINGBUF, 0, ARCAN_MEMALIGN_NATURAL);
+/* Append the 'no audio sources' string even if it was not provided, this
+ * is a workaround for the dated design of this part of the API and noaudio
+ * was a common mistake in the encoder stage. Might be reconsidered for 0.7 */
+	if (naids == 0 && (!argl || !strstr(argl, "noaudio=true"))){
+		char* ol = arcan_alloc_mem(strlen(argl ? argl : "") + sizeof(
+			":noaudio=true"), ARCAN_MEM_STRINGBUF, 0, ARCAN_MEMALIGN_NATURAL);
 		sprintf(ol, "%s%s", argl, ":noaudio=true");
 		free(argl);
 		argl = ol;
