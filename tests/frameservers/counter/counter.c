@@ -6,59 +6,110 @@
 
 #include <arcan_shmif.h>
 
+bool run_frame(struct arcan_shmif_cont* c, uint8_t rgb[3])
+{
+	rgb[0]++;
+	rgb[1] += rgb[0] == 255;
+	rgb[2] += rgb[1] == 255;
+
+	for (size_t row = 0; row < c->h; row++)
+		for (size_t col = 0; col < c->w; col++){
+		c->vidp[ row * c->pitch + col ] = SHMIF_RGBA(rgb[0], rgb[1], rgb[2], 0xff);
+	}
+
+	arcan_shmif_signal(c, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+	return true;
+}
+
+static void block_grab(struct arcan_shmif_cont* c, struct arcan_shmif_cont* d)
+{
+	arcan_shmif_enqueue(c,
+		&(struct arcan_event){
+		.category = EVENT_EXTERNAL,
+		.ext.kind = EVENT_EXTERNAL_SEGREQ,
+		.ext.segreq.kind = SEGID_GAME
+	});
+
+	arcan_event ev;
+	while (arcan_shmif_wait(c, &ev)){
+		if (ev.category != EVENT_TARGET)
+			continue;
+		if (ev.tgt.kind == TARGET_COMMAND_REQFAIL){
+			fprintf(stderr, "request-failed on new segment request\n");
+			break;
+		}
+		if (ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT){
+			fprintf(stderr, "mapped new subsegment\n");
+			*d = arcan_shmif_acquire(c, NULL, SEGID_GAME, 0);
+			d->hints = SHMIF_RHINT_VSIGNAL_EV;
+			arcan_shmif_resize(d, 320, 220);
+			break;
+		}
+	}
+}
+
 #ifdef ENABLE_FSRV_AVFEED
 void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 #else
 int main(int argc, char** argv)
 #endif
 {
-	struct arg_arr* aarr;
-	struct arcan_shmif_cont cont = arcan_shmif_open(
-		SEGID_APPLICATION, SHMIF_ACQUIRE_FATALFAIL, &aarr);
-
-	arcan_event ev;
 	bool running = true;
 
-	arcan_shmif_resize(&cont, 640, 480);
+	size_t n_cont = 1;
 
-	uint8_t step_r = 0;
-	uint8_t step_g = 0;
-	uint8_t step_b = 255;
+	if (argc > 1)
+		n_cont = strtoul(argv[1], NULL, 10);
 
-	int frames = 0;
+	if (n_cont == 0)
+		return EXIT_FAILURE;
+
+	struct {
+		struct arcan_shmif_cont cont;
+		uint8_t rgb[3];
+	} cont[n_cont];
+
+	cont[0].cont = arcan_shmif_open(SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL, NULL);
+	cont[0].rgb[0] = cont[0].rgb[1] = cont[1].rgb[2] = 0;
+	cont[0].cont.hints = SHMIF_RHINT_VSIGNAL_EV;
+	arcan_shmif_resize(&cont[0].cont, 640, 480);
+
+/* throw out the requests */
+	for (size_t i = 1; i < n_cont; i++){
+		block_grab(&cont[0].cont, &cont[i].cont);
+	}
+
 	while(running){
-		if (frames++ > 200){
-			printf("send resize\n");
-			arcan_shmif_resize(&cont, 128 + (rand() % 1024), 128 + (rand() % 1024));
-			printf("unlock resize\n");
-			frames = 0;
-		}
+		size_t pending = n_cont;
+		arcan_event ev;
 
-		printf("frame(%zu, %zu)\n", cont.w, cont.h);
-		for (size_t row = 0; row < cont.h; row++)
-			for (size_t col = 0; col < cont.w; col++){
-				cont.vidp[ row * cont.addr->w + col ] = SHMIF_RGBA(step_r, step_g, step_b, 0xff);
-				step_r++;
-				step_g += step_r == 255;
-				step_b += step_g == 255;
-			}
+/* this will trigger N vsignal events */
+		for (size_t i = 0; i < n_cont; i++)
+			run_frame(&cont[i].cont, cont->rgb);
 
-		arcan_shmif_signal(&cont, SHMIF_SIGVID);
+/* then we collect them and continue when we have all */
+		while (pending){
+			for (size_t i = 0; i < n_cont; i++){
+				if(!arcan_shmif_wait(&cont[i].cont, &ev))
+					goto out;
 
-		int rv;
-		while ( (rv = arcan_shmif_poll(&cont, &ev)) == 1){
-			if (ev.category == EVENT_TARGET)
-			switch (ev.tgt.kind){
-			case TARGET_COMMAND_EXIT:
-				running = false;
-			break;
-			default:
-			break;
+				if (ev.category != EVENT_TARGET)
+					continue;
+
+				switch (ev.tgt.kind){
+				case TARGET_COMMAND_EXIT:
+					goto out;
+				break;
+				case TARGET_COMMAND_STEPFRAME:
+					if (pending)
+						pending = pending - 1;
+				break;
+				default:
+				break;
+				}
 			}
 		}
 	}
-
-#ifndef ENABLE_FSRV_AVFEED
+out:
 	return EXIT_SUCCESS;
-#endif
 }
