@@ -30,7 +30,8 @@ static void a12int_vframehdr_build(uint8_t buf[CONTROL_PACKET_SIZE],
 	uint16_t sw, uint16_t sh, uint16_t w, uint16_t h, uint16_t x, uint16_t y,
 	uint32_t len, uint32_t exp_len, bool commit)
 {
-	debug_print(2, "vframehdr: ch: %"PRIu8", type: %d, sid: %"PRIu32
+	a12int_trace(A12_TRACE_VDETAIL,
+		"vframehdr: ch: %"PRIu8", type: %d, sid: %"PRIu32
 		" sw*sh: %"PRIu16"x%"PRIu16", w*h: %"PRIu16"x%"PRIu16" @ %"PRIu16
 		",%"PRIu16" on len: %"PRIu32" expand to %"PRIu32,
 		chid, type, sid, sw, sh, w, h, x, y, len, exp_len
@@ -83,6 +84,54 @@ static void chunk_pack(struct a12_state* S,
 		a12int_append_out(S, type, &buf[n_chunks * chunk_sz], left, outb, sizeof(outb));
 }
 
+void a12int_encode_araw(struct a12_state* S,
+	uint8_t chid,
+	shmif_asample* buf,
+	uint16_t n_samples,
+	struct a12_aframe_cfg cfg,
+	struct a12_aframe_opts opts, size_t chunk_sz)
+{
+/* repack the audio into a temporary buffer for format reasons */
+	size_t hdr_sz = a12int_header_size(STATE_AUDIO_PACKET);
+	size_t buf_sz = hdr_sz + n_samples * sizeof(uint16_t) * cfg.channels;
+	uint8_t* outb = malloc(hdr_sz + buf_sz);;
+	if (!outb){
+		a12int_trace(A12_TRACE_ALLOC,
+			"failed to alloc %zu for s16aud", buf_sz);
+		return;
+	}
+
+/* audio control message header */
+	outb[16] = chid;
+	outb[17] = COMMAND_AUDIOFRAME;
+	pack_u32(0, &outb[18]); /* stream-id */
+	outb[22] = cfg.channels; /* channels */
+	outb[23] = 0; /* encoding, u16 */
+	pack_u16(n_samples, &outb[24]);
+
+/* repack into the right format (note, need _Generic on asample) */
+	size_t pos = hdr_sz;
+	for (size_t i = 0; i < n_samples; i++, pos += 2){
+		pack_s16(buf[i], &outb[pos]);
+	}
+
+	static FILE* fpeka;
+	if (!fpeka)
+		fpeka = fopen("/tmp/inb.raw", "w+");
+	fwrite(buf, n_samples * 2, 1, fpeka);
+
+	static FILE* fpeko;
+	if (!fpeko)
+		fpeko = fopen("/tmp/outb.raw", "w+");
+	fwrite(&outb[hdr_sz], pos - hdr_sz, 1, fpeko);
+
+/* then split it up (though likely we get fed much smaller chunks) */
+	a12int_append_out(S,
+		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+	chunk_pack(S, STATE_AUDIO_PACKET, &outb[hdr_sz], pos - hdr_sz, chunk_sz);
+	free(outb);
+}
+
 /*
  * the rgb565, rgb and rgba function all follow the same pattern
  */
@@ -101,8 +150,11 @@ void a12int_encode_rgb565(PACK_ARGS)
 
 /* get the packing buffer, cancel if oom */
 	uint8_t* outb = malloc(hdr_sz + bpb);
-	if (!outb)
+	if (!outb){
+		a12int_trace(A12_TRACE_ALLOC,
+			"failed to alloc %zu for rgb565", hdr_sz + bpb);
 		return;
+	}
 
 /* store the control frame that defines our video buffer */
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
@@ -143,7 +195,7 @@ void a12int_encode_rgb565(PACK_ARGS)
 	size_t left = ((w * h) - (blocks * ppb)) * px_sz;
 	if (left){
 		pack_u16(left, &outb[5]);
-		debug_print(2, "small block of %zu bytes", left);
+		a12int_trace(A12_TRACE_VDETAIL, "small block of %zu bytes", left);
 		for (size_t i = 0; i < left; i+= px_sz){
 			uint8_t r, g, b, ign;
 			uint16_t px;
@@ -169,7 +221,7 @@ void a12int_encode_rgb565(PACK_ARGS)
 void a12int_encode_rgba(PACK_ARGS)
 {
 	size_t px_sz = 4;
-	debug_print(2, "encode_rgba frame");
+	a12int_trace(A12_TRACE_VDETAIL, "encode_rgba frame");
 
 /* calculate chunk sizes based on a fitting amount of pixels */
 	size_t hdr_sz = a12int_header_size(STATE_VIDEO_PACKET);
@@ -219,7 +271,7 @@ void a12int_encode_rgba(PACK_ARGS)
 	size_t left = ((w * h) - (blocks * ppb)) * px_sz;
 	if (left){
 		pack_u16(left, &outb[5]);
-		debug_print(2, "small block of %zu bytes", left);
+		a12int_trace(A12_TRACE_VDETAIL, "small block of %zu bytes", left);
 		for (size_t i = 0; i < left; i+= px_sz){
 			uint8_t* dst = &outb[hdr_sz+i];
 			SHMIF_RGBA_DECOMP(inbuf[pos++], &dst[0], &dst[1], &dst[2], &dst[3]);
@@ -238,7 +290,7 @@ void a12int_encode_rgba(PACK_ARGS)
 void a12int_encode_rgb(PACK_ARGS)
 {
 	size_t px_sz = 3;
-	debug_print(2, "encode_rgb frame");
+	a12int_trace(A12_TRACE_VDETAIL, "encode_rgb frame");
 
 /* calculate chunk sizes based on a fitting amount of pixels */
 	size_t hdr_sz = a12int_header_size(STATE_VIDEO_PACKET);
@@ -282,7 +334,6 @@ void a12int_encode_rgb(PACK_ARGS)
 		}
 
 /* dispatch to out-queue(s) */
-		debug_print(2, "flush %zu bytes", hdr_sz + bpb);
 		a12int_append_out(S, STATE_VIDEO_PACKET, outb, hdr_sz + bpb, NULL, 0);
 	}
 
@@ -329,8 +380,10 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 
 /* reset the accumulation buffer so that we rebuild the normal frame */
 	if (ab->w != vb->w || ab->h != vb->h){
-		debug_print(1, "deltaz, dimension mismatch: %zu*%zu <->%zu*%zu",
-			(size_t) ab->w, (size_t) ab->h, (size_t) vb->w, (size_t) vb->h);
+		a12int_trace(A12_TRACE_VIDEO,
+			"deltaz, dimension mismatch: %zu*%zu <->%zu*%zu",
+			(size_t) ab->w, (size_t) ab->h, (size_t) vb->w, (size_t) vb->h
+		);
 		free(ab->buffer);
 		free(S->channels[ch].compression);
 		ab->buffer = NULL;
@@ -347,7 +400,7 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 		*h = vb->h;
 		*x = 0;
 		*y = 0;
-		debug_print(1, "dpng, switch to I frame (%zu, %zu)", *w, *h);
+		a12int_trace(A12_TRACE_VIDEO, "dpng, switch to I frame (%zu, %zu)", *w, *h);
 
 		if (!ab->buffer)
 			return (struct compress_res){};
@@ -383,8 +436,10 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
  * and store ^ b. For smaller regions, we might want to do something simpler
  * like RLE only. The flags (,0) can be derived with the _zip helper */
 	else {
-		debug_print(2, "build delta frame @(%zu,%zu)+(%zu,%zu)",
-			(size_t)*w, (size_t)*h, (size_t) *x, (size_t) *y);
+		a12int_trace(A12_TRACE_VDETAIL,
+			"build delta frame @(%zu,%zu)+(%zu,%zu)",
+			(size_t)*w, (size_t)*h, (size_t) *x, (size_t) *y
+		);
 		compress_in = S->channels[ch].compression;
 		uint8_t* acc = (uint8_t*) ab->buffer;
 		for (size_t cy = (*y); cy < (*y)+(*h); cy++){
@@ -440,8 +495,10 @@ void a12int_encode_dpng(PACK_ARGS)
 		cres.out_sz, w * h * 3, 1
 	);
 
-	debug_print(2, "dpng (%d), in: %zu, out: %zu",
-		cres.type, w * h * 3, cres.out_sz);
+	a12int_trace(A12_TRACE_VDETAIL,
+		"dpng (%d), in: %zu, out: %zu",
+		cres.type, w * h * 3, cres.out_sz
+	);
 
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, hdr_buf, CONTROL_PACKET_SIZE, NULL, 0);
@@ -471,7 +528,7 @@ void drop_videnc(struct a12_state* S, int chid, bool failed)
 		av_frame_free(&S->channels[chid].videnc.frame);
 	}
 
-	debug_print(1, "dropping h264 context");
+	a12int_trace(A12_TRACE_VIDEO, "dropping h264 context");
 }
 
 static unsigned long pick_bitrate(size_t w, size_t h, struct a12_vframe_opts o)
@@ -486,7 +543,8 @@ static bool open_videnc(struct a12_state* S,
 	struct a12_vframe_opts venc_opts,
 	struct shmifsrv_vbuffer* vb, int chid, int codecid)
 {
-	debug_print(1, "opening video encoder for %d:%d", chid, codecid);
+	a12int_trace(A12_TRACE_VIDEO,
+		"opening video encoder for %d:%d", chid, codecid);
 	AVCodec* codec = S->channels[chid].videnc.codec;
 	AVFrame* frame = NULL;
 	AVPacket* packet = NULL;
@@ -587,7 +645,7 @@ static bool open_videnc(struct a12_state* S,
 	S->channels[chid].videnc.frame = frame;
 	S->channels[chid].videnc.packet = packet;
 
-	debug_print(1, "video encoder context built");
+	a12int_trace(A12_TRACE_VIDEO, "video encoder context built");
 	return true;
 
 fail:
@@ -624,11 +682,11 @@ void a12int_encode_h264(PACK_ARGS)
 	if (!S->channels[chid].videnc.encoder &&
 			!S->channels[chid].videnc.failed){
 		if (!open_videnc(S, opts, vb, chid, AV_CODEC_ID_H264)){
-			debug_print(1, "couldn't setup h264 encoder");
+			a12int_trace(A12_TRACE_VIDEO, "couldn't setup h264 encoder");
 			drop_videnc(S, chid, true);
 		}
 		else
-			debug_print(1, "%d switched to h264", chid);
+			a12int_trace(A12_TRACE_VIDEO, "%d switched to h264", chid);
 	}
 
 /* on failure, just fallback and retry alloc on dimensions change */
@@ -648,7 +706,7 @@ void a12int_encode_h264(PACK_ARGS)
 	int rv = sws_scale(scaler,
 		src, src_stride, 0, vb->h, frame->data, frame->linesize);
 	if (rv < 0){
-		debug_print(1, "rescaling failed: %d", rv);
+		a12int_trace(A12_TRACE_VIDEO, "rescaling failed: %d", rv);
 		drop_videnc(S, chid, true);
 		goto fallback;
 	}
@@ -657,8 +715,7 @@ void a12int_encode_h264(PACK_ARGS)
 again:
 	ret = avcodec_send_frame(encoder, frame);
 	if (ret < 0 && ret != AVERROR(EAGAIN)){
-
-		debug_print(1, "encoder failed: %d", ret);
+		a12int_trace(A12_TRACE_VIDEO, "encoder failed: %d", ret);
 		drop_videnc(S, chid, true);
 		goto fallback;
 	}
@@ -671,12 +728,13 @@ again:
 			return;
 
 		else if (out_ret < 0){
-			debug_print(1, "error getting packet from encoder: %d", rv);
+			a12int_trace(
+				A12_TRACE_VIDEO, "error getting packet from encoder: %d", rv);
 			drop_videnc(S, chid, true);
 			goto fallback;
 		}
 
-		debug_print(2, "videnc: %5d", packet->size);
+		a12int_trace(A12_TRACE_VDETAIL, "videnc: %5d", packet->size);
 
 /* don't see a nice way to combine ffmpegs view of 'packets' and ours,
  * maybe we could avoid it and the extra copy but uncertain */
@@ -705,5 +763,5 @@ fallback:
 #else
 	a12int_encode_dpng(FWD_ARGS);
 #endif
-	debug_print(1, "switching to fallback (H264) on videnc fail");
+	a12int_trace(A12_TRACE_VIDEO, "switching to fallback (PNG) on videnc fail");
 }

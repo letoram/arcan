@@ -17,6 +17,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+int a12_trace_targets = 0;
+FILE* a12_trace_dst = NULL;
+
 static int header_sizes[] = {
 	MAC_BLOCK_SZ + 1, /* NO packet, just MAC + outer header */
 	CONTROL_PACKET_SIZE,
@@ -44,7 +47,7 @@ static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz)
 
 /* wrap around? give up */
 	if (pow < new_sz){
-		debug_print(1, "possible queue size exceeded");
+		a12int_trace(A12_TRACE_SYSTEM, "possible queue size exceeded");
 		free(dst);
 		*cur_sz = 0;
 		return NULL;
@@ -52,10 +55,10 @@ static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz)
 
 	new_sz = pow;
 
-	debug_print(2, "grow outqueue %zu => %zu", *cur_sz, new_sz);
+	a12int_trace(A12_TRACE_ALLOC, "grow outqueue %zu => %zu", *cur_sz, new_sz);
 	uint8_t* res = DYNAMIC_REALLOC(dst, new_sz);
 	if (!res){
-		debug_print(1, "couldn't grow queue");
+		a12int_trace(A12_TRACE_SYSTEM, "couldn't grow queue");
 		free(dst);
 		*cur_sz = 0;
 		return NULL;
@@ -129,8 +132,8 @@ void a12int_append_out(
 
 /* and if that didn't work, fatal */
 	if (S->buf_sz[S->buf_ind] < required){
-		debug_print(1, "realloc failed: size (%zu) vs required (%zu)",
-			S->buf_sz[S->buf_ind], required);
+		a12int_trace(A12_TRACE_SYSTEM,
+			"realloc failed: size (%zu) vs required (%zu)", S->buf_sz[S->buf_ind], required);
 
 		S->state = STATE_BROKEN;
 		return;
@@ -179,7 +182,6 @@ static struct a12_state* a12_setup(uint8_t* authk, size_t authk_sz)
 	if (!res)
 		return NULL;
 
-/* the authk- argument setup should really be reworked */
 	uint8_t empty_key[16] = {0};
 	size_t empty_sz = 16;
 	if (!authk){
@@ -208,11 +210,11 @@ static void a12_init()
 	ssize_t evsz = arcan_shmif_eventpack(
 		&(struct arcan_event){.category = EVENT_IO}, outb, 512);
 
-	header_sizes[STATE_EVENT_PACKET] = evsz + SEQUENCE_NUMBER_SIZE;
+	header_sizes[STATE_EVENT_PACKET] = evsz + SEQUENCE_NUMBER_SIZE + 1;
 	init = true;
 }
 
-struct a12_state* a12_channel_build(uint8_t* authk, size_t authk_sz)
+struct a12_state* a12_build(uint8_t* authk, size_t authk_sz)
 {
 	a12_init();
 
@@ -223,7 +225,7 @@ struct a12_state* a12_channel_build(uint8_t* authk, size_t authk_sz)
 	return res;
 }
 
-struct a12_state* a12_channel_open(uint8_t* authk, size_t authk_sz)
+struct a12_state* a12_open(uint8_t* authk, size_t authk_sz)
 {
 	a12_init();
 
@@ -232,12 +234,13 @@ struct a12_state* a12_channel_open(uint8_t* authk, size_t authk_sz)
 		return NULL;
 
 /* send initial hello packet */
+	a12int_trace(A12_TRACE_MISSING, "authentication material in Hello");
 	uint8_t outb[CONTROL_PACKET_SIZE] = {0};
 	step_sequence(S, outb);
 
 	outb[17] = 0;
 
-	debug_print(1, "channel open, add control packet");
+	a12int_trace(A12_TRACE_SYSTEM, "channel open, add control packet");
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 
 	return S;
@@ -246,9 +249,12 @@ struct a12_state* a12_channel_open(uint8_t* authk, size_t authk_sz)
 void
 a12_channel_close(struct a12_state* S)
 {
-	if (!S || S->cookie != 0xfeedface)
-		return;
+	if (!S || S->cookie != 0xfeedface){
 
+		return;
+	}
+
+	a12int_trace(A12_TRACE_SYSTEM, "closing channel");
 	DYNAMIC_FREE(S->bufs[0]);
 	DYNAMIC_FREE(S->bufs[1]);
 	*S = (struct a12_state){};
@@ -282,12 +288,14 @@ static void process_nopacket(struct a12_state* S)
 	S->state = S->decode[MAC_BLOCK_SZ];
 
 	if (S->state >= STATE_BROKEN){
-		debug_print(1, "channel broken, unknown command val: %"PRIu8, S->state);
+		a12int_trace(A12_TRACE_SYSTEM,
+			"channel broken, unknown command val: %"PRIu8, S->state);
 		S->state = STATE_BROKEN;
 		return;
 	}
 
-	debug_print(2, "left: %"PRIu16", state: %"PRIu8, S->left, S->state);
+	a12int_trace(A12_TRACE_TRANSFER,
+		"left: %"PRIu16", state: %"PRIu8, S->left, S->state);
 	S->left = header_sizes[S->state];
 	S->decode_pos = 0;
 }
@@ -307,12 +315,11 @@ static bool process_mac(struct a12_state* S)
 
 /* Option to continue with broken authentication, ... */
 	if (memcmp(final_mac, S->last_mac_in, MAC_BLOCK_SZ) != 0){
-		debug_print(1, "authentication mismatch on packet \n");
+		a12int_trace(A12_TRACE_CRYPTO, "authentication mismatch on packet");
 		S->state = STATE_BROKEN;
 		return false;
 	}
 
-	debug_print(2, "authenticated packet");
 	return true;
 }
 
@@ -325,27 +332,66 @@ static void command_binarystream(struct a12_state* S)
  */
 	struct arcan_shmif_cont* cont = S->channels[channel].cont;
 	if (!cont){
-		debug_print(1, "no segment mapped on channel");
+		a12int_trace(A12_TRACE_DEBUG, "no segment mapped on channel");
 		return;
 	}
 
+	a12int_trace(A12_TRACE_MISSING, "binary stream not implemented");
+/*
+ * if there is a checksum, ask the local cache process and see if we know
+ * about it already, if so, cancel the binary stream and substitute in the
+ * copy we get from the cache, but still need to process and discard
+ * incoming packages in the meanwhile.
+ */
 }
 
 static void command_audioframe(struct a12_state* S)
 {
 	uint8_t channel = S->decode[16];
 	struct audio_frame* aframe = &S->channels[channel].unpack_state.aframe;
-/* new astream, from FREADME.md:
- * [18..21] : stream-id
- * [22] : format
- * [23] : encoding
- * [24] : rate
- * [25] : n-samples */
+	struct arcan_shmif_cont* cont = S->channels[channel].cont;
+
 	aframe->format = S->decode[22];
 	aframe->encoding = S->decode[23];
-	aframe->nsamples = S->decode[24];
-	aframe->rate = S->decode[25];
+	aframe->channels = S->decode[22];
+	unpack_u16(&aframe->nsamples, &S->decode[24]);
+	unpack_u32(&aframe->rate, &S->decode[26]);
 	S->in_channel = -1;
+
+/* developer error (or malicious client), set to skip decode/playback */
+	if (!cont){
+		a12int_trace(A12_TRACE_SYSTEM,
+			"no segment mapped on channel %d", (int)channel);
+		aframe->commit = 255;
+		return;
+	}
+
+/* this requires an extended resize (theoretically, practically not),
+ * and in those cases we want to copy-out the vbuffer state if set and
+ * then rebuild */
+	if (cont->samplerate != aframe->rate){
+		a12int_trace(A12_TRACE_MISSING,
+			"rate mismatch: %zu <-> %"PRIu32, cont->samplerate, aframe->rate);
+	}
+
+/* format should be paired against AUDIO_SAMPLE_TYPE */
+	if (aframe->channels != ARCAN_SHMIF_ACHANNELS){
+		a12int_trace(A12_TRACE_MISSING, "channel format repack");
+	}
+
+/* just plug the samples into the normal abuf- as part of the shmif-cont */
+/* normal dynamic rate adjustment compensating for clock drift etc. go here */
+}
+
+static void command_newchannel(struct a12_state* S)
+{
+/*
+ * uint8_t channel = S->decode[16];
+ * uint8_t new_channel = S->decode[18];
+ * uint8_t type = S->decode[19];
+ * uint8_t direction = S->decode[20];
+ * unpack_u32(&cookie, &S->decode[21]);
+ */
 }
 
 static void command_videoframe(struct a12_state* S)
@@ -384,7 +430,7 @@ static void command_videoframe(struct a12_state* S)
  * where the WM have artificially restricted the size of a client window etc. */
 	struct arcan_shmif_cont* cont = S->channels[channel].cont;
 	if (!cont){
-		debug_print(1, "no segment mapped on channel");
+		a12int_trace(A12_TRACE_SYSTEM, "no segment mapped on channel");
 		vframe->commit = 255;
 		return;
 	}
@@ -392,14 +438,16 @@ static void command_videoframe(struct a12_state* S)
 	if (vframe->sw != cont->w || vframe->sh != cont->h){
 		arcan_shmif_resize(cont, vframe->sw, vframe->sh);
 		if (vframe->sw != cont->w || vframe->sh != cont->h){
-			debug_print(1, "parent size rejected");
+			a12int_trace(A12_TRACE_SYSTEM, "parent size rejected");
 			vframe->commit = 255;
 		}
 		else
-			debug_print(1, "resized segment to %"PRIu32",%"PRIu32, vframe->sw, vframe->sh);
+			a12int_trace(A12_TRACE_VIDEO,
+				"resized segment to %"PRIu32",%"PRIu32, vframe->sw, vframe->sh);
 	}
 
-	debug_print(2, "new vframe (%d): %"PRIu16"*%"
+	a12int_trace(A12_TRACE_VIDEO,
+		"new vframe (%d): %"PRIu16"*%"
 		PRIu16"@%"PRIu16",%"PRIu16"+%"PRIu16",%"PRIu16,
 		vframe->postprocess,
 		vframe->sw, vframe->sh, vframe->x, vframe->y, vframe->w, vframe->h
@@ -416,18 +464,20 @@ static void command_videoframe(struct a12_state* S)
 		vframe->postprocess == POSTPROCESS_VIDEO_RGB){
 		vframe->row_left = vframe->w;
 		vframe->out_pos = vframe->y * cont->pitch + vframe->x;
-		debug_print(3,
+		a12int_trace(A12_TRACE_TRANSFER,
 			"row-length: %zu at buffer pos %"PRIu32, vframe->row_left, vframe->inbuf_pos);
 	}
 	else {
 		if (vframe->expanded_sz > vframe->w * vframe->h * sizeof(shmif_pixel)){
 			vframe->commit = 255;
-			debug_print(1, "incoming frame exceeding reasonable constraints");
+			a12int_trace(A12_TRACE_SYSTEM,
+				"incoming frame exceeding reasonable constraints");
 			return;
 		}
 		if (vframe->inbuf_sz > vframe->expanded_sz){
 			vframe->commit = 255;
-			debug_print(1, "incoming buffer expands to less than target");
+			a12int_trace(A12_TRACE_SYSTEM,
+				"incoming buffer expands to less than target");
 			return;
 		}
 
@@ -435,12 +485,19 @@ static void command_videoframe(struct a12_state* S)
 		vframe->inbuf_pos = 0;
 		vframe->inbuf = malloc(vframe->inbuf_sz);
 		if (!vframe->inbuf){
-			debug_print(1, "couldn't allocate intermediate buffer store");
+			a12int_trace(A12_TRACE_ALLOC,
+				"couldn't allo cate intermediate buffer store");
 			return;
 		}
 		vframe->row_left = vframe->w;
-		debug_print(2, "compressed buffer in\n");
+		a12int_trace(A12_TRACE_VIDEO, "compressed buffer in");
 	}
+}
+
+static bool queue_binary_stream(struct a12_state* S, struct arcan_event* carrier)
+{
+/* if S->binary_pending */
+	return false;
 }
 
 /*
@@ -461,18 +518,25 @@ static void process_control(struct a12_state* S)
 
 	switch(command){
 	case COMMAND_HELLO:
-		debug_print(1, "HELO");
+		a12int_trace(A12_TRACE_MISSING, "Key negotiation, verification");
 	/*
 	 * CRYPTO- fixme: Update keymaterial etc. here.
 	 * Verify that this is the first packet.
 	 */
 	break;
-	case COMMAND_SHUTDOWN: break;
-	case COMMAND_ENCNEG: break;
-	case COMMAND_REKEY: break;
-	case COMMAND_CANCELSTREAM: break;
-	case COMMAND_NEWCH: break;
+	case COMMAND_SHUTDOWN:
+	/* terminate specific channel */
+	break;
+	case COMMAND_NEWCH:
+		command_newchannel(S);
+	break;
+	case COMMAND_CANCELSTREAM:
+		a12int_trace(A12_TRACE_MISSING, "Stream cancellation");
+	break;
 	case COMMAND_FAILURE: break;
+	case COMMAND_PING:
+		a12int_trace(A12_TRACE_MISSING, "Check ping packet");
+	break;
 	case COMMAND_VIDEOFRAME:
 		command_videoframe(S);
 	break;
@@ -483,16 +547,16 @@ static void process_control(struct a12_state* S)
 		command_binarystream(S);
 	break;
 	default:
-		debug_print(1, "unhandled control message");
+		a12int_trace(A12_TRACE_SYSTEM, "Unknown message type: %d", (int)command);
 	break;
 	}
 
-	debug_print(2, "decode control packet");
 	reset_state(S);
 }
 
-static void process_event(struct a12_state* S,
-	void* tag, void (*on_event)(struct arcan_shmif_cont* wnd, int chid, struct arcan_event*, void*))
+static void process_event(struct a12_state* S, void* tag,
+	void (*on_event)(
+		struct arcan_shmif_cont* wnd, int chid, struct arcan_event*, void*))
 {
 	if (!process_mac(S))
 		return;
@@ -503,12 +567,14 @@ static void process_event(struct a12_state* S,
 	unpack_u64(&S->last_seen_seqnr, S->decode);
 
 	if (-1 == arcan_shmif_eventunpack(
-		&S->decode[SEQUENCE_NUMBER_SIZE], S->decode_pos - SEQUENCE_NUMBER_SIZE, &aev)){
-		debug_print(1, "broken event packet received");
+		&S->decode[SEQUENCE_NUMBER_SIZE+1],
+		S->decode_pos-SEQUENCE_NUMBER_SIZE-1, &aev))
+	{
+		a12int_trace(A12_TRACE_SYSTEM, "broken event packet received");
 	}
 	else if (on_event){
-		debug_print(2, "unpack event to %d", channel);
-		on_event(S->channels[channel].cont, 0, &aev, tag);
+		a12int_trace(A12_TRACE_EVENT, "unpack event to %d", channel);
+		on_event(S->channels[channel].cont, channel, &aev, tag);
 	}
 
 	reset_state(S);
@@ -531,7 +597,7 @@ static void process_video(struct a12_state* S)
 		unpack_u32(&stream, &S->decode[1]);
 		unpack_u16(&S->left, &S->decode[5]);
 		S->decode_pos = 0;
-		debug_print(2,
+		a12int_trace(A12_TRACE_VIDEO,
 			"video[%d:%"PRIx32"], left: %"PRIu16, S->in_channel, stream, S->left);
 		return;
 	}
@@ -541,7 +607,8 @@ static void process_video(struct a12_state* S)
 	struct video_frame* cvf = &S->channels[S->in_channel].unpack_state.vframe;
 	struct arcan_shmif_cont* cont = S->channels[S->in_channel].cont;
 	if (!S->channels[S->in_channel].cont){
-		debug_print(1, "data on unmapped channel");
+		a12int_trace(A12_TRACE_SYSTEM,
+			"data on unmapped channel (%d)", (int) S->in_channel);
 		reset_state(S);
 		return;
 	}
@@ -556,11 +623,12 @@ static void process_video(struct a12_state* S)
 			left -= S->decode_pos;
 
 			if (cvf->inbuf_sz == cvf->inbuf_pos){
-				debug_print(2, "decode-buffer size reached");
+				a12int_trace(A12_TRACE_VIDEO, "decode-buffer size reached");
 			}
 		}
 		else if (left != 0){
-			debug_print(1, "overflow, stream length and packet size mismatch");
+			a12int_trace(A12_TRACE_SYSTEM,
+				"overflow, stream length and packet size mismatch");
 		}
 
 /* buffer is finished, decode and commit to designated channel context */
@@ -573,7 +641,7 @@ static void process_video(struct a12_state* S)
 
 /* if we are in discard state, just continue */
 	if (cvf->commit == 255){
-		debug_print(2, "discard state, ignore video");
+		a12int_trace(A12_TRACE_VIDEO, "discard state, ignore video");
 		reset_state(S);
 		return;
 	}
@@ -581,7 +649,8 @@ static void process_video(struct a12_state* S)
 /* we use a length field that match the width*height so any
  * overflow / wrap tricks won't work */
 	if (cvf->inbuf_sz < S->decode_pos){
-		debug_print(1, "mischevios client, byte count mismatch "
+		a12int_trace(
+			A12_TRACE_SYSTEM, "bad client, byte count mismatch "
 			"(%"PRIu16" - %"PRIu16, cvf->inbuf_sz, S->decode_pos);
 		reset_state(S);
 		return;
@@ -596,8 +665,85 @@ static void process_audio(struct a12_state* S)
 	if (!process_mac(S))
 		return;
 
-/* FIXME: header-stage then frame-stage, decode into context based on channel,
- * just copy what is done in process video really */
+/* in_channel is used to track if we are waiting for the header or not */
+	if (S->in_channel == -1){
+		uint32_t stream;
+		S->in_channel = S->decode[0];
+		unpack_u32(&stream, &S->decode[1]);
+		unpack_u16(&S->left, &S->decode[5]);
+		S->decode_pos = 0;
+		a12int_trace(A12_TRACE_AUDIO,
+			"audio[%d:%"PRIx32"], left: %"PRIu16, S->in_channel, stream, S->left);
+		return;
+	}
+
+/* the 'audio_frame' structure for the current channel (segment) only
+ * contains the metadata, we use the mapped shmif- segment to actually
+ * buffer, assuming we have no compression */
+	struct audio_frame* caf = &S->channels[S->in_channel].unpack_state.aframe;
+	struct arcan_shmif_cont* cont = S->channels[S->in_channel].cont;
+	if (!cont){
+		a12int_trace(A12_TRACE_SYSTEM,
+			"audio data on unmapped channel (%d)", (int) S->in_channel);
+		reset_state(S);
+		return;
+	}
+
+/* passed the header stage, now it's the data block, make sure the segment
+ * has registered that it can provide audio */
+	if (!cont->audp){
+		a12int_trace(A12_TRACE_AUDIO,
+			"frame-resize, rate: %"PRIu32", channels: %"PRIu8,
+			caf->rate, caf->channels
+		);
+		if (!arcan_shmif_resize_ext(cont,
+			cont->w, cont->h, (struct shmif_resize_ext){
+				.abuf_sz = 1024, .samplerate = caf->rate,
+				.abuf_cnt = 16, .vbuf_cnt = 1
+			})){
+			a12int_trace(A12_TRACE_ALLOC, "frame-resize failed");
+			caf->commit = 255;
+			return;
+		}
+	}
+
+/* Flush out into caf abuffer, assumed that the context has been set
+ * to match the defined source format in a previous stage. Resampling
+ * might be needed here, both for rate and for drift/buffer */
+	size_t samples_in = S->decode_pos >> 1;
+	size_t pos = 0;
+
+/* assumed s16, stereo for now, if the sender didn't align properly, shame */
+	while (samples_in > 1){
+		int16_t l, r;
+		unpack_s16(&l, &S->decode[pos]);
+		pos += 2;
+		unpack_s16(&r, &S->decode[pos]);
+		pos += 2;
+		cont->audp[cont->abufpos++] = SHMIF_AINT16(l);
+		cont->audp[cont->abufpos++] = SHMIF_AINT16(r);
+		samples_in -= 2;
+
+		if (cont->abufcount - cont->abufpos <= 1){
+			a12int_trace(A12_TRACE_AUDIO,
+				"forward %zu samples", (size_t) cont->abufpos);
+			arcan_shmif_signal(cont, SHMIF_SIGAUD);
+		}
+	}
+
+/* now we can subtract the number of SAMPLES from the audio stream
+ * packet, when that reases zero we reset state, this incorrectly
+ * assumes 2 channels though */
+	caf->nsamples -= S->decode_pos >> 1;
+	if (!caf->nsamples && cont->abufused){
+/* might also be a slush buffer left */
+		if (cont->abufused)
+			arcan_shmif_signal(cont, SHMIF_SIGAUD);
+	}
+
+	a12int_trace(A12_TRACE_TRANSFER,
+		"audio packet over, samples left: %zu", (size_t) caf->nsamples);
+	reset_state(S);
 }
 
 static void process_binary(struct a12_state* S)
@@ -605,20 +751,19 @@ static void process_binary(struct a12_state* S)
 	if (!process_mac(S))
 		return;
 
-/* FIXME: forward as descriptor and stream into/out from it, or dump to memtemp
- * and read full first */
+	a12int_trace(A12_TRACE_MISSING, "binary packet / header incomplete");
 }
 
 void a12_set_destination(
-	struct a12_state* S, struct arcan_shmif_cont* wnd, int chid)
+struct a12_state* S, struct arcan_shmif_cont* wnd, uint8_t chid)
 {
 	if (!S){
-		debug_print(1, "invalid set_destination call");
+		a12int_trace(A12_TRACE_DEBUG, "invalid set_destination call");
 		return;
 	}
 
 	if (chid != 0){
-		debug_print(1, "multi-channel support unfinished");
+		a12int_trace(A12_TRACE_MISSING, "multi-channel support unfinished");
 		return;
 	}
 
@@ -627,7 +772,7 @@ void a12_set_destination(
 }
 
 void
-a12_channel_unpack(struct a12_state* S, const uint8_t* buf,
+a12_unpack(struct a12_state* S, const uint8_t* buf,
 	size_t buf_sz, void* tag, void (*on_event)
 	(struct arcan_shmif_cont*, int chid, struct arcan_event*, void*))
 {
@@ -671,7 +816,7 @@ a12_channel_unpack(struct a12_state* S, const uint8_t* buf,
 		process_event(S, tag, on_event);
 	break;
 	default:
-		debug_print(1, "unknown state");
+		a12int_trace(A12_TRACE_SYSTEM, "unknown state");
 		S->state = STATE_BROKEN;
 		return;
 	break;
@@ -679,14 +824,20 @@ a12_channel_unpack(struct a12_state* S, const uint8_t* buf,
 
 /* slide window and tail- if needed */
 	if (buf_sz)
-		a12_channel_unpack(S, &buf[ntr], buf_sz, tag, on_event);
+		a12_unpack(S, &buf[ntr], buf_sz, tag, on_event);
 }
 
 size_t
-a12_channel_flush(struct a12_state* S, uint8_t** buf)
+a12_flush(struct a12_state* S, uint8_t** buf)
 {
-	if (S->buf_ofs == 0 || S->state == STATE_BROKEN || S->cookie != 0xfeedface)
+	if (S->state == STATE_BROKEN || S->cookie != 0xfeedface)
 		return 0;
+
+/* nothing in the outgoing buffer? then we can pull in whatever
+ * data transfer is pending */
+	if (S->buf_ofs == 0){
+
+	}
 
 	size_t rv = S->buf_ofs;
 
@@ -701,12 +852,38 @@ a12_channel_flush(struct a12_state* S, uint8_t** buf)
 }
 
 int
-a12_channel_poll(struct a12_state* S)
+a12_poll(struct a12_state* S)
 {
 	if (!S || S->state == STATE_BROKEN || S->cookie != 0xfeedface)
 		return -1;
 
 	return S->left > 0 ? 1 : 0;
+}
+
+void
+a12_channel_setid(struct a12_state* S, uint8_t chid)
+{
+	S->out_channel = chid;
+}
+
+void
+a12_channel_aframe(struct a12_state* S,
+		shmif_asample* buf,
+		size_t n_samples,
+		struct a12_aframe_cfg cfg,
+		struct a12_aframe_opts opts)
+{
+	if (!S || S->cookie != 0xfeedface || S->state == STATE_BROKEN)
+		return;
+
+/* use a fix size now as the outb- writer lacks queueing and interleaving */
+	size_t chunk_sz = 16428;
+
+	a12int_trace(A12_TRACE_AUDIO,
+		"encode %zu samples @ %"PRIu32" Hz /%"PRIu8" ch",
+		n_samples, cfg.samplerate, cfg.channels
+	);
+	a12int_encode_araw(S, S->out_channel, buf, n_samples/2, cfg, opts, chunk_sz);
 }
 
 /*
@@ -715,7 +892,7 @@ a12_channel_poll(struct a12_state* S)
  */
 void
 a12_channel_vframe(struct a12_state* S,
-	uint8_t chid, struct shmifsrv_vbuffer* vb, struct a12_vframe_opts opts)
+	struct shmifsrv_vbuffer* vb, struct a12_vframe_opts opts)
 {
 	if (!S || S->cookie != 0xfeedface || S->state == STATE_BROKEN)
 		return;
@@ -734,8 +911,10 @@ a12_channel_vframe(struct a12_state* S,
 
 /* sanity check against a dumb client here as well */
 	if (x + w > vb->w || y + h > vb->h){
-		debug_print(1, "client provided bad/broken subregion (%zu+%zu > %zu)"
-			"(%zu+%zu > %zu)", x, w, vb->w, y, h, vb->h);
+		a12int_trace(A12_TRACE_SYSTEM,
+			"client provided bad/broken subregion (%zu+%zu > %zu)"
+			"(%zu+%zu > %zu)", x, w, vb->w, y, h, vb->h
+		);
 		x = 0;
 		y = 0;
 		w = vb->w;
@@ -763,8 +942,9 @@ a12_channel_vframe(struct a12_state* S,
  * then we have the problem of the meta- area
  */
 
-	debug_print(2, "out vframe: %zu*%zu @%zu,%zu+%zu,%zu", vb->w, vb->h, w, h, x, y);
-#define argstr S, vb, opts, x, y, w, h, chunk_sz, chid
+	a12int_trace(A12_TRACE_VIDEO,
+		"out vframe: %zu*%zu @%zu,%zu+%zu,%zu", vb->w, vb->h, w, h, x, y);
+#define argstr S, vb, opts, x, y, w, h, chunk_sz, S->out_channel
 
 	switch(opts.method){
 	case VFRAME_METHOD_RAW_RGB565:
@@ -785,8 +965,11 @@ a12_channel_vframe(struct a12_state* S,
 	case VFRAME_METHOD_H264:
 		a12int_encode_h264(argstr);
 	break;
+/*
+ * FLIV and dav1d missing
+ */
 	default:
-		debug_print(0, "unknown format: %d\n", opts.method);
+		a12int_trace(A12_TRACE_SYSTEM, "unknown format: %d\n", opts.method);
 	break;
 	}
 }
@@ -800,11 +983,11 @@ static ssize_t get_file_size(int fd)
 	return fdinf.st_size;
 }
 
-void
+bool
 a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
 {
 	if (!S || S->cookie != 0xfeedface || !ev)
-		return;
+		return false;
 
 	int transfer_fd = -1;
 	ssize_t transfer_sz = -1;
@@ -813,37 +996,42 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
  * queueing requirements, possibly compression and so on */
 	if (arcan_shmif_descrevent(ev)){
 		char msg[512];
-		debug_print(1, "ignoring descriptor event: %s",
-			arcan_shmif_eventstr(ev, msg, 512));
+		a12int_trace(A12_TRACE_MISSING,
+			"ignoring descriptor event: %s", arcan_shmif_eventstr(ev, msg, 512));
 
 		switch (ev->tgt.kind){
 			case TARGET_COMMAND_STORE:
 			case TARGET_COMMAND_BCHUNK_OUT:
-/* this means the OTHER side should provide us with data */
+/* this means the OTHER side should provide us with data,
+ * just wait for the corresponding bstream and synthesize the event */
 			break;
 			case TARGET_COMMAND_RESTORE:
 			case TARGET_COMMAND_BCHUNK_IN:
-/* this means the OTHER side should receive data from us */
+				return queue_binary_stream(S, ev);
 			break;
 			case TARGET_COMMAND_FONTHINT:
-/* this MAY mean the OTHER side should receive data from us,
- * since it is a font we have reasonable expectations on the
- * size and can just throw it in a memory buffer by queueing
- * it outright */
+/* this MAY mean the OTHER side should receive data from us, since it is a font
+ * we have reasonable expectations on the size and can just throw it in a
+ * memory buffer by queueing it outright */
 			if (ev->tgt.ioevs[0].iv != -1){
 				transfer_fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, false);
 				transfer_sz = get_file_size(transfer_fd);
 				if (transfer_sz <= 0){
-					debug_print(1, "ignoring font-transfer, couldn't resolve source");
-					return;
+					a12int_trace(A12_TRACE_SYSTEM,
+						"ignoring font-transfer, couldn't resolve source");
+					return false;
 				}
+				return queue_binary_stream(S, ev);
+/* we should also calculate a hash on the transfer_fd so the client
+ * gets a chance to cancel the stream on the account of already having
+ * it in cache */
 			}
 			break;
 			case TARGET_COMMAND_NEWSEGMENT:
-/* when forwarded, this means not more than relay the info about
- * the event - what is also needed is for the corresponding side
- * (server or client) to set new local primitives and treat them
- * as a new channel */
+/* when forwarded, this means not more than relay the info about the event -
+ * what is also needed is for the corresponding side (server or client) to set
+ * new local primitives and treat them as a new channel */
+				return false;
 			break;
 			default:
 			break;
@@ -854,15 +1042,24 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
  * MAC and cipher state is managed in the append-outb stage
  */
 	uint8_t outb[header_sizes[STATE_EVENT_PACKET]];
+	size_t hdr = SEQUENCE_NUMBER_SIZE + 1;
+	outb[SEQUENCE_NUMBER_SIZE] = S->out_channel;
 	step_sequence(S, outb);
 
-	ssize_t step = arcan_shmif_eventpack(
-		ev, &outb[SEQUENCE_NUMBER_SIZE], sizeof(outb) - SEQUENCE_NUMBER_SIZE);
+	ssize_t step = arcan_shmif_eventpack(ev, &outb[hdr], sizeof(outb) - hdr);
 	if (-1 == step)
-		return;
+		return true;
 
-	a12int_append_out(S,
-		STATE_EVENT_PACKET, outb, step + SEQUENCE_NUMBER_SIZE, NULL, 0);
+	a12int_append_out(S, STATE_EVENT_PACKET, outb, step + hdr, NULL, 0);
 
-	debug_print(2, "enqueue event %s", arcan_shmif_eventstr(ev, NULL, 0));
+	a12int_trace(A12_TRACE_EVENT,
+		"enqueue event %s", arcan_shmif_eventstr(ev, NULL, 0));
+	return true;
+}
+
+void
+a12_set_trace_level(int mask, FILE* dst)
+{
+	a12_trace_targets = mask;
+	a12_trace_dst = dst;
 }

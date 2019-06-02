@@ -16,4 +16,12 @@ void a12int_encode_rgba(PACK_ARGS);
 void a12int_encode_dpng(PACK_ARGS);
 void a12int_encode_h264(PACK_ARGS);
 
+void a12int_encode_araw(struct a12_state* S,
+	uint8_t chid,
+	shmif_asample* buf,
+	uint16_t n_samples,
+	struct a12_aframe_cfg cfg,
+	struct a12_aframe_opts opts, size_t chunk_sz
+);
+
 #endif

@@ -52,17 +52,17 @@ static void fork_a12srv(struct a12_state* S, int fd)
 #ifdef _DEBUG
 		char buf[sizeof("cl_log_xxxxxx.log")];
 		snprintf(buf, sizeof(buf), "cl_log_%.6d.log", (int) getpid());
-		int newfd = open(buf, O_CREAT | O_RDWR, 0600);
-		if (-1 != newfd){
-			dup2(newfd, STDERR_FILENO);
-			close(newfd);
+		FILE* fpek = fopen(buf, "w+");
+		if (fpek){
+			a12_set_trace_level(a12_trace_targets, fpek);
 		}
+		fclose(stderr);
 #endif
 		int rc = a12helper_a12srv_shmifcl(S, NULL, fd, fd);
 		exit(rc < 0 ? EXIT_FAILURE : EXIT_SUCCESS);
 	}
 	else if (fpid == -1){
-		fprintf(stderr, "couldn't fork/dispatch, ulimits reached?\n");
+		a12int_trace(A12_TRACE_SYSTEM, "couldn't fork/dispatch, ulimits reached?\n");
 		a12_channel_close(S);
 		close(fd);
 		return;
@@ -104,7 +104,7 @@ static void fork_a12cl_dispatch(
 	}
 	else {
 /* just ignore and return to caller */
-		debug_print(1, "client handed off to %d\n", (int)fpid);
+		a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d\n", (int)fpid);
 		a12_channel_close(S);
 
 /* this will leak right now as the _free actually disconnects the client
@@ -134,9 +134,9 @@ static int get_cl_fd(struct addrinfo* addr)
 			);
 
 			if (!ec)
-				fprintf(stderr, "connected to: %s:%s\n", hostaddr, hostport);
+				a12int_trace(A12_TRACE_SYSTEM, "connected to: %s:%s", hostaddr, hostport);
 			else
-				debug_print(1, "connected, couldn't resolve address");
+				a12int_trace(A12_TRACE_SYSTEM, "connected, couldn't resolve address");
 			break;
 		}
 
@@ -213,7 +213,7 @@ static int a12_connect(struct a12_auth* auth,
 		}
 
 /* finally hand setup off to the dispatch */
-		struct a12_state* state = a12_channel_open(auth->authk, auth->authk_sz);
+		struct a12_state* state = a12_open(auth->authk, auth->authk_sz);
 		if (!state){
 			freeaddrinfo(addr);
 			shmifsrv_free(cl);
@@ -223,7 +223,7 @@ static int a12_connect(struct a12_auth* auth,
 		}
 
 /* wake the client */
-		debug_print(1, "local connection found, forwarding to dispatch");
+		a12int_trace(A12_TRACE_SYSTEM, "local connection found, forwarding to dispatch");
 		dispatch(state, cl, fd);
 	}
 
@@ -297,7 +297,7 @@ static int a12_listen(struct a12_auth* auth, const char* addr_str,
 		socklen_t addrlen = sizeof(addr);
 
 		int infd = accept(sockin_fd, (struct sockaddr*) &in_addr, &addrlen);
-		struct a12_state* ast = a12_channel_build(auth->authk, auth->authk_sz);
+		struct a12_state* ast = a12_build(auth->authk, auth->authk_sz);
 		if (!ast){
 			fprintf(stderr, "Couldn't allocate client state machine\n");
 			close(infd);
@@ -316,7 +316,12 @@ static int show_usage(const char* msg)
 	"\tForward local arcan applications: arcan-net -s connpoint host port\n"
 	"\tBridge remote arcan applications: arcan-net -l port [ip]\n\n"
 	"Options:\n"
+	"\t-d set trace bitmap (see below)\n"
 	"\t-t single- client (no fork/mt)\n"
+	"\nTrace groups (stderr):\n"
+	"\tvideo:1      audio:2      system:4    event:8      transfer:16\n"
+	"\tdebug:32     missing:64   alloc:128  crypto:256    vdetail:512\n"
+	"\tbtransfer:1024\n"
 /*
  * "Authentication/encryption (default, none):\n"
 	"\tSymmetric: -p [file] or - for stdin\n"
@@ -345,6 +350,13 @@ int main(int argc, char** argv)
 	for (; i < argc; i++){
 		if (argv[i][0] != '-')
 			break;
+
+		if (strcmp(argv[i], "-d") == 0){
+			if (i == argc - 1)
+				return show_usage("-d without trace value argument");
+			unsigned long val = strtoul(argv[++i], NULL, 10);
+			a12_set_trace_level(val, stderr);
+		}
 
 /* a12 client, shmif server */
 		if (strcmp(argv[i], "-s") == 0){

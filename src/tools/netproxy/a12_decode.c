@@ -35,7 +35,7 @@ static int video_miniz(const void* buf, int len, void* user)
 	const uint8_t* inbuf = buf;
 
 	if (!cont || len > cvf->expanded_sz){
-		debug_print(1, "decompression resulted in data overcommit");
+		a12int_trace(A12_TRACE_SYSTEM, "decompression resulted in data overcommit");
 		return 0;
 	}
 
@@ -52,9 +52,17 @@ static int video_miniz(const void* buf, int len, void* user)
 		}
 
 /* and commit */
-		if (cvf->postprocess == POSTPROCESS_VIDEO_DMINIZ)
-			cont->vidp[cvf->out_pos++] ^=
-				SHMIF_RGBA(cvf->pxbuf[0], cvf->pxbuf[1], cvf->pxbuf[2], 0xff);
+		if (cvf->postprocess == POSTPROCESS_VIDEO_DMINIZ){
+			uint8_t r, g, b, a;
+			SHMIF_RGBA_DECOMP(cont->vidp[cvf->out_pos], &r, &g, &b, &a);
+
+			cont->vidp[cvf->out_pos++] = SHMIF_RGBA(
+				cvf->pxbuf[0] ^ r,
+				cvf->pxbuf[1] ^ g,
+				cvf->pxbuf[2] ^ b,
+				0xff
+			);
+		}
 		else
 			cont->vidp[cvf->out_pos++] =
 				SHMIF_RGBA(cvf->pxbuf[0], cvf->pxbuf[1], cvf->pxbuf[2], 0xff);
@@ -72,19 +80,28 @@ static int video_miniz(const void* buf, int len, void* user)
 /* pixel-aligned fill/unpack, same as everywhere else */
 	size_t npx = (len / 3) * 3;
 	for (size_t i = 0; i < npx; i += 3){
-		if (cvf->postprocess == POSTPROCESS_VIDEO_DMINIZ)
-			cont->vidp[cvf->out_pos++] ^=
-				SHMIF_RGBA(inbuf[i], inbuf[i+1], inbuf[i+2], 0xff);
-		else
+		if (cvf->postprocess == POSTPROCESS_VIDEO_DMINIZ){
+			uint8_t r, g, b, a;
+			SHMIF_RGBA_DECOMP(cont->vidp[cvf->out_pos], &r, &g, &b, &a);
+
+			cont->vidp[cvf->out_pos++] = SHMIF_RGBA(
+				inbuf[i+0] ^ r,
+				inbuf[i+1] ^ g,
+				inbuf[i+2] ^ b,
+				0xff
+			);
+		}
+		else{
 			cont->vidp[cvf->out_pos++] =
 				SHMIF_RGBA(inbuf[i], inbuf[i+1], inbuf[i+2], 0xff);
+		}
 
-			cvf->row_left--;
-			if (cvf->row_left == 0){
-				cvf->out_pos -= cvf->w;
-				cvf->out_pos += cont->pitch;
-				cvf->row_left = cvf->w;
-			}
+		cvf->row_left--;
+		if (cvf->row_left == 0){
+			cvf->out_pos -= cvf->w;
+			cvf->out_pos += cont->pitch;
+			cvf->row_left = cvf->w;
+		}
 	}
 
 /* we need to account for len bytes not aligning */
@@ -102,7 +119,7 @@ static int video_miniz(const void* buf, int len, void* user)
 void a12int_decode_vbuffer(
 	struct a12_state* S, struct video_frame* cvf, struct arcan_shmif_cont* cont)
 {
-	debug_print(1, "decode vbuffer, method: %d", cvf->postprocess);
+	a12int_trace(A12_TRACE_VIDEO, "decode vbuffer, method: %d", cvf->postprocess);
 	if (cvf->postprocess == POSTPROCESS_VIDEO_MINIZ ||
 			cvf->postprocess == POSTPROCESS_VIDEO_DMINIZ){
 		size_t inbuf_pos = cvf->inbuf_pos;
@@ -121,7 +138,7 @@ void a12int_decode_vbuffer(
 		if (!codec){
 			codec = avcodec_find_decoder(AV_CODEC_ID_H264);
 			if (!codec){
-				debug_print(1, "couldn't find h264 decoder");
+				a12int_trace(A12_TRACE_SYSTEM, "couldn't find h264 decoder");
 /* missing: send a message to request that we don't get more h264 frames */
 				goto out_h264;
 			}
@@ -131,7 +148,7 @@ void a12int_decode_vbuffer(
 		if (!cvf->ffmpeg.context){
 			cvf->ffmpeg.context = avcodec_alloc_context3(codec);
 			if (!cvf->ffmpeg.context){
-				debug_print(1, "couldn't setup h264 codec context");
+				a12int_trace(A12_TRACE_SYSTEM, "couldn't setup h264 codec context");
 				goto out_h264;
 			}
 
@@ -141,14 +158,14 @@ void a12int_decode_vbuffer(
 
 			cvf->ffmpeg.parser = av_parser_init(codec->id);
 			if (!cvf->ffmpeg.parser){
-				debug_print(1, "couldn't find h264 parser");
+				a12int_trace(A12_TRACE_SYSTEM, "couldn't find h264 parser");
 /* missing: send a message to request that we don't get more h264 frames */
 				goto out_h264;
 			}
 
 			cvf->ffmpeg.frame = av_frame_alloc();
 			if (!cvf->ffmpeg.frame){
-				debug_print(1, "couldn't alloc frame for h264 decode");
+				a12int_trace(A12_TRACE_SYSTEM, "couldn't alloc frame for h264 decode");
 				av_parser_close(cvf->ffmpeg.parser);
 				goto out_h264;
 			}
@@ -156,7 +173,7 @@ void a12int_decode_vbuffer(
 /* packet is their chunking mechanism (research if this step can be avoided) */
 			cvf->ffmpeg.packet = av_packet_alloc();
 			if (!cvf->ffmpeg.packet){
-				debug_print(1, "couldn't alloc packet for h264 decode");
+				a12int_trace(A12_TRACE_SYSTEM, "couldn't alloc packet for h264 decode");
 				av_parser_close(cvf->ffmpeg.parser);
 				av_frame_free(&cvf->ffmpeg.frame);
 				cvf->ffmpeg.parser = NULL;
@@ -164,7 +181,7 @@ void a12int_decode_vbuffer(
 				goto out_h264;
 			}
 
-			debug_print(1, "ffmpeg state block allocated");
+			a12int_trace(A12_TRACE_VIDEO, "ffmpeg state block allocated");
 		}
 
 		av_parser_parse2(cvf->ffmpeg.parser, cvf->ffmpeg.context,
@@ -178,18 +195,19 @@ void a12int_decode_vbuffer(
 		if (!cvf->ffmpeg.packet->size)
 			goto out_h264;
 
-		debug_print(2, "ffmpeg packet size: %d", cvf->ffmpeg.packet->size);
+		a12int_trace(A12_TRACE_VIDEO,
+			"ffmpeg packet size: %d", cvf->ffmpeg.packet->size);
 		int ret = avcodec_send_packet(cvf->ffmpeg.context, cvf->ffmpeg.packet);
 
 		while (ret >= 0){
 			ret = avcodec_receive_frame(cvf->ffmpeg.context, cvf->ffmpeg.frame);
-			debug_print(2, "ffmpeg_receive status: %d", ret);
+			a12int_trace(A12_TRACE_VIDEO, "ffmpeg_receive status: %d", ret);
 
 			if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
 				goto out_h264;
 
-			debug_print(1, "rescale and commit %d, format: %d",
-				cvf->commit, AV_PIX_FMT_YUV420P);
+			a12int_trace(A12_TRACE_VIDEO,
+				"rescale and commit %d, format: %d", cvf->commit, AV_PIX_FMT_YUV420P);
 /* Quite possible that we should actually cache this context as well, but it
  * has different behavior to the rest due to resize. Since this all turns
  * ffmpeg into a dependency, maybe it belongs in the vframe setup on resize. */
@@ -216,7 +234,7 @@ out_h264:
 	}
 #endif
 
-	debug_print(1, "unhandled unpack method %d", cvf->postprocess);
+	a12int_trace(A12_TRACE_SYSTEM, "unhandled unpack method %d", cvf->postprocess);
 /* NOTE: should we send something about an undesired frame format here as
  * well in order to let the source re-send the frame in another format?
  * that could offset the need to 'negotiate' */
@@ -288,12 +306,13 @@ void a12int_unpack_vbuffer(struct a12_state* S,
 
 	cvf->inbuf_sz -= S->decode_pos;
 	if (cvf->inbuf_sz == 0){
-		debug_print(2, "video frame completed, commit:%"PRIu8, cvf->commit);
+		a12int_trace(A12_TRACE_VIDEO,
+			"video frame completed, commit:%"PRIu8, cvf->commit);
 		if (cvf->commit){
 			arcan_shmif_signal(cont, SHMIF_SIGVID);
 		}
 	}
 	else {
-		debug_print(3, "video buffer left: %"PRIu32, cvf->inbuf_sz);
+		a12int_trace(A12_TRACE_VDETAIL, "video buffer left: %"PRIu32, cvf->inbuf_sz);
 	}
 }

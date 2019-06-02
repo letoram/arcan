@@ -51,15 +51,14 @@ enum {
 
 enum control_commands {
 	COMMAND_HELLO = 0,
-	COMMAND_SHUTDOWN,
-	COMMAND_ENCNEG,
-	COMMAND_REKEY,
-	COMMAND_CANCELSTREAM,
-	COMMAND_NEWCH,
-	COMMAND_FAILURE,
-	COMMAND_VIDEOFRAME,
-	COMMAND_AUDIOFRAME,
-	COMMAND_BINARYSTREAM
+	COMMAND_SHUTDOWN = 1,
+	COMMAND_NEWCH = 2,
+	COMMAND_CANCELSTREAM = 3,
+	COMMAND_FAILURE = 4,
+	COMMAND_VIDEOFRAME = 5,
+	COMMAND_AUDIOFRAME = 6,
+	COMMAND_BINARYSTREAM = 7,
+	COMMAND_PING = 8,
 };
 
 #define SEQUENCE_NUMBER_SIZE 8
@@ -70,9 +69,13 @@ enum control_commands {
 #define DEBUG 0
 #endif
 
-#ifndef debug_print
-#define debug_print(lvl, fmt, ...) \
-            do { if (DEBUG >= lvl) fprintf(stderr, "%s:%d:%s(): " fmt "\n", \
+extern int a12_trace_targets;
+extern FILE* a12_trace_dst;
+
+#ifndef a12int_trace
+#define a12int_trace(group, fmt, ...) \
+            do { if (a12_trace_dst && (a12_trace_targets & group)) fprintf(a12_trace_dst, \
+						"%s:%d:%s(): " fmt "\n", \
 						"a12:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 #endif
 
@@ -88,11 +91,12 @@ enum {
 size_t a12int_header_size(int type);
 
 struct audio_frame {
-	uint8_t sample_rate;
+	uint32_t rate;
 	uint8_t encoding;
-	uint8_t rate;
-	uint8_t nsamples;
+	uint8_t channels;
 	uint8_t format;
+	uint16_t nsamples;
+	uint8_t commit;
 
 /* only used for some postprocessing mode (i.e. decompression) */
 	uint8_t* inbuf;
@@ -103,8 +107,10 @@ struct audio_frame {
 
 struct binary_frame {
 	int tmp_fd;
+	int type;
 	bool read;
 	uint64_t size;
+	uint8_t hash[16];
 };
 
 struct video_frame {
@@ -181,9 +187,10 @@ struct a12_state {
 				bool failed;
 			} videnc;
 #endif
-	};
+		};
 	} channels[256];
 	int in_channel;
+	uint8_t out_channel;
 
 /*
  * incoming buffer, size of the buffer == size of the type
