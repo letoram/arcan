@@ -1,0 +1,1 @@
+{"version":1,"ops":[{"author":{"id":"9eb510892d1accc0c715d21128d216b2e6f74967"},"files":null,"message":"The next step in multi-GPU rendering support is to track gpu-card affinity for\na vstore, and on activate/upload track which gpu contexts it is active on and\nsynchronize accordingly.","timestamp":1559453844,"title":"(agp) gpu-affinity tracking","type":1}]}
