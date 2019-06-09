@@ -229,8 +229,6 @@ static void spawn_guardthread(struct arcan_shmif_cont* d)
 	if (-1 == pthread_create(&pth, &pthattr, guard_thread, hgs)){
 		hgs->guard.active = false;
 	}
-
-	pthread_detach(pth);
 }
 
 #ifndef offsetof
