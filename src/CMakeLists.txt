@@ -702,6 +702,9 @@ if (HYBRID_HEADLESS)
 		${VIDEO_PLATFORM_SOURCES}
 		${PLATFORM_ROOT}/headless/event.c
 	)
+	if (MAIN_DEPS)
+		add_dependencies(arcan_headless ${MAIN_DEPS})
+	endif()
 	target_include_directories(arcan_headless PRIVATE ${INCLUDE_DIRS})
 	target_compile_definitions(arcan_headless PRIVATE
 		${ARCAN_DEFINITIONS} ${ARCAN_NOLWA_DEFINITIONS} ARCAN_HEADLESS

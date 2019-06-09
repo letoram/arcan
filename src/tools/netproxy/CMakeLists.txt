@@ -6,6 +6,10 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	add_definitions(-D_DEBUG)
 endif()
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+	add_definitions(-D__LINUX)
+endif()
+
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/cmake/modules)
 if (ARCAN_SOURCE_DIR)
 	add_subdirectory(${ARCAN_SOURCE_DIR}/shmif ashmif)
