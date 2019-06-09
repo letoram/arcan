@@ -4,7 +4,6 @@
 #include <arcan_shmif.h>
 
 #include <tobii/tobii.h>
-#include <tobii/tobii_engine.h>
 #include <tobii/tobii_streams.h>
 
 static struct arcan_shmif_cont conn;
@@ -127,7 +126,7 @@ int main(int argc, char** argv)
 	arcan_shmif_signal(&conn, SHMIF_SIGVID);
 
 	while (running){
-		tobii_wait_for_callbacks(NULL, 1, &device);
+		tobii_wait_for_callbacks(1, &device);
 		tobii_device_process_callbacks(device);
 		tobii_update_timesync(device);
 		if (dirty){
