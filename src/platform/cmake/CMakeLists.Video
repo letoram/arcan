@@ -156,7 +156,7 @@ if (INPUT_PLATFORM STREQUAL "evdev")
 		list(APPEND VIDEO_LIBRARIES ${XKB_LIBRARIES})
 		list(APPEND INCLUDE_DIRS ${XKB_INCLUDE_DIRS})
 	else()
-		amsg("${CL_YEL}evdev    \t${CL_RED}no libxkbcommon{CL_RST}")
+		amsg("${CL_YEL}evdev    \t${CL_RED}no libxkbcommon${CL_RST}")
 	endif()
 endif()
 
