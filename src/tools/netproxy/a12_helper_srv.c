@@ -18,6 +18,7 @@
 struct shmifsrv_thread_data {
 	struct shmifsrv_client* C;
 	struct a12_state* S;
+	struct arcan_shmif_cont fake;
 	int kill_fd;
 	uint8_t chid;
 };
@@ -29,12 +30,13 @@ struct shmifsrv_thread_data {
  *
  * The buffer-out is simply a way for the main feed thread to forward the current
  * pending buffer output
- */
-static bool spawn_thread(
-struct a12_state* S, struct shmifsrv_client* C, uint8_t chid, int kill_fd);
+ *
+*/
+static bool spawn_thread(struct shmifsrv_thread_data* inarg);
 static pthread_mutex_t giant_lock = PTHREAD_MUTEX_INITIALIZER;
 static const char* last_lock;
-_Atomic volatile size_t buffer_out = 0;
+static _Atomic volatile size_t buffer_out = 0;
+static _Atomic volatile uint8_t n_segments;
 
 #define BEGIN_CRITICAL(X, Y) do{pthread_mutex_lock(X); last_lock = Y;} while(0);
 #define END_CRITICAL(X) do{pthread_mutex_unlock(X);} while(0);
@@ -93,33 +95,71 @@ static struct a12_vframe_opts vopts_from_segment(
 static void on_srv_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
-	struct a12_state* S = tag;
+	struct shmifsrv_thread_data* data = tag;
 	if (!cont){
-		a12int_trace(A12_TRACE_SYSTEM, "serv-event without context on channel");
+		a12int_trace(A12_TRACE_SYSTEM, "kind=error:type=EINVALCH:val=%d", chid);
 		return;
 	}
 	struct shmifsrv_client* srv_cl = (struct shmifsrv_client*) cont->user;
 
 	a12int_trace(A12_TRACE_EVENT,
-		"client event: %s on ch %d", arcan_shmif_eventstr(ev, NULL, 0), chid);
+		"kind=forward:chid=%d:eventstr=%s", chid, arcan_shmif_eventstr(ev, NULL, 0));
 
+/* Just forward whatever we get except for NEWSEGMENTS as those need special
+ * treatment so we get a segment to map etc. on */
 	if (ev->category != EVENT_TARGET || ev->tgt.kind != TARGET_COMMAND_NEWSEGMENT){
-		shmifsrv_enqueue_event(srv_cl, ev, -1);
+		if (!srv_cl){
+			a12int_trace(A12_TRACE_SYSTEM, "kind=error:type=EINVAL:val=%d", chid);
+		}
+		else
+			shmifsrv_enqueue_event(srv_cl, ev, -1);
 		return;
 	}
 
-/* we use a 'not so nice' hack here and decode the new segment dimensions
- * from redefintion of the NEWSEGMENT event where also provide w / h */
-	struct shmifsrv_client* cl = shmifsrv_send_subsegment(
+/* First we need a copy of the current processing thread structure */
+	struct shmifsrv_thread_data* new_data =
+		malloc(sizeof(struct shmifsrv_thread_data));
+	if (!new_data){
+		a12int_trace(A12_TRACE_SYSTEM,
+			"kind=error:type=ENOMEM:src_ch=%d:dst_ch=%d", chid, ev->tgt.ioevs[0].iv);
+		a12_set_channel(data->S, chid);
+		a12_channel_close(data->S);
+		return;
+	}
+	*new_data = *data;
+
+/* Then we forward the subsegment to the local client */
+	new_data->chid = ev->tgt.ioevs[0].iv;
+	new_data->C = shmifsrv_send_subsegment(
 		srv_cl, ev->tgt.ioevs[2].iv, 32, 32, chid, ev->tgt.ioevs[3].uiv);
 
-/* tear-down the channel on the other side, fail to allocate */
-	if (!cl){
-		a12_set_channel(S, chid);
-		a12_channel_close(S);
+/* That can well fail (descriptors etc.) */
+	if (!new_data->C){
+		a12int_trace(A12_TRACE_SYSTEM,
+			"kind=error:type=ENOSRVMEM:src_ch=%d:dst_ch=%d", chid, ev->tgt.ioevs[0].iv);
+		free(new_data);
+		a12_set_channel(data->S, chid);
+		a12_channel_close(data->S);
+	}
+
+/* Attach to a new processing thread, and tie this channel to the 'fake'
+ * segment that we only use to extract back the events and so on to for now,
+ * when we deal with 'output' segments as well, this is where we'd need to do
+ * the encoding dance */
+	new_data->fake.user = new_data->C;
+	a12_set_destination(data->S, &new_data->fake, new_data->chid);
+
+	if (!spawn_thread(new_data)){
+		a12int_trace(A12_TRACE_SYSTEM,
+			"kind=error:type=ENOTHRDMEM:src_ch=%d:dst_ch=%d", chid, ev->tgt.ioevs[0].iv);
+		free(new_data);
+		a12_set_channel(data->S, chid);
+		a12_channel_close(data->S);
 		return;
 	}
 
+	a12int_trace(A12_TRACE_ALLOC,
+		"kind=new_channel:src_ch=%d:dst_ch=%d", chid, (int)new_data->chid);
 }
 
 static void on_audio_cb(shmif_asample* buf,
@@ -141,8 +181,9 @@ static void* client_thread(void* inarg)
 {
 	struct shmifsrv_thread_data* data = inarg;
 	static const short errmask = POLLERR | POLLNVAL | POLLHUP;
-	struct pollfd pfd = {
-		.fd = shmifsrv_client_handle(data->C), .events = POLLIN | errmask
+	struct pollfd pfd[2] = {
+		{ .fd = shmifsrv_client_handle(data->C), .events = POLLIN | errmask },
+		{ .fd = data->kill_fd, errmask }
 	};
 
 /* the ext-io thread might be sleeping waiting for input, when we finished
@@ -154,12 +195,13 @@ static void* client_thread(void* inarg)
 			dirty = false;
 		}
 
-		if (-1 == poll(&pfd, 1, 4)){
+		if (-1 == poll(pfd, 2, 4)){
 			if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
 				break;
 		}
 
-		if (pfd.revents & errmask){
+/* kill socket or poll socket died */
+		if ((pfd[0].revents & errmask) || (pfd[1].revents & errmask)){
 			break;
 		}
 
@@ -167,7 +209,7 @@ static void* client_thread(void* inarg)
 
 		while (shmifsrv_dequeue_events(data->C, &ev, 1)){
 			if (arcan_shmif_descrevent(&ev)){
-				a12int_trace(A12_TRACE_MISSING, "ignoring descriptor passing event");
+				a12int_trace(A12_TRACE_MISSING, "message=ignoring descriptor passing event");
 				continue;
 			}
 
@@ -175,12 +217,14 @@ static void* client_thread(void* inarg)
 			BEGIN_CRITICAL(&giant_lock, "client_event");
 				if (shmifsrv_process_event(data->C, &ev)){
 					a12int_trace(A12_TRACE_EVENT,
-						"consumed: %s", arcan_shmif_eventstr(&ev, NULL, 0));
+						"kind=consumed:channel=%d:eventstr=%s",
+						data->chid, arcan_shmif_eventstr(&ev, NULL, 0)
+					);
 				}
 				else {
-					a12int_trace(A12_TRACE_EVENT,
-						"forward: %s", arcan_shmif_eventstr(&ev, NULL, 0));
 					a12_set_channel(data->S, data->chid);
+					a12int_trace(A12_TRACE_EVENT, "kind=forward:channel=%d:eventstr=%s",
+						data->chid, arcan_shmif_eventstr(&ev, NULL, 0));
 					a12_channel_enqueue(data->S, &ev);
 					dirty = true;
 				}
@@ -192,12 +236,6 @@ static void* client_thread(void* inarg)
 /* Dead client, send the close message and that should cascade down the rest
  * and kill relevant sockets. */
 			if (pv == CLIENT_DEAD){
-				BEGIN_CRITICAL(&giant_lock, "client_death");
-					a12_set_channel(data->S, data->chid);
-					a12_channel_close(data->S);
-					write(data->kill_fd, &data->chid, 1);
-					a12int_trace(A12_TRACE_SYSTEM, "client died");
-				END_CRITICAL(&giant_lock);
 				goto out;
 			}
 
@@ -217,6 +255,7 @@ static void* client_thread(void* inarg)
 				a12int_trace(A12_TRACE_VDETAIL, "video-buffer");
 				struct shmifsrv_vbuffer vb = shmifsrv_video(data->C);
 				BEGIN_CRITICAL(&giant_lock, "video-buffer");
+					a12_set_channel(data->S, data->chid);
 					a12_channel_vframe(data->S, &vb, vopts_from_segment(data->C, vb));
 					dirty = true;
 				END_CRITICAL(&giant_lock);
@@ -234,6 +273,7 @@ static void* client_thread(void* inarg)
 			if (pv & CLIENT_ABUFFER_READY){
 				a12int_trace(A12_TRACE_AUDIO, "audio-buffer");
 				BEGIN_CRITICAL(&giant_lock, "audio_buffer");
+					a12_set_channel(data->S, data->chid);
 					shmifsrv_audio(data->C, on_audio_cb, data->S);
 					dirty = true;
 				END_CRITICAL(&giant_lock);
@@ -243,38 +283,36 @@ static void* client_thread(void* inarg)
 	}
 
 out:
+	BEGIN_CRITICAL(&giant_lock, "client_death");
+		a12_set_channel(data->S, data->chid);
+		a12_channel_close(data->S);
+		write(data->kill_fd, &data->chid, 1);
+		a12int_trace(A12_TRACE_SYSTEM, "client died");
+	END_CRITICAL(&giant_lock);
+
 /* only shut-down everything on the primary- segment failure */
 	if (data->chid == 0 && data->kill_fd != -1)
 		close(data->kill_fd);
 
+	atomic_fetch_sub(&n_segments, 1);
 	free(inarg);
 	return NULL;
 }
 
-static bool spawn_thread(
-	struct a12_state* S, struct shmifsrv_client* C, uint8_t chid, int kill_fd)
+static bool spawn_thread(struct shmifsrv_thread_data* inarg)
 {
-	struct shmifsrv_thread_data* data = malloc(sizeof(struct shmifsrv_thread_data));
-	if (!data){
-		a12int_trace(A12_TRACE_ALLOC, "could not setup thread data");
-		return false;
-	}
-
-	*data = (struct shmifsrv_thread_data){
-		.C = C,
-		.S = S,
-		.kill_fd = kill_fd,
-		.chid = chid
-	};
-
 	pthread_t pth;
 	pthread_attr_t pthattr;
 	pthread_attr_init(&pthattr);
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	atomic_fetch_add(&n_segments, 1);
 
-	if (-1 == pthread_create(&pth, &pthattr, client_thread, data)){
-		a12int_trace(A12_TRACE_ALLOC, "could not spawn thread");
-		free(data);
+	if (-1 == pthread_create(&pth, &pthattr, client_thread, inarg)){
+		BEGIN_CRITICAL(&giant_lock, "cleanup-spawn");
+			atomic_fetch_sub(&n_segments, 1);
+			a12int_trace(A12_TRACE_ALLOC, "could not spawn thread");
+			free(inarg);
+		END_CRITICAL(&giant_lock);
 		return false;
 	}
 
@@ -302,8 +340,29 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 /*
  * Spawn the processing- thread that will take care of a shmifsrv_client
  */
-	if (!spawn_thread(S, C, 0, pipe_pair[1]))
+	struct shmifsrv_thread_data* arg;
+	arg = malloc(sizeof(struct shmifsrv_thread_data));
+	if (!arg){
+		close(pipe_pair[0]);
+		close(pipe_pair[1]);
 		return;
+	}
+
+/*
+ * the kill_fd will be shared among the other segments, so it is only
+ * here where there is reason to clean it up like this
+ */
+	*arg = (struct shmifsrv_thread_data){
+		.C = C,
+		.S = S,
+		.kill_fd = pipe_pair[1],
+		.chid = 0
+	};
+	if (!spawn_thread(arg)){
+		close(pipe_pair[0]);
+		close(pipe_pair[1]);
+		return;
+	}
 
 /*
  * Socket in/out liveness, buffer flush / dispatch
@@ -377,7 +436,7 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 
 			BEGIN_CRITICAL(&giant_lock, "unpack-event");
 				a12int_trace(A12_TRACE_TRANSFER, "unpack %zd bytes", nr);
-				a12_unpack(S, inbuf, nr, S, on_srv_event);
+				a12_unpack(S, inbuf, nr, arg, on_srv_event);
 			END_CRITICAL(&giant_lock);
 		}
 
@@ -393,4 +452,9 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 	fclose(fpek_in);
 #endif
 	a12int_trace(A12_TRACE_SYSTEM, "(srv) shutting down connection");
+	close(pipe_pair[0]);
+	while(atomic_load(&n_segments) > 0){}
+	if (!a12_free(S)){
+		a12int_trace(A12_TRACE_ALLOC, "error cleaning up a12 context");
+	}
 }

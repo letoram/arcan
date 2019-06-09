@@ -124,10 +124,18 @@ void a12int_decode_vbuffer(
 			cvf->postprocess == POSTPROCESS_VIDEO_DMINIZ){
 		size_t inbuf_pos = cvf->inbuf_pos;
 		tinfl_decompress_mem_to_callback(cvf->inbuf, &inbuf_pos, video_miniz, S, 0);
+
+		a12int_trace(A12_TRACE_ALLOC, "freeing zlib/png input block");
 		free(cvf->inbuf);
+		cvf->inbuf = NULL;
 		cvf->carry = 0;
+
+/* this is a junction where other local transfer strategies should be considered,
+ * i.e. no-block and defer process on the next stepframe or spin on the vready */
 		if (cvf->commit && cvf->commit != 255){
+			a12int_trace(A12_TRACE_VIDEO, "vbuffer completed, signal now");
 			arcan_shmif_signal(cont, SHMIF_SIGVID);
+			cvf->commit = 0;
 		}
 		return;
 	}

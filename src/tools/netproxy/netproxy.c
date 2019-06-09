@@ -84,7 +84,6 @@ static void a12cl_dispatch(
 {
 /* note that the a12helper will do the cleanup / free */
 	a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){});
-	a12_channel_close(S);
 }
 
 static void fork_a12cl_dispatch(
@@ -104,7 +103,7 @@ static void fork_a12cl_dispatch(
 	}
 	else {
 /* just ignore and return to caller */
-		a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d\n", (int)fpid);
+		a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d", (int)fpid);
 		a12_channel_close(S);
 
 /* this will leak right now as the _free actually disconnects the client
@@ -316,8 +315,8 @@ static int show_usage(const char* msg)
 	"\tForward local arcan applications: arcan-net -s connpoint host port\n"
 	"\tBridge remote arcan applications: arcan-net -l port [ip]\n\n"
 	"Options:\n"
-	"\t-d set trace bitmap (see below)\n"
 	"\t-t single- client (no fork/mt)\n"
+	"\t-d bitmap \t set trace bitmap (see below)\n"
 	"\nTrace groups (stderr):\n"
 	"\tvideo:1      audio:2      system:4    event:8      transfer:16\n"
 	"\tdebug:32     missing:64   alloc:128  crypto:256    vdetail:512\n"

@@ -48,7 +48,7 @@ Milestone 1 - basic features (0.5.x)
 	-  [x] xor-PNG
 - [ ] Raw binary descriptor transfers
 - [ ] Interactive compression controls
-- [ ] Subsegments
+- [x] Subsegments
 - [ ] Basic authentication / Cipher (blake+chaha20)
 - [ ] Basic privsep/sandboxing
 - [ ] Add to encode, remoting
@@ -439,12 +439,13 @@ No extra data needed in the control command, just used as a periodic carrier
 to keep the connection alive and measure drift.
 
 ##  Event (2), fixed length
-- sequence number : uint64
-- channel-id : uint8
+- [0..7] : sequence number : uint64
+- [8   ] : channel-id      : uint8
+- [9+  ] : event-data      : special
 
-This follows the packing format provided by the SHMIF- libraries themselves,
-which have their own pack/unpack/versioning routines. When the SHMIF event
-model itself is finalized, it will be added to the documentation here.
+The event data does not currently have a fixed packing format as the model is
+still being refined and thus we use the opaque format from
+arcan\_shmif\_eventpack.
 
 ## Vstream-data (3), Astream-data (4), Bstream-data (5) (variable length)
 - channel-id : uint8

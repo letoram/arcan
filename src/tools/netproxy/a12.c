@@ -275,6 +275,7 @@ a12_free(struct a12_state* S)
 		}
 	}
 
+	a12int_trace(A12_TRACE_ALLOC, "a12-state machine freed");
 	DYNAMIC_FREE(S->bufs[0]);
 	DYNAMIC_FREE(S->bufs[1]);
 	*S = (struct a12_state){};
@@ -459,7 +460,6 @@ static void command_videoframe(struct a12_state* S)
 /* [41]     : commit: uint8 */
 	unpack_u32(&vframe->expanded_sz, &S->decode[40]);
 	vframe->commit = S->decode[44];
-
 	S->in_channel = -1;
 
 /* If channel set, apply resize immediately - synch cost should be offset with
@@ -468,7 +468,8 @@ static void command_videoframe(struct a12_state* S)
  * where the WM have artificially restricted the size of a client window etc. */
 	struct arcan_shmif_cont* cont = S->channels[channel].cont;
 	if (!cont){
-		a12int_trace(A12_TRACE_SYSTEM, "no segment mapped on channel");
+		a12int_trace(A12_TRACE_SYSTEM,
+			"kind=videoframe_header:status=EINVAL:channel=%d", (int) channel);
 		vframe->commit = 255;
 		return;
 	}
@@ -480,15 +481,14 @@ static void command_videoframe(struct a12_state* S)
 			vframe->commit = 255;
 		}
 		else
-			a12int_trace(A12_TRACE_VIDEO,
-				"resized segment to %"PRIu32",%"PRIu32, vframe->sw, vframe->sh);
+			a12int_trace(A12_TRACE_VIDEO, "kind=resized:channel=%d:"
+				"new_w=%zu:new_h=%zu", (int) channel, (size_t) vframe->sw, (size_t) vframe->sh);
 	}
 
-	a12int_trace(A12_TRACE_VIDEO,
-		"new vframe (%d): %"PRIu16"*%"
-		PRIu16"@%"PRIu16",%"PRIu16"+%"PRIu16",%"PRIu16,
-		vframe->postprocess,
-		vframe->sw, vframe->sh, vframe->x, vframe->y, vframe->w, vframe->h
+	a12int_trace(A12_TRACE_VIDEO, "kind=frame_header:method=%d:"
+		"source_w=%zu:source_h=%zu:dst_w=%zu:dst_h=%zu:x=%zu,y=%zu",
+		(int) vframe->postprocess, (size_t) vframe->w, (size_t) vframe->h,
+		(size_t) vframe->sw, (size_t) vframe->sh, (size_t) vframe->x, (size_t) vframe->y
 	);
 
 /* Validation is done just above, making sure the sub- region doesn't extend
@@ -572,9 +572,10 @@ static void process_control(struct a12_state* S, void (*on_event)
 	if (!process_mac(S))
 		return;
 
-/* ignore these two for now
-	uint64_t last_seen;
-	uint8_t entropy[8];
+/* ignore these for now
+	uint64_t last_seen = S->decode[0];
+	uint8_t entropy[8] = S->decode[8];
+	uint8_t channel = S->decode[16];
  */
 
 	uint8_t command = S->decode[17];
@@ -623,7 +624,7 @@ static void process_event(struct a12_state* S, void* tag,
 	if (!process_mac(S))
 		return;
 
-	uint8_t channel = S->decode[16];
+	uint8_t channel = S->decode[8];
 
 	struct arcan_event aev;
 	unpack_u64(&S->last_seen_seqnr, S->decode);
@@ -660,7 +661,7 @@ static void process_video(struct a12_state* S)
 		unpack_u16(&S->left, &S->decode[5]);
 		S->decode_pos = 0;
 		a12int_trace(A12_TRACE_VIDEO,
-			"video[%d:%"PRIx32"], left: %"PRIu16, S->in_channel, stream, S->left);
+			"kind=header:channel=%"PRIu16":size=%"PRIu16, S->in_channel, S->left);
 		return;
 	}
 
@@ -670,7 +671,7 @@ static void process_video(struct a12_state* S)
 	struct arcan_shmif_cont* cont = S->channels[S->in_channel].cont;
 	if (!S->channels[S->in_channel].cont){
 		a12int_trace(A12_TRACE_SYSTEM,
-			"data on unmapped channel (%d)", (int) S->in_channel);
+			"kind=error:source=video:type=EINVALCH:val=%d", (int) S->in_channel);
 		reset_state(S);
 		return;
 	}
@@ -678,23 +679,27 @@ static void process_video(struct a12_state* S)
 /* postprocessing that requires an intermediate decode buffer before pushing */
 	if (a12int_buffer_format(cvf->postprocess)){
 		size_t left = cvf->inbuf_sz - cvf->inbuf_pos;
+		a12int_trace(A12_TRACE_VIDEO,
+			"kind=decbuf:channel=%"PRIu16":size=%"PRIu16":left=%zu",
+			S->in_channel, S->decode_pos, left
+		);
 
+/* buffer and slide? */
 		if (left >= S->decode_pos){
 			memcpy(&cvf->inbuf[cvf->inbuf_pos], S->decode, S->decode_pos);
 			cvf->inbuf_pos += S->decode_pos;
 			left -= S->decode_pos;
-
-			if (cvf->inbuf_sz == cvf->inbuf_pos){
-				a12int_trace(A12_TRACE_VIDEO, "decode-buffer size reached");
-			}
 		}
+/* other option is to terminate here as the client is misbehaving */
 		else if (left != 0){
 			a12int_trace(A12_TRACE_SYSTEM,
-				"overflow, stream length and packet size mismatch");
+				"kind=error:source=video:channel=%"PRIu16":type=EOVERFLOW", S->in_channel);
+			reset_state(S);
 		}
 
-/* buffer is finished, decode and commit to designated channel context */
-		if (left == 0)
+/* buffer is finished, decode and commit to designated channel context
+ * unless it has already been marked as something to ignore and discard */
+		if (left == 0 && cvf->commit != 255)
 			a12int_decode_vbuffer(S, cvf, cont);
 
 		reset_state(S);
@@ -703,7 +708,7 @@ static void process_video(struct a12_state* S)
 
 /* if we are in discard state, just continue */
 	if (cvf->commit == 255){
-		a12int_trace(A12_TRACE_VIDEO, "discard state, ignore video");
+		a12int_trace(A12_TRACE_VIDEO, "kind=discard");
 		reset_state(S);
 		return;
 	}
@@ -711,13 +716,13 @@ static void process_video(struct a12_state* S)
 /* we use a length field that match the width*height so any
  * overflow / wrap tricks won't work */
 	if (cvf->inbuf_sz < S->decode_pos){
-		a12int_trace(
-			A12_TRACE_SYSTEM, "bad client, byte count mismatch "
-			"(%"PRIu16" - %"PRIu16, cvf->inbuf_sz, S->decode_pos);
+		a12int_trace(A12_TRACE_SYSTEM,
+			"kind=error:source=video:channel=%"PRIu16":type=EOVERFLOW", S->in_channel);
 		reset_state(S);
 		return;
 	}
 
+/* finally unpack the raw video buffer */
 	a12int_unpack_vbuffer(S, cvf, cont);
 	reset_state(S);
 }
@@ -926,7 +931,7 @@ a12_channel_new(struct a12_state* S,
 	uint8_t outb[CONTROL_PACKET_SIZE] = {0};
 	step_sequence(S, outb);
 
-	outb[17] = 0;
+	outb[17] = COMMAND_NEWCH;
 	outb[18] = chid;
 	outb[19] = segkind;
 	outb[20] = 0;
@@ -939,6 +944,7 @@ a12_channel_new(struct a12_state* S,
 void
 a12_set_channel(struct a12_state* S, uint8_t chid)
 {
+	a12int_trace(A12_TRACE_SYSTEM, "channel_out=%"PRIu8, chid);
 	S->out_channel = chid;
 }
 
@@ -1092,7 +1098,7 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
 	a12int_append_out(S, STATE_EVENT_PACKET, outb, step + hdr, NULL, 0);
 
 	a12int_trace(A12_TRACE_EVENT,
-		"enqueue event %s", arcan_shmif_eventstr(ev, NULL, 0));
+		"kind=enqueue:eventstr=%s", arcan_shmif_eventstr(ev, NULL, 0));
 	return true;
 }
 
@@ -1101,4 +1107,34 @@ a12_set_trace_level(int mask, FILE* dst)
 {
 	a12_trace_targets = mask;
 	a12_trace_dst = dst;
+}
+
+static const char* groups[] = {
+	"video",
+	"audio",
+	"system",
+	"event",
+	"transfer",
+	"debug",
+	"missing",
+	"alloc",
+	"crypto",
+	"vdetail",
+	"btransfer"
+};
+
+static unsigned i_log2(uint32_t n)
+{
+	unsigned res = 0;
+	while (n >>= 1) res++;
+	return res;
+}
+
+const char* a12int_group_tostr(int group)
+{
+	unsigned ind = i_log2(group);
+	if (ind > sizeof(groups)/sizeof(groups[0]))
+		return "bad";
+	else
+		return groups[ind];
 }
