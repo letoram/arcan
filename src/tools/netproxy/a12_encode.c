@@ -57,13 +57,13 @@ static void a12int_vframehdr_build(uint8_t buf[CONTROL_PACKET_SIZE],
  * typically comes with the compression / h264 / ...  output. To avoid yet
  * another copy, we use the prepend mechanism in a12int_append_out.
  */
-static void chunk_pack(struct a12_state* S,
-	int type, uint8_t* buf, size_t buf_sz, size_t chunk_sz)
+static void chunk_pack(struct a12_state* S, int type,
+	uint8_t chid, uint8_t* buf, size_t buf_sz, size_t chunk_sz)
 {
 	size_t n_chunks = buf_sz / chunk_sz;
 
 	uint8_t outb[a12int_header_size(type)];
-	outb[0] = 0; /* [0] : channel id */
+	outb[0] = chid; /* [0] : channel id */
 	pack_u32(0xbacabaca, &outb[1]); /* [1..4] : stream */
 	pack_u16(chunk_sz, &outb[5]); /* [5..6] : length */
 
@@ -111,7 +111,7 @@ void a12int_encode_araw(struct a12_state* S,
 /* then split it up (though likely we get fed much smaller chunks) */
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
-	chunk_pack(S, STATE_AUDIO_PACKET, &outb[hdr_sz], pos - hdr_sz, chunk_sz);
+	chunk_pack(S, STATE_AUDIO_PACKET, chid, &outb[hdr_sz], pos - hdr_sz, chunk_sz);
 	free(outb);
 }
 
@@ -364,7 +364,7 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 /* reset the accumulation buffer so that we rebuild the normal frame */
 	if (ab->w != vb->w || ab->h != vb->h){
 		a12int_trace(A12_TRACE_VIDEO,
-			"deltaz, dimension mismatch: %zu*%zu <->%zu*%zu",
+			"kind=resize:prev_w=%zu:rev_h=%zu:new_w%zu:new_h=%zu",
 			(size_t) ab->w, (size_t) ab->h, (size_t) vb->w, (size_t) vb->h
 		);
 		free(ab->buffer);
@@ -383,7 +383,7 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 		*h = vb->h;
 		*x = 0;
 		*y = 0;
-		a12int_trace(A12_TRACE_VIDEO, "dpng, switch to I frame (%zu, %zu)", *w, *h);
+		a12int_trace(A12_TRACE_VIDEO, "kind=status:compress=dpng:message=I");
 
 		if (!ab->buffer)
 			return (struct compress_res){};
@@ -474,7 +474,7 @@ void a12int_encode_dpng(PACK_ARGS)
 
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, hdr_buf, CONTROL_PACKET_SIZE, NULL, 0);
-	chunk_pack(S, STATE_VIDEO_PACKET, cres.out_buf, cres.out_sz, chunk_sz);
+	chunk_pack(S, STATE_VIDEO_PACKET, chid, cres.out_buf, cres.out_sz, chunk_sz);
 
 	free(cres.out_buf);
 }
@@ -718,7 +718,7 @@ again:
 		a12int_append_out(S,
 			STATE_CONTROL_PACKET, hdr_buf, CONTROL_PACKET_SIZE, NULL, 0);
 
-		chunk_pack(S, STATE_VIDEO_PACKET, packet->data, packet->size, chunk_sz);
+		chunk_pack(S, STATE_VIDEO_PACKET, chid, packet->data, packet->size, chunk_sz);
 		av_packet_unref(packet);
 		frame->pts++;
 	}

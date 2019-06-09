@@ -68,14 +68,19 @@ enum control_commands {
 #define DEBUG 0
 #endif
 
+/*
+ * debugging / tracing hacks
+ */
 extern int a12_trace_targets;
 extern FILE* a12_trace_dst;
+
+const char* a12int_group_tostr(int group);
 
 #ifndef a12int_trace
 #define a12int_trace(group, fmt, ...) \
             do { if (a12_trace_dst && (a12_trace_targets & group)) fprintf(a12_trace_dst, \
-						"%s:%d:%s(): " fmt "\n", \
-						"a12:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+						"group=%s:function=%s:" fmt "\n", \
+						a12int_group_tostr(group), __func__,##__VA_ARGS__); } while (0)
 #endif
 
 enum {
@@ -191,12 +196,10 @@ struct a12_state {
 	int out_channel;
 	int in_channel;
 
-/* There is no "out_channel" as that state is thread-local
- * modified via the a12_channel_setid. */
-	pthread_mutex_t outbuf_synch;
-
 /*
- * incoming buffer, size of the buffer == size of the type
+ * Incoming buffer, size of the buffer == size of the type - when there
+ * is nothing left in the current frame, forward / dispatch to the correct
+ * decode vframe/aframe/bframe routine.
  */
 	uint8_t decode[65536];
 	uint16_t decode_pos;

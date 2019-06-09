@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <pthread.h>
+#include <semaphore.h>
 
 #include "a12_int.h"
 #include "a12.h"
@@ -38,15 +39,16 @@
 struct cl_state{
 	int kill_fd;
 	pthread_mutex_t giant_lock;
+	volatile _Atomic uint8_t n_segments;
 	const char* last_lock;
-	uint8_t alloc[256];
+	volatile _Atomic uint8_t alloc[256];
 	_Atomic size_t buffer_out;
-} cl_state;
+};
 
 int get_free_id(struct cl_state* state)
 {
 	for (int i = 0; i < 256; i++)
-		if (!state->alloc[i])
+		if (!atomic_load(&state->alloc[i]))
 			return i;
 
 	return -1;
@@ -85,7 +87,7 @@ struct shmif_thread_data {
 static void add_segment(struct shmif_thread_data* data, arcan_event* ev)
 {
 /* hit the 256 window / client limit? just ignore, shmif will cleanup */
-	int chid = get_free_id(&cl_state);
+	int chid = get_free_id(data->state);
 	if (-1 == chid)
 		return;
 
@@ -96,6 +98,7 @@ static void add_segment(struct shmif_thread_data* data, arcan_event* ev)
 
 /* send the channel command before actually activating the thread so we don't
  * risk any ordering issues (thread-preempt -> write before new) */
+		a12int_trace(A12_TRACE_ALLOC, "allocated new segment");
 		a12_channel_new(data->S, chid, segkind, cookie);
 
 /* temporary on-stack store, real will be alloc:ed in spawn thread */
@@ -103,6 +106,7 @@ static void add_segment(struct shmif_thread_data* data, arcan_event* ev)
 			arcan_shmif_acquire(data->C, NULL, segkind, 0);
 
 		if (!cont.addr){
+			a12int_trace(A12_TRACE_ALLOC, "acquire on segment was rejected");
 			a12_set_channel(data->S, chid);
 			a12_channel_close(data->S);
 			goto out;
@@ -139,13 +143,11 @@ static bool dispatch_event(struct shmif_thread_data* data, arcan_event* ev)
 	BEGIN_CRITICAL(data->state, "process-event");
 		if (arcan_shmif_descrevent(ev)){
 			a12int_trace(A12_TRACE_EVENT,
-				"ign-descr-event: %s",
-					arcan_shmif_eventstr(ev, NULL, 0)
-		);
+				"kind=ignore_descriptor:event=%s", arcan_shmif_eventstr(ev, NULL, 0));
 		}
 		else {
 			a12int_trace(A12_TRACE_EVENT,
-				"enqueue %s", arcan_shmif_eventstr(ev, NULL, 0));
+				"kind=enqueue:event=%s", arcan_shmif_eventstr(ev, NULL, 0));
 			a12_set_channel(data->S, data->chid);
 			a12_channel_enqueue(data->S, ev);
 			dirty = true;
@@ -190,7 +192,8 @@ static void* client_thread(void* inarg)
 
 /* free channel resources */
 	BEGIN_CRITICAL(data->state, "client-death");
-		data->state->alloc[data->chid] = 0;
+		atomic_store(&data->state->alloc[data->chid], 0);
+		atomic_fetch_sub(&data->state->n_segments, 1);
 		a12_set_channel(data->S, data->chid);
 		a12_channel_close(data->S);
 		arcan_shmif_drop(data->C);
@@ -236,9 +239,11 @@ bool spawn_thread(struct a12_state* S,
 	pthread_attr_t pthattr;
 	pthread_attr_init(&pthattr);
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	atomic_fetch_add(&cl->n_segments, 1);
 
 	if (-1 == pthread_create(&pth, &pthattr, client_thread, data)){
 		BEGIN_CRITICAL(cl, "cleanup-spawn");
+			atomic_fetch_sub(&cl->n_segments, 1);
 			a12_set_channel(S, chid);
 			a12_channel_close(S);
 			a12int_trace(A12_TRACE_ALLOC, "could not spawn thread");
@@ -283,7 +288,7 @@ int a12helper_a12srv_shmifcl(
 		return -EINVAL;
 
 /* preset channel 0 to primary, it will close the kill_fd write end */
-	cl.alloc[0] = 1;
+	atomic_store(&cl.alloc[0], 1);
 	cl.kill_fd = pipe_pair[1];
 	cont.user = &cl;
 	spawn_thread(S, &cl, &cont, 0);
@@ -378,8 +383,13 @@ int a12helper_a12srv_shmifcl(
 		n_fd = outbuf_sz > 0 ? 3 : 2;
 	}
 
-/* just spin until the rest understand */
+/* just spin until the rest understand, would look better as a join loop with
+ * the chid- being read from the ipc pipe */
 	close(pipe_pair[0]);
-	while(!a12_free(S)){}
+	while(atomic_load(&cl.n_segments) > 0){}
+	if (!a12_free(S)){
+		a12int_trace(A12_TRACE_ALLOC, "error cleaning up a12 context");
+	}
+
 	return 0;
 }
