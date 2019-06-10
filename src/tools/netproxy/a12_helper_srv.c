@@ -19,6 +19,7 @@ struct shmifsrv_thread_data {
 	struct shmifsrv_client* C;
 	struct a12_state* S;
 	struct arcan_shmif_cont fake;
+	struct a12helper_opts opts;
 	int kill_fd;
 	uint8_t chid;
 };
@@ -47,9 +48,17 @@ static _Atomic volatile uint8_t n_segments;
  * bandwidth and load estimation parameters.
  */
 static struct a12_vframe_opts vopts_from_segment(
-	struct shmifsrv_client* C, struct shmifsrv_vbuffer vb)
+	struct shmifsrv_thread_data* data, struct shmifsrv_vbuffer vb)
 {
-	switch (shmifsrv_client_type(C)){
+/* if the caller has explicitly provided us with options, go with that */
+	if (data->opts.default_vcodec > 0 && data->opts.force_default){
+		return (struct a12_vframe_opts){
+			.method = data->opts.default_vcodec,
+			.bias = data->opts.default_bias
+		};
+	}
+
+	switch (shmifsrv_client_type(data->C)){
 	case SEGID_LWA:
 		a12int_trace(A12_TRACE_VIDEO, "lwa -> h264, balanced");
 		return (struct a12_vframe_opts){
@@ -79,8 +88,14 @@ static struct a12_vframe_opts vopts_from_segment(
 	case SEGID_REMOTING:
 	case SEGID_VM:
 	default:
+		if (data->opts.default_vcodec > 0){
+			return (struct a12_vframe_opts){
+				.method = data->opts.default_vcodec,
+				.bias = data->opts.default_bias
+			};
+		}
 		a12int_trace(A12_TRACE_VIDEO,
-			"default (%d) -> dpng", shmifsrv_client_type(C));
+			"default (%d) -> dpng", shmifsrv_client_type(data->C));
 		return (struct a12_vframe_opts){
 			.method = VFRAME_METHOD_DPNG
 		};
@@ -256,7 +271,7 @@ static void* client_thread(void* inarg)
 				struct shmifsrv_vbuffer vb = shmifsrv_video(data->C);
 				BEGIN_CRITICAL(&giant_lock, "video-buffer");
 					a12_set_channel(data->S, data->chid);
-					a12_channel_vframe(data->S, &vb, vopts_from_segment(data->C, vb));
+					a12_channel_vframe(data->S, &vb, vopts_from_segment(data, vb));
 					dirty = true;
 				END_CRITICAL(&giant_lock);
 
@@ -356,6 +371,7 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 		.C = C,
 		.S = S,
 		.kill_fd = pipe_pair[1],
+		.opts = opts,
 		.chid = 0
 	};
 	if (!spawn_thread(arg)){
