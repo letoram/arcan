@@ -93,9 +93,8 @@ static void step_sequence(struct a12_state* S, uint8_t* outb)
  * direct-to-drain descriptor here and do the write calls to the socket or
  * descriptor.
  */
-void a12int_append_out(
-	struct a12_state* S, uint8_t type, uint8_t* out, size_t out_sz,
-	uint8_t* prepend, size_t prepend_sz)
+void a12int_append_out(struct a12_state* S, uint8_t type,
+	uint8_t* out, size_t out_sz, uint8_t* prepend, size_t prepend_sz)
 {
 /*
  * QUEUE-slot here,
@@ -699,8 +698,11 @@ static void process_video(struct a12_state* S)
 
 /* buffer is finished, decode and commit to designated channel context
  * unless it has already been marked as something to ignore and discard */
-		if (left == 0 && cvf->commit != 255)
+		if (left == 0 && cvf->commit != 255){
+			a12int_trace(
+				A12_TRACE_VIDEO, "kind=decbuf:channel=%d:commit", (int)S->in_channel);
 			a12int_decode_vbuffer(S, cvf, cont);
+		}
 
 		reset_state(S);
 		return;
@@ -1002,10 +1004,6 @@ a12_channel_vframe(struct a12_state* S,
 		w = vb->w;
 		h = vb->h;
 	}
-
-/* option: determine region delta, quick xor and early out - protects
- * against buggy clients sending updates even if there are none, not
- * uncommon with retro- like games various toolkits and 3D clients */
 
 /* option: quadtree delta- buffer and only distribute the updated
  * cells? should cut down on memory bandwidth on decode side and

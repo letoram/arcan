@@ -86,42 +86,54 @@ struct shmif_thread_data {
 
 static void add_segment(struct shmif_thread_data* data, arcan_event* ev)
 {
-/* hit the 256 window / client limit? just ignore, shmif will cleanup */
-	int chid = get_free_id(data->state);
-	if (-1 == chid)
-		return;
-
 /* THREAD-CRITICAL */
 	BEGIN_CRITICAL(data->state, "add-segment");
+/* hit the 256 window / client limit? just ignore, shmif will cleanup */
+		int chid = get_free_id(data->state);
+		if (-1 == chid)
+			goto out;
+
 		int segkind = ev->tgt.ioevs[2].iv;
 		int cookie = ev->tgt.ioevs[3].iv;
 
 /* send the channel command before actually activating the thread so we don't
  * risk any ordering issues (thread-preempt -> write before new) */
-		a12int_trace(A12_TRACE_ALLOC, "allocated new segment");
+		a12int_trace(A12_TRACE_ALLOC, "kind=segment:chid=%d:stage=open", chid);
 		a12_channel_new(data->S, chid, segkind, cookie);
 
 /* temporary on-stack store, real will be alloc:ed in spawn thread */
+		a12int_trace(A12_TRACE_ALLOC, "kind=segment:chid=%d:stage=acquire", chid);
 		struct arcan_shmif_cont cont =
 			arcan_shmif_acquire(data->C, NULL, segkind, 0);
 
 		if (!cont.addr){
-			a12int_trace(A12_TRACE_ALLOC, "acquire on segment was rejected");
+			a12int_trace(A12_TRACE_SYSTEM, "kind=segment:status=EINVAL:chid=%d", chid);
 			a12_set_channel(data->S, chid);
 			a12_channel_close(data->S);
 			goto out;
 		}
 
+/*
+ * for quick testing allocations
+		shmif_pixel *px = cont.vidp;
+		for (size_t i = 0; i < cont.w * cont.h; i++)
+			px[i] = SHMIF_RGBA(64, 92, 0, 255);
+		arcan_shmif_signal(&cont, SHMIF_SIGVID);
+ */
+		atomic_store(&data->state->alloc[chid], 1);
+
 		if (!spawn_thread(data->S, data->state, &cont, chid)){
+			a12int_trace(A12_TRACE_SYSTEM, "kind=thread:status=EBADTHRD:chid=%d", chid);
 			a12_set_channel(data->S, chid);
 			a12_channel_close(data->S);
 			arcan_shmif_drop(&cont);
+			atomic_store(&data->state->alloc[chid], 0);
 			goto out;
 		}
 
 /* A12- OUT: this will send the command to the other side that we have a
  * new segment that may provide or receive data */
-		a12int_trace(A12_TRACE_ALLOC, "new client for channel %"PRIu8, chid);
+		a12int_trace(A12_TRACE_ALLOC, "kind=segment:status=assigned:chid=%d", chid);
 
 /* END OF THREAD-CRITICAL */
 out:
@@ -275,6 +287,7 @@ int a12helper_a12srv_shmifcl(
 
 /* primary segment is created without any type or activation, as it is the remote
  * client event that will map those events, just spawn a user thread for it */
+	a12int_trace(A12_TRACE_ALLOC, "kind=segment:status=opening:chid=0");
 	struct arcan_shmif_cont cont =
 		arcan_shmif_open(SEGID_UNKNOWN, SHMIF_NOACTIVATE, NULL);
 
