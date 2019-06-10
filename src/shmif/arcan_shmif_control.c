@@ -2747,3 +2747,43 @@ int arcan_shmif_dirty(struct arcan_shmif_cont* cont,
  * noblock flag is set)
  */
 }
+
+#ifdef __OpenBSD__
+void arcan_shmif_privsep(
+	const char* pledge_str, struct shmif_privsep_node** nodes, int opts)
+{
+	if (pledge_str){
+		if (
+			strcmp(pledge_str, "shmif")  == 0 ||
+			strcmp(pledge_str, "decode") == 0 ||
+			strcmp(pledge_str, "encode") == 0 ||
+			strcmp(pledge_str, "a12-srv") == 0 ||
+			strcmp(pledge_str, "a12-cl") == 0
+		){
+			pledge_str = SHMIF_PLEDGE_PREFIX;
+		}
+		else if (strcmp(pledge_str, "minimal") == 0){
+			pledge_str = "stdio";
+		}
+
+		pledge(pledge_str, NULL);
+	}
+
+	if (!nodes)
+		return;
+
+	size_t i = 0;
+	while (nodes[i]){
+		unveil(nodes[i]->path, nodes[i]->perm);
+	}
+
+	unveil(NULL, NULL);
+}
+
+#else
+void arcan_shmif_privsep(
+	const char* pledge, struct shmif_privsep_node** nodes, int opts)
+{
+/* oh linux, why art though.. */
+}
+#endif
