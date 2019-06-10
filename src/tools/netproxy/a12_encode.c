@@ -24,9 +24,9 @@ static void a12int_vframehdr_build(uint8_t buf[CONTROL_PACKET_SIZE],
 	uint32_t len, uint32_t exp_len, bool commit)
 {
 	a12int_trace(A12_TRACE_VDETAIL,
-		"vframehdr: ch: %"PRIu8", type: %d, sid: %"PRIu32
-		" sw*sh: %"PRIu16"x%"PRIu16", w*h: %"PRIu16"x%"PRIu16" @ %"PRIu16
-		",%"PRIu16" on len: %"PRIu32" expand to %"PRIu32,
+		"kind=header:ch=%"PRIu8":type=%d:stream=%"PRIu32
+		":sw=%"PRIu16":sh=%"PRIu16":w=%"PRIu16":h=%"PRIu16":x=%"PRIu16
+		":y=%"PRIu16":len=%"PRIu32":exp_len=%"PRIu32,
 		chid, type, sid, sw, sh, w, h, x, y, len, exp_len
 	);
 
@@ -204,7 +204,7 @@ void a12int_encode_rgb565(PACK_ARGS)
 void a12int_encode_rgba(PACK_ARGS)
 {
 	size_t px_sz = 4;
-	a12int_trace(A12_TRACE_VDETAIL, "encode_rgba frame");
+	a12int_trace(A12_TRACE_VDETAIL, "kind=status:codec=rgba");
 
 /* calculate chunk sizes based on a fitting amount of pixels */
 	size_t hdr_sz = a12int_header_size(STATE_VIDEO_PACKET);
@@ -254,7 +254,8 @@ void a12int_encode_rgba(PACK_ARGS)
 	size_t left = ((w * h) - (blocks * ppb)) * px_sz;
 	if (left){
 		pack_u16(left, &outb[5]);
-		a12int_trace(A12_TRACE_VDETAIL, "small block of %zu bytes", left);
+		a12int_trace(A12_TRACE_VDETAIL,
+			"kind=status:message=padblock:size=%zu", left);
 		for (size_t i = 0; i < left; i+= px_sz){
 			uint8_t* dst = &outb[hdr_sz+i];
 			SHMIF_RGBA_DECOMP(inbuf[pos++], &dst[0], &dst[1], &dst[2], &dst[3]);
@@ -273,7 +274,7 @@ void a12int_encode_rgba(PACK_ARGS)
 void a12int_encode_rgb(PACK_ARGS)
 {
 	size_t px_sz = 3;
-	a12int_trace(A12_TRACE_VDETAIL, "encode_rgb frame");
+	a12int_trace(A12_TRACE_VDETAIL, "kind=status:ch=%"PRIu8"codec=rgb", chid);
 
 /* calculate chunk sizes based on a fitting amount of pixels */
 	size_t hdr_sz = a12int_header_size(STATE_VIDEO_PACKET);
@@ -364,8 +365,8 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 /* reset the accumulation buffer so that we rebuild the normal frame */
 	if (ab->w != vb->w || ab->h != vb->h){
 		a12int_trace(A12_TRACE_VIDEO,
-			"kind=resize:prev_w=%zu:rev_h=%zu:new_w%zu:new_h=%zu",
-			(size_t) ab->w, (size_t) ab->h, (size_t) vb->w, (size_t) vb->h
+			"kind=resize:ch=%"PRIu8"prev_w=%zu:rev_h=%zu:new_w%zu:new_h=%zu",
+			ch, (size_t) ab->w, (size_t) ab->h, (size_t) vb->w, (size_t) vb->h
 		);
 		free(ab->buffer);
 		free(S->channels[ch].compression);
@@ -383,7 +384,8 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 		*h = vb->h;
 		*x = 0;
 		*y = 0;
-		a12int_trace(A12_TRACE_VIDEO, "kind=status:compress=dpng:message=I");
+		a12int_trace(A12_TRACE_VIDEO,
+			"kind=status:ch=%"PRIu8"compress=dpng:message=I", ch);
 
 		if (!ab->buffer)
 			return (struct compress_res){};
@@ -420,8 +422,8 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
  * like RLE only. The flags (,0) can be derived with the _zip helper */
 	else {
 		a12int_trace(A12_TRACE_VDETAIL,
-			"build delta frame @(%zu,%zu)+(%zu,%zu)",
-			(size_t)*w, (size_t)*h, (size_t) *x, (size_t) *y
+			"kind=status:ch=%"PRIu8"dw=%zu:dh=%zu:x=%zu:y=%zu",
+			ch, (size_t)*w, (size_t)*h, (size_t) *x, (size_t) *y
 		);
 		compress_in = S->channels[ch].compression;
 		uint8_t* acc = (uint8_t*) ab->buffer;
@@ -468,8 +470,7 @@ void a12int_encode_dpng(PACK_ARGS)
 	);
 
 	a12int_trace(A12_TRACE_VDETAIL,
-		"dpng (%d), in: %zu, out: %zu",
-		cres.type, w * h * 3, cres.out_sz
+		"kind=status:codec=dpng:b_in=%zu:b_out=%zu", w * h * 3, cres.out_sz
 	);
 
 	a12int_append_out(S,
@@ -516,7 +517,7 @@ static bool open_videnc(struct a12_state* S,
 	struct shmifsrv_vbuffer* vb, int chid, int codecid)
 {
 	a12int_trace(A12_TRACE_VIDEO,
-		"opening video encoder for %d:%d", chid, codecid);
+		"kind=codec:status=open:ch=%d:codec=%d", chid, codecid);
 	AVCodec* codec = S->channels[chid].videnc.codec;
 	AVFrame* frame = NULL;
 	AVPacket* packet = NULL;
@@ -617,7 +618,7 @@ static bool open_videnc(struct a12_state* S,
 	S->channels[chid].videnc.frame = frame;
 	S->channels[chid].videnc.packet = packet;
 
-	a12int_trace(A12_TRACE_VIDEO, "video encoder context built");
+	a12int_trace(A12_TRACE_VIDEO, "kind=codec_ok:ch=%d:codec=%d", chid, codecid);
 	return true;
 
 fail:
@@ -627,6 +628,7 @@ fail:
 		av_packet_free(&packet);
 	if (scaler)
 		sws_freeContext(scaler);
+	a12int_trace(A12_TRACE_SYSTEM, "kind=error:message=could not setup codec");
 	return false;
 }
 #endif
@@ -654,11 +656,11 @@ void a12int_encode_h264(PACK_ARGS)
 	if (!S->channels[chid].videnc.encoder &&
 			!S->channels[chid].videnc.failed){
 		if (!open_videnc(S, opts, vb, chid, AV_CODEC_ID_H264)){
-			a12int_trace(A12_TRACE_VIDEO, "couldn't setup h264 encoder");
+			a12int_trace(A12_TRACE_SYSTEM, "kind=error:message=h264 codec failed");
 			drop_videnc(S, chid, true);
 		}
 		else
-			a12int_trace(A12_TRACE_VIDEO, "%d switched to h264", chid);
+			a12int_trace(A12_TRACE_VIDEO, "kind=status:ch=%d:message=set-h264", chid);
 	}
 
 /* on failure, just fallback and retry alloc on dimensions change */

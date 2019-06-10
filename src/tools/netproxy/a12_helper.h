@@ -25,6 +25,9 @@ enum a12helper_pollstate {
 int a12helper_poll_triple(int fd_shmif, int fd_in, int fd_out, int timeout);
 
 struct a12helper_opts {
+	int default_vcodec;
+	int default_bias;
+	bool force_default;
 };
 
 /*

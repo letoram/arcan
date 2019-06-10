@@ -133,8 +133,9 @@ void a12int_decode_vbuffer(
 /* this is a junction where other local transfer strategies should be considered,
  * i.e. no-block and defer process on the next stepframe or spin on the vready */
 		if (cvf->commit && cvf->commit != 255){
-			a12int_trace(A12_TRACE_VIDEO, "vbuffer completed, signal now");
+			a12int_trace(A12_TRACE_VIDEO, "kind=pre_signal:cont=%"PRIx64, (uintptr_t)cont);
 			arcan_shmif_signal(cont, SHMIF_SIGVID);
+			a12int_trace(A12_TRACE_VIDEO, "kind=post_signal:cont=%"PRIx64, (uintptr_t)cont);
 			cvf->commit = 0;
 		}
 		return;
