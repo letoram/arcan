@@ -633,9 +633,20 @@ static struct bridge_client* find_client(struct wl_client* cl)
  * treat each 'surface' as a bridge- connection, but it would break the option
  * to track origin. There's also the problem of creating the abstract display
  * as we don't have the display properties until the first connection has been
- * made */
-	struct arcan_shmif_cont con =
-		arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0, NULL);
+ * made.
+ *
+ * In the -exec mode, we can at least re-use the 'probe' shmif cont that is
+ * opened on startup, that's what this adopt- check does
+ */
+	struct arcan_shmif_cont con;
+	if (wl.exec_mode && wl.groups[0].arcan){
+		con = wl.control;
+		wl.control = (struct arcan_shmif_cont){};
+		wl.groups[0].arcan = NULL;
+		trace(TRACE_ALLOC, "re-using bridge connection");
+	}
+	else
+		con = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0, NULL);
 	if (!con.addr){
 		trace(TRACE_ALLOC,
 			"failed to open segid-bridge-wayland connection to arcan server");
