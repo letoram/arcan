@@ -297,6 +297,16 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 					continue;
 				break;
 
+				case EVENT_EXTERNAL_PRIVDROP:
+					tgt->flags.external |= inev.ext.privdrop.external;
+					tgt->flags.networked = inev.ext.privdrop.networked;
+					tgt->flags.sandboxed |= inev.ext.privdrop.sandboxed;
+/* modify the event so that no illegal transitions are forwarded or applied */
+					inev.ext.privdrop.external = tgt->flags.external;
+					inev.ext.privdrop.networked = tgt->flags.networked;
+					inev.ext.privdrop.sandboxed = tgt->flags.sandboxed;
+				break;
+
 /* for autoclocking, only one-fire events are forwarded if flag has been set */
 				case EVENT_EXTERNAL_CLOCKREQ:
 					if (tgt->flags.autoclock && !inev.ext.clock.once){
