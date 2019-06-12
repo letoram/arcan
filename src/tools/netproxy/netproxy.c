@@ -2,6 +2,7 @@
  * Simple implementation of a client/server proxy.
  */
 #include <arcan_shmif.h>
+#include <arcan_shmif_server.h>
 #include <errno.h>
 #include <unistd.h>
 #include <signal.h>
@@ -15,8 +16,8 @@
 #include <sys/socket.h>
 #include <netdb.h>
 
-#include "a12_int.h"
 #include "a12.h"
+#include "a12_int.h"
 #include "a12_helper.h"
 
 /*
@@ -83,7 +84,10 @@ static void a12cl_dispatch(
 	struct a12_state* S, struct shmifsrv_client* cl, int fd)
 {
 /* note that the a12helper will do the cleanup / free */
-	a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){});
+	a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
+		.dirfd_temp = -1,
+		.dirfd_cache = -1
+	});
 }
 
 static void fork_a12cl_dispatch(
@@ -92,7 +96,10 @@ static void fork_a12cl_dispatch(
 	pid_t fpid = fork();
 	if (fpid == 0){
 /* missing: extend sandboxing, close stdio */
-		a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){});
+		a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
+			.dirfd_temp = -1,
+			.dirfd_cache = -1
+		});
 		exit(EXIT_SUCCESS);
 	}
 	else if (fpid == -1){

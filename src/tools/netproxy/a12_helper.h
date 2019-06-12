@@ -28,6 +28,8 @@ struct a12helper_opts {
 	int default_vcodec;
 	int default_bias;
 	bool force_default;
+	int dirfd_temp;
+	int dirfd_cache;
 };
 
 /*

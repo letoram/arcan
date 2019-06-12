@@ -4,14 +4,15 @@
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: https://arcan-fe.com
  */
+#include <arcan_shmif.h>
+#include <arcan_shmif_server.h>
 
-#include <stdint.h>
-#include <stdlib.h>
 #include <inttypes.h>
-#include <stdio.h>
+#include <string.h>
+#include <math.h>
 
-#include "a12_int.h"
 #include "a12.h"
+#include "a12_int.h"
 #include "a12_encode.h"
 
 /*

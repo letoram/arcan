@@ -7,21 +7,31 @@
  * Reference: https://arcan-fe.com
  */
 /* shared state machine structure */
-#include "a12_int.h"
+#include <arcan_shmif.h>
+#include <arcan_shmif_server.h>
+
+#include <inttypes.h>
+#include <string.h>
+#include <math.h>
+
 #include "a12.h"
+#include "a12_int.h"
 
 #include "a12_decode.h"
 #include "a12_encode.h"
 
+#include <sys/mman.h>
+#include <sys/types.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <errno.h>
 
 int a12_trace_targets = 0;
 FILE* a12_trace_dst = NULL;
 
 static int header_sizes[] = {
-	MAC_BLOCK_SZ + 1, /* NO packet, just MAC + outer header */
+	MAC_BLOCK_SZ + 8 + 1, /* The outer frame */
 	CONTROL_PACKET_SIZE,
 	0, /* EVENT size is filled in at first open */
 	1 + 4 + 2, /* VIDEO partial: ch, stream, len */
@@ -34,6 +44,8 @@ size_t a12int_header_size(int kind)
 {
 	return header_sizes[kind];
 }
+
+static void unlink_node(struct a12_state*, struct blob_out*);
 
 static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz, int ind)
 {
@@ -69,9 +81,10 @@ static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz, int ind)
 	return res;
 }
 
+/* set the LAST SEEN sequence number in a CONTROL message */
 static void step_sequence(struct a12_state* S, uint8_t* outb)
 {
-	pack_u64(S->current_seqnr++, outb);
+	pack_u64(S->last_seen_seqnr, outb);
 }
 
 /*
@@ -120,7 +133,8 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
  */
 
 /* grow write buffer if the block doesn't fit */
-	size_t required = S->buf_ofs + MAC_BLOCK_SZ + out_sz + 1 + prepend_sz;
+	size_t required = S->buf_ofs +
+		header_sizes[STATE_NOPACKET] + out_sz + prepend_sz + 1;
 
 	S->bufs[S->buf_ind] = grow_array(
 		S->bufs[S->buf_ind],
@@ -139,17 +153,22 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 	}
 	uint8_t* dst = S->bufs[S->buf_ind];
 
-/* prepend MAC
+/* CRYPTO: build real MAC, include sequence number and command data
 	blake2bp_final(&mac_state, S->last_mac_out, MAC_BLOCK_SZ);
 	memcpy(&dst[S->buf_ofs], S->last_mac_out, MAC_BLOCK_SZ);
  */
 
-/* DEBUG: replace mac with 'm' */
+/* DEBUG: replace mac with 'm', MAC_BLOCK_SZ = 16 */
 	for (size_t i = 0; i < MAC_BLOCK_SZ; i++)
-		dst[i] = 'm';
+		dst[S->buf_ofs + i] = 'm';
 	S->buf_ofs += MAC_BLOCK_SZ;
 
-/* our packet type */
+
+/* 8 byte sequence number */
+	pack_u64(S->current_seqnr++, &dst[S->buf_ofs]);
+	S->buf_ofs += 8;
+
+/* 1 byte command data */
 	dst[S->buf_ofs++] = type;
 
 /* any possible prepend-to-data block */
@@ -161,7 +180,7 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 /* and our data block, this costs us an extra copy which isn't very nice -
  * might want to set a target descriptor immediately for some uses here,
  * the problem is proper interleaving of packets while respecting kernel
- * buffer behavior */
+ * buffer behavior all the while we need to respect the stream cipher */
 	memcpy(&dst[S->buf_ofs], out, out_sz);
 	S->buf_ofs += out_sz;
 }
@@ -235,8 +254,8 @@ struct a12_state* a12_open(uint8_t* authk, size_t authk_sz)
 /* send initial hello packet */
 	a12int_trace(A12_TRACE_MISSING, "authentication material in Hello");
 	uint8_t outb[CONTROL_PACKET_SIZE] = {0};
-	step_sequence(S, outb);
 
+/* last seen seq-nummer is nothing here */
 	outb[17] = 0;
 
 	a12int_trace(A12_TRACE_SYSTEM, "channel open, add control packet");
@@ -295,6 +314,10 @@ static void process_nopacket(struct a12_state* S)
 	if (S->left > 0)
 		return;
 
+	if (0 != memcmp(S->decode, "mmmmmmmmmmmmmmmm", MAC_BLOCK_SZ)){
+		a12int_trace(A12_TRACE_CRYPTO, "fake-mac validation failed");
+	}
+
 	S->mac_dec = S->mac_init;
 /* MAC(MAC_IN | KEY)
 	blake2bp_update(&S->mac_dec, S->last_mac_in, MAC_BLOCK_SZ);
@@ -303,10 +326,14 @@ static void process_nopacket(struct a12_state* S)
 /* save last known MAC for later comparison */
 	memcpy(S->last_mac_in, S->decode, MAC_BLOCK_SZ);
 
-/* CRYPTO-fixme: if we are in stream cipher mode, decode just the one byte
+/* CRYPTO-fixme: if we are in stream cipher mode, decrypt just the 9 bytes
  * blake2bp_update(&S->mac_dec, &S->decode[MAC_BLOCK_SZ], 1); */
 
-	S->state = S->decode[MAC_BLOCK_SZ];
+/* remember the last sequence number of the packet we processed */
+	unpack_u64(&S->last_seen_seqnr, &S->decode[MAC_BLOCK_SZ]);
+
+/* and finally the actual type in the inner block */
+	S->state = S->decode[MAC_BLOCK_SZ + 8];
 
 	if (S->state >= STATE_BROKEN){
 		a12int_trace(A12_TRACE_SYSTEM,
@@ -315,8 +342,8 @@ static void process_nopacket(struct a12_state* S)
 		return;
 	}
 
-	a12int_trace(A12_TRACE_TRANSFER,
-		"left: %"PRIu16", state: %"PRIu8, S->left, S->state);
+	a12int_trace(A12_TRACE_TRANSFER, "seq: %"PRIu64
+		" left: %"PRIu16", state: %"PRIu8, S->last_seen_seqnr, S->left, S->state);
 	S->left = header_sizes[S->state];
 	S->decode_pos = 0;
 }
@@ -344,26 +371,122 @@ static bool process_mac(struct a12_state* S)
 	return true;
 }
 
+static void command_cancelstream(struct a12_state* S, uint32_t streamid)
+{
+	struct blob_out* node = S->pending;
+	while (node){
+		if (node->streamid == streamid){
+			a12int_trace(A12_TRACE_BTRANSFER,
+				"kind=cancelled:stream=%"PRIu32":source=remote", streamid);
+			unlink_node(S, node);
+			return;
+		}
+		node = node->next;
+	}
+}
+
 static void command_binarystream(struct a12_state* S)
 {
-	uint8_t channel = S->decode[16];
 /*
- * need to flag that the next event is to be deferred (though it will also
- * be marked as a descrevent- so that might actually suffice)
+ * unpack / validate header
  */
-	struct arcan_shmif_cont* cont = S->channels[channel].cont;
-	if (!cont){
-		a12int_trace(A12_TRACE_DEBUG, "no segment mapped on channel");
+	uint8_t channel = S->decode[16];
+	struct binary_frame* bframe = &S->channels[channel].unpack_state.bframe;
+
+/*
+ * sign of a very broken client (or state tracking), starting a new binary
+ * stream on a channel where one already exists.
+ */
+	if (bframe->active){
+		a12int_trace(A12_TRACE_SYSTEM,
+			"kind=error:source=binarystream:kind=EEXIST:ch=%d", (int) channel);
+		a12_stream_cancel(S, channel);
+		bframe->active = false;
+		if (bframe->tmp_fd > 0)
+			bframe->tmp_fd = -1;
 		return;
 	}
 
-	a12int_trace(A12_TRACE_MISSING, "binary stream not implemented");
+	uint32_t streamid;
+	unpack_u32(&streamid, &S->decode[18]);
+	bframe->streamid = streamid;
+	unpack_u64(&bframe->size, &S->decode[22]);
+	bframe->type = S->decode[30];
+	memcpy(bframe->checksum, &S->decode[35], 16);
+	bframe->tmp_fd = -1;
+
+	bframe->active = true;
+	a12int_trace(A12_TRACE_BTRANSFER,
+		"kind=header:stream=%"PRId64":left=%"PRIu64":ch=%d",
+		bframe->streamid, bframe->size, channel
+	);
+
+	struct arcan_shmif_cont* cont = S->channels[channel].cont;
+	if (!cont){
+		a12int_trace(A12_TRACE_SYSTEM,
+			"kind=error:source=binarystream:kind=EEXIST:ch=%d", (int) channel);
+		return;
+	}
+
 /*
- * if there is a checksum, ask the local cache process and see if we know
- * about it already, if so, cancel the binary stream and substitute in the
- * copy we get from the cache, but still need to process and discard
- * incoming packages in the meanwhile.
+ * if there is a checksum, ask the local cache process and see if we know about
+ * it already, if so, cancel the binary stream and substitute in the copy we
+ * get from the cache, but still need to process and discard incoming packages
+ * in the meanwhile.
  */
+	int sc = A12_BHANDLER_DONTWANT;
+	struct a12_bhandler_meta bm = {
+		.state = A12_BHANDLER_INITIALIZE,
+		.known_size = bframe->size,
+		.streamid = bframe->streamid,
+		.fd = -1
+	};
+
+	if (S->binary_handler){
+		struct a12_bhandler_res res = S->binary_handler(S, bm, S->binary_handler_tag);
+		bframe->tmp_fd = res.fd;
+		sc = res.flag;
+	}
+
+	if (sc == A12_BHANDLER_DONTWANT || sc == A12_BHANDLER_CACHED){
+		a12_stream_cancel(S, channel);
+		a12int_trace(A12_TRACE_BTRANSFER,
+			"kind=reject:stream=%"PRId64":ch=%d", bframe->streamid, channel);
+	}
+}
+
+void a12_stream_cancel(struct a12_state* S, uint8_t channel)
+{
+	uint8_t outb[CONTROL_PACKET_SIZE] = {0};
+	step_sequence(S, outb);
+	struct binary_frame* bframe = &S->channels[channel].unpack_state.bframe;
+
+/* API misuse, trying to cancel a stream that is not active */
+	if (!bframe->active)
+		return;
+
+	outb[16] = channel;
+	outb[17] = COMMAND_CANCELSTREAM;
+	pack_u32(bframe->streamid, &outb[18]); /* [18 .. 21] stream-id */
+	bframe->active = false;
+	bframe->streamid = -1;
+	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+
+/* forward the cancellation request to the eventhandler, due to the active tracking
+ * we are protected against bad use (handler -> cancel -> handler) */
+	if (S->binary_handler){
+		struct a12_bhandler_meta bm = {
+			.fd = bframe->tmp_fd,
+			.state = A12_BHANDLER_CANCELLED,
+			.streamid = bframe->streamid,
+			.channel = channel
+		};
+		S->binary_handler(S, bm, S->binary_handler_tag);
+	}
+
+	a12int_trace(A12_TRACE_BTRANSFER,
+		"kind=cancelled:ch=%"PRIu8":stream=%"PRId64, channel, bframe->streamid);
+	bframe->tmp_fd = -1;
 }
 
 static void command_audioframe(struct a12_state* S)
@@ -531,34 +654,139 @@ static void command_videoframe(struct a12_state* S)
 	}
 }
 
-static bool queue_binary_stream(struct a12_state* S, struct arcan_event* ev)
+/*
+ * Binary transfers comes in different shapes:
+ *
+ *  - [bchunk-in / bchunk-out] non-critical blob transfer, typically on
+ *                             clipboard, can be queued and interleaved
+ *                             when no-other relevant transfer going on.
+ *
+ *  - [store] priority state serialization, may be overridden by future reqs.
+ *
+ *  - [restore] block / priority - changes event interpretation context after.
+ *
+ *  - [fonthint] affects visual output, likely to be cacheable, higher
+ *               priority during the preroll stage
+ *
+ * [out and store] are easier to send on a non-output segment over an
+ * asymmetric connection as they won't fight with other transfers.
+ *
+ */
+void a12_enqueue_bstream(
+	struct a12_state* S, int fd, int type, bool streaming, size_t sz)
 {
-	switch (ev->tgt.kind){
-		case TARGET_COMMAND_STORE:
-		case TARGET_COMMAND_BCHUNK_OUT:
-		case TARGET_COMMAND_RESTORE:
-		case TARGET_COMMAND_BCHUNK_IN:{
-			char msg[512];
-			a12int_trace(A12_TRACE_MISSING,
-				"ignoring descriptor event: %s", arcan_shmif_eventstr(ev, msg, 512));
-			return true;
-		}
-		break;
-		case TARGET_COMMAND_FONTHINT:
-		if (ev->tgt.ioevs[0].iv != -1){
-			a12int_trace(A12_TRACE_MISSING,
-				"ignoring font descriptor, should be blocking transfer");
-		}
-		case TARGET_COMMAND_NEWSEGMENT:
-			a12int_trace(A12_TRACE_SYSTEM,
-				"newsegment- event forwarded, api use error");
-		return false;
-		break;
-		default:
-		break;
+	struct blob_out* next = malloc(sizeof(struct blob_out));
+	if (!next){
+		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=ENOMEM");
+		return;
 	}
-/* if S->binary_pending */
-	return false;
+
+	*next = (struct blob_out){
+		.type = type,
+		.streaming = streaming,
+		.fd = -1,
+		.chid = S->out_channel
+	};
+
+	struct blob_out** parent = &S->pending;
+	size_t n_streaming = 0;
+	size_t n_known = 0;
+
+	while(*parent){
+		if ((*parent)->streaming)
+			n_streaming++;
+		else
+			n_known += (*parent)->left;
+		parent = &(*parent)->next;
+
+/* Insertion priority sort goes here, be wary of channel-id in heuristic
+ * though, and try to prioritize channel that has focus over those that
+ * don't */
+	}
+	*parent = next;
+
+/* note, next->fd will be non-blocking */
+	next->fd = arcan_shmif_dupfd(fd, -1, false);
+	if (-1 == next->fd){
+		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EBADFD");
+		goto fail;
+	}
+
+/* For the streaming descriptor, we can only work with the reported size
+ * and that one can still be unknown (0), i.e. the stream continues to work
+ * until cancelled.
+ *
+ * For the file-backed one, we are expecting seek operations to work and
+ * will use that size indicator along with a checksum calculation to allow
+ * the other side to cancel the transfer if it is already known */
+	if (streaming){
+		next->streaming = true;
+		return;
+	}
+
+	off_t fend = lseek(fd, 0, SEEK_END);
+	if (fend == 0){
+		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EEMPTY");
+		*parent = NULL;
+		free(next);
+		return;
+	}
+
+	if (-1 == fend){
+/* force streaming if the host system can't manage */
+		switch(errno){
+		case ESPIPE:
+		case EOVERFLOW:
+			next->streaming = true;
+			a12int_trace(A12_TRACE_BTRANSFER,
+				"kind=added:type=%d:stream=yes:size=%zu:queue=%zu:total=%zu\n",
+				type, next->left, n_streaming, n_known
+			);
+			return;
+		break;
+		case EINVAL:
+		case EBADF:
+		default:
+			a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EBADFD");
+		break;
+		}
+	}
+
+	if (-1 == lseek(fd, 0, SEEK_SET)){
+		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=ESEEK");
+		goto fail;
+	}
+
+/* this has the normal sigbus problem, though we don't care about that much now
+ * being in the same sort of privilege domain - we can also defer the entire
+ * thing and simply thread- process it, which is probably the better solution */
+	void* map = mmap(NULL, fend, PROT_READ, MAP_FILE | MAP_PRIVATE, fd, 0);
+
+	if (!map){
+		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EMMAP");
+		goto fail;
+	}
+
+/* the crypted packages are MACed together, but we always use the primitive
+ * for btransfer- checksums so the other side can compare against a cache and
+ * cancel the stream */
+	blake2b_state B;
+	blake2b_init(&B, 16);
+	blake2b_update(&B, map, fend);
+	blake2b_final(&B, next->checksum, 16);
+	munmap(map, fend);
+	next->left = fend;
+	a12int_trace(A12_TRACE_BTRANSFER,
+		"kind=added:type=%d:stream=no:size=%zu", type, next->left);
+
+	return;
+
+fail:
+	if (-1 != next->fd)
+		close(next->fd);
+
+	*parent = NULL;
+	free(next);
 }
 
 /*
@@ -593,8 +821,11 @@ static void process_control(struct a12_state* S, void (*on_event)
 	case COMMAND_NEWCH:
 		command_newchannel(S, on_event, tag);
 	break;
-	case COMMAND_CANCELSTREAM:
-		a12int_trace(A12_TRACE_MISSING, "Stream cancellation");
+	case COMMAND_CANCELSTREAM:{
+		uint32_t streamid;
+		unpack_u32(&streamid, &S->decode[18]);
+		command_cancelstream(S, streamid);
+	}
 	break;
 	case COMMAND_PING:
 		a12int_trace(A12_TRACE_MISSING, "Check ping packet");
@@ -607,6 +838,8 @@ static void process_control(struct a12_state* S, void (*on_event)
 	break;
 	case COMMAND_BINARYSTREAM:
 		command_binarystream(S);
+	break;
+	case COMMAND_REKEY:
 	break;
 	default:
 		a12int_trace(A12_TRACE_SYSTEM, "Unknown message type: %d", (int)command);
@@ -638,6 +871,127 @@ static void process_event(struct a12_state* S, void* tag,
 		a12int_trace(A12_TRACE_EVENT, "unpack event to %d", channel);
 		on_event(S->channels[channel].cont, channel, &aev, tag);
 	}
+
+	reset_state(S);
+}
+
+static void process_blob(struct a12_state* S)
+{
+	if (!process_mac(S))
+		return;
+
+/* do we have the header bytes or not? the actual callback is triggered
+ * inside of the binarystream rather than of the individual blobs */
+	if (S->in_channel == -1){
+		S->in_channel = S->decode[0];
+		unpack_u32(&S->in_stream, &S->decode[1]);
+		unpack_u16(&S->left, &S->decode[5]);
+		S->decode_pos = 0;
+		a12int_trace(A12_TRACE_BTRANSFER,
+			"kind=header:channel=%d:size=%"PRIu16, S->in_channel, S->left);
+
+		return;
+	}
+
+/* did we receive a message on a dead channel? */
+	struct binary_frame* cbf = &S->channels[S->in_channel].unpack_state.bframe;
+	struct arcan_shmif_cont* cont = S->channels[S->in_channel].cont;
+	if (!cont){
+		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EINVAL:"
+			"ch=%d:message=no segment mapped", S->in_channel);
+		reset_state(S);
+		return;
+	}
+
+/* we can't stop the other side from sending data to a dead stream, so just
+ * discard the data and hope that a previously sent cancelstream will take */
+	if (cbf->streamid != S->in_stream || -1 == cbf->streamid){
+		a12int_trace(A12_TRACE_BTRANSFER, "kind=notice:ch=%d:src_stream=%"PRIu32
+			":dst_stream=%"PRId64":message=data on cancelled stream",
+			S->in_channel, S->in_stream, cbf->streamid);
+		reset_state(S);
+		return;
+	}
+
+/* or worse, a data block referencing a transfer that has not been set up? */
+	if (!cbf->active){
+		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EINVAL:"
+			"ch=%d:message=blob on inactive channel", S->in_channel);
+		reset_state(S);
+		return;
+	}
+
+/* Flush it out to the assigned descriptor, this is currently likely to be
+ * blocking and can cascade quite far down the chain, consider a drag and drop
+ * that routes via a pipe onwards to another client. Normal splice etc.
+ * operations won't work so we are left with this. To not block video/audio
+ * processing we would have to buffer / flush this separately, with a big
+ * complexity leap. */
+	if (-1 != cbf->tmp_fd){
+			size_t pos = 0;
+
+			while(pos < S->decode_pos){
+				ssize_t status = write(cbf->tmp_fd, &S->decode[pos], S->decode_pos - pos);
+				if (-1 == status){
+					if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+						continue;
+
+/* so there was a problem writing (dead pipe, out of space etc). send a cancel
+ * on the stream,this will also forward the status change to the event handler
+ * itself who is responsible for closing the tmp_fd */
+					a12_stream_cancel(S, S->in_channel);
+					reset_state(S);
+					return;
+				}
+				else
+					pos += status;
+			}
+		}
+
+/* A key difference from other streams is that the binary one does not
+ * necessarily have a length and can be streaming, in those cases we simply
+ * write more into the buffer and hope that the other end will swallow it.
+ * Upon termination / cancellation we discard binary packets for outdated
+ * streams on the channel. */
+	if (cbf->size > 0){
+		cbf->size -= S->decode_pos;
+
+		if (!cbf->size){
+			a12int_trace(A12_TRACE_BTRANSFER,
+				"kind=completed:ch=%d:stream=%"PRId64, S->in_channel, cbf->streamid);
+			cbf->active = false;
+			if (!S->binary_handler)
+				return;
+
+/* finally forward all the metadata to the handler and let the recipient
+ * pack it into the proper event structure and so on. */
+			struct a12_bhandler_meta bm = {
+				.type = cbf->type,
+				.streamid = cbf->streamid,
+				.channel = S->in_channel,
+				.fd = cbf->tmp_fd,
+				.dcont = cont,
+				.state = A12_BHANDLER_COMPLETED
+			};
+
+/* note that we do trust the provided checksum here, to actually re-verify that
+ * a possibly cache- stored checksum matches the transfer is up to the callback
+ * handler. otherwise a possible scenario is to have a client taint a binary
+ * cache, but such trust compartmentation should be handled by real separation
+ * between clients. */
+			memcpy(&bm.checksum, cbf->checksum, 16);
+
+			cbf->tmp_fd = -1;
+			S->binary_handler(S, bm, S->binary_handler_tag);
+			return;
+		}
+	}
+
+/*
+ * More data to come on the channel, just reset and wait for the next packet
+ */
+	a12int_trace(A12_TRACE_BTRANSFER,
+		"kind=data:ch=%d:left:%zu", S->in_channel, cbf->size);
 
 	reset_state(S);
 }
@@ -815,14 +1169,6 @@ static void process_audio(struct a12_state* S)
 	reset_state(S);
 }
 
-static void process_binary(struct a12_state* S)
-{
-	if (!process_mac(S))
-		return;
-
-	a12int_trace(A12_TRACE_MISSING, "binary packet / header incomplete");
-}
-
 void a12_set_destination(
 struct a12_state* S, struct arcan_shmif_cont* wnd, uint8_t chid)
 {
@@ -840,8 +1186,12 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 	size_t buf_sz, void* tag, void (*on_event)
 	(struct arcan_shmif_cont*, int chid, struct arcan_event*, void*))
 {
-	if (S->state == STATE_BROKEN)
+	if (S->state == STATE_BROKEN){
+		a12int_trace(A12_TRACE_SYSTEM,
+			"kind=error:status=EINVAL:message=state machine broken");
+		reset_state(S);
 		return;
+	}
 
 /* Unknown state? then we're back waiting for a command packet */
 	if (S->left == 0)
@@ -879,8 +1229,11 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 	case STATE_EVENT_PACKET:
 		process_event(S, tag, on_event);
 	break;
+	case STATE_BLOB_PACKET:
+		process_blob(S);
+	break;
 	default:
-		a12int_trace(A12_TRACE_SYSTEM, "unknown state");
+		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EINVAL:message=bad command");
 		S->state = STATE_BROKEN;
 		return;
 	break;
@@ -891,16 +1244,168 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 		a12_unpack(S, &buf[ntr], buf_sz, tag, on_event);
 }
 
+/*
+ * Several small issues that should be looked at here, one is that we
+ * don't multiplex well with the source, risking a non-block 100% spin.
+ * Second is that we don't have an intermediate buffer as part of the
+ * queue-node, meaning that we risk sending very small blocks of data as part
+ * of the stream, wasting bandwidth.
+ */
+static void* read_data(int fd, size_t cap, uint16_t* nts, bool* die)
+{
+	void* buf = malloc(65536);
+	if (!buf){
+		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=ENOMEM");
+		*die = true;
+		return NULL;
+	}
+
+	ssize_t nr = read(fd, buf, cap);
+
+/* possibly non-fatal or no data present yet, keep stream alive - a bad stream
+ * source with no timeout will block / preempt other binary transfers though so
+ * might need to consider reordering in that case. */
+	if (-1 == nr){
+		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+			*die = false;
+		else
+			*die = true;
+
+		free(buf);
+		return NULL;
+	}
+
+	*die = false;
+	if (nr == 0){
+		free(buf);
+		return NULL;
+	}
+
+	*nts = nr;
+	return buf;
+}
+
+static void unlink_node(struct a12_state* S, struct blob_out* node)
+{
+	/* find the owner of the node, redirect next */
+	/* close the socket and other resources */
+	struct blob_out* next = node->next;
+	struct blob_out** dst = &S->pending;
+	while (*dst != node && *dst){
+		dst = &((*dst)->next);
+	}
+
+	if (*dst != node){
+		a12int_trace(A12_TRACE_SYSTEM, "couldn't not unlink node");
+		return;
+	}
+
+	a12int_trace(A12_TRACE_ALLOC, "unlinked:stream=%"PRIu64, node->streamid);
+	*dst = next;
+	close(node->fd);
+	free(node);
+}
+
+static size_t queue_node(struct a12_state* S, struct blob_out* node)
+{
+	uint16_t nts;
+	size_t cap = node->left;
+	if (cap == 0 || cap > 64096)
+		cap = 64096;
+
+	bool die;
+	void* buf = read_data(node->fd, cap, &nts, &die);
+	if (!buf){
+		/* MISSING: SEND STREAM CANCEL */
+		if (die){
+			unlink_node(S, node);
+		}
+		return 0;
+	}
+
+/* not activated, so build a header first */
+	if (!node->active){
+		uint8_t outb[CONTROL_PACKET_SIZE] = {0};
+		step_sequence(S, outb);
+		S->out_stream++;
+		outb[16] = node->chid;
+		outb[17] = COMMAND_BINARYSTREAM;
+		pack_u32(S->out_stream, &outb[18]); /* [18 .. 21] stream-id */
+		pack_u64(node->left, &outb[22]); /* [22 .. 29] total-size */
+		outb[30] = node->type;
+		/* 31..34 : id-token, ignored for now */
+		memcpy(&outb[35], node->checksum, 16);
+		a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+		node->active = true;
+		node->streamid = S->out_stream;
+		a12int_trace(A12_TRACE_BTRANSFER,
+			"kind=created:size=%zu:stream:%zu:ch=%d",
+			node->left, node->streamid, node->chid
+		);
+	}
+
+/* prepend the bstream header */
+	uint8_t outb[1 + 4 + 2];
+	outb[0] = node->chid;
+	pack_u32(node->streamid, &outb[1]);
+	pack_u16(nts, &outb[5]);
+
+	a12int_append_out(S, STATE_BLOB_PACKET, buf, nts, outb, sizeof(outb));
+
+	if (node->left){
+		node->left -= nts;
+		if (!node->left){
+
+			unlink_node(S, node);
+		}
+		else {
+			a12int_trace(A12_TRACE_BTRANSFER,
+				"kind=block:stream=%zu:ch=%d:size=%"PRIu16":left=%zu",
+				node->streamid, (int)node->chid, nts, node->left
+			);
+		}
+	}
+	else {
+		a12int_trace(A12_TRACE_BTRANSFER,
+			"kind=block:stream=%zu:ch=%d:streaming:size=%"PRIu16,
+			node->streamid, (int)node->chid, nts
+		);
+	}
+
+	free(buf);
+	return nts;
+}
+
+static size_t append_blob(struct a12_state* S, int mode)
+{
+/* find suitable blob */
+	if (mode == A12_FLUSH_NOBLOB || !S->pending)
+		return 0;
+/* only current channel? */
+	else if (mode == A12_FLUSH_CHONLY){
+		struct blob_out* parent = S->pending;
+		while (parent){
+			if (parent->chid == S->out_channel)
+				return queue_node(S, parent);
+			parent = parent->next;
+		}
+		return 0;
+	}
+	return queue_node(S, S->pending);
+}
+
 size_t
-a12_flush(struct a12_state* S, uint8_t** buf)
+a12_flush(struct a12_state* S, uint8_t** buf, int allow_blob)
 {
 	if (S->state == STATE_BROKEN || S->cookie != 0xfeedface)
 		return 0;
 
-/* nothing in the outgoing buffer? then we can pull in whatever
- * data transfer is pending */
+/* nothing in the outgoing buffer? then we can pull in whatever data transfer
+ * is pending, if there are any queued */
 	if (S->buf_ofs == 0){
-		return 0;
+		if (allow_blob > A12_FLUSH_NOBLOB && append_blob(S, allow_blob)){}
+		else
+			return 0;
 	}
 
 	size_t rv = S->buf_ofs;
@@ -938,7 +1443,6 @@ a12_channel_new(struct a12_state* S,
 	outb[19] = segkind;
 	outb[20] = 0;
 	pack_u32(cookie, &outb[21]);
-	step_sequence(S, outb);
 
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 }
@@ -1051,34 +1555,55 @@ a12_channel_vframe(struct a12_state* S,
 	}
 }
 
-static ssize_t get_file_size(int fd)
-{
-	struct stat fdinf;
-	if (fstat(fd, &fdinf) == -1)
-		return -1;
-
-	return fdinf.st_size;
-}
-
-static bool setup_new_channel(struct a12_state* S, struct arcan_event* ev)
-{
-	return true;
-}
-
 bool
 a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
 {
 	if (!S || S->cookie != 0xfeedface || !ev)
 		return false;
 
-/* binary streams gets added to their own 'add when there is output space'
- * while newsegment has its entirely own treatment */
+/* descriptor passing events are another complex affair, those that require
+ * the caller to provide data outwards should already have been handled at
+ * this stage, so it is basically STORE and BCHUNK_OUT that are allowed to
+ * be forwarded in order for the other side to a12_queue_bstream */
 	if (arcan_shmif_descrevent(ev)){
-/* this one should have already been handled through a12_channel_new */
-		if (ev->tgt.kind == TARGET_COMMAND_NEWSEGMENT)
+		switch(ev->tgt.kind){
+		case TARGET_COMMAND_STORE:
+		case TARGET_COMMAND_BCHUNK_OUT:
+/* we need to register a local store that tracks the descriptor here
+ * and just replaces the [0].iv field with that key, the other side
+ * will forward a bstream correctly then pair */
+		break;
+
+/* these events have a descriptor, just map them to the right type of
+ * binary transfer event and the other side will synthesize and push
+ * the rest */
+		case TARGET_COMMAND_RESTORE:
+			a12_enqueue_bstream(S,
+				ev->tgt.ioevs[0].iv, A12_BTYPE_STATE, false, 0);
 			return true;
-		else
-			return queue_binary_stream(S, ev);
+		break;
+
+/* let the bstream- side determine if the source is streaming or not */
+		case TARGET_COMMAND_BCHUNK_IN:
+			a12_enqueue_bstream(S,
+				ev->tgt.ioevs[0].iv, A12_BTYPE_BLOB, false, 0);
+				return true;
+		break;
+
+/* weird little detail with the fonthint is that the real fonthint event
+ * sans descriptor will be transferred first, the other side will catch
+ * it and merge */
+		case TARGET_COMMAND_FONTHINT:
+			a12_enqueue_bstream(S,
+				ev->tgt.ioevs[0].iv, ev->tgt.ioevs[4].iv == 1 ?
+				A12_BTYPE_FONT_SUPPL : A12_BTYPE_FONT, false, 0
+			);
+		break;
+		default:
+			a12int_trace(A12_TRACE_SYSTEM,
+				"kind=error:status=EINVAL:message=%s", arcan_shmif_eventstr(ev, NULL, 0));
+			return true;
+		}
 	}
 
 /*
@@ -1135,4 +1660,17 @@ const char* a12int_group_tostr(int group)
 		return "bad";
 	else
 		return groups[ind];
+}
+
+void
+a12_set_bhandler(struct a12_state* S,
+	struct a12_bhandler_res (*on_bevent)(
+		struct a12_state* S, struct a12_bhandler_meta, void* tag),
+	void* tag)
+{
+	if (!S)
+		return;
+
+	S->binary_handler = on_bevent;
+	S->binary_handler_tag = tag;
 }

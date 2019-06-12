@@ -90,9 +90,57 @@ void a12_set_channel(struct a12_state* S, uint8_t chid);
  * 2. [if output buffer set, write to network channel]
  * 3. [enqueue events, add audio/video buffers]
  * 4. [if output buffer empty, a12_flush] => buffer size
+ *
+ * [allow_blob] behavior depends on value:
+ *
+ *    A12_FLUSH_NOBLOB : ignore all queued binary blobs
+ *    A12_FLUSH_CHONLY : blocking (font/state) transfers for the current channel
+ *    A12_FLUSH_ALL    : any pending data blobs
+ *
+ * These should be set when there are no audio/video frames from the source that
+ * should be prioritised, and when the segment on the channel is in the preroll
+ * state.
  */
+enum a12_blob_mode {
+	A12_FLUSH_NOBLOB = 0,
+	A12_FLUSH_CHONLY,
+	A12_FLUSH_ALL
+};
 size_t
-a12_flush(struct a12_state*, uint8_t**);
+a12_flush(struct a12_state*, uint8_t**, int allow_blob);
+
+/*
+ * Add a data transfer object to the active outgoing channel. The state machine
+ * will duplicate the descriptor in [fd]. These will not necessarily be
+ * transfered in order or immediately, but subject to internal heuristics
+ * depending on current buffer pressure and bandwidth.
+ *
+ * For streaming descriptor types (non-seekable), size can be 0 and the stream
+ * will be continued until the data source dies or the other end cancels.
+ *
+ * A number of subtle rules determine which order the binary streams will be
+ * forwarded, so that a blob transfer can be ongoing for a while without
+ * blocking interactivity due to an updated font and so on.
+ *
+ * Therefore, the incoming order of descrevents() may be different from the
+ * outgoing one. For the current and expected set of types, this behavior is
+ * safe, but something to consider if the need arises to add additional ones.
+ *
+ * This function will not immediately cause any data to be flushed out, but
+ * rather checked whenever buffers are being swapped and appended as size
+ * permits. There might also be, for instance, a ramp-up feature for fonts so
+ * that the initial blocks might have started to land on the other side, and if
+ * the transfer is not cancelled due to a local cache, burst out.
+ */
+enum a12_bstream_type {
+	A12_BTYPE_STATE = 0,
+	A12_BTYPE_FONT = 1,
+	A12_BTYPE_FONT_SUPPL = 2,
+	A12_BTYPE_BLOB = 3
+};
+void
+a12_enqueue_bstream(
+	struct a12_state*, int fd, int type, bool streaming, size_t sz);
 
 /*
  * Get a status code indicating the state of the connection.
@@ -171,9 +219,16 @@ enum a12_vframe_compression_bias {
 	VFRAME_BIAS_QUALITY
 };
 
+/*
+ * Open ended question here is if it is worth it (practically speaking) to
+ * allow caching of various blocks and subregions vs. just normal compression.
+ * The case can be made for CURSOR-type subsegments and possibly first frame of
+ * a POPUP and some other types.
+ */
 struct a12_vframe_opts {
 	enum a12_vframe_method method;
 	enum a12_vframe_compression_bias bias;
+
 	bool variable;
 	union {
 		float bitrate; /* !variable, Mbit */
@@ -193,6 +248,57 @@ struct a12_aframe_cfg {
 	uint8_t channels;
 	uint32_t samplerate;
 };
+
+/*
+ * Register a handler that deals with binary- transfer cache lookup and
+ * storage allocation. The supplied [on_bevent] handler is invoked twice:
+ *
+ * 1. When the other side has initiated a binary transfer. The type, size
+ *    and possible checksum (all may be unknown) is provided.
+ *
+ * 2. When the transfer has completed or been cancelled.
+ *
+ * Each channel can only have one transfer in- flight, so it is safe to
+ * track the state per-channel and not try to pair multiple transfers.
+ *
+ * Cancellation will be triggered on DONTWANT / CACHED. Otherwise the
+ * new file descriptor will be populated and when the transfer is
+ * completed / cancelled, the handler will be invoked again. It is up
+ * to the handler to close any descriptor.
+ */
+enum a12_bhandler_flag {
+	A12_BHANDLER_CACHED = 0,
+	A12_BHANDLER_NEWFD,
+	A12_BHANDLER_DONTWANT
+};
+
+enum a12_bhandler_state {
+	A12_BHANDLER_CANCELLED = 0,
+	A12_BHANDLER_COMPLETED,
+	A12_BHANDLER_INITIALIZE
+};
+
+struct a12_bhandler_meta {
+	enum a12_bhandler_state state;
+	enum a12_bstream_type type;
+	uint8_t checksum[16];
+	uint64_t known_size;
+	bool streaming;
+	uint8_t channel;
+	uint64_t streamid;
+	int fd;
+	struct arcan_shmif_cont* dcont;
+};
+struct a12_bhandler_res {
+	enum a12_bhandler_flag flag;
+	int fd;
+};
+void
+a12_set_bhandler(struct a12_state*,
+	struct a12_bhandler_res (*on_bevent)(
+		struct a12_state* S, struct a12_bhandler_meta, void* tag),
+	void* tag
+);
 
 /*
  * The following functions provide data over a channel, each channel corresponds
@@ -250,4 +356,8 @@ a12_channel_new(struct a12_state* S,
 void
 a12_channel_close(struct a12_state*);
 
+/*
+ * Cancel the binary stream that is ongoing in a specific channel
+ */
+void a12_stream_cancel(struct a12_state* S, uint8_t chid);
 #endif

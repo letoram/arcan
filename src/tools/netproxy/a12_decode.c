@@ -5,8 +5,14 @@
  * Reference: https://arcan-fe.com
  */
 #include <arcan_shmif.h>
-#include "a12_int.h"
+#include <arcan_shmif_server.h>
+
+#include <inttypes.h>
+#include <string.h>
+#include <math.h>
+
 #include "a12.h"
+#include "a12_int.h"
 
 #ifdef LOG_FRAME_OUTPUT
 #define STB_IMAGE_WRITE_STATIC

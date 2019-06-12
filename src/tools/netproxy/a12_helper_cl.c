@@ -10,6 +10,7 @@
  * events like NEWSEGMENT etc. originate here.
  */
 #include <arcan_shmif.h>
+#include <arcan_shmif_server.h>
 #include <errno.h>
 #include <unistd.h>
 #include <signal.h>
@@ -22,8 +23,8 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-#include "a12_int.h"
 #include "a12.h"
+#include "a12_int.h"
 #include "a12_helper.h"
 
 /* [THREADING]
@@ -67,8 +68,11 @@ static void on_cl_event(
 		);
 		return;
 	}
+/* should not really receive descriptors this way (client forwarding to server,
+ * all these are pushed from the server stage or should be locally blocked) */
 	if (arcan_shmif_descrevent(ev)){
-		a12int_trace(A12_TRACE_SYSTEM, "incoming descr- event ignored");
+		a12int_trace(A12_TRACE_SYSTEM,
+			"kind=error:status=EINVAL:message=incoming descr- event ignored");
 	}
 	else {
 		a12int_trace(A12_TRACE_EVENT,
@@ -143,9 +147,9 @@ out:
 static bool dispatch_event(struct shmif_thread_data* data, arcan_event* ev)
 {
 	bool dirty = false;
-/* we got a descriptor passing event, some of these we could/should discard,
- * while others need to be forwarded as a binary- chunk stream and kept out-
- * of order on the other side */
+
+/* the normal descriptor events are consumed in the a12_channel_enqueue
+ * which also takes the job of calling the a12_enqueue_bstream */
 	if (ev->category == EVENT_TARGET &&
 		ev->tgt.kind == TARGET_COMMAND_NEWSEGMENT){
 		add_segment(data, ev);
@@ -153,17 +157,11 @@ static bool dispatch_event(struct shmif_thread_data* data, arcan_event* ev)
 	}
 
 	BEGIN_CRITICAL(data->state, "process-event");
-		if (arcan_shmif_descrevent(ev)){
-			a12int_trace(A12_TRACE_EVENT,
-				"kind=ignore_descriptor:event=%s", arcan_shmif_eventstr(ev, NULL, 0));
-		}
-		else {
-			a12int_trace(A12_TRACE_EVENT,
-				"kind=enqueue:event=%s", arcan_shmif_eventstr(ev, NULL, 0));
-			a12_set_channel(data->S, data->chid);
-			a12_channel_enqueue(data->S, ev);
-			dirty = true;
-		}
+		a12int_trace(A12_TRACE_EVENT,
+			"kind=enqueue:event=%s", arcan_shmif_eventstr(ev, NULL, 0));
+		a12_set_channel(data->S, data->chid);
+		a12_channel_enqueue(data->S, ev);
+		dirty = true;
 	END_CRITICAL(data->state);
 
 	return dirty;
@@ -385,10 +383,11 @@ int a12helper_a12srv_shmifcl(
 			END_CRITICAL(&cl);
 		}
 
-/* refill outgoing buffer if there is something left */
+/* refill outgoing buffer if there is something left, better heuristics can be
+ * applied here and set A12_FLUSH_CHONLY or NOBLOB depending on channel state */
 		if (!outbuf_sz){
 			BEGIN_CRITICAL(&cl, "step-buffer");
-				outbuf_sz = a12_flush(S, &outbuf);
+				outbuf_sz = a12_flush(S, &outbuf, A12_FLUSH_ALL);
 			END_CRITICAL(&cl);
 		}
 
