@@ -2,6 +2,7 @@
  * Simple implementation of a client/server proxy.
  */
 #include <arcan_shmif.h>
+#include <arcan_shmif_server.h>
 #include <errno.h>
 #include <unistd.h>
 #include <signal.h>
@@ -9,8 +10,8 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <sys/wait.h>
-#include "a12_int.h"
 #include "a12.h"
+#include "a12_int.h"
 #include "a12_helper.h"
 
 static int run_shmif_server(
@@ -58,7 +59,10 @@ static int run_shmif_server(
 
 /* build the a12 state and hand it over to the main loop */
 				a12helper_a12cl_shmifsrv(a12_open(
-					authk, auth_sz), cl, fdin, fdout, (struct a12helper_opts){});
+					authk, auth_sz), cl, fdin, fdout, (struct a12helper_opts){
+						.dirfd_temp = -1,
+						.dirfd_cache = -1
+					});
 			}
 
 			if (pfd.revents & (~POLLIN)){

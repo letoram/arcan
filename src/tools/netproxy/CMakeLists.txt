@@ -73,6 +73,7 @@ include(ExternalProject)
 
 include_directories(
 	${ARCAN_SHMIF_INCLUDE_DIR}
+	../../engine
 	#	${CMAKE_CURRENT_BINARY_DIR}/udt/src
 )
 
@@ -87,6 +88,8 @@ set(SOURCES
 	miniz/miniz.c
 	../../platform/posix/random.c
 	../../platform/posix/chacha20.c
+	../../platform/posix/mem.c
+	../../platform/posix/base64.c
 )
 
 add_executable( arcan-netpipe ${SOURCES} netpipe.c)

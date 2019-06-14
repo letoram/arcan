@@ -46,42 +46,50 @@ Milestone 1 - basic features (0.5.x)
 - [x] Compressed Video
 	-  [x] x264
 	-  [x] xor-PNG
-- [ ] Raw binary descriptor transfers
+- [x] Raw binary descriptor transfers
 - [ ] Interactive compression controls
 - [x] Subsegments
-- [ ] Basic authentication / Cipher (blake+chaha20)
+- [ ] Basic authentication / DH / Cipher (blake+chacha20+curve25519)
 - [ ] Basic privsep/sandboxing
-- [ ] Add to encode, remoting
 
 Milestone 2 - closer to useful (0.6.x)
 
+- [ ] Add to encode, remoting
 - [ ] Cache process / directory for file operations
 - [ ] Compression Heuristics for binary transfers
 - [ ] Quad-tree for DPNG
 - [ ] "MJPG" mode over DPNG
+- [ ] Frame Cancellation
 - [ ] TUI- text channel
-- [ ] btransfer caching
+- [ ] arcan-netpipe over ssh helper
+- [ ] vframe- caching on certain types (first-frame on new, ...)
+- [ ] vframe-runahead
 - [ ] (Scheduling), better A / V / E interleaving
 - [ ] Progressive / threaded video encoding
 - [ ] Accelerated encoding of gpu-handles
-- [ ] Passthrough of video surfaces
+- [ ] Passthrough of compressed video sources
 - [ ] Traffic monitoring tools
 - [ ] Splicing / Local mirroring
+- [ ] Rekeying / Key Deletion
 
 Milestone 3 - big stretch (0.6.x)
 
+- [ ] Embed binary transfer progress into parent window
 - [ ] Dynamic audio resampling
+- [ ] Media- segment buffering window, controls and progress
 - [ ] Output segments
-- [ ] UDP based carrier (UDT, SPDY)
-- [ ] curve25519 key exchange
+- [ ] UDP based carrier (UDT)
 - [ ] 'ALT' arcan-lwa interfacing
-- [ ] ZSTD
+- [ ] 'AGP' level- packing
+- [ ] ZSTD with dictionary on whole source
 - [ ] Subprotocols (vobj, gamma, ...)
 - [ ] Open3DGC (vr, obj mode)
 - [ ] HDR / gamma
+- [ ] Defered input oscillator safety buffer
+- [ ] Per type ephemeral key
 - [ ] Congestion control / dynamic encoding parameters
-- [ ] Side-channel Resistant
-- [ ] Local discovery Mechanism (pluggable)
+- [ ] Side-channel Resistance
+- [ ] Directory Server and auth-DoS protection (see MinimaLT)
 - [ ] Special provisions for agp channels
 - [ ] Add to arcan\_net
 - [ ] Secure keystore
@@ -290,7 +298,7 @@ Each message has the outer structure of :
  |---------------------|
  | 16 byte MAC         |
  |---------------------|  |
- | 4 byte sequence     |  |
+ | 8 byte sequence     |  |
  | 1 byte command code |  | encrypted block
  | command-code data   |  |
  |---------------------|  |
@@ -322,8 +330,12 @@ up.
 
 If the most significant bit of the sequence number is set, it is a discard-
 message used to mess with side-channel analysis for cases where bandwidth is a
-lesser concern than confidentiality. It means that both sides can keep a queue
-of discarded packet sizes and re-inject randomised blocks at opportune times.
+lesser concern than confidentiality. It means that both sides can keep a buffer
+of previous packets and re-inject randomised blocks at opportune times, while
+re-using the rest of the code paths.
+
+Stream identifiers is incremented sequentially, starting at 0 for client-side
+defined streams, and (uint32\_max >> 16) for server-side defined streams.
 
 ## Control (1)
 - [0..7]    last-seen seqnr : uint64
@@ -424,9 +436,8 @@ the table:
 ### command - 6, define bstream
 - [18..21] stream-id   : uint32
 - [22..29] total-size  : uint64 (0 on streaming source)
-- [30..33] block-size  : uint32
-- [34]     stream-type : uint8 (0: state, 1:bchunk, 2: font, 3: font-secondary)
-- [35]     stream-flags: uint8 (1: last)
+- [30]     stream-type : uint8 (0: state, 1:bchunk, 2: font, 3: font-secondary)
+- [31..34] id-token    : uint32 (used for bchunk pairing on _out/_store)
 - [35 +16] blake2-hash : blob (0 if unknown)
 
 This defines a new or continued binary transfer stream. The block-size sets the
@@ -438,19 +449,28 @@ order to interrupt an ongoing one with a higher priority one.
 No extra data needed in the control command, just used as a periodic carrier
 to keep the connection alive and measure drift.
 
+### command - 8, rekey
+- [0...7] future-seqnr : uint64
+- [8..23] new key      : uint8[16]
+
+This command indicate a sequence number in the future outside of the expected
+established drift range along with a safety factory. When this sequence number
+has been seen, new message and cipher keys will be derived from the new key and
+used instead of the old one which is discarded and safely erased.
+
 ##  Event (2), fixed length
-- [0..7] : sequence number : uint64
-- [8   ] : channel-id      : uint8
-- [9+  ] : event-data      : special
+- [0..7] sequence number : uint64
+- [8   ] channel-id      : uint8
+- [9+  ] event-data      : special
 
 The event data does not currently have a fixed packing format as the model is
 still being refined and thus we use the opaque format from
 arcan\_shmif\_eventpack.
 
 ## Vstream-data (3), Astream-data (4), Bstream-data (5) (variable length)
-- channel-id : uint8
-- stream-id : uint32
-- length : uint32
+- [0   ] channel-id : uint8
+- [1..4] stream-id  : uint32
+- [5..6] length     : uint16
 
 The data messages themselves will make out the bulk of communication,
 and ties to a pre-defined channel/stream.

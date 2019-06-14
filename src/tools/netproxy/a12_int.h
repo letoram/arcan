@@ -1,13 +1,6 @@
 #ifndef HAVE_A12_INT
 #define HAVE_A12_INT
 
-#include <arcan_shmif.h>
-#include <arcan_shmif_server.h>
-
-#include <inttypes.h>
-#include <string.h>
-#include <math.h>
-
 /* crypto / line format */
 #include "blake2.h"
 #include "pack.h"
@@ -58,6 +51,7 @@ enum control_commands {
 	COMMAND_AUDIOFRAME = 5,
 	COMMAND_BINARYSTREAM = 6,
 	COMMAND_PING = 7,
+	COMMAND_REKEY = 8
 };
 
 #define SEQUENCE_NUMBER_SIZE 8
@@ -112,9 +106,10 @@ struct audio_frame {
 struct binary_frame {
 	int tmp_fd;
 	int type;
-	bool read;
+	bool active;
 	uint64_t size;
-	uint8_t hash[16];
+	uint8_t checksum[16];
+	int64_t streamid; /* actual type is uint32 but -1 for cancel */
 };
 
 struct video_frame {
@@ -151,6 +146,20 @@ struct video_frame {
 	/* bytes left on current row for raw-dec */
 };
 
+struct blob_out;
+struct blob_out {
+	uint8_t checksum[16];
+	int fd;
+	uint8_t chid;
+	int type;
+	size_t left;
+	bool streaming;
+	bool active;
+	uint64_t streamid;
+	struct blob_out* next;
+};
+
+struct a12_state;
 struct a12_state {
 /* we need to prepend this when we build the next MAC */
 	uint8_t last_mac_out[MAC_BLOCK_SZ];
@@ -159,6 +168,7 @@ struct a12_state {
 /* data needed to synthesize the next package */
 	uint64_t current_seqnr;
 	uint64_t last_seen_seqnr;
+	uint64_t out_stream;
 
 /* populate and forwarded output buffer */
 	size_t buf_sz[2];
@@ -166,11 +176,22 @@ struct a12_state {
 	uint8_t buf_ind;
 	size_t buf_ofs;
 
+/* linked list of pending binary transfers, can be re-ordered and affect
+ * blocking / transfer state of events on the other side */
+	struct blob_out* pending;
+
+/* current event handler for binary transfer cache oracle */
+	struct a12_bhandler_res
+		(*binary_handler)(struct a12_state*, struct a12_bhandler_meta, void*);
+	void* binary_handler_tag;
+
 /* multiple- channels over the same state tracker for subsegment handling */
 	struct {
 		bool active;
 		struct arcan_shmif_cont* cont;
-		union {
+
+/* can have one of each stream- type being prepared for unpack at the same time */
+		struct {
 			struct video_frame vframe;
 			struct audio_frame aframe;
 			struct binary_frame bframe;
@@ -193,8 +214,13 @@ struct a12_state {
 #endif
 		};
 	} channels[256];
-	int out_channel;
+
+/* current decoding state, tracked / used by the process_* functions */
 	int in_channel;
+	uint32_t in_stream;
+
+/* current encoding state, manipulate with set_channel */
+	int out_channel;
 
 /*
  * Incoming buffer, size of the buffer == size of the type - when there
