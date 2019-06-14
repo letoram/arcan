@@ -4861,6 +4861,14 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblstr(ctx, "extensions", msgbuf, top);
 			}
 		break;
+/* This event does not arrive raw, the tracking properties are
+ * projected unto the event during queuetransfer */
+		case EVENT_EXTERNAL_PRIVDROP:
+			tblstr(ctx, "kind", "privdrop", top);
+			tblbool(ctx, "external", ev->ext.privdrop.external, top);
+			tblbool(ctx, "sandboxed", ev->ext.privdrop.external, top);
+			tblbool(ctx, "networked", ev->ext.privdrop.external, top);
+		break;
 		case EVENT_EXTERNAL_STATESIZE:
 			tblstr(ctx, "kind", "state_size", top);
 			tblnum(ctx, "state_size", ev->ext.stateinf.size, top);

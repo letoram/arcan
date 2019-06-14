@@ -542,7 +542,7 @@ enum ARCAN_TARGET_COMMAND {
  * A hint in regards to how text rendering should be managed in relation to
  * the display regarding filtering, font, and sizing decision.
  * ioev[0].iv = BADFD or descriptor of font to use
- * ioev[1].iv = DEPRECATED
+ * ioev[1].iv = (internal, signifies a font presence)
  * ioev[2].fv = desired normal font size in mm, <= 0, unchanged from current
  * ioev[3].iv = hinting: 0, off. 1, monochromatic, 2. light, 3. medium,
  *  -1 (unchanged), 0: off, 1..16 (implementation defined, recommendation
@@ -775,12 +775,18 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_CLOCKREQ = 18,
 
 /*
- * Update an estimate on how the connection will hand bchunk transfers.
- * Uses the 'bchunk' substructure.
- * This MAY prompt actions in the running appl, e.g. showing a file- open/
- * /save dialog.
+ * Update an estimate on how the connection will hand bchunk transfers.  Uses
+ * the 'bchunk' substructure.  This MAY prompt actions in the running appl,
+ * e.g. showing a file- open/ /save dialog.
  */
 	EVENT_EXTERNAL_BCHUNKSTATE = 19,
+
+/*
+ * Signal that the context operates in a lower level of trust
+ * that possible rule separation on the UI level should treat accordingly.
+ * Uses the privdrop substructure.
+ */
+	EVENT_EXTERNAL_PRIVDROP = 20,
 
 	EVENT_EXTERNAL_ULIM = INT_MAX
 };
@@ -1304,6 +1310,26 @@ enum ARCAN_TARGET_SKIPMODE {
 		uint8_t stream;
 		uint8_t extensions[68];
 	} bchunk;
+
+/*
+ * (external) : The execution context has moved from authoritative/trusted to
+ *              an external conection origin. This can happen on crash recovery
+ *              and can only be switched on.
+ *
+ * (sandboxed) : The client indicates voluntarily that the context now comes
+ *               from a reduced level of trust. This can only be switched on.
+ *
+ * (networked) : Some intermediate (such as a network proxy) indicates that
+ *               the client maintains a communication path outside of the
+ *               localhost. This can be switched on and off, and it is the
+ *               responsibility of the intermediate to prevent external
+ *               influence.
+ */
+	struct {
+		uint8_t external;
+		uint8_t sandboxed;
+		uint8_t networked;
+	} privdrop;
 
 /*
  * Indicate that the connection supports abstract input labels, along

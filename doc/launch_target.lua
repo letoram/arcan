@@ -169,6 +169,12 @@
 -- the color ramp subprotocol, this event will be triggered for each mapped ramp
 -- index. For more information on this system, see ref:video_displaygamma
 --
+-- @note: "privdrop", {external, networked, sandboxed} - this is used to indicate
+-- that the privilege context a client operates within has changed. trusted launch
+-- can become external in origin, proxied connections can flip between being
+-- have network access or not, and any connection can switch to being in a
+-- sandboxed context.
+--
 -- @note: The initial states goes through the following transitions:
 -- "connected" (only on target_alloc, not launch_target) -> "registered" ->
 -- "preroll" -> "resized" -> [most events possible] -> "terminated"
