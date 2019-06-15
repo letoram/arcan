@@ -1,0 +1,1 @@
+{"version":1,"ops":[{"author":{"id":"9eb510892d1accc0c715d21128d216b2e6f74967"},"files":null,"message":"track when there has been a reset on keybindings etc. for a window that we\napply compression to, and inject keybindings to manually increase or decrease\nbitrate.","timestamp":1560597014,"title":"(net) inject keybindings for compression control","type":1}]}
