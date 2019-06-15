@@ -1,16 +1,17 @@
 -- bond_target
 -- @short: Setup a state transfer pipe between two targets.
--- @inargs: srcvid, dstvid, [tag]
+-- @inargs: vid:source, vid:dest
+-- @inargs: vid:source, vid:dest, bool:blob
+-- @inargs: vid:source, vid:dest, bool:blob, string:identifer
 -- @outargs:
--- @longdescr: Call this function to synchronize state between
--- two instances of the same frameserver. Internally, this will
--- create a pipe where the writing end is pushed into *srcvid* and
--- the reading end is pushed into *dstvid*. Then both ends get
--- corresponding restore/store state requests.
--- It is also possible for either *srcvid* or *dstvid* to be a
--- networking instance (with an optional tag for a networking
--- server to set recipient domain).
+-- @longdescr: This function is used to setup a state transfer
+-- stream between two targets. A pipe-pair is created with the
+-- write- end sent to *source* and the read- end sent to *dest*.
+-- By default, the transfer target type is marked as 'state',
+-- meaning that *dest* should replace its runtime state with
+-- that of *source. If the *blob* argument is set to true, then
+-- the transfer type will be that of a opaque data blob, up
+-- to the *dest* to figure out what to do with.
 -- @group: targetcontrol
 -- @cfunction: targetbond
 -- @related:
-

@@ -7989,9 +7989,9 @@ static int targetbond(lua_State* ctx)
 		vobj_b->feed.state.tag != ARCAN_TAG_FRAMESERV)
 		arcan_fatal("bond_target(), both arguments must be valid frameservers.\n");
 
-/* if target_a is net or target_b is net, a possible third argument
- * may be added to specify which domain that should receive the state
- * in question */
+	bool val = luaL_optbnumber(ctx, 3, false);
+	const char* descr = luaL_optstring(ctx, 4, "octet-stream");
+
 	int pair[2];
 	if (pipe(pair) == -1){
 		arcan_warning("bond_target(), pipe pair failed."
@@ -8002,11 +8002,16 @@ static int targetbond(lua_State* ctx)
 	arcan_frameserver* fsrv_a = vobj_a->feed.state.ptr;
 	arcan_frameserver* fsrv_b = vobj_b->feed.state.ptr;
 
-	arcan_event ev = {.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_STORE};
+	arcan_event ev = {
+		.category = EVENT_TARGET,
+		.tgt.kind = val ? TARGET_COMMAND_BCHUNK_OUT : TARGET_COMMAND_STORE
+	};
+	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", descr);
 
 	platform_fsrv_pushfd(fsrv_a, &ev, pair[0]);
 
-	ev.tgt.kind = TARGET_COMMAND_RESTORE;
+	ev.tgt.kind = val ? TARGET_COMMAND_BCHUNK_IN : TARGET_COMMAND_RESTORE;
+
 	platform_fsrv_pushfd(fsrv_b, &ev, pair[1]);
 
 	close(pair[0]);
@@ -8021,14 +8026,31 @@ static int targetrestore(lua_State* ctx)
 
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	const char* snapkey = luaL_checkstring(ctx, 2);
+	const char* descr = luaL_optstring(ctx, 4, "octet-stream");
 
+/* namespace controls COMMAND_ form */
+	int ns = luaL_optnumber(ctx, 3, RESOURCE_APPL_STATE);
+	int command = TARGET_COMMAND_RESTORE;
+
+/* verify it's a frameserver we are sending to */
 	vfunc_state* state = arcan_video_feedstate(tgt);
 	if (!state || state->tag != ARCAN_TAG_FRAMESERV || !state->ptr){
 		lua_pushboolean(ctx, false);
 		LUA_ETRACE("restore_target", "invalid feedstate", 1);
 	}
 
-	char* fname = arcan_find_resource(snapkey, RESOURCE_APPL_STATE, ARES_FILE);
+/* verify namespace for reading */
+	if (ns != RESOURCE_APPL_STATE){
+		command = TARGET_COMMAND_BCHUNK_IN;
+		if (ns != RESOURCE_APPL && ns == RESOURCE_APPL_TEMP &&
+				ns != RESOURCE_APPL_SHARED){
+			lua_pushboolean(ctx, false);
+			LUA_ETRACE("restore_target", NULL, 1);
+		}
+	}
+
+/* resolve from requested namespace, only accept files */
+	char* fname = arcan_find_resource(snapkey, ns, ARES_FILE);
 	int fd = -1;
 	if (fname)
 		fd = open(fname, O_CLOEXEC |O_RDONLY);
@@ -8040,12 +8062,15 @@ static int targetrestore(lua_State* ctx)
 		LUA_ETRACE("restore_target", "could not load file", 1);
 	}
 
+/* send to recipient, close local handle */
+	arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
 	arcan_event ev = {
 		.category = EVENT_TARGET,
-		.tgt.kind = TARGET_COMMAND_RESTORE
+		.tgt.kind = command
 	};
-	arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
-	lua_pushboolean(ctx, ARCAN_OK == platform_fsrv_pushfd(fsrv, &ev, fd));
+	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", descr);
+
+	lua_pushboolean(ctx, ARCAN_OK == platform_fsrv_pushfd(fsrv, ev, fd));
 	close(fd);
 
 	LUA_ETRACE("restore_target", NULL, 1);
@@ -8113,7 +8138,26 @@ static int targetsnapshot(lua_State* ctx)
 
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	const char* snapkey = luaL_checkstring(ctx, 2);
+	const char* descr = luaL_optstring(ctx, 4, "octet-stream");
 
+/* pick command based on the targeted namespace, for db- defined user
+ * namespaces, we should differentiate on type here so strings gets
+ * resolved against db, e.g. ns_name => {r, w, x /path} */
+	int ns = luaL_optnumber(ctx, 3, RESOURCE_APPL_STATE);
+	int command = RESOURCE_APPL_STATE;
+
+/* verify that it is a safe namespace for writing */
+	if (ns != RESOURCE_APPL_STATE){
+		if (RESOURCE_APPL_SHARED || ns == RESOURCE_APPL_TEMP){
+			command = TARGET_COMMAND_BCHUNK_OUT;
+		}
+		else {
+			lua_pushboolean(ctx, false);
+			LUA_ETRACE("snapshot_target", "invalid namespace", 1);
+		}
+	}
+
+/* verify that we are targeting a vobj in a frameserver state */
 	vfunc_state* state = arcan_video_feedstate(tgt);
 	if (!state || state->tag != ARCAN_TAG_FRAMESERV || !state->ptr){
 		lua_pushboolean(ctx, false);
@@ -8121,7 +8165,11 @@ static int targetsnapshot(lua_State* ctx)
 	}
 	arcan_frameserver* fsrv = state->ptr;
 
-	char* fname = arcan_expand_resource(snapkey, RESOURCE_APPL_STATE);
+/* actually resolve the name and grab the descriptor, note that we
+ * don't really have a good setup for figuring out when the writing
+ * is finished, as otherwise a deferred job or commit- stage would
+ * be better so we could atomically CAS rather than trunc-write */
+	char* fname = arcan_expand_resource(snapkey, ns);
 	int fd = -1;
 	if (fname)
 		fd = open(fname, O_CREAT | O_WRONLY |
@@ -8130,12 +8178,13 @@ static int targetsnapshot(lua_State* ctx)
 
 	if (-1 == fd){
 		lua_pushboolean(ctx, false);
-		LUA_ETRACE("snapshot_target", "couldn't open file", 1);
+		LUA_ETRACE("snapshot_target", "couldn't create file", 1);
 	}
 
 	arcan_event ev = {
 		.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_STORE
 	};
+	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", descr);
 	lua_pushboolean(ctx, platform_fsrv_pushfd(fsrv, &ev, fd));
 	close(fd);
 	LUA_ETRACE("snapshot_target", NULL, 1);
