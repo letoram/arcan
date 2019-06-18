@@ -331,7 +331,13 @@ static void draw_ch_u32(struct tui_font_ctx* ctx,
 		return;
 
 	if (!font || !gent){
-		draw_box(c, x, y, font->font->w, font->font->h, bg);
+		size_t w = font->font->w;
+		size_t h = font->font->h;
+		if (w + x >= maxx)
+			w = maxx - x;
+		if (h + y >= maxy)
+			h = maxy - y;
+		draw_box(c, x, y, w, h, bg);
 		return;
 	}
 
@@ -355,16 +361,21 @@ static void draw_ch_u32(struct tui_font_ctx* ctx,
 		x = 0;
 	}
 
+	if (font->font->w + x > maxx || font->font->h + y > maxy)
+		return;
+
 	for (; row < font->font->h && y < maxy; row++, y++){
 		shmif_pixel* pos = &c->vidp[c->pitch * y + x];
-		for (int col = colst; col < font->font->w;){
+		for (int col = colst; col < font->font->w; bind++){
 /* padding bits will just be 0 */
 			int lx = x;
-			for (int bit = 7; bit >= 0 &&
-				col < font->font->w && lx < maxx; bit--, col++, lx++){
+			for (
+				int bit = 7;
+				bit >= 0 && col < font->font->w && lx < maxx;
+				bit--, col++, lx++)
+			{
 				pos[col] = ((1 << bit) & gent->data[bind]) ? fg : bg;
 			}
-			bind++;
 		}
 	}
 }
