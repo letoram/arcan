@@ -8070,7 +8070,7 @@ static int targetrestore(lua_State* ctx)
 	};
 	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", descr);
 
-	lua_pushboolean(ctx, ARCAN_OK == platform_fsrv_pushfd(fsrv, ev, fd));
+	lua_pushboolean(ctx, ARCAN_OK == platform_fsrv_pushfd(fsrv, &ev, fd));
 	close(fd);
 
 	LUA_ETRACE("restore_target", NULL, 1);
