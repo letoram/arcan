@@ -336,10 +336,12 @@ static int readback_encode()
 
 /* flag ok and commit dirty region */
 	global.encode.outctx->shm.ptr->hints |= SHMIF_RHINT_SUBREGION;
+
 	struct arcan_shmif_region dirty = {
 		.x1 = x1, .y1 = y1,
 		.x2 = x2, .y2 = y2
 	};
+
 	atomic_store(&global.encode.outctx->shm.ptr->dirty, dirty);
 	atomic_store_explicit(
 		&global.encode.outctx->shm.ptr->vready, true, memory_order_seq_cst);
@@ -493,6 +495,7 @@ bool platform_video_map_display(
  * switch to the global output
  */
 	if (id == ARCAN_VIDEO_WORLDID || !vobj){
+		arcan_warning("(headless) map display, worldid or no object, invert-y\n");
 		global.encode.flip_y = true;
 		return true;
 	}
@@ -510,8 +513,9 @@ bool platform_video_map_display(
  */
 	vobj->vstore->refcount++;
 	bool isrt = arcan_vint_findrt(vobj) != NULL;
-	global.encode.flip_y = isrt;
+	global.encode.flip_y = !isrt;
 	global.vstore = vobj->vstore;
+	arcan_warning("(headless) mapped source, invert-y: %d\n", global.encode.flip_y);
 
 	return true;
 }
