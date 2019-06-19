@@ -31,10 +31,6 @@ support script.
 This is a simple skeleton that can be used for interfacing with custom
 LED controllers. See its README.md for how it connects to arcan.
 
-## LTUI
-This is a patched version of the Lua interactive CLI that loads in
-the shmif-tui (text-user interfaces )
-
 ## VRbridge
 This tools aggregates samples from VR related SDKs and binds into a
 single avatar in a way that integrates with the core engine VR path.
