@@ -1901,6 +1901,9 @@ bool arg_lookup(struct arg_arr* arr, const char* val,
 	unsigned short ind, const char** found)
 {
 	int pos = 0;
+	if (found)
+		*found = NULL;
+
 	if (!arr)
 		return false;
 
