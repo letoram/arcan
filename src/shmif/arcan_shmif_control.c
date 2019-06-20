@@ -2198,7 +2198,10 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 		.render_node = -1,
 		.density = ARCAN_SHMPAGE_DEFAULT_PPCM,
 		.fonts = {
-			{.fd = -1}, {.fd = -1}, {.fd = -1}, {.fd = -1}
+			{
+				.fd = -1,
+				.size_mm = 3.527780
+			}, {.fd = -1}, {.fd = -1}, {.fd = -1}
 		}
 	};
 
@@ -2244,7 +2247,10 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
  * pattern is set but not really a valid use */
 		case TARGET_COMMAND_FONTHINT:
 			def.fonts[font_ind].hinting = ev.tgt.ioevs[3].iv;
-			def.fonts[font_ind].size_mm = ev.tgt.ioevs[2].fv;
+
+/* protect against a bad value there, disabling the size isn't permitted */
+			if (ev.tgt.ioevs[2].fv > 0)
+				def.fonts[font_ind].size_mm = ev.tgt.ioevs[2].fv;
 			if (font_ind < 3){
 				if (ev.tgt.ioevs[0].iv != -1){
 					def.fonts[font_ind].fd = arcan_shmif_dupfd(

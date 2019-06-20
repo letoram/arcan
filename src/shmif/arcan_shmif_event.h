@@ -478,8 +478,7 @@ enum ARCAN_TARGET_COMMAND {
  * intended use.
  * ioev[0].iv = handle (or BADFD)
  * ioev[1].iv =
- *              1: switch render node, handle is a reference to the new node
- *                 or -1 to indicate render mode switch
+ *              1: device hardware descriptor, if provided (-1 means 2..5)
  *              2: switch local connection:
  *                 message field will contain new _CONNPATH otherwise
  *                 connection primitive will be passed as handle.
@@ -501,11 +500,10 @@ enum ARCAN_TARGET_COMMAND {
  *                 as display scanout type (e.g. GBM_BO_USE_SCANOUT),
  *              2; disabled, hardware acceleration is entirely lost
  *
- * ioev[3].iv = 0: buffer synchronisation method is GBM
- *              1: buffer synchronisation method is Alloc/Streams
- *
- * ioev[4].iv = n bytes of MESSAGE used for modifier description
- * MESSAGE contains modifier metadata
+ * ioev[3].iv = 0: device type is render-node-GBM
+ *              1: device type is render-node-Streams
+ *              2: device type is usb descriptor
+ *              4: (capability bit) render node can be used for scanout (lease)
  *
  * [for [1].iv == 2..4]
  * 128-bit guid is packed in [2..5] as 64bit little-endian,
@@ -714,6 +712,7 @@ enum ARCAN_EVENT_EXTERNAL {
  *
  * The reserved/special names are:
  * 'default' : revert to CURSOR subsegment contents or system default
+ * 'tag'     : the cursor isegment is a tag to the current cursor
  * 'hidden'  : don't show/draw the cursor at all
  * 'hidden-rel' : no visual change, but try to provide/bias relative samples
  * 'hidden-abs' : no visual change, but try to provide/bias absolute samples
