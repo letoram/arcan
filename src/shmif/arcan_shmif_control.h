@@ -216,12 +216,12 @@ enum arcan_shmif_sigmask {
 	SHMIF_SIGVID = 1,
 	SHMIF_SIGAUD = 2,
 
-/* synchronous, wait for parent to acknowledge (assuming there are no more
- * buffers available) */
+/* synchronous, wait for parent to acknowledge
+ * (assuming there are no more buffers available) */
 	SHMIF_SIGBLK_FORCE = 0,
 
-/* Extra flag, always return immediately, further writes may cause tearing and
- * other visual/aural artifacts */
+/* Extra flag, always return immediately, further writes may cause
+ * tearing and other visual/aural artifacts */
 	SHMIF_SIGBLK_NONE  = 4
 };
 
