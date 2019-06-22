@@ -173,10 +173,11 @@ void vnc_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
 
 	vncctx.shmcont = cont;
 
-	const char* name = "Arcan VNC session";
 	const char* tmpstr;
 
-	arg_lookup(args, "name", 0, &name);
+	const char* name;
+	if (!arg_lookup(args, "name", 0, &name))
+		name = "Arcan VNC session";
 
 	if (arg_lookup(args, "port", 0, &tmpstr)){
 		port = strtoul(tmpstr, NULL, 10);
