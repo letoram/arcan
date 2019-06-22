@@ -1,6 +1,6 @@
 /*
  * Decode Reference Frameserver Archetype
- * Copyright 2014-2018, Björn Ståhl
+ * Copyright 2014-2019, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Depends: LibVLC (LGPL) LibUVC (optional)
@@ -510,8 +510,19 @@ static bool dispatch(arcan_event* ev)
 
 int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 {
+	const char* val;
 	libvlc_media_t* media = NULL;
 	float position = 0.0;
+
+/* Default the 'capture-' to take UVC first and thereafter go with VLCs probing
+ * method. Do this first so that we can enumerate devices even without a valid
+ * shmif- context */
+#ifdef HAVE_UVC
+	if (args && arg_lookup(args, "capture", 0, &val)){
+		if (uvc_support_activate(cont, args))
+			return EXIT_SUCCESS;
+	}
+#endif
 
 	if (!cont || !args){
 		dump_help();
@@ -551,7 +562,6 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	}
 
 /* decode external arguments, map the necessary ones to VLC */
-	const char* val;
 	int pad = 1;
 	char const* vargs[] = {
 		"--no-xlib",
@@ -572,13 +582,6 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			}
 	}
 
-#ifdef HAVE_UVC
-	if (arg_lookup(args, "capture", 0, &val)){
-		if (uvc_support_activate(cont, args))
-			return EXIT_SUCCESS;
-	}
-#endif
-
 	decctx.vlc = libvlc_new(COUNT_OF(vargs)-pad, vargs);
   if (decctx.vlc == NULL){
   	LOG("Couldn't initialize VLC session, giving up.\n");
@@ -597,10 +600,6 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
  * mode that propagates available ones upwards, otherwise we have the
  * semantics like; v4l2:// dshow:// qtcapture:// etc. */
 	else if (arg_lookup(args, "capture", 0, &val)){
-#ifdef HAVE_UVC_SUPPORT
-
-#endif
-
 		unsigned devind = 0;
 		int desw = 0, desh = 0;
 		float fps = -1;
@@ -618,6 +617,10 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		if (arg_lookup(args, "height", 0, &val))
 			desh = strtoul(val, NULL, 10);
 		desh = (desh > 0 && desh < ARCAN_SHMPAGE_MAXH) ? desh : 0;
+
+		if (arg_lookup(args, "list", 0, NULL)){
+			return EXIT_SUCCESS;
+		}
 
 		media = find_capture_device(devind, desw, desh, fps);
 	}
