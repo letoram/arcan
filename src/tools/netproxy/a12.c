@@ -19,6 +19,8 @@
 
 #include "a12_decode.h"
 #include "a12_encode.h"
+#include "arcan_mem.h"
+#include "../platform/posix/chacha20.c"
 
 #include <sys/mman.h>
 #include <sys/types.h>
@@ -194,24 +196,12 @@ static void reset_state(struct a12_state* S)
 	S->mac_dec = S->mac_init;
 }
 
-static struct a12_state* a12_setup(uint8_t* authk, size_t authk_sz)
+static struct a12_state* a12_setup(struct a12_context_options* opt)
 {
 	struct a12_state* res = DYNAMIC_MALLOC(sizeof(struct a12_state));
 	if (!res)
 		return NULL;
 
-	uint8_t empty_key[16] = {0};
-	size_t empty_sz = 16;
-	if (!authk){
-		authk = empty_key;
-		authk_sz = empty_sz;
-	}
-
-	*res = (struct a12_state){};
-	if (-1 == blake2bp_init_key(&res->mac_init, 16, authk, authk_sz)){
-		DYNAMIC_FREE(res);
-		return NULL;
-	}
 
 	res->cookie = 0xfeedface;
 	return res;
@@ -232,22 +222,28 @@ static void a12_init()
 	init = true;
 }
 
-struct a12_state* a12_build(uint8_t* authk, size_t authk_sz)
+struct a12_state* a12_build(struct a12_context_options* opt)
 {
+	if (!opt)
+		return NULL;
+
 	a12_init();
 
-	struct a12_state* res = a12_setup(authk, authk_sz);
+	struct a12_state* res = a12_setup(opt);
 	if (!res)
 		return NULL;
 
 	return res;
 }
 
-struct a12_state* a12_open(uint8_t* authk, size_t authk_sz)
+struct a12_state* a12_open(struct a12_context_options* opt)
 {
+	if (!opt)
+		return NULL;
+
 	a12_init();
 
-	struct a12_state* S = a12_setup(authk, authk_sz);
+	struct a12_state* S = a12_setup(opt);
 	if (!S)
 		return NULL;
 
@@ -1673,4 +1669,24 @@ a12_set_bhandler(struct a12_state* S,
 
 	S->binary_handler = on_bevent;
 	S->binary_handler_tag = tag;
+}
+
+void* a12_sensitive_alloc(size_t nb)
+{
+	return arcan_alloc_mem(nb,
+		ARCAN_MEM_EXTSTRUCT, ARCAN_MEM_SENSITIVE | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+}
+
+void a12_sensitive_free(void* ptr, size_t buf)
+{
+	volatile unsigned char* pos = ptr;
+	for (size_t i = 0; i < buf; i++){
+		pos[i] = 0;
+	}
+	arcan_mem_free(ptr);
+}
+
+void a12_plain_kdf(const char* pw, struct a12_context_options* dst)
+{
+
 }

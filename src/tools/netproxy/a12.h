@@ -38,16 +38,65 @@
 struct a12_state;
 
 /*
+ * the encryption related options need to be the same for both server-
+ * and client- side or the communication will fail regardless of key validity.
+ */
+struct pk_response {
+	bool valid;
+	uint8_t key[64];
+};
+
+struct a12_context_options {
+/* Provide to enable asymetric key authentication, set valid in the return to
+ * allow the key, otherwise the session may be continued for a random number of
+ * time or bytes before being terminated. Keymaterial in response is used by
+ * the server side and can be */
+	struct pk_response (*pk_lookup)(uint8_t pk[static 32]);
+
+/* default is to add a round-trip and use an ephemeral public key to transfer
+ * the real one, forces active MiM in order for an attacker to track Pk
+ * (re-)use. */
+	bool disable_ephemeral_k;
+
+/* filled in using a12_plain_kdf used for the cipher and MAC before asymmetric
+ * exchange has been performed. If disable_authenticity is set and no pk_lookup
+ * is provided, everything will be over plaintext for debugging and trusted
+ * networks */
+	uint8_t authk[64];
+	bool disable_authenticity;
+};
+/*
+ * Takes a low entropy secret and generate a salted authentication key used
+ * for the first key- exchange upon connection. If no shared secret is provided
+ * the default 'SETECASTRONOMY' is used. The key is only used to authenticate
+ * the first public key in place of a preauthenticated public key from a
+ * previous session or a UI based pk_lookup implementation.
+ */
+void a12_plain_kdf(const char* ssecret, struct a12_context_options* dst);
+
+/*
+ * Use in place of malloc/free on struct a12_context_options and other
+ * structs that may act as temporary store for keymaterial.
+ *
+ * Will attempt to:
+ * 1. allocate in memory marked as excluded from crash dumps
+ * 2. overwrite on free
+ *
+ * This is not sufficient as the data might taint into registers and so on,
+ * but there still are not any reliable mechanisms for achieving this.
+ */
+void* a12_sensitive_alloc(size_t nb);
+void a12_sensitive_free(void*, size_t nb);
+
+/*
  * begin a new session (connect)
  */
-struct a12_state*
-a12_open(uint8_t* authk, size_t authk_sz);
+struct a12_state* a12_open(struct a12_context_options*);
 
 /*
  * being a new session (accept)
  */
-struct a12_state*
-a12_build(uint8_t* authk, size_t authk_sz);
+struct a12_state* a12_build(struct a12_context_options*);
 
 /*
  * Free the state block
