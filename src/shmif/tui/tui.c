@@ -2167,8 +2167,19 @@ static void queue_requests(struct tui_context* tui, bool clipboard, bool ident)
 		.ext.clock.id = 0xabcdef00,
 	});
 
-	if (ident && tui->last_ident.ext.kind != 0)
-		arcan_shmif_enqueue(&tui->acon, &tui->last_ident);
+/* ident is only set on crash recovery */
+	if (ident){
+		if (tui->last_bchunk_in.ext.bchunk.extensions[0] != '\0')
+			arcan_shmif_enqueue(&tui->acon, &tui->last_bchunk_in);
+
+		if (tui->last_bchunk_out.ext.bchunk.extensions[0] != '\0')
+			arcan_shmif_enqueue(&tui->acon, &tui->last_bchunk_out);
+
+		if (tui->last_ident.ext.kind != 0)
+			arcan_shmif_enqueue(&tui->acon, &tui->last_ident);
+
+		arcan_shmif_enqueue(&tui->acon, &tui->last_state_sz);
+	}
 
 	expose_labels(tui);
 }
@@ -3097,6 +3108,59 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 			res->cols, res->rows, res->handlers.tag);
 
 	return res;
+}
+
+void arcan_tui_statesize(struct tui_context* c, size_t sz)
+{
+	if (!c)
+		return;
+
+	struct arcan_event statesz = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(STATESIZE),
+		.ext.stateinf.size = sz
+	};
+	c->last_state_sz = statesz;
+
+	arcan_shmif_enqueue(&c->acon, &statesz);
+}
+
+void arcan_tui_announce_io(struct tui_context* c,
+	bool immediately, const char* input_descr, const char* output_descr)
+{
+	if (!c)
+		return;
+
+	arcan_event bchunk_in = {
+		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
+		.category = EVENT_EXTERNAL,
+		.ext.bchunk = {
+			.input = true,
+			.hint = !immediately
+		}
+	};
+
+	arcan_event bchunk_out = bchunk_in;
+	bchunk_in.ext.bchunk.input = false;
+
+	if (input_descr){
+		snprintf((char*)bchunk_in.ext.bchunk.extensions,
+			COUNT_OF(bchunk_in.ext.bchunk.extensions), "%s", input_descr);
+		arcan_shmif_enqueue(&c->acon, &bchunk_in);
+	}
+
+	if (output_descr){
+		snprintf((char*)bchunk_in.ext.bchunk.extensions,
+			COUNT_OF(bchunk_in.ext.bchunk.extensions), "%s", output_descr);
+		arcan_shmif_enqueue(&c->acon, &bchunk_out);
+	}
+
+	if (!immediately){
+		if (input_descr)
+			c->last_bchunk_in = bchunk_in;
+		if (output_descr)
+			c->last_bchunk_out = bchunk_out;
+	}
 }
 
 /*
