@@ -74,35 +74,37 @@ include(ExternalProject)
 include_directories(
 	${ARCAN_SHMIF_INCLUDE_DIR}
 	../../engine
+	../../platform/posix
+	external/blake2
+	external/25519
+	external
 	#	${CMAKE_CURRENT_BINARY_DIR}/udt/src
 )
 
+set(EXTERNAL_SOURCES
+	external/blake2/blake2bp-ref.c
+	external/blake2/blake2b-ref.c
+	external/miniz/miniz.c
+)
+
 set(SOURCES
-	blake2bp-ref.c
-	blake2b-ref.c
 	a12.c
 	a12_decode.c
 	a12_encode.c
 	a12_helper_srv.c
 	a12_helper_cl.c
-	miniz/miniz.c
-	../../platform/posix/random.c
-	../../platform/posix/chacha20.c
 	../../platform/posix/mem.c
 	../../platform/posix/base64.c
+	${EXTERNAL_SOURCES}
 )
 
-add_executable( arcan-netpipe ${SOURCES} netpipe.c)
 add_executable( arcan-net ${SOURCES} netproxy.c)
-add_sanitizers( arcan-netpipe )
 add_sanitizers( arcan-net )
 
-set_property(TARGET arcan-netpipe PROPERTY C_STANDARD 11)
 set_property(TARGET arcan-net PROPERTY C_STANDARD 11)
 
-target_link_libraries(arcan-netpipe ${LIBRARIES})
 target_link_libraries(arcan-net ${LIBRARIES})
 
 install(TARGETS
-	arcan-net arcan-netpipe
+	arcan-net
 	DESTINATION bin)

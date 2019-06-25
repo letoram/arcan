@@ -18,18 +18,9 @@ similarly to how 'xclip' works for Xorg.
 This tool is already built as part of the normal engine build, and
 provides command-line access to updating database configuration.
 
-## Aloadlimage
+## Aloadimage
 This is a sandboxed image loader, supporting multi-process privilege
 separation, playlists and so on - similar to xloadimage.
-
-## Kbdconv
-This is a semi-working skeleton for generating .lua files that can
-be used as keyboard maps in applications that use the 'symtables.lua'
-support script.
-
-## Leddec
-This is a simple skeleton that can be used for interfacing with custom
-LED controllers. See its README.md for how it connects to arcan.
 
 ## VRbridge
 This tools aggregates samples from VR related SDKs and binds into a
