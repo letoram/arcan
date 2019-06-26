@@ -154,7 +154,12 @@ struct tui_context {
 	struct arcan_shmif_cont acon;
 	struct arcan_shmif_cont clip_in;
 	struct arcan_shmif_cont clip_out;
+
+/* retain these so that we can renegotiate on crash */
 	struct arcan_event last_ident;
+	struct arcan_event last_state_sz;
+	struct arcan_event last_bchunk_in;
+	struct arcan_event last_bchunk_out;
 
 	struct tsm_save_buf* pending_copy_window;
 

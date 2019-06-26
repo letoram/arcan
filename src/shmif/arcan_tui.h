@@ -37,13 +37,13 @@
 
 /*
  * [ABOUT]
- * This is a library intended to make development of rich text-oriented user
- * interfaces that are free from the legacy- cruft of terminal emulation
- * protocols, with the intent of offering better system integration, lower
- * latency, faster drawing and access to more features, and to take advantage
- * of existing display servers and window managers. It is not intended to
- * provide UI- components as such, only access to subsystems like input,
- * drawing and storage- with a bias towards text output and keyboard input.
+ *  This is a library intended to allow the development of rich text-oriented
+ *  user interfaces that are free from the legacy- cruft of terminal emulation
+ *  protocols, offering better system integration, lower latency, faster drawing
+ *  and access to more features, and to take advantage of existing display
+ *  servers and window managers. It is not intended to provide normal toolkit
+ *  like components as such, only access to subsystems like input, drawing
+ *  and storage- with a bias towards text output and keyboard input.
  *
  * [PORTABILITY]
  *  In order to allow custom backends that use other IPC and drawing systems to
@@ -58,8 +58,7 @@
  *  The majority of the interface exposed here in terms of enumerations and
  *  types is mostly safe against breaking changes. To be extra careful, wait
  *  until a mirror- repo @github.com/letoram/arcan-tui.git has been set up
- *  and all the fields updated. This will likely coincide with the 0.5.4
- *  release.
+ *  and all the fields updated.
  *
  * [THREAD SAFETY]
  *  The main allocation, initial setup routines are currently not safe for
@@ -192,12 +191,12 @@
  *
  * [MISSING/PENDING FEATURES]
  *  [ ] Simple audio
- *  [ ] Announce binary- file input and output- capabilities
- *  [ ] Language bindings, readline like API
- *  [ ] Argument- validation mode
- *  [ ] External process- to window mapping
- *  [ ] pack/unpack function to deal with serialization of a line protocol
- *  [ ] Translation that exposes the NCurses API
+ *  [ ] Language bindings (see github.com/letoram/tui-bindings)
+ *  [ ] Content- scroll hints (for alt screen)
+ *  [ ] External process- to window mapping / embedding
+ *  [ ] Support library that emulates NCurses
+ *  [ ] Line- attributes (LTR, RTL, shaped)
+ *  [ ] Server-side rendering
  */
 
 #include "arcan_tuidefs.h"
@@ -272,11 +271,6 @@ struct tui_screen_attr {
 	unsigned int strikethrough : 1;
 	unsigned int shape_break : 1; /* reset shaping and align to grid */
 
-/*  > 127: cell is used for a custom draw-call, will be used with -127
- *         subtracted in custom draw callback. The actual ch field can
- *         thus be used for storing additional drawing hints.
- * 0..127: act as a user-supplied type-id, will be drawn as normal but
- *         can be queried for in selection buffers etc. */
 	uint8_t custom_id;
 };
 
@@ -436,7 +430,7 @@ struct tui_cbcfg {
 	void (*state)(struct tui_context*, bool input, int fd, void*);
 
 /*
- * request to send or receive a binary chunk, [input=true,size=0] for streams
+ * request to send [input=false] or receive a binary chunk, [input=true,size=0] for streams
  * of unknown size, [input=false] then size is 'recommended' upper limit, if set.
  */
 	void (*bchunk)(struct tui_context*, bool input, uint64_t size, int fd, void*);
@@ -772,6 +766,37 @@ void arcan_tui_wndhint(struct tui_context* wnd,
 	int wndflags);
 
 /*
+ * Announce capability for reading (input_descr != NULL) and/or writing
+ * (output_descr != NULL) some kind of user- provided file data.
+ *
+ * [immediately=true] - attempt to query the user 'as soon as possible'
+ *                      with an open/save kind of a user dialog.
+ *
+ * [immediately=false] - remember, as a persistent hint, that the program
+ *                       can load and/or store files that match the
+ *                       description at any time.
+ *
+ * Both sides may result in the (bchunk) callback being triggered at
+ * some point in the future.
+ *
+ * The 'input_descr' and 'output_descr' are EITHER simply the wildcard
+ * '*' character (for all files) or a ; separated list of extensions no
+ * longer than 68 characters in total, including the terminating \0.
+ */
+void arcan_tui_announce_io(struct tui_context* c,
+	bool immediately, const char* input_descr, const char* output_descr);
+
+/*
+ * Announce/ update an estimate of how much storage is needed to be able
+ * to provide a serialized state-blob that could be used to snapshot the
+ * state of the program in a restorable fashion.
+ *
+ * 0  : not supported (default)
+ * >0 : state size in bytes
+ */
+void arcan_tui_statesize(struct tui_context* c, size_t sz);
+
+/*
  * Clear all cells (or cells not marked protected) to the default attribute.
  * This MAY invalidate the entire screen for redraw. Prefer to only erase
  * regions that should actually be cleared and updated.
@@ -828,26 +853,6 @@ bool arcan_tui_writestr(
  * retrieve the current cursor position into the [x:col] and [y:row] field
  */
 void arcan_tui_cursorpos(struct tui_context*, size_t* x, size_t* y);
-
-/*
- * lock input handling and switch to a libreadline (actually linenoise)
- * style management, will trigger callbacks on completion- and cancel- when
- * the control is returned.
- *
- * completion is called (line == NULL if error or user cancelled, otherwise
- * callee assumes responsibility of heap-allocated line).
-
-struct tui_completions {
-	size_t len;
-	char** cvec;
-};
-
-void arcan_tui_readline(struct tui_context*,
-	void(*completion)(struct tui_context*, const char* line),
-	size_t n_lines,
-	size_t max
-);
-*/
 
 /*
  * Convenience, get a filled out attr structure for the specific color group
@@ -1034,6 +1039,8 @@ typedef void (* PTUIREQSUBEXT)
 	(struct tui_context*, unsigned, uint16_t, struct tui_subwnd_req, size_t);
 typedef void (* PTUIUPDHND)(struct tui_context*, const struct tui_cbcfg*, size_t);
 typedef void (* PTUIWNDHINT)(struct tui_context*, struct tui_context*, int, int, int);
+typedef void (* PTUIANNOUNCEIO)(struct tui_context*, bool, const char*, const char*);
+typedef void (* PTUISTATESZ)(struct tui_context*, size_t);
 typedef int (* PTUIALLOCSCR)(struct tui_context*);
 typedef bool (* PTUISWSCR)(struct tui_context*, unsigned);
 typedef bool (* PTUIDELSCR)(struct tui_context*, unsigned);
@@ -1109,6 +1116,8 @@ static PTUIREQSUB arcan_tui_request_subwnd;
 static PTUIREQSUBEXT arcan_tui_request_subwnd_ext;
 static PTUIUPDHND arcan_tui_update_handlers;
 static PTUIWNDHINT arcan_tui_wndhint;
+static PTUIANNOUNCEIO arcan_tui_announce_io;
+static PTUISTATESZ arcan_tui_statesize;
 static PTUIWRITE arcan_tui_write;
 static PTUIWRITEU8 arcan_tui_writeu8;
 static PTUIWRITESTR arcan_tui_writestr;
@@ -1181,6 +1190,8 @@ M(PTUIREQSUB,arcan_tui_request_subwnd);
 M(PTUIREQSUBEXT,arcan_tui_request_subwnd_ext);
 M(PTUIUPDHND,arcan_tui_update_handlers);
 M(PTUIWNDHINT,arcan_tui_wndhint);
+M(PTUIANNOUNCEIO,arcan_tui_announce_io);
+M(PTUISTATESZ,arcan_tui_statesize);
 M(PTUIWRITE,arcan_tui_write);
 M(PTUIWRITEU8,arcan_tui_writeu8);
 M(PTUIWRITESTR,arcan_tui_writestr);
