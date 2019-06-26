@@ -66,3 +66,5 @@ lastword/ test the handling of client provided notifications, alerts
           and the last_words mechanism for conveying a termination
 					message.
 
+dnd/ tests handling of drag and drop, cut and paste as well as global
+     file open / file save
