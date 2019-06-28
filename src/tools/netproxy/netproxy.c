@@ -38,17 +38,10 @@ void arcan_fatal(const char* msg, ...)
 	exit(EXIT_FAILURE);
 }
 
-struct a12_auth {
-	uint8_t* authk;
-	size_t authk_sz;
-	const char* const passwd;
-};
-
 static void fork_a12srv(struct a12_state* S, int fd)
 {
 	pid_t fpid = fork();
 	if (fpid == 0){
-
 /* Split the log output on debug so we see what is going on */
 #ifdef _DEBUG
 		char buf[sizeof("cl_log_xxxxxx.log")];
@@ -153,7 +146,7 @@ static int get_cl_fd(struct addrinfo* addr)
 	return clfd;
 }
 
-static int a12_connect(struct a12_auth* auth,
+static int a12_connect(struct a12_context_options* opts,
 	const char* cpoint, const char* host_str, const char* port_str,
 	void (*dispatch)(struct a12_state* S, struct shmifsrv_client* cl, int fd))
 {
@@ -209,8 +202,10 @@ static int a12_connect(struct a12_auth* auth,
 		shmifsrv_poll(cl);
 
 /* open remote connection
+ *
  * this could be done inside of the dispatch to get faster burst management
- * at the cost of worse error reporting */
+ * at the cost of worse error reporting, but also allow a sleep-retry kind
+ * of loop in order to have the client 'wake up' when server becomes avail. */
 		int fd = get_cl_fd(addr);
 		if (-1 == fd){
 /* question if we should retry connecting rather than to kill the server */
@@ -218,8 +213,7 @@ static int a12_connect(struct a12_auth* auth,
 			continue;
 		}
 
-/* finally hand setup off to the dispatch */
-		struct a12_state* state = a12_open(auth->authk, auth->authk_sz);
+		struct a12_state* state = a12_open(opts);
 		if (!state){
 			freeaddrinfo(addr);
 			shmifsrv_free(cl);
@@ -236,7 +230,7 @@ static int a12_connect(struct a12_auth* auth,
 	return EXIT_SUCCESS;
 }
 
-static int a12_listen(struct a12_auth* auth, const char* addr_str,
+static int a12_listen(struct a12_context_options* opts, const char* addr_str,
 	const char* port_str, void (*dispatch)(struct a12_state* S, int fd))
 {
 	signal(SIGPIPE, SIG_IGN);
@@ -303,7 +297,7 @@ static int a12_listen(struct a12_auth* auth, const char* addr_str,
 		socklen_t addrlen = sizeof(addr);
 
 		int infd = accept(sockin_fd, (struct sockaddr*) &in_addr, &addrlen);
-		struct a12_state* ast = a12_build(auth->authk, auth->authk_sz);
+		struct a12_state* ast = a12_build(opts);
 		if (!ast){
 			fprintf(stderr, "Couldn't allocate client state machine\n");
 			close(infd);
@@ -349,7 +343,9 @@ int main(int argc, char** argv)
 	int server_mode = -1;
 	enum mt_mode mt_mode = MT_FORK;
 
-	struct a12_auth auth = {};
+	struct a12_context_options* opts =
+		a12_sensitive_alloc(sizeof(struct a12_context_options));
+	a12_plain_kdf(NULL, opts);
 
 	size_t i = 1;
 /* mode defining switches and shared switches */
@@ -406,9 +402,9 @@ int main(int argc, char** argv)
 		char* host = i < argc ? argv[i] : NULL;
 		switch (mt_mode){
 		case MT_SINGLE:
-			return a12_listen(&auth, host, listen_port, single_a12srv);
+			return a12_listen(opts, host, listen_port, single_a12srv);
 		case MT_FORK:
-			return a12_listen(&auth, host, listen_port, fork_a12srv);
+			return a12_listen(opts, host, listen_port, fork_a12srv);
 		break;
 		default:
 			return EXIT_FAILURE;
@@ -421,10 +417,10 @@ int main(int argc, char** argv)
 
 	switch (mt_mode){
 	case MT_SINGLE:
-		return a12_connect(&auth, cp, argv[i], argv[i+1], a12cl_dispatch);
+		return a12_connect(opts, cp, argv[i], argv[i+1], a12cl_dispatch);
 	break;
 	case MT_FORK:
-		return a12_connect(&auth, cp, argv[i], argv[i+1], fork_a12cl_dispatch);
+		return a12_connect(opts, cp, argv[i], argv[i+1], fork_a12cl_dispatch);
 	break;
 	default:
 		return EXIT_FAILURE;
