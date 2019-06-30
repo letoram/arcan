@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2018, Björn Ståhl
+ * Copyright 2003-2019, Björn Ståhl
  * License: GPLv2+, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -53,6 +53,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <sys/un.h>
 #include <math.h>
 
@@ -7511,6 +7512,22 @@ static int xlt_dev(int inv)
 	}
 }
 
+static void* pthr_waiter(void* src)
+{
+	pid_t* pid = src;
+	for(;;){
+		int status;
+		int rc = waitpid(*pid, &status, 0);
+		if (-1 == rc && errno == ECHILD)
+			break;
+
+		if (WIFEXITED(status))
+			break;
+	}
+	free(pid);
+	return NULL;
+}
+
 static int targetdevhint(lua_State* ctx)
 {
 	LUA_TRACE("target_devicehint");
@@ -7521,19 +7538,23 @@ static int targetdevhint(lua_State* ctx)
 
 	arcan_frameserver* fsrv = (arcan_frameserver*) vobj->feed.state.ptr;
 
-/* 1: node-switch (>0) or render-mode switch (-1) only */
 	int type = lua_type(ctx, 2);
+
+/* integer- type, switch physical device */
 	if (type == LUA_TNUMBER){
 		int num = luaL_checknumber(ctx, 2);
+
+/* negative number: just switch mode of operation */
 		if (num < 0){
 			platform_fsrv_pushevent(fsrv, &(struct arcan_event){
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_DEVICE_NODE,
 				.tgt.ioevs[0].iv = BADFD,
 				.tgt.ioevs[1].iv = 1,
-				.tgt.ioevs[2].iv = xlt_dev(luaL_optnumber(ctx, 2, DEVICE_INDIRECT))
+				.tgt.ioevs[2].iv = xlt_dev(luaL_optnumber(ctx, 3, DEVICE_INDIRECT))
 			});
 		}
+/* card- reference, extract device handle for the mode in question */
 		else {
 			struct arcan_event ev;
 			int method;
@@ -7554,7 +7575,7 @@ static int targetdevhint(lua_State* ctx)
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_DEVICE_NODE,
 				.tgt.ioevs[1].iv = 1,
-				.tgt.ioevs[2].iv = xlt_dev(luaL_optnumber(ctx, 2, DEVICE_INDIRECT)),
+				.tgt.ioevs[2].iv = xlt_dev(luaL_optnumber(ctx, 3, DEVICE_INDIRECT)),
 				.tgt.ioevs[3].iv = method,
 				.tgt.ioevs[4].iv = buf_sz
 			};
@@ -7563,6 +7584,7 @@ static int targetdevhint(lua_State* ctx)
 			platform_fsrv_pushfd(fsrv, &ev, fd);
 		}
 	}
+/* string reference, switch render-node */
 	else if (type == LUA_TSTRING){
 /* empty string is allowed for !force (disable alt-conn) */
 		const char* cpath = luaL_checkstring(ctx, 2);
@@ -7576,13 +7598,35 @@ static int targetdevhint(lua_State* ctx)
 			.tgt.ioevs[4].uiv = (fsrv->guid[1] & 0xffffffff),
 			.tgt.ioevs[5].uiv = (fsrv->guid[1] >> 32)
 		};
-		if (force && strlen(cpath) == 0)
-			arcan_fatal("target_devicehint(), forced migration connpath len == 0\n");
-		snprintf(outev.tgt.message, COUNT_OF(outev.tgt.message), "%s", cpath);
+
+/* we require a real string for the connection path if forced */
+		if (force){
+			if (strlen(cpath) == 0)
+				arcan_fatal("target_devicehint(), forced migration connpath len == 0\n");
+
+/* Enabling opt-in migration on a non-auth frameserver means disabling the normal
+ * processing and checks, otherwise the client can be killed after migration and
+ * the shutdown-on-dms event might not get triggered when dpipe dies. BUT! this
+ * also means that the subprocess reaping won't be handled should the client die
+ * while migrated. Awesome. We basically need to spawn a waitpid- thread for
+ * this not to race. */
+			if (fsrv->child != BROKEN_PROCESS_HANDLE){
+				pthread_attr_t jattr;
+				pthread_t pthr;
+				pthread_attr_init(&jattr);
+				pthread_attr_setdetachstate(&jattr, PTHREAD_CREATE_DETACHED);
+				pid_t* pid = malloc(sizeof(pid_t));
+				*pid = fsrv->child;
+				fsrv->child = BROKEN_PROCESS_HANDLE;
+				pthread_create(&pthr, NULL, pthr_waiter, (void*) pid);
+			}
+
+			snprintf(outev.tgt.message, COUNT_OF(outev.tgt.message), "%s", cpath);
+		}
 		platform_fsrv_pushevent(fsrv, &outev);
 	}
-	else
-		arcan_fatal("target_devicehint");
+		else
+			arcan_fatal("target_devicehint(), argument misuse");
 
 	LUA_ETRACE("target_devicehint", NULL, 0);
 }
