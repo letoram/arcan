@@ -87,6 +87,8 @@ static int ilog2(int val)
 	return i;
 }
 
+static uint64_t g_epoch;
+
 void arcan_random(uint8_t*, size_t);
 
 /*
@@ -675,9 +677,11 @@ checkfd:
 			case TARGET_COMMAND_DEVICE_NODE:{
 				int iev = dst->tgt.ioevs[1].iv;
 				if (iev == 4){
-/* replace slot with message, never forward */
-					if (priv->alt_conn)
+/* replace slot with message, never forward, if message is not set - drop */
+					if (priv->alt_conn){
 						free(priv->alt_conn);
+						priv->alt_conn = NULL;
+					}
 
 /* if we're provided with a guid, keep it to be used on a possible migrate */
 					uint64_t guid[2] = {
@@ -695,7 +699,9 @@ checkfd:
 						priv->guid[1] = guid[1];
 					}
 
-					priv->alt_conn = strdup(dst->tgt.message);
+					if (dst->tgt.message[0])
+						priv->alt_conn = strdup(dst->tgt.message);
+
 					goto reset;
 				}
 /* event that request us to switch connection point */
@@ -790,8 +796,9 @@ int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
 
 	int rv = process_events(c, dst, false, false);
 	if (rv > 0 && c->priv->log_event){
-		fprintf(stderr, "(@%"PRIxPTR"<-)%s\n",
-			(uintptr_t) c, arcan_shmif_eventstr(dst, NULL, 0));
+		fprintf(stderr, "[%"PRIu64":%"PRIu32"] <- %s\n",
+			(uint64_t) (uint64_t) arcan_timemillis() - g_epoch,
+			(uint32_t) c->cookie, arcan_shmif_eventstr(dst, NULL, 0));
 	}
 	return rv;
 }
@@ -2312,6 +2319,9 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 	struct arcan_shmif_cont ret = {0};
 	file_handle dpipe;
 	uint64_t ts = arcan_timemillis();
+
+	if (!g_epoch)
+		g_epoch = arcan_timemillis();
 
 	if (outarg)
 		*outarg = NULL;
