@@ -88,6 +88,13 @@ bool shmifsrv_enter(struct shmifsrv_client*);
 void shmifsrv_leave();
 
 /*
+ * Wrap a shmifsrv client into an interface that can be used with the normal
+ * arcan_shmif_... class of functions.
+ */
+struct arcan_shmif_cont*
+	shmifsrv_client_wrap(struct shmifsrv_client* srv);
+
+/*
  * Allocate, prepare and transfer a new sub-segment to the frameserver
  * referenced by [dst] (!NULL). [segid] specifies the type of the subsegment
  * (MUST match REQID if it is in response to a SEGREQ event)
