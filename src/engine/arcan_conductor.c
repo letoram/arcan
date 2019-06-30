@@ -1,5 +1,5 @@
 /*
- * Copyright 2018, Björn Ståhl
+ * Copyright 2018-2019, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in the arcan source repository.
  * Reference: https://arcan-fe.com
  * Description: The conductor is responsible for figuring out what to synch
@@ -34,8 +34,7 @@
  * checklist:
  *  [ ] actual setup to realtime- plot the different timings and stages
  *      so it is easier (possible) to debug and evaluate the different strategies,
- *      for sake of comparison, pq has format+plotter for weston already, so use
- *      that.
+ *      for sake of comparison, chrome has a builtin viewer for a json format
  *
  *  [ ] parallelize PBO uploads
  *      (thought: test the systemic effects of not doing shm->gpu in process but
@@ -119,7 +118,7 @@ enum synchopts {
 	SYNCH_TIGHT
 };
 
-static int synchopt = SYNCH_ADAPTIVE;
+static int synchopt = SYNCH_IMMEDIATE;
 
 /*
  * difference between step/unlock is that step performs a polling step

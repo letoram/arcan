@@ -2583,7 +2583,7 @@ retry:
 	}
 	else
 #endif
-		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
 
 /* set invalid synch region until redraw changes that, the dirty
  * buffer gets copied during signal so no problem there */
