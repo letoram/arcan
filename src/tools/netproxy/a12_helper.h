@@ -27,9 +27,16 @@ int a12helper_poll_triple(int fd_shmif, int fd_in, int fd_out, int timeout);
 struct a12helper_opts {
 	int default_vcodec;
 	int default_bias;
+
+/* set to ignore type- heuristics and force a specific encoder */
 	bool force_default;
 	int dirfd_temp;
 	int dirfd_cache;
+
+/* a12cl_shmifsrv- specific: set to a valid local connection-point and incoming
+ * EXIT_ events will be translated to DEVICE_NODE events, preventing the remote
+ * side from closing the window */
+ 	const char* redirect_exit;
 };
 
 /*

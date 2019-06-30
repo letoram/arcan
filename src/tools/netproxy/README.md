@@ -21,14 +21,16 @@ will allow shmif clients to start with:
 
     ARCAN_CONNPATH=cpoint some_client
 
-Which should then be correctly forwarded. By default, it will just
-generate an ephemeral (temporary) key-pair and use curve25519-donna
-for creating the session keys (see HACKING.md). For anything other
-than testing purposes, you would also want your own key management
-and somehow authenticate the public part of the key:
+Which should then be correctly forwarded. By default, it will just generate an
+ephemeral key-pair and use curve25519-donna for creating the session keys (see
+HACKING.md for crypto design). For anything other than testing purposes, you
+would also want your own key management and somehow authenticate the public
+part of the key. The best way would be preshare/preauth, say as part of the
+image you bootstrap your server with. A convenient compromise is a short-lived
+key for the first key exchange.
 
-    dd if=/dev/random of=mykey.srv bs=1 count=32
-    arcan-net -l -t password123 -k mykey.srv 6666
+    dd if=/dev/urandom of=mykey.srv bs=1 count=32
+    A12_AUTHK=password123 arcan-net -l -k mykey.srv 6666
 
 Any 32 bytes cryptographically secure random numbers can be used.
 
@@ -74,6 +76,9 @@ Milestone 1 - basic features (0.5.x)
 Milestone 2 - closer to useful (0.6.x)
 
 - [ ] Add to encode, remoting
+  - [ ] Modify shmif- server to "convert/wrap" shmifsrv\_client
+	- [ ] Modify shmif- server / shmif- cont to construct from in-process primitives
+	- [ ] Modify ARCAN\_CONNPATH so that it can take a remote URL
 - [ ] Cache process / directory for file operations
 - [ ] Compression Heuristics for binary transfers
 - [ ] Quad-tree for DPNG
@@ -83,7 +88,7 @@ Milestone 2 - closer to useful (0.6.x)
 - [ ] vframe- caching on certain types (first-frame on new, ...)
 - [ ] vframe-runahead
 - [ ] (Scheduling), better A / V / E interleaving
-- [ ] Progressive / threaded video encoding
+- [ ] Progressive / threaded video encoding frontend
 - [ ] Accelerated encoding of gpu-handles
 - [ ] Passthrough of compressed video sources
 - [ ] Traffic monitoring tools

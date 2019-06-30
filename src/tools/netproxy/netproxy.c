@@ -73,17 +73,18 @@ static void single_a12srv(struct a12_state* S, int fd)
 	a12helper_a12srv_shmifcl(S, NULL, fd, fd);
 }
 
-static void a12cl_dispatch(
+static void a12cl_dispatch(struct a12_context_options* opts,
 	struct a12_state* S, struct shmifsrv_client* cl, int fd)
 {
 /* note that the a12helper will do the cleanup / free */
 	a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
 		.dirfd_temp = -1,
-		.dirfd_cache = -1
+		.dirfd_cache = -1,
+		.redirect_exit = opts->redirect_exit
 	});
 }
 
-static void fork_a12cl_dispatch(
+static void fork_a12cl_dispatch(struct a12_context_options* opts,
 	struct a12_state* S, struct shmifsrv_client* cl, int fd)
 {
 	pid_t fpid = fork();
@@ -91,7 +92,8 @@ static void fork_a12cl_dispatch(
 /* missing: extend sandboxing, close stdio */
 		a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
 			.dirfd_temp = -1,
-			.dirfd_cache = -1
+			.dirfd_cache = -1,
+			.redirect_exit = opts->redirect_exit
 		});
 		exit(EXIT_SUCCESS);
 	}
@@ -148,7 +150,8 @@ static int get_cl_fd(struct addrinfo* addr)
 
 static int a12_connect(struct a12_context_options* opts,
 	const char* cpoint, const char* host_str, const char* port_str,
-	void (*dispatch)(struct a12_state* S, struct shmifsrv_client* cl, int fd))
+	void (*dispatch)(struct a12_context_options* opts,
+	struct a12_state* S, struct shmifsrv_client* cl, int fd))
 {
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGCHLD, SIG_IGN);
@@ -224,7 +227,7 @@ static int a12_connect(struct a12_context_options* opts,
 
 /* wake the client */
 		a12int_trace(A12_TRACE_SYSTEM, "local connection found, forwarding to dispatch");
-		dispatch(state, cl, fd);
+		dispatch(opts, state, cl, fd);
 	}
 
 	return EXIT_SUCCESS;
@@ -315,16 +318,18 @@ static int show_usage(const char* msg)
 	fprintf(stderr, "%s%sUsage:\n"
 	"\tForward local arcan applications: arcan-net -s connpoint host port\n"
 	"\tBridge remote arcan applications: arcan-net -l port [ip]\n\n"
+	"Forward-local options:\n"
+	"\t-X        \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n\n"
 	"Options:\n"
 	"\t-t single- client (no fork/mt)\n"
 	"\t-d bitmap \t set trace bitmap (see below)\n"
 	"\nTrace groups (stderr):\n"
 	"\tvideo:1      audio:2      system:4    event:8      transfer:16\n"
 	"\tdebug:32     missing:64   alloc:128  crypto:256    vdetail:512\n"
-	"\tbtransfer:1024\n"
+	"\tbtransfer:1024\n\n"
 /*
- * "Authentication/encryption (default, none):\n"
-	"\tSymmetric: -p [file] or - for stdin\n"
+ * "Special:\n"
+	"\tInherit-bridge (ARCAN_SOCKIN_FD env, ARCAN_ARG env, -t ignored)\n\n"
  */
 		, msg, msg ? "\n" : ""
 	);
@@ -345,6 +350,11 @@ int main(int argc, char** argv)
 
 	struct a12_context_options* opts =
 		a12_sensitive_alloc(sizeof(struct a12_context_options));
+
+/* set this as default, so the remote side can't actually close */
+	opts->redirect_exit = getenv("ARCAN_CONNPATH");
+
+/* setup default / junk authentication key */
 	a12_plain_kdf(NULL, opts);
 
 	size_t i = 1;
@@ -392,11 +402,26 @@ int main(int argc, char** argv)
 		if (strcmp(argv[i], "-t") == 0){
 			mt_mode = MT_SINGLE;
 		}
+
+		if (strcmp(argv[i], "-X") == 0){
+			opts->redirect_exit = NULL;
+		}
 	}
 
 /* parsing done, route to the right connection mode */
 	if (server_mode == -1)
 		return show_usage("No mode specified, please use -s or -l form");
+
+/* Special "chain-exec" from remoting / encode where the shmif connection
+ * is provided for us. In this mode we need to flip who is initiating the
+ * connection (client vs. server), and thus requires us to finish output-
+ * segment support and two shmifsrv wrappers - one that can construct an
+ * arcan_shmif_cont from a shmifsrv_client, and one that can construct a
+ * shmifsrv_client/arcan_shmif_cont from malloc/socketpair(), or refactor
+ * a12int_helper_srv to take hooks for the vbuffer/abuffer/enqueue/dequeue
+	if (getenv("ARCAN_SOCKIN_FD")){
+	}
+ */
 
 	if (server_mode == 0){
 		char* host = i < argc ? argv[i] : NULL;

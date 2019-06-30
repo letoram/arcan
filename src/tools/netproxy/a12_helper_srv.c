@@ -295,8 +295,33 @@ static void on_srv_event(
 	a12int_trace(A12_TRACE_EVENT,
 		"kind=forward:chid=%d:eventstr=%s", chid, arcan_shmif_eventstr(ev, NULL, 0));
 
-/* Just forward whatever we get except for NEWSEGMENTS as those need special
- * treatment so we get a segment to map etc. on */
+/*
+ * Some events are valuable to intercept and tweak:
+ *
+ * EXIT - unconditional termination is problematic, if we have a local connection-
+ * point defined already, it is better to send the window there for the primary
+ * segment.
+ */
+ 	if (data->opts.redirect_exit && chid == 0 &&
+		ev->category == EVENT_TARGET && ev->tgt.kind == TARGET_COMMAND_EXIT){
+		struct arcan_event ev = {
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_DEVICE_NODE,
+			.tgt.ioevs[0].iv = -1,
+			.tgt.ioevs[1].iv = 2,
+/* this will ignore the GUID setting */
+		};
+		snprintf(ev.tgt.message,
+			COUNT_OF(ev.tgt.message), "%s", data->opts.redirect_exit);
+		shmifsrv_enqueue_event(srv_cl, &ev, -1);
+		a12int_trace(A12_TRACE_EVENT,
+			"kind=redirect:destination=%s", data->opts.redirect_exit);
+		return;
+	}
+
+/*
+ * NEWEVENT - necessary, need to map to new channels.
+ */
 	if (ev->category != EVENT_TARGET || ev->tgt.kind != TARGET_COMMAND_NEWSEGMENT){
 		if (!srv_cl){
 			a12int_trace(A12_TRACE_SYSTEM, "kind=error:type=EINVAL:val=%d", chid);
