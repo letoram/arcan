@@ -458,14 +458,29 @@ static enum shmif_migrate_status fallback_migrate(
 	}
 
 /* CONNECT_LOOP style behavior on force */
-	while ((sv = arcan_shmif_migrate(c, cpoint, NULL)) == SHMIF_MIGRATE_NOCON){
+	const char* current = cpoint;
+	unsigned int retry_count = 10;
+
+	while ((sv = arcan_shmif_migrate(c, current, NULL)) == SHMIF_MIGRATE_NOCON){
 		if (!force)
 			break;
-		sleep(1);
+
+/* try return to the last known connection point after a few tries */
+		if (retry_count)
+			retry_count--;
+		else if (current == cpoint && c->priv->alt_conn)
+			current = c->priv->alt_conn;
+		else
+			current = cpoint;
+
+/* rather aggressive sleep, inotify on socket- folder would be neater */
+		arcan_timesleep(100);
 	}
 
 	switch (sv){
-	case SHMIF_MIGRATE_NOCON: break;
+/* dealt with above already */
+	case SHMIF_MIGRATE_NOCON:
+	break;
 	case SHMIF_MIGRATE_BADARG:
 		debug_print(FATAL, c, "recovery failed, broken path / key");
 	break;
@@ -473,7 +488,9 @@ static enum shmif_migrate_status fallback_migrate(
 		debug_print(FATAL, c, "migration failed on setup");
 	break;
 
-/* set a reset event in the "to be dispatched next dequeue" slot */
+/* set a reset event in the "to be dispatched next dequeue" slot, it would be
+ * nice to have a sneakier way of injecting events into the normal dequeue
+ * process to use as both inter-thread and MiM */
 	case SHMIF_MIGRATE_OK:
 		c->priv->ph |= 4;
 		c->priv->fh = (struct arcan_event){
@@ -681,6 +698,7 @@ checkfd:
 					priv->alt_conn = strdup(dst->tgt.message);
 					goto reset;
 				}
+/* event that request us to switch connection point */
 				else if (iev >= 1 && iev <= 3){
 					if (dst->tgt.message[0] == '\0'){
 						priv->pev.gotev = true;
@@ -690,7 +708,7 @@ checkfd:
 					else {
 						if (fallback_migrate(
 							c, dst->tgt.message, false) != SHMIF_MIGRATE_OK){
-							rv = -1;
+							rv = 0;
 							goto done;
 						}
 						else
@@ -1040,7 +1058,6 @@ char* arcan_shmif_connect(
 		goto end;
 	}
 
-/* connection or not, unlink the connection path */
 	if (connect(sock, (struct sockaddr*) &dst, sizeof(dst))){
 		debug_print(FATAL, NULL,
 			"couldn't connect to (%s): %s", dst.sun_path, strerror(errno));
@@ -1587,7 +1604,7 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	pthread_mutex_destroy(&inctx->priv->lock);
 
 	if (gstr->guard.active){
-		atomic_store(&gstr->guard.dms, NULL);
+		atomic_store(&gstr->guard.dms, 0);
 		gstr->guard.active = false;
 	}
 /* no guard thread for this context */
@@ -1607,6 +1624,8 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	!arg->priv || width > PP_SHMPAGE_MAXW || height > PP_SHMPAGE_MAXH)
 		return false;
 
+/* attempt to resize on a dead connection will trigger forced-
+ * fallback or reconnect style behavior */
 	if (!arg->addr->dms){
 		if (SHMIF_MIGRATE_OK != fallback_migrate(arg, arg->priv->alt_conn, true))
 			return false;
@@ -2396,6 +2415,8 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 		debug_print(FATAL, &ret, "couldn't get event pipe from parent");
 	}
 
+/* remember the last connection point and use-that on a failure on the
+ * current connection point and on a failed force-migrate */
 	if (conn_src)
 		ret.priv->alt_conn = strdup(conn_src);
 
