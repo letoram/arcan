@@ -64,6 +64,8 @@ struct a12_context_options {
  * networks */
 	uint8_t authk[64];
 	bool disable_authenticity;
+
+	const char* redirect_exit;
 };
 /*
  * Takes a low entropy secret and generate a salted authentication key used
