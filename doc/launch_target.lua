@@ -111,10 +111,13 @@
 -- (free=0, UL, UC, UR, CL, C, CR, LL, LC, LR).
 --
 -- @note: "content_state" {number:rel_x, number:rel_y,
--- number:wnd_w, number:wnd_h, number:x_size, number:y_size}
--- indicates the values and range for a position marker such as scrollbars.
+-- number:wnd_w, number:wnd_h, number:x_size, number:y_size,
+-- number:cell_w, number: cell_h}
+-- indicates the values and range for a position marker such as scrollbars
 -- rel_x/y are ranged to 0..1, w/h the stepping size (0..1) versus the window
--- size (0..1).
+-- size (0..1). If cell_w and cell_h are both > 0, the values are to be
+-- interpreted as having a cell/tile like constraint to sizing and displayhint/
+-- surface drawing can be constrained accordingly.
 --
 -- @note: "input_label" {string:labelhint, string:datatype, int:initial,
 -- int:modifiers} - suggest that the target supports customized abstract input

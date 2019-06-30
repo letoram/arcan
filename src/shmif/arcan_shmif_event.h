@@ -1444,11 +1444,15 @@ enum ARCAN_TARGET_SKIPMODE {
  * (x,y_sz ) - < 0.000, invalid, > 1.0 invalid
  * width, height is an estimate as to the relative size of the window
  * (x_pos + width <= 1.0, y_pos + height <= 1.0)
+ * (cell_w, cell_h) - > 0 indicates that the contents has grid/tile
+ * like constraints and that resize actions should try and align
+ * accordingly
  */
 		struct {
 			float x_pos, x_sz;
 			float y_pos, y_sz;
 			float width, height;
+			uint8_t cell_w, uint8_t cell_h;
 		} content;
 
 /*
