@@ -7621,8 +7621,8 @@ static int targetdevhint(lua_State* ctx)
 				pthread_create(&pthr, NULL, pthr_waiter, (void*) pid);
 			}
 
-			snprintf(outev.tgt.message, COUNT_OF(outev.tgt.message), "%s", cpath);
 		}
+		snprintf(outev.tgt.message, COUNT_OF(outev.tgt.message), "%s", cpath);
 		platform_fsrv_pushevent(fsrv, &outev);
 	}
 		else
