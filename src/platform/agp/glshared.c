@@ -112,7 +112,7 @@ struct agp_rendertarget
 /* used for multi-buffering mode */
 	bool rz_ack;
 	size_t n_stores;
-	size_t dirty_flip, dirty_region;
+	size_t dirty_flip, dirty_region, dirty_region_decay;
 	size_t store_ind;
 	struct agp_vstore* stores[MAX_BUFFERS];
 	struct agp_vstore* shadow[MAX_BUFFERS];
@@ -138,7 +138,7 @@ static void setup_stores(struct agp_rendertarget* dst)
 	dst->store_ind = 0;
 	dst->n_stores = MAX_BUFFERS;
 	dst->dirty_flip = MAX_BUFFERS;
-	dst->dirty_region = 0;
+	dst->dirty_region_decay = dst->dirty_region = 0;
 
 /* build the current ones based on the reference store properties */
 	for (size_t i = 0; i < MAX_BUFFERS; i++){
@@ -186,12 +186,14 @@ size_t agp_rendertarget_dirty(
 	if (!dst)
 		return 0;
 
+/* rather unsofisticated, we could/should have a n-buffered merge-region
+ * instead of this inc/dec/decay nonsense - but all in due course */
 	if (dirty){
-/* missing, track / merge dirty rectangles */
 		dst->dirty_region++;
+		dst->dirty_region_decay++;
 	}
 
-	return dst->dirty_region;
+	return dst->dirty_region_decay;
 }
 
 uint64_t agp_rendertarget_swap(struct agp_rendertarget* dst, bool* swap)
@@ -930,12 +932,17 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 void agp_rendertarget_dirty_reset(
 	struct agp_rendertarget* src, struct agp_region* dst)
 {
-	for (size_t i = 0; i < src->dirty_region && dst; i++){
+	for (size_t i = 0; i < src->dirty_region_decay && dst; i++){
 		dst[i] = (struct agp_region){
 			.x1 = 0, .y1 = 0,
 			.x2 = src->store->w, .y2 = src->store->h
 		};
 	}
+
+/* this assumes that we are double- buffered though the reality might be
+ * more or less than that - so quick workaround now and do it for real a
+ * bit later */
+	src->dirty_region_decay = src->dirty_region;
 	src->dirty_region = 0;
 }
 
