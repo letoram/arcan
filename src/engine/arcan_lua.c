@@ -4780,6 +4780,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx, "wnd_h", (float)ev->ext.content.height, top);
 			tblnum(ctx, "x_size", (float)ev->ext.content.x_sz, top);
 			tblnum(ctx, "y_size", (float)ev->ext.content.y_sz, top);
+			tblnum(ctx, "cell_w", ev->ext.content.cell_w, top);
+			tblnum(ctx, "cell_h", ev->ext.content.cell_h, top);
 		break;
 		case EVENT_EXTERNAL_VIEWPORT:
 			tblstr(ctx, "kind", "viewport", top);
