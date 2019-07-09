@@ -297,7 +297,7 @@ static bool on_subst(struct tui_context* tui,
 	return res;
 }
 
-static void on_exec_state(struct tui_context* tui, int state)
+static void on_exec_state(struct tui_context* tui, int state, void* tag)
 {
 	if (state == 0)
 		shl_pty_signal(term.pty, SIGCONT);

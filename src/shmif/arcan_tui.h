@@ -538,7 +538,7 @@ struct tui_cbcfg {
  *     exec_state into normal or terminal state
  * 2 : terminal state, context is dead
  */
-	void (*exec_state)(struct tui_context*, int state);
+	void (*exec_state)(struct tui_context*, int state, void*);
 
 /*
  * Add new callbacks here as needed, since the setup requires a sizeof of
