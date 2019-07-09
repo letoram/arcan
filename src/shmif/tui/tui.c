@@ -370,14 +370,14 @@ static inline void flag_cursor(struct tui_context* c)
 
 static void send_cell_sz(struct tui_context* tui)
 {
-	arcan_event ev = {
-		.category = EVENT_EXTERNAL,
-		.ext.kind = ARCAN_EVENT(MESSAGE),
-	};
-
-	sprintf((char*)ev.ext.message.data,
-		"cell_w:%d:cell_h:%d", tui->cell_w, tui->cell_h);
-	arcan_shmif_enqueue(&tui->acon, &ev);
+	arcan_shmif_enqueue(&tui->acon,
+		&(struct arcan_event){
+			.category = EVENT_EXTERNAL,
+			.ext.kind = ARCAN_EVENT(CONTENT),
+			.ext.content.cell_w = tui->cell_w,
+			.ext.content.cell_h = tui->cell_h
+		}
+	);
 }
 
 static int tsm_draw_callback(struct tsm_screen* screen, uint32_t id,
@@ -1814,13 +1814,13 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 /* sigsuspend to group */
 	case TARGET_COMMAND_PAUSE:
 		if (tui->handlers.exec_state)
-			tui->handlers.exec_state(tui, 1);
+			tui->handlers.exec_state(tui, 1, tui->handlers.tag);
 	break;
 
 /* sigresume to session */
 	case TARGET_COMMAND_UNPAUSE:
 		if (tui->handlers.exec_state)
-			tui->handlers.exec_state(tui, 0);
+			tui->handlers.exec_state(tui, 0, tui->handlers.tag);
 	break;
 
 	case TARGET_COMMAND_RESET:
@@ -2082,7 +2082,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 
 	case TARGET_COMMAND_EXIT:
 		if (tui->handlers.exec_state)
-			tui->handlers.exec_state(tui, 2);
+			tui->handlers.exec_state(tui, 2, tui->handlers.tag);
 		arcan_shmif_drop(&tui->acon);
 	break;
 
