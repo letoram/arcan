@@ -182,7 +182,6 @@ static void step_page_s(struct tui_context* T, struct listwnd_meta* M)
 	size_t rows, cols;
 	arcan_tui_dimensions(T, &rows, &cols);
 
-	printf("step page south\n");
 /* increment offset half- a page */
 	rows = (rows >> 1) + 1;
 	size_t c_row;
@@ -202,8 +201,6 @@ static void step_page_s(struct tui_context* T, struct listwnd_meta* M)
 		M->list_ofs = c_row;
 		M->list_pos++;
 	}
-
-	printf("on new page, at current: %zu - %s\n", M->list_pos, M->list[M->list_pos].label);
 
 /* step cursor to next sane */
 	for (c_row = M->list_pos; c_row < M->list_sz; c_row++){
@@ -274,8 +271,12 @@ static void step_cursor_s(struct tui_context* T, struct listwnd_meta* M)
 
 /* outside window, need to find the new list ofset as well, that is
  * why we need to track the previous visible */
-	if (new_page || current < M->list_pos){
-		printf("set new ofs: %zu, vis: %zu\n", prev_vis, current);
+	if (new_page){
+		M->list_ofs = prev_vis;
+	}
+	else if (current < M->list_pos){
+		if (prev_vis < rows)
+			prev_vis = 0;
 		M->list_ofs = prev_vis;
 	}
 
