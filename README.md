@@ -21,7 +21,7 @@ announcements, releases, videos / presentations and so on.
 
 * For developer information, see the HACKING.md
 
-For curated issues, use the [git-bug](https://github.com/MichaelMure/git-big)
+For curated issues, use the [git-bug](https://github.com/MichaelMure/git-bug)
 tool to browse the currently tracked and acknowledged issues and their details.
 
 We do check the github issues page for user communication from time to time,
@@ -54,19 +54,19 @@ which is the one we will use here.
 Specific package names depend on your distribution, but common ones are:
 
     sqlite3, openal-soft, sdl2, opengl, luajit, gbm, kms, freetype, harfbuzz
-		libxkbcommon
+    libxkbcommon
 
 For encoding and decoding options you would also want:
 
     libvlc-core (videolan), the ffmpeg suite, leptonica, tesseract
-		libvncserver libusb1
+    libvncserver libusb1
 
 First we need some in-source dependencies that are cloned manually for now:
 
     git clone https://github.com/letoram/arcan.git
-		cd external/git
-		../clone.sh
-		cd ../arcan
+    cd external/git
+    ../clone.sh
+    cd ../arcan
 
 These are typically not needed, with the exception of our temporary openAL
 patches pending refactoring of that subsystem in time for the ~0.7 series of
@@ -76,9 +76,9 @@ releases.
 
 Now we can configure and build the main engine:
 
-		mkdir build
-		cd build
-		cmake -DBUILD_PRESET="everything" ../src
+    mkdir build
+    cd build
+    cmake -DBUILD_PRESET="everything" ../src
 
 Like with other CMake based projects, you can add:
 
@@ -186,7 +186,7 @@ As a quick example, this is how to inspect and modify keys that 'Durden'
 are currently using:
 
     arcan_db show_appl durden
-		arcan_db add_appl_kv durden shadow_on true
+    arcan_db add_appl_kv durden shadow_on true
 
 Advanced configuration for some video platforms can be set via the reserved
 arcan appl name. This would, for instance, set the primary graphics card
@@ -197,7 +197,7 @@ device name for the 'egl-dri' platform version:
 To add 'launch targets', you can use something like:
 
     arcan_db add_target BIN arcan-net -l netfwd
-		arcan_db add_config arcan-net default 10.0.0.10 6666
+    arcan_db add_config arcan-net default 10.0.0.10 6666
 
 This allow applications to start a program as a trusted child (that inherits
 its connection primitives rather than to try and find them using some OS
