@@ -230,7 +230,7 @@ static void override_resspaces(const char* respath)
 
  void appl_user_warning(const char* name, const char* err_msg)
 {
-	arcan_warning("\x1b[1mCouldn't load application (\x1b[33m%s\x1b[39m)\n",
+	arcan_warning("\x1b[1mCouldn't load application \x1b[33m(%s): \x1b[31m%s\x1b[39m\n",
 		name, err_msg);
 
 	if (!name || !strlen(name))
