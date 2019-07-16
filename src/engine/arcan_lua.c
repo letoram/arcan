@@ -8193,7 +8193,7 @@ static int targetsnapshot(lua_State* ctx)
  * namespaces, we should differentiate on type here so strings gets
  * resolved against db, e.g. ns_name => {r, w, x /path} */
 	int ns = luaL_optnumber(ctx, 3, RESOURCE_APPL_STATE);
-	int command = RESOURCE_APPL_STATE;
+	int command = TARGET_COMMAND_STORE;
 
 /* verify that it is a safe namespace for writing */
 	if (ns != RESOURCE_APPL_STATE){
@@ -8231,7 +8231,7 @@ static int targetsnapshot(lua_State* ctx)
 	}
 
 	arcan_event ev = {
-		.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_STORE
+		.category = EVENT_TARGET, .tgt.kind = command
 	};
 	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", descr);
 	lua_pushboolean(ctx, platform_fsrv_pushfd(fsrv, &ev, fd));
