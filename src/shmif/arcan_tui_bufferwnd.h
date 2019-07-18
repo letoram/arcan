@@ -57,11 +57,10 @@ enum bufferwnd_color_mode {
 	BUFFERWND_COLOR_CUSTOM = 2
 };
 
-/* hook to allow custom (data-dependent) colorization for
- * [bytev] at buffer position [pos],
- * write value into [fg] and [bg] */
-typedef void(*color_lookup_fn)(struct tui_context* T, void* tag,
-	uint8_t bytev, size_t pos, uint8_t fg[3], uint8_t bg[3]);
+/* hook to allow custom (data-dependent) formatting for
+ * [bytev] at buffer position [pos], write values into *attr */
+typedef void(*attr_lookup_fn)(struct tui_context* T, void* tag,
+	uint8_t bytev, size_t pos, struct tui_screen_attr* attr);
 
 typedef bool(*commit_write_fn)(struct tui_context* T,
 	void* tag, const uint8_t* buf, size_t nb, size_t ofs);
@@ -69,6 +68,9 @@ typedef bool(*commit_write_fn)(struct tui_context* T,
 struct tui_bufferwnd_opts {
 /* Disable any editing controls */
 	bool read_only;
+
+/* Set to allow finalization controls (commit, cancel) */
+	bool allow_exit;
 
 /* All cursor management (moving, selection, ...) is disabled */
 	bool hide_cursor;
@@ -80,7 +82,7 @@ struct tui_bufferwnd_opts {
 
 /* Hooks for custom colorization, and a validation / commit function for
  * buffer edits */
-	color_lookup_fn custom_color;
+	attr_lookup_fn custom_attr;
 	commit_write_fn commit;
 	void* cbtag;
 
@@ -93,6 +95,12 @@ void arcan_tui_bufferwnd_setup(
 	struct tui_context* ctx, uint8_t* buf, size_t buf_sz,
 	struct tui_bufferwnd_opts*, size_t opts_sz
 );
+
+/*
+ * return 1 if OK, 0 if commit-exit is requested, -1 if cancel-exit is requested,
+ * this is only useful / valid if the [allow_exit] option has been set
+ */
+int arcan_tui_bufferwnd_status(struct tui_context*);
 
 /*
  * Replace the active buffer with another. This may cause delta writes to
@@ -118,16 +126,18 @@ void arcan_tui_bufferwnd_release(struct tui_context* T);
  */
 #else
 typedef bool(* PTUIBUFFERWND_SETUP)(
-	struct tui_context*, struct tui_list_entry*, size_t n_entries);
+	struct tui_context*, uint8_t*, size_t, struct tui_bufferwnd_opts*, size_t);
 typedef void(* PTUIBUFFERWND_RELEASE)(struct tui_context*);
 typedef void(* PTUIBUFFERWND_SYNCH)(
 	struct tui_context*, uint8_t* buf, size_t, size_t);
 typedef void(* PTUIBUFFERWND_SEEK)(struct tui_context*, size_t);
+typedef int(* PTUIBUFFERWND_STATUS)(struct tui_context*);
 
 static PTUIBUFFERWND_SETUP arcan_tui_bufferwnd_setup;
 static PTUIBUFFERWND_RELEASE arcan_tui_bufferwnd_release;
 static PTUIBUFFERWND_SYNCH arcan_tui_bufferwnd_synch;
 static PTUIBUFFERWND_SEEK arcan_tui_bufferwnd_seek;
+static PTUIBUFFERWND_STATUS arcan_tui_bufferwnd_status;
 
 static bool arcan_tui_bufferwnd_dynload(
 	void*(*lookup)(void*, const char*), void* tag)
@@ -137,6 +147,7 @@ M(PTUIBUFFERWND_SETUP, arcan_tui_bufferwnd_setup);
 M(PTUIBUFFERWND_RELEASE, arcan_tui_bufferwnd_release);
 M(PTUIBUFFERWND_SYNCH, arcan_tui_bufferwnd_synch);
 M(PTUIBUFFERWND_SEEK, arcan_tui_bufferwnd_seek);
+M(PTUIBUFFERWND_STATUS, arcan_tui_bufferwnd_status);
 return true;
 }
 #endif
