@@ -44,6 +44,8 @@ const int min_meta_rows = 7;
 struct bufferwnd_meta {
 	uint32_t magic;
 	struct tui_cbcfg old_handlers;
+	int exit_status;
+
 	int old_flags;
 	size_t row, col;
 	bool invalidated;
@@ -301,7 +303,7 @@ static void draw_footer(struct tui_context* T, struct bufferwnd_meta* M,
 /* see redraw_text */
 static void redraw_hex(struct tui_context* T, struct bufferwnd_meta* M,
 	size_t rows, size_t cols, size_t start_row, size_t start_col,
-	bool detail, color_lookup_fn color_lookup, bool mask_write,
+	bool detail, attr_lookup_fn color_lookup, bool mask_write,
 	void (*on_offset)(struct tui_context* T, size_t x, size_t y),
 	void (*on_position)(struct tui_context* T, size_t offset)
 )
@@ -356,7 +358,7 @@ static void redraw_hex(struct tui_context* T, struct bufferwnd_meta* M,
 			struct tui_screen_attr cattr = def;
 
 			if (!mask_write){
-				color_lookup(T, M->opts.cbtag, ch, i, cattr.fc, cattr.bc);
+				color_lookup(T, M->opts.cbtag, ch, i, &cattr);
 				draw_hex_ch(T, &cattr, col, row, ch);
 			}
 
@@ -406,7 +408,7 @@ static bool step_col(
 
 /*
  * Based on the state of [M], populate T, starting from start_col,row
- * respecting the optional texture filter [text_filter] and coloring
+ * respecting the optional texture filter [text_filter] and color/attr
  * helper [color_lookup], process buffer contents according to the
  * text display mode and the desired wrapping mode.
  *
@@ -420,7 +422,7 @@ static bool step_col(
  */
 static void redraw_text(struct tui_context* T, struct bufferwnd_meta* M,
 	size_t rows, size_t cols, size_t start_row, size_t start_col,
-	color_lookup_fn color_lookup,
+	attr_lookup_fn color_lookup,
 	void (*text_filter)(
 		struct tui_context* T, char* wndbuf, size_t wndbuf_sz, size_t pos),
 	bool mask_write,
@@ -473,7 +475,7 @@ static void redraw_text(struct tui_context* T, struct bufferwnd_meta* M,
 /* possible that we should allow the lookup to access the entire attr to let
  * an external highlight engine underline etc. */
 		if (!mask_write)
-			color_lookup(T, M->opts.cbtag, ch, i + M->buffer_pos, cattr.fc, cattr.bc);
+			color_lookup(T, M->opts.cbtag, ch, i + M->buffer_pos, &cattr);
 
 		if (M->opts.wrap_mode != BUFFERWND_WRAP_ALL){
 			if (ch == '\n'){
@@ -532,9 +534,9 @@ static void redraw_text(struct tui_context* T, struct bufferwnd_meta* M,
 }
 
 static void monochrome(struct tui_context* T, void* tag,
-	uint8_t bytev, size_t pos, uint8_t fg[3], uint8_t bg[3])
+	uint8_t bytev, size_t pos, struct tui_screen_attr* attr)
 {
-	arcan_tui_get_color(T, TUI_COL_TEXT, fg);
+	arcan_tui_get_color(T, TUI_COL_TEXT, attr->fc);
 }
 
 #include "hex_colors.h"
@@ -562,9 +564,9 @@ static void flt_none(
 }
 
 static void color_lut(struct tui_context* T, void* tag,
-	uint8_t bytev, size_t pos, uint8_t fg[3], uint8_t bg[3])
+	uint8_t bytev, size_t pos, struct tui_screen_attr* attr)
 {
-	memcpy(fg, &color_tbl[bytev], 3);
+	memcpy(attr->fc, &color_tbl[bytev], 3);
 }
 
 _Thread_local static struct
@@ -643,15 +645,15 @@ static void pos_to_screen(
 	*y = resolve_temp.y;
 }
 
-static color_lookup_fn get_color_function(struct bufferwnd_meta* M)
+static attr_lookup_fn get_color_function(struct bufferwnd_meta* M)
 {
 	switch (M->opts.color_mode){
 	case BUFFERWND_COLOR_PALETTE:
 		return M->opts.view_mode < BUFFERWND_VIEW_HEX ? monochrome : color_lut;
 
 	case BUFFERWND_COLOR_CUSTOM:
-		if (M->opts.custom_color)
-			return M->opts.custom_color;
+		if (M->opts.custom_attr)
+			return M->opts.custom_attr;
 
 	case BUFFERWND_COLOR_NONE:
 	default:
@@ -723,7 +725,7 @@ static bool label_color_cycle(struct tui_context* T, struct bufferwnd_meta* M)
 		M->opts.color_mode = BUFFERWND_COLOR_PALETTE;
 	}
 	else if (M->opts.color_mode == BUFFERWND_COLOR_PALETTE){
-		if (M->opts.custom_color)
+		if (M->opts.custom_attr)
 			M->opts.color_mode = BUFFERWND_COLOR_CUSTOM;
 		else
 			M->opts.color_mode = BUFFERWND_COLOR_NONE;
@@ -1188,6 +1190,14 @@ static void on_key_input(struct tui_context* T, uint32_t keysym,
 		else
 			scroll_row_down(T, M);
 	}
+	else if (keysym == TUIK_ESCAPE ||
+		(keysym == TUIK_RETURN && (mods & (TUIM_LSHIFT | TUIM_RSHIFT)) )
+	){
+		if (!M->opts.allow_exit)
+			return;
+
+		M->exit_status = keysym == TUIK_RETURN ? 1 : -1;
+	}
 	else
 		;
 }
@@ -1333,6 +1343,15 @@ void arcan_tui_bufferwnd_setup(struct tui_context* T,
 
 	arcan_tui_reset_labels(T);
 	redraw_bufferwnd(T, meta);
+}
+
+int arcan_tui_bufferwnd_status(struct tui_context* T)
+{
+	struct bufferwnd_meta* meta;
+	if (!validate_context(T, &meta))
+		return -1;
+
+	return meta->exit_status;
 }
 
 #ifdef EXAMPLE
