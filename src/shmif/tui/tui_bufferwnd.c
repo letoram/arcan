@@ -107,6 +107,7 @@ void arcan_tui_bufferwnd_release(struct tui_context* T)
 	arcan_tui_set_flags(T, meta->old_flags);
 
 /* requery label through original handles */
+	arcan_tui_update_handlers(T, &meta->old_handlers, NULL, sizeof(struct tui_cbcfg));
 	arcan_tui_reset_labels(T);
 
 /* LTO could possibly do something about this, but basically just safeguard
@@ -1315,7 +1316,8 @@ void arcan_tui_bufferwnd_setup(struct tui_context* T,
 	*meta = (struct bufferwnd_meta){
 		.magic = BUFFERWND_MAGIC,
 		.buffer = buf,
-		.buffer_sz = buf_sz
+		.buffer_sz = buf_sz,
+		.exit_status = 1
 	};
 
 	if (opts){

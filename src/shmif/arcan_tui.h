@@ -1,7 +1,7 @@
 /*
  Arcan Text-Oriented User Interface Library
 
- Copyright (c) 2014-2018, Bjorn Stahl
+ Copyright (c) 2014-2019, Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
@@ -459,14 +459,17 @@ struct tui_cbcfg {
 		const uint8_t* str, size_t len, bool cont, void*);
 
 /*
- * The underlying size has changed, expressed in both pixels and rows/columns
+ * The underlying size has changed. Note that this also sends the height in
+ * pixels via [neww, newh]. This should have very few practical usecases as all
+ * other positioning operations etc. are on a cell- level. If the pixel
+ * resolution is not known, [neww, newh] can be set to zero.
+ *
  * WARNING:
  *  Be careful not to process, refresh or other similar actions from the
- *  context of this or the 'resize' callback. Only modifications to the
- *  normals cells should be considered.
+ *  context of this or the 'resize' callback.
  */
 	void (*resized)(struct tui_context*,
-		size_t neww, size_t newh, size_t col, size_t row, void*);
+		size_t neww, size_t newh, size_t cols, size_t rows, void*);
 
 /*
  * only reset levels that should require action on behalf of the caller are
@@ -521,10 +524,11 @@ struct tui_cbcfg {
 
 /*
  * The underlying size is about to change, expressed in both pixels and
- * rows/columns
+ * rows/columns. If the pixel dimensions aren't known, [neww, newh] will
+ * be set to 0.
  */
 	void (*resize)(struct tui_context*,
-		size_t neww, size_t newh, size_t col, size_t row, void*);
+		size_t neww, size_t newh, size_t cols, size_t rows, void*);
 
 /*
  * Window visibility and input focus state has changed
@@ -1037,7 +1041,7 @@ typedef struct tui_cell (* PTUIGETXY)(struct tui_context*, size_t, size_t, bool)
 typedef void (* PTUIREQSUB)(struct tui_context*, unsigned, uint16_t);
 typedef void (* PTUIREQSUBEXT)
 	(struct tui_context*, unsigned, uint16_t, struct tui_subwnd_req, size_t);
-typedef void (* PTUIUPDHND)(struct tui_context*, const struct tui_cbcfg*, size_t);
+typedef void (* PTUIUPDHND)(struct tui_context*, const struct tui_cbcfg*, struct tui_cbcfg*, size_t);
 typedef void (* PTUIWNDHINT)(struct tui_context*, struct tui_context*, int, int, int);
 typedef void (* PTUIANNOUNCEIO)(struct tui_context*, bool, const char*, const char*);
 typedef void (* PTUISTATESZ)(struct tui_context*, size_t);

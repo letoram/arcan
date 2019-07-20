@@ -794,22 +794,26 @@ const char* platform_event_devlabel(int devid)
 }
 
 /*
- * Ignoring mapping the segment will mean that it will eventually timeout,
- * either long (seconds+) or short (empty outevq and frames but no
- * response).
+ * This handler takes care of the pushed segments that don't have a
+ * corresponding request, i.e. they are force-pushed from the server
+ * side.
+ *
+ * Most types are best ignored for now (or until we can / want to
+ * provide a special handler for them, primary DEBUG where we can
+ * expose conductor timing state).
+ *
+ * Special cases:
+ *  SEGID_MEDIA - map as a low-level display that the scripts/engine
+ *                can map to.
+ *
+ * The better option is to expose them as _adopt handlers, similar
+ * to how we do stdin/stdout mapping.
  */
-
-static void map_window(struct arcan_shmif_cont* seg, arcan_evctx* ctx,
-	int kind, const char* key)
+static void map_window(struct arcan_shmif_cont* seg,
+	arcan_evctx* ctx, int kind, const char* key)
 {
-
-/* encoder should really be mapped as an avfeed- type frameserver,
- * maintain it in a 'pending' slot, enqueue some notification and
- * let alloc_target() handle it */
-	if (kind == SEGID_ENCODER){
-		arcan_warning("(FIXME) SEGID_ENCODER type not yet supported.\n");
+	if (kind != SEGID_MEDIA)
 		return;
-	}
 
 /*
  * we encode all our IDs (except clipboard) with the internal VID and

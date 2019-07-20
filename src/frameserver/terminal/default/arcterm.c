@@ -42,15 +42,11 @@ void pump_pty()
 	int count = 10;
 	while (term.alive && count--){
 		int rv = shl_pty_dispatch(term.pty);
-		if (rv == -ENODEV){
+		if (rv == -ENODEV || rv == -EPIPE){
 			term.alive = false;
 		}
 		else if (rv == -EAGAIN){
 			continue;
-		}
-		else if (rv > 0){
-			term.last_input = arcan_timemillis();
-			break;
 		}
 		else
 			break;
@@ -76,10 +72,7 @@ static void dump_help()
 		"             \t           \t vline, uline)\n"
 		" blink       \t ticks     \t set blink period, 0 to disable (default: 12)\n"
 		" login       \t [user]    \t login (optional: user, only works for root)\n"
-		" min_upd     \t ms        \t wait at least [ms] between refreshes (default: 30)\n"
-		" substitute  \t           \t (experimental) allow ligature substitution\n"
-		" shape       \t           \t (experimental) allow non-monospace font shaping\n"
-		" scroll      \t steps     \t (experimental) smooth scrolling, (default:0=off) steps px/upd\n"
+		" deadline    \t ms        \t milliseconds between updated (default: 20)\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 		"Built-in palettes:\n"
 		"default, solarized, solarized-black, solarized-white, srcery\n"
@@ -329,16 +322,12 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_SUCCESS;
 	}
 
-/* 24 ms + font rendering time should put us at a passive refresh rate of
- * about 30Hz, then we short this if we get keyboard input */
-	int cap_refresh = 24;
-	int cap_timeout = 200;
-
-	if (arg_lookup(args, "min_upd", 0, &val))
-		cap_refresh = strtol(val, NULL, 10);
-
-	if (arg_lookup(args, "min_wait", 0, &val))
-		cap_timeout = strtol(val, NULL, 10);
+	int deadline_step = 20;
+	if (arg_lookup(args, "deadline", 0, &val)){
+		deadline_step = strtol(val, NULL, 10);
+		if (deadline_step <= 0 || deadline_step > 100)
+			deadline_step = 20;
+	}
 
 	struct tui_cbcfg cbcfg = {
 		.input_mouse_motion = on_mouse_motion,
@@ -445,33 +434,31 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 #endif
 
 	term.alive = true;
+	int ptyfd = shl_pty_get_fd(term.pty);
 
 /* the better latency tactic would be to align against the falling edge, but
  * with a pending render refactor to move it upstream, any synch will be much
  * more deterministic so better to wait for that */
 	while (term.alive){
-		do {
-			int delta = arcan_timemillis() - last_frame;
-			if (delta < cap_refresh)
-				delta = cap_refresh - delta;
-			else
-				delta = 0;
+		unsigned long deadline = arcan_timemillis() + 20;
+		for (;;){
+/* When is the next reasonable deadline for synch? take (60Hz, 16.6667ms) and
+ * subtract the exponential moving average of the last rendering time + some
+ * jitter padding. Since we don't have that value, just substitute in the next
+ * best thing */
+			int delta = deadline - arcan_timemillis();
+			if (delta < 0)
+				break;
 
-			int ptyfd = shl_pty_get_fd(term.pty);
-			pump_pty();
 			struct tui_process_res res =
-				arcan_tui_process(&term.screen, 1, &ptyfd, 1, delta);
+				arcan_tui_process(&term.screen, 1, &ptyfd, 1, 4);
+
+			pump_pty();
 
 			if (res.errc < TUI_ERRC_OK || res.bad){
 				goto out;
 			}
 		}
-		while (
-			tsm_vte_inseq(term.vte) /*|| (
-				arcan_timemillis() - term.last_input < cap_refresh &&
-				arcan_timemillis() - last_frame < cap_timeout
-			) */
-		);
 
 /* and on an actually successful update, reset the user-input flag and timing */
 		int rc = arcan_tui_refresh(term.screen);

@@ -39,26 +39,30 @@ struct debug_ctx {
 
 static const char* stat_to_str(struct stat* s)
 {
-	if (S_IFIFO & s->st_mode){
-		return "fifo";
+	const char* ret = "unknown";
+	switch(s->st_mode & S_IFMT){
+	case S_IFIFO:
+		ret = "fifo";
+	break;
+	case S_IFCHR:
+		ret = "char";
+	break;
+	case S_IFDIR:
+		ret = "dir";
+	break;
+	case S_IFREG:
+		ret = "file";
+	break;
+	case S_IFBLK:
+		ret = "block";
+	break;
+	case S_IFSOCK:
+		ret = "socket";
+	break;
+	default:
+	break;
 	}
-	else if (S_IFCHR & s->st_mode){
-		return "char";
-	}
-	else if (S_IFDIR & s->st_mode){
-		return "dir";
-	}
-	else if (S_IFBLK & s->st_mode){
-		return "block";
-	}
-	else if (S_IFSOCK & s->st_mode){
-		return "socket";
-	}
-	else if (S_IFREG & s->st_mode){
-		return "false";
-	}
-	else
-		return "unknown";
+	return ret;
 }
 
 static void flush_io(struct debug_ctx* ctx)
@@ -112,7 +116,6 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 		free(set);
 		return;
 	}
-	printf("count resolved to %zu\n", count);
 
 /* convert / stat-test the valid descriptors, and build the final menu list */
 	struct tui_list_entry* lents = malloc(sizeof(struct tui_list_entry) * count);
@@ -157,8 +160,25 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 				set[i].fd, strerror(errno));
 		}
 		else {
+#ifdef __LINUX
+			char buf[256];
+			snprintf(buf, 256, "/proc/self/fd/%d", set[i].fd);
+/* using buf on both arguments should be safe here due to the whole 'need the
+ * full path before able to generate output' criteria, but explicitly terminate
+ * on truncation */
+			int rv = readlink(buf, buf, 255);
+			if (-1 == rv){
+				snprintf(buf, 256, "error: %s", strerror(errno));
+			}
+			else
+				buf[rv] = '\0';
+
+			snprintf(lbl_prefix, lbl_len, "%d(%s) : %s", set[i].fd,
+				stat_to_str(&dents[count].stat), buf);
+#else
 			snprintf(lbl_prefix, lbl_len,	"%d(%s) : can't resolve",
 				set[i].fd, stat_to_str(&dents[count].stat));
+#endif
 		}
 		lents[count].label = lbl_prefix;
 
@@ -169,6 +189,8 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 	}
 
 /* switch to new menu */
+	arcan_tui_update_handlers(dctx->tui,
+		&(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
 	arcan_tui_listwnd_setup(dctx->tui, lents, count);
 	for(;;){
 		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
@@ -195,6 +217,62 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 	free(lents);
 }
 
+/*
+ * debugger and the others are more difficult as we currently need to handover
+ * exec into afsrv_terminal in a two phase method where we need to stall the
+ * child a little bit while we set prctl(PR_SET_PTRACE, pid, ...).
+ */
+static void gen_debugger_menu(struct debug_ctx* dctx)
+{
+
+}
+
+static void build_process_str(char* dst, size_t dst_sz)
+{
+/* bufferwnd currently 'misses' a way of taking some in-line formatted string
+ * and resolving, the intention was to add that as a tack-on layer and use the
+ * offset- lookup coloring to perform that resolution, simple strings for now */
+	pid_t cpid = getpid();
+	pid_t ppid = getppid();
+	snprintf(dst, dst_sz, "PID: %zd Parent: %zd", (ssize_t) cpid, (ssize_t) ppid);
+}
+
+static void set_process_window(struct debug_ctx* dctx)
+{
+/* build a process description string that we periodically update */
+	char outbuf[2048];
+	build_process_str(outbuf, sizeof(outbuf));
+	struct tui_bufferwnd_opts opts = {
+		.read_only = true,
+		.view_mode = BUFFERWND_VIEW_ASCII,
+		.allow_exit = true
+	};
+
+	arcan_tui_bufferwnd_setup(dctx->tui,
+		(uint8_t*) outbuf, strlen(outbuf)+1, &opts, sizeof(struct tui_bufferwnd_opts));
+
+/* normal event-loop, but with ESCAPE as a 'return' behavior */
+	while(arcan_tui_bufferwnd_status(dctx->tui) == 1){
+		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
+		if (res.errc == TUI_ERRC_OK){
+			if (-1 == arcan_tui_refresh(dctx->tui) && errno == EINVAL){
+				dctx->dead = true;
+				break;
+			}
+		}
+		else{
+			dctx->dead = true;
+			break;
+		}
+/* check last- refresh and build process str and call bufferwnd_synch */
+	}
+
+/* return the context to normal, dead-flag will propagate and free if set */
+	arcan_tui_bufferwnd_release(dctx->tui);
+	arcan_tui_update_handlers(dctx->tui,
+		&(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
+}
+
 static void root_menu(struct debug_ctx* dctx)
 {
 	struct tui_list_entry menu_root[] = {
@@ -207,10 +285,18 @@ static void root_menu(struct debug_ctx* dctx)
 			.label = "Debugger",
 			.attributes = LIST_HAS_SUB,
 			.tag = 1
+		},
+		{
+			.label = "Process Information",
+			.attributes = LIST_HAS_SUB,
+			.tag = 2,
 		}
 	};
 
 	while(!dctx->dead){
+/* update the handlers so there's no dangling handlertbl+cfg */
+		arcan_tui_update_handlers(dctx->tui,
+			&(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
 		arcan_tui_listwnd_setup(dctx->tui, menu_root, COUNT_OF(menu_root));
 
 		for(;;){
@@ -222,12 +308,19 @@ static void root_menu(struct debug_ctx* dctx)
 
 			struct tui_list_entry* ent;
 			if (arcan_tui_listwnd_status(dctx->tui, &ent)){
+				arcan_tui_listwnd_release(dctx->tui);
+				arcan_tui_update_handlers(dctx->tui,
+					&(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
 
 /* this will just chain into a new listwnd setup, and if they cancel
  * we can just repeat the setup - until the dead state has been set */
 				if (ent){
 					if (ent->tag == 0)
 						gen_descriptor_menu(dctx);
+					else if (ent->tag == 1)
+						gen_debugger_menu(dctx);
+					else if (ent->tag == 2)
+						set_process_window(dctx);
 				}
 				break;
 			}

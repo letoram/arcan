@@ -377,25 +377,30 @@ void arcan_tui_listwnd_release(struct tui_context* T)
  * use the handle- table in that structure to restore */
 	struct tui_cbcfg handlers;
 	arcan_tui_update_handlers(T, NULL, &handlers, sizeof(struct tui_cbcfg));
-	struct listwnd_meta* meta = handlers.tag;
+	struct listwnd_meta* M = handlers.tag;
 
 /* restore old flags */
 	arcan_tui_reset_flags(T, ~0);
-	arcan_tui_set_flags(T, meta->old_flags);
+	arcan_tui_set_flags(T, M->old_flags);
 
 /* requery label through original handles */
+	arcan_tui_update_handlers(T,
+		&M->old_handlers, NULL, sizeof(struct tui_cbcfg));
+
 	arcan_tui_reset_labels(T);
 
-	arcan_tui_update_handlers(T,
-		&meta->old_handlers, NULL, sizeof(struct tui_cbcfg));
+/* it would make sense to 'fake' a resize here as well, but from some design
+ * oversights with the event, that requires tracking or exposing shmif_ context
+ * contents, or breaking ABI - so assume the caller actually has the sense to
+ * refresh on release() */
 
 /* LTO could possibly do something about this, but basically just safeguard
  * on a safeguard (UAF detection) for the bufferwnd_meta after freeing it */
-	*meta = (struct listwnd_meta){
+	*M = (struct listwnd_meta){
 		.magic = 0xdeadbeef
 	};
 
-	free(meta);
+	free(M);
 }
 
 static void resized(struct tui_context* T,

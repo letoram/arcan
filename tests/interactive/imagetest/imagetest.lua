@@ -85,6 +85,13 @@ function zordervidlim(load)
 	end
 end
 
+local function instance_image(newid)
+	local res = image_surface_resolve(newid);
+	local new = null_surface(res.width, res.height);
+	image_sharestorage(newid, new);
+	return new;
+end
+
 function instancing_test()
 	local newid = fill_surface(64, 64, 0, 255, 0);
 	move_image(newid, 0.5*VRESW - 32, 0.5*VRESH - 32, 0);
