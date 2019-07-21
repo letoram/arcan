@@ -193,4 +193,20 @@ int platform_device_pollfd();
  */
 void platform_device_init();
 
+/*
+ * Support function for implementing threaded platform devices.
+ * This will return a non-blocking read-end of a pipe where arcan_events
+ * can be read from.
+ *
+ * [infd]      data source descriptor
+ * [block_sz]  desired fixed-size event chunk (if applicable, or 0)
+ * [callback]  bool (int out_fd, uint8_t* in_buf, size_t nb, void* tag)
+ * [tag]       caller provided data, passed to tag
+ *
+ * If callback returns [false], the thread will be closed and resources
+ * freed. If callback is provided a NULL [in_buf] it means the [infd] has
+ * failed and the thread will terminate.
+ */
+int platform_producer_thread(int infd,
+	size_t block_sz, bool(*callback)(int, uint8_t*, size_t, void*), void* tag);
 #endif
