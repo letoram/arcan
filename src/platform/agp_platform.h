@@ -332,6 +332,20 @@ struct agp_rendertarget* agp_setup_rendertarget(
 	struct agp_vstore*, enum rendertarget_mode mode);
 
 /*
+ * register an external allocator handler, that, whenever the rendertarget need
+ * to be rebuilt, will take it upon itself to populate the agp_vstore. This is
+ * mainly used for platforms where a lower layer is responsible for allocating
+ * buffers used for scanning out a rendertarget mapped to a display.
+ *
+ * In the callback, [action] is:
+ * 0 : free / deallocate
+ * 1 : alloc / setup
+ */
+void agp_rendertarget_allocator(struct agp_rendertarget*,
+	bool(*handler)(struct agp_rendertarget*, struct agp_vstore*, int action)
+);
+
+/*
  * Break the opaqueness somewhat by exposing underlying handles, primarily for
  * frameservers that explicitly need to use GL and where we want to re-use the
  * underlying code.
