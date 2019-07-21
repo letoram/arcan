@@ -4,9 +4,12 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <ctype.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <limits.h>
 #include <poll.h>
 
@@ -63,6 +66,47 @@ static const char* stat_to_str(struct stat* s)
 	break;
 	}
 	return ret;
+}
+
+static void fd_to_flags(char buf[static 8], int fd)
+{
+	buf[7] = '\0';
+
+/* first, cloexec */
+	buf[0] = ' ';
+	int rv = fcntl(fd, F_GETFD);
+	if (-1 == rv){
+		buf[0] = '?';
+	}
+	else if (rv & O_CLOEXEC){
+		buf[0] = 'x';
+	}
+
+/* now flags */
+	buf[1] = ' ';
+	rv = fcntl(fd, F_GETFL);
+	if (-1 == rv){
+		buf[1] = '?';
+	}
+	else if ((rv & O_NONBLOCK))
+	;
+	else
+		buf[1] = 'b';
+
+	if (rv & O_RDWR){
+		buf[2] = 'r';
+		buf[3] = 'w';
+	}
+	else if (rv & O_WRONLY){
+		buf[2] = ' ';
+		buf[3] = 'w';
+	}
+	else {
+		buf[2] = 'r';
+		buf[3] = ' ';
+	}
+
+/* try and figure out rwx */
 }
 
 static void flush_io(struct debug_ctx* ctx)
@@ -160,6 +204,8 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 				set[i].fd, strerror(errno));
 		}
 		else {
+			char scratch[8];
+			fd_to_flags(scratch, set[i].fd);
 #ifdef __LINUX
 			char buf[256];
 			snprintf(buf, 256, "/proc/self/fd/%d", set[i].fd);
@@ -173,11 +219,11 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 			else
 				buf[rv] = '\0';
 
-			snprintf(lbl_prefix, lbl_len, "%d(%s) : %s", set[i].fd,
-				stat_to_str(&dents[count].stat), buf);
+			snprintf(lbl_prefix, lbl_len, "%4d[%s](%s)\t: %s",
+				set[i].fd, scratch, stat_to_str(&dents[count].stat), buf);
 #else
-			snprintf(lbl_prefix, lbl_len,	"%d(%s) : can't resolve",
-				set[i].fd, stat_to_str(&dents[count].stat));
+			snprintf(lbl_prefix, lbl_len,	"%4d[%s](%s)\t: can't resolve",
+				set[i].fd, scratch, stat_to_str(&dents[count].stat));
 #endif
 		}
 		lents[count].label = lbl_prefix;
