@@ -116,6 +116,8 @@ struct agp_rendertarget
 	size_t store_ind;
 	struct agp_vstore* stores[MAX_BUFFERS];
 	struct agp_vstore* shadow[MAX_BUFFERS];
+
+	bool (*alloc)(struct agp_rendertarget*, struct agp_vstore*, int);
 };
 
 static void erase_store(struct agp_vstore* os)
@@ -146,14 +148,27 @@ static void setup_stores(struct agp_rendertarget* dst)
 			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 		dst->stores[i]->vinf.text.s_fmt = dst->store->vinf.text.s_fmt;
 		dst->stores[i]->vinf.text.d_fmt = dst->store->vinf.text.d_fmt;
-		agp_empty_vstore(dst->stores[i], dst->store->w, dst->store->h);
+		if (dst->alloc){
+			dst->alloc(dst, dst->stores[i], 1);
+		}
+		else
+			agp_empty_vstore(dst->stores[i], dst->store->w, dst->store->h);
 	}
+}
+
+void agp_rendertarget_allocator(struct agp_rendertarget* tgt,
+	bool (*handler)(struct agp_rendertarget*, struct agp_vstore*, int action))
+{
+	if (!tgt)
+	return;
+
+	tgt->alloc = handler;
 }
 
 void agp_rendertarget_dropswap(struct agp_rendertarget* tgt)
 {
 	struct agp_fenv* env = agp_env();
-	if (!tgt->n_stores)
+	if (!tgt || !tgt->n_stores)
 		return;
 
 	verbose_print("dropping normal and shadow stores");
@@ -1039,7 +1054,11 @@ void agp_resize_rendertarget(
 			if (tgt->shadow[i]){
 				verbose_print(
 					"in-rz shadow store %zu:%zu", i, tgt->shadow[i]->vinf.text.glid);
-				erase_store(tgt->shadow[i]);
+				if (tgt->alloc){
+					tgt->alloc(tgt, tgt->shadow[i], 0);
+				}
+				else
+					erase_store(tgt->shadow[i]);
 				arcan_mem_free(tgt->shadow[i]);
 				tgt->shadow[i] = NULL;
 			}
