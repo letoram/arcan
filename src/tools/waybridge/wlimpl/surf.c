@@ -258,12 +258,13 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 			}
 			trace(TRACE_SURF, "cursor updated");
 		}
-/* in general, a surface without a role means that the client is in the wrong
+/* In general, a surface without a role means that the client is in the wrong
  * OR that there is a rootless Xwayland surface going - for the latter, we'd
  * like to figure out if this is correct or not - so wrap around a query
- * function */
-		else if (!xwl_pair_surface(surf, res)){
-			trace(TRACE_SURF, "UAF or unknown surface (tag: %s)", surf->tracetag);
+ * function. Since there can be stalls etc. in the corresponding wm, we need to
+ * tag this surface as pending on failure */
+		else if (!xwl_pair_surface(cl, surf, res)){
+			trace(TRACE_SURF, "defer commit until paired");
 			return;
 		}
 	}
@@ -282,7 +283,8 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * we use for frame-callbacks. At least verify the compilers generate spinlock
  * style instructions.
  */
-	while (acon->addr->vready){}
+	if (acon->addr->vready){
+	}
 
 	struct wl_shm_buffer* shm_buf = wl_shm_buffer_get(buf);
 	if (!shm_buf){

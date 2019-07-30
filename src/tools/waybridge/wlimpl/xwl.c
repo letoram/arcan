@@ -50,18 +50,20 @@ struct xwl_window {
  * populated when there is still no surf to pair it to */
 	struct arcan_event viewport;
 
-/*
- * Pairing approach is flawed, we need to defer the commit- release
- * stage on mismatch, not just assume and alloc as that'll just
- * break stuff.
- */
+/* a window mapping that is PAIRED means that we know both the local
+ * compositor surface and the wmed X surface */
 	bool paired;
 
-/*
- * will be set to a valid MESSAGE and valid VIEWPORT if the pairing
- * happens before we actually get events that tell us what it is for
- */
-	struct arcan_event queued_message;
+/* a window mapping that is PENDING means that we only know the local
+ * compositor surface and there is a pending commit on that surface */
+	struct wl_resource* pending_res;
+	struct wl_client* pending_client;
+
+/* when a surface goes pending, we flush a queue of pending wm state
+ * messages, if the size does not suffice here, we should really
+ * just override the ones that have been redefined */
+	size_t queue_count;
+	struct arcan_event queued_message[8];
 
 	struct comp_surf* surf;
 };
@@ -108,9 +110,59 @@ static struct xwl_window* xwl_find_alloc(uint32_t id)
 	return wnd;
 }
 
+static void surf_commit(struct wl_client*, struct wl_resource*);
+static void wnd_viewport(struct xwl_window* wnd);
+
+static void xwl_wnd_paired(struct xwl_window* wnd)
+{
+/*
+ * we will be sent here if there existed a surface id before the id
+ * mapping was known, and there might be an id before the surface id.
+ * Find the 'orphan' and copy / merge
+ */
+	ssize_t match = -1;
+
+	for (size_t i = 0; i < COUNT_OF(xwl_windows); i++){
+		if (&xwl_windows[i] == wnd){
+			continue;
+		}
+		if (xwl_windows[i].id == wnd->id || xwl_windows[i].id == wnd->surface_id){
+			match = i;
+			break;
+		}
+	}
+
+/* merge orphan states */
+	if (-1 != match){
+		struct xwl_window tmp = *wnd;
+		struct xwl_window* xwnd = &xwl_windows[match];
+
+		*wnd = *xwnd;
+		wnd->id = tmp.id;
+		wnd->surface_id = tmp.surface_id;
+		wnd->pending_res = tmp.pending_res;
+		wnd->pending_client = tmp.pending_client;
+		*xwnd = (struct xwl_window){};
+	}
+
+/* this requires some thinking, surface commit on a compositor surface will
+ * lead to a query if the surface has been paired to a non-wayland one (X11) */
+	wnd->paired = true;
+	surf_commit(wnd->pending_client, wnd->pending_res);
+
+	if (!wnd->surf){
+		trace(TRACE_XWL, "couldn't pair, surface allocation failed");
+		return;
+	}
+
+	wnd->pending_res = NULL;
+	wnd->pending_client = NULL;
+}
+
 static void wnd_message(struct xwl_window* wnd, const char* fmt, ...)
 {
 	struct arcan_event ev = {
+		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(MESSAGE)
 	};
 
@@ -120,9 +172,17 @@ static void wnd_message(struct xwl_window* wnd, const char* fmt, ...)
 			COUNT_OF(ev.ext.message.data), fmt, args);
 	va_end(args);
 
+/* messages can come while unpaired, buffer them for the time being */
 	if (!wnd->surf){
-		trace(TRACE_XWL, "message:%s on unpaired surface", ev.ext.message.data);
-		wnd->queued_message = ev;
+		if (wnd->queue_count < COUNT_OF(wnd->queued_message)){
+			trace(TRACE_XWL,
+				"queue(%zu:%s) unpaired: %s", wnd->queue_count,
+				arcan_shmif_eventstr(&ev, NULL, 0), ev.ext.message.data);
+			wnd->queued_message[wnd->queue_count++] = ev;
+		}
+		else {
+			trace(TRACE_XWL, "queue full, broken wm");
+		}
 		return;
 	}
 
@@ -195,12 +255,22 @@ static int process_input(const char* msg)
 		}
 		uint32_t surface_id = strtoul(arg, NULL, 10);
 		trace(TRACE_XWL, "surface id:%"PRIu32"-%"PRIu32, id, surface_id);
-		struct xwl_window* wnd = xwl_find_alloc(id);
+		struct xwl_window* wnd = xwl_find_surface(surface_id);
+		if (!wnd)
+			wnd = xwl_find_alloc(id);
 		if (!wnd)
 			goto cleanup;
+
 		wnd->surface_id = surface_id;
 		wnd->id = id;
-		wnd->paired = true;
+
+/* if we already know about the compositor-surface, activate it */
+		if (wnd->pending_res){
+			trace(TRACE_XWL, "paired-pending %"PRIu32, id);
+			xwl_wnd_paired(wnd);
+		}
+		else
+			wnd->paired = true;
 	}
 /* window goes from invisible to visible state */
 	else if (strcmp(arg, "create") == 0){
@@ -333,11 +403,11 @@ static int xwl_spawn_check(const char* msg)
 	if (cmd){
 		const char* arg;
 		if (arg_lookup(cmd, "xwayland_fail", 0, &arg)){
-			fprintf(stderr, "Couldn't spawn XWayland instance: %s\n", arg);
+			trace(TRACE_XWL, "couldn't spawn xwayland: %s", arg);
 			rv = -3;
 		}
 		if (arg_lookup(cmd, "xwayland_ok", 0, &arg)){
-			fprintf(stdout, "XWayland listening on DISPLAY=%s\n", arg);
+			trace(TRACE_XWL, "xwayland on: %s", arg);
 			xwl_wm_display = strdup(arg);
 		}
 		arg_cleanup(cmd);
@@ -570,11 +640,16 @@ static bool xwl_defer_handler(
 	wnd->surf = surf;
 	wnd->viewport.ext.kind = ARCAN_EVENT(VIEWPORT);
 
-	if (wnd->queued_message.ext.kind == ARCAN_EVENT(MESSAGE)){
-		arcan_shmif_enqueue(con, &wnd->queued_message);
-		wnd->queued_message = (struct arcan_event){};
+/* the normal path is:
+ * surface_commit -> check_paired -> request surface -> request ok ->
+ * commit and flush */
+	if (wnd->queue_count > 0){
+		trace(TRACE_XWL, "flush (%zu) queued messages", wnd->queue_count);
+		for (size_t i = 0; i < wnd->queue_count; i++){
+			arcan_shmif_enqueue(&wnd->surf->acon, &wnd->queued_message[i]);
+		}
+		wnd->queue_count = 0;
 	}
-
 	wnd_viewport(wnd);
 
 	return true;
@@ -599,21 +674,28 @@ static struct xwl_window*
 		}
 		wnd->surface_id = id;
 	}
-	else if (!wnd->paired){
-		trace(TRACE_XWL, "paired %"PRIu32, id);
-		wnd->paired = true;
-		wnd->surf = surf;
-		wnd_viewport(wnd);
-	}
 	return wnd;
 }
 
-static bool xwl_pair_surface(struct comp_surf* surf, struct wl_resource* res)
+/* called from the surface being commited when it is not marked as paired */
+static bool xwl_pair_surface(
+	struct wl_client* cl, struct comp_surf* surf, struct wl_resource* res)
 {
 /* do we know of a matching xwayland- provided surface? */
 	struct xwl_window* wnd = lookup_surface(surf, res);
-	if (!wnd || !wnd->paired)
+	if (!wnd){
 		return false;
+	}
+
+/* are we waiting for the surface-id part? then set as pending so that we can
+ * activate when it arrives - allocation behavior is a bit suspicious here */
+	if (!wnd->paired){
+		trace(TRACE_XWL,
+			"unpaired surface-ID: %"PRIu32, wl_resource_get_id(res));
+		wnd->pending_res = res;
+		wnd->pending_client = cl;
+		return false;
+	}
 
 /* if so, allocate the corresponding arcan- side resource */
 	return request_surface(surf->client, &(struct surface_request){

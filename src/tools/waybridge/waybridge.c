@@ -171,7 +171,7 @@ static struct {
  */
 	bool exec_mode;
 } wl = {
-	.default_accel_surface = -1
+	.default_accel_surface = -1,
 };
 
 enum trace_levels {
@@ -1092,6 +1092,8 @@ int main(int argc, char* argv[])
 	bool sandbox = false;
 #endif
 
+	wl.trace_dst = stdout;
+
 /*
  * Only used with -exec (but should be user controllable) in order to split
  * the XDG_RUNTIME_DIR used by arcan and the one used by Wayland
@@ -1117,6 +1119,12 @@ int main(int argc, char* argv[])
 			}
 			arg_i++;
 			wl.trace_log = strtoul(argv[arg_i], NULL, 10);
+		}
+		else if (strcmp(argv[arg_i], "-trace-file") == 0){
+			if (arg_i == argc-1)
+				return show_use("missign trace destination argument", "");
+			arg_i++;
+			wl.trace_dst = fopen(argv[arg_i], "w");
 		}
 		else if (strcmp(argv[arg_i], "-prefix") == 0){
 			if (arg_i == argc-1){
