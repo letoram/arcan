@@ -8,7 +8,7 @@ Principal Articles
 ====
 [Crash Resilient Wayland Compositing](https://arcan-fe.com/2017/12/24/crash-resilient-wayland-compositing/)
 
-Building/Use
+Compiling
 ====
 The build needs access to the arcan-shmif and arcan-shmifext libraries,
 either detected through the normal pkgconfig or by explicitly pointing
@@ -29,6 +29,35 @@ connect to the point.
 The build-scripts will download additional protocol specifications from the
 wayland-protocols repository the first time the build is setup. If there's
 no internet connection at that time, build will fail.
+
+Use
+===
+There are two ways of running arcan-wayland. One is as a background service
+by simply invoking:
+
+        arcan-wayland
+
+This will create a wayland server listening on the default (0) wayland display
+that clients try if there is no control environment set. By default, this does
+not include 'Xwayland' which would allow X clients to connect as wayland ones,
+but it can be enabled like this:
+
+        arcan-wayland -xwl
+
+The other mode is to run arcan-wayland in a 'single-client exec wrapper' mode.
+This is safer and allows for better separation, at the cost of slightly higher
+memory use:
+
+        arcan-wayland -exec weston-terminal
+
+This mode attempts to set any toolkit specific environment options that might
+be needed. This way of running single clients works for X clients as well:
+
+        arcan-wayland -xwl -exec xterm
+
+The same caveat applies with the -xwl approach, both the wayland layer and the
+Xorg layer and the meta- Xorg window manager will be run as separate processes
+per client.
 
 Hacking
 ====
@@ -79,77 +108,16 @@ All individual protocols can be disabled by the -no-(protocol alias) switch
 in order to control client behavior as this may vary wildly from client
 to client depending on the set of requested vs. available protocols.
 
-Notes and Issues
-====
-1. Stride - The shm- buffer blit doesn't take stride differences into
-   account. This fails on MPV in SHM depending on source video size, though
-   the other buffer transfer modes and the shm-to-gl approach works.
+Wayland- level has its own environment triggered tracing, WAYLAND\_DEBUG.
+Then for the arcan\_xwm tool (the window manager for xwayland) can be used
+either through the setup above, or with Xarcan along with the normal X
+debugging tools, e.g.
 
-2. Initial Control connection - this one should be deprecated and removed
-   in favor of getting it from the client connection when it is created, the
-   current form is a remnant from before the -exec refactor.
+tracing - xtruss
+interactive querying - xwininfo, xprop
+input-events - xev
 
-3. Dynamic resizes are a bit edgy due to how differently this stage is handled
-   in arcan and the 'idea' in Wayland. This will be fixed when the 'conductor'
-   refactoring in arcan finishes.
-
-Depending on what toolkit is being used, chances are that some magic dance is
-needed in order to get a client to connect using wayland, and similarly for the
-specific shell protocol to use when multiple are available, for the choice of
-buffer passing (shm or egl) and for the GPU device actually being used. With
-other Wayland compositors, chances are that this effect is masked by the client
-in question falling back to XWayland and some clients will fail outright if
-there's no XServer available even though the clients themselves actually only
-use their respective Wayland paths. In short, it's a mess.
-
-a. For SDL, check the environment variable for SDL\_VIDEODRIVER=wayland
-b. For QT, try the -platform wayland argument.
-c. For EFL, it's EVAS\_ENGINE=wayland\_shm or EVAS\_ENGINE=wayland\_egl along
-with ELM\_DISPLAY=wl and optionally ELM\_ACCEL=none if there's issue with
-gl acceleration.
-
-The -exec mode sets these automatically.
-
-Limitations
-====
-There are a number of arcan features that do not have a corresponding
-Wayland translation, and will therefore be a no-op or hidden in whatever
-scripts arcan is running. There are also some features where the translation
-is not entirely compatible. Such incompatibilities/limitations are tracked
-separately in the [arcan wiki](https://github.com/letoram/arcan/wiki/wayland).
-
-XWayland
-====
-There are two ways of getting X support for Arcan. One is via the custom
-arcan backend to the xserver that is part of the XArcan setup. The other
-is by using XWayland, both has their respective tradeoffs.
-
-XWayland can be used in two modes, normal and rootless. The normal one is
-similar to Xarcan, but is seems barely tested upstream compared to rootless,
-and deals poorly with resizing etc.
-
-The rootless one works 'transparently' but requires the Wayland side to
-implement a window manager. Weston et. al does this by pulling in all of xcb
-etc. into the compositor itself. This approach is not used here due to the
-poor separation that encourages.
-
-Instead we have arcan-xwayland-wm that is responsible both for launching
-Xwayland and translating WM operations. This is sent as text commands over
-an inherited FIFO.
-
-Xwayland to arcan can be launched in two ways, as the example below shows:
-
-    arcan-wayland -xwl
-		> Listening on [display number]
-		DISPLAY=:[display number] xterm
-
-		arcan-wayland -xwl -exec xterm
-
-The first version multiplexes many clients unto one bridge working in service
-mode, and the other sets up a path to allow a single x client through. The
-later should be more secure, with some caveats that clients which spawn other
-clients might cease to work as the connection primitives are unlinked after the
-first surface is committed.
+other useful xwininfo: -tree -root
 
 TODO
 ====
@@ -191,6 +159,7 @@ determine if we are compliant or not, because Wayland.
   - [ ] Pulseaudio stripping
 	- [ ] Dbus stripping
   - [ ] Dynamic Keyboard Translation table generation
+  - [ ] Keycode remapping
   - [ ] Benchmarking/Inspection tools
   - [p] Sandboxing
   - [x] Migration/Reset/Crash-Recover

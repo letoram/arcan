@@ -2,7 +2,7 @@
  * Copyright 2018-2019, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: https://github.com/letoram/arcan/wiki/wayland.md
- * Description: XWayland specific 'wnddow Manager' that deals with the special
+ * Description: XWayland specific 'Window Manager' that deals with the special
  * considerations needed for pairing XWayland redirected windows with wayland
  * surfaces etc. Decoupled from the normal XWayland so that both sides can be
  * sandboxed better and possibly used for a similar -rootless mode in Xarcan.
@@ -12,6 +12,7 @@
  *
  * Todo:
  * [ ] Basic bringup still, particularly popups, XEmbed etc.
+ *
  * [ ] Clipboard could/should be done with us inheriting an arcan segment
  *     that is setup for clipboard, then we connect our clipboard manager
  *     to the xserver and go at it like that, don't need to involve wayland.
@@ -46,8 +47,12 @@ static xcb_visualid_t visual;
 static int64_t input_grab = -1;
 static int64_t input_focus = -1;
 static volatile bool alive = true;
+static bool xwm_standalone = false;
 
 #include "atoms.h"
+
+#define WM_FLUSH true
+#define WM_APPEND false
 
 /*
  * struct window, malloc, set id, HASH_ADD_INT(windows, id, new)
@@ -70,6 +75,22 @@ static inline void trace(const char* msg, ...)
 	va_end( args);
 	fflush(stderr);
 #endif
+}
+
+static inline void wm_command(bool flush, const char* msg, ...)
+{
+	va_list args;
+	va_start(args, msg);
+	vfprintf(stdout, msg, args);
+	va_end(args);
+
+	if (!msg || flush){
+		fputc((int) '\n', stdout);
+	}
+
+	if (flush){
+		fflush(stdout);
+	}
 }
 
 static void scan_atoms()
@@ -227,7 +248,7 @@ static void send_updated_window(
  * _NET_WM_WINDOW_TYPE replaces MOTIF_WM_HINTS so we much prefer that as it
  * maps to the segment type.
  */
-	fprintf(stdout,
+	wm_command(WM_APPEND,
 		"kind=%s:id=%"PRIu32":type=%s", kind, id, check_window_state(id));
 
 	xcb_get_property_cookie_t cookie = xcb_get_property(dpy,
@@ -236,7 +257,7 @@ static void send_updated_window(
 
 	if (reply){
 		xcb_window_t* pwd = xcb_get_property_value(reply);
-		fprintf(stdout, ":parent=%"PRIu32, *pwd);
+		wm_command(WM_APPEND, ":parent=%"PRIu32, *pwd);
 		free(reply);
 	}
 
@@ -255,18 +276,23 @@ static void send_updated_window(
  *  message, urgency
  */
 	if (no_coord)
-		fprintf(stdout, "\n");
+		wm_command(WM_FLUSH, NULL);
 	else
-		fprintf(stdout, ":x=%"PRId32":y=%"PRId32"\n", x, y);
+		wm_command(WM_FLUSH, ":x=%"PRId32":y=%"PRId32, x, y);
 }
 
 static void xcb_create_notify(xcb_create_notify_event_t* ev)
 {
+	trace("create-notify:%"PRIu32, ev->window);
+	if (ev->window == wnd)
+		return;
+
 	send_updated_window("create", ev->window, ev->x, ev->y, false);
 }
 
 static void xcb_map_notify(xcb_map_notify_event_t* ev)
 {
+	trace("map-notify:%"PRIu32, ev->window);
 /* chances are that we get mapped with different atoms being set,
  * particularly for popups used by cutebrowser etc. */
 	xcb_get_property_cookie_t cookie = xcb_get_property(dpy,
@@ -275,8 +301,8 @@ static void xcb_map_notify(xcb_map_notify_event_t* ev)
 
 	if (reply){
 		xcb_window_t* pwd = xcb_get_property_value(reply);
-		fprintf(stdout,
-			"kind=parent:id=%"PRIu32":parent_id=%"PRIu32"\n", ev->window, *pwd);
+		wm_command(WM_FLUSH,
+			"kind=parent:id=%"PRIu32":parent_id=%"PRIu32, ev->window, *pwd);
 		free(reply);
 	}
 
@@ -296,7 +322,18 @@ static void xcb_map_request(xcb_map_request_event_t* ev)
 /* while the above could've made a round-trip to make sure we don't
  * race with the wayland channel, the approach of detecting surface-
  * type and checking seems to work ok (xwl.c) */
+	trace("map-request:%"PRIu32, ev->window);
+
+/* for popup- windows, we kindof need to track override-redirect here */
+	xcb_configure_window(dpy, ev->window,
+		XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_BELOW});
+
 	xcb_map_window(dpy, ev->window);
+
+/* ICCCM_NORMAL_STATE */
+	xcb_change_property(dpy,
+		XCB_PROP_MODE_REPLACE, ev->window, atoms[WM_STATE],
+		atoms[WM_STATE], 32, 2, (uint32_t[]){1, XCB_WINDOW_NONE});
 }
 
 static void xcb_reparent_notify(xcb_reparent_notify_event_t* ev)
@@ -304,21 +341,23 @@ static void xcb_reparent_notify(xcb_reparent_notify_event_t* ev)
 	trace("reparent: %"PRIu32" new parent: %"PRIu32"%s",
 		ev->window, ev->parent, ev->override_redirect ? " override" : "");
 	if (ev->parent == root){
-		fprintf(stdout,
-			"kind=reparent:parent=root,override=%d\n", ev->override_redirect ? 1 : 0);
+		wm_command(WM_FLUSH,
+			"kind=reparent:parent=root,override=%d", ev->override_redirect ? 1 : 0);
 	}
 	else
-		fprintf(stdout, "kind=reparent:id=%"PRIu32":parent=%"PRIu32"%s\n",
+		wm_command(WM_FLUSH,
+			"kind=reparent:id=%"PRIu32":parent=%"PRIu32"%s",
 			ev->window, ev->parent, ev->override_redirect ? ":override=1" : "");
 }
 
 static void xcb_unmap_notify(xcb_unmap_notify_event_t* ev)
 {
+	trace("unmap: %"PRIu32, ev->window);
 	if (ev->window == input_focus)
 		input_focus = -1;
 	if (ev->window == input_grab)
 		input_grab = -1;
-	fprintf(stdout, "kind=unmap:id=%"PRIu32"\n", ev->window);
+	wm_command(WM_FLUSH, "kind=unmap:id=%"PRIu32, ev->window);
 }
 
 static void xcb_client_message(xcb_client_message_event_t* ev)
@@ -333,9 +372,9 @@ static void xcb_client_message(xcb_client_message_event_t* ev)
  * PROTOCOLS: set ping-pong
  */
 	if (ev->type == atoms[WL_SURFACE_ID]){
-		trace("wl-surface:%"PRIu32, ev->data.data32[0]);
-		fprintf(stdout,
-			"kind=surface:id=%"PRIu32":surface_id=%"PRIu32"\n",
+		trace("wl-surface:%"PRIu32" to %"PRIu32, ev->data.data32[0], ev->window);
+		wm_command(WM_FLUSH,
+			"kind=surface:id=%"PRIu32":surface_id=%"PRIu32,
 			ev->window, ev->data.data32[0]
 		);
 	}
@@ -347,7 +386,11 @@ static void xcb_client_message(xcb_client_message_event_t* ev)
 static void xcb_destroy_notify(xcb_destroy_notify_event_t* ev)
 {
 	trace("destroy-notify:%"PRIu32, ev->window);
-	fprintf(stdout, "kind=destroy:id=%"PRIu32"\n",
+	if (ev->window == input_focus){
+		input_focus = -1;
+	}
+
+	wm_command(WM_FLUSH, "kind=destroy:id=%"PRIu32,
 		((xcb_destroy_notify_event_t*) ev)->window);
 }
 
@@ -360,8 +403,8 @@ static void xcb_configure_notify(xcb_configure_notify_event_t* ev)
 
 	/* ev->x, ev->y, ev->width, ev->height, ev->override_redirect */
 
-	fprintf(stdout,
-		"kind=configure:id=%"PRIu32":x=%d:y=%d:w=%d:h=%d\n",
+	wm_command(WM_FLUSH,
+		"kind=configure:id=%"PRIu32":x=%d:y=%d:w=%d:h=%d",
 		ev->window, ev->x, ev->y, ev->width, ev->height
 	);
 }
@@ -376,14 +419,15 @@ static void xcb_configure_request(xcb_configure_request_event_t* ev)
 			ev->window, ev->x, ev->y, ev->width, ev->height);
 
 /* this needs to translate to _resize calls and to VIEWPORT hint events */
-	fprintf(stdout,
-		"kind=configure:id=%"PRIu32":x=%d:y=%d:w=%d:h=%d\n",
+	wm_command(WM_FLUSH,
+		"kind=configure:id=%"PRIu32":x=%d:y=%d:w=%d:h=%d",
 		ev->window, ev->x, ev->y, ev->width, ev->height
 	);
 
 /* just ack the configure request for now, this should really be deferred
  * until we receive the corresponding command from our parent but we lack
  * that setup right now */
+
 	xcb_configure_window(dpy, ev->window,
 		XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
 		XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
@@ -402,11 +446,12 @@ static void update_focus(int64_t id)
 		xcb_set_input_focus(dpy,
 			XCB_INPUT_FOCUS_POINTER_ROOT, id, XCB_CURRENT_TIME);
 	}
-		xcb_flush(dpy);
+	xcb_flush(dpy);
 }
 
 static void xcb_focus_in(xcb_focus_in_event_t* ev)
 {
+	trace("focus-in: %"PRIu32, ev->event);
 /*
  * Do anything with these?
 	ev->mode == XCB_NOTIFY_MODE_GRAB ||
@@ -518,8 +563,7 @@ static void* process_thread(void* arg)
 			process_wm_command(inbuf);
 		}
 	}
-	fprintf(stdout, "kind=terminated\n");
-	fflush(stdout);
+	wm_command(WM_FLUSH, "kind=terminated");
 	alive = false;
 	return NULL;
 }
@@ -527,7 +571,6 @@ static void* process_thread(void* arg)
 int main (int argc, char **argv)
 {
 	int code;
-	uint32_t values[3];
 
 	xcb_generic_event_t *ev;
 
@@ -544,8 +587,9 @@ int main (int argc, char **argv)
 
 /* standalone mode is to test/debug the WM against an externally managed X,
  * this runs without the normal inherited/rootless setup */
-	bool standalone = argc > 1 && strcmp(argv[1], "-standalone") == 0;
-	if (standalone){
+	xwm_standalone = argc > 1 && strcmp(argv[1], "-standalone") == 0;
+	if (xwm_standalone){
+		freopen("wm.log", "w", stdout);
 		argv--;
 		argv = &argv[1];
 		goto startx;
@@ -620,33 +664,37 @@ startx:
  * enable structure and redirection notifications so that we can forward
  * the related events onward to the active arcan window manager
  */
-	values[0] =
+	create_window();
+
+	xcb_change_window_attributes(dpy, root, XCB_CW_EVENT_MASK, (uint32_t[]){
 		XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY |
 		XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
-		XCB_EVENT_MASK_PROPERTY_CHANGE;
-
-	xcb_change_window_attributes(dpy, root, XCB_CW_EVENT_MASK, values);
-	xcb_composite_redirect_subwindows(dpy, root, XCB_COMPOSITE_REDIRECT_MANUAL);
+		XCB_EVENT_MASK_PROPERTY_CHANGE, 0, 0
+	});
+	if (!xwm_standalone){
+		xcb_composite_redirect_subwindows(
+			dpy, root, XCB_COMPOSITE_REDIRECT_MANUAL);
+	}
 	xcb_flush(dpy);
-
-	create_window();
 
 /*
  * xcb is thread-safe, so we can have one thread for incoming
  * dispatch and another thread for outgoing dispatch
  */
-	pthread_t pth;
-	pthread_attr_t pthattr;
-	pthread_attr_init(&pthattr);
-	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-	pthread_create(&pth, &pthattr, process_thread, NULL);
+	if (!xwm_standalone){
+		pthread_t pth;
+		pthread_attr_t pthattr;
+		pthread_attr_init(&pthattr);
+		pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+		pthread_create(&pth, &pthattr, process_thread, NULL);
+	}
 
 /*
  * now it should be safe to chain-execute any single client we'd want,
  * and unlink on connect should we want to avoid more clients connecting
  * to the display
  */
-	if (!standalone && argc > 1){
+	if (!xwm_standalone && argc > 1){
 		int rv = fork();
 		if (-1 == rv){
 			fprintf(stderr, "-exec (%s), couldn't fork\n", argv[1]);
@@ -728,6 +776,8 @@ startx:
 		case XCB_DESTROY_NOTIFY:
 			xcb_destroy_notify((xcb_destroy_notify_event_t*) ev);
 		break;
+	/* keyboards / pointer / notifications, not interesting here
+	 * unless going for some hotkey etc. kind of a thing */
 		case XCB_MAPPING_NOTIFY:
 			trace("mapping-notify");
 		break;
@@ -745,7 +795,6 @@ startx:
 		break;
 		}
 		xcb_flush(dpy);
-		fflush(stdout);
 	}
 
 return 0;
