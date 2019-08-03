@@ -20,6 +20,27 @@
 #include "a12_int.h"
 #include "a12_helper.h"
 
+enum mt_mode {
+	MT_SINGLE = 0,
+	MT_FORK = 1
+};
+
+enum anet_mode {
+	ANET_SHMIF_CL = 1,
+	ANET_SHMIF_SRV = 2
+};
+
+struct anet_options {
+	char* cp;
+	char* host;
+	char* port;
+	int mt_mode;
+	int mode;
+	char* redirect_exit;
+	char* devicehint_cp;
+	struct a12_context_options* opts;
+};
+
 /*
  * pull in from arcan codebase, chacha based CSPRNG
  */
@@ -73,18 +94,21 @@ static void single_a12srv(struct a12_state* S, int fd)
 	a12helper_a12srv_shmifcl(S, NULL, fd, fd);
 }
 
-static void a12cl_dispatch(struct a12_context_options* opts,
+static void a12cl_dispatch(
+	struct anet_options* args,
 	struct a12_state* S, struct shmifsrv_client* cl, int fd)
 {
 /* note that the a12helper will do the cleanup / free */
 	a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
 		.dirfd_temp = -1,
 		.dirfd_cache = -1,
-		.redirect_exit = opts->redirect_exit
+		.redirect_exit = args->redirect_exit,
+		.devicehint_cp = args->devicehint_cp
 	});
 }
 
-static void fork_a12cl_dispatch(struct a12_context_options* opts,
+static void fork_a12cl_dispatch(
+	struct anet_options* args,
 	struct a12_state* S, struct shmifsrv_client* cl, int fd)
 {
 	pid_t fpid = fork();
@@ -93,13 +117,14 @@ static void fork_a12cl_dispatch(struct a12_context_options* opts,
 		a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
 			.dirfd_temp = -1,
 			.dirfd_cache = -1,
-			.redirect_exit = opts->redirect_exit
+			.redirect_exit = args->redirect_exit,
+			.devicehint_cp = args->devicehint_cp
 		});
 		exit(EXIT_SUCCESS);
 	}
 	else if (fpid == -1){
 		fprintf(stderr, "fork_a12cl() couldn't fork new process, check ulimits\n");
-		shmifsrv_free(cl);
+		shmifsrv_free(cl, true);
 		a12_channel_close(S);
 		return;
 	}
@@ -108,10 +133,12 @@ static void fork_a12cl_dispatch(struct a12_context_options* opts,
 		a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d", (int)fpid);
 		a12_channel_close(S);
 
-/* this will leak right now as the _free actually disconnects the client
- * which we don't want to do but the fix requires changes to the library
- * shmifsrv_free(cl);
- */
+		if (args->redirect_exit){
+			shmifsrv_free(cl, false);
+		}
+		else
+			shmifsrv_free(cl, true);
+
 		close(fd);
 	}
 }
@@ -148,9 +175,9 @@ static int get_cl_fd(struct addrinfo* addr)
 	return clfd;
 }
 
-static int a12_connect(struct a12_context_options* opts,
-	const char* cpoint, const char* host_str, const char* port_str,
-	void (*dispatch)(struct a12_context_options* opts,
+static int a12_connect(struct anet_options* args,
+	void (*dispatch)(
+	struct anet_options* args,
 	struct a12_state* S, struct shmifsrv_client* cl, int fd))
 {
 	signal(SIGPIPE, SIG_IGN);
@@ -162,7 +189,7 @@ static int a12_connect(struct a12_context_options* opts,
 	};
 	struct addrinfo* addr = NULL;
 
-	int ec = getaddrinfo(host_str, port_str, &hints, &addr);
+	int ec = getaddrinfo(args->host, args->port, &hints, &addr);
 	if (ec){
 		fprintf(stderr, "couldn't resolve address: %s\n", gai_strerror(ec));
 		return EXIT_FAILURE;
@@ -171,7 +198,7 @@ static int a12_connect(struct a12_context_options* opts,
 	int shmif_fd = -1;
 	for(;;){
 		struct shmifsrv_client* cl =
-			shmifsrv_allocate_connpoint(cpoint, NULL, S_IRWXU, shmif_fd);
+			shmifsrv_allocate_connpoint(args->cp, NULL, S_IRWXU, shmif_fd);
 
 		if (!cl){
 			freeaddrinfo(addr);
@@ -191,7 +218,7 @@ static int a12_connect(struct a12_context_options* opts,
 			if (-1 == pv){
 				if (errno != EINTR && errno != EAGAIN){
 					freeaddrinfo(addr);
-					shmifsrv_free(cl);
+					shmifsrv_free(cl, true);
 					fprintf(stderr, "error while waiting for a connection\n");
 					return EXIT_FAILURE;
 				}
@@ -212,14 +239,14 @@ static int a12_connect(struct a12_context_options* opts,
 		int fd = get_cl_fd(addr);
 		if (-1 == fd){
 /* question if we should retry connecting rather than to kill the server */
-			shmifsrv_free(cl);
+			shmifsrv_free(cl, true);
 			continue;
 		}
 
-		struct a12_state* state = a12_open(opts);
+		struct a12_state* state = a12_open(args->opts);
 		if (!state){
 			freeaddrinfo(addr);
-			shmifsrv_free(cl);
+			shmifsrv_free(cl, true);
 			close(fd);
 			fprintf(stderr, "couldn't build a12 state machine\n");
 			return EXIT_FAILURE;
@@ -227,14 +254,14 @@ static int a12_connect(struct a12_context_options* opts,
 
 /* wake the client */
 		a12int_trace(A12_TRACE_SYSTEM, "local connection found, forwarding to dispatch");
-		dispatch(opts, state, cl, fd);
+		dispatch(args, state, cl, fd);
 	}
 
 	return EXIT_SUCCESS;
 }
 
-static int a12_listen(struct a12_context_options* opts, const char* addr_str,
-	const char* port_str, void (*dispatch)(struct a12_state* S, int fd))
+static int a12_listen(struct anet_options* args,
+	void (*dispatch)(struct a12_state* S, int fd))
 {
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGCHLD, SIG_IGN);
@@ -244,7 +271,7 @@ static int a12_listen(struct a12_context_options* opts, const char* addr_str,
 	struct addrinfo hints = {
 		.ai_flags = AI_PASSIVE
 	};
-	int ec = getaddrinfo(addr_str, port_str, &hints, &addr);
+	int ec = getaddrinfo(args->host, args->port, &hints, &addr);
 	if (ec){
 		fprintf(stderr, "couldn't resolve address: %s\n", gai_strerror(ec));
 		return EXIT_FAILURE;
@@ -300,7 +327,7 @@ static int a12_listen(struct a12_context_options* opts, const char* addr_str,
 		socklen_t addrlen = sizeof(addr);
 
 		int infd = accept(sockin_fd, (struct sockaddr*) &in_addr, &addrlen);
-		struct a12_state* ast = a12_build(opts);
+		struct a12_state* ast = a12_build(args->opts);
 		if (!ast){
 			fprintf(stderr, "Couldn't allocate client state machine\n");
 			close(infd);
@@ -313,11 +340,11 @@ static int a12_listen(struct a12_context_options* opts, const char* addr_str,
 	return EXIT_SUCCESS;
 }
 
-static int show_usage(const char* msg)
+static bool show_usage(const char* msg)
 {
 	fprintf(stderr, "%s%sUsage:\n"
-	"\tForward local arcan applications: arcan-net -s connpoint host port\n"
-	"\tBridge remote arcan applications: arcan-net -l port [ip]\n\n"
+	"\tForward local arcan applications: arcan-net [-Xtd] -s connpoint host port\n"
+	"\tBridge remote arcan applications: arcan-net [-Xtd] -l port [ip]\n\n"
 	"Forward-local options:\n"
 	"\t-X        \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n\n"
 	"Options:\n"
@@ -333,29 +360,12 @@ static int show_usage(const char* msg)
  */
 		, msg, msg ? "\n" : ""
 	);
-	return EXIT_FAILURE;
+	return false;
 }
 
-enum mt_mode {
-	MT_SINGLE = 0,
-	MT_FORK = 1
-};
-
-int main(int argc, char** argv)
+static bool apply_commandline(int argc, char** argv, struct anet_options* opts)
 {
-	const char* cp = NULL;
-	const char* listen_port = NULL;
-	int server_mode = -1;
-	enum mt_mode mt_mode = MT_FORK;
-
-	struct a12_context_options* opts =
-		a12_sensitive_alloc(sizeof(struct a12_context_options));
-
-/* set this as default, so the remote side can't actually close */
-	opts->redirect_exit = getenv("ARCAN_CONNPATH");
-
-/* setup default / junk authentication key */
-	a12_plain_kdf(NULL, opts);
+	const char* modeerr = "Mixed or multiple -s or -l arguments";
 
 	size_t i = 1;
 /* mode defining switches and shared switches */
@@ -371,65 +381,90 @@ int main(int argc, char** argv)
 		}
 
 /* a12 client, shmif server */
-		if (strcmp(argv[i], "-s") == 0){
-			if (server_mode != -1)
-				return show_usage("Mixed -s and -l or multiple -s or -l arguments");
+		else if (strcmp(argv[i], "-s") == 0){
+			if (opts->mode)
+				return show_usage(modeerr);
 
-			server_mode = 1;
+			opts->mode = ANET_SHMIF_SRV;
 			if (i >= argc - 1)
 				return show_usage("Invalid arguments, -s without room for ip");
-			cp = argv[++i];
-			for (size_t ind = 0; cp[ind]; ind++)
-				if (!isalnum(cp[ind]))
+			opts->cp = argv[++i];
+
+			for (size_t ind = 0; opts->cp[ind]; ind++)
+				if (!isalnum(opts->cp[ind]))
 					return show_usage("Invalid character in connpoint [a-Z,0-9]");
+
+			if (i == argc)
+				return show_usage("-s without room for host/port");
+
+			opts->host = argv[++i];
+
+			if (i == argc)
+				return show_usage("s without room for port");
+
+			opts->port = argv[++i];
+
+			if (i != argc - 1)
+				return show_usage("Trailing arguments to -s connpoint host port");
+
 			continue;
 		}
 /* a12 server, shmif client */
-		if (strcmp(argv[i], "-l") == 0){
-			if (server_mode != -1)
-				return show_usage("Mixed -s and -l or multiple -s or -l arguments");
-			server_mode = 0;
+		else if (strcmp(argv[i], "-l") == 0){
+			if (opts->mode)
+				return show_usage(modeerr);
+			opts->mode = ANET_SHMIF_CL;
 
 			if (i == argc - 1)
 				return show_usage("-l without room for port argument");
 
-			listen_port = argv[++i];
-			for (size_t ind = 0; listen_port[ind]; ind++)
-				if (listen_port[ind] < '0' || listen_port[ind] > '9')
+			opts->port = argv[++i];
+			for (size_t ind = 0; opts->port[ind]; ind++)
+				if (opts->port[ind] < '0' || opts->port[ind] > '9')
 					return show_usage("Invalid values in port argument");
-		}
 
-		if (strcmp(argv[i], "-t") == 0){
-			mt_mode = MT_SINGLE;
-		}
+			if (i < argc - 1)
+				opts->host = argv[++i];
 
-		if (strcmp(argv[i], "-X") == 0){
+			if (i != argc)
+				return show_usage("Trailing arguments to -s connpoint host port");
+		}
+		else if (strcmp(argv[i], "-t") == 0){
+			opts->mt_mode = MT_SINGLE;
+		}
+		else if (strcmp(argv[i], "-X") == 0){
 			opts->redirect_exit = NULL;
 		}
 	}
 
+	return true;
+}
+
+int main(int argc, char** argv)
+{
+	struct anet_options anet = {};
+	anet.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));
+
+/* set this as default, so the remote side can't actually close */
+	anet.redirect_exit = getenv("ARCAN_CONNPATH");
+	anet.devicehint_cp = getenv("ARCAN_CONNPATH");
+
+/* setup default / junk authentication key */
+	a12_plain_kdf(NULL, anet.opts);
+
+	if (!apply_commandline(argc, argv, &anet))
+		return show_usage("Invalid arguments");
+
 /* parsing done, route to the right connection mode */
-	if (server_mode == -1)
+	if (!anet.mode)
 		return show_usage("No mode specified, please use -s or -l form");
 
-/* Special "chain-exec" from remoting / encode where the shmif connection
- * is provided for us. In this mode we need to flip who is initiating the
- * connection (client vs. server), and thus requires us to finish output-
- * segment support and two shmifsrv wrappers - one that can construct an
- * arcan_shmif_cont from a shmifsrv_client, and one that can construct a
- * shmifsrv_client/arcan_shmif_cont from malloc/socketpair(), or refactor
- * a12int_helper_srv to take hooks for the vbuffer/abuffer/enqueue/dequeue
-	if (getenv("ARCAN_SOCKIN_FD")){
-	}
- */
-
-	if (server_mode == 0){
-		char* host = i < argc ? argv[i] : NULL;
-		switch (mt_mode){
+	if (anet.mode == ANET_SHMIF_CL){
+		switch (anet.mt_mode){
 		case MT_SINGLE:
-			return a12_listen(opts, host, listen_port, single_a12srv);
+			return a12_listen(&anet, single_a12srv);
 		case MT_FORK:
-			return a12_listen(opts, host, listen_port, fork_a12srv);
+			return a12_listen(&anet, fork_a12srv);
 		break;
 		default:
 			return EXIT_FAILURE;
@@ -437,15 +472,13 @@ int main(int argc, char** argv)
 		}
 	}
 
-	if (i != argc - 2)
-		return show_usage("last two arguments should be host and port");
-
-	switch (mt_mode){
+/* ANET_SHMIF_SRV */
+	switch (anet.mt_mode){
 	case MT_SINGLE:
-		return a12_connect(opts, cp, argv[i], argv[i+1], a12cl_dispatch);
+		return a12_connect(&anet, a12cl_dispatch);
 	break;
 	case MT_FORK:
-		return a12_connect(opts, cp, argv[i], argv[i+1], fork_a12cl_dispatch);
+		return a12_connect(&anet, fork_a12cl_dispatch);
 	break;
 	default:
 		return EXIT_FAILURE;

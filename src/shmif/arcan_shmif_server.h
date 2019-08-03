@@ -181,8 +181,12 @@ int shmifsrv_poll(struct shmifsrv_client*);
  * been created through shmifsrv_allocate_connpoint and is still in a listening
  * state, the underlying descriptor won't be closed in order for the connpoint
  * to be reused.
+ *
+ * If [full] is set to false, the client will not be directly told that the
+ * connection is dead via the normal 'dead-man-switch' handle, only through
+ * the event-queue - forcing the client to try and use some recovery mechanism.
  */
-void shmifsrv_free(struct shmifsrv_client*);
+void shmifsrv_free(struct shmifsrv_client*, bool full);
 
 /*
  * [CRITICAL]

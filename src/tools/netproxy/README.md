@@ -72,19 +72,20 @@ Milestone 1 - basic features (0.5.x)
 - [x] Subsegments
 - [ ] Basic authentication / DH / Cipher (blake+chacha20+curve25519)
 - [ ] Basic privsep/sandboxing
+- [ ] TUI- text channel
+- [ ] Event key-code translation (evdev, sdl, ... to native)
+- [ ] Cache process / directory for file operations
+- [ ] Block push-segment types (DEBUG)
 
 Milestone 2 - closer to useful (0.6.x)
 
-- [ ] Add to encode, remoting
-  - [ ] Modify shmif- server to "convert/wrap" shmifsrv\_client
-	- [ ] Modify shmif- server / shmif- cont to construct from in-process primitives
-	- [ ] Modify ARCAN\_CONNPATH so that it can take a remote URL
-- [ ] Cache process / directory for file operations
+- [ ] Output segments
+- [ ] Add to encode, remoting (libify and compile into fsrv_encode)
+- [ ] Modify ARCAN\_CONNPATH so that it can take a remote URL
 - [ ] Compression Heuristics for binary transfers
 - [ ] Quad-tree for DPNG
 - [ ] "MJPG" mode over DPNG
 - [ ] Frame Cancellation
-- [ ] TUI- text channel
 - [ ] vframe- caching on certain types (first-frame on new, ...)
 - [ ] vframe-runahead
 - [ ] (Scheduling), better A / V / E interleaving
@@ -93,14 +94,13 @@ Milestone 2 - closer to useful (0.6.x)
 - [ ] Passthrough of compressed video sources
 - [ ] Traffic monitoring tools
 - [ ] Splicing / Local mirroring
-- [ ] Rekeying / Key Deletion
+- [ ] Rekeying / Key Deletion (Forward Secrecy)
 
 Milestone 3 - big stretch (0.6.x)
 
 - [ ] Embed binary transfer progress into parent window
 - [ ] Dynamic audio resampling
 - [ ] Media- segment buffering window, controls and progress
-- [ ] Output segments
 - [ ] UDP based carrier (UDT)
 - [ ] 'ALT' arcan-lwa interfacing
 - [ ] 'AGP' level- packing

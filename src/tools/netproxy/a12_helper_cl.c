@@ -156,6 +156,31 @@ static bool dispatch_event(struct shmif_thread_data* data, arcan_event* ev)
 		return true;
 	}
 
+/*
+ * This is hairier than one might thing, as there is a distinction between
+ * 'local' and 'remote' display server switching. For the 'local' case, we
+ * can simply switch migrate the proxy-shmif-client connection to that one
+ * and mask it.
+ *
+ * For the 'remote' and 'fallback' sides, it gets hairier as the inherited
+ * connection primitive would then principally make this act as a bouncer,
+ * with implications that are ... complex .. to foresee.
+ *
+ * Thus, for the time being, we mask out the device-node hints and let the
+ * shmif-srv/local-client do their own injection / redirection.
+ */
+	if (ev->category == EVENT_TARGET &&
+		ev->tgt.kind == TARGET_COMMAND_DEVICE_NODE){
+		return false;
+	}
+
+/* we ignore sending the _shutdown command here as the next _poll will fail -1
+ * cause the loop to end and the normal _shutdown _close */
+	if (ev->category == EVENT_TARGET &&
+		ev->tgt.kind == TARGET_COMMAND_EXIT){
+		return false;
+	}
+
 	BEGIN_CRITICAL(data->state, "process-event");
 		a12int_trace(A12_TRACE_EVENT,
 			"kind=enqueue:event=%s", arcan_shmif_eventstr(ev, NULL, 0));
@@ -190,7 +215,8 @@ static void* client_thread(void* inarg)
 		}
 
 		bool dirty = false;
-		while(arcan_shmif_poll(data->C, &newev) > 0)
+		int pv;
+		while((pv = arcan_shmif_poll(data->C, &newev) > 0))
 			dirty |= dispatch_event(data, &newev);
 
 /* and ping or die */
@@ -198,19 +224,27 @@ static void* client_thread(void* inarg)
 			if (-1 == write(data->state->kill_fd, &data->chid, 1))
 				break;
 		}
+
+		if (pv < 0)
+			break;
 	}
 
 /* free channel resources */
 	BEGIN_CRITICAL(data->state, "client-death");
-		atomic_store(&data->state->alloc[data->chid], 0);
-		atomic_fetch_sub(&data->state->n_segments, 1);
 		a12_set_channel(data->S, data->chid);
+		a12_channel_shutdown(data->S, "");
+		write(data->state->kill_fd, &data->chid, 1);
 		a12_channel_close(data->S);
 		arcan_shmif_drop(data->C);
 
 /* and if the primary dies, all die */
 		if (data->chid == 0)
 			close(data->state->kill_fd);
+
+/* finally release the allocation, this will cause the main thread to
+ * stop spinning, ultimately killing data->S */
+		atomic_store(&data->state->alloc[data->chid], 0);
+		atomic_fetch_sub(&data->state->n_segments, 1);
 	END_CRITICAL(data->state);
 
 	free(data->C);

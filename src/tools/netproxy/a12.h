@@ -64,9 +64,8 @@ struct a12_context_options {
  * networks */
 	uint8_t authk[64];
 	bool disable_authenticity;
-
-	const char* redirect_exit;
 };
+
 /*
  * Takes a low entropy secret and generate a salted authentication key used
  * for the first key- exchange upon connection. If no shared secret is provided
@@ -401,6 +400,15 @@ a12_channel_vframe(
 void
 a12_channel_new(struct a12_state* S,
 	uint8_t chid, uint8_t segkind, uint32_t cookie);
+
+/*
+ * Send the 'shutdown' command with an optional 'last_words' message,
+ * this should be done before the _close and typically matches either
+ * the client _drop:ing a segment (shmifsrv- side) or an _EXIT event
+ * (shmif-client) side.
+ */
+void
+a12_channel_shutdown(struct a12_state* S, const char* last_words);
 
 /* Close / destroy the active channel, if this is the primary (0) all
  * channels will be closed and the connection terminated */
