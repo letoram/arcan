@@ -336,6 +336,22 @@ struct arcan_shmif_cont arcan_shmif_open_ext(
 	struct shmif_open_ext, size_t ext_sz);
 
 /*
+ * If the context has been opened with the SHMIF_DONT_UNLINK flag, any
+ * named resources are still accessible. This is used for some corner
+ * cases where one client should be able to monitor another and so on.
+ * This function attempts to unlink any named resources tied to the
+ * context [c].
+ */
+void arcan_shmif_unlink(struct arcan_shmif_cont* c);
+
+/*
+ * accessor to the internal tracked segment mapping key (applicable
+ * to arcan_shmif_unlink and SHMIF_DONT_UNLINK). Will return NULL if
+ * the key has been unlinked.
+ */
+const char* arcan_shmif_segment_key(struct arcan_shmif_cont* c);
+
+/*
  * arcan_shmif_initial can be used to access initial configured
  * settings (see struct arcan_shmif_initial for details). These values
  * are only valid AFTER a successful call to arcan_shmif_open and ONLY
