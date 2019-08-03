@@ -119,27 +119,53 @@ struct shmif_hidden {
 	uint8_t abuf_ind, abuf_cnt;
 	shmif_asample* abuf[ARCAN_SHMIF_ABUFC_LIM];
 
-/* initial contents gets dropped after first valid !initial
- * call after open */
+/* Initial contents gets dropped after first valid !initial call after open,
+ * otherwise we will be left with file descriptors in the process that might
+ * not get used. What argues against keeping them after is that we also need
+ * to track the descriptor carrying events and swap them out. The issue is
+ * relevant when it comes to the subsegments that don't have a preroll phase. */
 	struct arcan_shmif_initial initial;
 	bool valid_initial : 1;
 
+/* "input" and "output" are poorly chosen names that stuck around for legacy,
+ * but basically ENCODER segments receive buffer contents rather than send it. */
 	bool output : 1;
 	bool alive : 1;
+
+/* By default, the 'pause' mechanism is a trigger for the server- side to
+ * block in the calling thread into shmif functions until a resume- event
+ * has been received */
 	bool paused : 1;
+
+/* The entire log mechanism is a bit dated, it was mainly for ARCAN_SHMIF_DEBUG
+ * environment set, but forwarding that to stderr when we have a real channel
+ * where it can be done, so this should be moved to the DEBUGIF mechanism */
 	bool log_event : 1;
 
+/* Track an 'alternate connection path' that the server can update with a call
+ * to devicehint. A possible change here is for the alt_conn to be controlled
+ * by the user via an environment variable */
 	char* alt_conn;
 
+/* The named key used to find the initial connection (if there is one) should
+ * be unliked on use. For special cases (SHMIF_DONT_UNLINK) this can be deferred
+ * and be left to the user. In these scenarios we need to keep the key around. */
+	char* shm_key;
+
+/* User- provided setup flags and segment types are kept / tracked in order
+ * to re-issue events on a hard reset or migration */
 	enum ARCAN_FLAGS flags;
 	int type;
-
 	enum shmif_ext_meta atype;
 	uint64_t guid[2];
 
+/* The ingoing and outgoing event queues */
 	struct arcan_evctx inev;
 	struct arcan_evctx outev;
 
+/* Typically not used, but some multithreaded clients that need locking controls
+ * have mutexes allocated and kept here, then we can log / warn / detect if a
+ * resize or migrate call is performed when it is unsafe */
 	int lock_refc;
 	pthread_mutex_t lock;
 
@@ -149,6 +175,9 @@ struct shmif_hidden {
 	struct arcan_event dh, fh;
 	int ph; /* bit 1, dh - bit 2 fh */
 
+/* POSIX token passing is notoriously awful, in cases where we have to use the
+ * socket descriptor passing mechanism, we need to pair the descriptor with the
+ * corresponding event. This structure is used to track these states. */
 	struct {
 		bool gotev, consumed;
 		bool handedover;
@@ -156,14 +185,19 @@ struct shmif_hidden {
 		file_handle fd;
 	} pev;
 
-/* used for pending / incoming subsegments */
+/* When a NEWSEGMENT event has been provided (and descriptor- paired) the caller
+ * still needs to map it via a normal _acquire call. If that doesn't happen, the
+ * implementation of shmif is allowed to do whatever, thus we need to track the
+ * data needed for acquire */
 	struct {
 		int epipe;
 		char key[256];
 	} pseg;
 
-/* guard thread checks DMS and a parent PID, then tries to pull synch
- * handles and/or run an @exit function */
+/* The 'guard' structure is used by a separate monitoring thread that will
+ * track a pid or descriptor for aliveness. If the tracking fails, it will
+ * unlock semaphores and trigger an at_exit- like handler. This is practically
+ * necessary due to the poor multiplexation options for semaphores. */
 	struct {
 		bool active;
 		sem_handle semset[3];
@@ -180,6 +214,9 @@ struct shmif_hidden {
 	void (*resetf)(struct arcan_shmif_cont*);
 };
 
+/* We let one 'per process singleton' slot for an input and for an output
+ * segment as a primitive discovery mechanism. This is managed (mostly) by the
+ * caller, though cleaned up on certain calls like _drop etc. to avoid UAF. */
 static struct {
 	struct arcan_shmif_cont* input, (* output);
 } primary;
@@ -198,7 +235,7 @@ static inline bool parent_alive(struct shmif_hidden* gs)
 /* for nonauth/processes, it is not this simple. We don't want to ping/pong
  * over the socket as we don't know the state, and a timestamp and timeout
  * is not a good idea. Checking the proc/pid relies on /proc being available
- * which we don't want to rely on. Left is to try and peek */
+ * which we don't want to. Left is to try and peek the socket and do a recvmsg */
 	if (errno == EPERM){
 		unsigned char ch;
 
@@ -928,8 +965,42 @@ int arcan_shmif_tryenqueue(
 	return arcan_shmif_enqueue(c, src);
 }
 
-static void map_shared(const char* shmkey, char force_unlink,
-	struct arcan_shmif_cont* dst)
+static void unlink_keyed(const char* key)
+{
+	shm_unlink(key);
+	size_t slen = strlen(key) + 1;
+	char work[slen];
+	snprintf(work, slen, "%s", key);
+	slen -= 2;
+	work[slen] = 'v';
+	sem_unlink(work);
+
+	work[slen] = 'a';
+	sem_unlink(work);
+
+	work[slen] = 'e';
+	sem_unlink(work);
+
+}
+
+void arcan_shmif_unlink(struct arcan_shmif_cont* dst)
+{
+	if (!dst->priv->shm_key)
+		return;
+
+	unlink_keyed(dst->priv->shm_key);
+	dst->priv->shm_key = NULL;
+}
+
+const char* arcan_shmif_segment_key(struct arcan_shmif_cont* dst)
+{
+	if (!dst || !dst->priv)
+		return NULL;
+
+	return dst->priv->shm_key;
+}
+
+static void map_shared(const char* shmkey, struct arcan_shmif_cont* dst)
 {
 	assert(shmkey);
 	assert(strlen(shmkey) > 0);
@@ -947,13 +1018,11 @@ static void map_shared(const char* shmkey, char force_unlink,
 		PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	dst->shmh = fd;
 
-	if (force_unlink)
-		shm_unlink(shmkey);
-
 	if (MAP_FAILED == dst->addr){
 map_fail:
 		debug_print(FATAL, dst, "couldn't map keyfile"
 			"	(%s), reason: %s", shmkey, strerror(errno));
+		close(fd);
 		dst->addr = NULL;
 		return;
 	}
@@ -978,23 +1047,16 @@ map_fail:
 		slen -= 2;
 		work[slen] = 'v';
 		dst->vsem = sem_open(work, 0);
-		if (force_unlink)
-			sem_unlink(work);
-
 		work[slen] = 'a';
 		dst->asem = sem_open(work, 0);
-		if (force_unlink)
-			sem_unlink(work);
-
 		work[slen] = 'e';
 		dst->esem = sem_open(work, 0);
-		if (force_unlink)
-			sem_unlink(work);
 	}
 
 	if (dst->asem == 0x0 || dst->esem == 0x0 || dst->vsem == 0x0){
 		debug_print(FATAL, dst, "couldn't map semaphores: %s", shmkey);
 		free(dst->addr);
+		close(fd);
 		dst->addr = NULL;
 		return;
 	}
@@ -1170,17 +1232,28 @@ struct arcan_shmif_cont shmif_acquire_int(
 
 /* different path based on an acquire from a NEWSEGMENT event or if it comes
  * from a _connect (via _open) call */
+	const char* key_used = NULL;
+
 	if (!shmkey){
 		struct shmif_hidden* gs = parent->priv;
-		map_shared(gs->pseg.key, !(flags & SHMIF_DONT_UNLINK), &res);
+		map_shared(gs->pseg.key, &res);
+		key_used = gs->pseg.key;
+
+		if (!(flags & SHMIF_DONT_UNLINK))
+			unlink_keyed(gs->pseg.key);
+
 		if (!res.addr){
 			close(gs->pseg.epipe);
 			gs->pseg.epipe = BADFD;
 		}
 		privps = true; /* can't set d/e fields yet */
 	}
-	else
-		map_shared(shmkey, !(flags & SHMIF_DONT_UNLINK), &res);
+	else{
+		key_used = shmkey;
+		map_shared(shmkey, &res);
+		if (!(flags & SHMIF_DONT_UNLINK))
+			unlink_keyed(shmkey);
+	}
 
 	if (!res.addr){
 		debug_print(FATAL, NULL, "couldn't connect through: %s", shmkey);
@@ -1212,11 +1285,13 @@ struct arcan_shmif_cont shmif_acquire_int(
 
 	res.priv = malloc(sizeof(struct shmif_hidden));
 	memset(res.priv, '\0', sizeof(struct shmif_hidden));
+	res.priv->shm_key = strdup(key_used);
+
 	res.privext = malloc(sizeof(struct shmif_ext_hidden));
 	*res.privext = (struct shmif_ext_hidden){
 		.cleanup = NULL,
 		.active_fd = -1,
-		.pending_fd = -1
+		.pending_fd = -1,
 	};
 
 	*res.priv = gs;
@@ -2824,6 +2899,6 @@ void arcan_shmif_privsep(
 void arcan_shmif_privsep(
 	const char* pledge, struct shmif_privsep_node** nodes, int opts)
 {
-/* oh linux, why art though.. */
+/* oh linux, why art thou.. */
 }
 #endif
