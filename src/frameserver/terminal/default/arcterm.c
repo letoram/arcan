@@ -77,6 +77,8 @@ static void dump_help()
 		"Built-in palettes:\n"
 		"default, solarized, solarized-black, solarized-white, srcery\n"
 		"---------\t-----------\t----------------\n"
+		"Environment variables:\n"
+		"ARCAN_TERMINAL_EXEC : run value through /bin/sh -c instead of shell\n"
 	);
 }
 
@@ -267,6 +269,15 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 
 	for (size_t i = 1; i < NSIG; i++)
 		signal(i, SIG_DFL);
+
+/* special case, ARCAN_TERMINAL_EXEC and ARCAN_TERMINAL_ARGV skips the normal
+ * shell setup and switches to a custom binary + arg instead */
+	if (getenv("ARCAN_TERMINAL_EXEC")){
+		char* args[] = {"/bin/sh", "-c" , getenv("ARCAN_TERMINAL_EXEC"), NULL};
+		unsetenv("ARCAN_TERMINAL_EXEC");
+		execv(args[0], args);
+		exit(EXIT_FAILURE);
+	}
 
 	execvp(args[0], args);
 	exit(EXIT_FAILURE);
