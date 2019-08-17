@@ -203,6 +203,7 @@ static struct a12_state* a12_setup(struct a12_context_options* opt)
 		return NULL;
 
 
+	res->opts = opt;
 	res->cookie = 0xfeedface;
 	return res;
 }
@@ -258,6 +259,23 @@ struct a12_state* a12_open(struct a12_context_options* opt)
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 
 	return S;
+}
+
+void
+a12_channel_shutdown(struct a12_state* S, const char* last_words)
+{
+	if (!S || S->cookie != 0xfeedface){
+		return;
+	}
+
+	uint8_t outb[CONTROL_PACKET_SIZE] = {0};
+	step_sequence(S, outb);
+	outb[16] = S->out_channel;
+	outb[17] = COMMAND_SHUTDOWN;
+	snprintf((char*)(&outb[18]), CONTROL_PACKET_SIZE - 19, "%s", last_words);
+
+	a12int_trace(A12_TRACE_SYSTEM, "channel open, add control packet");
+	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 }
 
 void

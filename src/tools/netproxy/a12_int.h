@@ -166,6 +166,8 @@ struct blob_out {
 
 struct a12_state;
 struct a12_state {
+	struct a12_context_options* opts;
+
 /* we need to prepend this when we build the next MAC */
 	uint8_t last_mac_out[MAC_BLOCK_SZ];
 	uint8_t last_mac_in[MAC_BLOCK_SZ];

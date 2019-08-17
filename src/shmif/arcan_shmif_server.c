@@ -282,13 +282,16 @@ int shmifsrv_poll(struct shmifsrv_client* cl)
 	return CLIENT_NOT_READY;
 }
 
-void shmifsrv_free(struct shmifsrv_client* cl)
+void shmifsrv_free(struct shmifsrv_client* cl, bool full)
 {
 	if (!cl)
 		return;
 
 	if (cl->status == PENDING)
 		cl->con->dpipe = BADFD;
+
+	if (!full)
+		cl->con->flags.no_dms_free = true;
 
 	platform_fsrv_destroy(cl->con);
 	cl->status = DEAD;

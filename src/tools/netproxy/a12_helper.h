@@ -37,6 +37,10 @@ struct a12helper_opts {
  * EXIT_ events will be translated to DEVICE_NODE events, preventing the remote
  * side from closing the window */
  	const char* redirect_exit;
+
+/* a12cl_shmifsrv- specific: set to a valid local connection-point and it will
+ * be set as the DEVICE_NODE alternate for incoming connections */
+	const char* devicehint_cp;
 };
 
 /*

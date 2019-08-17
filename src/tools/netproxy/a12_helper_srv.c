@@ -264,6 +264,24 @@ static void setup_descriptor_store(struct shmifsrv_thread_data* data,
 	a12int_trace(A12_TRACE_MISSING, "descriptor_store_setup");
 }
 
+static void redirect_exit(struct shmifsrv_client* C, const char* path)
+{
+	if (!path)
+		return;
+
+	struct arcan_event ev = {
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_DEVICE_NODE,
+		.tgt.ioevs[0].iv = -1,
+		.tgt.ioevs[1].iv = 2,
+/* this will ignore the GUID setting */
+		};
+
+	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", path);
+	shmifsrv_enqueue_event(C, &ev, -1);
+	a12int_trace(A12_TRACE_EVENT, "kind=redirect:destination=%s", path);
+}
+
 /*
  * [THREADING]
  * Called from within a _lock / _unlock block
@@ -292,6 +310,27 @@ static void on_srv_event(
 			return;
 	}
 
+/*
+ * when activated (and we have another possible known connection point)
+ * set that as the client fallback, so that we can do both explicit
+ * migration and crash recovery
+ */
+	if (data->opts.devicehint_cp && chid == 0 &&
+		ev->category == EVENT_TARGET && ev->tgt.kind == TARGET_COMMAND_ACTIVATE){
+		a12int_trace(A12_TRACE_EVENT,
+			"kind=activate:fallback_to:%s", data->opts.devicehint_cp);
+		struct arcan_event ev = {
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_DEVICE_NODE,
+			.tgt.ioevs[0].iv = -1,
+			.tgt.ioevs[1].iv = 4 /* fallback */
+		};
+
+		snprintf(ev.tgt.message,
+			COUNT_OF(ev.tgt.message), "%s", data->opts.devicehint_cp);
+		shmifsrv_enqueue_event(srv_cl, &ev, -1);
+	}
+
 	a12int_trace(A12_TRACE_EVENT,
 		"kind=forward:chid=%d:eventstr=%s", chid, arcan_shmif_eventstr(ev, NULL, 0));
 
@@ -301,21 +340,13 @@ static void on_srv_event(
  * EXIT - unconditional termination is problematic, if we have a local connection-
  * point defined already, it is better to send the window there for the primary
  * segment.
+ *
+ * The thing is, we can't guarantee that the EXIT event will arrive if the
+ * channel is forcibly closed etc. so it also needs to be accounted for later
  */
  	if (data->opts.redirect_exit && chid == 0 &&
 		ev->category == EVENT_TARGET && ev->tgt.kind == TARGET_COMMAND_EXIT){
-		struct arcan_event ev = {
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_DEVICE_NODE,
-			.tgt.ioevs[0].iv = -1,
-			.tgt.ioevs[1].iv = 2,
-/* this will ignore the GUID setting */
-		};
-		snprintf(ev.tgt.message,
-			COUNT_OF(ev.tgt.message), "%s", data->opts.redirect_exit);
-		shmifsrv_enqueue_event(srv_cl, &ev, -1);
-		a12int_trace(A12_TRACE_EVENT,
-			"kind=redirect:destination=%s", data->opts.redirect_exit);
+		redirect_exit(srv_cl, data->opts.redirect_exit);
 		return;
 	}
 
@@ -421,6 +452,7 @@ static void* client_thread(void* inarg)
 /* the ext-io thread might be sleeping waiting for input, when we finished
  * one pass/burst and know there is queued data to be sent, wake it up */
 	bool dirty = false;
+
 	for(;;){
 		if (dirty){
 			write(data->kill_fd, &data->chid, 1);
@@ -527,7 +559,13 @@ out:
 	if (data->chid == 0 && data->kill_fd != -1)
 		close(data->kill_fd);
 
+/* don't kill the shmifsrv client session for the primary one */
+	if (data->chid != 0){
+		shmifsrv_free(data->C, true);
+	}
+
 	atomic_fetch_sub(&n_segments, 1);
+
 	free(inarg);
 	return NULL;
 }
@@ -688,4 +726,8 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 	if (!a12_free(S)){
 		a12int_trace(A12_TRACE_ALLOC, "error cleaning up a12 context");
 	}
+
+/* only the primary segment left, we will try and migrate that one,
+ * sending the DEVICE_NODE migrate event and performing a non-dms drop */
+	redirect_exit(C, opts.redirect_exit);
 }
