@@ -1,1 +1,1 @@
-{"version":1,"ops":[{"author":{"id":"9eb510892d1accc0c715d21128d216b2e6f74967"},"files":null,"message":"fixed with ffe64884","timestamp":1560046283,"type":3},{"author":{"id":"9eb510892d1accc0c715d21128d216b2e6f74967"},"status":2,"timestamp":1560046286,"type":4}]}
+{"version":1,"ops":[{"author":{"id":"9eb510892d1accc0c715d21128d216b2e6f74967"},"new_metadata":{"github-id":"MDU6SXNzdWU0ODE5OTE4ODE=","github-url":"https://github.com/letoram/arcan/issues/147"},"target":"63b63988a49d9c9a5e34616f206b54a4029e16c42d74b2be2aba3d510f0faba2","timestamp":1566133587,"type":8}]}
