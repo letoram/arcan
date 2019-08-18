@@ -1,1 +1,1 @@
-{"version":1,"ops":[{"author":{"id":"9eb510892d1accc0c715d21128d216b2e6f74967"},"files":null,"message":"","timestamp":1560596928,"title":"(net) missing mac / cipher / key exchange","type":1}]}
+{"version":1,"ops":[{"author":{"id":"9eb510892d1accc0c715d21128d216b2e6f74967"},"new_metadata":{"github-id":"MDU6SXNzdWU0ODE5OTE5MDU=","github-url":"https://github.com/letoram/arcan/issues/157"},"target":"67dd0588181019246b97f90422ca02025934b4e1e0561afc0bd5312a6ecb8da8","timestamp":1566133594,"type":8}]}
