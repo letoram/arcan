@@ -1,6 +1,6 @@
-#include <arcan_shmif.h>
-#include <arcan_tui.h>
-#include "arcan_tui_listwnd.h"
+#include "../../arcan_shmif.h"
+#include "../../arcan_tui.h"
+#include "../../arcan_tui_listwnd.h"
 #include <errno.h>
 #include <ctype.h>
 #include <inttypes.h>

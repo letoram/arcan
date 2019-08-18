@@ -68,6 +68,24 @@ static const char* stat_to_str(struct stat* s)
 	return ret;
 }
 
+enum intercept_type {
+	INTERCEPT_MITM_PIPE,
+	INTERCEPT_MITM_SOCKET,
+	INTERCEPT_MAP
+};
+
+static int can_intercept(struct stat* s)
+{
+	int mode = s->st_mode & S_IFMT;
+	if (mode & S_IFIFO)
+		return INTERCEPT_MITM_PIPE;
+	else if (mode & S_IFREG)
+		return INTERCEPT_MAP;
+	else if (mode & S_IFSOCK)
+		return INTERCEPT_MITM_SOCKET;
+	return -1;
+}
+
 static void fd_to_flags(char buf[static 8], int fd)
 {
 	buf[7] = '\0';
@@ -103,33 +121,53 @@ static void fd_to_flags(char buf[static 8], int fd)
 	}
 	else {
 		buf[2] = 'r';
-		buf[3] = ' ';
-	}
-
-/* try and figure out rwx */
-}
-
-static void flush_io(struct debug_ctx* ctx)
-{
-	char buf[4096];
-	char* cur = buf;
-
-	if (-1 == ctx->infd)
-		return;
-
-	ssize_t nr = read(ctx->infd, buf, 4096);
-	while (nr > 0){
-		ssize_t nw = write(ctx->outfd, cur, nr);
-		if (-1 == nw)
-			break;
-		nr -= nw;
-		cur += nw;
+	buf[3] = ' ';
 	}
 }
 
-static void run_descriptor(struct debug_ctx* dctx, int fd)
+static void run_descriptor(struct debug_ctx* dctx, int fdin, int fdout, int type)
 {
-/* dup- dance, convert to bufferwnd, select- intercept */
+	uint8_t buf[4096];
+
+	for(;;){
+/* first populate */
+		arcan_tui_erase_screen(dctx->tui, false);
+		arcan_tui_move_to(dctx->tui, 0, 0);
+		arcan_tui_printf(dctx->tui, NULL, "Waiting for data...\n");
+		arcan_tui_refresh(dctx->tui);
+
+		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, &fdin, 1, -1);
+		if (res.errc == TUI_ERRC_OK){
+			if (-1 == arcan_tui_refresh(dctx->tui) && errno == EINVAL)
+				break;
+		}
+	}
+
+/* then swap to bufferwnd: */
+
+/* on swap-out */
+
+	for(;;){
+		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
+		arcan_tui_refresh(dctx->tui);
+	}
+
+	snprintf((char*)buf, 256, "intercept(%d), waiting for data", fdin);
+
+	read(fdin, buf, 4096);
+
+
+/* alloc the pair */
+/* dup source to temporary */
+
+/* switch context to bufferwnd */
+
+/* on 'finish' calls, if it is commit, commit and flush */
+
+/* Not really safe to dup out again, so for now, spawn a thread that takes over
+ * the proxying until death. Other interesting options would be intercepting
+ * syscalls (again ptrace) and simulate the descriptor operations failing. */
+
 }
 
 static void gen_descriptor_menu(struct debug_ctx* dctx)
@@ -206,6 +244,9 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 		else {
 			char scratch[8];
 			fd_to_flags(scratch, set[i].fd);
+			if (-1 == can_intercept(&dents[count].stat))
+				lents[count].attributes |= LIST_PASSIVE;
+
 #ifdef __LINUX
 			char buf[256];
 			snprintf(buf, 256, "/proc/self/fd/%d", set[i].fd);
@@ -245,11 +286,20 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 				break;
 		}
 
+/* special treatment for STDIN, STDOUT, STDERR as well as those can go to a
+ * tty/pty, meaning that our normal 'check if pipe' won't just work by default */
+
+/* Pipes are 'easy', we can check if the end is read or write and setup the
+ * interception accordingly. Sockets have types and are bidirectional, so
+ * either we request a new window and use one for the read and one for the
+ * write end - as well as getsockopt on type etc. to figure out if the socket
+ * can actually be intercepted or not. */
 		struct tui_list_entry* ent;
 		if (arcan_tui_listwnd_status(dctx->tui, &ent)){
 			if (ent){
 /* run descriptor, with ent tag as index */
-				run_descriptor(dctx, dents[ent->tag].fd);
+				int icept = can_intercept(&dents[ent->tag].stat);
+				run_descriptor(dctx, dents[ent->tag].fd, -1, icept);
 			}
 			break;
 		}

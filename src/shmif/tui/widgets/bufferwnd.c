@@ -25,9 +25,9 @@
  * - cursor position on resize to small window is wrong
  * - cursor position/navigation on edit mode text scrolling is wrong
  */
-#include <arcan_shmif.h>
-#include <arcan_tui.h>
-#include "arcan_tui_bufferwnd.h"
+#include "../../arcan_shmif.h"
+#include "../../arcan_tui.h"
+#include "../../arcan_tui_bufferwnd.h"
 #include <errno.h>
 #include <ctype.h>
 #include <inttypes.h>

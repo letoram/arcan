@@ -195,8 +195,12 @@
  *  [ ] Content- scroll hints (for alt screen)
  *  [ ] External process- to window mapping / embedding
  *  [ ] Support library that emulates NCurses
- *  [ ] Line- attributes (LTR, RTL, shaped)
- *  [ ] Server-side rendering
+ *  [ ] readline- widget
+ *
+ * [DEPRECATION/REFACTORING]
+ *  [ ] Remove TSM
+ *  [ ] Implement line- mode as a widget and remove all scrollback/
+ *      wrapping control functions from the arcan_tui_xxx namespace
  */
 
 #include "arcan_tuidefs.h"
@@ -835,7 +839,6 @@ void arcan_tui_write(struct tui_context*,
 	uint32_t ucode, struct tui_screen_attr*);
 
 /*
- * (Helper function)
  * This converts [n] bytes from [u8] as UTF-8 into multiple UCS4 writes.
  * It is a more expensive form of arcan_tui_write. If the UTF-8 failed to
  * validate completely, the function will return false - but codepoints
@@ -846,12 +849,20 @@ bool arcan_tui_writeu8(struct tui_context*,
 	const uint8_t* u8, size_t n, struct tui_screen_attr*);
 
 /*
- * (Helper function)
  * This calculates the length of the provided character array and forwards
  * into arcan_tui_writeu8, same encoding and return rules apply.
  */
 bool arcan_tui_writestr(
 	struct tui_context*, const char* str, struct tui_screen_attr*);
+
+/*
+ * This behaves similar to the normal printf class functions, except that
+ * it takes an optional [attr] and returns the number of characters written.
+ *
+ * It expands into arcan_tui_writestr calls.
+ */
+size_t arcan_tui_printf(struct tui_context* ctx,
+	struct tui_screen_attr* attr, const char* msg, ...);
 
 /*
  * retrieve the current cursor position into the [x:col] and [y:row] field
@@ -889,7 +900,7 @@ void arcan_tui_set_color(struct tui_context* tui, int group, uint8_t rgb[3]);
  * Update the background color field for the specified group. For some groups,
  * the foreground and background color group slots are shared.
  */
-void arcan_tui_set_color(struct tui_context* tui, int group, uint8_t rgb[3]);
+void arcan_tui_set_bgcolor(struct tui_context* tui, int group, uint8_t rgb[3]);
 
 /*
  * Reset state-tracking, scrollback buffers, ...
@@ -915,60 +926,6 @@ int arcan_tui_set_flags(struct tui_context*, int tui_flags);
 void arcan_tui_reset_flags(struct tui_context*, int tui_flags);
 
 /*
- * mark the current cursor position as a tabstop
- */
-void arcan_tui_set_tabstop(struct tui_context*);
-
-/*
- * insert [n] number of empty lines with the default attributes
- */
-void arcan_tui_insert_lines(struct tui_context*, size_t);
-
-/*
- * CR / LF
- */
-void arcan_tui_newline(struct tui_context*);
-
-/*
- * remove [n] number of lines
- */
-void arcan_tui_delete_lines(struct tui_context*, size_t);
-
-/*
- * insert [n] number of empty characters
- * (amounts to a loop of _write calls with the default attributes)
- */
-void arcan_tui_insert_chars(struct tui_context*, size_t);
-void arcan_tui_delete_chars(struct tui_context*, size_t);
-
-/*
- * move cursor [n] tab-stops positions forward or backwards
- */
-void arcan_tui_tab_right(struct tui_context*, size_t);
-void arcan_tui_tab_left(struct tui_context*, size_t);
-
-/*
- * scroll the window [n] lines up or down in the scrollback buffer
- * this is a no-op in alt-screen.
- */
-void arcan_tui_scroll_up(struct tui_context*, size_t);
-void arcan_tui_scroll_down(struct tui_context*, size_t);
-
-/*
- * Determine of the specific UC4 unicode codepoint can be drawn with the
- * current settings or not. This may be a costly operation and can generate
- * false positives (but true negatives), the primary intended use is for 'icon'
- * and box-drawing like operations with simple ascii fallbacks.
- */
-bool arcan_tui_hasglyph(struct tui_context*, uint32_t);
-
-/*
- * remove the tabstop at the current position
- */
-void arcan_tui_reset_tabstop(struct tui_context*);
-void arcan_tui_reset_all_tabstops(struct tui_context*);
-
-/*
  * Hint that certain regions have scrolled:
  * (-1, -1) = (up, left), (1, 1 = down, right)
  * so that the render may smooth-scroll between the contents of the
@@ -990,19 +947,6 @@ void arcan_tui_scrollhint(
 char* arcan_tui_statedescr(struct tui_context*);
 
 /*
- * move the cursor either absolutely or a number of steps,
- * optionally by also scrolling the scrollback buffer
- */
-void arcan_tui_move_to(struct tui_context*, size_t x, size_t y);
-void arcan_tui_move_up(struct tui_context*, size_t num, bool scroll);
-void arcan_tui_move_down(struct tui_context*, size_t num, bool scroll);
-void arcan_tui_move_left(struct tui_context*, size_t);
-void arcan_tui_move_right(struct tui_context*, size_t);
-void arcan_tui_move_line_end(struct tui_context*);
-void arcan_tui_move_line_home(struct tui_context*);
-int arcan_tui_set_margins(struct tui_context*, size_t top, size_t bottom);
-
-/*
  * retrieve the current dimensions (same as accessible through _resize)
  */
 void arcan_tui_dimensions(struct tui_context*, size_t* rows, size_t* cols);
@@ -1014,15 +958,104 @@ void arcan_tui_dimensions(struct tui_context*, size_t* rows, size_t* cols);
  */
 struct tui_screen_attr arcan_tui_defattr(
 	struct tui_context*, struct tui_screen_attr* attr);
+
+/*
+ * Simple reference counter that blocks _free from cleaning up until
+ * no more references exist on the context.
+ */
 void arcan_tui_refinc(struct tui_context*);
+
+/*
+ * Simple reference counter that blocks _free from cleaning up until
+ * no more references exist on the context.
+ */
 void arcan_tui_refdec(struct tui_context*);
 
 /*
- * This behaves similar to the normal printf class functions, except that
- * it takes an optional [attr] and returns the number of characters written.
+ * move the cursor either absolutely or a number of steps,
+ * optionally by also scrolling the scrollback buffer
  */
-size_t arcan_tui_printf(struct tui_context* ctx,
-	struct tui_screen_attr* attr, const char* msg, ...);
+void arcan_tui_move_to(struct tui_context*, size_t x, size_t y);
+
+/*
+ * Determine of the specific UC4 unicode codepoint can be drawn with the
+ * current settings or not. This may be a costly operation and can generate
+ * false positives (but true negatives), the primary intended use is for 'icon'
+ * and box-drawing like operations with simple ascii fallbacks.
+ */
+bool arcan_tui_hasglyph(struct tui_context*, uint32_t);
+
+/*
+ * mark the current cursor position as a tabstop
+ * [DEPRECATE -> widget]
+ */
+void arcan_tui_set_tabstop(struct tui_context*);
+
+/*
+ * [DEPRECATE -> widget]
+ * insert [n] number of empty lines with the default attributes
+ */
+void arcan_tui_insert_lines(struct tui_context*, size_t);
+
+/*
+ * [DEPRECATE -> widget]
+ * CR / LF
+ */
+void arcan_tui_newline(struct tui_context*);
+
+/*
+ * remove [n] number of lines
+ */
+void arcan_tui_delete_lines(struct tui_context*, size_t);
+
+/* [DEPRECATE -> widget]
+ * insert [n] number of empty characters
+ * (amounts to a loop of _write calls with the default attributes)
+ */
+void arcan_tui_insert_chars(struct tui_context*, size_t);
+void arcan_tui_delete_chars(struct tui_context*, size_t);
+
+/* [DEPRECATE -> widget]
+ * move cursor [n] tab-stops positions forward or backwards
+ */
+void arcan_tui_tab_right(struct tui_context*, size_t);
+void arcan_tui_tab_left(struct tui_context*, size_t);
+
+/*
+ * [DEPRECATE -> widget]
+ * scroll the window [n] lines up or down in the scrollback
+ * buffer this is a no-op in alt-screen.
+ */
+void arcan_tui_scroll_up(struct tui_context*, size_t);
+void arcan_tui_scroll_down(struct tui_context*, size_t);
+
+/*
+ * [DEPRECATE -> widget]
+ * remove the tabstop at the current position
+ */
+void arcan_tui_reset_tabstop(struct tui_context*);
+void arcan_tui_reset_all_tabstops(struct tui_context*);
+
+/* [DEPRECATE -> widget] */
+void arcan_tui_move_up(struct tui_context*, size_t num, bool scroll);
+
+/* [DEPRECATE -> widget] */
+void arcan_tui_move_down(struct tui_context*, size_t num, bool scroll);
+
+/* [DEPRECATE -> widget] */
+void arcan_tui_move_left(struct tui_context*, size_t);
+
+/* [DEPRECATE -> widget] */
+void arcan_tui_move_right(struct tui_context*, size_t);
+
+/* [DEPRECATE -> widget] */
+void arcan_tui_move_line_end(struct tui_context*);
+
+/* [DEPRECATE -> widget] */
+void arcan_tui_move_line_home(struct tui_context*);
+
+/* [DEPRECATE -> widget] */
+int arcan_tui_set_margins(struct tui_context*, size_t top, size_t bottom);
 
 #else
 typedef struct tui_settings(* PTUIDEFAULTS)(arcan_tui_conn*, struct tui_context*);

@@ -75,9 +75,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
-#include "../arcan_shmif.h"
-#include "../arcan_tui.h"
+#include "../../arcan_shmif.h"
+#include "../../arcan_tui.h"
 #include "libtsm.h"
+
+typedef void* TTF_Font;
 #include "libtsm_int.h"
 
 static void inc_age(struct tsm_screen *con)

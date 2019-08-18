@@ -1,11 +1,17 @@
+/*
+ * This needs decoupling from tsm_ still, and only rely on the tui-
+ * exposed functions for making a copy of the active screen and the
+ * copy buffer.
+ */
+
 #include <unistd.h>
 #include <fcntl.h>
 
-#include "../arcan_shmif.h"
-#include "../arcan_tui.h"
+#include "../../arcan_shmif.h"
+#include "../../arcan_tui.h"
 
-#include "libtsm.h"
-#include "libtsm_int.h"
+#include "../screen/libtsm.h"
+#include "../screen/libtsm_int.h"
 
 #include <pthread.h>
 #include <errno.h>
@@ -15,8 +21,7 @@
 	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
 #endif
 
-typedef void TTF_Font;
-#include "tui_int.h"
+#include "../tui_int.h"
 
 struct copywnd_context {
 	struct tui_context* tui;
@@ -57,7 +62,7 @@ static uint8_t color_palette[][3] = {
 static inline void flag_cursor(struct tui_context* c)
 {
 	c->cursor_upd = true;
-	c->dirty = DIRTY_PENDING;
+	c->dirty |= DIRTY_CURSOR;
 	c->inact_timer = -4;
 }
 
@@ -489,8 +494,6 @@ void arcan_tui_copywnd(struct tui_context* src, struct arcan_shmif_cont con)
 		drop_pending(&src->pending_copy_window);
 		return;
 	}
-
-	ctx->tui->force_bitmap = src->force_bitmap;
 
 /* make the erase color match the cursor */
 	ctx->bgc[0] = ctx->tui->colors[TUI_COL_CURSOR].rgb[0];
