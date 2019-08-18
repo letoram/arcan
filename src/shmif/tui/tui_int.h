@@ -1,31 +1,13 @@
 #ifndef HAVE_TUI_INT
 
-#ifdef WITH_HARFBUZZ
-static bool enable_harfbuzz = false;
-#include <harfbuzz/hb.h>
-#include <harfbuzz/hb-ft.h>
-#include <harfbuzz/hb-icu.h>
-#endif
+#define REQID_COPYWINDOW 0xbaab
 
 enum dirty_state {
 	DIRTY_NONE = 0,
-	DIRTY_UPDATED = 1,
-	DIRTY_PENDING = 2,
-	DIRTY_PENDING_FULL = 4
+	DIRTY_CURSOR = 1,
+	DIRTY_PARTIAL = 2,
+	DIRTY_FULL = 4
 };
-
-struct shape_state {
-	unsigned ind;
-	int xofs;
-};
-
-typedef void (*tui_draw_fun)(
-		struct tui_context* tui,
-		size_t n_rows, size_t n_cols,
-		struct tui_cell* front, struct tui_cell* back,
-		struct tui_cell* custom,
-		int start_x, int start_y, bool synch
-	);
 
 /* globally shared 'local copy/paste' target where tsm- screen
  * data gets copy/pasted */
@@ -37,66 +19,49 @@ struct color {
 	bool bgset;
 };
 
+struct tui_font;
+struct tui_raster_context;
 struct tui_context;
+
 struct tui_context {
 /* cfg->nal / state control */
 	struct tsm_screen* screen;
 	struct tsm_utf8_mach* ucsconv;
+	struct tui_raster_context* raster;
 
-/* FRONT, BACK, CUSTOM ALIAS BASE. ONLY BASE IS AN ALLOCATION. used to quickly
- * detect changes when it is time to update as a means of allowing smooth
- * scrolling on single- line stepping and to cut down on possible processing
- * latency for terminals. Custom is used as a scratch buffer in order to batch
- * multiple cells with the same custom id together.
- *
- * the cell-buffers act as a cache for the draw-call cells with a front and a
- * back in order to do more advanced heuristics. These are used to detect if
- * scrolling has occured and to permit smooth scrolling, but also to get more
- * efficient draw-calls for custom-tagged cells, for more advanced font
- * rendering, to work around some of the quirks with tsms screen and get
- * multi-threaded rendering going.
- */
+/* vsynch- mutex here is a quick little hack to allow some feedback into
+ * the progression of the _refresh() call as there are places where preemption
+ * should work ok */
+	pthread_mutex_t* vsynch;
+
+/* BASE is the only allocation here, and front/back are aliases into it.  We
+ * use the double- buffering as a refactoring stage to eventually get rid of
+ * the tsm_screen implementation and layer scrollback mode on top of the screen
+ * implementation rather than mixing them like it is done now. The base/front
+ * are compared and built into the packed tui_rasterer screen format */
 	struct tui_cell* base;
 	struct tui_cell* front;
 	struct tui_cell* back;
-	struct tui_cell* custom;
-	shmif_pixel* blitbuffer;
-	int blitbuffer_dirty;
 	uint8_t fstamp;
 
-	unsigned flags;
-	bool focus, inactive, subseg;
-	int inact_timer;
+/* rbuf is used to package / convert the representation in base(front|back)
+ * to a line format that can be used to forward to a raster engine. The size
+ * is derived when allocating base
+ */
+	uint8_t* rbuf;
 
-#ifndef SHMIF_TUI_DISABLE_GPU
-	bool is_accel;
-#endif
+	unsigned flags;
+	bool inactive, subseg;
+	int inact_timer;
 
 /* font rendering / tracking - we support one main that defines cell size
  * and one secondary that can be used for alternative glyphs */
-#ifndef SIMPLE_RENDERING
-	TTF_Font* font[2];
-#ifdef WITH_HARFBUZZ
-	hb_font_t* hb_font;
-#endif
-#endif
-	struct tui_font_ctx* font_bitmap;
-	bool force_bitmap;
-	bool dbl_buf;
-
-/*
- * Two different kinds of drawing functions depending on the font-path taken.
- * One 'normal' mono-space and one 'extended' (expensive) where you also get
- * non-monospace, kerning and possibly shaping/ligatures
- */
-	tui_draw_fun draw_function;
-	tui_draw_fun shape_function;
+	struct tui_font* font[2];
 
 	float font_sz; /* size in mm */
 	int font_sz_delta; /* user requested step, pt */
 	int hint;
 	int render_flags;
-	int font_fd[2];
 	float ppcm;
 	enum dirty_state dirty;
 
@@ -111,6 +76,7 @@ struct tui_context {
 	bool mouse_forward;
 	bool scroll_lock;
 	bool select_townd;
+	bool defocus;
 
 /* if we receive a label set in mouse events, we switch to a different
  * interpreteation where drag, click, dblclick, wheelup, wheeldown work */
@@ -119,36 +85,28 @@ struct tui_context {
 /* tracking when to reset scrollback */
 	int sbofs;
 
-/* set at config-time, enables scrollback for normal- line operations,
- * 0: disabled,
- *>0: step-size (px)
- */
-	unsigned smooth_scroll;
-	int scroll_backlog;
-	int in_scroll;
-	int scroll_px;
-	int smooth_thresh;
-
 /* color, cursor and other drawing states */
 	int rows;
 	int cols;
 	int cell_w, cell_h, pad_w, pad_h;
 	int modifiers;
-	bool got_custom; /* track if we have any on-screen dynamic cells */
 
 	struct color colors[TUI_COL_INACTIVE+1];
 
-	int cursor_x, cursor_y; /* last cached position */
 	bool cursor_off; /* current blink state */
 	bool cursor_hard_off; /* user / state toggle */
 	bool cursor_upd; /* invalidation, need to draw- old / new */
 	int cursor_period; /* blink setting */
+	struct {
+		bool active;
+		size_t row, col;
+	} last_cursor;
 	enum tui_cursors cursor; /* visual style */
 
 	uint8_t alpha;
 
 /* track last time counter we did update on to avoid overdraw */
-	tsm_age_t age;
+	uint_fast32_t age;
 
 /* upstream connection */
 	struct arcan_shmif_cont acon;
@@ -166,5 +124,97 @@ struct tui_context {
 /* caller- event handlers */
 	struct tui_cbcfg handlers;
 };
+
+/* ========================================================================== */
+/*                       SCREEN (tui_screen.c) related code                   */
+/* ========================================================================== */
+
+/*
+ * redraw and synchronise the output with our external source.
+ */
+int tui_screen_refresh(struct tui_context* tui);
+
+/*
+ * cell dimensions or cell quantities has changed, rebuild the display
+ */
+void tui_screen_resized(struct tui_context* tui);
+
+/* ========================================================================== */
+/*                  DISPATCH  (tui_dispatch.c) related code                   */
+/* ========================================================================== */
+
+/*
+ * Poll the incoming event queue on the tui segment, process TARGET events
+ * and forward IO events to
+ */
+void tui_event_poll(struct tui_context* tui);
+
+/*
+ * necessary on setup and when having been 'reset'
+ */
+void tui_queue_requests(struct tui_context* tui, bool clipboard, bool ident);
+
+/* ========================================================================== */
+/*                  CLIPBOARD (tui_clipboard.c) related code                  */
+/* ========================================================================== */
+
+/*
+ * Process events from the clipboard (if any), called from the main API impl.
+ * as part of the process stage if a clipboard / pasteboard is currently
+ * allocated.
+ */
+void tui_clipboard_check(struct tui_context* tui);
+
+/*
+ * Set the selected text with len as the current clipboard output contents
+ */
+bool tui_clipboard_push(struct tui_context* tui, const char* sel, size_t len);
+
+
+/* ========================================================================== */
+/*                    INPUT (tui_input.c) related code                        */
+/* ========================================================================== */
+
+/*
+ * Send LABELHINTs that mach the set of implemented inputs and bindings.
+ */
+void tui_expose_labels(struct tui_context* tui);
+
+/*
+ * Should be routed into this function from the dispatch
+ */
+void tui_input_event(
+	struct tui_context* tui, arcan_ioevent* ioev, const char* label);
+
+/* ========================================================================== */
+/*                    FONT (tui_fontmgr.c) related code                       */
+/* ========================================================================== */
+
+/*
+ * consume a FONTHINT event and apply the changes to the tui context
+ */
+void tui_fontmgmt_fonthint(struct tui_context* tui, struct arcan_tgtevent* ev);
+
+/*
+ * setup / copy the font state from one context to another
+ */
+void tui_fontmgmt_inherit(struct tui_context* tui, struct tui_context* parent);
+
+/*
+ * setup the font stat from the 'start' state provided from the connection
+ */
+void tui_fontmgmt_setup(
+	struct tui_context* tui, struct arcan_shmif_initial* init);
+
+/*
+ * check if any of the attached fonts has a glyph for the specific codepoint
+ */
+bool tui_fontmgmt_hasglyph(struct tui_context* tui, uint32_t cp);
+
+/*
+ * Call whenever the properties of the underlying fonts etc. has changed,
+ * may cause loading / unloading / build etc.
+ */
+void tui_fontmgmt_invalidate(struct tui_context* tui);
 
 #endif

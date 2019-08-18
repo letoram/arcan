@@ -1,4 +1,3 @@
-
 # This is used by the main arcan build system to define the shmif platform
 # and install targets, but also for some external projects that need to
 # do an in-source build of shmif- and its platform (automated build/
@@ -122,23 +121,31 @@ set_property(SOURCE ${ASD}/platform/posix/fdpassing.c
 set_property(SOURCE ${ASD}/platform/posix/fdpassing.c
 	APPEND PROPERTY COMPILE_DEFINITIONS NONBLOCK_RECV)
 
-#
-# FIXME:
-# We should have a linker script here that filters out all the non-TUI defined
-# symbols so we don't collide with programs linking TSM* (however unlikely).
-# Also, make the _ttf bits optional again (but explicit disable)
-#
 set(SHMIF_TUI_SOURCES
+# core implementation
 	${ASD}/shmif/tui/tui.c
-	${ASD}/shmif/tui/tui_copywnd.c
-	${ASD}/shmif/tui/tui_bufferwnd.c
-	${ASD}/shmif/tui/tui_listwnd.c
-	${ASD}/shmif/tui/tui_draw.h
-	${ASD}/shmif/tui/tsm_screen.c
-	${ASD}/shmif/tui/tsm_unicode.c
-	${ASD}/shmif/tui/shl_htable.c
-	${ASD}/shmif/tui/wcwidth.c
+	${ASD}/shmif/tui/core/clipboard.c
+	${ASD}/shmif/tui/core/input.c
+	${ASD}/shmif/tui/core/setup.c
+	${ASD}/shmif/tui/core/screen.c
+	${ASD}/shmif/tui/core/dispatch.c
+
+# text rasterization and metadata (client side rendering)
+	${ASD}/shmif/tui/raster/pixelfont.c
+	${ASD}/shmif/tui/raster/raster.c
+	${ASD}/shmif/tui/raster/fontmgmt.c
+
+# helper code
+	${ASD}/shmif/tui/screen/tsm_screen.c
+	${ASD}/shmif/tui/screen/tsm_unicode.c
+	${ASD}/shmif/tui/screen/shl_htable.c
+	${ASD}/shmif/tui/screen/wcwidth.c
 	${ASD}/engine/arcan_ttf.c
+
+# support widgers
+	${ASD}/shmif/tui/widgets/copywnd.c
+	${ASD}/shmif/tui/widgets/bufferwnd.c
+	${ASD}/shmif/tui/widgets/listwnd.c
 )
 
 set(SHMIF_SERVER_SOURCES
@@ -189,18 +196,6 @@ if (SHMIF_TUI_ACCEL)
 else()
 	set(TUI_LIBRARIES arcan_shmif)
 	set (TUI_DEFINITIONS SHMIF_TUI_DISABLE_GPU)
-endif()
-
-if (NOT FORCE_NOHARFBUZZ)
-	find_package(HarfBuzz)
-	if (HARFBUZZ_FOUND)
-		amsg("${CL_YEL}shmif-tui${CL_RST}\t${CL_GRN}shaping:harfbuzz${CL_RST}")
-		list(APPEND TUI_LIBRARIES ${HARFBUZZ_LIBRARIES})
-		list(APPEND TUI_INCLUDE_DIRS ${HARFBUZZ_INCLUDE_DIRS})
-		list(APPEND TUI_DEFINITIONS WITH_HARFBUZZ)
-	else()
-		amsg("${CL_YEL}shmif-tui${CL_RST}\t${CL_RED}harfbuzz disabled${CL_RST}")
-	endif()
 endif()
 
 # STATIC_FREETYPE is inherited from the outer scope, means we have our own build

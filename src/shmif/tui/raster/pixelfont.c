@@ -1,15 +1,23 @@
 /*
  * Single-header simple raster drawing functions
  */
+#include <stdbool.h>
+#include <stdint.h>
+#include <inttypes.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 /*
  * builtin- fonts to load on init, see tui_draw_init()
  */
+#include "../../arcan_shmif.h"
 #include "terminus_small.h"
 #include "terminus_medium.h"
 #include "terminus_large.h"
+#include "pixelfont.h"
+#include "draw.h"
 
-#include "utf8.c"
+#include "../screen/utf8.c"
 #include "uthash.h"
 
 struct glyph_ent {
@@ -24,35 +32,6 @@ struct bitmap_font {
 	size_t n_glyphs;
 	struct glyph_ent glyphs[0];
 };
-
-static bool draw_box(struct arcan_shmif_cont* c,
-	int x, int y, int w, int h, shmif_pixel col)
-{
-	if (x >= c->addr->w || y >= c->addr->h)
-		return false;
-
-	if (x < 0){
-		w += x;
-		x = 0;
-	}
-
-	if (y < 0){
-		h += y;
-		y = 0;
-	}
-
-	if (w < 0 || h < 0)
-		return false;
-
-	int ux = x + w > c->addr->w ? c->addr->w : x + w;
-	int uy = y + h > c->addr->h ? c->addr->h : y + h;
-
-	for (int cy = y; cy != uy; cy++)
-		for (int cx = x; cx != ux; cx++)
-			c->vidp[ cy * c->addr->w + cx ] = col;
-
-	return true;
-}
 
 static bool psf2_decode_header(
 	const uint8_t* const buf, size_t buf_sz,
@@ -165,18 +144,23 @@ struct font_entry {
 	struct glyph_ent* ht;
 };
 
-struct tui_font_ctx {
+struct tui_pixelfont {
 	size_t n_fonts;
 	struct font_entry* active_font;
 	struct font_entry fonts[];
 };
+
+bool tui_pixelfont_valid(uint8_t* buf, size_t buf_sz)
+{
+	return psf2_decode_header(buf, buf_sz, NULL, NULL, NULL, NULL, NULL);
+}
 
 /*
  * if there's a match for this size slot, then we share the hash lookup and the
  * new font act as an override for missing glyphs. This means that it is not
  * safe to just free a font (not that we do that anyhow).
  */
-static bool load_bitmap_font(struct tui_font_ctx* ctx,
+bool tui_pixelfont_load(struct tui_pixelfont* ctx,
 	uint8_t* buf, size_t buf_sz, size_t px_sz, bool merge)
 {
 	struct glyph_ent** ht = NULL;
@@ -233,7 +217,7 @@ static bool load_bitmap_font(struct tui_font_ctx* ctx,
 	return true;
 }
 
-static void drop_font_context (struct tui_font_ctx* ctx)
+static void drop_font_context (struct tui_pixelfont* ctx)
 {
 	if (!ctx)
 		return;
@@ -241,8 +225,12 @@ static void drop_font_context (struct tui_font_ctx* ctx)
 	for (size_t i = 0; i < ctx->n_fonts; i++){
 		if (!ctx->fonts[i].font)
 			continue;
+
+/* some font slots share hash table with others, don't free those,
+ * the real table slot won't be marked as shared */
 		if (!ctx->fonts[i].shared_ht)
 			HASH_CLEAR(hh, ctx->fonts[i].ht);
+
 		free(ctx->fonts[i].font);
 		ctx->fonts[i].font = NULL;
 		ctx->fonts[i].sz = 0;
@@ -256,8 +244,7 @@ static void drop_font_context (struct tui_font_ctx* ctx)
  * pick the nearest font for the requested size slot, set the sizes
  * used in *w and *h.
  */
-static void switch_bitmap_font(
-	struct tui_font_ctx* ctx, size_t px, size_t* w, size_t* h)
+void tui_pixelfont_setsz(struct tui_pixelfont* ctx, size_t px, size_t* w, size_t* h)
 {
 	int dist = abs((int)px - (int)ctx->active_font->sz);
 
@@ -273,26 +260,42 @@ static void switch_bitmap_font(
 	*h = ctx->active_font->font->h;
 }
 
-static struct tui_font_ctx* tui_draw_init(size_t lim)
+void tui_pixelfont_close(struct tui_pixelfont* ctx)
+{
+	for (size_t i = 0; i < ctx->n_fonts; i++){
+		if (!ctx->fonts[i].font)
+			continue;
+
+		if (!ctx->fonts[i].shared_ht)
+			HASH_CLEAR(hh, ctx->fonts[i].ht);
+
+			free(ctx->fonts[i].font);ctx->fonts[i].font = NULL;
+			ctx->fonts[i].sz = 0;
+			ctx->fonts[i].shared_ht = false;
+	}
+	free(ctx);
+}
+
+struct tui_pixelfont* tui_pixelfont_open(size_t lim)
 {
 	if (lim < 3)
 		return NULL;
 
-	size_t ctx_sz = sizeof(struct font_entry)*lim + sizeof(struct tui_font_ctx);
-	struct tui_font_ctx* res = malloc(ctx_sz);
+	size_t ctx_sz = sizeof(struct font_entry)*lim + sizeof(struct tui_pixelfont);
+	struct tui_pixelfont* res = malloc(ctx_sz);
 	if (!res)
 		return NULL;
 	memset(res, '\0', ctx_sz);
 	res->n_fonts = lim;
 
 	bool fontstatus = false;
-	fontstatus |= load_bitmap_font(res,
+	fontstatus |= tui_pixelfont_load(res,
 		Lat15_Terminus32x16_psf, Lat15_Terminus32x16_psf_len, 32, false);
 
-	fontstatus |= load_bitmap_font(res,
+	fontstatus |= tui_pixelfont_load(res,
 		Lat15_Terminus22x11_psf, Lat15_Terminus22x11_psf_len, 22, false);
 
-	fontstatus |= load_bitmap_font(res,
+	fontstatus |= tui_pixelfont_load(res,
 		Lat15_Terminus12x6_psf, Lat15_Terminus12x6_psf_len, 12, false);
 
 	if (!fontstatus){
@@ -307,7 +310,7 @@ static struct tui_font_ctx* tui_draw_init(size_t lim)
 	return res;
 }
 
-static bool has_ch_u32(struct tui_font_ctx* ctx, uint32_t cp)
+bool tui_pixelfont_hascp(struct tui_pixelfont* ctx, uint32_t cp)
 {
 	if (!ctx->active_font)
 		return false;
@@ -317,10 +320,10 @@ static bool has_ch_u32(struct tui_font_ctx* ctx, uint32_t cp)
 	return gent != NULL;
 }
 
-static void draw_ch_u32(struct tui_font_ctx* ctx,
-	struct arcan_shmif_cont* c, uint32_t cp,
-	int x, int y, shmif_pixel fg, shmif_pixel bg,
-	int maxx, int maxy)
+void tui_pixelfont_draw(
+	struct tui_pixelfont* ctx, shmif_pixel* c, size_t pitch,
+	uint32_t cp, int x, int y, shmif_pixel fg, shmif_pixel bg,
+	int maxx, int maxy, bool bgign)
 {
 	struct font_entry* font = ctx->active_font;
 	struct glyph_ent* gent;
@@ -337,7 +340,8 @@ static void draw_ch_u32(struct tui_font_ctx* ctx,
 			w = maxx - x;
 		if (h + y >= maxy)
 			h = maxy - y;
-		draw_box(c, x, y, w, h, bg);
+		if (!bgign)
+			draw_box_px(c, pitch, maxx, maxy, x, y, w, h, bg);
 		return;
 	}
 
@@ -365,7 +369,7 @@ static void draw_ch_u32(struct tui_font_ctx* ctx,
 		return;
 
 	for (; row < font->font->h && y < maxy; row++, y++){
-		shmif_pixel* pos = &c->vidp[c->pitch * y + x];
+		shmif_pixel* pos = &c[y * pitch + x];
 		for (int col = colst; col < font->font->w; bind++){
 /* padding bits will just be 0 */
 			int lx = x;
@@ -374,7 +378,12 @@ static void draw_ch_u32(struct tui_font_ctx* ctx,
 				bit >= 0 && col < font->font->w && lx < maxx;
 				bit--, col++, lx++)
 			{
-				pos[col] = ((1 << bit) & gent->data[bind]) ? fg : bg;
+				if ((1 << bit) & gent->data[bind]){
+					pos[col] = fg;
+				}
+				else if (!bgign){
+					pos[col] = bg;
+				}
 			}
 		}
 	}

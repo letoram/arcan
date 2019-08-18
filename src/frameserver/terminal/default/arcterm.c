@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <pthread.h>
 #include <poll.h>
+#include <unistd.h>
 #include "tsm/libtsm.h"
 #include "tsm/libtsm_int.h"
 #include "tsm/shl-pty.h"
@@ -17,11 +18,18 @@ static struct {
 	struct tui_context* screen;
 	struct tsm_vte* vte;
 	struct shl_pty* pty;
+	pthread_mutex_t synch;
+
 	pid_t child;
 
-	bool alive;
+	volatile bool alive;
 	long last_input;
-} term;
+	bool single_step;
+	int dirtyfd;
+
+} term = {
+	.synch = PTHREAD_MUTEX_INITIALIZER
+};
 
 static inline void trace(const char* msg, ...)
 {
@@ -34,23 +42,47 @@ static inline void trace(const char* msg, ...)
 #endif
 }
 
-/*
- * process one round of PTY input, this is non-blocking
- */
-void pump_pty()
+extern int arcan_tuiint_dirty(struct tui_context* tui);
+
+void* pump_pty()
 {
-	int count = 10;
-	while (term.alive && count--){
-		int rv = shl_pty_dispatch(term.pty);
-		if (rv == -ENODEV || rv == -EPIPE){
+	int fd = shl_pty_get_fd(term.pty);
+
+	while (term.alive){
+		char buf[4096];
+		ssize_t nr = read(fd, buf, 4096);
+		if (-1 == nr){
+			if (errno == EAGAIN || errno == EINTR)
+				continue;
 			term.alive = false;
-		}
-		else if (rv == -EAGAIN){
-			continue;
-		}
-		else
 			break;
+		}
+
+/* shl_pty_write calls are mutex- protected,
+ * so vte_input -> write- callback -> mutex
+ */
+		pthread_mutex_lock(&term.synch);
+		tsm_vte_input(term.vte, buf, nr);
+		tsm_vte_update_debug(term.vte);
+		pthread_mutex_unlock(&term.synch);
+
+/* wake the other thread */
+		if (arcan_tuiint_dirty(term.screen)){
+			write(term.dirtyfd, &(char){'1'}, 1);
+		}
 	}
+	return NULL;
+}
+
+/*
+ * read from the pty- thread and feed the state machine
+ */
+static void* terminal_thread(void* in)
+{
+	while (term.alive){
+
+	}
+	return NULL;
 }
 
 static void dump_help()
@@ -72,7 +104,6 @@ static void dump_help()
 		"             \t           \t vline, uline)\n"
 		" blink       \t ticks     \t set blink period, 0 to disable (default: 12)\n"
 		" login       \t [user]    \t login (optional: user, only works for root)\n"
-		" deadline    \t ms        \t milliseconds between updated (default: 20)\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 		"Built-in palettes:\n"
 		"default, solarized, solarized-black, solarized-white, srcery\n"
@@ -140,7 +171,12 @@ static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 	uint8_t buf[5] = {0};
 	trace("utf8-input: %s", u8);
 	memcpy(buf, u8, len >= 5 ? 4 : len);
-	if (shl_pty_write(term.pty, (char*) buf, len) < 0)
+
+//	int rv = shl_pty_write(term.pty, (char*) buf, len);
+	int fd = shl_pty_get_fd(term.pty);
+	int rv = write(fd, u8, len);
+
+	if (rv < 0)
 		term.alive = false;
 
 	return true;
@@ -174,7 +210,9 @@ static void read_callback(struct shl_pty* pty,
 static void write_callback(struct tsm_vte* vte,
 	const char* u8, size_t len, void* data)
 {
-	shl_pty_write(term.pty, u8, len);
+	int fd = shl_pty_get_fd(term.pty);
+	write(fd, u8, len);
+	//shl_pty_write(term.pty, u8, len);
 }
 
 /* for future integration with more specific shmif- features when it
@@ -301,6 +339,16 @@ static bool on_subst(struct tui_context* tui,
 	return res;
 }
 
+static bool on_label_input(
+	struct tui_context* T, const char* label, bool active, void* tag)
+{
+	if (!active || strcmp(label, "SINGLE_STEP") == 0){
+		term.single_step = true;
+	}
+
+	return false;
+}
+
 static void on_exec_state(struct tui_context* tui, int state, void* tag)
 {
 	if (state == 0)
@@ -316,6 +364,8 @@ static int parse_color(const char* inv, uint8_t outv[4])
 	return sscanf(inv, "%"SCNu8",%"SCNu8",%"SCNu8",%"SCNu8,
 		&outv[0], &outv[1], &outv[2], &outv[3]);
 }
+
+extern void arcan_tuiint_set_vsynch(struct tui_context* tui, pthread_mutex_t* mut);
 
 int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 {
@@ -333,22 +383,17 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_SUCCESS;
 	}
 
-	int deadline_step = 20;
-	if (arg_lookup(args, "deadline", 0, &val)){
-		deadline_step = strtol(val, NULL, 10);
-		if (deadline_step <= 0 || deadline_step > 100)
-			deadline_step = 20;
-	}
-
 	struct tui_cbcfg cbcfg = {
 		.input_mouse_motion = on_mouse_motion,
 		.input_mouse_button = on_mouse_button,
 		.input_utf8 = on_u8,
 		.input_key = on_key,
+	//	.input_label = on_label,
 		.utf8 = on_utf8_paste,
 		.resized = on_resize,
 		.subwindow = on_subwindow,
-		.exec_state = on_exec_state
+		.exec_state = on_exec_state,
+//		.query_label = on_label_query
 /*
  * for advanced rendering, but not that interesting
  * .substitute = on_subst
@@ -420,7 +465,11 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 /* we're inside child */
 	if (term.child == 0){
-		char* argv[] = {get_shellenv(), "-i", NULL};
+		char* argv[] = {get_shellenv(), "-i", NULL, NULL};
+
+		if (arg_lookup(args, "cmd", 0, &val) && val){
+			argv[2] = strdup(val);
+		}
 
 /* special case handling for "login", this requires root */
 		if (arg_lookup(args, "login", 0, &val)){
@@ -445,48 +494,41 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 #endif
 
 	term.alive = true;
-	int ptyfd = shl_pty_get_fd(term.pty);
 
-/* the better latency tactic would be to align against the falling edge, but
- * with a pending render refactor to move it upstream, any synch will be much
- * more deterministic so better to wait for that */
-	while (term.alive){
-		unsigned long deadline = arcan_timemillis() + 20;
-		for (;;){
-/* When is the next reasonable deadline for synch? take (60Hz, 16.6667ms) and
- * subtract the exponential moving average of the last rendering time + some
- * jitter padding. Since we don't have that value, just substitute in the next
- * best thing */
-			int delta = deadline - arcan_timemillis();
-			if (delta < 0)
-				break;
+/* spawn a thread that deals with feeding the tsm specifically, then we run
+ * our normal event look constantly in the normal process / refresh style. */
+	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	arcan_tuiint_set_vsynch(term.screen, &term.synch);
 
-			struct tui_process_res res =
-				arcan_tui_process(&term.screen, 1, &ptyfd, 1, 4);
+/* pipe pair used to signal between the threads */
+	int pair[2];
+	if (-1 == pipe(pair))
+		return EXIT_FAILURE;
 
-			pump_pty();
+	term.dirtyfd = pair[1];
 
-			if (res.errc < TUI_ERRC_OK || res.bad){
-				goto out;
-			}
+	if (-1 == pthread_create(&pth, &pthattr, pump_pty, NULL))
+		term.alive = false;
+
+	while(term.alive){
+		struct tui_process_res res =
+			arcan_tui_process(&term.screen, 1, &pair[0], 1, -1);
+
+		if (res.errc < TUI_ERRC_OK)
+			break;
+
+	/* flush out the signal pipe, don't care about contents */
+		if (res.ok){
+			char buf[256];
+			read(pair[0], buf, 256);
 		}
 
-/* and on an actually successful update, reset the user-input flag and timing */
 		int rc = arcan_tui_refresh(term.screen);
-		tsm_vte_update_debug(term.vte);
-
-		if (rc >= 0)
-			last_frame = arcan_timemillis();
-		else if (rc == -1 && (errno == EINVAL))
-			break;
 	}
 
-/* might have been destroyed already, just in case */
-	out:
-	if (term.pty)
-		term.pty = (shl_pty_close(term.pty), NULL);
-
-/* don't care about cleaning up vte really */
 	arcan_tui_destroy(term.screen, NULL);
 
 	return EXIT_SUCCESS;

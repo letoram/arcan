@@ -85,6 +85,8 @@ void TTF_SetFontOutline(TTF_Font *font, int outline);
 int TTF_underline_top_row(TTF_Font *font);
 int TTF_underline_bottom_row(TTF_Font *font);
 
+int TTF_strikethrough_top_row(TTF_Font *font);
+
 /* Set and retrieve FreeType hinter settings */
 #define TTF_HINTING_NORMAL  3
 #define TTF_HINTING_LIGHT  2

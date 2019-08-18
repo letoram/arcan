@@ -229,19 +229,8 @@ pid_t shl_pty_open(struct shl_pty **out,
 	pty->fn_input = fn_input;
 	pty->fn_input_data = fn_input_data;
 
-#if defined(__APPLE__) || defined(__linux__)
-	fd = posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC | O_NONBLOCK);
-#else
 	fd = posix_openpt(O_RDWR | O_NOCTTY);
-	if (fd != -1){
-		int flags = fcntl(fd, F_GETFL);
-		if (-1 != flags)
-			fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-		flags = fcntl(fd, F_GETFD);
-		if (-1 != flags)
-			fcntl(fd, F_SETFD, flags | O_CLOEXEC);
-	}
-#endif
+	int flags = fcntl(fd, F_GETFD);
 
 	if (fd < 0)
 		return -errno;
@@ -445,7 +434,9 @@ int shl_pty_write(struct shl_pty *pty, const char *u8, size_t len)
 	if (!shl_pty_is_open(pty))
 		return -ENODEV;
 
-	return shl_ring_push(&pty->out_buf, u8, len);
+	int rv = shl_ring_push(&pty->out_buf, u8, len);
+	pty_write(pty);
+	return rv;
 }
 
 int shl_pty_signal(struct shl_pty *pty, int sig)
