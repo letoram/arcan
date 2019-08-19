@@ -77,7 +77,7 @@
 --
 -- @note: "segment_request" {
 -- string:kind, number:width, number:height, number:parent,
--- string:type, string:(split-dir | position-dir)}
+-- string:segkind, string:(split-dir | position-dir)}
 -- The source would like an additional segment to work with, see
 -- ref:accept_target for how to accept the request. If the request is not
 -- responded to during the scope of the handler execution, the request will
