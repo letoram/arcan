@@ -748,7 +748,7 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 				.tgt.ioevs[0] = src->vfcount++
 			};
 
-			src->shm.ptr->vready = true;
+			atomic_store(&src->shm.ptr->vready, 1);
 			platform_fsrv_pushevent(src, &ev);
 
 			if (src->desc.callback_framestate)

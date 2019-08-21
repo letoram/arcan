@@ -435,8 +435,8 @@ int arcan_frameserver_releaselock(struct arcan_frameserver* tgt);
  * helper functions that tie together the platform/.../frameserver.c
  * with allocation, member matching, presets etc.
  */
-arcan_frameserver* platform_launch_listen_external(
-	const char* key, const char* pw, int fd, mode_t mode, uintptr_t tag);
+arcan_frameserver* platform_launch_listen_external(const char* key,
+	const char* pw, int fd, mode_t mode, size_t w, size_t h, uintptr_t tag);
 
 struct arcan_frameserver* platform_launch_fork(
 	struct frameserver_envp* setup, uintptr_t tag);

@@ -908,7 +908,10 @@ bool arcan_lua_launch_cp(
 	}
 
 	struct arcan_frameserver* res =
-		platform_launch_listen_external(cp, key, -1, ARCAN_SHM_UMASK, LUA_NOREF);
+		platform_launch_listen_external(cp,
+		key, -1, ARCAN_SHM_UMASK, 32, 32, LUA_NOREF
+	);
+
 	if (!res){
 		arcan_warning("couldn't listen on connection point (%s)\n", cp);
 		return false;
@@ -4299,8 +4302,8 @@ static bool tgtevent(arcan_vobj_id dst, arcan_event ev)
 	return false;
 }
 
-static void push_view(lua_State* ctx, struct arcan_extevent* ev,
-	struct arcan_frameserver* fsrv, int top)
+static void push_view(lua_State* ctx,
+	struct arcan_extevent* ev, struct arcan_frameserver* fsrv, int top)
 {
 	tblbool(ctx, "invisible", ev->viewport.invisible != 0, top);
 	tblbool(ctx, "focus", ev->viewport.focus != 0, top);
@@ -4922,7 +4925,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		luactx.cb_source_kind = CB_SOURCE_NONE;
 /* special: external connection + connected->registered sequence finished */
 		if (preroll)
-			do_preroll(ctx, fsrv->tag, ev->ext.source, fsrv->aid);
+			do_preroll(ctx, fsrv->tag, fsrv->vid, fsrv->aid);
 	}
 	else if (ev->category == EVENT_FSRV){
 		arcan_vobject* vobj = arcan_video_getobject(ev->fsrv.video);
@@ -7380,8 +7383,7 @@ static int targethandler(lua_State* ctx)
 		offsetof(arcan_event, fsrv.video),
 		sizeof(arcan_vobj_id), &id,
 		offsetof(arcan_event, fsrv.otag),
-		sizeof(dummy.fsrv.otag),
-		&ref
+		sizeof(dummy.fsrv.otag), &ref
 	);
 
 	LUA_ETRACE("target_updatehandler", NULL, 0);
@@ -7403,6 +7405,7 @@ static int targetpacify(lua_State* ctx)
 		fsrv->tag = (intptr_t) LUA_NOREF;
 
 		arcan_frameserver_free(fsrv);
+		vobj->feed.ffunc = FFUNC_NULLFRAME;
 		vobj->feed.state.ptr = NULL;
 		vobj->feed.state.tag = ARCAN_TAG_IMAGE;
 	}
@@ -8265,7 +8268,7 @@ static int targetreset(lua_State* ctx)
  */
 static arcan_frameserver* spawn_subsegment(
 	struct arcan_frameserver* parent, enum ARCAN_SEGID segid,
-	uint32_t reqid, int w, int h)
+	uint32_t reqid, size_t w, size_t h)
 {
 /* clip to limits */
 	if (w > ARCAN_SHMPAGE_MAXW)
@@ -8362,6 +8365,9 @@ static int targetalloc(lua_State* ctx)
 	int cb_ind = 2;
 	char* pw = NULL;
 
+/* this should be cleaned up in the platform layer to store the string
+ * in the fsrv, then use hash(key | challenge) and send challenge on
+ * connect. */
 	if (lua_type(ctx, 2) == LUA_TSTRING){
 		pw = (char*) luaL_checkstring(ctx, 2);
 		size_t pwlen = strlen(pw);
@@ -8373,8 +8379,21 @@ static int targetalloc(lua_State* ctx)
 
 			pw[PP_SHMPAGE_SHMKEYLIM-1] = '\0';
 		}
-		else
-			cb_ind = 3;
+		cb_ind = 3;
+	}
+
+/* height fields are typically not useful before activation except for the case
+ * of a primary with encode type (that can't be dynamically resized). */
+	size_t init_w = 32;
+	size_t init_h = 32;
+	if (lua_type(ctx, cb_ind) == LUA_TNUMBER){
+		if (lua_type(ctx, cb_ind+1) != LUA_TNUMBER){
+			arcan_fatal(
+				"target_alloc(), argument error, expected number (height)\n");
+		}
+		init_w = luaL_checknumber(ctx, cb_ind+0);
+		init_h = luaL_checknumber(ctx, cb_ind+1);
+		cb_ind += 2;
 	}
 
 	luaL_checktype(ctx, cb_ind, LUA_TFUNCTION);
@@ -8427,14 +8446,14 @@ static int targetalloc(lua_State* ctx)
 
 		if (luactx.pending_socket_label &&
 			strcmp(key, luactx.pending_socket_label) == 0){
-			newref = platform_launch_listen_external(
-				key, pw, luactx.pending_socket_descr, ARCAN_SHM_UMASK, ref);
+			newref = platform_launch_listen_external(key,
+				pw, luactx.pending_socket_descr, ARCAN_SHM_UMASK, init_w, init_h, ref);
 			arcan_mem_free(luactx.pending_socket_label);
 			luactx.pending_socket_label = NULL;
 		}
 		else
 			newref = platform_launch_listen_external(
-				key, pw, -1, ARCAN_SHM_UMASK, ref);
+				key, pw, -1, ARCAN_SHM_UMASK, init_w, init_h, ref);
 
 		if (!newref){
 			LUA_ETRACE("target_alloc", "couldn't listen on external", 0);
@@ -8447,7 +8466,7 @@ static int targetalloc(lua_State* ctx)
 		vfunc_state* state = arcan_video_feedstate(srcfsrv);
 		if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
 			newref = spawn_subsegment(
-				(arcan_frameserver*) state->ptr, segid, tag, 0, 0);
+				(arcan_frameserver*) state->ptr, segid, tag, init_w, init_h);
 		}
 		else
 			arcan_fatal("target_alloc() specified source ID doesn't "
@@ -9408,47 +9427,48 @@ static int spawn_recsubseg(lua_State* ctx,
 	arcan_frameserver* rv =
 		spawn_subsegment(fsrv, SEGID_ENCODER, 0, 0, 0);
 
-	if(rv){
-		vfunc_state fftag = {
-			.tag = ARCAN_TAG_FRAMESERV,
-			.ptr = rv
-		};
-
-		if (lua_isfunction(ctx, 9) && !lua_iscfunction(ctx, 9)){
-			lua_pushvalue(ctx, 9);
-			rv->tag = luaL_ref(ctx, LUA_REGISTRYINDEX);
-		}
-
-/* shmpage prepared, force dimensions based on source object
- * using a single audio/video buffer */
-		arcan_vobject* dobj = arcan_video_getobject(did);
-		struct arcan_shmif_page* shmpage = rv->shm.ptr;
-		shmpage->w = dobj->vstore->w;
-		shmpage->h = dobj->vstore->h;
-		rv->vbuf_cnt = rv->abuf_cnt = 1;
-		arcan_shmif_mapav(shmpage, rv->vbufs, 1, dobj->vstore->w *
-			dobj->vstore->h * sizeof(shmif_pixel), rv->abufs, 1, 32768);
-		arcan_video_alterfeed(did, FFUNC_AVFEED, fftag);
-
-/* similar restrictions and problems as in spawn_recfsrv */
-		rv->alocks = aidlocks;
-		arcan_aobj_id* base = aidlocks;
-			while(base && *base){
-			void* hookfun;
-			arcan_audio_hookfeed(*base++, rv, arcan_frameserver_avfeedmon, &hookfun);
-		}
-
-		if (naids > 1)
-			arcan_frameserver_avfeed_mixer(rv, naids, aidlocks);
-
-		lua_pushvid(ctx, rv->vid);
-		trace_allocation(ctx, "encode", rv->vid);
-		return 1;
+	if (!rv){
+		arcan_warning("spawn_recsubseg() -- "
+			"operation failed, couldn't attach output segment.\n");
+		return 0;
 	}
 
-	arcan_warning("spawn_recsubseg() -- operation failed, "
-		"couldn't attach output segment.\n");
-	return 0;
+	vfunc_state fftag = {
+		.tag = ARCAN_TAG_FRAMESERV,
+		.ptr = rv
+	};
+
+/* grab the requested callback and tag with */
+	if (lua_isfunction(ctx, 9) && !lua_iscfunction(ctx, 9)){
+		lua_pushvalue(ctx, 9);
+		rv->tag = luaL_ref(ctx, LUA_REGISTRYINDEX);
+	}
+
+/* shmpage prepared, force dimensions based on source with a single buffer*/
+	arcan_vobject* dobj = arcan_video_getobject(did);
+	struct arcan_shmif_page* shmpage = rv->shm.ptr;
+	shmpage->w = dobj->vstore->w;
+	shmpage->h = dobj->vstore->h;
+	rv->vbuf_cnt = rv->abuf_cnt = 1;
+	arcan_shmif_mapav(shmpage, rv->vbufs, 1, dobj->vstore->w *
+		dobj->vstore->h * sizeof(shmif_pixel), rv->abufs, 1, 32768);
+	arcan_video_alterfeed(did, FFUNC_AVFEED, fftag);
+
+/* similar restrictions and problems as in spawn_recfsrv with the
+ * hooking chicken-and-egg problem */
+	rv->alocks = aidlocks;
+	arcan_aobj_id* base = aidlocks;
+		while(base && *base){
+		void* hookfun;
+		arcan_audio_hookfeed(*base++, rv, arcan_frameserver_avfeedmon, &hookfun);
+	}
+
+	if (naids > 1)
+		arcan_frameserver_avfeed_mixer(rv, naids, aidlocks);
+
+	lua_pushvid(ctx, rv->vid);
+	trace_allocation(ctx, "encode", rv->vid);
+	return 1;
 }
 
 static int spawn_recfsrv(lua_State* ctx,
@@ -9552,6 +9572,52 @@ static int spawn_recfsrv(lua_State* ctx,
 	});
 
 	return 0;
+}
+
+static int renderbind(lua_State* ctx)
+{
+	LUA_TRACE("rendertarget_bind");
+	arcan_vobject* rt_vobj;
+	arcan_vobject* fsrv_vobj;
+
+	arcan_vobj_id rt = luaL_checkvid(ctx, 1, &rt_vobj);
+	arcan_vobj_id fsrvid = luaL_checkvid(ctx, 2, &fsrv_vobj);
+
+	struct rendertarget* rtgt = arcan_vint_findrt(rt_vobj);
+	if (!rtgt)
+		arcan_fatal("rendertarget_bind(), 1[src] vid is not a rendertarget\n");
+
+	if (fsrv_vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
+		arcan_fatal("rendertarget_bind(), 2[dst] vid is not a frameserver\n");
+
+	struct arcan_frameserver* fsrv = fsrv_vobj->feed.state.ptr;
+	if (fsrv->segid != SEGID_ENCODER && fsrv->segid != SEGID_CLIPBOARD_PASTE)
+		arcan_fatal("rendertarget_bind(), 2[dst] is not an encoder type\n");
+
+/* synch the src- size with the dst size */
+	agp_resize_rendertarget(rtgt->art, fsrv->desc.width, fsrv->desc.height);
+	rtgt->readback = rtgt->refresh;
+	rtgt->readcnt = abs(rtgt->readcnt);
+	fsrv->vid = rt;
+
+/* bind the new rendertarget as recipient */
+	arcan_video_alterfeed(rt, FFUNC_AVFEED,
+		(vfunc_state){ .tag = ARCAN_TAG_FRAMESERV, .ptr = fsrv});
+
+/* and pacify the source video (can be deleted) */
+	arcan_video_alterfeed(fsrvid, FFUNC_NULLFRAME,
+		(vfunc_state){ .tag = ARCAN_TAG_IMAGE, .ptr = NULL});
+
+/* rewrite pending events so that they won't get attributed to the source */
+	arcan_event dummy;
+	arcan_event_repl(arcan_event_defaultctx(), EVENT_EXTERNAL,
+		offsetof(arcan_event, ext.source),
+		sizeof(dummy.ext.source), &fsrvid,
+		offsetof(arcan_event, ext.source),
+		sizeof(dummy.ext.source), &rt
+	);
+
+	LUA_ETRACE("rendertarget_bind", NULL, 0);
 }
 
 static int procset(lua_State* ctx)
@@ -9765,7 +9831,7 @@ static int arcanset(lua_State* ctx)
 	if (ARCAN_OK != arcan_video_setuprendertarget(did, 0,
 		pollrate, false, RENDERTARGET_COLOR))
 	{
-		arcan_warning("define_recordtarget(), setup rendertarget failed.\n");
+		arcan_warning("define_arcantarget(), setup rendertarget failed.\n");
 		lua_pushboolean(ctx, false);
 		LUA_ETRACE("define_arcantarget", NULL, 1);
 	}
@@ -9776,7 +9842,7 @@ static int arcanset(lua_State* ctx)
 		lua_pop(ctx, 1);
 
 		if (setvid == ARCAN_VIDEO_WORLDID)
-			arcan_fatal("recordset(), using WORLDID as a direct source is "
+			arcan_fatal("define_arcantarget(), using WORLDID as a direct source is "
 				"not permitted, create a null_surface and use image_sharestorage. ");
 
 		arcan_video_attachtorendertarget(did, setvid, true);
@@ -9798,7 +9864,7 @@ static int recordset(lua_State* ctx)
 {
 	LUA_TRACE("define_recordtarget");
 
-	arcan_vobject* dvobj;
+	arcan_vobject* dvobj, (* dfsrv_vobj);
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, &dvobj);
 
 	if (dvobj->vstore->txmapped != TXSTATE_TEX2D)
@@ -9810,7 +9876,7 @@ static int recordset(lua_State* ctx)
 	arcan_vobj_id dfsrv = ARCAN_EID;
 
 	if (lua_type(ctx, 2) == LUA_TNUMBER){
-		dfsrv = luaL_checkvid(ctx, 2, NULL);
+		dfsrv = luaL_checkvid(ctx, 2, &dfsrv_vobj);
 	}
 	else {
 		resf = luaL_checkstring(ctx, 2);
@@ -9899,7 +9965,7 @@ static int recordset(lua_State* ctx)
 
 			if (arcan_audio_kind(setaid) != AOBJ_STREAM &&
 				arcan_audio_kind(setaid) != AOBJ_CAPTUREFEED){
-				arcan_warning("recordset(%d), unsupported AID source type,"
+				arcan_warning("recordset(), unsupported AID source type,"
 					" only STREAMs currently supported. Audio recording disabled.\n");
 				free(aidlocks);
 				aidlocks = NULL;
@@ -9928,9 +9994,16 @@ static int recordset(lua_State* ctx)
 		argl = ol;
 	}
 
-	rc = dfsrv != ARCAN_EID ?
-		spawn_recsubseg(ctx, did, dfsrv, naids, aidlocks) :
-		spawn_recfsrv(ctx, did, dfsrv, naids, aidlocks, argl, resf);
+/* We are spawning into a vid, meaning to create a new subsegment,
+ * bind to the rendertarget and push into the client */
+	if (dfsrv != ARCAN_EID){
+		rc = spawn_recsubseg(ctx, did, dfsrv, naids, aidlocks);
+	}
+/* We are not spawning into a vid, meaning that a new encode_ frameserver
+ * setup is requeted, similar path like the others, but with the added
+ * problem of launching and inheriting */
+	else
+		rc = spawn_recfsrv(ctx, did, dfsrv, naids, aidlocks, argl, resf);
 
 cleanup:
 	free(argl);
@@ -11469,9 +11542,9 @@ static const luaL_Reg tgtfuns[] = {
 {"rendertarget_vids",          rendertarget_vids        },
 {"recordtarget_gain",          recordgain               },
 {"rendertarget_detach",        renderdetach             },
+{"rendertarget_bind",          renderbind               },
 {"rendertarget_attach",        renderattach             },
 {"rendertarget_noclear",       rendernoclear            },
-{"rendertarget_reconfigure",   renderreconf             },
 {"rendertarget_id",            rendertargetid           },
 {"rendertarget_range",         rendertargetrange        },
 {"load_movie",                 loadmovie                },

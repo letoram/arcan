@@ -76,8 +76,8 @@
 -- collisions as that namespace is only 16-bits.
 --
 -- @note: "segment_request" {
--- string:kind, number:width, number:height, number:parent,
--- string:segkind, string:(split-dir | position-dir)}
+-- string:segkind, number:width, number:height, number:parent,
+-- string:(split-dir | position-dir)}
 -- The source would like an additional segment to work with, see
 -- ref:accept_target for how to accept the request. If the request is not
 -- responded to during the scope of the handler execution, the request will
@@ -156,9 +156,9 @@
 -- If wildcard is set, the frameserver do not care about type information, otherwise
 -- an extensions field is provided with a ; separated list of extensions.
 --
--- @note: "registered", {kind, title, guid} - notice that the underlying engine
+-- @note: "registered", {segkind, title, guid} - notice that the underlying engine
 -- has completed negotiating with the frameserver and it identified its primary
--- segment as 'kind', which can be one of the following: "lightweight arcan",
+-- segment as 'segkind', which can be one of the following: "lightweight arcan",
 -- "multimedia", "terminal", "tui", "popup", "icon", "remoting", "game", "hmd-l",
 -- "hmd-r", "hmd-sbs-lr", "vm", "application", "clipboard",
 -- "browser", "encoder", "titlebar", "sensor", "service", "bridge-x11",

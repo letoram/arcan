@@ -1418,12 +1418,12 @@ int platform_fsrv_prepare(struct arcan_frameserver* ctx, int* clsock)
 	return ARCAN_OK;
 }
 
-struct arcan_frameserver* platform_fsrv_listen_external(
-	const char* key, const char* auth, int fd, mode_t mode, uintptr_t tag)
+struct arcan_frameserver* platform_fsrv_listen_external(const char* key,
+	const char* auth, int fd, mode_t mode, size_t w, size_t h, uintptr_t tag)
 {
 	arcan_frameserver* newseg = platform_fsrv_alloc();
 	newseg->sockmode = mode;
-	if (!prepare_segment(newseg, SEGID_UNKNOWN, 32, 32, true, key, fd, tag)){
+	if (!prepare_segment(newseg, SEGID_UNKNOWN, w, h, true, key, fd, tag)){
 		arcan_mem_free(newseg);
 		return NULL;
 	}

@@ -31,8 +31,8 @@
  */
 struct arcan_event;
 struct arcan_frameserver* platform_fsrv_listen_external(
-	const char* key, const char* auth,
-	int fd, mode_t mode, uintptr_t tag);
+	const char* key, const char* auth,	int fd, mode_t mode,
+	size_t w, size_t h, uintptr_t tag);
 
 /*
  * Build a frameserver context that can be used either in-process or forwarded

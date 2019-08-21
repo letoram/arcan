@@ -107,7 +107,8 @@ struct shmifsrv_client* shmifsrv_allocate_connpoint(
 	if (!res)
 		return NULL;
 
-	res->con = platform_fsrv_listen_external(name, key, fd, permission, 0);
+	res->con =
+		platform_fsrv_listen_external(name, key, fd, permission, 32, 32, 0);
 
 	if (!res->con){
 		free(res);
