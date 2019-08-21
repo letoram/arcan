@@ -94,11 +94,12 @@ int arcan_shmif_poll(struct arcan_shmif_cont*, struct arcan_event* dst);
 int arcan_shmif_wait(struct arcan_shmif_cont*, struct arcan_event* dst);
 
 /*
- * wait for an incoming event for a maximum of ~time_us, and update it with
- * the amount of microseconds left (if any) on the timer.
- * If the call timed out, [time_us] will be 0.
- * returns !0 when an event was successfully dequeued and placed in *dst
- * 0 when the shmif_cont is unable to process events (terminal state)
+ * Wait for an incoming event for a maximum of ~time_ms, and update it with
+ * the amount of milliseconds left (if any) on the timer.
+ *
+ * This is a convenience wrapper combining the behavior of some low precision
+ * OS wait primitive and that of arcan_shmif_wait. The amount of milliseconds
+ * left (if any) will be stored back into time_ms.
  */
 int arcan_shmif_wait_timed(
 	struct arcan_shmif_cont*, unsigned* time_us, struct arcan_event* dst);

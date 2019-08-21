@@ -29,6 +29,7 @@
 #include "shmif_privext.h"
 
 #include <signal.h>
+#include <poll.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -803,6 +804,11 @@ done:
 	return *ks || noks ? rv : -1;
 }
 
+static bool is_output_segment(enum ARCAN_SEGID segid)
+{
+	return (segid == SEGID_ENCODER || segid == SEGID_CLIPBOARD_PASTE);
+}
+
 static void drop_initial(struct arcan_shmif_cont* c)
 {
 	if (!(c && c->priv && c->priv->valid_initial))
@@ -841,13 +847,29 @@ int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
 }
 
 int arcan_shmif_wait_timed(
-	struct arcan_shmif_cont* c, unsigned* time_us, struct arcan_event* dst)
+	struct arcan_shmif_cont* c, unsigned* time_ms, struct arcan_event* dst)
 {
 	if (!c || !c->priv || !c->priv->alive)
 		return 0;
 
 	if (c->priv->valid_initial)
 		drop_initial(c);
+
+	unsigned beg = arcan_timemillis();
+
+	int timeout = *time_ms;
+	struct pollfd pfd = {
+		.fd = c->epipe,
+		.events = POLLIN | POLLERR | POLLHUP | POLLNVAL
+	};
+
+	int rv = poll(&pfd, 1, timeout);
+	int elapsed = arcan_timemillis() - beg;
+	*time_ms = (elapsed < 0 || elapsed > timeout) ? 0 : timeout - elapsed;
+
+	if (1 == rv){
+		return arcan_shmif_wait(c, dst);
+	}
 
 	return 0;
 }
@@ -1549,15 +1571,17 @@ static bool step_a(struct arcan_shmif_cont* ctx)
 	return lock;
 }
 
-unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
-	enum arcan_shmif_sigmask mask)
+unsigned arcan_shmif_signal(
+	struct arcan_shmif_cont* ctx, enum arcan_shmif_sigmask mask)
 {
 	struct shmif_hidden* priv = ctx->priv;
-	if (!ctx || !ctx->addr)
+	if (!ctx || !ctx->addr || !priv || !ctx->vidp)
 		return 0;
 
-	if (!ctx->vidp)
+	if (is_output_segment(priv->type)){
+		atomic_store(&ctx->addr->vready, 0);
 		return 0;
+	}
 
 /* to protect against some callers being stuck in a 'just signal
  * as a means of draining buffers' */
@@ -2381,11 +2405,6 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 	cont->priv->valid_initial = true;
 	arcan_shmif_drop(cont);
 	return false;
-}
-
-static bool is_output_segment(enum ARCAN_SEGID segid)
-{
-	return (segid == SEGID_ENCODER || segid == SEGID_CLIPBOARD_PASTE);
 }
 
 struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,

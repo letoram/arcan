@@ -120,7 +120,6 @@ void arcan_event_repl(struct arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY cat,
 	if (!ctx->local)
 		return;
 
-
 	unsigned front = *ctx->front;
 
 	while (front != *ctx->back){
@@ -181,7 +180,7 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
  * there shouldn't be any functions that has this behavior. Still, broken
  * ordering is better than running out of space. */
 
- if (((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
+	 if (((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
 		if (ctx->drain){
 /* very rare / impossible, but safe-guard against future bad code */
 			if ((ctx->state_fl & EVSTATE_IN_DRAIN) > 0){

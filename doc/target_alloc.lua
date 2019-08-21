@@ -1,29 +1,35 @@
 -- target_alloc
--- @short: Setup a subsegment or external connection
--- @inargs: key or vid, [passcode], callback, [tag or type]
+-- @short: Bind an external connection point or force-push a subsegment
+-- @inargs: string:cpoint, function:callback
+-- @inargs: string:cpoint, string:passkey, function:callback
+-- @inargs: string:cpoint, string:passkey, int:w, int:h, function:callback
+-- @inargs: string:cpoint, int:w, int:h, function:callback
+-- @inargs: vid:fsrv
+-- @inargs: vid:fsrv, function:callback
+-- @inargs: vid:fsrv, int:w, int:h, function:callback
+-- @inargs: vid:fsrv, function:callback, string:type
+-- @inargs: vid:fsrv, int:w, int:h, function:callback, string:type
+-- @inargs: vid:fsrv, function:callback, number:tag
+-- @inargs: vid:fsrv, int:w, int:h, function:callback, string:type
 -- @outargs: vid, aid
--- @longdescr: By default, frameserver connections are single-segment and
--- authoritative, meaning that they can only be explicitly created and
--- setup by a user through the related functions (net_open, launch_target, ...)
--- and that they are either input (provides data to arcan) or output
--- (receive datastreams from arcan for purposes such as recording).
--- target_alloc is then used to attach additional input segments
--- to a pre-existing frameserver connection (by specifying the vid of said
--- frameserver). When communicating these segments, it is also possible to
--- specify a *tag* (default: 0) which should correspond to the tag value
--- in an segment_request kind target event in a frameserver callback, or
--- a *type* with a string that matches any of the possible subsegment
--- types from the list: (debug, accessibility). Both of tag/type are
--- primarily for specialized applications, and the accept_target
--- mechanism should be preferred for other types.
--- target_alloc is also used to allow non-authoritative connections that
--- follow a more traditional client server model. By specifying a
--- key string, a listening connection is prepared in a shared namespace (OS
--- dependent). By specifying ARCAN_CONNPATH (and optionally, a verification
--- passcode in ARCAN_CONNKEY) a program that uses the arcan_shmif interface
--- (e.g. the default frameservers) can connect and be treated like any
--- other frameserver.
--- @note: To allocate new output segments, see define_recordtarget.
+-- This functions controls server-side initiated allocation of segments or connection
+-- points. If the initial argument is of the *cpoint* form, the allocation will be a
+-- named connection point to which a client can connect.
+-- If the initial argument is of the *fsrv* form, a subsegment will be allocated and
+-- pushed to the client. This form is more specialised and intended as a server-side
+-- means of requesting and probing for client- side support for alternate views of
+-- whatever the *fsrv* connection current presents.
+-- The form and use for *callback* is the same as in ref:launch_target, please
+-- refer to that function for detailed documentation.
+-- The optional *passkey* form is an aditional authentication string that the
+-- connecting client is expected to be able to authenticate against in a platform
+-- defined function, typically as a simple string comparison or challenge-response
+-- and is not intended as a strong means of authentication. For such cases, the
+-- ref:launch_target mechanism combined with the target/configuration database
+-- is preferred, as only the connection itself will be authenticated, the contents
+-- can still be subject to interception and tampering by a local attacker.
+-- @note: To push new output segments,
+-- see ref:define_recordtarget, ref:define_nulltarget and ref:define_feedtarget.
 -- @note: Each call that allows a non-authoritative connection is only valid
 -- once, if a connection fail to verify OR a connection is completed,
 -- the connection point will be removed.

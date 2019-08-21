@@ -225,11 +225,11 @@ static void append_env(struct arcan_strarr* darr,
 	darr->data[step] = NULL;
 }
 
-arcan_frameserver* platform_launch_listen_external(
-	const char* key, const char* pw, int fd, mode_t mode, uintptr_t tag)
+arcan_frameserver* platform_launch_listen_external(const char* key,
+	const char* pw, int fd, mode_t mode, size_t w, size_t h, uintptr_t tag)
 {
 	arcan_frameserver* res =
-		platform_fsrv_listen_external(key, pw, fd, mode, tag);
+		platform_fsrv_listen_external(key, pw, fd, mode, w, h, tag);
 
 	if (!res)
 		return NULL;
