@@ -42,6 +42,8 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 		set(ENCODE_DEFS
 			${ENCODE_DEFS}
 			HAVE_VNCSERVER
+			WANT_H264_ENC
+			WANT_H264_DEC
 		)
 		set(ENC_FOUND "vnc ${ENC_FOUND}")
 	else()
@@ -67,11 +69,21 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 	amsg("${CL_YEL}encode-opts\t${CL_RED}${ENC_MISSING}${CL_RST}")
 	set(ENCODE_SOURCES
 		${CMAKE_CURRENT_SOURCE_DIR}/encode.c
+		${CMAKE_CURRENT_SOURCE_DIR}/a12.c
 		${CMAKE_CURRENT_SOURCE_DIR}/encode_presets.h
 		${CMAKE_CURRENT_SOURCE_DIR}/encode_presets.c
 		${CMAKE_CURRENT_SOURCE_DIR}/img.c
 		${PLATFORM_ROOT}/../engine/arcan_img.c
 		${PLATFORM_ROOT}/posix/mem.c
+
+# needed for a12
+		${PLATFORM_ROOT}/../tools/netproxy/a12.c
+		${PLATFORM_ROOT}/../tools/netproxy/a12_decode.c
+		${PLATFORM_ROOT}/../tools/netproxy/a12_encode.c
+		${PLATFORM_ROOT}/../tools/netproxy/external/miniz/miniz.c
+		${PLATFORM_ROOT}/../tools/netproxy/external/blake2/blake2b-ref.c
+		${PLATFORM_ROOT}/../tools/netproxy/external/blake2/blake2bp-ref.c
+
 		${ENC_AUX_SOURCES}
 		PARENT_SCOPE
 	)
@@ -81,6 +93,11 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 		${ENC_AUX_INCLUDES}
 		${FFMPEG_INCLUDE_DIRS}
 		${PLATFORM_ROOT}/../engine
+
+# needed for a12
+		${PLATFORM_ROOT}/../tools/netproxy
+		${PLATFORM_ROOT}/../tools/netproxy/external/blake2
+		${PLATFORM_ROOT}/../tools/netproxy/external
 		PARENT_SCOPE
 	)
 
