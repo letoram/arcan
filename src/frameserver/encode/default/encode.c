@@ -29,6 +29,8 @@
 #include "encode_presets.h"
 #include "frameserver.h"
 
+extern void a12_serv_run(struct arg_arr*, struct arcan_shmif_cont);
+
 #ifdef HAVE_VNCSERVER
 #include "vncserver.h"
 #endif
@@ -740,6 +742,10 @@ int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			return EXIT_SUCCESS;
 		}
 #endif
+
+		if (strcmp(argval, "a12") == 0){
+			a12_serv_run(args, *cont);
+		}
 
 #ifdef HAVE_OCR
 		if (strcmp(argval, "ocr") == 0){
