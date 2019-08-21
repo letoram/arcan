@@ -720,7 +720,12 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 		arcan_event_queuetransfer(
 			arcan_event_defaultctx(), &src->inqueue, src->queue_mask, 0.5, src);
 	}
-
+/* mark that we are actually busy still */
+	else if (cmd == FFUNC_POLL){
+		if (atomic_load(&src->shm.ptr->vready)){
+			return FRV_GOTFRAME;
+		}
+	}
 /*
  * if the frameserver isn't ready to receive (semaphore unlocked) then the
  * frame will be dropped, a warning noting that the frameserver isn't fast
