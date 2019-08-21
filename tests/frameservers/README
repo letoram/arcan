@@ -66,5 +66,9 @@ lastword/ test the handling of client provided notifications, alerts
           and the last_words mechanism for conveying a termination
 					message.
 
+encfwd/ connect once as an encoder, and then as a normal client that
+        forwards what came through the encoder. A 'test' appl is
+				included to illustrate the context.
+
 dnd/ tests handling of drag and drop, cut and paste as well as global
      file open / file save
