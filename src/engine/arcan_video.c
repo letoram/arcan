@@ -4197,12 +4197,15 @@ static void expire_object(arcan_vobject* obj){
 	}
 }
 
-static inline bool process_counter(struct rendertarget* tgt,
-	int* field, int base, float fract)
+static inline bool process_counter(
+	struct rendertarget* tgt, int* field, int base, float fract)
 {
+/* manually clocked, do nothing */
 	if (0 == base)
 		return false;
 
+/* simply decrement the counter and reset it, two dimensions to
+ * the clock (tick vs frame), then abs() to convert to counter */
 	(*field)--;
 	if (*field <= 0){
 		*field = abs(base);
@@ -4214,8 +4217,8 @@ static inline bool process_counter(struct rendertarget* tgt,
 
 static inline void process_readback(struct rendertarget* tgt, float fract)
 {
-	if (!FL_TEST(tgt, TGTFL_READING) && process_counter(tgt,
-		&tgt->readcnt, tgt->readback, fract)){
+	if (!FL_TEST(tgt, TGTFL_READING) &&
+		process_counter(tgt, &tgt->readcnt, tgt->readback, fract)){
 		agp_request_readback(tgt->color->vstore);
 		FL_SET(tgt, TGTFL_READING);
 	}
@@ -5176,6 +5179,7 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 
 	FLAG_DIRTY(vobj);
 
+/* full pass regardless of there being any updates or not */
 	size_t id = arcan_video_display.ignore_dirty;
 	arcan_video_display.ignore_dirty = 1;
 	process_rendertarget(tgt, arcan_video_display.c_lerp);
@@ -5209,7 +5213,10 @@ arcan_errc arcan_video_screenshot(av_pixel** dptr, size_t* dsize)
 	return ARCAN_OK;
 }
 
-/* check outstanding readbacks, map and feed onwards */
+/* Check outstanding readbacks, map and feed onwards, ideally we should synch
+ * this with a fence - but the platform GL etc. versioning restricts things for
+ * the time being. Threaded- dispatch from the conductor is the right way
+ * forward */
 void arcan_vint_pollreadback(struct rendertarget* tgt)
 {
 	if (!FL_TEST(tgt, TGTFL_READING))
@@ -5221,11 +5228,12 @@ void arcan_vint_pollreadback(struct rendertarget* tgt)
 	if (rbb.ptr == NULL)
 		return;
 
+/* the ffunc might've disappeared, so disable the readback state */
 	if (!vobj->feed.ffunc)
 		tgt->readback = 0;
 	else{
-		arcan_ffunc_lookup(vobj->feed.ffunc)(FFUNC_READBACK,
-			rbb.ptr, rbb.w * rbb.h * sizeof(av_pixel),
+		arcan_ffunc_lookup(vobj->feed.ffunc)(
+			FFUNC_READBACK, rbb.ptr, rbb.w * rbb.h * sizeof(av_pixel),
 			rbb.w, rbb.h, 0, vobj->feed.state, vobj->cellid
 		);
 	}
@@ -5237,6 +5245,22 @@ void arcan_vint_pollreadback(struct rendertarget* tgt)
 static size_t steptgt(float fract, struct rendertarget* tgt)
 {
 	size_t transfc = 0;
+
+/* A special case here are rendertargets where the color output store
+ * is explicitly bound only to a frameserver. This requires that:
+ * 1. The frameserver is still waiting to synch
+ * 2. The object (rendertarget color vobj) is invisible
+ * 3. The backing store has a single consumer
+ */
+	struct arcan_vobject* dst = tgt->color;
+	if (dst && dst->current.opa < EPSILON && dst->vstore->refcount == 1 &&
+		dst->feed.state.tag == ARCAN_TAG_FRAMESERV &&
+		arcan_ffunc_lookup(dst->feed.ffunc)
+			(FFUNC_POLL, 0, 0, 0, 0, 0, dst->feed.state, dst->cellid) == FRV_GOTFRAME)
+	{
+		return transfc;
+	}
+
 	if (tgt->refresh < 0 && process_counter(tgt,
 		&tgt->refreshcnt, tgt->refresh, fract)){
 		process_rendertarget(tgt, fract);
