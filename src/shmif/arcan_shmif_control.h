@@ -519,8 +519,9 @@ enum shmif_ext_meta {
 /*
  * Similar to HDR16, but switch to half-size mode (R8G8B8A8 -> RGB565)
  */
-	SHMIF_META_LDEF = 32
+	SHMIF_META_LDEF = 32,
 };
+
 /*
  * The acknowledged mask is reflected in cont->adata, and may subsequently
  * affect apad and apad_type in the addr-> substructure as well.
@@ -702,6 +703,7 @@ struct arcan_shmif_cont {
  * SHMIF_RHINT_CSPACE_SRGB (non-linear color space)
  * SHMIF_RHINT_AUTH_TOK
  * SHMIF_RHINT_VSIGNAL_EV (get frame- delivery notification via STEPFRAME)
+ * SHMIF_RHINT_TPACK (video buffer contents is packed in TPACK format)
  *
  * Write only, SYNCH on shmif_resize() calls.
  */
@@ -834,7 +836,17 @@ enum rhint_mask {
  * arcan_shmif_dirty and that it is write only, you can't use it for reliable
  * blending etc. Setting this bit will invalidate SHMIF_RHINT_SUBREGION.
  */
-	SHMIF_RHINT_SUBREGION_CHAIN = 64
+	SHMIF_RHINT_SUBREGION_CHAIN = 64,
+
+/*
+ * Changes the buffer contents to be packed in the TPACK format (see
+ * tui/raster). This means that server-side will ignore the negotiated
+ * dimensions and emit / work with a cell size dependent on currently set font
+ * settings. The resize hint negotiated dimensions should thus be based on
+ * cell/row count factored with the overhead from transfer header, line header
+ * and cell conents header.
+ */
+	SHMIF_RHINT_TPACK = 128
 };
 
 struct arcan_shmif_page;

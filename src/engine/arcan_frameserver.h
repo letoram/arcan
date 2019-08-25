@@ -39,6 +39,16 @@ struct arcan_frameserver_meta {
 	int hints, pending_hints;
 	bool rz_flag;
 
+/* accumulation of (_setfont and _displayhint) calls, used to control
+ * raster- options for TPACK unpacking etc. */
+	struct {
+		size_t width;
+		size_t height;
+		float ppcm;
+		float sz;
+		int fd[2];
+	} hint;
+
 /* primarily for feedcopy */
 	uint32_t synch_ts;
 
@@ -408,6 +418,23 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 	struct frameserver_envp setup);
 
 arcan_errc arcan_frameserver_free(arcan_frameserver*);
+
+/* Update the font display data associated with the frameserver for
+ * size calculations and server- rendering of TPACK buffers */
+arcan_errc arcan_frameserver_setfont(
+	struct arcan_frameserver*, int fd, float sz, int hint, int slot);
+
+/* Update the view about the last expected hint on size and density
+ * set to a client, this affects size-calculations and server-side
+ * rendering of TPACK buffers.
+ *
+ * Constraints:
+ * - ppcm > 0
+ *
+ * Note:
+ * if [w, h] is set to 0, the values won't be updated (only density change) */
+void arcan_frameserver_displayhint(
+	struct arcan_frameserver*, size_t w, size_t h, float ppcm);
 
 /*
  * Prevent any attempt at pushing or forwarding buffers from going through.

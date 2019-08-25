@@ -50,6 +50,10 @@ struct tui_context {
  */
 	uint8_t* rbuf;
 
+/* fwd_rbuf is a temporary thing while we move to always just forward /
+ * write into the rbuf with no rendering */
+	bool rbuf_fwd;
+
 	unsigned flags;
 	bool inactive, subseg;
 	int inact_timer;

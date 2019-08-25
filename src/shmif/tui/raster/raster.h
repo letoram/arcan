@@ -126,7 +126,7 @@ struct tui_raster_context* tui_raster_setup(size_t cell_w, size_t cell_h);
 /* Resolve the [pixel_x, line-row] to cell- offset on line, if such
  * a resolution can be performed. This requires a line that has previously
  * been drawn with the SHAPED attribute set for the offsets to be available. */
-bool tui_raster_offset(
+void tui_raster_offset(
 	struct tui_raster_context* ctx, size_t px_x, size_t row, size_t* offset);
 
 /*

@@ -1,10 +1,16 @@
-struct agp_vstore;
 #include <inttypes.h>
 #include "../../arcan_shmif.h"
 #include "../../arcan_tui.h"
 #define SHMIF_TTF
 #include "arcan_ttf.h"
 #include "../tui_int.h"
+
+#ifdef NO_ARCAN_AGP
+struct agp_vstore;
+#else
+#include "platform.h"
+#endif
+
 #include "draw.h"
 #include "raster.h"
 #include "pixelfont.h"
@@ -190,12 +196,12 @@ static size_t drawglyph(struct tui_raster_context* ctx, struct cell* cell,
 	return ctx->cell_w;
 }
 
-int tui_raster_render(struct tui_raster_context* ctx,
-	struct arcan_shmif_cont* dst, uint8_t* buf, size_t buf_sz, bool update)
+static int raster_tobuf(
+	struct tui_raster_context* ctx, shmif_pixel* vidp, size_t pitch,
+	size_t max_w, size_t max_h,
+	uint16_t* x1, uint16_t* y1, uint16_t* x2, uint16_t* y2,
+	uint8_t* buf, size_t buf_sz, bool update)
 {
-	if (!ctx || !dst || !ctx->fonts[0])
-		return -1;
-
 	struct tui_raster_header hdr;
 	if (!buf_sz || buf_sz < sizeof(struct tui_raster_header))
 		return -1;
@@ -209,22 +215,6 @@ int tui_raster_render(struct tui_raster_context* ctx,
 
 	ssize_t cur_y = -1;
 	size_t last_line = 0;
-
-/* pixel- rasterization over shmif should work with one big BB until we have
- * chain-mode. server-side, the vertex buffer slicing will just stream so not
- * much to care about there */
-	if (!update){
-		dst->dirty.x1 = 0;
-		dst->dirty.y1 = 0;
-		dst->dirty.x2 = dst->w;
-		dst->dirty.y2 = dst->h;
-	}
-	else {
-		dst->dirty.x1 = dst->w;
-		dst->dirty.y1 = dst->h;
-		dst->dirty.x2 = 0;
-		dst->dirty.y2 = 0;
-	}
 
 	for (size_t i = 0; i < hdr.lines && buf_sz; i++){
 		if (buf_sz < sizeof(struct tui_raster_line))
@@ -249,9 +239,9 @@ int tui_raster_render(struct tui_raster_context* ctx,
 
 /* for full draw we fill in the skipped space with the background color */
 			if (!update){
-				draw_box(dst, 0,
-					cur_y * ctx->cell_h, dst->w,
-					ctx->cell_h * (line.start_line - cur_y), bgc
+				draw_box_px(vidp, pitch, max_w, max_h,
+					0, cur_y * ctx->cell_h,
+					ctx->cell_w, ctx->cell_h * (line.start_line - cur_y), bgc
 				);
 			}
 			cur_y = line.start_line;
@@ -261,15 +251,15 @@ int tui_raster_render(struct tui_raster_context* ctx,
  * into a local buffer, make not of actual offsets, and then two-pass with bg
  * first and then blend the glyphs on top of that - otherwise kerning, shapes
  * etc. looks bad. */
-		if (cur_y * ctx->cell_h < dst->dirty.y1){
-			dst->dirty.y1 = cur_y * ctx->cell_h;
+		if (cur_y * ctx->cell_h < *y1){
+			*y1 = cur_y * ctx->cell_h;
 		}
 
 /* Shaping, BiDi, ... missing here now while we get the rest in place */
 		size_t draw_x = line.offset * ctx->cell_w;
 
-		if (update && dst->dirty.x1 > draw_x)
-			dst->dirty.x1 = draw_x;
+		if (update && *x1 > draw_x)
+			*x1 = draw_x;
 
 		for (size_t i = line.offset; line.ncells && buf_sz >= raster_cell_sz; i++){
 			line.ncells--;
@@ -288,47 +278,103 @@ int tui_raster_render(struct tui_raster_context* ctx,
 			}
 
 /* blit or discard if OOB */
-			if (draw_x < dst->w - ctx->cell_w){
-				draw_x += drawglyph(ctx, &cell, dst->vidp, dst->pitch,
-					draw_x, cur_y * ctx->cell_h, dst->w, dst->h, true);
+			if (draw_x < max_w - ctx->cell_w){
+				draw_x += drawglyph(ctx, &cell, vidp, pitch,
+					draw_x, cur_y * ctx->cell_h, max_w, max_h, true);
 			}
 			else
 				break;
 		}
-		if (dst->dirty.x2)
-			dst->dirty.x2 = draw_x;
+		if (*x2)
+			*x2 = draw_x;
 
 		cur_y++;
 	}
 
-	dst->dirty.y2 = (last_line + 1) * ctx->cell_h;
+	*y2 = (last_line + 1) * ctx->cell_h;
 
 /* sweep through the context struct and blit the glyphs */
-	arcan_shmif_signal(dst, SHMIF_SIGVID);
 	return 1;
 }
 
-bool tui_raster_offset(
+int tui_raster_render(struct tui_raster_context* ctx,
+	struct arcan_shmif_cont* dst, uint8_t* buf, size_t buf_sz, bool update)
+{
+	if (!ctx || !dst || !ctx->fonts[0])
+		return -1;
+
+/* pixel- rasterization over shmif should work with one big BB until we have
+ * chain-mode. server-side, the vertex buffer slicing will just stream so not
+ * much to care about there */
+	if (!update){
+		dst->dirty.x1 = 0;
+		dst->dirty.y1 = 0;
+		dst->dirty.x2 = dst->w;
+		dst->dirty.y2 = dst->h;
+	}
+	else {
+		dst->dirty.x1 = dst->w;
+		dst->dirty.y1 = dst->h;
+		dst->dirty.x2 = 0;
+		dst->dirty.y2 = 0;
+	}
+
+	return raster_tobuf(ctx, dst->vidp, dst->pitch,
+		dst->w, dst->h, &dst->dirty.x1, &dst->dirty.y1,
+		&dst->dirty.y1, &dst->dirty.y2, buf, buf_sz, update
+	);
+}
+
+void tui_raster_offset(
 	struct tui_raster_context* ctx, size_t px_x, size_t row, size_t* offset)
 {
-	return false;
+	if (ctx->cell_w)
+		*offset = px_x;
+	else
+		*offset = px_x;
 }
 
 /*
  * Synch the raster state into the agp_store
+ *
+ * This is an intermediate step in doing this properly, i.e. just offloading
+ * the raster to the server side and go from there. The context still need to
+ * be built to handle / register fonts within though.
+ *
+ * A 'special' option here would be to return the offsets and widths into the
+ * buf during processing, as it will guaranteed fit - and the client side
+ * becomes easier as those won't need to be 'predicted'.
  */
-#ifdef HAVE_ARCAN_AGP
+#ifndef NO_ARCAN_AGP
 void tui_raster_renderagp(struct tui_raster_context* ctx,
 	struct agp_vstore* dst, uint8_t* buf, size_t buf_sz, bool update)
 {
-/* Should do this slightly different than the raster- version in order to
- * deal with texture_atlas + vector, where we can just throw the entire
- * sliced thing over the fence - so retain a cell grid server side and
- * just apply the unpack over it and mark as dirty */
-
 	if (!ctx || !dst)
 		return;
 
+	uint16_t x1, y1, x2, y2;
+	if (update){
+		x1 = dst->w;
+		y1 = dst->h;
+		x2 = y2 = 0;
+	}
+	else {
+		x1 = y1 = 0;
+		x2 = dst->w;
+		y2 = dst->h;
+	}
+
+	if (-1 == raster_tobuf(ctx, dst->vinf.text.raw, dst->w,
+		dst->w, dst->h, &x1, &y1, &x2, &y2, buf, buf_sz, update))
+		return;
+
+	struct stream_meta stream = {
+		.x1 = x1, .y1 = y1, .w = x2 - x1, .h = y2 - y1,
+		.dirty = true
+	};
+
+	stream = agp_stream_prepare(dst, stream, STREAM_RAW_DIRECT);
+	agp_stream_commit(dst, stream);
 }
 #endif
 

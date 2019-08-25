@@ -160,6 +160,9 @@ set(SHMIF_SERVER_SOURCES
 set_property(SOURCE ${ASD}/engine/arcan_ttf.c
 	APPEND PROPERTY COMPILE_DEFINITIONS SHMIF_TTF)
 
+set_property(SOURCE ${ASD}/shmif/tui/raster/raster.c
+	APPEND PROPERTY COMPILE_DEFINITIONS NO_ARCAN_AGP)
+
 set(TARGET_LIST
 	arcan_shmif
 	arcan_shmif_int

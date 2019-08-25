@@ -169,7 +169,8 @@ enum txstate {
 	TXSTATE_TEX2D = 1,
 	TXSTATE_DEPTH = 2,
 	TXSTATE_TEX3D = 3,
-	TXSTATE_CUBE  = 4
+	TXSTATE_CUBE  = 4,
+	TXSTATE_TPACK = 5,
 };
 
 enum storage_source {

@@ -38,7 +38,8 @@ static void resize_cellbuffer(struct tui_context* tui)
 {
 	if (tui->base){
 		free(tui->base);
-		free(tui->rbuf);
+		if (!tui->rbuf_fwd)
+			free(tui->rbuf);
 	}
 
 	tui->base = NULL;
@@ -51,10 +52,15 @@ static void resize_cellbuffer(struct tui_context* tui)
 		((tui->rows+2) * sizeof(struct tui_raster_line))
 	;
 
-	tui->rbuf = malloc(rbuf_sz);
-	if (!tui->rbuf){
-		LOG("couldn't allocate output text buffer\n");
-		return;
+	if (tui->rbuf_fwd){
+		tui->rbuf = tui->acon.vidb;
+	}
+	else {
+		tui->rbuf = malloc(rbuf_sz);
+		if (!tui->rbuf){
+			LOG("couldn't allocate output text buffer\n");
+			return;
+		}
 	}
 
 	tui->base = malloc(buffer_sz);
@@ -362,7 +368,7 @@ void tui_screen_resized(struct tui_context* tui)
 				tui->acon.w, tui->acon.h, cols, rows, tui->handlers.tag);
 	}
 
-	if (tui->pad_w || tui->pad_h){
+	if (!tui->rbuf_fwd && (tui->pad_w || tui->pad_h)){
 /* fill the padding areas if there are any, this is an intermediate step that
  * can be dropped when shmif supports the tui packing format, then we just swap
  * out rbuf with vidb */
@@ -382,7 +388,6 @@ void tui_screen_resized(struct tui_context* tui)
 	}
 
 	tui->dirty |= DIRTY_FULL;
-
 	update_screen(tui, true);
 }
 
@@ -405,12 +410,20 @@ int tui_screen_refresh(struct tui_context* tui)
 	int rv = build_raster_buffer(tui, &rbuf, &rbuf_sz);
 	tui->dirty = DIRTY_NONE;
 
-/* release the update lock so other threads may continue to update */
+/* Release the update lock so other threads may continue to update /
+ * process while we are busy forwarding and synching. */
 	if (tui->vsynch)
 		pthread_mutex_unlock(tui->vsynch);
 
+/* if we raster locally or server- side is determined by the rbuf_fwd flag */
 	if (rv){
-		tui_raster_render(tui->raster, &tui->acon, rbuf, rbuf_sz, 1 == rv);
+		if (!tui->rbuf_fwd){
+			if (1 != tui_raster_render(tui->raster,
+				&tui->acon, rbuf, rbuf_sz, 1 == rv))
+				return 0;
+		}
+
+		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
 	}
 
 	return 0;
