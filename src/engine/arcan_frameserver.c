@@ -191,8 +191,17 @@ static bool push_buffer(arcan_frameserver* src,
  * so the ~vready mask should be the bits that we want to keep. */
 	int vready = atomic_load_explicit(&src->shm.ptr->vready,memory_order_consume);
 	int vmask=~atomic_load_explicit(&src->shm.ptr->vpending,memory_order_consume);
+
 	vready = (vready <= 0 || vready > src->vbuf_cnt) ? 0 : vready - 1;
 	shmif_pixel* buf = src->vbufs[vready];
+
+/* special case, the contents is in a compressed format that can either
+ * be rasterized or deferred to on-GPU rasterization / atlas lookup, so
+ * the other setup isn't strictly needed. */
+	if (src->desc.hints & SHMIF_RHINT_TPACK){
+/* tui_raster_renderagp(ctx, store, buf,
+ * 	s->desc.width * s->desc.height * sizeof(shmif_pixel), true); */
+	}
 
 /* Need to do this check here as-well as in the regular frameserver tick
  * control because the backing store might have changed somehwere else. */
@@ -1247,4 +1256,39 @@ arcan_errc arcan_frameserver_flush(arcan_frameserver* fsrv)
 	arcan_audio_rebuild(fsrv->aid);
 
 	return ARCAN_OK;
+}
+
+arcan_errc arcan_frameserver_setfont(
+	struct arcan_frameserver* fsrv, int fd, float sz, int hint, int slot)
+{
+	if (!fsrv)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+/* first step, just track the values themselves, when we resolve the packing
+ * server side entirely and not just apply the updates, we can just reraster
+ * and immediately resize etc. but not there yet */
+	if (BADFD != fd){
+
+/* currently just dup, later switch this to a lookup function in arcan_ttf
+ * where we resolve to an inode lookup index instead, along with a ref/deref
+ * kind of tracking (gives glyph caching / reuse across frameservers) */
+	}
+
+	if (sz > 0 && sz != fsrv->desc.hint.sz){
+/* calculate the new cell size and send that based on the fonts */
+		if (slot == 0){
+
+		}
+
+		fsrv->desc.hint.sz = sz;
+	}
+	return ARCAN_OK;
+}
+
+void arcan_frameserver_displayhint(
+	struct arcan_frameserver* fsrv, size_t w, size_t h, float ppcm)
+{
+	if (!fsrv)
+		return;
+
 }

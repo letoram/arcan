@@ -7484,14 +7484,22 @@ static int targetfonthint(lua_State* ctx)
 		}
 	}
 
+	float sz = luaL_checknumber(ctx, numind);
+	int hint = luaL_checknumber(ctx, numind+1);
+	int slot = luaL_checknumber(ctx, numind+2);
+
 	arcan_event outev = {
 		.category = EVENT_TARGET,
 		.tgt.kind = TARGET_COMMAND_FONTHINT,
 		.tgt.ioevs[1].iv = fd != BADFD ? 1 : 0,
-		.tgt.ioevs[2].fv = luaL_checknumber(ctx, numind),
-		.tgt.ioevs[3].iv = luaL_checknumber(ctx, numind+1),
-		.tgt.ioevs[4].iv = luaL_optbnumber(ctx, numind+2, 0)
+		.tgt.ioevs[2].fv = sz,
+		.tgt.ioevs[3].iv = hint,
+		.tgt.ioevs[4].iv = slot
 	};
+
+/* update the font reference data inside the frameserver as well,
+ * used for segments that draw with TPACK format */
+	arcan_frameserver_setfont(fsrv, fd, sz, hint, slot);
 
 	if (fd != BADFD){
 		lua_pushboolean(ctx, platform_fsrv_pushfd(fsrv, &outev, fd));
@@ -7640,7 +7648,8 @@ static int targetdisphint(lua_State* ctx)
 {
 	LUA_TRACE("target_displayhint");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobject* vobj;
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, &vobj);
 
 	int width = luaL_checknumber(ctx, 2);
 	int height = luaL_checknumber(ctx, 3);
@@ -7719,6 +7728,13 @@ static int targetdisphint(lua_State* ctx)
 	if (width < 0 || height < 0)
 		arcan_fatal("target_disphint(%d, %d), "
 			"display dimensions must be >= 0", width, height);
+
+/* forward the rendering relevant information to the frameserver,
+ * primarily for TPACK, where the actual pixel-size is set by the
+ * server-side rasterizer */
+	if (vobj->feed.state.tag == ARCAN_TAG_FRAMESERV && vobj->feed.state.ptr){
+		arcan_frameserver_displayhint(vobj->feed.state.ptr, width, height, ppcm);
+	}
 
 	arcan_event ev = {
 		.category = EVENT_TARGET,

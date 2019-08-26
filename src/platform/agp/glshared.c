@@ -1644,17 +1644,23 @@ void agp_invalidate_mesh(struct agp_mesh_store* bs)
 void agp_activate_vstore(struct agp_vstore* s)
 {
 	struct agp_fenv* env = agp_env();
-	if (s->txmapped == TXSTATE_OFF){
+	switch (s->txmapped){
+	case TXSTATE_OFF:
 		return;
-	}
-	if (s->txmapped == TXSTATE_CUBE){
+	break;
+	case TXSTATE_CUBE:
 		env->last_store_mode = GL_TEXTURE_CUBE_MAP;
-	}
-	else if (s->txmapped == TXSTATE_TEX3D){
+	break;
+	case TXSTATE_TEX3D:
 		env->last_store_mode = GL_TEXTURE_3D;
-	}
-	else if (s->txmapped == TXSTATE_TEX2D){
-		env->last_store_mode = GL_TEXTURE_2D;
+	break;
+	case TXSTATE_TEX2D:
+		env->last_store_mode = GL_TEXTURE_2D:
+	break;
+	case TXSTATE_TPACK:
+		verbose_print("tpack support incomplete (atlas-sample)\n");
+		return;
+	break;
 	}
 
 	verbose_print("(%"PRIxPTR") vstore, glid: %u",

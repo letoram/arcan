@@ -469,6 +469,8 @@ list (APPEND SOURCES
 	engine/arcan_vr.c
 	platform/platform.h
 	platform/video_platform.h
+	shmif/tui/raster/pixelfont.c
+	shmif/tui/raster/raster.c
 )
 
 # database tool is sqlite3 + libc so less need to work

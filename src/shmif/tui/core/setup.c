@@ -8,15 +8,6 @@
 #include <inttypes.h>
 #include <math.h>
 
-const char* curslbl[] = {
-	"block",
-	"halfblock",
-	"frame",
-	"vline",
-	"uline",
-	NULL
-};
-
 void tui_queue_requests(struct tui_context* tui, bool clipboard, bool ident)
 {
 /* immediately request a clipboard for cut operations (none received ==
@@ -100,11 +91,6 @@ static void apply_arg(struct tui_settings* cfg,
 
 	if (arg_lookup(args, "bgalpha", 0, &val) && val)
 		cfg->alpha = strtoul(val, NULL, 10);
-	if (arg_lookup(args, "ppcm", 0, &val) && val){
-		float ppcm = strtof(val, NULL);
-		if (isfinite(ppcm) && ppcm > ARCAN_SHMPAGE_DEFAULT_PPCM * 0.5)
-			cfg->ppcm = ppcm;
-	}
 
 	if (arg_lookup(args, "force_bitmap", 0, &val))
 		cfg->render_flags |= TUI_RENDER_BITMAP;
@@ -296,10 +282,16 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	res->hint = set->hint;
 	res->mouse_forward = set->mouse_fwd;
 	res->cursor_period = set->cursor_period;
-	res->acon.hints = SHMIF_RHINT_SUBREGION;
 	res->cursor = set->cursor;
 	res->render_flags = set->render_flags;
 	res->font_sz = set->font_sz;
+
+/* TEMPORARY: while moving to server-side rasterization */
+	res->rbuf_fwd = getenv("TUI_RPACK");
+	if (res->rbuf_fwd)
+		res->acon.hints = SHMIF_RHINT_TPACK;
+	else
+		res->acon.hints = SHMIF_RHINT_SUBREGION;
 
 /* tui_fontmgmt is also responsible for building the raster context */
 	tui_fontmgmt_setup(res, init);
