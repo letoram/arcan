@@ -1655,7 +1655,7 @@ void agp_activate_vstore(struct agp_vstore* s)
 		env->last_store_mode = GL_TEXTURE_3D;
 	break;
 	case TXSTATE_TEX2D:
-		env->last_store_mode = GL_TEXTURE_2D:
+		env->last_store_mode = GL_TEXTURE_2D;
 	break;
 	case TXSTATE_TPACK:
 		verbose_print("tpack support incomplete (atlas-sample)\n");
