@@ -7486,7 +7486,7 @@ static int targetfonthint(lua_State* ctx)
 
 	float sz = luaL_checknumber(ctx, numind);
 	int hint = luaL_checknumber(ctx, numind+1);
-	int slot = luaL_checknumber(ctx, numind+2);
+	int slot = luaL_optbnumber(ctx, numind+2, 0);
 
 	arcan_event outev = {
 		.category = EVENT_TARGET,
