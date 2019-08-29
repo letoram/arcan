@@ -46,10 +46,6 @@ _Static_assert(PIPE_BUF >= 4, "pipe atomic write should be >= 4");
 #include "../arcan_tui.h"
 #include "screen/utf8.c"
 
-/*
- * Dislike this sort of feature enable/disable, but the dependency and extra
- * considerations from shaped text versus normal bitblt is worth it.
- */
 #include "arcan_ttf.h"
 
 #ifndef COUNT_OF

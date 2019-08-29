@@ -29,6 +29,7 @@
 #include "arcan_videoint.h"
 #include "arcan_audio.h"
 #include "arcan_audioint.h"
+#include "arcan_renderfun.h"
 
 #define FRAMESERVER_PRIVATE
 #include "arcan_frameserver.h"
@@ -36,6 +37,10 @@
 
 #include "arcan_event.h"
 #include "arcan_img.h"
+
+/* temporary workaround while migrating */
+typedef struct TTF_Font TTF_Font;
+#include "../shmif/tui/raster/raster.h"
 
 /*
  * implementation defined for out-of-order execution
@@ -195,14 +200,6 @@ static bool push_buffer(arcan_frameserver* src,
 	vready = (vready <= 0 || vready > src->vbuf_cnt) ? 0 : vready - 1;
 	shmif_pixel* buf = src->vbufs[vready];
 
-/* special case, the contents is in a compressed format that can either
- * be rasterized or deferred to on-GPU rasterization / atlas lookup, so
- * the other setup isn't strictly needed. */
-	if (src->desc.hints & SHMIF_RHINT_TPACK){
-/* tui_raster_renderagp(ctx, store, buf,
- * 	s->desc.width * s->desc.height * sizeof(shmif_pixel), true); */
-	}
-
 /* Need to do this check here as-well as in the regular frameserver tick
  * control because the backing store might have changed somehwere else. */
 	if (src->desc.width != store->w || src->desc.height != store->h ||
@@ -245,6 +242,16 @@ static bool push_buffer(arcan_frameserver* src,
 
 		src->desc.rz_flag = false;
 		explicit = true;
+	}
+
+/* special case, the contents is in a compressed format that can either
+ * be rasterized or deferred to on-GPU rasterization / atlas lookup, so
+ * the other setup isn't strictly needed. */
+	if (src->desc.hints & SHMIF_RHINT_TPACK){
+		tui_raster_renderagp(
+			arcan_renderfun_fontraster(NULL, 0, 12), store, (uint8_t*) buf,
+			src->desc.width * src->desc.height * sizeof(shmif_pixel));
+		goto commit_mask;
 	}
 
 	if (-1 != src->vstream.handle){

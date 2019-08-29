@@ -91,6 +91,23 @@ enum cursor_states {
 	CURSOR_BLINK = 3
 };
 
+struct tui_font {
+	union {
+		struct tui_pixelfont* bitmap;
+		TTF_Font* truetype;
+	};
+
+/* vector selects subtype, descriptor is kept for re-open / inherit */
+	bool vector;
+	int fd;
+	int hint;
+};
+
+enum raster_flags {
+	RPACK_IFRAME = 1,
+	RPACK_DFRAME = 2
+};
+
 /*
  * lines and cells must match the actual provided contents and contents
  * size or there will be a validation fault when submitting the buffer.
@@ -105,18 +122,6 @@ struct __attribute__((packed)) tui_raster_header {
 /* cursor state will be applied to cells with a cursor- bit set,
  * color, shape etc. may be overridden and drawn in a user- configured way */
 	uint8_t cursor_state;
-};
-
-struct tui_font {
-	union {
-		struct tui_pixelfont* bitmap;
-		TTF_Font* truetype;
-	};
-
-/* vector selects subtype, descriptor is kept for re-open / inherit */
-	bool vector;
-	int fd;
-	int hint;
 };
 
 /* Build a new raster context based on the provided set of fonts,
@@ -139,8 +144,10 @@ void tui_raster_setfont(
 /*
  * Render / signal into the specified context.
  */
+#ifndef NO_ARCAN_SHMIF
 int tui_raster_render(struct tui_raster_context* ctx,
-	struct arcan_shmif_cont* dst, uint8_t* buf, size_t buf_sz, bool delta);
+	struct arcan_shmif_cont* dst, uint8_t* buf, size_t buf_sz);
+#endif
 
 /* Called when the cell size has unexpectedly changed
  */
@@ -149,9 +156,9 @@ void tui_raster_cell_size(struct tui_raster_context* ctx, size_t w, size_t h);
 /*
  * Synch the raster state into the agp_store
  */
-#ifdef HAVE_ARCAN_AGP
+#ifndef NO_ARCAN_AGP
 void tui_raster_renderagp(struct tui_raster_context* ctx,
-	struct agp_vstore* dst, uint8_t* buf, size_t buf_sz, bool delta);
+	struct agp_vstore* dst, uint8_t* buf, size_t buf_sz);
 #endif
 
 /*
