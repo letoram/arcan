@@ -29,6 +29,13 @@
 #include "arcan_videoint.h"
 #include "arcan_ttf.h"
 
+#define shmif_pixel av_pixel
+#define TTF_Font TTF_Font*
+#define NO_ARCAN_SHMIF
+#include "../shmif/tui/raster/pixelfont.h"
+#include "../shmif/tui/raster/raster.h"
+#undef TTF_Font
+
 #include "arcan_renderfun.h"
 #include "arcan_img.h"
 
@@ -103,6 +110,7 @@ static struct text_format last_style = {
 };
 
 static unsigned int font_cache_size = ARCAN_FONT_CACHE_LIMIT;
+static struct tui_font builtin_bitmap;
 static struct font_entry font_cache[ARCAN_FONT_CACHE_LIMIT] = {
 };
 
@@ -362,6 +370,7 @@ void arcan_video_reset_fontcache()
 	static bool init;
 	if (!init){
 		init = true;
+		builtin_bitmap.bitmap = tui_pixelfont_open(64);
 		for (int i = 0; i < ARCAN_FONT_CACHE_LIMIT; i++)
 			font_cache[i].chain.fd[0] = BADFD;
 	}
@@ -1408,4 +1417,27 @@ int arcan_renderfun_stretchblit(char* src, int inw, int inh,
 	}
 
 	return 1;
+}
+
+struct tui_raster_context*
+	arcan_renderfun_fontraster(uint64_t* refs, size_t n_fonts, size_t px_sz)
+{
+	static struct tui_raster_context* temp_ctx;
+	size_t w, h;
+
+	struct tui_font* fonts[1] = {
+		&builtin_bitmap
+	};
+
+	if (!temp_ctx){
+		temp_ctx = tui_raster_setup(raster_cell_sz, raster_cell_sz);
+		tui_raster_setfont(temp_ctx, fonts, 1);
+	}
+
+/* need to scan refs in cache and have a system for to do that, right now
+ * we just match the builtin- bitmap font */
+	tui_pixelfont_setsz(builtin_bitmap.bitmap, px_sz, &w, &h);
+	tui_raster_cell_size(temp_ctx, w, h);
+
+	return temp_ctx;
 }

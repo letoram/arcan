@@ -130,3 +130,11 @@ void arcan_renderfun_reset_fontcache();
  */
 int arcan_renderfun_stretchblit(char* src, int inw, int inh,
 	uint32_t* dst, size_t dstw, size_t dsth, int flipv);
+
+/*
+ * Intermediate structure for looking up rasterization context based on inode
+ * reference -> fonts -> font-size caching.
+ */
+struct tui_raster_context;
+struct tui_raster_context*
+	arcan_renderfun_fontraster(uint64_t* refs, size_t n_fonts, size_t px_sz);

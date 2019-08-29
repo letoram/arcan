@@ -274,7 +274,7 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 			switch(inev.ext.kind){
 
 /* to protect against scripts that would happily try to just allocate/respond
- * to what a the event says, clamp this here */
+ * to what the event says, clamp this here */
 				case EVENT_EXTERNAL_SEGREQ:
 					if (inev.ext.segreq.width > PP_SHMPAGE_MAXW)
 						inev.ext.segreq.width = PP_SHMPAGE_MAXW;
@@ -285,7 +285,7 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 
 				case EVENT_EXTERNAL_BUFFERSTREAM:
 /* this assumes that we are in non-blocking state and that a single
- * CSMG on a socket is sufficient for a non-blocking recvmsg */
+ * CMSG on a socket is sufficient for a non-blocking recvmsg */
 					if (tgt->vstream.handle)
 						close(tgt->vstream.handle);
 

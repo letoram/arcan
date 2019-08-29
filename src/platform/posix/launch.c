@@ -361,6 +361,8 @@ struct arcan_frameserver* platform_launch_fork(
 		int nfd = open("/dev/null", O_RDONLY);
 		if (-1 != nfd){
 			dup2(nfd, STDIN_FILENO);
+			dup2(nfd, STDOUT_FILENO);
+			dup2(nfd, STDERR_FILENO);
 			close(nfd);
 		}
 

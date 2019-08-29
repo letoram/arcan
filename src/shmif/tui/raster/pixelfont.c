@@ -147,6 +147,7 @@ struct font_entry {
 struct tui_pixelfont {
 	size_t n_fonts;
 	struct font_entry* active_font;
+	size_t active_font_px;
 	struct font_entry fonts[];
 };
 
@@ -248,16 +249,20 @@ void tui_pixelfont_setsz(struct tui_pixelfont* ctx, size_t px, size_t* w, size_t
 {
 	int dist = abs((int)px - (int)ctx->active_font->sz);
 
-	for (size_t i = 0; i < ctx->n_fonts; i++){
-		int nd = abs((int)px-(int)ctx->fonts[i].sz);
-		if (ctx->fonts[i].font && nd < dist){
-			dist = nd;
-			ctx->active_font = &ctx->fonts[i];
+/* only search if we aren't at that size already */
+	if (ctx->active_font_px != px){
+		for (size_t i = 0; i < ctx->n_fonts; i++){
+			int nd = abs((int)px-(int)ctx->fonts[i].sz);
+			if (ctx->fonts[i].font && nd < dist){
+				dist = nd;
+				ctx->active_font = &ctx->fonts[i];
+			}
 		}
 	}
 
 	*w = ctx->active_font->font->w;
 	*h = ctx->active_font->font->h;
+	ctx->active_font_px = px;
 }
 
 void tui_pixelfont_close(struct tui_pixelfont* ctx)

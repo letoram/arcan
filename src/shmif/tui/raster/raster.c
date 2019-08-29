@@ -102,8 +102,7 @@ static void linehint(struct tui_raster_context* ctx, struct cell* cell,
 }
 
 static size_t drawglyph(struct tui_raster_context* ctx, struct cell* cell,
-	shmif_pixel* vidp, size_t pitch, int x, int y, size_t maxx, size_t maxy,
-	bool delta)
+	shmif_pixel* vidp, size_t pitch, int x, int y, size_t maxx, size_t maxy)
 {
 /* draw glyph based on font state */
 	if (!ctx->fonts[0]->vector){
@@ -200,21 +199,35 @@ static int raster_tobuf(
 	struct tui_raster_context* ctx, shmif_pixel* vidp, size_t pitch,
 	size_t max_w, size_t max_h,
 	uint16_t* x1, uint16_t* y1, uint16_t* x2, uint16_t* y2,
-	uint8_t* buf, size_t buf_sz, bool update)
+	uint8_t* buf, size_t buf_sz)
 {
 	struct tui_raster_header hdr;
 	if (!buf_sz || buf_sz < sizeof(struct tui_raster_header))
 		return -1;
 
+	bool update = false;
 	memcpy(&hdr, buf, sizeof(struct tui_raster_header));
 	buf_sz -= sizeof(struct tui_raster_header);
 	buf += sizeof(struct tui_raster_header);
 	shmif_pixel bgc = SHMIF_RGBA(hdr.bgc[0], hdr.bgc[1], hdr.bgc[2], hdr.bgc[3]);
 
+	if (hdr.flags & RPACK_DFRAME){
+		*x1 = max_w;
+		*y1 = max_h;
+		*x2 = *y2 = 0;
+		update = true;
+	}
+	else {
+		*x1 = *y1 = 0;
+		*x2 = max_w;
+		*y2 = max_h;
+	}
+
 	ctx->cursor_state = hdr.cursor_state;
 
 	ssize_t cur_y = -1;
 	size_t last_line = 0;
+	size_t draw_y = 0;
 
 	for (size_t i = 0; i < hdr.lines && buf_sz; i++){
 		if (buf_sz < sizeof(struct tui_raster_line))
@@ -236,9 +249,8 @@ static int raster_tobuf(
 
 /* skip omitted lines */
 		if (cur_y != line.start_line){
-
 /* for full draw we fill in the skipped space with the background color */
-			if (!update){
+			if (!update && cur_y != -1){
 				draw_box_px(vidp, pitch, max_w, max_h,
 					0, cur_y * ctx->cell_h,
 					ctx->cell_w, ctx->cell_h * (line.start_line - cur_y), bgc
@@ -246,19 +258,20 @@ static int raster_tobuf(
 			}
 			cur_y = line.start_line;
 		}
+		draw_y = cur_y * ctx->cell_h;
 
 /* the line- raster routine isn't right, we actually need to unpack each line
- * into a local buffer, make not of actual offsets, and then two-pass with bg
- * first and then blend the glyphs on top of that - otherwise kerning, shapes
- * etc. looks bad. */
-		if (cur_y * ctx->cell_h < *y1){
-			*y1 = cur_y * ctx->cell_h;
+ * into a local buffer, make note of actual offsets and width, and then two-pass
+ * with bg first and then blend the glyphs on top of that - otherwise kerning,
+ * shapes etc. looks bad. */
+		if (draw_y < *y1){
+			*y1 = draw_y;
 		}
 
 /* Shaping, BiDi, ... missing here now while we get the rest in place */
 		size_t draw_x = line.offset * ctx->cell_w;
 
-		if (update && *x1 > draw_x)
+		if (update && draw_x < *x1)
 			*x1 = draw_x;
 
 		for (size_t i = line.offset; line.ncells && buf_sz >= raster_cell_sz; i++){
@@ -278,50 +291,38 @@ static int raster_tobuf(
 			}
 
 /* blit or discard if OOB */
-			if (draw_x < max_w - ctx->cell_w){
-				draw_x += drawglyph(ctx, &cell, vidp, pitch,
-					draw_x, cur_y * ctx->cell_h, max_w, max_h, true);
+			if (draw_x < max_w - ctx->cell_w && draw_y + ctx->cell_h < max_h){
+				draw_x += drawglyph(ctx, &cell, vidp, pitch, draw_x, draw_y, max_w, max_h);
 			}
 			else
-				break;
+				continue;
 		}
-		if (*x2)
-			*x2 = draw_x;
+		if (update && *x2 < draw_x + ctx->cell_w)
+			*x2 = draw_x + ctx->cell_w;
 
 		cur_y++;
 	}
 
-	*y2 = (last_line + 1) * ctx->cell_h;
+	if (update){
+		*y2 = (last_line + 1) * ctx->cell_h;
+	}
 
 /* sweep through the context struct and blit the glyphs */
 	return 1;
 }
 
 int tui_raster_render(struct tui_raster_context* ctx,
-	struct arcan_shmif_cont* dst, uint8_t* buf, size_t buf_sz, bool update)
+	struct arcan_shmif_cont* dst, uint8_t* buf, size_t buf_sz)
 {
-	if (!ctx || !dst || !ctx->fonts[0])
+	if (!ctx || !dst || !ctx->fonts[0] || buf_sz < sizeof(struct tui_raster_header))
 		return -1;
 
 /* pixel- rasterization over shmif should work with one big BB until we have
  * chain-mode. server-side, the vertex buffer slicing will just stream so not
  * much to care about there */
-	if (!update){
-		dst->dirty.x1 = 0;
-		dst->dirty.y1 = 0;
-		dst->dirty.x2 = dst->w;
-		dst->dirty.y2 = dst->h;
-	}
-	else {
-		dst->dirty.x1 = dst->w;
-		dst->dirty.y1 = dst->h;
-		dst->dirty.x2 = 0;
-		dst->dirty.y2 = 0;
-	}
-
 	return raster_tobuf(ctx, dst->vidp, dst->pitch,
 		dst->w, dst->h, &dst->dirty.x1, &dst->dirty.y1,
-		&dst->dirty.y1, &dst->dirty.y2, buf, buf_sz, update
+		&dst->dirty.x2, &dst->dirty.y2, buf, buf_sz
 	);
 }
 
@@ -347,28 +348,19 @@ void tui_raster_offset(
  */
 #ifndef NO_ARCAN_AGP
 void tui_raster_renderagp(struct tui_raster_context* ctx,
-	struct agp_vstore* dst, uint8_t* buf, size_t buf_sz, bool update)
+	struct agp_vstore* dst, uint8_t* buf, size_t buf_sz)
 {
-	if (!ctx || !dst)
+	if (!ctx || !dst || buf_sz < sizeof(struct tui_raster_header))
 		return;
 
 	uint16_t x1, y1, x2, y2;
-	if (update){
-		x1 = dst->w;
-		y1 = dst->h;
-		x2 = y2 = 0;
-	}
-	else {
-		x1 = y1 = 0;
-		x2 = dst->w;
-		y2 = dst->h;
-	}
 
 	if (-1 == raster_tobuf(ctx, dst->vinf.text.raw, dst->w,
-		dst->w, dst->h, &x1, &y1, &x2, &y2, buf, buf_sz, update))
+		dst->w, dst->h, &x1, &y1, &x2, &y2, buf, buf_sz))
 		return;
 
 	struct stream_meta stream = {
+		.buf = dst->vinf.text.raw,
 		.x1 = x1, .y1 = y1, .w = x2 - x1, .h = y2 - y1,
 		.dirty = true
 	};

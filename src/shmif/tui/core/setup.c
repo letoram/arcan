@@ -292,6 +292,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 		res->acon.hints = SHMIF_RHINT_TPACK;
 	else
 		res->acon.hints = SHMIF_RHINT_SUBREGION;
+	arcan_shmif_resize(&res->acon, res->acon.w, res->acon.h);
 
 /* tui_fontmgmt is also responsible for building the raster context */
 	tui_fontmgmt_setup(res, init);

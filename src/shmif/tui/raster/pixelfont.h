@@ -1,4 +1,3 @@
-struct bitmap_font;
 struct tui_pixelfont;
 
 /*

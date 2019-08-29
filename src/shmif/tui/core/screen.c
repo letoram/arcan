@@ -43,7 +43,6 @@ static void resize_cellbuffer(struct tui_context* tui)
 	}
 
 	tui->base = NULL;
-	tui->rbuf = NULL;
 
 	size_t buffer_sz = 2 * tui->rows * tui->cols * sizeof(struct tui_cell);
 	size_t rbuf_sz =
@@ -52,10 +51,8 @@ static void resize_cellbuffer(struct tui_context* tui)
 		((tui->rows+2) * sizeof(struct tui_raster_line))
 	;
 
-	if (tui->rbuf_fwd){
-		tui->rbuf = tui->acon.vidb;
-	}
-	else {
+	if (!tui->rbuf_fwd){
+		tui->rbuf = NULL;
 		tui->rbuf = malloc(rbuf_sz);
 		if (!tui->rbuf){
 			LOG("couldn't allocate output text buffer\n");
@@ -178,6 +175,7 @@ static int build_raster_buffer(
 /* cursor is guaranteed to be overdrawn */
 		tui->last_cursor.active = false;
 
+		hdr.flags |= RPACK_IFRAME;
 		hdr.lines = tui->rows;
 		hdr.cells = tui->rows * tui->cols;
 
@@ -202,6 +200,7 @@ static int build_raster_buffer(
 			}
 		}
 		rv = 2;
+		tui->dirty = 0;
 	}
 
 /* delta update, find_row_ofs gives the next mismatch on the row */
@@ -256,6 +255,7 @@ static int build_raster_buffer(
 			memcpy(&out[line_dst], &line, sizeof(struct tui_raster_line));
 			hdr.lines++;
 		}
+		hdr.flags |= RPACK_DFRAME;
 		rv = 1;
 	}
 
@@ -271,8 +271,10 @@ static int build_raster_buffer(
 			.ncells = 1
 		};
 
-		if (tui->dirty == DIRTY_CURSOR)
+		if (tui->dirty == DIRTY_CURSOR){
+			hdr.flags |= RPACK_DFRAME;
 			rv = 1;
+		}
 
 /* restore the last cursor position */
 		if (tui->last_cursor.active){
@@ -351,6 +353,10 @@ void tui_screen_resized(struct tui_context* tui)
 	tui->pad_w = tui->acon.w - (cols * tui->cell_w);
 	tui->pad_h = tui->acon.h - (rows * tui->cell_h);
 
+	if (tui->rbuf_fwd){
+		tui->rbuf = tui->acon.vidb;
+	}
+
 /* if the number of cells has actually changed, we need to propagate */
 	if (cols != tui->cols || rows != tui->rows){
 		tui->cols = cols;
@@ -418,8 +424,7 @@ int tui_screen_refresh(struct tui_context* tui)
 /* if we raster locally or server- side is determined by the rbuf_fwd flag */
 	if (rv){
 		if (!tui->rbuf_fwd){
-			if (1 != tui_raster_render(tui->raster,
-				&tui->acon, rbuf, rbuf_sz, 1 == rv))
+			if (1 != tui_raster_render(tui->raster, &tui->acon, rbuf, rbuf_sz))
 				return 0;
 		}
 
