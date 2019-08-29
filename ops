@@ -1,0 +1,1 @@
+{"version":1,"ops":[{"type":1,"author":{"id":"9eb510892d1accc0c715d21128d216b2e6f74967"},"timestamp":1567110954,"title":"(platform) descriptor randomization","message":"In order to protect the shmpage to be easy to predict and access from a\nsandbox, the descriptor should be duped to a random position to work around the\nsparse allocation behavior of open.","files":null}]}
