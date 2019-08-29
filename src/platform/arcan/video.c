@@ -381,8 +381,8 @@ bool platform_video_specify_mode(platform_display_id id,
 struct monitor_mode platform_video_dimensions()
 {
 	struct monitor_mode mode = {
-		.width = disp[0].conn.addr->w,
-		.height = disp[0].conn.addr->h,
+		.width = disp[0].conn.w,
+		.height = disp[0].conn.h,
 	};
 	mode.phy_width = (float)mode.width / disp[0].ppcm * 10.0;
 	mode.phy_height = (float)mode.height / disp[0].ppcm * 10.0;
@@ -621,18 +621,19 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	size_t left = 0;
 
 	unsigned cost = arcan_vint_refresh(fract, &nupd);
-	arcan_bench_register_cost(cost);
-	agp_activate_rendertarget(NULL);
 
 /* nothing to do, yield with the timestep the conductor prefers (fake 60hz
  * now until the shmif_deadline communication is more robust) */
-	if (!nupd && !last_nupd){
-		glFinish();
+	if (!nupd){
+/*		glFinish(); */
 		left = cost > 16 ? 0 : 16 - cost;
 		verbose_print("skip frame");
 		goto pollout;
 	}
-	last_nupd = nupd;
+/* so we have a buffered frame but this one didn't cause any updates,
+ * force an update (could pretty much just reblit / swap but...) */
+	arcan_bench_register_cost(cost);
+	agp_activate_rendertarget(NULL);
 
 /* needed here or handle content will be broken, though what we would actually
  * want is a fence on the last drawcall to each mapped rendercall and yield
