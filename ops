@@ -1,1 +1,1 @@
-{"version":1,"ops":[{"type":5,"author":{"id":"9eb510892d1accc0c715d21128d216b2e6f74967"},"timestamp":1566215939,"added":["confirmed"],"removed":null}]}
+{"version":1,"ops":[{"type":8,"author":{"id":"9eb510892d1accc0c715d21128d216b2e6f74967"},"timestamp":1567351030,"target":"f6dae1ec128808a44080672f0ab3e89b3ed4467ac59107be9b4372397b9b6f97","new_metadata":{"github-id":"MDU6SXNzdWU0ODE5OTE5MjY=","github-url":"https://github.com/letoram/arcan/issues/169"}}]}
