@@ -24,7 +24,7 @@ static void proxy_client(struct shmifsrv_client* a)
 
 	if (!b.addr){
 		fprintf(stderr, "couldn't open upstream connection\n");
-		shmifsrv_free(a);
+		shmifsrv_free(a, true);
 		return;
 	}
 
@@ -134,7 +134,7 @@ static void proxy_client(struct shmifsrv_client* a)
 	}
 
 out:
-	shmifsrv_free(a);
+	shmifsrv_free(a, true);
 	arcan_shmif_drop(&b);
 }
 
@@ -167,7 +167,7 @@ int main(int argc, char** argv)
 				proxy_client(cl);
 			}
 			else
-				shmifsrv_free(cl);
+				shmifsrv_free(cl, true);
 		}
 /* SIGINTR */
 		else

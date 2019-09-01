@@ -610,15 +610,30 @@ static void command_videoframe(struct a12_state* S)
 		return;
 	}
 
-	if (vframe->sw != cont->w || vframe->sh != cont->h){
+/* set the possible consumer presentation / repacking options, or resize
+ * if the source / destination dimensions no longer match */
+	bool hints_changed = false;
+	if (vframe->postprocess == POSTPROCESS_VIDEO_TZ && !(cont->hints & SHMIF_RHINT_TPACK)){
+		cont->hints |= SHMIF_RHINT_TPACK;
+		hints_changed = true;
+	}
+	else if ((cont->hints & SHMIF_RHINT_TPACK) &&
+		vframe->postprocess != POSTPROCESS_VIDEO_TZ){
+		cont->hints = cont->hints & (~SHMIF_RHINT_TPACK);
+		hints_changed = true;
+	}
+
+	if (hints_changed || vframe->sw != cont->w || vframe->sh != cont->h){
 		arcan_shmif_resize(cont, vframe->sw, vframe->sh);
 		if (vframe->sw != cont->w || vframe->sh != cont->h){
 			a12int_trace(A12_TRACE_SYSTEM, "parent size rejected");
 			vframe->commit = 255;
 		}
 		else
-			a12int_trace(A12_TRACE_VIDEO, "kind=resized:channel=%d:"
-				"new_w=%zu:new_h=%zu", (int) channel, (size_t) vframe->sw, (size_t) vframe->sh);
+			a12int_trace(A12_TRACE_VIDEO, "kind=resized:channel=%d:hints=%d:"
+				"new_w=%zu:new_h=%zu", (int) channel, (int) cont->hints,
+				(size_t) vframe->sw, (size_t) vframe->sh
+			);
 	}
 
 	a12int_trace(A12_TRACE_VIDEO, "kind=frame_header:method=%d:"
@@ -630,17 +645,24 @@ static void command_videoframe(struct a12_state* S)
 /* Validation is done just above, making sure the sub- region doesn't extend
  * the specified source surface. Remaining length- field is verified before
  * the write in process_video. */
+	if (vframe->x >= vframe->w || vframe->y >= vframe->h){
+		vframe->commit = 255;
+		a12int_trace(A12_TRACE_SYSTEM,
+			"incoming frame exceeding reasonable constraints");
+		return;
+	}
 
 /* For RAW pixels, note that we count row, pos, etc. in the native
  * shmif_pixel and thus use pitch instead of stride */
 	if (vframe->postprocess == POSTPROCESS_VIDEO_RGBA ||
 		vframe->postprocess == POSTPROCESS_VIDEO_RGB565 ||
 		vframe->postprocess == POSTPROCESS_VIDEO_RGB){
-		vframe->row_left = vframe->w;
+		vframe->row_left = vframe->w - vframe->x;
 		vframe->out_pos = vframe->y * cont->pitch + vframe->x;
 		a12int_trace(A12_TRACE_TRANSFER,
 			"row-length: %zu at buffer pos %"PRIu32, vframe->row_left, vframe->inbuf_pos);
 	}
+/* this includes TPACK */
 	else {
 		if (vframe->expanded_sz > vframe->w * vframe->h * sizeof(shmif_pixel)){
 			vframe->commit = 255;
@@ -655,12 +677,13 @@ static void command_videoframe(struct a12_state* S)
 			return;
 		}
 
+/* out_pos gets validated in the decode stage, so no OOB ->y ->x */
 		vframe->out_pos = vframe->y * cont->pitch + vframe->x;
 		vframe->inbuf_pos = 0;
 		vframe->inbuf = malloc(vframe->inbuf_sz);
 		if (!vframe->inbuf){
 			a12int_trace(A12_TRACE_ALLOC,
-				"couldn't allo cate intermediate buffer store");
+				"couldn't allocate intermediate buffer store");
 			return;
 		}
 		vframe->row_left = vframe->w;
@@ -1559,6 +1582,9 @@ a12_channel_vframe(struct a12_state* S,
 	break;
 	case VFRAME_METHOD_H264:
 		a12int_encode_h264(argstr);
+	break;
+	case VFRAME_METHOD_TPACK:
+		a12int_encode_tz(argstr);
 	break;
 /*
  * FLIV and dav1d missing

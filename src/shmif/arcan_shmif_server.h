@@ -237,13 +237,18 @@ enum vbuffer_status {
 
 struct shmifsrv_vbuffer {
 	int state;
-	shmif_pixel* buffer;
+	union {
+		shmif_pixel* buffer;
+		uint8_t* buffer_bytes;
+	};
+
 	struct {
 		bool origo_ll : 1;
 		bool ignore_alpha : 1;
 		bool subregion : 1;
 		bool srgb : 1;
 		bool hwhandles : 1;
+		bool tpack : 1;
 	} flags;
 
 	size_t w, h, pitch, stride;

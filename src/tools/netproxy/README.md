@@ -72,7 +72,7 @@ Milestone 1 - basic features (0.5.x)
 - [x] Subsegments
 - [ ] Basic authentication / DH / Cipher (blake+chacha20+curve25519)
 - [ ] Basic privsep/sandboxing
-- [ ] TUI- text channel
+- [x] TUI- text channel
 - [ ] Event key-code translation (evdev, sdl, ... to native)
 - [ ] Cache process / directory for file operations
 - [ ] Block push-segment types (DEBUG)

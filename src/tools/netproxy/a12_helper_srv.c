@@ -61,6 +61,13 @@ static struct a12_vframe_opts vopts_from_segment(
 		};
 	}
 
+	if (vb.flags.tpack){
+		a12int_trace(A12_TRACE_VIDEO, "tpack segment");
+		return (struct a12_vframe_opts){
+			.method = VFRAME_METHOD_TPACK
+		};
+	}
+
 	switch (shmifsrv_client_type(data->C)){
 	case SEGID_LWA:
 		a12int_trace(A12_TRACE_VIDEO, "lwa -> h264, balanced");

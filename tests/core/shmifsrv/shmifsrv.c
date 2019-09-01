@@ -91,6 +91,6 @@ int main(int argc, char** argv)
 			shmifsrv_tick(cl);
 	}
 
-	shmifsrv_free(cl);
+	shmifsrv_free(cl, true);
 	return EXIT_SUCCESS;
 }

@@ -3,6 +3,7 @@
 #include "../tui_int.h"
 #include "../screen/libtsm.h"
 #include <pthread.h>
+#include <assert.h>
 
 typedef void* TTF_Font;
 #include "../raster/raster.h"
@@ -147,7 +148,6 @@ struct tui_cell* tcell, uint8_t* outb, uint8_t has_cursor)
 /* the reserved font-control byte kept zero for the time being */
 	*outb++ = 0x00;
 	pack_u32(tcell->ch, outb);
-	outb += 4;
 	return raster_cell_sz;
 }
 
@@ -200,7 +200,6 @@ static int build_raster_buffer(
 			}
 		}
 		rv = 2;
-		tui->dirty = 0;
 	}
 
 /* delta update, find_row_ofs gives the next mismatch on the row */
@@ -253,8 +252,11 @@ static int build_raster_buffer(
 			}
 
 			memcpy(&out[line_dst], &line, sizeof(struct tui_raster_line));
+			hdr.cells += line.ncells;
 			hdr.lines++;
+			assert(outsz == raster_hdr_sz + raster_line_sz * hdr.lines + raster_cell_sz * hdr.cells);
 		}
+
 		hdr.flags |= RPACK_DFRAME;
 		rv = 1;
 	}
@@ -282,8 +284,11 @@ static int build_raster_buffer(
 			hdr.cells++;
 			line.start_line = tui->last_cursor.row;
 			line.offset = tui->last_cursor.col;
+
+/* NOTE: REPLACE WITH PROPER PACKING */
 			memcpy(&tui->rbuf[outsz], &line, sizeof(line));
-			outsz += sizeof(line);
+
+			outsz += raster_line_sz;
 			outsz += cell_to_rcell(&tui->front[
 				line.start_line * tui->cols + line.offset], &out[outsz], 0);
 		}
@@ -295,8 +300,10 @@ static int build_raster_buffer(
 		tui->last_cursor.col = tsm_screen_get_cursor_x(tui->screen);
 		line.start_line = tui->last_cursor.row;
 		line.offset = tui->last_cursor.col;
+
+/* NOTE: REPLACE WITH PROPER PACKING */
 		memcpy(&tui->rbuf[outsz], &line, sizeof(line));
-		outsz += sizeof(line);
+		outsz += raster_line_sz;
 		outsz += cell_to_rcell(&tui->front[
 			line.start_line * tui->cols + line.offset], &out[outsz], 1);
 
@@ -309,11 +316,15 @@ static int build_raster_buffer(
 			hdr.cursor_state = tui->defocus ? CURSOR_INACTIVE : CURSOR_ACTIVE;
 		}
 
-		hdr.cells += line.ncells;
+		assert(outsz == raster_hdr_sz + raster_line_sz * hdr.lines + raster_cell_sz * hdr.cells);
 		tui->last_cursor.active = true;
 	}
 
+	hdr.data_sz = hdr.lines * raster_line_sz +
+		hdr.cells * raster_cell_sz + raster_hdr_sz;
+
 /* write the header and return */
+/* NOTE: REPLACE WITH PROPER PACKING */
 	memcpy(tui->rbuf, &hdr, sizeof(hdr));
 	*rbuf_sz = outsz;
 	*rbuf = tui->rbuf;

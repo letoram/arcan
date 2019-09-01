@@ -1275,7 +1275,6 @@ arcan_errc arcan_frameserver_setfont(
  * server side entirely and not just apply the updates, we can just reraster
  * and immediately resize etc. but not there yet */
 	if (BADFD != fd){
-
 /* currently just dup, later switch this to a lookup function in arcan_ttf
  * where we resolve to an inode lookup index instead, along with a ref/deref
  * kind of tracking (gives glyph caching / reuse across frameservers) */

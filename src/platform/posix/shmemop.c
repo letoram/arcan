@@ -7,6 +7,11 @@ static inline void* alignv(uint8_t* inptr, size_t align_sz)
 		inptr + align_sz - ((uintptr_t) inptr % align_sz) : inptr);
 }
 
+size_t arcan_shmif_vbufsz(int meta, uint8_t hints, size_t w, size_t h)
+{
+	return w * h * sizeof(shmif_pixel);
+}
+
 uintptr_t arcan_shmif_mapav(
 	struct arcan_shmif_page* addr,
 	shmif_pixel* vbuf[], size_t vbufc, size_t vbuf_sz,

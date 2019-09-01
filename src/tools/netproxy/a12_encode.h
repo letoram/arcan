@@ -15,6 +15,7 @@ void a12int_encode_rgb(PACK_ARGS);
 void a12int_encode_rgba(PACK_ARGS);
 void a12int_encode_dpng(PACK_ARGS);
 void a12int_encode_h264(PACK_ARGS);
+void a12int_encode_tz(PACK_ARGS);
 
 void a12int_encode_araw(struct a12_state* S,
 	uint8_t chid,

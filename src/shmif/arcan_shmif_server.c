@@ -356,6 +356,7 @@ struct shmifsrv_vbuffer shmifsrv_video(struct shmifsrv_client* cl)
 	res.flags.ignore_alpha = cl->con->desc.hints & SHMIF_RHINT_IGNORE_ALPHA;
 	res.flags.subregion = cl->con->desc.hints & SHMIF_RHINT_SUBREGION;
 	res.flags.srgb = cl->con->desc.hints & SHMIF_RHINT_CSPACE_SRGB;
+	res.flags.tpack = cl->con->desc.hints & SHMIF_RHINT_TPACK;
 	res.vpts = atomic_load(&cl->con->shm.ptr->vpts);
 	res.w = cl->con->desc.width;
 	res.h = cl->con->desc.height;

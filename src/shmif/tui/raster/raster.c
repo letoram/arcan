@@ -207,6 +207,17 @@ static int raster_tobuf(
 
 	bool update = false;
 	memcpy(&hdr, buf, sizeof(struct tui_raster_header));
+
+/* the caller might provide a larger input buffer than what the header sets,
+ * and that will still clamp/drop-out etc. but mismatch between the header
+ * fields is, of course, not permitted. */
+	size_t hdr_ver_sz = hdr.lines * raster_line_sz +
+		hdr.cells * raster_cell_sz + raster_hdr_sz;
+
+	if (hdr.data_sz > buf_sz || hdr.data_sz != hdr_ver_sz){
+		return -1;
+	}
+
 	buf_sz -= sizeof(struct tui_raster_header);
 	buf += sizeof(struct tui_raster_header);
 	shmif_pixel bgc = SHMIF_RGBA(hdr.bgc[0], hdr.bgc[1], hdr.bgc[2], hdr.bgc[3]);
