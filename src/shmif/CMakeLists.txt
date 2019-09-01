@@ -19,7 +19,7 @@
 # Installs: (if ARCAN_SOURCE_DIR is not set)
 #
 set(ASHMIF_MAJOR 0)
-set(ASHMIF_MINOR 11)
+set(ASHMIF_MINOR 12)
 
 if (ARCAN_SOURCE_DIR)
 	set(ASD ${ARCAN_SOURCE_DIR})

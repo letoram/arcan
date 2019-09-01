@@ -1334,12 +1334,16 @@ int platform_fsrv_resynch(struct arcan_frameserver* s)
 			goto fail;
 	}
 
+/* Still incomplete for TPACK etc. as w/h needs to be determined based on
+ * the active cell dimensions and not of the pixel dimensions */
+	size_t vbufsz =
+		arcan_shmif_vbufsz(aproto, s->desc.pending_hints, w, h);
+
 /* remap pointers, padding need to be updated first as shmif_mapav
  * uses that as a side-channel and we don't want to change the interface */
 	atomic_store(&shmpage->apad, apad_sz);
 	shmpage->segment_size = arcan_shmif_mapav(shmpage,
-		s->vbufs, s->vbuf_cnt, w * h * sizeof(shmif_pixel),
-		s->abufs, s->abuf_cnt, abufsz);
+		s->vbufs, s->vbuf_cnt, vbufsz, s->abufs, s->abuf_cnt, abufsz);
 	s->abuf_sz = abufsz;
 	arcan_shmif_setevqs(shmpage, s->esync, &(s->inqueue), &(s->outqueue), 1);
 

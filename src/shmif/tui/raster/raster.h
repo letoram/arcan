@@ -50,6 +50,8 @@
  * bit 7: 'ignore'
  */
 static const size_t raster_cell_sz = 12;
+static const size_t raster_hdr_sz = 16;
+static const size_t raster_line_sz = 9;
 
 enum cell_attr {
 	CATTR_BOLD = 0,
@@ -113,6 +115,7 @@ enum raster_flags {
  * size or there will be a validation fault when submitting the buffer.
  */
 struct __attribute__((packed)) tui_raster_header {
+	uint32_t data_sz;
 	uint16_t lines;
 	uint16_t cells;
 	uint8_t direction;

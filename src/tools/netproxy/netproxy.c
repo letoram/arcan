@@ -426,8 +426,8 @@ static bool apply_commandline(int argc, char** argv, struct anet_options* opts)
 			if (i < argc - 1)
 				opts->host = argv[++i];
 
-			if (i != argc)
-				return show_usage("Trailing arguments to -s connpoint host port");
+			if (i != argc - 1)
+				return show_usage("Trailing arguments to -l port");
 		}
 		else if (strcmp(argv[i], "-t") == 0){
 			opts->mt_mode = MT_SINGLE;

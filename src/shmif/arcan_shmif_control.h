@@ -427,6 +427,14 @@ uintptr_t arcan_shmif_mapav(
 );
 
 /*
+ * Calculate the actual size of the video buffer based on the set of
+ * hints and meta substructure. This is used INTERNALLY on both sides
+ * of SHMIF to calculate actual shmpage dimensions. The client can
+ * access this information as part of the shmif_cont structure.
+ */
+size_t arcan_shmif_vbufsz(int meta, uint8_t hints, size_t w, size_t h);
+
+/*
  * There can be one "post-flag, pre-semaphore" hook that will occur
  * before triggering a sigmask and can be used to synch audio to video
  * or video to audio during transfers.
@@ -613,7 +621,8 @@ bool arcan_shmif_integrity_check(struct arcan_shmif_cont*);
 int arcan_shmif_signalstatus(struct arcan_shmif_cont*);
 
 struct arcan_shmif_region {
-	uint16_t x1,x2,y1,y2;
+	uint16_t x1, x2, y1, y2;
+	int16_t d_x, d_y;
 };
 
 struct arcan_shmif_cont {
@@ -634,9 +643,9 @@ struct arcan_shmif_cont {
 	};
 
 /*
- * This cookie is set/kept to some implementation defined value
- * and will be verified during integrity_check. It is placed here
- * to quickly detect overflows in video or audio management.
+ * This cookie is set/kept to some implementation defined value and will be
+ * verified during integrity_check. It is placed here to quickly detect
+ * overflows in video or audio management from client side programming errors
  */
 	int16_t oflow_cookie;
 
@@ -711,10 +720,13 @@ struct arcan_shmif_cont {
 
 /*
  * IF the contraints:
+ *
  * [Hints & SHMIF_RHINT_SUBREGION] and (X2>X1,(X2-X1)<=W,Y2>Y1,(Y2-Y1<=H))
  * valid, [ARCAN] MAY synch only the specified region.
  * Caller manipulates this field, will be copied to shmpage during synch.
- * This is slated for deprecation,
+ *
+ * The [dx, dy] hints inside of the region indicates the number of pixels that
+ * are scrolled based on the previously synched buffer.
  */
   struct arcan_shmif_region dirty;
 
@@ -744,6 +756,14 @@ struct arcan_shmif_cont {
  * Copy of the segment token identifier provided on the shmpage at setup
  */
 	uint32_t segment_token;
+
+/*
+ * Video buffers may, based on extended contents hints etc. have a size
+ * that does not match the normal formula of w * h * pitch bytes. Instead,
+ * and length validation for user-side programming is best done against
+ * this field. This represents the size of a single video buffer.
+ */
+	size_t vbufsize;
 };
 
 struct arcan_shmif_initial {
@@ -854,7 +874,7 @@ struct arcan_shmif_page;
 #ifndef ARCAN_SHMIF_HIDEPAGE
 struct arcan_shmif_page {
 /*
- * These will be statically set to the ARCAN_VERSION_MAJOR, ARCAN_VERSION_MAJOR
+ * These will be statically set to the ASHMIF_VERSION_MAJOR, ASHMIF_VERSION_MAJOR
  * defines, a mismatch will cause the integrity_check to fail and both sides
  * may decide to terminate. Thus, they also act as a header guard. A more
  * precise guard value is found in [cookie].

@@ -26,13 +26,10 @@ bool a12int_buffer_format(int method)
 	return
 		method == POSTPROCESS_VIDEO_H264 ||
 		method == POSTPROCESS_VIDEO_MINIZ ||
-		method == POSTPROCESS_VIDEO_DMINIZ;
+		method == POSTPROCESS_VIDEO_DMINIZ ||
+		method == POSTPROCESS_VIDEO_TZ;
 }
 
-/*
- * performance wise we should check if the extra branch in miniz vs. dminiz
- * should be handled here or by inlining and copying
- */
 static int video_miniz(const void* buf, int len, void* user)
 {
 	struct a12_state* S = user;
@@ -83,6 +80,13 @@ static int video_miniz(const void* buf, int len, void* user)
 		cvf->carry = 0;
 	}
 
+/* tpack is easier, just write into vidb, ensure that we don't exceed
+ * the size from a missed resize_ call and the rest is done consumer side */
+	if (cvf->postprocess == POSTPROCESS_VIDEO_TZ){
+		memcpy(&cont->vidb[cvf->out_pos], inbuf, len);
+		cvf->out_pos += len;
+	}
+
 /* pixel-aligned fill/unpack, same as everywhere else */
 	size_t npx = (len / 3) * 3;
 	for (size_t i = 0; i < npx; i += 3){
@@ -127,7 +131,8 @@ void a12int_decode_vbuffer(
 {
 	a12int_trace(A12_TRACE_VIDEO, "decode vbuffer, method: %d", cvf->postprocess);
 	if (cvf->postprocess == POSTPROCESS_VIDEO_MINIZ ||
-			cvf->postprocess == POSTPROCESS_VIDEO_DMINIZ){
+			cvf->postprocess == POSTPROCESS_VIDEO_DMINIZ ||
+			cvf->postprocess == POSTPROCESS_VIDEO_TZ){
 		size_t inbuf_pos = cvf->inbuf_pos;
 		tinfl_decompress_mem_to_callback(cvf->inbuf, &inbuf_pos, video_miniz, S, 0);
 

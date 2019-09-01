@@ -320,7 +320,9 @@ The format field defines the encoding method applied. Current values are:
  R8G8B8 = 1 : raw 8-bit red, green and blue values
  RGB565 = 2 : raw 5 bit red, 6 bit green, 5 bit red
  DMINIZ = 3 : DEFLATE packaged block, set as ^ delta from last
- MINIZ =  4 : DEFLATE packaged block
+ MINIZ  = 4 : DEFLATE packaged block
+ H264   = 5 : h264 stream
+ TZ     = 6 : DEFLATE packaged tpack block
 
 This defines a new video stream frame. The length- field covers how many bytes
 that need to be buffered for the data to be decoded. This can be chunked up

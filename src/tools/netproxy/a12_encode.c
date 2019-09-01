@@ -351,9 +351,75 @@ void a12int_encode_rgb(PACK_ARGS)
 struct compress_res {
 	bool ok;
 	uint8_t type;
+	size_t in_sz;
 	size_t out_sz;
 	uint8_t* out_buf;
 };
+
+static struct compress_res compress_tz(struct a12_state* S,
+	uint8_t ch, struct shmifsrv_vbuffer* vb)
+{
+/* full header-size: 4 + 2 + 2 + 1 + 2 + 4 + 1 = 16 bytes */
+/* first 4 bytes is length */
+	uint32_t compress_in_sz;
+	unpack_u32(&compress_in_sz, vb->buffer_bytes);
+
+/* second 2 bytes is number of lines (line-header size) */
+	uint16_t n_lines;
+	unpack_u16(&n_lines, &vb->buffer_bytes[4]);
+
+/* third 2 bytes is number of cells */
+	uint16_t n_cells;
+	unpack_u16(&n_cells, &vb->buffer_bytes[6]);
+
+/* line-header size (2 + 2 + 2 + 3 = 9 bytes), cell size = 12 bytes) */
+	if (compress_in_sz != n_lines * 9 + n_cells * 12 + 16){
+		a12int_trace(A12_TRACE_SYSTEM, "kind=error:message=corrupt TPACK buffer");
+		return (struct compress_res){};
+	}
+
+/* all the cell attributes and colors etc. lend themselves well to
+ * compression, so lets go ahead with miniz */
+	size_t out_sz;
+	uint8_t* buf = tdefl_compress_mem_to_heap(
+		vb->buffer_bytes, compress_in_sz, &out_sz, 0);
+
+	if (!buf){
+		a12int_trace(A12_TRACE_ALLOC, "failed to build compressed TPACK output");
+		return (struct compress_res){};
+	}
+
+	return (struct compress_res){
+		.type = POSTPROCESS_VIDEO_TZ,
+		.ok = true,
+		.out_buf = buf,
+		.out_sz = out_sz,
+		.in_sz = compress_in_sz
+	};
+}
+
+void a12int_encode_tz(PACK_ARGS)
+{
+	struct compress_res cres = compress_tz(S, chid, vb);
+	if (!cres.ok)
+		return;
+
+	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
+	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
+		cres.type, 0, vb->w, vb->h, w, h, 0, 0,
+		cres.out_sz, cres.in_sz, 1
+	);
+
+	a12int_trace(A12_TRACE_VDETAIL,
+		"kind=status:codec=tpack:b_in=%zu:b_out=%zu", cres.in_sz, cres.out_sz
+	);
+
+	a12int_append_out(S,
+		STATE_CONTROL_PACKET, hdr_buf, CONTROL_PACKET_SIZE, NULL, 0);
+	chunk_pack(S, STATE_VIDEO_PACKET, chid, cres.out_buf, cres.out_sz, chunk_sz);
+
+	free(cres.out_buf);
+}
 
 static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 	struct shmifsrv_vbuffer* vb, size_t* x, size_t* y, size_t* w, size_t* h)
@@ -454,7 +520,8 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 		.type = type,
 		.ok = buf != NULL,
 		.out_buf = buf,
-		.out_sz = out_sz
+		.out_sz = out_sz,
+		.in_sz = compress_in_sz
 	};
 }
 
@@ -467,7 +534,7 @@ void a12int_encode_dpng(PACK_ARGS)
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
 	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
 		cres.type, 0, vb->w, vb->h, w, h, x, y,
-		cres.out_sz, w * h * 3, 1
+		cres.out_sz, cres.in_sz, 1
 	);
 
 	a12int_trace(A12_TRACE_VDETAIL,

@@ -1221,8 +1221,11 @@ static void setup_avbuf(struct arcan_shmif_cont* res)
 	if (0 == res->samplerate)
 		res->samplerate = ARCAN_SHMIF_SAMPLERATE;
 
+	res->vbufsize = arcan_shmif_vbufsz(
+		res->priv->atype, res->hints, res->w, res->h);
+
 	arcan_shmif_mapav(res->addr,
-		res->priv->vbuf, res->priv->vbuf_cnt, res->w*res->h*sizeof(shmif_pixel),
+		res->priv->vbuf, res->priv->vbuf_cnt, res->vbufsize,
 		res->priv->abuf, res->priv->abuf_cnt, res->abufsize
 	);
 
