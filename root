@@ -1,0 +1,1 @@
+{"version":1,"ops":[{"type":1,"author":{"id":"e6c152d440109efdc7afc4e9ac4ac193043f8f68"},"timestamp":1390806708,"metadata":{"github-id":"MDU6SXNzdWUyNjMzNDg5OQ==","github-url":"https://github.com/letoram/arcan/issues/45","origin":"github"},"title":"(linux/bsd) Free ourselves from the shackles of X","message":"First step, native KMS/EGL + /dev/input/\\* support.","files":null}]}
