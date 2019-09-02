@@ -199,12 +199,12 @@ if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
 	endif()
 
 	add_compile_options(-Wall -Wno-missing-braces -Wno-unused-function
-		-Wno-unused-value -Wno-unused-variable -Wformat=0
+		-Wno-unused-value -Wno-unused-variable -Wformat=0 -Wno-atomic-alignment
 	)
 
 elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
 	add_compile_options(-Wall -Wno-unknown-warning-option -Wno-unused-const-variable
-		-Wno-unused-value -Wno-missing-braces -Wno-unused-function
+		-Wno-unused-value -Wno-missing-braces -Wno-unused-function -Wno-atomic-alignment
 		-Wno-unused-variable
 	)
 else()

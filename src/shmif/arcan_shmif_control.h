@@ -569,7 +569,14 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont*, enum arcan_shmif_sigmask);
  * provided (arcan_shmifext_***)
  *
  * mask matches (enum arcan_shmif_sigmask) but can't enforce the type here
- * because of VA_ARGS + enum with -fshort-enums can yield UB
+ * because of VA_ARGS + enum with -fshort-enums can yield UB.
+ *
+ * [NOTE]
+ * Ideally, this should work the other way around, i.e. on a resize, the server
+ * side provides the buffer descriptors to use, and signalhandle simply steps
+ * within this set.
+ * For DMA-Buf this is basically a no-go, while as for EGLStreams, that way
+ * would work better.
  */
 unsigned arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx,
 	int mask, int handle, size_t stride, int format, ...);
@@ -622,7 +629,6 @@ int arcan_shmif_signalstatus(struct arcan_shmif_cont*);
 
 struct arcan_shmif_region {
 	uint16_t x1, x2, y1, y2;
-	int16_t d_x, d_y;
 };
 
 struct arcan_shmif_cont {
@@ -860,11 +866,11 @@ enum rhint_mask {
 
 /*
  * Changes the buffer contents to be packed in the TPACK format (see
- * tui/raster). This means that server-side will ignore the negotiated
- * dimensions and emit / work with a cell size dependent on currently set font
- * settings. The resize hint negotiated dimensions should thus be based on
- * cell/row count factored with the overhead from transfer header, line header
- * and cell conents header.
+ * tui/raster). This means that the server side will ignore the normal size
+ * hints and emit window resizes etc. accordingly. Thus, _resize calls on
+ * a TPACK segment only needs to be called if the context vbufsize member
+ * is too small. In those cases, the _resize dimensions are still expected
+ * to be in pixels.
  */
 	SHMIF_RHINT_TPACK = 128
 };
@@ -921,6 +927,8 @@ struct arcan_shmif_page {
  * see dirty- field in _cont, manipulate there, not here.
  */
 	volatile _Atomic struct arcan_shmif_region dirty;
+	volatile _Atomic int16_t scroll_dx;
+	volatile _Atomic int16_t scroll_dy;
 
 /* [FSRV-SET]
  * Unique (or 0) segment identifier. Prvodes a local namespace for specifying
