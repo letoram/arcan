@@ -116,7 +116,7 @@
 
 
 
-/* Defines to completely disable specific portions of miniz.c: 
+/* Defines to completely disable specific portions of miniz.c:
    If all macros here are defined the only functionality remaining will be CRC-32, adler-32, tinfl, and tdefl. */
 
 /* Define MINIZ_NO_STDIO to disable all usage and any functions which rely on stdio for file I/O. */
@@ -139,7 +139,7 @@
 /* Define MINIZ_NO_ZLIB_COMPATIBLE_NAME to disable zlib names, to prevent conflicts against stock zlib. */
 /*#define MINIZ_NO_ZLIB_COMPATIBLE_NAMES */
 
-/* Define MINIZ_NO_MALLOC to disable all calls to malloc, free, and realloc. 
+/* Define MINIZ_NO_MALLOC to disable all calls to malloc, free, and realloc.
    Note if MINIZ_NO_MALLOC is defined then the user must always provide custom user alloc/free/realloc
    callbacks to the zlib and archive API's, and a few stand-alone helper API's which don't provide custom user
    functions (such as tdefl_compress_mem_to_heap() and tinfl_decompress_mem_to_heap()) won't work. */
@@ -170,13 +170,8 @@
 #define MINIZ_LITTLE_ENDIAN 0
 #endif
 
-#if MINIZ_X86_OR_X64_CPU
-/* Set MINIZ_USE_UNALIGNED_LOADS_AND_STORES to 1 on CPU's that permit efficient integer loads and stores from unaligned addresses. */
-#define MINIZ_USE_UNALIGNED_LOADS_AND_STORES 1
-#define MINIZ_UNALIGNED_USE_MEMCPY
-#else
 #define MINIZ_USE_UNALIGNED_LOADS_AND_STORES 0
-#endif
+#define MINIZ_UNALIGNED_USE_MEMCPY
 
 #if defined(_M_X64) || defined(_WIN64) || defined(__MINGW64__) || defined(_LP64) || defined(__LP64__) || defined(__ia64__) || defined(__x86_64__)
 /* Set MINIZ_HAS_64BIT_REGISTERS to 1 if operations on 64-bit integers are reasonably fast (and don't involve compiler generated calls to helper functions). */

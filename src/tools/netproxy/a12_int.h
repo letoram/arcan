@@ -5,6 +5,11 @@
 #include "blake2.h"
 #include "pack.h"
 
+/* this is frightening */
+#define MINIZ_USE_UNALIGNED_LOADS_AND_STORES 0
+#define MINIZ_LITTLE_ENDIAN 1
+#define MINIZ_HAS_64BIT_REGISTERS 1
+#define MINIZ_UNALIGNED_USE_MEMCPY
 #include "miniz/miniz.h"
 
 #if defined(WANT_H264_DEC) || defined(WANT_H264_ENC)

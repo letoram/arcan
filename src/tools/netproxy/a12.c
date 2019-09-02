@@ -290,7 +290,7 @@ a12_channel_close(struct a12_state* S)
 		S->channels[S->out_channel].active = false;
 	}
 
-	a12int_trace(A12_TRACE_SYSTEM, "closing channel (%"PRIu8")", S->out_channel);
+	a12int_trace(A12_TRACE_SYSTEM, "closing channel (%d)", S->out_channel);
 }
 
 bool
@@ -553,7 +553,7 @@ struct a12_state* S, void (*on_event)
 	unpack_u32(&cookie, &S->decode[21]);
 
 	a12int_trace(A12_TRACE_ALLOC, "new channel: %"PRIu8" => %"PRIu8""
-		", kind: %"PRIu8", cookie: %"PRIu8"", channel, new_channel, type, cookie);
+		", kind: %"PRIu8", cookie: %"PRIu32"", channel, new_channel, type, cookie);
 
 /* helper srv need to perform the additional segment push here,
  * so our 'file descriptor' in slot 0 is actually the new channel id */
@@ -670,10 +670,16 @@ static void command_videoframe(struct a12_state* S)
 				"incoming frame exceeding reasonable constraints");
 			return;
 		}
-		if (vframe->inbuf_sz > vframe->expanded_sz){
+/* rather arbitrary, but if this condition occurs, the producer should have
+ * simply sent the data raw - the odd case is possibly miniz/tpack where the
+ * can be a header and a non-compressible buffer. */
+		if (vframe->inbuf_sz > vframe->expanded_sz + 24){
 			vframe->commit = 255;
-			a12int_trace(A12_TRACE_SYSTEM,
-				"incoming buffer expands to less than target");
+			a12int_trace(A12_TRACE_SYSTEM, "incoming buffer (%"
+				PRIu32") expands to less than target (%"PRIu32")",
+				vframe->inbuf_sz, vframe->expanded_sz
+			);
+			vframe->inbuf_pos = 0;
 			return;
 		}
 
@@ -687,7 +693,8 @@ static void command_videoframe(struct a12_state* S)
 			return;
 		}
 		vframe->row_left = vframe->w;
-		a12int_trace(A12_TRACE_VIDEO, "compressed buffer in");
+		a12int_trace(A12_TRACE_VIDEO, "compressed buffer in (%"
+			PRIu32") to offset (%zu)", vframe->inbuf_sz, vframe->out_pos);
 	}
 }
 
@@ -1028,7 +1035,7 @@ static void process_blob(struct a12_state* S)
  * More data to come on the channel, just reset and wait for the next packet
  */
 	a12int_trace(A12_TRACE_BTRANSFER,
-		"kind=data:ch=%d:left:%zu", S->in_channel, cbf->size);
+		"kind=data:ch=%d:left:%"PRIu64, S->in_channel, cbf->size);
 
 	reset_state(S);
 }
@@ -1051,7 +1058,7 @@ static void process_video(struct a12_state* S)
 		unpack_u16(&S->left, &S->decode[5]);
 		S->decode_pos = 0;
 		a12int_trace(A12_TRACE_VIDEO,
-			"kind=header:channel=%"PRIu16":size=%"PRIu16, S->in_channel, S->left);
+			"kind=header:channel=%d:size=%"PRIu16, S->in_channel, S->left);
 		return;
 	}
 
@@ -1070,7 +1077,7 @@ static void process_video(struct a12_state* S)
 	if (a12int_buffer_format(cvf->postprocess)){
 		size_t left = cvf->inbuf_sz - cvf->inbuf_pos;
 		a12int_trace(A12_TRACE_VIDEO,
-			"kind=decbuf:channel=%"PRIu16":size=%"PRIu16":left=%zu",
+			"kind=decbuf:channel=%d:size=%"PRIu16":left=%zu",
 			S->in_channel, S->decode_pos, left
 		);
 
@@ -1083,7 +1090,7 @@ static void process_video(struct a12_state* S)
 /* other option is to terminate here as the client is misbehaving */
 		else if (left != 0){
 			a12int_trace(A12_TRACE_SYSTEM,
-				"kind=error:source=video:channel=%"PRIu16":type=EOVERFLOW", S->in_channel);
+				"kind=error:source=video:channel=%d:type=EOVERFLOW", S->in_channel);
 			reset_state(S);
 		}
 
@@ -1110,7 +1117,7 @@ static void process_video(struct a12_state* S)
  * overflow / wrap tricks won't work */
 	if (cvf->inbuf_sz < S->decode_pos){
 		a12int_trace(A12_TRACE_SYSTEM,
-			"kind=error:source=video:channel=%"PRIu16":type=EOVERFLOW", S->in_channel);
+			"kind=error:source=video:channel=%d:type=EOVERFLOW", S->in_channel);
 		reset_state(S);
 		return;
 	}
@@ -1376,7 +1383,7 @@ static size_t queue_node(struct a12_state* S, struct blob_out* node)
 		node->active = true;
 		node->streamid = S->out_stream;
 		a12int_trace(A12_TRACE_BTRANSFER,
-			"kind=created:size=%zu:stream:%zu:ch=%d",
+			"kind=created:size=%zu:stream:%"PRIu64":ch=%d",
 			node->left, node->streamid, node->chid
 		);
 	}
@@ -1397,7 +1404,7 @@ static size_t queue_node(struct a12_state* S, struct blob_out* node)
 		}
 		else {
 			a12int_trace(A12_TRACE_BTRANSFER,
-				"kind=block:stream=%zu:ch=%d:size=%"PRIu16":left=%zu",
+				"kind=block:stream=%"PRIu64":ch=%d:size=%"PRIu16":left=%zu",
 				node->streamid, (int)node->chid, nts, node->left
 			);
 		}
