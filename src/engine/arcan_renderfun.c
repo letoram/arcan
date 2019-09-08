@@ -63,9 +63,12 @@ struct text_format {
 /* font specification */
 	struct font_entry* font;
 	uint8_t col[4];
-	uint8_t bgcol[4];
 	int style;
 	uint8_t alpha;
+
+/* used in the fallback case when !font */
+	size_t pt_size;
+	size_t px_skip;
 
 /* for forced loading of images */
 	struct {
@@ -74,8 +77,7 @@ struct text_format {
 	} surf;
 	img_cons imgcons;
 
-/* pointer into line of text where the format was extracted,
- * only temporary use */
+/* temporary pointer-alias into line of text where the format was extracted */
 	char* endofs;
 
 /* metrics */
@@ -106,7 +108,6 @@ static int64_t vid_ofs;
 
 static struct text_format last_style = {
 	.col = {0xff, 0xff, 0xff, 0xff},
-	.bgcol = {0xaa, 0xaa, 0xaa, 0xaa}
 };
 
 static unsigned int font_cache_size = ARCAN_FONT_CACHE_LIMIT;
@@ -180,13 +181,41 @@ void arcan_renderfun_vidoffset(int64_t ofs)
 	vid_ofs = ofs;
 }
 
+/* chain functions work like normal, except that they take multiple
+ * fonts and select / scale a fallback if a glyph is not found. */
+int size_font_chain(
+	struct text_format* cstyle, const char* base, int *w, int *h)
+{
+	if (cstyle->font && cstyle->font->chain.data[0]){
+		return TTF_SizeUTF8chain(cstyle->font->chain.data,
+			cstyle->font->chain.count, base, w, h, cstyle->style);
+	}
+	else {
+		size_t len = strlen(base);
+		*h = cstyle->height;
+		*w = cstyle->px_skip * len;
+		return 0;
+	}
+}
+
 static void update_style(struct text_format* dst, struct font_entry* font)
 {
+/* if the font has not been set, use the built-in bitmap one - go from pt-size
+ * over dpi to pixel size to whatever the closest built-in match is */
 	if (!font || !font->chain.data[0]){
-		arcan_warning("renderfun(), tried to update from broken font\n");
+		size_t h = 0;
+		size_t px_sz = PT_TO_HPX(dst->pt_size);
+		tui_pixelfont_setsz(builtin_bitmap.bitmap, px_sz, &dst->px_skip, &h);
+		dst->descent = dst->ascent = h >> 1;
+		dst->height = h;
+		dst->skip = (float)px_sz * 1.5 - px_sz;
+		if (!dst->skip)
+			dst->skip = 1;
+		dst->font = NULL;
 		return;
 	}
 
+/* otherwise query the font for the specific metrics */
 	dst->ascent = TTF_FontAscent(font->chain.data[0]);
 	dst->descent = -1 * TTF_FontDescent(font->chain.data[0]);
 	dst->height = TTF_FontHeight(font->chain.data[0]);
@@ -213,11 +242,9 @@ static void set_style(struct text_format* dst, struct font_entry* font)
 {
 	dst->newline = dst->tab = dst->cr = 0;
 	dst->col[0] = dst->col[1] = dst->col[2] = dst->col[3] = 0xff;
-	if (font)
-		update_style(dst, font);
-	else {
-		dst->ascent = dst->height = dst->skip = dst->descent = 0;
-	}
+
+/* if no font is specified, we fallback to the builtin- bitmap one */
+	update_style(dst, font);
 }
 
 static struct font_entry* grab_font(const char* fname, size_t size)
@@ -368,6 +395,8 @@ bool arcan_video_defaultfont(const char* ident,
 void arcan_video_reset_fontcache()
 {
 	static bool init;
+
+/* only first time, builtin- bitmap font will match application lifespan */
 	if (!init){
 		init = true;
 		builtin_bitmap.bitmap = tui_pixelfont_open(64);
@@ -513,10 +542,17 @@ static char* extract_font(struct text_format* prev, char* base){
 	char ch = *base;
 	*base = 0;
 
+/* we allow a 'default font size' \f,+n or \f,-n where n is relative
+ * to the default set font and size */
 	struct font_entry* font = NULL;
 	int font_sz = strtoul(numbase, NULL, 10);
 	if (relsign != 0 || font_sz == 0)
 		font_sz = font_cache[0].size + relsign * font_sz;
+
+/* but also force a sane default if that becomes problematic, 9 pt is
+ * a common UI element standard font size */
+	if (!font_sz)
+		font_sz = 9;
 
 /*
  * use current 'default-font' if just size is provided
@@ -524,8 +560,8 @@ static char* extract_font(struct text_format* prev, char* base){
 	if (*fontbase == '\0'){
 		font = grab_font(NULL, font_sz);
 		*base = ch;
-		if (font)
-			update_style(prev, font);
+		prev->pt_size = font_sz;
+		update_style(prev, font);
 		return base;
 	}
 
@@ -546,6 +582,7 @@ static char* extract_font(struct text_format* prev, char* base){
 			"font (%s) (%s), (%d)\n", fname, orig, font_sz);
 	else
 		update_style(prev, font);
+
 	arcan_mem_free(fname);
 	*base = ch;
 	return base;
@@ -886,19 +923,37 @@ retry:
 #define CONST_MAX_SURFACEH 4096
 #endif
 
+/* in arcan_ttf.c */
+static void draw_builtin(struct rcell* cnode,
+	const char* const base, struct text_format* style, int w, int h)
+{
+/* set size will have been called for the destination already as part
+ * of size chain that is used for allocation */
+	size_t len = strlen(base);
+	uint32_t ucs4[len+1];
+	UTF8_to_UTF32(ucs4, (const uint8_t* const) base, len);
+
+	for(size_t i = 0; i < len; i++){
+		tui_pixelfont_draw(
+			builtin_bitmap.bitmap, cnode->data.surf.buf, w, ucs4[i], i * style->px_skip, 0,
+			RGBA(style->col[0], style->col[1], style->col[2], style->col[3]),
+			0, w, h, true
+		);
+	}
+}
+
 static bool render_alloc(struct rcell* cnode,
 	const char* const base, struct text_format* style)
 {
 	int w, h;
 
-	if (TTF_SizeUTF8chain(style->font->chain.data,
-		style->font->chain.count, base, &w, &h, style->style)){
+	if (size_font_chain(style, base, &w, &h)){
 		arcan_warning("arcan_video_renderstring(), couldn't size node.\n");
 		return false;
 	}
 /* easy to circumvent here by just splitting into larger nodes, need
  * to do some accumulation for this to be less pointless */
-	if (w==0 || w > CONST_MAX_SURFACEW || h == 0 || h > CONST_MAX_SURFACEH){
+	if (w == 0 || w > CONST_MAX_SURFACEW || h == 0 || h > CONST_MAX_SURFACEH){
 		return false;
 	}
 
@@ -914,7 +969,11 @@ static bool render_alloc(struct rcell* cnode,
 	for (size_t i=0; i < w * h; i++)
 		cnode->data.surf.buf[i] = 0;
 
-	if (!TTF_RenderUTF8chain(cnode->data.surf.buf, w, h, w,
+/* if there is no font, we use the built-in default */
+	if (!style->font){
+		draw_builtin(cnode, base, style, w, h);
+	}
+	else if (!TTF_RenderUTF8chain(cnode->data.surf.buf, w, h, w,
 		style->font->chain.data, style->font->chain.count,
 		base, style->col, style->style)){
 		arcan_warning("arcan_video_renderstring(), failed to render.\n");
@@ -939,8 +998,7 @@ static inline void currstyle_cnode(struct text_format* curr_style,
 	if (sizeonly){
 		if (curr_style->font){
 			int dw, dh;
-			TTF_SizeUTF8chain(curr_style->font->chain.data,
-				curr_style->font->chain.count, base, &dw, &dh, curr_style->style);
+			size_font_chain(curr_style, base, &dw, &dh);
 			cnode->ascent = TTF_FontAscent(curr_style->font->chain.data[0]);
 			cnode->width = dw;
 			cnode->descent = TTF_FontDescent(curr_style->font->chain.data[0]);
@@ -960,11 +1018,6 @@ static inline void currstyle_cnode(struct text_format* curr_style,
 		cnode->data.surf.h = curr_style->surf.h;
 		curr_style->surf.buf = NULL;
 		return;
-	}
-
-	if (!curr_style->font){
-		arcan_warning("arcan_video_renderstring(), couldn't render node.\n");
-		goto reset;
 	}
 
 	if (!render_alloc(cnode, base, curr_style))
@@ -1017,11 +1070,6 @@ static int build_textchain(char* message,
 					*current = 0;
 /* render surface and slide window */
 					currstyle_cnode(curr_style, base, cnode, sizeonly);
-					if (!curr_style->font) {
-						arcan_warning("arcan_video_renderstring(),"
-							" no font specified / found.\n");
-						return -1;
-					}
 
 /* slide- alloc list of rendered blocks */
 					cnode = trystep(cnode, false);
@@ -1065,13 +1113,10 @@ static int build_textchain(char* message,
 	}
 
 /* last element .. */
-	if (msglen && curr_style->font) {
+	if (msglen) {
 		cnode->next = NULL;
 		if (sizeonly){
-			TTF_SizeUTF8chain(curr_style->font->chain.data,
-				curr_style->font->chain.count, base, (int*) &cnode->width,
-				(int*) &cnode->height, curr_style->style
-			);
+			size_font_chain(curr_style, base, (int*) &cnode->width, (int*) &cnode->height);
 		}
 		else
 			render_alloc(cnode, base, curr_style);
