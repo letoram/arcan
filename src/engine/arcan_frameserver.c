@@ -248,6 +248,21 @@ static bool push_buffer(arcan_frameserver* src,
  * be rasterized or deferred to on-GPU rasterization / atlas lookup, so
  * the other setup isn't strictly needed. */
 	if (src->desc.hints & SHMIF_RHINT_TPACK){
+
+/* First synch with the font size, some unit conversion here as the
+ * fontraster function uses pt, while-as hints etc. are in mm+density.
+ * If the values does not exist, use the same as the static defaults
+ * from shmif */
+		float ppcm = src->desc.hint.ppcm;
+		float mmsz = src->desc.hint.sz;
+
+		if (ppcm < EPSILON)
+			ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
+
+		if (mmsz <= EPSILON)
+			mmsz = 3.527780;
+
+
 		tui_raster_renderagp(
 			arcan_renderfun_fontraster(NULL, 0, 12), store, (uint8_t*) buf,
 			src->desc.width * src->desc.height * sizeof(shmif_pixel));
@@ -1297,4 +1312,7 @@ void arcan_frameserver_displayhint(
 	if (!fsrv)
 		return;
 
+	fsrv->desc.hint.width = w;
+	fsrv->desc.hint.height = h;
+	fsrv->desc.hint.ppcm = ppcm;
 }

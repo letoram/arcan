@@ -71,7 +71,7 @@ char* arcan_tui_statedescr(struct tui_context* tui)
 		"frame: %d alpha: %d "
 		"scroll-lock: %d "
 		"rows: %d cols: %d cell_w: %d cell_h: %d "
-		"ppcm: %f font_sz: %f font_sz_delta: %d hint: %d "
+		"ppcm: %f font_sz: %f hint: %d "
 		"scrollback: %d sbofs: %d inscroll: %d backlog: %d "
 		"mods: %d iact: %d "
 		"cursor_x: %d cursor_y: %d off: %d hard_off: %d period: %d "
@@ -80,7 +80,7 @@ char* arcan_tui_statedescr(struct tui_context* tui)
 		(int) tui->fstamp, (int) tui->alpha,
 		(int) tui->scroll_lock,
 		tui->rows, tui->cols, tui->cell_w, tui->cell_h,
-		tui->ppcm, tui->font_sz, tui->font_sz_delta, tui->hint,
+		tui->ppcm, tui->font_sz, tui->hint,
 		tui->scrollback, tui->sbofs, 1, 1,
 		tui->modifiers, tui->inact_timer,
 		cx, cy,
