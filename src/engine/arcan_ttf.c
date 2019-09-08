@@ -924,7 +924,7 @@ static const uint32_t u8ofslut[6] = {
 	0x03C82080UL, 0xFA082080UL, 0x82082080UL
 };
 
-int UTF8_to_UTF32(uint32_t* out, const uint8_t* in, size_t len)
+int UTF8_to_UTF32(uint32_t* out, const uint8_t* const in, size_t len)
 {
 	int rc = 1;
 

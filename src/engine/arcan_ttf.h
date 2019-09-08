@@ -71,6 +71,8 @@ TTF_Font* TTF_OpenFontFD(int fd, int ptsize, uint16_t hdpi, uint16_t vdpi);
 
 void* TTF_GetFtFace(TTF_Font*);
 
+int UTF8_to_UTF32(uint32_t* out, const uint8_t* in, size_t len);
+
 /* Set and retrieve the font style */
 #define TTF_STYLE_NORMAL 0x00
 #define TTF_STYLE_BOLD 0x01
