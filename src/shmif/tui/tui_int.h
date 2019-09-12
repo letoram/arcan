@@ -63,7 +63,6 @@ struct tui_context {
 	struct tui_font* font[2];
 
 	float font_sz; /* size in mm */
-	int font_sz_delta; /* user requested step, pt */
 	int hint;
 	int render_flags;
 	float ppcm;

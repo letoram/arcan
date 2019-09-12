@@ -148,7 +148,7 @@ static bool setup_font(
 	tui->font_sz = font_sz;
 
 /* bitmap font need the nearest size in px, with ttf we convert to pt */
-	size_t pt_size = (font_sz * 2.8346456693f) + tui->font_sz_delta;
+	size_t pt_size = (font_sz * 2.8346456693f);
 	size_t px_sz = ceilf((float)pt_size * 0.03527778 * tui->ppcm);
 
 /* clamp or we'll drop into inf/invisible */

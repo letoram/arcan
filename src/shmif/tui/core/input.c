@@ -238,20 +238,6 @@ static bool select_row(struct tui_context* tui)
 	return true;
 }
 
-bool inc_fontsz(struct tui_context* tui)
-{
-	tui->font_sz_delta += 2;
-	tui_fontmgmt_invalidate(tui);
-	return true;
-}
-
-bool dec_fontsz(struct tui_context* tui)
-{
-	tui->font_sz_delta -= 2;
-	tui_fontmgmt_invalidate(tui);
-	return true;
-}
-
 static bool scroll_lock(struct tui_context* tui)
 {
 	tui->scroll_lock = !tui->scroll_lock;
@@ -299,8 +285,6 @@ static const struct lent labels[] = {
 	{1 | 2, "DOWN", "(scroll-lock) page down, DOWN keysym", move_down},
 	{1, "COPY_WND", "Copy visible area to new passive window", copy_window},
 	{1, "COPY_WND_FULL", "Copy window and scrollback", copy_window_full},
-	{1 | 2, "INC_FONT_SZ", "Font size +1 pt", inc_fontsz},
-	{1 | 2, "DEC_FONT_SZ", "Font size -1 pt", dec_fontsz},
 	{1, "SELECT_TOGGLE", "Switch select destination (wnd, clipboard)", sel_sw},
 	{0, NULL, NULL}
 };

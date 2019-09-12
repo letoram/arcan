@@ -439,6 +439,7 @@ int tui_screen_refresh(struct tui_context* tui)
 				return 0;
 		}
 
+		tui->acon.dirty.y1 = 0;
 		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
 	}
 
