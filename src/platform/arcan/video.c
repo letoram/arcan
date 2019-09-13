@@ -253,6 +253,11 @@ void platform_video_shutdown()
 		}
 }
 
+size_t platform_video_decay()
+{
+	return 1;
+}
+
 size_t platform_video_displays(platform_display_id* dids, size_t* lim)
 {
 	size_t rv = 0;

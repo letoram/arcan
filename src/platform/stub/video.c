@@ -31,6 +31,11 @@ void platform_video_shutdown()
 {
 }
 
+size_t platform_video_decay()
+{
+	return 0;
+}
+
 void platform_video_prepare_external()
 {
 }

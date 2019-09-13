@@ -72,6 +72,12 @@ bool platform_video_auth(int cardn, unsigned token);
 void platform_video_prepare_external();
 
 /*
+ * Return the number of frame updates needed for the active swapchain to
+ * reach the mapped output, or 0 if this happens without the rendering layer.
+ */
+size_t platform_video_decay();
+
+/*
  * Undo the effects of the prepare_external call.
  */
 void platform_video_restore_external();

@@ -520,6 +520,11 @@ bool platform_video_map_display(
 	return true;
 }
 
+size_t platform_video_decay()
+{
+	return 0;
+}
+
 const char* platform_video_capstr()
 {
 	return "Video Platform (HEADLESS)";
@@ -606,7 +611,17 @@ bool platform_video_init(uint16_t width,
 					EGL_PLATFORM_GBM_KHR, (void*) global.egl.gbmdev, NULL);
 			}
 		}
+
+/* last resort, try the mesa surfaceless one to get software rendering */
+		if (!global.egl.disp){
+#ifndef EGL_PLATFORM_SURFACELESS_MESA
+#define EGL_PLATFORM_SURFACELESS_MESA 0x31DD
+#endif
+		global.egl.disp = get_platform_display(
+			EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
+		}
 	}
+
 /* if we don't have the option to specify a platform display, just
  * go with whatever the default display happens to be */
 	if (!global.egl.disp)

@@ -3782,6 +3782,11 @@ enum dpms_state platform_video_dpms(
 	return state;
 }
 
+size_t platform_video_decay()
+{
+	return 2;
+}
+
 bool platform_video_map_display(
 	arcan_vobj_id id, platform_display_id disp, enum blitting_hint hint)
 {
