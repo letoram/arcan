@@ -396,7 +396,8 @@ static void consume(struct arcan_shmif_cont* c)
  *  1. If dimensions have changed [!0], use new values
  *  2. Always use new hint state
  *  3. If density has changed [> 0], use new value
- */
+ *  4. If cell dimensions has changed, use new values
+*/
 static inline void merge_dh(arcan_event* new, arcan_event* old)
 {
 	if (!new->tgt.ioevs[0].iv)
@@ -415,6 +416,12 @@ static inline void merge_dh(arcan_event* new, arcan_event* old)
 
 	if (!(new->tgt.ioevs[4].fv > 0))
 		new->tgt.ioevs[4].fv = old->tgt.ioevs[4].fv;
+
+	if (!new->tgt.ioevs[5].iv)
+		new->tgt.ioevs[5].iv = old->tgt.ioevs[5].iv;
+
+	if (!new->tgt.ioevs[6].iv)
+		new->tgt.ioevs[6].iv = old->tgt.ioevs[6].iv;
 }
 
 static bool scan_disp_event(struct arcan_evctx* c, struct arcan_event* old)

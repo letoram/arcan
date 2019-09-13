@@ -387,6 +387,8 @@ enum ARCAN_TARGET_COMMAND {
  *               2: invisible, 4: unfocused, 8: maximized, 16: fullscreen
  * ioevs[3].iv = RGB layout (0 RGB, 1 BGR, 2 VRGB, 3 VBGR)
  * ioevs[4].fv = ppcm (pixels per centimeter, square assumed), < 0 ignored.
+ * ioevs[5].iv = cell_width (rpack- feedback)
+ * ioevs[6].iv = cell_height (rpack- feedback)
  *
  * There are subtle side-effects from the UNIQUE/AGGREGATE approach,
  * some other events may be relative to current display dimensions (typically
