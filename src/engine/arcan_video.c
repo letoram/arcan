@@ -5285,6 +5285,8 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 	arcan_video_display.dirty +=
 		agp_shader_envv(FRACT_TIMESTAMP_F, &fract, sizeof(float));
 
+/* workaround coarse control (which should be per rendertarget- really
+ * but that takes some refactoring of the drawing API to complete) */
 	if (arcan_video_display.ignore_dirty > 0)
 		arcan_video_display.ignore_dirty--;
 
@@ -5304,6 +5306,13 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 	transfc += steptgt(fract, &current_context->stdoutp);
 	*ndirty = arcan_video_display.dirty;
 	arcan_video_display.dirty = transfc;
+
+/* This is part of another dirty workaround when n buffers are needed
+ * by the video platform for a flip to reach the display.
+ */
+	if (*ndirty && arcan_video_display.ignore_dirty == 0){
+		arcan_video_display.ignore_dirty = platform_video_decay();
+	}
 
 	long long int post = arcan_timemillis();
 	return post - pre;

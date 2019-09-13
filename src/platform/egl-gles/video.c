@@ -144,6 +144,11 @@ bool PLATFORM_SYMBOL(_video_set_mode)(
 	return disp == 0 && mode == 0;
 }
 
+size_t platform_video_decay()
+{
+	return 0;
+}
+
 int PLATFORM_SYMBOL(_video_cardhandle)(int cardn,
 		int* buffer_method, size_t* metadata_sz, uint8_t** metadata)
 {

@@ -69,6 +69,11 @@ int platform_video_cardhandle(int cardn,
 	return -1;
 }
 
+size_t platform_video_decay()
+{
+	return 0;
+}
+
 void platform_video_reset(int id, int swap)
 {
 }

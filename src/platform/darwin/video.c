@@ -112,6 +112,10 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 		post();
 }
 
+size_t PLATFORM_SYMBOL(_video_decay){
+	return 0;
+}
+
 enum dpms_state PLATFORM_SYMBOL(_video_dpms)(
 	platform_display_id disp, enum dpms_state state)
 {
