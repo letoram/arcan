@@ -5912,7 +5912,8 @@ static int getimagestorageprop(lua_State* ctx)
 {
 	LUA_TRACE("image_storage_properties");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobject* vobj;
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, &vobj);
 	img_cons cons = arcan_video_storage_properties(id);
 	lua_createtable(ctx, 0, 3);
 
@@ -5926,6 +5927,33 @@ static int getimagestorageprop(lua_State* ctx)
 
 	lua_pushstring(ctx, "width");
 	lua_pushnumber(ctx, cons.w);
+	lua_rawset(ctx, -3);
+
+	lua_pushstring(ctx, "refc");
+	lua_pushnumber(ctx, vobj->vstore->refcount);
+	lua_rawset(ctx, -3);
+
+	lua_pushstring(ctx, "type");
+	switch(vobj->vstore->txmapped){
+	case TXSTATE_OFF:
+		lua_pushstring(ctx, "color");
+	break;
+	case TXSTATE_TEX2D:
+		lua_pushstring(ctx, "2d");
+	break;
+	case TXSTATE_DEPTH:
+		lua_pushstring(ctx, "depth");
+	break;
+	case TXSTATE_TEX3D:
+		lua_pushstring(ctx, "3d");
+	break;
+	case TXSTATE_CUBE:
+		lua_pushstring(ctx, "cube");
+	break;
+	case TXSTATE_TPACK:
+		lua_pushstring(ctx, "tpack");
+	break;
+	}
 	lua_rawset(ctx, -3);
 
 	LUA_ETRACE("image_storage_properties", NULL, 1);

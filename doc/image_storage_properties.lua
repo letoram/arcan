@@ -1,11 +1,12 @@
 -- image_storage_properties
 -- @short: Retrieve a table describing the current storage state for the specified object.
--- @inargs: vid
+-- @inargs: vid:src
 -- @outargs: proptbl
--- @longdescr: An object has a number of different properties that affect memory consumption
--- and video rendering. Storage properties has the fields 'width' and 'height' that refer
--- to the internal storage format of the object, as this may be padded to fit a POT restriction,
--- meaning that width and height needs to have a valid power of two value.
+-- @longdescr:
+-- This function is used to retrieve the image state with the same fields as
+-- ref:image_surface_resolve, but dimensions will be that of the backing store
+-- rather than the current presentation size. The extended fields 'type' and
+-- 'refcount' are also provided.
 -- @group: image
 -- @cfunction: getimagestorageprop
 -- @related: image_surface_properties, image_surface_initial_properties,
