@@ -1,0 +1,1 @@
+{"version":1,"ops":[{"type":1,"author":{"id":"9eb510892d1accc0c715d21128d216b2e6f74967"},"timestamp":1568975542,"title":"(waybridge) xwl-wm signal propagation (ctrl+kz)","message":"Trying to background waybridge in the controlling terminal via kz+bg will\ncause the wm or xwayland process to shut down.","files":null}]}
