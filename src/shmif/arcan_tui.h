@@ -327,6 +327,9 @@ struct tui_labelent {
 /* user-readable short description */
 	char descr[58];
 
+/* utf8 icon or short identifier */
+	uint8_t vsym[5];
+
 /* button : 0
  * axis-motion : 1
  * touch : 2 */

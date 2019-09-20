@@ -267,26 +267,27 @@ struct lent {
 	int ctx;
 	const char* lbl;
 	const char* descr;
+	uint8_t vsym[5];
 	bool(*ptr)(struct tui_context*);
 	uint16_t initial;
 	uint16_t modifiers;
 };
 
 static const struct lent labels[] = {
-	{1 | 2, "LINE_UP", "Scroll 1 row up", scroll_up},
-	{1 | 2, "LINE_DOWN", "Scroll 1 row down", scroll_down},
-	{1 | 2, "PAGE_UP", "Scroll one page up", page_up},
-	{1 | 2, "PAGE_DOWN", "Scroll one page down", page_down},
-	{1 | 2, "COPY_AT", "Copy word at cursor", select_at},
-	{1 | 2, "COPY_ROW", "Copy cursor row", select_row},
-	{1, "MOUSE_FORWARD", "Toggle mouse forwarding", mouse_forward},
-	{1 | 2, "SCROLL_LOCK", "Arrow- keys to pageup/down", scroll_lock, TUIK_SCROLLLOCK},
-	{1 | 2, "UP", "(scroll-lock) page up, UP keysym", move_up},
-	{1 | 2, "DOWN", "(scroll-lock) page down, DOWN keysym", move_down},
-	{1, "COPY_WND", "Copy visible area to new passive window", copy_window},
-	{1, "COPY_WND_FULL", "Copy window and scrollback", copy_window_full},
-	{1, "SELECT_TOGGLE", "Switch select destination (wnd, clipboard)", sel_sw},
-	{0, NULL, NULL}
+	{1 | 2, "LINE_UP", "Scroll 1 row up", {}, scroll_up}, /* u+2191 */
+	{1 | 2, "LINE_DOWN", "Scroll 1 row down", {}, scroll_down}, /* u+2192 */
+	{1 | 2, "PAGE_UP", "Scroll one page up", {0xe2, 0x87, 0x9e}, page_up}, /* u+21de */
+	{1 | 2, "PAGE_DOWN", "Scroll one page down", {0xe2, 0x87, 0x9e}, page_down}, /* u+21df */
+	{1 | 2, "COPY_AT", "Copy word at cursor", {}, select_at}, /* u+21f8 */
+	{1 | 2, "COPY_ROW", "Copy cursor row", {}, select_row}, /* u+21a6 */
+	{1, "MOUSE_FORWARD", "Toggle mouse forwarding", {}, mouse_forward}, /* u+ */
+	{1 | 2, "SCROLL_LOCK", "Arrow- keys to pageup/down", {}, scroll_lock, TUIK_SCROLLLOCK}, /* u+ */
+	{1 | 2, "UP", "(scroll-lock) page up, UP keysym", {}, move_up}, /* u+ */
+	{1 | 2, "DOWN", "(scroll-lock) page down, DOWN keysym", {}, move_down}, /* u+ */
+	{1, "COPY_WND", "Copy visible area to new passive window", {}, copy_window}, /* u+ */
+	{1, "COPY_WND_FULL", "Copy window and scrollback", {}, copy_window_full}, /* u+ */
+	{1, "SELECT_TOGGLE", "Switch select destination (wnd, clipboard)", {}, sel_sw}, /* u+ */
+	{0}
 };
 
 void tui_expose_labels(struct tui_context* tui)
@@ -318,6 +319,8 @@ void tui_expose_labels(struct tui_context* tui)
 			ev.ext.labelhint.idatatype = dstlbl.idatatype;
 			ev.ext.labelhint.modifiers = dstlbl.modifiers;
 			ev.ext.labelhint.initial = dstlbl.initial;
+			snprintf((char*)ev.ext.labelhint.vsym,
+				COUNT_OF(ev.ext.labelhint.vsym), "%s", dstlbl.vsym);
 			arcan_shmif_enqueue(&tui->acon, &ev);
 		}
 	}
@@ -333,6 +336,8 @@ void tui_expose_labels(struct tui_context* tui)
 			COUNT_OF(ev.ext.labelhint.label), "%s", cur->lbl);
 		snprintf(ev.ext.labelhint.descr,
 			COUNT_OF(ev.ext.labelhint.descr), "%s", cur->descr);
+		snprintf((char*)ev.ext.labelhint.vsym,
+			COUNT_OF(ev.ext.labelhint.vsym), "%s", cur->vsym);
 		cur++;
 
 		ev.ext.labelhint.initial = cur->initial;

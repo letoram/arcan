@@ -120,14 +120,15 @@
 -- surface drawing can be constrained accordingly.
 --
 -- @note: "input_label" {string:labelhint, string:datatype, int:initial,
--- int:modifiers} - suggest that the target supports customized abstract input
--- labels for use with the target_input function. May be called repeatedly,
+-- int:modifiers, string:vsym} - suggest that the target supports customized
+-- abstract input labels for use with the target_input function. May be called repeatedly,
 -- input_label values, are restricted to 16 characters in the [a-z,0-9_] set
 -- with ? values indicating that the caller tried to add an invalid value.
 -- This also comes with an initial and a description field, where initial suggest
 -- the initial keybind if one should be available, and the description is a
--- localized user-presentable string (UTF-8).
--- The datatype field match the ones available from the input(iotbl) event
+-- localized user-presentable string (UTF-8). If the vsym field is provided,
+-- it will contain a user-presentable short reference intended for iconic
+-- reference. The datatype field match the ones available from the input(iotbl) event
 -- handler. If initial is set (to > 0) a suggested default binding is provided
 -- with the corresponding keysym (see builtin/keyboard.lua for symbol table)
 -- and modifiers).
