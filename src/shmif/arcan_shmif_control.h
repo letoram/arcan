@@ -725,7 +725,7 @@ struct arcan_shmif_cont {
 	uint8_t hints;
 
 /*
- * IF the contraints:
+ * IF the constraints:
  *
  * [Hints & SHMIF_RHINT_SUBREGION] and (X2>X1,(X2-X1)<=W,Y2>Y1,(Y2-Y1<=H))
  * valid, [ARCAN] MAY synch only the specified region.
@@ -733,6 +733,9 @@ struct arcan_shmif_cont {
  *
  * The [dx, dy] hints inside of the region indicates the number of pixels that
  * are scrolled based on the previously synched buffer.
+ *
+ * The dirty region is reset on either calls to arcan_shmif_signal (video)
+ * or on shmif_resize calls that impose a size change.
  */
   struct arcan_shmif_region dirty;
 

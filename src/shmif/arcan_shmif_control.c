@@ -424,6 +424,13 @@ static inline void merge_dh(arcan_event* new, arcan_event* old)
 		new->tgt.ioevs[6].iv = old->tgt.ioevs[6].iv;
 }
 
+static void reset_dirty(struct arcan_shmif_cont* ctx)
+{
+	ctx->dirty.y2 = ctx->dirty.x2 = 0;
+	ctx->dirty.y1 = ctx->h;
+	ctx->dirty.x1 = ctx->w;
+}
+
 static bool scan_disp_event(struct arcan_evctx* c, struct arcan_event* old)
 {
 	uint8_t cur = *c->front;
@@ -1525,6 +1532,7 @@ static bool step_v(struct arcan_shmif_cont* ctx)
  * VBI- style post-buffer footer */
 	if (ctx->hints & SHMIF_RHINT_SUBREGION){
 		atomic_store(&ctx->addr->dirty, ctx->dirty);
+		reset_dirty(ctx);
 	}
 
 /* mark the current buffer as pending, this is used when we have
@@ -2281,8 +2289,8 @@ enum shmif_migrate_status arcan_shmif_migrate(
 /* last step, replace the relevant members of cont with the values from ret */
 /* first try and just re-use the mapping so any aliasing issues from the
  * caller can be masked */
-	void* alias = mmap(contaddr, ret.shmsize, PROT_READ |
-		PROT_WRITE, MAP_SHARED, ret.shmh, 0);
+	void* alias = mmap(contaddr, ret.shmsize,
+		PROT_READ | PROT_WRITE, MAP_SHARED, ret.shmh, 0);
 
 	pthread_mutex_lock(&ret.priv->guard.synch);
 	if (alias != contaddr){
@@ -2859,14 +2867,23 @@ int arcan_shmif_dirty(struct arcan_shmif_cont* cont,
 	if (!cont || !cont->addr)
 		return -1;
 
-	cont->hints |= SHMIF_RHINT_SUBREGION;
+/* Resize to synch flags shouldn't cause a remap here, but some edge case
+ * could possible have client-aliased context */
+	if (!(cont->hints & SHMIF_RHINT_SUBREGION)){
+		cont->hints |= SHMIF_RHINT_SUBREGION;
+		arcan_shmif_resize(cont, cont->w, cont->h);
+	}
 
+/* enforce all the little constraints, with some other packing mode, this
+ * is where we can modify vidp and remaining size etc. to allow delta pack
+ * on single buffer */
 	if (x1 >= x2)
 		x1 = 0;
 
 	if (y1 >= y2)
 		y1 = 0;
 
+/* grow to extents */
 	if (x1 < cont->dirty.x1)
 		cont->dirty.x1 = x1;
 
@@ -2879,7 +2896,54 @@ int arcan_shmif_dirty(struct arcan_shmif_cont* cont,
 	if (y2 > cont->dirty.y2)
 		cont->dirty.y2 = y2;
 
+/* clamp */
+	if (cont->dirty.y2 > cont->h){
+		cont->dirty.y2 = cont->h;
+	}
+
+	if (cont->dirty.x2 > cont->w){
+		cont->dirty.x2 = cont->w;
+	}
+
+#ifdef _DEBUG
+	if (getenv("ARCAN_SHMIF_DEBUG_NODIRTY")){
+		cont->dirty.x1 = 0;
+		cont->dirty.x2 = cont->w;
+		cont->dirty.y1 = 0;
+		cont->dirty.y2 = cont->h;
+	}
+	else if (getenv("ARCAN_SHMIF_DEBUG_DIRTY")){
+		shmif_pixel* buf = malloc(sizeof(shmif_pixel) *
+			(cont->dirty.y2 - cont->dirty.y1) * (cont->dirty.x2 - cont->dirty.x1));
+
+/* save and replace with green, then restore and synch real - this does not
+ * clamp / bounds check on purpose, with this debug setting we want a crash
+ * here to indicate that the boundary values are broken */
+		if (buf){
+			size_t count = 0;
+			struct arcan_shmif_region od = cont->dirty;
+			for (size_t y = cont->dirty.y1; y < cont->dirty.y2; y++)
+				for (size_t x = cont->dirty.x1; x < cont->dirty.x2; x++){
+				buf[count++] = cont->vidp[y * cont->pitch + x];
+				cont->vidp[y * cont->pitch + x] = SHMIF_RGBA(0x00, 0xff, 0x00, 0xff);
+			}
+
+			arcan_shmif_signal(cont, SHMIF_SIGVID);
+
+			count = 0;
+			cont->dirty = od;
+			for (size_t y = cont->dirty.y1; y < cont->dirty.y2; y++)
+				for (size_t x = cont->dirty.x1; x < cont->dirty.x2; x++){
+				cont->vidp[y * cont->pitch + x] = buf[count++];
+			}
+
+			free(buf);
+		}
+	}
+#endif
+
 	return 0;
+}
 
 /*
  * Missing: special behavior for SHMIF_RHINT_SUBREGION_CHAIN, setup chain of
@@ -2890,7 +2954,6 @@ int arcan_shmif_dirty(struct arcan_shmif_cont* cont,
  * If there's not enough store left to walk on, signal video and wait (unless
  * noblock flag is set)
  */
-}
 
 #ifdef __OpenBSD__
 void arcan_shmif_privsep(

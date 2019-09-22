@@ -257,6 +257,9 @@ static int raster_tobuf(
 /* respecting scrolling will need another drawing routine, as we need clipping
  * etc. and multiple lines can be scrolled, and that's better fixed when we
  * have an atlas to work from */
+		if (update && cur_y == -1){
+			*y1 = line.start_line * ctx->cell_h;
+		}
 
 /* skip omitted lines */
 		if (cur_y != line.start_line){
@@ -282,9 +285,11 @@ static int raster_tobuf(
 /* Shaping, BiDi, ... missing here now while we get the rest in place */
 		size_t draw_x = line.offset * ctx->cell_w;
 
-		if (update && draw_x < *x1)
+		if (draw_x < *x1){
 			*x1 = draw_x;
+		}
 
+		bool updated = false;
 		for (size_t i = line.offset; line.ncells && buf_sz >= raster_cell_sz; i++){
 			line.ncells--;
 
@@ -301,15 +306,19 @@ static int raster_tobuf(
 				continue;
 			}
 
+			updated = true;
 /* blit or discard if OOB */
-			if (draw_x < max_w - ctx->cell_w && draw_y + ctx->cell_h < max_h){
+			if (draw_x + ctx->cell_w < max_w && draw_y + ctx->cell_h < max_h){
 				draw_x += drawglyph(ctx, &cell, vidp, pitch, draw_x, draw_y, max_w, max_h);
 			}
 			else
 				continue;
+
+			uint16_t next_x = draw_x + ctx->cell_w;
+			if (*x2 < next_x && next_x <= max_w){
+				*x2 = next_x;
+			}
 		}
-		if (update && *x2 < draw_x + ctx->cell_w)
-			*x2 = draw_x + ctx->cell_w;
 
 		cur_y++;
 	}
@@ -331,10 +340,15 @@ int tui_raster_render(struct tui_raster_context* ctx,
 /* pixel- rasterization over shmif should work with one big BB until we have
  * chain-mode. server-side, the vertex buffer slicing will just stream so not
  * much to care about there */
-	return raster_tobuf(ctx, dst->vidp, dst->pitch,
-		dst->w, dst->h, &dst->dirty.x1, &dst->dirty.y1,
-		&dst->dirty.x2, &dst->dirty.y2, buf, buf_sz
-	);
+	uint16_t x1, y1, x2, y2;
+	if (-1 == raster_tobuf(ctx, dst->vidp, dst->pitch,
+		dst->w, dst->h, &x1, &y1, &x2, &y2, buf, buf_sz))
+	return -1;
+
+	if (x2 > dst->w)
+		x2 = dst->w;
+	arcan_shmif_dirty(dst, x1, y1, x2, y2, 0);
+	return 1;
 }
 
 void tui_raster_offset(
