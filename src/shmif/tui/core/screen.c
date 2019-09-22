@@ -88,8 +88,9 @@ static ssize_t find_row_ofs(
 
 	for (pos = ofs; pos < tui->cols; pos++){
 		if (!tui_attr_equal(front[pos].attr,
-			back[pos].attr) || front[pos].ch != back[pos].ch)
+			back[pos].attr) || front[pos].ch != back[pos].ch){
 			return pos;
+		}
 	}
 	return -1;
 }
@@ -439,7 +440,6 @@ int tui_screen_refresh(struct tui_context* tui)
 				return 0;
 		}
 
-		tui->acon.dirty.y1 = 0;
 		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
 	}
 
