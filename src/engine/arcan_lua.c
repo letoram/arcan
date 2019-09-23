@@ -4853,6 +4853,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx, "initial", ev->ext.labelhint.initial, top);
 			tblstr(ctx, "datatype", idt, top);
 			tblnum(ctx, "modifiers", ev->ext.labelhint.modifiers, top);
+			MSGBUF_UTF8(ev->ext.labelhint.vsym);
+			tblstr(ctx, "vsym", msgbuf, top);
 		}
 		break;
 		case EVENT_EXTERNAL_BCHUNKSTATE:

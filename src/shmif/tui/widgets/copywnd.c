@@ -99,7 +99,8 @@ static void copywnd_set_labels(
 		.ext.labelhint.label = "PASTE_SELECT",
 		.ext.labelhint.descr = "Mark window as clipboard recipient",
 		.ext.labelhint.initial = TUIK_RETURN,
-		.ext.labelhint.modifiers = TUIM_LMETA
+		.ext.labelhint.modifiers = TUIM_LMETA,
+		.ext.labelhint.vsym = {0xf0, 0x9f, 0x93, 0x8b}, /* U+1F4CB */
 	});
 	arcan_shmif_enqueue(&c->acon, &(struct arcan_event){
 		.category = EVENT_EXTERNAL,
@@ -108,7 +109,8 @@ static void copywnd_set_labels(
 		.ext.labelhint.label = "EDIT_TOGGLE",
 		.ext.labelhint.descr = "Toggle highlight/edit mode",
 		.ext.labelhint.initial = TUIK_ESCAPE,
-		.ext.labelhint.modifiers = TUIM_LMETA
+		.ext.labelhint.modifiers = TUIM_LMETA,
+		.ext.labelhint.vsym = {0xe2, 0x9c, 0x8e}, /* U+270E */
 	});
 }
 

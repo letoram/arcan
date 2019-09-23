@@ -1344,6 +1344,7 @@ enum ARCAN_TARGET_SKIPMODE {
  *               arcan_shmif_tuisym.
  * (descr)     - short 8-bit UTF description, if localization is avail.
  *               also follow the language from the last GEOHINT
+ * (vsym)      - single utf8 encoded visual ID
  * (subv)      - > 0, use subid as pseudonym for this label (reduce string use)
  * (idatatype) - match IDATATYPE enum of expected data
  * (modifiers) - bitmap of desired modifiers (arkmod)
@@ -1351,7 +1352,8 @@ enum ARCAN_TARGET_SKIPMODE {
 		struct {
 			char label[16];
 			uint16_t initial;
-			char descr[58];
+			char descr[53];
+			uint8_t vsym[5];
 			uint16_t subv;
 			uint8_t idatatype;
 			uint16_t modifiers;
