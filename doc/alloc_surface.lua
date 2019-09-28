@@ -1,8 +1,8 @@
 -- alloc_surface
 -- @short: Create an empty, non-visible surface with a preset storage.
 -- @inargs: int:width, int:height
--- @inargs: int:width, int:height, bool:alpha
--- @inargs: int:width, int:height, bool:alpha, int:quality
+-- @inargs: int:width, int:height, bool:noalpha
+-- @inargs: int:width, int:height, bool:noalpha, int:quality
 -- @outargs: vid
 -- @longdescr: Some operations, particularly record and rendertargets need
 -- a storage buffer to work with. While ref:fill_surface could also be used
