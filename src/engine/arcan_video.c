@@ -959,8 +959,8 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
 
 /* dstbuf is now managed by the glstore in xfer */
 	arcan_video_shareglstore(vid, xfer);
-	arcan_video_objectopacity(xfer, 1.0, 0);
 	arcan_video_setprogram(xfer, shid);
+	arcan_video_forceblend(xfer, BLEND_FORCE);
 
 	img_cons cons = {.w = neww, .h = newh, .bpp = sizeof(av_pixel)};
 	arcan_vobj_id dst;
@@ -1019,7 +1019,7 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
 
 /* set up a rendertarget and a proxy transfer object */
 	arcan_errc rts = arcan_video_setuprendertarget(
-		dst, 0, -1, false, RENDERTARGET_COLOR);
+		dst, 0, -1, false, RENDERTARGET_COLOR | RENDERTARGET_RETAIN_ALPHA);
 
 	if (rts != ARCAN_OK){
 		arcan_video_deleteobject(dst);
@@ -1030,10 +1030,13 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
 /* draw, transfer storages and cleanup, xfer will
  * be deleted implicitly when dst cascades */
 	arcan_video_attachtorendertarget(dst, xfer, true);
+	agp_rendertarget_clearcolor(
+		arcan_vint_findrt(arcan_video_getobject(dst))->art, 0.0, 0.0, 0.0, 0.0);
+	arcan_video_objectopacity(xfer, 1.0, 0);
 	arcan_video_forceupdate(dst);
 
 /* in the call mode where caller specifies destination storage, we don't
- * share / overriged (or update the dimensions of the storage) */
+ * share / override (or update the dimensions of the storage) */
 	if (did == ARCAN_EID){
 		vobj->origw = neww;
 		vobj->origh = newh;
@@ -2085,8 +2088,8 @@ arcan_errc arcan_video_detachfromrendertarget(arcan_vobj_id did,
 	return ARCAN_OK;
 }
 
-arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
-	arcan_vobj_id src, bool detach)
+arcan_errc arcan_video_attachtorendertarget(
+	arcan_vobj_id did, arcan_vobj_id src, bool detach)
 {
 	if (src == ARCAN_VIDEO_WORLDID){
 		arcan_warning("arcan_video_attachtorendertarget(), WORLDID attach"

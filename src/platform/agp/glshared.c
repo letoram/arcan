@@ -891,7 +891,6 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 	if (!tgt || !(tgt->mode & RENDERTARGET_RETAIN_ALPHA)){
 		env->blend_src_alpha = GL_ONE;
 		env->blend_dst_alpha = GL_ONE;
-		agp_blendstate(BLEND_NORMAL);
 	}
 	else {
 		env->blend_src_alpha = GL_SRC_ALPHA;
