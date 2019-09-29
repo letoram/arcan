@@ -137,4 +137,5 @@ int arcan_renderfun_stretchblit(char* src, int inw, int inh,
  */
 struct tui_raster_context;
 struct tui_raster_context*
-	arcan_renderfun_fontraster(uint64_t* refs, size_t n_fonts, size_t px_sz);
+	arcan_renderfun_fontraster(
+		uint64_t* refs, size_t n_fonts, float ppcm, float size_mm);

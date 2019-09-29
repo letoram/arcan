@@ -1446,7 +1446,6 @@ int arcan_renderfun_stretchblit(char* src, int inw, int inh,
 		inw, inh, pack_tight, (unsigned char*)dst, dstw, dsth, pack_tight, rgba_ch))
 		return -1;
 
-
 	if (!flipv)
 		return 1;
 
@@ -1465,7 +1464,7 @@ int arcan_renderfun_stretchblit(char* src, int inw, int inh,
 }
 
 struct tui_raster_context*
-	arcan_renderfun_fontraster(uint64_t* refs, size_t n_fonts, size_t px_sz)
+	arcan_renderfun_fontraster(uint64_t* refs, size_t n_fonts, float ppcm, float size_mm)
 {
 	static struct tui_raster_context* temp_ctx;
 	size_t w, h;
@@ -1474,15 +1473,25 @@ struct tui_raster_context*
 		&builtin_bitmap
 	};
 
+/* first round/ convert to pt size */
+	size_t pt_size = size_mm * 2.8346456693f;
+	if (pt_size < 4)
+		pt_size = 4;
+
+/* apply density over size information */
+	size_t px_sz = ceilf((float)pt_size * 0.03527778 * ppcm);
+
+	arcan_warning("raster to: %zu\n", px_sz);
+/* if the font is of a bitmap type, resolve the pixel size from density+size
+ * and request that from the builtin bitmap font */
+	tui_pixelfont_setsz(builtin_bitmap.bitmap, px_sz, &w, &h);
+
 	if (!temp_ctx){
-		temp_ctx = tui_raster_setup(raster_cell_sz, raster_cell_sz);
+		temp_ctx = tui_raster_setup(w, h);
 		tui_raster_setfont(temp_ctx, fonts, 1);
 	}
-
-/* need to scan refs in cache and have a system for to do that, right now
- * we just match the builtin- bitmap font */
-	tui_pixelfont_setsz(builtin_bitmap.bitmap, px_sz, &w, &h);
-	tui_raster_cell_size(temp_ctx, w, h);
+	else
+		tui_raster_cell_size(temp_ctx, w, h);
 
 	return temp_ctx;
 }
