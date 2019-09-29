@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2017, Björn Ståhl
+ * Copyright 2003-2019, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -256,15 +256,15 @@ static bool push_buffer(arcan_frameserver* src,
 		float ppcm = src->desc.hint.ppcm;
 		float mmsz = src->desc.hint.sz;
 
+		arcan_warning("ppcm: %f, mmsz: %f\n", ppcm, mmsz);
 		if (ppcm < EPSILON)
 			ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
 
 		if (mmsz <= EPSILON)
 			mmsz = 3.527780;
 
-
 		tui_raster_renderagp(
-			arcan_renderfun_fontraster(NULL, 0, 12), store, (uint8_t*) buf,
+			arcan_renderfun_fontraster(NULL, 0, ppcm, mmsz), store, (uint8_t*) buf,
 			src->desc.width * src->desc.height * sizeof(shmif_pixel));
 		goto commit_mask;
 	}
@@ -1312,7 +1312,12 @@ void arcan_frameserver_displayhint(
 	if (!fsrv)
 		return;
 
-	fsrv->desc.hint.width = w;
-	fsrv->desc.hint.height = h;
-	fsrv->desc.hint.ppcm = ppcm;
+	if (w > 0)
+		fsrv->desc.hint.width = w;
+
+	if (h > 0)
+		fsrv->desc.hint.height = h;
+
+	if (ppcm > EPSILON)
+		fsrv->desc.hint.ppcm = ppcm;
 }
