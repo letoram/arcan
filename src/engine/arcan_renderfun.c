@@ -1040,7 +1040,7 @@ static struct rcell* trystep(struct rcell* cnode, bool force)
 
 /* a */
 static int build_textchain(char* message,
-	struct rcell* root, bool sizeonly, bool nolast)
+	struct rcell* root, bool sizeonly, bool nolast, bool reset)
 {
 	int rv = 0;
 /*
@@ -1048,7 +1048,8 @@ static int build_textchain(char* message,
  * set_style(&curr_style, font_cache[0].data);
  */
 	struct text_format* curr_style = &last_style;
-	set_style(curr_style, &font_cache[0]);
+	if (reset)
+		set_style(curr_style, &font_cache[0]);
 
 	struct rcell* cnode = root;
 	char* current = message;
@@ -1368,7 +1369,7 @@ av_pixel* arcan_renderfun_renderfmtstr_extended(const char** msgarray,
 
 		if (ind % 2 == 0){
 			char* work = strdup(msgarray[ind]);
-			int nlines = build_textchain(work, cur, false, true);
+			int nlines = build_textchain(work, cur, false, true, ind == 0);
 			arcan_mem_free(work);
 			if (-1 == nlines)
 				break;
@@ -1423,7 +1424,7 @@ av_pixel* arcan_renderfun_renderfmtstr(const char* message,
 	last_style.tab = 0;
 	last_style.cr = false;
 
-	int chainlines = build_textchain(work, root, false, false);
+	int chainlines = build_textchain(work, root, false, false, true);
 	arcan_mem_free(work);
 
 	if (chainlines > 0){
