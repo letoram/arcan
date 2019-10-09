@@ -12,6 +12,7 @@
 -- respectively. This may be overly verbose when many objects are to be
 -- created and bound to an existing rendertarget and for those cases,
 -- switching out the active context with this function is useful.
+-- The returned vid is that of the previously active context video.
 -- @note: Another case where the default attachment is important is when
 -- different rendertargets have different target densities. Some objects
 -- like text or vector images will have a backing store that is tied to the
@@ -23,6 +24,7 @@
 -- attachment point will switch as well.
 -- @note: providing a bad, missing or non-rt designated vid will
 -- not change any default attachment state, only return the current one.
+-- @errata(<0.6): Wrong vid was returned in the (vid) inargs form.
 -- @group: vidsys
 -- @cfunction: setdefattach
 -- @related:
