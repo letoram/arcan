@@ -16,6 +16,9 @@
 -- the case of calctargets and recordtargets.
 -- @note: Trying to call this function on a VID that references an object
 -- that is not flagged as a rendertarget is a terminal state transition.
+-- @note: If a newrate is set, the rendertarget will not be updated
+-- directly. If that behaviour is desired, call the function again without
+-- the newrate argument.
 -- @group: targetcontrol
 -- @cfunction: rendertargetforce
 -- @related: define_rendertarget, define_calctarget, define_recordtarget

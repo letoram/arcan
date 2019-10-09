@@ -8801,10 +8801,12 @@ static int setdefattach(lua_State* ctx)
 {
 	LUA_TRACE("set_context_attachment");
 	arcan_vobj_id did = luavid_tovid(luaL_optnumber(ctx, 1, ARCAN_EID));
+	arcan_vobj_id cattach = arcan_video_currentattachment();
+
 	if (did != ARCAN_EID)
 		arcan_video_defaultattachment(did);
 
-	lua_pushvid(ctx, arcan_video_currentattachment());
+	lua_pushvid(ctx, cattach);
 	LUA_ETRACE("set_context_attachment", NULL, 1);
 }
 
