@@ -177,6 +177,11 @@ static void select_current(struct tui_context* T, struct listwnd_meta* M)
 	M->entry_pos = M->list_pos;
 }
 
+static void cancel(struct tui_context* T, struct listwnd_meta* M)
+{
+
+}
+
 static void step_page_s(struct tui_context* T, struct listwnd_meta* M)
 {
 	size_t rows, cols;
@@ -215,7 +220,6 @@ static void step_page_s(struct tui_context* T, struct listwnd_meta* M)
 
 static void step_page_n(struct tui_context* T, struct listwnd_meta* M)
 {
-	printf("go page north\n");
 }
 
 static void step_cursor_n(struct tui_context* T, struct listwnd_meta* M)
@@ -317,34 +321,6 @@ static bool u8(struct tui_context* T, const char* u8, size_t len, void* tag)
 	return false;
 }
 
-static void key_input(struct tui_context* T, uint32_t keysym,
-	uint8_t scancode, uint8_t mods, uint16_t subid, void* tag)
-{
-	struct listwnd_meta* M = tag;
-/* might want to provide the label based approach to these as well, UP/DOWN
- * are at least already registered and handled / forwarded from the base tui */
-	if (keysym == TUIK_DOWN){
-		step_cursor_s(T, M);
-	}
-	else if (keysym == TUIK_UP){
-		step_cursor_n(T, M);
-	}
-	else if (keysym == TUIK_PAGEDOWN){
-		step_page_s(T, M);
-	}
-	else if (keysym == TUIK_PAGEUP){
-		step_page_n(T, M);
-	}
-	else if (keysym == TUIK_RIGHT || keysym == TUIK_RETURN){
-		select_current(T, M);
-	}
-	else if (keysym == TUIK_LEFT || keysym == TUIK_ESCAPE){
-			M->entry_state = -1;
-	}
-	else
-		;
-}
-
 bool arcan_tui_listwnd_status(struct tui_context* T, struct tui_list_entry** out)
 {
 	if (!validate(T))
@@ -366,6 +342,96 @@ bool arcan_tui_listwnd_status(struct tui_context* T, struct tui_list_entry** out
 
 	M->entry_state = 0;
 	return true;
+}
+
+struct labelent {
+	void (* handler)(struct tui_context* T, struct listwnd_meta* M);
+	struct tui_labelent ent;
+	int alt;
+};
+
+static struct labelent labels[] = {
+	{
+		.handler = select_current,
+		.ent =
+		{
+			.label = "SELECT",
+			.descr = "Activate/Toggle the currently selected item",
+			.initial = TUIK_RETURN
+		},
+		.alt = TUIK_RIGHT
+	},
+	{
+		.handler = step_cursor_s,
+		.ent =
+		{
+			.label = "NEXT",
+			.descr = "Move the cursor to the next valid entry",
+			.initial = TUIK_DOWN
+		}
+	},
+	{
+		.handler = step_cursor_n,
+		.ent =
+		{
+			.label = "PREV",
+			.descr = "Move the cursor to the previous valid entry",
+			.initial = TUIK_UP
+		}
+	},
+	{
+		.handler = step_page_s,
+		.ent =
+		{
+			.label = "NEXT_PAGE",
+			.descr = "Step the list to the next page",
+			.initial = TUIK_PAGEDOWN
+		}
+	},
+	{
+		.handler = step_page_n,
+		.ent =
+		{
+			.label = "PREV_PAGE",
+			.descr = "Step the list to the previous page",
+			.initial = TUIK_PAGEUP
+		}
+	},
+	{
+		.handler = cancel,
+		.ent =
+		{
+			.label = "CANCEL",
+			.descr = "Exit the list view state",
+			.initial = TUIK_ESCAPE
+		},
+		.alt = TUIK_LEFT
+	}
+};
+
+static bool on_label_input(
+	struct tui_context* T, const char* label, bool active, void* tag)
+{
+	if (!active)
+		return true;
+
+	for (size_t i = 0; i < COUNT_OF(labels); i++){
+		if (strcmp(label, labels[i].ent.label) == 0)
+			return labels[i].handler(T, (struct listwnd_meta*) tag), true;
+	}
+
+	return false;
+}
+
+static void key_input(struct tui_context* T, uint32_t keysym,
+	uint8_t scancode, uint8_t mods, uint16_t subid, void* tag)
+{
+	struct listwnd_meta* M = tag;
+	for (size_t i = 0; i < COUNT_OF(labels); i++){
+		if ((keysym && keysym == labels[i].alt) ||
+			keysym == labels[i].ent.initial)
+			return labels[i].handler(T, (struct listwnd_meta*) tag);
+	}
 }
 
 void arcan_tui_listwnd_release(struct tui_context* T)
@@ -395,7 +461,7 @@ void arcan_tui_listwnd_release(struct tui_context* T)
  * refresh on release() */
 
 /* LTO could possibly do something about this, but basically just safeguard
- * on a safeguard (UAF detection) for the bufferwnd_meta after freeing it */
+ * on a safeguard (UAF detection) for the listwnd_meta after freeing it */
 	*M = (struct listwnd_meta){
 		.magic = 0xdeadbeef
 	};
@@ -501,6 +567,20 @@ static void recolor(struct tui_context* T, void* t)
 	redraw(T, M);
 }
 
+static bool on_label_query(struct tui_context* T,
+	size_t index, const char* country, const char* lang,
+	struct tui_labelent* dstlbl, void* t)
+{
+	struct listwnd_meta* M = t;
+
+	if (COUNT_OF(labels) < index + 1){
+		return false;
+	}
+
+	memcpy(dstlbl, &labels[index].ent, sizeof(struct tui_labelent));
+	return true;
+}
+
 bool arcan_tui_listwnd_setup(
 	struct tui_context* T, struct tui_list_entry* L, size_t n_entries)
 {
@@ -529,6 +609,8 @@ bool arcan_tui_listwnd_setup(
 		.recolor = recolor,
 		.tick = tick,
 		.geohint = geohint,
+		.query_label = on_label_query,
+		.input_label = on_label_input,
 		.input_key = key_input,
 		.input_mouse_motion = mouse_motion,
 		.input_mouse_button = mouse_button,
