@@ -285,6 +285,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	res->cursor = set->cursor;
 	res->render_flags = set->render_flags;
 	res->font_sz = set->font_sz;
+	res->flags = TUI_ALTERNATE;
 
 /* TEMPORARY: while moving to server-side rasterization */
 	res->rbuf_fwd = getenv("TUI_RPACK");

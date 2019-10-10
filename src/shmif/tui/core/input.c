@@ -274,19 +274,19 @@ struct lent {
 };
 
 static const struct lent labels[] = {
-	{1 | 2, "LINE_UP", "Scroll 1 row up", {}, scroll_up}, /* u+2191 */
-	{1 | 2, "LINE_DOWN", "Scroll 1 row down", {}, scroll_down}, /* u+2192 */
-	{1 | 2, "PAGE_UP", "Scroll one page up", {0xe2, 0x87, 0x9e}, page_up}, /* u+21de */
-	{1 | 2, "PAGE_DOWN", "Scroll one page down", {0xe2, 0x87, 0x9e}, page_down}, /* u+21df */
-	{1 | 2, "COPY_AT", "Copy word at cursor", {}, select_at}, /* u+21f8 */
-	{1 | 2, "COPY_ROW", "Copy cursor row", {}, select_row}, /* u+21a6 */
-	{1, "MOUSE_FORWARD", "Toggle mouse forwarding", {}, mouse_forward}, /* u+ */
-	{1 | 2, "SCROLL_LOCK", "Arrow- keys to pageup/down", {}, scroll_lock, TUIK_SCROLLLOCK}, /* u+ */
-	{1 | 2, "UP", "(scroll-lock) page up, UP keysym", {}, move_up}, /* u+ */
-	{1 | 2, "DOWN", "(scroll-lock) page down, DOWN keysym", {}, move_down}, /* u+ */
-	{1, "COPY_WND", "Copy visible area to new passive window", {}, copy_window}, /* u+ */
-	{1, "COPY_WND_FULL", "Copy window and scrollback", {}, copy_window_full}, /* u+ */
-	{1, "SELECT_TOGGLE", "Switch select destination (wnd, clipboard)", {}, sel_sw}, /* u+ */
+	{1, "LINE_UP", "Scroll 1 row up", {}, scroll_up}, /* u+2191 */
+	{1, "LINE_DOWN", "Scroll 1 row down", {}, scroll_down}, /* u+2192 */
+	{1, "PAGE_UP", "Scroll one page up", {0xe2, 0x87, 0x9e}, page_up}, /* u+21de */
+	{1, "PAGE_DOWN", "Scroll one page down", {0xe2, 0x87, 0x9e}, page_down}, /* u+21df */
+	{0, "COPY_AT", "Copy word at cursor", {}, select_at}, /* u+21f8 */
+	{0, "COPY_ROW", "Copy cursor row", {}, select_row}, /* u+21a6 */
+	{0, "MOUSE_FORWARD", "Toggle mouse forwarding", {}, mouse_forward}, /* u+ */
+	{1, "SCROLL_LOCK", "Arrow- keys to pageup/down", {}, scroll_lock, TUIK_SCROLLLOCK}, /* u+ */
+	{1, "UP", "(scroll-lock) page up, UP keysym", {}, move_up}, /* u+ */
+	{1, "DOWN", "(scroll-lock) page down, DOWN keysym", {}, move_down}, /* u+ */
+	{0, "COPY_WND", "Copy visible area to new passive window", {}, copy_window}, /* u+ */
+	{0, "COPY_WND_FULL", "Copy window and scrollback", {}, copy_window_full}, /* u+ */
+	{2, "SELECT_TOGGLE", "Switch select destination (wnd, clipboard)", {}, sel_sw}, /* u+ */
 	{0}
 };
 
@@ -325,12 +325,30 @@ void tui_expose_labels(struct tui_context* tui)
 		}
 	}
 
-/* expose a set of basic built-in controls shared by all users */
+/* expose a set of basic built-in controls shared by all users, and this is
+ * dependent, for now, on the mode of the context.  The reason is that 'line-'
+ * oriented mode with it's special scrolling, selection etc. complexity should
+ * be refactored and pushed to a separate layer. */
 	while(cur->lbl){
-		if (tui->subseg && (cur->ctx & 2) == 0)
-			continue;
-		if (!tui->subseg && (cur->ctx & 1) == 0)
-			continue;
+		switch(cur->ctx){
+		case 0:
+/* all */
+		break;
+		case 1:
+/* not in 'alternate' */
+			if (tui->flags & TUI_ALTERNATE){
+				cur++;
+				continue;
+			}
+		break;
+		case 2:
+/* only when not in copywnd */
+			if (!tui->subseg){
+				cur++;
+				continue;
+			}
+		break;
+		}
 
 		snprintf(ev.ext.labelhint.label,
 			COUNT_OF(ev.ext.labelhint.label), "%s", cur->lbl);
