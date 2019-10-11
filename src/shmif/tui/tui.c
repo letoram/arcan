@@ -744,24 +744,39 @@ int arcan_tui_set_flags(struct tui_context* c, int flags)
 	if (oldv != c->cursor_hard_off)
 		flag_cursor(c);
 
+	bool in_alternate = !!(c->flags & TUI_ALTERNATE);
+
 	tsm_screen_set_flags(c->screen, flags);
 	c->flags = tsm_screen_get_flags(c->screen);
 
 	if (c->flags & TUI_ALTERNATE)
 		tsm_screen_sb_reset(c->screen);
 
+	bool want_alternate = !!(c->flags & TUI_ALTERNATE);
+	if (in_alternate != want_alternate)
+		arcan_tui_reset_labels(c);
+
 	return (int) c->flags;
 }
 
 void arcan_tui_reset_flags(struct tui_context* c, int flags)
 {
-	if (c){
-		if (flags & TUI_HIDE_CURSOR){
-			c->cursor_hard_off = false;
-			flag_cursor(c);
-		}
-		tsm_screen_reset_flags(c->screen, flags);
+	if (!c)
+		return;
+
+	bool in_alternate = !!(c->flags & TUI_ALTERNATE);
+
+	if (flags & TUI_HIDE_CURSOR){
+		c->cursor_hard_off = false;
+		flag_cursor(c);
 	}
+
+	tsm_screen_reset_flags(c->screen, flags);
+	c->flags = tsm_screen_get_flags(c->screen);
+
+	bool want_alternate = !!(c->flags & TUI_ALTERNATE);
+	if (in_alternate != want_alternate)
+		arcan_tui_reset_labels(c);
 }
 
 void arcan_tui_set_tabstop(struct tui_context* c)
