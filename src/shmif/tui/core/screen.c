@@ -386,23 +386,15 @@ void tui_screen_resized(struct tui_context* tui)
 				tui->acon.w, tui->acon.h, cols, rows, tui->handlers.tag);
 	}
 
-	if (!tui->rbuf_fwd && (tui->pad_w || tui->pad_h)){
+	if (!tui->rbuf_fwd){
 /* fill the padding areas if there are any, this is an intermediate step that
  * can be dropped when shmif supports the tui packing format, then we just swap
  * out rbuf with vidb */
 		uint8_t col[3];
 		arcan_tui_get_color(tui, TUI_COL_BG, col);
 		shmif_pixel bg = SHMIF_RGBA(col[0], col[1], col[2], tui->alpha);
-
-		if (tui->pad_w){
-			draw_box_px(tui->acon.vidp, tui->acon.pitch, tui->acon.w, tui->acon.h,
-				cols * tui->cell_w, 0, tui->pad_w, tui->acon.h, bg);
-		}
-
-		if (tui->pad_h){
-			draw_box_px(tui->acon.vidp, tui->acon.pitch, tui->acon.w, tui->acon.h,
-				0, rows * tui->cell_h, tui->acon.w, tui->pad_h, bg);
-		}
+		draw_box_px(tui->acon.vidp, tui->acon.pitch,
+			tui->acon.w, tui->acon.h, 0, 0, tui->acon.w, tui->acon.h, bg);
 	}
 
 	tui->dirty |= DIRTY_FULL;
