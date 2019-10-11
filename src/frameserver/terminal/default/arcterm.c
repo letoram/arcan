@@ -408,6 +408,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		fprintf(stderr, "failed to setup TUI connection\n");
 		return EXIT_FAILURE;
 	}
+	arcan_tui_reset_flags(term.screen, TUI_ALTERNATE);
 	arcan_tui_refresh(term.screen);
 
 /*

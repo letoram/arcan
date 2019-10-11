@@ -107,7 +107,7 @@ static int mod_to_scroll(int mods, int screenh)
 	return rv;
 }
 
-static bool copy_wnd(struct tui_context* tui, bool full)
+static bool copy_window(struct tui_context* tui)
 {
 /* if no pending copy-window request, make a copy of the active screen
  * and spawn a dispatch thread for it */
@@ -124,16 +124,6 @@ static bool copy_wnd(struct tui_context* tui, bool full)
 	}
 
 	return true;
-}
-
-static bool copy_window_full(struct tui_context* tui)
-{
-	return copy_wnd(tui, true);
-}
-
-static bool copy_window(struct tui_context* tui)
-{
-	return copy_wnd(tui, false);
 }
 
 static bool scroll_up(struct tui_context* tui)
@@ -284,8 +274,7 @@ static const struct lent labels[] = {
 	{1, "SCROLL_LOCK", "Arrow- keys to pageup/down", {}, scroll_lock, TUIK_SCROLLLOCK}, /* u+ */
 	{1, "UP", "(scroll-lock) page up, UP keysym", {}, move_up}, /* u+ */
 	{1, "DOWN", "(scroll-lock) page down, DOWN keysym", {}, move_down}, /* u+ */
-	{0, "COPY_WND", "Copy visible area to new passive window", {}, copy_window}, /* u+ */
-	{0, "COPY_WND_FULL", "Copy window and scrollback", {}, copy_window_full}, /* u+ */
+	{0, "COPY_WND", "Copy window and scrollback", {}, copy_window}, /* u+ */
 	{2, "SELECT_TOGGLE", "Switch select destination (wnd, clipboard)", {}, sel_sw}, /* u+ */
 	{0}
 };
