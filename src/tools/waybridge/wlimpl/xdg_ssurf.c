@@ -91,7 +91,7 @@ static bool xdgsurf_defer_handler(
  * indicated by the protocol */
 	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
 		.ext.kind = ARCAN_EVENT(MESSAGE),
-		.ext.message.data = {"shell:xdg_shell"}
+		.ext.message.data = {"shell:xdg_top"}
 	});
 
 	struct wl_array states;

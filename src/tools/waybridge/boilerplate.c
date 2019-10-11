@@ -235,10 +235,18 @@ static struct zwp_linux_dmabuf_v1_interface zdmabuf_if = {
 
 #include "wayland-relative-pointer-unstable-v1-server-protocol.h"
 #include "wlimpl/relp_mgr.c"
-
 static const struct zwp_relative_pointer_manager_v1_interface relpmgr_if = {
 	.destroy = relpm_destroy,
 	.get_relative_pointer = relpm_get
 };
+
+#include "wlimpl/constrain.c"
+/*
+ * static const struct zwp_locked_pointer_v1_interface consptr_if = {
+	.destroy = consptr_destroy,
+	.set_cursor_position_hint = consptr_hintat,
+	.set_region = consptr_region
+};
+ */
 
 #include "bondage.c"

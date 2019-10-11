@@ -46,6 +46,15 @@ static bool xdgtoplevel_shmifev_handler(
 					h = wl.init.display_height_px;
 				}
 
+				if (changed){
+					if (surf->last_state.unfocused != surf->states.unfocused){
+						if (surf->states.unfocused)
+							wl_surface_send_leave(surf->surf_res, surf->client->output);
+						else
+							wl_surface_send_enter(surf->surf_res, surf->client->output);
+					}
+				}
+
 				xdg_toplevel_send_configure(surf->shell_res, w, h, &states);
 				xdg_surface_send_configure(surf->surf_res, STEP_SERIAL());
 				wl_array_release(&states);

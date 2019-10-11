@@ -14,16 +14,16 @@
  *
  *  Touch - not used at all right now
  */
-static void update_mxy(struct comp_surf* cl, unsigned long long pts)
+
+static void get_keyboard_states(struct wl_array* dst)
 {
-	if (!cl->client->pointer)
-		return;
+	wl_array_init(dst);
+/* FIXME: track press/release so we can send the right ones */
+}
 
-	if (!pts)
-		pts = arcan_timemillis();
-
-	trace(TRACE_ANALOG, "mouse@%d,%d", cl->acc_x, cl->acc_y);
-	if (cl->client->last_cursor != cl->res){
+static void enter_all(struct comp_surf* cl)
+{
+	if (cl->client->pointer && cl->client->last_cursor != cl->res){
 		if (cl->client->last_cursor){
 			trace(TRACE_DIGITAL,
 				"leave: %"PRIxPTR, (uintptr_t)cl->client->last_cursor);
@@ -40,20 +40,42 @@ static void update_mxy(struct comp_surf* cl, unsigned long long pts)
 			wl_fixed_from_int(cl->acc_y)
 		);
 	}
-	else
-		wl_pointer_send_motion(cl->client->pointer, pts,
+
+	if (cl->client->keyboard && cl->client->last_kbd != cl->res){
+		if (cl->client->last_kbd){
+			trace(TRACE_DIGITAL,
+				"leave: %"PRIxPTR, (uintptr_t) cl->client->last_kbd);
+			wl_keyboard_send_leave(
+				cl->client->keyboard, STEP_SERIAL(), cl->client->last_kbd);
+		}
+
+		trace(TRACE_DIGITAL, "enter: %"PRIxPTR, (uintptr_t) cl->res);
+		cl->client->last_kbd = cl->res;
+		struct wl_array states;
+		get_keyboard_states(&states);
+			wl_keyboard_send_enter(
+				cl->client->keyboard, STEP_SERIAL(), cl->res, &states);
+		wl_array_release(&states);
+	}
+}
+
+static void update_mxy(struct comp_surf* cl, unsigned long long pts)
+{
+	if (!cl->client->pointer)
+		return;
+
+	if (!pts)
+		pts = arcan_timemillis();
+
+	trace(TRACE_ANALOG, "mouse@%d,%d", cl->acc_x, cl->acc_y);
+	enter_all(cl);
+	wl_pointer_send_motion(cl->client->pointer, pts,
 			wl_fixed_from_int(cl->acc_x), wl_fixed_from_int(cl->acc_y));
 
 	if (wl_resource_get_version(cl->client->pointer) >=
 		WL_POINTER_FRAME_SINCE_VERSION){
 		wl_pointer_send_frame(cl->client->pointer);
 	}
-}
-
-static void get_keyboard_states(struct wl_array* dst)
-{
-	wl_array_init(dst);
-/* FIXME: track press/release so we can send the right ones */
 }
 
 static void update_mbtn(struct comp_surf* cl,
@@ -64,6 +86,8 @@ static void update_mbtn(struct comp_surf* cl,
 
 	if (!pts)
 		pts = arcan_timemillis();
+
+	enter_all(cl);
 
 /* special case, we map the vertical scroll wheel buttons to wheel events,
  * the upper layers can chose to provide this as subid 4/5 analog as well
@@ -105,27 +129,12 @@ static void update_kbd(struct comp_surf* cl, arcan_ioevent* ev)
 	if (!cl->client->keyboard)
 		return;
 
+	enter_all(cl);
 	trace(TRACE_DIGITAL,
 		"button (%d:%d)", (int)ev->subid, (int)ev->input.translated.scancode);
 
 /* keyboard not acknowledged on this surface?
  * send focus and possibly leave on previous one */
-	if (cl->client->last_kbd != cl->res){
-		if (cl->client->last_kbd){
-			trace(TRACE_DIGITAL,
-				"leave: %"PRIxPTR, (uintptr_t) cl->client->last_kbd);
-			wl_keyboard_send_leave(
-				cl->client->keyboard, STEP_SERIAL(), cl->client->last_kbd);
-		}
-
-		trace(TRACE_DIGITAL, "enter: %"PRIxPTR, (uintptr_t) cl->res);
-		cl->client->last_kbd = cl->res;
-		struct wl_array states;
-		get_keyboard_states(&states);
-			wl_keyboard_send_enter(
-				cl->client->keyboard, STEP_SERIAL(), cl->res, &states);
-		wl_array_release(&states);
-	}
 
 /* This is, politely put, batshit insane - every time the modifier mask has
  * changed from the last time we were here, we either have to allocate and
@@ -297,6 +306,10 @@ static bool displayhint_handler(struct comp_surf* surf, struct arcan_tgtevent* e
 	};
 
 	bool change = memcmp(&surf->states, &states, sizeof(struct surf_state)) != 0;
+	if (change){
+		surf->last_state = surf->states;
+	}
+
 	surf->states = states;
 	return change;
 }

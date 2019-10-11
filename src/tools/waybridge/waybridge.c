@@ -922,6 +922,45 @@ static void OUT_OF_MEMORY(const char* msg)
 }
 
 /*
+ * naive and racy, but only used for cleanup on tmpdir in exec mode
+ */
+static void rmdir_recurse(const char* p)
+{
+	DIR* d = opendir(p);
+	if (!d)
+		return;
+
+	size_t plen = strlen(p);
+	struct dirent* dent;
+
+	while ((dent = readdir(d))){
+		if (strcmp(dent->d_name, ".") == 0 || strcmp(dent->d_name, "..") == 0)
+			continue;
+
+		size_t tmplen = plen + strlen(dent->d_name) + 2;
+		char* tmp = malloc(tmplen);
+		if (!tmp)
+			break;
+
+		struct stat bs;
+		snprintf(tmp, tmplen, "%s/%s", p, dent->d_name);
+		if (0 != stat(tmp, &bs)){
+			free(tmp);
+			break;
+		}
+		if (S_ISDIR(bs.st_mode)){
+			rmdir_recurse(tmp);
+		}
+		else
+			unlink(tmp);
+		free(tmp);
+	}
+
+	closedir(d);
+	rmdir(p);
+}
+
+/*
  * we pair [arcan-wayland-clients] into groups of long-long-int slots
  * (matching allocation bitmap)
  */
@@ -1464,19 +1503,7 @@ cleanup:
  * the -xwl and -exec modes and we treat this as authoritative. This should
  * be shallow (only nodes by us or possibly symlinks so don't recurse */
 	if (wayland_runtime_dir){
-		DIR* d = opendir(wayland_runtime_dir);
-		if (d){
-			int fd = dirfd(d);
-			struct dirent* de;
-			while((de = readdir(d))){
-				if (de->d_name[0] == '.' &&
-					(!de->d_name[1] || (de->d_name[1] == '.')))
-					continue;
-
-				unlinkat(fd, de->d_name, 0);
-			}
-			unlinkat(fd, ".", AT_REMOVEDIR);
-		}
+		rmdir_recurse(wayland_runtime_dir);
 		free(wayland_runtime_dir);
 	}
 	return exit_code;
