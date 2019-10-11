@@ -167,7 +167,7 @@ struct comp_surf {
 /* for mouse pointer, we need a surface accumulator */
 	int acc_x, acc_y;
 
-	struct surf_state states;
+	struct surf_state last_state, states;
 /* return [true] if the event was consumed and shouldn't be processed by the
  * default handler */
 	bool (*dispatch)(struct comp_surf*, struct arcan_event* ev);
