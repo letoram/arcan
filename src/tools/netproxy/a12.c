@@ -165,7 +165,6 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 		dst[S->buf_ofs + i] = 'm';
 	S->buf_ofs += MAC_BLOCK_SZ;
 
-
 /* 8 byte sequence number */
 	pack_u64(S->current_seqnr++, &dst[S->buf_ofs]);
 	S->buf_ofs += 8;

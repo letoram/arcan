@@ -2425,6 +2425,103 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 	return false;
 }
 
+static char* spawn_arcan_net(const char* conn_src, int* dsock)
+{
+/* extract components from URL: a12://(keyid)@server(:port) */
+	char* work = strdup(conn_src);
+	if (!work)
+		return NULL;
+
+	size_t start = sizeof("a12://") - 1;
+	char* key = NULL;
+
+/* (keyid) */
+	for (size_t i = start; work[i]; i++){
+		if (work[i] == '@'){
+			work[i] = '\0';
+			key = &work[start];
+			start = i+1;
+			break;
+		}
+	}
+
+/* (:port) */
+	const char* port = "6680";
+	for (size_t i = start; work[i]; i++){
+		if (work[i] == ':'){
+			work[i] = '\0';
+			port = &work[i+1];
+		}
+	}
+
+/* build socketpair, keep one end for ourself */
+	int spair[2];
+	if (-1 == socketpair(PF_UNIX, SOCK_STREAM, 0, spair)){
+		free(work);
+		fprintf(stderr, "(shmif::a12::connect) couldn't build IPC socket\n");
+		return NULL;
+	}
+
+/* as normal, we want the descriptors to be non-blocking, and
+ * only the right one should persist across exec */
+	for (size_t i = 0; i < 2; i++){
+		fcntl(spair[i], F_SETFD, FD_CLOEXEC);
+		int flags = fcntl(spair[i], F_GETFL);
+		if (flags & O_NONBLOCK)
+			fcntl(spair[i], F_SETFL, flags & (~O_NONBLOCK));
+
+		if (i == 0){
+			flags = fcntl(spair[i], F_GETFD);
+			if (-1 != flags)
+				fcntl(spair[i], F_SETFD, flags | O_CLOEXEC);
+		}
+
+#ifdef __APPLE__
+ 		int val = 1;
+		setsockopt(spair[i], SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
+#endif
+	}
+	*dsock = spair[0];
+
+/* spawn the arcan-net process, unclear here what we realistically
+ * should do with pid exect let it potentially zombie/acc (migrate
+ * calls), the similarly nasty option is to spawn a wait- thread */
+	pid_t pid = fork();
+	if (pid == 0){
+		char tmpbuf[8];
+		snprintf(tmpbuf, sizeof(tmpbuf), "%d", spair[1]);
+		execl("arcan-net", "arcan-net", "-S", tmpbuf, key, port);
+		exit(EXIT_FAILURE);
+	}
+
+	if (-1 == pid){
+		fprintf(stderr, "(shmif::a12::connect) fork() failed\n");
+		close(spair[0]);
+		close(spair[1]);
+		return NULL;
+	}
+
+/* retrieve shmkeyetc. like with connect */
+	free(work);
+	size_t ofs = 0;
+	char wbuf[PP_SHMPAGE_SHMKEYLIM+1];
+	do {
+		if (-1 == read(*dsock, wbuf + ofs, 1)){
+			debug_print(FATAL, NULL, "invalid response on negotiation");
+			close(*dsock);
+			return NULL;
+		}
+	}
+
+	while(wbuf[ofs++] != '\n' && ofs < PP_SHMPAGE_SHMKEYLIM);
+	wbuf[ofs-1] = '\0';
+
+/* note: should possibly pass some error data from arcan-net here
+ * so we can propagate an error message */
+
+	return strdup(wbuf);
+}
+
 struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 	struct arg_arr** outarg, struct shmif_open_ext ext, size_t ext_sz)
 {
@@ -2446,16 +2543,27 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 		flags = (int) strtol(conn_fl, NULL, 10) |
 			(flags & (SHMIF_ACQUIRE_FATALFAIL | SHMIF_NOACTIVATE));
 
+/* inheritance based, still somewhat rugged until it is tolerable with one path
+ * for osx and one for all the less broken OSes where we can actually inherit
+ * both semaphores and socket without problem */
 	if (getenv("ARCAN_SHMKEY") && getenv("ARCAN_SOCKIN_FD")){
 		keyfile = strdup(getenv("ARCAN_SHMKEY"));
 		dpipe = (int) strtol(getenv("ARCAN_SOCKIN_FD"), NULL, 10);
 	}
+/* connection point based setup, check if we want local or remote connection
+ * setup - for the remote part we still need some other mechanism in the url
+ * to identify credential store though */
 	else if (conn_src){
-		int step = 0;
-		do {
-			keyfile = arcan_shmif_connect(conn_src, getenv("ARCAN_CONNKEY"), &dpipe);
-		} while (keyfile == NULL &&
-			(flags & SHMIF_CONNECT_LOOP) > 0 && (sleep(1 << (step>4?4:step++)), 1));
+		if (strncmp(conn_src, "a12://", 6) == 0){
+			keyfile = spawn_arcan_net(conn_src, &dpipe);
+		}
+		else {
+			int step = 0;
+			do {
+				keyfile = arcan_shmif_connect(conn_src, getenv("ARCAN_CONNKEY"), &dpipe);
+			} while (keyfile == NULL &&
+				(flags & SHMIF_CONNECT_LOOP) > 0 && (sleep(1 << (step>4?4:step++)), 1));
+		}
 	}
 	else {
 		debug_print(STATUS, &ret, "no connection: check ARCAN_CONNPATH");

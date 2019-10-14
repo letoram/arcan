@@ -14,6 +14,7 @@
 #include <ctype.h>
 
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <netdb.h>
 
 #include "a12.h"
@@ -27,13 +28,15 @@ enum mt_mode {
 
 enum anet_mode {
 	ANET_SHMIF_CL = 1,
-	ANET_SHMIF_SRV = 2
+	ANET_SHMIF_SRV = 2,
+	ANET_SHMIF_SRV_INHERIT = 3
 };
 
 struct anet_options {
 	char* cp;
 	char* host;
 	char* port;
+	int sockfd;
 	int mt_mode;
 	int mode;
 	char* redirect_exit;
@@ -260,6 +263,58 @@ static int a12_connect(struct anet_options* args,
 	return EXIT_SUCCESS;
 }
 
+/* Special version of a12_connect where we inherit the connection primitive
+ * to the local shmif client, so we can forego most of the domainsocket bits.
+ * The normal use-case for this is where ARCAN_CONNPATH is set to a12://
+ * prefix and shmif execs into arcan-net */
+static int a12_preauth(struct anet_options* args,
+	void (*dispatch)(
+	struct anet_options* args,
+	struct a12_state* S, struct shmifsrv_client* cl, int fd))
+{
+	int sc;
+	struct shmifsrv_client* cl = shmifsrv_inherit_connection(args->sockfd, &sc);
+	if (!cl){
+		fprintf(stderr, "(shmif::arcan-net) "
+			"couldn't build connection from socket (%d)\n", sc);
+		return EXIT_FAILURE;
+	}
+
+/* this setup mostly resembles single-fire local server */
+	struct addrinfo hints = {
+		.ai_family = AF_UNSPEC,
+		.ai_socktype = SOCK_STREAM
+	};
+	struct addrinfo* addr = NULL;
+	int ec = getaddrinfo(args->host, args->port, &hints, &addr);
+	if (ec){
+		fprintf(stderr, "(shmif::arcan-net) "
+			"couldn't resolve address: %s\n", gai_strerror(ec));
+		return EXIT_FAILURE;
+	}
+
+	int fd = get_cl_fd(addr);
+	if (-1 == fd){
+		shmifsrv_free(cl, true);
+		fprintf(stderr,
+			"(shmif::arcan-net) couldn't connect to (%s:%s)\n", args->host, args->port);
+		return EXIT_FAILURE;
+	}
+
+/* finally setup a12 state machine */
+	struct a12_state* state = a12_open(args->opts);
+	if (!state){
+		freeaddrinfo(addr);
+		shmifsrv_free(cl, true);
+		close(fd);
+		fprintf(stderr, "couldn't build a12 state machine\n");
+		return EXIT_FAILURE;
+	}
+
+	dispatch(args, state, cl, fd);
+	return EXIT_SUCCESS;
+}
+
 static int a12_listen(struct anet_options* args,
 	void (*dispatch)(struct a12_state* S, int fd))
 {
@@ -344,6 +399,7 @@ static bool show_usage(const char* msg)
 {
 	fprintf(stderr, "%s%sUsage:\n"
 	"\tForward local arcan applications: arcan-net [-Xtd] -s connpoint host port\n"
+	"\t                                  (inherit socket) -S fd_no host port\n"
 	"\tBridge remote arcan applications: arcan-net [-Xtd] -l port [ip]\n\n"
 	"Forward-local options:\n"
 	"\t-X        \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n\n"
@@ -353,12 +409,7 @@ static bool show_usage(const char* msg)
 	"\nTrace groups (stderr):\n"
 	"\tvideo:1      audio:2      system:4    event:8      transfer:16\n"
 	"\tdebug:32     missing:64   alloc:128  crypto:256    vdetail:512\n"
-	"\tbtransfer:1024\n\n"
-/*
- * "Special:\n"
-	"\tInherit-bridge (ARCAN_SOCKIN_FD env, ARCAN_ARG env, -t ignored)\n\n"
- */
-		, msg, msg ? "\n" : ""
+	"\tbtransfer:1024\n\n", msg, msg ? "\n" : ""
 	);
 	return false;
 }
@@ -400,7 +451,7 @@ static bool apply_commandline(int argc, char** argv, struct anet_options* opts)
 			opts->host = argv[++i];
 
 			if (i == argc)
-				return show_usage("s without room for port");
+				return show_usage("-s without room for port");
 
 			opts->port = argv[++i];
 
@@ -408,6 +459,37 @@ static bool apply_commandline(int argc, char** argv, struct anet_options* opts)
 				return show_usage("Trailing arguments to -s connpoint host port");
 
 			continue;
+		}
+/* a12 client, shmif server, inherit primitives */
+		else if (strcmp(argv[i], "-S") == 0){
+			if (opts->mode)
+				return show_usage(modeerr);
+
+			opts->mode = ANET_SHMIF_SRV_INHERIT;
+			if (i >= argc - 1)
+				return show_usage("Invalid arguments, -S without room for ip");
+
+			opts->sockfd = strtoul(argv[++i], NULL, 10);
+			struct stat fdstat;
+
+			if (-1 == fstat(opts->sockfd, &fdstat))
+				return show_usage("Couldn't stat -S descriptor");
+
+			if ((fdstat.st_mode & S_IFMT) != S_IFSOCK)
+				return show_usage("-S descriptor does not point to a socket");
+
+			if (i == argc)
+				return show_usage("-S without room for host/port");
+
+			opts->host = argv[++i];
+
+			if (i == argc)
+				return show_usage("-S without room for port");
+
+			opts->port = argv[++i];
+
+			if (i != argc - 1)
+				return show_usage("Trailing arguments to -S fd_in host port");
 		}
 /* a12 server, shmif client */
 		else if (strcmp(argv[i], "-l") == 0){
@@ -470,6 +552,9 @@ int main(int argc, char** argv)
 			return EXIT_FAILURE;
 		break;
 		}
+	}
+	if (anet.mode == ANET_SHMIF_SRV_INHERIT){
+		return a12_preauth(&anet, a12cl_dispatch);
 	}
 
 /* ANET_SHMIF_SRV */
