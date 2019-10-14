@@ -45,7 +45,7 @@ static void bus_handler(int signo)
 	if (!tag)
 		abort();
 
-	siglongjmp(recover, 1);
+	siglongjmp(recover, 0);
 }
 
 void platform_fsrv_enter(struct arcan_frameserver* m, jmp_buf out)
@@ -58,7 +58,7 @@ void platform_fsrv_enter(struct arcan_frameserver* m, jmp_buf out)
 			arcan_warning("(posix/fsrv_guard) can't install sigbus handler.\n");
 		}
 
-	if (sigsetjmp(recover, 1)){
+	if (sigsetjmp(recover, 0)){
 		arcan_warning("(posix/fsrv_guard) DoS attempt from client.\n");
 		platform_fsrv_dropshared(tag);
 		tag = NULL;

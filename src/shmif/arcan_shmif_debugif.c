@@ -1,15 +1,18 @@
 #include "arcan_shmif.h"
+#include "arcan_shmif_interop.h"
 #include "arcan_shmif_debugif.h"
 #include <pthread.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <stdatomic.h>
 #include <fcntl.h>
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/mman.h>
 #include <limits.h>
 #include <poll.h>
 
@@ -27,6 +30,20 @@
 #define COUNT_OF(x) \
 	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
 #endif
+
+enum debug_cmd_id {
+	TAG_CMD_DEBUGGER = 0,
+	TAG_CMD_ENVIRONMENT = 1,
+	TAG_CMD_DESCRIPTOR = 2,
+	TAG_CMD_PROCESS = 3,
+/* other interesting:
+ * - browse namespace / filesystem and allow load/store
+ *    |-> would practically require some filtering / extra input handling
+ *        for the listview (interesting in itself..)
+ */
+};
+
+static _Atomic int beancounter;
 
 /*
  * menu code here is really generic enough that it should be move elsewhere,
@@ -127,102 +144,158 @@ static void fd_to_flags(char buf[static 8], int fd)
 
 static void run_descriptor(struct debug_ctx* dctx, int fdin, int fdout, int type)
 {
-	uint8_t buf[4096];
+/*
+ * intermediate menu for possible descriptor actions, i.e. copy, edit, view, mim,
+ */
 
-	for(;;){
-/* first populate */
-		arcan_tui_erase_screen(dctx->tui, false);
-		arcan_tui_move_to(dctx->tui, 0, 0);
-		arcan_tui_printf(dctx->tui, NULL, "Waiting for data...\n");
-		arcan_tui_refresh(dctx->tui);
+	struct tui_list_entry lents[2];
+	size_t nents = 0;
 
+/*
+ * intercept or send/copy?
+ * set as current bchunk- handler and re-run menu
+ */
+
+/*	if (lents[rv].tag == 1){
+		arcan_tui_announce_io(dctx, true, NULL, "*");
+		return run_descriptor(dctx, fdin, fdout, type);
+	}
+*/
+
+/* should present some other options here,
+ * read-only,
+ * buffer-sizes, commit sizes
+ * right now just go with streaming into bufferwindow and invalidate/ flush
+ */
+
+/*
+ * Other thing is that we should possibly have a shared structure where we
+ * track the descriptors that we are already tampering with so that those
+ * doesn't appear in menu
+ */
+	arcan_tui_update_handlers(dctx->tui,
+		&(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
+
+	bool ro = true;
+	uint8_t* buf = NULL;
+	size_t buf_sz = 0;
+
+	switch(type){
+	case INTERCEPT_MITM_PIPE:
+/* pipe identification can be done with F_GETFL, then check if WRONLY or
+ * if neither O_RDWR or WRONLY is set - streaming controls are needed */
+		buf_sz = 4096;
+		buf = malloc(buf_sz);
+		memset(buf, '\0', buf_sz);
+	break;
+	case INTERCEPT_MITM_SOCKET:
+/* socket is just awful, read and write on the same and need to handle
+ * OOB / etc. todo */
+		return;
+	break;
+	case INTERCEPT_MAP:
+/* quick browsing to see what it is about */
+		break;
+	}
+
+/* query_label and input_label will be forwarded, we add our stuff there,
+ * then set commit_write_fn (commit) to get write-back callbacks for edit
+ * on memory - then we can call synch when the data is updated, use prefix
+ * offs as byte counter*/
+
+	struct tui_bufferwnd_opts opts = {
+		.read_only = ro,
+		.view_mode = BUFFERWND_VIEW_HEX_DETAIL,
+		.allow_exit = true
+	};
+
+/* switch to bufferwnd, the streaming mode needs to add some more controls
+ * for flushing etc. */
+	arcan_tui_bufferwnd_setup(dctx->tui,
+		buf, buf_sz, &opts, sizeof(struct tui_bufferwnd_opts));
+
+	while(1){
 		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, &fdin, 1, -1);
+		arcan_tui_refresh(dctx->tui);
+	}
+
+/* for MITM we need to dup-dance back */
+	switch(type){
+	case INTERCEPT_MITM_PIPE:
+		free(buf);
+	break;
+	case INTERCEPT_MITM_SOCKET:
+/* todo */
+	break;
+	case INTERCEPT_MAP:
+		munmap(buf, buf_sz);
+	break;
+	}
+}
+
+static int run_listwnd(
+	struct debug_ctx* dctx, struct tui_list_entry* list, size_t n_elem)
+{
+	arcan_tui_update_handlers(dctx->tui,
+		&(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
+	arcan_tui_listwnd_setup(dctx->tui, list, n_elem);
+
+	int rv = -1;
+	for(;;){
+		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
 		if (res.errc == TUI_ERRC_OK){
-			if (-1 == arcan_tui_refresh(dctx->tui) && errno == EINVAL)
+			if (-1 == arcan_tui_refresh(dctx->tui) && errno == EINVAL){
 				break;
+			}
+		}
+
+		struct tui_list_entry* ent;
+		if (arcan_tui_listwnd_status(dctx->tui, &ent)){
+			if (ent){
+				rv = ent->tag;
+			}
+			break;
 		}
 	}
 
-/* then swap to bufferwnd: */
-
-/* on swap-out */
-
-	for(;;){
-		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
-		arcan_tui_refresh(dctx->tui);
-	}
-
-	snprintf((char*)buf, 256, "intercept(%d), waiting for data", fdin);
-
-	read(fdin, buf, 4096);
-
-
-/* alloc the pair */
-/* dup source to temporary */
-
-/* switch context to bufferwnd */
-
-/* on 'finish' calls, if it is commit, commit and flush */
-
-/* Not really safe to dup out again, so for now, spawn a thread that takes over
- * the proxying until death. Other interesting options would be intercepting
- * syscalls (again ptrace) and simulate the descriptor operations failing. */
-
+	arcan_tui_listwnd_release(dctx->tui);
+	return rv;
 }
 
+extern int arcan_fdscan(int** listout);
 static void gen_descriptor_menu(struct debug_ctx* dctx)
 {
-/* build a large pollset, fire it once and see which ones were valid */
-	struct rlimit rlim;
-	int lim = 512;
-	if (0 == getrlimit(RLIMIT_NOFILE, &rlim))
-		lim = rlim.rlim_cur;
-
-/* this is anything but atomic, we run inside an unwitting process, so either
- * we do something nasty like fork+stop-resume parent on collect or just accept
- * the race for now - there seem to be no portable solution for this so go with
- * what we can */
-	struct pollfd* set = malloc(sizeof(struct pollfd) * lim);
-	for (size_t i = 0; i < lim; i++)
-		set[i].fd = i;
-
-	poll(set, lim, 0);
-
-	size_t count = 0;
-	for (size_t i = 0; i < lim; i++){
-		if (!(set[i].revents & POLLNVAL))
-			count++;
-	}
-
-	if (count == 0){
-		free(set);
+/* grab a list of current descriptors */
+	int* fds;
+	ssize_t count = arcan_fdscan(&fds);
+	if (-1 == count)
 		return;
-	}
 
-/* convert / stat-test the valid descriptors, and build the final menu list */
+/* convert this set to list entry values */
 	struct tui_list_entry* lents = malloc(sizeof(struct tui_list_entry) * count);
 	if (!lents){
-		free(set);
+		free(fds);
 		return;
 	}
 
+/* stat it and continue */
 	struct dent {
 		struct stat stat;
 		int fd;
 	}* dents = malloc(sizeof(struct dent) * count);
 	if (!dents){
 		free(lents);
-		free(set);
+		free(fds);
 		return;
 	}
 
-	count = 0;
-	for (size_t i = 0; i < lim; i++){
-		if (set[i].revents & POLLNVAL)
-			continue;
+/* generate an entry even if the stat failed, as the info is indicative
+ * of a FD being detected and then inaccessible or gone */
+	size_t used = 0;
+	for (size_t i = 0; i < count; i++){
 		struct tui_list_entry* lent = &lents[count];
-		lents[count] = (struct tui_list_entry){
-			.tag = count,
+		lents[used] = (struct tui_list_entry){
+			.tag = i
 /*		.label = "set later" */
 /*		.attributes =
  *        CHECKED : already used?
@@ -235,21 +308,21 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 		if (!lbl_prefix)
 			continue;
 
-		dents[count].fd = set[i].fd;
-		if (-1 == fstat(dents[count].fd, &dents[count].stat)){
-			lents[count].attributes |= LIST_PASSIVE;
-			snprintf(lbl_prefix, lbl_len, "%d(stat-fail) : %s",
-				set[i].fd, strerror(errno));
+/* mark the stat as failed but remember the descriptor and write down */
+		if (-1 == fstat(fds[i], &dents[used].stat)){
+			lents[used].attributes |= LIST_PASSIVE;
+			snprintf(lbl_prefix, lbl_len,
+				"%d(stat-fail) : %s", fds[i], strerror(errno));
 		}
+/* resolve more data */
 		else {
 			char scratch[8];
-			fd_to_flags(scratch, set[i].fd);
-			if (-1 == can_intercept(&dents[count].stat))
-				lents[count].attributes |= LIST_PASSIVE;
-
+			fd_to_flags(scratch, fds[i]);
+			if (-1 == can_intercept(&dents[used].stat))
+				lents[used].attributes |= LIST_PASSIVE;
 #ifdef __LINUX
 			char buf[256];
-			snprintf(buf, 256, "/proc/self/fd/%d", set[i].fd);
+			snprintf(buf, 256, "/proc/self/fd/%d", fds[i]);
 /* using buf on both arguments should be safe here due to the whole 'need the
  * full path before able to generate output' criteria, but explicitly terminate
  * on truncation */
@@ -261,30 +334,23 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 				buf[rv] = '\0';
 
 			snprintf(lbl_prefix, lbl_len, "%4d[%s](%s)\t: %s",
-				set[i].fd, scratch, stat_to_str(&dents[count].stat), buf);
+				fds[i], scratch, stat_to_str(&dents[used].stat), buf);
 #else
 			snprintf(lbl_prefix, lbl_len,	"%4d[%s](%s)\t: can't resolve",
-				set[i].fd, scratch, stat_to_str(&dents[count].stat));
+				fds[i], scratch, stat_to_str(&dents[used].stat));
 #endif
-		}
-		lents[count].label = lbl_prefix;
-
-/* resolve to pathname if possible */
+/* BSD: resolve to pathname if possible */
 #ifdef F_GETPATH
 #endif
-		count++;
+		}
+
+/* stat:able, good start, extract flags and state */
+		dents[used].fd = fds[i];
+		lents[used].label = lbl_prefix;
+		used++;
 	}
 
 /* switch to new menu */
-	arcan_tui_update_handlers(dctx->tui,
-		&(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
-	arcan_tui_listwnd_setup(dctx->tui, lents, count);
-	for(;;){
-		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
-		if (res.errc == TUI_ERRC_OK){
-			if (-1 == arcan_tui_refresh(dctx->tui) && errno == EINVAL)
-				break;
-		}
 
 /* special treatment for STDIN, STDOUT, STDERR as well as those can go to a
  * tty/pty, meaning that our normal 'check if pipe' won't just work by default */
@@ -294,33 +360,146 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
  * either we request a new window and use one for the read and one for the
  * write end - as well as getsockopt on type etc. to figure out if the socket
  * can actually be intercepted or not. */
-		struct tui_list_entry* ent;
-		if (arcan_tui_listwnd_status(dctx->tui, &ent)){
-			if (ent){
-/* run descriptor, with ent tag as index */
-				int icept = can_intercept(&dents[ent->tag].stat);
-				run_descriptor(dctx, dents[ent->tag].fd, -1, icept);
-			}
-			break;
-		}
+	int rv = run_listwnd(dctx, lents, count);
+
+	if (-1 != rv){
+		struct tui_list_entry* ent = &lents[rv];
+		int icept = can_intercept(&dents[ent->tag].stat);
+		run_descriptor(dctx, dents[ent->tag].fd, -1, icept);
 	}
 
 	for (size_t i = 0; i < count; i++){
 		free(lents[i].label);
 	}
 
-	free(set);
+	free(fds);
 	free(lents);
+
+/* finished with the buffer window, rebuild the list */
+	if (-1 != rv)
+		return gen_descriptor_menu(dctx);
 }
 
 /*
  * debugger and the others are more difficult as we currently need to handover
  * exec into afsrv_terminal in a two phase method where we need to stall the
- * child a little bit while we set prctl(PR_SET_PTRACE, pid, ...).
+ * child a little bit while we see prctl(PR_SET_PTRACE, pid, ...).
  */
 static void gen_debugger_menu(struct debug_ctx* dctx)
 {
+/* check for presence of lldb and gdb, use special chainloaders for them,
+ * possibly through afsrv_terminal to get the pty */
+}
 
+/*
+ * For this feature we would like to provide an editable view of the process
+ * environment. This is anything but trivial as basically all other threads
+ * would need to be suspended while we are doing this.
+ *
+ * Normally this could be done with some convoluted ptrace+fork dance, and
+ * implement for each platform. At the moment we settle for unsafe probing,
+ * and revisit later when other features are in place.
+ *
+ * Another option is the linux proc/env dance.
+ *
+ * Things to look out for:
+ *  client setting keys to a corrupted value (modify environ and add extra)
+ */
+extern char** environ;
+static struct tui_list_entry* build_env_list(size_t* outc)
+{
+	size_t nelem = 0;
+	while(environ[nelem++]){}
+	if (!nelem)
+		return NULL;
+
+	*outc = 0;
+	struct tui_list_entry* nents = malloc(sizeof(struct tui_list_entry) * nelem);
+	if (!nents)
+		return NULL;
+
+	for (size_t i = 0; i < nelem; i++){
+		size_t len = 0;
+		for (; environ[i] && environ[i][len] && environ[i][len] != '='; len++){}
+		if (len == 0)
+			continue;
+
+		char* label = malloc(len+1);
+		if (!label)
+			continue;
+
+		memcpy(label, environ[i], len);
+		label[len] = '\0';
+
+		nents[*outc] = (struct tui_list_entry){
+			.attributes = LIST_HAS_SUB,
+			.tag = i,
+			.label = label
+		};
+		(*outc)++;
+	}
+
+	return nents;
+}
+
+static void free_list(struct tui_list_entry* list, size_t nc)
+{
+	for (size_t i = 0; i < nc; i++)
+		free(list[i].label);
+	free(list);
+}
+
+static void gen_environment_menu(struct debug_ctx* dctx)
+{
+	size_t nelem = 0;
+
+	struct tui_list_entry* list = build_env_list(&nelem);
+	if (!list)
+		return;
+
+	if (!nelem){
+		free(list);
+		return;
+	}
+
+	int ind = run_listwnd(dctx, list, nelem);
+	if (-1 == ind){
+		free_list(list, nelem);
+		return;
+	}
+
+	char* env = getenv(list[ind].label);
+	if (!env || !(env = strdup(env)))
+		return gen_environment_menu(dctx);
+
+	struct tui_bufferwnd_opts opts = {
+		.read_only = false,
+		.view_mode = BUFFERWND_VIEW_ASCII,
+		.allow_exit = true
+	};
+
+/* bufferwnd is used here intermediately as it has the problem of not
+ * being able to really handle insertion, so either that gets fixed or
+ * the libreadline replacement finally gets written */
+	arcan_tui_bufferwnd_setup(dctx->tui, (uint8_t*) env,
+		strlen(env), &opts, sizeof(struct tui_bufferwnd_opts));
+
+	while(arcan_tui_bufferwnd_status(dctx->tui) == 1){
+		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
+		if (res.errc == TUI_ERRC_OK){
+			if (-1 == arcan_tui_refresh(dctx->tui) && errno == EINVAL){
+				dctx->dead = true;
+				break;
+			}
+		}
+	}
+
+	return gen_environment_menu(dctx);
+}
+
+int arcan_shmif_debugint_alive()
+{
+	return atomic_load(&beancounter);
 }
 
 static void build_process_str(char* dst, size_t dst_sz)
@@ -330,7 +509,26 @@ static void build_process_str(char* dst, size_t dst_sz)
  * offset- lookup coloring to perform that resolution, simple strings for now */
 	pid_t cpid = getpid();
 	pid_t ppid = getppid();
+#ifdef LINUX
 	snprintf(dst, dst_sz, "PID: %zd Parent: %zd", (ssize_t) cpid, (ssize_t) ppid);
+/* information sources from proc / pid:
+ * cmdline [\0 sep]
+ * mountinfo?
+ * /proc/sys/kernel/yama/ptrace_scope
+ * hmm, map_files can be used now without the fseek hell
+ * oom_score
+ * -- not all are cheap enough for synch
+ * from status, signal mask, uid/gid, fdsizes(?), seccomp, voluntary / forced
+ * limits
+ * tracer-pid
+ * IP sampling mode?
+ */
+#else
+	snprintf(dst, dst_sz, "PID: %zd Parent: %zd", (ssize_t) cpid, (ssize_t) ppid);
+#endif
+/* hardening analysis,
+ * aslr, nxstack, canaries (also extract canary)
+ */
 }
 
 static void set_process_window(struct debug_ctx* dctx)
@@ -375,17 +573,22 @@ static void root_menu(struct debug_ctx* dctx)
 		{
 			.label = "File Descriptors",
 			.attributes = LIST_HAS_SUB,
-			.tag = 0
+			.tag = TAG_CMD_DESCRIPTOR
 		},
 		{
 			.label = "Debugger",
 			.attributes = LIST_HAS_SUB,
-			.tag = 1
+			.tag = TAG_CMD_DEBUGGER
+		},
+		{
+			.label = "Environment",
+			.attributes = LIST_HAS_SUB,
+			.tag = TAG_CMD_ENVIRONMENT
 		},
 		{
 			.label = "Process Information",
 			.attributes = LIST_HAS_SUB,
-			.tag = 2,
+			.tag = TAG_CMD_PROCESS
 		}
 	};
 
@@ -411,12 +614,20 @@ static void root_menu(struct debug_ctx* dctx)
 /* this will just chain into a new listwnd setup, and if they cancel
  * we can just repeat the setup - until the dead state has been set */
 				if (ent){
-					if (ent->tag == 0)
-						gen_descriptor_menu(dctx);
-					else if (ent->tag == 1)
-						gen_debugger_menu(dctx);
-					else if (ent->tag == 2)
-						set_process_window(dctx);
+					switch(ent->tag){
+						case TAG_CMD_DESCRIPTOR :
+							gen_descriptor_menu(dctx);
+						break;
+						case TAG_CMD_DEBUGGER :
+							gen_debugger_menu(dctx);
+						break;
+						case TAG_CMD_ENVIRONMENT :
+							gen_environment_menu(dctx);
+						break;
+						case TAG_CMD_PROCESS :
+							set_process_window(dctx);
+						break;
+					}
 				}
 				break;
 			}
@@ -431,6 +642,7 @@ static void* debug_thread(void* thr)
 
 	if (!dctx->tui){
 		arcan_shmif_drop(&dctx->cont);
+		atomic_fetch_add(&beancounter, -1);
 		free(thr);
 		return NULL;
 	}
@@ -438,6 +650,7 @@ static void* debug_thread(void* thr)
 	root_menu(dctx);
 
 	arcan_tui_destroy(dctx->tui, NULL);
+	atomic_fetch_add(&beancounter, -1);
 	free(thr);
 	return NULL;
 }
@@ -496,6 +709,8 @@ bool arcan_shmif_debugint_spawn(struct arcan_shmif_cont* c, void* tuitag)
 		free(hgs);
 		return false;
 	}
+
+	atomic_fetch_add(&beancounter, 1);
 
 	return true;
 }

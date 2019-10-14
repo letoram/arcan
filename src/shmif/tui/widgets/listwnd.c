@@ -179,7 +179,7 @@ static void select_current(struct tui_context* T, struct listwnd_meta* M)
 
 static void cancel(struct tui_context* T, struct listwnd_meta* M)
 {
-
+	M->entry_state = -1;
 }
 
 static void step_page_s(struct tui_context* T, struct listwnd_meta* M)

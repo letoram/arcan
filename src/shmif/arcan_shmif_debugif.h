@@ -5,4 +5,6 @@
  * adopts the context.
  */
 bool arcan_shmif_debugint_spawn(struct arcan_shmif_cont*, void* tuitag);
+int arcan_shmif_debugint_alive();
+
 #endif
