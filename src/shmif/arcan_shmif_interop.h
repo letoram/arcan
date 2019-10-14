@@ -69,6 +69,7 @@ file_handle arcan_fetchhandle(int insock, bool block);
 bool arcan_pushhandle(int fd, int channel);
 int arcan_sem_wait(sem_handle sem);
 int arcan_sem_trywait(sem_handle sem);
+int arcan_fdscan(int** listout);
 #endif
 
 struct arcan_shmif_cont;

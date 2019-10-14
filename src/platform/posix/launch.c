@@ -127,11 +127,11 @@ void arcan_closefrom(int fd)
 	for (size_t i = 0; i < lim; i++)
 		fds[i].fd = i+fd;
 
-	poll(fds, lim, 0);
-
-	for (size_t i = 0; i < lim; i++)
-		if (!(fds[i].revents & POLLNVAL))
-			close(fds[i].fd);
+	if (-1 != poll(fds, lim, 0)){
+		for (size_t i = 0; i < lim; i++)
+			if (!(fds[i].revents & POLLNVAL))
+				close(fds[i].fd);
+	}
 
 	arcan_mem_free(fds);
 #else

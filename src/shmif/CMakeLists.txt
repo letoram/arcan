@@ -85,32 +85,29 @@ else()
 	set (SHMIF_EXT_SOURCES "${ASD}/shmif/stub/stub.c")
 endif()
 
+set(SHMIF_PLATFORM
+	${ASD}/platform/posix/shmemop.c
+	${ASD}/platform/posix/warning.c
+	${ASD}/platform/posix/fdpassing.c
+	${ASD}/platform/posix/random.c
+	${ASD}/platform/posix/fdscan.c
+)
+
 if (BSD_BUILD)
-	set(SHMIF_PLATFORM
-		${ASD}/platform/posix/shmemop.c
-		${ASD}/platform/posix/warning.c
+	list(APPEND SHMIF_PLATFORM
 		${ASD}/platform/posix/time.c
 		${ASD}/platform/posix/sem.c
-		${ASD}/platform/posix/fdpassing.c
-		${ASD}/platform/posix/random.c
 	)
+
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-	set(SHMIF_PLATFORM
-		${ASD}/platform/posix/shmemop.c
-		${ASD}/platform/posix/warning.c
+	list(APPEND SHMIF_PLATFORM
 		${ASD}/platform/posix/time.c
 		${ASD}/platform/posix/sem.c
-		${ASD}/platform/posix/fdpassing.c
-		${ASD}/platform/posix/random.c
 	)
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-	set(SHMIF_PLATFORM
-		${ASD}/platform/posix/shmemop.c
-		${ASD}/platform/posix/warning.c
+	list(APPEND SHMIF_PLATFORM
 		${ASD}/platform/darwin/time.c
 		${ASD}/platform/darwin/sem.c
-		${ASD}/platform/posix/fdpassing.c
-		${ASD}/platform/posix/random.c
 	)
 else()
 	message(FATAL_ERROR "attempted to build arcan-shmif on an unsupported OS/platform")
