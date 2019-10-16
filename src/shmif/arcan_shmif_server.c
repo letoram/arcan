@@ -124,19 +124,49 @@ struct shmifsrv_client* shmifsrv_allocate_connpoint(
 	return res;
 }
 
+struct shmifsrv_client* shmifsrv_inherit_connection(int sockin, int* statuscode)
+{
+	if (-1 == sockin){
+		if (statuscode)
+			*statuscode = SHMIFSRV_INVALID_ARGUMENT;
+		return NULL;
+	}
+
+	struct shmifsrv_client* res = alloc_client();
+	if (!res){
+		close(sockin);
+		if (statuscode)
+			*statuscode = SHMIFSRV_OUT_OF_MEMORY;
+		return NULL;
+	}
+
+	res->con = platform_fsrv_preset_server(sockin, SEGID_UNKNOWN, 0, 0, 0);
+
+	if (statuscode)
+		*statuscode = SHMIFSRV_OK;
+
+	res->cookie = arcan_shmif_cookie();
+	res->status = AUTHENTICATING;
+
+	return res;
+}
+
 struct shmifsrv_client* shmifsrv_spawn_client(
 	struct shmifsrv_envp env, int* clsocket, int* statuscode, uint32_t idtok)
 {
 	if (!clsocket){
-		*statuscode = SHMIFSRV_INVALID_ARGUMENT;
+		if (statuscode)
+			*statuscode = SHMIFSRV_INVALID_ARGUMENT;
 		return NULL;
 	}
 
 	struct shmifsrv_client* res = alloc_client();
 
-	if (statuscode){
-		*statuscode = SHMIFSRV_OUT_OF_MEMORY;
-		return NULL;
+	if (res){
+		if (statuscode){
+			*statuscode = SHMIFSRV_OUT_OF_MEMORY;
+			return NULL;
+		}
 	}
 
 	res->con = platform_fsrv_spawn_server(

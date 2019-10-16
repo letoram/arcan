@@ -214,7 +214,7 @@ bool platform_fsrv_destroy(arcan_frameserver* src)
  * or at least not by SIGSEGV yourself. The 'no_dms_free' flag is used for
  * that purpose.
  */
-if (shmpage){
+	if (shmpage){
 		if (!src->flags.no_dms_free){
 			platform_fsrv_pushevent(src, &(struct arcan_event){
 				.category = EVENT_TARGET,
@@ -253,6 +253,7 @@ out:
 
 /* might be in a listening / pending state, close the pipe */
 	if (BADFD != src->dpipe){
+		shutdown(src->dpipe, SHUT_RDWR);
 		close(src->dpipe);
 		src->dpipe = BADFD;
 	}
@@ -267,6 +268,7 @@ void platform_fsrv_dropshared(arcan_frameserver* src)
 		return;
 
 	if (src->dpipe != BADFD){
+		shutdown(src->dpipe, SHUT_RDWR);
 		close(src->dpipe);
 		src->dpipe = BADFD;
 	}
@@ -1434,6 +1436,22 @@ struct arcan_frameserver* platform_fsrv_listen_external(const char* key,
 
 	if (auth)
 		strncpy(newseg->clientkey, auth, PP_SHMPAGE_SHMKEYLIM-1);
+	return newseg;
+}
+
+struct arcan_frameserver* platform_fsrv_preset_server(
+	int sockin, int segid, size_t w, size_t h, uintptr_t tag)
+{
+	arcan_frameserver* newseg = platform_fsrv_alloc();
+	if (!newseg)
+		return NULL;
+
+	if (!prepare_segment(newseg, segid, w, h, false, NULL, -1, tag)){
+		arcan_mem_free(newseg);
+		return NULL;
+	}
+
+	newseg->dpipe = sockin;
 	return newseg;
 }
 
