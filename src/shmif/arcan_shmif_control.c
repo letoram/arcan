@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2018, Björn Ståhl
+ * Copyright 2012-2019, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -19,6 +19,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -201,6 +202,10 @@ struct shmif_hidden {
  * necessary due to the poor multiplexation options for semaphores. */
 	struct {
 		bool active;
+
+/* Fringe-wise, we need two DMSes, one set in shmpage and another using the
+ * guard-thread, then both need to be checked after every semaphore lock */
+		_Atomic bool local_dms;
 		sem_handle semset[3];
 		process_handle parent;
 		int parent_fd;
@@ -253,6 +258,21 @@ static inline bool parent_alive(struct shmif_hidden* gs)
 	}
 
 	return false;
+}
+
+/*
+ * consolidate 3 signal paths for detecting connection liveness
+ * shared page   - triggered on memory page inconsistency / integrity fail
+ * guard thread  - triggered on parent death
+ * event context - triggered on queue structure integrity, normally hooked to dms
+ */
+static bool check_dms(struct arcan_shmif_cont* c)
+{
+	if (!c->priv->alive ||
+		!atomic_load(&c->priv->guard.local_dms) || !c->addr->dms)
+		return false;
+
+	return true;
 }
 
 static void spawn_guardthread(struct arcan_shmif_cont* d)
@@ -567,13 +587,9 @@ reset:
 		return -1;
 
 	struct shmif_hidden* priv = c->priv;
+	struct arcan_evctx* ctx = &priv->inev;
 	bool noks = false;
 	int rv = 0;
-
-/* difference between dms and ks is that the dms is pulled by the shared
- * memory interface and process management, killswitch from the event queues */
-	struct arcan_evctx* ctx = &priv->inev;
-	volatile uint8_t* ks = (volatile uint8_t*) ctx->synch.killswitch;
 
 /* Select few events has a special queue position and can be delivered 'out of
  * order' from normal affairs. This is needed for displayhint/fonthint in WM
@@ -636,7 +652,7 @@ checkfd:
 
 			goto done;
 		}
-	} while (priv->pev.gotev && *ks && c->addr->dms);
+	} while (priv->pev.gotev && check_dms(c));
 
 /* atomic increment of front -> event enqueued */
 	if (*ctx->front != *ctx->back){
@@ -799,7 +815,7 @@ checkfd:
 
 		rv = 1;
 	}
-	else if (c->addr->dms == 0){
+	else if (!check_dms(c)){
 		rv = fallback_migrate(c, priv->alt_conn, true) == SHMIF_MIGRATE_OK?0:-1;
 		goto done;
 	}
@@ -807,7 +823,7 @@ checkfd:
 /* Need to constantly pump the event socket for incoming descriptors and
  * caller- mandated polling, as the order between event and descriptor is
  * not deterministic */
-	else if (blocking && *ks)
+	else if (blocking && check_dms(c))
 		goto checkfd;
 
 done:
@@ -815,7 +831,7 @@ done:
 	pthread_mutex_unlock(&ctx->synch.lock);
 #endif
 
-	return *ks || noks ? rv : -1;
+	return check_dms(c) || noks ? rv : -1;
 }
 
 static bool is_output_segment(enum ARCAN_SEGID segid)
@@ -917,7 +933,7 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
  * either an event that might not fit in the current context, or an event that
  * gets lost. Neither is good. The counterargument is that crash recovery is a
  * 'best effort basis' - we're still dealing with an actual crash. */
-	if (!c->addr->dms || !c->priv->alive){
+	if (!check_dms(c)){
 		fallback_migrate(c, c->priv->alt_conn, true);
 		return 0;
 	}
@@ -941,7 +957,8 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 	pthread_mutex_lock(&ctx->synch.lock);
 #endif
 
-	while ( ((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
+	while ( check_dms(c) &&
+			((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
 		debug_print(STATUS, c, "outqueue is full, waiting");
 		arcan_sem_wait(ctx->synch.handle);
 	}
@@ -975,7 +992,7 @@ int arcan_shmif_tryenqueue(
 	struct arcan_shmif_cont* c, const arcan_event* const src)
 {
 	assert(c);
-	if (!c || !src || !c->addr || !c->addr->dms)
+	if (!c || !src || !c->addr || !check_dms(c))
 		return 0;
 
 	struct arcan_evctx* ctx = &c->priv->outev;
@@ -1310,6 +1327,7 @@ struct arcan_shmif_cont shmif_acquire_int(
 
 	struct shmif_hidden gs = {
 		.guard = {
+			.local_dms = true,
 			.semset = { res.asem, res.vsem, res.esem },
 			.parent = res.addr->parent,
 			.parent_fd = -1,
@@ -1410,22 +1428,36 @@ static void* guard_thread(void* gs)
 	while (gstr->guard.active){
 		if (!parent_alive(gstr)){
 			volatile uint8_t* dms;
+
+/* guard synch mutex only protects the structure itself, it is not
+ * loaded or checked between every shmif-operation */
 			pthread_mutex_lock(&gstr->guard.synch);
+
+/* setting the dms here practically doesn't imply that the sem_post
+ * on wakeup set won't run again from a delayed dms write, the dms
+ * set action here is for any others that might monitor the segment */
 			if ((dms = atomic_load(&gstr->guard.dms)))
 				*dms = false;
 
+			atomic_store(&gstr->guard.local_dms, false);
+
+/* other threads might be locked on semaphores, so wake them up, and
+ * force them to re-examine the dms from being released */
 			for (size_t i = 0; i < COUNT_OF(gstr->guard.semset); i++){
 				if (gstr->guard.semset[i])
 					arcan_sem_post(gstr->guard.semset[i]);
 			}
 
+			gstr->guard.active = false;
+
+/* same as everywhere else, implementation need to allow unlock to destroy */
 			pthread_mutex_unlock(&gstr->guard.synch);
 			pthread_mutex_destroy(&gstr->guard.synch);
-			sleep(5);
 			debug_print(FATAL, NULL, "guard thread activated, shutting down");
 
 			if (gstr->guard.exitf)
 				gstr->guard.exitf(EXIT_FAILURE);
+
 			goto done;
 		}
 
@@ -1603,7 +1635,7 @@ unsigned arcan_shmif_signal(
 
 /* to protect against some callers being stuck in a 'just signal
  * as a means of draining buffers' */
-	if (!ctx->addr->dms){
+	if (!ctx->addr->dms || !atomic_load(&priv->guard.local_dms)){
 		ctx->abufused = ctx->abufpos = 0;
 		fallback_migrate(ctx, ctx->priv->alt_conn, true);
 		return 0;
@@ -1637,13 +1669,14 @@ unsigned arcan_shmif_signal(
 			);
 		}
 
-		while ((ctx->hints & SHMIF_RHINT_SUBREGION) && ctx->addr->vready)
+		while ((ctx->hints & SHMIF_RHINT_SUBREGION)
+			&& ctx->addr->vready && check_dms(ctx))
 			arcan_sem_wait(ctx->vsem);
 
 		bool lock = step_v(ctx);
 
 		if (lock && !(mask & SHMIF_SIGBLK_NONE)){
-			while (ctx->addr->vready)
+			while (ctx->addr->vready && check_dms(ctx))
 				arcan_sem_wait(ctx->vsem);
 		}
 		else
@@ -1757,11 +1790,11 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 
 /* wait for any outstanding v/asynch */
 	if (atomic_load(&arg->addr->vready)){
-		while (atomic_load(&arg->addr->vready) && arg->addr->dms)
+		while (atomic_load(&arg->addr->vready) && check_dms(arg))
 			arcan_sem_wait(arg->vsem);
 	}
 	if (atomic_load(&arg->addr->aready)){
-		while (atomic_load(&arg->addr->aready) && arg->addr->dms)
+		while (atomic_load(&arg->addr->aready) && check_dms(arg))
 			arcan_sem_wait(arg->asem);
 	}
 
@@ -1812,7 +1845,7 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	do{
 		arcan_sem_wait(arg->vsem);
 	}
-	while (arg->addr->resized);
+	while (arg->addr->resized && check_dms(arg));
 
 /*
  * spin until acknowledged, re-using the "wait on sync-fd" approach might be
@@ -1820,12 +1853,9 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
  * code overhead from needing to buffer, manage descriptors, etc. as there
  * might be other events 'in flight'.
  */
-	bool alive = true;
-	while(arg->addr->resized == 1 && arg->addr->dms && alive)
-		alive = parent_alive(arg->priv);
-		;
+	while(arg->addr->resized == 1 && check_dms(arg)){}
 
-	if (!arg->addr->dms || !alive){
+	if (!check_dms(arg)){
 		debug_print(FATAL, arg, "dead man switch pulled during resize");
 		return false;
 	}
@@ -2257,10 +2287,10 @@ enum shmif_migrate_status arcan_shmif_migrate(
 
 /* got a valid connection, first synch source segment so we don't have
  * anything pending */
-	while(atomic_load(&cont->addr->vready) && cont->addr->dms)
+	while(atomic_load(&cont->addr->vready) && check_dms(cont))
 		arcan_sem_wait(cont->vsem);
 
-	while(atomic_load(&cont->addr->aready) && cont->addr->dms)
+	while(atomic_load(&cont->addr->aready) && check_dms(cont))
 		arcan_sem_wait(cont->asem);
 
 	size_t w = atomic_load(&cont->addr->w);
@@ -2465,7 +2495,6 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 /* as normal, we want the descriptors to be non-blocking, and
  * only the right one should persist across exec */
 	for (size_t i = 0; i < 2; i++){
-		fcntl(spair[i], F_SETFD, FD_CLOEXEC);
 		int flags = fcntl(spair[i], F_GETFL);
 		if (flags & O_NONBLOCK)
 			fcntl(spair[i], F_SETFL, flags & (~O_NONBLOCK));
@@ -2483,15 +2512,18 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	}
 	*dsock = spair[0];
 
-/* spawn the arcan-net process, unclear here what we realistically
- * should do with pid exect let it potentially zombie/acc (migrate
- * calls), the similarly nasty option is to spawn a wait- thread */
+/* spawn the arcan-net process, zombie- tactic was either doublefork
+ * or spawn a waitpid thread - given that the length/lifespan of net
+ * may well be as long as the process, go with double-fork + wait */
 	pid_t pid = fork();
 	if (pid == 0){
-		char tmpbuf[8];
-		snprintf(tmpbuf, sizeof(tmpbuf), "%d", spair[1]);
-		execl("arcan-net", "arcan-net", "-S", tmpbuf, key, port);
-		exit(EXIT_FAILURE);
+		if (0 == fork()){
+			char tmpbuf[8];
+			snprintf(tmpbuf, sizeof(tmpbuf), "%d", spair[1]);
+			execl("arcan-net", "arcan-net", "-S",
+				tmpbuf, &work[start], port, (char*) NULL);
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	if (-1 == pid){
@@ -2499,6 +2531,9 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 		close(spair[0]);
 		close(spair[1]);
 		return NULL;
+	}
+
+	while(waitpid(pid, NULL, 0) == -1 && errno == EINTR){
 	}
 
 /* retrieve shmkeyetc. like with connect */
