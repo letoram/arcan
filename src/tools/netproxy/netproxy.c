@@ -277,6 +277,7 @@ static int a12_preauth(struct anet_options* args,
 	if (!cl){
 		fprintf(stderr, "(shmif::arcan-net) "
 			"couldn't build connection from socket (%d)\n", sc);
+		shutdown(args->sockfd, SHUT_RDWR);
 		return EXIT_FAILURE;
 	}
 
@@ -288,13 +289,15 @@ static int a12_preauth(struct anet_options* args,
 	struct addrinfo* addr = NULL;
 	int ec = getaddrinfo(args->host, args->port, &hints, &addr);
 	if (ec){
+		shutdown(args->sockfd, SHUT_RDWR);
 		fprintf(stderr, "(shmif::arcan-net) "
 			"couldn't resolve address: %s\n", gai_strerror(ec));
 		return EXIT_FAILURE;
 	}
 
-	int fd = get_cl_fd(addr);
-	if (-1 == fd){
+	int clfd = get_cl_fd(addr);
+	if (-1 == clfd){
+		shutdown(args->sockfd, SHUT_RDWR);
 		shmifsrv_free(cl, true);
 		fprintf(stderr,
 			"(shmif::arcan-net) couldn't connect to (%s:%s)\n", args->host, args->port);
@@ -305,13 +308,16 @@ static int a12_preauth(struct anet_options* args,
 	struct a12_state* state = a12_open(args->opts);
 	if (!state){
 		freeaddrinfo(addr);
+		shutdown(args->sockfd, SHUT_RDWR);
 		shmifsrv_free(cl, true);
-		close(fd);
 		fprintf(stderr, "couldn't build a12 state machine\n");
 		return EXIT_FAILURE;
 	}
 
-	dispatch(args, state, cl, fd);
+/* and ack the connection */
+	shmifsrv_poll(cl);
+	dispatch(args, state, cl, clfd);
+	shmifsrv_free(cl, true);
 	return EXIT_SUCCESS;
 }
 
