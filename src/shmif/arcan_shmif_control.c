@@ -1453,6 +1453,9 @@ static void* guard_thread(void* gs)
 /* same as everywhere else, implementation need to allow unlock to destroy */
 			pthread_mutex_unlock(&gstr->guard.synch);
 			pthread_mutex_destroy(&gstr->guard.synch);
+
+/* also shutdown the socket, should unlock any blocking I/O stage */
+			shutdown(gstr->guard.parent_fd, SHUT_RDWR);
 			debug_print(FATAL, NULL, "guard thread activated, shutting down");
 
 			if (gstr->guard.exitf)
@@ -2520,16 +2523,18 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 		if (0 == fork()){
 			char tmpbuf[8];
 			snprintf(tmpbuf, sizeof(tmpbuf), "%d", spair[1]);
-			execl("arcan-net", "arcan-net", "-S",
+			execlp("arcan-net", "arcan-net", "-S",
 				tmpbuf, &work[start], port, (char*) NULL);
+			shutdown(spair[1], SHUT_RDWR);
 			exit(EXIT_FAILURE);
 		}
+		exit(EXIT_FAILURE);
 	}
+	close(spair[1]);
 
 	if (-1 == pid){
 		fprintf(stderr, "(shmif::a12::connect) fork() failed\n");
 		close(spair[0]);
-		close(spair[1]);
 		return NULL;
 	}
 

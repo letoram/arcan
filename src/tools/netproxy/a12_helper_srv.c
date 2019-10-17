@@ -600,7 +600,7 @@ static bool spawn_thread(struct shmifsrv_thread_data* inarg)
 void a12helper_a12cl_shmifsrv(struct a12_state* S,
 	struct shmifsrv_client* C, int fd_in, int fd_out, struct a12helper_opts opts)
 {
-	uint8_t* outbuf;
+	uint8_t* outbuf = NULL;
 	size_t outbuf_sz = 0;
 
 /* tie an empty context as channel destination, we use this as a type- wrapper

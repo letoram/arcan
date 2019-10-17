@@ -79,6 +79,9 @@ static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz, int ind)
 		return NULL;
 	}
 
+/* init the new region */
+	memset(&res[*cur_sz], '\0', new_sz - *cur_sz);
+
 	*cur_sz = new_sz;
 	return res;
 }
@@ -201,7 +204,7 @@ static struct a12_state* a12_setup(struct a12_context_options* opt)
 	if (!res)
 		return NULL;
 
-
+	*res = (struct a12_state){};
 	res->opts = opt;
 	res->cookie = 0xfeedface;
 	return res;
@@ -572,7 +575,9 @@ static void command_videoframe(struct a12_state* S)
 {
 	uint8_t channel = S->decode[16];
 	struct video_frame* vframe = &S->channels[channel].unpack_state.vframe;
- /* new vstream, from README.md:
+	*vframe = (struct video_frame){};
+
+/* new vstream, from README.md:
 	* currently unused
 	* [36    ] : dataflags: uint8
 	*/
@@ -636,18 +641,22 @@ static void command_videoframe(struct a12_state* S)
 	}
 
 	a12int_trace(A12_TRACE_VIDEO, "kind=frame_header:method=%d:"
-		"source_w=%zu:source_h=%zu:dst_w=%zu:dst_h=%zu:x=%zu,y=%zu",
+		"source_w=%zu:source_h=%zu:dst_w=%zu:dst_h=%zu:x=%zu,y=%zu:"
+		"bytes_in=%zu:bytes_out=%zu",
 		(int) vframe->postprocess, (size_t) vframe->w, (size_t) vframe->h,
-		(size_t) vframe->sw, (size_t) vframe->sh, (size_t) vframe->x, (size_t) vframe->y
+		(size_t) vframe->sw, (size_t) vframe->sh, (size_t) vframe->x, (size_t) vframe->y,
+		(size_t) vframe->inbuf_sz, (size_t) vframe->expanded_sz
 	);
 
 /* Validation is done just above, making sure the sub- region doesn't extend
  * the specified source surface. Remaining length- field is verified before
  * the write in process_video. */
-	if (vframe->x >= vframe->w || vframe->y >= vframe->h){
+	if (vframe->x >= vframe->sw || vframe->y >= vframe->sh){
 		vframe->commit = 255;
 		a12int_trace(A12_TRACE_SYSTEM,
-			"incoming frame exceeding reasonable constraints");
+			"kind=error:status=EINVAL:x=%zu:y=%zu:w=%zu:h=%zu",
+			(size_t) vframe->x, (size_t) vframe->y, (size_t) vframe->w, (size_t) vframe->h
+		);
 		return;
 	}
 
@@ -663,10 +672,13 @@ static void command_videoframe(struct a12_state* S)
 	}
 /* this includes TPACK */
 	else {
-		if (vframe->expanded_sz > vframe->w * vframe->h * sizeof(shmif_pixel)){
+		size_t ulim = vframe->w * vframe->h * sizeof(shmif_pixel);
+		if (vframe->expanded_sz > ulim){
 			vframe->commit = 255;
 			a12int_trace(A12_TRACE_SYSTEM,
-				"incoming frame exceeding reasonable constraints");
+				"kind=error:status=EINVAL:expanded=%zu:limit=%zu",
+				(size_t) vframe->expanded_sz, (size_t) ulim
+			);
 			return;
 		}
 /* rather arbitrary, but if this condition occurs, the producer should have
@@ -1064,6 +1076,13 @@ static void process_video(struct a12_state* S)
 /* the 'video_frame' structure for the current channel (segment) tracks
  * decode buffer etc. for the current stream */
 	struct video_frame* cvf = &S->channels[S->in_channel].unpack_state.vframe;
+/* if we are in discard state, just continue */
+	if (cvf->commit == 255){
+		a12int_trace(A12_TRACE_VIDEO, "kind=discard");
+		reset_state(S);
+		return;
+	}
+
 	struct arcan_shmif_cont* cont = S->channels[S->in_channel].cont;
 	if (!S->channels[S->in_channel].cont){
 		a12int_trace(A12_TRACE_SYSTEM,
@@ -1105,18 +1124,12 @@ static void process_video(struct a12_state* S)
 		return;
 	}
 
-/* if we are in discard state, just continue */
-	if (cvf->commit == 255){
-		a12int_trace(A12_TRACE_VIDEO, "kind=discard");
-		reset_state(S);
-		return;
-	}
-
 /* we use a length field that match the width*height so any
  * overflow / wrap tricks won't work */
 	if (cvf->inbuf_sz < S->decode_pos){
 		a12int_trace(A12_TRACE_SYSTEM,
 			"kind=error:source=video:channel=%d:type=EOVERFLOW", S->in_channel);
+		cvf->commit = 255;
 		reset_state(S);
 		return;
 	}

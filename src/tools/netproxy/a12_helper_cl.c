@@ -422,6 +422,7 @@ int a12helper_a12srv_shmifcl(
 		if (!outbuf_sz){
 			BEGIN_CRITICAL(&cl, "step-buffer");
 				outbuf_sz = a12_flush(S, &outbuf, A12_FLUSH_ALL);
+				printf("outbuf: %zu, %"PRIxPTR"\n", outbuf_sz, outbuf);
 			END_CRITICAL(&cl);
 		}
 
