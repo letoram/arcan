@@ -1631,8 +1631,13 @@ unsigned arcan_shmif_signal(
 	if (!ctx || !ctx->addr || !priv || !ctx->vidp)
 		return 0;
 
+/* sematics for output segments are easier, no chunked buffers
+ * or hooks to account for */
 	if (is_output_segment(priv->type)){
-		atomic_store(&ctx->addr->vready, 0);
+		if (mask & SHMIF_SIGVID)
+			atomic_store(&ctx->addr->vready, 0);
+		if (mask & SMHIF_SIGAUD)
+			atomic_store(&ctx->addr->aready, 0);
 		return 0;
 	}
 

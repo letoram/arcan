@@ -1,7 +1,10 @@
 # arcan-net
 
 This tool provides network translation for clients and services built
-using the arcan-shmif IPC client library.
+using the arcan-shmif IPC client library. This is an opt-in tool and
+not part of the 'net' frameserver for the time being due to the immature
+state and _unverified_ _incomplete_ _unhardened_ state of the crypto
+implementation (see HACKING.md).
 
 Basic use is as follows:
 
@@ -21,18 +24,9 @@ will allow shmif clients to start with:
 
     ARCAN_CONNPATH=cpoint some_client
 
-Which should then be correctly forwarded. By default, it will just generate an
-ephemeral key-pair and use curve25519-donna for creating the session keys (see
-HACKING.md for crypto design). For anything other than testing purposes, you
-would also want your own key management and somehow authenticate the public
-part of the key. The best way would be preshare/preauth, say as part of the
-image you bootstrap your server with. A convenient compromise is a short-lived
-key for the first key exchange.
+Individual clients can also perform setup with less effort:
 
-    dd if=/dev/urandom of=mykey.srv bs=1 count=32
-    A12_AUTHK=password123 arcan-net -l -k mykey.srv 6666
-
-Any 32 bytes cryptographically secure random numbers can be used.
+    ARCAN_CONNPATH=a12://user@host:port some_client
 
 # Compilation
 
