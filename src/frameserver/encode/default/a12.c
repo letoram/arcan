@@ -1,73 +1,154 @@
+/*
+ * This is an interesting hybrid / use case in its own right. Expose the encode
+ * session as a 'remote desktop' kind of scenario where the client is allowed to
+ * provide input, but at the same time is receiving A/V/E data.
+ */
+
 #include <arcan_shmif.h>
 #include <arcan_shmif_server.h>
 
 #include "a12.h"
 #include "a12_int.h"
 
+#include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <signal.h>
 #include <netdb.h>
+#include <poll.h>
 
-/*
- * for each updated A/V buffer, we need to push to all connected clients,
- * so set this counter to the number of expected clients and decrement
- * when it has been processed.
- */
-static volatile _Atomic int frame_waiters;
+#include "anet_helper.h"
+#include <pthread.h>
 
-struct client {
-	struct a12_state* a12;
-	int socket;
-};
-
-/*
- * new client:
- * a12_build(context options);
- * -> a12_unpack(state, buf, size, TAG, on_event(wnd, int chid, event*, tag))
- * -> a12_channel_aframe
- * -> a12_channel_vframe
- */
-
-pthread_mutex_t conn_synch = PTHREAD_MUTEX_INITIALIZER;
-
-/*
- * Expose a shmif context in ENCODE/OUTPUT mode as a normal MEDIA/APPLICATION
- * 'client' to whatever remoting session that connected and authenticated.
- *
- * This is the opposite of how the server side works in arcan-netproxy, where
- * the listening connection behaves as a client.
- *
- * It is simpler in the sense that we typically reject subsegment and things
- * like that, 'clipboard' like operations are just done as state transfers on
- * the connection.
- */
-void a12_serv_run(struct arg_arr* arg, struct arcan_shmif_cont cont)
+static void on_client_event(
+	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
-	int port = 6630;
-	signal(SIGPIPE, SIG_IGN);
-	signal(SIGCHLD, SIG_IGN);
+	if (!cont){
+		return;
+	}
 
-/* derive key from password or retrieve keypair from message loop first */
+/* the client isn't normal as such in that many of the shmif events do
+ * not make direct sense to just forward verbatim. The input model match
+ * 1:1, however, so forward those. */
 
-	struct arcan_event ev;
-	while(arcan_shmif_wait(&cont, &ev) != 0){
-		switch (ev.tgt.kind){
-			case TARGET_COMMAND_STEPFRAME:
-				pthread_mutex_lock(&conn_synch);
-				pthread_mutex_unlock(&conn_synch);
-				atomic_store(&cont.addr->vready, 0);
-				atomic_store(&cont.addr->aready, 0);
-			break;
+	if (ev->category == EVENT_IO){
+		arcan_shmif_enqueue(cont, ev);
+	}
+}
 
-			case TARGET_COMMAND_MESSAGE:
-/* update / setup connection primitives, activate if deferred */
-			break;
+struct dispatch_data {
+	struct arcan_shmif_cont* C;
+	struct anet_options opts;
+};
+static void process_shmif(struct a12_state* S, struct dispatch_data* data)
+{
+	arcan_event ev;
+	while(arcan_shmif_poll(data->C, &ev) > 0){
+		if (ev.category != EVENT_TARGET)
+			continue;
+		switch(ev.tgt.kind){
 
-			case TARGET_COMMAND_EXIT:
-				pthread_mutex_lock(&conn_synch);
-/* iterate each connection and kill */
-				pthread_mutex_unlock(&conn_synch);
-			break;
+/* this is a good testing basis for adaptive heavy preview- frame delivery
+ * that gets sent in advanced, and forwarded unless the main frame arrives
+ * in time. Then the SNR can be adjusted to match the quality of the link
+ * for the time being. */
+		case TARGET_COMMAND_STEPFRAME:{
+		return (struct a12_vframe_opts){
+			.method = VFRAME_METHOD_DPNG
+		};
+			arcan_shmif_signal(data->C, SHMIF_SIGVID | SHMIF_SIGAUD);
+		}
+		default:
+		break;
 		}
 	}
+}
+static void dispatch_single(struct a12_state* S, int fd, void* tag)
+{
+	struct arcan_event ev;
+	struct dispatch_data* data = tag;
+
+	static const short errmask = POLLERR | POLLNVAL | POLLHUP;
+	size_t n_fd = 2;
+	struct pollfd fds[3] = {
+		{.fd = data->C->epipe, POLLIN | errmask},
+		{.fd = fd, POLLIN | errmask},
+		{.fd = fd, POLLOUT | errmask}
+	};
+
+	a12_set_destination(S, data->C, 0);
+
+	uint8_t* outbuf = NULL;
+	size_t outbuf_sz = 0;
+	uint8_t inbuf[9000];
+
+	for(;;){
+/* break out and clean-up on pollset error */
+		if (
+				((-1 == poll(fds, 2, -1) && (errno != EAGAIN || errno != EINTR))) ||
+				(fds[0].revents & errmask) || (fds[1].revents & errmask)
+		){
+				break;
+		}
+
+/* shmif takes priority */
+		if (fds[0].revents){
+			process_shmif(S, data);
+		}
+
+/* incoming data? update a12 state machine */
+		if (fds[1].revents){
+			ssize_t nr = recv(fd, inbuf, 9000, 0);
+
+/* half-open client closed? or other error? give up */
+			if ((-1 == nr && errno != EAGAIN &&
+				errno != EWOULDBLOCK && errno != EINTR) || 0 == nr){
+				break;
+			}
+
+/* populate state buffer, refill if needed */
+			a12_unpack(S, inbuf, nr, NULL, on_client_event);
+			if (!outbuf_sz)
+				outbuf_sz = a12_flush(S, &outbuf, A12_FLUSH_ALL);
+		}
+
+/* flush output buffer */
+		if (n_fd == 3 && (fds[2].revents & POLLOUT) && outbuf_sz){
+			ssize_t nw = write(fd, outbuf, outbuf_sz);
+			if (nw > 0){
+				outbuf += nw;
+				outbuf_sz -= nw;
+			}
+		}
+
+/* update pollset if there is something to write, this will cause the next
+ * poll to bring us into the flush stage */
+		n_fd = outbuf_sz > 0 ? 3 : 2;
+	}
+
+/* always clean-up the client socket */
+	shutdown(fd, SHUT_RDWR);
+	close(fd);
+}
+
+static void decode_args(struct arg_arr* arg, struct anet_options* dst)
+{
+}
+
+void a12_serv_run(struct arg_arr* arg, struct arcan_shmif_cont cont)
+{
+	struct dispatch_data data = {
+		.C = &cont
+	};
+
+	decode_args(arg, &data.opts);
+/*
+ * For the sake of oversimplification, use a single active client mode for
+ * the time being. The other option is the complex (multiple active clients)
+ * and the expensive (one active client, multiple observers).
+ */
+	while(cont.addr && anet_listen(&data.opts, dispatch_single, &data)){}
+
+	arcan_shmif_drop(&cont);
+	exit(EXIT_SUCCESS);
 }

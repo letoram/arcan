@@ -93,6 +93,7 @@ set(SOURCES
 	a12_encode.c
 	a12_helper_srv.c
 	a12_helper_cl.c
+	anet_helper.c
 	../../platform/posix/mem.c
 	../../platform/posix/base64.c
 	${EXTERNAL_SOURCES}
