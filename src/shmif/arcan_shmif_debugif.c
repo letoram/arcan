@@ -57,6 +57,9 @@ struct debug_ctx {
 	bool dead;
 };
 
+static int run_listwnd(
+	struct debug_ctx* dctx, struct tui_list_entry* list, size_t n_elem);
+
 static const char* stat_to_str(struct stat* s)
 {
 	const char* ret = "unknown";
@@ -142,19 +145,79 @@ static void fd_to_flags(char buf[static 8], int fd)
 	}
 }
 
-static void run_descriptor(struct debug_ctx* dctx, int fdin, int fdout, int type)
+static void run_descriptor(struct debug_ctx* dctx, int fdin, int type)
 {
 /*
  * intermediate menu for possible descriptor actions, i.e. copy, edit, view, mim,
  */
 
-	struct tui_list_entry lents[2];
+	struct tui_list_entry lents[6];
 	size_t nents = 0;
+
+	if (type == INTERCEPT_MAP){
+		lents[0] = (struct tui_list_entry){
+			.label = "Copy",
+			.tag = 1
+		};
+		lents[1] = (struct tui_list_entry){
+			.label = "View",
+			.tag = 2
+		};
+		nents = 2;
+	}
+	else if (type == INTERCEPT_MITM_PIPE){
+		lents[0] = (struct tui_list_entry){
+			.label = "Intercept (Stream)",
+			.tag = 3
+		};
+		nents = 1;
+	}
+	else if (type == INTERCEPT_MITM_SOCKET){
+		lents[0] = (struct tui_list_entry){
+			.label = "Intercept (BiDi)",
+			.tag = 4
+		};
+		lents[0] = (struct tui_list_entry){
+			.label = "Intercept (Read)",
+			.tag = 5
+		};
+		lents[2] = (struct tui_list_entry){
+			.label = "Intercept (Write)",
+			.tag = 6
+		};
+/* other tasty options:
+ * - fdswap
+ */
+		nents = 3;
+	}
+
+	int rv = run_listwnd(dctx, lents, nents);
+	if (-1 == rv){
+		return;
+	}
+
+	switch(lents[rv].tag){
+	case 1:
+	break;
+	case 2:
+/* check permissions on descriptor to determine read- write, doesn't really matter */
+	break;
+	case 3:
+	break;
+	case 4:
+/* BiDi is the worst as we need a window for read and another for write */
+	break;
+	case 5:
+	break;
+	case 6:
+	break;
+	}
 
 /*
  * intercept or send/copy?
  * set as current bchunk- handler and re-run menu
  */
+
 
 /*	if (lents[rv].tag == 1){
 		arcan_tui_announce_io(dctx, true, NULL, "*");
@@ -365,7 +428,7 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 	if (-1 != rv){
 		struct tui_list_entry* ent = &lents[rv];
 		int icept = can_intercept(&dents[ent->tag].stat);
-		run_descriptor(dctx, dents[ent->tag].fd, -1, icept);
+		run_descriptor(dctx, dents[ent->tag].fd, icept);
 	}
 
 	for (size_t i = 0; i < count; i++){

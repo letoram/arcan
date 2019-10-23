@@ -1636,7 +1636,7 @@ unsigned arcan_shmif_signal(
 	if (is_output_segment(priv->type)){
 		if (mask & SHMIF_SIGVID)
 			atomic_store(&ctx->addr->vready, 0);
-		if (mask & SMHIF_SIGAUD)
+		if (mask & SHMIF_SIGVID)
 			atomic_store(&ctx->addr->aready, 0);
 		return 0;
 	}

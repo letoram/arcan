@@ -53,9 +53,6 @@ static void process_shmif(struct a12_state* S, struct dispatch_data* data)
  * in time. Then the SNR can be adjusted to match the quality of the link
  * for the time being. */
 		case TARGET_COMMAND_STEPFRAME:{
-		return (struct a12_vframe_opts){
-			.method = VFRAME_METHOD_DPNG
-		};
 			arcan_shmif_signal(data->C, SHMIF_SIGVID | SHMIF_SIGAUD);
 		}
 		default:
