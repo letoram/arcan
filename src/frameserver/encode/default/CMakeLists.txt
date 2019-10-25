@@ -73,17 +73,9 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 		${CMAKE_CURRENT_SOURCE_DIR}/encode_presets.h
 		${CMAKE_CURRENT_SOURCE_DIR}/encode_presets.c
 		${CMAKE_CURRENT_SOURCE_DIR}/img.c
+		${CMAKE_CURRENT_SOURCE_DIR}/../../util/anet_helper.c
 		${PLATFORM_ROOT}/../engine/arcan_img.c
 		${PLATFORM_ROOT}/posix/mem.c
-
-# needed for a12
-		${PLATFORM_ROOT}/../tools/netproxy/a12.c
-		${PLATFORM_ROOT}/../tools/netproxy/a12_decode.c
-		${PLATFORM_ROOT}/../tools/netproxy/a12_encode.c
-		${PLATFORM_ROOT}/../tools/netproxy/external/miniz/miniz.c
-		${PLATFORM_ROOT}/../tools/netproxy/external/blake2/blake2b-ref.c
-		${PLATFORM_ROOT}/../tools/netproxy/external/blake2/blake2bp-ref.c
-
 		${ENC_AUX_SOURCES}
 		PARENT_SCOPE
 	)
@@ -93,11 +85,7 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 		${ENC_AUX_INCLUDES}
 		${FFMPEG_INCLUDE_DIRS}
 		${PLATFORM_ROOT}/../engine
-
-# needed for a12
-		${PLATFORM_ROOT}/../tools/netproxy
-		${PLATFORM_ROOT}/../tools/netproxy/external/blake2
-		${PLATFORM_ROOT}/../tools/netproxy/external
+		${PLATFORM_ROOT}/../a12
 		PARENT_SCOPE
 	)
 
@@ -107,6 +95,7 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 		${ZLIB_LIBRARIES}
 		${LIBLZMA_LIBRARIES}
 		${ENC_AUX_LIBS}
+		arcan_a12
 		PARENT_SCOPE
 	)
 

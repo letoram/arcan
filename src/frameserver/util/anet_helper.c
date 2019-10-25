@@ -15,7 +15,6 @@
 #include <netdb.h>
 
 #include "a12.h"
-#include "a12_int.h"
 #include "anet_helper.h"
 
 int anet_clfd(struct addrinfo* addr)
@@ -36,10 +35,6 @@ int anet_clfd(struct addrinfo* addr)
 				NI_NUMERICSERV | NI_NUMERICHOST
 			);
 
-			if (!ec)
-				a12int_trace(A12_TRACE_SYSTEM, "connected to: %s:%s", hostaddr, hostport);
-			else
-				a12int_trace(A12_TRACE_SYSTEM, "connected, couldn't resolve address");
 			break;
 		}
 

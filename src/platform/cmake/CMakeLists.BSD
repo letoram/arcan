@@ -150,12 +150,7 @@ if (NOT MAN_DEST)
 	set(MAN_DEST ${CMAKE_INSTALL_PREFIX}/man/man1)
 endif()
 
-if (NOT BSD_THREAD)
-	set(BSD_THREAD pthread)
-endif()
-
 LIST(APPEND STDLIB
 	m
 	${BSD_VARIANT_LIBS}
-	${BSD_THREAD}
 )

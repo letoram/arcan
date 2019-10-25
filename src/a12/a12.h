@@ -418,4 +418,22 @@ a12_channel_close(struct a12_state*);
  * Cancel the binary stream that is ongoing in a specific channel
  */
 void a12_stream_cancel(struct a12_state* S, uint8_t chid);
+
+/*
+ * debugging / tracing bits, just define a namespace that can be used
+ * for wrapper tools to log with the same syntax and behaviour as the
+ * implementation files
+ */
+extern int a12_trace_targets;
+extern FILE* a12_trace_dst;
+
+const char* a12int_group_tostr(int group);
+
+#ifndef a12int_trace
+#define a12int_trace(group, fmt, ...) \
+            do { if (a12_trace_dst && (a12_trace_targets & group)) fprintf(a12_trace_dst, \
+						"group=%s:function=%s:" fmt "\n", \
+						a12int_group_tostr(group), __func__,##__VA_ARGS__); } while (0)
+#endif
+
 #endif
