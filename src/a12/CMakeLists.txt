@@ -39,5 +39,9 @@ target_include_directories(arcan_a12 PRIVATE
 )
 target_link_libraries(arcan_a12 ${LIBRARIES})
 set(A12_LIBRARIES arcan_a12 PARENT_SCOPE)
-
+install(TARGETS arcan_a12
+	LIBRARY DESTINATION lib
+	ARCHIVE DESTINATION lib
+)
+install(FILES a12.h DESTINATION include/arcan)
 add_subdirectory("net")
