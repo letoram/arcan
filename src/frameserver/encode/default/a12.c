@@ -8,8 +8,8 @@
 #include <arcan_shmif_server.h>
 
 #include "a12.h"
-#include "a12_int.h"
 
+#include <errno.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>

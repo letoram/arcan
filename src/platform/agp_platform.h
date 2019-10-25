@@ -341,9 +341,9 @@ struct agp_rendertarget* agp_setup_rendertarget(
  * 0 : free / deallocate
  * 1 : alloc / setup
  */
-void agp_rendertarget_allocator(struct agp_rendertarget*,
-	bool(*handler)(struct agp_rendertarget*, struct agp_vstore*, int action)
-);
+void agp_rendertarget_allocator(struct agp_rendertarget*, bool(*handler)(
+	struct agp_rendertarget*, struct agp_vstore*, int action, void* tag),
+	void* tag);
 
 /*
  * Break the opaqueness somewhat by exposing underlying handles, primarily for

@@ -117,7 +117,8 @@ struct agp_rendertarget
 	struct agp_vstore* stores[MAX_BUFFERS];
 	struct agp_vstore* shadow[MAX_BUFFERS];
 
-	bool (*alloc)(struct agp_rendertarget*, struct agp_vstore*, int);
+	bool (*alloc)(struct agp_rendertarget*, struct agp_vstore*, int, void*);
+	void* alloc_tag;
 };
 
 static void erase_store(struct agp_vstore* os)
@@ -149,20 +150,32 @@ static void setup_stores(struct agp_rendertarget* dst)
 		dst->stores[i]->vinf.text.s_fmt = dst->store->vinf.text.s_fmt;
 		dst->stores[i]->vinf.text.d_fmt = dst->store->vinf.text.d_fmt;
 		if (dst->alloc){
-			dst->alloc(dst, dst->stores[i], 1);
+			dst->alloc(dst, dst->stores[i], 1, dst->alloc_tag);
 		}
 		else
 			agp_empty_vstore(dst->stores[i], dst->store->w, dst->store->h);
 	}
 }
 
-void agp_rendertarget_allocator(struct agp_rendertarget* tgt,
-	bool (*handler)(struct agp_rendertarget*, struct agp_vstore*, int action))
+void agp_rendertarget_allocator(struct agp_rendertarget* tgt, bool (*handler)(
+	struct agp_rendertarget*, struct agp_vstore*, int action, void* tag), void* tag)
 {
 	if (!tgt)
-	return;
+		return;
+
+/* free anything currently allocated on the rendertarget before
+ * swapping out allocator */
+	if (tgt->alloc){
+	}
+	else {
+	}
 
 	tgt->alloc = handler;
+	tgt->alloc_tag = tag;
+
+/* and now re-allocate the buffers using the allocator, if this
+ * fails, revert back (again) to the default one */
+
 }
 
 void agp_rendertarget_dropswap(struct agp_rendertarget* tgt)
@@ -1054,7 +1067,7 @@ void agp_resize_rendertarget(
 				verbose_print(
 					"in-rz shadow store %zu:%zu", i, tgt->shadow[i]->vinf.text.glid);
 				if (tgt->alloc){
-					tgt->alloc(tgt, tgt->shadow[i], 0);
+					tgt->alloc(tgt, tgt->shadow[i], 0, tgt->alloc_tag);
 				}
 				else
 					erase_store(tgt->shadow[i]);

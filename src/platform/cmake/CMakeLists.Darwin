@@ -28,7 +28,6 @@ find_library(AUDIOTOOLBOX NAMES AudioToolbox)
 
 list(APPEND STDLIB
 #	m
-#	pthread
 #	rt
 #	dl
 )

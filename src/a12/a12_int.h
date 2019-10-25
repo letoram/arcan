@@ -72,21 +72,6 @@ enum control_commands {
 #define DEBUG 0
 #endif
 
-/*
- * debugging / tracing hacks
- */
-extern int a12_trace_targets;
-extern FILE* a12_trace_dst;
-
-const char* a12int_group_tostr(int group);
-
-#ifndef a12int_trace
-#define a12int_trace(group, fmt, ...) \
-            do { if (a12_trace_dst && (a12_trace_targets & group)) fprintf(a12_trace_dst, \
-						"group=%s:function=%s:" fmt "\n", \
-						a12int_group_tostr(group), __func__,##__VA_ARGS__); } while (0)
-#endif
-
 enum {
 	POSTPROCESS_VIDEO_RGBA = 0,
 	POSTPROCESS_VIDEO_RGB = 1,

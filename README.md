@@ -255,10 +255,12 @@ is useful both for testing client behavior when developing applications
 using arcan, but also as an image viewer in its own right, with reasonably
 fast image loading, basic playlist controls and so on.
 
-## Netproxy
+## Net
 
 Arcan-net is a tool that allows you to forward one or many arcan clients
-over a network.
+over a network. It is built by default, and can be triggered both as a
+separate network tool as well as being launched indirectly from shmif by
+setting ARCAN\_CONNPATH=a12://id@host:port.
 
 ## Vrbridge
 

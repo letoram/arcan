@@ -30,10 +30,6 @@ single avatar in a way that integrates with the core engine VR path.
 This tool act as a wayland service so that clients which speaks the
 wayland protocol can connect to an arcan instance.
 
-## Netproxy
-This tool is used to bridge an arcan client with an arcan server over
-a network.
-
 ## Adbginject
 This tool is used as an interposition library for bootstrapping
 shmif-debugif with clients that otherwise do not use shmif.

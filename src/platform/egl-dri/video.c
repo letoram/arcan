@@ -3821,6 +3821,10 @@ bool platform_video_map_display(
 		return true;
 	}
 
+/* the more recent rpack- based mapping format could/should get special
+ * consideration here as we could then raster into a buffer directly for a
+ * non-GL scanout path, avoiding some of the possible driver fuzz and latency
+ * */
 	if (vobj->vstore->txmapped != TXSTATE_TEX2D){
 		debug_print("map_display(%d->%d) rejected, source not a valid texture",
 			(int) id, (int) disp);
@@ -3841,11 +3845,16 @@ bool platform_video_map_display(
 	d->display.primary = hint & HINT_FL_PRIMARY;
 	memcpy(d->txcos, txcos, sizeof(float) * 8);
 
+/* this kind of hint management is implemented through texture coordinate
+ * tricks, on a direct mapping, the capabilities of the output needs to be
+ * checked as well in the same 'sane direct vobj' style to see if there are
+ * layer flags that can be set to avoid a forced composition pass */
 	size_t iframes = 0;
 	arcan_vint_applyhint(vobj, hint,
 		txcos, d->txcos, &d->dispx, &d->dispy, &d->dispw, &d->disph, &iframes);
 	arcan_video_display.ignore_dirty += iframes;
 
+/* turn on the display on mapping if it isn't already */
 	if (d->display.dpms == ADPMS_OFF){
 		dpms_set(d, DRM_MODE_DPMS_ON);
 		d->display.dpms = ADPMS_ON;
@@ -3870,13 +3879,20 @@ bool platform_video_map_display(
  * tearing or implicit locks when attempting direct scanout, so enable that by
  * running a swap here. */
 			if (!d->force_compose){
-				bool swap;
+/* before swapping, set an allocator for the rendertarget so that we can ensure
+ * that we allocate from scanout capable memory - note that in that case the
+ * contents is invalidated and a new render pass on the target is needed. This
+ * is not that problematic with the normal render loop as the map call will come
+ * in a 'good enough' order. */
+/*
+ * agp_rendertarget_allocator(newtgt->art, direct_scanout_alloc, d); */
+ 				bool swap;
 				unsigned col = agp_rendertarget_swap(newtgt->art, &swap);
 			}
 
 /* even then we have an option for a mapped rendertarget, and that is to try
  * and proxy it -> can we forego it and use the egl buffer directly? that's
- * possible if the contents isn't used for anything else (recordtarget,
+ * possible if the composition isn't used for anything else (recordtarget,
  * multiple users, ...) */
 			else if (!d->disallow_rtproxy && newtgt->art) {
 				agp_rendertarget_proxy(newtgt->art,
@@ -3888,9 +3904,13 @@ bool platform_video_map_display(
 			}
 		}
 	}
-/* heuristics are needed here to determine if we can do the vobj- direct
- * mapping with a render pass, these are not complete yet as we want to
- * get the rendertarget- mapping more robust first */
+/* Heuristics are needed here to determine if we can do the vobj- direct
+ * mapping with a render pass, these are not complete yet as we want to get the
+ * rendertarget- mapping more robust first - the benefits is mainly if it comes
+ * from an external source and we can send that external source scanout capable
+ * buffers. There should also be a special 'non-GPU' approach for certain
+ * sources here where we can just use a dumb framebuffer and directly raster
+ * into */
 	else if (0 && sane_direct_vobj(vobj)){
 	}
 	else {
