@@ -74,7 +74,12 @@ enum raster_content {
 /* line is 'shaped', processing needs a per-line resolving function to understand at which
  * visible offset a certain window coordinate will map to, which, in turn, requires the
  * font(s) currently in use to be available */
-	LINE_SHAPED = 2
+	LINE_SHAPED = 2,
+
+/* line does not 'break' but continue logically unto the next, this is primarily an
+ * aid for logical / text processing options on the buffer and not strictly needed for
+ * rendering */
+	LINE_NOBREAK = 4,
 };
 
 struct __attribute__((packed)) tui_raster_line {
