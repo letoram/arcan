@@ -408,6 +408,23 @@ static char* dump_call_trace(lua_State* ctx, bool copy)
 	return res;
 }
 
+static void set_nonblock_cloexec(int fd, bool socket)
+{
+#ifdef __APPLE__
+	if (socket){
+		int val = 1;
+		setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
+	}
+#endif
+
+	int flags = fcntl(fd, F_GETFL);
+	if (-1 != flags)
+		fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+	if (-1 != (flags = fcntl(fd, F_GETFD)))
+		fcntl(fd, F_SETFD, flags | O_CLOEXEC);
+}
+
 /* slightly more flexible argument management, just find the first callback */
 static intptr_t find_lua_callback(lua_State* ctx)
 {
@@ -1090,9 +1107,7 @@ static int opennonblock_tgt(lua_State* ctx, bool wr)
 	int src = wr ? outp[1] : outp[0];
 
 /* in any scenario where this would fail, "blocking" behavior is acceptable */
-	int flags = fcntl(src, F_GETFL);
-	if (-1 != flags)
-		fcntl(src, F_SETFL, flags | O_NONBLOCK | O_CLOEXEC);
+	set_nonblock_cloexec(src, true);
 
 	if (ARCAN_OK != platform_fsrv_pushfd(fsrv, &(struct arcan_event){
 		.category = EVENT_TARGET,
@@ -1125,8 +1140,98 @@ static int opennonblock_tgt(lua_State* ctx, bool wr)
 	return 1;
 }
 
+static int connect_trypath(const char* local, const char* remote, int type)
+{
+/* always the risk of this expanding to something too large as well, fsck
+ * the socket api design, really. So first bind to the local path */
+	int fd = socket(AF_UNIX, type, 0);
+	if (-1 == fd)
+		return fd;
+
+	struct sockaddr_un addr_local = {
+		.sun_family = AF_UNIX
+	};
+	snprintf(addr_local.sun_path, COUNT_OF(addr_local.sun_path), "%s", local);
+	struct sockaddr_un addr_remote = {
+		.sun_family = AF_UNIX
+	};
+	snprintf(addr_remote.sun_path, COUNT_OF(addr_remote.sun_path), "%s", remote);
+
+	int rv = bind(fd, (struct sockaddr*) &addr_local, sizeof(addr_local));
+	if (-1 == rv){
+		close(fd);
+		return -1;
+	}
+
+/* the other option here is to allow the allocation to go through and treat
+ * it as a 'reconnect on operation' in order to deal with normal failures
+ * during connection as well, but start conservative */
+	set_nonblock_cloexec(fd, true);
+
+	if (-1 == connect(fd, (struct sockaddr*) &addr_remote, sizeof(addr_remote))){
+		unlink(local);
+		close(fd);
+		return -1;
+	}
+
+	return fd;
+}
+
+static int connect_stream_to(const char* path, char** out)
+{
+/* we still need to bind a path that we can then unlink after connection */
+	char* local_path = NULL;
+	int retry = 3;
+
+/* find a temporary name to use in the appl-temp namespace, with a fail
+ * retry counter to counteract the rare collision vs. permanent problem */
+	do {
+		char tmpname[16];
+		union {
+			uint32_t rnd;
+			uint8_t buf[4];
+		} rnd;
+		arcan_random(rnd.buf, 4);
+		snprintf(tmpname, sizeof(tmpname), "_sock%"PRIu32, rnd.rnd);
+		char* tmppath = findresource(tmpname, RESOURCE_APPL_TEMP);
+		if (!tmppath){
+			local_path = arcan_expand_resource(tmpname, RESOURCE_APPL_TEMP);
+		}
+		else
+			free(tmppath);
+	} while (!local_path && retry--);
+
+	if (!local_path)
+		return -1;
+
+	int fd = connect_trypath(local_path, path, SOCK_STREAM);
+
+/* so it might be a dgram socket */
+	if (-1 == fd){
+		if (errno == EPROTOTYPE){
+			fd = connect_trypath(local_path, path, SOCK_DGRAM);
+		}
+		if (-1 == fd){
+			unlink(local_path);
+			arcan_mem_free(local_path);
+		}
+/* and if it is, we need to defer unlinking or the other side can't respond */
+		else {
+			*out = local_path;
+		}
+	}
+	else {
+		unlink(local_path);
+		arcan_mem_free(local_path);
+	}
+
+	return fd;
+}
+
 /*
  * ugly little thing, should really be refactored into different typed versions
+ * as part of the big 'split the monster.lua' project, as should all of the
+ * posixism be forced into the platform layer.
  */
 static int opennonblock(lua_State* ctx)
 {
@@ -1134,13 +1239,13 @@ static int opennonblock(lua_State* ctx)
 
 	const char* metatable = "nonblockIO";
 	char* unlink_fn = NULL;
-	bool wrmode = luaL_optbnumber(ctx, 2, 0);
+	int wrmode = luaL_optbnumber(ctx, 2, 0) ? O_WRONLY : O_RDONLY;
 	bool fifo = false, ignerr = false, use_socket = false;
 	char* path;
 	int fd;
 
 	if (lua_type(ctx, 1) == LUA_TNUMBER){
-		int rv = opennonblock_tgt(ctx, wrmode);
+		int rv = opennonblock_tgt(ctx, wrmode == O_WRONLY);
 		LUA_ETRACE("open_nonblock(), ", NULL, rv);
 	}
 
@@ -1157,7 +1262,7 @@ static int opennonblock(lua_State* ctx)
 /* note on file-system races: it is an explicit contract that the namespace
  * provided for RESOURCE_APPL_TEMP is single- user (us) only. Anyhow, this
  * code turned out a lot messier than needed, refactor when time permits. */
-	if (wrmode){
+	if (wrmode == O_WRONLY){
 		struct stat fi;
 		path = findresource(str, RESOURCE_APPL_TEMP);
 
@@ -1225,18 +1330,7 @@ static int opennonblock(lua_State* ctx)
 		}
 		fchmod(fd, S_IRWXU);
 
-#ifdef __APPLE__
-		int val = 1;
-		setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
-#endif
-
-		int flags = fcntl(fd, F_GETFL);
-		if (-1 != flags)
-			fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-
-		if (-1 != (flags = fcntl(fd, F_GETFD)))
-			fcntl(fd, F_SETFD, flags | O_CLOEXEC);
-
+		set_nonblock_cloexec(fd, true);
 		int rv = bind(fd, (struct sockaddr*) &addr, sizeof(addr));
 		if (-1 == rv){
 			close(fd);
@@ -1253,6 +1347,7 @@ static int opennonblock(lua_State* ctx)
 retryopen:
 		path = findresource(str, fifo ? RESOURCE_APPL_TEMP : DEFAULT_USERMASK);
 
+/* fifo and doesn't exist? create */
 		if (!path){
 			if (fifo && (path = arcan_expand_resource(str, RESOURCE_APPL_TEMP))){
 				if (-1 == mkfifo(path, S_IRWXU)){
@@ -1265,8 +1360,17 @@ retryopen:
 				LUA_ETRACE("open_nonblock", "file does not exist", 0);
 			}
 		}
-		else
+/* normal file OR socket */
+		else{
 			fd = open(path, O_NONBLOCK | O_CLOEXEC | O_RDONLY);
+
+/* socket, 'connect mode' */
+			if (-1 == fd && errno == ENXIO){
+				fd = connect_stream_to(path, &unlink_fn);
+				wrmode = O_RDWR;
+			}
+		}
+
 		arcan_mem_free(path);
 		path = NULL;
 	}
@@ -1283,11 +1387,7 @@ retryopen:
 
 /* this little crutch was better than differentiating the userdata as the
  * support for polymorphism there is rather clunky */
-	if (wrmode)
-		conn->mode = O_WRONLY;
-	else
-		conn->mode = O_RDONLY;
-
+	conn->mode = wrmode;
 	conn->pending = path;
 	conn->unlink_fn = unlink_fn;
 
