@@ -90,7 +90,8 @@ static void* lookup_call(void* tag, const char* sym, bool req)
 
 static char* egl_envopts[] = {
 	"[ for multiple devices, append _n to key (e.g. device_2=) ]", "",
-	"device=/path/to/dev", "for multiple devices suffix with _n (n = 2,3..)",
+	"display_device=/path/to/dev", "for multiple devices suffix with _n (n = 2,3..)",
+	"draw_device=/path/to/dev", "set to display device unless provided",
 	"device_buffer=method", "set buffer transfer method (gbm, streams)",
 	"device_libs=lib1:lib2", "libs used for device",
 	"device_connector=ind", "primary display connector index",
@@ -127,7 +128,8 @@ enum display_update_state {
  */
 struct dev_node {
 	int active; /*tristate, 0 = not used, 1 = active, 2 = displayless, 3 = inactive */
-	int fd;
+	int draw_fd;
+	int disp_fd;
 
 /* things we need to track to be able to forward devices to a client */
 	struct {
@@ -147,7 +149,7 @@ struct dev_node {
  * card_id is some unique sequential identifier for this card
  * crtc is an allocation bitmap for output port<->display allocation
  * atomic is set if the driver kms side supports/needs atomic modesetting */
-	bool master, force_master, wait_connector;
+	bool master, wait_connector;
 	int card_id;
 	bool atomic;
 
@@ -386,14 +388,14 @@ static void dpms_set(struct dispout* d, int level)
  * FIXME: this needs to be deferred in the same way as disable / etc.
  */
 	drmModePropertyPtr prop;
-	debug_print("dpms_set(%d) to %d", d->device->fd, level);
+	debug_print("dpms_set(%d) to %d", d->device->disp_fd, level);
 	for (size_t i = 0; i < d->display.con->count_props; i++){
-		prop = drmModeGetProperty(d->device->fd, d->display.con->props[i]);
+		prop = drmModeGetProperty(d->device->disp_fd, d->display.con->props[i]);
 		if (!prop)
 			continue;
 
 		if (strcmp(prop->name, "DPMS") == 0){
-			drmModeConnectorSetProperty(d->device->fd,
+			drmModeConnectorSetProperty(d->device->disp_fd,
 				d->display.con->connector_id, prop->prop_id, level);
 			i = d->display.con->count_props;
 		}
@@ -414,6 +416,30 @@ static void disable_display(struct dispout*, bool dealloc);
 static bool update_display(struct dispout*);
 
 static bool set_dumb_fb(struct dispout* d);
+
+static void close_devices(struct dev_node* node)
+{
+/* we might have a different device for drawing than for scanout */
+	int disp_fd = node->disp_fd;
+	if (-1 != disp_fd){
+		drmDropMaster(disp_fd);
+		close(disp_fd);
+		node->disp_fd = -1;
+	}
+
+	if (node->draw_fd != -1 && node->draw_fd != disp_fd){
+		drmDropMaster(node->draw_fd);
+		close(node->draw_fd);
+		node->draw_fd = -1;
+	}
+
+/* render node */
+	if (node->client_meta.fd != -1){
+		close(node->client_meta.fd);
+		node->client_meta.fd = -1;
+	}
+}
+
 /*
  * Assumes that the individual displays allocated on the card have already
  * been properly disabled(disable_display(ptr, true))
@@ -448,12 +474,7 @@ static void release_card(size_t i)
 	break;
 	}
 
-	if (nodes[i].fd != -1){
-		if (nodes[i].master)
-			drmDropMaster(nodes[i].fd);
-		close(nodes[i].fd);
-		nodes[i].fd = -1;
-	}
+	close_devices(&nodes[i]);
 
 	if (nodes[i].display != EGL_NO_DISPLAY){
 		debug_print("terminating card-egl display");
@@ -733,9 +754,9 @@ static int setup_buffers_stream(struct dispout* d)
  * 8. make the drm node non-blocking (might be needed for
  * multiscreen, somewhat uncertain)
  */
-	int flags = fcntl(d->device->fd, F_GETFL);
+	int flags = fcntl(d->device->disp_fd, F_GETFL);
 	if (-1 != flags)
-		fcntl(d->device->fd, F_SETFL, flags | O_NONBLOCK);
+		fcntl(d->device->disp_fd, F_SETFL, flags | O_NONBLOCK);
 
 /*
  * 8. we don't have a path for streaming the FBO directly,
@@ -750,7 +771,7 @@ static int setup_buffers_stream(struct dispout* d)
 
 static int setup_buffers_gbm(struct dispout* d)
 {
-	SET_SEGV_MSG("libgbm(), creating scanout buffer"
+	SET_SEGV_MSG("libgbm(), creating ecanout buffer"
 		" failed catastrophically.\n")
 
 	if (!d->device->eglenv.create_image){
@@ -1067,7 +1088,7 @@ bool platform_video_set_display_gamma(platform_display_id did,
 	if (!d)
 		return false;
 
-	drmModeCrtc* inf = drmModeGetCrtc(d->device->fd, d->display.crtc);
+	drmModeCrtc* inf = drmModeGetCrtc(d->device->disp_fd, d->display.crtc);
 
 	if (!inf)
 		return false;
@@ -1083,7 +1104,7 @@ bool platform_video_set_display_gamma(platform_display_id did,
 				return false;
 			}
 		}
-		rv = drmModeCrtcSetGamma(d->device->fd, d->display.crtc, n_ramps, r, g, b);
+		rv = drmModeCrtcSetGamma(d->device->disp_fd, d->display.crtc, n_ramps, r, g, b);
 	}
 
 	drmModeFreeCrtc(inf);
@@ -1097,7 +1118,7 @@ bool platform_video_get_display_gamma(
 	if (!d || !n_ramps)
 		return false;
 
-	drmModeCrtc* inf = drmModeGetCrtc(d->device->fd, d->display.crtc);
+	drmModeCrtc* inf = drmModeGetCrtc(d->device->disp_fd, d->display.crtc);
 	if (!inf)
 		return false;
 
@@ -1115,7 +1136,7 @@ bool platform_video_get_display_gamma(
 
 	bool rv = true;
 	memset(ramps, '\0', *n_ramps * 3 * sizeof(uint16_t));
-	if (drmModeCrtcGetGamma(d->device->fd, d->display.crtc, *n_ramps,
+	if (drmModeCrtcGetGamma(d->device->disp_fd, d->display.crtc, *n_ramps,
 		&ramps[0], &ramps[*n_ramps], &ramps[2 * *n_ramps])){
 		free(ramps);
 		rv = false;
@@ -1432,7 +1453,7 @@ static const char* connection_type(int conn)
 
 static void dump_connectors(FILE* dst, struct dev_node* node, bool shorth)
 {
-	drmModeRes* res = drmModeGetResources(node->fd);
+	drmModeRes* res = drmModeGetResources(node->disp_fd);
 	if (!res){
 		fprintf(dst, "DRM dump, couldn't acquire resource list\n");
 		return;
@@ -1441,7 +1462,7 @@ static void dump_connectors(FILE* dst, struct dev_node* node, bool shorth)
 	fprintf(dst, "DRM Dump: \n\tConnectors: %d\n", res->count_connectors);
 	for (size_t i = 0; i < res->count_connectors; i++){
 		drmModeConnector* conn = drmModeGetConnector(
-			node->fd, res->connectors[i]);
+			node->disp_fd, res->connectors[i]);
 		if (!conn)
 			continue;
 
@@ -1660,7 +1681,7 @@ static int setup_node_egl(
  */
 	if (found){
 		EGLint attribs[] = {EGL_DRM_MASTER_FD_EXT, fd, EGL_NONE};
-		node->fd = fd;
+		node->disp_fd = node->draw_fd = fd;
 		node->buftype = BUF_STREAM;
 		node->atomic =
 			drmSetClientCap(fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1) == 0 &&
@@ -1676,19 +1697,15 @@ static int setup_node_egl(
 
 static void cleanup_node_gbm(struct dev_node* node)
 {
-	if (node->fd >= 0)
-		close(node->fd);
-	if (node->client_meta.fd >= 0)
-		close(node->client_meta.fd);
-	node->client_meta.fd = -1;
-	node->fd = -1;
+	close_devices(node);
+
 	if (node->buffer.gbm)
 		gbm_device_destroy(node->buffer.gbm);
 	node->buffer.gbm = NULL;
 }
 
-static int setup_node_gbm(
-	int devind, struct dev_node* node, const char* path, int fd)
+static int setup_node_gbm(int devind,
+	struct dev_node* node, int draw_fd, int disp_fd)
 {
 	SET_SEGV_MSG("libdrm(), open device failed (check permissions) "
 		" or use ARCAN_VIDEO_DEVICE environment.\n");
@@ -1696,25 +1713,11 @@ static int setup_node_gbm(
 	node->client_meta.fd = -1;
 	node->client_meta.metadata = NULL;
 	node->client_meta.metadata_sz = 0;
-
-	if (!path && fd == -1)
-		return -1;
-	else if (fd != -1)
-		node->fd = fd;
-	else
-		node->fd = platform_device_open(path, O_RDWR | O_CLOEXEC);
-
-	if (-1 == node->fd){
-		if (path)
-			debug_print("gbm, open device failed on path(%s)", path);
-		else
-			debug_print("gbm, open device failed on fd(%d)", fd);
-		return -1;
-	}
+	node->disp_fd = disp_fd;
+	node->draw_fd = draw_fd;
 
 	SET_SEGV_MSG("libgbm(), create device failed catastrophically.\n");
-	fcntl(node->fd, F_SETFD, FD_CLOEXEC);
-	node->buffer.gbm = gbm_create_device(node->fd);
+	node->buffer.gbm = gbm_create_device(node->draw_fd);
 
 	if (!node->buffer.gbm){
 		debug_print("gbm, couldn't create gbm device on node");
@@ -1742,8 +1745,8 @@ static int setup_node_gbm(
 	char* devstr, (* cfgstr), (* altstr);
 	node->atomic =
 		get_config("video_device_atomic", devind, NULL, tag) && (
-		drmSetClientCap(node->fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1) == 0 &&
-		drmSetClientCap(node->fd, DRM_CLIENT_CAP_ATOMIC, 1) == 0
+		drmSetClientCap(node->disp_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1) == 0 &&
+		drmSetClientCap(node->disp_fd, DRM_CLIENT_CAP_ATOMIC, 1) == 0
 	);
 	debug_print("gbm, node in atomic mode: %s", node->atomic ? "yes" : "no");
 
@@ -1753,17 +1756,14 @@ static int setup_node_gbm(
  * last one would just overwrite */
 	char pbuf[24] = "/dev/dri/renderD128";
 
-	char* rdev = drmGetRenderDeviceNameFromFd(node->fd);
+	char* rdev = drmGetRenderDeviceNameFromFd(node->draw_fd);
 	if (rdev){
 		debug_print("derived render-node: %s", rdev);
 		setenv("ARCAN_RENDER_NODE", rdev, 1);
 		free(rdev);
 	}
-/* make a poor guess */
+/* assume default */
 	else {
-		size_t ind = strtoul(&path[13], NULL, 10);
-		snprintf(pbuf, 24, "/dev/dri/renderD%d", (int)(ind + 128));
-		debug_print("guessing render-node to %s", pbuf);
 		setenv("ARCAN_RENDER_NODE", pbuf, 1);
 	}
 
@@ -1969,16 +1969,16 @@ static int get_gbm_fb(struct dispout* d,
  * considered as soon as we have the other setup for direct-scanout
  * of a client and metadata packing across the interface */
 	if (0){
-		if (drmModeAddFB2WithModifiers(d->device->fd,
+		if (drmModeAddFB2WithModifiers(d->device->disp_fd,
 			bo_width, bo_height, gbm_bo_get_format(bo),
 			handles, strides, offsets, modifiers, dst, 0)){
 			return -1;
 		}
 	}
-	else if (drmModeAddFB2(d->device->fd, bo_width, bo_height,
+	else if (drmModeAddFB2(d->device->disp_fd, bo_width, bo_height,
 			gbm_bo_get_format(bo), handles, strides, offsets, dst, 0)){
 
-		if (drmModeAddFB(d->device->fd,
+		if (drmModeAddFB(d->device->disp_fd,
 			bo_width, bo_height, 24, 32, strides[0], handles[0], dst)){
 			debug_print(
 				"(%d) failed to add framebuffer (%s)", (int)d->id, strerror(errno));
@@ -1996,7 +1996,7 @@ static bool set_dumb_fb(struct dispout* d)
 		.height = d->display.mode.vdisplay,
 		.bpp = 32
 	};
-	int fd = d->device->fd;
+	int fd = d->device->disp_fd;
 	if (drmIoctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &create) < 0){
 		debug_print("(%d) create dumb-fb (%d*%d@%d bpp) failed",
 			(int) d->id, create.width, create.height, create.bpp);
@@ -2054,7 +2054,7 @@ static bool atomic_set_mode(struct dispout* d)
 {
 	uint32_t mode;
 	bool rv = false;
-	int fd = d->device->fd;
+	int fd = d->device->disp_fd;
 
 	if (0 != drmModeCreatePropertyBlob(fd,
 		&d->display.mode, sizeof(drmModeModeInfo), &mode)){
@@ -2134,7 +2134,7 @@ cleanup:
  */
 static bool find_plane(struct dispout* d)
 {
-	drmModePlaneResPtr plane_res = drmModeGetPlaneResources(d->device->fd);
+	drmModePlaneResPtr plane_res = drmModeGetPlaneResources(d->device->disp_fd);
 	d->display.plane_id = 0;
 	if (!plane_res){
 		debug_print("(%d) atomic-modeset, couldn't find plane on device",(int)d->id);
@@ -2142,7 +2142,7 @@ static bool find_plane(struct dispout* d)
 	}
 	for (size_t i = 0; i < plane_res->count_planes; i++){
 		drmModePlanePtr plane =
-			drmModeGetPlane(d->device->fd, plane_res->planes[i]);
+			drmModeGetPlane(d->device->disp_fd, plane_res->planes[i]);
 		if (!plane){
 			debug_print("(%d) atomic-modeset, couldn't get plane (%zu)",(int)d->id,i);
 			return false;
@@ -2153,7 +2153,7 @@ static bool find_plane(struct dispout* d)
 			continue;
 
 		uint64_t val;
-		if (!lookup_drm_propval(d->device->fd,
+		if (!lookup_drm_propval(d->device->disp_fd,
 			plane_res->planes[i], DRM_MODE_OBJECT_PLANE, "type", &val))
 			continue;
 
@@ -2195,10 +2195,10 @@ static int setup_kms(struct dispout* d, int conn_id, size_t w, size_t h)
 	drmModeRes* res;
 
 retry:
- 	res = drmModeGetResources(d->device->fd);
+	res = drmModeGetResources(d->device->disp_fd);
 	if (!res){
 		debug_print("(%d) setup_kms, couldn't get resources (fd:%d)",
-			(int)d->id, (int)d->device->fd);
+			(int)d->id, (int)d->device->disp_fd);
 		return -1;
 	}
 
@@ -2206,7 +2206,7 @@ retry:
  * newly detected displays we store / reserve */
 	if (!d->display.con)
 	for (int i = 0; i < res->count_connectors; i++){
-		d->display.con = drmModeGetConnector(d->device->fd, res->connectors[i]);
+		d->display.con = drmModeGetConnector(d->device->disp_fd, res->connectors[i]);
 
 		if (d->display.con->connection == DRM_MODE_CONNECTED &&
 			(conn_id == -1 || conn_id == d->display.con->connector_id))
@@ -2338,14 +2338,14 @@ retry:
 	drmModePropertyPtr prop;
 	bool done = false;
 	for (size_t i = 0; i < d->display.con->count_props && !done; i++){
-		prop = drmModeGetProperty(d->device->fd, d->display.con->props[i]);
+		prop = drmModeGetProperty(d->device->disp_fd, d->display.con->props[i]);
 		if (!prop)
 			continue;
 
 		if ((prop->flags & DRM_MODE_PROP_BLOB) &&
 			0 == strcmp(prop->name, "EDID")){
 			drmModePropertyBlobPtr blob =
-				drmModeGetPropertyBlob(d->device->fd, d->display.con->prop_values[i]);
+				drmModeGetPropertyBlob(d->device->disp_fd, d->display.con->prop_values[i]);
 
 			if (blob && blob->length > 0){
 				d->display.edid_blob = malloc(blob->length);
@@ -2381,7 +2381,7 @@ retry:
 	uint64_t join = 0;
 
 	for (int i = 0; i < res->count_encoders; i++){
-		drmModeEncoder* enc = drmModeGetEncoder(d->device->fd, res->encoders[i]);
+		drmModeEncoder* enc = drmModeGetEncoder(d->device->disp_fd, res->encoders[i]);
 		if (!enc)
 			continue;
 
@@ -2417,7 +2417,7 @@ retry:
 	}
 
 	debug_print("(%d) picked crtc (%d) from encoder", (int)d->id, d->display.crtc);
-	drmModeCrtc* crtc = drmModeGetCrtc(d->device->fd, d->display.crtc);
+	drmModeCrtc* crtc = drmModeGetCrtc(d->device->disp_fd, d->display.crtc);
 	if (!crtc){
 		debug_print("couldn't retrieve chose crtc, giving up");
 		goto drop_disp;
@@ -2461,7 +2461,7 @@ retry:
 		}
 		else if (!atomic_set_mode(d)){
 			debug_print("(%d) setup_kms, atomic modeset fail", (int)d->id);
-			drmModeRmFB(d->device->fd, d->buffer.cur_fb);
+			drmModeRmFB(d->device->disp_fd, d->buffer.cur_fb);
 			d->buffer.cur_fb = 0;
 			ok = false;
 		}
@@ -2473,8 +2473,8 @@ retry:
 			drmModeFreeConnector(d->display.con);
 			d->display.con = NULL;
 			drmModeFreeResources(res);
-			drmSetClientCap(d->device->fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 0);
-			drmSetClientCap(d->device->fd, DRM_CLIENT_CAP_ATOMIC, 0);
+			drmSetClientCap(d->device->disp_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 0);
+			drmSetClientCap(d->device->disp_fd, DRM_CLIENT_CAP_ATOMIC, 0);
 			return setup_kms(d, conn_id, w, h);
 		}
 		else if (!ok)
@@ -2665,7 +2665,7 @@ struct monitor_mode* platform_video_query_modes(
 
 	debug_print("(%d) issuing mode scan", (int) d->id);
 	drmModeConnector* conn = d->display.con;
-	drmModeRes* res = drmModeGetResources(d->device->fd);
+	drmModeRes* res = drmModeGetResources(d->device->disp_fd);
 
 	static struct monitor_mode* mcache;
 	static size_t mcache_sz;
@@ -2703,7 +2703,7 @@ static struct dispout* match_connector(int fd, drmModeConnector* con)
 		if (d->state == DISP_UNUSED)
 			continue;
 
-		if (d->device->fd == fd &&
+		if (d->device->disp_fd == fd &&
 			 (d->display.con ? d->display.con->connector_id : d->display.con_id) == con->connector_id)
 				return d;
 	}
@@ -2717,17 +2717,17 @@ static struct dispout* match_connector(int fd, drmModeConnector* con)
  */
 static void query_card(struct dev_node* node)
 {
-	debug_print("check resources on %i\n", node->fd);
+	debug_print("check resources on %i\n", node->disp_fd);
 
-	drmModeRes* res = drmModeGetResources(node->fd);
+	drmModeRes* res = drmModeGetResources(node->disp_fd);
 	if (!res){
-		debug_print("couldn't get resources for rescan on %i", node->fd);
+		debug_print("couldn't get resources for rescan on %i", node->disp_fd);
 		return;
 	}
 
 	for (size_t i = 0; i < res->count_connectors; i++){
-		drmModeConnector* con = drmModeGetConnector(node->fd, res->connectors[i]);
-		struct dispout* d = match_connector(node->fd, con);
+		drmModeConnector* con = drmModeGetConnector(node->disp_fd, res->connectors[i]);
+		struct dispout* d = match_connector(node->disp_fd, con);
 
 /* no display on connector */
 		if (con->connection != DRM_MODE_CONNECTED){
@@ -2807,7 +2807,7 @@ void platform_video_query_displays()
  */
 	for (size_t j = 0; j < COUNT_OF(nodes); j++){
 		debug_print("query_card: %zu", j);
-		if (nodes[j].fd != -1)
+		if (nodes[j].disp_fd != -1)
 			query_card(&nodes[j]);
 	}
 }
@@ -2856,7 +2856,7 @@ static void disable_display(struct dispout* d, bool dealloc)
  * in the past, monitor this closely */
 	if (d->buffer.cur_fb){
 		debug_print("(%d) removing framebuffer", (int)d->id);
-		drmModeRmFB(d->device->fd, d->buffer.cur_fb);
+		drmModeRmFB(d->device->disp_fd, d->buffer.cur_fb);
 		d->buffer.cur_fb = 0;
 	}
 
@@ -2889,7 +2889,7 @@ static void disable_display(struct dispout* d, bool dealloc)
  * own, losing color calibration and so on in the process */
 	if (d->display.orig_gamma){
 		debug_print("(%d) restoring device color LUTs");
-		drmModeCrtcSetGamma(d->device->fd, d->display.crtc,
+		drmModeCrtcSetGamma(d->device->disp_fd, d->display.crtc,
 			d->display.gamma_size, d->display.orig_gamma,
 			&d->display.orig_gamma[1*d->display.gamma_size],
 			&d->display.orig_gamma[2*d->display.gamma_size]
@@ -2909,7 +2909,7 @@ static void disable_display(struct dispout* d, bool dealloc)
 			}
 		}
 		else if (0 > drmModeSetCrtc(
-			d->device->fd,
+			d->device->disp_fd,
 			d->display.old_crtc->crtc_id,
 			d->display.old_crtc->buffer_id,
 			d->display.old_crtc->x,
@@ -3033,8 +3033,8 @@ static void flush_leds()
 	}
 }
 
-static bool try_node(int fd, const char* pathref, int dst_ind,
-	enum buffer_method method, bool force_master, int connid, int w, int h)
+static bool try_node(int draw_fd, int disp_fd, const char* pathref,
+	int dst_ind, enum buffer_method method, int connid, int w, int h)
 {
 /* set default lookup function if none has been provided */
 	if (!nodes[dst_ind].eglenv.get_proc_address){
@@ -3049,18 +3049,18 @@ static bool try_node(int fd, const char* pathref, int dst_ind,
 
 	switch (method){
 	case BUF_GBM:
-		if (0 != setup_node_gbm(dst_ind, node, pathref, fd)){
+		if (0 != setup_node_gbm(dst_ind, node, draw_fd, disp_fd)){
 			node->eglenv.get_proc_address = NULL;
 			debug_print("couldn't open (%d:%s) in GBM mode",
-				fd, pathref ? pathref : "(no path)");
+				draw_fd, pathref ? pathref : "(no path)");
 				release_card(dst_ind);
 			return false;
 		}
 	break;
 	case BUF_STREAM:
-		if (0 != setup_node_egl(dst_ind, node, pathref, fd)){
+		if (0 != setup_node_egl(dst_ind, node, pathref, disp_fd)){
 			debug_print("couldn't open (%d:%s) in EGLStreams mode",
-				fd, pathref ? pathref : "(no path)");
+				draw_fd, pathref ? pathref : "(no path)");
 			release_card(dst_ind);
 			return false;
 		}
@@ -3071,24 +3071,11 @@ static bool try_node(int fd, const char* pathref, int dst_ind,
 
 	if (!setup_node(node)){
 		debug_print("setup/configure [%d](%d:%s)",
-			dst_ind, fd, pathref ? pathref : "(no path)");
+			dst_ind, draw_fd, pathref ? pathref : "(no path)");
 		release_card(dst_ind);
 		return false;
 	}
 
-/* [ shouldn't be done by us anymore since the fork() parent has that job ]
- * drmDropMaster(node->fd);
-	if (0 != drmSetMaster(node->fd)){
-		debug_print("set drmMaster on [%d](%d:%s) failed, reason: %s",
-			dst_ind, fd, pathref ? pathref : "(no path)", strerror(errno));
-		if (force_master){
-			release_card(dst_ind);
-			return false;
-		}
-	}
-*/
-
-	nodes->force_master = force_master;
 	struct dispout* d = allocate_display(node);
 	d->display.primary = dst_ind == 0;
 	egl_dri.last_display = d;
@@ -3111,6 +3098,7 @@ static bool try_node(int fd, const char* pathref, int dst_ind,
 
 	if (d->backlight)
 		d->backlight_brightness = backlight_get_brightness(d->backlight);
+
 	return true;
 }
 
@@ -3122,13 +3110,16 @@ static bool try_card(size_t devind, int w, int h, size_t* dstind)
 {
 	uintptr_t tag;
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
-	char* devstr, (* cfgstr), (* altstr);
+	char* dispdevstr, (* cfgstr), (* altstr);
 	int connind = -1;
 	bool gbm = true;
 
 /* basic device, device_1, device_2 etc. search path */
-	if (!get_config("video_device", devind, &devstr, tag))
+	if (!get_config("video_display_device", devind, &dispdevstr, tag))
 		return false;
+
+	char* drawdevstr = NULL;
+	get_config("video_draw_device", devind, &drawdevstr, tag);
 
 /* reference to another card_id, only one is active at any one moment
  * and card_1 should reference card_2 and vice versa. */
@@ -3166,25 +3157,27 @@ static bool try_card(size_t devind, int w, int h, size_t* dstind)
 		free(cfgstr);
 	}
 
-	bool force_master = get_config("video_device_master", devind, NULL, tag);
 	nodes[devind].wait_connector =
 		get_config("video_device_wait", devind, NULL, tag);
 
-	int fd = platform_device_open(devstr, O_RDWR | O_CLOEXEC);
-	if (try_node(fd, devstr, *dstind,
-		gbm ? BUF_GBM : BUF_STREAM, force_master, connind, w, h)){
+	int dispfd = platform_device_open(dispdevstr, O_RDWR | O_CLOEXEC);
+	int drawfd = (drawdevstr ?
+		platform_device_open(drawdevstr, O_RDWR | O_CLOEXEC) : dispfd);
+
+	if (try_node(drawfd, dispfd, dispdevstr,
+		*dstind, gbm ? BUF_GBM : BUF_STREAM, connind, w, h)){
 		debug_print("card at %d added", *dstind);
 		nodes[*dstind].card_id = *dstind;
-		nodes[*dstind].fd = fd;
 		*dstind++;
 		return true;
 	}
+/* don't need to close the disp/draw descriptors here, it is done in try_node */
 	else{
 		free(nodes[devind].egllib);
 		free(nodes[devind].agplib);
 		nodes[devind].egllib = nodes[devind].agplib = NULL;
-		close(fd);
-		free(devstr);
+		free(dispdevstr);
+		free(drawdevstr);
 		return false;
 	}
 }
@@ -3199,25 +3192,6 @@ static bool setup_cards_db(int w, int h)
 	}
 
 	return dstind > 0;
-}
-
-/*
- * Externally/inheritance based card management, some parent process is
- * responsible for the device node. This has the drawback of not knowing the
- * settings to use, so some transfer mechanism would be needed for that as
- * well. This is primarily for inane garbage like logind.
- */
-static bool setup_cards_inherit(int w, int h)
-{
-	const char* override = getenv("ARCAN_VIDEO_DEVFD");
-	if (!override)
-		return false;
-
-	int fd = -1;
-	if (isdigit(override[0]))
-		fd = strtoul(override, NULL, 10);
-
-	return try_node(fd, NULL, 0, true, false, -1, w, h);
 }
 
 /*
@@ -3248,8 +3222,8 @@ static bool setup_cards_basic(int w, int h)
 		if (-1 != fd){
 /* possible quick hack, just check modules if we have nouveau or nvidia loaded
  * and use that to select buffer mode - there's probably better ways but meh. */
-			if (try_node(fd, buf, 0, true, false, -1, w, h) ||
-				try_node(fd, buf, 0, false, false, -1, w, h))
+			if (try_node(fd, fd, buf, 0, BUF_GBM, -1, w, h) ||
+				try_node(fd, fd, buf, 0, BUF_GBM, -1, w, h))
 					return true;
 			else{
 				debug_print("node setup failed");
@@ -3287,7 +3261,8 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	static bool seeded;
 	if (!seeded){
 		for (size_t i = 0; i < VIDEO_MAX_NODES; i++){
-			nodes[i].fd = -1;
+			nodes[i].disp_fd = -1;
+			nodes[i].draw_fd = -1;
 		}
 		seeded = true;
 	}
@@ -3299,8 +3274,7 @@ bool platform_video_init(uint16_t w, uint16_t h,
  */
 	sigaction(SIGSEGV, &err_sh, &old_sh);
 
-	if (setup_cards_db(w, h) ||
-		setup_cards_inherit(w, h) || setup_cards_basic(w, h)){
+	if (setup_cards_db(w, h) || setup_cards_basic(w, h)){
 		struct dispout* d = egl_dri.last_display;
 		set_display_context(d);
 		egl_dri.canvasw = d->display.mode.hdisplay;
@@ -3477,7 +3451,7 @@ static void flush_display_events(int timeout, bool yield)
 	do{
 /* MULTICARD> for multiple cards, extend this pollset */
 		struct pollfd fds = {
-			.fd = nodes[0].fd,
+			.fd = nodes[0].disp_fd,
 			.events = POLLIN | POLLERR | POLLHUP
 		};
 
@@ -3487,11 +3461,11 @@ static void flush_display_events(int timeout, bool yield)
  * state, unless - we support hotplugging multi-GPUs, then that decision needs
  * to be re-evaluated as it is essentially a drop_card + drop all displays */
 			if (fds.revents & (POLLHUP | POLLERR)){
-				debug_print("(card-fd %d) broken/recovery missing", (int) nodes[0].fd);
+				debug_print("(card-fd %d) broken/recovery missing", (int) nodes[0].disp_fd);
 				arcan_fatal("GPU device lost / broken");
 			}
 			else
-				drmHandleEvent(nodes[0].fd, &evctx);
+				drmHandleEvent(nodes[0].disp_fd, &evctx);
 
 /* There is a special property here, 'PRIMARY'. The displays with this property
  * set are being used for synch, with the rest - we just accept the possibility
@@ -4148,7 +4122,7 @@ static enum display_update_state draw_display(struct dispout* d)
 	if (d->display.reset_mode || !d->display.old_crtc){
 /* save a copy of the old_crtc so we know what to restore on shutdown */
 		if (!d->display.old_crtc)
-			d->display.old_crtc = drmModeGetCrtc(d->device->fd, d->display.crtc);
+			d->display.old_crtc = drmModeGetCrtc(d->device->disp_fd, d->display.crtc);
 		d->display.reset_mode = false;
 		new_crtc = true;
 	}
@@ -4162,11 +4136,11 @@ static enum display_update_state draw_display(struct dispout* d)
 			atomic_set_mode(d);
 		}
 		else {
-			int rv = drmModeSetCrtc(d->device->fd, d->display.crtc,
+			int rv = drmModeSetCrtc(d->device->disp_fd, d->display.crtc,
 				next_fb, 0, 0, &d->display.con_id, 1, &d->display.mode);
 			if (rv < 0){
 				debug_print("(%d) error (%d) setting Crtc for %d:%d(con:%d)",
-					(int)d->id, errno, d->device->fd, d->display.crtc, d->display.con_id);
+					(int)d->id, errno, d->device->disp_fd, d->display.crtc, d->display.con_id);
 			}
 		}
 		arcan_conductor_register_display(
@@ -4178,7 +4152,7 @@ static enum display_update_state draw_display(struct dispout* d)
 		verbose_print("(%d) request flip (fd: %d, crtc: %"PRIxPTR", fb: %d)",
 			(int)d->id, (uintptr_t) d->display.crtc, (int) next_fb);
 
-		if (!drmModePageFlip(d->device->fd, d->display.crtc,
+		if (!drmModePageFlip(d->device->disp_fd, d->display.crtc,
 			next_fb, DRM_MODE_PAGE_FLIP_EVENT, d)){
 			d->buffer.in_flip = 1;
 			verbose_print("(%d) in flip", (int)d->id);
@@ -4211,7 +4185,7 @@ void platform_video_prepare_external()
 	} while(egl_dri.destroy_pending && rc-- > 0);
 
 	if (nodes[0].master)
-		drmDropMaster(nodes[0].fd);
+		drmDropMaster(nodes[0].disp_fd);
 	debug_print("external prepared");
 
 	in_external = true;
@@ -4225,10 +4199,8 @@ void platform_video_restore_external()
 	if (!in_external)
 		return;
 
-	if (0 != drmSetMaster(nodes[0].fd) && nodes[0].force_master){
-		debug_print("platform/egl-dri(), couldn't regain drmMaster access, "
-			"retrying in 1 second\n");
-	}
+/* this should probably be switched to psep_open again */
+	drmSetMaster(nodes[0].disp_fd);
 
 /* rebuild the mapped and known displays, extsusp is a marker that indicate
  * that the state of the engine is that the display is still alive, and should
