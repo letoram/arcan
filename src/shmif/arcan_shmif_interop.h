@@ -257,11 +257,22 @@ struct arg_arr {
 struct arg_arr* arg_unpack(const char*);
 
 /*
- * return the value matching a certain key, if ind is larger than 0, it's the
- * n-th result that will be stored in dst
+ * Lookup the [ind]th(starting at 0) argument matching [key].
+ * Returns true if there was a matching key at the desired position.
+ *
+ * If [found] is provided, the corresponding value will be stored.
+ * If no key could be found OR the lookup failed, NULL will be stored instead.
+ *
+ * Example:
+ * ARCAN_ARG=test:test=1
+ * if (arg_lookup(myarg, "test", 1, &val)){
+ *    if (val){
+ *        val will be "1" here
+ *    }
+ * }
  */
-bool arg_lookup(struct arg_arr* arr, const char* val,
-	unsigned short ind, const char** found);
+bool arg_lookup(struct arg_arr* arr,
+	const char* key, unsigned short ind, const char** found);
 
 /*
  * deallocate/free the resources bound to an arg_arr struct. Don't use this
