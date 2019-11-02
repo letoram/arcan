@@ -7,15 +7,13 @@
  * surfaces etc. Decoupled from the normal XWayland so that both sides can be
  * sandboxed better and possibly used for a similar -rootless mode in Xarcan.
  *
- * Points:
- *  override_redirect : if set, don't focus window
- *
  * Todo:
  * [ ] Use TUI to create the debug output window
  *     - track number of surfaces, event order, ...
  *
- * [ ] Basic bringup still, particularly popups, XEmbed etc.
+ * [ ] Multiple- windows seem to need some kind of coordinate translation
  *
+ * [ ] XEmbed etc.
  *
  * [ ] Clipboard could/should be done with us inheriting an arcan segment
  *     that is setup for clipboard, then we connect our clipboard manager
@@ -36,11 +34,23 @@
 #include <xcb/xcb_icccm.h>
 #include <pthread.h>
 
+#include "uthash.h"
+
 /*
  * should we need to map window-id to struct
 #include "hash.h"
-static struct hash_table known_windows;
- */
+*/
+
+struct xwnd_state {
+	bool mapped;
+	bool paired;
+	bool override_redirect;
+	int x, y;
+	int w, h;
+	int id;
+	UT_hash_handle hh;
+};
+static struct xwnd_state* windows;
 
 static xcb_connection_t* dpy;
 static xcb_screen_t* screen;
@@ -57,12 +67,6 @@ static bool xwm_standalone = false;
 
 #define WM_FLUSH true
 #define WM_APPEND false
-
-/*
- * struct window, malloc, set id, HASH_ADD_INT(windows, id, new)
- * HASH_FIND_INT( users, &id, outptr)
- * HASH_DEL(windows, outptr)
- */
 
 static void on_chld(int num)
 {
@@ -243,25 +247,33 @@ static const char* check_window_state(uint32_t id)
 	return "default";
 }
 
-static void send_updated_window(
-	const char* kind, uint32_t id, int32_t x, int32_t y, bool no_coord)
+static void send_updated_window(struct xwnd_state* wnd, const char* kind)
 {
+/* defer update information until we have something mapped, otherwise we can
+ * get one update where the type is generic, then immediately one that is popup
+ * etc. making life more difficult for the arcan wm side */
 /*
  * metainformation about the window to better select a type and behavior.
  *
  * _NET_WM_WINDOW_TYPE replaces MOTIF_wm_HINTS so we much prefer that as it
  * maps to the segment type.
  */
+	if (!wnd->mapped || !wnd->paired){
+		return;
+	}
+	trace("update_window:%s:%"PRId32",%"PRId32, kind, wnd->x, wnd->y);
+
 	wm_command(WM_APPEND,
-		"kind=%s:id=%"PRIu32":type=%s", kind, id, check_window_state(id));
+		"kind=%s:id=%"PRIu32":type=%s",
+		kind, wnd->id, check_window_state(wnd->id));
 
 	xcb_get_property_cookie_t cookie = xcb_get_property(dpy,
-		0, id, XCB_ATOM_WM_TRANSIENT_FOR, XCB_ATOM_WINDOW, 0, 2048);
+		0, wnd->id, XCB_ATOM_WM_TRANSIENT_FOR, XCB_ATOM_WINDOW, 0, 2048);
 	xcb_get_property_reply_t* reply = xcb_get_property_reply(dpy, cookie, NULL);
 
 	if (reply){
 		xcb_window_t* pwd = xcb_get_property_value(reply);
-		wm_command(WM_APPEND, ":parent=%"PRIu32, *pwd);
+		wm_command(WM_APPEND, ":parent_id=%"PRIu32, *pwd);
 		free(reply);
 	}
 
@@ -279,10 +291,7 @@ static void send_updated_window(
  *  input, initial_state, pixmap, window, position, mask, group,
  *  message, urgency
  */
-	if (no_coord)
-		wm_command(WM_FLUSH, NULL);
-	else
-		wm_command(WM_FLUSH, ":x=%"PRId32":y=%"PRId32, x, y);
+	wm_command(WM_FLUSH, ":x=%"PRId32":y=%"PRId32, wnd->x, wnd->y);
 }
 
 static void xcb_create_notify(xcb_create_notify_event_t* ev)
@@ -291,7 +300,15 @@ static void xcb_create_notify(xcb_create_notify_event_t* ev)
 	if (ev->window == wnd)
 		return;
 
-	send_updated_window("create", ev->window, ev->x, ev->y, false);
+	struct xwnd_state* state = malloc(sizeof(struct xwnd_state));
+	*state = (struct xwnd_state){
+		.id = ev->window,
+		.x = ev->x,
+		.y = ev->y
+	};
+	HASH_ADD_INT(windows, id, state);
+
+	send_updated_window(state, "create");
 }
 
 static void xcb_map_notify(xcb_map_notify_event_t* ev)
@@ -318,7 +335,12 @@ static void xcb_map_notify(xcb_map_notify_event_t* ev)
 	}
  */
 
-	send_updated_window("map", ev->window, -1, -1, true);
+	struct xwnd_state* state;
+	HASH_FIND_INT(windows,&ev->window,state);
+	if (state){
+		state->mapped = true;
+		send_updated_window(state, "map");
+	}
 }
 
 static void xcb_map_request(xcb_map_request_event_t* ev)
@@ -333,6 +355,16 @@ static void xcb_map_request(xcb_map_request_event_t* ev)
 		XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_BELOW});
 
 	xcb_map_window(dpy, ev->window);
+
+	struct xwnd_state* state;
+	HASH_FIND_INT(windows,&ev->window,state);
+	if (state){
+		trace("mark-mapped:%"PRIu32, ev->window);
+		state->mapped = true;
+	}
+	else {
+		trace("couldn't find:%"PRIu32, ev->window);
+	}
 
 /* ICCCM_NORMAL_STATE */
 	xcb_change_property(dpy,
@@ -350,7 +382,7 @@ static void xcb_reparent_notify(xcb_reparent_notify_event_t* ev)
 	}
 	else
 		wm_command(WM_FLUSH,
-			"kind=reparent:id=%"PRIu32":parent=%"PRIu32"%s",
+			"kind=reparent:id=%"PRIu32":parent_id=%"PRIu32"%s",
 			ev->window, ev->parent, ev->override_redirect ? ":override=1" : "");
 }
 
@@ -381,6 +413,13 @@ static void xcb_client_message(xcb_client_message_event_t* ev)
 			"kind=surface:id=%"PRIu32":surface_id=%"PRIu32,
 			ev->window, ev->data.data32[0]
 		);
+
+		struct xwnd_state* state;
+		HASH_FIND_INT(windows,&ev->window,state);
+		if (state){
+			state->paired = true;
+			send_updated_window(state, "map");
+		}
 	}
 	else {
 		trace("client-message(unhandled) %"PRIu32"->%d", ev->window, ev->type);
@@ -394,6 +433,11 @@ static void xcb_destroy_notify(xcb_destroy_notify_event_t* ev)
 		input_focus = -1;
 	}
 
+	struct xwnd_state* state;
+	HASH_FIND_INT(windows,&ev->window,state);
+	if (state)
+		HASH_DEL(windows, state);
+
 	wm_command(WM_FLUSH, "kind=destroy:id=%"PRIu32,
 		((xcb_destroy_notify_event_t*) ev)->window);
 }
@@ -405,12 +449,23 @@ static void xcb_configure_notify(xcb_configure_notify_event_t* ev)
 {
 	trace("configure-notify:%"PRIu32" @%d,%d", ev->window, ev->x, ev->y);
 
-	/* ev->x, ev->y, ev->width, ev->height, ev->override_redirect */
+	struct xwnd_state* state;
+	HASH_FIND_INT(windows,&ev->window,state);
+	if (!state)
+		return;
 
-	wm_command(WM_FLUSH,
+	state->mapped = true;
+	state->x = ev->x;
+	state->y = ev->y;
+	state->w = ev->width;
+	state->h = ev->height;
+	state->override_redirect = ev->override_redirect;
+
+	if (state->mapped && state->paired){
+		wm_command(WM_FLUSH,
 		"kind=configure:id=%"PRIu32":x=%d:y=%d:w=%d:h=%d",
-		ev->window, ev->x, ev->y, ev->width, ev->height
-	);
+		ev->window, ev->x, ev->y, ev->width, ev->height);
+	}
 }
 
 /*
@@ -553,6 +608,12 @@ static void process_wm_command(const char* arg)
 	}
 	else if (strcmp(dst, "focus") == 0){
 		trace("srv-focus(%d)", id);
+		struct xwnd_state* state = NULL;
+		HASH_FIND_INT(windows,&id,state);
+		if (state && state->override_redirect){
+			goto cleanup;
+		}
+
 		input_focus = id;
 		update_focus(id);
 	}

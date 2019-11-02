@@ -68,17 +68,8 @@ struct xwl_window {
 	struct comp_surf* surf;
 };
 
-/* just linear search in a fixed buffer for now, scaling problems
- * are elsewhere for quite some time to come
-
-#include "../uthash.h"
-struct window {
-	uint32_t id;
-	xcb_window_t wnd;
-	UT_hash_handle hh;
-};
-static struct window* windows;
-*/
+/* just linear search it for the time being, can copy the UT_HASH
+ * use from the xwlwm side if need be */
 
 static struct xwl_window xwl_windows[256];
 static struct xwl_window* xwl_find(uint32_t id)
@@ -116,9 +107,9 @@ static void wnd_viewport(struct xwl_window* wnd);
 static void xwl_wnd_paired(struct xwl_window* wnd)
 {
 /*
- * we will be sent here if there existed a surface id before the id
- * mapping was known, and there might be an id before the surface id.
- * Find the 'orphan' and copy / merge
+ * we will be sent here if there existed a surface id before the id mapping was
+ * known, and there might be an id before the surface id. Find the 'orphan'
+ * and copy / merge
  */
 	ssize_t match = -1;
 
@@ -201,6 +192,8 @@ static void wnd_viewport(struct xwl_window* wnd)
 			trace(TRACE_XWL, "bad parent id:%"PRIu32, wnd->parent_id);
 		}
 		else{
+		trace(TRACE_XWL, "parent set (%"PRIu32") => (%"PRIu32")",
+			wnd->parent_id, pwnd->surf->acon.segment_token);
 			wnd->viewport.ext.viewport.parent = pwnd->surf->acon.segment_token;
 		}
 	}
@@ -333,17 +326,29 @@ static int process_input(const char* msg)
 			goto cleanup;
 		uint32_t id = strtoul(arg, NULL, 10);
 		struct xwl_window* wnd = xwl_find(id);
-		if (!wnd)
+
+		if (!wnd){
+			trace(TRACE_XWL, "map without window");
 			goto cleanup;
+		}
 
 		wnd->viewport.ext.viewport.invisible = false;
 		if (arg_lookup(cmd, "parent_id", 0, &arg)){
 			wnd->parent_id = strtoul(arg, NULL, 10);
 		}
+
+		if (arg_lookup(cmd, "x", 0, &arg)){
+			wnd->viewport.ext.viewport.x = strtol(arg, NULL, 10);
+		}
+		if (arg_lookup(cmd, "y", 0, &arg)){
+			wnd->viewport.ext.viewport.y = strtol(arg, NULL, 10);
+		}
+
 		if (!arg_lookup(cmd, "type", 0, &arg)){
 			trace(TRACE_XWL, "remap id:%"PRIu32", failed, no type information", id);
 			goto cleanup;
 		}
+
 		wnd_message(wnd, "type:%s", arg);
 		wnd_viewport(wnd);
 	}
