@@ -1109,7 +1109,7 @@ int main(int argc, char* argv[])
 	struct {
 		int compositor, shell, shm, seat, output, egl, zxdg, xdg, subcomp, ddev, relp, dma;
 	} protocols = {
-		.compositor = 3,
+		.compositor = 4,
 		.shell = 1,
 		.shm = 1,
 		.seat = 5,

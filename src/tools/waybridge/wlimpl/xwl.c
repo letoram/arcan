@@ -471,9 +471,13 @@ static int xwl_read_wm(int (*callback)(const char* str))
 }
 
 /*
- * launch the arcan-xwayland-wm (that in turn launches Xwayland)
- * if [block] is set, wait until arcan-xwayland-wm acknowledges
- * that Xwayland could be launched or not.
+ * Launch the arcan-xwayland-wm (that in turn launches Xwayland) if [block] is
+ * set, wait until arcan-xwayland-wm acknowledges that Xwayland could be
+ * launched or not.
+ *
+ * The other detail is how to handle the clipboard in a way that covers both
+ * cut/paste and drag/drop. Best is probably to request a clipboard/handover
+ * and then exec that into arcan-xwayland-wm.
  *
  * Error codes:
  * -1 : arcan-xwayland-wm connection died
