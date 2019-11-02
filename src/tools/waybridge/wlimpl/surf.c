@@ -11,6 +11,12 @@ static void surf_destroy(struct wl_client* cl, struct wl_resource* res)
 	destroy_comp_surf(surf, true);
 }
 
+static void buffer_release(struct comp_surf* surf, struct wl_resource* res)
+{
+	trace(TRACE_SURF, "%s (@%"PRIxPTR")->release", surf->tracetag, (uintptr_t)surf->cbuf);
+	wl_buffer_send_release(res);
+}
+
 static void buffer_destroy(struct wl_listener* list, void* data)
 {
 	struct comp_surf* surf = NULL;
@@ -26,6 +32,7 @@ static void buffer_destroy(struct wl_listener* list, void* data)
 	}
 
 	if (surf->last_buf){
+		buffer_release(surf, surf->last_buf);
 		surf->last_buf = NULL;
 	}
 
@@ -195,12 +202,6 @@ static void surf_inputreg(struct wl_client* cl,
  * and route the input in the bridge. This becomes important with complex
  * hierarchies (from popups and subsurfaces).
  */
-}
-
-static void buffer_release(struct comp_surf* surf, struct wl_resource* res)
-{
-	trace(TRACE_SURF, "%s (@%"PRIxPTR")->release", surf->tracetag, (uintptr_t)surf->cbuf);
-	wl_buffer_send_release(res);
 }
 
 static void commit_shm(struct wl_client* cl, struct arcan_shmif_cont* acon,
@@ -382,7 +383,6 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 		if (drm_buf){
 			trace(TRACE_SURF, "surf_commit(egl:%s)", surf->tracetag);
 			wayland_drm_commit(surf, drm_buf, acon);
-			surf->last_buf = buf;
 		}
 		else
 			trace(TRACE_SURF, "surf_commit(unknown:%s)", surf->tracetag);

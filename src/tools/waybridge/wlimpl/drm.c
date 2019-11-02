@@ -131,6 +131,7 @@ destroy_buffer(struct wl_resource *resource)
 {
 	trace(TRACE_DRM, "");
 	struct wl_drm_buffer *buffer = resource->data;
+	close(buffer->fd);
 	free(buffer);
 }
 
@@ -339,11 +340,6 @@ static void wayland_drm_commit(struct comp_surf* surf,
  */
 	arcan_shmif_signalhandle(con,
 		SHMIF_SIGVID, buf->fd, buf->stride[0], buf->format);
-
-/*
- * [ actually happens inside signalhandle ]
- * close(buf->fd); buf->fd = -1;
- */
 }
 
 static struct wl_drm_buffer *
@@ -370,6 +366,7 @@ static struct wl_drm* wayland_drm_init(struct wl_display *display,
 	if (!drm)
 		return NULL;
 
+/* this should switch to what we get from _initial as well as react on devicehint */
 	drm->display = display;
 	drm->device_name = getenv("ARCAN_RENDER_NODE");
 	drm->callbacks = NULL;
