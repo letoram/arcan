@@ -39,24 +39,12 @@ static bool shellsurf_shmifev_handler(
 				w = wl.init.display_width_px;
 				h = wl.init.display_height_px;
 			}
-			bool changed = displayhint_handler(surf, &ev->tgt);
+			displayhint_handler(surf, &ev->tgt);
 			if (w && h && (w != surf->acon.w || h != surf->acon.h)){
 				wl_shell_surface_send_configure(
 					surf->shell_res, WL_SHELL_SURFACE_RESIZE_NONE, w, h);
 			}
 
-/* so the pattern seem to be to also indicate focus/unfocus by having
- * the surface enter or leave the output. It seems possible for a client
- * to bind infinite many outputs (of course /s), which we don't care
- * about for the time being */
-			if (changed){
-				if (surf->last_state.unfocused != surf->states.unfocused){
-					if (surf->states.unfocused)
-						wl_surface_send_leave(surf->surf_res, surf->client->output);
-					else
-						wl_surface_send_enter(surf->surf_res, surf->client->output);
-				}
-			}
 			return true;
 		}
 /* use the default handler for surface callback */

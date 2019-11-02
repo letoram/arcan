@@ -56,6 +56,8 @@ static void comp_surf_create(struct wl_client *client,
 
 	wl_resource_set_implementation(new_surf->res,
 		&surf_if, new_surf, comp_surf_delete);
+
+	wl_surface_send_enter(new_surf->res, cl->output);
 }
 
 static void comp_create_reg(struct wl_client *client,

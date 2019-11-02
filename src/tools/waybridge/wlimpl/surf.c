@@ -155,6 +155,9 @@ static void setup_shmifext(
 	setup.builtin_fbo = false;
 	surf->accel_fmt = fmt;
 
+/* accelerated shm- sharing is currently disabled as the shmifext
+ * implementation of the upload was dropped in favour of just doing
+ * it manually via the agp_ set of functions. */
 	switch(fmt){
 		case WL_SHM_FORMAT_RGB565:
 /* should set UNSIGNED_SHORT_5_6_5 as well */
@@ -200,6 +203,94 @@ static void buffer_release(struct comp_surf* surf, struct wl_resource* res)
 	wl_buffer_send_release(res);
 }
 
+static void commit_shm(struct wl_client* cl, struct arcan_shmif_cont* acon,
+	struct wl_resource* res, struct comp_surf* surf, struct wl_shm_buffer* shm_buf)
+{
+	trace(TRACE_SURF, "surf_commit(shm:%s)", surf->tracetag);
+
+	uint32_t w = wl_shm_buffer_get_width(shm_buf);
+	uint32_t h = wl_shm_buffer_get_height(shm_buf);
+	int fmt = wl_shm_buffer_get_format(shm_buf);
+	void* data = wl_shm_buffer_get_data(shm_buf);
+	size_t stride = wl_shm_buffer_get_stride(shm_buf);
+
+	if (acon->w != w || acon->h != h){
+		trace(TRACE_SURF,
+			"surf_commit(shm, resize to: %zu, %zu)", (size_t)w, (size_t)h);
+		arcan_shmif_resize(acon, w, h);
+	}
+
+/* resize failed, this will only happen when growing, thus we can crop */
+	if (acon->w != w || acon->h != h){
+		w = acon->w;
+		h = acon->h;
+	}
+
+/* have acceleration failed or format changed since we last negotiated accel? */
+	if (0 == surf->fail_accel ||
+		(surf->fail_accel > 0 && fmt != surf->accel_fmt)){
+		arcan_shmifext_drop(acon);
+		setup_shmifext(acon, surf, fmt);
+	}
+
+/* try the path of converting the shm buffer to an accelerated, BUT there
+ * is a special case in that a failed accelerated context can have local
+ * readback (receiver isn't a GPU or an incompatible GPU), which we really
+ * don't want. */
+	if (1 == surf->fail_accel){
+		int ext_state = arcan_shmifext_isext(acon);
+
+/* no acceleration if that means fallback, as that would be slower, this can
+* happen by upstream event if the buffer is rejected or some other activity
+* (GPU swapping etc) make the context invalid */
+		if (ext_state == 2){
+			surf->fail_accel = -1;
+			arcan_shmifext_drop(acon);
+			return commit_shm(cl, acon, res, surf, shm_buf);
+		}
+
+/* though it would be possible to share context between surfaces on the
+ * same client, at this stage it turns out to be more work than the overhead */
+		trace(TRACE_SURF,"surf_commit(shm-gl-repack)");
+		arcan_shmifext_make_current(acon);
+
+/* building the dma buf used to be done hidden inside shmif, but it wasn't
+ * really something that should be hidden there, so nowadays the tactic is
+ * to instead implement that by importing the corresponding agp features */
+		return;
+	}
+
+/* two other options to avoid repacking, one is to actually use this signal-
+ * handle facility to send a descriptor, and mark the type as the WL shared
+ * buffer with the metadata in vidp[] in order for offset and other bits to
+ * make sense.
+ * The other is to actually allow the shmif server to ptrace into us (wut) and
+ * use a rare linuxism known as process_vm_writev and process_vm_readv and send
+ * the pointers that way.
+ */
+	if (stride != acon->stride){
+		trace(TRACE_SURF,"surf_commit(stride-mismatch)");
+		for (size_t row = 0; row < h; row++){
+			memcpy(&acon->vidp[row * acon->pitch],
+				&((uint8_t*)data)[row * stride],
+				w * sizeof(shmif_pixel)
+			);
+		}
+	}
+	else
+		memcpy(acon->vidp, data, w * h * sizeof(shmif_pixel));
+
+	arcan_shmif_signal(acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+}
+
+/*
+ * Practically there is another thing to consider here and that is the trash
+ * fire of subsurfaces. Mapping each to a shmif segment is costly, and
+ * snowballs into a bunch of extra work in the WM, making otherwise trivial
+ * features nightmarish. The other possible option here would be to do the
+ * composition ourself into one shmif segment, masking that the thing exists at
+ * all.
+ */
 static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 {
 	struct comp_surf* surf = wl_resource_get_user_data(res);
@@ -276,16 +367,15 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 	}
 
 /*
- * Avoid tearing due to the SIGBLK_NONE, the other option would be to actually
- * block (if we multithread/multiprocess the client) or to schedule/defer this
- * processing until we get an unlock event (can be implemented client/lib side
- * through a kqueue- trigger or with the delivery-event callback approach that
- * we use for frame-callbacks. At least verify the compilers generate spinlock
- * style instructions.
+ * Safeguard due to the SIGBLK_NONE, used for signalling, below.
  */
-	if (acon->addr->vready){
-	}
+	while(arcan_shmif_signalstatus(acon) > 0){}
 
+/*
+ * So it seems that the buffer- protocol actually don't give us
+ * a type of the buffer, so the canonical way is to just try them in
+ * order shm -> drm -> dma-buf.
+ */
 	struct wl_shm_buffer* shm_buf = wl_shm_buffer_get(buf);
 	if (!shm_buf){
 		struct wl_drm_buffer* drm_buf = wayland_drm_buffer_get(wl.drm, buf);
@@ -296,90 +386,15 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 		}
 		else
 			trace(TRACE_SURF, "surf_commit(unknown:%s)", surf->tracetag);
+/* dma- buf bits are missing here still */
 	}
-	else if (shm_buf){
-		trace(TRACE_SURF, "surf_commit(shm:%s)", surf->tracetag);
-		uint32_t w = wl_shm_buffer_get_width(shm_buf);
-		uint32_t h = wl_shm_buffer_get_height(shm_buf);
-		int fmt = wl_shm_buffer_get_format(shm_buf);
-		void* data = wl_shm_buffer_get_data(shm_buf);
-		size_t stride = wl_shm_buffer_get_stride(shm_buf);
+	else
+		commit_shm(cl, acon, res, surf, shm_buf);
 
-		if (acon->w != w || acon->h != h){
-			trace(TRACE_SURF,
-				"surf_commit(shm, resize to: %zu, %zu)", (size_t)w, (size_t)h);
-			arcan_shmif_resize(acon, w, h);
-		}
-
-/* resize failed, this will only happen when growing, thus we can crop */
-		if (acon->w != w || acon->h != h){
-			w = acon->w;
-			h = acon->h;
-		}
-
-		if (0 == surf->fail_accel ||
-			(surf->fail_accel > 0 && fmt != surf->accel_fmt)){
-			arcan_shmifext_drop(acon);
-			setup_shmifext(acon, surf, fmt);
-		}
-
-		if (1 == surf->fail_accel){
-			int ext_state = arcan_shmifext_isext(acon);
-
-/* no acceleration if that means fallback, as that would be slower, this can
- * happen by upstream event if the buffer is rejected or some other activity
- * (GPU swapping etc) make the context invalid */
-			if (ext_state == 2){
-				surf->fail_accel = -1;
-				arcan_shmifext_drop(acon);
-			}
-/* though it would be possible to share context between surfaces on the
- * same client, at this stage it turns out to be more work than the overhead */
-			else {
-				trace(TRACE_SURF,"surf_commit(shm-gl-repack)");
-				arcan_shmifext_make_current(acon);
-
-/* the context is setup so that vidp will be uploaded into two textures, acting
- * as our dma-buf intermediates. we then signalext which pass the underlying
- * handles. the other option would be to work with the arcan-abc libraries to
- * get access to agp for texture uploads etc. but since it's already wrapped in
- * shmifext, use that. */
-				void* old_vidp = acon->vidp;
-				size_t old_stride = acon->stride;
-				acon->vidp = data;
-				acon->stride = stride;
-				arcan_shmifext_signal(acon,
-					0, SHMIF_SIGVID | SHMIF_SIGBLK_NONE, SHMIFEXT_BUILTIN);
-				acon->vidp = old_vidp;
-				acon->stride = old_stride;
-				if (wl.defer_release)
-					surf->last_buf = buf;
-				else
-					buffer_release(surf, buf);
-				return;
-			}
-		}
-
-/* if stride mismatch, copy row by row - this do NOT handle format conversion /
- * swizzling yet, copy code from fsrv_game for that */
-		if (stride != acon->stride){
-			trace(TRACE_SURF,"surf_commit(stride-mismatch)");
-			for (size_t row = 0; row < h; row++){
-				memcpy(&acon->vidp[row * acon->pitch],
-					&((uint8_t*)data)[row * stride],
-					w * sizeof(shmif_pixel)
-				);
-			}
-		}
-		else
-			memcpy(acon->vidp, data, w * h * sizeof(shmif_pixel));
-
-		arcan_shmif_signal(acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
-		if (wl.defer_release)
-			surf->last_buf = buf;
-		else
-			buffer_release(surf, buf);
-	}
+	if (wl.defer_release)
+		surf->last_buf = buf;
+	else
+		buffer_release(surf, buf);
 
 	trace(TRACE_SURF,
 		"surf_commit(%zu,%zu-%zu,%zu):accel=%d",
@@ -387,6 +402,7 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 			(size_t)acon->dirty.x2, (size_t)acon->dirty.y2,
 			surf->fail_accel);
 
+/* reset the dirty rectangle */
 	acon->dirty.x1 = acon->w;
 	acon->dirty.x2 = 0;
 	acon->dirty.y1 = acon->h;

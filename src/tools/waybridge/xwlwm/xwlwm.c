@@ -11,7 +11,11 @@
  *  override_redirect : if set, don't focus window
  *
  * Todo:
+ * [ ] Use TUI to create the debug output window
+ *     - track number of surfaces, event order, ...
+ *
  * [ ] Basic bringup still, particularly popups, XEmbed etc.
+ *
  *
  * [ ] Clipboard could/should be done with us inheriting an arcan segment
  *     that is setup for clipboard, then we connect our clipboard manager
@@ -245,7 +249,7 @@ static void send_updated_window(
 /*
  * metainformation about the window to better select a type and behavior.
  *
- * _NET_WM_WINDOW_TYPE replaces MOTIF_WM_HINTS so we much prefer that as it
+ * _NET_WM_WINDOW_TYPE replaces MOTIF_wm_HINTS so we much prefer that as it
  * maps to the segment type.
  */
 	wm_command(WM_APPEND,
@@ -439,25 +443,31 @@ static void xcb_configure_request(xcb_configure_request_event_t* ev)
 static void update_focus(int64_t id)
 {
 	if (-1 == id){
-		xcb_set_input_focus(dpy,
+		xcb_set_input_focus_checked(dpy,
 			XCB_INPUT_FOCUS_POINTER_ROOT, XCB_NONE, XCB_CURRENT_TIME);
 	}
 	else {
 		xcb_set_input_focus(dpy,
 			XCB_INPUT_FOCUS_POINTER_ROOT, id, XCB_CURRENT_TIME);
 	}
+
+	xcb_configure_window(dpy, id,
+		XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_BELOW, 0});
 	xcb_flush(dpy);
 }
 
 static void xcb_focus_in(xcb_focus_in_event_t* ev)
 {
 	trace("focus-in: %"PRIu32, ev->event);
-/*
- * Do anything with these?
-	ev->mode == XCB_NOTIFY_MODE_GRAB ||
-	ev->mode == XCB_NOTIFY_MODE_UNGRAB
- */
+	if (ev->mode == XCB_NOTIFY_MODE_GRAB ||
+		ev->mode == XCB_NOTIFY_MODE_UNGRAB)
+		return;
 
+/* this is more troublesome than it seems, so this is a notification that
+ * something got focus. This might not reflect the focus status in the real WM,
+ * so right now we just say nope, you don't get to chose focus and force-back
+ * the old one - otoh some applications do like to hand over focus between its
+ * windows as possible keybindings, ... and there it might be highly desired */
 	if (-1 == input_focus || ev->event != input_focus){
 		update_focus(input_focus);
 	}
