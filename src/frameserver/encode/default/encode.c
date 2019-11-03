@@ -700,6 +700,12 @@ static void dump_help()
 		"--------\t-----------\t-----------------\n"
 		" lang   \t string    \t set OCR engine language (default: eng)\n\n"
 #endif
+		"protocol=a12\n"
+		" key    \t   value   \t   description\n"
+		"--------\t-----------\t-----------------\n"
+		" authk  \t key       \t set authentication pre-shared key\n"
+		" pubk   \t b64(key)  \t allow connection from pre-authenticated public key\n"
+		" port   \t number    \t set server listening port\n\n"
 		"protocol=png\n"
 		"  key   \t   value   \t   description\n"
 		"--------\t-----------\t-----------------\n"

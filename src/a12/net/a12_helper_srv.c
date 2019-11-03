@@ -83,7 +83,7 @@ static struct a12_vframe_opts vopts_from_segment(
 		};
 	break;
 	case SEGID_MEDIA:
-		a12int_trace(A12_TRACE_VIDEO, "game -> h264, quality");
+		a12int_trace(A12_TRACE_VIDEO, "media -> h264, quality");
 		return (struct a12_vframe_opts){
 			.method = VFRAME_METHOD_H264,
 			.bias = VFRAME_BIAS_QUALITY

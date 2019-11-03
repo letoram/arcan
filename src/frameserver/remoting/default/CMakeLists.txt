@@ -1,19 +1,31 @@
-if (FSRV_REMOTING_REQUIRED)
-	find_package(VNC REQUIRED QUIET)
-else()
-	find_package(VNC QUIET)
-endif()
+find_package(VNC QUIET)
+
+set(PROTOCOLS "a12")
+set(SRCS
+	${CMAKE_CURRENT_SOURCE_DIR}/remoting.c
+	${CMAKE_CURRENT_SOURCE_DIR}/a12.c
+	${CMAKE_CURRENT_SOURCE_DIR}/../../util/anet_helper.c
+)
+
+set(LIBS arcan_a12)
+set(INCS ${PLATFORM_ROOT}/../a12)
 
 if (LIBVNC_FOUND)
-	set(REMOTING_SOURCES
-		${CMAKE_CURRENT_SOURCE_DIR}/remoting.c
-		PARENT_SCOPE
+	set(PROTOCOLS "${PROTOCOLS} vnc")
+	list(APPEND SRCS
+		${CMAKE_CURRENT_SOURCE_DIR}/vnc.c
 	)
-
-	set(REMOTING_LIBS
+	list(APPEND LIBS
 		${LIBVNC_CLIENT_LIBRARY}
+	)
+	set(REMOTING_DEFS
+		ENABLE_VNC
 		PARENT_SCOPE
 	)
-else()
-	amsg("(${CL_GRN}remoting${CL_RST}) disabled, ${CL_GRN}vnc${CL_RED} not found${CL_RST}")
 endif()
+
+set(REMOTING_SOURCES ${SRCS} PARENT_SCOPE)
+set(REMOTING_LIBS ${LIBS} PARENT_SCOPE)
+set(REMOTING_INCLUDE_DIRS ${INCS} PARENT_SCOPE)
+
+amsg("${CL_GRN} remoting support: ${PROTOCOLS}")

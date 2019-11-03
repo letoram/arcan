@@ -419,17 +419,22 @@ int main(int argc, char** argv)
 	if (!anet.mode)
 		return show_usage("No mode specified, please use -s or -l form");
 
+	char* errmsg;
+
 	if (anet.mode == ANET_SHMIF_CL){
 		switch (anet.mt_mode){
 		case MT_SINGLE:
-			return anet_listen(&anet, single_a12srv, NULL);
+			anet_listen(&anet, &errmsg, single_a12srv, NULL);
+			fprintf(stderr, "%s", errmsg ? errmsg : "");
 		case MT_FORK:
-			return anet_listen(&anet, fork_a12srv, NULL);
+			anet_listen(&anet, &errmsg, fork_a12srv, NULL);
+			fprintf(stderr, "%s", errmsg ? errmsg : "");
+			free(errmsg);
 		break;
 		default:
-			return EXIT_FAILURE;
 		break;
 		}
+		return EXIT_FAILURE;
 	}
 	if (anet.mode == ANET_SHMIF_SRV_INHERIT){
 		return a12_preauth(&anet, a12cl_dispatch);
