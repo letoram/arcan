@@ -16,6 +16,7 @@
 #include <signal.h>
 #include <netdb.h>
 #include <poll.h>
+#include <inttypes.h>
 
 #include "anet_helper.h"
 
@@ -23,8 +24,6 @@ struct dispatch_data {
 	struct arcan_shmif_cont* C;
 	struct anet_options net_cfg;
 	struct a12_vframe_opts video_cfg;
-
-	unsigned long* row_sums;
 };
 
 static void on_client_event(
@@ -41,15 +40,6 @@ static void on_client_event(
 	if (ev->category == EVENT_IO){
 		arcan_shmif_enqueue(cont, ev);
 	}
-}
-
-static unsigned long djb_hash(const uint8_t* buf, size_t len)
-{
-	unsigned long vl = 5381;
-	for (size_t i = 0; i < len; i++){
-		vl = ((vl << 5) + vl + buf[i]);
-	}
-	return vl;
 }
 
 static void flush_av(struct a12_state* S, struct dispatch_data* data)
@@ -76,31 +66,31 @@ static void flush_av(struct a12_state* S, struct dispatch_data* data)
 	if (!C->addr->vready)
 		return;
 
-	bool dirty = false;
-	for (size_t i = 0; i < C->h; i++){
-		unsigned long row = djb_hash(&C->vidb[i * C->stride], C->stride);
-		if (row != data->row_sums[i]){
-			if (y_in > i)
-				y_in = i;
-			if (y_out < i)
-				y_out = i;
-			dirty = true;
-		}
-		data->row_sums[i] = row;
-	}
+/* this is a design flaw in the encode- stage, ideally the cached dirty in
+ * cont should be updated on the STEPFRAME - as to not expose the page layout */
+	struct arcan_shmif_region dregion = atomic_load(&C->addr->dirty);
 
-	if (!dirty)
-		return;
+/* sanity check */
+	if (dregion.x1 > dregion.x2)
+		dregion.x1 = 0;
+	if (dregion.x2 > C->w)
+		dregion.x2 = C->w;
 
-	C->dirty.y1 = y_in;
-	C->dirty.y2 = y_out;
+	if (dregion.y1 > dregion.y2)
+		dregion.y1 = 0;
+	if (dregion.y2 > C->h)
+		dregion.y2 = C->h;
+
 	a12_channel_vframe(S, &(struct shmifsrv_vbuffer){
 		.buffer = C->vidp,
 		.w = C->w,
 		.h = C->h,
 		.pitch = C->pitch,
 		.stride = C->stride,
-		.region = C->dirty
+		.region = dregion,
+		.flags = {
+			.subregion = true
+		},
 	}, data->video_cfg);
 }
 
@@ -255,14 +245,6 @@ void a12_serv_run(struct arg_arr* arg, struct arcan_shmif_cont cont)
 	struct dispatch_data data = {
 		.C = &cont
 	};
-
-/*
- * grab a per-line checksum buffer for some dirty region tracking
- */
-	size_t sum_sz = cont.h * sizeof(unsigned long);
-	data.row_sums = malloc(sum_sz);
-	memset(data.row_sums, '\0', sum_sz);
-
 	decode_args(arg, &data);
 /*
  * For the sake of oversimplification, use a single active client mode for

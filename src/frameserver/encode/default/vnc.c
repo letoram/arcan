@@ -16,7 +16,6 @@
 #include <rfb/rfb.h>
 
 #include <arcan_shmif.h>
-#include "vncserver.h"
 #include "xsymconv.h"
 
 static struct {
@@ -152,15 +151,9 @@ static void vnc_serv_deltaupd()
  * yet is that we want the feature to be part of the server- shmif side
  * as it can be made more efficiently there.
  */
-	struct arcan_shmif_region dirty = {
-		.x1 = 0, .y1 = 0, .x2 = vncctx.shmcont.addr->w, .y2 = vncctx.shmcont.addr->h
-	};
-
-	int hints = atomic_load(&vncctx.shmcont.addr->hints);
-	if (hints & SHMIF_RHINT_SUBREGION){
-		dirty = atomic_load(&vncctx.shmcont.addr->dirty);
-	}
-	rfbMarkRectAsModified(vncctx.server, dirty.x1, dirty.y1, dirty.x2+1, dirty.y2+1);
+	struct arcan_shmif_region dirty;
+	dirty = atomic_load(&vncctx.shmcont.addr->dirty);
+	rfbMarkRectAsModified(vncctx.server, dirty.x1, dirty.y1, dirty.x2, dirty.y2);
 	vncctx.shmcont.addr->vready = false;
 }
 

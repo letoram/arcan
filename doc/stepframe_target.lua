@@ -1,23 +1,39 @@
 -- stepframe_target
 -- @short: Request that the target generate / consume a video frame.
--- @inargs: targetid, *n_frames*, *id*
--- @longdescr: Some external targets either require, or can be set to require,
--- a frame-pulse that hints when it should emit, consume or ignore one or
--- several video frames, especially for non-realtime tasks. This is handled as
--- events passed on the event-queue, in order to wake processes that idle or
--- sleep when no event has been received. The optional id feed only has a use
--- when stepframe_target comes as an implementation of a received clock event
--- (see ref:launch_target), where it should be passed to help the frameserver
--- to match the timer request to some internal handler.
--- @note: IF the target has had the 'SYNCHSIZE' flag set (see ref:target_flags),
--- the next buffer update is deferred until a stepframe_target call with a
--- framecount of 0 has been provided.
--- @note: n_frames (default:1) is a hint, relative to the current position and
--- the actual behavior is implementation defined in the target frameserver
--- or internal object.
--- @note: stepframe can also be used on record and calctargets and will
--- then force a readback.
+-- @inargs: vid:target,
+-- @inargs: vid:target, int:n_frames
+-- @inargs: vid:target, int:n_frames, int:clock_id
+-- @inargs: vid:target, int:n_frames, bool:synch
+-- @inargs: vid:target, int:n_frames, bool:synch, int:x, int:y, int:w, int:h
+-- @outargs: bool
+-- @longdescr:
+-- The main purpose of this function is to have whatever *target* points to
+-- consume or generate a frame. The specifics of this varies a bit with what
+-- type the target has.
+-- There are two important distinctions, normal frameservers/clients and ones
+-- that are tied to offscreen render processes.
+-- If it is a normal client, only the first three forms are useful. The short
+-- version only sends an event to the client requesting that it produce a frame
+-- (STEPFRAME). The second form allows you to further quantify (default is 1)
+-- the amount of frames it should advance, which is mostly useful for control
+-- over streaming video sources and similar clients where there is a continous
+-- seekable stream of logical time slices (frames).
+-- If the client has been forced into having synchronous size management through
+-- ref:target_flags, 'framestepping' also means acknowledging a pending resize
+-- lock.
+-- If a 'clock_id' is provided (default 0), it can also reference a custom
+-- client requested clock (CLOCKREQ event) for custom fireable timers. Normally
+-- the engine takes care of these automatically, and the feature is mainly for
+-- specialised clients.
+-- If the client is tied to another processing step through ref:define_rendertarget
+-- or ref:define_calctarget, this will issue a readback that is either synchronous
+-- if *synch* is set to true, or asynchronous, if *synch* is set to false.
+-- If possible storage- coordinate region (x+w,y+h) is defined, the processing
+-- stage is hinted that only a certain region of the target should actually be
+-- considered.
+-- The function will return *false* if a step is requested while a readback is
+-- already pending. This can happen if the receiving step, which in the case of
+-- a recordtarget is an external process, is slow to process.
 -- @group: targetcontrol
 -- @related: define_calctarget, define_recordtarget
 -- @cfunction: targetstepframe
-

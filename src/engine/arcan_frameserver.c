@@ -787,7 +787,16 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 				.category = EVENT_TARGET,
 				.tgt.ioevs[0] = src->vfcount++
 			};
+			struct arcan_shmif_region reg;
+			if (src->desc.region_valid)
+				reg = src->desc.region;
+			else
+				reg = (struct arcan_shmif_region){
+					.x2 = src->desc.width, .y2 = src->desc.height
+				};
 
+			atomic_store(&src->shm.ptr->vpts, arcan_timemillis());
+			atomic_store(&src->shm.ptr->dirty, src->desc.region);
 			atomic_store(&src->shm.ptr->vready, 1);
 			platform_fsrv_pushevent(src, &ev);
 

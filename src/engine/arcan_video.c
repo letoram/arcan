@@ -5226,6 +5226,22 @@ void arcan_vint_pollreadback(struct rendertarget* tgt)
 		return;
 
 	arcan_vobject* vobj = tgt->color;
+
+/* don't check the readback unless the client is ready, should possibly have a
+ * timeout for this as well so we don't hold GL resources with an unwilling /
+ * broken client, it's a hard tradeoff as streaming video encode might deal
+ * well with the dropped frame at this stage, while a variable rate interactive
+ * source may lose data */
+	arcan_vfunc_cb ffunc = NULL;
+	if (vobj->feed.ffunc){
+		ffunc = arcan_ffunc_lookup(vobj->feed.ffunc);
+		if (FRV_GOTFRAME == ffunc(
+			FFUNC_POLL, NULL, 0, 0, 0, 0, vobj->feed.state, vobj->cellid))
+			return;
+	}
+
+/* now we can check the readback, it is not safe to call poll, get results
+ * and then call poll again, we have to release once retrieved */
 	struct asynch_readback_meta rbb = agp_poll_readback(vobj->vstore);
 
 	if (rbb.ptr == NULL)

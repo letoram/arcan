@@ -35,8 +35,7 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 	find_package(VNC)
 	if (LIBVNC_FOUND)
 		set(ENC_AUX_SOURCES
-			${FSRV_ROOT}/util/vncserver.c
-			${FSRV_ROOT}/util/vncserver.h
+			${CMAKE_CURRENT_SOURCE_DIR}/vnc.c
 		)
 		set(ENC_AUX_LIBS ${LIBVNC_SERVER_LIBRARY})
 		set(ENCODE_DEFS
