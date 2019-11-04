@@ -32,7 +32,7 @@
 -- as the function name previously held a different behavior and use.
 -- @note: SECURITY- alert: allowing the _terminal frameserver is currently
 -- a possible scriptable way of running arbitrary programs within the context
--- of the terminal, partly through the possible cmd= argument but also by
+-- of the terminal, partly through the possible exec= argument but also by
 -- manually inputting commands through ref:target_input. This can be hardened
 -- in multiple ways: by intercepting ref:target_input and only allow if it is visible
 -- (appl specific solution), by intercepting ref:launch_avfeed and filtering argstr

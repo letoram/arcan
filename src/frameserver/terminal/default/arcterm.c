@@ -23,11 +23,12 @@ static struct {
 	pid_t child;
 
 	volatile bool alive;
+	bool die_on_term;
 	long last_input;
-	bool single_step;
 	int dirtyfd;
 
 } term = {
+	.die_on_term = true,
 	.synch = PTHREAD_MUTEX_INITIALIZER
 };
 
@@ -55,6 +56,7 @@ void* pump_pty()
 			if (errno == EAGAIN || errno == EINTR)
 				continue;
 			term.alive = false;
+			arcan_tui_set_flags(term.screen, TUI_HIDE_CURSOR);
 			break;
 		}
 
@@ -74,20 +76,10 @@ void* pump_pty()
 	return NULL;
 }
 
-/*
- * read from the pty- thread and feed the state machine
- */
-static void* terminal_thread(void* in)
-{
-	while (term.alive){
-
-	}
-	return NULL;
-}
-
 static void dump_help()
 {
 	fprintf(stdout, "Environment variables: \nARCAN_CONNPATH=path_to_server\n"
+		"ARCAN_TERMINAL_EXEC : run value through /bin/sh -c instead of shell\n"
 	  "ARCAN_ARG=packed_args (key1=value:key2:key3=value)\n\n"
 		"Accepted packed_args:\n"
 		"    key      \t   value   \t   description\n"
@@ -104,12 +96,14 @@ static void dump_help()
 		"             \t           \t vline, uline)\n"
 		" blink       \t ticks     \t set blink period, 0 to disable (default: 12)\n"
 		" login       \t [user]    \t login (optional: user, only works for root)\n"
+#ifndef FSRV_TERMINAL_NOEXEC
+		" exec        \t cmd       \t allows arcan scripts to run shell commands\n"
+#endif
+		" keep_alive  \t           \t don't exit if the terminal or shell terminates\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 		"Built-in palettes:\n"
 		"default, solarized, solarized-black, solarized-white, srcery\n"
 		"---------\t-----------\t----------------\n"
-		"Environment variables:\n"
-		"ARCAN_TERMINAL_EXEC : run value through /bin/sh -c instead of shell\n"
 	);
 }
 
@@ -176,8 +170,10 @@ static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 	int fd = shl_pty_get_fd(term.pty);
 	int rv = write(fd, u8, len);
 
-	if (rv < 0)
+	if (rv < 0){
 		term.alive = false;
+		arcan_tui_set_flags(c, TUI_HIDE_CURSOR);
+	}
 
 	return true;
 }
@@ -215,10 +211,6 @@ static void write_callback(struct tsm_vte* vte,
 	//shl_pty_write(term.pty, u8, len);
 }
 
-/* for future integration with more specific shmif- features when it
- * comes to streaming images back and forth, sending additional meta-
- * information about security state and context, highlighing datatypes
- * and so on */
 static void str_callback(struct tsm_vte* vte, enum tsm_vte_group group,
 	const char* msg, size_t len, bool crop, void* data)
 {
@@ -239,6 +231,7 @@ static void str_callback(struct tsm_vte* vte, enum tsm_vte_group group,
 		"%d:unhandled OSC command (PS: %d), len: %zu\n",
 		vte->log_ctr++, (int)msg[0], len
 	);
+
 /* 4 : change color */
 /* 5 : special color */
 /* 52 : clipboard contents */
@@ -301,6 +294,17 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 #define NSIG 32
 #endif
 
+	char* exec_arg = getenv("ARCAN_TERMINAL_EXEC");
+#ifdef FSRV_TERMINAL_NOEXEC
+	if (arg_lookup(argarr, "exec", 0, &val)){
+		LOG("permission denied, noexec compiled in");
+	}
+#else
+	if (arg_lookup(argarr, "exec", 0, &val)){
+		exec_arg = strdup(val);
+	}
+#endif
+
 	sigset_t sigset;
 	sigemptyset(&sigset);
 	pthread_sigmask(SIG_SETMASK, &sigset, NULL);
@@ -310,8 +314,8 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 
 /* special case, ARCAN_TERMINAL_EXEC and ARCAN_TERMINAL_ARGV skips the normal
  * shell setup and switches to a custom binary + arg instead */
-	if (getenv("ARCAN_TERMINAL_EXEC")){
-		char* args[] = {"/bin/sh", "-c" , getenv("ARCAN_TERMINAL_EXEC"), NULL};
+	if (exec_arg){
+		char* args[] = {"/bin/sh", "-c" , exec_arg, NULL};
 		unsetenv("ARCAN_TERMINAL_EXEC");
 		execv(args[0], args);
 		exit(EXIT_FAILURE);
@@ -337,16 +341,6 @@ static bool on_subst(struct tui_context* tui,
 	}
 
 	return res;
-}
-
-static bool on_label_input(
-	struct tui_context* T, const char* label, bool active, void* tag)
-{
-	if (!active || strcmp(label, "SINGLE_STEP") == 0){
-		term.single_step = true;
-	}
-
-	return false;
 }
 
 static void on_exec_state(struct tui_context* tui, int state, void* tag)
@@ -388,12 +382,10 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.input_mouse_button = on_mouse_button,
 		.input_utf8 = on_u8,
 		.input_key = on_key,
-	//	.input_label = on_label,
 		.utf8 = on_utf8_paste,
 		.resized = on_resize,
 		.subwindow = on_subwindow,
 		.exec_state = on_exec_state,
-//		.query_label = on_label_query
 /*
  * for advanced rendering, but not that interesting
  * .substitute = on_subst
@@ -418,6 +410,14 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	if (tsm_vte_new(&term.vte, term.screen, write_callback, NULL) < 0){
 		arcan_tui_destroy(term.screen, "Couldn't setup terminal emulator");
 		return EXIT_FAILURE;
+	}
+
+/*
+ * allow the window state to survive, terminal won't be updated but
+ * other tui behaviors are still valid
+ */
+	if (arg_lookup(args, "keep_alive", 0, NULL)){
+		term.die_on_term = false;
 	}
 
 /*
@@ -514,7 +514,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	if (-1 == pthread_create(&pth, &pthattr, pump_pty, NULL))
 		term.alive = false;
 
-	while(term.alive){
+	while(term.alive || !term.die_on_term){
 		struct tui_process_res res =
 			arcan_tui_process(&term.screen, 1, &pair[0], 1, -1);
 

@@ -16,6 +16,7 @@ if (TERMINAL_SOURCES)
 		DEFAULT_FSRV_MODE=\"terminal\"
 		${TERMINAL_DEFS}
 	)
+
 	target_include_directories(afsrv_terminal PRIVATE ${FSRV_ROOT} ${TERMINAL_INCLUDE_DIRS})
 	target_link_libraries(afsrv_terminal ${STDLIB} arcan_shmif_int ${TERMINAL_LIBS})
 
