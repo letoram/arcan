@@ -1114,6 +1114,7 @@ enum ARCAN_TARGET_SKIPMODE {
 			struct {
 				int32_t audio;
 				size_t width, height;
+				size_t xofs, yofs;
 				int8_t glsource;
 				uint64_t pts;
 				uint64_t counter;

@@ -39,6 +39,10 @@ struct arcan_frameserver_meta {
 	int hints, pending_hints;
 	bool rz_flag;
 
+/* scissor- / buffer- update region */
+	struct arcan_shmif_region region;
+	bool region_valid;
+
 /* accumulation of (_setfont and _displayhint) calls, used to control
  * raster- options for TPACK unpacking etc. */
 	struct {

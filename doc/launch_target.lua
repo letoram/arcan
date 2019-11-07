@@ -57,7 +57,11 @@
 -- or popup, to provide a textual representation of the contents.
 --
 -- @note: "framestatus" {int:frame,int:pts,int:acquired,int:fhint} - timing
--- metadata about the last delivered frame.
+-- metadata about the last delivered frame from the client perspective.
+--
+-- @note: "frame" (int:pts,int:number,int:x,int:y,int:width,int:height)
+-- generated if the VERBOSE flags has been set on the vid. This is the
+-- server side version of the "framestatus" event above.
 --
 -- @note: "terminated" {string:last_words} - the underlying process has
 -- died, no new data or events will be received.

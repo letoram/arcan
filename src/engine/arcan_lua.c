@@ -4915,6 +4915,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx, "pts", ev->ext.framestatus.pts, top);
 			tblnum(ctx, "acquired", ev->ext.framestatus.acquired, top);
 			tblnum(ctx, "fhint", ev->ext.framestatus.fhint, top);
+
 		break;
 		case EVENT_EXTERNAL_STREAMINFO:
 			FLTPUSH(ev->ext.streaminf.langid, flt_Alpha, '?');
@@ -5136,6 +5137,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblstr(ctx, "kind", "frame", top);
 			tblnum(ctx, "pts", ev->fsrv.pts, top);
 			tblnum(ctx, "number", ev->fsrv.counter, top);
+			tblnum(ctx, "x", ev->fsrv.xofs, top);
+			tblnum(ctx, "y", ev->fsrv.yofs, top);
+			tblnum(ctx, "width", ev->fsrv.xofs + ev->fsrv.width, top);
+			tblnum(ctx, "height", ev->fsrv.yofs + ev->fsrv.height, top);
 		break;
 		case EVENT_FSRV_IONESTED:
 			tblstr(ctx, "kind", "input", top);

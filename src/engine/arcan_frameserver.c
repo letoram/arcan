@@ -256,7 +256,6 @@ static bool push_buffer(arcan_frameserver* src,
 		float ppcm = src->desc.hint.ppcm;
 		float mmsz = src->desc.hint.sz;
 
-		arcan_warning("ppcm: %f, mmsz: %f\n", ppcm, mmsz);
 		if (ppcm < EPSILON)
 			ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
 
@@ -312,7 +311,12 @@ static bool push_buffer(arcan_frameserver* src,
 		stream.dirty = /* unsigned but int prom. */
 			(dirty->x2 - dirty->x1 > 0 && stream.w <= store->w) &&
 			(dirty->y2 - dirty->y1 > 0 && stream.h <= store->h);
+		src->desc.region = *dirty;
+		src->desc.region_valid = true;
 	}
+	else
+		src->desc.region_valid = false;
+
 	stream = agp_stream_prepare(store, stream, explicit ?
 		STREAM_RAW_DIRECT_SYNCHRONOUS : (
 			src->flags.local_copy ? STREAM_RAW_DIRECT_COPY : STREAM_RAW_DIRECT));
@@ -946,7 +950,7 @@ void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf,
 static inline void emit_deliveredframe(arcan_frameserver* src,
 	unsigned long long pts, unsigned long long framecount)
 {
-	arcan_event deliv = {
+	arcan_event ev = {
 		.category = EVENT_FSRV,
 		.fsrv.kind = EVENT_FSRV_DELIVEREDFRAME,
 		.fsrv.pts = pts,
@@ -956,7 +960,18 @@ static inline void emit_deliveredframe(arcan_frameserver* src,
 		.fsrv.video = src->vid
 	};
 
-	arcan_event_enqueue(arcan_event_defaultctx(), &deliv);
+	if (src->desc.region_valid){
+		ev.fsrv.xofs = src->desc.region.x1;
+		ev.fsrv.yofs = src->desc.region.y1;
+		ev.fsrv.width = src->desc.region.x2 - src->desc.region.x1;
+		ev.fsrv.height = src->desc.region.y2 - src->desc.region.y1;
+	}
+	else{
+		ev.fsrv.width = src->desc.width;
+		ev.fsrv.height = src->desc.height;
+	}
+
+	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 }
 
 static inline void emit_droppedframe(arcan_frameserver* src,
