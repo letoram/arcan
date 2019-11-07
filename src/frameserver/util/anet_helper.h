@@ -8,14 +8,14 @@ enum anet_mode {
 };
 
 struct anet_options {
-	char* cp;
-	char* host;
-	char* port;
+	const char* cp;
+	const char* host;
+	const char* port;
 	int sockfd;
 	int mt_mode;
 	int mode;
-	char* redirect_exit;
-	char* devicehint_cp;
+	const char* redirect_exit;
+	const char* devicehint_cp;
 	struct a12_context_options* opts;
 };
 
@@ -28,8 +28,9 @@ int anet_clfd(struct addrinfo* addr);
 /*
  * Using the configuration structure in anet_options, build a listening
  * socket and invoke dispatch with the heap allocated state object and
- * descriptor.
+ * descriptor. This function will only return on failure, with [errmsg]
+ * set to a heap allocated human readable string.
  */
-int anet_listen(struct anet_options* args,
+bool anet_listen(struct anet_options* args, char** errmsg,
 	void (*dispatch)(struct a12_state* S, int fd, void* tag), void* tag);
 #endif

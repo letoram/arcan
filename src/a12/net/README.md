@@ -1,10 +1,9 @@
 # arcan-net
 
 This tool provides network translation for clients and services built
-using the arcan-shmif IPC client library. This is an opt-in tool and
-not part of the 'net' frameserver for the time being due to the immature
-state and _unverified_ _incomplete_ _unhardened_ state of the crypto
-implementation (see HACKING.md).
+using the arcan-shmif IPC client library. The code is still in an
+immature state, tunnel over VPN if you worry about the safety of your
+traffic.
 
 Basic use is as follows:
 
@@ -60,7 +59,7 @@ Milestone 1 - basic features (0.5.x)
 - [x] Uncompressed Audio / Audio delta
 - [x] Compressed Video
 	-  [x] x264
-	-  [x] xor-PNG
+	-  [x] D-PNG (d- frames is Zlib(X ^ Y)
 - [x] Raw binary descriptor transfers
 - [ ] Interactive compression controls
 - [x] Subsegments
@@ -69,13 +68,14 @@ Milestone 1 - basic features (0.5.x)
 - [x] TUI- text channel
 - [ ] Event key-code translation (evdev, sdl, ... to native)
 - [ ] Cache process / directory for file operations
+- [x] ARCAN\_CONNPATH=a12:// handover support
 - [ ] Block push-segment types (DEBUG)
+- [ ] Add to encode, remoting
 
 Milestone 2 - closer to useful (0.6.x)
 
+- [ ] Protection of keymaterial
 - [ ] Output segments
-- [ ] Add to encode, remoting (libify and compile into fsrv_encode)
-- [ ] Modify ARCAN\_CONNPATH so that it can take a remote URL
 - [ ] Compression Heuristics for binary transfers
 - [ ] Quad-tree for DPNG
 - [ ] "MJPG" mode over DPNG
@@ -86,9 +86,13 @@ Milestone 2 - closer to useful (0.6.x)
 - [ ] Progressive / threaded video encoding frontend
 - [ ] Accelerated encoding of gpu-handles
 - [ ] Passthrough of compressed video sources
-- [ ] Traffic monitoring tools
+- [ ] Traffic monitoring tools (re-use proxy code + inherit mode)
 - [ ] Splicing / Local mirroring
 - [ ] Rekeying / Key Deletion (Forward Secrecy)
+
+The protection of keymaterial should come through a fexec(self) where the
+session key is piped over stdio, along with the -S preconnected setup form,
+and when the handover is done, detach and let parent process die.
 
 Milestone 3 - big stretch (0.6.x)
 
@@ -108,19 +112,10 @@ Milestone 3 - big stretch (0.6.x)
 - [ ] Side-channel Resistance
 - [ ] Directory Server and auth-DoS protection (see MinimaLT)
 - [ ] Special provisions for agp channels
-- [ ] Add to arcan\_net
+- [ ] Add to afsrv\_net
 - [ ] Resume- session from different IP
 - [ ] Secure keystore
 - [ ] Clean-up, RFC level documentation
-
-# Security/Safety
-
-Right now, assume that there is no guarantees on neither confidentiality,
-integrity or availability. As can be seen in the todo list, this won't remain
-the case but there are other priorities to sort out first.
-
-For arcan-net, you are currently restricted to symmetric primitives
-derived from the password expected to be provided as env or on stdin.
 
 # Licenses
 

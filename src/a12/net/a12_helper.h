@@ -16,14 +16,6 @@ enum a12helper_pollstate {
 	A12HELPER_DATA_IN = 4
 };
 
-/*
- * Trivial pollset behavior, return -1 on a terminal error or a bitmask
- * of expected actions. [fd_shmif, fd_in] are expected to be valid descriptors,
- * [fd_out] can be -1 if there is nothing in the outqueue. [timeout] behaves
- * like poll(2).
- */
-int a12helper_poll_triple(int fd_shmif, int fd_in, int fd_out, int timeout);
-
 struct a12helper_opts {
 	int default_vcodec;
 	int default_bias;
