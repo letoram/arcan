@@ -32,7 +32,7 @@
 extern void a12_serv_run(struct arg_arr*, struct arcan_shmif_cont);
 
 #ifdef HAVE_VNCSERVER
-#include "vncserver.h"
+extern void vnc_serv_run(struct arg_arr*, struct arcan_shmif_cont);
 #endif
 
 void png_stream_run(struct arg_arr* args, struct arcan_shmif_cont cont);

@@ -38,8 +38,6 @@
 
 #include "frameserver.h"
 #include "ntsc/snes_ntsc.h"
-#include "ievsched.h"
-#include "stateman.h"
 #include "sync_plot.h"
 #include "libretro.h"
 

@@ -310,7 +310,6 @@ bool process_shmif()
 int run_vnc(struct arcan_shmif_cont* con, struct arg_arr* args)
 {
 	const char* host;
-	vncctx.pass = "";
 
 	if (!arg_lookup(args, "host", 0, &host)){
 		arcan_shmif_last_words(con, "missing host argument");
@@ -320,6 +319,9 @@ int run_vnc(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 
 	arg_lookup(args, "password", 0, (const char**) &vncctx.pass);
+	if (!vncctx.pass)
+		vncctx.pass = "";
+
 	gen_symtbl();
 
 /* client connect / loop */

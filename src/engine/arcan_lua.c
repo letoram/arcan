@@ -5139,8 +5139,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx, "number", ev->fsrv.counter, top);
 			tblnum(ctx, "x", ev->fsrv.xofs, top);
 			tblnum(ctx, "y", ev->fsrv.yofs, top);
-			tblnum(ctx, "width", ev->fsrv.xofs + ev->fsrv.width, top);
-			tblnum(ctx, "height", ev->fsrv.yofs + ev->fsrv.height, top);
+			tblnum(ctx, "width", ev->fsrv.width, top);
+			tblnum(ctx, "height", ev->fsrv.height, top);
 		break;
 		case EVENT_FSRV_IONESTED:
 			tblstr(ctx, "kind", "input", top);
@@ -8283,35 +8283,25 @@ static int targetstepframe(lua_State* ctx)
 {
 	LUA_TRACE("stepframe_target");
 
+/* three main paths for this function:
+ *  - request a fetch (readback) into local store (synch/asynch),
+ *    this can be used internally (calctarget, ...)
+ *  - forward this fetch to an external client (recordtarget)
+ *  - control frame pacing of an external client */
+
 	arcan_vobject* vobj;
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, &vobj);
 	vfunc_state* state = arcan_video_feedstate(tgt);
 	struct rendertarget* rtgt = arcan_vint_findrt(vobj);
+	arcan_frameserver* fsrv =
+		(state->tag == ARCAN_TAG_FRAMESERV ? state->ptr : NULL);
 
+	bool force_synch = luaL_optbnumber(ctx, 3, false);
 	bool qev = true;
 	int nframes = luaL_optnumber(ctx, 2, 1);
 
-/* cascade / repeat call protection */
-	if (rtgt){
-		if (!FL_TEST(rtgt, TGTFL_READING)){
-			agp_request_readback(rtgt->color->vstore);
-			FL_SET(rtgt, TGTFL_READING);
-		}
-
-/* for rendertargets, we don't want to rely on the synchronous flag
- * for this behavior, so better to use as an argument */
-		if (luaL_optbnumber(ctx, 3, false))
-			while (FL_TEST(rtgt, TGTFL_READING))
-				arcan_vint_pollreadback(rtgt);
-	}
-
-/*
- * Recordtargets are a special case as they have both a frameserver feedstate
- * and the output of a rendertarget.  The actual stepframe event will be set by
- * the ffunc handler (arcan_frameserver_backend.c)
- */
-	if (state->tag == ARCAN_TAG_FRAMESERV && !rtgt){
-		arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
+/* [control frame and resize pacing] */
+	if (fsrv && !rtgt){
 		if (fsrv->flags.rz_ack && nframes == 0){
 			if (!fsrv->rz_known){
 				LUA_ETRACE("stepframe_target", "rz_ack not in rz_known state", 0);
@@ -8330,9 +8320,63 @@ static int targetstepframe(lua_State* ctx)
 		ev.tgt.ioevs[0].iv = nframes;
 		ev.tgt.ioevs[1].iv = luaL_optnumber(ctx, 3, 0);
 		tgtevent(tgt, ev);
+		lua_pushboolean(ctx, true);
+		LUA_ETRACE("stepframe_target", NULL, 1);
 	}
 
-	LUA_ETRACE("stepframe_target", NULL, 0);
+/* request readback into a recordtarget, query / update dirty */
+	int x = luaL_optnumber(ctx, 4, -1);
+	if (fsrv && x > -1){
+		fsrv->desc.region_valid = false;
+		int y = luaL_optnumber(ctx, 5, -1);
+		int w = luaL_optnumber(ctx, 6, -1);
+		int h = luaL_optnumber(ctx, 7, -1);
+		if (x > fsrv->desc.width)
+			x = 0;
+		if (y < 0 || y > fsrv->desc.height)
+			y = 0;
+
+		if (w <= 0 || x + w > fsrv->desc.width)
+			w = fsrv->desc.width - x;
+
+		if (h <= 0 || y + h > fsrv->desc.height)
+			h = fsrv->desc.height - y;
+
+		fsrv->desc.region = (struct arcan_shmif_region){
+			.x1 = x, .y1 = y,
+			.x2 = x + w, .y2 = y + h
+		};
+		fsrv->desc.region_valid = true;
+	}
+
+/* cascade / repeat call protection, only request read if we aren't in that
+ * state already - this is for the asynch behavior */
+	if (!FL_TEST(rtgt, TGTFL_READING)){
+		agp_request_readback(rtgt->color->vstore);
+		FL_SET(rtgt, TGTFL_READING);
+		lua_pushboolean(ctx, true);
+	}
+/* need to communicate that we are stuck */
+	else {
+		lua_pushboolean(ctx, false);
+	}
+
+/* and if the user requested this to actually be synchronous, spin on the
+ * readback stage, this is rare / unrecommended for the risk of a stall,
+ * safeguard this with a stall timeout and a warning */
+	if (force_synch){
+		long long start = arcan_timemillis();
+		long long elapsed;
+		while (FL_TEST(rtgt, TGTFL_READING)){
+			if (arcan_timemillis() - start > 1000){
+				arcan_warning("pollreadback(), synch-readback safety timeout exceed\n");
+				break;
+			}
+			arcan_vint_pollreadback(rtgt);
+		}
+	}
+
+	LUA_ETRACE("stepframe_target", NULL, 1);
 }
 
 static int targetsnapshot(lua_State* ctx)

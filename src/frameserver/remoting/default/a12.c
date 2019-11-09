@@ -17,8 +17,8 @@ static void on_cl_event(
  * the events here are what a remote 'window' would provide you with,
  * which would basically be data transfers (you requested to copy something)
  * as the videos are handled by the a12 state machine itself
+ * printf("got client event: %s\n", arcan_shmif_eventstr(ev, NULL, 0));
  */
-	printf("got client event: %s\n", arcan_shmif_eventstr(ev, NULL, 0));
 }
 
 static void main_loop(
