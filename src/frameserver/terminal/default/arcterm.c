@@ -128,7 +128,7 @@ static bool on_subwindow(struct tui_context* c,
 
 /* only bind the debug type and bind it to the terminal emulator state machine */
 	if (type == TUI_WND_DEBUG){
-		return tsm_vte_debug(term.vte, newconn);
+		return tsm_vte_debug(term.vte, newconn, c);
 	}
 	return false;
 }
@@ -392,9 +392,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
  */
 	};
 
-	struct tui_settings cfg = arcan_tui_defaults(con, NULL);
-	cfg.mouse_fwd = false;
-	term.screen = arcan_tui_setup(con, &cfg, &cbcfg, sizeof(cbcfg));
+	term.screen = arcan_tui_setup(con, NULL, &cbcfg, sizeof(cbcfg));
 
 	if (!term.screen){
 		fprintf(stderr, "failed to setup TUI connection\n");
@@ -425,19 +423,13 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
  * forground and background, though tui should have a defined palette
  * for the normal groups when the other bits are in place
  */
-	tsm_vte_set_color(term.vte, VTE_COLOR_BACKGROUND, cfg.bgc);
-	tsm_vte_set_color(term.vte, VTE_COLOR_FOREGROUND, cfg.fgc);
-
-	bool recolor = false;
 	if (arg_lookup(args, "palette", 0, &val)){
 		tsm_vte_set_palette(term.vte, val);
-		recolor = true;
 	}
 
 	int ind = 0;
 	uint8_t ccol[4];
 	while(arg_lookup(args, "ci", ind++, &val)){
-		recolor = true;
 		if (4 == parse_color(val, ccol))
 			tsm_vte_set_color(term.vte, ccol[0], &ccol[1]);
 	}
@@ -445,13 +437,11 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	signal(SIGHUP, sighuph);
 
-	if (recolor){
-		uint8_t fgc[3], bgc[3];
-		tsm_vte_get_color(term.vte, VTE_COLOR_BACKGROUND, bgc);
-		tsm_vte_get_color(term.vte, VTE_COLOR_FOREGROUND, fgc);
-		arcan_tui_set_color(term.screen, TUI_COL_BG, bgc);
-		arcan_tui_set_color(term.screen, TUI_COL_TEXT, fgc);
-	}
+	uint8_t fgc[3], bgc[3];
+	tsm_vte_get_color(term.vte, VTE_COLOR_BACKGROUND, bgc);
+	tsm_vte_get_color(term.vte, VTE_COLOR_FOREGROUND, fgc);
+	arcan_tui_set_color(term.screen, TUI_COL_BG, bgc);
+	arcan_tui_set_color(term.screen, TUI_COL_TEXT, fgc);
 
 /*
  * and lastly, spawn the pseudo-terminal

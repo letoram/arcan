@@ -24,7 +24,7 @@
 	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
 #endif
 
-#define INACTIVE_ITEM (LIST_SEPARATOR | LIST_PASSIVE | LIST_HIDE)
+#define INACTIVE_ITEM (LIST_SEPARATOR | LIST_LABEL | LIST_PASSIVE | LIST_HIDE)
 #define HIDDEN_ITEM (LIST_HIDE)
 
 #define LISTWND_MAGIC 0xfadef00e
@@ -102,6 +102,7 @@ static void redraw(struct tui_context* T, struct listwnd_meta* M)
 	struct tui_screen_attr def = arcan_tui_defcattr(T, TUI_COL_LABEL);
 	struct tui_screen_attr sel = arcan_tui_defcattr(T, TUI_COL_HIGHLIGHT);
 	struct tui_screen_attr inact = arcan_tui_defcattr(T, TUI_COL_INACTIVE);
+	struct tui_screen_attr label = arcan_tui_defcattr(T, TUI_COL_TEXT);
 
 /* erase the screen as well as the entries can be fewer than the number of rows */
 	arcan_tui_defattr(T, &def);
@@ -144,7 +145,7 @@ static void redraw(struct tui_context* T, struct listwnd_meta* M)
 
 /* tactic: draw as much as possible from starting label offset,
  * recall (& 0xc0) != 0x80 for utf8- start */
-		arcan_tui_move_to(T, 1, c_row);
+		arcan_tui_move_to(T, 1+M->list[i].indent, c_row);
 		for (size_t vofs = 0; vofs < cols - 2 && label[ofs]; vofs++){
 			size_t end = ofs + 1;
 			while (label[end] && (label[end] & 0xc0) == 0x80) end++;
@@ -502,6 +503,15 @@ static void geohint(struct tui_context* T,
 	}
 }
 
+static void bchunk(struct tui_context* T,
+	bool input, uint64_t size, int fd, void* tag)
+{
+	struct listwnd_meta* M = tag;
+	if (M->old_handlers.bchunk){
+		M->old_handlers.bchunk(T, input, size, fd, M->old_handlers.tag);
+	}
+}
+
 static void mouse_motion(struct tui_context* T,
 	bool relative, int mouse_x, int mouse_y, int modifiers, void* tag)
 {
@@ -614,7 +624,8 @@ bool arcan_tui_listwnd_setup(
 		.input_key = key_input,
 		.input_mouse_motion = mouse_motion,
 		.input_mouse_button = mouse_button,
-		.input_utf8 = u8
+		.input_utf8 = u8,
+		.bchunk = bchunk
 	};
 
 	/* BOX DRAWINGS LIGHT HORIZONTAL U+2500 */
@@ -664,9 +675,7 @@ int main(int argc, char** argv)
 {
 	struct tui_cbcfg cbcfg = {0};
 	arcan_tui_conn* conn = arcan_tui_open_display("test", "");
-	struct tui_settings cfg = arcan_tui_defaults(conn, NULL);
-	cfg.cursor_period = 0;
-	struct tui_context* tui = arcan_tui_setup(conn, &cfg, &cbcfg, sizeof(cbcfg));
+	struct tui_context* tui = arcan_tui_setup(conn, NULL, &cbcfg, sizeof(cbcfg));
 	size_t test_cases = 2;
 	size_t index = 0;
 

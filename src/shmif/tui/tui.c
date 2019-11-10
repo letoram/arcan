@@ -334,10 +334,37 @@ void arcan_tui_invalidate(struct tui_context* tui)
 	tui->dirty |= DIRTY_FULL;
 }
 
-void arcan_tui_wndhint(struct tui_context* wnd,
-	struct tui_context* par, int anch_row, int anch_col, int wndflags)
+void arcan_tui_wndhint(struct tui_context* C,
+	struct tui_context* par, struct tui_constraints cons)
 {
-/* FIXME: translate and apply hints */
+	if (!C)
+		return;
+
+/* this only deals with anchoring, should really be cached
+ * inside the context and reissued on reset etc. */
+	struct arcan_event viewport = (struct arcan_event){
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(VIEWPORT),
+		.ext.viewport = {
+			.x = cons.anch_col * C->cell_w,
+			.y = cons.anch_row * C->cell_h,
+		}
+	};
+
+	if (par){
+		viewport.ext.viewport.parent = par->acon.segment_token;
+	}
+
+	arcan_shmif_enqueue(&C->acon, &viewport);
+
+/* constraints come as a contenthint */
+}
+
+void arcan_tui_bgcopy(struct tui_context* tui, int fdin, int fdout)
+{
+	if (!tui)
+		return;
+	arcan_shmif_bgcopy(&tui->acon, fdin, fdout);
 }
 
 void arcan_tui_get_color(
@@ -446,14 +473,12 @@ void arcan_tui_statesize(struct tui_context* c, size_t sz)
 	if (!c)
 		return;
 
-	struct arcan_event statesz = {
+	c->last_state_sz = (struct arcan_event){
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(STATESIZE),
 		.ext.stateinf.size = sz
 	};
-	c->last_state_sz = statesz;
-
-	arcan_shmif_enqueue(&c->acon, &statesz);
+	arcan_shmif_enqueue(&c->acon, &c->last_state_sz);
 }
 
 void arcan_tui_announce_io(struct tui_context* c,
@@ -472,7 +497,6 @@ void arcan_tui_announce_io(struct tui_context* c,
 	};
 
 	arcan_event bchunk_out = bchunk_in;
-	bchunk_in.ext.bchunk.input = false;
 
 	if (input_descr){
 		snprintf((char*)bchunk_in.ext.bchunk.extensions,
@@ -481,6 +505,7 @@ void arcan_tui_announce_io(struct tui_context* c,
 	}
 
 	if (output_descr){
+		bchunk_in.ext.bchunk.input = false;
 		snprintf((char*)bchunk_in.ext.bchunk.extensions,
 			COUNT_OF(bchunk_in.ext.bchunk.extensions), "%s", output_descr);
 		arcan_shmif_enqueue(&c->acon, &bchunk_out);

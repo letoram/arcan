@@ -3,6 +3,8 @@
 #include "../tui_int.h"
 #include "../screen/libtsm.h"
 #include "../screen/libtsm_int.h"
+#include "arcan_ttf.h"
+#include "../raster/raster.h"
 
 #include <stdio.h>
 #include <inttypes.h>
@@ -27,7 +29,7 @@ void tui_queue_requests(struct tui_context* tui, bool clipboard, bool ident)
 	arcan_shmif_enqueue(&tui->acon, &(struct arcan_event){
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(CLOCKREQ),
-		.ext.clock.rate = tui->cursor_period,
+		.ext.clock.rate = 1,
 		.ext.clock.id = 0xabcdef00,
 	});
 
@@ -54,10 +56,9 @@ static int parse_color(const char* inv, uint8_t outv[4])
 		&outv[0], &outv[1], &outv[2], &outv[3]);
 }
 
-static void apply_arg(struct tui_settings* cfg,
-	struct arg_arr* args, struct tui_context* src)
+/* possible command line overrides */
+static void apply_arg(struct tui_context* src, struct arg_arr* args)
 {
-/* FIXME: if src is set, copy settings from there (and dup descriptors) */
 	if (!args)
 		return;
 
@@ -65,68 +66,37 @@ static void apply_arg(struct tui_settings* cfg,
 	uint8_t ccol[4] = {0x00, 0x00, 0x00, 0xff};
 	long vbufv = 0;
 
-	if (arg_lookup(args, "fgc", 0, &val) && val)
-		if (parse_color(val, ccol) >= 3){
-			cfg->fgc[0] = ccol[0]; cfg->fgc[1] = ccol[1]; cfg->fgc[2] = ccol[2];
-		}
-
-	if (arg_lookup(args, "bgc", 0, &val) && val)
-		if (parse_color(val, ccol) >= 3){
-			cfg->bgc[0] = ccol[0]; cfg->bgc[1] = ccol[1]; cfg->bgc[2] = ccol[2];
-		}
-
-	if (arg_lookup(args, "cc", 0, &val) && val)
-		if (parse_color(val, ccol) >= 3){
-			cfg->cc[0] = ccol[0]; cfg->cc[1] = ccol[1]; cfg->cc[2] = ccol[2];
-		}
-
-	if (arg_lookup(args, "clc", 0, &val) && val)
-		if (parse_color(val, ccol) >= 3){
-			cfg->clc[0] = ccol[0]; cfg->clc[1] = ccol[1]; cfg->clc[2] = ccol[2];
-		}
-
-	if (arg_lookup(args, "blink", 0, &val) && val){
-		cfg->cursor_period = strtol(val, NULL, 10);
+	if (!(arg_lookup(args, "fgc", 0, &val)
+		&& val && parse_color(val, ccol) >= 3)){
+		ccol[0] = 0xff;
+		ccol[1] = 0xff;
+		ccol[2] = 0xff;
 	}
+	arcan_tui_set_color(src, TUI_COL_TEXT, ccol);
+
+	if (!(arg_lookup(args, "bgc", 0, &val) && parse_color(val, ccol) >= 3)){
+		ccol[0] = 0x00;
+		ccol[1] = 0x00;
+		ccol[2] = 0x00;
+	}
+	arcan_tui_set_color(src, TUI_COL_BG, ccol);
+
+	if (!(arg_lookup(args, "cc", 0, &val) && parse_color(val, ccol) >= 3)){
+		ccol[0] = 0x00;
+		ccol[1] = 0xaa;
+		ccol[2] = 0x00;
+	}
+	arcan_tui_set_color(src, TUI_COL_CURSOR, ccol);
+
+	if (!(arg_lookup(args, "clc", 0, &val) && parse_color(val, ccol) >= 3)){
+		ccol[0] = 0x00;
+		ccol[1] = 0xaa;
+		ccol[2] = 0x00;
+	}
+	arcan_tui_set_color(src, TUI_COL_ALTCURSOR, ccol);
 
 	if (arg_lookup(args, "bgalpha", 0, &val) && val)
-		cfg->alpha = strtoul(val, NULL, 10);
-
-	if (arg_lookup(args, "force_bitmap", 0, &val))
-		cfg->render_flags |= TUI_RENDER_BITMAP;
-}
-
-struct tui_settings arcan_tui_defaults(
-	arcan_tui_conn* conn, struct tui_context* ref)
-{
-	struct tui_settings res = {
-		.cell_w = 8,
-		.cell_h = 8,
-		.alpha = 0xff,
-		.bgc = {0x00, 0x00, 0x00},
-		.fgc = {0xff, 0xff, 0xff},
-		.cc = {0x00, 0xaa, 0x00},
-		.clc = {0xaa, 0xaa, 0x00},
-		.ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM,
-		.hint = 0,
-		.mouse_fwd = true,
-		.cursor_period = 0,
-		.font_sz = 0.0416
-	};
-
-	apply_arg(&res, arcan_shmif_args(conn), ref);
-
-	if (ref){
-		res.cell_w = ref->cell_w;
-		res.cell_h = ref->cell_h;
-		res.alpha = ref->alpha;
-		res.font_sz = ref->font_sz;
-		res.hint = ref->hint;
-		res.cursor_period = ref->cursor_period;
-		res.render_flags = ref->render_flags;
-		res.ppcm = ref->ppcm;
-	}
-	return res;
+		src->alpha = strtoul(val, NULL, 10);
 }
 
 arcan_tui_conn* arcan_tui_open_display(const char* title, const char* ident)
@@ -134,8 +104,6 @@ arcan_tui_conn* arcan_tui_open_display(const char* title, const char* ident)
 	struct arcan_shmif_cont* res = malloc(sizeof(struct arcan_shmif_cont));
 	if (!res)
 		return NULL;
-
-	struct shmif_open_ext args = {.type = SEGID_TUI };
 
 	*res = arcan_shmif_open_ext(
 		SHMIF_ACQUIRE_FATALFAIL, NULL, (struct shmif_open_ext){
@@ -150,10 +118,7 @@ arcan_tui_conn* arcan_tui_open_display(const char* title, const char* ident)
 		return NULL;
 	}
 
-/* to separate a tui_open_display call from a shmif-context that is
- * retrieved from another setting, we tag the user field to know it is
- * safe to free */
-	res->user = (void*) 0xfeedface;
+	res->user = (void*) 0xdeadbeef;
 	return res;
 }
 
@@ -210,23 +175,31 @@ static void set_builtin_palette(struct tui_context* ctx)
 	ctx->colors[TUI_COL_INACTIVE] = (struct color){0x20, 0x20, 0x20};
 }
 
-struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
-	const struct tui_settings* set, const struct tui_cbcfg* cbs,
+struct tui_context* arcan_tui_setup(
+	arcan_tui_conn* con,
+	struct tui_context* parent,
+	const struct tui_cbcfg* cbs,
 	size_t cbs_sz, ...)
 {
-	if (!set || !con || !cbs)
+	if (!con || !cbs)
 		return NULL;
 
 	struct tui_context* res = malloc(sizeof(struct tui_context));
 	if (!res)
 		return NULL;
-	*res = (struct tui_context){};
+	*res = (struct tui_context){
+		.alpha = 0xff,
+		.font_sz = 0.0416,
+		.flags = TUI_ALTERNATE,
+		.cell_w = 8,
+		.cell_h = 8
+	};
 
 /*
  * if the connection comes from _open_display, free the intermediate
  * context store here and move it to our tui context
  */
-	bool managed = (uintptr_t)con->user == 0xfeedface;
+	bool managed = (uintptr_t)con->user == 0xdeadbeef;
 	res->acon = *con;
 	if (managed)
 		free(con);
@@ -269,25 +242,12 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 		res->ppcm = init->density;
 	}
 	else
-		res->ppcm = set->ppcm;
+		res->ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
 
-	res->alpha = set->alpha;
-	res->cell_w = set->cell_w;
-	res->cell_h = set->cell_h;
 	set_builtin_palette(res);
-	memcpy(res->colors[TUI_COL_CURSOR].rgb, set->cc, 3);
-	memcpy(res->colors[TUI_COL_ALTCURSOR].rgb, set->clc, 3);
-	memcpy(res->colors[TUI_COL_BG].rgb, set->bgc, 3);
-	memcpy(res->colors[TUI_COL_TEXT].rgb, set->fgc, 3);
-	res->hint = set->hint;
-	res->mouse_forward = set->mouse_fwd;
-	res->cursor_period = set->cursor_period;
-	res->cursor = set->cursor;
-	res->render_flags = set->render_flags;
-	res->font_sz = set->font_sz;
-	res->flags = TUI_ALTERNATE;
+	apply_arg(res, arcan_shmif_args(con));
 
-/* TEMPORARY: while moving to server-side rasterization */
+//* TEMPORARY: while moving to server-side rasterization */
 	res->rbuf_fwd = getenv("TUI_RPACK");
 	if (res->rbuf_fwd)
 		res->acon.hints = SHMIF_RHINT_TPACK;
@@ -296,7 +256,27 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	arcan_shmif_resize(&res->acon, res->acon.w, res->acon.h);
 
 /* tui_fontmgmt is also responsible for building the raster context */
-	tui_fontmgmt_setup(res, init);
+/* if we have a parent, we should derive settings etc. from there */
+	if (parent){
+		memcpy(res->colors, parent->colors, sizeof(res->colors));
+		res->alpha = parent->alpha;
+		res->cursor = parent->cursor;
+
+		tui_fontmgmt_setup(res, &(struct arcan_shmif_initial){
+			.fonts = {
+				{
+					.size_mm = parent->font_sz,
+					.fd = arcan_shmif_dupfd(parent->font[0]->fd, -1, true)
+				},
+				{
+					.size_mm = parent->font_sz,
+					.fd = arcan_shmif_dupfd(parent->font[1]->fd, -1, true)
+				}
+		}});
+	}
+	else
+		tui_fontmgmt_setup(res, init);
+
 	if (0 != tsm_utf8_mach_new(&res->ucsconv)){
 		free(res);
 		return NULL;

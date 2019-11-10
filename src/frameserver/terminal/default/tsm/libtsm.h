@@ -127,7 +127,7 @@ void tsm_vte_ref(struct tsm_vte *vte);
 void tsm_vte_unref(struct tsm_vte *vte);
 
 /* will be updated / synched OOB, used for displaying debug data */
-bool tsm_vte_debug(struct tsm_vte* in, arcan_tui_conn* conn);
+bool tsm_vte_debug(struct tsm_vte* in, arcan_tui_conn* conn, struct tui_context* c);
 void tsm_vte_update_debug(struct tsm_vte*);
 
 int tsm_vte_set_palette(struct tsm_vte *vte, const char *palette);

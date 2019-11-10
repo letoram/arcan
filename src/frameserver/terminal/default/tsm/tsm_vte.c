@@ -2718,7 +2718,8 @@ static void on_key(struct tui_context* c, uint32_t keysym,
 	}
 }
 
-SHL_EXPORT bool tsm_vte_debug(struct tsm_vte* in, arcan_tui_conn* conn)
+SHL_EXPORT bool tsm_vte_debug(struct tsm_vte* in,
+	arcan_tui_conn* conn, struct tui_context* c)
 {
 /* don't need any callbacks as the always do a full reprocess in update_debug,
  * where the processing etc. takes place */
@@ -2726,9 +2727,8 @@ SHL_EXPORT bool tsm_vte_debug(struct tsm_vte* in, arcan_tui_conn* conn)
 		.tag = in,
 		.input_key = on_key
 	};
-	struct tui_settings cfg = arcan_tui_defaults(conn, in->con);
 	struct tui_context* newctx =
-		arcan_tui_setup(conn, &cfg, &cbcfg, sizeof(cbcfg));
+		arcan_tui_setup(conn, c, &cbcfg, sizeof(cbcfg));
 
 	if (!newctx)
 		return false;

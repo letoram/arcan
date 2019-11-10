@@ -17,13 +17,15 @@ enum tui_list_entity_attributes {
 	LIST_HAS_SUB   =  2, /* indicate in right column >             */
 	LIST_SEPARATOR =  4, /* group separator, ---- label ignored    */
 	LIST_PASSIVE   =  8, /* mark inactive, can't be set            */
-	LIST_HIDE      = 16  /* mark as invisible                      */
+	LIST_LABEL     = 16, /* mark inactive but with high-vis text   */
+	LIST_HIDE      = 32  /* mark as invisible                      */
 };
 
 struct tui_list_entry {
 	char* label;          /* user presentable UTF-8 string */
 	char* shortcut;       /* single unicode codepoint (UTF-8) */
 	uint8_t attributes;   /* bitmask from kind above */
+	uint8_t indent;       /* indentation level */
 	uintptr_t tag;        /* index or other reference to pair trigger */
 };
 

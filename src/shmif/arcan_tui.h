@@ -104,8 +104,7 @@
  *  };
  *
  *  arcan_tui_conn* conn = arcan_tui_open_display("mytitle", "myident");
- *  struct tui_settings cfg = arcan_tui_defaults(conn, NULL);
- *  struct tui_context* ctx = arcan_tui_setup(conn, cfg, cb, sizeof(cb));
+ *  struct tui_context* ctx = arcan_tui_setup(conn, NULL, cb, sizeof(cb));
  *
  *  normal processing loop:
  *   (use fdset/fdset_sz and timeout for poll-like behavior)
@@ -127,8 +126,7 @@
  *
  * subwindows:
  * (in subwnd handler from cbs)
- *  arcan_tui_defaults(conn, wnd);
- *  struct tui_context* con = arcan_tui_setup(conn, cfg, cb, sizeof(cb));
+ *  struct tui_context* con = arcan_tui_setup(conn, parent, cb, sizeof(cb));
  *  arcan_tui_wndhint(con, ...);
  *
  * Normal use/drawing functions (all prefixed with arcan_tui_):
@@ -192,7 +190,6 @@
  * [MISSING/PENDING FEATURES]
  *  [ ] Simple audio
  *  [ ] Language bindings (see github.com/letoram/tui-bindings)
- *  [ ] Content- scroll hints (for alt screen)
  *  [ ] External process- to window mapping / embedding
  *  [ ] Support library that emulates NCurses
  *  [ ] readline- widget
@@ -206,48 +203,13 @@
 #include "arcan_tuidefs.h"
 #include "arcan_tuisym.h"
 
-struct tui_settings {
-	uint8_t bgc[3], fgc[3], cc[3], clc[4];
-	uint8_t alpha;
-	float ppcm;
-	int hint;
-
-	float font_sz; /* mm */
-	size_t cell_w, cell_h;
-
-/* either using strings or pre-opened fonts */
-	const char* font_fn;
-	const char* font_fb_fn;
-	int font_fds[2];
-
-/* see: enum tui_cursors */
-	int cursor;
-
-/* should the built-in implementation take care of the mouse [=false] or
- * should the events be forwarded to the registered handlers [=true] */
-	bool mouse_fwd;
-
-/* if true, inertia is added to direction switch (stabilization) and one-cell
- * 'skips' in press+drag motions will be filtered to make horizontal and
- * vertical selection more stable */
-	bool mouse_filter;
-
-/* simulate refresh-rate to balance
- * throughput, responsiveness, power consumption */
-	int refresh_rate;
-
-/* number of 25Hz ticks between blink-in/blink-off */
-	unsigned cursor_period;
-
-/* 0 : disabled, 0 < n <= cell_h
- * - enable vertical smooth scrolling in px. */
-	unsigned smooth_scroll;
-
-/* see syms for possible render flags */
-	unsigned render_flags;
-};
-
 struct tui_context;
+
+struct tui_constraints {
+	int anch_row, anch_col;
+	int max_rows, max_cols;
+	int min_rows, min_cols;
+};
 
 struct tui_screen_attr {
 	union {
@@ -599,15 +561,6 @@ struct tui_subwnd_req {
 #ifndef ARCAN_TUI_DYNAMIC
 
 /*
- * Grab the default settings for a reference connection or a previously
- * allocated context. If both [conn] and [ref] are NULL, return some safe
- * build-time defaults. Otherwise bias towards [conn] and fill in any
- * blanks from [ref].
- */
-struct tui_settings arcan_tui_defaults(
-	arcan_tui_conn* conn, struct tui_context* ref);
-
-/*
  * Take a reference connection [conn != NULL] and wrap/take over control
  * over that to implement the TUI abstraction. The actual contents of [con]
  * is implementation defined and depends on the backend and TUI
@@ -617,8 +570,9 @@ struct tui_settings arcan_tui_defaults(
  * and [cfg_sz] is a simple sizeof(struct tui_cbcfg) as a primitive means
  * of versioning.
  */
-struct tui_context* arcan_tui_setup(arcan_tui_conn* con,
-	const struct tui_settings* set, const struct tui_cbcfg* cfg,
+struct tui_context* arcan_tui_setup(
+	arcan_tui_conn* con, struct tui_context* parent,
+	const struct tui_cbcfg* cfg,
 	size_t cfg_sz, ...
 );
 
@@ -761,20 +715,19 @@ bool arcan_tui_update_handlers(struct tui_context*,
 	const struct tui_cbcfg* new_handlers, struct tui_cbcfg* old, size_t cb_sz);
 
 /*
- * Signal visibility and position intent for a subwindow [wnd] relative
- * to a possible parent [par].
+ * Signal visibility, position and dimension intent for a subwindow [wnd]
+ * relative to a possible parent [par].
  *
  * [wnd] must have been allocated via the _request_subwnd -> subwindow
- * call path. While as [par] must be NULL or refer to the same context
+ * call path. [par] must be NULL or refer to the same context
  * as the subwnd call initiated from.
  *
- * By default, [anch_row, anch_col] refer to an anchor-cell in the parent
- * window, but this behavior can switch to allow relative- positioning or
- * window-relative anchoring.
+ * The dimensions inside the constraints structure are a hint, not a
+ * guarantee. The rendering handler need to always be able to draw /
+ * layout to any size, even if that means cropping.
  */
 void arcan_tui_wndhint(struct tui_context* wnd,
-	struct tui_context* par, int anch_row, int anch_col,
-	int wndflags);
+	struct tui_context* par, struct tui_constraints cons);
 
 /*
  * Announce capability for reading (input_descr != NULL) and/or writing
@@ -796,6 +749,14 @@ void arcan_tui_wndhint(struct tui_context* wnd,
  */
 void arcan_tui_announce_io(struct tui_context* c,
 	bool immediately, const char* input_descr, const char* output_descr);
+
+/*
+ * Asynchronously transfer the contents of [fdin] to [fdout]. This is
+ * mainly to encourage non-blocking implementation of the bchunk handler.
+ * The descriptors will be closed when the transfer is completed or if
+ * it fails.
+ */
+void arcan_tui_bgcopy(struct tui_context*, int fdin, int fdout);
 
 /*
  * Announce/ update an estimate of how much storage is needed to be able
@@ -1061,9 +1022,8 @@ void arcan_tui_move_line_home(struct tui_context*);
 int arcan_tui_set_margins(struct tui_context*, size_t top, size_t bottom);
 
 #else
-typedef struct tui_settings(* PTUIDEFAULTS)(arcan_tui_conn*, struct tui_context*);
 typedef struct tui_context*(* PTUISETUP)(
-	arcan_tui_conn*, const struct tui_settings*, const struct tui_cbcfg*, size_t, ...);
+	arcan_tui_conn*, struct tui_context*, const struct tui_cbcfg*, size_t, ...);
 typedef void (* PTUIDESTROY)(struct tui_context*, const char* message);
 typedef struct tui_process_res (* PTUIPROCESS)(
 struct tui_context**, size_t, int*, size_t, int);
@@ -1078,7 +1038,7 @@ typedef void (* PTUIREQSUB)(struct tui_context*, unsigned, uint16_t);
 typedef void (* PTUIREQSUBEXT)
 	(struct tui_context*, unsigned, uint16_t, struct tui_subwnd_req, size_t);
 typedef void (* PTUIUPDHND)(struct tui_context*, const struct tui_cbcfg*, struct tui_cbcfg*, size_t);
-typedef void (* PTUIWNDHINT)(struct tui_context*, struct tui_context*, int, int, int);
+typedef void (* PTUIWNDHINT)(struct tui_context*, struct tui_context*, struct tui_constraints);
 typedef void (* PTUIANNOUNCEIO)(struct tui_context*, bool, const char*, const char*);
 typedef void (* PTUISTATESZ)(struct tui_context*, size_t);
 typedef int (* PTUIALLOCSCR)(struct tui_context*);
@@ -1140,8 +1100,8 @@ typedef void (* PTUIERASECHARS)(struct tui_context*, size_t);
 typedef void (* PTUIERASEREGION)(struct tui_context*, size_t, size_t, size_t, size_t, bool);
 typedef char* (* PTUISTATEDESCR)(struct tui_context*);
 typedef size_t (* PTUIPRINTF)(struct tui_context*, struct tui_screen_attr*, const char*, ...);
+typedef void (* PTUIBGCOPY)(struct tui_context*, int fdin, int fdout);
 
-static PTUIDEFAULTS arcan_tui_defaults;
 static PTUISETUP arcan_tui_setup;
 static PTUIDESTROY arcan_tui_destroy;
 static PTUIPROCESS arcan_tui_process;
@@ -1209,12 +1169,12 @@ static PTUIERASECURRENTLINE arcan_tui_erase_current_line;
 static PTUIERASECHARS arcan_tui_erase_chars;
 static PTUISTATEDESCR arcan_tui_statedescr;
 static PTUIPRINTF arcan_tui_printf;
+static PTUIBGCOPY arcan_tui_bgcopy;
 
 /* dynamic loading function */
 static bool arcan_tui_dynload(void*(*lookup)(void*, const char*), void* tag)
 {
 #define M(TYPE, SYM) if (! (SYM = (TYPE) lookup(tag, #SYM)) ) return false
-M(PTUIDEFAULTS,arcan_tui_defaults);
 M(PTUIDESTROY,arcan_tui_destroy);
 M(PTUISETUP,arcan_tui_setup);
 M(PTUIDESTROY,arcan_tui_destroy);
@@ -1283,6 +1243,7 @@ M(PTUIERASECURRENTLINE,arcan_tui_erase_current_line);
 M(PTUIERASECHARS,arcan_tui_erase_chars);
 M(PTUISTATEDESCR, arcan_tui_statedescr);
 M(PTUIPRINTF, arcan_tui_printf);
+M(PTUIBGCOPY, arcan_tui_bgcopy);
 #undef M
 
 	return true;

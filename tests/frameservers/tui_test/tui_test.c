@@ -136,8 +136,7 @@ int main(int argc, char** argv)
 
 /* even though we handle over management of con to TUI, we can
  * still get access to its internal reference at will */
-	struct tui_settings cfg = arcan_tui_defaults(conn, NULL);
-	struct tui_context* tui = arcan_tui_setup(conn, &cfg, &cbcfg, sizeof(cbcfg));
+	struct tui_context* tui = arcan_tui_setup(conn, NULL, &cbcfg, sizeof(cbcfg));
 
 	if (!tui){
 		fprintf(stderr, "failed to setup TUI connection\n");
