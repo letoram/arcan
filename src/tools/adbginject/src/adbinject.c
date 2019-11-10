@@ -2,10 +2,27 @@
 
 #include <arcan_shmif.h>
 #include <stdlib.h>
+#include "../../shmif/arcan_shmif_debugif.h"
 
 volatile struct arcan_shmif_cont cont;
-extern bool arcan_shmif_debugint_spawn(struct arcan_shmif_cont* c, void*);
-extern int arcan_shmif_debugint_alive();
+static volatile bool hold_constructor = true;
+static char* label;
+
+/*
+ * running from the constructor state there are more options we can add to the
+ * menu here, one would be to interactively do PLT hooking or setup syscall
+ * filter, libbacktrace + seccomp handler, trigger,
+ * for the PLT hooking, have a list of known crypto- lib symbols to provide
+ * a pipe- filter into would be nice and neat
+ */
+static void process_handler(void* C, void* tag)
+{
+	if (!hold_constructor)
+		return;
+
+	label[0] = '\0';
+	hold_constructor = false;
+}
 
 void __attribute__((constructor)) adbinject_setup()
 {
@@ -16,8 +33,19 @@ void __attribute__((constructor)) adbinject_setup()
 
 /* handover / detach to debugif */
 	struct arcan_shmif_cont ct = arcan_shmif_open(SEGID_TUI, 0, &args);
-	arcan_shmif_debugint_spawn(&ct, NULL);
+	label = strdup("Continue");
 
+/* custom menu entry for process control so we can release */
+	arcan_shmif_debugint_spawn(&ct, NULL,
+		&(struct debugint_ext_resolver){
+		.handler = process_handler,
+		.label = label,
+		.tag = NULL
+	});
+
+	while (arcan_shmif_debugint_alive() && hold_constructor){
+		sleep(1);
+	}
 	cont = ct;
 }
 
@@ -27,4 +55,5 @@ void __attribute__((destructor)) adbinject_teardown()
 	while (arcan_shmif_debugint_alive()){
 		sleep(1);
 	}
+	free(label);
 }
