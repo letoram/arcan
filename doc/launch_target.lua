@@ -116,7 +116,7 @@
 --
 -- @note: "content_state" {number:rel_x, number:rel_y,
 -- number:wnd_w, number:wnd_h, number:x_size, number:y_size,
--- number:cell_w, number: cell_h}
+-- number:cell_w, number: cell_h, int:min_w, int:max_w, int:min_h, int:max_h}
 -- indicates the values and range for a position marker such as scrollbars
 -- rel_x/y are ranged to 0..1, w/h the stepping size (0..1) versus the window
 -- size (0..1). If cell_w and cell_h are both > 0, the values are to be

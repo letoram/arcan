@@ -1459,6 +1459,8 @@ enum ARCAN_TARGET_SKIPMODE {
 			float width, height;
 			uint8_t cell_w;
 			uint8_t cell_h;
+			uint32_t min_w, min_h;
+			uint32_t max_w, max_h;
 		} content;
 
 /*
