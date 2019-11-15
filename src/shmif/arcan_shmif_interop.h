@@ -437,6 +437,15 @@ int arcan_shmif_deadline(
 	struct arcan_shmif_cont*, unsigned last_cost, int* jitter, int* errc);
 
 /*
+ * Asynchronously transfer the contents of [fdin] to [fdout]. This is
+ * mainly to encourage non-blocking implementation of the bchunk handler.
+ * The descriptors will be closed when the transfer is completed or if
+ * it fails.
+ */
+void arcan_shmif_bgcopy(
+	struct arcan_shmif_cont*, int fdin, int fdout);
+
+/*
  * Used as helper to avoid dealing with all of the permutations of
  * devkind == EVENT_IDEVKIND_MOUSE for datatype == EVENT_IDATATYPE_ANALOG.
  * If >true< the status of have changed since last time.

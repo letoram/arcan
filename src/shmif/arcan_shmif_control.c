@@ -345,7 +345,8 @@ void arcan_shmif_defimpl(
 	struct arcan_shmif_cont* newchild, int type, void* typetag)
 {
 #ifdef SHMIF_DEBUG_IF
-	if (type == SEGID_DEBUG && arcan_shmif_debugint_spawn(newchild, typetag)){
+	if (type == SEGID_DEBUG &&
+		arcan_shmif_debugint_spawn(newchild, typetag, NULL)){
 		return;
 	}
 #endif
@@ -392,7 +393,7 @@ static void consume(struct arcan_shmif_cont* c)
 			debug_print(DETAILED, c, "debug subsegment received");
 			struct arcan_shmif_cont pcont = arcan_shmif_acquire(c,NULL,SEGID_DEBUG,0);
 			if (pcont.addr){
-				if (!arcan_shmif_debugint_spawn(&pcont, NULL)){
+				if (!arcan_shmif_debugint_spawn(&pcont, NULL, NULL)){
 					arcan_shmif_drop(&pcont);
 				}
 				return;
@@ -3096,6 +3097,66 @@ int arcan_shmif_dirty(struct arcan_shmif_cont* cont,
 #endif
 
 	return 0;
+}
+
+static bool write_buffer(int fd, char* inbuf, size_t inbuf_sz)
+{
+	while(inbuf_sz){
+		ssize_t nr = write(fd, inbuf, inbuf_sz);
+		if (-1 == nr){
+			if (errno == EAGAIN || errno == EINTR)
+				continue;
+			return false;
+		}
+		inbuf += nr;
+		inbuf_sz -= nr;
+	}
+	return true;
+}
+
+static void* copy_thread(void* inarg)
+{
+	int* fds = inarg;
+	char inbuf[4096];
+
+/* depending on type and OS, there are a number of options e.g.
+ * sendfile, splice, sosplice, ... right now just use a slow/safe */
+	for(;;){
+		ssize_t nr = read(fds[0], inbuf, sizeof(inbuf));
+		if (-1 == nr){
+			if (errno == EAGAIN || errno == EINTR)
+				continue;
+			break;
+		}
+		if (0 == nr || !write_buffer(fds[1], inbuf, nr))
+			break;
+	}
+	close(fds[0]);
+	close(fds[1]);
+	free(fds);
+	return NULL;
+}
+
+void arcan_shmif_bgcopy(
+	struct arcan_shmif_cont* c, int fdin, int fdout)
+{
+	int* fds = malloc(sizeof(int) * 2);
+	if (!fds)
+		return;
+	fds[0] = fdin;
+	fds[1] = fdout;
+
+/* options, fork or thread */
+	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+
+	if (-1 == pthread_create(&pth, &pthattr, copy_thread, fds)){
+		close(fdin);
+		close(fdout);
+		free(fds);
+	}
 }
 
 /*
