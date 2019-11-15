@@ -486,8 +486,7 @@ void arcan_tui_copywnd(struct tui_context* src, struct arcan_shmif_cont con)
 		.reset = copywnd_reset
 	};
 
-	struct tui_settings cfg = arcan_tui_defaults(&con, src);
-	ctx->tui = arcan_tui_setup(&con, &cfg, &cbs, sizeof(cbs));
+	ctx->tui = arcan_tui_setup(&con, NULL, &cbs, sizeof(cbs));
 	if (!ctx->tui){
 		arcan_shmif_drop(&con);
 		close(ctx->iopipes[0]);

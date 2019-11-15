@@ -46,13 +46,16 @@ int arcan_fdscan(int** listout)
 		return -1;
 	}
 
+/* always include stdin/stdout/stderr as someone deliberately closing
+ * still means that libs etc. can assume or try to work with it */
 	size_t pos = 0;
 	for (size_t i = 0; i < lim && count; i++){
-		if (!(set[i].revents & POLLNVAL))
+		if (!(set[i].revents & POLLNVAL) || i < 3)
 			buf[pos++] = set[i].fd;
 	}
 
 	free(set);
 	*listout = buf;
+
 	return pos;
 }

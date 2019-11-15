@@ -1225,6 +1225,15 @@ void arcan_tui_bufferwnd_synch(
 	redraw_bufferwnd(T, M);
 }
 
+uint64_t arcan_tui_bufferwnd_tell(struct tui_context* T)
+{
+	struct bufferwnd_meta* M;
+	if (!validate_context(T, &M))
+		return 0;
+
+	return M->buffer_pos;
+}
+
 void arcan_tui_bufferwnd_seek(struct tui_context* T, size_t buf_pos)
 {
 	struct bufferwnd_meta* M;
@@ -1361,9 +1370,7 @@ int main(int argc, char** argv)
 {
 	struct tui_cbcfg cbcfg = {};
 	arcan_tui_conn* conn = arcan_tui_open_display("test", "");
-	struct tui_settings cfg = arcan_tui_defaults(conn, NULL);
-	cfg.cursor_period = 0;
-	struct tui_context* tui = arcan_tui_setup(conn, &cfg, &cbcfg, sizeof(cbcfg));
+	struct tui_context* tui = arcan_tui_setup(conn, NULL, &cbcfg, sizeof(cbcfg));
 	struct tui_bufferwnd_opts opts = {
 		.read_only = false,
 		.view_mode = BUFFERWND_VIEW_HEX_DETAIL
