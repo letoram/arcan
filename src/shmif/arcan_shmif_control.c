@@ -92,6 +92,7 @@ static int ilog2(int val)
 static uint64_t g_epoch;
 
 void arcan_random(uint8_t*, size_t);
+static char* spawn_arcan_net(const char* conn_src, int* dsock);
 
 /*
  * The guard-thread thing tries to get around all the insane edge conditions
@@ -2265,7 +2266,12 @@ enum shmif_migrate_status arcan_shmif_migrate(
 		return SHMIF_MIGRATE_BADARG;
 
 	file_handle dpipe;
-	char* keyfile = arcan_shmif_connect(newpath, key, &dpipe);
+	char* keyfile = NULL;
+
+	if (strncmp(newpath, "a12://", 6) == 0)
+		keyfile = spawn_arcan_net(newpath, &dpipe);
+	else
+		keyfile = arcan_shmif_connect(newpath, key, &dpipe);
 	if (!keyfile)
 		return SHMIF_MIGRATE_NOCON;
 
