@@ -28,6 +28,8 @@ set(EXTERNAL_SOURCES
 	external/blake2/blake2bp-ref.c
 	external/blake2/blake2b-ref.c
 	external/miniz/miniz.c
+	external/x25519.c
+	${PLATFORM_ROOT}/posix/chacha20.c
 )
 
 add_library(arcan_a12 SHARED ${A12_SOURCES} ${EXTERNAL_SOURCES})
