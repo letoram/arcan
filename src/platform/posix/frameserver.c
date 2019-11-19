@@ -67,7 +67,6 @@ static size_t fsrv_protosize(struct arcan_frameserver* ctx,
 static void fsrv_setproto(struct arcan_frameserver* ctx,
 	unsigned proto, struct arcan_shmif_ofstbl* ofsets);
 
-
 /*
  * Spawn a guard thread that makes sure the process connected to src will
  * be killed off.
@@ -1223,6 +1222,8 @@ int platform_fsrv_resynch(struct arcan_frameserver* s)
 	size_t vbufc = atomic_load(&shmpage->vpending);
 	size_t abufc = atomic_load(&shmpage->apending);
 	size_t samplerate = atomic_load(&shmpage->audiorate);
+	size_t rows = atomic_load(&shmpage->rows);
+	size_t cols = atomic_load(&shmpage->cols);
 	unsigned aproto = atomic_load(&shmpage->apad_type) & s->metamask;
 
 	vbufc = vbufc > FSRV_MAX_VBUFC ? FSRV_MAX_VBUFC : vbufc;
@@ -1321,6 +1322,8 @@ int platform_fsrv_resynch(struct arcan_frameserver* s)
 	atomic_store(&shmpage->h, h);
 	s->desc.width = w;
 	s->desc.height = h;
+	s->desc.rows = rows;
+	s->desc.cols = cols;
 	s->desc.pending_hints = atomic_load(&shmpage->hints);
 	s->vbuf_cnt = vbufc;
 	s->abuf_cnt = abufc;
@@ -1338,8 +1341,8 @@ int platform_fsrv_resynch(struct arcan_frameserver* s)
 
 /* Still incomplete for TPACK etc. as w/h needs to be determined based on
  * the active cell dimensions and not of the pixel dimensions */
-	size_t vbufsz =
-		arcan_shmif_vbufsz(aproto, s->desc.pending_hints, w, h);
+	size_t vbufsz = arcan_shmif_vbufsz(aproto,
+		s->desc.pending_hints, w, h, s->desc.rows, s->desc.cols);
 
 /* remap pointers, padding need to be updated first as shmif_mapav
  * uses that as a side-channel and we don't want to change the interface */

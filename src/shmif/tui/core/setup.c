@@ -247,14 +247,6 @@ struct tui_context* arcan_tui_setup(
 	set_builtin_palette(res);
 	apply_arg(res, arcan_shmif_args(con));
 
-//* TEMPORARY: while moving to server-side rasterization */
-	res->rbuf_fwd = getenv("TUI_RPACK");
-	if (res->rbuf_fwd)
-		res->acon.hints = SHMIF_RHINT_TPACK;
-	else
-		res->acon.hints = SHMIF_RHINT_SUBREGION;
-	arcan_shmif_resize(&res->acon, res->acon.w, res->acon.h);
-
 /* tui_fontmgmt is also responsible for building the raster context */
 /* if we have a parent, we should derive settings etc. from there */
 	if (parent){
@@ -277,6 +269,13 @@ struct tui_context* arcan_tui_setup(
 	else
 		tui_fontmgmt_setup(res, init);
 
+/* TEMPORARY: while moving to server-side rasterization as the new default */
+	res->rbuf_fwd = getenv("TUI_RPACK");
+	if (res->rbuf_fwd)
+		res->acon.hints = SHMIF_RHINT_TPACK;
+	else
+		res->acon.hints = SHMIF_RHINT_SUBREGION;
+
 	if (0 != tsm_utf8_mach_new(&res->ucsconv)){
 		free(res);
 		return NULL;
@@ -297,18 +296,15 @@ struct tui_context* arcan_tui_setup(
 /* clipboard, timer callbacks, no IDENT */
 	tui_queue_requests(res, true, false);
 
-/* show the current cell dimensions to help limit resize requests */
-	arcan_shmif_enqueue(&res->acon,
-		&(struct arcan_event){
-			.category = EVENT_EXTERNAL,
-			.ext.kind = ARCAN_EVENT(CONTENT),
-			.ext.content.cell_w = res->cell_w,
-			.ext.content.cell_h = res->cell_h
-		}
-	);
+	arcan_shmif_resize_ext(&res->acon, res->acon.w, res->acon.h,
+		(struct shmif_resize_ext){
+			.vbuf_cnt = -1,
+			.abuf_cnt = -1,
+			.rows = res->acon.h / res->cell_h,
+			.cols = res->acon.w - res->cell_w
+		});
 
 	tui_screen_resized(res);
-
 	if (res->handlers.resized)
 		res->handlers.resized(res, res->acon.w, res->acon.h,
 			res->cols, res->rows, res->handlers.tag);

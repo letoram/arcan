@@ -293,6 +293,9 @@ void arg_cleanup(struct arg_arr*);
  * filesystem paths. This is a best-effort that might result in a no-op
  * or a lesser set of restrictions depending on the platform and context.
  *
+ * if a context is provided, the function may enqueue an event to indicate
+ * sandbox status to the server.
+ *
  * [pledge] this argument matches either special preset strings of higher
  *          roles, or the set of OpenBSD-pledge(2) syscall whitelists, with
  *          the necessary set for opening and maintaining shmif context
@@ -315,7 +318,7 @@ struct shmif_privsep_node {
 	const char* path;
 	const char* perm; /*r, w, x, c */
 };
-void arcan_shmif_privsep(
+void arcan_shmif_privsep(struct arcan_shmif_cont* C,
 	const char* pledge, struct shmif_privsep_node**, int opts);
 
 /*

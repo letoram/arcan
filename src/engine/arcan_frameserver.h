@@ -35,6 +35,8 @@ struct arcan_frameserver_meta {
 /* video */
 	uint16_t width;
 	uint16_t height;
+	size_t rows;
+	size_t cols;
 	char bpp;
 	int hints, pending_hints;
 	bool rz_flag;

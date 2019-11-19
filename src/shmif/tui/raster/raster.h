@@ -49,9 +49,7 @@
  * bit 5: cursor
  * bit 7: 'ignore'
  */
-static const size_t raster_cell_sz = 12;
-static const size_t raster_hdr_sz = 16;
-static const size_t raster_line_sz = 9;
+#include "raster_const.h"
 
 enum cell_attr {
 	CATTR_BOLD = 0,
