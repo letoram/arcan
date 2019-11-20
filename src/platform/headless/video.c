@@ -78,6 +78,20 @@ static struct {
 	}
 };
 
+#ifdef _DEBUG
+#define DEBUG 1
+#else
+#define DEBUG 0
+#endif
+
+/*
+ * same debugging / tracing setup as in egl-dri.c
+ */
+#define debug_print(fmt, ...) \
+            do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
+						arcan_timemillis(), "egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+
+
 static char* envopts[] = {
 	"ARCAN_VIDEO_ENCODE=encode_args",
 	"Use encode frameserver as virtual output, see afsrv_encode for format",
@@ -119,12 +133,13 @@ static void spawn_encode_output()
 		arcan_warning("(headless) couldn't spawn afsrv_encode\n");
 		return;
 	}
-
+	debug_print("encode display output enabled");
 	global.encode.outctx = fsrv;
 }
 
 void platform_video_shutdown()
 {
+	debug_print("shutting down");
 	if (global.encode.outctx){
 		arcan_frameserver_free(global.encode.outctx);
 	}
@@ -195,7 +210,7 @@ int headless_flush_encode_events()
 
 /* Prevent control_chld from emitting events about the state of the frameserver
  * (it doesn't exist in the lua space) and instead substitute it with the exit
- * request. Run silent so that it can launch with re-attach */
+ * request. Ideally we should probably just switch into a wait-relaunch pattern */
 	arcan_event_maskall(arcan_event_defaultctx());
 	if (!arcan_frameserver_control_chld(global.encode.outctx)){
 		arcan_warning("(headless) output encoder died\n");
@@ -229,6 +244,7 @@ int headless_flush_encode_events()
 
 		switch (inev.ext.kind){
 		default:
+			debug_print("encoder-event: %s", arcan_shmif_eventstr(&inev, NULL, 0));
 		break;
 		}
 	}
@@ -384,6 +400,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	if (!nd || !global.encode.outctx){
 		arcan_conductor_fakesynch(global.deadline);
 	}
+
 /*
  * if there is an encoder set, try to synch it or 'fake-+yield' until
  * the deadline has elapsed or synch succeeded
@@ -556,9 +573,11 @@ bool platform_video_init(uint16_t width,
 		EGL_NONE
 	};
 
+	int major_version = 2;
+	int minor_version = 1;
+
 /* Normal EGL progression:
  * API -> Display -> Configuration -> Context */
-	bool gles = false;
 	if (strcmp(agp_ident(), "OPENGL21") == 0){
 		if (!eglBindAPI(EGL_OPENGL_API)){
 			arcan_warning("(headless) couldn't bind openGL API\n");
@@ -570,7 +589,10 @@ bool platform_video_init(uint16_t width,
 			arcan_warning("(headless) couldn't bind gles- API\n");
 			return false;
 		}
-		gles = true;
+#ifdef GLES3
+		major_version = 3;
+#endif
+		minor_version = 0;
 	}
 	else {
 		arcan_fatal("unhandled agp platform: %s\n", agp_ident());
@@ -580,6 +602,7 @@ bool platform_video_init(uint16_t width,
 	PFNEGLGETPLATFORMDISPLAYEXTPROC get_platform_display =
 		(PFNEGLGETPLATFORMDISPLAYEXTPROC)
 		eglGetProcAddress("eglGetPlatformDisplayEXT");
+	debug_print("platform_display_support: %b", get_platform_display != NULL);
 
 	uintptr_t tag;
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
@@ -596,6 +619,7 @@ bool platform_video_init(uint16_t width,
 		if (get_config("video_device", 0, &node, tag)){
 			devfd = open(node, O_RDWR | O_CLOEXEC);
 			free(node);
+			debug_print("using device: %s", node);
 		}
 
 		if (-1 == devfd){
@@ -606,9 +630,12 @@ bool platform_video_init(uint16_t width,
  * trigger the nouveau problem above */
 		if (-1 != devfd){
 			global.egl.gbmdev = gbm_create_device(devfd);
+			debug_print("gbm device: %b", global.egl.gbmdev != NULL);
+
 			if (global.egl.gbmdev){
 				global.egl.disp = get_platform_display(
 					EGL_PLATFORM_GBM_KHR, (void*) global.egl.gbmdev, NULL);
+				debug_print("gbm platform: %b", global.egl.disp != NULL);
 			}
 		}
 
@@ -617,6 +644,7 @@ bool platform_video_init(uint16_t width,
 #ifndef EGL_PLATFORM_SURFACELESS_MESA
 #define EGL_PLATFORM_SURFACELESS_MESA 0x31DD
 #endif
+		arcan_warning("couldn't get a gbm platform, trying surfaceless/software\n");
 		global.egl.disp = get_platform_display(
 			EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
 		}
@@ -624,8 +652,10 @@ bool platform_video_init(uint16_t width,
 
 /* if we don't have the option to specify a platform display, just
  * go with whatever the default display happens to be */
-	if (!global.egl.disp)
+	if (!global.egl.disp){
 		global.egl.disp = eglGetDisplay((EGLNativeDisplayType) NULL);
+		debug_print("fallback / default egl 'NULL' platform");
+	}
 
 	EGLint major, minor;
 	if (!eglInitialize(global.egl.disp, &major, &minor)){
@@ -655,6 +685,7 @@ bool platform_video_init(uint16_t width,
 		if (hz)
 			global.deadline = 1.0 / hz;
 		free(node);
+		debug_print("deadline changed to %d", global.deadline);
 	}
 
 	EGLint cas[] = {
@@ -667,12 +698,10 @@ bool platform_video_init(uint16_t width,
 	};
 
 	int ofs = 2;
-	if (gles){
-		cas[ofs++] = EGL_CONTEXT_MAJOR_VERSION_KHR;
-		cas[ofs++] = 3;
-		cas[ofs++] = EGL_CONTEXT_MINOR_VERSION_KHR;
-		cas[ofs++] = 0;
-	}
+	cas[ofs++] = EGL_CONTEXT_MAJOR_VERSION_KHR;
+	cas[ofs++] = major_version;
+	cas[ofs++] = EGL_CONTEXT_MINOR_VERSION_KHR;
+	cas[ofs++] = minor_version;
 
 	global.egl.ctx =
 		eglCreateContext(global.egl.disp, global.egl.cfg, NULL, cas);
