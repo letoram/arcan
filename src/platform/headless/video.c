@@ -36,6 +36,7 @@
 #include "arcan_conductor.h"
 #include "arcan_event.h"
 
+#include "agp/glfun.h"
 #include "../platform.h"
 
 #define EGL_EGLEXT_PROTOTYPES
@@ -95,6 +96,12 @@ static struct {
 static char* envopts[] = {
 	"ARCAN_VIDEO_ENCODE=encode_args",
 	"Use encode frameserver as virtual output, see afsrv_encode for format",
+	"ARCAN_VIDEO_DISABLE_PLATFORM=1",
+	"Use the EGL default for the GL display rather than go through gbm/mesa",
+	"ARCAN_VIDEO_REFRESH=n",
+	"Set the simulated vsynch to n Hz",
+	"ARCAN_VIDEO_DEVICE=/dev/dri/renderD128",
+	"Set the render node to an explicit path",
 	NULL
 };
 
@@ -551,6 +558,11 @@ void platform_video_preinit()
 {
 }
 
+static void* lookup_fenv(void* tag, const char* sym, bool req)
+{
+	return eglGetProcAddress(sym);
+}
+
 bool platform_video_init(uint16_t width,
 	uint16_t height, uint8_t bpp, bool fs, bool frames, const char* capt)
 {
@@ -602,7 +614,7 @@ bool platform_video_init(uint16_t width,
 	PFNEGLGETPLATFORMDISPLAYEXTPROC get_platform_display =
 		(PFNEGLGETPLATFORMDISPLAYEXTPROC)
 		eglGetProcAddress("eglGetPlatformDisplayEXT");
-	debug_print("platform_display_support: %b", get_platform_display != NULL);
+	debug_print("platform_display_support: %d", get_platform_display != NULL);
 
 	uintptr_t tag;
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
@@ -630,12 +642,12 @@ bool platform_video_init(uint16_t width,
  * trigger the nouveau problem above */
 		if (-1 != devfd){
 			global.egl.gbmdev = gbm_create_device(devfd);
-			debug_print("gbm device: %b", global.egl.gbmdev != NULL);
+			debug_print("gbm device: %d", global.egl.gbmdev != NULL);
 
 			if (global.egl.gbmdev){
 				global.egl.disp = get_platform_display(
 					EGL_PLATFORM_GBM_KHR, (void*) global.egl.gbmdev, NULL);
-				debug_print("gbm platform: %b", global.egl.disp != NULL);
+				debug_print("gbm platform: %d", global.egl.disp != NULL);
 			}
 		}
 
@@ -662,6 +674,12 @@ bool platform_video_init(uint16_t width,
 		arcan_warning("(headless) couldn't initialize EGL\n");
 		return false;
 	}
+
+/* workaround for GLdispatch filtering the dlsym lookup of functions,
+ * this should probably get someting less ret^H ill-conceived */
+	static struct agp_fenv fenv;
+	agp_glinit_fenv(&fenv, lookup_fenv, NULL);
+	agp_setenv(&fenv);
 
 	EGLint nc;
 	if (!eglGetConfigs(global.egl.disp, NULL, 0, &nc) || 0 == nc){
