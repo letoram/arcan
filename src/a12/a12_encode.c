@@ -548,8 +548,8 @@ void a12int_encode_dpng(PACK_ARGS)
 	free(cres.out_buf);
 }
 
-#ifdef WANT_H264_ENC
-void drop_videnc(struct a12_state* S, int chid, bool failed)
+#if defined(WANT_H264_ENC) || defined(WANT_H264_DEC)
+void a12int_drop_videnc(struct a12_state* S, int chid, bool failed)
 {
 	if (!S->channels[chid].videnc.encoder)
 		return;
@@ -557,8 +557,6 @@ void drop_videnc(struct a12_state* S, int chid, bool failed)
 /* dealloc context */
 	S->channels[chid].videnc.encoder = NULL;
 	S->channels[chid].videnc.failed = failed;
-
-/* FIXME: free context and packet */
 
 	if (S->channels[chid].videnc.scaler){
 		sws_freeContext(S->channels[chid].videnc.scaler);
@@ -568,6 +566,9 @@ void drop_videnc(struct a12_state* S, int chid, bool failed)
 	if (S->channels[chid].videnc.frame){
 		av_frame_free(&S->channels[chid].videnc.frame);
 	}
+
+/* free both sets NULL and noops on NULL */
+	av_packet_free(&S->channels[chid].videnc.packet);
 
 	a12int_trace(A12_TRACE_VIDEO, "dropping h264 context");
 }
@@ -709,14 +710,14 @@ void a12int_encode_h264(PACK_ARGS)
  * go with the cheap one for now. */
 #ifdef WANT_H264_ENC
 	if (vb->w % 2 != 0 || vb->h % 2 != 0){
-		drop_videnc(S, chid, true);
+		a12int_drop_videnc(S, chid, true);
 	}
 
 /* On resize, rebuild the encoder stage and send new headers etc. */
 	else if (
 		vb->w != S->channels[chid].videnc.w ||
 		vb->h != S->channels[chid].videnc.h)
-		drop_videnc(S, chid, false);
+		a12int_drop_videnc(S, chid, false);
 
 /* If we don't have an encoder (first time or reset due to resize),
  * try to configure, and if the configuration fails (i.e. still no
@@ -725,7 +726,7 @@ void a12int_encode_h264(PACK_ARGS)
 			!S->channels[chid].videnc.failed){
 		if (!open_videnc(S, opts, vb, chid, AV_CODEC_ID_H264)){
 			a12int_trace(A12_TRACE_SYSTEM, "kind=error:message=h264 codec failed");
-			drop_videnc(S, chid, true);
+			a12int_drop_videnc(S, chid, true);
 		}
 		else
 			a12int_trace(A12_TRACE_VIDEO, "kind=status:ch=%d:message=set-h264", chid);
@@ -749,7 +750,7 @@ void a12int_encode_h264(PACK_ARGS)
 		src, src_stride, 0, vb->h, frame->data, frame->linesize);
 	if (rv < 0){
 		a12int_trace(A12_TRACE_VIDEO, "rescaling failed: %d", rv);
-		drop_videnc(S, chid, true);
+		a12int_drop_videnc(S, chid, true);
 		goto fallback;
 	}
 
@@ -758,7 +759,7 @@ again:
 	ret = avcodec_send_frame(encoder, frame);
 	if (ret < 0 && ret != AVERROR(EAGAIN)){
 		a12int_trace(A12_TRACE_VIDEO, "encoder failed: %d", ret);
-		drop_videnc(S, chid, true);
+		a12int_drop_videnc(S, chid, true);
 		goto fallback;
 	}
 
@@ -772,7 +773,7 @@ again:
 		else if (out_ret < 0){
 			a12int_trace(
 				A12_TRACE_VIDEO, "error getting packet from encoder: %d", rv);
-			drop_videnc(S, chid, true);
+			a12int_drop_videnc(S, chid, true);
 			goto fallback;
 		}
 
