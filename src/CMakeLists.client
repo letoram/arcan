@@ -209,7 +209,17 @@ endif()
 set(SHMIF_TUI true)
 add_subdirectory(shmif)
 add_subdirectory(a12)
+
 include_directories(${ARCAN_SHMIF_INCLUDE_DIR})
+
+# build the terminal emulator as well as that is typically useful
+set(DISABLE_FSRV_GAME TRUE)
+set(DISABLE_FSRV_DECODE TRUE)
+set(DISABLE_FSRV_NET TRUE)
+set(DISABLE_FSRV_ENCODE TRUE)
+set(DISABLE_FSRV_REMOTING TRUE)
+set(DISABLE_FSRV_AVFEED TRUE)
+add_subdirectory(frameserver)
 
 set(BIN_INSTALL)
 
@@ -217,11 +227,6 @@ if (PKGCONFIG_DIR)
 	configure_file(${PLATFORM_ROOT}/cmake/shmif.pc.in
 		${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif.pc @ONLY)
 	install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif.pc
-		DESTINATION ${CMAKE_INSTALL_PREFIX}/${PKGCONFIG_DIR})
-
-	configure_file(${PLATFORM_ROOT}/cmake/shmif_ext.pc.in
-		${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-ext.pc @ONLY)
-	install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-ext.pc
 		DESTINATION ${CMAKE_INSTALL_PREFIX}/${PKGCONFIG_DIR})
 
 	configure_file(${PLATFORM_ROOT}/cmake/shmif_tui.pc.in
