@@ -206,6 +206,7 @@ else()
 	message(FATAL_ERROR "${CL_RED}Unsupported OS(${CMAKE_SYSTEM_NAME}) detected, abandon ship!${CL_RST}")
 endif()
 
+set(AGP_PLATFORM "stub")
 set(SHMIF_TUI true)
 add_subdirectory(shmif)
 add_subdirectory(a12)
