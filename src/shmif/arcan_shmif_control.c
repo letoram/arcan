@@ -2478,13 +2478,13 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 		return NULL;
 
 	size_t start = sizeof("a12://") - 1;
-	char* key = NULL;
 
 /* (keyid) */
+/* char* key = NULL; */
 	for (size_t i = start; work[i]; i++){
 		if (work[i] == '@'){
 			work[i] = '\0';
-			key = &work[start];
+/*		key = &work[start];  -- should resolve this against a keydb */
 			start = i+1;
 			break;
 		}
