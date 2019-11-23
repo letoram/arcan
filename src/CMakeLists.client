@@ -1,0 +1,236 @@
+# tried playing nice by using REQUIRE_QUIET but some built-in modules
+# (CheckLibraryExists, ...) wouldn't listen so how about a nice cup
+# of shut up.
+function(message)
+	list(GET ARGV 0 TYPE)
+	if (TYPE STREQUAL "FATAL_ERROR")
+		list(REMOVE_AT ARGV 0)
+		_message(${TYPE} ${ARGV})
+	endif()
+endfunction()
+
+function(amsg msg)
+	_message("" ${msg})
+endfunction()
+
+PROJECT(arcan-libs)
+cmake_minimum_required(VERSION 3.1 FATAL_ERROR)
+
+SET(CMAKE_SKIP_BUILD_RPATH  FALSE)
+SET(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+SET(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+
+set(EXTERNAL_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../external)
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/modules)
+
+set(SHARED_PERMISSIONS
+	OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
+set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE
+	GROUP_READ WORLD_EXECUTE WORLD_READ)
+
+# another hack to strip noisy / useless data away from message() abuse
+include(ExternalProject)
+include(CheckIncludeFiles)
+
+find_package(Sanitizers REQUIRED)
+find_package(Threads REQUIRED)
+add_definitions(${CMAKE_THREAD_LIBS_INIT})
+
+if (CMAKE_COLOR_MAKEFILE)
+	include(CMakeColor)
+endif()
+
+if (GLOBAL_CFLAGS)
+	add_definitions(${GLOBAL_CFLAGS})
+endif()
+
+# static base version, manually mantained
+set(MAJOR_VERSION 0)
+set(MINOR_VERSION 6)
+set(PATCH_LEVEL 0)
+set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
+set(PLATFORM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/platform)
+set(ENGINE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
+
+# distributions packaging a build should tag this accordingly so we
+# can take that into consideration for bug reports
+if (NOT DEFINED DISTR_TAG)
+	set(DISTR_TAG "unknown")
+endif()
+
+# generate an identifiable buildtag for tracking purposes
+if (NOT DEFINED ENGINE_BUILDTAG)
+	find_package(Git)
+	set(GIT_VERSION)
+	if (GIT_FOUND)
+		execute_process(COMMAND ${GIT_EXECUTABLE} describe --always --tags
+			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+			RESULT_VARIABLE EXIT_CODE
+			OUTPUT_VARIABLE GIT_VERSION
+		)
+		if (NOT ${EXIT_CODE} EQUAL 0)
+		else()
+			string(STRIP ${GIT_VERSION} GIT_VERSION)
+		endif()
+
+		execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
+			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+			RESULT_VARIABLE EXIT_CODE
+			OUTPUT_VARIABLE GIT_BRANCH
+		)
+		if (NOT ${EXIT_CODE} EQUAL 0)
+		else()
+			string(STRIP ${GIT_BRANCH} GIT_BRANCH)
+		endif()
+
+		if (GIT_VERSION STREQUAL "")
+			amsg("${CL_RED}missing git_version, using 'relukn' for build tag${CL_RST}")
+			set(ENGINE_BUILDTAG arcan-relukn-${VERSION})
+		else()
+			set(ENGINE_BUILDTAG arcan-git-${GIT_BRANCH}-${GIT_VERSION})
+		endif()
+	else()
+		amsg("${CL_RED}git not found, using 'relukn' for build tag${CL_RST}")
+		set(ENGINE_BUILDTAG arcan-relukn-${VERSION})
+	endif()
+endif()
+
+set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_READ WORLD_READ)
+set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+
+amsg("Client- Library only build, for docker containers and networked clients")
+amsg("")
+amsg("${CL_WHT}Optional library flags:${CL_RST}")
+amsg("${CL_YEL}\t-DSHMIF_DISABLE_DEBUGIF=${CL_GRN}[Off|On]${CL_RST} - Remove server- controlled debug layer")
+amsg("")
+
+# can ignore this abomination on BSD
+set(CSTD gnu11)
+
+if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
+	execute_process(
+		COMMAND ${CMAKE_C_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
+
+	add_compile_options(-Wall -Wno-missing-braces -Wno-unused-function
+		-Wno-unused-value -Wno-unused-variable -Wformat=0 -Wno-atomic-alignment
+	)
+
+elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
+	add_compile_options(-Wall -Wno-unknown-warning-option -Wno-unused-const-variable
+		-Wno-unused-value -Wno-missing-braces -Wno-unused-function -Wno-atomic-alignment
+		-Wno-unused-variable
+	)
+else()
+	message(FATAL_ERROR "${CL_RED}Arcan requires an ISO C 9899:2011 capable compiler (Clang-3.3+ or gcc 4.7+)${CL_RST}")
+endif()
+
+if (CMAKE_BUILD_TYPE STREQUAL "Profile")
+	amsg("${CL_WHT}------------------*Profile Build*------------------${CL_RST}")
+	add_definitions(-pg)
+	set(CMAKE_EXE_LINKER_FLAGS "-pg")
+endif(CMAKE_BUILD_TYPE STREQUAL "Profile")
+
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+	amsg("${CL_WHT}------------------*Debug Build*--------------------${CL_RST}\n")
+	amsg("${CL_WHT}Debug Specific Setting:${CL_YEL}")
+	amsg("\tLUA_TRACE_METHOD=${CL_RST}[${CL_GRN}off${CL_RST}|${CL_GRN}stderr${CL_RST}|${CL_GRN}coverage${CL_RST}]")
+	if (LUA_TRACE_METHOD STREQUAL "stderr")
+		set(LUA_TAG_MODE " trace-stderr")
+		list(APPEND ARCAN_DEFINITIONS LUA_TRACE_STDERR)
+	endif()
+
+	add_definitions(-g -D_DEBUG -O0 -fno-omit-frame-pointer)
+
+endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
+
+if (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
+	amsg("${CL_WHT}-------------- *Debug Tracing Build* --------------${CL_WHT}")
+	add_definitions(-g -D_DEBUG -DTRACE_ENABLE)
+endif (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
+
+if (ENABLE_LTO)
+	add_compile_options(-flto)
+endif()
+
+add_compile_options(-std=${CSTD})
+
+set(EXTERNAL_DEFS
+UPDATE_COMMAND ""
+PATCH_COMMAND ""
+INSTALL_COMMAND ""
+LOG_DOWNLOAD 1
+LOG_UPLOAD 1
+LOG_CONFIGURE 1
+LOG_BUILD 1
+LOG_TEST 1
+LOG_INSTALL 1
+)
+
+set (CMAKE_EXTERNAL_DEFS
+	CMAKE_ARGS
+	-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+	-DMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+	-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+	-DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}
+	-DLIBTYPE=STATIC
+)
+
+find_package(Freetype REQUIRED QUIET)
+set(FREETYPE_DEFAULT_LIBRARIES ${FREETYPE_LIBRARIES})
+set(FREETYPE_DEFAULT_INCLUDE_DIRS ${FREETYPE_INCLUDE_DIRS})
+
+set(INCLUDE_DIRS
+	${CMAKE_CURRENT_SOURCE_DIR}/engine
+	${FREETYPE_DEFAULT_INCLUDE_DIRS}
+)
+
+if (BSD_BUILD)
+	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.BSD)
+	set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-fbsd)
+	set(PKGCONFIG_DIR libdata/pkgconfig)
+
+elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Linux)
+	set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-linux)
+	set(PKGCONFIG_DIR lib/pkgconfig)
+
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Darwin)
+	set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-darwin)
+	set(PKGCONFIG_DIR lib/pkgconfig)
+
+else()
+	message(FATAL_ERROR "${CL_RED}Unsupported OS(${CMAKE_SYSTEM_NAME}) detected, abandon ship!${CL_RST}")
+endif()
+
+set(SHMIF_TUI true)
+add_subdirectory(shmif)
+add_subdirectory(a12)
+include_directories(${ARCAN_SHMIF_INCLUDE_DIR})
+
+set(BIN_INSTALL)
+
+if (PKGCONFIG_DIR)
+	configure_file(${PLATFORM_ROOT}/cmake/shmif.pc.in
+		${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif.pc @ONLY)
+	install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif.pc
+		DESTINATION ${CMAKE_INSTALL_PREFIX}/${PKGCONFIG_DIR})
+
+	configure_file(${PLATFORM_ROOT}/cmake/shmif_ext.pc.in
+		${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-ext.pc @ONLY)
+	install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-ext.pc
+		DESTINATION ${CMAKE_INSTALL_PREFIX}/${PKGCONFIG_DIR})
+
+	configure_file(${PLATFORM_ROOT}/cmake/shmif_tui.pc.in
+		${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-tui.pc @ONLY)
+	install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-tui.pc
+		DESTINATION ${CMAKE_INSTALL_PREFIX}/${PKGCONFIG_DIR})
+
+	configure_file(${PLATFORM_ROOT}/cmake/shmif_srv.pc.in
+		${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-srv.pc @ONLY)
+	install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-srv.pc
+		DESTINATION ${CMAKE_INSTALL_PREFIX}/${PKGCONFIG_DIR})
+endif()
