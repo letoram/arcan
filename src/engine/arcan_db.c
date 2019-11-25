@@ -469,6 +469,16 @@ arcan_targetid arcan_db_targetid(struct arcan_dbh* dbh,
 	return rid;
 }
 
+struct arcan_strarr arcan_db_list_appl(struct arcan_dbh* dbh)
+{
+	static const char dql[] = "SELECT name FROM sqlite_master WHERE "
+		"type='table' and NAME like \"appl_%\"";
+	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+
+	return db_string_query(dbh, stmt, NULL, 0);
+}
+
 struct arcan_strarr arcan_db_config_argv(struct arcan_dbh* dbh,arcan_configid id)
 {
 	static const char dql[] = "SELECT arg FROM config_argv WHERE "
