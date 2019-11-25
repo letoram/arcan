@@ -211,12 +211,13 @@ if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
 
 	add_compile_options(-Wall -Wno-missing-braces -Wno-unused-function
 		-Wno-unused-value -Wno-unused-variable -Wformat=0 -Wno-atomic-alignment
+		-Wno-macro-redefined
 	)
 
 elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
 	add_compile_options(-Wall -Wno-unknown-warning-option -Wno-unused-const-variable
 		-Wno-unused-value -Wno-missing-braces -Wno-unused-function -Wno-atomic-alignment
-		-Wno-unused-variable
+		-Wno-unused-variable -Wno-macro-redefined
 	)
 else()
 	message(FATAL_ERROR "${CL_RED}Arcan requires an ISO C 9899:2011 capable compiler (Clang-3.3+ or gcc 4.7+)${CL_RST}")
