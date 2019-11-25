@@ -34,6 +34,7 @@ static void usage()
 	"  add_config_kv   \ttarget config key val\n"
 	"  add_config_env  \ttarget config key val\n"
 	"  add_appl_kv     \tappl key value\n"
+	"  drop_appl_key   \tappl\n"
 	"  drop_config     \ttarget config\n"
 	"  drop_all_configs\ttarget\n"
 	"  drop_target    \tname\n"
@@ -41,6 +42,7 @@ static void usage()
 	"\nAvailable data extraction commands: \n"
 	"  list_targets   \n"
 	"  list_tags      \n"
+	"  list_appls     \n"
 	"  show_target    \tname\n"
 	"  show_config    \ttargetname configname\n"
 	"  show_appl      \tapplname\n"
@@ -243,6 +245,31 @@ static int add_appl_kv(struct arcan_dbh* dst, int argc, char** argv)
 		argv[1], strlen(argv[2]) > 0 ? argv[2] : NULL) ?
 		EXIT_SUCCESS : EXIT_FAILURE;
 }
+
+static int drop_appl_key(struct arcan_dbh* dst, int argc, char** argv)
+{
+	union arcan_dbtrans_id id;
+	if (argc != 2){
+		printf("drop_appl_key(appl, key) "
+			"invalid number of arguments, %d vs 2\n", argc);
+
+		return EXIT_FAILURE;
+	}
+
+	if (strlen(argv[0]) == 0){
+		printf("invalid appl specified (0-length) \n");
+		return EXIT_FAILURE;
+	}
+
+	if (!validate_key(argv[1])){
+		printf("invalid key specified (restricted to [a-Z0-9_+/=])\n");
+		return EXIT_FAILURE;
+	}
+
+	return arcan_db_appl_kv(dst, argv[0], argv[1], NULL) ?
+		EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 
 static int add_target_kv(struct arcan_dbh* dst, int argc, char** argv)
 {
@@ -531,6 +558,25 @@ static int list_tags(struct arcan_dbh* dst, int argc, char** argv)
 	return EXIT_SUCCESS;
 }
 
+static int list_appls(struct arcan_dbh* dst, int argc, char** argv)
+{
+	struct arcan_strarr res = arcan_db_list_appl(dst);
+	if (!res.data){
+		printf("list_tags(), no valid list of tags returned.\n");
+		return EXIT_FAILURE;
+	}
+
+/* always prefixed appl_ */
+	char** curr = res.data;
+	while (*curr){
+		printf("%s\n", &(*curr)[5]);
+		curr++;
+	}
+	arcan_mem_freearr(&res);
+
+	return EXIT_SUCCESS;
+}
+
 static int show_appl(struct arcan_dbh* dst, int argc, char** argv)
 {
 	if (argc <= 0){
@@ -589,7 +635,10 @@ struct {
 		.key = "list_tags",
 		.fun = list_tags
 	},
-
+	{
+		.key = "list_appls",
+		.fun = list_appls
+	},
 	{
 		.key = "add_config_env",
 		.fun = add_config_env
@@ -598,6 +647,11 @@ struct {
 	{
 		.key = "add_appl_kv",
 		.fun = add_appl_kv
+	},
+
+	{
+		.key = "drop_appl_key",
+		.fun = drop_appl_key
 	},
 
 	{

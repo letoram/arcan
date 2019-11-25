@@ -208,6 +208,11 @@ struct arcan_strarr arcan_db_applkeys(struct arcan_dbh*,
 	const char* appl, const char* pattern);
 
 /*
+ * return a list of valid appl names
+ */
+struct arcan_strarr arcan_db_list_appl(struct arcan_dbh* dbh);
+
+/*
  * Returns true or false depending on if the requested targetid
  * exists or not.
  */
