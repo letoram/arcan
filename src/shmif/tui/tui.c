@@ -229,9 +229,14 @@ struct tui_process_res arcan_tui_process(
 		return res;
 	}
 
-	for (size_t i = 0; i < n_contexts; i++)
-		if (!contexts[i]->acon.addr)
+/* if any of the contexts are in a dirty state, the timeout will be changed */
+	for (size_t i = 0; i < n_contexts; i++){
+		if (!contexts[i]->acon.addr){
 			res.bad |= 1 << i;
+		}
+		else if (contexts[i]->dirty)
+			timeout = 0;
+	}
 
 	if (res.bad){
 		res.errc = TUI_ERRC_BAD_ARG;
