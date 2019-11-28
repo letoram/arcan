@@ -24,8 +24,8 @@ static void push_multipart(struct arcan_shmif_cont* out,
 		size_t i, lastok = 0;
 		state = 0;
 		for (i = 0; i <= maxlen - 1; i++){
-		if (UTF8_ACCEPT == utf8_decode(&state, &codepoint, (uint8_t)(msg[i])))
-			lastok = i;
+			if (UTF8_ACCEPT == utf8_decode(&state, &codepoint, (uint8_t)(msg[i])))
+				lastok = i;
 
 			if (i != lastok){
 				if (0 == i)

@@ -289,7 +289,6 @@ static int raster_tobuf(
 			*x1 = draw_x;
 		}
 
-		bool updated = false;
 		for (size_t i = line.offset; line.ncells && buf_sz >= raster_cell_sz; i++){
 			line.ncells--;
 
@@ -306,7 +305,6 @@ static int raster_tobuf(
 				continue;
 			}
 
-			updated = true;
 /* blit or discard if OOB */
 			if (draw_x + ctx->cell_w < max_w && draw_y + ctx->cell_h < max_h){
 				draw_x += drawglyph(ctx, &cell, vidp, pitch, draw_x, draw_y, max_w, max_h);
