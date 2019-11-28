@@ -3,6 +3,7 @@
  * patched to retrieve the render node we are supposed to use
  */
 #include "wayland-wayland-drm-server-protocol.h"
+#include "wayland-linux-dmabuf-unstable-v1-server-protocol.h"
 
 #include "wlimpl/xwl.c"
 
@@ -219,19 +220,18 @@ static const struct xdg_wm_base_interface xdgshell_if = {
 };
 #endif
 
-#ifdef HAVE_DMA_BUF
+#include "wlimpl/dma_buf_param.c"
+static struct zwp_linux_buffer_params_v1_interface zdmabuf_params_if = {
+	.add = zdmattr_add,
+	.create = zdmattr_create,
+	.create_immed = zdmattr_create_immed
+};
+
+#include "wlimpl/dma_buf.c"
 static struct zwp_linux_dmabuf_v1_interface zdmabuf_if = {
 	.destroy = zdmabuf_destroy,
 	.create_params = zdmabuf_params,
-	.format = zdmabuf_format,
-	.modifier = zdmabuf_modifier,
-	.params = zdmabuf_params,
-	.add = zdmabuf_add,
-	.flags = zdmabuf_flags,
-	.create = zdmabuf_create,
-	.create_immed = zdmabuf_create_immed
 };
-#endif
 
 #include "wayland-relative-pointer-unstable-v1-server-protocol.h"
 #include "wlimpl/relp_mgr.c"

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2018, Björn Ståhl
+ * Copyright 2016-2019, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: https://github.com/letoram/arcan/wiki/wayland.md
  */
@@ -28,7 +28,7 @@
 #include <xkbcommon/xkbcommon.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon-compose.h>
-
+#include <libdrm/drm_fourcc.h>
 /*
  * only linux
  */
@@ -121,11 +121,15 @@ static struct {
 	struct conn_group* groups;
 
 	EGLDisplay display;
+	EGLBoolean (*query_formats)(EGLDisplay, EGLint, EGLint*, EGLint*);
+	EGLBoolean (*query_modifiers)(EGLDisplay,
+		EGLint, EGLint, EGLuint64KHR* mods, EGLBoolean* ext_only, EGLint* n_mods);
+
 	struct wl_display* disp;
 /* set to false after initialization to terminate */
 	bool alive;
 
-/* metadata on accelerated graphics */
+/* metadata on accelerated graphics (legacy) */
 	struct wl_drm* drm;
 
 /* initial display parameters retrieved from the control connection */
@@ -1020,6 +1024,7 @@ static int show_use(const char* msg, const char* arg)
 "\t-force-fs         ignore displayhints and always configure to display size\n"
 "\nProtocol Filters:\n"
 "\t-no-egl           disable the wayland-egl extensions\n"
+"\t       -no-drm    disable the drm subprotocol\n"
 "\t-no-compositor    disable the compositor protocol\n"
 "\t-no-subcompositor disable the sub-compositor/surface protocol\n"
 "\t-no-shell         disable the shell protocol\n"
@@ -1107,7 +1112,8 @@ int main(int argc, char* argv[])
  * field here, and then command-line argument passing to disable said protocol.
  */
 	struct {
-		int compositor, shell, shm, seat, output, egl, zxdg, xdg, subcomp, ddev, relp, dma;
+		int compositor, shell, shm, seat, output, ddev;
+		int egl, zxdg, xdg, subcomp, drm, relp, dma;
 	} protocols = {
 		.compositor = 4,
 		.shell = 1,
@@ -1119,13 +1125,11 @@ int main(int argc, char* argv[])
 #ifdef HAVE_XDG_SHELL
 		.xdg = 1,
 #endif
-#ifdef HAVE_DMA_BUF
-		.dma = 1,
-#endif
+		.drm = 1,
+		.dma = 3,
 		.subcomp = 1,
 		.ddev = 3,
 		.relp = 1,
-		.dma = 1
 	};
 #ifdef ENABLE_SECCOMP
 	bool sandbox = false;
@@ -1209,6 +1213,8 @@ int main(int argc, char* argv[])
 		}
 		else if (strcmp(argv[arg_i], "-no-egl") == 0)
 			protocols.egl = 0;
+		else if (strcmp(argv[arg_i], "-no-drm") == 0)
+			protocols.drm = 0;
 		else if (strcmp(argv[arg_i], "-no-compositor") == 0)
 			protocols.compositor = 0;
 		else if (strcmp(argv[arg_i], "-no-shell") == 0)
@@ -1221,10 +1227,8 @@ int main(int argc, char* argv[])
 			protocols.output = 0;
 		else if (strcmp(argv[arg_i], "-no-zxdg") == 0)
 			protocols.zxdg = 0;
-#ifdef HAVE_DMA_BUF
 		else if (strcmp(argv[arg_i], "-no-dma") == 0)
 			protocols.dma = 0;
-#endif
 #ifdef HAVE_XDG_SHELL
 		else if (strcmp(argv[arg_i], "-no-xdg") == 0)
 			protocols.xdg = 0;
@@ -1336,14 +1340,23 @@ int main(int argc, char* argv[])
 
 		uintptr_t display;
 		arcan_shmifext_egl_meta(&wl.control, &display, NULL, NULL);
-		wl.display = eglGetDisplay((EGLDisplay)display);
+		wl.display = (void*) display;
+
 		if (!wl.display){
 			fprintf(stderr, "(eglBindWaylandDisplayWL) failed\n");
 			exit_code = EXIT_FAILURE;
 			goto cleanup;
 		}
-		wl.drm = wayland_drm_init(wl.disp,
-			getenv("ARCAN_RENDER_NODE"), NULL, NULL, 0);
+
+		wl.query_formats =
+			arcan_shmifext_lookup(&wl.control, "eglQueryDmaBufFormatsEXT");
+		wl.query_modifiers =
+			arcan_shmifext_lookup(&wl.control, "eglQueryDmaBufModifiersEXT");
+
+		if (protocols.drm){
+			wl.drm = wayland_drm_init(wl.disp,
+				getenv("ARCAN_RENDER_NODE"), NULL, NULL, 0);
+		}
 	}
 
 /*
@@ -1387,11 +1400,10 @@ int main(int argc, char* argv[])
 		wl_global_create(wl.disp, &xdg_wm_base_interface,
 			protocols.xdg, NULL, &bind_xdg);
 #endif
-#ifdef HAVE_DMA_BUF
-	if (protocols.dma)
+	if (protocols.dma){
 		wl_global_create(wl.disp, &zwp_linux_dmabuf_v1_interface,
-			protocols.dma, NULL, &bind_zwp_dmabuf);
-#endif
+			protocols.dma, NULL, &bind_zwp_dma_buf);
+	}
 	if (protocols.subcomp)
 		wl_global_create(wl.disp, &wl_subcompositor_interface,
 			protocols.subcomp, NULL, &bind_subcomp);
