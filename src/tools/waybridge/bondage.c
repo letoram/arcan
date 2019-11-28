@@ -90,7 +90,30 @@ static void bind_xdg(struct wl_client* client,
 }
 #endif
 
-#ifdef HAVE_DMA_BUF
+static void decompose_mod(uint64_t mod, uint32_t* hi, uint32_t* lo)
+{
+	*hi = mod & 0xffffffff;
+	*lo = mod >> 32;
+}
+
+static void send_fallback(struct wl_resource* res, bool mods)
+{
+	static const int formats[] = {
+		DRM_FORMAT_ARGB8888,
+		DRM_FORMAT_XRGB8888
+	};
+	if (mods)
+		for (size_t i = 0; i < COUNT_OF(formats); i++){
+			uint32_t mod_hi, mod_lo;
+			decompose_mod(DRM_FORMAT_MOD_INVALID, &mod_hi, &mod_lo);
+			zwp_linux_dmabuf_v1_send_modifier(res, formats[i], mod_hi, mod_lo);
+		}
+	else
+		for (size_t i = 0; i < COUNT_OF(formats); i++){
+			zwp_linux_dmabuf_v1_send_format(res, formats[i]);
+		}
+}
+
 static void bind_zwp_dma_buf(struct wl_client* client,
 	void *data, uint32_t version, uint32_t id)
 {
@@ -102,8 +125,57 @@ static void bind_zwp_dma_buf(struct wl_client* client,
 		return;
 	}
 	wl_resource_set_implementation(res, &zdmabuf_if, NULL, NULL);
+
+/* the proper route for this is to use an egl display derived from a
+ * DEVICE_NODE event, then first query the formats, then for each format, query
+ * modifiers and send format+modifier pairs */
+
+/* so simple-dmabuf-drm just removed the handling of this altogether with a
+ * nice deprecated, much engineering quality, such versioning - as they
+ * apparently can't drop the symbol due to the shit API, and nobody cares
+ * enough to renamespace etc. Xwayland, also falls back to wl_drm?! if the
+ * invalid modifier thing is provided */
+	if (version < ZWP_LINUX_DMABUF_V1_MODIFIER_SINCE_VERSION)
+		send_fallback(res, false);
+
+	EGLint num;
+
+	if (!wl.query_formats || !wl.query_formats(wl.display, 0, NULL, &num)){
+		send_fallback(res, true);
+		return;
+	}
+
+	int* formats = malloc(sizeof(int) * num);
+	if (!formats){
+		send_fallback(res, true);
+		return;
+	}
+
+	if (!wl.query_formats(wl.display, num, formats, &num)){
+		num = 0;
+	}
+
+	for (size_t i = 0; i < num; i++){
+		uint64_t* mods = NULL;
+		int n_mods = 0;
+
+		if (!wl.query_modifiers(wl.display, formats[i], 0, NULL, NULL, &n_mods))
+			continue;
+
+		mods = malloc(n_mods * sizeof(uint64_t));
+		if (mods &&
+			wl.query_modifiers(wl.display, formats[i], n_mods, mods, NULL, &num)){
+			for (size_t j = 0; j < n_mods; j++){
+				uint32_t mod_hi, mod_lo;
+				decompose_mod(mods[j], &mod_hi, &mod_lo);
+				zwp_linux_dmabuf_v1_send_format(res, formats[i]);
+			}
+		}
+		free(mods);
+	}
+
+	free(formats);
 }
-#endif
 
 static void bind_subcomp(struct wl_client* client,
 	void* data, uint32_t version, uint32_t id)
