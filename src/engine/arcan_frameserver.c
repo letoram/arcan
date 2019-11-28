@@ -796,7 +796,7 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 				};
 
 			atomic_store(&src->shm.ptr->vpts, arcan_timemillis());
-			atomic_store(&src->shm.ptr->dirty, src->desc.region);
+			atomic_store(&src->shm.ptr->dirty, reg);
 			atomic_store(&src->shm.ptr->vready, 1);
 			platform_fsrv_pushevent(src, &ev);
 

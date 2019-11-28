@@ -432,12 +432,14 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 /* using buf on both arguments should be safe here due to the whole 'need the
  * full path before able to generate output' criteria, but explicitly terminate
  * on truncation */
-			int rv = readlink(buf, buf, 255);
+			char buf2[256];
+			int rv = readlink(buf, buf2, 255);
 			if (-1 == rv){
 				snprintf(buf, 256, "error: %s", strerror(errno));
 			}
-			else
-				buf[rv] = '\0';
+			else{
+				snprintf(buf, 256, "%s", buf2);
+			}
 
 			if (fds[i] > 2){
 				snprintf(lbl_prefix, lbl_len, "%4d[%s](%s)\t: %s",

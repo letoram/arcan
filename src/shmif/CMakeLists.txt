@@ -35,19 +35,6 @@ endif()
 
 set(ASHMIF_INSTPATH lib)
 
-# a nasty little detail here is that we actually expand the build-time
-# platforms into a header that is included in the beginning of the defs.h file.
-# The reason for this is that different video platforms dictate different
-# optimal 'default' packing formats and we go to quite some lengths to avoid
-# having the whole fourcc like state space explosion of having to support every
-# packing format in the world, or having clients to support multiple formats
-# outside of GPU acceleration.
-add_custom_command(
-	OUTPUT ${ASD}/shmif/arcan_shmif_cfg.h
-	COMMAND echo "\\#define ${AGP_PLATFORM}" > arcan_shmif_cfg.h
-	WORKING_DIRECTORY ${ASD}/shmif
-)
-
 set (TUI_HEADERS
 	${ASD}/shmif/arcan_tui.h
 	${ASD}/shmif/arcan_tuidefs.h
