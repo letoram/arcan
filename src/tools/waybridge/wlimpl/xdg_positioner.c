@@ -4,11 +4,11 @@ static void xdg_invalid_input(struct wl_resource* res)
 		XDG_POSITIONER_ERROR_INVALID_INPUT, "w||h must be > 0");
 }
 
-static void apply_positioner(
+static bool apply_positioner(
 	struct positioner* pos, struct arcan_event* ev)
 {
 	if (!pos || !ev)
-		return;
+		return false;
 
 	ev->category = EVENT_EXTERNAL;
 	ev->ext.kind = ARCAN_EVENT(VIEWPORT);
@@ -17,20 +17,43 @@ static void apply_positioner(
 	ev->ext.viewport.w = pos->width;
 	ev->ext.viewport.h = pos->height;
 
-	if (pos->anchor & XDG_POSITIONER_ANCHOR_TOP)
-		ev->ext.viewport.y += pos->anchor_y;
-	else if (pos->anchor & XDG_POSITIONER_ANCHOR_BOTTOM)
-		ev->ext.viewport.y += pos->anchor_y + pos->anchor_height;
-	else
-		ev->ext.viewport.y += pos->anchor_y + (pos->anchor_height >> 1);
+/* translate anchor to viewport anchor-pos */
+	bool t = pos->anchor & XDG_POSITIONER_ANCHOR_TOP;
+	bool l = pos->anchor & XDG_POSITIONER_ANCHOR_LEFT;
+	bool d = pos->anchor & XDG_POSITIONER_ANCHOR_BOTTOM;
+	bool r = pos->anchor & XDG_POSITIONER_ANCHOR_RIGHT;
 
-	if (pos->anchor & XDG_POSITIONER_ANCHOR_LEFT)
-		ev->ext.viewport.x += pos->anchor_x;
-	else if (pos->anchor & XDG_POSITIONER_ANCHOR_RIGHT)
-		ev->ext.viewport.x += pos->anchor_x + pos->anchor_width;
-	else
-		ev->ext.viewport.x += pos->anchor_x + (pos->anchor_width >> 1);
+	if ((l && r) || (t && d)){
+		return false;
+	}
 
+	if (t){
+		if (l)
+			ev->ext.viewport.edge = 1;
+		else if (r)
+			ev->ext.viewport.edge = 3;
+		else
+			ev->ext.viewport.edge = 2;
+	}
+	else if (d){
+		if (l)
+			ev->ext.viewport.edge = 7;
+		else if (r)
+			ev->ext.viewport.edge = 9;
+		else
+			ev->ext.viewport.edge = 8;
+	}
+	else if (l)
+		ev->ext.viewport.edge = 4;
+	else if (r)
+		ev->ext.viewport.edge = 6;
+	else
+		ev->ext.viewport.edge = 5;
+
+	ev->ext.viewport.anchor_edge = 1;
+	ev->ext.viewport.anchor_pos = 1;
+
+/* uncertain how to translate these really */
 	if (pos->gravity & XDG_POSITIONER_GRAVITY_TOP)
 		ev->ext.viewport.y -= pos->height;
 	else if (pos->gravity & XDG_POSITIONER_GRAVITY_BOTTOM)
@@ -38,9 +61,7 @@ static void apply_positioner(
 	else
 		ev->ext.viewport.y -= pos->height >> 1;
 
-/*
- * uncertain what to do about the constraint adjustment at this stage
- */
+	return true;
 }
 
 static void xdgpos_size(struct wl_client* cl,
@@ -62,7 +83,7 @@ static void xdgpos_anchor_rect(struct wl_client* cl,
 		x, y, width, height);
 	struct positioner* pos = wl_resource_get_user_data(res);
 
-	if (width < 0 || height < 0)
+	if (width <= 0 || height < 0)
 		return xdg_invalid_input(res);
 
 	pos->anchor_x = x;

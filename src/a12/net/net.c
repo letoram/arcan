@@ -59,6 +59,9 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 		}
 		fclose(stderr);
 #endif
+/* we should really re-exec ourselves with the 'socket-passing' setup so that
+ * we won't act as a possible ASLR break */
+		arcan_shmif_privsep(NULL, "shmif", NULL, 0);
 		int rc = a12helper_a12srv_shmifcl(S, NULL, fd, fd);
 		exit(rc < 0 ? EXIT_FAILURE : EXIT_SUCCESS);
 	}

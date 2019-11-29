@@ -1232,6 +1232,10 @@ end:
 
 static void setup_avbuf(struct arcan_shmif_cont* res)
 {
+/* flush out dangling buffers */
+	memset(res->priv->vbuf, '\0', sizeof(void*) * ARCAN_SHMIF_VBUFC_LIM);
+	memset(res->priv->abuf, '\0', sizeof(void*) * ARCAN_SHMIF_ABUFC_LIM);
+
 	res->w = atomic_load(&res->addr->w);
 	res->h = atomic_load(&res->addr->h);
 	res->stride = res->w * ARCAN_SHMPAGE_VCHANNELS;
@@ -1254,8 +1258,13 @@ static void setup_avbuf(struct arcan_shmif_cont* res)
 	if (0 == res->samplerate)
 		res->samplerate = ARCAN_SHMIF_SAMPLERATE;
 
+/* the buffer limit size needs to take the rhint into account, but only
+ * if we have a known cell size as that is the primitive for calculation */
 	res->vbufsize = arcan_shmif_vbufsz(
-		res->priv->atype, res->hints, res->w, res->h);
+		res->priv->atype, res->hints, res->w, res->h,
+		atomic_load(&res->addr->rows),
+		atomic_load(&res->addr->cols)
+	);
 
 	arcan_shmif_mapav(res->addr,
 		res->priv->vbuf, res->priv->vbuf_cnt, res->vbufsize,
@@ -1783,18 +1792,25 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 }
 
 static bool shmif_resize(struct arcan_shmif_cont* arg,
-	unsigned width, unsigned height,
-	size_t abufsz, int vidc, int audc, int samplerate,
-	int adata)
+	unsigned width, unsigned height, struct shmif_resize_ext ext)
 {
 	if (!arg->addr || !arcan_shmif_integrity_check(arg) ||
 	!arg->priv || width > PP_SHMPAGE_MAXW || height > PP_SHMPAGE_MAXH)
 		return false;
 
+	struct shmif_hidden* priv = arg->priv;
+
+/* quick rename / unpack as old prototype of this didn't carry ext struct */
+	size_t abufsz = ext.abuf_sz;
+	int vidc = ext.vbuf_cnt;
+	int audc = ext.abuf_cnt;
+	int samplerate = ext.samplerate;
+	int adata = ext.meta;
+
 /* attempt to resize on a dead connection will trigger forced-
  * fallback or reconnect style behavior */
 	if (!arg->addr->dms){
-		if (SHMIF_MIGRATE_OK != fallback_migrate(arg, arg->priv->alt_conn, true))
+		if (SHMIF_MIGRATE_OK != fallback_migrate(arg, priv->alt_conn, true))
 			return false;
 	}
 
@@ -1813,13 +1829,15 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 
 /* 0 is allowed to disable any related data, useful for not wasting
  * storage when accelerated buffer passing is working */
-	vidc = vidc < 0 ? arg->priv->vbuf_cnt : vidc;
-	audc = audc < 0 ? arg->priv->abuf_cnt : audc;
+	vidc = vidc < 0 ? priv->vbuf_cnt : vidc;
+	audc = audc < 0 ? priv->abuf_cnt : audc;
+
+	bool dimensions_changed = width == arg->w && height == arg->h;
+	bool bufcnt_changed = vidc == priv->vbuf_cnt && audc == priv->abuf_cnt;
+	bool hints_changed = arg->addr->hints == arg->hints;
 
 /* don't negotiate unless the goals have changed */
-	if (arg->vidp && width == arg->w && height == arg->h &&
-		vidc == arg->priv->vbuf_cnt && audc == arg->priv->abuf_cnt &&
-		arg->addr->hints == arg->hints)
+	if (arg->vidp && !dimensions_changed && !bufcnt_changed && !hints_changed)
 		return true;
 
 /* synchronize hints as _ORIGO_LL and similar changes only synch
@@ -1838,13 +1856,16 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
  * dimensions, buffering etc. THEN resize request flag */
 	atomic_store(&arg->addr->w, width);
 	atomic_store(&arg->addr->h, height);
+	atomic_store(&arg->addr->rows, ext.rows);
+	atomic_store(&arg->addr->cols, ext.cols);
 	atomic_store(&arg->addr->abufsize, abufsz);
 	atomic_store_explicit(&arg->addr->apending, audc, memory_order_release);
 	atomic_store_explicit(&arg->addr->vpending, vidc, memory_order_release);
-	if (arg->priv->log_event){
-		fprintf(stderr, "(@%"PRIxPTR" rz-synch): %zu*%zu(fl:%d), %zu Hz\n",
-			(uintptr_t)arg, (size_t)width,(size_t)height,
-			(int)arg->hints,(size_t)arg->samplerate
+	if (priv->log_event){
+		fprintf(stderr,
+			"(@%"PRIxPTR" rz-synch): %zu*%zu(fl:%d), grid:%zu,%zu %zu Hz\n",
+			(uintptr_t)arg, (size_t)width, (size_t)height, (int)arg->hints,
+			(size_t)ext.rows, (size_t)ext.cols, (size_t)arg->samplerate
 		);
 	}
 
@@ -1883,7 +1904,7 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
  */
 	if (arg->shmsize != arg->addr->segment_size){
 		size_t new_sz = arg->addr->segment_size;
-		struct shmif_hidden* gs = arg->priv;
+		struct shmif_hidden* gs = priv;
 
 		if (gs->guard.active)
 			pthread_mutex_lock(&gs->guard.synch);
@@ -1905,25 +1926,31 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 /*
  * make sure we start from the right buffer counts and positions
  */
-	arcan_shmif_setevqs(arg->addr, arg->esem,
-		&arg->priv->inev, &arg->priv->outev, false);
+	arcan_shmif_setevqs(arg->addr,
+		arg->esem, &priv->inev, &priv->outev, false);
 	setup_avbuf(arg);
+
 	return true;
 }
 
 bool arcan_shmif_resize_ext(struct arcan_shmif_cont* arg,
 	unsigned width, unsigned height, struct shmif_resize_ext ext)
 {
-	return shmif_resize(arg, width, height,
-		ext.abuf_sz, ext.vbuf_cnt, ext.abuf_cnt, ext.samplerate, ext.meta);
+	return shmif_resize(arg, width, height, ext);
 }
 
 bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 	unsigned width, unsigned height)
 {
-	return arg->addr ?
-		shmif_resize(arg, width, height, arg->addr->abufsize, -1, -1, -1, 0) :
-		false;
+	if (!arg || !arg->addr)
+		return false;
+
+	return shmif_resize(arg, width, height, (struct shmif_resize_ext){
+		.abuf_sz = arg->addr->abufsize,
+		.vbuf_cnt = -1,
+		.abuf_cnt = -1,
+		.samplerate = -1,
+	});
 }
 
 shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont* cont,
@@ -2311,8 +2338,17 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	size_t w = atomic_load(&cont->addr->w);
 	size_t h = atomic_load(&cont->addr->h);
 
-	if (!shmif_resize(&ret, w, h, cont->abufsize, cont->priv->vbuf_cnt,
-		cont->priv->abuf_cnt, cont->samplerate, cont->priv->atype)){
+/* extract settings from the page, and forward into the new struct -
+ * possibly just actually cache this inside ext would be safer */
+	struct shmif_resize_ext ext = {
+		.abuf_sz = cont->abufsize,
+		.vbuf_cnt = cont->priv->vbuf_cnt,
+		.abuf_cnt = cont->priv->abuf_cnt,
+		.samplerate = cont->samplerate,
+		.meta = cont->priv->atype
+	};
+
+	if (!shmif_resize(&ret, w, h, ext)){
 		return SHMIF_MIGRATE_TRANSFER_FAIL;
 	}
 
@@ -3176,7 +3212,7 @@ void arcan_shmif_bgcopy(
  */
 
 #ifdef __OpenBSD__
-void arcan_shmif_privsep(
+void arcan_shmif_privsep(struct arcan_shmif_cont* C,
 	const char* pledge_str, struct shmif_privsep_node** nodes, int opts)
 {
 	if (pledge_str){
@@ -3208,7 +3244,7 @@ void arcan_shmif_privsep(
 }
 
 #else
-void arcan_shmif_privsep(
+void arcan_shmif_privsep(struct arcan_shmif_cont* C,
 	const char* pledge, struct shmif_privsep_node** nodes, int opts)
 {
 /* oh linux, why art thou.. */

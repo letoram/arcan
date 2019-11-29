@@ -9,7 +9,8 @@ static bool xdgtoplevel_shmifev_handler(
 
 		case TARGET_COMMAND_DISPLAYHINT:{
 		/* update state tracking first */
-			trace(TRACE_SHELL, "xdg-toplevel:displayhint(%d, %d, %d, %d) = (%d*%d)",
+			trace(TRACE_SHELL, "xdg-toplevel(%"PRIxPTR"):hint=%d,%d,%d,%d:size=%d,%d",
+				(uintptr_t) surf,
 				ev->tgt.ioevs[0].iv, ev->tgt.ioevs[1].iv,
 				ev->tgt.ioevs[2].iv, ev->tgt.ioevs[3].iv, surf->acon.w, surf->acon.h);
 
@@ -18,9 +19,17 @@ static bool xdgtoplevel_shmifev_handler(
 /* and then, if something has changed, send the configure event */
 			int w = ev->tgt.ioevs[0].iv ? ev->tgt.ioevs[0].iv : surf->geom_w;
 			int h = ev->tgt.ioevs[1].iv ? ev->tgt.ioevs[1].iv : surf->geom_h;
-			if (changed || (w && h && (w != surf->acon.w || h != surf->acon.h))){
+			bool resized = (w && h && (w != surf->acon.w || h != surf->acon.h));
+
+			if (changed || resized){
 				struct wl_array states;
-				trace(TRACE_SHELL, "xdg_surface(request resize to %d*%d)", w, h);
+
+				if (resized){
+					trace(TRACE_SHELL,
+						"resizereq:last=%d,%d:req:=%d,%d",
+						(int) surf->acon.w, (int) surf->acon.h, w, h);
+				}
+
 				wl_array_init(&states);
 				uint32_t* sv;
 				if (surf->states.maximized){

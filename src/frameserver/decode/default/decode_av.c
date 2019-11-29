@@ -40,6 +40,7 @@
 #include <arcan_shmif.h>
 #include <arcan_tuisym.h>
 #include "frameserver.h"
+#include "decode.h"
 
 #ifdef HAVE_UVC
 #include "uvc_support.h"
@@ -368,32 +369,6 @@ static libvlc_media_t* find_capture_device(
 	return media;
 }
 
-static void dump_help()
-{
-	fprintf(stdout, "Environment variables: \nARCAN_CONNPATH=path_to_server\n"
-	  "ARCAN_ARG=packed_args (key1=value:key2:key3=value)\n\n"
-		"Accepted packed_args:\n"
-		"   key   \t   value   \t   description\n"
-		"---------\t-----------\t-----------------\n"
-		" file    \t path      \t try to open file path for playback \n"
-		" pos     \t 0..1      \t set the relative starting position \n"
-		" noaudio \t           \t disable the audio output entirely \n"
-		" stream  \t url       \t attempt to open URL for streaming input \n"
-		" capture \t           \t try to open a capture device\n"
-		" device  \t number    \t find capture device with specific index\n"
-		" fps     \t rate      \t force a specific framerate\n"
-		" width   \t outw      \t scale output to a specific width\n"
-		" height  \t outh      \t scale output to a specific height\n"
-		" loop    \t           \t reset playback upon completion\n"
-#ifdef HAVE_UVC
-		"---------\t-----------\t----------------\n");
-	uvc_append_help(stdout);
-	fprintf(stdout,
-#endif
-		"---------\t-----------\t----------------\n"
-	);
-}
-
 static void seek_relative(int seconds)
 {
 	int64_t time_v = libvlc_media_player_get_time(decctx.player);
@@ -508,7 +483,7 @@ static bool dispatch(arcan_event* ev)
 	return true;
 }
 
-int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
+int decode_av(struct arcan_shmif_cont* cont, struct arg_arr* args)
 {
 	const char* val;
 	libvlc_media_t* media = NULL;
@@ -525,8 +500,7 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 #endif
 
 	if (!cont || !args){
-		dump_help();
-		return EXIT_FAILURE;
+		return show_use(cont, NULL);
 	}
 
 /* just get something to pump the event handlers since we don't have a good
@@ -624,15 +598,18 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 		media = find_capture_device(devind, desw, desh, fps);
 	}
-	else if (arg_lookup(args, "file", 0, &val))
+	else if (arg_lookup(args, "file", 0, &val)){
+		if (!val || strlen(val) == 0){
+			return show_use(cont, "invalid/empty file argument");
+		}
 		media = libvlc_media_new_path(decctx.vlc, val);
+	}
 
 	if (arg_lookup(args, "loop", 0, &val))
 		decctx.loop = true;
 
 	if (!media){
-		LOG("couldn't open any media source, giving up.\n");
-		 return EXIT_FAILURE;
+		return show_use(cont, "no valid media source");
 	}
 
 	if (arg_lookup(args, "pos", 0, &val)){

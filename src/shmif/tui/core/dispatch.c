@@ -8,13 +8,19 @@
 static void display_hint(struct tui_context* tui, arcan_tgtevent* ev)
 {
 /* first, are other dimensions than our current ones requested? */
-	if (
-		(ev->ioevs[0].iv && ev->ioevs[1].iv) &&
-		(abs((int)ev->ioevs[0].iv - (int)tui->acon.w) > 0 ||
-		 abs((int)ev->ioevs[1].iv - (int)tui->acon.h) > 0)
-	){
+	int w = ev->ioevs[0].iv;
+	int h = ev->ioevs[1].iv;
+
+	if (w && w && (abs((int)w -
+		(int)tui->acon.w) > 0 || abs((int)h - (int)tui->acon.h) > 0)){
 /* then try and reflect */
-		if (arcan_shmif_resize(&tui->acon, ev->ioevs[0].iv, ev->ioevs[1].iv))
+		if (arcan_shmif_resize_ext(&tui->acon, w, h,
+			(struct shmif_resize_ext){
+				.vbuf_cnt = -1,
+				.abuf_cnt = -1,
+				.rows = h / tui->cell_h,
+				.cols = w / tui->cell_w
+			}))
 			tui_screen_resized(tui);
 	}
 

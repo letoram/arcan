@@ -1482,7 +1482,6 @@ struct tui_raster_context*
 /* apply density over size information */
 	size_t px_sz = ceilf((float)pt_size * 0.03527778 * ppcm);
 
-	arcan_warning("raster to: %zu\n", px_sz);
 /* if the font is of a bitmap type, resolve the pixel size from density+size
  * and request that from the builtin bitmap font */
 	tui_pixelfont_setsz(builtin_bitmap.bitmap, px_sz, &w, &h);
