@@ -204,6 +204,50 @@ static void surf_inputreg(struct wl_client* cl,
  */
 }
 
+static bool fmt_has_alpha(int fmt, struct comp_surf* surf)
+{
+/* should possible check for the special case if the entire region is marked
+ * as opaque as well or if there are translucent portions */
+	return
+		fmt == WL_SHM_FORMAT_XRGB8888 ||
+		fmt == WL_DRM_FORMAT_XRGB4444 ||
+		fmt == WL_DRM_FORMAT_XBGR4444 ||
+		fmt == WL_DRM_FORMAT_RGBX4444 ||
+		fmt == WL_DRM_FORMAT_BGRX4444 ||
+		fmt == WL_DRM_FORMAT_XRGB1555 ||
+		fmt == WL_DRM_FORMAT_XBGR1555 ||
+		fmt == WL_DRM_FORMAT_RGBX5551 ||
+		fmt == WL_DRM_FORMAT_BGRX5551 ||
+		fmt == WL_DRM_FORMAT_XRGB8888 ||
+		fmt == WL_DRM_FORMAT_XBGR8888 ||
+		fmt == WL_DRM_FORMAT_RGBX8888 ||
+		fmt == WL_DRM_FORMAT_BGRX8888 ||
+		fmt == WL_DRM_FORMAT_XRGB2101010 ||
+		fmt == WL_DRM_FORMAT_XBGR2101010 ||
+		fmt == WL_DRM_FORMAT_RGBX1010102 ||
+		fmt == WL_DRM_FORMAT_BGRX1010102;
+}
+
+static void synch_acon_alpha(struct arcan_shmif_cont* acon, bool has_alpha)
+{
+	if (has_alpha){
+		if (acon->hints & SHMIF_RHINT_IGNORE_ALPHA){
+			/* NOP */
+		}
+		else {
+			acon->hints |= SHMIF_RHINT_IGNORE_ALPHA;
+		}
+	}
+	else {
+		if (acon->hints & SHMIF_RHINT_IGNORE_ALPHA){
+			acon->hints &= ~SHMIF_RHINT_IGNORE_ALPHA;
+		}
+		else {
+			/* NOP */
+		}
+	}
+}
+
 static void commit_shm(struct wl_client* cl, struct arcan_shmif_cont* acon,
 	struct wl_resource* res, struct comp_surf* surf, struct wl_shm_buffer* shm_buf)
 {
@@ -233,6 +277,10 @@ static void commit_shm(struct wl_client* cl, struct arcan_shmif_cont* acon,
 		arcan_shmifext_drop(acon);
 		setup_shmifext(acon, surf, fmt);
 	}
+
+/* alpha state changed? only changing this flag does not require a resynch
+ * as the hint is checked on each frame */
+	synch_acon_alpha(acon, fmt_has_alpha(fmt, surf));
 
 /* try the path of converting the shm buffer to an accelerated, BUT there
  * is a special case in that a failed accelerated context can have local
@@ -378,15 +426,18 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * order shm -> drm -> dma-buf.
  */
 	struct wl_shm_buffer* shm_buf = wl_shm_buffer_get(buf);
+
 	if (!shm_buf){
 		struct wl_drm_buffer* drm_buf = wayland_drm_buffer_get(wl.drm, buf);
 		if (drm_buf){
 			trace(TRACE_SURF, "surf_commit(egl:%s)", surf->tracetag);
+			synch_acon_alpha(acon,
+				fmt_has_alpha(wayland_drm_buffer_get_format(drm_buf), surf));
 			wayland_drm_commit(surf, drm_buf, acon);
 		}
 		else
 			trace(TRACE_SURF, "surf_commit(unknown:%s)", surf->tracetag);
-/* dma- buf bits are missing here still */
+/* dma- buf bits are missing here still, query the format and forward */
 	}
 	else
 		commit_shm(cl, acon, res, surf, shm_buf);
