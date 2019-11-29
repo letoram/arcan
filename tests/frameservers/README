@@ -72,3 +72,5 @@ encfwd/ connect once as an encoder, and then as a normal client that
 
 dnd/ tests handling of drag and drop, cut and paste as well as global
      file open / file save
+
+noreg/ tests what happens if a client connects but refuses to register
