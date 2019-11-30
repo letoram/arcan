@@ -51,7 +51,6 @@ set (SHMIF_HEADERS
 	${ASD}/shmif/arcan_shmif_sub.h
 	${ASD}/shmif/arcan_shmif_defs.h
 	${ASD}/shmif/arcan_shmif.h
-	${ASD}/shmif/arcan_shmif_cfg.h
 )
 
 set (SHMIF_SOURCES
