@@ -4156,7 +4156,7 @@ digital:
 	}
 	else {
 kinderr:
-		arcan_warning("Script Warning: target_input(), unkown \"kind\""
+		arcan_warning("Script Warning: target_input(), unknown \"kind\""
 			" field in table.\n");
 		lua_pushnumber(ctx, false);
 		return 1;
