@@ -1282,7 +1282,7 @@ static void setup_avbuf(struct arcan_shmif_cont* res)
 /* using a base address where the meta structure will reside, allocate n- audio
  * and n- video slots and populate vbuf/abuf with matching / aligned pointers
  * and return the total size */
-struct arcan_shmif_cont shmif_acquire_int(
+static struct arcan_shmif_cont shmif_acquire_int(
 	struct arcan_shmif_cont* parent,
 	const char* shmkey,
 	int type,
@@ -3038,7 +3038,7 @@ pid_t arcan_shmif_handover_exec(
 	}
 
 	CLEAN_ENV();
-	return detach ? -1 : pid;
+	return pid;
 }
 
 int arcan_shmif_deadline(

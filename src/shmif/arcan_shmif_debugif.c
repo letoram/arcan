@@ -1,3 +1,32 @@
+/*
+ * Runtime in-process Debug Interface
+ * Copyright 2018-2019, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
+ * Description: This provides a collection of useful user-initiated
+ * debug control and process exploration tools.
+ * Notes:
+ *  - interesting / unexplored venues:
+ *    - seccomp- renderer
+ *    - sanitizer
+ *    - statistic profiler
+ *    - detach intercept / redirect window
+ *    - runtime symbol hijack
+ *    - memory pages to sense_mem deployment
+ *    - enumerate modules and their symbols? i.e. dl_iterate_phdr
+ *      and trampoline?
+ *    - 'special' tactics, e.g. malloc- intercept + backtrace on write
+ *      to pair buffers and transformations, fetch from trap page pool
+ *      and mprotect- juggle to find crypto and compression functions
+ *
+ * Likely that these and other venues should be written as separate
+ * tools that jack into the menu (see src/tools/adbginject) rather
+ * than make the code here too extensive.
+ *
+ * Many of these moves are quite risky without other good primitives
+ * first though, the most pressing one is probably 'suspend all other
+ * threads'.
+ */
 #include "arcan_shmif.h"
 #include "arcan_shmif_interop.h"
 #include "arcan_shmif_debugif.h"
@@ -13,9 +42,15 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/mman.h>
+#include <sys/wait.h>
+#include <sys/prctl.h>
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
+
+#ifdef __LINUX
+#include <linux/prctl.h>
+#endif
 
 /*
  * ideally all this would be fork/asynch-signal safe
@@ -35,7 +70,7 @@
 #endif
 
 enum debug_cmd_id {
-	TAG_CMD_DEBUGGER = 0,
+	TAG_CMD_SPAWN = 0,
 	TAG_CMD_ENVIRONMENT = 1,
 	TAG_CMD_DESCRIPTOR = 2,
 	TAG_CMD_PROCESS = 3,
@@ -72,6 +107,9 @@ struct debug_ctx {
 
 static int run_listwnd(
 	struct debug_ctx* dctx, struct tui_list_entry* list, size_t n_elem);
+
+static int run_buffer(struct debug_ctx* dctx,
+	uint8_t* buffer, size_t buf_sz, struct tui_bufferwnd_opts opts);
 
 static const char* stat_to_str(struct stat* s)
 {
@@ -212,14 +250,7 @@ static void buf_window(struct debug_ctx* dctx, int source)
 		.allow_exit = true
 	};
 
-	arcan_tui_bufferwnd_setup(dctx->tui,
-		buf, fs.st_size, &opts, sizeof(struct tui_bufferwnd_opts));
-
-	while(arcan_tui_bufferwnd_status(dctx->tui) == 0){
-		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
-		arcan_tui_refresh(dctx->tui);
-	}
-
+	run_buffer(dctx, buf, fs.st_size, opts);
 	munmap(buf, fs.st_size);
 }
 
@@ -228,8 +259,9 @@ static void setup_mitm(struct debug_ctx* dctx, int source, bool mask)
 	int fdin = source;
 	int fdout = -1;
 
-/* check if source is in write mode or read mode, setup a pipe pair and dup
- * accordingly */
+/* check if source is in write mode or read mode, setup a pipe pair
+ * and dup accordingly, controls should also be for 'buffer or stream'
+ * and possibly spawning another window */
 }
 
 /*
@@ -529,15 +561,301 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 		return gen_descriptor_menu(dctx);
 }
 
-/*
- * debugger and the others are more difficult as we currently need to handover
- * exec into afsrv_terminal in a two phase method where we need to stall the
- * child a little bit while we see prctl(PR_SET_PTRACE, pid, ...).
- */
-static void gen_debugger_menu(struct debug_ctx* dctx)
+/* we don't want full execvpe kind of behavior here as path might be
+ * messed with, so just use a primitive list */
+static char* find_exec(const char* fname)
 {
-/* check for presence of lldb and gdb, use special chainloaders for them,
- * possibly through afsrv_terminal to get the pty */
+	static const char* const prefix[] = {"/usr/local/bin", "/usr/bin", ".", NULL};
+	size_t ind = 0;
+
+	while(prefix[ind]){
+		char* buf	= NULL;
+		if (-1 == asprintf(&buf, "%s/%s", prefix[ind++], fname))
+			continue;
+
+		struct stat fs;
+		if (-1 == stat(buf, &fs)){
+			free(buf);
+			continue;
+		}
+
+		return buf;
+	}
+
+	return NULL;
+}
+
+enum spawn_action {
+	SPAWN_SHELL = 0,
+	SPAWN_DEBUG_GDB = 1,
+	SPAWN_DEBUG_LLDB = 2
+};
+
+static const char* spawn_action(struct debug_ctx* dctx,
+	char* action, struct arcan_shmif_cont* c, struct arcan_event ev)
+{
+	static const char* err_not_found = "Couldn't find executable";
+	static const char* err_couldnt_spawn = "Couldn't spawn child process";
+	static const char* err_read_pid = "Child didn't return a pid";
+	static const char* err_build_env = "Out of memory on building child env";
+	static const char* err_build_pipe = "Couldn't allocate control pipes";
+	const char* err = NULL;
+
+/* attach foreplay here requires that:
+ *
+ * 1. pipes gets inherited (both read and write)
+ * 2. afsrv_terminal does the tty foreplay (until the day we have gdb/lldb FEs
+ *    that just uses tui entirely, in those cases the handshake can be done
+ *    here, writes the child pid into its 'PIDFD_OUT'.
+ * 3. we run prctl and set this child as the tracer.
+ *
+ * The idea of racing the pid to get the tracer role after the debugger has
+ * detached shouldn't be possible (see LSM_HOOK on task_free which runs
+ * yama_ptracer_del in the kernel source).
+ *
+ * The other tactic that is a bit more precise and not require the terminal as
+ * a middle man by ptracing() through each new process. stop on-enter into
+ * ptrace and do the same read/write dance.
+ */
+	char* exec_path = find_exec("afsrv_terminal");
+	char* argv[] = {"afsrv_terminal", NULL};
+	if (!exec_path)
+		return err_not_found;
+
+	if (!action){
+/* spawn detached that'll ensure a double-fork like condition,
+ * meaning that the pid should be safe to block-wait on */
+		pid_t pid =
+			arcan_shmif_handover_exec(c, ev, exec_path, argv, NULL, true);
+
+		while(pid != -1 && -1 == waitpid(pid, NULL, 0)){
+			if (errno != EINTR)
+				break;
+		}
+
+		free(exec_path);
+		if (-1 == pid)
+			return err_couldnt_spawn;
+
+		return NULL;
+	}
+
+/* rest are much more involved, start with some communication pipes
+ * and handover environment - normal signalling etc. doesn't work for
+ * error detection and the fork detach from handover_exec */
+	int fdarg_out[2];
+	int fdarg_in[2];
+
+/* grab the pipe pairs that will be inherited into the child */
+	if (-1 == pipe(fdarg_out)){
+		return err_build_pipe;
+	}
+
+	if (-1 == pipe(fdarg_in)){
+		close(fdarg_out[0]);
+		close(fdarg_in[0]);
+		return err_build_pipe;
+	}
+
+/* cloexec- off our end of the descriptors */
+	int flags = fcntl(fdarg_out[1], F_GETFD);
+	if (-1 != flags)
+		fcntl(fdarg_out[1], F_SETFD, flags | O_CLOEXEC);
+	flags = fcntl(fdarg_in[0], F_GETFD);
+	if (-1 != flags)
+		fcntl(fdarg_in[0], F_SETFD, flags | O_CLOEXEC);
+
+/* could've done this less messier on the stack .. */
+	char* envv[5] = {0};
+	err = err_build_env;
+	if (-1 == asprintf(&envv[0], "ARCAN_TERMINAL_EXEC=%s", action)){
+		envv[0] = NULL;
+		goto out;
+	}
+
+	if (-1 == asprintf(&envv[1], "ARCAN_TERMINAL_ARGV=-p %d", (int)getpid())){
+		envv[1] = NULL;
+		goto out;
+	}
+
+	if (-1 == asprintf(&envv[2], "ARCAN_TERMINAL_PIDFD_OUT=%d", fdarg_in[1])){
+		envv[2] = NULL;
+		goto out;
+	}
+
+	if (-1 == asprintf(&envv[3], "ARCAN_TERMINAL_PIDFD_IN=%d", fdarg_out[0])){
+		envv[3] = NULL;
+		goto out;
+	}
+
+/* handover-execute the terminal */
+	pid_t pid = arcan_shmif_handover_exec(c, ev, exec_path, argv, envv, true);
+	while(pid != -1 && -1 == waitpid(pid, NULL, 0)){
+		if (errno != EINTR)
+			break;
+	}
+	free(exec_path);
+
+	close(fdarg_out[0]);
+	close(fdarg_in[1]);
+
+/* wait for the pid argument */
+	pid_t inpid = -1;
+	char inbuf[8] = {0};
+	ssize_t nr;
+	while (-1 == (nr = read(fdarg_in[0], &inpid, sizeof(pid_t)))){
+		if (errno != EAGAIN && errno != EINTR)
+			break;
+	}
+
+	if (-1 == nr){
+		err = err_read_pid;
+		goto out;
+	}
+
+/* enable the tracer, doesn't look like we can do this for the BSDs atm.
+ * but use the same setup / synch path anyhow - for testing purposes,
+ * disable the protection right now */
+
+#ifdef __LINUX
+#ifdef PR_SET_PTRACER
+	prctl(PR_SET_PTRACER, inpid, 0, 0, 0);
+#endif
+#endif
+
+/* send the continue trigger */
+	uint8_t outc = '\n';
+	write(fdarg_out[1], &outc, 1);
+	err = NULL;
+
+/* other option here is to have a monitor thread for the descriptor, waiting
+ * for that one to fail and use to release a singleton 'being traced' or have
+ * an oracle for 'isDebuggerPresent' like behavior */
+out:
+	for (size_t i = 0; i < 5; i++){
+		free(envv[i]);
+	}
+	close(fdarg_in[0]);
+	close(fdarg_out[1]);
+
+	return err;
+}
+
+static int run_buffer(struct debug_ctx* dctx,
+	uint8_t* buffer, size_t buf_sz, struct tui_bufferwnd_opts opts)
+{
+	int status = 1;
+	opts.allow_exit = true;
+
+	arcan_tui_bufferwnd_setup(dctx->tui, buffer, buf_sz, &opts, sizeof(opts));
+
+	while(1 == (status = arcan_tui_bufferwnd_status(dctx->tui))){
+		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
+		if (res.errc == TUI_ERRC_OK){
+			if (-1 == arcan_tui_refresh(dctx->tui) && errno == EINVAL){
+				dctx->dead = true;
+				break;
+			}
+		}
+	}
+
+/* return the context to normal, dead-flag will propagate and free if set */
+	arcan_tui_bufferwnd_release(dctx->tui);
+	arcan_tui_update_handlers(dctx->tui,
+		&(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
+
+	return status;
+}
+
+static void gen_spawn_menu(struct debug_ctx* dctx)
+{
+	struct tui_list_entry lents[] = {
+		{
+			.label = "Shell",
+			.tag = 0,
+/*			.attributes = LIST_PASSIVE, */
+		},
+		{
+			.label = "GNU Debugger (gdb)",
+			.attributes = LIST_PASSIVE,
+			.tag = 1
+		},
+		{
+			.label = "LLVM Debugger (lldb)",
+			.attributes = LIST_PASSIVE,
+			.tag = 2
+		}
+	};
+
+/* need to do a sanity check if the binaries are available, if we can actually
+ * fork(), exec() etc. based on current sandbox settings and unmask the items
+ * that can be used */
+	char* gdb = find_exec("gdb");
+	if (gdb){
+		lents[1].attributes = 0;
+		free(gdb);
+	}
+
+	char* lldb = find_exec("lldb");
+	if (lldb){
+		lents[2].attributes = 0;
+		free(lldb);
+	}
+
+	int rv = run_listwnd(dctx, lents, COUNT_OF(lents));
+
+/* for all of these we need a handover segment as we can't just give the tui
+ * context away like this, even though when the debugger connection is setup,
+ * we can't really 'survive' anymore as we will just get locked */
+	if (rv == -1)
+		return;
+
+/* this will leave us hanging until we get a response from the server side,
+ * and other events will be dropped, so this is a very special edge case */
+	struct arcan_shmif_cont* c = arcan_tui_acon(dctx->tui);
+	arcan_shmif_enqueue(c, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(SEGREQ),
+		.ext.segreq.kind = SEGID_HANDOVER
+	});
+
+	struct arcan_event ev;
+	pid_t child;
+	const char* err = NULL;
+
+	while(arcan_shmif_wait(c, &ev)){
+		if (ev.category != EVENT_TARGET)
+			continue;
+
+		if (ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT){
+			char* fn = NULL;
+			if (lents[rv].tag == SPAWN_DEBUG_GDB){
+				fn = find_exec("gdb");
+				if (!fn)
+					break;
+			}
+			else if (lents[rv].tag == SPAWN_DEBUG_LLDB){
+				fn = find_exec("lldb");
+				if (!fn)
+					break;
+			}
+			err = spawn_action(dctx, fn, c, ev);
+			break;
+		}
+/* notify that the bash request failed revert */
+		else if (ev.tgt.kind == TARGET_COMMAND_REQFAIL){
+			err = "Server rejected window request";
+			break;
+		}
+	}
+
+	if (err){
+		run_buffer(dctx,
+			(uint8_t*) err, strlen(err), (struct tui_bufferwnd_opts){
+				.read_only = true,
+				.view_mode = BUFFERWND_VIEW_ASCII
+		});
+	}
+	gen_spawn_menu(dctx);
 }
 
 /*
@@ -621,27 +939,10 @@ static void gen_environment_menu(struct debug_ctx* dctx)
 	if (!env || !(env = strdup(env)))
 		return gen_environment_menu(dctx);
 
-	struct tui_bufferwnd_opts opts = {
+	run_buffer(dctx, (uint8_t*) env, strlen(env), (struct tui_bufferwnd_opts){
 		.read_only = false,
-		.view_mode = BUFFERWND_VIEW_ASCII,
-		.allow_exit = true
-	};
-
-/* bufferwnd is used here intermediately as it has the problem of not
- * being able to really handle insertion, so either that gets fixed or
- * the libreadline replacement finally gets written */
-	arcan_tui_bufferwnd_setup(dctx->tui, (uint8_t*) env,
-		strlen(env), &opts, sizeof(struct tui_bufferwnd_opts));
-
-	while(arcan_tui_bufferwnd_status(dctx->tui) == 1){
-		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
-		if (res.errc == TUI_ERRC_OK){
-			if (-1 == arcan_tui_refresh(dctx->tui) && errno == EINVAL){
-				dctx->dead = true;
-				break;
-			}
-		}
-	}
+		.view_mode = BUFFERWND_VIEW_ASCII
+	});
 
 	return gen_environment_menu(dctx);
 }
@@ -756,6 +1057,9 @@ static void set_process_window(struct debug_ctx* dctx)
 	if (!outf)
 		return;
 
+/* some options, like nice-level etc. should perhaps also be exposed
+ * here in an editable way */
+
 	build_process_str(outf);
 	fflush(outf);
 	struct tui_bufferwnd_opts opts = {
@@ -765,29 +1069,9 @@ static void set_process_window(struct debug_ctx* dctx)
 		.allow_exit = true
 	};
 
-	arcan_tui_bufferwnd_setup(dctx->tui,
-		(uint8_t*) buf, buf_sz, &opts, sizeof(struct tui_bufferwnd_opts));
+	run_buffer(dctx, (uint8_t*) buf, buf_sz, opts);
+/* check return code and update if commit */
 
-/* normal event-loop, but with ESCAPE as a 'return' behavior */
-	while(arcan_tui_bufferwnd_status(dctx->tui) == 1){
-		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
-		if (res.errc == TUI_ERRC_OK){
-			if (-1 == arcan_tui_refresh(dctx->tui) && errno == EINVAL){
-				dctx->dead = true;
-				break;
-			}
-		}
-		else{
-			dctx->dead = true;
-			break;
-		}
-/* check last- refresh and build process str and call bufferwnd_synch */
-	}
-
-/* return the context to normal, dead-flag will propagate and free if set */
-	arcan_tui_bufferwnd_release(dctx->tui);
-	arcan_tui_update_handlers(dctx->tui,
-		&(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
 	if (outf)
 		fclose(outf);
 	free(buf);
@@ -802,10 +1086,18 @@ static void root_menu(struct debug_ctx* dctx)
 			.tag = TAG_CMD_DESCRIPTOR
 		},
 		{
-			.label = "Debugger",
+			.label = "Spawn",
 			.attributes = LIST_HAS_SUB,
-			.tag = TAG_CMD_DEBUGGER
+			.tag = TAG_CMD_SPAWN
 		},
+/*
+ * browse based on current-dir, openat(".") and navigate like that
+ *  {
+ *  	.label = "Browse",
+ *  	.attributes = LIST_HAS_SUB,
+ *  	.tag = TAG_CMD_BROWSEFS
+ *  },
+ */
 		{
 			.label = "Environment",
 			.attributes = LIST_HAS_SUB,
@@ -816,6 +1108,11 @@ static void root_menu(struct debug_ctx* dctx)
 			.attributes = LIST_HAS_SUB,
 			.tag = TAG_CMD_PROCESS
 		},
+/*
+ * this little thing is to allow other tools to attach more entries
+ * here, see, for instance, src/tools/adbginject.so that keeps the
+ * process locked before continuing.
+ */
 		{
 			.attributes = LIST_HAS_SUB,
 			.tag = TAG_CMD_EXTERNAL
@@ -840,7 +1137,7 @@ static void root_menu(struct debug_ctx* dctx)
 
 		arcan_tui_listwnd_setup(dctx->tui, menu_root, nent);
 
-		for(;;){
+		while(!dctx->dead){
 			struct tui_process_res res =
 				arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
 
@@ -860,8 +1157,8 @@ static void root_menu(struct debug_ctx* dctx)
 						case TAG_CMD_DESCRIPTOR :
 							gen_descriptor_menu(dctx);
 						break;
-						case TAG_CMD_DEBUGGER :
-							gen_debugger_menu(dctx);
+						case TAG_CMD_SPAWN :
+							gen_spawn_menu(dctx);
 						break;
 						case TAG_CMD_ENVIRONMENT :
 							gen_environment_menu(dctx);

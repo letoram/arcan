@@ -445,7 +445,7 @@ static void redraw_text(struct tui_context* T, struct bufferwnd_meta* M,
 		M->cursor_ofs_row_end = rows - 1;
 	}
 
-	arcan_tui_move_to(T, 0, 0);
+	arcan_tui_move_to(T, M->row, M->col);
 	size_t wndbuf_sz = rows * cols;
 
 /* our text attribute, then apply colors */
@@ -1197,7 +1197,7 @@ static void on_key_input(struct tui_context* T, uint32_t keysym,
 		if (!M->opts.allow_exit)
 			return;
 
-		M->exit_status = keysym == TUIK_RETURN ? 1 : -1;
+		M->exit_status = keysym == TUIK_RETURN ? 0 : -1;
 	}
 	else
 		;
@@ -1326,7 +1326,7 @@ void arcan_tui_bufferwnd_setup(struct tui_context* T,
 		.magic = BUFFERWND_MAGIC,
 		.buffer = buf,
 		.buffer_sz = buf_sz,
-		.exit_status = 0
+		.exit_status = 1
 	};
 
 	if (opts){
