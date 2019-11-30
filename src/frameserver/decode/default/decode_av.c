@@ -94,7 +94,6 @@ static unsigned video_setup(void** ctx, char* chroma, unsigned* width,
 		chroma[2] = 'B';
 		chroma[3] = 'A';
 	}
-	*pitches = *width * 4;
 
 	arcan_shmif_lock(&decctx.shmcont);
 	if (!arcan_shmif_resize_ext(&decctx.shmcont,
@@ -104,6 +103,14 @@ static unsigned video_setup(void** ctx, char* chroma, unsigned* width,
 			"requested: (%d x %d)\n", *width, *height);
 		rv = 0;
 	}
+	else {
+		LOG("(decode) got ('%c', '%c', '%c', '%c') @ %u * %u\n",
+			chroma[0],chroma[1],chroma[2],chroma[3], *width, *height);
+	}
+
+	*pitches = *width * 4;
+	*lines = *height;
+
 	arcan_shmif_unlock(&decctx.shmcont);
 	return rv;
 }
@@ -205,6 +212,7 @@ static void audio_play(void *data,
 {
 	size_t smplsz = ARCAN_SHMIF_ACHANNELS * sizeof(shmif_asample);
 	size_t nb = count * smplsz;
+
 	if (!decctx.got_video && decctx.shmcont.addr->w != AUD_VIS_HRES)
 	{
 		arcan_shmif_lock(&decctx.shmcont);
@@ -332,8 +340,6 @@ static void player_event(const struct libvlc_event_t* event, void* ud)
 	break;
 
 	case libvlc_MediaPlayerEncounteredError:
-	break;
-
 	case libvlc_MediaPlayerEndReached:
 		decctx.finished = true;
 	break;
@@ -483,6 +489,13 @@ static bool dispatch(arcan_event* ev)
 	return true;
 }
 
+void libvlc_logfun(void* data, int level,
+	const libvlc_log_t* ctx, const char* fmt, va_list args)
+{
+	vfprintf(stderr, fmt, args);
+	fprintf(stderr, "\n");
+}
+
 int decode_av(struct arcan_shmif_cont* cont, struct arg_arr* args)
 {
 	const char* val;
@@ -562,6 +575,8 @@ int decode_av(struct arcan_shmif_cont* cont, struct arg_arr* args)
     return EXIT_FAILURE;
   }
 
+	libvlc_log_set(decctx.vlc, libvlc_logfun, NULL);
+
 /* special about stream devices is that we can specify external resources (e.g.
  * http://, rtmp:// etc. along with buffer dimensions */
 	if (arg_lookup(args, "stream", 0, &val)){
@@ -627,6 +642,7 @@ int decode_av(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 	libvlc_event_attach(em, libvlc_MediaPlayerPositionChanged, player_event,NULL);
 	libvlc_event_attach(em, libvlc_MediaPlayerEndReached, player_event, NULL);
+	libvlc_event_attach(em, libvlc_MediaPlayerEncounteredError, player_event, NULL);
 
 	libvlc_video_set_format_callbacks(decctx.player, video_setup, video_cleanup);
 	libvlc_video_set_callbacks(decctx.player,
