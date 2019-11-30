@@ -610,7 +610,7 @@ bool arcan_tui_listwnd_setup(
 /* save old flags and just set clean + ALTERNATE */
 	meta->old_flags = arcan_tui_set_flags(T, 0);
 	arcan_tui_reset_flags(T, ~0);
-	arcan_tui_set_flags(T, TUI_ALTERNATE | TUI_HIDE_CURSOR);
+	arcan_tui_set_flags(T, TUI_ALTERNATE | TUI_HIDE_CURSOR | TUI_MOUSE);
 
 	struct tui_cbcfg cbcfg = {
 		.tag = meta,

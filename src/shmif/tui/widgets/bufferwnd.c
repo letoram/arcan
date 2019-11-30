@@ -1326,7 +1326,7 @@ void arcan_tui_bufferwnd_setup(struct tui_context* T,
 		.magic = BUFFERWND_MAGIC,
 		.buffer = buf,
 		.buffer_sz = buf_sz,
-		.exit_status = 1
+		.exit_status = 0
 	};
 
 	if (opts){
