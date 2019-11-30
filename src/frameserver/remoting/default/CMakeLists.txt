@@ -28,4 +28,4 @@ set(REMOTING_SOURCES ${SRCS} PARENT_SCOPE)
 set(REMOTING_LIBS ${LIBS} PARENT_SCOPE)
 set(REMOTING_INCLUDE_DIRS ${INCS} PARENT_SCOPE)
 
-amsg("${CL_GRN} remoting support: ${PROTOCOLS}")
+amsg("${CL_YEL}remoting support:\t${CL_GRN}${PROTOCOLS}${CL_RST}")
