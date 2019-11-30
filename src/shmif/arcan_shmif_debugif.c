@@ -124,7 +124,7 @@ static void fd_to_flags(char buf[static 8], int fd)
 	buf[7] = '\0';
 
 /* first, cloexec */
-	buf[0] = ' ';
+	buf[0] = '_';
 	int rv = fcntl(fd, F_GETFD);
 	if (-1 == rv){
 		buf[0] = '?';
@@ -134,27 +134,27 @@ static void fd_to_flags(char buf[static 8], int fd)
 	}
 
 /* now flags */
-	buf[1] = ' ';
+	buf[1] = '_';
 	rv = fcntl(fd, F_GETFL);
 	if (-1 == rv){
 		buf[1] = '?';
 	}
 	else if ((rv & O_NONBLOCK))
-	;
+		;
 	else
-		buf[1] = 'b';
+		buf[1] = 'B';
 
 	if (rv & O_RDWR){
 		buf[2] = 'r';
 		buf[3] = 'w';
 	}
 	else if (rv & O_WRONLY){
-		buf[2] = ' ';
+		buf[2] = '_';
 		buf[3] = 'w';
 	}
 	else {
 		buf[2] = 'r';
-	buf[3] = ' ';
+		buf[3] = '_';
 	}
 
 /* Other options:
@@ -221,6 +221,15 @@ static void buf_window(struct debug_ctx* dctx, int source)
 	}
 
 	munmap(buf, fs.st_size);
+}
+
+static void setup_mitm(struct debug_ctx* dctx, int source, bool mask)
+{
+	int fdin = source;
+	int fdout = -1;
+
+/* check if source is in write mode or read mode, setup a pipe pair and dup
+ * accordingly */
 }
 
 /*
@@ -311,11 +320,13 @@ static void run_descriptor(struct debug_ctx* dctx, int fdin, int type)
  * probe direction and dupe directions accordingly,
  * then forward to the buffer window
  */
+		setup_mitm(dctx, fdin, false);
 	break;
 	case DESC_MITM_REDIR:
 /*
  * like with pipe but just mask the forward call
  */
+		setup_mitm(dctx, fdin, true);
 	break;
 	case DESC_MITM_BIDI:
 /*
@@ -422,7 +433,7 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 		}
 /* resolve more data */
 		else {
-			char scratch[8];
+			char scratch[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 			fd_to_flags(scratch, fds[i]);
 			if (-1 == can_intercept(&dents[used].stat) && fds[i] > 2)
 				lents[used].attributes |= LIST_PASSIVE;
@@ -434,10 +445,11 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
  * on truncation */
 			char buf2[256];
 			int rv = readlink(buf, buf2, 255);
-			if (-1 == rv){
+			if (rv <= 0){
 				snprintf(buf, 256, "error: %s", strerror(errno));
 			}
 			else{
+				buf2[rv] = '\0';
 				snprintf(buf, 256, "%s", buf2);
 			}
 
