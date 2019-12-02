@@ -8617,6 +8617,9 @@ static int targetalloc(lua_State* ctx)
 		else
 			arcan_warning("target_alloc(), unaccepted segid "
 				"type-string (%s), allowed: debug, accessibility\n", msg);
+
+		if (lua_type(ctx, cb_ind+2) == LUA_TBOOLEAN && lua_toboolean(ctx, cb_ind+2))
+			segid |= (1 << 31);
 	}
 	else
 		;
