@@ -352,6 +352,9 @@ void arcan_shmif_last_words(struct arcan_shmif_cont* cont, const char* msg);
  * NOTE:
  * call from event dispatch immediately upon receiving a NEWSEGMENT with
  * a HANDOVER type, the function will assume allocation responsibility.
+ *
+ * If handover_exec is called WITHOUT the corresponding handover event in
+ * ev, it is the context in [cont] that will be forwarded.
  */
 pid_t arcan_shmif_handover_exec(
 	struct arcan_shmif_cont* cont, struct arcan_event ev,
