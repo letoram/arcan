@@ -452,6 +452,13 @@ enum ARCAN_TARGET_COMMAND {
  * request from the parent that a new window of a certain type should be
  * created (used for image- transfers, debug windows, ...)
  *
+ * ioev[4].uiv carries the segment token for the new segment, this is used
+ * for a handover situation where the parent process wants to reference the
+ * new window without knowing it
+ *
+ * ioev[5].iv is set to !0 if a default handler of the segment should be run
+ * instead of any client handled option
+ *
  * To access this segment, call arcan_shmif_acquire with a NULL key. This can
  * only be called once for each NEWSEGMENT event and the user accepts
  * responsibility for the segment. Future calls to _poll or _wait with a

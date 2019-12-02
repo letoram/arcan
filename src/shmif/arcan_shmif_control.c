@@ -145,6 +145,11 @@ struct shmif_hidden {
  * where it can be done, so this should be moved to the DEBUGIF mechanism */
 	bool log_event : 1;
 
+/* When waiting for a descriptor to pair with an incoming event, if this is set
+ * the next pairing will not be forwarded to the client but instead consumed
+ * immediately. Main use is NEWSEGMENT for a forced DEBUG */
+	bool autoclean : 1;
+
 /* Track an 'alternate connection path' that the server can update with a call
  * to devicehint. A possible change here is for the alt_conn to be controlled
  * by the user via an environment variable */
@@ -310,13 +315,14 @@ uint64_t arcan_shmif_cookie()
 	return base;
 }
 
-static void fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
+static bool fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
 /*
  * if we get a descriptor event that is connected to acquiring a new
  * frameserver subsegment- set up special tracking so we can retain the
  * descriptor as new signalling/socket transfer descriptor
  */
+	c->priv->pev.consumed = true;
 	if (dst->category == EVENT_TARGET &&
 		dst->tgt.kind == TARGET_COMMAND_NEWSEGMENT){
 /*
@@ -326,6 +332,7 @@ static void fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
 		dst->tgt.ioevs[0].iv = c->priv->pseg.epipe = c->priv->pev.fd;
 		c->priv->pev.fd = BADFD;
 		memcpy(c->priv->pseg.key, dst->tgt.message, sizeof(dst->tgt.message));
+		return true;
 	}
 /*
  * otherwise we have a normal pending slot with a descriptor that
@@ -335,7 +342,7 @@ static void fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
 	else
 		dst->tgt.ioevs[0].iv = c->priv->pev.fd;
 
-	c->priv->pev.consumed = true;
+	return false;
 }
 
 #ifdef SHMIF_DEBUG_IF
@@ -581,6 +588,18 @@ static enum shmif_migrate_status fallback_migrate(
 	return sv;
 }
 
+/* this one is really terrible and unfortunately very central
+ * subject to a long refactoring of its own, points to keep in check:
+ *  - blocking or nonblocking (coming from wait or poll)
+ *  - paused state (only accept UNPAUSE)
+ *  - crashed or connection terminated
+ *  - pairing fd and event for descriptor events
+ *  - cleanup of pending resources not consumed by client
+ *  - merging event storms (pending hint, ph)
+ *  - key state transitions:
+ *    - switch devices
+ *    - migration
+ */
 static int process_events(struct arcan_shmif_cont* c,
 	struct arcan_event* dst, bool blocking, bool upret)
 {
@@ -644,8 +663,12 @@ checkfd:
 			}
 
 			if (priv->pev.fd != BADFD){
-				fd_event(c, dst);
-				rv = 1;
+				if (fd_event(c, dst) && priv->autoclean){
+					priv->autoclean = false;
+					consume(c);
+				}
+				else
+					rv = 1;
 			}
 			else if (blocking){
 				debug_print(STATUS, c,
@@ -801,11 +824,14 @@ checkfd:
  * if the caller does not handle it) should be added here. Then the event will
  * be deferred until we have received a handle and the specific handle will be
  * added to the actual event. */
+			case TARGET_COMMAND_NEWSEGMENT:
+				priv->autoclean = !!(dst->tgt.ioevs[5].iv);
+
+/* fallthrough behavior is expected */
 			case TARGET_COMMAND_STORE:
 			case TARGET_COMMAND_RESTORE:
 			case TARGET_COMMAND_BCHUNK_IN:
 			case TARGET_COMMAND_BCHUNK_OUT:
-			case TARGET_COMMAND_NEWSEGMENT:
 				debug_print(DETAILED, c,
 					"got descriptor event (%s)", arcan_shmif_eventstr(dst, NULL, 0));
 				priv->pev.gotev = true;

@@ -901,6 +901,9 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 	hintw = hintw == 0 || hintw > ARCAN_SHMPAGE_MAXW ? 32 : hintw;
 	hinth = hinth == 0 || hinth > ARCAN_SHMPAGE_MAXH ? 32 : hinth;
 
+	bool forced_bit = !!(segid & (1 << 31));
+	segid &= ~(1 << 31);
+
 	arcan_frameserver* newseg = platform_fsrv_alloc();
 	if (!newseg)
 		return NULL;
@@ -964,6 +967,7 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
  * to be able to viewport-event the child without mapping it.
  */
 	keyev.tgt.ioevs[4].uiv = newseg->cookie;
+	keyev.tgt.ioevs[5].iv = forced_bit;
 
 	snprintf(keyev.tgt.message,
 		sizeof(keyev.tgt.message) / sizeof(keyev.tgt.message[1]),
