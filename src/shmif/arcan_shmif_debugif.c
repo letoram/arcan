@@ -11,6 +11,7 @@
  *    - sanitizer
  *    - statistic profiler
  *    - detach intercept / redirect window
+ *    - dynamic descriptor list refresh
  *    - runtime symbol hijack
  *    - memory pages to sense_mem deployment
  *    - enumerate modules and their symbols? i.e. dl_iterate_phdr
@@ -21,6 +22,13 @@
  *    - detach-thread and detach- process for FD intercept
  *    - browse- filesystem based on cwd
  *    - message path for the debugif to have a separate log queue
+ *    - ksy loading
+ *    - special syscall triggers (though this requires a tracer process)
+ *      - descriptor modifications
+ *      - mmap
+ *    - key structure interpretation:
+ *      - malloc stats
+ *      - shmif-mempage inspection
  *
  * Likely that some of these and other venues should be written as separate
  * tools that jack into the menu (see src/tools/adbginject) rather than make
@@ -107,11 +115,27 @@ struct debug_ctx {
 	struct debugint_ext_resolver resolver;
 };
 
+/* basic TUI convenience loop / setups */
 static struct tui_list_entry* run_listwnd(struct debug_ctx* dctx,
 	struct tui_list_entry* list, size_t n_elem, const char* ident);
 
-static int run_buffer(struct debug_ctx* dctx, uint8_t* buffer,
+static int run_buffer(struct tui_context* tui, uint8_t* buffer,
 	size_t buf_sz, struct tui_bufferwnd_opts opts, const char* ident);
+
+static void run_mitm(struct tui_context* tui,
+	int fd, bool thdwnd, bool mitm, bool mask, const char* label);
+
+static void show_error_message(struct tui_context* tui, const char* msg)
+{
+	if (!msg)
+		return;
+
+	run_buffer(tui,
+		(uint8_t*) msg, strlen(msg), (struct tui_bufferwnd_opts){
+		.read_only = true,
+		.view_mode = BUFFERWND_VIEW_ASCII
+	}, "error");
+}
 
 static const char* stat_to_str(struct stat* s)
 {
@@ -349,7 +373,7 @@ refill:
 	free(buf);
 }
 
-static void buf_window(struct debug_ctx* dctx, int source, const char* lbl)
+static void buf_window(struct tui_context* tui, int source, const char* lbl)
 {
 /* just read-only / mmap for now */
 	struct stat fs;
@@ -366,7 +390,7 @@ static void buf_window(struct debug_ctx* dctx, int source, const char* lbl)
 		.allow_exit = true
 	};
 
-	run_buffer(dctx, buf, fs.st_size, opts, lbl);
+	run_buffer(tui, buf, fs.st_size, opts, lbl);
 	munmap(buf, fs.st_size);
 }
 
@@ -423,6 +447,7 @@ enum {
 	DESC_MITM_BIDI,
 	DESC_MITM_RO,
 	DESC_MITM_WO,
+	WINDOW_METHOD
 };
 static void run_descriptor(
 	struct debug_ctx* dctx, int fdin, int type, const char* label)
@@ -434,6 +459,8 @@ static void run_descriptor(
 	struct tui_list_entry lents[6];
 	char* strpool[6] = {NULL};
 	size_t nents = 0;
+	bool spawn_new = false;
+	struct tui_list_entry* ent;
 
 /* mappables are typically files or shared memory */
 	if (type == INTERCEPT_MAP){
@@ -478,9 +505,13 @@ static void run_descriptor(
  */
 	}
 /* F_GETLEASE, F_GET_SEALS */
+	lents[nents++] = (struct tui_list_entry){
+		.label = "Window: Current",
+		.tag = WINDOW_METHOD
+	};
 
-
-	struct tui_list_entry* ent = run_listwnd(dctx, lents, nents, label);
+rerun:
+	ent = run_listwnd(dctx, lents, nents, label);
 	if (!ent){
 		return;
 	}
@@ -491,25 +522,19 @@ static void run_descriptor(
 		return run_descriptor(dctx, fdin, type, label);
 	}
 	break;
+	case WINDOW_METHOD:
+		spawn_new = !spawn_new;
+		ent->label = spawn_new ? "Window: New" : "Window: Current";
+		goto rerun;
+	break;
 	case DESC_VIEW:
-		buf_window(dctx, fdin, label);
-	/*
- * just mmap and run buffer
- */
+		run_mitm(dctx->tui, fdin, spawn_new, false, true, label);
 	break;
 	case DESC_MITM_PIPE:
-/*
- * probe direction and dupe directions accordingly, then forward to the buffer
- * window, note that MITM on stderr is a bad idea since we might log there too,
- * so disable
- */
-		setup_mitm(dctx->tui, fdin, false);
+		run_mitm(dctx->tui, fdin, spawn_new, true, false, label);
 	break;
 	case DESC_MITM_REDIR:
-/*
- * like with pipe but just mask the forward call
- */
-		setup_mitm(dctx->tui, fdin, true);
+		run_mitm(dctx->tui, fdin, spawn_new, true, true, label);
 	break;
 	case DESC_MITM_BIDI:
 /*
@@ -552,6 +577,110 @@ static struct tui_list_entry* run_listwnd(struct debug_ctx* dctx,
 
 	arcan_tui_listwnd_release(dctx->tui);
 	return ent;
+}
+
+struct wnd_mitm_opts {
+	struct tui_context* tui;
+	int fd;
+	bool mitm;
+	bool mask;
+	bool shutdown;
+	char* label;
+};
+
+/* using this pattern/wrapper to work both as a new thread and current, for
+ * thread it is slightly racy (though this applies in general, as we don't have
+ * control over what other threads are doing when the descriptor menu is
+ * generated) */
+static void* wnd_runner(void* opt)
+{
+	struct wnd_mitm_opts* mitm = opt;
+
+	if (mitm->mitm){
+		setup_mitm(mitm->tui, mitm->fd, mitm->mask);
+	}
+	else {
+		buf_window(mitm->tui, mitm->fd, mitm->label);
+	}
+
+	free(mitm->label);
+	if (mitm->shutdown){
+		arcan_tui_destroy(mitm->tui, NULL);
+	}
+	free(mitm);
+	return NULL;
+}
+
+static void run_mitm(struct tui_context* tui,
+	int fd, bool thdwnd, bool mitm, bool mask, const char* label)
+{
+/* package in a dynamic 'wnd runner' struct */
+	struct wnd_mitm_opts* opts = malloc(sizeof(struct wnd_mitm_opts));
+	struct tui_context* dtui = tui;
+
+	if (!opts)
+		return;
+
+/* enter a request-loop for a new tui wnd, just sidestep the normal tui
+ * processing though as we want to be able to switch into a error message
+ * buffer window */
+	if (thdwnd){
+		struct arcan_shmif_cont* c = arcan_tui_acon(tui);
+		arcan_shmif_enqueue(c, &(struct arcan_event){
+			.ext.kind = ARCAN_EVENT(SEGREQ),
+			.ext.segreq.kind = SEGID_TUI
+		});
+		struct arcan_event ev;
+		while(arcan_shmif_wait(c, &ev)){
+			if (ev.category != EVENT_TARGET)
+				continue;
+/* could be slightly more careful and pair this to a request token, but
+ * since we don't use clipboard etc. this is fine */
+			if (ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT){
+				struct arcan_shmif_cont new =
+					arcan_shmif_acquire(c, NULL, SEGID_TUI, 0);
+
+/* note that tui setup copies, it doesn't alias directly so stack here is ok */
+				dtui = arcan_tui_setup(&new,
+					tui, &(struct tui_cbcfg){}, sizeof(struct tui_cbcfg));
+
+				if (!dtui){
+					show_error_message(tui, "Couldn't bind text window");
+					return;
+				}
+				break;
+			}
+			else if (ev.tgt.kind == TARGET_COMMAND_REQFAIL){
+				show_error_message(tui, "Server rejected window request");
+				return;
+			}
+		}
+	}
+
+	*opts = (struct wnd_mitm_opts){
+		.tui = dtui,
+		.fd = fd,
+		.mitm = mitm,
+		.mask = mask,
+		.shutdown = thdwnd,
+		.label = strdup(label)
+	};
+
+	if (thdwnd){
+		pthread_t pth;
+		pthread_attr_t pthattr;
+		pthread_attr_init(&pthattr);
+		pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+
+		if (-1 == pthread_create(&pth, &pthattr, wnd_runner, opts)){
+			arcan_tui_destroy(opts->tui, NULL);
+			free(opts->label);
+			free(opts);
+			show_error_message(tui, "Couldn't spawn new thread for window");
+		}
+	}
+	else
+		wnd_runner((void*)opts);
 }
 
 static void get_fd_fn(char* buf, size_t lim, int fd)
@@ -786,6 +915,13 @@ static const char* spawn_action(struct debug_ctx* dctx,
 		return NULL;
 	}
 
+/* remove any existing tracer */
+#ifdef __LINUX
+#ifdef PR_SET_PTRACER
+	prctl(PR_SET_PTRACER, 0, 0, 0, 0);
+#endif
+#endif
+
 /* rest are much more involved, start with some communication pipes
  * and handover environment - normal signalling etc. doesn't work for
  * error detection and the fork detach from handover_exec */
@@ -887,27 +1023,26 @@ out:
 	return err;
 }
 
-static int run_buffer(struct debug_ctx* dctx, uint8_t* buffer,
+static int run_buffer(struct tui_context* tui, uint8_t* buffer,
 	size_t buf_sz, struct tui_bufferwnd_opts opts, const char* title)
 {
 	int status = 1;
 	opts.allow_exit = true;
-	arcan_tui_ident(dctx->tui, title);
-	arcan_tui_bufferwnd_setup(dctx->tui, buffer, buf_sz, &opts, sizeof(opts));
+	arcan_tui_ident(tui, title);
+	arcan_tui_bufferwnd_setup(tui, buffer, buf_sz, &opts, sizeof(opts));
 
-	while(1 == (status = arcan_tui_bufferwnd_status(dctx->tui))){
-		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
+	while(1 == (status = arcan_tui_bufferwnd_status(tui))){
+		struct tui_process_res res = arcan_tui_process(&tui, 1, NULL, 0, -1);
 		if (res.errc == TUI_ERRC_OK){
-			if (-1 == arcan_tui_refresh(dctx->tui) && errno == EINVAL){
-				dctx->dead = true;
+			if (-1 == arcan_tui_refresh(tui) && errno == EINVAL){
 				break;
 			}
 		}
 	}
 
 /* return the context to normal, dead-flag will propagate and free if set */
-	arcan_tui_bufferwnd_release(dctx->tui);
-	arcan_tui_update_handlers(dctx->tui,
+	arcan_tui_bufferwnd_release(tui);
+	arcan_tui_update_handlers(tui,
 		&(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
 
 	return status;
@@ -994,13 +1129,7 @@ static void gen_spawn_menu(struct debug_ctx* dctx)
 		}
 	}
 
-	if (err){
-		run_buffer(dctx,
-			(uint8_t*) err, strlen(err), (struct tui_bufferwnd_opts){
-				.read_only = true,
-				.view_mode = BUFFERWND_VIEW_ASCII
-		}, "error");
-	}
+	show_error_message(dctx->tui, err);
 	gen_spawn_menu(dctx);
 }
 
@@ -1085,7 +1214,7 @@ static void gen_environment_menu(struct debug_ctx* dctx)
 	if (!env || !(env = strdup(env)))
 		return gen_environment_menu(dctx);
 
-	run_buffer(dctx, (uint8_t*) env, strlen(env), (struct tui_bufferwnd_opts){
+	run_buffer(dctx->tui, (uint8_t*) env, strlen(env), (struct tui_bufferwnd_opts){
 		.read_only = false,
 		.view_mode = BUFFERWND_VIEW_ASCII
 	}, ent->label);
@@ -1215,7 +1344,7 @@ static void set_process_window(struct debug_ctx* dctx)
 		.allow_exit = true
 	};
 
-	run_buffer(dctx, (uint8_t*) buf, buf_sz, opts, "process");
+	run_buffer(dctx->tui, (uint8_t*) buf, buf_sz, opts, "process");
 /* check return code and update if commit */
 
 	if (outf)
