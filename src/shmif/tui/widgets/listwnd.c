@@ -557,8 +557,11 @@ static void mouse_button(struct tui_context* T,
 		return;
 
 /* mouse motion preceeds the button, so we can just trigger */
-	if (button == TUIBTN_LEFT || button == TUIBTN_RIGHT){
+	if (button == TUIBTN_LEFT){
 		select_current(T, M);
+	}
+	else if (button == TUIBTN_RIGHT){
+		cancel(T, M);
 	}
 	else if (button == TUIBTN_MIDDLE){
 		step_page_s(T, M);

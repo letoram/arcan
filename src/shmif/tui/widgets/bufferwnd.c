@@ -11,6 +11,7 @@
  *   to old_handler and check the return value for consumption
  *
  * - state- management (save / load from buffer) without client knowing
+ * - status-row mouse action for controls (wrap, color, view)
  * - replace vs insert mode
  * - selection controls / mouse-forward mode
  * - expose scrollbar / progression status
@@ -19,6 +20,7 @@
  * - support alternate type-push window for accessibility, debug
  * - undo/redo controls
  * - dynamic buffer reading (streaming / external populate contents)
+ * - align to cursor (set as window start ?)
  *
  * Minor nuissances:
  * - colors for UI elements etc. are incorrect
@@ -431,12 +433,6 @@ static void redraw_text(struct tui_context* T, struct bufferwnd_meta* M,
 	void (*on_position)(struct tui_context* T, size_t offset)
 )
 {
-/* We should only be here on full invalidation (inputs, edits, ...) */
-#ifdef _DEBUG
-	draw_header(T, M, start_row, cols);
-	start_row++;
-#endif
-
 	M->row = start_row;
 	M->col = start_col;
 	if (!mask_write){
@@ -925,6 +921,51 @@ static bool on_u8(struct tui_context* T, const char* u8, size_t len, void* tag)
 	return false;
 }
 
+static void scroll_page_down(struct tui_context* T, struct bufferwnd_meta* M)
+{
+	switch (M->opts.view_mode){
+	case BUFFERWND_VIEW_UTF8:
+	case BUFFERWND_VIEW_ASCII:{
+/* need to sweep the buffer in order to figure out where the 'page' starts
+ * based on wrapping mode */
+	}
+	break;
+	case BUFFERWND_VIEW_HEX:
+	case BUFFERWND_VIEW_HEX_DETAIL:{
+		size_t step = M->row_bytelen * (M->cursor_ofs_row_end - M->cursor_ofs_row);
+		M->buffer_pos += M->row_bytelen * (M->cursor_ofs_row_end - M->cursor_ofs_row);
+		if (M->buffer_pos + M->row_bytelen > M->buffer_sz)
+			M->buffer_pos = M->buffer_sz - step;
+	}
+	break;
+	}
+
+	redraw_bufferwnd(T, M);
+}
+
+static void scroll_page_up(struct tui_context* T, struct bufferwnd_meta* M)
+{
+	switch (M->opts.view_mode){
+	case BUFFERWND_VIEW_UTF8:
+	case BUFFERWND_VIEW_ASCII:{
+/* need to sweep the buffer in order to figure out where the 'page' starts
+ * based on wrapping mode */
+	}
+	break;
+	case BUFFERWND_VIEW_HEX:
+	case BUFFERWND_VIEW_HEX_DETAIL:{
+		size_t step = M->row_bytelen * (M->cursor_ofs_row_end - M->cursor_ofs_row);
+		if (M->buffer_pos > step)
+			M->buffer_pos -= step;
+		else
+			M->buffer_pos = 0;
+	}
+	break;
+	}
+
+	redraw_bufferwnd(T, M);
+}
+
 static void scroll_row_down(struct tui_context* T, struct bufferwnd_meta* M)
 {
 /* previous calls to redraw_bufferwnd keeps track on how many bytes were
@@ -1190,6 +1231,12 @@ static void on_key_input(struct tui_context* T, uint32_t keysym,
 			step_cursor_e(T, M);
 		else
 			scroll_row_down(T, M);
+	}
+	else if (keysym == TUIK_PAGEDOWN){
+		scroll_page_down(T, M);
+	}
+	else if (keysym == TUIK_PAGEUP){
+		scroll_page_up(T, M);
 	}
 	else if (keysym == TUIK_ESCAPE ||
 		(keysym == TUIK_RETURN && (mods & (TUIM_LSHIFT | TUIM_RSHIFT)) )
