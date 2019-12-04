@@ -18,14 +18,21 @@
  *    - 'special' tactics, e.g. malloc- intercept + backtrace on write
  *      to pair buffers and transformations, fetch from trap page pool
  *      and mprotect- juggle to find crypto and compression functions
+ *    - detach-thread and detach- process for FD intercept
+ *    - browse- filesystem based on cwd
+ *    - message path for the debugif to have a separate log queue
  *
- * Likely that these and other venues should be written as separate
- * tools that jack into the menu (see src/tools/adbginject) rather
- * than make the code here too extensive.
+ * Likely that some of these and other venues should be written as separate
+ * tools that jack into the menu (see src/tools/adbginject) rather than make
+ * the code here too extensive.
  *
  * Many of these moves are quite risky without other good primitives
  * first though, the most pressing one is probably 'suspend all other
  * threads'.
+ *
+ * Interesting source of problems, when debugif is active no real output
+ * can be allowed from this one, tui or shmif as any file might be
+ * redirected and cause locking
  */
 #include "arcan_shmif.h"
 #include "arcan_shmif_interop.h"
@@ -75,14 +82,9 @@ enum debug_cmd_id {
 	TAG_CMD_DESCRIPTOR = 2,
 	TAG_CMD_PROCESS = 3,
 	TAG_CMD_EXTERNAL = 4
-/* other interesting:
- * - browse namespace / filesystem and allow load/store
- *    |-> would practically require some filtering / extra input handling
- *        for the listview (interesting in itself..)
- */
 };
 
-static _Atomic int beancounter;
+static volatile _Atomic int beancounter;
 
 /*
  * menu code here is really generic enough that it should be move elsewhere,
@@ -105,11 +107,11 @@ struct debug_ctx {
 	struct debugint_ext_resolver resolver;
 };
 
-static int run_listwnd(
-	struct debug_ctx* dctx, struct tui_list_entry* list, size_t n_elem);
+static struct tui_list_entry* run_listwnd(struct debug_ctx* dctx,
+	struct tui_list_entry* list, size_t n_elem, const char* ident);
 
-static int run_buffer(struct debug_ctx* dctx,
-	uint8_t* buffer, size_t buf_sz, struct tui_bufferwnd_opts opts);
+static int run_buffer(struct debug_ctx* dctx, uint8_t* buffer,
+	size_t buf_sz, struct tui_bufferwnd_opts opts, const char* ident);
 
 static const char* stat_to_str(struct stat* s)
 {
@@ -167,7 +169,7 @@ static void fd_to_flags(char buf[static 8], int fd)
 	if (-1 == rv){
 		buf[0] = '?';
 	}
-	else if (rv & O_CLOEXEC){
+	else if (!(rv & FD_CLOEXEC)){
 		buf[0] = 'x';
 	}
 
@@ -200,40 +202,154 @@ static void fd_to_flags(char buf[static 8], int fd)
  * locked */
 }
 
-static void mim_window(struct debug_ctx* dctx, int fdin, int fdout)
+static bool mim_flush(
+	struct tui_context* tui, uint8_t* buf, size_t buf_sz, int fdout)
 {
+	if (-1 == fdout)
+		return true;
+
+	struct tui_bufferwnd_opts opts = {
+		.read_only = true,
+		.view_mode = BUFFERWND_VIEW_ASCII,
+		.allow_exit = false
+	};
+
+	char msg[32];
+	size_t buf_pos = 0;
+	snprintf(msg, 32, "Flushing, %zu / %zu bytes", buf_pos, buf_sz);
+
+	int rfl = fcntl(fdout, F_GETFL);
+	fcntl(fdout, F_SETFL, rfl | O_NONBLOCK);
+
+	struct pollfd pfd[2] = {
+		{
+			.fd = fdout,
+			.events = POLLOUT | POLLERR | POLLNVAL | POLLHUP
+		},
+		{
+			.events = POLLIN | POLLERR | POLLNVAL | POLLHUP
+		}
+	};
+
+/* keep going until the buffer is sent or something happens */
+	int status;
+	while(buf_pos < buf_sz &&
+		1 == (status = arcan_tui_bufferwnd_status(tui))){
+		arcan_tui_get_handles(&tui, 1, &pfd[1].fd, 1);
+		int status = poll(pfd, 2, -1);
+		if (pfd[0].revents){
+/* error */
+			if (!(pfd[0].revents & POLLOUT)){
+				break;
+			}
+
+/* write and update output window */
+			ssize_t nw = write(fdout, &buf[buf_pos], buf_sz - buf_pos);
+			if (nw > 0){
+				buf_pos += nw;
+				snprintf(msg, 32, "Flushing, %zu / %zu bytes", buf_pos, buf_sz);
+				arcan_tui_bufferwnd_synch(tui, (uint8_t*)msg, strlen(msg), 0);
+			}
+		}
+
+/* and always update the window */
+		arcan_tui_process(&tui, 1, NULL, 0, 0);
+		arcan_tui_refresh(tui);
+	}
+
+/* if the context has died and we have data left to flush, try one final big
+ * write before calling it a day or we may leave the client in a bad state */
+	if (buf_pos < buf_sz){
+		fcntl(fdout, F_SETFL, rfl & (~O_NONBLOCK));
+		while (buf_pos < buf_sz){
+			ssize_t nw = write(fdout, &buf[buf_pos], buf_sz - buf_pos);
+			if (-1 == nw){
+				if (errno == EAGAIN || errno == EINTR)
+					continue;
+				break;
+			}
+			buf_pos += nw;
+		}
+	}
+
+/* restore initial flag state */
+	fcntl(fdout, F_SETFL, rfl);
+	return buf_pos == buf_sz;
+}
+
+static void mim_window(struct tui_context* tui, int fdin, int fdout)
+{
+/*
+ * other options:
+ * streaming or windowed,
+ * window size,
+ * read/write
+ */
 	struct tui_bufferwnd_opts opts = {
 		.read_only = false,
-		.view_mode = BUFFERWND_VIEW_HEX,
+		.view_mode = BUFFERWND_VIEW_HEX_DETAIL,
 		.allow_exit = true
 	};
 
-/* main loop needs:
- * read-in to buffer
- * commit command (unless read-only)
- * if fdout is -1
- * flush-out buffer
- * status- message
- */
+/* switch window, wait for buffer */
+	size_t buf_sz = 4096;
+	size_t buf_pos = 0;
+	uint8_t* buf = malloc(buf_sz);
+	if (!buf)
+		return;
 
-/*
- * arcan_tui_bufferwnd_setup(dctx->tui,
-		buf, buf_sz, &opts, sizeof(struct tui_bufferwnd_opts));
- */
+	memset(buf, '\0', buf_sz);
 
-/* set fdin part to nonblock */
+/* would be convenient with a message area that gets added, there's also the
+ * titlebar and buffer control - ideally this would even be a re-usable helper
+ * with bufferwnd rather than here */
+refill:
+	arcan_tui_bufferwnd_setup(tui,
+		buf, 0, &opts, sizeof(struct tui_bufferwnd_opts));
 
-	while(1){
-		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, &fdin, 1, -1);
+	bool read_data = true;
+	int status;
+
+	while(1 == (status = arcan_tui_bufferwnd_status(tui))){
+		struct tui_process_res res;
+		if (read_data){
+			res = arcan_tui_process(&tui, 1, &fdin, 1, -1);
+		}
+		else
+			res = arcan_tui_process(&tui, 1, NULL, 0, -1);
+
+/* fill buffer if needed */
+		if (res.ok){
+			if (buf_sz - buf_pos > 0){
+				ssize_t nr = read(fdin, &buf[buf_pos], buf_sz - buf_pos);
+				if (nr > 0){
+					buf_pos += nr;
+					arcan_tui_bufferwnd_synch(tui, buf, buf_pos, 0);
+				}
+			}
+		}
+
 /* buffer updated? grow it */
-		arcan_tui_refresh(dctx->tui);
+		if (-1 == arcan_tui_refresh(tui) && errno == EINVAL)
+			break;
 	}
 
-	dup2(fdin, fdout);
-	close(fdout);
+/* commit- flush and reset */
+	if (status == 0){
+		if (mim_flush(tui, buf, buf_pos, fdout)){
+			buf_pos = 0;
+			goto refill;
+		}
+	}
+
+/* caller will clean up descriptors */
+	arcan_tui_bufferwnd_release(tui);
+	arcan_tui_update_handlers(tui,
+		&(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
+	free(buf);
 }
 
-static void buf_window(struct debug_ctx* dctx, int source)
+static void buf_window(struct debug_ctx* dctx, int source, const char* lbl)
 {
 /* just read-only / mmap for now */
 	struct stat fs;
@@ -250,18 +366,50 @@ static void buf_window(struct debug_ctx* dctx, int source)
 		.allow_exit = true
 	};
 
-	run_buffer(dctx, buf, fs.st_size, opts);
+	run_buffer(dctx, buf, fs.st_size, opts, lbl);
 	munmap(buf, fs.st_size);
 }
 
-static void setup_mitm(struct debug_ctx* dctx, int source, bool mask)
+static void setup_mitm(struct tui_context* tui, int source, bool mask)
 {
 	int fdin = source;
 	int fdout = -1;
 
-/* check if source is in write mode or read mode, setup a pipe pair
- * and dup accordingly, controls should also be for 'buffer or stream'
- * and possibly spawning another window */
+/* need a cloexec pair of pipes */
+	int pair[2];
+	pipe(pair);
+
+/* set numbers and behavior based on direction */
+	int orig = dup(source);
+	int fd_in, fd_out, scratch;
+
+	int fl = fcntl(source, F_GETFL);
+	if ((fl & O_WRONLY) || source == STDOUT_FILENO){
+		char ident[32];
+		snprintf(ident, 32, "outgoing: %d", source);
+		arcan_tui_ident(tui, ident);
+		dup2(pair[1], source);
+		close(pair[1]);
+		fd_in = pair[0];
+		scratch = fd_in;
+		fd_out = mask ? -1 : orig;
+	}
+	else {
+		char ident[32];
+		snprintf(ident, 32, "incoming: %d", source);
+		arcan_tui_ident(tui, ident);
+		dup2(pair[0], source);
+		close(pair[0]);
+		fd_in = orig;
+		fd_out = mask ? -1 : pair[1];
+		scratch = pair[1];
+	}
+
+/* blocking / non-blocking is not handled correctly */
+	mim_window(tui, fd_in, fd_out);
+	dup2(orig, source);
+	close(orig);
+	close(scratch);
 }
 
 /*
@@ -276,7 +424,8 @@ enum {
 	DESC_MITM_RO,
 	DESC_MITM_WO,
 };
-static void run_descriptor(struct debug_ctx* dctx, int fdin, int type)
+static void run_descriptor(
+	struct debug_ctx* dctx, int fdin, int type, const char* label)
 {
 	if (fdin <= 2){
 		type = INTERCEPT_MITM_PIPE;
@@ -330,35 +479,37 @@ static void run_descriptor(struct debug_ctx* dctx, int fdin, int type)
 	}
 /* F_GETLEASE, F_GET_SEALS */
 
-	int rv = run_listwnd(dctx, lents, nents);
-	if (-1 == rv){
+
+	struct tui_list_entry* ent = run_listwnd(dctx, lents, nents, label);
+	if (!ent){
 		return;
 	}
 
-	switch(lents[rv].tag){
+	switch(ent->tag){
 	case DESC_COPY:{
 		arcan_tui_announce_io(dctx->tui, true, NULL, "*");
-		return run_descriptor(dctx, fdin, type);
+		return run_descriptor(dctx, fdin, type, label);
 	}
 	break;
 	case DESC_VIEW:
-		buf_window(dctx, fdin);
+		buf_window(dctx, fdin, label);
 	/*
  * just mmap and run buffer
  */
 	break;
 	case DESC_MITM_PIPE:
 /*
- * probe direction and dupe directions accordingly,
- * then forward to the buffer window
+ * probe direction and dupe directions accordingly, then forward to the buffer
+ * window, note that MITM on stderr is a bad idea since we might log there too,
+ * so disable
  */
-		setup_mitm(dctx, fdin, false);
+		setup_mitm(dctx->tui, fdin, false);
 	break;
 	case DESC_MITM_REDIR:
 /*
  * like with pipe but just mask the forward call
  */
-		setup_mitm(dctx, fdin, true);
+		setup_mitm(dctx->tui, fdin, true);
 	break;
 	case DESC_MITM_BIDI:
 /*
@@ -377,14 +528,15 @@ static void run_descriptor(struct debug_ctx* dctx, int fdin, int type)
 	}
 }
 
-static int run_listwnd(
-	struct debug_ctx* dctx, struct tui_list_entry* list, size_t n_elem)
+static struct tui_list_entry* run_listwnd(struct debug_ctx* dctx,
+	struct tui_list_entry* list, size_t n_elem, const char* ident)
 {
+	struct tui_list_entry* ent = NULL;
 	arcan_tui_update_handlers(dctx->tui,
 		&(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
 	arcan_tui_listwnd_setup(dctx->tui, list, n_elem);
+	arcan_tui_ident(dctx->tui, ident);
 
-	int rv = -1;
 	for(;;){
 		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
 		if (res.errc == TUI_ERRC_OK){
@@ -393,17 +545,35 @@ static int run_listwnd(
 			}
 		}
 
-		struct tui_list_entry* ent;
 		if (arcan_tui_listwnd_status(dctx->tui, &ent)){
-			if (ent){
-				rv = ent->tag;
-			}
 			break;
 		}
 	}
 
 	arcan_tui_listwnd_release(dctx->tui);
-	return rv;
+	return ent;
+}
+
+static void get_fd_fn(char* buf, size_t lim, int fd)
+{
+#ifdef __LINUX
+	snprintf(buf, 256, "/proc/self/fd/%d", fd);
+/* using buf on both arguments should be safe here due to the whole 'need the
+ * full path before able to generate output' criteria, but explicitly terminate
+ * on truncation */
+	char buf2[256];
+	int rv = readlink(buf, buf2, 255);
+	if (rv <= 0){
+		snprintf(buf, 256, "error: %s", strerror(errno));
+	}
+	else{
+		buf2[rv] = '\0';
+		snprintf(buf, 256, "%s", buf2);
+	}
+#else
+	snprintf(buf, "Couldn't Resolve");
+/* BSD: resolve to pathname if possible F_GETPATH */
+#endif
 }
 
 extern int arcan_fdscan(int** listout);
@@ -436,6 +606,8 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 /* generate an entry even if the stat failed, as the info is indicative
  * of a FD being detected and then inaccessible or gone */
 	size_t used = 0;
+	char buf[256];
+
 	for (size_t i = 0; i < count; i++){
 		struct tui_list_entry* lent = &lents[count];
 		lents[used] = (struct tui_list_entry){
@@ -469,22 +641,7 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 			fd_to_flags(scratch, fds[i]);
 			if (-1 == can_intercept(&dents[used].stat) && fds[i] > 2)
 				lents[used].attributes |= LIST_PASSIVE;
-#ifdef __LINUX
-			char buf[256];
-			snprintf(buf, 256, "/proc/self/fd/%d", fds[i]);
-/* using buf on both arguments should be safe here due to the whole 'need the
- * full path before able to generate output' criteria, but explicitly terminate
- * on truncation */
-			char buf2[256];
-			int rv = readlink(buf, buf2, 255);
-			if (rv <= 0){
-				snprintf(buf, 256, "error: %s", strerror(errno));
-			}
-			else{
-				buf2[rv] = '\0';
-				snprintf(buf, 256, "%s", buf2);
-			}
-
+			get_fd_fn(buf, 256, fds[i]);
 			if (fds[i] > 2){
 				snprintf(lbl_prefix, lbl_len, "%4d[%s](%s)\t: %s",
 					fds[i], scratch, stat_to_str(&dents[used].stat), buf);
@@ -492,18 +649,6 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 			else
 				snprintf(lbl_prefix, lbl_len, "[%s](%s)\t: %s",
 					scratch, stat_to_str(&dents[used].stat), buf);
-#else
-			if (fds[i] > 2){
-				snprintf(lbl_prefix, lbl_len,	"%4d[%s](%s)\t: can't resolve",
-					fds[i], scratch, stat_to_str(&dents[used].stat));
-			}
-			else
-				snprintf(lbl_prefix, lbl_len, "[%s](%s)\t: can't resolve)",
-					scratch, stat_to_str(&dents[used].stat));
-#endif
-/* BSD: resolve to pathname if possible */
-#ifdef F_GETPATH
-#endif
 		}
 
 /* prefix STDIO */
@@ -539,13 +684,13 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
  * either we request a new window and use one for the read and one for the
  * write end - as well as getsockopt on type etc. to figure out if the socket
  * can actually be intercepted or not. */
-	int rv = run_listwnd(dctx, lents, count);
+	struct tui_list_entry* ent = run_listwnd(dctx, lents, count, "open descriptors");
 
-	if (-1 != rv){
-		struct tui_list_entry* ent = &lents[rv];
+	if (ent){
 		int icept = can_intercept(&dents[ent->tag].stat);
 		dctx->last_fd = dents[ent->tag].fd;
-		run_descriptor(dctx, dents[ent->tag].fd, icept);
+		get_fd_fn(buf, 256, dents[ent->tag].fd);
+		run_descriptor(dctx, dents[ent->tag].fd, icept, buf);
 		dctx->last_fd = -1;
 	}
 
@@ -557,8 +702,9 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
 	free(lents);
 
 /* finished with the buffer window, rebuild the list */
-	if (-1 != rv)
-		return gen_descriptor_menu(dctx);
+	if (ent){
+		gen_descriptor_menu(dctx);
+	}
 }
 
 /* we don't want full execvpe kind of behavior here as path might be
@@ -660,10 +806,10 @@ static const char* spawn_action(struct debug_ctx* dctx,
 /* cloexec- off our end of the descriptors */
 	int flags = fcntl(fdarg_out[1], F_GETFD);
 	if (-1 != flags)
-		fcntl(fdarg_out[1], F_SETFD, flags | O_CLOEXEC);
+		fcntl(fdarg_out[1], F_SETFD, flags | FD_CLOEXEC);
 	flags = fcntl(fdarg_in[0], F_GETFD);
 	if (-1 != flags)
-		fcntl(fdarg_in[0], F_SETFD, flags | O_CLOEXEC);
+		fcntl(fdarg_in[0], F_SETFD, flags | FD_CLOEXEC);
 
 /* could've done this less messier on the stack .. */
 	char* envv[5] = {0};
@@ -741,12 +887,12 @@ out:
 	return err;
 }
 
-static int run_buffer(struct debug_ctx* dctx,
-	uint8_t* buffer, size_t buf_sz, struct tui_bufferwnd_opts opts)
+static int run_buffer(struct debug_ctx* dctx, uint8_t* buffer,
+	size_t buf_sz, struct tui_bufferwnd_opts opts, const char* title)
 {
 	int status = 1;
 	opts.allow_exit = true;
-
+	arcan_tui_ident(dctx->tui, title);
 	arcan_tui_bufferwnd_setup(dctx->tui, buffer, buf_sz, &opts, sizeof(opts));
 
 	while(1 == (status = arcan_tui_bufferwnd_status(dctx->tui))){
@@ -802,12 +948,12 @@ static void gen_spawn_menu(struct debug_ctx* dctx)
 		free(lldb);
 	}
 
-	int rv = run_listwnd(dctx, lents, COUNT_OF(lents));
+	struct tui_list_entry* ent = run_listwnd(dctx, lents, COUNT_OF(lents), "debuggers");
 
 /* for all of these we need a handover segment as we can't just give the tui
  * context away like this, even though when the debugger connection is setup,
  * we can't really 'survive' anymore as we will just get locked */
-	if (rv == -1)
+	if (!ent)
 		return;
 
 /* this will leave us hanging until we get a response from the server side,
@@ -828,12 +974,12 @@ static void gen_spawn_menu(struct debug_ctx* dctx)
 
 		if (ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT){
 			char* fn = NULL;
-			if (lents[rv].tag == SPAWN_DEBUG_GDB){
+			if (ent->tag == SPAWN_DEBUG_GDB){
 				fn = find_exec("gdb");
 				if (!fn)
 					break;
 			}
-			else if (lents[rv].tag == SPAWN_DEBUG_LLDB){
+			else if (ent->tag == SPAWN_DEBUG_LLDB){
 				fn = find_exec("lldb");
 				if (!fn)
 					break;
@@ -853,7 +999,7 @@ static void gen_spawn_menu(struct debug_ctx* dctx)
 			(uint8_t*) err, strlen(err), (struct tui_bufferwnd_opts){
 				.read_only = true,
 				.view_mode = BUFFERWND_VIEW_ASCII
-		});
+		}, "error");
 	}
 	gen_spawn_menu(dctx);
 }
@@ -929,20 +1075,20 @@ static void gen_environment_menu(struct debug_ctx* dctx)
 		return;
 	}
 
-	int ind = run_listwnd(dctx, list, nelem);
-	if (-1 == ind){
+	struct tui_list_entry* ent = run_listwnd(dctx, list, nelem, "environment");
+	if (!ent){
 		free_list(list, nelem);
 		return;
 	}
 
-	char* env = getenv(list[ind].label);
+	char* env = getenv(ent->label);
 	if (!env || !(env = strdup(env)))
 		return gen_environment_menu(dctx);
 
 	run_buffer(dctx, (uint8_t*) env, strlen(env), (struct tui_bufferwnd_opts){
 		.read_only = false,
 		.view_mode = BUFFERWND_VIEW_ASCII
-	});
+	}, ent->label);
 
 	return gen_environment_menu(dctx);
 }
@@ -1069,7 +1215,7 @@ static void set_process_window(struct debug_ctx* dctx)
 		.allow_exit = true
 	};
 
-	run_buffer(dctx, (uint8_t*) buf, buf_sz, opts);
+	run_buffer(dctx, (uint8_t*) buf, buf_sz, opts, "process");
 /* check return code and update if commit */
 
 	if (outf)
@@ -1136,6 +1282,7 @@ static void root_menu(struct debug_ctx* dctx)
 			&(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
 
 		arcan_tui_listwnd_setup(dctx->tui, menu_root, nent);
+		arcan_tui_ident(dctx->tui, "root");
 
 		while(!dctx->dead){
 			struct tui_process_res res =
@@ -1171,6 +1318,7 @@ static void root_menu(struct debug_ctx* dctx)
 						break;
 					}
 				}
+/* switch to out-loop that resets the menu */
 				break;
 			}
 
@@ -1189,6 +1337,17 @@ static void* debug_thread(void* thr)
 		return NULL;
 	}
 
+	struct arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(REGISTER),
+		.ext.registr = {
+			.kind = SEGID_DEBUG
+		}
+	};
+
+	snprintf(ev.ext.registr.title, 32, "debugif(%d)", (int)getpid());
+
+	arcan_shmif_enqueue(arcan_tui_acon(dctx->tui), &ev);
 	root_menu(dctx);
 
 	arcan_tui_destroy(dctx->tui, NULL);

@@ -253,6 +253,7 @@ struct tui_context* arcan_tui_setup(
 		memcpy(res->colors, parent->colors, sizeof(res->colors));
 		res->alpha = parent->alpha;
 		res->cursor = parent->cursor;
+		res->ppcm = parent->ppcm;
 
 		tui_fontmgmt_setup(res, &(struct arcan_shmif_initial){
 			.fonts = {

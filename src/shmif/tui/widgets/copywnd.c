@@ -468,9 +468,9 @@ void arcan_tui_copywnd(struct tui_context* src, struct arcan_shmif_cont con)
 	}
 
 /* pipes used to communicate local clipboard data */
-	fcntl(ctx->iopipes[0], F_SETFD, O_CLOEXEC);
+	fcntl(ctx->iopipes[0], F_SETFD, FD_CLOEXEC);
 	fcntl(ctx->iopipes[0], F_SETFL, O_NONBLOCK);
-	fcntl(ctx->iopipes[1], F_SETFD, O_CLOEXEC);
+	fcntl(ctx->iopipes[1], F_SETFD, FD_CLOEXEC);
 	fcntl(ctx->iopipes[1], F_SETFL, O_NONBLOCK);
 
 /* bind the context to a new tui session */

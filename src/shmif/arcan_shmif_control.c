@@ -51,6 +51,26 @@ enum debug_level {
 	DETAILED = 2
 };
 
+/*
+ * Accessor for redirectable log output related to a shmif context
+ * The context association is a placeholder for being able to handle
+ * context- specific log output devices later.
+ */
+static _Atomic volatile uintptr_t log_device;
+FILE* shmifint_log_device(struct arcan_shmif_cont* c)
+{
+	FILE* res = (FILE*)(void*) atomic_load(&log_device);
+	if (res)
+		return res;
+
+	return stderr;
+}
+
+void shmifint_set_log_device(struct arcan_shmif_cont* c, FILE* outdev)
+{
+	atomic_store(&log_device, (uintptr_t)(void*)outdev);
+}
+
 #ifdef _DEBUG
 #ifdef _DEBUG_NOLOG
 #define debug_print(...)
@@ -58,7 +78,8 @@ enum debug_level {
 
 #ifndef debug_print
 #define debug_print(sev, ctx, fmt, ...) \
-            do { fprintf(stderr, "%s:%d:%s(): " fmt "\n", \
+            do { fprintf(shmifint_log_device(NULL),\
+						"%s:%d:%s(): " fmt "\n", \
 						"shmif_control.c", __LINE__, __func__,##__VA_ARGS__); } while (0)
 #endif
 #else
@@ -66,6 +87,11 @@ enum debug_level {
 #define debug_print(...)
 #endif
 #endif
+
+#define log_print(fmt, ...) \
+            do { fprintf(shmifint_log_device(NULL),\
+						"%s:%d:%s(): " fmt "\n", \
+						__LINE__, __func__,##__VA_ARGS__); } while (0)
 
 /*
  * implementation defined for out-of-order execution and reordering protection
@@ -399,7 +425,11 @@ static void consume(struct arcan_shmif_cont* c)
 			c->priv->pev.ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT &&
 			c->priv->pev.ev.tgt.ioevs[2].iv == SEGID_DEBUG){
 			debug_print(DETAILED, c, "debug subsegment received");
-			struct arcan_shmif_cont pcont = arcan_shmif_acquire(c,NULL,SEGID_DEBUG,0);
+
+/* want to let the debugif do initial registration */
+			struct arcan_shmif_cont pcont =
+				arcan_shmif_acquire(c, NULL, SEGID_DEBUG, SHMIF_NOREGISTER);
+
 			if (pcont.addr){
 				if (!arcan_shmif_debugint_spawn(&pcont, NULL, NULL)){
 					arcan_shmif_drop(&pcont);
@@ -787,7 +817,7 @@ checkfd:
 					if ( (guid[0] || guid[1]) &&
 						(priv->guid[0] != guid[0] && priv->guid[1] != guid[1] )){
 						if (priv->log_event)
-							fprintf(stderr, "->(%"PRIx64", %"PRIx64")\n", guid[0], guid[1]);
+							log_print("->(%"PRIx64", %"PRIx64")\n", guid[0], guid[1]);
 						priv->guid[0] = guid[0];
 						priv->guid[1] = guid[1];
 					}
@@ -897,8 +927,8 @@ int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
 
 	int rv = process_events(c, dst, false, false);
 	if (rv > 0 && c->priv->log_event){
-		fprintf(stderr, "[%"PRIu64":%"PRIu32"] <- %s\n",
-			(uint64_t) (uint64_t) arcan_timemillis() - g_epoch,
+		log_print("[%"PRIu64":%"PRIu32"] <- %s\n",
+			(uint64_t) arcan_timemillis() - g_epoch,
 			(uint32_t) c->cookie, arcan_shmif_eventstr(dst, NULL, 0));
 	}
 	return rv;
@@ -942,7 +972,7 @@ int arcan_shmif_wait(struct arcan_shmif_cont* c, struct arcan_event* dst)
 
 	int rv = process_events(c, dst, true, false);
 	if (rv > 0 && c->priv->log_event){
-		fprintf(stderr, "(@%"PRIxPTR"<-)%s\n",
+		log_print("(@%"PRIxPTR"<-)%s\n",
 			(uintptr_t) c, arcan_shmif_eventstr(dst, NULL, 0));
 	}
 	return rv > 0;
@@ -968,7 +998,7 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 
 	if (c->priv->log_event){
 		struct arcan_event outev = *src;
-		fprintf(stderr, "(@%"PRIxPTR"->)%s\n",
+		log_print("(@%"PRIxPTR"->)%s\n",
 			(uintptr_t) c, arcan_shmif_eventstr(&outev, NULL, 0));
 	}
 
@@ -1706,7 +1736,7 @@ unsigned arcan_shmif_signal(
  * check before running the step_v */
 	if (mask & SHMIF_SIGVID){
 		if (priv->log_event){
-			fprintf(stderr, "%lld: SIGVID (block: %d region: %zu,%zu-%zu,%zu)\n",
+			log_print("%lld: SIGVID (block: %d region: %zu,%zu-%zu,%zu)\n",
 				arcan_timemillis(),
 				(mask & SHMIF_SIGBLK_NONE) ? 0 : 1,
 				(size_t)ctx->dirty.x1, (size_t)ctx->dirty.y1,
@@ -1888,7 +1918,7 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	atomic_store_explicit(&arg->addr->apending, audc, memory_order_release);
 	atomic_store_explicit(&arg->addr->vpending, vidc, memory_order_release);
 	if (priv->log_event){
-		fprintf(stderr,
+		log_print(
 			"(@%"PRIxPTR" rz-synch): %zu*%zu(fl:%d), grid:%zu,%zu %zu Hz\n",
 			(uintptr_t)arg, (size_t)width, (size_t)height, (int)arg->hints,
 			(size_t)ext.rows, (size_t)ext.cols, (size_t)arg->samplerate
@@ -2283,7 +2313,7 @@ int arcan_shmif_dupfd(int fd, int dstnum, bool blocking)
 
 	flags = fcntl(rfd, F_GETFD);
 	if (-1 != flags)
-		fcntl(rfd, F_SETFD, flags | O_CLOEXEC);
+		fcntl(rfd, F_SETFD, flags | FD_CLOEXEC);
 
 	return rfd;
 }
@@ -2565,7 +2595,7 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	int spair[2];
 	if (-1 == socketpair(PF_UNIX, SOCK_STREAM, 0, spair)){
 		free(work);
-		fprintf(stderr, "(shmif::a12::connect) couldn't build IPC socket\n");
+		log_print("(shmif::a12::connect) couldn't build IPC socket\n");
 		return NULL;
 	}
 
@@ -2579,7 +2609,7 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 		if (i == 0){
 			flags = fcntl(spair[i], F_GETFD);
 			if (-1 != flags)
-				fcntl(spair[i], F_SETFD, flags | O_CLOEXEC);
+				fcntl(spair[i], F_SETFD, flags | FD_CLOEXEC);
 		}
 
 #ifdef __APPLE__
@@ -2607,7 +2637,7 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	close(spair[1]);
 
 	if (-1 == pid){
-		fprintf(stderr, "(shmif::a12::connect) fork() failed\n");
+		log_print("(shmif::a12::connect) fork() failed\n");
 		close(spair[0]);
 		return NULL;
 	}
@@ -2720,7 +2750,6 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 			.ext.kind = ARCAN_EVENT(REGISTER),
 			.ext.registr = {
 				.kind = ext.type,
-				.guid = {priv->guid[0], priv->guid[1]}
 			}
 		};
 

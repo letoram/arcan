@@ -1214,6 +1214,7 @@ void arcan_tui_bufferwnd_synch(
 	M->buffer_sz = buf_sz;
 	M->buffer_ofs = 0;
 	M->buffer_pos = 0;
+	M->exit_status = 1;
 	M->cursor_x = 0;
 	M->cursor_y = 0;
 	M->cursor_halfb = 0;
