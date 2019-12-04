@@ -122,15 +122,15 @@ enum arcan_vimage_mode {
  * recalculations needed for common UI operations.
  */
 enum parent_anchor {
-	ANCHORP_UL = 0,
-	ANCHORP_UR,
-	ANCHORP_LL,
-	ANCHORP_LR,
-	ANCHORP_C,
+	ANCHORP_UL = 1,
 	ANCHORP_UC,
+	ANCHORP_UR,
 	ANCHORP_CL,
+	ANCHORP_C,
 	ANCHORP_CR,
+	ANCHORP_LL,
 	ANCHORP_LC,
+	ANCHORP_LR,
 	ANCHORP_ENDM
 };
 

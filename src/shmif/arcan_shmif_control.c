@@ -51,6 +51,26 @@ enum debug_level {
 	DETAILED = 2
 };
 
+/*
+ * Accessor for redirectable log output related to a shmif context
+ * The context association is a placeholder for being able to handle
+ * context- specific log output devices later.
+ */
+static _Atomic volatile uintptr_t log_device;
+FILE* shmifint_log_device(struct arcan_shmif_cont* c)
+{
+	FILE* res = (FILE*)(void*) atomic_load(&log_device);
+	if (res)
+		return res;
+
+	return stderr;
+}
+
+void shmifint_set_log_device(struct arcan_shmif_cont* c, FILE* outdev)
+{
+	atomic_store(&log_device, (uintptr_t)(void*)outdev);
+}
+
 #ifdef _DEBUG
 #ifdef _DEBUG_NOLOG
 #define debug_print(...)
@@ -58,7 +78,8 @@ enum debug_level {
 
 #ifndef debug_print
 #define debug_print(sev, ctx, fmt, ...) \
-            do { fprintf(stderr, "%s:%d:%s(): " fmt "\n", \
+            do { fprintf(shmifint_log_device(NULL),\
+						"%s:%d:%s(): " fmt "\n", \
 						"shmif_control.c", __LINE__, __func__,##__VA_ARGS__); } while (0)
 #endif
 #else
@@ -66,6 +87,11 @@ enum debug_level {
 #define debug_print(...)
 #endif
 #endif
+
+#define log_print(fmt, ...) \
+            do { fprintf(shmifint_log_device(NULL),\
+						"%s:%d:%s(): " fmt "\n", \
+						__LINE__, __func__,##__VA_ARGS__); } while (0)
 
 /*
  * implementation defined for out-of-order execution and reordering protection
@@ -144,6 +170,11 @@ struct shmif_hidden {
  * environment set, but forwarding that to stderr when we have a real channel
  * where it can be done, so this should be moved to the DEBUGIF mechanism */
 	bool log_event : 1;
+
+/* When waiting for a descriptor to pair with an incoming event, if this is set
+ * the next pairing will not be forwarded to the client but instead consumed
+ * immediately. Main use is NEWSEGMENT for a forced DEBUG */
+	bool autoclean : 1;
 
 /* Track an 'alternate connection path' that the server can update with a call
  * to devicehint. A possible change here is for the alt_conn to be controlled
@@ -310,13 +341,14 @@ uint64_t arcan_shmif_cookie()
 	return base;
 }
 
-static void fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
+static bool fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
 /*
  * if we get a descriptor event that is connected to acquiring a new
  * frameserver subsegment- set up special tracking so we can retain the
  * descriptor as new signalling/socket transfer descriptor
  */
+	c->priv->pev.consumed = true;
 	if (dst->category == EVENT_TARGET &&
 		dst->tgt.kind == TARGET_COMMAND_NEWSEGMENT){
 /*
@@ -326,6 +358,7 @@ static void fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
 		dst->tgt.ioevs[0].iv = c->priv->pseg.epipe = c->priv->pev.fd;
 		c->priv->pev.fd = BADFD;
 		memcpy(c->priv->pseg.key, dst->tgt.message, sizeof(dst->tgt.message));
+		return true;
 	}
 /*
  * otherwise we have a normal pending slot with a descriptor that
@@ -335,7 +368,7 @@ static void fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
 	else
 		dst->tgt.ioevs[0].iv = c->priv->pev.fd;
 
-	c->priv->pev.consumed = true;
+	return false;
 }
 
 #ifdef SHMIF_DEBUG_IF
@@ -392,7 +425,11 @@ static void consume(struct arcan_shmif_cont* c)
 			c->priv->pev.ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT &&
 			c->priv->pev.ev.tgt.ioevs[2].iv == SEGID_DEBUG){
 			debug_print(DETAILED, c, "debug subsegment received");
-			struct arcan_shmif_cont pcont = arcan_shmif_acquire(c,NULL,SEGID_DEBUG,0);
+
+/* want to let the debugif do initial registration */
+			struct arcan_shmif_cont pcont =
+				arcan_shmif_acquire(c, NULL, SEGID_DEBUG, SHMIF_NOREGISTER);
+
 			if (pcont.addr){
 				if (!arcan_shmif_debugint_spawn(&pcont, NULL, NULL)){
 					arcan_shmif_drop(&pcont);
@@ -581,6 +618,18 @@ static enum shmif_migrate_status fallback_migrate(
 	return sv;
 }
 
+/* this one is really terrible and unfortunately very central
+ * subject to a long refactoring of its own, points to keep in check:
+ *  - blocking or nonblocking (coming from wait or poll)
+ *  - paused state (only accept UNPAUSE)
+ *  - crashed or connection terminated
+ *  - pairing fd and event for descriptor events
+ *  - cleanup of pending resources not consumed by client
+ *  - merging event storms (pending hint, ph)
+ *  - key state transitions:
+ *    - switch devices
+ *    - migration
+ */
 static int process_events(struct arcan_shmif_cont* c,
 	struct arcan_event* dst, bool blocking, bool upret)
 {
@@ -644,8 +693,12 @@ checkfd:
 			}
 
 			if (priv->pev.fd != BADFD){
-				fd_event(c, dst);
-				rv = 1;
+				if (fd_event(c, dst) && priv->autoclean){
+					priv->autoclean = false;
+					consume(c);
+				}
+				else
+					rv = 1;
 			}
 			else if (blocking){
 				debug_print(STATUS, c,
@@ -764,7 +817,7 @@ checkfd:
 					if ( (guid[0] || guid[1]) &&
 						(priv->guid[0] != guid[0] && priv->guid[1] != guid[1] )){
 						if (priv->log_event)
-							fprintf(stderr, "->(%"PRIx64", %"PRIx64")\n", guid[0], guid[1]);
+							log_print("->(%"PRIx64", %"PRIx64")\n", guid[0], guid[1]);
 						priv->guid[0] = guid[0];
 						priv->guid[1] = guid[1];
 					}
@@ -801,11 +854,14 @@ checkfd:
  * if the caller does not handle it) should be added here. Then the event will
  * be deferred until we have received a handle and the specific handle will be
  * added to the actual event. */
+			case TARGET_COMMAND_NEWSEGMENT:
+				priv->autoclean = !!(dst->tgt.ioevs[5].iv);
+
+/* fallthrough behavior is expected */
 			case TARGET_COMMAND_STORE:
 			case TARGET_COMMAND_RESTORE:
 			case TARGET_COMMAND_BCHUNK_IN:
 			case TARGET_COMMAND_BCHUNK_OUT:
-			case TARGET_COMMAND_NEWSEGMENT:
 				debug_print(DETAILED, c,
 					"got descriptor event (%s)", arcan_shmif_eventstr(dst, NULL, 0));
 				priv->pev.gotev = true;
@@ -871,8 +927,8 @@ int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
 
 	int rv = process_events(c, dst, false, false);
 	if (rv > 0 && c->priv->log_event){
-		fprintf(stderr, "[%"PRIu64":%"PRIu32"] <- %s\n",
-			(uint64_t) (uint64_t) arcan_timemillis() - g_epoch,
+		log_print("[%"PRIu64":%"PRIu32"] <- %s\n",
+			(uint64_t) arcan_timemillis() - g_epoch,
 			(uint32_t) c->cookie, arcan_shmif_eventstr(dst, NULL, 0));
 	}
 	return rv;
@@ -916,7 +972,7 @@ int arcan_shmif_wait(struct arcan_shmif_cont* c, struct arcan_event* dst)
 
 	int rv = process_events(c, dst, true, false);
 	if (rv > 0 && c->priv->log_event){
-		fprintf(stderr, "(@%"PRIxPTR"<-)%s\n",
+		log_print("(@%"PRIxPTR"<-)%s\n",
 			(uintptr_t) c, arcan_shmif_eventstr(dst, NULL, 0));
 	}
 	return rv > 0;
@@ -942,7 +998,7 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 
 	if (c->priv->log_event){
 		struct arcan_event outev = *src;
-		fprintf(stderr, "(@%"PRIxPTR"->)%s\n",
+		log_print("(@%"PRIxPTR"->)%s\n",
 			(uintptr_t) c, arcan_shmif_eventstr(&outev, NULL, 0));
 	}
 
@@ -1232,6 +1288,10 @@ end:
 
 static void setup_avbuf(struct arcan_shmif_cont* res)
 {
+/* flush out dangling buffers */
+	memset(res->priv->vbuf, '\0', sizeof(void*) * ARCAN_SHMIF_VBUFC_LIM);
+	memset(res->priv->abuf, '\0', sizeof(void*) * ARCAN_SHMIF_ABUFC_LIM);
+
 	res->w = atomic_load(&res->addr->w);
 	res->h = atomic_load(&res->addr->h);
 	res->stride = res->w * ARCAN_SHMPAGE_VCHANNELS;
@@ -1254,8 +1314,13 @@ static void setup_avbuf(struct arcan_shmif_cont* res)
 	if (0 == res->samplerate)
 		res->samplerate = ARCAN_SHMIF_SAMPLERATE;
 
+/* the buffer limit size needs to take the rhint into account, but only
+ * if we have a known cell size as that is the primitive for calculation */
 	res->vbufsize = arcan_shmif_vbufsz(
-		res->priv->atype, res->hints, res->w, res->h);
+		res->priv->atype, res->hints, res->w, res->h,
+		atomic_load(&res->addr->rows),
+		atomic_load(&res->addr->cols)
+	);
 
 	arcan_shmif_mapav(res->addr,
 		res->priv->vbuf, res->priv->vbuf_cnt, res->vbufsize,
@@ -1273,7 +1338,7 @@ static void setup_avbuf(struct arcan_shmif_cont* res)
 /* using a base address where the meta structure will reside, allocate n- audio
  * and n- video slots and populate vbuf/abuf with matching / aligned pointers
  * and return the total size */
-struct arcan_shmif_cont shmif_acquire_int(
+static struct arcan_shmif_cont shmif_acquire_int(
 	struct arcan_shmif_cont* parent,
 	const char* shmkey,
 	int type,
@@ -1671,7 +1736,7 @@ unsigned arcan_shmif_signal(
  * check before running the step_v */
 	if (mask & SHMIF_SIGVID){
 		if (priv->log_event){
-			fprintf(stderr, "%lld: SIGVID (block: %d region: %zu,%zu-%zu,%zu)\n",
+			log_print("%lld: SIGVID (block: %d region: %zu,%zu-%zu,%zu)\n",
 				arcan_timemillis(),
 				(mask & SHMIF_SIGBLK_NONE) ? 0 : 1,
 				(size_t)ctx->dirty.x1, (size_t)ctx->dirty.y1,
@@ -1783,18 +1848,25 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 }
 
 static bool shmif_resize(struct arcan_shmif_cont* arg,
-	unsigned width, unsigned height,
-	size_t abufsz, int vidc, int audc, int samplerate,
-	int adata)
+	unsigned width, unsigned height, struct shmif_resize_ext ext)
 {
 	if (!arg->addr || !arcan_shmif_integrity_check(arg) ||
 	!arg->priv || width > PP_SHMPAGE_MAXW || height > PP_SHMPAGE_MAXH)
 		return false;
 
+	struct shmif_hidden* priv = arg->priv;
+
+/* quick rename / unpack as old prototype of this didn't carry ext struct */
+	size_t abufsz = ext.abuf_sz;
+	int vidc = ext.vbuf_cnt;
+	int audc = ext.abuf_cnt;
+	int samplerate = ext.samplerate;
+	int adata = ext.meta;
+
 /* attempt to resize on a dead connection will trigger forced-
  * fallback or reconnect style behavior */
 	if (!arg->addr->dms){
-		if (SHMIF_MIGRATE_OK != fallback_migrate(arg, arg->priv->alt_conn, true))
+		if (SHMIF_MIGRATE_OK != fallback_migrate(arg, priv->alt_conn, true))
 			return false;
 	}
 
@@ -1813,13 +1885,15 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 
 /* 0 is allowed to disable any related data, useful for not wasting
  * storage when accelerated buffer passing is working */
-	vidc = vidc < 0 ? arg->priv->vbuf_cnt : vidc;
-	audc = audc < 0 ? arg->priv->abuf_cnt : audc;
+	vidc = vidc < 0 ? priv->vbuf_cnt : vidc;
+	audc = audc < 0 ? priv->abuf_cnt : audc;
+
+	bool dimensions_changed = width == arg->w && height == arg->h;
+	bool bufcnt_changed = vidc == priv->vbuf_cnt && audc == priv->abuf_cnt;
+	bool hints_changed = arg->addr->hints == arg->hints;
 
 /* don't negotiate unless the goals have changed */
-	if (arg->vidp && width == arg->w && height == arg->h &&
-		vidc == arg->priv->vbuf_cnt && audc == arg->priv->abuf_cnt &&
-		arg->addr->hints == arg->hints)
+	if (arg->vidp && !dimensions_changed && !bufcnt_changed && !hints_changed)
 		return true;
 
 /* synchronize hints as _ORIGO_LL and similar changes only synch
@@ -1838,13 +1912,16 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
  * dimensions, buffering etc. THEN resize request flag */
 	atomic_store(&arg->addr->w, width);
 	atomic_store(&arg->addr->h, height);
+	atomic_store(&arg->addr->rows, ext.rows);
+	atomic_store(&arg->addr->cols, ext.cols);
 	atomic_store(&arg->addr->abufsize, abufsz);
 	atomic_store_explicit(&arg->addr->apending, audc, memory_order_release);
 	atomic_store_explicit(&arg->addr->vpending, vidc, memory_order_release);
-	if (arg->priv->log_event){
-		fprintf(stderr, "(@%"PRIxPTR" rz-synch): %zu*%zu(fl:%d), %zu Hz\n",
-			(uintptr_t)arg, (size_t)width,(size_t)height,
-			(int)arg->hints,(size_t)arg->samplerate
+	if (priv->log_event){
+		log_print(
+			"(@%"PRIxPTR" rz-synch): %zu*%zu(fl:%d), grid:%zu,%zu %zu Hz\n",
+			(uintptr_t)arg, (size_t)width, (size_t)height, (int)arg->hints,
+			(size_t)ext.rows, (size_t)ext.cols, (size_t)arg->samplerate
 		);
 	}
 
@@ -1883,7 +1960,7 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
  */
 	if (arg->shmsize != arg->addr->segment_size){
 		size_t new_sz = arg->addr->segment_size;
-		struct shmif_hidden* gs = arg->priv;
+		struct shmif_hidden* gs = priv;
 
 		if (gs->guard.active)
 			pthread_mutex_lock(&gs->guard.synch);
@@ -1905,25 +1982,31 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 /*
  * make sure we start from the right buffer counts and positions
  */
-	arcan_shmif_setevqs(arg->addr, arg->esem,
-		&arg->priv->inev, &arg->priv->outev, false);
+	arcan_shmif_setevqs(arg->addr,
+		arg->esem, &priv->inev, &priv->outev, false);
 	setup_avbuf(arg);
+
 	return true;
 }
 
 bool arcan_shmif_resize_ext(struct arcan_shmif_cont* arg,
 	unsigned width, unsigned height, struct shmif_resize_ext ext)
 {
-	return shmif_resize(arg, width, height,
-		ext.abuf_sz, ext.vbuf_cnt, ext.abuf_cnt, ext.samplerate, ext.meta);
+	return shmif_resize(arg, width, height, ext);
 }
 
 bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 	unsigned width, unsigned height)
 {
-	return arg->addr ?
-		shmif_resize(arg, width, height, arg->addr->abufsize, -1, -1, -1, 0) :
-		false;
+	if (!arg || !arg->addr)
+		return false;
+
+	return shmif_resize(arg, width, height, (struct shmif_resize_ext){
+		.abuf_sz = arg->addr->abufsize,
+		.vbuf_cnt = -1,
+		.abuf_cnt = -1,
+		.samplerate = -1,
+	});
 }
 
 shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont* cont,
@@ -2230,7 +2313,7 @@ int arcan_shmif_dupfd(int fd, int dstnum, bool blocking)
 
 	flags = fcntl(rfd, F_GETFD);
 	if (-1 != flags)
-		fcntl(rfd, F_SETFD, flags | O_CLOEXEC);
+		fcntl(rfd, F_SETFD, flags | FD_CLOEXEC);
 
 	return rfd;
 }
@@ -2311,8 +2394,17 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	size_t w = atomic_load(&cont->addr->w);
 	size_t h = atomic_load(&cont->addr->h);
 
-	if (!shmif_resize(&ret, w, h, cont->abufsize, cont->priv->vbuf_cnt,
-		cont->priv->abuf_cnt, cont->samplerate, cont->priv->atype)){
+/* extract settings from the page, and forward into the new struct -
+ * possibly just actually cache this inside ext would be safer */
+	struct shmif_resize_ext ext = {
+		.abuf_sz = cont->abufsize,
+		.vbuf_cnt = cont->priv->vbuf_cnt,
+		.abuf_cnt = cont->priv->abuf_cnt,
+		.samplerate = cont->samplerate,
+		.meta = cont->priv->atype
+	};
+
+	if (!shmif_resize(&ret, w, h, ext)){
 		return SHMIF_MIGRATE_TRANSFER_FAIL;
 	}
 
@@ -2503,7 +2595,7 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	int spair[2];
 	if (-1 == socketpair(PF_UNIX, SOCK_STREAM, 0, spair)){
 		free(work);
-		fprintf(stderr, "(shmif::a12::connect) couldn't build IPC socket\n");
+		log_print("(shmif::a12::connect) couldn't build IPC socket\n");
 		return NULL;
 	}
 
@@ -2517,7 +2609,7 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 		if (i == 0){
 			flags = fcntl(spair[i], F_GETFD);
 			if (-1 != flags)
-				fcntl(spair[i], F_SETFD, flags | O_CLOEXEC);
+				fcntl(spair[i], F_SETFD, flags | FD_CLOEXEC);
 		}
 
 #ifdef __APPLE__
@@ -2545,7 +2637,7 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	close(spair[1]);
 
 	if (-1 == pid){
-		fprintf(stderr, "(shmif::a12::connect) fork() failed\n");
+		log_print("(shmif::a12::connect) fork() failed\n");
 		close(spair[0]);
 		return NULL;
 	}
@@ -2658,7 +2750,6 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 			.ext.kind = ARCAN_EVENT(REGISTER),
 			.ext.registr = {
 				.kind = ext.type,
-				.guid = {priv->guid[0], priv->guid[1]}
 			}
 		};
 
@@ -3002,7 +3093,7 @@ pid_t arcan_shmif_handover_exec(
 	}
 
 	CLEAN_ENV();
-	return detach ? -1 : pid;
+	return pid;
 }
 
 int arcan_shmif_deadline(
@@ -3176,7 +3267,7 @@ void arcan_shmif_bgcopy(
  */
 
 #ifdef __OpenBSD__
-void arcan_shmif_privsep(
+void arcan_shmif_privsep(struct arcan_shmif_cont* C,
 	const char* pledge_str, struct shmif_privsep_node** nodes, int opts)
 {
 	if (pledge_str){
@@ -3208,7 +3299,7 @@ void arcan_shmif_privsep(
 }
 
 #else
-void arcan_shmif_privsep(
+void arcan_shmif_privsep(struct arcan_shmif_cont* C,
 	const char* pledge, struct shmif_privsep_node** nodes, int opts)
 {
 /* oh linux, why art thou.. */

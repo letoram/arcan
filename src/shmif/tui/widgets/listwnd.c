@@ -557,8 +557,11 @@ static void mouse_button(struct tui_context* T,
 		return;
 
 /* mouse motion preceeds the button, so we can just trigger */
-	if (button == TUIBTN_LEFT || button == TUIBTN_RIGHT){
+	if (button == TUIBTN_LEFT){
 		select_current(T, M);
+	}
+	else if (button == TUIBTN_RIGHT){
+		cancel(T, M);
 	}
 	else if (button == TUIBTN_MIDDLE){
 		step_page_s(T, M);
@@ -610,7 +613,7 @@ bool arcan_tui_listwnd_setup(
 /* save old flags and just set clean + ALTERNATE */
 	meta->old_flags = arcan_tui_set_flags(T, 0);
 	arcan_tui_reset_flags(T, ~0);
-	arcan_tui_set_flags(T, TUI_ALTERNATE | TUI_HIDE_CURSOR);
+	arcan_tui_set_flags(T, TUI_ALTERNATE | TUI_HIDE_CURSOR | TUI_MOUSE);
 
 	struct tui_cbcfg cbcfg = {
 		.tag = meta,

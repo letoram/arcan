@@ -80,6 +80,9 @@ static void dump_help()
 {
 	fprintf(stdout, "Environment variables: \nARCAN_CONNPATH=path_to_server\n"
 		"ARCAN_TERMINAL_EXEC : run value through /bin/sh -c instead of shell\n"
+		"ARCAN_TERMINAL_ARGV : exec will route through execv\n"
+		"ARCAN_TERMINAL_PIDFD_OUT : writes exec pid into pidfd\n"
+		"ARCAN_TERMINAL_PIDFD_IN  : exec continues on incoming data\n\n"
 	  "ARCAN_ARG=packed_args (key1=value:key2:key3=value)\n\n"
 		"Accepted packed_args:\n"
 		"    key      \t   value   \t   description\n"
@@ -254,6 +257,35 @@ static char* get_shellenv()
 	return shell;
 }
 
+/* quick and dirty string to argv, doesn't respect quotes or expansion */
+static char** build_argv(char* appname, char* instr)
+{
+/* nargs */
+	size_t pos = 0;
+	size_t nargs = 2;
+
+	while(instr[pos]){
+		if (instr[pos++] == ' ')
+			nargs++;
+	}
+
+	size_t nb = (nargs + 1) * sizeof(char*);
+	char** res = malloc(nb);
+	if (!res)
+		return NULL;
+
+	pos = 1;
+	memset(res, '\0', nb);
+	res[0] = appname;
+	char* arg = strtok(instr, " ");
+	while(arg && pos < nargs){
+		res[pos++] = arg;
+		arg = strtok(0, " ");
+	}
+
+	return res;
+}
+
 static void setup_shell(struct arg_arr* argarr, char* const args[])
 {
 	static const char* unset[] = {
@@ -312,12 +344,34 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 	for (size_t i = 1; i < NSIG; i++)
 		signal(i, SIG_DFL);
 
-/* special case, ARCAN_TERMINAL_EXEC and ARCAN_TERMINAL_ARGV skips the normal
- * shell setup and switches to a custom binary + arg instead */
+/* special case, ARCAN_TERMINAL_EXEC skips the normal shell setup */
 	if (exec_arg){
+		char* inarg = getenv("ARCAN_TERMINAL_ARGV");
 		char* args[] = {"/bin/sh", "-c" , exec_arg, NULL};
+
+		const char* pidfd_in = getenv("ARCAN_TERMINAL_PIDFD_IN");
+		const char* pidfd_out = getenv("ARCAN_TERMINAL_PIDFD_OUT");
+
+/* forward our new child pid to the _out fd, and then blockread garbage */
+		if (pidfd_in && pidfd_out){
+			int infd = strtol(pidfd_in, NULL, 10);
+			int outfd = strtol(pidfd_out, NULL, 10);
+			pid_t pid = getpid();
+			write(outfd, &pid, sizeof(pid));
+			read(infd, &pid, 1);
+			close(infd);
+			close(outfd);
+		}
+		else
+			exec_arg = args[0];
+
+/* inherit some environment, filter the things we used */
 		unsetenv("ARCAN_TERMINAL_EXEC");
-		execv(args[0], args);
+		unsetenv("ARCAN_TERMINAL_PIDFD_IN");
+		unsetenv("ARCAN_TERMINAL_PIDFD_OUT");
+		unsetenv("ARCAN_TERMINAL_ARGV");
+
+		execv(exec_arg, inarg ? build_argv(exec_arg, inarg) : args);
 		exit(EXIT_FAILURE);
 	}
 

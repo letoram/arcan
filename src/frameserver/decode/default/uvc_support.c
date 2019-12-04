@@ -228,7 +228,7 @@ bool uvc_support_activate(
  * the camera native format, upload that to a texture and repack /
  * convert there - for now just set RGBX and hope that uvc can unpack
  * without further conversion */
-	arcan_shmif_privsep("minimal", NULL, 0);
+	arcan_shmif_privsep(cont, "minimal", NULL, 0);
 
 	int rc = -1;
 	while(rc >= 0){

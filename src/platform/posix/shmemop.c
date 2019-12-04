@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "arcan_shmif.h"
+#include "../../shmif/tui/raster/raster_const.h"
 
 static inline void* alignv(uint8_t* inptr, size_t align_sz)
 {
@@ -7,9 +8,16 @@ static inline void* alignv(uint8_t* inptr, size_t align_sz)
 		inptr + align_sz - ((uintptr_t) inptr % align_sz) : inptr);
 }
 
-size_t arcan_shmif_vbufsz(int meta, uint8_t hints, size_t w, size_t h)
+size_t arcan_shmif_vbufsz(
+	int meta, uint8_t hints, size_t w, size_t h, size_t rows, size_t cols)
 {
-	return w * h * sizeof(shmif_pixel);
+	if ((hints & SHMIF_RHINT_TPACK) && rows && cols){
+		size_t sz =
+			raster_hdr_sz * (rows * cols * raster_cell_sz) + (rows * raster_line_sz);
+		return sz;
+	}
+	else
+		return w * h * sizeof(shmif_pixel);
 }
 
 uintptr_t arcan_shmif_mapav(

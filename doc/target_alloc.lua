@@ -8,9 +8,9 @@
 -- @inargs: vid:fsrv, function:callback
 -- @inargs: vid:fsrv, int:w, int:h, function:callback
 -- @inargs: vid:fsrv, function:callback, string:type
--- @inargs: vid:fsrv, int:w, int:h, function:callback, string:type
 -- @inargs: vid:fsrv, function:callback, number:tag
 -- @inargs: vid:fsrv, int:w, int:h, function:callback, string:type
+-- @inargs: vid:fsrv, int:w, int:h, function:callback, string:type, bool:forced
 -- @outargs: vid, aid
 -- This functions controls server-side initiated allocation of segments or connection
 -- points. If the initial argument is of the *cpoint* form, the allocation will be a
@@ -18,7 +18,9 @@
 -- If the initial argument is of the *fsrv* form, a subsegment will be allocated and
 -- pushed to the client. This form is more specialised and intended as a server-side
 -- means of requesting and probing for client- side support for alternate views of
--- whatever the *fsrv* connection current presents.
+-- whatever the *fsrv* connection current presents. This can be further specified
+-- by providing a *type* (debug, accessibility) and if a backend implementation
+-- should be forced or not (default=false).
 -- The form and use for *callback* is the same as in ref:launch_target, please
 -- refer to that function for detailed documentation.
 -- The optional *passkey* form is an aditional authentication string that the
@@ -47,7 +49,7 @@
 -- subsegments, use the accept_target function.
 -- @note: When a 'connected' event has been received, many applications
 -- expect a displayhint event before being able to proceed (with information
--- about the current surface dimensions and density).
+-- about the current surface dimensions and density)
 -- @group: targetcontrol
 -- @cfunction: targetalloc
 -- @related: define_recordtarget, accept_target

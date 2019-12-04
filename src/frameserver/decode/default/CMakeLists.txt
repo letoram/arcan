@@ -6,7 +6,9 @@ endif()
 
 if (LIBVLC_FOUND)
 	set(DECODE_SOURCES
-		${CMAKE_CURRENT_SOURCE_DIR}/decode_vlc.c
+		${CMAKE_CURRENT_SOURCE_DIR}/decode.c
+		${CMAKE_CURRENT_SOURCE_DIR}/decode_3d.c
+		${CMAKE_CURRENT_SOURCE_DIR}/decode_av.c
 		${EXTERNAL_SRC_DIR}/fft/kiss_fft.c
 		${EXTERNAL_SRC_DIR}/fft/kiss_fftr.c
 	)

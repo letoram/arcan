@@ -293,6 +293,9 @@ void arg_cleanup(struct arg_arr*);
  * filesystem paths. This is a best-effort that might result in a no-op
  * or a lesser set of restrictions depending on the platform and context.
  *
+ * if a context is provided, the function may enqueue an event to indicate
+ * sandbox status to the server.
+ *
  * [pledge] this argument matches either special preset strings of higher
  *          roles, or the set of OpenBSD-pledge(2) syscall whitelists, with
  *          the necessary set for opening and maintaining shmif context
@@ -315,7 +318,7 @@ struct shmif_privsep_node {
 	const char* path;
 	const char* perm; /*r, w, x, c */
 };
-void arcan_shmif_privsep(
+void arcan_shmif_privsep(struct arcan_shmif_cont* C,
 	const char* pledge, struct shmif_privsep_node**, int opts);
 
 /*
@@ -349,6 +352,9 @@ void arcan_shmif_last_words(struct arcan_shmif_cont* cont, const char* msg);
  * NOTE:
  * call from event dispatch immediately upon receiving a NEWSEGMENT with
  * a HANDOVER type, the function will assume allocation responsibility.
+ *
+ * If handover_exec is called WITHOUT the corresponding handover event in
+ * ev, it is the context in [cont] that will be forwarded.
  */
 pid_t arcan_shmif_handover_exec(
 	struct arcan_shmif_cont* cont, struct arcan_event ev,
