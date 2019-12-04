@@ -1101,11 +1101,14 @@ typedef void (* PTUIERASEREGION)(struct tui_context*, size_t, size_t, size_t, si
 typedef char* (* PTUISTATEDESCR)(struct tui_context*);
 typedef size_t (* PTUIPRINTF)(struct tui_context*, struct tui_screen_attr*, const char*, ...);
 typedef void (* PTUIBGCOPY)(struct tui_context*, int fdin, int fdout);
+typedef size_t (* PTUIGETHANDLES)(struct tui_context**, size_t, int[], size_t);
+
 
 static PTUISETUP arcan_tui_setup;
 static PTUIDESTROY arcan_tui_destroy;
 static PTUIPROCESS arcan_tui_process;
 static PTUIREFRESH arcan_tui_refresh;
+static PTUIGETHANDLES arcan_tui_get_handles;
 static PTUIINVALIDATE arcan_tui_invalidate;
 static PTUIACON arcan_tui_acon;
 static PTUIOPENDISPLAY arcan_tui_open_display;
@@ -1180,6 +1183,7 @@ M(PTUISETUP,arcan_tui_setup);
 M(PTUIDESTROY,arcan_tui_destroy);
 M(PTUIPROCESS,arcan_tui_process);
 M(PTUIREFRESH,arcan_tui_refresh);
+M(PTUIGETHANDLES,arcan_tui_get_handles);
 M(PTUIINVALIDATE,arcan_tui_invalidate);
 M(PTUIACON,arcan_tui_acon);
 M(PTUIOPENDISPLAY,arcan_tui_open_display);

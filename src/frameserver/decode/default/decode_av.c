@@ -40,6 +40,7 @@
 #include <arcan_shmif.h>
 #include <arcan_tuisym.h>
 #include "frameserver.h"
+#include "decode.h"
 
 #ifdef HAVE_UVC
 #include "uvc_support.h"
@@ -93,7 +94,6 @@ static unsigned video_setup(void** ctx, char* chroma, unsigned* width,
 		chroma[2] = 'B';
 		chroma[3] = 'A';
 	}
-	*pitches = *width * 4;
 
 	arcan_shmif_lock(&decctx.shmcont);
 	if (!arcan_shmif_resize_ext(&decctx.shmcont,
@@ -103,6 +103,14 @@ static unsigned video_setup(void** ctx, char* chroma, unsigned* width,
 			"requested: (%d x %d)\n", *width, *height);
 		rv = 0;
 	}
+	else {
+		LOG("(decode) got ('%c', '%c', '%c', '%c') @ %u * %u\n",
+			chroma[0],chroma[1],chroma[2],chroma[3], *width, *height);
+	}
+
+	*pitches = *width * 4;
+	*lines = *height;
+
 	arcan_shmif_unlock(&decctx.shmcont);
 	return rv;
 }
@@ -204,6 +212,7 @@ static void audio_play(void *data,
 {
 	size_t smplsz = ARCAN_SHMIF_ACHANNELS * sizeof(shmif_asample);
 	size_t nb = count * smplsz;
+
 	if (!decctx.got_video && decctx.shmcont.addr->w != AUD_VIS_HRES)
 	{
 		arcan_shmif_lock(&decctx.shmcont);
@@ -331,8 +340,6 @@ static void player_event(const struct libvlc_event_t* event, void* ud)
 	break;
 
 	case libvlc_MediaPlayerEncounteredError:
-	break;
-
 	case libvlc_MediaPlayerEndReached:
 		decctx.finished = true;
 	break;
@@ -366,32 +373,6 @@ static libvlc_media_t* find_capture_device(
 /* add_media_options	:v4l2-width=640 :v4l2-height=480 */
 
 	return media;
-}
-
-static void dump_help()
-{
-	fprintf(stdout, "Environment variables: \nARCAN_CONNPATH=path_to_server\n"
-	  "ARCAN_ARG=packed_args (key1=value:key2:key3=value)\n\n"
-		"Accepted packed_args:\n"
-		"   key   \t   value   \t   description\n"
-		"---------\t-----------\t-----------------\n"
-		" file    \t path      \t try to open file path for playback \n"
-		" pos     \t 0..1      \t set the relative starting position \n"
-		" noaudio \t           \t disable the audio output entirely \n"
-		" stream  \t url       \t attempt to open URL for streaming input \n"
-		" capture \t           \t try to open a capture device\n"
-		" device  \t number    \t find capture device with specific index\n"
-		" fps     \t rate      \t force a specific framerate\n"
-		" width   \t outw      \t scale output to a specific width\n"
-		" height  \t outh      \t scale output to a specific height\n"
-		" loop    \t           \t reset playback upon completion\n"
-#ifdef HAVE_UVC
-		"---------\t-----------\t----------------\n");
-	uvc_append_help(stdout);
-	fprintf(stdout,
-#endif
-		"---------\t-----------\t----------------\n"
-	);
 }
 
 static void seek_relative(int seconds)
@@ -508,7 +489,14 @@ static bool dispatch(arcan_event* ev)
 	return true;
 }
 
-int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
+void libvlc_logfun(void* data, int level,
+	const libvlc_log_t* ctx, const char* fmt, va_list args)
+{
+	vfprintf(stderr, fmt, args);
+	fprintf(stderr, "\n");
+}
+
+int decode_av(struct arcan_shmif_cont* cont, struct arg_arr* args)
 {
 	const char* val;
 	libvlc_media_t* media = NULL;
@@ -525,8 +513,7 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 #endif
 
 	if (!cont || !args){
-		dump_help();
-		return EXIT_FAILURE;
+		return show_use(cont, NULL);
 	}
 
 /* just get something to pump the event handlers since we don't have a good
@@ -588,6 +575,8 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
     return EXIT_FAILURE;
   }
 
+	libvlc_log_set(decctx.vlc, libvlc_logfun, NULL);
+
 /* special about stream devices is that we can specify external resources (e.g.
  * http://, rtmp:// etc. along with buffer dimensions */
 	if (arg_lookup(args, "stream", 0, &val)){
@@ -624,15 +613,18 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 		media = find_capture_device(devind, desw, desh, fps);
 	}
-	else if (arg_lookup(args, "file", 0, &val))
+	else if (arg_lookup(args, "file", 0, &val)){
+		if (!val || strlen(val) == 0){
+			return show_use(cont, "invalid/empty file argument");
+		}
 		media = libvlc_media_new_path(decctx.vlc, val);
+	}
 
 	if (arg_lookup(args, "loop", 0, &val))
 		decctx.loop = true;
 
 	if (!media){
-		LOG("couldn't open any media source, giving up.\n");
-		 return EXIT_FAILURE;
+		return show_use(cont, "no valid media source");
 	}
 
 	if (arg_lookup(args, "pos", 0, &val)){
@@ -650,6 +642,7 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 	libvlc_event_attach(em, libvlc_MediaPlayerPositionChanged, player_event,NULL);
 	libvlc_event_attach(em, libvlc_MediaPlayerEndReached, player_event, NULL);
+	libvlc_event_attach(em, libvlc_MediaPlayerEncounteredError, player_event, NULL);
 
 	libvlc_video_set_format_callbacks(decctx.player, video_setup, video_cleanup);
 	libvlc_video_set_callbacks(decctx.player,

@@ -549,7 +549,7 @@ void setup_backlight_ledmap()
 
 			flags = fcntl(egl_dri.ledpair[i], F_GETFD);
 			if (-1 != flags)
-				fcntl(egl_dri.ledpair[i], F_SETFD, flags | O_CLOEXEC);
+				fcntl(egl_dri.ledpair[i], F_SETFD, flags | FD_CLOEXEC);
 		}
 	}
 }

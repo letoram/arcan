@@ -97,8 +97,9 @@ void arcan_tui_bufferwnd_setup(
 );
 
 /*
- * return 1 if OK, 0 if commit-exit is requested, -1 if cancel-exit is requested,
- * this is only useful / valid if the [allow_exit] option has been set
+ * Return 1 if OK, 0 if commit-exit is requested, -1 if cancel-exit is requested,
+ * this is only useful / valid if the [allow_exit] option has been set.
+ * The exit status can be reset by calling bufferwnd_synch.
  */
 int arcan_tui_bufferwnd_status(struct tui_context*);
 

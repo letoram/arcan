@@ -34,7 +34,10 @@ enum tui_context_flags {
 	TUI_FIXED_POS = 32,
 
 /* Alternate screen does not have scrolling or scrollback behavior */
-	TUI_ALTERNATE = 64
+	TUI_ALTERNATE = 64,
+
+/* Prefer local mouse handler than default mouse to clipboard */
+	TUI_MOUSE = 128,
 };
 
 /*

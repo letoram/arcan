@@ -72,6 +72,10 @@ bool tryload_truetype(struct tui_context* tui,
 		probe_font(tui, tui->font[0]->truetype, &dw, &dh);
 		tui->cell_w = dw;
 		tui->cell_h = dh;
+
+/* optimization here is that in tui cell mode, we only really need the
+ * font to determine the presence of a glyph, so maybe there are caches
+ * to flush in ttf renderer */
 	}
 
 	return true;

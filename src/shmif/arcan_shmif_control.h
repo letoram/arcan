@@ -427,12 +427,13 @@ uintptr_t arcan_shmif_mapav(
 );
 
 /*
- * Calculate the actual size of the video buffer based on the set of
- * hints and meta substructure. This is used INTERNALLY on both sides
- * of SHMIF to calculate actual shmpage dimensions. The client can
- * access this information as part of the shmif_cont structure.
+ * Calculate the actual size of the video buffer based on the set of hints and
+ * meta substructure. This is used INTERNALLY on both sides of SHMIF to
+ * calculate actual shmpage dimensions. The client can access this information
+ * as part of the shmif_cont structure.
  */
-size_t arcan_shmif_vbufsz(int meta, uint8_t hints, size_t w, size_t h);
+size_t arcan_shmif_vbufsz(
+	int meta, uint8_t hints, size_t w, size_t h, size_t rows, size_t cols);
 
 /*
  * There can be one "post-flag, pre-semaphore" hook that will occur
@@ -535,13 +536,33 @@ enum shmif_ext_meta {
  * affect apad and apad_type in the addr-> substructure as well.
  */
 struct shmif_resize_ext {
+	uint32_t meta;
+
+/* abuf_sz * abuf_cnt played back over samplerate */
 	size_t abuf_sz;
 	ssize_t abuf_cnt;
-	ssize_t vbuf_cnt;
 	ssize_t samplerate;
-	uint32_t meta;
+
+	ssize_t vbuf_cnt;
+/*
+ * this is only used with tpack, which gives us the relationship
+ * rows * cell_w = px_w
+ * cols * cell_h = px_h
+ */
+	size_t rows;
+	size_t cols;
+
+/* the number of ops (primitives) and ops-type come from shmif_sub and
+ * is used for calculating the size of the apad region reserved for vobj */
+	size_t nops;
+	size_t op_fm;
 };
 
+/* extended resize that allows better buffering and format controls,
+ * WARNING, the abuf_cnt and vbuf_cnt are especially important as it is
+ * allowed to set them to 0 (disable audio or video respectively). To
+ * set to -1 means 'retain the last buffer size'
+ */
 bool arcan_shmif_resize_ext(struct arcan_shmif_cont*,
 	unsigned width, unsigned height, struct shmif_resize_ext);
 
@@ -946,18 +967,6 @@ struct arcan_shmif_page {
  */
 	uint64_t cookie;
 
-/* [ARCAN-SET]
- * Reserved for now, will be used to reduce the amount of _INPUT events with
- * ANALOG/IDEVKIND:MOUSE and instead just update these fields with the latest
- * sampled value. An accessor function will handle the migration between the
- * event-driven and memory mapped model.
- *
- * The plan is to use cursor_state LSB to indicate mapped support,
- * and the rest of cursor_state as button bitmask.
- */
-	volatile _Atomic uint_least16_t cursor_state;
-	volatile _Atomic uint_least16_t cursor_x, cursor_y, cursor_rx, cursor_ry;
-
 /*
  * [ARCAN-SET (parent), FSRV-SET (child)]
  * Uses the event model provded in shmif/arcan_event and tightly couples
@@ -987,6 +996,14 @@ struct arcan_shmif_page {
  * simply ignore the data presented.
  */
 	volatile _Atomic uint_least16_t w, h;
+
+/*
+ * [ARCAN-SET, FSRV-SET]
+ * Client acknowledges this in resize requests where cell alignment /
+ * dimensions are needed, undefined unless in TPACK hint state. This should
+ * be a value that can be calculated from fonthint etc. but that is asynch.
+ */
+	volatile _Atomic uint_least8_t rows, cols;
 
 /*
  * [FSRV-SET (aready signal), ARCAN-ACK]
