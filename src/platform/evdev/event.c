@@ -953,7 +953,7 @@ static void setup_led(struct devnode* dst, size_t bitn, int fd)
 			fcntl(dst->led.fds[i], F_SETFL, flags | O_NONBLOCK);
 		flags = fcntl(dst->led.fds[i], F_GETFD);
 		if (-1 != flags)
-			fcntl(dst->led.fds[i], F_SETFD, flags | O_CLOEXEC);
+			fcntl(dst->led.fds[i], F_SETFD, flags | FD_CLOEXEC);
 	}
 
 	char ledname[16];

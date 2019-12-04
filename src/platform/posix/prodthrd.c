@@ -80,11 +80,11 @@ int platform_producer_thread(int infd,
 /* make all non-blocking, but the read end should also be nonblock */
 	int flags = fcntl(pp[0], F_GETFD);
 	if (-1 != flags)
-		fcntl(pp[0], F_SETFD, flags | O_CLOEXEC);
+		fcntl(pp[0], F_SETFD, flags | FD_CLOEXEC);
 
 	flags = fcntl(pp[1], F_GETFD);
 	if (-1 != flags)
-		fcntl(pp[1], F_SETFD, flags | O_CLOEXEC);
+		fcntl(pp[1], F_SETFD, flags | FD_CLOEXEC);
 
 	flags = fcntl(pp[0], F_GETFL);
 	if (-1 != flags)

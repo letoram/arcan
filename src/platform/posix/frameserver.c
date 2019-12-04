@@ -524,7 +524,7 @@ static bool sockpair_alloc(int* dst, size_t n, bool cloexec)
 			if (cloexec){
 				flags = fcntl(dst[i], F_GETFD);
 				if (-1 != flags)
-					fcntl(dst[i], F_SETFD, flags | O_CLOEXEC);
+					fcntl(dst[i], F_SETFD, flags | FD_CLOEXEC);
 			}
 #ifdef __APPLE__
  			int val = 1;

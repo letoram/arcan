@@ -422,7 +422,7 @@ static void set_nonblock_cloexec(int fd, bool socket)
 		fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
 	if (-1 != (flags = fcntl(fd, F_GETFD)))
-		fcntl(fd, F_SETFD, flags | O_CLOEXEC);
+		fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
 }
 
 /* slightly more flexible argument management, just find the first callback */
@@ -1693,7 +1693,7 @@ static int nbio_socketaccept(lua_State* ctx)
 		fcntl(newfd, F_SETFL, flags | O_NONBLOCK);
 
 	if (-1 != (flags = fcntl(newfd, F_GETFD)))
-		fcntl(newfd, F_SETFD, flags | O_CLOEXEC);
+		fcntl(newfd, F_SETFD, flags | FD_CLOEXEC);
 
 	struct nonblock_io* conn = arcan_alloc_mem(
 		sizeof(struct nonblock_io), ARCAN_MEM_BINDING, 0, ARCAN_MEMALIGN_NATURAL);
