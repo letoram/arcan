@@ -51,6 +51,21 @@ static void display_hint(struct tui_context* tui, arcan_tgtevent* ev)
 	}
 }
 
+static int segid_to_tuiid(int segid)
+{
+	switch(segid){
+	case SEGID_TUI:
+	return TUI_WND_TUI;
+	case SEGID_POPUP:
+	return TUI_WND_POPUP;
+	case SEGID_DEBUG:
+	return TUI_WND_DEBUG;
+	case SEGID_HANDOVER:
+	return TUI_WND_HANDOVER;
+	}
+	return SEGID_UNKNOWN;
+}
+
 /* cursor blinking is thus far implemented here, should be moved server-side
  * as an idle-cursor state */
 static void tick_cursor(struct tui_context* tui)
@@ -83,10 +98,11 @@ static void drop_pending(struct tsm_save_buf** tui)
 	*tui = NULL;
 }
 
-static void target_event(struct tui_context* tui, arcan_tgtevent* ev)
+static void target_event(struct tui_context* tui, struct arcan_event* aev)
 {
-	switch (ev->kind){
+	arcan_tgtevent* ev = &aev->tgt;
 
+	switch (ev->kind){
 /* GRAPHMODE is here used to signify a buffered update of the colors */
 	case TARGET_COMMAND_GRAPHMODE:
 		if (ev->ioevs[0].iv == 0){
@@ -241,14 +257,27 @@ static void target_event(struct tui_context* tui, arcan_tgtevent* ev)
 			bool user_defined = (uint32_t)ev->ioevs[3].iv & (1 << 31);
 
 			if ((can_push || user_defined) && tui->handlers.subwindow){
-				struct arcan_shmif_cont acon = arcan_shmif_acquire(
-					&tui->acon, NULL, ev->ioevs[2].iv, 0);
-				if (!tui->handlers.subwindow(tui, &acon,
-					(uint32_t)ev->ioevs[3].iv & 0xffff,
-					ev->ioevs[2].iv, tui->handlers.tag
-				)){
-					arcan_shmif_defimpl(&acon, ev->ioevs[2].iv, tui);
+				uint32_t id = (uint32_t) ev->ioevs[3].uiv & 0xffff;
+				int kind = segid_to_tuiid(ev->ioevs[2].iv);
+
+/* for 'HANDOVER' and the handover exec, pass the original acon rather than
+ * setting up the subsegment or the shmif_handover_exec implementation will
+ * fail */
+				if (ev->ioevs[2].iv == SEGID_HANDOVER){
+					tui->got_pending = true;
+					tui->pending_wnd = *aev;
+					tui->handlers.subwindow(
+						tui, (void*)(uintptr_t)-1, id, kind, tui->handlers.tag);
+					tui->got_pending = false;
+					return;
 				}
+
+				struct arcan_shmif_cont acon =
+					arcan_shmif_acquire(&tui->acon, NULL, ev->ioevs[2].iv, 0);
+
+/* defimpl will clean up, so no leak here */
+				if (!tui->handlers.subwindow(tui, &acon, id, kind, tui->handlers.tag))
+					arcan_shmif_defimpl(&acon, ev->ioevs[2].iv, tui);
 			}
 		}
 	break;
@@ -259,8 +288,7 @@ static void target_event(struct tui_context* tui, arcan_tgtevent* ev)
 	case TARGET_COMMAND_STEPFRAME:
 		if (ev->ioevs[1].iv == 1){
 			tick_cursor(tui);
-		}
-		else {
+
 			if (tui->handlers.tick)
 				tui->handlers.tick(tui, tui->handlers.tag);
 
@@ -323,7 +351,7 @@ void tui_event_poll(struct tui_context* tui)
 		break;
 
 		case EVENT_TARGET:
-			target_event(tui, &ev.tgt);
+			target_event(tui, &ev);
 		break;
 
 		default:

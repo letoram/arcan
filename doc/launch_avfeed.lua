@@ -4,7 +4,7 @@
 -- @inargs: string:argument
 -- @inargs: string:argument, string:mode
 -- @inargs: string:argument, string:mode, func:callback
--- @outargs: vid:newvid, aid:newaid, string:guid
+-- @outargs: vid:newvid, aid:newaid, string:guid, int:cookie
 -- @longdescr: launch_avfeed is intended for launching authoritative frameservers
 -- for the 'decode', 'terminal' and 'avfeed' archetypes.
 -- The 'decode' archetype is used for providing streaming audio and video decoding

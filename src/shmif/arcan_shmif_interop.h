@@ -341,13 +341,18 @@ void arcan_shmif_last_words(struct arcan_shmif_cont* cont, const char* msg);
  * Take a pending HANDOVER segment allocation and inherit into a new
  * process.
  *
- * If [detach] is set, the exec will double fork.
- * Regardless of [detach] the caller is responsible for cleaning up pid_t
- * via waitpid or similar.
- *
- * If either path or argv is empty, the function with fail with -1.
  * If env is empty, the ONLY environment that will propagate is the
  * handover relevant variables.
+ *
+ * [detach] is treated as a bitmap, where the bits set:
+ *   1: detach process (double-fork)
+ *   2: stdin (becomes /dev/null or similar)
+ *   3: stdout (becomes /dev/null or similar)
+ *   4: stderr (becomes /dev/null or similar)
+ * Other descriptors follow normal system specific inheritance semantics.
+ *
+ * The function returns the pid of the new process, or -1 in the event
+ * of a failure (e.g. invalid arguments, empty path or argv).
  *
  * NOTE:
  * call from event dispatch immediately upon receiving a NEWSEGMENT with
@@ -359,7 +364,7 @@ void arcan_shmif_last_words(struct arcan_shmif_cont* cont, const char* msg);
 pid_t arcan_shmif_handover_exec(
 	struct arcan_shmif_cont* cont, struct arcan_event ev,
 	const char* path, char* const argv[], char* const env[],
-	bool detach);
+	int detach);
 
 /*
  * Mark, for the current frame (this is reset each signal on sigvid) buffer

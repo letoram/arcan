@@ -133,9 +133,16 @@ void arcan_tui_request_subwnd(
  * than it already does */
 	switch (type){
 	case TUI_WND_TUI:
+		type = SEGID_TUI;
+	break;
 	case TUI_WND_POPUP:
+		type = SEGID_POPUP;
+	break;
 	case TUI_WND_DEBUG:
+		type = SEGID_DEBUG;
+	break;
 	case TUI_WND_HANDOVER:
+		type = SEGID_HANDOVER;
 	break;
 	default:
 		return;
@@ -361,8 +368,6 @@ void arcan_tui_wndhint(struct tui_context* C,
 	}
 
 	arcan_shmif_enqueue(&C->acon, &viewport);
-
-/* constraints come as a contenthint */
 }
 
 void arcan_tui_bgcopy(struct tui_context* tui, int fdin, int fdout)
@@ -989,4 +994,36 @@ size_t arcan_tui_printf(struct tui_context* ctx,
 
 	arcan_tui_writeu8(ctx, (uint8_t*) buf, nw, attr);
 	return nw;
+}
+
+pid_t arcan_tui_handover(struct tui_context* c,
+	arcan_tui_conn* conn,
+	struct tui_constraints* constraints,
+	const char* path, char* const argv[], char* const env[],
+	int detach)
+{
+/* we tag the connection so we can pair the subwindow handler with the
+ * event dispatch, as the handover semantics are different from window
+ * allocation controls */
+	if ((uintptr_t)(void*)conn != (uintptr_t)-1 || !c || !c->got_pending){
+		return -1;
+	}
+
+/* send an event translating the constraints to a VIEWPORT event that
+ * parents the HANDOVER segment to fit the constraints. */
+	if (constraints){
+/*
+ * struct arcan_event viewport = (struct arcan_event){
+			.category = EVENT_EXTERNAL,
+			.ext.kind = ARCAN_EVENT(VIEWPORT),
+			.ext.viewport = {
+				.x = cons.anch_col * C->cell_w,
+				.y = cons.anch_row * C->cell_h,
+			},
+		};
+ */
+	}
+
+	return arcan_shmif_handover_exec(
+		&c->acon, c->pending_wnd, path, argv, env, detach);
 }

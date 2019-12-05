@@ -124,6 +124,10 @@ struct tui_context {
 
 	struct tsm_save_buf* pending_copy_window;
 
+/* NEWSEGEMENT -> on_subwindow -> handover call chain */
+	bool got_pending;
+	struct arcan_event pending_wnd;
+
 /* caller- event handlers */
 	struct tui_cbcfg handlers;
 };

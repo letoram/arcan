@@ -53,6 +53,13 @@ enum tui_wndhint_flags {
 	TUI_WND_HIDDEN = 2,
 };
 
+enum tui_handover_flags {
+	TUI_DETACH_PROCESS = 1,
+	TUI_DETACH_STDIN   = 2,
+	TUI_DETACH_STDOUT  = 4,
+	TUI_DETACH_STDERR  = 8
+};
+
 /*
  * These are only relevant when requesting a subwindow or when receiving one,
  * the values of the different types are picked as to match the corresponding

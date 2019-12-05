@@ -1431,8 +1431,12 @@ enum ARCAN_TARGET_SKIPMODE {
  *
  *  (order)          - parent-relative drawing order (+- #segments)
  *
- *  Viewports may become invalidated on shrinking resize, though border-
- *  properties for still-valid areas are retained.
+ * Since order is relative to 'parent', the embedding order may be that a
+ * negative value will have the effect that 'the child' is visually/hierarchy
+ * speaking 'the parent'. The edge case where such a relationship might be
+ * expressed is when multiple processes combine to embed one within the other,
+ * and the first process controls positioning relative to the second due to
+ * a handover allocation.
  */
 		struct {
 			int32_t x, y;
