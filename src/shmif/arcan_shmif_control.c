@@ -90,7 +90,7 @@ void shmifint_set_log_device(struct arcan_shmif_cont* c, FILE* outdev)
 
 #define log_print(fmt, ...) \
             do { fprintf(shmifint_log_device(NULL),\
-						"%s:%d:%s(): " fmt "\n", \
+						"%d:%s(): " fmt "\n", \
 						__LINE__, __func__,##__VA_ARGS__); } while (0)
 
 /*
@@ -817,7 +817,7 @@ checkfd:
 					if ( (guid[0] || guid[1]) &&
 						(priv->guid[0] != guid[0] && priv->guid[1] != guid[1] )){
 						if (priv->log_event)
-							log_print("->(%"PRIx64", %"PRIx64")\n", guid[0], guid[1]);
+							log_print("->(%"PRIx64", %"PRIx64")", guid[0], guid[1]);
 						priv->guid[0] = guid[0];
 						priv->guid[1] = guid[1];
 					}
@@ -927,7 +927,7 @@ int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
 
 	int rv = process_events(c, dst, false, false);
 	if (rv > 0 && c->priv->log_event){
-		log_print("[%"PRIu64":%"PRIu32"] <- %s\n",
+		log_print("[%"PRIu64":%"PRIu32"] <- %s",
 			(uint64_t) arcan_timemillis() - g_epoch,
 			(uint32_t) c->cookie, arcan_shmif_eventstr(dst, NULL, 0));
 	}
@@ -972,7 +972,7 @@ int arcan_shmif_wait(struct arcan_shmif_cont* c, struct arcan_event* dst)
 
 	int rv = process_events(c, dst, true, false);
 	if (rv > 0 && c->priv->log_event){
-		log_print("(@%"PRIxPTR"<-)%s\n",
+		log_print("(@%"PRIxPTR"<-)%s",
 			(uintptr_t) c, arcan_shmif_eventstr(dst, NULL, 0));
 	}
 	return rv > 0;
@@ -998,7 +998,7 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 
 	if (c->priv->log_event){
 		struct arcan_event outev = *src;
-		log_print("(@%"PRIxPTR"->)%s\n",
+		log_print("(@%"PRIxPTR"->)%s",
 			(uintptr_t) c, arcan_shmif_eventstr(&outev, NULL, 0));
 	}
 
@@ -1736,7 +1736,7 @@ unsigned arcan_shmif_signal(
  * check before running the step_v */
 	if (mask & SHMIF_SIGVID){
 		if (priv->log_event){
-			log_print("%lld: SIGVID (block: %d region: %zu,%zu-%zu,%zu)\n",
+			log_print("%lld: SIGVID (block: %d region: %zu,%zu-%zu,%zu)",
 				arcan_timemillis(),
 				(mask & SHMIF_SIGBLK_NONE) ? 0 : 1,
 				(size_t)ctx->dirty.x1, (size_t)ctx->dirty.y1,
@@ -1919,7 +1919,7 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	atomic_store_explicit(&arg->addr->vpending, vidc, memory_order_release);
 	if (priv->log_event){
 		log_print(
-			"(@%"PRIxPTR" rz-synch): %zu*%zu(fl:%d), grid:%zu,%zu %zu Hz\n",
+			"(@%"PRIxPTR" rz-synch): %zu*%zu(fl:%d), grid:%zu,%zu %zu Hz",
 			(uintptr_t)arg, (size_t)width, (size_t)height, (int)arg->hints,
 			(size_t)ext.rows, (size_t)ext.cols, (size_t)arg->samplerate
 		);
@@ -2595,7 +2595,7 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	int spair[2];
 	if (-1 == socketpair(PF_UNIX, SOCK_STREAM, 0, spair)){
 		free(work);
-		log_print("(shmif::a12::connect) couldn't build IPC socket\n");
+		log_print("(shmif::a12::connect) couldn't build IPC socket");
 		return NULL;
 	}
 
@@ -2637,7 +2637,7 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	close(spair[1]);
 
 	if (-1 == pid){
-		log_print("(shmif::a12::connect) fork() failed\n");
+		log_print("(shmif::a12::connect) fork() failed");
 		close(spair[0]);
 		return NULL;
 	}
@@ -2993,7 +2993,7 @@ bool arcan_shmif_mousestate(
 pid_t arcan_shmif_handover_exec(
 	struct arcan_shmif_cont* cont, struct arcan_event ev,
 	const char* path, char* const argv[], char* const env[],
-	bool detach)
+	int detach)
 {
 	if (!cont || !cont->addr || ev.category != EVENT_TARGET || ev.tgt.kind
 		!= TARGET_COMMAND_NEWSEGMENT || ev.tgt.ioevs[2].iv != SEGID_HANDOVER)
@@ -3084,7 +3084,24 @@ pid_t arcan_shmif_handover_exec(
 
 	pid_t pid = fork();
 	if (pid == 0){
-		if (detach && (pid = fork()) != 0)
+
+/* just leverage the sparse allocation property and that process creation
+ * or libc safeguards typically ensure correct stdin/stdout/stderr */
+		if (detach & 2){
+			close(STDIN_FILENO);
+			open("/dev/null", O_RDONLY);
+		}
+
+		if (detach & 4){
+			close(STDOUT_FILENO);
+			open("/dev/null", O_WRONLY);
+		}
+		if (detach & 8){
+			close(STDERR_FILENO);
+			open("/dev/null", O_WRONLY);
+		}
+
+		if ((detach & 1) && (pid = fork()) != 0)
 			exit(pid > 0 ? EXIT_SUCCESS : EXIT_FAILURE);
 
 /* GNU or BSD4.2 */

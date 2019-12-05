@@ -3607,7 +3607,8 @@ static int launchavfeed(lua_State* ctx)
 		lua_pushstring(ctx, b64);
 	arcan_mem_free(b64);
 
-	LUA_ETRACE("launch_avfeed", NULL, 3);
+	lua_pushnumber(ctx, mvctx->cookie);
+	LUA_ETRACE("launch_avfeed", NULL, 4);
 }
 
 static int loadmovie(lua_State* ctx)
@@ -4427,6 +4428,10 @@ static void push_view(lua_State* ctx,
 	}
 	lua_rawset(ctx, top);
 
+/* We don't automatically translate the parent - child lookup. A reason
+ * for this is that it is a possibly steep magnification (1 event to O(n))
+ * lookup, but also that any WM that respects this hint needs the tracking
+ * anyhow. */
 	uint32_t pid = ev->viewport.parent;
 	tblnum(ctx, "parent", pid, top);
 }
@@ -8684,8 +8689,10 @@ static int targetalloc(lua_State* ctx)
 
 	lua_pushvid(ctx, newref->vid);
 	lua_pushaid(ctx, newref->aid);
+	lua_pushnumber(ctx, newref->cookie);
+
 	trace_allocation(ctx, "target", newref->vid);
-	LUA_ETRACE("target_alloc", NULL, 2);
+	LUA_ETRACE("target_alloc", NULL, 3);
 }
 
 static int targetlaunch(lua_State* ctx)
@@ -8817,8 +8824,9 @@ static int targetlaunch(lua_State* ctx)
  * preroll event as a means for queueing up initial states */
 		lua_pushvid(ctx, intarget->vid);
 		lua_pushaid(ctx, intarget->aid);
+		lua_pushnumber(ctx, intarget->cookie);
 		trace_allocation(ctx, "launch", intarget->vid);
-		rc = 2;
+		rc = 3;
 	}
 
 cleanup:

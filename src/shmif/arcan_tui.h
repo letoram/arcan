@@ -469,11 +469,15 @@ struct tui_cbcfg {
  * the provided connection argument here and return true, OR don't touch it
  * and return false.
  *
+ * To map the special type 'TUI_WND_HANDOVER', the tui_handover_setup call
+ * should be used on the connection argument within the scope of the callback
+ * after which the client has no direct control over how the window behaves.
+ *
  * WARNING: mapping the connection via arcan_tui_setup and returning FALSE
  * may cause use-after-free or other memory corruption issues.
  */
-	bool (*subwindow)(
-		struct tui_context*, arcan_tui_conn*, uint32_t id, uint8_t type, void*);
+	bool (*subwindow)(struct tui_context*,
+		arcan_tui_conn* connection, uint32_t id, uint8_t type, void*);
 
 /*
  * Dynamic glyph substitution callback per updated row. This allows you to
@@ -722,9 +726,11 @@ bool arcan_tui_update_handlers(struct tui_context*,
  * call path. [par] must be NULL or refer to the same context
  * as the subwnd call initiated from.
  *
- * The dimensions inside the constraints structure are a hint, not a
- * guarantee. The rendering handler need to always be able to draw /
- * layout to any size, even if that means cropping.
+ * The dimensions inside the constraints structure are a hint, not a guarantee.
+ * The rendering handler need to always be able to draw / layout to any size,
+ * even if that means cropping. Handover windows are special in the sense that
+ * after forwarded, they can't be controlled other than having its requested
+ * anchor being 'scrolled' with the scrollhint.
  */
 void arcan_tui_wndhint(struct tui_context* wnd,
 	struct tui_context* par, struct tui_constraints cons);
@@ -888,6 +894,32 @@ int arcan_tui_set_flags(struct tui_context*, int tui_flags);
  * modify the current flags/state bitmask and unset the values of tui (& ~)
  */
 void arcan_tui_reset_flags(struct tui_context*, int tui_flags);
+
+/*
+ * use from within a on_subwindow handler in order to forward the subwindow
+ * to an external process. Only a connection from within the handle will work.
+ * Optional constraints suggest anchoring and sizing constraints.
+ *
+ * [Path] points to an absolute path of the binary to hand over control to.
+ * [Argv] is a null-terminated array of strings that will be used as command
+ *        line arguments.
+ * [Env]  is a null-terminated array of strings that will be set as the new
+ *        process environments.
+ *
+ * [flags] is a bitmap of resources handover controls. See tuisym.h for enum.
+ *          TUI_DETACH_PROCESS | TUI_DETACH_STDIN | TUI_DETACH_STDOUT |
+ *          TUI_DETACH_STDERR
+ *
+ * will reparent the handover window (double-fork like semantics)
+ * otherwise the returned pid_t will need to be handled like a normal child
+ * (using wait() class of functions or a SIGCHLD handler).
+ *
+ * Will return -1 on failure to spawn,exec,hand-over.
+ */
+pid_t arcan_tui_handover(struct tui_context*, arcan_tui_conn*,
+	struct tui_constraints* constraints,
+	const char* path, char* const argv[], char* const env[],
+	int flags);
 
 /*
  * Hint that certain regions have scrolled:
@@ -1102,8 +1134,9 @@ typedef char* (* PTUISTATEDESCR)(struct tui_context*);
 typedef size_t (* PTUIPRINTF)(struct tui_context*, struct tui_screen_attr*, const char*, ...);
 typedef void (* PTUIBGCOPY)(struct tui_context*, int fdin, int fdout);
 typedef size_t (* PTUIGETHANDLES)(struct tui_context**, size_t, int[], size_t);
-
-
+typedef void (* PTUIHANDOVER)(struct tui_context*, arcan_tui_conn*,
+	struct tui_constraints*, const char*, char* const[], char* const[], int);
+static PTUIHANDOVER arcan_tui_handover;
 static PTUISETUP arcan_tui_setup;
 static PTUIDESTROY arcan_tui_destroy;
 static PTUIPROCESS arcan_tui_process;
@@ -1178,6 +1211,7 @@ static PTUIBGCOPY arcan_tui_bgcopy;
 static bool arcan_tui_dynload(void*(*lookup)(void*, const char*), void* tag)
 {
 #define M(TYPE, SYM) if (! (SYM = (TYPE) lookup(tag, #SYM)) ) return false
+M(PTUIHANDOVER,arcan_tui_handover);
 M(PTUIDESTROY,arcan_tui_destroy);
 M(PTUISETUP,arcan_tui_setup);
 M(PTUIDESTROY,arcan_tui_destroy);

@@ -4,7 +4,7 @@
 -- @inargs: int:target, int:configuration, int:mode
 -- @inargs: int:target, int:configuration, int:mode, function:handler
 -- @inargs: int:target, int:configuration, int:mode, function:handler, string:args
--- @outargs: vid:new_vid
+-- @outargs: vid:new_vid, aid:new_aid, int:cookie
 -- @outargs: int:return_code, int:elapsed
 -- @longdescr: Launch Target uses the database to build an execution environment
 -- for the specific tuple of *target* and *configuration*. The mode can be set to
@@ -113,6 +113,14 @@
 -- relative to another.
 -- edge refers to the anchoring edge for popups etc, counted from:
 -- (free=0, UL, UC, UR, CL, C, CR, LL, LC, LR).
+-- The parent id may be provided by the source of the event as a proof
+-- of a known / established relationship when the sources are of different
+-- origin and hierarchy is not already known. This cookie can be received
+-- and tracked on allocation, see ref:accept_target, ref:target_alloc,
+-- ref:launch_target and ref:launch_avfeed. The other option for embedding
+-- or reordering based on pre-established relationship to use negative
+-- rel_order values. This is mainly a concern when dealing with handover
+-- segment allocations.
 --
 -- @note: "content_state" {number:rel_x, number:rel_y,
 -- number:wnd_w, number:wnd_h, number:x_size, number:y_size,

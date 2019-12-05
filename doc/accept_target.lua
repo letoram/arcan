@@ -3,7 +3,7 @@
 -- @inargs:
 -- @inargs: int:setw, int:seth,
 -- @inargs: int:setw, int:seth, func:callback
--- @outargs: vid, aid, cookie
+-- @outargs: vid:new_vid, aid:new_aid, int:cookie
 -- @longdescr: A connected frameserver is provided with one segment
 -- by default, but additional ones can be requested. If that happens,
 -- a segment_request event is sent through to the callback

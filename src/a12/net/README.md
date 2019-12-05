@@ -70,7 +70,7 @@ Milestone 1 - basic features (0.5.x)
 - [ ] Cache process / directory for file operations
 - [x] ARCAN\_CONNPATH=a12:// handover support
 - [ ] Block push-segment types (DEBUG)
-- [ ] Add to encode, remoting
+- [x] Add to encode, remoting
 
 Milestone 2 - closer to useful (0.6.x)
 

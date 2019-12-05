@@ -11,7 +11,7 @@
 -- @inargs: vid:fsrv, function:callback, number:tag
 -- @inargs: vid:fsrv, int:w, int:h, function:callback, string:type
 -- @inargs: vid:fsrv, int:w, int:h, function:callback, string:type, bool:forced
--- @outargs: vid, aid
+-- @outargs: vid:new_vid, aid:new_aid, int:new_cookie
 -- This functions controls server-side initiated allocation of segments or connection
 -- points. If the initial argument is of the *cpoint* form, the allocation will be a
 -- named connection point to which a client can connect.
