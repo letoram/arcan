@@ -7,7 +7,7 @@ endif()
 #
 # Broadcom (raspberry pi etc.) specific detection => hardcoded paths
 #
-if (EXISTS "${BCM_ROOT}/include/bcm_host.h")
+if (VIDEO_PLATFORM STREQUAL "egl-gles" AND EXISTS "${BCM_ROOT}/include/bcm_host.h")
 	set (EGL_INCLUDE_DIRS
 		${BCM_ROOT}/include
 	)
