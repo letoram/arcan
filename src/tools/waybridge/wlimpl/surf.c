@@ -11,12 +11,6 @@ static void surf_destroy(struct wl_client* cl, struct wl_resource* res)
 	destroy_comp_surf(surf, true);
 }
 
-static void buffer_release(struct comp_surf* surf, struct wl_resource* res)
-{
-	trace(TRACE_SURF, "%s (@%"PRIxPTR")->release", surf->tracetag, (uintptr_t)surf->cbuf);
-	wl_buffer_send_release(res);
-}
-
 static void buffer_destroy(struct wl_listener* list, void* data)
 {
 	struct comp_surf* surf = NULL;
@@ -31,11 +25,6 @@ static void buffer_destroy(struct wl_listener* list, void* data)
 		surf->buf = NULL;
 	}
 
-	if (surf->last_buf){
-		buffer_release(surf, surf->last_buf);
-		surf->last_buf = NULL;
-	}
-
 	if (surf->l_bufrem_a){
 		surf->l_bufrem_a = false;
 		wl_list_remove(&surf->l_bufrem.link);
@@ -43,10 +32,10 @@ static void buffer_destroy(struct wl_listener* list, void* data)
 }
 
 /*
- * Buffer now belongs to surface
+ * Buffer now belongs to surface, but it is useless until there's a commit
  */
-static void surf_attach(struct wl_client* cl, struct wl_resource* res,
-	struct wl_resource* buf, int32_t x, int32_t y)
+static void surf_attach(struct wl_client* cl,
+	struct wl_resource* res, struct wl_resource* buf, int32_t x, int32_t y)
 {
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 	if (!surf){
@@ -361,16 +350,6 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 		return;
 	}
 
-/*
- * if we don't defer the release, we seem to provoke some kind of race
- * condition in the client or support libs that end very SIGSEGVy
- */
-	if (surf->last_buf){
-		try_frame_callback(surf, acon);
-		buffer_release(surf, surf->last_buf);
-		surf->last_buf = NULL;
-	}
-
 	struct wl_resource* buf = (struct wl_resource*)(
 		(uintptr_t) surf->buf ^ ((uintptr_t) 0xfeedface));
 	if ((uintptr_t) buf != surf->cbuf){
@@ -411,7 +390,6 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 
 	if (!acon || !acon->addr){
 		trace(TRACE_SURF, "couldn't map to arcan connection");
-		buffer_release(surf, buf);
 		return;
 	}
 
@@ -439,13 +417,10 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 			trace(TRACE_SURF, "surf_commit(unknown:%s)", surf->tracetag);
 /* dma- buf bits are missing here still, query the format and forward */
 	}
-	else
+	else {
 		commit_shm(cl, acon, res, surf, shm_buf);
-
-	if (wl.defer_release)
-		surf->last_buf = buf;
-	else
-		buffer_release(surf, buf);
+	}
+	wl_buffer_send_release(buf);
 
 	trace(TRACE_SURF,
 		"surf_commit(%zu,%zu-%zu,%zu):accel=%d",

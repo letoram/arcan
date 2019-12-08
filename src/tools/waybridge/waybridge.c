@@ -150,13 +150,6 @@ static struct {
 	int default_accel_surface;
 
 /*
- * this is a workaround for shm- buffers and relates to clients that just push
- * a new buffer as soon as the old is released, causing excessive double-
- * buffering as we already have a copy in one way or another.
- */
-	bool defer_release;
-
-/*
  * needed to communicate window management events in the xwayland space, to
  * pair compositor surfaces with xwayland- originating ones and so on. On-
  * demand launch of the arcan-xwayland / arcan-xwayland-wm is found in
@@ -857,13 +850,6 @@ static void rebuild_client(struct bridge_client* bcl)
 		wl.groups[surfaces[i].group].pg[surfaces[i].ind].fd = surf->acon.epipe;
 		trace(TRACE_ALERT, "rebuild %zu:%s - fd set to %d",
 			i, surf->tracetag, surf->acon.epipe);
-
-/* release the old buffer regardless, as drm- handles etc. are likely
- * dead and defunct. same goes with framecallbacks */
-		if (surf->last_buf){
-			wl_buffer_send_release(surf->last_buf);
-			surf->last_buf = NULL;
-		}
 	}
 
 /* [Pass 4], now the hierarchy should be 'alive' on the parent side,
@@ -912,7 +898,6 @@ static void rebuild_client(struct bridge_client* bcl)
 			wl.groups[cs_group].pg[cs_ind].fd = bcl->acursor.epipe;
 			dump_alloc(cs_group, "rebuild_client", false);
 		}
-
 	}
 }
 
@@ -1018,7 +1003,6 @@ static int show_use(const char* msg, const char* arg)
 #endif
 "\nWorkarounds:\n"
 "\t-prefix prefix    use with -exec, override XDG_RUNTIME_DIR/awl_XXXXXX prefix\n"
-"\t-defer-release    defer buffer releases, aggressive client workaround\n"
 "\t-width px         override display 'fullscreen' width\n"
 "\t-height px        override display 'fullscreen' height\n"
 "\t-force-fs         ignore displayhints and always configure to display size\n"
@@ -1076,11 +1060,6 @@ static bool process_group(struct conn_group* group)
 
 	wl_display_flush_clients(wl.disp);
 	return true;
-}
-
-static void debugusr1()
-{
-	dump_alloc(0, "sigusr1", true);
 }
 
 /*
@@ -1209,9 +1188,6 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[arg_i], "-force-fs") == 0){
 			wl.force_sz = true;
 		}
-		else if (strcmp(argv[arg_i], "-debugusr1") == 0){
-			sigaction(SIGUSR1, &(struct sigaction){.sa_handler = debugusr1}, NULL);
-		}
 		else if (strcmp(argv[arg_i], "-no-egl") == 0)
 			protocols.egl = 0;
 		else if (strcmp(argv[arg_i], "-no-drm") == 0)
@@ -1238,8 +1214,6 @@ int main(int argc, char* argv[])
 			protocols.subcomp = 0;
 		else if (strcmp(argv[arg_i], "-no-data-device") == 0)
 			protocols.ddev = 0;
-		else if (strcmp(argv[arg_i], "-defer-release") == 0)
-			wl.defer_release = true;
 		else if (strcmp(argv[arg_i], "-no-relative-pointer") == 0)
 			protocols.relp = 0;
 		else if (strcmp(argv[arg_i], "-exec") == 0){

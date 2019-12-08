@@ -6,14 +6,10 @@
  * considerations needed for pairing XWayland redirected windows with wayland
  * surfaces etc. Decoupled from the normal XWayland so that both sides can be
  * sandboxed better and possibly used for a similar -rootless mode in Xarcan.
- *
- * [ ] Multiple- windows seem to need some kind of coordinate translation
- *
- * [ ] XEmbed etc.
- *
  */
 #define _GNU_SOURCE
 #include <arcan_shmif.h>
+#include "../../../shmif/arcan_shmif_debugif.h"
 #include <inttypes.h>
 #include <errno.h>
 #include <signal.h>
@@ -22,6 +18,7 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <sys/types.h>
+#include <poll.h>
 
 /* #include <X11/XCursor/XCursor.h> */
 #include <xcb/xcb.h>
@@ -31,12 +28,7 @@
 #include <xcb/xcb_icccm.h>
 #include <pthread.h>
 
-#include "uthash.h"
-
-/*
- * should we need to map window-id to struct
-#include "hash.h"
-*/
+#include "../uthash.h"
 
 struct xwnd_state {
 	bool mapped;
@@ -49,6 +41,7 @@ struct xwnd_state {
 };
 static struct xwnd_state* windows;
 
+static int signal_fd = -1;
 static xcb_connection_t* dpy;
 static xcb_screen_t* screen;
 static xcb_drawable_t root;
@@ -57,7 +50,6 @@ static xcb_colormap_t colormap;
 static xcb_visualid_t visual;
 static int64_t input_grab = -1;
 static int64_t input_focus = -1;
-static volatile bool alive = true;
 static bool xwm_standalone = false;
 
 #include "atoms.h"
@@ -67,19 +59,24 @@ static bool xwm_standalone = false;
 
 static void on_chld(int num)
 {
-	alive = false;
+	uint8_t ch = 'x';
+	write(signal_fd, &ch, 1);
+}
+
+static void on_dbgreq(int num)
+{
+	uint8_t ch = 'd';
+	write(signal_fd, &ch, 1);
 }
 
 static inline void trace(const char* msg, ...)
 {
-#ifdef _DEBUG
 	va_list args;
 	va_start( args, msg );
 		vfprintf(stderr,  msg, args );
 		fprintf(stderr, "\n");
 	va_end( args);
 	fflush(stderr);
-#endif
 }
 
 static inline void wm_command(bool flush, const char* msg, ...)
@@ -146,18 +143,33 @@ static void create_window()
 		0, 0, 10, 10, 0, XCB_WINDOW_CLASS_INPUT_OUTPUT,
 		visual, 0, NULL
 	);
+
 	xcb_change_property(dpy,
 		XCB_PROP_MODE_REPLACE, wnd,
 		atoms[NET_SUPPORTING_WM_CHECK], XCB_ATOM_WINDOW, 32, 1, &wnd);
-/* wm name, utf8 string
- * supporting wm, selection_owner, ... */
+
+	static const char wmname[] = "Arcan XWM";
+	xcb_change_property(dpy,
+		XCB_PROP_MODE_REPLACE, wnd,
+		atoms[NET_WM_NAME], atoms[UTF8_STRING], 8, strlen(wmname), wmname);
+
+	xcb_change_property(dpy,
+		XCB_PROP_MODE_REPLACE, wnd,
+		atoms[NET_SUPPORTING_WM_CHECK], XCB_ATOM_WINDOW, 32, 1, &root);
+
+/* for clipboard forwarding */
+	xcb_set_selection_owner(dpy,
+		wnd, atoms[WM_S0], XCB_TIME_CURRENT_TIME);
+
+	xcb_set_selection_owner(dpy,
+		wnd, atoms[NET_WM_CM_S0], XCB_TIME_CURRENT_TIME);
 }
 
 static bool has_atom(
 	xcb_get_property_reply_t* prop, enum atom_names atom)
 {
 	if (prop == NULL || xcb_get_property_value_length(prop) == 0)
-		return false;
+	return false;
 
 	xcb_atom_t* atom_query = xcb_get_property_value(prop);
 	if (!atom_query){
@@ -191,6 +203,30 @@ static bool check_window_support(xcb_window_t wnd, xcb_atom_t atom)
 
 	xcb_icccm_get_wm_protocols_reply_wipe(&protocols);
 	return false;
+}
+
+static void send_configure_notify(uint32_t id)
+{
+	struct xwnd_state* state;
+	HASH_FIND_INT(windows,&id,state);
+	if (!state)
+		return;
+
+/* so a number of games have different behavior for 'fullscreen', where
+ * an older form of this is using the x/y of the output and the dimensions
+ * of the window */
+
+	xcb_configure_notify_event_t notify = (xcb_configure_notify_event_t){
+		.response_type = XCB_CONFIGURE_NOTIFY,
+		.event = id,
+		.window = id,
+		.above_sibling = XCB_WINDOW_NONE,
+		.x = state->x,
+		.y = state->y,
+		.width = state->w,
+		.height = state->h
+	};
+	xcb_send_event(dpy, 0, id, XCB_EVENT_MASK_STRUCTURE_NOTIFY, (char*)&notify);
 }
 
 static const char* check_window_state(uint32_t id)
@@ -395,6 +431,7 @@ static void xcb_unmap_notify(xcb_unmap_notify_event_t* ev)
 
 static void xcb_client_message(xcb_client_message_event_t* ev)
 {
+	trace("kind=message:id=%"PRIu32":type=%d", ev->window, ev->type);
 /*
  * switch type against resolved atoms:
  * WL_SURFACE_ID : gives wayland surface id
@@ -458,6 +495,8 @@ static void xcb_configure_notify(xcb_configure_notify_event_t* ev)
 	state->h = ev->height;
 	state->override_redirect = ev->override_redirect;
 
+/* override redirect? use width / height */
+
 	if (state->mapped && state->paired){
 		wm_command(WM_FLUSH,
 		"kind=configure:id=%"PRIu32":x=%d:y=%d:w=%d:h=%d",
@@ -480,31 +519,52 @@ static void xcb_configure_request(xcb_configure_request_event_t* ev)
 		ev->window, ev->x, ev->y, ev->width, ev->height
 	);
 
+/* if fullscreen
+	send_configure_notify(ev->window);
+ */
+	int mask =
+		XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
+		XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
+		XCB_CONFIG_WINDOW_BORDER_WIDTH;
+
 /* just ack the configure request for now, this should really be deferred
  * until we receive the corresponding command from our parent but we lack
  * that setup right now */
 
-	xcb_configure_window(dpy, ev->window,
-		XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
-		XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
-		XCB_CONFIG_WINDOW_BORDER_WIDTH,
-		(uint32_t[]){ev->x, ev->y, ev->width, ev->height, 0}
+	xcb_configure_window(dpy, ev->window, mask,
+	(uint32_t[]){ev->x, ev->y, ev->width, ev->height, 0}
 	);
 }
 
 static void update_focus(int64_t id)
 {
-	if (-1 == id){
+	struct xwnd_state* state = NULL;
+	if (id != -1)
+		HASH_FIND_INT(windows,&id,state);
+
+	input_focus = id;
+	if (!state){
 		xcb_set_input_focus_checked(dpy,
-			XCB_INPUT_FOCUS_POINTER_ROOT, XCB_NONE, XCB_CURRENT_TIME);
+			XCB_INPUT_FOCUS_POINTER_ROOT, XCB_NONE, XCB_TIME_CURRENT_TIME);
 	}
 	else {
-		xcb_set_input_focus(dpy,
-			XCB_INPUT_FOCUS_POINTER_ROOT, id, XCB_CURRENT_TIME);
-	}
+		if (state->override_redirect)
+			return;
 
-	xcb_configure_window(dpy, id,
-		XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_BELOW, 0});
+		xcb_client_message_event_t msg = (xcb_client_message_event_t){
+			.response_type = XCB_CLIENT_MESSAGE,
+			.format = 32,
+			.window = id,
+			.type = atoms[WM_PROTOCOLS],
+			.data.data32[0] = atoms[WM_TAKE_FOCUS],
+			.data.data32[1] = XCB_TIME_CURRENT_TIME
+		};
+		xcb_send_event(dpy, 0, id, XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT, (char*)&msg);
+		xcb_set_input_focus(dpy,
+			XCB_INPUT_FOCUS_POINTER_ROOT, id, XCB_TIME_CURRENT_TIME);
+		xcb_configure_window(dpy, id,
+			XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_ABOVE, 0});
+	}
 	xcb_flush(dpy);
 }
 
@@ -552,6 +612,7 @@ static void process_wm_command(const char* arg)
 	}
 	else if (strcmp(dst, "fullscreen") == 0){
 		trace("srv-fullscreen");
+/* this is a rather important state for games it seems */
 	}
 	else if (strcmp(dst, "resize") == 0){
 		arg_lookup(args, "width", 0, &dst);
@@ -598,9 +659,9 @@ static void process_wm_command(const char* arg)
 	}
 	else if (strcmp(dst, "unfocus") == 0){
 		trace("srv-unfocus(%d)", id);
-		input_focus = -1;
-		update_focus(-1);
-
+		if (input_focus == id){
+			update_focus(-1);
+		}
 		xcb_flush(dpy);
 	}
 	else if (strcmp(dst, "focus") == 0){
@@ -611,7 +672,6 @@ static void process_wm_command(const char* arg)
 			goto cleanup;
 		}
 
-		input_focus = id;
 		update_focus(id);
 	}
 
@@ -619,9 +679,21 @@ cleanup:
 	arg_cleanup(args);
 }
 
+static void spawn_debug()
+{
+	struct arcan_shmif_cont ct = arcan_shmif_open(SEGID_TUI, 0, NULL);
+	if (ct.addr){
+		arcan_shmif_debugint_spawn(&ct, NULL, NULL);
+/* &(struct debugint_ext_resolver){
+ * .handler, .label and .tag to attach to the menu structure, can expose the
+ * known WM states there
+ * } */
+	}
+}
+
 static void* process_thread(void* arg)
 {
-	while (!ferror(stdin) && !feof(stdin) && alive){
+	while (!ferror(stdin) && !feof(stdin)){
 		char inbuf[1024];
 		if (fgets(inbuf, 1024, stdin)){
 /* trim */
@@ -632,7 +704,8 @@ static void* process_thread(void* arg)
 		}
 	}
 	wm_command(WM_FLUSH, "kind=terminated");
-	alive = false;
+	uint8_t ch = 'x';
+	write(signal_fd, &ch, 1);
 	return NULL;
 }
 
@@ -703,6 +776,7 @@ int main (int argc, char **argv)
 
 /*
  * wait for a reply from the Xwayland setup, we can also get that as a SIGUSR1
+ * but it's better to have that as a way of firing up a debug-info chain
  */
 	trace("waiting for display");
 	char inbuf[64] = {0};
@@ -735,6 +809,16 @@ int main (int argc, char **argv)
 	}
 
 	scan_atoms();
+
+/* pipe pair to 'wake' event thread with */
+	int eventsig[2];
+	if (-1 == pipe(eventsig)){
+		fprintf(stderr, "Couldn't create event signal pair\n");
+		return EXIT_FAILURE;
+	}
+	signal_fd = eventsig[1];
+
+	sigaction(SIGUSR2, &(struct sigaction){.sa_handler = on_dbgreq}, 0);
 
 /*
  * enable structure and redirection notifications so that we can forward
@@ -810,10 +894,37 @@ int main (int argc, char **argv)
 		}
 	}
 
-/* atom lookup:
- * moveresize, state, fullscreen, maximized vert, maximized horiz, active window
- */
-	while( (ev = xcb_wait_for_event(dpy)) && alive){
+/* xcb doesn't have a convenience helper with timeout etc. so we add a poll step */
+	struct pollfd pfd[2] = {
+		{
+			.fd = eventsig[0],
+			.events = POLLIN
+		},
+		{
+			.fd = wmfd[0],
+			.events = POLLIN
+		}
+	};
+
+	for(;;){
+		int status = poll(pfd, 2, -1);
+		if (status == -1 && errno != EINTR && errno != EAGAIN)
+			break;
+
+		if (pfd[0].revents & POLLIN){
+			uint8_t ch;
+			if (1 == read(pfd[0].fd, &ch, 1)){
+				if (ch == 'x')
+					break;
+				if (ch == 'd')
+					spawn_debug();
+			}
+		}
+		if (!(pfd[1].revents & POLLIN)){
+			continue;
+		}
+
+		ev = xcb_wait_for_event(dpy);
 		if (ev->response_type == 0){
 			continue;
 		}
@@ -835,7 +946,7 @@ int main (int argc, char **argv)
 			trace("enter-notify");
 		break;
 		case XCB_LEAVE_NOTIFY:
-			trace("leave-notify\n");
+			trace("leave-notify");
 		break;
 /*
  * end of 'UI notifications'
@@ -877,6 +988,10 @@ int main (int argc, char **argv)
 		break;
 		case XCB_FOCUS_IN:
 			xcb_focus_in((xcb_focus_in_event_t*) ev);
+		break;
+		case XCB_SELECTION_NOTIFY:
+			trace("selection");
+/* xcb_iccc,_get_text_property, text_property_reply */
 		break;
 		default:
 			trace("unhandled: %"PRIu8, ev->response_type);

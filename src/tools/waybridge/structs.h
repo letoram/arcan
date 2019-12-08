@@ -104,6 +104,7 @@ struct scratch_req {
 };
 
 #define SURF_TAGLEN 16
+#define SURF_RELEASE_WND 4
 struct comp_surf {
 	struct wl_listener l_bufrem;
 	bool l_bufrem_a;
@@ -117,7 +118,6 @@ struct comp_surf {
 	struct wl_resource* surf_res;
 	struct wl_resource* sub_parent_res;
 	struct wl_resource* sub_child_res;
-	struct wl_resource* last_buf;
 
 /* mark the surface as supposed to commit, but some reason (ongoing sync
  * or similar) forced us to reconsider at a later stage. */
