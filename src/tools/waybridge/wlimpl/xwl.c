@@ -442,6 +442,7 @@ static int xwl_read_wm(int (*callback)(const char* str))
 	ssize_t nr = read(wmfd_input, inbuf, 256);
 	if (-1 == nr){
 		if (errno != EAGAIN && errno != EINTR){
+			trace(TRACE_XWL, "kind=error:code=%d:message=%s", errno, strerror(errno));
 			kill(xwl_wm_pid, SIGKILL);
 			waitpid(xwl_wm_pid, NULL, 0);
 			close_xwl();
@@ -449,6 +450,7 @@ static int xwl_read_wm(int (*callback)(const char* str))
 		else {
 			int res = waitpid(xwl_wm_pid, &status, WNOHANG);
 			if (res == xwl_wm_pid && WIFEXITED(status)){
+				trace(TRACE_XWL, "kind=status:message=exited");
 				close_xwl();
 			}
 		}
@@ -526,6 +528,11 @@ static int xwl_spawn_wm(bool block, char** argv)
 		dup2(c2p_pipe[1], STDOUT_FILENO);
 		close(p2c_pipe[1]);
 		close(c2p_pipe[0]);
+
+		setsid();
+		int ndev = open("/dev/null", O_WRONLY);
+		dup2(ndev, STDERR_FILENO);
+		close(ndev);
 
 		size_t nargs = 0;
 		while (argv[nargs])
