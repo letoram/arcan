@@ -1148,8 +1148,8 @@ arcan_vobj_id arcan_vint_nextfree()
  * as well, but they wrap to this one as to not expose more of the
  * context stack
  */
-static arcan_vobject* new_vobject(arcan_vobj_id* id,
-	struct arcan_video_context* dctx)
+static arcan_vobject* new_vobject(
+	arcan_vobj_id* id, struct arcan_video_context* dctx)
 {
 	arcan_vobject* rv = NULL;
 
@@ -1909,15 +1909,24 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 	if (!src || !dst || src == dst)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
+/* remove the original target store, substitute in our own */
+	arcan_vint_drop_vstore(dst->vstore);
+
+/* if the source is broken, convert dst to null store (color with bad prg) */
 	if (src->vstore->txmapped == TXSTATE_OFF ||
 		src->vstore->vinf.text.glid == 0 ||
 		FL_TEST(src, FL_PRSIST) ||
 		FL_TEST(dst, FL_PRSIST)
-	)
-		return ARCAN_ERRC_UNACCEPTED_STATE;
+	){
+		populate_vstore(&src->vstore);
+		struct agp_vstore* store = src->vstore;
+		store->txmapped = TXSTATE_OFF;
+		src->program = 0;
 
-/* remove the original target store, substitute in our own */
-	arcan_vint_drop_vstore(dst->vstore);
+		FLAG_DIRTY(dst);
+		return ARCAN_OK;
+	}
+
 	dst->vstore = src->vstore;
 	dst->vstore->refcount++;
 
