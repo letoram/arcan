@@ -120,6 +120,18 @@ void arcan_tui_bufferwnd_release(struct tui_context* T)
 	free(meta);
 }
 
+size_t arcan_tui_bufferwnd_tell(struct tui_context* T, struct tui_bufferwnd_opts* O)
+{
+	struct bufferwnd_meta* M;
+	if (!validate_context(T, &M))
+		return 0;
+
+	if (O){
+		*O = M->opts;
+	}
+	return M->buffer_ofs;
+}
+
 static void step_cursor_e(struct tui_context* T, struct bufferwnd_meta* M);
 
 static bool has_cursor(struct bufferwnd_meta* M)
@@ -1208,25 +1220,25 @@ static void on_key_input(struct tui_context* T, uint32_t keysym,
 	struct bufferwnd_meta* M = tag;
 /* might want to provide the label based approach to these as well, UP/DOWN
  * are at least already registered and handled / forwarded from the base tui */
-	if (keysym == TUIK_DOWN){
+	if (keysym == TUIK_DOWN || keysym == TUIK_J){
 		if (has_cursor(M))
 			step_cursor_s(T, M);
 		else
 			scroll_row_down(T, M);
 	}
-	else if (keysym == TUIK_UP){
+	else if (keysym == TUIK_UP || keysym == TUIK_K){
 		if (has_cursor(M))
 			step_cursor_n(T, M);
 		else
 			scroll_row_up(T, M);
 	}
-	else if (keysym == TUIK_LEFT){
+	else if (keysym == TUIK_LEFT || keysym == TUIK_H){
 		if (has_cursor(M))
 			step_cursor_w(T, M);
 		else
 			scroll_row_up(T, M);
 	}
-	else if (keysym == TUIK_RIGHT){
+	else if (keysym == TUIK_RIGHT || keysym == TUIK_L){
 		if (has_cursor(M))
 			step_cursor_e(T, M);
 		else
@@ -1271,15 +1283,6 @@ void arcan_tui_bufferwnd_synch(
 	M->opts.offset = prefix_ofs;
 
 	redraw_bufferwnd(T, M);
-}
-
-uint64_t arcan_tui_bufferwnd_tell(struct tui_context* T)
-{
-	struct bufferwnd_meta* M;
-	if (!validate_context(T, &M))
-		return 0;
-
-	return M->buffer_pos;
 }
 
 void arcan_tui_bufferwnd_seek(struct tui_context* T, size_t buf_pos)
@@ -1394,7 +1397,7 @@ void arcan_tui_bufferwnd_setup(struct tui_context* T,
 /* save old flags and just set clean + ALTERNATE */
 	meta->old_flags = arcan_tui_set_flags(T, 0);
 	arcan_tui_reset_flags(T, ~0);
-	arcan_tui_set_flags(T, TUI_ALTERNATE);
+	arcan_tui_set_flags(T, TUI_ALTERNATE | TUI_MOUSE);
 
 /* save old handlers */
 	arcan_tui_update_handlers(T,

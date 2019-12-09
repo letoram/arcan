@@ -116,6 +116,12 @@ void arcan_tui_bufferwnd_synch(
  */
 void arcan_tui_bufferwnd_seek(struct tui_context* T, size_t buf_ofs);
 
+/*
+ * Retrieve the current cursor buffer offset and (if set) view options
+ */
+size_t arcan_tui_bufferwnd_tell(
+	struct tui_context* T, struct tui_bufferwnd_opts*);
+
 void arcan_tui_bufferwnd_release(struct tui_context* T);
 
 /*
@@ -133,12 +139,14 @@ typedef void(* PTUIBUFFERWND_SYNCH)(
 	struct tui_context*, uint8_t* buf, size_t, size_t);
 typedef void(* PTUIBUFFERWND_SEEK)(struct tui_context*, size_t);
 typedef int(* PTUIBUFFERWND_STATUS)(struct tui_context*);
+typedef size_t(* PTUIBUFFERWND_TELL)(struct tui_context*, struct tui_bufferwnd_opts*);
 
 static PTUIBUFFERWND_SETUP arcan_tui_bufferwnd_setup;
 static PTUIBUFFERWND_RELEASE arcan_tui_bufferwnd_release;
 static PTUIBUFFERWND_SYNCH arcan_tui_bufferwnd_synch;
 static PTUIBUFFERWND_SEEK arcan_tui_bufferwnd_seek;
 static PTUIBUFFERWND_STATUS arcan_tui_bufferwnd_status;
+static PTUIBUFFERWND_TELL arcan_tui_bufferwnd_tell;
 
 static bool arcan_tui_bufferwnd_dynload(
 	void*(*lookup)(void*, const char*), void* tag)
@@ -149,6 +157,7 @@ M(PTUIBUFFERWND_RELEASE, arcan_tui_bufferwnd_release);
 M(PTUIBUFFERWND_SYNCH, arcan_tui_bufferwnd_synch);
 M(PTUIBUFFERWND_SEEK, arcan_tui_bufferwnd_seek);
 M(PTUIBUFFERWND_STATUS, arcan_tui_bufferwnd_status);
+M(PTUIBUFFERWND_TELL, arcan_tui_bufferwnd_tell);
 return true;
 }
 #endif
