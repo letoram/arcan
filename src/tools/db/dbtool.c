@@ -126,6 +126,8 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
+	arcan_db_addconfig(dst, tid, "default", NULL, 0);
+
 	return EXIT_SUCCESS;
 }
 

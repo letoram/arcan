@@ -34,7 +34,7 @@ static const char* ARCAN_TBL =
 
 static bool db_init = false;
 
-#define DB_VERSION_NUM "3"
+#define DB_VERSION_NUM "4"
 
 #define DDL_TARGET "CREATE TABLE target ("\
 	"tgtid INTEGER PRIMARY KEY,"\
@@ -54,10 +54,11 @@ static bool db_init = false;
 
 #define DDL_CONFIG "CREATE TABLE config ("\
 	"cfgid INTEGER PRIMARY KEY,"\
-	"name STRING UNIQUE NOT NULL,"\
+	"name STRING NOT NULL,"\
 	"passed_counter INTEGER,"\
 	"failed_counter INTEGER,"\
 	"target INTEGER NOT NULL,"\
+	"UNIQUE (name, target),"\
 	"FOREIGN KEY (target) REFERENCES target(tgtid) ON DELETE CASCADE )"
 
 #define DDL_CFG_ARGV "CREATE TABLE config_argv ("\
@@ -67,34 +68,39 @@ static bool db_init = false;
 	"FOREIGN KEY (config) REFERENCES config(cfgid) ON DELETE CASCADE )"
 
 #define DDL_TGT_KV "CREATE TABLE target_kv ("\
-	"key STRING UNIQUE NOT NULL,"\
+	"key STRING NOT NULL,"\
 	"val STRING NOT NULL,"\
 	"target INT NOT NULL,"\
+	"UNIQUE (key, target), "\
 	"FOREIGN KEY (target) REFERENCES target(tgtid) ON DELETE CASCADE )"
 
 #define DDL_CFG_KV "CREATE TABLE config_kv ("\
-	"key STRING UNIQUE NOT NULL,"\
+	"key STRING NOT NULL,"\
 	"val STRING NOT NULL,"\
 	"config INT NOT NULL,"\
+	"UNIQUE (key, config), "\
 	"FOREIGN KEY (config) REFERENCES config(cfgid) ON DELETE CASCADE )"
 
 #define DDL_TGT_ENV "CREATE TABLE target_env ("\
-	"key STRING UNIQUE NOT NULL,"\
+	"key STRING NOT NULL,"\
 	"val STRING NOT NULL,"\
 	"target INT NOT NULL,"\
+	"UNIQUE (key, target), "\
 	"FOREIGN KEY (target) REFERENCES target(tgtid) ON DELETE CASCADE )"
 
 #define DDL_CFG_ENV "CREATE TABLE config_env ("\
-	"key STRING UNIQUE NOT NULL,"\
+	"key STRING NOT NULL,"\
 	"val STRING NOT NULL,"\
 	"config INT NOT NULL,"\
+	"UNIQUE (key, config),"\
 	"FOREIGN KEY (config) REFERENCES target(tgtid) ON DELETE CASCADE )"
 
 #define DDL_TGT_LIBS "CREATE TABLE target_libs ("\
 	"libnum INTEGER PRIMARY KEY,"\
-	"libname STRING UNIQUE NOT NULL,"\
-	"libnote STRING UNIQUE NOT NULL,"\
+	"libname STRING NOT NULL,"\
+	"libnote STRING NOT NULL,"\
 	"target INT NOT NULL,"\
+	"UNIQUE (libname, target),"\
 	"FOREIGN KEY (target) REFERENCES target(tgtid) ON DELETE CASCADE )"
 
 static const char* ddls[] = {
@@ -396,16 +402,15 @@ arcan_configid arcan_db_addconfig(struct arcan_dbh* dbh,
 
 	static const char ddl[] = "INSERT OR REPLACE INTO config(cfgid, name, "
 		"passed_counter, failed_counter, target) VALUES "
-		"((select cfgid FROM config where name = ?), ?, ?, ?, ?)";
+		"(NULL, ?, ?, ?, ?)";
 
 	sqlite3_stmt* stmt;
 	sqlite3_prepare_v2(dbh->dbh, ddl, sizeof(ddl)-1, &stmt, NULL);
 
 	sqlite3_bind_text(stmt, 1, identifier, -1, SQLITE_STATIC);
-	sqlite3_bind_text(stmt, 2, identifier, -1, SQLITE_STATIC);
+	sqlite3_bind_int(stmt, 2, 0);
 	sqlite3_bind_int(stmt, 3, 0);
-	sqlite3_bind_int(stmt, 4, 0);
-	sqlite3_bind_int(stmt, 5, id);
+	sqlite3_bind_int(stmt, 4, id);
 
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
@@ -900,6 +905,7 @@ void arcan_db_end_transaction(struct arcan_dbh* dbh)
 			"called without any open transaction.");
 
 	sqlite3_finalize(dbh->transaction);
+
 	if (dbh->trclean){
 		switch (dbh->ttype){
 		case DVT_APPL:
@@ -1029,8 +1035,10 @@ static bool dbh_integrity_check(struct arcan_dbh* dbh){
 		case 0:
 		case 1:
 		case 2:
-			arcan_warning("Using old / deprecated database format,please rebuild.\n");
+			arcan_warning("DB version (< 3) unsupported, rebuild necessary\n");
 			return false;
+		case 3:
+			arcan_warning("DB version (< 4) found, rebuild suggested\n");
 	}
 
 	arcan_mem_free(valstr);
