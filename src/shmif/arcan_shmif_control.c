@@ -2642,8 +2642,11 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 		return NULL;
 	}
 
-	while(waitpid(pid, NULL, 0) == -1 && errno == EINTR){
-	}
+/* temporary override any existing handler */
+	struct sigaction oldsig;
+	sigaction(SIGCHLD, &(struct sigaction){}, &oldsig);
+	while(waitpid(pid, NULL, 0) == -1 && errno == EINTR){}
+	sigaction(SIGCHLD, &oldsig, NULL);
 
 /* retrieve shmkeyetc. like with connect */
 	free(work);
@@ -3102,11 +3105,11 @@ pid_t arcan_shmif_handover_exec(
 		}
 
 		if ((detach & 1) && (pid = fork()) != 0)
-			exit(pid > 0 ? EXIT_SUCCESS : EXIT_FAILURE);
+			_exit(pid > 0 ? EXIT_SUCCESS : EXIT_FAILURE);
 
 /* GNU or BSD4.2 */
 		execve(path, argv, new_env);
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 
 	CLEAN_ENV();

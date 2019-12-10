@@ -15,7 +15,7 @@
  *    use an attribute for level so |-> can be added do sub-ones,
  *    more difficult is adding an expand-collapse so selection would expand
  *  - handle accessibility subwindow (provide only selected item for t2s)
- *  - allow multiple column formats for wide windows
+ *  - allow multiple weighted column formats for wider windows
  *  - prefix typing for searching
  */
 
@@ -58,7 +58,7 @@ struct listwnd_meta {
 };
 
 /* context validation, perform on every exported symbol */
-static bool validate(struct tui_context* T)
+static bool validate(struct tui_context* T, struct listwnd_meta** M)
 {
 	if (!T)
 		return false;
@@ -69,6 +69,9 @@ static bool validate(struct tui_context* T)
 	struct listwnd_meta* ch = handlers.tag;
 	if (!ch || ch->magic != LISTWND_MAGIC)
 		return false;
+
+	if (M)
+		*M = ch;
 
 	return true;
 }
@@ -82,6 +85,15 @@ static size_t get_visible_offset(struct listwnd_meta* M)
 		ofs++;
 	}
 	return ofs;
+}
+
+ssize_t arcan_tui_listwnd_tell(struct tui_context* T)
+{
+	struct listwnd_meta* M;
+	if (!validate(T, &M))
+		return -1;
+
+	return M->list_pos;
 }
 
 static void redraw(struct tui_context* T, struct listwnd_meta* M)
@@ -167,6 +179,18 @@ static void redraw(struct tui_context* T, struct listwnd_meta* M)
 	}
 
 	arcan_tui_defattr(T, &reset_def);
+}
+
+void arcan_tui_listwnd_setpos(struct tui_context* T, size_t n)
+{
+	struct listwnd_meta* M;
+	if (!validate(T, &M))
+		return;
+
+	if (n < M->list_sz)
+		M->list_pos = n;
+
+	redraw(T, M);
 }
 
 static void select_current(struct tui_context* T, struct listwnd_meta* M)
@@ -292,13 +316,11 @@ static void step_cursor_s(struct tui_context* T, struct listwnd_meta* M)
 
 void arcan_tui_listwnd_dirty(struct tui_context* T)
 {
-	if (!validate(T))
+	struct listwnd_meta* M;
+	if (!validate(T, &M))
 		return;
 
-	struct tui_cbcfg handlers;
-	arcan_tui_update_handlers(T, NULL, &handlers, sizeof(struct tui_cbcfg));
-
-	redraw(T, (struct listwnd_meta*) handlers.tag);
+	redraw(T, M);
 }
 
 static bool u8(struct tui_context* T, const char* u8, size_t len, void* tag)
@@ -324,12 +346,9 @@ static bool u8(struct tui_context* T, const char* u8, size_t len, void* tag)
 
 bool arcan_tui_listwnd_status(struct tui_context* T, struct tui_list_entry** out)
 {
-	if (!validate(T))
+	struct listwnd_meta* M;
+	if (!validate(T, &M))
 		return false;
-
-	struct tui_cbcfg handlers;
-	arcan_tui_update_handlers(T, NULL, &handlers, sizeof(struct tui_cbcfg));
-	struct listwnd_meta* M = handlers.tag;
 
 	if (!M->entry_state)
 		return false;
@@ -437,14 +456,9 @@ static void key_input(struct tui_context* T, uint32_t keysym,
 
 void arcan_tui_listwnd_release(struct tui_context* T)
 {
-	if (!validate(T))
+	struct listwnd_meta* M;
+	if (!validate(T, &M))
 		return;
-
-/* retrieve current handlers, get meta structure from the tag there and
- * use the handle- table in that structure to restore */
-	struct tui_cbcfg handlers;
-	arcan_tui_update_handlers(T, NULL, &handlers, sizeof(struct tui_cbcfg));
-	struct listwnd_meta* M = handlers.tag;
 
 /* restore old flags */
 	arcan_tui_reset_flags(T, ~0);

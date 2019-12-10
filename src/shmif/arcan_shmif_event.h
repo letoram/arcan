@@ -491,15 +491,17 @@ enum ARCAN_TARGET_COMMAND {
  *              2: switch local connection:
  *                 message field will contain new _CONNPATH otherwise
  *                 connection primitive will be passed as handle.
- *              3: switch remote connection:
- *                 message field will contain new _CONNPATH otherwise
- *                 connection primitive will be passed handle.
+ *              3: [DEPRECATED]
  *              4: hint alternative connection, will not be forwarded but
  *                 tracked internally to use as a different connection path
  *                 on parent failure. Uses message field.
  *              5: reply to a request for privileged device access,
  *                 this is special magic used for bridging DRI2 and will
  *                 weaken security.
+ *
+ * Note: for the [1].iv == 2, 4 cases, the remote address (keyid:host:port) may
+ * be longer than the permitted message length. In such cases, the code field
+ * of the target event structure is used to indicate continuation (=1).
  *
  * [for [1].iv == 1]
  * ioev[2].iv = 0: indirect-, output handles for buffer passing will be used

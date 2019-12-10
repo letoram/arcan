@@ -82,6 +82,16 @@ bool arcan_tui_listwnd_status(
 	struct tui_context*, struct tui_list_entry** out);
 
 /*
+ * Manually set the currently selected item to n where 0 <= n < n_entries
+ */
+void arcan_tui_listwnd_setpos(struct tui_context*, size_t n);
+
+/*
+ * Retrieve the currently selected index
+ */
+ssize_t arcan_tui_listwnd_tell(struct tui_context*);
+
+/*
  * Force a reprocess of the list and entries, next refresh/process call
  * will update the render output state. Use when modifying flags field
  * of entries.
@@ -104,11 +114,15 @@ typedef bool(* PTUILISTWND_STATUS)(
 	struct tui_context*, struct tui_list_entry** out);
 typedef void(* PTUILISTWND_DIRTY)(struct tui_context*);
 typedef void(* PTUILISTWND_RELEASE)(struct tui_context*);
+typedef void(* PTUILISTWND_SETPOS)(struct tui_context*, size_t);
+typedef ssize_t(* PTUILISTWND_TELL)(struct tui_context*);
 
 static PTUILISTWND_SETUP arcan_tui_listwnd_setup;
 static PTUILISTWND_STATUS arcan_tui_listwnd_status;
 static PTUILISTWND_DIRTY arcan_tui_listwnd_dirty;
 static PTUILISTWND_RELEASE arcan_tui_listwnd_release;
+static PTUILISTWND_SETPOS arcan_tui_listwnd_setpos;
+static PTUILISTWND_TELL arcan_tui_listwnd_tell;
 
 static bool arcan_tui_listwnd_dynload(
 	void*(*lookup)(void*, const char*), void* tag)
@@ -118,6 +132,8 @@ M(PTUILISTWND_SETUP, arcan_tui_listwnd_setup);
 M(PTUILISTWND_STATUS, arcan_tui_listwnd_status);
 M(PTUILISTWND_DIRTY, arcan_tui_listwnd_dirty);
 M(PTUILISTWND_RELEASE, arcan_tui_listwnd_release);
+M(PTUILISTWND_SETPOS, arcan_tui_listwnd_setpos);
+M(PTUILISTWND_TELL, arcan_tui_listwnd_tell);
 return true;
 }
 #endif
