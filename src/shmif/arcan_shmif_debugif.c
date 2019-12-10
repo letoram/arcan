@@ -348,7 +348,11 @@ refill:
 				ssize_t nr = read(fdin, &buf[buf_pos], buf_sz - buf_pos);
 				if (nr > 0){
 					buf_pos += nr;
-					arcan_tui_bufferwnd_synch(tui, buf, buf_pos, 0);
+					arcan_tui_bufferwnd_synch(tui,
+						buf, buf_pos, arcan_tui_bufferwnd_tell(tui, NULL));
+
+					if (buf_sz == buf_pos)
+						read_data = false;
 				}
 			}
 		}
@@ -362,6 +366,8 @@ refill:
 	if (status == 0){
 		if (mim_flush(tui, buf, buf_pos, fdout)){
 			buf_pos = 0;
+			arcan_tui_bufferwnd_tell(tui, &opts);
+			read_data = true;
 			goto refill;
 		}
 	}
