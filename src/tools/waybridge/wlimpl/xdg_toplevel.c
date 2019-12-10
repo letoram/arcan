@@ -66,13 +66,19 @@ static bool xdgtoplevel_shmifev_handler(
 		}
 		return true;
 		break;
+
+/* Previously we flushed callbacks and released buffers here, but afaict
+ * the proper procedure is to let the client do the closing as a response to
+ * send_close. After this all arcan- related calls will fail on the surface, so
+ * chances are that a window could go with something like 'do you really want
+ * to close' and we can't actually draw that anywhere, this is not really
+ * solvable, can only warn the appl- side about the perils of force closing a
+ * wayland surface - unless there is some error we can send to fake it */
 		case TARGET_COMMAND_EXIT:
-			if (surf->last_buf){
-				wl_buffer_send_release(surf->last_buf);
-				surf->last_buf = NULL;
-			}
+/*
+ * try_frame_callback(surf, &surf->acon);
+ */
 			xdg_toplevel_send_close(surf->shell_res);
-			try_frame_callback(surf, &surf->acon);
 			return true;
 		break;
 		default:
