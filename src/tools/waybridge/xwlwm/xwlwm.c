@@ -7,17 +7,10 @@
  * surfaces etc. Decoupled from the normal XWayland so that both sides can be
  * sandboxed better and possibly used for a similar -rootless mode in Xarcan.
  *
- * Todo:
- * [ ] Use TUI to create the debug output window
- *     - track number of surfaces, event order, ...
- *
  * [ ] Multiple- windows seem to need some kind of coordinate translation
  *
  * [ ] XEmbed etc.
  *
- * [ ] Clipboard could/should be done with us inheriting an arcan segment
- *     that is setup for clipboard, then we connect our clipboard manager
- *     to the xserver and go at it like that, don't need to involve wayland.
  */
 #define _GNU_SOURCE
 #include <arcan_shmif.h>
@@ -25,6 +18,10 @@
 #include <errno.h>
 #include <signal.h>
 #include <stdarg.h>
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <sys/wait.h>
+#include <sys/types.h>
 
 /* #include <X11/XCursor/XCursor.h> */
 #include <xcb/xcb.h>
@@ -642,33 +639,22 @@ static void* process_thread(void* arg)
 int main (int argc, char **argv)
 {
 	int code;
-
 	xcb_generic_event_t *ev;
 
-	if (getenv("ARCAN_XWLWM_LOGOUT")){
-		freopen(getenv("ARCAN_XWLWM_LOGOUT"), "w+", stderr);
-	}
+	sigaction(SIGCHLD, &(struct sigaction){
+		.sa_handler = on_chld, .sa_flags = 0}, 0);
 
-	if (getenv("ARCAN_XWLWM_DEBUGSTALL")){
-		volatile bool sleeper = true;
-		while (sleeper){}
-	}
-
-	signal(SIGCHLD, on_chld);
+	sigaction(SIGPIPE, &(struct sigaction){
+		.sa_handler = SIG_IGN, .sa_flags = 0}, 0);
 
 /* standalone mode is to test/debug the WM against an externally managed X,
  * this runs without the normal inherited/rootless setup */
 	xwm_standalone = argc > 1 && strcmp(argv[1], "-standalone") == 0;
-	if (xwm_standalone){
-		freopen("wm.log", "w", stdout);
-		argv--;
-		argv = &argv[1];
-		goto startx;
-	}
+	bool single_exec = !xwm_standalone && argc > 1;
 
 /*
- * Now we spawn the XWayland instance with a pipe- pair so that we can read
- * when the server is ready
+ * Now we spawn the XWayland instance with a pipe- pair so that we can
+ * read when the server is ready
  */
 	int notification[2];
 	if (-1 == pipe(notification)){
@@ -676,13 +662,37 @@ int main (int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
+	int wmfd[2] = {-1, -1};
+	if (-1 == socketpair(AF_UNIX, SOCK_STREAM, 0, wmfd)){
+		fprintf(stderr, "couldn't create wm socket\n");
+		return EXIT_FAILURE;
+	}
+	int flags = fcntl(wmfd[0], F_GETFD);
+	fcntl(wmfd[0], F_SETFD, flags | O_CLOEXEC);
+
 	pid_t xwayland = fork();
 	if (0 == xwayland){
 		close(notification[0]);
-		char* argv[] = {"Xwayland", "-rootless", "-displayfd", NULL, NULL};
-		asprintf(&argv[3], "%d", notification[1]);
+		char* argv[] = {
+			"Xwayland", "-rootless",
+			"-displayfd", NULL,
+			"-wm", NULL,
+			NULL, NULL};
 
-/* note, we have -terminate, -noreset, -wm (fd), -eglstream (?) */
+		asprintf(&argv[3], "%d", notification[1]);
+		if (single_exec)
+			argv[6] = "-terminate";
+
+		asprintf(&argv[5], "%d", wmfd[1]);
+
+/* note, we also have -noreset, -eglstream (?) */
+		int ndev = open("/dev/null", O_RDWR);
+		dup2(ndev, STDIN_FILENO);
+		dup2(ndev, STDOUT_FILENO);
+		dup2(ndev, STDERR_FILENO);
+		close(ndev);
+		setsid();
+
 		execvp("Xwayland", argv);
 		exit(EXIT_FAILURE);
 	}
@@ -692,7 +702,7 @@ int main (int argc, char **argv)
 	}
 
 /*
- * wait for a reply from the Xwayland setup
+ * wait for a reply from the Xwayland setup, we can also get that as a SIGUSR1
  */
 	trace("waiting for display");
 	char inbuf[64] = {0};
@@ -702,10 +712,6 @@ int main (int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-/*
- * there is some way to get a wm-fd out of xorg so that we could just connect
- * that immediately instead, but env for now
- */
 	unsigned long num = strtoul(inbuf, NULL, 10);
 	char dispnum[8];
 	snprintf(dispnum, 8, ":%lu", num);
@@ -715,8 +721,7 @@ int main (int argc, char **argv)
 /*
  * since we have gotten a reply, the display should be ready, just connect
  */
-startx:
-	dpy = xcb_connect(NULL, NULL);
+	dpy = xcb_connect_to_fd(wmfd[0], NULL);
 	if ((code = xcb_connection_has_error(dpy))){
 		fprintf(stderr, "Couldn't open display (%d)\n", code);
 		return EXIT_FAILURE;
@@ -761,17 +766,21 @@ startx:
 	}
 
 /*
- * now it should be safe to chain-execute any single client we'd want,
- * and unlink on connect should we want to avoid more clients connecting
- * to the display
+ * Now it should be safe to chain-execute any single client we'd want, and
+ * unlink on connect should we want to avoid more clients connecting to the
+ * display, this will block / stop clients that proxy/spawn multiples etc.
+ *
+ * To retain that kind of isolation the other option is to create a
+ * new namespace for this tree and keep the references around in there.
  */
-	if (!xwm_standalone && argc > 1){
-		int rv = fork();
-		if (-1 == rv){
+	pid_t exec_child = -1;
+	if (single_exec){
+		exec_child = fork();
+		if (-1 == exec_child){
 			fprintf(stderr, "-exec (%s), couldn't fork\n", argv[1]);
 			return EXIT_FAILURE;
 		}
-		else if (0 == rv){
+		else if (0 == exec_child){
 /* remove the display variable, but also unlink the parent socket for the
  * normal 'default' display as some toolkits also fallback and check for it */
 			const char* disp = getenv("WAYLAND_DISPLAY");
@@ -786,6 +795,14 @@ startx:
 			}
 
 			unsetenv("WAYLAND_DISPLAY");
+
+			int ndev = open("/dev/null", O_RDWR);
+			dup2(ndev, STDIN_FILENO);
+			dup2(ndev, STDOUT_FILENO);
+			dup2(ndev, STDERR_FILENO);
+			close(ndev);
+			setsid();
+
 			execvp(argv[1], &argv[1]);
 			return EXIT_FAILURE;
 		}
@@ -868,5 +885,20 @@ startx:
 		xcb_flush(dpy);
 	}
 
-return 0;
+	if (exec_child == -1)
+		kill(SIGHUP, exec_child);
+
+	if (xwayland != -1)
+		kill(SIGHUP, xwayland);
+
+	while(exec_child != -1 || xwayland != -1){
+		int status;
+		pid_t wpid = wait(&status);
+		if (wpid == exec_child && WIFEXITED(status))
+			exec_child = -1;
+		if (wpid == xwayland && WIFEXITED(status))
+			xwayland = -1;
+	}
+
+	return 0;
 }

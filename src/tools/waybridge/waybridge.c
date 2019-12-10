@@ -1025,6 +1025,7 @@ static int show_use(const char* msg, const char* arg)
 "\nProtocol Filters:\n"
 "\t-no-egl           disable the wayland-egl extensions\n"
 "\t       -no-drm    disable the drm subprotocol\n"
+"\t       -no-dma    disable the dma-buf subprotocol\n"
 "\t-no-compositor    disable the compositor protocol\n"
 "\t-no-subcompositor disable the sub-compositor/surface protocol\n"
 "\t-no-shell         disable the shell protocol\n"
