@@ -29,4 +29,6 @@ static void zdmabuf_params(
 		wl_resource_post_no_memory(res);
 		return;
 	}
+
+	wl_resource_set_implementation(attr_res, &zdmabuf_params_if, NULL, NULL);
 }
