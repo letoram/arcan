@@ -30,6 +30,8 @@
 
 #include "../uthash.h"
 
+static pthread_mutex_t logout_synch = PTHREAD_MUTEX_INITIALIZER;
+
 struct xwnd_state {
 	bool mapped;
 	bool paired;
@@ -71,18 +73,43 @@ static void on_dbgreq(int num)
 
 static inline void trace(const char* msg, ...)
 {
+	FILE* dst = stderr;
+
+#ifdef _DEBUG
+	dst = stdout;
+#endif
+
 	va_list args;
 	va_start( args, msg );
-		vfprintf(stderr,  msg, args );
-		fprintf(stderr, "\n");
+		vfprintf(dst,  msg, args );
+		fprintf(dst, "\n");
 	va_end( args);
-	fflush(stderr);
+	fflush(dst);
 }
+
+#ifdef _DEBUG
+#define TRACE_PREFIX "kind=trace:"
+#else
+#define TRACE_PREFIX ""
+#endif
+
+#define trace(Y, ...) do { \
+	pthread_mutex_lock(&logout_synch); \
+	trace("%sts=%lld:" Y, TRACE_PREFIX, arcan_timemillis(), ##__VA_ARGS__);\
+	pthread_mutex_unlock(&logout_synch); \
+} while (0)
 
 static inline void wm_command(bool flush, const char* msg, ...)
 {
 	va_list args;
 	va_start(args, msg);
+	static bool in_lock;
+
+	if (!in_lock){
+		pthread_mutex_lock(&logout_synch);
+		in_lock = true;
+	}
+
 	vfprintf(stdout, msg, args);
 	va_end(args);
 
@@ -92,6 +119,8 @@ static inline void wm_command(bool flush, const char* msg, ...)
 
 	if (flush){
 		fflush(stdout);
+		in_lock = false;
+		pthread_mutex_unlock(&logout_synch);
 	}
 }
 
@@ -108,7 +137,7 @@ static void scan_atoms()
 			atoms[i] = reply->atom;
 		}
 		if (error){
-			trace("atom (%s) failed with code (%d)\n", atom_map[i], error->error_code);
+			trace("atom (%s) failed with code (%d)", atom_map[i], error->error_code);
 			free(error);
 		}
 		free(reply);
@@ -238,9 +267,10 @@ static const char* check_window_state(uint32_t id)
 /* couldn't find out more, just map it and hope */
 	bool popup = false, dnd = false, menu = false, notification = false;
 	bool splash = false, tooltip = false, utility = false, dropdown = false;
+	bool fullscreen = false;
 
 	if (!reply){
-		trace("no reply on window type atom\n");
+		trace("no reply on window type atom");
 		return "unknown";
 	}
 
@@ -252,12 +282,17 @@ static const char* check_window_state(uint32_t id)
 	splash = has_atom(reply, NET_WM_WINDOW_TYPE_SPLASH);
 	tooltip = has_atom(reply, NET_WM_WINDOW_TYPE_TOOLTIP);
 	utility = has_atom(reply, NET_WM_WINDOW_TYPE_UTILITY);
+	fullscreen = has_atom(reply, NET_WM_STATE_FULLSCREEN);
+
 	free(reply);
 
-	trace("wnd-state:%"PRIu32",popup=%d,menu=%d,dnd=%d,dropdown=%d,"
-		"notification=%d,splash=%d,tooltip=%d,utility=%d", id, popup, dnd,
-		dropdown, menu, notification, splash, tooltip, utility
+/*
+ * trace("wnd-state:%"PRIu32",popup=%d,menu=%d,dnd=%d,dropdown=%d,"
+		"notification=%d,splash=%d,tooltip=%d,utility=%d:fullscreen=%d",
+		id, popup, menu, dnd, dropdown, notification, splash,
+		tooltip, utility, fullscreen
 	);
+*/
 
 /* just string- translate and leave for higher layers to deal with */
 	if (popup)
@@ -291,14 +326,7 @@ static void send_updated_window(struct xwnd_state* wnd, const char* kind)
  * _NET_WM_WINDOW_TYPE replaces MOTIF_wm_HINTS so we much prefer that as it
  * maps to the segment type.
  */
-	if (!wnd->mapped || !wnd->paired){
-		return;
-	}
 	trace("update_window:%s:%"PRId32",%"PRId32, kind, wnd->x, wnd->y);
-
-	wm_command(WM_APPEND,
-		"kind=%s:id=%"PRIu32":type=%s",
-		kind, wnd->id, check_window_state(wnd->id));
 
 	xcb_get_property_cookie_t cookie = xcb_get_property(dpy,
 		0, wnd->id, XCB_ATOM_WM_TRANSIENT_FOR, XCB_ATOM_WINDOW, 0, 2048);
@@ -306,9 +334,17 @@ static void send_updated_window(struct xwnd_state* wnd, const char* kind)
 
 	if (reply){
 		xcb_window_t* pwd = xcb_get_property_value(reply);
-		wm_command(WM_APPEND, ":parent_id=%"PRIu32, *pwd);
+		wm_command(WM_FLUSH,
+			"kind=%s:id=%"PRIu32":type=%s:x=%"PRId32":y=%"PRId32":parent_id=%"PRIu32,
+			kind, wnd->id, check_window_state(wnd->id), wnd->x, wnd->y, *pwd
+		);
 		free(reply);
 	}
+	else
+		wm_command(WM_FLUSH,
+			"kind=%s:id=%"PRIu32":type=%s:x=%"PRId32":y=%"PRId32,
+			kind, wnd->id, check_window_state(wnd->id), wnd->x, wnd->y
+		);
 
 /*
  * a bunch of translation heuristics here:
@@ -324,7 +360,6 @@ static void send_updated_window(struct xwnd_state* wnd, const char* kind)
  *  input, initial_state, pixmap, window, position, mask, group,
  *  message, urgency
  */
-	wm_command(WM_FLUSH, ":x=%"PRId32":y=%"PRId32, wnd->x, wnd->y);
 }
 
 static void xcb_create_notify(xcb_create_notify_event_t* ev)
@@ -383,26 +418,22 @@ static void xcb_map_request(xcb_map_request_event_t* ev)
  * type and checking seems to work ok (xwl.c) */
 	trace("map-request:%"PRIu32, ev->window);
 
+	struct xwnd_state* state;
+	HASH_FIND_INT(windows,&ev->window,state);
+
+/* ICCCM_NORMAL_STATE */
+	xcb_change_property(dpy,
+		XCB_PROP_MODE_REPLACE, ev->window, atoms[WM_STATE],
+		atoms[WM_STATE], 32, 2, (uint32_t[]){1, XCB_WINDOW_NONE});
+
 /* for popup- windows, we kindof need to track override-redirect here */
 	xcb_configure_window(dpy, ev->window,
 		XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_BELOW});
 
 	xcb_map_window(dpy, ev->window);
 
-	struct xwnd_state* state;
-	HASH_FIND_INT(windows,&ev->window,state);
-	if (state){
-		trace("mark-mapped:%"PRIu32, ev->window);
+	if (state)
 		state->mapped = true;
-	}
-	else {
-		trace("couldn't find:%"PRIu32, ev->window);
-	}
-
-/* ICCCM_NORMAL_STATE */
-	xcb_change_property(dpy,
-		XCB_PROP_MODE_REPLACE, ev->window, atoms[WM_STATE],
-		atoms[WM_STATE], 32, 2, (uint32_t[]){1, XCB_WINDOW_NONE});
 }
 
 static void xcb_reparent_notify(xcb_reparent_notify_event_t* ev)
@@ -527,18 +558,44 @@ static void xcb_configure_request(xcb_configure_request_event_t* ev)
 		XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
 		XCB_CONFIG_WINDOW_BORDER_WIDTH;
 
+/* just some kind of default, we don't have any forwarding of 'next window size' */
+	int w = 320;
+	int h = 200;
+	if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH)
+		w = ev->width;
+
+	if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH)
+		h = ev->height;
+
+	uint32_t values[8] = {
+		ev->x,
+		ev->y,
+		w,
+		h
+	};
+	int pos = 5;
+
+	if (ev->value_mask & XCB_CONFIG_WINDOW_SIBLING){
+		values[pos++] = ev->sibling;
+		mask |= XCB_CONFIG_WINDOW_SIBLING;
+	}
+
+	if (ev->value_mask & XCB_CONFIG_WINDOW_STACK_MODE){
+		values[pos++] = ev->stack_mode;
+		mask |= XCB_CONFIG_WINDOW_STACK_MODE;
+	}
+
 /* just ack the configure request for now, this should really be deferred
  * until we receive the corresponding command from our parent but we lack
  * that setup right now */
 
-	xcb_configure_window(dpy, ev->window, mask,
-	(uint32_t[]){ev->x, ev->y, ev->width, ev->height, 0}
-	);
+	xcb_configure_window(dpy, ev->window, mask, values);
 }
 
 static void update_focus(int64_t id)
 {
 	struct xwnd_state* state = NULL;
+
 	if (id != -1)
 		HASH_FIND_INT(windows,&id,state);
 
@@ -548,7 +605,7 @@ static void update_focus(int64_t id)
 			XCB_INPUT_FOCUS_POINTER_ROOT, XCB_NONE, XCB_TIME_CURRENT_TIME);
 	}
 	else {
-		if (state->override_redirect)
+		if (!state->override_redirect)
 			return;
 
 		xcb_client_message_event_t msg = (xcb_client_message_event_t){
@@ -559,13 +616,13 @@ static void update_focus(int64_t id)
 			.data.data32[0] = atoms[WM_TAKE_FOCUS],
 			.data.data32[1] = XCB_TIME_CURRENT_TIME
 		};
+
 		xcb_send_event(dpy, 0, id, XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT, (char*)&msg);
 		xcb_set_input_focus(dpy,
 			XCB_INPUT_FOCUS_POINTER_ROOT, id, XCB_TIME_CURRENT_TIME);
 		xcb_configure_window(dpy, id,
 			XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_ABOVE, 0});
 	}
-	xcb_flush(dpy);
 }
 
 static void xcb_focus_in(xcb_focus_in_event_t* ev)
@@ -597,9 +654,18 @@ static void process_wm_command(const char* arg)
 	const char* dst;
 	if (!arg_lookup(args, "id", 0, &dst)){
 		fprintf(stderr, "malformed argument: %s, missing id\n", arg);
+		goto cleanup;
 	}
 
+/* and they should be present in the wnd table */
+	struct xwnd_state* state = NULL;
 	uint32_t id = strtoul(dst, NULL, 10);
+	HASH_FIND_INT(windows,&id,state);
+	if (!state){
+		fprintf(stderr, "unknown ID: %s\n", dst);
+		goto cleanup;
+	}
+
 	if (!arg_lookup(args, "kind", 0, &dst)){
 		fprintf(stderr, "malformed argument: %s, missing kind\n", arg);
 		goto cleanup;
@@ -621,20 +687,35 @@ static void process_wm_command(const char* arg)
 		size_t h = strtoul(dst, NULL, 10);
 		trace("srv-resize(%d)(%zu, %zu)", id, w, h);
 
-		const char* state = check_window_state(id);
-		if (strcmp(state, "default") == 0){
+		const char* wtype = check_window_state(id);
+		if (strcmp(wtype, "default") == 0){
 			xcb_configure_window(dpy, id,
 				XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
 				XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
 				XCB_CONFIG_WINDOW_BORDER_WIDTH,
-				(uint32_t[]){0, 0, w, h, 0}
+				(uint32_t[]){state->x, state->y, w, h, 0}
 			);
-			xcb_flush(dpy);
 		}
 /* just don't configure popups etc. */
 		else {
 			trace("srv->resize(%d), ignore (popup/...) : %s", id, state);
 		}
+	}
+/* absolute positioned window position need to be synched */
+	else if (strcmp(dst, "move") == 0){
+		arg_lookup(args, "width", 0, &dst);
+		ssize_t x = strtol(dst, NULL, 10);
+		arg_lookup(args, "height", 0, &dst);
+		ssize_t y = strtol(dst, NULL, 10);
+		trace("srv-move(%d)(%zd, %zd)", id, x, y);
+		state->x = x;
+		state->y = y;
+		xcb_configure_window(dpy, id,
+			XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
+			XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
+			XCB_CONFIG_WINDOW_BORDER_WIDTH,
+			(uint32_t[]){x, y, state->w, state->h, 0}
+		);
 	}
 	else if (strcmp(dst, "destroy") == 0){
 /* check if window support WM_DELETE_WINDOW, and if so: */
@@ -650,7 +731,6 @@ static void process_wm_command(const char* arg)
 				}
 			};
 			xcb_send_event(dpy, false, wnd, XCB_EVENT_MASK_NO_EVENT, (char*)&ev);
-			xcb_flush(dpy);
 		}
 		else {
 			trace("srv-destroy, delete_kill(%d)", id);
@@ -662,7 +742,6 @@ static void process_wm_command(const char* arg)
 		if (input_focus == id){
 			update_focus(-1);
 		}
-		xcb_flush(dpy);
 	}
 	else if (strcmp(dst, "focus") == 0){
 		trace("srv-focus(%d)", id);
@@ -709,10 +788,86 @@ static void* process_thread(void* arg)
 	return NULL;
 }
 
+static void run_event()
+{
+	xcb_generic_event_t* ev = xcb_wait_for_event(dpy);
+	if (ev->response_type == 0){
+		return;
+	}
+
+	switch (ev->response_type & ~0x80) {
+/* the following are mostly relevant for "UI" events if the decorations are
+* implemented in the context of X rather than at a higher level. Since this
+* doesn't really apply to us, these can be ignored */
+	case XCB_BUTTON_PRESS:
+		trace("button-press");
+	break;
+	case XCB_MOTION_NOTIFY:
+		trace("motion-notify");
+	break;
+	case XCB_BUTTON_RELEASE:
+		trace("button-release");
+	break;
+	case XCB_ENTER_NOTIFY:
+		trace("enter-notify");
+	break;
+	case XCB_LEAVE_NOTIFY:
+		trace("leave-notify");
+	break;
+/*
+* end of 'UI notifications'
+*/
+	case XCB_CREATE_NOTIFY:
+		xcb_create_notify((xcb_create_notify_event_t*) ev);
+	break;
+	case XCB_MAP_REQUEST:
+		xcb_map_request((xcb_map_request_event_t*) ev);
+	break;
+	case XCB_MAP_NOTIFY:
+		xcb_map_notify((xcb_map_notify_event_t*) ev);
+	break;
+	case XCB_UNMAP_NOTIFY:
+		xcb_unmap_notify((xcb_unmap_notify_event_t*) ev);
+	break;
+	case XCB_REPARENT_NOTIFY:
+		xcb_reparent_notify((xcb_reparent_notify_event_t*) ev);
+	break;
+	case XCB_CONFIGURE_REQUEST:
+		xcb_configure_request((xcb_configure_request_event_t*) ev);
+	break;
+	case XCB_CONFIGURE_NOTIFY:
+		xcb_configure_notify((xcb_configure_notify_event_t*) ev);
+	break;
+	case XCB_DESTROY_NOTIFY:
+		xcb_destroy_notify((xcb_destroy_notify_event_t*) ev);
+	break;
+/* keyboards / pointer / notifications, not interesting here
+ * unless going for some hotkey etc. kind of a thing */
+	case XCB_MAPPING_NOTIFY:
+		trace("mapping-notify");
+	break;
+	case XCB_PROPERTY_NOTIFY:
+		trace("property-notify");
+	break;
+	case XCB_CLIENT_MESSAGE:
+		xcb_client_message((xcb_client_message_event_t*) ev);
+	break;
+	case XCB_FOCUS_IN:
+		xcb_focus_in((xcb_focus_in_event_t*) ev);
+	break;
+	case XCB_SELECTION_NOTIFY:
+		trace("selection");
+/* xcb_iccc,_get_text_property, text_property_reply */
+	break;
+	default:
+		trace("unhandled: %"PRIu8, ev->response_type);
+	break;
+	}
+}
+
 int main (int argc, char **argv)
 {
 	int code;
-	xcb_generic_event_t *ev;
 
 	sigaction(SIGCHLD, &(struct sigaction){
 		.sa_handler = on_chld, .sa_flags = 0}, 0);
@@ -778,24 +933,30 @@ int main (int argc, char **argv)
  * wait for a reply from the Xwayland setup, we can also get that as a SIGUSR1
  * but it's better to have that as a way of firing up a debug-info chain
  */
-	trace("waiting for display");
-	char inbuf[64] = {0};
-	int rv = read(notification[0], inbuf, 63);
-	if (-1 == rv){
-		fprintf(stderr, "error reading from Xwayland: %s\n", strerror(errno));
-		return EXIT_FAILURE;
-	}
+	if (!xwm_standalone){
+		trace("waiting for display");
+		char inbuf[64] = {0};
+		int rv = read(notification[0], inbuf, 63);
+		if (-1 == rv){
+			fprintf(stderr, "error reading from Xwayland: %s\n", strerror(errno));
+			return EXIT_FAILURE;
+		}
 
-	unsigned long num = strtoul(inbuf, NULL, 10);
-	char dispnum[8];
-	snprintf(dispnum, 8, ":%lu", num);
-	setenv("DISPLAY", dispnum, 1);
-	close(notification[0]);
+		unsigned long num = strtoul(inbuf, NULL, 10);
+		char dispnum[8];
+		snprintf(dispnum, 8, ":%lu", num);
+		setenv("DISPLAY", dispnum, 1);
+		close(notification[0]);
 
 /*
  * since we have gotten a reply, the display should be ready, just connect
  */
-	dpy = xcb_connect_to_fd(wmfd[0], NULL);
+		dpy = xcb_connect_to_fd(wmfd[0], NULL);
+	}
+	else{
+		dpy = xcb_connect(NULL, NULL);
+	}
+
 	if ((code = xcb_connection_has_error(dpy))){
 		fprintf(stderr, "Couldn't open display (%d)\n", code);
 		return EXIT_FAILURE;
@@ -831,23 +992,28 @@ int main (int argc, char **argv)
 		XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
 		XCB_EVENT_MASK_PROPERTY_CHANGE, 0, 0
 	});
+
 	if (!xwm_standalone){
 		xcb_composite_redirect_subwindows(
 			dpy, root, XCB_COMPOSITE_REDIRECT_MANUAL);
 	}
-	xcb_flush(dpy);
 
 /*
  * xcb is thread-safe, so we can have one thread for incoming
  * dispatch and another thread for outgoing dispatch
  */
-	if (!xwm_standalone){
-		pthread_t pth;
-		pthread_attr_t pthattr;
-		pthread_attr_init(&pthattr);
-		pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-		pthread_create(&pth, &pthattr, process_thread, NULL);
+	if (xwm_standalone){
+		for (;;){
+			run_event();
+		}
+		return EXIT_SUCCESS;
 	}
+
+	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	pthread_create(&pth, &pthattr, process_thread, NULL);
 
 /*
  * Now it should be safe to chain-execute any single client we'd want, and
@@ -907,6 +1073,8 @@ int main (int argc, char **argv)
 	};
 
 	for(;;){
+		xcb_flush(dpy);
+
 		int status = poll(pfd, 2, -1);
 		if (status == -1 && errno != EINTR && errno != EAGAIN)
 			break;
@@ -924,80 +1092,7 @@ int main (int argc, char **argv)
 			continue;
 		}
 
-		ev = xcb_wait_for_event(dpy);
-		if (ev->response_type == 0){
-			continue;
-		}
-
-		switch (ev->response_type & ~0x80) {
-/* the following are mostly relevant for "UI" events if the decorations are
- * implemented in the context of X rather than at a higher level. Since this
- * doesn't really apply to us, these can be ignored */
-		case XCB_BUTTON_PRESS:
-			trace("button-press");
-		break;
-		case XCB_MOTION_NOTIFY:
-			trace("motion-notify");
-		break;
-		case XCB_BUTTON_RELEASE:
-			trace("button-release");
-		break;
-		case XCB_ENTER_NOTIFY:
-			trace("enter-notify");
-		break;
-		case XCB_LEAVE_NOTIFY:
-			trace("leave-notify");
-		break;
-/*
- * end of 'UI notifications'
- */
-		case XCB_CREATE_NOTIFY:
-			xcb_create_notify((xcb_create_notify_event_t*) ev);
-		break;
-		case XCB_MAP_REQUEST:
-			xcb_map_request((xcb_map_request_event_t*) ev);
-		break;
-    case XCB_MAP_NOTIFY:
-			xcb_map_notify((xcb_map_notify_event_t*) ev);
-		break;
-    case XCB_UNMAP_NOTIFY:
-			xcb_unmap_notify((xcb_unmap_notify_event_t*) ev);
-		break;
-    case XCB_REPARENT_NOTIFY:
-			xcb_reparent_notify((xcb_reparent_notify_event_t*) ev);
-		break;
-    case XCB_CONFIGURE_REQUEST:
-			xcb_configure_request((xcb_configure_request_event_t*) ev);
-		break;
-    case XCB_CONFIGURE_NOTIFY:
-			xcb_configure_notify((xcb_configure_notify_event_t*) ev);
-		break;
-		case XCB_DESTROY_NOTIFY:
-			xcb_destroy_notify((xcb_destroy_notify_event_t*) ev);
-		break;
-	/* keyboards / pointer / notifications, not interesting here
-	 * unless going for some hotkey etc. kind of a thing */
-		case XCB_MAPPING_NOTIFY:
-			trace("mapping-notify");
-		break;
-		case XCB_PROPERTY_NOTIFY:
-			trace("property-notify");
-		break;
-		case XCB_CLIENT_MESSAGE:
-			xcb_client_message((xcb_client_message_event_t*) ev);
-		break;
-		case XCB_FOCUS_IN:
-			xcb_focus_in((xcb_focus_in_event_t*) ev);
-		break;
-		case XCB_SELECTION_NOTIFY:
-			trace("selection");
-/* xcb_iccc,_get_text_property, text_property_reply */
-		break;
-		default:
-			trace("unhandled: %"PRIu8, ev->response_type);
-		break;
-		}
-		xcb_flush(dpy);
+		run_event(dpy);
 	}
 
 	if (exec_child == -1)

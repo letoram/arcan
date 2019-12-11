@@ -29,7 +29,7 @@ static pid_t xwl_wm_pid = -1;
 static char* xwl_wm_display;
 
 static int wmfd_input = -1;
-static char wmfd_inbuf[256];
+static char wmfd_inbuf[1024];
 static size_t wmfd_ofs = 0;
 
 /* "known" mapped windows, we trigger the search etc. when a buffer
@@ -80,6 +80,38 @@ static struct xwl_window* xwl_find(uint32_t id)
 
 	return NULL;
 }
+
+static void wnd_message(struct xwl_window* wnd, const char* fmt, ...)
+{
+	struct arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(MESSAGE)
+	};
+
+	va_list args;
+	va_start(args, fmt);
+		vsnprintf((char*)ev.ext.message.data,
+			COUNT_OF(ev.ext.message.data), fmt, args);
+	va_end(args);
+
+/* messages can come while unpaired, buffer them for the time being */
+	if (!wnd->surf){
+		if (wnd->queue_count < COUNT_OF(wnd->queued_message)){
+			trace(TRACE_XWL,
+				"queue(%zu:%s) unpaired: %s", wnd->queue_count,
+				arcan_shmif_eventstr(&ev, NULL, 0), ev.ext.message.data);
+			wnd->queued_message[wnd->queue_count++] = ev;
+		}
+		else {
+			trace(TRACE_XWL, "queue full, broken wm");
+		}
+		return;
+	}
+
+	trace(TRACE_XWL, "message:%s", ev.ext.message.data);
+	arcan_shmif_enqueue(&wnd->surf->acon, &ev);
+}
+
 
 static struct xwl_window* xwl_find_surface(uint32_t id)
 {
@@ -139,6 +171,7 @@ static void xwl_wnd_paired(struct xwl_window* wnd)
 /* this requires some thinking, surface commit on a compositor surface will
  * lead to a query if the surface has been paired to a non-wayland one (X11) */
 	wnd->paired = true;
+	wnd_message(wnd, "pair:%d:%d", wnd->surface_id, wnd->id);
 	surf_commit(wnd->pending_client, wnd->pending_res);
 
 	if (!wnd->surf){
@@ -148,37 +181,6 @@ static void xwl_wnd_paired(struct xwl_window* wnd)
 
 	wnd->pending_res = NULL;
 	wnd->pending_client = NULL;
-}
-
-static void wnd_message(struct xwl_window* wnd, const char* fmt, ...)
-{
-	struct arcan_event ev = {
-		.category = EVENT_EXTERNAL,
-		.ext.kind = ARCAN_EVENT(MESSAGE)
-	};
-
-	va_list args;
-	va_start(args, fmt);
-		vsnprintf((char*)ev.ext.message.data,
-			COUNT_OF(ev.ext.message.data), fmt, args);
-	va_end(args);
-
-/* messages can come while unpaired, buffer them for the time being */
-	if (!wnd->surf){
-		if (wnd->queue_count < COUNT_OF(wnd->queued_message)){
-			trace(TRACE_XWL,
-				"queue(%zu:%s) unpaired: %s", wnd->queue_count,
-				arcan_shmif_eventstr(&ev, NULL, 0), ev.ext.message.data);
-			wnd->queued_message[wnd->queue_count++] = ev;
-		}
-		else {
-			trace(TRACE_XWL, "queue full, broken wm");
-		}
-		return;
-	}
-
-	trace(TRACE_XWL, "message:%s", ev.ext.message.data);
-	arcan_shmif_enqueue(&wnd->surf->acon, &ev);
 }
 
 static void wnd_viewport(struct xwl_window* wnd)
@@ -222,7 +224,12 @@ static void wnd_viewport(struct xwl_window* wnd)
  */
 static int process_input(const char* msg)
 {
+/* special handling for multiplexing trace messages */
 	trace(TRACE_XWL, "wm->%s", msg);
+	if (strncmp(msg, "kind=trace", 10) == 0){
+		return 0;
+	}
+
 	struct arg_arr* cmd = arg_unpack(msg);
 	if (!cmd){
 		trace(TRACE_XWL, "malformed message: %s", msg);
@@ -278,11 +285,10 @@ static int process_input(const char* msg)
 			goto cleanup;
 
 		wnd->id = id;
-/* no type? plain old window */
+
+/* should come with some kind of type information */
 		if (arg_lookup(cmd, "type", 0, &arg)){
 			trace(TRACE_XWL, "created with type %s", arg);
-/* otherwise we assume we have a subsurface (tooltip, ...), since we know it
- * comes from an X surface we could have more refined type- rules here */
 			wnd_message(wnd, "type:%s", arg);
 		}
 		else{
@@ -321,14 +327,15 @@ static int process_input(const char* msg)
 	}
 /* invisible -> visible */
 	else if (strcmp(arg, "map") == 0){
-		trace(TRACE_XWL, "map");
-		if (!arg_lookup(cmd, "id", 0, &arg))
+		if (!arg_lookup(cmd, "id", 0, &arg)){
+			trace(TRACE_XWL, "map:status=no_id");
 			goto cleanup;
+		}
 		uint32_t id = strtoul(arg, NULL, 10);
 		struct xwl_window* wnd = xwl_find(id);
 
 		if (!wnd){
-			trace(TRACE_XWL, "map without window");
+			trace(TRACE_XWL, "map:id=%"PRIu32":status=no_wnd", id);
 			goto cleanup;
 		}
 
@@ -436,6 +443,12 @@ static int xwl_read_wm(int (*callback)(const char* str))
 	if (xwl_wm_pid == -1)
 		return -1;
 
+/* track so we don't accidentally call into ourself */
+	static bool in_wm_input;
+	if (in_wm_input)
+		return 0;
+	in_wm_input = true;
+
 /* populate inbuffer, look for linefeed */
 	char inbuf[256];
 	int status;
@@ -454,6 +467,8 @@ static int xwl_read_wm(int (*callback)(const char* str))
 				close_xwl();
 			}
 		}
+
+		in_wm_input = false;
 		return -1;
 	}
 
@@ -464,15 +479,26 @@ static int xwl_read_wm(int (*callback)(const char* str))
 			wmfd_ofs = 0;
 
 /* leave the rest in buffer */
-			if (callback(wmfd_inbuf) != 0)
+			if (callback(wmfd_inbuf) != 0){
+				trace(TRACE_XWL, "kind=error:callback_fail:message=%s", wmfd_inbuf);
 				break;
+			}
 		}
 /* accept crop on overflow (though no command should be this long) */
 		else {
 			wmfd_inbuf[wmfd_ofs] = inbuf[i];
-			wmfd_ofs = (wmfd_ofs + 1) % sizeof(wmfd_inbuf);
+			wmfd_ofs ++;
+			if (wmfd_ofs == sizeof(wmfd_inbuf)){
+				trace(TRACE_XWL, "kind=error:overflow");
+				wmfd_ofs = 0;
+			}
 		}
 	}
+
+/* possibly more to flush */
+	in_wm_input = false;
+	if (nr == 256)
+		return xwl_read_wm(callback);
 
 	return 0;
 }
@@ -627,6 +653,10 @@ static bool xwlsurf_shmifev_handler(
 		fflush(wmfd_output);
 		return true;
 	}
+/* raw-forward from appl to xwm, doesn't respect multipart */
+	case TARGET_COMMAND_MESSAGE:
+		fprintf(wmfd_output, "id=%"PRIu32"%s\n", (uint32_t) wnd->id, ev->tgt.message);
+	break;
 	case TARGET_COMMAND_EXIT:
 		fprintf(wmfd_output, "kind=destroy:id=%"PRIu32"\n", wnd->id);
 		fflush(wmfd_output);
@@ -655,6 +685,7 @@ static bool xwl_defer_handler(
 	struct xwl_window* wnd = (req->tag);
 	wnd->surf = surf;
 	wnd->viewport.ext.kind = ARCAN_EVENT(VIEWPORT);
+	trace(TRACE_ALLOC, "queue: %zu", wnd->queue_count);
 
 /* the normal path is:
  * surface_commit -> check_paired -> request surface -> request ok ->
@@ -662,7 +693,7 @@ static bool xwl_defer_handler(
 	if (wnd->queue_count > 0){
 		trace(TRACE_XWL, "flush (%zu) queued messages", wnd->queue_count);
 		for (size_t i = 0; i < wnd->queue_count; i++){
-			arcan_shmif_enqueue(&wnd->surf->acon, &wnd->queued_message[i]);
+			arcan_shmif_enqueue(con, &wnd->queued_message[i]);
 		}
 		wnd->queue_count = 0;
 	}
@@ -700,6 +731,8 @@ static bool xwl_pair_surface(
 /* do we know of a matching xwayland- provided surface? */
 	struct xwl_window* wnd = lookup_surface(surf, res);
 	if (!wnd){
+		trace(TRACE_XWL,
+			"no known X surface for: %"PRIu32, wl_resource_get_id(res));
 		return false;
 	}
 

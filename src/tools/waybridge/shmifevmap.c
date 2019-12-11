@@ -99,28 +99,27 @@ static void update_mbtn(struct comp_surf* cl,
 				pts, WL_POINTER_AXIS_VERTICAL_SCROLL,
 				wl_fixed_from_int(ind == 4 ? -10 : 10));
 
-			if (wl_resource_get_version(cl->client->pointer) >
+			if (wl_resource_get_version(cl->client->pointer) >=
 				WL_POINTER_AXIS_STOP_SINCE_VERSION){
 				wl_pointer_send_axis_stop(cl->client->pointer,
 					pts, WL_POINTER_AXIS_VERTICAL_SCROLL);
 			}
 		}
 		wl_pointer_send_frame(cl->client->pointer);
-		return;
 	}
 
 /* 0x110 == BTN_LEFT in evdev parlerance, ignore 0 index as it is used
  * to convey gestures and that's a separate unstable protocol */
-	if (ind > 0){
+	else if (ind > 0){
 		wl_pointer_send_button(cl->client->pointer, STEP_SERIAL(),
 			pts, 0x10f + ind, active ?
 			WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED
 		);
+	}
 
-		if (wl_resource_get_version(cl->client->pointer) >=
-			WL_POINTER_FRAME_SINCE_VERSION){
-			wl_pointer_send_frame(cl->client->pointer);
-		}
+	if (wl_resource_get_version(cl->client->pointer) >=
+		WL_POINTER_FRAME_SINCE_VERSION){
+		wl_pointer_send_frame(cl->client->pointer);
 	}
 }
 
@@ -320,7 +319,8 @@ static void flush_surface_events(struct comp_surf* surf)
 /* rcon is set as redirect-con when there's a shared connection or similar */
 	struct arcan_shmif_cont* acon = surf->rcon ? surf->rcon : &surf->acon;
 
-	while (arcan_shmif_poll(acon, &ev) > 0){
+	int pv;
+	while ((pv = arcan_shmif_poll(acon, &ev)) > 0){
 		if (surf->dispatch && surf->dispatch(surf, &ev))
 			continue;
 
@@ -359,6 +359,8 @@ static void flush_surface_events(struct comp_surf* surf)
 		break;
 		}
 	}
+
+	trace(TRACE_ALERT, "flush state: %d", pv);
 }
 
 static void flush_client_events(

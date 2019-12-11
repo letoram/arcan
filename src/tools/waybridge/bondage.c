@@ -227,7 +227,9 @@ static void bind_relp(struct wl_client* client,
 static void bind_output(struct wl_client* client,
 	void* data, uint32_t version, uint32_t id)
 {
-	trace(TRACE_ALLOC, "bind_output");
+	trace(TRACE_ALLOC, "bind_output (geom: %zu*%zu)",
+		wl.init.display_width_px, wl.init.display_height_px);
+
 	struct wl_resource* resource = wl_resource_create(client,
 		&wl_output_interface, version, id);
 	if (!resource){

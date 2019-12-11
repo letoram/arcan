@@ -12,8 +12,8 @@ static bool apply_positioner(
 
 	ev->category = EVENT_EXTERNAL;
 	ev->ext.kind = ARCAN_EVENT(VIEWPORT);
-	ev->ext.viewport.y = pos->ofs_y;
-	ev->ext.viewport.x = pos->ofs_x;
+	ev->ext.viewport.y = pos->anchor_y + pos->ofs_y;
+	ev->ext.viewport.x = pos->anchor_x + pos->ofs_x;
 	ev->ext.viewport.w = pos->width;
 	ev->ext.viewport.h = pos->height;
 
