@@ -6,6 +6,9 @@
  * Description: This provides a collection of useful user-initiated
  * debug control and process exploration tools.
  * Notes:
+ *  - simple:
+ *    - mim window controls (buffer size, streaming mode)
+ *
  *  - interesting / unexplored venues:
  *    - seccomp- renderer
  *    - sanitizer
@@ -117,7 +120,7 @@ struct debug_ctx {
 
 /* basic TUI convenience loop / setups */
 static struct tui_list_entry* run_listwnd(struct debug_ctx* dctx,
-	struct tui_list_entry* list, size_t n_elem, const char* ident);
+	struct tui_list_entry* list, size_t n_elem, const char* ident, size_t* pos);
 
 static int run_buffer(struct tui_context* tui, uint8_t* buffer,
 	size_t buf_sz, struct tui_bufferwnd_opts opts, const char* ident);
@@ -467,6 +470,7 @@ static void run_descriptor(
 	size_t nents = 0;
 	bool spawn_new = false;
 	struct tui_list_entry* ent;
+	size_t pos = 0;
 
 /* mappables are typically files or shared memory */
 	if (type == INTERCEPT_MAP){
@@ -517,7 +521,7 @@ static void run_descriptor(
 	};
 
 rerun:
-	ent = run_listwnd(dctx, lents, nents, label);
+	ent = run_listwnd(dctx, lents, nents, label, &pos);
 	if (!ent){
 		return;
 	}
@@ -560,13 +564,15 @@ rerun:
 }
 
 static struct tui_list_entry* run_listwnd(struct debug_ctx* dctx,
-	struct tui_list_entry* list, size_t n_elem, const char* ident)
+	struct tui_list_entry* list, size_t n_elem, const char* ident, size_t* pos)
 {
 	struct tui_list_entry* ent = NULL;
 	arcan_tui_update_handlers(dctx->tui,
 		&(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
 	arcan_tui_listwnd_setup(dctx->tui, list, n_elem);
 	arcan_tui_ident(dctx->tui, ident);
+	if (pos)
+		arcan_tui_listwnd_setpos(dctx->tui, *pos);
 
 	for(;;){
 		struct tui_process_res res = arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
@@ -581,6 +587,8 @@ static struct tui_list_entry* run_listwnd(struct debug_ctx* dctx,
 		}
 	}
 
+	if (pos)
+		*pos = arcan_tui_listwnd_tell(dctx->tui);
 	arcan_tui_listwnd_release(dctx->tui);
 	return ent;
 }
@@ -819,7 +827,8 @@ static void gen_descriptor_menu(struct debug_ctx* dctx)
  * either we request a new window and use one for the read and one for the
  * write end - as well as getsockopt on type etc. to figure out if the socket
  * can actually be intercepted or not. */
-	struct tui_list_entry* ent = run_listwnd(dctx, lents, count, "open descriptors");
+	struct tui_list_entry* ent =
+		run_listwnd(dctx, lents, count, "open descriptors", NULL);
 
 	if (ent){
 		int icept = can_intercept(&dents[ent->tag].stat);
@@ -906,6 +915,10 @@ static const char* spawn_action(struct debug_ctx* dctx,
 	if (!action){
 /* spawn detached that'll ensure a double-fork like condition,
  * meaning that the pid should be safe to block-wait on */
+
+		struct sigaction oldsig;
+		sigaction(SIGCHLD, &(struct sigaction){}, &oldsig);
+
 		pid_t pid =
 			arcan_shmif_handover_exec(c, ev, exec_path, argv, NULL, true);
 
@@ -913,6 +926,7 @@ static const char* spawn_action(struct debug_ctx* dctx,
 			if (errno != EINTR)
 				break;
 		}
+		sigaction(SIGCHLD, &oldsig, NULL);
 
 		free(exec_path);
 		if (-1 == pid)
@@ -977,11 +991,15 @@ static const char* spawn_action(struct debug_ctx* dctx,
 	}
 
 /* handover-execute the terminal */
+	struct sigaction oldsig;
+	sigaction(SIGCHLD, &(struct sigaction){}, &oldsig);
+
 	pid_t pid = arcan_shmif_handover_exec(c, ev, exec_path, argv, envv, true);
 	while(pid != -1 && -1 == waitpid(pid, NULL, 0)){
 		if (errno != EINTR)
 			break;
 	}
+	sigaction(SIGCHLD, &oldsig, NULL);
 	free(exec_path);
 
 	close(fdarg_out[0]);
@@ -1089,7 +1107,8 @@ static void gen_spawn_menu(struct debug_ctx* dctx)
 		free(lldb);
 	}
 
-	struct tui_list_entry* ent = run_listwnd(dctx, lents, COUNT_OF(lents), "debuggers");
+	struct tui_list_entry* ent =
+		run_listwnd(dctx, lents, COUNT_OF(lents), "debuggers", NULL);
 
 /* for all of these we need a handover segment as we can't just give the tui
  * context away like this, even though when the debugger connection is setup,
@@ -1210,7 +1229,8 @@ static void gen_environment_menu(struct debug_ctx* dctx)
 		return;
 	}
 
-	struct tui_list_entry* ent = run_listwnd(dctx, list, nelem, "environment");
+	struct tui_list_entry* ent =
+		run_listwnd(dctx, list, nelem, "environment", NULL);
 	if (!ent){
 		free_list(list, nelem);
 		return;

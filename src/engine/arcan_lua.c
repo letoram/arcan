@@ -7777,7 +7777,13 @@ static int targetdevhint(lua_State* ctx)
 				fsrv->child = BROKEN_PROCESS_HANDLE;
 				pthread_create(&pthr, NULL, pthr_waiter, (void*) pid);
 			}
+		}
 
+/* This is obviously not correct, need a better sanity check and encode as
+ * multipart (.tgt.code = 1) chunks, pre-checking the queue for n parts
+ * before sending */
+		if (strlen(cpath) > COUNT_OF(outev.tgt.message)){
+			arcan_warning("address length exceeds boundary, truncated");
 		}
 		snprintf(outev.tgt.message, COUNT_OF(outev.tgt.message), "%s", cpath);
 		platform_fsrv_pushevent(fsrv, &outev);
