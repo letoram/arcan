@@ -1582,7 +1582,7 @@ static void* guard_thread(void* gs)
 			goto done;
 		}
 
-		sleep(5);
+		sleep(1);
 	}
 
 done:
