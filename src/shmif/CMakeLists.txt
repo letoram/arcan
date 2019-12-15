@@ -41,6 +41,8 @@ set (TUI_HEADERS
 	${ASD}/shmif/arcan_tuisym.h
 	${ASD}/shmif/arcan_tui_bufferwnd.h
 	${ASD}/shmif/arcan_tui_listwnd.h
+	${ASD}/shmif/arcan_tui_linewnd.h
+	${ASD}/shmif/arcan_tui_readline.h
 )
 
 set (SHMIF_HEADERS
@@ -129,6 +131,8 @@ set(SHMIF_TUI_SOURCES
 	${ASD}/shmif/tui/widgets/copywnd.c
 	${ASD}/shmif/tui/widgets/bufferwnd.c
 	${ASD}/shmif/tui/widgets/listwnd.c
+	${ASD}/shmif/tui/widgets/linewnd.c
+	${ASD}/shmif/tui/widgets/readline.c
 )
 
 set(SHMIF_SERVER_SOURCES
