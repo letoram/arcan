@@ -27,6 +27,34 @@ enum mt_mode {
 	MT_FORK = 1
 };
 
+static const char* trace_groups[] = {
+	"video",
+	"audio",
+	"system",
+	"event",
+	"missing",
+	"alloc",
+	"crypto",
+	"vdetail",
+	"btransfer"
+};
+
+static int tracestr_to_bitmap(char* work)
+{
+	int res = 0;
+	char* pt = strtok(work, ",");
+	while(pt != NULL){
+		for (size_t i = 0; i < COUNT_OF(trace_groups); i++){
+			if (strcasecmp(trace_groups[i], pt) == 0){
+				res |= 1 << i;
+				break;
+			}
+		}
+		pt = strtok(NULL, ",");
+	}
+	return res;
+}
+
 /*
  * pull in from arcan codebase, chacha based CSPRNG
  */
@@ -286,7 +314,7 @@ static bool show_usage(const char* msg)
 	"\t-X        \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n\n"
 	"Options:\n"
 	"\t-t single- client (no fork/mt)\n"
-	"\t-d bitmap \t set trace bitmap (see below)\n"
+	"\t-d bitmap \t set trace bitmap (bitmask or key1,key2,...)\n"
 	"\nTrace groups (stderr):\n"
 	"\tvideo:1      audio:2      system:4    event:8      transfer:16\n"
 	"\tdebug:32     missing:64   alloc:128  crypto:256    vdetail:512\n"
@@ -309,6 +337,10 @@ static bool apply_commandline(int argc, char** argv, struct anet_options* opts)
 			if (i == argc - 1)
 				return show_usage("-d without trace value argument");
 			unsigned long val = strtoul(argv[++i], NULL, 10);
+			char* workstr = NULL;
+			if (workstr == argv[i]){
+				val = tracestr_to_bitmap(workstr);
+			}
 			a12_set_trace_level(val, stderr);
 		}
 
