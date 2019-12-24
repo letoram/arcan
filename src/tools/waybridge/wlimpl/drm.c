@@ -103,13 +103,6 @@ struct wl_drm_buffer {
 	void *driver_buffer;
 };
 
-struct wayland_drm_callbacks {
-	int (*authenticate)(void *user_data, uint32_t id);
-	void (*reference_buffer)(
-		void *user_data, uint32_t name, int fd, struct wl_drm_buffer *buffer);
-	void (*release_buffer)(void *user_data, struct wl_drm_buffer *buffer);
-};
-
 enum { WAYLAND_DRM_PRIME = 0x01 };
 
 #define MIN(x,y) (((x)<(y))?(x):(y))
@@ -122,7 +115,6 @@ struct wl_drm {
 	char *device_name;
 	uint32_t flags;
 
-	struct wayland_drm_callbacks *callbacks;
 	struct wl_buffer_interface buffer_interface;
 };
 
@@ -173,6 +165,7 @@ static void create_buffer(struct wl_client *client,
 	buffer->stride[1] = stride1;
 	buffer->offset[2] = offset2;
 	buffer->stride[2] = stride2;
+	trace(TRACE_DRM, "create:%"PRIu32",%"PRIu32", fd:%d", width, height, fd);
 
 /*
  * these are just for hooking into the 'next' drm buffer layer
@@ -263,6 +256,7 @@ drm_create_prime_buffer(struct wl_client *client,
 		"%"PRId32",%"PRId32" fmt:%"PRId32, width, height, format);
 	create_buffer(client, resource, id, 0, fd, width, height, format,
 		offset0, stride0, offset1, stride1, offset2, stride2);
+/* buffer close part of shmif */
 }
 
 static void
@@ -306,10 +300,23 @@ bind_drm(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 
 	wl_resource_set_implementation(resource, &drm_interface, data, NULL);
 
+/*
+ * This should really be dynamic
+ */
 	wl_resource_post_event(resource, WL_DRM_DEVICE, drm->device_name);
+
+/*
+ * Other formats:
+ *  - ARGB2101010
+ *  - XRGB2101010
+ *  - ABGR2101010
+ *  - XBGR2101010
+ */
 	wl_resource_post_event(resource, WL_DRM_FORMAT, WL_DRM_FORMAT_ARGB8888);
 	wl_resource_post_event(resource, WL_DRM_FORMAT, WL_DRM_FORMAT_XRGB8888);
 	wl_resource_post_event(resource, WL_DRM_FORMAT, WL_DRM_FORMAT_RGB565);
+/*
+ * Upstream shader processing doesn't cover these yet for sampling
 	wl_resource_post_event(resource, WL_DRM_FORMAT, WL_DRM_FORMAT_YUV410);
 	wl_resource_post_event(resource, WL_DRM_FORMAT, WL_DRM_FORMAT_YUV411);
 	wl_resource_post_event(resource, WL_DRM_FORMAT, WL_DRM_FORMAT_YUV420);
@@ -318,6 +325,7 @@ bind_drm(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 	wl_resource_post_event(resource, WL_DRM_FORMAT, WL_DRM_FORMAT_NV12);
 	wl_resource_post_event(resource, WL_DRM_FORMAT, WL_DRM_FORMAT_NV16);
 	wl_resource_post_event(resource, WL_DRM_FORMAT, WL_DRM_FORMAT_YUYV);
+ */
 
 /* we only support render nodes, not GEM */
 	capabilities = WL_DRM_CAPABILITY_PRIME;
@@ -329,6 +337,8 @@ bind_drm(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 static void wayland_drm_commit(struct comp_surf* surf,
 	struct wl_drm_buffer* buf, struct arcan_shmif_cont* con)
 {
+	trace(TRACE_DRM, "");
+
 	if (buf->width != con->w || buf->height != con->h){
 		arcan_shmif_resize(con, buf->width, buf->height);
 	}
@@ -356,9 +366,8 @@ wayland_drm_buffer_get(struct wl_drm *drm, struct wl_resource *resource)
 		return NULL;
 }
 
-static struct wl_drm* wayland_drm_init(struct wl_display *display,
-	char *device_name, struct wayland_drm_callbacks *callbacks, void *user_data,
-	uint32_t flags)
+static struct wl_drm* wayland_drm_init(
+	struct wl_display *display, char *device_name, void *user_data, uint32_t flags)
 {
 	struct wl_drm *drm;
 
@@ -369,7 +378,6 @@ static struct wl_drm* wayland_drm_init(struct wl_display *display,
 /* this should switch to what we get from _initial as well as react on devicehint */
 	drm->display = display;
 	drm->device_name = getenv("ARCAN_RENDER_NODE");
-	drm->callbacks = NULL;
 	drm->user_data = user_data;
 	drm->flags = flags;
 

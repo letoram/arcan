@@ -185,6 +185,20 @@ enum trace_levels {
 	TRACE_XWL     = 1024
 };
 
+static const char* trace_groups[] = {
+	"alloc",
+	"digital",
+	"analog",
+	"shell",
+	"region",
+	"datadev",
+	"seat",
+	"surface",
+	"drm",
+	"alert",
+	"xwl"
+};
+
 static inline void trace(int level, const char* msg, ...)
 {
 	if (!wl.trace_log || !(level & wl.trace_log) || !wl.trace_dst)
@@ -199,8 +213,8 @@ static inline void trace(int level, const char* msg, ...)
 }
 
 #define __FILENAME__ (strrchr(__FILE__, '/')?strrchr(__FILE__, '/') + 1 : __FILE__)
-#define trace(X, Y, ...) do { trace(X, "%s:%d:%s(): " \
-	Y, __FILENAME__, __LINE__, __func__,##__VA_ARGS__); } while (0)
+#define trace(X, Y, ...) do { trace(X, "[%lld]%s:%d:%s(): " \
+	Y, arcan_timemillis(), __FILENAME__, __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 /*
  * Welcome to callback hell where it is allowed to #include code sin because
@@ -632,6 +646,10 @@ static struct bridge_client* find_client(struct wl_client* cl)
  * as we don't have the display properties until the first connection has been
  * made.
  *
+ * Instead we make use of the bridge node as a pseudo- data device to deal with
+ * drag and drop etc. as that does not translate cleanly to the arcan clipboard
+ * management anyhow.
+ *
  * In the -exec mode, we can at least re-use the 'probe' shmif cont that is
  * opened on startup, that's what this adopt- check does
  */
@@ -988,12 +1006,29 @@ static struct conn_group* prepare_groups(size_t count)
 	return groups;
 }
 
+static int tracestr_to_bitmap(char* work)
+{
+	int res = 0;
+	char* pt = strtok(work, ",");
+	while(pt != NULL){
+		for (size_t i = 0; i < COUNT_OF(trace_groups); i++){
+			if (strcasecmp(trace_groups[i], pt) == 0){
+				res |= 1 << i;
+				break;
+			}
+		}
+		pt = strtok(NULL, ",");
+	}
+	return res;
+}
+
 static int show_use(const char* msg, const char* arg)
 {
 	fprintf(stdout, "%s%s", msg, arg ? arg : "");
 	fprintf(stdout, "\nUse: arcan-wayland [arguments]\n"
 "     arcan-wayland [arguments] -exec /path/to/bin arg1 arg2 ...\n\n"
 "Compatibility:\n"
+"\t-egl-device path  set path to render node (/dev/dri/renderD128)\n"
 "\t-xwl              enable XWayland\n\n"
 "Security/Performance:\n"
 "\t-exec bin arg1 .. end of arg parsing, single-client mode (recommended)\n"
@@ -1019,12 +1054,11 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-zxdg          disable the zxdg protocol\n"
 "\t-no-output        disable the output protocol\n"
 "\nDebugging Tools:\n"
-"\t-debugusr1        use SIGUSR1 to dump debug information\n"
-"\t-trace level      set trace output to (bitmask):\n"
-"\t\t1   - allocations   2 - digital-input    4 - analog-input\n"
-"\t\t8   - shell        16 - region-events   32 - data device\n"
+"\t-trace level      set trace output to (bitmask or key1,key2,...):\n"
+"\t\t1   - alloc         2 - digital          4 - analog\n"
+"\t\t8   - shell        16 - region          32 - datadev\n"
 "\t\t64  - seat        128 - surface        256 - drm\n"
-"\t\t512 - alert      1024 - xwayland\n");
+"\t\t512 - alert      1024 - xwl \n");
 	return EXIT_FAILURE;
 }
 
@@ -1033,12 +1067,14 @@ static bool process_group(struct conn_group* group)
 	int sv = poll(group->pgroup, N_GROUP_SLOTS+2, 1000);
 
 	if (group->wayland && group->wayland->revents){
+		trace(TRACE_ALERT, "process wayland");
 		wl_event_loop_dispatch(
 			wl_display_get_event_loop(wl.disp), 0);
 		sv--;
 	}
 
 	if (group->arcan && group->arcan->revents){
+		trace(TRACE_ALERT, "process bridge");
 		flush_bridge_events(&wl.control);
 		sv--;
 	}
@@ -1051,8 +1087,18 @@ static bool process_group(struct conn_group* group)
 				flush_client_events(&group->slots[i].client, NULL, 0);
 			break;
 			case SLOT_TYPE_SURFACE:
-				if (group->slots[i].surface)
-					flush_surface_events(group->slots[i].surface);
+				if (group->slots[i].surface){
+					if (group->pg[i].revents & POLLIN)
+						flush_surface_events(group->slots[i].surface);
+					else
+						trace(TRACE_ALERT, "broken surface slot (%zu)", i);
+					char wtf[256];
+					ssize_t nr = read(group->pg[i].fd, wtf, 256);
+					trace(TRACE_ALERT, "read %zd\n", nr);
+				}
+				else {
+					trace(TRACE_ALERT, "event on empty slot (%zu)", i);
+				}
 			break;
 			}
 		}
@@ -1141,7 +1187,11 @@ int main(int argc, char* argv[])
 				return show_use("missing trace argument", "");
 			}
 			arg_i++;
-			wl.trace_log = strtoul(argv[arg_i], NULL, 10);
+			char* workstr = NULL;
+			wl.trace_log = strtoul(argv[arg_i], &workstr, 10);
+			if (workstr == argv[arg_i]){
+				wl.trace_log = tracestr_to_bitmap(workstr);
+			}
 		}
 		else if (strcmp(argv[arg_i], "-trace-file") == 0){
 			if (arg_i == argc-1)
@@ -1328,9 +1378,18 @@ int main(int argc, char* argv[])
 		wl.query_modifiers =
 			arcan_shmifext_lookup(&wl.control, "eglQueryDmaBufModifiersEXT");
 
+/*
+ * The initial device node comes as a possible file descriptor, but the drm
+ * protocol wants the drm device name
+ */
+		if (!getenv("ARCAN_RENDER_NODE")){
+			fprintf(stderr, "No render-node provided "
+				"(-egl-device), accelerated graphics disabled.\n");
+			protocols.drm = 0;
+		}
+
 		if (protocols.drm){
-			wl.drm = wayland_drm_init(wl.disp,
-				getenv("ARCAN_RENDER_NODE"), NULL, NULL, 0);
+			wl.drm = wayland_drm_init(wl.disp, getenv("ARCAN_RENDER_NODE"), NULL, 0);
 		}
 	}
 
