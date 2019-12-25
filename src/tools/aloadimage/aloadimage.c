@@ -660,7 +660,7 @@ int main(int argc, char** argv)
 
 	int ch;
 	bool interactive = false;
-	int segid = SEGID_MEDIA;
+	int segid = SEGID_APPLICATION;
 
 	while((ch = getopt_long(argc, argv,
 		"p:ihlt:bd:T:m:r:XSHd:a", longopts, NULL)) >= 0)
@@ -827,6 +827,7 @@ int main(int argc, char** argv)
 		while(arcan_shmif_poll(&cont, &ev) > 0)
 			dirty |= dispatch_event(&cont, &ev, &ds);
 		dirty |= poll_pl(&ds, 0);
+		dirty = true;
 
 /* blit and update title as playlist position might have changed, or some other
  * metadata we present as part of the ident/title - if we are in stereo mode we

@@ -128,6 +128,69 @@ static int video_miniz(const void* buf, int len, void* user)
 	return 1;
 }
 
+static bool ffmpeg_alloc(struct a12_channel* ch, int method)
+{
+	if (!ch->videnc.codec){
+		ch->videnc.codec = avcodec_find_decoder(method);
+		if (!ch->videnc.codec){
+			a12int_trace(A12_TRACE_SYSTEM, "couldn't find h264 decoder");
+			return false;
+		}
+	}
+
+	if (!ch->videnc.encoder){
+		ch->videnc.encoder= avcodec_alloc_context3(ch->videnc.codec);
+		a12int_trace(A12_TRACE_SYSTEM, "couldn't setup h264 codec context");
+		return false;
+	}
+
+/* got the context, but it needs to be 'opened' as well */
+	if (avcodec_open2(ch->videnc.encoder, ch->videnc.codec, NULL ) < 0)
+		return false;
+
+	ch->videnc.parser = av_parser_init(ch->videnc.codec->id);
+	if (!ch->videnc.parser){
+		a12int_trace(A12_TRACE_SYSTEM, "couldn't find h264 parser");
+		return false;
+	}
+
+	ch->videnc.frame = av_frame_alloc();
+	if (!ch->videnc.frame){
+		a12int_trace(A12_TRACE_SYSTEM, "couldn't alloc frame for h264 decode");
+		return false;
+	}
+
+/* packet is their chunking mechanism (research if this step can be avoided) */
+	ch->videnc.packet = av_packet_alloc();
+	if (!ch->videnc.packet){
+		return false;
+	}
+
+	return true;
+}
+
+bool a12int_vframe_setup(struct a12_channel* ch, struct video_frame* dst, int method)
+{
+	*dst = (struct video_frame){};
+
+#ifdef WANT_H264_DEC
+	if (method == POSTPROCESS_VIDEO_H264){
+		if (!ffmpeg_alloc(ch, AV_CODEC_ID_H264))
+			return false;
+
+/* parser, context, packet, frame, scaler */
+		dst->ffmpeg.context = ch->videnc.encoder;
+		dst->ffmpeg.packet = ch->videnc.packet;
+		dst->ffmpeg.frame = ch->videnc.frame;
+		dst->ffmpeg.parser = ch->videnc.parser;
+		dst->ffmpeg.scaler = ch->videnc.scaler;
+
+		a12int_trace(A12_TRACE_VIDEO, "ffmpeg state block allocated");
+	}
+#endif
+	return true;
+}
+
 void a12int_decode_vbuffer(
 	struct a12_state* S, struct video_frame* cvf, struct arcan_shmif_cont* cont)
 {
@@ -156,55 +219,7 @@ void a12int_decode_vbuffer(
 #ifdef WANT_H264_DEC
 	else if (cvf->postprocess == POSTPROCESS_VIDEO_H264){
 /* just keep it around after first time of use */
-		static const AVCodec* codec;
-		if (!codec){
-			codec = avcodec_find_decoder(AV_CODEC_ID_H264);
-			if (!codec){
-				a12int_trace(A12_TRACE_SYSTEM, "couldn't find h264 decoder");
-/* missing: send a message to request that we don't get more h264 frames */
-				goto out_h264;
-			}
-		}
-
 /* since these are stateful, we need to tie them to the channel dynamically */
-		if (!cvf->ffmpeg.context){
-			cvf->ffmpeg.context = avcodec_alloc_context3(codec);
-			if (!cvf->ffmpeg.context){
-				a12int_trace(A12_TRACE_SYSTEM, "couldn't setup h264 codec context");
-				goto out_h264;
-			}
-
-/* got the context, but it needs to be 'opened' as well */
-			if (avcodec_open2(cvf->ffmpeg.context, codec, NULL) < 0)
-				goto out_h264;
-
-			cvf->ffmpeg.parser = av_parser_init(codec->id);
-			if (!cvf->ffmpeg.parser){
-				a12int_trace(A12_TRACE_SYSTEM, "couldn't find h264 parser");
-/* missing: send a message to request that we don't get more h264 frames */
-				goto out_h264;
-			}
-
-			cvf->ffmpeg.frame = av_frame_alloc();
-			if (!cvf->ffmpeg.frame){
-				a12int_trace(A12_TRACE_SYSTEM, "couldn't alloc frame for h264 decode");
-				av_parser_close(cvf->ffmpeg.parser);
-				goto out_h264;
-			}
-
-/* packet is their chunking mechanism (research if this step can be avoided) */
-			cvf->ffmpeg.packet = av_packet_alloc();
-			if (!cvf->ffmpeg.packet){
-				a12int_trace(A12_TRACE_SYSTEM, "couldn't alloc packet for h264 decode");
-				av_parser_close(cvf->ffmpeg.parser);
-				av_frame_free(&cvf->ffmpeg.frame);
-				cvf->ffmpeg.parser = NULL;
-				cvf->ffmpeg.frame = NULL;
-				goto out_h264;
-			}
-
-			a12int_trace(A12_TRACE_VIDEO, "ffmpeg state block allocated");
-		}
 
 		av_parser_parse2(cvf->ffmpeg.parser, cvf->ffmpeg.context,
 			&cvf->ffmpeg.packet->data, &cvf->ffmpeg.packet->size,

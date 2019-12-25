@@ -73,6 +73,10 @@ void arcan_fatal(const char* msg, ...)
 	exit(EXIT_FAILURE);
 }
 
+/*
+ * in this mode we should really fexec ourselves so we don't risk exposing
+ * aslr or canaries, as well as handle the key-generation
+ */
 static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 {
 	pid_t fpid = fork();

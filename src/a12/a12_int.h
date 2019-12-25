@@ -129,6 +129,8 @@ struct video_frame {
 	uint8_t pxbuf[4];
 	uint8_t carry;
 
+/* these allocations are not kept in the frame struct, but
+ * rather contained in the ffmpeg structure for that channel */
 #ifdef WANT_H264_DEC
 	struct {
 		AVCodecParserContext* parser;
@@ -153,6 +155,36 @@ struct blob_out {
 	bool active;
 	uint64_t streamid;
 	struct blob_out* next;
+};
+
+struct a12_channel {
+	bool active;
+	struct arcan_shmif_cont* cont;
+
+/* can have one of each stream- type being prepared for unpack at the same time */
+	struct {
+		struct video_frame vframe;
+		struct audio_frame aframe;
+		struct binary_frame bframe;
+	} unpack_state;
+
+/* used for both encoding and decoding, state is aliased into unpack_state */
+	struct shmifsrv_vbuffer acc;
+	struct {
+		uint8_t* compression;
+#if defined(WANT_H264_ENC) || defined(WANT_H264_DEC)
+		struct {
+			AVCodecParserContext* parser;
+			AVCodecContext* encoder;
+			AVCodec* codec;
+			AVFrame* frame;
+			AVPacket* packet;
+			struct SwsContext* scaler;
+			size_t w, h;
+			bool failed;
+		} videnc;
+#endif
+	};
 };
 
 struct a12_state;
@@ -184,34 +216,7 @@ struct a12_state {
 	void* binary_handler_tag;
 
 /* multiple- channels over the same state tracker for subsegment handling */
-	struct {
-		bool active;
-		struct arcan_shmif_cont* cont;
-
-/* can have one of each stream- type being prepared for unpack at the same time */
-		struct {
-			struct video_frame vframe;
-			struct audio_frame aframe;
-			struct binary_frame bframe;
-		} unpack_state;
-
-/* encoding (recall, both sides can actually do this) */
-		struct shmifsrv_vbuffer acc;
-		union {
-			uint8_t* compression;
-#ifdef WANT_H264_ENC
-			struct {
-				AVCodecContext* encoder;
-				AVCodec* codec;
-				AVFrame* frame;
-				AVPacket* packet;
-				struct SwsContext* scaler;
-				size_t w, h;
-				bool failed;
-			} videnc;
-#endif
-		};
-	} channels[256];
+	struct a12_channel channels[256];
 
 /* current decoding state, tracked / used by the process_* functions */
 	int in_channel;

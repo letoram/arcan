@@ -573,16 +573,29 @@ struct a12_state* S, void (*on_event)
 
 static void command_videoframe(struct a12_state* S)
 {
-	uint8_t channel = S->decode[16];
-	struct video_frame* vframe = &S->channels[channel].unpack_state.vframe;
-	*vframe = (struct video_frame){};
+	uint8_t ch = S->decode[16];
+	int method = S->decode[22];
+
+	struct a12_channel* channel = &S->channels[ch];
+	struct video_frame* vframe = &S->channels[ch].unpack_state.vframe;
+
+/*
+ * allocation and tracking for this one is subtle! nderef- etc. has been here
+ * in the past. The reason is that codec can be swapped at the encoder side
+ * and that some codecs need to retain state between frames.
+ */
+	if (!a12int_vframe_setup(channel, vframe, method)){
+		a12int_trace(A12_TRACE_SYSTEM, "rejected codec:%d on channel %d", ch, method);
+		vframe->commit = 255;
+		return;
+	}
 
 /* new vstream, from README.md:
 	* currently unused
 	* [36    ] : dataflags: uint8
 	*/
 /* [18..21] : stream-id: uint32 */
-	vframe->postprocess = S->decode[22]; /* [22] : format : uint8 */
+	vframe->postprocess = method; /* [22] : format : uint8 */
 /* [23..24] : surfacew: uint16
  * [25..26] : surfaceh: uint16 */
 	unpack_u16(&vframe->sw, &S->decode[23]);
@@ -606,10 +619,10 @@ static void command_videoframe(struct a12_state* S)
  * the buffering being performed at lower layers. Right now the rejection of a
  * resize is not being forwarded, which can cause problems in some edge cases
  * where the WM have artificially restricted the size of a client window etc. */
-	struct arcan_shmif_cont* cont = S->channels[channel].cont;
+	struct arcan_shmif_cont* cont = channel->cont;
 	if (!cont){
 		a12int_trace(A12_TRACE_SYSTEM,
-			"kind=videoframe_header:status=EINVAL:channel=%d", (int) channel);
+			"kind=videoframe_header:status=EINVAL:channel=%d", (int) ch);
 		vframe->commit = 255;
 		return;
 	}
@@ -635,7 +648,7 @@ static void command_videoframe(struct a12_state* S)
 		}
 		else
 			a12int_trace(A12_TRACE_VIDEO, "kind=resized:channel=%d:hints=%d:"
-				"new_w=%zu:new_h=%zu", (int) channel, (int) cont->hints,
+				"new_w=%zu:new_h=%zu", (int) ch, (int) cont->hints,
 				(size_t) vframe->sw, (size_t) vframe->sh
 			);
 	}

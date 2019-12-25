@@ -2741,6 +2741,8 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 		flags = (int) strtol(conn_fl, NULL, 10) |
 			(flags & (SHMIF_ACQUIRE_FATALFAIL | SHMIF_NOACTIVATE));
 
+	bool networked = false;
+
 /* inheritance based, still somewhat rugged until it is tolerable with one path
  * for osx and one for all the less broken OSes where we can actually inherit
  * both semaphores and socket without problem */
@@ -2754,6 +2756,7 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 	else if (conn_src){
 		if (strncmp(conn_src, "a12://", 6) == 0){
 			keyfile = spawn_arcan_net(conn_src, &dpipe);
+			networked = true;
 		}
 		else {
 			int step = 0;
@@ -2842,10 +2845,14 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 		debug_print(FATAL, &ret, "couldn't get event pipe from parent");
 	}
 
-/* remember the last connection point and use-that on a failure on the
- * current connection point and on a failed force-migrate */
-	if (conn_src)
+/* remember the last connection point and use-that on a failure on the current
+ * connection point and on a failed force-migrate UNLESS we have a custom
+ * alt-specifier OR come from a a12:// like setup */
+	if (getenv("ARCAN_ALTCONN"))
+		ret.priv->alt_conn = strdup(getenv("ARCAN_ALTCONN"));
+	else if (conn_src && !networked){
 		ret.priv->alt_conn = strdup(conn_src);
+	}
 
 	free(keyfile);
 	if (ext.type>0 && !is_output_segment(ext.type) && !(flags & SHMIF_NOACTIVATE))

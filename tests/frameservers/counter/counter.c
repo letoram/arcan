@@ -27,7 +27,7 @@ static void block_grab(struct arcan_shmif_cont* c, struct arcan_shmif_cont* d)
 		&(struct arcan_event){
 		.category = EVENT_EXTERNAL,
 		.ext.kind = EVENT_EXTERNAL_SEGREQ,
-		.ext.segreq.kind = SEGID_GAME
+		.ext.segreq.kind = SEGID_TERMINAL
 	});
 
 	arcan_event ev;
@@ -69,7 +69,7 @@ int main(int argc, char** argv)
 		uint8_t rgb[3];
 	} cont[n_cont];
 
-	cont[0].cont = arcan_shmif_open(SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL, NULL);
+	cont[0].cont = arcan_shmif_open(SEGID_APPLICATION, SHMIF_ACQUIRE_FATALFAIL, NULL);
 	cont[0].rgb[0] = cont[0].rgb[1] = cont[1].rgb[2] = 0;
 	cont[0].cont.hints = SHMIF_RHINT_VSIGNAL_EV;
 	arcan_shmif_resize(&cont[0].cont, 640, 480);
