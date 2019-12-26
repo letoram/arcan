@@ -7,7 +7,7 @@ set(HMD_SOURCES
 	openhmd.c
 	omath.c
 	platform-posix.c
-	fusion.c
+	fusion_madgwick.c
 	shaders.c
 	drv_oculus_rift/rift.c
 	drv_oculus_rift/packet.c
@@ -25,6 +25,13 @@ set(HMD_SOURCES
 	drv_3glasses/packet.c
 	ext_deps/nxjson.c
 )
+
+if (MADGWICK_AHRS)
+	list(APPEND HMD_SOURCES ../ahrs.c)
+	list(APPEND HMD_SOURCES fusion_madgwick.c)
+else()
+	list(APPEND HMD_SOURCES fusion.c)
+endif()
 
 add_library(openhmd STATIC ${HMD_SOURCES})
 target_include_directories(openhmd PRIVATE
