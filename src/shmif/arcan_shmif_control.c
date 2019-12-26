@@ -83,8 +83,8 @@ void shmifint_set_log_device(struct arcan_shmif_cont* c, FILE* outdev)
 #ifndef debug_print
 #define debug_print(sev, ctx, fmt, ...) \
             do { fprintf(shmifint_log_device(NULL),\
-						"%s:%d:%s(): " fmt "\n", \
-						"shmif_control.c", __LINE__, __func__,##__VA_ARGS__); } while (0)
+						"[%lld]%s:%d:%s(): " fmt "\n", \
+						arcan_timemillis(), "shmif-dbg", __LINE__, __func__,##__VA_ARGS__); } while (0)
 #endif
 #else
 #ifndef debug_print
@@ -94,8 +94,8 @@ void shmifint_set_log_device(struct arcan_shmif_cont* c, FILE* outdev)
 
 #define log_print(fmt, ...) \
             do { fprintf(shmifint_log_device(NULL),\
-						"%d:%s(): " fmt "\n", \
-						__LINE__, __func__,##__VA_ARGS__); } while (0)
+						"[%lld]%d:%s(): " fmt "\n", \
+						arcan_timemillis(), __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 /*
  * implementation defined for out-of-order execution and reordering protection
@@ -760,15 +760,15 @@ checkfd:
 		}
 	} while (priv->pev.gotev && check_dms(c));
 
-/* atomic increment of front -> event enqueued */
+/* atomic increment of front -> event enqueued, other option in this sense
+ * would be to have a poll that provides the pointer, and a step that unlocks */
 	if (*ctx->front != *ctx->back){
 		*dst = ctx->eventbuf[ *ctx->front ];
 
 /*
- * It's safe to memset here for added paranoia, but doesn't really protect
- * against much of interest. Not resetting helps debugging on the other hand
- * memset(&ctx->eventbuf[ *ctx->front ], '\0', sizeof(arcan_event));
+ * memset to 0xff for easier visibility on debugging)
  */
+		memset(&ctx->eventbuf[ *ctx->front ], 0xff, sizeof (struct arcan_event));
 		*ctx->front = (*ctx->front + 1) % ctx->eventbuf_sz;
 
 /* Unless mask is set, paused won't be changed so that is ok. This has the
