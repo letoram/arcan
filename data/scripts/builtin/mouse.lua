@@ -1,5 +1,5 @@
 --
--- Copyright 2014-2018, Björn Ståhl
+-- Copyright 2014-2019, Björn Ståhl
 -- License: 3-Clause BSD.
 -- Reference: http://arcan-fe.com
 --
@@ -130,6 +130,10 @@ local mstate = {
 	rel_y = 0,
 	min_x = 0,
 	min_y = 0,
+	inertia_x = 0,
+	inertia_y = 0,
+	inertia_acc_x = 0,
+	inertia_acc_y = 0,
 	max_x = VRESW,
 	max_y = VRESH,
 	hotspot_x = 0,
@@ -156,6 +160,13 @@ mstate.btns_remap[256] = MOUSE_WHEELPY;
 mstate.btns_remap[257] = MOUSE_WHEELNY;
 mstate.btns_remap[258] = MOUSE_WHEELPX;
 mstate.btns_remap[259] = MOUSE_WHEELNX;
+
+function mouse_inertia(x, y)
+	mstate.inertia_x = x;
+	mstate.inertia_y = y;
+	mstate.inertia_acc_x = 0;
+	mstate.inertia_acc_y = 0;
+end
 
 local function lock_constrain()
 -- locking to surface is slightly odd in that we still need to return
@@ -934,22 +945,39 @@ end
 end
 
 function mouse_input(x, y, state, noinp)
-	if (not mstate.revmask and mstate.hidden and (x ~= 0 or y ~= 0)) then
 
-		if (mstate.native == nil) then
-			instant_image_transform(mstate.cursor);
-			blend_image(mstate.cursor, 1.0, 10);
-			mstate.hidden = false;
+-- if inertia is set, we first need to overcome that before continuing
+	if x ~= 0 or y ~= 0 then
+		if mstate.inertia_x > 0 or mstate.inertia_y > 0 then
+			mstate.inertia_acc_x = mstate.inertia_acc_x + x;
+			mstate.inertia_acc_y = mstate.inertia_acc_y + y;
+			if (math.abs(mstate.inertia_acc_x) > mstate.inertia_x and
+				math.abs(mstate.inertia_acc_y) > mstate.inertia_y) then
+				mstate.inertia_acc_x = 0;
+				mstate.inertia_acc_y = 0;
+			else
+				return 0, 0;
+			end
 		end
 
-		if (mstate.reveal_hook) then
-			mstate.reveal_hook();
+-- hide/reveal
+		if (not mstate.revmask and mstate.hidden) then
+			if (mstate.native == nil) then
+				instant_image_transform(mstate.cursor);
+				blend_image(mstate.cursor, 1.0, 10);
+				mstate.hidden = false;
+			end
+
+			if (mstate.reveal_hook) then
+				mstate.reveal_hook();
 		end
 
-	elseif (mstate.hidden) then
-		return 0, 0;
+		elseif (mstate.hidden) then
+			return 0, 0;
+		end
 	end
 
+-- no input applied, retrieve accumulators
 	if (noinp == nil or noinp == false) then
 		x, y = mouse_cursorupd(x, y);
 	else
