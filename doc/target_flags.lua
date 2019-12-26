@@ -7,7 +7,7 @@
 -- the feature in question, and the optional toggle argument is if the
 -- state should be set to on or off (boolean, default: on).
 -- The special max_w and max_h argument interpretation is only for the
--- TARGET_FORCESIZE flag.
+-- TARGET_FORCESIZE and TARGET_LIMITSIZE flags.
 --
 -- The possible flags are:
 -- TARGET_VSTORE_SYNCH, TARGET_SYNCHRONOUS, TARGET_NOALPHA,
