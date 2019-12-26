@@ -270,7 +270,7 @@ static float invSqrt(float x)
 {
 	float halfx = 0.5f * x;
 	union { float f; long l; } y = {x};
-	y.l = 0x5f3759df - (y.l>>1);
+	y.l = 0x5F375A86 - (y.l>>1);
 	y.f = y.f * (1.5f - (halfx * y.f * y.f));
 	return y.f;
 }
