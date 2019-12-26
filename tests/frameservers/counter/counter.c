@@ -27,7 +27,7 @@ static void block_grab(struct arcan_shmif_cont* c, struct arcan_shmif_cont* d)
 		&(struct arcan_event){
 		.category = EVENT_EXTERNAL,
 		.ext.kind = EVENT_EXTERNAL_SEGREQ,
-		.ext.segreq.kind = SEGID_TERMINAL
+		.ext.segreq.kind = SEGID_APPLICATION
 	});
 
 	arcan_event ev;
@@ -57,6 +57,7 @@ int main(int argc, char** argv)
 	bool running = true;
 
 	size_t n_cont = 1;
+	size_t cont_ofs = 1;
 
 	if (argc > 1)
 		n_cont = strtoul(argv[1], NULL, 10);
@@ -74,22 +75,26 @@ int main(int argc, char** argv)
 	cont[0].cont.hints = SHMIF_RHINT_VSIGNAL_EV;
 	arcan_shmif_resize(&cont[0].cont, 640, 480);
 
-/* throw out the requests */
-	for (size_t i = 1; i < n_cont; i++){
-		block_grab(&cont[0].cont, &cont[i].cont);
-	}
-
+	unsigned long long last = arcan_timemillis();
 	while(running){
-		size_t pending = n_cont;
+		size_t pending = cont_ofs;
 		arcan_event ev;
 
+/* throw out the requests, but delay! */
+		if (n_cont && arcan_timemillis() - last > 1000){
+			block_grab(&cont[0].cont, &cont[cont_ofs].cont);
+			cont_ofs++;
+			n_cont--;
+			last = arcan_timemillis();
+		}
+
 /* this will trigger N vsignal events */
-		for (size_t i = 0; i < n_cont; i++)
+		for (size_t i = 0; i < cont_ofs; i++)
 			run_frame(&cont[i].cont, cont->rgb);
 
 /* then we collect them and continue when we have all */
 		while (pending){
-			for (size_t i = 0; i < n_cont; i++){
+			for (size_t i = 0; i < cont_ofs; i++){
 				if(!arcan_shmif_wait(&cont[i].cont, &ev))
 					goto out;
 
