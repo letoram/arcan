@@ -103,6 +103,7 @@ int arcan_event_poll(arcan_evctx* ctx, struct arcan_event* dst)
 		}
 		else {
 			*dst = ctx->eventbuf[ *(ctx->front) ];
+			memset(&ctx->eventbuf[ *(ctx->front) ], 0xff, sizeof(struct arcan_event));
 			*(ctx->front) = (*(ctx->front) + 1) % PP_QUEUE_SZ;
 		}
 	}
