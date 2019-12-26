@@ -33,6 +33,9 @@ dependency, cmake with:
 
     cmake -DNO_BUILTIN_OPENHMD ../ ; make
 
+This version also pulls in madgwicks AHRS implementation as an alternate way
+of doing sensor-fusion / filtering. Enable with -DMAGWICK\_AHRS
+
 # Model
 
 The VR substructure in SHMIF covers a small synchronization/metadata structure

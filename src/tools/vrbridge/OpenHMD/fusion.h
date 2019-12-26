@@ -7,7 +7,6 @@
 
 /* Sensor Fusion */
 
-
 #ifndef FUSION_H
 #define FUSION_H
 
