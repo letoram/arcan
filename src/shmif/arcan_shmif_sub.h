@@ -301,8 +301,10 @@ struct vr_meta {
 };
 
 union vr_data {
-	uint8_t data[64];
+	uint8_t data[192];
 	struct {
+		float modelview[16];
+		float projection[16];
 		vector position;
 		vector forward;
 		quat orientation;
