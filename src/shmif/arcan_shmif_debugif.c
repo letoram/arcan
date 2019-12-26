@@ -7,7 +7,10 @@
  * debug control and process exploration tools.
  * Notes:
  *  - simple:
- *    - mim window controls (buffer size, streaming mode)
+ *    - mim window controls (buffer size, streaming mode, view mode)
+ *    -                      inject latency
+ *    - non-visual MiM
+ *    - hash-table based FD tracking and tagging debugif FDs in FD view
  *
  *  - interesting / unexplored venues:
  *    - seccomp- renderer
@@ -17,6 +20,7 @@
  *    - dynamic descriptor list refresh
  *    - runtime symbol hijack
  *    - memory pages to sense_mem deployment
+ *    - short-write commit (randomize commit-sizes)
  *    - enumerate modules and their symbols? i.e. dl_iterate_phdr
  *      and trampoline?
  *    - 'special' tactics, e.g. malloc- intercept + backtrace on write
@@ -29,6 +33,7 @@
  *    - special syscall triggers (though this requires a tracer process)
  *      - descriptor modifications
  *      - mmap
+ * 	MIM_MODE_
  *    - key structure interpretation:
  *      - malloc stats
  *      - shmif-mempage inspection
@@ -118,6 +123,16 @@ struct debug_ctx {
 	struct debugint_ext_resolver resolver;
 };
 
+enum mim_buffer_mode {
+	MIM_MODE_CHUNK,
+	MIM_MODE_STREAM,
+};
+
+struct mim_buffer_opts {
+	size_t size;
+	enum mim_buffer_mode mode;
+};
+
 /* basic TUI convenience loop / setups */
 static struct tui_list_entry* run_listwnd(struct debug_ctx* dctx,
 	struct tui_list_entry* list, size_t n_elem, const char* ident, size_t* pos);
@@ -125,7 +140,7 @@ static struct tui_list_entry* run_listwnd(struct debug_ctx* dctx,
 static int run_buffer(struct tui_context* tui, uint8_t* buffer,
 	size_t buf_sz, struct tui_bufferwnd_opts opts, const char* ident);
 
-static void run_mitm(struct tui_context* tui,
+static void run_mitm(struct tui_context* tui, struct mim_buffer_opts opts,
 	int fd, bool thdwnd, bool mitm, bool mask, const char* label);
 
 static void show_error_message(struct tui_context* tui, const char* msg)
@@ -245,6 +260,7 @@ static bool mim_flush(
 	size_t buf_pos = 0;
 	snprintf(msg, 32, "Flushing, %zu / %zu bytes", buf_pos, buf_sz);
 
+/* it's not that we really can do anything in the context of errors here */
 	int rfl = fcntl(fdout, F_GETFL);
 	fcntl(fdout, F_SETFL, rfl | O_NONBLOCK);
 
@@ -301,10 +317,13 @@ static bool mim_flush(
 
 /* restore initial flag state */
 	fcntl(fdout, F_SETFL, rfl);
+
+/* there is no real recovery should this be terminated prematurely */
 	return buf_pos == buf_sz;
 }
 
-static void mim_window(struct tui_context* tui, int fdin, int fdout)
+static void mim_window(
+	struct tui_context* tui, int fdin, int fdout, struct mim_buffer_opts bopts)
 {
 /*
  * other options:
@@ -319,7 +338,7 @@ static void mim_window(struct tui_context* tui, int fdin, int fdout)
 	};
 
 /* switch window, wait for buffer */
-	size_t buf_sz = 4096;
+	size_t buf_sz = bopts.size;
 	size_t buf_pos = 0;
 	uint8_t* buf = malloc(buf_sz);
 	if (!buf)
@@ -365,14 +384,15 @@ refill:
 			break;
 	}
 
-/* commit- flush and reset */
-	if (status == 0){
-		if (mim_flush(tui, buf, buf_pos, fdout)){
-			buf_pos = 0;
-			arcan_tui_bufferwnd_tell(tui, &opts);
-			read_data = true;
-			goto refill;
-		}
+/* commit- flush and reset, if the connection is dead there is no real recourse
+ * until we implement a global 'lock-all-threads' then continue this one as
+ * write may continue to come in on our fdin at a higher rate than drain to
+ * fdout, which in turn would block the dup2 swapback */
+	if (mim_flush(tui, buf, buf_pos, fdout)){
+		buf_pos = 0;
+		arcan_tui_bufferwnd_tell(tui, &opts);
+		read_data = true;
+		goto refill;
 	}
 
 /* caller will clean up descriptors */
@@ -403,14 +423,16 @@ static void buf_window(struct tui_context* tui, int source, const char* lbl)
 	munmap(buf, fs.st_size);
 }
 
-static void setup_mitm(struct tui_context* tui, int source, bool mask)
+static void setup_mitm(
+	struct tui_context* tui, int source, bool mask, struct mim_buffer_opts opts)
 {
 	int fdin = source;
 	int fdout = -1;
 
 /* need a cloexec pair of pipes */
 	int pair[2];
-	pipe(pair);
+	if (-1 == pipe(pair))
+		return;
 
 /* set numbers and behavior based on direction */
 	int orig = dup(source);
@@ -439,7 +461,7 @@ static void setup_mitm(struct tui_context* tui, int source, bool mask)
 	}
 
 /* blocking / non-blocking is not handled correctly */
-	mim_window(tui, fd_in, fd_out);
+	mim_window(tui, fd_in, fd_out, opts);
 	dup2(orig, source);
 	close(orig);
 	close(scratch);
@@ -465,6 +487,10 @@ static void run_descriptor(
 		type = INTERCEPT_MITM_PIPE;
 	}
 
+	const int buffer_sizes[] = {512, 1024, 2048, 4096, 8192, 16384};
+	struct mim_buffer_opts bopts = {
+		.size = 4096,
+	};
 	struct tui_list_entry lents[6];
 	char* strpool[6] = {NULL};
 	size_t nents = 0;
@@ -538,13 +564,13 @@ rerun:
 		goto rerun;
 	break;
 	case DESC_VIEW:
-		run_mitm(dctx->tui, fdin, spawn_new, false, true, label);
+		run_mitm(dctx->tui, bopts, fdin, spawn_new, false, true, label);
 	break;
 	case DESC_MITM_PIPE:
-		run_mitm(dctx->tui, fdin, spawn_new, true, false, label);
+		run_mitm(dctx->tui, bopts, fdin, spawn_new, true, false, label);
 	break;
 	case DESC_MITM_REDIR:
-		run_mitm(dctx->tui, fdin, spawn_new, true, true, label);
+		run_mitm(dctx->tui, bopts, fdin, spawn_new, true, true, label);
 	break;
 	case DESC_MITM_BIDI:
 /*
@@ -595,6 +621,7 @@ static struct tui_list_entry* run_listwnd(struct debug_ctx* dctx,
 
 struct wnd_mitm_opts {
 	struct tui_context* tui;
+	struct mim_buffer_opts mim_opts;
 	int fd;
 	bool mitm;
 	bool mask;
@@ -611,7 +638,7 @@ static void* wnd_runner(void* opt)
 	struct wnd_mitm_opts* mitm = opt;
 
 	if (mitm->mitm){
-		setup_mitm(mitm->tui, mitm->fd, mitm->mask);
+		setup_mitm(mitm->tui, mitm->fd, mitm->mask, mitm->mim_opts);
 	}
 	else {
 		buf_window(mitm->tui, mitm->fd, mitm->label);
@@ -625,7 +652,7 @@ static void* wnd_runner(void* opt)
 	return NULL;
 }
 
-static void run_mitm(struct tui_context* tui,
+static void run_mitm(struct tui_context* tui, struct mim_buffer_opts bopts,
 	int fd, bool thdwnd, bool mitm, bool mask, const char* label)
 {
 /* package in a dynamic 'wnd runner' struct */
