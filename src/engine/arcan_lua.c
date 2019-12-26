@@ -9996,7 +9996,9 @@ static const struct{const char* msg; enum ARCAN_SEGID val;} seglut[] = {
 	{.msg = "titlebar", .val = SEGID_TITLEBAR},
 	{.msg = "debug", .val = SEGID_DEBUG},
 	{.msg = "widget", .val = SEGID_WIDGET},
-	{.msg = "accessibility", .val = SEGID_ACCESSIBILITY}
+	{.msg = "accessibility", .val = SEGID_ACCESSIBILITY},
+	{.msg = "hmd-l", .val = SEGID_HMD_L},
+	{.msg = "hmd-r", .val = SEGID_HMD_R}
 };
 
 enum ARCAN_SEGID str_to_segid(const char* str)
