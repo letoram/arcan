@@ -269,10 +269,8 @@ void AHRS_update(
 static float invSqrt(float x)
 {
 	float halfx = 0.5f * x;
-	float y = x;
-	long i = *(long*)&y;
-	i = 0x5f3759df - (i>>1);
-	y = *(float*)&i;
-	y = y * (1.5f - (halfx * y * y));
-	return y;
+	union { float f; long l; } y = {x};
+	y.l = 0x5f3759df - (y.l>>1);
+	y.f = y.f * (1.5f - (halfx * y.f * y.f));
+	return y.f;
 }
