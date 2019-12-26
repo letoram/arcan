@@ -26,6 +26,7 @@ SET(LIBRARIES
 
 SET(SOURCES
 	${PROJECT_NAME}.c
+	#	../../../src/platform/posix/time.c
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${SHMIF_SOURCES})
