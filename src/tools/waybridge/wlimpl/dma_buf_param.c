@@ -30,6 +30,20 @@ static void dmabuf_destroy(struct wl_client* cl, struct wl_resource* res)
 
 static void dmabuf_destroy_user(struct wl_resource* res)
 {
+	trace(TRACE_DRM, "");
+	struct dma_buf* buf = wl_resource_get_user_data(res);
+	if (!buf || buf->magic != 0xfeedface)
+		return;
+
+	for (size_t i = 0; i < COUNT_OF(buf->planes); i++){
+		if (-1 != buf->planes[i].fd){
+			close(buf->planes[i].fd);
+			buf->planes[i].fd = -1;
+		}
+	}
+
+	buf->magic = 0xfeedface;
+	free(buf);
 }
 
 static const struct wl_buffer_interface buffer_impl = {
