@@ -237,9 +237,52 @@ static void synch_acon_alpha(struct arcan_shmif_cont* acon, bool has_alpha)
 	}
 }
 
-static void commit_shm(struct wl_client* cl, struct arcan_shmif_cont* acon,
-	struct wl_resource* res, struct comp_surf* surf, struct wl_shm_buffer* shm_buf)
+static bool push_drm(struct wl_client* cl,
+	struct arcan_shmif_cont* acon, struct wl_resource* buf, struct comp_surf* surf)
 {
+	struct wl_drm_buffer* drm_buf = wayland_drm_buffer_get(wl.drm, buf);
+	if (!drm_buf)
+		return false;
+
+	trace(TRACE_SURF, "surf_commit(egl:%s)", surf->tracetag);
+	synch_acon_alpha(acon,
+		fmt_has_alpha(wayland_drm_buffer_get_format(drm_buf), surf));
+	wayland_drm_commit(surf, drm_buf, acon);
+	return true;
+}
+
+static bool push_dma(struct wl_client* cl,
+	struct arcan_shmif_cont* acon, struct wl_resource* buf, struct comp_surf* surf)
+{
+	struct dma_buf* dmabuf = dmabuf_buffer_get(buf);
+	if (!dmabuf)
+		return false;
+
+	if (dmabuf->w != acon->w || dmabuf->h != acon->h){
+		arcan_shmif_resize(acon, dmabuf->w, dmabuf->h);
+	}
+
+/* right now this only supports a single transfered buffer, the real support
+ * is close by in another branch, but for the sake of bringup just block those
+ * now */
+	for (size_t i = 0; i < COUNT_OF(dmabuf->planes); i++){
+		if (i == 0){
+			arcan_shmif_signalhandle(acon, SHMIF_SIGVID,
+				dmabuf->planes[i].fd, dmabuf->planes[i].stride, dmabuf->fmt);
+		}
+	}
+
+	trace(TRACE_SURF, "surf_commit(dmabuf:%s)", surf->tracetag);
+	return true;
+}
+
+static bool push_shm(struct wl_client* cl,
+	struct arcan_shmif_cont* acon, struct wl_resource* buf, struct comp_surf* surf)
+{
+	struct wl_shm_buffer* shm_buf = wl_shm_buffer_get(buf);
+	if (!shm_buf)
+		return false;
+
 	trace(TRACE_SURF, "surf_commit(shm:%s)", surf->tracetag);
 
 	uint32_t w = wl_shm_buffer_get_width(shm_buf);
@@ -284,7 +327,7 @@ static void commit_shm(struct wl_client* cl, struct arcan_shmif_cont* acon,
 		if (ext_state == 2){
 			surf->fail_accel = -1;
 			arcan_shmifext_drop(acon);
-			return commit_shm(cl, acon, res, surf, shm_buf);
+			return push_shm(cl, acon, buf, surf);
 		}
 
 /* though it would be possible to share context between surfaces on the
@@ -295,7 +338,7 @@ static void commit_shm(struct wl_client* cl, struct arcan_shmif_cont* acon,
 /* building the dma buf used to be done hidden inside shmif, but it wasn't
  * really something that should be hidden there, so nowadays the tactic is
  * to instead implement that by importing the corresponding agp features */
-		return;
+		return true;
 	}
 
 /* two other options to avoid repacking, one is to actually use this signal-
@@ -319,6 +362,7 @@ static void commit_shm(struct wl_client* cl, struct arcan_shmif_cont* acon,
 		memcpy(acon->vidp, data, w * h * sizeof(shmif_pixel));
 
 	arcan_shmif_signal(acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+	return true;
 }
 
 /*
@@ -403,23 +447,17 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * a type of the buffer, so the canonical way is to just try them in
  * order shm -> drm -> dma-buf.
  */
-	struct wl_shm_buffer* shm_buf = wl_shm_buffer_get(buf);
 
-	if (!shm_buf){
-		struct wl_drm_buffer* drm_buf = wayland_drm_buffer_get(wl.drm, buf);
-		if (drm_buf){
-			trace(TRACE_SURF, "surf_commit(egl:%s)", surf->tracetag);
-			synch_acon_alpha(acon,
-				fmt_has_alpha(wayland_drm_buffer_get_format(drm_buf), surf));
-			wayland_drm_commit(surf, drm_buf, acon);
-		}
-		else
-			trace(TRACE_SURF, "surf_commit(unknown:%s)", surf->tracetag);
-/* dma- buf bits are missing here still, query the format and forward */
+	if (
+		!push_shm(cl, acon, buf, surf) &&
+		!push_drm(cl, acon, buf, surf) &&
+		!push_dma(cl, acon, buf, surf)){
+		trace(TRACE_SURF, "surf_commit(unknown:%s)", surf->tracetag);
 	}
-	else {
-		commit_shm(cl, acon, res, surf, shm_buf);
-	}
+
+/* might be that this should be moved to the buffer types as well,
+ * since we might need double-triple buffering, uncertain how mesa
+ * actually handles this */
 	wl_buffer_send_release(buf);
 
 	trace(TRACE_SURF,

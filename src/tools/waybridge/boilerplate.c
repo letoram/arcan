@@ -9,6 +9,21 @@
 
 #include "wlimpl/drm.c"
 
+#include "wlimpl/dma_buf_param.c"
+static struct zwp_linux_buffer_params_v1_interface zdmabuf_params_if = {
+	.destroy = zdmattr_destroy,
+	.add = zdmattr_add,
+	.create = zdmattr_create,
+	.create_immed = zdmattr_create_immed
+};
+
+#include "wlimpl/dma_buf.c"
+static struct zwp_linux_dmabuf_v1_interface zdmabuf_if = {
+	.destroy = zdmabuf_destroy,
+	.create_params = zdmabuf_params,
+};
+
+
 #include "wlimpl/surf.c"
 static struct wl_surface_interface surf_if = {
 	.destroy = surf_destroy,
@@ -219,19 +234,6 @@ static const struct xdg_wm_base_interface xdgshell_if = {
 	.destroy = xdg_destroy
 };
 #endif
-
-#include "wlimpl/dma_buf_param.c"
-static struct zwp_linux_buffer_params_v1_interface zdmabuf_params_if = {
-	.add = zdmattr_add,
-	.create = zdmattr_create,
-	.create_immed = zdmattr_create_immed
-};
-
-#include "wlimpl/dma_buf.c"
-static struct zwp_linux_dmabuf_v1_interface zdmabuf_if = {
-	.destroy = zdmabuf_destroy,
-	.create_params = zdmabuf_params,
-};
 
 #include "wayland-relative-pointer-unstable-v1-server-protocol.h"
 #include "wlimpl/relp_mgr.c"

@@ -19,6 +19,11 @@ static void zdmabuf_params(
 		return;
 	}
 
+	*buf = (struct dma_buf){};
+	for (size_t i = 0; i < COUNT_OF(buf->planes); i++){
+		buf->planes[i].fd = -1;
+	}
+
 /* create a resource with the same version pointing to the attributes obj. */
 	uint32_t version = wl_resource_get_version(res);
 	struct wl_resource* attr_res =
@@ -30,5 +35,5 @@ static void zdmabuf_params(
 		return;
 	}
 
-	wl_resource_set_implementation(attr_res, &zdmabuf_params_if, NULL, NULL);
+	wl_resource_set_implementation(attr_res, &zdmabuf_params_if, buf, NULL);
 }
