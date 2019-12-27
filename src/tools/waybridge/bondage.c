@@ -159,16 +159,23 @@ static void bind_zwp_dma_buf(struct wl_client* client,
 		uint64_t* mods = NULL;
 		int n_mods = 0;
 
-		if (!wl.query_modifiers(wl.display, formats[i], 0, NULL, NULL, &n_mods))
+/* no modifiers for format? send invalid */
+		if (!wl.query_modifiers(wl.display,
+			formats[i], 0, NULL, NULL, &n_mods) || !n_mods){
+			uint64_t invalid = DRM_FORMAT_MOD_INVALID;
+			uint32_t mod_hi, mod_lo;
+			decompose_mod(invalid, &mod_hi, &mod_lo);
+			zwp_linux_dmabuf_v1_send_modifier(res, formats[i], mod_hi, mod_lo);
 			continue;
+		}
 
 		mods = malloc(n_mods * sizeof(uint64_t));
 		if (mods &&
-			wl.query_modifiers(wl.display, formats[i], n_mods, mods, NULL, &num)){
+			wl.query_modifiers(wl.display, formats[i], n_mods, mods, NULL, &n_mods)){
 			for (size_t j = 0; j < n_mods; j++){
 				uint32_t mod_hi, mod_lo;
 				decompose_mod(mods[j], &mod_hi, &mod_lo);
-				zwp_linux_dmabuf_v1_send_format(res, formats[i]);
+				zwp_linux_dmabuf_v1_send_modifier(res, formats[i], mod_hi, mod_lo);
 			}
 		}
 		free(mods);
