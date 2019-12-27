@@ -17,6 +17,12 @@ struct dma_buf {
 	struct wl_resource* res;
 };
 
+static void zdmattr_destroy(struct wl_client* cl, struct wl_resource* res)
+{
+	trace(TRACE_ALLOC, "");
+	wl_resource_destroy(res);
+}
+
 static void dmabuf_destroy(struct wl_client* cl, struct wl_resource* res)
 {
 	wl_resource_destroy(res);
@@ -24,23 +30,22 @@ static void dmabuf_destroy(struct wl_client* cl, struct wl_resource* res)
 
 static void dmabuf_destroy_user(struct wl_resource* res)
 {
-
 }
 
 static const struct wl_buffer_interface buffer_impl = {
 	.destroy = dmabuf_destroy,
 };
 
-static bool resource_is_dmabuf(struct wl_resource* res)
+struct dma_buf* dmabuf_buffer_get(struct wl_resource* res)
 {
 	if (!wl_resource_instance_of(res, &wl_buffer_interface, &buffer_impl))
-		return false;
+		return NULL;
 
 	struct dma_buf* buf = wl_resource_get_user_data(res);
 	if (!buf || buf->magic != 0xfeedface)
-		return false;
+		return NULL;
 
-	return true;
+	return buf;
 }
 
 static void zdmattr_buffer_finish(struct wl_client* cl, struct wl_resource* res,
@@ -65,6 +70,10 @@ static void zdmattr_buffer_finish(struct wl_client* cl, struct wl_resource* res,
 	}
 
 	buffer->magic = 0xfeedface;
+	buffer->fmt = fmt;
+	buffer->w = w;
+	buffer->h = h;
+
 	wl_resource_set_implementation(
 		buffer->res, &buffer_impl, buffer, dmabuf_destroy_user);
 

@@ -555,17 +555,20 @@ static void xcb_configure_request(xcb_configure_request_event_t* ev)
  */
 	int mask =
 		XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
-		XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
 		XCB_CONFIG_WINDOW_BORDER_WIDTH;
 
 /* just some kind of default, we don't have any forwarding of 'next window size' */
-	int w = 320;
-	int h = 200;
-	if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH)
+	int w = 0;
+	int h = 0;
+	if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH){
 		w = ev->width;
+		mask |= XCB_CONFIG_WINDOW_WIDTH;
+	}
 
-	if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH)
+	if (ev->value_mask & XCB_CONFIG_WINDOW_HEIGHT){
 		h = ev->height;
+		mask |= XCB_CONFIG_WINDOW_HEIGHT;
+	}
 
 	uint32_t values[8] = {
 		ev->x,
