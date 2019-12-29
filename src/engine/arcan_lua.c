@@ -3783,6 +3783,26 @@ static int vr_getmeta(lua_State* ctx)
 	}
 	lua_rawset(ctx, top);
 
+	lua_pushstring(ctx, "projection_left");
+	lua_createtable(ctx, 0, 16);
+	ttop = lua_gettop(ctx);
+	for (size_t i = 0; i < 16; i++){
+		lua_pushnumber(ctx, i+1);
+		lua_pushnumber(ctx, md.projection_left[i]);
+		lua_rawset(ctx, ttop);
+	}
+	lua_rawset(ctx, top);
+
+	lua_pushstring(ctx, "projection_right");
+	lua_createtable(ctx, 0, 16);
+	ttop = lua_gettop(ctx);
+	for (size_t i = 0; i < 16; i++){
+		lua_pushnumber(ctx, i+1);
+		lua_pushnumber(ctx, md.projection_right[i]);
+		lua_rawset(ctx, ttop);
+	}
+	lua_rawset(ctx, top);
+
 	LUA_ETRACE("vr_metadata", NULL, 1);
 }
 
@@ -5946,9 +5966,30 @@ static int camtag(lua_State* ctx)
 
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 
+/* second form is to update a camera with a different projection */
+	if (lua_type(ctx, 2) == LUA_TTABLE){
+		float proj[16];
+		int nvals = lua_rawlen(ctx, -1);
+		if (nvals != 16){
+			lua_pushboolean(ctx, false);
+			LUA_ETRACE("camtag_model", "16 elements expected", 1);
+		}
+		else {
+			for (size_t i = 0; i < 16; i++){
+				lua_rawgeti(ctx, 2, i+1);
+				proj[i] = lua_tonumber(ctx, -1);
+				lua_pop(ctx, 1);
+			}
+			lua_pushboolean(ctx, arcan_3d_camproj(id, proj) == ARCAN_OK);
+		}
+		LUA_ETRACE("camtag_model", NULL, 1);
+	}
+
 	struct monitor_mode mode = platform_video_dimensions();
 	float w = mode.width;
 	float h = mode.height;
+
+	int base = 6;
 
 	float ar = w / h > 1.0 ? w / h : h / w;
 
