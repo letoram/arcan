@@ -1493,6 +1493,20 @@ arcan_errc arcan_3d_baseorient(arcan_vobj_id dst,
 	return ARCAN_OK;
 }
 
+arcan_errc arcan_3d_camproj(arcan_vobj_id vid, float proj[static 16])
+{
+	arcan_vobject* vobj = arcan_video_getobject(vid);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	struct camtag_data* camera = vobj->feed.state.ptr;
+	if (vobj->feed.state.tag != ARCAN_TAG_3DCAMERA)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	memcpy(camera->projection, proj, sizeof(float) * 16);
+	return ARCAN_OK;
+}
+
 arcan_errc arcan_3d_camtag(arcan_vobj_id tgtid,
 	arcan_vobj_id vid, float near, float far, float ar, float fov, int flags, ...)
 {

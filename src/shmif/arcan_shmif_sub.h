@@ -298,13 +298,14 @@ struct vr_meta {
 /* correction constants */
 	float distortion[4];
 	float abberation[4];
+
+	float projection_left[16];
+	float projection_right[16];
 };
 
 union vr_data {
-	uint8_t data[192];
+	uint8_t data[64];
 	struct {
-		float modelview[16];
-		float projection[16];
 		vector position;
 		vector forward;
 		quat orientation;

@@ -38,6 +38,11 @@ arcan_errc arcan_3d_camtag(arcan_vobj_id tgt,
 	arcan_vobj_id vid, float near, float far, float ar, float fov, int flags, ...);
 
 /*
+ * Replace the projection matrix on a tagged camera
+ */
+arcan_errc arcan_3d_camproj(arcan_vobj_id vid, float proj[static 16]);
+
+/*
  * Generate a finalized model where the vertices range between [mins,mint]
  * with s mapped to x axis and t mapped to y or z depending on if [vert] is
  * set to [true,t=y] or [false,t=x] while the remaining axis will be set

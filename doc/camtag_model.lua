@@ -1,6 +1,7 @@
 -- camtag_model
 -- @short: Define a camera for the 3D processing of a rendertarget
 -- @inargs: vid:dst
+-- @inargs, vid:dst, numbtl:projection
 -- @inargs: vid:dst, float:near
 -- @inargs: vid:dst, float:near, float:far
 -- @inargs: vid:dst, float:near, float:far, float:fov
@@ -21,8 +22,9 @@
 -- *back* determines which sides of the model primitives that will be drawn.
 -- Setting the *linew* argument to something larger than 0 will enable wireframe
 -- drawing mode for the camera and disable normal processing.
+-- the argument form providing *projection* will replace the current projection matrix of the
+-- camera with that of the table.
 -- @group: 3d
 -- @cfunction: camtag
 -- @related: video_3dorder
 -- @flags:
-

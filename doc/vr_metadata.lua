@@ -21,7 +21,9 @@
 -- [eye_display : distance from eyes to display, in m],
 -- [ipd : interpupillary distance, in m],
 -- [distortion : subtable of 4 floats with lens distortion data],
--- [abberation : subtable of 4 floats with lens distortion data]
+-- [abberation : subtable of 4 floats with lens distortion data],
+-- [projection_left] : suggested HMD left eye projection matrix,
+-- [projection_right] : suggesteed HMD right eye projection matrix
 -- If the metadata couldn't be accessed at this time due to some problem with the
 -- internal state of the vr bridge, or if ref:id doesn't refer to a valid vrbridge
 -- instance, the function will return nil. The best indicator for if the bridge

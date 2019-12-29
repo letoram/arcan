@@ -164,6 +164,8 @@ bool openhmd_init(struct dev_ent* ent,
 	getf(OHMD_EYE_IPD, &vr->meta.ipd);
  	getf(OHMD_UNIVERSAL_DISTORTION_K, vr->meta.distortion);
  	getf(OHMD_UNIVERSAL_ABERRATION_K, vr->meta.abberation);
+	getf(OHMD_LEFT_EYE_GL_PROJECTION_MATRIX, vr->meta.projection_left);
+	getf(OHMD_RIGHT_EYE_GL_PROJECTION_MATRIX, vr->meta.projection_right);
 
 /*
  * OHMD_BUTTON_COUNT,
