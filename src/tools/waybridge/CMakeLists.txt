@@ -1,7 +1,8 @@
 PROJECT( arcan-wayland )
 cmake_minimum_required(VERSION 3.0.0 FATAL_ERROR)
+set(ARCAN_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../")
+set(CMAKE_MODULE_PATH ${ARCAN_ROOT}platform/cmake/modules)
 
-set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/cmake/modules)
 include(Wayland)
 find_package(Wayland)
 find_package(WaylandProtocols REQUIRED)
@@ -24,7 +25,9 @@ include_directories(
 	${WAYLAND_SERVER_INCLUDE_DIRS}
 	${CMAKE_CURRENT_BINARY_DIR}
 	${XKB_INCLUDE_DIRS}
+	${ARCAN_ROOT}
 )
+
 add_definitions(
 	-Wall
 	-D__UNIX

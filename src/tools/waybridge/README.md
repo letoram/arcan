@@ -113,10 +113,13 @@ Then for the arcan\_xwm tool (the window manager for xwayland) can be used
 either through the setup above, or with Xarcan along with the normal X
 debugging tools, e.g.
 
+Mesa and EGL stacks also have their environment variables for enabling
+debugging. EGL\_LOG\_LEVEL=debug, MESA\_DEBUG=...
+
 tracing - xtruss
 interactive querying - xwininfo, xprop
 input-events - xev
-
+pseudo-wm-commands - xdotool, wmctrl
 other useful xwininfo: -tree -root
 
 TODO
@@ -176,5 +179,5 @@ determine if we are compliant or not, because Wayland.
   - [ ] Viewporter
   - [ ] Xdg-output
   - [ ] Xdg-foreign
-	- [ ] Dma- buf
+	- [x] Dma- buf
 	- [ ] Qt- specific protocols for SDL shutdown issue
