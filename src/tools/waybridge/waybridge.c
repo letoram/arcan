@@ -29,6 +29,7 @@
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon-compose.h>
 #include <libdrm/drm_fourcc.h>
+
 /*
  * only linux
  */
@@ -1363,9 +1364,9 @@ int main(int argc, char* argv[])
 		uintptr_t devnode;
 		arcan_shmifext_dev(&wl.control, &devnode, false);
 
-		uintptr_t display;
-		arcan_shmifext_egl_meta(&wl.control, &display, NULL, NULL);
-		wl.display = (void*) display;
+		uintptr_t gl_display;
+		arcan_shmifext_egl_meta(&wl.control, &gl_display, NULL, NULL);
+		wl.display = (void*) gl_display;
 
 		if (!wl.display){
 			fprintf(stderr, "(eglBindWaylandDisplayWL) failed\n");

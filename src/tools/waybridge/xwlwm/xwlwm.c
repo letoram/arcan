@@ -59,12 +59,6 @@ static bool xwm_standalone = false;
 #define WM_FLUSH true
 #define WM_APPEND false
 
-static void on_chld(int num)
-{
-	uint8_t ch = 'x';
-	write(signal_fd, &ch, 1);
-}
-
 static void on_dbgreq(int num)
 {
 	uint8_t ch = 'd';
@@ -395,16 +389,15 @@ static void xcb_map_notify(xcb_map_notify_event_t* ev)
 		free(reply);
 	}
 
-/*
 	if (-1 == input_focus){
 		input_focus = ev->window;
 		xcb_set_input_focus(dpy,
 			XCB_INPUT_FOCUS_POINTER_ROOT, ev->window, XCB_CURRENT_TIME);
 	}
- */
 
 	struct xwnd_state* state;
 	HASH_FIND_INT(windows,&ev->window,state);
+
 	if (state){
 		state->mapped = true;
 		send_updated_window(state, "map");
@@ -432,8 +425,10 @@ static void xcb_map_request(xcb_map_request_event_t* ev)
 
 	xcb_map_window(dpy, ev->window);
 
-	if (state)
+/*
+ * if (state)
 		state->mapped = true;
+ */
 }
 
 static void xcb_reparent_notify(xcb_reparent_notify_event_t* ev)
@@ -787,6 +782,7 @@ static void* process_thread(void* arg)
 	}
 	wm_command(WM_FLUSH, "kind=terminated");
 	uint8_t ch = 'x';
+	trace("shutdown:source=process_thread");
 	write(signal_fd, &ch, 1);
 	return NULL;
 }
@@ -873,7 +869,7 @@ int main (int argc, char **argv)
 	int code;
 
 	sigaction(SIGCHLD, &(struct sigaction){
-		.sa_handler = on_chld, .sa_flags = 0}, 0);
+		.sa_handler = SIG_IGN, .sa_flags = 0}, 0);
 
 	sigaction(SIGPIPE, &(struct sigaction){
 		.sa_handler = SIG_IGN, .sa_flags = 0}, 0);
@@ -931,26 +927,33 @@ int main (int argc, char **argv)
 		fprintf(stderr, "couldn't fork Xwayland process\n");
 		return EXIT_FAILURE;
 	}
-
+	trace("xwayland:pid=%d", xwayland);
 /*
  * wait for a reply from the Xwayland setup, we can also get that as a SIGUSR1
  * but it's better to have that as a way of firing up a debug-info chain
  */
 	if (!xwm_standalone){
-		trace("waiting for display");
+		trace("xwayland:status=initializing");
 		char inbuf[64] = {0};
+		close(notification[1]);
 		int rv = read(notification[0], inbuf, 63);
 		if (-1 == rv){
-			fprintf(stderr, "error reading from Xwayland: %s\n", strerror(errno));
+			trace("xwayland:message=%s", strerror(errno));
 			return EXIT_FAILURE;
 		}
 
-		unsigned long num = strtoul(inbuf, NULL, 10);
+		char* err;
+		unsigned long num = strtoul(inbuf, &err, 10);
+		if (err == inbuf){
+			trace("xwayland:status=error:message=couldn't spawn");
+			return EXIT_FAILURE;
+		}
+
 		char dispnum[8];
 		snprintf(dispnum, 8, ":%lu", num);
 		setenv("DISPLAY", dispnum, 1);
 		close(notification[0]);
-
+		trace("xwayland:display=%lu", num);
 /*
  * since we have gotten a reply, the display should be ready, just connect
  */
@@ -1079,14 +1082,18 @@ int main (int argc, char **argv)
 		xcb_flush(dpy);
 
 		int status = poll(pfd, 2, -1);
-		if (status == -1 && errno != EINTR && errno != EAGAIN)
+		if (status == -1 && errno != EINTR && errno != EAGAIN){
+			trace("shutdown:source=poll");
 			break;
+		}
 
 		if (pfd[0].revents & POLLIN){
 			uint8_t ch;
 			if (1 == read(pfd[0].fd, &ch, 1)){
-				if (ch == 'x')
+				if (ch == 'x'){
+					trace("shutdown:source=kill_thread_msg");
 					break;
+				}
 				if (ch == 'd')
 					spawn_debug();
 			}
@@ -1098,15 +1105,21 @@ int main (int argc, char **argv)
 		run_event(dpy);
 	}
 
-	if (exec_child == -1)
-		kill(SIGHUP, exec_child);
-
-	if (xwayland != -1)
-		kill(SIGHUP, xwayland);
-
 	while(exec_child != -1 || xwayland != -1){
 		int status;
+
+		if (exec_child != -1){
+			trace("shutdown:kill_child=%d", (int)exec_child);
+			kill(SIGHUP, exec_child);
+		}
+
+		if (xwayland != -1){
+			trace("shutdown:kill_xwayland=%d", (int)xwayland);
+			kill(SIGHUP, xwayland);
+		}
+
 		pid_t wpid = wait(&status);
+
 		if (wpid == exec_child && WIFEXITED(status))
 			exec_child = -1;
 		if (wpid == xwayland && WIFEXITED(status))

@@ -1,3 +1,5 @@
+#include "platform/agp/glfun.h"
+
 static void surf_destroy(struct wl_client* cl, struct wl_resource* res)
 {
 	trace(TRACE_ALLOC, "destroy:surf(%"PRIxPTR")", (uintptr_t) res);
@@ -149,20 +151,22 @@ static void setup_shmifext(
 {
 	struct arcan_shmifext_setup setup = arcan_shmifext_defaults(acon);
 	setup.builtin_fbo = false;
+
 	surf->accel_fmt = fmt;
 
-/* accelerated shm- sharing is currently disabled as the shmifext
- * implementation of the upload was dropped in favour of just doing
- * it manually via the agp_ set of functions. */
 	switch(fmt){
-		case WL_SHM_FORMAT_RGB565:
-/* should set UNSIGNED_SHORT_5_6_5 as well */
-		case WL_SHM_FORMAT_XRGB8888:
-		case WL_SHM_FORMAT_ARGB8888:
-		default:
-			surf->fail_accel = -1;
-			return;
-		break;
+	case WL_SHM_FORMAT_ARGB8888:
+	case WL_SHM_FORMAT_XRGB8888:
+		surf->gl_fmt = GL_BGRA;
+	break;
+	case WL_SHM_FORMAT_ABGR8888:
+	case WL_SHM_FORMAT_XBGR8888:
+		surf->gl_fmt = GL_RGBA;
+	break;
+	default:
+		surf->fail_accel = -1;
+		return;
+	break;
 	}
 	if (arcan_shmifext_setup(acon, setup) != SHMIFEXT_OK)
 		surf->fail_accel = -1;
@@ -267,15 +271,22 @@ static bool push_dma(struct wl_client* cl,
  * now */
 	for (size_t i = 0; i < COUNT_OF(dmabuf->planes); i++){
 		if (i == 0){
-			arcan_shmif_signalhandle(acon, SHMIF_SIGVID,
+			arcan_shmif_signalhandle(acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE,
 				dmabuf->planes[i].fd, dmabuf->planes[i].stride, dmabuf->fmt);
 		}
 	}
+
+	synch_acon_alpha(acon, fmt_has_alpha(dmabuf->fmt, surf));
 
 	trace(TRACE_SURF, "surf_commit(dmabuf:%s)", surf->tracetag);
 	return true;
 }
 
+/*
+ * since if we have GL already going if the .egl toggle is set, we can pull
+ * in agp and use those functions raw
+ */
+#include "platform/video_platform.h"
 static bool push_shm(struct wl_client* cl,
 	struct arcan_shmif_cont* acon, struct wl_resource* buf, struct comp_surf* surf)
 {
@@ -289,7 +300,7 @@ static bool push_shm(struct wl_client* cl,
 	uint32_t h = wl_shm_buffer_get_height(shm_buf);
 	int fmt = wl_shm_buffer_get_format(shm_buf);
 	void* data = wl_shm_buffer_get_data(shm_buf);
-	size_t stride = wl_shm_buffer_get_stride(shm_buf);
+	int stride = wl_shm_buffer_get_stride(shm_buf);
 
 	if (acon->w != w || acon->h != h){
 		trace(TRACE_SURF,
@@ -334,10 +345,56 @@ static bool push_shm(struct wl_client* cl,
  * same client, at this stage it turns out to be more work than the overhead */
 		trace(TRACE_SURF,"surf_commit(shm-gl-repack)");
 		arcan_shmifext_make_current(acon);
+		struct agp_fenv* fenv = arcan_shmifext_getfenv(acon);
+		if (!fenv || !fenv->gen_textures){
+			trace(TRACE_SURF, "no_gl in env, fallback");
+			surf->fail_accel = -1;
+			arcan_shmifext_drop(acon);
+			return push_shm(cl, acon, buf, surf);
+		}
 
-/* building the dma buf used to be done hidden inside shmif, but it wasn't
- * really something that should be hidden there, so nowadays the tactic is
- * to instead implement that by importing the corresponding agp features */
+/* grab our buffer */
+		if (0 == surf->glid){
+			fenv->gen_textures(1, &surf->glid);
+			if (0 == surf->glid){
+				trace(TRACE_SURF, "couldn't build texture, fallback");
+				arcan_shmifext_drop(acon);
+				surf->fail_accel = -1;
+				return push_shm(cl, acon, buf, surf);
+			}
+		}
+
+/* update the texture, could do a more efficient use of damage regions here,
+ * crutch is that we may need to maintain a queue of buffers again */
+		fenv->bind_texture(GL_TEXTURE_2D, surf->glid);
+		fenv->pixel_storei(GL_UNPACK_ROW_LENGTH, stride);
+		fenv->tex_image_2d(GL_TEXTURE_2D,
+			0, surf->gl_fmt, w, h, 0, surf->gl_fmt, GL_UNSIGNED_BYTE, data);
+		fenv->pixel_storei(GL_UNPACK_ROW_LENGTH, 0);
+		fenv->bind_texture(GL_TEXTURE_2D, 0);
+
+		int fd;
+		size_t stride_out;
+		int fmt;
+
+		uintptr_t gl_display;
+		arcan_shmifext_egl_meta(&wl.control, &gl_display, NULL, NULL);
+
+		if (arcan_shmifext_gltex_handle(acon,
+			gl_display, surf->glid, &fd, &stride_out, &fmt)){
+			trace(TRACE_SURF, "converted to handle, bingo");
+			arcan_shmif_signalhandle(acon,
+				SHMIF_SIGVID | SHMIF_SIGBLK_NONE,
+				fd, stride_out, fmt
+			);
+		}
+		else{
+			trace(TRACE_SURF, "couldn't build texture, fallback");
+			arcan_shmifext_drop(acon);
+			surf->fail_accel = -1;
+			return push_shm(cl, acon, buf, surf);
+		}
+
 		return true;
 	}
 

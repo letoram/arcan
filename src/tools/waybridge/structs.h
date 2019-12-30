@@ -132,6 +132,8 @@ struct comp_surf {
  */
 	int fail_accel;
 	int accel_fmt;
+	int gl_fmt;
+	unsigned glid;
 
 /*
  * Just keep this fugly thing here as it is on par with wl_list masturbation,
