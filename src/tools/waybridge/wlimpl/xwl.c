@@ -32,6 +32,15 @@ static int wmfd_input = -1;
 static char wmfd_inbuf[1024];
 static size_t wmfd_ofs = 0;
 
+/*
+ * HACK:
+ * Issues deep inside Xwayland cause some clients to not forward the
+ * client message WL_SURFACE_ID that is needed to pair a wayland surface with
+ * its window in X (xwl_ensure_surface_for_window -> send_surface_id -> then
+ * it gets horrible). To work-around this we can fake-pair them.
+ */
+static struct wl_resource* pending_resource;
+
 /* "known" mapped windows, we trigger the search etc. when a buffer
  * is commited without a known backing on the compositor, and try
  * to 'pair' it with ones that we have been told about */
@@ -171,6 +180,10 @@ static void xwl_wnd_paired(struct xwl_window* wnd)
 /* this requires some thinking, surface commit on a compositor surface will
  * lead to a query if the surface has been paired to a non-wayland one (X11) */
 	wnd->paired = true;
+	if (pending_resource && wl_resource_get_id(pending_resource) == wnd->id){
+		pending_resource = NULL;
+	}
+
 	wnd_message(wnd, "pair:%d:%d", wnd->surface_id, wnd->id);
 	surf_commit(wnd->pending_client, wnd->pending_res);
 
@@ -269,8 +282,7 @@ static int process_input(const char* msg)
 			trace(TRACE_XWL, "paired-pending %"PRIu32, id);
 			xwl_wnd_paired(wnd);
 		}
-		else
-			wnd->paired = true;
+		wnd->paired = true;
 	}
 /* window goes from invisible to visible state */
 	else if (strcmp(arg, "create") == 0){
@@ -337,6 +349,16 @@ static int process_input(const char* msg)
 		if (!wnd){
 			trace(TRACE_XWL, "map:id=%"PRIu32":status=no_wnd", id);
 			goto cleanup;
+		}
+
+/* HACK, if it is not paired and we have a pending wl-surf, guess they
+ * belong together */
+		if (!wnd->paired && pending_resource){
+			wnd->surface_id = wl_resource_get_id(pending_resource);
+			wnd->id = id;
+			wnd->pending_res = pending_resource;
+			pending_resource = NULL;
+			xwl_wnd_paired(wnd);
 		}
 
 		wnd->viewport.ext.viewport.invisible = false;
@@ -737,12 +759,18 @@ static bool xwl_pair_surface(
 	}
 
 /* are we waiting for the surface-id part? then set as pending so that we can
- * activate when it arrives - allocation behavior is a bit suspicious here */
+ * activate when it arrives - allocation behavior is a bit suspicious here -
+ * other option is also to release the buffer and trigger frame callbacks */
 	if (!wnd->paired){
 		trace(TRACE_XWL,
 			"unpaired surface-ID: %"PRIu32, wl_resource_get_id(res));
 		wnd->pending_res = res;
 		wnd->pending_client = cl;
+
+/* remember the last pending window, this is race prone on multiple clients */
+		if (!pending_resource)
+			pending_resource = res;
+
 		return false;
 	}
 

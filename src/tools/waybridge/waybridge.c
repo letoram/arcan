@@ -1033,6 +1033,7 @@ static int show_use(const char* msg, const char* arg)
 "\t-xwl              enable XWayland\n\n"
 "Security/Performance:\n"
 "\t-exec bin arg1 .. end of arg parsing, single-client mode (recommended)\n"
+"\t-exec-x11 bin arg same as -xwl -exec bin arg1 .. form\n"
 "\t-shm-egl          pass shm- buffers as gl textures (recommended)\n"
 #ifdef ENABLE_SECCOMP
 "\t-sandbox          filter syscalls, ...\n"
@@ -1267,6 +1268,12 @@ int main(int argc, char* argv[])
 			protocols.ddev = 0;
 		else if (strcmp(argv[arg_i], "-no-relative-pointer") == 0)
 			protocols.relp = 0;
+		else if (strcmp(argv[arg_i], "-exec-x11") == 0){
+			wl.exec_mode = true;
+			wl.use_xwayland = true;
+			arg_i++;
+			break;
+		}
 		else if (strcmp(argv[arg_i], "-exec") == 0){
 			wl.exec_mode = true;
 			arg_i++;
