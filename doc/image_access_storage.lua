@@ -16,7 +16,7 @@
 -- enable TARGET_VSTORE_SYNCH for the specific frameserver.
 -- @note: The backing store of a texture video object is not always available,
 -- particularly when the engine is running in conservative mode. Make sure that
--- your appl can handle scenarios where
+-- your appl can handle scenarios where the backing store cannot be read.
 -- @group: image
 -- @cfunction: imagestorage
 -- @related: define_calctarget

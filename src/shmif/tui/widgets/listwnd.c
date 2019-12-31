@@ -6,6 +6,7 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <string.h>
+#include <assert.h>
 
 /*
  * Useful enhancements missing:
@@ -655,6 +656,9 @@ bool arcan_tui_listwnd_setup(
 /* save old handlers and set new ones */
 	arcan_tui_update_handlers(T,
 		&cbcfg, &meta->old_handlers, sizeof(struct tui_cbcfg));
+
+/* and check for misuse */
+	assert(meta->old_handlers.resize != resize);
 
 /* requery label through new handles (removes existing ones) */
 	arcan_tui_reset_labels(T);

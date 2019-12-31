@@ -34,6 +34,7 @@
 #include <ctype.h>
 #include <inttypes.h>
 #include <stdint.h>
+#include <assert.h>
 
 #ifndef COUNT_OF
 #define COUNT_OF(x) \
@@ -1402,6 +1403,8 @@ void arcan_tui_bufferwnd_setup(struct tui_context* T,
 /* save old handlers */
 	arcan_tui_update_handlers(T,
 		&cbcfg, &meta->old_handlers, sizeof(struct tui_cbcfg));
+
+	assert(meta->old_handlers.input_label != on_label_input);
 
 	arcan_tui_reset_labels(T);
 	redraw_bufferwnd(T, meta);
