@@ -101,6 +101,11 @@ bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
 	return false;
 }
 
+struct agp_fenv* arcan_shmifext_getfenv(struct arcan_shmif_cont* con)
+{
+	return NULL;
+}
+
 bool arcan_shmifext_egl_meta(struct arcan_shmif_cont* con,
 	uintptr_t* display, uintptr_t* surface, uintptr_t* context)
 {

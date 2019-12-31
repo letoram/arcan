@@ -103,6 +103,14 @@ bool platform_video_map_handle(struct agp_vstore* store, int64_t handle)
 	return false;
 }
 
+struct agp_fenv* arcan_shmifext_getfenv(struct arcan_shmif_cont* con)
+{
+	if (!con || !con->privext || !con->privext->internal)
+		return false;
+
+	return &agp_fenv;
+}
+
 static bool check_functions(void*(*lookup)(void*, const char*), void* tag)
 {
 	create_image = (PFNEGLCREATEIMAGEKHRPROC)

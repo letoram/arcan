@@ -41,10 +41,10 @@
  * during _integrity_check
  */
 #define ASHMIF_VERSION_MAJOR 0
-#define ASHMIF_VERSION_MINOR 11
+#define ASHMIF_VERSION_MINOR 13
 
 #ifndef LOG
-#define LOG(...) (fprintf(stderr, __VA_ARGS__))
+#define LOG(X, ...) (fprintf(stderr, "[%lld]" X, arcan_timemillis(), ## __VA_ARGS__))
 #endif
 
 /*
@@ -660,6 +660,13 @@ bool arcan_shmifext_gltex_handle(
  */
 int arcan_shmifext_dev(
 	struct arcan_shmif_cont* con, uintptr_t* outdev, bool clone);
+
+/*
+ * Retrieve the agp function environment from the currently active context.
+ * This should only really be useful for project-coupled tools like waybridge
+ * where access to the agp_ set of functions is also guaranteed.
+ */
+struct agp_fenv* arcan_shmifext_getfenv(struct arcan_shmif_cont*);
 
 /*
  * Similar behavior to signalhandle, but any conversion from the texture id

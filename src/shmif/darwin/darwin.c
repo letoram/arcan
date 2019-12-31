@@ -34,6 +34,15 @@ static void* lookup_fenv(void* tag, const char* sym, bool req)
 	return arcan_shmifext_lookup(NULL, sym);
 }
 
+struct agp_fenv* arcan_shmifext_getfenv(struct arcan_shmif_cont* con)
+{
+	if (!con || !con->privext || !con->privext->internal)
+		return false;
+
+	struct shmif_ext_hidden_int* in = con->privext->internal;
+	return &in->fenv;
+}
+
 int arcan_shmifext_isext(struct arcan_shmif_cont* con)
 {
 	if (con && con->privext && con->privext->internal)
