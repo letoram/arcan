@@ -128,6 +128,7 @@ static int video_miniz(const void* buf, int len, void* user)
 	return 1;
 }
 
+#ifdef WANT_H264_DEC
 static bool ffmpeg_alloc(struct a12_channel* ch, int method)
 {
 	if (!ch->videnc.codec){
@@ -168,6 +169,7 @@ static bool ffmpeg_alloc(struct a12_channel* ch, int method)
 
 	return true;
 }
+#endif
 
 bool a12int_vframe_setup(struct a12_channel* ch, struct video_frame* dst, int method)
 {
