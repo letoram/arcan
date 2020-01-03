@@ -404,7 +404,6 @@ void tui_screen_resized(struct tui_context* tui)
 int tui_screen_refresh(struct tui_context* tui)
 {
 /* synch vscreen -> screen buffer */
-	LOG("refresh\n");
 	tui->flags = tsm_screen_get_flags(tui->screen);
 
 /* quick hack until we rewrite the renderer, release the context for other
@@ -420,7 +419,6 @@ int tui_screen_refresh(struct tui_context* tui)
 	size_t rbuf_sz;
 	int rv = build_raster_buffer(tui, &rbuf, &rbuf_sz);
 	tui->dirty = DIRTY_NONE;
-	LOG("got buffer\n");
 
 /* Release the update lock so other threads may continue to update /
  * process while we are busy forwarding and synching. */
@@ -434,9 +432,7 @@ int tui_screen_refresh(struct tui_context* tui)
 				return 0;
 		}
 
-		LOG("signal\n");
 		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
-		LOG("released\n");
 	}
 
 	return 0;

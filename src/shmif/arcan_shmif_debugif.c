@@ -20,6 +20,8 @@
  *    - dynamic descriptor list refresh
  *    - runtime symbol hijack
  *    - memory pages to sense_mem deployment
+ *      - use llvm-symbolizer to resolve addresses to memory
+ *        and show as labels/overlays on the bytes themselves
  *    - short-write commit (randomize commit-sizes)
  *    - enumerate modules and their symbols? i.e. dl_iterate_phdr
  *      and trampoline?
