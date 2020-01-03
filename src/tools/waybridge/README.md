@@ -53,7 +53,7 @@ memory use:
 This mode attempts to set any toolkit specific environment options that might
 be needed. This way of running single clients works for X clients as well:
 
-        arcan-wayland -xwl -exec xterm
+        arcan-wayland -exec-x11 xterm
 
 The same caveat applies with the -xwl approach, both the wayland layer and the
 Xorg layer and the meta- Xorg window manager will be run as separate processes
