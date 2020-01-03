@@ -8596,6 +8596,11 @@ static int targetaccept(lua_State* ctx)
  * encode feed function
  */
 	if (segid == SEGID_HANDOVER){
+/* another fun bit, the monitoring child for internally launched processes
+ * is dangerous as the pid itself won't be known, causing the child termination
+ * to shut down the parent in some edge cases
+ */
+		newref->child = -1;
 		arcan_video_alterfeed(newref->vid, FFUNC_NULLFRAME, (vfunc_state){
 			.tag = ARCAN_TAG_FRAMESERV, .ptr = newref
 		});
