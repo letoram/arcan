@@ -275,7 +275,7 @@ void a12int_encode_rgba(PACK_ARGS)
 void a12int_encode_rgb(PACK_ARGS)
 {
 	size_t px_sz = 3;
-	a12int_trace(A12_TRACE_VDETAIL, "kind=status:ch=%"PRIu8"codec=rgb", chid);
+	a12int_trace(A12_TRACE_VDETAIL, "kind=status:ch=%"PRIu8"codec=rgb", (uint8_t) chid);
 
 /* calculate chunk sizes based on a fitting amount of pixels */
 	size_t hdr_sz = a12int_header_size(STATE_VIDEO_PACKET);

@@ -742,7 +742,7 @@ static void get_fd_fn(char* buf, size_t lim, int fd)
 		snprintf(buf, 256, "%s", buf2);
 	}
 #else
-	snprintf(buf, "Couldn't Resolve");
+	snprintf(buf, 256, "Couldn't Resolve");
 /* BSD: resolve to pathname if possible F_GETPATH */
 #endif
 }

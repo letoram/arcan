@@ -531,8 +531,8 @@ struct arcan_shmifext_setup {
 
 /* deprecated members, but don't want to break abi, while still
  * generating compiler visible errors for api break */
-	uint8_t _unused;
-	uint32_t __unused;
+	uint8_t deprecated_1;
+	uint32_t deprecated_2;
 
 /* workaround for versioning snafu with _setup not taking sizeof(...) */
 	uint8_t uintfl_reserve[6];

@@ -1437,7 +1437,7 @@ static size_t queue_node(struct a12_state* S, struct blob_out* node)
 	else {
 		a12int_trace(A12_TRACE_BTRANSFER,
 			"kind=block:stream=%zu:ch=%d:streaming:size=%"PRIu16,
-			node->streamid, (int)node->chid, nts
+			(size_t) node->streamid, (int)node->chid, nts
 		);
 	}
 
