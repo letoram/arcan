@@ -642,6 +642,9 @@ int MAIN_REDIR(int argc, char* argv[])
 		fullscreen = false;
 
 /* grab video, (necessary) */
+	arcan_evctx* evctx = arcan_event_defaultctx();
+	arcan_event_init(evctx);
+
 	if (arcan_video_init(width, height, 32, fullscreen, windowed,
 		conservative, arcan_appl_id()) != ARCAN_OK){
 		printf("Error: couldn't initialize video subsystem. Check permissions, "
@@ -666,10 +669,7 @@ int MAIN_REDIR(int argc, char* argv[])
 	arcan_img_init();
 
 /* setup device polling, cleanup, ... */
-	arcan_evctx* evctx = arcan_event_defaultctx();
 	arcan_led_init();
-	arcan_event_init(evctx);
-
 	system_page_size = sysconf(_SC_PAGE_SIZE);
 
 /*
