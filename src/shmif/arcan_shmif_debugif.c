@@ -68,13 +68,12 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
-#include <sys/prctl.h>
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
 
 #ifdef __LINUX
-#include <linux/prctl.h>
+#include <sys/prctl.h>
 #endif
 
 /*
