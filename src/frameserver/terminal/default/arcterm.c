@@ -45,34 +45,67 @@ static inline void trace(const char* msg, ...)
 
 extern int arcan_tuiint_dirty(struct tui_context* tui);
 
+static bool readout_pty(int fd)
+{
+	char buf[4096];
+	ssize_t nr = read(fd, buf, 4096);
+	if (-1 == nr){
+		if (errno == EAGAIN || errno == EINTR)
+			return true;
+
+		term.alive = false;
+		arcan_tui_set_flags(term.screen, TUI_HIDE_CURSOR);
+		return false;
+	}
+
+	pthread_mutex_lock(&term.synch);
+	tsm_vte_input(term.vte, buf, nr);
+	pthread_mutex_unlock(&term.synch);
+
+	/* wake the other thread */
+	if (arcan_tuiint_dirty(term.screen)){
+		write(term.dirtyfd, &(char){'1'}, 1);
+	}
+
+	return true;
+}
+
 void* pump_pty()
 {
 	int fd = shl_pty_get_fd(term.pty);
+	short pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;
 
 	while (term.alive){
-		char buf[4096];
-		ssize_t nr = read(fd, buf, 4096);
-		if (-1 == nr){
-			if (errno == EAGAIN || errno == EINTR)
+		int debugfd = tsm_vte_debugfd(term.vte);
+
+/* if there is a debug context active, run a separate poll- based approach */
+		if (-1 != debugfd){
+			struct pollfd set[2] = {
+				{
+					.fd = fd,
+					.events = pollev
+				},
+				{
+					.fd = debugfd,
+					.events = pollev
+				}
+			};
+			if (-1 == poll(set, 2, 0))
 				continue;
-			term.alive = false;
-			arcan_tui_set_flags(term.screen, TUI_HIDE_CURSOR);
-			break;
+
+			if (set[0].revents)
+				if (!readout_pty(fd))
+					break;
+
+			if (set[1].revents)
+				tsm_vte_update_debug(term.vte);
 		}
-
-/* shl_pty_write calls are mutex- protected,
- * so vte_input -> write- callback -> mutex
- */
-		pthread_mutex_lock(&term.synch);
-		tsm_vte_input(term.vte, buf, nr);
-		tsm_vte_update_debug(term.vte);
-		pthread_mutex_unlock(&term.synch);
-
-/* wake the other thread */
-		if (arcan_tuiint_dirty(term.screen)){
-			write(term.dirtyfd, &(char){'1'}, 1);
+		else {
+			if (!readout_pty(fd))
+				break;
 		}
 	}
+
 	return NULL;
 }
 
