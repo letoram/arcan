@@ -76,7 +76,7 @@ char* arcan_tui_statedescr(struct tui_context* tui)
 		"mods: %d iact: %d "
 		"cursor_x: %d cursor_y: %d off: %d hard_off: %d period: %d "
 		"(screen)age: %d margin_top: %u margin_bottom: %u "
-		"cursor_x: %u cursor_y: %u flags: %s%s%s%s%s%s",
+		"flags: %s%s%s%s%s%s",
 		(int) tui->fstamp, (int) tui->alpha,
 		(int) tui->scroll_lock,
 		tui->rows, tui->cols, tui->cell_w, tui->cell_h,
@@ -86,7 +86,6 @@ char* arcan_tui_statedescr(struct tui_context* tui)
 		cx, cy,
 		tui->cursor_off, tui->cursor_hard_off, tui->cursor_period,
 		(int) tui->screen->age, tui->screen->margin_top, tui->screen->margin_bottom,
-		tui->screen->cursor_x, tui->screen->cursor_y,
 		(tfl & TSM_SCREEN_INSERT_MODE) ? "insert " : "",
 		(tfl & TSM_SCREEN_AUTO_WRAP) ? "autowrap " : "",
 		(tfl & TSM_SCREEN_REL_ORIGIN) ? "relorig " : "",

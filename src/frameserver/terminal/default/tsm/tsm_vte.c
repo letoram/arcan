@@ -344,6 +344,18 @@ out:
 	return crow;
 }
 
+int tsm_vte_debugfd(struct tsm_vte* vte)
+{
+	if (!vte || !vte->debug)
+		return -1;
+
+	int fdout = -1;
+	if (1 == arcan_tui_get_handles(&vte->debug, 1, &fdout, 1)){
+		return fdout;
+	}
+	return -1;
+}
+
 void tsm_vte_update_debug(struct tsm_vte* vte)
 {
 	char* msg = NULL;
@@ -2705,6 +2717,8 @@ static void on_key(struct tui_context* c, uint32_t keysym,
 	else if (keysym == TUIK_K || keysym == TUIK_UP){
 		if (in->debug_ofs > 0)
 			in->debug_ofs--;
+	}
+	else if (keysym == TUIK_M){
 	}
 	else if (keysym == TUIK_ESCAPE){
 		for (size_t i = 0; i < DEBUG_HISTORY; i++){
