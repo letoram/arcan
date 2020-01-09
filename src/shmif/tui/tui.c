@@ -514,9 +514,9 @@ void arcan_tui_announce_io(struct tui_context* c,
 	}
 
 	if (output_descr){
-		bchunk_in.ext.bchunk.input = false;
-		snprintf((char*)bchunk_in.ext.bchunk.extensions,
-			COUNT_OF(bchunk_in.ext.bchunk.extensions), "%s", output_descr);
+		bchunk_out.ext.bchunk.input = false;
+		snprintf((char*)bchunk_out.ext.bchunk.extensions,
+			COUNT_OF(bchunk_out.ext.bchunk.extensions), "%s", output_descr);
 		arcan_shmif_enqueue(&c->acon, &bchunk_out);
 	}
 
