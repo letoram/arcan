@@ -136,7 +136,8 @@ struct mim_buffer_opts {
 
 /* basic TUI convenience loop / setups */
 static struct tui_list_entry* run_listwnd(struct debug_ctx* dctx,
-	struct tui_list_entry* list, size_t n_elem, const char* ident, size_t* pos);
+	struct tui_list_entry* list, size_t n_elem, const char* ident,
+	size_t* pos);
 
 static int run_buffer(struct tui_context* tui, uint8_t* buffer,
 	size_t buf_sz, struct tui_bufferwnd_opts opts, const char* ident);
@@ -590,12 +591,45 @@ rerun:
 	}
 }
 
+static void bchunk(struct tui_context* T,
+	bool input, uint64_t size, int fd, void* tag)
+{
+	struct debug_ctx* dctx = tag;
+
+	if (dctx->last_fd == -1)
+		return;
+
+	struct arcan_shmif_cont* c = arcan_tui_acon(T);
+
+	int copy_last = arcan_shmif_dupfd(dctx->last_fd, -1, true);
+	if (-1 == copy_last){
+		return;
+	}
+
+	int copy_new = arcan_shmif_dupfd(fd, -1, true);
+	if (-1 == copy_new){
+		close(copy_last);
+		return;
+	}
+
+/* bgcopy takes care of closing */
+	if (input){
+		arcan_shmif_bgcopy(c, copy_new, copy_last);
+	}
+	else {
+		arcan_shmif_bgcopy(c, copy_last, copy_new);
+	}
+}
+
 static struct tui_list_entry* run_listwnd(struct debug_ctx* dctx,
 	struct tui_list_entry* list, size_t n_elem, const char* ident, size_t* pos)
 {
 	struct tui_list_entry* ent = NULL;
 	arcan_tui_update_handlers(dctx->tui,
-		&(struct tui_cbcfg){}, NULL, sizeof(struct tui_cbcfg));
+		&(struct tui_cbcfg){
+			.bchunk = bchunk,
+			.tag = dctx
+		}, NULL, sizeof(struct tui_cbcfg));
 	arcan_tui_listwnd_setup(dctx->tui, list, n_elem);
 	arcan_tui_ident(dctx->tui, ident);
 	if (pos)
