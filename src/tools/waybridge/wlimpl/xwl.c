@@ -677,7 +677,7 @@ static bool xwlsurf_shmifev_handler(
 	}
 /* raw-forward from appl to xwm, doesn't respect multipart */
 	case TARGET_COMMAND_MESSAGE:
-		fprintf(wmfd_output, "id=%"PRIu32"%s\n", (uint32_t) wnd->id, ev->tgt.message);
+		fprintf(wmfd_output, "id=%"PRIu32":%s\n", (uint32_t) wnd->id, ev->tgt.message);
 	break;
 	case TARGET_COMMAND_EXIT:
 		fprintf(wmfd_output, "kind=destroy:id=%"PRIu32"\n", wnd->id);

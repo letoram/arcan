@@ -727,9 +727,9 @@ static void process_wm_command(const char* arg)
 	}
 /* absolute positioned window position need to be synched */
 	else if (strcmp(dst, "move") == 0){
-		arg_lookup(args, "width", 0, &dst);
+		arg_lookup(args, "x", 0, &dst);
 		ssize_t x = strtol(dst, NULL, 10);
-		arg_lookup(args, "height", 0, &dst);
+		arg_lookup(args, "y", 0, &dst);
 		ssize_t y = strtol(dst, NULL, 10);
 		trace("srv-move(%d)(%zd, %zd)", id, x, y);
 		state->x = x;
