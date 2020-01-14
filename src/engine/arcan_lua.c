@@ -871,19 +871,30 @@ static int alua_doresolve(lua_State* ctx, const char* inp)
 
 void arcan_lua_tick(lua_State* ctx, size_t nticks, size_t global)
 {
+	if (!nticks)
+		return;
+
 	arcan_lua_setglobalint(ctx, "CLOCK", global);
 
-/* many applications misused the callback handler, ignoring the nticks and
- * global fields causing timed tasks to drift more than desired, so we fail */
-	do {
+/* Many applications misused the callback handler, ignoring the nticks and
+ * global fields causing timed tasks to drift more than desired. Switch to
+ * have one preferred 'batched' and then one where we emit each tick */
+	if (grabapplfunction(ctx, "clock_pulse_batch", 17)){
+		lua_pushnumber(ctx, global);
+		lua_pushnumber(ctx, nticks);
+		alua_call(ctx, 2, 0, LINE_TAG":clock_pulse_batch");
+		return;
+	}
+
+	while (nticks){
+		nticks--;
 		if (!grabapplfunction(ctx, "clock_pulse", 11))
 			break;
 
 		lua_pushnumber(ctx, global);
-		lua_pushnumber(ctx, nticks);
+		lua_pushnumber(ctx, 1);
 		alua_call(ctx, 2, 0, LINE_TAG":clock_pulse");
 	}
-	while (nticks-- > 0);
 }
 
 char* arcan_lua_main(lua_State* ctx, const char* inp, bool file)

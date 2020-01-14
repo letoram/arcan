@@ -20,10 +20,14 @@ want to achieve.
 .IP "\fBxxx()\fR"
 Invoked as soon as audio/video/event/database subsystems are active.
 
-.IP "\fBxxx_clock_pulse(tickstamp, pulsecount)\fR"
-Invoked every logical clock-pulse, or, depending on congestion at higher
-loads, less often but with a pulsecount field set to the corresponding
-number of ticks. When the load is normal, pulsecount will equal 1.
+.IP "\fBxxx_clock_pulse()\fR"
+Invoked every logical clock-pulse on a default monotonic clock at 25Hz
+unless clock_pulse_batch is set, then it takes precedence. The CLOCK
+global provides the current global clock value.
+
+.IP "\fBxxx_clock_pulse_batch(nticks, count)
+Alternate form to _clock_pulse that handles congestion (> 1 ticks)
+by providing them in one single go.
 
 .IP "\fBxxx_input(evtbl)\fR"
 Invoked every time an input device emits a valid output sample,
