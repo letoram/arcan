@@ -39,6 +39,7 @@ struct xwnd_state {
 	int x, y;
 	int w, h;
 	int id;
+	char* title;
 	UT_hash_handle hh;
 };
 static struct xwnd_state* windows;
@@ -78,9 +79,8 @@ static inline void trace(const char* msg, ...)
 	va_list args;
 	va_start( args, msg );
 		vfprintf(dst,  msg, args );
-		fprintf(dst, "\n");
+		fputc((int) '\n', dst);
 	va_end( args);
-	fflush(dst);
 }
 
 #ifdef _DEBUG
@@ -114,7 +114,6 @@ static inline void wm_command(bool flush, const char* msg, ...)
 	}
 
 	if (flush){
-		fflush(stdout);
 		in_lock = false;
 		pthread_mutex_unlock(&logout_synch);
 	}
@@ -158,6 +157,53 @@ static bool setup_visuals()
 	}
 
 	return false;
+}
+
+static void update_title(struct xwnd_state* state)
+{
+	xcb_get_property_cookie_t cookie = xcb_get_property(
+		dpy, 0, state->id, atoms[NET_WM_NAME], XCB_ATOM_ANY, 0, 2048);
+	xcb_get_property_reply_t* reply = xcb_get_property_reply(dpy, cookie, NULL);
+
+	if (!reply)
+		return;
+
+	if (reply->type != atoms[UTF8_STRING])
+		goto out;
+
+	size_t len = xcb_get_property_value_length(reply);
+	char* title = xcb_get_property_value(reply);
+	if (!title || !len)
+		goto out;
+
+	char* scratch = strndup(title, len);
+	if (!scratch)
+		goto out;
+
+/* treat as non-0 terminated */
+	if (!state->title || strcmp(state->title, scratch) != 0){
+		free(state->title);
+		state->title = scratch;
+	}
+	else
+		free(scratch);
+
+out:
+	free(reply);
+}
+
+static void xcb_property_notify(xcb_property_notify_event_t* ev)
+{
+	trace("xcb=property-notify");
+	struct xwnd_state* state = NULL;
+	HASH_FIND_INT(windows,&ev->window,state);
+	if (!state)
+		return;
+
+	if (ev->atom != atoms[NET_WM_NAME])
+		return;
+
+	update_title(state);
 }
 
 static void update_focus(int64_t id)
@@ -441,6 +487,7 @@ static void xcb_map_notify(xcb_map_notify_event_t* ev)
 
 	if (state){
 		state->mapped = true;
+		update_title(state);
 		send_updated_window(state, "map");
 	}
 }
@@ -537,11 +584,15 @@ static void xcb_destroy_notify(xcb_destroy_notify_event_t* ev)
 
 	struct xwnd_state* state;
 	HASH_FIND_INT(windows,&ev->window,state);
-	if (state)
-		HASH_DEL(windows, state);
 
-	wm_command(WM_FLUSH, "kind=destroy:id=%"PRIu32,
-		((xcb_destroy_notify_event_t*) ev)->window);
+	if (state){
+		HASH_DEL(windows, state);
+		free(state->title);
+	}
+
+	size_t count = HASH_COUNT(windows);
+	wm_command(WM_FLUSH, "kind=destroy:left=%zu:id=%"PRIu32,
+		count, ((xcb_destroy_notify_event_t*) ev)->window);
 }
 
 /*
@@ -779,6 +830,7 @@ static void process_wm_command(const char* arg)
 	}
 
 cleanup:
+	xcb_flush(dpy);
 	arg_cleanup(args);
 }
 
@@ -873,7 +925,7 @@ static void run_event()
 		trace("xcb=mapping-notify");
 	break;
 	case XCB_PROPERTY_NOTIFY:
-		trace("xcb=property-notify");
+		xcb_property_notify((xcb_property_notify_event_t*) ev);
 	break;
 	case XCB_CLIENT_MESSAGE:
 		xcb_client_message((xcb_client_message_event_t*) ev);
@@ -1059,6 +1111,9 @@ int main (int argc, char **argv)
 		return EXIT_SUCCESS;
 	}
 
+	setlinebuf(stdin);
+	setlinebuf(stdout);
+
 	pthread_t pth;
 	pthread_attr_t pthattr;
 	pthread_attr_init(&pthattr);
@@ -1107,6 +1162,7 @@ int main (int argc, char **argv)
 			return EXIT_FAILURE;
 		}
 		else {
+			trace("client_exec=%s", argv[1]);
 		}
 	}
 

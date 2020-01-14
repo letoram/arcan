@@ -109,6 +109,7 @@ struct conn_group {
 
 	struct pollfd* wayland;
 	struct pollfd* arcan;
+	struct pollfd* xwm;
 
 /* split bridge_slot and pollfd just to be able to have them on the same
  * indice, but be able to throw everyhthing at poll */
@@ -982,17 +983,18 @@ static struct conn_group* prepare_groups(size_t count)
 
 	memset(groups, '\0', sizeof(struct conn_group) * count);
 	for (size_t i = 0; i < count; i++){
-		groups[i].pgroup = malloc(sizeof(struct pollfd) * (N_GROUP_SLOTS+2));
+		groups[i].pgroup = malloc(sizeof(struct pollfd) * (N_GROUP_SLOTS+3));
 		groups[i].slots = malloc(sizeof(struct bridge_slot) * N_GROUP_SLOTS);
 
 		if (!groups[i].pgroup || !groups[i].slots)
 			OUT_OF_MEMORY("group/slot alloc");
 
-		groups[i].pg = &groups[i].pgroup[2];
+		groups[i].pg = &groups[i].pgroup[3];
 		groups[i].wayland = &groups[i].pgroup[0];
 		groups[i].arcan = &groups[i].pgroup[1];
+		groups[i].xwm = &groups[i].pgroup[2];
 
-		for (size_t j = 0; j < N_GROUP_SLOTS+2; j++){
+		for (size_t j = 0; j < N_GROUP_SLOTS+3; j++){
 			groups[i].pgroup[j] = (struct pollfd){
 				.events = POLLIN | POLLERR | POLLHUP,
 				.fd = -1
@@ -1066,12 +1068,18 @@ static int show_use(const char* msg, const char* arg)
 
 static bool process_group(struct conn_group* group)
 {
-	int sv = poll(group->pgroup, N_GROUP_SLOTS+2, 1000);
+	int sv = poll(group->pgroup, N_GROUP_SLOTS+3, 1000);
 
 	if (group->wayland && group->wayland->revents){
 		trace(TRACE_ALERT, "process wayland");
 		wl_event_loop_dispatch(
 			wl_display_get_event_loop(wl.disp), 0);
+		sv--;
+	}
+
+	if (group->xwm && group->xwm->revents){
+		trace(TRACE_ALERT, "process xwm");
+		xwl_check_wm();
 		sv--;
 	}
 
@@ -1542,7 +1550,6 @@ int main(int argc, char* argv[])
 				trace(TRACE_XWL, "respawning Xserver/wm");
 				xwl_spawn_wm(false, NULL);
 			}
-			xwl_check_wm();
 		}
 
 	}
