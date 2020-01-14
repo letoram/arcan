@@ -547,6 +547,7 @@ static int xwl_spawn_wm(bool block, char** argv)
 		return 0;
 
 	trace(TRACE_XWL, "spawning 'arcan-xwayland-wm'");
+	wl.groups[0].xwm->fd = -1;
 	int p2c_pipe[2];
 	int c2p_pipe[2];
 	if (-1 == pipe(p2c_pipe))
@@ -560,6 +561,8 @@ static int xwl_spawn_wm(bool block, char** argv)
 
 	wmfd_input = c2p_pipe[0];
 	wmfd_output = fdopen(p2c_pipe[1], "w");
+	setlinebuf(wmfd_output);
+	wl.groups[0].xwm->fd = wmfd_input;
 
 	xwl_wm_pid = fork();
 
