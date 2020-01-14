@@ -21,6 +21,25 @@ static void get_keyboard_states(struct wl_array* dst)
 /* FIXME: track press/release so we can send the right ones */
 }
 
+static void leave_all(struct comp_surf* cl)
+{
+	if (cl->client->pointer && cl->client->last_cursor){
+		trace(TRACE_DIGITAL,
+			"leave: %"PRIxPTR, (uintptr_t)cl->client->last_cursor);
+		wl_pointer_send_leave(
+			cl->client->pointer, STEP_SERIAL(), cl->client->last_cursor);
+		cl->client->last_cursor = NULL;
+	}
+
+	if (cl->client->last_kbd){
+		trace(TRACE_DIGITAL,
+			"leave: %"PRIxPTR, (uintptr_t) cl->client->last_kbd);
+		wl_keyboard_send_leave(
+			cl->client->keyboard, STEP_SERIAL(), cl->client->last_kbd);
+		cl->client->last_kbd = NULL;
+	}
+}
+
 static void enter_all(struct comp_surf* cl)
 {
 	if (cl->client->pointer && cl->client->last_cursor != cl->res){
@@ -105,7 +124,6 @@ static void update_mbtn(struct comp_surf* cl,
 					pts, WL_POINTER_AXIS_VERTICAL_SCROLL);
 			}
 		}
-		wl_pointer_send_frame(cl->client->pointer);
 	}
 
 /* 0x110 == BTN_LEFT in evdev parlerance, ignore 0 index as it is used

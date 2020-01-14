@@ -168,8 +168,10 @@ static void update_title(struct xwnd_state* state)
 	if (!reply)
 		return;
 
-	if (reply->type != atoms[UTF8_STRING])
+	if (reply->type != atoms[UTF8_STRING]){
+		trace("title:unsupported_type");
 		goto out;
+	}
 
 	size_t len = xcb_get_property_value_length(reply);
 	char* title = xcb_get_property_value(reply);
@@ -184,6 +186,7 @@ static void update_title(struct xwnd_state* state)
 	if (!state->title || strcmp(state->title, scratch) != 0){
 		free(state->title);
 		state->title = scratch;
+		trace("title=%s", scratch);
 	}
 	else
 		free(scratch);
@@ -217,11 +220,15 @@ static void update_focus(int64_t id)
 	if (!state){
 		xcb_set_input_focus_checked(dpy,
 			XCB_INPUT_FOCUS_POINTER_ROOT, XCB_NONE, XCB_TIME_CURRENT_TIME);
+		trace("focus-none");
 	}
 	else {
-		if (!state->override_redirect)
+		if (state->override_redirect){
+			trace("ignore-redirect");
 			return;
+		}
 
+		trace("focus-to:id=%"PRId64, id);
 		xcb_client_message_event_t msg = (xcb_client_message_event_t){
 			.response_type = XCB_CLIENT_MESSAGE,
 			.format = 32,
@@ -241,7 +248,6 @@ static void update_focus(int64_t id)
 	xcb_change_property(dpy, XCB_PROP_MODE_REPLACE,
 		root, atoms[NET_ACTIVE_WINDOW], atoms[WINDOW], 32, 1, &input_focus);
 }
-
 
 static void create_window()
 {
@@ -545,7 +551,7 @@ static void xcb_unmap_notify(xcb_unmap_notify_event_t* ev)
 
 static void xcb_client_message(xcb_client_message_event_t* ev)
 {
-	trace("xcb=client-messgae:id=%"PRIu32":type=%d", ev->window, ev->type);
+	trace("xcb=client-message:id=%"PRIu32":type=%d", ev->window, ev->type);
 /*
  * switch type against resolved atoms:
  * WL_SURFACE_ID : gives wayland surface id
@@ -760,7 +766,7 @@ static void process_wm_command(const char* arg)
 			goto cleanup;
 		}
 		size_t h = strtoul(dst, NULL, 10);
-		trace("wm=srv-resize:id=%:width=%zu:height=%zu", id, w, h);
+		trace("wm=srv-resize:id=%s:width=%zu:height=%zu", idstr, w, h);
 
 		const char* wtype = check_window_state(id);
 		if (strcmp(wtype, "default") == 0){
@@ -773,7 +779,7 @@ static void process_wm_command(const char* arg)
 		}
 /* just don't configure popups etc. */
 		else {
-			trace("wm=srv-resize:id=%s:wtype=%s:ignored=true", id, wtype);
+			trace("wm=srv-resize:id=%s:wtype=%s:ignored=true", idstr, wtype);
 		}
 	}
 /* absolute positioned window position need to be synched */
@@ -813,19 +819,19 @@ static void process_wm_command(const char* arg)
 		}
 	}
 	else if (strcmp(dst, "unfocus") == 0){
-		trace("srv-unfocus(%d)", id);
 		if (input_focus == id){
+			trace("srv-unfocus(%d)", id);
 			update_focus(-1);
 		}
 	}
 	else if (strcmp(dst, "focus") == 0){
-		trace("srv-focus(%d)", id);
 		struct xwnd_state* state = NULL;
 		HASH_FIND_INT(windows,&id,state);
-		if (state && state->override_redirect){
-			goto cleanup;
-		}
 
+		if (state && state->override_redirect)
+			goto cleanup;
+
+		trace("srv-focus(%d)", id);
 		update_focus(id);
 	}
 
@@ -1205,25 +1211,14 @@ int main (int argc, char **argv)
 		run_event(dpy);
 	}
 
-	while(exec_child != -1 || xwayland != -1){
-		int status;
+	if (exec_child != -1){
+		trace("shutdown:kill_child=%d", (int)exec_child);
+		kill(SIGHUP, exec_child);
+	}
 
-		if (exec_child != -1){
-			trace("shutdown:kill_child=%d", (int)exec_child);
-			kill(SIGHUP, exec_child);
-		}
-
-		if (xwayland != -1){
-			trace("shutdown:kill_xwayland=%d", (int)xwayland);
-			kill(SIGHUP, xwayland);
-		}
-
-		pid_t wpid = wait(&status);
-
-		if (wpid == exec_child && WIFEXITED(status))
-			exec_child = -1;
-		if (wpid == xwayland && WIFEXITED(status))
-			xwayland = -1;
+	if (xwayland != -1){
+		trace("shutdown:kill_xwayland=%d", (int)xwayland);
+		kill(SIGHUP, xwayland);
 	}
 
 	return 0;
