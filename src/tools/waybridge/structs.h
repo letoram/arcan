@@ -179,6 +179,9 @@ struct comp_surf {
 static bool displayhint_handler(struct comp_surf* surf,
 	struct arcan_tgtevent* tev);
 
+static void enter_all(struct comp_surf*);
+static void leave_all(struct comp_surf*);
+
 static void try_frame_callback(
 	struct comp_surf* surf, struct arcan_shmif_cont*);
 

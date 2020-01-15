@@ -672,10 +672,19 @@ static bool xwlsurf_shmifev_handler(
 			if (states.unfocused != surf->states.unfocused){
 				fprintf(wmfd_output, "id=%"PRIu32"%s\n",
 					wnd->id, surf->states.unfocused ? ":kind=unfocus" : ":kind=focus");
+				if (surf->states.unfocused){
+					leave_all(surf);
+				}
+				else{
+					enter_all(surf);
+					if (surf->client->pointer){
+						wl_pointer_send_button(surf->client->pointer, STEP_SERIAL(),
+							arcan_timemillis(), 0x10f, WL_POINTER_BUTTON_STATE_RELEASED);
+					}
+				}
 			}
 		}
 
-		fflush(wmfd_output);
 		return true;
 	}
 /* raw-forward from appl to xwm, doesn't respect multipart */
@@ -684,7 +693,6 @@ static bool xwlsurf_shmifev_handler(
 	break;
 	case TARGET_COMMAND_EXIT:
 		fprintf(wmfd_output, "kind=destroy:id=%"PRIu32"\n", wnd->id);
-		fflush(wmfd_output);
 		return true;
 	default:
 	break;
