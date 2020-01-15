@@ -1,1 +1,1 @@
-{"version":1,"ops":[{"type":5,"author":{"id":"e6c152d440109efdc7afc4e9ac4ac193043f8f68"},"timestamp":1567351043,"metadata":{"github-id":"MDEyOkxhYmVsZWRFdmVudDI1OTk0MjExODY="},"added":["confirmed"],"removed":[]}]}
+{"version":1,"ops":[{"type":3,"author":{"id":"afe1431eb0652fa0cf1b19255aa5fee71a2c5a51"},"timestamp":1579065976,"message":"fixed in (a574089da)","files":null},{"type":4,"author":{"id":"afe1431eb0652fa0cf1b19255aa5fee71a2c5a51"},"timestamp":1579065978,"status":2}]}
