@@ -554,13 +554,14 @@ static void xcb_client_message(xcb_client_message_event_t* ev)
 	trace("xcb=client-message:id=%"PRIu32":type=%d", ev->window, ev->type);
 /*
  * switch type against resolved atoms:
- * WL_SURFACE_ID : gives wayland surface id
  *  NET_WM_STATE : (format field == 32), gives:
  *                 modal, fullscreen, maximized_vert, maximized_horiz
  * NET_ACTIVE_WINDOW: set active window on root
  * NET_WM_MOVERESIZE: set edges for move-resize window
  * PROTOCOLS: set ping-pong
  */
+
+/* WL_SURFACE_ID : gives wayland surface id */
 	if (ev->type == atoms[WL_SURFACE_ID]){
 		trace("wl-surface:%"PRIu32" to %"PRIu32, ev->data.data32[0], ev->window);
 		wm_command(WM_FLUSH,
@@ -575,7 +576,18 @@ static void xcb_client_message(xcb_client_message_event_t* ev)
 			send_updated_window(state, "map");
 		}
 	}
-
+/* NET_WM_STATE:
+ * data32[0] : action (remove:0, add:1, toggle:2)
+ * [1,2] property (NET_WM_STATE_ MODAL, FULLSCREEN, MAXIMIZED_VERT, MAXIMIZED_HORIZ) */
+	else if (ev->type == atoms[NET_WM_STATE]){
+		if (ev->data.data32[1] == atoms[NET_WM_STATE_FULLSCREEN] ||
+			ev->data.data32[2] == atoms[NET_WM_STATE_FULLSCREEN]){
+			wm_command(WM_FLUSH,
+				"kind=fullscreen:id=%"PRIu32":state=%s", ev->window,
+				ev->data.data32[0] == 0 ? "off" :
+				(ev->data.data32[0] == 1 ? "on" : "toggle"));
+		}
+	}
 	else {
 		trace("client-message(unhandled) %"PRIu32"->%d", ev->window, ev->type);
 	}
