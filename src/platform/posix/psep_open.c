@@ -467,19 +467,27 @@ static int data_in(pid_t child)
 
 /* need to keep so we can release on VT sw */
 	bool keep;
-	int fd = access_device(cmd.path, cmd.arg, cmd.cmd_ch == RELEASE_DEVICE, &keep);
-	if (-1 == fd){
+	bool release = cmd.cmd_ch == RELEASE_DEVICE;
+
+	int fd = access_device(cmd.path, cmd.arg, release, &keep);
+
+/* release device won't return a valid file descriptor, otherwise
+ * it is an error code that should be forwarded */
+
+	if (!release && -1 == fd){
 		cmd.cmd_ch = OPEN_FAILED;
 		write(child_conn, &cmd, sizeof(cmd));
 	}
-	else{
+	else if (!release){
 		write(child_conn, &cmd, sizeof(cmd));
 		arcan_pushhandle(fd, child_conn);
+
+		if (!keep){
+			close(fd);
+			return -1;
+		}
 	}
-	if (!keep){
-		close(fd);
-		return -1;
-	}
+
 	return fd;
 }
 

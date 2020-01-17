@@ -796,7 +796,10 @@ void agp_dropenv(struct agp_fenv* env)
 		return;
 	}
 	env->cookie = 0xdeadbeef;
-	arcan_mem_free(env);
+
+	if (env != &defenv)
+		arcan_mem_free(env);
+
 	if (agp_env() == env)
 		agp_setenv(NULL);
 }
@@ -1014,15 +1017,32 @@ void agp_pipeline_hint(enum pipeline_mode mode)
 
 void agp_null_vstore(struct agp_vstore* store)
 {
+/* the txmapped property here might be problematic when it comes to
+ * dealloc/restore on GPU switching or suspend/restore as it does not cover
+ * cubemaps, 3d textures, ... */
 	if (!store ||
 		store->txmapped != TXSTATE_TEX2D || store->vinf.text.glid == GL_NONE)
 		return;
 
-	agp_env()->delete_textures(1, &store->vinf.text.glid);
+	struct agp_fenv* env = agp_env();
+	env->delete_textures(1, &store->vinf.text.glid);
 	verbose_print("cleared (%"PRIxPTR"), dropped %u",
 		(uintptr_t) store, store->vinf.text.glid);
 	store->vinf.text.glid = GL_NONE;
 	store->vinf.text.glid_proxy = NULL;
+
+/* null out any pending PBOs as well, those get re-allocated on demand */
+	if (GL_NONE != store->vinf.text.rid){
+		env->delete_buffers(1, &store->vinf.text.rid);
+		store->vinf.text.rid = GL_NONE;
+	}
+
+#ifndef GLES2
+	if (GL_NONE != store->vinf.text.wid){
+		env->delete_buffers(1, &store->vinf.text.wid);
+		store->vinf.text.wid = GL_NONE;
+	}
+#endif
 }
 
 void agp_resize_rendertarget(

@@ -1,5 +1,5 @@
 /*
- * copyright 2014-2019, björn ståhl
+ * copyright 2014-2020, björn ståhl
  * license: 3-clause bsd, see copying file in arcan source repository.
  * reference: http://arcan-fe.com
  */
@@ -130,6 +130,7 @@ struct dev_node {
 	int active; /*tristate, 0 = not used, 1 = active, 2 = displayless, 3 = inactive */
 	int draw_fd;
 	int disp_fd;
+	char* pathref;
 
 /* things we need to track to be able to forward devices to a client */
 	struct {
@@ -145,11 +146,10 @@ struct dev_node {
 
 	enum vsynch_method vsynch_method;
 
-/* kms/drm triggers, master is if we've achieved the drmMaster lock or not.
- * card_id is some unique sequential identifier for this card
+/* card_id is some unique sequential identifier for this card
  * crtc is an allocation bitmap for output port<->display allocation
  * atomic is set if the driver kms side supports/needs atomic modesetting */
-	bool master, wait_connector;
+	bool wait_connector;
 	int card_id;
 	bool atomic;
 
@@ -422,13 +422,21 @@ static void close_devices(struct dev_node* node)
 /* we might have a different device for drawing than for scanout */
 	int disp_fd = node->disp_fd;
 	if (-1 != disp_fd){
-		drmDropMaster(disp_fd);
+
+/* the privsep- parent still has the device open in master */
+		if (node->pathref){
+			platform_device_release(node->pathref, 0);
+			free(node->pathref);
+			node->pathref = NULL;
+		}
 		close(disp_fd);
 		node->disp_fd = -1;
 	}
 
+/* another node might be used for drawing, assumed this does not
+ * actually need master, if that turns out incorrect - duplicate the
+ * pathref parts to drawref as well */
 	if (node->draw_fd != -1 && node->draw_fd != disp_fd){
-		drmDropMaster(node->draw_fd);
 		close(node->draw_fd);
 		node->draw_fd = -1;
 	}
@@ -1602,8 +1610,7 @@ static bool setup_node(struct dev_node* node)
  * don't know and don't want the restriction when it comes to switching between
  * test drivers etc.
  */
-static int setup_node_egl(
-	int dst_ind, struct dev_node* node, const char* lib, int fd)
+static int setup_node_egl(int dst_ind, struct dev_node* node, int fd)
 {
 	if (!node->eglenv.query_string){
 		debug_print("EGLStreams, couldn't get EGL extension string");
@@ -2868,7 +2875,7 @@ static void disable_display(struct dispout* d, bool dealloc)
 		d->buffer.context = EGL_NO_CONTEXT;
 	}
 
-	if (d->device->buftype == BUF_STREAM){
+	if (d->device->buftype == BUF_GBM){
 		if (d->buffer.surface){
 			debug_print("destroy gbm surface");
 
@@ -3034,7 +3041,8 @@ static void flush_leds()
 }
 
 static bool try_node(int draw_fd, int disp_fd, const char* pathref,
-	int dst_ind, enum buffer_method method, int connid, int w, int h)
+	int dst_ind, enum buffer_method method, int connid, int w, int h,
+	bool ignore_display)
 {
 /* set default lookup function if none has been provided */
 	if (!nodes[dst_ind].eglenv.get_proc_address){
@@ -3058,7 +3066,7 @@ static bool try_node(int draw_fd, int disp_fd, const char* pathref,
 		}
 	break;
 	case BUF_STREAM:
-		if (0 != setup_node_egl(dst_ind, node, pathref, disp_fd)){
+		if (0 != setup_node_egl(dst_ind, node, disp_fd)){
 			debug_print("couldn't open (%d:%s) in EGLStreams mode",
 				draw_fd, pathref ? pathref : "(no path)");
 			release_card(dst_ind);
@@ -3075,6 +3083,10 @@ static bool try_node(int draw_fd, int disp_fd, const char* pathref,
 		release_card(dst_ind);
 		return false;
 	}
+
+/* used when we already have one */
+	if (ignore_display)
+		return true;
 
 	struct dispout* d = allocate_display(node);
 	d->display.primary = dst_ind == 0;
@@ -3165,8 +3177,9 @@ static bool try_card(size_t devind, int w, int h, size_t* dstind)
 		platform_device_open(drawdevstr, O_RDWR | O_CLOEXEC) : dispfd);
 
 	if (try_node(drawfd, dispfd, dispdevstr,
-		*dstind, gbm ? BUF_GBM : BUF_STREAM, connind, w, h)){
+		*dstind, gbm ? BUF_GBM : BUF_STREAM, connind, w, h, false)){
 		debug_print("card at %d added", *dstind);
+		nodes[*dstind].pathref = dispdevstr;
 		nodes[*dstind].card_id = *dstind;
 		*dstind++;
 		return true;
@@ -3222,9 +3235,11 @@ static bool setup_cards_basic(int w, int h)
 		if (-1 != fd){
 /* possible quick hack, just check modules if we have nouveau or nvidia loaded
  * and use that to select buffer mode - there's probably better ways but meh. */
-			if (try_node(fd, fd, buf, 0, BUF_GBM, -1, w, h) ||
-				try_node(fd, fd, buf, 0, BUF_GBM, -1, w, h))
+			if (try_node(fd, fd, buf, 0, BUF_GBM, -1, w, h, false) ||
+				try_node(fd, fd, buf, 0, BUF_GBM, -1, w, h, false)){
+					nodes[0].pathref = strdup(buf);
 					return true;
+				}
 			else{
 				debug_print("node setup failed");
 				close(fd);
@@ -3315,12 +3330,9 @@ void platform_video_reset(int id, int swap)
 	if (in_external)
 		return;
 
-/* if the context stack is broken, we are screwed */
-	if (-1 == arcan_video_pushcontext())
-		return;
+	arcan_video_prepare_external(true);
 
-	platform_video_prepare_external();
-/* at this stage, all the GPU resources are non-volatile */
+/* at this stage, all the GPU resources should be non-volatile */
 	if (id != -1 || swap){
 /* these case are more difficult as we also need to modify vstore affinity
  * masks (so we don't synch to multiple GPUs), and verify that the swapped
@@ -3330,10 +3342,7 @@ void platform_video_reset(int id, int swap)
 /* this is slightly incorrect as the agp_init function- environment,
  * ideally we'd also terminate the agp environment and rebuild on the
  * new / different card */
-	platform_video_restore_external();
-	platform_video_query_displays();
-	agp_shader_rebuild_all();
-	arcan_video_popcontext();
+	arcan_video_restore_external(true);
 
 	in_external = false;
 }
@@ -3522,8 +3531,11 @@ static void flush_parent_commands()
 /* suspend / release, if the parent connection is severed while in this
  * state, we'll leave it to restore external to shutdown */
 		debug_print("received tty switch request");
+
+/* first release current resources, then ack the release on the tty */
+		arcan_video_prepare_external(false);
 		platform_device_release("TTY", -1);
-		arcan_video_prepare_external();
+
 		int sock = platform_device_pollfd();
 
 		while (true){
@@ -3534,7 +3546,7 @@ static void flush_parent_commands()
 
 			if (pv == 4 || pv == -1){
 				debug_print("received restore request (%d)", pv);
-				arcan_video_restore_external();
+				arcan_video_restore_external(false);
 				break;
 			}
 		}
@@ -4093,6 +4105,9 @@ static enum display_update_state draw_display(struct dispout* d)
 		}
 
 		if (dstate == UPDATE_FLIP){
+			if (!d->buffer.surface)
+				goto out;
+
 			d->buffer.next_bo = gbm_surface_lock_front_buffer(d->buffer.surface);
 			if (!d->buffer.next_bo){
 				verbose_print("(%d) update, failed to lock front buffer", (int)d->id);
@@ -4184,23 +4199,60 @@ void platform_video_prepare_external()
 			flush_display_events(30, false);
 	} while(egl_dri.destroy_pending && rc-- > 0);
 
-	if (nodes[0].master)
-		drmDropMaster(nodes[0].disp_fd);
-	debug_print("external prepared");
+/* tell the privsep side that we no-longer need the GPU */
+	char* pathref = nodes[0].pathref;
+	nodes[0].pathref = NULL;
+	if (pathref){
+		platform_device_release(pathref, 0);
+		close(nodes[0].disp_fd);
+	}
+
+/* this will actually kill the pathref, restore needs it */
+	release_card(0);
+	nodes[0].pathref = pathref;
+
+	agp_dropenv(agp_env());
 
 	in_external = true;
 }
 
 void platform_video_restore_external()
 {
-/* uncertain if it is possible to poll on the device node to determine
- * when / if the drmMaster lock is released or not */
 	debug_print("restoring external");
 	if (!in_external)
 		return;
 
-/* this should probably be switched to psep_open again */
-	drmSetMaster(nodes[0].disp_fd);
+	arcan_event_maskall(arcan_event_defaultctx());
+
+/* this is a special place in malbolge, it is possible that the GPU has
+ * disappeared when we restore, or that it has been replaced with a different
+ * one - the setup for that is left hanging until the multi-GPU bits are in
+ * place */
+	int lfd = -1;
+	if (nodes[0].pathref){
+/* our options in this case if not getting the GPU back are currently slim,
+ * with a fallback software or remote AGP layer, the rest of the engine can be
+ * left going, we have enough state to release clients to migrate somewhere */
+		lfd = platform_device_open(nodes[0].pathref, O_RDWR);
+		if (-1 == lfd){
+			debug_print("couldn't re-acquire GPU after suspend");
+			goto give_up;
+		}
+
+/* and re-associate draw with disp if that was the case before */
+		if (nodes[0].draw_fd != -1 && nodes[0].draw_fd == nodes[0].disp_fd){
+			nodes[0].draw_fd = lfd;
+		}
+		nodes[0].disp_fd = lfd;
+	}
+
+/* rebuild the card itself now, if that fails, we are basically screwed,
+ * go to crash recovery */
+	if (!try_node(lfd, lfd,
+		nodes[0].pathref, 0,nodes[0].buftype, -1, -1, -1, true)){
+		debug_print("failed to rebuild display after external suspend");
+		goto give_up;
+	}
 
 /* rebuild the mapped and known displays, extsusp is a marker that indicate
  * that the state of the engine is that the display is still alive, and should
@@ -4225,6 +4277,17 @@ void platform_video_restore_external()
 		}
 	}
 
+	set_device_context(&nodes[0]);
+	agp_init();
 	in_external = false;
-/* defer the video_rescan to arcan_video.c as the event queue may not be ready */
+	arcan_event_clearmask(arcan_event_defaultctx());
+	return;
+
+give_up:
+	arcan_event_clearmask(arcan_event_defaultctx());
+	arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
+		.category = EVENT_SYSTEM,
+		.sys.kind = EVENT_SYSTEM_EXIT,
+		.sys.errcode = EXIT_FAILURE
+	});
 }
