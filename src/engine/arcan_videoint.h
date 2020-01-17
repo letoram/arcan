@@ -59,6 +59,7 @@ struct rendertarget {
 
 /* corresponding agp backend store for the rendertarget in question */
 	struct agp_rendertarget* art;
+	enum rendertarget_mode mode;
 
 	enum rtgt_flags flags;
 	enum arcan_order3d order3d;
@@ -81,13 +82,11 @@ struct rendertarget {
 	size_t transfc;
 
 /*
- * dirty- management is still incomplete in two ways, one is that dirty-
- * flagging is a global video state and not bound to rendertarget which is in
- * conflict with rendertargets being updated at different clocks.
- * second is that we do not consider the dirty- area, and just go for a full
- * redraw when it is time. Important optimizations but still low on the list.
- * When it is to be implemented, use this variable, an list of invalidation
- * rects and sweep the codebase for FLAG_DIRTY
+ * dirty- management is still incomplete in that dirty- flagging is a global
+ * video state and not bound to rendertarget which is in conflict with
+ * rendertargets being updated at different clocks. When it is to be
+ * implemented, use this variable, a list of invalidation rects and sweep the
+ * codebase for FLAG_DIRTY
  */
 	size_t dirtyc;
 

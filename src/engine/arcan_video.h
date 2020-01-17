@@ -252,14 +252,14 @@ void arcan_video_shutdown(bool release_fsrv);
  * for launching resource- hungry 3rd party software that can work
  * standalone, and for hibernation/suspend style power management.
  */
-bool arcan_video_prepare_external();
+bool arcan_video_prepare_external(bool keep_events);
 
 /*
  * Re-initialize the event layer, shaders, video objects etc. and
  * pop the last context saved. This ASSUMES that we are in a state
  * defined by arcan_video_prepare_external.
  */
-void arcan_video_restore_external();
+void arcan_video_restore_external(bool keep_events);
 
 /*
  * Specify if the 3D pipeline should be processed and if so,

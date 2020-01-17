@@ -1672,9 +1672,10 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 			current_context->world.vstore->filtermode &= ~ARCAN_VFILTER_MIPMAP;
 			agp_empty_vstore(current_context->world.vstore, neww, newh);
 			current_context->stdoutp.color = &current_context->world;
+			current_context->stdoutp.mode = RENDERTARGET_COLOR_DEPTH_STENCIL;
 			current_context->stdoutp.art = agp_setup_rendertarget(
 				current_context->world.vstore,
-				RENDERTARGET_COLOR_DEPTH_STENCIL
+				current_context->stdoutp.mode
 			);
 		}
 		else
@@ -2302,6 +2303,7 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 	dst->refresh = refresh;
 	dst->refreshcnt = abs(refresh);
 	dst->art = agp_setup_rendertarget(vobj->vstore, format);
+	dst->mode = format;
 	dst->order3d = arcan_video_display.order3d;
 	dst->vppcm = dst->hppcm = 28.346456692913385;
 	dst->min_order = 0;
@@ -5723,21 +5725,46 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 	return rv;
 }
 
-bool arcan_video_prepare_external()
+bool arcan_video_prepare_external(bool keep_events)
 {
 	if (-1 == arcan_video_pushcontext())
 		return false;
 
-	arcan_event_deinit(arcan_event_defaultctx());
+/* this still leaves rendertargets alive, normally this is ok but if the
+ * platform swaps gpus, contexts whatever in the meanwhile, it is not! */
+
+	if (!keep_events)
+		arcan_event_deinit(arcan_event_defaultctx());
+
 	platform_video_prepare_external();
 
-	arcan_event ev = {
-		.category = EVENT_VIDEO,
-		.vid.kind = EVENT_VIDEO_DISPLAY_RESET,
-	};
-	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
-
 	return true;
+}
+
+static void invalidate_rendertargets()
+{
+/* passs one, rebuild all the rendertargets */
+	for (size_t i = 0; i < current_context->n_rtargets; i++){
+		struct rendertarget* tgt = &current_context->rtargets[i];
+		if (!tgt->art)
+			continue;
+
+		arcan_mem_free(current_context->rtargets[i].art);
+		tgt->art = NULL;
+
+		if (!tgt->color)
+			continue;
+
+		tgt->art = agp_setup_rendertarget(tgt->color->vstore, tgt->mode);
+	}
+
+/* pass two, force update - back to forth to cover dependencies */
+	for (ssize_t i = current_context->n_rtargets - 1; i >= 0; i--){
+		struct rendertarget* tgt = &current_context->rtargets[i];
+		if (!tgt->color)
+			continue;
+		arcan_video_forceupdate(tgt->color->cellid);
+	}
 }
 
 arcan_errc arcan_video_maxorder(arcan_vobj_id rt, uint16_t* ov)
@@ -5793,13 +5820,22 @@ bool arcan_video_contextsize(unsigned newlim)
 	return true;
 }
 
-void arcan_video_restore_external()
+void arcan_video_restore_external(bool keep_events)
 {
+	if (!keep_events)
+		arcan_event_init( arcan_event_defaultctx() );
+
+	arcan_event ev = {
+		.category = EVENT_VIDEO,
+		.vid.kind = EVENT_VIDEO_DISPLAY_RESET,
+	};
+	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 	platform_video_restore_external();
-	arcan_event_init( arcan_event_defaultctx() );
+
 	platform_video_query_displays();
 	agp_shader_rebuild_all();
 	arcan_video_popcontext();
+	invalidate_rendertargets();
 }
 
 static void flag_ctxfsrv_dms(struct arcan_video_context* ctx)
