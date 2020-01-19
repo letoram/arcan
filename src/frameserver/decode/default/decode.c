@@ -1,6 +1,6 @@
 /*
  * Decode Reference Frameserver Archetype
- * Copyright 2014-2019, Björn Ståhl
+ * Copyright 2014-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Depends: LibVLC (LGPL) LibUVC (optional)
@@ -25,8 +25,49 @@ int show_use(struct arcan_shmif_cont* cont, const char* msg)
 		"General arguments:\n"
 		"   key   \t   value   \t   description\n"
 		"---------\t-----------\t-----------------\n"
-		" proto   \t media     \t set 'media' decode mode (audio, video)\n"
-		" proto   \t 3d        \t set '3d object' decode mode\n"
+		" proto   \t media     \t set 'media' mode (audio, video)\n"
+		" proto   \t 3d        \t set '3d object' mode\n"
+		" proto   \t text      \t set 'text' mode\n"
+#ifdef HAVE_PROBE
+		" proto   \t probe     \t set 'probe' mode\n"
+#endif
+
+#ifdef HAVE_T2S
+		" proto   \t t2s       \t set 'text-to-speech' mode\n"
+#endif
+		"---------\t-----------\t----------------\n"
+		"\n"
+#ifdef HAVE_T2S
+		" Accepted t2s arguments:\n"
+		"   key   \t   value   \t   description\n"
+		"---------\t-----------\t-----------------\n"
+		" channel \t l,r, >lr< \t set output channels to left, right or both\n"
+		" list    \t           \t return a list of voices then terminate\n"
+		" msg     \t text      \t one-shot convert 'text' to speech then terminate\n"
+		" voice   \t name      \t select voice by name\n"
+		" rate    \t 80..450   \t set rate in words per minute\n"
+		" pitch   \t 0..100    \t set base pitch, 0 low, (default=50)\n"
+		" range   \t 0..100    \t voice range, 0 monotone, (default=50)\n"
+		" gap     \t 0..n ms   \t gap between words in miliseconds (default=10)\n"
+		" ssml    \t           \t interpret text as 'ssml' formatted <voice> .. \n"
+		" phonemes\t           \t interpret text as 'phoneme' ([[]]) encoded\n"
+		"---------\t-----------\t----------------\n"
+		"\n"
+#endif
+#ifdef HAVE_PROBE
+		" Accepted t2s arguments:\n"
+		"   key   \t   value   \t   description\n"
+		"---------\t-----------\t-----------------\n"
+		" file    \t path      \t one-shot open file >path< for input \n"
+		" format  \t type      \t set output format (mime, long, >short<)\n"
+		"---------\t-----------\t-----------------\n"
+		"\n"
+#endif
+		" Accepted text arguments:\n"
+		"   key   \t   value   \t   description\n"
+		"---------\t-----------\t-----------------\n"
+		" file    \t path      \t try to open file path for playback \n"
+		" view    \t viewmode  \t (ascii, >utf8<, hex) set default view\n"
 		"\n"
 		"Accepted media arguments:\n"
 		"   key   \t   value   \t   description\n"
@@ -59,19 +100,63 @@ int show_use(struct arcan_shmif_cont* cont, const char* msg)
 	return EXIT_FAILURE;
 }
 
+int wait_for_file(struct arcan_shmif_cont* cont, const char* extstr)
+{
+	int res = -1;
+	struct arcan_event ev;
+
+	arcan_event bchunk = {
+		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
+		.category = EVENT_EXTERNAL,
+		.ext.bchunk = {.hint = true}
+	};
+	snprintf((char*)bchunk.ext.bchunk.extensions,
+		COUNT_OF(bchunk.ext.bchunk.extensions), "%s", extstr);
+
+	while (arcan_shmif_wait(cont, &ev)){
+		if (ev.category != EVENT_TARGET)
+			continue;
+
+		if (ev.tgt.kind == TARGET_COMMAND_EXIT)
+			return 0;
+/* dup as the next call into shmif will close */
+		else if (ev.tgt.kind == TARGET_COMMAND_BCHUNK_OUT){
+			res = arcan_shmif_dupfd(ev.tgt.ioevs[0].iv, -1, true);
+			break;
+		}
+	}
+
+	return res;
+}
+
 int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 {
 	const char* type;
-	if (arg_lookup(args, "type", 0, &type)){
+	if (arg_lookup(args, "proto", 0, &type)){
 	}
 	else
 		type = "media";
+
+#ifdef HAVE_PROBE
+/* there should really be an 'auto' mode to this as well so that
+ * the results from probe is then switched to decode_(av, 3d, text, ...) */
+	if (strcasecmp(type, "probe") == 0)
+		return decode_probe(cont, args);
+#endif
 
 	if (strcasecmp(type, "media") == 0)
 		return decode_av(cont, args);
 
 	if (strcasecmp(type, "3d") == 0)
 		return decode_3d(cont, args);
+
+	if (strcasecmp(type, "text") == 0)
+		return decode_text(cont, args);
+
+#ifdef HAVE_T2S
+	if (strcasecmp(type, "t2s") == 0)
+		return decode_t2s(cont, args);
+#endif
 
 	char errbuf[64];
 	snprintf(errbuf, sizeof(errbuf), "unknown type argument: %s", type);
