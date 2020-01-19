@@ -5,8 +5,12 @@ else()
 endif()
 
 if (LIBVLC_FOUND)
+	find_package(Espeak)
+	find_package(LibMAGIC)
+
 	set(DECODE_SOURCES
 		${CMAKE_CURRENT_SOURCE_DIR}/decode.c
+		${CMAKE_CURRENT_SOURCE_DIR}/decode_text.c
 		${CMAKE_CURRENT_SOURCE_DIR}/decode_3d.c
 		${CMAKE_CURRENT_SOURCE_DIR}/decode_av.c
 		${EXTERNAL_SRC_DIR}/fft/kiss_fft.c
@@ -20,7 +24,27 @@ if (LIBVLC_FOUND)
 
 	set(DECODE_LIBS
 		${LIBVLC_LIBRARY}
+		arcan_tui
 	)
+
+	if (ESPEAK_FOUND)
+		amsg("(${CL_GRN}decode${CL_RST}) addding support for ${CL_GRN} text-to-speech${CL_RST}")
+		list(APPEND DECODE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/decode_t2s.c)
+		list(APPEND DECODE_DEFS HAVE_T2S)
+		list(APPEND DECODE_LIBS ${ESPEAK_LIBRARIES})
+		list(APPEND DECODE_INCLUDE_DIRS ${ESPEAK_INCLUDE_DIR} )
+	else()
+		amsg("(${CL_GRN}decode${CL_RST}) Espeak- not found, ${CL_RED} text-to-speech${CL_RST} disabled")
+	endif()
+
+	if (MAGIC_FOUND)
+		amsg("(${CL_GRN}decode${CL_RST}) adding support for ${CL_GRN} probe (libmagic) ${CL_RST}")
+		list(APPEND DECODE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/decode_probe.c)
+		list(APPEND DECODE_DEFS HAVE_PROBE)
+		list(APPEND DECODE_LIBS ${MAGIC_LIBRARIES})
+	else()
+		amsg("(${CL_GRN}decode${CL_RST}) libmagic not found, ${CL_RED} probe ${CL_RST} disabled")
+	endif()
 
 	if (FSRV_DECODE_UVC)
 		amsg("(${CL_GRN}decode${CL_RST}) adding support for ${CL_GRN}USB (uvc) Video${CL_RST}")
