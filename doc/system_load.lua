@@ -10,10 +10,8 @@
 -- lead to a terminal state transition. To avoid this behavior, set *dieonfail*
 -- to 0 or false and a failing call will just return nil.
 --
--- For .lua files, the existing Lua VM will be used to parse and load the
--- specified script from RESOURCE_APPL or SYS_SCRIPT_RESOURCE. To disallow
--- dynamic code execution by using rawresource_ functions and then system_load,
--- map RESOURCE_APPL_TEMP to a different folder than RESOURCE_APPL.
+-- For .lua files, the default is liberal. The namespaces and order searched
+-- is (appl-temp > appl > sys_scripts > shared-resources).
 --
 -- For .lib files, the extension will be replaced with the implementation
 -- defined library extension on the underlying os (typically .so, .dll
