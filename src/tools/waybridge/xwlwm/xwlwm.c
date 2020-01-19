@@ -454,6 +454,9 @@ static void send_updated_window(struct xwnd_state* wnd, const char* kind)
 static void xcb_create_notify(xcb_create_notify_event_t* ev)
 {
 	trace("xcb=create-notify:%"PRIu32, ev->window);
+
+/* if we add other wm- managed windows (selection, dnd),
+ * these should be filtered out here as well */
 	if (ev->window == wnd)
 		return;
 
@@ -461,9 +464,14 @@ static void xcb_create_notify(xcb_create_notify_event_t* ev)
 	*state = (struct xwnd_state){
 		.id = ev->window,
 		.x = ev->x,
-		.y = ev->y
+		.y = ev->y,
+		.w = ev->width,
+		.h = ev->height,
+		.override_redirect = ev->override_redirect
 	};
 	HASH_ADD_INT(windows, id, state);
+
+/* other properties, request geometry and check if depth is alpha or not */
 
 	send_updated_window(state, "create");
 }
@@ -471,8 +479,8 @@ static void xcb_create_notify(xcb_create_notify_event_t* ev)
 static void xcb_map_notify(xcb_map_notify_event_t* ev)
 {
 	trace("xcb=map-notify:%"PRIu32, ev->window);
-/* chances are that we get mapped with different atoms being set,
- * particularly for popups used by cutebrowser etc. */
+
+/*
 	xcb_get_property_cookie_t cookie = xcb_get_property(dpy,
 		0, ev->window, XCB_ATOM_WM_TRANSIENT_FOR, XCB_ATOM_WINDOW, 0, 2048);
 	xcb_get_property_reply_t* reply = xcb_get_property_reply(dpy, cookie, NULL);
@@ -483,10 +491,13 @@ static void xcb_map_notify(xcb_map_notify_event_t* ev)
 			"kind=parent:id=%"PRIu32":parent_id=%"PRIu32, ev->window, *pwd);
 		free(reply);
 	}
+ */
 
+/*
 	if (XCB_WINDOW_NONE == input_focus){
 		update_focus(ev->window);
 	}
+ */
 
 	struct xwnd_state* state;
 	HASH_FIND_INT(windows,&ev->window,state);
@@ -513,16 +524,9 @@ static void xcb_map_request(xcb_map_request_event_t* ev)
 		XCB_PROP_MODE_REPLACE, ev->window, atoms[WM_STATE],
 		atoms[WM_STATE], 32, 2, (uint32_t[]){1, XCB_WINDOW_NONE});
 
-/* for popup- windows, we kindof need to track override-redirect here */
-	xcb_configure_window(dpy, ev->window,
-		XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_BELOW});
-
+/* this > should < cause the RealizeWindow -> send client message path
+ * in Xwayland that has caused so much trouble */
 	xcb_map_window(dpy, ev->window);
-
-/*
- * if (state)
-		state->mapped = true;
- */
 }
 
 static void xcb_reparent_notify(xcb_reparent_notify_event_t* ev)
