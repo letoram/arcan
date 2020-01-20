@@ -16,6 +16,9 @@
 -- For .lib files, the extension will be replaced with the implementation
 -- defined library extension on the underlying os (typically .so, .dll
 -- or .dylib), and the namespace is restricted to RESOURCE_SYS_LIBS.
+-- These modules are expected to export the following prototype:
+--
+--     luaL_Reg* arcan_module_init(int lua_major, int lua_minor, int lua_vernum)
 --
 -- @note: Since dynamic library support is an optional engine feature,
 -- and can be used to increase the attack surface or circumvent the VM
@@ -25,7 +28,7 @@
 -- @note: The namespace mapping can be changed compile- time by setting
 -- CAREFUL_USERMASK and MODULE_USERMASK for the arcan_lua.c source file.
 -- @group: system
--- @cfunction: dofile
+-- @cfunction: systemload
 function main()
 #ifdef MAIN
 	system_load("test.lua")();
