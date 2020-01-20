@@ -85,15 +85,15 @@ static inline void trace(const char* msg, ...)
 
 #ifdef _DEBUG
 #define TRACE_PREFIX "kind=trace:"
-#else
-#define TRACE_PREFIX ""
-#endif
-
 #define trace(Y, ...) do { \
 	pthread_mutex_lock(&logout_synch); \
 	trace("%sts=%lld:" Y, TRACE_PREFIX, arcan_timemillis(), ##__VA_ARGS__);\
 	pthread_mutex_unlock(&logout_synch); \
 } while (0)
+#else
+#define TRACE_PREFIX ""
+#define trace(Y, ...) do { } while (0)
+#endif
 
 static inline void wm_command(bool flush, const char* msg, ...)
 {
