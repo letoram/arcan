@@ -211,22 +211,6 @@ static char* scriptpath_unix()
 	return scrpath;
 }
 
-static char* libpath_unix()
-{
-	char* libpath = NULL;
-
-	if (arcan_isfile( getenv("ARCAN_HIJACK") ) )
-		libpath = strdup( getenv("ARCAN_HIJACK") );
-	else if (arcan_isfile( "./libarcan_hijack.so"))
-		libpath = realpath( "./", NULL );
-	else if (arcan_isfile( "/usr/local/lib/libarcan_hijack.so") )
-		libpath = strdup( "/usr/local/lib/");
-	else if (arcan_isfile( "/usr/lib/libarcan_hijack.so") )
-		libpath = strdup( "/usr/lib/");
-
-	return libpath;
-}
-
 static char* unix_find(const char* fname)
 {
 	char* res = NULL;
@@ -297,8 +281,6 @@ void arcan_set_namespace_defaults()
  */
 
 	arcan_softoverride_namespace(tmp = binpath_unix(), RESOURCE_SYS_BINS);
-	free(tmp);
-	arcan_softoverride_namespace(tmp = libpath_unix(), RESOURCE_SYS_LIBS);
 	free(tmp);
 
 	char* respath = unix_find("resources");

@@ -206,12 +206,9 @@ the frameserver is installed, first searching ./ then /usr/local/bin
 then /usr/bin).
 
 .IP "\fBARCAN_LIBPATH\fR"
-(optional) Used when looking for hijack libraries.
-These are libraries that are preloaded or otherwise injected into
-specific process in order to infiltrate/exfiltrate/manipulate data
-and flow of execution within the process. The most common use for
-this is to alter render/audio and input paths in non-compliant
-applications. These are used in conjunction with entries in the database.
+This path specifies the directory where the appl is allowed to load
+libraries from using system_load. The namespace is referenced as
+RESOURCE_SYS_LIBS in the scripting documentation.
 
 .IP "\fBARCAN_LOGPATH\fR"
 Set to RESOURCEPATH/logs by default (if it exists) and is used for storing
@@ -329,15 +326,16 @@ along with the engine. These are normally installed as a 'scripts' subdirectory
 in the shared set of files, though this path can be changed with the -T argument.
 
 A hookscript is enabled via the -H command line argument, which can be repeated
-to chain them together.
+to chain them together. Their arguments are extracted from the appl-arguments
+part of the command line in the key=value form.
 
-.IP "\fBhooks/shutdown.lua\fR"
+.IP "\fBhook/shutdown.lua\fR"
 This hookscript sets a timer to whatever a shutdown=number argument on the
 commandline provides, or the built-in default of 500 ticks. When the timer
 fires, an asynchronous shutdown request will be queued. This allows for easier
 automation and testing.
 
-.IP "\fBhooks/external_input.lua\fR"
+.IP "\fBhook/external_input.lua\fR"
 This hookscript opens up a connection point where you can attach external input
 drivers. The default connection point for the first hook script will be
 extio_1, this will increment for each instance of the script that is added to
@@ -345,11 +343,17 @@ the command line. The extio prefix can be tuned by adding the ext_io key to the
 database for the specific appl being run, and only one input provider can be
 attached to the connection point at a time.
 
-.IP "\fBhooks/timed_dump.lua\fR"
+.IP "\fBhook/timed_dump.lua\fR"
 This script sets a timer to whatever dump_timer=number or dump_periodic=number
 on the command-line is set to. When the timer fires, it calls system_snapshot
 into 'timed_n.lua" or whatever dump_prefix is set to on the command-line.  The
 _n suffix corresponds to the dump sequence if on a periodic timer.
+
+.IP "\fBhook/debugstall.lua\fR"
+This scripts enables the frameserver debugstall (delay whenever a frameserver
+is launched) as a tool to make it easier to attach a debugger to it. The
+delay can be configured through debugstall=val (default is 10) on the command-
+line.
 
 .SH DIAGNOSTICS
 There are a number of ways the engine can shut down, especially if the engine
