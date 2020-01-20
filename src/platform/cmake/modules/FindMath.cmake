@@ -1,0 +1,10 @@
+if (NOT TARGET Math::Math)
+	find_library(MATH_LIBRARIES NAMES m)
+	add_library(Math::Math INTERFACE IMPORTED)
+
+	if (MATH_LIBRARIES)
+		set_target_properties(Math::Math PROPERTIES
+			INTERFACE_INCLUDE_DIRECTORIES "${MATH_INCLUDE_DIRS}"
+			INTERFACE_LINK_LIBRARIES "${MATH_LIBRARIES}")
+	endif()
+endif()

@@ -1,6 +1,6 @@
 PROJECT( arcan_vr )
-cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
-find_package(PkgConfig)
+cmake_minimum_required(VERSION 3.1.0 FATAL_ERROR)
+find_package(PkgConfig REQUIRED)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	add_definitions(-D_DEBUG)
@@ -23,6 +23,7 @@ add_definitions(
 	-Wall
 	-Wno-unused-const-variable
 	-Wno-unused-function
+	${CMAKE_THREADS_LIBS_INIT}
 )
 
 include_directories(
@@ -30,9 +31,15 @@ include_directories(
 	${ARCAN_ROOT_DIR}/src/engine
 )
 
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Math REQUIRED)
+find_package(RT REQUIRED)
+find_package(Threads REQUIRED)
+
 SET(LIBRARIES
-	pthread
-	m
+	Threads::Threads
+	Math::Math
+	RT::RT
 	${ARCAN_SHMIF_LIBRARY}
 )
 

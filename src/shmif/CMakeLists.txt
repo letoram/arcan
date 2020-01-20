@@ -27,12 +27,6 @@ else()
 	set(ASD ${CMAKE_CURRENT_SOURCE_DIR}/../)
 endif()
 
-if (STDLIB)
-	set(ASHMIF_STDLIB ${STDLIB})
-else()
-	set(ASHMIF_STDLIB -lrt)
-endif()
-
 set(ASHMIF_INSTPATH lib)
 
 set (TUI_HEADERS
@@ -189,10 +183,13 @@ else()
 endif()
 
 # STATIC_FREETYPE is inherited from the outer scope, means we have our own build
-# of freetype that we should link to statically
+# of freetype that we should link to statically - this should be dropped when the
+# rendering is only TPACK.
 if (STATIC_FREETYPE)
 	add_library(arcan_tui STATIC ${SHMIF_TUI_SOURCES})
-	target_link_libraries(arcan_tui PRIVATE ${STDLIB} ${FREETYPE_DEFAULT_LIBRARIES} ${TUI_LIBRARIES})
+	target_link_libraries(arcan_tui
+		PRIVATE ${STDLIB} ${FREETYPE_DEFAULT_LIBRARIES} ${TUI_LIBRARIES})
+
 	find_package(Freetype QUIET)
 	if (FREETYPE_FOUND)
 		add_library(arcan_tuiext SHARED ${SHMIF_TUI_SOURCES})
@@ -275,7 +272,7 @@ set_target_properties(arcan_shmif_server PROPERTIES
 )
 
 set(ARCAN_SHMIF_INCLUDE_DIR ${ASD}/shmif PARENT_SCOPE)
-set(ARCAN_SHMIF_LIBRARY arcan_shmif_int ${ASHMIF_STDLIB} PARENT_SCOPE)
+set(ARCAN_SHMIF_LIBRARY arcan_shmif_int ${STDLIB} PARENT_SCOPE)
 
 target_include_directories(arcan_shmif_int PRIVATE ${ASD}/shmif)
 target_include_directories(arcan_shmif PRIVATE ${ASD}/shmif)

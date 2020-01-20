@@ -8,6 +8,9 @@ endif()
 
 find_package(arcan_shmif REQUIRED)
 find_package(fuse3 REQUIRED)
+find_package(Math REQUIRED)
+find_package(RT REQUIRED)
+find_package(Threads REQUIRED)
 
 add_definitions(
 	-Wall
@@ -19,8 +22,9 @@ add_definitions(
 )
 
 SET(LIBRARIES
-	pthread
-	m
+	Threads::Threads
+	Math::Math
+	RT::RT
 	${ARCAN_SHMIF_LIBRARY}
 	${FUSE3_LIBRARIES}
 )

@@ -74,9 +74,7 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
 else()
 	set(BSD_VARIANT_DEFINITIONS
 		-DCLOCK_MONOTONIC_RAW=CLOCK_REALTIME_FAST)
-	set(BSD_VARIANT_LIBS
-		rt
-	)
+
 # come FreeBSD 12 this is actually a bit hairier as the setup can
 # be either evdev or freebsd, so we need to check if the build args
 # actually meant evdev or if it came from the video platform setup.
@@ -151,6 +149,5 @@ if (NOT MAN_DEST)
 endif()
 
 LIST(APPEND STDLIB
-	m
 	${BSD_VARIANT_LIBS}
 )
