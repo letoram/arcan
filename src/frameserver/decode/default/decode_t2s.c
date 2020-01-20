@@ -197,8 +197,6 @@ int decode_t2s(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		return EXIT_SUCCESS;
 	}
 
-/* input label to run espeak_Cancel */
-
 	while (arcan_shmif_wait(cont, &ev)){
 
 /* mainly here as a debugging facility as it is only the individual utf8-
@@ -224,6 +222,14 @@ int decode_t2s(struct arcan_shmif_cont* cont, struct arg_arr* args)
 					espeakCHARS_UTF8 | useSSML | usePHONEMES, NULL, &t2s)){
 /* log, couldn't buffer */
 				}
+			}
+			case TARGET_COMMAND_RESET:{
+				arcan_shmif_enqueue(cont,
+					&(arcan_event){
+					.category = EVENT_EXTERNAL,
+					.ext.kind = ARCAN_EVENT(FLUSHAUD)}
+				);
+				espeak_Cancel();
 			}
 			break;
 			default:
