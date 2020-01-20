@@ -41,8 +41,11 @@ include(ExternalProject)
 include(CheckIncludeFiles)
 
 find_package(Sanitizers REQUIRED)
+
+# not pretty, but as a quick 'pending build system rewrite' thing
 find_package(Threads REQUIRED)
-add_definitions(${CMAKE_THREAD_LIBS_INIT})
+find_package(Math REQUIRED)
+find_package(RT REQUIRED)
 
 if (CMAKE_COLOR_MAKEFILE)
 	include(CMakeColor)
@@ -130,7 +133,6 @@ set(AGPPLATFORM_STR "gl21, gles2, gles3, stub")
 
 # we can remove some of this cruft when 'buntu LTS gets ~3.0ish
 option(DISABLE_JIT "Don't use the luajit-5.1 VM (if found)" OFF)
-option(DISABLE_HIJACK "Disable building hijack libraries" ON)
 option(NO_FSRV "Disable building/launching frameservers" OFF)
 option(STATIC_SQLITE3 "Use SQLite3 Amalgamation" OFF)
 option(STATIC_FREETYPE "Use static Freetype (external/git folder)" OFF)
@@ -194,21 +196,6 @@ set(AUDIO_PLATFORM "openal")
 set(CSTD gnu11)
 
 if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
-	execute_process(
-		COMMAND ${CMAKE_C_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
-
-	if (NOT (GCC_VERSION VERSION_GREATER 4.6 OR GCC_VERSION VERSION_EQUAL 4.6))
-		message(FATAL_ERROR "${CL_RED}Ancient GCC Version detected, Arcan should be compiled with Clang-3.3+ or gcc 4.7+${CL_RST}")
-	endif()
-
-	if (GCC_VERSION VERSION_LESS 4.7)
-		amsg("${CL_RED}Ancient GCC Version (4.6.x) detected, switch to a less terrible distribution or be prepared for side-effects${CL_RST}")
-		include_directories(${PLATFORM_ROOT}/freebsd) # stdalign.h placeholder
-		set(CSTD gnu1x)
-		add_compile_options("-D_Alignas(X)=")
-		set(SIMD_ALIGNED OFF)
-	endif()
-
 	add_compile_options(-Wall -Wno-missing-braces -Wno-unused-function
 		-Wno-unused-value -Wno-unused-variable -Wformat=0 -Wno-atomic-alignment
 		-Wno-macro-redefined
@@ -551,6 +538,8 @@ else()
 	message(FATAL_ERROR "${CL_RED}Unsupported OS(${CMAKE_SYSTEM_NAME}) detected, abandon ship!${CL_RST}")
 endif()
 
+list(APPEND STDLIB Math::Math Threads::Threads RT::RT)
+
 amsg("\n${CL_WHT}---- Configuration results:${CL_RST}")
 amsg("${CL_YEL}compiler\t${CL_GRN}${CMAKE_C_COMPILER_ID}${CL_RST}")
 amsg("${CL_YEL}video   \t${CL_GRN}${VIDEO_PLATFORM}${CL_RST}")
@@ -566,7 +555,7 @@ amsg("${CL_YEL}input   \t${CL_GRN}${INPUT_PLATFORM}${CL_RST}")
 amsg("${CL_YEL}headless\t${CL_GRN}${LWA_PLATFORM_STR}${CL_RST}")
 amsg("${CL_YEL}lua     \t${CL_GRN}${LUA_TAG}${LUA_TAG_MODE} ${LUA_LINKTYPE}${CL_RST}")
 
-amsg("\n${CL_WHT}-- Stage 2, Frameservers / Hijack${CL_RST}")
+amsg("\n${CL_WHT}-- Stage 2, Frameservers ${CL_RST}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 set(SHMIF_TUI true)
@@ -579,12 +568,6 @@ if (NO_FSRV)
 	amsg("${CL_YEL}frameservers\t${CL_RED}disabled${CL_RST}")
 else()
 	add_subdirectory(frameserver)
-endif()
-
-if (NOT DISABLE_HIJACK)
-	add_subdirectory(hijack)
-else()
-	amsg("${CL_YEL}hijack      \t${CL_RED}default-disabled${CL_RST}")
 endif()
 
 set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c

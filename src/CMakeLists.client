@@ -37,7 +37,11 @@ include(CheckIncludeFiles)
 
 find_package(Sanitizers REQUIRED)
 find_package(Threads REQUIRED)
-add_definitions(${CMAKE_THREAD_LIBS_INIT})
+find_package(Math REQUIRED)
+find_package(RT REQUIRED)
+find_package(Threads REQUIRED)
+
+set(STDLIB Threads::Threads Math::Math Threads::Threads RT::RT)
 
 if (CMAKE_COLOR_MAKEFILE)
 	include(CMakeColor)
