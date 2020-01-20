@@ -180,7 +180,6 @@ static const struct zxdg_shell_v6_interface zxdgshell_if = {
  * implementation, should these diverge, simply copy the zxdg_ version and add
  * xdg_ versions.
  */
-#ifdef HAVE_XDG_SHELL
 #include "wayland-xdg-shell-server-protocol.h"
 #include "wlimpl/xdg_positioner.c"
 static struct xdg_positioner_interface xdgpos_if = {
@@ -233,7 +232,6 @@ static const struct xdg_wm_base_interface xdgshell_if = {
 	.pong = xdg_pong,
 	.destroy = xdg_destroy
 };
-#endif
 
 #include "wayland-relative-pointer-unstable-v1-server-protocol.h"
 #include "wlimpl/relp_mgr.c"

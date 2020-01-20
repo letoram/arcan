@@ -75,7 +75,6 @@ static void bind_zxdg(struct wl_client* client,
 	wl_resource_set_implementation(res, &zxdgshell_if, NULL, NULL);
 }
 
-#ifdef HAVE_XDG_SHELL
 static void bind_xdg(struct wl_client* client,
 	void *data, uint32_t version, uint32_t id)
 {
@@ -88,7 +87,6 @@ static void bind_xdg(struct wl_client* client,
 	}
 	wl_resource_set_implementation(res, &xdgshell_if, NULL, NULL);
 }
-#endif
 
 static void decompose_mod(uint64_t mod, uint32_t* hi, uint32_t* lo)
 {

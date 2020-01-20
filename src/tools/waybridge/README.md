@@ -177,7 +177,7 @@ determine if we are compliant or not, because Wayland.
   - [ ] Tablet
   - [ ] Presentation Time
   - [ ] Viewporter
-  - [ ] Xdg-output
+  - [ ] Xdg-output (and output switching)
   - [ ] Xdg-foreign
 	- [x] Dma- buf
 	- [ ] Qt- specific protocols for SDL shutdown issue
