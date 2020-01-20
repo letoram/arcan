@@ -1,10 +1,16 @@
 PROJECT( arcan-wayland )
-cmake_minimum_required(VERSION 3.0.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.1.0 FATAL_ERROR)
 set(ARCAN_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../")
 set(CMAKE_MODULE_PATH ${ARCAN_ROOT}platform/cmake/modules)
+set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 
 include(Wayland)
 find_package(Wayland)
+find_package(Threads REQUIRED)
+find_package(Math REQUIRED)
+find_package(RT REQUIRED)
+
 find_package(WaylandProtocols REQUIRED)
 find_package(Sanitizers REQUIRED)
 find_package(XKB REQUIRED)
@@ -37,7 +43,7 @@ add_definitions(
 	-Wno-unused-function
 	-Wno-unused-const-variable
 	-Wno-unknown-warning-option
-	-pthread
+	${CMAKE_THREAD_LIBS_INIT}
 	-std=gnu11 # shmif-api requires this
 )
 
@@ -61,19 +67,11 @@ set(PROTOCOLS
 	"${WAYLANDPROTOCOLS_PATH}/unstable/pointer-constraints/pointer-constraints-unstable-v1"
 	"${WAYLANDPROTOCOLS_PATH}/unstable/relative-pointer/relative-pointer-unstable-v1"
 	"${WAYLANDPROTOCOLS_PATH}/unstable/idle-inhibit/idle-inhibit-unstable-v1"
+	"${WAYLANDPROTOCOLS_PATH}/stable/xdg-shell/xdg-shell"
 	"${CMAKE_CURRENT_SOURCE_DIR}/wlimpl/wayland-drm"
 )
 
-if (EXISTS "${WAYLANDPROTOCOLS_PATH}/stable/xdg-shell/xdg-shell.xml")
-	wayland_add_protocol_server(src
-		"${WAYLANDPROTOCOLS_PATH}/stable/xdg-shell/xdg-shell.xml"
-		"xdg-shell"
-	)
-	add_definitions(-DHAVE_XDG_SHELL)
-	list(APPEND sources ${src})
-else()
-	message("xdg-shell-stable protocol not found, diasabled")
-endif()
+list(APPEND sources ${src})
 
 foreach(proto ${PROTOCOLS})
    get_filename_component(base ${proto} NAME)
@@ -85,14 +83,25 @@ set_source_files_properties(${sources} PROPERTIES GENERATED ON)
 add_library(wlprot STATIC ${sources})
 
 SET(LIBRARIES
-	rt
-	m
 	EGL
 	${ARCAN_SHMIF_LIBRARY}
 	${ARCAN_SHMIF_EXT_LIBRARY}
 	${WAYLAND_SERVER_LIBRARIES}
 	${XKB_LIBRARIES}
+	Math::Math
+	RT::RT
+	Threads::Threads
 	wlprot
+)
+
+SET(XWM_LIBRARIES
+	xcb
+	xcb-composite
+	xcb-icccm
+	Math::Math
+	RT::RT
+	Threads::Threads
+	${ARCAN_SHMIF_LIBRARY}
 )
 
 SET(SOURCES
@@ -102,7 +111,7 @@ SET(SOURCES
 add_executable(arcan-wayland ${SOURCES})
 add_executable(arcan_xwm xwlwm/xwlwm.c)
 target_link_libraries(arcan-wayland ${LIBRARIES})
-target_link_libraries(arcan_xwm xcb xcb-composite xcb-icccm ${ARCAN_SHMIF_LIBRARY} pthread)
+target_link_libraries(arcan_xwm ${XWM_LIBRARIES})
 
 add_sanitizers(${PROJECT_NAME})
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)

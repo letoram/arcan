@@ -1048,7 +1048,7 @@ static int show_use(const char* msg, const char* arg)
 "\nProtocol Filters:\n"
 "\t-no-egl           disable the wayland-egl extensions\n"
 "\t       -no-drm    disable the drm subprotocol\n"
-"\t       -no-dma    disable the dma-buf subprotocol\n"
+"\t       -dma       ENABLE  the dma-buf subprotocol\n"
 "\t-no-compositor    disable the compositor protocol\n"
 "\t-no-subcompositor disable the sub-compositor/surface protocol\n"
 "\t-no-shell         disable the shell protocol\n"
@@ -1158,9 +1158,7 @@ int main(int argc, char* argv[])
 		.output = 2,
 		.egl = 1,
 		.zxdg = 1,
-#ifdef HAVE_XDG_SHELL
 		.xdg = 1,
-#endif
 		.drm = 1,
 		.dma = 3,
 		.subcomp = 1,
@@ -1264,12 +1262,10 @@ int main(int argc, char* argv[])
 			protocols.output = 0;
 		else if (strcmp(argv[arg_i], "-no-zxdg") == 0)
 			protocols.zxdg = 0;
-		else if (strcmp(argv[arg_i], "-no-dma") == 0)
-			protocols.dma = 0;
-#ifdef HAVE_XDG_SHELL
+		else if (strcmp(argv[arg_i], "-dma") == 0)
+			protocols.dma = 1;
 		else if (strcmp(argv[arg_i], "-no-xdg") == 0)
 			protocols.xdg = 0;
-#endif
 		else if (strcmp(argv[arg_i], "-no-subcompositor") == 0)
 			protocols.subcomp = 0;
 		else if (strcmp(argv[arg_i], "-no-data-device") == 0)
@@ -1445,11 +1441,9 @@ int main(int argc, char* argv[])
 	if (protocols.zxdg)
 		wl_global_create(wl.disp, &zxdg_shell_v6_interface,
 			protocols.zxdg, NULL, &bind_zxdg);
-#ifdef HAVE_XDG_SHELL
 	if (protocols.xdg)
 		wl_global_create(wl.disp, &xdg_wm_base_interface,
 			protocols.xdg, NULL, &bind_xdg);
-#endif
 	if (protocols.dma){
 		wl_global_create(wl.disp, &zwp_linux_dmabuf_v1_interface,
 			protocols.dma, NULL, &bind_zwp_dma_buf);
