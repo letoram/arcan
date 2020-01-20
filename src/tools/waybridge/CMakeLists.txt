@@ -16,6 +16,10 @@ find_package(WaylandProtocols REQUIRED)
 find_package(Sanitizers REQUIRED)
 find_package(XKB REQUIRED)
 
+# The required bits and xwm can be made optional if there ever comes a day
+# that Wayland is mostly useful without Xwayland ..
+find_package(XCB COMPONENTS xcb xcb-composite xcb_icccm REQUIRED)
+
 set(STDLIB Threads::Threads RT::RT DL::DL Math::Math)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -34,6 +38,7 @@ include_directories(
 	${WAYLAND_SERVER_INCLUDE_DIRS}
 	${CMAKE_CURRENT_BINARY_DIR}
 	${XKB_INCLUDE_DIRS}
+	${XCB_INCLUDE_DIRS}
 	${ARCAN_ROOT}
 )
 
@@ -46,7 +51,6 @@ add_definitions(
 	-Wno-unused-function
 	-Wno-unused-const-variable
 	-Wno-unknown-warning-option
-	${CMAKE_THREAD_LIBS_INIT}
 	-std=gnu11 # shmif-api requires this
 )
 
@@ -86,20 +90,18 @@ set_source_files_properties(${sources} PROPERTIES GENERATED ON)
 add_library(wlprot STATIC ${sources})
 
 SET(LIBRARIES
+	${STDLIB}
 	EGL
 	${ARCAN_SHMIF_LIBRARY}
 	${ARCAN_SHMIF_EXT_LIBRARY}
 	${WAYLAND_SERVER_LIBRARIES}
 	${XKB_LIBRARIES}
-	${STDLIB}
 	wlprot
 )
 
 SET(XWM_LIBRARIES
-	xcb
-	xcb-composite
-	xcb-icccm
 	${STDLIB}
+	${XCB_LIBRARIES}
 	${ARCAN_SHMIF_LIBRARY}
 )
 
