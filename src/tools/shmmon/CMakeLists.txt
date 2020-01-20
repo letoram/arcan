@@ -22,11 +22,18 @@ add_definitions(
 	-std=gnu11 # shmif-api requires this
 )
 
+find_package(Math REQUIRED)
+find_package(RT REQUIRED)
+find_package(Threads REQUIRED)
+find_package(DL REQUIRED)
+
 include_directories(${ARCAN_SHMIF_INCLUDE_DIR})
 
 SET(LIBRARIES
-	pthread
-	m
+	Threads::Threads
+	Math::Math
+	RT::RT
+	DL::DL
 	${ARCAN_SHMIF_LIBRARY}
 )
 

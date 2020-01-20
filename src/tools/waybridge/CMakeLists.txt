@@ -2,18 +2,21 @@ PROJECT( arcan-wayland )
 cmake_minimum_required(VERSION 3.1.0 FATAL_ERROR)
 set(ARCAN_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../")
 set(CMAKE_MODULE_PATH ${ARCAN_ROOT}platform/cmake/modules)
-set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
-set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 
 include(Wayland)
 find_package(Wayland)
+
+set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 find_package(Math REQUIRED)
 find_package(RT REQUIRED)
-
+find_package(DL REQUIRED)
 find_package(WaylandProtocols REQUIRED)
 find_package(Sanitizers REQUIRED)
 find_package(XKB REQUIRED)
+
+set(STDLIB Threads::Threads RT::RT DL::DL Math::Math)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	add_definitions(-D_DEBUG)
@@ -88,9 +91,7 @@ SET(LIBRARIES
 	${ARCAN_SHMIF_EXT_LIBRARY}
 	${WAYLAND_SERVER_LIBRARIES}
 	${XKB_LIBRARIES}
-	Math::Math
-	RT::RT
-	Threads::Threads
+	${STDLIB}
 	wlprot
 )
 
@@ -98,9 +99,7 @@ SET(XWM_LIBRARIES
 	xcb
 	xcb-composite
 	xcb-icccm
-	Math::Math
-	RT::RT
-	Threads::Threads
+	${STDLIB}
 	${ARCAN_SHMIF_LIBRARY}
 )
 

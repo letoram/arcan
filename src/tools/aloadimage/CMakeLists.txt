@@ -14,9 +14,15 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 find_package(Math REQUIRED)
+find_package(RT REQUIRED)
+find_package(DL REQUIRED)
+find_package(Threads REQUIRED)
 
 SET(LIBRARIES
 	Math::Math
+	RT::RT
+	DL::DL
+	Threads::Threads
 	${ARCAN_SHMIF_LIBRARY}
 )
 

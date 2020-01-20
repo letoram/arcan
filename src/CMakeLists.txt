@@ -46,6 +46,7 @@ find_package(Sanitizers REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Math REQUIRED)
 find_package(RT REQUIRED)
+find_package(DL REQUIRED)
 
 if (CMAKE_COLOR_MAKEFILE)
 	include(CMakeColor)
@@ -538,7 +539,7 @@ else()
 	message(FATAL_ERROR "${CL_RED}Unsupported OS(${CMAKE_SYSTEM_NAME}) detected, abandon ship!${CL_RST}")
 endif()
 
-list(APPEND STDLIB Math::Math Threads::Threads RT::RT)
+list(APPEND STDLIB Math::Math Threads::Threads RT::RT DL::DL)
 
 amsg("\n${CL_WHT}---- Configuration results:${CL_RST}")
 amsg("${CL_YEL}compiler\t${CL_GRN}${CMAKE_C_COMPILER_ID}${CL_RST}")
