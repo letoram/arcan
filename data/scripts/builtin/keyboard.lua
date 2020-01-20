@@ -19,8 +19,15 @@
 --
 -- the higher-level [label] remapping is not performed here.
 
--- modify to use other namespace
-local SYMTABLE_DOMAIN = APPL_RESOURCE;
+-- this restricts the search path further from the CAREFUL_USERMASK
+-- default down to only ones defined in the current applications and
+-- system, not in the shared space
+local SYMTABLE_DOMAIN =
+	bit.bor(
+		bit.bor(SYS_APPL_RESOURCE, APPL_TEMP_RESOURCE),
+		SYS_SCRIPT_RESOURCE
+	);
+
 local GLOBPATH = "devmaps/keyboard/";
 
 -- for legacy reasons, we provide an sdl compatible symtable
@@ -638,6 +645,7 @@ end
 
 local function tryload(km)
 	local kmp = GLOBPATH .. km;
+
 	if (not resource(kmp)) then
 		warning("couldn't locate keymap (" .. GLOBPATH .. "): " .. km);
 		return;
@@ -654,16 +662,23 @@ local function tryload(km)
 		warning("execution error loading keymap: " .. km);
 		return;
 	end
+
 	if (map and type(map) == "table"
 		and map.name and string.len(map.name) > 0) then
 
 		if (map.platform_flt and not map.platform_flt()) then
 			warning("platform filter rejected keymap: " .. km);
-			return nil;
+			return;
+		end
+
+		if not map.symmap then
+			map.symmap = {};
 		end
 
 		map.dctind = 0;
 		return map;
+	else
+		warning("invalid / corrupt map");
 	end
 end
 
@@ -687,9 +702,10 @@ end
 symtable.load_keymap = function(tbl, km)
 	if (resource(GLOBPATH .. km, SYMTABLE_DOMAIN)) then
 		local res = tryload(km);
-		if (tryload(km)) then
+
+		if (res) then
 			symtable.keymap = res;
-			symtable.symlut = res.symmap and res.symmap or {};
+			symtable.symlut = res.symmap;
 			return true;
 		end
 	end
@@ -714,8 +730,7 @@ symtable.translation_overlay = function(tbl, combotbl)
 	end
 end
 
--- store the current utf-8 keymap + added translations into a
--- file (ignore the overlay)
+-- store the current utf-8 keyboard utf8 map and symbol overrides
 symtable.save_keymap = function(tbl, name)
 	assert(name and type(name) == "string" and string.len(name) > 0);
 	local dst = GLOBPATH .. name .. ".lua";
@@ -723,6 +738,7 @@ symtable.save_keymap = function(tbl, name)
 		zap_resource(dst);
 	end
 
+-- the name suggests otherwise, but this is blocking
 	local wout = open_nonblock(dst, 1);
 	if (not wout) then
 		warning("symtable/save: couldn't open " .. name .. " for writing.");
@@ -733,6 +749,8 @@ symtable.save_keymap = function(tbl, name)
 	wout:write("dctbl = {}, symmap = {}, map = { plain = {} } };\n");
 
 	if (tbl.keymap) then
+
+-- write out by modifiers (plain, lshift, ...)
 		for k,v in pairs(tbl.keymap.map) do
 			wout:write(string.format("res.map[\"%s\"] = {};\n", k));
 			for i,j in pairs(v) do
