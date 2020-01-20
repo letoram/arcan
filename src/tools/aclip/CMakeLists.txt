@@ -12,6 +12,11 @@ else()
 	find_package(arcan_shmif REQUIRED)
 endif()
 
+find_package(Math REQUIRED)
+find_package(RT REQUIRED)
+find_package(Threads REQUIRED)
+find_package(DL REQUIRED)
+
 add_definitions(
 	-Wall
 	-D__UNIX
@@ -24,8 +29,10 @@ add_definitions(
 include_directories(${ARCAN_SHMIF_INCLUDE_DIR})
 
 SET(LIBRARIES
-	pthread
-	m
+	Threads::Threads
+	Math::Math
+	RT::RT
+	DL::DL
 	${ARCAN_SHMIF_LIBRARY}
 )
 

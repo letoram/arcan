@@ -11,6 +11,7 @@ find_package(fuse3 REQUIRED)
 find_package(Math REQUIRED)
 find_package(RT REQUIRED)
 find_package(Threads REQUIRED)
+find_package(DL REQUIRED)
 
 add_definitions(
 	-Wall
@@ -25,6 +26,7 @@ SET(LIBRARIES
 	Threads::Threads
 	Math::Math
 	RT::RT
+	DL::DL
 	${ARCAN_SHMIF_LIBRARY}
 	${FUSE3_LIBRARIES}
 )

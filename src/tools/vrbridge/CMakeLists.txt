@@ -35,11 +35,13 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Math REQUIRED)
 find_package(RT REQUIRED)
 find_package(Threads REQUIRED)
+find_package(DL REQUIRED)
 
 SET(LIBRARIES
 	Threads::Threads
 	Math::Math
 	RT::RT
+	DL::DL
 	${ARCAN_SHMIF_LIBRARY}
 )
 
