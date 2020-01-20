@@ -1,4 +1,4 @@
-#include "platform/agp/glfun.h"
+#include "../../platform/agp/glfun.h"
 
 static void surf_destroy(struct wl_client* cl, struct wl_resource* res)
 {
@@ -289,7 +289,7 @@ static bool push_dma(struct wl_client* cl,
  * since if we have GL already going if the .egl toggle is set, we can pull
  * in agp and use those functions raw
  */
-#include "platform/video_platform.h"
+#include "../../platform/video_platform.h"
 static bool push_shm(struct wl_client* cl,
 	struct arcan_shmif_cont* acon, struct wl_resource* buf, struct comp_surf* surf)
 {

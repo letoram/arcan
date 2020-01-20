@@ -25,7 +25,8 @@ For curated issues, use the [git-bug](https://github.com/MichaelMure/git-bug)
 tool to browse the currently tracked and acknowledged issues and their details.
 
 We do check the github issues page for user communication from time to time,
-and append as necessary, but it is not a priority.
+and append as necessary, but it is not a priority - and in the long term github
+use will be reduced to a 'dumb mirror'.
 
 Getting Started
 ====
@@ -116,7 +117,97 @@ useful, you can try the builtin appl 'console':
 
 Which should work just like your normal console command-line, but with the
 added twist of being able to run (arcan compatible) graphical applications
-as well.
+as well. For other projects, see the 'Related Projects' further below.
+
+### Hook-Scripts
+
+Another way to extend engine behavior regardless of the appl being used are
+so called hook-scripts. These reside inside the 'system script path' covered
+by the -T command-line argument, or the default of shared/arcan/scripts.
+
+The idea is that these should be able to provide 'toggle on' features that
+would need cooperation from within the engine, in order to do quick custom
+modifications or help bridge other tools.
+
+A good example is 'external\_input':
+
+    arcan -H hooks/external_input.lua -H hooks/external_input.lua myappl
+
+This would open up two connection points, 'extio\_1', 'extio\_2' that will
+allow one client to connect and provide input that will appear to the 'myappl'
+appl as coming from the engine.
+
+These are covered in more detail in the manpage.
+
+### Networking
+
+Arcan-net is a binary that allows you to forward one or many arcan clients
+over a network. It is built by default, and can be triggered both as a
+separate network tool as well as being launched indirectly from shmif by
+setting ARCAN\_CONNPATH=a12://id@host:port, or when issuing a migration
+request by the window manager.
+
+See also: src/a12/net/README.md and src/a12/net/HACKING.md.
+
+### Wayland
+
+The 'arcan-wayland' or 'waybridge', as it is refered to in some places is
+binary adds support for wayland and X clients (via Xwayland). It can be run as
+either a global system service, e.g.
+
+    arcan-wayland -xwl
+
+Or on a case by case basis, like:
+
+    arcan-wayland -exec weston-terminal
+
+For a compliant wayland client, and:
+
+    arcan-wayland -xwl -exec xterm
+
+For an X client. The 'per case' basis is recommended as it is safer and
+more secure than letting multiple clients share the same bridge process,
+at a negilable cost. The downside is that some complex clients that rely
+on making multiple distinct wayland connections may fail to do so.
+
+There is a number of tuning and troubleshooting options due to the
+complexity of using wayland, consult the manpage and --help toggle.
+
+### Database
+
+All runtime configuration is consolidated into a database, either the default
+'arcan.sqlite' one or an explicitly set one (arcan -d mydb.sqlite).
+
+This is used for platform specific options, engine specific options and for
+trusted clients that the running scripts are allowed to start. It is also used
+as a configuration key-value store for any arcan applications that are running.
+
+As a quick example, this is how to inspect and modify keys that 'Durden'
+are currently using:
+
+    arcan_db show_appl durden
+    arcan_db add_appl_kv durden shadow_on true
+
+Advanced configuration for some video platforms can be set via the reserved
+arcan appl name. This would, for instance, set the primary graphics card
+device name for the 'egl-dri' platform version:
+
+    arcan_db add_appl_kv arcan video_device=/dev/dri/card2
+
+To add 'launch targets', you can use something like:
+
+    arcan_db add_target net BIN /usr/bin/arcan-net -l netfwd
+    arcan_db add_config arcan-net default 10.0.0.10 6666
+    arcan_db add_target xterm BIN /usr/bin/arcan-wayland -exec-x11
+
+This allow applications to start a program as a trusted child (that inherits
+its connection primitives rather than to try and find them using some OS
+dependent namespace). The example above would have spawned arcan-net in the
+local mode where clients connecting to the 'netfwd' connpath would be
+redirected to the server listening at 10.0.0.10:6666.
+
+There are many controls and options for this tool, so it is suggested that you
+look at its manpage for further detail and instructions.
 
 ### Headless Mode
 
@@ -152,9 +243,12 @@ projects that you might want to look into:
 * [Prio](https://github.com/letoram/prio) is a simple window manager
   that mimics Plan9- Rio.
 
+* [Arcan-Devices](https://github.com/letoram/arcan-devices) accumulates
+  extra drivers.
+
 To get support for more types of clients and so on, there is also:
 
-* Wayland support (see Tools below).
+* Wayland support (see Wayland section below, and src/wayland/README.md).
 
 * [QEmu](https://github.com/letoram/qemu) a patched QEmu version that
   adds a -ui arcan option.
@@ -162,69 +256,20 @@ To get support for more types of clients and so on, there is also:
 * [Xarcan](https://github.com/letoram/xarcan) is a patched Xorg that
   allows you to run an X session 'as a window'.
 
+
 Tools
 =====
 
-The default build above does not include any support tools other than the
-configuration tool, arcan\_db. You have to manually build the ones that
-are of interest to you.
+There is also a number of helper tools that can be used to add certain
+features, such as support for VR devices and tray-icons. These are built
+separately and can be found in the tools/ subdirectory. They have their
+own separate build systems and corresponding README.md files.
 
-These tools are located in 'src/tools', with their own specific README.md
-files for instructions on compilation and use.
+They work on the assumption that arcan and its respective libraries have been
+built and installed. They are lockstepped and versioned to the engine, so if
+you upgrade it, make sure to rebuild the tools as well.
 
 The main tools of interest are:
-
-## arcan-db
-
-All runtime configuration is consolidated into a database, either the default
-'arcan.sqlite' one or an explicitly set one (arcan -d mydb.sqlite). This is
-used for platform specific options, engine specific options and for trusted
-clients that the running scripts are allowed to start. It is also used as a
-configuration key-value store for any arcan applications that are running.
-
-As a quick example, this is how to inspect and modify keys that 'Durden'
-are currently using:
-
-    arcan_db show_appl durden
-    arcan_db add_appl_kv durden shadow_on true
-
-Advanced configuration for some video platforms can be set via the reserved
-arcan appl name. This would, for instance, set the primary graphics card
-device name for the 'egl-dri' platform version:
-
-    arcan_db add_appl_kv arcan video_device=/dev/dri/card2
-
-To add 'launch targets', you can use something like:
-
-    arcan_db add_target BIN arcan-net -l netfwd
-    arcan_db add_config arcan-net default 10.0.0.10 6666
-
-This allow applications to start a program as a trusted child (that inherits
-its connection primitives rather than to try and find them using some OS
-dependent namespace). The example above would have spawned arcan-net in the
-local mode where clients connecting to the 'netfwd' connpath would be
-redirected to the server listening at 10.0.0.10:6666.
-
-There are many controls and options for this tool, so it is suggested that you
-look at its manpage for further detail and instructions.
-
-## Waybridge
-
-Waybridge adds support for wayland and X clients (via Xwayland). It can
-be run as either a global system service, e.g.
-
-    arcan-wayland -xwl
-
-Or on a case by case basis, like:
-
-    arcan-wayland -exec weston-terminal
-
-For a compliant wayland client, and:
-
-    arcan-wayland -xwl -exec xterm
-
-For an X client. The 'per case' basis is recommended as it is safer and
-more secure than letting multiple clients share the same bridge process.
 
 ## Acfgfs
 
@@ -254,13 +299,6 @@ Aloadimage is a simple sandboxing image loader, similar to xloadimage. It
 is useful both for testing client behavior when developing applications
 using arcan, but also as an image viewer in its own right, with reasonably
 fast image loading, basic playlist controls and so on.
-
-## Net
-
-Arcan-net is a tool that allows you to forward one or many arcan clients
-over a network. It is built by default, and can be triggered both as a
-separate network tool as well as being launched indirectly from shmif by
-setting ARCAN\_CONNPATH=a12://id@host:port.
 
 ## Vrbridge
 

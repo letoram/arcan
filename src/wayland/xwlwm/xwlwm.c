@@ -7,9 +7,8 @@
  * surfaces etc. Decoupled from the normal XWayland so that both sides can be
  * sandboxed better and possibly used for a similar -rootless mode in Xarcan.
  */
-#define _GNU_SOURCE
-#include <arcan_shmif.h>
-#include "../../../shmif/arcan_shmif_debugif.h"
+#include "../../shmif/arcan_shmif.h"
+#include "../../shmif/arcan_shmif_debugif.h"
 #include <inttypes.h>
 #include <errno.h>
 #include <signal.h>
@@ -355,7 +354,6 @@ static const char* check_window_state(uint32_t id)
 /* couldn't find out more, just map it and hope */
 	bool popup = false, dnd = false, menu = false, notification = false;
 	bool splash = false, tooltip = false, utility = false, dropdown = false;
-	bool fullscreen = false;
 
 	if (!reply){
 		trace("no reply on window type atom");
@@ -370,8 +368,6 @@ static const char* check_window_state(uint32_t id)
 	splash = has_atom(reply, NET_WM_WINDOW_TYPE_SPLASH);
 	tooltip = has_atom(reply, NET_WM_WINDOW_TYPE_TOOLTIP);
 	utility = has_atom(reply, NET_WM_WINDOW_TYPE_UTILITY);
-	fullscreen = has_atom(reply, NET_WM_STATE_FULLSCREEN);
-
 	free(reply);
 
 /*
