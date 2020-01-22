@@ -142,7 +142,7 @@ option(ENABLE_LTO "Build with Link-Time Optimization enabled" OFF)
 option(ENABLE_LWA "Build LWA client (arcan-in-arcan)" ON)
 option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
 option(ENABLE_SIMD_ALIGNED "Assert that SIMD data sources are 16-byte aligned" OFF)
-
+option(DISABLE_WAYLAND "Never build wayland support" OFF)
 option(HYBRID_SDL "Produce an arcan_sdl main binary as well" OFF)
 option(HYBRID_HEADLESS "Produce a headless binary as well" OFF)
 
@@ -556,12 +556,14 @@ amsg("${CL_YEL}input   \t${CL_GRN}${INPUT_PLATFORM}${CL_RST}")
 amsg("${CL_YEL}headless\t${CL_GRN}${LWA_PLATFORM_STR}${CL_RST}")
 amsg("${CL_YEL}lua     \t${CL_GRN}${LUA_TAG}${LUA_TAG_MODE} ${LUA_LINKTYPE}${CL_RST}")
 
-amsg("\n${CL_WHT}-- Stage 2, Frameservers ${CL_RST}")
+amsg("\n${CL_WHT}-- Stage 2, Frameservers and external clients ${CL_RST}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 set(SHMIF_TUI true)
 add_subdirectory(shmif)
 add_subdirectory(a12)
+add_subdirectory(wayland)
+
 include_directories(${ARCAN_SHMIF_INCLUDE_DIR})
 
 if (NO_FSRV)

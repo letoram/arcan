@@ -1,57 +1,38 @@
-PROJECT( arcan-wayland )
-cmake_minimum_required(VERSION 3.1.0 FATAL_ERROR)
-set(ARCAN_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../")
-set(CMAKE_MODULE_PATH ${ARCAN_ROOT}platform/cmake/modules)
+# This is used by the main arcan build system to detect and add wayland
+
+if (DISABLE_WAYLAND)
+	amsg("${CL_YEL}wayland support\t${CL_RED}disabled${CL_RST}")
+	return()
+endif()
 
 include(Wayland)
 find_package(Wayland)
 
-set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
-set(THREADS_PREFER_PTHREAD_FLAG TRUE)
-find_package(Threads REQUIRED)
-find_package(Math REQUIRED)
-find_package(RT REQUIRED)
-find_package(DL REQUIRED)
+if (NOT WAYLAND_FOUND)
+	amsg("${CL_YEL}wayland support\t${CL_RED}not found${CL_RST}")
+	return()
+else()
+	amsg("${CL_YEL}wayland support\t${CL_GRN}enabled${CL_RST}")
+endif()
+
 find_package(WaylandProtocols REQUIRED)
 find_package(Sanitizers REQUIRED)
 find_package(XKB REQUIRED)
 
 # The required bits and xwm can be made optional if there ever comes a day
 # that Wayland is mostly useful without Xwayland ..
-find_package(XCB COMPONENTS xcb xcb-composite xcb_icccm REQUIRED)
+find_package(XCB COMPONENTS xcb xcb-composite xcb-icccm REQUIRED)
 
-set(STDLIB Threads::Threads RT::RT DL::DL Math::Math)
-
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-	add_definitions(-D_DEBUG)
-endif()
-
-if (ARCAN_SOURCE_DIR)
-	add_subdirectory(${ARCAN_SOURCE_DIR}/shmif ashmif)
-else()
-	find_package(arcan_shmif REQUIRED WITH_EXT)
-endif()
-
-include_directories(
+set(WAYBRIDGE_INCLUDES
 	xwl
-	${ARCAN_SHMIF_INCLUDE_DIR}
 	${WAYLAND_SERVER_INCLUDE_DIRS}
 	${CMAKE_CURRENT_BINARY_DIR}
 	${XKB_INCLUDE_DIRS}
 	${XCB_INCLUDE_DIRS}
-	${ARCAN_ROOT}
 )
 
-add_definitions(
-	-Wall
-	-D__UNIX
-	-DPOSIX_C_SOURCE
-	-DGNU_SOURCE
-  -Wno-unused-but-set-variable
-	-Wno-unused-function
-	-Wno-unused-const-variable
-	-Wno-unknown-warning-option
-	-std=gnu11 # shmif-api requires this
+set(WAYBRIDGE_SOURCES
+	waybridge.c
 )
 
 if (PKG_CONFIG_FOUND)
@@ -78,7 +59,7 @@ set(PROTOCOLS
 	"${CMAKE_CURRENT_SOURCE_DIR}/wlimpl/wayland-drm"
 )
 
-list(APPEND sources ${src})
+list(APPEND SOURCES ${src})
 
 foreach(proto ${PROTOCOLS})
    get_filename_component(base ${proto} NAME)
@@ -89,11 +70,11 @@ endforeach()
 set_source_files_properties(${sources} PROPERTIES GENERATED ON)
 add_library(wlprot STATIC ${sources})
 
-SET(LIBRARIES
+SET(WAYBRIDGE_LIBRARIES
 	${STDLIB}
 	EGL
-	${ARCAN_SHMIF_LIBRARY}
-	${ARCAN_SHMIF_EXT_LIBRARY}
+	arcan_shmif_int
+	arcan_shmif_intext
 	${WAYLAND_SERVER_LIBRARIES}
 	${XKB_LIBRARIES}
 	wlprot
@@ -102,20 +83,18 @@ SET(LIBRARIES
 SET(XWM_LIBRARIES
 	${STDLIB}
 	${XCB_LIBRARIES}
-	${ARCAN_SHMIF_LIBRARY}
+	arcan_shmif_int
 )
 
-SET(SOURCES
-	waybridge.c
-)
-
-add_executable(arcan-wayland ${SOURCES})
+add_executable(arcan-wayland ${WAYBRIDGE_SOURCES})
 add_executable(arcan_xwm xwlwm/xwlwm.c)
-target_link_libraries(arcan-wayland ${LIBRARIES})
+target_link_libraries(arcan-wayland ${WAYBRIDGE_LIBRARIES})
 target_link_libraries(arcan_xwm ${XWM_LIBRARIES})
+target_include_directories(arcan-wayland PRIVATE ${WAYBRIDGE_INCLUDES})
+target_include_directories(arcan_xwm PRIVATE ${WAYBRIDGE_INCLUDES})
 
-add_sanitizers(${PROJECT_NAME})
-install(TARGETS ${PROJECT_NAME} DESTINATION bin)
+add_sanitizers(arcan-wayland)
+install(TARGETS arcan-wayland DESTINATION bin)
 install(TARGETS arcan_xwm DESTINATION bin)
 
 if (CMAKE_SYSTEM_NAME MATCHES "(FreeBSD|NetBSD|OpenBSD)")

@@ -9,9 +9,8 @@
 	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
 #endif
 
-#define _GNU_SOURCE /* because *sigh* */
 #define WANT_ARCAN_SHMIF_HELPER
-#include <arcan_shmif.h>
+#include "../shmif/arcan_shmif.h"
 #include <wayland-server.h>
 #include <signal.h>
 #include <EGL/egl.h>
