@@ -146,25 +146,33 @@ static bool ffmpeg_alloc(struct a12_channel* ch, int method)
 	}
 
 /* got the context, but it needs to be 'opened' as well */
-	if (avcodec_open2(ch->videnc.encoder, ch->videnc.codec, NULL ) < 0)
-		return false;
-
-	ch->videnc.parser = av_parser_init(ch->videnc.codec->id);
-	if (!ch->videnc.parser){
-		a12int_trace(A12_TRACE_SYSTEM, "couldn't find h264 parser");
-		return false;
+	if (!ch->videnc.codec){
+		if (avcodec_open2(ch->videnc.encoder, ch->videnc.codec, NULL ) < 0)
+			return false;
 	}
 
-	ch->videnc.frame = av_frame_alloc();
+	if (!ch->videnc.parser){
+		ch->videnc.parser = av_parser_init(ch->videnc.codec->id);
+		if (!ch->videnc.parser){
+			a12int_trace(A12_TRACE_SYSTEM, "couldn't find h264 parser");
+			return false;
+		}
+	}
+
 	if (!ch->videnc.frame){
-		a12int_trace(A12_TRACE_SYSTEM, "couldn't alloc frame for h264 decode");
-		return false;
+		ch->videnc.frame = av_frame_alloc();
+		if (!ch->videnc.frame){
+			a12int_trace(A12_TRACE_SYSTEM, "couldn't alloc frame for h264 decode");
+			return false;
+		}
 	}
 
 /* packet is their chunking mechanism (research if this step can be avoided) */
-	ch->videnc.packet = av_packet_alloc();
 	if (!ch->videnc.packet){
-		return false;
+		ch->videnc.packet = av_packet_alloc();
+		if (!ch->videnc.packet){
+			return false;
+		}
 	}
 
 	return true;
@@ -222,6 +230,18 @@ void a12int_decode_vbuffer(
 	else if (cvf->postprocess == POSTPROCESS_VIDEO_H264){
 /* just keep it around after first time of use */
 /* since these are stateful, we need to tie them to the channel dynamically */
+		a12int_trace(A12_TRACE_VIDEO, "kind=ffmpeg_state:parser=%"PRIxPTR
+			":context=%"PRIxPTR,
+			(uintptr_t)cvf->ffmpeg.parser,
+			(uintptr_t)cvf->ffmpeg.context
+		);
+
+#ifdef DUMP_COMPRESSED
+		static FILE* outf;
+		if (!outf)
+			outf = fopen("raw.h264", "w");
+		fwrite(cvf->inbuf, cvf->inbuf_pos, 1, outf);
+#endif
 
 		av_parser_parse2(cvf->ffmpeg.parser, cvf->ffmpeg.context,
 			&cvf->ffmpeg.packet->data, &cvf->ffmpeg.packet->size,

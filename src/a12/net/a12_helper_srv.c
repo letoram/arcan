@@ -68,6 +68,15 @@ static struct a12_vframe_opts vopts_from_segment(
 		};
 	}
 
+/* fun little test, every frame is a new encoding method */
+#ifdef SADISTIC
+	static int counter = 0;
+	counter = (counter + 1) % VFRAME_METHOD_TPACK;
+	return (struct a12_vframe_opts){
+		.method = counter
+	}
+#endif
+
 	switch (shmifsrv_client_type(data->C)){
 	case SEGID_LWA:
 		a12int_trace(A12_TRACE_VIDEO, "lwa -> h264, balanced");

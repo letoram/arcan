@@ -529,6 +529,13 @@ enum shmif_ext_meta {
  * Similar to HDR16, but switch to half-size mode (R8G8B8A8 -> RGB565)
  */
 	SHMIF_META_LDEF = 32,
+
+/*
+ * Similar to HDR16, LDEF - but the video buffer is interpreted as a
+ * compressed video frame. This is primarily to let cliens that have
+ * a valid h264, av1, ... stream forward this without decoding.
+ */
+	SHMIF_META_VENC = 64
 };
 
 /*

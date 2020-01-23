@@ -9,7 +9,7 @@
  */
 
 /*
- Copyright (c) 2016-2017, Bjorn Stahl
+ Copyright (c) 2016-2020, Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
@@ -69,12 +69,14 @@ struct arcan_shmif_vr;
 struct arcan_shmif_ramp;
 struct arcan_shmif_hdr16f;
 struct arcan_shmif_vector;
+struct arcan_shmif_venc;
 
 union shmif_ext_substruct {
 	struct arcan_shmif_vr* vr;
 	struct arcan_shmif_ramp* cramp;
 	struct arcan_shmif_hdr16f* hdr;
 	struct arcan_shmif_vector* vector;
+	struct arcan_shmif_venc* venc;
 };
 
 /*
@@ -106,6 +108,12 @@ struct arcan_shmif_ofstbl {
 
 struct arcan_shmif_hdr16f {
 	int unused;
+};
+
+/* verified during _signal, framesize <= w * h * sizeof(shmif_pixel) */
+struct arcan_shmif_venc {
+	uint8_t fourcc[4];
+	size_t framesize;
 };
 
 /*

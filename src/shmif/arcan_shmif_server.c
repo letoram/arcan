@@ -344,7 +344,7 @@ void shmifsrv_leave()
 	platform_fsrv_leave();
 }
 
-void shmifsrv_set_protomask(struct shmifsrv_client* cl, unsigned mask)
+void shmifsrv_client_protomask(struct shmifsrv_client* cl, unsigned mask)
 {
 	if (!cl || !cl->con)
 		return;
