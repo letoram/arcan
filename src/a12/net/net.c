@@ -62,7 +62,8 @@ extern void arcan_random(uint8_t* dst, size_t ntc);
 
 /*
  * Since we pull in some functions from the main arcan codebase, we need to
- * define this symbol, used if the random function has problems with entropy etc.
+ * define this symbol, used if the random function has problems with entropy
+ * etc.
  */
 void arcan_fatal(const char* msg, ...)
 {

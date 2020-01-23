@@ -228,6 +228,12 @@ size_t shmifsrv_dequeue_events(
 enum ARCAN_SEGID shmifsrv_client_type(struct shmifsrv_client* cl);
 
 /*
+ * Set the mask of permitted subprotocols, this applies to coming negotiations
+ * as this is initiated by the client and provided permissions do not revoke.
+ */
+void shmifsrv_client_protomask(struct shmifsrv_client* cl, unsigned mask);
+
+/*
  * Handle some of the normal state-tracking events (e.g. CLOCKREQ,
  * BUFFERSTREAM, FLUSHAUD). Returns true if the event was consumed and no
  * further action is needed.
@@ -256,9 +262,20 @@ struct shmifsrv_vbuffer {
 		bool srgb : 1;
 		bool hwhandles : 1;
 		bool tpack : 1;
+		bool compressed : 1;
 	} flags;
 
-	size_t w, h, pitch, stride;
+/* if compressed is set (requires the compressed buffer subprotocol to be
+ * provided) the fourcc code will match that of the video format frame in
+ * the buffer */
+	uint8_t fourcc[4];
+
+	union {
+		struct {
+			size_t w, h, pitch, stride;
+		};
+		size_t buffer_sz;
+	};
 
 /* desired presentation time since connection epoch, hint */
 	uint64_t vpts;

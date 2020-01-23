@@ -728,6 +728,8 @@ enum ARCAN_EVENT_EXTERNAL {
  * 'hidden-rel' : no visual change, but try to provide/bias relative samples
  * 'hidden-abs' : no visual change, but try to provide/bias absolute samples
  * 'hidden-hot:x:y' : for CURSOR subsegment, define the hotspot
+ * 'input:x:y' : for textual input, define the current cursor position
+ * 'warp:x:y' : for mouse cursor motion suggestions
  */
 	EVENT_EXTERNAL_CURSORHINT = 12,
 

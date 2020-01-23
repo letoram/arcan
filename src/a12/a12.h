@@ -122,6 +122,47 @@ void a12_set_destination(
 	struct a12_state*, struct arcan_shmif_cont* wnd, uint8_t chid);
 
 /*
+ * Similar to [a12_set_destination] but using a callback configuration
+ * to request destination buffers for audio,
+ * and to signal dirty updates.
+ */
+struct a12_unpack_cfg {
+	void* tag;
+
+/* [Optional] if provided, compressed video, image and text formats
+ * may be forwarded without decompression or rasterization */
+	void* (*request_compressed_vbuffer)(
+		int fourcc[static 4], size_t nb, void* tag);
+
+/* Will be used on resize- calls, the caller assumes ownership of the
+ * returned buffer and will deallocate with [free] when ready. Set stride
+ * in number of BYTES per row. */
+	shmif_pixel* (*request_raw_buffer)(
+		size_t w, size_t h, size_t* stride, void* tag);
+
+/* The number of BYTES requests sets an upper limit of the number of
+ * samples that may be provided through calls into [signal_audio],
+ * samples are packed interleaved.
+ *
+ * [ n_ch * n_samples * sizeof(shmif_asample) == n_bytes ]
+ */
+	shmif_asample* (*request_audio_buffer)(
+		size_t n_ch, size_t samplerate, size_t size_bytes, void* tag);
+
+/* Mark a region of the previously requested buffer as updated, this may only
+ * come as an effect of _unpack call, contents of the buffer will not be
+ * modified again until this function returns. */
+	void (*signal_video)(
+		size_t x1, size_t y1, size_t x2, size_t y2, void* tag);
+
+/* n complete samples have been written into the buffer */
+	void (*signal_audio)(size_t n_samples, void* tag);
+};
+
+void a12_set_destination_raw(
+	struct a12_state*, struct a12_unpack_cfg cfg, size_t unpack_cfg_sz);
+
+/*
  * Set the active channel used for tagging outgoing packages
  */
 void a12_set_channel(struct a12_state* S, uint8_t chid);
@@ -377,7 +418,9 @@ a12_channel_aframe(
 );
 
 /* Encode and transfer a video frame based on the video buffer structure
- * provided as part of arcan_shmif_server. */
+ * provided as part of arcan_shmif_server. Depending on the state of [vb]
+ * the compression [opts] might get ignored. This can happen in the case
+ * of a client forwarding a precompressed buffer. */
 void
 a12_channel_vframe(
 	struct a12_state* S,

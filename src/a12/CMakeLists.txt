@@ -6,6 +6,9 @@ set(LIBRARIES
 	arcan_shmif_server
 )
 
+set(A12_VERSION_MAJOR 0)
+set(A12_VERSION_MINOR 1)
+
 if (FFMPEG_FOUND)
 	message("(a12) ffmpeg support found, H264 enc/dec enabled")
 	add_definitions(-DWANT_H264_DEC)
@@ -33,6 +36,10 @@ set(EXTERNAL_SOURCES
 )
 
 add_library(arcan_a12 SHARED ${A12_SOURCES} ${EXTERNAL_SOURCES})
+set_target_properties(arcan_a12 PROPERTIES
+	COMPILE_FLAGS -fPIC
+	VERSION ${A12_VERSION_MAJOR}.${A12_VERSION_MINOR}
+)
 target_include_directories(arcan_a12 PRIVATE
 	external/blake2
 	external
