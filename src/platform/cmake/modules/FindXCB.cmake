@@ -18,12 +18,13 @@ foreach(comp ${XCB_FIND_COMPONENTS})
     string(REPLACE "-" "_" compname ${compname})
     # header name
     string(REPLACE "xcb-" "" headername xcb/${comp}.h)
-    # library name
+		string(REPLACE "-" "_" altheader xcb/${comp}.h)
+		# library name
     set(libname ${comp})
 
     pkg_check_modules(PC_${comp} QUIET ${comp})
 
-    find_path(${compname}_INCLUDE_DIR NAMES ${headername}
+    find_path(${compname}_INCLUDE_DIR NAMES ${headername} ${altheader}
         HINTS
         ${PC_${comp}_INCLUDEDIR}
         ${PC_${comp}_INCLUDE_DIRS}
