@@ -166,8 +166,9 @@ void agp_rendertarget_allocator(struct agp_rendertarget* tgt, bool (*handler)(
 /* free anything currently allocated on the rendertarget before
  * swapping out allocator */
 	if (tgt->alloc){
-	}
-	else {
+		for (size_t i = 0; i < MAX_BUFFERS; i++){
+			tgt->alloc(tgt, tgt->stores[i], RTGT_ALLOC_FREE, tgt->alloc_tag);
+		}
 	}
 
 	tgt->alloc = handler;
@@ -176,6 +177,8 @@ void agp_rendertarget_allocator(struct agp_rendertarget* tgt, bool (*handler)(
 /* and now re-allocate the buffers using the allocator, if this
  * fails, revert back (again) to the default one */
 
+	for (size_t i = 0; i < MAX_BUFFERS; i++){
+	}
 }
 
 void agp_rendertarget_dropswap(struct agp_rendertarget* tgt)

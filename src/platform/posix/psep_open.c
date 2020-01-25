@@ -249,7 +249,7 @@ static void sigusr_term(int sign)
 		&(struct packet){.cmd_ch = SYSTEM_STATE_TERMINATE}, sizeof(struct packet))){}
 }
 
-static void set_tty(int i)
+static void set_tty(int i, bool graphics)
 {
 #ifdef __LINUX
 /* This will (hopefully) make the kernel try and initiate the switch
@@ -257,6 +257,11 @@ static void set_tty(int i)
 	int dfd = whitelist[got_tty.ind].fd;
 	if (-1 == dfd)
 		return;
+
+	if (graphics){
+		ioctl(dfd, KDSETMODE, KD_GRAPHICS);
+		return;
+	}
 
 	if (i >= 0){
 		ioctl(dfd, VT_ACTIVATE, i);
@@ -279,7 +284,6 @@ static void set_tty(int i)
 	ioctl(dfd, KDSETLED, 0);
 	ioctl(dfd, KDSKBMUTE, 1);
 	ioctl(dfd, KDSKBMODE, K_OFF);
-	ioctl(dfd, KDSETMODE, KD_GRAPHICS);
 #endif
 
 /* register signal handlers that forward the desired action to the client,
@@ -380,8 +384,18 @@ static int access_device(const char* path, int arg, bool release, bool* keep)
 			return -1;
 		path = whitelist[got_tty.ind].name;
 		if (release && arg >= 0){
-			set_tty(arg);
+			set_tty(arg, false);
 		}
+	}
+
+/* special case 2 - activate TTY (GRAPHICS switch) deferred to the first frame
+ * so that any error output is actually visible after init but before first
+ * composition, return this as an 'invalid file'. */
+	if (strcmp(path, "TTYGRAPHICS") == 0){
+		if (got_tty.active)
+			set_tty(-1, true);
+
+		return -1;
 	}
 
 /* safeguard check against a whitelist, this would require an attack path that
@@ -436,7 +450,7 @@ static int access_device(const char* path, int arg, bool release, bool* keep)
 		if (whitelist[ind].mode & MODE_TTY){
 			whitelist[ind].fd = fd;
 			got_tty.ind = ind;
-			set_tty(arg);
+			set_tty(arg, false);
 			*keep = true;
 			return fd;
 		}

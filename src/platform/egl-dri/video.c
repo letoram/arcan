@@ -3773,6 +3773,31 @@ size_t platform_video_decay()
 	return 2;
 }
 
+static bool direct_scanout_alloc(
+	struct agp_rendertarget* tgt, struct agp_vstore* vs, int action, void* tag)
+{
+	struct dispout* display = tag;
+
+	if (action == RTGT_ALLOC_FREE){
+		debug_print("scanout_free:card=%d", (int) display->id);
+
+	}
+	else if (action == RTGT_ALLOC_SETUP){
+		debug_print("scanout_alloc:card=%d", (int) display->id);
+/* fields:
+ * w,
+ * h,
+ * bpp,
+ * s_raw,
+ * txmapped
+ * s_fmt (GL_PIXEL_STORE)
+ * d_fmt (GL_STORE_PIXEL_FORMAT)
+ */
+	}
+
+	return false;
+}
+
 bool platform_video_map_display(
 	arcan_vobj_id id, platform_display_id disp, enum blitting_hint hint)
 {
@@ -3870,9 +3895,8 @@ bool platform_video_map_display(
  * contents is invalidated and a new render pass on the target is needed. This
  * is not that problematic with the normal render loop as the map call will come
  * in a 'good enough' order. */
-/*
- * agp_rendertarget_allocator(newtgt->art, direct_scanout_alloc, d); */
  				bool swap;
+				agp_rendertarget_allocator(newtgt->art, direct_scanout_alloc, d);
 				unsigned col = agp_rendertarget_swap(newtgt->art, &swap);
 			}
 
@@ -3923,17 +3947,7 @@ static void drop_swapchain(struct dispout* d)
 		return;
 
 	agp_rendertarget_dropswap(newtgt->art);
-	arcan_video_display.ignore_dirty += 2;
-}
-
-static void fb_cleanup(struct gbm_bo* bo, void* data)
-{
-	struct dispout* d = data;
-
-	if (d->state == DISP_CLEANUP)
-		return;
-
-	disable_display(d, true);
+	arcan_video_display.ignore_dirty += 3;
 }
 
 static enum display_update_state draw_display(struct dispout* d)
@@ -4139,6 +4153,9 @@ static enum display_update_state draw_display(struct dispout* d)
 		if (!d->display.old_crtc)
 			d->display.old_crtc = drmModeGetCrtc(d->device->disp_fd, d->display.crtc);
 		d->display.reset_mode = false;
+
+/* do any deferred ioctl- device actions to switch from text to graphics */
+		platform_device_open("TTYGRAPHICS", 0);
 		new_crtc = true;
 	}
 
