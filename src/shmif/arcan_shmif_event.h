@@ -1017,6 +1017,8 @@ enum ARCAN_TARGET_SKIPMODE {
 			uint8_t active;
 			int16_t x, y;
 			float pressure, size;
+			uint16_t tilt_x, tilt_y;
+			uint8_t tool;
 		} touch;
 
 /* presence indicates the presence of a user in front of the screen */

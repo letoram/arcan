@@ -3374,8 +3374,13 @@ void platform_video_recovery()
 		}
 	}
 
+/*
+ * commented as it is quite expensive and shouldn't be necessary in short
+ * resets, and the VT switching now has full card rebuild
+ * platform_video_query_displays();
+ */
+
 /* rebuild so that we guaranteed have a rendertarget */
-	platform_video_query_displays();
 	arcan_video_display.no_stdout = false;
 	arcan_video_resize_canvas(displays[0].dispw, displays[0].disph);
 }
