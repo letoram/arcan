@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2018, Björn Ståhl
+ * Copyright 2003-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -228,7 +228,7 @@ static void override_resspaces(const char* respath)
 	arcan_override_namespace(font_dir, RESOURCE_SYS_FONT);
 }
 
- void appl_user_warning(const char* name, const char* err_msg)
+void appl_user_warning(const char* name, const char* err_msg)
 {
 	arcan_warning("\x1b[1mCouldn't load application \x1b[33m(%s): \x1b[31m%s\x1b[39m\n",
 		name, err_msg);
@@ -317,9 +317,14 @@ static void add_hookscript(const char* instr)
 }
 
 /*
- * needed to be able to shift entry points on a per- target basis in cmake
- * (lwa/normal/sdl and other combinations all mess around with main as an entry
- * point
+ * Needed to be able to shift entry points on a per- target basis in cmake
+ * (lwa/normal/sdl and other combinations all mess around with main as an
+ * entry point.
+ *
+ * This really needs a severe refactor to distinguish between the phases:
+ * 1. argument parsing => state block
+ * 2. engine-main init
+ * 3. longjmp based recovery stages and partial engine re-init
  */
 #ifndef MAIN_REDIR
 #define MAIN_REDIR main
@@ -673,16 +678,19 @@ int MAIN_REDIR(int argc, char* argv[])
 	system_page_size = sysconf(_SC_PAGE_SIZE);
 
 /*
- * fallback implementation resides here and a little further down
- * in the "if adopt" block. Use verifyload to reconfigure application
- * namespace and scripts to run, then recoverexternal will cleanup
- * audio/video/event and invoke adopt() in the script
+ * fallback implementation resides here and a little further down in the "if
+ * adopt" block. Use verifyload to reconfigure application namespace and
+ * scripts to run, then recoverexternal will cleanup audio/video/event and
+ * invoke adopt() in the script
  */
 	bool adopt = false, in_recover = false;
 	int jumpcode = setjmp(arcanmain_recover_state);
 	int saved, truncated;
 
-	if (jumpcode == 1 || jumpcode == 2){
+	if (jumpcode == ARCAN_LUA_SWITCH_APPL ||
+			jumpcode == ARCAN_LUA_SWITCH_APPL_NOADOPT){
+
+/* close down the database and reinitialize with the name of the new appl */
 		arcan_db_close(&dbhandle);
 		arcan_db_set_shared(NULL);
 
@@ -694,10 +702,13 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_lua_cbdrop();
 		arcan_lua_shutdown(main_lua_context);
 
+/* mask off errors so shutdowns etc. won't queue new events that enter
+ * the event queue and gets exposed to the new appl */
 		arcan_event_maskall(evctx);
 
-/* switch and adopt or just switch */
-		if (jumpcode == 2){
+/* with the 'no adopt' we can just safely flush the video stack and all
+ * connections will be closed and freed */
+		if (jumpcode == ARCAN_LUA_SWITCH_APPL_NOADOPT){
 			int lastctxc = arcan_video_popcontext();
 			int lastctxa;
 			while( lastctxc != (lastctxa = arcan_video_popcontext()) )
@@ -711,16 +722,14 @@ int MAIN_REDIR(int argc, char* argv[])
 		platform_video_recovery();
 	}
 /* fallback recovery with adoption */
-	else if (jumpcode == 3){
+	else if (jumpcode == ARCAN_LUA_RECOVERY_SWITCH){
 		if (in_recover){
 			arcan_warning("Double-Failure (main appl + adopt appl), giving up.\n");
-			close(STDERR_FILENO);
 			goto error;
 		}
 
 		if (!fallback){
 			arcan_warning("Lua VM failed with no fallback defined, (see -b arg).\n");
-			close(STDERR_FILENO);
 			goto error;
 		}
 
@@ -748,6 +757,9 @@ int MAIN_REDIR(int argc, char* argv[])
  * in an endless loop */
 		in_recover = true;
 		adopt = true;
+	}
+	else if (jumpcode == ARCAN_LUA_RECOVERY_FATAL_IGNORE){
+		goto run_loop;
 	}
 
 /* setup VM, map arguments and possible overrides */
@@ -810,9 +822,11 @@ int MAIN_REDIR(int argc, char* argv[])
 			goto error;
 		}
 	}
-
 	bool done = false;
-	int exit_code = arcan_conductor_run(main_cycle);
+	int exit_code = 0;
+
+run_loop:
+	arcan_conductor_run(main_cycle);
 
 	arcan_lua_callvoidfun(main_lua_context, "shutdown", false, NULL);
 	arcan_mem_freearr(&arr_hooks);
@@ -842,6 +856,19 @@ error:
 	arcan_mem_free(dbfname);
 	arcan_audio_shutdown();
 	arcan_video_shutdown(false);
+
+/* now that video has been shut down, it should be safe to write the
+ * last known Lua VM crash state information to stdout without risking
+ * it being dropped due to TTY in GRAPHICS mode */
+	const char* crashmsg = arcan_lua_crash_source(main_lua_context);
+	if (crashmsg){
+		arcan_warning(
+			"\n\x1b[1mImproper API use from Lua script"
+			":\n\t\x1b[32m%s\x1b[39m\n", crashmsg
+		);
+	}
+	else
+		arcan_warning("no crash msg?\n");
 
 	return EXIT_FAILURE;
 }
