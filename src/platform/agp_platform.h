@@ -341,6 +341,10 @@ struct agp_rendertarget* agp_setup_rendertarget(
  * 0 : free / deallocate
  * 1 : alloc / setup
  */
+enum {
+	RTGT_ALLOC_FREE = 0,
+	RTGT_ALLOC_SETUP = 1
+};
 void agp_rendertarget_allocator(struct agp_rendertarget*, bool(*handler)(
 	struct agp_rendertarget*, struct agp_vstore*, int action, void* tag),
 	void* tag);
