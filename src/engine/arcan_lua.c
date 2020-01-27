@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2019, Björn Ståhl
+ * Copyright 2003-2020, Björn Ståhl
  * License: GPLv2+, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -140,7 +140,7 @@ typedef int acoord;
  * these should only forward to arcan_fatal if there's no recovery script
  * set.
  */
-#define arcan_fatal(...) do { lua_rectrigger( __VA_ARGS__); } while(0)
+#define arcan_fatal(...) do { rectrigger( __VA_ARGS__); } while(0)
 
 /*
  * Each function that crosses the LUA->C barrier has a LUA_TRACE
@@ -320,7 +320,7 @@ static struct {
 
 	const char* lastsrc;
 
-	bool in_panic;
+	bool in_panic, in_fatal;
 	unsigned char debug;
 	unsigned lua_vidbase;
 	unsigned char grab;
@@ -346,6 +346,9 @@ static struct {
 extern char* _n_strdup(const char* instr, const char* alt);
 static const char* fsrvtos(enum ARCAN_SEGID ink);
 static bool tgtevent(arcan_vobj_id dst, arcan_event ev);
+static int alua_exposefuncs(lua_State* ctx, unsigned char debugfuncs);
+static bool grabapplfunction(lua_State* ctx, const char* funame, size_t funlen);
+static void rectrigger(const char* msg, ...);
 
 static char* colon_escape(char* in)
 {
@@ -377,7 +380,7 @@ static void luaL_nil_banned(struct arcan_luactx* ctx)
 		rv = lua_pcall(ctx, 0, 0, 0);
 }
 
-static char* dump_call_trace(lua_State* ctx, bool copy)
+static void dump_call_trace(lua_State* ctx, FILE* out)
 {
 /*
  * we can't trust debug.traceback to be present or in an intact state,
@@ -398,14 +401,11 @@ static char* dump_call_trace(lua_State* ctx, bool copy)
 		else {
 			lua_call(ctx, 0, 1);
 			const char* str = lua_tostring(ctx, -1);
-			arcan_warning("%s\n", str);
-			if (copy)
-				res = strdup(str);
+			fprintf(out, "%s\n", str);
 		}
 	}
 
 	luaL_nil_banned(ctx);
-	return res;
 }
 
 static void set_nonblock_cloexec(int fd, bool socket)
@@ -594,47 +594,10 @@ void arcan_lua_cbdrop()
 	}
 }
 
-void lua_rectrigger(const char* msg, ...)
+const char* arcan_lua_crash_source(struct arcan_luactx* ctx)
 {
-	va_list args;
-	va_start(args, msg);
-
-	lua_State* ctx = luactx.last_ctx;
-	char msg_buf[256];
-	vsnprintf(msg_buf, sizeof(msg_buf), msg, args);
-
-	arcan_warning("\n\x1b[1mImproper API use from Lua script"
-		":\n\t\x1b[32m%s\x1b[39m\n", msg_buf);
-
-	char* copy = dump_call_trace(ctx, true);
-	arcan_warning("\x1b[0m\n");
-
-	char outmsg[256];
-	snprintf(outmsg, 256, "%s\n%s", msg_buf, copy ? copy : "");
-	free(copy);
-	luactx.last_crash_source = strdup(outmsg);
-
-/* we got redirected here from an arcan_fatal macro- based redirection
- * so expand in order to get access to the actual call */
-	va_end(args);
-
-	if (luactx.debug > 2)
-		arcan_state_dump("misuse", msg, "");
-
-	arcan_warning("\nHanding over to recovery script "
-		"(or shutdown if none present).\n");
-
-	longjmp(arcanmain_recover_state, 3);
+	return luactx.last_crash_source;
 }
-
-#ifdef _DEBUG
-static void frozen_warning(lua_State* ctx, arcan_vobject* vobj)
-{
-	arcan_warning("access of frozen object (%s):\n",
-		vobj->tracetag? vobj->tracetag : "untagged");
-	dump_call_trace(ctx, false);
-}
-#endif
 
 static arcan_vobj_id luaL_checkaid(lua_State* ctx, int num)
 {
@@ -690,7 +653,7 @@ void arcan_state_dump(const char* key, const char* msg, const char* src)
 }
 
 /* dump argument stack, stack trace are shown only when --debug is set */
-static void dump_stack(lua_State* ctx)
+static void dump_stack(lua_State* ctx, FILE* dst)
 {
 	int top = lua_gettop(ctx);
 	arcan_warning("-- stack dump (%d)--\n", top);
@@ -747,33 +710,22 @@ static arcan_vobj_id luaL_checkvid(
 {
 	arcan_vobj_id lnum = luaL_checknumber(ctx, num);
 	arcan_vobj_id res = luavid_tovid( lnum );
+
 	if (dptr){
 		*dptr = arcan_video_getobject(res);
 		if (!(*dptr))
 			arcan_fatal("invalid VID requested (%"PRIxVOBJ")\n", res);
 	}
 
-#ifdef _DEBUG
-	arcan_vobject* vobj = arcan_video_getobject(res);
-
-	if (vobj && FL_TEST(vobj, FL_FROZEN))
-		frozen_warning(ctx, vobj);
-
-	if (!vobj)
-		arcan_fatal("Bad VID requested (%"PRIxVOBJ") at index (%d)\n", lnum, num);
-#endif
-
 	return res;
 }
-
 
 /*
  * A more optimized approach than this one would be to track when the globals
  * change for C<->LUA related transfer functions and just have
  * cached function pointers.
  */
-static bool grabapplfunction(lua_State* ctx,
-	const char* funame, size_t funlen)
+static bool grabapplfunction(lua_State* ctx, const char* funame, size_t funlen)
 {
 	if (funlen > 0){
 		strncpy(luactx.prefix_buf +
@@ -1874,17 +1826,6 @@ static int pushrawstr(lua_State* ctx)
 	LUA_ETRACE("write_rawresource", NULL, 1);
 }
 
-#ifdef _DEBUG
-static int freezeimage(lua_State* ctx)
-{
-	LUA_TRACE("freeze_image");
-
-	arcan_vobject* vobj;
-	luaL_checkvid(ctx, 1, &vobj);
-	FL_SET(vobj, FL_FROZEN);
-	LUA_ETRACE("freeze_image", NULL, 0);
-}
-
 static int debugstall(lua_State* ctx)
 {
 	LUA_TRACE("frameserver_debugstall");
@@ -1899,7 +1840,6 @@ static int debugstall(lua_State* ctx)
 
 	LUA_ETRACE("frameserver_debugstall", NULL, 0);
 }
-#endif
 
 static int loadimage(lua_State* ctx)
 {
@@ -3320,7 +3260,7 @@ static int syscollapse(lua_State* ctx)
 			arcan_fatal("system_collapse(), "
 				"failed to load appl (%s), reason: %s\n", switch_appl, errmsg);
 		}
-#define arcan_fatal(...) do { lua_rectrigger( __VA_ARGS__); } while(0)
+#define arcan_fatal(...) do { rectrigger( __VA_ARGS__); } while(0)
 	}
 
 	longjmp(arcanmain_recover_state, luaL_optbnumber(ctx, 2, 0) ? 2 : 1);
@@ -7282,7 +7222,7 @@ static int luaB_loadstring (lua_State* ctx) {
 void arcan_lua_mapfunctions(lua_State* ctx, int debuglevel)
 {
 	luaL_nil_banned(ctx);
-	arcan_lua_exposefuncs(ctx, debuglevel);
+	alua_exposefuncs(ctx, debuglevel);
 /* update with debuglevel etc. */
 	arcan_lua_pushglobalconsts(ctx);
 
@@ -7323,49 +7263,120 @@ static int alua_shutdown(lua_State *ctx)
 }
 
 /*
- * never call wraperr with a dynamic src argument, it needs to be
- * available for the lifespan of the program as it us also used to
- * propagate crash information between recovery states
+ * There are three error functions,
+ * [wraperr] is called on a lua_pcall() failure or from panic()
+ * [panic]   is called by the lua VM on an internal failure
+ * [rectrigger] is called on C API functions from Lua with bad arguments
+ *              (through arcan_fatal redefinition)
+ *
+ * + the special 'alua_call' wrapper that may forward here with
+ * the results from calling either _fatal entry point or debug:traceback
  */
+static void fatal_handover(lua_State* ctx)
+{
+/* We reach this when the arcan-lua API has been misused, most of the time
+ * this should simply be a fatal error, being lenient on this will degrade
+ * quality of scripts over time. The exception is when the calls come from
+ * an external process, which is part of letting other languages and tools
+ * drive the rendering - or when part of automated testing.
+ *
+ * In those cases we need a way to alert that the client did something bad
+ * and is expected to have recovered from the argument errors. For this we
+ * use yet another entry point [_fatal_handover]. */
+		if (!grabapplfunction(ctx, "fatal_handover", 14) || luactx.in_fatal){
+		luactx.in_fatal = false;
+		return;
+	}
+
+/* still check from script error in the error function */
+	luactx.in_fatal = true;
+	lua_settop(ctx, 0);
+	grabapplfunction(ctx, "fatal_handover", 14);
+	lua_pushstring(ctx,
+		luactx.last_crash_source ? luactx.last_crash_source : "");
+	alua_call(ctx, 1, 1, LINE_TAG":fatal_handover");
+	luactx.in_fatal = false;
+
+	if (lua_type(ctx, -1) == LUA_TBOOLEAN && lua_toboolean(ctx, -1)){
+		lua_pop(ctx, 1);
+		longjmp(arcanmain_recover_state, ARCAN_LUA_RECOVERY_FATAL_IGNORE);
+	}
+}
+
 static void wraperr(lua_State* ctx, int errc, const char* src)
 {
 	if (luactx.debug)
 		luactx.lastsrc = src;
 
-	const char* mesg = luactx.in_panic ? "Lua VM state broken, panic" :
+	const char* mesg = luactx.in_panic ?
+		"Lua VM state broken, panic" :
 		luaL_optstring(ctx, -1, "unknown");
+
 /*
- * currently unused, pending refactor of arcan_warning
+ * currently unused, pending refactor of arcan_warning/arcan_fatal
  * int severity = luaL_optnumber(ctx, 2, 0);
  */
-
 	arcan_state_dump("crash", mesg, src);
+	char* buf;
+	size_t buf_sz;
+	FILE* stream = open_memstream(&buf, &buf_sz);
 
-	if (luactx.debug){
-		arcan_warning("Warning: wraperr((), %s, from %s\n", mesg, src);
-
-		if (luactx.debug >= 1)
-			dump_call_trace(ctx, false);
-
-		if (luactx.debug >= 1)
-			dump_stack(ctx);
-
-		if (luactx.debug > 2){
-			arcan_warning("Fatal error ignored(%s, %s) through high debuglevel,"
-				" attempting to continue.\n", mesg, src);
-			return;
+	if (stream){
+		if (luactx.debug){
+			fprintf(stream, "Warning: wraperr((), %s, from %s\n", mesg, src);
+			dump_call_trace(ctx, stream);
+			dump_stack(ctx, stream);
 		}
-	}
 
-	arcan_warning("\n\x1b[1mScript failure:\n \x1b[32m %s\n"
+		fprintf(stream, "\n\x1b[1mScript failure:\n \x1b[32m %s\n"
 		"\x1b[39mC-entry point: \x1b[32m %s \x1b[39m\x1b[0m.\n", mesg, src);
 
-	arcan_warning("\nHanding over to recovery script "
-		"(or shutdown if none present).\n");
+		fprintf(stream,
+			"\nHanding over to recovery script (or shutdown if none present).\n");
 
-	luactx.last_crash_source = strdup(mesg);
-	longjmp(arcanmain_recover_state, 3);
+		fclose(stream);
+		luactx.last_crash_source = buf;
+	}
+	else
+		luactx.last_crash_source = strdup(mesg);
+
+/* first try cooperative script error recovery */
+	fatal_handover(ctx);
+
+/* if that fails, well switch to a recovery script */
+	longjmp(arcanmain_recover_state, ARCAN_LUA_RECOVERY_SWITCH);
 }
+
+static void rectrigger(const char* msg, ...)
+{
+	va_list args;
+
+	lua_State* ctx = luactx.last_ctx;
+
+	char* buf;
+	size_t buf_sz;
+	FILE* stream = open_memstream(&buf, &buf_sz);
+	if (stream){
+		va_start(args, msg);
+			fprintf(stream, "\x1b[0m\n");
+			vfprintf(stream, msg, args);
+			fprintf(stream, "\n");
+			dump_call_trace(ctx, stream);
+			fclose(stream);
+			luactx.last_crash_source = buf;
+		va_end(args);
+	}
+	else
+		luactx.last_crash_source = "couldn't build stream";
+
+	fatal_handover(ctx);
+
+	if (luactx.debug > 2)
+		arcan_state_dump("misuse", luactx.last_crash_source, "");
+
+	longjmp(arcanmain_recover_state, ARCAN_LUA_RECOVERY_SWITCH);
+}
+
 
 static void alua_call(
 	struct arcan_luactx* ctx, int nargs, int retc, const char* src)
@@ -7374,40 +7385,30 @@ static void alua_call(
  * function - somebody screwed up. The fatal/shutdown action in those cases are
  * "difficult" to say the least" */
 	if (lua_type(ctx, -(nargs+1)) != LUA_TFUNCTION){
-		arcan_warning("alua_call(), first argument is not a function (%s)\n", src);
-		dump_stack(ctx);
-		lua_pop(ctx, nargs+1);
+		dump_stack(ctx, stderr);
+		lua_settop(ctx, 0);
 		return;
 	}
 
-/* Performance note, we keep this allowed (for now) as the benefits of proper
- * error message propagation is just too huge, a possible optimization would
- * perhaps be to do this once and just keep it on the stack forever. If it
- * turns out worse than tolerable, increase the debuglevel requirement. */
 	int errind = 0;
-//	if (luactx.debug > 0){
-		errind = lua_gettop(ctx) - nargs;
-		if (grabapplfunction(ctx, "fatal", 5)){
-		}
-		else{
-			lua_getglobal(ctx, "debug");
-			lua_getfield(ctx, -1, "traceback");
-			lua_remove(ctx, -2);
-		}
-		lua_insert(ctx, errind);
-		int errc = lua_pcall(ctx, nargs, retc, errind);
-		lua_remove(ctx, errind);
-		if (errc != 0){
-			wraperr(ctx, errc, src);
-		}
-/*	}
-	else {
-		int errc = lua_pcall(ctx, nargs, retc, errind);
-		if (errc != 0){
-			wraperr(ctx, errc, src);
-		}
+	errind = lua_gettop(ctx) - nargs;
+
+	if (grabapplfunction(ctx, "fatal", 5)){
 	}
-*/
+/* a possible optimization here is to cache the value of the global
+ * and keep it here forever so we save the field lookup */
+	else{
+		lua_getglobal(ctx, "debug");
+		lua_getfield(ctx, -1, "traceback");
+		lua_remove(ctx, -2);
+	}
+
+	lua_insert(ctx, errind);
+	int errc = lua_pcall(ctx, nargs, retc, errind);
+	lua_remove(ctx, errind);
+	if (errc != 0){
+		wraperr(ctx, errc, src);
+	}
 }
 
 static void panic(lua_State* ctx)
@@ -7428,9 +7429,8 @@ static void panic(lua_State* ctx)
 		"recovery handover might be impossible.\n");
 
 	luactx.last_crash_source = strdup("VM panic");
-	longjmp(arcanmain_recover_state, 3);
+	longjmp(arcanmain_recover_state, ARCAN_LUA_RECOVERY_SWITCH);
 }
-
 
 struct globs{
 	lua_State* ctx;
@@ -11719,7 +11719,7 @@ static void extend_baseapi(lua_State* ctx)
 
 #include "external/bit.c"
 
-arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
+static int alua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 {
 	if (!ctx)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
@@ -12002,10 +12002,7 @@ static const luaL_Reg sysfuns[] = {
 {"appl_arguments",      getapplarguments },
 {"system_identstr",     getidentstr      },
 {"system_defaultfont",  setdefaultfont   },
-#ifdef _DEBUG
-{"freeze_image",        freezeimage      },
 {"frameserver_debugstall", debugstall    },
-#endif
 #ifdef ARCAN_LWA
 {"VRES_AUTORES", videocanvasrsz },
 #endif
