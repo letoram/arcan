@@ -713,13 +713,16 @@ int MAIN_REDIR(int argc, char* argv[])
 			int lastctxa;
 			while( lastctxc != (lastctxa = arcan_video_popcontext()) )
 				lastctxc = lastctxa;
+
+/* rescan so devices seem to be added again */
+			platform_event_rescan_idev(evctx);
 		}
 		else{
+/* for adopt the rescan is deferred (adopt messes with the eventqueu) */
 			arcan_video_recoverexternal(true, &saved, &truncated, NULL, NULL);
 			adopt = true;
 		}
 		arcan_event_clearmask(evctx);
-		platform_video_recovery();
 	}
 /* fallback recovery with adoption */
 	else if (jumpcode == ARCAN_LUA_RECOVERY_SWITCH){
@@ -799,6 +802,8 @@ int MAIN_REDIR(int argc, char* argv[])
  * complex pattern as the work in selectively recovering the event-queue after
  * an error is much too dangerous */
 		platform_video_recovery();
+		platform_event_rescan_idev(evctx);
+
 		in_recover = false;
 	}
 	else if (stdin_connpoint){

@@ -53,8 +53,9 @@ static struct xkb_context* xkb_context;
 #endif
 
 #define debug_print(fmt, ...) \
-            do { if (DEBUG) arcan_warning("%s:%d:%s(): " fmt "\n", \
-						"evdev:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+            do { if (DEBUG) arcan_warning("[%lld]%s:%d:%s(): " fmt "\n", \
+						arcan_timemillis(), "evdev:", __LINE__, __func__,##__VA_ARGS__); \
+						} while (0)
 
 /* #define verbose_print */
 #define verbose_print debug_print
@@ -308,24 +309,27 @@ static bool identify(int fd, const char* path,
 	for (size_t i = 0; i < sizeof(buf); i++)
 		hash = ((hash << 5) + hash) + buf[i];
 
+/* 16-bit clamp is legacy in the scripting layer, also leave the highest
+ * bit unset as that is reserved for synthetic devices */
+	hash &= 0xfffe;
+	if (hash < MAX_DEVICES)
+		hash += MAX_DEVICES;
+
 /* scan for collisions, if there is one, random and repeat. We lose
  * repeatability but don't risk collision-disconnect spam */
-	for (ssize_t i = 0; i < iodev.sz_nodes; i++)
-		if (hash == iodev.nodes[i].devnum){
+	for (ssize_t i = 0; i < iodev.sz_nodes; i++){
+		while (hash == iodev.nodes[i].devnum){
 			uint16_t rv;
 			arcan_random((uint8_t*)&rv, 2);
-			hash = rv;
+			hash = rv & (uint16_t) 0xfffe;
+			if (hash < MAX_DEVICES)
+				hash += MAX_DEVICES;
 			i = -1;
 			continue;
 		}
+	}
 
-/* 16-bit clamp is legacy in the scripting layer, also leave the highest
- * bit unset as that is reserved for synthetic devices */
-	unsigned short devnum = hash % ((uint16_t) 0xfffe);
-	if (devnum < MAX_DEVICES)
-		devnum += MAX_DEVICES;
-
-	*dnum = devnum;
+	*dnum = hash;
 
 	return true;
 }
