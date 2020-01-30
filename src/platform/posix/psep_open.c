@@ -1,5 +1,5 @@
 /*
- * Copyright 2018, Björn Ståhl
+ * Copyright 2018-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: https://arcan-fe.com
  * Description: platform_open implementation that takes the option of
@@ -530,11 +530,23 @@ static void check_netlink(pid_t child, int netlink)
 	if (buflen < 0 || (msg.msg_flags & MSG_TRUNC))
 		return;
 
+/*
+ * uncomment for quick log / debugging
+	static FILE* netlink_log;
+	if (!netlink_log)
+		netlink_log = fopen("netlink.log", "w+");
+	fprintf(netlink_log, "%s\n", buf);
+*/
+
 /* buf should now contain @/ and changed and drm */
 	if (!strstr(buf, "change@"))
 		return;
 
 	if (!strstr(buf, "drm/card"))
+		return;
+
+/* don't need to notify on backlight changes */
+	if (strstr(buf, "backlight"))
 		return;
 
 /* now we can finally write the message */
@@ -888,13 +900,14 @@ int platform_device_open(const char* const name, int flags)
 
 		assert(pkg.cmd_ch != NEW_INPUT_DEVICE);
 	}
+
 /*
  * When we move the inotify- behavior from evdev additional care needs to
  * be taken here to handle the input device discovery part as the devices
- * received needs to be queued until the engine is in a state to handle
- * them.
+ * received needs to be queued until the engine is in a state to handle them.
+ * Then we can simply look at the NETLINK socket for the inputn entries
+ * appearing (or use the inotify + folder approach, compile-time option).
  */
-
 	return 0;
 }
 
