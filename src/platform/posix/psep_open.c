@@ -780,7 +780,7 @@ void platform_device_init()
  * here and before fork so we don't race.
  */
 #ifdef __FreeBSD__
-	set_tty(STDIN_FILENO);
+	set_tty(STDIN_FILENO, true);
 #endif
 
 	pid_t pid = fork();
