@@ -3263,7 +3263,10 @@ static int syscollapse(lua_State* ctx)
 #define arcan_fatal(...) do { rectrigger( __VA_ARGS__); } while(0)
 	}
 
-	longjmp(arcanmain_recover_state, luaL_optbnumber(ctx, 2, 0) ? 2 : 1);
+	longjmp(arcanmain_recover_state,
+		luaL_optbnumber(ctx, 2, 0) ?
+		ARCAN_LUA_SWITCH_APPL : ARCAN_LUA_SWITCH_APPL_NOADOPT
+	);
 
 	LUA_ETRACE("system_collapse", NULL, 0);
 }

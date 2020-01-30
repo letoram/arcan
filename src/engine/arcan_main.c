@@ -831,7 +831,7 @@ int MAIN_REDIR(int argc, char* argv[])
 	int exit_code = 0;
 
 run_loop:
-	arcan_conductor_run(main_cycle);
+	exit_code = arcan_conductor_run(main_cycle);
 
 	arcan_lua_callvoidfun(main_lua_context, "shutdown", false, NULL);
 	arcan_mem_freearr(&arr_hooks);
