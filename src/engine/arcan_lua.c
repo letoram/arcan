@@ -3265,7 +3265,7 @@ static int syscollapse(lua_State* ctx)
 
 	longjmp(arcanmain_recover_state,
 		luaL_optbnumber(ctx, 2, 0) ?
-		ARCAN_LUA_SWITCH_APPL : ARCAN_LUA_SWITCH_APPL_NOADOPT
+		ARCAN_LUA_SWITCH_APPL_NOADOPT : ARCAN_LUA_SWITCH_APPL
 	);
 
 	LUA_ETRACE("system_collapse", NULL, 0);
