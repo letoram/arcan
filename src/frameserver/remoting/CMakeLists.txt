@@ -19,7 +19,6 @@ if (REMOTING_SOURCES)
 	target_include_directories(afsrv_remoting PRIVATE
 		${FSRV_ROOT}
 		${FSRV_ROOT}/util
-		${LIBVNC_INCLUDE_DIR}
 		${REMOTING_INCLUDE_DIRS}
 	)
 	target_link_libraries(afsrv_remoting ${STDLIB} arcan_shmif_int ${REMOTING_LIBS})
