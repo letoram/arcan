@@ -8424,6 +8424,7 @@ static int targetstepframe(lua_State* ctx)
 	if (!FL_TEST(rtgt, TGTFL_READING)){
 		agp_request_readback(rtgt->color->vstore);
 		FL_SET(rtgt, TGTFL_READING);
+		rtgt->transfc++;
 		lua_pushboolean(ctx, true);
 	}
 /* need to communicate that we are stuck */
