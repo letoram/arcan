@@ -251,18 +251,18 @@ static int process_input(const char* msg)
 
 /* all commands should have a 'kind' field */
 	const char* arg;
-	if (!arg_lookup(cmd, "kind", 0, &arg)){
+	if (!arg_lookup(cmd, "kind", 0, &arg) && arg){
 		trace(TRACE_XWL, "malformed argument: %s, missing kind", msg);
 		goto cleanup;
 	}
 /* pair surface */
 	else if (strcmp(arg, "surface") == 0){
-		if (!arg_lookup(cmd, "id", 0, &arg)){
+		if (!arg_lookup(cmd, "id", 0, &arg) && arg){
 			trace(TRACE_XWL, "malformed surface argument: missing id");
 			goto cleanup;
 		}
 		uint32_t id = strtoul(arg, NULL, 10);
-		if (!arg_lookup(cmd, "surface_id", 0, &arg)){
+		if (!arg_lookup(cmd, "surface_id", 0, &arg) && arg){
 			trace(TRACE_XWL, "malformed surface argument: missing surface id");
 			goto cleanup;
 		}
@@ -286,7 +286,7 @@ static int process_input(const char* msg)
 	}
 /* window goes from invisible to visible state */
 	else if (strcmp(arg, "create") == 0){
-		if (!arg_lookup(cmd, "id", 0, &arg)){
+		if (!arg_lookup(cmd, "id", 0, &arg) && arg){
 			trace(TRACE_XWL, "malformed map argument: missing id");
 			goto cleanup;
 		}
@@ -299,7 +299,7 @@ static int process_input(const char* msg)
 		wnd->id = id;
 
 /* should come with some kind of type information */
-		if (arg_lookup(cmd, "type", 0, &arg)){
+		if (arg_lookup(cmd, "type", 0, &arg) && arg){
 			trace(TRACE_XWL, "created with type %s", arg);
 			wnd_message(wnd, "type:%s", arg);
 		}
@@ -309,7 +309,7 @@ static int process_input(const char* msg)
 		}
 
 /* we only viewport when we have a grab or hierarchy relationship change */
-		if (arg_lookup(cmd, "parent", 0, &arg)){
+		if (arg_lookup(cmd, "parent", 0, &arg) && arg){
 			uint32_t parent_id = strtoul(arg, NULL, 0);
 			struct xwl_window* wnd = xwl_find(parent_id);
 			if (wnd){
@@ -323,23 +323,26 @@ static int process_input(const char* msg)
 	}
 /* reparent */
 	else if (strcmp(arg, "parent") == 0){
-		if (!arg_lookup(cmd, "id", 0, &arg))
+		if (!arg_lookup(cmd, "id", 0, &arg) && arg)
 			goto cleanup;
 		uint32_t id = strtoul(arg, NULL, 10);
 
-		if (!arg_lookup(cmd, "parent_id", 0, &arg))
+		if (!arg_lookup(cmd, "parent_id", 0, &arg) && arg)
 			goto cleanup;
+
 		uint32_t parent_id = strtoul(arg, NULL, 10);
 		struct xwl_window* wnd = xwl_find(id);
+
 		if (!wnd)
 			goto cleanup;
+
 		wnd->parent_id = parent_id;
 		trace(TRACE_XWL, "reparent id:%"PRIu32" to %"PRIu32, id, parent_id);
 		wnd_viewport(wnd);
 	}
 /* invisible -> visible */
 	else if (strcmp(arg, "map") == 0){
-		if (!arg_lookup(cmd, "id", 0, &arg)){
+		if (!arg_lookup(cmd, "id", 0, &arg) && arg){
 			trace(TRACE_XWL, "map:status=no_id");
 			goto cleanup;
 		}
@@ -417,12 +420,28 @@ static int process_input(const char* msg)
 		if (arg_lookup(cmd, "x", 0, &arg)){
 			wnd->viewport.ext.viewport.x = strtol(arg, NULL, 10);
 		}
+
 		if (arg_lookup(cmd, "y", 0, &arg)){
 			wnd->viewport.ext.viewport.y = strtol(arg, NULL, 10);
 		}
 
 /* and either reflect now or later */
 		wnd_viewport(wnd);
+	}
+/* just forward */
+	else if (arg_lookup(cmd, "fullscreen", 0, &arg) && arg){
+		if (!arg_lookup(cmd, "id", 0, &arg)){
+			trace(TRACE_XWL, "malformed surface argument: missing surface id");
+			goto cleanup;
+		}
+		uint32_t id = strtoul(arg, NULL, 10);
+		struct xwl_window* wnd = xwl_find(id);
+		if (!wnd){
+			trace(TRACE_XWL, "configure on unknown id %"PRIu32, id);
+			goto cleanup;
+		}
+
+		wnd_message(wnd, "fullscreen=%s", arg);
 	}
 
 cleanup:
