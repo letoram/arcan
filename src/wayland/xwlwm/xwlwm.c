@@ -470,6 +470,14 @@ static void xcb_create_notify(xcb_create_notify_event_t* ev)
 /* other properties, request geometry and check if depth is alpha or not */
 
 	send_updated_window(state, "create");
+
+/* configure to provoke a configure */
+	xcb_configure_window(dpy, ev->window,
+		XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
+		XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
+		XCB_CONFIG_WINDOW_BORDER_WIDTH,
+		(uint32_t[]){ev->x, ev->y, ev->width, ev->height, 0}
+	);
 }
 
 static void xcb_map_notify(xcb_map_notify_event_t* ev)
