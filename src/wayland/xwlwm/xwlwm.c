@@ -30,6 +30,7 @@
 #include "../uthash.h"
 
 static pthread_mutex_t logout_synch = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t wm_synch = PTHREAD_MUTEX_INITIALIZER;
 
 struct xwnd_state {
 	bool mapped;
@@ -278,7 +279,6 @@ static void create_window()
 	xcb_set_selection_owner(dpy,
 		wnd, atoms[NET_WM_CM_S0], XCB_TIME_CURRENT_TIME);
 
-	xcb_flush(dpy);
 }
 
 static bool has_atom(
@@ -471,13 +471,14 @@ static void xcb_create_notify(xcb_create_notify_event_t* ev)
 
 	send_updated_window(state, "create");
 
-/* configure to provoke a configure */
+/*
 	xcb_configure_window(dpy, ev->window,
 		XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
 		XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
 		XCB_CONFIG_WINDOW_BORDER_WIDTH,
 		(uint32_t[]){ev->x, ev->y, ev->width, ev->height, 0}
 	);
+*/
 }
 
 static void xcb_map_notify(xcb_map_notify_event_t* ev)
@@ -856,7 +857,6 @@ static void process_wm_command(const char* arg)
 	}
 
 cleanup:
-	xcb_flush(dpy);
 	arg_cleanup(args);
 }
 
@@ -882,7 +882,12 @@ static void* process_thread(void* arg)
 			size_t len = strlen(inbuf);
 			if (len && inbuf[len-1] == '\n')
 				inbuf[len-1] = '\0';
+
+/* shouldn't be needed but doesn't trust xcb */
+			pthread_mutex_lock(&wm_synch);
 			process_wm_command(inbuf);
+			xcb_flush(dpy);
+			pthread_mutex_unlock(&wm_synch);
 		}
 	}
 	wm_command(WM_FLUSH, "kind=terminated");
@@ -899,6 +904,7 @@ static void run_event()
 		return;
 	}
 
+	pthread_mutex_lock(&wm_synch);
 	switch (ev->response_type & ~0x80) {
 /* the following are mostly relevant for "UI" events if the decorations are
 * implemented in the context of X rather than at a higher level. Since this
@@ -967,6 +973,8 @@ static void run_event()
 		trace("xcb-unhandled:type=%"PRIu8, ev->response_type);
 	break;
 	}
+	xcb_flush(dpy);
+	pthread_mutex_unlock(&wm_synch);
 }
 
 /*
@@ -998,6 +1006,13 @@ static void setup_init_state(bool standalone)
 		XCB_PROP_MODE_REPLACE, root, atoms[NET_SUPPORTED],
 		XCB_ATOM_ATOM, 32, 6, atom_supp
 	);
+}
+
+static void* xcb_msg_thread(void* arg)
+{
+	for (;;)
+		run_event();
+	return NULL;
 }
 
 int main (int argc, char **argv)
@@ -1140,11 +1155,14 @@ int main (int argc, char **argv)
 	setlinebuf(stdin);
 	setlinebuf(stdout);
 
+/* one thread for the WM, one thread for the arcan-wayland connection */
 	pthread_t pth;
 	pthread_attr_t pthattr;
 	pthread_attr_init(&pthattr);
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
 	pthread_create(&pth, &pthattr, process_thread, NULL);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	pthread_create(&pth, &pthattr, xcb_msg_thread, NULL);
 
 /*
  * Now it should be safe to chain-execute any single client we'd want, and
@@ -1192,43 +1210,16 @@ int main (int argc, char **argv)
 		}
 	}
 
-/* xcb doesn't have a convenience helper with timeout etc. so we add a poll step */
-	struct pollfd pfd[2] = {
-		{
-			.fd = eventsig[0],
-			.events = POLLIN
-		},
-		{
-			.fd = wmfd[0],
-			.events = POLLIN
-		}
-	};
-
 	for(;;){
-		xcb_flush(dpy);
-
-		int status = poll(pfd, 2, -1);
-		if (status == -1 && errno != EINTR && errno != EAGAIN){
-			trace("shutdown:source=poll");
-			break;
-		}
-
-		if (pfd[0].revents & POLLIN){
-			uint8_t ch;
-			if (1 == read(pfd[0].fd, &ch, 1)){
-				if (ch == 'x'){
-					trace("shutdown:source=kill_thread_msg");
-					break;
-				}
-				if (ch == 'd')
-					spawn_debug();
+		uint8_t ch;
+		if (1 == read(eventsig[0], &ch, 1)){
+			if (ch == 'x'){
+				trace("shutdown:source=kill_thread_msg");
+				break;
 			}
+			if (ch == 'd')
+				spawn_debug();
 		}
-		if (!(pfd[1].revents & POLLIN)){
-			continue;
-		}
-
-		run_event(dpy);
 	}
 
 	if (exec_child != -1){
