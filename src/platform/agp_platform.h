@@ -123,6 +123,8 @@ bool agp_slice_synch(
  */
 unsigned agp_resolve_texid(struct agp_vstore* vs);
 
+bool agp_accelerated();
+
 /*
  * Extended form to allow internal platform choice in format used,
  * can be used to some rendertargets for improved performance and for
@@ -625,5 +627,8 @@ struct agp_render_options {
 	int line_width;
 };
 void agp_render_options(struct agp_render_options);
+
+/* Perform an integrity check on the graphics platform */
+bool agp_status_ok(const char** msg);
 
 #endif

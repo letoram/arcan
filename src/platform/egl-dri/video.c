@@ -185,7 +185,6 @@ struct dev_node {
 	char* egllib;
 	char* agplib;
 	struct egl_env eglenv;
-	struct agp_fenv* agpenv;
 };
 
 enum disp_state {
