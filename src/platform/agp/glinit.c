@@ -24,6 +24,33 @@ void agp_setenv(struct agp_fenv* dst)
 	cenv = dst;
 }
 
+/*
+ * Same example as on khronos.org/registry/OpenGL/docs/rules.html
+ */
+static bool check_ext(const char* needle, const char* haystack)
+{
+	if (!needle || !haystack)
+		return false;
+
+	const char* cpos = haystack;
+	size_t len = strlen(needle);
+	const char* eoe = haystack + strlen(haystack);
+
+	while (cpos < eoe){
+		int n = strcspn(cpos, " ");
+		if (len == n && strncmp(needle, cpos, n) == 0)
+			return true;
+		cpos += (n+1);
+	}
+
+	return false;
+}
+
+static int reset_status_default()
+{
+	return 0;
+}
+
 void agp_glinit_fenv(struct agp_fenv* dst,
 	void*(*lookfun)(void* tag, const char* sym, bool req), void* tag)
 {
@@ -34,6 +61,15 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 
 #define lookup_opt(tag, sym) lookfun(tag, sym, false)
 #define lookup(tag, sym) lookfun(tag, sym, true)
+
+	const char* ext = (char*) glGetString(GL_EXTENSIONS);
+	if (check_ext("GL_ARB_robustness", ext) || check_ext("GL_KHR_robustness", ext)){
+		dst->reset_status = (int(*)(void)) lookup_opt(tag, "glGetGraphicsResetStatusARB");
+	}
+
+/* just fake that the context always is OK */
+	if (!dst->reset_status)
+		dst->reset_status = reset_status_default;
 
 /* match the table and order in glfun.h, forego the use of the PFN...
  * as we need even the "abi-bound" 1.x functions dynamically loaded for the

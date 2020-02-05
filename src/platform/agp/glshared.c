@@ -1768,10 +1768,21 @@ void agp_save_output(size_t w, size_t h, av_pixel* dst, size_t dsz)
 	env->read_pixels(0, 0, w, h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dst);
 }
 
+bool agp_status_ok(const char** msg)
+{
+	struct agp_fenv* env = agp_env();
+	return env->reset_status() == 0;
+}
+
 unsigned agp_resolve_texid(struct agp_vstore* vs)
 {
 	if (vs->vinf.text.glid_proxy)
 		return *vs->vinf.text.glid_proxy;
 	else
 		return vs->vinf.text.glid;
+}
+
+bool agp_accelerated()
+{
+	return false;
 }

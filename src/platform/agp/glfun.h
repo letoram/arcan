@@ -150,6 +150,9 @@ struct agp_fenv {
 	int model_flags;
 	GLenum blend_src_alpha, blend_dst_alpha;
 	GLint last_store_mode;
+
+/* safety */
+	int (*reset_status) ();
 };
 
 void agp_glinit_fenv(struct agp_fenv* dst,

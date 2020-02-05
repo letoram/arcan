@@ -460,6 +460,18 @@ int arcan_conductor_run(arcan_tick_cb tick)
 
 	for(;;){
 /*
+ * So this is not good enough to do attribution, and it is likely that the
+ * cause of the context reset will simply repeat itself. Possible options for
+ * deriving this is to trigger bufferfail for all external frameservers (or
+ * pick them at random until figured out the sinner), and have an eval pass for
+ * custom shaders (other likely suspect) - and after some 'n fails' trigger the
+ * script kind of reset/rebuild.
+ */
+		if (!agp_status_ok(NULL)){
+			platform_video_reset(-1, false);
+		}
+
+/*
  * specific note here, we'd like to know about frameservers that have resized
  * and then actually dispatch / process these twice so that their old buffers
  * might get to be updated before we synch to display.

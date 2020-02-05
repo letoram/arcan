@@ -1068,7 +1068,9 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 
 	while ( check_dms(c) &&
 			((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
-		debug_print(STATUS, c, "outqueue is full, waiting");
+		struct arcan_event outev = *src;
+		debug_print(STATUS, c,
+			"=> %s: outqueue is full, waiting", arcan_shmif_eventstr(&outev, NULL, 0));
 		arcan_sem_wait(ctx->synch.handle);
 	}
 

@@ -258,6 +258,11 @@ void agp_rendertarget_clearcolor(
 {
 }
 
+bool agp_status_ok(const char** msg)
+{
+	return true;
+}
+
 void agp_render_options(struct agp_render_options)
 {
 }
