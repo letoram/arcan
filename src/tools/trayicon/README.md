@@ -37,3 +37,12 @@ This should allow you to start:
 
 Which should appear up as an icon in your statusbar tray. Consult the Durden
 documentation for more specific details on tuning the look and feel.
+
+## text- mode
+
+Trayicon can also be used to add text buttons with contents from a script or
+from the commandline by using the source and width arguments. The following:
+
+    ARCAN_CONNPATH=tray ./script.sh | arcan_trayicon -stdin -width 20
+
+Would read lines from stdin, clamp them to -width output cells.
