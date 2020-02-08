@@ -204,6 +204,11 @@ struct arcan_frameserver {
 	off_t ofs_audb, ofs_audp;
 	uint8_t* audb;
 
+/* local queue of the shared one is full when doing an enqueue of
+ * prioritized control commands, re-enqueue is attempted in the poll stage */
+	size_t n_pending;
+	struct arcan_event pending_queue[4];
+
 /* trackable members to help scriping engine recover on script failure,
  * populated through allocation or during queuetransfer */
 	char title[64];
