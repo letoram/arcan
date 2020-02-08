@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdatomic.h>
 #include <inttypes.h>
 #include <ctype.h>
 #include <grp.h>
@@ -29,6 +30,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include "platform.h"
+
+static uint64_t watchdog_anr_sent;
 
 #if defined(__OpenBSD__) || defined(__FreeBSD__)
 #include <sys/event.h>
@@ -378,7 +382,7 @@ static int access_device(const char* path, int arg, bool release, bool* keep)
 	struct stat devst;
 	*keep = false;
 
-/* special case, substitute TTY for the active tty device (if known) */
+/* special case 1, substitute TTY for the active tty device (if known) */
 	if (strcmp(path, "TTY") == 0){
 		if (!got_tty.active)
 			return -1;
@@ -388,7 +392,7 @@ static int access_device(const char* path, int arg, bool release, bool* keep)
 		}
 	}
 
-/* special case 2 - activate TTY (GRAPHICS switch) deferred to the first frame
+/* special case 3 - activate TTY (GRAPHICS switch) deferred to the first frame
  * so that any error output is actually visible after init but before first
  * composition, return this as an 'invalid file'. */
 	if (strcmp(path, "TTYGRAPHICS") == 0){
@@ -430,6 +434,8 @@ static int access_device(const char* path, int arg, bool release, bool* keep)
 			}
 			*keep = true;
 			if (whitelist[ind].mode & MODE_DRM){
+				if (arcan_watchdog_ping)
+					atomic_store(arcan_watchdog_ping, arcan_timemillis());
 				drmSetMaster(whitelist[ind].fd);
 			}
 			return whitelist[ind].fd;
@@ -573,13 +579,47 @@ static void check_child(pid_t child, bool die)
 		}
 	}
 /* or we want the child to soft-die? */
-	else if (die)
-		kill(SIGTERM, child);
-
-	if (die){
+	else if (die){
+		kill(child, SIGTERM);
 		release_devices();
 		_exit(WEXITSTATUS(st));
 	}
+
+/* first send a watchdog signal, SIGUSR1, child will check if it comes from
+ * ppid() or not - and use that as an 'ANR' (if it comes from the lua context,
+ * second time around, it's killing time */
+	uint64_t ts = arcan_watchdog_ping ? atomic_load(arcan_watchdog_ping) : 0;
+	if (ts && arcan_timemillis() - ts > WATCHDOG_ANR_TIMEOUT_MS){
+
+/* only trigger if there is a drm device open */
+		bool found = false;
+		for (size_t i = 0; i < COUNT_OF(whitelist); i++){
+			if (whitelist[i].fd != -1 && (whitelist[i].mode & MODE_DRM)){
+				found = true;
+				break;
+			}
+		}
+		if (!found)
+			return;
+
+/* the other option here would be to longjmp back into main, we ignore that as
+ * that would cause more complexity with pledge/unveil, so shutdown and assume
+ * an outer service manager would relaunch us if possible - we want explicit
+ * relaunch in order to not act as a fork() oracle for ASLR break */
+		if (watchdog_anr_sent){
+/*			if (arcan_timemillis() - watchdog_anr_sent > WATCHDOG_ANR_TIMEOUT_MS){
+				kill(child, SIGTERM);
+				release_devices();
+				_exit(EXIT_FAILURE);
+			}*/
+		}
+		else {
+			kill(child, SIGUSR1);
+			watchdog_anr_sent = arcan_timemillis();
+		}
+	}
+	else
+		watchdog_anr_sent = 0;
 }
 
 #if defined(__OpenBSD__) || defined(__FreeBSD__)
@@ -664,7 +704,7 @@ static void parent_loop(pid_t child, int netlink)
 
 	int rv = poll(pfd, netlink == -1 ? 1 : 2, 1000);
 	if (-1 == rv && (errno != EAGAIN && errno != EINTR))
-		check_child(child, true); /* don't to stronger than this */
+		check_child(child, true); /* don't go stronger than this */
 
 	if (rv == 0)
 		return;
@@ -760,6 +800,7 @@ static bool drop_privileges()
 static int psock = -1;
 void platform_device_init()
 {
+
 /*
  * Signs of these environment variables indicate that we are in a context where
  * other display servers exist, drop out immediately so that we don't risk

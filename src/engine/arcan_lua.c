@@ -349,6 +349,7 @@ static bool tgtevent(arcan_vobj_id dst, arcan_event ev);
 static int alua_exposefuncs(lua_State* ctx, unsigned char debugfuncs);
 static bool grabapplfunction(lua_State* ctx, const char* funame, size_t funlen);
 static void rectrigger(const char* msg, ...);
+static void wraperr(lua_State* ctx, int errc, const char* src);
 
 static char* colon_escape(char* in)
 {
@@ -7195,6 +7196,22 @@ void arcan_lua_dostring(lua_State* ctx, const char* code)
 	(void)luaL_dostring(ctx, code);
 }
 
+
+static jmp_buf watchdog_dst;
+static void error_hook(lua_State* ctx, lua_Debug* ar)
+{
+/* will longjump into the pcall error handler which will trigger recovery */
+	luaL_error(ctx, "ANR - Application Not Responding");
+}
+
+static void sig_watchdog(int sig, siginfo_t* info, void* unused)
+{
+	if (getppid() == info->si_pid){
+/* set a hook that we can use to then invoke our error handler path */
+		lua_sethook(luactx.last_ctx, error_hook, LUA_MASKCOUNT, 1);
+	}
+}
+
 lua_State* arcan_lua_alloc()
 {
 	lua_State* res = luaL_newstate();
@@ -7203,6 +7220,14 @@ lua_State* arcan_lua_alloc()
  * limit / "null-out" the undesired subset of the LUA API */
 	if (res)
 		luaL_openlibs(res);
+
+/* watchdog has triggered with an ANR, continue the bouncy castle towards
+ * the 'normal' scripting recovery stage so we get information on where
+ * this comes from */
+	sigaction(SIGUSR1, &(struct sigaction){
+		.sa_sigaction = &sig_watchdog,
+		.sa_flags = SA_SIGINFO
+	}, NULL);
 
 	luactx.last_ctx = res;
 	return res;
@@ -7266,11 +7291,13 @@ static int alua_shutdown(lua_State *ctx)
 }
 
 /*
- * There are three error functions,
- * [wraperr] is called on a lua_pcall() failure or from panic()
+ * There are four error paths,
+ * [wraperr] is called on a lua_pcall() failure, panic or parent watchdog
  * [panic]   is called by the lua VM on an internal failure
  * [rectrigger] is called on C API functions from Lua with bad arguments
  *              (through arcan_fatal redefinition)
+ * [SIGINT-handler] is used by the parent process if we fail to ping the
+ *                  watchdog (conductor processing)
  *
  * + the special 'alua_call' wrapper that may forward here with
  * the results from calling either _fatal entry point or debug:traceback
@@ -7379,7 +7406,6 @@ static void rectrigger(const char* msg, ...)
 
 	longjmp(arcanmain_recover_state, ARCAN_LUA_RECOVERY_SWITCH);
 }
-
 
 static void alua_call(
 	struct arcan_luactx* ctx, int nargs, int retc, const char* src)

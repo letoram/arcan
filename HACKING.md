@@ -158,6 +158,17 @@ debugging quickly becomes very disruptive, and tracing sources becomes more
 important to get valuable information. In this section a few such sources and
 tactics are listed.
 
+## Watchdog
+
+When running a low level platform where arcan acts as the display server,
+there is a watchdog active that will first SIGINT (causing the Lua VM to reset)
+and if watchdog still isn't set, SIGKILL. When attaching a debugger, disable
+the watchdog with:
+
+    set arcan_watchdog_ping=0
+
+which is allocated in arcan\_conductor\_enable\_watchdog().
+
 ## Engine invocation
 
 The -q and -g arguments are useful tools for improving debugging. The -q

@@ -19,6 +19,9 @@ enum synch_method {
 int arcan_conductor_run(arcan_tick_cb cb);
 #endif
 
+/* [ called from platform ] */
+void arcan_conductor_enable_watchdog();
+
 /* [ called from platform ]
  * Specify the relationship between display, gpu, synch and object - displays
  * are never 'lost' though they can be disabled with a bad vobj. */
