@@ -49,7 +49,7 @@ local function Indent(N)
 end
 
 -- The hook function set by Trace:
-local function Hook(Event)
+local function Hook(tracer, Event)
   -- Info for the running function being called or returned from:
   local Running = GetInfo(2)
   -- Info for the function that called that function:
@@ -57,7 +57,7 @@ local function Hook(Event)
   if not string.find(Running..Caller, "modules") then
     if Event == "call" then
       Depth = Depth + 1
-      print(Indent(Depth), "calling ", Running, " from ",Caller, "\n")
+      tracer(string.format("%s %s <- %s", Indent(Depth), Running, Caller));
     else
       local RetType
       if Event == "return" then
@@ -71,9 +71,18 @@ local function Hook(Event)
   end
 end
 
--- Sets a hook function that prints (to stderr) a trace of function
--- calls and returns:
-function Trace()
+-- start tracing and send all data to stdout or provide a function scope to
+-- trace and a report function to send the data to
+function Trace(scope, reportfn)
+	tracer = reportfn and reportfn or print;
+
+	if type(scope) == "function" then
+		Trace(nil, reportfn)
+			scope()
+		Untrace()
+		return;
+	end
+
   if not Depth then
     -- Before setting the hook, make an iterator that calls
     -- debug.getinfo repeatedly in search of the bottom of the stack:
@@ -89,7 +98,7 @@ function Trace()
     -- Don't count the iterator itself or the empty frame counted at
     -- the end of the loop:
     Depth = Depth - 2
-    debug.sethook(Hook, "cr")
+    debug.sethook(function(...) return Hook(tracer, ...) end, "cr")
   else
     -- Do nothing if Trace() is called twice.
   end
