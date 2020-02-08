@@ -61,18 +61,6 @@ static struct arcan_strarr arr_hooks = {0};
  * This allows a simpler recovery script to adopt orphaned frameservers.
  */
 jmp_buf arcanmain_recover_state;
-
-/*
- * default, probed / replaced on some systems
- */
-extern int system_page_size;
-
-/*
- * set manually from debugger to disable as much timing sensitive
- * behavior as posible in order to minimise effects of breakpoints
- */
-bool arcan_in_debug;
-
 struct arcan_luactx* main_lua_context;
 
 static const struct option longopts[] = {
@@ -332,6 +320,10 @@ static void add_hookscript(const char* instr)
 
 int MAIN_REDIR(int argc, char* argv[])
 {
+/* needed first as device_init might fork and need some shared mem */
+	system_page_size = sysconf(_SC_PAGE_SIZE);
+	arcan_conductor_enable_watchdog();
+
 /*
  * these are, in contrast to normal video_init/event_init, only set once
  * and not rerun on appl- switch etc. typically no-ops but may be used to
@@ -675,7 +667,6 @@ int MAIN_REDIR(int argc, char* argv[])
 
 /* setup device polling, cleanup, ... */
 	arcan_led_init();
-	system_page_size = sysconf(_SC_PAGE_SIZE);
 
 /*
  * fallback implementation resides here and a little further down in the "if

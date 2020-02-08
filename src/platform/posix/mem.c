@@ -156,6 +156,16 @@ void* arcan_alloc_mem(size_t nb,
 	size_t total;
 
 	switch (type){
+/* this is not safe to _free at the moment since we don't track metadata yet,
+ * the refactor adding obsd/musl-new heap allocator should take this into account */
+	case ARCAN_MEM_SHARED:
+		rptr = mmap(NULL, system_page_size,
+			PROT_READ | PROT_WRITE,
+			MAP_SHARED | MAP_ANONYMOUS, -1, 0
+		);
+		total = system_page_size;
+
+	break;
 	case ARCAN_MEM_BINDING:
 	case ARCAN_MEM_THREADCTX:
 	case ARCAN_MEM_VBUFFER:
@@ -288,7 +298,6 @@ void arcan_mem_free(void* inptr)
  * then cleanup. VBUFFER for instance doesn't
  * automatically shrink, but rather reset and flag
  * as unused */
-
 
 	free(inptr);
 }

@@ -78,6 +78,11 @@ enum arcan_memtypes {
 	ARCAN_MEM_STRINGBUF,
 
 /*
+ * Used for memory that needs to be shared/forked into a child process
+ */
+	ARCAN_MEM_SHARED,
+
+/*
  * Use- specific buffer associated with a video object (container
  * for 3d model, container for frameserver etc.) SMALL to TINY
  */

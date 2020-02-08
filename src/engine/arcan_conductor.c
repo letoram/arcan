@@ -14,6 +14,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <stdatomic.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -29,6 +30,16 @@
 
 #include "../platform/platform.h"
 #include "../platform/video_platform.h"
+
+/* defined in platform.h, used in psep open */
+uint64_t* _Atomic volatile arcan_watchdog_ping = NULL;
+
+void arcan_conductor_enable_watchdog()
+{
+	arcan_watchdog_ping = arcan_alloc_mem(system_page_size,
+		ARCAN_MEM_SHARED, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+	atomic_store(arcan_watchdog_ping, arcan_timemillis());
+}
 
 /*
  * checklist:
@@ -545,6 +556,9 @@ static void conductor_cycle(int nticks)
  *
  * and tag transforms handlers being one tick off
  */
+	if (arcan_watchdog_ping)
+		atomic_store(arcan_watchdog_ping, arcan_timemillis());
+
 	arcan_lua_tick(main_lua_context, nticks, conductor.tick_count);
 	outcb(nticks);
 

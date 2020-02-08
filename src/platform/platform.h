@@ -32,6 +32,26 @@ unsigned long long arcan_timemillis();
  */
 
 /*
+ * Updated in the conductor stage with the latest known timestamp, Checked in
+ * the platform/posix/psep_open and is used to either send SIGINT (first) then
+ * if another timeout arrives, SIGKILL.
+ *
+ * The SIGINT is used in arcan_lua.c and used to trigger wraperr, which in turn
+ * will log the event and rebuild the VM.
+ *
+ * This serves to protect against livelocks in general, but in particular for
+ * the worst sinners, lua scripts getting stuck in while- loops from bad
+ * programming, and complex interactions in the egl-dri platform.
+ */
+extern uint64_t* _Atomic volatile arcan_watchdog_ping;
+#define WATCHDOG_ANR_TIMEOUT_MS 5000
+
+/*
+ * default, probed / replaced on some systems
+ */
+extern int system_page_size;
+
+/*
  * Execute and wait- for completion for the specified target.  This will shut
  * down as much engine- locked resources as possible while still possible to
  * revert to the state- pre exection.
