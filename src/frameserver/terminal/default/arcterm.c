@@ -4,6 +4,7 @@
 #include <stdarg.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
 #include <pwd.h>
 #include <ctype.h>
 #include <signal.h>
@@ -25,7 +26,10 @@ static struct {
 	volatile bool alive;
 	bool die_on_term;
 	long last_input;
+
+/* sockets to communicate between terminal thread and render thread */
 	int dirtyfd;
+	int signalfd;
 
 } term = {
 	.die_on_term = true,
@@ -62,7 +66,9 @@ static bool readout_pty(int fd)
 	tsm_vte_input(term.vte, buf, nr);
 	pthread_mutex_unlock(&term.synch);
 
-	/* wake the other thread */
+/* wake the other thread, this could use other logic to reduce tearing from
+ * refreshes by considering the cursor state in the terminal combined with a
+ * timeout since the last update */
 	if (arcan_tuiint_dirty(term.screen)){
 		write(term.dirtyfd, &(char){'1'}, 1);
 	}
@@ -74,35 +80,32 @@ void* pump_pty()
 {
 	int fd = shl_pty_get_fd(term.pty);
 	short pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;
+/* for debugif, poll and go */
+		struct pollfd set[3] = {
+			{ .fd = fd, .events = pollev},
+			{ .fd = term.dirtyfd, pollev},
+			{ .fd = -1, .events = pollev},
+		};
 
 	while (term.alive){
-		int debugfd = tsm_vte_debugfd(term.vte);
+		set[2].fd = tsm_vte_debugfd(term.vte);
+		if (-1 == poll(set, 3, -1))
+			continue;
 
-/* if there is a debug context active, run a separate poll- based approach */
-		if (-1 != debugfd){
-			struct pollfd set[2] = {
-				{
-					.fd = fd,
-					.events = pollev
-				},
-				{
-					.fd = debugfd,
-					.events = pollev
-				}
-			};
-			if (-1 == poll(set, 2, 0))
-				continue;
-
-			if (set[0].revents)
-				if (!readout_pty(fd))
-					break;
-
-			if (set[1].revents)
-				tsm_vte_update_debug(term.vte);
-		}
-		else {
+/* tty determines lifecycle */
+		if (set[0].revents){
 			if (!readout_pty(fd))
-				break;
+				return NULL;
+		}
+
+/* just flush out the signal/wakeup descriptor */
+		if (set[1].revents){
+			char buf[256];
+			read(set[1].fd, buf, 256);
+		}
+
+		if (set[2].revents){
+			tsm_vte_update_debug(term.vte);
 		}
 	}
 
@@ -164,7 +167,10 @@ static bool on_subwindow(struct tui_context* c,
 
 /* only bind the debug type and bind it to the terminal emulator state machine */
 	if (type == TUI_WND_DEBUG){
-		return tsm_vte_debug(term.vte, newconn, c);
+		char mark = 'a';
+		bool ret = tsm_vte_debug(term.vte, newconn, c);
+		write(term.signalfd, &mark, 1);
+		return ret;
 	}
 	return false;
 }
@@ -229,7 +235,6 @@ static void on_resize(struct tui_context* c,
 	trace("resize(%zu(%zu),%zu(%zu))", neww, col, newh, row);
 	if (term.pty)
 		shl_pty_resize(term.pty, col, row);
-
 	last_frame = 0;
 }
 
@@ -581,19 +586,20 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
 	arcan_tuiint_set_vsynch(term.screen, &term.synch);
 
-/* pipe pair used to signal between the threads */
+/* socket pair used to signal between the threads */
 	int pair[2];
-	if (-1 == pipe(pair))
+	if (-1 == socketpair(AF_UNIX, SOCK_STREAM, 0, pair))
 		return EXIT_FAILURE;
 
-	term.dirtyfd = pair[1];
+	term.dirtyfd = pair[0];
+	term.signalfd = pair[1];
 
 	if (-1 == pthread_create(&pth, &pthattr, pump_pty, NULL))
 		term.alive = false;
 
 	while(term.alive || !term.die_on_term){
 		struct tui_process_res res =
-			arcan_tui_process(&term.screen, 1, &pair[0], 1, -1);
+			arcan_tui_process(&term.screen, 1, &term.signalfd, 1, -1);
 
 		if (res.errc < TUI_ERRC_OK)
 			break;
@@ -601,7 +607,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	/* flush out the signal pipe, don't care about contents */
 		if (res.ok){
 			char buf[256];
-			read(pair[0], buf, 256);
+			read(term.signalfd, buf, 256);
 		}
 
 		int rc = arcan_tui_refresh(term.screen);

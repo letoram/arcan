@@ -2732,14 +2732,19 @@ static void on_key(struct tui_context* c, uint32_t keysym,
 	}
 }
 
+static void on_resize(struct tui_context* tui,
+	size_t neww, size_t newh, size_t cols, size_t rows, void* tag)
+{
+	tsm_vte_update_debug(tag);
+}
+
 SHL_EXPORT bool tsm_vte_debug(struct tsm_vte* in,
 	arcan_tui_conn* conn, struct tui_context* c)
 {
-/* don't need any callbacks as the always do a full reprocess in update_debug,
- * where the processing etc. takes place */
 	struct tui_cbcfg cbcfg = {
 		.tag = in,
-		.input_key = on_key
+		.input_key = on_key,
+		.resized = on_resize
 	};
 	struct tui_context* newctx =
 		arcan_tui_setup(conn, c, &cbcfg, sizeof(cbcfg));
