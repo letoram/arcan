@@ -864,6 +864,20 @@ static bool on_label_query(struct tui_context* T,
 	return true;
 }
 
+static bool on_subwindow(struct tui_context* T,
+	arcan_tui_conn* conn, uint32_t id, uint8_t type, void* tag)
+{
+	struct bufferwnd_meta* M;
+	if (!validate_context(T, &M))
+		return false;
+
+	if (M->old_handlers.subwindow){
+		return M->old_handlers.subwindow(T, conn, id, type, M->old_handlers.tag);
+	}
+	else
+		return false;
+}
+
 /*
  * UTF-8 input, when in read-only mode we only return so that the chain
  * progresses to the on_key where we can manage the normal arrows etc.
@@ -1392,7 +1406,8 @@ void arcan_tui_bufferwnd_setup(struct tui_context* T,
 		.input_label = on_label_input,
 		.input_key = on_key_input,
 		.input_mouse_button = mouse_button,
-		.input_utf8 = on_u8
+		.input_utf8 = on_u8,
+		.subwindow = on_subwindow
 	};
 
 /* save old flags and just set clean + ALTERNATE */
