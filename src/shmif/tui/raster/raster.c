@@ -306,7 +306,7 @@ static int raster_tobuf(
 			}
 
 /* blit or discard if OOB */
-			if (draw_x + ctx->cell_w < max_w && draw_y + ctx->cell_h < max_h){
+			if (draw_x + ctx->cell_w <= max_w && draw_y + ctx->cell_h <= max_h){
 				draw_x += drawglyph(ctx, &cell, vidp, pitch, draw_x, draw_y, max_w, max_h);
 			}
 			else
@@ -345,6 +345,7 @@ int tui_raster_render(struct tui_raster_context* ctx,
 
 	if (x2 > dst->w)
 		x2 = dst->w;
+
 	arcan_shmif_dirty(dst, x1, y1, x2, y2, 0);
 	return 1;
 }

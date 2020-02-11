@@ -13,13 +13,23 @@ static void display_hint(struct tui_context* tui, arcan_tgtevent* ev)
 
 	if (w && w && (abs((int)w -
 		(int)tui->acon.w) > 0 || abs((int)h - (int)tui->acon.h) > 0)){
-/* then try and reflect */
-		if (arcan_shmif_resize_ext(&tui->acon, w, h,
+
+/* realign against grid and clamp */
+		size_t rows = h / tui->cell_h;
+		size_t cols = w / tui->cell_w;
+		if (!rows)
+			rows++;
+		if (!cols)
+			cols++;
+
+/* and communicate our cell dimensions back as well as the resolved size */
+		if (arcan_shmif_resize_ext(&tui->acon,
+			cols * tui->cell_w, rows * tui->cell_h,
 			(struct shmif_resize_ext){
 				.vbuf_cnt = -1,
 				.abuf_cnt = -1,
-				.rows = h / tui->cell_h,
-				.cols = w / tui->cell_w
+				.rows = rows,
+				.cols = cols
 			}))
 			tui_screen_resized(tui);
 	}
