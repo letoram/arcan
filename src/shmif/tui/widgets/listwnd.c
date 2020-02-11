@@ -10,6 +10,11 @@
 
 /*
  * Useful enhancements missing:
+ *
+ *  - generalize all the proxying to a default table and mask out / manually
+ *    replace the ones that should be treated like that so we don't repeat
+ *    the same code everywhere.
+ *
  *  - scroll the current selected line on tick if cropped
  *  - expose scrollbar metadata
  *  - indicate sublevel / subnodes (can turn into tree-view through mask/unmask)
@@ -495,6 +500,17 @@ static void resized(struct tui_context* T,
 	}
 }
 
+static bool subwindow(struct tui_context* T,
+	arcan_tui_conn* conn, uint32_t id, uint8_t type, void* t)
+{
+	struct listwnd_meta* M = t;
+	if (M->old_handlers.subwindow){
+		return M->old_handlers.subwindow(T, conn, id, type, M->old_handlers.tag);
+	}
+	else
+		return false;
+}
+
 static void resize(struct tui_context* T,
 	size_t neww, size_t newh, size_t col, size_t row, void* t)
 {
@@ -643,6 +659,7 @@ bool arcan_tui_listwnd_setup(
 		.input_mouse_motion = mouse_motion,
 		.input_mouse_button = mouse_button,
 		.input_utf8 = u8,
+		.subwindow = subwindow,
 		.bchunk = bchunk
 	};
 
