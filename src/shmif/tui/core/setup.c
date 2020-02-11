@@ -302,7 +302,7 @@ struct tui_context* arcan_tui_setup(
 			.vbuf_cnt = -1,
 			.abuf_cnt = -1,
 			.rows = res->acon.h / res->cell_h,
-			.cols = res->acon.w - res->cell_w
+			.cols = res->acon.w / res->cell_w
 		});
 
 	tui_screen_resized(res);

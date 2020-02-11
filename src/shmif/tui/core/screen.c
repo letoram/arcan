@@ -357,11 +357,12 @@ void tui_screen_resized(struct tui_context* tui)
 {
 	int cols = tui->acon.w / tui->cell_w;
 	int rows = tui->acon.h / tui->cell_h;
+
 	LOG("update screensize (%d * %d), (%d * %d)\n",
 		cols, rows, (int)tui->acon.w, (int)tui->acon.h);
 
-/* calculate the rpad/bpad regions based on the desired output size and
- * the amount consumed by the aligned number of cells */
+/* calculate the rpad/bpad regions based on the desired output size and the
+ * amount consumed by the aligned number of cells, this should ideally be zero */
 	tui->pad_w = tui->acon.w - (cols * tui->cell_w);
 	tui->pad_h = tui->acon.h - (rows * tui->cell_h);
 
@@ -376,7 +377,7 @@ void tui_screen_resized(struct tui_context* tui)
 
 		if (tui->handlers.resize)
 			tui->handlers.resize(tui,
-			tui->acon.w, tui->acon.h, cols, rows, tui->handlers.tag);
+				tui->acon.w, tui->acon.h, cols, rows, tui->handlers.tag);
 
 		tsm_screen_resize(tui->screen, cols, rows);
 		resize_cellbuffer(tui);
@@ -386,15 +387,22 @@ void tui_screen_resized(struct tui_context* tui)
 				tui->acon.w, tui->acon.h, cols, rows, tui->handlers.tag);
 	}
 
+/* client side rasterization need to clear the pad region as the rasterizer
+ * only considers clearing the actual screen areas */
 	if (!tui->rbuf_fwd){
-/* fill the padding areas if there are any, this is an intermediate step that
- * can be dropped when shmif supports the tui packing format, then we just swap
- * out rbuf with vidb */
 		uint8_t col[3];
 		arcan_tui_get_color(tui, TUI_COL_BG, col);
 		shmif_pixel bg = SHMIF_RGBA(col[0], col[1], col[2], tui->alpha);
-		draw_box_px(tui->acon.vidp, tui->acon.pitch,
-			tui->acon.w, tui->acon.h, 0, 0, tui->acon.w, tui->acon.h, bg);
+
+		if (tui->pad_w){
+			draw_box(&tui->acon,
+				tui->acon.w - tui->pad_w, 0, tui->pad_w, tui->acon.h, bg);
+		}
+
+		if (tui->pad_h){
+			draw_box(&tui->acon,
+				0, tui->acon.h - tui->pad_h, tui->acon.w, tui->pad_h, bg);
+		}
 	}
 
 	tui->dirty |= DIRTY_FULL;
