@@ -16,7 +16,6 @@
  * - selection controls / mouse-forward mode
  * - expose scrollbar / progression status
  * - pattern matching / highlighting
- * - extended ascii mode? (row # + controllable annotation column)
  * - support alternate type-push window for accessibility, debug
  * - undo/redo controls
  * - dynamic buffer reading (streaming / external populate contents)
@@ -345,9 +344,19 @@ static void redraw_hex(struct tui_context* T, struct bufferwnd_meta* M,
 		M->cursor_ofs_row_end = rows - 1;
 	}
 
+	size_t draw_cols = cols;
+	if (M->opts.hex_mode > BUFFERWND_HEX_BASIC){
+		draw_cols = draw_cols - (draw_cols / 3);
+	}
+
+	if (!draw_cols)
+		return;
+
 	size_t i = 0;
 	for (size_t row = start_row; row < rows && i < M->buffer_sz; row++){
-		for (size_t col = start_col; col < cols-1 && i < M->buffer_sz;){
+		size_t start_i = i;
+
+		for (size_t col = start_col; col < draw_cols-1 && i < M->buffer_sz;){
 			if (i + M->buffer_pos >= M->buffer_sz){
 				goto out;
 			}
@@ -362,9 +371,10 @@ static void redraw_hex(struct tui_context* T, struct bufferwnd_meta* M,
 				goto out;
 			}
 
-/* UI consideration, possible that we should 'background' to widen cursor
- * within the detailed +7 range including wrap, if so, just count down from
- * this match and set other background */
+/* UI consideration, possible that we should 'background' in order to widen
+ * cursor within the detailed +7 range including wrap, if so, just count down
+ * from this match and set other background - another option would be cursor
+ * controls tha actually sets the selection width */
 			if (!mask_write && i == M->buffer_ofs){
 				M->cursor_x = col + (M->cursor_halfb ? 1 : 0);
 				M->cursor_y = row;
@@ -374,12 +384,32 @@ static void redraw_hex(struct tui_context* T, struct bufferwnd_meta* M,
 			struct tui_screen_attr cattr = def;
 
 			if (!mask_write){
-				color_lookup(T, M->opts.cbtag, ch, i, &cattr);
+				uint32_t dch; /* only used with annotations */
+				color_lookup(T, M->opts.cbtag, ch, i, &dch, &cattr);
 				draw_hex_ch(T, &cattr, col, row, ch);
 			}
 
 			col += 3;
 			i++;
+		}
+
+/* new add the annotation or side-ascii column for the row or the ascii- details */
+		if (draw_cols != cols){
+			for (size_t col = draw_cols + 1;
+				col < cols && start_i < i && !mask_write; col++, start_i++){
+				uint8_t ch = M->buffer[start_i + M->buffer_pos];
+				uint32_t dch = ch;
+				struct tui_screen_attr cattr = def;
+				color_lookup(T, M->opts.cbtag, ch, start_i + M->buffer_pos, &dch, &cattr);
+
+/* this seems to omit drawing the fake- cursor on non-visible cells though */
+				if (start_i == M->buffer_ofs){
+					arcan_tui_get_color(T, TUI_COL_CURSOR, cattr.bc);
+				}
+
+				arcan_tui_move_to(T, col, row);
+				arcan_tui_write(T, dch, &cattr);
+			}
 		}
 
 /* remembering this makes seek operations easier */
@@ -484,8 +514,10 @@ static void redraw_text(struct tui_context* T, struct bufferwnd_meta* M,
 
 /* possible that we should allow the lookup to access the entire attr to let
  * an external highlight engine underline etc. */
-		if (!mask_write)
-			color_lookup(T, M->opts.cbtag, ch, i + M->buffer_pos, &cattr);
+		if (!mask_write){
+			uint32_t dch;
+			color_lookup(T, M->opts.cbtag, ch, i + M->buffer_pos, &dch, &cattr);
+		}
 
 		if (M->opts.wrap_mode != BUFFERWND_WRAP_ALL){
 			if (ch == '\n'){
@@ -544,7 +576,7 @@ static void redraw_text(struct tui_context* T, struct bufferwnd_meta* M,
 }
 
 static void monochrome(struct tui_context* T, void* tag,
-	uint8_t bytev, size_t pos, struct tui_screen_attr* attr)
+	uint8_t bytev, size_t pos, uint32_t* dch, struct tui_screen_attr* attr)
 {
 	arcan_tui_get_color(T, TUI_COL_TEXT, attr->fc);
 }
@@ -574,7 +606,7 @@ static void flt_none(
 }
 
 static void color_lut(struct tui_context* T, void* tag,
-	uint8_t bytev, size_t pos, struct tui_screen_attr* attr)
+	uint8_t bytev, size_t pos, uint32_t* dch, struct tui_screen_attr* attr)
 {
 	memcpy(attr->fc, &color_tbl[bytev], 3);
 }
@@ -745,6 +777,27 @@ static bool label_color_cycle(struct tui_context* T, struct bufferwnd_meta* M)
 	return true;
 }
 
+static bool label_hex_cycle(struct tui_context* T, struct bufferwnd_meta* M)
+{
+	if (M->opts.hex_mode == BUFFERWND_HEX_BASIC){
+		M->opts.hex_mode = BUFFERWND_HEX_ASCII;
+	}
+	else if (M->opts.hex_mode == BUFFERWND_HEX_ASCII){
+		M->opts.hex_mode = BUFFERWND_HEX_BASIC;
+	}
+	else if (M->opts.hex_mode == BUFFERWND_HEX_ANNOTATE){
+/* incomplete, needs a shadow buffer to store annotations */
+	}
+	else if (M->opts.hex_mode == BUFFERWND_HEX_META){
+/* incomplete, needs an external oracle to provide metadata */
+	}
+
+	if (M->opts.view_mode >= BUFFERWND_VIEW_HEX){
+		redraw_bufferwnd(T, M);
+	}
+	return true;
+}
+
 static bool label_view_cycle(struct tui_context* T, struct bufferwnd_meta* M)
 {
 /* could've just +1 % n:ed it all, but this is slightly clearer */
@@ -815,13 +868,21 @@ static struct labelent labels[] = {
 			.initial = TUIK_F5
 		}
 	},
+	{
+		.handler = label_hex_cycle,
+		.ent = {
+			.label = "HEX_MODE",
+			.descr = "Cycle hex modes (ascii column, annotations, ...)",
+			.initial = TUIK_F6
+		},
+	},
 #ifdef _DEBUG
 	{
 		.handler = dump,
 		.ent = {
 			.label = "DUMP",
 			.descr = "Dump",
-			.initial = TUIK_F6
+			.initial = TUIK_F7
 		}
 	}
 #endif

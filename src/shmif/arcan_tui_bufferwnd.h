@@ -42,7 +42,7 @@ enum bufferwnd_display_modes {
 	BUFFERWND_VIEW_ASCII = 0,
 	BUFFERWND_VIEW_UTF8 = 1,
 	BUFFERWND_VIEW_HEX = 2,
-	BUFFERWND_VIEW_HEX_DETAIL = 3
+	BUFFERWND_VIEW_HEX_DETAIL = 3,
 };
 
 enum bufferwnd_wrap_mode {
@@ -57,10 +57,21 @@ enum bufferwnd_color_mode {
 	BUFFERWND_COLOR_CUSTOM = 2
 };
 
+/* these extend HEX_DETAILS with more information,
+ * annotate uses a shadow buffer that absorbs key input
+ * meta uses a shadow buffer to provide more information,
+ */
+enum bufferwnd_hex_mode {
+	BUFFERWND_HEX_BASIC = 0,
+	BUFFERWND_HEX_ASCII = 1,
+	BUFFERWND_HEX_ANNOTATE = 2,
+	BUFFERWND_HEX_META = 3,
+};
+
 /* hook to allow custom (data-dependent) formatting for
  * [bytev] at buffer position [pos], write values into *attr */
 typedef void(*attr_lookup_fn)(struct tui_context* T, void* tag,
-	uint8_t bytev, size_t pos, struct tui_screen_attr* attr);
+	uint8_t bytev, size_t pos, uint32_t* ch, struct tui_screen_attr* attr);
 
 typedef bool(*commit_write_fn)(struct tui_context* T,
 	void* tag, const uint8_t* buf, size_t nb, size_t ofs);
@@ -79,6 +90,7 @@ struct tui_bufferwnd_opts {
 	int view_mode;
 	int wrap_mode;
 	int color_mode;
+	int hex_mode;
 
 /* Hooks for custom colorization, and a validation / commit function for
  * buffer edits */
