@@ -69,12 +69,16 @@ static void autoclock_frame(arcan_frameserver* tgt)
 		tgt->clock.frametime = arcan_frametime();
 
 	int64_t delta = arcan_frametime() - tgt->clock.frametime;
-	if (delta < 0){
 
+/* something horribly wrong, rebase */
+	if (delta < 0){
+		tgt->clock.frametime = arcan_frametime();
+		return;
 	}
 	else if (delta == 0)
 		return;
 
+/* this is a course-grained optimistic 'wait at least n' timer */
 	if (tgt->clock.left <= delta){
 		tgt->clock.left = tgt->clock.start;
 		tgt->clock.frametime = arcan_frametime();
@@ -463,6 +467,29 @@ enum arcan_ffunc_rv arcan_frameserver_verifyffunc FFUNC_HEAD
 	return FRV_NOFRAME;
 }
 
+/* mainly used for VFRAME- events on full queue so that the client isn't
+ * stuck waiting if it only clocks based on STEPFRAME rather than vready */
+static void flush_queued(arcan_frameserver* tgt)
+{
+	size_t torem = 0;
+	for (size_t i = 0; i < tgt->n_pending; i++){
+		if (ARCAN_OK != platform_fsrv_pushevent(tgt, &tgt->pending_queue[i]))
+			return;
+		torem++;
+	}
+
+/* full dequeue? */
+	if (torem == tgt->n_pending){
+		tgt->n_pending = 0;
+		return;
+	}
+
+/* otherwise partial, move */
+	tgt->n_pending = tgt->n_pending - torem;
+	memmove(tgt->pending_queue, &tgt->pending_queue[torem],
+		sizeof(struct arcan_event) * tgt->n_pending);
+}
+
 enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 {
 	arcan_frameserver* tgt = state.ptr;
@@ -480,6 +507,9 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 					return FRV_GOTFRAME;
 				}
 			}
+
+			if (tgt->n_pending)
+				flush_queued(tgt);
 
 			if (tgt->flags.autoclock && tgt->clock.frame)
 				autoclock_frame(tgt);
@@ -571,6 +601,9 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 
 		if (tgt->playstate != ARCAN_PLAYING)
 			goto no_out;
+
+		if (tgt->n_pending)
+			flush_queued(tgt);
 
 /* use this opportunity to make sure that we treat audio as well,
  * when theres the one there is usually the other */
@@ -717,7 +750,11 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy FFUNC_HEAD
 			src->shm.ptr->vpts = me->vstore->vinf.text.vpts;
 			src->shm.ptr->vready = true;
 			FORCE_SYNCH();
-			platform_fsrv_pushevent(src, &ev);
+
+			if (ARCAN_OK != platform_fsrv_pushevent(src, &ev) &&
+				src->n_pending < COUNT_OF(src->pending_queue)){
+				src->pending_queue[src->n_pending++] = ev;
+			}
 		}
 
 		if (src->flags.autoclock && src->clock.frame)
