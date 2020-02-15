@@ -614,10 +614,10 @@ static void bchunk(struct tui_context* T,
 
 /* bgcopy takes care of closing */
 	if (input){
-		arcan_shmif_bgcopy(c, copy_new, copy_last);
+		arcan_shmif_bgcopy(c, copy_new, copy_last, -1, 0);
 	}
 	else {
-		arcan_shmif_bgcopy(c, copy_last, copy_new);
+		arcan_shmif_bgcopy(c, copy_last, copy_new, -1, 0);
 	}
 }
 

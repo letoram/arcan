@@ -27,6 +27,7 @@ SET(LIBRARIES
 
 SET(SOURCES
 	${PROJECT_NAME}.c
+	pixelfont.c
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${SHMIF_SOURCES})

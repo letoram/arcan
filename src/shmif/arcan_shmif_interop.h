@@ -452,9 +452,17 @@ int arcan_shmif_deadline(
  * mainly to encourage non-blocking implementation of the bchunk handler.
  * The descriptors will be closed when the transfer is completed or if
  * it fails.
+ *
+ * If [sigfd] is provided (> 0),
+ * the result of the operation will be written on finish as:
+ *   -1 (read error)
+ *   -2 (write error)
+ *   -3 (alloc/arg error)
+ *    0 (ok)
+ *
  */
 void arcan_shmif_bgcopy(
-	struct arcan_shmif_cont*, int fdin, int fdout);
+	struct arcan_shmif_cont*, int fdin, int fdout, int sigfd, int flags);
 
 /*
  * Used as helper to avoid dealing with all of the permutations of

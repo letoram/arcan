@@ -3296,6 +3296,8 @@ static void* copy_thread(void* inarg)
 	int* fds = inarg;
 	char inbuf[4096];
 
+	int8_t sc = 0;
+
 /* depending on type and OS, there are a number of options e.g.
  * sendfile, splice, sosplice, ... right now just use a slow/safe */
 	for(;;){
@@ -3303,25 +3305,39 @@ static void* copy_thread(void* inarg)
 		if (-1 == nr){
 			if (errno == EAGAIN || errno == EINTR)
 				continue;
+			sc = -1;
 			break;
 		}
-		if (0 == nr || !write_buffer(fds[1], inbuf, nr))
+		if (0 == nr){
 			break;
+		}
+		else if (!write_buffer(fds[1], inbuf, nr)){
+			sc = -2;
+			break;
+		}
 	}
+
 	close(fds[0]);
 	close(fds[1]);
+
+	if (-1 != fds[2]){
+		write(fds[2], &sc, 1);
+	}
+
 	free(fds);
 	return NULL;
 }
 
 void arcan_shmif_bgcopy(
-	struct arcan_shmif_cont* c, int fdin, int fdout)
+	struct arcan_shmif_cont* c, int fdin, int fdout, int sigfd, int fl)
 {
 	int* fds = malloc(sizeof(int) * 2);
 	if (!fds)
 		return;
+
 	fds[0] = fdin;
 	fds[1] = fdout;
+	fds[2] = sigfd;
 
 /* options, fork or thread */
 	pthread_t pth;
@@ -3332,6 +3348,10 @@ void arcan_shmif_bgcopy(
 	if (-1 == pthread_create(&pth, &pthattr, copy_thread, fds)){
 		close(fdin);
 		close(fdout);
+		if (-1 != sigfd){
+			int8_t ch = -3;
+			write(sigfd, &ch, 1);
+		}
 		free(fds);
 	}
 }

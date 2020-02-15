@@ -369,11 +369,12 @@ void arcan_tui_wndhint(struct tui_context* C,
 	arcan_shmif_enqueue(&C->acon, &viewport);
 }
 
-void arcan_tui_bgcopy(struct tui_context* tui, int fdin, int fdout)
+void arcan_tui_bgcopy(
+	struct tui_context* tui, int fdin, int fdout, int sigfd, int fl)
 {
 	if (!tui)
 		return;
-	arcan_shmif_bgcopy(&tui->acon, fdin, fdout);
+	arcan_shmif_bgcopy(&tui->acon, fdin, fdout, sigfd, fl);
 }
 
 void arcan_tui_get_color(
