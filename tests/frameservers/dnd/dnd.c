@@ -7,15 +7,17 @@
  */
 
 #include <arcan_shmif.h>
-#include "../../../src/shmif/arcan_tuisym.h"
 #include <errno.h>
 #include <math.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include "../../../src/shmif/arcan_tuisym.h"
 
 /* reuse TUI code for monospace text rendering */
-#include "../../../src/shmif/tui/tui_draw.h"
-static struct tui_font_ctx* font;
+#include "pixelfont.h"
+#include "draw.h"
+
+static struct tui_pixelfont* font;
 
 static shmif_pixel palette[] = {
 	SHMIF_RGBA(0xef, 0xd4, 0x69, 0xff),
@@ -82,7 +84,8 @@ static void draw_item(
 
 	size_t i = 0;
 	do {
-		draw_ch_u32(font, dst, label[i], R->x1 + i * font_w, R->y1, fg, bg, dst->w, dst->h);
+		tui_pixelfont_draw(font, dst->vidp, dst->pitch, label[i],
+			R->x1 + i * font_w, R->y1, fg, bg, dst->w, dst->h, false);
 	} while(label[++i]);
 
 	R->y2 = R->y1 + font_h;
@@ -127,6 +130,7 @@ static void add_region(
 		.x2 = 0, .y2 = 0, // invisible until drawn
 		.label = desc,
 		.active = true,
+		.fd = fd,
 		.color = palette[i % (sizeof(palette)/sizeof(palette[0]))]
 	};
 }
@@ -141,48 +145,19 @@ static void reposition_regions(size_t w, size_t h)
 	}
 }
 
-struct copy_meta {
-	int fd_in, fd_out;
-};
-
-static void* copy_thread(void* tag)
+static bool request_out(struct arcan_shmif_cont* cont, struct arcan_event* ev)
 {
-	struct copy_meta* md = tag;
-	goto out;
-	ftruncate(md->fd_out, 0);
-	lseek(md->fd_in, 0, SEEK_SET);
+	if (!focus_item)
+		return false;
 
-	uint8_t buf[8192];
-	while(1){
-/* fill buffer */
-		ssize_t nr = read(md->fd_in, buf, 8192);
-		if (nr < 0 && (errno == EINTR || errno == EAGAIN))
-			continue;
-
-		if (nr <= 0)
-			goto out;
-
-/* flush out */
-		while (nr > 0){
-			uint8_t* outbuf = buf;
-			ssize_t nw = write(md->fd_out, outbuf, nr);
-			if (nw < 0 && (errno == EINTR || errno == EAGAIN))
-				continue;
-
-			if (nw <= 0)
-				goto out;
-
-			nr -= nw;
-			outbuf += nw;
-		}
+	int fd_out = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true);
+	if (fd_out == -1){
+		return false;
 	}
 
-out:
-	close(md->fd_in);
-	close(md->fd_out);
-	free(md);
-
-	return NULL;
+	int fd_in = arcan_shmif_dupfd(focus_item->fd, -1, true);
+	arcan_shmif_bgcopy(cont, fd_in, fd_out, -1, 0);
+	return true;
 }
 
 bool run_event(struct arcan_shmif_cont* cont, struct arcan_event* ev)
@@ -191,7 +166,7 @@ bool run_event(struct arcan_shmif_cont* cont, struct arcan_event* ev)
 		if (ev->io.devkind == EVENT_IDEVKIND_MOUSE){
 			if (ev->io.datatype == EVENT_IDATATYPE_ANALOG){
 				arcan_shmif_mousestate(cont, mstate, ev, &mouse_x, &mouse_y);
-				if (focus_item){
+				if (focus_item && mouse_drag){
 					focus_item->x1 = mouse_x;
 					focus_item->y1 = mouse_y;
 					return true;
@@ -200,7 +175,7 @@ bool run_event(struct arcan_shmif_cont* cont, struct arcan_event* ev)
 			else if (ev->io.subid == MBTN_LEFT_IND){
 				mouse_drag = ev->io.input.digital.active;
 				struct region* reg = region_at(mouse_x, mouse_y);
-				if (!reg || !mouse_drag){
+				if (!reg){
 					if (focus_item){
 						focus_item = NULL;
 						return true;
@@ -243,30 +218,8 @@ bool run_event(struct arcan_shmif_cont* cont, struct arcan_event* ev)
 				}
 			break;
 /* got a store operation, dispatch to copy thread */
-			case TARGET_COMMAND_BCHUNK_OUT:{
-				if (!focus_item)
-					return false;
-
-				pthread_t pth;
-				pthread_attr_t pthattr;
-				pthread_attr_init(&pthattr);
-				pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-
-				struct copy_meta* md = malloc(sizeof(struct copy_meta));
-				md->fd_out = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true);
-				if (md->fd_out == -1){
-					free(md);
-					return false;
-				}
-
-				md->fd_in = arcan_shmif_dupfd(focus_item->fd, -1, true);
-				if (md->fd_in == -1){
-					close(md->fd_out);
-					free(md);
-					return false;
-				}
-				pthread_create(&pth, &pthattr, copy_thread, (void*) md);
-			}
+			case TARGET_COMMAND_BCHUNK_OUT:
+				request_out(cont, ev);
 			break;
 			case TARGET_COMMAND_EXIT:
 			break;
@@ -292,9 +245,9 @@ int main(int argc, char** argv)
 /* need something to draw */
 	struct arcan_shmif_initial* init;
 	arcan_shmif_initial(&cont, &init);
-	font = tui_draw_init(64);
+	font = tui_pixelfont_open(64);
 	size_t px_sz = ceilf(init->fonts[0].size_mm * 0.03527778 * init->density);
-	switch_bitmap_font(font, px_sz, &font_w, &font_h);
+	tui_pixelfont_setsz(font, px_sz, &font_w, &font_h);
 
 	draw(&cont);
 

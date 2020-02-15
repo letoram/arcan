@@ -761,8 +761,18 @@ void arcan_tui_announce_io(struct tui_context* c,
  * mainly to encourage non-blocking implementation of the bchunk handler.
  * The descriptors will be closed when the transfer is completed or if
  * it fails.
+ *
+ * If [sigfd] is provided (> 0),
+ * the result of the operation will be written on finish as:
+ *   -1 (read error)
+ *   -2 (write error)
+ *   -3 (alloc/arg error)
+ *    0 (ok)
+ *
+ * [flags] is reserved for future use.
  */
-void arcan_tui_bgcopy(struct tui_context*, int fdin, int fdout);
+void arcan_tui_bgcopy(
+	struct tui_context*, int fdin, int fdout, int sigfd, int flags);
 
 /*
  * Announce/ update an estimate of how much storage is needed to be able
@@ -1132,7 +1142,7 @@ typedef void (* PTUIERASECHARS)(struct tui_context*, size_t);
 typedef void (* PTUIERASEREGION)(struct tui_context*, size_t, size_t, size_t, size_t, bool);
 typedef char* (* PTUISTATEDESCR)(struct tui_context*);
 typedef size_t (* PTUIPRINTF)(struct tui_context*, struct tui_screen_attr*, const char*, ...);
-typedef void (* PTUIBGCOPY)(struct tui_context*, int fdin, int fdout);
+typedef void (* PTUIBGCOPY)(struct tui_context*, int fdin, int fdout, int sig, int fl);
 typedef size_t (* PTUIGETHANDLES)(struct tui_context**, size_t, int[], size_t);
 typedef void (* PTUIHANDOVER)(struct tui_context*, arcan_tui_conn*,
 	struct tui_constraints*, const char*, char* const[], char* const[], int);
