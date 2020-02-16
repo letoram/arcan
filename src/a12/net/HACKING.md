@@ -292,13 +292,17 @@ This corresponds to a slightly altered version of the NEWSEGMENT event,
 which should be absorbed and translated in each proxy.
 
 ### command = 3, stream-cancel
-- [18]     stream-id : uint32
-- [19]     code      : uint8
+- [18..21] stream-id : uint32
+- [22]     code      : uint8
 
-This command carries a 4 byte stream ID, which is the counter shared by all
-bstream, vstream and astreams. The code dictates if the cancel is due to the
-information being dated or undesired (0), encoded in an unhandled format (1)
-or data is already known (cached, 2).
+This command carries a 4 byte stream ID.
+Video is assigned the constant stream-id 1,
+Audio is assigned the constant stream-id 2,
+Bstream has an incremental counter that is stepped on each transfer.
+
+The code dictates if the cancel is due to the information being dated or
+undesired (0), encoded in an unhandled format (1) or data is already known
+(cached, 2).
 
 ### command - 4, define vstream
 - [18..21] : stream-id: uint32

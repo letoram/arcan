@@ -27,6 +27,26 @@ Individual clients can also perform setup with less effort:
 
     ARCAN_CONNPATH=a12://user@host:port some_client
 
+Host and keys are resolved from a path structure based on a basedir
+set on the command-line:
+
+    arcan-net -b $HOME/.config/a12 -s test myuser@myhost
+
+or as an environment:
+
+    A12_BASE_DIR=$HOME/.config/a12 arcan-net -s test myhost
+
+In that case, the user argument will be used to grab private key from:
+
+    basedir/keys/user
+
+and for the server side, authenticated public keys are retrieved from:
+
+    basedir/hosts
+
+If the _cache_ subdirectory is present in the basedir, it will be used
+as a scratch folder for caching some binary transfers, e.g. fonts.
+
 # Compilation
 
 For proper video encoding, the ffmpeg libraries (libavcodec, libswscale,
@@ -74,14 +94,16 @@ Milestone 1 - basic features (0.5.x)
 
 Milestone 2 - closer to useful (0.6.x)
 
-- [ ] Protection of keymaterial
+- [ ] External key-provider / negotiation
+- [ ] Preferred-hosts list migration / handover
 - [ ] Output segments
-- [ ] Compression Heuristics for binary transfers
+- [ ] Compression Heuristics for binary transfers (entropy estimation)
 - [ ] Quad-tree for DPNG
-- [ ] "MJPG" mode over DPNG
-- [ ] Frame Cancellation
-- [ ] vframe- caching on certain types (first-frame on new, ...)
-- [ ] vframe-runahead
+  - [ ] Tile-map and caching
+- [ ] Jpeg-XL progressive mode
+- [ ] Frame Cancellation / dynamic framerate on window drift
+- [ ] vframe-caching on certain types (first-frame on new, ...)
+- [ ] vframe-runahead / forward latency estimation
 - [ ] (Scheduling), better A / V / E interleaving
 - [ ] Progressive / threaded video encoding frontend
 - [ ] Accelerated encoding of gpu-handles
@@ -89,6 +111,7 @@ Milestone 2 - closer to useful (0.6.x)
 - [ ] Traffic monitoring tools (re-use proxy code + inherit mode)
 - [ ] Splicing / Local mirroring
 - [ ] Rekeying / Key Deletion (Forward Secrecy)
+- [ ] Simplified ported sdl2 viewer
 
 The protection of keymaterial should come through a fexec(self) where the
 session key is piped over stdio, along with the -S preconnected setup form,
@@ -103,9 +126,11 @@ Milestone 3 - big stretch (0.6.x)
 - [ ] 'ALT' arcan-lwa interfacing
 - [ ] 'AGP' level- packing
 - [ ] ZSTD with dictionary on whole source
-- [ ] Subprotocols (vobj, gamma, ...)
-- [ ] Open3DGC (vr, obj mode)
-- [ ] HDR / gamma
+- [ ] Subprotocols
+  - [ ] VR
+	- [ ] HDR
+	- [ ] 3DOBJ
+	- [ ] Open3DGC
 - [ ] Defered input oscillator safety buffer
 - [ ] Per type ephemeral key
 - [ ] Congestion control / dynamic encoding parameters
@@ -113,15 +138,16 @@ Milestone 3 - big stretch (0.6.x)
 - [ ] Directory Server and auth-DoS protection (see MinimaLT)
 - [ ] Special provisions for agp channels
 - [ ] Add to afsrv\_net
+- [ ] Fast-forward known partial binary transfer (resume)
 - [ ] Resume- session from different IP
 - [ ] Secure keystore
 - [ ] Clean-up, RFC level documentation
 
 # Licenses
 
-arcan-net is (c) Bjorn Stahl 2017-2019 and licensed under the 3-clause BSD
+arcan-net is (c) Bjorn Stahl 2017-2020 and licensed under the 3-clause BSD
 license. It is dependent on BLAKE2- (CC or Apache-2.0, see COPYING.BLAKE2)
-, on ChaCha20 (Public Domain) and Miniz (MIT-like, see miniz/LICENSE).
+, on ChaCha20,x25519 (Public Domain) and Miniz (MIT-like, see miniz/LICENSE).
 
 optional dependencies include ffmpeg- suite of video codecs, GPLv2 with
 possible patent implications.

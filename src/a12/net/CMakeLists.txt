@@ -19,6 +19,7 @@ set(INCLUDE_DIRS
 )
 
 add_executable(arcan-net ${SOURCES})
+add_sanitizers(arcan-net)
 target_link_libraries(arcan-net PRIVATE arcan_a12 )
 target_include_directories(arcan-net PRIVATE ${INCLUDE_DIRS})
 install(TARGETS arcan-net DESTINATION bin)

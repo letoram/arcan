@@ -551,11 +551,11 @@ void a12int_encode_dpng(PACK_ARGS)
 #if defined(WANT_H264_ENC) || defined(WANT_H264_DEC)
 void a12int_drop_videnc(struct a12_state* S, int chid, bool failed)
 {
-	if (!S->channels[chid].videnc.encoder)
+	if (!S->channels[chid].videnc.encdec)
 		return;
 
 /* dealloc context */
-	S->channels[chid].videnc.encoder = NULL;
+	S->channels[chid].videnc.encdec = NULL;
 	S->channels[chid].videnc.failed = failed;
 
 	if (S->channels[chid].videnc.scaler){
@@ -604,7 +604,7 @@ static bool open_videnc(struct a12_state* S,
  * this requirement for ffmpeg holds
  */
 	AVCodecContext* encoder = avcodec_alloc_context3(codec);
-	S->channels[chid].videnc.encoder = encoder;
+	S->channels[chid].videnc.encdec = encoder;
 	S->channels[chid].videnc.w = vb->w;
 	S->channels[chid].videnc.h = vb->h;
 
@@ -672,7 +672,7 @@ static bool open_videnc(struct a12_state* S,
 		av_frame_make_writable(frame) < 0)
 		goto fail;
 
-	S->channels[chid].videnc.encoder = encoder;
+	S->channels[chid].videnc.encdec = encoder;
 
 	scaler = sws_getContext(
 		vb->w, vb->h, AV_PIX_FMT_BGRA,
@@ -722,7 +722,7 @@ void a12int_encode_h264(PACK_ARGS)
 /* If we don't have an encoder (first time or reset due to resize),
  * try to configure, and if the configuration fails (i.e. still no
  * encoder set) fallback to DPNG and only try again on new size. */
-	if (!S->channels[chid].videnc.encoder &&
+	if (!S->channels[chid].videnc.encdec &&
 			!S->channels[chid].videnc.failed){
 		if (!open_videnc(S, opts, vb, chid, AV_CODEC_ID_H264)){
 			a12int_trace(A12_TRACE_SYSTEM, "kind=error:message=h264 codec failed");
@@ -738,7 +738,7 @@ void a12int_encode_h264(PACK_ARGS)
 
 /* just for shorthand */
 	AVFrame* frame = S->channels[chid].videnc.frame;
-	AVCodecContext* encoder = S->channels[chid].videnc.encoder;
+	AVCodecContext* encoder = S->channels[chid].videnc.encdec;
 	AVPacket* packet = S->channels[chid].videnc.packet;
 	struct SwsContext* scaler = S->channels[chid].videnc.scaler;
 

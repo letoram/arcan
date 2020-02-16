@@ -341,8 +341,8 @@ static bool apply_commandline(int argc, char** argv, struct anet_options* opts)
 		if (strcmp(argv[i], "-d") == 0){
 			if (i == argc - 1)
 				return show_usage("-d without trace value argument");
-			unsigned long val = strtoul(argv[++i], NULL, 10);
 			char* workstr = NULL;
+			unsigned long val = strtoul(argv[++i], &workstr, 10);
 			if (workstr == argv[i]){
 				val = tracestr_to_bitmap(workstr);
 			}
