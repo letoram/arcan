@@ -7,7 +7,6 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <errno.h>
-#include "../../../frameserver/util/utf8.c"
 
 #define NANOSVG_IMPLEMENTATION
 #define NANOSVGRAST_IMPLEMENTATION
@@ -15,6 +14,8 @@
 #define NSVG_RGB(r, g, b)(SHMIF_RGBA(r, g, b, 0x00))
 #include "nanosvg.h"
 #include "nanosvgrast.h"
+
+#include "parser.h"
 
 struct trayicon_state {
 /* icon sources */
@@ -227,51 +228,56 @@ static int show_args(const char* args, int rv)
 
 extern char** environ;
 
-/* Alternate tray icon mode where we simply read from stdin and render as much
- * as we can into a tui context. Intended to be used with some input script
- * that monitors some source and expose as updates into a button. */
-struct stdin_data {
-	struct tui_cell* buffer;
-	size_t buffer_count;
-};
-
 static void render_buffer(
-	struct tui_context* tui, struct tui_cell* cells, size_t n)
+	struct tui_context* tui, struct parser_data* data, bool fixed)
 {
-/* option to align right? */
-	arcan_tui_move_to(tui, 0, 0);
-	for (size_t i = 0; i < n; i++){
-		arcan_tui_write(tui, cells[i].ch, &cells[i].attr);
+/* get number of columns, do we fit? */
+	size_t rows, cols;
+	arcan_tui_dimensions(tui, &rows, &cols);
+	size_t start_col = 0;
+
+	if (!fixed){
+
+/* if we don't, request that we get larger */
+		if (cols < data->buffer_used || cols > data->buffer_used + 1){
+			arcan_tui_wndhint(tui, NULL, (struct tui_constraints){
+				.min_rows = 1, .max_rows = 1,
+				.min_cols = 1, .max_cols = data->buffer_used
+			});
+		}
+
+/* or apply alignment */
+		else {
+			if (data->icon.align == 0){
+				start_col = (cols - data->buffer_used) >> 1;
+			}
+			else if (data->icon.align == 1){
+				start_col = cols - data->buffer_used;
+			}
+		}
+
+/* the other option would be to ticker-tape like scroll using the clock
+ * from tick and step the starting offset, but wait with that for a bit */
 	}
+
+	arcan_tui_erase_screen(tui, false);
+
+/* try to hint the size of the buffer otherwise */
+/* best effort draw for the time being */
+/* position cusor based on alignment */
+	arcan_tui_move_to(tui, start_col, 0);
+	for (size_t i = 0; i < data->buffer_used; i++){
+		arcan_tui_write(tui, data->buffer[i].ch, &data->buffer[i].attr);
+	}
+
+/* normal loop will take care of the rest */
 }
 
-static void update_buffer(
-	struct tui_context* tui, struct stdin_data* dst, char* inbuf)
+static void on_resized(struct tui_context* tui,
+	size_t neww, size_t newh, size_t cols, size_t rows, void* tag)
 {
-/* fill with a base attribute, the input format can override it locally */
-	struct tui_cell cell = {};
-	arcan_tui_get_color(tui, TUI_COL_TEXT, cell.attr.fc);
-	arcan_tui_get_bgcolor(tui, TUI_COL_BG, cell.attr.bc);
-
-/* reset to base attribute */
-	for (size_t i = 0; i < dst->buffer_count; i++){
-		dst->buffer[i] = cell;
-	}
-
-/* process input string and apply to buffer, this is where we can add more
- * formatting / decoding, e.g. the lemonbar protocol and just match to cells */
-	size_t in = 0, out = 0;
-	uint32_t cp = 0;
-	uint32_t state = 0;
-
-/* need to go utf8 to ucs4 */
-	while(inbuf[in] && (utf8_decode(&state, &cp, inbuf[in++]) != UTF8_REJECT)){
-		if (state == UTF8_ACCEPT){
-			dst->buffer[out++].ch = cp;
-		}
-	}
-
-	render_buffer(tui, dst->buffer, out);
+	struct parser_data* data = tag;
+	render_buffer(tui, data, true);
 }
 
 static int stdin_tui(const char* name, size_t w)
@@ -291,22 +297,32 @@ static int stdin_tui(const char* name, size_t w)
 
 	struct tui_cell buffer[256];
 
-	struct stdin_data tag = {
+	struct parser_data tag = {
 		.buffer = buffer,
 		.buffer_count = 256,
+		.icon = {
+			.align = -1
+		}
 	};
 
 	struct tui_cbcfg cbcfg = {
-/*		.input_label = on_label,
-		.resized = on_resize,*/
+/*		.input_label = on_label, */
+		.resized = on_resized,
 		.tag = &tag
 	};
 
 	struct tui_context* tui = arcan_tui_setup(conn, NULL, &cbcfg, (sizeof(cbcfg)));
+	if (!tui){
+		fprintf(stderr, "Couldn't connect to tray (check ARCAN_CONNPATH)");
+		return EXIT_FAILURE;
+	}
+
+	tag.icon.attr = arcan_tui_defcattr(tui, TUI_COL_TEXT);
 	arcan_tui_set_flags(tui, TUI_HIDE_CURSOR);
 
-/* this will forward our desired constraints and attempt a resize once */
-	if (w){
+/* this will forward our desired constraints and attempt a resize
+ * once, resized event will be triggered regardless of the event */
+	 if (w){
 		arcan_tui_wndhint(tui, NULL, (struct tui_constraints){
 			.min_rows = 1, .max_rows = 1,
 			.min_cols = 1, .max_cols = w
@@ -315,27 +331,32 @@ static int stdin_tui(const char* name, size_t w)
 
 	char inbuf[256];
 	uint8_t inbuf_ofs = 0;
+	size_t n_fd = 1;
+
+#ifdef TESTING
+	parse_lemon(tui, &tag, "Hi there");
+	render_buffer(tui, &tag, w != 0);
+#endif
 
 	while (1){
-		struct tui_process_res res = arcan_tui_process(&tui, 1, &src, 1, -1);
+		struct tui_process_res res = arcan_tui_process(&tui, 1, &src, n_fd, -1);
 		if (res.errc != TUI_ERRC_OK)
 			break;
 
 		if (-1 == arcan_tui_refresh(tui) && errno == EINVAL)
 			break;
 
-/* not the most throughput friendly approach but not exactly performance heavy,
- * place to add some additional parsing in order to set more of the cell
- * attributes */
- 		if (res.bad)
+ 		if (res.bad){
 			break;
+		}
 
 /* 256 character crop- limited non-blocking fgets */
 		ssize_t nr;
 		while ((nr = read(src, &inbuf[inbuf_ofs], 1)) > 0){
 			if (inbuf[inbuf_ofs] == '\n' || inbuf_ofs == 255){
 				inbuf[inbuf_ofs] = '\0';
-				update_buffer(tui, &tag, inbuf);
+				parse_lemon(tui, &tag, inbuf);
+				render_buffer(tui, &tag, w != 0);
 				inbuf_ofs = 0;
 			}
 			else
