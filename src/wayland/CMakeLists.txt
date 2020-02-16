@@ -69,10 +69,11 @@ endforeach()
 
 set_source_files_properties(${sources} PROPERTIES GENERATED ON)
 add_library(wlprot STATIC ${sources})
+target_include_directories(wlprot PRIVATE ${WAYLAND_SERVER_INCLUDE_DIRS})
 
 SET(WAYBRIDGE_LIBRARIES
 	${STDLIB}
-	EGL
+	${EGL_LIBRARIES}
 	arcan_shmif_int
 	arcan_shmif_intext
 	${WAYLAND_SERVER_LIBRARIES}
