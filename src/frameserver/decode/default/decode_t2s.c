@@ -214,7 +214,7 @@ int decode_t2s(struct arcan_shmif_cont* cont, struct arg_arr* args)
 /* the UTF-8 validation should be stronger here, which can just be lifted
  * from the way it is done in arcan_tui */
 			case TARGET_COMMAND_MESSAGE:{
-				char buf[sizeof(ev.tgt.message+1)];
+				char buf[sizeof(ev.tgt.message)+1];
 				size_t len = strlen(ev.tgt.message);
 				buf[len] = 0;
 				memcpy(buf, ev.tgt.message, len);
