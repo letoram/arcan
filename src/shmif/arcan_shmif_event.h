@@ -1221,6 +1221,11 @@ enum ARCAN_TARGET_SKIPMODE {
 		union {
 			char message[78];
 			uint8_t bmessage[78];
+
+/* events that don't use the message field MAY have the timestamp on when it
+ * was enqueued added here, in local system monotonic click. the edge cases
+ * where it typically matters is when trying to resolve displayhint conflicts */
+			uint64_t timestamp;
 		};
 	} arcan_tgtevent;
 

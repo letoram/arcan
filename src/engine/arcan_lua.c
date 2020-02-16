@@ -7976,6 +7976,7 @@ static int targetdisphint(lua_State* ctx)
 		.tgt.ioevs[3].iv = phy_lay,
 		.tgt.ioevs[4].fv = ppcm
 	};
+	ev.tgt.timestamp = arcan_timemillis();
 	tgtevent(tgt, ev);
 
 	LUA_ETRACE("target_displayhint", NULL, 0);
