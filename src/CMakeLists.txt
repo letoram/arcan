@@ -198,8 +198,7 @@ set(CSTD gnu11)
 
 if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
 	add_compile_options(-Wall -Wno-missing-braces -Wno-unused-function
-		-Wno-unused-value -Wno-unused-variable -Wformat=0 -Wno-atomic-alignment
-		-Wno-macro-redefined
+		-Wno-unused-value -Wno-unused-variable -Wformat=0
 	)
 
 elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
