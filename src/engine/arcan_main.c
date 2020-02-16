@@ -722,6 +722,29 @@ int MAIN_REDIR(int argc, char* argv[])
 			goto error;
 		}
 
+/*
+ * There is another edge condition here, and that is if some non-user triggered
+ * event happens on reload after in_recover has been cleared. The last resort
+ * from a livelock then is to have some crash-recovery timeout and counter.
+ * This is also not water tight if the client has a long load/init stage BUT
+ * with the ANR requirement on 10s so that sets an upper limit, use half that.
+ */
+		static uint64_t last_recover;
+		static uint8_t recover_counter;
+		if (!last_recover)
+			last_recover = arcan_timemillis();
+
+		if (last_recover && arcan_timemillis() - last_recover < 5000){
+			recover_counter++;
+			if (recover_counter > 5){
+				arcan_warning("Script handover / recover safety timeout exceeded.\n");
+				goto error;
+			}
+		}
+		else {
+			recover_counter = 0;
+		}
+
 		if (!fallback){
 			arcan_warning("Lua VM failed with no fallback defined, (see -b arg).\n");
 			goto error;
