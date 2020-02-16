@@ -261,7 +261,7 @@ set_target_properties(arcan_shmif_ext PROPERTIES
 
 set_target_properties(arcan_shmif_intext PROPERTIES
 	COMPILE_FLAGS "-fPIC -DHEADLESS_NOARCAN"
-	OUTPUT_NAME arcan_shmif_ext
+	OUTPUT_NAME arcan_shmif_intext
 	VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
 )
 
