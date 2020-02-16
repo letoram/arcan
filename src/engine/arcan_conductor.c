@@ -32,7 +32,7 @@
 #include "../platform/video_platform.h"
 
 /* defined in platform.h, used in psep open */
-uint64_t* _Atomic volatile arcan_watchdog_ping = NULL;
+_Atomic uint64_t* volatile arcan_watchdog_ping = NULL;
 
 void arcan_conductor_enable_watchdog()
 {

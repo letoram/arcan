@@ -43,7 +43,7 @@ unsigned long long arcan_timemillis();
  * the worst sinners, lua scripts getting stuck in while- loops from bad
  * programming, and complex interactions in the egl-dri platform.
  */
-extern uint64_t* _Atomic volatile arcan_watchdog_ping;
+extern _Atomic uint64_t* volatile arcan_watchdog_ping;
 #define WATCHDOG_ANR_TIMEOUT_MS 5000
 
 /*
