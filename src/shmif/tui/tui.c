@@ -213,6 +213,109 @@ size_t arcan_tui_get_handles(
 	return ret;
 }
 
+size_t arcan_tui_ucs4utf8(uint32_t cp, char dst[static 4])
+{
+/* reject invalid */
+	if (
+		(cp >= 0xd800 && cp <= 0xdfff) ||
+		(cp >= 0xfdd0 && cp <= 0xfdef) ||
+		(cp  > 0x10ffff              ) ||
+		((cp & 0xffff) == 0xffff     ) ||
+		((cp & 0xffff) == 0xfffe     )
+	)
+		return 0;
+
+/* ascii- range */
+	if (cp < (1 << 7)){
+		dst[0] = cp & 0x7f;
+		return 1;
+	}
+
+	if (cp < (1 << 11)){
+		dst[0] = 0xc0 | ((cp >> 6) & 0x1f);
+		dst[1] = 0x80 | ((cp     ) & 0x3f);
+		return 2;
+	}
+
+	if (cp < (1 << 16)){
+		dst[0] = 0xe0 | ((cp >> 12) & 0x0F);
+		dst[1] = 0x80 | ((cp >>  6) & 0x3F);
+		dst[2] = 0x80 | ((cp      ) & 0x3F);
+		return 3;
+	}
+
+	if (cp < (1 << 21)){
+		dst[0] = 0xf0 | ((cp >> 18) & 0x07);
+		dst[1] = 0x80 | ((cp >> 12) & 0x3f);
+		dst[2] = 0x80 | ((cp >>  6) & 0x3f);
+		dst[3] = 0x80 | ((cp      ) & 0x3f);
+		return 4;
+	}
+
+	return 0;
+}
+
+ssize_t arcan_tui_utf8ucs4(const char src[static 4], uint32_t* dst)
+{
+/* check first byte */
+	uint8_t c = (uint8_t) src[0];
+/* our of range ascii */
+	if (c == 0xC0 || c == 0xC1)
+		return -1;
+/* single byte, works fine */
+	if ((c & 0x80) == 0){
+		*dst = c;
+		return 1;
+	}
+
+/* started at middle of sequence */
+	if ((c & 0xC0) == 0x80){
+		return -2;
+	}
+
+	uint_fast8_t left;
+	uint_fast8_t used;
+
+/* figure out length of sequence */
+	if ((c & 0xE0) == 0xC0){
+		*dst = (c & 0x1F) << 6;
+		left = 1;
+		used = 2;
+	}
+	else if ((c & 0xF0) == 0xE0){
+		left = 2;
+		used = 3;
+	}
+	else if ((c & 0xF8) == 0xF0){
+		left = 3;
+		used = 4;
+	}
+	else
+		return -1;
+
+/* and map unto *dst */
+	while(left){
+		c = (uint8_t) src[used-left];
+		if ((c & 0xC0) != 0x80)
+			return -1;
+
+		if (left == 3){
+			*dst |= (c & 0x3F) << 12;
+			left--;
+		}
+		else if (left == 2){
+			*dst |= (c & 0x3F) << 6;
+			left--;
+		}
+		else if (left == 1){
+			*dst |= (c & 0x3f);
+			left--;
+		}
+	}
+
+	return used;
+}
+
 struct tui_process_res arcan_tui_process(
 	struct tui_context** contexts, size_t n_contexts,
 	int* fdset, size_t fdset_sz, int timeout)
@@ -675,13 +778,18 @@ bool arcan_tui_writeu8(struct tui_context* c,
 	if (!(c && u8 && len > 0))
 		return false;
 
-	for (size_t i = 0; i < len; i++){
-		int state = tsm_utf8_mach_feed(c->ucsconv, u8[i]);
-		if (state == TSM_UTF8_ACCEPT || state == TSM_UTF8_REJECT){
-			uint32_t ucs4 = tsm_utf8_mach_get(c->ucsconv);
-			arcan_tui_write(c, ucs4, attr);
-		}
+	size_t pos = 0;
+	while (pos < len){
+		uint32_t ucs4 = 0;
+		ssize_t step = arcan_tui_utf8ucs4((char*) &u8[pos], &ucs4);
+/* invalid character, write empty and advance */
+		if (step <= 0)
+			pos++;
+		else
+			pos += step;
+		arcan_tui_write(c, ucs4, attr);
 	}
+
 	return true;
 }
 
@@ -722,7 +830,6 @@ void arcan_tui_reset(struct tui_context* c)
 	if (!c)
 		return;
 
-	tsm_utf8_mach_reset(c->ucsconv);
 	tsm_screen_reset(c->screen);
 	flag_cursor(c);
 }

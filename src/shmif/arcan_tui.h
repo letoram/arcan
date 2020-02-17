@@ -460,9 +460,13 @@ struct tui_cbcfg {
 		const char* a3_country, const char* a3_language, void*);
 
 /*
- * The color-mapping (palette) has been updated and new attributes
- * take this into account. If the program is running in the alternate-
- * screen mode, use this as a trigger to redraw and recolor.
+ * this may be invoked for two reasons, one is that the contents for some
+ * reason are invalid (widgets that draw cooperatively being one example).
+ *
+ * The other is that the color-mapping for the window has changed. Both
+ * scenarios warrant that the client fully redraws the contents of the window
+ * (the underlying window implementation will make sure that only cells that
+ * have legitimately changed will actually be redrawn.
  */
 	void (*recolor)(struct tui_context*, void*);
 
@@ -960,6 +964,14 @@ char* arcan_tui_statedescr(struct tui_context*);
  */
 void arcan_tui_dimensions(struct tui_context*, size_t* rows, size_t* cols);
 
+/* helper to convert from ucs4 (used for the cells due to random access)
+ * to utf8 (used for input/output), returns number of bytes used in dst. */
+size_t arcan_tui_ucs4utf8(uint32_t, char dst[static 4]);
+
+/* helper to convert from a single utf8 codepoint, to ucs4, returns number of
+ * bytes consumed or -1 on broken input */
+ssize_t arcan_tui_utf8ucs4(const char src[static 4], uint32_t* dst);
+
 /*
  * override the default attributes that apply to resets etc.  This will return
  * the previous default attribute. If the [attr] argument is null, no change
@@ -1103,6 +1115,7 @@ typedef void (* PTUIRESET)(struct tui_context*);
 typedef void (* PTUIRESETLABELS)(struct tui_context*);
 typedef void (* PTUISETFLAGS)(struct tui_context*, int);
 typedef void (* PTUIRESETFLAGS)(struct tui_context*, int);
+typedef void (* PTUIHASGLYPH)(struct tui_context*, uint32_t);
 typedef void (* PTUISETTABSTOP)(struct tui_context*);
 typedef void (* PTUIINSERTLINES)(struct tui_context*, size_t);
 typedef void (* PTUINEWLINE)(struct tui_context*);
@@ -1149,6 +1162,9 @@ typedef void (* PTUIBGCOPY)(struct tui_context*, int fdin, int fdout, int sig, i
 typedef size_t (* PTUIGETHANDLES)(struct tui_context**, size_t, int[], size_t);
 typedef void (* PTUIHANDOVER)(struct tui_context*, arcan_tui_conn*,
 	struct tui_constraints*, const char*, char* const[], char* const[], int);
+typedef size_t (* PTUIUCS4UTF8)(uint32_t, char dst[static 4]);
+typedef ssize_t (* PTUIUTF8UCS4)(const char dst[static 4], uint32_t);
+
 static PTUIHANDOVER arcan_tui_handover;
 static PTUISETUP arcan_tui_setup;
 static PTUIDESTROY arcan_tui_destroy;
@@ -1179,6 +1195,7 @@ static PTUISETBGCOLOR arcan_tui_set_bgcolor;
 static PTUIRESET arcan_tui_reset;
 static PTUIRESETLABELS arcan_tui_reset_labels;
 static PTUISETFLAGS arcan_tui_set_flags;
+static PTUIHASGLYPH arcan_tui_hasglyph;
 static PTUIRESETFLAGS arcan_tui_reset_flags;
 static PTUISETTABSTOP arcan_tui_set_tabstop;
 static PTUIINSERTLINES arcan_tui_insert_lines;
@@ -1219,6 +1236,8 @@ static PTUIERASECHARS arcan_tui_erase_chars;
 static PTUISTATEDESCR arcan_tui_statedescr;
 static PTUIPRINTF arcan_tui_printf;
 static PTUIBGCOPY arcan_tui_bgcopy;
+static PTUIUCS4UTF8 arcan_tui_ucs4utf8;
+static PTUIUTF8UCS4 arcan_tui_utf8ucs4;
 
 /* dynamic loading function */
 static bool arcan_tui_dynload(void*(*lookup)(void*, const char*), void* tag)
@@ -1295,6 +1314,10 @@ M(PTUIERASECHARS,arcan_tui_erase_chars);
 M(PTUISTATEDESCR, arcan_tui_statedescr);
 M(PTUIPRINTF, arcan_tui_printf);
 M(PTUIBGCOPY, arcan_tui_bgcopy);
+M(PTUIHASGLYPH, arcan_tui_hasglyph);
+M(PTUIUCS4UTF8, arcan_tui_ucs4utf8);
+M(PTUIUTF8UCS4, arcan_tui_utf8ucs4);
+
 #undef M
 
 	return true;
