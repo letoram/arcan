@@ -581,15 +581,40 @@ void tui_input_event(
 				}
 				return;
 			}
+
 /* scroll or select?
  * NOTE: should also consider a way to specify magnitude */
-			if (ioev->subid == MBTN_WHEEL_UP_IND){
-				if (ioev->input.digital.active)
-					scroll_up(tui);
+			if (ioev->subid == TUIBTN_WHEEL_UP){
+				if (ioev->input.digital.active){
+
+/* normal ALTSCREEN wheel doesn't really make sense, unless in
+ * drag-select, map that to stepping selected row up/down?)
+ * clients can still switch to manual mouse mode to get the other behavior */
+					if ((tui->flags & TUI_ALTERNATE)){
+						tui->handlers.input_key(tui,
+							((tui->modifiers & (ARKMOD_LSHIFT | ARKMOD_RSHIFT)) ? TUIK_PAGEUP : TUIK_UP),
+							ioev->input.translated.scancode,
+							0,
+							ioev->subid, tui->handlers.tag
+						);
+					}
+					else
+						scroll_up(tui);
+				}
 			}
-			else if (ioev->subid == MBTN_WHEEL_DOWN_IND){
-				if (ioev->input.digital.active)
-					scroll_down(tui);
+			else if (ioev->subid == TUIBTN_WHEEL_DOWN){
+				if (ioev->input.digital.active){
+					if ((tui->flags & TUI_ALTERNATE)){
+						tui->handlers.input_key(tui,
+							((tui->modifiers & (ARKMOD_LSHIFT | ARKMOD_RSHIFT)) ? TUIK_PAGEDOWN : TUIK_DOWN),
+							ioev->input.translated.scancode,
+							0,
+							ioev->subid, tui->handlers.tag
+						);
+					}
+					else
+						scroll_down(tui);
+				}
 			}
 			else if (ioev->input.digital.active){
 				tsm_screen_selection_start(tui->screen, tui->mouse_x, tui->mouse_y);

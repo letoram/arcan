@@ -380,8 +380,11 @@ struct tui_cbcfg {
 	bool (*input_utf8)(struct tui_context*, const char* u8, size_t len, void*);
 
 /*
- * other KEY where we are uncertain about origin, filled on a best-effort
- * (should be last-line of defence after label->utf8|sym->mouse->[key]
+ * Other KEY where we are uncertain about origin, filled on a best-effort
+ * (should be last-line of defence after label->utf8|sym->mouse->[key].
+ *
+ * [keysym] matches a value from the table in arcan_tuisym.h (TUIK prefix)
+ * :Ex
  */
 	void (*input_key)(struct tui_context*, uint32_t symest,
 		uint8_t scancode, uint8_t mods, uint16_t subid, void* tag);
