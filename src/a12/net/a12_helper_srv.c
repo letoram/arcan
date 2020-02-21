@@ -652,9 +652,7 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 	}
 	fake.user = arg;
 
-/*
- * Socket in/out liveness, buffer flush / dispatch
- */
+/* Socket in/out liveness, buffer flush / dispatch */
 	size_t n_fd = 2;
 	static const short errmask = POLLERR | POLLNVAL | POLLHUP;
 	struct pollfd fds[3] = {

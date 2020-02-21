@@ -129,32 +129,89 @@ static int video_miniz(const void* buf, int len, void* user)
 }
 
 #ifdef WANT_H264_DEC
+
+void ffmpeg_decode_pkt(
+	struct a12_state* S, struct video_frame* cvf, struct arcan_shmif_cont* cont)
+{
+	a12int_trace(A12_TRACE_VIDEO,
+		"ffmpeg:packet_size=%d", cvf->ffmpeg.packet->size);
+	int ret = avcodec_send_packet(cvf->ffmpeg.context, cvf->ffmpeg.packet);
+	if (ret < 0){
+		a12int_trace(A12_TRACE_VIDEO, "ffmpeg:packet_status=decode_fail");
+		a12_vstream_cancel(S, S->in_channel, VSTREAM_CANCEL_DECODE_ERROR);
+		return;
+	}
+
+	while (ret >= 0){
+		ret = avcodec_receive_frame(cvf->ffmpeg.context, cvf->ffmpeg.frame);
+		if (ret == AVERROR(EAGAIN) || ret == AVERROR(EOF)){
+			a12int_trace(A12_TRACE_VIDEO, "ffmpeg:avcodec=again|eof:value=%d", ret);
+			return;
+		}
+		else if (ret != 0){
+			a12int_trace(A12_TRACE_SYSTEM, "ffmpeg:avcodec=fail:code=%d", ret);
+			a12_vstream_cancel(S, S->in_channel, VSTREAM_CANCEL_DECODE_ERROR);
+			return;
+		}
+
+		a12int_trace(A12_TRACE_VIDEO,
+			"ffmpeg:kind=convert:commit=%d:format=yub420p", cvf->commit);
+/* Quite possible that we should actually cache this context as well, but it
+ * has different behavior to the rest due to resize. Since this all turns
+ * ffmpeg into a dependency, maybe it belongs in the vframe setup on resize. */
+		struct SwsContext* scaler =
+			sws_getContext(cvf->w, cvf->h, AV_PIX_FMT_YUV420P,
+				cvf->w, cvf->h, AV_PIX_FMT_BGRA, SWS_BILINEAR, NULL, NULL, NULL);
+
+		uint8_t* const dst[] = {cont->vidb};
+		int dst_stride[] = {cont->stride};
+
+		sws_scale(scaler, (const uint8_t* const*) cvf->ffmpeg.frame->data,
+			cvf->ffmpeg.frame->linesize, 0, cvf->h, dst, dst_stride);
+
+/* So if a packet contains multiple frames, we should use the vsignal- to milk
+ * more data out of this beforehand or establish a framequeue (start by just
+ * switching the context to n-buffered), but also feed back queue state on the
+ * producer side to get better frame pacing vs. playback - can do this on the
+ * first buffer - synch mismatch though */
+		if (cvf->commit && cvf->commit != 255)
+			arcan_shmif_signal(cont, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+
+		sws_freeContext(scaler);
+	}
+}
+
 static bool ffmpeg_alloc(struct a12_channel* ch, int method)
 {
+	bool new_codec = false;
+
 	if (!ch->videnc.codec){
 		ch->videnc.codec = avcodec_find_decoder(method);
 		if (!ch->videnc.codec){
 			a12int_trace(A12_TRACE_SYSTEM, "couldn't find h264 decoder");
 			return false;
 		}
+		new_codec = true;
 	}
 
-	if (!ch->videnc.encoder){
-		ch->videnc.encoder= avcodec_alloc_context3(ch->videnc.codec);
-		a12int_trace(A12_TRACE_SYSTEM, "couldn't setup h264 codec context");
-		return false;
+	if (!ch->videnc.encdec){
+		ch->videnc.encdec = avcodec_alloc_context3(ch->videnc.codec);
+		if (!ch->videnc.encdec){
+			a12int_trace(A12_TRACE_SYSTEM, "couldn't setup h264 codec context");
+			return false;
+		}
 	}
 
 /* got the context, but it needs to be 'opened' as well */
-	if (!ch->videnc.codec){
-		if (avcodec_open2(ch->videnc.encoder, ch->videnc.codec, NULL ) < 0)
+	if (new_codec){
+		if (avcodec_open2(ch->videnc.encdec, ch->videnc.codec, NULL ) < 0)
 			return false;
 	}
 
 	if (!ch->videnc.parser){
 		ch->videnc.parser = av_parser_init(ch->videnc.codec->id);
 		if (!ch->videnc.parser){
-			a12int_trace(A12_TRACE_SYSTEM, "couldn't find h264 parser");
+			a12int_trace(A12_TRACE_SYSTEM, "kind=ffmpeg_alloc:status=parser_alloc fail");
 			return false;
 		}
 	}
@@ -162,7 +219,7 @@ static bool ffmpeg_alloc(struct a12_channel* ch, int method)
 	if (!ch->videnc.frame){
 		ch->videnc.frame = av_frame_alloc();
 		if (!ch->videnc.frame){
-			a12int_trace(A12_TRACE_SYSTEM, "couldn't alloc frame for h264 decode");
+			a12int_trace(A12_TRACE_SYSTEM, "kind=ffmpeg_alloc:status=frame_alloc fail");
 			return false;
 		}
 	}
@@ -175,6 +232,10 @@ static bool ffmpeg_alloc(struct a12_channel* ch, int method)
 		}
 	}
 
+	if (new_codec){
+		a12int_trace(A12_TRACE_VIDEO, "kind=ffmpeg_alloc:status=new_codec:id=%d", method);
+	}
+
 	return true;
 }
 #endif
@@ -183,21 +244,22 @@ bool a12int_vframe_setup(struct a12_channel* ch, struct video_frame* dst, int me
 {
 	*dst = (struct video_frame){};
 
-#ifdef WANT_H264_DEC
 	if (method == POSTPROCESS_VIDEO_H264){
+#ifdef WANT_H264_DEC
 		if (!ffmpeg_alloc(ch, AV_CODEC_ID_H264))
 			return false;
 
 /* parser, context, packet, frame, scaler */
-		dst->ffmpeg.context = ch->videnc.encoder;
+		dst->ffmpeg.context = ch->videnc.encdec;
 		dst->ffmpeg.packet = ch->videnc.packet;
 		dst->ffmpeg.frame = ch->videnc.frame;
 		dst->ffmpeg.parser = ch->videnc.parser;
 		dst->ffmpeg.scaler = ch->videnc.scaler;
 
-		a12int_trace(A12_TRACE_VIDEO, "ffmpeg state block allocated");
-	}
+#else
+		return false;
 #endif
+	}
 	return true;
 }
 
@@ -230,12 +292,16 @@ void a12int_decode_vbuffer(
 	else if (cvf->postprocess == POSTPROCESS_VIDEO_H264){
 /* just keep it around after first time of use */
 /* since these are stateful, we need to tie them to the channel dynamically */
-		a12int_trace(A12_TRACE_VIDEO, "kind=ffmpeg_state:parser=%"PRIxPTR
-			":context=%"PRIxPTR,
+		a12int_trace(A12_TRACE_VIDEO,
+			"kind=ffmpeg_state:parser=%"PRIxPTR
+			":context=%"PRIxPTR
+			":inbuf_size=%zu",
 			(uintptr_t)cvf->ffmpeg.parser,
-			(uintptr_t)cvf->ffmpeg.context
+			(uintptr_t)cvf->ffmpeg.context,
+			(size_t)cvf->inbuf_pos
 		);
 
+#define DUMP_COMPRESSED
 #ifdef DUMP_COMPRESSED
 		static FILE* outf;
 		if (!outf)
@@ -243,51 +309,32 @@ void a12int_decode_vbuffer(
 		fwrite(cvf->inbuf, cvf->inbuf_pos, 1, outf);
 #endif
 
-		av_parser_parse2(cvf->ffmpeg.parser, cvf->ffmpeg.context,
-			&cvf->ffmpeg.packet->data, &cvf->ffmpeg.packet->size,
-			cvf->inbuf, cvf->inbuf_pos, AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0
-		);
+/* parser_parse2 can short-read */
+		ssize_t ofs = 0;
+		while (cvf->inbuf_pos - ofs > 0){
+			int ret =
+				av_parser_parse2(cvf->ffmpeg.parser, cvf->ffmpeg.context,
+				&cvf->ffmpeg.packet->data, &cvf->ffmpeg.packet->size,
+				&cvf->inbuf[ofs], cvf->inbuf_pos - ofs, AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0
+			);
 
-/* ffmpeg packet buffering is similar to our own, but it seems slightly risky
- * to assume that and try to sidestep that layer - though it should be tried at
- * some point */
-		if (!cvf->ffmpeg.packet->size)
-			goto out_h264;
-
-		a12int_trace(A12_TRACE_VIDEO,
-			"ffmpeg packet size: %d", cvf->ffmpeg.packet->size);
-		int ret = avcodec_send_packet(cvf->ffmpeg.context, cvf->ffmpeg.packet);
-
-		while (ret >= 0){
-			ret = avcodec_receive_frame(cvf->ffmpeg.context, cvf->ffmpeg.frame);
-			a12int_trace(A12_TRACE_VIDEO, "ffmpeg_receive status: %d", ret);
-
-			if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+			if (ret < 0){
+				a12int_trace(A12_TRACE_VIDEO, "kind=ffmpeg_state:parser=broken:code=%d", ret);
+				cvf->commit = 255;
 				goto out_h264;
+			}
+			a12int_trace(A12_TRACE_VDETAIL, "kind=parser:return=%d:"
+				"packet_sz=%d:ofset=%zd", ret, cvf->ffmpeg.packet->size, ofs);
 
-			a12int_trace(A12_TRACE_VIDEO,
-				"rescale and commit %d, format: %d", cvf->commit, AV_PIX_FMT_YUV420P);
-/* Quite possible that we should actually cache this context as well, but it
- * has different behavior to the rest due to resize. Since this all turns
- * ffmpeg into a dependency, maybe it belongs in the vframe setup on resize. */
-			struct SwsContext* scaler =
-				sws_getContext(cvf->w, cvf->h, AV_PIX_FMT_YUV420P,
-					cvf->w, cvf->h, AV_PIX_FMT_BGRA, SWS_BILINEAR, NULL, NULL, NULL);
-
-			uint8_t* const dst[] = {cont->vidb};
-			int dst_stride[] = {cont->stride};
-
-			sws_scale(scaler, (const uint8_t* const*) cvf->ffmpeg.frame->data,
-				cvf->ffmpeg.frame->linesize, 0, cvf->h, dst, dst_stride);
-
-			if (cvf->commit && cvf->commit != 255)
-				arcan_shmif_signal(cont, SHMIF_SIGVID);
-
-			sws_freeContext(scaler);
+			ofs += ret;
+			if (cvf->ffmpeg.packet->data){
+				ffmpeg_decode_pkt(S, cvf, cont);
+			}
 		}
 
 out_h264:
 		free(cvf->inbuf);
+		cvf->inbuf = NULL;
 		cvf->carry = 0;
 		return;
 	}

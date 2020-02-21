@@ -207,6 +207,10 @@ static struct a12_state* a12_setup(struct a12_context_options* opt)
 	*res = (struct a12_state){};
 	res->opts = opt;
 	res->cookie = 0xfeedface;
+
+/* start counting binary stream identifiers on 3 (video = 1, audio = 2) */
+	res->out_stream = 3;
+
 	return res;
 }
 
@@ -387,9 +391,27 @@ static bool process_mac(struct a12_state* S)
 	return true;
 }
 
-static void command_cancelstream(struct a12_state* S, uint32_t streamid)
+static void command_cancelstream(
+	struct a12_state* S, uint32_t streamid, uint8_t reason)
 {
 	struct blob_out* node = S->pending;
+
+/* the other end indicated that the current codec or data source is broken,
+ * propagate the error to the client (if in direct passing mode) otherwise just
+ * switch the encoder for next frame */
+	if (streamid == 1){
+		if (reason == VSTREAM_CANCEL_DECODE_ERROR){
+		}
+
+/* other reasons means that the image contents is already known or too dated,
+ * currently just ignore that - when we implement proper image hashing and can
+ * use that for known types (cursor, ...) then reconsider */
+		return;
+	}
+	else if (streamid == 2){
+	}
+
+/* try the blobs first */
 	while (node){
 		if (node->streamid == streamid){
 			a12int_trace(A12_TRACE_BTRANSFER,
@@ -399,6 +421,7 @@ static void command_cancelstream(struct a12_state* S, uint32_t streamid)
 		}
 		node = node->next;
 	}
+
 }
 
 static void command_binarystream(struct a12_state* S)
@@ -469,6 +492,21 @@ static void command_binarystream(struct a12_state* S)
 		a12int_trace(A12_TRACE_BTRANSFER,
 			"kind=reject:stream=%"PRId64":ch=%d", bframe->streamid, channel);
 	}
+}
+
+void a12_vstream_cancel(struct a12_state* S, uint8_t channel, int reason)
+{
+	uint8_t outb[CONTROL_PACKET_SIZE] = {0};
+	step_sequence(S, outb);
+	struct video_frame* vframe = &S->channels[channel].unpack_state.vframe;
+	vframe->commit = 255;
+
+	outb[16] = channel;
+	outb[17] = COMMAND_CANCELSTREAM;
+	outb[18] = 1;
+	outb[19] = reason;
+
+	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 }
 
 void a12_stream_cancel(struct a12_state* S, uint8_t channel)
@@ -892,7 +930,7 @@ static void process_control(struct a12_state* S, void (*on_event)
 	case COMMAND_CANCELSTREAM:{
 		uint32_t streamid;
 		unpack_u32(&streamid, &S->decode[18]);
-		command_cancelstream(S, streamid);
+		command_cancelstream(S, streamid, S->decode[22]);
 	}
 	break;
 	case COMMAND_PING:
@@ -1199,9 +1237,9 @@ static void process_audio(struct a12_state* S)
 		}
 	}
 
-/* Flush out into caf abuffer, assumed that the context has been set
- * to match the defined source format in a previous stage. Resampling
- * might be needed here, both for rate and for drift/buffer */
+/* Flush out into abuffer, assuming that the context has been set to match the
+ * defined source format in a previous stage. Resampling might be needed here,
+ * both for rate and for drift/buffer */
 	size_t samples_in = S->decode_pos >> 1;
 	size_t pos = 0;
 
@@ -1223,9 +1261,8 @@ static void process_audio(struct a12_state* S)
 		}
 	}
 
-/* now we can subtract the number of SAMPLES from the audio stream
- * packet, when that reases zero we reset state, this incorrectly
- * assumes 2 channels though */
+/* now we can subtract the number of SAMPLES from the audio stream packet, when
+ * that reaches zero we reset state, this incorrectly assumes 2 channels. */
 	caf->nsamples -= S->decode_pos >> 1;
 	if (!caf->nsamples && cont->abufused){
 /* might also be a slush buffer left */
@@ -1314,11 +1351,11 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 }
 
 /*
- * Several small issues that should be looked at here, one is that we
- * don't multiplex well with the source, risking a non-block 100% spin.
- * Second is that we don't have an intermediate buffer as part of the
- * queue-node, meaning that we risk sending very small blocks of data as part
- * of the stream, wasting bandwidth.
+ * Several small issues that should be looked at here, one is that we don't
+ * multiplex well with the source, risking a non-block 100% spin. Second is
+ * that we don't have an intermediate buffer as part of the queue-node, meaning
+ * that we risk sending very small blocks of data as part of the stream,
+ * wasting bandwidth.
  */
 static void* read_data(int fd, size_t cap, uint16_t* nts, bool* die)
 {

@@ -463,6 +463,16 @@ a12_channel_close(struct a12_state*);
 void a12_stream_cancel(struct a12_state* S, uint8_t chid);
 
 /*
+ * Cancel a video stream that is ongoing in a specific channel
+ */
+enum vstream_cancel {
+	VSTREAM_CANCEL_DONTWANT = 0,
+	VSTREAM_CANCEL_DECODE_ERROR = 1,
+	VSTREAM_CANCEL_KNOWN = 2
+};
+void a12_vstream_cancel(struct a12_state* S, uint8_t chid, int reason);
+
+/*
  * debugging / tracing bits, just define a namespace that can be used
  * for wrapper tools to log with the same syntax and behaviour as the
  * implementation files

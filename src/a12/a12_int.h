@@ -175,7 +175,7 @@ struct a12_channel {
 #if defined(WANT_H264_ENC) || defined(WANT_H264_DEC)
 		struct {
 			AVCodecParserContext* parser;
-			AVCodecContext* encoder;
+			AVCodecContext* encdec;
 			AVCodec* codec;
 			AVFrame* frame;
 			AVPacket* packet;
