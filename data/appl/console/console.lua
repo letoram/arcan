@@ -21,7 +21,7 @@ end
 function console_input(input)
 -- apply the keyboard translation table to all keyboard (translated) input and forward
 	if input.translated then
-		KEYBOARD:patch(input)
+		print(KEYBOARD:patch(input), input)
 		if valid_hotkey(input) then
 			return
 		end
@@ -58,6 +58,7 @@ function new_client(vid)
 		return
 	end
 	local new_ws = find_free_space()
+	print("NEW CLIENT", vid, "WS", new_ws);
 
 -- safe-guard against out of workspaces
 	if not new_ws then
@@ -112,8 +113,12 @@ function client_event_handler(source, status)
 		client_ws.aid = status.source_audio
 
 -- an external connection goes through a 'connected' (the socket has been consumed)
--- state where the decision to re-open the connection point should be made
+-- state where the decision to re-open the connection point should be made, always
+-- re-open, but destroy if we are out of workspaces
 	elseif status.kind == "connected" then
+		if (find_free_space() == nil) then
+			delete_image(source)
+		end
 		target_alloc(connection_point, client_event_handler)
 
 -- an external connection also goes through a 'registered' phase where auth-
@@ -159,10 +164,11 @@ end
 
 local last_index = 1
 function switch_workspace(index)
--- if an index is not provided, switch to the previous one
+-- if an index is not provided, switch to the previous one if there is one
 	if not index then
 		if workspaces[last_index] then
 			return switch_workspace(last_index)
+
 -- but if that is empty, grab the first one that isn't
 		else
 			for i=1,10 do
@@ -171,6 +177,9 @@ function switch_workspace(index)
 				end
 			end
 		end
+
+-- or just pick one
+		index = 1
 	end
 
 -- hide the current one so we don't overdraw
@@ -178,9 +187,14 @@ function switch_workspace(index)
 		hide_image(workspaces[ws_index].vid)
 	end
 
--- default-switch to empty workspace means spawning a terminal in it
-	last_index = ws_index
-	ws_index = index
+-- remember the last unique one so we can switch back on destroy
+	if ws_index ~= index then
+		last_index = ws_index
+		ws_index = index
+	end
+
+-- spawn_terminal -> launch_avfeed -> [handler] -> find_free will land back
+-- into this, and set visibility on first frame
 	if not workspaces[ws_index] then
 		spawn_terminal()
 	end
@@ -215,6 +229,7 @@ end
 
 function valid_hotkey(input)
 -- absorb right-shift as our modifier key
+	for k,v in pairs(input) do print(k, v) end
 	if decode_modifiers(input.modifiers, "") ~= hotkey_modifier then
 		return false
 -- only trigger on 'rising edge'
