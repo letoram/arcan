@@ -122,7 +122,7 @@ set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	set(VPLATFORM_STR "sdl sdl2")
 	if (NOT VIDEO_PLATFORM)
-		set(VIDEO_PLATFORM "sdl")
+		set(VIDEO_PLATFORM "sdl2")
 	endif()
 else()
 	set(VPLATFORM_STR "egl-dri, sdl, sdl2, egl-gles")
@@ -641,8 +641,8 @@ endif()
 if(VIDEO_PLATFORM STREQUAL "egl-dri")
 if(HYBRID_SDL)
 	amsg("-- Appending sdl platform build--")
-	set(VIDEO_PLATFORM "sdl")
-	set(INPUT_PLATFORM "sdl")
+	set(VIDEO_PLATFORM "sdl2")
+	set(INPUT_PLATFORM "sdl2")
 	set(ARCAN_DEFINITIONS "")
 	set(ARCAN_NOLWA_DEFINITIONS "")
 	set(VIDEO_PLATFORM_SOURCES "")
@@ -662,7 +662,7 @@ if(HYBRID_SDL)
 		${AGP_SOURCES}
 		${PLATFORM_SOURCES}
 		${VIDEO_PLATFORM_SOURCES}
-		${PLATFORM_ROOT}/sdl/event.c
+		${PLATFORM_ROOT}/${INPUT_PLATFORM}/event.c
 	)
 	target_include_directories(arcan_sdl PRIVATE ${INCLUDE_DIRS})
 	target_compile_definitions(arcan_sdl PRIVATE

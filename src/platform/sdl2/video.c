@@ -388,13 +388,23 @@ bool platform_video_init(uint16_t width, uint16_t height,
 {
 	SDL_Init(SDL_INIT_VIDEO);
 
+	if (sdl.caption)
+		free(sdl.caption);
+
+	sdl.caption = strdup(capt ? capt : "");
+
+/* SDL2 does not provide us with dimensions in the case of windowed mode, set
+ * defaults if no values are provided to us, the rebuild_screen part will query
+ * on our behalf later */
+	if (!width || !height){
+		width = 800;
+		height = 480;
+	}
+
 	sdl.canvasw = width;
 	sdl.canvash = height;
 	sdl.draww = width;
 	sdl.drawh = height;
-	if (sdl.caption)
-		free(sdl.caption);
-	sdl.caption = strdup(capt ? capt : "");
 
 	arcan_video_display.fullscreen = fs;
 	sdl.sdlarg = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL |
