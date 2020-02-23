@@ -512,6 +512,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
 			newevent.io.subid = event.key.keysym.unicode;
+
 			if (!((event.key.keysym.mod & (ARKMOD_LCTRL | ARKMOD_RCTRL)) > 0))
 				to_utf8(event.key.keysym.unicode, newevent.io.input.translated.utf8);
 			arcan_event_enqueue(ctx, &newevent);
@@ -826,10 +827,13 @@ void platform_event_init(arcan_evctx* ctx)
 		int r = 0, d = 0;
 		platform_event_keyrepeat(ctx, &r, &d);
 	}
-/* flush out initial storm */
+/* flush out initial storm, with safeguard against event loop issues */
 	SDL_Event dummy[1];
-	while ( SDL_PeepEvents(dummy, 1, SDL_GETEVENT,
-		SDL_EVENTMASK(SDL_MOUSEMOTION)) );
+	SDL_PumpEvents();
+	int timeout = 1000;
+	while (timeout-- &&
+		SDL_PeepEvents(dummy, 1, SDL_GETEVENT, SDL_EVENTMASK(SDL_MOUSEMOTION)) > 0){
+	}
 
 	platform_event_rescan_idev(ctx);
 }

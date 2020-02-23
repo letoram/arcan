@@ -26,6 +26,7 @@ static const char* envopts[] =
 };
 
 static bool mouse_relative = false;
+static bool filter_repeat = false;
 
 const char** platform_event_envopts()
 {
@@ -600,6 +601,9 @@ void platform_event_process(arcan_evctx* ctx)
  * rules */
 			}
 
+			if (event.key.repeat && filter_repeat)
+				continue;
+
 			newevent.io.input.translated.modifiers |=
 				ARKMOD_REPEAT * event.key.repeat != 0;
 			arcan_event_enqueue(ctx, &newevent);
@@ -855,6 +859,8 @@ void platform_event_keyrepeat(arcan_evctx* ctx, int* rate, int* delay)
 	static int cur_rep, cur_del;
 	bool upd = false;
 
+/* we would need to implement an oscillator to get anywhere with this,
+ * so treat this as binary for the time being */
 	if (*rate < 0){
 		*rate = cur_rep;
 	}
@@ -875,10 +881,9 @@ void platform_event_keyrepeat(arcan_evctx* ctx, int* rate, int* delay)
 		upd = true;
 	}
 
-/* SDL2 FIXME
-	if (upd)
-		SDL_EnableKeyRepeat(cur_del, cur_rep);
- */
+	if (upd){
+		filter_repeat = cur_rep == 0;
+	}
 }
 
 void platform_event_deinit(arcan_evctx* ctx)
