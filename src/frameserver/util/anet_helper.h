@@ -16,6 +16,7 @@ struct anet_options {
 	int mode;
 	const char* redirect_exit;
 	const char* devicehint_cp;
+	ssize_t retry_count;
 	struct a12_context_options* opts;
 };
 

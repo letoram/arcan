@@ -1,5 +1,5 @@
 /*
- * Copyright: 2018, Bjorn Stahl
+ * Copyright: 2018-2020, Bjorn Stahl
  * License: 3-Clause BSD
  * Description: This is a set of helper functions to deal with the event loop
  * specifically for acting as a translation proxy between shmif- and a12. The

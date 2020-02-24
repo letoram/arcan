@@ -1,5 +1,5 @@
 /*
- * Copyright: 2017-2019, Björn Ståhl
+ * Copyright: 2017-2020, Björn Ståhl
  * Description: A12 protocol state machine, main translation unit.
  * Maintains connection state, multiplex and demultiplex then routes
  * to the corresponding decoding/encode stages.
