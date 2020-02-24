@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2019, Björn Ståhl
+ * Copyright 2018-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: https://github.com/letoram/arcan/wiki/wayland.md
  * Description: XWayland specific 'Window Manager' that deals with the special
@@ -47,8 +47,9 @@ static struct xwnd_state* windows;
 static int signal_fd = -1;
 static xcb_connection_t* dpy;
 static xcb_screen_t* screen;
-static xcb_drawable_t root;
-static xcb_drawable_t wnd;
+static xcb_drawable_t wnd_root;
+static xcb_drawable_t wnd_wm;
+static xcb_drawable_t wnd_sel;
 static xcb_colormap_t colormap;
 static xcb_visualid_t visual;
 static int64_t input_grab = XCB_WINDOW_NONE;
@@ -150,7 +151,7 @@ static bool setup_visuals()
 		if (depth.data->depth == 32){
 			visual = (xcb_depth_visuals_iterator(depth.data).data)->visual_id;
 			colormap = xcb_generate_id(dpy);
-			xcb_create_colormap(dpy, XCB_COLORMAP_ALLOC_NONE, colormap, root, visual);
+			xcb_create_colormap(dpy, XCB_COLORMAP_ALLOC_NONE, colormap, wnd_root, visual);
 			return true;
 		}
 		xcb_depth_next(&depth);
@@ -199,6 +200,12 @@ static void xcb_property_notify(xcb_property_notify_event_t* ev)
 {
 	trace("xcb=property-notify");
 	struct xwnd_state* state = NULL;
+
+/* intended for our clipboard? */
+	if (ev->window == wnd_sel){
+/* NEW_VALUE */
+	}
+
 	HASH_FIND_INT(windows,&ev->window,state);
 	if (!state)
 		return;
@@ -246,39 +253,54 @@ static void update_focus(int64_t id)
 	}
 
 	xcb_change_property(dpy, XCB_PROP_MODE_REPLACE,
-		root, atoms[NET_ACTIVE_WINDOW], atoms[WINDOW], 32, 1, &input_focus);
+		wnd_root, atoms[NET_ACTIVE_WINDOW], atoms[WINDOW], 32, 1, &input_focus);
 }
 
 static void create_window()
 {
-	wnd = xcb_generate_id(dpy);
+	wnd_wm = xcb_generate_id(dpy);
 	xcb_create_window(dpy,
-		XCB_COPY_FROM_PARENT, wnd, root,
+		XCB_COPY_FROM_PARENT, wnd_wm, wnd_root,
 		0, 0, 10, 10, 0, XCB_WINDOW_CLASS_INPUT_OUTPUT,
 		visual, 0, NULL
 	);
 /* should visual be here? */
 
 	xcb_change_property(dpy,
-		XCB_PROP_MODE_REPLACE, wnd,
-		atoms[NET_SUPPORTING_WM_CHECK], XCB_ATOM_WINDOW, 32, 1, &wnd);
+		XCB_PROP_MODE_REPLACE, wnd_wm,
+		atoms[NET_SUPPORTING_WM_CHECK], XCB_ATOM_WINDOW, 32, 1, &wnd_wm);
 
 	static const char wmname[] = "Arcan XWM";
 	xcb_change_property(dpy,
-		XCB_PROP_MODE_REPLACE, wnd,
+		XCB_PROP_MODE_REPLACE, wnd_wm,
 		atoms[NET_WM_NAME], atoms[UTF8_STRING], 8, strlen(wmname), wmname);
 
 	xcb_change_property(dpy,
-		XCB_PROP_MODE_REPLACE, wnd,
-		atoms[NET_SUPPORTING_WM_CHECK], XCB_ATOM_WINDOW, 32, 1, &root);
+		XCB_PROP_MODE_REPLACE, wnd_wm,
+		atoms[NET_SUPPORTING_WM_CHECK], XCB_ATOM_WINDOW, 32, 1, &wnd_root);
 
 /* for clipboard forwarding */
 	xcb_set_selection_owner(dpy,
-		wnd, atoms[WM_S0], XCB_TIME_CURRENT_TIME);
+		wnd_wm, atoms[WM_S0], XCB_TIME_CURRENT_TIME);
 
 	xcb_set_selection_owner(dpy,
-		wnd, atoms[NET_WM_CM_S0], XCB_TIME_CURRENT_TIME);
+		wnd_wm, atoms[NET_WM_CM_S0], XCB_TIME_CURRENT_TIME);
 
+	wnd_sel = xcb_generate_id(dpy);
+	xcb_create_window(dpy,
+		XCB_COPY_FROM_PARENT, wnd_sel, wnd_root,
+		0, 0, 12, 12, 0, XCB_WINDOW_CLASS_INPUT_OUTPUT,
+		visual, XCB_CW_EVENT_MASK,
+		(uint32_t[]){XCB_EVENT_MASK_PROPERTY_CHANGE}
+	);
+	xcb_set_selection_owner(dpy, wnd_sel, atoms[CLIPBOARD], XCB_TIME_CURRENT_TIME);
+/*
+ * xcb_xfixes_select_selection_input(dpy, wnd_sel, atoms[CLIPBOARD],
+		XCB_XFIXES_SELECTION_EVENT_MASK_SET_SELECTION_OWNER |
+		XCB_XFIXES_SELECTION_EVENT_MASK_SELECTION_WINDOW_DESTROY |
+		XCB_XFIXES_SELECTION_EVENT_MASK_SELECTION_CLIENT_CLOSE
+	);
+ */
 }
 
 static bool has_atom(
@@ -453,7 +475,7 @@ static void xcb_create_notify(xcb_create_notify_event_t* ev)
 
 /* if we add other wm- managed windows (selection, dnd),
  * these should be filtered out here as well */
-	if (ev->window == wnd)
+	if (ev->window == wnd_wm)
 		return;
 
 	struct xwnd_state* state = malloc(sizeof(struct xwnd_state));
@@ -538,7 +560,7 @@ static void xcb_reparent_notify(xcb_reparent_notify_event_t* ev)
 {
 	trace("xcb=reparent:=id%"PRIu32":parent=%"PRIu32":mode=%s",
 		ev->window, ev->parent, ev->override_redirect ? " override" : "normal");
-	if (ev->parent == root){
+	if (ev->parent == wnd_root){
 		wm_command(WM_FLUSH,
 			"kind=reparent:parent=root,override=%d", ev->override_redirect ? 1 : 0);
 	}
@@ -832,7 +854,7 @@ static void process_wm_command(const char* arg)
 					.data32 = {atoms[WM_DELETE_WINDOW], XCB_CURRENT_TIME}
 				}
 			};
-			xcb_send_event(dpy, false, wnd, XCB_EVENT_MASK_NO_EVENT, (char*)&ev);
+			xcb_send_event(dpy, false, wnd_wm, XCB_EVENT_MASK_NO_EVENT, (char*)&ev);
 		}
 		else {
 			trace("srv-destroy, delete_kill(%d)", id);
@@ -858,6 +880,29 @@ static void process_wm_command(const char* arg)
 
 cleanup:
 	arg_cleanup(args);
+}
+
+static bool supported_selection(xcb_atom_t type)
+{
+	return false;
+}
+
+static void xcb_selection_request(struct xcb_selection_request_event_t* ev)
+{
+	trace("kind=selection_request");
+}
+
+static void xcb_selection_notify(struct xcb_selection_notify_event_t* ev)
+{
+	if (ev->property == XCB_ATOM_NONE){
+		trace("kind=error:message=couldn't convert selection");
+		return;
+	}
+	if (supported_selection(ev->target)){
+	}
+/* ev->target matches the ATOM from the requested selection target,
+ * e.g. timestamp, utf8_string, text, ...) */
+	trace("kind=error:message=unsupported selection target");
 }
 
 static void spawn_debug()
@@ -966,8 +1011,10 @@ static void run_event()
 		xcb_focus_in((xcb_focus_in_event_t*) ev);
 	break;
 	case XCB_SELECTION_NOTIFY:
-		trace("xcb=selection");
-/* xcb_iccc,_get_text_property, text_property_reply */
+		xcb_selection_notify((xcb_selection_notify_event_t *) ev);
+	break;
+	case XCB_SELECTION_REQUEST:
+		xcb_selection_request((xcb_selection_request_event_t *) ev);
 	break;
 	default:
 		trace("xcb-unhandled:type=%"PRIu8, ev->response_type);
@@ -982,7 +1029,7 @@ static void run_event()
  */
 static void setup_init_state(bool standalone)
 {
-	xcb_change_window_attributes(dpy, root, XCB_CW_EVENT_MASK, (uint32_t[]){
+	xcb_change_window_attributes(dpy, wnd_root, XCB_CW_EVENT_MASK, (uint32_t[]){
 		XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY |
 		XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
 		XCB_EVENT_MASK_PROPERTY_CHANGE, 0, 0
@@ -990,7 +1037,7 @@ static void setup_init_state(bool standalone)
 
 	if (!standalone){
 		xcb_composite_redirect_subwindows(
-			dpy, root, XCB_COMPOSITE_REDIRECT_MANUAL);
+			dpy, wnd_root, XCB_COMPOSITE_REDIRECT_MANUAL);
 	}
 
 	xcb_atom_t atom_supp[] = {
@@ -1003,7 +1050,7 @@ static void setup_init_state(bool standalone)
 	};
 
 	xcb_change_property(dpy,
-		XCB_PROP_MODE_REPLACE, root, atoms[NET_SUPPORTED],
+		XCB_PROP_MODE_REPLACE, wnd_root, atoms[NET_SUPPORTED],
 		XCB_ATOM_ATOM, 32, 6, atom_supp
 	);
 }
@@ -1119,7 +1166,7 @@ int main (int argc, char **argv)
 	}
 
 	screen = xcb_setup_roots_iterator(xcb_get_setup(dpy)).data;
-	root = screen->root;
+	wnd_root = screen->root;
 	if (!setup_visuals()){
 		trace("setup=fail:message=no 32bit visual");
 		return EXIT_FAILURE;
