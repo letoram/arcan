@@ -566,8 +566,31 @@ void platform_event_process(arcan_evctx* ctx)
 			process_mousemotion(ctx, &event.motion);
 		break;
 
-/* need support for converting both to buttons and to analog */
+/* incomplete, as we should consider mice with full ranges as having analog
+ * axis for the wheel, and not convert to digital here */
 		case SDL_MOUSEWHEEL:
+			newevent.io.kind = EVENT_IO_BUTTON;
+			newevent.io.datatype = EVENT_IDATATYPE_DIGITAL;
+			newevent.io.devkind  = EVENT_IDEVKIND_MOUSE;
+			newevent.io.devid = event.wheel.which;
+			newevent.io.input.digital.active = false;
+			snprintf(newevent.io.label, sizeof(newevent.io.label) - 1, "mouse%i",
+				event.motion.which);
+			if (event.wheel.y > 0){
+				newevent.io.subid = 4;
+			}
+			else if (event.wheel.y < 0){
+				newevent.io.subid = 5;
+			}
+			else if (event.wheel.x > 0){
+				newevent.io.subid = 6;
+			}
+			else if (event.wheel.x < 0){
+				newevent.io.subid = 7;
+			}
+			else
+				continue;
+			arcan_event_enqueue(ctx, &newevent);
 		break;
 
 		case SDL_JOYAXISMOTION:
@@ -587,6 +610,13 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
 			newevent.io.subid = event.key.keysym.sym;
+
+/* and if we can't reliably translate, patch it in there anyhow and hope the
+ * scripting layer can do someting more, would have been nice if SDL2 actually
+ * provided this as part of their compat - there is some 1.2 wrapper lib in
+ * development so it might happen */
+			if (!newevent.io.input.translated.keysym)
+				newevent.io.input.translated.keysym = newevent.io.subid;
 
 /* there's no having old .unicode behavior back unfortunately, so the SDL2
  * users will need a keymap on the scripting level */
