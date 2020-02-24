@@ -221,12 +221,35 @@ static int a12_connect(struct anet_options* args,
 /* accept it (this will mutate the client_handle internally) */
 		shmifsrv_poll(cl);
 
-/* open remote connection
+/* OPEN REMOTE CONNECTION
  *
- * this could be done inside of the dispatch to get faster burst management
- * at the cost of worse error reporting, but also allow a sleep-retry kind
- * of loop in order to have the client 'wake up' when server becomes avail. */
-		int fd = anet_clfd(addr);
+ * When we have better key / host management and can specify multiple addresses
+ * for one remote host name, the retry- loop can be switched to enumerating the
+ * list of preferred hosts.
+ *
+ * In that case, we should also move the connect loop in order to not locally
+ * block shmif-connections while waiting for one to go through
+ *
+ * This should also permit reconnection on a severed connection by issuing a
+ * reset event to the [cl] and just repeat the setup / connection here.
+ */
+		int fd;
+		int timesleep = 1;
+		ssize_t rc = args->retry_count;
+		while((fd = anet_clfd(addr)) == -1 && rc != 0){
+			if (timesleep < 10)
+				timesleep++;
+
+			if (rc > 0)
+				args->retry_count--;
+
+/* client might have gotten tired of waiting */
+			sleep(timesleep);
+
+			if (shmifsrv_poll(cl) == CLIENT_DEAD)
+				break;
+		}
+
 		if (-1 == fd){
 /* question if we should retry connecting rather than to kill the server */
 			shmifsrv_free(cl, true);
@@ -316,7 +339,8 @@ static bool show_usage(const char* msg)
 	"\t                                  (inherit socket) -S fd_no host port\n"
 	"\tBridge remote arcan applications: arcan-net [-Xtd] -l port [ip]\n\n"
 	"Forward-local options:\n"
-	"\t-X        \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n\n"
+	"\t-X            \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n"
+	"\t-r, --retry n \t Limit retry-reconnect attempts to 'n' tries\n\n"
 	"Options:\n"
 	"\t-t single- client (no fork/mt)\n"
 	"\t-d bitmap \t set trace bitmap (bitmask or key1,key2,...)\n"
@@ -435,6 +459,13 @@ static bool apply_commandline(int argc, char** argv, struct anet_options* opts)
 		else if (strcmp(argv[i], "-X") == 0){
 			opts->redirect_exit = NULL;
 		}
+		else if (strcmp(argv[i], "-r") == 0 || strcmp(argv[i], "--retry") == 0){
+			if (1 < argc - 1){
+				opts->retry_count = (ssize_t) strtol(argv[++i], NULL, 10);
+			}
+			else
+				return show_usage("Missing count argument to -r,--retry");
+		}
 	}
 
 	return true;
@@ -442,7 +473,9 @@ static bool apply_commandline(int argc, char** argv, struct anet_options* opts)
 
 int main(int argc, char** argv)
 {
-	struct anet_options anet = {};
+	struct anet_options anet = {
+		.retry_count = -1
+	};
 	anet.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));
 
 /* set this as default, so the remote side can't actually close */

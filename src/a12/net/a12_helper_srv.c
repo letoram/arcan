@@ -1,3 +1,9 @@
+/*
+ * Copyright: 2018-2020, Bjorn Stahl
+ * License: 3-Clause BSD
+ * Description: Implements a support wrapper for the a12 function patterns used
+ * to implement multiple incoming a12 clients and map to one local connection point.
+ */
 #include <arcan_shmif.h>
 #include <arcan_shmif_server.h>
 #include <errno.h>
