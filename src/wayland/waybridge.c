@@ -641,28 +641,40 @@ static struct bridge_client* find_client(struct wl_client* cl)
  */
 	trace(TRACE_ALLOC, "connecting new bridge client");
 
-/* FIRST connect a new bridge to arcan, this could be circumvented and simply
- * treat each 'surface' as a bridge- connection, but it would break the option
- * to track origin. There's also the problem of creating the abstract display
- * as we don't have the display properties until the first connection has been
- * made.
- *
- * Instead we make use of the bridge node as a pseudo- data device to deal with
- * drag and drop etc. as that does not translate cleanly to the arcan clipboard
- * management anyhow.
- *
- * In the -exec mode, we can at least re-use the 'probe' shmif cont that is
- * opened on startup, that's what this adopt- check does
+/* Connect a new bridge to arcan. There are two ways this could be done, one is
+ * to simply open a new one, but that assumes we are running with external
+ * connections permitted. If we inherit, the new client should be bootstrapped
+ * over the bridge connection.
  */
-	struct arcan_shmif_cont con;
-	if (wl.exec_mode && wl.groups[0].arcan){
-		con = wl.control;
-		wl.control = (struct arcan_shmif_cont){};
-		wl.groups[0].arcan = NULL;
-		trace(TRACE_ALLOC, "re-using bridge connection");
+	struct arcan_shmif_cont con = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0, NULL);
+	if (!con.addr){
+		arcan_shmif_enqueue(&wl.control,
+		&(struct arcan_event){
+			.ext.kind = ARCAN_EVENT(SEGREQ),
+			.ext.segreq.kind = SEGID_BRIDGE_WAYLAND
+		});
+
+		struct arcan_event* pqueue;
+		ssize_t pqueue_sz;
+		struct arcan_event acqev;
+
+	/* there are no real events coming on the control node at the moment, so the
+	 * queue can simply be ignored, if we happened to run into an EXIT the loop
+	 * would just fail next iteration */
+		if (arcan_shmif_acquireloop(&wl.control, &acqev, &pqueue, &pqueue_sz)){
+			if (acqev.tgt.kind != TARGET_COMMAND_NEWSEGMENT){
+				trace(TRACE_ALLOC, "couldn't allocate client over control connection");
+				wl_client_post_no_memory(cl);
+				return NULL;
+			}
+			trace(TRACE_ALERT, "retrieved new connection");
+			con =
+				arcan_shmif_acquire(&wl.control, NULL,
+					SEGID_BRIDGE_WAYLAND, SHMIF_DISABLE_GUARD|SHMIF_NOREGISTER);
+			free(pqueue);
+		}
 	}
-	else
-		con = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0, NULL);
+
 	if (!con.addr){
 		trace(TRACE_ALLOC,
 			"failed to open segid-bridge-wayland connection to arcan server");
@@ -694,9 +706,6 @@ static struct bridge_client* find_client(struct wl_client* cl)
 	res = &wl.groups[group].slots[ind].client;
 	*res = (struct bridge_client){};
 
-/*
- * pretty much always need to be ready for damaged surfaces so enable now
- */
 	res->acon = con;
 	res->client = cl;
 	res->group = group;

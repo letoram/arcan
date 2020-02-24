@@ -544,6 +544,25 @@ static int xwl_read_wm(int (*callback)(const char* str))
 	return 0;
 }
 
+static void xwl_request_handover()
+{
+/* use the waybridge to request a handover surface that will be used for xwl
+ * debugging bootstrap and for clipboard / selection - it is a bit trickier if
+ * this happens on a wm-crash where we run in service mode as the control
+ * connection is lost, option is to re-open one or just ignore the clipboard
+ * part, start with the later */
+	if (!wl.control.addr){
+		return;
+	}
+
+	arcan_shmif_enqueue(&wl.control,
+	&(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(SEGREQ),
+		.ext.segreq.kind = SEGID_HANDOVER
+	});
+
+}
+
 /*
  * Launch the arcan-xwayland-wm (that in turn launches Xwayland) if [block] is
  * set, wait until arcan-xwayland-wm acknowledges that Xwayland could be
