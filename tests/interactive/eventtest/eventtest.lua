@@ -9,21 +9,17 @@ touchtbl = {};
 analogdata = {};
 
 function drawline(text, size)
-    if (size == nil) then
-	size = 18
-    end
-
-    return render_text( [[\ffonts/default.ttf,]] .. size .. " " .. text );
+    return render_text("\\f," .. tostring(size) .. " " .. text);
 end
 
 function eventtest()
 	symtable = system_load("builtin/keyboard.lua")();
 
-	analabel = drawline([[\bAnalog]], 18);
-	digilabel = drawline([[\bDigital]], 18);
-	touchlabel = drawline([[\bTouch]], 18);
-	statuslabel = drawline([[\bStatus]], 18);
-	translabel = drawline([[\bTranslated]], 18);
+	analabel = drawline([[\bAnalog]], 12);
+	digilabel = drawline([[\bDigital]], 12);
+	touchlabel = drawline([[\bTouch]], 12);
+	statuslabel = drawline([[\bStatus]], 12);
+	translabel = drawline([[\bTranslated]], 12);
 
 	inputanalog_toggle(1);
 	tc = null_surface(1, 1);
@@ -81,7 +77,7 @@ function touch_str(iotbl)
 	if (touchimg) then
 		delete_image(touchimg);
 	end
-	touchimg = drawline(line, 12);
+	touchimg = drawline(line, 10);
 	link_image(touchimg, touchlabel);
 	nudge_image(touchimg, 0, 20);
 	show_image(touchimg);
@@ -101,15 +97,15 @@ function digital_str(iotbl)
 		delete_image(digitalimg);
 	end
 
-	digitalimg = drawline(line, 12);
+	digitalimg = drawline(line, 10);
 	link_image(digitalimg, digilabel);
 	nudge_image(digitalimg, 0, 20);
 	show_image(digitalimg);
 end
 
 function translate_str(iotbl)
-	table.insert(translatetbl, string.format("dev(%d:%d)[mod %s] => %s, %s, %s, %s",
-		iotbl.devid, iotbl.subid,
+	table.insert(translatetbl, string.format("dev(%d:%d)%d[%s] => %s, %s, %s, %s",
+		iotbl.devid, iotbl.subid, iotbl.number,
 		table.concat(decode_modifiers(iotbl.modifiers),","),
 		iotbl.keysym, iotbl.active and "press" or "release",
 		symtable[iotbl.keysym] and symtable[iotbl.keysym] or "_nil",
@@ -137,7 +133,7 @@ function translate_str(iotbl)
 end
 
 function analog_str(intbl)
-	return string.format("%d:%f/%f avg: %f", intbl.count,
+	return string.format("%d:%.2f/%.2f avg: %.2f", intbl.count,
 		round(intbl.min, 2), round(intbl.max, 2), round(intbl.avg, 2));
 end
 
@@ -157,7 +153,7 @@ function eventtest_clock_pulse(stamp, delta)
 		line = line .. workline .. [[\r\n]];
 	end
 
-	analogimg = drawline(line, 12);
+	analogimg = drawline(line, 10);
 	link_image(analogimg, analabel);
 	nudge_image(analogimg, 0, 20);
 	show_image(analogimg);
