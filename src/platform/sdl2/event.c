@@ -649,6 +649,10 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
 			newevent.io.subid = event.key.keysym.sym;
+
+			if (!newevent.io.input.translated.keysym)
+				newevent.io.input.translated.keysym = newevent.io.subid;
+
 			arcan_event_enqueue(ctx, &newevent);
 		break;
 
