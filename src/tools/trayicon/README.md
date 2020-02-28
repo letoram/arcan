@@ -43,6 +43,8 @@ documentation for more specific details on tuning the look and feel.
 Trayicon can also be used to add text buttons with contents from a script or
 from the commandline by using the source and width arguments. The following:
 
-    ARCAN_CONNPATH=tray ./script.sh | arcan_trayicon -stdin -width 20
+    ARCAN_CONNPATH=tray ./script.sh | arcan_trayicon --stdin -w 20
 
-Would read lines from stdin, clamp them to -width output cells.
+Would read lines from stdin, clamp them to -width output cells. The included
+arcan-barsplit.rb ruby scripts reads lines from STDIN, and splits up into
+multiple arcan\_trayicon invocations.
