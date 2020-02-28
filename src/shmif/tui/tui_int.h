@@ -122,6 +122,9 @@ struct tui_context {
 	struct arcan_event last_bchunk_in;
 	struct arcan_event last_bchunk_out;
 
+/* cached after calls to tui_wndhint */
+	struct tui_constraints last_constraints;
+
 	struct tsm_save_buf* pending_copy_window;
 
 /* NEWSEGEMENT -> on_subwindow -> handover call chain */

@@ -1451,7 +1451,7 @@ enum ARCAN_TARGET_SKIPMODE {
  */
 		struct {
 			int32_t x, y;
-			uint16_t w, h;
+			uint32_t w, h;
 			uint32_t parent;
 			uint8_t border[4];
 			uint8_t edge;
