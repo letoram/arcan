@@ -1,5 +1,5 @@
 --
--- Copyright 2014-2019, Björn Ståhl
+-- Copyright 2014-2020, Björn Ståhl
 -- License: 3-Clause BSD.
 -- Reference: http://arcan-fe.com
 --
@@ -24,6 +24,7 @@
 -- output:
 --  mouse_xy()
 --  mouse_rawxy() : "raw" last coordinates, ignoring hotspot
+--  mouse_cursorhook() : updated whenever the cursor changes shape or position
 ---
 -- tuning:
 --  autohide() - true or false ; call to flip state, returns new state
@@ -168,6 +169,25 @@ function mouse_inertia(x, y)
 	mstate.inertia_acc_y = 0;
 end
 
+local function mouse_cursor_draw()
+	if (mstate.native) then
+		move_cursor(mstate.x, mstate.y);
+	else
+		local x, y = mouse_hotxy();
+		move_image(mstate.cursor, x + mstate.x_ofs, y + mstate.y_ofs);
+	end
+
+	if mstate.cursor_hook then
+		mstate.cursor_hook(mstate.cursor, x + mstate.x_ofs, y + mstate.y_ofs);
+	end
+end
+
+local function mouse_cursorhook(newhook)
+	local oldhook = mstate.cursor_hook;
+	mstate.cursor_hook = newhook;
+	return oldhook;
+end
+
 local function lock_constrain()
 -- locking to surface is slightly odd in that we still need to return
 -- valid relative motion which may or may not come from a relative source
@@ -233,13 +253,7 @@ local function mouse_cursorupd(x, y)
 	local rely = mstate.y - lmy;
 
 	lock_constrain();
-	if (mstate.native) then
-		move_cursor(mstate.x, mstate.y);
-	else
-		local x, y = mouse_hotxy();
-		move_image(mstate.cursor, x + mstate.x_ofs, y + mstate.y_ofs);
-	end
-
+	mouse_cursor_draw();
 	return relx, rely;
 end
 
@@ -436,7 +450,7 @@ function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden)
 		show_image(mstate.cursor);
 	end
 
-	move_image(mstate.cursor, mstate.x, mstate.y);
+	mouse_cursor_draw();
 	mstate.pickdepth = pickdepth;
 	order_image(mstate.cursor, clayer);
 	image_mask_set(mstate.cursor, MASK_UNPICKABLE);
@@ -490,13 +504,7 @@ function mouse_warp(x, y)
 	mstate.y = y;
 	mstate.press_x = x;
 	mstate.press_y = y;
-
-	if (mstate.native) then
-		move_cursor(mstate.x, mstate.y);
-	else
-		local mx, my = mouse_hotxy();
-		move_image(mstate.cursor, mx + mstate.x_ofs, my + mstate.y_ofs);
-	end
+	mouse_cursor_draw();
 end
 
 --
@@ -516,13 +524,7 @@ function mouse_absinput(x, y, nofwd)
 	mstate.y = y + (ary - ry);
 -- also need to constrain the relative coordinates when we clamp
 	lock_constrain();
-
-	if (mstate.native) then
-		move_cursor(mstate.x, mstate.y);
-	else
-		local x, y = mouse_hotxy();
-		move_image(mstate.cursor, x + mstate.x_ofs, y + mstate.y_ofs);
-	end
+	mouse_cursor_draw();
 
 	if (not nofwd) then
 		mouse_input(mstate.x, mstate.y, nil, true);
