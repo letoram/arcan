@@ -460,6 +460,8 @@ static void consume(struct arcan_shmif_cont* c)
  *  2. Always use new hint state
  *  3. If density has changed [> 0], use new value
  *  4. If cell dimensions has changed, use new values
+ *  5. Use timestamp component of new event, if it is not there
+ *     force it to the process local one
 */
 static inline void merge_dh(arcan_event* new, arcan_event* old)
 {
@@ -485,6 +487,10 @@ static inline void merge_dh(arcan_event* new, arcan_event* old)
 
 	if (!new->tgt.ioevs[6].iv)
 		new->tgt.ioevs[6].iv = old->tgt.ioevs[6].iv;
+
+	if (!new->tgt.timestamp){
+		new->tgt.timestamp = arcan_timemillis();
+	}
 }
 
 static void reset_dirty(struct arcan_shmif_cont* ctx)
