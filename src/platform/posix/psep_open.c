@@ -21,6 +21,7 @@
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/resource.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -829,18 +830,26 @@ void platform_device_init()
 		_exit(EXIT_FAILURE);
 
 	if (pid == 0){
-		psock = sockets[0];
-		int fl = fcntl(psock, F_GETFD);
-		if (-1 != fl)
-			fcntl(psock, F_SETFD, fl | FD_CLOEXEC);
-
-		arcan_process_title("device manager");
+/* last thing before dropping privileges, set high priority */
+		arcan_process_title("arcan renderer");
+		setpriority(PRIO_PROCESS, 0, -19);
 
 		close(sockets[1]);
 
 		if (!drop_privileges()){
 			_exit(EXIT_FAILURE);
 		}
+
+/* HARDENING NOTE:
+ * make sure this socket doesn't get forwarded (would provide device access),
+ * overall this is a fun CTFy attack angle - poke descriptor table to unset
+ * cloexec (this is still at a predictable descriptor value given the startup
+ * chain) and from an exec()ed setting, leverage more comfortably - randomize
+ * dup is needed here */
+		psock = sockets[0];
+		int fl = fcntl(psock, F_GETFD);
+		if (-1 != fl)
+			fcntl(psock, F_SETFD, fl | FD_CLOEXEC);
 
 /* privsep child can have STDOUT/STDERR, but prevent it from cascading */
 		int flags = fcntl(STDOUT_FILENO, F_GETFD);
@@ -886,6 +895,8 @@ void platform_device_init()
 	for (size_t i = 0; i < COUNT_OF(sigset); i++)
 		sigaction(sigset[i], &(struct sigaction){.sa_handler = SIG_IGN}, NULL);
 	child_conn = sockets[1];
+
+	arcan_process_title("arcan device control");
 
 	while(true){
 		parent_loop(pid, netlink);

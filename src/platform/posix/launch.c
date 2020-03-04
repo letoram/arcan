@@ -14,6 +14,7 @@
 #include <poll.h>
 #include <limits.h>
 #include <sys/wait.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/mman.h>
@@ -357,6 +358,19 @@ struct arcan_frameserver* platform_launch_fork(
 /* split out into a new session */
 		if (setsid() == -1)
 			_exit(EXIT_FAILURE);
+
+/* drop our nice level to normal user, have that configurable so that some
+ * setups may allow trusted launch-path children to have higher priority */
+		uintptr_t cfg;
+		cfg_lookup_fun get_config = platform_config_lookup(&cfg);
+		int level = 0;
+		char* priostr;
+
+/* nice itself will clamp */
+		if (get_config("child_priority", 0, &priostr, cfg)){
+			level = (int) strtol(priostr, NULL, 10) % INT_MAX;
+		}
+		setpriority(PRIO_PROCESS, 0, level);
 
 		int nfd = open("/dev/null", O_RDONLY);
 		if (-1 != nfd){
