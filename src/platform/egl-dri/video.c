@@ -208,7 +208,8 @@ static struct dev_node nodes[VIDEO_MAX_NODES];
 enum output_format {
 	OUTPUT_888 = 0,
 	OUTPUT_10b = 1,
-	OUTPUT_565 = 2
+	OUTPUT_565 = 2,
+	OUTPUT_64b = 3
 };
 
 /*
@@ -790,6 +791,8 @@ static int setup_buffers_gbm(struct dispout* d)
 		-1, /* 565 */
 		-1, /* 10-bit, X */
 		-1, /* 10-bit, A */
+		-1, /* 64-bpp, XBGR16F */
+		-1, /* 64-bpp, ABGR16F */
 		GBM_FORMAT_XRGB8888,
 		GBM_FORMAT_ARGB8888
 	};
@@ -798,6 +801,8 @@ static int setup_buffers_gbm(struct dispout* d)
 		"RGB565 16-bit",
 		"xRGB 30-bit",
 		"aRGB 30-bit",
+		"xRGB 64-bit",
+		"aRGB 64-bit",
 		"xRGB 24-bit",
 		"aRGB 24-bit"
 	};
@@ -814,7 +819,15 @@ static int setup_buffers_gbm(struct dispout* d)
 
 	if (d->output_format == OUTPUT_10b){
 		gbm_formats[1] = GBM_FORMAT_XRGB2101010;
-		gbm_formats[2] = GBM_FORMAT_ARGB8888;
+		gbm_formats[2] = GBM_FORMAT_ARGB2101010;
+	}
+	else if (d->output_format == OUTPUT_64b){
+/* older distributions may still carry a header without this one so go the
+ * preprocessor route for enabling */
+#ifdef GBM_FORMAT_XBGR16161616F
+		gbm_formats[3] = GBM_FORMAT_XBGR16161616F;
+		gbm_formats[4] = GBM_FORMAT_ABGR16161616F;
+#endif
 	}
 
 /* first get the set of configs from the display */
@@ -2454,6 +2467,21 @@ retry:
 		return -1;
 	}
 
+/* now we have a mode that is either hand-picked, inherited from the TTY or the
+ * DRM default - alas in many cases this is not the one with the highest refresh
+ * at that resolution, so sweep yet again and try and find one for that */
+	for (size_t i = 0; i < d->display.con->count_modes; i++){
+		drmModeModeInfo* cm = &d->display.con->modes[i];
+		if (cm->hdisplay == d->dispw &&
+			cm->vdisplay == d->disph && cm->vrefresh > vrefresh){
+			d->display.mode = *cm;
+			d->display.mode_set = i;
+			vrefresh = cm->vrefresh;
+			debug_print(
+				"(%d) higher refresh (%d) found at set resolution", vrefresh, (int)d->id);
+		}
+	}
+
 /* find a matching output-plane for atomic/streams */
 	if (d->device->atomic){
 		bool ok = true;
@@ -2723,7 +2751,7 @@ static struct dispout* match_connector(int fd, drmModeConnector* con)
  */
 static void query_card(struct dev_node* node)
 {
-	debug_print("check resources on %i\n", node->disp_fd);
+	debug_print("check resources on %i", node->disp_fd);
 
 	drmModeRes* res = drmModeGetResources(node->disp_fd);
 	if (!res){
@@ -4011,7 +4039,7 @@ static enum display_update_state draw_display(struct dispout* d)
 				agp_rendertarget_dirty_reset(newtgt->art, NULL);
 			}
 			else{
-				verbose_print("(%d) no dirty, skip\n");
+				verbose_print("(%d) no dirty, skip");
 				return UPDATE_SKIP;
 			}
 		}

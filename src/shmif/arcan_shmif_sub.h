@@ -171,6 +171,10 @@ struct ramp_block {
 
 	uint8_t edid[128];
 
+/* set to indicate nominal resolution and refresh rate */
+	size_t width, height;
+	uint8_t vrate_int, vrate_fract;
+
 /* plane_sizes determines consumed size and mapping, color information
  * can be retrieved from edid (assume RGB and let plane_sizes determine
  * planar or interleaved if no edid). */
