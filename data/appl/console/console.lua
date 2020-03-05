@@ -21,7 +21,6 @@ end
 function console_input(input)
 -- apply the keyboard translation table to all keyboard (translated) input and forward
 	if input.translated then
-		print(KEYBOARD:patch(input), input)
 		if valid_hotkey(input) then
 			return
 		end
@@ -58,7 +57,6 @@ function new_client(vid)
 		return
 	end
 	local new_ws = find_free_space()
-	print("NEW CLIENT", vid, "WS", new_ws);
 
 -- safe-guard against out of workspaces
 	if not new_ws then
@@ -75,7 +73,7 @@ end
 -- read configuration from database if its there, or use a default
 -- e.g. arcan_db add_appl_kv console terminal env=LC_ALL=C:palette=solarized
 function spawn_terminal()
-	local term_arg = (get_key("terminal") or "palette=solarized-white") ..
+	local term_arg = (get_key("terminal") or "palette=solarized") ..
 		":env=ARCAN_CONNPATH=" .. connection_point
 
 	return launch_avfeed(term_arg, "terminal", client_event_handler)
@@ -229,7 +227,6 @@ end
 
 function valid_hotkey(input)
 -- absorb right-shift as our modifier key
-	for k,v in pairs(input) do print(k, v) end
 	if decode_modifiers(input.modifiers, "") ~= hotkey_modifier then
 		return false
 -- only trigger on 'rising edge'
@@ -339,5 +336,14 @@ function whitelisted(kind, vid)
 			target_updatehandler(vid, set[kind])
 		end
 		return true
+	end
+end
+
+function VRES_AUTORES(w, h, vppcm, flags, source)
+	resize_video_canvas(w, h);
+	for i,v in pairs(workspaces) do
+		if valid_vid(v.vid) then
+			target_displayhint(v.vid, w, h, TD_HINT_IGNORE);
+		end
 	end
 end
