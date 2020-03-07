@@ -393,10 +393,8 @@ static void flush_client_events(
 		switch(ev.tgt.kind){
 		case TARGET_COMMAND_EXIT:
 			trace(TRACE_ALLOC, "shmif-> kill client");
-/*		this just murders us, should possibly send some 'die' event
- *		wl_client_destroy(cl->client);
-			trace("shmif-> kill client");
- */
+/* actual 'close' command varies with the shell type, so the real code
+ * for this should come inside the dispatch of the right one */
 		break;
 		case TARGET_COMMAND_DISPLAYHINT:
 			trace(TRACE_ALLOC, "shmif-> target update visibility or size");
