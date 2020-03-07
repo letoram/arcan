@@ -255,6 +255,13 @@ size_t arcan_tui_ucs4utf8(uint32_t cp, char dst[static 4])
 	return 0;
 }
 
+size_t arcan_tui_ucs4utf8_s(uint32_t cp, char dst[static 5])
+{
+	size_t nc = arcan_tui_ucs4utf8(cp, dst);
+	dst[nc] = '\0';
+	return nc;
+}
+
 ssize_t arcan_tui_utf8ucs4(const char src[static 4], uint32_t* dst)
 {
 /* check first byte */

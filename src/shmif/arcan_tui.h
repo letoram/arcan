@@ -187,13 +187,6 @@
  * run the arcan_tui_dynload in the same compilation unit with a
  * loader function provided as a function pointer argument.
  *
- * [MISSING/PENDING FEATURES]
- *  [ ] Simple audio
- *  [ ] Language bindings (see github.com/letoram/tui-bindings)
- *  [ ] External process- to window mapping / embedding
- *  [ ] Support library that emulates NCurses
- *  [ ] readline- widget
- *
  * [DEPRECATION/REFACTORING]
  *  [ ] Remove TSM
  *  [ ] Implement line- mode as a widget and remove all scrollback/
@@ -523,6 +516,33 @@ struct tui_cbcfg {
  * 2 : terminal state, context is dead
  */
 	void (*exec_state)(struct tui_context*, int state, void*);
+
+/*
+ * This is used for interactive CLI UI integration.
+ *
+ * [stack] is a NULL terminated array of the on-going / current set of arguments.
+ *
+ * Command MUST be one out of:
+ * TUI_CLI_BEGIN,
+ * TUI_CLI_EVAL,
+ * TUI_CLI_COMMIT,
+ * TUI_CLI_CANCEL
+ *
+ * The return value MUST be one out of:
+ * TUI_CLI_ACCEPT,
+ * TUI_CLI_SUGGEST,
+ * TUI_CLI_INVALID
+ *
+ * [n_results] is set to the upper limit of allowed feedback results that can be
+ * written into [feedback]. This is relevant for [TUI_CMD_EVAL, TUI_CMD_COMMIT]
+ * where a set of possible completion options may be provided, as well as where
+ *
+ * (important for CLI_CMD_SUGGEST) where a set of possible options are returned)
+ */
+	int (*cli_command)(struct tui_context*,
+		const char** const stack, size_t n_elem, int command,
+		const char** feedback, size_t* n_results
+	);
 
 /*
  * Add new callbacks here as needed, since the setup requires a sizeof of
@@ -968,6 +988,10 @@ void arcan_tui_dimensions(struct tui_context*, size_t* rows, size_t* cols);
  * to utf8 (used for input/output), returns number of bytes used in dst. */
 size_t arcan_tui_ucs4utf8(uint32_t, char dst[static 4]);
 
+/* version of ucs4utf8 that also ensures null-termination in the output,
+ * returns number of bytes used in dst NOT INCLUDING \0 */
+size_t arcan_tui_ucs4utf8_s(uint32_t, char dst[static 5]);
+
 /* helper to convert from a single utf8 codepoint, to ucs4, returns number of
  * bytes consumed or -1 on broken input */
 ssize_t arcan_tui_utf8ucs4(const char src[static 4], uint32_t* dst);
@@ -1163,6 +1187,7 @@ typedef size_t (* PTUIGETHANDLES)(struct tui_context**, size_t, int[], size_t);
 typedef void (* PTUIHANDOVER)(struct tui_context*, arcan_tui_conn*,
 	struct tui_constraints*, const char*, char* const[], char* const[], int);
 typedef size_t (* PTUIUCS4UTF8)(uint32_t, char dst[static 4]);
+typedef size_t (* PTUIUCS4UTF8_S)(uint32_t, char dst[static 5]);
 typedef ssize_t (* PTUIUTF8UCS4)(const char dst[static 4], uint32_t);
 
 static PTUIHANDOVER arcan_tui_handover;
@@ -1237,6 +1262,7 @@ static PTUISTATEDESCR arcan_tui_statedescr;
 static PTUIPRINTF arcan_tui_printf;
 static PTUIBGCOPY arcan_tui_bgcopy;
 static PTUIUCS4UTF8 arcan_tui_ucs4utf8;
+static PTUIUCS4UTF8_S arcan_tui_ucs4utf8_s;
 static PTUIUTF8UCS4 arcan_tui_utf8ucs4;
 
 /* dynamic loading function */
@@ -1316,6 +1342,7 @@ M(PTUIPRINTF, arcan_tui_printf);
 M(PTUIBGCOPY, arcan_tui_bgcopy);
 M(PTUIHASGLYPH, arcan_tui_hasglyph);
 M(PTUIUCS4UTF8, arcan_tui_ucs4utf8);
+M(PTUIUCS4UTF8_S, arcan_tui_ucs4utf8_s);
 M(PTUIUTF8UCS4, arcan_tui_utf8ucs4);
 
 #undef M
