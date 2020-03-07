@@ -248,27 +248,28 @@ static bool push_buffer(arcan_frameserver* src,
 		explicit = true;
 	}
 
-/* special case, the contents is in a compressed format that can either
- * be rasterized or deferred to on-GPU rasterization / atlas lookup, so
- * the other setup isn't strictly needed. */
+/* special case, the contents is in a compressed format that can either be
+ * rasterized or deferred to on-GPU rasterization / atlas lookup, so the other
+ * setup isn't strictly needed. */
 	if (src->desc.hints & SHMIF_RHINT_TPACK){
 
-/* First synch with the font size, some unit conversion here as the
- * fontraster function uses pt, while-as hints etc. are in mm+density.
- * If the values does not exist, use the same as the static defaults
- * from shmif */
-		float ppcm = src->desc.hint.ppcm;
-		float mmsz = src->desc.hint.sz;
+/* if the font-group is broken (no hints, ...), set a bitmap only one */
+		if (!src->desc.text.group)
+			src->desc.text.group = arcan_renderfun_fontgroup(NULL, 0);
 
-		if (ppcm < EPSILON)
-			ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
+		struct tui_raster_context* raster =
+			arcan_renderfun_fontraster(src->desc.text.group,
+				src->desc.hint.ppcm, src->desc.text.szmm,
+				src->desc.text.hint, NULL, NULL
+			);
 
-		if (mmsz <= EPSILON)
-			mmsz = 3.527780;
+/* this is the next step to change, of course we should merge the buffers into
+ * a tpack_vstore and then use normal txcos etc. to pick our visible set, and a
+ * MSDF text atlas to get drawing lists, removing the last 'big buffer'
+ * requirement */
+		tui_raster_renderagp(raster, store,
+			(uint8_t*) buf, src->desc.width * src->desc.height * sizeof(shmif_pixel));
 
-		tui_raster_renderagp(
-			arcan_renderfun_fontraster(NULL, 0, ppcm, mmsz), store, (uint8_t*) buf,
-			src->desc.width * src->desc.height * sizeof(shmif_pixel));
 		goto commit_mask;
 	}
 
@@ -1347,23 +1348,22 @@ arcan_errc arcan_frameserver_setfont(
 	if (!fsrv)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-/* first step, just track the values themselves, when we resolve the packing
- * server side entirely and not just apply the updates, we can just reraster
- * and immediately resize etc. but not there yet */
-	if (BADFD != fd){
-/* currently just dup, later switch this to a lookup function in arcan_ttf
- * where we resolve to an inode lookup index instead, along with a ref/deref
- * kind of tracking (gives glyph caching / reuse across frameservers) */
+	if (!fsrv->desc.text.group && slot == 0){
+		fsrv->desc.text.group =
+			arcan_renderfun_fontgroup((int[]){fd, BADFD, BADFD, BADFD}, 4);
 	}
 
-	if (sz > 0 && sz != fsrv->desc.hint.sz){
-/* calculate the new cell size and send that based on the fonts */
-		if (slot == 0){
-
-		}
-
-		fsrv->desc.hint.sz = sz;
+	if (!fsrv->desc.text.group){
+		close(fd);
+		return ARCAN_ERRC_UNACCEPTED_STATE;
 	}
+
+	if (sz && slot == 0){
+		fsrv->desc.text.szmm = sz;
+	}
+
+	arcan_renderfun_fontgroup_replace(fsrv->desc.text.group, slot, fd);
+
 	return ARCAN_OK;
 }
 

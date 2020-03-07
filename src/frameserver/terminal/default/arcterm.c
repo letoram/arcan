@@ -140,6 +140,7 @@ static void dump_help()
 #endif
 		" keep_alive  \t           \t don't exit if the terminal or shell terminates\n"
 		" palette     \t name      \t use built-in palette (below)\n"
+		" tpack       \t           \t use text-pack (server-side rendering) mode\n"
 		"Built-in palettes:\n"
 		"default, solarized, solarized-black, solarized-white, srcery\n"
 		"---------\t-----------\t----------------\n"
@@ -467,6 +468,15 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	if (arg_lookup(args, "help", 0, &val)){
 		dump_help();
 		return EXIT_SUCCESS;
+	}
+
+/*
+ * since it has not received enough testing yet, 'TPACK' mode where server-side
+ * text-rendering is not the default - but can be enabled by setting the argument
+ * here.
+ */
+	if (arg_lookup(args, "tpack", 0, NULL)){
+		setenv("TUI_RPACK", "1", true);
 	}
 
 	struct tui_cbcfg cbcfg = {

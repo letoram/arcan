@@ -73,6 +73,8 @@ void* TTF_GetFtFace(TTF_Font*);
 
 int UTF8_to_UTF32(uint32_t* out, const uint8_t* in, size_t len);
 
+void TTF_Resize(TTF_Font* font, int ptsize, uint16_t hdpi, uint16_t vdpi);
+
 /* Set and retrieve the font style */
 #define TTF_STYLE_NORMAL 0x00
 #define TTF_STYLE_BOLD 0x01
@@ -216,5 +218,8 @@ int TTF_WasInit(void);
 
 /* Get the kerning size of two glyphs */
 int TTF_GetFontKerningSize(TTF_Font *font, int prev_index, int index);
+
+/* derive an 'ok' grid cell size for the font at its current size */
+void TTF_ProbeFont(TTF_Font* font, size_t* dw, size_t* dh);
 
 #endif

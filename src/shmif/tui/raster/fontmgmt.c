@@ -1,3 +1,12 @@
+/*
+ * This is replicated in engine/renderfun.c as part of a staged refactor,
+ * eventually when we switch rasterization off in TUI entirely - we still
+ * need some font management to determine if a glyph exists or not without
+ * enforcing a round-trip, same for substitutions.
+ *
+ * The plan is to have a simplified format of just a list of glyph-IDs
+ * and for substitution tables.
+ */
 #include <math.h>
 
 struct agp_vstore;
@@ -8,41 +17,7 @@ struct agp_vstore;
 #include "pixelfont.h"
 #include "raster.h"
 
-/*
- * For a truetype font, run a static table and check the maximum sizes of
- * the glyphs at the configured pt_size/dpi and style
- */
-static void probe_font(
-	struct tui_context* tui, TTF_Font* font, size_t* dw, size_t* dh)
-{
-	static const char* msg[] = {
-		"A", "a", "!", "_", "J", "j", "G", "g", "M", "m", "`", "-", "=", NULL
-	};
-
-	TTF_Color fg = {.r = 0xff, .g = 0xff, .b = 0xff};
-	int w = *dw, h = *dh;
-
-	for (size_t i = 0; msg[i]; i++){
-		TTF_SizeUTF8(font, msg[i], &w, &h, TTF_STYLE_BOLD | TTF_STYLE_UNDERLINE);
-
-		if (tui->hint == TTF_HINTING_RGB)
-			w++;
-
-		if (w > *dw){
-			*dw = w;
-		}
-
-		if (h > *dh)
-			*dh = h;
-	}
-
-/*
- * Flush the cache so we're not biased or collide with byIndex or byValue
- */
-	TTF_Flush_Cache(font);
-}
-
-bool tryload_truetype(struct tui_context* tui,
+static bool tryload_truetype(struct tui_context* tui,
 	int fd, int mode, size_t pt_size, float dpi)
 {
 	int slot = mode == 0 ? 0 : 1;
@@ -69,7 +44,7 @@ bool tryload_truetype(struct tui_context* tui,
 /* the first slot determines cell size */
 	if (mode == 0){
 		size_t dw = 0, dh = 0;
-		probe_font(tui, tui->font[0]->truetype, &dw, &dh);
+		TTF_ProbeFont(tui->font[0]->truetype, &dw, &dh);
 		tui->cell_w = dw;
 		tui->cell_h = dh;
 /* optimization here is that in tui cell mode, we only really need the
@@ -81,10 +56,10 @@ bool tryload_truetype(struct tui_context* tui,
 }
 
 /*
- * Threat the descriptor (fd) as a pixel font that is added for the pixel
+ * Treat the descriptor (fd) as a pixel font that is added for the pixel
  * size slot [px_sz] acting as primary or supplementary set of glyphs [mode > 0]
  */
-bool tryload_bitmap(struct tui_context* tui, int fd, int mode, size_t px_sz)
+static bool tryload_bitmap(struct tui_context* tui, int fd, int mode, size_t px_sz)
 {
 	int work = dup(fd);
 	bool rv = false;
@@ -173,6 +148,7 @@ static bool setup_font(
 /* and if not, go with freetype */
 		else {
 			if (tryload_truetype(tui, fd, mode, pt_size, tui->ppcm * 2.54f)){
+
 			}
 		}
 	}
@@ -181,8 +157,6 @@ static bool setup_font(
 	else {
 		if (tui->font[0]->vector){
 			tryload_truetype(tui, tui->font[0]->fd, 0, pt_size, tui->ppcm * 2.54f);
-		}
-		else if (tui->font[0]->bitmap){
 		}
 		else {
 			size_t w = 0, h = 0;

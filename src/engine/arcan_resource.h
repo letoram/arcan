@@ -7,7 +7,10 @@
 #ifndef _HAVE_ARCAN_RESOURCE
 #define _HAVE_ARCAN_RESOURCE
 typedef struct {
-	char* ptr;
+	union {
+		char* ptr;
+		uint8_t* u8;
+	};
 	size_t sz;
 	bool mmap;
 } map_region;
