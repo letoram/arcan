@@ -240,13 +240,23 @@ static const struct zwp_relative_pointer_manager_v1_interface relpmgr_if = {
 	.get_relative_pointer = relpm_get
 };
 
+#include "wayland-pointer-constraints-unstable-v1-server-protocol.h"
 #include "wlimpl/constrain.c"
-/*
- * static const struct zwp_locked_pointer_v1_interface consptr_if = {
-	.destroy = consptr_destroy,
-	.set_cursor_position_hint = consptr_hintat,
-	.set_region = consptr_region
+static const struct zwp_confined_pointer_v1_interface confptr_if = {
+	.destroy = confptr_destroy,
+	.set_region = confptr_region
 };
- */
+
+static const struct zwp_pointer_constraints_v1_interface consptr_if = {
+	.destroy = consptr_destroy,
+	.confine_pointer = consptr_confine,
+	.lock_pointer = consptr_lock
+};
+
+static const struct zwp_locked_pointer_v1_interface lockptr_if = {
+	.destroy = lockptr_destroy,
+	.set_region = lockptr_region,
+	.set_cursor_position_hint = lockptr_hintat
+};
 
 #include "bondage.c"
