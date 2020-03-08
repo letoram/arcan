@@ -75,7 +75,12 @@ local mouse_handlers = {
 	hover = {},
 	motion = {},
 	dblclick = {},
-	rclick = {}
+	rclick = {},
+
+-- actually for touch events, but we want to piggyback on the rest of the
+-- infrastructure as well, the other events can be emulated, but invisible
+-- 'tap on a thing' is different
+	tap = {},
 };
 
 MOUSE_LABELLUT = {
@@ -386,15 +391,18 @@ function mouse_state()
 end
 
 function mouse_destroy()
-	mouse_handlers = {};
-	mouse_handlers.click = {};
-  mouse_handlers.drag  = {};
-	mouse_handlers.drop  = {};
-	mouse_handlers.over = {};
-	mouse_handlers.out = {};
-	mouse_handlers.motion = {};
-	mouse_handlers.dblclick = {};
-	mouse_handlers.rclick = {};
+	mouse_handlers = {
+		click = {},
+		drag = {},
+		drop = {},
+		over = {},
+		out = {},
+		motion = {},
+		dblclick = {},
+		rclick = {},
+		tap = {}
+	};
+
 	mstate.handlers = mouse_handlers;
 	mstate.eventtrace = false;
 	mstate.btns = {false, false, false, false, false};

@@ -3,6 +3,29 @@
 -- @inargs: vid, maskval
 -- @group: image
 -- @cfunction: setmask
+-- @description:
+-- Images that are linked to eachother via ref:link_image gets a number
+-- of its attributes redefined to be relative the the parent it is linked
+-- again. At times, not all attributes are relevant to inherit, and these
+-- can be controlled through the image_mask_ set of functions.
+--
+-- The currently valid maskvals are:
+--
+-- MASK_UNPICKABLE : if set, the image will be ignored for picking
+-- operations
+--
+--- MASK_LIVING : (default) if set, the image will be deleted when
+-- the parent expires.
+--
+--
+-- MASK_POSITION : (default) image coordinate system origo
+--
+-- MASK_OPACITY : (default) image opacity
+--
+-- MASK_ROTATION : (default) image rotation angle
+--
+-- MASK_SCALE : (default) reserved, no-op
+--
 -- @note: an invalid maskval is considered a terminal state transition.
 -- @related: image_mask_toggle, image_mask_clear, image_mask_clearall
 -- @reference: image_mask
