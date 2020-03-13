@@ -812,6 +812,9 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_fatal("couldn't load appl, missing %s function\n", arcan_appl_id() ?
 		arcan_appl_id() : "");
 
+/* mark that we are in hook so a script can know that is being used as a hook-
+ * scripts and not as embedded by the appl itself */
+	arcan_lua_setglobalint(main_lua_context, "IN_HOOK", 1);
 	for (size_t i = 0; i < arr_hooks.count; i++){
 		if (arr_hooks.data[i]){
 			const char* name = arr_hooks.data[i];
@@ -819,6 +822,7 @@ int MAIN_REDIR(int argc, char* argv[])
 			arcan_lua_dostring(main_lua_context, src, name);
 		}
 	}
+	arcan_lua_setglobalint(main_lua_context, "IN_HOOK", 0);
 
 	if (adopt){
 		arcan_lua_setglobalint(main_lua_context, "CLOCK", evctx->c_ticks);
