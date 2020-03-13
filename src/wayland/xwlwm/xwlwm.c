@@ -36,6 +36,7 @@ struct xwnd_state {
 	bool mapped;
 	bool paired;
 	bool override_redirect;
+	bool fullscreen;
 	int x, y;
 	int w, h;
 	int id;
@@ -95,6 +96,11 @@ static inline void trace(const char* msg, ...)
 #define TRACE_PREFIX ""
 #define trace(Y, ...) do { } while (0)
 #endif
+
+static bool is_wm_window(xcb_drawable_t id)
+{
+	return id == wnd_wm || id == wnd_root || id == wnd_sel;
+}
 
 static inline void wm_command(bool flush, const char* msg, ...)
 {
@@ -475,7 +481,7 @@ static void xcb_create_notify(xcb_create_notify_event_t* ev)
 
 /* if we add other wm- managed windows (selection, dnd),
  * these should be filtered out here as well */
-	if (ev->window == wnd_wm)
+	if (is_wm_window(ev->window))
 		return;
 
 	struct xwnd_state* state = malloc(sizeof(struct xwnd_state));
@@ -591,6 +597,8 @@ static void xcb_client_message(xcb_client_message_event_t* ev)
  * NET_WM_MOVERESIZE: set edges for move-resize window
  * PROTOCOLS: set ping-pong
  */
+	struct xwnd_state* state;
+	HASH_FIND_INT(windows,&ev->window,state);
 
 /* WL_SURFACE_ID : gives wayland surface id */
 	if (ev->type == atoms[WL_SURFACE_ID]){
@@ -600,8 +608,6 @@ static void xcb_client_message(xcb_client_message_event_t* ev)
 			ev->window, ev->data.data32[0]
 		);
 
-		struct xwnd_state* state;
-		HASH_FIND_INT(windows,&ev->window,state);
 		if (state){
 			state->paired = true;
 			send_updated_window(state, "map");
@@ -610,13 +616,22 @@ static void xcb_client_message(xcb_client_message_event_t* ev)
 /* NET_WM_STATE:
  * data32[0] : action (remove:0, add:1, toggle:2)
  * [1,2] property (NET_WM_STATE_ MODAL, FULLSCREEN, MAXIMIZED_VERT, MAXIMIZED_HORIZ) */
-	else if (ev->type == atoms[NET_WM_STATE]){
+	else if (ev->type == atoms[NET_WM_STATE] && state){
 		if (ev->data.data32[1] == atoms[NET_WM_STATE_FULLSCREEN] ||
 			ev->data.data32[2] == atoms[NET_WM_STATE_FULLSCREEN]){
+			if (ev->data.data32[0] == 0){
+				state->fullscreen = false;
+			}
+			else if (ev->data.data32[0] == 1){
+				state->fullscreen = true;
+			}
+			else {
+				state->fullscreen = !state->fullscreen;
+			}
 			wm_command(WM_FLUSH,
-				"kind=fullscreen:id=%"PRIu32":state=%s", ev->window,
-				ev->data.data32[0] == 0 ? "off" :
-				(ev->data.data32[0] == 1 ? "on" : "toggle"));
+				"kind=fullscreen:state=%s:id=%"PRIu32,
+				state->fullscreen ? "on" : "off", ev->window);
+
 		}
 	}
 	else {
@@ -695,9 +710,17 @@ static void xcb_configure_request(xcb_configure_request_event_t* ev)
 		ev->window, ev->x, ev->y, ev->width, ev->height
 	);
 
-/* if fullscreen
-	send_configure_notify(ev->window);
- */
+	if (ev->width)
+		state->w = ev->width;
+
+	if (ev->height)
+		state->h = ev->height;
+
+	if (state->fullscreen){
+		send_configure_notify(ev->window);
+		return;
+	}
+
 	int mask =
 		XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
 		XCB_CONFIG_WINDOW_BORDER_WIDTH;
@@ -737,7 +760,6 @@ static void xcb_configure_request(xcb_configure_request_event_t* ev)
 /* just ack the configure request for now, this should really be deferred
  * until we receive the corresponding command from our parent but we lack
  * that setup right now */
-
 	xcb_configure_window(dpy, ev->window, mask, values);
 }
 
@@ -795,9 +817,9 @@ static void process_wm_command(const char* arg)
 	}
 	else if (strcmp(dst, "fullscreen") == 0){
 		trace("wm=srv-fullscreen:id=%s", idstr);
+		state->fullscreen = !state->fullscreen;
 	}
 	else if (strcmp(dst, "resize") == 0){
-
 		if (!arg_lookup(args, "width", 0, &dst) || !dst){
 			trace("wm_error=bad_argument:message=resize missing width");
 			goto cleanup;
@@ -810,7 +832,8 @@ static void process_wm_command(const char* arg)
 		}
 		size_t h = strtoul(dst, NULL, 10);
 		trace("wm=srv-resize:id=%s:width=%zu:height=%zu", idstr, w, h);
-
+		state->w = w;
+		state->h = h;
 		const char* wtype = check_window_state(id);
 		if (strcmp(wtype, "default") == 0){
 			xcb_configure_window(dpy, id,
@@ -857,8 +880,13 @@ static void process_wm_command(const char* arg)
 			xcb_send_event(dpy, false, wnd_wm, XCB_EVENT_MASK_NO_EVENT, (char*)&ev);
 		}
 		else {
+/* if it is the last one currently active, disconnect the client */
 			trace("srv-destroy, delete_kill(%d)", id);
-			xcb_destroy_window(dpy, id);
+			if (HASH_COUNT(windows) == 1){
+				xcb_kill_client(dpy, id);
+			}
+			else
+				xcb_destroy_window(dpy, id);
 		}
 	}
 	else if (strcmp(dst, "unfocus") == 0){
