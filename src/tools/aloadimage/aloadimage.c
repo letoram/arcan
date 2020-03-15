@@ -641,6 +641,7 @@ static const struct option longopts[] = {
 	{"display", no_argument, NULL, 'd'},
 	{"aspect", no_argument, NULL, 'a'},
 	{"vr180", no_argument, NULL, 'H'}
+	{ NULL, no_argument, NULL, 0 }
 };
 
 int main(int argc, char** argv)
