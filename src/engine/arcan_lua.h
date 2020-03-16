@@ -32,7 +32,7 @@ void arcan_lua_mapfunctions(
 	struct arcan_luactx* dst, int debuglevel);
 
 char* arcan_lua_main(struct arcan_luactx*, const char* input, bool file_in);
-void arcan_lua_dostring(struct arcan_luactx*, const char* sbuf);
+void arcan_lua_dostring(struct arcan_luactx*, const char* sbuf, const char* name);
 
 /* cbdrop is part of crash recovery and sweeps all context stacks looking
  * for vobjects with tags that reference any lua context (hence not multi-

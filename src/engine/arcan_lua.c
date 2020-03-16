@@ -7191,11 +7191,11 @@ void arcan_lua_shutdown(lua_State* ctx)
 	lua_close(ctx);
 }
 
-void arcan_lua_dostring(lua_State* ctx, const char* code)
+void arcan_lua_dostring(lua_State* ctx, const char* code, const char* name)
 {
-	(void)luaL_dostring(ctx, code);
+	luaL_loadbuffer(ctx,
+		code, strlen(code), name) || lua_pcall(ctx, 0, LUA_MULTRET, 0);
 }
-
 
 static jmp_buf watchdog_dst;
 static void error_hook(lua_State* ctx, lua_Debug* ar)

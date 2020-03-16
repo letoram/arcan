@@ -2170,7 +2170,7 @@ arcan_vobj_id arcan_video_currentattachment()
 {
 	struct rendertarget* rtgt = current_context->attachment;
 	if (!rtgt || !rtgt->color)
-		return ARCAN_EID;
+		return ARCAN_VIDEO_WORLDID;
 
 	return rtgt->color->cellid;
 }
