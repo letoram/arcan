@@ -45,14 +45,17 @@ struct arcan_frameserver_meta {
 	struct arcan_shmif_region region;
 	bool region_valid;
 
-/* accumulation of (_setfont and _displayhint) calls, used to control
- * raster- options for TPACK unpacking etc. */
+/* reference context into renderfun for tracking font-state */
 	struct {
-		size_t width;
-		size_t height;
+		struct arcan_renderfun_fontgroup* group;
+		int hint;
+		float szmm;
+	} text;
+
+/* tracking state for displayhint events */
+	struct {
+		size_t width, height;
 		float ppcm;
-		float sz;
-		int fd[2];
 	} hint;
 
 /* primarily for feedcopy */

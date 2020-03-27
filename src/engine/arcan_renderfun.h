@@ -132,10 +132,38 @@ int arcan_renderfun_stretchblit(char* src, int inw, int inh,
 	uint32_t* dst, size_t dstw, size_t dsth, int flipv);
 
 /*
+ * Bind a set of decriptors pointing to fonts in order of priority.
+ * Group take ownership of descriptors.
+ *
+ * Fonts will be opened/configured based on ppcm/size_mm.
+ * Hinting parameter matches the table above in [arcan_video_defaultfont].
+ *
+ * If [fds] are NULL and/or n_fonts == 0, the builtin/default font will
+ * be used.
+ *
+ * Resolved/Approximated cell dimensions for non-shaped rendering are returned.
+ */
+struct arcan_renderfun_fontgroup* arcan_renderfun_fontgroup(int* fds, size_t n_fonts);
+
+/*
+ * Update a specific slot in the font group with a new descriptor
+ */
+void arcan_renderfun_fontgroup_replace(
+	struct arcan_renderfun_fontgroup*, int slot, int fd);
+
+/*
+ * Free resources tied to a previously allocated fontgroup
+ */
+void arcan_renderfun_release_fontgroup(struct arcan_renderfun_fontgroup* group);
+
+/*
  * Intermediate structure for looking up rasterization context based on inode
- * reference -> fonts -> font-size caching.
+ * reference -> fonts -> font-size caching. Context is only valid for one call
+ * to tui_raster.
  */
 struct tui_raster_context;
-struct tui_raster_context*
-	arcan_renderfun_fontraster(
-		uint64_t* refs, size_t n_fonts, float ppcm, float size_mm);
+struct tui_raster_context* arcan_renderfun_fontraster(
+	struct arcan_renderfun_fontgroup*,
+	float ppcm, float size_mm,
+	int hint, size_t* cellw, size_t* cellh
+);

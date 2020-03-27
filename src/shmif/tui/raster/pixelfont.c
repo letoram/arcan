@@ -218,29 +218,6 @@ bool tui_pixelfont_load(struct tui_pixelfont* ctx,
 	return true;
 }
 
-static void drop_font_context (struct tui_pixelfont* ctx)
-{
-	if (!ctx)
-		return;
-
-	for (size_t i = 0; i < ctx->n_fonts; i++){
-		if (!ctx->fonts[i].font)
-			continue;
-
-/* some font slots share hash table with others, don't free those,
- * the real table slot won't be marked as shared */
-		if (!ctx->fonts[i].shared_ht)
-			HASH_CLEAR(hh, ctx->fonts[i].ht);
-
-		free(ctx->fonts[i].font);
-		ctx->fonts[i].font = NULL;
-		ctx->fonts[i].sz = 0;
-		ctx->fonts[i].shared_ht = false;
-	}
-
-	free(ctx);
-}
-
 /*
  * pick the nearest font for the requested size slot, set the sizes
  * used in *w and *h.
@@ -274,7 +251,8 @@ void tui_pixelfont_close(struct tui_pixelfont* ctx)
 		if (!ctx->fonts[i].shared_ht)
 			HASH_CLEAR(hh, ctx->fonts[i].ht);
 
-			free(ctx->fonts[i].font);ctx->fonts[i].font = NULL;
+			free(ctx->fonts[i].font);
+			ctx->fonts[i].font = NULL;
 			ctx->fonts[i].sz = 0;
 			ctx->fonts[i].shared_ht = false;
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2017, Björn Ståhl
+ * Copyright 2008-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -16,6 +16,7 @@
 #include <math.h>
 #include <unistd.h>
 #include <assert.h>
+#include <errno.h>
 
 #ifndef ARCAN_FONT_CACHE_LIMIT
 #define ARCAN_FONT_CACHE_LIMIT 8
@@ -28,9 +29,10 @@
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 #include "arcan_ttf.h"
+#include "arcan_shmif.h"
 
 #define shmif_pixel av_pixel
-#define TTF_Font TTF_Font*
+#define TTF_Font TTF_Font
 #define NO_ARCAN_SHMIF
 #include "../shmif/tui/raster/pixelfont.h"
 #include "../shmif/tui/raster/raster.h"
@@ -1464,34 +1466,263 @@ int arcan_renderfun_stretchblit(char* src, int inw, int inh,
 	return 1;
 }
 
-struct tui_raster_context*
-	arcan_renderfun_fontraster(uint64_t* refs, size_t n_fonts, float ppcm, float size_mm)
-{
-	static struct tui_raster_context* temp_ctx;
-	size_t w, h;
+struct arcan_renderfun_fontgroup {
+	struct tui_font* font;
+	struct tui_raster_context* raster;
+	size_t used;
 
-	struct tui_font* fonts[1] = {
-		&builtin_bitmap
+	float ppcm;
+	float size_mm;
+
+/* when adding atlas support, reference the internal font here instead */
+};
+
+static void build_font_group(
+	struct arcan_renderfun_fontgroup* grp, int* fds, size_t n_fonts);
+
+static void close_font_slot(struct arcan_renderfun_fontgroup* grp, int slot)
+{
+	if (!(grp->font[slot].fd && grp->font[slot].fd != BADFD) ||
+		grp->font == &builtin_bitmap)
+		return;
+
+	close(grp->font[slot].fd);
+	grp->font[slot].fd = -1;
+	if (grp->font[slot].vector){
+		TTF_CloseFont(grp->font[slot].truetype);
+		grp->font[slot].truetype = NULL;
+	}
+	else{
+		tui_pixelfont_close(grp->font[slot].bitmap);
+		grp->font[slot].bitmap = NULL;
+	}
+}
+
+static int consume_pixel_font(struct arcan_renderfun_fontgroup* grp, int fd)
+{
+	data_source src = {
+		.fd = fd,
+		.source = NULL
 	};
 
-/* first round/ convert to pt size */
-	size_t pt_size = size_mm * 2.8346456693f;
+	map_region map = arcan_map_resource(&src, false);
+	if (!map.ptr || map.sz < 32 || !tui_pixelfont_valid(map.u8, 23)){
+		arcan_release_map(map);
+		return 0;
+	}
+
+/* prohibit mixing and matching vector/bitmap */
+	if (grp->font[0].truetype && grp->font[0].vector){
+		close_font_slot(grp, 0);
+		grp->font[0].vector = false;
+	}
+
+	for (size_t i = 1; i < grp->used; i++){
+		close_font_slot(grp, i);
+	}
+
+/* re-use current bitmap group or build one if it isn't there */
+	if (!grp->font[0].bitmap &&
+		!(grp->font[0].bitmap = tui_pixelfont_open(64))){
+		close(fd);
+		arcan_release_map(map);
+		return -1;
+	}
+
+	close(fd);
+	return 1;
+}
+
+static void font_group_ptpx(
+	struct arcan_renderfun_fontgroup* grp, size_t* pt, size_t* px)
+{
+	float pt_size = ceilf((float)grp->size_mm * 2.8346456693f);
 	if (pt_size < 4)
 		pt_size = 4;
 
-/* apply density over size information */
-	size_t px_sz = ceilf((float)pt_size * 0.03527778 * ppcm);
+	if (pt)
+		*pt = pt_size;
 
-/* if the font is of a bitmap type, resolve the pixel size from density+size
- * and request that from the builtin bitmap font */
-	tui_pixelfont_setsz(builtin_bitmap.bitmap, px_sz, &w, &h);
+	if (px)
+		*px = ceilf((float)pt_size * 0.03527778 * grp->ppcm);
+}
 
-	if (!temp_ctx){
-		temp_ctx = tui_raster_setup(w, h);
-		tui_raster_setfont(temp_ctx, fonts, 1);
+static void set_font_slot(
+	struct arcan_renderfun_fontgroup* grp, int slot, int fd)
+{
+/* first check for a supported pixel font format, early-out on found/io error */
+	int pfstat = consume_pixel_font(grp, fd);
+	if (pfstat)
+		return;
+
+/* assume vector and try TTF - next step here is to use this to resolve the
+ * font / size against the existing cache using the inode, careful with the
+ * refcount in that case though */
+	size_t pt_sz;
+	font_group_ptpx(grp, &pt_sz, NULL);
+	float dpi = grp->ppcm * 2.54f;
+	grp->font[slot].truetype = TTF_OpenFontFD(fd, pt_sz, dpi, dpi);
+	if (!grp->font[slot].truetype){
+		close(fd);
+		return;
 	}
-	else
-		tui_raster_cell_size(temp_ctx, w, h);
 
-	return temp_ctx;
+	grp->font[slot].fd = fd;
+	grp->font[slot].vector = true;
+	TTF_SetFontStyle(grp->font[slot].truetype, TTF_STYLE_NORMAL);
+	TTF_SetFontStyle(grp->font[slot].truetype, TTF_HINTING_NORMAL);
+}
+
+/* option to consider is if we do refcount + sharing of group, or do that
+ * on the font level, likely the latter given how that worked out for vobjs
+ * with null_surface sharing vstores vs. the headache that was instancing */
+struct arcan_renderfun_fontgroup* arcan_renderfun_fontgroup(int* fds, size_t n_fonts)
+{
+/* we take ownership of descriptors */
+	struct arcan_renderfun_fontgroup* grp =
+		arcan_alloc_mem(
+			sizeof(struct arcan_renderfun_fontgroup),
+			ARCAN_MEM_VSTRUCT,
+			ARCAN_MEM_BZERO,
+			ARCAN_MEMALIGN_NATURAL
+		);
+
+	if (!grp)
+		return NULL;
+
+	build_font_group(grp, fds, n_fonts);
+
+	return grp;
+}
+
+void arcan_renderfun_fontgroup_replace(
+	struct arcan_renderfun_fontgroup* group, int slot, int new)
+{
+	if (!group)
+		return;
+
+/* always invalidate any cached raster */
+	if (group->raster){
+		tui_raster_free(group->raster);
+		group->raster = NULL;
+	}
+
+/* can't accomodate, ignore */
+	if (slot >= group->used){
+		close(new);
+		return;
+	}
+
+	set_font_slot(group, slot, new);
+}
+
+void arcan_renderfun_release_fontgroup(struct arcan_renderfun_fontgroup* group)
+{
+	if (!group)
+		return;
+
+	for (size_t i = 0; i < group->used; i++)
+		close_font_slot(group, i);
+
+	group->used = 0;
+
+	tui_raster_free(group->raster);
+	arcan_mem_free(group->font);
+	arcan_mem_free(group);
+}
+
+struct tui_raster_context* arcan_renderfun_fontraster(
+	struct arcan_renderfun_fontgroup* group,
+	float ppcm, float size_mm,
+	int hint, size_t* cellw, size_t* cellh)
+{
+/* if we have a cached raster for this size, return it if it is still
+ * valid, otherwise free and replace with a more appropriate one */
+	if (group->raster){
+		if ((ppcm < EPSILON || fabs(ppcm - group->ppcm) < EPSILON) &&
+			(size_mm < EPSILON || fabs(size_mm - group->size_mm) < EPSILON)){
+			return group->raster;
+		}
+		tui_raster_free(group->raster);
+		group->raster = NULL;
+	}
+
+/* otherwise, build a new list (_setup will copy internally) */
+	struct tui_font* lst[group->used];
+	for (size_t i = 0; i < group->used; i++){
+		lst[i] = &group->font[i];
+	}
+
+/* fetch the last hinted dimensions if missing */
+	size_t pt, px;
+	if (ppcm < EPSILON)
+		ppcm = group->ppcm;
+	if (size_mm < EPSILON)
+		size_mm = group->size_mm;
+
+/* synch and resolve pixel/pt sizes */
+	bool sz_changed =
+		fabs(ppcm - group->ppcm) > EPSILON ||
+		fabs(size_mm - group->size_mm) > EPSILON;
+	group->ppcm = ppcm;
+	group->size_mm = group->size_mm;
+	font_group_ptpx(group, &pt, &px);
+
+
+/* reflect dimensions in fonts */
+	size_t w = 0, h = 0;
+	if (group->font[0].vector){
+		if (sz_changed){
+			for (size_t i = 0; i < group->used; i++){
+				if (-1 == group->font[i].fd || !group->font[i].vector)
+					continue;
+
+				TTF_Resize(group->font[i].truetype, pt, ppcm * 2.54, ppcm * 2.54);
+			}
+		}
+
+/* need to re-open the font if dpi or size has changed from last */
+		TTF_ProbeFont(group->font[0].truetype, &w, &h);
+	}
+	else {
+		tui_pixelfont_setsz(group->font[0].bitmap, px, &w, &h);
+	}
+
+	group->raster = tui_raster_setup(w, h);
+	tui_raster_setfont(group->raster, lst, group->used);
+
+	return group->raster;
+}
+
+static void build_font_group(
+	struct arcan_renderfun_fontgroup* grp, int* fds, size_t n_fonts)
+{
+/* safe defaults */
+	grp->ppcm = 37.795276;
+	grp->size_mm = 3.527780;
+
+/* default requested */
+	if (!n_fonts)
+		goto fallback_bitmap;
+
+	grp->used = n_fonts;
+	grp->font = arcan_alloc_mem(
+		sizeof(struct tui_font) * n_fonts,
+		ARCAN_MEM_VSTRUCT,
+		ARCAN_MEM_BZERO,
+		ARCAN_MEMALIGN_NATURAL
+	);
+	if (!grp->font)
+		goto fallback_bitmap;
+
+/* probe types, fill out the font structure accordingly */
+	for (size_t i = 0; i < n_fonts; i++){
+		set_font_slot(grp, i, fds[i]);
+	}
+	return;
+
+fallback_bitmap:
+	grp->used = 1;
+	arcan_mem_free(grp->font);
+	grp->font = &builtin_bitmap;
 }
