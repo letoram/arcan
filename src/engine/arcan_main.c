@@ -298,7 +298,16 @@ static void add_hookscript(const char* instr)
 	if (arr_hooks.count + 1 >= arr_hooks.limit)
 		arcan_mem_growarr(&arr_hooks);
 
-	arr_hooks.data[arr_hooks.count++] = strdup(reg.ptr);
+/* to "reuse" the string, take the ugly approach of string-in-string,
+ * alloc_mem is fatal unless explicitly set NONFATAL */
+	size_t dlen = strlen(reg.ptr);
+	size_t blen = strlen(instr);
+	char* comp = arcan_alloc_mem(dlen + blen + 2,
+		ARCAN_MEM_STRINGBUF, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+	memcpy(comp, instr, blen);
+	memcpy(&comp[blen+1], reg.ptr, dlen);
+
+	arr_hooks.data[arr_hooks.count++] = comp;
 
 	arcan_release_map(reg);
 	arcan_release_resource(&src);
@@ -804,8 +813,11 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_appl_id() : "");
 
 	for (size_t i = 0; i < arr_hooks.count; i++){
-		if (arr_hooks.data[i])
-			arcan_lua_dostring(main_lua_context, arr_hooks.data[i]);
+		if (arr_hooks.data[i]){
+			const char* name = arr_hooks.data[i];
+			const char* src = &name[strlen(name)+1];
+			arcan_lua_dostring(main_lua_context, src, name);
+		}
 	}
 
 	if (adopt){
