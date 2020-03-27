@@ -1210,6 +1210,22 @@ function mouse_scale(factor)
 	cursor.accel_y = mouse.prescale.ay * factor;
 end
 
+function mouse_touch_at(x, y, kind)
+	local forward = true
+
+	kind = kind and kind or "tap";
+	local hists = mouse_pickfun(x, y, mstate.pickdepth, 1);
+	local taph = mstate.handlers.tap;
+	for i=1,#hists do
+		local res = linear_find_vid(taph, hists[i], "tap");
+		if res then
+			forward = res:tap(x, y, kind);
+		end
+	end
+
+	return forward
+end
+
 function mouse_cursor_sf(fx, fy)
 	mstate.scale_w = fx and fx or 1.0;
 	mstate.scale_h = fy and fy or 1.0;

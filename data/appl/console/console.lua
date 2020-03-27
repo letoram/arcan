@@ -1,12 +1,18 @@
 local workspaces = {} -- use to track client states
 local ws_index = 1 -- active workspace
-local hotkey_modifier = "rshift"
+local hotkey_modifier = "lalt"
 local clipboard_last = ""
 local connection_point = "console"
+local ws_limit = 100
 
 function console()
 	KEYBOARD = system_load("builtin/keyboard.lua")() -- get a keyboard state machine
 	system_load("builtin/mouse.lua")() -- get basic mouse button definitions
+	system_load("builtin/debug.lua")()
+	system_load("console_osdkbd.lua")() -- trigger on tap-events
+	mouse_setup(load_image("cursor.png"), 65535, 1, true, false)
+	mouse_state().autohide = true
+
 	KEYBOARD:load_keymap(get_key("keymap") or "devmaps/keyboard/default.lua")
 	switch_workspace(ws_index)
 
@@ -21,12 +27,20 @@ end
 function console_input(input)
 -- apply the keyboard translation table to all keyboard (translated) input and forward
 	if input.translated then
+		console_osdkbd_destroy(10)
 		if valid_hotkey(input) then
 			return
 		end
-	elseif input.mouse and input.digital and input.subid == MOUSE_MBUTTON then
-		if input.active then
-			clipboard_paste(clipboard_last)
+
+-- middle button paste shortcut, if more cursor features are added
+	elseif input.mouse then
+		if input.digital and input.subid == MOUSE_MBUTTON then
+			if input.active then
+				clipboard_paste(clipboard_last)
+			end
+		else
+			mouse_iotbl_input(input)
+			return
 		end
 	end
 
@@ -34,6 +48,13 @@ function console_input(input)
 	if not target then
 		return
 	end
+
+-- let osdkeyboard get the first shot, might need some graphical element or other
+-- trigger (gesture, ...) here instead so that the active application can get touch
+	if input.touch and console_osdkbd_input(workspaces, target, input) then
+		return
+	end
+
 	target_input(target.vid, input)
 end
 
@@ -65,9 +86,59 @@ function new_client(vid)
 	end
 
 -- or assign and activate
-	workspaces[new_ws] = { vid = vid, clipboard_temp = "" }
+	local ctx = {
+		index = new_ws,
+		vid = vid,
+		clipboard_temp = ""
+	}
+
+-- add a mouse handler that forwards mouse action to the target
+	ctx.own =
+	function(ctx, tgt)
+		return vid == tgt
+	end
+
+	ctx.name = "ws_mh"
+	ctx.button =
+	function(ctx, vid, ind, pressed, x, y)
+		target_input(vid, {
+			devid = 0, subid = ind,
+			mouse = true, kind = "digital",
+			active = pressed
+		})
+	end
+
+	ctx.motion =
+	function(ctx, vid, x, y, rx, ry)
+		target_input(vid, {
+			devid = 0, subid = 0,
+			kind = "analog", mouse = true,
+			samples = {x, rx}
+		})
+		target_input(vid, {
+			devid = 0, subid = 1,
+			kind = "analog", mouse = true,
+			samples = {y, ry}
+		})
+	end
+
+-- all touch related events are normally forwarded, just need to intercept
+-- here in order to disable the osd keyboard if it is active then tell the
+-- caller to forward the input
+	ctx.tap = function(ctx)
+		if console_osdkbd_active() then
+			console_osdkbd_destroy(10)
+		end
+		return true
+	end
+
+	mouse_addlistener(ctx, {"motion", "button", "tap"})
+
+-- activate
+	workspaces[new_ws] = ctx
+
 	switch_workspace(new_ws)
-	return true, workspaces[new_ws]
+	return true, ctx
 end
 
 -- read configuration from database if its there, or use a default
@@ -86,12 +157,12 @@ function client_event_handler(source, status)
 	if status.kind == "terminated" then
 		delete_image(source)
 		local _, index = find_client(source)
-		if index then
+
 -- if we lost the current active workspace client, switch to a better choice
-			workspaces[index] = nil
-			if index == ws_index then
-				switch_workspace()
-			end
+		if index then
+			delete_workspace(index)
+		else
+			delete_image("source")
 		end
 
 -- this says that the 'storage' resolution has changed and might no longer be
@@ -100,15 +171,16 @@ function client_event_handler(source, status)
 -- first time a client has submitted a frame, so it can be used as a
 -- connection trigger as well.
 	elseif status.kind == "resized" then
-		local client_ws = find_client(source)
-		if not client_ws then
-			_, client_ws = new_client(source)
-			if not client_ws then
-				return
+		local ws, index = find_client(source)
+		if ws then
+			resize_image(source, status.width, status.height)
+			if ws.index == ws_index then
+				console_osdkbd_reanchor(source)
 			end
+			ws.aid = status.source_audio
+		else
+			delete_image(source)
 		end
-		resize_image(source, status.width, status.height)
-		client_ws.aid = status.source_audio
 
 -- an external connection goes through a 'connected' (the socket has been consumed)
 -- state where the decision to re-open the connection point should be made, always
@@ -124,6 +196,28 @@ function client_event_handler(source, status)
 	elseif status.kind == "registered" then
 		if not whitelisted(status.segkind, source) then
 			delete_image(source)
+		end
+
+		local client_ws = find_client(source)
+		if not client_ws then
+			_, client_ws = new_client(source)
+			if not client_ws then
+				delete_image(source)
+				return
+			end
+
+-- track these so we can have type-specific actions other than those from the
+-- specific handler, useful with, the osd-keyboard for instance
+			client_ws.segkind = status.segkind
+			client_ws.input_labels = {}
+		end
+
+	elseif status.kind == "input_label" then
+		local client_ws = find_client(source)
+		if #status.labelhint == 0 then
+			client_ws.input_labels.input_labels = {}
+		else
+			table.insert(client_ws.input_labels, status)
 		end
 
 -- the 'preroll' state is the time to provide any starting state you'd like
@@ -146,17 +240,19 @@ function client_event_handler(source, status)
 
 -- the client wish a new subwindow of a certain type, only ones we'll accept
 -- now is a clipboard which is used for 'copy' operations
-	elseif status.kind == "segment_request" and status.segkind == "clipboard" then
+	elseif status.kind == "segment_request" then
+		if status.segkind == "clipboard" then
 
 -- tell the client that we accept the new clipboard and assign its event handler
 -- a dumb client could allocate more clipboards here, but we don't care about
 -- tracking / limiting
-		local vid = accept_target(clipboard_handler)
-		if not valid_vid(vid) then
-			return
-		end
+			local vid = accept_target(clipboard_handler)
+			if not valid_vid(vid) then
+				return
+			end
 -- tie the lifespan of the clipboard to that of the parent
-		link_image(vid, source)
+			link_image(vid, source)
+		end
 	end
 end
 
@@ -180,9 +276,11 @@ function switch_workspace(index)
 		index = 1
 	end
 
--- hide the current one so we don't overdraw
+-- hide the current one so we don't overdraw, reset position as that might
+-- have been modified by other tools like the osd keyboard
 	if workspaces[ws_index] then
 		hide_image(workspaces[ws_index].vid)
+		move_image(workspaces[ws_index].vid, 0, 0)
 	end
 
 -- remember the last unique one so we can switch back on destroy
@@ -197,8 +295,11 @@ function switch_workspace(index)
 		spawn_terminal()
 	end
 
-	if workspaces[ws_index] and valid_vid(workspaces[ws_index].vid) then
-		show_image(workspaces[ws_index].vid)
+-- show the new one
+	local new_space = workspaces[ws_index]
+	if new_space and valid_vid(new_space.vid) then
+		show_image(new_space.vid)
+		console_osdkbd_invalidate(workspaces, new_space)
 	end
 end
 
@@ -237,9 +338,7 @@ function valid_hotkey(input)
 -- forcibly destroy the current workspace
 		elseif input.keysym == KEYBOARD.DELETE then
 			if workspaces[ws_index] and workspaces[ws_index].vid then
-				delete_image(workspaces[ws_index].vid)
-				workspaces[ws_index] = nil
-				switch_workspace()
+				delete_workspace(ws_index)
 			end
 
 -- toggle mute on a specific audio source by querying the current value
@@ -249,6 +348,12 @@ function valid_hotkey(input)
 				local current = audio_gain(workspaces[ws_index].aid, nil)
 				audio_gain(workspaces[ws_index].aid, 1.0 - current)
 			end
+
+		elseif input.keysym == KEYBOARD.l then
+			next_workspace()
+
+		elseif input.keysym == KEYBOARD.h then
+			previous_workspace()
 
 -- for handy testing of adoption etc.
 		elseif input.keysym == KEYBOARD.SYSREQ then
@@ -288,6 +393,7 @@ end
 
 -- Triggered by the 'paste' keybinding or mouse middle button press.
 function clipboard_paste(msg)
+	msg = msg and msg or clipboard_last
 	local dst_ws = workspaces[ws_index]
 	if not dst_ws or not
 		valid_vid(dst_ws.vid, TYPE_FRAMESERVER) or #clipboard_last == 0 then
@@ -316,12 +422,65 @@ function clipboard_paste(msg)
 	target_input(dst_ws.clipboard, msg)
 end
 
+function previous_workspace()
+	for i=ws_index+1,1,-1 do
+		if workspaces[i] ~= nil then
+			switch_workspace(i)
+			return
+		end
+	end
+
+	for i=ws_limit,ws_index,-1 do
+		if workspaces[i] ~= nil then
+			switch_workspace(i)
+			return
+		end
+	end
+end
+
+function next_workspace()
+	for i=ws_index+1,ws_limit do
+		if workspaces[i] ~= nil then
+			switch_workspace(i)
+			return
+		end
+	end
+
+	for i=1,ws_index do
+		if workspaces[i] ~= nil then
+			switch_workspace(i)
+			return
+		end
+	end
+end
+
+function resize_workspace(i, w, h)
+	if not workspaces[i] then
+		return
+	end
+
+	target_displayhint(workspaces[i].vid, w, h, TD_HINT_IGNORE)
+end
+
+function delete_workspace(i)
+	if valid_vid(workspaces[i].vid) then
+		delete_image(workspaces[i].vid)
+	end
+
+	workspaces[i] = nil
+
+	if i == ws_index then
+		switch_workspace()
+	end
+end
+
 -- There are many types that can be allocated as primary (first connection)
 -- or secondary (segment_request) and validation is necessary at 'connect'
 -- and at 'adopt'. We might want to differentiate the implementation of their
 -- events, or reject the ones with a type we don't support.
 function whitelisted(kind, vid)
 	local set = {
+		["vm"] = client_event_handler,
 		["lightweight arcan"] = client_event_handler,
 		["multimedia"] = client_event_handler,
 		["tui"] = client_event_handler,
@@ -337,6 +496,10 @@ function whitelisted(kind, vid)
 		end
 		return true
 	end
+end
+
+function console_clock_pulse()
+	mouse_tick(1)
 end
 
 function VRES_AUTORES(w, h, vppcm, flags, source)
