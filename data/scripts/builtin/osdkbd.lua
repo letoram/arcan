@@ -146,19 +146,11 @@ function(kbd)
 end
 
 local function layout_row(kbd, row, x_ofs, y_ofs, fair_h, max_w, opts)
--- prepass, check for fill and double-width, add mouse
-	local got_fill;
+-- prepass, check for double-width, add mouse
 	local dw_count = 0;
 
 	for _,btn in ipairs(row) do
-		if btn.fill then
-			got_fill = btn;
-		end
-		if btn.double_width then
-			dw_count = dw_count + 2;
-		else
-			dw_count = dw_count + 1;
-		end
+		dw_count = dw_count + btn.width_factor;
 
 		if not btn.mouse then
 			mouse_addlistener(btn, btn.handlers);
@@ -166,20 +158,11 @@ local function layout_row(kbd, row, x_ofs, y_ofs, fair_h, max_w, opts)
 		end
 	end
 
--- if we have a fill, use height as width (assumes roughly square canvas)
 	local fair_w = (max_w - (dw_count - 1) * opts.hpad) / dw_count;
-	if got_fill then
-		fair_w = fair_h + opts.hpad;
-	end
-
--- build the buttons, maybe not all of them resolve at the moment
-	local fill_ofs = 0;
 
 	local btn_render =
 	function(btn, ind, w, x_ofs)
-		if (btn.double_width) then
-			w = w + w;
-		end
+		w = math.floor(w * btn.width_factor)
 
 		if ind == #row then
 			w = max_w - x_ofs;
@@ -199,11 +182,7 @@ local function layout_row(kbd, row, x_ofs, y_ofs, fair_h, max_w, opts)
 -- based on render_text results from the icon factory
 	for ind, btn in ipairs(row) do
 		if not valid_vid(btn.vid) then
-			local w = fair_w;
-			if btn == got_fill then
-				w = max_w - (fair_w * dw_count);
-			end
-			btn_render(btn, ind, w, x_ofs);
+			btn_render(btn, ind, fair_w, x_ofs);
 		end
 
 		if valid_vid(btn.vid) then
@@ -457,7 +436,7 @@ row_to_buttons = function(kbd, page, row, icon_lookup)
 -- mouse+event handler, gets activated on show and removed on hide
 		local new_btn = {
 			sym = icon_lookup(btn.sym),
-			fill = btn.fill,
+			width_factor = btn.width_factor and btn.width_factor or 1,
 			own = function(ctx, vid)
 				return vid == ctx.vid
 			end,
