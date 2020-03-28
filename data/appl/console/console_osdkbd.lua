@@ -41,11 +41,13 @@ local function set_order_mask(anchor, vid)
 	order_image(vid, 2)
 end
 
-local function prepare_label(bg, fmt, label)
+local function prepare_label(bg, fmt, label, base_w)
 	local width, height, lineh
 
 	if type(label) == "string" then
+-- use _ and ' ' as a separator for linefeed
 		label, lineh, width, height, _ = render_text({fmt, label})
+-- if it does not fit, try a smaller size
 	else
 		local props = image_surface_properties(label)
 		width = props.width
@@ -85,7 +87,7 @@ local function render_factory(canvas, sym)
 
 -- only draw text if needed
 		if lsym and #lsym > 0 then
-			lw, lh = prepare_label(bg, txtcol, lsym)
+			lw, lh = prepare_label(bg, txtcol, lsym, base_w)
 		end
 
 		show_image(bg)
@@ -108,8 +110,9 @@ local function render_factory(canvas, sym)
 					image_sharestorage(icon, bg)
 					delete_image(icon)
 				end
+
 			else
-				prepare_label(bg, txtcol, icon)
+				prepare_label(bg, txtcol, icon, base_w)
 			end
 		end
 
@@ -464,6 +467,9 @@ local function spawn_keyboard(wm, dst, x, y, speed)
 			end
 		}
 	)
+
+	bottom[4].width_factor = #(pages[1][1]) - #bottom + 1
+	print("wf", bottom[4].width_factor)
 
 	local rt, dw, dh, vresw, vresh = wm_active_display()
 
