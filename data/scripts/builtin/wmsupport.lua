@@ -3,6 +3,44 @@
 -- window manager in order to establish some convention for
 -- binding helper scripts with a wm
 --
+-- expected functions:
+--  - wm_input_selected(iotbl)
+--    send iotbl to the window that has input focus
+--
+--  - wm_input_grab(key) => 'current_key'
+--    accessor to a 'grab' function stored under key,
+--    input should be routed through this key until released
+--    with wm_input_release_grab(key). If there already is a
+--    'key' that has grab, the call will be ignored.
+--    always returns the currently set grab.
+--
+--
+--  - wm_input_release_grab(key) => bool
+--    try to release the grab of 'key', returns true if the
+--    grab was released, or false if the key mismatch the current
+--    grab.
+--
+--  - wm_active_display() => rt, width, height, vppcm, hppcm
+--    retrieve rendertarget and display properties for the currently
+--    active display
+--
+--  - wm_active_display_listen(func)
+--    add a permament callback that will be triggered whenever the
+--    properties of the active display has changed
+--
+--  - wm_touch_normalize(iotbl) => iotbl
+--    apply calibration and rescale input samples in iotbl to match
+--    the coordinate space of the active display
+--
+--  - wm_get_keyboard_translation() => keytbl
+--    retrieve a symbol table for translating and patching iotables
+--    through the builtin/keyboard.lua setup.
+--    keytbl:patch(iotbl) => iotbl to apply keymap to iotbl
+--
+-- callable by wm:
+--  - wm_active_display_rebuild()
+--    trigger all the active display listeners
+--
 
 if not wm_input_selected then
 	wm_input_selected =
@@ -77,6 +115,16 @@ if not wm_active_display_listen then
 			end
 		end
 		table.insert(active_display_listeners, hnd)
+	end
+end
+
+-- accessor for a shared keyboard translation table
+if not wm_get_keyboard_translation then
+	local symtable = system_load("builtin/keyboard.lua")()
+	symtable:load_keymap("default.lua")
+
+	wm_get_keyboard_translation = function()
+		return symtable
 	end
 end
 
