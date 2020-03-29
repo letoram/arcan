@@ -53,6 +53,21 @@ enum tui_wndhint_flags {
 	TUI_WND_HIDDEN = 2,
 };
 
+/*
+ * used by the cli_command event handler
+ */
+enum tui_cli {
+	TUI_CLI_BEGIN = 0,
+	TUI_CLI_EVAL = 1,
+	TUI_CLI_COMMIT = 2,
+	TUI_CLI_CANCEL = 3,
+
+/* replies */
+	TUI_CLI_SUGGEST = 4,
+	TUI_CLI_ACCEPT = 5,
+	TUI_CLI_INVALID = 6
+};
+
 enum tui_handover_flags {
 	TUI_DETACH_PROCESS = 1,
 	TUI_DETACH_STDIN   = 2,
