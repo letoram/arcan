@@ -32,32 +32,71 @@ enum readline_anchor {
 };
 
 struct tui_readline_opts {
-/* input region anchor constraints, behavior depends on which anchoring
- * mode presented in readline_anchor */
-	int anchor;
+ /*-1 from bottom of context
+ *  0 don't care
+ *  1 from top of context */
 	ssize_t anchor_row;
-
-/* visible region for drawing text */
 	size_t n_rows;
+	size_t margin_left;
+	size_t margin_right;
 
-/* mouse clicks outside the input region or escape will have the
- * _finished status marked as true and cursor moved to the click-
- * point (mouse) or region start (escape) */
+/* mouse clicks outside the input region or escape will have the _finished
+ * status marked as true and cursor moved to the click- point (mouse) or region
+ * start (escape) with no message result */
 	bool cancellable;
 
-/*
- * missing:
- * multiline (_finished always true)
- * masked (substitution character, i.e. password prompt)
- * completion hint (callback yields)
- * input_method hook (callback handles string and cursor modification)
- * history buffer
+/* provide to suggest an auto-completion string
+ *
+ * set [result] to point to the completion (if one exists)
+ *     you retain overship of [result] and is expected to be alive until
+ *     the context is released or the next call to autocomplete, the last
+ *     pointer will be provided in return.
+ *
+ * return true if [result] was set.
  */
+	bool (*autocomplete)(const char* message,
+	                     const char** result, const char* last);
+
+/* Provide a way to mask out certain inputs, when context does not need
+ * to be considered (e.g. input that only accepts visible 7-bit set).
+ *
+ * Return true of the character is allowed to be added to the input buffer.
+ * Note that the codepoint is expressed in UCS-4 rather than UTF-8.
+ */
+	bool (*filter_character)(uint32_t);
+
+/* set a character that will be drawn in place of the real buffer */
+	uint32_t mask_character;
+
+/* restrict the number of character that can be added */
+	size_t limit;
+
+/* modifier+line-feed is added as \n in the target buffer */
+	bool multiline;
+
+/* verify the current buffer and give feedback on where the buffer
+ * fails to pass validation or at which offset the input fails */
+	ssize_t (*validate)(const char* message);
 };
 
 void arcan_tui_readline_setup(
 	struct tui_context*, struct tui_readline_opts*, size_t opt_sz);
 
+/* set the active history buffer that the user can navigate, the caller retains
+ * ownership and the contents are assumed to be valid until _readline_release
+ * has been called. */
+void arcan_tui_readline_history(struct tui_context*, const char**);
+
+/*
+ * set prefix/prompt that will be drawn (assuming there is enough space for it
+ * to fit, or it will be truncated). Caller retains ownership of prompt. If the
+ * prompt uses custom coloring, set_prompt should be called again on recolor.
+ */
+void arcan_tui_set_prompt(struct tui_context* T, const struct tui_cell* prompt);
+
+/*
+ * Restore event handler table and cancel any input operation
+ */
 void arcan_tui_readline_release(struct tui_context*);
 
 /*
@@ -67,12 +106,6 @@ void arcan_tui_readline_release(struct tui_context*);
  * or until readline_release.
  */
 bool arcan_tui_readline_finished(struct tui_context*, char** buffer);
-
-/*
- * Call to update the readline input region
- */
-void arcan_tui_readline_region(
-	struct tui_context*, size_t x1, size_t y1, size_t x2, size_t y2);
 
 #else
 
