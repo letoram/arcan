@@ -125,6 +125,7 @@ M(PTUILINEWND_SETBUFFER, arcan_tui_linewnd_set_buffer);
 M(PTUILINEWND_ADDLINE, arcan_tui_linewnd_add_line);
 M(PTUILINEWND_RELEASE, arcan_tui_linewnd_release);
 M(PTUILINEWND_RENDER, arcan_tui_linewnd_render);
+#undef M
 return true;
 }
 #endif

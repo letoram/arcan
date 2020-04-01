@@ -290,10 +290,12 @@ ssize_t arcan_tui_utf8ucs4(const char src[static 4], uint32_t* dst)
 		used = 2;
 	}
 	else if ((c & 0xF0) == 0xE0){
+		*dst = 0;
 		left = 2;
 		used = 3;
 	}
 	else if ((c & 0xF8) == 0xF0){
+		*dst = 0;
 		left = 3;
 		used = 4;
 	}
@@ -367,23 +369,20 @@ struct tui_process_res arcan_tui_process(
 	struct pollfd fds[fdset_sz + (n_contexts * 2)];
 	memset(fds, '\0', sizeof(fds));
 
-/* need to distinguish between types in results and poll doesn't carry tag */
-	uint64_t clip_mask = 0;
-
 	size_t ofs = 0;
 	for (size_t i = 0; i < n_contexts; i++){
+		fds[ofs++] = (struct pollfd){
+			.events = pollev,
+			.fd = contexts[i]->clip_in.epipe ?
+				contexts[i]->clip_in.epipe : -1
+		};
+
 		fds[ofs++] = (struct pollfd){
 			.fd = contexts[i]->acon.epipe,
 			.events = pollev
 		};
-		if (contexts[i]->clip_in.vidp){
-			clip_mask |= 1 << ofs;
-			fds[ofs++] = (struct pollfd){
-				.fd = contexts[i]->clip_in.epipe,
-				.events = pollev
-			};
-		}
 	}
+
 /* return condition to take responsibility for multiplexing */
 	size_t fdset_ofs = ofs;
 	for (size_t i = 0; i < fdset_sz; i++){
@@ -396,15 +395,14 @@ struct tui_process_res arcan_tui_process(
 /* pollset is packed as [n_contexts] [caller-supplied] */
 	int sv = poll(fds, ofs, timeout);
 	size_t nc = 0;
-	for (size_t i = 0; i < fdset_ofs && sv; i++){
-		if (fds[i].revents){
+	for (size_t ci = 0; ci < n_contexts && sv; ci++){
+		if (fds[ci * 2].revents){
+			tui_clipboard_check(contexts[ci]);
 			sv--;
-			if (clip_mask & (i << 1))
-				tui_clipboard_check(contexts[nc]);
-			else {
-				tui_event_poll(contexts[nc]);
-				nc++;
-			}
+		}
+		if (fds[ci * 2 + 1].revents){
+			tui_event_poll(contexts[ci]);
+			sv--;
 		}
 	}
 
@@ -755,7 +753,7 @@ struct tui_screen_attr
 }
 
 void arcan_tui_write(struct tui_context* c,
-	uint32_t ucode, struct tui_screen_attr* attr)
+	uint32_t ucode, const struct tui_screen_attr* attr)
 {
 	if (!c)
 		return;

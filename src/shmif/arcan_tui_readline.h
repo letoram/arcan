@@ -1,6 +1,6 @@
 /*
  * Arcan Text-Oriented User Interface Library, Extensions
- * Copyright: 2019, Bjorn Stahl
+ * Copyright: 2019-2020, Bjorn Stahl
  * License: 3-clause BSD
  */
 
@@ -19,22 +19,11 @@
  * Example:
  * see the #ifdef EXAMPLE block at the bottom of tui_readline.c
  */
-enum readline_anchor {
-/* caller manually handles reanchoring with calls to readline_region */
-	READLINE_AMCHOR_FIXED = 0,
-
-/* anchor_row in _opts is used and relative to the upper left corner
- * of the window, and clipped against bottom */
-	READLINE_ANCHOR_UL = 1,
-
-/* anchor_row in _opts are used and clipped against top and bottom */
-	READLINE_ANCHOR_LL = 2,
-};
 
 struct tui_readline_opts {
- /*-1 from bottom of context
- *  0 don't care
- *  1 from top of context */
+ /*-n from bottom of context, clamps to window size
+ *  0 don't care, manually position with arcan_tui_readline_region
+ *  n from top of context, clamps to window size */
 	ssize_t anchor_row;
 	size_t n_rows;
 	size_t margin_left;
@@ -43,7 +32,7 @@ struct tui_readline_opts {
 /* mouse clicks outside the input region or escape will have the _finished
  * status marked as true and cursor moved to the click- point (mouse) or region
  * start (escape) with no message result */
-	bool cancellable;
+	bool allow_exit;
 
 /* provide to suggest an auto-completion string
  *
@@ -55,28 +44,30 @@ struct tui_readline_opts {
  * return true if [result] was set.
  */
 	bool (*autocomplete)(const char* message,
-	                     const char** result, const char* last);
+	                     const char** result, const char* last, void* T);
 
-/* Provide a way to mask out certain inputs, when context does not need
- * to be considered (e.g. input that only accepts visible 7-bit set).
+/* Provide a way to mask out certain inputs or length (e.g. input that only
+ * accepts visible 7-bit set) or only allowing n- characters.
  *
  * Return true of the character is allowed to be added to the input buffer.
  * Note that the codepoint is expressed in UCS-4 rather than UTF-8.
  */
-	bool (*filter_character)(uint32_t);
+	bool (*filter_character)(uint32_t, size_t length, void* T);
 
-/* set a character that will be drawn in place of the real buffer */
+/* set a character that will be drawn in place of the real buffer, this
+ * is useful for password prompt like inputs */
 	uint32_t mask_character;
 
-/* restrict the number of character that can be added */
-	size_t limit;
-
-/* modifier+line-feed is added as \n in the target buffer */
+/* line-feeds are accepted into the buffer, and empty */
 	bool multiline;
 
-/* verify the current buffer and give feedback on where the buffer
- * fails to pass validation or at which offset the input fails */
-	ssize_t (*validate)(const char* message);
+/* check the contents (utf-8, NUL terminated) of [message].
+ * return -1 on success or the buffer offset where the content failed */
+	ssize_t (*verify)(const char* message, void* T);
+
+/* based on [message] return a sorted list of possible candidates in [set]
+ * and the number of elements as function return value */
+	size_t (*suggest)(const char* message, const char** set, void* T);
 };
 
 void arcan_tui_readline_setup(
@@ -84,13 +75,21 @@ void arcan_tui_readline_setup(
 
 /* set the active history buffer that the user can navigate, the caller retains
  * ownership and the contents are assumed to be valid until _readline_release
- * has been called. */
-void arcan_tui_readline_history(struct tui_context*, const char**);
+ * has been called or replaced with another buffer */
+void arcan_tui_readline_history(struct tui_context*, const char**, size_t count);
 
 /*
- * set prefix/prompt that will be drawn (assuming there is enough space for it
- * to fit, or it will be truncated). Caller retains ownership of prompt. If the
- * prompt uses custom coloring, set_prompt should be called again on recolor.
+ * Set prefix/prompt that will be drawn
+ * (assuming there is enough space for it to fit, or it will be drawn truncated).
+ *
+ * Ownership:
+ * Caller retains ownership of prompt.
+ *
+ * Note:
+ * If the prompt uses custom coloring, set_prompt should be called again on recolor.
+ *
+ * Note:
+ * The length of prompt is NUL terminated based on the .ch field.
  */
 void arcan_tui_set_prompt(struct tui_context* T, const struct tui_cell* prompt);
 
@@ -100,15 +99,52 @@ void arcan_tui_set_prompt(struct tui_context* T, const struct tui_cell* prompt);
 void arcan_tui_readline_release(struct tui_context*);
 
 /*
- * Call as part of normal processing look to retrieve a reference
- * to the current input buffer. This buffer reference stored in
- * [buffer(!=NULL] is valid until the next process/refresh call
- * or until readline_release.
+ * Call as part of normal processing loop to retrieve a reference to the
+ * current input buffer.
+ *
+ * This buffer reference stored in [buffer(!=NULL)] is valid until the next
+ * readline_release, _finished or tui_refresh on the context.
+ *
+ * Values returned are from the set shwon in enum tui_readline_status
  */
-bool arcan_tui_readline_finished(struct tui_context*, char** buffer);
+enum tui_readline_status {
+	READLINE_STATUS_TERMINATE = -2,
+	READLINE_STATUS_CANCELLED = -1,
+	READLINE_STATUS_EDITED = 0,
+	READLINE_STATUS_DONE = 1,
+};
+int arcan_tui_readline_finished(struct tui_context*, char** buffer);
+
+/*
+ * Clear input buffer state (similar to C-l)
+ */
+void arcan_tui_readline_reset(struct tui_context*);
 
 #else
+typedef bool(* PTUIRL_SETUP)(
+	struct tui_context*, struct tui_readline_opts*, size_t opt_sz);
+typedef bool(* PTUIRL_FINISHED)(struct tui_context*, char** buffer);
+typedef void(* PTUIRL_RESET)(struct tui_context*);
+typedef void(* PTUIRL_HISTORY)(struct tui_context*, const char**, size_t);
+typedef void(* PTUIRL_PROMPT)(struct tui_context*, const struct tui_cell*);
+
+static PTUIRL_SETUP arcan_tui_readline_setup;
+static PTUIRL_FINISHED arcan_tui_readline_finished;
+static PTUIRL_RESET arcan_tui_readline_reset;
+static PTUIRL_HISTORY arcan_tui_readline_history;
+static PTUIRL_PROMPT arcan_tui_readline_prompt;
+
+static bool arcan_tui_readline_dynload(
+	void*(*lookup)(void*, const char*), void* tag)
+{
+#define M(TYPE, SYM) if (! (SYM = (TYPE) lookup(tag, #SYM)) ) return false
+M(PTUIRL_SETUP, arcan_tui_readline_setup);
+M(PTUIRL_FINISHED, arcan_tui_readline_finished);
+M(PTUIRL_RESET, arcan_tui_readline_reset);
+M(PTUIRL_HISTORY, arcan_tui_readline_history);
+M(PTUIRL_PROMPT, arcan_tui_readline_prompt);
+#undef M
+}
 
 #endif
-
 #endif

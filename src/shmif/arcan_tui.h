@@ -843,7 +843,7 @@ void arcan_tui_erase_chars(struct tui_context*, size_t n);
  * write operation, otherwise, the current default will be used.
  */
 void arcan_tui_write(struct tui_context*,
-	uint32_t ucode, struct tui_screen_attr*);
+	uint32_t ucode, const struct tui_screen_attr*);
 
 /*
  * This converts [n] bytes from [u8] as UTF-8 into multiple UCS4 writes.
@@ -1017,8 +1017,7 @@ void arcan_tui_refinc(struct tui_context*);
 void arcan_tui_refdec(struct tui_context*);
 
 /*
- * move the cursor either absolutely or a number of steps,
- * optionally by also scrolling the scrollback buffer
+ * Set the absolute cursor position, clamped to 0,0,cols-1,rows-1
  */
 void arcan_tui_move_to(struct tui_context*, size_t x, size_t y);
 

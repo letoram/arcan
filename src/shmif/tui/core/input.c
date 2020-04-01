@@ -409,6 +409,15 @@ static bool consume_label(struct tui_context* tui,
 	return res;
 }
 
+static bool forward_mouse(struct tui_context* tui)
+{
+	bool forward = tui->mouse_forward;
+	if (tui->modifiers & (TUIM_LCTRL | TUIM_RCTRL)){
+		return !forward;
+	}
+	return forward;
+}
+
 void tui_input_event(
 	struct tui_context* tui, arcan_ioevent* ioev, const char* label)
 {
@@ -498,7 +507,7 @@ void tui_input_event(
 					upd = true;
 				}
 
-				if (tui->mouse_forward && tui->handlers.input_mouse_motion){
+				if (forward_mouse(tui) && tui->handlers.input_mouse_motion){
 					if (upd)
 					tui->handlers.input_mouse_motion(tui, false,
 						tui->mouse_x, tui->mouse_y, tui->modifiers, tui->handlers.tag);
@@ -536,7 +545,7 @@ void tui_input_event(
 				else
 					tui->mouse_btnmask &= ~(1 << (ioev->subid-1));
 			}
-			if (tui->mouse_forward && tui->handlers.input_mouse_button){
+			if (forward_mouse(tui) && tui->handlers.input_mouse_button){
 				tui->handlers.input_mouse_button(tui, tui->mouse_x,
 					tui->mouse_y, ioev->subid, ioev->input.digital.active,
 					tui->modifiers, tui->handlers.tag

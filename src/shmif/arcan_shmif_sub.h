@@ -139,14 +139,14 @@ struct shmif_vector_mesh {
 	int primitive;
 
 	size_t buffer_sz;
-	uint8_t buffer[0];
+	uint8_t* buffer;
 };
 
 struct arcan_shmif_vector {
 /* PRODUCER set */
 	size_t data_sz;
 	uint8_t mesh_groups;
-	struct shmif_vector_mesh meshes[0];
+	struct shmif_vector_mesh meshes[];
 };
 
 /*
@@ -195,7 +195,7 @@ struct arcan_shmif_ramp {
 	uint8_t n_blocks;
 
 /* PRODUCER INIT, CONSUMER_UPDATE */
-	struct ramp_block ramps[0];
+	struct ramp_block ramps[];
 };
 
 #define SHMIF_CMRAMP_RVA(X)(sizeof(struct ramp_block) * (X) *\
