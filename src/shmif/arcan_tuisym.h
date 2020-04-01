@@ -134,7 +134,7 @@ enum tui_color_group {
 	TUI_COL_LABEL,       /* [B] Meta- text such as prompts */
 	TUI_COL_WARNING,     /* [B] Warnings, things to notice but not act on */
 	TUI_COL_ERROR,       /* [B] Indicate a problem that should be acted upon */
-	TUI_COL_ALERT,       /* [B] Grab attention attention */
+	TUI_COL_ALERT,       /* [B] Grab attention */
 	TUI_COL_REFERENCE,   /* [B] External reference / link (e.g. url) */
 	TUI_COL_INACTIVE,    /* [B] Possible highlight/label but not in use due to
 													    some state dependent reason */
