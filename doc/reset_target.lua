@@ -1,10 +1,13 @@
 -- reset_target
 -- @short: Request that a target resets to a known starting state.
--- @inargs: targetid
+-- @inargs: vid:targetid
+-- @inargs: vid:targetid, bool:hard
 -- @longdescr: This functions inserts an event into the target process
 -- linked to *targetid*, requesting that the process should be reset
 -- to an initial safe-state (which may or may not exist depending on
--- the target).
+-- the target), but trying to retain user created state/ contents.
+-- If the *hard* argument is set, the target should return to as close
+-- as the initial start state on first execution as possible.
 -- @group: targetcontrol
 -- @cfunction: targetreset
 

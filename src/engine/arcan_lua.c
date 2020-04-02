@@ -8541,9 +8541,12 @@ static int targetreset(lua_State* ctx)
 
 	arcan_vobject* vobj;
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1, &vobj);
+	bool hard = luaL_optbnumber(ctx, 2, false) != 0;
+
 	arcan_event ev = {
 		.tgt.kind = TARGET_COMMAND_RESET,
-		.category = EVENT_TARGET
+		.category = EVENT_TARGET,
+		.tgt.ioevs[0].iv = hard ? 1 : 0
 	};
 
 	if (vobj && vobj->feed.state.tag == ARCAN_TAG_VR){
