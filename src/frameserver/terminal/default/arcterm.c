@@ -11,6 +11,9 @@
 #include <pthread.h>
 #include <poll.h>
 #include <unistd.h>
+
+#include "cli.h"
+
 #include "tsm/libtsm.h"
 #include "tsm/libtsm_int.h"
 #include "tsm/shl-pty.h"
@@ -19,6 +22,8 @@ static struct {
 	struct tui_context* screen;
 	struct tsm_vte* vte;
 	struct shl_pty* pty;
+	struct arg_arr* args;
+
 	pthread_mutex_t synch;
 
 	pid_t child;
@@ -446,6 +451,83 @@ static void on_exec_state(struct tui_context* tui, int state, void* tag)
 		shl_pty_signal(term.pty, SIGHUP);
 }
 
+static bool setup_build_term()
+{
+	size_t rows = 0, cols = 0;
+	arcan_tui_dimensions(term.screen, &rows, &cols);
+	term.child = shl_pty_open(&term.pty, read_callback, NULL, cols, rows);
+	if (term.child < 0){
+		arcan_tui_destroy(term.screen, "Shell process died unexpectedly");
+		return false;
+	}
+
+/*
+ * and lastly, spawn the pseudo-terminal
+ */
+/* we're inside child */
+	if (term.child == 0){
+		const char* val;
+		char* argv[] = {get_shellenv(), "-i", NULL, NULL};
+
+		if (arg_lookup(term.args, "cmd", 0, &val) && val){
+			argv[2] = strdup(val);
+		}
+
+/* special case handling for "login", this requires root */
+		if (arg_lookup(term.args, "login", 0, &val)){
+			struct stat buf;
+			argv[1] = "-p";
+			if (stat("/bin/login", &buf) == 0 && S_ISREG(buf.st_mode))
+				argv[0] = "/bin/login";
+			else if (stat("/usr/bin/login", &buf) == 0 && S_ISREG(buf.st_mode))
+				argv[0] = "/usr/bin/login";
+			else{
+				LOG("login prompt requested but none was found\n");
+				return EXIT_FAILURE;
+			}
+		}
+
+		setup_shell(term.args, argv);
+		return EXIT_FAILURE;
+	}
+
+/* spawn a thread that deals with feeding the tsm specifically, then we run
+ * our normal event look constantly in the normal process / refresh style. */
+	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+
+	if (-1 == pthread_create(&pth, &pthattr, pump_pty, NULL))
+		term.alive = false;
+	else
+		term.alive = true;
+
+	return true;
+}
+
+static void on_reset(struct tui_context* tui, int state, void* tag)
+{
+/* this state needs to be verified against pledge etc. as well since some
+ * of the foreplay might become impossible after privsep */
+
+	switch (state){
+	case 0:
+/* soft, just ignore */
+	arcan_tui_reset(tui);
+	tsm_vte_hard_reset(term.vte);
+
+	if (!term.alive){
+		setup_build_term();
+	}
+	break;
+	default:
+	break;
+	}
+
+/* reset vte state */
+}
+
 static int parse_color(const char* inv, uint8_t outv[4])
 {
 	return sscanf(inv, "%"SCNu8",%"SCNu8",%"SCNu8",%"SCNu8,
@@ -479,6 +561,14 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		setenv("TUI_RPACK", "1", true);
 	}
 
+/*
+ * this is the first migration part we have out of the normal vt- legacy,
+ * see cli.c
+ */
+	if (arg_lookup(args, "cli", 0, NULL)){
+		return arcterm_cli_run(con, args);
+	}
+
 	struct tui_cbcfg cbcfg = {
 		.input_mouse_motion = on_mouse_motion,
 		.input_mouse_button = on_mouse_button,
@@ -488,6 +578,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.resized = on_resize,
 		.subwindow = on_subwindow,
 		.exec_state = on_exec_state,
+		.reset = on_reset,
 /*
  * for advanced rendering, but not that interesting
  * .substitute = on_subst
@@ -502,6 +593,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 	arcan_tui_reset_flags(term.screen, TUI_ALTERNATE);
 	arcan_tui_refresh(term.screen);
+	term.args = args;
 
 /*
  * now we have the display server connection and the abstract screen,
@@ -545,58 +637,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	arcan_tui_set_color(term.screen, TUI_COL_BG, bgc);
 	arcan_tui_set_color(term.screen, TUI_COL_TEXT, fgc);
 
-/*
- * and lastly, spawn the pseudo-terminal
- */
-	size_t rows = 0, cols = 0;
-	arcan_tui_dimensions(term.screen, &rows, &cols);
-	term.child = shl_pty_open(&term.pty, read_callback, NULL, cols, rows);
-	if (term.child < 0){
-		arcan_tui_destroy(term.screen, "Shell process died unexpectedly");
-		return EXIT_FAILURE;
-	}
-
-/* we're inside child */
-	if (term.child == 0){
-		char* argv[] = {get_shellenv(), "-i", NULL, NULL};
-
-		if (arg_lookup(args, "cmd", 0, &val) && val){
-			argv[2] = strdup(val);
-		}
-
-/* special case handling for "login", this requires root */
-		if (arg_lookup(args, "login", 0, &val)){
-			struct stat buf;
-			argv[1] = "-p";
-			if (stat("/bin/login", &buf) == 0 && S_ISREG(buf.st_mode))
-				argv[0] = "/bin/login";
-			else if (stat("/usr/bin/login", &buf) == 0 && S_ISREG(buf.st_mode))
-				argv[0] = "/usr/bin/login";
-			else{
-				LOG("login prompt requested but none was found\n");
-				return EXIT_FAILURE;
-			}
-		}
-
-		setup_shell(args, argv);
-		return EXIT_FAILURE;
-	}
-
-#ifdef __OpenBSD__
-	pledge(SHMIF_PLEDGE_PREFIX " tty", NULL);
-#endif
-
-	term.alive = true;
-
-/* spawn a thread that deals with feeding the tsm specifically, then we run
- * our normal event look constantly in the normal process / refresh style. */
-	pthread_t pth;
-	pthread_attr_t pthattr;
-	pthread_attr_init(&pthattr);
-	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-	arcan_tuiint_set_vsynch(term.screen, &term.synch);
-
-/* socket pair used to signal between the threads */
+/* socket pair used to signal between the threads, this will be kept
+ * alive even between reset/re-execute on a terminated terminal */
 	int pair[2];
 	if (-1 == socketpair(AF_UNIX, SOCK_STREAM, 0, pair))
 		return EXIT_FAILURE;
@@ -604,8 +646,14 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	term.dirtyfd = pair[0];
 	term.signalfd = pair[1];
 
-	if (-1 == pthread_create(&pth, &pthattr, pump_pty, NULL))
-		term.alive = false;
+	if (!setup_build_term())
+		return EXIT_FAILURE;
+
+#ifdef __OpenBSD__
+	pledge(SHMIF_PLEDGE_PREFIX " tty", NULL);
+#endif
+
+	arcan_tuiint_set_vsynch(term.screen, &term.synch);
 
 	while(term.alive || !term.die_on_term){
 		struct tui_process_res res =

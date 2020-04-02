@@ -1,0 +1,6 @@
+#ifndef HAVE_CLI
+#define HAVE_CLI
+
+int arcterm_cli_run(struct arcan_shmif_cont* c, struct arg_arr* args);
+
+#endif

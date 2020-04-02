@@ -603,14 +603,20 @@ static void reset_boundaries(
 		M->stop_row = M->stop_row + M->opts.n_rows - 1;
 	}
 /* manual mode, ignore */
-	else
-		;
+	else {
+		M->start_row = 0;
+		M->stop_row = rows - 1;
+	}
 
 	if (M->opts.margin_left)
 		M->start_col = M->opts.margin_left - 1;
+	else
+		M->start_col = 0;
 
 	if (M->opts.margin_right && cols > M->opts.margin_right)
 		M->stop_col = cols - M->opts.margin_right - 1;
+	else
+		M->stop_col = cols - 1;
 
 /* safety clamp upper bound,
  * sanity check and early out also happens in the refresh */
@@ -638,6 +644,21 @@ static void on_resized(struct tui_context* T,
 static bool on_label_input(
 	struct tui_context* T, const char* label, bool active, void* tag)
 {
+	return false;
+}
+
+static bool on_subwindow(struct tui_context* T,
+	arcan_tui_conn* connection, uint32_t id, uint8_t type, void* tag)
+{
+/* if it is a popup, that would be ours for hints - otherwise
+ * send it onwards to the outer scope */
+	struct readline_meta* M;
+	if (!validate_context(T, &M))
+		return false;
+
+	if (M->old_handlers.subwindow)
+		return M->old_handlers.subwindow(T, connection, id, type, tag);
+
 	return false;
 }
 
@@ -669,6 +690,7 @@ void arcan_tui_readline_setup(
 		.utf8 = on_utf8_paste,
 		.resize = on_resized,
 		.input_label = on_label_input,
+		.subwindow = on_subwindow,
 /* query_label - absorb, expose input controls and defaults (toggle vim/emacs) */
 /* input_label - match to inputs */
 /* input_alabel - block */
