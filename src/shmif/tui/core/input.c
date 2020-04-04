@@ -412,7 +412,9 @@ static bool consume_label(struct tui_context* tui,
 static bool forward_mouse(struct tui_context* tui)
 {
 	bool forward = tui->mouse_forward;
-	if (tui->modifiers & (TUIM_LCTRL | TUIM_RCTRL)){
+	if (
+			!(tui->flags & TUI_MOUSE_FULL) &&
+			(tui->modifiers & (TUIM_LCTRL | TUIM_RCTRL))){
 		return !forward;
 	}
 	return forward;
