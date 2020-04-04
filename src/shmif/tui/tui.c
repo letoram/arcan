@@ -918,7 +918,7 @@ int arcan_tui_set_flags(struct tui_context* c, int flags)
 	if (in_alternate != want_alternate)
 		arcan_tui_reset_labels(c);
 
-	if (flags & TUI_MOUSE)
+	if (flags & (TUI_MOUSE | TUI_MOUSE_FULL))
 		c->mouse_forward = true;
 
 	return (int) c->flags;

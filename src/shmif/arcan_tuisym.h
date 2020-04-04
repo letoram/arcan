@@ -38,6 +38,9 @@ enum tui_context_flags {
 
 /* Prefer local mouse handler than default mouse to clipboard */
 	TUI_MOUSE = 128,
+
+/* Same as TUI_MOUSE, but don't permit ctrl modifier to toggle */
+	TUI_MOUSE_FULL = 256,
 };
 
 /*
