@@ -18,9 +18,119 @@ struct {
 	bool blocked;
 } cli_state;
 
+/*
+ * multiple paths to venture through here -
+ *
+ * 1. is a launch mode, legacy terminal or tui
+ *
+ *    - if tui, setup a shmif server, inherit-spawn the client
+ *    and use that channel to run the cli-command sequence in
+ *    order to populate the dynamic command-line
+ *
+ *    - when a command-line is commited, use handover- setup
+ *    twice to attach the client to the outer desktop
+ *
+ *    - have a detach command that sends the forced migration
+ *    event as a means of switching it to the server
+ *
+ * 2. make the command evaluation / readline event handlers
+ *    dynamic and pluggable / build-time configured, in order
+ *    to have the shell behavior user defined - and provide
+ *    a lua script default one.
+ *
+ *    - this should somehow also affect prompt state
+ *    - we have some unique shell opportunities here though
+ *    that should not be squandered, cat / data-stream into
+ *    the clipboard for instance (bchunk-out)
+ *
+ * 3. repeat / use the probe process to setup arcan-wayland
+ *    in wayland or X mode as well
+ */
+
+static char** grab_argv(
+	const char* message, char* (*expand)(char group, const char*))
+{
+/* just overfit, not worth the extra work */
+	size_t len = strlen(message);
+	size_t len_buf_sz = sizeof(char*) * len;
+	char** argv = malloc(len_buf_sz);
+	size_t arg_i = 0;
+	memset(argv, '\0', len_buf_sz);
+
+/* unescaped presence of any of these characters enters that parsing group,
+ * and when the next unescaped presence of the same character occurs, split
+ * off the current work buffer into the argv array */
+	static const char esc_grp[] = {'\'', '"', '`'};
+	ssize_t esc_ind = -1;
+	bool esc_ign = false;
+
+	char* work = malloc(len);
+	size_t pos = 0;
+	work[0] = '\0';
+
+	for (size_t i = 0; i < len; i++){
+		char ch = message[i];
+
+		if (esc_ign){
+			work[pos++] = ch;
+			esc_ign = false;
+			continue;
+		}
+
+/* got one of the escape groups that might warrant different postprocessing or
+ * interpretation, e.g. execute and absorb into buffer, forward to script
+ * engine or other expansion */
+		for (size_t j = 0; j < sizeof(esc_grp) / sizeof(esc_grp[0]); j++){
+			if (ch != esc_grp[j])
+				continue;
+
+			if (esc_ind == -1)
+				esc_ind = j;
+
+			else if (esc_ind == j){
+				esc_ind = -1;
+				argv[arg_i++] = expand(esc_ind, work);
+			}
+		}
+		if (ch == esc_grp[0] || ch == esc_grp[1] || ch == esc_grp[2]){
+			if (esc_ind == -1){
+			}
+
+			continue;
+		}
+
+		if (ch == '\\' && esc_ind == -1){
+			esc_ign = true;
+			continue;
+		}
+
+/* finish and append to argv */
+		if (ch == ' ' && pos && esc_ind == -1){
+			continue;
+		}
+
+/* or append to work */
+		work[pos++] = ch;
+	}
+
+	if (esc_ign || esc_ind != -1)
+		goto err_out;
+
+	free(work);
+	return argv;
+
+err_out:
+	free(work);
+	for (size_t i = 0; i < len; i++){
+		if (argv[i])
+			free(argv[i]);
+	}
+	free(argv);
+	return NULL;
+}
+
 static ssize_t parse_command(const char* message, void* tag)
 {
-/* check builtin- commands or verify against oracle */
 	return -1;
 }
 
@@ -57,8 +167,9 @@ static bool on_subwindow(struct tui_context* T,
 	return false;
 }
 
-/* 'on_state'(C, input-bool, int fd, void*) */
-/* 'bchunk'
+/* 'on_state'(C, input-bool, int fd, void*) [ history, config, env ] */
+/* 'bchunk' (save/load from the cwd) keep as a data buffer, command to inject
+ *  as pipe or store as file
  * 'reset', return cwd and other env to the current one */
 
 /* build environment based on current state (term-wrapper, ...), thought

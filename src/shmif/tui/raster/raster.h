@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019, Björn Ståhl
+ * Copyright 2014-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description:
@@ -33,21 +33,26 @@
 /* the raster cell is 12 byte:
  * 3 bytes front_color
  * 3 bytes back_color
- * 1 byte  attribute bitmap
- * 1 byte  reserved
+ * 2 byte  attribute bitmap
  * 4 bytes glyph-index or ucs4 code
  *
  * we are not overly concerned with the whole length, fixed size trumps
  * runlength here - outer layers should compress if needed.
  *
- * attribute bits:
+ * attribute bits (byte 0)
  * bit 0: bold
  * bit 1: underline
  * bit 2: italic
  * bit 3: strikethrough
- * bit 4: shape break
+ * bit 4: shape break (re-align to grid)
  * bit 5: cursor
- * bit 7: 'ignore'
+ * bit 6: underwave
+ * bit 7: skip-bit (double-width)
+ *
+ * (byte 1)
+ * bit 0: glyph-index
+ * bit 1: border-right
+ * bit 2: border-down
  */
 #include "raster_const.h"
 

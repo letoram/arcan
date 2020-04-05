@@ -143,11 +143,15 @@ struct tui_cell* tcell, uint8_t* outb, uint8_t has_cursor)
 		tcell->attr.italic << 2 |
 		tcell->attr.strikethrough << 3 |
 		tcell->attr.shape_break << 4 |
-		has_cursor << 5
+		has_cursor << 5 |
+		tcell->attr.underline_alt << 6
 	);
 
-/* the reserved font-control byte kept zero for the time being */
-	*outb++ = 0x00;
+	*outb++ = (
+		tcell->attr.border_right << 0 |
+		tcell->attr.border_down << 1
+	);
+
 	pack_u32(tcell->ch, outb);
 	return raster_cell_sz;
 }
