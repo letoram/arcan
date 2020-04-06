@@ -93,6 +93,7 @@ static void linehint(struct tui_raster_context* ctx, struct cell* cell,
 			x, y + ctx->cell_h - n_lines, ctx->cell_w, n_lines, cell->fc);
 	}
 
+/* the y value should be retrievable from the font rather than using the cell */
 	if (strikethrough){
 		int n_lines = (int)(ctx->cell_h * 0.05) | 1;
 		draw_box_px(vidp, pitch, maxx, maxy,

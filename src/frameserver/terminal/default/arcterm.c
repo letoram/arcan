@@ -25,6 +25,7 @@ static struct {
 	struct arg_arr* args;
 
 	pthread_mutex_t synch;
+	pthread_mutex_t hold;
 
 	pid_t child;
 
@@ -38,7 +39,8 @@ static struct {
 
 } term = {
 	.die_on_term = true,
-	.synch = PTHREAD_MUTEX_INITIALIZER
+	.synch = PTHREAD_MUTEX_INITIALIZER,
+	.hold = PTHREAD_MUTEX_INITIALIZER
 };
 
 static inline void trace(const char* msg, ...)
@@ -54,29 +56,56 @@ static inline void trace(const char* msg, ...)
 
 extern int arcan_tuiint_dirty(struct tui_context* tui);
 
-static bool readout_pty(int fd)
+static ssize_t flush_buffer(int fd, char dst[static 4096])
 {
-	char buf[4096];
-	ssize_t nr = read(fd, buf, 4096);
+	ssize_t nr = read(fd, dst, 4096);
 	if (-1 == nr){
 		if (errno == EAGAIN || errno == EINTR)
-			return true;
+			return -1;
 
 		term.alive = false;
 		arcan_tui_set_flags(term.screen, TUI_HIDE_CURSOR);
+		return -1;
+	}
+	return nr;
+}
+
+static bool readout_pty(int fd)
+{
+	char buf[4096];
+	bool got_hold = false;
+	ssize_t nr = flush_buffer(fd, buf);
+
+	if (nr < 0)
 		return false;
-	}
 
-	pthread_mutex_lock(&term.synch);
-	tsm_vte_input(term.vte, buf, nr);
-	pthread_mutex_unlock(&term.synch);
-
-/* wake the other thread, this could use other logic to reduce tearing from
- * refreshes by considering the cursor state in the terminal combined with a
- * timeout since the last update */
-	if (arcan_tuiint_dirty(term.screen)){
+	if (0 != pthread_mutex_trylock(&term.synch)){
+		pthread_mutex_lock(&term.hold);
 		write(term.dirtyfd, &(char){'1'}, 1);
+		pthread_mutex_lock(&term.synch);
+		got_hold = true;
 	}
+
+	tsm_vte_input(term.vte, buf, nr);
+
+/* could possibly also match against parser state, or specific total
+ * timeout before breaking out and releasing the terminal */
+	size_t w, h;
+	arcan_tui_dimensions(term.screen, &w, &h);
+	ssize_t cap = w * h * 4;
+	while (nr > 0 && cap > 0 && 1 == poll(
+		(struct pollfd[]){ {.fd = fd, .events = POLLIN } }, 1, 0)){
+		nr = flush_buffer(fd, buf);
+		if (nr > 0){
+			tsm_vte_input(term.vte, buf, nr);
+			cap -= nr;
+		}
+	}
+
+	if (got_hold){
+		pthread_mutex_unlock(&term.hold);
+	}
+	pthread_mutex_unlock(&term.synch);
 
 	return true;
 }
@@ -534,8 +563,6 @@ static int parse_color(const char* inv, uint8_t outv[4])
 		&outv[0], &outv[1], &outv[2], &outv[3]);
 }
 
-extern void arcan_tuiint_set_vsynch(struct tui_context* tui, pthread_mutex_t* mut);
-
 int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 {
 /*
@@ -579,6 +606,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.subwindow = on_subwindow,
 		.exec_state = on_exec_state,
 		.reset = on_reset,
+/* bchunk - use it to map stdin/stdout, valid on next reset or
+ * if the terminal is set to wait for the chunks before going */
 /*
  * for advanced rendering, but not that interesting
  * .substitute = on_subst
@@ -653,22 +682,26 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	pledge(SHMIF_PLEDGE_PREFIX " tty", NULL);
 #endif
 
-	arcan_tuiint_set_vsynch(term.screen, &term.synch);
-
 	while(term.alive || !term.die_on_term){
+		pthread_mutex_lock(&term.synch);
 		struct tui_process_res res =
 			arcan_tui_process(&term.screen, 1, &term.signalfd, 1, -1);
 
-		if (res.errc < TUI_ERRC_OK)
+		if (res.errc < TUI_ERRC_OK){
 			break;
+		}
 
-	/* flush out the signal pipe, don't care about contents */
+		arcan_tui_refresh(term.screen);
+
+	/* flush out the signal pipe, don't care about contents, assume
+	 * it is about unlocking for now */
+		pthread_mutex_unlock(&term.synch);
 		if (res.ok){
 			char buf[256];
 			read(term.signalfd, buf, 256);
+			pthread_mutex_lock(&term.hold);
+			pthread_mutex_unlock(&term.hold);
 		}
-
-		int rc = arcan_tui_refresh(term.screen);
 	}
 
 	arcan_tui_destroy(term.screen, NULL);
