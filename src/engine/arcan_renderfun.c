@@ -1636,6 +1636,11 @@ struct tui_raster_context* arcan_renderfun_fontraster(
 	float ppcm, float size_mm,
 	int hint, size_t* cellw, size_t* cellh)
 {
+/* if we don't have a valid font in the font group, the raster is pointless */
+	if ((group->font[0].vector && !group->font[0].truetype) ||
+		(!group->font[0].vector && !group->font[0].bitmap))
+		return NULL;
+
 /* if we have a cached raster for this size, return it if it is still
  * valid, otherwise free and replace with a more appropriate one */
 	if (group->raster){
@@ -1667,7 +1672,6 @@ struct tui_raster_context* arcan_renderfun_fontraster(
 	group->ppcm = ppcm;
 	group->size_mm = group->size_mm;
 	font_group_ptpx(group, &pt, &px);
-
 
 /* reflect dimensions in fonts */
 	size_t w = 0, h = 0;
