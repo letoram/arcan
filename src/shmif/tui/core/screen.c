@@ -135,8 +135,8 @@ struct tui_cell* tcell, uint8_t* outb, uint8_t has_cursor)
 		*outb++ = tcell->attr.bc[2];
 	}
 
-/* this deviates from the tui cell here, the terminal- legacy blink and
- * protect bits are not kept, and the 2 MSBs are reserved for the time being */
+/* this deviates from the tui cell here, the terminal- legacy blink
+ * and protect bits are not kept */
 	*outb++ = (
 		tcell->attr.bold << 0 |
 		tcell->attr.underline << 1 |
@@ -156,12 +156,12 @@ struct tui_cell* tcell, uint8_t* outb, uint8_t has_cursor)
 	return raster_cell_sz;
 }
 
-static int build_raster_buffer(
-	struct tui_context* tui, uint8_t** rbuf, size_t* rbuf_sz)
+int tui_screen_tpack(struct tui_context* tui,
+	struct tpack_gen_opts opts, uint8_t** rbuf, size_t* rbuf_sz)
 {
 /* start with header */
 	int rv = 0;
-	if (tui->dirty == DIRTY_NONE)
+	if (!opts.full && tui->dirty == DIRTY_NONE)
 		return rv;
 
 /* header gets written to the buffer last */
@@ -172,10 +172,17 @@ static int build_raster_buffer(
 	uint8_t* out = tui->rbuf;
 	size_t outsz = sizeof(hdr);
 
+	if (opts.back){
+		opts.full = true;
+		opts.synch = false;
+	}
+
 /* this is set on a manual invalidate, or a screen or cell resize */
-	if (tui->dirty & DIRTY_FULL){
+	if (opts.full || (tui->dirty & DIRTY_FULL)){
 		struct tui_cell* front = tui->front;
 		struct tui_cell* back = tui->back;
+		if (opts.back)
+			front = tui->back;
 
 /* cursor is guaranteed to be overdrawn */
 		tui->last_cursor.active = false;
@@ -198,7 +205,8 @@ static int build_raster_buffer(
  * be generated later */
 			for (size_t col = 0; col < tui->cols; col++){
 				struct tui_screen_attr* attr = &front->attr;
-				*back = *front;
+				if (opts.synch)
+					*back = *front;
 				outsz += cell_to_rcell(front, &out[outsz], 0);
 				back++;
 				front++;
@@ -236,7 +244,10 @@ static int build_raster_buffer(
 
 			while(ofs != -1 && ofs < tui->cols){
 				struct tui_cell* attr = &tui->front[row_base + ofs];
-				tui->back[row_base + ofs] = *attr;
+
+				if (opts.synch)
+					tui->back[row_base + ofs] = *attr;
+
 				line.ncells++;
 				outsz += cell_to_rcell(attr, &out[outsz], 0);
 /* iterate forward */
@@ -429,7 +440,8 @@ int tui_screen_refresh(struct tui_context* tui)
 
 	uint8_t* rbuf;
 	size_t rbuf_sz;
-	int rv = build_raster_buffer(tui, &rbuf, &rbuf_sz);
+	int rv = tui_screen_tpack(tui,
+		(struct tpack_gen_opts){.synch = true}, &rbuf, &rbuf_sz);
 	tui->dirty = DIRTY_NONE;
 
 /* Release the update lock so other threads may continue to update /

@@ -98,7 +98,7 @@ enum cursor_states {
 	CURSOR_NONE = 0,
 	CURSOR_INACTIVE = 1,
 	CURSOR_ACTIVE = 2,
-	CURSOR_BLINK = 3
+	CURSOR_BLINK = 4, /* attribute- bit */
 };
 
 struct tui_font {

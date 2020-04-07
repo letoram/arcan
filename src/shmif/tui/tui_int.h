@@ -149,6 +149,28 @@ int tui_screen_refresh(struct tui_context* tui);
  */
 void tui_screen_resized(struct tui_context* tui);
 
+/*
+ * this is normally called from within refresh, but can be used to obtain
+ * a tpack representation of the screen front-buffer or back buffer.
+ *
+ * if [full] is set, the type generated will always be an I frame
+ *                   regardless of the dirty state of the window
+ *
+ * if [commit] is set, the contents of the back buffer will be synched
+ *                     to the front-buffer
+ *
+ * if [back] is set, the contents of the back buffer will be used
+ *                   rather than the front buffer
+ */
+struct tpack_gen_opts {
+	bool full;
+	bool synch;
+	bool back;
+};
+
+int tui_screen_tpack(struct tui_context* tui,
+	struct tpack_gen_opts opts, uint8_t** rbuf, size_t* rbuf_sz);
+
 /* ========================================================================== */
 /*                  DISPATCH  (tui_dispatch.c) related code                   */
 /* ========================================================================== */
