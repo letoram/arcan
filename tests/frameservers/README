@@ -49,6 +49,11 @@ migrant/ will connect to the normal CONNPATH, render a number of frames
 tui_test/ attempts to use the shmif_tui library to create a text-
  based user interface
 
+tui_media/ attempts to use the shmif_tui library and its handover
+feature to allocate a media window
+
+tpack/ setup a context and replay a preset tpack buffer
+
 handover/ tests the handover feature by connecting, requesting a
  handver subsegment and spawning that into a new process. This also
  works as a stress- test as it will spawn/exec itself without limit.
@@ -70,7 +75,5 @@ encfwd/ connect once as an encoder, and then as a normal client that
         forwards what came through the encoder. A 'test' appl is
 				included to illustrate the context.
 
-dnd/ tests handling of drag and drop, cut and paste as well as global
-     file open / file save
 
 noreg/ tests what happens if a client connects but refuses to register

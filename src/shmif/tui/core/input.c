@@ -263,6 +263,54 @@ struct lent {
 	uint16_t modifiers;
 };
 
+#ifdef _DEBUG
+#define STB_ONLY_PNG
+#define STB_IMAGE_WRITE_STATIC
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "../../../engine/external/stb_image_write.h"
+#include <stdio.h>
+static bool dump_dbg(struct tui_context* tui)
+{
+/* dump front-delta, front, back to different files */
+	uint8_t* rbuf = NULL;
+	size_t rbuf_sz = 0;
+	tui_screen_tpack(tui,
+		(struct tpack_gen_opts){.full = true, .synch = false}, &rbuf, &rbuf_sz);
+
+	char buf[64];
+	snprintf(buf, 64, "/tmp/tui.%d.delta.front.tpack", getpid());
+	FILE* fout = fopen(buf, "w");
+	if (fout){
+		fwrite(rbuf, rbuf_sz, 1, fout);
+		fclose(fout);
+	}
+
+	tui_screen_tpack(tui,
+		(struct tpack_gen_opts){.full = true, .back = true}, &rbuf, &rbuf_sz);
+	snprintf(buf, 64, "/tmp/tui.%d.full.back.tpack", getpid());
+	fout = fopen(buf, "w");
+	if (fout){
+		fwrite(rbuf, rbuf_sz, 1, fout);
+		fclose(fout);
+	}
+
+	tui_screen_tpack(tui,
+		(struct tpack_gen_opts){0}, &rbuf, &rbuf_sz);
+	snprintf(buf, 64, "/tmp/tui.%d.full.front.tpack", getpid());
+	fout = fopen(buf, "w");
+	if (fout){
+		fwrite(rbuf, rbuf_sz, 1, fout);
+		fclose(fout);
+	}
+
+/* dump shmif out into a png */
+	snprintf(buf, 64, "/tmp/tui.%d.shmif.png", getpid());
+	stbi_write_png(buf, tui->acon.w, tui->acon.h, 4, tui->acon.vidb, tui->acon.stride);
+
+	return true;
+}
+#endif
+
 static const struct lent labels[] = {
 	{1, "LINE_UP", "Scroll 1 row up", {}, scroll_up}, /* u+2191 */
 	{1, "LINE_DOWN", "Scroll 1 row down", {}, scroll_down}, /* u+2192 */
@@ -276,6 +324,9 @@ static const struct lent labels[] = {
 	{1, "DOWN", "(scroll-lock) page down, DOWN keysym", {}, move_down}, /* u+ */
 	{0, "COPY_WND", "Copy window and scrollback", {}, copy_window}, /* u+ */
 	{2, "SELECT_TOGGLE", "Switch select destination (wnd, clipboard)", {}, sel_sw}, /* u+ */
+#ifdef _DEBUG
+	{1, "DUMP", "Create a buffer/raster snapshot (/tmp/tui.pid.xxx)", {}, dump_dbg},
+#endif
 	{0}
 };
 
