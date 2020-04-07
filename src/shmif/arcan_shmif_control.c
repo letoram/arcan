@@ -158,6 +158,12 @@ struct shmif_hidden {
  * to track the descriptor carrying events and swap them out. The issue is
  * relevant when it comes to the subsegments that don't have a preroll phase. */
 	struct arcan_shmif_initial initial;
+
+/* The entire log mechanism is a bit dated, it was mainly for ARCAN_SHMIF_DEBUG
+ * environment set, but forwarding that to stderr when we have a real channel
+ * where it can be done, so this should be moved to the DEBUGIF mechanism */
+	int log_event;
+
 	bool valid_initial : 1;
 
 /* "input" and "output" are poorly chosen names that stuck around for legacy,
@@ -169,11 +175,6 @@ struct shmif_hidden {
  * block in the calling thread into shmif functions until a resume- event
  * has been received */
 	bool paused : 1;
-
-/* The entire log mechanism is a bit dated, it was mainly for ARCAN_SHMIF_DEBUG
- * environment set, but forwarding that to stderr when we have a real channel
- * where it can be done, so this should be moved to the DEBUGIF mechanism */
-	bool log_event : 1;
 
 /* When waiting for a descriptor to pair with an incoming event, if this is set
  * the next pairing will not be forwarded to the client but instead consumed
@@ -983,7 +984,13 @@ int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
 		drop_initial(c);
 
 	int rv = process_events(c, dst, false, false);
+
+/* the stepframe events can be so frequent as to mandate verbose logging */
 	if (rv > 0 && c->priv->log_event){
+		if (dst->category == EVENT_TARGET &&
+			dst->tgt.kind == TARGET_COMMAND_STEPFRAME && c->priv->log_event < 2)
+			return rv;
+
 		log_print("[%"PRIu64":%"PRIu32"] <- %s",
 			(uint64_t) arcan_timemillis() - g_epoch,
 			(uint32_t) c->cookie, arcan_shmif_eventstr(dst, NULL, 0));
@@ -1029,6 +1036,10 @@ int arcan_shmif_wait(struct arcan_shmif_cont* c, struct arcan_event* dst)
 
 	int rv = process_events(c, dst, true, false);
 	if (rv > 0 && c->priv->log_event){
+		if (dst->category == EVENT_TARGET &&
+			dst->tgt.kind == TARGET_COMMAND_STEPFRAME && c->priv->log_event < 2)
+			return rv > 0;
+
 		log_print("(@%"PRIxPTR"<-)%s",
 			(uintptr_t) c, arcan_shmif_eventstr(dst, NULL, 0));
 	}
@@ -1479,7 +1490,9 @@ static struct arcan_shmif_cont shmif_acquire_int(
 
 	*res.priv = gs;
 	res.priv->alive = true;
-	res.priv->log_event = getenv("ARCAN_SHMIF_DEBUG") != NULL;
+	char* dbgenv = getenv("ARCAN_SHMIF_DEBUG");
+	if (dbgenv)
+		res.priv->log_event = strtoul(dbgenv, NULL, 10);
 
 	if (!(flags & SHMIF_DISABLE_GUARD))
 		spawn_guardthread(&res);
