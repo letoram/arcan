@@ -29,11 +29,6 @@ struct tui_context {
 	struct tsm_utf8_mach* ucsconv;
 	struct tui_raster_context* raster;
 
-/* vsynch- mutex here is a quick little hack to allow some feedback into
- * the progression of the _refresh() call as there are places where preemption
- * should work ok */
-	pthread_mutex_t* vsynch;
-
 /* BASE is the only allocation here, and front/back are aliases into it.  We
  * use the double- buffering as a refactoring stage to eventually get rid of
  * the tsm_screen implementation and layer scrollback mode on top of the screen

@@ -3,6 +3,7 @@
 #include "../tui_int.h"
 #include "../screen/libtsm.h"
 #include <pthread.h>
+#include <errno.h>
 #include <assert.h>
 
 typedef void* TTF_Font;
@@ -429,10 +430,10 @@ int tui_screen_refresh(struct tui_context* tui)
 /* synch vscreen -> screen buffer */
 	tui->flags = tsm_screen_get_flags(tui->screen);
 
-/* quick hack until we rewrite the renderer, release the context for other
- * threads to modify as it is only the shmif cont state that is blocking */
-	if (tui->vsynch)
-		pthread_mutex_lock(tui->vsynch);
+	if (arcan_shmif_signalstatus(&tui->acon) > 0){
+		errno = EAGAIN;
+		return -1;
+	}
 
 /* this will repeatedly call tsm_draw_callback which, in turn, will update
  * the front buffer with new glyphs. */
@@ -444,11 +445,6 @@ int tui_screen_refresh(struct tui_context* tui)
 		(struct tpack_gen_opts){.synch = true}, &rbuf, &rbuf_sz);
 	tui->dirty = DIRTY_NONE;
 
-/* Release the update lock so other threads may continue to update /
- * process while we are busy forwarding and synching. */
-	if (tui->vsynch)
-		pthread_mutex_unlock(tui->vsynch);
-
 /* if we raster locally or server- side is determined by the rbuf_fwd flag */
 	if (rv){
 		if (!tui->rbuf_fwd){
@@ -456,7 +452,7 @@ int tui_screen_refresh(struct tui_context* tui)
 				return 0;
 		}
 
-		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
+		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 	}
 
 	return 0;

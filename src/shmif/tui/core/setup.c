@@ -277,6 +277,7 @@ struct tui_context* arcan_tui_setup(
 	else
 		res->acon.hints = SHMIF_RHINT_SUBREGION;
 
+	res->acon.hints |= SHMIF_RHINT_VSIGNAL_EV;
 	if (0 != tsm_utf8_mach_new(&res->ucsconv)){
 		free(res);
 		return NULL;
