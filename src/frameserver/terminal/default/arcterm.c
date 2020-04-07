@@ -29,7 +29,7 @@ static struct {
 
 	pid_t child;
 
-	volatile bool alive;
+	_Atomic volatile bool alive;
 	bool die_on_term;
 	long last_input;
 
@@ -63,7 +63,7 @@ static ssize_t flush_buffer(int fd, char dst[static 4096])
 		if (errno == EAGAIN || errno == EINTR)
 			return -1;
 
-		term.alive = false;
+		atomic_store(&term.alive, false);
 		arcan_tui_set_flags(term.screen, TUI_HIDE_CURSOR);
 		return -1;
 	}
@@ -248,7 +248,7 @@ static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 	int rv = write(fd, u8, len);
 
 	if (rv < 0){
-		term.alive = false;
+		atomic_store(&term.alive, false);
 		arcan_tui_set_flags(c, TUI_HIDE_CURSOR);
 	}
 
@@ -526,11 +526,11 @@ static bool setup_build_term()
 	pthread_attr_t pthattr;
 	pthread_attr_init(&pthattr);
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	atomic_store(&term.alive, true);
 
-	if (-1 == pthread_create(&pth, &pthattr, pump_pty, NULL))
-		term.alive = false;
-	else
-		term.alive = true;
+	if (-1 == pthread_create(&pth, &pthattr, pump_pty, NULL)){
+		atomic_store(&term.alive, false);
+	}
 
 	return true;
 }
@@ -546,7 +546,7 @@ static void on_reset(struct tui_context* tui, int state, void* tag)
 	arcan_tui_reset(tui);
 	tsm_vte_hard_reset(term.vte);
 
-	if (!term.alive){
+	if (!atomic_load(&term.alive)){
 		setup_build_term();
 	}
 	break;
@@ -682,7 +682,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	pledge(SHMIF_PLEDGE_PREFIX " tty", NULL);
 #endif
 
-	while(term.alive || !term.die_on_term){
+	while(atomic_load(&term.alive) || !term.die_on_term){
 		pthread_mutex_lock(&term.synch);
 		struct tui_process_res res =
 			arcan_tui_process(&term.screen, 1, &term.signalfd, 1, -1);
