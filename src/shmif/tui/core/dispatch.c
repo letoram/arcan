@@ -349,11 +349,6 @@ void tui_event_poll(struct tui_context* tui)
 	arcan_event ev;
 	int pv;
 
-/* synchronize here as well as event -> resize could happen
- * while busy synchronizing to the display on concurrent use */
-	if (tui->vsynch)
-		pthread_mutex_lock(tui->vsynch);
-
 	while ((pv = arcan_shmif_poll(&tui->acon, &ev)) > 0){
 		switch (ev.category){
 		case EVENT_IO:
@@ -368,9 +363,6 @@ void tui_event_poll(struct tui_context* tui)
 		break;
 		}
 	}
-
-	if (tui->vsynch)
-		pthread_mutex_unlock(tui->vsynch);
 
 	if (pv == -1)
 		arcan_shmif_drop(&tui->acon);

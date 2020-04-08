@@ -420,11 +420,6 @@ struct tui_process_res arcan_tui_process(
 	return res;
 }
 
-void arcan_tuiint_set_vsynch(struct tui_context* tui, pthread_mutex_t* mut)
-{
-	tui->vsynch = mut;
-}
-
 int arcan_tuiint_dirty(struct tui_context* tui)
 {
 	return tui->dirty;
