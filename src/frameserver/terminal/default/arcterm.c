@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 #include "cli.h"
+#include "cli_builtin.h"
 
 #include "tsm/libtsm.h"
 #include "tsm/libtsm_int.h"
@@ -330,31 +331,28 @@ static char* get_shellenv()
 	return shell;
 }
 
-/* quick and dirty string to argv, doesn't respect quotes or expansion */
+static char* group_expand(struct group_ent* group, const char* in)
+{
+	return strdup(in);
+}
+
 static char** build_argv(char* appname, char* instr)
 {
-/* nargs */
-	size_t pos = 0;
-	size_t nargs = 2;
+	struct group_ent groups[] = {
+		{.enter = '"', .leave = '"', .expand = group_expand},
+		{.enter = '\0', .leave = '\0', .expand = NULL}
+	};
 
-	while(instr[pos]){
-		if (instr[pos++] == ' ')
-			nargs++;
-	}
+	struct argv_parse_opt opts = {
+		.prepad = 1,
+		.groups = groups,
+		.sep = ' '
+	};
 
-	size_t nb = (nargs + 1) * sizeof(char*);
-	char** res = malloc(nb);
-	if (!res)
-		return NULL;
-
-	pos = 1;
-	memset(res, '\0', nb);
-	res[0] = appname;
-	char* arg = strtok(instr, " ");
-	while(arg && pos < nargs){
-		res[pos++] = arg;
-		arg = strtok(0, " ");
-	}
+	ssize_t err_ofs = -1;
+	char** res = extract_argv(instr, opts, &err_ofs);
+	if (res)
+		res[0] = appname;
 
 	return res;
 }
@@ -399,7 +397,12 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 #define NSIG 32
 #endif
 
+/* so many different contexts and handover methods needed here and not really a
+ * clean 'ok we can get away with only doing this', the arcan-launch setups
+ * need argument passing in env, the afsrv_cli need re-exec with argv in argv,
+ * and some specialized features like debug handover may need both */
 	char* exec_arg = getenv("ARCAN_TERMINAL_EXEC");
+
 #ifdef FSRV_TERMINAL_NOEXEC
 	if (arg_lookup(argarr, "exec", 0, &val)){
 		LOG("permission denied, noexec compiled in");
