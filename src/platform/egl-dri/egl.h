@@ -81,6 +81,12 @@ struct egl_env {
 	PFNEGLSTREAMCONSUMERACQUIREKHRPROC stream_consumer_acquire;
 	PFNEGLSTREAMCONSUMERACQUIREATTRIBNVPROC stream_consumer_acquire_attrib;
 
+/* Explicit Sync */
+	PFNEGLCREATESYNCKHRPROC create_synch;
+	PFNEGLWAITSYNCKHRPROC wait_synch;
+	PFNEGLDESTROYSYNCKHRPROC destroy_synch;
+	PFNEGLDUPNATIVEFENCEFDANDROIDPROC dup_fence_fd;
+
 /* Basic EGL */
 	PFNEGLDESTROYSURFACEPROC destroy_surface;
 	PFNEGLGETERRORPROC get_error;
@@ -186,6 +192,13 @@ static void map_egl_functions(struct egl_env* denv,
 		(PFNEGLSWAPBUFFERSPROC) lookup(tag, "eglSwapBuffers", true);
 	denv->swap_interval =
 		(PFNEGLSWAPINTERVALPROC) lookup(tag, "eglSwapInterval", true);
+	denv->create_synch =
+		(PFNEGLCREATESYNCKHRPROC) lookup(tag, "eglCreateSyncKHR", false);
+	denv->wait_synch =
+		(PFNEGLWAITSYNCKHRPROC) lookup(tag, "eglWaitSyncKHR", false);
+	denv->dup_fence_fd =
+		(PFNEGLDUPNATIVEFENCEFDANDROIDPROC)
+		lookup(tag, "eglDupNativeFenceFDANDROID", false);
 }
 
 #endif
