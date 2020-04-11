@@ -145,8 +145,8 @@ void arcan_closefrom(int fd)
  * and that there's enough room in the frameserver_envp for NULL term.
  * The caller will cleanup env with free_strarr.
  */
-static void append_env(struct arcan_strarr* darr,
-	char* argarg, char* sockmsg, char* conn)
+static void append_env(
+	struct arcan_strarr* darr, char* argarg, char* sockmsg, char* conn)
 {
 /*
  * slightly unsure which ones we actually need to propagate, for now these go
@@ -285,13 +285,12 @@ struct arcan_frameserver* platform_launch_fork(
 		return NULL;
 
 	ctx->launchedtime = arcan_frametime();
+	ctx->source = NULL;
 
 /* just map the frameserver archetypes to preset context configs, nowadays
  * these are rather minor - in much earlier versions it covered queues, thread
  * scheduling and so on. */
 	if (setup->use_builtin){
-		append_env(&arr,
-			(char*) setup->args.builtin.resource, "3", ctx->shm.key);
 		if (strcmp(setup->args.builtin.mode, "game") == 0){
 			ctx->segid = SEGID_GAME;
 		}
@@ -313,11 +312,22 @@ struct arcan_frameserver* platform_launch_fork(
 		else if (strcmp(setup->args.builtin.mode, "terminal") == 0){
 			ctx->segid = SEGID_TERMINAL;
 		}
+		ctx->source = strdup(
+			setup->args.builtin.resource ?
+			setup->args.builtin.resource : setup->args.builtin.mode);
+
+		append_env(&arr,
+			(char*) setup->args.builtin.resource, "3", ctx->shm.key);
 	}
-	else
-		append_env(setup->args.external.envv,
+	else{
+		ctx->source = strdup(
 			setup->args.external.resource ?
-			setup->args.external.resource : "", "3", ctx->shm.key);
+			setup->args.external.resource : ""
+		);
+
+		append_env(
+			setup->args.external.envv, ctx->source, "3", ctx->shm.key);
+	}
 
 /* build the video object */
 	img_cons cons  = {
@@ -329,7 +339,6 @@ struct arcan_frameserver* platform_launch_fork(
 		.tag = ARCAN_TAG_FRAMESERV,
 		.ptr = ctx
 	};
-	ctx->source = strdup(setup->args.builtin.resource);
 
 	if (!setup->custom_feed){
 		ctx->vid = arcan_video_addfobject(FFUNC_NULLFRAME, state, cons, 0);

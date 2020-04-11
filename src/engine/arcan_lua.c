@@ -3566,72 +3566,66 @@ static int launchavfeed(lua_State* ctx)
 	LUA_ETRACE("launch_avfeed", NULL, 4);
 }
 
-static int loadmovie(lua_State* ctx)
+static int launchdecode(lua_State* ctx)
 {
-	LUA_TRACE("load_movie");
+	LUA_TRACE("launch_decode");
 
-	if (!fsrv_ok){
-		LUA_ETRACE("load_movie", "frameservers build-time blocked", 0);
-	}
-
-	const char* farg = luaL_checkstring(ctx, 1);
-
-	bool special = is_special_res(farg);
-	char* fname = special ? strdup(farg) : findresource(farg, DEFAULT_USERMASK);
-	intptr_t ref = (intptr_t) 0;
-
-	const char* argstr = "";
-	int cbind = 2;
-
-	if (lua_type(ctx, 2) == LUA_TNUMBER){
-		arcan_warning("load_movie(), second argument uses deprecated "
-			"number argument type.\n");
-		cbind++;
-	}
-	else if (lua_type(ctx, 2) == LUA_TSTRING){
-		argstr = luaL_optstring(ctx, 2, "");
-		cbind++;
-	}
-
-	if (lua_isfunction(ctx, cbind) && !lua_iscfunction(ctx, cbind)){
-		lua_pushvalue(ctx, cbind);
-		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
-	};
-
-	size_t optlen = strlen(argstr);
-
-	if (!fname){
-		arcan_warning("loadmovie() -- unknown resource (%s)"
-		"	specified.\n", fname);
-		LUA_ETRACE("load_movie", "couldn't resolve resource", 0);
-	}
-
-	if (!special){
-		size_t flen = strlen(fname);
-		size_t fnlen = flen + optlen + 8;
-		char msg[fnlen];
-		msg[fnlen-1] = 0;
-
-		colon_escape(fname);
-
-		if (optlen > 0)
-			snprintf(msg, fnlen-1, "%s:file=%s", argstr, fname);
-		else
-			snprintf(msg, fnlen-1, "file=%s", fname);
-
-		fname = strdup(msg);
-	}
-
+	char* fname = NULL;
+	struct arcan_frameserver* mvctx;
 	struct frameserver_envp args = {
 		.use_builtin = true,
-		.args.builtin.mode = "decode",
-		.args.builtin.resource = fname
+		.args.builtin.mode = "decode"
 	};
 
+	if (!fsrv_ok){
+		LUA_ETRACE("launch_decode", "frameservers build-time blocked", 0);
+	}
+
+	intptr_t ref = find_lua_callback(ctx);
+
+/* Change >= 0.6 - nil first argument is now permitted in order to
+ * deal with the proto=... options. Next change here would be to move
+ * the argument to require a url like scheme for the special resources */
+	if (lua_type(ctx, 1) == LUA_TNIL){
+		args.args.builtin.resource = luaL_checkstring(ctx, 2);
+		goto finish;
+	}
+
+	const char* resource = luaL_checkstring(ctx, 1);
+	const char* optarg = "";
+	if (lua_type(ctx, 2) == LUA_TSTRING){
+		optarg = lua_tostring(ctx, 2);
+	}
+
+	if (is_special_res(resource))
+		fname = strdup(resource);
+/* resolve in the resource namespace unless some special pattern */
+	else {
+		fname = findresource(resource, DEFAULT_USERMASK);
+		if (!fname)
+			LUA_ETRACE("launch_decode", "couldn't resolve resource", 0);
+
+/* ugly legacy, swap : to \t - also need a scratch string for conc. */
+		colon_escape(fname);
+
+/* prepend option string */
+		size_t flen = strlen(fname);
+		size_t optlen = strlen(optarg);
+		size_t maxlen = flen + optlen + 6 + 1;
+		char* ol = arcan_alloc_mem(
+			maxlen, ARCAN_MEM_STRINGBUF, 0, ARCAN_MEMALIGN_NATURAL);
+		snprintf(ol, maxlen,
+			"%s%sfile=%s", optarg, optlen > 0 ? ":" : "", fname);
+		arcan_mem_free(fname);
+		fname = ol;
+	}
+	args.args.builtin.resource = fname;
+
+finish:
+	mvctx = platform_launch_fork(&args, ref);
 	arcan_vobj_id vid = ARCAN_EID;
 	arcan_aobj_id aid = ARCAN_EID;
 
-	struct arcan_frameserver* mvctx = platform_launch_fork(&args, ref);
 	if (mvctx){
 		arcan_video_objectopacity(mvctx->vid, 0.0, 0);
 		vid = mvctx->vid;
@@ -3640,10 +3634,10 @@ static int loadmovie(lua_State* ctx)
 
 	lua_pushvid(ctx, vid);
 	lua_pushaid(ctx, aid);
-	trace_allocation(ctx, "load_movie", mvctx->vid);
+	trace_allocation(ctx, "launch_decode", mvctx->vid);
 	arcan_mem_free(fname);
 
-	LUA_ETRACE("load_movie", NULL, 2);
+	LUA_ETRACE("launch_decode", NULL, 2);
 }
 
 static int vr_setup(lua_State* ctx)
@@ -11858,8 +11852,7 @@ static const luaL_Reg tgtfuns[] = {
 {"rendertarget_noclear",       rendernoclear            },
 {"rendertarget_id",            rendertargetid           },
 {"rendertarget_range",         rendertargetrange        },
-{"load_movie",                 loadmovie                },
-{"launch_decode",              loadmovie                },
+{"launch_decode",              launchdecode             },
 {"launch_avfeed",              launchavfeed             },
 {NULL, NULL}
 };

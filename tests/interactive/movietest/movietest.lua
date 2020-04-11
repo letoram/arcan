@@ -76,7 +76,7 @@ function movietest_input( inputtbl )
 		if (symtable[ inputtbl.keysym ] == "d") then
 
 		elseif (symtable[ inputtbl.keysym ] == "s") then
-			vid, aid = load_movie("movietest.avi", FRAMESERVER_LOOP);
+			vid, aid = launch_decode("movietest.avi");
 			img.last = vid;
 			move_image(vid, cursor.x, cursor.y);
 			show_image(vid);
@@ -88,7 +88,7 @@ function movietest_input( inputtbl )
 			width = 128 + math.random(1024);
 			height = 128 + math.random(1024);
 			print("Requesting:", "capture:" .. webcam_ind, tostring(width) .. "x" .. tostring(height));
-vid, aid = load_movie("capture:device=" .. webcam_ind .. ":width=" .. tostring(width) .. ":height=" .. tostring(height), FRAMESERVER_NOLOOP,
+vid, aid = launch_decode("capture:device=" .. webcam_ind .. ":width=" .. tostring(width) .. ":height=" .. tostring(height), FRAMESERVER_NOLOOP,
 function(source, status)
 	print("webcam status:", status.kind);
 	if (status.kind == "resized") then

@@ -8,10 +8,10 @@ enum pack_format {
 	PACK_RIGHT = 2
 };
 
-struct arcan_t2s {
+static struct arcan_t2s {
 	struct arcan_shmif_cont* cont;
 	enum pack_format fmt;
-};
+} arcan_t2s;
 
 static volatile bool in_playback = true;
 
@@ -20,7 +20,7 @@ static int on_sound(short* buf, int ns, espeak_EVENT* ev)
 	if (ns < 0)
 		return 1;
 
-	struct arcan_t2s* t2s = ev->user_data;
+	struct arcan_t2s* t2s = &arcan_t2s;
 
 /* flush any pending frames */
 	if (ns == 0){
@@ -121,10 +121,8 @@ int decode_t2s(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			fmt = PACK_RIGHT;
 	}
 
-	struct arcan_t2s t2s = {
-		.cont = cont,
-		.fmt = fmt
-	};
+	arcan_t2s.cont = cont;
+	arcan_t2s.fmt = fmt;
 
 	if (arg_lookup(args, "pitch", 0, &work) && work){
 		errno = 0;
@@ -184,7 +182,7 @@ int decode_t2s(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		}
 
 		if (EE_OK != espeak_Synth(msg, strlen(msg)+1, 0, POS_WORD, 0,
-			espeakCHARS_UTF8 | useSSML | usePHONEMES, NULL, &t2s)){
+			espeakCHARS_UTF8 | useSSML | usePHONEMES, NULL, NULL)){
 			arcan_shmif_last_words(cont, "synth call failed");
 			arcan_shmif_drop(cont);
 			return EXIT_FAILURE;
@@ -219,7 +217,7 @@ int decode_t2s(struct arcan_shmif_cont* cont, struct arg_arr* args)
 				buf[len] = 0;
 				memcpy(buf, ev.tgt.message, len);
 				if (EE_OK != espeak_Synth(buf, len+1, 0, POS_WORD, 0,
-					espeakCHARS_UTF8 | useSSML | usePHONEMES, NULL, &t2s)){
+					espeakCHARS_UTF8 | useSSML | usePHONEMES, NULL, NULL)){
 /* log, couldn't buffer */
 				}
 			}
