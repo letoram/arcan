@@ -43,7 +43,7 @@ int show_use(struct arcan_shmif_cont* cont, const char* msg)
 		"---------\t-----------\t-----------------\n"
 		" channel \t l,r, >lr< \t set output channels to left, right or both\n"
 		" list    \t           \t return a list of voices then terminate\n"
-		" msg     \t text      \t one-shot convert 'text' to speech then terminate\n"
+		" text    \t msg       \t one-shot convert 'msg' to speech then terminate\n"
 		" voice   \t name      \t select voice by name\n"
 		" rate    \t 80..450   \t set rate in words per minute\n"
 		" pitch   \t 0..100    \t set base pitch, 0 low, (default=50)\n"

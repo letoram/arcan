@@ -4,7 +4,8 @@ function vidtag()
 	symtable = system_load("builtin/keyboard.lua")();
 	timestamp = benchmark_timestamp();
 
-	movie = load_movie(fname, FRAMESERVER_NOLOOP, function(source, status)
+	movie = launch_decode(fname,
+	function(source, status)
 		if (status.kind == "resized") then
 			play_movie(movie);
 			show_image(movie);

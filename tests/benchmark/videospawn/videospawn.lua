@@ -15,12 +15,14 @@ function videospawn(arguments)
 end
 
 function fill_step()
-	local video = load_movie("videospawn.mkv", function(source, status)
+	local video = launch_decode("videospawn.mkv",
+		function(source, status)
 			if (status.kind == "resized") then
 				resize_image(source, 64, 64);
 				show_image(source);
 			end
-		end);
+		end
+	);
 	move_image(video, xpos, ypos);
 
 	xpos = xpos + 64;

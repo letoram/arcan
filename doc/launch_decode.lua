@@ -1,18 +1,19 @@
 -- launch_decode
 -- @short: Launch a video decoding frameserver
--- @inargs: resstr, [optarg], callback(source,status)
+-- @inargs: string:resource, func:callback(vid:source,strtbl:status)
+-- @inargs: string:resource, string:opts, func:callback(vid:source,strtbl:status)
+-- @inargs: nil, string:opts, func:callback(vid:source, strtbl:status)
 -- @outargs: vid, aid
--- @longdescr: Spawn a new video decoding frameserver in a separate process
--- and request that resstr should be opened and decoded. If *optarg* is not
--- set to an argument string to pass to the decode frameserver, the second
--- argument to launch_decode will be the callback function.
--- The possible contents of the status argument to the *callback* function
--- are described in ref:launch_target.
--- @note: resstr can also be device:, capture: and stream: arguments.
--- @note: for details on optarg, see the man page for afsrv_decode or run
--- it without any arguments from the command-line.
+-- @longdescr: Spawn a new decode frameserver process, with input resource
+-- defined by *resource*. the *callback* function behaves similarly to that
+-- of ref:launch_target. If *opts* is provided it will be processed based on
+-- the capabilities of the decode frameserver. These can be viewed by runnning
+-- it from a command-line, like: ARCAN_ARG=help afsrv_decode.
+--
+-- Due to an unfortunate legacy, certain *resource* names are reserved for
+-- special purposes and are prefixed as device:, capture: and stream:.
 -- @group: targetcontrol
--- @cfunction: loadmovie
+-- @cfunction: launchdecode
 -- @related:
 function main()
 #ifdef MAIN
