@@ -1118,6 +1118,43 @@ size_t arcan_tui_printf(struct tui_context* ctx,
 	return nw;
 }
 
+void arcan_tui_message(
+	struct tui_context* c, int target, const char* msg)
+{
+	if (!c)
+		return;
+
+	struct arcan_event outev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = EVENT_EXTERNAL_MESSAGE,
+	};
+
+	size_t len = strlen(msg);
+
+	if (target == TUI_MESSAGE_PROMPT){
+	}
+	else if (target == TUI_MESSAGE_ALERT){
+		outev.ext.kind = EVENT_EXTERNAL_ALERT;
+	}
+/* reserved first > for prompt */
+	else if (target == TUI_MESSAGE_NOTIFICATION){
+		char* workstr = malloc(len + 2);
+		if (!workstr)
+			return;
+
+		workstr[0] = '>';
+		memcpy(&workstr[1], msg, len);
+		workstr[len+1] = '\0';
+		tui_push_message(&c->acon, &outev, msg, len);
+		free(workstr);
+		return;
+	}
+	else
+		return;
+
+	tui_push_message(&c->acon, &outev, msg, len);
+}
+
 pid_t arcan_tui_handover(struct tui_context* c,
 	arcan_tui_conn* conn,
 	struct tui_constraints* constraints,

@@ -175,13 +175,93 @@ static void set_builtin_palette(struct tui_context* ctx)
 	ctx->colors[TUI_COL_INACTIVE] = (struct color){0x20, 0x20, 0x20};
 }
 
+static bool late_bind(
+	arcan_tui_conn* con, struct tui_context* res, bool setup)
+{
+/*
+ * if the connection comes from _open_display, free the intermediate
+ * context store here and move it to our tui context
+ */
+	bool managed = false;
+	res->acon = *con;
+	if( (uintptr_t)con->user == 0xdeadbeef){
+		if (managed)
+			free(con);
+		managed = true;
+	}
+
+/*
+ * only in a managed context can we retrieve the initial state truthfully, as
+ * it only takes a NEWSEGMENT event, not a context activation like for the
+ * primary. Thus derive from the primary in that case, inherit from the parent
+ * and then let any dynamic overrides appear as normal.
+ */
+	struct arcan_shmif_initial* init = NULL;
+	if (sizeof(struct arcan_shmif_initial) !=
+		arcan_shmif_initial(&res->acon, &init) && managed){
+		LOG("initial structure size mismatch, out-of-synch header/shmif lib\n");
+		arcan_shmif_drop(&res->acon);
+		free(res);
+		return NULL;
+	}
+
+/* this could have been set already by deriving from a parent */
+	if (!res->ppcm){
+		if (init){
+			res->ppcm = init->density;
+		}
+		else
+			res->ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
+	}
+
+	tui_fontmgmt_setup(res, init);
+
+/* TEMPORARY: while moving to server-side rasterization as the new default */
+	res->rbuf_fwd = getenv("TUI_RPACK");
+	if (res->rbuf_fwd)
+		res->acon.hints = SHMIF_RHINT_TPACK;
+	else
+		res->acon.hints = SHMIF_RHINT_SUBREGION;
+	res->acon.hints |= SHMIF_RHINT_VSIGNAL_EV;
+
+/* clipboard, timer callbacks, no IDENT */
+	res->acon = *con;
+	tui_queue_requests(res, true, false);
+
+	arcan_shmif_resize_ext(&res->acon,
+		res->acon.w, res->acon.h,
+		(struct shmif_resize_ext){
+			.vbuf_cnt = -1,
+			.abuf_cnt = -1,
+			.rows = res->acon.h / res->cell_h,
+			.cols = res->acon.w / res->cell_w
+		}
+	);
+
+	tui_screen_resized(res);
+
+	if (res->handlers.resized)
+		res->handlers.resized(res, res->acon.w, res->acon.h,
+			res->cols, res->rows, res->handlers.tag);
+
+	return true;
+}
+
+bool arcan_tui_bind(arcan_tui_conn* con, struct tui_context* orphan)
+{
+	return late_bind(con, orphan, false);
+}
+
 struct tui_context* arcan_tui_setup(
 	arcan_tui_conn* con,
 	struct tui_context* parent,
 	const struct tui_cbcfg* cbs,
 	size_t cbs_sz, ...)
 {
-	if (!con || !cbs)
+/* empty- con is permitted in order to allow 'late binding' of an orphaned
+ * context, a way to pre-manage tui contexts without waiting for a matching
+ * subwindow request */
+	if (!cbs)
 		return NULL;
 
 	struct tui_context* res = malloc(sizeof(struct tui_context));
@@ -195,32 +275,8 @@ struct tui_context* arcan_tui_setup(
 		.cell_h = 8
 	};
 
-/*
- * if the connection comes from _open_display, free the intermediate
- * context store here and move it to our tui context
- */
-	bool managed = (uintptr_t)con->user == 0xdeadbeef;
-	res->acon = *con;
-	if (managed)
-		free(con);
-
-/*
- * only in a managed context can we retrieve the initial state truthfully,
- * for subsegments the values are derived from parent via the defaults stage.
- */
-	struct arcan_shmif_initial* init = NULL;
-	if (sizeof(struct arcan_shmif_initial) != arcan_shmif_initial(con, &init)
-		&& managed){
-		LOG("initial structure size mismatch, out-of-synch header/shmif lib\n");
-		arcan_shmif_drop(&res->acon);
-		free(res);
-		return NULL;
-	}
-
 	if (tsm_screen_new(&res->screen, tsm_log, res) < 0){
 		LOG("failed to build screen structure\n");
-		if (managed)
-			arcan_shmif_drop(&res->acon);
 		free(res);
 		return NULL;
 	}
@@ -237,12 +293,6 @@ struct tui_context* arcan_tui_setup(
 		return NULL;
 	}
 	memcpy(&res->handlers, cbs, cbs_sz);
-
-	if (init){
-		res->ppcm = init->density;
-	}
-	else
-		res->ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
 
 	set_builtin_palette(res);
 	apply_arg(res, arcan_shmif_args(con));
@@ -267,17 +317,7 @@ struct tui_context* arcan_tui_setup(
 				}
 		}});
 	}
-	else
-		tui_fontmgmt_setup(res, init);
 
-/* TEMPORARY: while moving to server-side rasterization as the new default */
-	res->rbuf_fwd = getenv("TUI_RPACK");
-	if (res->rbuf_fwd)
-		res->acon.hints = SHMIF_RHINT_TPACK;
-	else
-		res->acon.hints = SHMIF_RHINT_SUBREGION;
-
-	res->acon.hints |= SHMIF_RHINT_VSIGNAL_EV;
 	if (0 != tsm_utf8_mach_new(&res->ucsconv)){
 		free(res);
 		return NULL;
@@ -293,23 +333,12 @@ struct tui_context* arcan_tui_setup(
 			.bb = res->colors[TUI_COL_BG].rgb[2]
 		}
 	);
+
+/* TEMPORARY: when deprecating tsm any scrollback become the widgets problem */
 	tsm_screen_set_max_sb(res->screen, 1000);
 
-/* clipboard, timer callbacks, no IDENT */
-	tui_queue_requests(res, true, false);
-
-	arcan_shmif_resize_ext(&res->acon, res->acon.w, res->acon.h,
-		(struct shmif_resize_ext){
-			.vbuf_cnt = -1,
-			.abuf_cnt = -1,
-			.rows = res->acon.h / res->cell_h,
-			.cols = res->acon.w / res->cell_w
-		});
-
-	tui_screen_resized(res);
-	if (res->handlers.resized)
-		res->handlers.resized(res, res->acon.w, res->acon.h,
-			res->cols, res->rows, res->handlers.tag);
+	if (con)
+		late_bind(con, res, true);
 
 	return res;
 }

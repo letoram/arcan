@@ -170,6 +170,9 @@ int tui_screen_tpack(struct tui_context* tui,
 /*                  DISPATCH  (tui_dispatch.c) related code                   */
 /* ========================================================================== */
 
+bool tui_push_message(struct arcan_shmif_cont* tui,
+	struct arcan_event* base, const char* msg, size_t len);
+
 /*
  * Poll the incoming event queue on the tui segment, process TARGET events
  * and forward IO events to
