@@ -543,6 +543,10 @@ enum ARCAN_TARGET_COMMAND {
  * per message. Each individual message MUST be valid UTF-8 even in multipart.
  * ioev[0].iv = !0, multipart continued
  * ioev.message = utf-8 valid byte sequence
+ *
+ * For TUI clients, it is used as a complement to _ALERT to convey additional
+ * sideband data. If prefixed by '>' it is treated as a prompt, otherwise it is
+ * used as a notification.
  */
 	TARGET_COMMAND_MESSAGE,
 

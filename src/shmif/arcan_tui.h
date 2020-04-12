@@ -597,23 +597,48 @@ struct tui_subwnd_req {
 	enum tui_subwnd_hint hint;
 };
 
+enum tui_message_slots {
+	TUI_MESSAGE_PROMPT = 0,
+	TUI_MESSAGE_ALERT = 1,
+	TUI_MESSAGE_NOTIFICATION = 2
+};
+
 #ifndef ARCAN_TUI_DYNAMIC
 
 /*
- * Take a reference connection [conn != NULL] and wrap/take over control
- * over that to implement the TUI abstraction. The actual contents of [con]
- * is implementation defined and depends on the backend and TUI
- * implementation used.
+ * Build a tui context based on the properties from the optional connection
+ * [con] or a reference parent [parent], and bind it with the handler table
+ * defined in [cfg], passing the sizeof(struct tui_cbcfg) along with it.
  *
- * The functions implemented in [cfg] will be used as event- callbacks,
- * and [cfg_sz] is a simple sizeof(struct tui_cbcfg) as a primitive means
- * of versioning.
+ * If [con] is not provided, the context will be used as a displayless-
+ * store, no input events are provided or processed, refresh calls and so
+ * on will not trigger, but it can be used to draw into.
+ *
+ * In such cases, a [con] from either a subwindow event handler or a new
+ * _open_display can adopt a context by calling [arcan_tui_bind].
  */
 struct tui_context* arcan_tui_setup(
 	arcan_tui_conn* con, struct tui_context* parent,
 	const struct tui_cbcfg* cfg,
 	size_t cfg_sz, ...
 );
+
+/*
+ * Take a previously created context and bind it to a tui connection.
+ *
+ * This is an edge case for advanced use when writing frontends to applications
+ * where data for the intended subwindow is already present, and a lock/block
+ * to wait for the response of the subwindow would create complex buffering
+ * scenarios.
+ *
+ * In those cases, setup the new context already when making the subwindow
+ * request, then in the event handler, should the request be approved - issue a
+ * bind on the context.
+ *
+ * There is no guarantee that a wndhint will
+ */
+bool arcan_tui_bind(
+	arcan_tui_conn* con, struct tui_context* orphan);
 
 /*
  * Destroy the tui context and the managed connection. If the exit state
@@ -1038,6 +1063,19 @@ void arcan_tui_move_to(struct tui_context*, size_t x, size_t y);
 bool arcan_tui_hasglyph(struct tui_context*, uint32_t);
 
 /*
+ * Update one of the context message slot with the contents of msg.
+ * TUI_MESSAGE_PROMPT:
+ *  - input overlay (e.g. command prompt in vim)
+ * TUI_MESSAGE_ALERT:
+ *  - signal that the window wants focus/attention and some reason for it
+ *    should be used for events that require immediate response
+ * TUI_MESSAGE_NOTIFICATION:
+ *  - signal the occurence of some status event that should grab the
+ *    user's attention, but is not as severe as ALERT
+ */
+void arcan_tui_message(struct tui_context*, int target, const char* msg);
+
+/*
  * mark the current cursor position as a tabstop
  * [DEPRECATE -> widget]
  */
@@ -1112,6 +1150,7 @@ int arcan_tui_set_margins(struct tui_context*, size_t top, size_t bottom);
 #else
 typedef struct tui_context*(* PTUISETUP)(
 	arcan_tui_conn*, struct tui_context*, const struct tui_cbcfg*, size_t, ...);
+typedef struct tui_context*(* PTUIBIND)(arcan_tui_conn*, struct tui_context*);
 typedef void (* PTUIDESTROY)(struct tui_context*, const char* message);
 typedef struct tui_process_res (* PTUIPROCESS)(
 struct tui_context**, size_t, int*, size_t, int);
@@ -1147,6 +1186,7 @@ typedef void (* PTUIRESETLABELS)(struct tui_context*);
 typedef void (* PTUISETFLAGS)(struct tui_context*, int);
 typedef void (* PTUIRESETFLAGS)(struct tui_context*, int);
 typedef void (* PTUIHASGLYPH)(struct tui_context*, uint32_t);
+typedef void (* PTUIMESSAGE)(struct tui_context*, int, const char*);
 typedef void (* PTUISETTABSTOP)(struct tui_context*);
 typedef void (* PTUIINSERTLINES)(struct tui_context*, size_t);
 typedef void (* PTUINEWLINE)(struct tui_context*);
@@ -1199,6 +1239,7 @@ typedef ssize_t (* PTUIUTF8UCS4)(const char dst[static 4], uint32_t);
 
 static PTUIHANDOVER arcan_tui_handover;
 static PTUISETUP arcan_tui_setup;
+static PTUIBIND arcan_tui_bind;
 static PTUIDESTROY arcan_tui_destroy;
 static PTUIPROCESS arcan_tui_process;
 static PTUIREFRESH arcan_tui_refresh;
@@ -1228,6 +1269,7 @@ static PTUIRESET arcan_tui_reset;
 static PTUIRESETLABELS arcan_tui_reset_labels;
 static PTUISETFLAGS arcan_tui_set_flags;
 static PTUIHASGLYPH arcan_tui_hasglyph;
+static PTUIMESSAGE arcan_tui_message;
 static PTUIRESETFLAGS arcan_tui_reset_flags;
 static PTUISETTABSTOP arcan_tui_set_tabstop;
 static PTUIINSERTLINES arcan_tui_insert_lines;
@@ -1279,6 +1321,7 @@ static bool arcan_tui_dynload(void*(*lookup)(void*, const char*), void* tag)
 M(PTUIHANDOVER,arcan_tui_handover);
 M(PTUIDESTROY,arcan_tui_destroy);
 M(PTUISETUP,arcan_tui_setup);
+M(PTUIBIND,arcan_tui_bind);
 M(PTUIDESTROY,arcan_tui_destroy);
 M(PTUIPROCESS,arcan_tui_process);
 M(PTUIREFRESH,arcan_tui_refresh);
@@ -1348,6 +1391,7 @@ M(PTUISTATEDESCR, arcan_tui_statedescr);
 M(PTUIPRINTF, arcan_tui_printf);
 M(PTUIBGCOPY, arcan_tui_bgcopy);
 M(PTUIHASGLYPH, arcan_tui_hasglyph);
+M(PTUIMESSAGE, arcan_tui_message);
 M(PTUIUCS4UTF8, arcan_tui_ucs4utf8);
 M(PTUIUCS4UTF8_S, arcan_tui_ucs4utf8_s);
 M(PTUIUTF8UCS4, arcan_tui_utf8ucs4);
