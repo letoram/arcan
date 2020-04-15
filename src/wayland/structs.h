@@ -41,6 +41,11 @@ struct bridge_client {
 /* to keep an association across display server instances */
 	uint64_t guid[2];
 
+/* track keycodes of keys that are pressed so we can fake release
+ * if a window gets defocused as a way of 'resetting' the keymap,
+ * this don't take latched modifiers or dicretics into account */
+	uint8_t keys[512];
+
 	bool forked;
 	int group, slot;
 	int refc;

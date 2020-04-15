@@ -49,6 +49,8 @@ static bool xdgtoplevel_shmifev_handler(
 					*sv = XDG_TOPLEVEL_STATE_ACTIVATED;
 					trace(TRACE_SHELL, "focused");
 				}
+				else
+					release_all_keys(surf->client);
 
 				if (wl.force_sz){
 					w = wl.init.display_width_px;
