@@ -528,12 +528,14 @@ struct arcan_shmifext_setup {
 	uint64_t flags;
 	uint64_t mask;
 
-/* 0 for self-managed fbo
+/* 0 for self-managed fbo or imported buffers
  * >0 for internal rendertarget that swaps out */
 	uint8_t builtin_fbo;
-
 	uint8_t supersample;
 	uint8_t stencil;
+
+/* don't allocate a context or display at all - whatever context is
+ * active in the current thread will be used for allocations */
 	uint8_t no_context;
 	uint64_t shared_context;
 
@@ -544,7 +546,6 @@ struct arcan_shmifext_setup {
 
 /* workaround for versioning snafu with _setup not taking sizeof(...) */
 	uint8_t uintfl_reserve[6];
-
 	uint64_t reserved[4];
 };
 
@@ -644,8 +645,8 @@ void arcan_shmifext_bind(struct arcan_shmif_cont* con);
 
 /*
  * Update the internal buffer-fail to slow readback fallback resulting from a
- * failed attempt to pass an accelerated buffer. This should be called in
- * response to a BUFFER_FAIL event.
+ * failed attempt to pass an accelerated buffer. This will be called
+ * automatically on an incoming BUFFER_FAIL event.
  */
 void arcan_shmifext_bufferfail(struct arcan_shmif_cont*, bool);
 
@@ -654,6 +655,9 @@ void arcan_shmifext_bufferfail(struct arcan_shmif_cont*, bool);
  * descriptor (shmif_signalhandle), note that only one texture should be 'in
  * flight' (on both sides) at any one time, and calling this a second time
  * invalidates the resources used by the last passed one.
+ *
+ * This is slated to be changed to use the same buffer-plane format as in
+ * import buffer.
  */
 bool arcan_shmifext_gltex_handle(
 	struct arcan_shmif_cont* con,
@@ -677,6 +681,47 @@ int arcan_shmifext_dev(
 struct agp_fenv* arcan_shmifext_getfenv(struct arcan_shmif_cont*);
 
 /*
+ * Take an external buffer e.g. from gbm or egl-streams and import into the
+ * context as a substitution for it's current backing store, this disables
+ * rendering using the context.
+ *
+ * If the import is successful, any descriptors pointed to by the fd and fence
+ * fields will be owned by the implementation of the import function and will
+ * be closed when safe to do so.
+ *
+ * If [dst_store] is set, the default buffer of the context will not be used
+ * as the target store. Instead, [dst_store] will be updated to contain the
+ * imported buffer.
+ */
+struct shmifext_buffer_plane {
+	int fd;
+	int fence;
+	size_t w;
+	size_t h;
+
+	union {
+		struct {
+			uint32_t format;
+			uint64_t pitch;
+			uint64_t offset;
+			uint64_t modifiers;
+		} gbm;
+	};
+};
+
+enum shmifext_buffer_format {
+	SHMIFEXT_BUFFER_GBM = 0,
+};
+
+bool arcan_shmifext_import_buffer(
+	struct arcan_shmif_cont*,
+	int format,
+	struct shmifext_buffer_plane* planes,
+	size_t n_planes,
+	size_t buffer_plane_sz
+);
+
+/*
  * Similar behavior to signalhandle, but any conversion from the texture id
  * in [tex_id] is handled internally in accordance with the last _egl
  * call on [con]. The context where tex_id is valid should already be
@@ -686,8 +731,8 @@ struct agp_fenv* arcan_shmifext_getfenv(struct arcan_shmif_cont*);
  * 0 if the shmif_cont is managing the context.
  *
  * If tex_id is SHMIFEXT_BUILTIN and context was setup with FBO management OR
- * with vidp- texture streaming, the color attachment for the active FBO or
- * texture will be transferred).
+ * with vidp- texture streaming, the color attachment for the active FBO OR
+ * the latest imported buffer.
  *
  * Returns -1 on handle- generation/passing failure, otherwise the number
  * of miliseconds (clamped to INT_MAX) that elapsed from signal to ack.

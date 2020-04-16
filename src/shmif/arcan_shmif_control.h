@@ -610,6 +610,16 @@ unsigned arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx,
 	int mask, int handle, size_t stride, int format, ...);
 
 /*
+ * Returns true of handle based buffer passing is permitted or not, if not
+ * a software based approach is required. The extended graphics mode of shmif
+ * performs this conversion automatically for most cases.
+ *
+ * This should be tested before attempting a signal-handle as the event that
+ * carries rejection asynchronously.
+ */
+bool arcan_shmif_handle_permitted(struct arcan_shmif_cont* ctx);
+
+/*
  * Support function to set/unset the primary access segment (one slot for
  * input. one slot for output), manually managed. This is just a static member
  * helper with no currently strongly negotiated meaning.

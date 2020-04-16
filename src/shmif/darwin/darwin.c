@@ -284,6 +284,17 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 	return res > INT_MAX ? INT_MAX : res;
 }
 
+bool arcan_shmifext_import_buffer(
+	struct arcan_shmif_cont* cont,
+	struct shmifext_buffer_plane* planes,
+	int format,
+	size_t n_planes,
+	size_t buffer_plane_sz
+)
+{
+	return false;
+}
+
 /*
  * workaround for some namespace pollution
  */

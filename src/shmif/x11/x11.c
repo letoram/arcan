@@ -43,6 +43,17 @@ struct agp_fenv* arcan_shmifext_getfenv(struct arcan_shmif_cont* con)
 	return &in->fenv;
 }
 
+bool arcan_shmifext_import_buffer(
+	struct arcan_shmif_cont* cont,
+	struct shmifext_buffer_plane* planes,
+	int format,
+	size_t n_planes,
+	size_t buffer_plane_sz
+)
+{
+	return false;
+}
+
 static void x11_drop(struct arcan_shmif_cont* con)
 {
 	if (!con->privext->internal)

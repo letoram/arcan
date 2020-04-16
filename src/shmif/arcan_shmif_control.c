@@ -950,6 +950,11 @@ done:
 	return check_dms(c) || noks ? rv : -1;
 }
 
+bool arcan_shmif_handle_permitted(struct arcan_shmif_cont* ctx)
+{
+	return (ctx && ctx->privext && ctx->privext->state_fl != STATE_NOACCEL);
+}
+
 static bool is_output_segment(enum ARCAN_SEGID segid)
 {
 	return (segid == SEGID_ENCODER || segid == SEGID_CLIPBOARD_PASTE);
