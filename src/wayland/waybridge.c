@@ -1371,9 +1371,10 @@ int main(int argc, char* argv[])
 
 /*
  * The purpose of having a 'control' bridge connection on which we never set
- * clients is to have a window where we can monitor the state of the server
- * and its clients, but also to get the initial display, figure out if we have
- * accelerated graphics or not and so on.
+ * clients is to have a window where we can monitor the state of the server and
+ * its clients, but also to get the initial display, figure out if we have
+ * accelerated graphics or not and so on. It also acts as a shared context for
+ * buffer import/export/repack operations.
  */
 	setenv("XDG_RUNTIME_DIR", arcan_runtime_dir, 1);
 	wl.control = arcan_shmif_open(

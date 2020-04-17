@@ -149,6 +149,51 @@ static void surf_frame(
 	}
 }
 
+static bool shm_to_gl(
+	struct arcan_shmif_cont* acon,
+	struct comp_surf* surf, struct wl_shm_buffer* buf)
+{
+	return false;
+/*
+ * 1. if acon context is not accelerated, try that first
+ */
+
+/*
+ * 2. if we already have a glid
+ *    - drop if the formats mismatch
+ *    -> or allocate new
+ *
+ * 3. update the texture based on dirty state
+ *		struct agp_fenv* fenv = arcan_shmifext_getfenv(acon);
+ *
+ *	update the texture, could do a more efficient use of damage regions here,
+ *  crutch is that we may need to maintain a queue of buffers again
+		fenv->bind_texture(GL_TEXTURE_2D, surf->glid);
+		fenv->pixel_storei(GL_UNPACK_ROW_LENGTH, stride);
+		fenv->tex_image_2d(GL_TEXTURE_2D,
+			0, surf->gl_fmt, w, h, 0, surf->gl_fmt, GL_UNSIGNED_BYTE, data);
+		fenv->pixel_storei(GL_UNPACK_ROW_LENGTH, 0);
+		fenv->bind_texture(GL_TEXTURE_2D, 0);
+ */
+/*
+ * 4. extract gl handle
+		int fd;
+		size_t stride_out;
+		int fmt;
+
+		uintptr_t gl_display;
+		arcan_shmifext_egl_meta(&wl.control, &gl_display, NULL, NULL);
+			if (arcan_shmifext_gltex_handle(acon,
+			gl_display, surf->glid, &fd, &stride_out, &fmt)){
+			trace(TRACE_SURF, "converted to handle, bingo");
+			arcan_shmif_signalhandle(acon,
+				SHMIF_SIGVID | SHMIF_SIGBLK_NONE,
+				fd, stride_out, fmt
+			);
+fail:
+ */
+}
+
 static void setup_shmifext(
 	struct arcan_shmif_cont* acon, struct comp_surf* surf, int fmt)
 {
@@ -317,100 +362,21 @@ static bool push_shm(struct wl_client* cl,
 		h = acon->h;
 	}
 
-/* have acceleration failed or format changed since we last negotiated accel? */
-	if (0 == surf->fail_accel ||
-		(surf->fail_accel > 0 && fmt != surf->accel_fmt)){
-		trace(TRACE_SURF,
-			"surf_commit:status=drop_ext:message:accel_failed\n");
-		arcan_shmifext_drop(acon);
-		setup_shmifext(acon, surf, fmt);
-		arcan_shmifext_make_current(acon);
-	}
-
 /* alpha state changed? only changing this flag does not require a resynch
  * as the hint is checked on each frame */
 	synch_acon_alpha(acon, fmt_has_alpha(fmt, surf));
-
-/* try the path of converting the shm buffer to an accelerated, BUT there
- * is a special case in that a failed accelerated context can have local
- * readback (receiver isn't a GPU or an incompatible GPU), which we really
- * don't want. */
-	if (1 == surf->fail_accel){
-		int ext_state = arcan_shmifext_isext(acon);
-
-/* no acceleration if that means fallback, as that would be slower, this can
-* happen by upstream event if the buffer is rejected or some other activity
-* (GPU swapping etc) make the context invalid */
-		if (ext_state == 2){
-			surf->fail_accel = -1;
-			arcan_shmifext_drop(acon);
-			return push_shm(cl, acon, buf, surf);
-		}
-
-/* though it would be possible to share context between surfaces on the
- * same client, at this stage it turns out to be more work than the overhead */
-		trace(TRACE_SURF,"surf_commit(shm-gl-repack)");
-		arcan_shmifext_make_current(acon);
-		struct agp_fenv* fenv = arcan_shmifext_getfenv(acon);
-		if (!fenv || !fenv->gen_textures){
-			trace(TRACE_SURF, "no_gl in env, fallback");
-			surf->fail_accel = -1;
-			arcan_shmifext_drop(acon);
-			return push_shm(cl, acon, buf, surf);
-		}
-
-/* grab our buffer */
-		if (0 == surf->glid){
-			fenv->gen_textures(1, &surf->glid);
-			if (0 == surf->glid){
-				trace(TRACE_SURF, "couldn't build texture, fallback");
-				arcan_shmifext_drop(acon);
-				surf->fail_accel = -1;
-				return push_shm(cl, acon, buf, surf);
-			}
-		}
-
-/* update the texture, could do a more efficient use of damage regions here,
- * crutch is that we may need to maintain a queue of buffers again */
-		fenv->bind_texture(GL_TEXTURE_2D, surf->glid);
-		fenv->pixel_storei(GL_UNPACK_ROW_LENGTH, stride);
-		fenv->tex_image_2d(GL_TEXTURE_2D,
-			0, surf->gl_fmt, w, h, 0, surf->gl_fmt, GL_UNSIGNED_BYTE, data);
-		fenv->pixel_storei(GL_UNPACK_ROW_LENGTH, 0);
-		fenv->bind_texture(GL_TEXTURE_2D, 0);
-
-		int fd;
-		size_t stride_out;
-		int fmt;
-
-		uintptr_t gl_display;
-		arcan_shmifext_egl_meta(&wl.control, &gl_display, NULL, NULL);
-
-		if (arcan_shmifext_gltex_handle(acon,
-			gl_display, surf->glid, &fd, &stride_out, &fmt)){
-			trace(TRACE_SURF, "converted to handle, bingo");
-			arcan_shmif_signalhandle(acon,
-				SHMIF_SIGVID | SHMIF_SIGBLK_NONE,
-				fd, stride_out, fmt
-			);
-		}
-		else{
-			trace(TRACE_SURF, "couldn't build texture, fallback");
-			arcan_shmifext_drop(acon);
-			surf->fail_accel = -1;
-			return push_shm(cl, acon, buf, surf);
-		}
-
+	if (shm_to_gl(acon, surf, shm_buf))
 		return true;
-	}
 
 /* two other options to avoid repacking, one is to actually use this signal-
  * handle facility to send a descriptor, and mark the type as the WL shared
  * buffer with the metadata in vidp[] in order for offset and other bits to
  * make sense.
- * The other is to actually allow the shmif server to ptrace into us (wut) and
- * use a rare linuxism known as process_vm_writev and process_vm_readv and send
- * the pointers that way.
+ * This is currently not supported in arcan/shmif.
+ *
+ * The other is to actually allow the shmif server to ptrace into us (wut)
+ * and use a rare linuxism known as process_vm_writev and process_vm_readv
+ * and send the pointers that way. One might call that one exotic.
  */
 	if (stride != acon->stride){
 		trace(TRACE_SURF,"surf_commit(stride-mismatch)");

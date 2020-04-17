@@ -123,7 +123,8 @@ destroy_buffer(struct wl_resource *resource)
 {
 	trace(TRACE_DRM, "");
 	struct wl_drm_buffer *buffer = resource->data;
-	close(buffer->fd);
+	if (buffer->fd > 0)
+		close(buffer->fd);
 	free(buffer);
 }
 
@@ -341,6 +342,45 @@ static void wayland_drm_commit(struct comp_surf* surf,
 
 	if (buf->width != con->w || buf->height != con->h){
 		arcan_shmif_resize(con, buf->width, buf->height);
+	}
+
+/* If it is not permitted to push handles onwards, we need to map the buffer
+ * into the wl.control context, and then signalhandle will take care of reading
+ * back into shm and forwarding - make sure that no new context is allocated
+ * as we want it allocated into the shared one */
+	if (!arcan_shmif_handle_permitted(con) ||
+			!arcan_shmif_handle_permitted(&wl.control)){
+		if (!arcan_shmifext_isext(con)){
+			trace(TRACE_DRM, "context allocated on blocked handle transfer");
+			struct arcan_shmifext_setup defs = arcan_shmifext_defaults(con);
+			defs.no_context = true;
+			arcan_shmifext_setup(con, defs);
+		}
+
+/* the interface can deal with multiple planes to a buffer, though the current
+ * implementation restricts us to 1, so assume that for now - we need to dup
+ * the handle since the import procedure closes the handle */
+		struct shmifext_buffer_plane plane = {
+			.fd = arcan_shmif_dupfd(buf->fd, -1, false),
+			.fence = -1,
+			.w = buf->width,
+			.h = buf->height,
+			.gbm = {
+				.format = buf->format,
+				.pitch = buf->stride[0],
+				.offset = buf->offset[0]
+			}
+		};
+
+/* now we can readback into the store (possible asynch through a PBO if we have
+ * multiple clients and don't want to stall, or as a separate thread that
+ * imports the fence and waits on that */
+			if (arcan_shmifext_import_buffer(con,
+			SHMIFEXT_BUFFER_GBM, &plane, 1, sizeof(plane))){
+			trace(TRACE_DRM, "buffer imported, to readback");
+			arcan_shmifext_signal(con, 0, SHMIF_SIGVID, SHMIFEXT_BUILTIN);
+		}
+		return;
 	}
 
 /*
