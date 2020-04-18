@@ -380,6 +380,9 @@ static void wayland_drm_commit(struct comp_surf* surf,
 			trace(TRACE_DRM, "buffer imported, to readback");
 			arcan_shmifext_signal(con, 0, SHMIF_SIGVID, SHMIFEXT_BUILTIN);
 		}
+		else
+			close(plane.fd);
+
 		return;
 	}
 

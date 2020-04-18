@@ -256,9 +256,9 @@ bool arcan_shmifext_import_buffer(
 		ADD_ATTR(dma_fd_constants[i], planes[i].fd);
 		ADD_ATTR(dma_offset_constants[i], planes[i].gbm.offset);
 		ADD_ATTR(dma_pitch_constants[i], planes[i].gbm.pitch);
-		if (planes[i].gbm.modifiers){
-			ADD_ATTR(dma_mod_constants[i*2+0], planes[i].gbm.modifiers >> 32);
-			ADD_ATTR(dma_mod_constants[i*2+1], planes[i].gbm.modifiers & 0xffffffff);
+		if (planes[i].gbm.mod_hi || planes[i].gbm.mod_lo){
+			ADD_ATTR(dma_mod_constants[i*2+0], planes[i].gbm.mod_lo);
+			ADD_ATTR(dma_mod_constants[i*2+1], planes[i].gbm.mod_hi);
 		}
 	}
 
@@ -824,8 +824,10 @@ bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
 	size_t next_i = (ctx->image_index + 1) % COUNT_OF(ctx->images);
 	free_image_index(dpy, ctx, next_i);
 
-	EGLImage newimg = agp_eglenv.create_image(dpy,
-		con->privext->internal->context, EGL_GL_TEXTURE_2D_KHR,
+	EGLImage newimg = agp_eglenv.create_image(
+		dpy,
+		con->privext->internal->context,
+		EGL_GL_TEXTURE_2D_KHR,
 		(EGLClientBuffer)(tex_id), NULL
 	);
 
@@ -859,7 +861,17 @@ bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
 
 int arcan_shmifext_isext(struct arcan_shmif_cont* con)
 {
-	return (con && con->privext && con->privext->internal);
+	if (!con || !con->privext || !con->privext->internal)
+		return 0;
+
+	struct shmif_ext_hidden_int* ctx = con->privext->internal;
+	if (!ctx->display)
+		return 0;
+
+	if (con->privext->state_fl == STATE_NOACCEL)
+		return 2;
+	else
+		return 1;
 }
 
 int arcan_shmifext_signal(struct arcan_shmif_cont* con,
