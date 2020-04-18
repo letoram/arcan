@@ -17,8 +17,8 @@ static bool xdgtoplevel_shmifev_handler(
 			bool changed = displayhint_handler(surf, &ev->tgt);
 
 /* and then, if something has changed, send the configure event */
-			int w = ev->tgt.ioevs[0].iv ? ev->tgt.ioevs[0].iv : surf->geom_w;
-			int h = ev->tgt.ioevs[1].iv ? ev->tgt.ioevs[1].iv : surf->geom_h;
+			int w = ev->tgt.ioevs[0].iv ? ev->tgt.ioevs[0].iv : surf->acon.w;
+			int h = ev->tgt.ioevs[1].iv ? ev->tgt.ioevs[1].iv : surf->acon.h;
 			bool resized = (w && h && (w != surf->acon.w || h != surf->acon.h));
 
 			if (changed || resized){

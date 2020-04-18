@@ -22,6 +22,7 @@ static void dsrc_offer(struct wl_client* cl,
 	struct wl_resource* res, const char* mime)
 {
 	trace(TRACE_DDEV, "%s", mime?mime:"");
+/* buffer mime types until set_selection */
 }
 
 static void dsrc_actions(struct wl_client* cl,

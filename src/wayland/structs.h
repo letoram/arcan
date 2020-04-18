@@ -36,6 +36,8 @@ struct bridge_client {
 	struct wl_resource* last_cursor;
 	struct wl_resource* last_kbd;
 
+	struct arcan_strarr offer_types;
+
 /* to keep an association across display server instances */
 	uint64_t guid[2];
 
