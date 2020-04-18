@@ -229,11 +229,30 @@ local function buttons_for_wm(tbl)
 	table.insert(cmd_row, {
 		sym = "Exit",
 		handler = function()
-			system_shutdown()
+			active:set_page(5)
 		end
 	})
 
 	return {res, ctrl_row, cmd_row}
+end
+
+local function confirm_shutdown()
+	return {
+		{
+			{
+				sym = "Yes",
+				handler = function()
+					return shutdown()
+				end
+			},
+			{
+				sym = "No",
+				handler = function()
+					active:set_page(1)
+				end
+			}
+		}
+	}
 end
 
 -- going from an arbitrary string to simulated keypresses is a bit hairy,
@@ -360,6 +379,7 @@ local function spawn_keyboard(wm, dst, x, y, speed)
 		buttons_for_strtbl(page_ALNUM),
 		buttons_for_strtbl(page_numpad),
 		buttons_for_wm(wm),
+		confirm_shutdown(),
 	}
 
 -- patch in some special keys for page_3
@@ -469,7 +489,6 @@ local function spawn_keyboard(wm, dst, x, y, speed)
 	)
 
 	bottom[4].width_factor = #(pages[1][1]) - #bottom + 1
-	print("wf", bottom[4].width_factor)
 
 	local rt, dw, dh, vresw, vresh = wm_active_display()
 
@@ -480,7 +499,7 @@ local function spawn_keyboard(wm, dst, x, y, speed)
 
 -- flush pending animations and track state so we can restore
 	instant_image_transform(dst.vid);
-	local cache = {dst.vid, image_surface_properties(dst.vid)}
+	local cache = {wm.anchor, image_surface_properties(wm.anchor)}
 
 -- position based on where the touch is, go with quadrant based on AR?
 	local opts = {
@@ -500,7 +519,7 @@ local function spawn_keyboard(wm, dst, x, y, speed)
 	active.target_cache = cache
 	active:show()
 
-	console_osdkbd_reanchor(dst.vid, speed)
+	console_osdkbd_reanchor(wm.anchor, speed)
 end
 
 function console_osdkbd_destroy(speed)
