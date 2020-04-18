@@ -13,6 +13,23 @@ function console()
 	mouse_setup(load_image("cursor.png"), 65535, 1, true, false)
 	mouse_state().autohide = true
 
+-- attach normal clients to this and use as an input capture surface to
+-- allow more UI elements to be added more easily
+	workspaces.anchor = null_surface(VRESW, VRESH)
+	show_image(workspaces.anchor)
+	mouse_addlistener({
+		own = function(ctx, vid)
+			return vid == workspaces.anchor
+		end,
+		tap = function(ctx)
+			if console_osdkbd_active() then
+				console_osdkbd_destroy(10)
+			end
+			return true
+		end,
+		name = "wm_anchor"
+	}, {"tap"})
+
 	KEYBOARD:load_keymap(get_key("keymap") or "devmaps/keyboard/default.lua")
 	switch_workspace(ws_index)
 
@@ -62,10 +79,11 @@ end
 -- scripting error or explicit WM swap (system_collapse(wmname)) call and
 -- some handover protocol is needed.
 function console_adopt(vid, kind, title, have_parent, last)
-	if not whitelisted(kind, vid) or have_parent or not find_free_space() then
+	local ok, opts = whitelisted(kind, vid)
+	if not ok or have_parent or not find_free_space() then
 		return false
 	end
-	local ret = new_client(vid)
+	local ret = new_client(vid, opts)
 	if last then
 		switch_workspace(1)
 	end
@@ -73,7 +91,7 @@ function console_adopt(vid, kind, title, have_parent, last)
 end
 
 -- find an empty workspace slot and assign / activate
-function new_client(vid)
+function new_client(vid, opts)
 	if not valid_vid(vid) then
 		return
 	end
@@ -89,8 +107,13 @@ function new_client(vid)
 	local ctx = {
 		index = new_ws,
 		vid = vid,
+		scale = opts.scaling,
 		clipboard_temp = ""
 	}
+
+-- reserve first order to a capture surface for mouse input
+	order_image(vid, 2)
+	link_image(vid, workspaces.anchor)
 
 -- add a mouse handler that forwards mouse action to the target
 	ctx.own =
@@ -150,6 +173,19 @@ function spawn_terminal()
 	return launch_avfeed(term_arg, "terminal", client_event_handler)
 end
 
+local function scale_client(ws, w, h)
+	if ws.scale then
+		local ar = w / h
+		local wr = w / VRESW
+		local hr = h / VRESH
+		return
+			(hr > wr and math.floor(VRESH * ar) or VRESW),
+			(hr < wr and math.floor(VRESW / ar) or VRESH)
+	else
+		return w, h
+	end
+end
+
 function client_event_handler(source, status)
 -- Lost client, last visible frame etc. kept, and we get access to any exit-
 -- message (last words) and so on here. Now, just clean up and remove any
@@ -173,10 +209,12 @@ function client_event_handler(source, status)
 	elseif status.kind == "resized" then
 		local ws, index = find_client(source)
 		if ws then
-			resize_image(source, status.width, status.height)
-			if ws.index == ws_index then
-				console_osdkbd_reanchor(source)
-			end
+
+-- some clients might not be able to supply a proper sized buffer, if possible,
+-- scale to fit (candidate for adding pan and zoom like behavior)
+			local w, h = scale_client(ws, status.width, status.height)
+			resize_image(source, w, h)
+			center_image(source, workspaces.anchor)
 			ws.aid = status.source_audio
 		else
 			delete_image(source)
@@ -194,13 +232,14 @@ function client_event_handler(source, status)
 -- an external connection also goes through a 'registered' phase where auth-
 -- primitives etc. are provided, it is here we know the 'type' of the connection
 	elseif status.kind == "registered" then
-		if not whitelisted(status.segkind, source) then
+		local ok, opts = whitelisted(status.segkind, source)
+		if not ok then
 			delete_image(source)
 		end
 
 		local client_ws = find_client(source)
 		if not client_ws then
-			_, client_ws = new_client(source)
+			_, client_ws = new_client(source, opts)
 			if not client_ws then
 				delete_image(source)
 				return
@@ -463,7 +502,7 @@ function resize_workspace(i, w, h)
 end
 
 function delete_workspace(i)
-	if valid_vid(workspaces[i].vid) then
+	if workspaces[i] and valid_vid(workspaces[i].vid) then
 		delete_image(workspaces[i].vid)
 	end
 
@@ -480,21 +519,21 @@ end
 -- events, or reject the ones with a type we don't support.
 function whitelisted(kind, vid)
 	local set = {
-		["vm"] = client_event_handler,
-		["lightweight arcan"] = client_event_handler,
-		["multimedia"] = client_event_handler,
-		["tui"] = client_event_handler,
-		["game"] = client_event_handler,
-		["application"] = client_event_handler,
-		["browser"] = client_event_handler,
-		["terminal"] = client_event_handler,
-		["bridge-x11"] = client_event_handler
+		["vm"] = {client_event_handler, {}},
+		["lightweight arcan"] = {client_event_handler, {}},
+		["multimedia"] = {client_event_handler, {scale = true}},
+		["tui"] = {client_event_handler, {}},
+		["game"] = {client_event_handler, {scale = true}},
+		["application"] = {client_event_handler, {}},
+		["browser"] = {client_event_handler, {}},
+		["terminal"] = {client_event_handler, {}},
+		["bridge-x11"] = {client_event_handler, {}},
 	}
 	if (set[kind]) then
 		if (vid) then
-			target_updatehandler(vid, set[kind])
+			target_updatehandler(vid, set[kind][1])
 		end
-		return true
+		return true, set[kind][2]
 	end
 end
 
@@ -503,10 +542,12 @@ function console_clock_pulse()
 end
 
 function VRES_AUTORES(w, h, vppcm, flags, source)
-	resize_video_canvas(w, h);
+	resize_video_canvas(w, h)
+	resize_image(workspaces.anchor, w, h)
+
 	for i,v in pairs(workspaces) do
 		if valid_vid(v.vid) then
-			target_displayhint(v.vid, w, h, TD_HINT_IGNORE);
+			target_displayhint(v.vid, w, h, TD_HINT_IGNORE)
 		end
 	end
 end
