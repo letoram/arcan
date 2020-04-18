@@ -1,16 +1,10 @@
 /*
-Copyright (c) 2003-2004, Mark Borgerding
-
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
-    * Neither the author nor the names of any contributors may be used to endorse or promote products derived from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ *  Copyright (c) 2003-2004, Mark Borgerding. All rights reserved.
+ *  This file is part of KISS FFT - https://github.com/mborgerding/kissfft
+ *
+ *  SPDX-License-Identifier: BSD-3-Clause
+ *  See COPYING file for more information.
+ */
 
 #include "kiss_fftr.h"
 #include "_kiss_fft_guts.h"
@@ -28,7 +22,7 @@ kiss_fftr_cfg kiss_fftr_alloc(int nfft,int inverse_fft,void * mem,size_t * lenme
 {
     int i;
     kiss_fftr_cfg st = NULL;
-    size_t subsize, memneeded;
+    size_t subsize = 0, memneeded;
 
     if (nfft & 1) {
         fprintf(stderr,"Real FFT optimization must be even.\n");
@@ -83,12 +77,12 @@ void kiss_fftr(kiss_fftr_cfg st,const kiss_fft_scalar *timedata,kiss_fft_cpx *fr
      * contains the sum of the even-numbered elements of the input time sequence
      * The imag part is the sum of the odd-numbered elements
      *
-     * The sum of tdc.r and tdc.i is the sum of the input time sequence.
+     * The sum of tdc.r and tdc.i is the sum of the input time sequence. 
      *      yielding DC of input time sequence
-     * The difference of tdc.r - tdc.i is the sum of the input (dot product) [1,-1,1,-1...
+     * The difference of tdc.r - tdc.i is the sum of the input (dot product) [1,-1,1,-1... 
      *      yielding Nyquist bin of input time sequence
      */
-
+ 
     tdc.r = st->tmpbuf[0].r;
     tdc.i = st->tmpbuf[0].i;
     C_FIXDIV(tdc,2);
@@ -96,14 +90,14 @@ void kiss_fftr(kiss_fftr_cfg st,const kiss_fft_scalar *timedata,kiss_fft_cpx *fr
     CHECK_OVERFLOW_OP(tdc.r ,-, tdc.i);
     freqdata[0].r = tdc.r + tdc.i;
     freqdata[ncfft].r = tdc.r - tdc.i;
-#ifdef USE_SIMD
+#ifdef USE_SIMD    
     freqdata[ncfft].i = freqdata[0].i = _mm_set1_ps(0);
 #else
     freqdata[ncfft].i = freqdata[0].i = 0;
 #endif
 
     for ( k=1;k <= ncfft/2 ; ++k ) {
-        fpk    = st->tmpbuf[k];
+        fpk    = st->tmpbuf[k]; 
         fpnk.r =   st->tmpbuf[ncfft-k].r;
         fpnk.i = - st->tmpbuf[ncfft-k].i;
         C_FIXDIV(fpk,2);
@@ -149,7 +143,7 @@ void kiss_fftri(kiss_fftr_cfg st,const kiss_fft_cpx *freqdata,kiss_fft_scalar *t
         C_MUL (fok, tmp, st->super_twiddles[k-1]);
         C_ADD (st->tmpbuf[k],     fek, fok);
         C_SUB (st->tmpbuf[ncfft - k], fek, fok);
-#ifdef USE_SIMD
+#ifdef USE_SIMD        
         st->tmpbuf[ncfft - k].i *= _mm_set1_ps(-1.0);
 #else
         st->tmpbuf[ncfft - k].i *= -1;

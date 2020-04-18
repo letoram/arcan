@@ -7083,8 +7083,8 @@ static int randomsurface(lua_State* ctx)
 	/* [-1, 1 -> 0, 1] -> 0..255 */
 				float xv = (float)x * sx;
 				float yv = (float)y * sy;
-				float rv = 1.0 + stb_perlin_fbm_noise3(
-					xv, yv, zv, lacunarity, gain, octaves, 0, 0, 0);
+				float rv = 1.0 +
+					stb_perlin_fbm_noise3(xv, yv, zv, lacunarity, gain, octaves);
 				uint8_t iv = rv / 2.0f * 255.0f;
 				cptr[y * desw + x] = RGBA(iv, iv, iv, 255);
 		}

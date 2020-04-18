@@ -48,7 +48,7 @@
 #endif
 
 #ifndef MAX_AXES
-#define MAX_AXES 8
+#define MAX_AXES 32
 #endif
 
 #ifndef MAX_BUTTONS
