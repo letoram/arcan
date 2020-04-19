@@ -474,7 +474,8 @@ static bool apply_commandline(int argc, char** argv, struct anet_options* opts)
 int main(int argc, char** argv)
 {
 	struct anet_options anet = {
-		.retry_count = -1
+		.retry_count = -1,
+		.mt_mode = MT_FORK
 	};
 	anet.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));
 
