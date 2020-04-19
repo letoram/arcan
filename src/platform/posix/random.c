@@ -1,17 +1,17 @@
 /*
- * Using Chacha20 as streamcipher, keyed per thread and getting
+ * Using Chacha as streamcipher, keyed per thread and getting
  * seed from OS specific methods and a fallback to /dev/urandom
  * similar to arc4random and friends, of course, but given that
  */
 
-#include "chacha20.c"
+#include "chacha.c"
 #include <stdio.h>
 #include <errno.h>
 #include <sys/param.h>
 
 void arcan_fatal(const char* msg, ...);
 
-static _Thread_local struct chacha20_ctx streamcipher;
+static _Thread_local struct chacha_ctx streamcipher;
 
 /* just lifted from the getrandom manpage, on others
  * (osx, fbsd, openbsd) we assume that we have this one */
@@ -86,7 +86,7 @@ static void seed_csprng()
 		fclose(fpek);
 	}
 
-	chacha20_setup(&streamcipher, seed, 16, nonce, 0);
+	chacha_setup(&streamcipher, seed, 16, nonce, 0, 8);
 }
 
 void arcan_random(uint8_t* dst, size_t ntc)
@@ -99,7 +99,7 @@ void arcan_random(uint8_t* dst, size_t ntc)
 	size_t ofs = 0;
 	size_t malign = (uintptr_t) dst % sizeof(uint32_t*);
 	if (malign && ntc >= 64){
-		chacha20_block(&streamcipher, ibuf);
+		chacha_block(&streamcipher, ibuf);
 		memcpy(dst, ibuf, malign);
 		ofs += malign;
 		ntc -= malign;
@@ -108,7 +108,7 @@ void arcan_random(uint8_t* dst, size_t ntc)
 /* as we're only using the keystream as a csprng, any leftover bytes
  * in each block can be ignored */
 	while (ntc >= 64){
-		chacha20_block(&streamcipher, (uint32_t*)&dst[ofs]);
+		chacha_block(&streamcipher, (uint32_t*)&dst[ofs]);
 		ofs += 64;
 		ntc -= 64;
 	}
@@ -117,6 +117,6 @@ void arcan_random(uint8_t* dst, size_t ntc)
 		return;
 
 /* and slow-copy the remaining bytes */
-	chacha20_block(&streamcipher, ibuf);
+	chacha_block(&streamcipher, ibuf);
 	memcpy(&dst[ofs], ibuf, ntc);
 }

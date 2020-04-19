@@ -20,7 +20,7 @@
 #include "a12_decode.h"
 #include "a12_encode.h"
 #include "arcan_mem.h"
-#include "../platform/posix/chacha20.c"
+#include "../platform/posix/chacha.c"
 
 #include <sys/mman.h>
 #include <sys/types.h>
