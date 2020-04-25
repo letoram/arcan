@@ -12775,6 +12775,7 @@ local inf = math.huge;\n\
 local vobj = {};\n\
 local props = {};\n\
 local restbl = {\n\
+\tversion = [[%s]]\n\
 \tdisplay = {\n\
 \t\twidth = %d,\n\
 \t\theight = %d,\n\
@@ -12787,7 +12788,9 @@ local restbl = {\n\
 \t};\n\
 \tvcontexts = {};\
 };\n\
-", (int)mmode.width, (int)mmode.height, disp->conservative ? 1 : 0,
+",
+	ARCAN_BUILDVERSION,
+	(int)mmode.width, (int)mmode.height, disp->conservative ? 1 : 0,
 	(long long int)disp->c_ticks,
 	(int)disp->default_vitemlim,
 	(int)disp->imageproc, (int)disp->scalemode, (int)disp->filtermode);
