@@ -597,12 +597,6 @@ struct tui_subwnd_req {
 	enum tui_subwnd_hint hint;
 };
 
-enum tui_message_slots {
-	TUI_MESSAGE_PROMPT = 0,
-	TUI_MESSAGE_ALERT = 1,
-	TUI_MESSAGE_NOTIFICATION = 2
-};
-
 #ifndef ARCAN_TUI_DYNAMIC
 
 /*
@@ -1076,6 +1070,33 @@ bool arcan_tui_hasglyph(struct tui_context*, uint32_t);
 void arcan_tui_message(struct tui_context*, int target, const char* msg);
 
 /*
+ * Indicate an estimated progression state of an operation that would
+ * block or affect the client response to user input. [status] indicates
+ * the percentage from (0 = new_job) to (1 = complete).
+ *
+ * TYPE can be one out of several:
+ *
+ * TUI_PROGRESS_INTERNAL :
+ *   application specific task
+ *
+ * TUI_PROGRESS_BCHUNK_IN :
+ *   reaction to last received bchunk in
+ *
+ * TUI_PROGRESS_BCHUNK_OUT :
+ *   reaction to last recevied bchunk out
+ *
+ * TUI_PROGRESS_STATE_IN :
+ *   reaction to last received state-input
+ *
+ * TUI_PROGRESS_STATE_OUT :
+ *   reaction to last received state-output
+ *
+ * Regression in status (last_status > status) for a type will be treated
+ * as any previous task for that slot has been completed.
+ */
+void arcan_tui_progress(struct tui_context*, int type, float status);
+
+/*
  * mark the current cursor position as a tabstop
  * [DEPRECATE -> widget]
  */
@@ -1168,6 +1189,7 @@ typedef void (* PTUIUPDHND)(struct tui_context*, const struct tui_cbcfg*, struct
 typedef void (* PTUIWNDHINT)(struct tui_context*, struct tui_context*, struct tui_constraints);
 typedef void (* PTUIANNOUNCEIO)(struct tui_context*, bool, const char*, const char*);
 typedef void (* PTUISTATESZ)(struct tui_context*, size_t);
+typedef void (* PTUIPROGRESS)(struct tui_context*, int group, float status);
 typedef int (* PTUIALLOCSCR)(struct tui_context*);
 typedef bool (* PTUISWSCR)(struct tui_context*, unsigned);
 typedef bool (* PTUIDELSCR)(struct tui_context*, unsigned);
@@ -1270,6 +1292,7 @@ static PTUIRESETLABELS arcan_tui_reset_labels;
 static PTUISETFLAGS arcan_tui_set_flags;
 static PTUIHASGLYPH arcan_tui_hasglyph;
 static PTUIMESSAGE arcan_tui_message;
+static PTUIPROGRESS arcan_tui_progress;
 static PTUIRESETFLAGS arcan_tui_reset_flags;
 static PTUISETTABSTOP arcan_tui_set_tabstop;
 static PTUIINSERTLINES arcan_tui_insert_lines;
@@ -1395,6 +1418,7 @@ M(PTUIMESSAGE, arcan_tui_message);
 M(PTUIUCS4UTF8, arcan_tui_ucs4utf8);
 M(PTUIUCS4UTF8_S, arcan_tui_ucs4utf8_s);
 M(PTUIUTF8UCS4, arcan_tui_utf8ucs4);
+M(PTUIPROGRESS, arcan_tui_progress);
 
 #undef M
 

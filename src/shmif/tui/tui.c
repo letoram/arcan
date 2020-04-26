@@ -891,6 +891,29 @@ void arcan_tui_erase_chars(struct tui_context* c, size_t num)
 	}
 }
 
+void arcan_tui_progress(struct tui_context* c, int type, float status)
+{
+	if (!c || type < TUI_PROGRESS_INTERNAL || type > TUI_PROGRESS_STATE_OUT)
+		return;
+
+	if (status > 1.0)
+		status = 1.0;
+
+/* clamp this slightly about 0, fewer bad shells writing div-zero that way */
+	if (status < 0.0001)
+		status = 0.0001;
+
+/* using the timestr/timelim fields here for more detailed progress would
+ * be possible, but wait and see how the feature plays out first */
+	arcan_shmif_enqueue(&c->acon, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(STREAMSTATUS),
+		.ext.streamstat = {
+			.completion = status,
+			.streaming = type,
+		}
+	});
+}
+
 int arcan_tui_set_flags(struct tui_context* c, int flags)
 {
 	if (!c)

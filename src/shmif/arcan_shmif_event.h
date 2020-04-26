@@ -683,7 +683,8 @@ enum ARCAN_EVENT_EXTERNAL {
 /*
  * [UNIQUE]
  * Playback information regarding completion, current time, estimated length
- * etc. Uses the streamstat substructure.
+ * etc. Uses the streamstat substructure. Media windows uses it to indicate
+ * playback state, Other clients uses it to indicate action completion.
  */
 	EVENT_EXTERNAL_STREAMSTATUS = 7,
 
@@ -1535,8 +1536,9 @@ enum ARCAN_TARGET_SKIPMODE {
 /*
  * (timestr, timelim) - 7-bit ascii, isnum : describing HH:MM:SS\0
  * (completion)       - 0..1 (start, 1 finish)
- * (streaming)        - dynamic / unknown source
- * (frameno)          - incremental counter
+ * (streaming)        - dynamic / unknown source [media]
+ *                      type identifier [tui]
+ * (frameno)          - frame counter [media]
  */
 		struct {
 			uint8_t timestr[9];
