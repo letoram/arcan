@@ -1,6 +1,6 @@
-/* Refactored version of chacha20-simple, originally:
+/* Refactored version of chacha-simple, originally:
 Copyright (C) 2014 insane coder (http://insanecoding.blogspot.com/,
-http://chacha20.insanecoding.org/)
+http://chacha.insanecoding.org/)
 
 Permission to use, copy, modify, and distribute this software for any
 purpose with or without fee is hereby granted, provided that the above
@@ -43,20 +43,21 @@ performed.
 /* CTR location in keyschedule */
 static const size_t counter_pos = 12;
 
-struct chacha20_ctx {
+struct chacha_ctx {
 	uint32_t schedule[16];
 	union {
 		uint32_t u32[16];
 		uint8_t u8[64];
 	} keystream;
+	int iterations;
 	size_t pos;
 	bool ready;
 };
 
-static void chacha20_block(struct chacha20_ctx* ctx, uint32_t output[16])
+static void chacha_block(struct chacha_ctx* ctx, uint32_t output[16])
 {
 	uint32_t *const nonce = &ctx->schedule[counter_pos];
-	int i = 10;
+	int i = ctx->iterations;
 
 	memcpy(output, ctx->schedule, sizeof(ctx->schedule));
 
@@ -91,12 +92,13 @@ static void chacha20_block(struct chacha20_ctx* ctx, uint32_t output[16])
 	ctx->pos = 0;
 }
 
-static void chacha20_setup(struct chacha20_ctx* ctx,
-	const uint8_t* key, size_t length, uint8_t nonce[8], uint64_t counter)
+static void chacha_setup(struct chacha_ctx* ctx, const uint8_t* key,
+	size_t length, uint8_t nonce[8], uint64_t counter, uint8_t rounds)
 {
 	const char *constants =
 		(length == 32) ? "expand 32-byte k" : "expand 16-byte k";
 
+	ctx->iterations = rounds >> 1;
 	ctx->schedule[0] = LE(constants + 0);
 	ctx->schedule[1] = LE(constants + 4);
 	ctx->schedule[2] = LE(constants + 8);
@@ -113,19 +115,19 @@ static void chacha20_setup(struct chacha20_ctx* ctx,
 	ctx->schedule[13] = counter >> 32;
 	ctx->schedule[14] = LE(nonce+0);
 	ctx->schedule[15] = LE(nonce+4);
-	chacha20_block(ctx, ctx->keystream.u32);
+	chacha_block(ctx, ctx->keystream.u32);
 	ctx->ready = true;
 }
 
-static void chacha20_counter_set(
-	struct chacha20_ctx *ctx, uint64_t counter)
+static void chacha_counter_set(
+	struct chacha_ctx *ctx, uint64_t counter)
 {
 	ctx->schedule[12] = counter & UINT32_C(0xFFFFFFFF);
 	ctx->schedule[13] = counter >> 32;
-	chacha20_block(ctx, ctx->keystream.u32);
+	chacha_block(ctx, ctx->keystream.u32);
 }
 
-static void chacha20_apply(struct chacha20_ctx *ctx,
+static void chacha_apply(struct chacha_ctx *ctx,
 	const uint8_t* in, uint8_t* out, size_t length)
 {
 	if (!length)
@@ -134,7 +136,7 @@ static void chacha20_apply(struct chacha20_ctx *ctx,
 	size_t ofs = 0;
 	while(ofs < length){
 		if (ctx->pos == 64)
-			chacha20_block(ctx, ctx->keystream.u32);
+			chacha_block(ctx, ctx->keystream.u32);
 
 		size_t nib = 64 - ctx->pos;
 		while (nib && ofs < length){
