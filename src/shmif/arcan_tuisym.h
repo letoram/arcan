@@ -56,6 +56,20 @@ enum tui_wndhint_flags {
 	TUI_WND_HIDDEN = 2,
 };
 
+enum tui_message_slots {
+	TUI_MESSAGE_PROMPT = 0,
+	TUI_MESSAGE_ALERT = 1,
+	TUI_MESSAGE_NOTIFICATION = 2
+};
+
+enum tui_progress_type {
+ TUI_PROGRESS_INTERNAL = 0,
+ TUI_PROGRESS_BCHUNK_IN,
+ TUI_PROGRESS_BCHUNK_OUT,
+ TUI_PROGRESS_STATE_IN,
+ TUI_PROGRESS_STATE_OUT
+};
+
 /*
  * used by the cli_command event handler
  */

@@ -39,6 +39,8 @@ struct tui_context {
 	struct tui_cell* back;
 	uint8_t fstamp;
 
+	float progress[5];
+
 /* rbuf is used to package / convert the representation in base(front|back)
  * to a line format that can be used to forward to a raster engine. The size
  * is derived when allocating base
