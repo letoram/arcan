@@ -32,6 +32,8 @@ static struct {
 
 	_Atomic volatile bool alive;
 	bool die_on_term;
+	bool complete_signal;
+
 	long last_input;
 
 /* sockets to communicate between terminal thread and render thread */
@@ -66,6 +68,7 @@ static ssize_t flush_buffer(int fd, char dst[static 4096])
 
 		atomic_store(&term.alive, false);
 		arcan_tui_set_flags(term.screen, TUI_HIDE_CURSOR);
+
 		return -1;
 	}
 	return nr;
@@ -318,6 +321,9 @@ static char* get_shellenv()
 {
 	char* shell = getenv("SHELL");
 
+	if (!getenv("PATH"))
+		setenv("PATH", "/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin", 1);
+
 	const struct passwd* pass = getpwuid( getuid() );
 	if (pass){
 		setenv("LOGNAME", pass->pw_name, 1);
@@ -326,6 +332,10 @@ static char* get_shellenv()
 		setenv("HOME", pass->pw_dir, 0);
 		shell = pass->pw_shell;
 	}
+
+	/* some safe default should it be needed */
+	if (!shell)
+		shell = "/bin/sh";
 
 /* will be exec:ed so don't worry to much about leak or mgmt */
 	return shell;
@@ -438,8 +448,6 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 			close(infd);
 			close(outfd);
 		}
-		else
-			exec_arg = args[0];
 
 /* inherit some environment, filter the things we used */
 		unsetenv("ARCAN_TERMINAL_EXEC");
@@ -447,7 +455,14 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 		unsetenv("ARCAN_TERMINAL_PIDFD_OUT");
 		unsetenv("ARCAN_TERMINAL_ARGV");
 
-		execv(exec_arg, inarg ? build_argv(exec_arg, inarg) : args);
+/* two different forms of this, one uses the /bin/sh -c route with all the
+ * arguments in the packed exec string, the other splits into a binary and
+ * an argument, the latter matters */
+		if (inarg)
+			execvp(exec_arg, build_argv(exec_arg, inarg));
+		else
+			execv(exec_arg, args);
+
 		exit(EXIT_FAILURE);
 	}
 
@@ -487,6 +502,8 @@ static bool setup_build_term()
 {
 	size_t rows = 0, cols = 0;
 	arcan_tui_dimensions(term.screen, &rows, &cols);
+	term.complete_signal = false;
+
 	term.child = shl_pty_open(&term.pty, read_callback, NULL, cols, rows);
 	if (term.child < 0){
 		arcan_tui_destroy(term.screen, "Shell process died unexpectedly");
@@ -549,7 +566,11 @@ static void on_reset(struct tui_context* tui, int state, void* tag)
 	arcan_tui_reset(tui);
 	tsm_vte_hard_reset(term.vte);
 
+/* reset on a dead terminal ? i.e. re-execute command */
 	if (!atomic_load(&term.alive)){
+		if (!term.die_on_term){
+			arcan_tui_progress(term.screen, TUI_PROGRESS_INTERNAL, 0.0);
+		}
 		setup_build_term();
 	}
 	break;
@@ -642,6 +663,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
  */
 	if (arg_lookup(args, "keep_alive", 0, NULL)){
 		term.die_on_term = false;
+		arcan_tui_progress(term.screen, TUI_PROGRESS_INTERNAL, 0.0);
 	}
 
 /*
@@ -692,6 +714,13 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 		if (res.errc < TUI_ERRC_OK){
 			break;
+		}
+
+/* indicate that we are finished so the user has the option to reset rather
+ * than terminate, make sure this is done only once per running cycle */
+		if (!term.alive && !term.die_on_term && !term.complete_signal){
+			arcan_tui_progress(term.screen, TUI_PROGRESS_INTERNAL, 1.0);
+			term.complete_signal = true;
 		}
 
 		arcan_tui_refresh(term.screen);

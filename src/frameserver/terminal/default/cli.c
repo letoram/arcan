@@ -21,7 +21,7 @@ static char** duplicate_strtbl(char** arg, size_t prepad, size_t pad)
 
 /* nothing to copy? at least alloc pad buffer */
 	if (!arg || !arg[i]){
-		if (pad){
+		if (pad || prepad){
 			size_t buf_sz = sizeof(char*) * (pad + prepad + 1);
 			char** res = malloc(buf_sz);
 			memset(res, '\0', buf_sz);
@@ -172,9 +172,14 @@ static void setup_cmd_mode(struct ext_cmd* cmd,
 		*argv = new_arg;
 
 /* attach them to our env */
-		char** new_env = duplicate_strtbl(cmd->env, 2, 0);
+		char** new_env = duplicate_strtbl(cmd->env, 3, 0);
 		new_env[0] = arg_exec;
 		new_env[1] = arg_env;
+
+/* question if we should build the entire thing from the arguments that we
+ * ourselves got (sans -cli) or lest a few of the through for color overrides
+ * and the likes */
+		new_env[2] = strdup("ARCAN_ARG=keep_alive");
 		free_strtbl(cmd->env);
 		cmd->env = new_env;
 		*env = cmd->env;
