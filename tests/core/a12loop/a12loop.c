@@ -14,6 +14,8 @@
 #include <poll.h>
 #include <assert.h>
 
+#define clsrv_okstate() (a12_poll(cl) != -1 && a12_poll(srv) != -1)
+
 static struct pk_response key_auth(uint8_t pk[static 32])
 {
 	return (struct pk_response){
@@ -50,7 +52,7 @@ static size_t data_round(
 {
 	uint8_t* buf;
 	struct a12_state* src, (* dst);
-	if (a12_poll(cl) == -1 || a12_poll(srv) == -1)
+	if (!clsrv_okstate())
 		return 0;
 
 	if (cl_round){
@@ -98,7 +100,7 @@ static bool run_auth_test(struct a12_state* cl, struct a12_state* srv)
 static bool event_test(struct a12_state* cl, struct a12_state* srv)
 {
 	size_t i = 0;
-	for (; i < 1000 && a12_poll(cl) != -1 && a12_poll(srv) != -1; i++){
+	for (; i < 1000 && clsrv_okstate(); i++){
 		struct arcan_event ev = {
 			.category = EVENT_TARGET,
 			.tgt.kind = TARGET_COMMAND_RESET,
@@ -178,8 +180,7 @@ static bool video_test_raw(struct a12_state* cl, struct a12_state* srv)
 		}, sizeof(struct a12_unpack_cfg)
 	);
 
-	for (size_t i = 0;
-		i < 10 && a12_poll(srv) != -1 && a12_poll(cl) != -1; i++){
+	for (size_t i = 0; i < 10 && clsrv_okstate(); i++){
 /* update buffer */
 //		arcan_random((uint8_t*)tag.buffer, buf_sz);
 		memset(tag.buffer, 0xff, buf_sz);
@@ -206,7 +207,7 @@ static bool video_test_raw(struct a12_state* cl, struct a12_state* srv)
 	a12_set_destination_raw(srv, 0,
 		(struct a12_unpack_cfg){}, sizeof(struct a12_unpack_cfg));
 
-	return tag.match && (a12_poll(cl) != -1 && a12_poll(srv) != -1);
+	return tag.match && clsrv_okstate();
 }
 
 struct audio_tag {
@@ -314,14 +315,28 @@ static bool test_bxfer(struct a12_state* cl, struct a12_state* srv)
 	if (base_sz < 10 * 1024)
 		base_sz *= 2;
 
+	FILE* fpek = fopen("bxfer.temp", "w+");
+	if (!fpek)
+		return false;
+
+	unlink("bxfer.temp");
+
+	char* buf = malloc(base_sz);
+	memset(buf, 'a', base_sz);
+	fwrite(buf, base_sz, 1, fpek);
+
+	int myfd = fileno(fpek);
+
 	a12_set_bhandler(srv, bhandler, &blob);
 
 /* send same file twice, the second time we should be able to just reject */
-	for (size_t i = 0; i < 2 && ; i++){
-
+	for (size_t i = 0; i < 2 && a12_poll(cl) != -1 && a12_poll(srv) != -1; i++){
+		a12_enqueue_bstream(cl, myfd, A12_BTYPE_BLOB, false, base_sz);
+		FLUSH(cl, srv);
 	}
 
-	a12_set_bhandler(S, NULL, NULL);
+	fclose(fpek);
+	a12_set_bhandler(srv, NULL, NULL);
 	return true;
 }
 
@@ -336,7 +351,6 @@ int main(int argc, char** argv)
 {
 	struct a12_context_options cl_opts = {
 /*		.pk_lookup = key_auth, */
-		.ssecret = NULL,
 		.disable_cipher = false
 	};
 
@@ -348,7 +362,7 @@ int main(int argc, char** argv)
 		A12_TRACE_SYSTEM |
 		A12_TRACE_VIDEO  |
 		A12_TRACE_BTRANSFER |
-		A12_TRACE_AUDIO
+		A12_TRACE_AUDIO |
 		0,
 		stderr
 	);

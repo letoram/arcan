@@ -354,7 +354,7 @@ static struct a12_state* a12_setup(struct a12_context_options* opt, bool srv)
 
 /* easy-dump for quick debugging (i.e. cmp side vs side to find offset,
  * open/init/replay to step mac construction */
-#define LOG_MAC_DATA
+/* #define LOG_MAC_DATA */
 #ifdef LOG_MAC_DATA
 	FILE* keys = fopen("macraw.key", "w");
 	fwrite(mac_key, BLAKE3_KEY_LEN, 1, keys);
@@ -1328,8 +1328,10 @@ static void process_blob(struct a12_state* S)
 
 /* did we receive a message on a dead channel? */
 	struct binary_frame* cbf = &S->channels[S->in_channel].unpack_state.bframe;
-	update_mac_and_decrypt(__func__, &S->in_mac,
-		S->dec_state, S->decode, header_sizes[S->state]);
+	if (!authdec_buffer(__func__, S, S->decode_pos)){
+		fail_state(S);
+		return;
+	}
 
 	struct arcan_shmif_cont* cont = S->channels[S->in_channel].cont;
 	if (!cont){
@@ -1384,14 +1386,6 @@ static void process_blob(struct a12_state* S)
 			}
 		}
 
-/* A key difference from other streams is that the binary one does not
- * necessarily have a length and can be streaming, in those cases we simply
- * write more into the buffer and hope that the other end will swallow it.
- * Upon termination / cancellation we discard binary packets for outdated
- * streams on the channel. */
-	update_mac_and_decrypt(__func__,
-		&S->in_mac, S->dec_state, S->decode, S->decode_pos);
-
 	if (cbf->size > 0){
 		cbf->size -= S->decode_pos;
 
@@ -1419,14 +1413,9 @@ static void process_blob(struct a12_state* S)
  * cache, but such trust compartmentation should be handled by real separation
  * between clients. */
 			memcpy(&bm.checksum, cbf->checksum, 16);
-
 			cbf->tmp_fd = -1;
-
-/* NOTE: THIS IS FORWARDING UNAUTENTICATED DATA AND MAKES IT POSSIBLE TO MIM+
- * BITFLIP THE MAXIMUM SIZE OF THE CHUNK BEFORE WE KNOW IT - THE OPTION IS TO
- * EITHER BUFFER AND DEFER UNTIL WE HAVE A LARGE ENOUGH FRAME - OR RELY ON THE
- * SECONDARY CHECKSUM */
 			S->binary_handler(S, bm, S->binary_handler_tag);
+
 			return;
 		}
 	}
@@ -1575,6 +1564,15 @@ static void process_audio(struct a12_state* S)
 	struct a12_channel* channel = &S->channels[S->in_channel];
 	struct audio_frame* caf = &channel->unpack_state.aframe;
 	struct arcan_shmif_cont* cont = channel->cont;
+
+	if (!authdec_buffer(__func__, S, S->decode_pos)){
+		fail_state(S);
+		return;
+	}
+	else {
+		a12int_trace(A12_TRACE_CRYPTO, "kind=frame_auth");
+	}
+
 	if (!cont){
 		a12int_trace(A12_TRACE_SYSTEM,
 			"audio data on unmapped channel (%d)", (int) S->in_channel);
