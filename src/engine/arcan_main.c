@@ -898,7 +898,7 @@ error:
 	const char* crashmsg = arcan_lua_crash_source(main_lua_context);
 	if (crashmsg){
 		arcan_warning(
-			"\n\x1b[1mImproper API use from Lua script\nversion: %s\n"
+			"\n\x1b[1mImproper API use from Lua script\n"
 			":\n\t\x1b[32m%s\x1b[39m\n", crashmsg
 		);
 

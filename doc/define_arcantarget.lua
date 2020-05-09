@@ -1,6 +1,6 @@
 -- define_arcantarget
 -- @short:
--- @inargs: vid:vstore, string:type, vidtbl:vpipe, aidtbl:apipe, int:refresh
+-- @inargs: vid:vstore, string:type, vidtbl:vpipe, int:refresh
 -- @outargs: bool
 -- @longdescr: This function creates a rendertarget, binds its output to *vstore*
 -- and then requests a server-side mapping of *type* to be created. A default

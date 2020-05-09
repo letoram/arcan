@@ -815,8 +815,8 @@ const char* platform_event_devlabel(int devid)
  * The better option is to expose them as _adopt handlers, similar
  * to how we do stdin/stdout mapping.
  */
-static void map_window(struct arcan_shmif_cont* seg,
-	arcan_evctx* ctx, int kind, const char* key)
+static void map_window(
+	struct arcan_shmif_cont* seg, arcan_evctx* ctx, int kind, const char* key)
 {
 	if (kind != SEGID_MEDIA)
 		return;
@@ -915,13 +915,14 @@ enum arcan_ffunc_rv arcan_lwa_ffunc FFUNC_HEAD
  * lwa_subseg_eventdrain(uintptr_t tag, arcan_event*) function to
  * exist.
  */
-bool platform_lwa_allocbind_feed(arcan_vobj_id rtgt,
-	enum ARCAN_SEGID type, uintptr_t cbtag)
+bool platform_lwa_allocbind_feed(
+	arcan_vobj_id rtgt, enum ARCAN_SEGID type, uintptr_t cbtag)
 {
 	arcan_vobject* vobj = arcan_video_getobject(rtgt);
 	if (!vobj || !vobj->vstore)
 		return false;
 
+/* limit to 8 possible subsegments / 'display' */
 	if (disp[0].subseg_alloc == 255)
 		return false;
 
@@ -945,7 +946,7 @@ bool platform_lwa_allocbind_feed(arcan_vobj_id rtgt,
 
 bool platform_lwa_targetevent(struct subseg_output* tgt, arcan_event* ev)
 {
-/* selectively covert certain events, like target_displayhint
+/* selectively convert certain events, like target_displayhint
  * to indicate visibility - opted for this kind of contextual reuse
  * rather than more functions to track */
 	return false;
@@ -953,14 +954,18 @@ bool platform_lwa_targetevent(struct subseg_output* tgt, arcan_event* ev)
 
 static bool scan_subseg(arcan_tgtevent* ev, bool ok)
 {
-/* 0 is cookie, 1 should be 0, 2 carries type */
-/* if !ok, mark as free, if ok - mark as enabled and map */
+/* 0 : fd,
+ * 1 : direction,
+ * 2 : type,
+ * 3 : cookie
+ * ... */
+
 	int ind = -1;
 	if (ev->ioevs[1].iv != 0)
 		return false;
 
 	for (size_t i = 0; i < 8; i++){
-		if (disp[0].sub[i].id == ev->ioevs[0].iv){
+		if (disp[0].sub[i].id == ev->ioevs[3].iv){
 			ind = i;
 			break;
 		}
@@ -968,6 +973,7 @@ static bool scan_subseg(arcan_tgtevent* ev, bool ok)
 	if (-1 == ind)
 		return false;
 
+/* if !ok, mark as free, if ok - mark as enabled and map */
 	if (!ok){
 		disp[0].sub[ind].pending = false;
 		disp[0].subseg_alloc &= ~(1 << ind);
@@ -975,8 +981,9 @@ static bool scan_subseg(arcan_tgtevent* ev, bool ok)
 		return false;
 	}
 
-	disp[0].sub[ind].con = arcan_shmif_acquire(&disp[0].conn,
-		NULL, disp[0].sub[ind].id, 0);
+	disp[0].sub[ind].con =
+		arcan_shmif_acquire(&disp[0].conn, NULL, disp[0].sub[ind].id, 0);
+
 	disp[0].sub[ind].pending = false;
 	if (!disp[0].sub[ind].con.vidp){
 		arcan_warning("lwa - failed during mapping\n");
@@ -984,7 +991,6 @@ static bool scan_subseg(arcan_tgtevent* ev, bool ok)
 		return false;
 	}
 
-	arcan_warning("accepted pending");
 	return true;
 }
 
@@ -1013,7 +1019,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 		case TARGET_COMMAND_NEWSEGMENT:
 			if (d == &disp[0]){
 				if (!scan_subseg(&ev.tgt, true))
-					map_window(&d->conn, ctx, ev.tgt.ioevs[0].iv, ev.tgt.message);
+					map_window(&d->conn, ctx, ev.tgt.ioevs[2].iv, ev.tgt.message);
 			}
 		break;
 
