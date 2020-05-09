@@ -10081,6 +10081,7 @@ static const struct{const char* msg; enum ARCAN_SEGID val;} seglut[] = {
 	{.msg = "titlebar", .val = SEGID_TITLEBAR},
 	{.msg = "debug", .val = SEGID_DEBUG},
 	{.msg = "widget", .val = SEGID_WIDGET},
+	{.msg = "media", .val = SEGID_MEDIA},
 	{.msg = "accessibility", .val = SEGID_ACCESSIBILITY},
 	{.msg = "hmd-l", .val = SEGID_HMD_L},
 	{.msg = "hmd-r", .val = SEGID_HMD_R}
@@ -10095,8 +10096,8 @@ enum ARCAN_SEGID str_to_segid(const char* str)
 	return SEGID_UNKNOWN;
 }
 
-bool platform_lwa_allocbind_feed(arcan_vobj_id rtgt,
-	enum ARCAN_SEGID type, uintptr_t cbtag);
+bool platform_lwa_allocbind_feed(
+	arcan_vobj_id rtgt, enum ARCAN_SEGID type, uintptr_t cbtag);
 
 static int arcanset(lua_State* ctx)
 {
