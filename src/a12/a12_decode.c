@@ -21,6 +21,23 @@
 #include "../../engine/external/stb_image_write.h"
 #endif
 
+static void drain_video(struct a12_channel* ch, struct video_frame* cvf)
+{
+	cvf->commit = 0;
+	if (ch->active == CHANNEL_RAW){
+	a12int_trace(A12_TRACE_VIDEO,
+		"kind=drain:dest=user:ts=%llu", arcan_timemillis());
+		if (ch->raw.signal_video){
+
+		}
+		return;
+	}
+
+	a12int_trace(A12_TRACE_VIDEO,
+		"kind=drain:dest=%"PRIxPTR":ts=%llu", (uintptr_t) ch->cont, arcan_timemillis());
+	arcan_shmif_signal(ch->cont, SHMIF_SIGVID);
+}
+
 bool a12int_buffer_format(int method)
 {
 	return
@@ -175,7 +192,7 @@ void ffmpeg_decode_pkt(
  * producer side to get better frame pacing vs. playback - can do this on the
  * first buffer - synch mismatch though */
 		if (cvf->commit && cvf->commit != 255)
-			arcan_shmif_signal(cont, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+			drain_video(&S->channels[S->in_channel], cvf);
 
 		sws_freeContext(scaler);
 	}
@@ -263,8 +280,8 @@ bool a12int_vframe_setup(struct a12_channel* ch, struct video_frame* dst, int me
 	return true;
 }
 
-void a12int_decode_vbuffer(
-	struct a12_state* S, struct video_frame* cvf, struct arcan_shmif_cont* cont)
+void a12int_decode_vbuffer(struct a12_state* S,
+	struct a12_channel* ch, struct video_frame* cvf, struct arcan_shmif_cont* cont)
 {
 	a12int_trace(A12_TRACE_VIDEO, "decode vbuffer, method: %d", cvf->postprocess);
 	if (cvf->postprocess == POSTPROCESS_VIDEO_MINIZ ||
@@ -281,10 +298,7 @@ void a12int_decode_vbuffer(
 /* this is a junction where other local transfer strategies should be considered,
  * i.e. no-block and defer process on the next stepframe or spin on the vready */
 		if (cvf->commit && cvf->commit != 255){
-			a12int_trace(A12_TRACE_VIDEO, "kind=pre_signal:cont=%"PRIxPTR, (uintptr_t)cont);
-			arcan_shmif_signal(cont, SHMIF_SIGVID);
-			a12int_trace(A12_TRACE_VIDEO, "kind=post_signal:cont=%"PRIxPTR, (uintptr_t)cont);
-			cvf->commit = 0;
+			drain_video(ch, cvf);
 		}
 		return;
 	}

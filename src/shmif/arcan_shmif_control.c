@@ -2153,18 +2153,14 @@ void arcan_shmif_guid(struct arcan_shmif_cont* cont, uint64_t guid[2])
 struct arg_arr* arg_unpack(const char* resource)
 {
 	int argc = 1;
-	const char* rsstr = resource;
-
 /* unless an empty string, we'll always have 1 */
 	if (!resource)
 		return NULL;
 
-/* figure out the number of additional arguments we have */
-	do{
-		if (rsstr[argc] == ':')
+/* figure out the maximum number of additional arguments we have */
+	for (size_t i = 0; resource[i]; i++)
+		if (resource[i] == ':')
 			argc++;
-		rsstr++;
-	} while(*rsstr);
 
 /* prepare space */
 	struct arg_arr* argv = malloc( (argc+1) * sizeof(struct arg_arr) );

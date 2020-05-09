@@ -40,6 +40,7 @@
 struct cl_state{
 	int kill_fd;
 	pthread_mutex_t giant_lock;
+
 	volatile _Atomic uint8_t n_segments;
 	const char* last_lock;
 	volatile _Atomic uint8_t alloc[256];
@@ -77,7 +78,21 @@ static void on_cl_event(
 	else {
 		a12int_trace(A12_TRACE_EVENT,
 			"client event: %s on ch %d", arcan_shmif_eventstr(ev, NULL, 0), chid);
+
+/* REGISTER event is special as this is what will trigger the type, it is here
+ * we inject that we come from a networked origin so that the WM can apply its
+ * policies properly */
 		arcan_shmif_enqueue(cont, ev);
+
+		if (ev->category == EVENT_EXTERNAL && ev->ext.kind == EVENT_EXTERNAL_REGISTER){
+			arcan_shmif_enqueue(cont, &(struct arcan_event){
+				.category = EVENT_EXTERNAL,
+				.ext.kind = EVENT_EXTERNAL_PRIVDROP,
+				.ext.privdrop = {
+					.networked = true
+				}
+			});
+		}
 	}
 }
 
@@ -314,7 +329,7 @@ int a12helper_a12srv_shmifcl(
 	}
 
 	struct cl_state cl = {
-		.giant_lock = PTHREAD_MUTEX_INITIALIZER
+		.giant_lock = PTHREAD_MUTEX_INITIALIZER,
 	};
 
 /* primary segment is created without any type or activation, as it is the remote
@@ -341,6 +356,7 @@ int a12helper_a12srv_shmifcl(
 	uint8_t inbuf[9000];
 	uint8_t* outbuf = NULL;
 	size_t outbuf_sz = 0;
+	bool auth_unlocked = false;
 	a12int_trace(A12_TRACE_SYSTEM, "got proxy connection, waiting for source");
 
 /*

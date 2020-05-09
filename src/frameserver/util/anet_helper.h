@@ -11,6 +11,7 @@ struct anet_options {
 	const char* cp;
 	const char* host;
 	const char* port;
+	const char* key;
 	int sockfd;
 	int mt_mode;
 	int mode;
@@ -19,6 +20,26 @@ struct anet_options {
 	ssize_t retry_count;
 	struct a12_context_options* opts;
 };
+
+/*
+ * [blocking]
+ * configure, connect and authenticate a client connection.
+ *
+ * The destination is taken from the keystore, unless not provided or
+ * if an override is provided through host and port.
+ *
+ * If a preshared secret is to be used, provide that in opts->ssecret
+ *
+ * returns an authenticated client context or NULL, with any error
+ * message dynamically allocated in *errmsg (if provided and available).
+ */
+struct anet_cl_connection {
+	int fd;
+	struct a12_state* state;
+	char* errmsg;
+};
+
+struct anet_cl_connection anet_cl_setup(struct anet_options* opts);
 
 /*
  * From a prefilled addrinfo structure, enumerate all interfaces and try

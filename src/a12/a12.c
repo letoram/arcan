@@ -20,7 +20,8 @@
 #include "a12_decode.h"
 #include "a12_encode.h"
 #include "arcan_mem.h"
-#include "../platform/posix/chacha.c"
+#include "external/chacha.c"
+#include "external/x25519.h"
 
 #include <sys/mman.h>
 #include <sys/types.h>
@@ -32,6 +33,11 @@
 int a12_trace_targets = 0;
 FILE* a12_trace_dst = NULL;
 
+/* built on init, only used for keystore - might consider manually allocating
+ * this on a randomized map_fixed to ensure that even on a non-aslr build, the
+ * cookie is not on a deterministic address */
+static uint8_t priv_key_cookie[32];
+
 static int header_sizes[] = {
 	MAC_BLOCK_SZ + 8 + 1, /* The outer frame */
 	CONTROL_PACKET_SIZE,
@@ -39,8 +45,11 @@ static int header_sizes[] = {
 	1 + 4 + 2, /* VIDEO partial: ch, stream, len */
 	1 + 4 + 2, /* AUDIO partial: ch, stream, len */
 	1 + 4 + 2, /* BINARY partial: ch, stream, len */
+	MAC_BLOCK_SZ + 8 + 1, /* First packet server side */
 	0
 };
+
+extern void arcan_random(uint8_t* dst, size_t);
 
 size_t a12int_header_size(int kind)
 {
@@ -86,10 +95,30 @@ static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz, int ind)
 	return res;
 }
 
+/* never permit this to be traced in a normal build */
+static void trace_crypto_key(const char* domain, uint8_t* buf, size_t sz)
+{
+#ifdef _DEBUG
+	char conv[sz * 3 + 2];
+	for (size_t i = 0; i < sz; i++){
+		sprintf(&conv[i * 3], "%02X%s", buf[i], i == sz - 1 ? "" : ":");
+	}
+	a12int_trace(A12_TRACE_CRYPTO, "%s:key=%s", domain, conv);
+#endif
+}
+
 /* set the LAST SEEN sequence number in a CONTROL message */
 static void step_sequence(struct a12_state* S, uint8_t* outb)
 {
 	pack_u64(S->last_seen_seqnr, outb);
+}
+
+static void fail_state(struct a12_state* S)
+{
+#ifndef _DEBUG
+/* overwrite all relevant state, dealloc mac/chacha */
+#endif
+	S->state = STATE_BROKEN;
 }
 
 /*
@@ -106,36 +135,26 @@ static void step_sequence(struct a12_state* S, uint8_t* outb)
  * 2. control packets that are tied to an a/v/b frame
  *
  * Another issue is that the raw vframes are big and ugly, and here is the
- * place where we perform an unavoidable copy unless we want interleaving
- * (and then it becomes expensive to perform). Should be possible to set a
- * direct-to-drain descriptor here and do the write calls to the socket or
- * descriptor.
+ * place where we perform an unavoidable copy unless we want interleaving (and
+ * then it becomes expensive to perform). Practically speaking it is not that
+ * bad to encrypt accordingly, it is a stream cipher afterall, BUT having a
+ * continous MAC screws with that. Now since we have a few bytes entropy and a
+ * counter as part of the message, replay attacks won't work BUT any
+ * reordering would then still need to account for rekeying.
  */
 void a12int_append_out(struct a12_state* S, uint8_t type,
 	uint8_t* out, size_t out_sz, uint8_t* prepend, size_t prepend_sz)
 {
+	if (S->state == STATE_BROKEN)
+		return;
+
 /*
  * QUEUE-slot here,
  * should also have the ability to probe the size of the queue slots
  * so that encoders can react on backpressure
  */
-
-/* this means we can just continue our happy stream-cipher and apply to our
- * outgoing data */
-	if (S->in_encstate){
-/*
- * cipher_update(&S->out_cstream, prepend, prepend_sz);
- * cipher_update(&S->out_cstream, out, out_sz)
- */
-	}
-
-/* begin a new MAC, chained on our previous one
-	blake2bp_state mac_state = S->mac_init;
-	blake2bp_update(&mac_state, S->last_mac_out, MAC_BLOCK_SZ);
-	blake2bp_update(&mac_state, &type, 1);
-	blake2bp_update(&mac_state, prepend, prepend_sz);
-	blake2bp_update(&mac_state, out, out_sz);
- */
+	a12int_trace(A12_TRACE_CRYPTO,
+		"type=%d:size=%zu:prepend_size=%zu:ofs=%zu", type, out_sz, prepend_sz, S->buf_ofs);
 
 /* grow write buffer if the block doesn't fit */
 	size_t required = S->buf_ofs +
@@ -152,21 +171,19 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 	if (S->buf_sz[S->buf_ind] < required){
 		a12int_trace(A12_TRACE_SYSTEM,
 			"realloc failed: size (%zu) vs required (%zu)", S->buf_sz[S->buf_ind], required);
-
 		S->state = STATE_BROKEN;
 		return;
 	}
 	uint8_t* dst = S->bufs[S->buf_ind];
 
-/* CRYPTO: build real MAC, include sequence number and command data
-	blake2bp_final(&mac_state, S->last_mac_out, MAC_BLOCK_SZ);
-	memcpy(&dst[S->buf_ofs], S->last_mac_out, MAC_BLOCK_SZ);
- */
-
-/* DEBUG: replace mac with 'm', MAC_BLOCK_SZ = 16 */
-	for (size_t i = 0; i < MAC_BLOCK_SZ; i++)
-		dst[S->buf_ofs + i] = 'm';
+/* reserve space for the MAC and remember where it starts and ends */
+	size_t mac_pos = S->buf_ofs;
 	S->buf_ofs += MAC_BLOCK_SZ;
+	size_t data_pos = S->buf_ofs;
+
+/* MISSING OPTIMIZATION, extract n bytes of the cipherstream and apply copy
+ * operation rather than in-place modification, align with MAC block size and
+ * continuously update as we fetch as well */
 
 /* 8 byte sequence number */
 	pack_u64(S->current_seqnr++, &dst[S->buf_ofs]);
@@ -181,31 +198,180 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 		S->buf_ofs += prepend_sz;
 	}
 
-/* and our data block, this costs us an extra copy which isn't very nice -
- * might want to set a target descriptor immediately for some uses here,
- * the problem is proper interleaving of packets while respecting kernel
- * buffer behavior all the while we need to respect the stream cipher */
+/* and our data block */
 	memcpy(&dst[S->buf_ofs], out, out_sz);
 	S->buf_ofs += out_sz;
+
+	size_t used = S->buf_ofs - data_pos;
+
+/* if we are the client and haven't sent the first authentication request
+ * yet, setup the nonce part of the cipher to random and shorten the MAC */
+	size_t mac_sz = MAC_BLOCK_SZ;
+	if (!S->authentic && !S->server){
+		mac_sz >>= 1;
+		arcan_random(&dst[mac_sz], mac_sz);
+
+/* depending on flag, we need POLITE, REAL HELLO or full */
+		S->authentic = AUTH_FULL_PK;
+		if (S->dec_state){
+			chacha_set_nonce(S->dec_state, &dst[mac_sz]);
+			chacha_set_nonce(S->enc_state, &dst[mac_sz]);
+			a12int_trace(A12_TRACE_CRYPTO, "kind=cipher:status=init_nonce");
+			if (S->opts->pk_lookup){
+				S->authentic = AUTH_REAL_HELLO_SENT;
+			}
+		}
+
+		trace_crypto_key("nonce", &dst[mac_sz], mac_sz);
+/* don't forget to add the nonce to the first message MAC */
+		blake3_hasher_update(&S->out_mac, &dst[mac_sz], mac_sz);
+	}
+
+/* apply stream-cipher to buffer contents */
+	if (S->enc_state)
+		chacha_apply(S->enc_state, &dst[data_pos], used);
+
+/* update MAC */
+	blake3_hasher_update(&S->out_mac, &dst[data_pos], used);
+
+/* sample MAC and write to buffer pos, remember it for debugging - no need to
+ * chain separately as 'finalize' is not really finalized */
+	blake3_hasher_finalize(&S->out_mac, &dst[mac_pos], mac_sz);
+	a12int_trace(A12_TRACE_CRYPTO, "kind=mac_enc:position=%zu", S->out_mac.counter);
+	trace_crypto_key("mac_enc", &dst[mac_pos], mac_sz);
+
+/* if we have set a function, that will get the buffer immediately and then
+ * we set the internal buffering state, this is a short-path that can be used
+ * immediately and then we reset it. */
+	if (S->opts->sink){
+		if (!S->opts->sink(dst, S->buf_ofs, S->opts->sink_tag)){
+			fail_state(S);
+		}
+		S->buf_ofs = 0;
+	}
 }
 
 static void reset_state(struct a12_state* S)
 {
+/* the 'reset' from an erroneous state is basically disconnect, just right
+ * now it finishes and let validation failures etc. handle that particular
+ * scenario */
 	S->left = header_sizes[STATE_NOPACKET];
 	S->state = STATE_NOPACKET;
 	S->decode_pos = 0;
 	S->in_channel = -1;
-	S->mac_dec = S->mac_init;
 }
 
-static struct a12_state* a12_setup(struct a12_context_options* opt)
+static void derive_encdec_key(
+	const char* ssecret, size_t secret_len,
+	uint8_t out_mac[static BLAKE3_KEY_LEN],
+	uint8_t out_srv[static BLAKE3_KEY_LEN],
+	uint8_t  out_cl[static BLAKE3_KEY_LEN])
+{
+	blake3_hasher temp;
+	blake3_hasher_init_derive_key(&temp, "arcan-a12 init-packet");
+	blake3_hasher_update(&temp, ssecret, secret_len);
+
+/* mac = H(ssecret_kdf) */
+	blake3_hasher_finalize(&temp, out_mac, BLAKE3_KEY_LEN);
+
+/* client = H(H(ssecret_kdf)) */
+	blake3_hasher_update(&temp, out_mac, BLAKE3_KEY_LEN);
+	blake3_hasher_finalize(&temp, out_cl, BLAKE3_KEY_LEN);
+
+/* server = H(H(H(ssecret_kdf))) */
+	blake3_hasher_update(&temp, out_cl, BLAKE3_KEY_LEN);
+	blake3_hasher_finalize(&temp, out_srv, BLAKE3_KEY_LEN);
+}
+
+static struct a12_state* a12_setup(struct a12_context_options* opt, bool srv)
 {
 	struct a12_state* res = DYNAMIC_MALLOC(sizeof(struct a12_state));
 	if (!res)
 		return NULL;
-
 	*res = (struct a12_state){};
+
+/* KDF mode for building the initial keys */
+	uint8_t mac_key[BLAKE3_KEY_LEN];
+	uint8_t srv_key[BLAKE3_KEY_LEN];
+	uint8_t  cl_key[BLAKE3_KEY_LEN];
+	_Static_assert(BLAKE3_KEY_LEN >= MAC_BLOCK_SZ);
+
+	size_t len = 0;
+	if (!opt->secret[0]){
+		sprintf(opt->secret, "SETECASTRONOMY");
+	}
+	len = strlen(opt->secret);
+
+	derive_encdec_key(opt->secret, len, mac_key, srv_key, cl_key);
+
+	blake3_hasher_init_keyed(&res->out_mac, mac_key);
+	blake3_hasher_init_keyed(&res->in_mac,  mac_key);
+
+/* and this will only be used until completed x25519 */
+	if (!opt->disable_cipher){
+		res->dec_state = malloc(sizeof(struct chacha_ctx));
+		if (!res->dec_state){
+			free(res);
+			return NULL;
+		}
+
+		res->enc_state = malloc(sizeof(struct chacha_ctx));
+		if (!res->enc_state){
+			free(res->dec_state);
+			free(res);
+			return NULL;
+		}
+
+/* depending on who initates the connection, the cipher key will be different,
+ *
+ * server encodes with srv_key and decodes with cl_key
+ * client encodes with cl_key and decodes with srv_key
+ *
+ * two keys derived from the same shared secret is preferred over different
+ * positions in the cipherstream to prevent bugs that could affect position
+ * stepping to accidentally cause multiple ciphertexts being produced from the
+ * same key at the same position.
+ *
+ * the cipher-state is incomplete as we still need to apply the nonce from the
+ * helo packet before the setup is complete. */
+		_Static_assert(BLAKE3_KEY_LEN == 16 || BLAKE3_KEY_LEN == 32);
+		if (srv){
+			trace_crypto_key("srv_enc_key", srv_key, BLAKE3_KEY_LEN);
+			trace_crypto_key("srv_dec_key", cl_key, BLAKE3_KEY_LEN);
+
+			chacha_setup(res->dec_state, cl_key, BLAKE3_KEY_LEN, 0, 8);
+			chacha_setup(res->enc_state, srv_key, BLAKE3_KEY_LEN, 0, 8);
+		}
+		else {
+			trace_crypto_key("cl_dec_key", srv_key, BLAKE3_KEY_LEN);
+			trace_crypto_key("cl_enc_key", cl_key, BLAKE3_KEY_LEN);
+
+			chacha_setup(res->enc_state, cl_key, BLAKE3_KEY_LEN, 0, 8);
+			chacha_setup(res->dec_state, srv_key, BLAKE3_KEY_LEN, 0, 8);
+		}
+	}
+
+/* easy-dump for quick debugging (i.e. cmp side vs side to find offset,
+ * open/init/replay to step mac construction */
+#define LOG_MAC_DATA
+#ifdef LOG_MAC_DATA
+	FILE* keys = fopen("macraw.key", "w");
+	fwrite(mac_key, BLAKE3_KEY_LEN, 1, keys);
+	fclose(keys);
+
+	if (srv){
+			res->out_mac.log = fopen("srv.macraw.out", "w");
+			res->in_mac.log = fopen("srv.macraw.in", "w");
+	}
+	else{
+			res->out_mac.log = fopen("cl.macraw.out", "w");
+			res->in_mac.log = fopen("cl.macraw.in", "w");
+	}
+#endif
+
 	res->opts = opt;
+	res->server = srv;
 	res->cookie = 0xfeedface;
 
 /* start counting binary stream identifiers on 3 (video = 1, audio = 2) */
@@ -220,6 +386,8 @@ static void a12_init()
 	if (init)
 		return;
 
+	arcan_random(priv_key_cookie, sizeof(priv_key_cookie));
+
 /* make one nonsense- call first to figure out the current packing size */
 	uint8_t outb[512];
 	ssize_t evsz = arcan_shmif_eventpack(
@@ -229,34 +397,46 @@ static void a12_init()
 	init = true;
 }
 
-struct a12_state* a12_build(struct a12_context_options* opt)
+struct a12_state* a12_server(struct a12_context_options* opt)
 {
 	if (!opt)
 		return NULL;
 
 	a12_init();
 
-	struct a12_state* res = a12_setup(opt);
+	struct a12_state* res = a12_setup(opt, true);
 	if (!res)
 		return NULL;
+
+	res->state = STATE_1STSRV_PACKET;
+	res->left = header_sizes[res->state];
 
 	return res;
 }
 
-struct a12_state* a12_open(struct a12_context_options* opt)
+struct a12_state* a12_client(struct a12_context_options* opt)
 {
 	if (!opt)
 		return NULL;
 
 	a12_init();
 
-	struct a12_state* S = a12_setup(opt);
+/* send initial hello packet */
+	uint8_t outb[CONTROL_PACKET_SIZE] = {0};
+
+/* use x25519? - pull out the public key and mask the private key after use */
+	uint8_t empty[32] = {0};
+	if (memcmp(empty, opt->priv_key, 32) != 0){
+		x25519_public_key(opt->priv_key, &outb[21]);
+		for (size_t i = 0; i < 32; i++){
+			opt->priv_key[i] ^= priv_key_cookie[i];
+		}
+		trace_crypto_key("cl-public", &outb[21], 32);
+	}
+
+	struct a12_state* S = a12_setup(opt, false);
 	if (!S)
 		return NULL;
-
-/* send initial hello packet */
-	a12int_trace(A12_TRACE_MISSING, "authentication material in Hello");
-	uint8_t outb[CONTROL_PACKET_SIZE] = {0};
 
 /* last seen seq-nummer is nothing here */
 	outb[17] = 0;
@@ -323,6 +503,15 @@ a12_free(struct a12_state* S)
 	return true;
 }
 
+static void update_mac_and_decrypt(const char* source,
+	blake3_hasher* hash, struct chacha_ctx* ctx, uint8_t* buf, size_t sz)
+{
+	a12int_trace(A12_TRACE_CRYPTO, "src=%s:mac_update=%zu", source, sz);
+	blake3_hasher_update(hash, buf, sz);
+	if (ctx)
+		chacha_apply(ctx, buf, sz);
+}
+
 /*
  * NOPACKET:
  * MAC
@@ -330,65 +519,81 @@ a12_free(struct a12_state* S)
  */
 static void process_nopacket(struct a12_state* S)
 {
-/* only work with a whole packet */
-	if (S->left > 0)
-		return;
-
-	if (0 != memcmp(S->decode, "mmmmmmmmmmmmmmmm", MAC_BLOCK_SZ)){
-		a12int_trace(A12_TRACE_CRYPTO, "fake-mac validation failed");
-	}
-
-	S->mac_dec = S->mac_init;
-/* MAC(MAC_IN | KEY)
-	blake2bp_update(&S->mac_dec, S->last_mac_in, MAC_BLOCK_SZ);
- */
-
-/* save last known MAC for later comparison */
+/* save MAC tag for later comparison when we have the final packet */
 	memcpy(S->last_mac_in, S->decode, MAC_BLOCK_SZ);
-
-/* CRYPTO-fixme: if we are in stream cipher mode, decrypt just the 9 bytes
- * blake2bp_update(&S->mac_dec, &S->decode[MAC_BLOCK_SZ], 1); */
+	trace_crypto_key("ref_mac", S->last_mac_in, MAC_BLOCK_SZ);
+	update_mac_and_decrypt(__func__, &S->in_mac, S->dec_state, &S->decode[MAC_BLOCK_SZ], 9);
 
 /* remember the last sequence number of the packet we processed */
 	unpack_u64(&S->last_seen_seqnr, &S->decode[MAC_BLOCK_SZ]);
 
 /* and finally the actual type in the inner block */
-	S->state = S->decode[MAC_BLOCK_SZ + 8];
+	int state_id = S->decode[MAC_BLOCK_SZ + 8];
 
-	if (S->state >= STATE_BROKEN){
+	if (state_id >= STATE_BROKEN){
 		a12int_trace(A12_TRACE_SYSTEM,
 			"channel broken, unknown command val: %"PRIu8, S->state);
 		S->state = STATE_BROKEN;
 		return;
 	}
 
+/* transition to state based on type, from there we know how many bytes more
+ * we need to process before the MAC can be checked */
+	S->state = state_id;
 	a12int_trace(A12_TRACE_TRANSFER, "seq: %"PRIu64
 		" left: %"PRIu16", state: %"PRIu8, S->last_seen_seqnr, S->left, S->state);
 	S->left = header_sizes[S->state];
 	S->decode_pos = 0;
 }
 
-static bool process_mac(struct a12_state* S)
-{
-	uint8_t final_mac[MAC_BLOCK_SZ];
-
 /*
- * Authentication is on the todo when everything is not in flux and we can
- * do the full verification & validation process
+ * FIRST:
+ * MAC[8]
+ * Nonce[8]
+ * command byte (always control)
  */
-	return true;
-
-	blake2bp_update(&S->mac_dec, S->decode, S->decode_pos);
-	blake2bp_final(&S->mac_dec, final_mac, MAC_BLOCK_SZ);
-
-/* Option to continue with broken authentication, ... */
-	if (memcmp(final_mac, S->last_mac_in, MAC_BLOCK_SZ) != 0){
-		a12int_trace(A12_TRACE_CRYPTO, "authentication mismatch on packet");
-		S->state = STATE_BROKEN;
-		return false;
+static void process_srvfirst(struct a12_state* S)
+{
+/* only foul play could bring us here */
+	if (S->authentic){
+		fail_state(S);
+		return;
 	}
 
-	return true;
+	size_t mac_sz = MAC_BLOCK_SZ >> 1;
+	size_t nonce_sz = 8;
+	uint8_t nonce[nonce_sz];
+
+	a12int_trace(A12_TRACE_CRYPTO, "kind=mac:status=half_block");
+	memcpy(S->last_mac_in, S->decode, mac_sz);
+	memcpy(nonce, &S->decode[mac_sz], nonce_sz);
+
+/* read the rest of the control packet */
+	S->authentic = AUTH_SERVER_HBLOCK;
+	S->left = CONTROL_PACKET_SIZE;
+	S->state = STATE_CONTROL_PACKET;
+	S->decode_pos = 0;
+
+/* update MAC calculation with nonce and seqn+command byte */
+	blake3_hasher_update(&S->in_mac, nonce, nonce_sz);
+	blake3_hasher_update(&S->in_mac, &S->decode[mac_sz+nonce_sz], 8 + 1);
+
+	if (S->dec_state){
+		chacha_set_nonce(S->dec_state, nonce);
+		chacha_set_nonce(S->enc_state, nonce);
+
+		a12int_trace(A12_TRACE_CRYPTO, "kind=cipher:status=init_nonce");
+		trace_crypto_key("nonce", nonce, nonce_sz);
+
+/* decrypt command byte and seqn */
+		size_t base = mac_sz + nonce_sz;
+		chacha_apply(S->dec_state, &S->decode[base], 9);
+		if (S->decode[base + 8] != STATE_CONTROL_PACKET){
+			a12int_trace(A12_TRACE_CRYPTO, "kind=error:status=bad_key_or_nonce");
+			fail_state(S);
+			return;
+		}
+	}
 }
 
 static void command_cancelstream(
@@ -460,18 +665,14 @@ static void command_binarystream(struct a12_state* S)
 		bframe->streamid, bframe->size, channel
 	);
 
-	struct arcan_shmif_cont* cont = S->channels[channel].cont;
-	if (!cont){
-		a12int_trace(A12_TRACE_SYSTEM,
-			"kind=error:source=binarystream:kind=EEXIST:ch=%d", (int) channel);
-		return;
-	}
-
 /*
- * if there is a checksum, ask the local cache process and see if we know about
+ * If there is a checksum, ask the local cache process and see if we know about
  * it already, if so, cancel the binary stream and substitute in the copy we
  * get from the cache, but still need to process and discard incoming packages
  * in the meanwhile.
+ *
+ * This is the point where, for non-streams, provide a table of hashes first
+ * and support resume at the first missing or broken hash
  */
 	int sc = A12_BHANDLER_DONTWANT;
 	struct a12_bhandler_meta bm = {
@@ -547,7 +748,6 @@ static void command_audioframe(struct a12_state* S)
 {
 	uint8_t channel = S->decode[16];
 	struct audio_frame* aframe = &S->channels[channel].unpack_state.aframe;
-	struct arcan_shmif_cont* cont = S->channels[channel].cont;
 
 	aframe->format = S->decode[22];
 	aframe->encoding = S->decode[23];
@@ -557,7 +757,7 @@ static void command_audioframe(struct a12_state* S)
 	S->in_channel = -1;
 
 /* developer error (or malicious client), set to skip decode/playback */
-	if (!cont){
+	if (!S->channels[channel].active){
 		a12int_trace(A12_TRACE_SYSTEM,
 			"no segment mapped on channel %d", (int)channel);
 		aframe->commit = 255;
@@ -566,19 +766,73 @@ static void command_audioframe(struct a12_state* S)
 
 /* this requires an extended resize (theoretically, practically not),
  * and in those cases we want to copy-out the vbuffer state if set and
- * then rebuild */
 	if (cont->samplerate != aframe->rate){
 		a12int_trace(A12_TRACE_MISSING,
 			"rate mismatch: %zu <-> %"PRIu32, cont->samplerate, aframe->rate);
 	}
+ */
 
-/* format should be paired against AUDIO_SAMPLE_TYPE */
+/* format should be paired against AUDIO_SAMPLE_TYPE
 	if (aframe->channels != ARCAN_SHMIF_ACHANNELS){
 		a12int_trace(A12_TRACE_MISSING, "channel format repack");
 	}
-
+*/
 /* just plug the samples into the normal abuf- as part of the shmif-cont */
 /* normal dynamic rate adjustment compensating for clock drift etc. go here */
+}
+
+/*
+ * used if a12_set_destination_raw has been set for the channel, some of the
+ * other metadata (typically cont->flags) have already been set - only the parts
+ * that take a resize request is considered
+ */
+static void update_proxy_vcont(
+	struct a12_channel* channel, struct video_frame* vframe)
+{
+	if (!channel->raw.request_raw_buffer)
+		goto fail;
+
+	struct arcan_shmif_cont* cont = channel->cont;
+
+	cont->vidp = channel->raw.request_raw_buffer(vframe->sw, vframe->sh,
+		&channel->cont->stride, channel->cont->hints, channel->raw.tag);
+
+	cont->pitch = channel->cont->stride / sizeof(shmif_pixel);
+	cont->w = vframe->sw;
+	cont->h = vframe->sh;
+
+	if (!cont->vidp)
+		goto fail;
+
+	return;
+
+	fail:
+		cont->w = 0;
+		cont->h = 0;
+		vframe->commit = 255;
+}
+
+static bool update_proxy_acont(
+	struct a12_channel* channel, struct audio_frame* aframe)
+{
+	if (!channel->raw.request_audio_buffer)
+		goto fail;
+
+	channel->cont->audp =
+		channel->raw.request_audio_buffer(
+			aframe->channels, aframe->rate,
+			sizeof(AUDIO_SAMPLE_TYPE) * aframe->channels,
+			channel->raw.tag
+	);
+
+	if (!channel->cont->audp)
+		goto fail;
+
+	return true;
+
+fail:
+	aframe->commit = 255;
+	return false;
 }
 
 static void command_newchannel(
@@ -678,8 +932,15 @@ static void command_videoframe(struct a12_state* S)
 		hints_changed = true;
 	}
 
-	if (hints_changed || vframe->sw != cont->w || vframe->sh != cont->h){
-		arcan_shmif_resize(cont, vframe->sw, vframe->sh);
+/* always request a new video buffer between frames for raw mode so the
+ * caller has the option of mapping each to different destinations */
+	if (channel->active == CHANNEL_RAW)
+		update_proxy_vcont(channel, vframe);
+
+/* shmif itself only needs the one though */
+	else if (hints_changed || vframe->sw != cont->w || vframe->sh != cont->h){
+			arcan_shmif_resize(cont, vframe->sw, vframe->sh);
+
 		if (vframe->sw != cont->w || vframe->sh != cont->h){
 			a12int_trace(A12_TRACE_SYSTEM, "parent size rejected");
 			vframe->commit = 255;
@@ -805,9 +1066,12 @@ void a12_enqueue_bstream(
 			n_known += (*parent)->left;
 		parent = &(*parent)->next;
 
-/* Insertion priority sort goes here, be wary of channel-id in heuristic
+/* [MISSING]
+ * Insertion priority sort goes here, be wary of channel-id in heuristic
  * though, and try to prioritize channel that has focus over those that
- * don't */
+ * don't - and if not appending, the unlink at the fail-state need to
+ * preserve forward integrity
+ **/
 	}
 	*parent = next;
 
@@ -876,15 +1140,15 @@ void a12_enqueue_bstream(
 /* the crypted packages are MACed together, but we always use the primitive
  * for btransfer- checksums so the other side can compare against a cache and
  * cancel the stream */
-	blake2b_state B;
-	blake2b_init(&B, 16);
-	blake2b_update(&B, map, fend);
-	blake2b_final(&B, next->checksum, 16);
+	blake3_hasher hash;
+	blake3_hasher_init(&hash);
+	blake3_hasher_update(&hash, map, fend);
+	blake3_hasher_finalize(&hash, next->checksum, 16);
 	munmap(map, fend);
 	next->left = fend;
 	a12int_trace(A12_TRACE_BTRANSFER,
 		"kind=added:type=%d:stream=no:size=%zu", type, next->left);
-
+	S->active_blobs++;
 	return;
 
 fail:
@@ -895,6 +1159,32 @@ fail:
 	free(next);
 }
 
+static bool authdec_buffer(const char* src, struct a12_state* S, size_t block_sz)
+{
+	size_t mac_size = MAC_BLOCK_SZ;
+
+	if (S->authentic == AUTH_SERVER_HBLOCK){
+		mac_size = 8;
+		trace_crypto_key("auth_mac_in", S->last_mac_in, mac_size);
+	}
+
+	update_mac_and_decrypt(__func__, &S->in_mac, S->dec_state, S->decode, block_sz);
+
+	uint8_t ref_mac[MAC_BLOCK_SZ];
+	blake3_hasher_finalize(&S->in_mac, ref_mac, mac_size);
+
+	a12int_trace(A12_TRACE_CRYPTO,
+		"kind=mac_dec:src=%s:pos=%zu", src, S->in_mac.counter);
+	trace_crypto_key("auth_mac_rf", ref_mac, mac_size);
+	bool res = memcmp(ref_mac, S->last_mac_in, mac_size) == 0;
+
+	if (!res){
+		trace_crypto_key("bad_mac", S->last_mac_in, mac_size);
+	}
+
+	return res;
+}
+
 /*
  * Control command,
  * current MAC calculation in s->mac_dec
@@ -902,8 +1192,10 @@ fail:
 static void process_control(struct a12_state* S, void (*on_event)
 	(struct arcan_shmif_cont*, int chid, struct arcan_event*, void*), void* tag)
 {
-	if (!process_mac(S))
+	if (!authdec_buffer(__func__, S, header_sizes[S->state])){
+		fail_state(S);
 		return;
+	}
 
 /* ignore these for now
 	uint64_t last_seen = S->decode[0];
@@ -912,14 +1204,43 @@ static void process_control(struct a12_state* S, void (*on_event)
  */
 
 	uint8_t command = S->decode[17];
+	if (S->authentic < AUTH_FULL_PK && command != COMMAND_HELLO){
+		a12int_trace(A12_TRACE_CRYPTO, "illegal command (%d) on non-auth connection");
+		fail_state(S);
+		return;
+	}
 
 	switch(command){
 	case COMMAND_HELLO:
-		a12int_trace(A12_TRACE_MISSING, "Key negotiation, verification");
 	/*
-	 * CRYPTO- fixme: Update keymaterial etc. here.
-	 * Verify that this is the first packet.
+- [18]      Version major : uint8 (shmif-version until 1.0)
+- [19]      Version minor : uint8 (shmif-version until 1.0)
+- [20]      Flags         : uint8
+- [21+ 32]  x25519 Pk     : blob
 	 */
+		if (S->authentic == AUTH_SERVER_HBLOCK){
+			a12int_trace(A12_TRACE_CRYPTO, "state=complete");
+			S->authentic = AUTH_FULL_PK;
+/* depepnding on flag:
+ *  authenticate public key -> REAL_HELLO
+ *  send ephemeral pk -> EPHEMERAL_PK
+ *  transition to full-pk (even though there is none) */
+		}
+		else if (S->authentic == AUTH_POLITE_HELLO_SENT){
+/* client side evaluation - keyswitch to ephemeral */
+		}
+		else if (S->authentic == AUTH_EPHEMERAL_PK){
+/* now do real pk authentication, send response and keyswitch to session */
+		}
+		else if (S->authentic == AUTH_REAL_HELLO_SENT){
+/* client side, authenticate public key, keyswitch to session */
+		}
+		else {
+			a12int_trace(A12_TRACE_CRYPTO,
+				"HELLO after completed authxchg (%d)", S->authentic);
+			fail_state(S);
+			return;
+		}
 	break;
 	case COMMAND_SHUTDOWN:
 	/* terminate specific channel */
@@ -946,6 +1267,9 @@ static void process_control(struct a12_state* S, void (*on_event)
 		command_binarystream(S);
 	break;
 	case COMMAND_REKEY:
+/* 1. note the sequence number that we are supposed to switch.
+ * 2. generate new keypair and add to the rekey slot.
+ * 3. if this is not a rekey response package, send the new pubk in response */
 	break;
 	default:
 		a12int_trace(A12_TRACE_SYSTEM, "Unknown message type: %d", (int)command);
@@ -959,8 +1283,11 @@ static void process_event(struct a12_state* S, void* tag,
 	void (*on_event)(
 		struct arcan_shmif_cont* wnd, int chid, struct arcan_event*, void*))
 {
-	if (!process_mac(S))
+	if (!authdec_buffer(__func__, S, header_sizes[S->state])){
+		a12int_trace(A12_TRACE_CRYPTO, "MAC mismatch on event packet");
+		fail_state(S);
 		return;
+	}
 
 	uint8_t channel = S->decode[8];
 
@@ -983,12 +1310,12 @@ static void process_event(struct a12_state* S, void* tag,
 
 static void process_blob(struct a12_state* S)
 {
-	if (!process_mac(S))
-		return;
-
 /* do we have the header bytes or not? the actual callback is triggered
  * inside of the binarystream rather than of the individual blobs */
 	if (S->in_channel == -1){
+		update_mac_and_decrypt(__func__, &S->in_mac,
+			S->dec_state, S->decode, header_sizes[S->state]);
+
 		S->in_channel = S->decode[0];
 		unpack_u32(&S->in_stream, &S->decode[1]);
 		unpack_u16(&S->left, &S->decode[5]);
@@ -1001,6 +1328,9 @@ static void process_blob(struct a12_state* S)
 
 /* did we receive a message on a dead channel? */
 	struct binary_frame* cbf = &S->channels[S->in_channel].unpack_state.bframe;
+	update_mac_and_decrypt(__func__, &S->in_mac,
+		S->dec_state, S->decode, header_sizes[S->state]);
+
 	struct arcan_shmif_cont* cont = S->channels[S->in_channel].cont;
 	if (!cont){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EINVAL:"
@@ -1059,6 +1389,9 @@ static void process_blob(struct a12_state* S)
  * write more into the buffer and hope that the other end will swallow it.
  * Upon termination / cancellation we discard binary packets for outdated
  * streams on the channel. */
+	update_mac_and_decrypt(__func__,
+		&S->in_mac, S->dec_state, S->decode, S->decode_pos);
+
 	if (cbf->size > 0){
 		cbf->size -= S->decode_pos;
 
@@ -1088,6 +1421,11 @@ static void process_blob(struct a12_state* S)
 			memcpy(&bm.checksum, cbf->checksum, 16);
 
 			cbf->tmp_fd = -1;
+
+/* NOTE: THIS IS FORWARDING UNAUTENTICATED DATA AND MAKES IT POSSIBLE TO MIM+
+ * BITFLIP THE MAXIMUM SIZE OF THE CHUNK BEFORE WE KNOW IT - THE OPTION IS TO
+ * EITHER BUFFER AND DEFER UNTIL WE HAVE A LARGE ENOUGH FRAME - OR RELY ON THE
+ * SECONDARY CHECKSUM */
 			S->binary_handler(S, bm, S->binary_handler_tag);
 			return;
 		}
@@ -1105,20 +1443,22 @@ static void process_blob(struct a12_state* S)
 /*
  * We have an incoming video packet, first we need to match it to the channel
  * that it represents (as we might get interleaved updates) and match the state
- * we are building.  With real MAC, the return->reenter loop is wrong.
+ * we are building.
  */
 static void process_video(struct a12_state* S)
 {
-	if (!process_mac(S))
-		return;
-
-/* in_channel is used to track if we are waiting for the header or not */
 	if (S->in_channel == -1){
 		uint32_t stream;
+
+/* note that the data is still unauthenticated, we need to know how much
+ * left to expect and buffer that before we can authenticate */
+		update_mac_and_decrypt(__func__,
+			&S->in_mac, S->dec_state, S->decode, S->decode_pos);
 		S->in_channel = S->decode[0];
 		unpack_u32(&stream, &S->decode[1]);
 		unpack_u16(&S->left, &S->decode[5]);
 		S->decode_pos = 0;
+
 		a12int_trace(A12_TRACE_VIDEO,
 			"kind=header:channel=%d:size=%"PRIu16, S->in_channel, S->left);
 		return;
@@ -1126,7 +1466,17 @@ static void process_video(struct a12_state* S)
 
 /* the 'video_frame' structure for the current channel (segment) tracks
  * decode buffer etc. for the current stream */
-	struct video_frame* cvf = &S->channels[S->in_channel].unpack_state.vframe;
+	struct a12_channel* ch = &S->channels[S->in_channel];
+	struct video_frame* cvf = &ch->unpack_state.vframe;
+
+	if (!authdec_buffer(__func__, S, S->decode_pos)){
+		fail_state(S);
+		return;
+	}
+	else {
+		a12int_trace(A12_TRACE_CRYPTO, "kind=frame_auth");
+	}
+
 /* if we are in discard state, just continue */
 	if (cvf->commit == 255){
 		a12int_trace(A12_TRACE_VIDEO, "kind=discard");
@@ -1134,8 +1484,8 @@ static void process_video(struct a12_state* S)
 		return;
 	}
 
-	struct arcan_shmif_cont* cont = S->channels[S->in_channel].cont;
-	if (!S->channels[S->in_channel].cont){
+	struct arcan_shmif_cont* cont = ch->cont;
+	if (!cont){
 		a12int_trace(A12_TRACE_SYSTEM,
 			"kind=error:source=video:type=EINVALCH:val=%d", (int) S->in_channel);
 		reset_state(S);
@@ -1168,7 +1518,7 @@ static void process_video(struct a12_state* S)
 		if (left == 0 && cvf->commit != 255){
 			a12int_trace(
 				A12_TRACE_VIDEO, "kind=decbuf:channel=%d:commit", (int)S->in_channel);
-			a12int_decode_vbuffer(S, cvf, cont);
+			a12int_decode_vbuffer(S, ch, cvf, cont);
 		}
 
 		reset_state(S);
@@ -1190,11 +1540,21 @@ static void process_video(struct a12_state* S)
 	reset_state(S);
 }
 
+static void drain_audio(struct a12_channel* ch)
+{
+	struct arcan_shmif_cont* cont = ch->cont;
+	if (ch->active == CHANNEL_RAW){
+		if (ch->raw.signal_audio)
+			ch->raw.signal_audio(cont->abufused, ch->raw.tag);
+		cont->abufused = 0;
+		return;
+	}
+
+	arcan_shmif_signal(cont, SHMIF_SIGAUD);
+}
+
 static void process_audio(struct a12_state* S)
 {
-	if (!process_mac(S))
-		return;
-
 /* in_channel is used to track if we are waiting for the header or not */
 	if (S->in_channel == -1){
 		uint32_t stream;
@@ -1202,6 +1562,8 @@ static void process_audio(struct a12_state* S)
 		unpack_u32(&stream, &S->decode[1]);
 		unpack_u16(&S->left, &S->decode[5]);
 		S->decode_pos = 0;
+		update_mac_and_decrypt(__func__,
+			&S->in_mac, S->dec_state, S->decode, header_sizes[S->state]);
 		a12int_trace(A12_TRACE_AUDIO,
 			"audio[%d:%"PRIx32"], left: %"PRIu16, S->in_channel, stream, S->left);
 		return;
@@ -1210,8 +1572,9 @@ static void process_audio(struct a12_state* S)
 /* the 'audio_frame' structure for the current channel (segment) only
  * contains the metadata, we use the mapped shmif- segment to actually
  * buffer, assuming we have no compression */
-	struct audio_frame* caf = &S->channels[S->in_channel].unpack_state.aframe;
-	struct arcan_shmif_cont* cont = S->channels[S->in_channel].cont;
+	struct a12_channel* channel = &S->channels[S->in_channel];
+	struct audio_frame* caf = &channel->unpack_state.aframe;
+	struct arcan_shmif_cont* cont = channel->cont;
 	if (!cont){
 		a12int_trace(A12_TRACE_SYSTEM,
 			"audio data on unmapped channel (%d)", (int) S->in_channel);
@@ -1219,14 +1582,24 @@ static void process_audio(struct a12_state* S)
 		return;
 	}
 
-/* passed the header stage, now it's the data block, make sure the segment
- * has registered that it can provide audio */
+	if (channel->active == CHANNEL_RAW){
+		if (!update_proxy_acont(channel, caf))
+			return;
+	}
+
+/* passed the header stage, now it's the data block,
+ * make sure the segment has registered that it can provide audio */
 	if (!cont->audp){
 		a12int_trace(A12_TRACE_AUDIO,
 			"frame-resize, rate: %"PRIu32", channels: %"PRIu8,
 			caf->rate, caf->channels
 		);
-		if (!arcan_shmif_resize_ext(cont,
+
+/* a note with the extended resize here is that we always request a single
+ * video buffer, which means the video part will be locked until we get an
+ * ack from the consumer - this might need to be tunable to increase if we
+ * detect that we stall on signalling video */
+			if (!arcan_shmif_resize_ext(cont,
 			cont->w, cont->h, (struct shmif_resize_ext){
 				.abuf_sz = 1024, .samplerate = caf->rate,
 				.abuf_cnt = 16, .vbuf_cnt = 1
@@ -1257,17 +1630,17 @@ static void process_audio(struct a12_state* S)
 		if (cont->abufcount - cont->abufpos <= 1){
 			a12int_trace(A12_TRACE_AUDIO,
 				"forward %zu samples", (size_t) cont->abufpos);
-			arcan_shmif_signal(cont, SHMIF_SIGAUD);
+			drain_audio(channel);
 		}
 	}
 
 /* now we can subtract the number of SAMPLES from the audio stream packet, when
  * that reaches zero we reset state, this incorrectly assumes 2 channels. */
 	caf->nsamples -= S->decode_pos >> 1;
+
+/* drain if there is data left in the buffer, but no samples left */
 	if (!caf->nsamples && cont->abufused){
-/* might also be a slush buffer left */
-		if (cont->abufused)
-			arcan_shmif_signal(cont, SHMIF_SIGAUD);
+		drain_audio(channel);
 	}
 
 	a12int_trace(A12_TRACE_TRANSFER,
@@ -1275,16 +1648,39 @@ static void process_audio(struct a12_state* S)
 	reset_state(S);
 }
 
+/* helper that just forwards to set-destination */
 void a12_set_destination(
-struct a12_state* S, struct arcan_shmif_cont* wnd, uint8_t chid)
+	struct a12_state* S, struct arcan_shmif_cont* wnd, uint8_t chid)
 {
 	if (!S){
 		a12int_trace(A12_TRACE_DEBUG, "invalid set_destination call");
 		return;
 	}
 
+	if (S->channels[chid].active == CHANNEL_RAW){
+		free(S->channels[chid].cont);
+		S->channels[chid].cont = NULL;
+	}
+
 	S->channels[chid].cont = wnd;
-	S->channels[chid].active = wnd != NULL;
+	S->channels[chid].active = wnd ? CHANNEL_SHMIF : CHANNEL_INACTIVE;
+}
+
+void a12_set_destination_raw(struct a12_state* S,
+	uint8_t chid, struct a12_unpack_cfg cfg, size_t cfg_sz)
+{
+/* the reason for this rather odd design is that non-shmif based receiver was
+ * an afterthought, and it was a much larger task refactoring it out versus
+ * adding a proxy and tagging */
+	size_t ct_sz = sizeof(struct arcan_shmif_cont);
+	struct arcan_shmif_cont* fake = malloc(ct_sz);
+	if (!fake)
+		return;
+
+	*fake = (struct arcan_shmif_cont){};
+	S->channels[chid].cont = fake;
+	S->channels[chid].raw = cfg;
+	S->channels[chid].active = CHANNEL_RAW;
 }
 
 void
@@ -1295,7 +1691,7 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 	if (S->state == STATE_BROKEN){
 		a12int_trace(A12_TRACE_SYSTEM,
 			"kind=error:status=EINVAL:message=state machine broken");
-		reset_state(S);
+		fail_state(S);
 		return;
 	}
 
@@ -1308,11 +1704,10 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 	size_t ntr = buf_sz > S->left ? S->left : buf_sz;
 
 	memcpy(&S->decode[S->decode_pos], buf, ntr);
+
 	S->left -= ntr;
 	S->decode_pos += ntr;
 	buf_sz -= ntr;
-
-/* crypto- fixme: if we are in decipher-state, update cipher with ntr */
 
 /* do we need to buffer more? */
 	if (S->left)
@@ -1320,27 +1715,33 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 
 /* otherwise dispatch based on state */
 	switch(S->state){
+	case STATE_1STSRV_PACKET:
+		process_srvfirst(S);
+	break;
 	case STATE_NOPACKET:
 		process_nopacket(S);
 	break;
 	case STATE_CONTROL_PACKET:
 		process_control(S, on_event, tag);
 	break;
+	case STATE_EVENT_PACKET:
+		process_event(S, tag, on_event);
+	break;
+/* worth noting is that these (a,v,b) have different buffer sizes for their
+ * respective packets, so the authentication and decryption steps are somewhat
+ * different */
 	case STATE_VIDEO_PACKET:
 		process_video(S);
 	break;
 	case STATE_AUDIO_PACKET:
 		process_audio(S);
 	break;
-	case STATE_EVENT_PACKET:
-		process_event(S, tag, on_event);
-	break;
 	case STATE_BLOB_PACKET:
 		process_blob(S);
 	break;
 	default:
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EINVAL:message=bad command");
-		S->state = STATE_BROKEN;
+		fail_state(S);
 		return;
 	break;
 	}
@@ -1407,6 +1808,7 @@ static void unlink_node(struct a12_state* S, struct blob_out* node)
 	}
 
 	a12int_trace(A12_TRACE_ALLOC, "unlinked:stream=%"PRIu64, node->streamid);
+	S->active_blobs--;
 	*dst = next;
 	close(node->fd);
 	free(node);
@@ -1534,7 +1936,29 @@ a12_poll(struct a12_state* S)
 	if (!S || S->state == STATE_BROKEN || S->cookie != 0xfeedface)
 		return -1;
 
-	return S->left > 0 ? 1 : 0;
+	return S->buf_ofs || S->pending ? 1 : 0;
+}
+
+int
+a12_auth_state(struct a12_state* S)
+{
+	switch (S->authentic){
+	case AUTH_FULL_PK:
+		if (!S->dec_state)
+			return 1;
+
+		if (S->opts->pk_lookup)
+			return 3;
+
+		return 2;
+	break;
+	case AUTH_REAL_HELLO_SENT:
+	case AUTH_EPHEMERAL_PK:
+	case AUTH_SERVER_HBLOCK:
+	case AUTH_POLITE_HELLO_SENT:
+	default:
+		return 0;
+	}
 }
 
 void
@@ -1604,6 +2028,11 @@ a12_channel_vframe(struct a12_state* S,
 	}
 
 /* sanity check against a dumb client here as well */
+	if (!w || !h){
+		a12int_trace(A12_TRACE_SYSTEM, "kind=einval:status=bad dimensions");
+		return;
+	}
+
 	if (x + w > vb->w || y + h > vb->h){
 		a12int_trace(A12_TRACE_SYSTEM,
 			"client provided bad/broken subregion (%zu+%zu > %zu)"
@@ -1797,9 +2226,4 @@ void a12_sensitive_free(void* ptr, size_t buf)
 		pos[i] = 0;
 	}
 	arcan_mem_free(ptr);
-}
-
-void a12_plain_kdf(const char* pw, struct a12_context_options* dst)
-{
-
 }

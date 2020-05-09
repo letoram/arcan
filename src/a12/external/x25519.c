@@ -357,8 +357,23 @@ static int scalar_bit(const uint8_t s[32], int i) {
     return (s[i>>3] >> (i&7)) & 1;
 }
 
+extern void arcan_random(uint8_t* dst, size_t nb);
+void x25519_private_key(uint8_t secret[static 32])
+{
+	arcan_random(secret, 32);
+	secret[0] &= 248;
+	secret[31] &= 127;
+	secret[31] |= 64;
+}
 
-int crypto_x25519(
+void x25519_public_key(
+	const uint8_t secret[static 32], uint8_t public[static 32])
+{
+	const uint8_t basepoint[32] = {9};
+	x25519_shared_secret(public, secret, basepoint);
+}
+
+int x25519_shared_secret(
 	uint8_t secret_out[static 32],
 	const uint8_t secret [static 32], const uint8_t ext_pub [static 32])
 {

@@ -11,8 +11,8 @@ set(SOURCES
 
 set(INCLUDE_DIRS
 	"${ARCAN_SRC}/shmif"
-	"${A12_EXT}/blake2"
 	"${A12_EXT}"
+	"${A12_EXT}/blake3"
 	"${A12_SRC}"
 	"${ARCAN_SRC}/engine"
 	"${ARCAN_SRC}/frameserver/util"

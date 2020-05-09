@@ -232,7 +232,6 @@ static void decode_args(struct arg_arr* arg, struct dispatch_data* dst)
 	}
 
 	dst->net_cfg.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));
-	a12_plain_kdf(NULL, dst->net_cfg.opts);
 
 /* authk,
  * privk(id) - use

@@ -45,6 +45,82 @@ int anet_clfd(struct addrinfo* addr)
 	return clfd;
 }
 
+struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
+{
+	struct anet_cl_connection res = {
+		.fd = -1
+	};
+
+/* missing: lookup keyid and (unless host/port provided) the hostlist */
+	struct addrinfo hints = {
+		.ai_family = AF_UNSPEC,
+		.ai_socktype = SOCK_STREAM
+	};
+	struct addrinfo* addr = NULL;
+
+	int ec = getaddrinfo(arg->host, arg->port, &hints, &addr);
+	if (ec){
+		char buf[64];
+		snprintf(buf, sizeof(buf), "couldn't resolve: %s", gai_strerror(ec));
+		res.errmsg = strdup(buf);
+
+		return res;
+	}
+
+/* related to keystore - if we get multiple options for one key and don't
+ * have a provided host, port, enumerate those before failing */
+	res.fd = anet_clfd(addr);
+	if (-1 == res.fd){
+		char buf[64];
+		snprintf(buf, sizeof(buf), "couldn't connect to %s:%s", arg->host, arg->port);
+		res.errmsg = strdup(buf);
+
+		freeaddrinfo(addr);
+		return res;
+	}
+
+/* at this stage we have a valid connection, time to build the state machine */
+	res.state = a12_client(arg->opts);
+
+/* repeat until we fail or get authenticated */
+	do {
+		uint8_t* buf;
+		size_t out = a12_flush(res.state, &buf, 0);
+		while (out){
+			ssize_t nw = write(res.fd, buf, out);
+			if (nw == -1){
+				if (errno == EAGAIN || errno == EINTR)
+					continue;
+				goto fail;
+			}
+			else {
+				out -= nw;
+				buf += nw;
+			}
+		}
+
+		char inbuf[4096];
+		ssize_t nr = read(res.fd, inbuf, 4096);
+		if (nr > 0){
+			a12_unpack(res.state, (uint8_t*)inbuf, nr, NULL, NULL);
+		}
+		else if (nr == 0 || (errno != EAGAIN && errno != EINTR))
+			goto fail;
+
+	} while (a12_poll(res.state) > 0 && !a12_auth_state(res.state));
+
+	return res;
+
+fail:
+	if (-1 != res.fd)
+		shutdown(res.fd, SHUT_RDWR);
+
+	res.fd = -1;
+	a12_free(res.state);
+	res.state = NULL;
+	return res;
+}
+
 bool anet_listen(struct anet_options* args, char** errdst,
 	void (*dispatch)(struct a12_state* S, int fd, void* tag), void* tag)
 {
@@ -117,7 +193,7 @@ bool anet_listen(struct anet_options* args, char** errdst,
 		socklen_t addrlen = sizeof(addr);
 
 		int infd = accept(sockin_fd, (struct sockaddr*) &in_addr, &addrlen);
-		struct a12_state* ast = a12_build(args->opts);
+		struct a12_state* ast = a12_server(args->opts);
 		if (!ast){
 			if (errdst)
 				asprintf(errdst, "Couldn't allocate client state machine\n");

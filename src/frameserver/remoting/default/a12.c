@@ -2,12 +2,12 @@
 #include <arcan_shmif_server.h>
 #include "a12.h"
 
-#include <sys/socket.h>
 #include <sys/stat.h>
-#include <netdb.h>
 #include <poll.h>
 #include <errno.h>
 
+#include <sys/socket.h>
+#include <netdb.h>
 #include "anet_helper.h"
 
 static void on_cl_event(
@@ -95,9 +95,11 @@ out:
 	a12_free(S);
 }
 
-static void dump_help()
+static void dump_help(const char* reason)
 {
-	fprintf(stdout, "Environment variables: \nARCAN_CONNPATH=path_to_server\n"
+	fprintf(stdout,
+		"Error: %s\n"
+		"Environment variables: \nARCAN_CONNPATH=path_to_server\n"
 	  "ARCAN_ARG=packed_args (key1=value:key2:key3=value)\n\n"
 		"Accepted packed_args:\n"
 		"   key   \t   value   \t   description\n"
@@ -105,67 +107,66 @@ static void dump_help()
 		" password\t val       \t use this (7-bit ascii) password for auth\n"
 	  " host    \t hostname  \t connect to the specified host\n"
 		" port    \t portnum   \t use the specified port for connecting\n"
-		"---------\t-----------\t----------------\n"
+		"---------\t-----------\t----------------\n", reason
 	);
 }
 
 int run_a12(struct arcan_shmif_cont* cont, struct arg_arr* args)
 {
-	struct addrinfo hints = {
-		.ai_family = AF_UNSPEC,
-		.ai_socktype = SOCK_STREAM
-	};
-	struct addrinfo* addr = NULL;
 	const char* host = NULL;
 	const char* port = "6680";
+	const char* keyid = NULL;
 
 	struct a12_context_options* opts =
 		a12_sensitive_alloc(sizeof(struct a12_context_options));
-	a12_plain_kdf(NULL, opts);
 
-	if (!arg_lookup(args, "host", 0, &host)){
-		arcan_shmif_last_words(cont, "missing host argument");
-		fprintf(stderr, "missing host argument\n");
-		dump_help();
+	arg_lookup(args, "host", 0, &host);
+	arg_lookup(args, "key", 0, &keyid);
+
+	if (!host && !keyid){
+		arcan_shmif_last_words(cont, "missing host or key argument");
+		dump_help("missing host or key argument");
 		return EXIT_FAILURE;
 	}
 
-	const char* tmp;
-	if (arg_lookup(args, "port", 0, &tmp)){
-		port = tmp;
+	if (arg_lookup(args, "port", 0, &port)){
+		if (!port || !strlen(port)){
+			arcan_shmif_last_words(cont, "missing or invalid port value");
+			dump_help("missing or invalid port value");
+			return EXIT_FAILURE;
+		}
 	}
 
-	int ec = getaddrinfo(host, port, &hints, &addr);
-	if (ec){
-		char buf[64];
-		snprintf(buf, sizeof(buf), "couldn't resolve: %s", gai_strerror(ec));
-		arcan_shmif_last_words(cont, buf);
-		fprintf(stderr, "%s", buf);
+	const char* tmp = NULL;
+	if (arg_lookup(args, "pass", 0, &tmp)){
+		if (!tmp || !strlen(tmp)){
+			arcan_shmif_last_words(cont, "password field empty or missing");
+			dump_help("password field empty or missing");
+			return EXIT_FAILURE;
+		}
+
+		_Static_assert(sizeof(opts->secret) >= 32);
+		sprintf(opts->secret, "%s", tmp);
+	}
+
+/* after this point access to the keystore can be revoked, ideally we would be
+ * able to get this information from arcan as well, something to consider with
+ * afsrv_net is updated */
+	struct anet_options netarg = {
+		.host = host,
+		.port = port,
+		.key = keyid,
+		.opts = opts
+	};
+	struct anet_cl_connection con = anet_cl_setup(&netarg);
+
+	if (!con.state){
+		arcan_shmif_last_words(cont, con.errmsg);
+		fprintf(stderr, "%s\n", con.errmsg);
 		return EXIT_FAILURE;
 	}
 
-	int fd = anet_clfd(addr);
-	if (-1 == fd){
-		char buf[64];
-		snprintf(buf, sizeof(buf), "couldn't connect to %s:%s", host, port);
-		arcan_shmif_last_words(cont, buf);
-		fprintf(stderr, "%s\n", buf);
-		freeaddrinfo(addr);
-		return EXIT_FAILURE;
-	}
-
-/* at this stage we have a valid connection, time to build the state machine */
-	struct a12_state* state = a12_open(opts);
-	if (!state){
-		const char* err = "Failed to build a12 state machine (invalid arguments)";
-		arcan_shmif_last_words(cont, err);
-		fprintf(stderr, "%s\n", err);
-		freeaddrinfo(addr);
-		close(fd);
-		return EXIT_FAILURE;
-	}
-
-	main_loop(cont, state, fd);
+	main_loop(cont, con.state, con.fd);
 
 	return EXIT_SUCCESS;
 }

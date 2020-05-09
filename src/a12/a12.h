@@ -1,7 +1,7 @@
 /*
  A12, Arcan Line Protocol implementation
 
- Copyright (c) 2017-2019, Bjorn Stahl
+ Copyright (c) 2017-2020, Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
@@ -40,40 +40,49 @@ struct a12_state;
 /*
  * the encryption related options need to be the same for both server-
  * and client- side or the communication will fail regardless of key validity.
+ *
+ * return the private key to use with the public key received (server only)
  */
 struct pk_response {
-	bool valid;
-	uint8_t key[64];
+	bool authentic;
+	uint8_t key[32];
 };
 
 struct a12_context_options {
 /* Provide to enable asymetric key authentication, set valid in the return to
  * allow the key, otherwise the session may be continued for a random number of
- * time or bytes before being terminated. Keymaterial in response is used by
- * the server side and can be */
-	struct pk_response (*pk_lookup)(uint8_t pk[static 32]);
+ * time or bytes before being terminated. */
+	struct pk_response (*pk_lookup)(uint8_t pub[static 32]);
+
+/* Client only, provide the private key to use with the connection, this will
+ * be xored with a per-execution session cookie stored random to avoid leaking
+ * from a read primitive or crash dump. All [0] key will disable attempts at
+ * asymetric operation. */
+	uint8_t priv_key[32];
 
 /* default is to add a round-trip and use an ephemeral public key to transfer
  * the real one, forces active MiM in order for an attacker to track Pk
  * (re-)use. */
 	bool disable_ephemeral_k;
 
-/* filled in using a12_plain_kdf used for the cipher and MAC before asymmetric
- * exchange has been performed. If disable_authenticity is set and no pk_lookup
- * is provided, everything will be over plaintext for debugging and trusted
- * networks */
-	uint8_t authk[64];
-	bool disable_authenticity;
-};
+/* If set, only MAC will be applied - this should only apply when there are
+ * legal restrictions against cryptography. */
+	bool disable_cipher;
 
-/*
- * Takes a low entropy secret and generate a salted authentication key used
- * for the first key- exchange upon connection. If no shared secret is provided
- * the default 'SETECASTRONOMY' is used. The key is only used to authenticate
- * the first public key in place of a preauthenticated public key from a
- * previous session or a UI based pk_lookup implementation.
- */
-void a12_plain_kdf(const char* ssecret, struct a12_context_options* dst);
+/* if set, the shared secret will be used to authenticate public keymaterial,
+ * message and cipher state for the first packets before DH exchange has been
+ * completed */
+	char secret[32];
+
+/* if set, the a12_flush() will not return a buffer to write out, but rather
+ * call into the sink as soon as there is data to send. This helps debugging
+ * and simple applications, but limits data interleaving options.
+ *
+ * Return if the buffer could be flushed or not, failure to flush the buffer
+ * marks the state machine as broken. */
+	bool (*sink)(uint8_t* buf, size_t buf_sz, void* tag);
+	void* sink_tag;
+};
 
 /*
  * Use in place of malloc/free on struct a12_context_options and other
@@ -90,14 +99,16 @@ void* a12_sensitive_alloc(size_t nb);
 void a12_sensitive_free(void*, size_t nb);
 
 /*
- * begin a new session (connect)
+ * build context and prepare packets for the connection initiator ('client')
+ * the provided options structure will be modified by calls into a12_
  */
-struct a12_state* a12_open(struct a12_context_options*);
+struct a12_state* a12_client(struct a12_context_options*);
 
 /*
- * being a new session (accept)
+ * build context and prepare packets for the listening end ('server')
+ * the provided options structure will be modified by calls into a12_
  */
-struct a12_state* a12_build(struct a12_context_options*);
+struct a12_state* a12_server(struct a12_context_options*);
 
 /*
  * Free the state block
@@ -109,10 +120,12 @@ a12_free(struct a12_state*);
 /*
  * Take an incoming byte buffer and append to the current state of
  * the channel. Any received events will be pushed via the callback.
+ *
+ * If _set_destination_raw has been used, [cont] will be NULL.
  */
 void a12_unpack(
 	struct a12_state*, const uint8_t*, size_t, void* tag, void (*on_event)
-		(struct arcan_shmif_cont* wnd, int chid, struct arcan_event*, void*));
+		(struct arcan_shmif_cont* cont, int chid, struct arcan_event*, void*));
 
 /*
  * Set the specified context as the recipient of audio/video buffers
@@ -136,13 +149,15 @@ struct a12_unpack_cfg {
 
 /* Will be used on resize- calls, the caller assumes ownership of the
  * returned buffer and will deallocate with [free] when ready. Set stride
- * in number of BYTES per row. */
+ * in number of BYTES per row (>= w * sizeof(shmif_pixel)).
+ * [flags] matches context render hint flags from shmif header
+ */
 	shmif_pixel* (*request_raw_buffer)(
-		size_t w, size_t h, size_t* stride, void* tag);
+		size_t w, size_t h, size_t* stride, int flags, void* tag);
 
 /* The number of BYTES requests sets an upper limit of the number of
- * samples that may be provided through calls into [signal_audio],
- * samples are packed interleaved.
+ * bytes that may be provided through calls into [signal_audio],
+ * the bytes are guaranteed complete samples:
  *
  * [ n_ch * n_samples * sizeof(shmif_asample) == n_bytes ]
  */
@@ -155,12 +170,13 @@ struct a12_unpack_cfg {
 	void (*signal_video)(
 		size_t x1, size_t y1, size_t x2, size_t y2, void* tag);
 
-/* n complete samples have been written into the buffer */
-	void (*signal_audio)(size_t n_samples, void* tag);
+/* n BYTES have been written into the buffer allocated through
+ * request_audio_buffer */
+	void (*signal_audio)(size_t bytes, void* tag);
 };
 
-void a12_set_destination_raw(
-	struct a12_state*, struct a12_unpack_cfg cfg, size_t unpack_cfg_sz);
+void a12_set_destination_raw(struct a12_state*,
+	uint8_t ch, struct a12_unpack_cfg cfg, size_t unpack_cfg_sz);
 
 /*
  * Set the active channel used for tagging outgoing packages
@@ -176,7 +192,7 @@ void a12_set_channel(struct a12_state* S, uint8_t chid);
  * and buffer until there's no more data to be had. Internally, a12 n-buffers
  * and a12_flush act as a buffer step. The typical use is therefore:
  *
- * 1. [build state machine, open or accept]
+ * 1. [build state machine, a12_client, a12_server]
  * while active:
  * 2. [if output buffer set, write to network channel]
  * 3. [enqueue events, add audio/video buffers]
@@ -242,6 +258,16 @@ a12_enqueue_bstream(
  */
 int
 a12_poll(struct a12_state*);
+
+/*
+ * Get the authentication state,
+ * 0 = authenticating
+ * 1 = authenticated, MAC only - no cipher or key-exchange
+ * 1 = authenticated, pre-shared secret
+ * 2 = authenticated, x25519 derived session key
+ */
+int
+a12_auth_state(struct a12_state*);
 
 /*
  * For sessions that support multiplexing operations for multiple
