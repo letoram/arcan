@@ -146,7 +146,7 @@ int run_a12(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		}
 
 		_Static_assert(sizeof(opts->secret) >= 32);
-		sprintf(opts->secret, "%s", tmp);
+		snprintf(opts->secret, sizeof(opts->secret), "%s", tmp);
 	}
 
 /* after this point access to the keystore can be revoked, ideally we would be
