@@ -1,8 +1,7 @@
 #ifndef HAVE_A12_INT
 #define HAVE_A12_INT
 
-/* crypto / line format */
-#include "blake2.h"
+#include "blake3.h"
 #include "pack.h"
 
 /* this is frightening */
@@ -24,6 +23,7 @@
 
 #define MAC_BLOCK_SZ 16
 #define CONTROL_PACKET_SIZE 128
+#define CIPHER_ROUNDS 8
 
 #ifndef DYNAMIC_FREE
 #define DYNAMIC_FREE free
@@ -43,25 +43,41 @@
 #endif
 
 enum {
-	STATE_NOPACKET = 0,
-	STATE_CONTROL_PACKET = 1,
-	STATE_EVENT_PACKET = 2,
-	STATE_AUDIO_PACKET = 3,
-	STATE_VIDEO_PACKET = 4,
-	STATE_BLOB_PACKET = 5,
+	STATE_NOPACKET       = 0, /* nopacket -> control                         */
+	STATE_CONTROL_PACKET = 1, /* control  -> a, v, e, blob, broken, nopacket */
+	STATE_EVENT_PACKET   = 2, /* event    -> nopacket, broken                */
+	STATE_AUDIO_PACKET   = 3, /* audio    -> nopacket, broken                */
+	STATE_VIDEO_PACKET   = 4, /* video    -> nopacket, broken                */
+	STATE_BLOB_PACKET    = 5, /* blob     -> nopacket, broken                */
+	STATE_1STSRV_PACKET  = 6, /* mac+nonce -> control                        */
 	STATE_BROKEN
 };
 
 enum control_commands {
-	COMMAND_HELLO = 0,
-	COMMAND_SHUTDOWN = 1,
-	COMMAND_NEWCH = 2,
-	COMMAND_CANCELSTREAM = 3,
-	COMMAND_VIDEOFRAME = 4,
-	COMMAND_AUDIOFRAME = 5,
-	COMMAND_BINARYSTREAM = 6,
-	COMMAND_PING = 7,
-	COMMAND_REKEY = 8
+	COMMAND_HELLO        = 0, /* initial keynegotiation          */
+	COMMAND_SHUTDOWN     = 1, /* graceful exit                   */
+	COMMAND_NEWCH        = 2, /* channel = triple (A|V|meta)     */
+	COMMAND_CANCELSTREAM = 3, /* abort ongoing video transfer    */
+	COMMAND_VIDEOFRAME   = 4, /* next packets will be video data */
+	COMMAND_AUDIOFRAME   = 5, /* next packets will be audio data */
+	COMMAND_BINARYSTREAM = 6, /* cut and paste, state, font, ... */
+	COMMAND_PING         = 7, /* keepalive, latency masurement   */
+	COMMAND_REKEY        = 8  /* new x25519 change               */
+};
+
+enum authentic_state {
+	AUTH_UNAUTHENTICATED   = 0, /* first packet, authk- use and nonce                    */
+	AUTH_SERVER_HBLOCK     = 1, /* server received client HELLO with nonce               */
+	AUTH_POLITE_HELLO_SENT = 2, /* client->server, HELLO (ephemeral Pubk)                */
+	AUTH_EPHEMERAL_PK      = 3, /* server->client, HELLO (ephemeral Pubk, switch cipher) */
+	AUTH_REAL_HELLO_SENT   = 4, /* client->server, HELLO (real Pubk, switch cipher)      */
+	AUTH_FULL_PK           = 5, /* server->client, HELLO - now rekeying can be scheduled */
+};
+
+enum channel_cfg {
+	CHANNEL_INACTIVE = 0, /* nothing mapped in the channel          */
+	CHANNEL_SHMIF    = 1, /* shmif context set                      */
+	CHANNEL_RAW      = 2  /* raw user-callback provided destination */
 };
 
 #define SEQUENCE_NUMBER_SIZE 8
@@ -73,13 +89,13 @@ enum control_commands {
 #endif
 
 enum {
-	POSTPROCESS_VIDEO_RGBA = 0,
-	POSTPROCESS_VIDEO_RGB = 1,
+	POSTPROCESS_VIDEO_RGBA   = 0,
+	POSTPROCESS_VIDEO_RGB    = 1,
 	POSTPROCESS_VIDEO_RGB565 = 2,
-	POSTPROCESS_VIDEO_DMINIZ = 3,
-	POSTPROCESS_VIDEO_MINIZ = 4,
-	POSTPROCESS_VIDEO_H264 = 5,
-	POSTPROCESS_VIDEO_TZ = 6
+	POSTPROCESS_VIDEO_DMINIZ = 3, /* DEFLATE - P frame (I -> P | P->P)    */
+	POSTPROCESS_VIDEO_MINIZ  = 4, /* DEFLATE - I frame                    */
+	POSTPROCESS_VIDEO_H264   = 5, /* ffmpeg or native decompressor        */
+	POSTPROCESS_VIDEO_TZ     = 6  /* DEFLATE+tpack (see shmif/tui/raster) */
 };
 
 size_t a12int_header_size(int type);
@@ -158,8 +174,9 @@ struct blob_out {
 };
 
 struct a12_channel {
-	bool active;
+	int active;
 	struct arcan_shmif_cont* cont;
+	struct a12_unpack_cfg raw;
 
 /* can have one of each stream- type being prepared for unpack at the same time */
 	struct {
@@ -190,9 +207,6 @@ struct a12_channel {
 struct a12_state;
 struct a12_state {
 	struct a12_context_options* opts;
-
-/* we need to prepend this when we build the next MAC */
-	uint8_t last_mac_out[MAC_BLOCK_SZ];
 	uint8_t last_mac_in[MAC_BLOCK_SZ];
 
 /* data needed to synthesize the next package */
@@ -209,6 +223,7 @@ struct a12_state {
 /* linked list of pending binary transfers, can be re-ordered and affect
  * blocking / transfer state of events on the other side */
 	struct blob_out* pending;
+	size_t active_blobs;
 
 /* current event handler for binary transfer cache oracle */
 	struct a12_bhandler_res
@@ -238,11 +253,22 @@ struct a12_state {
 /* overflow state tracking cookie */
 	volatile uint32_t cookie;
 
-/* built at initial setup, then copied out for every time we add data */
-	blake2bp_state mac_init, mac_dec;
+/* curve25519 keys, these will be STORED ^ priv_key_cookie
+ * (generated random in init) and consumed on use. */
+	struct {
+		uint32_t ephem_priv[32];
+		uint32_t real_priv[32];
+		uint64_t rekey_pos;
+	} keys;
 
-/* when the channel has switched to a streamcipher, this is set to true */
-	bool in_encstate;
+/* client side needs to send the first packet with MAC+nonce, server side
+ * needs to interpret first packet with MAC+nonce */
+	bool server;
+	int authentic;
+	blake3_hasher out_mac, in_mac;
+
+	struct chacha_ctx* enc_state;
+	struct chacha_ctx* dec_state;
 };
 
 void a12int_append_out(

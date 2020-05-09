@@ -44,6 +44,7 @@ struct shmifsrv_thread_data {
 */
 static bool spawn_thread(struct shmifsrv_thread_data* inarg);
 static pthread_mutex_t giant_lock = PTHREAD_MUTEX_INITIALIZER;
+
 static const char* last_lock;
 static _Atomic volatile size_t buffer_out = 0;
 static _Atomic volatile uint8_t n_segments;
@@ -617,6 +618,7 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 {
 	uint8_t* outbuf = NULL;
 	size_t outbuf_sz = 0;
+
 
 /* tie an empty context as channel destination, we use this as a type- wrapper
  * for the shmifsrv_client now, this logic is slightly different on the

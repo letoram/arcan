@@ -86,6 +86,10 @@ Some are also order dependent, so you can't reliably forward other data in betwe
 * BCHUNK\_OUT, BCHUNK\_IN : can be interleaved with other non-descriptor events
 * STORE, RESTORE : needs to be completed before anything else is accepted
 * DEVICEHINT : does not work cross- network
+* PRIVDROP : not supposed to pass networked barriers
+
+PRIVDROP should also be emitted on client to local server, in order to mark that
+it comes from an external/networked source.
 
 ## Audio / Video
 
@@ -168,43 +172,58 @@ encoding schemes.
 * custom timers should be managed locally, so the proxy server will still
   tick etc. without forwarding it remote...
 
-* should we allow session- resume with a timeout? (pair authk in HELO)
+* should we allow session- resume with a timeout? (pair authk in HELLO)
 
 # Protocol
 
 This section mostly covers a rough draft of things as they evolve. A more
-'real' spec is to be written separately towards the end of the subproject
-in an RFC like style and the a12 state machine will be decoupled from the
-current shmif dependency.
+'real' spec is to be written separately towards the end of the subproject in an
+RFC like style and the a12 state machine will be decoupled from the current
+shmif dependency.
 
-Each arcan segment correlates to a 'channel' that can be multiplexed over
-one of these transports, with a sequence number used as a synchronization
-primitive for re-linearization. For each channel, a number of streams can
-be defined, each with a unique 32-bit identifier. A stream corresponds to
-one binary, audio or video transfer operation. One stream of each type
-(i.e. binary, audio and video) can be in flight at the same time.
+Each arcan segment correlates to a 'channel' that can be multiplexed over one
+of these transports, with a sequence number used as a synchronization primitive
+for re-linearization. For each channel, a number of streams can be defined,
+each with a unique 32-bit identifier. A stream corresponds to one binary, audio
+or video transfer operation. One stream of each type (i.e. binary, audio and
+video) can be in flight at the same time.
 
 The first message has the structure of:
 
  |---------------------|
- | 16 byte MAC         |
- | 8 byte salt (random)|
+ | 8 bytes MAC         |
+ | 8 bytes nonce       | | from CSPRNG
  |---------------------|
- | 1 byte command-code | | encrypted block
- | command-code data   | |
+ | 8 byte sequence     | | encrypted block
+ | 1 byte command-code | | encrypted block   (HELLO command)
+ | command-code data   | | keymaterial       (HELLO command)
  |----------------------
 
-Where the cipher-key and authentication-key for the first message is derived
-from H(Salt | Key), where key is user-provided low-entropy (password) or the
-default 'SETECASTRONOMY'.The command part carries the data needed for actual
-key exchange and derivation. Clearly little protection is offered using this
-construction alone. Without a proper pre-shared key it only provides trivial
-obfuscation, with a proper pre-shared key it reduces DoS effect on keys, but
-optionally also allows for a short/first- time public key authentication for
-quick setup/sharing without going through a PKI infrastructure or TLS- style
-certificates or SSH style 'do you accept this key yes/no' queries.
+The MAC comes from BLAKE3 in keyed mode (output size of 16b) using a pre-shared
+secret or the default 'SETECASTRONOMY' that comes from BLAKE3 in KDF mode using
+the message "arcan-a12 init-packet".
 
-Each message after the first has the outer structure of :
+The forced encryption of the first packet is to avoid any predictable bytes
+(forcing fingerprinting to be based on packet sizes, rate and timestamps rather
+than any metadata) and hide the fact that X25519 is used. The use of pre-shared
+secrets and X25519 is to allow for a PKI- less first-time authentication of public
+keys.
+
+Only the first 8 byte of MAC output is used for the HELLO packets in order to
+make it easier for implementations to avoid radically different code paths in
+parsing for these packets.
+
+KDF(secret) -> Kmac.
+
+The cipher is Chacha8 with nonce from message and keyed using:
+KDF(Kmac) -> Kcl.
+KDF(Kcl) -> Ksrv.
+
+The subsequent HELLO command contains data for 1 or 2 rounds of X25519. If 2
+round-trips is used, the first round is using ephemeral key-pairs to further
+hide the actual key-pair to force active MiM.
+
+Each message after completed key-exchange has the outer structure of :
 
  |---------------------|
  | 16 byte MAC         |
@@ -215,15 +234,34 @@ Each message after the first has the outer structure of :
  |---------------------|  |
  | command- variable   |  |
 
-The MAC for all messages is encrypt-then-MAC using chacha20 as streamcipher
-where half counter space is used for client to server (first 8b of the ctr)
-and half to the server to client (last 8b of the ctr). A rekey command will
-be issued at regular intervals where a new key exchange is issued, deleting
-the old one.
-
 The 8-byte LSB sequence number is incremented for each message, and is used
 as clock for scheduled rekeying and for a course grained counter estimating
 drift.
+
+## Notes
+
+There are a few details with the cryptography setup that is still in flux due
+to unfinished prototyping of rekeying or the immature state.
+
+One is that the setup above requires one or two round-trips before a session is
+established. Ideally we should be able to operate in a weaker 'use the
+pre-shared secret' and immediately schedule a rekey, a user unfriendly - pin
+server public key or through session- resume, a pre-established shared secret.
+
+Another is related in that a directory service would be useful for both dynamic
+discovery, and reducing setup latency. See the minimaLT paper for a possible
+construction of that.
+
+All of these could partially be adressed through modifications to the HELLO
+command.
+
+A detail though is that the client cannot do very much until the preroll stage
+of the server-end has completed. This is a forced round-trip that masks some of
+the cryptographic ones - the video buffers that could have been compressed and
+sent in advance needs details from the WM on the other side to have the correct
+contents.
+
+## Commands
 
 The command- code can be one out of the following types:
 
@@ -238,9 +276,9 @@ also used for defining new video/audio and binary streams.
 
 ## Control (1)
 - [0..7]    last-seen seqnr : uint64
-- [8..15]   entropy : uint8[8]
-- [16]      channel-id : uint8
-- [17]      command : uint8
+- [8..15]   entropy         : uint8[8]
+- [16]      channel-id      : uint8
+- [17]      command         : uint8
 
 The last-seen are used both as a timing channel and to determine drift.  If the
 two sides start drifting outside a certain window, measures to reduce bandwidth
@@ -251,30 +289,32 @@ destroy the channel. The drift window should also be used with a safety factor
 to determine the sequence number at which rekeying occurs.
 
 The entropy contents can be used as input to the mix pool of a local CSPRNG to
-balance out the risc of a locally weak entroy pool. The channel ID will have a
-zero- value for the first channel, and after negotiation via [define-channel],
-specify the channel the command effects. Discard messages to an unused channel
-(within reasonable tolerances) as asynch- races can happen with data in-flight
-during channel tear-down from interleaving.
+balance out the risc of a locally weak entroy pool. When initializing the
+cipher state, it acts as the nonce AFTER the session key has been established.
+
+The channel ID will have a zero- value for the first channel, and after
+negotiation via [define-channel], specify the channel the command effects.
+Discard messages to an unused channel (within reasonable tolerances) as asynch-
+races can happen with data in-flight during channel tear-down from
+interleaving.
 
 ### command = 0, hello
 - [18]      Version major : uint8 (shmif-version until 1.0)
 - [19]      Version minor : uint8 (shmif-version until 1.0)
-- [20..27]  IV            : uint64
-- [28+ 32]  C25519 Kp     : blob
-- [33]      Flags         : uint8
+- [20]      Encryption    : uint8
+- [21+ 32]  x25519 Pk     : blob
 
 The hello message contains key-material for normal DH-25519, but this effect
-is modulated with the flag. Accepted flag values:
+is modulated with the flag.
 
-1 : direct- exchange : client will wait on the matching hello reply with the
-other key material (synchronous).
+Accepted encryption values:
+0 : no-exchange - Keep using the shared secret key for all communication
 
-2: nested- exchange : the public key is ephemeral and generated to avoid
-leaking the actual public key (as it might be reused and can be tracked for
-identification by an active MiM). This adds another hello- command pair and
-round-trip cost with the real key exchange being performed in the inner.
-This idea is borrowed from minimaLT.
+1 : X25519 direct - Authenticate supplied Pk, return server Pk and switch
+auth and cipher to computed session key.
+
+2 : X25519 nested - Supplied Pk is ephemeral, return ephemeral Pk, switch
+to computed session key and treat next hello as direct.
 
 ### command = 1, shutdown
 - [18..n] : last\_words : UTF-8
@@ -304,6 +344,11 @@ The code dictates if the cancel is due to the information being dated or
 undesired (0), encoded in an unhandled format (1) or data is already known
 (cached, 2).
 
+In the event on vstreams or astreams receiving an unhandled format, (possible
+for H264 and future hardware-/ licensing- dependent encodings), the client
+should attempt to resend / reencode the buffer with one of the built-in
+formats.
+
 ### command - 4, define vstream
 - [18..21] : stream-id: uint32
 - [22    ] : format: uint8
@@ -321,12 +366,12 @@ undesired (0), encoded in an unhandled format (1) or data is already known
 The format field defines the encoding method applied. Current values are:
 
  R8G8B8A8 = 0 : raw 8-bit red, green, blue and alpha values
- R8G8B8 = 1 : raw 8-bit red, green and blue values
- RGB565 = 2 : raw 5 bit red, 6 bit green, 5 bit red
- DMINIZ = 3 : DEFLATE packaged block, set as ^ delta from last
- MINIZ  = 4 : DEFLATE packaged block
- H264   = 5 : h264 stream
- TZ     = 6 : DEFLATE packaged tpack block
+ R8G8B8   = 1 : raw 8-bit red, green and blue values
+ RGB565   = 2 : raw 5 bit red, 6 bit green, 5 bit red
+ DMINIZ   = 3 : DEFLATE packaged block, set as ^ delta from last
+ MINIZ    = 4 : DEFLATE packaged block
+ H264     = 5 : h264 stream
+ TZ       = 6 : DEFLATE packaged tpack block
 
 This defines a new video stream frame. The length- field covers how many bytes
 that need to be buffered for the data to be decoded. This can be chunked up
@@ -340,21 +385,26 @@ in subsequent vstream-data packets.
 
 ### command - 5, define astream
 - [18..21] stream-id  : uint32
-- [22]     channels   : uint8
+- [22]     channel    : uint8
 - [23]     encoding   : uint8
 - [24..25] nsamples   : uint16
 - [26..29] rate       : uint32
 
-The format fields determine the size of each sample, multiplied over the
-number of samples to get the size of the stream. The field in [22] follows
-the table:
+The encoding field determine the size of each sample, multiplied over the
+number of samples multiplied by the number of channels to get the size of
+the stream. The nsamples determins how many samples are sent in this stream.
+
+The size of the sample is determined by the encoding.
+
+The following encodings are allowed:
+ S16 = 0 : signed- 16-bit
 
 ### command - 6, define bstream
 - [18..21] stream-id   : uint32
 - [22..29] total-size  : uint64 (0 on streaming source)
 - [30]     stream-type : uint8 (0: state, 1:bchunk, 2: font, 3: font-secondary)
 - [31..34] id-token    : uint32 (used for bchunk pairing on _out/_store)
-- [35 +16] blake2-hash : blob (0 if unknown)
+- [35 +16] blake3-hash : blob (0 if unknown)
 
 This defines a new or continued binary transfer stream. The block-size sets the
 number of continuous bytes in the stream until the point where another transfer
@@ -367,12 +417,14 @@ to keep the connection alive and measure drift.
 
 ### command - 8, rekey
 - [0...7] future-seqnr : uint64
-- [8..23] new key      : uint8[16]
+- [8..39] new (P)key   : uint8[32]
 
 This command indicate a sequence number in the future outside of the expected
-established drift range along with a safety factory. When this sequence number
+established drift range along with a safety factor. When this sequence number
 has been seen, new message and cipher keys will be derived from the new key and
-used instead of the old one which is discarded and safely erased.
+used instead of the old one which is discarded and safely erased. The same
+packet with a new corresponding public key will be sent from the other side
+as well.
 
 ##  Event (2), fixed length
 - [0..7] sequence number : uint64

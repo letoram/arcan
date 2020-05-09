@@ -1,0 +1,3 @@
+A12LOOP - tests of the libarcan_a12 implementation running in-mem
+PROXYCON - sets up a local proxy via the 'proxycon' connection point
+SHMIFSRV - minimal one-client server

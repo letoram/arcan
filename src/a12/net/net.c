@@ -165,6 +165,53 @@ static void fork_a12cl_dispatch(
 	}
 }
 
+/* connect / authloop shmifsrv */
+static struct anet_cl_connection forward_shmifsrv_cl(
+	struct shmifsrv_client* cl, struct anet_options* opts)
+{
+	struct anet_cl_connection anet = {};
+	int rc = opts->retry_count;
+	int timesleep = 1;
+
+/* connect loop until retry count exceeded */
+	while (rc != 0 && shmifsrv_poll(cl) != CLIENT_DEAD){
+		anet = anet_cl_setup(opts);
+
+		if (anet.state)
+			break;
+
+		if (!anet.state){
+			fprintf(stderr, anet.errmsg);
+			free(anet.errmsg);
+			anet.errmsg = NULL;
+
+			if (timesleep < 10)
+				timesleep++;
+
+			if (rc > 0)
+				rc--;
+
+			sleep(timesleep);
+			continue;
+		}
+	}
+
+/* failed, or retry-count exceeded? */
+	if (!anet.state || shmifsrv_poll(cl) == CLIENT_DEAD){
+		shmifsrv_free(cl, true);
+
+		if (anet.state){
+			a12_free(anet.state);
+			close(anet.fd);
+
+			if (anet.errmsg)
+				free(anet.errmsg);
+		}
+	}
+
+	return anet;
+}
+
 static int a12_connect(struct anet_options* args,
 	void (*dispatch)(
 	struct anet_options* args,
@@ -173,25 +220,12 @@ static int a12_connect(struct anet_options* args,
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGCHLD, SIG_IGN);
 
-	struct addrinfo hints = {
-		.ai_family = AF_UNSPEC,
-		.ai_socktype = SOCK_STREAM
-	};
-	struct addrinfo* addr = NULL;
-
-	int ec = getaddrinfo(args->host, args->port, &hints, &addr);
-	if (ec){
-		fprintf(stderr, "couldn't resolve address: %s\n", gai_strerror(ec));
-		return EXIT_FAILURE;
-	}
-
 	int shmif_fd = -1;
 	for(;;){
 		struct shmifsrv_client* cl =
 			shmifsrv_allocate_connpoint(args->cp, NULL, S_IRWXU, shmif_fd);
 
 		if (!cl){
-			freeaddrinfo(addr);
 			fprintf(stderr, "couldn't open connection point\n");
 			return EXIT_FAILURE;
 		}
@@ -207,7 +241,6 @@ static int a12_connect(struct anet_options* args,
 			int pv = poll(&pfd, 1, -1);
 			if (-1 == pv){
 				if (errno != EINTR && errno != EAGAIN){
-					freeaddrinfo(addr);
 					shmifsrv_free(cl, true);
 					fprintf(stderr, "error while waiting for a connection\n");
 					return EXIT_FAILURE;
@@ -221,53 +254,13 @@ static int a12_connect(struct anet_options* args,
 /* accept it (this will mutate the client_handle internally) */
 		shmifsrv_poll(cl);
 
-/* OPEN REMOTE CONNECTION
- *
- * When we have better key / host management and can specify multiple addresses
- * for one remote host name, the retry- loop can be switched to enumerating the
- * list of preferred hosts.
- *
- * In that case, we should also move the connect loop in order to not locally
- * block shmif-connections while waiting for one to go through
- *
- * This should also permit reconnection on a severed connection by issuing a
- * reset event to the [cl] and just repeat the setup / connection here.
- */
-		int fd;
-		int timesleep = 1;
-		ssize_t rc = args->retry_count;
-		while((fd = anet_clfd(addr)) == -1 && rc != 0){
-			if (timesleep < 10)
-				timesleep++;
-
-			if (rc > 0)
-				args->retry_count--;
-
-/* client might have gotten tired of waiting */
-			sleep(timesleep);
-
-			if (shmifsrv_poll(cl) == CLIENT_DEAD)
-				break;
-		}
-
-		if (-1 == fd){
-/* question if we should retry connecting rather than to kill the server */
-			shmifsrv_free(cl, true);
-			continue;
-		}
-
-		struct a12_state* state = a12_open(args->opts);
-		if (!state){
-			freeaddrinfo(addr);
-			shmifsrv_free(cl, true);
-			close(fd);
-			fprintf(stderr, "couldn't build a12 state machine\n");
-			return EXIT_FAILURE;
-		}
+/* setup the connection, we do this after the fact rather than before as remote
+ * is more likely to have a timeout than locally */
+		struct anet_cl_connection anet = forward_shmifsrv_cl(cl, args);
 
 /* wake the client */
 		a12int_trace(A12_TRACE_SYSTEM, "local connection found, forwarding to dispatch");
-		dispatch(args, state, cl, fd);
+		dispatch(args, anet.state, cl, anet.fd);
 	}
 
 	return EXIT_SUCCESS;
@@ -291,59 +284,29 @@ static int a12_preauth(struct anet_options* args,
 		return EXIT_FAILURE;
 	}
 
-/*this setup mostly resembles single-fire local server */
-	struct addrinfo hints = {
-		.ai_family = AF_UNSPEC,
-		.ai_socktype = SOCK_STREAM
-	};
-	struct addrinfo* addr = NULL;
-	int ec = getaddrinfo(args->host, args->port, &hints, &addr);
-	if (ec){
-		shutdown(args->sockfd, SHUT_RDWR);
-		fprintf(stderr, "(shmif::arcan-net) "
-			"couldn't resolve address: %s\n", gai_strerror(ec));
-		return EXIT_FAILURE;
-	}
-
-	int clfd = anet_clfd(addr);
-	if (-1 == clfd){
-		shutdown(args->sockfd, SHUT_RDWR);
-		shmifsrv_free(cl, true);
-		fprintf(stderr,
-			"(shmif::arcan-net) couldn't connect to (%s:%s)\n", args->host, args->port);
-		return EXIT_FAILURE;
-	}
-
-/* finally setup a12 state machine */
-	struct a12_state* state = a12_open(args->opts);
-	if (!state){
-		freeaddrinfo(addr);
-		shutdown(args->sockfd, SHUT_RDWR);
-		shmifsrv_free(cl, true);
-		fprintf(stderr, "couldn't build a12 state machine\n");
-		return EXIT_FAILURE;
-	}
+	struct anet_cl_connection anet = forward_shmifsrv_cl(cl, args);
 
 /* and ack the connection */
-	shmifsrv_poll(cl);
-	dispatch(args, state, cl, clfd);
-	shmifsrv_free(cl, true);
-	freeaddrinfo(addr);
+	dispatch(args, anet.state, cl, anet.fd);
+
 	return EXIT_SUCCESS;
 }
 
 static bool show_usage(const char* msg)
 {
 	fprintf(stderr, "%s%sUsage:\n"
-	"\tForward local arcan applications: arcan-net [-Xtd] -s connpoint host port\n"
+	"\tForward local arcan applications: arcan-net [-Xtd] -s connpoint [keyid@]host port\n"
 	"\t                                  (inherit socket) -S fd_no host port\n"
 	"\tBridge remote arcan applications: arcan-net [-Xtd] -l port [ip]\n\n"
 	"Forward-local options:\n"
 	"\t-X            \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n"
 	"\t-r, --retry n \t Limit retry-reconnect attempts to 'n' tries\n\n"
 	"Options:\n"
-	"\t-t single- client (no fork/mt)\n"
-	"\t-d bitmap \t set trace bitmap (bitmask or key1,key2,...)\n"
+	"\t-b dir        \t Set basedir to <dir> (for config, keys/ accepted/ cache/)\n"
+	"\t-a, --auth n  \t (Registering key) read authentication string from stdin\n"
+	"\t              \t overrides possible A12_BASE_DIR environment\n"
+	"\t-t            \t Single- client (no fork/mt)\n"
+	"\t-d bitmap     \t set trace bitmap (bitmask or key1,key2,...)\n"
 	"\nTrace groups (stderr):\n"
 	"\tvideo:1      audio:2      system:4    event:8      transfer:16\n"
 	"\tdebug:32     missing:64   alloc:128  crypto:256    vdetail:512\n"
@@ -482,9 +445,6 @@ int main(int argc, char** argv)
 /* set this as default, so the remote side can't actually close */
 	anet.redirect_exit = getenv("ARCAN_CONNPATH");
 	anet.devicehint_cp = getenv("ARCAN_CONNPATH");
-
-/* setup default / junk authentication key */
-	a12_plain_kdf(NULL, anet.opts);
 
 	if (!apply_commandline(argc, argv, &anet))
 		return show_usage("Invalid arguments");
