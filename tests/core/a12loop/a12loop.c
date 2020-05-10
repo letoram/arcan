@@ -14,12 +14,27 @@
 #include <poll.h>
 #include <assert.h>
 
+extern void arcan_random(uint8_t*, size_t);
 #define clsrv_okstate() (a12_poll(cl) != -1 && a12_poll(srv) != -1)
 
-static struct pk_response key_auth(uint8_t pk[static 32])
+static uint8_t clpriv[32];
+static uint8_t srvpriv[32];
+
+static struct pk_response key_auth_cl(uint8_t pk[static 32])
 {
-	return (struct pk_response){
-	};
+/* don't really care for the time being, just return a key */
+	struct pk_response auth;
+	auth.authentic = true;
+	memcpy(auth.key, clpriv, 32);
+	return auth;
+}
+
+static struct pk_response key_auth_srv(uint8_t pk[static 32])
+{
+	struct pk_response auth;
+	auth.authentic = true;
+	memcpy(auth.key, srvpriv, 32);
+	return auth;
 }
 
 extern void arcan_random(uint8_t* buf, size_t buf_sz);
@@ -349,12 +364,19 @@ static bool buffer_sink(uint8_t* buf, size_t nb, void* tag)
 
 int main(int argc, char** argv)
 {
+	arcan_random(clpriv, 32);
+	arcan_random(srvpriv, 32);
+
 	struct a12_context_options cl_opts = {
-/*		.pk_lookup = key_auth, */
-		.disable_cipher = false
+		.pk_lookup = key_auth_cl,
+		.disable_cipher = true,
+		.disable_ephemeral_k = false
 	};
 
+
 	struct a12_context_options srv_opts = cl_opts;
+	memcpy(cl_opts.priv_key, clpriv, 32);
+	srv_opts.pk_lookup = key_auth_srv;
 
 /* parse arguments from cmdline, ... */
 	a12_set_trace_level(

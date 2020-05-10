@@ -45,6 +45,10 @@ struct a12_state;
  */
 struct pk_response {
 	bool authentic;
+
+/* For server-side, reply with the key that should be used with the specific
+ * client if there is differentiation, for client-side, the private key in the
+ * structure to a12_client will be used */
 	uint8_t key[32];
 };
 

@@ -74,6 +74,12 @@ enum authentic_state {
 	AUTH_FULL_PK           = 5, /* server->client, HELLO - now rekeying can be scheduled */
 };
 
+enum hello_mode {
+	HELLO_MODE_NOASYM = 0,
+	HELLO_MODE_REALPK = 1,
+	HELLO_MODE_EPHEMK = 2
+};
+
 enum channel_cfg {
 	CHANNEL_INACTIVE = 0, /* nothing mapped in the channel          */
 	CHANNEL_SHMIF    = 1, /* shmif context set                      */
@@ -253,11 +259,10 @@ struct a12_state {
 /* overflow state tracking cookie */
 	volatile uint32_t cookie;
 
-/* curve25519 keys, these will be STORED ^ priv_key_cookie
- * (generated random in init) and consumed on use. */
+/* curve25519 keys (client), and rekeying sequence number (both) */
 	struct {
-		uint32_t ephem_priv[32];
-		uint32_t real_priv[32];
+		uint8_t ephem_priv[32];
+		uint8_t real_priv[32];
 		uint64_t rekey_pos;
 	} keys;
 
