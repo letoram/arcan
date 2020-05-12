@@ -174,6 +174,26 @@ encoding schemes.
 
 * should we allow session- resume with a timeout? (pair authk in HELLO)
 
+# Critical Path / Security Notes
+
+The implementation is intended to be run as a per-user server with the same
+level of privileges that the user would have on the server through any ssh-
+like session. Therefore, the normal culprits, video/image decoders, are not
+as vital - though they should still be subject to further privsep, the main
+culprits are the ones that work on data while it is unauthenticated or when
+negotiating keys.
+
+The following functions should be the hotpath for vulnerability research:
+
+- a12.c:a12\_unpack (input buffer)
+- a12.c:process\_srvfirst
+- a12.c:process\_nopacket
+- a12.c:process\_control (MAC check + HELLO command)
+- a12.c:process\_event   (up until MAC check)
+- a12.c:process\_video   (up until MAC check)
+- a12.c:process\_audio   (up until MAC check)
+- a12.c:process\_blob    (up until MAC check)
+
 # Protocol
 
 This section mostly covers a rough draft of things as they evolve. A more
@@ -183,10 +203,15 @@ shmif dependency.
 
 Each arcan segment correlates to a 'channel' that can be multiplexed over one
 of these transports, with a sequence number used as a synchronization primitive
-for re-linearization. For each channel, a number of streams can be defined,
-each with a unique 32-bit identifier. A stream corresponds to one binary, audio
-or video transfer operation. One stream of each type (i.e. binary, audio and
-video) can be in flight at the same time.
+for drift measurement, scheduling re-keying and (later) out-of-order processing.
+
+For each channel, a number of streams can be defined, each with a unique 32-bit
+identifier.
+
+A stream corresponds to one binary, audio or video transfer operation.
+
+One stream of each type (i.e. binary, audio and video) can be in flight at the
+same time.
 
 The first message has the structure of:
 
@@ -199,9 +224,9 @@ The first message has the structure of:
  | command-code data   | | keymaterial       (HELLO command)
  |----------------------
 
-The MAC comes from BLAKE3 in keyed mode (output size of 16b) using a pre-shared
-secret or the default 'SETECASTRONOMY' that comes from BLAKE3 in KDF mode using
-the message "arcan-a12 init-packet".
+The MAC comes from BLAKE3 in keyed mode (normally, output size of 16b) using a
+pre-shared secret or the default 'SETECASTRONOMY' that comes from BLAKE3 in KDF
+mode using the message "arcan-a12 init-packet".
 
 The forced encryption of the first packet is to avoid any predictable bytes
 (forcing fingerprinting to be based on packet sizes, rate and timestamps rather
@@ -209,19 +234,23 @@ than any metadata) and hide the fact that X25519 is used. The use of pre-shared
 secrets and X25519 is to allow for a PKI- less first-time authentication of public
 keys.
 
-Only the first 8 byte of MAC output is used for the HELLO packets in order to
-make it easier for implementations to avoid radically different code paths in
+Only the first 8 byte of MAC output is used for the first HELLO packet in order
+to make it easier for implementations to avoid radically different code paths in
 parsing for these packets.
 
 KDF(secret) -> Kmac.
 
-The cipher is Chacha8 with nonce from message and keyed using:
+The cipher is strictly Chacha8 (reduced rounds from normal 20 due to cycles per
+byte, see the paper 'Too much Crypto' by JP et al.) with nonce from message and
+keyed using:
+
 KDF(Kmac) -> Kcl.
 KDF(Kcl) -> Ksrv.
 
 The subsequent HELLO command contains data for 1 or 2 rounds of X25519. If 2
 round-trips is used, the first round is using ephemeral key-pairs to further
-hide the actual key-pair to force active MiM.
+hide the actual key-pair to force active MiM in order for Eve to log/track Kp
+use.
 
 Each message after completed key-exchange has the outer structure of :
 
@@ -234,9 +263,7 @@ Each message after completed key-exchange has the outer structure of :
  |---------------------|  |
  | command- variable   |  |
 
-The 8-byte LSB sequence number is incremented for each message, and is used
-as clock for scheduled rekeying and for a course grained counter estimating
-drift.
+The 8-byte LSB sequence number is incremented for each message.
 
 ## Notes
 
@@ -253,13 +280,13 @@ discovery, and reducing setup latency. See the minimaLT paper for a possible
 construction of that.
 
 All of these could partially be adressed through modifications to the HELLO
+command. All cryptography setup comes through the HELLO command or the REKEY
 command.
 
 A detail though is that the client cannot do very much until the preroll stage
-of the server-end has completed. This is a forced round-trip that masks some of
-the cryptographic ones - the video buffers that could have been compressed and
-sent in advance needs details from the WM on the other side to have the correct
-contents.
+of the server-end has completed (SHMIF terminology, initial burst of WM/server
+side state needed to produce correct contents). This is a forced round-trip that
+masks the 1-round x25519 one.
 
 ## Commands
 
@@ -267,9 +294,9 @@ The command- code can be one out of the following types:
 
 1. control (128b fixed size)
 2. event, tied to the format of arcan\_shmif\_evpack()
-3. vstream-data
-4. astream-data
-5. bstream-data
+3. video-stream data chunk
+4. audio-stream data chunk
+5. binary-stream data chunk
 
 Starting with the control commands, these affect connection status, but is
 also used for defining new video/audio and binary streams.
@@ -280,38 +307,41 @@ also used for defining new video/audio and binary streams.
 - [16]      channel-id      : uint8
 - [17]      command         : uint8
 
-The last-seen are used both as a timing channel and to determine drift.  If the
-two sides start drifting outside a certain window, measures to reduce bandwidth
-should be taken, including increasing compression parameters, lowering sample-
-and frame- rates, cancelling ongoing frames, merging / delaying input events,
-scaling window sizes, ... If they still keep drifting, show a user notice and
-destroy the channel. The drift window should also be used with a safety factor
-to determine the sequence number at which rekeying occurs.
+The last-seen are used both as a timing channel and to determine drift.
+
+If the two sides start drifting outside a certain window, measures to reduce
+bandwidth should be taken, including increasing compression parameters,
+lowering sample- and frame- rates, cancelling ongoing frames, merging /
+delaying input events, scaling window sizes, ... If they still keep drifting,
+show a user notice and destroy the channel. The drift window should also be
+used with a safety factor to determine the sequence number at which rekeying
+occurs.
 
 The entropy contents can be used as input to the mix pool of a local CSPRNG to
-balance out the risc of a locally weak entroy pool. When initializing the
-cipher state, it acts as the nonce AFTER the session key has been established.
+balance out the risk of a runtime-compromised entropy pool. For multiple HELLO
+roundtrips doing x25519 exchange, the entropy field is also used for cipher
+nonce.
 
 The channel ID will have a zero- value for the first channel, and after
 negotiation via [define-channel], specify the channel the command effects.
-Discard messages to an unused channel (within reasonable tolerances) as asynch-
-races can happen with data in-flight during channel tear-down from
+Discard messages to an unused channel (within reasonable tolerances) as
+asynch- races can happen with data in-flight during channel tear-down from
 interleaving.
 
 ### command = 0, hello
 - [18]      Version major : uint8 (shmif-version until 1.0)
 - [19]      Version minor : uint8 (shmif-version until 1.0)
-- [20]      Encryption    : uint8
+- [20]      Mode          : uint8
 - [21+ 32]  x25519 Pk     : blob
 
-The hello message contains key-material for normal DH-25519, but this effect
-is modulated with the flag.
+The hello message contains key-material for normal x25519, according to
+the Mode byte [20].
 
 Accepted encryption values:
 0 : no-exchange - Keep using the shared secret key for all communication
 
 1 : X25519 direct - Authenticate supplied Pk, return server Pk and switch
-auth and cipher to computed session key.
+auth and cipher to computed session key for all subsequent packets.
 
 2 : X25519 nested - Supplied Pk is ephemeral, return ephemeral Pk, switch
 to computed session key and treat next hello as direct.
@@ -434,6 +464,11 @@ as well.
 The event data does not currently have a fixed packing format as the model is
 still being refined and thus we use the opaque format from
 arcan\_shmif\_eventpack.
+
+Worthy of note is that this message type is the most sensitive to side channel
+analysis as input device events are driven by user interaction. Combatting this
+by injecting discard- events is kept outside the protocol implementation, and
+deferred to the UI/window manager.
 
 ## Vstream-data (3), Astream-data (4), Bstream-data (5) (variable length)
 - [0   ] channel-id : uint8
