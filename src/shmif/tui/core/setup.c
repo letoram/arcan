@@ -217,7 +217,7 @@ static bool late_bind(
 	tui_fontmgmt_setup(res, init);
 
 /* TEMPORARY: while moving to server-side rasterization as the new default */
-	res->rbuf_fwd = getenv("TUI_RPACK");
+	res->rbuf_fwd = getenv("TUI_RPACK") != NULL;
 	if (res->rbuf_fwd)
 		res->acon.hints = SHMIF_RHINT_TPACK;
 	else
@@ -225,7 +225,6 @@ static bool late_bind(
 	res->acon.hints |= SHMIF_RHINT_VSIGNAL_EV;
 
 /* clipboard, timer callbacks, no IDENT */
-	res->acon = *con;
 	tui_queue_requests(res, true, false);
 
 	arcan_shmif_resize_ext(&res->acon,
