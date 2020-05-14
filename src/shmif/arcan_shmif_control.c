@@ -1962,7 +1962,7 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 
 	bool dimensions_changed = width == arg->w && height == arg->h;
 	bool bufcnt_changed = vidc == priv->vbuf_cnt && audc == priv->abuf_cnt;
-	bool hints_changed = arg->addr->hints == arg->hints;
+	bool hints_changed = arg->addr->hints != arg->hints;
 
 /* don't negotiate unless the goals have changed */
 	if (arg->vidp && !dimensions_changed && !bufcnt_changed && !hints_changed)
