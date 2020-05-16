@@ -168,7 +168,7 @@ enum tui_cursors {
 };
 
 /* bitmap derived from shmif_event, repeated here for namespace purity */
-enum {
+enum tuim_syms {
 	TUIM_NONE   = 0x0000,
 	TUIM_LSHIFT = 0x0001,
 	TUIM_RSHIFT = 0x0002,
@@ -181,7 +181,7 @@ enum {
 	TUIM_RMETA  = 0x0800,
 	TUIM_META   = 0x0c00,
 	TUIM_REPEAT = 0x8000,
-} tuim_syms;
+};
 
 enum tuibtn_syms {
 	TUIBTN_LEFT = 1,
