@@ -145,7 +145,7 @@ int run_a12(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			return EXIT_FAILURE;
 		}
 
-		_Static_assert(sizeof(opts->secret) >= 32);
+		_Static_assert(sizeof(opts->secret) >= 32, "invalid secret length");
 		snprintf(opts->secret, sizeof(opts->secret), "%s", tmp);
 	}
 

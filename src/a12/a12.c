@@ -316,7 +316,7 @@ static void update_keymaterial(
 	uint8_t mac_key[BLAKE3_KEY_LEN];
 	uint8_t srv_key[BLAKE3_KEY_LEN];
 	uint8_t  cl_key[BLAKE3_KEY_LEN];
-	_Static_assert(BLAKE3_KEY_LEN >= MAC_BLOCK_SZ);
+	_Static_assert(BLAKE3_KEY_LEN >= MAC_BLOCK_SZ, "misconfigured blake3 size");
 
 	derive_encdec_key(S->opts->secret, len, mac_key, srv_key, cl_key);
 
@@ -352,7 +352,7 @@ static void update_keymaterial(
  *
  * the cipher-state is incomplete as we still need to apply the nonce from the
  * helo packet before the setup is complete. */
-		_Static_assert(BLAKE3_KEY_LEN == 16 || BLAKE3_KEY_LEN == 32);
+		_Static_assert(BLAKE3_KEY_LEN == 16 || BLAKE3_KEY_LEN == 32, "misconfigured blake3 size");
 		if (S->server){
 			trace_crypto_key(S->server, "enc_key", srv_key, BLAKE3_KEY_LEN);
 			trace_crypto_key(S->server, "dec_key", cl_key, BLAKE3_KEY_LEN);
