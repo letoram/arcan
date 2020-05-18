@@ -424,10 +424,12 @@ static int process_input(const char* msg)
  * due to the possibility of the unpaired state */
 		if (arg_lookup(cmd, "x", 0, &arg)){
 			wnd->viewport.ext.viewport.x = strtol(arg, NULL, 10);
+			trace(TRACE_XWL, "x reconfigured %d\n", wnd->viewport.ext.viewport.x);
 		}
 
 		if (arg_lookup(cmd, "y", 0, &arg)){
 			wnd->viewport.ext.viewport.y = strtol(arg, NULL, 10);
+			trace(TRACE_XWL, "y reconfigured %d\n", wnd->viewport.ext.viewport.x);
 		}
 
 /* and either reflect now or later */
@@ -703,18 +705,22 @@ static bool xwlsurf_shmifev_handler(
 				ev->tgt.ioevs[0].iv, ev->tgt.ioevs[1].iv);
 
 			fprintf(wmfd_output,
-				"id=%"PRIu32":kind=resize:width=%"PRIu32":height=%"PRIu32"%s\n",
+				"id=%"PRIu32":kind=resize:width=%"PRIu32":height=%"PRIu32":ts=%"PRIu64"%s\n",
 				(uint32_t) wnd->id,
 				(uint32_t) abs(ev->tgt.ioevs[0].iv),
 				(uint32_t) abs(ev->tgt.ioevs[1].iv),
+				(uint64_t) ev->tgt.timestamp,
 				(surf->states.drag_resize) ? ":drag" : ""
 			);
 		}
 
 		if (changed){
 			if (states.unfocused != surf->states.unfocused){
-				fprintf(wmfd_output, "id=%"PRIu32"%s\n",
-					wnd->id, surf->states.unfocused ? ":kind=unfocus" : ":kind=focus");
+				fprintf(wmfd_output, "id=%"PRIu32":ts=%"PRIu64"%s\n",
+					wnd->id,
+					(uint64_t) ev->tgt.timestamp,
+					surf->states.unfocused ? ":kind=unfocus" : ":kind=focus"
+				);
 				if (surf->states.unfocused){
 					release_all_keys(surf->client);
 					leave_all(surf);
@@ -774,6 +780,7 @@ static bool xwl_defer_handler(
 		}
 		wnd->queue_count = 0;
 	}
+	surf->viewport = wnd->viewport;
 	wnd_viewport(wnd);
 
 	return true;
