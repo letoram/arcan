@@ -19,7 +19,7 @@
 -- Vspacing indicates the default padding between lines, and tspacing the
 -- horizontal spacing between tabs. If *vspacing* is set to nil or 0, the added
 -- padding will be taken from the font. Each formatting sequence is initiated
--- with a single backspace, followed with a command code (see table below).
+-- with a single backslash, followed with a command code (see table below).
 -- Stateful commands (b, i, u) can be negated with a preluding exclamation point.
 -- @tblent: t tab
 -- @tblent: n newline
