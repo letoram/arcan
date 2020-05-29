@@ -344,6 +344,7 @@ static int adpms_to_dpms(enum dpms_state state)
 
 static void set_device_context(struct dev_node* node)
 {
+	verbose_print("context_state=device(%"PRIxPTR")", (uintptr_t)node->context);
 	node->eglenv.make_current(node->display,
 		EGL_NO_SURFACE, EGL_NO_SURFACE, node->context);
 	node->context_state = "device";
@@ -351,9 +352,17 @@ static void set_device_context(struct dev_node* node)
 
 static void set_display_context(struct dispout* d)
 {
-	d->device->eglenv.make_current(d->device->display,
-		d->buffer.esurf, d->buffer.esurf,
-		d->buffer.context ? d->buffer.context : d->device->context);
+	if (d->buffer.context == EGL_NO_CONTEXT){
+		verbose_print("context_state=display(%"PRIxPTR")", (uintptr_t)d->device->context);
+		d->device->eglenv.make_current(
+			d->device->display, d->buffer.esurf, d->buffer.esurf, d->device->context);
+	}
+	else {
+		verbose_print("context_state=display(uniq_%"PRIxPTR")", (uintptr_t)d->buffer.context);
+		d->device->eglenv.make_current(
+			d->device->display, d->buffer.esurf, d->buffer.esurf, d->buffer.context);
+	}
+
 	d->device->context_state = "display";
 }
 
@@ -696,10 +705,9 @@ static int setup_buffers_stream(struct dispout* d)
 	}
 
 /* 4. Get config and context,
- * two possible variants here - one is separating between the device and
- * display context, though that didn't seem stable with the versions of the
- * driver we tested against, so just null this and rely on the config that
- * was set for the device */
+ * two possible variants here - the default:
+ * all displays uses the device context, the 'mixed HDR/SDR' setup is a
+ * different display context that shares parts of the device context */
 	EGLint nc;
 	if (!d->device->eglenv.choose_config(
 		d->device->display, d->device->attrtbl, &d->buffer.config, 1, &nc)){
@@ -712,12 +720,41 @@ static int setup_buffers_stream(struct dispout* d)
 		EGL_NONE
 	};
 
-	d->buffer.context = d->device->eglenv.create_context(
-		d->device->display, d->buffer.config, d->device->context, context_attribs);
+	uintptr_t tag;
+	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	size_t devind = 0;
+	for (; devind < COUNT_OF(nodes); devind++)
+		if (&nodes[devind] == d->device)
+			break;
 
-	if (d->buffer.context == NULL) {
-		debug_print("couldn't create display context");
-		return false;
+	bool shared_dev = !get_config("video_display_context", devind, NULL, tag);
+/* shared device context, no display context */
+	if (shared_dev){
+		debug_print("per-device context for display");
+		d->buffer.context = EGL_NO_CONTEXT;
+
+/* First display on the device re-creates the context, difference to the gbm
+ * version here is that we still need to create the stream-bound surface even
+ * if we have a context on the device. The reason for re-creating the context
+ * is that the config the display needs is un-known at the time of first
+ * creation */
+		if (!d->device->context_refc){
+			debug_print("first display on device, rebuild context to match");
+			d->device->eglenv.destroy_context(d->device->display, d->device->context);
+			d->device->context = d->device->eglenv.create_context(
+				d->device->display, d->buffer.config, EGL_NO_CONTEXT, context_attribs);
+		}
+		d->device->context_refc++;
+	}
+	else {
+		verbose_print("creating NEW context for display with SHARED device context");
+		d->buffer.context = d->device->eglenv.create_context(
+			d->device->display, d->buffer.config, d->device->context, context_attribs);
+
+		if (d->buffer.context == NULL) {
+			debug_print("couldn't create display context");
+			return false;
+		}
 	}
 
 /*
@@ -865,6 +902,12 @@ static int setup_buffers_gbm(struct dispout* d)
 			}
 		}
 
+		if (!got_config){
+			debug_print("no matching gbm-format <-> visual "
+				"<-> egl config for fmt: %d", (int)gbm_formats[i]);
+			continue;
+		}
+
 /* first time device setup will call this function in two stages, so there
  * might be a buffer already set when we get called the second time and it is
  * safe to actually bind the buffer to an EGL surface as the config should be
@@ -910,7 +953,7 @@ static int setup_buffers_gbm(struct dispout* d)
  * Unfortunately there seem to be many strange driver issues with using a
  * headless shared context and doing the buffer swaps and scanout on the
  * others, we can solve that in two ways, one is simply force even the WORLDID
- * to be a FBO - with was already the default in the lwa backend.  This would
+ * to be a FBO - which was already the default in the lwa backend.  This would
  * require making the vint_world() RT double-buffered with a possible 'do I
  * have a non-default shader' extra blit stage and then the drm_add_fb2 call.
  * It's a scanout path that we likely need anyway.
@@ -918,8 +961,8 @@ static int setup_buffers_gbm(struct dispout* d)
 	uintptr_t tag;
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
 	size_t devind = 0;
-	for (; devind < MAX_DISPLAYS; devind++)
-		if (&displays[devind] == d)
+	for (; devind < COUNT_OF(nodes); devind++)
+		if (&nodes[devind] == d->device)
 			break;
 
 /* DEFAULT: per device context: let first display drive choice of config
@@ -3151,6 +3194,7 @@ static bool try_card(size_t devind, int w, int h, size_t* dstind)
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
 	char* dispdevstr, (* cfgstr), (* altstr);
 	int connind = -1;
+
 	bool gbm = true;
 
 /* basic device, device_1, device_2 etc. search path */
@@ -3260,8 +3304,10 @@ static bool setup_cards_basic(int w, int h)
 		int fd = platform_device_open(buf, O_RDWR | O_CLOEXEC);
 		debug_print("trying [basic/auto] setup on %s", buf);
 		if (-1 != fd){
-/* possible quick hack, just check modules if we have nouveau or nvidia loaded
- * and use that to select buffer mode - there's probably better ways but meh. */
+/* on Linux (basically only place that'd be relevant for now) we could
+ * check proc/modules for nvidia, then go the sysfs route for the card node,
+ * grab the vendor string and switch to streams that way - if so we could
+ * dynamically load the GL libs etc. */
 			if (try_node(fd, fd, buf, 0, BUF_GBM, -1, w, h, false) ||
 				try_node(fd, fd, buf, 0, BUF_GBM, -1, w, h, false)){
 					nodes[0].pathref = strdup(buf);
