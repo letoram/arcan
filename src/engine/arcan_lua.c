@@ -4229,7 +4229,14 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 {
 /* special handling for LWA receiving DISPLAYHINT to resize or indicate that
  * the default font has changed. For DISPLAYHINT we default to run the builtin
- * autores.or a possible override */
+ * autores or a possible override.
+ *
+ * The reason for this piece of ugly is that by default - there is not really a
+ * need for a simple client to care / react and the engine can silently resize
+ * world. In those cases VRES_AUTORES etc. point to resize_video_canvas, but
+ * there are edge cases where that behavior is not needed. More clients may
+ * need to change the layouting though, and that is why we send the more vague
+ * 'display changed' as well. */
 #ifdef ARCAN_LWA
 	if (ev->vid.source == -1){
 		lua_getglobal(ctx, "VRES_AUTORES");
@@ -4258,14 +4265,13 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 			alua_call(ctx, 3, 0, LINE_TAG":(lwa) VRES_AUTOFONT");
 		}
 	};
-#else
+#endif
 
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
 		return;
 
 	lua_pushstring(ctx, "reset");
 	alua_call(ctx, 1, 0, LINE_TAG":display_state:reset");
-#endif
 }
 
 static void display_added(lua_State* ctx, arcan_event* ev)
