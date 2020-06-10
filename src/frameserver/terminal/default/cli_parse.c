@@ -31,7 +31,7 @@ char** extract_argv(const char* message,
 	char sep = opts.sep;
 
 /* just overfit, not worth the extra work */
-	size_t len = strlen(message);
+	size_t len = strlen(message) + 1;
 	size_t len_buf_sz = sizeof(char*) * (len + opts.prepad);
 	char** argv = malloc(len_buf_sz);
 	size_t arg_i = opts.prepad;
@@ -44,7 +44,7 @@ char** extract_argv(const char* message,
 	work[0] = '\0';
 	*esc_ind = -1;
 
-	for (size_t i = 0; i < len; i++){
+	for (size_t i = 0; i < len - 1; i++){
 		char ch = message[i];
 
 /* first backslash outside of a postprocessing scope, consume on use */

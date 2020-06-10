@@ -49,6 +49,9 @@ static char** duplicate_strtbl(char** arg, size_t prepad, size_t pad)
 
 static ssize_t parse_command(const char* message, void* tag)
 {
+/* missing: this should run the normal extract_argv and built-in check,
+ * (eval_to_cmd with noxec) if tui- mode is here and we have an oracle, forward
+ * the state there and grab completion results or parsing errors from there */
 	return -1;
 }
 
@@ -131,8 +134,8 @@ static char* prepend_str(const char* a, const char* b)
 {
 	size_t alen = strlen(a);
 	size_t blen = strlen(b);
-	size_t len = alen + blen + 1;
-	char* buf = malloc(len);
+	size_t len = alen + blen;
+	char* buf = malloc(len+1);
 	if (!len)
 		return NULL;
 
@@ -143,6 +146,9 @@ static char* prepend_str(const char* a, const char* b)
 	return buf;
 }
 
+/* bin, argv and env are aliases into offsets of the contents of cmd, if any
+ * dynamic allocation occurs, replace in [cmd] as they will be freed after the
+ * exec_handover is done */
 static void setup_cmd_mode(struct ext_cmd* cmd,
 	char** bin, char*** argv, char*** env, int* flags)
 {
@@ -177,8 +183,8 @@ static void setup_cmd_mode(struct ext_cmd* cmd,
 		new_env[1] = arg_env;
 
 /* question if we should build the entire thing from the arguments that we
- * ourselves got (sans -cli) or lest a few of the through for color overrides
- * and the likes */
+ * ourselves got (sans -cli) or lest let a few of them through for color
+ * overrides and the likes */
 		new_env[2] = strdup("ARCAN_ARG=keep_alive");
 		free_strtbl(cmd->env);
 		cmd->env = new_env;
@@ -186,22 +192,37 @@ static void setup_cmd_mode(struct ext_cmd* cmd,
 	}
 	break;
 
-/* we might also have a tui connection already as an oracle, then we can just
- * send a migrate - though something new is needed for migrating to an oracle */
+/* just treat them the same for the time being, with tui the plan is to have
+ * an oracle process that we can then migrate into on commit, and before then
+ * let it parse our arguments */
 	case LAUNCH_TUI:
+	case LAUNCH_SHMIF:
 	break;
 
 /* arcan-wayland -exec ..., this should really check if there is a compositor
  * already reachable somewhere, and then make the decision to go system or
- * contained */
+ * contained - as well as a list of fixups needed for some clients assuming
+ * that if they made one connection, they can make multiple ones */
 	case LAUNCH_X11:
 	case LAUNCH_WL:{
 		char** new_arg = duplicate_strtbl(cmd->argv, 2, 0);
 		*bin = get_waybridge_bin();
 		free_strtbl(cmd->argv);
 		cmd->argv = new_arg;
-		new_arg[0] = "arcan-wayland";
-		new_arg[1] = strdup(cmd->mode == LAUNCH_X11 ? "-exec-xwl" : "-exec");
+		*argv = new_arg;
+
+/* wayland needs xdg_runtime_dir */
+		char** new_env = duplicate_strtbl(cmd->env, 1, 0);
+		char* rtd = getenv("XDG_RUNTIME_DIR");
+		if (-1 == asprintf(&new_env[0], "XDG_RUNTIME_DIR=%s", rtd ? rtd : "/tmp")){
+			free_strtbl(new_env);
+		}
+		else {
+			*env = new_env;
+		}
+
+		new_arg[0] = strdup("arcan-wayland");
+		new_arg[1] = strdup(cmd->mode == LAUNCH_X11 ? "-exec-x11" : "-exec");
 	}
 	break;
 	}
@@ -265,7 +286,6 @@ static bool eval_to_cmd(char* out, struct ext_cmd* cmd, bool noexec)
 	};
 
 /* environment variable, kind of expansion is its own step */
-
 	ssize_t err_ofs;
 	struct argv_parse_opt opts = {
 		.prepad = 0,
@@ -275,10 +295,10 @@ static bool eval_to_cmd(char* out, struct ext_cmd* cmd, bool noexec)
 	char** argv = extract_argv(out, opts, &err_ofs);
 	int pos = 0;
 
-/* builtin commands? */
 	if (!argv)
 		return false;
 
+/* builtin commands? */
 	struct cli_command* builtin = cli_get_builtin(argv[0]);
 
 /* now, return the argv- array, this comes post expansion so the first arg in
@@ -301,13 +321,77 @@ static bool eval_to_cmd(char* out, struct ext_cmd* cmd, bool noexec)
 
 /* but they can also expand to an external command, so let it */
 	struct ext_cmd* res = builtin->exec(&cli_state, argv, &err_ofs, &err);
+	free_strtbl(argv);
+
 	if (res){
-		memcpy(cmd, res, sizeof(struct ext_cmd));
+		*cmd = *res;
+		free(res);
 		return true;
 	}
 
-	free_strtbl(argv);
 	return false;
+}
+
+static void rebuild_prompt(struct tui_context* T, struct cli_state* S)
+{
+	const char* pwd = getenv("PWD");
+	if (!pwd)
+		pwd = "";
+	else {
+		size_t len = strlen(pwd);
+
+		for (ssize_t i = len - 1; i > 0; i--){
+			if (pwd[i] == '/'){
+				pwd = &pwd[i+1];
+				break;
+			}
+		}
+	}
+
+/* placeholder prompt, plugin or expansion format goes here */
+	struct tui_screen_attr attr = arcan_tui_defcattr(T, TUI_COL_SECONDARY);
+	if (!S->prompt){
+		S->prompt = malloc(sizeof(struct cli_state) * 256);
+		if (!S->prompt)
+			return;
+		S->prompt[0].ch = '\0';
+	}
+
+	const char* modestr = "";
+	switch(S->mode){
+	case LAUNCH_VT100:
+	break;
+	case LAUNCH_TUI:
+	case LAUNCH_SHMIF:
+		modestr = "(arcan@) ";
+	break;
+	case LAUNCH_WL:
+		modestr = "(wayland@) ";
+	break;
+	case LAUNCH_X11:
+		modestr = "(x11@) ";
+	break;
+	default:
+	break;
+	}
+
+	const char* strlst[] = {pwd, " ", modestr, "# "};
+	size_t i = 0, j = 0;
+	const char* cstr = strlst[j];
+
+	while (i < 255 && j < COUNT_OF(strlst)){
+		if (!*cstr){
+			cstr = strlst[++j];
+			continue;
+		}
+
+/* does not respect UTF8 */
+		S->prompt[i].attr = attr;
+		S->prompt[i++].ch = *cstr++;
+	}
+	S->prompt[i].ch = '\0';
+
+	arcan_tui_set_prompt(T, S->prompt);
 }
 
 static void parse_eval(struct tui_context* T, char* out)
@@ -379,6 +463,8 @@ int arcterm_cli_run(struct arcan_shmif_cont* c, struct arg_arr* args)
 	while (running){
 		int status;
 		while (!(status = arcan_tui_readline_finished(tui, &out)) && running){
+			rebuild_prompt(tui, &cli_state);
+
 			struct tui_process_res res = arcan_tui_process(&tui, 1, NULL, 0, -1);
 			if (res.errc == TUI_ERRC_OK){
 				if (-1 == arcan_tui_refresh(tui) && errno == EINVAL)
@@ -388,7 +474,7 @@ int arcterm_cli_run(struct arcan_shmif_cont* c, struct arg_arr* args)
 
 		if (status == READLINE_STATUS_DONE){
 /* parse, commit to history, ... */
-			if (out){
+			if (out && strlen(out)){
 				parse_eval(tui, out);
 			}
 			arcan_tui_readline_reset(tui);

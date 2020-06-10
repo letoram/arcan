@@ -528,7 +528,7 @@ struct tui_cbcfg {
 /*
  * This is used for interactive CLI UI integration.
  *
- * [stack] is a NULL terminated array of the on-going / current set of arguments.
+ * [argv] is a NULL terminated array of the on-going / current set of arguments.
  *
  * Command MUST be one out of:
  * TUI_CLI_BEGIN,
@@ -539,16 +539,23 @@ struct tui_cbcfg {
  * The return value MUST be one out of:
  * TUI_CLI_ACCEPT,
  * TUI_CLI_SUGGEST,
+ * TUI_CLI_REPLACE,
  * TUI_CLI_INVALID
  *
- * [n_results] is set to the upper limit of allowed feedback results that can be
- * written into [feedback]. This is relevant for [TUI_CMD_EVAL, TUI_CMD_COMMIT]
- * where a set of possible completion options may be provided, as well as where
+ * The callee retains ownership of feedback results, but the results should
+ * be remain valid until the next EVAL, COMMIT or CANCEL.
  *
- * (important for CLI_CMD_SUGGEST) where a set of possible options are returned)
+ * A response to EVAL may be ACCEPT if the command is acceptible as is, or
+ * SUGGEST if there is a set of possible completion options that expand on
+ * the current stack or REPLACE if there is a single commit chain that can
+ * replace the stack.
+ *
+ * If the response is to SUGGEST, the FIRST feedback item refers to the
+ * last item in argv, set that to an empty string. The remaining feedback
+ * items refer to possible additional items to [argv].
  */
 	int (*cli_command)(struct tui_context*,
-		const char** const stack, size_t n_elem, int command,
+		const char** const argv, size_t n_elem, int command,
 		const char** feedback, size_t* n_results
 	);
 

@@ -561,19 +561,26 @@ static void on_reset(struct tui_context* tui, int state, void* tag)
  * of the foreplay might become impossible after privsep */
 
 	switch (state){
+/* soft, just state machine + tui */
 	case 0:
-/* soft, just ignore */
-	arcan_tui_reset(tui);
-	tsm_vte_hard_reset(term.vte);
+		arcan_tui_reset(tui);
+		tsm_vte_hard_reset(term.vte);
+	break;
 
-/* reset on a dead terminal ? i.e. re-execute command */
-	if (!atomic_load(&term.alive)){
+/* hard, try to re-execute command, send HUP if still alive then mark as dead */
+	case 1:
+		if (atomic_load(&term.alive)){
+			on_exec_state(tui, 2, tag);
+			atomic_store(&term.alive, false);
+		}
+
 		if (!term.die_on_term){
 			arcan_tui_progress(term.screen, TUI_PROGRESS_INTERNAL, 0.0);
 		}
 		setup_build_term();
-	}
 	break;
+
+/* crash, ... ? do nothing */
 	default:
 	break;
 	}
