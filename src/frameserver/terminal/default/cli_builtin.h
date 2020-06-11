@@ -2,11 +2,12 @@
 	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
 
 enum launch_mode {
-	LAUNCH_VT100 = 0,
-	LAUNCH_TUI   = 1,
-	LAUNCH_WL    = 2,
-	LAUNCH_X11   = 3,
-	LAUNCH_SHMIF = 4
+	LAUNCH_UNSET = 0,
+	LAUNCH_VT100 = 1,
+	LAUNCH_TUI   = 2,
+	LAUNCH_WL    = 3,
+	LAUNCH_X11   = 4,
+	LAUNCH_SHMIF = 5
 };
 
 struct ext_cmd {
@@ -16,12 +17,15 @@ struct ext_cmd {
 	char** env;
 	char* wd;
 	enum launch_mode mode;
+	void(*closure)(uintptr_t);
+	uintptr_t closure_tag;
 };
 
 struct cli_state {
 	char** env;
 	char* cwd;
 	enum launch_mode mode;
+	bool alive;
 
 	uint32_t id_counter;
 	struct ext_cmd pending[4];
