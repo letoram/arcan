@@ -5,7 +5,8 @@ enum launch_mode {
 	LAUNCH_VT100 = 0,
 	LAUNCH_TUI   = 1,
 	LAUNCH_WL    = 2,
-	LAUNCH_X11   = 3
+	LAUNCH_X11   = 3,
+	LAUNCH_SHMIF = 4
 };
 
 struct ext_cmd {
@@ -33,6 +34,12 @@ struct cli_command {
 	const char* name;
 	struct ext_cmd* (*exec)(
 		struct cli_state* state, char** argv, ssize_t* ofs, char** err);
+
+/* expect for the first argument, this follows the structure of tui cli_command
+ * for help with completion / expansion */
+	int (*cli_command)(struct cli_state* state,
+		const char** const argv, size_t n_elem, int command,
+		const char** feedback, size_t* n_results);
 };
 
 /*

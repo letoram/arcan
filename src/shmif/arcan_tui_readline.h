@@ -83,7 +83,8 @@ void arcan_tui_readline_history(struct tui_context*, const char**, size_t count)
  * (assuming there is enough space for it to fit, or it will be drawn truncated).
  *
  * Ownership:
- * Caller retains ownership of prompt.
+ * Caller retains ownership of prompt, callee retains a refrence that may be used
+ * until next call to set_prompt or release on the tui context.
  *
  * Note:
  * If the prompt uses custom coloring, set_prompt should be called again on recolor.

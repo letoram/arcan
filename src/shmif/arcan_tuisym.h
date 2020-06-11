@@ -82,7 +82,8 @@ enum tui_cli {
 /* replies */
 	TUI_CLI_SUGGEST = 4,
 	TUI_CLI_ACCEPT = 5,
-	TUI_CLI_INVALID = 6
+	TUI_CLI_INVALID = 6,
+	TUI_CLI_REPLACE = 7
 };
 
 enum tui_handover_flags {
