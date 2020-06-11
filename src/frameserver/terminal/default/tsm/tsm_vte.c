@@ -777,6 +777,7 @@ static void vte_write_debug(struct tsm_vte *vte, const char *u8, size_t len,
 /* write to console */
 static void write_console(struct tsm_vte *vte, tsm_symbol_t sym)
 {
+	vte->last_symbol = sym;
 	to_rgb(vte, false);
 	arcan_tui_write(vte->con, sym, &vte->cattr);
 }
@@ -873,6 +874,7 @@ void tsm_vte_reset(struct tsm_vte *vte)
 	vte->flags |= FLAG_SEND_RECEIVE_MODE;
 	vte->flags |= FLAG_AUTO_WRAP_MODE;
 	vte->flags |= FLAG_BACKGROUND_COLOR_ERASE_MODE;
+	vte->last_symbol = ' ';
 	arcan_tui_reset(vte->con);
 	arcan_tui_set_flags(vte->con, TUI_AUTO_WRAP);
 
@@ -1784,14 +1786,12 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 				arcan_tui_reset_flags(vte->con,
 						TUI_REL_ORIGIN);
 			continue;
-		case 7: /* DECAWN */
+		case 7: /* DECAWM */
 			set_reset_flag(vte, set, FLAG_AUTO_WRAP_MODE);
 			if (set)
-				arcan_tui_set_flags(vte->con,
-						TUI_AUTO_WRAP);
+				arcan_tui_set_flags(vte->con, TUI_AUTO_WRAP);
 			else
-				arcan_tui_reset_flags(vte->con,
-						TUI_AUTO_WRAP);
+				arcan_tui_reset_flags(vte->con, TUI_AUTO_WRAP);
 			continue;
 		case 8: /* DECARM */
 			set_reset_flag(vte, set, FLAG_AUTO_REPEAT_MODE);
@@ -1993,6 +1993,13 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 			num = 1;
 		arcan_tui_move_left(vte->con, num);
 		break;
+	case 'b': /* REP */
+			num = vte->csi_argv[0];
+			if (num <= 0)
+				num = 1;
+			while(num--)
+				write_console(vte, vte->last_symbol);
+	break;
 	case 'd':{ /* VPA */
 		/* Vertical Line Position Absolute */
 		num = vte->csi_argv[0];
@@ -2117,6 +2124,7 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		if (lower < 0)
 			lower = 0;
 		arcan_tui_set_margins(vte->con, upper, lower);
+		arcan_tui_move_to(vte->con, 0, 0);
 		break;
 	case 'c': /* DA */
 		/* device attributes */
@@ -2927,6 +2935,7 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 			vte_write(vte, "\x1f", 1);
 			return true;
 		case TUIK_8:
+		case TUIK_BACKSPACE:
 			vte_write(vte, "\x7f", 1);
 			return true;
 		}
