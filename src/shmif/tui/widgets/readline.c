@@ -88,7 +88,7 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 	size_t y2 = M->stop_row;
 
 /* can't do nothing if we don't have the space */
-	if (x1 >+ x2 || y1 > y2)
+	if (x1 > x2 || y1 > y2)
 		return;
 
 	size_t cx = 0, cy = 0;
@@ -462,7 +462,6 @@ static void add_input(
 			&M->work[M->cursor],
 			M->work_ofs - M->cursor
 		);
-		M->work[M->work_ofs] = '\0';
 
 		memcpy(&M->work[M->cursor], u8, len);
 		M->cursor += len;
@@ -566,7 +565,8 @@ void arcan_tui_readline_reset(struct tui_context* T)
 
 /*
  * set prefix/prompt that will be drawn (assuming there is enough
- * space for it to fit, or it will be truncated) -.
+ * space for it to fit, or it will be truncated) - only cause a refresh
+ * if the contents have changed from the last drawn prompt.
  */
 void arcan_tui_set_prompt(struct tui_context* T, const struct tui_cell* prompt)
 {
@@ -574,13 +574,37 @@ void arcan_tui_set_prompt(struct tui_context* T, const struct tui_cell* prompt)
 	if (!validate_context(T, &M))
 		return;
 
+/* early out, setting to an empty prompt */
+	if (!prompt && M->prompt){
+		M->prompt = NULL;
+		M->prompt_len = 0;
+		refresh(T, M);
+		return;
+	}
+
+	bool same = !!(M->prompt);
+
+/* both len and cmp */
+	size_t len = 0;
+	for (; prompt[len].ch; len++){
+		if (same && M->prompt){
+			if (len <= M->prompt_len){
+				const struct tui_cell* a = &M->prompt[len];
+				const struct tui_cell* b = &prompt[len];
+				same &= tui_attr_equal(a->attr, b->attr) && a->ch == b->ch;
+			}
+			else{
+				same = false;
+			}
+		}
+	}
+
 	M->prompt = prompt;
-	M->prompt_len = 0;
+	M->prompt_len = len;
 
-	while (prompt && prompt[M->prompt_len].ch)
-		M->prompt_len++;
-
-	refresh(T, M);
+	if (!same){
+		refresh(T, M);
+	}
 }
 
 static void reset_boundaries(
@@ -688,29 +712,24 @@ void arcan_tui_readline_setup(
 		.recolor = on_recolor,
 		.input_utf8 = on_utf8_input,
 		.utf8 = on_utf8_paste,
-		.resize = on_resized,
+		.resized = on_resized,
 		.input_label = on_label_input,
 		.subwindow = on_subwindow,
 /* query_label - absorb, expose input controls and defaults (toggle vim/emacs) */
 /* input_label - match to inputs */
 /* input_alabel - block */
-/* input_mouse_motion - block */
-/* input_mouse_button - handle, use to indicate finished state */
-/* input_utf8 - handle, add to buffer */
-/* input_key - handle, use in place of input_label */
+/* input_mouse_motion - block? or treat as selection for replace */
 /* input_misc - block */
 /* state - block */
-/* bchunk - block */
-/* vpaste - block */
-/* apaste - block */
+/* bchunk - block / forward */
+/* vpaste - block / forward */
+/* apaste - block / forward */
 /* tick - forward */
 /* utf8 - treat as multiple input_text calls */
 /* resized - forward */
-/* reset - trigger recolor */
+/* reset - trigger recolor, forward */
 /* geohint - forward */
-/* subwindow - check if it is our popup, otherwise forward */
 /* substitute - block */
-/* resize - forward */
 /* visibility - forward */
 /* exec_state - forward */
 		.tag = meta
@@ -772,6 +791,7 @@ static void test_refresh(struct tui_context* T)
 static void test_resize(struct tui_context* T,
 	size_t neww, size_t newh, size_t col, size_t row, void* M)
 {
+	printf("resize\n");
 	test_refresh(T);
 }
 
