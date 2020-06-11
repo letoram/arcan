@@ -145,6 +145,7 @@ struct tsm_vte {
 
 	struct tsm_utf8_mach *mach;
 	unsigned long parse_cnt;
+	tsm_symbol_t last_symbol;
 
 	unsigned int state;
 	enum mouse_data mstate;
