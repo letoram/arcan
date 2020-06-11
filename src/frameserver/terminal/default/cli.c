@@ -6,7 +6,9 @@
 #include <sys/stat.h>
 #include "cli_builtin.h"
 
-static struct cli_state cli_state;
+static struct cli_state cli_state = {
+	.alive = true
+};
 
 static void free_strtbl(char** arg)
 {
@@ -61,6 +63,8 @@ static void free_cmd(struct ext_cmd* cmd)
 	free_strtbl(cmd->env);
 	free_strtbl(cmd->argv);
 	free(cmd->wd);
+	if (cmd->closure)
+		cmd->closure(cmd->closure_tag);
 	memset(cmd, '\0', sizeof(struct ext_cmd));
 }
 
@@ -162,6 +166,8 @@ static void setup_cmd_mode(struct ext_cmd* cmd,
  * is that we need to handover the arguments to the terminal in env - so undo
  * the argument that we just built */
 	switch (cmd->mode){
+	case LAUNCH_UNSET:
+	break;
 	case LAUNCH_VT100:{
 		*bin = get_terminal_bin();
 
@@ -431,7 +437,9 @@ static void parse_eval(struct tui_context* T, char* out)
  *
  * right now we can just set it manually based on some built-in command
  */
-	cmd->mode = cli_state.mode;
+	if (cmd->mode == LAUNCH_UNSET)
+		cmd->mode = cli_state.mode;
+
 	cmd->id = ++cli_state.id_counter;
 	cmd->wd = malloc(PATH_MAX);
 	getcwd(cmd->wd, PATH_MAX);
@@ -457,18 +465,17 @@ int arcterm_cli_run(struct arcan_shmif_cont* c, struct arg_arr* args)
 		return EXIT_FAILURE;
 
 	arcan_tui_readline_setup(tui, &opts, sizeof(opts));
-	bool running = true;
 	char* out;
 
-	while (running){
+	while (cli_state.alive){
 		int status;
-		while (!(status = arcan_tui_readline_finished(tui, &out)) && running){
+		while (!(status = arcan_tui_readline_finished(tui, &out)) && cli_state.alive){
 			rebuild_prompt(tui, &cli_state);
 
 			struct tui_process_res res = arcan_tui_process(&tui, 1, NULL, 0, -1);
 			if (res.errc == TUI_ERRC_OK){
 				if (-1 == arcan_tui_refresh(tui) && errno == EINVAL)
-					running = false;
+					cli_state.alive = false;
 			}
 		}
 
@@ -480,7 +487,7 @@ int arcterm_cli_run(struct arcan_shmif_cont* c, struct arg_arr* args)
 			arcan_tui_readline_reset(tui);
 		}
 		else if (status == READLINE_STATUS_TERMINATE){
-			running = false;
+			cli_state.alive = false;
 		}
 	}
 

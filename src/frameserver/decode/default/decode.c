@@ -55,7 +55,7 @@ int show_use(struct arcan_shmif_cont* cont, const char* msg)
 		"\n"
 #endif
 #ifdef HAVE_PROBE
-		" Accepted t2s arguments:\n"
+		" Accepted probe arguments:\n"
 		"   key   \t   value   \t   description\n"
 		"---------\t-----------\t-----------------\n"
 		" file    \t path      \t one-shot open file >path< for input \n"
@@ -72,7 +72,8 @@ int show_use(struct arcan_shmif_cont* cont, const char* msg)
 		"Accepted media arguments:\n"
 		"   key   \t   value   \t   description\n"
 		"---------\t-----------\t-----------------\n"
-		" file    \t path      \t try to open file path for playback \n"
+		" file    \t path      \t try to open file path for playback source\n"
+		" fd      \t file-no   \t use inherited descriptor for playback source\n"
 		" pos     \t 0..1      \t set the relative starting position \n"
 		" noaudio \t           \t disable the audio output entirely \n"
 		" stream  \t url       \t attempt to open URL for streaming input \n"

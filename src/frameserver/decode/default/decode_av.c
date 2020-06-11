@@ -619,6 +619,13 @@ int decode_av(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		}
 		media = libvlc_media_new_path(decctx.vlc, val);
 	}
+	else if (arg_lookup(args, "fd", 0, &val)){
+		if (!val || strlen(val) == 0){
+			return show_use(cont, "missing descriptor argument");
+		}
+		int fdin = strtol(val, NULL, 10);
+		media = libvlc_media_new_fd(decctx.vlc, fdin);
+	}
 
 	if (arg_lookup(args, "loop", 0, &val))
 		decctx.loop = true;
