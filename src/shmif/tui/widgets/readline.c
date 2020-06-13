@@ -668,6 +668,13 @@ static void on_resized(struct tui_context* T,
 static bool on_label_input(
 	struct tui_context* T, const char* label, bool active, void* tag)
 {
+	struct readline_meta* M;
+	if (!validate_context(T, &M))
+		return false;
+
+	if (M->old_handlers.input_label)
+		return M->old_handlers.input_label(T, label, active, M->old_handlers.tag);
+
 	return false;
 }
 
@@ -683,6 +690,24 @@ static bool on_subwindow(struct tui_context* T,
 	if (M->old_handlers.subwindow)
 		return M->old_handlers.subwindow(T, connection, id, type, tag);
 
+	return false;
+}
+
+static bool on_label_query(struct tui_context* T,
+	size_t index, const char* country, const char* lang,
+	struct tui_labelent* dstlbl, void* t)
+{
+	struct readline_meta* M;
+	if (!validate_context(T, &M))
+		return false;
+
+/* let the old context also get a chance */
+	if (M->old_handlers.query_label)
+		return M->old_handlers.query_label(T,
+			index - 1, country, lang, dstlbl, M->old_handlers.tag);
+
+/* space to add our own labels, for switching input modes, triggering
+ * completion and so on. */
 	return false;
 }
 
@@ -715,8 +740,7 @@ void arcan_tui_readline_setup(
 		.resized = on_resized,
 		.input_label = on_label_input,
 		.subwindow = on_subwindow,
-/* query_label - absorb, expose input controls and defaults (toggle vim/emacs) */
-/* input_label - match to inputs */
+		.query_label = on_label_query,
 /* input_alabel - block */
 /* input_mouse_motion - block? or treat as selection for replace */
 /* input_misc - block */

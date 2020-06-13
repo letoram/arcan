@@ -7,6 +7,7 @@
 #include "cli_builtin.h"
 
 static struct cli_state cli_state = {
+	.mode = LAUNCH_VT100,
 	.alive = true
 };
 
@@ -446,6 +447,88 @@ static void parse_eval(struct tui_context* T, char* out)
 	arcan_tui_request_subwnd(T, TUI_WND_HANDOVER, cmd->id);
 }
 
+struct labelent {
+	bool (* handler)(struct tui_context* T, struct cli_state* M, int idt);
+	int idt;
+	struct tui_labelent ent;
+};
+
+static bool label_modesw(
+	struct tui_context* T, struct cli_state* M, int idt)
+{
+	M->mode = idt;
+	return true;
+}
+
+static struct labelent labels[] = {
+	{
+		.handler = label_modesw,
+		.idt = LAUNCH_SHMIF,
+		.ent =
+		{
+			.label = "MODE_ARCAN",
+			.descr = "Switch launch mode to arcan",
+			.initial = TUIK_F1
+		}
+	},
+	{
+		.handler = label_modesw,
+		.idt = LAUNCH_VT100,
+		.ent =
+		{
+			.label = "MODE_VT100",
+			.descr = "Switch launch mode to terminal emulation",
+			.initial = TUIK_F2
+		}
+	},
+	{
+		.handler = label_modesw,
+		.idt = LAUNCH_X11,
+		.ent =
+		{
+			.label = "MODE_X11",
+			.descr = "Switch launch mode to x11",
+			.initial = TUIK_F3
+		}
+	},
+	{
+		.handler = label_modesw,
+		.idt = LAUNCH_WL,
+		.ent =
+		{
+			.label = "MODE_WAYLAND",
+			.descr = "Switch launch mode to arcan",
+			.initial = TUIK_F4
+		}
+	}
+};
+
+static bool on_label_input(
+	struct tui_context* T, const char* label, bool active, void* tag)
+{
+	if (!active)
+		return true;
+
+	for (size_t i = 0; i < COUNT_OF(labels); i++){
+		if (strcmp(label, labels[i].ent.label) == 0)
+			return labels[i].handler(T, &cli_state, labels[i].idt);
+	}
+
+	return false;
+}
+
+static bool on_label_query(struct tui_context* T,
+	size_t index, const char* country, const char* lang,
+	struct tui_labelent* dstlbl, void* t)
+{
+	struct bufferwnd_meta* M = t;
+	if (index < COUNT_OF(labels)){
+		*dstlbl = labels[index].ent;
+		return true;
+	}
+	return false;
+}
+
 int arcterm_cli_run(struct arcan_shmif_cont* c, struct arg_arr* args)
 {
 /* source arguments, prompt, ... from args or config file */
@@ -458,6 +541,8 @@ int arcterm_cli_run(struct arcan_shmif_cont* c, struct arg_arr* args)
  * subwindow handler for dispatching new command basically */
 	struct tui_cbcfg cfg = {
 		.subwindow = on_subwindow,
+		.query_label = on_label_query,
+		.input_label = on_label_input
 	};
 
 	struct tui_context* tui = arcan_tui_setup(c, NULL, &cfg, sizeof(cfg));
