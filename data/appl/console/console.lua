@@ -541,13 +541,13 @@ function console_clock_pulse()
 	mouse_tick(1)
 end
 
-function VRES_AUTORES(w, h, vppcm, flags, source)
-	resize_video_canvas(w, h)
-	resize_image(workspaces.anchor, w, h)
+function console_display_state(status)
+	resize_video_canvas(VRESW, VRESH)
+	resize_image(workspaces.anchor, VRESW, VRESH)
 
 	for i,v in pairs(workspaces) do
-		if valid_vid(v.vid) then
-			target_displayhint(v.vid, w, h, TD_HINT_IGNORE)
+		if type(v) == "table" and valid_vid(v.vid) then
+			target_displayhint(v.vid, VRESW, VRESH, TD_HINT_IGNORE)
 		end
 	end
 end
