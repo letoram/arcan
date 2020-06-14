@@ -99,9 +99,18 @@ static unsigned video_setup(void** ctx, char* chroma, unsigned* width,
 	if (!arcan_shmif_resize_ext(&decctx.shmcont,
 		*width, *height, (struct shmif_resize_ext){
 			.abuf_sz = 16384, .abuf_cnt = 12, .vbuf_cnt = 1})){
-		LOG("arcan_frameserver(decode) shmpage setup failed, "
+		LOG("(decode) shmpage setup failed, "
 			"requested: (%d x %d)\n", *width, *height);
 		rv = 0;
+	}
+	else if (decctx.shmcont.w != *width || decctx.shmcont.h != *height){
+		LOG("(decode) server-size refused buffer "
+			"dimensions (%zu * %zu) got: (%zu * %zu)\n",
+			(size_t)*width, (size_t)*height,
+			(size_t) decctx.shmcont.w, (size_t) decctx.shmcont.h
+		);
+		*width = decctx.shmcont.w;
+		*height = decctx.shmcont.h;
 	}
 	else {
 		LOG("(decode) got ('%c', '%c', '%c', '%c') @ %u * %u\n",
