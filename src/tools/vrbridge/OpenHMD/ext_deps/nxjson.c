@@ -43,6 +43,7 @@ static nx_json* create_json(nx_json_type type, const char* key, nx_json* parent)
   assert(js);
   js->type=type;
   js->key=key;
+  js->parent=parent;
   if (!parent->last_child) {
     parent->child=parent->last_child=js;
   }

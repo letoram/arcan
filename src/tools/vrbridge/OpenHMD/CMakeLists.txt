@@ -11,6 +11,7 @@ set(HMD_SOURCES
 	shaders.c
 	drv_oculus_rift/rift.c
 	drv_oculus_rift/packet.c
+	drv_oculus_rift/rift-hmd-radio.c
 	drv_deepoon/deepoon.c
 	drv_deepoon/packet.c
 	drv_wmr/wmr.c
@@ -19,6 +20,8 @@ set(HMD_SOURCES
 	drv_psvr/packet.c
 	drv_htc_vive/vive.c
 	drv_htc_vive/packet.c
+	drv_vrtek/vrtek.c
+	drv_vrtek/packet.c
 	drv_nolo/nolo.c
 	drv_nolo/packet.c
 	drv_3glasses/xgvr.c
@@ -42,6 +45,7 @@ target_compile_definitions(openhmd PRIVATE
 	-DDRIVER_DEEPON
 	-DDRIVER_WMR
 	-DDRIVER_PSVR
+	-DDRIVER_VRTEK
 	-DDRIVER_HTC_VIVE
 	-DDRIVER_NOLO
 	-DDRIVER_XGVR

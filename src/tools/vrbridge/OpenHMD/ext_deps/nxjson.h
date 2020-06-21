@@ -35,6 +35,7 @@ typedef struct nx_json {
   struct nx_json* child;   // points to first child
   struct nx_json* next;    // points to next child
   struct nx_json* last_child;
+  struct nx_json* parent;  // parent of the object
 } nx_json;
 
 typedef int (*nx_json_unicode_encoder)(unsigned int codepoint, char* p, char** endp);

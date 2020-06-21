@@ -23,6 +23,9 @@
 #include <stdbool.h>
 
 #include "wmr.h"
+#include "config_key.h"
+
+#include "../ext_deps/nxjson.h"
 
 typedef struct {
 	ohmd_device base;
@@ -224,6 +227,7 @@ int read_config_part(wmr_priv *priv, unsigned char type,
 	int size;
 
 	size = config_command_sync(priv->hmd_imu, 0x0b, buf, sizeof(buf));
+
 	if (size != 33 || buf[0] != 0x02) {
 		LOGE("Failed to issue command 0b: %02x %02x %02x\n",
 		       buf[0], buf[1], buf[2]);
@@ -245,6 +249,7 @@ int read_config_part(wmr_priv *priv, unsigned char type,
 		if (buf[1] != 0x01)
 			break;
 		if (buf[2] > len || offset + buf[2] > len) {
+			LOGE("Getting more information then requested\n");
 			return -1;
 		}
 		memcpy(data + offset, buf + 3, buf[2]);
@@ -254,13 +259,23 @@ int read_config_part(wmr_priv *priv, unsigned char type,
 	return offset;
 }
 
+void decrypt_config(unsigned char* config)
+{
+	wmr_config_header* hdr = (wmr_config_header*)config;
+	for (int i = 0; i < hdr->json_size - sizeof(uint16_t); i++)
+	{
+		config[hdr->json_start + sizeof(uint16_t) + i] ^= wmr_config_key[i % sizeof(wmr_config_key)];
+	}
+}
+
 unsigned char *read_config(wmr_priv *priv)
 {
-	unsigned char meta[66];
+	unsigned char meta[84];
 	unsigned char *data;
 	int size, data_size;
 
 	size = read_config_part(priv, 0x06, meta, sizeof(meta));
+
 	if (size == -1)
 		return NULL;
 
@@ -279,9 +294,39 @@ unsigned char *read_config(wmr_priv *priv)
 		return NULL;
 	}
 
+	decrypt_config(data);
+
 	LOGI("Read %d-byte config data\n", data_size);
 
 	return data;
+}
+
+
+void process_nxjson_obj(const nx_json* node, const nx_json* (*list)[32], char* match)
+{
+	if (!node)
+		return;
+
+	if (node->key)
+		if (strcmp(match,node->key) == 0) 
+		{
+			//LOGE("Found key %s\n", node->key);
+			for (int i = 0; i < 32; i++)
+			{
+				if (!list[0][i]) {
+					list[0][i] = node;
+					break;
+				}
+			}
+		}
+
+	process_nxjson_obj(node->next, list, match);
+	process_nxjson_obj(node->child, list, match);
+}
+
+void resetList(const nx_json* (*list)[32])
+{
+	memset(list, 0, sizeof(*list));
 }
 
 static ohmd_device* open_device(ohmd_driver* driver, ohmd_device_desc* desc)
@@ -303,14 +348,63 @@ static ohmd_device* open_device(ohmd_driver* driver, ohmd_device_desc* desc)
 	if(!priv->hmd_imu)
 		goto cleanup;
 
+	//Bunch of temp variables to set to the display configs
+	int resolution_h, resolution_v; 
+
 	config = read_config(priv);
 	if (config) {
-		LOGI("Model name: %.64s\n", config + 0x1c3);
-		if (strncmp((char *)(config + 0x1c3),
+		wmr_config_header* hdr = (wmr_config_header*)config;
+		LOGI("Model name: %.64s\n", hdr->name);
+		if (strncmp(hdr->name,
 			    "Samsung Windows Mixed Reality 800ZAA", 64) == 0) {
 			samsung = true;
 		}
+
+		char *json_data = (char*)config + hdr->json_start + sizeof(uint16_t);
+		const nx_json* json = nx_json_parse(json_data, 0);
+
+		if (json->type != NX_JSON_NULL) 
+		{
+			//list to save found nodes with matching name
+			const nx_json* returnlist[32] = {0};
+			resetList(&returnlist); process_nxjson_obj(json, &returnlist, "DisplayHeight");
+			LOGE("Found display height %lli\n", returnlist[0]->int_value); //taking the first element since it does not matter if you take display 0 or 1
+			resolution_v = returnlist[0]->int_value;
+			resetList(&returnlist); process_nxjson_obj(json, &returnlist, "DisplayWidth");
+			LOGE("Found display width %lli\n", returnlist[0]->int_value); //taking the first element since it does not matter if you take display 0 or 1
+			resolution_h = returnlist[0]->int_value;
+			
+			//Left in for debugging until we confirmed most variables working
+			/*
+		 	for (int i = 0; i < 32; i++)
+		 	{
+		 		if (returnlist[i] != 0)
+		 		{
+		 			if (returnlist[i]->type == NX_JSON_STRING)
+		 				printf("Found %s\n", returnlist[i]->text_value);
+		 			if (returnlist[i]->type == NX_JSON_INTEGER)
+		 				printf("Found %lli\n", returnlist[i]->int_value);
+		 			if (returnlist[i]->type == NX_JSON_DOUBLE)
+		 				printf("Found %f\n", returnlist[i]->dbl_value);
+		 			if (returnlist[i]->type == NX_JSON_ARRAY)
+		 				printf("Found array, TODO\n");
+		 		}
+		 	}*/
+
+		}
+		else 
+		{
+			LOGE("Could not parse json\n");
+		}
+
+		//TODO: use new config data
+
+		nx_json_free(json);
+
 		free(config);
+	}
+	else {
+		LOGE("Could not read config from the firmware\n");
 	}
 
 	if(hid_set_nonblocking(priv->hmd_imu, 1) == -1){
@@ -329,8 +423,8 @@ static ohmd_device* open_device(ohmd_driver* driver, ohmd_device_desc* desc)
 		// Samsung Odyssey has two 3.5" 1440x1600 OLED displays.
 		priv->base.properties.hsize = 0.118942f;
 		priv->base.properties.vsize = 0.066079f;
-		priv->base.properties.hres = 2880;
-		priv->base.properties.vres = 1600;
+		priv->base.properties.hres = resolution_h;
+		priv->base.properties.vres = resolution_v;
 		priv->base.properties.lens_sep = 0.063f; /* FIXME */
 		priv->base.properties.lens_vpos = 0.03304f; /* FIXME */
 		priv->base.properties.fov = DEG_TO_RAD(110.0f);
@@ -339,8 +433,8 @@ static ohmd_device* open_device(ohmd_driver* driver, ohmd_device_desc* desc)
 		// Most Windows Mixed Reality Headsets have two 2.89" 1440x1440 LCDs
 		priv->base.properties.hsize = 0.103812f;
 		priv->base.properties.vsize = 0.051905f;
-		priv->base.properties.hres = 2880;
-		priv->base.properties.vres = 1440;
+		priv->base.properties.hres = resolution_h;
+		priv->base.properties.vres = resolution_v;
 		priv->base.properties.lens_sep = 0.063f; /* FIXME */
 		priv->base.properties.lens_vpos = 0.025953f; /* FIXME */
 		priv->base.properties.fov = DEG_TO_RAD(95.0f);

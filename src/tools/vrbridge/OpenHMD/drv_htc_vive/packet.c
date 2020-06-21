@@ -34,12 +34,15 @@ inline static int16_t read16(const unsigned char** buffer)
 
 inline static uint32_t read32(const unsigned char** buffer)
 {
-	uint32_t ret = **buffer | (*(*buffer + 1) << 8) | (*(*buffer + 2) << 16) | (*(*buffer + 3) << 24);
+	uint32_t ret = **buffer | (*(*buffer + 1) << 8) |
+	                          (*(*buffer + 2) << 16) |
+	                          (*(*buffer + 3) << 24);
 	*buffer += 4;
 	return ret;
 }
 
-bool vive_decode_sensor_packet(vive_headset_imu_packet* pkt, const unsigned char* buffer, int size)
+bool vive_decode_sensor_packet(vive_headset_imu_packet* pkt,
+                               const unsigned char* buffer, int size)
 {
 	if(size != 52){
 		LOGE("invalid vive sensor packet size (expected 52 but got %d)", size);
@@ -69,18 +72,18 @@ bool vive_decode_sensor_packet(vive_headset_imu_packet* pkt, const unsigned char
 //Trim function for removing tabs and spaces from string buffers
 void trim(const char* src, char* buff, const unsigned int sizeBuff)
 {
-    if(sizeBuff < 1)
-    return;
+	if(sizeBuff < 1)
+		return;
 
-    const char* current = src;
-    unsigned int i = 0;
-    while(*current != '\0' && i < sizeBuff-1)
-    {
-        if(*current != ' ' && *current != '\t' && *current != '\n')
-            buff[i++] = *current;
-        ++current;
-    }
-    buff[i] = '\0';
+	const char* current = src;
+	unsigned int i = 0;
+	while(*current != '\0' && i < sizeBuff-1)
+	{
+		if(*current != ' ' && *current != '\t' && *current != '\n')
+			buff[i++] = *current;
+		++current;
+	}
+	buff[i] = '\0';
 }
 
 void get_vec3f_from_json(const nx_json* json, const char* name, vec3f* result)
@@ -95,37 +98,25 @@ void get_vec3f_from_json(const nx_json* json, const char* name, vec3f* result)
 
 void print_vec3f(const char* title, vec3f *vec)
 {
-  LOGI("%s = %f %f %f\n", title, vec->x, vec->y, vec->z);
+	LOGI("%s = %f %f %f\n", title, vec->x, vec->y, vec->z);
 }
 
 bool vive_decode_config_packet(vive_imu_config* result,
                                const unsigned char* buffer,
                                uint16_t size)
 {
-	/*
-	if(size != 4069){
-		LOGE("invalid vive sensor packet size (expected 4069 but got %d)", size);
-		return false;
-	}*/
-
-	vive_config_packet pkt;
-
-	pkt.report_id = VIVE_CONFIG_READ_PACKET_ID;
-	pkt.length = size;
-
 	unsigned char output[32768];
 	mz_ulong output_size = 32768;
 
-	//int cmp_status = uncompress(pUncomp, &uncomp_len, pCmp, cmp_len);
 	int cmp_status = uncompress(output, &output_size,
-	                            buffer, (mz_ulong)pkt.length);
+	                            buffer, (mz_ulong)size);
 	if (cmp_status != Z_OK){
 		LOGE("invalid vive config, could not uncompress");
 		return false;
 	}
 
 	LOGD("Decompressed from %u to %u bytes\n",
-	     (mz_uint32)pkt.length, (mz_uint32)output_size);
+	     (mz_uint32)packet.length, (mz_uint32)output_size);
 
 	trim((char*)output, (char*)output, (unsigned int)output_size);
 

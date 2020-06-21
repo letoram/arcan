@@ -112,6 +112,19 @@ static void handle_tracker_sensor_msg(psvr_priv* priv, unsigned char* buffer, in
 	priv->buttons = s->buttons;
 }
 
+static void teardown(psvr_priv* priv)
+{
+	if (priv->hmd_handle != NULL) {
+		hid_close(priv->hmd_handle);
+		priv->hmd_handle = NULL;
+	}
+
+	if (priv->hmd_control != NULL) {
+		hid_close(priv->hmd_control);
+		priv->hmd_control = NULL;
+	}
+}
+
 static void update_device(ohmd_device* device)
 {
 	psvr_priv* priv = (psvr_priv*)device;
@@ -173,10 +186,12 @@ static void close_device(ohmd_device* device)
 {
 	psvr_priv* priv = (psvr_priv*)device;
 
+	// set cinematic mode for the hmd
+	hid_write(priv->hmd_control, psvr_cinematicmode_on, sizeof(psvr_cinematicmode_on));
+
 	LOGD("Closing Sony PSVR device.");
 
-	hid_close(priv->hmd_handle);
-	hid_close(priv->hmd_control);
+	teardown(priv);
 
 	free(device);
 }
@@ -190,12 +205,12 @@ static hid_device* open_device_idx(int manufacturer, int product, int iface, int
 	hid_device* ret = NULL;
 
 	while (cur_dev) {
-		LOGI("%04x:%04x %s\n", manufacturer, product, cur_dev->path);
+		LOGI("%04x:%04x %s", manufacturer, product, cur_dev->path);
 
 		if (cur_dev->interface_number == iface) {
 			if(idx == device_index){
+				LOGI("\topening '%s'", cur_dev->path);
 				ret = hid_open_path(cur_dev->path);
-				LOGI("opening\n");
 				break;
 			}
 
@@ -293,8 +308,10 @@ static ohmd_device* open_device(ohmd_driver* driver, ohmd_device_desc* desc)
 	return (ohmd_device*)priv;
 
 cleanup:
-	if(priv)
+	if (priv) {
+		teardown(priv);
 		free(priv);
+	}
 
 	return NULL;
 }

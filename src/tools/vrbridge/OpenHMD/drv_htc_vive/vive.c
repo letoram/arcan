@@ -85,13 +85,15 @@ static bool process_error(vive_priv* priv)
 
 	if(priv->gyro_q.at >= priv->gyro_q.size - 1){
 		ofq_get_mean(&priv->gyro_q, &priv->gyro_error);
-		LOGE("gyro error: %f, %f, %f\n", priv->gyro_error.x, priv->gyro_error.y, priv->gyro_error.z);
+		LOGE("gyro error: %f, %f, %f\n",
+		     priv->gyro_error.x, priv->gyro_error.y, priv->gyro_error.z);
 	}
 
 	return false;
 }
 
-vive_headset_imu_sample* get_next_sample(vive_headset_imu_packet* pkt, int last_seq)
+vive_headset_imu_sample* get_next_sample(vive_headset_imu_packet* pkt,
+                                         int last_seq)
 {
 	int diff[3];
 
@@ -121,64 +123,71 @@ vive_headset_imu_sample* get_next_sample(vive_headset_imu_packet* pkt, int last_
 	return NULL;
 }
 
+static void handle_imu_packet(vive_priv* priv, unsigned char *buffer, int size)
+{
+	vive_headset_imu_packet pkt;
+	vive_decode_sensor_packet(&pkt, buffer, size);
+
+	vive_headset_imu_sample* smp = NULL;
+
+	while((smp = get_next_sample(&pkt, priv->last_seq)) != NULL)
+	{
+		if(priv->last_ticks == 0)
+			priv->last_ticks = smp->time_ticks;
+
+		uint32_t t1, t2;
+		t1 = smp->time_ticks;
+		t2 = priv->last_ticks;
+
+		float dt = (t1 - t2) / VIVE_CLOCK_FREQ;
+
+		priv->last_ticks = smp->time_ticks;
+
+		vec3f_from_vive_vec_accel(&priv->imu_config, smp->acc, &priv->raw_accel);
+		vec3f_from_vive_vec_gyro(&priv->imu_config, smp->rot, &priv->raw_gyro);
+
+		// Fix imu orientation
+		switch (priv->revision) {
+			case REV_VIVE:
+				priv->raw_accel.y *= -1;
+				priv->raw_accel.z *= -1;
+				priv->raw_gyro.y *= -1;
+				priv->raw_gyro.z *= -1;
+				break;
+			case REV_VIVE_PRO:
+				priv->raw_accel.x *= -1;
+				priv->raw_accel.z *= -1;
+				priv->raw_gyro.x *= -1;
+				priv->raw_gyro.z *= -1;
+				break;
+			default:
+				LOGE("Unknown VIVE revision.\n");
+		}
+
+		if(process_error(priv)){
+			vec3f mag = {{0.0f, 0.0f, 0.0f}};
+			vec3f gyro;
+			ovec3f_subtract(&priv->raw_gyro, &priv->gyro_error, &gyro);
+
+			ofusion_update(&priv->sensor_fusion, dt,
+			               &gyro, &priv->raw_accel, &mag);
+		}
+
+		priv->last_seq = smp->seq;
+	}
+}
+
 static void update_device(ohmd_device* device)
 {
 	vive_priv* priv = (vive_priv*)device;
 
 	int size = 0;
+
 	unsigned char buffer[FEATURE_BUFFER_SIZE];
 
-	while((size = hid_read(priv->imu_handle, buffer, FEATURE_BUFFER_SIZE)) > 0){
+	while((size = hid_read(priv->imu_handle, buffer, FEATURE_BUFFER_SIZE)) > 0) {
 		if(buffer[0] == VIVE_HMD_IMU_PACKET_ID){
-			vive_headset_imu_packet pkt;
-			vive_decode_sensor_packet(&pkt, buffer, size);
-
-			vive_headset_imu_sample* smp = NULL;
-
-			while((smp = get_next_sample(&pkt, priv->last_seq)) != NULL)
-			{
-				if(priv->last_ticks == 0)
-					priv->last_ticks = smp->time_ticks;
-
-				uint32_t t1, t2;
-				t1 = smp->time_ticks;
-				t2 = priv->last_ticks;
-
-				float dt = (t1 - t2) / VIVE_CLOCK_FREQ;
-
-				priv->last_ticks = smp->time_ticks;
-
-				vec3f_from_vive_vec_accel(&priv->imu_config, smp->acc, &priv->raw_accel);
-				vec3f_from_vive_vec_gyro(&priv->imu_config, smp->rot, &priv->raw_gyro);
-
-				// Fix imu orientation
-				switch (priv->revision) {
-					case REV_VIVE:
-						priv->raw_accel.y *= -1;
-						priv->raw_accel.z *= -1;
-						priv->raw_gyro.y *= -1;
-						priv->raw_gyro.z *= -1;
-						break;
-					case REV_VIVE_PRO:
-						priv->raw_accel.x *= -1;
-						priv->raw_accel.z *= -1;
-						priv->raw_gyro.x *= -1;
-						priv->raw_gyro.z *= -1;
-						break;
-					default:
-						LOGE("Unknown VIVE revision.\n");
-				}
-
-				if(process_error(priv)){
-					vec3f mag = {{0.0f, 0.0f, 0.0f}};
-					vec3f gyro;
-					ovec3f_subtract(&priv->raw_gyro, &priv->gyro_error, &gyro);
-
-					ofusion_update(&priv->sensor_fusion, dt, &gyro, &priv->raw_accel, &mag);
-				}
-
-				priv->last_seq = smp->seq;
-			}
+			handle_imu_packet(priv, buffer, size);
 		}else{
 			LOGE("unknown message type: %u", buffer[0]);
 		}
@@ -267,7 +276,8 @@ static void dump_indexed_string(hid_device* device, int index)
 }
 #endif
 
-static void dump_info_string(int (*fun)(hid_device*, wchar_t*, size_t), const char* what, hid_device* device)
+static void dump_info_string(int (*fun)(hid_device*, wchar_t*, size_t),
+                            const char* what, hid_device* device)
 {
 	wchar_t wbuffer[512] = {0};
 	char buffer[1024] = {0};
@@ -293,7 +303,8 @@ static void dumpbin(const char* label, const unsigned char* data, int length)
 }
 #endif
 
-static hid_device* open_device_idx(int manufacturer, int product, int iface, int iface_tot, int device_index)
+static hid_device* open_device_idx(int manufacturer, int product, int iface,
+                                   int iface_tot, int device_index)
 {
 	struct hid_device_info* devs = hid_enumerate(manufacturer, product);
 	struct hid_device_info* cur_dev = devs;
@@ -325,89 +336,146 @@ static hid_device* open_device_idx(int manufacturer, int product, int iface, int
 	return ret;
 }
 
-int vive_read_config(vive_priv* priv)
+int vive_read_firmware(hid_device* device)
 {
-	unsigned char buffer[128];
+	vive_firmware_version_packet packet = {
+		.id = VIVE_FIRMWARE_VERSION_PACKET_ID,
+	};
+
 	int bytes;
 
-	LOGI("Getting feature report 16 to 39\n");
-	buffer[0] = VIVE_CONFIG_START_PACKET_ID;
-	bytes = hid_get_feature_report(priv->imu_handle, buffer, sizeof(buffer));
-	printf("got %i bytes\n", bytes);
+	LOGI("Getting vive_firmware_version_packet...");
+	bytes = hid_get_feature_report(device,
+	                               (unsigned char*) &packet,
+	                               sizeof(packet));
 
 	if (bytes < 0)
+	{
+		LOGE("Could not get vive_firmware_version_packet: %d", bytes);
 		return bytes;
-
-	for (int i = 0; i < bytes; i++) {
-		printf("%02x ", buffer[i]);
 	}
-	printf("\n\n");
+
+	LOGI("Firmware version %u %s@%s FPGA %u.%u\n",
+		packet.firmware_version, packet.string1,
+		packet.string2, packet.fpga_version_major,
+		packet.fpga_version_minor);
+	LOGI("Hardware revision: %d rev %d.%d.%d\n",
+		packet.hardware_revision, packet.hardware_version_major,
+		packet.hardware_version_minor, packet.hardware_version_micro);
+
+	return 0;
+}
+
+int vive_read_config(vive_priv* priv)
+{
+	vive_config_start_packet start_packet = {
+		.id = VIVE_CONFIG_START_PACKET_ID,
+	};
+
+	int bytes;
+
+	LOGI("Getting vive_config_start_packet...");
+	bytes = hid_get_feature_report(priv->imu_handle,
+	                               (unsigned char*) &start_packet,
+	                               sizeof(start_packet));
+
+	if (bytes < 0)
+	{
+		LOGE("Could not get vive_config_start_packet: %ls (%d)",
+		     hid_error(priv->imu_handle), bytes);
+		return bytes;
+	}
+
+	LOGI("Config packet size is %i bytes.", bytes);
+
+	vive_config_read_packet read_packet = {
+		.id = VIVE_CONFIG_READ_PACKET_ID,
+	};
 
 	unsigned char* packet_buffer = malloc(4096);
 
 	int offset = 0;
-	while (buffer[1] != 0) {
-		buffer[0] = VIVE_CONFIG_READ_PACKET_ID;
-		bytes = hid_get_feature_report(priv->imu_handle, buffer, sizeof(buffer));
+	do {
+		bytes = hid_get_feature_report(priv->imu_handle,
+		                               (unsigned char*) &read_packet,
+		                               sizeof(read_packet));
 
-    memcpy((uint8_t*)packet_buffer + offset, buffer+2, buffer[1]);
-    offset += buffer[1];
-  }
-  packet_buffer[offset] = '\0';
-  //LOGD("Result: %s\n", packet_buffer);
-  vive_decode_config_packet(&priv->imu_config, packet_buffer, offset);
+		memcpy((uint8_t*)packet_buffer + offset,
+		       &read_packet.payload,
+		       read_packet.length);
+		offset += read_packet.length;
+	} while (read_packet.length);
+	packet_buffer[offset] = '\0';
+	vive_decode_config_packet(&priv->imu_config, packet_buffer, offset);
 
-  free(packet_buffer);
+	free(packet_buffer);
 
-  return 0;
+	return 0;
 }
 
 #define OHMD_GRAVITY_EARTH 9.80665 // m/s²
 
 int vive_get_range_packet(vive_priv* priv)
 {
-  unsigned char buffer[64];
+	int ret;
 
-  int ret;
-  int i;
+	vive_imu_range_modes_packet packet = {
+		.id = VIVE_IMU_RANGE_MODES_PACKET_ID
+	};
 
-  buffer[0] = VIVE_IMU_RANGE_MODES_PACKET_ID;
+	ret = hid_get_feature_report(priv->imu_handle,
+	                             (unsigned char*) &packet,
+	                             sizeof(packet));
 
-  ret = hid_get_feature_report(priv->imu_handle, buffer, sizeof(buffer));
-  if (ret < 0)
-    return ret;
+	if (ret < 0)
+	{
+		LOGE("Could not get feature report %d.", packet.id);
+		return ret;
+	}
 
-  if (!buffer[1] || !buffer[2]) {
-    ret = hid_get_feature_report(priv->imu_handle, buffer, sizeof(buffer));
-    if (ret < 0)
-      return ret;
+	if (!packet.gyro_range || !packet.accel_range)
+	{
+		LOGW("Invalid gyroscope and accelerometer data. Trying to fetch again.");
+		ret = hid_get_feature_report(priv->imu_handle,
+		                             (unsigned char*) &packet,
+		                             sizeof(packet));
+		if (ret < 0)
+		{
+			LOGE("Could not get feature report %d.", packet.id);
+			return ret;
+		}
 
-    if (!buffer[1] || !buffer[2]) {
-      LOGE("unexpected range mode report: %02x %02x %02x",
-        buffer[0], buffer[1], buffer[2]);
-      for (i = 0; i < 61; i++)
-        LOGE(" %02x", buffer[3+i]);
-      LOGE("\n");
-    }
-  }
+		if (!packet.gyro_range || !packet.accel_range)
+		{
+			LOGE("Unexpected range mode report: %02x %02x %02x",
+				packet.id, packet.gyro_range, packet.accel_range);
+			for (int i = 0; i < 61; i++)
+				printf(" %02x", packet.unknown[i]);
+			printf("\n");
+			return -1;
+		}
+	}
 
-  if (buffer[1] > 4 || buffer[2] > 4)
-    return -1;
+	if (packet.gyro_range > 4 || packet.accel_range > 4)
+	{
+		LOGE("Gyroscope or accelerometer range too large.");
+		return -1;
+	}
 
-  /*
-   * Convert MPU-6500 gyro full scale range (+/-250°/s, +/-500°/s,
-   * +/-1000°/s, or +/-2000°/s) into rad/s, accel full scale range
-   * (+/-2g, +/-4g, +/-8g, or +/-16g) into m/s².
-   */
-  double gyro_range = M_PI / 180.0 * (250 << buffer[0]);
-  priv->imu_config.gyro_range = (float) gyro_range;
-  LOGI("gyro_range %f\n", gyro_range);
+	/*
+	 * Convert MPU-6500 gyro full scale range (+/-250°/s, +/-500°/s,
+	 * +/-1000°/s, or +/-2000°/s) into rad/s, accel full scale range
+	 * (+/-2g, +/-4g, +/-8g, or +/-16g) into m/s².
+	 */
 
-  double acc_range = OHMD_GRAVITY_EARTH * (2 << buffer[1]);
-  priv->imu_config.acc_range = (float) acc_range;
-  LOGI("acc_range %f\n", acc_range);
+	double gyro_range = M_PI / 180.0 * (250 << packet.gyro_range);
+	priv->imu_config.gyro_range = (float) gyro_range;
+	LOGI("Vive gyroscope range     %f", gyro_range);
 
-  return 0;
+	double acc_range = OHMD_GRAVITY_EARTH * (2 << packet.accel_range);
+	priv->imu_config.acc_range = (float) acc_range;
+	LOGI("Vive accelerometer range %f", acc_range);
+	return 0;
 }
 
 static ohmd_device* open_device(ohmd_driver* driver, ohmd_device_desc* desc)
@@ -465,17 +533,63 @@ static ohmd_device* open_device(ohmd_driver* driver, ohmd_device_desc* desc)
 		goto cleanup;
 	}
 
-	dump_info_string(hid_get_manufacturer_string, "manufacturer", priv->hmd_handle);
-	dump_info_string(hid_get_product_string , "product", priv->hmd_handle);
-	dump_info_string(hid_get_serial_number_string, "serial number", priv->hmd_handle);
+	dump_info_string(hid_get_manufacturer_string,
+	                 "manufacturer", priv->hmd_handle);
+	dump_info_string(hid_get_product_string, "product", priv->hmd_handle);
+	dump_info_string(hid_get_serial_number_string,
+	                 "serial number", priv->hmd_handle);
+
+#if 0
+	// enable lighthouse
+	hret = hid_send_feature_report(priv->hmd_handle,
+	                               vive_magic_enable_lighthouse,
+	                               sizeof(vive_magic_enable_lighthouse));
+	LOGD("enable lighthouse magic: %d\n", hret);
+#endif
+
+	/* IMU config defaults */
+	priv->imu_config.acc_bias.x = 0;
+	priv->imu_config.acc_bias.y = 0;
+	priv->imu_config.acc_bias.z = 0;
+
+	priv->imu_config.acc_scale.x = 1.0f;
+	priv->imu_config.acc_scale.y = 1.0f;
+	priv->imu_config.acc_scale.z = 1.0f;
+
+	priv->imu_config.gyro_bias.x = 0;
+	priv->imu_config.gyro_bias.y = 0;
+	priv->imu_config.gyro_bias.z = 0;
+
+	priv->imu_config.gyro_scale.x = 1.0f;
+	priv->imu_config.gyro_scale.y = 1.0f;
+	priv->imu_config.gyro_scale.z = 1.0f;
+
+	priv->imu_config.gyro_range = 8.726646f;
+	priv->imu_config.acc_range = 39.226600f;
 
 	switch (desc->revision) {
 		case REV_VIVE:
+			if (vive_read_config(priv) != 0)
+			{
+				LOGW("Could not read config. Using defaults.\n");
+			}
+
+			if (vive_get_range_packet(priv) != 0)
+			{
+				LOGW("Could not get range packet.\n");
+			}
+
+			if (vive_read_firmware(priv->imu_handle) != 0)
+			{
+				LOGE("Could not get headset firmware version!");
+			}
+
 			// turn the display on
 			hret = hid_send_feature_report(priv->hmd_handle,
 			                               vive_magic_power_on,
 			                               sizeof(vive_magic_power_on));
 			LOGI("power on magic: %d\n", hret);
+
 			break;
 		case REV_VIVE_PRO:
 			// turn the display on
@@ -492,37 +606,6 @@ static ohmd_device* open_device(ohmd_driver* driver, ohmd_device_desc* desc)
 			break;
 		default:
 			LOGE("Unknown VIVE revision.\n");
-	}
-
-	// enable lighthouse
-	//hret = hid_send_feature_report(priv->hmd_handle, vive_magic_enable_lighthouse, sizeof(vive_magic_enable_lighthouse));
-	//LOGD("enable lighthouse magic: %d\n", hret);
-
-	if (vive_read_config(priv) != 0)
-	{
-		LOGW("Could not read config. Using defaults.\n");
-		priv->imu_config.acc_bias.x = 0.157200f;
-		priv->imu_config.acc_bias.y = -0.011150f;
-		priv->imu_config.acc_bias.z = -0.144900f;
-
-		priv->imu_config.acc_scale.x = 0.999700f;
-		priv->imu_config.acc_scale.y = 0.998900f;
-		priv->imu_config.acc_scale.z = 0.998000f;
-
-		priv->imu_config.gyro_bias.x = -0.027770f;
-		priv->imu_config.gyro_bias.y = -0.011410f;
-		priv->imu_config.gyro_bias.z = -0.014760f;
-
-		priv->imu_config.gyro_scale.x = 1.0f;
-		priv->imu_config.gyro_scale.y = 1.0f;
-		priv->imu_config.gyro_scale.z = 1.0f;
-	}
-
-	if (vive_get_range_packet(priv) != 0)
-	{
-		LOGW("Could not get range packet.\n");
-		priv->imu_config.gyro_range = 8.726646f;
-		priv->imu_config.acc_range = 39.226600f;
 	}
 
 	// Set default device properties
@@ -555,13 +638,13 @@ static ohmd_device* open_device(ohmd_driver* driver, ohmd_device_desc* desc)
 	priv->base.properties.lens_sep = 0.057863;
 	priv->base.properties.lens_vpos = 0.033896;
 
-	/* calculate projection eye projection matrices from the device properties */
-	ohmd_calc_default_proj_matrices(&priv->base.properties);
-
 	float eye_to_screen_distance = 0.023226876441867737;
 	priv->base.properties.fov = 2 * atan2f(
 		priv->base.properties.hsize / 2 - priv->base.properties.lens_sep / 2,
 		eye_to_screen_distance);
+
+	/* calculate projection eye projection matrices from the device properties */
+	ohmd_calc_default_proj_matrices(&priv->base.properties);
 
 	// set up device callbacks
 	priv->base.update = update_device;
