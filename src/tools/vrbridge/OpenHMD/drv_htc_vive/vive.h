@@ -24,6 +24,7 @@ typedef enum
 	VIVE_CONFIG_START_PACKET_ID = 16,
 	VIVE_CONFIG_READ_PACKET_ID = 17,
 	VIVE_HMD_IMU_PACKET_ID = 32,
+	VIVE_FIRMWARE_VERSION_PACKET_ID = 0x05
 } vive_irq_cmd;
 
 typedef struct
@@ -42,10 +43,16 @@ typedef struct
 
 typedef struct
 {
-	uint8_t report_id;
-	uint16_t length;
-	unsigned char config_data[99999];
-} vive_config_packet;
+	uint8_t id;
+	uint8_t unused[63];
+} vive_config_start_packet;
+
+typedef struct
+{
+	uint8_t id;
+	uint8_t length;
+	uint8_t payload[62];
+} vive_config_read_packet;
 
 typedef struct
 {
@@ -62,6 +69,25 @@ typedef struct
 	vec3f gyro_bias, gyro_scale;
 	float gyro_range;
 } vive_imu_config;
+
+#pragma pack(push,1)
+typedef struct
+{
+	uint8_t id;
+	uint32_t firmware_version;
+	uint32_t unknown1;
+	uint8_t string1[16];
+	uint8_t string2[16];
+	uint8_t hardware_version_micro;
+	uint8_t hardware_version_minor;
+	uint8_t hardware_version_major;
+	uint8_t hardware_revision;
+	uint32_t unknown2;
+	uint8_t fpga_version_minor;
+	uint8_t fpga_version_major;
+	uint8_t reserved[13];
+} vive_firmware_version_packet;
+#pragma pack(pop)
 
 void vec3f_from_vive_vec(const int16_t* smp, vec3f* out_vec);
 bool vive_decode_sensor_packet(vive_headset_imu_packet* pkt,
