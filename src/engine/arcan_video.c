@@ -2828,7 +2828,8 @@ arcan_errc arcan_video_setlife(arcan_vobj_id id, unsigned lifetime)
 	return rv;
 }
 
-arcan_errc arcan_video_zaptransform(arcan_vobj_id id, unsigned left[4])
+arcan_errc arcan_video_zaptransform(
+	arcan_vobj_id id, int mask, unsigned left[4])
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
@@ -2839,6 +2840,7 @@ arcan_errc arcan_video_zaptransform(arcan_vobj_id id, unsigned left[4])
 
 	unsigned ct = arcan_video_display.c_ticks;
 
+/* only set if the data is actually needed */
 	if (left){
 		if (current){
 			left[0] = ct > current->blend.endt ? 0 : current->blend.endt - ct;
@@ -2851,13 +2853,33 @@ arcan_errc arcan_video_zaptransform(arcan_vobj_id id, unsigned left[4])
 		}
 	}
 
-	while (current){
-		surface_transform* next = current->next;
-		arcan_mem_free(current);
-		current = next;
-	}
+/* if we don't set a mask, zap the entire chain - otherwise walk the chain,
+ * remove the slots that match the mask, and then drop ones that has become empty */
+	if (!mask)
+		mask = ~mask;
 
-	vobj->transform = NULL;
+	while (current){
+		current->blend.endt  *= !!!(mask & MASK_OPACITY); /* int to 0|1, then invert result */
+		current->move.endt   *= !!!(mask & MASK_POSITION);
+		current->rotate.endt *= !!!(mask & MASK_ORIENTATION);
+		current->scale.endt  *= !!!(mask & MASK_SCALE);
+
+/* any transform alive? then don't free the transform */
+		bool used =
+			!!(current->blend.endt | current->move.endt |
+			current->rotate.endt | current->scale.endt);
+
+		if (!used){
+			if (vobj->transform == current)
+				vobj->transform = current->next;
+
+			surface_transform* next = current->next;
+			arcan_mem_free(current);
+			current = next;
+		}
+		else
+			current = current->next;
+	}
 
 	FLAG_DIRTY(vobj);
 	return ARCAN_OK;
@@ -3092,7 +3114,7 @@ arcan_errc arcan_video_copytransform(arcan_vobj_id sid, arcan_vobj_id did)
  * pointers from source to dest and done. */
 	memcpy(&dst->current, &src->current, sizeof(surface_properties));
 
-	arcan_video_zaptransform(did, NULL);
+	arcan_video_zaptransform(did, 0, NULL);
 	dst->transform = dup_chain(src->transform);
 	update_zv(dst, src->order);
 
@@ -3113,7 +3135,7 @@ arcan_errc arcan_video_transfertransform(arcan_vobj_id sid, arcan_vobj_id did)
 
 	if (rv == ARCAN_OK){
 		arcan_vobject* src = arcan_video_getobject(sid);
-		arcan_video_zaptransform(sid, NULL);
+		arcan_video_zaptransform(sid, 0, NULL);
 		src->transform = NULL;
 	}
 
@@ -3331,7 +3353,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	current_context->nalive--;
 
 /* time to drop all associated resources */
-	arcan_video_zaptransform(id, NULL);
+	arcan_video_zaptransform(id, 0, NULL);
 	arcan_mem_free(vobj->txcos);
 
 /* full- object specific clean-up */

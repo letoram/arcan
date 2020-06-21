@@ -1985,7 +1985,9 @@ static int resettransform(lua_State* ctx)
 	LUA_TRACE("reset_image_transform");
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	unsigned left[4];
-	arcan_video_zaptransform(id, left);
+	int mask = luaL_optnumber(ctx, 2, 0);
+
+	arcan_video_zaptransform(id, mask, left);
 	lua_pushnumber(ctx, left[0]);
 	lua_pushnumber(ctx, left[1]);
 	lua_pushnumber(ctx, left[2]);
