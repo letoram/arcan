@@ -993,7 +993,7 @@ enum tag_transform_methods {
 	TAG_TRANSFORM_ALL  = 2
 };
 arcan_errc arcan_video_instanttransform(
-	arcan_vobj_id id, enum tag_transform_methods method);
+	arcan_vobj_id id, int mask, enum tag_transform_methods method);
 
 /*
  * Reassign the transformation chain being applied to [sid] so that it,
