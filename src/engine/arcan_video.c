@@ -3160,6 +3160,40 @@ arcan_errc arcan_video_copytransform(arcan_vobj_id sid, arcan_vobj_id did)
 	return ARCAN_OK;
 }
 
+/*
+ * quick set and run from gdb or update_object
+ */
+#ifdef DUMP_TRANSFORM
+static void dump_chain(surface_transform* base)
+{
+	for (int i = 0; base; i++, base = base->next){
+		printf("[transform (%"PRIxPTR") @%d]\n", (uintptr_t)base, i);
+		printf("\trotate (%zu / %zu)\n\t\t x: %.2f->%.2f y: %.2f->%.2f z: %.2f->%.2f\n",
+			(size_t) base->rotate.startt, (size_t) base->rotate.endt,
+			base->rotate.starto.roll, base->rotate.endo.roll,
+			base->rotate.starto.pitch, base->rotate.endo.pitch,
+			base->rotate.starto.yaw, base->rotate.endo.yaw
+		);
+		printf("\tscale (%zu / %zu)\n\t\t x: %2.f->%.2f y: %.2f->%.2f z: %.2f->%.2f\n",
+			(size_t) base->scale.startt, (size_t) base->scale.endt,
+			base->scale.startd.x, base->scale.endd.x,
+			base->scale.startd.y, base->scale.endd.y,
+			base->scale.startd.z, base->scale.endd.z
+		);
+		printf("\tblend (%zu / %zu)\n\t\t opacity: %2.f->%.2f\n",
+			(size_t) base->blend.startt, (size_t) base->blend.endt,
+			base->blend.startopa, base->blend.endopa
+		);
+		printf("\tmove (%zu / %zu)\n\t\t x: %2.f->%.2f y: %.2f->%.2f z: %.2f->%.2f\n",
+			(size_t) base->move.startt, (size_t) base->move.endt,
+			base->move.startp.x, base->move.endp.x,
+			base->move.startp.y, base->move.endp.y,
+			base->move.startp.z, base->move.endp.z
+		);
+	}
+}
+#endif
+
 arcan_errc arcan_video_transfertransform(arcan_vobj_id sid, arcan_vobj_id did)
 {
 	arcan_errc rv = arcan_video_copytransform(sid, did);
@@ -3556,8 +3590,7 @@ arcan_errc arcan_video_objectrotate3d(arcan_vobj_id id,
 
 /* figure out the starting angle */
 	while (base && base->rotate.startt){
-		if (!base->next)
-			bv = base->rotate.endo;
+		bv = base->rotate.endo;
 
 		last = base;
 		base = base->next;
@@ -4232,12 +4265,13 @@ static int update_object(arcan_vobject* ci, unsigned long long stamp)
 				offsetof(surface_transform, rotate),
 				sizeof(struct transf_rotate));
 		}
-		else
+		else {
 			ci->current.rotation.quaternion =
 				ci->transform->rotate.interp(
 					ci->transform->rotate.starto.quaternion,
 					ci->transform->rotate.endo.quaternion, fract
 				);
+		}
 	}
 
 	return upd;
