@@ -2837,6 +2837,7 @@ arcan_errc arcan_video_zaptransform(
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	surface_transform* current = vobj->transform;
+	surface_transform** last = &vobj->transform;
 
 	unsigned ct = arcan_video_display.c_ticks;
 
@@ -2870,18 +2871,23 @@ arcan_errc arcan_video_zaptransform(
 			current->rotate.endt | current->scale.endt);
 
 		if (!used){
-			if (vobj->transform == current)
-				vobj->transform = current->next;
+
+/* relink previous valid and point to next, this might be null but since wain
+ * from &vobj->transform that will reset the head as well so no weird aliasing */
+			if (*last == current)
+				*last = current->next;
 
 			surface_transform* next = current->next;
 			arcan_mem_free(current);
 			current = next;
 		}
-		else
+		else {
+			last = &current->next;
 			current = current->next;
+		}
 	}
 
-	FLAG_DIRTY(vobj);
+	invalidate_cache(vobj);
 	return ARCAN_OK;
 }
 
@@ -2955,7 +2961,7 @@ static void emit_transform_event(arcan_vobj_id src,
 }
 
 arcan_errc arcan_video_instanttransform(
-	arcan_vobj_id id, enum tag_transform_methods method)
+	arcan_vobj_id id, int mask, enum tag_transform_methods method)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	if (!vobj)
@@ -2971,11 +2977,16 @@ arcan_errc arcan_video_instanttransform(
  * all of them, or only the last. The last case is more complicated as there
  * might be a ->next allocated for another transform so also need to check the
  * time */
-	bool at_last;
-	while (current){
+	if (!mask)
+		mask = ~mask;
 
-		if (current->move.startt){
+	bool at_last;
+	struct surface_transform** last = &vobj->transform;
+
+	while (current){
+		if (current->move.startt && (mask & MASK_POSITION)){
 			vobj->current.position = current->move.endp;
+				current->move.startt = 0;
 
 			at_last = (method == TAG_TRANSFORM_LAST) &&
 				!( current->next && current->next->move.startt );
@@ -2984,8 +2995,9 @@ arcan_errc arcan_video_instanttransform(
 				emit_transform_event(vobj->cellid, MASK_POSITION, current->move.tag);
 		}
 
-		if (current->blend.startt){
+		if (current->blend.startt && (mask & MASK_OPACITY)){
 			vobj->current.opa = current->blend.endopa;
+			current->blend.startt = 0;
 
 			at_last = (method == TAG_TRANSFORM_LAST) &&
 				!( current->next && current->next->blend.startt );
@@ -2994,8 +3006,9 @@ arcan_errc arcan_video_instanttransform(
 				emit_transform_event(vobj->cellid, MASK_OPACITY, current->blend.tag);
 		}
 
-		if (current->rotate.startt){
+		if (current->rotate.startt && (mask & MASK_ORIENTATION)){
 			vobj->current.rotation = current->rotate.endo;
+			current->rotate.startt = 0;
 
 			at_last = (method == TAG_TRANSFORM_LAST) &&
 				!( current->next && current->next->rotate.startt );
@@ -3005,8 +3018,9 @@ arcan_errc arcan_video_instanttransform(
 					vobj->cellid, MASK_ORIENTATION, current->rotate.tag);
 		}
 
-		if (current->scale.startt){
+		if (current->scale.startt && (mask & MASK_SCALE)){
 			vobj->current.scale = current->scale.endd;
+			current->scale.startt = 0;
 
 			at_last = (method == TAG_TRANSFORM_LAST) &&
 				!( current->next && current->next->scale.startt );
@@ -3015,12 +3029,29 @@ arcan_errc arcan_video_instanttransform(
 				emit_transform_event(vobj->cellid, MASK_SCALE, current->scale.tag);
 		}
 
-		surface_transform* tokill = current;
-		current = current->next;
-		arcan_mem_free(tokill);
+/* see also: zaptransform */
+		bool used =
+			!!(current->blend.startt | current->move.startt |
+			current->rotate.startt | current->scale.startt);
+
+		if (!used){
+			if (*last == current){
+				*last = current->next;
+			}
+
+			if (vobj->transform == current)
+				vobj->transform = current->next;
+
+			surface_transform* tokill = current;
+			current = current->next;
+			arcan_mem_free(tokill);
+		}
+		else {
+			last = &current->next;
+			current = current->next;
+		}
 	}
 
-	vobj->transform = NULL;
 	invalidate_cache(vobj);
 	return ARCAN_OK;
 }
