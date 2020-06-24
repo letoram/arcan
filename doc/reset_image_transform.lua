@@ -13,8 +13,8 @@
 -- be called to flush the queue, and the return values are the number of ticks
 -- left to the next item in the chain before flushing.
 -- These values could then be used to schedule the new transform and make
--- sure that it would take 'as long' time as the previouslt scheduled one
--- would have occupied.
+-- sure that the total would take 'as long' time as the previously scheduled one
+-- would have been.
 --
 -- If a mask is provided, only the specific transforms are reset. The mask
 -- values (MASK_POSITION, MASK_ORIENTATION, MASK_SCALE, MASK_OPACITY) can

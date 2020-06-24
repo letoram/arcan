@@ -2865,6 +2865,11 @@ arcan_errc arcan_video_zaptransform(
 		current->rotate.endt *= !!!(mask & MASK_ORIENTATION);
 		current->scale.endt  *= !!!(mask & MASK_SCALE);
 
+		current->blend.startt  *= !!!(mask & MASK_OPACITY); /* int to 0|1, then invert result */
+		current->move.startt   *= !!!(mask & MASK_POSITION);
+		current->rotate.startt *= !!!(mask & MASK_ORIENTATION);
+		current->scale.startt  *= !!!(mask & MASK_SCALE);
+
 /* any transform alive? then don't free the transform */
 		bool used =
 			!!(current->blend.endt | current->move.endt |
