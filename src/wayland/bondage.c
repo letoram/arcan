@@ -260,6 +260,17 @@ static void bind_output(struct wl_client* client,
 	wl_output_send_mode(resource, WL_OUTPUT_MODE_CURRENT,
 		wl.init.display_width_px, wl.init.display_height_px, wl.init.rate);
 
+	if (version >= WL_OUTPUT_SCALE_SINCE_VERSION){
+		int scale = wl.scale;
+		if (!scale){
+			wl.init.density = roundf(wl.init.density / ARCAN_SHMPAGE_DEFAULT_PPCM);
+		}
+		wl_output_send_scale(resource, scale);
+		cl->scale = scale;
+	}
+
 	if (version >= 2)
 		wl_output_send_done(resource);
 }
+
+/* for zxdg output, logical_position and logical_size as well */

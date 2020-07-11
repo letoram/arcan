@@ -40,6 +40,7 @@ static void comp_surf_create(struct wl_client *client,
 		.client = cl,
 		.tracetag = "compositor",
 		.shm_gl_fail = wl.default_accel_surface,
+		.scale = cl->scale
 	};
 	new_surf->viewport = (struct arcan_event){
 		.category = EVENT_EXTERNAL,
