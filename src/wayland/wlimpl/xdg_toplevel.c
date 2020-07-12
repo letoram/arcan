@@ -57,8 +57,8 @@ static bool xdgtoplevel_shmifev_handler(
 					h = wl.init.display_height_px;
 				}
 
-				w /= surf->scale;
-				h /= surf->scale;
+				w *= (1.0 / surf->scale);
+				h *= (1.0 / surf->scale);
 
 				xdg_toplevel_send_configure(surf->shell_res, w, h, &states);
 				xdg_surface_send_configure(surf->surf_res, STEP_SERIAL());
@@ -237,8 +237,8 @@ static void xdgtop_set_max(struct wl_client* cl,
 {
 	trace(TRACE_SHELL, "xdgtop_set_max (%"PRId32", %"PRId32")");
 	struct comp_surf* surf = wl_resource_get_user_data(res);
-	surf->max_w = width;
-	surf->max_h = height;
+	surf->max_w = width * (1.0 / surf->scale);
+	surf->max_h = height * (1.0 / surf->scale);
 }
 
 /*
@@ -249,8 +249,8 @@ static void xdgtop_set_min(struct wl_client* cl,
 {
 	trace(TRACE_SHELL, "xdgtop_set_min (%"PRId32", %"PRId32")", width, height);
 	struct comp_surf* surf = wl_resource_get_user_data(res);
-	surf->min_w = width;
-	surf->min_h = height;
+	surf->min_w = width * (1.0 / surf->scale);
+	surf->min_h = height * (1.0 / surf->scale);
 }
 
 /*

@@ -24,6 +24,26 @@ static void bind_comp(struct wl_client *client,
 	wl_resource_set_implementation(res, &compositor_if, NULL, NULL);
 }
 
+static void bind_cons(struct wl_client* client,
+	void *data, uint32_t version, uint32_t id)
+{
+	trace(TRACE_ALLOC, "wl_bind(constraints %d:%d)", version, id);
+	struct wl_resource* res = wl_resource_create(client,
+		&zwp_pointer_constraints_v1_interface, version, id);
+	if (!res){
+		wl_client_post_no_memory(client);
+		return;
+	}
+
+	struct bridge_client* cl = find_client(client);
+	if (!cl){
+		wl_client_post_no_memory(client);
+		return;
+	}
+
+	wl_resource_set_implementation(res, &consptr_if, cl, NULL);
+}
+
 static void bind_seat(struct wl_client *client,
 	void *data, uint32_t version, uint32_t id)
 {
@@ -260,13 +280,14 @@ static void bind_output(struct wl_client* client,
 	wl_output_send_mode(resource, WL_OUTPUT_MODE_CURRENT,
 		wl.init.display_width_px, wl.init.display_height_px, wl.init.rate);
 
+	int scale = wl.scale;
+	if (!scale){
+		scale = roundf(wl.init.density / ARCAN_SHMPAGE_DEFAULT_PPCM);
+	}
+	cl->scale = scale;
+
 	if (version >= WL_OUTPUT_SCALE_SINCE_VERSION){
-		int scale = wl.scale;
-		if (!scale){
-			wl.init.density = roundf(wl.init.density / ARCAN_SHMPAGE_DEFAULT_PPCM);
-		}
 		wl_output_send_scale(resource, scale);
-		cl->scale = scale;
 	}
 
 	if (version >= 2)

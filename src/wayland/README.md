@@ -125,7 +125,9 @@ other useful xwininfo: -tree -root
 ## Adding Protocols
 
 Wayland, in all its COMplexity, is practically a huge tree of xml files that
-may or may not be present, and may or may not be needed depending on the client.
+may or may not be present, and may or may not be needed depending on the
+client.  The practical reality lands somewhere between all the bad parts of
+TERMCAP and Windows Registry combined.
 
 To add support for a new 'protocol':
 
@@ -137,10 +139,13 @@ To add support for a new 'protocol':
 6. (bondage.c) create a bind function that references the table from 5.
 7. (waybridge.c) add a command-line toggle for the protocol, update help printout
 8. (waybridge.c) append big if-else with an if myprotocol then add bind function to wl\_display
-9. actually fill in the stubs from #4, 9 times out of 10, it results in a shmif\_enqueue
+9. actually fill in the stubs from #4, 9 times out of 10, it results in a shmif\_enqueue,
+   skip reading the xml bikeshedding verbiage and glance at a few compositor implementation
 10. modify WM to pair corresponding features
 11. (optional) bask in the glory of the 'simplicity', cry and die a little on the inside.
-
+12. (optional) consider writing tests, realise that it's not really a thing here
+13. (optional) hunt for a client that actually uses the thing, realize it doesn't follow spec. cry again.
+14. (optional) say fuck it, write a fuzzer, find a few UAFs, use registry to fingerprint. stockpile.
 
 TODO
 ====
@@ -171,7 +176,7 @@ determine if we are compliant or not, because Wayland.
       - [p] Positioners
       - [p] zxdg-v6 to xdg-shell mapping
     - [i] Application-test suite and automated tests (SDL, QT, GTK, ...),
-          seems that canonical attempts to tackle this
+          seems that canonical attempts to tackle this (though ergonomics...)
     - [p] XWayland (WM parts)
 - [ ] Milestone 3, funky things
   - [x] SHM to GL texture mapping
@@ -187,17 +192,19 @@ determine if we are compliant or not, because Wayland.
   - [p] Sandboxing
   - [x] Migration/Reset/Crash-Recover
   - [ ] Drag and Drop (cursor states)
+	- [ ] Subsurface pre-composition
 
 - [ ] Misc. protocols:
   - [ ] Idle Inhibit Unstable
-  - [ ] Pointer Constraints
+  - [x] Pointer Constraints
   - [ ] Pointer Gestures
   - [ ] Input Method
   - [ ] Keyboard Shortcuts
   - [ ] Tablet
   - [ ] Presentation Time
   - [ ] Viewporter
+	- [x] Decoration
   - [ ] Xdg-output
   - [ ] Xdg-foreign
 	- [x] Dma- buf
-	- [ ] Qt- specific protocols for SDL shutdown issue
+	- [d] Qt- specific protocols for SDL shutdown issue

@@ -531,6 +531,11 @@ static void destroy_comp_surf(struct comp_surf* surf, bool clean)
 	else
 		trace(TRACE_ALLOC, "destroy comp on non-acon surface\n");
 
+	if (surf->confine_region){
+		free_region(surf->confine_region);
+		surf->confine_region = NULL;
+	}
+
 	if (clean){
 		memset(surf, '\0', sizeof(struct comp_surf));
 		free(surf);
@@ -908,10 +913,6 @@ static void rebuild_client(struct bridge_client* bcl)
 		}
 	}
 
-/* clipboards can be allocated dynamically so no need to care there */
-	arcan_shmif_drop(&bcl->clip_in);
-	arcan_shmif_drop(&bcl->clip_out);
-
 /* need to treat the mouse cursor as something special, (if it is used),
  * rerequest it, assign to the last known surface that held it and update
  * the corresponding slot group and index */
@@ -1088,6 +1089,7 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-xdg           disable the xdg protocol\n"
 "\t-no-zxdg          disable the zxdg protocol\n"
 "\t-no-output        disable the output protocol\n"
+"\t-no-constraints   disable the pointer constraints protocol\n"
 "\nDebugging Tools:\n"
 "\t-trace level      set trace output to (bitmask or key1,key2,...):\n"
 "\t\t1   - alloc         2 - digital          4 - analog\n"
@@ -1190,7 +1192,7 @@ int main(int argc, char* argv[])
  */
 	struct {
 		int compositor, shell, shm, seat, output, ddev;
-		int egl, zxdg, xdg, subcomp, drm, relp, dma;
+		int egl, zxdg, xdg, subcomp, drm, relp, dma, cons;
 	} protocols = {
 		.compositor = 4,
 		.shell = 1,
@@ -1205,6 +1207,7 @@ int main(int argc, char* argv[])
 		.subcomp = 1,
 		.ddev = 3,
 		.relp = 1,
+		.cons = 1
 	};
 #ifdef ENABLE_SECCOMP
 	bool sandbox = false;
@@ -1327,6 +1330,8 @@ int main(int argc, char* argv[])
 			protocols.ddev = 0;
 		else if (strcmp(argv[arg_i], "-no-relative-pointer") == 0)
 			protocols.relp = 0;
+		else if (strcmp(argv[arg_i], "-no-constraints") == 0)
+			protocols.cons= 0;
 		else if (strcmp(argv[arg_i], "-exec-x11") == 0){
 			wl.exec_mode = true;
 			wl.use_xwayland = true;
@@ -1538,6 +1543,9 @@ int main(int argc, char* argv[])
 	if (protocols.relp)
 		wl_global_create(wl.disp, &zwp_relative_pointer_manager_v1_interface,
 			protocols.relp, NULL, &bind_relp);
+	if (protocols.cons)
+		wl_global_create(wl.disp, &zwp_pointer_constraints_v1_interface,
+			protocols.cons, NULL, &bind_cons);
 
 	trace(TRACE_ALLOC, "wl_display() finished");
 

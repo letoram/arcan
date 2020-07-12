@@ -76,6 +76,8 @@ static void enter_all(struct comp_surf* cl)
 				cl->client->keyboard, STEP_SERIAL(), cl->res, &states);
 		wl_array_release(&states);
 	}
+
+	update_confinement(cl);
 }
 
 static void update_mxy(struct comp_surf* cl, unsigned long long pts)
@@ -85,6 +87,10 @@ static void update_mxy(struct comp_surf* cl, unsigned long long pts)
 
 	if (!pts)
 		pts = arcan_timemillis();
+
+/* for confinement we should really walk the region as well to determine
+ * if the coordinates are within the confinement or not and filter those
+ * out that fall wrong and re-signal warp + confinement */
 
 	trace(TRACE_ANALOG, "mouse@%d,%d", cl->acc_x, cl->acc_y);
 	enter_all(cl);
@@ -279,7 +285,10 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 							return;
 					}
 				}
-				update_mxy(cl, ev->pts);
+
+		/* locked pointer should only emit relative motion */
+				if (!cl->confined || !cl->locked)
+					update_mxy(cl, ev->pts);
 			}
 		}
 		else
