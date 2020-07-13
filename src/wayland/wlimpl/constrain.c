@@ -67,19 +67,19 @@ void consptr_lock(struct wl_client* cl, struct wl_resource* res,
 	struct wl_resource* lock = wl_resource_create(
 			cl, &zwp_locked_pointer_v1_interface, wl_resource_get_version(res), id);
 
-	if (!res){
+	if (!lock){
 		wl_client_post_no_memory(cl);
 		return;
 	}
 
 	surf->locked = true;
 	surf->confined = lock;
-	wl_resource_set_implementation(res, &lockptr_if, surf, NULL);
+	wl_resource_set_implementation(lock, &lockptr_if, surf, NULL);
 
 	if (surf->client->last_cursor == surf->res)
 		update_confinement(surf);
 
-	zwp_locked_pointer_v1_send_locked(res);
+	zwp_locked_pointer_v1_send_locked(lock);
 }
 
 void consptr_confine(struct wl_client* cl, struct wl_resource* res,

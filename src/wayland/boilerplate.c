@@ -262,4 +262,11 @@ static const struct zwp_pointer_constraints_v1_interface consptr_if = {
 	.lock_pointer = consptr_lock
 };
 
+#include "wayland-xdg-output-unstable-v1-server-protocol.h"
+#include "wlimpl/xdg_output.c"
+static const struct zxdg_output_manager_v1_interface outmgr_if = {
+	.destroy = xdgoutput_mgmt_destroy,
+	.get_xdg_output = xdgoutput_get
+};
+
 #include "bondage.c"
