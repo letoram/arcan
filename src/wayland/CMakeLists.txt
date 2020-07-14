@@ -58,6 +58,7 @@ set(PROTOCOLS
 	"${WAYLANDPROTOCOLS_PATH}/unstable/relative-pointer/relative-pointer-unstable-v1"
 	"${WAYLANDPROTOCOLS_PATH}/unstable/idle-inhibit/idle-inhibit-unstable-v1"
 	"${WAYLANDPROTOCOLS_PATH}/unstable/xdg-output/xdg-output-unstable-v1"
+	"${WAYLANDPROTOCOLS_PATH}/unstable/xdg-decoration/xdg-decoration-unstable-v1"
 	"${WAYLANDPROTOCOLS_PATH}/stable/xdg-shell/xdg-shell"
 	"${CMAKE_CURRENT_SOURCE_DIR}/wlimpl/wayland-drm"
 )

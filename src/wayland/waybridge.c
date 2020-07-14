@@ -514,6 +514,12 @@ static void destroy_comp_surf(struct comp_surf* surf, bool clean)
 		}
 	}
 
+/* xdg_decor management object */
+	if (surf->decor_mgmt){
+		wl_resource_destroy(surf->decor_mgmt);
+		surf->decor_mgmt = NULL;
+	}
+
 	if (surf->acon.addr){
 		struct acon_tag* tag = surf->acon.user;
 		if (tag){
@@ -1091,6 +1097,7 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-output        disable the output protocol\n"
 "\t-no-xdg-output    disable the xdg-output protocol\n"
 "\t-no-constraints   disable the pointer constraints protocol\n"
+"\t-no-xdg-decor     disable the xdg-decor protocol\n"
 "\nDebugging Tools:\n"
 "\t-trace level      set trace output to (bitmask or key1,key2,...):\n"
 "\t\t1   - alloc         2 - digital          4 - analog\n"
@@ -1193,7 +1200,7 @@ int main(int argc, char* argv[])
  */
 	struct {
 		int compositor, shell, shm, seat, output, ddev;
-		int egl, zxdg, xdg, subcomp, drm, relp, dma, cons, xdg_output;
+		int egl, zxdg, xdg, subcomp, drm, relp, dma, cons, xdg_output, xdg_decor;
 	} protocols = {
 		.compositor = 4,
 		.shell = 1,
@@ -1209,7 +1216,8 @@ int main(int argc, char* argv[])
 		.ddev = 3,
 		.relp = 1,
 		.cons = 1,
-		.xdg_output = 3
+		.xdg_output = 3,
+		.xdg_decor = 1,
 	};
 #ifdef ENABLE_SECCOMP
 	bool sandbox = false;
@@ -1336,6 +1344,8 @@ int main(int argc, char* argv[])
 			protocols.relp = 0;
 		else if (strcmp(argv[arg_i], "-no-constraints") == 0)
 			protocols.cons= 0;
+		else if (strcmp(argv[arg_i], "-no-xdg-decor") == 0)
+			protocols.xdg_decor = 0;
 		else if (strcmp(argv[arg_i], "-exec-x11") == 0){
 			wl.exec_mode = true;
 			wl.use_xwayland = true;
@@ -1553,6 +1563,9 @@ int main(int argc, char* argv[])
 	if (protocols.xdg_output)
 		wl_global_create(wl.disp, &zxdg_output_manager_v1_interface,
 			protocols.xdg_output, NULL, &bind_xdgoutput);
+	if (protocols.xdg_decor)
+		wl_global_create(wl.disp, &zxdg_decoration_manager_v1_interface,
+			protocols.xdg_decor, NULL, &bind_xdgdecor);
 
 	trace(TRACE_ALLOC, "wl_display() finished");
 

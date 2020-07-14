@@ -128,6 +128,10 @@ struct surf_state {
 	bool maximized : 1;
 	bool minimized : 1;
 	bool drag_resize : 1;
+
+/* set by xdgdecor */
+	bool ssd : 1;
+	bool csd : 1;
 };
 
 struct frame_cb {
@@ -160,6 +164,7 @@ struct comp_surf {
  * or similar) forced us to reconsider at a later stage. */
 	bool pending_commit;
 
+	struct wl_resource* decor_mgmt;
 	struct wl_resource* confined;
 	bool locked;
 	struct surface_region* confine_region;
