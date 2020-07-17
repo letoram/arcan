@@ -71,7 +71,8 @@ static struct wl_subcompositor_interface subcomp_if = {
 static struct wl_seat_interface seat_if = {
 	.get_pointer = seat_pointer,
 	.get_keyboard = seat_keyboard,
-	.get_touch = seat_touch
+	.get_touch = seat_touch,
+	.release = seat_release
 };
 
 #include "wlimpl/shell_surf.c"

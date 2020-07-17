@@ -1,6 +1,7 @@
 #ifndef HAVE_STRUCTS
 
 #define STEP_SERIAL() ( wl_display_next_serial(wl.disp) )
+#define MAX_SEATS 8
 
 struct xkb_stateblock {
 	struct xkb_context* context;
@@ -31,6 +32,21 @@ struct surface_region {
 	struct surface_region* next;
 };
 
+struct seat {
+	struct xkb_stateblock kbd_state;
+
+	struct wl_resource* kbd;
+	struct wl_resource* in_kbd;
+
+	struct wl_resource* ptr;
+	struct wl_resource* rel_ptr;
+	struct wl_resource* in_ptr;
+
+	struct wl_resource* touch;
+	struct wl_resource* in_touch;
+	bool used;
+};
+
 struct bridge_client {
 	struct arcan_shmif_cont acon;
 	struct wl_listener l_destr;
@@ -38,12 +54,12 @@ struct bridge_client {
 
 /* seat / wl-api mapping references */
 	struct wl_client* client;
-	struct wl_resource* keyboard;
-	struct wl_resource* pointer;
-	struct wl_resource* touch;
-	struct wl_resource* output; /* only 1 atm */
 
-	struct xkb_stateblock kbd_state;
+/* some clients rely on multiple seat objects, we still broadcast to all
+ * of them though when mapping events */
+	struct seat seats[MAX_SEATS];
+
+	struct wl_resource* output; /* only 1 atm */
 
 /* cursor states, we want to share one subseg connection
  * and just switch surface resource around */
@@ -55,8 +71,6 @@ struct bridge_client {
 	struct wl_resource* lock_region;
 	struct wl_resource* locked;
 	struct wl_resource* confined;
-
-	struct wl_resource* got_relative;
 
 /* need to track these so that we can send enter/leave correctly,
  * watch out for UAFs */
@@ -189,6 +203,8 @@ struct comp_surf {
 	struct scratch_req scratch[64];
 	size_t frames_pending, subsurf_pending;
 
+	int acc_x, acc_y;
+
 /*
  * need to cache/update this one whenever we reparent, etc.
  */
@@ -213,9 +229,6 @@ struct comp_surf {
 
 /* need to track these so that we can subtract from displayhints..*/
 	uint32_t geom_w, geom_h, geom_x, geom_y;
-
-/* for mouse pointer, we need a surface accumulator */
-	int acc_x, acc_y;
 
 	struct surf_state last_state, states;
 /* return [true] if the event was consumed and shouldn't be processed by the
