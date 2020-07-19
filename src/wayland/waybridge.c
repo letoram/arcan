@@ -512,10 +512,8 @@ static void destroy_comp_surf(struct comp_surf* surf, bool clean)
 		}
 	}
 
-/* xdg_decor management object */
 	if (surf->decor_mgmt){
-		wl_resource_destroy(surf->decor_mgmt);
-		surf->decor_mgmt = NULL;
+		wl_resource_set_user_data(surf->decor_mgmt, NULL);
 	}
 
 	if (surf->acon.addr){
@@ -1124,6 +1122,7 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-xdg-output    disable the xdg-output protocol\n"
 "\t-no-constraints   disable the pointer constraints protocol\n"
 "\t-no-xdg-decor     disable the xdg-decor protocol\n"
+"\t-no-kwin-decor    disable the kwin-ssd-manager protocol\n"
 "\nDebugging Tools:\n"
 "\t-trace level      set trace output to (bitmask or key1,key2,...):\n"
 "\t\t1   - alloc         2 - digital          4 - analog\n"
@@ -1226,7 +1225,7 @@ int main(int argc, char* argv[])
  */
 	struct {
 		int compositor, shell, shm, seat, output, ddev;
-		int egl, zxdg, xdg, subcomp, drm, relp, dma, cons, xdg_output, xdg_decor;
+		int egl, zxdg, xdg, subcomp, drm, relp, dma, cons, xdg_output, xdg_decor, kwin_decor;
 	} protocols = {
 		.compositor = 4,
 		.shell = 1,
@@ -1244,6 +1243,7 @@ int main(int argc, char* argv[])
 		.cons = 1,
 		.xdg_output = 3,
 		.xdg_decor = 1,
+		.kwin_decor = 1
 	};
 #ifdef ENABLE_SECCOMP
 	bool sandbox = false;
@@ -1372,6 +1372,8 @@ int main(int argc, char* argv[])
 			protocols.cons= 0;
 		else if (strcmp(argv[arg_i], "-no-xdg-decor") == 0)
 			protocols.xdg_decor = 0;
+		else if (strcmp(argv[arg_i], "-no-kwin-decor") == 0)
+			protocols.kwin_decor = 0;
 		else if (strcmp(argv[arg_i], "-exec-x11") == 0){
 			wl.exec_mode = true;
 			wl.use_xwayland = true;
@@ -1592,6 +1594,9 @@ int main(int argc, char* argv[])
 	if (protocols.xdg_decor)
 		wl_global_create(wl.disp, &zxdg_decoration_manager_v1_interface,
 			protocols.xdg_decor, NULL, &bind_xdgdecor);
+	if (protocols.kwin_decor)
+		wl_global_create(wl.disp, &org_kde_kwin_server_decoration_manager_interface,
+			protocols.kwin_decor, NULL, &bind_kwindecor);
 
 	trace(TRACE_ALLOC, "wl_display() finished");
 

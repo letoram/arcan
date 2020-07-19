@@ -61,6 +61,7 @@ set(PROTOCOLS
 	"${WAYLANDPROTOCOLS_PATH}/unstable/xdg-decoration/xdg-decoration-unstable-v1"
 	"${WAYLANDPROTOCOLS_PATH}/stable/xdg-shell/xdg-shell"
 	"${CMAKE_CURRENT_SOURCE_DIR}/wlimpl/wayland-drm"
+	"${CMAKE_CURRENT_SOURCE_DIR}/wlimpl/server-decoration"
 )
 
 list(APPEND SOURCES ${src})

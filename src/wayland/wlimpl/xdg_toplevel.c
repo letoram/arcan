@@ -46,13 +46,11 @@ static bool xdgtoplevel_shmifev_handler(
 
 				if (!surf->states.unfocused){
 					sv = wl_array_add(&states, sizeof(uint32_t));
-//					enter_all(surf);
 					*sv = XDG_TOPLEVEL_STATE_ACTIVATED;
 					trace(TRACE_SHELL, "focused");
 				}
 				else {
 					release_all_keys(surf->client);
-//					leave_all(surf);
 				}
 
 				if (wl.force_sz){
@@ -65,6 +63,15 @@ static bool xdgtoplevel_shmifev_handler(
 
 				xdg_toplevel_send_configure(surf->shell_res, w, h, &states);
 				xdg_surface_send_configure(surf->surf_res, STEP_SERIAL());
+
+	/* from zxdg_toplevel_decoration_v1_configure */
+				if (surf->pending_decoration && surf->decor_mgmt){
+					trace(TRACE_SHELL, "decor=%d", surf->pending_decoration);
+					zxdg_toplevel_decoration_v1_send_configure(
+						surf->decor_mgmt, surf->pending_decoration);
+					surf->pending_decoration = 0;
+				}
+
 				wl_array_release(&states);
 				changed = true;
 			}

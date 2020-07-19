@@ -174,12 +174,17 @@ struct comp_surf {
 	struct wl_resource* sub_parent_res;
 	struct wl_resource* sub_child_res;
 
+/* used with zxdg_toplevel_decoration and kwin- decor
+ * 0 = no change,
+ * otherwise forward value to decorator */
+	int pending_decoration;
+	struct wl_resource* decor_mgmt;
+
 /* mark the surface as supposed to commit, but some reason (ongoing sync
  * or similar) forced us to reconsider at a later stage. */
 	bool pending_commit;
-
-	struct wl_resource* decor_mgmt;
 	struct wl_resource* confined;
+
 	bool locked;
 	struct surface_region* confine_region;
 
