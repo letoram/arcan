@@ -57,12 +57,19 @@ static bool xdgpop_defer_handler(
 	}
 
 /* likely that if this is not true, we have a protocol error */
-	if (upd_view)
+	if (upd_view){
 		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
+		xdg_popup_send_configure(popup,
+			surf->viewport.ext.viewport.x, surf->viewport.ext.viewport.y,
+			surf->viewport.ext.viewport.w, surf->viewport.ext.viewport.h);
+		xdg_surface_send_configure(surf->surf_res, STEP_SERIAL());
+	}
+
+	surf->internal = xdgpop_internal;
 	return true;
 }
 
-static bool xdgsurf_defer_handler(
+static bool xdgtop_defer_handler(
 	struct surface_request* req, struct arcan_shmif_cont* con)
 {
 	if (!con){
@@ -100,12 +107,13 @@ static bool xdgsurf_defer_handler(
 	size_t w = surf->acon.w;
 	size_t h = surf->acon.h;
 	if (wl.force_sz){
-		w = wl.init.display_width_px / surf->scale;
-		h = wl.init.display_height_px / surf->scale;
+		w = wl.init.display_width_px * (1.0 / surf->scale);
+		h = wl.init.display_height_px * (1.0 / surf->scale);
 	}
 
 	xdg_toplevel_send_configure(toplevel, w, h, &states);
-	xdg_surface_send_configure(surf->surf_res, wl_display_next_serial(wl.disp));
+	xdg_surface_send_configure(surf->surf_res, STEP_SERIAL());
+	surf->internal = xdgtop_internal;
 	wl_array_release(&states);
 	return true;
 }
@@ -123,7 +131,7 @@ static void xdgsurf_toplevel(
 		.target = res,
 		.id = id,
 		.trace = "xdg toplevel",
-		.dispatch = xdgsurf_defer_handler,
+		.dispatch = xdgtop_defer_handler,
 		.client = surf->client,
 		.source = surf
 	}, 't');
@@ -156,6 +164,9 @@ static void xdgsurf_set_geometry(struct wl_client* cl,
 	struct wl_resource* res, int32_t x, int32_t y, int32_t width, int32_t height)
 {
 	struct comp_surf* surf = wl_resource_get_user_data(res);
+	if (!surf)
+		return;
+
 	trace(TRACE_SHELL, "xdgsurf_setgeom("
 		"%"PRIu32"+%"PRIu32", %"PRIu32"+%"PRIu32")", x, y, width, height);
 
@@ -190,6 +201,9 @@ static void xdgsurf_destroy(
 {
 	trace(TRACE_ALLOC, "%"PRIxPTR, res);
 	struct comp_surf* surf = wl_resource_get_user_data(res);
-	surf->shell_res = NULL;
+	if (surf){
+		surf->shell_res = NULL;
+		surf->internal = NULL;
+	}
 	wl_resource_destroy(res);
 }

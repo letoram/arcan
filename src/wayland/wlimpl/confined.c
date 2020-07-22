@@ -2,11 +2,13 @@ void confptr_destroy(struct wl_client* cl, struct wl_resource* res)
 {
 	trace(TRACE_SEAT, "confine_pointer_destroy");
 	struct comp_surf* surf = wl_resource_get_user_data(res);
+	wl_resource_set_user_data(res, NULL);
 
 	if (surf->confined != res)
 		return;
 
 	surf->confined = NULL;
+	surf->locked = false;
 	wl_resource_destroy(res);
 }
 

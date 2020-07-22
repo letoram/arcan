@@ -17,9 +17,14 @@ static bool xdgtoplevel_shmifev_handler(
 			bool changed = displayhint_handler(surf, &ev->tgt);
 
 /* and then, if something has changed, send the configure event */
-			int w = ev->tgt.ioevs[0].iv ? ev->tgt.ioevs[0].iv : surf->acon.w;
-			int h = ev->tgt.ioevs[1].iv ? ev->tgt.ioevs[1].iv : surf->acon.h;
+			int w = ev->tgt.ioevs[0].iv;
+			int h = ev->tgt.ioevs[1].iv;
+
 			bool resized = (w && h && (w != surf->acon.w || h != surf->acon.h));
+			if (!resized){
+				w = surf->geom_w;
+				h = surf->geom_h;
+			}
 
 			if (changed || resized){
 				struct wl_array states;
@@ -77,7 +82,7 @@ static bool xdgtoplevel_shmifev_handler(
 			}
 
 			if (changed)
-				try_frame_callback(surf, &surf->acon);
+				try_frame_callback(surf);
 		}
 		return true;
 		break;
@@ -90,9 +95,6 @@ static bool xdgtoplevel_shmifev_handler(
  * solvable, can only warn the appl- side about the perils of force closing a
  * wayland surface - unless there is some error we can send to fake it */
 		case TARGET_COMMAND_EXIT:
-/*
- * try_frame_callback(surf, &surf->acon);
- */
 			xdg_toplevel_send_close(surf->shell_res);
 			return true;
 		break;
@@ -332,4 +334,9 @@ static void xdgtop_destroy(
 		if (surf->client->last_cursor == res)
 			surf->client->last_cursor = NULL;
 	}
+}
+
+static void xdgtop_internal(struct comp_surf* surf, int cmd)
+{
+	try_frame_callback(surf);
 }

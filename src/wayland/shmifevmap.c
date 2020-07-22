@@ -1,19 +1,19 @@
-static void get_keyboard_states(struct wl_array* dst)
-{
-	wl_array_init(dst);
-/* FIXME: track press/release so we can send the right ones */
-}
-
 static void leave_seat(
 	struct comp_surf* cl,
 	struct seat* seat, long serial)
 {
 	if (seat->ptr && seat->in_ptr){
+		trace(TRACE_SEAT, "leave-ptr@%ld:seat(%"PRIxPTR")-surface:%"
+			PRIxPTR, serial, (uintptr_t) seat->in_ptr);
+
 		wl_pointer_send_leave(seat->ptr, serial, seat->in_ptr);
 		seat->in_ptr = NULL;
 	}
 
 	if (seat->kbd && seat->in_kbd){
+		trace(TRACE_SEAT, "leave-kbd@%ld:seat(%"PRIxPTR")-surface:%"
+			PRIxPTR, serial, (uintptr_t) seat->in_kbd);
+
 		wl_keyboard_send_leave(seat->kbd, serial, seat->in_kbd);
 		seat->in_kbd = NULL;
 	}
@@ -33,11 +33,14 @@ static void enter_seat(
 		trace(TRACE_SEAT, "enter-ptr@%ld:seat(%"PRIxPTR")-surface:%"
 			PRIxPTR, serial, (uintptr_t)seat, (uintptr_t)cl->res, cl->res);
 
+		int x, y;
+		arcan_shmif_mousestate(&cl->acon, cl->mstate_abs, NULL, &x, &y);
+
 		wl_pointer_send_enter(
 			seat->ptr,
 			serial, cl->res,
-			wl_fixed_from_int(cl->acc_x * (1.0 / cl->scale)),
-			wl_fixed_from_int(cl->acc_y * (1.0 / cl->scale))
+			wl_fixed_from_int(x * (1.0 / cl->scale)),
+			wl_fixed_from_int(y * (1.0 / cl->scale))
 		);
 
 		seat->in_ptr = cl->res;
@@ -49,7 +52,7 @@ static void enter_seat(
 		}
 
 		struct wl_array states;
-		get_keyboard_states(&states);
+		wl_array_init(&states);
 		wl_keyboard_send_enter(seat->kbd, serial, cl->res, &states);
 		wl_array_release(&states);
 
@@ -81,35 +84,6 @@ static void leave_all(struct comp_surf* cl)
 {
 	each_seat(cl, leave_seat);
 	update_confinement(cl);
-}
-
-static void update_mxy(struct comp_surf* cl, unsigned long long pts)
-{
-	if (!pts)
-		pts = arcan_timemillis();
-
-/* for confinement we should really walk the region as well to determine
- * if the coordinates are within the confinement or not and filter those
- * out that fall wrong and re-signal warp + confinement */
-
-	trace(TRACE_ANALOG, "mouse@%d,%d", cl->acc_x, cl->acc_y);
-	enter_all(cl);
-
-	for (size_t i = 0; i < COUNT_OF(cl->client->seats); i++){
-		struct seat* cs = &cl->client->seats[i];
-		if (!cs->used || !cs->ptr)
-			continue;
-
-		wl_pointer_send_motion(cs->ptr,
-			pts,
-			wl_fixed_from_int((1.0 / cl->scale) * cl->acc_x),
-			wl_fixed_from_int((1.0 / cl->scale) * cl->acc_y)
-	);
-
-		if (wl_resource_get_version(cs->ptr) >= WL_POINTER_FRAME_SINCE_VERSION){
-			wl_pointer_send_frame(cs->ptr);
-		}
-	}
 }
 
 static void scroll_axis_digital(
@@ -158,14 +132,15 @@ static void mouse_button_send(struct bridge_client* bcl,
 			continue;
 
 		wl_pointer_send_button(seat->ptr, serial, pts, wl_ind, btn_state);
+		if (wl_resource_get_version(seat->ptr))
+			wl_pointer_send_frame(seat->ptr);
 	}
 }
 
 static void update_mbtn(struct comp_surf* cl,
 	unsigned long long pts, int ind, bool active)
 {
-	trace(TRACE_DIGITAL,
-		"mouse-btn(ind: %d:%d, @%d,%d)", ind,(int) active, cl->acc_x, cl->acc_y);
+	trace(TRACE_DIGITAL, "mouse-btn(ind: %d:%d)", ind,(int) active);
 
 	if (!pts)
 		pts = arcan_timemillis();
@@ -250,11 +225,42 @@ static void update_kbd(struct comp_surf* cl, arcan_ioevent* ev)
 	forward_key(cl->client, subid, active);
 }
 
-static void consume_relative(
-	struct bridge_client* cl, uint64_t ts, int x, int y)
+static void update_mxy(struct comp_surf* cl, int x, int y)
 {
+/* for confinement we should really walk the region as well to determine
+ * if the coordinates are within the confinement or not and filter those
+ * out that fall wrong and re-signal warp + confinement */
+	long long	pts = arcan_timemillis();
+	struct bridge_client* bcl = cl->client;
+
+	trace(TRACE_ANALOG, "mouse@%d,%d", x, y);
+	enter_all(cl);
+	float sf = 1.0 / cl->scale;
+
+	for (size_t i = 0; i < COUNT_OF(cl->client->seats); i++){
+		struct seat* cs = &bcl->seats[i];
+		if (!cs->used || !cs->ptr)
+			continue;
+
+		wl_pointer_send_motion(cs->ptr,
+			pts,
+			wl_fixed_from_int(sf * x),
+			wl_fixed_from_int(sf * y)
+		);
+
+		if (wl_resource_get_version(cs->ptr) >= WL_POINTER_FRAME_SINCE_VERSION){
+			wl_pointer_send_frame(cs->ptr);
+		}
+	}
+}
+
+static void update_mrxry(struct comp_surf* surf, int dx, int dy)
+{
+	long long	ts = arcan_timemillis();
 	uint32_t lo = (ts * 1000) >> 32;
 	uint32_t hi = ts * 1000;
+
+	struct bridge_client* cl = surf->client;
 
 	for (size_t i = 0; i < COUNT_OF(cl->seats); i++){
 		if (!cl->seats[i].used || !cl->seats[i].rel_ptr)
@@ -262,70 +268,57 @@ static void consume_relative(
 
 		zwp_relative_pointer_v1_send_relative_motion(
 			cl->seats[i].rel_ptr, hi, lo,
-			wl_fixed_from_int(x), wl_fixed_from_int(y),
-			wl_fixed_from_int(x), wl_fixed_from_int(y)
+			wl_fixed_from_int(dx), wl_fixed_from_int(dy),
+			wl_fixed_from_int(dx), wl_fixed_from_int(dy)
 		);
 	}
 }
 
-static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
+struct mouse_buffer {
+	bool dirty;
+	int dx, dy;
+};
+
+static void flush_mouse(struct comp_surf* surf, struct mouse_buffer* buf)
 {
+	int x, y;
+	arcan_shmif_mousestate(&surf->acon, surf->mstate_abs, NULL, &x, &y);
+	update_mrxry(surf, buf->dx, buf->dy);
+	update_mxy(surf, x, y);
+	buf->dirty = false;
+	buf->dx = buf->dy = 0;
+}
+
+static void translate_input(
+	struct comp_surf* cl, arcan_event* inev, struct mouse_buffer* mbuf)
+{
+	arcan_ioevent* ev = &inev->io;
+
 	if (ev->devkind == EVENT_IDEVKIND_TOUCHDISP){
 		trace(TRACE_ANALOG, "touch");
 	}
-/* motion would/should always come before digital */
 	else if (ev->devkind == EVENT_IDEVKIND_MOUSE){
+
+/* an open ended question is if we should also buffer / accumulate scroll- events */
 		if (ev->datatype == EVENT_IDATATYPE_DIGITAL){
+			if (mbuf->dirty){
+				flush_mouse(cl, mbuf);
+			}
 			update_mbtn(cl, ev->pts, ev->subid, ev->input.digital.active);
 		}
+/* let the mouse samples accumulate until we reach either a mouse-digital
+ * event or end of current sample batch in order to absorb on event storms */
 		else if (ev->datatype == EVENT_IDATATYPE_ANALOG){
-/* both samples */
-			if (ev->subid == 2){
-				if (ev->input.analog.gotrel){
-					cl->acc_x += ev->input.analog.axisval[0];
-					cl->acc_y += ev->input.analog.axisval[2];
-
-/* forward to seats with a relative pointer */
-					consume_relative(cl->client, ev->pts,
-						ev->input.analog.axisval[0], ev->input.analog.axisval[1]);
-				}
-				else{
-					cl->acc_x = ev->input.analog.axisval[0];
-					cl->acc_y = ev->input.analog.axisval[2];
-				}
-
-				update_mxy(cl, ev->pts);
+			int x, y;
+			if (arcan_shmif_mousestate(&cl->acon, cl->mstate_abs, inev, &x, &y)){
+				mbuf->dirty = true;
 			}
-/* one sample at a time, we need history - either this will introduce small or
- * variable script defined latencies and require an event lookbehind or double
- * the sample load, go with the latter */
-			else {
-				if (ev->input.analog.gotrel){
-					if (ev->subid == 0)
-						cl->acc_x += ev->input.analog.axisval[0];
-					else if (ev->subid == 1)
-						cl->acc_y += ev->input.analog.axisval[0];
-				}
-				else {
-					if (ev->subid == 0){
-						cl->acc_x = ev->input.analog.axisval[0];
-						consume_relative(cl->client, ev->pts,
-							ev->input.analog.axisval[0], ev->input.analog.axisval[1]);
-					}
-					else if (ev->subid == 1){
-						cl->acc_y = ev->input.analog.axisval[0];
-						consume_relative(cl->client, ev->pts,
-							ev->input.analog.axisval[0], ev->input.analog.axisval[1]);
-					}
-				}
-
-		/* locked pointer should only emit relative motion */
-				if (!cl->confined || !cl->locked)
-					update_mxy(cl, ev->pts);
+			if (arcan_shmif_mousestate(&cl->acon, cl->mstate_rel, inev, &x, &y)){
+				mbuf->dirty = true;
+				mbuf->dx += x;
+				mbuf->dy += y;
 			}
 		}
-		else
-			;
 	}
 	else if (ev->datatype == EVENT_IDATATYPE_TRANSLATED)
 			update_kbd(cl, ev);
@@ -350,11 +343,11 @@ static void run_callback(struct comp_surf* surf)
 	}
 }
 
-static void try_frame_callback(
-	struct comp_surf* surf, struct arcan_shmif_cont* acon)
+static void try_frame_callback(struct comp_surf* surf)
 {
-/* still synching? */
-	if (!acon || !acon->addr || acon->addr->vready){
+/* if vready is set here we should just retry a bit later, since all surfaces
+ * run in signal-fd-on-change mode that is fine */
+	if (!surf || !surf->acon.addr || surf->acon.addr->vready){
 		return;
 	}
 
@@ -403,6 +396,8 @@ static void flush_surface_events(struct comp_surf* surf)
 	struct arcan_event ev;
 /* rcon is set as redirect-con when there's a shared connection or similar */
 	struct arcan_shmif_cont* acon = surf->rcon ? surf->rcon : &surf->acon;
+	bool got_frame_cb = false;
+	struct mouse_buffer mbuf = {0};
 
 	int pv;
 	while ((pv = arcan_shmif_poll(acon, &ev)) > 0){
@@ -410,7 +405,7 @@ static void flush_surface_events(struct comp_surf* surf)
 			continue;
 
 		if (ev.category == EVENT_IO){
-			translate_input(surf, &ev.io);
+			translate_input(surf, &ev, &mbuf);
 			continue;
 		}
 		else if (ev.category != EVENT_TARGET)
@@ -432,7 +427,7 @@ static void flush_surface_events(struct comp_surf* surf)
 			}
 		}
 		case TARGET_COMMAND_STEPFRAME:
-			try_frame_callback(surf, acon);
+			got_frame_cb = true;
 		break;
 
 /* in the 'generic' case, there's litle we can do that match
@@ -444,6 +439,14 @@ static void flush_surface_events(struct comp_surf* surf)
 		default:
 		break;
 		}
+	}
+
+	if (mbuf.dirty){
+		flush_mouse(surf, &mbuf);
+	}
+
+	if (got_frame_cb){
+		try_frame_callback(surf);
 	}
 
 	trace(TRACE_ALERT, "flush state: %d", pv);

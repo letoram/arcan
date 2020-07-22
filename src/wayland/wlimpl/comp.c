@@ -50,6 +50,10 @@ static void comp_surf_create(struct wl_client *client,
 	new_surf->res = wl_resource_create(client,
 		&wl_surface_interface, wl_resource_get_version(res), id);
 
+/* prepare state trackers for both absolute and relative mouse input */
+	arcan_shmif_mousestate_setup(NULL, false, new_surf->mstate_abs);
+	arcan_shmif_mousestate_setup(NULL, true, new_surf->mstate_rel);
+
 	if (!new_surf->res){
 		wl_resource_post_no_memory(res);
 		free(new_surf);
