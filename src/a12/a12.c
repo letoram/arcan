@@ -848,10 +848,9 @@ static void command_audioframe(struct a12_state* S)
 static void update_proxy_vcont(
 	struct a12_channel* channel, struct video_frame* vframe)
 {
+	struct arcan_shmif_cont* cont = channel->cont;
 	if (!channel->raw.request_raw_buffer)
 		goto fail;
-
-	struct arcan_shmif_cont* cont = channel->cont;
 
 	cont->vidp = channel->raw.request_raw_buffer(vframe->sw, vframe->sh,
 		&channel->cont->stride, channel->cont->hints, channel->raw.tag);
@@ -1399,7 +1398,8 @@ static void process_control(struct a12_state* S, void (*on_event)
 
 	uint8_t command = S->decode[17];
 	if (S->authentic < AUTH_FULL_PK && command != COMMAND_HELLO){
-		a12int_trace(A12_TRACE_CRYPTO, "illegal command (%d) on non-auth connection");
+		a12int_trace(A12_TRACE_CRYPTO,
+			"illegal command (%d) on non-auth connection", (int) command);
 		fail_state(S);
 		return;
 	}

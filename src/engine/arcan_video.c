@@ -3406,19 +3406,20 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 		memset(pool, 0, sizeof(pool));
 
 /* drop all children, add those that should be deleted to the pool */
-		for (size_t i = 0; i < vobj->childslots; i++){
-			arcan_vobject* cur = vobj->children[i];
-			if (!cur)
-				continue;
+	for (size_t i = 0; i < vobj->childslots; i++){
+		arcan_vobject* cur = vobj->children[i];
+		if (!cur)
+			continue;
 
-			if ((cur->mask & MASK_LIVING) > 0)
-				pool[cascade_c++] = cur;
+/* the last constraint should be guaranteed, but safety first */
+		if ((cur->mask & MASK_LIVING) > 0 && cascade_c < sum+1)
+			pool[cascade_c++] = cur;
 
-			dropchild(vobj, cur);
-		}
+		dropchild(vobj, cur);
+	}
 
-		arcan_mem_free(vobj->children);
-		vobj->childslots = 0;
+	arcan_mem_free(vobj->children);
+	vobj->childslots = 0;
 
 	current_context->nalive--;
 

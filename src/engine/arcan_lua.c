@@ -8514,7 +8514,7 @@ static int targetsnapshot(lua_State* ctx)
 
 /* verify that it is a safe namespace for writing */
 	if (ns != RESOURCE_APPL_STATE){
-		if (RESOURCE_APPL_SHARED || ns == RESOURCE_APPL_TEMP){
+		if (ns == RESOURCE_APPL_SHARED || ns == RESOURCE_APPL_TEMP){
 			command = TARGET_COMMAND_BCHUNK_OUT;
 		}
 		else {
