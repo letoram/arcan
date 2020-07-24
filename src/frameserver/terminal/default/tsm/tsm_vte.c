@@ -1780,11 +1780,9 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 		case 6: /* DECOM */
 			set_reset_flag(vte, set, FLAG_ORIGIN_MODE);
 			if (set)
-				arcan_tui_set_flags(vte->con,
-						TUI_REL_ORIGIN);
+				arcan_tui_set_flags(vte->con, TUI_REL_ORIGIN);
 			else
-				arcan_tui_reset_flags(vte->con,
-						TUI_REL_ORIGIN);
+				arcan_tui_reset_flags(vte->con, TUI_REL_ORIGIN);
 			continue;
 		case 7: /* DECAWM */
 			set_reset_flag(vte, set, FLAG_AUTO_WRAP_MODE);
@@ -1868,6 +1866,9 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 		case 1015:
 			vte->mstate = (vte->mstate & (~MOUSE_PROTO)) |
 				( set ? MOUSE_RXVT : MOUSE_X10);
+		break;
+		case 1042:
+			arcan_tui_message(vte->con, TUI_MESSAGE_ALERT, "");
 		break;
 
 /* 1001: x-mouse highlight
