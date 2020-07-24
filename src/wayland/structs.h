@@ -28,6 +28,12 @@ enum {
 	REGION_OP_SUB    = 2
 };
 
+struct data_offer {
+	struct wl_resource* device;
+	struct wl_resource* offer;
+	struct wl_client* client;
+};
+
 struct region {
 	int op;
 	ssize_t x1, y1, x2, y2;
@@ -50,6 +56,7 @@ struct seat {
 
 	struct wl_resource* touch;
 	struct wl_resource* in_touch;
+
 	bool used;
 };
 
@@ -79,12 +86,15 @@ struct bridge_client {
 	struct wl_resource* confined;
 	struct arcan_event confine_event;
 
+/* see ddev */
+	struct data_offer* doffer_copy;
+	struct data_offer* doffer_drag;
+	struct data_offer* doffer_paste;
+
 /* need to track these so that we can send enter/leave correctly,
  * watch out for UAFs */
 	struct wl_resource* last_cursor;
 	struct wl_resource* last_kbd;
-
-	struct arcan_strarr offer_types;
 
 /* to keep an association across display server instances */
 	uint64_t guid[2];
