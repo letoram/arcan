@@ -92,6 +92,14 @@ local env = {
 		difftime = os.difftime,
 		time = os.time
 	},
+	coroutine = {
+		create = coroutine.create,
+		resume = coroutine.resume,
+		running = coroutine.running,
+		status = coroutine.status,
+		wrap = coroutine.wrap,
+		yield = coroutine.yield
+	}
 };
 env._G = env;
 if (setfenv) then
