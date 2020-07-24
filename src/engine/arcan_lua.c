@@ -8063,7 +8063,7 @@ static int targetseek(lua_State* ctx)
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	float val = luaL_checknumber(ctx, 2);
 	bool relative = luaL_optbnumber(ctx, 3, true);
-	bool time = luaL_optnumber(ctx, 3, true);
+	bool time = luaL_optnumber(ctx, 4, true);
 
 	vfunc_state* state = arcan_video_feedstate(tgt);
 
@@ -8086,11 +8086,13 @@ static int targetseek(lua_State* ctx)
 		ev.tgt.ioevs[0].iv = relative;
 		if (relative){
 			ev.tgt.ioevs[1].iv = val;
-			ev.tgt.ioevs[2].iv = luaL_optnumber(ctx, 4, 0);
+			ev.tgt.ioevs[2].iv = luaL_optnumber(ctx, 5, 0);
+			ev.tgt.ioevs[3].fv = luaL_optnumber(ctx, 6, 0);
 		}
 		else {
 			ev.tgt.ioevs[1].fv = val;
-			ev.tgt.ioevs[2].fv = luaL_optnumber(ctx, 4, -1);
+			ev.tgt.ioevs[2].fv = luaL_optnumber(ctx, 5, -1);
+			ev.tgt.ioevs[3].fv = luaL_optnumber(ctx, 6, -1);
 		}
 		tgtevent(tgt, ev);
 	}

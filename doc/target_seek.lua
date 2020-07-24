@@ -1,17 +1,19 @@
 -- target_seek
--- @short: Request a change playback position for a frameserver.
--- @inargs: vid, step, *relative*, *time*, *alt_step*
--- @longdescr: Request an absolute or relative *step* sized change in active
--- content position in either time or space.
--- If seeking in *time* (default), the relative (default) is expected to be
--- an offset in miliseconds. Absolute seeking in *time* is a float in the 0..1
--- range from beginning (0) to end or current-end (if streaming). This will likely
--- impose a video and audio buffer flush, even in the case of a relative 0ms seek.
--- If seeking in *space*, the relative (default) is in a discrete +- steps on a
--- target defined scale. Absolute seeking is a float in the 0..1 range.
--- If *alt_step* is defined, the *relative* meaning remains, but *alt_step* is
--- along a secondary axis. A common case for this is scrolling window content
--- where the *step* dimension is the Y-axis and *alt_step* is the X-axis.
+-- @short: Request a change playback or presentation position for a frameserver.
+-- @inargs: vid:tgt, number:step
+-- @inargs: vid:tgt, number:step, bool:relative
+-- @inargs: vid:tgt, number:step, bool:relative
+-- @inargs: vid:tgt, number:step, bool:relative, bool:time
+-- @inargs: vid:tgt, number:step, bool:relative, bool:time=false,
+-- @inargs: vid:tgt, number:step, bool:relative, bool:time=false, number:yaxis
+-- @inargs: vid:tgt, number:step, bool:relative, bool:time=false, number:yaxis, number:zaxis
+-- @longdescr: Request an absolute or relative *step* sized change in active content position
+-- in either time or space.
+-- If seeking in *time* (default), the relative (default) *step* is expected to be an offset in miliseconds.
+-- If setting an absolute time position, the absolute *step* is floating point in the 0..1 range.
+-- If seeking in *space* (panning) the relative (default) is in a discrete +- steps on a target defined scale.
+-- Absolute seeking is a float in the 0..1 range.
+-- The *sz* axis is a hint on magnification where, the absolute value will treat 1 as normal scale,
+-- < 1 as minification and > 1 as manification.
 -- @group: targetcontrol
 -- @cfunction: targetseek
-

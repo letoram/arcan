@@ -360,6 +360,7 @@ enum ARCAN_TARGET_COMMAND {
  * if (seek_absolute)
  *  ioevs[1].fv = y-axis: set content position (ignore < 0 <= n <= 1)
  *  ioevs[2].fv = x-axis: set content position (ignore < 0 <= n <= 1)
+ *  ioevs[3].fv = z-axis: set content magnification (for 'zooming')
  */
 	TARGET_COMMAND_SEEKCONTENT,
 
@@ -591,10 +592,12 @@ enum ARCAN_TARGET_COMMAND {
  *
  * ioev[0].iv = max_width,
  * ioev[1].iv = max_height,
- * ioev[2].iv = rate (Hz, 0 for dynamic)
+ * ioev[2].iv = rate (hz)
  * ieov[3].iv = min_width,
  * ioev[4].iv = min_height,
- * ioev[5].iv = output_id
+ * ioev[5].iv = output_id,
+ * ioev[6].iv = vrr_min
+ * ioev[7].iv = vrr_step
  */
 	TARGET_COMMAND_OUTPUTHINT,
 
