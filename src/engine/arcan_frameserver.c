@@ -608,8 +608,9 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 
 /* use this opportunity to make sure that we treat audio as well,
  * when theres the one there is usually the other */
-			do_aud = (atomic_load(&tgt->shm.ptr->aready) > 0 &&
-				atomic_load(&tgt->shm.ptr->apending) > 0);
+		do_aud =
+			(atomic_load(&tgt->shm.ptr->aready) > 0 &&
+			atomic_load(&tgt->shm.ptr->apending) > 0);
 
 		if (tgt->flags.autoclock && tgt->clock.frame)
 			autoclock_frame(tgt);

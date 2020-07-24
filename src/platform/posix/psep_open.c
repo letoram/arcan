@@ -719,8 +719,8 @@ static void parent_loop(pid_t child, int netlink)
 /* could add other commands here as well, but what we concern ourselves with
  * at the moment is only GPU changed events, these match the pattern:
  * changed@ ... drm/card */
-		if (-1 == netlink || !(pfd[1].revents & POLLIN))
-			return;
+	if (-1 == netlink || !(pfd[1].revents & POLLIN))
+		return;
 
 	check_netlink(child, netlink);
 }
