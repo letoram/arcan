@@ -9,15 +9,18 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#ifndef CLOCK_MONOTONIC_RAW
-#define CLOCK_MONOTONIC_RAW CLOCK_MONOTONIC
-#endif
-
 long long int arcan_timemillis()
 {
 	struct timespec tp;
-	clock_gettime(CLOCK_MONOTONIC_RAW, &tp);
+	clock_gettime(CLOCK_MONOTONIC, &tp);
 	return (tp.tv_sec * 1000) + (tp.tv_nsec / 1000000);
+}
+
+long long int arcan_timemicros()
+{
+	struct timespec tp;
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+	return (tp.tv_sec * 1000000) + (tp.tv_nsec / 1000);
 }
 
 void arcan_timesleep(unsigned long val)

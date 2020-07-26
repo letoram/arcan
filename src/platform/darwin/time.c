@@ -33,6 +33,23 @@ unsigned long long int arcan_timemillis()
 	return ( (double)time * sf) / 1000000;
 }
 
+unsigned long long int arcan_timemicros()
+{
+	uint64_t time = mach_absolute_time();
+	static double sf;
+
+	if (!sf){
+		mach_timebase_info_data_t info;
+		kern_return_t ret = mach_timebase_info(&info);
+		if (ret == 0)
+			sf = (double)info.numer / (double)info.denom;
+		else{
+			sf = 1.0;
+		}
+	}
+	return ( (double)time * sf) / 1000;
+}
+
 void arcan_timesleep(unsigned long val)
 {
 	struct timespec req, rem;

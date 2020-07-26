@@ -450,6 +450,7 @@ list (APPEND SOURCES
 	engine/arcan_img.c
 	engine/arcan_led.c
 	engine/arcan_led.h
+	engine/arcan_trace.c
 	engine/arcan_ffunc_lut.c
 	engine/arcan_ffunc_lut.h
 	engine/arcan_audioint.h

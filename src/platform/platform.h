@@ -20,10 +20,11 @@
 #include "event_platform.h"
 
 /*
- * Retrieve the current time (in milliseconds) based on some unknown
- * epoch. Invoked frequently.
+ * Retrieve the current time (in milliseconds or microseconds) based on some
+ * unknown system defined epoch. Invoked frequently.
  */
 unsigned long long arcan_timemillis();
+unsigned long long arcan_timemicros();
 
 /*
  * Both these functions expect [argv / envv] to be modifiable and their
