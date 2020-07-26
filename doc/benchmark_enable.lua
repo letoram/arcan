@@ -1,8 +1,35 @@
 -- benchmark_enable
 -- @short: Toggle the gathering of benchmark data on / off.
--- @inargs: *opttoggle*
+-- @inargs: bool:toggle=on
+-- @inargs: number:size_kb, func:callback(tracetbl)
 -- @group: system
+-- @longdescr: This function is used to enable collection of timing data
+-- of the rendering pipeline for benchmarking purposes, or for generating
+-- system traces for detailed performance analysis.
+--
+-- If the *size_mb* and *callback* argument form is used, up to roughly
+-- the set size of trace data will be collected. When the buffer is full,
+-- *callback* will be triggered containing the results and collection will
+-- be terminated.
+--
+-- Collection in trace mode can also be stopped by calling benchmark_enable
+-- again with any argument form, the callback will be triggered if any
+-- data had been collected before stopping.
+--
+-- Scripts can also insert custom trace data into the buffer through the
+-- function ref:benchmark_tracedata which will short circuit when collection
+-- is disabled.
+--
+-- The entries in *tracetbl* is n indexed of tables with the following
+-- fields:
+-- number:timestamp
+-- string:system (graphics, 3d, video, audio, input, frameservers, alt)
+-- string:subsystem
+-- trigger:number (0 one-shot, 1:enter, 2:exit)
+-- string:performance path
+-- number:quantity
+-- string:message
+--
 -- @note: All calls to this function will reset all timestamp buffers.
 -- @cfunction: togglebench
--- @related: benchmark_data, benchmark_timestamp
-
+-- @related: benchmark_data, benchmark_timestamp, benchmark_tracedata

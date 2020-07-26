@@ -341,6 +341,11 @@ static struct {
 
 	const char** last_argv;
 	lua_State* last_ctx;
+
+	bool got_trace_buffer;
+	uint8_t* trace_buffer;
+	size_t trace_buffer_sz;
+	intptr_t trace_cb;
 } luactx = {0};
 
 extern char* _n_strdup(const char* instr, const char* alt);
@@ -407,6 +412,36 @@ static void dump_call_trace(lua_State* ctx, FILE* out)
 	}
 
 	luaL_nil_banned(ctx);
+}
+
+static void tblstr(lua_State* ctx,
+	const char* k, const char* v, int top)
+{
+	lua_pushstring(ctx, k);
+	lua_pushstring(ctx, v);
+	lua_rawset(ctx, top);
+}
+
+static void tbllstr(lua_State* ctx,
+	const char* k, const char* v, size_t len, int top)
+{
+	lua_pushstring(ctx, k);
+	lua_pushlstring(ctx, v, len);
+	lua_rawset(ctx, top);
+}
+
+static void tblnum(lua_State* ctx, char* k, double v, int top)
+{
+	lua_pushstring(ctx, k);
+	lua_pushnumber(ctx, v);
+	lua_rawset(ctx, top);
+}
+
+static void tblbool(lua_State* ctx, char* k, bool v, int top)
+{
+	lua_pushstring(ctx, k);
+	lua_pushboolean(ctx, v);
+	lua_rawset(ctx, top);
 }
 
 static void set_nonblock_cloexec(int fd, bool socket)
@@ -822,6 +857,86 @@ static int alua_doresolve(lua_State* ctx, const char* inp)
 	return rv;
 }
 
+static void finish_trace_buffer(lua_State* ctx)
+{
+	if (!luactx.got_trace_buffer)
+		return;
+
+	lua_rawgeti(ctx, LUA_REGISTRYINDEX, luactx.trace_cb);
+	lua_newtable(ctx);
+	int ttop = lua_gettop(ctx);
+
+	char* buf = (char*)luactx.trace_buffer;
+	size_t pos = 0;
+
+	size_t ind = 1;
+	while (luactx.trace_buffer[pos++] == 0xff){
+		lua_pushnumber(ctx, ind++);
+		lua_newtable(ctx);
+		int top = lua_gettop(ctx);
+
+/* timestamp */
+		uint64_t ts;
+		memcpy(&ts, &buf[pos], sizeof(ts));
+		pos += sizeof(ts);
+		tblnum(ctx, "timestamp", ts, top);
+
+/* system */
+		size_t nb = strlen(&buf[pos]);
+		tbllstr(ctx, "system", &buf[pos], nb, top);
+		pos += nb + 1;
+
+/* subsystem */
+		nb = strlen(&buf[pos]);
+		tbllstr(ctx, "subsystem", &buf[pos], nb, top);
+		pos += nb + 1;
+
+		uint8_t inb = luactx.trace_buffer[pos++];
+		tblnum(ctx, "trigger", inb, top);
+
+		inb = luactx.trace_buffer[pos++];
+		switch (inb){
+		case TRACE_SYS_DEFAULT:
+			tblstr(ctx, "path", "default", top);
+		break;
+		case TRACE_SYS_SLOW:
+			tblstr(ctx, "path", "slow", top);
+		break;
+		case TRACE_SYS_WARN:
+			tblstr(ctx, "path", "warning", top);
+		break;
+		case TRACE_SYS_ERROR:
+			tblstr(ctx, "path", "error", top);
+		break;
+		default:
+			tblstr(ctx, "path", "broken", top);
+		break;
+		}
+
+		uint32_t quant;
+		memcpy(&quant, &buf[pos], 4);
+		pos += 4;
+		tblnum(ctx, "quantity", quant, top);
+
+		nb = strlen(&buf[pos]);
+		tbllstr(ctx, "message", &buf[pos], nb, top);
+		pos += nb + 1;
+
+/* step outer table */
+		lua_rawset(ctx, ttop);
+	}
+
+	alua_call(ctx, 1, 0, LINE_TAG":trace");
+
+/* process and repack - format is described in arcan_trace.c */
+	luaL_unref(ctx, LUA_REGISTRYINDEX, luactx.trace_cb);
+	free(luactx.trace_buffer);
+	arcan_trace_setbuffer(NULL, 0, NULL);
+	luactx.trace_buffer = NULL;
+	luactx.trace_buffer_sz = 0;
+	luactx.got_trace_buffer = false;
+}
+
 void arcan_lua_tick(lua_State* ctx, size_t nticks, size_t global)
 {
 	if (!nticks)
@@ -848,6 +963,10 @@ void arcan_lua_tick(lua_State* ctx, size_t nticks, size_t global)
 		lua_pushnumber(ctx, 1);
 		alua_call(ctx, 2, 0, LINE_TAG":clock_pulse");
 	}
+
+/* trace job finished? unpack into table of tables */
+	if (luactx.got_trace_buffer)
+		finish_trace_buffer(ctx);
 }
 
 char* arcan_lua_main(lua_State* ctx, const char* inp, bool file)
@@ -1415,7 +1534,8 @@ static char* chop(char* str)
 	return str;
 }
 
-static int funtable(lua_State* ctx, uint32_t kind){
+static int funtable(lua_State* ctx, uint32_t kind)
+{
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
 	lua_pushstring(ctx, "kind");
@@ -1423,25 +1543,6 @@ static int funtable(lua_State* ctx, uint32_t kind){
 	lua_rawset(ctx, top);
 
 	return top;
-}
-
-static void tblstr(lua_State* ctx, const char* k,
-	const char* v, int top){
-	lua_pushstring(ctx, k);
-	lua_pushstring(ctx, v);
-	lua_rawset(ctx, top);
-}
-
-static void tblnum(lua_State* ctx, char* k, double v, int top){
-	lua_pushstring(ctx, k);
-	lua_pushnumber(ctx, v);
-	lua_rawset(ctx, top);
-}
-
-static void tblbool(lua_State* ctx, char* k, bool v, int top){
-	lua_pushstring(ctx, k);
-	lua_pushboolean(ctx, v);
-	lua_rawset(ctx, top);
 }
 
 static const char flt_alpha[] = "abcdefghijklmnopqrstuvwxyz-_";
@@ -10362,11 +10463,68 @@ static int recordgain(lua_State* ctx)
 	LUA_ETRACE("recordtarget_gain", NULL, 0);
 }
 
+static int benchtracedata(lua_State* ctx)
+{
+	LUA_TRACE("benchmark_tracedata");
+	if (!arcan_trace_enabled)
+		LUA_ETRACE("benchmark_tracedata", NULL, 0);
+
+/* str: subsys, message, quantity, trigger, perfpath */
+	const char* subsys = luaL_checkstring(ctx, 1);
+	const char* message = luaL_checkstring(ctx, 2);
+
+	int quant = luaL_optnumber(ctx, 3, 1);
+
+	int trigger = luaL_optnumber(ctx, 4, 0);
+	if (trigger < 0 || trigger > 2){
+		arcan_fatal("benchmark_tracedata, "
+			"invalid trigger value (%d) >= 0 <= 2\n", trigger);
+	}
+
+	int level = luaL_optnumber(ctx, 5, TRACE_SYS_DEFAULT);
+	if (level < 0 || level > TRACE_SYS_ERROR){
+		arcan_fatal("benchmark_tracedata, invalid value, "
+			"expecting: TRACE_PATH_DEFAULT, SLOW, FAST, WARN or ERROR\n");
+	}
+
+	arcan_trace_mark("lua", subsys, trigger, level, quant, message);
+
+	LUA_ETRACE("benchmark_tracedata", NULL, 0);
+}
+
 extern arcan_benchdata benchdata;
 static int togglebench(lua_State* ctx)
 {
 	LUA_TRACE("benchmark_enable");
 
+/* trigger existing */
+	arcan_trace_setbuffer(NULL, 0, NULL);
+	finish_trace_buffer(ctx);
+
+/* callback form? allocate collection buffer and enable tracing */
+	intptr_t callback = find_lua_callback(ctx);
+	if (lua_type(ctx, 1) && callback){
+		size_t buf_sz = lua_tonumber(ctx, 1) * 1024;
+		uint8_t* interim =
+			arcan_alloc_mem(buf_sz,
+				ARCAN_MEM_EXTSTRUCT,
+				ARCAN_MEM_BZERO | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_NATURAL
+			);
+
+		if (!interim){
+			luaL_unref(ctx, LUA_REGISTRYINDEX, callback);
+			LUA_ETRACE("benchmark_enable", "out-of-memory", 0);
+		}
+
+		arcan_trace_setbuffer(interim, buf_sz, &luactx.got_trace_buffer);
+		luactx.trace_buffer = interim;
+		luactx.trace_buffer_sz = buf_sz;
+		luactx.trace_cb = callback;
+
+		LUA_ETRACE("benchmark_enable", NULL, 0);
+	}
+
+/* simple form? normal benchmarking */
 	int nargs = lua_gettop(ctx);
 
 	if (nargs)
@@ -10463,6 +10621,10 @@ static int timestamp(lua_State* ctx)
 
 	case 1:
 		lua_pushnumber(ctx, time(NULL));
+	break;
+
+	case -1:
+		lua_pushnumber(ctx, arcan_timemicros());
 	break;
 
 	default:
@@ -12052,6 +12214,7 @@ static const luaL_Reg sysfuns[] = {
 {"utf8kind",            utf8kind         },
 {"decode_modifiers",    decodemod        },
 {"benchmark_enable",    togglebench      },
+{"benchmark_tracedata", benchtracedata   },
 {"benchmark_timestamp", timestamp        },
 {"benchmark_data",      getbenchvals     },
 {"appl_arguments",      getapplarguments },
@@ -12274,6 +12437,14 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"BADID", ARCAN_EID},
 {"CLOCKRATE", ARCAN_TIMER_TICK},
 {"CLOCK", 0},
+{"TRACE_TRIGGER_ONESHOT", 0},
+{"TRACE_TRIGGER_ENTER", 1},
+{"TRACE_TRIGGER_EXIT", 2},
+{"TRACE_PATH_DEFAULT", TRACE_SYS_DEFAULT},
+{"TRACE_PATH_SLOW", TRACE_SYS_SLOW},
+{"TRACE_PATH_WARNING", TRACE_SYS_WARN},
+{"TRACE_PATH_ERROR", TRACE_SYS_ERROR},
+{"TRACE_PATH_FAST", TRACE_SYS_FAST},
 {"ALLOC_QUALITY_LOW", VSTORE_HINT_LODEF},
 {"ALLOC_QUALITY_NORMAL", VSTORE_HINT_NORMAL},
 {"ALLOC_QUALITY_HIGH", VSTORE_HINT_HIDEF},
