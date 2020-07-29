@@ -376,7 +376,7 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 			if (current->feed.state.tag == ARCAN_TAG_FRAMESERV && fsrv){
 				arcan_frameserver_flush(fsrv);
 				arcan_frameserver_resume(fsrv);
-				arcan_audio_play(fsrv->aid, false, 0.0);
+				arcan_audio_play(fsrv->aid, false, 0.0, -2); /* -2 == LUA_NOREF */
 			}
 		}
 }

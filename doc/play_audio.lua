@@ -1,15 +1,25 @@
 -- play_audio
--- @short: Playback a preloaded sample
--- @inargs: aid, *gain*
--- @longdescr: Samples can be preloaded through the use load_asample. These
--- can then be played back using this function. Multiple play calls on the same
--- aid in rapid succession will have the sample playback being repeated.
--- @note: While the sample may have a different gain associated with it
--- or with audio transformations queued. If a gain value is specified as second
--- argument, that gain will take precendence.
--- @planned: A/V synch issues in framebuffer may lead to situations where
--- video lags behind audio. Calling play_audio on the aid with a frameserver
--- connection, or similar, should have the internal buffer flushed.
+-- @short: Play an audio sample
+-- @inargs: aid:sample
+-- @inargs: aid:sample, number:gain
+-- @inargs: aid:sample, number:gain, function:callback()
+-- @inargs: aid:sample, function:callback()
+-- @longdescr: This function is used to control audio playback. When called
+-- it issues a new playback of the specified audio sample that has previously
+-- been loaded or synthesised using ref:load_asample.
+--
+-- The argument form where a *gain* is supplied will override any global gain
+-- settings on the output device through WORLDID.
+--
+-- If a callback is provided, it will be triggered as soon as the underlying
+-- audio stack tells us that playback of the sample has finished. This is
+-- intended as a way of sequencing playback samples together.
+--
+-- Multiple playbacks of the same samples can be running at the same time,
+-- limited by the mixing capabilities of the underlying driver stack as well
+-- as a compile-time engine limit (32 by default).
+--
+-- If a sample fails to queue or mix properly, the function will return false.
 -- @group: audio
 -- @cfunction: playaudio
 -- @related: pause_audio, delete_audio, load_asample, audio_gain
@@ -17,6 +27,7 @@ function main()
 #ifdef MAIN
 	local aid = load_asample("test.wav");
 	play_audio(aid, 0.5);
+	play_audio(aid, function() print("done"); end)
 #endif
 
 #ifdef ERROR
