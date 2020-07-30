@@ -100,6 +100,20 @@ arcan_aobj_id arcan_audio_load_sample(
 	const char* fname, float gain, arcan_errc* err);
 
 /*
+ * build an audio object from a preset normalised float buffer (-1..1) caller
+ * retains ownership but buffer should be allocated through arcan_alloc_mem
+ * with ARCAN_MEM_ABUFFER and page-alignment.
+ *
+ * elems refers to the count_of buffer, not the number of samples
+ * (/= channels) and the packing format is always interleaved.
+ *
+ * fmt_specifier is reserved for future surround format support and any
+ * provided specifier is ignored
+ */
+arcan_aobj_id arcan_audio_sample_buffer(float* buffer,
+	size_t elems, int channels, int samplerate, const char* fmt_specifier);
+
+/*
  * Alter the feed function associated with an audio object in a streaming
  * state.
  */
@@ -121,8 +135,15 @@ enum aobj_kind arcan_audio_kind(arcan_aobj_id);
 /* destroy an audio object and everything associated with it */
 arcan_errc arcan_audio_stop(arcan_aobj_id);
 
-/* initiate playback (i.e. push buffers to OpenAL) */
-arcan_errc arcan_audio_play(arcan_aobj_id, bool gain_override, float gain);
+/* initiate playback of a sample buffer or stream (i.e. push buffers to OpenAL),
+ * if [gain] override is set the device gain will be ignored in favor of [gain]
+ *
+ * if the [id] refers to a sample, and [tag] is set to >= 0, an event will be
+ * emitted direct-to-drain when the buffer has been finished according to the
+ * audio stack, with the [tag] set as the [otag] member of the event structure
+ */
+arcan_errc arcan_audio_play(
+	arcan_aobj_id, bool gain_override, float gain, intptr_t tag);
 
 /* Pause might not work satisfactory. If this starts acting weird,
  * consider using the rebuild hack above */

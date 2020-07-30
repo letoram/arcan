@@ -36,6 +36,8 @@ struct arcan_acontext {
  * hw dependant, ranging between 10-100 or so */
 	arcan_aobj* first;
 	ALCcontext* context;
+	ALCdevice* device;
+
 	bool al_active;
 
 	arcan_aobj_id lastid;
@@ -43,6 +45,8 @@ struct arcan_acontext {
 
 /* limit on amount of simultaneous active sources */
 	ALuint sample_sources[ARCAN_AUDIO_SLIMIT];
+	intptr_t sample_tags[ARCAN_AUDIO_SLIMIT];
+
 	arcan_tickv atick_counter;
 
 	arcan_monafunc_cb globalhook;
@@ -145,7 +149,7 @@ static ALuint load_wave(const char* fname){
 		"load_wave() -- unsupported bitdepth (%d)\n", bits_ps), true))
 		goto cleanup;
 
-	if (smplrte != 44100 && smplrte != 22050 && smplrte != 11025)
+	if (smplrte != 48000 && smplrte != 44100 && smplrte != 22050 && smplrte != 11025)
 		arcan_warning("load_wave() -- unconventional samplerate (%d).\n", smplrte);
 
 	if (memcmp(inmem.ptr + nofs, "data", 4) != 0 &&
@@ -325,10 +329,11 @@ arcan_errc arcan_audio_setup(bool nosound)
  * (or for that matter, enumerate without an extension, seriously..)
  * so to avoid yet another codepath, we'll just set the listenerGain to 0 */
 #ifdef ARCAN_LWA
-		current_acontext->context = alcCreateContext(alcOpenDevice("arcan"), attrs);
+		current_acontext->device = alcOpenDevice("arcan");
 #else
-		current_acontext->context = alcCreateContext(alcOpenDevice(NULL), attrs);
+		current_acontext->device = alcOpenDevice(NULL);
 #endif
+		current_acontext->context = alcCreateContext(current_acontext->device, attrs);
 		alcMakeContextCurrent(current_acontext->context);
 
 		if (nosound){
@@ -366,18 +371,22 @@ arcan_errc arcan_audio_shutdown()
 {
 	arcan_errc rv = ARCAN_OK;
 	ALCcontext* ctx = current_acontext->context;
+	if (!ctx)
+		return rv;
 
-	if (ctx) {
-		/* fixme, free callback buffers etc. */
-		alcDestroyContext(ctx);
-		current_acontext->al_active = false;
-		current_acontext->context = NULL;
-	}
+/* there might be more to clean-up here, monitoring /callback buffers/tags */
+
+	alcDestroyContext(ctx);
+	current_acontext->al_active = false;
+	current_acontext->context = NULL;
+	memset(current_acontext->sample_sources,
+		'\0', sizeof(ALuint) * ARCAN_AUDIO_SLIMIT);
 
 	return rv;
 }
 
-arcan_errc arcan_audio_play(arcan_aobj_id id, bool gain_override, float gain)
+arcan_errc arcan_audio_play(
+	arcan_aobj_id id, bool gain_override, float gain, intptr_t tag)
 {
 	arcan_aobj* aobj = arcan_audio_getobj(id);
 
@@ -391,12 +400,14 @@ arcan_errc arcan_audio_play(arcan_aobj_id id, bool gain_override, float gain)
 			if (current_acontext->sample_sources[i] == 0){
 				alGenSources(1, &current_acontext->sample_sources[i]);
 				ALint alid = current_acontext->sample_sources[i];
+				current_acontext->sample_tags[i] = tag;
 				alSourcef(alid, AL_GAIN, gain_override ? gain : aobj->gain);
 				_wrap_alError(aobj,"load_sample(alSource)");
 
 				alSourceQueueBuffers(alid, 1, &aobj->streambuf[0]);
 				_wrap_alError(aobj, "load_sample(alQueue)");
 				alSourcePlay(alid);
+				break;
 			}
 	}
 /* some kind of streaming source, can't play if it is already active */
@@ -409,8 +420,59 @@ arcan_errc arcan_audio_play(arcan_aobj_id id, bool gain_override, float gain)
 	return ARCAN_OK;
 }
 
-arcan_aobj_id arcan_audio_load_sample(const char* fname,
-	float gain, arcan_errc* err)
+static int16_t float_s16(float val)
+{
+	if (val < 0.0)
+		return -val * -32768.0;
+	else
+		return val * 32767.0;
+}
+
+arcan_aobj_id arcan_audio_sample_buffer(float* buffer,
+	size_t elems, int channels, int samplerate, const char* fmt_specifier)
+{
+	if (!buffer || !elems || channels <= 0 || channels > 2 || elems % channels != 0)
+		return ARCAN_EID;
+
+	arcan_aobj* aobj;
+	arcan_aobj_id rid = arcan_audio_alloc(&aobj, true);
+	ALuint id = 0;
+
+	if (rid == ARCAN_EID)
+		return ARCAN_EID;
+
+	alGenBuffers(1, &id);
+	if (!alcIsExtensionPresent(current_acontext->device, "AL_EXT_float32")){
+		int16_t* samplebuf = arcan_alloc_mem(
+			elems * 2, ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
+
+		for (size_t i = 0; i < elems; i++){
+			samplebuf[i] = float_s16(buffer[i]);
+		}
+
+		alBufferData(id,
+			channels == 1 ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16,
+			(uint8_t*)samplebuf, elems * 2, samplerate
+		);
+		arcan_mem_free(samplebuf);
+	}
+	else {
+		int fmt = alGetEnumValue(
+			channels == 1 ? "AL_FORMAT_MONO_FLOAT32" : "AL_FORMAT_STEREO_FLOAT32");
+		alBufferData(id, fmt, buffer, elems * sizeof(float), samplerate);
+	}
+
+	aobj->kind = AOBJ_SAMPLE;
+	aobj->gain = 1.0;
+	aobj->n_streambuf = 1;
+	aobj->streambuf[0] = id;
+	aobj->used = 1;
+
+	return rid;
+}
+
+arcan_aobj_id arcan_audio_load_sample(
+	const char* fname, float gain, arcan_errc* err)
 {
 	if (fname == NULL)
 		return ARCAN_EID;
@@ -543,7 +605,7 @@ arcan_errc arcan_audio_resume()
 
 	while (current) {
 		if (current->id != AL_NONE)
-			arcan_audio_play(current->id, false, 1.0);
+			arcan_audio_play(current->id, false, 1.0, -2);
 		current = current->next;
 	}
 
@@ -821,7 +883,8 @@ static void astream_refill(arcan_aobj* current)
 				alSourceQueueBuffers(current->alid, 1, &current->streambuf[ind]);
 				current->streambufmask[ind] = true;
 				current->used++;
-			} else if (rv == ARCAN_ERRC_NOTREADY)
+			}
+			else if (rv == ARCAN_ERRC_NOTREADY)
 				goto playback;
 			else
 				goto cleanup;
@@ -836,9 +899,10 @@ playback:
 	return;
 
 cleanup:
-/* means that when main() receives this event, it will kill/free the object */
+/* enqueue direct into drain, this might invoke audio callback on the scripting
+ * side in order to immediately chain the playback of another sample */
 	newevent.aud.source = current->id;
-	arcan_event_enqueue(arcan_event_defaultctx(), &newevent);
+	arcan_event_denqueue(arcan_event_defaultctx(), &newevent);
 }
 
 void arcan_aid_refresh(arcan_aobj_id aid)
@@ -1057,6 +1121,7 @@ void arcan_audio_tick(uint8_t ntt)
 
 		current_acontext->atick_counter++;
 	}
+
 /* scan all streaming buffers and free up those no-longer needed */
 	for (size_t i = 0; i < ARCAN_AUDIO_SLIMIT; i++)
 	if ( current_acontext->sample_sources[i] > 0) {
@@ -1065,6 +1130,16 @@ void arcan_audio_tick(uint8_t ntt)
 		if (state != AL_PLAYING){
 			alDeleteSources(1, &current_acontext->sample_sources[i]);
 			current_acontext->sample_sources[i] = 0;
+
+			if (current_acontext->sample_tags[i] != 0){
+				arcan_event_enqueue(arcan_event_defaultctx(),
+				&(struct arcan_event){
+					.category = EVENT_AUDIO,
+					.aud.kind = EVENT_AUDIO_PLAYBACK_FINISHED,
+					.aud.otag = current_acontext->sample_tags[i]
+				});
+				current_acontext->sample_tags[i] = 0;
+			}
 		}
 	}
 }

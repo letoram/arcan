@@ -355,6 +355,10 @@ static int alua_exposefuncs(lua_State* ctx, unsigned char debugfuncs);
 static bool grabapplfunction(lua_State* ctx, const char* funame, size_t funlen);
 static void rectrigger(const char* msg, ...);
 static void wraperr(lua_State* ctx, int errc, const char* src);
+static bool stack_to_uiarray(lua_State* ctx,
+	int memtype, unsigned** dst, size_t* n, size_t count);
+static bool stack_to_farray(lua_State* ctx,
+	int memtype, float** dst, size_t* n, size_t count);
 
 static char* colon_escape(char* in)
 {
@@ -2617,10 +2621,13 @@ static int playaudio(lua_State* ctx)
 	LUA_TRACE("play_audio");
 
 	arcan_aobj_id id = luaL_checkaid(ctx, 1);
+
+	intptr_t ref = find_lua_callback(ctx);
+
 	if (lua_isnumber(ctx, 2))
-		arcan_audio_play(id, true, luaL_checknumber(ctx, 2));
+		arcan_audio_play(id, true, luaL_checknumber(ctx, 2), ref);
 	else
-		arcan_audio_play(id, false, 0.0);
+		arcan_audio_play(id, false, 0.0, ref);
 
 	LUA_ETRACE("play_audio", NULL, 0);
 }
@@ -2667,6 +2674,35 @@ static int capturelist(lua_State* ctx)
 static int loadasample(lua_State* ctx)
 {
 	LUA_TRACE("load_asample");
+
+	if (lua_type(ctx, -1) == LUA_TTABLE){
+/* table to buffer */
+		float* buf;
+		int n_ch = 2;
+		int ofs = 1;
+		const char* fmt = "stereo";
+		int rate = 48000;
+
+		if (lua_type(ctx, ofs) == LUA_TNUMBER){
+			n_ch = lua_tonumber(ctx, ofs++);
+		}
+		if (lua_type(ctx, ofs) == LUA_TNUMBER){
+			rate = lua_tonumber(ctx, ofs++);
+		}
+		if (lua_type(ctx, ofs) == LUA_TSTRING){
+			fmt = lua_tostring(ctx, ofs++);
+		}
+
+		size_t n = 0;
+		if (!stack_to_farray(ctx, ARCAN_MEM_ABUFFER, &buf, &n, 0)){
+			lua_pushaid(ctx, ARCAN_EID);
+		}
+		else
+			lua_pushaid(ctx,
+				arcan_audio_sample_buffer(buf, n, n_ch, rate, fmt));
+
+		LUA_ETRACE("load_asample", NULL, 1);
+	}
 
 	const char* rname = luaL_checkstring(ctx, 1);
 	char* resource = findresource(rname, DEFAULT_USERMASK);
@@ -5370,8 +5406,15 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		luactx.cb_source_kind = CB_SOURCE_NONE;
 	}
-	else if (ev->category == EVENT_AUDIO)
-		;
+	else if (ev->category == EVENT_AUDIO){
+		if (
+			ev->aud.kind == EVENT_AUDIO_PLAYBACK_FINISHED &&
+			ev->aud.otag != LUA_NOREF){
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->aud.otag);
+			alua_call(ctx, 0, 0, LINE_TAG":audio:finished");
+			luaL_unref(ctx, LUA_REGISTRYINDEX, ev->aud.otag);
+		}
+	}
 }
 #undef FLTPUSH
 #undef MSGBUF_UTF8
@@ -10263,8 +10306,7 @@ static int arcanset(lua_State* ctx)
 
 /* bind rt to have something to use as readback / update trigger */
 	if (ARCAN_OK != arcan_video_setuprendertarget(did, 0,
-		pollrate, false, RENDERTARGET_COLOR))
-	{
+		pollrate, false, RENDERTARGET_COLOR)){
 		arcan_warning("define_arcantarget(), setup rendertarget failed.\n");
 		lua_pushboolean(ctx, false);
 		LUA_ETRACE("define_arcantarget", NULL, 1);

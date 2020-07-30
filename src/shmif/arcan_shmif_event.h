@@ -1165,7 +1165,10 @@ enum ARCAN_TARGET_SKIPMODE {
 		enum ARCAN_EVENT_AUDIO kind;
 
 		int32_t source;
-		uintptr_t* data;
+		union {
+			intptr_t otag;
+			uintptr_t* data;
+		};
 	} arcan_aevent;
 
 	/*
