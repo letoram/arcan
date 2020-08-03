@@ -33,22 +33,27 @@ static void dsrc_offer(struct wl_client* wcl,
 	if (!offer)
 		return;
 
+	offer->offer = res;
 /* how to handle multiple sources being set? */
 	cl->doffer_copy = offer;
 
-/* queue each available type as a bchunkstate on the bridge connection */
+/* Queue each type as a message on the bridge - currently not used for anything
+ * else but at least prefix with a command. The reason for going with that
+ * instead of the BCHUNKSTATE option is that the mime- type is not
+ * transferrable over the extension-list, arcan will restrict the character set
+ * there is also the bit about arbitrary mime-type length but ignored for now -
+ *
+ * then for 'paste' we set the type with a message, and consume on the next
+ * bchunkstate event where we get the descriptor
+ **/
 	struct arcan_event hint = {
 		.category = EVENT_EXTERNAL,
-		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
-		.ext.bchunk = {
-			.size = 0, /* no way of knowing this, *sigh*/
-			.input = 1,
-		}
+		.ext.kind = ARCAN_EVENT(MESSAGE),
 	};
 
 	snprintf(
-		(char*)hint.ext.bchunk.extensions,
-		COUNT_OF(hint.ext.bchunk.extensions), "%s", mime
+		(char*)hint.ext.message.data,
+		COUNT_OF(hint.ext.message.data), "offer:%s", mime
 	);
 
 	arcan_shmif_enqueue(&cl->acon, &hint);
@@ -79,14 +84,15 @@ static void dsrc_destroy(struct wl_client* wcl, struct wl_resource* res)
 	else
 		return;
 
-/* send an empty hint to tell that we no longer are capable of providing this */
 	struct arcan_event hint = {
 		.category = EVENT_EXTERNAL,
-		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
-		.ext.bchunk = {
-			.size = 0, /* no way of knowing this, *sigh*/
-			.input = 1
-		}
+		.ext.kind = ARCAN_EVENT(MESSAGE),
 	};
+
+	snprintf(
+		(char*)hint.ext.message.data,
+		COUNT_OF(hint.ext.message.data), "-reset"
+	);
+
 	arcan_shmif_enqueue(&cl->acon, &hint);
 }

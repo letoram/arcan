@@ -1676,7 +1676,8 @@ static int bufread(lua_State* ctx, struct nonblock_io* ib, bool nonbuffered)
 	if ( (nr = read(ib->fd, ib->buf + ib->ofs, buf_sz - ib->ofs - 1)) > 0)
 		ib->ofs += nr;
 
-	if (-1 == nr && errno != EINTR && errno != EAGAIN){
+	if (nr == 0 ||
+		(-1 == nr && errno != EINTR && errno != EAGAIN)){
 		lua_pushlstring(ctx, ib->buf, ib->ofs);
 		lua_pushboolean(ctx, false);
 		ib->ofs = 0;

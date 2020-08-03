@@ -73,6 +73,11 @@ struct bridge_client {
 	struct seat seats[MAX_SEATS];
 
 	struct wl_resource* output; /* only 1 atm */
+	struct {
+		int size_px[2];
+		float density[2];
+		float rate;
+	} output_state;
 
 /* cursor states, we want to share one subseg connection
  * and just switch surface resource around */
@@ -90,6 +95,7 @@ struct bridge_client {
 	struct data_offer* doffer_copy;
 	struct data_offer* doffer_drag;
 	struct data_offer* doffer_paste;
+	char doffer_type[64];
 
 /* need to track these so that we can send enter/leave correctly,
  * watch out for UAFs */
@@ -225,8 +231,10 @@ struct comp_surf {
 	struct scratch_req scratch[64];
 	size_t frames_pending, subsurf_pending;
 
+/* input state for cursor on the surface */
 	uint8_t mstate_abs[ASHMIF_MSTATE_SZ];
 	uint8_t mstate_rel[ASHMIF_MSTATE_SZ];
+	bool has_ptr, has_kbd;
 
 /*
  * need to cache/update this one whenever we reparent, etc.

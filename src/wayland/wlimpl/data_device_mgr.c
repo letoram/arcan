@@ -30,6 +30,7 @@ static void ddevmgr_create_data_source(
 		return;
 	}
 
+	data->offer = res;
 	wl_resource_set_implementation(src, &dsrc_if, data, drop_source);
 }
 
