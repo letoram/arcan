@@ -8,7 +8,8 @@
 
 static struct cli_state cli_state = {
 	.mode = LAUNCH_VT100,
-	.alive = true
+	.alive = true,
+	.die_on_finish = false
 };
 
 static void free_strtbl(char** arg)
@@ -238,6 +239,8 @@ static void setup_cmd_mode(struct ext_cmd* cmd,
 static bool on_subwindow(struct tui_context* T,
 	arcan_tui_conn* conn, uint32_t id, uint8_t type, void* c)
 {
+	bool res = false;
+
 /* find the pending command and handover_exec */
 	for (size_t i = 0; i < 4; i++){
 		if (cli_state.pending[i].id == id){
@@ -262,11 +265,24 @@ static bool on_subwindow(struct tui_context* T,
 			setup_cmd_mode(cmd, &bin, &argv, &env, &flags);
 			pid_t pid = arcan_tui_handover(T, conn, NULL, bin, argv, env, flags);
 			free_cmd(cmd);
-			return true;
+			res = true;
+			break;
 		}
 	}
 
-	return false;
+	bool pending = false;
+	for (size_t i = 0; i < 4; i++){
+		if (cli_state.pending[i].id){
+			pending = true;
+			break;
+		}
+	}
+
+	if (!pending && cli_state.die_on_finish){
+		cli_state.alive = false;
+	}
+
+	return res;
 }
 
 static char* group_expand(struct group_ent* group, const char* in)
@@ -545,12 +561,42 @@ int arcterm_cli_run(struct arcan_shmif_cont* c, struct arg_arr* args)
 		.input_label = on_label_input
 	};
 
+	const char* argt = NULL;
+
+	if (arg_lookup(args, "mode", 0, &argt) && argt){
+		if (strcmp(argt, "arcan") == 0){
+			cli_state.mode = LAUNCH_SHMIF;
+		}
+		else if (strcmp(argt, "vt100") == 0){
+			cli_state.mode = LAUNCH_VT100;
+		}
+		else if (strcmp(argt, "wayland") == 0){
+			cli_state.mode = LAUNCH_WL;
+		}
+		else if (strcmp(argt, "x11") == 0){
+			cli_state.mode = LAUNCH_X11;
+		}
+	}
+
 	struct tui_context* tui = arcan_tui_setup(c, NULL, &cfg, sizeof(cfg));
 	if (!tui)
 		return EXIT_FAILURE;
 
 	arcan_tui_readline_setup(tui, &opts, sizeof(opts));
 	char* out;
+
+#ifndef FSRV_TERMINAL_NOEXEC
+	if (arg_lookup(args, "exec", 0, &argt) && argt){
+		char* tmp = strdup(argt);
+		parse_eval(tui, tmp);
+		free(tmp);
+
+/* terminate on next exec .. */
+		if (arg_lookup(args, "oneshot", 0, &argt)){
+			cli_state.die_on_finish = true;
+		}
+	}
+#endif
 
 	while (cli_state.alive){
 		int status;
