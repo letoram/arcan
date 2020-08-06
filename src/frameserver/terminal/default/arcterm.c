@@ -179,9 +179,19 @@ static void dump_help()
 		" keep_alive  \t           \t don't exit if the terminal or shell terminates\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 		" tpack       \t           \t use text-pack (server-side rendering) mode\n"
+		" cli         \t           \t switch to non-vt cli/builtin shell mode\n"
 		"Built-in palettes:\n"
 		"default, solarized, solarized-black, solarized-white, srcery\n"
-		"---------\t-----------\t----------------\n"
+		"-------------\t-----------\t----------------\n\n"
+		"Cli mode specific args:\n"
+		"    key      \t   value   \t   description\n"
+		"-------------\t-----------\t-----------------\n"
+		" env         \t key=val   \t override default environment (repeatable)\n"
+		" mode        \t exec_mode \t arcan, wayland, x11, vt100 (default: vt100)\n"
+#ifndef FSRV_TERMINAL_NOEXEC
+		" oneshot     \t           \t use with exec, shut down after evaluating command\n"
+		"-------------\t-----------\t----------------\n"
+#endif
 	);
 }
 
@@ -596,13 +606,16 @@ static int parse_color(const char* inv, uint8_t outv[4])
 
 int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 {
-/*
- * this table act as both callback- entry points and a list of features that we
- * actually use. So binary chunk transfers, video/audio paste, geohint etc.
- * are all ignored and disabled
- */
 	if (!con)
 		return EXIT_FAILURE;
+
+/*
+ * this is the first migration part we have out of the normal vt- legacy,
+ * see cli.c
+ */
+	if (arg_lookup(args, "cli", 0, NULL)){
+		return arcterm_cli_run(con, args);
+	}
 
 	const char* val;
 	if (arg_lookup(args, "help", 0, &val)){
@@ -620,13 +633,10 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 
 /*
- * this is the first migration part we have out of the normal vt- legacy,
- * see cli.c
+ * this table act as both callback- entry points and a list of features that we
+ * actually use. So binary chunk transfers, video/audio paste, geohint etc.
+ * are all ignored and disabled
  */
-	if (arg_lookup(args, "cli", 0, NULL)){
-		return arcterm_cli_run(con, args);
-	}
-
 	struct tui_cbcfg cbcfg = {
 		.input_mouse_motion = on_mouse_motion,
 		.input_mouse_button = on_mouse_button,

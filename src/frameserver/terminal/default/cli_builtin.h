@@ -27,6 +27,9 @@ struct cli_state {
 	enum launch_mode mode;
 	bool alive;
 
+/* set alive to false when last pending ext_cmd has been finished */
+	bool die_on_finish;
+
 	uint32_t id_counter;
 	struct ext_cmd pending[4];
 	bool blocked;
