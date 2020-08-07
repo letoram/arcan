@@ -9,8 +9,30 @@ struct xkb_stateblock {
 	const char* map_str;
 };
 
+/* Walking this per input operation can be very expensive as mouse operations
+ * are high-frequency and something like intersect of multiples are requested.
+ * Limit depth / count for these are generally a good idea - hence the linked
+ * list of blocks. */
+struct surface_region;
+
+enum {
+	REGION_OP_IGNORE = 0,
+	REGION_OP_ADD    = 1,
+	REGION_OP_SUB    = 2
+};
+
+struct region {
+	int op;
+	ssize_t x1, y1, x2, y2;
+};
+
+struct surface_region {
+	struct region regions[4];
+	struct surface_region* next;
+};
+
 struct bridge_client {
-	struct arcan_shmif_cont acon, clip_in, clip_out;
+	struct arcan_shmif_cont acon;
 	struct wl_listener l_destr;
 	struct wl_listener l_pending;
 
@@ -23,12 +45,17 @@ struct bridge_client {
 
 	struct xkb_stateblock kbd_state;
 
-/* cursor state, we want to share one subseg connection and just
- * switch surface resource around */
+/* cursor states, we want to share one subseg connection
+ * and just switch surface resource around */
 	struct arcan_shmif_cont acursor;
 	struct wl_resource* cursor;
 	int32_t hot_x, hot_y;
 	bool dirty_hot;
+	bool mask_absolute;
+	struct wl_resource* lock_region;
+	struct wl_resource* locked;
+	struct wl_resource* confined;
+
 	struct wl_resource* got_relative;
 
 /* need to track these so that we can send enter/leave correctly,
@@ -132,6 +159,10 @@ struct comp_surf {
 /* mark the surface as supposed to commit, but some reason (ongoing sync
  * or similar) forced us to reconsider at a later stage. */
 	bool pending_commit;
+
+	struct wl_resource* confined;
+	bool locked;
+	struct surface_region* confine_region;
 
 /*
  * surfaces that are passed as shm- buffers might be better to bind to a

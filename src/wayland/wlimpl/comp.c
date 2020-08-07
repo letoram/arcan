@@ -55,8 +55,8 @@ static void comp_surf_create(struct wl_client *client,
 		free(new_surf);
 	}
 
-	wl_resource_set_implementation(new_surf->res,
-		&surf_if, new_surf, comp_surf_delete);
+	wl_resource_set_implementation(
+		new_surf->res, &surf_if, new_surf, comp_surf_delete);
 
 	if (cl->output)
 		wl_surface_send_enter(new_surf->res, cl->output);
@@ -68,5 +68,19 @@ static void comp_create_reg(struct wl_client *client,
 	trace(TRACE_REGION, "create:region");
 	struct wl_resource* region = wl_resource_create(client,
 		&wl_region_interface, wl_resource_get_version(resource), id);
-	wl_resource_set_implementation(region, &region_if, NULL, NULL);
+
+	if (!region){
+		wl_resource_post_no_memory(resource);
+	}
+
+	struct surface_region* reg = malloc(sizeof(struct surface_region));
+	*reg = (struct surface_region){0};
+
+	if (!region){
+		wl_resource_post_no_memory(resource);
+		wl_resource_destroy(region);
+		return;
+	}
+
+	wl_resource_set_implementation(region, &region_if, reg, NULL);
 }
