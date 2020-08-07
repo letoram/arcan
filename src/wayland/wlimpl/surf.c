@@ -161,15 +161,34 @@ static bool shm_to_gl(
 		return false;
 
 	int gl_fmt = -1;
+	int px_fmt = GL_UNSIGNED_BYTE;
+	int gl_int_fmt = -1;
+	int pitch = 0;
+
 	switch(fmt){
 	case WL_SHM_FORMAT_ARGB8888:
 	case WL_SHM_FORMAT_XRGB8888:
-		gl_fmt = GL_BGRA;
+		gl_fmt = GL_BGRA_EXT;
+/* only gles/gles2 supports int_fmt as GL_BGRA */
+		gl_int_fmt = GL_RGBA8;
+//		pitch = stride ? stride / 4 : 0;
+		pitch = w;
 	break;
 	case WL_SHM_FORMAT_ABGR8888:
 	case WL_SHM_FORMAT_XBGR8888:
 		gl_fmt = GL_RGBA;
+		gl_int_fmt = GL_RGBA8;
+		pitch = stride ? stride / 4 : 0;
 	break;
+	case WL_SHM_FORMAT_RGB565:
+		gl_fmt = GL_RGB;
+		gl_int_fmt = GL_RGBA8;
+		px_fmt = GL_UNSIGNED_SHORT_5_6_5;
+		pitch = stride ? stride / 2 : 0;
+	break;
+/* for WL_SHM_FORMAT_YUV***, NV12, we need a really complicated dance here with
+ * multiple planes, GL_UNSIGNED_BYTE, ... as well as custom unpack shaders and
+ * a conversion pass through FBO */
 	default:
 		return false;
 	break;
@@ -181,9 +200,9 @@ static bool shm_to_gl(
 	GLuint glid;
 	fenv->gen_textures(1, &glid);
 	fenv->bind_texture(GL_TEXTURE_2D, glid);
-	fenv->pixel_storei(GL_UNPACK_ROW_LENGTH, stride);
+	fenv->pixel_storei(GL_UNPACK_ROW_LENGTH, pitch);
 	fenv->tex_image_2d(GL_TEXTURE_2D,
-		0, gl_fmt, w, h, 0, gl_fmt, GL_UNSIGNED_BYTE, data);
+		0, gl_int_fmt, w, h, 0, gl_fmt, px_fmt, data);
 	fenv->pixel_storei(GL_UNPACK_ROW_LENGTH, 0);
 	fenv->bind_texture(GL_TEXTURE_2D, 0);
 
@@ -210,7 +229,7 @@ static bool shm_to_gl(
 		fd, stride_out, out_fmt
 	);
 
-	fenv->delete_textures(1, &glid);
+//	fenv->delete_textures(1, &glid);
 	return true;
 }
 
@@ -392,8 +411,9 @@ static bool push_shm(struct wl_client* cl,
 /* alpha state changed? only changing this flag does not require a resynch
  * as the hint is checked on each frame */
 	synch_acon_alpha(acon, fmt_has_alpha(fmt, surf));
+	wl_shm_buffer_begin_access(shm_buf);
 	if (shm_to_gl(acon, surf, w, h, fmt, data, stride))
-		return true;
+		goto out;
 
 /* two other options to avoid repacking, one is to actually use this signal-
  * handle facility to send a descriptor, and mark the type as the WL shared
@@ -418,6 +438,9 @@ static bool push_shm(struct wl_client* cl,
 		memcpy(acon->vidp, data, w * h * sizeof(shmif_pixel));
 
 	arcan_shmif_signal(acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+
+out:
+	wl_shm_buffer_end_access(shm_buf);
 	return true;
 }
 

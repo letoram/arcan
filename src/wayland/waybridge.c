@@ -165,6 +165,13 @@ static struct {
 	bool use_xwayland;
 
 /*
+ * this makes new clients request a new bridge rather than boostrapping
+ * all windows over the existing control, should only be needed as a legacy
+ * fix
+ */
+	bool per_client_bridge;
+
+/*
  * accepted trace level and destination file
  */
 	int trace_log;
@@ -652,7 +659,10 @@ static struct bridge_client* find_client(struct wl_client* cl)
  * connections permitted. If we inherit, the new client should be bootstrapped
  * over the bridge connection.
  */
-	struct arcan_shmif_cont con = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0, NULL);
+	struct arcan_shmif_cont con = {0};
+	if (wl.per_client_bridge)
+		con = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0, NULL);
+
 	if (!con.addr){
 		arcan_shmif_enqueue(&wl.control,
 		&(struct arcan_event){

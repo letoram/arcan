@@ -181,7 +181,7 @@ static void update_title(struct xwnd_state* state)
 		return;
 
 	if (reply->type != atoms[UTF8_STRING]){
-		trace("title:unsupported_type");
+		trace("title:unsupported_type:%d", (int)reply->type);
 		goto out;
 	}
 
@@ -505,14 +505,13 @@ static void xcb_create_notify(xcb_create_notify_event_t* ev)
 
 	send_updated_window(state, "create");
 
-/*
-	xcb_configure_window(dpy, ev->window,
+/*	xcb_configure_window(dpy, ev->window,
 		XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
 		XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
 		XCB_CONFIG_WINDOW_BORDER_WIDTH,
 		(uint32_t[]){ev->x, ev->y, ev->width, ev->height, 0}
 	);
-*/
+	*/
 }
 
 static void xcb_map_notify(xcb_map_notify_event_t* ev)
