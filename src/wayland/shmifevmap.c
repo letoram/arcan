@@ -489,11 +489,24 @@ static void flush_client_events(
 		break;
 		case TARGET_COMMAND_NEWSEGMENT:
 		break;
+		case TARGET_COMMAND_BCHUNK_IN:
+/* new paste operation, send that as a data offer to the client in question */
+		break;
+/* new copy operation, send things there */
+		case TARGET_COMMAND_BCHUNK_OUT:{
+			if (!cl->doffer_copy)
+				continue;
 
-/* if selection status change, send wl_surface_
- * if type: wl_shell, send _send_configure */
+			int fd = arcan_shmif_dupfd(ev.tgt.ioevs[0].iv, -1, true);
+			if (-1 == fd)
+				continue;
+
+			wl_data_source_send_send(cl->doffer_copy->offer, ev.tgt.message, fd);
+			close(fd);
+		}
 		break;
 		case TARGET_COMMAND_OUTPUTHINT:
+/* this roughly corresponds to being assigned a new output, so send clients there */
 		break;
 		default:
 		break;

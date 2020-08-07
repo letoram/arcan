@@ -61,6 +61,7 @@ static xcb_visualid_t visual;
 static int64_t input_grab = XCB_WINDOW_NONE;
 static int64_t input_focus = XCB_WINDOW_NONE;
 static bool xwm_standalone = false;
+static int clipboard_fd = -1;
 
 #include "atoms.h"
 
@@ -932,6 +933,9 @@ static void xcb_selection_notify(struct xcb_selection_notify_event_t* ev)
 	}
 	if (supported_selection(ev->target)){
 	}
+/* push the descriptor or data on the socket, then send the corresponding
+ * message on the output queue */
+
 /* ev->target matches the ATOM from the requested selection target,
  * e.g. timestamp, utf8_string, text, ...) */
 	trace("kind=error:message=unsupported selection target");
@@ -1219,6 +1223,10 @@ int main (int argc, char **argv)
 	setup_init_state(xwm_standalone);
 
 	create_window();
+
+/* used to pass descriptors in/out when there are clipboard transfers */
+	if (getenv("XWM_CLIPBOARD_SOCKET"))
+		clipboard_fd = strtoul(getenv("XWM_CLIPBOARD_SOCKET"), NULL, 10);
 
 /*
  * xcb is thread-safe, so we can have one thread for incoming
