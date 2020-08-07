@@ -769,7 +769,7 @@ static void rebuild_client(struct bridge_client* bcl)
 			surfaces[surf_count].group = i;
 			surfaces[surf_count].ind = ind;
 			surfaces[surf_count].surf = wl.groups[i].slots[ind].surface;
-			trace(TRACE_ALERT, "queue surface for rebuild: %c\n",
+			trace(TRACE_ALERT, "queue surface for rebuild: %c",
 				wl.groups[i].slots[ind].idch);
 			surf_count++;
 		}
@@ -783,8 +783,8 @@ static void rebuild_client(struct bridge_client* bcl)
 	static uint32_t ralloc_id = 0xbeba;
 	for (size_t i = 0; i < surf_count; i++){
 		struct comp_surf* surf = surfaces[i].surf;
-		trace(TRACE_ALERT, "rebuild, request %s => %d (%"PRIxPTR",%"PRIxPTR")",
-			surf->tracetag, arcan_shmif_segkind(&surf->acon),
+		trace(TRACE_ALERT, "(%zu/%zu) rebuild, request %s => %d (%"PRIxPTR",%"PRIxPTR")",
+			i, surf_count, surf->tracetag, arcan_shmif_segkind(&surf->acon),
 			(uintptr_t) surf->acon.addr, (uintptr_t) surf->acon.priv);
 
 		arcan_shmif_enqueue(&bcl->acon, &(struct arcan_event){
@@ -886,6 +886,13 @@ static void rebuild_client(struct bridge_client* bcl)
 	for (size_t i = 0; i < surf_count; i++){
 		struct comp_surf* surf = surfaces[i].surf;
 		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
+
+/* if the surface is tied to xwayland, we also need to resubmit (at least)
+ * the type, possibly also surface-id to wl-id pairing */
+		struct xwl_window* wnd = xwl_find_surface(surf->id);
+		if (wnd && wnd->xtype){
+			wnd_message(wnd, "type:%s", wnd->xtype);
+		}
 	}
 
 /* clipboards can be allocated dynamically so no need to care there */
@@ -1111,9 +1118,18 @@ static bool process_group(struct conn_group* group)
 						flush_surface_events(group->slots[i].surface);
 					else
 						trace(TRACE_ALERT, "broken surface slot (%zu)", i);
-					char wtf[256];
-					ssize_t nr = read(group->pg[i].fd, wtf, 256);
-					trace(TRACE_ALERT, "read %zd\n", nr);
+
+/* we can get into a situation where arcan considers the connection over and
+ * done with, but wayland clients have much less strinent lifecycle
+ * requirements, in those cases the read-socket is actually over and done with
+ * so it needs to be removedfrom the pollset or we start spinning - with
+ * x clients in particular we can switch to an 'xkill' like behavior though */
+					char flush[256];
+					ssize_t nr = read(group->pg[i].fd, flush, 256);
+					if (0 == nr){
+						close(group->pg[i].fd);
+						group->pg[i].fd = -1;
+					}
 				}
 				else {
 					trace(TRACE_ALERT, "event on empty slot (%zu)", i);

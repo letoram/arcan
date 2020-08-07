@@ -74,6 +74,7 @@ struct xwl_window {
 	size_t queue_count;
 	struct arcan_event queued_message[8];
 
+	char* xtype;
 	struct comp_surf* surf;
 };
 
@@ -301,6 +302,7 @@ static int process_input(const char* msg)
 /* should come with some kind of type information */
 		if (arg_lookup(cmd, "type", 0, &arg) && arg){
 			trace(TRACE_XWL, "created with type %s", arg);
+			wnd->xtype = strdup(arg);
 			wnd_message(wnd, "type:%s", arg);
 		}
 		else{
@@ -381,6 +383,9 @@ static int process_input(const char* msg)
 			goto cleanup;
 		}
 
+		if (wnd->xtype)
+			free(wnd->xtype);
+		wnd->xtype = strdup(arg);
 		wnd_message(wnd, "type:%s", arg);
 		wnd_viewport(wnd);
 	}
@@ -756,7 +761,7 @@ static bool xwl_defer_handler(
 	struct xwl_window* wnd = (req->tag);
 	wnd->surf = surf;
 	wnd->viewport.ext.kind = ARCAN_EVENT(VIEWPORT);
-	trace(TRACE_ALLOC, "queue: %zu", wnd->queue_count);
+	trace(TRACE_ALLOC, "kind=X:fd=%d:queue=%zu", con->epipe, wnd->queue_count);
 
 /* the normal path is:
  * surface_commit -> check_paired -> request surface -> request ok ->
