@@ -559,6 +559,7 @@ enum shmifext_setup_status arcan_shmifext_setup(
 /*
  * Check if the connection is in an extended state or not.
  * return values:
+ *-1 - not extended, handle passing disabled
  * 0 - not extended
  * 1 - extended, handle passing
  * 2 - extended, readback fallback
@@ -704,7 +705,8 @@ struct shmifext_buffer_plane {
 			uint32_t format;
 			uint64_t pitch;
 			uint64_t offset;
-			uint64_t modifiers;
+			uint32_t mod_hi;
+			uint32_t mod_lo;
 		} gbm;
 	};
 };

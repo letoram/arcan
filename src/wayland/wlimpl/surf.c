@@ -150,76 +150,68 @@ static void surf_frame(
 }
 
 static bool shm_to_gl(
-	struct arcan_shmif_cont* acon,
-	struct comp_surf* surf, struct wl_shm_buffer* buf)
+	struct arcan_shmif_cont* acon, struct comp_surf* surf,
+	int w, int h, int fmt, void* data, int stride)
 {
-	return false;
-/*
- * 1. if acon context is not accelerated, try that first
- */
+/* globally rejected or per-window rejected or no GL or it has failed before */
+	if (!arcan_shmif_handle_permitted(&wl.control) ||
+		!arcan_shmif_handle_permitted(acon) ||
+		arcan_shmifext_isext(&wl.control) != 1 ||
+		surf->shm_gl_fail)
+		return false;
 
-/*
- * 2. if we already have a glid
- *    - drop if the formats mismatch
- *    -> or allocate new
- *
- * 3. update the texture based on dirty state
- *		struct agp_fenv* fenv = arcan_shmifext_getfenv(acon);
- *
- *	update the texture, could do a more efficient use of damage regions here,
- *  crutch is that we may need to maintain a queue of buffers again
-		fenv->bind_texture(GL_TEXTURE_2D, surf->glid);
-		fenv->pixel_storei(GL_UNPACK_ROW_LENGTH, stride);
-		fenv->tex_image_2d(GL_TEXTURE_2D,
-			0, surf->gl_fmt, w, h, 0, surf->gl_fmt, GL_UNSIGNED_BYTE, data);
-		fenv->pixel_storei(GL_UNPACK_ROW_LENGTH, 0);
-		fenv->bind_texture(GL_TEXTURE_2D, 0);
- */
-/*
- * 4. extract gl handle
-		int fd;
-		size_t stride_out;
-		int fmt;
-
-		uintptr_t gl_display;
-		arcan_shmifext_egl_meta(&wl.control, &gl_display, NULL, NULL);
-			if (arcan_shmifext_gltex_handle(acon,
-			gl_display, surf->glid, &fd, &stride_out, &fmt)){
-			trace(TRACE_SURF, "converted to handle, bingo");
-			arcan_shmif_signalhandle(acon,
-				SHMIF_SIGVID | SHMIF_SIGBLK_NONE,
-				fd, stride_out, fmt
-			);
-fail:
- */
-}
-
-static void setup_shmifext(
-	struct arcan_shmif_cont* acon, struct comp_surf* surf, int fmt)
-{
-	struct arcan_shmifext_setup setup = arcan_shmifext_defaults(acon);
-	setup.builtin_fbo = false;
-
-	surf->accel_fmt = fmt;
-
+	int gl_fmt = -1;
 	switch(fmt){
 	case WL_SHM_FORMAT_ARGB8888:
 	case WL_SHM_FORMAT_XRGB8888:
-		surf->gl_fmt = GL_BGRA;
+		gl_fmt = GL_BGRA;
 	break;
 	case WL_SHM_FORMAT_ABGR8888:
 	case WL_SHM_FORMAT_XBGR8888:
-		surf->gl_fmt = GL_RGBA;
+		gl_fmt = GL_RGBA;
 	break;
 	default:
-		surf->fail_accel = -1;
-		return;
+		return false;
 	break;
 	}
-	if (arcan_shmifext_setup(acon, setup) != SHMIFEXT_OK)
-		surf->fail_accel = -1;
-	else
-		surf->fail_accel = 1;
+
+/* used the shared primary context for allocation, this is also where we can do
+ * our color conversion, currently just use the teximage- format */
+	struct agp_fenv* fenv = arcan_shmifext_getfenv(&wl.control);
+	GLuint glid;
+	fenv->gen_textures(1, &glid);
+	fenv->bind_texture(GL_TEXTURE_2D, glid);
+	fenv->pixel_storei(GL_UNPACK_ROW_LENGTH, stride);
+	fenv->tex_image_2d(GL_TEXTURE_2D,
+		0, gl_fmt, w, h, 0, gl_fmt, GL_UNSIGNED_BYTE, data);
+	fenv->pixel_storei(GL_UNPACK_ROW_LENGTH, 0);
+	fenv->bind_texture(GL_TEXTURE_2D, 0);
+
+/* build descriptors */
+	int fd;
+	size_t stride_out;
+	int out_fmt;
+
+	uintptr_t gl_display;
+	arcan_shmifext_egl_meta(&wl.control, &gl_display, NULL, NULL);
+
+/* can still fail for mysterious reasons, force-fallback to normal shm */
+	if (!arcan_shmifext_gltex_handle(&wl.control,
+		gl_display, glid, &fd, &stride_out, &out_fmt)){
+		trace(TRACE_SURF, "shm->glhandle failed");
+		fenv->delete_textures(1, &glid);
+		surf->shm_gl_fail = true;
+		return false;
+	}
+
+	trace(TRACE_SURF, "shm->gl(%d, %d)", glid, fd);
+	arcan_shmif_signalhandle(acon,
+		SHMIF_SIGVID | SHMIF_SIGBLK_NONE,
+		fd, stride_out, out_fmt
+	);
+
+	fenv->delete_textures(1, &glid);
+	return true;
 }
 
 /*
@@ -314,13 +306,48 @@ static bool push_dma(struct wl_client* cl,
 		arcan_shmif_resize(acon, dmabuf->w, dmabuf->h);
 	}
 
+/* same dance as in wayland_drm, if the receiving side doesn't want dma bufs,
+ * attach them to the context (and extend to accelerated) then force a CPU
+ * readback - could be leveraged to perform other transforms at the same time,
+ * one candidate being subsurface composition and colorspace conversion */
+	if (!arcan_shmif_handle_permitted(acon) ||
+			!arcan_shmif_handle_permitted(&wl.control)){
+		if (!arcan_shmifext_isext(acon)){
+			struct arcan_shmifext_setup defs = arcan_shmifext_defaults(acon);
+			defs.no_context = true;
+			arcan_shmifext_setup(acon, defs);
+		}
+
+		int n_planes = 0;
+		struct shmifext_buffer_plane planes[4];
+		for (size_t i = 0; i < 4; i++){
+			planes[i] = dmabuf->planes[i];
+			if (planes[i].fd <= 0)
+				break;
+			planes[i].fd = arcan_shmif_dupfd(planes[i].fd, -1, false);
+			n_planes++;
+		}
+
+		if (arcan_shmifext_import_buffer(acon,
+			SHMIFEXT_BUFFER_GBM, planes, n_planes, sizeof(planes[0]))){
+
+		}
+		else {
+			for (size_t i = 0; i < n_planes; i++)
+				if (planes[i].fd > 0)
+					close(planes[i].fd);
+		}
+
+	return true;
+	}
+
 /* right now this only supports a single transfered buffer, the real support
  * is close by in another branch, but for the sake of bringup just block those
  * now */
 	for (size_t i = 0; i < COUNT_OF(dmabuf->planes); i++){
 		if (i == 0){
 			arcan_shmif_signalhandle(acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE,
-				dmabuf->planes[i].fd, dmabuf->planes[i].stride, dmabuf->fmt);
+				dmabuf->planes[i].fd, dmabuf->planes[i].gbm.pitch, dmabuf->fmt);
 		}
 	}
 
@@ -365,7 +392,7 @@ static bool push_shm(struct wl_client* cl,
 /* alpha state changed? only changing this flag does not require a resynch
  * as the hint is checked on each frame */
 	synch_acon_alpha(acon, fmt_has_alpha(fmt, surf));
-	if (shm_to_gl(acon, surf, shm_buf))
+	if (shm_to_gl(acon, surf, w, h, fmt, data, stride))
 		return true;
 
 /* two other options to avoid repacking, one is to actually use this signal-
@@ -490,10 +517,10 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 	wl_buffer_send_release(buf);
 
 	trace(TRACE_SURF,
-		"surf_commit(%zu,%zu-%zu,%zu):accel=%d",
+		"surf_commit(%zu,%zu-%zu,%zu)accel_fail=%d",
 			(size_t)acon->dirty.x1, (size_t)acon->dirty.y1,
 			(size_t)acon->dirty.x2, (size_t)acon->dirty.y2,
-			surf->fail_accel);
+			(int)surf->shm_gl_fail);
 
 /* reset the dirty rectangle */
 	acon->dirty.x1 = acon->w;

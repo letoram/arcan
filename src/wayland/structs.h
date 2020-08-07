@@ -135,12 +135,9 @@ struct comp_surf {
  * GPU from the waybridge process as we both save a copy (no good way to
  * map the buffer- pool to shmif- vidp), and can safely upload a texture
  * to the GPU without risking a stall due to the main process being busy
- * with VSYNCH.
+ * with GL context locked on synch.
  */
-	int fail_accel;
-	int accel_fmt;
-	int gl_fmt;
-	unsigned glid;
+	bool shm_gl_fail;
 
 /*
  * Just keep this fugly thing here as it is on par with wl_list masturbation,

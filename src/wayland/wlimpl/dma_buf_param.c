@@ -1,10 +1,3 @@
-struct buf_plane {
-	int fd;
-	uint32_t ofs;
-	uint32_t stride;
-	uint32_t mod_hi, mod_low;
-};
-
 struct dma_buf {
 	uint32_t magic;
 
@@ -13,7 +6,7 @@ struct dma_buf {
 	uint32_t fl;
 	uint32_t id;
 
-	struct buf_plane planes[4];
+	struct shmifext_buffer_plane planes[4];
 	struct wl_resource* res;
 };
 
@@ -116,12 +109,18 @@ static void zdmattr_add(struct wl_client* cl,
 
 	struct dma_buf* buf = wl_resource_get_user_data(res);
 	if (plane < COUNT_OF(buf->planes)){
-		buf->planes[plane] = (struct buf_plane){
+		buf->planes[plane] = (struct shmifext_buffer_plane){
+/* nice little caveat, if this is pushed through the normal conversion,
+ * the [fd] will get closed by plane import, so remember to dup this when
+ * forwarding */
 			.fd = fd,
-			.ofs = ofs,
-			.stride = stride,
-			.mod_hi = mod_hi,
-			.mod_low = mod_lo
+			.gbm = {
+				.offset = ofs,
+				.pitch = stride,
+				.mod_hi = mod_hi,
+				.mod_lo = mod_lo,
+				.format = buf->fmt,
+			}
 		};
 	}
 	else {
