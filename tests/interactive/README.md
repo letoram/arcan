@@ -75,3 +75,5 @@ vrtest3 - extended scratchpad on vrtest2
 prim3d - single cube, directional lighting, mouse rotation and shifted origo
 
 itest - two different kinds of externally provided input injection
+
+wltest - testing the builtin wayland window manager helper script
