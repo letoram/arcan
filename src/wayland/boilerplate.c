@@ -123,6 +123,19 @@ static const struct wl_data_device_manager_interface ddevmgr_if = {
 	.get_data_device = ddevmgr_get_data_device
 };
 
+#include "wayland-xdg-decoration-unstable-v1-server-protocol.h"
+#include "wlimpl/xdg_decor.c"
+static const struct zxdg_decoration_manager_v1_interface decormgr_if = {
+	.destroy = xdgdecor_destroy,
+	.get_toplevel_decoration = xdgdecor_get
+};
+
+#include "wayland-server-decoration-server-protocol.h"
+#include "wlimpl/kwin_decor.c"
+static const struct org_kde_kwin_server_decoration_manager_interface kwindecor_if = {
+	.create = kwindecor_create
+};
+
 #include "wayland-xdg-shell-unstable-v6-server-protocol.h"
 #include "wlimpl/zxdg_positioner.c"
 static struct zxdg_positioner_v6_interface zxdgpos_if = {
@@ -270,10 +283,4 @@ static const struct zxdg_output_manager_v1_interface outmgr_if = {
 	.get_xdg_output = xdgoutput_get
 };
 
-#include "wayland-xdg-decoration-unstable-v1-server-protocol.h"
-#include "wlimpl/xdg_decor.c"
-static const struct zxdg_decoration_manager_v1_interface decormgr_if = {
-	.destroy = xdgdecor_destroy,
-	.get_toplevel_decoration = xdgdecor_get
-};
 #include "bondage.c"

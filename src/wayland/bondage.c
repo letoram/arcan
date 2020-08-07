@@ -292,6 +292,28 @@ static void bind_xdgdecor(
 	wl_resource_set_implementation(res, &decormgr_if, cl, NULL);
 }
 
+static void bind_kwindecor(
+	struct wl_client* client, void* data, uint32_t version, uint32_t id)
+{
+	trace(TRACE_ALLOC, "bind_xdg_decor");
+	struct wl_resource* res =
+		wl_resource_create(client,
+			&org_kde_kwin_server_decoration_manager_interface, version, id);
+
+	if (!res){
+		wl_client_post_no_memory(client);
+		return;
+	}
+	struct bridge_client* cl = find_client(client);
+	if (!cl){
+		wl_client_post_no_memory(client);
+		return;
+	}
+
+	wl_resource_set_implementation(res, &kwindecor_if, cl, NULL);
+	org_kde_kwin_server_decoration_manager_send_default_mode(res, ORG_KDE_KWIN_SERVER_DECORATION_MODE_SERVER);
+}
+
 static void bind_relp(struct wl_client* client,
 	void* data, uint32_t version, uint32_t id)
 {
