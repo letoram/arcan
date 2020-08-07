@@ -23,6 +23,7 @@ static bool xdgpopup_shmifev_handler(
 				h /= surf->scale;
 
 				xdg_popup_send_configure(surf->shell_res, 0, 0, w, h);
+				xdg_surface_send_configure(surf->surf_res, STEP_SERIAL());
 				changed = true;
 			}
 

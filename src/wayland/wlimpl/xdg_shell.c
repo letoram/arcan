@@ -14,7 +14,10 @@ static void xdg_getsurf(struct wl_client* client,
 	snprintf(surf->tracetag, 16, "xdg_surf");
 	surf->surf_res = xdgsurf_res;
 	wl_resource_set_implementation(xdgsurf_res, &xdgsurf_if, surf, NULL);
-	xdg_surface_send_configure(xdgsurf_res, wl_display_next_serial(wl.disp));
+/*
+ * used to be here, deferred to until we actually set a role
+ * xdg_surface_send_configure(xdgsurf_res, wl_display_next_serial(wl.disp));
+ */
 }
 
 static void xdg_pong(

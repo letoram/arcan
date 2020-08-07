@@ -122,7 +122,7 @@ static void surf_frame(
 	trace(TRACE_SURF, "req-cb, %s(%"PRIu32")", surf->tracetag, cb);
 
 	if (surf->frames_pending + surf->subsurf_pending > COUNT_OF(surf->scratch)){
-		trace(TRACE_SURF, "too many pending surface ops");
+		trace(TRACE_ALLOC, "too many pending surface ops");
 		wl_resource_post_no_memory(res);
 		return;
 	}
@@ -132,10 +132,21 @@ static void surf_frame(
 		wl_resource_create(cl, &wl_callback_interface, 1, cb);
 
 	if (!cbres){
+	trace(TRACE_ALLOC, "frame callback allocation failed");
 		wl_resource_post_no_memory(res);
 		return;
 	}
 
+/* special case, if the surface has not yet been promoted to a usable type
+ * and the client requests a callback, ack:it immediately */
+	if (!surf->shell_res){
+	trace(TRACE_SURF, "preemptive-cb-ack");
+		wl_callback_send_done(cbres, cb);
+		wl_resource_destroy(cbres);
+		return;
+	}
+
+/* should just bitmap this .. */
 	for (size_t i = 0; i < COUNT_OF(surf->scratch); i++){
 		if (surf->scratch[i].type == 1){
 			wl_resource_destroy(surf->scratch[i].res);

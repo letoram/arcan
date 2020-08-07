@@ -1,7 +1,7 @@
 static bool subsurf_shmifev_handler(
 	struct comp_surf* surf, struct arcan_event* ev)
 {
-	trace(TRACE_SHELL, "subsurface - shmif: %s\n",
+	trace(TRACE_SURF, "subsurface - shmif: %s\n",
 		arcan_shmif_eventstr(ev, NULL, 0));
 	return false;
 }
@@ -18,11 +18,11 @@ static void subsurf_position(
 {
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 	if (!surf){
-		trace(TRACE_SHELL, "position on broken subsurf");
+		trace(TRACE_SURF, "position on broken subsurf");
 		return;
 	}
 	else
-		trace(TRACE_SHELL, "x,y - %"PRId32", %"PRId32, x, y);
+		trace(TRACE_SURF, "x,y - %"PRId32", %"PRId32, x, y);
 	surf->viewport.ext.viewport.x = x;
 	surf->viewport.ext.viewport.y = y;
 	arcan_shmif_enqueue(&surf->acon, &surf->viewport);
@@ -34,7 +34,7 @@ static void subsurf_placeabove(
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 	struct comp_surf* surf_sibl = wl_resource_get_user_data(sibl);
 	if (!surf || !surf_sibl){
-		trace(TRACE_SHELL, "placeabove on broken subsurf");
+		trace(TRACE_SURF, "placeabove on broken subsurf");
 		return;
 	}
 
@@ -51,11 +51,11 @@ static void subsurf_placebelow(
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 	struct comp_surf* surf_sibl = wl_resource_get_user_data(sibl);
 	if (!surf || !surf_sibl){
-		trace(TRACE_SHELL, "placeabove on broken subsurf");
+		trace(TRACE_SURF, "placeabove on broken subsurf");
 		return;
 	}
 
-	trace(TRACE_SHELL, "@below(%"PRIxPTR")", (uintptr_t)sibl);
+	trace(TRACE_SURF, "@below(%"PRIxPTR")", (uintptr_t)sibl);
 	if (surf_sibl->viewport.ext.viewport.order > -128)
 		surf->viewport.ext.viewport.order = surf_sibl->viewport.ext.viewport.order-1;
 	arcan_shmif_enqueue(&surf->acon, &surf->viewport);

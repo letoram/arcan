@@ -29,10 +29,6 @@ static void pointer_release(struct wl_client* cl, struct wl_resource* res)
 	trace(TRACE_SEAT, "cursor_release");
 	struct bridge_client* bcl = wl_resource_get_user_data(res);
 	bcl->pointer = NULL;
-/*
- * NOTE: we should probably indicate that the client no-longer uses
- * a custom cursor (so none at all for that matter)
- */
 	wl_resource_destroy(res);
 }
 
@@ -49,7 +45,7 @@ static bool pointer_handler(
 		return false;
 	}
 
-	trace(TRACE_SEAT, "seat pointer paired with SEGID_CURSOR\n");
+	trace(TRACE_SEAT, "bridge-cursor to %"PRIxPTR, (uintptr_t) con);
 	struct bridge_client* bcl = wl_resource_get_user_data(req->target);
 	bcl->acursor = *con;
 	return true;
@@ -80,6 +76,7 @@ static void seat_pointer(struct wl_client* cl,
  * active surface that we synch- to it.
  */
 	if (!bcl->acursor.addr){
+		trace(TRACE_ALLOC, "bridge-cursor");
 		request_surface(bcl, &(struct surface_request){
 			.segid = SEGID_CURSOR,
 			.target = res,

@@ -101,9 +101,11 @@ static bool xdgsurf_defer_handler(
 	size_t h = surf->acon.h;
 	if (wl.force_sz){
 		w = wl.init.display_width_px / surf->scale;
-		h = wl.init.display_height_px;
+		h = wl.init.display_height_px / surf->scale;
 	}
+
 	xdg_toplevel_send_configure(toplevel, w, h, &states);
+	xdg_surface_send_configure(surf->surf_res, wl_display_next_serial(wl.disp));
 	wl_array_release(&states);
 	return true;
 }
