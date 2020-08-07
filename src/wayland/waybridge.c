@@ -51,6 +51,11 @@ struct comp_surf;
 static struct bridge_client* find_client(struct wl_client* cl);
 
 /*
+ * sent when a surface loses focus
+ */
+static void release_all_keys(struct bridge_client* cl);
+
+/*
  * Used as a reaction to _RESET[HARD] when a client is forcibly migrated or
  * recovers from a crash. Enumerate all related surfaces, re-request and then
  * re-viewport.
@@ -707,6 +712,7 @@ static struct bridge_client* find_client(struct wl_client* cl)
 	res = &wl.groups[group].slots[ind].client;
 	*res = (struct bridge_client){};
 
+	memset(res->keys, '\0', sizeof(res->keys));
 	res->acon = con;
 	res->client = cl;
 	res->group = group;

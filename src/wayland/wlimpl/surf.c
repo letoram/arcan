@@ -320,6 +320,8 @@ static bool push_shm(struct wl_client* cl,
 /* have acceleration failed or format changed since we last negotiated accel? */
 	if (0 == surf->fail_accel ||
 		(surf->fail_accel > 0 && fmt != surf->accel_fmt)){
+		trace(TRACE_SURF,
+			"surf_commit:status=drop_ext:message:accel_failed\n");
 		arcan_shmifext_drop(acon);
 		setup_shmifext(acon, surf, fmt);
 		arcan_shmifext_make_current(acon);

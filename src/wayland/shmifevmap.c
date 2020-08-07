@@ -141,6 +141,35 @@ static void update_mbtn(struct comp_surf* cl,
 	}
 }
 
+static void forward_key(
+	struct bridge_client* cl, struct xkb_state* state, uint32_t key, bool pressed)
+{
+	xkb_state_update_key(state, key + 8, pressed ? XKB_KEY_DOWN : XKB_KEY_UP);
+	uint32_t depressed = xkb_state_serialize_mods(state,XKB_STATE_MODS_DEPRESSED);
+	uint32_t latched = xkb_state_serialize_mods(state, XKB_STATE_MODS_LATCHED);
+	uint32_t locked = xkb_state_serialize_mods(state, XKB_STATE_MODS_LOCKED);
+	uint32_t group = xkb_state_serialize_mods(state, XKB_STATE_MODS_EFFECTIVE);
+
+	wl_keyboard_send_modifiers(cl->keyboard,
+		STEP_SERIAL(), depressed, latched, locked, group);
+	wl_keyboard_send_key(cl->keyboard,
+		STEP_SERIAL(),
+		arcan_timemillis(),
+		key,
+		pressed
+	);
+}
+
+static void release_all_keys(struct bridge_client* cl)
+{
+	for (size_t i = 0 ; i < COUNT_OF(cl->keys); i++){
+		if (cl->keys[i]){
+			cl->keys[i] = 0;
+			forward_key(cl, cl->kbd_state.state, i, false);
+		}
+	}
+}
+
 static void update_kbd(struct comp_surf* cl, arcan_ioevent* ev)
 {
 	if (!cl->client->keyboard)
@@ -164,24 +193,18 @@ static void update_kbd(struct comp_surf* cl, arcan_ioevent* ev)
  * The other panic option is to fake/guess/estimate the different modifiers
  * and translate that way.
  */
-	struct xkb_state* state = cl->client->kbd_state.state;
-	xkb_state_update_key(state,
-		ev->subid + 8, ev->input.translated.active ? XKB_KEY_DOWN : XKB_KEY_UP);
-	uint32_t depressed = xkb_state_serialize_mods(state,XKB_STATE_MODS_DEPRESSED);
-	uint32_t latched = xkb_state_serialize_mods(state, XKB_STATE_MODS_LATCHED);
-	uint32_t locked = xkb_state_serialize_mods(state, XKB_STATE_MODS_LOCKED);
-	uint32_t group = xkb_state_serialize_mods(state, XKB_STATE_MODS_EFFECTIVE);
-	if (!ev->pts)
-		ev->pts = arcan_timemillis();
+	uint8_t subid = ev->subid;
+	bool active = ev->input.translated.active;
 
-	wl_keyboard_send_modifiers(cl->client->keyboard,
-		STEP_SERIAL(), depressed, latched, locked, group);
-	wl_keyboard_send_key(cl->client->keyboard,
-		STEP_SERIAL(),
-		ev->pts,
-		ev->subid,
-		ev->input.translated.active /* WL_KEYBOARD_KEY_STATE_PRESSED == 1*/
-	);
+	if (subid < COUNT_OF(cl->client->keys)){
+/* no-op, bad input from server */
+		if (cl->client->keys[subid] == active)
+			return;
+
+		cl->client->keys[subid] = active;
+	}
+
+	forward_key(cl->client, cl->client->kbd_state.state, subid, active);
 }
 
 static bool relative_sample(struct wl_resource* res, uint64_t ts, int x, int y)

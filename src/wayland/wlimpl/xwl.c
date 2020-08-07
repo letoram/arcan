@@ -716,6 +716,7 @@ static bool xwlsurf_shmifev_handler(
 				fprintf(wmfd_output, "id=%"PRIu32"%s\n",
 					wnd->id, surf->states.unfocused ? ":kind=unfocus" : ":kind=focus");
 				if (surf->states.unfocused){
+					release_all_keys(surf->client);
 					leave_all(surf);
 				}
 				else{
