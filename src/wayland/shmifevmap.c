@@ -2,20 +2,22 @@ static void leave_seat(
 	struct comp_surf* cl,
 	struct seat* seat, long serial)
 {
-	if (seat->ptr && seat->in_ptr){
+	if (seat->ptr && seat->in_ptr && cl->has_ptr){
 		trace(TRACE_SEAT, "leave-ptr@%ld:seat(%"PRIxPTR")-surface:%"
 			PRIxPTR, serial, (uintptr_t) seat->in_ptr);
 
 		wl_pointer_send_leave(seat->ptr, serial, seat->in_ptr);
 		seat->in_ptr = NULL;
+		cl->has_ptr = false;
 	}
 
-	if (seat->kbd && seat->in_kbd){
+	if (seat->kbd && seat->in_kbd && cl->has_kbd){
 		trace(TRACE_SEAT, "leave-kbd@%ld:seat(%"PRIxPTR")-surface:%"
 			PRIxPTR, serial, (uintptr_t) seat->in_kbd);
 
 		wl_keyboard_send_leave(seat->kbd, serial, seat->in_kbd);
 		seat->in_kbd = NULL;
+		cl->has_kbd = false;
 	}
 }
 
@@ -24,7 +26,7 @@ static void enter_seat(
 	struct seat* seat, long serial)
 {
 	if (seat->ptr && seat->in_ptr != cl->res){
-		if (seat->in_ptr){
+		if (seat->in_ptr && cl->has_ptr){
 			trace(TRACE_SEAT, "leave-ptr@%ld:seat(%"PRIxPTR")-surface:%"
 				PRIxPTR, serial, (uintptr_t)seat, (uintptr_t)seat->in_ptr, cl->res);
 			wl_pointer_send_leave(seat->ptr, serial, seat->in_ptr);
@@ -44,10 +46,11 @@ static void enter_seat(
 		);
 
 		seat->in_ptr = cl->res;
+		cl->has_ptr = true;
 	}
 
 	if (seat->kbd && seat->in_kbd != cl->res){
-		if (seat->in_kbd){
+		if (seat->in_kbd && cl->has_kbd){
 			wl_keyboard_send_leave(seat->kbd, serial, seat->in_kbd);
 		}
 
@@ -57,6 +60,7 @@ static void enter_seat(
 		wl_array_release(&states);
 
 		seat->in_kbd = cl->res;
+		cl->has_kbd = true;
 	}
 }
 
@@ -214,14 +218,11 @@ static void update_kbd(struct comp_surf* cl, arcan_ioevent* ev)
 	uint8_t subid = ev->subid;
 	bool active = ev->input.translated.active;
 
-	if (subid < COUNT_OF(cl->client->keys)){
 /* no-op, bad input from server */
-		if (cl->client->keys[subid] == active)
-			return;
+	if (cl->client->keys[subid] == active)
+		return;
 
-		cl->client->keys[subid] = active;
-	}
-
+	cl->client->keys[subid] = active;
 	forward_key(cl->client, subid, active);
 }
 
@@ -412,8 +413,9 @@ static void flush_surface_events(struct comp_surf* surf)
 			continue;
 
 		switch(ev.tgt.kind){
-/* translate to configure events */
 		case TARGET_COMMAND_OUTPUTHINT:{
+			update_client_output(surf->client,
+				ev.tgt.ioevs[0].iv, ev.tgt.ioevs[1].iv, 0.0, 0.0, 0, ev.tgt.ioevs[2].iv);
 /* have we gotten reconfigured to a different display? if so,
  * the client should send a new scale factor */
 		}
@@ -501,9 +503,17 @@ static void flush_client_events(
 			if (-1 == fd)
 				continue;
 
-			wl_data_source_send_send(cl->doffer_copy->offer, ev.tgt.message, fd);
+			trace(TRACE_DDEV, "offer_copy=%s", cl->doffer_type);
+			wl_data_source_send_send(cl->doffer_copy->offer, cl->doffer_type, fd);
 			close(fd);
 		}
+		break;
+
+/* bchunk type can't be transferred in ev- the corresponding field as it gets filtered */
+		case TARGET_COMMAND_MESSAGE:
+			 if (strncmp("select:", ev.tgt.message, 7) == 0){
+				 snprintf(cl->doffer_type, COUNT_OF(cl->doffer_type), "%s", (char*)&ev.tgt.message[7]);
+			 }
 		break;
 		case TARGET_COMMAND_OUTPUTHINT:
 /* this roughly corresponds to being assigned a new output, so send clients there */

@@ -62,6 +62,9 @@ void update_confinement(struct comp_surf* surf)
 
 	surf->client->confine_event = new_conf;
 	arcan_shmif_enqueue(&surf->client->acon, &new_conf);
+
+/* but if we already are on the confined- to surface, we should send that
+ * immediately - otherwise recent versions of xwayland etc. will bug out */
 }
 
 void consptr_lock(struct wl_client* cl, struct wl_resource* res,

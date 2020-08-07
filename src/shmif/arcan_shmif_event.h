@@ -596,8 +596,8 @@ enum ARCAN_TARGET_COMMAND {
  * ieov[3].iv = min_width,
  * ioev[4].iv = min_height,
  * ioev[5].iv = output_id,
- * ioev[6].iv = vrr_min
- * ioev[7].iv = vrr_step
+ * ioev[6].fv = vrr_min
+ * ioev[7].fv = vrr_step
  */
 	TARGET_COMMAND_OUTPUTHINT,
 

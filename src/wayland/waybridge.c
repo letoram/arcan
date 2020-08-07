@@ -1116,6 +1116,7 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-shell         disable the shell protocol\n"
 "\t-no-shm           disable the shm protocol\n"
 "\t-no-seat          disable the seat protocol\n"
+"\t-no-relative-ptr  disable the relative pointer protocol\n"
 "\t-no-xdg           disable the xdg protocol\n"
 "\t-no-zxdg          disable the zxdg protocol\n"
 "\t-no-output        disable the output protocol\n"
@@ -1366,7 +1367,7 @@ int main(int argc, char* argv[])
 			protocols.subcomp = 0;
 		else if (strcmp(argv[arg_i], "-no-data-device") == 0)
 			protocols.ddev = 0;
-		else if (strcmp(argv[arg_i], "-no-relative-pointer") == 0)
+		else if (strcmp(argv[arg_i], "-no-relative-ptr") == 0)
 			protocols.relp = 0;
 		else if (strcmp(argv[arg_i], "-no-constraints") == 0)
 			protocols.cons= 0;

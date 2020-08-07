@@ -331,14 +331,69 @@ static void bind_relp(struct wl_client* client,
 	wl_resource_set_implementation(resource, &relpmgr_if, cl, NULL);
 }
 
+static void update_client_output(
+	struct bridge_client* cl,
+	int width_px, int height_px, float hdensity, float vdensity, int scale, float rate)
+{
+	if (!cl->output)
+		return;
+
+/* update the fields that have changed/are defined, others will just be re-used */
+	if (width_px)
+		cl->output_state.size_px[0] = width_px;
+
+	if (height_px)
+		cl->output_state.size_px[1] = height_px;
+
+	if (hdensity > 0.0001)
+		cl->output_state.density[0];
+
+	if (vdensity > 0.0001)
+		cl->output_state.density[1];
+
+	if (scale)
+		cl->scale = scale;
+
+	if (rate > 0.0001)
+		cl->output_state.rate = rate;
+
+	wl_output_send_geometry(
+		cl->output, 0, 0,
+		(float)cl->output_state.size_px[0] / cl->output_state.density[0] * 10.0,
+		(float)cl->output_state.size_px[1] / cl->output_state.density[1] * 10.0,
+		0, /* init.fonts[0] hinting should work */
+		"unknown", "unknown",
+		0
+	);
+
+	wl_output_send_mode(
+		cl->output,
+		WL_OUTPUT_MODE_CURRENT,
+		cl->output_state.size_px[0],
+		cl->output_state.size_px[1],
+		cl->output_state.rate
+	);
+
+	if (scale)
+		cl->scale = scale;
+
+	int version = wl_resource_get_version(cl->output);
+	if (version >= WL_OUTPUT_SCALE_SINCE_VERSION){
+		wl_output_send_scale(cl->output, cl->scale);
+	}
+
+	if (version >= 2)
+		wl_output_send_done(cl->output);
+}
+
 static void bind_output(struct wl_client* client,
 	void* data, uint32_t version, uint32_t id)
 {
 	trace(TRACE_ALLOC, "bind_output (geom: %zu*%zu)",
 		wl.init.display_width_px, wl.init.display_height_px);
 
-	struct wl_resource* resource = wl_resource_create(client,
-		&wl_output_interface, version, id);
+	struct wl_resource* resource =
+		wl_resource_create(client, &wl_output_interface, version, id);
 	if (!resource){
 		wl_client_post_no_memory(client);
 		return;
@@ -347,33 +402,20 @@ static void bind_output(struct wl_client* client,
 	struct bridge_client* cl = find_client(client);
 	if (!cl){
 		wl_client_post_no_memory(client);
+		return;
 	}
 
 	cl->output = resource;
-/* convert the initial display info from x, y to mm using ppcm */
-	wl_output_send_geometry(resource, 0, 0,
-		(float)wl.init.display_width_px / wl.init.density * 10.0,
-		(float)wl.init.display_height_px / wl.init.density * 10.0,
-		0, /* init.fonts[0] hinting should work */
-		"unknown", "unknown",
-		0
-	);
-
-	wl_output_send_mode(resource, WL_OUTPUT_MODE_CURRENT,
-		wl.init.display_width_px, wl.init.display_height_px, wl.init.rate);
 
 	int scale = wl.scale;
 	if (!scale){
 		scale = roundf(wl.init.density / ARCAN_SHMPAGE_DEFAULT_PPCM);
 	}
-	cl->scale = scale;
 
-	if (version >= WL_OUTPUT_SCALE_SINCE_VERSION){
-		wl_output_send_scale(resource, scale);
-	}
+	update_client_output(cl,
+		wl.init.display_width_px, wl.init.display_height_px,
+		wl.init.density, wl.init.density, scale, wl.init.rate
+	);
 
-	if (version >= 2)
-		wl_output_send_done(resource);
+/* convert the initial display info from x, y to mm using ppcm */
 }
-
-/* for zxdg output, logical_position and logical_size as well */
