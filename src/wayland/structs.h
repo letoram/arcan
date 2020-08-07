@@ -46,6 +46,9 @@ struct bridge_client {
  * this don't take latched modifiers or dicretics into account */
 	uint8_t keys[512];
 
+/* used to assign initial scale for new surfaces */
+	float scale;
+
 	bool forked;
 	int group, slot;
 	int refc;
@@ -166,6 +169,11 @@ struct comp_surf {
 /* track size and positioning information so we can relay */
 	size_t last_w, last_h;
 	uint32_t max_w, max_h, min_w, min_h;
+
+/* clients doesn't "scale" in shmif, you either draw it at the hinted
+ * dimensions at the proper density or the server side will do 'something',
+ * for wl we need to apply a transform hint */
+	float scale;
 
 /* need to track these so that we can subtract from displayhints..*/
 	uint32_t geom_w, geom_h, geom_x, geom_y;

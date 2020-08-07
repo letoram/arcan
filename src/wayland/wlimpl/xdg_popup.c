@@ -19,6 +19,9 @@ static bool xdgpopup_shmifev_handler(
 			int w = ev->tgt.ioevs[0].iv ? ev->tgt.ioevs[0].iv : surf->geom_w;
 			int h = ev->tgt.ioevs[1].iv ? ev->tgt.ioevs[1].iv : surf->geom_h;
 			if ((w && h && (w != surf->geom_w || h != surf->geom_h))){
+				w /= surf->scale;
+				h /= surf->scale;
+
 				xdg_popup_send_configure(surf->shell_res, 0, 0, w, h);
 				changed = true;
 			}

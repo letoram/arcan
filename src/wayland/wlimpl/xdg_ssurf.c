@@ -100,7 +100,7 @@ static bool xdgsurf_defer_handler(
 	size_t w = surf->acon.w;
 	size_t h = surf->acon.h;
 	if (wl.force_sz){
-		w = wl.init.display_width_px;
+		w = wl.init.display_width_px / surf->scale;
 		h = wl.init.display_height_px;
 	}
 	xdg_toplevel_send_configure(toplevel, w, h, &states);

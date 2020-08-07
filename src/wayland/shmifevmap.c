@@ -55,8 +55,8 @@ static void enter_all(struct comp_surf* cl)
 
 		wl_pointer_send_enter(cl->client->pointer,
 			STEP_SERIAL(), cl->res,
-			wl_fixed_from_int(cl->acc_x),
-			wl_fixed_from_int(cl->acc_y)
+			wl_fixed_from_int(cl->acc_x * (1.0 / cl->scale)),
+			wl_fixed_from_int(cl->acc_y * (1.0 / cl->scale))
 		);
 	}
 
@@ -88,8 +88,11 @@ static void update_mxy(struct comp_surf* cl, unsigned long long pts)
 
 	trace(TRACE_ANALOG, "mouse@%d,%d", cl->acc_x, cl->acc_y);
 	enter_all(cl);
-	wl_pointer_send_motion(cl->client->pointer, pts,
-			wl_fixed_from_int(cl->acc_x), wl_fixed_from_int(cl->acc_y));
+	wl_pointer_send_motion(cl->client->pointer,
+		pts,
+		wl_fixed_from_int((1.0 / cl->scale) * cl->acc_x),
+		wl_fixed_from_int((1.0 / cl->scale) * cl->acc_y)
+	);
 
 	if (wl_resource_get_version(cl->client->pointer) >=
 		WL_POINTER_FRAME_SINCE_VERSION){
@@ -375,7 +378,8 @@ static void flush_surface_events(struct comp_surf* surf)
 		switch(ev.tgt.kind){
 /* translate to configure events */
 		case TARGET_COMMAND_OUTPUTHINT:{
-/* have we gotten reconfigured to a different display? */
+/* have we gotten reconfigured to a different display? if so,
+ * the client should send a new scale factor */
 		}
 /* we might get a migrate reset induced by the client-bridge connection,
  * if so, update viewporting hints at least, and possibly active input-

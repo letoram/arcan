@@ -83,14 +83,20 @@ static void surf_attach(struct wl_client* cl,
  * but there's more to this (of course there is) as there's the whole buffer
  * isn't necessarily 1:1 of surface.
  */
-static void surf_damage(struct wl_client* cl, struct wl_resource* res,
-	int32_t x, int32_t y, int32_t w, int32_t h)
+static void surf_damage(struct wl_client* cl,
+	struct wl_resource* res, int32_t x, int32_t y, int32_t w, int32_t h)
 {
 	struct comp_surf* surf = wl_resource_get_user_data(res);
+
+	x *= surf->scale;
+	y *= surf->scale;
+	w *= surf->scale;
+	h *= surf->scale;
+
 	trace(TRACE_SURF,"%s:(%"PRIxPTR") @x,y+w,h(%d+%d, %d+%d)",
 		surf->tracetag, (uintptr_t)res, (int)x, (int)w, (int)y, (int)h);
 
-	if (x < surf->acon.dirty.x1)
+if (x < surf->acon.dirty.x1)
 		surf->acon.dirty.x1 = x;
 	if (x+w > surf->acon.dirty.x2)
 		surf->acon.dirty.x2 = x+w;
@@ -493,8 +499,11 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 				struct arcan_event ev = {
 					.ext.kind = ARCAN_EVENT(MESSAGE)
 				};
-				snprintf((char*)ev.ext.message.data, COUNT_OF(ev.ext.message.data),
-					"hot:%d:%d", (int)surf->client->hot_x, (int)surf->client->hot_y);
+				snprintf((char*)ev.ext.message.data,
+					COUNT_OF(ev.ext.message.data), "hot:%d:%d",
+					(int)surf->client->hot_x * surf->scale,
+					(int)surf->client->hot_y * surf->scale
+				);
 				arcan_shmif_enqueue(&surf->client->acursor, &ev);
 				surf->client->dirty_hot = false;
 			}
@@ -577,6 +586,7 @@ static void surf_scale(struct wl_client* cl,
 	if (!surf || !surf->acon.addr)
 		return;
 
+	surf->scale = scale > 0 ? scale : 1;
 	struct arcan_event ev = {
 		.ext.kind = ARCAN_EVENT(MESSAGE)
 	};

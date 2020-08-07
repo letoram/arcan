@@ -57,6 +57,9 @@ static bool xdgtoplevel_shmifev_handler(
 					h = wl.init.display_height_px;
 				}
 
+				w /= surf->scale;
+				h /= surf->scale;
+
 				xdg_toplevel_send_configure(surf->shell_res, w, h, &states);
 				xdg_surface_send_configure(surf->surf_res, STEP_SERIAL());
 				wl_array_release(&states);

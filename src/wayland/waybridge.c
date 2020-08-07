@@ -143,6 +143,10 @@ static struct {
 	struct arcan_shmif_initial init;
 	struct arcan_shmif_cont control;
 
+/* default buffer scale sent to clients,
+ * 0 = auto based on display density % 96 dpi because /facepalmland */
+	int scale;
+
 /*
  * this is a workaround for clients that starts scaling or padding
  * when receiving a configure event that doesn't fit what they can
@@ -163,13 +167,6 @@ static struct {
  * wlimpl/xwl.c
  */
 	bool use_xwayland;
-
-/*
- * this makes new clients request a new bridge rather than boostrapping
- * all windows over the existing control, should only be needed as a legacy
- * fix
- */
-	bool per_client_bridge;
 
 /*
  * accepted trace level and destination file
@@ -660,8 +657,6 @@ static struct bridge_client* find_client(struct wl_client* cl)
  * over the bridge connection.
  */
 	struct arcan_shmif_cont con = {0};
-	if (wl.per_client_bridge)
-		con = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0, NULL);
 
 	if (!con.addr){
 		arcan_shmif_enqueue(&wl.control,
@@ -720,7 +715,9 @@ static struct bridge_client* find_client(struct wl_client* cl)
  */
 	trace(TRACE_ALLOC, "new client assigned to (%d:%d)", group, ind);
 	res = &wl.groups[group].slots[ind].client;
-	*res = (struct bridge_client){};
+	*res = (struct bridge_client){
+		.scale = 1
+	};
 
 	memset(res->keys, '\0', sizeof(res->keys));
 	res->acon = con;
@@ -1076,7 +1073,9 @@ static int show_use(const char* msg, const char* arg)
 "\t-prefix prefix    use with -exec, override XDG_RUNTIME_DIR/awl_XXXXXX prefix\n"
 "\t-width px         override display 'fullscreen' width\n"
 "\t-height px        override display 'fullscreen' height\n"
+"\t-refresh rate     override display refresh rate\n"
 "\t-force-fs         ignore displayhints and always configure to display size\n"
+"\t-scale factor     default client scale factor\n"
 "\nProtocol Filters:\n"
 "\t-no-egl           disable the wayland-egl extensions\n"
 "\t       -no-drm    disable the drm subprotocol\n"
@@ -1173,6 +1172,7 @@ int main(int argc, char* argv[])
 	int exit_code = EXIT_SUCCESS;
 	int force_width = 0;
 	int force_height = 0;
+	int force_refresh = 0;
 
 /*
  * There is a conflict between XDG_RUNTIME_DIR used for finding the Arcan
@@ -1248,6 +1248,12 @@ int main(int argc, char* argv[])
 			arg_i++;
 			wl.trace_dst = fopen(argv[arg_i], "w");
 		}
+		else if (strcmp(argv[arg_i], "-scale") == 0){
+			if (arg_i == argc-1)
+				return show_use("missing scale factor value", "");
+			arg_i++;
+			wl.scale = strtoul(argv[arg_i], NULL, 10);
+		}
 		else if (strcmp(argv[arg_i], "-prefix") == 0){
 			if (arg_i == argc-1){
 				return show_use("missing path to prefix path", "");
@@ -1283,6 +1289,14 @@ int main(int argc, char* argv[])
 			}
 			arg_i++;
 			force_height = strtoul(argv[arg_i], NULL, 10);
+		}
+		else if (strcmp(argv[arg_i], "-refresh") == 0){
+			if (arg_i == argc-1){
+				fprintf(stderr, "missing refresh hz argument\n");
+				return EXIT_FAILURE;
+			}
+			arg_i++;
+			force_refresh = strtoul(argv[arg_i], NULL, 10);
 		}
 		else if (strcmp(argv[arg_i], "-force-fs") == 0){
 			wl.force_sz = true;
@@ -1405,6 +1419,9 @@ int main(int argc, char* argv[])
 
 	if (force_height > 0)
 		wl.init.display_height_px = force_height;
+
+	if (force_refresh > 0)
+		wl.init.rate = force_refresh;
 
 /*
  * We'll need some tricks for this one as well. The expected solution is that
