@@ -47,13 +47,8 @@ static void bind_cons(struct wl_client* client,
 static void bind_seat(struct wl_client *client,
 	void *data, uint32_t version, uint32_t id)
 {
-	trace(TRACE_ALLOC, "wl_bind(seat %d:%d)", version, id);
-	struct wl_resource* res = wl_resource_create(client,
-		&wl_seat_interface, version, id);
-	if (!res){
-		wl_client_post_no_memory(client);
-		return;
-	}
+	trace(TRACE_ALLOC,
+		"wl_bind(seat %d:%d) to %"PRIxPTR, version, id, (uintptr_t) client);
 
 	struct bridge_client* cl = find_client(client);
 	if (!cl){
@@ -61,9 +56,38 @@ static void bind_seat(struct wl_client *client,
 		return;
 	}
 
-	wl_resource_set_implementation(res, &seat_if, cl, NULL);
-	wl_seat_send_capabilities(res, WL_SEAT_CAPABILITY_POINTER |
-		WL_SEAT_CAPABILITY_KEYBOARD | WL_SEAT_CAPABILITY_TOUCH);
+/* find an empty seat slot, limited to a fixed number per client,
+ * currently this strictly maps to the same set of devices */
+	struct seat* dst = NULL;
+	for (size_t i = 0; i < COUNT_OF(cl->seats); i++){
+		if (!cl->seats[i].used){
+			dst = &cl->seats[i];
+			break;
+		}
+	}
+
+	if (!dst){
+		wl_client_post_no_memory(client);
+		return;
+	}
+
+	struct wl_resource* res =
+		wl_resource_create(client, &wl_seat_interface, version, id);
+
+	if (!res){
+		wl_client_post_no_memory(client);
+		return;
+	}
+
+	*dst = (struct seat){
+		.used = true
+	};
+
+	wl_resource_set_implementation(res, &seat_if, dst, NULL);
+	wl_seat_send_capabilities(res,
+		WL_SEAT_CAPABILITY_POINTER |
+		WL_SEAT_CAPABILITY_KEYBOARD | WL_SEAT_CAPABILITY_TOUCH
+	);
 
 	if (version > 2)
 		wl_seat_send_name(res, "seat0");

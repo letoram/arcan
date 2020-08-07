@@ -38,10 +38,8 @@
 	#include <seccomp.h>
 #endif
 
-/*
- * EGL- details needed for handle translation
- */
 struct comp_surf;
+struct seat;
 
 /*
  * shared allocation functions, find_client takes a reference to a
@@ -90,7 +88,7 @@ static struct comp_surf* find_surface_group(int group, char type, size_t* pos);
  * we need to repeat this procedure for every client.
  */
 static bool waybridge_instance_keymap(
-	struct bridge_client* bcl, int* fd, int* fmt, size_t* sz);
+	struct seat* seat, int* fd, int* fmt, size_t* sz);
 
 static void destroy_comp_surf(struct comp_surf* surf, bool clean);
 
@@ -320,7 +318,7 @@ static void free_kbd_state(struct xkb_stateblock* kbd)
 }
 
 static bool waybridge_instance_keymap(
-	struct bridge_client* cl, int* out_fd, int* out_fmt, size_t* out_sz)
+	struct seat* cl, int* out_fd, int* out_fmt, size_t* out_sz)
 {
 	if (!out_fd || !out_fmt || !out_sz)
 		return false;
@@ -626,6 +624,22 @@ static void destroy_client(struct wl_listener* l, void* data)
 }
 
 /*
+ * find_client immediately allocates a cursor that is tied to the client
+ */
+static bool pointer_handler(
+	struct surface_request* req, struct arcan_shmif_cont* con)
+{
+/* no cursor accepted means one won't be drawn */
+	if (!con){
+		return false;
+	}
+
+	trace(TRACE_SEAT, "bridge-cursor to %"PRIxPTR, (uintptr_t) con);
+	req->client->acursor = *con;
+	return true;
+}
+
+/*
  * [BLOCKING]
  * Match a wayland client with its local resources, or, if not found, allocate
  * and connect. This is one key spot to determine if we should look into
@@ -737,6 +751,18 @@ static struct bridge_client* find_client(struct wl_client* cl)
 	res->slot = ind;
 	res->l_destr.notify = destroy_client;
 	wl_client_add_destroy_listener(cl, &res->l_destr);
+
+/* pre-allocate a cursor for the client */
+	request_surface(res,
+		&(struct surface_request){
+			.segid = SEGID_CURSOR,
+			.target = NULL,
+			.trace = "cursor",
+			.id = 0xdeadbeef,
+			.dispatch = pointer_handler,
+			.client = res
+		}, 'm'
+	);
 
 	return res;
 }
@@ -1205,7 +1231,7 @@ int main(int argc, char* argv[])
 		.compositor = 4,
 		.shell = 1,
 		.shm = 1,
-		.seat = 5,
+		.seat = 7,
 		.output = 2,
 		.egl = 1,
 		.zxdg = 1,

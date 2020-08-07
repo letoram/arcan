@@ -1,90 +1,90 @@
-/*
- * NOTES:
- *  Missing/investigate -
- *   a. Should pointer event coordinates be clamped against surface?
- *   b. We need to track surface rotate state and transform coordinates
- *      accordingly, as there's no 'rotate state' in arcan
- *   c. Also have grabstate to consider (can only become a MESSAGE and
- *      wl-specific code in the lua layer)
- *   d. scroll- wheel are in some float- version, so we need to deal
- *      with subid 3,4 for analog events and subid 3 for digital
- *      events (there's also something with AXIS_SOURCE, ...)
- *   e. it seems like we're supposed to keep a list of all pointer
- *      resources and iterate them.
- *
- *  Touch - not used at all right now
- */
-
 static void get_keyboard_states(struct wl_array* dst)
 {
 	wl_array_init(dst);
 /* FIXME: track press/release so we can send the right ones */
 }
 
-static void leave_all(struct comp_surf* cl)
+static void leave_seat(
+	struct comp_surf* cl,
+	struct seat* seat, long serial)
 {
-	if (cl->client->pointer && cl->client->last_cursor){
-		trace(TRACE_DIGITAL,
-			"leave: %"PRIxPTR, (uintptr_t)cl->client->last_cursor);
-		wl_pointer_send_leave(
-			cl->client->pointer, STEP_SERIAL(), cl->client->last_cursor);
-		cl->client->last_cursor = NULL;
+	if (seat->ptr && seat->in_ptr){
+		wl_pointer_send_leave(seat->ptr, serial, seat->in_ptr);
+		seat->in_ptr = NULL;
 	}
 
-	if (cl->client->last_kbd){
-		trace(TRACE_DIGITAL,
-			"leave: %"PRIxPTR, (uintptr_t) cl->client->last_kbd);
-		wl_keyboard_send_leave(
-			cl->client->keyboard, STEP_SERIAL(), cl->client->last_kbd);
-		cl->client->last_kbd = NULL;
+	if (seat->kbd && seat->in_kbd){
+		wl_keyboard_send_leave(seat->kbd, serial, seat->in_kbd);
+		seat->in_kbd = NULL;
+	}
+}
+
+static void enter_seat(
+	struct comp_surf* cl,
+	struct seat* seat, long serial)
+{
+	if (seat->ptr && seat->in_ptr != cl->res){
+		if (seat->in_ptr){
+			trace(TRACE_SEAT, "leave-ptr@%ld:seat(%"PRIxPTR")-surface:%"
+				PRIxPTR, serial, (uintptr_t)seat, (uintptr_t)seat->in_ptr, cl->res);
+			wl_pointer_send_leave(seat->ptr, serial, seat->in_ptr);
+		}
+
+		trace(TRACE_SEAT, "enter-ptr@%ld:seat(%"PRIxPTR")-surface:%"
+			PRIxPTR, serial, (uintptr_t)seat, (uintptr_t)cl->res, cl->res);
+
+		wl_pointer_send_enter(
+			seat->ptr,
+			serial, cl->res,
+			wl_fixed_from_int(cl->acc_x * (1.0 / cl->scale)),
+			wl_fixed_from_int(cl->acc_y * (1.0 / cl->scale))
+		);
+
+		seat->in_ptr = cl->res;
+	}
+
+	if (seat->kbd && seat->in_kbd != cl->res){
+		if (seat->in_kbd){
+			wl_keyboard_send_leave(seat->kbd, serial, seat->in_kbd);
+		}
+
+		struct wl_array states;
+		get_keyboard_states(&states);
+		wl_keyboard_send_enter(seat->kbd, serial, cl->res, &states);
+		wl_array_release(&states);
+
+		seat->in_kbd = cl->res;
+	}
+}
+
+static void each_seat(
+	struct comp_surf* cl,
+	void (*hnd)(struct comp_surf*, struct seat*, long))
+{
+	long serial = STEP_SERIAL();
+
+	for (size_t i = 0; i < COUNT_OF(cl->client->seats); i++){
+		if (!cl->client->seats[i].used)
+			continue;
+
+		hnd(cl, &cl->client->seats[i], serial);
 	}
 }
 
 static void enter_all(struct comp_surf* cl)
 {
-	if (cl->client->pointer && cl->client->last_cursor != cl->res){
-		if (cl->client->last_cursor){
-			trace(TRACE_DIGITAL,
-				"leave: %"PRIxPTR, (uintptr_t)cl->client->last_cursor);
-			wl_pointer_send_leave(
-				cl->client->pointer, STEP_SERIAL(), cl->client->last_cursor);
-		}
+	each_seat(cl, enter_seat);
+	update_confinement(cl);
+}
 
-		trace(TRACE_DIGITAL, "enter: %"PRIxPTR, (uintptr_t)cl->res);
-		cl->client->last_cursor = cl->res;
-
-		wl_pointer_send_enter(cl->client->pointer,
-			STEP_SERIAL(), cl->res,
-			wl_fixed_from_int(cl->acc_x * (1.0 / cl->scale)),
-			wl_fixed_from_int(cl->acc_y * (1.0 / cl->scale))
-		);
-	}
-
-	if (cl->client->keyboard && cl->client->last_kbd != cl->res){
-		if (cl->client->last_kbd){
-			trace(TRACE_DIGITAL,
-				"leave: %"PRIxPTR, (uintptr_t) cl->client->last_kbd);
-			wl_keyboard_send_leave(
-				cl->client->keyboard, STEP_SERIAL(), cl->client->last_kbd);
-		}
-
-		trace(TRACE_DIGITAL, "enter: %"PRIxPTR, (uintptr_t) cl->res);
-		cl->client->last_kbd = cl->res;
-		struct wl_array states;
-		get_keyboard_states(&states);
-			wl_keyboard_send_enter(
-				cl->client->keyboard, STEP_SERIAL(), cl->res, &states);
-		wl_array_release(&states);
-	}
-
+static void leave_all(struct comp_surf* cl)
+{
+	each_seat(cl, leave_seat);
 	update_confinement(cl);
 }
 
 static void update_mxy(struct comp_surf* cl, unsigned long long pts)
 {
-	if (!cl->client->pointer)
-		return;
-
 	if (!pts)
 		pts = arcan_timemillis();
 
@@ -94,15 +94,70 @@ static void update_mxy(struct comp_surf* cl, unsigned long long pts)
 
 	trace(TRACE_ANALOG, "mouse@%d,%d", cl->acc_x, cl->acc_y);
 	enter_all(cl);
-	wl_pointer_send_motion(cl->client->pointer,
-		pts,
-		wl_fixed_from_int((1.0 / cl->scale) * cl->acc_x),
-		wl_fixed_from_int((1.0 / cl->scale) * cl->acc_y)
+
+	for (size_t i = 0; i < COUNT_OF(cl->client->seats); i++){
+		struct seat* cs = &cl->client->seats[i];
+		if (!cs->used || !cs->ptr)
+			continue;
+
+		wl_pointer_send_motion(cs->ptr,
+			pts,
+			wl_fixed_from_int((1.0 / cl->scale) * cl->acc_x),
+			wl_fixed_from_int((1.0 / cl->scale) * cl->acc_y)
 	);
 
-	if (wl_resource_get_version(cl->client->pointer) >=
-		WL_POINTER_FRAME_SINCE_VERSION){
-		wl_pointer_send_frame(cl->client->pointer);
+		if (wl_resource_get_version(cs->ptr) >= WL_POINTER_FRAME_SINCE_VERSION){
+			wl_pointer_send_frame(cs->ptr);
+		}
+	}
+}
+
+static void scroll_axis_digital(
+	struct bridge_client* bcl, bool active, int ind, unsigned long long pts)
+{
+	int dir = ind == 4 ? -1 : 1;
+	ind = WL_POINTER_AXIS_VERTICAL_SCROLL;
+
+	for (size_t i = 0; i < COUNT_OF(bcl->seats); i++){
+		struct seat* seat = &bcl->seats[i];
+		if (!seat->used || !seat->ptr)
+			continue;
+
+		if (!active){
+/*			if (wl_resource_get_version(seat->ptr) >=
+				WL_POINTER_AXIS_STOP_SINCE_VERSION){
+				wl_pointer_send_axis_stop(seat->ptr, pts, ind);
+			}
+*/
+			continue;
+		}
+
+		wl_pointer_send_axis_source(seat->ptr, WL_POINTER_AXIS_SOURCE_WHEEL);
+
+		uint32_t ver = wl_resource_get_version(seat->ptr);
+		if (ver >= WL_POINTER_AXIS_DISCRETE_SINCE_VERSION){
+			wl_pointer_send_axis_discrete(seat->ptr, ind, dir);
+		}
+
+		wl_pointer_send_axis(seat->ptr, pts, ind, wl_fixed_from_int(dir * 10));
+
+		if (ver >= WL_POINTER_FRAME_SINCE_VERSION){
+			wl_pointer_send_frame(seat->ptr);
+		}
+	}
+}
+
+static void mouse_button_send(struct bridge_client* bcl,
+	unsigned long long pts, int wl_ind, int btn_state)
+{
+	long serial = STEP_SERIAL();
+
+	for (size_t i = 0; i < COUNT_OF(bcl->seats); i++){
+		struct seat* seat = &bcl->seats[i];
+		if (!seat->used || !seat->ptr)
+			continue;
+
+		wl_pointer_send_button(seat->ptr, serial, pts, wl_ind, btn_state);
 	}
 }
 
@@ -117,56 +172,38 @@ static void update_mbtn(struct comp_surf* cl,
 
 	enter_all(cl);
 
-/* special case, we map the vertical scroll wheel buttons to wheel events,
- * the upper layers can chose to provide this as subid 4/5 analog as well
- * though */
 	if (ind == 4 || ind == 5){
-		if (active){
-			pts = pts ? pts : arcan_timemillis();
-			wl_pointer_send_axis(cl->client->pointer,
-				pts, WL_POINTER_AXIS_VERTICAL_SCROLL,
-				wl_fixed_from_int(ind == 4 ? -10 : 10));
-
-			if (wl_resource_get_version(cl->client->pointer) >=
-				WL_POINTER_AXIS_STOP_SINCE_VERSION){
-				wl_pointer_send_axis_stop(cl->client->pointer,
-					pts, WL_POINTER_AXIS_VERTICAL_SCROLL);
-			}
-		}
+		scroll_axis_digital(cl->client, active, ind, pts);
 	}
 
 /* 0x110 == BTN_LEFT in evdev parlerance, ignore 0 index as it is used
  * to convey gestures and that's a separate unstable protocol */
 	else if (ind > 0){
-		wl_pointer_send_button(cl->client->pointer, STEP_SERIAL(),
-			pts, 0x10f + ind, active ?
-			WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED
-		);
-	}
-
-	if (wl_resource_get_version(cl->client->pointer) >=
-		WL_POINTER_FRAME_SINCE_VERSION){
-		wl_pointer_send_frame(cl->client->pointer);
+		mouse_button_send(cl->client, pts, 0x10f + ind, active ?
+			WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED);
 	}
 }
 
-static void forward_key(
-	struct bridge_client* cl, struct xkb_state* state, uint32_t key, bool pressed)
+static void forward_key(struct bridge_client* cl, uint32_t key, bool pressed)
 {
-	xkb_state_update_key(state, key + 8, pressed ? XKB_KEY_DOWN : XKB_KEY_UP);
-	uint32_t depressed = xkb_state_serialize_mods(state,XKB_STATE_MODS_DEPRESSED);
-	uint32_t latched = xkb_state_serialize_mods(state, XKB_STATE_MODS_LATCHED);
-	uint32_t locked = xkb_state_serialize_mods(state, XKB_STATE_MODS_LOCKED);
-	uint32_t group = xkb_state_serialize_mods(state, XKB_STATE_MODS_EFFECTIVE);
+	int serial = STEP_SERIAL();
 
-	wl_keyboard_send_modifiers(cl->keyboard,
-		STEP_SERIAL(), depressed, latched, locked, group);
-	wl_keyboard_send_key(cl->keyboard,
-		STEP_SERIAL(),
-		arcan_timemillis(),
-		key,
-		pressed
-	);
+	for (size_t i = 0; i < COUNT_OF(cl->seats); i++){
+		struct seat* seat = &cl->seats[i];
+
+		if (!seat->used || !seat->kbd)
+			continue;
+
+		struct xkb_state* state = seat->kbd_state.state;
+		xkb_state_update_key(state, key + 8, pressed ? XKB_KEY_DOWN : XKB_KEY_UP);
+		uint32_t depressed = xkb_state_serialize_mods(state,XKB_STATE_MODS_DEPRESSED);
+		uint32_t latched = xkb_state_serialize_mods(state, XKB_STATE_MODS_LATCHED);
+		uint32_t locked = xkb_state_serialize_mods(state, XKB_STATE_MODS_LOCKED);
+		uint32_t group = xkb_state_serialize_mods(state, XKB_STATE_MODS_EFFECTIVE);
+
+		wl_keyboard_send_modifiers(seat->kbd, serial, depressed, latched, locked, group);
+		wl_keyboard_send_key(seat->kbd, serial, arcan_timemillis(), key, pressed);
+	}
 }
 
 static void release_all_keys(struct bridge_client* cl)
@@ -174,22 +211,19 @@ static void release_all_keys(struct bridge_client* cl)
 	for (size_t i = 0 ; i < COUNT_OF(cl->keys); i++){
 		if (cl->keys[i]){
 			cl->keys[i] = 0;
-			forward_key(cl, cl->kbd_state.state, i, false);
+			forward_key(cl, i, false);
 		}
 	}
 }
 
 static void update_kbd(struct comp_surf* cl, arcan_ioevent* ev)
 {
-	if (!cl->client->keyboard)
-		return;
-
-	enter_all(cl);
 	trace(TRACE_DIGITAL,
 		"button (%d:%d)", (int)ev->subid, (int)ev->input.translated.scancode);
 
 /* keyboard not acknowledged on this surface?
  * send focus and possibly leave on previous one */
+	enter_all(cl);
 
 /* This is, politely put, batshit insane - every time the modifier mask has
  * changed from the last time we were here, we either have to allocate and
@@ -213,26 +247,25 @@ static void update_kbd(struct comp_surf* cl, arcan_ioevent* ev)
 		cl->client->keys[subid] = active;
 	}
 
-	forward_key(cl->client, cl->client->kbd_state.state, subid, active);
+	forward_key(cl->client, subid, active);
 }
 
-static bool relative_sample(struct wl_resource* res, uint64_t ts, int x, int y)
+static void consume_relative(
+	struct bridge_client* cl, uint64_t ts, int x, int y)
 {
-	if (!res)
-		return false;
-
 	uint32_t lo = (ts * 1000) >> 32;
 	uint32_t hi = ts * 1000;
-	zwp_relative_pointer_v1_send_relative_motion(
-		res, hi, lo,
-		wl_fixed_from_int(x), wl_fixed_from_int(y),
-		wl_fixed_from_int(x), wl_fixed_from_int(y)
-	);
 
-/* test, some clients do not seem to like that we send only relative motion
- * and not absolute and relative - early out behavior is respected if we
- * return true */
-	return false;
+	for (size_t i = 0; i < COUNT_OF(cl->seats); i++){
+		if (!cl->seats[i].used || !cl->seats[i].rel_ptr)
+			continue;
+
+		zwp_relative_pointer_v1_send_relative_motion(
+			cl->seats[i].rel_ptr, hi, lo,
+			wl_fixed_from_int(x), wl_fixed_from_int(y),
+			wl_fixed_from_int(x), wl_fixed_from_int(y)
+		);
+	}
 }
 
 static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
@@ -241,7 +274,7 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 		trace(TRACE_ANALOG, "touch");
 	}
 /* motion would/should always come before digital */
-	else if (ev->devkind == EVENT_IDEVKIND_MOUSE && cl->client->pointer){
+	else if (ev->devkind == EVENT_IDEVKIND_MOUSE){
 		if (ev->datatype == EVENT_IDATATYPE_DIGITAL){
 			update_mbtn(cl, ev->pts, ev->subid, ev->input.digital.active);
 		}
@@ -251,19 +284,21 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 				if (ev->input.analog.gotrel){
 					cl->acc_x += ev->input.analog.axisval[0];
 					cl->acc_y += ev->input.analog.axisval[2];
-					if (relative_sample(cl->client->got_relative,
-						ev->pts, ev->input.analog.axisval[0], ev->input.analog.axisval[1]))
-						return;
+
+/* forward to seats with a relative pointer */
+					consume_relative(cl->client, ev->pts,
+						ev->input.analog.axisval[0], ev->input.analog.axisval[1]);
 				}
 				else{
 					cl->acc_x = ev->input.analog.axisval[0];
 					cl->acc_y = ev->input.analog.axisval[2];
 				}
+
 				update_mxy(cl, ev->pts);
 			}
-/* one sample at a time, we need history - either this will introduce
- * small or variable script defined latencies and require an event lookbehind
- * or double the sample load, go with the latter */
+/* one sample at a time, we need history - either this will introduce small or
+ * variable script defined latencies and require an event lookbehind or double
+ * the sample load, go with the latter */
 			else {
 				if (ev->input.analog.gotrel){
 					if (ev->subid == 0)
@@ -274,15 +309,13 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 				else {
 					if (ev->subid == 0){
 						cl->acc_x = ev->input.analog.axisval[0];
-						if (relative_sample(cl->client->got_relative, ev->pts,
-							ev->input.analog.axisval[0], 0))
-							return;
+						consume_relative(cl->client, ev->pts,
+							ev->input.analog.axisval[0], ev->input.analog.axisval[1]);
 					}
 					else if (ev->subid == 1){
 						cl->acc_y = ev->input.analog.axisval[0];
-						if (relative_sample(cl->client->got_relative, ev->pts,
-							0, ev->input.analog.axisval[0]))
-							return;
+						consume_relative(cl->client, ev->pts,
+							ev->input.analog.axisval[0], ev->input.analog.axisval[1]);
 					}
 				}
 
@@ -294,8 +327,7 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 		else
 			;
 	}
-	else if (ev->datatype ==
-		EVENT_IDATATYPE_TRANSLATED && cl->client && cl->client->keyboard)
+	else if (ev->datatype == EVENT_IDATATYPE_TRANSLATED)
 			update_kbd(cl, ev);
 	else
 		;

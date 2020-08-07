@@ -727,10 +727,10 @@ static bool xwlsurf_shmifev_handler(
 				}
 				else{
 					enter_all(surf);
-					if (surf->client->pointer){
-						wl_pointer_send_button(surf->client->pointer, STEP_SERIAL(),
-							arcan_timemillis(), 0x10f, WL_POINTER_BUTTON_STATE_RELEASED);
-					}
+/*
+					send_pointer_button(surf->client, STEP_SERIAL(),
+						arcan_timemillis(), 0x10f, WL_POINTER_BUTTON_STATE_RELEASED);
+*/
 				}
 			}
 		}

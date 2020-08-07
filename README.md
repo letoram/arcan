@@ -165,10 +165,10 @@ For a compliant wayland client, and:
 
     arcan-wayland -xwl -exec xterm
 
-For an X client. The 'per case' basis is recommended as it is safer and
-more secure than letting multiple clients share the same bridge process,
-at a negilable cost. The downside is that some complex clients that rely
-on making multiple distinct wayland connections may fail to do so.
+For an X client. The 'per case' basis is recommended as it is safer and more
+secure than letting multiple clients share the same bridge process, at a
+negilable cost. The downside is that some complex clients that rely on making
+multiple distinct wayland connections may fail to do so.
 
 There is a number of tuning and troubleshooting options due to the
 complexity of using wayland, consult the manpage and --help toggle.

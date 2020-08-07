@@ -86,7 +86,8 @@ static void coord_to_reg(struct region* reg,
 static void region_add(struct wl_client* client,
 	struct wl_resource* res, int32_t x, int32_t y, int32_t width, int32_t height)
 {
-	trace(TRACE_REGION, "region_add");
+	trace(TRACE_REGION,
+		"region_add(%"PRId32", %"PRId32", +%"PRId32", +%"PRId32")", x, y, width, height);
 	struct surface_region* reg = wl_resource_get_user_data(res);
 	struct region* nr = find_free_region_slot(reg, 4);
 	if (!nr)
@@ -99,7 +100,8 @@ static void region_add(struct wl_client* client,
 static void region_sub(struct wl_client* client,
 	struct wl_resource* res, int32_t x, int32_t y, int32_t width, int32_t height)
 {
-	trace(TRACE_REGION, "region_subtract");
+	trace(TRACE_REGION,
+		"region_sub(%"PRId32", %"PRId32", +%"PRId32", +%"PRId32")", x, y, width, height);
 	struct surface_region* reg = wl_resource_get_user_data(res);
 	struct region* nr = find_free_region_slot(reg, 4);
 	if (!nr)
