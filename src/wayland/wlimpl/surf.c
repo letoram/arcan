@@ -322,6 +322,7 @@ static bool push_shm(struct wl_client* cl,
 		(surf->fail_accel > 0 && fmt != surf->accel_fmt)){
 		arcan_shmifext_drop(acon);
 		setup_shmifext(acon, surf, fmt);
+		arcan_shmifext_make_current(acon);
 	}
 
 /* alpha state changed? only changing this flag does not require a resynch

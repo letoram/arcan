@@ -568,7 +568,7 @@ static void xcb_reparent_notify(xcb_reparent_notify_event_t* ev)
 		ev->window, ev->parent, ev->override_redirect ? " override" : "normal");
 	if (ev->parent == wnd_root){
 		wm_command(WM_FLUSH,
-			"kind=reparent:parent=root,override=%d", ev->override_redirect ? 1 : 0);
+			"kind=reparent:parent=root:override=%d", ev->override_redirect ? 1 : 0);
 	}
 	else
 		wm_command(WM_FLUSH,
@@ -858,10 +858,8 @@ static void process_wm_command(const char* arg)
 		state->x = x;
 		state->y = y;
 		xcb_configure_window(dpy, id,
-			XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
-			XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
-			XCB_CONFIG_WINDOW_BORDER_WIDTH,
-			(uint32_t[]){x, y, state->w, state->h, 0}
+			XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y,
+			(uint32_t[]){x, y, 0, 0, 0}
 		);
 	}
 	else if (strcmp(dst, "destroy") == 0){

@@ -1045,7 +1045,7 @@ static int show_use(const char* msg, const char* arg)
 "Security/Performance:\n"
 "\t-exec bin arg1 .. end of arg parsing, single-client mode (recommended)\n"
 "\t-exec-x11 bin arg same as -xwl -exec bin arg1 .. form\n"
-"\t-shm-egl          pass shm- buffers as gl textures (recommended)\n"
+"\t-shm-egl          pass shm- buffers as gl textures\n"
 #ifdef ENABLE_SECCOMP
 "\t-sandbox          filter syscalls, ...\n"
 #endif
@@ -1306,12 +1306,34 @@ int main(int argc, char* argv[])
 		return EXIT_FAILURE;
 	}
 
+/* track and use as scratch directory */
+	int dstdir_fd = -1;
+	DIR* tmpdir = NULL;
+
 	if (wl.exec_mode){
 		wayland_runtime_dir = mkdtemp(xdgtemp_prefix);
 		if (!wayland_runtime_dir){
 			fprintf(stderr,
 				"-exec, couldn't create temporary in (%s)\n", xdgtemp_prefix);
 			return EXIT_FAILURE;
+		}
+
+		tmpdir = opendir(wayland_runtime_dir);
+		if (!tmpdir || -1 == (dstdir_fd = dirfd(tmpdir))){
+			fprintf(stderr,
+				"-exec, couldn't open temporary dir (%s)\n", wayland_runtime_dir);
+			return EXIT_FAILURE;
+		}
+
+/* Until we have a way to proxy pulseaudio etc. we need, at least, to forward
+ * the socket into the namespace so that the client will find it */
+		char* papath;
+		if (-1 == asprintf(&papath, "%s/pulse/native", getenv("XDG_RUNTIME_DIR")))
+			papath = NULL;
+
+		if (papath){
+			mkdirat(dstdir_fd, "pulse", S_IRWXU | S_IRWXG);
+			free(papath);
 		}
 
 /* Enable the other 'select wayland backend' environment variables we know of,
