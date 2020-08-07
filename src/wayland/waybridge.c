@@ -1089,6 +1089,7 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-xdg           disable the xdg protocol\n"
 "\t-no-zxdg          disable the zxdg protocol\n"
 "\t-no-output        disable the output protocol\n"
+"\t-no-xdg-output    disable the xdg-output protocol\n"
 "\t-no-constraints   disable the pointer constraints protocol\n"
 "\nDebugging Tools:\n"
 "\t-trace level      set trace output to (bitmask or key1,key2,...):\n"
@@ -1192,7 +1193,7 @@ int main(int argc, char* argv[])
  */
 	struct {
 		int compositor, shell, shm, seat, output, ddev;
-		int egl, zxdg, xdg, subcomp, drm, relp, dma, cons;
+		int egl, zxdg, xdg, subcomp, drm, relp, dma, cons, xdg_output;
 	} protocols = {
 		.compositor = 4,
 		.shell = 1,
@@ -1207,7 +1208,8 @@ int main(int argc, char* argv[])
 		.subcomp = 1,
 		.ddev = 3,
 		.relp = 1,
-		.cons = 1
+		.cons = 1,
+		.xdg_output = 3
 	};
 #ifdef ENABLE_SECCOMP
 	bool sandbox = false;
@@ -1318,6 +1320,8 @@ int main(int argc, char* argv[])
 			protocols.seat = 0;
 		else if (strcmp(argv[arg_i], "-no-output") == 0)
 			protocols.output = 0;
+		else if (strcmp(argv[arg_i], "-no-xdg-output") == 0)
+			protocols.xdg_output = 0;
 		else if (strcmp(argv[arg_i], "-no-zxdg") == 0)
 			protocols.zxdg = 0;
 		else if (strcmp(argv[arg_i], "-dma") == 0)
@@ -1546,6 +1550,9 @@ int main(int argc, char* argv[])
 	if (protocols.cons)
 		wl_global_create(wl.disp, &zwp_pointer_constraints_v1_interface,
 			protocols.cons, NULL, &bind_cons);
+	if (protocols.xdg_output)
+		wl_global_create(wl.disp, &zxdg_output_manager_v1_interface,
+			protocols.xdg_output, NULL, &bind_xdgoutput);
 
 	trace(TRACE_ALLOC, "wl_display() finished");
 

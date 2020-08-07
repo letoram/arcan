@@ -232,6 +232,24 @@ static void bind_ddev(struct wl_client* client,
 	wl_resource_set_implementation(resource, &ddevmgr_if, NULL, NULL);
 }
 
+static void bind_xdgoutput(
+	struct wl_client* client, void* data, uint32_t version, uint32_t id)
+{
+	trace(TRACE_ALLOC, "bind_xdg_output");
+	struct wl_resource* res =
+		wl_resource_create(client, &zxdg_output_manager_v1_interface, version, id);
+	if (!res){
+		wl_client_post_no_memory(client);
+		return;
+	}
+	struct bridge_client* cl = find_client(client);
+	if (!cl){
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(res, &outmgr_if, NULL, NULL);
+}
+
 static void bind_relp(struct wl_client* client,
 	void* data, uint32_t version, uint32_t id)
 {
