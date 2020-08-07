@@ -28,11 +28,12 @@ static bool xdgpopup_shmifev_handler(
 			}
 
 			if (changed)
-				try_frame_callback(surf, &surf->acon);
+				try_frame_callback(surf);
 		}
 		return true;
 		break;
 		case TARGET_COMMAND_EXIT:
+			trace(TRACE_SHELL, "popup_done");
 			xdg_popup_send_popup_done(surf->shell_res);
 			return true;
 		break;
@@ -59,4 +60,15 @@ static void xdgpop_grab(struct wl_client *cl,
 static void xdgpop_destroy(struct wl_client* cl, struct wl_resource* res)
 {
 	trace(TRACE_SHELL, "xdgpop_destroy");
+	wl_resource_set_user_data(res, NULL);
+	wl_resource_destroy(res);
+}
+
+static void xdgpop_internal(struct comp_surf* surf, int cmd)
+{
+	if (cmd == CMD_RECONFIGURE){
+
+	}
+	else
+		try_frame_callback(surf);
 }

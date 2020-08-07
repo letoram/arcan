@@ -8,6 +8,8 @@ static void pointer_set(struct wl_client* cl, struct wl_resource* res,
 	bcl->cursor = surf_res;
 
 	if (bcl->hot_x != hot_x || bcl->hot_y != hot_y){
+		trace(TRACE_SEAT, "hotspot:old=%d,%d:new=%d,%d",
+			(int) bcl->hot_x, (int) bcl->hot_y, (int) hot_x, (int) hot_y);
 		bcl->dirty_hot = true;
 		bcl->hot_x = hot_x;
 		bcl->hot_y = hot_y;

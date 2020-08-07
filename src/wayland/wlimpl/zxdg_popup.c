@@ -24,7 +24,7 @@ static bool zxdgpopup_shmifev_handler(
 			}
 
 			if (changed)
-				try_frame_callback(surf, &surf->acon);
+				try_frame_callback(surf);
 		}
 		return true;
 		break;

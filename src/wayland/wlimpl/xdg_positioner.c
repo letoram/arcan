@@ -129,4 +129,6 @@ static void xdgpos_offset(struct wl_client* cl,
 static void xdgpos_destroy(struct wl_client* cl, struct wl_resource* res)
 {
 	trace(TRACE_SHELL, "%"PRIxPTR, (uintptr_t) res);
+	wl_resource_set_user_data(res, NULL);
+	wl_resource_destroy(res);
 }

@@ -3,6 +3,12 @@
 #define STEP_SERIAL() ( wl_display_next_serial(wl.disp) )
 #define MAX_SEATS 8
 
+enum internal_command {
+	CMD_NONE = 0,
+	CMD_RECONFIGURE = 1,
+	CMD_FLUSH_CALLBACKS = 2
+};
+
 struct xkb_stateblock {
 	struct xkb_context* context;
 	struct xkb_keymap* map;
@@ -71,6 +77,7 @@ struct bridge_client {
 	struct wl_resource* lock_region;
 	struct wl_resource* locked;
 	struct wl_resource* confined;
+	struct arcan_event confine_event;
 
 /* need to track these so that we can send enter/leave correctly,
  * watch out for UAFs */
@@ -208,7 +215,8 @@ struct comp_surf {
 	struct scratch_req scratch[64];
 	size_t frames_pending, subsurf_pending;
 
-	int acc_x, acc_y;
+	uint8_t mstate_abs[ASHMIF_MSTATE_SZ];
+	uint8_t mstate_rel[ASHMIF_MSTATE_SZ];
 
 /*
  * need to cache/update this one whenever we reparent, etc.
@@ -239,6 +247,10 @@ struct comp_surf {
 /* return [true] if the event was consumed and shouldn't be processed by the
  * default handler */
 	bool (*dispatch)(struct comp_surf*, struct arcan_event* ev);
+
+/* edge cases that require some shell specific actions */
+	void (*internal)(struct comp_surf*, int command);
+
 	int cookie;
 };
 
@@ -247,9 +259,7 @@ static bool displayhint_handler(struct comp_surf* surf,
 
 static void enter_all(struct comp_surf*);
 static void leave_all(struct comp_surf*);
-
-static void try_frame_callback(
-	struct comp_surf* surf, struct arcan_shmif_cont*);
+static void try_frame_callback(struct comp_surf* surf);
 
 /*
  * this is to share the tracking / allocation code between both clients and

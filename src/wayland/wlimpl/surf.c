@@ -127,7 +127,6 @@ static void surf_frame(
 		return;
 	}
 
-	STEP_SERIAL();
 	struct wl_resource* cbres =
 		wl_resource_create(cl, &wl_callback_interface, 1, cb);
 
@@ -140,7 +139,7 @@ static void surf_frame(
 /* special case, if the surface has not yet been promoted to a usable type
  * and the client requests a callback, ack:it immediately */
 	if (!surf->shell_res){
-	trace(TRACE_SURF, "preemptive-cb-ack");
+		trace(TRACE_SURF, "preemptive-cb-ack");
 		wl_callback_send_done(cbres, cb);
 		wl_resource_destroy(cbres);
 		return;
@@ -149,6 +148,7 @@ static void surf_frame(
 /* should just bitmap this .. */
 	for (size_t i = 0; i < COUNT_OF(surf->scratch); i++){
 		if (surf->scratch[i].type == 1){
+			wl_callback_send_done(surf->scratch[i].res, surf->scratch[i].id);
 			wl_resource_destroy(surf->scratch[i].res);
 			surf->frames_pending--;
 			surf->scratch[i].res = NULL;
@@ -482,6 +482,11 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 
 	if (!surf->cbuf){
 		trace(TRACE_SURF, "no buffer");
+		if (surf->internal){
+			surf->internal(surf, CMD_RECONFIGURE);
+			surf->internal(surf, CMD_FLUSH_CALLBACKS);
+		}
+
 		return;
 	}
 
@@ -512,8 +517,8 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 				};
 				snprintf((char*)ev.ext.message.data,
 					COUNT_OF(ev.ext.message.data), "hot:%d:%d",
-					(int)surf->client->hot_x * surf->scale,
-					(int)surf->client->hot_y * surf->scale
+					(int)(surf->client->hot_x * surf->scale),
+					(int)(surf->client->hot_y * surf->scale)
 				);
 				arcan_shmif_enqueue(&surf->client->acursor, &ev);
 				surf->client->dirty_hot = false;
