@@ -11,6 +11,7 @@
 #include "../arcan_shmif.h"
 #include "../shmif_privext.h"
 #include "video_platform.h"
+#include "egl-dri/egl.h"
 #include "agp/glfun.h"
 
 #define EGL_EGLEXT_PROTOTYPES
@@ -32,9 +33,12 @@
 _Thread_local static struct arcan_shmif_cont* active_context;
 
 static struct agp_fenv agp_fenv;
+static struct egl_env agp_eglenv;
+
+#define SHARED_DISPLAY (uintptr_t)(-1)
 
 /*
- * note: should be moved into the agp_fenv,
+ *
  * for EGLStreams, we need:
  *  1. egl->eglGetPlatformDisplayEXT : EGL_EXT_platform_base
  *  2. egl->eglQueryDevicesEXT : EGL_EXT_device_base
@@ -48,13 +52,7 @@ static struct agp_fenv agp_fenv;
  *  GL_NVX_unix_allocator_import. 2glImportMemoryFdEXT, glTexParametervNVX
  *  GL_EXT_memory_object_fd,
  *  ARB_texture_storage,
- *
  */
-static PFNEGLCREATEIMAGEKHRPROC create_image;
-static PFNEGLEXPORTDMABUFIMAGEQUERYMESAPROC query_image_format;
-static PFNEGLEXPORTDMABUFIMAGEMESAPROC export_dmabuf;
-static PFNEGLDESTROYIMAGEKHRPROC destroy_image;
-static PFNEGLGETPLATFORMDISPLAYEXTPROC get_platform_display;
 
 /* note: should also get:
  * eglCreateSyncKHR,
@@ -111,22 +109,6 @@ struct agp_fenv* arcan_shmifext_getfenv(struct arcan_shmif_cont* con)
 	return &agp_fenv;
 }
 
-static bool check_functions(void*(*lookup)(void*, const char*), void* tag)
-{
-	create_image = (PFNEGLCREATEIMAGEKHRPROC)
-		lookup(tag, "eglCreateImageKHR");
-	destroy_image = (PFNEGLDESTROYIMAGEKHRPROC)
-		lookup(tag, "eglDestroyImageKHR");
-	query_image_format = (PFNEGLEXPORTDMABUFIMAGEQUERYMESAPROC)
-		lookup(tag, "eglExportDMABUFImageQueryMESA");
-	export_dmabuf = (PFNEGLEXPORTDMABUFIMAGEMESAPROC)
-		lookup(tag, "eglExportDMABUFImageMESA");
-	get_platform_display = (PFNEGLGETPLATFORMDISPLAYEXTPROC)
-		lookup(tag, "eglGetPlatformDisplayEXT");
-	return create_image && destroy_image &&
-		query_image_format && export_dmabuf && get_platform_display;
-}
-
 static void zap_vstore(struct agp_vstore* vstore)
 {
 	free(vstore->vinf.text.raw);
@@ -140,7 +122,7 @@ static void free_image_index(
 	if (!in->images[i].image)
 		return;
 
-	destroy_image(dpy, in->images[i].image);
+	agp_eglenv.destroy_image(dpy, in->images[i].image);
 	in->images[i].image = NULL;
 	close(in->images[i].dmabuf);
 	in->images[i].dmabuf = -1;
@@ -163,11 +145,11 @@ static void gbm_drop(struct arcan_shmif_cont* con)
 		}
 /* are we managing the context or is the user providing his own? */
 		if (in->managed){
-			eglMakeCurrent(in->display,
+			agp_eglenv.make_current(in->display,
 				EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 			if (in->context)
-				eglDestroyContext(in->display, in->context);
-			eglTerminate(in->display);
+				agp_eglenv.destroy_context(in->display, in->context);
+			agp_eglenv.terminate(in->display);
 		}
 		in->dev = NULL;
 	}
@@ -194,6 +176,138 @@ struct arcan_shmifext_setup arcan_shmifext_defaults(
 		.major = 2, .minor = 1,
 		.shared_context = 0
 	};
+}
+
+static int dma_fd_constants[] = {
+	EGL_DMA_BUF_PLANE0_FD_EXT,
+	EGL_DMA_BUF_PLANE1_FD_EXT,
+	EGL_DMA_BUF_PLANE2_FD_EXT,
+	EGL_DMA_BUF_PLANE3_FD_EXT
+};
+
+static int dma_offset_constants[] = {
+	EGL_DMA_BUF_PLANE0_OFFSET_EXT,
+	EGL_DMA_BUF_PLANE1_OFFSET_EXT,
+	EGL_DMA_BUF_PLANE2_OFFSET_EXT,
+	EGL_DMA_BUF_PLANE3_OFFSET_EXT
+};
+
+static int dma_pitch_constants[] = {
+	EGL_DMA_BUF_PLANE0_PITCH_EXT,
+	EGL_DMA_BUF_PLANE1_PITCH_EXT,
+	EGL_DMA_BUF_PLANE2_PITCH_EXT,
+	EGL_DMA_BUF_PLANE3_PITCH_EXT
+};
+
+static int dma_mod_constants[] = {
+	EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT,
+	EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT,
+	EGL_DMA_BUF_PLANE1_MODIFIER_HI_EXT,
+	EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT,
+	EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT,
+	EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT,
+	EGL_DMA_BUF_PLANE3_MODIFIER_HI_EXT,
+	EGL_DMA_BUF_PLANE3_MODIFIER_LO_EXT,
+};
+
+bool arcan_shmifext_import_buffer(
+	struct arcan_shmif_cont* con,
+	int format,
+	struct shmifext_buffer_plane* planes,
+	size_t n_planes,
+	size_t buffer_plane_sz
+)
+{
+	if (!con || !con->addr || !con->privext || !con->privext->internal)
+		return false;
+
+	struct shmif_ext_hidden_int* I = con->privext->internal;
+	EGLDisplay display = I->display;
+
+	if ((uintptr_t)I->display == SHARED_DISPLAY){
+		if (!active_context)
+			return false;
+
+		struct shmif_ext_hidden_int* O = active_context->privext->internal;
+		display = O->display;
+	}
+
+/* only support one for the time being, but the rest of the function is written
+ * so that it can import additional planes when vstore- change is through */
+	if (n_planes != 1)
+		return false;
+
+	struct agp_vstore* vs = &I->buf;
+
+	if (I->rtgt){
+		agp_drop_rendertarget(I->rtgt);
+		I->rtgt = NULL;
+		memset(vs, '\0', sizeof(struct agp_vstore));
+	}
+
+	size_t n_attr = 0;
+	EGLint attrs[64] = {};
+#define ADD_ATTR(X, Y) { attrs[n_attr++] = (X); attrs[n_attr++] = (Y); }
+	ADD_ATTR(EGL_WIDTH, planes[0].w);
+	ADD_ATTR(EGL_HEIGHT, planes[0].h);
+	ADD_ATTR(EGL_LINUX_DRM_FOURCC_EXT, planes[0].gbm.format);
+
+	for (size_t i = 0; i < n_planes; i++){
+		ADD_ATTR(dma_fd_constants[i], planes[i].fd);
+		ADD_ATTR(dma_offset_constants[i], planes[i].gbm.offset);
+		ADD_ATTR(dma_pitch_constants[i], planes[i].gbm.pitch);
+		if (planes[i].gbm.modifiers){
+			ADD_ATTR(dma_mod_constants[i*2+0], planes[i].gbm.modifiers >> 32);
+			ADD_ATTR(dma_mod_constants[i*2+1], planes[i].gbm.modifiers & 0xffffffff);
+		}
+	}
+
+	ADD_ATTR(EGL_NONE, EGL_NONE);
+#undef ADD_ATTR
+
+	EGLImage img = agp_eglenv.create_image(display,
+		EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, attrs);
+
+	if (!img)
+		return false;
+
+/* eglImage is suposed to dup internally */
+	for (size_t i = 0; i < n_planes; i++){
+		if (-1 != planes[i].fd){
+			close(planes[i].fd);
+			planes[i].fd = -1;
+		}
+	}
+
+/* might have an old eglImage around */
+	if (0 != vs->vinf.text.tag){
+		agp_eglenv.destroy_image(display, (EGLImageKHR) vs->vinf.text.tag);
+	}
+
+	I->buf.w = planes[0].w;
+	I->buf.h = planes[0].h;
+
+/* bind eglImage to GLID, and we don't have any filtering for external,
+ * also cheat a bit around vstore setup */
+	if (!vs->vinf.text.glid){
+		agp_fenv.gen_textures(1, &vs->vinf.text.glid);
+		agp_fenv.active_texture(GL_TEXTURE0);
+		agp_fenv.bind_texture(GL_TEXTURE_2D, vs->vinf.text.glid);
+		agp_fenv.tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		agp_fenv.tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		agp_fenv.tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		agp_fenv.tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		vs->txmapped = TXSTATE_TEX2D;
+		vs->bpp = sizeof(shmif_pixel);
+	}
+
+	agp_activate_vstore(vs);
+		agp_eglenv.image_target_texture2D(GL_TEXTURE_2D, img);
+	agp_deactivate_vstore(vs);
+
+	vs->vinf.text.tag = (uintptr_t) img;
+
+	return true;
 }
 
 static void* lookup(void* tag, const char* sym)
@@ -251,7 +365,7 @@ static enum shmifext_setup_status add_context(
 		EGL_NONE
 	};
 
-/* find first free */
+/* find first free context in bitmap */
 	size_t i = 0;
 	bool found = false;
 	for (; i < 64; i++)
@@ -265,14 +379,14 @@ static enum shmifext_setup_status add_context(
 	if (!found)
 		return SHMIFEXT_OUT_OF_MEMORY;
 
-	if (!eglGetConfigs(ctx->display, NULL, 0, &nc))
+	if (!agp_eglenv.get_configs(ctx->display, NULL, 0, &nc))
 		return SHMIFEXT_NO_CONFIG;
 
 	if (0 == nc)
 		return SHMIFEXT_NO_CONFIG;
 
 	EGLConfig cfg;
-	if (!eglChooseConfig(ctx->display, attribs, &cfg, 1, &nc) || nc < 1)
+	if (!agp_eglenv.choose_config(ctx->display, attribs, &cfg, 1, &nc) || nc < 1)
 		return SHMIFEXT_NO_CONFIG;
 
 	EGLint cas[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE,
@@ -299,13 +413,16 @@ static enum shmifext_setup_status add_context(
 		}
 	}
 
+/* pick a pre-existing / pre-added bit that has been manually
+ * added to the specific shmif context */
 	EGLContext sctx = NULL;
 	if (arg->shared_context)
 		get_egl_context(ctx, arg->shared_context, &sctx);
 
 	ctx->alt_contexts[(1 << i)-1] =
-		eglCreateContext(ctx->display, cfg, sctx, cas);
-	if (!ctx->alt_contexts[i << i])
+		agp_eglenv.create_context(ctx->display, cfg, sctx, cas);
+
+	if (!ctx->alt_contexts[(1 << i)-1])
 		return SHMIFEXT_NO_CONTEXT;
 
 	ctx->ctx_alloc |= 1 << i;
@@ -347,7 +464,7 @@ void arcan_shmifext_swap_context(
 
 	ctx->context_ind = context;
 	ctx->context = egl_ctx;
-	eglMakeCurrent(ctx->display, ctx->surface, ctx->surface, ctx->context);
+	agp_eglenv.make_current(ctx->display, ctx->surface, ctx->surface, ctx->context);
 }
 
 enum shmifext_setup_status arcan_shmifext_setup(
@@ -360,6 +477,18 @@ enum shmifext_setup_status arcan_shmifext_setup(
 	if (ctx && ctx->display)
 		return SHMIFEXT_ALREADY_SETUP;
 
+/* don't do anything with this for the time being */
+	if (arg.no_context){
+		con->privext->internal = malloc(sizeof(struct shmif_ext_hidden_int));
+		if (!con->privext->internal)
+			return SHMIFEXT_NO_API;
+
+		memset(con->privext->internal, '\0', sizeof(struct shmif_ext_hidden_int));
+		con->privext->internal->display = (EGLDisplay)((void*)SHARED_DISPLAY);
+		return SHMIFEXT_OK;
+	}
+
+/* don't use the agp_eglenv here as it has not been setup yet */
 	switch (arg.api){
 	case API_OPENGL:
 		if (!((ctx && ctx->display) || eglBindAPI(EGL_OPENGL_API)))
@@ -385,31 +514,21 @@ enum shmifext_setup_status arcan_shmifext_setup(
 
 	ctx = con->privext->internal;
 
-	if (get_platform_display){
-		ctx->display = get_platform_display(
+	if (agp_eglenv.get_platform_display){
+		ctx->display = agp_eglenv.get_platform_display(
 			EGL_PLATFORM_GBM_KHR, (void*) display, NULL);
 	}
 	else
-		ctx->display = eglGetDisplay((EGLNativeDisplayType) display);
+		ctx->display = agp_eglenv.get_display((EGLNativeDisplayType) display);
 
 	if (!ctx->display)
 		return SHMIFEXT_NO_DISPLAY;
 
-	if (!eglInitialize(ctx->display, NULL, NULL))
+	if (!agp_eglenv.initialize(ctx->display, NULL, NULL))
 		return SHMIFEXT_NO_EGL;
 
-/*
- * this is likely not the best way to keep it if we try to run multiple
- * segments on different GPUs with different GL implementations, if/when
- * that becomes a problem, move to a context specific one
- */
-	if (!agp_fenv.draw_buffer){
-		agp_glinit_fenv(&agp_fenv, lookup_fenv, NULL);
-		agp_setenv(&agp_fenv);
-	}
-
-	if (arg.no_context)
-		return SHMIFEXT_OK;
+/* this needs the context to be initialized */
+	map_eglext_functions(&agp_eglenv, lookup_fenv, NULL);
 
 /* we have egl and a display, build a config/context and set it as the
  * current default context for this shmif-connection */
@@ -423,6 +542,17 @@ enum shmifext_setup_status arcan_shmifext_setup(
 	arcan_shmifext_swap_context(con, ind);
 	ctx->surface = EGL_NO_SURFACE;
 	active_context = con;
+
+/*
+ * this is likely not the best way to keep it if we try to run multiple
+ * segments on different GPUs with different GL implementations, if/when
+ * that becomes a problem, move to a context specific one - should mostly
+ * be to resolve the fenv on first make-curreny
+ */
+	if (!agp_fenv.draw_buffer){
+		agp_glinit_fenv(&agp_fenv, lookup_fenv, NULL);
+		agp_setenv(&agp_fenv);
+	}
 
 /* the built-in render targets act as a framebuffer object container that can
  * also mutate into having a swapchain, with DOUBLEBUFFER that happens
@@ -443,19 +573,22 @@ enum shmifext_setup_status arcan_shmifext_setup(
 
 bool arcan_shmifext_drop(struct arcan_shmif_cont* con)
 {
-	if (!con || !con->privext || !con->privext->internal ||
-		!con->privext->internal->display)
+	if (!con ||
+		!con->privext || !con->privext->internal ||
+		!con->privext->internal->display ||
+		(uintptr_t)con->privext->internal->display == SHARED_DISPLAY
+	)
 		return false;
 
 	struct shmif_ext_hidden_int* ctx = con->privext->internal;
 
-	eglMakeCurrent(ctx->display,
+	agp_eglenv.make_current(ctx->display,
 		EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 
 	for (size_t i = 0; i < 64 && ctx->ctx_alloc; i++){
 		if ((ctx->ctx_alloc & ((1<<i)))){
 			ctx->ctx_alloc &= ~(1 << i);
-			eglDestroyContext(ctx->display, ctx->alt_contexts[i]);
+			agp_eglenv.destroy_context(ctx->display, ctx->alt_contexts[i]);
 			ctx->alt_contexts[i] = NULL;
 		}
 	}
@@ -481,9 +614,9 @@ bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
 /* it's the caller's responsibility to switch in a new ctx, but right
  * now, we're in a state where managed = true, though there's no context */
 	if (ctx->context){
-		eglMakeCurrent(ctx->display,
+		agp_eglenv.make_current(ctx->display,
 			EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-		eglDestroyContext(ctx->display, ctx->context);
+		agp_eglenv.destroy_context(ctx->display, ctx->context);
 		ctx->context = NULL;
 	}
 
@@ -579,8 +712,10 @@ bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 	}
 /* mode-switch is no-op in init here, but we still may need
  * to update function pointers due to possible context changes */
-	else
-		return check_functions(lookup, tag);
+
+	map_egl_functions(&agp_eglenv, lookup_fenv, tag);
+	if (!agp_eglenv.initialize)
+		return false;
 
 	if (-1 == dfd)
 		return false;
@@ -606,7 +741,9 @@ bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 		}
 	}
 
-	if (!check_functions(lookup, tag)){
+/* this needs the context to be initialized */
+	map_eglext_functions(&agp_eglenv, lookup_fenv, tag);
+	if (!agp_eglenv.destroy_image){
 		gbm_drop(con);
 		return false;
 	}
@@ -662,7 +799,8 @@ bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 	struct shmif_ext_hidden_int* ctx = con->privext->internal;
 
 	if (active_context != con){
-		eglMakeCurrent(ctx->display, ctx->surface, ctx->surface, ctx->context);
+		agp_eglenv.make_current(
+			ctx->display, ctx->surface, ctx->surface, ctx->context);
 		active_context = con;
 	}
 	arcan_shmifext_bind(con);
@@ -686,15 +824,17 @@ bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
 	size_t next_i = (ctx->image_index + 1) % COUNT_OF(ctx->images);
 	free_image_index(dpy, ctx, next_i);
 
-	EGLImage newimg = create_image(dpy, eglGetCurrentContext(),
-		EGL_GL_TEXTURE_2D_KHR, (EGLClientBuffer)(tex_id), NULL);
+	EGLImage newimg = agp_eglenv.create_image(dpy,
+		con->privext->internal->context, EGL_GL_TEXTURE_2D_KHR,
+		(EGLClientBuffer)(tex_id), NULL
+	);
 
 	if (!newimg)
 		return false;
 
 	int fourcc, nplanes;
-	if (!query_image_format(dpy, newimg, &fourcc, &nplanes, NULL)){
-		destroy_image(dpy, newimg);
+	if (!agp_eglenv.query_image_format(dpy, newimg, &fourcc, &nplanes, NULL)){
+		agp_eglenv.destroy_image(dpy, newimg);
 		return false;
 	}
 
@@ -703,8 +843,9 @@ bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
 		return false;
 
 	EGLint stride;
-	if (!export_dmabuf(dpy, newimg, dhandle, &stride, NULL)|| stride < 0){
-		destroy_image(dpy, newimg);
+	if (!agp_eglenv.export_dmabuf(dpy,
+		newimg, dhandle, &stride, NULL)|| stride < 0){
+		agp_eglenv.destroy_image(dpy, newimg);
 		return false;
 	}
 
@@ -729,18 +870,32 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 
 	struct shmif_ext_hidden_int* ctx = con->privext->internal;
 
-	EGLDisplay* dpy = display == 0 ?
-		con->privext->internal->display : (EGLDisplay*) display;
+	EGLDisplay* dpy;
+	if (display){
+		dpy = (EGLDisplay)((void*) display);
+	}
+	else if ((uintptr_t)ctx->display == SHARED_DISPLAY && active_context){
+		dpy = active_context->privext->internal->display;
+	}
+	else
+		dpy = ctx->display;
 
 	if (!dpy)
 		return -1;
 
-/* swap and forward the state of the builtin- rendertarget */
+/* swap and forward the state of the builtin- rendertarget or the latest
+ * imported buffer depending on how the context was configured */
 	if (tex_id == SHMIFEXT_BUILTIN){
-		bool swap;
-		tex_id = agp_rendertarget_swap(ctx->rtgt, &swap);
-		if (!swap)
-			return INT_MAX;
+		if (!ctx->rtgt && ctx->buf.vinf.text.tag){
+			tex_id = ctx->buf.vinf.text.glid;
+			goto fallback;
+		}
+		else {
+			bool swap;
+			tex_id = agp_rendertarget_swap(ctx->rtgt, &swap);
+			if (!swap)
+				return INT_MAX;
+		}
 	}
 
 /* begin extraction of the currently rendered-to buffer */

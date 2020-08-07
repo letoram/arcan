@@ -29,6 +29,17 @@ int arcan_shmifext_dev(struct arcan_shmif_cont* con,
 	return -1;
 }
 
+bool arcan_shmifext_import_buffer(
+	struct arcan_shmif_cont* c,
+	struct shmifext_buffer_plane* planes,
+	int format,
+	size_t n_planes,
+	size_t buffer_plane_sz
+)
+{
+	return false;
+}
+
 bool platform_video_map_handle(struct agp_vstore* store, int64_t handle)
 {
 	return false;
