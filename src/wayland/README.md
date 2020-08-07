@@ -122,6 +122,26 @@ input-events - xev
 pseudo-wm-commands - xdotool, wmctrl
 other useful xwininfo: -tree -root
 
+## Adding Protocols
+
+Wayland, in all its COMplexity, is practically a huge tree of xml files that
+may or may not be present, and may or may not be needed depending on the client.
+
+To add support for a new 'protocol':
+
+1. First find the xml definition somewhere. Add to the CMakeLists.txt list of protocol names.
+2. Dry-run a build so the .h file gets generated (helps, not necessary)
+3. (boilerplate.c) #include the derived .h file
+4. wlimpl/myproto.c - create with the expected functions from #3.
+5. (boilerplate.c) #include file from 4, add a faux vtable that pairs if struct with functions
+6. (bondage.c) create a bind function that references the table from 5.
+7. (waybridge.c) add a command-line toggle for the protocol, update help printout
+8. (waybridge.c) append big if-else with an if myprotocol then add bind function to wl\_display
+9. actually fill in the stubs from #4, 9 times out of 10, it results in a shmif\_enqueue
+10. modify WM to pair corresponding features
+11. (optional) bask in the glory of the 'simplicity', cry and die a little on the inside.
+
+
 TODO
 ====
 
@@ -177,7 +197,7 @@ determine if we are compliant or not, because Wayland.
   - [ ] Tablet
   - [ ] Presentation Time
   - [ ] Viewporter
-  - [ ] Xdg-output (and output switching)
+  - [ ] Xdg-output
   - [ ] Xdg-foreign
 	- [x] Dma- buf
 	- [ ] Qt- specific protocols for SDL shutdown issue
