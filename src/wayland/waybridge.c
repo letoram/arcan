@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2019, Björn Ståhl
+ * Copyright 2016-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: https://github.com/letoram/arcan/wiki/wayland.md
  */
@@ -1201,7 +1201,7 @@ int main(int argc, char* argv[])
 		.zxdg = 1,
 		.xdg = 1,
 		.drm = 1,
-		.dma = 3,
+		.dma = 0,
 		.subcomp = 1,
 		.ddev = 3,
 		.relp = 1,
@@ -1304,7 +1304,7 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[arg_i], "-no-zxdg") == 0)
 			protocols.zxdg = 0;
 		else if (strcmp(argv[arg_i], "-dma") == 0)
-			protocols.dma = 1;
+			protocols.dma = 3;
 		else if (strcmp(argv[arg_i], "-no-xdg") == 0)
 			protocols.xdg = 0;
 		else if (strcmp(argv[arg_i], "-no-subcompositor") == 0)
