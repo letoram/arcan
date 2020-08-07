@@ -2441,12 +2441,12 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	struct arcan_shmif_cont ret =
 		arcan_shmif_acquire(NULL, keyfile, cont->priv->type, cont->priv->flags);
 	ret.epipe = dpipe;
-	ret.priv->guard.parent_fd = dpipe;
 
 	if (!ret.addr){
 		close(dpipe);
 		return SHMIF_MIGRATE_NOCON;
 	}
+	ret.priv->guard.parent_fd = dpipe;
 
 /* REGISTER is special, as GUID can be internally generated but should persist */
 	if (cont->priv->flags & SHMIF_NOREGISTER){
