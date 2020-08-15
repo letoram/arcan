@@ -76,4 +76,6 @@ prim3d - single cube, directional lighting, mouse rotation and shifted origo
 
 itest - two different kinds of externally provided input injection
 
+decortest - testing the builtin surface decorator helper script
+
 wltest - testing the builtin wayland window manager helper script

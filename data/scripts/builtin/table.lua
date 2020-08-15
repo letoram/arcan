@@ -17,6 +17,16 @@ function table.set_unless_exists(tbl, key, val)
 end
 end
 
+if not table.get_fallback then
+function table.get_fallback(tbl, key, fallback)
+	if not tbl or not tbl[key] then
+		return fallback
+	else
+		return tbl[key]
+	end
+end
+end
+
 -- take the entries in ref and apply to src if they match type
 -- with ref, otherwise use the value in ref
 if not table.merge then
