@@ -47,10 +47,11 @@ static void toggle_logdev(const char* prefix)
 	strftime(timeb, sizeof(timeb)-1, "%y%m%d_%H%M", basetime);
 
 	size_t logbuf_sz = strlen(logdir) +
-		sizeof("/fsrv__yymmddhhss.txt") + strlen(prefix);
-	char* logbuf = malloc(logbuf_sz + 1);
+		sizeof("/fsrv__yymmddhhss__65536.txt") + strlen(prefix);
+	char* logbuf = malloc(logbuf_sz);
 
-	snprintf(logbuf, logbuf_sz+1, "%s/fsrv_%s_%s.txt", logdir, prefix, timeb);
+	snprintf(logbuf, logbuf_sz,
+		"%s/fsrv_%s_%s_%d.txt", logdir, prefix, timeb, (int)getpid());
 	if (!freopen(logbuf, "a", stderr)){
 		if (!freopen("/dev/null", "a", stderr))
 			fclose(stderr);
