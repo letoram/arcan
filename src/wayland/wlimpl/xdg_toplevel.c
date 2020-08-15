@@ -43,6 +43,12 @@ static bool xdgtoplevel_shmifev_handler(
 					trace(TRACE_SHELL, "maximized");
 				}
 
+				if (surf->states.fullscreen){
+					sv = wl_array_add(&states, sizeof(uint32_t));
+					*sv = XDG_TOPLEVEL_STATE_FULLSCREEN;
+					trace(TRACE_SHELL, "fullscreen");
+				}
+
 				if (surf->states.drag_resize){
 					sv = wl_array_add(&states, sizeof(uint32_t));
 					*sv = XDG_TOPLEVEL_STATE_RESIZING;

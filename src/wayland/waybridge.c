@@ -1152,16 +1152,23 @@ static bool process_group(struct conn_group* group)
 
 	if (group->arcan && group->arcan->revents){
 		trace(TRACE_ALERT, "process bridge");
-		flush_bridge_events(&wl.control);
+		if (!flush_bridge_events(&wl.control)){
+			wl.alive = false;
+		}
 		sv--;
 	}
+
+	static int count = 0;
 
 	for (size_t i = 0; i < N_GROUP_SLOTS && sv > 0 && wl.alive; i++){
 		if (group->pg[i].revents){
 			sv--;
 			switch(group->slots[i].type){
 			case SLOT_TYPE_CLIENT:
-				flush_client_events(&group->slots[i].client, NULL, 0);
+				if (-1 == flush_client_events(&group->slots[i].client, NULL, 0)){
+					wl_client_destroy(group->slots[i].client.client);
+				}
+
 			break;
 			case SLOT_TYPE_SURFACE:
 				if (group->slots[i].surface){
@@ -1171,7 +1178,7 @@ static bool process_group(struct conn_group* group)
 						trace(TRACE_ALERT, "broken surface slot (%zu)", i);
 
 /* we can get into a situation where arcan considers the connection over and
- * done with, but wayland clients have much less strinent lifecycle
+ * done with, but wayland clients have much less stringent lifecycle
  * requirements, in those cases the read-socket is actually over and done with
  * so it needs to be removedfrom the pollset or we start spinning - with
  * x clients in particular we can switch to an 'xkill' like behavior though */
