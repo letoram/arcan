@@ -163,8 +163,8 @@ struct surf_state {
 	bool hidden : 1;
 	bool unfocused : 1;
 	bool maximized : 1;
-	bool minimized : 1;
 	bool drag_resize : 1;
+	bool fullscreen : 1;
 
 /* set by xdgdecor */
 	bool ssd : 1;

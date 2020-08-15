@@ -380,7 +380,7 @@ static bool displayhint_handler(struct comp_surf* surf, struct arcan_tgtevent* e
 		.hidden = !!(ev->ioevs[2].iv & 2),
 		.unfocused = !!(ev->ioevs[2].iv & 4),
 		.maximized = !!(ev->ioevs[2].iv & 8),
-		.minimized = !!(ev->ioevs[2].iv & 16)
+		.fullscreen = !!(ev->ioevs[2].iv &  16)
 	};
 
 	bool change = memcmp(&surf->states, &states, sizeof(struct surf_state)) != 0;
@@ -454,20 +454,22 @@ static void flush_surface_events(struct comp_surf* surf)
 	trace(TRACE_ALERT, "flush state: %d", pv);
 }
 
-static void flush_client_events(
+static int flush_client_events(
 	struct bridge_client* cl, struct arcan_event* evs, size_t nev)
 {
 /* same dispatch, different path if we're dealing with 'ev' or 'nev' */
 	struct arcan_event ev;
+	int pv;
 
-	while (arcan_shmif_poll(&cl->acon, &ev) > 0){
+	while ((pv = arcan_shmif_poll(&cl->acon, &ev)) > 0){
 		if (ev.category != EVENT_TARGET)
 			continue;
+
 		switch(ev.tgt.kind){
+/* this maps directly to wl-client-destroy */
 		case TARGET_COMMAND_EXIT:
 			trace(TRACE_ALLOC, "shmif-> kill client");
-/* actual 'close' command varies with the shell type, so the real code
- * for this should come inside the dispatch of the right one */
+			pv = -1;
 		break;
 		case TARGET_COMMAND_DISPLAYHINT:
 			trace(TRACE_ALLOC, "shmif-> target update visibility or size");
@@ -522,12 +524,16 @@ static void flush_client_events(
 		break;
 		}
 	}
+
+	return pv;
 }
 
 static bool flush_bridge_events(struct arcan_shmif_cont* con)
 {
 	struct arcan_event ev;
-	while (arcan_shmif_poll(con, &ev) > 0){
+	int pv;
+
+	while ((pv = arcan_shmif_poll(con, &ev)) > 0){
 		if (ev.category == EVENT_TARGET){
 		switch (ev.tgt.kind){
 		case TARGET_COMMAND_EXIT:
@@ -537,5 +543,6 @@ static bool flush_bridge_events(struct arcan_shmif_cont* con)
 		}
 		}
 	}
-	return true;
+
+	return pv != -1;
 }
