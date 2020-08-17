@@ -342,14 +342,24 @@ int MAIN_REDIR(int argc, char* argv[])
 	platform_device_init();
 	platform_video_preinit();
 	platform_event_preinit();
+	arcan_log_destination(stderr, 0);
 
 /*
- * Protect against launching the main arcan instance from an environment
- * where there already is indication of a connection destination.
+ * Protect against launching the main arcan instance from an environment where
+ * there already is indication of a connection destination. This is not
+ * entirely sufficient for wayland either as that implementation has a default
+ * display that it tries to open if no env was set - but fringe enough to not
+ * bother with.
  */
-#if defined(ARCAN_EGL_DRI)
+#if defined(ARCAN_EGL_DRI) && !defined(ARCAN_LWA)
 	if ((getenv("DISPLAY") || getenv("WAYLAND_DISPLAY"))){
+		arcan_warning("%s running, switching to "
+			"arcan_sdl\n", getenv("DISPLAY") ? "Xorg" : "Wayland");
 		execvp("arcan_sdl", argv);
+		arcan_warning("exec arcan_sdl failed, error code: %d\n", errno);
+#if defined(ARCAN_HYBRID_SDL)
+		arcan_warning("check that your build was made with -DHYBRID_SDL=ON\n");
+#endif
 		exit(EXIT_FAILURE);
 	}
 #endif
@@ -362,8 +372,6 @@ int MAIN_REDIR(int argc, char* argv[])
 #endif
 
 	arcan_mem_growarr(&arr_hooks);
-
-	arcan_log_destination(stderr, 0);
 
 	settings.in_monitor = getenv("ARCAN_MONITOR_FD") != NULL;
 	bool windowed = false;
