@@ -109,7 +109,7 @@ struct tui_cell* tcell, uint8_t* outb, uint8_t has_cursor)
 {
 /* inverse isn't an attribute on the packing level, we simply modify the colors
  * as the 'inverse' attribute is a left-over from the terminal emulation days */
-	if (tcell->attr.inverse){
+	if (tcell->attr.aflags & TUI_ATTR_INVERSE){
 /* use the tactic of picking 'new foreground / background' based on the
  * intensity of the current-cell colours rather than say, fg <=> bg */
 		float intens =
@@ -139,18 +139,18 @@ struct tui_cell* tcell, uint8_t* outb, uint8_t has_cursor)
 /* this deviates from the tui cell here, the terminal- legacy blink
  * and protect bits are not kept */
 	*outb++ = (
-		tcell->attr.bold << 0 |
-		tcell->attr.underline << 1 |
-		tcell->attr.italic << 2 |
-		tcell->attr.strikethrough << 3 |
-		tcell->attr.shape_break << 4 |
-		has_cursor << 5 |
-		tcell->attr.underline_alt << 6
+		(!!(tcell->attr.aflags & TUI_ATTR_BOLD))          << 0 |
+		(!!(tcell->attr.aflags & TUI_ATTR_UNDERLINE))     << 1 |
+		(!!(tcell->attr.aflags & TUI_ATTR_ITALIC))        << 2 |
+		(!!(tcell->attr.aflags & TUI_ATTR_STRIKETHROUGH)) << 3 |
+		(!!(tcell->attr.aflags & TUI_ATTR_SHAPE_BREAK))   << 4 |
+		                                       has_cursor << 5 |
+		(!!(tcell->attr.aflags & TUI_ATTR_UNDERLINE_ALT)) << 6
 	);
 
 	*outb++ = (
-		tcell->attr.border_right << 0 |
-		tcell->attr.border_down << 1
+		(!!(tcell->attr.aflags & TUI_ATTR_BORDER_RIGHT)) << 0 |
+		(!!(tcell->attr.aflags & TUI_ATTR_BORDER_DOWN))  << 1
 	);
 
 	pack_u32(tcell->ch, outb);

@@ -490,7 +490,7 @@ static bool on_subst(struct tui_context* tui,
  * vertical similarities in terms of whitespace+character
  */
 		if ( (isspace(cells[i].ch) && isspace(cells[i+1].ch)) ){
-			cells[i].attr.shape_break = 1;
+			cells[i].attr.aflags |= TUI_ATTR_SHAPE_BREAK;
 			res = true;
 		}
 	}

@@ -2776,6 +2776,8 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 	if (getenv("ARCAN_SHMKEY") && getenv("ARCAN_SOCKIN_FD")){
 		keyfile = strdup(getenv("ARCAN_SHMKEY"));
 		dpipe = (int) strtol(getenv("ARCAN_SOCKIN_FD"), NULL, 10);
+		unsetenv("ARCAN_SOCKIN_FD");
+		unsetenv("ARCAN_HANDOVER_EXEC");
 	}
 /* connection point based setup, check if we want local or remote connection
  * setup - for the remote part we still need some other mechanism in the url

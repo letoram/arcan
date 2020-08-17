@@ -221,24 +221,10 @@ struct tui_screen_attr {
 			uint8_t bb; /* background blue */
 		};
 	};
-	union {
-		uint8_t meta[3];
-		struct {
-			unsigned int bold : 1; /* bold character */
-			unsigned int underline : 1; /* underlined character */
-			unsigned int italic : 1;
-			unsigned int inverse : 1; /* inverse colors */
-			unsigned int protect : 1; /* cannot be erased */
-			unsigned int blink : 1; /* blinking character */
-			unsigned int strikethrough : 1;
-			unsigned int shape_break : 1; /* reset shaping and align to grid */
-			unsigned int indexed : 1; /* interpret color value as color index */
-			unsigned int underline_alt: 1; /* alternative underline */
-			unsigned int border_right : 1; /* draw border, group selection */
-			unsigned int border_down : 1; /* draw border, group selection */
-			uint8_t custom_id;
-		};
-	};
+
+/* bitmask from TUI_ATTR_ */
+	uint16_t aflags;
+	uint8_t custom_id;
 };
 
 /* _Static_assert(sizeof(tui_screen_attr) == 8) */
@@ -253,14 +239,7 @@ static inline bool tui_attr_equal(
 		a.br == b.br &&
 		a.bg == b.bg &&
 		a.bb == b.bb &&
-		a.bold == b.bold &&
-		a.underline == b.underline &&
-		a.italic == b.italic &&
-		a.inverse == b.inverse &&
-		a.protect == b.protect &&
-		a.blink == b.blink &&
-		a.strikethrough == b.strikethrough &&
-		a.shape_break == b.shape_break &&
+		a.aflags == b.aflags &&
 		a.custom_id == b.custom_id
 	);
 }
