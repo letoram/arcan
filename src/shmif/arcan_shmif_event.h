@@ -1467,11 +1467,11 @@ enum ARCAN_TARGET_SKIPMODE {
 			uint8_t border[4];
 			uint8_t edge;
 			int8_t order;
-			uint8_t embedded : 1;
-			uint8_t invisible : 1;
-			uint8_t focus : 1;
-			uint8_t anchor_edge : 1;
-			uint8_t anchor_pos : 1;
+			uint8_t embedded;
+			uint8_t invisible;
+			uint8_t focus;
+			uint8_t anchor_edge;
+			uint8_t anchor_pos;
 		} viewport;
 
 /*
