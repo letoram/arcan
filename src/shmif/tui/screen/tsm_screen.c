@@ -464,7 +464,7 @@ void tsm_screen_erase_region(struct tsm_screen *con,
 		else
 			to = con->size_x - 1;
 		for ( ; x_from <= to; ++x_from) {
-			if (protect && line->cells[x_from].attr.protect)
+			if (protect && TUI_HAS_ATTR(line->cells[x_from].attr, TUI_ATTR_PROTECT))
 				continue;
 
 			cell_init_chg(con, &line->cells[x_from]);
@@ -2250,11 +2250,11 @@ tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 
 /* actual inverse logic is handled in the renderer */
 			if (con->flags & TSM_SCREEN_INVERSE)
-				attr.inverse = !attr.inverse;
+				attr.aflags ^= TUI_ATTR_INVERSE;
 
 			if (in_sel || was_sel) {
 				was_sel = false;
-				attr.inverse = !attr.inverse;
+				attr.aflags ^= TUI_ATTR_INVERSE;
 			}
 
 			if (con->age_reset) {

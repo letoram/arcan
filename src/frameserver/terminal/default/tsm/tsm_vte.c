@@ -511,7 +511,7 @@ static void to_rgb(struct tsm_vte *vte, bool defattr)
 
 	if (fgc >= 0) {
 		/* bold causes light colors */
-		if (attr->bold && fgc < 8)
+		if (TUI_HAS_ATTR((*attr), TUI_ATTR_BOLD) && fgc < 8)
 			fgc += 8;
 		if (fgc >= VTE_COLOR_NUM)
 			fgc = VTE_COLOR_FOREGROUND;
@@ -803,13 +803,7 @@ static void reset_state(struct tsm_vte *vte)
 	vte->saved_state.cattr.br = vte->def_attr.br;
 	vte->saved_state.cattr.bg = vte->def_attr.bg;
 	vte->saved_state.cattr.bb = vte->def_attr.bb;
-	vte->saved_state.cattr.bold = 0;
-	vte->saved_state.cattr.italic = 0;
-	vte->saved_state.cattr.underline = 0;
-	vte->saved_state.cattr.inverse = 0;
-	vte->saved_state.cattr.protect = 0;
-	vte->saved_state.cattr.blink = 0;
-	vte->saved_state.cattr.strikethrough = 0;
+	vte->saved_state.cattr.aflags = 0;
 	vte->saved_state.cattr.custom_id = 0;
 }
 
@@ -1409,47 +1403,42 @@ static void csi_attribute(struct tsm_vte *vte)
 			vte->cattr.br = vte->def_attr.br;
 			vte->cattr.bg = vte->def_attr.bg;
 			vte->cattr.bb = vte->def_attr.bb;
-			vte->cattr.bold = 0;
-			vte->cattr.underline = 0;
-			vte->cattr.inverse = 0;
-			vte->cattr.blink = 0;
+			vte->cattr.aflags = 0;
 			vte->faint = false;
-			vte->cattr.italic = 0;
-			vte->cattr.strikethrough = 0;
 			break;
 		case 1:
-			vte->cattr.bold = 1;
+			vte->cattr.aflags |= TUI_ATTR_BOLD;
 		break;
 		case 2:
 			vte->faint = true;
 		break;
 		case 3:
-			vte->cattr.italic = 1;
+			vte->cattr.aflags |= TUI_ATTR_ITALIC;
 		break;
 		case 4:
-			vte->cattr.underline = 1;
+			vte->cattr.aflags |= TUI_ATTR_UNDERLINE;
 			break;
 		case 5:
-			vte->cattr.blink = 1;
+			vte->cattr.aflags |= TUI_ATTR_BLINK;
 			break;
 		case 7:
-			vte->cattr.inverse = 1;
+			vte->cattr.aflags |= TUI_ATTR_INVERSE;
 			break;
 		case 22:
-			vte->cattr.bold = 0;
+			vte->cattr.aflags &= ~TUI_ATTR_BOLD;
 			vte->faint = false;
 			break;
 		case 23:
-			vte->cattr.italic = 0;
+			vte->cattr.aflags &= ~TUI_ATTR_ITALIC;
 			break;
 		case 24:
-			vte->cattr.underline = 0;
+			vte->cattr.aflags &= ~TUI_ATTR_UNDERLINE;
 			break;
 		case 25:
-			vte->cattr.blink = 0;
+			vte->cattr.aflags &= ~TUI_ATTR_BLINK;
 			break;
 		case 27:
-			vte->cattr.inverse = 0;
+			vte->cattr.aflags &= ~TUI_ATTR_INVERSE;
 			break;
 		case 29:
 /* 'not crossed out' */

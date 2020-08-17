@@ -43,6 +43,23 @@ enum tui_context_flags {
 	TUI_MOUSE_FULL = 256,
 };
 
+#define TUI_HAS_ATTR(X, Y) (!!((X).aflags & (Y)))
+
+enum tui_attr_flags {
+	TUI_ATTR_BOLD = 1,
+	TUI_ATTR_UNDERLINE = 2,
+	TUI_ATTR_UNDERLINE_ALT = 4,
+	TUI_ATTR_ITALIC = 8,
+	TUI_ATTR_INVERSE = 16,
+	TUI_ATTR_PROTECT = 32,
+	TUI_ATTR_BLINK = 64,
+	TUI_ATTR_STRIKETHROUGH = 128,
+	TUI_ATTR_SHAPE_BREAK = 256,
+	TUI_ATTR_INDEXED = 512,
+	TUI_ATTR_BORDER_RIGHT = 1024,
+	TUI_ATTR_BORDER_DOWN = 2048,
+};
+
 /*
  * positioning / drawing hints, BITMASK.
  */
