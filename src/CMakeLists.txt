@@ -640,6 +640,12 @@ endif()
 # arcan, the hybrids and lwa at the same time.
 if(VIDEO_PLATFORM STREQUAL "egl-dri")
 if(HYBRID_SDL)
+	set_property(
+		SOURCE engine/arcan_main.c
+		APPEND PROPERTY COMPILE_DEFINITIONS
+		ARCAN_HYBRID_SDL=1
+	)
+
 	amsg("-- Appending sdl platform build--")
 	set(VIDEO_PLATFORM "sdl2")
 	set(INPUT_PLATFORM "sdl2")
