@@ -266,7 +266,9 @@ local function wnd_mouse_drag(wnd, vid, dx, dy)
 		wnd.y = y
 
 -- for x11 we also need to message the new position
--- target_input(wnd.external, string.format("kind=move:x=%d:y=%d", rx, ry));
+		if wnd.send_position then
+			target_input(wnd.vid, string.format("kind=move:x=%d:y=%d", wnd.x, wnd.y))
+		end
 		move_image(wnd.vid, wnd.x, wnd.y)
 		return
 
@@ -434,7 +436,10 @@ local function tl_wnd_resized(wnd, source, status)
 	wnd.w = status.width
 	wnd.h = status.height
 	resize_image(wnd.vid, status.width, status.height)
-	wnd.wm.decorate(wnd, wnd.vid, wnd.w, wnd.h)
+
+	if wnd.use_decor then
+		wnd.wm.decorate(wnd, wnd.vid, wnd.w, wnd.h)
+	end
 
 	if wnd.defer_move then
 		local x, y = wnd.wm.move(wnd, wnd.defer_move[1], wnd.defer_move[2])
@@ -468,7 +473,6 @@ local function x11_wnd_realize(wnd)
 end
 
 local function x11_wnd_type(wnd)
-	if
 	wnd:realize()
 end
 
@@ -477,7 +481,7 @@ local function x11_nudge(wnd, dx, dy)
 	move_image(wnd.vid, x, y)
 	wnd.x = x
 	wnd.y = y
-
+	target_input(wnd.vid, string.format("kind=move:x=%d:y=%d", x, y));
 end
 
 local function wnd_nudge(wnd, dx, dy)
@@ -543,6 +547,8 @@ local function x11_vtable()
 		min_h = 32,
 		max_w = 0,
 		max_h = 0,
+		send_position = true,
+		use_decor = true,
 
 		states = {
 			mapped = false,
@@ -559,11 +565,14 @@ local function x11_vtable()
 -- with added messaging about window coordinates within the space
 		destroy = wnd_destroy,
 		input_table = wnd_input_table,
+
 		over = wnd_mouse_over,
 		out = wnd_mouse_out,
 		button = wnd_mouse_btn,
-		drag = x11_mouse_dra,
+		drag = x11_mouse_drag,
+		motion = wnd_mouse_motion,
 		drop = wnd_mouse_drop,
+
 		focus = wnd_focus,
 		unfocus = wnd_unfocus,
 		revert = wnd_revert,
@@ -673,8 +682,14 @@ local function popup_destroy(popup)
 	if popup.grab then
 		popup.grab = popup.grab()
 	end
+
 	mouse_switch_cursor("default")
-	delete_image(popup.vid)
+
+-- might have chain-destroyed through the parent vid or terminated on its own
+	if valid_vid(popup.vid) then
+		delete_image(popup.vid)
+	end
+
 	mouse_droplistener(popup)
 	popup.wm.windows[popup.cookie] = nil
 end
@@ -951,7 +966,7 @@ local function on_x11(wnd, source, status)
 		wnd:realize()
 
 -- let the caller decide how we deal with decoration
-		if wnd.realized then
+		if wnd.realized and wnd.use_decor then
 			wnd.wm.decorate(wnd, wnd.vid, wnd.w, wnd.h)
 		end
 
@@ -993,6 +1008,7 @@ local function bridge_handler(ctx, source, status)
 
 	local handler = permitted[status.segkind]
 	if not handler then
+		print(debug.traceback())
 		warning("unhandled segment type: " .. status.segkind)
 		return
 	end
@@ -1077,16 +1093,19 @@ local function resize_output(ctx, neww, newh, density, refresh)
 	end
 end
 
+local window_stack = {}
+
 local function bridge_table(cfg)
 	local res = {
 -- vid to the client bridge
 		control = BADID,
 
+-- The window stack is (default) global for all bridges for ordering to work,
+-- each window is reserved 10 order slots.
+		window_stack = window_stack,
+
 -- key indexed on window identifier cookie
 		windows = {},
-
--- alias of windows in order of focus, used to refocus/reorder
-		window_stack = {},
 
 -- tracks all externally allocated VIDs
 		known_surfaces = {},
@@ -1135,6 +1154,10 @@ local function bridge_table(cfg)
 
 	if cfg.log then
 		res.log = cfg.log
+	end
+
+	if type(cfg.window_stack) == "table" then
+		res.window_stack = cfg.window_stack
 	end
 
 -- add client defined event handlers, provide default inplementations if missing
