@@ -54,7 +54,7 @@ function wltest()
 					delete_image(source)
 					listen()
 				else
-					add_client(source, status)
+					connection(source, add_client)
 				end
 			end
 		)
