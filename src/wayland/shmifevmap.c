@@ -519,6 +519,8 @@ static int flush_client_events(
 		break;
 		case TARGET_COMMAND_OUTPUTHINT:
 /* this roughly corresponds to being assigned a new output, so send clients there */
+			update_client_output(cl,
+				ev.tgt.ioevs[0].iv, ev.tgt.ioevs[1].iv, 0.0, 0.0, 0, ev.tgt.ioevs[2].iv);
 		break;
 		default:
 		break;

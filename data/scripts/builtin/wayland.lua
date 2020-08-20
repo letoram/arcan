@@ -93,15 +93,16 @@ local x11_lut =
 	["type"] =
 	function(ctx, source, typename)
 		ctx.states.typed = typename
-		if ctx.states.mapped then
+		if not ctx.states.mapped then
 			ctx:apply_type()
 		end
 	end,
 	["pair"] =
 	function(ctx, source, wl_id, x11_id)
-		wl_id = wl_id and wl_id or "missing"
-		x11_id = x11_id and x11_id or "missing"
+		local wl_id = wl_id and wl_id or "missing"
+		local x11_id = x11_id and x11_id or "missing"
 
+		ctx.idstr = wl_id .. "-> " .. x11_id
 		ctx.wm.log("wl_x11", ctx.wm.fmt("paired:wl=%s:x11=%s", wl_id, x11_id))
 -- not much to do with the information
 	end,
@@ -267,7 +268,8 @@ local function wnd_mouse_drag(wnd, vid, dx, dy)
 
 -- for x11 we also need to message the new position
 		if wnd.send_position then
-			target_input(wnd.vid, string.format("kind=move:x=%d:y=%d", wnd.x, wnd.y))
+			target_input(wnd.vid,
+				string.format("kind=move:x=%d:y=%d", wnd.x, wnd.y))
 		end
 		move_image(wnd.vid, wnd.x, wnd.y)
 		return
@@ -316,7 +318,7 @@ local function wnd_hint_state(wnd)
 end
 
 local function wnd_unfocus(wnd)
-	wnd.wm.log(wnd.name, "focus=off")
+	wnd.wm.log(wnd.name, wnd.wm.fmt("focus=off:idstr=%s", wnd.idstr and wnd.idstr or wnd.name))
 	wnd.states.focused = false
 	target_displayhint(wnd.vid, 0, 0, wnd_hint_state(wnd))
 	wnd.wm.custom_cursor = false
@@ -324,17 +326,13 @@ local function wnd_unfocus(wnd)
 end
 
 local function wnd_focus(wnd)
-	wnd.wm.log(wnd.name, "focus=on")
+	wnd.wm.log(wnd.name, wnd.wm.fmt("focus=on:idstr=%s", wnd.idstr and wnd.idstr or wnd.name))
 	wnd.states.focused = true
 	target_displayhint(wnd.vid, 0, 0, wnd_hint_state(wnd))
 	wnd.wm.custom_cursor = wnd
 	table.remove_match(wnd.wm.window_stack, wnd)
 	table.insert(wnd.wm.window_stack, wnd)
-
--- re-order
-	for i,v in ipairs(wnd.wm.window_stack) do
-		order_image(v.vid, i * 10);
-	end
+	wnd.wm:restack()
 end
 
 local function wnd_destroy(wnd)
@@ -342,6 +340,7 @@ local function wnd_destroy(wnd)
 	mouse_droplistener(wnd)
 	wnd.wm.windows[wnd.cookie] = nil
 	table.remove_match(wnd.wm.window_stack, wnd)
+	wnd.wm:restack()
 
 	if wnd.wm.custom_cursor == wnd then
 		mouse_switch_cursor("default")
@@ -425,6 +424,7 @@ local function tl_wnd_resized(wnd, source, status)
 		local dx = dw * rzmask[3]
 		local dy = dh * rzmask[4]
 
+-- the move handler should account for padding
 		local x, y = wnd.wm.move(wnd, wnd.x + dx, wnd.y + dy, dx, dy)
 		wnd.x = x
 		wnd.y = y
@@ -473,6 +473,28 @@ local function x11_wnd_realize(wnd)
 end
 
 local function x11_wnd_type(wnd)
+	local popup_type =
+		wnd.states.typed == "menu"
+		or wnd.states.typed == "popup"
+		or wnd.states.typed == "tooltip"
+		or wnd.states.typed == "dropdown"
+
+-- icccm says about stacking order:
+-- wm_type_desktop < state_below < (no type) < dock | state_above < fullscreen
+-- other options, dnd, splash, utility (persistent_for)
+
+	if popup_type then
+		wnd.use_decor = false
+		wnd.wm.decorate(wnd)
+		image_inherit_order(wnd.vid, false)
+		order_image(wnd.vid, 65531)
+	else
+-- decorate should come from toplevel
+		image_inherit_order(wnd.vid, true)
+		wnd.use_decor = true
+		order_image(wnd.vid, 1)
+	end
+
 	wnd:realize()
 end
 
@@ -938,6 +960,20 @@ local function on_subsurface(ctx, source, status)
 	end
 end
 
+local function x11_viewport(wnd, source, status)
+	local anchor = wnd.wm.anchor
+	if status.parent ~= 0 then
+		local pwnd = wnd.wm.windows[status.parent]
+		if pwnd then
+			anchor = pwnd.vid
+		end
+	end
+
+-- depending on type, we need to order around as well
+	link_image(wnd.vid, anchor)
+	move_image(wnd.vid, status.rel_x, status.rel_y)
+end
+
 local function on_x11(wnd, source, status)
 -- most involved here as the meta-WM forwards a lot of information
 	if status.kind == "create" then
@@ -971,18 +1007,19 @@ local function on_x11(wnd, source, status)
 		end
 
 	elseif status.kind == "message" then
-		wnd.wm.log("wl_x11", wnd.wm.fmt("message=%s", status.message))
 		local opts = string.split(status.message, ':')
 		if not opts or not opts[1] or not x11_lut[opts[1]] then
+			wnd.wm.log("wl_x11", wnd.wm.fmt("unhandled_message=%s", status.message))
 			return
 		end
+		wnd.wm.log("wl_x11", wnd.wm.fmt("message=%s", status.message))
 		return x11_lut[opts[1]](wnd, source, unpack(opts, 2))
 
 	elseif status.kind == "registered" then
 		wnd.guid = status.guid
 
 	elseif status.kind == "viewport" then
--- special case as it refers to positioning
+		x11_viewport(wnd, source, status)
 
 	elseif status.kind == "terminated" then
 		wnd:destroy()
@@ -1008,7 +1045,6 @@ local function bridge_handler(ctx, source, status)
 
 	local handler = permitted[status.segkind]
 	if not handler then
-		print(debug.traceback())
 		warning("unhandled segment type: " .. status.segkind)
 		return
 	end
@@ -1073,9 +1109,20 @@ local function resize_output(ctx, neww, newh, density, refresh)
 		ctx.disptbl.hppcm = density
 	end
 
+	if neww then
+		ctx.disptbl.width = neww
+	end
+
+	if newh then
+		ctx.disptbl.height = newh
+	end
+
 	if refresh then
 		ctx.disptbl.refresh = refresh
 	end
+
+	ctx.log(ctx.fmt("output_resize=%d:%d", ctx.disptbl.width, ctx.disptbl.height))
+	target_displayhint(ctx.bridge, 32, 32, 0, ctx.disptbl)
 
 -- tell all windows that some of their display parameters have changed,
 -- if the window is in fullscreen/maximized state - the surface should
@@ -1094,6 +1141,16 @@ local function resize_output(ctx, neww, newh, density, refresh)
 end
 
 local window_stack = {}
+local function restack(ctx)
+	local cnt = 0
+	for _, v in pairs(ctx.windows) do
+		cnt = cnt + 1
+	end
+-- re-order
+	for i,v in ipairs(ctx.window_stack) do
+		order_image(v.vid, i * 10);
+	end
+end
 
 local function bridge_table(cfg)
 	local res = {
@@ -1126,6 +1183,7 @@ local function bridge_table(cfg)
 		disptbl = {
 			width = VRESW,
 			height = VRESH,
+			ppcm = VPPCM
 		},
 
 -- call when output properties have changed
@@ -1133,6 +1191,9 @@ local function bridge_table(cfg)
 
 -- call to update keyboard state knowledge
 		repeat_rate = set_rate,
+
+-- called internally whenever the window stack has changed
+		restack = restack,
 
 -- swap out for logging / tracing function
 		log = print,

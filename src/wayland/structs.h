@@ -74,6 +74,7 @@ struct bridge_client {
 
 	struct wl_resource* output; /* only 1 atm */
 	struct {
+		struct wl_resource* have_xdg;
 		int size_px[2];
 		float density[2];
 		float rate;
