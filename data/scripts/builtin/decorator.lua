@@ -244,6 +244,10 @@ function build_decor(vid, cfg)
 		mhs = {}
 	}
 
+	if not valid_vid(vid) then
+		return false, "attempt to decorate a non-existing video object"
+	end
+
 -- should we pay the price for mouse events or not
 	local use_mouse = cfg.drag_rz ~= nil or cfg.select ~= nil
 

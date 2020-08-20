@@ -144,14 +144,22 @@ function wl_config.destroy(wnd)
 	end
 end
 
--- request move, constrain to fit withing screen
+-- request move, constrain to fit within screen
 function wl_config.move(wnd, x, y, dx, dy)
-	if x < 0 then
-		x = 0
+	local min_x = 0
+	local min_y = 0
+
+	if wnd.decorator then
+		min_x = decor_config.border[2] + decor_config.pad[2]
+		min_y = decor_config.border[1] + decor_config.pad[1]
 	end
 
-	if y < 0 then
-		y = 0
+	if x < min_x then
+		x = min_x
+	end
+
+	if y < min_y then
+		y = min_y
 	end
 
 	if x + wnd.w > VRESW then
@@ -219,6 +227,12 @@ function wl_config.decorate(wnd, vid, w, h, anim_dt, anim_interp)
 
 	wnd.decorator:update(w, h, anim_dt, anim_interp)
 	resize_image(wnd.decorator.titlebar, w, decor_config.pad[1])
+
+	return
+		decor_config.pad[1] + decor_config.border[1],
+		decor_config.pad[2] + decor_config.border[2],
+		decor_config.pad[3] + decor_config.border[3],
+		decor_config.pad[4] + decor_config.border[4]
 end
 
 -- what size should the newly created window have

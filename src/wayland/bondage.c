@@ -346,10 +346,10 @@ static void update_client_output(
 		cl->output_state.size_px[1] = height_px;
 
 	if (hdensity > 0.0001)
-		cl->output_state.density[0];
+		cl->output_state.density[0] = hdensity;
 
 	if (vdensity > 0.0001)
-		cl->output_state.density[1];
+		cl->output_state.density[1] = vdensity;
 
 	if (scale)
 		cl->scale = scale;
@@ -384,6 +384,17 @@ static void update_client_output(
 
 	if (version >= 2)
 		wl_output_send_done(cl->output);
+
+	struct wl_resource* xdg = cl->output_state.have_xdg;
+	if (xdg){
+		zxdg_output_v1_send_logical_position(xdg, 0, 0);
+		zxdg_output_v1_send_logical_size(xdg,
+			cl->output_state.size_px[0], cl->output_state.size_px[0]);
+
+		if (wl_resource_get_version(xdg) < 3){
+			zxdg_output_v1_send_done(xdg);
+		}
+	}
 }
 
 static void bind_output(struct wl_client* client,

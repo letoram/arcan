@@ -424,12 +424,12 @@ static int process_input(const char* msg)
  * due to the possibility of the unpaired state */
 		if (arg_lookup(cmd, "x", 0, &arg)){
 			wnd->viewport.ext.viewport.x = strtol(arg, NULL, 10);
-			trace(TRACE_XWL, "x reconfigured %d\n", wnd->viewport.ext.viewport.x);
+			trace(TRACE_XWL, "x reconfigured %d", wnd->viewport.ext.viewport.x);
 		}
 
 		if (arg_lookup(cmd, "y", 0, &arg)){
 			wnd->viewport.ext.viewport.y = strtol(arg, NULL, 10);
-			trace(TRACE_XWL, "y reconfigured %d\n", wnd->viewport.ext.viewport.x);
+			trace(TRACE_XWL, "y reconfigured %d", wnd->viewport.ext.viewport.y);
 		}
 
 /* and either reflect now or later */
