@@ -65,12 +65,27 @@ struct arcan_frameserver* platform_fsrv_preset_server(
 int platform_fsrv_resynch(struct arcan_frameserver* src);
 
 /*
- * Allocate a new frameserver segment, bind it to the same process
- * and communicate the necessary IPC arguments (key etc.) using
- * the pre-existing eventqueue of the frameserver controlled by (ctx)
+ * Allocate a new frameserver segment, bind it to the same process and
+ * communicate the necessary IPC arguments (key etc.) using the pre-existing
+ * eventqueue of the frameserver controlled by (ctx).
+ *
+ * [hints] correspond to any segment content hints provided by the client
+ * in the corresonding NEWSEGMENT request or hints on rendering defined by
+ * the server side in a push setup.
+ *
+ * [hintw, hinth] ultimately comes from the window manager
+ *
+ * [tag] is a caller defined pointer- or virtual- VM resource reference
+ * for pairing the context to some other resource.
+ *
+ * [reqid] corresponds to the identifier provided by the client in a
+ * NEWSEGMENT request, or 0 if the allocation is server-initiated.
+ *
+ * If all hints correspond to expectations, the segment should be working
+ * without any round-trips.
  */
 struct arcan_frameserver* platform_fsrv_spawn_subsegment(
-	struct arcan_frameserver* ctx, int ARCAN_SEGID,
+	struct arcan_frameserver* ctx, int ARCAN_SEGID, int hints,
 	size_t hintw, size_t hinth, uintptr_t tag, uint32_t reqid);
 
 /*

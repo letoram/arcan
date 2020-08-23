@@ -8729,7 +8729,8 @@ static int targetreset(lua_State* ctx)
  * that allocates using this function.
  */
 static arcan_frameserver* spawn_subsegment(
-	struct arcan_frameserver* parent, enum ARCAN_SEGID segid,
+	struct arcan_frameserver* parent,
+	enum ARCAN_SEGID segid, uint8_t hints,
 	uint32_t reqid, size_t w, size_t h)
 {
 /* clip to limits */
@@ -8747,7 +8748,7 @@ static arcan_frameserver* spawn_subsegment(
 	}
 
 	arcan_frameserver* res =
-		platform_fsrv_spawn_subsegment(parent, segid, w, h, newvid, reqid);
+		platform_fsrv_spawn_subsegment(parent, segid, hints, w, h, newvid, reqid);
 
 	if (!res){
 		arcan_video_deleteobject(newvid);
@@ -8791,7 +8792,8 @@ static int targetaccept(lua_State* ctx)
 	vfunc_state* prev_state = arcan_video_feedstate(luactx.last_segreq->source);
 	arcan_frameserver* newref = spawn_subsegment(
 		(arcan_frameserver*) prev_state->ptr,
-		segid, luactx.last_segreq->segreq.id, w, h
+		segid, luactx.last_segreq->segreq.hints,
+		luactx.last_segreq->segreq.id, w, h
 	);
 
 	if (!newref){
@@ -8936,7 +8938,7 @@ static int targetalloc(lua_State* ctx)
 		vfunc_state* state = arcan_video_feedstate(srcfsrv);
 		if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
 			newref = spawn_subsegment(
-				(arcan_frameserver*) state->ptr, segid, tag, init_w, init_h);
+				(arcan_frameserver*) state->ptr, segid, 0, tag, init_w, init_h);
 		}
 		else
 			arcan_fatal("target_alloc() specified source ID doesn't "
@@ -9900,7 +9902,7 @@ static int spawn_recsubseg(lua_State* ctx,
 	}
 
 	arcan_frameserver* rv =
-		spawn_subsegment(fsrv, SEGID_ENCODER, 0, 0, 0);
+		spawn_subsegment(fsrv, SEGID_ENCODER, 0, 0, 0, 0);
 
 	if (!rv){
 		arcan_warning("spawn_recsubseg() -- "
@@ -10183,7 +10185,7 @@ static int nulltarget(lua_State* ctx)
 		arcan_warning("define_nulltarget(), unknown subtype, assuming encoder.\n");
 
 	arcan_frameserver* rv = spawn_subsegment(
-		(arcan_frameserver*) state->ptr, encoder_type, 0, 1, 1);
+		(arcan_frameserver*) state->ptr, encoder_type, 0, 0, 1, 1);
 
 	if (!rv){
 		lua_pushvid(ctx, ARCAN_EID);
@@ -10222,7 +10224,7 @@ static int feedtarget(lua_State* ctx)
  */
 	arcan_frameserver* rv = spawn_subsegment(
 			(arcan_frameserver*)state->ptr, SEGID_ENCODER,
-			0, sobj->vstore->w, sobj->vstore->h);
+			0, 0, sobj->vstore->w, sobj->vstore->h);
 
 	if (!rv){
 		lua_pushvid(ctx, ARCAN_EID);
@@ -11705,7 +11707,9 @@ static int net_pushcl(lua_State* ctx)
 				"texture mapped objects.");
 
 		arcan_frameserver* srv = spawn_subsegment(
-			srcvobj->feed.state.ptr, false, 0, dvobj->vstore->w, dvobj->vstore->h);
+				srcvobj->feed.state.ptr,
+				false, 0, 0, dvobj->vstore->w, dvobj->vstore->h
+		);
 
 		if (!srv){
 			arcan_warning("net_pushcl(), allocating subsegment failed\n");

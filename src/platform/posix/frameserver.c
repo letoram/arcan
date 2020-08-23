@@ -812,7 +812,7 @@ static size_t fsrv_protosize(arcan_frameserver* ctx,
  * the specific id, dimensions and tag
  */
 static bool prepare_segment(struct arcan_frameserver* ctx,
-	int segid, size_t hintw, size_t hinth, bool named,
+	int segid, int hints, size_t hintw, size_t hinth, bool named,
 	const char* optkey, int optdesc, uintptr_t tag)
 {
 	size_t abufc = 0;
@@ -845,6 +845,7 @@ static bool prepare_segment(struct arcan_frameserver* ctx,
 	platform_fsrv_enter(ctx, out);
 		shmpage->w = hintw;
 		shmpage->h = hinth;
+		shmpage->hints = hints;
 		shmpage->vpending = 1;
 		shmpage->abufsize = abufsz;
 		shmpage->apending = abufc;
@@ -892,8 +893,8 @@ static bool prepare_segment(struct arcan_frameserver* ctx,
  * an ident on the socket.
  */
 struct arcan_frameserver* platform_fsrv_spawn_subsegment(
-	struct arcan_frameserver* ctx,
-	int segid, size_t hintw, size_t hinth, uintptr_t tag, uint32_t reqid)
+	struct arcan_frameserver* ctx, int segid, int hints,
+	size_t hintw, size_t hinth, uintptr_t tag, uint32_t reqid)
 {
 	if (!ctx || ctx->flags.alive == false)
 		return NULL;
@@ -908,7 +909,7 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 	if (!newseg)
 		return NULL;
 
-	if (!prepare_segment(newseg, segid, hintw, hinth, false, NULL, -1, tag)){
+	if (!prepare_segment(newseg, segid, hints, hintw, hinth, false, NULL, -1, tag)){
 		arcan_mem_free(newseg);
 		return NULL;
 	}
@@ -1436,7 +1437,7 @@ struct arcan_frameserver* platform_fsrv_listen_external(const char* key,
 {
 	arcan_frameserver* newseg = platform_fsrv_alloc();
 	newseg->sockmode = mode;
-	if (!prepare_segment(newseg, SEGID_UNKNOWN, w, h, true, key, fd, tag)){
+	if (!prepare_segment(newseg, SEGID_UNKNOWN, 0, w, h, true, key, fd, tag)){
 		arcan_mem_free(newseg);
 		return NULL;
 	}
@@ -1453,7 +1454,7 @@ struct arcan_frameserver* platform_fsrv_preset_server(
 	if (!newseg)
 		return NULL;
 
-	if (!prepare_segment(newseg, segid, w, h, false, NULL, -1, tag)){
+	if (!prepare_segment(newseg, segid, 0, w, h, false, NULL, -1, tag)){
 		arcan_mem_free(newseg);
 		return NULL;
 	}
@@ -1469,7 +1470,7 @@ struct arcan_frameserver* platform_fsrv_spawn_server(
 	if (!newseg)
 		return NULL;
 
-	if (!prepare_segment(newseg, segid, w, h, false, NULL, -1, tag)){
+	if (!prepare_segment(newseg, segid, 0, w, h, false, NULL, -1, tag)){
 		arcan_mem_free(newseg);
 		return NULL;
 	}

@@ -77,8 +77,8 @@ enum ARCAN_SEGID shmifsrv_client_type(struct shmifsrv_client* cl)
 }
 
 struct shmifsrv_client*
-	shmifsrv_send_subsegment(struct shmifsrv_client* cl, int segid,
-	size_t init_w, size_t init_h, int reqid, uint32_t idtok)
+	shmifsrv_send_subsegment(struct shmifsrv_client* cl,
+	int segid, int hints, size_t init_w, size_t init_h, int reqid, uint32_t idtok)
 {
 	if (!cl || cl->status < READY)
 		return NULL;
@@ -88,7 +88,7 @@ struct shmifsrv_client*
 		return NULL;
 
 	res->con = platform_fsrv_spawn_subsegment(
-		cl->con, segid, init_w, init_h, reqid, idtok);
+		cl->con, segid, hints, init_w, init_h, reqid, idtok);
 	if (!res->con){
 		free(res);
 		return NULL;

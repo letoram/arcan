@@ -1522,6 +1522,7 @@ enum ARCAN_TARGET_SKIPMODE {
 			int16_t xofs;
 			int16_t yofs;
 			uint8_t dir;
+			uint8_t hints;
 			enum ARCAN_SEGID kind;
 		} segreq;
 

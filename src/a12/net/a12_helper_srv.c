@@ -417,7 +417,7 @@ static void on_srv_event(
 /* Then we forward the subsegment to the local client */
 	new_data->chid = ev->tgt.ioevs[0].iv;
 	new_data->C = shmifsrv_send_subsegment(
-		srv_cl, ev->tgt.ioevs[2].iv, 32, 32, chid, ev->tgt.ioevs[3].uiv);
+		srv_cl, ev->tgt.ioevs[2].iv, 0, 32, 32, chid, ev->tgt.ioevs[3].uiv);
 
 /* That can well fail (descriptors etc.) */
 	if (!new_data->C){

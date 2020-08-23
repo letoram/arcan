@@ -409,6 +409,15 @@ static bool request_surface(
 		return false;
 	}
 
+/* Default for any wayland client is that they use 'frame callback' style update
+ * synchronisation, and due to wl_region most always need dirty updates, as well
+ * as being in premult-alpha sRGB while we always start with linear-RGB nnormal
+ * or no-alpha */
+	int hint_mask =
+		SHMIF_RHINT_SUBREGION  |
+		SHMIF_RHINT_VSIGNAL_EV |
+		SHMIF_RHINT_CSPACE_SRGB;
+
 /*
  * IF the primary connection is unused, we can simply return that UNLESS
  * the request type is a CURSOR or a POPUP (both are possible in XDG).
@@ -418,6 +427,7 @@ static bool request_surface(
 	arcan_shmif_enqueue(&cl->acon, &(struct arcan_event){
 		.ext.kind = ARCAN_EVENT(SEGREQ),
 		.ext.segreq.kind = req->segid,
+		.ext.segreq.hints = hint_mask,
 		.ext.segreq.id = alloc_id++
 	});
 	struct arcan_event* pqueue;
@@ -440,7 +450,9 @@ static bool request_surface(
 			struct arcan_shmif_cont cont =
 				arcan_shmif_acquire(&cl->acon, NULL, req->segid, SHMIF_DISABLE_GUARD);
 
-			cont.hints = SHMIF_RHINT_SUBREGION | SHMIF_RHINT_VSIGNAL_EV;
+	/* verify that we got the hints and the size that we requested in the event,
+	 * will be a no-op if the properties match */
+			cont.hints = hint_mask;
 			arcan_shmif_resize(&cont, cont.w, cont.h);
 			struct acon_tag* tag = malloc(sizeof(struct acon_tag));
 			cont.user = tag;
