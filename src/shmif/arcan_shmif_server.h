@@ -96,14 +96,20 @@ struct arcan_shmif_cont*
 
 /*
  * Allocate, prepare and transfer a new sub-segment to the frameserver
- * referenced by [dst] (!NULL). [segid] specifies the type of the subsegment
- * (MUST match REQID if it is in response to a SEGREQ event)
- * [idtok] is used as a reference in a client addressable namespace in order
- * to set spatial hints.
+ * referenced by [dst] (!NULL).
+ *
+ * [segid] specifies the type of the subsegment
+ *        (MUST match REQID if it is in response to a SEGREQ event)
+ *
+ * [hints] are default render hints for the segment and should be set to
+ *         what the client requested in a segment request, or left at 0.
+ *
+ * [idtok] is used as a reference in a client addressable namespace in
+ *         order to set spatial hints.
  */
 struct shmifsrv_client*
-	shmifsrv_send_subsegment(struct shmifsrv_client* dst, int segid,
-	size_t init_w, size_t init_h, int reqid, uint32_t idtok);
+	shmifsrv_send_subsegment(struct shmifsrv_client* dst,
+	int segid, int hints, size_t init_w, size_t init_h, int reqid, uint32_t idtok);
 
 /*
  * Allocate and prepare a frameserver connection point accessible via the name
