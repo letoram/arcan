@@ -3,10 +3,11 @@
 -- License: 3-Clause BSD.
 -- Reference: http://arcan-fe.com
 --
--- All functions are prefixed with mouse_ and ignores devid.
--- This means we only support one global mouse cursor currently,
--- though this should really be factored out to have a version
--- that takes an explicit context.
+-- All functions are prefixed with mouse_ and ignores devid. This means we
+-- only support one global mouse cursor currently, though this should really be
+-- factored out to have a version that takes an explicit context that replaces
+-- calls to mstate. Such a revision should also drop the own function and the
+-- corresponding finders for an 'own_vid' hash map.
 --
 -- setup (takes control of vid):
 --  setup_native(vid, hs_x, hs_y) or
@@ -109,6 +110,7 @@ local mstate = {
 	cur_over = {},
 	hover_track = {},
 	active_list = {},
+	fastmap = {},
 	autohide = false,
 	hide_base = 40,
 	hide_count = 40,
@@ -121,8 +123,9 @@ local mstate = {
 	drag_delta   = 4,  -- wiggle-room for drag
 	hover_ticks  = 30, -- time of inactive cursor before hover is triggered
 	hover_thresh = 12, -- pixels movement before hover is released
-	click_timeout= 14; -- maximum number of ticks before we won't emit click
-	animation_speed = 20; -- used for cursor-tag and hide/reveal
+	click_timeout = 14, -- maximum number of ticks before we won't emit click
+	animation_speed = 20, -- used for cursor-tag and hide/reveal
+	long_press   = "rclick", -- emit gesture on holding > click_timeout
 	click_cnt    = 0,
 	counter      = 0,
 	hover_count  = 0,
@@ -207,12 +210,14 @@ local function lock_constrain()
 	local lr_x = props.x + props.width;
 	local lr_y = props.y + props.height;
 
+	print("CONSTRAIN/WARP?")
 	if (mstate.warp) then
 		local cpx = math.floor(props.x + 0.5 * props.width);
 		local cpy = math.floor(props.y + 0.5 * props.height);
 		input_samplebase(mstate.dev, cpx, cpy);
 		mstate.x = cpx;
 		mstate.y = cpy;
+		print("WARP TO", cpx, cpy)
 	else
 		mstate.x = mstate.x < ul_x and ul_x or mstate.x;
 		mstate.y = mstate.y < ul_y and ul_y or mstate.y;
@@ -254,6 +259,8 @@ local function mouse_cursorupd(x, y)
 	mstate.y = mstate.y > mstate.max_y and mstate.max_y - 1 or mstate.y;
 	mstate.hide_count = mstate.hide_base;
 
+	print("mstate", mstate.x, mstate.y)
+
 	local relx = mstate.x - lmx;
 	local rely = mstate.y - lmy;
 
@@ -267,12 +274,14 @@ mstate.lmb_global_press = function()
 	mstate.y_ofs = 2;
 	mstate.x_ofs = 2;
 	mouse_cursorupd(0, 0);
+	mstate.lmb_pressed = true;
 end
 
 mstate.lmb_global_release = function()
 	mstate.x_ofs = 0;
 	mstate.y_ofs = 0;
 	mouse_cursorupd(0, 0);
+	mstate.lmb_pressed = false;
 end
 
 -- this can be overridden to cache previous queries
@@ -329,7 +338,15 @@ local function linear_find_vid(table, vid, state)
 		return;
 	end
 
-	for a,b in pairs(table) do
+-- the 'fastmap' is a workaround for this script living long past the
+-- 'rewrite/refactor/rethink' stage, it was never intended for hundreds
+-- of objects, and most of the time the 'own' handler is actually static
+	local fast = mstate.fastmap[vid]
+	if fast then
+		return fast[state] and fast or nil
+	end
+
+	for a,b in ipairs(table) do
 		if (type(b.own) == "function") then
 			if (b:own(vid, state)) then
 				return b;
@@ -469,6 +486,34 @@ function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden)
 	end
 
 	mouse_cursorupd(0, 0);
+
+-- use default keynames and try to load from config store
+	local set = {
+		"accel_x",
+		"accel_y",
+		"dblclickstep",
+		"drag_delta",
+		"hover_ticks",
+		"hover_thresh",
+		"click_timeout",
+		"animation_speed",
+		"long_press",
+	}
+
+	for _, v in ipairs(set) do
+		local key = get_key("mouse_" .. v)
+		if key then
+			local okt = type(mstate[v])
+			if okt == "number" then
+				local val = tonumber(okt)
+				if val then
+					mstate[v] = val
+				end
+			elseif okt == "string" then
+				mstate[v] = key
+			end
+		end
+	end
 end
 
 function mouse_setup_native(resimg, hs_x, hs_y)
@@ -659,7 +704,7 @@ local function rmbhandler(hists, press)
 			warning("right click");
 		end
 
-		for key, val in pairs(hists) do
+		for key, val in ipairs(hists) do
 			local res = linear_find_vid(mstate.handlers.rclick, val, "rclick");
 			if (res) then
 				res:rclick(val, mstate.x, mstate.y);
@@ -678,7 +723,7 @@ local function lmbhandler(hists, press)
 		mstate.click_cnt = mstate.click_timeout;
 		mstate.lmb_global_press();
 
-		for key, val in pairs(hists) do
+		for key, val in ipairs(hists) do
 			local res = linear_find_vid(mstate.handlers.press, val, "press");
 			if (res) then
 				if (res:press(val, mstate.x, mstate.y)) then
@@ -690,7 +735,7 @@ local function lmbhandler(hists, press)
 	else -- release
 		mstate.lmb_global_release();
 
-		for key, val in pairs(hists) do
+		for key, val in ipairs(hists) do
 			local res = linear_find_vid(mstate.handlers.release, val, "release");
 			if (res) then
 				if (res:release(val, mstate.x, mstate.y)) then
@@ -719,7 +764,7 @@ local function lmbhandler(hists, press)
 -- only click if we havn't started dragging or the button was released quickly
 		else
 			if (mstate.click_cnt > 0) then
-				for key, val in pairs(hists) do
+				for key, val in ipairs(hists) do
 					local res = linear_find_vid(mstate.handlers.click, val, "click");
 					if (res) then
 						if (res:click(val, mstate.x, mstate.y)) then
@@ -735,7 +780,7 @@ local function lmbhandler(hists, press)
 					warning("double click");
 				end
 
-				for key, val in pairs(hists) do
+				for key, val in ipairs(hists) do
 					local res = linear_find_vid(mstate.handlers.dblclick, val,"dblclick");
 					if (res) then
 						if (res:dblclick(val, mstate.x, mstate.y)) then
@@ -814,7 +859,7 @@ function mouse_button_input(ind, active)
 	end
 
 	if (#mstate.handlers.button > 0) then
-		for key, val in pairs(hists) do
+		for key, val in ipairs(hists) do
 			local res = linear_find_vid(mstate.handlers.button, val, "button");
 			if (res) then
 				if (active) then
@@ -1111,10 +1156,32 @@ function mouse_addlistener(tbl, events)
 		return;
 	end
 
-	if (tbl.own == nil) then
+	if (tbl.own == nil and not tbl.own_vid) then
 		warning("mouse_addlistener(), missing own function in argument.\n");
+		return;
 	end
 
+-- For use with the fastmap interface that has precedence - basically
+-- 'own' was used to allow dynamically scoped lookup and activation of
+-- sets of events. This made some sense when there was a low amount of
+-- mouse handlers, but the pragmatic reality in something like durden
+-- shows that the most common case is static and there is a high number of
+-- them. To keep legacy until the day a mouse2.lua is written, support both.
+	if tbl.own_vid then
+		local mvid = tbl.own_vid
+
+-- in order to not possibly break code that expects own to be there, create
+-- a fake map to the cached static value
+		tbl.own = function(ctx, vid)
+			return vid == mvid
+		end
+
+		mstate.fastmap[mvid] = tbl
+	end
+
+-- previously it was permitted to register a table that lacked a user
+-- readable identifier, so to spot code that still relies on that behavior,
+-- write some warning
 	if (tbl.name == nil) then
 		warning(" -- mouse listener missing identifier -- ");
 		warning( debug.traceback() );
@@ -1123,6 +1190,18 @@ function mouse_addlistener(tbl, events)
 
 	if (DEBUGLEVEL > 2) then
 		warning(string.format("handler count: %d ", mouse_handlercount()));
+	end
+
+-- implicit list of events? then use the ones that has matching functions
+-- in the table rather than a possible caller provided subset
+	if not events then
+		events = {}
+		for k,_ in pairs(mouse_handlers) do
+			if tbl[k] then
+				print("add listener for", k)
+				table.insert(events, k)
+			end
+		end
 	end
 
 	for ind, val in ipairs(events) do
@@ -1170,13 +1249,16 @@ local function drop_match(intbl, match)
 end
 
 function mouse_droplistener(tbl)
-
 	for key, val in pairs( mstate.handlers ) do
 		drop_match(val, tbl);
 	end
 
 	for i,v in pairs(mstate.active_list) do
 		drop_match(v, tbl);
+	end
+
+	if tbl.own_vid then
+		mstate.fastmap[tbl.own_vid] = nil
 	end
 end
 
@@ -1350,11 +1432,36 @@ function mouse_show()
 	end
 end
 
+system_load("builtin/debug.lua")()
+
 function mouse_tick(val)
 	mstate.counter = mstate.counter + val;
 	mstate.hover_count = mstate.hover_count + 1;
-	mstate.click_cnt = mstate.click_cnt > 0 and mstate.click_cnt - 1 or 0;
 
+-- let click time-out, and if we haven't started a drag, trigger long press
+	if mstate.click_cnt > 0 then
+		mstate.click_cnt = mstate.click_cnt - 1
+
+		if mstate.click_cnt == 0 and mstate.lmb_pressed and not mstate.drag then
+-- the two possible gestures both have the same function prototype
+			local lpa = mstate.long_press
+
+			if lpa == "rclick" or lpa == "dblclick" then
+				local hists = mouse_pickfun(mstate.x, mstate.y, mstate.pickdepth, 1, mstate.rt);
+				mstate.predrag = nil;
+
+				for _, val in ipairs(hists) do
+					local res = linear_find_vid(mstate.handlers[lpa], val, lpa);
+					if res and res[lpa](res, val, mstate.x, mstate.y) then
+						break;
+					end
+				end
+
+			end
+		end
+	end
+
+-- do we have auto-hide on idle?
 	if (not mstate.drag and mstate.autohide and mstate.hidden == false) then
 		mstate.hide_count = mstate.hide_count - val;
 		if (mstate.hide_count <= 0 and mstate.native == nil) then

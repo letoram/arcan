@@ -57,7 +57,7 @@ local function Hook(tracer, Event)
   if not string.find(Running..Caller, "modules") then
     if Event == "call" then
       Depth = Depth + 1
-      tracer(string.format("%s %s <- %s", Indent(Depth), Running, Caller));
+      tracer(string.format("%s %s <- %s\n", Indent(Depth), Running, Caller));
     else
       local RetType
       if Event == "return" then
