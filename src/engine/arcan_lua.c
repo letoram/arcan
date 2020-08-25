@@ -308,6 +308,7 @@ enum arcan_cb_source {
 
 struct nonblock_io {
 	char buf[4096];
+	bool eofm;
 	off_t ofs;
 	int fd;
 	mode_t mode;
@@ -1499,6 +1500,7 @@ static int rawresource(lua_State* ctx)
 		close(luactx.rawres.fd);
 		luactx.rawres.fd = -1;
 		luactx.rawres.ofs = 0;
+		luactx.rawres.eofm = false;
 	}
 
 	char* path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
@@ -1668,6 +1670,7 @@ static int bufread(lua_State* ctx, struct nonblock_io* ib, bool nonbuffered)
 	if (!ib || ib->fd < 0)
 		return 0;
 
+	ib->eofm = false;
 	size_t bufch = bufcheck(ctx, ib);
 	if (bufch)
 		return bufch;
@@ -1680,6 +1683,7 @@ static int bufread(lua_State* ctx, struct nonblock_io* ib, bool nonbuffered)
 		(-1 == nr && errno != EINTR && errno != EAGAIN)){
 		lua_pushlstring(ctx, ib->buf, ib->ofs);
 		lua_pushboolean(ctx, false);
+		ib->eofm = true;
 		ib->ofs = 0;
 		return 2;
 	}
@@ -1862,6 +1866,7 @@ static int nbio_read(lua_State* ctx)
 		LUA_ETRACE("open_nonblock:read", "invalid mode (w) for read", 0);
 
 	bool nonbuffered = luaL_optbnumber(ctx, 2, 0);
+	bool eofm;
 	int	nr = bufread(ctx, *ib, nonbuffered);
 
 	LUA_ETRACE("open_nonblock:read", NULL, nr);
@@ -1870,6 +1875,10 @@ static int nbio_read(lua_State* ctx)
 static int readrawresource(lua_State* ctx)
 {
 	LUA_TRACE("read_rawresource");
+
+	if (luactx.rawres.eofm){
+		LUA_ETRACE("read_rawresource", NULL, 0);
+	}
 
 	if (luactx.rawres.fd < 0){
 		LUA_ETRACE("read_rawresource", "no open file", 0);
@@ -1902,6 +1911,7 @@ static int rawclose(lua_State* ctx)
 		close(luactx.rawres.fd);
 		luactx.rawres.fd = -1;
 		luactx.rawres.ofs = 0;
+		luactx.rawres.eofm = false;
 	}
 
 	lua_pushboolean(ctx, res);
