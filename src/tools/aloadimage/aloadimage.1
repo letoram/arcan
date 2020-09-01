@@ -1,14 +1,14 @@
 .\" groff -man -Tascii aloadimage.1
-.TH arcan 1 "March 2017" aloadimage "User manual"
+.TH arcan 1 "August 2020" aloadimage "User manual"
 .SH NAME
-aloadimage \- load images into an arcan window
+aloadimage \- Trivial image viewer for Arcan servers
 .SH SYNOPSIS
-.B aclip [global_options] file ...
+.B aloadimage [global_options] file1 file2 ...
 
 .SH DESCRIPTION
-\fIaloadimage\fR displays images in an arcan window. Each image is parsed in a
-separate and sandboxed process. If multiple images are provided, a certain
-number of items will be decoded in advance.
+\fIaloadimage\fR displays images over an arcan connection point. Each image
+is parsed in a separate and sandboxed process. If multiple images are provided,
+a certain number of items will be processed in advance.
 
 .SH OPTIONS
 .IP "\fB\-a, \-\-aspect\fR" When forced to scale in order to fit source
@@ -16,14 +16,17 @@ image into output window, maintain source image aspect radio and pad with
 a background color.
 
 .IP "\FB-S, \-\-server\-size\fR"
-Scale source imagery to fit server- suggested content size.
+Scale source images to fit server- suggested content size. This changes the
+primary type from MEDIA (server side scaling) to APPLICATION (client defined
+scaling).
 
 .IP "\fB\-l, \-\-loop\fR"
 When the playlist reaches the end, it will loop back from the beginning
 rather than shutting down.
 
 .IP "\fB\-t, \-\-step\-time\fR"
-Set the playlist automatic stepping time (default: 0, manual control).
+Set the playlist automatic stepping time (default: 0, manual control). The time
+unit is in ticks on a 25Hz clock.
 
 .IP "\fB\-b, \-\-block-input\fR"
 Ignore all keyboard and mouse input.
@@ -51,13 +54,14 @@ Stop/kill a worker process if it fails to decode an image within a certain
 number of seconds.
 
 .IP "\fX\-x, \-\-no\-sysflt\fR"
-aloadimage may be built with syscall filtering for worker processes. This may
-break image loading in some environments/libc implementations and may therefore
-need to be disabled.
+(build- option) aloadimage may be built with syscall filtering for worker
+processes. This may break image loading in some environments/libc
+implementations and may therefore need to be disabled.
 
-.IP "\fX\-h, \-\-vr180\fR"
-(build-option) attempt to connect as a VR compatible output, requires that
-the listening end accept HMD_L/R primary and secondary segment types.
+.IP "\fX\-H, \-\-vr\fR"
+attempt to connect as a VR compatible output, requires that the listening end
+accepts HMD_L/R primary and secondary segment types. Playlist items should be
+prefixed with the intended dominant eye, e.g. l:image_l.jpg r:image_r.jpg.
 
 .IP "\fB\-h, \-\-help\fR"
 Show a brief summary of commands and usage.
@@ -73,7 +77,7 @@ Name of the connection point to use when connecting to arcan.
 Key to use for authenticating againgst the connection path.
 
 .SH COPYRIGHT
-Copyright  ©  2017 Bjorn Stahl. 3-clause BSD licensed. This is free software:
+Copyright  ©  2017-2020 Bjorn Stahl. 3-clause BSD licensed. This is free software:
 you are free  to  change and redistribute it. There is NO WARRANTY,
 to the extent permitted by law.
 

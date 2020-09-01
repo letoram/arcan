@@ -24,6 +24,7 @@ struct img_state {
 /* SETUP_SET */
 	const char* fname;
 	int fd;
+	int sigfd;
 	bool is_stdin;
 	int life;
 	float density;
