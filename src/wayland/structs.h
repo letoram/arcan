@@ -240,6 +240,7 @@ struct comp_surf {
 /*
  * need to cache/update this one whenever we reparent, etc.
  */
+	bool is_subsurface;
 	struct arcan_event viewport;
 
 /* some comp_surfaces need to reference shared connections that are

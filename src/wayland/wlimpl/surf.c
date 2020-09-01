@@ -56,21 +56,48 @@ static void surf_attach(struct wl_client* cl,
 	trace(TRACE_SURF, "attach to: %s, @x,y: %d, %d - buf: %"
 		PRIxPTR, surf->tracetag, (int)x, (int)y, (uintptr_t)buf);
 
+	bool changed = false;
 	if (surf->buf && !buf){
 		trace(TRACE_SURF, "mark visible: %s", surf->tracetag);
 		surf->viewport.ext.viewport.invisible = true;
 		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
+		changed = true;
 	}
+
+/* a note for subsurfaces here - so these can have hierarchies that are mixed:
+ *
+ *  a (surf)
+ *    b (subsurf, null buffer)
+ *      c (subsurf, buffer)
+ *
+ *  some toolkits use this for intermediate positioning (guess OO + rel anchors)
+ *  in principle the code here is correct, i.e. the subsurface becomes invisible
+ *  but the idiomatic way of implementing on wm side is by linking the subsurfaces
+ *  to the surfaces, and hide on viewport marking them invisible.
+ *
+ *  the other option is to suck it up as we pay the allocation price anyhow to
+ *  get the 'right' size and commit full-translucent non-decorated in the case
+ *  of non-buf on subsurface (if we do it on a normal surface we get problems
+ *  with clients that keep toplevels around and hide them ..
+ */
 	else if (surf->viewport.ext.viewport.invisible){
 		trace(TRACE_SURF, "mark visible: %s", surf->tracetag);
 		surf->viewport.ext.viewport.invisible = false;
 		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
+		changed = true;
 	}
 
 	if (buf){
 		surf->l_bufrem_a = true;
 		surf->l_bufrem.notify = buffer_destroy;
 		wl_resource_add_destroy_listener(buf, &surf->l_bufrem);
+	}
+/* follow up on the explanation above, push a fully translucent buffer */
+	else if (surf->is_subsurface && changed){
+		surf->acon.hints |= SHMIF_RHINT_IGNORE_ALPHA;
+		for (size_t y = 0; y < surf->acon.h; y++)
+			memset(&surf->acon.vidb[y * surf->acon.stride], '\0', surf->acon.stride);
+		arcan_shmif_signal(&surf->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 	}
 
 /* buf XOR cookie == cbuf in commit */

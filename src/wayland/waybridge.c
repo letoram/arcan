@@ -1459,7 +1459,6 @@ int main(int argc, char* argv[])
 		}
 	}
 
-
 /*
  * The purpose of having a 'control' bridge connection on which we never set
  * clients is to have a window where we can monitor the state of the server and
