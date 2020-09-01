@@ -191,9 +191,6 @@ function wl_config.state_change(wnd, state)
 	end
 end
 
-function wl_config.mapped(wnd)
-end
-
 -- some windows want server side decorations
 function wl_config.decorate(wnd, vid, w, h, anim_dt, anim_interp)
 	if not wnd.decorator then
@@ -237,7 +234,7 @@ end
 
 -- what size should the newly created window have
 function wl_config.configure(wnd, typestr)
-	return 300, 300
+	return 300, 300, 10, 10
 end
 
 -- to the wm that currently has focus

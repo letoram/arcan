@@ -5,11 +5,20 @@ local clipboard_last = ""
 local connection_point = "console"
 local ws_limit = 100
 
+local wayland_connection
+local wayland_client
+local wayland_config
+
 function console()
 	KEYBOARD = system_load("builtin/keyboard.lua")() -- get a keyboard state machine
 	system_load("builtin/mouse.lua")() -- get basic mouse button definitions
 	system_load("builtin/debug.lua")()
+	system_load("builtin/string.lua")()
+	system_load("builtin/table.lua")()
+	wayland_client, wayland_connection = system_load("builtin/wayland.lua")()
 	system_load("console_osdkbd.lua")() -- trigger on tap-events
+	wayland_config = system_load("wayland_client.lua")() -- window management behavior for wayland clients
+
 	mouse_setup(load_image("cursor.png"), 65535, 1, true, false)
 	mouse_state().autohide = true
 
@@ -72,7 +81,7 @@ function console_input(input)
 		return
 	end
 
-	target_input(target.vid, input)
+	target:input(input)
 end
 
 -- This entry point is only called in Lua-VM crash recovery state where a
@@ -90,31 +99,7 @@ function console_adopt(vid, kind, title, have_parent, last)
 	return ret
 end
 
--- find an empty workspace slot and assign / activate
-function new_client(vid, opts)
-	if not valid_vid(vid) then
-		return
-	end
-	local new_ws = find_free_space()
-
--- safe-guard against out of workspaces
-	if not new_ws then
-		delete_image(vid)
-		return
-	end
-
--- or assign and activate
-	local ctx = {
-		index = new_ws,
-		vid = vid,
-		scale = opts.scaling,
-		clipboard_temp = ""
-	}
-
--- reserve first order to a capture surface for mouse input
-	order_image(vid, 2)
-	link_image(vid, workspaces.anchor)
-
+local function add_client_mouse(ctx, vid)
 -- add a mouse handler that forwards mouse action to the target
 	ctx.own =
 	function(ctx, tgt)
@@ -155,7 +140,47 @@ function new_client(vid, opts)
 		return true
 	end
 
+	ctx.mouse = true
 	mouse_addlistener(ctx, {"motion", "button", "tap"})
+end
+
+-- find an empty workspace slot and assign / activate
+function new_client(vid, opts)
+	if not valid_vid(vid) then
+		return
+	end
+	local new_ws = find_free_space()
+
+-- safe-guard against out of workspaces
+	if not new_ws then
+		delete_image(vid)
+		return
+	end
+
+-- or assign and activate
+	local ctx = {
+		index = new_ws,
+		vid = vid,
+		scale = opts.scaling,
+		clipboard_temp = "",
+	}
+
+-- caller provided input hook?
+	if not opts.input then
+		ctx.input = function(ctx, tbl)
+			target_input(vid, tbl)
+		end
+	else
+		ctx.input = opts.input
+	end
+
+-- reserve first order to a capture surface for mouse input
+	order_image(vid, 2)
+	link_image(vid, workspaces.anchor)
+
+	if not opts.block_mouse then
+		add_client_mouse(ctx, vid)
+	end
 
 -- activate
 	workspaces[new_ws] = ctx
@@ -167,8 +192,9 @@ end
 -- read configuration from database if its there, or use a default
 -- e.g. arcan_db add_appl_kv console terminal env=LC_ALL=C:palette=solarized
 function spawn_terminal()
-	local term_arg = (get_key("terminal") or "palette=solarized") ..
-		":env=ARCAN_CONNPATH=" .. connection_point
+	local term_arg = (
+		get_key("terminal") or "palette=solarized") ..
+		":cli:env=ARCAN_CONNPATH=" .. connection_point
 
 	return launch_avfeed(term_arg, "terminal", client_event_handler)
 end
@@ -235,6 +261,23 @@ function client_event_handler(source, status)
 		local ok, opts = whitelisted(status.segkind, source)
 		if not ok then
 			delete_image(source)
+			return
+		end
+
+-- wayland needs a completely different ruleset and an outer 'client' that deals
+-- with bootstrapping the rest
+		if status.segkind == "bridge-wayland" then
+
+			wayland_connection(source,
+				function(source, status)
+					print("new client on connection", source)
+					local _, wl_cl = new_client(source, {block_mouse = true})
+					local cfg = wayland_config(wl_cl)
+					local cl = wayland_client(source, status, cfg)
+					wl_cl.bridge = cl
+				end
+			)
+			return
 		end
 
 		local client_ws = find_client(source)
@@ -291,6 +334,9 @@ function client_event_handler(source, status)
 			end
 -- tie the lifespan of the clipboard to that of the parent
 			link_image(vid, source)
+
+		elseif status.segkind == "handover" then
+			local vid = accept_target(client_event_handler)
 		end
 	end
 end
@@ -506,6 +552,14 @@ function delete_workspace(i)
 		delete_image(workspaces[i].vid)
 	end
 
+	if workspaces[i].destroy then
+		workspaces[i]:destroy()
+	end
+
+	if workspaces[i].mouse then
+		mouse_droplistener(workspaces[i])
+	end
+
 	workspaces[i] = nil
 
 	if i == ws_index then
@@ -528,6 +582,7 @@ function whitelisted(kind, vid)
 		["browser"] = {client_event_handler, {}},
 		["terminal"] = {client_event_handler, {}},
 		["bridge-x11"] = {client_event_handler, {}},
+		["bridge-wayland"] = {client_event_handler, {}},
 	}
 	if (set[kind]) then
 		if (vid) then
@@ -544,10 +599,15 @@ end
 function console_display_state(status)
 	resize_video_canvas(VRESW, VRESH)
 	resize_image(workspaces.anchor, VRESW, VRESH)
+	mouse_querytarget(WORLDID)
 
 	for i,v in pairs(workspaces) do
-		if type(v) == "table" and valid_vid(v.vid) then
-			target_displayhint(v.vid, VRESW, VRESH, TD_HINT_IGNORE)
+		if type(v) == "table" then
+			if v.bridge then
+				v.bridge:resize(VRESW, VRESH)
+			elseif valid_vid(v.vid) then
+				target_displayhint(v.vid, VRESW, VRESH, TD_HINT_IGNORE, WORLDID)
+			end
 		end
 	end
 end

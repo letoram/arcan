@@ -18,6 +18,8 @@ canvasresize - rest resizing the primary output canvas
 clockreq - (requires fsrv) test monotonic, dynamic and user
            requested timers
 
+decortest - testing the builtin surface decorator helper script
+
 dpmstest - (low level platform) test setting dpms states on/off
 
 eventtest - draw information text describing incoming input events
@@ -29,9 +31,11 @@ failover - goes with failadopt, one set of scripts that die, another
 
 fonttest - testing format string rendering
 
+interp - test different interpolation functions
+
 imagetest - test image load/store stack pop/push
 
-interp - test different interpolation functions
+itest - two different kinds of externally provided input injection
 
 kbdtest - test keyboard repeat period and repeat delay
 
@@ -50,7 +54,11 @@ outputs - test some map-display calls
 
 picktest - test mouse/cursor based surface picking
 
+prim3d - single cube, directional lighting, mouse rotation and shifted origo
+
 recordtest - test encode frameserver
+
+rgbswitch - cycles r,g,b colors on a timer and on digital input
 
 rtdensity - test rendertarget density switching
 
@@ -71,11 +79,5 @@ vrtest - test mapping limbs to reference geometry
 vrtest2 - test hmd setup, distortion pipeline , ...
 
 vrtest3 - extended scratchpad on vrtest2
-
-prim3d - single cube, directional lighting, mouse rotation and shifted origo
-
-itest - two different kinds of externally provided input injection
-
-decortest - testing the builtin surface decorator helper script
 
 wltest - testing the builtin wayland window manager helper script
