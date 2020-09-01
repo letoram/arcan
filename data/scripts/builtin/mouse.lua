@@ -210,14 +210,12 @@ local function lock_constrain()
 	local lr_x = props.x + props.width;
 	local lr_y = props.y + props.height;
 
-	print("CONSTRAIN/WARP?")
 	if (mstate.warp) then
 		local cpx = math.floor(props.x + 0.5 * props.width);
 		local cpy = math.floor(props.y + 0.5 * props.height);
 		input_samplebase(mstate.dev, cpx, cpy);
 		mstate.x = cpx;
 		mstate.y = cpy;
-		print("WARP TO", cpx, cpy)
 	else
 		mstate.x = mstate.x < ul_x and ul_x or mstate.x;
 		mstate.y = mstate.y < ul_y and ul_y or mstate.y;
@@ -258,8 +256,6 @@ local function mouse_cursorupd(x, y)
 	mstate.x = mstate.x > mstate.max_x and mstate.max_x - 1 or mstate.x;
 	mstate.y = mstate.y > mstate.max_y and mstate.max_y - 1 or mstate.y;
 	mstate.hide_count = mstate.hide_base;
-
-	print("mstate", mstate.x, mstate.y)
 
 	local relx = mstate.x - lmx;
 	local rely = mstate.y - lmy;
@@ -1198,7 +1194,6 @@ function mouse_addlistener(tbl, events)
 		events = {}
 		for k,_ in pairs(mouse_handlers) do
 			if tbl[k] then
-				print("add listener for", k)
 				table.insert(events, k)
 			end
 		end
