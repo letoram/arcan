@@ -35,6 +35,7 @@ static bool subcomp_defer_handler(
 	surf->shell_res = subsurf;
 	surf->dispatch = subsurf_shmifev_handler;
 	surf->sub_parent_res = req->parent;
+	surf->is_subsurface = true;
 
 	snprintf(surf->tracetag, SURF_TAGLEN, "subsurf");
 

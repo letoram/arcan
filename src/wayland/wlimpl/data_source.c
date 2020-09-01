@@ -45,7 +45,7 @@ static void dsrc_offer(struct wl_client* wcl,
  *
  * then for 'paste' we set the type with a message, and consume on the next
  * bchunkstate event where we get the descriptor
- **/
+ */
 	struct arcan_event hint = {
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(MESSAGE),
