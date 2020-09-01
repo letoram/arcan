@@ -88,6 +88,12 @@
 --      window resizing, changing display or display resolution - density
 --      in ppcm.
 --
+
+-- for drag and drop purposes, we need to track all bridges so that we can
+-- react on 'drag' and then check underlying vid when cursor-tagged in drag state,
+-- and then test and forward to clients beneath it
+local bridges = {}
+
 local x11_lut =
 {
 	["type"] =
@@ -364,7 +370,7 @@ local function wnd_fullscreen(wnd)
 		wnd.wm.disptbl.width, wnd.wm.disptbl.height, wnd_hint_state(wnd))
 end
 
-local function wnd_maximize(wnd, w, h)
+local function wnd_maximize(wnd)
 	if wnd.states.maximized then
 		return
 	end
@@ -607,6 +613,32 @@ local function x11_vtable()
 	}
 end
 
+local function wnd_dnd_source(wnd, x, y, types)
+-- this needs the 'cursor-tag' attribute when we enter, then some
+-- marking function to say if it is desired or not ..
+end
+
+local function wnd_copy_paste(wnd, src, dst)
+	local nc = #src.states.copy_set
+	if not dst.wm or not valid_vid(dst.wm.control) or nc == 0 then
+		return
+	end
+
+	local control = dst.wm.control
+
+-- send src to copy client, mark as 'latest' src, clamp number of offers
+	target_input(control, "offer")
+	local lim = nc < 32 and nc or 32
+	for i=1,lim do
+		target_input(control, v)
+	end
+	target_input(control, "/offer")
+
+-- when the client has picked an offer, that will come back in the wm
+-- handler on dst and initiate the paste operation then
+	dst.wm.offer_src = src
+end
+
 local function tl_vtable(wm)
 	return {
 		name = "wl_toplevel",
@@ -621,10 +653,11 @@ local function tl_vtable(wm)
 			maximized = false,
 			visible = false,
 			moving = false,
-			resizing = false
+			resizing = false,
+			copy_set = {}
 		},
 
--- wm side calls these to acknowledge state changes
+-- wm side calls these to acknowledge or initiat estate changes
 		focus = wnd_focus,
 		unfocus = wnd_unfocus,
 		maximize = wnd_maximize,
@@ -632,6 +665,8 @@ local function tl_vtable(wm)
 		revert = wnd_revert,
 		nudge = wnd_nudge,
 		drag_resize = wnd_drag_rz,
+		dnd_source = wnd_dnd_source,
+		copy_paste = wnd_paste_opts,
 
 -- properties that needs to be tracked for drag-resize/drag-move
 		x = 0,
@@ -842,7 +877,7 @@ local function on_toplevel(wnd, source, status)
 		new.wm = wnd
 
 -- request dimensions from wm
-		local w, h = wnd.configure(new, "toplevel")
+		local w, h, x, y = wnd.configure(new, "toplevel")
 		local vid, aid, cookie =
 		accept_target(w, h,
 			function(...)
@@ -852,6 +887,8 @@ local function on_toplevel(wnd, source, status)
 		new.vid = vid
 		new.cookie = cookie
 		wnd.known_surfaces[vid] = true
+		new.x = x
+		new.y = y
 		table.insert(wnd.window_stack, new)
 
 -- tie to bridge as visibility / clipping anchor
@@ -1031,6 +1068,29 @@ local function bridge_handler(ctx, source, status)
 		ctx:destroy()
 		return
 
+-- message on the bridge is also used to pass metadata about the 'data-device'
+-- properties like selection changes and type
+	elseif status.kind == "message" then
+		local cmd, data = string.split_first(status.message, ":")
+		ctx.log(ctx.fmt("bridge-message:kind=%s", cmd))
+		if cmd == "offer" then
+			if table.find_i(ctx.offer, data) then
+				return
+			end
+
+-- normal 'behavior' here is that the data source provides a stream of types that
+-- supposedly is mime, in reality is a mix of whatever, on 'paste' or drag-enter
+-- you forward these to the destination, it says which one it is, then send
+-- descriptors in both directions. Since the WM might want to do things with the
+-- clipboard contents - notify here and provide the methods to forward / trigger
+-- an offer.
+			table.insert(ctx.offer, data)
+
+		elseif cmd == "offer-reset" then
+			ctx.offer = {}
+		end
+
+		return
 	elseif status.kind ~= "segment_request" then
 		return
 	end
@@ -1080,6 +1140,7 @@ local function set_bridge(ctx, source)
 		target_flags(source, TARGET_ALLOWGPU)
 	end
 
+	print("source made to bridge", source)
 	target_updatehandler(source,
 		function(...)
 			return bridge_handler(ctx, ...)
@@ -1176,6 +1237,9 @@ local function bridge_table(cfg)
 			height = 1
 		},
 
+		offer = {
+		},
+
 -- user table of settings
 		cfg = cfg,
 
@@ -1241,15 +1305,18 @@ local function bridge_table(cfg)
 		end
 	end
 
-	if type(cfg.configure) == "function" then
-		res.log("wlwm", "override_handler=configure")
-		res.configure = cfg.configure
-	else
-		res.log("wlwm", "default_handler=configure")
-		res.configure =
-		function()
-			return res.disptbl.width * 0.3, res.disptbl.height * 0.3
+	res.configure =
+	function(...)
+		local w, h, x, y
+		if cfg.configure then
+			w, h, x, y = cfg.configure(...)
 		end
+		w = w and w or res.disptbl.width * 0.5
+		h = h and h or res.disptbl.height * 0.3
+		if not x or not y then
+			x, y = mouse_xy()
+		end
+		return w, h, x, y
 	end
 
 	if type(cfg.focus) == "function" then
@@ -1357,8 +1424,13 @@ local function bridge_table(cfg)
 end
 
 local function client_handler(nested, trigger, source, status)
-	if status.kind == "registered" then
+-- keep track of anyone that goes through here
+	if not bridges[source] then
+		bridges[source] = {}
+	end
 
+	if status.kind == "registered" then
+-- happens if we are forwarded from the wrong type (api error)
 		if status.segkind ~= "bridge-wayland" then
 			delete_image(source)
 			return
@@ -1376,15 +1448,27 @@ local function client_handler(nested, trigger, source, status)
 			end
 
 -- next one will be the one to ask for 'real' windows
-			accept_target(32, 32,
+		accept_target(32, 32,
 			function(...)
 				return client_handler(true, trigger, ...)
 			end)
 
 -- and those we just forward to the wayland factory
 		else
-			trigger(source, status)
+			local bridge = trigger(source, status)
+			if bridge then
+				table.insert(bridges[source], bridge)
+			end
 		end
+
+-- died before getting anywhere meaningful - or is the bridge itself gone?
+-- if so, kill off every client associated with it
+	elseif status.kind == "terminated" then
+		for k,v in ipairs(bridge[source]) do
+			v:destroy()
+		end
+		delete_image(source)
+		bridge[source] = nil
 	end
 end
 
