@@ -53,6 +53,11 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt, int p)
 		return false;
 	memset((void*)tgt->out, '\0', sizeof(struct img_data));
 
+/* aliveness descriptor to multiplex with */
+	int pair[2] = {-1, -1};
+	pipe(pair);
+	tgt->sigfd = pair[1];
+
 /* spawn our worker process */
 	tgt->proc = fork();
 	if (-1 == tgt->proc){
@@ -107,7 +112,12 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt, int p)
 /* There is a possiblity of other descriptors being leaked here, e.g. fonts or
  * other playlist items that were retrieved from shmif as cloexec does not
  * apply to fork. The non-portable option would be to dup into 1 and then
- * closefrom(2). The 'correct' option would be to track and manually close.
+ * closefrom(2).
+ *
+ * The 'correct' option would be to track and manually close.
+ *
+ * The more tedious approach would be to have a re-exec mode, re-exec ourselves,
+ * mmap the buffer to decode into and go from there.
  *
  * Now, we accept the risk of the contents of other descriptors being
  * accessible from the sandbox, though the more serious configurations (seccmp)
@@ -152,6 +162,8 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt, int p)
 		seccomp_rule_add(flt, SCMP_ACT_ALLOW, SCMP_SYS(munmap), 0);
 		seccomp_rule_add(flt, SCMP_ACT_ALLOW, SCMP_SYS(lseek), 0);
 		seccomp_rule_add(flt, SCMP_ACT_ALLOW, SCMP_SYS(exit_group), 0);
+		seccomp_rule_add(flt, SCMP_ACT_ALLOW, SCMP_SYS(close), 0);
+		seccomp_rule_add(flt, SCMP_ACT_ALLOW, SCMP_SYS(write), 0);
 //	seccomp_rule_add(flt, SCMP_ACT_ALLOW, SCMP_SYS(rt_sigreturn), 0);
 		seccomp_load(flt);
 	}
@@ -207,6 +219,11 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt, int p)
 	shmif_pixel* buf = (shmif_pixel*)
 		stbi_load_from_file(inf, &dw, &dh, NULL, sizeof(shmif_pixel));
 	shmif_pixel* out = (shmif_pixel*) tgt->out->buf;
+	tgt->out->w = dw;
+	tgt->out->h = dh;
+	tgt->out->buf_sz = dw * dh * 4;
+	tgt->out->msg[0] = '\0';
+
 	if (buf){
 		for (size_t i = dw * dh; i > 0; i--){
 			uint8_t r = ((*buf) & 0x000000ff);
@@ -216,10 +233,6 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt, int p)
 			buf++;
 			*out++ = SHMIF_RGBA(r, g, b, a);
 		}
-		tgt->out->w = dw;
-		tgt->out->h = dh;
-		tgt->out->buf_sz = dw * dh * 4;
-		tgt->out->msg[0] = '\0';
 		tgt->out->ready = true;
 		exit(EXIT_SUCCESS);
 	}
@@ -229,6 +242,15 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt, int p)
 			tgt->out->msg[i] = stbi__g_failure_reason[i];
 	}
 	exit(EXIT_FAILURE);
+}
+
+static void mark_finished(struct img_state* tgt, bool broken)
+{
+	tgt->broken = broken;
+	if (-1 != tgt->sigfd){
+		close(tgt->sigfd);
+		tgt->sigfd = -1;
+	}
 }
 
 bool imgload_poll(struct img_state* tgt)
@@ -241,8 +263,8 @@ bool imgload_poll(struct img_state* tgt)
 	while ((rc = waitpid(tgt->proc, &sc, WNOHANG)) == -1 && errno == EINTR){}
 /* failed */
 	if (rc == -1){
-		tgt->broken = true;
 		snprintf((char*)tgt->msg, sizeof(tgt->msg), "(%s)", strerror(errno));
+		mark_finished(tgt, true);
 		return true;
 	}
 
@@ -256,8 +278,12 @@ bool imgload_poll(struct img_state* tgt)
 		munmap((void*)tgt->out, tgt->buf_lim);
 		tgt->proc = 0;
 		tgt->out = NULL;
-		snprintf((char*)tgt->msg, sizeof(tgt->msg), "(overflow)");
-		tgt->broken = true;
+		snprintf((char*)tgt->msg, sizeof(tgt->msg),
+			"(%zuMiB>%zuMiB)",
+			(out_sz+1) / (1024 * 1024),
+			(tgt->buf_lim+1) / (1024 * 1024)
+		);
+		mark_finished(tgt, true);
 		return true;
 	}
 
@@ -272,10 +298,10 @@ bool imgload_poll(struct img_state* tgt)
 			i++;
 		}
 		debug_message("%s failed, (reason: %s)\n", tgt->fname, tgt->msg);
-		tgt->broken = true;
 		munmap((void*)tgt->out, tgt->buf_lim);
 		tgt->out = NULL;
 		tgt->buf_lim = 0;
+		mark_finished(tgt, true);
 		return true;
 	}
 	tgt->proc = 0;
@@ -299,6 +325,7 @@ bool imgload_poll(struct img_state* tgt)
 	debug_message("%s loaded (total: %zu, max: %zu, remove: %zu\n",
 		tgt->fname, out_sz, tgt->buf_lim, ntr);
 
+	mark_finished(tgt, false);
 	return true;
 }
 /*

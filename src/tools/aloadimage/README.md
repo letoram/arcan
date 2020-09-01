@@ -42,25 +42,38 @@ Status
 	 - [x] Seccmp- style syscall filtering
 	 - [x] Pledge port
 	 - [ ] Capsicum port
- - [x] Playlist
+ - [ ] Playlist
    - [x] Read/load-ahead
- - [x] VR180 format
- - [ ] Drag/zoom/pan input
- - [ ] sRGB <-> Linear controls
+   - [ ] Handover launch everything at once
+ - [ ] VR image formats
+   - [x] left-right eye mapping
+	 - [ ] projection metadata (fov + geometry)
+	 - [ ] auto-sbs detection
+	 - [ ] packed image format support (adobe metadata)
+ - [ ] Color Accuracy
+   - [ ] sRGB to Linear swapping
+	 - [ ] full FP16 format with scRGB
+	 - [ ] ICC profile output
+	 - [ ] HDR metadata (range, ...)
  - [ ] Up/downsample filter controls
- - [ ] Subpixel hinting
- - [ ] Full-chain FP16 format support
+ - [ ] Subpixel hinting for vector formats
  - [ ] GPU acceleration toggle
  - [ ] Per image transformations (rotate, flip, ...)
  - [ ] Internationalization
- - [ ] Announce extensions
- - [ ] Handle BCHUNKSTATE/drag'n'drop/paste
+ - [ ] Interactive mode
+   - [ ] Placeholder 'reset' playlist entry
+   - [ ] Drag/zoom/pan input
+	 - [ ] Scrolling (CONTENTHINT)
+	 - [ ] Announce extensions
+   - [ ] Handle BCHUNKSTATE/drag'n'drop/paste
+   - [ ] Window clone action
+   - [ ] Expose command-line options as ARCAN\_ARG
  - [ ] Stream-status/Content-position-hint
  - [ ] State support (save playlist, configuration)
- - [ ] Thumbnail mode
+ - [ ] Thumbnail window
  - [x] Basic Raster Images (via stbimage)
- - [ ] Vector contents support
+ - [ ] Formats support
+   - [ ] Animated GIF
+   - [ ] Vector contents support
    - [x] Load/Draw Simple SVG (need refactor, assumes endianness)
    - [ ] Redraw / invalidate on DISPLAYHINT
- - [ ] Animated GIF
- - [ ] Expose command-line options as ARCAN\_ARG

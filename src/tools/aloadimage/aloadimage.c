@@ -8,11 +8,13 @@
 #include <arcan_tuisym.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <poll.h>
 #include <getopt.h>
 #include <stdarg.h>
 #include "imgload.h"
 
 static void progress_report(float progress);
+
 #define AR_EPSILON 0.001
 #define STBIR_PROGRESS_REPORT(val) progress_report(val)
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
@@ -33,7 +35,8 @@ struct draw_state {
 	struct arcan_shmif_cont* con;
 
 /*
- * stereoscopic rendering may need an extra context
+ * stereoscopic rendering may need an extra context and synch signalling
+ * so that updates are synched to updates on the right eye.
  */
 	struct arcan_shmif_cont* con_right;
 	bool stereo;
@@ -43,6 +46,7 @@ struct draw_state {
 	int out_w, out_h;
 	bool aspect_ratio;
 	bool source_size;
+	int blit_ind;
 	float dpi;
 
 /* loading/ resource management state */
@@ -56,13 +60,18 @@ struct draw_state {
 	int pl_ind, pl_size;
 	int step_timer, init_timer;
 	bool step_block;
+	bool handover_exec;
 
 /* user- navigation related states */
 	bool block_input;
 	bool loop;
+
+/* dirty requested as triggered from input handlers */
+	bool dirty;
 };
 
 static struct draw_state* last_ds;
+static bool set_playlist_pos(struct draw_state* ds, int new_i);
 
 void debug_message(const char* msg, ...)
 {
@@ -86,16 +95,27 @@ static void blit(struct arcan_shmif_cont* dst,
 		return;
 	}
 
-/* resize to match? _resize call to current output size is safe */
+/* resize to match? try and find the largest permitted fit - this will be
+ * SHMPAGE_MAXW * SHMPAGE_MAXH (in bytes) but can theoretically be larger in
+ * certain circumstances and practically be smaller depending on what the
+ * server end says */
 	if (state->source_size){
 		size_t dw = src->w;
 		size_t dh = src->h;
 
+		int attempts = 0;
 		while (dh && dh && !arcan_shmif_resize(dst, dw, dh)){
-			debug_message("resize to %zu*%zu rejected, trying %zu*%zu\n",
+			if (!attempts){
+				size_t dominiant = 0;
+
+			}
+			else {
+			}
+
 			dw, dh, dw >> 1, dh >> 1);
 			dw >>= 1;
 			dh >>= 1;
+			debug_message("resize to %zu*%zu rejected, trying %zu*%zu\n");
 		}
 	}
 /* safe: shmif_resize on <= 0 and <= 0 would fail without changing dst->w,h */
@@ -189,6 +209,7 @@ static void set_ident(struct arcan_shmif_cont* out,
 	size_t lim = sizeof(ev.ext.message.data)/sizeof(ev.ext.message.data[1]);
 	size_t len = strlen(str);
 
+/* strip away overflowing prefix, assume suffix is more important */
 	if (len > lim)
 		str += len - lim - 1;
 
@@ -233,6 +254,13 @@ static bool update_item(struct draw_state* ds, struct img_state* i, int step)
 			ds->wnd_act++;
 			return true;
 		}
+		else {
+			debug_message("worker (%s) broken: %s\n", i->fname, i->msg);
+			if (&ds->playlist[ds->pl_ind] == i){
+/* item broken, just jump to next */
+				set_playlist_pos(ds, ++ds->pl_ind);
+			}
+		}
 	}
 	else if (step && i->life > 0){
 //		i->life--;
@@ -265,7 +293,9 @@ static bool poll_pl(struct draw_state* ds, int step)
 		ds->loaded = update = true;
 	}
 	else {
-/* progress ident is updated in callback, scheduling is done in set_pl_pos */
+/* progress ident is updated in callback, scheduling is done in set_pl_pos,
+ * but we can set the steam status to match our playlist position vs. playlist
+ * size */
 	}
 
 	return update;
@@ -279,7 +309,7 @@ static bool try_dispatch(struct draw_state* ds, int ind, int prio_d)
 		return false;
 
 /* or stdin- slot one is already being loaded from standard input */
-		if (ds->playlist[ind].is_stdin && ds->stdin_pending)
+	if (ds->playlist[ind].is_stdin && ds->stdin_pending)
 		return false;
 
 /* NOTE: we don't care if the entry has previously been marked as broken,
@@ -417,6 +447,13 @@ static bool set_playlist_pos(struct draw_state* ds, int new_i)
 	debug_message("position set to (%d, act: %d/%d, pending: %d)\n",
 		ds->pl_ind, ds->wnd_act, ds->wnd_lim, ds->wnd_pending);
 
+	arcan_shmif_enqueue(ds->con, &(struct arcan_event){
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(STREAMSTATUS),
+		.ext.streamstat.completion = (float)ds->pl_ind / (float)ds->pl_size,
+		.ext.streamstat.frameno = ds->pl_ind
+	});
+
 	for (size_t i = 0; i < ds->pl_size; i++)
 		debug_message("%c ", i == ds->pl_ind ? '*' :
 			(ds->playlist[i].out ? 'o' : 'x'));
@@ -448,6 +485,7 @@ static bool source_size(struct draw_state* state)
 {
 	if (!state->source_size){
 		state->source_size = true;
+		state->blit_ind = -1;
 	}
 	return false;
 }
@@ -456,6 +494,7 @@ static bool server_size(struct draw_state* state)
 {
 	if (state->source_size){
 		state->source_size = false;
+		state->blit_ind = -1;
 		return arcan_shmif_resize(state->con, state->out_w, state->out_h);
 	}
 	else
@@ -629,7 +668,6 @@ static void expose_labels(struct arcan_shmif_cont* con)
 static const struct option longopts[] = {
 	{"help", no_argument, NULL, 'h'},
 	{"loop", no_argument, NULL, 'l'},
-	{"interactive", no_argument, NULL, 'i'},
 	{"step-time", required_argument, NULL, 't'},
 	{"block-input", no_argument, NULL, 'b'},
 	{"timeout", required_argument, NULL, 'T'},
@@ -644,6 +682,31 @@ static const struct option longopts[] = {
 	{ NULL, no_argument, NULL, 0 }
 };
 
+/* wait but using the epipe and multiplex with current playlist item */
+static void wait_for_event(struct draw_state* ds)
+{
+	short pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;
+	struct pollfd fds[2] = {
+	{
+		.events = pollev,
+		.fd = ds->con->epipe
+	},
+	{
+		.events = pollev,
+		.fd = -1
+	},
+	};
+	size_t pollsz = 1;
+	int plfd = ds->playlist[ds->pl_ind].sigfd;
+	if (plfd > 0){
+		fds[1].fd = plfd;
+		pollsz++;
+	}
+
+/* don't care about the result, only used for sleep / wake */
+	poll(fds, pollsz, -1);
+}
+
 int main(int argc, char** argv)
 {
 	if (argc <= 1)
@@ -655,13 +718,13 @@ int main(int argc, char** argv)
 		.wnd_lim = 5,
 		.init_timer = 0,
 		.pad_col = SHMIF_RGBA(32, 32, 32, 255),
-		.playlist = playlist
+		.playlist = playlist,
+		.blit_ind = -1
 	};
 	last_ds = &ds;
 
 	int ch;
-	bool interactive = false;
-	int segid = SEGID_APPLICATION;
+	int segid = SEGID_MEDIA;
 
 	while((ch = getopt_long(argc, argv,
 		"p:ihlt:bd:T:m:r:XSHd:a", longopts, NULL)) >= 0)
@@ -680,20 +743,33 @@ int main(int argc, char** argv)
 					ds.pad_col = SHMIF_RGBA(outv[0], outv[1], outv[2], outv[3]);
 			}
 		} break;
-		case 'i' : /* interactive = true; */ break;
 		case 'a' : ds.aspect_ratio = true; break;
 		case 'm' : image_size_limit_mb = strtoul(optarg, NULL, 10); break;
 		case 'r' : ds.wnd_lim = strtoul(optarg, NULL, 10); break;
 		case 'X' : disable_syscall_flt = true; break;
-		case 'H' : ds.stereo = true; segid = SEGID_MEDIA; break;
-		case 'S' : ds.source_size = false; break;
+		case 'N' : ds.handover_exec = true; break;
+		case 'H' :
+			ds.stereo = true;
+			segid = SEGID_HMD_L;
+		break;
+		case 'S' :
+			ds.source_size = false;
+			segid = SEGID_APPLICATION;
+		break;
 		default:
 			fprintf(stderr, "unknown/ignored option: %c\n", ch);
 		break;
 		}
 	ds.step_timer = ds.init_timer;
 
-/* parse opts and update ds accordingly, different interpretation for vr mode */
+/* there are more considerations here -
+ *
+ * some image formats will be packed l/r and in those cases we'd want to split (possibly use lr:)
+ * along the dominant axis.
+ *
+ * other image formats are actually n images in one packed, something we don't support right now,
+ * there also needs to be some way to specify the server-side projection geometry
+ */
 	if (ds.stereo){
 		int rc = 0, lc = 0;
 		bool last_l = false;
@@ -747,12 +823,9 @@ int main(int argc, char** argv)
 		}
 	}
 
-/* sanity- clamp */
+/* sanity- clamp, always preload something*/
 	if (ds.wnd_lim)
 		ds.wnd_fwd = ds.wnd_lim > 2 ? ds.wnd_lim - 2 : 2;
-
-	if (ds.pl_size == 0 && !interactive)
-		return show_use("no images found");
 
 	struct arcan_shmif_cont cont = arcan_shmif_open_ext(
 		SHMIF_ACQUIRE_FATALFAIL, NULL, (struct shmif_open_ext){
@@ -761,7 +834,12 @@ int main(int argc, char** argv)
 			.ident = ""
 		}, sizeof(struct shmif_open_ext)
 	);
-	struct arcan_shmif_cont rcont;
+
+	if (ds.pl_size == 0){
+		arcan_shmif_last_words(&cont, "empty playlist");
+		arcan_shmif_drop(&cont);
+		return EXIT_FAILURE;
+	}
 
 	struct arcan_shmif_initial* init;
 	arcan_shmif_initial(&cont, &init);
@@ -771,44 +849,14 @@ int main(int argc, char** argv)
 
 	ds.con = &cont;
 
-/* signal now so that some window managers can relayout and possibly
- * hint about new sizes, potentially saving us a reblit - the contents
- * will be default- null here (black + full alpha) */
-	arcan_shmif_signal(&cont, SHMIF_SIGVID);
-	arcan_event ev;
-
-/* request the right segment as well, wait for accept or reject, this is
- * partially flawed as displayhint and other events gets ignored */
-	 if (ds.stereo){
-/*		arcan_shmif_enqueue(&cont, &(struct arcan_event){
+/* request the right segment, deal with it if it arrives */
+ if (ds.stereo){
+	 arcan_shmif_enqueue(&cont, &(struct arcan_event){
 			.ext.kind = ARCAN_EVENT(SEGREQ),
 			.ext.segreq.kind = SEGID_HMD_R,
 			.ext.segreq.id = 0x6502
 		});
-	*/
-		while (arcan_shmif_wait(&cont, &ev)){
-			if (ev.category != EVENT_TARGET)
-				continue;
-
-/* got the reply we wanted, now we can draw into both */
-			else if (ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT){
-				if (ev.tgt.ioevs[0].iv == 0x6502){
-					rcont = arcan_shmif_acquire(&cont, NULL, SEGID_HMD_R, 0);
-					if (!rcont.addr){
-						fprintf(stderr, "error mapping server provided right eye output\n");
-						return EXIT_FAILURE;
-					}
-					ds.con_right = &rcont;
-					break;
-				}
-			}
-			else if (ev.tgt.kind == TARGET_COMMAND_REQFAIL){
-				arcan_shmif_drop(&cont);
-				fprintf(stderr, "server rejected right eye output for stereoscopic rendering\n");
-				return EXIT_FAILURE;
-			}
-		}
-	}
+ }
 
 /* dispatch workers */
 	set_playlist_pos(&ds, 0);
@@ -821,14 +869,22 @@ int main(int argc, char** argv)
 		.ext.clock.id = 0xfeed
 	});
 
-/* Block for one event (our timer helps with that), then flush out any
- * burst. Blit on any change */
-	while (cont.addr && arcan_shmif_wait(&cont, &ev)){
-		bool dirty = dispatch_event(&cont, &ev, &ds);
-		while(arcan_shmif_poll(&cont, &ev) > 0)
+/* Block for events - timer should wake us up often enough, otherwise we need
+ * a signal descriptor from the playlist processing and multiplex on both evdesc
+ * and on the playlist */
+	struct arcan_event ev;
+	while (cont.addr && (wait_for_event(&ds), 1)){
+		int pv;
+		int dirty = 0;
+
+		while((pv = arcan_shmif_poll(&cont, &ev)) > 0)
 			dirty |= dispatch_event(&cont, &ev, &ds);
+
+		if (pv == -1)
+			break;
+
+/* If we are waiting for the currently selected item to finish processing */
 		dirty |= poll_pl(&ds, 0);
-		dirty = true;
 
 /* blit and update title as playlist position might have changed, or some other
  * metadata we present as part of the ident/title - if we are in stereo mode we
@@ -839,13 +895,20 @@ int main(int argc, char** argv)
 		if (dirty && !cur->broken && cur->out && cur->out->ready){
 			set_ident(ds.con, "", cur->fname);
 
-			blit(&cont, (struct img_data*) cur->out, &ds);
+			if (ds.pl_ind != ds.blit_ind){
+				ds.blit_ind = ds.pl_ind;
+				blit(&cont, (struct img_data*) cur->out, &ds);
+			}
 		}
 	}
 
 /* reset the entire playlist so leak detection is useful */
 	for (size_t i = 0; i < ds.pl_size; i++)
 		imgload_reset(&ds.playlist[i]);
+
+	arcan_shmif_drop(&cont);
+	if (ds.con_right)
+		arcan_shmif_drop(ds.con_right);
 
 	return EXIT_SUCCESS;
 }
