@@ -4843,6 +4843,8 @@ static void ffunc_process(arcan_vobject* dst, int cookie, bool step)
 			dst->vstore->vinf.text.glid,
 			dst->feed.state, dst->cellid
 		);
+
+		dst->owner->uploadc++;
 	}
 
 	return;
@@ -5069,6 +5071,8 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 	if (arcan_video_display.ignore_dirty == 0 &&
 		(!tgt->link && tgt->dirtyc == 0 && tgt->transfc == 0))
 		return 0;
+
+	tgt->uploadc = 0;
 
 	current_rendertarget = tgt;
 	agp_activate_rendertarget(tgt->art);

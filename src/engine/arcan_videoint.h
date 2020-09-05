@@ -82,6 +82,13 @@ struct rendertarget {
 	size_t transfc;
 
 /*
+ * the number of externally triggered uploads since the last time the
+ * rendertarget was processed (i.e. between frames) by objects that has the
+ * rendertarget as their primary attachment.
+ */
+	size_t uploadc;
+
+/*
  * dirty- management is still incomplete in that dirty- flagging is a global
  * video state and not bound to rendertarget which is in conflict with
  * rendertargets being updated at different clocks. When it is to be

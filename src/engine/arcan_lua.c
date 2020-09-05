@@ -9147,6 +9147,33 @@ static int rendertargetforce(lua_State* ctx)
 	LUA_ETRACE("rendertarget_forceupdate", NULL, 0);
 }
 
+static int rendertargetmetrics(lua_State* ctx)
+{
+	LUA_TRACE("rendertarget_metrics");
+	arcan_vobject* vobj;
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, &vobj);
+	struct rendertarget* rtgt = arcan_vint_findrt(vobj);
+
+	if (!rtgt)
+		arcan_fatal("rendertarget_vids()"
+			", specified vid does not reference a rendertarget");
+
+	lua_newtable(ctx);
+	lua_pushstring(ctx, "dirty");
+	lua_pushnumber(ctx, rtgt->dirtyc);
+	lua_rawset(ctx, -3);
+
+	lua_pushstring(ctx, "transfers");
+	lua_pushnumber(ctx, rtgt->uploadc);
+	lua_rawset(ctx, -3);
+
+	lua_pushstring(ctx, "updates");
+	lua_pushnumber(ctx, rtgt->transfc);
+	lua_rawset(ctx, -3);
+
+	LUA_ETRACE("rendertarget_metrics", NULL, 1);
+}
+
 static int rendertarget_vids(lua_State* ctx)
 {
 	LUA_TRACE("rendertarget_vids");
@@ -12099,6 +12126,7 @@ static const luaL_Reg tgtfuns[] = {
 {"rendertarget_noclear",       rendernoclear            },
 {"rendertarget_id",            rendertargetid           },
 {"rendertarget_range",         rendertargetrange        },
+{"rendertarget_metrics",       rendertargetmetrics      },
 {"launch_decode",              launchdecode             },
 {"launch_avfeed",              launchavfeed             },
 {NULL, NULL}
