@@ -592,7 +592,7 @@ rerun:
 }
 
 static void bchunk(struct tui_context* T,
-	bool input, uint64_t size, int fd, void* tag)
+	bool input, uint64_t size, int fd, const char* type, void* tag)
 {
 	struct debug_ctx* dctx = tag;
 

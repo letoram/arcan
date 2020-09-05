@@ -535,11 +535,11 @@ static void geohint(struct tui_context* T,
 }
 
 static void bchunk(struct tui_context* T,
-	bool input, uint64_t size, int fd, void* tag)
+	bool input, uint64_t size, int fd, const char* msg, void* tag)
 {
 	struct listwnd_meta* M = tag;
 	if (M->old_handlers.bchunk){
-		M->old_handlers.bchunk(T, input, size, fd, M->old_handlers.tag);
+		M->old_handlers.bchunk(T, input, size, fd, msg, M->old_handlers.tag);
 	}
 }
 
