@@ -417,6 +417,12 @@ static void rebuild_prompt(struct tui_context* T, struct cli_state* S)
 	arcan_tui_set_prompt(T, S->prompt);
 }
 
+static void on_bchunk(struct tui_context* T, bool input,
+	uint64_t size, int fd, const char* type, void* tag)
+{
+/* map any input to stdin, and output to stdout */
+}
+
 static void parse_eval(struct tui_context* T, char* out)
 {
 	size_t ind = 0;
@@ -558,7 +564,8 @@ int arcterm_cli_run(struct arcan_shmif_cont* c, struct arg_arr* args)
 	struct tui_cbcfg cfg = {
 		.subwindow = on_subwindow,
 		.query_label = on_label_query,
-		.input_label = on_label_input
+		.input_label = on_label_input,
+		.bchunk = on_bchunk
 	};
 
 	const char* argt = NULL;

@@ -170,7 +170,9 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 		if (tui->handlers.bchunk)
 			tui->handlers.bchunk(tui, ev->kind == TARGET_COMMAND_BCHUNK_IN,
 				ev->ioevs[1].iv | (ev->ioevs[2].iv << 31),
-				ev->ioevs[0].iv, tui->handlers.tag
+				ev->ioevs[0].iv,
+				ev->message,
+				tui->handlers.tag
 			);
 	break;
 
