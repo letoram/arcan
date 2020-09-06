@@ -343,6 +343,8 @@ static struct {
 	const char** last_argv;
 	lua_State* last_ctx;
 
+	size_t last_clock;
+
 	bool got_trace_buffer;
 	uint8_t* trace_buffer;
 	size_t trace_buffer_sz;
@@ -948,6 +950,7 @@ void arcan_lua_tick(lua_State* ctx, size_t nticks, size_t global)
 		return;
 
 	arcan_lua_setglobalint(ctx, "CLOCK", global);
+	luactx.last_clock = global;
 
 /* Many applications misused the callback handler, ignoring the nticks and
  * global fields causing timed tasks to drift more than desired. Switch to
@@ -9147,6 +9150,37 @@ static int rendertargetforce(lua_State* ctx)
 	LUA_ETRACE("rendertarget_forceupdate", NULL, 0);
 }
 
+struct transform_cs {
+	size_t blend;
+	size_t move;
+	size_t rotate;
+	size_t scale;
+};
+
+static void clock_transform(arcan_vobject* vobj, struct transform_cs* dst)
+{
+	surface_transform* current = vobj->transform;
+	while (current){
+		size_t tc = current->blend.endt ? current->blend.endt - luactx.last_clock : 0;
+		if (tc > dst->blend)
+			dst->blend = tc;
+
+		tc = current->move.endt ? current->move.endt - luactx.last_clock : 0;
+		if (tc > dst->move)
+			dst->move = tc;
+
+		tc = current->rotate.endt ? current->rotate.endt - luactx.last_clock : 0;
+		if (tc > dst->rotate)
+			dst->rotate = tc;
+
+		tc = current->scale.endt ? current->scale.endt - luactx.last_clock : 0;
+		if (tc > dst->scale)
+			dst->scale = tc;
+
+		current = current->next;
+	}
+}
+
 static int rendertargetmetrics(lua_State* ctx)
 {
 	LUA_TRACE("rendertarget_metrics");
@@ -9169,6 +9203,31 @@ static int rendertargetmetrics(lua_State* ctx)
 
 	lua_pushstring(ctx, "updates");
 	lua_pushnumber(ctx, rtgt->transfc);
+	lua_rawset(ctx, -3);
+
+/* get the clock horizon by sweeping all vobjects that attach to the
+ * rendertarget and taking the transform with the deepest clock */
+	arcan_vobject_litem* current = rtgt->first;
+	struct transform_cs cs = {.blend = 0};
+	while (current){
+		clock_transform(current->elem, &cs);
+		current = current->next;
+	}
+
+	lua_pushstring(ctx, "time_move");
+	lua_pushnumber(ctx, cs.move);
+	lua_rawset(ctx, -3);
+
+	lua_pushstring(ctx, "time_blend");
+	lua_pushnumber(ctx, cs.blend);
+	lua_rawset(ctx, -3);
+
+	lua_pushstring(ctx, "time_scale");
+	lua_pushnumber(ctx, cs.scale);
+	lua_rawset(ctx, -3);
+
+	lua_pushstring(ctx, "time_rotate");
+	lua_pushnumber(ctx, cs.rotate);
 	lua_rawset(ctx, -3);
 
 	LUA_ETRACE("rendertarget_metrics", NULL, 1);

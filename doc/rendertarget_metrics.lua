@@ -17,6 +17,10 @@
 -- *int:dirty* - how many times the dirty counter has been incremented since last render pass.
 -- *int:transfers* - the number of external uploads since last render pass.
 -- *int:updates* - the number of ongoing transforms.
+-- *int:time_move* - the relative clock of the last move transform.
+-- *int:time_scale* - the relative clock of the last scale transform.
+-- *int:time_rotate* - the relative clock of the last rotate transform.
+-- *int:time_blend* - the relative clock of the last blend transform.
 --
 -- @group: targetcontrol
 -- @cfunction: rendertargetmetrics
