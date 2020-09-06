@@ -104,18 +104,26 @@ static void blit(struct arcan_shmif_cont* dst,
 		size_t dh = src->h;
 
 		int attempts = 0;
-		while (dh && dh && !arcan_shmif_resize(dst, dw, dh)){
+		while (dw && dh && !arcan_shmif_resize(dst, dw, dh)){
+			debug_message("resize to %zu*%zu rejected, trying %zu*%zu\n");
 			if (!attempts){
-				size_t dominiant = 0;
-
+				if (dw > dh){
+					float ratio = (float)dh / (float)dw;
+					dw = PP_SHMPAGE_MAXW;
+					dh = dw * ratio;
+					attempts++;
+				}
+				else {
+					float ratio = (float)dw / (float)dh;
+					dh = PP_SHMPAGE_MAXH;
+					dw = dh * ratio;
+					attempts++;
+				}
+				continue;
 			}
-			else {
-			}
-
-			dw, dh, dw >> 1, dh >> 1);
 			dw >>= 1;
 			dh >>= 1;
-			debug_message("resize to %zu*%zu rejected, trying %zu*%zu\n");
+			attempts++;
 		}
 	}
 /* safe: shmif_resize on <= 0 and <= 0 would fail without changing dst->w,h */
@@ -258,7 +266,8 @@ static bool update_item(struct draw_state* ds, struct img_state* i, int step)
 			debug_message("worker (%s) broken: %s\n", i->fname, i->msg);
 			if (&ds->playlist[ds->pl_ind] == i){
 /* item broken, just jump to next */
-				set_playlist_pos(ds, ++ds->pl_ind);
+				if (!set_playlist_pos(ds, ds->pl_ind + 1))
+					return false;
 			}
 		}
 	}
@@ -405,6 +414,7 @@ static bool set_playlist_pos(struct draw_state* ds, int new_i)
 			new_i = 0;
 		}
 		else{
+			debug_message("playlist out of bounds, shut down\n");
 			arcan_shmif_drop(ds->con);
 			return false;
 		}
@@ -437,6 +447,7 @@ static bool set_playlist_pos(struct draw_state* ds, int new_i)
  * priority for that one, though the effect should be minimal enough to not
  * bothering with renicing */
 	pos = (new_i + 1) % ds->pl_size;
+
 	while (pos != new_i &&
 		(ds->wnd_act + ds->wnd_pending < ds->wnd_lim || !ds->wnd_lim)){
 		debug_message("attempt to queue (%s)\n", ds->playlist[pos].fname);
