@@ -2919,16 +2919,52 @@ static int setshader(lua_State* ctx)
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, &vobj);
 	agp_shader_id oldshid = vobj->program;
 
-		if (lua_gettop(ctx) > 1){
-		agp_shader_id shid = lua_type(ctx, 2) == LUA_TSTRING ?
-			agp_shader_lookup(luaL_checkstring(ctx, 2)) : luaL_checknumber(ctx, 2);
-
-		if (ARCAN_OK != arcan_video_setprogram(id, shid))
-			arcan_warning("arcan_video_setprogram(%d, %d) -- couldn't set shader,"
-				"invalid vobj or shader id specified.\n", id, shid);
+	if (lua_gettop(ctx) == 1){
+		lua_pushnumber(ctx, oldshid);
+		LUA_ETRACE("image_shader", NULL, 1);
 	}
 
-	lua_pushnumber(ctx, oldshid);
+/* identifier can either be a number or shared name */
+	agp_shader_id shid =
+		lua_type(ctx, 2) == LUA_TSTRING ?
+			agp_shader_lookup(luaL_checkstring(ctx, 2)) :
+			luaL_checknumber(ctx, 2);
+
+	if (!agp_shader_valid(shid)){
+		lua_pushnumber(ctx, oldshid);
+		LUA_ETRACE("image_shader", "shader-id is not a valid shader", 1);
+	}
+
+	if (lua_type(ctx, 3) != LUA_TNUMBER){
+		lua_pushnumber(ctx, oldshid);
+		arcan_video_setprogram(id, shid);
+		LUA_ETRACE("image_shader", NULL, 1);
+	}
+
+/* long form, use attribute to modify rendertarget shader state */
+	int num = luaL_checkint(ctx, 3);
+	struct rendertarget* rtgt = arcan_vint_findrt(vobj);
+
+/* this is somewhat dangerous as the third argument form was added rather late
+ * and might trigger code that has previously (and erroneously) used extra
+ * arguments but better to rip the band-aid */
+	if (!rtgt)
+		arcan_fatal(
+			"image_shader(%"PRIxVOBJ") -- vid does not refer to a rendertarget\n", id);
+
+	rtgt->force_shid = false;
+	lua_pushnumber(ctx, rtgt->shid);
+
+	if (num == 1){
+		rtgt->shid = shid;
+	}
+	else if (num == 2){
+		rtgt->force_shid = true;
+		rtgt->shid = shid;
+	}
+	else{
+		LUA_ETRACE("image_shader", "invalid attribute value", 1);
+	}
 
 	LUA_ETRACE("image_shader", NULL, 1);
 }
@@ -9189,7 +9225,7 @@ static int rendertargetmetrics(lua_State* ctx)
 	struct rendertarget* rtgt = arcan_vint_findrt(vobj);
 
 	if (!rtgt)
-		arcan_fatal("rendertarget_vids()"
+		arcan_fatal("rendertarget_metrics()"
 			", specified vid does not reference a rendertarget");
 
 	lua_newtable(ctx);
@@ -12556,6 +12592,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"RENDERTARGET_ALPHA", RENDERFMT_RETAIN_ALPHA},
 {"RENDERTARGET_FULL", RENDERFMT_FULL},
 {"READBACK_MANUAL", 0},
+{"SHADER_DOMAIN_RENDERTARGET", 1},
+{"SHADER_DOMAIN_RENDERTARGET_HARD", 2},
 {"ROTATE_RELATIVE", CONST_ROTATE_RELATIVE},
 {"ROTATE_ABSOLUTE", CONST_ROTATE_ABSOLUTE},
 {"TEX_REPEAT", ARCAN_VTEX_REPEAT},
@@ -12644,6 +12682,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"MOUSE_BTNLEFT", 1},
 {"MOUSE_BTNMIDDLE", 2},
 {"MOUSE_BTNRIGHT", 3},
+{"SHADER_DOMAIN_RENDERTARGET", 1},
+{"SHADER_DOMAIN_RENDERTARGET_HARD", 2},
 /* DEPRECATE */ {"LEDCONTROLLERS", arcan_led_controllers()},
 {"KEY_CONFIG", DVT_CONFIG},
 {"KEY_TARGET", DVT_TARGET},

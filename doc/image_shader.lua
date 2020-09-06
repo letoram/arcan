@@ -1,9 +1,25 @@
 -- image_shader
 -- @short: Set the active shader for an object.
--- @inargs: vid, *shid or string*
+-- @inargs: vid:image, string:identifier
+-- @inargs: vid:image, integer:identifier
+-- @inargs: vid:image, string:identifier, integer:attributes
+-- @inargs: vid:image, integer:identifier, integer:attributes
 -- @outargs: oldshid
 -- @group: image
--- @note: if only the vid is provided, the active program won't be changed
+-- @longdescr: Processing programs can be created using the ref:build_shader
+-- call. These programs can then be assigned to an *image* through this function.
+-- if *attributes* are provided, the value is expected to be one of these constants:
+--
+-- SHADER_DOMAIN_RENDERTARGET : find a rendertarget bound to image and assign
+-- the shader as the default program for objects using this rendertarget.
+-- if *image* does not contain a rendertarget, it is a terminal state transition.
+--
+-- SHADER_DOMAIN_RENDERTARGET_HARD : same as for SHADER_DOMAIN_RENDERTARGET,
+-- except all shaders on objects attached to the rendertarget will be ignored.
+-- This is useful for a temporary suspension of all shaders, as well as for
+-- rendertargets created using ref:define_linktarget.
+-- @note: if only the vid is provided, the active program won't be changed and
+-- the function is then used to query the active program of a video object.
 -- @note: if a string argument is supplied as the second argument, the routine
 -- will first resolve it by looking for a previously compiled shader with a
 -- name that matches the argument.

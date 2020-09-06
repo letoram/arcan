@@ -27,6 +27,11 @@
 #define VITEM_CONTEXT_LIMIT 65536
 #endif
 
+enum arcan_vid_reserved {
+	ARCAN_VIDEO_WORLDID = -1,
+	ARCAN_VIDEO_BADID   = 0
+};
+
 /*
  * These define how members of a frameset are supposed to be managed
  * when rendering the parent object.
@@ -212,15 +217,6 @@ enum arcan_order3d {
  * All pseudo- dynamic code paths (callback driven) go through
  * an indirection layer specified here
  */
-#include "arcan_ffunc_lut.h"
-
-/*
- * Reversed VOBJ values, everything is forcibly linked to WORLDID
- * (which can be manipulated)
- */
-extern arcan_vobj_id ARCAN_VIDEO_WORLDID;
-extern arcan_vobj_id ARCAN_VIDEO_BADID;
-
 #include "arcan_ffunc_lut.h"
 
 /*
