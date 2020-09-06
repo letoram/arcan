@@ -17,7 +17,6 @@
 --- MASK_LIVING : (default) if set, the image will be deleted when
 -- the parent expires.
 --
---
 -- MASK_POSITION : (default) image coordinate system origo
 --
 -- MASK_OPACITY : (default) image opacity
@@ -25,6 +24,9 @@
 -- MASK_ROTATION : (default) image rotation angle
 --
 -- MASK_SCALE : (default) reserved, no-op
+--
+-- MASK_MAPPING : if set, the image will use the texture coordinate
+-- set of its (non-world) parent
 --
 -- @note: an invalid maskval is considered a terminal state transition.
 -- @related: image_mask_toggle, image_mask_clear, image_mask_clearall

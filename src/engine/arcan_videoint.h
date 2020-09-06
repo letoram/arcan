@@ -42,6 +42,12 @@ struct rendertarget {
 	_Alignas(16) float base[16];
 	_Alignas(16) float projection[16];
 
+/* default shader applied to all objects that lack an override */
+	agp_shader_id shid;
+
+/* useful for link targets, ignore whatever shader is assigned and use shid */
+	bool force_shid;
+
 /* might be set by the platform layer, check when building projections */
 	bool inv_y;
 
@@ -222,7 +228,7 @@ typedef struct arcan_vobject {
 	struct {
 		enum arcan_ffunc ffunc;
 		vfunc_state state;
-		int pcookie;
+		uint64_t pcookie;
 	} feed;
 
 /* if NULL, a default mapping will be used */
@@ -282,6 +288,13 @@ typedef struct arcan_vobject_litem arcan_vobject_litem;
 
 struct arcan_video_display {
 	bool suspended, fullscreen, conservative, in_video, no_stdout;
+
+/* Updated every time a new processing run is made, any object that might have
+ * multiple references that should only be processed once per update cycle
+ * should store and compare cookie before proceeding. The main use for this is
+ * frameserver references or backing stores that might exist in multiple
+ * rendertargets. */
+	uint64_t cookie;
 
 	int dirty;
 	size_t ignore_dirty;

@@ -57,7 +57,6 @@
 #define ARCAN_VIDEO_DEFAULT_MIPMAP_STATE false
 #endif
 
-long long ARCAN_VIDEO_WORLDID = -1;
 static surface_properties empty_surface();
 static sem_handle asynchsynch;
 
@@ -111,6 +110,7 @@ struct arcan_video_context vcontext_stack[CONTEXT_STACK_LIMIT] = {
 		}
 	}
 };
+
 unsigned vcontext_ind = 0;
 
 /*
@@ -1650,6 +1650,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	current_context->stdoutp.refreshcnt = 1;
 	current_context->stdoutp.refresh = -1;
 	current_context->stdoutp.max_order = 65536;
+	current_context->stdoutp.shid = agp_default_shader(BASIC_2D);
 	current_context->stdoutp.vppcm = current_context->stdoutp.hppcm;
 /*
  * By default, expected video output display matches canvas 1:1,
@@ -2303,6 +2304,7 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 	dst->refresh = refresh;
 	dst->refreshcnt = abs(refresh);
 	dst->art = agp_setup_rendertarget(vobj->vstore, format);
+	dst->shid = agp_default_shader(BASIC_2D);
 	dst->mode = format;
 	dst->order3d = arcan_video_display.order3d;
 	dst->vppcm = dst->hppcm = 28.346456692913385;
@@ -4386,6 +4388,7 @@ unsigned arcan_video_tick(unsigned steps, unsigned* njobs)
 
 	unsigned now = arcan_frametime();
 	uint32_t tsd = arcan_video_display.c_ticks;
+	arcan_random((void*)&arcan_video_display.cookie, 8);
 
 #ifdef SHADER_TIME_PERIOD
 	tsd = tsd % SHADER_TIME_PERIOD;
@@ -4807,24 +4810,33 @@ static inline void draw_texsurf(struct rendertarget* dst,
  * Perform an explicit poll pass of the object in question.
  * Assumes [dst] is valid.
  *
- * [cookie] is used to protect against multiple frame triggers in the
- * same cycle if the object happen to be instanced (rare but possible).
- *
- * [step] will also commit- the buffer and possible rotate frame-store
- * and so on.
+ * [step] will commit- the buffer, rotate frame-store and have the object
+ * cookie tagged with the current update
  */
-static void ffunc_process(arcan_vobject* dst, int cookie, bool step)
+static void ffunc_process(arcan_vobject* dst, bool step)
 {
-	if (!dst->feed.ffunc || dst->feed.pcookie == cookie)
+	if (!dst->feed.ffunc)
 		return;
 
-	dst->feed.pcookie = cookie;
+	int frame_status = arcan_ffunc_lookup(dst->feed.ffunc)(
+		FFUNC_POLL, 0, 0, 0, 0, 0, dst->feed.state, dst->cellid);
 
-/* if there is a new frame available, we make sure to flag it
- * dirty so that it will be rendered */
-	if (dst->feed.ffunc && arcan_ffunc_lookup(dst->feed.ffunc)(FFUNC_POLL,
-		0, 0, 0, 0, 0, dst->feed.state, dst->cellid) == FRV_GOTFRAME && step){
+	if (frame_status == FRV_GOTFRAME){
+/* there is an edge condition from the conductor where it wants to 'pump' the
+ * feeds but not induce any video buffer transfers (audio is ok) as we still
+ * have buffers in flight and can't buffer more */
+		if (!step)
+			return;
+
+/* this feed has already been updated during the current round so we can't
+ * continue without risking graphics-layer undefined behavior (mutating stores
+ * while pending asynch tasks), mark the rendertarget as dirty and move on */
 		FLAG_DIRTY(dst);
+		if (dst->feed.pcookie == arcan_video_display.cookie){
+			dst->owner->transfc++;
+			return;
+		}
+		dst->feed.pcookie = arcan_video_display.cookie;
 
 /* cycle active frame store (depending on how often we want to
  * track history frames, might not be every time) */
@@ -4837,6 +4849,8 @@ static void ffunc_process(arcan_vobject* dst, int cookie, bool step)
 			}
 		}
 
+/* this will queue the new frame upload, unlocking any external provider
+ * and so on, see frameserver.c and the different vfunc handlers there */
 		arcan_ffunc_lookup(dst->feed.ffunc)(FFUNC_RENDER,
 			dst->vstore->vinf.text.raw, dst->vstore->vinf.text.s_raw,
 			dst->vstore->w, dst->vstore->h,
@@ -4844,6 +4858,7 @@ static void ffunc_process(arcan_vobject* dst, int cookie, bool step)
 			dst->feed.state, dst->cellid
 		);
 
+/* for statistics, mark an upload */
 		dst->owner->uploadc++;
 	}
 
@@ -4858,7 +4873,7 @@ arcan_errc arcan_vint_pollfeed(arcan_vobj_id vid, bool step)
 
 /* this will always invalidate, so calling this multiple times per
  * frame is implementation defined behavior */
-	ffunc_process(vobj, vobj->feed.pcookie+1, step);
+	ffunc_process(vobj, step);
 
 	return ARCAN_OK;
 }
@@ -4872,13 +4887,13 @@ arcan_errc arcan_vint_pollfeed(arcan_vobj_id vid, bool step)
  * all cases where n*obj_size < data_cache_size} as that hit/miss is
  * really all that matters now.
  */
-static void poll_list(arcan_vobject_litem* current, int cookie)
+static void poll_list(arcan_vobject_litem* current)
 {
 	while(current && current->elem){
 		arcan_vobject* celem = current->elem;
 
 		if (celem->feed.ffunc)
-			ffunc_process(celem, cookie, true);
+			ffunc_process(celem, true);
 
 		current = current->next;
 	}
@@ -4886,27 +4901,24 @@ static void poll_list(arcan_vobject_litem* current, int cookie)
 
 void arcan_video_pollfeed()
 {
-/* vcookie is used just to make sure that we won't update the same
- * object multiple times during one frame due to the feed being
- * referenced in many different pipelines and hierarchies */
-	static int vcookie = 1;
-	vcookie++;
-
  for (off_t ind = 0; ind < current_context->n_rtargets; ind++)
 		arcan_vint_pollreadback(&current_context->rtargets[ind]);
 	arcan_vint_pollreadback(&current_context->stdoutp);
 
 	for (size_t i = 0; i < current_context->n_rtargets; i++)
-		poll_list(current_context->rtargets[i].first, vcookie);
+		poll_list(current_context->rtargets[i].first);
 
-	poll_list(current_context->stdoutp.first, vcookie);
+	poll_list(current_context->stdoutp.first);
 }
 
-static inline void populate_stencil(struct rendertarget* tgt,
-	arcan_vobject* celem, float fract)
+static inline void populate_stencil(
+	struct rendertarget* tgt, arcan_vobject* celem, float fract)
 {
 	agp_prepare_stencil();
-	agp_shader_activate(agp_default_shader(COLOR_2D));
+
+/* note that the stencil buffer setup currently forces the default shader, this
+ * might not be desired if some vertex transform is desired in the clipping */
+	agp_shader_activate(tgt->shid);
 
 	if (celem->clip == ARCAN_CLIP_SHALLOW){
 		surface_properties pprops = empty_surface();
@@ -5060,6 +5072,7 @@ struct rendertarget* arcan_vint_current_rt()
 static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 {
 	arcan_vobject_litem* current;
+
 	if (tgt->link){
 		current = tgt->link->first;
 		tgt->dirtyc += tgt->link->dirtyc;
@@ -5147,14 +5160,13 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
  * clipping, but mapping TU indices to current shader must be done before.
  * To not skip on the early-out-on-clipping and not incur additional state
  * change costs, only do it in this edge case. */
-		bool shader_sw = false;
-		agp_shader_id shid = elem->program > 0 ?
-			elem->program : agp_default_shader(BASIC_2D);
+		agp_shader_id shid = tgt->shid;
+		if (!tgt->force_shid && elem->program)
+			shid = elem->program;
+		agp_shader_activate(shid);
 
 		if (elem->frameset){
 			if (elem->frameset->mode == ARCAN_FRAMESET_MULTITEXTURE){
-				agp_shader_activate(shid);
-				shader_sw = true;
 				arcan_vint_bindmulti(elem, elem->frameset->index);
 			}
 			else{
@@ -5182,9 +5194,6 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 			clipped = true;
 			populate_stencil(tgt, elem, fract);
 		}
-
-		if (!shader_sw)
-			agp_shader_activate(shid);
 
 		if (dprops.opa < 1.0 - EPSILON || elem->blendmode == BLEND_NONE)
 			agp_blendstate(elem->blendmode);
@@ -5222,8 +5231,8 @@ end3d:
 	return pc;
 }
 
-arcan_errc arcan_video_forceread(arcan_vobj_id sid, bool local,
-	av_pixel** dptr, size_t* dsize)
+arcan_errc arcan_video_forceread(
+	arcan_vobj_id sid, bool local, av_pixel** dptr, size_t* dsize)
 {
 /*
  * more involved than one may think, the store doesn't have to be representative
@@ -5407,6 +5416,7 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 
 /* we track last interp. state in order to handle forcerefresh */
 	arcan_video_display.c_lerp = fract;
+	arcan_random((void*)&arcan_video_display.cookie, 8);
 
 /* active shaders with counter counts towards dirty */
 	arcan_video_display.dirty +=
@@ -5417,11 +5427,18 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 	if (arcan_video_display.ignore_dirty > 0)
 		arcan_video_display.ignore_dirty--;
 
-/* rendertargets may be composed on world- output, begin there */
+/* right now there is an explicit 'first come first update' kind of
+ * order except for worldid as everything else might be composed there. */
+	size_t tgt_dirty = 0;
 	for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
 		struct rendertarget* tgt = &current_context->rtargets[ind];
+
+/* apply the base dirty- flag to the rendertarget, this is for the case where
+ * platform forces everything dirty for a set number of frames */
 		tgt->dirtyc += arcan_video_display.dirty;
-		transfc += steptgt(fract, tgt);
+
+		tgt_dirty = steptgt(fract, tgt);
+		transfc += tgt_dirty;
 	}
 
 /* reset the bound rendertarget, otherwise we may be in an undefined
@@ -5430,13 +5447,17 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 	agp_activate_rendertarget(NULL);
 
 	current_context->stdoutp.dirtyc += arcan_video_display.dirty;
-	transfc += steptgt(fract, &current_context->stdoutp);
+	tgt_dirty = steptgt(fract, &current_context->stdoutp);
+	transfc += tgt_dirty;
 	*ndirty = arcan_video_display.dirty;
+
+/* transfc will give us the number of dirty transformations and possibly
+ * pending video transfers and will be used as heuristic to the conductor */
 	arcan_video_display.dirty = transfc;
 
 /* This is part of another dirty workaround when n buffers are needed
- * by the video platform for a flip to reach the display.
- */
+ * by the video platform for a flip to reach the display and we want
+ * the same contents in every buffer stage at the cost of rendering */
 	if (*ndirty && arcan_video_display.ignore_dirty == 0){
 		arcan_video_display.ignore_dirty = platform_video_decay();
 	}
