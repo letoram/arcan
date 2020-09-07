@@ -17,6 +17,7 @@ find_package(Math REQUIRED)
 find_package(RT REQUIRED)
 find_package(DL REQUIRED)
 find_package(Threads REQUIRED)
+find_package(Sanitizers REQUIRED)
 
 SET(LIBRARIES
 	Math::Math
@@ -64,6 +65,7 @@ SET(SOURCES
 add_executable(${PROJECT_NAME} ${SOURCES})
 target_link_libraries(${PROJECT_NAME} ${LIBRARIES})
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)
+add_sanitizers(${PROJECT_NAME})
 
 if (CMAKE_SYSTEM_NAME MATCHES "(FreeBSD|NetBSD|OpenBSD)")
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/aloadimage.1 DESTINATION man/man1)
