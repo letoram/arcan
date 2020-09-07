@@ -23,13 +23,13 @@
 -- The entries in *tracetbl* is n indexed of tables with the following
 -- fields:
 -- number:timestamp
--- string:system (graphics, 3d, video, audio, input, frameservers, alt)
+-- string:system (graphics, 3d, video, audio, event, frameserver, lua)
 -- string:subsystem
--- trigger:number (0 one-shot, 1:enter, 2:exit)
--- string:performance path
--- number:quantity
+-- int:trigger (0 one-shot, 1:enter, 2:exit)
+-- string:path
+-- int:quantity
 -- string:message
---
+-- int:identifier
 -- @note: All calls to this function will reset all timestamp buffers.
 -- @cfunction: togglebench
 -- @related: benchmark_data, benchmark_timestamp, benchmark_tracedata

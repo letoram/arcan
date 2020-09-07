@@ -511,9 +511,14 @@ static bool discovered(struct arcan_evctx* ctx,
 /* need to resolve a symlink if there is one as the platform_device_open
  * has a whitelist that is rather picky about which devices it will open */
 	snprintf(buffer, sizeof(buffer), "%s/%.*s", notify_scan_dir, (int)name_len, name);
+
+	TRACE_MARK_ENTER("event", "open-device", TRACE_SYS_DEFAULT, 0, 0, name);
+
 	int fd = platform_device_open(
 		readlink(buffer, outbuffer, sizeof(outbuffer)) > 0 ?
 			outbuffer : buffer, O_NONBLOCK| O_RDWR);
+
+	TRACE_MARK_EXIT("event", "open-device", TRACE_SYS_DEFAULT, 0, fd, name);
 
 	verbose_print("input: trying to add %s/%.*s",
 		notify_scan_dir, (int)name_len, name);
@@ -696,12 +701,16 @@ void platform_event_process(struct arcan_evctx* ctx)
 			}
 	}
 
+	TRACE_MARK_ENTER("event", "flush-pending-in", TRACE_SYS_DEFAULT, 0, 0, "flush-in");
+
 	if (gstate.pending)
 		process_pending(ctx);
 
 	int nr = poll(iodev.pollset, iodev.sz_nodes * 2, 0);
-	if (nr <= 0)
+	if (nr <= 0){
+		TRACE_MARK_EXIT("event", "flush-pending-in", TRACE_SYS_FAST, 0, 0, "flush-in");
 		return;
+	}
 
 	for (size_t i = 0; i < iodev.sz_nodes; i++){
 /* recall, sz_nodes is half the count, i + sz_nodes = alt-dev index */
@@ -730,6 +739,7 @@ void platform_event_process(struct arcan_evctx* ctx)
 		}
 	}
 
+	TRACE_MARK_EXIT("event", "flush-pending-in", TRACE_SYS_DEFAULT, 0, 0, "flush-in");
 }
 
 void platform_event_samplebase(int devid, float xyz[3])

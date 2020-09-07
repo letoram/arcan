@@ -885,7 +885,7 @@ static void finish_trace_buffer(lua_State* ctx)
 /* timestamp */
 		uint64_t ts;
 		memcpy(&ts, &buf[pos], sizeof(ts));
-		pos += sizeof(ts);
+		pos += 8;
 		tblnum(ctx, "timestamp", ts, top);
 
 /* system */
@@ -898,9 +898,11 @@ static void finish_trace_buffer(lua_State* ctx)
 		tbllstr(ctx, "subsystem", &buf[pos], nb, top);
 		pos += nb + 1;
 
+/* trigger */
 		uint8_t inb = luactx.trace_buffer[pos++];
 		tblnum(ctx, "trigger", inb, top);
 
+/* tracelevel */
 		inb = luactx.trace_buffer[pos++];
 		switch (inb){
 		case TRACE_SYS_DEFAULT:
@@ -920,11 +922,19 @@ static void finish_trace_buffer(lua_State* ctx)
 		break;
 		}
 
+/* identifier */
+		uint64_t ident;
+		memcpy(&ident, &buf[pos], 8);
+		pos += 8;
+		tblnum(ctx, "identifier", ident, top);
+
+/* quantifier */
 		uint32_t quant;
 		memcpy(&quant, &buf[pos], 4);
 		pos += 4;
 		tblnum(ctx, "quantity", quant, top);
 
+/* caller message */
 		nb = strlen(&buf[pos]);
 		tbllstr(ctx, "message", &buf[pos], nb, top);
 		pos += nb + 1;
@@ -4210,6 +4220,8 @@ static int targetinput(lua_State* ctx)
 		LUA_ETRACE("target_input/input_target", "dst not a frameserver", 1);
 	}
 
+	struct arcan_frameserver* fsrv = vstate->ptr;
+
 	luaL_checktype(ctx, tblind, LUA_TTABLE);
 	arcan_event ev = {.io.kind = 0, .category = EVENT_IO };
 
@@ -4327,7 +4339,9 @@ digital:
 				ev.io.devkind = EVENT_IDEVKIND_GAMEDEV;
 			ev.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			ev.io.kind = EVENT_IO_BUTTON;
-			ev.io.input.digital.active= intblbool(ctx, tblind, "active");
+			ev.io.input.digital.active = intblbool(ctx, tblind, "active");
+			TRACE_MARK_ONESHOT("scripting", "target_input",
+				TRACE_SYS_DEFAULT, fsrv->vid, ev.io.subid, "digital");
 		}
 	}
 	else {
@@ -4338,8 +4352,7 @@ kinderr:
 		return 1;
 	}
 
-	lua_pushnumber(ctx, ARCAN_OK ==
-		platform_fsrv_pushevent( (arcan_frameserver*) vstate->ptr, &ev ));
+	lua_pushnumber(ctx, ARCAN_OK == platform_fsrv_pushevent( fsrv, &ev));
 	LUA_ETRACE("target_input/input_target", NULL, 1);
 }
 
@@ -10650,21 +10663,22 @@ static int benchtracedata(lua_State* ctx)
 	const char* subsys = luaL_checkstring(ctx, 1);
 	const char* message = luaL_checkstring(ctx, 2);
 
-	int quant = luaL_optnumber(ctx, 3, 1);
+	int ident = luaL_optnumber(ctx, 3, 0);
+	int quant = luaL_optnumber(ctx, 4, 1);
 
-	int trigger = luaL_optnumber(ctx, 4, 0);
+	int trigger = luaL_optnumber(ctx, 5, 0);
 	if (trigger < 0 || trigger > 2){
 		arcan_fatal("benchmark_tracedata, "
 			"invalid trigger value (%d) >= 0 <= 2\n", trigger);
 	}
 
-	int level = luaL_optnumber(ctx, 5, TRACE_SYS_DEFAULT);
+	int level = luaL_optnumber(ctx, 6, TRACE_SYS_DEFAULT);
 	if (level < 0 || level > TRACE_SYS_ERROR){
 		arcan_fatal("benchmark_tracedata, invalid value, "
 			"expecting: TRACE_PATH_DEFAULT, SLOW, FAST, WARN or ERROR\n");
 	}
 
-	arcan_trace_mark("lua", subsys, trigger, level, quant, message);
+	arcan_trace_mark("lua", subsys, trigger, level, ident, quant, message);
 
 	LUA_ETRACE("benchmark_tracedata", NULL, 0);
 }

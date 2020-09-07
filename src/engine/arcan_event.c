@@ -183,6 +183,7 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 
 	 if (((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
 		if (ctx->drain){
+			TRACE_MARK_ONESHOT("event", "queue-drain", TRACE_SYS_SLOW, 0, 0, "drain");
 /* very rare / impossible, but safe-guard against future bad code */
 			if ((ctx->state_fl & EVSTATE_IN_DRAIN) > 0){
 				arcan_event ev = *src;
@@ -197,8 +198,10 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 				ctx->state_fl &= ~EVSTATE_IN_DRAIN;
 			}
 		}
-		else
+		else {
+			TRACE_MARK_ONESHOT("event", "queue-overflow", TRACE_SYS_WARN, 0, 0, "full");
 			return ARCAN_ERRC_OUT_OF_SPACE;
+		}
 	}
 
 	if (panic_keysym != -1 && panic_keymod != -1 &&
@@ -213,6 +216,7 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 			.sys.errcode = EXIT_SUCCESS
 		};
 
+		TRACE_MARK_ONESHOT("event", "shutdown", TRACE_SYS_WARN, 0, 0, "panic key");
 		return arcan_event_enqueue(ctx, &ev);
 	}
 

@@ -184,6 +184,9 @@ void arcan_trace_setbuffer(uint8_t* buf, size_t buf_sz, bool* finish_flag);
  * tracelevel is to indicate if the typical path is executed or some
  * deviation (slow, warning, error) is triggered.
  *
+ * identifier is some unspecified object identifier when there is a specific
+ * object within the system/subsystem
+ *
  * quant is some unspecified quantifier when there exist O(n) like relations
  * and the 'n' is dynamic between trace entries.
  *
@@ -191,6 +194,7 @@ void arcan_trace_setbuffer(uint8_t* buf, size_t buf_sz, bool* finish_flag);
 void arcan_trace_mark(
 	const char* sys, const char* subsys,
 	uint8_t trigger, uint8_t tracelevel,
+	uint64_t identifier,
 	uint32_t quant, const char* message);
 
 enum trace_level {
@@ -202,27 +206,27 @@ enum trace_level {
 };
 
 #ifndef TRACE_MARK_ENTER
-#define TRACE_MARK_ENTER(A, B, C, D, E) do { \
+#define TRACE_MARK_ENTER(A, B, C, D, E, F) do { \
 	if (arcan_trace_enabled){ \
-		arcan_trace_mark((A), (B), 1, (C), (D), (E));\
+		arcan_trace_mark((A), (B), 1, (C), (D), (E), (F));\
 	}\
-\} while (0);
+} while (0);
 #endif
 
 #ifndef TRACE_MARK_ONESHOT
-#define TRACE_MARK_ONESHOT(A, B, C, D, E) do { \
+#define TRACE_MARK_ONESHOT(A, B, C, D, E, F) do { \
 	if (arcan_trace_enabled){ \
-		arcan_trace_mark((A), (B), 0, (C), (D), (E));\
+		arcan_trace_mark((A), (B), 0, (C), (D), (E), (F));\
 	}\
-\} while (0);
+} while (0);
 #endif
 
 #ifndef TRACE_MARK_EXIT
-#define TRACE_MARK_EXIT(A, B, C, D, E) do { \
+#define TRACE_MARK_EXIT(A, B, C, D, E, F) do { \
 	if (arcan_trace_enabled){ \
-		arcan_trace_mark((A), (B), 2, (C), (D), (E));\
+		arcan_trace_mark((A), (B), 2, (C), (D), (E), (F));\
 	}\
-\} while (0);
+} while (0);
 #endif
 
 /*
