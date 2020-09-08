@@ -61,7 +61,7 @@ void arcan_trace_mark(
 
 	size_t sys_len = strlen(sys) + 1;
 	size_t subsys_len = strlen(subsys) + 1;
-	size_t msg_len = strlen(message) + 1;
+	size_t msg_len = message ? strlen(message) + 1 : 1;
 	size_t tot =
 		1 /* ok marker */   +
 		8 /* timestamp */   +
@@ -108,8 +108,13 @@ void arcan_trace_mark(
 	buffer_pos += 4;
 
 /* message */
-	memcpy(&buffer[buffer_pos], message, msg_len);
-	buffer_pos += msg_len;
+	if (message){
+		memcpy(&buffer[buffer_pos], message, msg_len);
+		buffer_pos += msg_len;
+	}
+	else {
+		buffer[buffer_pos++] = '\0';
+	}
 
 /* mark sample as completed */
 	buffer[start_ofs] = 0xff;

@@ -966,9 +966,11 @@ void arcan_lua_tick(lua_State* ctx, size_t nticks, size_t global)
  * global fields causing timed tasks to drift more than desired. Switch to
  * have one preferred 'batched' and then one where we emit each tick */
 	if (grabapplfunction(ctx, "clock_pulse_batch", 17)){
-		lua_pushnumber(ctx, global);
-		lua_pushnumber(ctx, nticks);
-		alua_call(ctx, 2, 0, LINE_TAG":clock_pulse_batch");
+		TRACE_MARK_ENTER("scripting", "clock-pulse", TRACE_SYS_DEFAULT, global, nticks, "digital");
+			lua_pushnumber(ctx, global);
+			lua_pushnumber(ctx, nticks);
+			alua_call(ctx, 2, 0, LINE_TAG":clock_pulse_batch");
+		TRACE_MARK_EXIT("scripting", "clock-pulse", TRACE_SYS_DEFAULT, global, nticks, "digital");
 		return;
 	}
 
@@ -977,9 +979,11 @@ void arcan_lua_tick(lua_State* ctx, size_t nticks, size_t global)
 		if (!grabapplfunction(ctx, "clock_pulse", 11))
 			break;
 
-		lua_pushnumber(ctx, global);
-		lua_pushnumber(ctx, 1);
-		alua_call(ctx, 2, 0, LINE_TAG":clock_pulse");
+		TRACE_MARK_ENTER("scripting", "clock-pulse", TRACE_SYS_DEFAULT, global, 0, "digital");
+			lua_pushnumber(ctx, global);
+			lua_pushnumber(ctx, 1);
+			alua_call(ctx, 2, 0, LINE_TAG":clock_pulse");
+		TRACE_MARK_EXIT("scripting", "clock-pulse", TRACE_SYS_DEFAULT, global, 0, "digital");
 	}
 
 /* trace job finished? unpack into table of tables */
@@ -10694,7 +10698,7 @@ static int togglebench(lua_State* ctx)
 
 /* callback form? allocate collection buffer and enable tracing */
 	intptr_t callback = find_lua_callback(ctx);
-	if (lua_type(ctx, 1) && callback){
+	if (lua_type(ctx, 1) == LUA_TNUMBER && callback){
 		size_t buf_sz = lua_tonumber(ctx, 1) * 1024;
 		uint8_t* interim =
 			arcan_alloc_mem(buf_sz,

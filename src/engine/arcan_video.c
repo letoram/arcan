@@ -4818,7 +4818,7 @@ static void ffunc_process(arcan_vobject* dst, bool step)
 	if (!dst->feed.ffunc)
 		return;
 
-	TRACE_MARK_ONESHOT("video", "feed-poll", TRACE_SYS_DEFAULT, dst->cellid, 0, "");
+	TRACE_MARK_ONESHOT("video", "feed-poll", TRACE_SYS_DEFAULT, dst->cellid, 0, dst->tracetag);
 	int frame_status = arcan_ffunc_lookup(dst->feed.ffunc)(
 		FFUNC_POLL, 0, 0, 0, 0, 0, dst->feed.state, dst->cellid);
 
@@ -4852,14 +4852,14 @@ static void ffunc_process(arcan_vobject* dst, bool step)
 
 /* this will queue the new frame upload, unlocking any external provider
  * and so on, see frameserver.c and the different vfunc handlers there */
-		TRACE_MARK_ENTER("video", "feed-render", TRACE_SYS_DEFAULT, dst->cellid, 0, "");
+		TRACE_MARK_ENTER("video", "feed-render", TRACE_SYS_DEFAULT, dst->cellid, 0, dst->tracetag);
 		arcan_ffunc_lookup(dst->feed.ffunc)(FFUNC_RENDER,
 			dst->vstore->vinf.text.raw, dst->vstore->vinf.text.s_raw,
 			dst->vstore->w, dst->vstore->h,
 			dst->vstore->vinf.text.glid,
 			dst->feed.state, dst->cellid
 		);
-		TRACE_MARK_EXIT("video", "feed-render", TRACE_SYS_DEFAULT, dst->cellid, 0, "");
+		TRACE_MARK_EXIT("video", "feed-render", TRACE_SYS_DEFAULT, dst->cellid, 0, dst->tracetag);
 
 /* for statistics, mark an upload */
 		dst->owner->uploadc++;
@@ -5442,10 +5442,11 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
  * platform forces everything dirty for a set number of frames */
 		tgt->dirtyc += arcan_video_display.dirty;
 
-		TRACE_MARK_ENTER("video", "process-rendertarget", TRACE_SYS_DEFAULT, ind, 0, "");
+		const char* tag = tgt->color ? tgt->color->tracetag : NULL;
+		TRACE_MARK_ENTER("video", "process-rendertarget", TRACE_SYS_DEFAULT, ind, 0, tag);
 			tgt_dirty = steptgt(fract, tgt);
 			transfc += tgt_dirty;
-		TRACE_MARK_EXIT("video", "process-rendertarget", TRACE_SYS_DEFAULT, ind, 0, "");
+		TRACE_MARK_EXIT("video", "process-rendertarget", TRACE_SYS_DEFAULT, ind, 0, tag);
 	}
 
 /* reset the bound rendertarget, otherwise we may be in an undefined
@@ -5453,11 +5454,11 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 	current_rendertarget = NULL;
 	agp_activate_rendertarget(NULL);
 
-	TRACE_MARK_ENTER("video", "process-world-rendertarget", TRACE_SYS_DEFAULT, 0, 0, "");
+	TRACE_MARK_ENTER("video", "process-world-rendertarget", TRACE_SYS_DEFAULT, 0, 0, "world");
 		current_context->stdoutp.dirtyc += arcan_video_display.dirty;
 		tgt_dirty = steptgt(fract, &current_context->stdoutp);
 		transfc += tgt_dirty;
-	TRACE_MARK_EXIT("video", "process-world-rendertarget", TRACE_SYS_DEFAULT, 0, tgt_dirty, "");
+	TRACE_MARK_EXIT("video", "process-world-rendertarget", TRACE_SYS_DEFAULT, 0, tgt_dirty, "world");
 	*ndirty = arcan_video_display.dirty;
 
 /* transfc will give us the number of dirty transformations and possibly
