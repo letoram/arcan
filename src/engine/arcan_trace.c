@@ -49,8 +49,10 @@ static bool append_string(const char* str)
 	return true;
 }
 
-void arcan_trace_mark(const char* sys, const char* subsys,
-	uint8_t trigger, uint8_t tracelevel, uint32_t quant, const char* message)
+void arcan_trace_mark(
+	const char* sys, const char* subsys,
+	uint8_t trigger, uint8_t tracelevel,
+	uint64_t ident, uint32_t quant, const char* message)
 {
 	if (!arcan_trace_enabled)
 		return;
@@ -60,8 +62,14 @@ void arcan_trace_mark(const char* sys, const char* subsys,
 	size_t sys_len = strlen(sys) + 1;
 	size_t subsys_len = strlen(subsys) + 1;
 	size_t msg_len = strlen(message) + 1;
-	size_t tot = 1 /* ok marker */ + 8 /* timestamp */ +
-		1 + 1 + 4 + sys_len + subsys_len + msg_len;
+	size_t tot =
+		1 /* ok marker */   +
+		8 /* timestamp */   +
+		1 /* trigger */     +
+		1 /* trace level */ +
+		8 /* identifier */  +
+		4 /* quantifier */  +
+		sys_len + subsys_len + msg_len;
 
 /* tight packing format, valid- mark (0xaa) then arguments in each order,
  * when we reach end, write eos mark (0xff), set finish_flag and disable
@@ -91,8 +99,12 @@ void arcan_trace_mark(const char* sys, const char* subsys,
 	memcpy(&buffer[buffer_pos], &tracelevel, 1);
 	buffer_pos += 1;
 
+/* identifier */
+	memcpy(&buffer[buffer_pos], &ident, 8);
+	buffer_pos += 8;
+
 /* quantifier */
-	memcpy(&buffer[buffer_pos], &quant, 1);
+	memcpy(&buffer[buffer_pos], &quant, 4);
 	buffer_pos += 4;
 
 /* message */

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019, Björn Ståhl
+ * Copyright 2014-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description: Platform that draws to an arcan display server using the shmif.
@@ -279,6 +279,8 @@ size_t platform_video_displays(platform_display_id* dids, size_t* lim)
 
 bool platform_video_auth(int cardn, unsigned token)
 {
+	TRACE_MARK_ONESHOT("video", "authenticate", TRACE_SYS_DEFAULT, 0, 0, "lwa");
+
 	if (cardn < MAX_DISPLAYS && disp[cardn].conn.addr){
 		disp[cardn].conn.hints |= SHMIF_RHINT_AUTH_TOK;
 		atomic_store(&disp[cardn].conn.addr->vpts, token);
@@ -314,10 +316,12 @@ void platform_video_prepare_external()
 {
 /* comes with switching in AGP, should give us card- switching
  * as well (and will be used as test case for that) */
+	TRACE_MARK_ENTER("video", "external-handover", TRACE_SYS_DEFAULT, 0, 0, "");
 }
 
 void platform_video_restore_external()
 {
+	TRACE_MARK_EXIT("video", "external-handover", TRACE_SYS_DEFAULT, 0, 0, "");
 }
 
 void* platform_video_gfxsym(const char* sym)
@@ -377,6 +381,7 @@ bool platform_video_specify_mode(platform_display_id id,
 			"id rejected resize (%d) => %zu*%zu",(int)id, mode.width, mode.height);
 	}
 
+	TRACE_MARK_ONESHOT("video", "resize-display", TRACE_SYS_DEFAULT, id, mode.width * mode.height, "");
 	arcan_shmif_unlock(&disp[id].conn);
 	primary_udata.resize_pending = 0;
 
@@ -594,8 +599,10 @@ static void synch_copy(struct display* disp, struct agp_vstore* vs)
 	struct agp_vstore store = *vs;
 	store.vinf.text.raw = disp->conn.vidp;
 
-	agp_readback_synchronous(&store);
-	arcan_shmif_signal(&disp->conn, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+	TRACE_MARK_ENTER("video", "copy-blit", TRACE_SYS_SLOW, 0, 0, "");
+		agp_readback_synchronous(&store);
+		arcan_shmif_signal(&disp->conn, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+	TRACE_MARK_EXIT("video", "copy-blit", TRACE_SYS_SLOW, 0, 0, "");
 }
 
 /*
@@ -632,6 +639,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	if (!nupd){
 /*		glFinish(); */
 		left = cost > 16 ? 0 : 16 - cost;
+		TRACE_MARK_ONESHOT("video", "synch-stall", TRACE_SYS_SLOW, 0, 0, "nothing to do");
 		verbose_print("skip frame");
 		goto pollout;
 	}
@@ -820,6 +828,8 @@ static void map_window(
 {
 	if (kind != SEGID_MEDIA)
 		return;
+
+	TRACE_MARK_ONESHOT("video", "new-display", TRACE_SYS_DEFAULT, 0, 0, "lwa");
 
 /*
  * we encode all our IDs (except clipboard) with the internal VID and
@@ -1038,6 +1048,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
  * mode
  */
 		case TARGET_COMMAND_STEPFRAME:
+			TRACE_MARK_ONESHOT("video", "signal-stepframe", TRACE_SYS_DEFAULT, d->id, 0, "");
 		break;
 
 /*
@@ -1069,6 +1080,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
  * and convert to mm to get the scaling factor, apply and update default
  */
 			if (ev.tgt.ioevs[4].fv > 0){
+				TRACE_MARK_ONESHOT("video", "switch-system-font", TRACE_SYS_DEFAULT, 0, 0, "");
 				int font_sz;
 				int hint;
 				arcan_video_fontdefaults(NULL, &font_sz, &hint);
@@ -1093,6 +1105,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 
 			if (ev.tgt.ioevs[2].fv > 0)
 				font_sz = ceilf(d->ppcm * ev.tgt.ioevs[2].fv);
+
 			arcan_video_defaultfont("arcan-default",
 				newfd, font_sz, hint, ev.tgt.ioevs[4].iv);
 
@@ -1193,6 +1206,7 @@ void platform_key_repeat(arcan_evctx* ctx, unsigned int rate)
 
 void platform_event_deinit(arcan_evctx* ctx)
 {
+	TRACE_MARK_ONESHOT("event", "event-platform-deinit", TRACE_SYS_DEFAULT, 0, 0, "lwa");
 }
 
 void platform_video_recovery()
@@ -1201,6 +1215,8 @@ void platform_video_recovery()
 		.category = EVENT_VIDEO,
 		.vid.kind = EVENT_VIDEO_DISPLAY_ADDED
 	};
+
+	TRACE_MARK_ONESHOT("video", "video-platform-recovery", TRACE_SYS_DEFAULT, 0, 0, "lwa");
 	arcan_evctx* evctx = arcan_event_defaultctx();
 	arcan_event_enqueue(evctx, &ev);
 
@@ -1214,6 +1230,7 @@ void platform_video_recovery()
 
 void platform_event_reset(arcan_evctx* ctx)
 {
+	TRACE_MARK_ONESHOT("event", "event-platform-reset", TRACE_SYS_DEFAULT, 0, 0, "lwa");
 	platform_event_deinit(ctx);
 }
 
@@ -1223,5 +1240,6 @@ void platform_device_lock(int devind, bool state)
 
 void platform_event_init(arcan_evctx* ctx)
 {
+	TRACE_MARK_ONESHOT("event", "event-platform-init", TRACE_SYS_DEFAULT, 0, 0, "lwa");
 }
 

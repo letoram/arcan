@@ -201,6 +201,8 @@ static bool push_buffer(arcan_frameserver* src,
 	int vready = atomic_load_explicit(&src->shm.ptr->vready,memory_order_consume);
 	int vmask=~atomic_load_explicit(&src->shm.ptr->vpending,memory_order_consume);
 
+	TRACE_MARK_ONESHOT("frameserver", "buffer-eval", TRACE_SYS_DEFAULT, src->vid, vready, "");
+
 	vready = (vready <= 0 || vready > src->vbuf_cnt) ? 0 : vready - 1;
 	shmif_pixel* buf = src->vbufs[vready];
 
@@ -209,6 +211,10 @@ static bool push_buffer(arcan_frameserver* src,
 	if (src->desc.width != store->w || src->desc.height != store->h ||
 		src->desc.hints != src->desc.pending_hints || src->desc.rz_flag){
 		src->desc.hints = src->desc.pending_hints;
+
+		TRACE_MARK_ONESHOT("frameserver", "buffer-resize", TRACE_SYS_DEFAULT,
+			src->vid, src->desc.width * src->desc.height, "");
+
 		arcan_event rezev = {
 			.category = EVENT_FSRV,
 			.fsrv.kind = EVENT_FSRV_RESIZED,
@@ -252,6 +258,7 @@ static bool push_buffer(arcan_frameserver* src,
  * rasterized or deferred to on-GPU rasterization / atlas lookup, so the other
  * setup isn't strictly needed. */
 	if (src->desc.hints & SHMIF_RHINT_TPACK){
+		TRACE_MARK_ENTER("frameserver", "buffer-tpack-raster", TRACE_SYS_DEFAULT, src->vid, 0, "");
 
 /* if the font-group is broken (no hints, ...), set a bitmap only one */
 		if (!src->desc.text.group)
@@ -270,6 +277,7 @@ static bool push_buffer(arcan_frameserver* src,
 		tui_raster_renderagp(raster, store,
 			(uint8_t*) buf, src->desc.width * src->desc.height * sizeof(shmif_pixel));
 
+		TRACE_MARK_EXIT("frameserver", "buffer-tpack-raster", TRACE_SYS_DEFAULT, src->vid, 0, "");
 		goto commit_mask;
 	}
 
@@ -301,6 +309,7 @@ static bool push_buffer(arcan_frameserver* src,
 			src->vstream.dead = true;
 			close(src->vstream.handle);
 			src->vstream.handle = -1;
+			TRACE_MARK_ONESHOT("frameserver", "buffer-handle", TRACE_SYS_WARN, src->vid, 0, "platform reject");
 		}
 		else
 			agp_stream_commit(store, stream);
@@ -310,6 +319,7 @@ static bool push_buffer(arcan_frameserver* src,
 
 	stream.buf = buf;
 /* validate, fallback to fullsynch if we get bad values */
+
 	if (dirty){
 		stream.x1 = dirty->x1; stream.w = dirty->x2 - dirty->x1;
 		stream.y1 = dirty->y1; stream.h = dirty->y2 - dirty->y1;
@@ -322,13 +332,20 @@ static bool push_buffer(arcan_frameserver* src,
 	else
 		src->desc.region_valid = false;
 
+/* perhaps also convert hints to message string */
+	size_t n_px = stream.w * stream.h;
+	TRACE_MARK_ENTER("frameserver", "buffer-upload", TRACE_SYS_DEFAULT, src->vid, n_px, "");
+
 	stream = agp_stream_prepare(store, stream, explicit ?
 		STREAM_RAW_DIRECT_SYNCHRONOUS : (
 			src->flags.local_copy ? STREAM_RAW_DIRECT_COPY : STREAM_RAW_DIRECT));
 
 	agp_stream_commit(store, stream);
+	TRACE_MARK_EXIT("frameserver", "buffer-upload", TRACE_SYS_DEFAULT, src->vid, n_px, "upload");
+
 commit_mask:
 	atomic_fetch_and(&src->shm.ptr->vpending, vmask);
+	TRACE_MARK_ONESHOT("frameserver", "buffer-release", TRACE_SYS_DEFAULT, src->vid, vmask, "release");
 	return true;
 }
 
@@ -553,6 +570,7 @@ int arcan_frameserver_releaselock(struct arcan_frameserver* tgt)
 	atomic_store_explicit(&tgt->shm.ptr->vready, 0, memory_order_release);
 	arcan_sem_post( tgt->vsync );
 		if (tgt->desc.hints & SHMIF_RHINT_VSIGNAL_EV){
+			TRACE_MARK_ONESHOT("frameserver", "signal", TRACE_SYS_DEFAULT, tgt->vid, 0, "");
 			platform_fsrv_pushevent(tgt, &(struct arcan_event){
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_STEPFRAME,
@@ -627,12 +645,15 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 	break;
 
 	case FFUNC_DESTROY:
+		TRACE_MARK_ONESHOT("frameserver", "free", TRACE_SYS_DEFAULT, tgt->vid, 0, "");
 		arcan_frameserver_free( tgt );
 	break;
 
 	case FFUNC_RENDER:
-		arcan_event_queuetransfer(
-			arcan_event_defaultctx(), &tgt->inqueue, tgt->queue_mask, 0.5, tgt);
+		TRACE_MARK_ENTER("frameserver", "queue-transfer", TRACE_SYS_DEFAULT, tgt->vid, 0, "");
+			arcan_event_queuetransfer(
+				arcan_event_defaultctx(), &tgt->inqueue, tgt->queue_mask, 0.5, tgt);
+		TRACE_MARK_EXIT("frameserver", "queue-transfer", TRACE_SYS_DEFAULT, tgt->vid, 0, "");
 
 		struct arcan_vobject* vobj = arcan_video_getobject(tgt->vid);
 
@@ -664,6 +685,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 		if (tgt->desc.callback_framestate)
 			emit_deliveredframe(tgt, shmpage->vpts, tgt->desc.framecount);
 		tgt->desc.framecount++;
+		TRACE_MARK_ONESHOT("frameserver", "frame", TRACE_SYS_DEFAULT, tgt->vid, tgt->desc.framecount, "");
 
 /* interactive frameserver blocks on vsemaphore only,
  * so set monitor flags and wake up */
@@ -672,6 +694,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 
 			arcan_sem_post( tgt->vsync );
 			if (tgt->desc.hints & SHMIF_RHINT_VSIGNAL_EV){
+				TRACE_MARK_ONESHOT("frameserver", "signal", TRACE_SYS_DEFAULT, tgt->vid, 0, "");
 				platform_fsrv_pushevent(tgt, &(struct arcan_event){
 					.category = EVENT_TARGET,
 					.tgt.kind = TARGET_COMMAND_STEPFRAME,

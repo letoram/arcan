@@ -140,6 +140,8 @@ static void unlock_herd()
 {
 	for (size_t i = 0; i < frameservers.count; i++)
 		if (frameservers.ref[i]){
+			TRACE_MARK_ONESHOT("conductor", "synchronization",
+				TRACE_SYS_DEFAULT, frameservers.ref[i]->vid, 0, "unlock-herd");
 			arcan_frameserver_releaselock(frameservers.ref[i]);
 		}
 }
@@ -147,6 +149,10 @@ static void unlock_herd()
 static void step_herd(int mode)
 {
 	uint64_t start = arcan_timemillis();
+
+	TRACE_MARK_ENTER("conductor", "synchronization",
+		TRACE_SYS_DEFAULT, mode, 0, "step-herd");
+
 	arcan_frameserver_lock_buffers(0);
 	arcan_video_pollfeed();
 	arcan_frameserver_lock_buffers(mode);
@@ -155,11 +161,16 @@ static void step_herd(int mode)
 	conductor.transfer_cost =
 		0.8 * (double)(stop - start) +
 		0.2 * conductor.transfer_cost;
+
+	TRACE_MARK_ENTER("conductor", "synchronization",
+		TRACE_SYS_DEFAULT, mode, conductor.transfer_cost, "step-herd");
 }
 
 static void internal_yield()
 {
 	arcan_timesleep(conductor.timestep);
+	TRACE_MARK_ONESHOT("conductor", "yield",
+		TRACE_SYS_DEFAULT, 0, conductor.timestep, "step");
 }
 
 static void alloc_frameserver_struct()
@@ -183,10 +194,12 @@ void arcan_conductor_lock_gpu(
  * be that video_synch -> lock_gpu[gpu_id, fence_fd] and a process callback
  * when there's data on the fence_fd (which might potentially call unlock)
  */
+	TRACE_MARK_ENTER("conductor", "gpu", TRACE_SYS_DEFAULT, gpu_id, 0, "");
 }
 
 void arcan_conductor_release_gpu(size_t gpu_id)
 {
+	TRACE_MARK_EXIT("conductor", "gpu", TRACE_SYS_DEFAULT, gpu_id, 0, "");
 }
 
 void arcan_conductor_register_display(size_t gpu_id,
@@ -197,11 +210,17 @@ void arcan_conductor_register_display(size_t gpu_id,
  * accordingly, later the full DAG- would also be calculated here to resolve
  * which agp- stores are involved and if they have an affinity on a locked
  * GPU or not so that we can MT GPU updates */
+	char buf[48];
+	snprintf(buf, 48, "register:%zu:%zu:%zu", gpu_id, disp_id, (size_t) obj);
+	TRACE_MARK_ONESHOT("conductor", "display", TRACE_SYS_DEFAULT, gpu_id, 0, buf);
 }
 
 void arcan_conductor_release_display(size_t gpu_id, size_t disp_id)
 {
 /* remove from set of known displays so its rate doesn't come into account */
+	char buf[24];
+	snprintf(buf, 24, "release:%zu:%zu", gpu_id, disp_id);
+	TRACE_MARK_ONESHOT("conductor", "display", TRACE_SYS_DEFAULT, gpu_id, 0, buf);
 }
 
 void arcan_conductor_register_frameserver(struct arcan_frameserver* fsrv)
@@ -212,12 +231,8 @@ void arcan_conductor_register_frameserver(struct arcan_frameserver* fsrv)
 /* safeguard */
 	ssize_t src_i = find_frameserver(fsrv);
 	if (-1 != src_i){
-#ifdef DEBUG
-		arcan_warning("%lld:%s:%d: %s\n",
-			arcan_timemillis(), "conductor", __LINE__, __func__,
-			"register on known frameserver"
-		);
-#endif
+		TRACE_MARK_ONESHOT("conductor", "frameserver",
+			TRACE_SYS_ERROR, fsrv->vid, 0, "add on known");
 		return;
 
 	}
@@ -242,8 +257,11 @@ void arcan_conductor_register_frameserver(struct arcan_frameserver* fsrv)
 		dst_i = frameservers.count;
 		frameservers.count *= 2;
 	}
+
 	frameservers.used++;
 	frameservers.ref[dst_i] = fsrv;
+	TRACE_MARK_ONESHOT("conductor", "frameserver",
+		TRACE_SYS_DEFAULT, fsrv->vid, 0, "register");
 
 /*
  * other approach is to run a monitor thread here that futexes on the flags
@@ -259,10 +277,13 @@ int arcan_conductor_yield(struct conductor_display* disps, size_t pset_count)
 {
 	arcan_audio_refresh();
 
-/* by returning false here we tell the platform to don't even wait for synch
+/* by returning false here we tell the platform to not even wait for synch
  * signal from screens but rather continue immediately */
-	if (synchopt == SYNCH_PROCESSING)
+	if (synchopt == SYNCH_PROCESSING){
+		TRACE_MARK_ONESHOT("conductor", "display",
+			TRACE_SYS_FAST, 0, frameservers.used, "synch-processing");
 		return -1;
+	}
 
 	for (size_t i=0, j=frameservers.used; i < frameservers.count && j > 0; i++){
 		if (frameservers.ref[i]){
@@ -301,6 +322,9 @@ void arcan_conductor_setsynch(const char* arg)
 
 		ind += 2;
 	}
+
+	TRACE_MARK_ONESHOT("conductor",
+		"synchronization", TRACE_SYS_DEFAULT, 0, 0, arg);
 
 /*
  * There might be small conflicts of unlock/lock behavior as the strategies
@@ -342,6 +366,9 @@ void arcan_conductor_focus(struct arcan_frameserver* fsrv)
 		frameservers.focus->flags.locked = false;
 	}
 
+	TRACE_MARK_ONESHOT("conductor", "synchronization",
+		TRACE_SYS_DEFAULT, fsrv->vid, 0, "synch-focus");
+
 /* And this is for 'set' */
 	frameservers.focus = fsrv;
 	switch(synchopt){
@@ -362,8 +389,14 @@ void arcan_conductor_deregister_frameserver(struct arcan_frameserver* fsrv)
 	frameservers.used--;
 
 	if (fsrv == frameservers.focus){
+		TRACE_MARK_ONESHOT("conductor", "frameserver",
+			TRACE_SYS_DEFAULT, fsrv->vid, 0, "lost-focus");
+
 		frameservers.focus = NULL;
 	}
+
+	TRACE_MARK_ONESHOT("conductor", "frameserver",
+		TRACE_SYS_DEFAULT, fsrv->vid, 0, "deregister");
 
 /* the real work here comes when we do multithreaded processing */
 }
@@ -385,17 +418,24 @@ static bool preframe_synch(int next, int elapsed)
 {
 	switch(synchopt){
 	case SYNCH_ADAPTIVE:{
-		if (elapsed < next - estimate_frame_cost()){
+		ssize_t margin = next - estimate_frame_cost();
+		if (elapsed > margin){
 			internal_yield();
 			return false;
 		}
+
+		TRACE_MARK_ONESHOT("conductor", "synchronization",
+			TRACE_SYS_DEFAULT, 0, elapsed - margin, "adaptive-deadline");
 		return true;
 	}
 	break;
 /* this is more complex, we behave like "ADAPTIVE" until half the deadline has passed,
  * then we release the herd and wait until the last safe moment and go with that */
 	case SYNCH_TIGHT:{
-		if (elapsed < (next >> 1) - estimate_frame_cost()){
+		ssize_t deadline = (next >> 1) - estimate_frame_cost();
+		ssize_t margin = next - estimate_frame_cost();
+
+		if (elapsed < deadline){
 			internal_yield();
 			return false;
 		}
@@ -409,6 +449,9 @@ static bool preframe_synch(int next, int elapsed)
 			internal_yield();
 			return false;
 		}
+
+		TRACE_MARK_ONESHOT("conductor", "synchronization",
+			TRACE_SYS_DEFAULT, 0, elapsed - margin, "tight-deadline");
 		return true;
 	}
 	case SYNCH_VSYNCH:
@@ -440,9 +483,11 @@ static int trigger_video_synch(float frag)
 {
 	conductor.set_deadline = -1;
 
-	arcan_lua_callvoidfun(main_lua_context, "preframe_pulse", false, NULL);
-		platform_video_synch(conductor.tick_count, frag, NULL, NULL);
-	arcan_lua_callvoidfun(main_lua_context, "postframe_pulse", false, NULL);
+	TRACE_MARK_ENTER("conductor", "platform-frame", TRACE_SYS_DEFAULT, conductor.tick_count, frag, "");
+		arcan_lua_callvoidfun(main_lua_context, "preframe_pulse", false, NULL);
+			platform_video_synch(conductor.tick_count, frag, NULL, NULL);
+		arcan_lua_callvoidfun(main_lua_context, "postframe_pulse", false, NULL);
+	TRACE_MARK_EXIT("conductor", "platform-frame", TRACE_SYS_DEFAULT, conductor.tick_count, frag, "");
 
 	arcan_bench_register_frame();
 	arcan_benchdata* stats = arcan_bench_data();
@@ -479,6 +524,8 @@ int arcan_conductor_run(arcan_tick_cb tick)
  * script kind of reset/rebuild.
  */
 		if (!agp_status_ok(NULL)){
+			TRACE_MARK_ONESHOT("conductor", "platform",
+				TRACE_SYS_ERROR, 0, 0, "accelerated graphics failed");
 			platform_video_reset(-1, false);
 		}
 
@@ -490,8 +537,15 @@ int arcan_conductor_run(arcan_tick_cb tick)
 		arcan_video_pollfeed();
 		arcan_audio_refresh();
 		last_tickcount = conductor.tick_count;
+
+		TRACE_MARK_ENTER("conductor", "event",
+			TRACE_SYS_DEFAULT, 0, last_tickcount, "process");
+
 		float frag = arcan_event_process(evctx, conductor_cycle);
 		uint64_t elapsed = arcan_timemillis() - last_synch;
+
+		TRACE_MARK_EXIT("conductor", "event",
+			TRACE_SYS_DEFAULT, 0, last_tickcount, "process");
 
 /* This fails when the event recipient has queued a SHUTDOWN event */
 		if (!arcan_event_feed(evctx, process_event, &exit_code))
@@ -528,16 +582,25 @@ void arcan_conductor_fakesynch(uint8_t left)
 {
 	int real_left = left;
 	int step;
+	TRACE_MARK_ENTER("conductor", "synchronization",
+		TRACE_SYS_SLOW, 0, left, "fake synch");
+
 	while ((step = arcan_conductor_yield(NULL, 0)) != -1 && left > step){
 		arcan_timesleep(step);
 		left -= step;
 	}
+
+	TRACE_MARK_EXIT("conductor", "synchronization",
+		TRACE_SYS_SLOW, 0, left, "fake synch");
 }
 
 void arcan_conductor_deadline(uint8_t deadline)
 {
-	if (conductor.set_deadline == -1 || deadline < conductor.set_deadline)
+	if (conductor.set_deadline == -1 || deadline < conductor.set_deadline){
 		conductor.set_deadline = arcan_timemillis() + deadline;
+		TRACE_MARK_ONESHOT("conductor", "synchronization",
+			TRACE_SYS_DEFAULT, 0, deadline, "deadline");
+	}
 }
 
 static void conductor_cycle(int nticks)
