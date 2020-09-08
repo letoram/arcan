@@ -1991,7 +1991,7 @@ static int get_gbm_fb(struct dispout* d,
 			if (!swap)
 				return 0;
 
-			TRACE_MARK_ONESHOT("video", "rendertarget-swap", TRACE_SYS_DEFAULT, col, 0, "");
+			TRACE_MARK_ONESHOT("egl-dri", "rendertarget-swap", TRACE_SYS_DEFAULT, col, 0, "");
 			bo = vobj_to_bo(d, vobj, col);
 		}
 		else
@@ -1999,7 +1999,7 @@ static int get_gbm_fb(struct dispout* d,
 	}
 
 	if (!bo){
-		TRACE_MARK_ONESHOT("video", "vobj-bo-fail", TRACE_SYS_DEFAULT, d->vid, 0, "");
+		TRACE_MARK_ONESHOT("egl-dri", "vobj-bo-fail", TRACE_SYS_DEFAULT, d->vid, 0, "");
 		return -1;
 	}
 
@@ -2015,12 +2015,12 @@ static int get_gbm_fb(struct dispout* d,
 	uint32_t offsets[n_planes];
 	uint64_t modifiers[n_planes];
 
-	TRACE_MARK_ONESHOT("video", "bo-gbm-planes", TRACE_SYS_DEFAULT, n_planes, 0, "");
+	TRACE_MARK_ONESHOT("egl-dri", "bo-gbm-planes", TRACE_SYS_DEFAULT, n_planes, 0, "");
 	if (gbm_bo_get_handle_for_plane(bo, 0).s32 == -1){
 		handles[0] = gbm_bo_get_handle(bo).u32;
 		strides[0] = gbm_bo_get_stride(bo);
 		modifiers[0] = DRM_FORMAT_MOD_INVALID;
-		TRACE_MARK_ONESHOT("video", "bo-handle", TRACE_SYS_ERROR, 0, 0, "");
+		TRACE_MARK_ONESHOT("egl-dri", "bo-handle", TRACE_SYS_ERROR, 0, 0, "");
 	}
 	else {
 		for (ssize_t i = 0; i < n_planes; i++){
@@ -2041,26 +2041,26 @@ static int get_gbm_fb(struct dispout* d,
 		if (drmModeAddFB2WithModifiers(d->device->disp_fd,
 			bo_width, bo_height, gbm_bo_get_format(bo),
 			handles, strides, offsets, modifiers, dst, 0)){
-			TRACE_MARK_ONESHOT("video", "drm-gbm-addfb2-mods", TRACE_SYS_ERROR, 0, 0, "");
+			TRACE_MARK_ONESHOT("egl-dri", "drm-gbm-addfb2-mods", TRACE_SYS_ERROR, 0, 0, "");
 			return -1;
 		}
-		TRACE_MARK_ONESHOT("video", "drm-gbm-addfb2-mods", TRACE_SYS_DEFAULT, 0, 0, "");
+		TRACE_MARK_ONESHOT("egl-dri", "drm-gbm-addfb2-mods", TRACE_SYS_DEFAULT, 0, 0, "");
 	}
 	else if (drmModeAddFB2(d->device->disp_fd, bo_width, bo_height,
 			gbm_bo_get_format(bo), handles, strides, offsets, dst, 0)){
 
 		if (drmModeAddFB(d->device->disp_fd,
 			bo_width, bo_height, 24, 32, strides[0], handles[0], dst)){
-			TRACE_MARK_ONESHOT("video", "drm-gbm-addfb", TRACE_SYS_ERROR, 0, 0, "");
+			TRACE_MARK_ONESHOT("egl-dri", "drm-gbm-addfb", TRACE_SYS_ERROR, 0, 0, "");
 			debug_print(
 				"(%d) failed to add framebuffer (%s)", (int)d->id, strerror(errno));
 			return -1;
 		}
 
-		TRACE_MARK_ONESHOT("video", "drm-gbm-addfb2", TRACE_SYS_DEFAULT, 0, 0, "");
+		TRACE_MARK_ONESHOT("egl-dri", "drm-gbm-addfb2", TRACE_SYS_DEFAULT, 0, 0, "");
 	}
 	else {
-		TRACE_MARK_ONESHOT("video", "drm-gbm-addfb", TRACE_SYS_DEFAULT, 0, 0, "");
+		TRACE_MARK_ONESHOT("egl-dri", "drm-gbm-addfb", TRACE_SYS_DEFAULT, 0, 0, "");
 	}
 
 	return 1;
@@ -2075,7 +2075,7 @@ static bool set_dumb_fb(struct dispout* d)
 	};
 	int fd = d->device->disp_fd;
 	if (drmIoctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &create) < 0){
-		TRACE_MARK_ONESHOT("video", "create-dumb", TRACE_SYS_ERROR, 0, 0, "");
+		TRACE_MARK_ONESHOT("egl-dri", "create-dumb", TRACE_SYS_ERROR, 0, 0, "");
 		debug_print("(%d) create dumb-fb (%d*%d@%d bpp) failed",
 			(int) d->id, create.width, create.height, create.bpp);
 		return false;
@@ -2083,7 +2083,7 @@ static bool set_dumb_fb(struct dispout* d)
 	if (drmModeAddFB(fd,
 		d->display.mode.hdisplay, d->display.mode.vdisplay, 24, 32,
 		create.pitch, create.handle, &d->buffer.cur_fb)){
-		TRACE_MARK_ONESHOT("video", "create-dumb-addfb", TRACE_SYS_ERROR, 0, 0, "");
+		TRACE_MARK_ONESHOT("egl-dri", "create-dumb-addfb", TRACE_SYS_ERROR, 0, 0, "");
 		debug_print("(%d) couldn't add dumb-fb", (int) d->id);
 		return false;
 	}
@@ -2093,7 +2093,7 @@ static bool set_dumb_fb(struct dispout* d)
 	if (drmIoctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &d->buffer.dumb) < 0){
 		drmModeRmFB(fd, d->buffer.cur_fb);
 		d->buffer.cur_fb = 0;
-		TRACE_MARK_ONESHOT("video", "create-dumb-fbmap", TRACE_SYS_ERROR, 0, 0, "");
+		TRACE_MARK_ONESHOT("egl-dri", "create-dumb-fbmap", TRACE_SYS_ERROR, 0, 0, "");
 		debug_print("(%d) couldn't map dumb-fb", (int) d->id);
 		return false;
 	}
@@ -2102,13 +2102,13 @@ static bool set_dumb_fb(struct dispout* d)
 		create.size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, d->buffer.dumb.offset);
 	if (MAP_FAILED == mem){
 		debug_print("(%d) couldn't mmap dumb-fb", (int) d->id);
-		TRACE_MARK_ONESHOT("video", "create-dumb-mmap", TRACE_SYS_ERROR, 0, 0, "");
+		TRACE_MARK_ONESHOT("egl-dri", "create-dumb-mmap", TRACE_SYS_ERROR, 0, 0, "");
 		drmModeRmFB(fd, d->buffer.cur_fb);
 		d->buffer.cur_fb = 0;
 		return false;
 	}
 
-	TRACE_MARK_ONESHOT("video", "create-dumb", TRACE_SYS_DEFAULT, 0, 0, "");
+	TRACE_MARK_ONESHOT("egl-dri", "create-dumb", TRACE_SYS_DEFAULT, 0, 0, "");
 	memset(mem, 0xaa, create.size);
 /* NOTE: should we munmap here? */
 	return true;
@@ -3488,7 +3488,7 @@ static void page_flip_handler(int fd, unsigned int frame,
 {
 	struct dispout* d = data;
 	d->buffer.in_flip = 0;
-	TRACE_MARK_EXIT("video", "vsynch-flip", TRACE_SYS_DEFAULT, d->id, 0, "flip");
+	TRACE_MARK_ONESHOT("egl-dri", "flip-ack", TRACE_SYS_DEFAULT, d->id, frame, "flip");
 
 	verbose_print("(%d) flip(frame: %u, @ %u.%u)", (int) d->id, frame, sec, usec);
 
@@ -4197,7 +4197,7 @@ static enum display_update_state draw_display(struct dispout* d)
 			if (!d->device->eglenv.stream_consumer_acquire_attrib(
 				d->device->display, d->buffer.stream, attr)){
 				d->device->vsynch_method = VSYNCH_CLOCK;
-				TRACE_MARK_ONESHOT("video", "eglstream-clock",
+				TRACE_MARK_ONESHOT("egl-dri", "eglstream-clock",
 					TRACE_SYS_WARN, d->id, 0, "eglstream-vsynch fail");
 				debug_print("(%d) - no acq-attr, revert to clock", (int)d->id);
 			}
@@ -4213,7 +4213,7 @@ static enum display_update_state draw_display(struct dispout* d)
 		if (dstate == UPDATE_DIRECT){
 			if ((rv = get_gbm_fb(d, dstate, NULL, &next_fb)) == -1){
 
-				TRACE_MARK_ONESHOT("video", "gbm-scanout",
+				TRACE_MARK_ONESHOT("egl-dri", "gbm-scanout",
 					TRACE_SYS_WARN, d->id, 0, "gbm-direct scanout fail, compose");
 
 				debug_print("(%d) direct-scanout buffer "
@@ -4227,7 +4227,7 @@ static enum display_update_state draw_display(struct dispout* d)
 				drop_swapchain(d);
 			}
 			else {
-				TRACE_MARK_ONESHOT("video", "gbm-scanout", TRACE_SYS_WARN, d->id, 0, "");
+				TRACE_MARK_ONESHOT("egl-dri", "gbm-scanout", TRACE_SYS_WARN, d->id, 0, "");
 			}
 		}
 
@@ -4237,12 +4237,12 @@ static enum display_update_state draw_display(struct dispout* d)
 
 			d->buffer.next_bo = gbm_surface_lock_front_buffer(d->buffer.surface);
 			if (!d->buffer.next_bo){
-				TRACE_MARK_ONESHOT("video", "gbm-buffer-lock-fail", TRACE_SYS_ERROR, d->id, 0, "");
+				TRACE_MARK_ONESHOT("egl-dri", "gbm-buffer-lock-fail", TRACE_SYS_ERROR, d->id, 0, "");
 				verbose_print("(%d) update, failed to lock front buffer", (int)d->id);
 				goto out;
 			}
 			if ((rv = get_gbm_fb(d, dstate, d->buffer.next_bo, &next_fb)) == -1){
-				TRACE_MARK_ONESHOT("video", "gbm-framebuffer-fail", TRACE_SYS_ERROR, d->id, 0, "");
+				TRACE_MARK_ONESHOT("egl-dri", "gbm-framebuffer-fail", TRACE_SYS_ERROR, d->id, 0, "");
 				debug_print("(%d) - couldn't get framebuffer handle", (int)d->id);
 				gbm_surface_release_buffer(d->buffer.surface, d->buffer.next_bo);
 				goto out;
@@ -4250,7 +4250,7 @@ static enum display_update_state draw_display(struct dispout* d)
 		}
 
 		if (rv == 0){
-			TRACE_MARK_ONESHOT("video", "gbm-buffer-release", TRACE_SYS_DEFAULT, d->id, 0, "");
+			TRACE_MARK_ONESHOT("egl-dri", "gbm-buffer-release", TRACE_SYS_DEFAULT, d->id, 0, "");
 			gbm_surface_release_buffer(d->buffer.surface, d->buffer.next_bo);
 			verbose_print("(%d) - no update for display", (int)d->id);
 			goto out;
@@ -4302,7 +4302,7 @@ static enum display_update_state draw_display(struct dispout* d)
 
 		if (!drmModePageFlip(d->device->disp_fd, d->display.crtc,
 			next_fb, DRM_MODE_PAGE_FLIP_EVENT, d)){
-			TRACE_MARK_ENTER("video", "vsync-flip", TRACE_SYS_DEFAULT, d->id, 0, "flip");
+			TRACE_MARK_ONESHOT("egl-dri", "vsynch-req", TRACE_SYS_DEFAULT, d->id, next_fb, "flip");
 			d->buffer.in_flip = 1;
 			verbose_print("(%d) in flip", (int)d->id);
 		}
@@ -4326,7 +4326,7 @@ void platform_video_prepare_external()
 
 	int rc = 10;
 	debug_print("preparing external");
-	TRACE_MARK_ENTER("video", "external-handover", TRACE_SYS_DEFAULT, 0, 0, "");
+	TRACE_MARK_ENTER("egl-dri", "external-handover", TRACE_SYS_DEFAULT, 0, 0, "");
 
 	do{
 		for(size_t i = 0; i < MAX_DISPLAYS; i++)
@@ -4358,7 +4358,7 @@ void platform_video_restore_external()
 	if (!in_external)
 		return;
 
-	TRACE_MARK_EXIT("video", "external-handover", TRACE_SYS_DEFAULT, 0, 0, "");
+	TRACE_MARK_EXIT("egl-dri", "external-handover", TRACE_SYS_DEFAULT, 0, 0, "");
 	arcan_event_maskall(arcan_event_defaultctx());
 
 /* this is a special place in malbolge, it is possible that the GPU has

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2017, Björn Ståhl
+ * Copyright 2014-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -669,24 +669,50 @@ static bool build_shunit(GLint stage, const char* prg, GLuint* dprg)
 {
 	struct agp_fenv* env = agp_env();
 
-	*dprg = env->create_shader(stage);
-	env->shader_source(*dprg, 1, &prg, NULL);
-	env->compile_shader(*dprg);
-	GLint status = 0;
-	env->get_shader_iv(*dprg, GL_COMPILE_STATUS, &status);
+	TRACE_MARK_ENTER("agp", "shader-compiler", TRACE_SYS_DEFAULT, 0, 0, prg);
+		*dprg = env->create_shader(stage);
+		env->shader_source(*dprg, 1, &prg, NULL);
+		env->compile_shader(*dprg);
+		GLint status = 0;
+		env->get_shader_iv(*dprg, GL_COMPILE_STATUS, &status);
+	TRACE_MARK_EXIT("agp", "shader-compiler", TRACE_SYS_DEFAULT, 0, 0, prg);
+
 	return status != GL_FALSE;
 }
 
-static void dump_shaderlog(const char* label, const char* stage, GLuint prg)
+/*
+ * this does not mesh well with crash dumps or system snapshots,
+ *
+ * perhaps a better way is to actually create a 'dumb' shader in the slot
+ * and provide a way to on-demand retrieve message and source then do so
+ * in the normal system_snapshot call
+ */
+static void dump_shaderlog(const char* label,
+	const char* stage, const char* src, GLuint prg)
 {
 	char buf[1024];
-	int rlen = -1;
+	char* msgbuf;
 
+	int rlen = -1;
 	agp_env()->shader_log(prg, 1024, &rlen, buf);
-	if (rlen){
-		arcan_warning("Warning: Couldn't compile shader (%s:%s)\n\t message:%s\n",
-			label, stage, buf);
+
+/* combine source and reason as the source might be preprocessed etc. from the
+ * offline store, making it difficult to match line-number and offset -
+ *
+ * while there is no standard for the contents of the compilation error,
+ * looking at mesa + nvidia and a misc fallback would probably be enough to be
+ * able to highlight the specific line and offset, but leave it to some
+ * external tool */
+	if (rlen > 0 && (msgbuf = malloc(64 * 1024))){
+		snprintf(msgbuf, 64*1024, "Stage:%s\nError:%s\n:Source:%s\n", stage, buf, src);
+		TRACE_MARK_ONESHOT("agp", "shader-compiler", TRACE_SYS_ERROR, 0, 0, buf);
+		arcan_warning(msgbuf);
+		free(msgbuf);
+		return;
 	}
+
+	TRACE_MARK_ONESHOT("agp", "shader-compiler", TRACE_SYS_ERROR, 0, 0, label);
+	arcan_warning("%s shader failed on %s stage:\n", label, stage);
 }
 
 static bool build_shader(const char* label, GLuint* dprg,
@@ -702,10 +728,10 @@ static bool build_shader(const char* label, GLuint* dprg,
 #endif
 
 	if (( failed = !build_shunit(GL_VERTEX_SHADER, vprogram, vprg)) || force)
-		dump_shaderlog(label, "vertex", *vprg);
+		dump_shaderlog(label, "vertex", vprogram, *vprg);
 
 	if (( failed |= !build_shunit(GL_FRAGMENT_SHADER, fprogram, fprg)) || force)
-		dump_shaderlog(label, "fragment", *fprg);
+		dump_shaderlog(label, "fragment", fprogram, *fprg);
 
 /*
  * driver issues make this validation step rather uncertain, another option
@@ -723,7 +749,8 @@ static bool build_shader(const char* label, GLuint* dprg,
 
 	if (GL_FALSE == lstat){
 		failed = true;
-		dump_shaderlog(label, "link", *dprg);
+		dump_shaderlog(label, "link-vertex", vprogram, *dprg);
+		dump_shaderlog(label, "link-fragment", fprogram, *dprg);
 	}
 	else {
 		env->use_program(*dprg);
@@ -765,7 +792,12 @@ void agp_shader_rebuild_all()
 		if (cur->label == NULL)
 			continue;
 
-		build_shader(cur->label, &cur->prg_container, &cur->obj_vertex,
-			&cur->obj_fragment, cur->vertex, cur->fragment);
+		build_shader(cur->label,
+			&cur->prg_container,
+			&cur->obj_vertex,
+			&cur->obj_fragment,
+			cur->vertex,
+			cur->fragment
+		);
 	}
 }

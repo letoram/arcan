@@ -915,8 +915,6 @@ error:
 		LUAAPI_VERSION_MINOR
 		);
 	}
-	else
-		arcan_warning("no crash msg?\n");
 
 	return EXIT_FAILURE;
 }

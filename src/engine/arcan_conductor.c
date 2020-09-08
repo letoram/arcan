@@ -497,6 +497,8 @@ static int trigger_video_synch(float frag)
 		0.8 * (double)stats->framecost[(uint8_t)stats->costofs] +
 		0.2 * conductor.render_cost;
 
+	TRACE_MARK_ONESHOT("conductor", "frame-over", TRACE_SYS_DEFAULT, 0, conductor.set_deadline, "");
+
 /* if the platform wants us to wait, it'll provide a new deadline at synch */
 	return conductor.set_deadline > 0 ? conductor.set_deadline : 0;
 }
