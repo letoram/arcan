@@ -355,10 +355,6 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 		else if (inev.category == EVENT_IO && tgt){
 			inev.io.subid = tgt->vid;
 		}
-		else if (inev.category == EVENT_NET && tgt){
-			inev.net.source = tgt->vid;
-		}
-
 		wake = true;
 
 		arcan_event_enqueue(dstqueue, &inev);

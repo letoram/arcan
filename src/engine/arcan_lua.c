@@ -4953,78 +4953,6 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		append_iotable(ctx, &ev->io);
 		alua_call(ctx, 1, 0, LINE_TAG":event:input");
 	}
-	else if (ev->category == EVENT_NET){
-		arcan_vobject* vobj = arcan_video_getobject(ev->net.source);
-		if (!vobj || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
-			return;
-
-		arcan_frameserver* fsrv = vobj ? vobj->feed.state.ptr : NULL;
-
-		if (fsrv && fsrv->tag){
-			intptr_t dst_cb = fsrv->tag;
-			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
-			lua_pushvid(ctx, ev->net.source);
-
-			lua_newtable(ctx);
-			int top = lua_gettop(ctx);
-
-			switch (ev->net.kind){
-			case EVENT_NET_CONNECTED:
-				tblstr(ctx, "kind", "connected", top);
-				tblnum(ctx, "id", ev->net.connid, top);
-				tblstr(ctx, "host", ev->net.host.addr, top);
-			break;
-
-			case EVENT_NET_DISCONNECTED:
-				tblstr(ctx, "kind", "disconnected", top);
-				tblnum(ctx, "id", ev->net.connid, top);
-				tblstr(ctx, "host", ev->net.host.addr, top);
-			break;
-
-			case EVENT_NET_NORESPONSE:
-				tblstr(ctx, "kind", "noresponse", top);
-				tblstr(ctx, "host", ev->net.host.addr, top);
-			break;
-
-			case EVENT_NET_CUSTOMMSG:
-				tblstr(ctx, "kind", "message", top);
-				ev->net.message[ sizeof(ev->net.message) - 1] = 0;
-				tblstr(ctx, "message", ev->net.message, top);
-				tblnum(ctx, "id", ev->net.connid, top);
-			break;
-
-			case EVENT_NET_DISCOVERED:
-				tblstr(ctx, "kind", "discovered", top);
-				tblstr(ctx, "address", ev->net.host.addr, top);
-				tblstr(ctx, "ident", ev->net.host.ident, top);
-				size_t outl;
-				uint8_t* strkey = arcan_base64_encode(
-					(const uint8_t*) ev->net.host.key,
-					COUNT_OF(ev->net.host.key),
-					&outl, ARCAN_MEM_SENSITIVE | ARCAN_MEM_NONFATAL
-				);
-				if (strkey){
-					tblstr(ctx, "key", (const char*) strkey, top);
-					free(strkey);
-				}
-			break;
-
-			case EVENT_NET_INPUTEVENT:
-				arcan_warning("pushevent(net_inputevent_not_handled )\n");
-			break;
-
-			default:
-				arcan_warning("pushevent( net_unknown %d )\n", ev->net.kind);
-			}
-
-			luactx.cb_source_tag  = ev->ext.source;
-			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
-			alua_call(ctx, 2, 0, LINE_TAG":event:net");
-
-			luactx.cb_source_kind = CB_SOURCE_NONE;
-		}
-
-	}
 	else if (ev->category == EVENT_EXTERNAL){
 		bool preroll = false;
 /* need to jump through a few hoops to get hold of the possible callback */
@@ -11702,11 +11630,35 @@ static int net_listen(lua_State* ctx)
 	LUA_TRACE("net_listen");
 
 	intptr_t ref = find_lua_callback(ctx);
+	if (ref == LUA_NOREF)
+		arcan_fatal("net_listen() no handler provided\n");
 
+	const char* name = luaL_checkstring(ctx, 1);
+	const char* interface = luaL_optstring(ctx, 2, "");
+	size_t port = luaL_optnumber(ctx, 3, 0);
+	size_t namelen = strlen(name);
+
+/* same rules as for target_alloc - while the named connection point won't
+ * exist in that namespace, it will indirectly through the keystore where the
+ * link between the two need to work */
+	if (0 == namelen || namelen > 30)
+		arcan_fatal("net_listen(), invalid listening name (%s), "
+			"length (%zu) should be , 0 < n < 31\n", namelen);
+
+	for (const char* key = name; *key; key++)
+		if (!isalnum(*key) && *name != '_' && *key != '-')
+			arcan_fatal("net_listen(%s), invalid listening name (%s), "
+				" _-a-Z0-9 are permitted in names.\n", key);
+
+	char buf[256];
+	snprintf(buf, 256, "name=%s:port=%zu:host=%s", name, port, interface);
+
+/* the resource string won't be aliased but rather copied before exiting
+ * launch_fsrv so we will not leave a dangling stack reference behind */
 	struct frameserver_envp args = {
 		.use_builtin = true,
 		.args.builtin.mode = "net-srv",
-		.args.builtin.resource = "mode=server"
+		.args.builtin.resource = buf
 	};
 	lua_launch_fsrv(ctx, &args, ref);
 
@@ -11811,206 +11763,6 @@ static arcan_frameserver* luaL_checknet(lua_State* ctx,
 
 	*dvobj = vobj;
 	return fsrv;
-}
-
-static int net_pushcl(lua_State* ctx)
-{
-	LUA_TRACE("net_push");
-	arcan_vobject* vobj;
-	arcan_frameserver* fsrv = luaL_checknet(ctx, false, &vobj, "net_push");
-
-/* arg2 can be (string) => NETMSG, (event) => just push */
-	arcan_event outev = {.category = EVENT_NET};
-
-	int t = lua_type(ctx, 2);
-	arcan_vobject* dvobj, (* srcvobj);
-	luaL_checkvid(ctx, 1, &srcvobj);
-
-	switch(t){
-	case LUA_TSTRING:
-		outev.net.kind = EVENT_NET_CUSTOMMSG;
-
-		const char* msg = luaL_checkstring(ctx, 2);
-		size_t out_sz = COUNT_OF(outev.net.message);
-		snprintf(outev.net.message, out_sz, "%s", msg);
-	break;
-
-	case LUA_TNUMBER:
-		luaL_checkvid(ctx, 2, &dvobj);
-		uintptr_t ref = 0;
-
-		if (lua_isfunction(ctx, 3) && !lua_iscfunction(ctx, 3)){
-			lua_pushvalue(ctx, 3);
-			ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
-		}
-		else
-			arcan_fatal("net_pushcl(), missing callback\n");
-
-		if (dvobj->feed.state.tag == ARCAN_TAG_FRAMESERV){
-			arcan_fatal("net_pushcl(), pushing a frameserver needs "
-				"separate support use bond_target, define_recordtarget "
-				"with the network connection as destination");
-		}
-
-		if (!dvobj->vstore->txmapped)
-			arcan_fatal("net_pushcl() with an image as source only works for "
-				"texture mapped objects.");
-
-		arcan_frameserver* srv = spawn_subsegment(
-				srcvobj->feed.state.ptr,
-				false, 0, 0, dvobj->vstore->w, dvobj->vstore->h
-		);
-
-		if (!srv){
-			arcan_warning("net_pushcl(), allocating subsegment failed\n");
-			LUA_ETRACE("net_push", "subsegment allocation failed", 0);
-		}
-
-/* disable "regular" frameserver behavior */
-		vfunc_state cstate = *arcan_video_feedstate(srv->vid);
-		arcan_video_alterfeed(srv->vid, FFUNC_NULLFRAME, cstate);
-
-/* we can't delete the frameserver immediately as the child might
- * not have mapped the memory yet, so we defer and use a callback */
-		memcpy(srv->vbufs[0], dvobj->vstore->vinf.text.raw,
-			dvobj->vstore->vinf.text.s_raw);
-
-		srv->shm.ptr->vready = true;
-		arcan_sem_post(srv->vsync);
-
-		outev.tgt.kind = TARGET_COMMAND_STEPFRAME;
-		platform_fsrv_pushevent(srv, &outev);
-		lua_pushvid(ctx, srv->vid);
-		trace_allocation(ctx, "net_sub", srv->vid);
-		srv->tag = ref;
-
-/* copy state into dvobj, then send event
- * that we're ready for a push
- */
-	break;
-
-	default:
-		arcan_fatal("net_pushcl() -- unexpected data to push, accepted "
-			"(string, VID, evtable)\n");
-	break;
-	}
-
-/* for *NUX, setup a pipe() pair, push the output end to the client,
- * push the input end to the server, emit FDtransfer messages, flagging that
- * it is going to be used for state-transfer. The last bit is important to be
- * able to support both sending and receiving states, with compression and
- * deltaframes in load/store operations. this also requires that the
- * capabilities of the target actually allows for save-states,
- * by default, they don't. */
-	platform_fsrv_pushevent(fsrv, &outev);
-
-	LUA_ETRACE("net_push", NULL, 0);
-}
-
-/* similar to push to client, with the added distinction of broadcast / target,
- * and thus a more complicated pushFD etc. behavior */
-static int net_pushsrv(lua_State* ctx)
-{
-	LUA_TRACE("net_push_srv");
-
-	arcan_vobject* vobj;
-	luaL_checkvid(ctx, 1, &vobj);
-	int domain = luaL_optnumber(ctx, 3, 0);
-
-/* arg2 can be (string) => NETMSG, (event) => just push */
-	arcan_event outev = {.category = EVENT_NET, .net.connid = domain};
-	arcan_frameserver* fsrv = vobj->feed.state.ptr;
-
-	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !fsrv)
-		arcan_fatal("net_pushsrv() -- bad arg1, VID "
-			"is not a frameserver.\n");
-
-	if (fsrv->parent.vid != ARCAN_EID)
-		arcan_fatal("net_pushsrv() -- cannot push VID to a subsegment.\n");
-
-	if (!(fsrv->segid == SEGID_NETWORK_CLIENT))
-		arcan_fatal("net_pushsrv() -- bad arg1, specified frameserver"
-			" is not in client mode (net_open).\n");
-
-/* we clean this as to not expose stack trash */
-	size_t out_sz = COUNT_OF(outev.net.message);
-
-	if (lua_isstring(ctx, 2)){
-		outev.net.kind = EVENT_NET_CUSTOMMSG;
-
-		const char* msg = luaL_checkstring(ctx, 2);
-		snprintf(outev.net.message, out_sz, "%s", msg);
-		platform_fsrv_pushevent(fsrv, &outev);
-	}
-	else
-		arcan_fatal("net_pushsrv() -- "
-			"unexpected data to push, accepted (string)\n");
-
-	LUA_ETRACE("net_push_srv", NULL, 0);
-}
-
-static int net_accept(lua_State* ctx)
-{
-	LUA_TRACE("net_accept");
-
-	arcan_vobject* dvobj;
-	arcan_frameserver* fsrv = luaL_checknet(
-		ctx, true, &dvobj, "net_accept(vid, connid)");
-
-	int domain = luaL_checkint(ctx, 2);
-
-	if (domain == 0)
-		arcan_fatal("net_accept(vid, connid) -- NET_BROADCAST is not "
-			"allowed for accept call\n");
-
-	arcan_event outev = {.category = EVENT_NET, .net.connid = domain};
-	platform_fsrv_pushevent(fsrv, &outev);
-
-	LUA_ETRACE("net_accept", NULL, 0);
-}
-
-static int net_disconnect(lua_State* ctx)
-{
-	LUA_TRACE("net_disconnect");
-
-	arcan_vobject* dvobj;
-	arcan_frameserver* fsrv = luaL_checknet(
-		ctx, true, &dvobj, "net_disconnect(vid, connid)");
-
-	int domain = luaL_checkint(ctx, 2);
-
-	arcan_event outev = {
-		.category = EVENT_NET,
-		.net.kind = EVENT_NET_DISCONNECT,
-		.net.connid = domain
-	};
-
-	platform_fsrv_pushevent(fsrv, &outev);
-
-	LUA_ETRACE("net_disconnect", NULL, 0);
-}
-
-static int net_authenticate(lua_State* ctx)
-{
-	LUA_TRACE("net_authenticate");
-
-	arcan_vobject* dvobj;
-	arcan_frameserver* fsrv = luaL_checknet(
-		ctx, true, &dvobj, "net_authenticate(vid, connid)");
-
-	int domain = luaL_checkint(ctx, 2);
-	if (domain == 0)
-		arcan_fatal("net_authenticate(vid, connid) -- "
-			"NET_BROADCAST is not allowed for accept call\n");
-
-	arcan_event outev = {
-		.category = EVENT_NET,
-		.net.kind = EVENT_NET_AUTHENTICATE,
-		.net.connid = domain
-	};
-	platform_fsrv_pushevent(fsrv, &outev);
-
-	LUA_ETRACE("net_authenticate", NULL, 0);
 }
 
 void arcan_lua_cleanup()
@@ -12481,13 +12233,8 @@ static const luaL_Reg vidsysfuns[] = {
 #define EXT_MAPTBL_NETWORK
 static const luaL_Reg netfuns[] = {
 {"net_open",         net_open        },
-{"net_push",         net_pushcl      },
-{"net_listen",       net_listen      },
-{"net_push_srv",     net_pushsrv     },
-{"net_disconnect",   net_disconnect  },
 {"net_discover",     net_discover    },
-{"net_authenticate", net_authenticate},
-{"net_accept",       net_accept      },
+{"net_listen",       net_listen      },
 {NULL, NULL},
 };
 #undef EXT_MAPTBL_NETWORK
