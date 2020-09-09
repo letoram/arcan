@@ -64,7 +64,7 @@ For the server side, authenticated public keys are retrieved from:
 
 These can be populated by allowing a one-time auth session:
 
-    echo 'temporarypassword' | arcan-net -a 1 -l 6666
+    cat 'my_preshared_password' | arcan-net -a 1 -l 6666
 
 Which would accept the next public key that authenticate with
 'temporarypassword' and write into the keystore.
@@ -119,18 +119,18 @@ Milestone 1 - basic features (0.5.x)
 	-  [x] x264 (p)
 	-  [x] D-PNG (d- frames is Zlib(X ^ Y) (p)
 - [x] Raw binary descriptor transfers (p)
-- [ ] Interactive compression controls (a)
 - [x] Subsegments (p)
 - [x] Basic authentication / DH / Cipher (blake2+chacha8+x25519) (ap)
 - [x] One-time password for key-auth (p)
 - [x] TUI- text channel (p)
 - [ ] Cache process / directory for file operations (a)
 - [x] ARCAN\_CONNPATH=a12:// handover support (ax)
-- [ ] Block push-segment types (DEBUG) (a)
 - [x] Add to encode, remoting (x)
 
 Milestone 2 - closer to useful (0.6.x)
 
+- [ ] Interactive compression controls (a)
+- [ ] Block push-segment types (DEBUG) (a)
 - [ ] Event key-code translation (evdev, sdl, ... to native) (a)
 - [ ] Complete local key-store management (a)
 - [ ] Basic privsep/sandboxing (a)

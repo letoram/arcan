@@ -54,7 +54,6 @@ enum ARCAN_EVENT_CATEGORY {
 	EVENT_TARGET   = 16,
 	EVENT_FSRV     = 32,
 	EVENT_EXTERNAL = 64,
-	EVENT_NET      = 128,
 
 /* This is found in every enum that is explicitly used as that enum
  * as member-of-struct (which debuggers etc. need) rather than the explicit
@@ -884,40 +883,6 @@ enum ARCAN_TARGET_SKIPMODE {
 	};
 
 	/*
-	 * Used by networking frameserver only, the enable mask is bound
-	 * to that archetype and cannot be initiated by a non-auth connection
-	 */
-	enum ARCAN_EVENT_NET {
-	/* -- events from frameserver -- */
-	/* connection was forcibly broken / terminated */
-		EVENT_NET_BROKEN,
-
-	/* new client connected, assumed non-authenticated
-	 * (state transfers etc. prohibited) */
-		EVENT_NET_CONNECTED,
-
-	/* established client disconnected */
-		EVENT_NET_DISCONNECTED,
-
-	/* used when initiating a connection that timed out */
-		EVENT_NET_NORESPONSE,
-
-	/* used for frameserver launched in discover mode (query external
-	 * list server or using local broadcast) */
-		EVENT_NET_DISCOVERED,
-
-	/* -- events to frameserver -- */
-		EVENT_NET_CONNECT,
-		EVENT_NET_DISCONNECT,
-		EVENT_NET_AUTHENTICATE,
-	/* events to/from frameserver */
-		EVENT_NET_CUSTOMMSG,
-		EVENT_NET_INPUTEVENT,
-		EVENT_NET_STATEREQ,
-		EVENT_NET_ULIM = INT_MAX
-	};
-
-	/*
 	 * The following enumerations and subtypes are slated for removal here as they
 	 * only refer to engine- internal events. Currently, the structures and types
 	 * are re-used with an explicit filter-copy step (frameserver_queuetransfer).
@@ -1187,33 +1152,6 @@ enum ARCAN_TARGET_SKIPMODE {
 			char message[64];
 		};
 	} arcan_sevent;
-
-	/*
-	 * Biggest substructure, primarily due to discovery which needs
-	 * to cover both destination address, public key to use and ident-hint.
-	 */
-	typedef struct arcan_netevent{
-		enum ARCAN_EVENT_NET kind;
-	/* tagged in queuetransfer */
-		uint64_t source;
-
-		union {
-			struct {
-	/* public 25519 key, will be mapped to/from base64 at borders,
-	 * private key is only ever transmitted during setup as env-arg */
-				char key[32];
-	/* text indicator of a subservice in ident packages */
-				char ident[8];
-	/* max ipv6 textual representation, 39 + strsep + port */
-				char addr[45];
-			} host;
-
-	/* match size of host as we'd pad otherwise */
-			char message[93];
-		};
-
-		uint8_t connid;
-	} arcan_netevent;
 
 	typedef struct arcan_tgtevent {
 		enum ARCAN_TARGET_COMMAND kind;
@@ -1581,7 +1519,6 @@ typedef struct arcan_event {
 		arcan_tgtevent tgt;
 		arcan_fsrvevent fsrv;
 		arcan_extevent ext;
-		arcan_netevent net;
 		uint8_t min_sz[128];
 	};
 } arcan_event;
