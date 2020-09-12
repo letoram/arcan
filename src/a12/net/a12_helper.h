@@ -36,9 +36,11 @@ struct a12helper_opts {
 };
 
 /*
- * directory provider type
+ * keystore provider types and constraints
  */
 enum a12helper_providers {
+/* naive single-file per key approach, does not handle concurrent write access
+ * outside basic posix file locking semantics */
 	A12HELPER_PROVIDER_BASEDIR = 0
 };
 
@@ -80,7 +82,7 @@ bool a12helper_keystore_register(
  * check if the public key is known and accepted for the supplied
  * connection point (can be null for any connection point)
  */
-bool a12helper_keystore_accepted(const char* pubk, const char* connp);
+bool a12helper_keystore_accepted(const uint8_t pubk[static 32], const char* connp);
 
 /*
  * add the supplied public key to the accepted keystore.
