@@ -9103,30 +9103,36 @@ static int rendertargetforce(lua_State* ctx)
 
 	arcan_vobject* vobj;
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1, &vobj);
+	bool norm = luaL_optbnumber(ctx, 2, true) != 0;
+
 	struct rendertarget* rtgt = arcan_vint_findrt(vobj);
 	if (!rtgt)
 		arcan_fatal("rendertarget_forceupdate(), specified vid "
 			"does not reference a rendertarget");
 
+/* the second form is used to change the update (and readback) rate */
 	if (lua_isnumber(ctx, 2)){
 		rtgt->refresh = luaL_checknumber(ctx, 2);
 		rtgt->refreshcnt = abs(rtgt->refresh);
-		if (vid == ARCAN_VIDEO_WORLDID){
-/* drop the vstore */
-			if (rtgt->refresh == 0){
-			}
-/* rebuild the vstore? */
-			else {
-			}
-		}
 
 		if (lua_isnumber(ctx, 3)){
 			rtgt->readback = luaL_checknumber(ctx, 3);
 			rtgt->readcnt = abs(rtgt->readback);
 		}
 	}
-	else if (ARCAN_OK != arcan_video_forceupdate(vid))
-		arcan_fatal("rendertarget_forceupdate() failed on vid");
+/* there are special considerations here if the rendertarget is mapped, as that
+ * means its 'dirty' state would be erased when the time comes for the display
+ * to be updated - this is delegated to the video-platform implementation and
+ * doesn't need to be covered here */
+	else {
+		bool forcedirty = true;
+		if (lua_isboolean(ctx, 2)){
+			forcedirty = lua_toboolean(ctx, 2);
+		}
+
+		if (ARCAN_OK != arcan_video_forceupdate(vid, forcedirty))
+			arcan_fatal("rendertarget_forceupdate() failed on vid");
+	}
 
 	LUA_ETRACE("rendertarget_forceupdate", NULL, 0);
 }

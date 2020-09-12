@@ -1033,7 +1033,7 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
 	agp_rendertarget_clearcolor(
 		arcan_vint_findrt(arcan_video_getobject(dst))->art, 0.0, 0.0, 0.0, 0.0);
 	arcan_video_objectopacity(xfer, 1.0, 0);
-	arcan_video_forceupdate(dst);
+	arcan_video_forceupdate(dst, true);
 
 /* in the call mode where caller specifies destination storage, we don't
  * share / override (or update the dimensions of the storage) */
@@ -1696,7 +1696,7 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 	current_context->world.origh = newh;
 
 	FLAG_DIRTY(NULL);
-	arcan_video_forceupdate(ARCAN_VIDEO_WORLDID);
+	arcan_video_forceupdate(ARCAN_VIDEO_WORLDID, true);
 
 	return ARCAN_OK;
 }
@@ -5089,6 +5089,7 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 		return 0;
 
 	tgt->uploadc = 0;
+	tgt->frame_cookie = arcan_video_display.cookie;
 
 	current_rendertarget = tgt;
 	agp_activate_rendertarget(tgt->art);
@@ -5290,7 +5291,7 @@ struct agp_vstore* arcan_vint_world()
 	return current_context->stdoutp.color->vstore;
 }
 
-arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
+arcan_errc arcan_video_forceupdate(arcan_vobj_id vid, bool forcedirty)
 {
 	arcan_vobject* vobj = arcan_video_getobject(vid);
 	if (!vobj)
@@ -5300,12 +5301,15 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 	if (!tgt)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	FLAG_DIRTY(vobj);
-
-/* full pass regardless of there being any updates or not */
 	size_t id = arcan_video_display.ignore_dirty;
-	arcan_video_display.ignore_dirty = 1;
+	if (forcedirty){
+		FLAG_DIRTY(vobj);
+/* full pass regardless of there being any updates or not */
+		arcan_video_display.ignore_dirty = 1;
+	}
+
 	process_rendertarget(tgt, arcan_video_display.c_lerp);
+
 	arcan_video_display.ignore_dirty = id;
 	current_rendertarget = NULL;
 	agp_activate_rendertarget(NULL);
@@ -5892,7 +5896,7 @@ static void invalidate_rendertargets()
 		struct rendertarget* tgt = &current_context->rtargets[i];
 		if (!tgt->color)
 			continue;
-		arcan_video_forceupdate(tgt->color->cellid);
+		arcan_video_forceupdate(tgt->color->cellid, true);
 	}
 }
 

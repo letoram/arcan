@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2018, Björn Ståhl
+ * Copyright 2003-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -674,8 +674,12 @@ arcan_errc arcan_video_rendertargetid(arcan_vobj_id did, int* inid, int* outid);
 /*
  * Immediately process and update the contents of the rendertarget specified
  * by [vid]. Will return ARCAN_OK if [vid] points to a rendertarget.
+ *
+ * Setting ignoredirty to true will mark the rendertarget object as dirty
+ * regardless. This is mainly used if the rendertarget is connected to an
+ * external source that needs a new frame produced regardless of other states.
  */
-arcan_errc arcan_video_forceupdate(arcan_vobj_id vid);
+arcan_errc arcan_video_forceupdate(arcan_vobj_id vid, bool ignoredirty);
 
 /*
  * Attach [src] to the rendertarget indicated by [did]. If [detach] is set, the

@@ -220,6 +220,7 @@ struct dispout {
 	struct dev_node* device;
 	unsigned long long last_update;
 	int output_format;
+	uint64_t frame_cookie;
 
 /* the output buffers, actual fields use will vary with underlying
  * method, i.e. different for normal gbm, headless gbm and eglstreams */
@@ -3513,6 +3514,27 @@ static void page_flip_handler(int fd, unsigned int frame,
 	arcan_conductor_deadline(deadline);
 }
 
+static bool dirty_displays()
+{
+	struct dispout* d;
+	int i = 0;
+
+	while((d = get_display(i++))){
+		arcan_vobject* vobj = arcan_video_getobject(d->vid);
+		if (!vobj)
+			continue;
+
+		struct rendertarget* tgt = arcan_vint_findrt(vobj);
+		if (!tgt)
+			continue;
+
+		if (d->frame_cookie != tgt->frame_cookie)
+			return true;
+	}
+
+	return false;
+}
+
 static bool get_pending(bool primary_only)
 {
 	int i = 0;
@@ -3723,7 +3745,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * If we have a real update, the display timing will request a deadline based
  * on whatever display that was updated so we can go with that
  */
-	if (nd > 0){
+	if (nd > 0 || dirty_displays()){
 		while ( (d = get_display(i++)) ){
 			if (d->state == DISP_MAPPED && d->buffer.in_flip == 0){
 				updated |= update_display(d);
@@ -3953,10 +3975,12 @@ bool platform_video_map_display(
 				arcan_video_display.mirror_txcos :
 				arcan_video_display.default_txcos), sizeof(float) * 8
 		);
+
 	debug_print("map_display(%d->%d) ok @%zu*%zu+%zu,%zu, txcos: %d, hint: %d",
 		(int) id, (int) disp, (size_t) d->dispw, (size_t) d->disph,
 		(size_t) d->dispx, (size_t) d->dispy, (int) hint);
 
+	d->frame_cookie = 0;
 	d->display.primary = hint & HINT_FL_PRIMARY;
 	memcpy(d->txcos, txcos, sizeof(float) * 8);
 
@@ -4103,32 +4127,34 @@ static enum display_update_state draw_display(struct dispout* d)
  *     destination to the direct display instead of rendertarget, flag
  *     the display as already drawn.
  */
-		struct rendertarget* newtgt = arcan_vint_findrt(vobj);
-		if (newtgt){
-			size_t nd = agp_rendertarget_dirty(newtgt->art, NULL);
-			verbose_print("(%d) draw display, dirty regions: %zu", nd);
-			if (nd){
-				agp_rendertarget_dirty_reset(newtgt->art, NULL);
-			}
-			else{
-				verbose_print("(%d) no dirty, skip");
-				return UPDATE_SKIP;
-			}
+	struct rendertarget* newtgt = arcan_vint_findrt(vobj);
+	if (newtgt){
+		size_t nd = agp_rendertarget_dirty(newtgt->art, NULL);
+		verbose_print("(%d) draw display, dirty regions: %zu", nd);
+		if (nd || newtgt->frame_cookie != d->frame_cookie){
+			agp_rendertarget_dirty_reset(newtgt->art, NULL);
+		}
+		else{
+			verbose_print("(%d) no dirty, skip");
+			return UPDATE_SKIP;
 		}
 
-		if (d->skip_blit){
-			verbose_print("(%d) skip draw, already composed", (int)d->id);
-			d->skip_blit = false;
-		}
-		else {
-			agp_shader_activate(shid);
-			agp_shader_envv(PROJECTION_MATR, d->projection, sizeof(float)*16);
-			agp_rendertarget_clear();
-			agp_blendstate(BLEND_NONE);
-			agp_draw_vobj(0, 0, d->dispw, d->disph, d->txcos, NULL);
-			verbose_print("(%d) draw, shader: %d, %zu*%zu",
-				(int)d->id, (int)shid, (size_t)d->dispw, (size_t)d->disph);
-		}
+		newtgt->frame_cookie = d->frame_cookie;
+	}
+
+	if (d->skip_blit){
+		verbose_print("(%d) skip draw, already composed", (int)d->id);
+		d->skip_blit = false;
+	}
+	else {
+		agp_shader_activate(shid);
+		agp_shader_envv(PROJECTION_MATR, d->projection, sizeof(float)*16);
+		agp_rendertarget_clear();
+		agp_blendstate(BLEND_NONE);
+		agp_draw_vobj(0, 0, d->dispw, d->disph, d->txcos, NULL);
+		verbose_print("(%d) draw, shader: %d, %zu*%zu",
+			(int)d->id, (int)shid, (size_t)d->dispw, (size_t)d->disph);
+	}
 	/*
 	 * another rough corner case, if we have a store that is not world ID but
 	 * shared with different texture coordinates (to extend display), we need to
@@ -4137,31 +4163,31 @@ static enum display_update_state draw_display(struct dispout* d)
 	 * Seems more and more that accelerated cursors add to more state explosion
 	 * than they are worth ..
 	 */
-		if (vobj->vstore == arcan_vint_world()){
-			arcan_vint_drawcursor(false);
-		}
-
-		agp_deactivate_vstore();
-
-	out:
-		if (swap_display){
-			verbose_print("(%d) pre-swap", (int)d->id);
-				d->device->eglenv.swap_buffers(d->device->display, d->buffer.esurf);
-			verbose_print("(%d) swapped", (int)d->id);
-			return UPDATE_FLIP;
-		}
-
-		verbose_print("(%d) direct- path selected");
-		return UPDATE_DIRECT;
+	if (vobj->vstore == arcan_vint_world()){
+		arcan_vint_drawcursor(false);
 	}
 
-	static bool update_display(struct dispout* d)
-	{
-		if (d->display.dpms != ADPMS_ON)
-			return false;
+	agp_deactivate_vstore();
+
+out:
+	if (swap_display){
+		verbose_print("(%d) pre-swap", (int)d->id);
+			d->device->eglenv.swap_buffers(d->device->display, d->buffer.esurf);
+		verbose_print("(%d) swapped", (int)d->id);
+		return UPDATE_FLIP;
+	}
+
+	verbose_print("(%d) direct- path selected");
+	return UPDATE_DIRECT;
+}
+
+static bool update_display(struct dispout* d)
+{
+	if (d->display.dpms != ADPMS_ON)
+		return false;
 
 	/* we want to know how multiple- displays drift against eachother */
-		d->last_update = arcan_timemillis();
+	d->last_update = arcan_timemillis();
 
 	/*
 	 * Make sure we target the right GL context
@@ -4170,12 +4196,12 @@ static enum display_update_state draw_display(struct dispout* d)
 	 *
 	 * MULTIGPU> will also need to set the agp- current rendertarget
 	 */
-		set_display_context(d);
-		egl_dri.last_display = d;
+	set_display_context(d);
+	egl_dri.last_display = d;
 
 	/* activated- rendertarget covers scissor regions etc. so we want to reset */
-		agp_blendstate(BLEND_NONE);
-		agp_activate_rendertarget(NULL);
+	agp_blendstate(BLEND_NONE);
+	agp_activate_rendertarget(NULL);
 
 /*
  * Currently we only do binary damage / update tracking in that there are EGL
