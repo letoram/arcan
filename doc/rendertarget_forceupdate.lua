@@ -1,24 +1,37 @@
 -- rendertarget_forceupdate
 -- @short: Manually perform an out-of-loop update of a rendertarget
--- @inargs: rendertarget, *newrate*
+-- @inargs: vid:rendertarget
+-- @inargs: vid:rendertarget, bool:force_dirty=true
+-- @inargs: vid:rendertarget, number:refresh
+-- @inargs: vid:rendertarget, number:refresh, number:readback
 -- @outargs:
 -- @longdescr: By default, rendertargets update synchronously with the
 -- regular video refresh/redraw that is performed as part of the active
 -- synchronization strategy combined with the refreshrate hinted during
--- creation. This function covers two use-cases. The first use case is
--- to force an out-of-loop update of the specified target in 'manual'
--- update mode (rate=0). The second use case is to change the rate-
--- value set for the target after creation in order. This can be used as
--- an optimization to temporarily disable rendertargets without going
--- through the process of rebuilding and migrating between rendertargets.
+-- creation.
+--
+-- This function covers two use-cases.
+--
+-- The first use case is to force an out-of-loop update of the specified
+-- target in 'manual' update mode (rate=0). By default this will always
+-- trigger a render pass. If the second argument is set to false, then
+-- the update will only be forced if the pipeline is actually dirty.
+--
+-- The second use case is to change the refresh and readback rates for the
+-- specified rendertarget. This can be used as an optimization to temporarily
+-- disable rendertargets without going through the process of rebuilding and
+-- migrating between rendertargets.
+--
 -- Any pending counters/timers for frame or tick/based automatic updates
 -- will be reset, and the update includes synchronizing with readback in
 -- the case of calctargets and recordtargets.
+--
 -- @note: Trying to call this function on a VID that references an object
 -- that is not flagged as a rendertarget is a terminal state transition.
 -- @note: If a newrate is set, the rendertarget will not be updated
 -- directly. If that behaviour is desired, call the function again without
 -- the newrate argument.
+--
 -- @group: targetcontrol
 -- @cfunction: rendertargetforce
 -- @related: define_rendertarget, define_calctarget, define_recordtarget

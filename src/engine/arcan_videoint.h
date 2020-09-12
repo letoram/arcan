@@ -45,6 +45,11 @@ struct rendertarget {
 /* default shader applied to all objects that lack an override */
 	agp_shader_id shid;
 
+/* this is to help the platform layer pair scanout rendertarget versus update
+ * rendertarget - on scanout the platform may keep the last frame cookie and
+ * compare to this and see if it is different */
+	uint64_t frame_cookie;
+
 /* useful for link targets, ignore whatever shader is assigned and use shid */
 	bool force_shid;
 
