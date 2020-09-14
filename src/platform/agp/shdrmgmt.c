@@ -612,7 +612,6 @@ void agp_shader_forceunif(const char* label, enum shdrutype type, void* value)
 	assert(shdr_global.active_prg != BROKEN_SHADER);
 	struct shader_cont* slot = &shdr_global.slots[
 		SHADER_INDEX(shdr_global.active_prg)];
-	FLAG_DIRTY();
 
 /* linear search */
 	struct shaderv** current = (struct shaderv**) &(

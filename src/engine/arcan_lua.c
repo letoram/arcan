@@ -11099,6 +11099,10 @@ static int shader_uniform(lua_State* ctx)
 	/* check for the special ones, b and i */
 	/* count number of f:s, map that to the appropriate subtype */
 
+/* whenever we manually set a uniform, all users of that shader should be
+ * marked dirty - but the argument form to flag_dirty does not yet consider
+ * type so this will cause a full invalidation */
+	FLAG_DIRTY();
 	LUA_ETRACE("shader_uniform", NULL, 0);
 }
 

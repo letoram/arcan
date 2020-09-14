@@ -4761,12 +4761,11 @@ static inline void draw_colorsurf(struct rendertarget* dst,
 	float r, float g, float b, float* txcos)
 {
 	float cval[3] = {r, g, b};
-/* having to do = NULL here to avoid warnings is a prime example where
- * gcc is just terrible */
 	float* mvm = NULL;
 
 	setup_surf(dst, &prop, src, &mvm);
 	agp_shader_forceunif("obj_col", shdrvec3, (void*) &cval);
+
 	agp_draw_vobj(-prop.scale.x, -prop.scale.y,
 		prop.scale.x, prop.scale.y, txcos, mvm);
 }
@@ -5085,11 +5084,10 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 		current = tgt->first;
 
 	if (arcan_video_display.ignore_dirty == 0 &&
-		(!tgt->link && tgt->dirtyc == 0 && tgt->transfc == 0))
+		(tgt->dirtyc == 0 && tgt->transfc == 0))
 		return 0;
 
 	tgt->uploadc = 0;
-	tgt->frame_cookie = arcan_video_display.cookie;
 
 	current_rendertarget = tgt;
 	agp_activate_rendertarget(tgt->art);
@@ -5232,6 +5230,9 @@ end3d:
 			pc++;
 	}
 
+	if (pc){
+		tgt->frame_cookie = arcan_video_display.cookie;
+	}
 	return pc;
 }
 
@@ -5301,14 +5302,19 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid, bool forcedirty)
 	if (!tgt)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
+/* remember / retain platform decay */
 	size_t id = arcan_video_display.ignore_dirty;
 	if (forcedirty){
 		FLAG_DIRTY(vobj);
 /* full pass regardless of there being any updates or not */
 		arcan_video_display.ignore_dirty = 1;
 	}
+	else {
+		arcan_video_display.ignore_dirty = 0;
+	}
 
 	process_rendertarget(tgt, arcan_video_display.c_lerp);
+	tgt->dirtyc = 0;
 
 	arcan_video_display.ignore_dirty = id;
 	current_rendertarget = NULL;
@@ -5387,8 +5393,6 @@ void arcan_vint_pollreadback(struct rendertarget* tgt)
 
 static size_t steptgt(float fract, struct rendertarget* tgt)
 {
-	size_t transfc = 0;
-
 /* A special case here are rendertargets where the color output store
  * is explicitly bound only to a frameserver. This requires that:
  * 1. The frameserver is still waiting to synch
@@ -5401,9 +5405,10 @@ static size_t steptgt(float fract, struct rendertarget* tgt)
 		arcan_ffunc_lookup(dst->feed.ffunc)
 			(FFUNC_POLL, 0, 0, 0, 0, 0, dst->feed.state, dst->cellid) == FRV_GOTFRAME)
 	{
-		return transfc;
+		return 1;
 	}
 
+	size_t transfc = 0;
 	if (tgt->refresh < 0 && process_counter(tgt,
 		&tgt->refreshcnt, tgt->refresh, fract)){
 		process_rendertarget(tgt, fract);
