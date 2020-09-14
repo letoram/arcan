@@ -22,7 +22,10 @@
  *  (to permit partial redraws in the future if we need to save
  *  bandwidth).
  */
-#define FLAG_DIRTY(X) (arcan_video_display.dirty++);
+static void _int_flag(){
+}
+
+#define FLAG_DIRTY(X) do {_int_flag(); arcan_video_display.dirty++; } while(0)
 
 #define FL_SET(obj_ptr, fl) ((obj_ptr)->flags |= fl)
 #define FL_CLEAR(obj_ptr, fl) ((obj_ptr)->flags &= ~fl)
