@@ -250,11 +250,6 @@ struct shmif_hidden {
 		pthread_mutex_t synch;
 		void (*exitf)(int val);
 	} guard;
-
-/* if we permit 'reconnect on parent- death', this callback will be invoked
- * when a previously returned cont is invalid, and provide a newly negotiated
- * context */
-	void (*resetf)(struct arcan_shmif_cont*);
 };
 
 /* We let one 'per process singleton' slot for an input and for an output
@@ -2366,7 +2361,7 @@ bool arcan_shmif_descrevent(struct arcan_event* ev)
 	return false;
 }
 
-int arcan_shmif_dupfd(int fd, int dstnum, bool blocking)
+static int dupfd_to(int fd, int dstnum, int fflags, int fdopt)
 {
 	int rfd = -1;
 	if (-1 == fd)
@@ -2383,17 +2378,20 @@ int arcan_shmif_dupfd(int fd, int dstnum, bool blocking)
 
 /* unless F_SETLKW, EINTR is not an issue */
 	int flags;
-	if (!blocking){
-		flags = fcntl(rfd, F_GETFL);
-		if (-1 != flags)
-			fcntl(rfd, F_SETFL, flags | O_NONBLOCK);
-	}
+	flags = fcntl(rfd, F_GETFL);
+	if (-1 != flags && fflags)
+		fcntl(rfd, F_SETFL, flags | fflags);
 
 	flags = fcntl(rfd, F_GETFD);
-	if (-1 != flags)
-		fcntl(rfd, F_SETFD, flags | FD_CLOEXEC);
+	if (-1 != flags && fdopt)
+		fcntl(rfd, F_SETFD, flags | fdopt);
 
 	return rfd;
+}
+
+int arcan_shmif_dupfd(int fd, int dstnum, bool blocking)
+{
+	return dupfd_to(fd, dstnum, blocking * O_NONBLOCK, FD_CLOEXEC);
 }
 
 void arcan_shmif_last_words(
@@ -2617,6 +2615,19 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 				}
 			}
 		break;
+
+/* allow remapping of stdin but don't CLOEXEC it */
+		case TARGET_COMMAND_BCHUNK_IN:
+			if (strcmp(ev.tgt.message, "stdin") == 0)
+				dupfd_to(ev.tgt.ioevs[0].iv, STDIN_FILENO, 0, 0);
+		break;
+
+/* allow remapping of stdout but don't CLOEXEC it */
+		case TARGET_COMMAND_BCHUNK_OUT:
+			if (strcmp(ev.tgt.message, "stdout") == 0)
+				dupfd_to(ev.tgt.ioevs[0].iv, STDOUT_FILENO, 0, 0);
+		break;
+
 		case TARGET_COMMAND_GEOHINT:
 			def.latitude = ev.tgt.ioevs[0].fv;
 			def.longitude = ev.tgt.ioevs[1].fv;

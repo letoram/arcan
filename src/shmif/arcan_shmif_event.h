@@ -1263,14 +1263,17 @@ enum ARCAN_TARGET_SKIPMODE {
  * application wants to- or is capable of- receiving or writing bchunkdata.
  * (size)      - (input == 0, estimation of upper limit or 0 if unknown)
  * (input)     - set to !0 to indicate that the support is for open/read,
- * (hint)      - set to 0 to indicate that the state- support it immediate,
+ * (hint)      - set bit 1 to indicate that the state- support it immediate,
  *               e.g. an open/save dialog. set to 1 to hint that the bchunk-
  *               support indicates capability.
+ *               set bit 2 to indicate that all data is also accepted
+ *               items are coming.
+ *               set bit 3 to indicate that this is a multipart transfer.
  * (stream)    - !0 if a streaming data store is acceptable or it needs to be
  *               seekable / mappable
  * (extensions)- 7-bit ASCII filtered to alnum with ; separation between
- *               accepted extensions. * for wildcard support or empty [0]='\0'
- *               to indicate no-support for input/output.
+ *               accepted extensions or empty [0]='\0' to indicate no-support
+ *               for input/output.
   */
 	struct {
 		uint64_t size;

@@ -4,6 +4,7 @@
 #include "../screen/libtsm.h"
 #include "../../arcan_tui_copywnd.h"
 #include <math.h>
+#include <pthread.h>
 
 static void display_hint(struct tui_context* tui, arcan_tgtevent* ev)
 {
@@ -108,6 +109,85 @@ static void drop_pending(struct tsm_save_buf** tui)
 	*tui = NULL;
 }
 
+/* this is raw without formatting */
+struct dump_thread_data {
+	FILE* fpek;
+	char* outb;
+	size_t sz;
+};
+
+static void* copy_thread(void* in)
+{
+	struct dump_thread_data* din = in;
+	fwrite(din->outb, din->sz, 1, din->fpek);
+	fclose(din->fpek);
+	free(din->outb);
+	free(din);
+	return NULL;
+}
+
+static void dump_to_fd(struct tui_context* tui, int fd)
+{
+	if (-1 == fd)
+		return;
+
+	FILE* fpek = fdopen(fd, "w");
+	if (!fpek){
+		close(fd);
+		return;
+	}
+
+	char* outb = malloc(tui->rows * tui->cols * 4 + tui->rows);
+	if (!outb){
+		fclose(fpek);
+		return;
+	}
+	size_t ofs = 0;
+
+	struct tui_cell* front = tui->front;
+	for (size_t row = 0; row < tui->rows; row++){
+		for (size_t col = 0; col < tui->cols; col++){
+			char out[4];
+			size_t nb = arcan_tui_ucs4utf8(front->ch, out);
+			if (out[0]){
+				memcpy(&outb[ofs], out, nb);
+				ofs += nb;
+			}
+			else
+				outb[ofs++] = ' ';
+			front++;
+		}
+		outb[ofs++] = '\n';
+	}
+
+/* go with writer thread */
+	struct dump_thread_data* data = malloc(sizeof(struct dump_thread_data));
+	if (!data)
+		goto block_dump;
+
+	*data = (struct dump_thread_data){
+		.outb = outb,
+		.fpek = fpek,
+		.sz = ofs
+	};
+
+	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+/* if it worked, it is up to the thread now */
+	if (-1 != pthread_create(&pth, &pthattr, copy_thread, data)){
+		return;
+	}
+
+/* fallback to a block write */
+block_dump:
+	free(data);
+	fwrite(outb, ofs, 1, fpek);
+	fclose(fpek);
+	free(outb);
+}
+
 static void target_event(struct tui_context* tui, struct arcan_event* aev)
 {
 	arcan_tgtevent* ev = &aev->tgt;
@@ -166,9 +246,21 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 
 /* 'drag-and-drop' style data transfer requests */
 	case TARGET_COMMAND_BCHUNK_IN:
-	case TARGET_COMMAND_BCHUNK_OUT:
 		if (tui->handlers.bchunk)
-			tui->handlers.bchunk(tui, ev->kind == TARGET_COMMAND_BCHUNK_IN,
+			tui->handlers.bchunk(tui, true,
+				ev->ioevs[1].iv | (ev->ioevs[2].iv << 31),
+				ev->ioevs[0].iv,
+				ev->message,
+				tui->handlers.tag
+			);
+		break;
+	case TARGET_COMMAND_BCHUNK_OUT:
+/* overload custom bchunk handler */
+		if (strcmp(ev->message, "tuiraw") == 0){
+			dump_to_fd(tui, arcan_shmif_dupfd(ev->ioevs[0].iv, -1, false));
+		}
+		if (tui->handlers.bchunk)
+			tui->handlers.bchunk(tui, false,
 				ev->ioevs[1].iv | (ev->ioevs[2].iv << 31),
 				ev->ioevs[0].iv,
 				ev->message,

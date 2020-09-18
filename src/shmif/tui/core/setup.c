@@ -35,12 +35,6 @@ void tui_queue_requests(struct tui_context* tui, bool clipboard, bool ident)
 
 /* ident is only set on crash recovery */
 	if (ident){
-		if (tui->last_bchunk_in.ext.bchunk.extensions[0] != '\0')
-			arcan_shmif_enqueue(&tui->acon, &tui->last_bchunk_in);
-
-		if (tui->last_bchunk_out.ext.bchunk.extensions[0] != '\0')
-			arcan_shmif_enqueue(&tui->acon, &tui->last_bchunk_out);
-
 		if (tui->last_ident.ext.kind != 0)
 			arcan_shmif_enqueue(&tui->acon, &tui->last_ident);
 
@@ -338,6 +332,9 @@ struct tui_context* arcan_tui_setup(
 
 	if (con)
 		late_bind(con, res, true);
+
+/* allow our own formats to be exposed */
+	arcan_tui_announce_io(res, false, NULL, "tui-raw");
 
 	return res;
 }

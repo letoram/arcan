@@ -116,8 +116,6 @@ struct tui_context {
 /* retain these so that we can renegotiate on crash */
 	struct arcan_event last_ident;
 	struct arcan_event last_state_sz;
-	struct arcan_event last_bchunk_in;
-	struct arcan_event last_bchunk_out;
 
 /* cached after calls to tui_wndhint */
 	struct tui_constraints last_constraints;
