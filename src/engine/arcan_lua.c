@@ -1569,7 +1569,7 @@ static int funtable(lua_State* ctx, uint32_t kind)
 }
 
 static const char flt_alpha[] = "abcdefghijklmnopqrstuvwxyz-_";
-static const char flt_chunkfn[] = "abcdefhijklmnopqrstuvwxyz1234567890;";
+static const char flt_chunkfn[] = "abcdefhijklmnopqrstuvwxyz1234567890;*";
 static const char flt_alphanum[] = "abcdefghijklmnopqrstuvwyz-0123456789-_";
 static const char flt_Alphanum[] = "abcdefghijklmnopqrstuvwyz-0123456789-_"
 	"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -5095,15 +5095,14 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		break;
 		case EVENT_EXTERNAL_BCHUNKSTATE:
 			tblstr(ctx, "kind", "bchunkstate", top);
-			tblbool(ctx, "hint", ev->ext.bchunk.hint != 0, top);
+			tblbool(ctx, "hint", !((ev->ext.bchunk.hint & 1) > 0), top);
+			tblbool(ctx, "multipart", ev->ext.bchunk.hint & 4, top);
 			tblnum(ctx, "size", ev->ext.bchunk.size, top);
 			tblbool(ctx, "input", ev->ext.bchunk.input, top);
 			tblbool(ctx, "stream", ev->ext.bchunk.stream, top);
-			if (ev->ext.bchunk.extensions[0] == 0)
-				tblbool(ctx, "disable", true, top);
-			else if (ev->ext.bchunk.extensions[0] == '*')
-				tblbool(ctx, "wildcard", true, top);
-			else{
+			tblbool(ctx, "wildcard", ev->ext.bchunk.hint & 2, top);
+			tblbool(ctx, "disable", ev->ext.bchunk.extensions[0] == 0, top);
+			if (ev->ext.bchunk.extensions[0]){
 				FLTPUSH(ev->ext.bchunk.extensions, flt_chunkfn, '\0');
 				tblstr(ctx, "extensions", msgbuf, top);
 			}
@@ -8450,7 +8449,7 @@ static int targetbond(lua_State* ctx)
 		arcan_fatal("bond_target(), both arguments must be valid frameservers.\n");
 
 	bool val = luaL_optbnumber(ctx, 3, false);
-	const char* descr = luaL_optstring(ctx, 4, "octet-stream");
+	const char* descr = luaL_optstring(ctx, 4, "*");
 
 	int pair[2];
 	if (pipe(pair) == -1){

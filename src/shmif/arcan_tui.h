@@ -781,18 +781,21 @@ void arcan_tui_wndhint(struct tui_context* wnd,
  * (output_descr != NULL) some kind of user- provided file data.
  *
  * [immediately=true] - attempt to query the user 'as soon as possible'
- *                      with an open/save kind of a user dialog.
+ *                      with an open/save kind of a user dialog, this set
+ *                      of extensions will not override a previously
+ *                      defined one (immediately=false).
  *
  * [immediately=false] - remember, as a persistent hint, that the program
  *                       can load and/or store files that match the
  *                       description at any time.
  *
  * Both sides may result in the (bchunk) callback being triggered at
- * some point in the future.
+ * some point in the future but it is not guaranteed.
  *
- * The 'input_descr' and 'output_descr' are EITHER simply the wildcard
- * '*' character (for all files) or a ; separated list of extensions no
- * longer than 68 characters in total, including the terminating \0.
+ * The 'input_descr' and 'output_descr' are a ; separated list of file name
+ * extensions in preferred order, and may include a possible wildcard entry
+ * (*). Each extension should be short (3-5 characters recommended) and must
+ * be shorter than 64 characters.
  */
 void arcan_tui_announce_io(struct tui_context* c,
 	bool immediately, const char* input_descr, const char* output_descr);

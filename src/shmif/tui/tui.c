@@ -609,41 +609,106 @@ void arcan_tui_statesize(struct tui_context* c, size_t sz)
 	arcan_shmif_enqueue(&c->acon, &c->last_state_sz);
 }
 
+/* split list up into multiple messages if needed, and append wild-cards last */
+static void send_list(struct tui_context* c,
+	struct arcan_event ev, const char* suffix, const char* list)
+{
+	const char* start = list;
+	const char* end = start;
+	size_t ofs = 0;
+	size_t lim = COUNT_OF(ev.ext.bchunk.extensions);
+
+	while (*end){
+/* we re-order so wildcard comes last */
+		if (*end == '*'){
+			ev.ext.bchunk.hint |= 2;
+			end++;
+			start = end;
+			continue;
+		}
+
+/* ; is delimiter */
+		if (*end == ';'){
+/* ignore empty */
+			if (end == start){
+				start = ++end;
+				continue;
+			}
+		}
+
+/* we add in the delimiter as well */
+		size_t nb = end - start;
+		if (nb < lim - 1){
+			memcpy(&ev.ext.bchunk.extensions[ofs], start, nb);
+			start = end;
+		}
+
+/* ignore the ones that would overshoot the limit (likely bug or malicious),
+ * and commit when we have gotten far enough */
+		else {
+			ev.ext.bchunk.extensions[ofs] = '\0';
+			ofs = 0;
+
+/* toggle multipart bit if needed */
+			if (*(end+1) || suffix){
+				ev.ext.bchunk.hint |= 4;
+			}
+			arcan_shmif_enqueue(&c->acon, &ev);
+			memset(ev.ext.bchunk.extensions, '\0', lim);
+		}
+
+/* add suffix (tui- internal formats) and wildcard */
+		end++;
+	}
+
+	if (suffix){
+/* do we fit? if not, flush */
+		size_t len = strlen(suffix);
+		if (ofs + len > lim - 1){
+			arcan_shmif_enqueue(&c->acon, &ev);
+			ofs = 0;
+			memset(ev.ext.bchunk.extensions, '\0', lim);
+		}
+
+		ev.ext.bchunk.hint = 0;
+		memcpy(&ev.ext.bchunk.extensions[ofs], suffix, len);
+		arcan_shmif_enqueue(&c->acon, &ev);
+		ofs = 0;
+	}
+
+/* do we need to terminate multipart? */
+	if (ofs || (ev.ext.bchunk.hint & (1 << 3))){
+		ev.ext.bchunk.hint = 0;
+		arcan_shmif_enqueue(&c->acon, &ev);
+	}
+}
+
 void arcan_tui_announce_io(struct tui_context* c,
 	bool immediately, const char* input_descr, const char* output_descr)
 {
 	if (!c)
 		return;
 
-	arcan_event bchunk_in = {
+	arcan_event bchunk = {
 		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
 		.category = EVENT_EXTERNAL,
 		.ext.bchunk = {
 			.input = true,
-			.hint = !immediately
+			.hint = (immediately * 1),
 		}
 	};
 
-	arcan_event bchunk_out = bchunk_in;
-
 	if (input_descr){
-		snprintf((char*)bchunk_in.ext.bchunk.extensions,
-			COUNT_OF(bchunk_in.ext.bchunk.extensions), "%s", input_descr);
-		arcan_shmif_enqueue(&c->acon, &bchunk_in);
+		send_list(c, bchunk, NULL, output_descr);
 	}
 
 	if (output_descr){
-		bchunk_out.ext.bchunk.input = false;
-		snprintf((char*)bchunk_out.ext.bchunk.extensions,
-			COUNT_OF(bchunk_out.ext.bchunk.extensions), "%s", output_descr);
-		arcan_shmif_enqueue(&c->acon, &bchunk_out);
-	}
+		bchunk.ext.bchunk.input = false;
+		send_list(c, bchunk, "tuiraw;", output_descr);
 
-	if (!immediately){
-		if (input_descr)
-			c->last_bchunk_in = bchunk_in;
-		if (output_descr)
-			c->last_bchunk_out = bchunk_out;
+/* the set has been reset, so re-announce our tui-raw */
+		if (strlen(output_descr) == 0)
+			send_list(c, bchunk, "tuiraw", "");
 	}
 }
 
