@@ -1,7 +1,15 @@
 --
 -- a basic window decorator
 --
--- This returns a factory function that builds a decorator method based on
+-- This returns a function that takes a prefix for the subsystem you want to
+-- group your log strings around. Calling it returns two functions - the log
+-- function itself for the subsystem, as well as a formatting function.
+--
+-- By default, the formatting function is simply string.format, but
+-- indirected in order to nop it out for string construction.
+--
+-- The actual format / contents of the log events themselves
+--
 -- a desired configuration.
 --
 -- The decorations currently cover border, as well as managing reserved space
@@ -26,7 +34,7 @@
 --     ctx:update(w, h, [animate_dt], [animate_interp]) => t, l, d, r
 --
 -- To set visuals:
---     ctx:color(r, g, b, alpha)
+--     ctx:border_color(r, g, b, alpha)
 --
 -- To reassign to a different rendertarget:
 --     ctx:switch_rt(rt_vid)
@@ -95,7 +103,7 @@ local function border_color(ctx, r, g, b, a)
 		local vid = ctx.vids[v]
 		if vid then
 			image_color(vid, r, g, b)
-			blend_image(vid, a)
+			blend_image(vid, a, 1)
 		end
 	end
 end
