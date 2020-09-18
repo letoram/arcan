@@ -609,6 +609,39 @@ void arcan_tui_statesize(struct tui_context* c, size_t sz)
 	arcan_shmif_enqueue(&c->acon, &c->last_state_sz);
 }
 
+static void add_to_event(struct tui_context* c, bool more,
+	struct arcan_event* ev, size_t* ofs, const char* msg, size_t nb)
+{
+	size_t lim = COUNT_OF(ev->ext.bchunk.extensions);
+
+/* if there isn't enough room, enable multipart and flush */
+	if (nb + *ofs > lim - 1){
+/* toggle multipart bit if needed */
+		if (more){
+			ev->ext.bchunk.hint |= 4;
+		}
+		else {
+			ev->ext.bchunk.hint &= ~4;
+		}
+
+/* remove separator */
+		ev->ext.bchunk.extensions[*ofs-1] = '\0';
+		arcan_shmif_enqueue(&c->acon, ev);
+		memset(ev->ext.bchunk.extensions, '\0', lim);
+		*ofs = 0;
+	}
+
+/* append and continue */
+	memcpy(&ev->ext.bchunk.extensions[*ofs], msg, nb);
+	*ofs += nb;
+
+	if (!more){
+		arcan_shmif_enqueue(&c->acon, ev);
+		ev->ext.bchunk.hint &= ~4;
+		memset(&ev->ext.bchunk.extensions, '\0', lim);
+	}
+}
+
 /* split list up into multiple messages if needed, and append wild-cards last */
 static void send_list(struct tui_context* c,
 	struct arcan_event ev, const char* suffix, const char* list)
@@ -616,10 +649,8 @@ static void send_list(struct tui_context* c,
 	const char* start = list;
 	const char* end = start;
 	size_t ofs = 0;
-	size_t lim = COUNT_OF(ev.ext.bchunk.extensions);
 
 	while (*end){
-/* we re-order so wildcard comes last */
 		if (*end == '*'){
 			ev.ext.bchunk.hint |= 2;
 			end++;
@@ -628,57 +659,43 @@ static void send_list(struct tui_context* c,
 		}
 
 /* ; is delimiter */
-		if (*end == ';'){
+		if (*end != ';'){
+			end++;
+			continue;
+		}
+
 /* ignore empty */
-			if (end == start){
-				start = ++end;
-				continue;
-			}
+		if (end == start){
+			start = ++end;
+			continue;
 		}
 
 /* we add in the delimiter as well */
-		size_t nb = end - start;
-		if (nb < lim - 1){
-			memcpy(&ev.ext.bchunk.extensions[ofs], start, nb);
+		size_t nb = end - start + 1;
+
+/* if the entry exceeds permitted length, skip it */
+		if (nb > 64){
 			start = end;
+			continue;
 		}
 
-/* ignore the ones that would overshoot the limit (likely bug or malicious),
- * and commit when we have gotten far enough */
-		else {
-			ev.ext.bchunk.extensions[ofs] = '\0';
-			ofs = 0;
-
-/* toggle multipart bit if needed */
-			if (*(end+1) || suffix){
-				ev.ext.bchunk.hint |= 4;
-			}
-			arcan_shmif_enqueue(&c->acon, &ev);
-			memset(ev.ext.bchunk.extensions, '\0', lim);
-		}
-
-/* add suffix (tui- internal formats) and wildcard */
+		add_to_event(c, (*end+1) || suffix, &ev, &ofs, start, nb);
 		end++;
+		start = end;
+	}
+
+/* any leftovers? send that but don't add the last character (\0 or ;) */
+	if (start != end){
+		add_to_event(c, suffix != NULL, &ev, &ofs, start, end - start);
 	}
 
 	if (suffix){
-/* do we fit? if not, flush */
-		size_t len = strlen(suffix);
-		if (ofs + len > lim - 1){
-			arcan_shmif_enqueue(&c->acon, &ev);
-			ofs = 0;
-			memset(ev.ext.bchunk.extensions, '\0', lim);
-		}
-
-		ev.ext.bchunk.hint = 0;
-		memcpy(&ev.ext.bchunk.extensions[ofs], suffix, len);
-		arcan_shmif_enqueue(&c->acon, &ev);
-		ofs = 0;
+		add_to_event(c, false, &ev, &ofs, suffix, strlen(suffix));
 	}
 
-/* do we need to terminate multipart? */
-	if (ofs || (ev.ext.bchunk.hint & (1 << 3))){
-		ev.ext.bchunk.hint = 0;
+/* multipart to terminate? */
+	if (ev.ext.bchunk.hint & 4){
+		ev.ext.bchunk.hint &= ~4;
 		arcan_shmif_enqueue(&c->acon, &ev);
 	}
 }
@@ -704,11 +721,15 @@ void arcan_tui_announce_io(struct tui_context* c,
 
 	if (output_descr){
 		bchunk.ext.bchunk.input = false;
-		send_list(c, bchunk, "tuiraw;", output_descr);
+		const char* suffix =  ";tuiraw";
 
-/* the set has been reset, so re-announce our tui-raw */
-		if (strlen(output_descr) == 0)
-			send_list(c, bchunk, "tuiraw", "");
+/* request to flush? then re-announce tuiraw */
+		if (strlen(output_descr) == 0){
+			arcan_shmif_enqueue(&c->acon, &bchunk);
+			suffix = "tuiraw";
+		}
+
+		send_list(c, bchunk, suffix, output_descr);
 	}
 }
 

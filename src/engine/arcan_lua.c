@@ -1569,7 +1569,7 @@ static int funtable(lua_State* ctx, uint32_t kind)
 }
 
 static const char flt_alpha[] = "abcdefghijklmnopqrstuvwxyz-_";
-static const char flt_chunkfn[] = "abcdefhijklmnopqrstuvwxyz1234567890;*";
+static const char flt_chunkfn[] = "abcdefghijklmnopqrstuvwxyz1234567890;*";
 static const char flt_alphanum[] = "abcdefghijklmnopqrstuvwyz-0123456789-_";
 static const char flt_Alphanum[] = "abcdefghijklmnopqrstuvwyz-0123456789-_"
 	"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
