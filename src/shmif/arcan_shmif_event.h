@@ -1512,19 +1512,24 @@ enum ARCAN_TARGET_SKIPMODE {
 } arcan_extevent;
 
 typedef struct arcan_event {
-	enum ARCAN_EVENT_CATEGORY category;
-
 	union {
-		arcan_ioevent io;
-		arcan_vevent vid;
-		arcan_aevent aud;
-		arcan_sevent sys;
-		arcan_tgtevent tgt;
-		arcan_fsrvevent fsrv;
-		arcan_extevent ext;
-		uint8_t min_sz[128];
+		struct {
+			union {
+				arcan_ioevent io;
+				arcan_vevent vid;
+				arcan_aevent aud;
+				arcan_sevent sys;
+				arcan_tgtevent tgt;
+				arcan_fsrvevent fsrv;
+				arcan_extevent ext;
+			};
+			uint8_t category;
+		};
+		char pad[128];
 	};
 } arcan_event;
+
+_Static_assert(sizeof(arcan_event) == 128, "event struct size should be 128b");
 
 /* matches those that libraries such as SDL uses */
 typedef enum {
