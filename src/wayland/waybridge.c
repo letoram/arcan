@@ -1261,7 +1261,7 @@ int main(int argc, char* argv[])
 		.ddev = 3,
 		.relp = 1,
 		.cons = 1,
-		.xdg_output = 3,
+		.xdg_output = 2,
 		.xdg_decor = 1,
 		.kwin_decor = 1
 	};
@@ -1581,7 +1581,7 @@ int main(int argc, char* argv[])
 	}
 	if (protocols.seat)
 		wl_global_create(wl.disp, &wl_seat_interface,
-			protocols.seat, NULL, &bind_seat);
+			MIN(protocols.seat, wl_seat_interface.version), NULL, &bind_seat);
 	if (protocols.output)
 		wl_global_create(wl.disp, &wl_output_interface,
 			protocols.output, NULL, &bind_output);
