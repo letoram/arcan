@@ -53,15 +53,16 @@ endif()
 # copied from Cloudef/wlc/protos
 set(PROTOCOLS
 	"${WAYLANDPROTOCOLS_PATH}/unstable/xdg-shell/xdg-shell-unstable-v6"
-	"${WAYLANDPROTOCOLS_PATH}/unstable/linux-dmabuf/linux-dmabuf-unstable-v1"
 	"${WAYLANDPROTOCOLS_PATH}/unstable/pointer-constraints/pointer-constraints-unstable-v1"
 	"${WAYLANDPROTOCOLS_PATH}/unstable/relative-pointer/relative-pointer-unstable-v1"
 	"${WAYLANDPROTOCOLS_PATH}/unstable/idle-inhibit/idle-inhibit-unstable-v1"
 	"${WAYLANDPROTOCOLS_PATH}/unstable/xdg-output/xdg-output-unstable-v1"
-	"${WAYLANDPROTOCOLS_PATH}/unstable/xdg-decoration/xdg-decoration-unstable-v1"
 	"${WAYLANDPROTOCOLS_PATH}/stable/xdg-shell/xdg-shell"
+	"${CMAKE_CURRENT_SOURCE_DIR}/wlimpl/dmabuf"
+	"${CMAKE_CURRENT_SOURCE_DIR}/wlimpl/xdg-output"
 	"${CMAKE_CURRENT_SOURCE_DIR}/wlimpl/wayland-drm"
 	"${CMAKE_CURRENT_SOURCE_DIR}/wlimpl/server-decoration"
+	"${CMAKE_CURRENT_SOURCE_DIR}/wlimpl/xdg-decoration"
 )
 
 list(APPEND SOURCES ${src})
