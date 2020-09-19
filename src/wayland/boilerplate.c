@@ -3,7 +3,8 @@
  * patched to retrieve the render node we are supposed to use
  */
 #include "wayland-wayland-drm-server-protocol.h"
-#include "wayland-linux-dmabuf-unstable-v1-server-protocol.h"
+#include "wayland-xdg-decoration-server-protocol.h"
+#include "wayland-dmabuf-server-protocol.h"
 
 #include "wlimpl/xwl.c"
 
@@ -123,7 +124,7 @@ static const struct wl_data_device_manager_interface ddevmgr_if = {
 	.get_data_device = ddevmgr_get_data_device
 };
 
-#include "wayland-xdg-decoration-unstable-v1-server-protocol.h"
+#include "wayland-xdg-decoration-server-protocol.h"
 #include "wlimpl/xdg_decor.c"
 static const struct zxdg_decoration_manager_v1_interface decormgr_if = {
 	.destroy = xdgdecor_destroy,
@@ -276,7 +277,7 @@ static const struct zwp_pointer_constraints_v1_interface consptr_if = {
 	.lock_pointer = consptr_lock
 };
 
-#include "wayland-xdg-output-unstable-v1-server-protocol.h"
+#include "wayland-xdg-output-server-protocol.h"
 #include "wlimpl/xdg_output.c"
 static const struct zxdg_output_manager_v1_interface outmgr_if = {
 	.destroy = xdgoutput_mgmt_destroy,
