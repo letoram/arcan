@@ -33,9 +33,9 @@ static void on_client_event(
 		return;
 	}
 
-/* The client isn't normal as such in that many of the shmif events do
- * not make direct sense to just forward verbatim. The input model match
- * 1:1, however, so forward those. */
+/* The client isn't 'normal' (afsrv_net for those) as such in that many of the
+ * shmif events do not make direct sense to just forward verbatim. The input
+ * model match 1:1, however, so forward those. */
 
 	if (ev->category == EVENT_IO){
 		arcan_shmif_enqueue(cont, ev);
@@ -185,16 +185,42 @@ static void dispatch_single(struct a12_state* S, int fd, void* tag)
 	close(fd);
 }
 
-static void decode_args(struct arg_arr* arg, struct dispatch_data* dst)
+static bool decode_args(struct arg_arr* arg, struct dispatch_data* dst)
 {
-	if (!arg_lookup(arg, "port", 0, &dst->net_cfg.port)){
-		dst->net_cfg.port = "6680";
+	dst->net_cfg.port = "6680";
+
+	if (arg_lookup(arg, "port", 0, &dst->net_cfg.port)){
+		if (!dst->net_cfg.port || strlen(dst->net_cfg.port) == 0){
+			arcan_shmif_last_words(dst->C, "missing port value");
+			return false;
+		}
 	}
 
+	dst->net_cfg.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));
+
+/* optional listening interface */
 	arg_lookup(arg, "host", 0, &dst->net_cfg.host);
 
+	const char* pass;
+	if (arg_lookup(arg, "pass", 0, &pass)){
+		if (!pass){
+			arcan_shmif_last_words(dst->C, "missing pass key");
+			free(dst->net_cfg.opts);
+			return false;
+		}
+		size_t len = strlen(pass);
+
+/* empty length is allowed */
+		if (len && len > 32){
+			arcan_shmif_last_words(dst->C, "password is too long");
+			free(dst->net_cfg.opts);
+			return false;
+		}
+		memcpy(dst->net_cfg.opts->secret, pass, len);
+	}
+
 	dst->video_cfg = (struct a12_vframe_opts){
-	.method = VFRAME_METHOD_DPNG,
+		.method = VFRAME_METHOD_DPNG,
 		.bias = VFRAME_BIAS_QUALITY
 	};
 
@@ -231,12 +257,13 @@ static void decode_args(struct arg_arr* arg, struct dispatch_data* dst)
 			LOG("unknown vcodec bias: %s\n", bias);
 	}
 
-	dst->net_cfg.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));
+	const char* tmp = NULL;
+	if (arg_lookup(arg, "trace", 0, &tmp) && tmp){
+		long arg = strtol(tmp, NULL, 10);
+		a12_set_trace_level(arg, stderr);
+	}
 
-/* authk,
- * privk(id) - use
- * pubk(accept),
- */
+	return true;
 }
 
 void a12_serv_run(struct arg_arr* arg, struct arcan_shmif_cont cont)
@@ -244,7 +271,11 @@ void a12_serv_run(struct arg_arr* arg, struct arcan_shmif_cont cont)
 	struct dispatch_data data = {
 		.C = &cont
 	};
-	decode_args(arg, &data);
+
+	if (!decode_args(arg, &data)){
+		return;
+	}
+
 /*
  * For the sake of oversimplification, use a single active client mode for
  * the time being. The other option is the complex (multiple active clients)

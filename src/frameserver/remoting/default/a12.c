@@ -104,9 +104,12 @@ static void dump_help(const char* reason)
 		"Accepted packed_args:\n"
 		"   key   \t   value   \t   description\n"
 		"---------\t-----------\t-----------------\n"
-		" password\t val       \t use this (7-bit ascii) password for auth\n"
+		" pass    \t val       \t use this (7-bit ascii) password for auth\n"
 	  " host    \t hostname  \t connect to the specified host\n"
 		" port    \t portnum   \t use the specified port for connecting\n"
+		" key     \t keyid     \t specify keystore identifier (can set host)\n"
+		" trustkey\t           \t if set an unknown pw auth key will be added to the keystore\n"
+		" trace   \t level     \t set trace mask (see arcan-net for values) for debug\n"
 		"---------\t-----------\t----------------\n", reason
 	);
 }
@@ -129,24 +132,19 @@ int run_a12(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
-	if (arg_lookup(args, "port", 0, &port)){
-		if (!port || !strlen(port)){
+	const char* tmp;
+	if (arg_lookup(args, "port", 0, &tmp)){
+		if (!tmp || !strlen(tmp)){
 			arcan_shmif_last_words(cont, "missing or invalid port value");
 			dump_help("missing or invalid port value");
 			return EXIT_FAILURE;
 		}
+		port = tmp;
 	}
 
-	const char* tmp = NULL;
-	if (arg_lookup(args, "pass", 0, &tmp)){
-		if (!tmp || !strlen(tmp)){
-			arcan_shmif_last_words(cont, "password field empty or missing");
-			dump_help("password field empty or missing");
-			return EXIT_FAILURE;
-		}
-
-		_Static_assert(sizeof(opts->secret) >= 32, "invalid secret length");
-		snprintf(opts->secret, sizeof(opts->secret), "%s", tmp);
+	if (arg_lookup(args, "trace", 0, &tmp) && tmp){
+		long arg = strtol(tmp, NULL, 10);
+		a12_set_trace_level(arg, stderr);
 	}
 
 /* after this point access to the keystore can be revoked, ideally we would be
@@ -158,6 +156,7 @@ int run_a12(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		.key = keyid,
 		.opts = opts
 	};
+
 	struct anet_cl_connection con = anet_cl_setup(&netarg);
 
 	if (!con.state){

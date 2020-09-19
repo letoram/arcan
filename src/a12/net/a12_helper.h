@@ -36,64 +36,6 @@ struct a12helper_opts {
 };
 
 /*
- * keystore provider types and constraints
- */
-enum a12helper_providers {
-/* naive single-file per key approach, does not handle concurrent write access
- * outside basic posix file locking semantics */
-	A12HELPER_PROVIDER_BASEDIR = 0
-};
-
-struct keystore_provider {
-	union {
-	struct {
-		int dirfd;
-	} directory;
-	};
-
-	int type;
-};
-
-/* setup the keystore using the specified provider,
- *
- * returns false if the provider is missing/broken or there already is a
- * keystore open in the current process.
- *
- * takes ownership of any resources referenced in the provider
- */
-bool a12helper_keystore_open(struct keystore_provider*);
-
-/* release resources tied to the keystore */
-bool a12helper_keystore_release();
-
-/* retrieve key and connect properties for a user-defined tag,
- * increment index to fetch the next possible host.
- *
- * returns false when there are no more keys on the store */
-bool a12helper_keystore_hostkey(const char* tagname, size_t index,
-	uint8_t privk[static 32], char** outhost, uint16_t* outport);
-
-/* Append or crete a new tag with the specified host, this will also
- * create a new private key if needed. Returns the public key in outk */
-bool a12helper_keystore_register(
-	const char* tagname, const char* host, uint16_t port);
-
-/*
- * check if the public key is known and accepted for the supplied
- * connection point (can be null for any connection point)
- */
-bool a12helper_keystore_accepted(const uint8_t pubk[static 32], const char* connp);
-
-/*
- * add the supplied public key to the accepted keystore.
- *
- * if [connp] is NULL, it will only be added as a permitted outgoing connection
- * (client mode), otherwise set a comma separated list (or * for wildcard) of
- * valid connection points this key is allowed to bind to.
- */
-bool a12helper_keystore_accept(const char* pubk, const char* connp);
-
-/*
  * Take a prenegotiated connection [S] and an accepted shmif client [C] and
  * use [fd_in, fd_out] (which can be set to the same and treated as a socket)
  * as the bitstream carrer.

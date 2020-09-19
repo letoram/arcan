@@ -25,15 +25,15 @@ int show_use(struct arcan_shmif_cont* cont, const char* msg)
 		"General arguments:\n"
 		"   key   \t   value   \t   description\n"
 		"---------\t-----------\t-----------------\n"
-		" proto   \t media     \t set 'media' mode (audio, video)\n"
-		" proto   \t 3d        \t set '3d object' mode\n"
-		" proto   \t text      \t set 'text' mode\n"
+		" protocol\t media     \t set 'media' mode (audio, video)\n"
+		" protocol\t 3d        \t set '3d object' mode\n"
+		" protocol\t text      \t set 'text' mode\n"
 #ifdef HAVE_PROBE
-		" proto   \t probe     \t set 'probe' mode\n"
+		" protocol\t probe     \t set 'probe' mode\n"
 #endif
 
 #ifdef HAVE_T2S
-		" proto   \t t2s       \t set 'text-to-speech' mode\n"
+		" protocol\t t2s       \t set 'text-to-speech' mode\n"
 #endif
 		"---------\t-----------\t----------------\n"
 		"\n"
@@ -133,10 +133,16 @@ int wait_for_file(struct arcan_shmif_cont* cont, const char* extstr)
 int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 {
 	const char* type;
-	if (arg_lookup(args, "proto", 0, &type)){
+	if (arg_lookup(args, "protocol", 0, &type)){
 	}
-	else
-		type = "media";
+	else {
+/* previously decode (vs encode, remoting, ...) used 'proto' and not protocol,
+ * as to not break applications out there, silelty support the short form */
+		if (arg_lookup(args, "proto", 0, &type)){
+		}
+		else
+			type = "media";
+	}
 
 #ifdef HAVE_PROBE
 /* there should really be an 'auto' mode to this as well so that

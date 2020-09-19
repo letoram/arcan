@@ -262,7 +262,7 @@ static void dump_help()
 		"Accepted packed_args:\n"
 		"   key   \t   value   \t   description\n"
 		"---------\t-----------\t-----------------\n"
-		" password\t val       \t use this (7-bit ascii) password for auth\n"
+		" pass    \t val       \t use this (7-bit ascii) password for auth\n"
 	  " host    \t hostname  \t connect to the specified host\n"
 		" port    \t portnum   \t use the specified port for connecting\n"
 		" forcealpha           \t set alpha channel to fullbright (normally off)\n"
@@ -318,7 +318,7 @@ int run_vnc(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
-	arg_lookup(args, "password", 0, (const char**) &vncctx.pass);
+	arg_lookup(args, "pass", 0, (const char**) &vncctx.pass);
 	if (!vncctx.pass)
 		vncctx.pass = "";
 
