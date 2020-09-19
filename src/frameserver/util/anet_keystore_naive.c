@@ -14,12 +14,19 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <ctype.h>
+#include <inttypes.h>
+#include <errno.h>
 
-#include "../a12.h"
-#include "../a12_int.h"
-#include "../external/x25519.h"
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <netdb.h>
 
-#include "a12_helper.h"
+#include "a12.h"
+#include "anet_helper.h"
+
+#include "external/x25519.h"
+
+#include "anet_helper.h"
 
 struct key_ent;
 
@@ -118,7 +125,7 @@ static bool from_b64(const uint8_t* instr, size_t lim, uint8_t outb[static 32])
 		return false;
 
 	uint32_t val;
-	for (int i = 0, j = 0; i < inlen, j < lim; i += 4, j += 3) {
+	for (int i = 0, j = 0; i < inlen && j < lim; i += 4, j += 3) {
 		val  = (instr[i+0] == '=' ? 0 & (i+0) : b64dec_lut[instr[i+0]]) << 18;
 		val += (instr[i+1] == '=' ? 0 & (i+1) : b64dec_lut[instr[i+1]]) << 12;
 		val += (instr[i+2] == '=' ? 0 & (i+2) : b64dec_lut[instr[i+2]]) <<  6;
@@ -170,7 +177,6 @@ static bool decode_hostline(char* buf,
 	cur++;
 
 /* decode keypart */
-	size_t len = 0;
 	return from_b64((uint8_t*) cur, 32, key);
 }
 
@@ -192,7 +198,6 @@ static void load_accepted_keys()
 
 	DIR* dir = fdopendir(keystore.dirfd_accepted);
 	struct dirent* ent;
-	struct known_key_ent* next_key = NULL;
 	struct key_ent** host = &keystore.hosts;
 
 /* all entries in directory is treated as possible keys, no single
@@ -257,11 +262,10 @@ bool a12helper_keystore_open(struct keystore_provider* p)
  * directories, would want an option to setup a notification thread that
  * watches these and reload on modifications, but that is only relevant when
  * running persistantly */
-	struct stat dinf;
 	mkdirat(keystore.provider.directory.dirfd, "accepted", S_IRWXU);
 	mkdirat(keystore.provider.directory.dirfd, "hostkeys", S_IRWXU);
 
-	int fl = O_DIRECTORY | O_RDONLY | O_CLOEXEC;
+	int fl = O_PATH | O_RDONLY | O_CLOEXEC;
 	if (-1 == (keystore.dirfd_accepted =
 		openat(keystore.provider.directory.dirfd, "accepted", fl))){
 		return false;
@@ -278,9 +282,10 @@ bool a12helper_keystore_open(struct keystore_provider* p)
 	return true;
 }
 
-bool a12helper_keystore_accept(const char* pubk, const char* connp)
+bool a12helper_keystore_accept(const uint8_t pubk[static 32], const char* connp)
 {
-/* add wildcard if !connp, otherwise sanity check */
+/* add wildcard if !connp, otherwise sanity check -
+ * TODO: sweep kestore and check if it is missing */
 	return true;
 }
 
@@ -412,7 +417,6 @@ out:
 bool a12helper_keystore_accepted(const uint8_t pubk[static 32], const char* connp)
 {
 	struct key_ent* ent = keystore.hosts;
-	bool status = false;
 
 	while (ent){
 /* not this key? */
