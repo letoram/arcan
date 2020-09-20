@@ -14,7 +14,8 @@
 --
 -- Collection in trace mode can also be stopped by calling benchmark_enable
 -- again with any argument form, the callback will be triggered if any
--- data had been collected before stopping.
+-- data had been collected before stopping. The callback will also be
+-- invoked (if it has not already) if there is a script error or ANR reset.
 --
 -- Scripts can also insert custom trace data into the buffer through the
 -- function ref:benchmark_tracedata which will short circuit when collection
@@ -31,5 +32,8 @@
 -- string:message
 -- int:identifier
 -- @note: All calls to this function will reset all timestamp buffers.
+-- @note: Since this can be called from within error handling, make sure
+-- that the dumping code is robust and fast. The ANR watchdog will also
+-- be disabled while inside the callback.
 -- @cfunction: togglebench
 -- @related: benchmark_data, benchmark_timestamp, benchmark_tracedata
