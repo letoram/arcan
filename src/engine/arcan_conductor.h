@@ -1,5 +1,5 @@
 /*
- * Copyright 2018, Björn Ståhl
+ * Copyright 2018-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in the arcan source repository.
  * Reference: https://arcan-fe.com
  * Description: The conductor interface is used to coordinate scheduling
@@ -21,6 +21,7 @@ int arcan_conductor_run(arcan_tick_cb cb);
 
 /* [ called from platform ] */
 void arcan_conductor_enable_watchdog();
+void arcan_conductor_toggle_watchdog();
 
 /* [ called from platform ]
  * Specify the relationship between display, gpu, synch and object - displays

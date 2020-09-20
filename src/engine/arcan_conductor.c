@@ -31,7 +31,7 @@
 #include "../platform/platform.h"
 #include "../platform/video_platform.h"
 
-/* defined in platform.h, used in psep open */
+/* defined in platform.h, used in psep open, shared memory */
 _Atomic uint64_t* volatile arcan_watchdog_ping = NULL;
 
 void arcan_conductor_enable_watchdog()
@@ -39,6 +39,17 @@ void arcan_conductor_enable_watchdog()
 	arcan_watchdog_ping = arcan_alloc_mem(system_page_size,
 		ARCAN_MEM_SHARED, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 	atomic_store(arcan_watchdog_ping, arcan_timemillis());
+}
+
+void arcan_conductor_toggle_watchdog()
+{
+	if (arcan_watchdog_ping){
+		if (atomic_load(arcan_watchdog_ping)){
+			atomic_store(arcan_watchdog_ping, 0);
+		}
+		else
+			atomic_store(arcan_watchdog_ping, arcan_timemillis());
+	}
 }
 
 /*

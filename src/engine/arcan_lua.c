@@ -943,15 +943,21 @@ static void finish_trace_buffer(lua_State* ctx)
 		lua_rawset(ctx, ttop);
 	}
 
-	alua_call(ctx, 1, 0, LINE_TAG":trace");
-
-/* process and repack - format is described in arcan_trace.c */
-	luaL_unref(ctx, LUA_REGISTRYINDEX, luactx.trace_cb);
+/* process and repack - format is described in arcan_trace.c,
+ * free first so that we can call ourselves even from the fatal handler */
 	free(luactx.trace_buffer);
 	arcan_trace_setbuffer(NULL, 0, NULL);
 	luactx.trace_buffer = NULL;
 	luactx.trace_buffer_sz = 0;
 	luactx.got_trace_buffer = false;
+
+/* this might incur some heavy processing, so the tradeoff with the
+ * watchdog might hurt a bit too much and the data itself is more
+ * important so disable it (should it be enabled) */
+	arcan_conductor_toggle_watchdog();
+		alua_call(ctx, 1, 0, LINE_TAG":trace");
+	arcan_conductor_toggle_watchdog();
+	luaL_unref(ctx, LUA_REGISTRYINDEX, luactx.trace_cb);
 }
 
 void arcan_lua_tick(lua_State* ctx, size_t nticks, size_t global)
@@ -7345,6 +7351,11 @@ void arcan_lua_shutdown(lua_State* ctx)
 /* deal with:
  * luactx : rawres, lastsrc, cb_source_kind, db_source_tag, last_segreq,
  * pending_socket_label, pending_socket_descr */
+	TRACE_MARK_ONESHOT("scripting", "shutdown", TRACE_SYS_DEFAULT, 0, 0, "");
+	arcan_trace_setbuffer(NULL, 0, NULL);
+	if (luactx.got_trace_buffer){
+		finish_trace_buffer(ctx);
+	}
 	lua_close(ctx);
 }
 
@@ -7591,10 +7602,27 @@ static void alua_call(
 
 	lua_insert(ctx, errind);
 	int errc = lua_pcall(ctx, nargs, retc, errind);
-	lua_remove(ctx, errind);
+
 	if (errc != 0){
+/* if we have a tracing session going, try to finish that one along
+ * with the backtrace we might have received, this should be robust
+ * from recursion (scripting error in the callback handler) since
+ * the got_trace_buffer trigger is cleared between calls */
+		const char* msg = luaL_optstring(ctx, -1, "no backtrace");
+		lua_remove(ctx, errind);
+
+		if (luactx.trace_buffer){
+			TRACE_MARK_ONESHOT("scripting", "crash", TRACE_SYS_ERROR, 0, 0, msg);
+			arcan_trace_setbuffer(NULL, 0, NULL);
+			if (luactx.got_trace_buffer){
+				finish_trace_buffer(ctx);
+			}
+		}
+
 		wraperr(ctx, errc, src);
+		return;
 	}
+	lua_remove(ctx, errind);
 }
 
 static void panic(lua_State* ctx)
