@@ -71,8 +71,8 @@ static bool process_io(struct arcan_shmif_cont* c, struct arcan_event e)
 	switch(e.io.datatype){
 	case EVENT_IDATATYPE_ANALOG:
 		if (e.io.devkind == EVENT_IDEVKIND_MOUSE){
-		if (!arcan_shmif_mousestate(c, mstate, &e, &x, &y))
-			return false;
+			if (!arcan_shmif_mousestate(c, mstate, &e, &x, &y))
+				return false;
 			i_mouse++;
 			rgb = SHMIF_RGBA(i_mouse, 0, 0, 255);
 		}
@@ -84,6 +84,8 @@ static bool process_io(struct arcan_shmif_cont* c, struct arcan_event e)
 	case EVENT_IDATATYPE_TOUCH:
 		i_touch++;
 		rgb = SHMIF_RGBA(0, 0, i_touch, 255);
+		x = e.io.input.touch.x;
+		y = e.io.input.touch.y;
 	break;
 	default:
 		return false;
