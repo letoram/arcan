@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2018, Björn Ståhl
+ * Copyright 2014-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -998,12 +998,23 @@ int platform_fsrv_pushevent(arcan_frameserver* dst, arcan_event* ev)
 
 	TRAMP_GUARD(ARCAN_ERRC_UNACCEPTED_STATE, dst);
 
-	if (!dst->flags.alive || !dst->shm.ptr || !dst->shm.ptr->dms)
+	if (!dst->flags.alive || !dst->shm.ptr || !dst->shm.ptr->dms){
+		platform_fsrv_leave();
 		return ARCAN_ERRC_UNACCEPTED_STATE;
+	}
+
+/* if the type is masked, then drop silently */
+	if (ev->category == EVENT_IO && (
+		(dst->devicemask & ev->io.devkind) || (dst->datamask & ev->io.datatype))){
+		platform_fsrv_leave();
+		return ARCAN_OK;
+	}
 
 	struct arcan_evctx* ctx = &dst->outqueue;
-	if ( ((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front)
-		return ARCAN_ERRC_UNACCEPTED_STATE;
+	if ( ((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
+		platform_fsrv_leave();
+		return ARCAN_ERRC_OUT_OF_SPACE;
+	}
 
 	ctx->eventbuf[*ctx->back] = *ev;
 

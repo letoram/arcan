@@ -1,6 +1,6 @@
 /*
  Arcan Shared Memory Interface, Event Namespace
- Copyright (c) 2014-2016, Bjorn Stahl
+ Copyright (c) 2014-2020, Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
@@ -807,6 +807,13 @@ enum ARCAN_EVENT_EXTERNAL {
  */
 	EVENT_EXTERNAL_PRIVDROP = 20,
 
+/*
+ * Signal that the surface is not capable of processing inputs of a specific
+ * sample type and/or device type and can therefore be ignored / masked earlier.
+ * Uses the inputmask substructure.
+ */
+	EVENT_EXTERNAL_INPUTMASK = 21,
+
 	EVENT_EXTERNAL_ULIM = INT_MAX
 };
 
@@ -856,15 +863,16 @@ enum ARCAN_TARGET_SKIPMODE {
 		MBTN_WHEEL_DOWN_IND
 	};
 
+/* can also be used as values for an inputmask command */
 	enum ARCAN_EVENT_IDEVKIND {
-		EVENT_IDEVKIND_KEYBOARD = 0,
-		EVENT_IDEVKIND_MOUSE,
-		EVENT_IDEVKIND_GAMEDEV,
-		EVENT_IDEVKIND_TOUCHDISP,
-		EVENT_IDEVKIND_LEDCTRL,
-		EVENT_IDEVKIND_EYETRACKER,
-		EVENT_IDEVKIND_STATUS,
-		EVENT_IDEVKIND_ULIM = INT_MAX
+		EVENT_IDEVKIND_KEYBOARD    = 1,
+		EVENT_IDEVKIND_MOUSE       = 2,
+		EVENT_IDEVKIND_GAMEDEV     = 4,
+		EVENT_IDEVKIND_TOUCHDISP   = 8,
+		EVENT_IDEVKIND_LEDCTRL     = 16,
+		EVENT_IDEVKIND_EYETRACKER  = 32,
+		EVENT_IDEVKIND_STATUS      = 64,
+		EVENT_IDEVKIND_ULIM        = INT_MAX
 	};
 
 	enum ARCAN_IDEV_STATUS {
@@ -874,12 +882,12 @@ enum ARCAN_TARGET_SKIPMODE {
 	};
 
 	enum ARCAN_EVENT_IDATATYPE {
-		EVENT_IDATATYPE_ANALOG = 0,
-		EVENT_IDATATYPE_DIGITAL,
-		EVENT_IDATATYPE_TRANSLATED,
-		EVENT_IDATATYPE_TOUCH,
-		EVENT_IDATATYPE_EYES,
-		EVENT_IDATATYPE_ULIM = INT_MAX
+		EVENT_IDATATYPE_ANALOG     = 1,
+		EVENT_IDATATYPE_DIGITAL    = 2,
+		EVENT_IDATATYPE_TRANSLATED = 4,
+		EVENT_IDATATYPE_TOUCH      = 8,
+		EVENT_IDATATYPE_EYES       = 16,
+		EVENT_IDATATYPE_ULIM       = INT_MAX
 	};
 
 	/*
@@ -1302,6 +1310,15 @@ enum ARCAN_TARGET_SKIPMODE {
 		uint8_t sandboxed;
 		uint8_t networked;
 	} privdrop;
+
+/*
+ * (device) : bitmap of blocked input device types (enum ARCAN_EVENT_IDEVKIND).
+ * (types)  : bitmap of blocked input data types   (enum ARCAN_EVENT_IDATATYPE).
+ */
+	struct {
+		uint32_t device;
+		uint32_t types;
+	} inputmask;
 
 /*
  * Indicate that the connection supports abstract input labels, along
