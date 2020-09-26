@@ -450,10 +450,14 @@ int tui_screen_refresh(struct tui_context* tui)
 		if (!tui->rbuf_fwd){
 			if (1 != tui_raster_render(tui->raster, &tui->acon, rbuf, rbuf_sz))
 				return 0;
+
+			arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+			return 0;
 		}
 
-		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
-	}
+		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
+/* last offset feedback buffer can be read here for kernel offset / lookup */
+ 	}
 
 	return 0;
 }

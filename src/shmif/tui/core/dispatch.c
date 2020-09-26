@@ -9,11 +9,27 @@
 static void display_hint(struct tui_context* tui, arcan_tgtevent* ev)
 {
 /* first, are other dimensions than our current ones requested? */
-	int w = ev->ioevs[0].iv;
-	int h = ev->ioevs[1].iv;
+	int w = ev->ioevs[0].iv ? ev->ioevs[0].iv : tui->acon.w;
+	int h = ev->ioevs[1].iv ? ev->ioevs[1].iv : tui->acon.h;
+	bool cell_changed = false;
 
-	if (w && w && (abs((int)w -
-		(int)tui->acon.w) > 0 || abs((int)h - (int)tui->acon.h) > 0)){
+/* did we get an updated cell-state and we are in server-side rendering? */
+	int hcw = ev->ioevs[5].iv;
+	int hch = ev->ioevs[6].iv;
+	if (tui->rbuf_fwd && hcw > 0 && tui->cell_w != hcw){
+		cell_changed = true;
+		tui->cell_w = hcw;
+	}
+	if (tui->rbuf_fwd && hch > 0 && tui->cell_h != hch){
+		cell_changed = true;
+		tui->cell_h = hch;
+	}
+
+/* anything that would case relayout, resize, renegotiation */
+	if (cell_changed ||
+		(abs((int)w - (int)tui->acon.w) > 0) ||
+		(abs((int)h - (int)tui->acon.h) > 0))
+	{
 
 /* realign against grid and clamp */
 		size_t rows = h / tui->cell_h;

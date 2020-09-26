@@ -8101,6 +8101,12 @@ static int targetdisphint(lua_State* ctx)
 	arcan_vobject* vobj;
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, &vobj);
 
+/* non fsrv vid is terminal state */
+	struct arcan_frameserver* fsrv = vobj->feed.state.ptr;
+	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !fsrv){
+		arcan_fatal("target_displayhint() - vid is not a frameserver\n");
+	}
+
 	int width = luaL_checknumber(ctx, 2);
 	int height = luaL_checknumber(ctx, 3);
 	int cont = luaL_optnumber(ctx, 4, 128);
@@ -8179,12 +8185,9 @@ static int targetdisphint(lua_State* ctx)
 		arcan_fatal("target_disphint(%d, %d), "
 			"display dimensions must be >= 0", width, height);
 
-/* forward the rendering relevant information to the frameserver,
- * primarily for TPACK, where the actual pixel-size is set by the
- * server-side rasterizer */
-	if (vobj->feed.state.tag == ARCAN_TAG_FRAMESERV && vobj->feed.state.ptr){
-		arcan_frameserver_displayhint(vobj->feed.state.ptr, width, height, ppcm);
-	}
+/* forward the rendering relevant information to the frameserver, primarily for
+ * TPACK, where the actual pixel-size is set by the server-side rasterizer */
+	arcan_frameserver_displayhint(fsrv, width, height, ppcm);
 
 	arcan_event ev = {
 		.category = EVENT_TARGET,
@@ -8193,8 +8196,12 @@ static int targetdisphint(lua_State* ctx)
 		.tgt.ioevs[1].iv = height,
 		.tgt.ioevs[2].iv = cont,
 		.tgt.ioevs[3].iv = phy_lay,
-		.tgt.ioevs[4].fv = ppcm
+		.tgt.ioevs[4].fv = ppcm,
+/* this is kept updated from _displayhint and _fonthint */
+		.tgt.ioevs[5].iv = fsrv->desc.text.cellw,
+		.tgt.ioevs[6].iv = fsrv->desc.text.cellh
 	};
+
 	ev.tgt.timestamp = arcan_timemillis();
 	tgtevent(tgt, ev);
 

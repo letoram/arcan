@@ -60,6 +60,13 @@ struct tui_raster_context* tui_raster_setup(size_t cell_w, size_t cell_h)
 	return res;
 }
 
+void tui_raster_get_cell_size(
+	struct tui_raster_context* ctx, size_t* w, size_t* h)
+{
+	*w = ctx->cell_w;
+	*h = ctx->cell_h;
+}
+
 void tui_raster_cell_size(struct tui_raster_context* ctx, size_t w, size_t h)
 {
 	ctx->cell_w = w;
