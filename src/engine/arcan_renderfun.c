@@ -1550,6 +1550,10 @@ static void font_group_ptpx(
 static void set_font_slot(
 	struct arcan_renderfun_fontgroup* grp, int slot, int fd)
 {
+/* the builtin- bitmap is immutable */
+	if (grp->font == &builtin_bitmap)
+		return;
+
 /* first check for a supported pixel font format, early-out on found/io error */
 	int pfstat = consume_pixel_font(grp, fd);
 	if (pfstat)
@@ -1609,7 +1613,8 @@ void arcan_renderfun_fontgroup_replace(
 
 /* can't accomodate, ignore */
 	if (slot >= group->used){
-		close(new);
+		if (new != -1)
+			close(new);
 		return;
 	}
 
@@ -1692,6 +1697,12 @@ struct tui_raster_context* arcan_renderfun_fontraster(
 		tui_pixelfont_setsz(group->font[0].bitmap, px, &w, &h);
 	}
 
+	if (cellw)
+		*cellw = w;
+
+	if (cellh)
+		*cellh = h;
+
 	group->raster = tui_raster_setup(w, h);
 	tui_raster_setfont(group->raster, lst, group->used);
 
@@ -1706,7 +1717,7 @@ static void build_font_group(
 	grp->size_mm = 3.527780;
 
 /* default requested */
-	if (!n_fonts)
+	if (!n_fonts || fds[0] == -1)
 		goto fallback_bitmap;
 
 	grp->used = n_fonts;

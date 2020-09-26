@@ -160,9 +160,11 @@ int tui_raster_render(struct tui_raster_context* ctx,
 	struct arcan_shmif_cont* dst, uint8_t* buf, size_t buf_sz);
 #endif
 
-/* Called when the cell size has unexpectedly changed
- */
+/* Called when the cell size has unexpectedly changed */
 void tui_raster_cell_size(struct tui_raster_context* ctx, size_t w, size_t h);
+
+void tui_raster_get_cell_size(
+	struct tui_raster_context* ctx, size_t* w, size_t* h);
 
 /*
  * Synch the raster state into the agp_store

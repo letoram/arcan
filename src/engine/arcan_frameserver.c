@@ -267,15 +267,20 @@ static bool push_buffer(arcan_frameserver* src,
 		struct tui_raster_context* raster =
 			arcan_renderfun_fontraster(src->desc.text.group,
 				src->desc.hint.ppcm, src->desc.text.szmm,
-				src->desc.text.hint, NULL, NULL
+				src->desc.text.hint, &src->desc.text.cellw, &src->desc.text.cellh
 			);
 
-/* this is the next step to change, of course we should merge the buffers into
+/* This is the next step to change, of course we should merge the buffers into
  * a tpack_vstore and then use normal txcos etc. to pick our visible set, and a
  * MSDF text atlas to get drawing lists, removing the last 'big buffer'
- * requirement */
+ * requirement. */
 		tui_raster_renderagp(raster, store,
 			(uint8_t*) buf, src->desc.width * src->desc.height * sizeof(shmif_pixel));
+
+/* here we should get kerning / shaping feedback (if any) and return back the
+ * line deltas - these will be fixed size of convenience as n_rows * n_cells bytes
+ * assuming no cell will be larger than 256 px - as this comes immediately there
+ * should be no real ordering issue against mouse input on the surface */
 
 		TRACE_MARK_EXIT("frameserver", "buffer-tpack-raster", TRACE_SYS_DEFAULT, src->vid, 0, "");
 		goto commit_mask;
@@ -1372,21 +1377,38 @@ arcan_errc arcan_frameserver_setfont(
 	if (!fsrv)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (!fsrv->desc.text.group && slot == 0){
-		fsrv->desc.text.group =
-			arcan_renderfun_fontgroup((int[]){fd, BADFD, BADFD, BADFD}, 4);
+	bool replace = true;
+	bool reprobe = false;
+
+/* always update primary slot size */
+	if (slot == 0){
+		if (sz > EPSILON){
+			fsrv->desc.text.szmm = sz;
+			reprobe = true;
+		}
+
+/* first time and main slot? then build the group */
+		if (!fsrv->desc.text.group){
+			fsrv->desc.text.group =
+				arcan_renderfun_fontgroup((int[]){fd, BADFD, BADFD, BADFD}, 4);
+			replace = false;
+		}
 	}
 
+/* supplementary slot but no group? */
 	if (!fsrv->desc.text.group){
 		close(fd);
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 	}
 
-	if (sz && slot == 0){
-		fsrv->desc.text.szmm = sz;
-	}
+	if (replace)
+		arcan_renderfun_fontgroup_replace(fsrv->desc.text.group, slot, fd);
 
-	arcan_renderfun_fontgroup_replace(fsrv->desc.text.group, slot, fd);
+	if (reprobe && fsrv->desc.hint.ppcm > EPSILON)
+		arcan_renderfun_fontraster(fsrv->desc.text.group,
+			fsrv->desc.hint.ppcm, sz, fsrv->desc.text.hint,
+			&fsrv->desc.text.cellw, &fsrv->desc.text.cellh
+		);
 
 	return ARCAN_OK;
 }
@@ -1403,6 +1425,17 @@ void arcan_frameserver_displayhint(
 	if (h > 0)
 		fsrv->desc.hint.height = h;
 
-	if (ppcm > EPSILON)
+/* if we have a new density, this should be forwarded to any attached
+ * rasterizer which may cause a different cell size to be communicated */
+	if (ppcm > EPSILON && ppcm != fsrv->desc.hint.ppcm){
 		fsrv->desc.hint.ppcm = ppcm;
+
+/* we don't actually care to use the raster, just want to re-probe size */
+		if (fsrv->desc.text.group){
+			arcan_renderfun_fontraster(fsrv->desc.text.group,
+				ppcm, fsrv->desc.text.szmm, fsrv->desc.text.hint,
+				&fsrv->desc.text.cellw, &fsrv->desc.text.cellh
+			);
+		}
+	}
 }

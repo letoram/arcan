@@ -123,7 +123,7 @@ void arcan_video_fontdefaults(file_handle* fd, int* pt_sz, int* hint);
 void arcan_renderfun_reset_fontcache();
 
 /*
- * RGBA32 only for only, rather unoptimized
+ * RGBA32 only for now, rather unoptimized
  * returns -1 or failure, 0 on success
  * blits src into dst, stretching to dstw, desth, optionally inverting
  * row-order.

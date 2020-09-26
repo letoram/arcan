@@ -50,6 +50,7 @@ struct arcan_frameserver_meta {
 		struct arcan_renderfun_fontgroup* group;
 		int hint;
 		float szmm;
+		size_t cellw, cellh;
 	} text;
 
 /* tracking state for displayhint events */
