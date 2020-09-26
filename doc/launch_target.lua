@@ -148,6 +148,11 @@
 -- accumulated set of labels are no longer accepted and and state tracking
 -- should be reset.
 --
+-- @note: "input_mask" - Hints that the mask of accepted input devices and/or
+-- types have been changed. ref:target_input calls that attempts to forward a
+-- masked type will have matching events dropped automatically. The actual
+-- mask details can be queried through ref:input_capabilities.
+--
 -- @note: "clock" (value, monotonic, once) - frameserver wants a periodic or
 -- fire-once stepframe event call. monotonic suggests the time-frame relative to
 -- the built-in CLOCKRATE (clock_pulse)

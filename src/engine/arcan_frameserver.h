@@ -135,8 +135,14 @@ struct arcan_frameserver {
  * final string, to handle things like linux private socket namespace */
 	char* sockaddr, (* sockkey);
 
-/* list of permitted meta- protocols for this connection */
+/* bitmap of permitted meta- protocols for this connection */
 	unsigned metamask;
+
+/* bitmap of device types to block from enqueueing */
+	unsigned devicemask;
+
+/* bitmap of sample types to block from enqueueing */
+	unsigned datamask;
 
 /* special transfer state flags */
 	struct {

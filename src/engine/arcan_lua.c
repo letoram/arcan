@@ -4362,6 +4362,9 @@ kinderr:
 		return 1;
 	}
 
+/* There are more relevant error codes here that might be considered, such as
+ * if it is a bad/broken client, the queue is full or the input type is being
+ * masked as not being interesting. */
 	lua_pushnumber(ctx, ARCAN_OK == platform_fsrv_pushevent( fsrv, &ev));
 	LUA_ETRACE("target_input/input_target", NULL, 1);
 }
@@ -5026,6 +5029,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx, "min_h", ev->ext.content.min_h, top);
 			tblnum(ctx, "max_w", ev->ext.content.max_w, top);
 			tblnum(ctx, "max_h", ev->ext.content.max_h, top);
+		break;
+/* the actual mask state can be queried through input capabilities */
+		case EVENT_EXTERNAL_INPUTMASK:
+			tblstr(ctx, "kind", "mask_input", top);
 		break;
 		case EVENT_EXTERNAL_VIEWPORT:
 			tblstr(ctx, "kind", "viewport", top);
@@ -6871,14 +6878,41 @@ static int inputcap(lua_State* ctx)
 	LUA_TRACE("input_capabilities");
 	const char* pident;
 	enum PLATFORM_EVENT_CAPABILITIES pcap = platform_event_capabilities(&pident);
+
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
-	tblbool(ctx, "translated", (pcap & ACAP_TRANSLATED) > 0, top);
-	tblbool(ctx, "mouse", (pcap & ACAP_MOUSE) > 0, top);
-	tblbool(ctx, "gaming", (pcap & ACAP_GAMING) > 0, top);
-	tblbool(ctx, "touch", (pcap & ACAP_TOUCH) > 0, top);
-	tblbool(ctx, "position", (pcap & ACAP_POSITION) > 0, top);
-	tblbool(ctx, "orientation", (pcap & ACAP_ORIENTATION) > 0, top);
+	if (lua_type(ctx, 1) == LUA_TNUMBER){
+		arcan_vobject* vobj;
+		arcan_vobj_id id = luaL_checkvid(ctx, 1, &vobj);
+
+/* unreference the old one so we don't leak */
+		if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
+			arcan_fatal("input_capabilities(), specified "
+				"vid (arg 1) not associated with a frameserver.");
+
+		arcan_frameserver* tgt = vobj->feed.state.ptr;
+
+		tblbool(ctx, "keyboard", tgt->devicemask & EVENT_IDEVKIND_KEYBOARD, top);
+		tblbool(ctx, "game", tgt->devicemask & EVENT_IDEVKIND_GAMEDEV, top);
+		tblbool(ctx, "mouse", tgt->devicemask & EVENT_IDEVKIND_GAMEDEV, top);
+		tblbool(ctx, "touch", tgt->devicemask & EVENT_IDEVKIND_TOUCHDISP, top);
+		tblbool(ctx, "led", tgt->devicemask & EVENT_IDEVKIND_LEDCTRL, top);
+		tblbool(ctx, "eyetracker", tgt->devicemask & EVENT_IDEVKIND_EYETRACKER, top);
+		tblbool(ctx, "analog", tgt->datamask & EVENT_IDATATYPE_ANALOG, top);
+		tblbool(ctx, "digital", tgt->datamask & EVENT_IDATATYPE_DIGITAL, top);
+		tblbool(ctx, "translated", tgt->datamask & EVENT_IDATATYPE_TRANSLATED, top);
+		tblbool(ctx, "touch", tgt->datamask & EVENT_IDATATYPE_TOUCH, top);
+		tblbool(ctx, "eyes", tgt->datamask & EVENT_IDATATYPE_EYES, top);
+	}
+	else {
+		tblbool(ctx, "keyboard", (pcap & ACAP_TRANSLATED) > 0, top);
+		tblbool(ctx, "mouse", (pcap & ACAP_MOUSE) > 0, top);
+		tblbool(ctx, "game", (pcap & ACAP_GAMING) > 0, top);
+		tblbool(ctx, "touch", (pcap & ACAP_TOUCH) > 0, top);
+		tblbool(ctx, "position", (pcap & ACAP_POSITION) > 0, top);
+		tblbool(ctx, "orientation", (pcap & ACAP_ORIENTATION) > 0, top);
+		tblbool(ctx, "eyetracker", (pcap & ACAP_EYES) > 0, top);
+	}
 	lua_pushstring(ctx, pident);
 	LUA_ETRACE("input_capabilities", NULL, 2);
 }

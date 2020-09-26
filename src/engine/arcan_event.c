@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2019, Björn Ståhl
+ * Copyright 2003-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description: The event-queue interface has gone through a lot of hacks
@@ -309,6 +309,11 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 					inev.ext.privdrop.external = tgt->flags.external;
 					inev.ext.privdrop.networked = tgt->flags.networked;
 					inev.ext.privdrop.sandboxed = tgt->flags.sandboxed;
+				break;
+
+				case EVENT_EXTERNAL_INPUTMASK:
+					tgt->devicemask = inev.ext.inputmask.device;
+					tgt->datamask   = inev.ext.inputmask.types;
 				break;
 
 /* for autoclocking, only one-fire events are forwarded if flag has been set */
