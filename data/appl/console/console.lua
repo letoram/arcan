@@ -194,7 +194,7 @@ end
 function spawn_terminal()
 	local term_arg = (
 		get_key("terminal") or "palette=solarized") ..
-		":cli:env=ARCAN_CONNPATH=" .. connection_point
+		":env=ARCAN_CONNPATH=" .. connection_point
 
 	return launch_avfeed(term_arg, "terminal", client_event_handler)
 end
