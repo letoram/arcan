@@ -53,8 +53,11 @@ struct arcan_frameserver_meta {
 		size_t cellw, cellh;
 	} text;
 
-/* tracking state for displayhint events */
+/* tracking state for displayhint events - somewhat redundant in that width/
+ * height/ppcm are covered in lasthint, but since the values are needed so often
+ * it makes things slightly clearer. */
 	struct {
+		struct arcan_event last;
 		size_t width, height;
 		float ppcm;
 	} hint;

@@ -30,7 +30,6 @@ static void display_hint(struct tui_context* tui, arcan_tgtevent* ev)
 		(abs((int)w - (int)tui->acon.w) > 0) ||
 		(abs((int)h - (int)tui->acon.h) > 0))
 	{
-
 /* realign against grid and clamp */
 		size_t rows = h / tui->cell_h;
 		size_t cols = w / tui->cell_w;
@@ -38,6 +37,8 @@ static void display_hint(struct tui_context* tui, arcan_tgtevent* ev)
 			rows++;
 		if (!cols)
 			cols++;
+
+		LOG("cell-change: %zu*%zu @ %d:%d\n", rows, cols, tui->cell_w, tui->cell_h);
 
 /* and communicate our cell dimensions back as well as the resolved size */
 		if (arcan_shmif_resize_ext(&tui->acon,
