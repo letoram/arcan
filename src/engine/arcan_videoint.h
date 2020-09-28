@@ -250,7 +250,11 @@ typedef struct arcan_vobject {
 
 	surface_transform* transform;
 	enum arcan_transform_mask mask;
+
+/* clip (shallow=txco, deep=stencil, off=default) along with non-linked
+ * parent reference object (needed for some edge cases) */
 	enum arcan_clipmode clip;
+	arcan_vobj_id clip_src;
 
 /* transform caching,
  * the invalidated flag will be active as long as there are running
