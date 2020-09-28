@@ -15,6 +15,8 @@ bchunk - (requires fsrv) opening io streams to/from a client
 canvasresize - rest resizing the primary output canvas
                in the response to a button press
 
+clip - tests different clipping hierarchy configurations
+
 clockreq - (requires fsrv) test monotonic, dynamic and user
            requested timers
 
