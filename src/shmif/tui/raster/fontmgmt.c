@@ -27,6 +27,8 @@ static bool tryload_truetype(struct tui_context* tui,
 	if (!font)
 		return false;
 
+	LOG("open_font(%zu pt, %f dpi)\n", pt_size, dpi);
+
 /* free pre-existing font / cache */
 	if (tui->font[slot]->vector){
 		TTF_CloseFont(tui->font[slot]->truetype);
@@ -47,6 +49,7 @@ static bool tryload_truetype(struct tui_context* tui,
 		TTF_ProbeFont(tui->font[0]->truetype, &dw, &dh);
 		tui->cell_w = dw;
 		tui->cell_h = dh;
+		LOG("open_font::probe(%zu, %zu)\n", dw, dh);
 /* optimization here is that in tui cell mode, we only really need the
  * font to determine the presence of a glyph, so maybe there are caches
  * to flush in ttf renderer */
@@ -126,7 +129,7 @@ static bool setup_font(
 	tui->font_sz = font_sz;
 
 /* bitmap font need the nearest size in px, with ttf we convert to pt */
-	size_t pt_size = (font_sz * 2.8346456693f);
+	size_t pt_size = roundf((float)font_sz * 2.8346456693f);
 	size_t px_sz = ceilf((float)pt_size * 0.03527778 * tui->ppcm);
 
 /* clamp or we'll drop into inf/invisible */
@@ -242,7 +245,7 @@ void tui_fontmgmt_setup(
 	memset(fonts, '\0', font_sz);
 	tui->font[0] = &fonts[0];
 	tui->font[1] = &fonts[1];
-	tui->hint = TTF_HINTING_LIGHT;
+	tui->hint = TTF_HINTING_NORMAL;
 
 	if (init){
 		setup_font(tui, init->fonts[0].fd, init->fonts[0].size_mm, 0);

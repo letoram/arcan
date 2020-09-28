@@ -146,10 +146,17 @@ int arcan_renderfun_stretchblit(char* src, int inw, int inh,
 struct arcan_renderfun_fontgroup* arcan_renderfun_fontgroup(int* fds, size_t n_fonts);
 
 /*
- * Update a specific slot in the font group with a new descriptor
+ * Update a specific slot in the font group with a new descriptor,
+ * if the first slot is replaced new size calculations should be made as well
  */
 void arcan_renderfun_fontgroup_replace(
 	struct arcan_renderfun_fontgroup*, int slot, int fd);
+
+/*
+ * Change the desired size and/or density for the group, provide new estimated cells
+ */
+void arcan_renderfun_fontgroup_size(
+	struct arcan_renderfun_fontgroup*, float size_mm, float ppcm, size_t* w, size_t* h);
 
 /*
  * Free resources tied to a previously allocated fontgroup
@@ -162,8 +169,4 @@ void arcan_renderfun_release_fontgroup(struct arcan_renderfun_fontgroup* group);
  * to tui_raster.
  */
 struct tui_raster_context;
-struct tui_raster_context* arcan_renderfun_fontraster(
-	struct arcan_renderfun_fontgroup*,
-	float ppcm, float size_mm,
-	int hint, size_t* cellw, size_t* cellh
-);
+struct tui_raster_context* arcan_renderfun_fontraster(struct arcan_renderfun_fontgroup*);

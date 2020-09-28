@@ -69,6 +69,9 @@ TTF_Font* TTF_OpenFontIndexRW(FILE* src, int freesrc, int ptsize,
 /* open font using a preexisting file descriptor, takes ownership of fd */
 TTF_Font* TTF_OpenFontFD(int fd, int ptsize, uint16_t hdpi, uint16_t vdpi);
 
+/* open font using a preexisting font for file, will close *src if needed */
+TTF_Font* TTF_ReplaceFont(TTF_Font*, int pt, uint16_t hdpi, uint16_t vdpi);
+
 void* TTF_GetFtFace(TTF_Font*);
 
 int UTF8_to_UTF32(uint32_t* out, const uint8_t* in, size_t len);

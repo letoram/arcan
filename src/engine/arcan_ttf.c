@@ -449,17 +449,32 @@ TTF_Font* TTF_OpenFont( const char *file, int ptsize,
 	return TTF_OpenFontIndex(file, ptsize, hdpi, vdpi, 0);
 }
 
-TTF_Font* TTF_OpenFontFD(int fd, int ptsize,
-	uint16_t hdpi, uint16_t vdpi)
+TTF_Font* TTF_ReplaceFont(TTF_Font* src, int ptsize, uint16_t hdpi, uint16_t vdpi)
+{
+	int newfd = arcan_shmif_dupfd(fileno(src->src), -1, true);
+	if (-1 == newfd)
+		return src;
+
+	TTF_Font* new = TTF_OpenFontFD(newfd, ptsize, hdpi, vdpi);
+	close(newfd);
+
+	if (!new){
+		return src;
+	}
+
+	TTF_CloseFont(src);
+	return new;
+}
+
+TTF_Font* TTF_OpenFontFD(int fd,
+	int ptsize, uint16_t hdpi, uint16_t vdpi)
 {
 	if (-1 == fd)
 		return NULL;
 
-	int nfd = dup(fd);
+	int nfd = arcan_shmif_dupfd(fd, -1, true);
 	if (-1 == nfd)
 		return NULL;
-
-	fcntl(nfd, F_SETFD, FD_CLOEXEC);
 
 	FILE* fstream = fdopen(nfd, "r");
 	if (!fstream){
@@ -1647,7 +1662,12 @@ void TTF_ProbeFont(TTF_Font* font, size_t* dw, size_t* dh)
 	};
 
 	TTF_Color fg = {.r = 0xff, .g = 0xff, .b = 0xff};
-	int w = *dw, h = *dh;
+	int w = 1, h = 1;
+
+/*
+ * Flush the cache so we're not biased or collide with byIndex or byValue
+ */
+	TTF_Flush_Cache(font);
 
 	for (size_t i = 0; msg[i]; i++){
 		TTF_SizeUTF8(font, msg[i], &w, &h, TTF_STYLE_BOLD | TTF_STYLE_UNDERLINE);
@@ -1655,16 +1675,10 @@ void TTF_ProbeFont(TTF_Font* font, size_t* dw, size_t* dh)
 		if (font->hinting == TTF_HINTING_RGB)
 			w++;
 
-		if (w > *dw){
+		if (w > *dw)
 			*dw = w;
-		}
 
 		if (h > *dh)
 			*dh = h;
 	}
-
-/*
- * Flush the cache so we're not biased or collide with byIndex or byValue
- */
-	TTF_Flush_Cache(font);
 }

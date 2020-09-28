@@ -7953,6 +7953,7 @@ static int targetfonthint(lua_State* ctx)
 	bool send_dh = slot == 0 && sz != fsrv->desc.text.szmm &&
 		fsrv->desc.hint.last.tgt.kind == TARGET_COMMAND_DISPLAYHINT;
 
+/* this may duplicate the fd in order to save for later */
 	arcan_frameserver_setfont(fsrv, fd, sz, hint, slot);
 
 	if (send_dh)

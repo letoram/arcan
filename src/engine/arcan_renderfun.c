@@ -1470,7 +1470,7 @@ struct arcan_renderfun_fontgroup {
 	struct tui_font* font;
 	struct tui_raster_context* raster;
 	size_t used;
-
+	size_t w, h;
 	float ppcm;
 	float size_mm;
 
@@ -1536,7 +1536,7 @@ static int consume_pixel_font(struct arcan_renderfun_fontgroup* grp, int fd)
 static void font_group_ptpx(
 	struct arcan_renderfun_fontgroup* grp, size_t* pt, size_t* px)
 {
-	float pt_size = ceilf((float)grp->size_mm * 2.8346456693f);
+	float pt_size = roundf((float)grp->size_mm * 2.8346456693f);
 	if (pt_size < 4)
 		pt_size = 4;
 
@@ -1544,15 +1544,21 @@ static void font_group_ptpx(
 		*pt = pt_size;
 
 	if (px)
-		*px = ceilf((float)pt_size * 0.03527778 * grp->ppcm);
+		*px = roundf((float)pt_size * 0.03527778 * grp->ppcm);
 }
 
 static void set_font_slot(
 	struct arcan_renderfun_fontgroup* grp, int slot, int fd)
 {
-/* the builtin- bitmap is immutable */
-	if (grp->font == &builtin_bitmap)
+/* don't do anything to a bad font */
+	if (fd == -1)
 		return;
+
+/* the builtin- bitmap is immutable */
+	if (grp->font == &builtin_bitmap){
+		close(fd);
+		return;
+	}
 
 /* first check for a supported pixel font format, early-out on found/io error */
 	int pfstat = consume_pixel_font(grp, fd);
@@ -1565,6 +1571,8 @@ static void set_font_slot(
 	size_t pt_sz;
 	font_group_ptpx(grp, &pt_sz, NULL);
 	float dpi = grp->ppcm * 2.54f;
+
+/* OpenFontFD duplicates internally */
 	grp->font[slot].truetype = TTF_OpenFontFD(fd, pt_sz, dpi, dpi);
 	if (!grp->font[slot].truetype){
 		close(fd);
@@ -1636,25 +1644,62 @@ void arcan_renderfun_release_fontgroup(struct arcan_renderfun_fontgroup* group)
 	arcan_mem_free(group);
 }
 
-struct tui_raster_context* arcan_renderfun_fontraster(
+void arcan_renderfun_fontgroup_size(
 	struct arcan_renderfun_fontgroup* group,
-	float ppcm, float size_mm,
-	int hint, size_t* cellw, size_t* cellh)
+	float size_mm, float ppcm, size_t* w, size_t* h)
+{
+
+/* the 'raster' context derives from the group in a certain state, and can be
+ * dependent on a shared glyph atlas that changes between invocations - so
+ * invalidate on size change */
+	if (group->raster){
+		tui_raster_free(group->raster);
+		group->raster = NULL;
+	}
+
+	if (size_mm > EPSILON)
+		group->size_mm = size_mm;
+
+	if (ppcm > EPSILON)
+		group->ppcm = ppcm;
+
+/* recalculate new sizes so that we can update the group itself */
+	size_t pt, px;
+	font_group_ptpx(group, &pt, &px);
+	float dpi = group->ppcm * 2.54;
+
+/* re-open each font for the new pt */
+	for (size_t i = 0; i < group->used; i++){
+		if (group->font[i].vector && group->font[i].truetype)
+		{
+			group->font[i].truetype =
+				TTF_ReplaceFont(group->font[i].truetype, pt, dpi, dpi);
+		}
+	}
+
+/* reprobe based on first slot */
+	if (group->font[0].vector){
+		TTF_ProbeFont(group->font[0].truetype, &group->w, &group->h);
+	}
+	else {
+		tui_pixelfont_setsz(group->font[0].bitmap, px, &group->w, &group->h);
+	}
+
+	*w = group->w;
+	*h = group->h;
+}
+
+struct tui_raster_context*
+	arcan_renderfun_fontraster(struct arcan_renderfun_fontgroup* group)
 {
 /* if we don't have a valid font in the font group, the raster is pointless */
 	if ((group->font[0].vector && !group->font[0].truetype) ||
 		(!group->font[0].vector && !group->font[0].bitmap))
 		return NULL;
 
-/* if we have a cached raster for this size, return it if it is still
- * valid, otherwise free and replace with a more appropriate one */
+/* if we have a cached raster, return */
 	if (group->raster){
-		if ((ppcm < EPSILON || fabs(ppcm - group->ppcm) < EPSILON) &&
-			(size_mm < EPSILON || fabs(size_mm - group->size_mm) < EPSILON)){
-			return group->raster;
-		}
-		tui_raster_free(group->raster);
-		group->raster = NULL;
+		return group->raster;
 	}
 
 /* otherwise, build a new list (_setup will copy internally) */
@@ -1663,47 +1708,7 @@ struct tui_raster_context* arcan_renderfun_fontraster(
 		lst[i] = &group->font[i];
 	}
 
-/* fetch the last hinted dimensions if missing */
-	size_t pt, px;
-	if (ppcm < EPSILON)
-		ppcm = group->ppcm;
-	if (size_mm < EPSILON)
-		size_mm = group->size_mm;
-
-/* synch and resolve pixel/pt sizes */
-	bool sz_changed =
-		fabs(ppcm - group->ppcm) > EPSILON ||
-		fabs(size_mm - group->size_mm) > EPSILON;
-	group->ppcm = ppcm;
-	group->size_mm = group->size_mm;
-	font_group_ptpx(group, &pt, &px);
-
-/* reflect dimensions in fonts */
-	size_t w = 0, h = 0;
-	if (group->font[0].vector){
-		if (sz_changed){
-			for (size_t i = 0; i < group->used; i++){
-				if (-1 == group->font[i].fd || !group->font[i].vector)
-					continue;
-
-				TTF_Resize(group->font[i].truetype, pt, ppcm * 2.54, ppcm * 2.54);
-			}
-		}
-
-/* need to re-open the font if dpi or size has changed from last */
-		TTF_ProbeFont(group->font[0].truetype, &w, &h);
-	}
-	else {
-		tui_pixelfont_setsz(group->font[0].bitmap, px, &w, &h);
-	}
-
-	if (cellw)
-		*cellw = w;
-
-	if (cellh)
-		*cellh = h;
-
-	group->raster = tui_raster_setup(w, h);
+	group->raster = tui_raster_setup(group->w, group->h);
 	tui_raster_setfont(group->raster, lst, group->used);
 
 	return group->raster;

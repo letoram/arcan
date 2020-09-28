@@ -113,6 +113,14 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	}
 	src->alocks = NULL;
 
+/* release the font group as well, this has the side effect of a 'pacify-target'
+ * call where the frameserver is transformed to a normal video object - no
+ * being drawable or responding to font size changes (as font state is lost glyph
+ * caches can't be rebuilt or used) - something to reconsider when we can do
+ * shared atlases */
+	arcan_renderfun_release_fontgroup(src->desc.text.group);
+	src->desc.text.group = NULL;
+
 	char msg[32];
 	if (!platform_fsrv_lastwords(src, msg, COUNT_OF(msg)))
 		snprintf(msg, COUNT_OF(msg), "Couldn't access metadata (SIGBUS?)");
@@ -123,8 +131,10 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 	arcan_audio_stop(aid);
-	vfunc_state emptys = {0};
 
+/* make sure there is no other weird dangling state around and forward the
+ * client 'last words' as a troubleshooting exit 'status' */
+	vfunc_state emptys = {0};
 	arcan_video_alterfeed(vid, FFUNC_NULL, emptys);
 
 	arcan_event sevent = {
@@ -135,6 +145,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 		.fsrv.audio = aid,
 		.fsrv.otag = tag
 	};
+
 	memcpy(&sevent.fsrv.message, msg, COUNT_OF(msg));
 	arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
 
@@ -264,23 +275,31 @@ static bool push_buffer(arcan_frameserver* src,
 		if (!src->desc.text.group)
 			src->desc.text.group = arcan_renderfun_fontgroup(NULL, 0);
 
+/* raster is 'built' every update from whatever caching mechanism is in
+ * renderfun, it is only valid for the tui_raster_renderagp call as the
+ * contents can be invalidated with any resize/font-size/font change. */
 		struct tui_raster_context* raster =
-			arcan_renderfun_fontraster(src->desc.text.group,
-				src->desc.hint.ppcm, src->desc.text.szmm,
-				src->desc.text.hint, &src->desc.text.cellw, &src->desc.text.cellh
-			);
+			arcan_renderfun_fontraster(src->desc.text.group);
 
 /* This is the next step to change, of course we should merge the buffers into
  * a tpack_vstore and then use normal txcos etc. to pick our visible set, and a
  * MSDF text atlas to get drawing lists, removing the last 'big buffer'
- * requirement. */
+ * requirement, as well as drawing the cursor separately. */
 		tui_raster_renderagp(raster, store,
 			(uint8_t*) buf, src->desc.width * src->desc.height * sizeof(shmif_pixel));
 
-/* here we should get kerning / shaping feedback (if any) and return back the
- * line deltas - these will be fixed size of convenience as n_rows * n_cells bytes
- * assuming no cell will be larger than 256 px - as this comes immediately there
- * should be no real ordering issue against mouse input on the surface */
+/* Return feedback on kerning in px. Set the entire buffer regardless of delta
+ * since when we get an actual kerning table in the vstore - it will be cheaper
+ * with an aligned (rows * cols) memcpy than to jump around and patch in bytes
+ * on the lines that have changed and to have the client do the same thing. */
+		size_t i = 0;
+		size_t n_rows = src->desc.height / src->desc.text.cellh;
+		size_t n_cols = src->desc.width / src->desc.text.cellw;
+		size_t n_cells = n_rows * n_cols;
+
+/* Size is guaranteed to be >= w * h * tui_cell_size + line_hdr * h + static header */
+		memset(buf, src->desc.text.cellw, n_cells);
+		buf[n_cells] = 0xff;
 
 		TRACE_MARK_EXIT("frameserver", "buffer-tpack-raster", TRACE_SYS_DEFAULT, src->vid, 0, "");
 		goto commit_mask;
@@ -1390,7 +1409,7 @@ arcan_errc arcan_frameserver_setfont(
 /* first time and main slot? then build the group */
 		if (!fsrv->desc.text.group){
 			fsrv->desc.text.group =
-				arcan_renderfun_fontgroup((int[]){fd, BADFD, BADFD, BADFD}, 4);
+				arcan_renderfun_fontgroup((int[]){dup(fd), BADFD, BADFD, BADFD}, 4);
 			replace = false;
 		}
 	}
@@ -1401,14 +1420,14 @@ arcan_errc arcan_frameserver_setfont(
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 	}
 
-	if (replace)
+	if (replace && fd != -1)
 		arcan_renderfun_fontgroup_replace(fsrv->desc.text.group, slot, fd);
 
-	if (reprobe && fsrv->desc.hint.ppcm > EPSILON)
-		arcan_renderfun_fontraster(fsrv->desc.text.group,
-			fsrv->desc.hint.ppcm, sz, fsrv->desc.text.hint,
-			&fsrv->desc.text.cellw, &fsrv->desc.text.cellh
-		);
+	if (reprobe && fsrv->desc.hint.ppcm > EPSILON){
+		arcan_renderfun_fontgroup_size(fsrv->desc.text.group,
+			fsrv->desc.text.szmm, fsrv->desc.hint.ppcm,
+			&fsrv->desc.text.cellw, &fsrv->desc.text.cellh);
+	}
 
 	return ARCAN_OK;
 }
@@ -1432,10 +1451,8 @@ void arcan_frameserver_displayhint(
 
 /* we don't actually care to use the raster, just want to re-probe size */
 		if (fsrv->desc.text.group){
-			arcan_renderfun_fontraster(fsrv->desc.text.group,
-				ppcm, fsrv->desc.text.szmm, fsrv->desc.text.hint,
-				&fsrv->desc.text.cellw, &fsrv->desc.text.cellh
-			);
+			arcan_renderfun_fontgroup_size(fsrv->desc.text.group,
+				0, ppcm, &fsrv->desc.text.cellw, &fsrv->desc.text.cellh);
 		}
 	}
 }
