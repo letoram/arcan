@@ -3320,10 +3320,16 @@ static int clipon(lua_State* ctx)
 	LUA_TRACE("image_clip_on");
 
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	char clipm = luaL_optint(ctx, 2, ARCAN_CLIP_ON);
+	int clipm = luaL_optint(ctx, 2, ARCAN_CLIP_ON);
+	if (clipm != ARCAN_CLIP_ON && clipm != ARCAN_CLIP_SHALLOW){
+		arcan_fatal("image_clip_on() - invalid clipping mode (%d)\n", clipm);
+	}
+	arcan_video_setclip(id, clipm);
 
-	arcan_video_setclip(id, clipm == ARCAN_CLIP_ON ? ARCAN_CLIP_ON :
-		ARCAN_CLIP_SHALLOW);
+	if (lua_type(ctx, 3) == LUA_TNUMBER){
+		arcan_vobj_id did = luaL_checkvid(ctx, 3, NULL);
+		arcan_video_clipto(id, did);
+	}
 
 	LUA_ETRACE("image_clip_on", NULL, 0);
 }
@@ -7941,9 +7947,16 @@ static int targetfonthint(lua_State* ctx)
 		.tgt.ioevs[4].iv = slot
 	};
 
-/* update the font reference data inside the frameserver as well,
- * used for segments that draw with TPACK format */
+/* update the font reference data inside the frameserver as well, used for
+ * segments that draw with TPACK format - this may update the cell size which
+ * may in turn cause a DISPLAYHINT to be emitted */
+	bool send_dh = slot == 0 && sz != fsrv->desc.text.szmm &&
+		fsrv->desc.hint.last.tgt.kind == TARGET_COMMAND_DISPLAYHINT;
+
 	arcan_frameserver_setfont(fsrv, fd, sz, hint, slot);
+
+	if (send_dh)
+		platform_fsrv_pushevent(fsrv, &fsrv->desc.hint.last);
 
 	if (fd != BADFD){
 		lua_pushboolean(ctx, platform_fsrv_pushfd(fsrv, &outev, fd));
@@ -8201,6 +8214,7 @@ static int targetdisphint(lua_State* ctx)
 		.tgt.ioevs[5].iv = fsrv->desc.text.cellw,
 		.tgt.ioevs[6].iv = fsrv->desc.text.cellh
 	};
+	fsrv->desc.hint.last = ev;
 
 	ev.tgt.timestamp = arcan_timemillis();
 	tgtevent(tgt, ev);

@@ -4426,6 +4426,17 @@ unsigned arcan_video_tick(unsigned steps, unsigned* njobs)
 	return arcan_frametime() - now;
 }
 
+arcan_errc arcan_video_clipto(arcan_vobj_id id, arcan_vobj_id clip_tgt)
+{
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	vobj->clip_src = clip_tgt;
+
+	return ARCAN_OK;
+}
+
 arcan_errc arcan_video_setclip(arcan_vobj_id id, enum arcan_clipmode mode)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
@@ -4913,6 +4924,21 @@ void arcan_video_pollfeed()
 	poll_list(current_context->stdoutp.first);
 }
 
+static arcan_vobject* get_clip_source(arcan_vobject* vobj)
+{
+	arcan_vobject* res = vobj->parent;
+	if (vobj->clip_src && vobj->clip_src != ARCAN_VIDEO_WORLDID){
+		arcan_vobject* clipref = arcan_video_getobject(vobj->clip_src);
+		if (clipref)
+			return clipref;
+	}
+
+	if (vobj->parent == &current_context->world)
+		res = NULL;
+
+	return res;
+}
+
 static inline void populate_stencil(
 	struct rendertarget* tgt, arcan_vobject* celem, float fract)
 {
@@ -4923,9 +4949,12 @@ static inline void populate_stencil(
 	agp_shader_activate(tgt->shid);
 
 	if (celem->clip == ARCAN_CLIP_SHALLOW){
-		surface_properties pprops = empty_surface();
-		arcan_resolve_vidprop(celem->parent, fract, &pprops);
-		draw_colorsurf(tgt, pprops, celem->parent, 1.0, 1.0, 1.0, NULL);
+		celem = get_clip_source(celem);
+		if (celem){
+			surface_properties pprops = empty_surface();
+			arcan_resolve_vidprop(celem, fract, &pprops);
+			draw_colorsurf(tgt, pprops, celem, 1.0, 1.0, 1.0, NULL);
+		}
 	}
 	else
 /* deep -> draw all objects that aren't clipping to parent,
@@ -4984,23 +5013,52 @@ void arcan_vint_bindmulti(arcan_vobject* elem, size_t ind)
 	agp_activate_vstore_multi(elems, sz);
 }
 
+static int draw_vobj(struct rendertarget* tgt,
+	arcan_vobject* vobj, surface_properties* dprops, float* txcos)
+{
+/* pick the right blend-option */
+	if (dprops->opa < 1.0 - EPSILON || vobj->blendmode == BLEND_NONE)
+		agp_blendstate(vobj->blendmode);
+	else if (vobj->blendmode == BLEND_FORCE)
+		agp_blendstate(vobj->blendmode);
+	else
+		agp_blendstate(BLEND_NORMAL);
+
+/* pick the right vstore drawing type (textured, colored) */
+	struct agp_vstore* vstore = vobj->vstore;
+	if (vstore->txmapped == TXSTATE_OFF && vobj->program != 0){
+		draw_colorsurf(tgt, *dprops, vobj, vstore->vinf.col.r,
+			vstore->vinf.col.g, vstore->vinf.col.b, txcos);
+		return 1;
+	}
+
+	if (vstore->txmapped == TXSTATE_TEX2D){
+		draw_texsurf(tgt, *dprops, vobj, txcos);
+		return 1;
+	}
+
+	return 0;
+}
+
 /*
  * Apply clipping without using the stencil buffer, cheaper but with some
  * caveats of its own. Will work particularly bad for partial clipping with
  * customized texture coordinates.
  */
-static inline bool setup_shallow_texclip(arcan_vobject* elem,
+static inline bool setup_shallow_texclip(
+	arcan_vobject* elem,
+	arcan_vobject* clip_src,
 	float** txcos, surface_properties* dprops, float fract)
 {
 	static float cliptxbuf[8];
 
 	surface_properties pprops = empty_surface();
-	arcan_resolve_vidprop(elem->parent, fract, &pprops);
+	arcan_resolve_vidprop(clip_src, fract, &pprops);
 
 	float p_x = pprops.position.x;
 	float p_y = pprops.position.y;
-	float p_w = pprops.scale.x * elem->parent->origw;
-	float p_h = pprops.scale.y * elem->parent->origh;
+	float p_w = pprops.scale.x * clip_src->origw;
+	float p_h = pprops.scale.y * clip_src->origh;
 	float p_xw = p_x + p_w;
 	float p_yh = p_y + p_h;
 
@@ -5012,12 +5070,14 @@ static inline bool setup_shallow_texclip(arcan_vobject* elem,
 	float cp_yh = cp_y + cp_h;
 
 /* fully outside? skip drawing */
-	if (cp_xw < p_x || cp_yh < p_y ||	cp_x > p_xw || cp_y > p_yh)
+	if (cp_xw < p_x || cp_yh < p_y ||	cp_x > p_xw || cp_y > p_yh){
 		return false;
+	}
 
 /* fully contained? don't do anything */
-	else if (	cp_x >= p_x && cp_xw <= p_xw && cp_y >= p_y && cp_yh <= p_yh )
+	else if (	cp_x >= p_x && cp_xw <= p_xw && cp_y >= p_y && cp_yh <= p_yh ){
 		return true;
+	}
 
 	memcpy(cliptxbuf, *txcos, sizeof(float) * 8);
 	float xrange = cliptxbuf[2] - cliptxbuf[0];
@@ -5181,43 +5241,31 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 		else
 			agp_activate_vstore(elem->vstore);
 
-/* a common clipping situation is that we have an invisible clipping parent
- * where neither objects is in a rotated state, which gives an easy way
- * out through the drawing region */
+/* fast-path out if no clipping */
+		arcan_vobject* clip_src;
+		current = current->next;
+
+		if (elem->clip == ARCAN_CLIP_OFF || !(clip_src = get_clip_source(elem))){
+			pc += draw_vobj(tgt, elem, &dprops, *dstcos);
+			continue;
+		}
+
+/* fast-path, shallow non-rotated clipping */
 		if (elem->clip == ARCAN_CLIP_SHALLOW &&
-			elem->parent != &current_context->world && !elem->rotate_state){
-			if (!setup_shallow_texclip(elem, dstcos, &dprops, fract)){
-				current = current->next;
+			!elem->rotate_state && !clip_src->rotate_state){
+
+/* this will tweak the output object size and texture coordinates */
+			if (!setup_shallow_texclip(elem, clip_src, dstcos, &dprops, fract)){
 				continue;
 			}
-		}
-		else if (elem->clip != ARCAN_CLIP_OFF &&
-			elem->parent != &current_context->world){
-			clipped = true;
-			populate_stencil(tgt, elem, fract);
+
+			pc += draw_vobj(tgt, elem, &dprops, *dstcos);
+			continue;
 		}
 
-		if (dprops.opa < 1.0 - EPSILON || elem->blendmode == BLEND_NONE)
-			agp_blendstate(elem->blendmode);
-		else
-			if (elem->blendmode == BLEND_FORCE)
-				agp_blendstate(elem->blendmode);
-			else
-				agp_blendstate(BLEND_NORMAL);
-
-		if (elem->vstore->txmapped == TXSTATE_OFF && elem->program != 0)
-			draw_colorsurf(tgt, dprops, elem, elem->vstore->vinf.col.r,
-				elem->vstore->vinf.col.g, elem->vstore->vinf.col.b, *dstcos);
-		else if (elem->vstore->txmapped == TXSTATE_TEX2D)
-			draw_texsurf(tgt, dprops, elem, *dstcos);
-		else
-			;
-		pc++;
-
-		if (clipped)
-			agp_disable_stencil();
-
-		current = current->next;
+		populate_stencil(tgt, elem, fract);
+		pc += draw_vobj(tgt, elem, &dprops, *dstcos);
+		agp_disable_stencil();
 	}
 
 /* reset and try the 3d part again if requested */

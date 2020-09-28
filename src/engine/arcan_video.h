@@ -810,6 +810,13 @@ arcan_errc arcan_video_tesselation(arcan_vobj_id, uint8_t subdivisions);
 arcan_errc arcan_video_setclip(arcan_vobj_id id, enum arcan_clipmode);
 
 /*
+ * Change the reference object used for clipping [id]. If [clip_tgt] is valid,
+ * it will be used for resolving the clipping region / hierarchy instead of
+ * the linked parent (if any).
+ */
+arcan_errc arcan_video_clipto(arcan_vobj_id id, arcan_vobj_id clip_tgt);
+
+/*
  * Attach an identification or metadata string to the video object. This can
  * be useful both for debugging purposes and for higher level scripting
  * engine data serialisation across scripting VM executions.
