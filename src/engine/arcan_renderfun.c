@@ -1640,7 +1640,10 @@ void arcan_renderfun_release_fontgroup(struct arcan_renderfun_fontgroup* group)
 	group->used = 0;
 
 	tui_raster_free(group->raster);
-	arcan_mem_free(group->font);
+
+	if (group->font != &builtin_bitmap){
+		arcan_mem_free(group->font);
+	}
 	arcan_mem_free(group);
 }
 

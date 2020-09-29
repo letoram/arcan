@@ -271,9 +271,13 @@ static bool push_buffer(arcan_frameserver* src,
 	if (src->desc.hints & SHMIF_RHINT_TPACK){
 		TRACE_MARK_ENTER("frameserver", "buffer-tpack-raster", TRACE_SYS_DEFAULT, src->vid, 0, "");
 
-/* if the font-group is broken (no hints, ...), set a bitmap only one */
-		if (!src->desc.text.group)
+/* if the font-group is broken (no hints, ...), set a bitmap only one
+ * as well as calculate cell dimensions accordingly */
+		if (!src->desc.text.group){
 			src->desc.text.group = arcan_renderfun_fontgroup(NULL, 0);
+			arcan_renderfun_fontgroup_size(src->desc.text.group,
+				0, 0, &src->desc.text.cellw, &src->desc.text.cellh);
+		}
 
 /* raster is 'built' every update from whatever caching mechanism is in
  * renderfun, it is only valid for the tui_raster_renderagp call as the
@@ -293,6 +297,12 @@ static bool push_buffer(arcan_frameserver* src,
  * with an aligned (rows * cols) memcpy than to jump around and patch in bytes
  * on the lines that have changed and to have the client do the same thing. */
 		size_t i = 0;
+		if (!src->desc.height || !src->desc.text.cellh){
+			TRACE_MARK_EXIT("frameserver",
+				"buffer-tpack-raster", TRACE_SYS_WARN, src->vid, 0, "invalid tpack size");
+			goto commit_mask;
+		}
+
 		size_t n_rows = src->desc.height / src->desc.text.cellh;
 		size_t n_cols = src->desc.width / src->desc.text.cellw;
 		size_t n_cells = n_rows * n_cols;
