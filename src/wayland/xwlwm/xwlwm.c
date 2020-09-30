@@ -27,7 +27,7 @@
 #include <xcb/xcb_icccm.h>
 #include <pthread.h>
 
-#include "../uthash.h"
+#include "uthash.h"
 
 static pthread_mutex_t logout_synch = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t wm_synch = PTHREAD_MUTEX_INITIALIZER;

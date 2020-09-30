@@ -18,7 +18,7 @@
 #include "draw.h"
 
 #include "../screen/utf8.c"
-#include "uthash.h"
+#include "external/uthash.h"
 
 struct glyph_ent {
 	uint32_t codepoint;
