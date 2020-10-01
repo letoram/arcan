@@ -175,12 +175,17 @@ endif()
 # The TUI libraries / build setup is slated to change soonish when the TUI
 # refactor branch completes. This would push the freetype/harfbuzz etc. stage
 # to be a part of arcan instead and the library can be made to be quite tiny.
-set(TUI_INCLUDE_DIRS /opt/local/include)
+set(TUI_INCLUDE_DIRS
+	/opt/local/include
+	${INCLUDE_DIRS}
+	${ASD}/frameserver
+	${ASD}/engine
+	${ASD}/engine/external
+	${ASD}/shmif
+)
+
 if (SHMIF_TUI_ACCEL)
-	set(TUI_LIBRARIES arcan_shmif arcan_shmif_ext)
-else()
 	set(TUI_LIBRARIES arcan_shmif)
-	set (TUI_DEFINITIONS SHMIF_TUI_DISABLE_GPU)
 endif()
 
 # STATIC_FREETYPE is inherited from the outer scope, means we have our own build
@@ -204,7 +209,8 @@ if (STATIC_FREETYPE)
 		target_compile_definitions(arcan_tuiext PRIVATE ${TUI_DEFINITIONS})
 		set(TARGET_LIST ${TARGET_LIST} arcan_tuiext)
 		target_include_directories(arcan_tuiext PRIVATE
-			${INCLUDE_DIRS} ${TUI_INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/engine ${ASD}/shmif)
+			${TUI_INCLUDE_DIRS}
+		)
 # Due to the accelerated- GPU flags, we also NEED to build a shared library
 # version as this likely pulls in libraries that we can't deal with statically
 	else()
@@ -220,8 +226,7 @@ else()
 endif()
 
 target_compile_definitions(arcan_tui PRIVATE ${TUI_DEFINITIONS})
-target_include_directories(arcan_tui PRIVATE
-	${INCLUDE_DIRS} ${TUI_INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/shmif ${ASD}/engine)
+target_include_directories(arcan_tui PRIVATE ${TUI_INCLUDE_DIRS})
 
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
