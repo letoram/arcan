@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2018, Björn Ståhl
+ * Copyright 2014-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -57,8 +57,7 @@ static struct xkb_context* xkb_context;
 						arcan_timemillis(), "evdev:", __LINE__, __func__,##__VA_ARGS__); \
 						} while (0)
 
-/* #define verbose_print */
-#define verbose_print debug_print
+#define verbose_print
 
 /*
  * scan / probe a node- dir (ENVV overridable)
@@ -1054,6 +1053,21 @@ static int alloc_node_slot(const char* path)
 	return hole;
 }
 
+static void send_device_added(struct arcan_evctx* ctx, struct devnode* node)
+{
+	struct arcan_event addev = {
+		.category = EVENT_IO,
+		.io.kind = EVENT_IO_STATUS,
+		.io.devkind = EVENT_IDEVKIND_STATUS,
+		.io.devid = node->devnum,
+		.io.input.status.devkind = node->type,
+		.io.input.status.action = EVENT_IDEV_ADDED
+	};
+	snprintf((char*) &addev.io.label, sizeof(addev.io.label) /
+		sizeof(addev.io.label[0]), "%s", node->label);
+	arcan_event_enqueue(ctx, &addev);
+}
+
 static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 {
 	struct devnode node = {
@@ -1202,17 +1216,7 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 	iodev.pollset[hole].fd = fd;
 	iodev.pollset[hole].events = POLLIN | POLLERR | POLLHUP;
 	iodev.pollset[hole + iodev.sz_nodes].fd = BADFD;
-	struct arcan_event addev = {
-		.category = EVENT_IO,
-		.io.kind = EVENT_IO_STATUS,
-		.io.devkind = EVENT_IDEVKIND_STATUS,
-		.io.devid = node.devnum,
-		.io.input.status.devkind = node.type,
-		.io.input.status.action = EVENT_IDEV_ADDED
-	};
-	snprintf((char*) &addev.io.label, sizeof(addev.io.label) /
-		sizeof(addev.io.label[0]), "%s", node.label);
-	arcan_event_enqueue(ctx, &addev);
+	send_device_added(ctx, &node);
 
 /* had to defer led device creation until now because we didn't
  * know if there's a slot for it or not, the pollset actually is
@@ -1398,8 +1402,8 @@ static void defhandler_kbd(struct arcan_evctx* out,
 	}
 }
 
-static void flush_pending(struct arcan_evctx* ctx,
-	struct devnode* node)
+static void flush_pending(
+	struct arcan_evctx* ctx, struct devnode* node)
 {
 	arcan_event newev = {
 		.category = EVENT_IO,
@@ -1412,6 +1416,8 @@ static void flush_pending(struct arcan_evctx* ctx,
 		.datatype = EVENT_IDATATYPE_TOUCH
 		}
 	};
+
+	verbose_print("kind=touch:device=%d:base=%d", node->devnum, node->touch.ind);
 
 	newev.io.input.touch.active = node->touch.active;
 	newev.io.input.touch.x = node->touch.x;
@@ -1478,6 +1484,8 @@ static void decode_mt(struct arcan_evctx* ctx,
 		node->touch.ind = val;
 	break;
 	default:
+		verbose_print("dev=%d:type=multitouch:code=%d"
+			":status=unknown", (int) node->devnum, code);
 	break;
 	}
 }
@@ -1533,8 +1541,7 @@ static void decode_hat(struct arcan_evctx* ctx,
 	arcan_event_enqueue(ctx, &newev);
 }
 
-static void defhandler_game(struct arcan_evctx* ctx,
-	struct devnode* node)
+static void defhandler_game(struct arcan_evctx* ctx, struct devnode* node)
 {
 	struct input_event inev[64];
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));
@@ -1589,9 +1596,12 @@ static void defhandler_game(struct arcan_evctx* ctx,
 
 		case EV_REL:
 		case EV_ABS:
+/* is the axis currently masked? */
 			if (node->hnd.axis_mask && inev[i].code <= 64 &&
-				( (node->hnd.axis_mask >> inev[i].code) & 1) )
+				( (node->hnd.axis_mask >> inev[i].code) & 1) ){
 				continue;
+			}
+			verbose_print("rel? %d - %d\n", inev[i].type, inev[i].code);
 
 			if (inev[i].code >= ABS_HAT0X && inev[i].code <= ABS_HAT3Y){
 				decode_hat(ctx, node, inev[i].code - ABS_HAT0X, inev[i].value);
@@ -1614,8 +1624,15 @@ static void defhandler_game(struct arcan_evctx* ctx,
 			}
 /* though we do reserve axis slots for the relative bits, there is no actual
  * filter set to them other than the the mask used above */
-			else if (inev[i].code == REL_X ||
-				inev[i].code == REL_Y || inev[i].code == REL_DIAL){
+			else if (
+				inev[i].code == REL_X ||
+				inev[i].code == REL_Y ||
+				inev[i].code == REL_DIAL ||
+				inev[i].code == REL_Z ||
+				inev[i].code == REL_RZ ||
+				inev[i].code == REL_RX ||
+				inev[i].code == REL_RY)
+			{
 				newev.io.kind = EVENT_IO_AXIS_MOVE;
 				newev.io.datatype = EVENT_IDATATYPE_ANALOG;
 				newev.io.input.analog.gotrel = true;
@@ -1625,8 +1642,9 @@ static void defhandler_game(struct arcan_evctx* ctx,
 				newev.io.input.analog.nvalues = 1;
 				arcan_event_enqueue(ctx, &newev);
 			}
-			else
-				;
+			else {
+				verbose_print("kind=game:device=%d:rel:code=%d:status=unknown", node->devnum, inev[i].code);
+			}
 		break;
 
 		case EV_SYN:
@@ -1636,6 +1654,7 @@ static void defhandler_game(struct arcan_evctx* ctx,
 		break;
 
 		default:
+			verbose_print("kind=game:device=%d:type=%d:status=unknown", node->devnum, inev[i].type);
 		break;
 		}
 	}
