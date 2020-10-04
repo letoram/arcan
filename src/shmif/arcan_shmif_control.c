@@ -2477,16 +2477,56 @@ enum shmif_migrate_status arcan_shmif_migrate(
 		.vbuf_cnt = cont->priv->vbuf_cnt,
 		.abuf_cnt = cont->priv->abuf_cnt,
 		.samplerate = cont->samplerate,
-		.meta = cont->priv->atype
+		.meta = cont->priv->atype,
+		.rows = atomic_load(&cont->addr->rows),
+		.cols = atomic_load(&cont->addr->cols)
 	};
+
+/* Copy the drawing/formatting hints, this is particularly important in case of
+ * certain extended features such as TPACK as the size calculations are
+ * different */
+	ret.hints = cont->hints;
 
 	if (!shmif_resize(&ret, w, h, ext)){
 		return SHMIF_MIGRATE_TRANSFER_FAIL;
 	}
 
-/* Copy the audio/video video contents of [cont] into [ret] */
-	for (size_t i = 0; i < cont->priv->vbuf_cnt; i++)
-		memcpy(ret.priv->vbuf[i], cont->priv->vbuf[i], cont->stride * cont->h);
+/* Copy the audio/video contents of [cont] into [ret], if possible, a possible
+ * workaround on failure is to check if we have VSIGNAL- state and inject one
+ * of those, or a RESET */
+	size_t vbuf_sz_new =
+		arcan_shmif_vbufsz(
+			ret.priv->atype, ret.hints, ret.w, ret.h,
+			atomic_load(&ret.addr->rows),
+			atomic_load(&ret.addr->cols)
+		);
+
+	size_t vbuf_sz_old =
+		arcan_shmif_vbufsz(
+			cont->priv->atype, cont->hints, cont->w, cont->h, ext.rows, ext.cols
+		);
+
+/* This might miss the bit where the new vs the old connection has the same
+ * format but enforce different padding rules - but that edge case is better
+ * off as accepting the buffer as lost */
+	if (vbuf_sz_new == vbuf_sz_old){
+		for (size_t i = 0; i < cont->priv->vbuf_cnt; i++)
+			memcpy(ret.priv->vbuf[i], cont->priv->vbuf[i], vbuf_sz_new);
+	}
+/* Set some indicator color so this can be detected visually */
+	else{
+		log_print("shmif::recovery, vbuf_sz "
+			"mismatch (%zu, %zu)", vbuf_sz_new, vbuf_sz_old);
+		shmif_pixel color = SHMIF_RGBA(90, 60, 60, 255);
+		for (size_t row = 0; row < ret.h; row++){
+			shmif_pixel* cr = ret.vidp + row * ret.pitch;
+			for (size_t col = 0; col < ret.w; col++)
+				cr[col] = color;
+			}
+	}
+
+/* The audio buffering parameters >should< be simpler as the negotiation
+ * there does not have hint- or subprotocol- dependent constraints */
 	for (size_t i = 0; i < cont->priv->abuf_cnt; i++)
 		memcpy(ret.priv->abuf[i], cont->priv->abuf[i], cont->abufsize);
 
@@ -2497,7 +2537,6 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	int oldhints = cont->hints;
 	struct arcan_shmif_region olddirty = cont->dirty;
 	arcan_shmif_drop(cont);
-	arcan_shmif_signal(&ret, SHMIF_SIGVID);
 
 /* last step, replace the relevant members of cont with the values from ret */
 /* first try and just re-use the mapping so any aliasing issues from the
