@@ -1,14 +1,16 @@
 -- define_arcantarget
--- @short:
--- @inargs: vid:vstore, string:type, vidtbl:vpipe, int:refresh
+-- @short: Create a rendertarget bound subsegment for drawing to another arcan instance
+-- @inargs: vid:vstore, string:type, vidtbl:vpipe, function:handler
 -- @outargs: bool
--- @longdescr: This function creates a rendertarget, binds its output to *vstore*
--- and then requests a server-side mapping of *type* to be created. A default
--- event-handler will be set, and upon receiving an accept or reject to the server
--- mapping, the _arcan_segment event handler will be invoked with a *source* that
--- corresponds to *vstore*.
--- By using ref:target_updatehandler on *vstore*, the default event loop will
--- be replaced.
+-- @longdescr: This function is used to request and bind 'subsegments' useful for
+-- secondary outputs.
+--
+-- It works like any other normal rendertarget such as one allocated through
+-- ref:define_rendertarget, but the clocking and updates are explicitly tied to what
+-- the arcan instance the segment is connected to decides.
+--
+-- The design and inner workings for this function is marked as
+-- experimental and may be subject to breaking changes without notice.
 -- @note: Valid types are: 'cursor', 'popup', 'icon', 'clipboard', 'titlebar',
 -- 'debug', 'widget', 'accessibility', 'media', 'hmd-r', 'hmd-l'
 -- @note: An invalid vstore or unsupported type is a terminal state transition.
@@ -18,6 +20,19 @@
 -- @flags: experimental
 function main()
 #ifdef MAIN
+	local ok =
+		define_arcantarget(buffer, "media", {test},
+		function(source, status)
+			if status.kind == "terminated" then
+				delete_image(source)
+			end
+			print(status.kind)
+		end
+	)
+	if not ok then
+		delete_image(buffer)
+	end
+end
 #endif
 
 #ifdef ERROR1

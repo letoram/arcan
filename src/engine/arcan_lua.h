@@ -80,6 +80,15 @@ void arcan_lua_stategrab(struct arcan_luactx* ctx, char* dstfun, int fd);
 bool arcan_lua_launch_cp(
 	struct arcan_luactx*, const char* connp, const char* key);
 
+#ifdef ARCAN_LWA
+struct subseg_output;
+bool platform_lwa_targetevent(struct subseg_output*, arcan_event* ev);
+bool platform_lwa_allocbind_feed(
+	struct arcan_luactx* ctx, arcan_vobj_id rtgt, enum ARCAN_SEGID type, uintptr_t cbtag);
+void arcan_lwa_subseg_ev(
+	struct arcan_luactx* ctx, arcan_vobj_id src, uintptr_t cb_tag, arcan_event* ev);
+#endif
+
 #ifdef LUA_PRIVATE
 enum arcan_ffunc_rv arcan_lua_proctarget FFUNC_HEAD;
 #endif

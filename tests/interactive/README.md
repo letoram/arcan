@@ -9,6 +9,9 @@ To achieve that otherwise, you can use the hookscript, like so:
 
     arcan -H hook/shutdown.lua appl
 
+arcantarget - tests the arcantarget mechanism for subsegment allocation
+              (requires lwa and outer arcan instance)
+
 bchunk - (requires fsrv) opening io streams to/from a client
          via the bchunk mechanism.
 
