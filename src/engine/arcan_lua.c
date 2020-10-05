@@ -4140,12 +4140,34 @@ static int targetmessage(lua_State* ctx)
 
 	arcan_vobj_id vid = luaL_checkvid(ctx, vidind, NULL);
 	vfunc_state* vstate = arcan_video_feedstate(vid);
+	arcan_frameserver* fsrv = NULL;
 
-	if (!vstate || vstate->tag != ARCAN_TAG_FRAMESERV){
+/* special case for lwa is that we can message the connection */
+#ifdef ARCAN_LWA
+	struct subseg_output* sseg = NULL;
+	bool route_lwa = false;
+	if (vid == ARCAN_VIDEO_WORLDID){
+		route_lwa = true;
+		vstate = NULL;
+	}
+	else if (vstate && vstate->tag == ARCAN_TAG_LWA){
+		route_lwa = true;
+		sseg = vstate->ptr;
+	}
+#endif
+
+	if (vstate && vstate->tag == ARCAN_TAG_FRAMESERV){
+		fsrv = vstate->ptr;
+	}
+
+	if (!fsrv
+#ifdef ARCAN_LWA
+		&& !route_lwa
+#endif
+	){
 		lua_pushnumber(ctx, -1);
 		LUA_ETRACE("message_target", "dst not a frameserver", 1);
 	}
-	arcan_frameserver* fsrv = vstate->ptr;
 
 	arcan_event ev = {
 		.category = EVENT_TARGET,
@@ -4184,9 +4206,13 @@ static int targetmessage(lua_State* ctx)
 /* copy into buffer and forward */
 		memcpy(ev.tgt.message, msg, i);
 		ev.tgt.message[i] = '\0';
+#ifdef ARCAN_LWA
+		if (route_lwa)
+			platform_lwa_targetevent(sseg, &ev);
+		else
+#endif
 		if (ARCAN_OK != platform_fsrv_pushevent(fsrv, &ev)){
 			lua_pushnumber(ctx, len);
-			arcan_warning("message truncation\n");
 			LUA_ETRACE("message_target", "truncation", 1);
 		}
 
@@ -4198,6 +4224,10 @@ static int targetmessage(lua_State* ctx)
 	if (len){
 		memcpy(ev.tgt.message, msg, len);
 		ev.tgt.message[len] = '\0';
+#ifdef ARCAN_LWA
+		if (route_lwa)
+			platform_lwa_targetevent(sseg, &ev);
+#endif
 		if (ARCAN_OK != platform_fsrv_pushevent(fsrv, &ev)){
 			lua_pushnumber(ctx, len);
 			LUA_ETRACE("message_target", "truncation", 1);
@@ -4375,16 +4405,24 @@ kinderr:
 	LUA_ETRACE("target_input/input_target", NULL, 1);
 }
 
+static const char* idatalut[] = {
+	"analog",
+	"digital",
+	"translated",
+	"touch",
+	"eyes"
+};
+
+static ssize_t lookup_idatatype_str(const char* str)
+{
+	for (ssize_t i = 0; i < COUNT_OF(idatalut) && str; i++)
+		if (strcmp(str, idatalut[i]) == 0)
+			return i;
+	return -1;
+}
+
 static const char* lookup_idatatype(int type)
 {
-	static const char* idatalut[] = {
-		"analog",
-		"digital",
-		"translated",
-		"touch",
-		"eyes"
-	};
-
 	if (type < 0 || type > COUNT_OF(idatalut))
 		return NULL;
 
@@ -4583,22 +4621,6 @@ static void do_preroll(lua_State* ctx, intptr_t ref,
 	});
 }
 
-/*
- * need to intercept and redefine some of the target_ functions
- * to work for _lwa to arcan behavior
- */
-#ifdef ARCAN_LWA
-
-void arcan_lwa_subseg_ev(uintptr_t cb_tag, arcan_event* ev)
-{
-/*
- * translate / map events as per normal
- */
-}
-
-struct subseg_output;
-bool platform_lwa_targetevent(struct subseg_output*, arcan_event* ev);
-#endif
 static bool tgtevent(arcan_vobj_id dst, arcan_event ev)
 {
 	vfunc_state* state = arcan_video_feedstate(dst);
@@ -4958,6 +4980,92 @@ static void append_iotable(lua_State* ctx, arcan_ioevent* ev)
 			"ignoring IO event: %i\n",ev->kind);
 	}
 }
+
+#ifdef ARCAN_LWA
+void arcan_lwa_subseg_ev(
+	arcan_luactx* ctx, arcan_vobj_id source, uintptr_t cb_tag, arcan_event* ev)
+{
+	int reset = lua_gettop(ctx);
+
+	if (ev->category != EVENT_TARGET && ev->category != EVENT_IO)
+		return;
+
+	if (cb_tag == LUA_NOREF){
+/* if we don't get a callback tag, it is added to the worldid as an 'arcan'
+ * entrypoint for those that aren't covered elsewhere */
+		lua_settop(ctx, reset);
+		return;
+	}
+	else {
+		lua_rawgeti(ctx, LUA_REGISTRYINDEX, cb_tag);
+	}
+
+	lua_pushvid(ctx, source);
+
+	if (ev->category == EVENT_IO){
+/* re-use the same table mapping as normal */
+		append_iotable(ctx, &ev->io);
+		alua_call(ctx, 2, 0, LINE_TAG":event:lwa_io");
+		return;
+	}
+
+	lua_newtable(ctx);
+	int top = lua_gettop(ctx);
+
+	switch (ev->tgt.kind){
+/* unfinished */
+	case TARGET_COMMAND_STORE:
+	case TARGET_COMMAND_RESTORE:
+	case TARGET_COMMAND_BCHUNK_IN:
+	case TARGET_COMMAND_BCHUNK_OUT:
+	case TARGET_COMMAND_FRAMESKIP:
+	case TARGET_COMMAND_STEPFRAME:
+	case TARGET_COMMAND_PAUSE:
+	case TARGET_COMMAND_UNPAUSE:
+	case TARGET_COMMAND_GRAPHMODE:
+	case TARGET_COMMAND_RESET:
+	case TARGET_COMMAND_SEEKCONTENT:
+	case TARGET_COMMAND_COREOPT:
+	case TARGET_COMMAND_SEEKTIME:
+	case TARGET_COMMAND_ATTENUATE:
+	case TARGET_COMMAND_STREAMSET:
+	case TARGET_COMMAND_SETIODEV:
+	case TARGET_COMMAND_AUDDELAY:
+	case TARGET_COMMAND_GEOHINT:
+		lua_settop(ctx, reset);
+		return;
+	break;
+	case TARGET_COMMAND_MESSAGE:{
+		char msgbuf[COUNT_OF(ev->tgt.message) + 1];
+		tblstr(ctx, "kind", "message", top);
+		MSGBUF_UTF8(ev->tgt.message);
+		tblbool(ctx, "multipart", ev->tgt.ioevs[0].iv != 0, top);
+		tblstr(ctx, "message", msgbuf, top);
+	}
+	break;
+	case TARGET_COMMAND_EXIT:
+/* map to 'terminated' */
+		tblstr(ctx, "kind", "terminated", top);
+	break;
+
+/* already handled internally */
+	case TARGET_COMMAND_REQFAIL:
+	case TARGET_COMMAND_OUTPUTHINT:
+	case TARGET_COMMAND_ACTIVATE:
+	case TARGET_COMMAND_NEWSEGMENT:
+	case TARGET_COMMAND_DISPLAYHINT:
+	case TARGET_COMMAND_FONTHINT:
+	case TARGET_COMMAND_BUFFER_FAIL:
+	case TARGET_COMMAND_DEVICE_NODE:
+	case TARGET_COMMAND_LIMIT:
+		lua_settop(ctx, reset);
+		return;
+	break;
+	}
+
+	alua_call(ctx, 2, 0, LINE_TAG":event:lwa");
+}
+#endif
 
 void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
@@ -7793,6 +7901,88 @@ bool arcan_lua_callvoidfun(lua_State* ctx,
 	return false;
 }
 
+static int arcantargethint(lua_State* ctx)
+{
+	LUA_TRACE("arcantarget_hint");
+#ifdef ARCAN_LWA
+	int tblind = 2;
+	if (lua_type(ctx, 1) == LUA_TNUMBER){
+		tblind = 3;
+	}
+
+	const char* msg = luaL_checkstring(ctx, tblind-1);
+	if (lua_type(ctx, tblind) != LUA_TTABLE)
+		luaL_typerror(ctx, tblind, "expected argument table");
+
+/*  LABELHINT (labelhint: label, initial, descr, vsym, subv) */
+	if (strcmp(msg, "input_label") == 0){
+		struct arcan_event ev = {
+			.category = EVENT_EXTERNAL,
+			.ext = EVENT_EXTERNAL_LABELHINT,
+		};
+		const char* lbl = intblstr(ctx, tblind, "labelhint");
+/* obligatory */
+		if (!lbl){
+			lua_pushboolean(ctx, false);
+			LUA_ETRACE("arcantarget_hint", "missing label key in table", 1);
+		}
+		else {
+			snprintf(ev.ext.labelhint.label,
+				COUNT_OF(ev.ext.labelhint.label), "%s", lbl);
+		};
+
+		int init = intblint(ctx, tblind, "initial");
+		if (-1 != init){
+			ev.ext.labelhint.initial = init;
+		}
+
+		const char* descr = intblstr(ctx, tblind, "description");
+		if (descr){
+			snprintf(ev.ext.labelhint.descr,
+				COUNT_OF(ev.ext.labelhint.descr), "%s", lbl);
+		}
+
+		const char* vsym = intblstr(ctx, tblind, "vsym");
+		if (vsym){
+		}
+
+		int dt = lookup_idatatype_str(intblstr(ctx, tblind, "datatype"));
+		if (-1 != dt){
+			ev.ext.labelhint.idatatype = dt;
+		}
+		else
+			dt = EVENT_IDATATYPE_DIGITAL;
+
+		int mods = intblint(ctx, tblind, "modifiers");
+		if (-1 != mods){
+			ev.ext.labelhint.modifiers = mods;
+		}
+
+		lua_pushboolean(ctx, platform_lwa_targetevent(NULL, &ev));
+	}
+	else
+#endif
+/* possibilities:
+ *  MESSAGE (covered by target_input),
+ *  COREOPT (coreopt: index, type, data[77])
+ *  IDENT (message)
+ *  FAILED (ignore for now, uncertain how to map cleanly)
+ *  STREAMINFO (ignore for now)
+ *  STREAMSTATUS (streamstat: completion and streaming are valid)
+ *  STATESIZE (enable state transfer)
+ *  CURSORHINT (message, default hidden)
+ *  VIEWPORT (ignore for now, full SSD only, but will become more useful)
+ *  CONTENT (content: x_pos/x_sz, y_pos/y_sz, min_w, min_h, max_w, max_h)
+ *  ALERT (message: notification string)
+ *  CLOCKREQ (ignore, we already have a clocking mechanism)
+ *  BCHUNKSTATE (
+ *  PRIVDROP (ignore, privsep for lwa is default)
+ *  INPUTMASK (ignore, uncertain if this adds much of value here)
+ */
+	lua_pushboolean(ctx, false);
+	LUA_ETRACE("arcantarget_hint", NULL, 1);
+}
+
 static int targethandler(lua_State* ctx)
 {
 	LUA_TRACE("target_updatehandler");
@@ -10436,14 +10626,13 @@ enum ARCAN_SEGID str_to_segid(const char* str)
 	return SEGID_UNKNOWN;
 }
 
-bool platform_lwa_allocbind_feed(
-	arcan_vobj_id rtgt, enum ARCAN_SEGID type, uintptr_t cbtag);
-
 static int arcanset(lua_State* ctx)
 {
 	LUA_TRACE("define_arcantarget");
 
-/* for storage -  will eventually be swapped for the active shmif connection */
+/* for storage -  will eventually be swapped for the active shmif connection
+ * buffer (or well, in some cases) - depending on the context it might make
+ * more sense to say, copy+forward if the resource itself is static */
 	arcan_vobject* dvobj;
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, &dvobj);
 	if (dvobj->vstore->txmapped != TXSTATE_TEX2D)
@@ -10468,14 +10657,16 @@ static int arcanset(lua_State* ctx)
 		arcan_fatal("define_arcantarget(), sources must "
 			"consist of a table with >= 1 valid vids.");
 
-	int pollrate = luaL_checkint(ctx, 4);
 	intptr_t ref = find_lua_callback(ctx);
 	if (LUA_NOREF == ref)
 		arcan_fatal("define_arcantarget(), no event handler provided");
 
-/* bind rt to have something to use as readback / update trigger */
-	if (ARCAN_OK != arcan_video_setuprendertarget(did, 0,
-		pollrate, false, RENDERTARGET_COLOR)){
+/* setup as a normal rt- then in the platform synch it will be checked for
+ * dirty state like any normal rt-, though if handle passing gets disabled for
+ * it, it will switch to the readback- like double-buffered setup in the
+ * arcan/video.c platform */
+	if (ARCAN_OK !=
+		arcan_video_setuprendertarget(did, -1, -1, false, RENDERTARGET_COLOR)){
 		arcan_warning("define_arcantarget(), setup rendertarget failed.\n");
 		lua_pushboolean(ctx, false);
 		LUA_ETRACE("define_arcantarget", NULL, 1);
@@ -10493,7 +10684,7 @@ static int arcanset(lua_State* ctx)
 		arcan_video_attachtorendertarget(did, setvid, true);
 	}
 
-	lua_pushboolean(ctx, platform_lwa_allocbind_feed(did, type, ref));
+	lua_pushboolean(ctx, platform_lwa_allocbind_feed(ctx, did, type, ref));
 	LUA_ETRACE("define_arcantarget", NULL, 1);
 }
 #else
@@ -12068,6 +12259,7 @@ static const luaL_Reg tgtfuns[] = {
 {"target_parent",              targetparent             },
 {"target_coreopt",             targetcoreopt            },
 {"target_updatehandler",       targethandler            },
+{"arcantarget_hint",           arcantargethint          },
 {"define_rendertarget",        renderset                },
 {"define_linktarget",          linkset                  },
 {"define_recordtarget",        recordset                },

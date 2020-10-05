@@ -131,8 +131,8 @@
 -- interpreted as having a cell/tile like constraint to sizing and displayhint/
 -- surface drawing can be constrained accordingly.
 --
--- @note: "input_label" {string:labelhint, string:datatype, int:initial,
--- int:modifiers, string:vsym} - suggest that the target supports customized
+-- @note: "input_label" {string:labelhint, string:description, string:datatype,
+-- int:initial, int:modifiers, string:vsym} - suggest that the target supports customized
 -- abstract input labels for use with the target_input function. May be called repeatedly,
 -- input_label values, are restricted to 16 characters in the [a-z,0-9_] set
 -- with ? values indicating that the caller tried to add an invalid value.

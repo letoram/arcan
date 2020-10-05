@@ -5,6 +5,19 @@
  * Description: Platform that draws to an arcan display server using the shmif.
  * Multiple displays are simulated when we explicitly get a subsegment pushed
  * to us although they only work with the agp readback approach currently.
+ *
+ * This is not a particularly good 'arcan-client' in the sense that some
+ * event mapping and other behaviors is still being plugged in.
+ *
+ * Some things of note that are missing:
+ *  1. a pushed subsegment is treated as a new 'display'
+ *  2. custom-requested subsegments (display.sub[]) are treated as recordtargets
+ *     which, in principle, is fine - but currently transfers using readback and
+ *     copy, not accelerated buffer transfers
+ *  3. more considerations need to happen with events that gets forwarded into
+ *     the events that go to the scripting layer handler
+ *  4. dirty-regions don't propagate in signal
+ *  5. resizing the rendertarget bound to a subsegment is also painful
  */
 #include <stdint.h>
 #include <stdbool.h>
@@ -34,6 +47,7 @@ extern jmp_buf arcanmain_recover_state;
 #include "arcan_event.h"
 #include "arcan_videoint.h"
 #include "arcan_renderfun.h"
+#include "../../engine/arcan_lua.h"
 
 #include "../EGL/egl.h"
 #include "../EGL/eglext.h"
@@ -87,7 +101,9 @@ struct subseg_output {
 	int id;
 	bool pending;
 	uintptr_t cbtag;
+	arcan_vobj_id vid;
 	struct arcan_shmif_cont con;
+	struct arcan_luactx* ctx;
 };
 
 struct display {
@@ -191,7 +207,8 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	disp[0].conn.hints = SHMIF_RHINT_ORIGO_LL;
 	arcan_shmif_resize(&disp[0].conn,
 		width > 0 ? width : disp[0].conn.w,
-		height > 0 ? height : disp[0].conn.h);
+		height > 0 ? height : disp[0].conn.h
+	);
 
 /*
  * map the provided initial values to match width/height, density,
@@ -593,6 +610,22 @@ static void stub()
 {
 }
 
+/*
+ * This one is undoubtedly slow and only used when the other side
+ * is network-remote, or otherwise distrust our right to submit GPU
+ * buffers, two adjustments could be made for making it less painful:
+ *
+ *  1. switch context to n-buffered state
+ *  2. setup asynchronous readback and change to polling state for the
+ *     backing store
+ *
+ * It might also apply when the source contents is an external client
+ * (as we have no way of duplicating a dma-buf and takes a reblit pass)
+ *
+ * another valuable high-GL optimization would be to pin the object
+ * memory to the mapped base address along with 2 and have a futex-
+ * trigger thread that forwards the buffer then.
+ */
 static void synch_copy(struct display* disp, struct agp_vstore* vs)
 {
 	check_store(disp->id);
@@ -634,8 +667,9 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 	unsigned cost = arcan_vint_refresh(fract, &nupd);
 
-/* nothing to do, yield with the timestep the conductor prefers (fake 60hz
- * now until the shmif_deadline communication is more robust) */
+/* nothing to do, yield with the timestep the conductor prefers - (fake 60hz
+ * now until the shmif_deadline communication is more robust, then we can just
+ * plug the next deadline and the conductor will wake us accordingly. */
 	if (!nupd){
 /*		glFinish(); */
 		left = cost > 16 ? 0 : 16 - cost;
@@ -868,8 +902,6 @@ static void map_window(
 	arcan_event_enqueue(ctx, &ev);
 }
 
-void arcan_lwa_subseg_ev(uintptr_t, arcan_event*);
-
 enum arcan_ffunc_rv arcan_lwa_ffunc FFUNC_HEAD
 {
 	struct subseg_output* outptr = state.ptr;
@@ -896,19 +928,35 @@ enum arcan_ffunc_rv arcan_lwa_ffunc FFUNC_HEAD
 
 /* drain events to scripting layer, don't care about DMS here */
 	if (cmd == FFUNC_TICK){
-		struct arcan_event inev;
-		while (arcan_shmif_poll(&outptr->con, &inev) > 0)
-			arcan_lwa_subseg_ev(outptr->cbtag, &inev);
-		return 0;
 	}
 
-/*
- * FIXME: we need some way to set the pointer for the readback output
- * backing store to be buf so we can avoid this copy using the normal
- * signalling mechanisms, abusing the record target is not efficient.
- */
+/* This should only be reached / possible / used when we don't have the
+ * fast-path of simply rotating backing color buffer and forwarding the handle
+ * to the rendertarget */
+	if (cmd == FFUNC_POLL){
+		struct arcan_event inev;
+		int ss = arcan_shmif_signalstatus(&outptr->con);
+		if (-1 == ss || (ss & 1))
+			return FRV_GOTFRAME;
+		else
+			return FRV_NOFRAME;
+	}
+
+/* the -1 == ss test above guarantees us that READBACK will only trigger on
+ * a valid segment as the progression is always POLL immediately before any
+ * READBACK is issued */
 	if (cmd == FFUNC_READBACK){
-		arcan_shmif_signal(&outptr->con, SHMIF_SIGVID);
+		struct arcan_shmif_cont* c = &outptr->con;
+
+/* readback buffer is always packed as it comes from a PBO (pixel packing op)
+ * and both vidp and buf will be forced to shmif_pixel == av_pixel */
+		for (size_t y = 0; y < c->h; y++){
+			memcpy(&outptr->con.vidp[y * c->pitch], &buf[y * width], c->stride);
+		}
+
+/* any audio is transfered as part of (unfortunate) patches to openAL pending
+ * a better audio layer separation */
+		arcan_shmif_signal(&outptr->con, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 	}
 
 /* special cases, how do we mark ourselves as invisible for popup,
@@ -925,7 +973,7 @@ enum arcan_ffunc_rv arcan_lwa_ffunc FFUNC_HEAD
  * lwa_subseg_eventdrain(uintptr_t tag, arcan_event*) function to
  * exist.
  */
-bool platform_lwa_allocbind_feed(
+bool platform_lwa_allocbind_feed(struct arcan_luactx* ctx,
 	arcan_vobj_id rtgt, enum ARCAN_SEGID type, uintptr_t cbtag)
 {
 	arcan_vobject* vobj = arcan_video_getobject(rtgt);
@@ -937,8 +985,16 @@ bool platform_lwa_allocbind_feed(
 		return false;
 
 	int ind = ffs(~disp[0].subseg_alloc)-1;
-	disp[0].sub[ind].pending = true;
-	disp[0].sub[ind].id = 0xcafe + ind;
+	disp[0].subseg_alloc |= 1 << ind;
+
+	struct subseg_output* out = &disp[0].sub[ind];
+	*out = (struct subseg_output){
+		.pending = true,
+		.id = 0xcafe + ind,
+		.ctx = ctx,
+		.cbtag = cbtag,
+		.vid = vobj->cellid
+	};
 
 	arcan_shmif_enqueue(&disp[0].conn, &(struct arcan_event){
 		.category = EVENT_EXTERNAL,
@@ -946,20 +1002,25 @@ bool platform_lwa_allocbind_feed(
 		.ext.segreq.width = vobj->vstore->w,
 		.ext.segreq.height = vobj->vstore->h,
 		.ext.segreq.kind = type,
-		.ext.segreq.id = disp[0].sub[ind].id
+		.ext.segreq.id = out->id
 	});
 
-	arcan_video_alterfeed(rtgt, FFUNC_LWA,
-		(vfunc_state){.tag = cbtag, .ptr = &disp[0].sub[ind]});
+	arcan_video_alterfeed(rtgt,
+		FFUNC_LWA, (vfunc_state){.tag = cbtag, .ptr = out});
 	return true;
 }
 
 bool platform_lwa_targetevent(struct subseg_output* tgt, arcan_event* ev)
 {
-/* selectively convert certain events, like target_displayhint
- * to indicate visibility - opted for this kind of contextual reuse
- * rather than more functions to track */
-	return false;
+/* selectively convert certain events, like target_displayhint to indicate
+ * visibility - opted for this kind of contextual reuse rather than more
+ * functions to track */
+	if (!tgt){
+		arcan_shmif_enqueue(&disp[0].conn, ev);
+		return true;
+	}
+
+	return arcan_shmif_enqueue(&tgt->con, ev);
 }
 
 static bool scan_subseg(arcan_tgtevent* ev, bool ok)
@@ -983,25 +1044,26 @@ static bool scan_subseg(arcan_tgtevent* ev, bool ok)
 	if (-1 == ind)
 		return false;
 
-/* if !ok, mark as free, if ok - mark as enabled and map */
-	if (!ok){
-		disp[0].sub[ind].pending = false;
-		disp[0].subseg_alloc &= ~(1 << ind);
-		arcan_warning("lwa - parent rejected subsegment with id %d\n", ind);
-		return false;
-	}
+	struct subseg_output* out = &disp[0].sub[ind];
+	out->pending = false;
 
-	disp[0].sub[ind].con =
-		arcan_shmif_acquire(&disp[0].conn, NULL, disp[0].sub[ind].id, 0);
+/* if !ok, mark as free, send EXIT event so the scripting side can terminate,
+ * we won't release the bit until TERMINATE comes in the FFUNC on the vobj
+ * itself */
+	if (!ok)
+		goto send_error;
 
-	disp[0].sub[ind].pending = false;
-	if (!disp[0].sub[ind].con.vidp){
-		arcan_warning("lwa - failed during mapping\n");
-		disp[0].subseg_alloc &= ~(1 << ind);
-		return false;
-	}
+	out->con = arcan_shmif_acquire(&disp[0].conn, NULL, out->id, 0);
+	if (out->con.vidp)
+		return true;
 
-	return true;
+send_error:
+	arcan_lwa_subseg_ev(out->ctx, out->vid, out->cbtag, &(struct arcan_event){
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_EXIT,
+		.tgt.message = "rejected"
+	});
+	return false;
 }
 
 /*
@@ -1019,12 +1081,18 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 		switch(ev.tgt.kind){
 
 /*
- * We use subsegments forced from the parent- side as an analog for
- * hotplug displays, giving developers a testbed for a rather hard
- * feature and at the same time get to evaluate the API.
+ * We use subsegments forced from the parent- side as an analog for hotplug
+ * displays, giving developers a testbed for a rather hard feature and at the
+ * same time get to evaluate the API. This is not ideal as the _adopt handler
+ * is more apt at testing that the script code can handle an unannounced
+ * lwa_segment coming in.
  *
- * For subsegment IDs that match a pending request, with special
- * treatment for the DND/PASTE cases.
+ * Similary, if an OUTPUT segment comes in such a way, that would be better
+ * treated as an adopt on a media source. More things to reconsider in this
+ * interface come ~0.7
+ *
+ * For subsegment IDs that match a pending request, with special treatment for
+ * the DND/PASTE cases.
 */
 		case TARGET_COMMAND_NEWSEGMENT:
 			if (d == &disp[0]){
@@ -1120,12 +1188,13 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 		}
 		break;
 
-/*
- * This is harsher than perhaps necessary as this does not care
- * for adoption of old connections, they are just killed off.
- */
 		case TARGET_COMMAND_RESET:
-			longjmp(arcanmain_recover_state, 2);
+			if (ev.tgt.ioevs[0].iv == 0)
+				longjmp(arcanmain_recover_state, ARCAN_LUA_SWITCH_APPL);
+			else if (ev.tgt.ioevs[0].iv == 1)
+				longjmp(arcanmain_recover_state, ARCAN_LUA_SWITCH_APPL_NOADOPT);
+			else {
+			}
 		break;
 
 /*
@@ -1179,12 +1248,30 @@ void platform_event_keyrepeat(arcan_evctx* ctx, int* period, int* delay)
 void platform_event_process(arcan_evctx* ctx)
 {
 /*
- * Most events can just be added to the local queue,
- * but we want to handle some of the target commands separately
- * (with a special path to LUA and a different hook)
+ * Most events can just be added to the local queue, but we want to handle some
+ * of the target commands separately (with a special path to LUA and a
+ * different hook)
  */
 	for (size_t i = 0; i < MAX_DISPLAYS; i++)
 		event_process_disp(ctx, &disp[i]);
+
+	int subs = disp[0].subseg_alloc;
+	int bits;
+
+/*
+ * Only first 'display' can have subsegments, sweep any of those if they are
+ * allocated, this could again be done with monitoring threads on the futex
+ * with better synch strategies.
+ */
+	while ((bits = ffs(subs))){
+		struct subseg_output* out = &disp[0].sub[bits-1];
+		subs = subs & ~(1 << (bits-1));
+
+		struct arcan_event inev;
+		while (arcan_shmif_poll(&out->con, &inev) > 0){
+			arcan_lwa_subseg_ev(out->ctx, out->vid, out->cbtag, &inev);
+		}
+	}
 }
 
 void platform_event_rescan_idev(arcan_evctx* ctx)
@@ -1242,4 +1329,3 @@ void platform_event_init(arcan_evctx* ctx)
 {
 	TRACE_MARK_ONESHOT("event", "event-platform-init", TRACE_SYS_DEFAULT, 0, 0, "lwa");
 }
-

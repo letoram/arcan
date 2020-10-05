@@ -2269,8 +2269,14 @@ int arcan_shmif_signalstatus(struct arcan_shmif_cont* c)
 
 	int a = atomic_load(&c->addr->aready);
 	int v = atomic_load(&c->addr->vready);
+	int res = 0;
 
-	return (a * 1) | (v * 1);
+	if (atomic_load(&c->addr->aready))
+		res |= 2;
+	if (atomic_load(&c->addr->vready))
+		res |= 1;
+
+	return res;
 }
 
 bool arcan_shmif_acquireloop(struct arcan_shmif_cont* c,
