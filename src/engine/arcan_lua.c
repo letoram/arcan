@@ -5834,10 +5834,14 @@ static int linkimage(lua_State* ctx)
 	if (ap > ANCHORP_ENDM)
 		arcan_fatal("link_image() -- invalid anchor point specified (%d)\n", ap);
 
+	int sp = luaL_optnumber(ctx, 4, SCALEM_NONE);
+	if (sp > SCALEM_ENDM)
+		arcan_fatal("link_image() -- invalid scale bias dimension (%d)\n", sp);
+
 	enum arcan_transform_mask smask = arcan_video_getmask(sid);
 	smask |= MASK_LIVING;
 
-	arcan_errc rv = arcan_video_linkobjs(sid, did, smask, ap);
+	arcan_errc rv = arcan_video_linkobjs(sid, did, smask, ap, sp);
 	lua_pushboolean(ctx, rv == ARCAN_OK);
 	LUA_ETRACE("link_image", NULL, 1);
 }
@@ -12622,6 +12626,10 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"ANCHOR_LC", ANCHORP_LC},
 {"ANCHOR_CL", ANCHORP_CL},
 {"ANCHOR_CR", ANCHORP_CR},
+{"ANCHOR_SCALE_NONE", 0},
+{"ANCHOR_SCALE_W", SCALEM_WIDTH},
+{"ANCHOR_SCALE_H", SCALEM_WIDTH},
+{"ANCHOR_SCALE_WH", SCALEM_WIDTH_HEIGHT},
 {"FRAMESERVER_LOOP", 0},
 {"FRAMESERVER_NOLOOP", 1},
 {"TYPE_FRAMESERVER", ARCAN_TAG_FRAMESERV},

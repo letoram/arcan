@@ -2,6 +2,7 @@
 -- @short: Reassign the property-space to be relative another object
 -- @inargs: vid:id, vid:newparent
 -- @inargs: vid:id, vid:newparent, int:panchor
+-- @inargs: vid:id, vid:newparent, int:panchor, int:anchor_opt
 -- @longdescr: By default, all objects defines their properties relative to
 -- an invisible WORLDID object. By the use of this function, this object can
 -- be switched to another dynamically, allowing you to build complex
@@ -22,6 +23,14 @@
 -- ANCHOR_UL : upper-left, ANCHOR_CR : upper-center, ANCHOR_UR : upper-right,
 -- ANCHOR_CL : center-left, ANCHOR_C : center, ANCHOR_CR : center-right,
 -- ANCHOR_LL : lower-left, ANCHOR_LC : lower-center, ANCHOR_LR : lower-right.
+--
+-- If the *anchor_opt* argument is specified, further anchor behavior can
+-- be controlled. The valid values for anchor_opt now are:
+-- ANCHOR_SCALE_NONE (default),
+-- ANCHOR_SCALE_W, ANCHOR_SCALE_H, ANCHOR_SCALE_WH - the object size is
+-- now defined relative to that of the width and/or height of the parent.
+-- The relative delta is calculated based on the current scale versus the
+-- initial (storage without a texture backing) or the current storage size.
 --
 -- @note: Changing link ownership resets all scheduled transformations
 -- except for blending.

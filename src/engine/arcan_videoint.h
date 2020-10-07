@@ -270,6 +270,7 @@ typedef struct arcan_vobject {
 
 /* management mappings */
 	enum parent_anchor p_anchor;
+	enum parent_scale p_scale;
 
 	unsigned childslots;
 
