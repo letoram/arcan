@@ -139,6 +139,15 @@ enum parent_anchor {
 	ANCHORP_ENDM
 };
 
+enum parent_scale {
+	SCALEM_NONE = 0,
+	SCALEM_WIDTH = 1,
+	SCALEM_HEIGHT = 2,
+	SCALEM_WIDTH_HEIGHT = 3,
+	SCALEM_DEPTH = 4,
+	SCALEM_ENDM
+};
+
 /*
  * Each VOBJect can have additional data associated with it.
  */
@@ -559,7 +568,7 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id id, arcan_vobj_id did,
 
 /* Object hierarchy related functions */
 arcan_errc arcan_video_linkobjs(arcan_vobj_id src, arcan_vobj_id parent,
-	enum arcan_transform_mask mask, enum parent_anchor);
+	enum arcan_transform_mask mask, enum parent_anchor, enum parent_scale);
 arcan_vobj_id arcan_video_findparent(arcan_vobj_id id);
 arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs);
 

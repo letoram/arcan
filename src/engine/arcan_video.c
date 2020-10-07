@@ -1535,8 +1535,9 @@ arcan_errc arcan_video_transformmask(arcan_vobj_id id,
 	return rv;
 }
 
-arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
-	enum arcan_transform_mask mask, enum parent_anchor anchorp)
+arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid,
+	arcan_vobj_id parentid, enum arcan_transform_mask mask,
+	enum parent_anchor anchorp, enum parent_scale scalem)
 {
 	arcan_vobject* src = arcan_video_getobject(srcid);
 	arcan_vobject* dst = arcan_video_getobject(parentid);
@@ -1557,6 +1558,11 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
 		else
 			current = current->parent;
 	}
+
+/* update anchor, mask and scale */
+	src->p_anchor = anchorp;
+	src->mask = mask;
+	src->p_scale = scalem;
 
 /* already linked to dst? do nothing */
 		if (src->parent == dst)
@@ -1588,8 +1594,6 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
 	swipe_chain(src->transform, offsetof(surface_transform, rotate),
 		sizeof(struct transf_rotate));
 
-	src->p_anchor = anchorp;
-	src->mask = mask;
 	FLAG_DIRTY(NULL);
 
 	return ARCAN_OK;
@@ -4554,31 +4558,53 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops,
  * which is then re-used every rendercall.
  * Queueing a transformation immediately invalidates the cache.
  */
-void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp,
-	surface_properties* props)
+void arcan_resolve_vidprop(
+	arcan_vobject* vobj, float lerp, surface_properties* props)
 {
 	if (vobj->valid_cache)
 		*props = vobj->prop_cache;
 
-/* first recurse to parents */
+/* walk the chain up to the parent, resolve recursively - there might be an
+ * early out detection here if all transforms are masked though the value of
+ * that is questionable without more real-world data */
 	else if (vobj->parent && vobj->parent != &current_context->world){
 		surface_properties dprop = empty_surface();
 		arcan_resolve_vidprop(vobj->parent, lerp, &dprop);
+
+/* now apply the parent chain to ourselves */
 		apply(vobj, props, &dprop, lerp, false);
+		if (vobj->p_scale){
+/* resolve parent scaled size, then our own delta, apply that and then back
+ * to object-local scale factor */
+			if (vobj->p_scale & SCALEM_WIDTH){
+				float pw = vobj->parent->origw * vobj->parent->current.scale.x;
+				float mw_d = vobj->origw + ((vobj->origw * vobj->current.scale.x) - vobj->origw);
+				pw += mw_d;
+				props->scale.x = pw / (float)vobj->origw;
+			}
+			if (vobj->p_scale & SCALEM_HEIGHT){
+				float ph = vobj->parent->origh * vobj->parent->current.scale.y;
+				float mh_d = vobj->origh + ((vobj->origh * vobj->current.scale.y) - vobj->origh);
+				ph += mh_d;
+				props->scale.y = ph / (float)vobj->origh;
+			}
+		}
+
+/* anchor ignores normal position mask */
 		switch(vobj->p_anchor){
 		case ANCHORP_UR:
-			props->position.x += vobj->parent->origw * vobj->parent->current.scale.x;
+			props->position.x += (float)vobj->parent->origw * vobj->parent->current.scale.x;
 		break;
 		case ANCHORP_LR:
-			props->position.y += vobj->parent->origh * vobj->parent->current.scale.y;
-			props->position.x += vobj->parent->origw * vobj->parent->current.scale.x;
+			props->position.y += (float)vobj->parent->origh * vobj->parent->current.scale.y;
+			props->position.x += (float)vobj->parent->origw * vobj->parent->current.scale.x;
 		break;
 		case ANCHORP_LL:
-			props->position.y += vobj->parent->origh * vobj->parent->current.scale.y;
+			props->position.y += (float)vobj->parent->origh * vobj->parent->current.scale.y;
 		break;
 		case ANCHORP_CR:
-			props->position.y += vobj->parent->origh * vobj->parent->current.scale.y * 0.5;
-			props->position.x += vobj->parent->origw * vobj->parent->current.scale.x;
+			props->position.y += (float)vobj->parent->origh * vobj->parent->current.scale.y * 0.5;
+			props->position.x += (float)vobj->parent->origw * vobj->parent->current.scale.x;
 		break;
 		case ANCHORP_C:
 		case ANCHORP_UC:
@@ -4604,9 +4630,13 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp,
 	else
 		apply(vobj, props, &current_context->world.current, lerp, true);
 
+/* the cache evaluation here is a bit shallow - there are differences between
+ * in-frame caching (multiple resolves of related objects within the same
+ * frame) and time-stable (no ongoing transformations queued) - likely that big
+ * gains can be have with in-frame caching as well */
 	arcan_vobject* current = vobj;
 	bool can_cache = true;
-	while (current){
+	while (current && can_cache){
 		if (current->transform){
 			can_cache = false;
 			break;
@@ -4614,7 +4644,7 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp,
 		current = current->parent;
 	}
 
-	if (can_cache && vobj->owner && vobj->valid_cache == false){
+	if (can_cache && vobj->owner && !vobj->valid_cache){
 		surface_properties dprop = *props;
 		vobj->prop_cache  = *props;
 		vobj->valid_cache = true;
@@ -4648,8 +4678,9 @@ static inline void build_modelview(float* dmatr,
 	float _Alignas(16) tmatr[16];
 
 /* now position represents centerpoint in screen coordinates */
-	prop->scale.x *= src->origw * 0.5f;
-	prop->scale.y *= src->origh * 0.5f;
+	prop->scale.x *= (float)src->origw * 0.5f;
+	prop->scale.y *= (float)src->origh * 0.5f;
+
 	prop->position.x += prop->scale.x;
 	prop->position.y += prop->scale.y;
 
@@ -4738,7 +4769,9 @@ static inline void setup_surf(struct rendertarget* dst,
 	if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGLD)
 		return;
 
-/* currently, we only cache the primary rendertarget */
+/* currently, we only cache the primary rendertarget, and the better option is
+ * to actually remove secondary attachments etc. now that we have order-peeling
+ * and sharestorage there should really just be 1:1 between src and dst */
 	if (src->valid_cache && dst == src->owner){
 		prop->scale.x *= src->origw * 0.5f;
 		prop->scale.y *= src->origh * 0.5f;
@@ -4812,7 +4845,10 @@ static inline void draw_texsurf(struct rendertarget* dst,
 	else {
 		setup_surf(dst, &prop, src, &mvm);
 		agp_draw_vobj(
-			-prop.scale.x, -prop.scale.y, prop.scale.x, prop.scale.y, txcos, mvm);
+				(-prop.scale.x),
+				(-prop.scale.y),
+				( prop.scale.x),
+				( prop.scale.y), txcos, mvm);
 	}
 }
 
