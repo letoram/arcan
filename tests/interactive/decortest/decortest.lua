@@ -15,12 +15,12 @@ function decortest()
 	local w = 320
 	local h = 200
 
+-- 'worst case' asymetric and animated
 	decorator = system_load("builtin/decorator.lua")()({
-		border = {2, 2, 2, 2},
-		pad = {0, 0, 0, 0},
+		border = {2, 4, 6, 8},
+		pad = {5, 10, 5, 10},
 		select = function(dec, active, source)
 			mouse_switch_cursor(source)
-			print(dec, active, source)
 		end,
 		drag_rz = function(dec, cont, dx, dy, mx, my)
 			w = w + dx
@@ -35,7 +35,8 @@ function decortest()
 	decor = decorator(wnd)
 	move_image(wnd, 100, 100)
 	decor:border_color(255, 127, 0, 255)
-	decor:update(320, 200)
+
+	resize_image(wnd, 100, 200, 50)
 end
 
 function decortest_input(iotbl)

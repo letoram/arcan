@@ -37,6 +37,11 @@
 -- @note: Rotation transforms do not take the positional anchor point
 -- into account, only its mask.
 -- @note: Link to self is equivalent to linking back to WORLDID.
+-- @note: linked scale means that 1px will be subtracted from *id* in each
+-- desired dimension when calculating final size as no object can go below
+-- 1x1 px size, making it otherwise impossible to describe the case where
+-- parent and child should have identical size for the shared dimension.
+-- hare dimensions
 -- @group: image
 -- @cfunction: linkimage
 function main()

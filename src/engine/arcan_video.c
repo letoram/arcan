@@ -4579,13 +4579,13 @@ void arcan_resolve_vidprop(
 			if (vobj->p_scale & SCALEM_WIDTH){
 				float pw = vobj->parent->origw * vobj->parent->current.scale.x;
 				float mw_d = vobj->origw + ((vobj->origw * vobj->current.scale.x) - vobj->origw);
-				pw += mw_d;
+				pw += mw_d - 1;
 				props->scale.x = pw / (float)vobj->origw;
 			}
 			if (vobj->p_scale & SCALEM_HEIGHT){
 				float ph = vobj->parent->origh * vobj->parent->current.scale.y;
 				float mh_d = vobj->origh + ((vobj->origh * vobj->current.scale.y) - vobj->origh);
-				ph += mh_d;
+				ph += mh_d - 1;
 				props->scale.y = ph / (float)vobj->origh;
 			}
 		}
