@@ -1576,8 +1576,8 @@ static int funtable(lua_State* ctx, uint32_t kind)
 
 static const char flt_alpha[] = "abcdefghijklmnopqrstuvwxyz-_";
 static const char flt_chunkfn[] = "abcdefghijklmnopqrstuvwxyz1234567890;*";
-static const char flt_alphanum[] = "abcdefghijklmnopqrstuvwyz-0123456789-_";
-static const char flt_Alphanum[] = "abcdefghijklmnopqrstuvwyz-0123456789-_"
+static const char flt_alphanum[] = "abcdefghijklmnopqrstuvxwyz-0123456789-_";
+static const char flt_Alphanum[] = "abcdefghijklmnopqrstuvxwyz-0123456789-_"
 	"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 static const char flt_Alpha[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ-_"
 	"abcdefghijklmnopqrstuvwxyz";
@@ -4405,28 +4405,44 @@ kinderr:
 	LUA_ETRACE("target_input/input_target", NULL, 1);
 }
 
-static const char* idatalut[] = {
-	"analog",
-	"digital",
-	"translated",
-	"touch",
-	"eyes"
-};
-
 static ssize_t lookup_idatatype_str(const char* str)
 {
-	for (ssize_t i = 0; i < COUNT_OF(idatalut) && str; i++)
-		if (strcmp(str, idatalut[i]) == 0)
-			return i;
+	if (strcmp(str, "analog") == 0)
+		return EVENT_IDATATYPE_ANALOG;
+
+	if (strcmp(str, "digital")  == 0)
+		return EVENT_IDATATYPE_DIGITAL;
+
+	if (strcmp(str, "translated")  == 0)
+		return EVENT_IDATATYPE_TRANSLATED;
+
+	if (strcmp(str, "touch")  == 0)
+		return EVENT_IDATATYPE_TOUCH;
+
+	if (strcmp(str, "eyes")  == 0)
+		return EVENT_IDATATYPE_EYES;
+
 	return -1;
 }
 
 static const char* lookup_idatatype(int type)
 {
-	if (type < 0 || type > COUNT_OF(idatalut))
-		return NULL;
+	switch(type){
+		case EVENT_IDATATYPE_ANALOG:
+			return "analog";
+		case EVENT_IDATATYPE_DIGITAL:
+			return "digital";
+		case EVENT_IDATATYPE_TRANSLATED:
+			return "translated";
+		case EVENT_IDATATYPE_TOUCH:
+			return "touch";
+		case EVENT_IDATATYPE_EYES:
+			return "eyes";
+	default:
+	break;
+	}
 
-	return idatalut[type];
+	return NULL;
 }
 
 /*
