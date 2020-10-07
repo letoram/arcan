@@ -13,7 +13,7 @@
 -- a desired configuration.
 --
 -- The decorations currently cover border, as well as managing reserved space
--- and anchor for a titlebar.
+-- for various decorations ('pad region')
 --
 -- Example use is as follows:
 --     local decor_mgr = system_load("builtin/decorator.lua")()
@@ -30,9 +30,6 @@
 -- Which will build decoration objects, link and order them to the video
 -- identifier.
 --
--- Whenever something change, returns 'extra' pixels consumed by decor:
---     ctx:update(w, h, [animate_dt], [animate_interp]) => t, l, d, r
---
 -- To set visuals:
 --     ctx:border_color(r, g, b, alpha)
 --
@@ -46,44 +43,8 @@
 --     drag_rz(ctx, border, dx, dy, mask_x, mask_y)
 --     drag_move(ctx, border, dx, dy)
 --
--- You can create and link other items against ctx.titlebar (if set),
--- make sure to enable clipping and resize/rotate/position after updates.
---
 if not table.copy then
 	system_load("builtin/table.lua")()
-end
-
-local function decor_update(ctx, w, h, adt, aint)
-	local pad = ctx.pad
-	local ofs = ctx.ofs
-	local brd = ctx.border
-	local wpad = ctx.wpad
-
-	if ctx.vids.t then
-		instant_image_transform(ctx.vids.t)
-		resize_image(ctx.vids.t, w + pad[1], brd[1], adt, aint)
-		move_image(ctx.vids.t, ofs[1], ofs[2] - wpad[1], adt, aint)
-	end
-
-	if ctx.vids.l then
-		instant_image_transform(ctx.vids.l)
-		resize_image(ctx.vids.l, brd[2], h + pad[2] + wpad[1] + wpad[3], adt, aint)
-		move_image(ctx.vids.l, ofs[3], ofs[4], adt, aint)
-	end
-
-	if ctx.vids.d then
-		instant_image_transform(ctx.vids.d)
-		resize_image(ctx.vids.d, w + pad[3], brd[3], adt, aint)
-		move_image(ctx.vids.d, ofs[5], ofs[6], adt, aint)
-	end
-
-	if ctx.vids.r then
-		instant_image_transform(ctx.vids.r)
-		resize_image(ctx.vids.r, brd[4], h + pad[4], adt, aint)
-		move_image(ctx.vids.r, ofs[7], ofs[8], adt, aint)
-	end
-
-	return unpack(ctx.pad)
 end
 
 local function decor_destroy(ctx)
@@ -239,16 +200,14 @@ end
 
 function build_decor(vid, cfg)
 	local res = {
-		update = decor_update,
+		update = function()
+		end,
 		switch_rt = switch_rt,
 		destroy = decor_destroy,
 		border_color = border_color,
 		drag_rz = cfg.drag_rz,
 		select = cfg.select,
 		vids = {},
-		ofs = {0, 0, 0, 0},
-		pad = {0, 0, 0, 0},
-		wpad = {0, 0, 0, 0},
 		mhs = {}
 	}
 
@@ -264,32 +223,35 @@ function build_decor(vid, cfg)
 	end
 
 	res.border = table.copy(cfg.border)
+-- allow config provided 'extra' padding to allow space for scroll-bars
+-- titlebar, statusbar and other kinds of decor
 	local wpad = {0, 0, 0, 0}
 	if cfg.pad then
 		wpad = cfg.pad
 	end
 
 	if cfg.border[1] > 0 then
-		res.vids.t = color_surface(1, cfg.border[1], 32, 32, 32)
-		res.ofs[1] = -cfg.border[2] - wpad[2]
-		res.ofs[2] = -cfg.border[1] - wpad[1]
-		res.pad[1] = cfg.border[2] + cfg.border[4] + wpad[2] + wpad[4]
+-- have 'top' extend over 'left' and 'right' as well
+		local pad = cfg.border[2] + cfg.border[4] + wpad[2] + wpad[4]
+		res.vids.t = color_surface(pad + 1, cfg.border[1], 1, 32, 32, 32)
+		link_image(res.vids.t, vid, ANCHOR_UL, ANCHOR_SCALE_W)
+		move_image(res.vids.t, -cfg.border[2] - wpad[2], -cfg.border[1] - wpad[1])
 
-		link_image(res.vids.t, vid)
 		image_inherit_order(res.vids.t, true)
 		order_image(res.vids.t, 1)
+
 		if use_mouse then
 			add_mouse(res, res.vids.t, -1, 0, true, true, "top")
 		end
 	end
 
 	if cfg.border[2] > 0 then
-		res.vids.l = color_surface(cfg.border[2], 1, 32, 32, 32)
-		res.ofs[3] = -cfg.border[2] - wpad[2]
-		res.ofs[4] = -wpad[1]
-		res.pad[2] = wpad[1] + wpad[3]
+		local pad = wpad[1] + wpad[3]
+		res.vids.l = color_surface(cfg.border[2], pad+1, 32, 32, 32)
 
-		link_image(res.vids.l, vid)
+		link_image(res.vids.l, vid, ANCHOR_UL, ANCHOR_SCALE_H)
+		move_image(res.vids.l, -cfg.border[2] - wpad[2], -wpad[1]);
+
 		image_inherit_order(res.vids.l, true)
 		order_image(res.vids.l, 1)
 		if use_mouse then
@@ -298,27 +260,26 @@ function build_decor(vid, cfg)
 	end
 
 	if cfg.border[3] > 0 then
-		res.vids.d = color_surface(cfg.border[3], 1, 32, 32, 32)
-		res.ofs[5] = -cfg.border[2] - wpad[2]
-		res.ofs[6] = wpad[3]
-		res.pad[3] = cfg.border[2] + cfg.border[4] + wpad[2] + wpad[4]
+		local pad = cfg.border[2] + cfg.border[4] + wpad[2] + wpad[4]
+		res.vids.d = color_surface(pad + 1, cfg.border[3], 1, 32, 32, 32)
 
-		link_image(res.vids.d, vid, ANCHOR_LL)
+		link_image(res.vids.d, vid, ANCHOR_LL, ANCHOR_SCALE_W)
 		image_inherit_order(res.vids.d, true)
 		order_image(res.vids.d, 1)
+		move_image(res.vids.d, -cfg.border[2] - wpad[2], wpad[3]);
+
 		if use_mouse then
 			add_mouse(res, res.vids.d, 0, 1, true, false, "down")
 		end
 	end
 
 	if cfg.border[4] > 0 then
-		res.vids.r = color_surface(1, cfg.border[4], 32, 32, 32)
-		res.ofs[7] = wpad[4]
-		res.ofs[8] = -wpad[1]
-		res.pad[4] = wpad[1] + wpad[3]
-		link_image(res.vids.r, vid, ANCHOR_UR)
+		local pad = wpad[1] + wpad[3]
+		res.vids.r = color_surface(cfg.border[4], pad+1, 32, 32, 32)
+		link_image(res.vids.r, vid, ANCHOR_UR, ANCHOR_SCALE_H)
 		image_inherit_order(res.vids.r, true)
 		order_image(res.vids.r, 1)
+		move_image(res.vids.r, wpad[4], -wpad[1])
 
 		if use_mouse then
 			add_mouse(res, res.vids.r, 0, 1, false, false, "right")
