@@ -4573,18 +4573,19 @@ void arcan_resolve_vidprop(
 
 /* now apply the parent chain to ourselves */
 		apply(vobj, props, &dprop, lerp, false);
+
 		if (vobj->p_scale){
 /* resolve parent scaled size, then our own delta, apply that and then back
  * to object-local scale factor */
 			if (vobj->p_scale & SCALEM_WIDTH){
-				float pw = vobj->parent->origw * vobj->parent->current.scale.x;
-				float mw_d = vobj->origw + ((vobj->origw * vobj->current.scale.x) - vobj->origw);
+				float pw = vobj->parent->origw * dprop.scale.x;
+				float mw_d = vobj->origw + ((vobj->origw * props->scale.x) - vobj->origw);
 				pw += mw_d - 1;
 				props->scale.x = pw / (float)vobj->origw;
 			}
 			if (vobj->p_scale & SCALEM_HEIGHT){
-				float ph = vobj->parent->origh * vobj->parent->current.scale.y;
-				float mh_d = vobj->origh + ((vobj->origh * vobj->current.scale.y) - vobj->origh);
+				float ph = vobj->parent->origh * dprop.scale.y;
+				float mh_d = vobj->origh + ((vobj->origh * props->scale.y) - vobj->origh);
 				ph += mh_d - 1;
 				props->scale.y = ph / (float)vobj->origh;
 			}
@@ -4593,25 +4594,25 @@ void arcan_resolve_vidprop(
 /* anchor ignores normal position mask */
 		switch(vobj->p_anchor){
 		case ANCHORP_UR:
-			props->position.x += (float)vobj->parent->origw * vobj->parent->current.scale.x;
+			props->position.x += (float)vobj->parent->origw * dprop.scale.x;
 		break;
 		case ANCHORP_LR:
-			props->position.y += (float)vobj->parent->origh * vobj->parent->current.scale.y;
-			props->position.x += (float)vobj->parent->origw * vobj->parent->current.scale.x;
+			props->position.y += (float)vobj->parent->origh * dprop.scale.y;
+			props->position.x += (float)vobj->parent->origw * dprop.scale.x;
 		break;
 		case ANCHORP_LL:
-			props->position.y += (float)vobj->parent->origh * vobj->parent->current.scale.y;
+			props->position.y += (float)vobj->parent->origh * dprop.scale.y;
 		break;
 		case ANCHORP_CR:
-			props->position.y += (float)vobj->parent->origh * vobj->parent->current.scale.y * 0.5;
-			props->position.x += (float)vobj->parent->origw * vobj->parent->current.scale.x;
+			props->position.y += (float)vobj->parent->origh * dprop.scale.y * 0.5;
+			props->position.x += (float)vobj->parent->origw * dprop.scale.x;
 		break;
 		case ANCHORP_C:
 		case ANCHORP_UC:
 		case ANCHORP_CL:
 		case ANCHORP_LC:{
-			float mid_y = (vobj->parent->origh * vobj->parent->current.scale.y) * 0.5;
-			float mid_x = (vobj->parent->origw * vobj->parent->current.scale.x) * 0.5;
+			float mid_y = (vobj->parent->origh * dprop.scale.y) * 0.5;
+			float mid_x = (vobj->parent->origw * dprop.scale.x) * 0.5;
 			if (vobj->p_anchor == ANCHORP_UC ||
 				vobj->p_anchor == ANCHORP_LC || vobj->p_anchor == ANCHORP_C)
 				props->position.x += mid_x;
@@ -4620,7 +4621,7 @@ void arcan_resolve_vidprop(
 				props->position.y += mid_y;
 
 			if (vobj->p_anchor == ANCHORP_LC)
-				props->position.y += vobj->parent->origh * vobj->parent->current.scale.y;
+				props->position.y += vobj->parent->origh * dprop.scale.y;
 		}
 		case ANCHORP_UL:
 		default:
