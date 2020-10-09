@@ -9,9 +9,6 @@ static void surf_destroy(struct wl_client* cl, struct wl_resource* res)
 		return;
 	}
 
-	if (pending_resource == res)
-		pending_resource = NULL;
-
 /* check pending subsurfaces? */
 	destroy_comp_surf(surf, true);
 }

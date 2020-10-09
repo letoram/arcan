@@ -35,10 +35,25 @@ static pthread_mutex_t wm_synch = PTHREAD_MUTEX_INITIALIZER;
 /* retries before ICCCM destroy requests are ignored and we just kill
  * the client outright */
 static int default_kill_count = 5;
+struct timed_request {
+	uint64_t ts_ms;
+	uint64_t serial;
+	int w, h;
+	int x, y;
+};
 
 struct xwnd_state {
-	bool mapped;
+	uint64_t mapped;
+	uint64_t managed;
+
+	struct timed_request cl_configure;
+	struct timed_request wm_configure;
+	int pending_mask;
+	int pending_sibling;
+	int pending_stack;
+
 	bool paired;
+	bool configured;
 	bool override_redirect;
 	bool fullscreen;
 	int x, y;
@@ -50,14 +65,22 @@ struct xwnd_state {
 };
 static struct xwnd_state* windows;
 
+struct selection {
+	uint8_t* buf;
+	size_t buf_sz;
+	const char* buf_type;
+};
+
 static int signal_fd = -1;
 static xcb_connection_t* dpy;
 static xcb_screen_t* screen;
 static xcb_drawable_t wnd_root;
 static xcb_drawable_t wnd_wm;
-static xcb_drawable_t wnd_sel;
 static xcb_colormap_t colormap;
 static xcb_visualid_t visual;
+struct selection selection_primary;
+struct selection selection_secondary;
+
 static int64_t input_grab = XCB_WINDOW_NONE;
 static int64_t input_focus = XCB_WINDOW_NONE;
 static bool xwm_standalone = false;
@@ -91,6 +114,7 @@ static inline void trace(const char* msg, ...)
 	va_end( args);
 }
 
+#define _DEBUG
 #ifdef _DEBUG
 #define TRACE_PREFIX "kind=trace:"
 #define trace(Y, ...) do { \
@@ -105,7 +129,7 @@ static inline void trace(const char* msg, ...)
 
 static bool is_wm_window(xcb_drawable_t id)
 {
-	return id == wnd_wm || id == wnd_root || id == wnd_sel;
+	return id == wnd_wm || id == wnd_root;
 }
 
 static inline void wm_command(bool flush, const char* msg, ...)
@@ -200,6 +224,14 @@ static void update_title(struct xwnd_state* state)
 		free(state->title);
 		state->title = scratch;
 		trace("title=%s", scratch);
+		char* pos = state->title;
+		while(*pos){
+			if (*pos == ':')
+				*pos = ' ';
+			pos++;
+		}
+
+		wm_command(WM_FLUSH, "kind=title:id=%"PRIu32":msg=%s", state->id, state->title);
 	}
 	else
 		free(scratch);
@@ -214,8 +246,9 @@ static void xcb_property_notify(xcb_property_notify_event_t* ev)
 	struct xwnd_state* state = NULL;
 
 /* intended for our clipboard? */
-	if (ev->window == wnd_sel){
-/* NEW_VALUE */
+	if (ev->window == wnd_wm){
+
+/* simplified utf8- for the time only - other is to enumerate the TARGETS */
 	}
 
 	HASH_FIND_INT(windows,&ev->window,state);
@@ -238,7 +271,7 @@ static void update_focus(int64_t id)
 	input_focus = id;
 	if (!state){
 		xcb_set_input_focus_checked(dpy,
-			XCB_INPUT_FOCUS_POINTER_ROOT, XCB_NONE, XCB_TIME_CURRENT_TIME);
+			XCB_INPUT_FOCUS_NONE, XCB_NONE, XCB_TIME_CURRENT_TIME);
 		trace("focus-none");
 	}
 	else {
@@ -272,7 +305,7 @@ static void create_window()
 {
 	wnd_wm = xcb_generate_id(dpy);
 	xcb_create_window(dpy,
-		XCB_COPY_FROM_PARENT, wnd_wm, wnd_root,
+	XCB_COPY_FROM_PARENT, wnd_wm, wnd_root,
 		0, 0, 10, 10, 0, XCB_WINDOW_CLASS_INPUT_OUTPUT,
 		visual, 0, NULL
 	);
@@ -292,27 +325,18 @@ static void create_window()
 		atoms[NET_SUPPORTING_WM_CHECK], XCB_ATOM_WINDOW, 32, 1, &wnd_root);
 
 /* for clipboard forwarding */
-	xcb_set_selection_owner(dpy,
-		wnd_wm, atoms[WM_S0], XCB_TIME_CURRENT_TIME);
+	xcb_set_selection_owner_checked(dpy, wnd_wm, atoms[CLIPBOARD_MANAGER], XCB_TIME_CURRENT_TIME);
 
-	xcb_set_selection_owner(dpy,
-		wnd_wm, atoms[NET_WM_CM_S0], XCB_TIME_CURRENT_TIME);
+	xcb_convert_selection(dpy, wnd_wm,
+		XCB_ATOM_PRIMARY, atoms[UTF8_STRING], atoms[XSEL_DATA], XCB_CURRENT_TIME);
 
-	wnd_sel = xcb_generate_id(dpy);
-	xcb_create_window(dpy,
-		XCB_COPY_FROM_PARENT, wnd_sel, wnd_root,
-		0, 0, 12, 12, 0, XCB_WINDOW_CLASS_INPUT_OUTPUT,
-		visual, XCB_CW_EVENT_MASK,
-		(uint32_t[]){XCB_EVENT_MASK_PROPERTY_CHANGE}
-	);
-	xcb_set_selection_owner(dpy, wnd_sel, atoms[CLIPBOARD], XCB_TIME_CURRENT_TIME);
-/*
- * xcb_xfixes_select_selection_input(dpy, wnd_sel, atoms[CLIPBOARD],
+	int mask =
 		XCB_XFIXES_SELECTION_EVENT_MASK_SET_SELECTION_OWNER |
 		XCB_XFIXES_SELECTION_EVENT_MASK_SELECTION_WINDOW_DESTROY |
-		XCB_XFIXES_SELECTION_EVENT_MASK_SELECTION_CLIENT_CLOSE
-	);
- */
+		XCB_XFIXES_SELECTION_EVENT_MASK_SELECTION_CLIENT_CLOSE;
+
+	xcb_xfixes_select_selection_input_checked(dpy, wnd_wm, atoms[PRIMARY], mask);
+  xcb_xfixes_select_selection_input_checked(dpy, wnd_wm, atoms[CLIPBOARD], mask);
 }
 
 static bool has_atom(
@@ -355,6 +379,66 @@ static bool check_window_support(xcb_window_t wnd, xcb_atom_t atom)
 	return false;
 }
 
+static void send_net_wm_state(struct xwnd_state* wnd)
+{
+	uint32_t property[6] = {0};
+	size_t ind = 0;
+
+	if (wnd->fullscreen)
+		property[ind++] = atoms[NET_WM_STATE_FULLSCREEN];
+
+	if (input_focus == wnd->id)
+		property[ind++] = atoms[NET_WM_STATE_FOCUSED];
+
+	xcb_change_property(dpy, XCB_PROP_MODE_REPLACE,
+		wnd->id, atoms[NET_WM_STATE], XCB_ATOM_ATOM, 32, ind, property);
+}
+
+static void send_configured_window(struct xwnd_state* wnd)
+{
+	struct timed_request req;
+
+/* there is the race between us forwarding a configure request from the client,
+ * then acknowledging that request while there is also a wm initiated resize in
+ * flight - so pick the one we last saw, to make this less racy we should also
+ * pair with ev->serial */
+	if (!wnd->override_redirect && wnd->wm_configure.ts_ms > wnd->cl_configure.ts_ms){
+		req = wnd->wm_configure;
+		trace("configure-wnd(srv) %d*%d@%d+%d", req.x, req.y, req.w, req.h);
+	}
+	else{
+		req = wnd->cl_configure;
+		trace("configure-wnd(cl) %d*%d@%d+%d", req.x, req.y, req.w, req.h);
+	}
+
+	uint32_t values[8] = {
+		req.x, req.y, req.w, req.h
+	};
+	int pos = 5;
+
+	int mask =
+		XCB_CONFIG_WINDOW_X     | XCB_CONFIG_WINDOW_Y      |
+		XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
+		XCB_CONFIG_WINDOW_BORDER_WIDTH;
+
+	if (wnd->pending_mask & XCB_CONFIG_WINDOW_SIBLING){
+		values[pos++] = wnd->pending_sibling;
+		wnd->pending_sibling = 0;
+		mask |= XCB_CONFIG_WINDOW_SIBLING;
+	}
+
+	if (wnd->pending_mask & XCB_CONFIG_WINDOW_STACK_MODE){
+		values[pos++] = wnd->pending_stack;
+		wnd->pending_stack = 0;
+		mask |= XCB_CONFIG_WINDOW_STACK_MODE;
+	}
+
+	send_net_wm_state(wnd);
+	wnd->pending_mask = 0;
+
+	xcb_configure_window(dpy, wnd->id, mask, values);
+}
+
 static void send_configure_notify(uint32_t id)
 {
 	struct xwnd_state* state;
@@ -365,7 +449,6 @@ static void send_configure_notify(uint32_t id)
 /* so a number of games have different behavior for 'fullscreen', where
  * an older form of this is using the x/y of the output and the dimensions
  * of the window */
-
 	xcb_configure_notify_event_t notify = (xcb_configure_notify_event_t){
 		.response_type = XCB_CONFIGURE_NOTIFY,
 		.event = id,
@@ -376,6 +459,7 @@ static void send_configure_notify(uint32_t id)
 		.width = state->w,
 		.height = state->h
 	};
+
 	xcb_send_event(dpy, 0, id, XCB_EVENT_MASK_STRUCTURE_NOTIFY, (char*)&notify);
 }
 
@@ -500,52 +584,22 @@ static void xcb_create_notify(xcb_create_notify_event_t* ev)
 		.kill_count = default_kill_count,
 		.override_redirect = ev->override_redirect
 	};
+
 	HASH_ADD_INT(windows, id, state);
-
-/* other properties, request geometry and check if depth is alpha or not */
-
 	send_updated_window(state, "create");
-
-/*	xcb_configure_window(dpy, ev->window,
-		XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
-		XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
-		XCB_CONFIG_WINDOW_BORDER_WIDTH,
-		(uint32_t[]){ev->x, ev->y, ev->width, ev->height, 0}
-	);
-	*/
 }
 
 static void xcb_map_notify(xcb_map_notify_event_t* ev)
 {
 	trace("xcb=map-notify:%"PRIu32, ev->window);
-
-/*
-	xcb_get_property_cookie_t cookie = xcb_get_property(dpy,
-		0, ev->window, XCB_ATOM_WM_TRANSIENT_FOR, XCB_ATOM_WINDOW, 0, 2048);
-	xcb_get_property_reply_t* reply = xcb_get_property_reply(dpy, cookie, NULL);
-
-	if (reply){
-		xcb_window_t* pwd = xcb_get_property_value(reply);
-		wm_command(WM_FLUSH,
-			"kind=parent:id=%"PRIu32":parent_id=%"PRIu32, ev->window, *pwd);
-		free(reply);
-	}
- */
-
-/*
-	if (XCB_WINDOW_NONE == input_focus){
-		update_focus(ev->window);
-	}
- */
-
 	struct xwnd_state* state;
 	HASH_FIND_INT(windows,&ev->window,state);
+	if (!state)
+		return;
 
-	if (state){
-		state->mapped = true;
-		update_title(state);
-		send_updated_window(state, "map");
-	}
+	state->mapped = arcan_timemillis();
+	update_title(state);
+	send_updated_window(state, "map");
 }
 
 static void xcb_map_request(xcb_map_request_event_t* ev)
@@ -563,8 +617,11 @@ static void xcb_map_request(xcb_map_request_event_t* ev)
 		XCB_PROP_MODE_REPLACE, ev->window, atoms[WM_STATE],
 		atoms[WM_STATE], 32, 2, (uint32_t[]){1, XCB_WINDOW_NONE});
 
-/* this > should < cause the RealizeWindow -> send client message path
- * in Xwayland that has caused so much trouble */
+/* this was the cause of a noteworthy issue - if we don't acknowledge the map
+ * Xwayland won't send the client message that would give us the ID to pair the
+ * wayland surface with that of the client, causing the window to be deadlocked
+ */
+	state->managed = arcan_timemillis();
 	xcb_map_window(dpy, ev->window);
 }
 
@@ -586,9 +643,13 @@ static void xcb_unmap_notify(xcb_unmap_notify_event_t* ev)
 {
 	trace("xcb=unmap:id=%"PRIu32, ev->window);
 	if (ev->window == input_focus)
-		input_focus = -1;
+		input_focus = XCB_WINDOW_NONE;
 	if (ev->window == input_grab)
-		input_grab = -1;
+		input_grab = XCB_WINDOW_NONE;
+
+	struct xwnd_state* state = NULL;
+	HASH_FIND_INT(windows,&ev->window,state);
+
 	wm_command(WM_FLUSH, "kind=unmap:id=%"PRIu32, ev->window);
 }
 
@@ -678,7 +739,8 @@ static void xcb_configure_notify(xcb_configure_notify_event_t* ev)
 	if (!state)
 		return;
 
-	state->mapped = true;
+/* is this one older than any of our pending requests? */
+	state->configured = arcan_timemillis();
 	state->x = ev->x;
 	state->y = ev->y;
 	state->w = ev->width;
@@ -716,57 +778,39 @@ static void xcb_configure_request(xcb_configure_request_event_t* ev)
 		ev->window, ev->x, ev->y, ev->width, ev->height
 	);
 
+	struct timed_request req =
+		(struct timed_request){
+		.ts_ms = arcan_timemillis(),
+		.x = state->x,
+		.y = state->y,
+		.w = state->w,
+		.h = state->h
+	};
+
 	if (ev->width)
-		state->w = ev->width;
+		req.w = ev->width;
 
 	if (ev->height)
-		state->h = ev->height;
+		req.h = ev->height;
 
-	if (state->fullscreen){
+	if (state->fullscreen)
 		send_configure_notify(ev->window);
-		return;
-	}
 
-	int mask =
-		XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
-		XCB_CONFIG_WINDOW_BORDER_WIDTH;
+/* client might request more information than is in the normal arcan-wm
+ * response, so recall the mask and provide the values on the proper cfg */
+	state->pending_mask = (ev->value_mask &
+		(XCB_CONFIG_WINDOW_SIBLING | XCB_CONFIG_WINDOW_STACK_MODE));
 
-/* just some kind of default, we don't have any forwarding of 'next window size'
- * at the moment as the arcan appl doesn't have a communication path for i */
-	int w = 0;
-	int h = 0;
-	if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH){
-		w = ev->width;
-		mask |= XCB_CONFIG_WINDOW_WIDTH;
-	}
+	state->pending_stack = ev->stack_mode;
+	state->pending_sibling = ev->sibling;
+	state->cl_configure = req;
 
-	if (ev->value_mask & XCB_CONFIG_WINDOW_HEIGHT){
-		h = ev->height;
-		mask |= XCB_CONFIG_WINDOW_HEIGHT;
-	}
-
-	uint32_t values[8] = {
-		ev->x,
-		ev->y,
-		w,
-		h
-	};
-	int pos = 5;
-
-	if (ev->value_mask & XCB_CONFIG_WINDOW_SIBLING){
-		values[pos++] = ev->sibling;
-		mask |= XCB_CONFIG_WINDOW_SIBLING;
-	}
-
-	if (ev->value_mask & XCB_CONFIG_WINDOW_STACK_MODE){
-		values[pos++] = ev->stack_mode;
-		mask |= XCB_CONFIG_WINDOW_STACK_MODE;
-	}
-
-/* just ack the configure request for now, this should really be deferred
- * until we receive the corresponding command from our parent but we lack
- * that setup right now */
-	xcb_configure_window(dpy, ev->window, mask, values);
+/* So if the server does not yet know about this window > at all < it might not
+ * try to map unless it gets a configure, some clients do, some have a timeout.
+ * Send the configuration immediately for the time being, and consider adding a
+ * timeout ourselves (e.g. a tick- event handler from parent) */
+	if (!state->mapped || state->override_redirect)
+		send_configured_window(state);
 }
 
 static void xcb_focus_in(xcb_focus_in_event_t* ev)
@@ -838,31 +882,29 @@ static void process_wm_command(const char* arg)
 		}
 		size_t h = strtoul(dst, NULL, 10);
 		trace("wm=srv-resize:id=%s:width=%zu:height=%zu", idstr, w, h);
-		state->w = w;
-		state->h = h;
 		const char* wtype = check_window_state(id);
-		if (strcmp(wtype, "default") == 0){
-			xcb_configure_window(dpy, id,
-				XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
-				XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
-				XCB_CONFIG_WINDOW_BORDER_WIDTH,
-				(uint32_t[]){state->x, state->y, w, h, 0}
-			);
-		}
+
 /* just don't configure popups etc. */
-		else {
-			trace("wm=srv-resize:id=%s:wtype=%s:ignored=true", idstr, wtype);
+		if (strcmp(wtype, "default") == 0){
+			state->wm_configure.ts_ms = arcan_timemillis();
+			state->wm_configure.w = w;
+			state->wm_configure.h = h;
+			send_configured_window(state);
 		}
+		else
+			trace("wm=srv-resize:id=%s:wtype=%s:ignored=true", idstr, wtype);
 	}
-/* absolute positioned window position need to be synched */
+/* absolute positioned window position need to be synched, the cleaner bit is
+ * that this hould really merge into the resize- handling but we are somewhat
+ * more adamant about server mandated position */
 	else if (strcmp(dst, "move") == 0){
 		arg_lookup(args, "x", 0, &dst);
 		ssize_t x = strtol(dst, NULL, 10);
 		arg_lookup(args, "y", 0, &dst);
 		ssize_t y = strtol(dst, NULL, 10);
 		trace("srv-move(%d)(%zd, %zd)", id, x, y);
-		state->x = x;
-		state->y = y;
+		state->wm_configure.w = state->x = x;
+		state->wm_configure.h = state->y = y;
 		xcb_configure_window(dpy, id,
 			XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y,
 			(uint32_t[]){x, y, 0, 0, 0}
@@ -911,6 +953,13 @@ static void process_wm_command(const char* arg)
 		update_focus(id);
 	}
 
+/*
+ * paste is problematic -
+ * we can set the selection owner for clipboard to ourselves and unpack/get the
+ * buffer or file from our parent but the actual 'paste' is not initiated
+ * automatically, so the ordering becomes important
+ */
+
 cleanup:
 	arg_cleanup(args);
 }
@@ -931,6 +980,25 @@ static void xcb_selection_notify(struct xcb_selection_notify_event_t* ev)
 		trace("kind=error:message=couldn't convert selection");
 		return;
 	}
+
+	if (ev->selection == atoms[XCB_ATOM_PRIMARY]){
+		xcb_icccm_get_text_property_reply_t prop;
+		xcb_get_property_cookie_t cookie =
+			xcb_icccm_get_text_property(dpy, ev->requestor, ev->property);
+
+		if (xcb_icccm_get_text_property_reply(dpy, cookie, &prop, NULL)){
+			if (prop.name_len){
+				char* buf = malloc(prop.name_len+1);
+				buf[prop.name_len] = 0;
+				memcpy(buf, prop.name, prop.name_len);
+				trace("text_property=%s", buf);
+				free(buf);
+			}
+			xcb_icccm_get_text_property_reply_wipe(&prop);
+			xcb_delete_property(dpy, ev->requestor, ev->property);
+		}
+	}
+
 	if (supported_selection(ev->target)){
 	}
 /* push the descriptor or data on the socket, then send the corresponding
@@ -1082,7 +1150,9 @@ static void setup_init_state(bool standalone)
 		atoms[NET_WM_MOVERESIZE],
 		atoms[NET_WM_STATE_MODAL],
 		atoms[NET_WM_STATE_FULLSCREEN],
-		atoms[NET_WM_STATE_MAXIMIZED_VERT]
+		atoms[NET_WM_STATE_MAXIMIZED_VERT],
+		atoms[NET_WM_STATE_MAXIMIZED_HORZ],
+		atoms[NET_WM_STATE_FOCUSED]
 	};
 
 	xcb_change_property(dpy,
