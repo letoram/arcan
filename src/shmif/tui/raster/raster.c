@@ -230,16 +230,12 @@ static int raster_tobuf(
 	buf += sizeof(struct tui_raster_header);
 	shmif_pixel bgc = SHMIF_RGBA(hdr.bgc[0], hdr.bgc[1], hdr.bgc[2], hdr.bgc[3]);
 
-	if (hdr.flags & RPACK_DFRAME){
+	if (hdr.flags & RPACK_DFRAME)
+		update = true;
+	else {
 		*x1 = max_w;
 		*y1 = max_h;
 		*x2 = *y2 = 0;
-		update = true;
-	}
-	else {
-		*x1 = *y1 = 0;
-		*x2 = max_w;
-		*y2 = max_h;
 	}
 
 	ctx->cursor_state = hdr.cursor_state;
@@ -329,8 +325,20 @@ static int raster_tobuf(
 		cur_y++;
 	}
 
-	if (update){
-		*y2 = (last_line + 1) * ctx->cell_h;
+	*y2 = (last_line + 1) * ctx->cell_h;
+
+	if (!update){
+		if (*x2 < max_w){
+			draw_box_px(vidp, pitch, max_w, max_h, *x2, 0, max_w - *x2, max_h, bgc);
+		}
+		if (*y2 < max_h){
+			draw_box_px(vidp, pitch, max_w, max_h, 0, *y2, max_w, max_h - *y2, bgc);
+		}
+
+		*y1 = 0;
+		*y2 = max_h;
+		*x1 = 0;
+		*x2 = max_w;
 	}
 
 /* sweep through the context struct and blit the glyphs */
