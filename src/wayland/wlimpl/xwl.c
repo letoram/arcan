@@ -32,15 +32,6 @@ static int wmfd_input = -1;
 static char wmfd_inbuf[1024];
 static size_t wmfd_ofs = 0;
 
-/*
- * HACK:
- * Issues deep inside Xwayland cause some clients to not forward the
- * client message WL_SURFACE_ID that is needed to pair a wayland surface with
- * its window in X (xwl_ensure_surface_for_window -> send_surface_id -> then
- * it gets horrible). To work-around this we can fake-pair them.
- */
-static struct wl_resource* pending_resource;
-
 /* "known" mapped windows, we trigger the search etc. when a buffer
  * is commited without a known backing on the compositor, and try
  * to 'pair' it with ones that we have been told about */
@@ -91,6 +82,23 @@ static struct xwl_window* xwl_find(uint32_t id)
 	return NULL;
 }
 
+static int wnd_queue(struct xwl_window* wnd, struct arcan_event* ev)
+{
+	bool res = false;
+
+/* messages can come while unpaired, buffer them for the time being */
+	if (!wnd->surf){
+		if (wnd->queue_count < COUNT_OF(wnd->queued_message)){
+			wnd->queued_message[wnd->queue_count++] = *ev;
+			return -1;
+		}
+		return -2;
+	}
+
+	arcan_shmif_enqueue(&wnd->surf->acon, ev);
+	return 0;
+}
+
 static void wnd_message(struct xwl_window* wnd, const char* fmt, ...)
 {
 	struct arcan_event ev = {
@@ -104,24 +112,38 @@ static void wnd_message(struct xwl_window* wnd, const char* fmt, ...)
 			COUNT_OF(ev.ext.message.data), fmt, args);
 	va_end(args);
 
-/* messages can come while unpaired, buffer them for the time being */
-	if (!wnd->surf){
-		if (wnd->queue_count < COUNT_OF(wnd->queued_message)){
-			trace(TRACE_XWL,
-				"queue(%zu:%s) unpaired: %s", wnd->queue_count,
-				arcan_shmif_eventstr(&ev, NULL, 0), ev.ext.message.data);
-			wnd->queued_message[wnd->queue_count++] = ev;
-		}
-		else {
-			trace(TRACE_XWL, "queue full, broken wm");
-		}
-		return;
+	switch(wnd_queue(wnd, &ev)){
+	case -1:
+		trace(TRACE_XWL,
+			"queue(%zu:message) unpaired: %s", wnd->queue_count, ev.ext.message.data);
+	break;
+	case -2:
+		trace(TRACE_XWL, "queue-full:broken_wm");
+		break;
+	case 0:
+		trace(TRACE_XWL, "message:%s", ev.ext.message.data);
+	break;
 	}
-
-	trace(TRACE_XWL, "message:%s", ev.ext.message.data);
-	arcan_shmif_enqueue(&wnd->surf->acon, &ev);
 }
 
+static void wnd_title(struct xwl_window* wnd, const char* title)
+{
+	arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(IDENT)
+	};
+
+	size_t lim = sizeof(ev.ext.message.data)/sizeof(ev.ext.message.data[1]);
+	snprintf((char*)ev.ext.message.data, lim, "%s", title);
+	switch (wnd_queue(wnd, &ev)){
+	case -1:
+		trace(TRACE_XWL,
+			"queue(%zu:title) unpaired: %s", wnd->queue_count, ev.ext.message.data);
+	case -2:
+	case 0:
+	break;
+	}
+}
 
 static struct xwl_window* xwl_find_surface(uint32_t id)
 {
@@ -178,13 +200,7 @@ static void xwl_wnd_paired(struct xwl_window* wnd)
 		*xwnd = (struct xwl_window){};
 	}
 
-/* this requires some thinking, surface commit on a compositor surface will
- * lead to a query if the surface has been paired to a non-wayland one (X11) */
 	wnd->paired = true;
-	if (pending_resource && wl_resource_get_id(pending_resource) == wnd->id){
-		pending_resource = NULL;
-	}
-
 	wnd_message(wnd, "pair:%d:%d", wnd->surface_id, wnd->id);
 	surf_commit(wnd->pending_client, wnd->pending_res);
 
@@ -323,6 +339,22 @@ static int process_input(const char* msg)
 				trace(TRACE_XWL, "bad parent-id: "PRIu32, parent_id);
 		}
 	}
+	else if (strcmp(arg, "title") == 0 && arg){
+		if (!arg_lookup(cmd, "id", 0, &arg) && arg)
+			goto cleanup;
+
+		uint32_t id = strtoul(arg, NULL, 10);
+		struct xwl_window* wnd = xwl_find(id);
+
+		if (!wnd)
+			goto cleanup;
+
+		const char* msg = NULL;
+		if (!arg_lookup(cmd, "msg", 0, &msg) || !msg){
+			msg = "";
+		}
+		wnd_title(wnd, msg);
+	}
 /* reparent */
 	else if (strcmp(arg, "parent") == 0){
 		if (!arg_lookup(cmd, "id", 0, &arg) && arg)
@@ -354,16 +386,6 @@ static int process_input(const char* msg)
 		if (!wnd){
 			trace(TRACE_XWL, "map:id=%"PRIu32":status=no_wnd", id);
 			goto cleanup;
-		}
-
-/* HACK, if it is not paired and we have a pending wl-surf, guess they
- * belong together */
-		if (!wnd->paired && pending_resource){
-			wnd->surface_id = wl_resource_get_id(pending_resource);
-			wnd->id = id;
-			wnd->pending_res = pending_resource;
-			pending_resource = NULL;
-			xwl_wnd_paired(wnd);
 		}
 
 		wnd->viewport.ext.viewport.invisible = false;
@@ -568,6 +590,10 @@ static void xwl_request_handover()
 		.ext.segreq.kind = SEGID_HANDOVER
 	});
 
+/* incomplete - we need to wait for the handover to arrive before spawning
+ * the WM, then use that as our 'clipboard' / dnd manager - other option is
+ * to switch from transfer pipes to a shared socket and push descriptors
+ * over that as well */
 }
 
 /*
@@ -828,10 +854,6 @@ static bool xwl_pair_surface(
 			"unpaired surface-ID: %"PRIu32, wl_resource_get_id(res));
 		wnd->pending_res = res;
 		wnd->pending_client = cl;
-
-/* remember the last pending window, this is race prone on multiple clients */
-		if (!pending_resource)
-			pending_resource = res;
 
 		return false;
 	}

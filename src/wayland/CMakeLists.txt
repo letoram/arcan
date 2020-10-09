@@ -21,7 +21,7 @@ find_package(XKB REQUIRED)
 
 # The required bits and xwm can be made optional if there ever comes a day
 # that Wayland is mostly useful without Xwayland ..
-find_package(XCB COMPONENTS xcb xcb-composite xcb-icccm REQUIRED)
+find_package(XCB COMPONENTS xcb xcb-composite xcb-icccm xcb-xfixes REQUIRED)
 
 set(WAYBRIDGE_INCLUDES
 	xwl
