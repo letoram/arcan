@@ -417,6 +417,18 @@ static void process_event(arcan_event* ev, int drain)
 {
 /* [ mutex ]
  * can't perform while any of the frameservers are in a resizing state */
+	static size_t event_count;
+
+	if (!ev){
+		if (event_count){
+			event_count = 0;
+			arcan_lua_pushevent(main_lua_context, NULL);
+		}
+
+		return;
+	}
+
+	event_count++;
 	arcan_lua_pushevent(main_lua_context, ev);
 }
 
@@ -563,6 +575,7 @@ int arcan_conductor_run(arcan_tick_cb tick)
 /* This fails when the event recipient has queued a SHUTDOWN event */
 		if (!arcan_event_feed(evctx, process_event, &exit_code))
 			break;
+		process_event(NULL, 0);
 
 /* Chunk the time left until the next batch and yield in small steps. This
  * puts us about 25fps, could probably go a little lower than that, say 12 */
