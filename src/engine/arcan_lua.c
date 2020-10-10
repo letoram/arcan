@@ -5087,10 +5087,19 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
 	bool adopt_check = false;
 	char msgbuf[sizeof(arcan_event)+1];
+	if (!ev){
+		if (grabapplfunction(ctx, "input_end", 9)){
+			alua_call(ctx, 0, 0, LINE_TAG":event:input_eob");
+		}
+		return;
+	}
 
-	if (ev->category == EVENT_IO && grabapplfunction(ctx, "input", 5)){
-		append_iotable(ctx, &ev->io);
-		alua_call(ctx, 1, 0, LINE_TAG":event:input");
+	if (ev->category == EVENT_IO){
+		if (grabapplfunction(ctx, "input", 5)){
+			append_iotable(ctx, &ev->io);
+			alua_call(ctx, 1, 0, LINE_TAG":event:input");
+		}
+		return;
 	}
 	else if (ev->category == EVENT_EXTERNAL){
 		bool preroll = false;

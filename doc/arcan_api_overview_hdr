@@ -17,10 +17,10 @@ through the exercises corresponding to the ability level that you
 want to achieve.
 
 .SH Entry Points
-.IP "\fBxxx()\fR"
+.IP "\fBxxx()\fr"
 Invoked as soon as audio/video/event/database subsystems are active.
 
-.IP "\fBxxx_clock_pulse()\fR"
+.IP "\fBxxx_clock_pulse()\fr"
 Invoked every logical clock-pulse on a default monotonic clock at 25Hz
 unless clock_pulse_batch is set, then it takes precedence. The CLOCK
 global provides the current global clock value.
@@ -29,7 +29,7 @@ global provides the current global clock value.
 Alternate form to _clock_pulse that handles congestion (> 1 ticks)
 by providing them in one single go.
 
-.IP "\fBxxx_input(evtbl)\fR"
+.IP "\fBxxx_input(evtbl)\fr"
 Invoked every time an input device emits a valid output sample,
 this varies with user activity and filter configuration.
 Evtbl contains a number of fields:
@@ -43,7 +43,16 @@ kind : digital, translated = true
 number, keysym, modifiers, devid, subid, utf8, active, device, subdevice
 
 kind : digital, translated = false
-ource, devid, subid, active
+source, devid, subid, active
+
+kind : eyes
+blink_left, blink_right, gaze_x1, gaze_y1, gaze_x2, gaze_y2, present,
+head_x, head_y, head_z, head_rx, head_ry, head_rz
+
+.IP "\fBxxx_input_end()\fr"
+Signifies that the current input buffer is empty. This can be used as an
+input optimization trigger to accumulate input events before processing
+them forward.
 
 .IP "\fBxxx_adopt(vid, kind, title, parent, last)\fr"
 Invoked as part of system_collapse, script crash recovery fallback or on
@@ -75,7 +84,7 @@ Invoked on a scripting error that is fatal, as a final means of saving
 state and conveying a message. The returned string will be attached to
 crash dump output.
 
-.IP "\fBxxx_shutdown()\fR"
+.IP "\fBxxx_shutdown()\fr"
 This entrypoint will be triggered as a final state before the arcan
 process will exit. The most reasonable use for this entrypoint is
 terminating network connections with protocols that work better when
