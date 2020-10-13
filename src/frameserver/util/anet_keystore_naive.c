@@ -125,7 +125,8 @@ static bool from_b64(const uint8_t* instr, size_t lim, uint8_t outb[static 32])
 		return false;
 
 	uint32_t val;
-	for (int i = 0, j = 0; i < inlen && j < lim; i += 4, j += 3) {
+	int i, j;
+	for (i = 0, j = 0; i < inlen && j < lim; i += 4, j += 3) {
 		val  = (instr[i+0] == '=' ? 0 & (i+0) : b64dec_lut[instr[i+0]]) << 18;
 		val += (instr[i+1] == '=' ? 0 & (i+1) : b64dec_lut[instr[i+1]]) << 12;
 		val += (instr[i+2] == '=' ? 0 & (i+2) : b64dec_lut[instr[i+2]]) <<  6;
@@ -136,7 +137,7 @@ static bool from_b64(const uint8_t* instr, size_t lim, uint8_t outb[static 32])
 		outb[j+2] = (val >>  0) & 0xff;
 	}
 
-	return true;
+	return j >= lim;
 }
 
 struct key_ent* alloc_key_ent(uint8_t key[static 32])
@@ -176,6 +177,13 @@ static bool decode_hostline(char* buf,
 	*cur = '\0';
 	cur++;
 
+/* trim trailing whitespace */
+	char* end = cur + strlen(cur) - 1;
+	while (isspace(*end)){
+		*end-- = '\0';
+	}
+
+	*outhost = buf;
 /* decode keypart */
 	return from_b64((uint8_t*) cur, 32, key);
 }
@@ -196,7 +204,11 @@ static void load_accepted_keys()
 {
 	flush_accepted_keys();
 
-	DIR* dir = fdopendir(keystore.dirfd_accepted);
+	int tmpdfd = dup(keystore.dirfd_accepted);
+	if (-1 == tmpdfd)
+		return;
+
+	DIR* dir = fdopendir(tmpdfd);
 	struct dirent* ent;
 	struct key_ent** host = &keystore.hosts;
 
@@ -209,8 +221,6 @@ static void load_accepted_keys()
 			continue;
 
 		FILE* fpek = fdopen(fd, "r");
-/* fate of fd is undefined in this (rare, malloc-fail, weird-files in folder,
- * ...) case, better to leak */
 		if (!fpek)
 			continue;
 
@@ -224,7 +234,6 @@ static void load_accepted_keys()
 
 			if (!decode_hostline(inbuf, len, &hoststr, key)){
 				fprintf(stderr, "keystore_naive(): failed to parse %s\n", ent->d_name);
-				fclose(fpek);
 				free(inbuf);
 				continue;
 			}
@@ -232,8 +241,8 @@ static void load_accepted_keys()
 /* chain/attach as linked list, this will only contain the list of cps the key is valid for */
 			*host = alloc_key_ent(key);
 			if (*host){
-				(*host)->host = hoststr;
-
+				(*host)->host = strdup(hoststr);
+				printf("loaded: %s\n", (*host)->host);
 				host = &(*host)->next;
 			}
 
@@ -265,27 +274,65 @@ bool a12helper_keystore_open(struct keystore_provider* p)
 	mkdirat(keystore.provider.directory.dirfd, "accepted", S_IRWXU);
 	mkdirat(keystore.provider.directory.dirfd, "hostkeys", S_IRWXU);
 
-	int fl = O_PATH | O_RDONLY | O_CLOEXEC;
+	int fl = O_DIRECTORY | O_CLOEXEC;
 	if (-1 == (keystore.dirfd_accepted =
 		openat(keystore.provider.directory.dirfd, "accepted", fl))){
+		printf("accepted: %d\n", keystore.dirfd_accepted);
 		return false;
 	}
 
 	if (-1 == (keystore.dirfd_private =
 		openat(keystore.provider.directory.dirfd, "hostkeys", fl))){
+		printf("private: %d\n", keystore.dirfd_private);
 		close(keystore.dirfd_accepted);
 		return false;
 	}
 
 	load_accepted_keys();
+	keystore.open = true;
 
 	return true;
 }
 
+/* just used as a mkstmpat */
+static void gen_fn(char* tmpfn, size_t len)
+{
+	arcan_random((uint8_t*)tmpfn, len);
+	for (size_t i = 0; i < len; i++){
+		tmpfn[i] = 'a' + ((uint8_t)tmpfn[i] % 21);
+	}
+}
+
 bool a12helper_keystore_accept(const uint8_t pubk[static 32], const char* connp)
 {
-/* add wildcard if !connp, otherwise sanity check -
- * TODO: sweep kestore and check if it is missing */
+/* just random -> b64 until something sticks */
+	char tmpfn[9] = {0};
+	int fdout;
+	do {
+		gen_fn(tmpfn, 8);
+		fdout = openat(keystore.dirfd_accepted,
+			tmpfn, O_CREAT | O_EXCL | O_WRONLY, S_IRWXU);
+	} while (fdout < 0);
+
+	FILE* fpek = fdopen(fdout, "w");
+	if (!fpek)
+		return false;
+
+	if (!connp)
+		connp = "*";
+
+/* get base64 of pubk, just write that + space + connp <lf> */
+	size_t outl;
+	uint8_t* buf = to_b64(pubk, 32, &outl);
+	if (!buf){
+		unlinkat(keystore.dirfd_accepted, tmpfn, 0);
+		close(fdout);
+		return false;
+	}
+
+	fprintf(fpek, "%s %s\n", connp, (char*) buf);
+	fclose(fpek);
+
 	return true;
 }
 
@@ -300,14 +347,72 @@ bool a12helper_keystore_release()
 	return true;
 }
 
+static char* unpack_host(char* host,
+	size_t defport, uint16_t* outport, const char** errfmt)
+{
+/* unpack hostline at the right offset, that is simply split at outhost */
+	size_t len = strlen(host);
+	if (!len){
+		*errfmt = "empty host in keyfile [%s]:%zu\n";
+		return NULL;
+	}
+
+	char* portch = strrchr(host, ':');
+	if (!portch){
+/* it's the 'n'th valid hostline we want, to be consistent we skip errors */
+		*outport = defport;
+		return host;
+	}
+
+/* just :port isn't permitted */
+	if (portch == host){
+		*errfmt = "malformed host in keyfile [%s:%zu]\n";
+		return NULL;
+	}
+
+/* ipv6 text representation defined by telecom-'talents' so more parsing */
+	if (portch[-1] != ']'){
+		size_t port = strtoul(&portch[1], NULL, 10);
+		*portch = '\0';
+
+		if (!port || port > 65535){
+			*errfmt = "invalid port for host in keyfile [%s:%zu]\n";
+			return NULL;
+		}
+
+		*outport = port;
+		return host;
+	}
+
+	if (host[0] != '['){
+		*errfmt = "malformed IPv6 notation in keyfile [%s:%zu]\n";
+		return NULL;
+	}
+
+/* [ipv6]:port */
+	size_t port = strtoul(&portch[1], NULL, 10);
+	portch[-1] = '\0';
+	if (!port || port > 65535){
+		*errfmt = "unvalid port for host in keyfile [%s:%zu]\n";
+		return NULL;
+	}
+	*outport = port;
+
+/* slide back so we don't risk UB from free on returned value */
+	memmove(host, &host[1], strlen(host)+1);
+	return host;
+}
+
 bool a12helper_keystore_hostkey(const char* tagname, size_t index,
 	uint8_t privk[static 32], char** outhost, uint16_t* outport)
 {
 	if (!keystore.open || !tagname || !outhost || !outport)
 		return false;
 
+	*outhost = NULL;
+
 /* just (re-) open and scan to the line matching the desired index */
-	int fin = openat(keystore.dirfd_private, tagname, O_RDONLY);
+	int fin = openat(keystore.dirfd_private, tagname, O_RDONLY | O_CLOEXEC);
 	if (-1 == fin)
 		return false;
 
@@ -315,26 +420,41 @@ bool a12helper_keystore_hostkey(const char* tagname, size_t index,
 	if (!fpek)
 		return false;
 
-	size_t len = 0;
-	char* inbuf = NULL;
 	bool res = false;
 
 	ssize_t nr;
+	size_t lineno = 0;
+	size_t len = 0;
+	char* inbuf = NULL;
+
 	while ((nr = getline(&inbuf, &len, fpek)) != -1){
-		res = decode_hostline(inbuf, nr, outhost, privk);
+		char* host;
+		lineno++;
 
-/* unpack hostline at the right offset, that is simply split at outhost */
+		res = decode_hostline(inbuf, nr, &host, privk);
+		if (!res){
+			fprintf(stderr, "bad key entry in keyfile [%s]:%zu\n", tagname, lineno);
+			continue;
+		}
+
+		const char* errmsg;
+		if (!(*outhost = unpack_host(host, 6680, outport, &errmsg))){
+			fprintf(stderr, errmsg, tagname, lineno);
+			continue;
+		}
+
 		if (!index){
-
-/* IPv6 raw address complication here, treat as special case if the [..]:xxx form is used */
+			res = true;
 			break;
 		}
 
 		index--;
 	}
 
-	free(inbuf);
 	fclose(fpek);
+
+	if (!res)
+		free(*outhost);
 
 	return res;
 }
@@ -349,6 +469,7 @@ bool a12helper_keystore_register(
 	uint8_t privk[32];
 	x25519_private_key(privk);
 
+/* going posix instead of fdout because of locking */
 	int fout = openat(keystore.dirfd_private,
 		tagname, O_WRONLY | O_CREAT | O_CLOEXEC, S_IRWXU);
 
@@ -369,16 +490,23 @@ bool a12helper_keystore_register(
 		sizeof(':') + sizeof("65536") + sizeof(' ') + key_b64sz + sizeof('\n');
 
 	char buf[out_sz];
-	snprintf(buf, sizeof(buf), "%s:%"PRIu16" %s\n", host, port, b64);
+	ssize_t res = snprintf(buf, sizeof(buf), "%s:%"PRIu16" %s\n", host, port, b64);
+	if (res < 0){
+		fprintf(stderr, "failed to create buffer\n");
+		close(fout);
+		return false;
+	}
+	else out_sz = res;
 
 /* grab an exclusive lock, seek to the end of the keyfile, append the
  * record and try to error recover if we run out of space partway through */
 	if (-1 == flock(fout, LOCK_EX)){
 		fprintf(stderr, "couldn't lock keystore for writing\n");
+		close(fout);
 		return false;
 	}
 
- 	off_t base_pos = lseek(fout, SEEK_END, 0);
+	off_t base_pos = lseek(fout, 0, SEEK_END);
 	ssize_t nw = 0;
 	size_t out_pos = 0;
 
@@ -452,6 +580,7 @@ bool a12helper_keystore_accepted(const uint8_t pubk[static 32], const char* conn
 			return true;
 		}
 
+/* continue as the pubk may exist multiple times */
 		ent = ent->next;
 	}
 
