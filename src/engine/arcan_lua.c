@@ -5855,6 +5855,49 @@ static int linkimage(lua_State* ctx)
 	LUA_ETRACE("link_image", NULL, 1);
 }
 
+static int relinkimage(lua_State* ctx)
+{
+	LUA_TRACE("relink_image")
+
+/* setup is just the same as link_image */
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobj_id did = luaL_checkvid(ctx, 2, NULL);
+	int ap = luaL_optnumber(ctx, 3, ANCHORP_UL);
+
+	if (ap > ANCHORP_ENDM)
+		arcan_fatal("link_image() -- invalid anchor point specified (%d)\n", ap);
+
+	int sp = luaL_optnumber(ctx, 4, SCALEM_NONE);
+	if (sp > SCALEM_ENDM)
+		arcan_fatal("link_image() -- invalid scale bias dimension (%d)\n", sp);
+
+	enum arcan_transform_mask smask = arcan_video_getmask(sid);
+	smask |= MASK_LIVING;
+
+/* resolve to world-space */
+	surface_properties pprop = {0};
+	if (did != ARCAN_EID && did != ARCAN_VIDEO_WORLDID){
+		pprop = arcan_video_resolve_properties(did);
+	}
+	surface_properties sprop = arcan_video_resolve_properties(sid);
+
+/* will also reset transforms */
+	arcan_errc rv = arcan_video_linkobjs(sid, did, smask, ap, sp);
+
+/* but if the link succeeds, we translate their coordinates to retain the
+ * real-world ration before relinking or unlinking */
+	if (rv == ARCAN_OK){
+		float new_x = sprop.position.x - pprop.position.x;
+		float new_y = sprop.position.y - pprop.position.y;
+		float new_z = sprop.position.z - pprop.position.z;
+
+		arcan_video_objectmove(sid, new_x, new_y, new_z, 0);
+	}
+
+	lua_pushboolean(ctx, rv == ARCAN_OK);
+	LUA_ETRACE("relink_image", NULL, 1)
+}
+
 static int pushprop(lua_State* ctx,
 	surface_properties prop, unsigned short zv)
 {
@@ -12374,6 +12417,7 @@ static const luaL_Reg imgfuns[] = {
 {"order_image",              orderimage         },
 {"max_current_image_order",  maxorderimage      },
 {"link_image",               linkimage          },
+{"relink_image",             relinkimage        },
 {"set_image_as_frame",       imageasframe       },
 {"image_framesetsize",       framesetalloc      },
 {"image_framecyclemode",     framesetcycle      },
