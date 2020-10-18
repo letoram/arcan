@@ -1,4 +1,5 @@
 #include <arcan_shmif.h>
+#include <stdio.h>
 #include <arcan_tui.h>
 #include <inttypes.h>
 #include <stdarg.h>
@@ -33,6 +34,7 @@ static struct {
 	_Atomic volatile bool alive;
 	bool die_on_term;
 	bool complete_signal;
+	bool pipe;
 
 	long last_input;
 
@@ -74,6 +76,13 @@ static ssize_t flush_buffer(int fd, char dst[static 4096])
 	return nr;
 }
 
+static void vte_forward(char* buf, size_t nb)
+{
+	if (term.pipe)
+		fwrite(buf, nb, 1, stdout);
+	tsm_vte_input(term.vte, buf, nb);
+}
+
 static bool readout_pty(int fd)
 {
 	char buf[4096];
@@ -90,7 +99,7 @@ static bool readout_pty(int fd)
 		got_hold = true;
 	}
 
-	tsm_vte_input(term.vte, buf, nr);
+	vte_forward(buf, nr);
 
 /* could possibly also match against parser state, or specific total
  * timeout before breaking out and releasing the terminal */
@@ -101,7 +110,7 @@ static bool readout_pty(int fd)
 		(struct pollfd[]){ {.fd = fd, .events = POLLIN } }, 1, 0)){
 		nr = flush_buffer(fd, buf);
 		if (nr > 0){
-			tsm_vte_input(term.vte, buf, nr);
+			vte_forward(buf, nr);
 			cap -= nr;
 		}
 	}
@@ -118,17 +127,32 @@ void* pump_pty()
 {
 	int fd = shl_pty_get_fd(term.pty);
 	short pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;
-/* for debugif, poll and go */
-		struct pollfd set[3] = {
-			{ .fd = fd, .events = pollev},
-			{ .fd = term.dirtyfd, pollev},
-			{ .fd = -1, .events = pollev},
-		};
+
+	struct pollfd set[4] = {
+		{.fd = fd, .events = pollev},
+		{.fd = term.dirtyfd, pollev},
+		{.fd = -1, .events = pollev},
+		{.fd = -1, .events = POLLIN}
+	};
+
+/* with pipe-forward mode we also read from stdin and inject into the pty as
+ * well as forward the pty data to stdout */
+	if (term.pipe)
+		set[3].fd = STDIN_FILENO;
 
 	while (term.alive){
 		set[2].fd = tsm_vte_debugfd(term.vte);
-		if (-1 == poll(set, 3, -1))
+		shl_pty_dispatch(term.pty);
+
+		if (-1 == poll(set, 4, 10))
 			continue;
+
+		if (term.pipe && set[3].revents){
+			char buf[4096];
+			size_t nr = fread(buf, 1, 4096, stdin);
+			if (nr)
+				shl_pty_write(term.pty, buf, nr);
+		}
 
 /* tty determines lifecycle */
 		if (set[0].revents){
@@ -153,8 +177,8 @@ void* pump_pty()
 static void dump_help()
 {
 	fprintf(stdout, "Environment variables: \nARCAN_CONNPATH=path_to_server\n"
-		"ARCAN_TERMINAL_EXEC : run value through /bin/sh -c instead of shell\n"
-		"ARCAN_TERMINAL_ARGV : exec will route through execv\n"
+		"ARCAN_TERMINAL_EXEC=value : run value through /bin/sh -c instead of shell\n"
+		"ARCAN_TERMINAL_ARGV : exec will route through execv instead of execvp\n"
 		"ARCAN_TERMINAL_PIDFD_OUT : writes exec pid into pidfd\n"
 		"ARCAN_TERMINAL_PIDFD_IN  : exec continues on incoming data\n\n"
 	  "ARCAN_ARG=packed_args (key1=value:key2:key3=value)\n\n"
@@ -177,13 +201,14 @@ static void dump_help()
 		" exec        \t cmd       \t allows arcan scripts to run shell commands\n"
 #endif
 		" keep_alive  \t           \t don't exit if the terminal or shell terminates\n"
+		" pipe        \t           \t map stdin-stdout\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 		" tpack       \t           \t use text-pack (server-side rendering) mode\n"
 		" cli         \t           \t switch to non-vt cli/builtin shell mode\n"
 		"Built-in palettes:\n"
 		"default, solarized, solarized-black, solarized-white, srcery\n"
 		"-------------\t-----------\t----------------\n\n"
-		"Cli mode specific args:\n"
+		"Cli mode (pty-less) specific args:\n"
 		"    key      \t   value   \t   description\n"
 		"-------------\t-----------\t-----------------\n"
 		" env         \t key=val   \t override default environment (repeatable)\n"
@@ -257,7 +282,6 @@ static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 	trace("utf8-input: %s", u8);
 	memcpy(buf, u8, len >= 5 ? 4 : len);
 
-//	int rv = shl_pty_write(term.pty, (char*) buf, len);
 	int fd = shl_pty_get_fd(term.pty);
 	int rv = write(fd, u8, len);
 
@@ -287,18 +311,10 @@ static void on_resize(struct tui_context* c,
 	last_frame = 0;
 }
 
-static void read_callback(struct shl_pty* pty,
-	void* data, char* u8, size_t len)
-{
-	tsm_vte_input(term.vte, u8, len);
-}
-
 static void write_callback(struct tsm_vte* vte,
 	const char* u8, size_t len, void* data)
 {
-	int fd = shl_pty_get_fd(term.pty);
-	write(fd, u8, len);
-	//shl_pty_write(term.pty, u8, len);
+	shl_pty_write(term.pty, u8, len);
 }
 
 static void str_callback(struct tsm_vte* vte, enum tsm_vte_group group,
@@ -471,7 +487,7 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 		if (inarg)
 			execvp(exec_arg, build_argv(exec_arg, inarg));
 		else
-			execv(exec_arg, args);
+			execv("/bin/sh", args);
 
 		exit(EXIT_FAILURE);
 	}
@@ -514,7 +530,7 @@ static bool setup_build_term()
 	arcan_tui_dimensions(term.screen, &rows, &cols);
 	term.complete_signal = false;
 
-	term.child = shl_pty_open(&term.pty, read_callback, NULL, cols, rows);
+	term.child = shl_pty_open(&term.pty, NULL, NULL, cols, rows);
 	if (term.child < 0){
 		arcan_tui_destroy(term.screen, "Shell process died unexpectedly");
 		return false;
@@ -579,6 +595,8 @@ static void on_reset(struct tui_context* tui, int state, void* tag)
 
 /* hard, try to re-execute command, send HUP if still alive then mark as dead */
 	case 1:
+		arcan_tui_reset(tui);
+		tsm_vte_hard_reset(term.vte);
 		if (atomic_load(&term.alive)){
 			on_exec_state(tui, 2, tag);
 			atomic_store(&term.alive, false);
@@ -608,6 +626,12 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 {
 	if (!con)
 		return EXIT_FAILURE;
+
+	if (arg_lookup(args, "pipe", 0, NULL)){
+		term.pipe = true;
+		setvbuf(stdout, NULL, _IONBF, 0);
+		setvbuf(stdin, NULL, _IONBF, 0);
+	}
 
 /*
  * this is the first migration part we have out of the normal vt- legacy,
@@ -646,9 +670,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.resized = on_resize,
 		.subwindow = on_subwindow,
 		.exec_state = on_exec_state,
-		.reset = on_reset,
-/* bchunk - use it to map stdin/stdout, valid on next reset or
- * if the terminal is set to wait for the chunks before going */
+		.reset = on_reset
 /*
  * for advanced rendering, but not that interesting
  * .substitute = on_subst
