@@ -263,6 +263,10 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 
 /* 'drag-and-drop' style data transfer requests */
 	case TARGET_COMMAND_BCHUNK_IN:
+		if (strcmp(ev->message, "stdin") == 0){
+			dump_to_fd(tui, arcan_shmif_dupfd(ev->ioevs[0].iv, STDIN_FILENO, false));
+			return;
+		}
 		if (tui->handlers.bchunk)
 			tui->handlers.bchunk(tui, true,
 				ev->ioevs[1].iv | (ev->ioevs[2].iv << 31),
@@ -275,6 +279,17 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 /* overload custom bchunk handler */
 		if (strcmp(ev->message, "tuiraw") == 0){
 			dump_to_fd(tui, arcan_shmif_dupfd(ev->ioevs[0].iv, -1, false));
+			return;
+		}
+/* question if this should be part of shmif or not (outside of the preroll
+ * stage where it already is), but opting against it for the time being */
+		else if (strcmp(ev->message, "stdout") == 0){
+			arcan_shmif_dupfd(ev->ioevs[0].iv, STDOUT_FILENO, false);
+			return;
+		}
+		else if (strcmp(ev->message, "stderr") == 0){
+			arcan_shmif_dupfd(ev->ioevs[0].iv, STDERR_FILENO, false);
+			return;
 		}
 		if (tui->handlers.bchunk)
 			tui->handlers.bchunk(tui, false,

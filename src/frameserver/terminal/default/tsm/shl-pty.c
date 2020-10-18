@@ -424,9 +424,8 @@ int shl_pty_dispatch(struct shl_pty *pty)
 	if (!shl_pty_is_open(pty))
 		return -ENODEV;
 
-	r = pty_read(pty);
 	pty_write(pty);
-	return r;
+	return 0;
 }
 
 int shl_pty_write(struct shl_pty *pty, const char *u8, size_t len)
