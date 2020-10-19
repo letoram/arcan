@@ -2,17 +2,23 @@ local symtbl             -- keyboard layout table
 local cli_shell          -- reference to command-line shell to launch wayland clients from
 local clients = {}       -- count number of live clients, shutdown on 0
 local focus              -- current wayland input focus window
-local wl_config = {}     -- configuration / event mapping for each wayland client
+local wl_config = {      -- configuration / event mapping for each wayland client
+	log = print
+}
 local add_client         -- function for taking a fsrv-vid + event-table and adding as a window
 local decorator          -- function to add window decorations, we add our own titlebar
 local decor_config = {
 	border = {2, 2, 2, 2},
 	pad    = {12,0, 0, 0},
 }
+local rendertarget       -- If set, an off-screen composition buffer will be used for all
+                         -- clients tied to a bridge.  For the sake of testing, this will
+												 -- be animated and is triggered by providing a 'rendertarget' arg
+												 -- on the command line
 
 -- wl_config.mouse_focus = true
 
-function wltest()
+function wltest(args)
 -- need mouse and keyboard
 	symtbl = system_load("builtin/keyboard.lua")()
 	system_load("builtin/mouse.lua")()
@@ -41,9 +47,14 @@ function wltest()
 		if cl then
 			table.insert(clients, cl)
 		end
+		if rendertarget then
+			print("set rendertarget to", rendertarget, source, cl.vid)
+			cl:set_rt(rendertarget)
+		end
 	end
 
--- setup an external connection point for attaching clients
+-- setup an external connection point for attaching clients as well, helps
+-- debugging to be able to run ARCAN_CONNPATH=wltest arcan-wayland -exec...
 	local listen
 	listen = function()
 		target_alloc("wltest",
@@ -76,7 +87,7 @@ function wltest()
 			end
 
 		elseif status.kind == "preroll" then
-			target_displayhint(source, VRESW, 30)
+			target_displayhint(source, VRESW, VRESH)
 
 		elseif status.kind == "resized" then
 			resize_image(source, status.width, status.height)
@@ -91,6 +102,17 @@ function wltest()
 			end
 		end
 	end)
+
+	if args[1] == "rendertarget" then
+		print("enabling rendertarget indirection")
+		rendertarget = alloc_surface(VRESW, VRESH)
+		define_rendertarget(rendertarget, {})
+		mouse_querytarget(rendertarget)
+		show_image(rendertarget)
+		move_image(rendertarget, 100, 100, 1000)
+		move_image(rendertarget, 0, 0, 1000)
+		image_transform_cycle(rendertarget, true)
+	end
 end
 
 function wl_config.focus(wnd)
@@ -145,7 +167,7 @@ function wl_config.destroy(wnd)
 end
 
 -- request move, constrain to fit within screen
-function wl_config.move(wnd, x, y, dx, dy)
+function wl_config.move(wnd, x, y)
 	local min_x = 0
 	local min_y = 0
 
@@ -191,6 +213,10 @@ function wl_config.state_change(wnd, state)
 	end
 end
 
+-- switch between composited rendertarget and fullscreen client vid
+function wl_config.output(vid)
+end
+
 -- some windows want server side decorations
 function wl_config.decorate(wnd, vid, w, h, anim_dt, anim_interp)
 	if not wnd.decorator then
@@ -210,6 +236,12 @@ function wl_config.decorate(wnd, vid, w, h, anim_dt, anim_interp)
 		order_image(tb, 1)
 		show_image(tb)
 		wnd.decorator.titlebar = tb
+
+		if rendertarget then
+			wnd.decorator:switch_rt(rendertarget)
+			rendertarget_attach(rendertarget, tb, RENDERTARGET_DETACH)
+		end
+
 		local mh = {
 			name = "tbar_mh",
 			own = function(ctx, vid) return vid == tb; end,
@@ -262,10 +294,17 @@ end
 
 function wltest_display_state(source)
 -- if the output resizes all clients should know that
-	if source == "reset" then
-		mouse_querytarget(WORLDID)
-		for _,v in ipairs(clients) do
-			v:resize(VRESW, VRESH)
-		end
+	if source ~= "reset" then
+		return
+	end
+
+	print("display reset", VRESW, VRESH, #clients)
+	mouse_querytarget(rendertarget)
+	for _,v in ipairs(clients) do
+		v:resize(VRESW, VRESH)
+	end
+
+	if valid_vid(rendertarget) then
+		image_resize_storage(rendertarget, VRESW, VRESH)
 	end
 end
