@@ -67,7 +67,7 @@ end
 function touch_str(iotbl)
 	table.insert(touchtbl, string.format(
 		"dev(%d:%d) @ %d, %d, press: %.2f, size: %.2f, active: %s",
-		iotbl.devid, iotbl.x, iotbl.y, iotbl.subid, iotbl.pressure, iotbl.size,
+		iotbl.devid, iotbl.subid, iotbl.x, iotbl.y, iotbl.pressure, iotbl.size,
 		iotbl.active and "yes" or "no")
 	);
 	if (#touchtbl > 10) then

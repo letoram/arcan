@@ -268,15 +268,17 @@ local function wnd_mouse_drag(wnd, vid, dx, dy)
 -- also need to cover 'cursor-tagging' hint here for drag and drop
 
 	if wnd.states.moving then
-		local x, y = wnd.wm.move(wnd, wnd.x + dx, wnd.y + dy, dx, dy)
+		local x, y = wnd.wm.move(wnd, wnd.x + dx, wnd.y + dy)
 		wnd.x = x
 		wnd.y = y
 
 -- for x11 we also need to message the new position
 		if wnd.send_position then
-			target_input(wnd.vid,
-				string.format("kind=move:x=%d:y=%d", wnd.x, wnd.y))
+			local msg = string.format("kind=move:x=%d:y=%d", wnd.x, wnd.y);
+			wnd.wm.log("wl_x11", msg)
+			target_input(wnd.vid, msg)
 		end
+
 		move_image(wnd.vid, wnd.x, wnd.y)
 		return
 
@@ -355,6 +357,7 @@ local function wnd_destroy(wnd)
 		wnd.wm.cfg.destroy(wnd)
 	end
 	if valid_vid(wnd.vid) then
+		wnd.wm.known_surfaces[wnd.vid] = nil
 		delete_image(wnd.vid)
 	end
 end
@@ -431,7 +434,7 @@ local function tl_wnd_resized(wnd, source, status)
 		local dy = dh * rzmask[4]
 
 -- the move handler should account for padding
-		local x, y = wnd.wm.move(wnd, wnd.x + dx, wnd.y + dy, dx, dy)
+		local x, y = wnd.wm.move(wnd, wnd.x + dx, wnd.y + dy)
 		wnd.x = x
 		wnd.y = y
 		move_image(wnd.vid, wnd.x, wnd.y)
@@ -509,7 +512,9 @@ local function x11_nudge(wnd, dx, dy)
 	move_image(wnd.vid, x, y)
 	wnd.x = x
 	wnd.y = y
-	target_input(wnd.vid, string.format("kind=move:x=%d:y=%d", x, y));
+	local msg = string.format("kind=move:x=%d:y=%d", x, y);
+	wnd.wm.log("wl_x11", msg)
+	target_input(wnd.vid, msg)
 end
 
 local function wnd_nudge(wnd, dx, dy)
@@ -517,6 +522,7 @@ local function wnd_nudge(wnd, dx, dy)
 	move_image(wnd.vid, x, y)
 	wnd.x = x
 	wnd.y = y
+	wnd.wm.log("wnd", wnd.wm.fmt("source=%d:x=%d:y=%d", wnd.vid, x, y))
 end
 
 local function wnd_drag_rz(wnd, dx, dy, mx, my)
@@ -554,6 +560,8 @@ local function wnd_drag_rz(wnd, dx, dy, mx, my)
 
 	wnd.in_resize = {tw, th}
 	target_displayhint(wnd.vid, wnd.in_resize[1], wnd.in_resize[2])
+	wnd.wm.log("wnd", wnd.wm.fmt("source=%d:drag_rz=%d:%d",
+		wnd.vid, wnd.in_resize[1], wnd.in_resize[2]))
 end
 
 -- several special considerations with x11, particularly that some
@@ -571,6 +579,8 @@ local function x11_vtable()
 		y = 0,
 		w = 32,
 		h = 32,
+		pad_x = 0,
+		pad_y = 0,
 		min_w = 32,
 		min_h = 32,
 		max_w = 0,
@@ -745,6 +755,7 @@ local function popup_destroy(popup)
 -- might have chain-destroyed through the parent vid or terminated on its own
 	if valid_vid(popup.vid) then
 		delete_image(popup.vid)
+		popup.wm.known_surfaces[popup.vid] = nil
 	end
 
 	mouse_droplistener(popup)
@@ -795,6 +806,7 @@ local function on_popup(popup, source, status)
 			end
 		)
 		image_tracetag(vid, "wl_popup")
+		rendertarget_attach(wnd.disptbl.rt, vid, RENDERTARGET_DETACH)
 
 		wnd.known_surfaces[vid] = true
 		wnd.pending_popup = popup
@@ -884,6 +896,7 @@ local function on_toplevel(wnd, source, status)
 				return on_toplevel(new, ...)
 			end
 		)
+		rendertarget_attach(wnd.disptbl.rt, vid, RENDERTARGET_DETACH)
 		new.vid = vid
 		new.cookie = cookie
 		wnd.known_surfaces[vid] = true
@@ -945,6 +958,8 @@ local function on_cursor(ctx, source, status)
 		ctx.cursor.vid = cursor
 		link_image(ctx.bridge, cursor)
 		ctx.known_surfaces[cursor] = true
+		image_tracetag(cursor, "wl_cursor")
+		rendertarget_attach(ctx.disptbl.rt, cursor, RENDERTARGET_DETACH)
 
 	elseif status.kind == "resized" then
 		ctx.cursor.width = status.width
@@ -982,6 +997,9 @@ local function on_subsurface(ctx, source, status)
 		subwnd.vid = vid
 		subwnd.wm = ctx
 		subwnd.cookie = cookie
+		ctx.wm.known_surfaces[vid] = true
+		rendertarget_attach(ctx.wm.disptbl.rt, vid, RENDERTARGET_DETACH)
+		image_tracetag(vid, "wl_subsurface")
 
 -- subsurfaces need a parent to attach to and 'extend',
 -- input should be translated into its coordinate space as well
@@ -994,6 +1012,7 @@ local function on_subsurface(ctx, source, status)
 	elseif status.kind == "terminated" then
 		delete_image(source)
 		ctx.wm.windows[ctx.cookie] = nil
+		ctx.wm.known_surfaces[source] = nil
 	end
 end
 
@@ -1006,9 +1025,27 @@ local function x11_viewport(wnd, source, status)
 		end
 	end
 
+-- ignore repositioning hints while we are dragging
+	if wnd.in_resize then
+		return
+	end
+
 -- depending on type, we need to order around as well
 	link_image(wnd.vid, anchor)
 	move_image(wnd.vid, status.rel_x, status.rel_y)
+
+	local props = image_surface_resolve(wnd.vid)
+	local x, y = wnd.wm.move(wnd, props.x, props.y)
+	wnd.x = x
+	wnd.y = y
+
+	wnd.wm.log("wl_x11", wnd.wm.fmt(
+		"viewport:parent=%d:hx=%d:hy=%d:x=%d:y=%d",
+		status.parent, status.rel_x, status.rel_y, x, y)
+	)
+
+-- we need something more here to protect against an infinite move-loop
+--	target_input(wnd.vid, string.format("kind=move:x=%d:y=%d", x, y))
 end
 
 local function on_x11(wnd, source, status)
@@ -1021,6 +1058,7 @@ local function on_x11(wnd, source, status)
 		function(...)
 			return on_x11(x11, ...)
 		end)
+		rendertarget_attach(wnd.disptbl.rt, vid, RENDERTARGET_DETACH)
 
 		wnd.known_surfaces[vid] = true
 		move_image(vid, 100, 100)
@@ -1040,7 +1078,9 @@ local function on_x11(wnd, source, status)
 
 -- let the caller decide how we deal with decoration
 		if wnd.realized and wnd.use_decor then
-			wnd.wm.decorate(wnd, wnd.vid, wnd.w, wnd.h)
+			local t, l, d, r = wnd.wm.decorate(wnd, wnd.vid, wnd.w, wnd.h)
+			wnd.pad_x = t
+			wnd.pad_y = l
 		end
 
 	elseif status.kind == "message" then
@@ -1126,12 +1166,10 @@ end
 -- first wayland node, limited handler that can only absorb meta info,
 -- act as clipboard and allocation proxy
 local function set_bridge(ctx, source)
-	local w = ctx.cfg.width and ctx.cfg.width or VRESW
-	local h = ctx.cfg.width and ctx.cfg.width or VRESH
+	local w = ctx.disptbl.width
+	local h = ctx.disptbl.height
 
--- dtbl can be either a compliant monitor table or a render-target
-	local dtbl = ctx.cfg.display and ctx.cfg.display or WORLDID
-	target_displayhint(source, w, h, 0, dtbl)
+	target_displayhint(source, w, h, 0, ctx.disptbl)
 
 -- wl_drm need to be able to authenticate against the GPU, which may
 -- have security implications for some people - low risk enough for
@@ -1140,7 +1178,6 @@ local function set_bridge(ctx, source)
 		target_flags(source, TARGET_ALLOWGPU)
 	end
 
-	print("source made to bridge", source)
 	target_updatehandler(source,
 		function(...)
 			return bridge_handler(ctx, ...)
@@ -1172,18 +1209,26 @@ local function resize_output(ctx, neww, newh, density, refresh)
 
 	if neww then
 		ctx.disptbl.width = neww
+	else
+		neww = ctx.disptbl.width
 	end
 
 	if newh then
 		ctx.disptbl.height = newh
+	else
+		newh = ctx.disptbl.height
 	end
 
 	if refresh then
 		ctx.disptbl.refresh = refresh
 	end
 
+	if not valid_vid(ctx.bridge) then
+		return
+	end
+
 	ctx.log(ctx.fmt("output_resize=%d:%d", ctx.disptbl.width, ctx.disptbl.height))
-	target_displayhint(ctx.bridge, 32, 32, 0, ctx.disptbl)
+	target_displayhint(ctx.bridge, neww, newh, 0, ctx.disptbl)
 
 -- tell all windows that some of their display parameters have changed,
 -- if the window is in fullscreen/maximized state - the surface should
@@ -1197,7 +1242,16 @@ local function resize_output(ctx, neww, newh, density, refresh)
 				v:reconfigure(v.w, v.h)
 			end
 		end
+	end
+end
 
+local function reparent_rt(ctx, rt)
+	ctx.disptbl.rt = rt
+	for k,v in pairs(ctx.known_surfaces) do
+		rendertarget_attach(ctx.disptbl.rt, k, RENDERTARGET_DETACH)
+	end
+	if valid_vid(ctx.anchor) then
+		rendertarget_attach(ctx.disptbl.rt, ctx.anchor, RENDERTARGET_DETACH)
 	end
 end
 
@@ -1245,6 +1299,7 @@ local function bridge_table(cfg)
 
 -- last known 'output' properties (vppcm, refresh also possible)
 		disptbl = {
+			rt = WORLDID,
 			width = VRESW,
 			height = VRESH,
 			ppcm = VPPCM
@@ -1258,6 +1313,9 @@ local function bridge_table(cfg)
 
 -- called internally whenever the window stack has changed
 		restack = restack,
+
+-- call to switch attachment to a specific rendertarget
+		set_rt = reparent_rt,
 
 -- swap out for logging / tracing function
 		log = print,
@@ -1370,12 +1428,12 @@ local function bridge_table(cfg)
 		res.log("wlwm", "default_handler=resize_request")
 		res.resize_request =
 		function(wnd, new_w, new_h)
-			if new_w > VRESW then
-				new_w = VRESW
+			if new_w > ctx.disptbl.width then
+				new_w = ctx.disptbl.width
 			end
 
-			if new_h > VRESH then
-				new_h = VRESH
+			if new_h > ctx.disptbl.height then
+				new_h = ctx.disptbl.height
 			end
 
 			return new_w, new_h
@@ -1448,6 +1506,7 @@ local function client_handler(nested, trigger, source, status)
 			end
 
 -- next one will be the one to ask for 'real' windows
+		local vid =
 		accept_target(32, 32,
 			function(...)
 				return client_handler(true, trigger, ...)
@@ -1458,17 +1517,18 @@ local function client_handler(nested, trigger, source, status)
 			local bridge = trigger(source, status)
 			if bridge then
 				table.insert(bridges[source], bridge)
+				rendertarget_attach(bridge.disptbl.rt, vid, RENDERTARGET_DETACH)
 			end
 		end
 
 -- died before getting anywhere meaningful - or is the bridge itself gone?
 -- if so, kill off every client associated with it
 	elseif status.kind == "terminated" then
-		for k,v in ipairs(bridge[source]) do
+		for k,v in ipairs(bridges[source]) do
 			v:destroy()
 		end
 		delete_image(source)
-		bridge[source] = nil
+		bridges[source] = nil
 	end
 end
 
