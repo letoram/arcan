@@ -117,11 +117,16 @@ static inline void RGBA_DECOMP(av_pixel val, uint8_t* r,
  * specified. These functions regulate how overlapping objects should be mixed.
  */
 enum arcan_blendfunc {
-	BLEND_NONE,
-	BLEND_NORMAL,
-	BLEND_FORCE,
-	BLEND_ADD,
-	BLEND_MULTIPLY
+	BLEND_NONE     = 0,
+	BLEND_NORMAL   = 1,
+	BLEND_ADD      = 2,
+	BLEND_MULTIPLY = 3,
+	BLEND_SUB      = 4,
+	BLEND_PREMUL   = 5,
+
+/* force is a control bit rather than a specific mode, if not set blending
+ * will be disabled for objects marked as fully opaque */
+	BLEND_FORCE    = 128
 };
 
 /*

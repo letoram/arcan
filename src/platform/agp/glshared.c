@@ -1298,10 +1298,11 @@ void agp_blendstate(enum arcan_blendfunc mode)
 	env->enable(GL_BLEND);
 
 	switch (mode){
-	case BLEND_NONE: /* -dumb compiler- */
+	case BLEND_NONE:
 	case BLEND_FORCE:
 	case BLEND_NORMAL:
 		verbose_print("blend-normal/force/none");
+		env->blend_equation(GL_FUNC_ADD);
 		env->blend_func_separate(
 			GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
 			env->blend_src_alpha, env->blend_dst_alpha
@@ -1310,19 +1311,37 @@ void agp_blendstate(enum arcan_blendfunc mode)
 
 	case BLEND_MULTIPLY:
 		verbose_print("blend-multiply");
+		env->blend_equation(GL_FUNC_ADD);
 		env->blend_func_separate(
-			GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+			GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA,
+			env->blend_src_alpha, env->blend_dst_alpha
+		);
+	break;
+
+	case BLEND_PREMUL:
+		verbose_print("blend-premultiplied");
+		env->blend_equation(GL_FUNC_ADD);
+		env->blend_func_separate(
+			GL_ONE, GL_ONE_MINUS_SRC_ALPHA,
 			env->blend_src_alpha, env->blend_dst_alpha
 		);
 	break;
 
 	case BLEND_ADD:
 		verbose_print("blend-add");
+		env->blend_equation(GL_FUNC_ADD);
 		env->blend_func_separate(
-			GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+			GL_ONE, GL_ONE,
 			env->blend_src_alpha, env->blend_dst_alpha
 		);
 	break;
+
+	case BLEND_SUB:
+		verbose_print("blend-sub");
+		env->blend_equation(GL_FUNC_SUBTRACT);
+		env->blend_func_separate(
+			GL_ONE, GL_ONE_MINUS_SRC_ALPHA,
+			env->blend_src_alpha, env->blend_dst_alpha);
 
 	default:
 	break;

@@ -130,6 +130,7 @@ struct agp_fenv {
 	void (*front_face) (GLenum);
 	void (*cull_face) (GLenum);
 	void (*blend_func_separate) (GLenum, GLenum, GLenum, GLenum);
+	void (*blend_equation) (GLenum);
 	void (*clear_color) (GLfloat, GLfloat, GLfloat, GLfloat);
 	void (*hint) (GLenum, GLenum);
 	void (*scissor) (GLint, GLint, GLsizei, GLsizei);

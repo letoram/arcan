@@ -291,6 +291,8 @@ void arcan_video_default_texmode(enum arcan_vtex_mode s,
 	enum arcan_vtex_mode t);
 void arcan_video_default_texfilter(enum arcan_vfilter_mode);
 void arcan_video_default_imageprocmode(enum arcan_imageproc_mode);
+void arcan_video_default_blendmode(enum arcan_blendfunc);
+
 arcan_errc arcan_video_screenshot(av_pixel** dptr, size_t* dsize);
 
 /*
