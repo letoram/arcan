@@ -237,8 +237,12 @@ function build_decor(vid, cfg)
 		link_image(res.vids.t, vid, ANCHOR_UL, ANCHOR_SCALE_W)
 		move_image(res.vids.t, -cfg.border[2] - wpad[2], -cfg.border[1] - wpad[1])
 
-		image_inherit_order(res.vids.t, true)
-		order_image(res.vids.t, 1)
+		if not cfg.force_order then
+			image_inherit_order(res.vids.t, true)
+			order_image(res.vids.t, 1)
+		else
+			order_image(res.vids.t, cfg.force_order)
+		end
 
 		if use_mouse then
 			add_mouse(res, res.vids.t, -1, 0, true, true, "top")
@@ -253,7 +257,14 @@ function build_decor(vid, cfg)
 		move_image(res.vids.l, -cfg.border[2] - wpad[2], -wpad[1]);
 
 		image_inherit_order(res.vids.l, true)
-		order_image(res.vids.l, 1)
+
+		if not cfg.force_order then
+			image_inherit_order(res.vids.l, true)
+			order_image(res.vids.l, 1)
+		else
+			order_image(res.vids.l, cfg.force_order)
+		end
+
 		if use_mouse then
 			add_mouse(res, res.vids.l, -1, 0, false, true, "left")
 		end
@@ -265,7 +276,14 @@ function build_decor(vid, cfg)
 
 		link_image(res.vids.d, vid, ANCHOR_LL, ANCHOR_SCALE_W)
 		image_inherit_order(res.vids.d, true)
-		order_image(res.vids.d, 1)
+
+		if not cfg.force_order then
+			image_inherit_order(res.vids.d, true)
+			order_image(res.vids.d, 1)
+		else
+			order_image(res.vids.d, cfg.force_order)
+		end
+
 		move_image(res.vids.d, -cfg.border[2] - wpad[2], wpad[3]);
 
 		if use_mouse then
@@ -278,7 +296,14 @@ function build_decor(vid, cfg)
 		res.vids.r = color_surface(cfg.border[4], pad+1, 32, 32, 32)
 		link_image(res.vids.r, vid, ANCHOR_UR, ANCHOR_SCALE_H)
 		image_inherit_order(res.vids.r, true)
-		order_image(res.vids.r, 1)
+
+		if not cfg.force_order then
+			image_inherit_order(res.vids.r, true)
+			order_image(res.vids.r, 1)
+		else
+			order_image(res.vids.r, cfg.force_order)
+		end
+
 		move_image(res.vids.r, wpad[4], -wpad[1])
 
 		if use_mouse then
