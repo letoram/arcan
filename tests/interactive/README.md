@@ -15,6 +15,8 @@ arcantarget - tests the arcantarget mechanism for subsegment allocation
 bchunk - (requires fsrv) opening io streams to/from a client
          via the bchunk mechanism.
 
+blend - goes through different blend states
+
 canvasresize - rest resizing the primary output canvas
                in the response to a button press
 

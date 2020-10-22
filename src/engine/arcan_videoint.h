@@ -340,6 +340,7 @@ struct arcan_video_display {
 	enum arcan_vimage_mode scalemode;
 	enum arcan_imageproc_mode imageproc;
 	enum arcan_vfilter_mode filtermode;
+	enum arcan_blendfunc blendmode;
 
 	unsigned deftxs, deftxt;
 	bool mipmap;

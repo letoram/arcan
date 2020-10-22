@@ -1182,6 +1182,14 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
  * where we again lack state information enough to track */
 }
 
+static bool validblendmode(int m)
+{
+	return
+		m == BLEND_NONE || m == BLEND_ADD || m == BLEND_SUB ||
+		m == BLEND_MULTIPLY || m == BLEND_NORMAL || m == BLEND_FORCE ||
+		m == BLEND_PREMUL;
+}
+
 static int zapresource(lua_State* ctx)
 {
 	LUA_TRACE("zap_resource");
@@ -2578,11 +2586,11 @@ static int forceblend(lua_State* ctx)
 	LUA_TRACE("force_image_blend");
 
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	enum arcan_blendfunc mode = abs((int)luaL_optnumber(ctx, 2, BLEND_FORCE));
 
-	if (mode == BLEND_FORCE || mode == BLEND_ADD ||
-		mode == BLEND_MULTIPLY || mode == BLEND_NONE || mode == BLEND_NORMAL)
-			arcan_video_forceblend(id, mode);
+	enum arcan_blendfunc mode =
+		abs((int)luaL_optnumber(ctx, 2, BLEND_FORCE));
+
+	arcan_video_forceblend(id, mode);
 
 	LUA_ETRACE("force_image_blend", NULL, 0);
 }
@@ -7197,7 +7205,6 @@ static int allocsurface(lua_State* ctx)
 	vobj->origw = w;
 	vobj->origh = h;
 	vobj->order = 0;
-	vobj->blendmode = BLEND_NORMAL;
 	arcan_vint_attachobject(rv);
 
 	lua_pushvid(ctx, rv);
@@ -11492,6 +11499,20 @@ static int setimageproc(lua_State* ctx)
 	LUA_ETRACE("switch_default_imageproc", NULL, 0);
 }
 
+static int setblendmode(lua_State* ctx)
+{
+	LUA_TRACE("switch_default_blendmode");
+	int num = luaL_checknumber(ctx, 1);
+
+	if (!validblendmode(num))
+		arcan_video_default_blendmode(num);
+	else
+		arcan_fatal("setblendmode(%d): "
+			"invalid blend mode specified, expected BLEND_NORMAL or BLEND_FORCE");
+
+	LUA_ETRACE("switch_default_blendmode", NULL, 0);
+}
+
 static int settexfilter(lua_State* ctx)
 {
 	LUA_TRACE("switch_default_texfilter");
@@ -12564,6 +12585,7 @@ static const luaL_Reg vidsysfuns[] = {
 {"switch_default_texmode",           settexmode     },
 {"switch_default_imageproc",         setimageproc   },
 {"switch_default_texfilter",         settexfilter   },
+{"switch_default_blendmode",         setblendmode   },
 {"set_context_attachment",           setdefattach   },
 {"resize_video_canvas",              videocanvasrsz },
 {"video_displaymodes",               videodisplay   },
@@ -12668,8 +12690,11 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"FRAMESERVER_OUTPUT", CONST_FRAMESERVER_OUTPUT},
 {"BLEND_NONE", BLEND_NONE},
 {"BLEND_ADD", BLEND_ADD},
+{"BLEND_SUB", BLEND_SUB},
 {"BLEND_MULTIPLY", BLEND_MULTIPLY},
 {"BLEND_NORMAL", BLEND_NORMAL},
+{"BLEND_FORCE", BLEND_FORCE},
+{"BLEND_PREMULTIPLIED", BLEND_PREMUL},
 {"ANCHOR_UL", ANCHORP_UL},
 {"ANCHOR_UR", ANCHORP_UR},
 {"ANCHOR_LL", ANCHORP_LL},
@@ -12935,12 +12960,13 @@ static char* lut_clipmode(enum arcan_clipmode mode)
 
 static char* lut_blendmode(enum arcan_blendfunc func)
 {
-	switch(func){
+	switch(func & (~BLEND_FORCE)){
 	case BLEND_NONE     : return "disabled";
 	case BLEND_NORMAL   : return "normal";
-	case BLEND_FORCE    : return "forceblend";
 	case BLEND_ADD      : return "additive";
 	case BLEND_MULTIPLY : return "multiply";
+	case BLEND_SUB      : return "subtract";
+	case BLEND_PREMUL   : return "premultiplied";
 	}
 	return "[missing blendmode]";
 }

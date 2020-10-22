@@ -280,6 +280,8 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 	dst->blend_func_separate =
 		(void(*)(GLenum, GLenum, GLenum, GLenum))
 			lookup(tag, "glBlendFuncSeparate");
+	dst->blend_equation = (void(*)(GLenum))
+			lookup(tag, "glBlendEquation");
 	dst->clear_color =
 		(void(*)(GLfloat, GLfloat, GLfloat, GLfloat))
 			lookup(tag, "glClearColor");

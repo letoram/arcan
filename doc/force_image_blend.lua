@@ -1,13 +1,20 @@
 -- force_image_blend
--- @short: Explicitly set blendmode
--- @inargs: vid, *blendmode
+-- @short: Control image blend behaviour
+-- @inargs: vid:dst
+-- @inargs: vid:dst, int:mode
 -- @outargs:
--- @longdescr: All objects default to BLEND_NONE when completely opaque (opacity around 1.0),
--- and revert to the global default otherwise (BLEND_NORMAL, i.e. SRC_ALPHA, 1 - SRC_ALPHA).
--- This behavior can be overridden on a per-object basis.
--- Accepted values for *blendmode* are (BLEND_NORMAL, BLEND_ADD, BLEND_FORCE, BLEND_MULTIPLY)
--- and if no blend mode is specified, BLEND_FORCE will be assumed.
--- @note: blendmode
+-- @longdescr: There are a number of controls for adjusting how overlapping
+-- objects that are translucent or has transparent contents described by an
+-- alpha color channel are supposed to combine. This function can be used to
+-- change that behavior. If no *mode* is set, the system default will be set.
+-- Other blend-modes are:
+-- BLEND_NORMAL (disable blending if object opacity is marked as opaque)
+-- BLEND_ADD (one, one: additive blending, rgb channels will be combined)
+-- BLEND_SUB (one: dst will be subtracted based on one-src alpha),
+-- BLEND_MUL (dst-color, one-src alpha),
+-- BLEND_PREMULTIPLIED (one, one-src alpha: the source object has its alpha
+-- values pre-multiplied into the color channels)
+-- @note: The default can be changed by calling ref:switch_default_blendmode.
 -- @group: image
 -- @cfunction: forceblend
 -- @flags:

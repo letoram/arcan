@@ -84,6 +84,7 @@ struct arcan_video_display arcan_video_display = {
 	.deftxs = ARCAN_VTEX_CLAMP, ARCAN_VTEX_CLAMP,
 	.scalemode = ARCAN_VIMAGE_NOPOW2,
 	.filtermode = ARCAN_VFILTER_BILINEAR,
+	.blendmode = BLEND_FORCE,
 	.order3d = ORDER3D_FIRST,
 	.suspended = false,
 	.msasamples = 4,
@@ -1127,6 +1128,7 @@ static void populate_vstore(struct agp_vstore** vs)
 	(*vs)->scale      = arcan_video_display.scalemode;
 	(*vs)->imageproc  = arcan_video_display.imageproc;
 	(*vs)->filtermode = arcan_video_display.filtermode;
+
 	if (arcan_video_display.mipmap)
 		(*vs)->filtermode |= ARCAN_VFILTER_MIPMAP;
 
@@ -1169,7 +1171,7 @@ static arcan_vobject* new_vobject(
 
 	rv->valid_cache = false;
 
-	rv->blendmode = BLEND_NORMAL;
+	rv->blendmode = arcan_video_display.blendmode;
 	rv->clip = ARCAN_CLIP_OFF;
 
 	rv->current.scale.x = 1.0;
@@ -1970,7 +1972,6 @@ arcan_vobj_id arcan_video_solidcolor(float origw, float origh,
 	newvobj->origw = origw;
 	newvobj->origh = origh;
 	newvobj->order = zv;
-	newvobj->blendmode = BLEND_NORMAL;
 
 	arcan_vint_attachobject(rv);
 
@@ -2015,7 +2016,6 @@ arcan_vobj_id arcan_video_rawobject(av_pixel* buf,
 
 	newvobj->origw = origw;
 	newvobj->origh = origh;
-	newvobj->blendmode = BLEND_NORMAL;
 	newvobj->order = zv;
 
 	agp_update_vstore(newvobj->vstore, true);
@@ -5053,13 +5053,10 @@ void arcan_vint_bindmulti(arcan_vobject* elem, size_t ind)
 static int draw_vobj(struct rendertarget* tgt,
 	arcan_vobject* vobj, surface_properties* dprops, float* txcos)
 {
-/* pick the right blend-option */
-	if (dprops->opa < 1.0 - EPSILON || vobj->blendmode == BLEND_NONE)
-		agp_blendstate(vobj->blendmode);
-	else if (vobj->blendmode == BLEND_FORCE)
-		agp_blendstate(vobj->blendmode);
+	if (vobj->blendmode == BLEND_NORMAL && dprops->opa > 1.0 - EPSILON)
+		agp_blendstate(BLEND_NONE);
 	else
-		agp_blendstate(BLEND_NORMAL);
+		agp_blendstate(vobj->blendmode);
 
 /* pick the right vstore drawing type (textured, colored) */
 	struct agp_vstore* vstore = vobj->vstore;
@@ -5574,6 +5571,11 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 void arcan_video_default_scalemode(enum arcan_vimage_mode newmode)
 {
 	arcan_video_display.scalemode = newmode;
+}
+
+void arcan_video_default_blendmode(enum arcan_blendfunc newmode)
+{
+	arcan_video_display.blendmode = newmode;
 }
 
 void arcan_video_default_texmode(enum arcan_vtex_mode modes,
