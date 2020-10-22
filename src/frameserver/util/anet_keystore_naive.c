@@ -242,7 +242,6 @@ static void load_accepted_keys()
 			*host = alloc_key_ent(key);
 			if (*host){
 				(*host)->host = strdup(hoststr);
-				printf("loaded: %s\n", (*host)->host);
 				host = &(*host)->next;
 			}
 
@@ -277,13 +276,11 @@ bool a12helper_keystore_open(struct keystore_provider* p)
 	int fl = O_DIRECTORY | O_CLOEXEC;
 	if (-1 == (keystore.dirfd_accepted =
 		openat(keystore.provider.directory.dirfd, "accepted", fl))){
-		printf("accepted: %d\n", keystore.dirfd_accepted);
 		return false;
 	}
 
 	if (-1 == (keystore.dirfd_private =
 		openat(keystore.provider.directory.dirfd, "hostkeys", fl))){
-		printf("private: %d\n", keystore.dirfd_private);
 		close(keystore.dirfd_accepted);
 		return false;
 	}

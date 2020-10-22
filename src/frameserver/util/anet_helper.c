@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <netdb.h>
+#include <netinet/tcp.h>
 
 #include "a12.h"
 #include "anet_helper.h"
@@ -34,7 +35,8 @@ int anet_clfd(struct addrinfo* addr)
 				hostaddr, sizeof(hostaddr), hostport, sizeof(hostport),
 				NI_NUMERICSERV | NI_NUMERICHOST
 			);
-
+			int optval = 1;
+			setsockopt(clfd, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval));
 			break;
 		}
 
@@ -50,6 +52,45 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 	struct anet_cl_connection res = {
 		.fd = -1
 	};
+
+/* open the keystore and iteratively invoke cl_setup on each entry until
+ * we get a working connection */
+	if (arg->key){
+		if (!a12helper_keystore_open(&arg->keystore)){
+			res.errmsg = strdup("couldn't open keystore");
+			return res;
+		}
+
+		size_t i = 0;
+		uint8_t privkey[32];
+		arg->key = NULL;
+
+		char* host;
+		uint16_t port;
+		res.errmsg = strdup("no matching keys for tag");
+
+/* the cl_setup call will set errmsg on connection failure, so that need to be
+ * cleaned up except for the last entry where we propagate any error message to
+ * the caller */
+		while (a12helper_keystore_hostkey(arg->key, i++, privkey, &host, &port)){
+			if (res.errmsg){
+				free(res.errmsg);
+				res.errmsg = NULL;
+			}
+
+/* since this gets forwarded to getaddrinfo we need to convert it back to a
+ * decimal string in order for it to double as a 'service' reference */
+			struct anet_options tmpcfg = *arg;
+			tmpcfg.host = host;
+			char buf[sizeof("65536")];
+			snprintf(buf, sizeof(buf), "%"PRIu16, port);
+			tmpcfg.port = buf;
+
+			res = anet_cl_setup(&tmpcfg);
+			free(host);
+		}
+		return res;
+	}
 
 /* missing: lookup keyid and (unless host/port provided) the hostlist */
 	struct addrinfo hints = {
@@ -167,6 +208,7 @@ bool anet_listen(struct anet_options* args, char** errdst,
 	int optval = 1;
 	setsockopt(sockin_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 	setsockopt(sockin_fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+	setsockopt(sockin_fd, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval));
 
 	ec = bind(sockin_fd, addr->ai_addr, addr->ai_addrlen);
 	if (ec){

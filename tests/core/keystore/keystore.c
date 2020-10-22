@@ -46,7 +46,7 @@ show_use:
 		return EXIT_FAILURE;
 	}
 
-	int fd = open(argv[1], O_RDWR | O_PATH);
+	int fd = open(argv[1], O_RDWR | O_DIRECTORY);
 	if (-1 == fd){
 		fprintf(stderr, "basepath not a directory: %s\n", argv[1]);
 		return EXIT_FAILURE;
