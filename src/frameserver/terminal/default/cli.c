@@ -4,12 +4,14 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <inttypes.h>
 #include "cli_builtin.h"
 
 static struct cli_state cli_state = {
 	.mode = LAUNCH_VT100,
 	.alive = true,
-	.die_on_finish = false
+	.die_on_finish = false,
+	.bgalpha = 255
 };
 
 static void free_strtbl(char** arg)
@@ -193,7 +195,8 @@ static void setup_cmd_mode(struct ext_cmd* cmd,
 /* question if we should build the entire thing from the arguments that we
  * ourselves got (sans -cli) or lest let a few of them through for color
  * overrides and the likes */
-		new_env[2] = strdup("ARCAN_ARG=keep_alive");
+		asprintf(&new_env[2],
+			"ARCAN_ARG=keep_alive:bgalpha=%"PRIu8, cli_state.bgalpha);
 		free_strtbl(cmd->env);
 		cmd->env = new_env;
 		*env = cmd->env;
@@ -584,6 +587,9 @@ int arcterm_cli_run(struct arcan_shmif_cont* c, struct arg_arr* args)
 			cli_state.mode = LAUNCH_X11;
 		}
 	}
+
+	if (arg_lookup(args, "bgalpha", 0, &argt) && argt)
+		cli_state.bgalpha = strtoul(argt, NULL, 10);
 
 	struct tui_context* tui = arcan_tui_setup(c, NULL, &cfg, sizeof(cfg));
 	if (!tui)
