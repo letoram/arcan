@@ -276,7 +276,7 @@ local function wnd_mouse_drag(wnd, vid, dx, dy)
 		if wnd.send_position then
 			local msg = string.format("kind=move:x=%d:y=%d", wnd.x, wnd.y);
 			wnd.wm.log("wl_x11", msg)
-			target_input(wnd.vid, msg)
+			target_input(vid, msg)
 		end
 
 		move_image(wnd.vid, wnd.x, wnd.y)
@@ -1052,17 +1052,26 @@ local function on_x11(wnd, source, status)
 -- most involved here as the meta-WM forwards a lot of information
 	if status.kind == "create" then
 		local x11 = x11_vtable()
+		local w, h, x, y = wnd.configure(x11, "x11")
 
 		local vid, aid, cookie =
-		accept_target(640, 480,
+		accept_target(w, h,
 		function(...)
 			return on_x11(x11, ...)
 		end)
 		rendertarget_attach(wnd.disptbl.rt, vid, RENDERTARGET_DETACH)
 
+		wnd.x = x
+		wnd.y = y
 		wnd.known_surfaces[vid] = true
-		move_image(vid, 100, 100)
+		move_image(vid, x, y)
+
+	-- send our preset position, might not matter if it is override-redirect
+		local msg = string.format("kind=move:x=%d:y=%d", x, y)
+		wnd.log("wl_x11", msg)
+		target_input(vid, msg)
 		show_image(vid)
+
 		x11.wm = wnd
 		x11.vid = vid
 		x11.cookie = cookie
@@ -1112,7 +1121,7 @@ local function bridge_handler(ctx, source, status)
 -- properties like selection changes and type
 	elseif status.kind == "message" then
 		local cmd, data = string.split_first(status.message, ":")
-		ctx.log(ctx.fmt("bridge-message:kind=%s", cmd))
+		ctx.log("bridge", ctx.fmt("message:kind=%s", cmd))
 		if cmd == "offer" then
 			if table.find_i(ctx.offer, data) then
 				return
@@ -1227,7 +1236,7 @@ local function resize_output(ctx, neww, newh, density, refresh)
 		return
 	end
 
-	ctx.log(ctx.fmt("output_resize=%d:%d", ctx.disptbl.width, ctx.disptbl.height))
+	ctx.log("bridge", ctx.fmt("output_resize=%d:%d", ctx.disptbl.width, ctx.disptbl.height))
 	target_displayhint(ctx.bridge, neww, newh, 0, ctx.disptbl)
 
 -- tell all windows that some of their display parameters have changed,
