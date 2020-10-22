@@ -858,6 +858,10 @@ static bool xwl_pair_surface(
 		return false;
 	}
 
+	if (surf->acon.addr){
+		return true;
+	}
+
 /* if so, allocate the corresponding arcan- side resource */
 	return request_surface(surf->client, &(struct surface_request){
 			.segid = SEGID_BRIDGE_X11,
