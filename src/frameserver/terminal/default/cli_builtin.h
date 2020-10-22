@@ -26,6 +26,7 @@ struct cli_state {
 	char* cwd;
 	enum launch_mode mode;
 	bool alive;
+	uint8_t bgalpha;
 
 /* set alive to false when last pending ext_cmd has been finished */
 	bool die_on_finish;
