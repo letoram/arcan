@@ -7,18 +7,63 @@ enum anet_mode {
 	ANET_SHMIF_SRV_INHERIT = 3
 };
 
+/*
+ * keystore provider types and constraints
+ */
+enum a12helper_providers {
+/* naive single-file per key approach, does not handle concurrent write access
+ * outside basic posix file locking semantics */
+	A12HELPER_PROVIDER_BASEDIR = 0
+};
+
+struct keystore_provider {
+	union {
+	struct {
+		int dirfd;
+	} directory;
+	};
+
+	int type;
+};
+
 struct anet_options {
+/* remote connection point to route through (if permitted) */
 	const char* cp;
 	const char* host;
 	const char* port;
+
+/* keyfile to use when picking an outgoing host, this will override any
+ * specified 'host' or 'port' */
 	const char* key;
+
+/* tag from keystore to use for authentication (server reply) or if 'key'
+ * is not set and [host,port]+[host_tag] is used */
+	const char* host_tag;
+
+/* pre-inherited socket to use */
 	int sockfd;
+
+/* determine if we go multithread, multiprocess or single */
 	int mt_mode;
+
+/* client or server */
 	int mode;
+
+/* n- psk hello packets with unknown public keys will be added to the keystore */
 	int allow_n_keys;
+
+/* in the event of a _EXIT message, instead send the client to migrate */
 	const char* redirect_exit;
+
+/* similarly, remember any local connection point and use that */
+
 	const char* devicehint_cp;
+
+/* allow connection retries, -1 infinite, 0 no retry */
 	ssize_t retry_count;
+
+/* construction arguments for the keystore */
+	struct keystore_provider keystore;
 	struct a12_context_options* opts;
 };
 
@@ -41,25 +86,6 @@ struct anet_cl_connection {
 };
 
 struct anet_cl_connection anet_cl_setup(struct anet_options* opts);
-
-/*
- * keystore provider types and constraints
- */
-enum a12helper_providers {
-/* naive single-file per key approach, does not handle concurrent write access
- * outside basic posix file locking semantics */
-	A12HELPER_PROVIDER_BASEDIR = 0
-};
-
-struct keystore_provider {
-	union {
-	struct {
-		int dirfd;
-	} directory;
-	};
-
-	int type;
-};
 
 /* setup the keystore using the specified provider,
  *
@@ -86,10 +112,11 @@ bool a12helper_keystore_register(
 	const char* tagname, const char* host, uint16_t port);
 
 /*
- * check if the public key is known and accepted for the supplied
- * connection point (can be null for any connection point)
+ * Check if the public key is known and accepted for the supplied connection
+ * point (can be null for any connection point).
  */
-bool a12helper_keystore_accepted(const uint8_t pubk[static 32], const char* connp);
+bool a12helper_keystore_accepted(
+	const uint8_t pubk[static 32], const char* connp);
 
 /*
  * add the supplied public key to the accepted keystore.
