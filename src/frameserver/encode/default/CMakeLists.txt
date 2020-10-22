@@ -73,6 +73,7 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 		${CMAKE_CURRENT_SOURCE_DIR}/encode_presets.c
 		${CMAKE_CURRENT_SOURCE_DIR}/img.c
 		${CMAKE_CURRENT_SOURCE_DIR}/../../util/anet_helper.c
+		${CMAKE_CURRENT_SOURCE_DIR}/../../util/anet_keystore_naive.c
 		${PLATFORM_ROOT}/../engine/arcan_img.c
 		${PLATFORM_ROOT}/posix/mem.c
 		${ENC_AUX_SOURCES}

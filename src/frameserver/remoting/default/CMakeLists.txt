@@ -5,6 +5,7 @@ set(SRCS
 	${CMAKE_CURRENT_SOURCE_DIR}/remoting.c
 	${CMAKE_CURRENT_SOURCE_DIR}/a12.c
 	${CMAKE_CURRENT_SOURCE_DIR}/../../util/anet_helper.c
+	${CMAKE_CURRENT_SOURCE_DIR}/../../util/anet_keystore_naive.c
 )
 
 set(LIBS arcan_a12)
