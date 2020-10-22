@@ -74,8 +74,11 @@ struct selection {
 static int signal_fd = -1;
 static xcb_connection_t* dpy;
 static xcb_screen_t* screen;
+
 static xcb_drawable_t wnd_root;
 static xcb_drawable_t wnd_wm;
+static xcb_drawable_t wnd_sel;
+
 static xcb_colormap_t colormap;
 static xcb_visualid_t visual;
 struct selection selection_primary;
@@ -242,8 +245,14 @@ out:
 
 static void xcb_property_notify(xcb_property_notify_event_t* ev)
 {
-	trace("xcb=property-notify");
 	struct xwnd_state* state = NULL;
+
+#ifdef _DEBUG
+	xcb_get_atom_name_cookie_t cookie = xcb_get_atom_name(dpy, ev->atom);
+	xcb_get_atom_name_reply_t* name = xcb_get_atom_name_reply(dpy, cookie, NULL);
+	trace("xcb=property-notify:property=%s", xcb_get_atom_name_name(name));
+	xcb_get_atom_name_name_end(name);
+#endif
 
 /* intended for our clipboard? */
 	if (ev->window == wnd_wm){
@@ -1133,7 +1142,8 @@ static void run_event()
  */
 static void setup_init_state(bool standalone)
 {
-	xcb_change_window_attributes(dpy, wnd_root, XCB_CW_EVENT_MASK, (uint32_t[]){
+	xcb_change_window_attributes(dpy, wnd_root, XCB_CW_EVENT_MASK,
+	(uint32_t[]){
 		XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY |
 		XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
 		XCB_EVENT_MASK_PROPERTY_CHANGE, 0, 0
