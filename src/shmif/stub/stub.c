@@ -31,8 +31,8 @@ int arcan_shmifext_dev(struct arcan_shmif_cont* con,
 
 bool arcan_shmifext_import_buffer(
 	struct arcan_shmif_cont* c,
-	struct shmifext_buffer_plane* planes,
 	int format,
+	struct shmifext_buffer_plane* planes,
 	size_t n_planes,
 	size_t buffer_plane_sz
 )
