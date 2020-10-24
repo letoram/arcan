@@ -5183,6 +5183,12 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 
 	tgt->uploadc = 0;
 
+/* this does not really swap the stores unless they are actually different, it
+ * is cheaper to do it here than shareglstore as the search for vobj to rtgt is
+ * expensive */
+	if (tgt->color)
+		agp_rendertarget_swapstore(tgt->art, tgt->color->vstore);
+
 	current_rendertarget = tgt;
 	agp_activate_rendertarget(tgt->art);
 	agp_shader_envv(RTGT_ID, &tgt->id, sizeof(int));
