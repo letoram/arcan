@@ -4,11 +4,14 @@
 -- @inargs: string:res, bool:write
 -- @inargs: vid:res
 -- @inargs: vid:res, bool:write
+-- @inargs: vid:res, bool:write, string:identifier=stream
 -- @outargs: blocktbl
 -- @longdescr: Create or open the resource indicated by *res* in (default)
 -- read-mode or (if *mode* is provided, write mode)
 -- If *res* is a vid connected to a frameserver, a streaming fifo session will
 -- be set up over the connection along with the corresponding _BCHUNK events.
+-- The *identifier* argument can then be used to specify some client announced
+-- type identifier, or one of the reserved "stdin", "stdout", "stderr".
 -- If *res* is a string, the initial character determines if it creates a
 -- FIFO (<) or a SOCKET (=). FIFOs and SOCKETs are always created in the
 -- RESOURCE_APPL_TEMP namespace.

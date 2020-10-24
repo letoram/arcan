@@ -1221,18 +1221,21 @@ static int opennonblock_tgt(lua_State* ctx, bool wr)
 		return 0;
 	}
 
+	const char* type = luaL_optstring(ctx, 3, "stream");
+
 /* WRITE mode = 'INPUT' in the client space */
 	int dst = wr ? outp[0] : outp[1];
 	int src = wr ? outp[1] : outp[0];
 
 /* in any scenario where this would fail, "blocking" behavior is acceptable */
 	set_nonblock_cloexec(src, true);
-
-	if (ARCAN_OK != platform_fsrv_pushfd(fsrv, &(struct arcan_event){
+	struct arcan_event ev = {
 		.category = EVENT_TARGET,
-		.tgt.kind = wr ? TARGET_COMMAND_BCHUNK_IN : TARGET_COMMAND_BCHUNK_OUT,
-		.tgt.message = "stream"}, dst)
-	){
+		.tgt.kind = wr ? TARGET_COMMAND_BCHUNK_IN : TARGET_COMMAND_BCHUNK_OUT
+	};
+	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", type);
+
+	if (ARCAN_OK != platform_fsrv_pushfd(fsrv, &ev, dst)){
 		close(dst);
 		close(src);
 		return 0;
@@ -8802,7 +8805,8 @@ static int targetbond(lua_State* ctx)
 		arcan_fatal("bond_target(), both arguments must be valid frameservers.\n");
 
 	bool val = luaL_optbnumber(ctx, 3, false);
-	const char* descr = luaL_optstring(ctx, 4, "*");
+	const char* descr_a = luaL_optstring(ctx, 4, "*");
+	const char* descr_b = luaL_optstring(ctx, 5, descr_a);
 
 	int pair[2];
 	if (pipe(pair) == -1){
@@ -8818,11 +8822,12 @@ static int targetbond(lua_State* ctx)
 		.category = EVENT_TARGET,
 		.tgt.kind = val ? TARGET_COMMAND_BCHUNK_OUT : TARGET_COMMAND_STORE
 	};
-	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", descr);
+	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", descr_a);
 
 	platform_fsrv_pushfd(fsrv_a, &ev, pair[0]);
 
 	ev.tgt.kind = val ? TARGET_COMMAND_BCHUNK_IN : TARGET_COMMAND_RESTORE;
+	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", descr_b);
 
 	platform_fsrv_pushfd(fsrv_b, &ev, pair[1]);
 
