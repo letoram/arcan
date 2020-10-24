@@ -367,6 +367,14 @@ void agp_resize_rendertarget(
 	struct agp_rendertarget*, size_t neww, size_t newh);
 
 /*
+ * Replace the active vstore that is used as destination for the rendertarget
+ * with another one. This will not alter reference counting or deallocate the
+ * existing store. The new store need to match the old one in type and size.
+ */
+bool agp_rendertarget_swapstore(
+	struct agp_rendertarget* tgt, struct agp_vstore* vstore);
+
+/*
  * Switch the currently active rendertarget to the one specified.  If set to
  * null, rendertarget based rendering will be disabled.
  */

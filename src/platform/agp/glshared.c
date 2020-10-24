@@ -106,6 +106,7 @@ struct agp_rendertarget
 
 	enum rendertarget_mode mode;
 	struct agp_vstore* store;
+
 	bool (*proxy_state)(struct agp_rendertarget* tgt, uintptr_t tag);
 	uintptr_t proxy_tag;
 
@@ -740,6 +741,31 @@ void agp_empty_vstoreext(struct agp_vstore* vs,
 	arcan_mem_free(vs->vinf.text.raw);
 	vs->vinf.text.raw = 0;
 	vs->vinf.text.s_raw = 0;
+}
+
+bool agp_rendertarget_swapstore(
+	struct agp_rendertarget* tgt, struct agp_vstore* vstore)
+{
+	struct agp_fenv* env = agp_env();
+
+/* this is only safe for swapping out the color store */
+	if (!tgt || !vstore ||
+		vstore->txmapped != TXSTATE_TEX2D || tgt->n_stores ||
+		tgt->store->w != vstore->w || tgt->store->h != vstore->h)
+		return false;
+
+	if (tgt->store == vstore)
+		return true;
+
+	tgt->store = vstore;
+	BIND_FRAMEBUFFER(tgt->fbo);
+
+	env->framebuffer_texture_2d(GL_FRAMEBUFFER,
+		GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, agp_resolve_texid(vstore), 0);
+
+	BIND_FRAMEBUFFER(0);
+
+	return true;
 }
 
 struct agp_rendertarget* agp_setup_rendertarget(
