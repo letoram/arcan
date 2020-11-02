@@ -108,8 +108,9 @@ static void dump_help(const char* reason)
 	  " host    \t hostname  \t connect to the specified host\n"
 		" port    \t portnum   \t use the specified port for connecting\n"
 		" key     \t keyid     \t specify keystore identifier (can set host)\n"
-		" trustkey\t           \t if set an unknown pw auth key will be added to the keystore\n"
 		" trace   \t level     \t set trace mask (see arcan-net for values) for debug\n"
+		" store   \t path      \t path to keystore base\n"
+		" cache   \t path      \t path to binary file cache\n"
 		"---------\t-----------\t----------------\n", reason
 	);
 }

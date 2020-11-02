@@ -219,6 +219,7 @@ static bool decode_args(struct arg_arr* arg, struct dispatch_data* dst)
 		memcpy(dst->net_cfg.opts->secret, pass, len);
 	}
 
+
 	dst->video_cfg = (struct a12_vframe_opts){
 		.method = VFRAME_METHOD_DPNG,
 		.bias = VFRAME_BIAS_QUALITY

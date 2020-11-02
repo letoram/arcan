@@ -129,6 +129,12 @@ void platform_fsrv_leave();
 bool platform_fsrv_destroy(struct arcan_frameserver* src);
 
 /*
+ * clean up in-process resources only - this is for the edge condition where
+ * you have forked and wish the connection to be alive inside of the child
+ */
+bool platform_fsrv_destroy_local(struct arcan_frameserver* src);
+
+/*
  * Allocate shared and heap memory, reset all members to an empty state and
  * then enforce defaults, returns NULL on failure.  You rarely need to access
  * this yourself, the _listen_external, spawn_subsegment and simiar functions

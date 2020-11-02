@@ -90,7 +90,7 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 		if (fpek){
 			a12_set_trace_level(a12_trace_targets, fpek);
 		}
-		fclose(stderr);
+		close(STDERR_FILENO);
 #endif
 /* we should really re-exec ourselves with the 'socket-passing' setup so that
  * we won't act as a possible ASLR break */
@@ -106,6 +106,7 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 	}
 	else {
 /* just ignore and return to caller */
+		a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d", (int)fpid);
 		a12_channel_close(S);
 		close(fd);
 	}
@@ -136,7 +137,7 @@ static void fork_a12cl_dispatch(
 	pid_t fpid = fork();
 	if (fpid == 0){
 /* missing: extend sandboxing, close stdio */
-		a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
+			a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
 			.dirfd_temp = -1,
 			.dirfd_cache = -1,
 			.redirect_exit = args->redirect_exit,
@@ -146,7 +147,7 @@ static void fork_a12cl_dispatch(
 	}
 	else if (fpid == -1){
 		fprintf(stderr, "fork_a12cl() couldn't fork new process, check ulimits\n");
-		shmifsrv_free(cl, true);
+		shmifsrv_free(cl, SHMIFSRV_FREE_NO_DMS);
 		a12_channel_close(S);
 		return;
 	}
@@ -154,13 +155,7 @@ static void fork_a12cl_dispatch(
 /* just ignore and return to caller */
 		a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d", (int)fpid);
 		a12_channel_close(S);
-
-		if (args->redirect_exit){
-			shmifsrv_free(cl, false);
-		}
-		else
-			shmifsrv_free(cl, true);
-
+		shmifsrv_free(cl, SHMIFSRV_FREE_LOCAL);
 		close(fd);
 	}
 }
@@ -198,7 +193,7 @@ static struct anet_cl_connection forward_shmifsrv_cl(
 
 /* failed, or retry-count exceeded? */
 	if (!anet.state || shmifsrv_poll(cl) == CLIENT_DEAD){
-		shmifsrv_free(cl, true);
+		shmifsrv_free(cl, SHMIFSRV_FREE_NO_DMS);
 
 		if (anet.state){
 			a12_free(anet.state);
@@ -295,18 +290,23 @@ static int a12_preauth(struct anet_options* args,
 static bool show_usage(const char* msg)
 {
 	fprintf(stderr, "%s%sUsage:\n"
-	"\tForward local arcan applications: arcan-net [-Xtd] -s connpoint [keyid@]host port\n"
-	"\t                                  (inherit socket) -S fd_no host port\n"
-	"\tBridge remote arcan applications: arcan-net [-Xtd] -l port [ip]\n\n"
+	"Forward local arcan applications: arcan-net [-Xtd] -s connpoint [tag@]host port\n"
+	"                                  (keystore-mode) -s connpoint tag@\n"
+	"                                  (inherit socket) -S fd_no host port\n"
+	"Bridge remote arcan applications: arcan-net [-Xtd] -l port [ip]\n\n"
 	"Forward-local options:\n"
 	"\t-X            \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n"
 	"\t-r, --retry n \t Limit retry-reconnect attempts to 'n' tries\n\n"
 	"Options:\n"
-	"\t-b dir        \t Set basedir to <dir> (for config, keys/ accepted/ cache/)\n"
-	"\t-a, --auth n  \t (Registering key) read authentication string from stdin\n"
-	"\t              \t overrides possible A12_BASE_DIR environment\n"
+	"\t-b dir        \t Set keystore basedir to <dir>\n"
+	"\t              \t overrides ARCAN_STATEPATH environment\n"
+	"\t-c dir        \t Set binary data cachedir to <dir>\n"
+	"\t              \t overrides A12_CACHE_DIR environment\n"
+	"\t-a, --auth n  \t Read authentication secret from stdin\n"
 	"\t-t            \t Single- client (no fork/mt)\n"
 	"\t-d bitmap     \t set trace bitmap (bitmask or key1,key2,...)\n"
+	"Keystore mode (ignores connection arguments):\n"
+	"\tAdd key: arcan-net keystore [-b dir] tag host [port=6680]\n"
 	"\nTrace groups (stderr):\n"
 	"\tvideo:1      audio:2      system:4    event:8      transfer:16\n"
 	"\tdebug:32     missing:64   alloc:128  crypto:256    vdetail:512\n"
@@ -434,6 +434,66 @@ static bool apply_commandline(int argc, char** argv, struct anet_options* opts)
 	return true;
 }
 
+static int apply_keystore_command(int argc, char** argv)
+{
+/* (opt, -b dir) */
+	if (!argc)
+		return show_usage("Missing keystore command arguments");
+
+	char* basedir = getenv("ARCAN_STATEPATH");
+
+	if (strcmp(argv[0], "-b") == 0){
+		if (argc < 2)
+			return show_usage("Missing basedir argument to -b");
+
+		basedir = argv[1];
+		argc -= 2;
+		argv += 2;
+	}
+
+	if (!basedir)
+		return show_usage("Missing basedir with keystore (use -b or ARCAN_STATEPATH)");
+
+	int dir = open(basedir, O_RDWR | O_CREAT | O_DIRECTORY, S_IRWXU);
+	if (-1 == dir)
+		return show_usage("Error opening basedir, check permissions and type");
+
+	struct keystore_provider prov = {
+		.directory.dirfd = dir,
+		.type = A12HELPER_PROVIDER_BASEDIR
+	};
+
+	if (!a12helper_keystore_open(&prov))
+		return show_usage("Couldn't open keystore from basedir");
+
+/* time for tag, host and port */
+	if (!argc || argc < 2){
+		a12helper_keystore_release();
+		return show_usage("Missing tag / host arguments");
+	}
+
+	char* tag = argv[0];
+	char* host = argv[1];
+	argc -= 2;
+	argv += 2;
+
+	unsigned long port = 6680;
+	if (argc){
+		port = strtoul(argv[0], NULL, 10);
+		if (!port || port > 65535){
+			a12helper_keystore_release();
+			return show_usage("Port argument is invalid or out of range");
+		}
+	}
+
+	if (!a12helper_keystore_register(tag, host, port)){
+	}
+
+	a12helper_keystore_release();
+
+	return EXIT_SUCCESS;
+}
+
 int main(int argc, char** argv)
 {
 	struct anet_options anet = {
@@ -445,6 +505,10 @@ int main(int argc, char** argv)
 /* set this as default, so the remote side can't actually close */
 	anet.redirect_exit = getenv("ARCAN_CONNPATH");
 	anet.devicehint_cp = getenv("ARCAN_CONNPATH");
+
+	if (argc > 1 && strcmp(argv[1], "keystore") == 0){
+		return apply_keystore_command(argc-2, argv+2);
+	}
 
 	if (!apply_commandline(argc, argv, &anet))
 		return show_usage("Invalid arguments");

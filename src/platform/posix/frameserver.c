@@ -187,6 +187,40 @@ out:
 	return false;
 }
 
+bool platform_fsrv_destroy_local(arcan_frameserver* src)
+{
+	if (!src)
+		return false;
+
+	if (!src->flags.alive)
+		return false;
+
+	src->flags.alive = false;
+	arcan_mem_free(src->audb);
+
+/* 'shutdown' is not activated for local */
+	if (BADFD != src->dpipe){
+		close(src->dpipe);
+		src->dpipe = BADFD;
+	}
+
+	sem_close(src->async);
+	sem_close(src->vsync);
+	sem_close(src->esync);
+
+	struct arcan_shmif_page* shmpage = src->shm.ptr;
+
+	if (shmpage && -1 == munmap((void*) shmpage, src->shm.shmsize))
+		arcan_warning("BUG -- frameserver_dropshared(), munmap failed: %s\n",
+			strerror(errno));
+
+	if (-1 != src->shm.handle)
+		close(src->shm.handle);
+
+	src->shm.ptr = NULL;
+	return true;
+}
+
 bool platform_fsrv_destroy(arcan_frameserver* src)
 {
 	if (!src)

@@ -313,7 +313,7 @@ int shmifsrv_poll(struct shmifsrv_client* cl)
 	return CLIENT_NOT_READY;
 }
 
-void shmifsrv_free(struct shmifsrv_client* cl, bool full)
+void shmifsrv_free(struct shmifsrv_client* cl, int mode)
 {
 	if (!cl)
 		return;
@@ -321,10 +321,17 @@ void shmifsrv_free(struct shmifsrv_client* cl, bool full)
 	if (cl->status == PENDING)
 		cl->con->dpipe = BADFD;
 
-	if (!full)
+	switch(mode){
+	case SHMIFSRV_FREE_NO_DMS:
 		cl->con->flags.no_dms_free = true;
+	case SHMIFSRV_FREE_FULL:
+		platform_fsrv_destroy(cl->con);
+	break;
+	case SHMIFSRV_FREE_LOCAL:
+		platform_fsrv_destroy_local(cl->con);
+	break;
+	}
 
-	platform_fsrv_destroy(cl->con);
 	cl->status = DEAD;
 	free(cl);
 }
