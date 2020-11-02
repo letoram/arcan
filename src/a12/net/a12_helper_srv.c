@@ -483,12 +483,17 @@ static void* client_thread(void* inarg)
 		}
 
 		if (-1 == poll(pfd, 2, 4)){
-			if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+			if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR){
+				a12int_trace(A12_TRACE_SYSTEM,
+					"kind=error:status=EPOLL:message=%s", strerror(errno));
 				break;
+			}
 		}
 
 /* kill socket or poll socket died */
 		if ((pfd[0].revents & errmask) || (pfd[1].revents & errmask)){
+			a12int_trace(A12_TRACE_SYSTEM,
+				"kind=error:status=EBADFD:client=%d:killsig=%d", pfd[0].revents, pfd[1].revents);
 			break;
 		}
 
@@ -524,6 +529,7 @@ static void* client_thread(void* inarg)
 /* Dead client, send the close message and that should cascade down the rest
  * and kill relevant sockets. */
 			if (pv == CLIENT_DEAD){
+				a12int_trace(A12_TRACE_EVENT, "client=dead");
 				goto out;
 			}
 
@@ -584,7 +590,7 @@ out:
 
 /* don't kill the shmifsrv client session for the primary one */
 	if (data->chid != 0){
-		shmifsrv_free(data->C, true);
+		shmifsrv_free(data->C, SHMIFSRV_FREE_NO_DMS);
 	}
 
 	atomic_fetch_sub(&n_segments, 1);

@@ -199,7 +199,12 @@ int shmifsrv_poll(struct shmifsrv_client*);
  * connection is dead via the normal 'dead-man-switch' handle, only through
  * the event-queue - forcing the client to try and use some recovery mechanism.
  */
-void shmifsrv_free(struct shmifsrv_client*, bool full);
+enum shmifsrv_action {
+	SHMIFSRV_FREE_FULL   = 0,
+	SHMIFSRV_FREE_NO_DMS = 1,
+	SHMIFSRV_FREE_LOCAL  = 2
+};
+void shmifsrv_free(struct shmifsrv_client*, int mode);
 
 /*
  * [CRITICAL]

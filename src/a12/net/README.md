@@ -42,18 +42,15 @@ In that case, the user argument will be used to grab private key from:
 
 Where the keyfile name is restricted to visible [a-Z0-9] part of the ASCII set
 of characters. The key is, per x25519, 32-bytes crypotgraphically secure
-randomness. If the file has that size, it will be interpreted as such. If it is
-larger than that, all leading bytes will be treated as a line separated list of
-hosts. e.g.
+randomness. There can be multiple hosts per keyfile and the first whitespace
+on each line separates key from b64 encoded private key.
 
-    myhost1:port
-		10.0.1.20:port
-		myhost20:port
-		<32b random>
+    myhost1:port b64encoded-privk
+		10.0.1.20:port b64encoded-privk
 
 This means that you can simply reference:
 
-    ARCAN_CONNPATH=a12://keyname some_software
+    ARCAN_CONNPATH=a12://keyname@ some_software
 
 And it will try the list in sequential priority until one connects, or migrate
 should the server- end of the connection fail hard.
@@ -126,13 +123,13 @@ Milestone 1 - basic features (0.5.x)
 - [ ] Cache process / directory for file operations (a)
 - [x] ARCAN\_CONNPATH=a12:// handover support (ax)
 - [x] Add to encode, remoting (x)
+- [x] Complete naive-local key-store management (a)
 
 Milestone 2 - closer to useful (0.6.x)
 
 - [ ] Interactive compression controls (a)
 - [ ] Block push-segment types (DEBUG) (a)
 - [ ] Event key-code translation (evdev, sdl, ... to native) (a)
-- [ ] Complete local key-store management (a)
 - [ ] Basic privsep/sandboxing (a)
 - [ ] External key-provider / negotiation (a)
   -  [ ] FIDO2 (through libfido2) (a)
