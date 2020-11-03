@@ -53,6 +53,8 @@ end
 function console_input(input)
 -- apply the keyboard translation table to all keyboard (translated) input and forward
 	if input.translated then
+		KEYBOARD:patch(input)
+
 		console_osdkbd_destroy(10)
 		if valid_hotkey(input) then
 			return
