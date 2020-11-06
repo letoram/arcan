@@ -52,6 +52,8 @@ struct axis_opts {
 
 static struct {
 	struct axis_opts mx, my, mx_r, my_r;
+	struct axis_opts wheel_x, wheel_y;
+
 	bool sticks_init;
 	unsigned short n_joy;
 	struct arcan_stick* joys;
@@ -162,8 +164,8 @@ accept_sample:
 	return true;
 }
 
-static inline void process_axismotion(arcan_evctx* ctx,
-	const SDL_JoyAxisEvent* const ev)
+static inline void process_axismotion(
+	arcan_evctx* ctx, const SDL_JoyAxisEvent* const ev)
 {
 	int devid = ev->which;
 
@@ -260,6 +262,12 @@ arcan_errc platform_event_analogstate(int devid, int axisid,
 			*deadzone    = iodev.my.deadzone;
 			*kernel_size = iodev.my.kernel_sz;
 			*mode        = iodev.my.mode;
+		}
+		else if (axisid == 2){
+			*mode = iodev.wheel_y.mode;
+		}
+		else if (axisid == 3){
+			*mode = iodev.wheel_x.mode;
 		}
 		else
 			return ARCAN_ERRC_BAD_RESOURCE;
@@ -361,6 +369,12 @@ setmouse:
 				upper_bound, deadzone, buffer_sz, kind);
 			set_analogstate(&iodev.my_r, lower_bound,
 				upper_bound, deadzone, buffer_sz, kind);
+		}
+		else if (axisid == 2){
+			iodev.wheel_y.mode = kind;
+		}
+		else if (axisid == 3){
+			iodev.wheel_x.mode = kind;
 		}
 		return;
 	}
@@ -566,31 +580,53 @@ void platform_event_process(arcan_evctx* ctx)
 			process_mousemotion(ctx, &event.motion);
 		break;
 
-/* incomplete, as we should consider mice with full ranges as having analog
- * axis for the wheel, and not convert to digital here */
+/* there are two modes of operation here, one is where the wheel is simulated
+ * as a button press (which is the only coherent tactic across all OSes, but
+ * suboptimal for those with analog wheels), the other is where the wheel is
+ * treated fully analog. If a filter has been set for the context (all mice)
+ * then we emit 'raw' analog values */
 		case SDL_MOUSEWHEEL:
-			newevent.io.kind = EVENT_IO_BUTTON;
-			newevent.io.datatype = EVENT_IDATATYPE_DIGITAL;
-			newevent.io.devkind  = EVENT_IDEVKIND_MOUSE;
+			snprintf(newevent.io.label,
+				sizeof(newevent.io.label) - 1, "mouse%i", event.motion.which);
 			newevent.io.devid = event.wheel.which;
-			newevent.io.input.digital.active = false;
-			snprintf(newevent.io.label, sizeof(newevent.io.label) - 1, "mouse%i",
-				event.motion.which);
-			if (event.wheel.y > 0){
-				newevent.io.subid = 4;
+			newevent.io.devkind = EVENT_IDEVKIND_MOUSE;
+
+			if (event.wheel.y != 0){
+				bool isdigit = iodev.wheel_y.mode == ARCAN_ANALOGFILTER_NONE;
+				if (isdigit){
+					newevent.io.subid = (event.wheel.y > 0) ? 4 : 5;
+					newevent.io.input.digital.active = true;
+					arcan_event_enqueue(ctx, &newevent);
+					newevent.io.input.digital.active = false;
+					arcan_event_enqueue(ctx, &newevent);
+				}
+				else {
+					newevent.io.subid = 2;
+					newevent.io.datatype = EVENT_IDATATYPE_ANALOG;
+					newevent.io.input.analog.gotrel = true;
+					newevent.io.input.analog.nvalues = 1;
+					newevent.io.input.analog.axisval[0] = event.wheel.y;
+					arcan_event_enqueue(ctx, &newevent);
+				}
 			}
-			else if (event.wheel.y < 0){
-				newevent.io.subid = 5;
+			else if (event.wheel.x != 0){
+				bool isdigit = iodev.wheel_y.mode == ARCAN_ANALOGFILTER_NONE;
+				if (isdigit){
+					newevent.io.subid = (event.wheel.x > 0) ? 6 : 7;
+					newevent.io.input.digital.active = true;
+					arcan_event_enqueue(ctx, &newevent);
+					newevent.io.input.digital.active = false;
+					arcan_event_enqueue(ctx, &newevent);
+				}
+				else {
+					newevent.io.subid = 3;
+					newevent.io.datatype = EVENT_IDATATYPE_ANALOG;
+					newevent.io.input.analog.gotrel = true;
+					newevent.io.input.analog.nvalues = 1;
+					newevent.io.input.analog.axisval[0] = event.wheel.y;
+					arcan_event_enqueue(ctx, &newevent);
+				}
 			}
-			else if (event.wheel.x > 0){
-				newevent.io.subid = 6;
-			}
-			else if (event.wheel.x < 0){
-				newevent.io.subid = 7;
-			}
-			else
-				continue;
-			arcan_event_enqueue(ctx, &newevent);
 		break;
 
 		case SDL_JOYAXISMOTION:
