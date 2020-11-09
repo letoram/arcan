@@ -13,7 +13,7 @@
 -- cursor path.
 -- @group: image
 -- @cfunction: cursorstorage
--- @: cursor_position, nudge_cursor, resize_cursor, move_cursor
+-- @related: cursor_position, nudge_cursor, resize_cursor, move_cursor
 function main()
 #ifdef MAIN
 	curs = fill_surface(8, 8, 255, 0, 0);
