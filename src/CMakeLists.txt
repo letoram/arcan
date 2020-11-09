@@ -676,13 +676,14 @@ if(HYBRID_SDL)
 	endif()
 
 	include(${PLATFORM_ROOT}/cmake/CMakeLists.Video)
+
 	add_executable(arcan_sdl
 		${SOURCES}
 		${ARCAN_PLATFORM}
 		${AGP_SOURCES}
 		${PLATFORM_SOURCES}
 		${VIDEO_PLATFORM_SOURCES}
-		${PLATFORM_ROOT}/${INPUT_PLATFORM}/event.c
+		${PLATFORM_ROOT}/sdl2/event.c
 	)
 	target_include_directories(arcan_sdl PRIVATE ${INCLUDE_DIRS})
 	target_compile_definitions(arcan_sdl PRIVATE
