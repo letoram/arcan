@@ -175,6 +175,10 @@ struct whitelist whitelist[] = {
 	{"/dev/drm1", -1, MODE_DRM},
 	{"/dev/drm2", -1, MODE_DRM},
 	{"/dev/drm3", -1, MODE_DRM},
+	{"/dev/drmR128", -1, MODE_DEFAULT},
+	{"/dev/drmR129", -1, MODE_DEFAULT},
+	{"/dev/drmR130", -1, MODE_DEFAULT},
+	{"/dev/drmR131", -1, MODE_DEFAULT},
 	{"/dev/amdmsr", -1, MODE_DEFAULT}
 #elif defined(__FreeBSD__)
 	{"/dev/input/", -1, MODE_PREFIX},
@@ -339,7 +343,9 @@ static void release_device(int i, bool shutdown)
 		return;
 
 	if (whitelist[i].mode & MODE_DRM){
+#ifndef __OpenBSD__
 		drmDropMaster(whitelist[i].fd);
+#endif
 
 /* if we have a saved KMS mode, we could try and restore */
 		if (!shutdown)
@@ -437,7 +443,10 @@ static int access_device(const char* path, int arg, bool release, bool* keep)
 			if (whitelist[ind].mode & MODE_DRM){
 				if (arcan_watchdog_ping)
 					atomic_store(arcan_watchdog_ping, arcan_timemillis());
+
+#ifndef __OpenBSD__
 				drmSetMaster(whitelist[ind].fd);
+#endif
 			}
 			return whitelist[ind].fd;
 		}
@@ -463,7 +472,9 @@ static int access_device(const char* path, int arg, bool release, bool* keep)
 		}
 
 		if (whitelist[ind].mode & MODE_DRM){
+#ifndef __OpenBSD__
 			drmSetMaster(fd);
+#endif
 			whitelist[ind].fd = fd;
 			*keep = true;
 			return fd;
