@@ -711,6 +711,18 @@ static bool on_label_query(struct tui_context* T,
 	return false;
 }
 
+static void on_reset(struct tui_context* T, int level, void* tag)
+{
+	struct readline_meta* M;
+	if (!validate_context(T, &M))
+		return;
+
+	arcan_tui_readline_reset(T);
+
+	if (M->old_handlers.reset)
+		M->old_handlers.reset(T, level, M->old_handlers.tag);
+}
+
 void arcan_tui_readline_setup(
 	struct tui_context* T, struct tui_readline_opts* opts, size_t opt_sz)
 {
@@ -741,6 +753,7 @@ void arcan_tui_readline_setup(
 		.input_label = on_label_input,
 		.subwindow = on_subwindow,
 		.query_label = on_label_query,
+		.reset = on_reset,
 /* input_alabel - block */
 /* input_mouse_motion - block? or treat as selection for replace */
 /* input_misc - block */
