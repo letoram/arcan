@@ -17,7 +17,7 @@
 -- use a whitelisting approach.
 -- The optional arguments *setw*, *seth* can be used to change the
 -- initial dimensions of the new segment from the ones requested in the
--- segreq event (see ref:launch\_target). The frameserver can still
+-- segreq event (see ref:launch_target). The frameserver can still
 -- perform a resize to ignore these values, but it saves a possible
 -- displayhint->resize cycle with the initial 1-2 frame setup latency
 -- that would impose.
