@@ -3,7 +3,7 @@
 -- @inargs: vid, maskval
 -- @group: image
 -- @cfunction: setmask
--- @description:
+-- @longdescr:
 -- Images that are linked to eachother via ref:link_image gets a number
 -- of its attributes redefined to be relative the the parent it is linked
 -- again. At times, not all attributes are relevant to inherit, and these

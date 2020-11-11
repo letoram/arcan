@@ -2,7 +2,7 @@
 -- @short: Calculate the output volume of a format string.
 -- @inargs: message, *vspacing*, *tspacing*
 -- @outargs: width, height
--- @longdecr: Text dimensions follow many of the same rules and restrictions
+-- @longdescr: Text dimensions follow many of the same rules and restrictions
 -- as render_text, with the notable exception that it does not produce
 -- any output.
 -- @note: Global text- rendering state can still be affected, e.g. the

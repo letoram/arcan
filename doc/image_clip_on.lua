@@ -2,7 +2,7 @@
 -- @short: Control clipping for a video object.
 -- @inargs: vid:image
 -- @inargs: vid:image, int:mode
--- @inargs, vid:image, int:mode=CLIP_SHALLOW, vid:cliptgt
+-- @inargs: vid:image, int:mode=CLIP_SHALLOW, vid:cliptgt
 -- @outargs:
 -- @longdescr: This changes the clipping mode for the video object referenced
 -- by *image*. By default the mode is CLIP_ON, which is the more expensive one.

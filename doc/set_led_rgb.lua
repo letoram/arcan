@@ -1,7 +1,7 @@
 -- set_led_rgb
 -- @short: Set the specific R,G,B values for an individual LED on a specific controller.
 -- @inargs: controlid, ledid, r, g, b, *buffer*
--- @outarg: bool
+-- @outargs: bool
 -- @group: iodev
 -- @cfunction: led_rgb
 -- @longdescr: Set the color value of an individual LED on a known LED controller and
