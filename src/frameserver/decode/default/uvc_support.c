@@ -26,7 +26,11 @@
  */
 #include <arcan_shmif.h>
 #include <libuvc/libuvc.h>
+#include <libswscale/swscale.h>
+#include <math.h>
 
+/* should also have the option to convert to GPU texture here and pass
+ * onwards rather than paying the conversion proce like this */
 static uint8_t clamp_u8(int v, int low, int high)
 {
 	return
@@ -91,17 +95,38 @@ static void frame_rgb(uvc_frame_t* frame, struct arcan_shmif_cont* dst)
 	arcan_shmif_signal(dst, SHMIF_SIGVID);
 }
 
+static void frame_nv12(uvc_frame_t* frame, struct arcan_shmif_cont* dst)
+{
+	static struct SwsContext* scaler;
+	if (!scaler){
+		scaler = sws_getContext(
+			frame->width, frame->height, AV_PIX_FMT_NV12,
+			dst->w, dst->h, AV_PIX_FMT_BGRA, SWS_BILINEAR, NULL, NULL, NULL);
+	}
+
+	if (!scaler)
+		return;
+
+	int dst_stride[] = {dst->stride};
+	uint8_t* const dst_buf[] = {dst->vidb};
+	const uint8_t* const data[2] = {frame->data, frame->data + frame->width * frame->height};
+	int lines[2] = {frame->width, frame->width};
+	sws_scale(scaler, data, lines, 0, frame->height, dst_buf, dst_stride);
+
+	arcan_shmif_signal(dst, SHMIF_SIGVID);
+}
+
 static void callback(uvc_frame_t* frame, void* tag)
 {
 	uvc_frame_t* bgr;
 	uvc_error_t ret;
 	struct arcan_shmif_cont* cont = tag;
-	printf("got frame\n");
 
 /* guarantee dimensions */
 	if (cont->w != frame->width || cont->h != frame->height){
-		if (!arcan_shmif_resize(cont, frame->width, frame->height))
+		if (!arcan_shmif_resize(cont, frame->width, frame->height)){
 			return;
+		}
 	}
 
 /* conversion / repack */
@@ -109,15 +134,146 @@ static void callback(uvc_frame_t* frame, void* tag)
 	case UVC_FRAME_FORMAT_YUYV:
 		frame_yuyv(frame, cont);
 	break;
+	case UVC_FRAME_FORMAT_NV12:
+		frame_nv12(frame, cont);
+	break;
 	case UVC_FRAME_FORMAT_UYVY:
 		frame_uyvy(frame, cont);
 	break;
 	case UVC_FRAME_FORMAT_RGB:
 		frame_rgb(frame, cont);
 	break;
+/* h264 and mjpeg should map into ffmpeg as well */
 	default:
+		LOG("unhandled frame format: %d\n", (int)frame->frame_format);
 	break;
 	}
+}
+
+static int fmt_score(const uint8_t fourcc[static 4], int* out)
+{
+	static struct {
+		uint8_t fourcc[4];
+		int enumv;
+		int score;
+	}
+	fmts[] = {
+		{
+			.fourcc = {'Y', 'U', 'V', '2'},
+			.enumv = UVC_FRAME_FORMAT_YUYV,
+			.score = 2
+		},
+		{
+			.fourcc = {'U', 'Y', 'V', 'Y'},
+			.enumv = UVC_FRAME_FORMAT_UYVY,
+			.score = 2
+		},
+		{
+			.fourcc = {'Y', '8', '0', '0'},
+			.enumv = UVC_FRAME_FORMAT_GRAY8,
+			.score = 1
+		},
+		{
+      .fourcc = {'N',  'V',  '1',  '2'},
+			.enumv = UVC_FRAME_FORMAT_NV12,
+			.score = 3
+		},
+/* this does not seem to have the 'right' fourcc? */
+		{
+			.fourcc = {0x7d, 0xeb, 0x36, 0xe4},
+			.enumv = UVC_FRAME_FORMAT_BGR,
+			.score = 3
+		},
+		{
+			.enumv = UVC_FRAME_FORMAT_MJPEG,
+			.score = -1,
+			.fourcc = {'M', 'J', 'P', 'G'}
+		},
+		{
+			.enumv = UVC_FRAME_FORMAT_MJPEG,
+			.score = -1,
+			.fourcc = {'H', '2', '6', '4'}
+		},
+	};
+
+	for (size_t i = 0; i < sizeof(fmts) / sizeof(fmts[0]); i++){
+		if (memcmp(fmts[i].fourcc, fourcc, 4) == 0){
+			*out = fmts[i].enumv;
+			return fmts[i].score;
+		}
+	}
+
+	return -1;
+}
+
+/*
+ * preference order:
+ *  fmt > dimensions
+ */
+static bool match_dev_pref_fmt(
+	uvc_device_handle_t* devh, size_t* w, size_t* h, int* fmt_out)
+{
+	const uvc_format_desc_t* fmt = uvc_get_format_descs(devh);
+	int fmtid = -1;
+	int best_score = -1;
+	int fw = 0;
+	int fh = 0;
+	float id = 0;
+	float best_dist = id;
+
+	if (*w || *h)
+		id = sqrtf(*w * *w + *h * *h);
+
+/* ok the way formats are defined here is a special kind of ?!, there is an
+ * internal format description that you are supposed to use within API borders,
+ * then it is compared to the regular fourcc and GUIDs - but note that the
+ * fourcc is ALSO a GUID */
+	while (fmt){
+		int fmtscore;
+		int score = fmt_score(fmt->fourccFormat, &fmtscore);
+
+		if (score != -1 && (best_score == -1 || best_score < score)){
+			const uvc_frame_desc_t* ftype = fmt->frame_descs;
+			if (!ftype){
+				fmt = fmt->next;
+				continue;
+			}
+
+/* new format, pick the first dimension, and if the caller set a preference,
+ * find the distance that best fits our wants */
+			best_score = score;
+			fw = ftype->wWidth;
+			fh = ftype->wHeight;
+			*fmt_out = fmtscore;
+
+			best_dist = sqrtf(fw * fw + fh * fh);
+			if (!*w || !*h){
+				fmt = fmt->next;
+				continue;
+			}
+
+			while (ftype){
+				float dist = sqrtf(
+					ftype->wWidth * ftype->wWidth + ftype->wHeight * ftype->wHeight);
+				if (dist < best_dist){
+					best_dist = dist;
+					fw = ftype->wWidth;
+					fh = ftype->wHeight;
+				}
+				ftype = ftype->next;
+			}
+		}
+
+		fmt = fmt->next;
+	}
+
+	if (best_score != -1){
+		*w = fw;
+		*h = fh;
+		return true;
+	}
+	else
+		return false;
 }
 
 bool uvc_support_activate(
@@ -125,10 +281,12 @@ bool uvc_support_activate(
 {
 	int vendor_id = 0x00;
 	int product_id = 0x00;
-	size_t width = 640;
-	size_t height = 480;
-	size_t fps = 30;
+	size_t width = 0;
+	size_t height = 0;
+	int fps = 0;
 
+/* we only return 'false' if uvc has explicitly been disabled, otherwise
+ * VLC might try to capture */
 	const char* serial = NULL;
 	if (arg_lookup(args, "no_uvc", 0, NULL))
 		return false;
@@ -143,11 +301,11 @@ bool uvc_support_activate(
 	if (uvc_init(&uvctx, NULL) < 0){
 		snprintf((char*) cont->addr->last_words,
 			sizeof(cont->addr->last_words), "couldn't initialize UVC");
-		return false;
+		return true;
 	}
 
 /* enumeration means that we won't really use the connection, but
- * at least output to stdout and, if present, send them as messages */
+ * at least send as messages */
 	if (arg_lookup(args, "list", 0, NULL)){
 		uvc_device_t** devices;
 		uvc_get_device_list(uvctx, &devices);
@@ -171,36 +329,60 @@ bool uvc_support_activate(
 					ddesc->idVendor, ddesc->idProduct, ddesc->serialNumber, ddesc->product);
 			}
 
+			fputs((char*)ev.ext.message.data, stdout);
 			arcan_shmif_enqueue(cont, &ev);
-			printf("%s", ev.ext.message.data);
 		}
 		uvc_free_device_list(devices, 1);
-/* return false as VLC might also be able to enumerate capture */
-		return false;
+		return true;
 	}
 
 	const char* val;
-	if (arg_lookup(args, "vid", 0, &val) && val){
-		vendor_id = strtoul(val, NULL, 10);
-	}
+	if (arg_lookup(args, "vid", 0, &val) && val)
+		vendor_id = strtoul(val, NULL, 16);
 
-	if (arg_lookup(args, "pid", 0, &val) && val){
-		product_id = strtoul(val, NULL, 10);
-	}
+	if (arg_lookup(args, "width", 0, &val) && val)
+		width = strtoul(val, NULL, 10);
+
+	if (arg_lookup(args, "height", 0, &val) && val)
+		height = strtoul(val, NULL, 10);
+
+	if (arg_lookup(args, "pid", 0, &val) && val)
+		product_id = strtoul(val, NULL, 16);
+
+	if (arg_lookup(args, "fps", 0, &val) && val)
+		fps = strtoul(val, NULL, 10);
 
 	arg_lookup(args, "serial", 0, &serial);
 
 	if (uvc_find_device(uvctx, &dev, vendor_id, product_id, serial) < 0){
 		snprintf((char*) cont->addr->last_words,
 			sizeof(cont->addr->last_words), "no matching device");
-		return false;
+		return true;
 	}
 
 	if (uvc_open(dev, &devh) < 0){
 		snprintf((char*)cont->addr->last_words,
 			sizeof(cont->addr->last_words), "couldn't open device");
-		return false;
+		return true;
 	}
+
+/* finding the right format is complicated -
+ *  the formats for a device is a linked list (->next) where there is a
+ *  frame_desc with the same restriction.
+ *
+ * scan for matching size (if defined) - otherwise pick based on format
+ * and format priority. This is what uvc_get_stream_ctrl_format_size does
+ * but it also requires explicit size description
+ */
+	int fmt = -1;
+
+	if (!match_dev_pref_fmt(devh, &width, &height, &fmt)){
+		snprintf((char*)cont->addr->last_words,
+			sizeof(cont->addr->last_words), "no compatible frame-format for device");
+		return true;
+	}
+
+	enum uvc_frame_format frame_format;
 
 /* will be redirected to log */
 	uvc_print_diag(devh, stderr);
@@ -213,15 +395,31 @@ bool uvc_support_activate(
  * 	devh, &ctrl, UVC_FRAME_FORMAT_YUYV, w, h, fps)
  *
  * so maybe we need to try a few and then pick what best match some user pref.
- * from the initial display-hint
+ */
+
+/* some other frame formats take even more special consideration, mainly
+ * FRAME_FORMAT_H264 (decode through vlc or openh264) | (attempt-passthrough)
+ * FRAME_FORMAT_MJPEG
  */
 	if (uvc_get_stream_ctrl_format_size(
-		devh, &ctrl, UVC_FRAME_FORMAT_YUYV, width, height, fps) < 0){
-		fprintf(stderr, "kind=EINVAL:message=format request (%zu*%zu@%zu fps) failed\n");
-		return false;
+		devh, &ctrl, fmt, width, height, fps) < 0){
+		fprintf(stderr, "kind=EINVAL:message="
+			"format request (%zu*%zu@%zu fps)@%d failed\n", width, height, fps, fmt);
+
+		if (uvc_get_stream_ctrl_format_size(
+			devh, &ctrl, UVC_FRAME_FORMAT_ANY, width, height, fps) < 0){
+			fprintf(stderr, "kind=EINVAL:message="
+				"format request (%zu*%zu@%zu fps)@ANY failed\n", width, height, fps);
+		}
+		return true;
 	}
 
-	uvc_start_streaming(devh, &ctrl, callback, cont, 0);
+	int rv = uvc_start_streaming(devh, &ctrl, callback, cont, 0);
+	if (rv < 0){
+		snprintf((char*) cont->addr->last_words,
+			sizeof(cont->addr->last_words), "streaming error (%d)", rv);
+		goto out;
+	}
 
 /* this one is a bit special, optimally we'd want to check cont and
  * see if we have GPU access - if there is one, we should try and get
@@ -230,17 +428,15 @@ bool uvc_support_activate(
  * without further conversion */
 	arcan_shmif_privsep(cont, "minimal", NULL, 0);
 
-	int rc = -1;
-	while(rc >= 0){
-		struct arcan_event ev;
-		while(arcan_shmif_wait(cont, &ev)){
-			if (ev.category != EVENT_TARGET)
-				continue;
-		}
+	struct arcan_event ev;
+	while(arcan_shmif_wait(cont, &ev)){
+		if (ev.category != EVENT_TARGET)
+			continue;
 	}
 
-	arcan_shmif_drop(cont);
+out:
 	uvc_close(devh);
+	arcan_shmif_drop(cont);
 	return true;
 }
 
@@ -255,8 +451,8 @@ void uvc_append_help(FILE* out)
 	"vid      \t 0xUSBVID  \t specify (hex) the vendor ID of the device\n"
 	"pid      \t 0xUSBPID  \t specify (hex) the product ID of the device\n"
 	"serial   \t <string>  \t specify the serial number of the device\n"
-	"width    \t px        \t preferred capture width (=640)\n"
-	"height   \t px        \t preferred capture height (=480)\n"
-	"fps      \t nframes   \t preferred catpure framerate (=30)\n"
+	"width    \t px        \t preferred capture width (=0)\n"
+	"height   \t px        \t preferred capture height (=0)\n"
+	"fps      \t nframes   \t preferred catpure framerate (=0)\n"
 	);
 }
