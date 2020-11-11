@@ -53,6 +53,7 @@ if (LIBVLC_FOUND)
 		)
 
 		find_package(libusb-1.0 REQUIRED)
+		find_package(FFMPEG REQUIRED)
 
 		ExternalProject_Add(libuvc
 			SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/frameserver/decode/libuvc"
@@ -63,13 +64,16 @@ if (LIBVLC_FOUND)
 			${CMAKE_EXTERNAL_DEFS}
 			-DBUILD_UVC_STATIC=ON
 		)
-		set(DECODE_DEPS libuvc)
+
+	set(DECODE_DEPS libuvc)
 		set(DECODE_INCLUDE_DIRS
 			${DECODE_INCLUDE_DIRS}
 			${LIBUSB_1_INCLUDE_DIRS}
+			${FFMPEG_INCLUDE_DIRS}
 			${CMAKE_CURRENT_BINARY_DIR}/libuvc_static/include
 			${CMAKE_CURRENT_BINARY_DIR}/../../../include)
 		set(DECODE_LIBS
+			${FFMPEG_LIBRARIES}
 			${DECODE_LIBS}
 			${LIBUSB_1_LIBRARIES}
 			${CMAKE_CURRENT_BINARY_DIR}/libuvc_static/libuvc.a

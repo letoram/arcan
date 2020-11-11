@@ -1,6 +1,8 @@
 /* dump the shared help and set the last_words for the context */
 int show_use(struct arcan_shmif_cont* cont, const char* msg);
 
+void uvc_append_help(FILE* out);
+
 /* request that the server-side prove a bchunk-transfer with a
  * file descriptor to use */
 int wait_for_file(struct arcan_shmif_cont* cont, const char* extstr);
