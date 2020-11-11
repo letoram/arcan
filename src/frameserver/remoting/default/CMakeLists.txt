@@ -1,4 +1,4 @@
-find_package(VNC QUIET)
+pkg_check_modules(LIBVNC QUIET libvncclient)
 
 set(PROTOCOLS "a12")
 set(SRCS
@@ -17,7 +17,7 @@ if (LIBVNC_FOUND)
 		${CMAKE_CURRENT_SOURCE_DIR}/vnc.c
 	)
 	list(APPEND LIBS
-		${LIBVNC_CLIENT_LIBRARY}
+		${LIBVNC_LINK_LIBRARIES}
 	)
 	list(APPEND INCS
 		${LIBVNC_INCLUDE_DIRS})
