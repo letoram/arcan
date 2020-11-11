@@ -49,14 +49,13 @@ list(APPEND ARCAN_PLATFORM
 set(LWA_PLATFORM ${ARCAN_PLATFORM})
 
 # then the variant specific changes
-if (${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
+if (${CMAKE_SYSTEM_NAME} MATCHES "NetBSD|OpenBSD")
 # force these options here for now
-	LIST(APPEND INCLUDE_DIRS /usr/X11R6/include)
 	set(BSD_VARIANT_DEFINITIONS
 		-DCLOCK_MONOTONIC_RAW=CLOCK_MONOTONIC)
 	set(BSD_VARIANT_LIBS c++ stdc++)
 	if(${INPUT_PLATFORM} STREQUAL "evdev")
-		SET(INPUT_PLATFORM openbsd)
+		SET(INPUT_PLATFORM "wscons")
 	endif()
 
 	if (VIDEO_PLATFORM STREQUAL "egl-dri")
@@ -79,7 +78,7 @@ else()
 # be either evdev or freebsd, so we need to check if the build args
 # actually meant evdev or if it came from the video platform setup.
 	if(${INPUT_PLATFORM} STREQUAL "evdev")
-		SET(INPUT_PLATFORM "freebsd")
+		SET(INPUT_PLATFORM "syscons")
 	endif()
 	if (VIDEO_PLATFORM STREQUAL "egl-dri")
 		list(APPEND ARCAN_PLATFORM ${PLATFORM_PATH}/psep_open.c)

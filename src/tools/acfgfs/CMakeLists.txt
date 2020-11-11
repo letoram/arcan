@@ -7,7 +7,7 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 find_package(arcan_shmif REQUIRED)
-find_package(fuse3 REQUIRED)
+pkg_check_modules(FUSE3 REQUIRED fuse3)
 find_package(Math REQUIRED)
 find_package(RT REQUIRED)
 find_package(Threads REQUIRED)
@@ -28,7 +28,7 @@ SET(LIBRARIES
 	RT::RT
 	DL::DL
 	${ARCAN_SHMIF_LIBRARY}
-	${FUSE3_LIBRARIES}
+	${FUSE3_LINK_LIBRARIES}
 )
 
 set(SOURCES

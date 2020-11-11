@@ -1,10 +1,10 @@
 if (FSRV_ENCODE_REQUIRED)
-	find_package(FFMPEG REQUIRED QUIET)
+	pkg_check_modules(FFMPEG REQUIRED QUIET libavcodec libavdevice libavfilter libavformat libavutil libswresample libswscale)
 	find_package(BZip2 REQUIRED QUIET)
 	find_package(ZLIB REQUIRED QUIET)
 	find_package(LibLZMA REQUIRED QUIET)
 else()
-	find_package(FFMPEG QUIET)
+	pkg_check_modules(FFMPEG QUIET libavcodec libavdevice libavfilter libavformat libavutil libswresample libswscale)
 	find_package(BZip2 QUIET)
 	find_package(ZLIB QUIET)
 	find_package(LibLZMA QUIET)
@@ -32,12 +32,12 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 	set(ENC_MISSING "")
 	set(ENC_FOUND "")
 
-	find_package(VNC)
+	pkg_check_modules(LIBVNC libvncserver)
 	if (LIBVNC_FOUND)
 		set(ENC_AUX_SOURCES
 			${CMAKE_CURRENT_SOURCE_DIR}/vnc.c
 		)
-		set(ENC_AUX_LIBS ${LIBVNC_SERVER_LIBRARY})
+		set(ENC_AUX_LIBS ${LIBVNC_LINK_LIBRARIES})
 		set(ENCODE_DEFS
 			${ENCODE_DEFS}
 			HAVE_VNCSERVER
@@ -49,11 +49,11 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 		set(ENC_MISSING "vnc ${ENC_MISSING}")
 	endif()
 
-	find_package(Tesseract)
+	pkg_check_modules(Tesseract tesseract)
 	if (Tesseract_FOUND)
 		set(ENC_AUX_SOURCES ${ENC_AUX_SOURCES}
 			${CMAKE_CURRENT_SOURCE_DIR}/ocr.c)
-		set(ENC_AUX_LIBS ${Tesseract_LIBRARIES} ${ENC_AUX_LIBS})
+		set(ENC_AUX_LIBS ${Tesseract_LINK_LIBRARIES} ${ENC_AUX_LIBS})
 		set(ENC_AUX_INCLUDES ${Tesseract_INCLUDE_DIRS})
 		set(ENCODE_DEFS
 			${ENCODE_DEFS}
@@ -90,7 +90,7 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 	)
 
 	set(ENCODE_LIBS
-		${FFMPEG_LIBRARIES}
+		${FFMPEG_LINK_LIBRARIES}
 		${BZIP2_LIBRARIES}
 		${ZLIB_LIBRARIES}
 		${LIBLZMA_LIBRARIES}

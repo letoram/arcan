@@ -1,12 +1,12 @@
 if (FSRV_DECODE_REQUIRED)
-	find_package(VLC REQUIRED)
+	pkg_check_modules(LIBVLC REQUIRED libvlc)
 else()
-	find_package(VLC)
+	pkg_check_modules(LIBVLC libvlc)
 endif()
 
 if (LIBVLC_FOUND)
 	find_package(Espeak)
-	find_package(LibMAGIC)
+	pkg_check_modules(MAGIC libmagic)
 
 	set(DECODE_SOURCES
 		${CMAKE_CURRENT_SOURCE_DIR}/decode.c
@@ -23,7 +23,7 @@ if (LIBVLC_FOUND)
 	)
 
 	set(DECODE_LIBS
-		${LIBVLC_LIBRARY}
+		${LIBVLC_LINK_LIBRARIES}
 		arcan_tui
 	)
 
@@ -41,7 +41,7 @@ if (LIBVLC_FOUND)
 		amsg("(${CL_GRN}decode${CL_RST}) adding support for ${CL_GRN} probe (libmagic) ${CL_RST}")
 		list(APPEND DECODE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/decode_probe.c)
 		list(APPEND DECODE_DEFS HAVE_PROBE)
-		list(APPEND DECODE_LIBS ${MAGIC_LIBRARIES})
+		list(APPEND DECODE_LIBS ${MAGIC_LINK_LIBRARIES})
 	else()
 		amsg("(${CL_GRN}decode${CL_RST}) libmagic not found, ${CL_RED} probe ${CL_RST} disabled")
 	endif()
@@ -52,8 +52,8 @@ if (LIBVLC_FOUND)
 			${DECODE_DEFS}
 		)
 
-		find_package(libusb-1.0 REQUIRED)
-		find_package(FFMPEG REQUIRED)
+		pkg_check_modules(LIBUSB_1 REQUIRED libusb-1.0)
+		pkg_check_modules(FFMPEG REQUIRED libavcodec libavdevice libavfilter libavformat libavutil libswresample libswscale)
 
 		ExternalProject_Add(libuvc
 			SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/frameserver/decode/libuvc"
@@ -73,9 +73,9 @@ if (LIBVLC_FOUND)
 			${CMAKE_CURRENT_BINARY_DIR}/libuvc_static/include
 			${CMAKE_CURRENT_BINARY_DIR}/../../../include)
 		set(DECODE_LIBS
-			${FFMPEG_LIBRARIES}
+			${FFMPEG_LINK_LIBRARIES}
 			${DECODE_LIBS}
-			${LIBUSB_1_LIBRARIES}
+			${LIBUSB_1_LINK_LIBRARIES}
 			${CMAKE_CURRENT_BINARY_DIR}/libuvc_static/libuvc.a
 		)
 		set(DECODE_SOURCES

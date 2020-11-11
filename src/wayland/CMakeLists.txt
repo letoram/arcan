@@ -6,22 +6,22 @@ if (DISABLE_WAYLAND)
 endif()
 
 include(Wayland)
-find_package(Wayland)
+pkg_check_modules(WAYLAND_SERVER wayland-server)
 
-if (NOT WAYLAND_FOUND)
+if (NOT WAYLAND_SERVER_FOUND)
 	amsg("${CL_YEL}wayland support\t${CL_RED}not found${CL_RST}")
 	return()
 else()
 	amsg("${CL_YEL}wayland support\t${CL_GRN}enabled${CL_RST}")
 endif()
 
-find_package(WaylandProtocols REQUIRED)
+find_package(WaylandProtocols)
 find_package(Sanitizers REQUIRED)
-find_package(XKB REQUIRED)
+pkg_check_modules(XKB REQUIRED xkbcommon)
 
 # The required bits and xwm can be made optional if there ever comes a day
 # that Wayland is mostly useful without Xwayland ..
-find_package(XCB COMPONENTS xcb xcb-composite xcb-icccm xcb-xfixes REQUIRED)
+pkg_check_modules(XCB REQUIRED xcb xcb-composite xcb-icccm xcb-xfixes)
 
 set(WAYBRIDGE_INCLUDES
 	xwl
@@ -38,17 +38,13 @@ set(WAYBRIDGE_SOURCES
 	${CMAKE_CURRENT_SOURCE_DIR}/../platform/posix/mem.c
 )
 
-if (PKG_CONFIG_FOUND)
-	pkg_search_module(SECCOMP libseccomp)
-	if (SECCOMP_FOUND)
-		message("secomp found, enabling syscall filtering")
-		add_definitions(-DENABLE_SECCOMP)
-		list(APPEND WAYLAND_SERVER_LIBRARIES seccomp)
-	else()
-		message("No seccomp found, syscall filtering disabled")
-	endif()
+pkg_search_module(SECCOMP libseccomp)
+if (SECCOMP_FOUND)
+	message("secomp found, enabling syscall filtering")
+	add_definitions(-DENABLE_SECCOMP)
+	list(APPEND WAYLAND_SERVER_LINK_LIBRARIES seccomp)
 else()
-	message("No pkg-config found, disabling seccomp")
+	message("No seccomp found, syscall filtering disabled")
 endif()
 
 # copied from Cloudef/wlc/protos
@@ -82,14 +78,14 @@ SET(WAYBRIDGE_LIBRARIES
 	${EGL_LIBRARIES}
 	arcan_shmif_int
 	arcan_shmif_intext
-	${WAYLAND_SERVER_LIBRARIES}
-	${XKB_LIBRARIES}
+	${WAYLAND_SERVER_LINK_LIBRARIES}
+	${XKB_LINK_LIBRARIES}
 	wlprot
 )
 
 SET(XWM_LIBRARIES
 	${STDLIB}
-	${XCB_LIBRARIES}
+	${XCB_LINK_LIBRARIES}
 	arcan_shmif_int
 )
 
