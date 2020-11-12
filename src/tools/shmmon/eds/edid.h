@@ -406,8 +406,8 @@ static inline void
 edid_manufacturer(const struct edid * const edid, char manufacturer[4])
 {
     manufacturer[0] = '@' + ((edid->manufacturer & 0x007c) >> 2);
-    manufacturer[1] = '@' + (((edid->manufacturer & 0x0003) >> 00) << 3)
-                          | (((edid->manufacturer & 0xe000) >> 13) << 0);
+    manufacturer[1] = '@' + ((((edid->manufacturer & 0x0003) >> 00) << 3)
+                             | (((edid->manufacturer & 0xe000) >> 13) << 0));
     manufacturer[2] = '@' + ((edid->manufacturer & 0x1f00) >> 8);
     manufacturer[3] = '\0';
 }
