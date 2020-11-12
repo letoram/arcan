@@ -19,6 +19,11 @@ static void pointer_set(struct wl_client* cl, struct wl_resource* res,
  * important as it breaks the 0..1 mapping between comp_surf and acon (realloc
  * on cursor each switch is too expensive) */
 	struct acon_tag* tag = bcl->acursor.user;
+	if (!tag){
+		trace(TRACE_ALLOC, "error:unassigned pointer");
+		return;
+	}
+
 	if (surf_res){
 		struct comp_surf* csurf = wl_resource_get_user_data(surf_res);
 		snprintf(csurf->tracetag, SURF_TAGLEN, "cursor");
