@@ -1852,7 +1852,7 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 		drop_initial(inctx);
 
 	if (inctx->priv->last_words){
-		fprintf(stderr, "[shmif:drop] last words: %s\n", inctx->priv->last_words);
+		log_print("[shmif:drop] last words: %s", inctx->priv->last_words);
 		free(inctx->priv->last_words);
 		inctx->priv->last_words = NULL;
 	}
@@ -2543,7 +2543,7 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	}
 /* Set some indicator color so this can be detected visually */
 	else{
-		log_print("shmif::recovery, vbuf_sz "
+		log_print("[shmif::recovery] vbuf_sz "
 			"mismatch (%zu, %zu)", vbuf_sz_new, vbuf_sz_old);
 		shmif_pixel color = SHMIF_RGBA(90, 60, 60, 255);
 		for (size_t row = 0; row < ret.h; row++){
@@ -2751,7 +2751,7 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	int spair[2];
 	if (-1 == socketpair(PF_UNIX, SOCK_STREAM, 0, spair)){
 		free(work);
-		log_print("(shmif::a12::connect) couldn't build IPC socket");
+		log_print("[shmif::a12::connect] couldn't build IPC socket");
 		return NULL;
 	}
 
@@ -2793,7 +2793,7 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	close(spair[1]);
 
 	if (-1 == pid){
-		log_print("(shmif::a12::connect) fork() failed");
+		log_print("[shmif::a12::connect] fork() failed");
 		close(spair[0]);
 		return NULL;
 	}
@@ -2969,8 +2969,10 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 	return ret;
 
 fail:
-	if (flags & SHMIF_ACQUIRE_FATALFAIL)
+	if (flags & SHMIF_ACQUIRE_FATALFAIL){
+		log_print("[shmif::open_ext], error connecting");
 		exit(EXIT_FAILURE);
+	}
 	return ret;
 }
 
