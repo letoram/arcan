@@ -81,6 +81,52 @@ static devnode_decode_cb defhandlers[] = {
 
 static struct evhandler lookup_dev_handler(const char* idstr)
 {
+/* enumerate key */
+	uintptr_t tag;
+	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	char* dst;
+	unsigned short ind = 0;
+
+	while (get_config("evdev_keyboard", ind++, &dst, tag)){
+		if (strcasecmp(dst, idstr) == 0){
+			free(dst);
+/* mapping the idstr is safe here as it is tied to the lifespan
+ * of the node it will be used for and not separately allocated */
+			return (struct evhandler){
+				.handler = defhandler_kbd,
+				.type = DEVNODE_KEYBOARD,
+				.name = idstr
+			};
+		}
+		free(dst);
+	}
+
+	ind = 0;
+	while (get_config("evdev_mouse", ind++, &dst, tag)){
+		if (strcasecmp(dst, idstr) == 0){
+			free(dst);
+			return (struct evhandler){
+				.handler = defhandler_mouse,
+				.type = DEVNODE_MOUSE,
+				.name = idstr
+			};
+		}
+		free(dst);
+	}
+
+	ind = 0;
+	while (get_config("evdev_game", ind++, &dst, tag)){
+		if (strcasecmp(dst, idstr) == 0){
+			free(dst);
+			return (struct evhandler){
+				.handler = defhandler_game,
+				.type = DEVNODE_GAME,
+				.name = idstr
+			};
+		}
+		free(dst);
+	}
+
 	for (size_t ind = 0; ind < sizeof(device_db)/sizeof(device_db[0]); ind++){
 		if (strcmp(idstr, device_db[ind].name) == 0)
 			return device_db[ind];

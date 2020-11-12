@@ -97,6 +97,10 @@ static const char* envopts[] = {
 	"scandir=path/to/folder", "Directory to monitor for device node hotplug "
 		"(Default: "NOTIFY_SCAN_DIR")",
 	"disable_ttyswap", "Disable tty- swapping signal handler",
+	"[evdev_type=label]", "suffix evdev_type with _n for (n = 2, 3, ...)",
+	"evdev_keyboard=label", "Force device matching 'label' as a keyboard",
+	"evdev_game=label", "Force device matching 'label' as a game device",
+	"evdev_mouse=label", "Force device matching 'label' as a mouse",
 #ifdef HAVE_XKBCOMMON
 	"", "",
 	"[XKB-ARGUMENTS]", "[these are ENV- only (fwd to libxkbcommon)]",
