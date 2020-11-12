@@ -3,7 +3,6 @@
  * Copyright 2014-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
- * Depends: LibVLC (LGPL) LibUVC (optional)
  * Description:
  * The decode frameserver takes some form of compressed / packed input
  * and transforms it into a raw format that shmif can use or process.
@@ -25,7 +24,9 @@ int show_use(struct arcan_shmif_cont* cont, const char* msg)
 		"General arguments:\n"
 		"   key   \t   value   \t   description\n"
 		"---------\t-----------\t-----------------\n"
+#ifdef HAVE_VLC
 		" protocol\t media     \t set 'media' mode (audio, video)\n"
+#endif
 		" protocol\t 3d        \t set '3d object' mode\n"
 		" protocol\t text      \t set 'text' mode\n"
 #ifdef HAVE_PROBE

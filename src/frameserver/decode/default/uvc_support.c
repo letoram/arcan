@@ -159,7 +159,7 @@ static int fmt_score(const uint8_t fourcc[static 4], int* out)
 	}
 	fmts[] = {
 		{
-			.fourcc = {'Y', 'U', 'V', '2'},
+			.fourcc = {'Y', 'U', 'Y', '2'},
 			.enumv = UVC_FRAME_FORMAT_YUYV,
 			.score = 2
 		},
@@ -276,6 +276,8 @@ static bool match_dev_pref_fmt(
 		return false;
 }
 
+#define DIE(C) do { arcan_shmif_drop(C); return true; } while(0)
+
 bool uvc_support_activate(
 	struct arcan_shmif_cont* cont, struct arg_arr* args)
 {
@@ -299,9 +301,8 @@ bool uvc_support_activate(
 	uvc_error_t res;
 
 	if (uvc_init(&uvctx, NULL) < 0){
-		snprintf((char*) cont->addr->last_words,
-			sizeof(cont->addr->last_words), "couldn't initialize UVC");
-		return true;
+		arcan_shmif_last_words(cont, "couldn't initialize UVC");
+		DIE(cont);
 	}
 
 /* enumeration means that we won't really use the connection, but
@@ -333,7 +334,7 @@ bool uvc_support_activate(
 			arcan_shmif_enqueue(cont, &ev);
 		}
 		uvc_free_device_list(devices, 1);
-		return true;
+		DIE(cont);
 	}
 
 	const char* val;
@@ -355,15 +356,13 @@ bool uvc_support_activate(
 	arg_lookup(args, "serial", 0, &serial);
 
 	if (uvc_find_device(uvctx, &dev, vendor_id, product_id, serial) < 0){
-		snprintf((char*) cont->addr->last_words,
-			sizeof(cont->addr->last_words), "no matching device");
-		return true;
+		arcan_shmif_last_words(cont, "no matching device");
+		DIE(cont);
 	}
 
 	if (uvc_open(dev, &devh) < 0){
-		snprintf((char*)cont->addr->last_words,
-			sizeof(cont->addr->last_words), "couldn't open device");
-		return true;
+		arcan_shmif_last_words(cont, "couldn't open device");
+		DIE(cont);
 	}
 
 /* finding the right format is complicated -
@@ -377,9 +376,8 @@ bool uvc_support_activate(
 	int fmt = -1;
 
 	if (!match_dev_pref_fmt(devh, &width, &height, &fmt)){
-		snprintf((char*)cont->addr->last_words,
-			sizeof(cont->addr->last_words), "no compatible frame-format for device");
-		return true;
+		arcan_shmif_last_words(cont, "no compatible frame-format for device");
+		DIE(cont);
 	}
 
 	enum uvc_frame_format frame_format;
@@ -411,13 +409,12 @@ bool uvc_support_activate(
 			fprintf(stderr, "kind=EINVAL:message="
 				"format request (%zu*%zu@%zu fps)@ANY failed\n", width, height, fps);
 		}
-		return true;
+		goto out;
 	}
 
 	int rv = uvc_start_streaming(devh, &ctrl, callback, cont, 0);
 	if (rv < 0){
-		snprintf((char*) cont->addr->last_words,
-			sizeof(cont->addr->last_words), "streaming error (%d)", rv);
+		arcan_shmif_last_words(cont, "uvc- error when streaming");
 		goto out;
 	}
 
@@ -453,6 +450,6 @@ void uvc_append_help(FILE* out)
 	"serial   \t <string>  \t specify the serial number of the device\n"
 	"width    \t px        \t preferred capture width (=0)\n"
 	"height   \t px        \t preferred capture height (=0)\n"
-	"fps      \t nframes   \t preferred catpure framerate (=0)\n"
+	"fps      \t nframes   \t preferred capture framerate (=0)\n"
 	);
 }

@@ -141,6 +141,7 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock);
  */
 struct shmif_hidden {
 	struct arg_arr* args;
+	char* last_words;
 
 	shmif_trigger_hook video_hook;
 	void* video_hook_data;
@@ -1850,8 +1851,15 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	if (inctx->priv->valid_initial)
 		drop_initial(inctx);
 
-	if (inctx->addr)
+	if (inctx->priv->last_words){
+		fprintf(stderr, "[shmif:drop] last words: %s\n", inctx->priv->last_words);
+		free(inctx->priv->last_words);
+		inctx->priv->last_words = NULL;
+	}
+
+	if (inctx->addr){
 		inctx->addr->dms = false;
+	}
 
 	if (inctx == primary.input)
 		primary.input = NULL;
@@ -2403,9 +2411,23 @@ int arcan_shmif_dupfd(int fd, int dstnum, bool blocking)
 void arcan_shmif_last_words(
 	struct arcan_shmif_cont* cont, const char* msg)
 {
-	if (!cont || !msg || !cont->addr)
+	if (!cont || !cont->addr)
 		return;
 
+/* keep a local copy around for stderr reporting */
+	if (cont->priv->last_words){
+		free(cont->priv->last_words);
+		cont->priv->last_words = NULL;
+	}
+
+/* allow it to be cleared */
+	if (!msg){
+		cont->addr->last_words[0] = '\0';
+		return;
+	}
+	cont->priv->last_words = strdup(msg);
+
+/* it's volatile so manually write in */
 	size_t lim = COUNT_OF(cont->addr->last_words);
 	size_t i = 0;
 	for (; i < lim-1 && msg[i] != '\0'; i++)
