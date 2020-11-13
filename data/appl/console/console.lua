@@ -195,7 +195,7 @@ end
 -- e.g. arcan_db add_appl_kv console terminal env=LC_ALL=C:palette=solarized
 function spawn_terminal()
 	local term_arg = (
-		get_key("terminal") or "palette=solarized") ..
+		get_key("terminal") or "tpack:palette=solarized") ..
 		":env=ARCAN_CONNPATH=" .. connection_point
 
 	return launch_avfeed(term_arg, "terminal", client_event_handler)
