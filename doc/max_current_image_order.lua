@@ -2,7 +2,7 @@
 -- @short: Find the highest ordervalue in use in the current context.
 -- @inargs: *rtgt*
 -- @outargs: orderval
--- @description: Scan a specific (default: worldid) rendertarget for the
+-- @longdescr: Scan a specific (default: worldid) rendertarget for the
 -- highest drawing order value used. Note that the range 65531..65535 is
 -- explicitly ignored to be able to use relative operations e.g.
 -- order_image(a, max_current_image_order() + 1); without objects used

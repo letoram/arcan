@@ -1,7 +1,7 @@
 -- camtag_model
 -- @short: Define a camera for the 3D processing of a rendertarget
 -- @inargs: vid:dst
--- @inargs, vid:dst, numbtl:projection
+-- @inargs: vid:dst, numbtl:projection
 -- @inargs: vid:dst, float:near
 -- @inargs: vid:dst, float:near, float:far
 -- @inargs: vid:dst, float:near, float:far, float:fov
