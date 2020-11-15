@@ -5,7 +5,7 @@
 -- @inargs: vid:dst, bool:trigger_last
 -- @inargs: vid:dst, bool:trigger_last, bool:trigger_all
 -- @group: image
--- @description:
+-- @longdescr:
 -- This will fast-forward through the transform chain for *dst*.  If 'mask' is
 -- set, only the specifiied bitmask of chains (MASK_OPACITY, MASK_ORIENTATION,
 -- MASK_POSITION, MASK_SCALE) will be fast-forwarded.
