@@ -66,19 +66,47 @@ static void frame_uyvy(uvc_frame_t* frame, struct arcan_shmif_cont* dst)
 	arcan_shmif_signal(dst, SHMIF_SIGVID);
 }
 
-static void frame_yuyv(uvc_frame_t* frame, struct arcan_shmif_cont* dst)
+static void run_swscale(
+	uvc_frame_t* frame, struct arcan_shmif_cont* dst, int planes, int fmt)
 {
-	uint8_t* buf = frame->data;
+	static struct SwsContext* scaler;
+	static int old_fmt = -1;
 
-	for (size_t y = 0; y < frame->height; y++){
-		shmif_pixel* vidp = &dst->vidp[y * dst->pitch];
-		for (size_t x = 0; x < frame->width; x+=2){
-			vidp[x+0] = ycbcr(buf[0], buf[1], buf[3]);
-			vidp[x+1] = ycbcr(buf[2], buf[1], buf[3]);
-			buf += 4;
+	if (fmt != old_fmt && scaler){
+		sws_freeContext(scaler);
+		scaler = NULL;
+	}
+
+	if (!scaler){
+		scaler = sws_getContext(
+			frame->width, frame->height, fmt,
+			dst->w, dst->h, AV_PIX_FMT_BGRA, SWS_BILINEAR, NULL, NULL, NULL);
+	}
+
+	if (!scaler)
+		return;
+
+	int dst_stride[] = {dst->stride};
+	uint8_t* const dst_buf[] = {dst->vidb};
+	const uint8_t* data[3] = {frame->data, NULL, NULL};
+	int lines[3] = {frame->width, 0, 0};
+	size_t bsz = frame->width * frame->height;
+
+	if (planes > 1){
+		size_t hw = (frame->width + 1) >> 1;
+		size_t hh = (frame->height + 1) >> 1;
+
+		data[1] = frame->data + bsz;
+		lines[1] = frame->width;
+
+		if (planes > 2){
+			lines[1] = hw;
+			data[2] = frame->data + bsz + hw;
+			lines[2] = hw;
 		}
 	}
 
+	sws_scale(scaler, data, lines, 0, frame->height, dst_buf, dst_stride);
 	arcan_shmif_signal(dst, SHMIF_SIGVID);
 }
 
@@ -92,27 +120,6 @@ static void frame_rgb(uvc_frame_t* frame, struct arcan_shmif_cont* dst)
 			buf += 3;
 		}
 	}
-	arcan_shmif_signal(dst, SHMIF_SIGVID);
-}
-
-static void frame_nv12(uvc_frame_t* frame, struct arcan_shmif_cont* dst)
-{
-	static struct SwsContext* scaler;
-	if (!scaler){
-		scaler = sws_getContext(
-			frame->width, frame->height, AV_PIX_FMT_NV12,
-			dst->w, dst->h, AV_PIX_FMT_BGRA, SWS_BILINEAR, NULL, NULL, NULL);
-	}
-
-	if (!scaler)
-		return;
-
-	int dst_stride[] = {dst->stride};
-	uint8_t* const dst_buf[] = {dst->vidb};
-	const uint8_t* const data[2] = {frame->data, frame->data + frame->width * frame->height};
-	int lines[2] = {frame->width, frame->width};
-	sws_scale(scaler, data, lines, 0, frame->height, dst_buf, dst_stride);
-
 	arcan_shmif_signal(dst, SHMIF_SIGVID);
 }
 
@@ -131,13 +138,15 @@ static void callback(uvc_frame_t* frame, void* tag)
 
 /* conversion / repack */
 	switch(frame->frame_format){
+/* 'actually YUY2 is also called YUYV which is YUV420' (what a mess)
+ * though at least the capture devices I have used this one had the
+ * YUYV frame format have the same output as NV12 /facepalm */
 	case UVC_FRAME_FORMAT_YUYV:
-		frame_yuyv(frame, cont);
-	break;
 	case UVC_FRAME_FORMAT_NV12:
-		frame_nv12(frame, cont);
+		run_swscale(frame, cont, 2, AV_PIX_FMT_NV12);
 	break;
 	case UVC_FRAME_FORMAT_UYVY:
+		run_swscale(frame, cont, 3, AV_PIX_FMT_UYVY422);
 		frame_uyvy(frame, cont);
 	break;
 	case UVC_FRAME_FORMAT_RGB:
