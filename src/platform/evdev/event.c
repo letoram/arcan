@@ -790,12 +790,12 @@ void platform_event_keyrepeat(struct arcan_evctx* ctx, int* period, int* delay)
 				.value = *delay
 			};
 			if (-1 == write(iodev.nodes[i].handle,&ev,sizeof(struct input_event)))
-				arcan_warning("linux/event: keydelay fail (%s)\n", strerror(errno));
+				verbose_print("linux/event: keydelay fail (%s)\n", strerror(errno));
 
 			ev.code = REP_PERIOD;
 			ev.value = *period;
 			if (-1 == write(iodev.nodes[i].handle,&ev,sizeof(struct input_event)))
-				arcan_warning("linux/event: keyrepeat fail (%s)\n", strerror(errno));
+				verbose_print("linux/event: keyrepeat fail (%s)\n", strerror(errno));
 		}
 }
 
