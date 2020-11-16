@@ -292,3 +292,22 @@ function string.dump(msg)
 	end
 end
 end
+
+-- add (slow) string.format workaround for the string.format bug, this is still
+-- not complete as trailing	'nil' will still not be converted and there seem to
+-- be no stable solution to this as we won't get the count of trailing 'nil'
+-- arguments.
+if not string.find(API_ENGINE_BUILD, "luajit51") then
+	local of = string.format
+function string.format(...)
+	local arg = {...}
+	for i=2,#arg do
+		if type(arg[i]) == "boolean" then
+			arg[i] = arg[i] and "true" or "false"
+		elseif arg[i] == nil then
+			arg[i] = "nil"
+		end
+	end
+	return of(unpack(arg))
+end
+end
