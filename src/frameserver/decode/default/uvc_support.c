@@ -29,6 +29,8 @@
 #include <libswscale/swscale.h>
 #include <math.h>
 
+static int video_buffer_count = 1;
+
 /* should also have the option to convert to GPU texture here and pass
  * onwards rather than paying the conversion proce like this */
 static uint8_t clamp_u8(int v, int low, int high)
@@ -131,7 +133,8 @@ static void callback(uvc_frame_t* frame, void* tag)
 
 /* guarantee dimensions */
 	if (cont->w != frame->width || cont->h != frame->height){
-		if (!arcan_shmif_resize(cont, frame->width, frame->height)){
+		if (!arcan_shmif_resize_ext(cont, frame->width, frame->height,
+			(struct shmif_resize_ext){.vbuf_cnt = video_buffer_count})){
 			return;
 		}
 	}
@@ -362,6 +365,11 @@ bool uvc_support_activate(
 	if (arg_lookup(args, "fps", 0, &val) && val)
 		fps = strtoul(val, NULL, 10);
 
+	if (arg_lookup(args, "vbufc", 0, &val)){
+		uint8_t bufc = strtoul(val, NULL, 10);
+		video_buffer_count = bufc > 0 && bufc <= 4 ? bufc : 1;
+	}
+
 	arg_lookup(args, "serial", 0, &serial);
 
 	if (uvc_find_device(uvctx, &dev, vendor_id, product_id, serial) < 0){
@@ -460,5 +468,6 @@ void uvc_append_help(FILE* out)
 	"width    \t px        \t preferred capture width (=0)\n"
 	"height   \t px        \t preferred capture height (=0)\n"
 	"fps      \t nframes   \t preferred capture framerate (=0)\n"
+	"vbufc    \t nbuf      \t preferred number of transfer buffers (=1)\n"
 	);
 }
