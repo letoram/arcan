@@ -175,7 +175,7 @@ typedef VIDEO_PIXEL_TYPE shmif_pixel;
  * size is fixed and will always consume this amount.
  */
 #ifndef PP_SHMPAGE_MAXSZ
-#define PP_SHMPAGE_MAXSZ 48294400
+#define PP_SHMPAGE_MAXSZ 104857600
 #endif
 static const int ARCAN_SHMPAGE_MAX_SZ = PP_SHMPAGE_MAXSZ;
 
