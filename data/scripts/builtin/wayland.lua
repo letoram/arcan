@@ -66,6 +66,9 @@
 --     focus(self):
 --         acknowledge a focus request, raise and change pending visuals
 --
+--     unfocus(self):
+--         mark the window has having lost focus
+--
 --     maximize(self):
 --         acknowledge a maximization request
 --
@@ -77,6 +80,9 @@
 --
 --     destroy(self):
 --         kill window and associated resources
+--
+--  the 'window' table passed as arguments provides the following properties:
+--      mouse_proxy (vid) set if another object should be used to determine ownership
 --
 -- the returned 'wm' table exposes the following methods:
 --
@@ -234,7 +240,7 @@ local function wnd_mouse_btn(wnd, vid, button, active, x, y)
 		return
 	end
 
-	target_input(vid, {
+	target_input(wnd.vid, {
 		kind = "digital",
 		mouse = true,
 		devid = 0,
@@ -460,8 +466,8 @@ local function tl_wnd_resized(wnd, source, status)
 end
 
 local function self_own(self, vid)
--- if we are matching or a grab exists and we hold the grab
-	return self.vid == vid
+-- if we are matching or a grab exists and we hold the grab or there is some proxy
+	return self.vid == vid or (self.mouse_proxy and vid == self.mouse_proxy)
 end
 
 local function x11_wnd_realize(wnd)
@@ -1052,6 +1058,8 @@ local function on_x11(wnd, source, status)
 -- most involved here as the meta-WM forwards a lot of information
 	if status.kind == "create" then
 		local x11 = x11_vtable()
+		x11.wm = wnd
+
 		local w, h, x, y = wnd.configure(x11, "x11")
 
 		local vid, aid, cookie =
@@ -1061,10 +1069,11 @@ local function on_x11(wnd, source, status)
 		end)
 		rendertarget_attach(wnd.disptbl.rt, vid, RENDERTARGET_DETACH)
 
-		wnd.x = x
-		wnd.y = y
-		wnd.known_surfaces[vid] = true
+		x11.x = x
+		x11.y = y
 		move_image(vid, x, y)
+
+		wnd.known_surfaces[vid] = true
 
 	-- send our preset position, might not matter if it is override-redirect
 		local msg = string.format("kind=move:x=%d:y=%d", x, y)
@@ -1072,7 +1081,6 @@ local function on_x11(wnd, source, status)
 		target_input(vid, msg)
 		show_image(vid)
 
-		x11.wm = wnd
 		x11.vid = vid
 		x11.cookie = cookie
 		image_tracetag(vid, "x11_unknown_type")
@@ -1196,6 +1204,8 @@ local function set_bridge(ctx, source)
 	ctx.bridge = source
 	ctx.anchor = null_surface(w, h)
 	image_tracetag(ctx.anchor, "wl_bridge_anchor")
+	image_mask_set(ctx.anchor, MASK_UNPICKABLE)
+
 	show_image(ctx.anchor)
 	ctx.mh = {
 		name = "wl_bg",
