@@ -75,6 +75,7 @@
  * egl-dri BUILD_PRESET=everything added, builds arcan, arcan_sdl, arcan_headless
  * egl-dri HYBRID_SDL, HYBRID_HEADLESS options added
  * egl-dri nvidia/EGLstreams initialisation/scanout changes for > 385
+ * sdl2 - add basic window drag resize support
  * the simple 'console' window manager is now included in the default install
  * hook scripts are moved from builtin/scripts/hook to builtin/hooks
  * basic work- docker images in github.com/letoram/arcan-docker

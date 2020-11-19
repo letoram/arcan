@@ -4538,23 +4538,30 @@ static void push_displaymodes(lua_State* ctx, platform_display_id id)
 
 static void display_reset(lua_State* ctx, arcan_event* ev)
 {
-/* special handling for LWA receiving DISPLAYHINT to resize or indicate that
- * the default font has changed. For DISPLAYHINT we default to run the builtin
- * autores or a possible override.
+/* Special handling for LWA and for higher level platforms where there is an
+ * outer window managing scheme that needs to resize. Since this is an exception
+ * rather than the designed norm, this is something of an ugly afterthought.
  *
- * The reason for this piece of ugly is that by default - there is not really a
- * need for a simple client to care / react and the engine can silently resize
- * world. In those cases VRES_AUTORES etc. point to resize_video_canvas, but
- * there are edge cases where that behavior is not needed. More clients may
- * need to change the layouting though, and that is why we send the more vague
- * 'display changed' as well. */
-#ifdef ARCAN_LWA
+ * Have a 'default' implementation that simply tells the platform that we have
+ * reset to a different window size, which should cascade. Allow it to be
+ * overridden with a magic global.
+ *
+ * Furthermore send the 'try and reset display layout state' that is slightly
+ * more useful in certain contexts (e.g. VT switch) via the normal applname_
+ * path.
+ */
 	if (ev->vid.source == -1){
 		lua_getglobal(ctx, "VRES_AUTORES");
-		if (!lua_isfunction(ctx, -1)){
+		if (!lua_isfunction(ctx, -1) && ev->vid.width && ev->vid.height){
 			lua_pop(ctx, 1);
-			platform_video_specify_mode(ev->vid.displayid, (struct monitor_mode){
-			.width = ev->vid.width, .height = ev->vid.height});
+			struct monitor_mode mode = {
+				.width = ev->vid.width,
+				.height = ev->vid.height
+			};
+			if (platform_video_specify_mode(ev->vid.displayid, mode)){
+				arcan_lua_setglobalint(ctx, "VRESW", mode.width);
+				arcan_lua_setglobalint(ctx, "VRESH", mode.height);
+			}
 		}
 		else{
 			lua_pushnumber(ctx, ev->vid.width);
@@ -4562,9 +4569,11 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 			lua_pushnumber(ctx, ev->vid.vppcm);
 			lua_pushnumber(ctx, ev->vid.flags);
 			lua_pushnumber(ctx, ev->vid.displayid);
-			alua_call(ctx, 5, 0, LINE_TAG":(lwa) VRES_AUTORES");
+			alua_call(ctx, 5, 0, LINE_TAG":VRES_AUTORES");
 		}
 	}
+/* Same thing applies to fonts, but this is only really arcan_lwa */
+#ifdef ARCAN_LWA
 	else if (ev->vid.source == -2){
 		lua_getglobal(ctx, "VRES_AUTOFONT");
 		if (!lua_isfunction(ctx, -1))
@@ -4573,15 +4582,16 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 			lua_pushnumber(ctx, ev->vid.vppcm);
 			lua_pushnumber(ctx, ev->vid.width);
 			lua_pushnumber(ctx, ev->vid.displayid);
-			alua_call(ctx, 3, 0, LINE_TAG":(lwa) VRES_AUTOFONT");
+			alua_call(ctx, 3, 0, LINE_TAG":VRES_AUTOFONT");
 		}
-	};
+	}
 #endif
 
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
 		return;
 
 	lua_pushstring(ctx, "reset");
+
 	alua_call(ctx, 1, 0, LINE_TAG":display_state:reset");
 }
 

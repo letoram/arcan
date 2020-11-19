@@ -10,9 +10,8 @@
  * having to write a wayland client backend.
  *
  * Progress / missing:
- * 2. resize- management
- * 3. dynamic display settings
- * 4. handle mapping (this needs platform specific ifdefs etc.
+ * 1. dynamic display settings
+ * 2. handle mapping (this needs platform specific ifdefs etc.
  *    but principally dma-buf + iostreams + ... could be used)
  */
 #include <stdlib.h>
@@ -107,6 +106,7 @@ static bool rebuild_screen()
 
 	SDL_GL_CreateContext(sdl.screen);
 	glViewport(0, 0, sdl.canvasw, sdl.canvash);
+	glScissor(0, 0, sdl.canvasw, sdl.canvash);
 
 	return true;
 }
@@ -259,10 +259,27 @@ bool platform_video_get_display_gamma(platform_display_id did,
 	return false;
 }
 
-bool platform_video_specify_mode(platform_display_id disp,
-	struct monitor_mode mode)
+bool platform_video_specify_mode(
+	platform_display_id disp, struct monitor_mode mode)
 {
-	return false;
+	if (mode.width == sdl.canvasw && mode.height == sdl.canvash)
+		return true;
+
+	if (!mode.width || !mode.height)
+		return false;
+
+/*
+ * this shouldn't be done if we come from a manual resize as that would
+ * create a feedback loop on retina as the WindowSize is in scaled pixels
+	SDL_SetWindowSize(sdl.screen, mode.width, mode.height);
+ */
+
+	sdl.canvasw = mode.width;
+	sdl.canvash = mode.height;
+	sdl.draww = mode.width;
+	sdl.drawh = mode.height;
+
+	return true;
 }
 
 bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
