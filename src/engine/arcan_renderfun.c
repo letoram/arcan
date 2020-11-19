@@ -1682,6 +1682,7 @@ void arcan_renderfun_fontgroup_size(
 
 /* reprobe based on first slot */
 	if (group->font[0].vector){
+		group->w = group->h = 0;
 		TTF_ProbeFont(group->font[0].truetype, &group->w, &group->h);
 	}
 	else {
