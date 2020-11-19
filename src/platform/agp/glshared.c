@@ -958,6 +958,8 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 		h = mode.height;
 		BIND_FRAMEBUFFER(0);
 		env->clear_color(0.05, 0.05, 0.05, 1);
+		env->scissor(0, 0, w, h);
+		env->viewport(0, 0, w, h);
 		verbose_print("no rendertarget");
 	}
 /* Query the rendertarget proxy and determine if it has taken control
@@ -981,13 +983,15 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 		h = tgt->store->h;
 		env->clear_color(tgt->clearcol[0],
 			tgt->clearcol[1], tgt->clearcol[2], tgt->clearcol[3]);
+
+		ssize_t* vp = tgt->viewport;
+		env->scissor(vp[0], vp[1], vp[2], vp[3]);
+		env->viewport(vp[0], vp[1], vp[2], vp[3]);
+
 		verbose_print("clear(%f, %f, %f, %f)",
 			tgt->clearcol[0], tgt->clearcol[1], tgt->clearcol[2], tgt->clearcol[3]);
 	}
 
-	ssize_t* vp = tgt->viewport;
-	env->scissor(vp[0], vp[1], vp[2], vp[3]);
-	env->viewport(vp[0], vp[1], vp[2], vp[3]);
 	verbose_print(
 		"rendertarget (%"PRIxPTR") %zu*%zu activated", (uintptr_t) tgt, w, h);
 #endif
