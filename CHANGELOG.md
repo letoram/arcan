@@ -103,6 +103,7 @@
  * (lwa) add arcantarget_hint for sending labelhints
  * allow link_image to match scale with parent (for W/H)
  * add relink_image for retaining world-space coordinates at link time
+ * image_resize_storage on rendertargets can now change scissor/viewport
 
 ## Platform/Egl-Dri
  * Change CRTC allocation / management

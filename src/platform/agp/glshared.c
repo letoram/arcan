@@ -102,6 +102,7 @@ struct agp_rendertarget
 	GLuint msaa_color;
 	GLuint msaa_depth;
 
+	ssize_t viewport[4];
 	float clearcol[4];
 
 	enum rendertarget_mode mode;
@@ -779,6 +780,10 @@ struct agp_rendertarget* agp_setup_rendertarget(
 
 	r->store = vstore;
 	r->mode = m;
+	r->viewport[0] = 0;
+	r->viewport[1] = 0;
+	r->viewport[2] = vstore->w;
+	r->viewport[3] = vstore->h;
 	r->clearcol[0] = 0.05;
 	r->clearcol[1] = 0.05;
 	r->clearcol[2] = 0.05;
@@ -980,8 +985,9 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 			tgt->clearcol[0], tgt->clearcol[1], tgt->clearcol[2], tgt->clearcol[3]);
 	}
 
-	env->scissor(0, 0, w, h);
-	env->viewport(0, 0, w, h);
+	ssize_t* vp = tgt->viewport;
+	env->scissor(vp[0], vp[1], vp[2], vp[3]);
+	env->viewport(vp[0], vp[1], vp[2], vp[3]);
 	verbose_print(
 		"rendertarget (%"PRIxPTR") %zu*%zu activated", (uintptr_t) tgt, w, h);
 #endif
@@ -1074,6 +1080,20 @@ void agp_null_vstore(struct agp_vstore* store)
 #endif
 }
 
+void agp_rendertarget_viewport(struct agp_rendertarget* tgt,
+	ssize_t x1, ssize_t y1, ssize_t x2, ssize_t y2)
+{
+	if (!tgt || !tgt->store){
+		arcan_warning("attempted resize on broken rendertarget\n");
+		return;
+	}
+
+	tgt->viewport[0] = x1;
+	tgt->viewport[1] = y1;
+	tgt->viewport[2] = x2;
+	tgt->viewport[3] = y2;
+}
+
 void agp_resize_rendertarget(
 	struct agp_rendertarget* tgt, size_t neww, size_t newh)
 {
@@ -1102,6 +1122,10 @@ void agp_resize_rendertarget(
  */
 	tgt->store->w = neww;
 	tgt->store->h = newh;
+	tgt->viewport[0] = 0;
+	tgt->viewport[1] = 0;
+	tgt->viewport[2] = neww;
+	tgt->viewport[3] = newh;
 	tgt->store_ind = 0;
 	tgt->rz_ack = true;
 

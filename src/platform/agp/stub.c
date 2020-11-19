@@ -1,5 +1,3 @@
-/*
- * Copyright 2014-2016, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -114,6 +112,11 @@ void agp_drop_rendertarget(struct agp_rendertarget* tgt)
 }
 
 void agp_activate_rendertarget(struct agp_rendertarget* tgt)
+{
+}
+
+void agp_rendertarget_viewport(struct agp_rendertarget* tgt,
+	ssize_t x1, ssize_t y1, ssize_t x2, ssize_t y2)
 {
 }
 
