@@ -367,6 +367,15 @@ void agp_resize_rendertarget(
 	struct agp_rendertarget*, size_t neww, size_t newh);
 
 /*
+ * Change the coordinate range used for visible viewport and scissor region.
+ * This is reset on a call to [agp_resize_rendertarget] to [0,0,w,h]. Also
+ * note that the rendertarget >projection< is retained and might need to be
+ * adjusted accordingly.
+ */
+void agp_rendertarget_viewport(struct agp_rendertarget*,
+	ssize_t x1, ssize_t y1, ssize_t x2, ssize_t y2);
+
+/*
  * Replace the active vstore that is used as destination for the rendertarget
  * with another one. This will not alter reference counting or deallocate the
  * existing store. The new store need to match the old one in type and size.
