@@ -83,12 +83,12 @@ set_property(SOURCE engine/arcan_lua.c
 
 # not 'required' but enabled support for additional LED controllers,
 # and in the near future, additional device support
-FIND_PACKAGE(libusb-1.0)
+pkg_check_modules(LIBUSB_1 libusb-1.0)
 if(LIBUSB_1_FOUND)
 	amsg("${CL_YEL}linux-usb\t${CL_GRN}detected${CL_RST}")
 	set(ARCAN_NOLWA_DEFINITIONS ${ARCAN_DEFINITIONS} USB_SUPPORT)
-	LIST(APPEND ARCAN_LIBRARIES ${LIBUSB_1_LIBRARIES})
-	LIST(APPEND INCLUDE_DIRS ${LIBUSB_1_INCLUDE_DIR})
+	LIST(APPEND ARCAN_LIBRARIES ${LIBUSB_1_LINK_LIBRARIES})
+	LIST(APPEND INCLUDE_DIRS ${LIBUSB_1_INCLUDE_DIRS})
 	LIST(APPEND PLATFORM_SOURCES
 		${EXTERNAL_SRC_DIR}/hidapi/hid.c
 		${EXTERNAL_SRC_DIR}/hidapi/hidapi.h

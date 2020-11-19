@@ -22,7 +22,7 @@ if(VIDEO_PLATFORM STREQUAL "egl-gles")
 		set(INPUT_PLATFORM "evdev")
 	endif()
 
-	find_package(EGL REQUIRED QUIET)
+	find_package(OpenGL COMPONENTS EGL REQUIRED QUIET)
 	add_definitions(-DSHMIF_TUI_DISABLE_GPU)
 
 	if (GLES2_BCM_IMPLEMENTATION)
@@ -34,12 +34,12 @@ if(VIDEO_PLATFORM STREQUAL "egl-gles")
 
 	list(APPEND INCLUDE_DIRS
 		${GLES2_INCLUDE_DIRS}
-		${EGL_INCLUDE_DIRS}
+		${OPENGL_EGL_INCLUDE_DIRS}
 	)
 
 	set(LWA_PLATFORM_STR "stub")
 	set(VIDEO_PLATFORM_SOURCES ${PLATFORM_ROOT}/egl-gles/video.c)
-	list(APPEND VIDEO_LIBRARIES ${EGL_LIBRARIES})
+	list(APPEND VIDEO_LIBRARIES ${OPENGL_egl_LIBRARY})
 
 #
 # will hopefully become the default on BSDs/linux
@@ -49,12 +49,12 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 		set(INPUT_PLATFORM "evdev")
 	endif()
 
-	find_package(EGL REQUIRED QUIET)
-	find_package(GBMKMS REQUIRED QUIET)
+	find_package(OpenGL COMPONENTS EGL QUIET)
+	pkg_check_modules(GBMKMS REQUIRED QUIET libdrm gbm)
 
 	list(APPEND VIDEO_LIBRARIES
-		${EGL_LIBRARIES}
-		${GBMKMS_LIBRARIES}
+		${OPENGL_egl_LIBRARY}
+		${GBMKMS_LINK_LIBRARIES}
 	)
 	list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
 	set(VIDEO_PLATFORM_SOURCES
@@ -64,7 +64,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 				${PLATFORM_ROOT}/egl-dri/libbacklight.c)
 	elseif (${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
 		list(APPEND VIDEO_PLATFORM_SOURCES
-				${PLATFORM_ROOT}/openbsd/libbacklight.c)
+				${PLATFORM_ROOT}/wscons/libbacklight.c)
 	else()
 		list(APPEND VIDEO_PLATFORM_SOURCES
 				${PLATFORM_ROOT}/stub/libbacklight.c)
@@ -92,12 +92,12 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 		set(VIDEO_LIBRARIES ${VIDEO_LIBRARIES} ${OPENGL_gl_LIBRARY})
 		set(LWA_PLATFORM_STR "darwin")
 	elseif( ${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-		find_package(EGL REQUIRED QUIET)
-		find_package(GBMKMS REQUIRED QUIET)
+		find_package(OpenGL COMPONENTS EGL REQUIRED QUIET)
+		pkg_check_modules(GBMKMS REQUIRED QUIET libdrm gbm)
 
 		list(APPEND VIDEO_LIBRARIES
-			${EGL_LIBRARIES}
-			${GBMKMS_LIBRARIES}
+			${OPENGL_egl_LIBRARY}
+			${GBMKMS_LINK_LIBRARIES}
 		)
 		list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
 		set(LWA_PLATFORM_STR "egl-dri-rnode")
@@ -123,11 +123,11 @@ elseif(VIDEO_PLATFORM STREQUAL "headless")
 		set(INPUT_PLATFORM "headless")
 	endif()
 	set(VIDEO_PLATFORM_SOURCES ${PLATFORM_ROOT}/headless/video.c)
-	find_package(EGL REQUIRED QUIET)
-	find_package(GBMKMS REQUIRED QUIET)
+	find_package(OpenGL COMPONENTS EGL QUIET)
+	pkg_check_modules(GBMKMS REQUIRED QUIET libdrm gbm)
 	list(APPEND VIDEO_LIBRARIES
-		${EGL_LIBRARIES}
-		${GBMKMS_LIBRARIES}
+		${OPENGL_egl_LIBRARY}
+		${GBMKMS_LINK_LIBRARIES}
 	)
 	list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
 else()
@@ -148,12 +148,12 @@ if (NOT ENABLE_LWA)
 endif()
 
 if (INPUT_PLATFORM STREQUAL "evdev")
-	find_package(XKB QUIET)
+	pkg_check_modules(XKB QUIET xkbcommon)
 	if (XKB_FOUND)
 		amsg("${CL_YEL}evdev    \t${CL_GRN}libxkbcommon${CL_RST}")
 		set_property(SOURCE ${PLATFORM_ROOT}/evdev/event.c APPEND PROPERTY
 			COMPILE_DEFINITIONS HAVE_XKBCOMMON)
-		list(APPEND VIDEO_LIBRARIES ${XKB_LIBRARIES})
+		list(APPEND VIDEO_LIBRARIES ${XKB_LINK_LIBRARIES})
 		list(APPEND INCLUDE_DIRS ${XKB_INCLUDE_DIRS})
 	else()
 		amsg("${CL_YEL}evdev    \t${CL_RED}no libxkbcommon${CL_RST}")
