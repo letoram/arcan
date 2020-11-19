@@ -20,6 +20,7 @@
 
 #include "sdl2_12_lut.h"
 
+SDL_Window* sdl2_platform_activewnd();
 static const char* envopts[] =
 {
 	NULL
@@ -741,28 +742,21 @@ SDL_SetModState(KMOD_NONE);
 /* FIXME: need to stop rendering or iOS will be cranky - and we can't really
  * do it here, we need an explicit callback trigger via the SDL_AddEventWatch */
 		break;
-
-		case SDL_SYSWMEVENT:
-			break;
-/*
- * currently ignoring these events (and a resizeable window frame isn't yet
- * supported, although the video- code is capable of handling a rebuild/reinit,
- * the lua- scripts themselves all depend quite a bit on VRESH/VRESW, one
- * option would be to just calculate a scale factor for the newvresh, newvresw
- * and apply that as a translation step when passing the lua<->core border.
- *
- * Recently, changes in the egl-dri and arcan_lwa platforms makes this possible
- * so maybe it is time to update a little here ;-)
-	case SDL_VIDEORESIZE:
-	break;
-
-	case SDL_VIDEOEXPOSE:
-	break;
-
-	case SDL_ACTIVEEVENT:
-	break;
-
-	case SDL_ */
+		case SDL_WINDOWEVENT:
+			if (event.window.event == SDL_WINDOWEVENT_RESIZED ||
+				event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED){
+				int w, h;
+				SDL_GL_GetDrawableSize(sdl2_platform_activewnd(), &w, &h);
+				arcan_event_enqueue(ctx, &(arcan_event){
+					.category = EVENT_VIDEO,
+					.vid.kind = EVENT_VIDEO_DISPLAY_RESET,
+					.vid.source = -1,
+					.vid.displayid = 0,
+					.vid.width = w,
+					.vid.height = h
+				});
+			}
+		break;
 	}
 	}
 }
@@ -969,7 +963,6 @@ void platform_event_reset(arcan_evctx* ctx)
 	platform_event_deinit(ctx);
 }
 
-SDL_Window* sdl2_platform_activewnd();
 void platform_device_lock(int devind, bool state)
 {
 	SDL_SetWindowGrab(sdl2_platform_activewnd(), state);
