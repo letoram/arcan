@@ -28,11 +28,8 @@ set_package_properties(WaylandProtocols PROPERTIES
 
 unset(WAYLANDPROTOCOLS_PATH)
 
-find_package(PkgConfig)
-if (PKG_CONFIG_FOUND)
-   execute_process(COMMAND ${PKG_CONFIG_EXECUTABLE} --variable=pkgdatadir wayland-protocols
-       OUTPUT_VARIABLE WAYLANDPROTOCOLS_PATH OUTPUT_STRIP_TRAILING_WHITESPACE)
-endif ()
+execute_process(COMMAND ${PKG_CONFIG_EXECUTABLE} --variable=pkgdatadir wayland-protocols
+	OUTPUT_VARIABLE WAYLANDPROTOCOLS_PATH OUTPUT_STRIP_TRAILING_WHITESPACE)
 
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(WaylandProtocols DEFAULT_MSG WAYLANDPROTOCOLS_PATH)

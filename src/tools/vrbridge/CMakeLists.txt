@@ -46,12 +46,12 @@ SET(LIBRARIES
 )
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-	find_package(libusb-1.0 REQUIRED)
+	pkg_check_modules(LIBUSB_1 REQUIRED libusb-1.0)
 	set(PLATFORM_SOURCES
 		${ARCAN_ROOT_DIR}/external/hidapi/hid.c
 		${ARCAN_ROOT_DIR}/src/platform/posix/time.c
 	)
-	set(LIBRARIES ${LIBRARIES} ${LIBUSB_1_LIBRARIES})
+	set(LIBRARIES ${LIBRARIES} ${LIBUSB_1_LINK_LIBRARIES})
 	include_directories(${LIBUSB_1_INCLUDE_DIRS})
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -63,10 +63,10 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	)
 	set(LIBRARIES ${LIBRARIES} ${IOKIT} ${COREFOUNDATION})
 
-elseif (${CMAKE_SYSTEM_NAME} MATCHES "BSD" OR ${CMAKE_SYSTEM_NAME}} MATCHES "DragonFly")
-	find_package(libusb-1.0 REQUIRED)
+elseif (${CMAKE_SYSTEM_NAME} MATCHES "BSD|DragonFly")
+	pkg_check_modules(LIBUSB_1 REQUIRED libusb-1.0)
 	add_definitions(-DLIBUSB_BSD)
-	set(LIBRARIES ${LIBRARIES} iconv ${LIBUSB_1_LIBRARIES})
+	set(LIBRARIES ${LIBRARIES} iconv ${LIBUSB_1_LINK_LIBRARIES})
 	include_directories(${LIBUSB_1_INCLUDE_DIRS})
 	set(PLATFORM_SOURCES
 		${ARCAN_ROOT_DIR}/src/platform/posix/time.c
@@ -91,10 +91,10 @@ set(SOURCES
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 if (DEFINED NO_BUILTIN_OPENHMD)
-	find_package(OpenHMD REQUIRED)
+	pkg_check_module(OPENHMD REQUIRED openhmd)
 	if (OPENHMD_FOUND)
 		include_directories(${OPENHMD_INCLUDE_DIRS})
-		list(APPEND LIBRARIES ${OPENHMD_LIBRARIES})
+		list(APPEND LIBRARIES ${OPENHMD_LINK_LIBRARIES})
 		list(APPEND SOURCES openhmd.c)
 		add_definitions(-DOPENHMD)
 	endif()

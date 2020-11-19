@@ -1,4 +1,4 @@
-find_package(FFMPEG QUIET)
+pkg_check_modules(FFMPEG QUIET libavcodec libavdevice libavfilter libavformat libavutil libswresample libswscale)
 
 set(LIBRARIES
 	pthread
@@ -23,7 +23,7 @@ if (FFMPEG_FOUND)
 	add_definitions(-DWANT_H264_DEC)
 	add_definitions(-DWANT_H264_ENC)
 
-	list(APPEND LIBRARIES ${FFMPEG_LIBRARIES})
+	list(APPEND LIBRARIES ${FFMPEG_LINK_LIBRARIES})
 	include_directories(${FFMPEG_INCLUDE_DIRS})
 else()
 	amsg("(a12) ffmpeg support NOT found, video enc/dec DISABLED")
