@@ -131,6 +131,7 @@ else()
 		if (NOT VIDEO_PLATFORM)
 			set(VIDEO_PLATFORM "sdl2")
 		endif()
+		set(CMAKE_INSTALL_LIBDIR /usr/local/share/lib)
 	else()
 		set(VPLATFORM_STR "egl-dri, sdl, sdl2, egl-gles")
 		if (NOT VIDEO_PLATFORM)
@@ -566,7 +567,12 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 #
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Darwin)
-else()
+   # OSX with CMAKE_OSX_SYSROOT set requires additional flags
+   set (COMPILER
+     "CC=${CMAKE_C_COMPILER} ${CMAKE_C_SYSROOT_FLAG} ${CMAKE_OSX_SYSROOT}"
+     "CXX=${CMAKE_CXX_COMPILER} ${CMAKE_CXX_SYSROOT_FLAG} ${CMAKE_OSX_SYSROOT}"
+     )
+ else()
 	message(FATAL_ERROR "${CL_RED}Unsupported OS(${CMAKE_SYSTEM_NAME}) detected, abandon ship!${CL_RST}")
 endif()
 
@@ -695,7 +701,7 @@ else()
 			APPEND PROPERTY COMPILE_DEFINITIONS
 			ARCAN_HYBRID_SDL=1
 		)
-	
+
 		amsg("-- Appending sdl platform build--")
 		set(VIDEO_PLATFORM "sdl2")
 		set(INPUT_PLATFORM "sdl2")
@@ -710,7 +716,7 @@ else()
 			list(REMOVE_AT ARCAN_PLATFORM ${_index})
 			list(APPEND ARCAN_PLATFORM ${PLATFORM_ROOT}/posix/open.c)
 		endif()
-	
+
 		include(${PLATFORM_ROOT}/cmake/CMakeLists.Video)
 
 		add_executable(arcan_sdl
@@ -742,14 +748,14 @@ else()
 		set(VIDEO_PLATFORM headless)
 		set(ARCAN_DEFINITIONS "")
 		include(${PLATFORM_ROOT}/cmake/CMakeLists.Video)
-	
+
 	# HACK: Force- remove the psep-open from the platform and switch to the open
 		list(FIND ARCAN_PLATFORM "${PLATFORM_ROOT}/posix/psep_open.c" _index)
 		if (${_index} GREATER -1)
 			list(REMOVE_AT ARCAN_PLATFORM ${_index})
 			list(APPEND ARCAN_PLATFORM ${PLATFORM_ROOT}/posix/open.c)
 		endif()
-	
+
 		list(APPEND BIN_INSTALL arcan_headless)
 		add_executable(arcan_headless
 			${SOURCES}
