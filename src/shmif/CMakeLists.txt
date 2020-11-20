@@ -184,9 +184,7 @@ set(TUI_INCLUDE_DIRS
 	${ASD}/shmif
 )
 
-if (SHMIF_TUI_ACCEL)
-	set(TUI_LIBRARIES arcan_shmif)
-endif()
+set(TUI_LIBRARIES arcan_shmif)
 
 # STATIC_FREETYPE is inherited from the outer scope, means we have our own build
 # of freetype that we should link to statically - this should be dropped when the
