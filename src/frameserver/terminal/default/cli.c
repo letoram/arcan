@@ -375,7 +375,7 @@ static void rebuild_prompt(struct tui_context* T, struct cli_state* S)
 	}
 
 /* placeholder prompt, plugin or expansion format goes here */
-	struct tui_screen_attr attr = arcan_tui_defcattr(T, TUI_COL_SECONDARY);
+	struct tui_screen_attr attr = arcan_tui_defcattr(T, TUI_COL_LABEL);
 	if (!S->prompt){
 		S->prompt = malloc(sizeof(struct cli_state) * 256);
 		if (!S->prompt)
