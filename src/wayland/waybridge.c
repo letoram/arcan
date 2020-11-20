@@ -1668,8 +1668,13 @@ int main(int argc, char* argv[])
 				setenv("XDG_RUNTIME_DIR", wayland_runtime_dir, 1);
 
 			int rc = fork();
+
+/* remove arcan connpath so if any client supports both, make sure it goes
+ * through wayland rather than try to switch to arcan (testing arcan_sdl is
+ * such a case) */
 			if (rc == 0){
 				setpgid(0,0);
+				unsetenv("ARCAN_CONNPATH");
 				execvp(argv[arg_i], &argv[arg_i]);
 				fprintf(stderr, "couldn't exec %s: %s\n", argv[arg_i], strerror(errno));
 				exit(EXIT_FAILURE);
