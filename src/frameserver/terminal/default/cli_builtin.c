@@ -120,6 +120,9 @@ static struct ext_cmd* cmd_mode(
 	else if (strcmp(argv[1], "arcan") == 0){
 		state->mode = LAUNCH_SHMIF;
 	}
+	else if (strcmp(argv[1], "vt100") == 0){
+		state->mode = LAUNCH_VT100;
+	}
 
 	return NULL;
 }
