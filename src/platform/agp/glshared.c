@@ -938,15 +938,19 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 	verbose_print("set rendertarget: %"PRIxPTR, (uintptr_t)(void*)tgt);
 	size_t w, h;
 	struct agp_fenv* env = agp_env();
-	if (!tgt || !(tgt->mode & RENDERTARGET_RETAIN_ALPHA)){
+	if (!tgt){
+		agp_blendstate(BLEND_NONE);
+	}
+	else if (!(tgt->mode & RENDERTARGET_RETAIN_ALPHA)){
+		agp_blendstate(BLEND_NORMAL);
 		env->blend_src_alpha = GL_ONE;
 		env->blend_dst_alpha = GL_ONE;
 	}
 	else {
+		agp_blendstate(BLEND_NORMAL);
 		env->blend_src_alpha = GL_SRC_ALPHA;
 		env->blend_dst_alpha = GL_ONE_MINUS_SRC_ALPHA;
 	}
-	agp_blendstate(BLEND_NORMAL);
 
 #ifdef HEADLESS_NOARCAN
 	BIND_FRAMEBUFFER(tgt?tgt->fbo:0);
