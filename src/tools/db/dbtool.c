@@ -770,6 +770,14 @@ int main(int argc, char* argv[])
 	else
 		dbfile = platform_dbstore_path();
 
+/* early out on --help or -h */
+	for (size_t i = 1; i < argc; i++){
+		if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0){
+			usage();
+			return EXIT_SUCCESS;
+		}
+	}
+
 	struct arcan_dbh* dbhandle = arcan_db_open(dbfile, "arcan");
 	if (!dbhandle){
 		arcan_warning("database (%s) could not be opened/created.\n", dbfile);
