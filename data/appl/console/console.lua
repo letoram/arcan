@@ -225,8 +225,6 @@ function client_event_handler(source, status)
 -- if we lost the current active workspace client, switch to a better choice
 		if index then
 			delete_workspace(index)
-		else
-			delete_image("source")
 		end
 
 -- this says that the 'storage' resolution has changed and might no longer be
