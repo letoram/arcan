@@ -116,7 +116,7 @@ static void zdmattr_add(struct wl_client* cl,
 			.fd = fd,
 			.gbm = {
 				.offset = ofs,
-				.pitch = stride,
+				.stride = stride,
 				.mod_hi = mod_hi,
 				.mod_lo = mod_lo,
 				.format = buf->fmt,

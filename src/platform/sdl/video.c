@@ -78,6 +78,12 @@ void platform_video_reset(int id, int swap)
 {
 }
 
+bool platform_video_map_buffer(
+	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n)
+{
+	return false;
+}
+
 void* platform_video_gfxsym(const char* sym)
 {
 	return SDL_GL_GetProcAddress(sym);

@@ -549,6 +549,15 @@ size_t platform_video_decay()
 	return 0;
 }
 
+/*
+ * this should be solvable with the same code used by egl-dri
+ */
+bool platform_video_map_buffer(
+	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n)
+{
+	return false;
+}
+
 const char* platform_video_capstr()
 {
 	return "Video Platform (HEADLESS)";

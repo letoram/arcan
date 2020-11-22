@@ -437,11 +437,11 @@ bool shmifsrv_process_event(struct shmifsrv_client* cl, struct arcan_event* ev)
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_BUFFER_FAIL
 			}, -1);
-			if (cl->con->vstream.handle > 0){
-				close(cl->con->vstream.handle);
-				cl->con->vstream.handle = -1;
-			}
-			cl->con->vstream.handle = arcan_fetchhandle(cl->con->dpipe, false);
+
+	/* just fetch and wipe */
+			int handle = arcan_fetchhandle(cl->con->dpipe, false);
+			close(handle);
+
 			return true;
 		break;
 /* need to track the type in order to be able to apply compression */

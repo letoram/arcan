@@ -329,7 +329,17 @@ struct stream_meta agp_stream_prepare(struct agp_vstore* s,
 
 /* see notes in gl21.c */
 	case STREAM_HANDLE:
-		mout.state = platform_video_map_handle(s, meta.handle);
+		if (!s->vinf.text.glid){
+			env->gen_textures(1, &s->vinf.text.glid);
+			env->active_texture(GL_TEXTURE0);
+			env->bind_texture(GL_TEXTURE_2D, s->vinf.text.glid);
+			env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		}
+		mout.state = platform_video_map_buffer(s, meta.planes, meta.used);
+
 	break;
 	}
 

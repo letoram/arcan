@@ -233,6 +233,59 @@ static inline int queue_used(arcan_evctx* dq)
 	return rv;
 }
 
+static bool append_bufferstream(struct arcan_frameserver* tgt, arcan_extevent* ev)
+{
+/* this assumes a certain ordering around fetching the handle and it being
+ * available on the descriptor, there are no obvious hard guarantees on this
+ * from the kernel, though the client libs do send descriptor before adding the
+ * event and compiler can't safely re-order around it */
+	int fd = arcan_fetchhandle(tgt->dpipe, false);
+	if (-1 == fd){
+		arcan_warning("fetchhandle-bstream mismatch\n");
+		goto fail;
+	}
+
+/* if the client lies about the plane count - we arrive here: */
+	if (tgt->vstream.incoming_used == 4){
+		goto fail;
+	}
+
+	size_t i = tgt->vstream.incoming_used;
+	tgt->vstream.incoming[i].fd = fd;
+	tgt->vstream.incoming[i].gbm.stride = ev->bstream.stride;
+	tgt->vstream.incoming[i].gbm.offset = ev->bstream.offset;
+	tgt->vstream.incoming[i].gbm.mod_hi = ev->bstream.mod_hi;
+	tgt->vstream.incoming[i].gbm.mod_lo = ev->bstream.mod_lo;
+	tgt->vstream.incoming[i].gbm.format = ev->bstream.format;
+	tgt->vstream.incoming[i].w = ev->bstream.width;
+	tgt->vstream.incoming[i].h = ev->bstream.height;
+	tgt->vstream.incoming_used++;
+
+/* flush incoming to pending, but if there is already something pending, take
+ * its place so that a newer frame gets precedence (mailbox mode) */
+	if (!ev->bstream.left){
+		arcan_frameserver_close_bufferqueues(tgt, false, true);
+		size_t buf_sz = sizeof(struct agp_buffer_plane) * COUNT_OF(tgt->vstream.pending);
+		memcpy(tgt->vstream.pending, tgt->vstream.incoming, buf_sz);
+		tgt->vstream.pending_used = tgt->vstream.incoming_used;
+		tgt->vstream.incoming_used = 0;
+		memset(&tgt->vstream.incoming, '\0', buf_sz);
+		return true;
+	}
+
+	return false;
+
+fail:
+	arcan_frameserver_close_bufferqueues(tgt, true, true);
+	arcan_event_enqueue(&tgt->outqueue, &(struct arcan_event){
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_BUFFER_FAIL
+	});
+	tgt->vstream.dead = true;
+	return true;
+}
+
+
 void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 	enum ARCAN_EVENT_CATEGORY allowed, float sat, struct arcan_frameserver* tgt)
 {
@@ -289,15 +342,9 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 				break;
 
 				case EVENT_EXTERNAL_BUFFERSTREAM:
-/* this assumes that we are in non-blocking state and that a single
- * CMSG on a socket is sufficient for a non-blocking recvmsg */
-					if (tgt->vstream.handle)
-						close(tgt->vstream.handle);
-
-					tgt->vstream.handle = arcan_fetchhandle(tgt->dpipe, false);
-					tgt->vstream.stride = inev.ext.bstream.pitch;
-					tgt->vstream.format = inev.ext.bstream.format;
-					wake = true;
+/* this assumes that we are in non-blocking state and that a single CMSG on a
+ * socket is sufficient for a non-blocking recvmsg */
+					wake = append_bufferstream(tgt, &inev.ext);
 					continue;
 				break;
 

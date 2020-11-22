@@ -97,8 +97,15 @@ void* platform_video_gfxsym(const char* sym);
 
 /*
  * take the received handle and associate it with the specified backing store.
+ * [DEPRECATED]
  */
 bool platform_video_map_handle(struct agp_vstore*, int64_t inh);
+
+/*
+ * take a set of agp_buffer_planes and bind to the specified vstore.
+ */
+bool platform_video_map_buffer(
+	struct agp_vstore*, struct agp_buffer_plane* planes, size_t n);
 
 /*
  * Reset and rebuild the graphics context(s) associated with a specific card

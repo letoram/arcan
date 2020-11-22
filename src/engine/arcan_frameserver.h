@@ -202,13 +202,22 @@ struct arcan_frameserver {
 /* per segment identification cookie */
 	uint32_t cookie;
 
-/* state tracking for accelerated buffer sharing, populated by handle
- * events that accompany signalling if enabled */
+/* state tracking for accelerated buffer sharing, populated by handle events
+ * that accompany signalling if enabled - buffering is done inside of
+ * arcan_event.c */
 	struct {
 		bool dead;
-		int handle;
-		size_t stride;
-		int format;
+
+/* when there is a complete buffer, it is moved into pending - this is
+ * flushed as part of the normal push_buffer in frameserver.c */
+		struct agp_buffer_plane pending[4];
+		size_t pending_used;
+
+/* this accumulates as we get BUFFERSTREAM events */
+		struct agp_buffer_plane incoming[4];
+		size_t incoming_used;
+
+		size_t skip;
 	} vstream;
 
 /* temporary buffer for aligning queue/dequeue events in audio, can/should
@@ -316,6 +325,13 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver*, arcan_event*, int fd);
  * returns a failure if the event queue in the child is full.
  */
 arcan_errc arcan_frameserver_pushevent(arcan_frameserver*, arcan_event*);
+
+/*
+ * For event and agp to be able to make sure that there are no
+ * dangling descriptors on state transitions.
+ */
+void arcan_frameserver_close_bufferqueues(
+	arcan_frameserver* src, bool incoming, bool pending);
 
 /*
  * Check if the frameserver is still alive, that the shared memory page is

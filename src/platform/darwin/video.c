@@ -112,6 +112,12 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 		post();
 }
 
+bool PLATFORM_SYMBOL(_map_buffer)(
+	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n)
+{
+	return false;
+}
+
 size_t PLATFORM_SYMBOL(_video_decay){
 	return 0;
 }
