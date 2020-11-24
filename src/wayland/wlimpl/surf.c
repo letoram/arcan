@@ -407,7 +407,7 @@ static bool push_dma(struct wl_client* cl,
 	for (size_t i = 0; i < COUNT_OF(dmabuf->planes); i++){
 		if (i == 0){
 			arcan_shmif_signalhandle(acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE,
-				dmabuf->planes[i].fd, dmabuf->planes[i].gbm.pitch, dmabuf->fmt);
+				dmabuf->planes[i].fd, dmabuf->planes[i].gbm.stride, dmabuf->fmt);
 		}
 	}
 

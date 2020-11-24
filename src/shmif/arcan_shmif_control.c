@@ -1686,7 +1686,7 @@ unsigned arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx,
 	struct arcan_event ev = {
 		.category = EVENT_EXTERNAL,
 		.ext.kind = EVENT_EXTERNAL_BUFFERSTREAM,
-		.ext.bstream.pitch = stride,
+		.ext.bstream.stride = stride,
 		.ext.bstream.format = format
 	};
 	arcan_shmif_enqueue(ctx, &ev);

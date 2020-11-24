@@ -130,6 +130,15 @@ void platform_video_restore_external()
 	}
 }
 
+bool platform_video_map_buffer(
+	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n)
+{
+/* this should be possible here, but we need to ensure an EGL context
+ * and get that from SDL or we are stuck with the GLX primitives which
+ * we won't bother with */
+	return false;
+}
+
 bool platform_video_auth(int cardn, unsigned token)
 {
 	return false;

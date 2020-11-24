@@ -69,6 +69,7 @@
 
 #include "egl.h"
 
+static const char* egl_errstr();
 static void* lookup(void* tag, const char* sym, bool req)
 {
 	dlerror();
@@ -512,6 +513,122 @@ static bool sane_direct_vobj(arcan_vobject* vobj)
 	&& (!vobj->program || vobj->program == agp_default_shader(BASIC_2D))
 	&& vobj->vstore->txmapped == TXSTATE_TEX2D
 	&& vobj->vstore->refcount == 1;
+}
+
+static int dma_fd_constants[] = {
+	EGL_DMA_BUF_PLANE0_FD_EXT,
+	EGL_DMA_BUF_PLANE1_FD_EXT,
+	EGL_DMA_BUF_PLANE2_FD_EXT,
+	EGL_DMA_BUF_PLANE3_FD_EXT
+};
+
+static int dma_offset_constants[] = {
+	EGL_DMA_BUF_PLANE0_OFFSET_EXT,
+	EGL_DMA_BUF_PLANE1_OFFSET_EXT,
+	EGL_DMA_BUF_PLANE2_OFFSET_EXT,
+	EGL_DMA_BUF_PLANE3_OFFSET_EXT
+};
+
+static int dma_pitch_constants[] = {
+	EGL_DMA_BUF_PLANE0_PITCH_EXT,
+	EGL_DMA_BUF_PLANE1_PITCH_EXT,
+	EGL_DMA_BUF_PLANE2_PITCH_EXT,
+	EGL_DMA_BUF_PLANE3_PITCH_EXT
+};
+
+static int dma_mod_constants[] = {
+	EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT,
+	EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT,
+	EGL_DMA_BUF_PLANE1_MODIFIER_HI_EXT,
+	EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT,
+	EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT,
+	EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT,
+	EGL_DMA_BUF_PLANE3_MODIFIER_HI_EXT,
+	EGL_DMA_BUF_PLANE3_MODIFIER_LO_EXT,
+};
+
+bool platform_video_map_buffer(
+	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n_planes)
+{
+	if (!nodes[0].eglenv.create_image || !nodes[0].eglenv.image_target_texture2D)
+		return false;
+
+	struct dev_node* device = &nodes[0];
+	EGLDisplay display = device->display;
+	struct egl_env* eglenv = &device->eglenv;
+
+	size_t n_attr = 0;
+	EGLint attrs[64] = {};
+#define ADD_ATTR(X, Y) { attrs[n_attr++] = (X); attrs[n_attr++] = (Y); }
+
+#ifdef _DEBUG
+	uint32_t fourcc = planes[0].gbm.format;
+	uint8_t fcc[4] = {
+		fourcc & 0xff,
+		(fourcc >> 8) & 0xff,
+		(fourcc >> 16) & 0xff,
+		(fourcc >> 24) & 0xff
+	};
+
+	verbose_print("attempt-import: fourcc(%c%c%c%c), w: %"PRIu32", h: %"
+		PRIu32, fcc[0], fcc[1], fcc[2], fcc[3], planes[0].w, planes[0].h);
+#endif
+
+	ADD_ATTR(EGL_WIDTH, planes[0].w);
+	ADD_ATTR(EGL_HEIGHT, planes[0].h);
+	ADD_ATTR(EGL_LINUX_DRM_FOURCC_EXT, planes[0].gbm.format);
+
+	for (size_t i = 0; i < n_planes; i++){
+#ifdef _DEBUG
+		verbose_print("plane(%zu): offset=%"PRIu32" stride=%"PRIu32
+			" mod_lo=%"PRIu32 " mod_hi=%"PRIu32, planes[i].gbm.offset,
+			planes[i].gbm.stride, planes[i].gbm.mod_hi, planes[i].gbm.mod_lo);
+#endif
+		ADD_ATTR(dma_fd_constants[i], planes[i].fd);
+		ADD_ATTR(dma_offset_constants[i], planes[i].gbm.offset);
+		ADD_ATTR(dma_pitch_constants[i], planes[i].gbm.stride);
+		if (planes[i].gbm.mod_hi || planes[i].gbm.mod_lo){
+			ADD_ATTR(dma_mod_constants[i*2+0], planes[i].gbm.mod_hi);
+			ADD_ATTR(dma_mod_constants[i*2+1], planes[i].gbm.mod_lo);
+		}
+	}
+
+	ADD_ATTR(EGL_NONE, EGL_NONE);
+#undef ADD_ATTR
+
+	EGLImage img = eglenv->create_image(
+		display, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, attrs);
+
+	if (!img){
+		debug_print("buffer import failed (%s)", egl_errstr());
+		return false;
+	}
+
+/* eglImage is suposed to dup internally */
+	for (size_t i = 0; i < n_planes; i++){
+		if (-1 != planes[i].fd){
+			close(planes[i].fd);
+			planes[i].fd = -1;
+		}
+	}
+
+/* might have an old eglImage around */
+	if (0 != vs->vinf.text.tag){
+		eglenv->destroy_image(display, (EGLImageKHR) vs->vinf.text.tag);
+	}
+
+	vs->w = planes[0].w;
+	vs->h = planes[0].h;
+	vs->bpp = sizeof(shmif_pixel);
+	vs->txmapped = TXSTATE_TEX2D;
+
+	agp_activate_vstore(vs);
+		eglenv->image_target_texture2D(GL_TEXTURE_2D, img);
+	agp_deactivate_vstore(vs);
+
+	vs->vinf.text.tag = (uintptr_t) img;
+
+	return true;
 }
 
 static bool display_rtgt_proxy(struct agp_rendertarget* tgt, uintptr_t tag)
@@ -3766,7 +3883,6 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * state (useful for displayless like processing).
  */
 	else {
-		verbose_print("nothing to update");
 		float refresh = 60.0;
 		i = 0;
 		while ((d = get_display(i++))){

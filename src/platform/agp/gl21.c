@@ -420,11 +420,27 @@ struct stream_meta agp_stream_prepare(struct agp_vstore* s,
 	break;
 
 	case STREAM_HANDLE:
-/* if platform_video_map_handle fails here, prepare an empty vstore and attempt
- * again, if that succeeds it means that we had to go through a RTT
- * indirection, if that fails we should convey back to the client that
-	we can't accept this kind of transfer */
-	res.state = platform_video_map_handle(s, meta.handle);
+/* bind eglImage to GLID, and we don't have any filtering for external,
+ * also cheat a bit around vstore setup */
+		if (!s->vinf.text.glid){
+			env->gen_textures(1, &s->vinf.text.glid);
+			env->active_texture(GL_TEXTURE0);
+			env->bind_texture(GL_TEXTURE_2D, s->vinf.text.glid);
+			env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		}
+
+/* There is a subtle thing here in that the format might not be immediately
+ * usable, particularly so with multiplanar objects. In those cases we need
+ * a reblit-stage setup, and the vstore structure is not prepared for this
+ * yet (possibly as a src_vstore and a repack shader) */
+		res.state = platform_video_map_buffer(s, meta.planes, meta.used);
+
+/* Even if this fails, keep the glid around as it'll be life-span managed
+ * with the originating source rather and the failure-fallback path will
+ * push us to repopulate */
 	break;
 	}
 

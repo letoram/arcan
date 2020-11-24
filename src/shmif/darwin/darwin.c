@@ -29,6 +29,24 @@ struct arcan_shmifext_setup arcan_shmifext_defaults(
 	};
 }
 
+size_t arcan_shmifext_signal_planes(
+	struct arcan_shmif_cont* c,
+	int mask,
+	size_t n_planes,
+	struct shmifext_buffer_plane* planes
+)
+{
+	return 0;
+}
+
+size_t arcan_shmifext_export_image(
+	struct arcan_shmif_cont* con,
+	uintptr_t display, uintptr_t tex_id,
+	size_t plane_limit, struct shmifext_buffer_plane* planes)
+{
+	return 0;
+}
+
 static void* lookup_fenv(void* tag, const char* sym, bool req)
 {
 	return arcan_shmifext_lookup(NULL, sym);

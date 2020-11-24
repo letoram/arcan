@@ -179,6 +179,25 @@ enum stream_type {
 	STREAM_HANDLE
 };
 
+/* this matches the form defined in arcan_shmif_interop.h,
+ * not necessary to keep in synch as they are packed/unpacked */
+struct agp_buffer_plane {
+	int fd;
+	int fence;
+	size_t w;
+	size_t h;
+
+	union {
+		struct {
+			uint32_t format;
+			uint64_t stride;
+			uint64_t offset;
+			uint32_t mod_hi;
+			uint32_t mod_lo;
+		} gbm;
+	};
+};
+
 struct stream_meta {
 	union{
 		struct {
@@ -186,7 +205,10 @@ struct stream_meta {
 		bool dirty;
 		unsigned x1, y1, w, h, stride;
 		};
-		int64_t handle;
+		struct {
+			struct agp_buffer_plane planes[4];
+			size_t used;
+		};
 	};
 	enum stream_type type;
 	bool state;

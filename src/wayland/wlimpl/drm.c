@@ -367,7 +367,7 @@ static void wayland_drm_commit(struct comp_surf* surf,
 			.h = buf->height,
 			.gbm = {
 				.format = buf->format,
-				.pitch = buf->stride[0],
+				.stride = buf->stride[0],
 				.offset = buf->offset[0]
 			}
 		};

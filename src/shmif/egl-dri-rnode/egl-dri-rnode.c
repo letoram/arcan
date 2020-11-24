@@ -20,6 +20,7 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
+#include <inttypes.h>
 #include <drm.h>
 #include <drm_fourcc.h>
 #include <xf86drm.h>
@@ -70,7 +71,8 @@ struct shmif_ext_hidden_int {
 /* we buffer- queue the cleanup of these images (rtgt is already swapchain) */
 	struct {
 		EGLImage image;
-		int dmabuf;
+		size_t n_planes;
+		struct shmifext_buffer_plane planes[4];
 	} images[3];
 	size_t image_index;
 
@@ -101,6 +103,12 @@ bool platform_video_map_handle(struct agp_vstore* store, int64_t handle)
 	return false;
 }
 
+bool platform_video_map_buffer(
+	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n)
+{
+	return false;
+}
+
 struct agp_fenv* arcan_shmifext_getfenv(struct arcan_shmif_cont* con)
 {
 	if (!con || !con->privext || !con->privext->internal)
@@ -124,8 +132,10 @@ static void free_image_index(
 
 	agp_eglenv.destroy_image(dpy, in->images[i].image);
 	in->images[i].image = NULL;
-	close(in->images[i].dmabuf);
-	in->images[i].dmabuf = -1;
+	for (size_t j = 0; j < in->images[i].n_planes; j++){
+		close(in->images[i].planes[j].fd);
+		in->images[i].planes[j].fd = -1;
+	}
 }
 
 static void gbm_drop(struct arcan_shmif_cont* con)
@@ -232,11 +242,6 @@ bool arcan_shmifext_import_buffer(
 		display = O->display;
 	}
 
-/* only support one for the time being, but the rest of the function is written
- * so that it can import additional planes when vstore- change is through */
-	if (n_planes != 1)
-		return false;
-
 	struct agp_vstore* vs = &I->buf;
 
 	if (I->rtgt){
@@ -255,7 +260,7 @@ bool arcan_shmifext_import_buffer(
 	for (size_t i = 0; i < n_planes; i++){
 		ADD_ATTR(dma_fd_constants[i], planes[i].fd);
 		ADD_ATTR(dma_offset_constants[i], planes[i].gbm.offset);
-		ADD_ATTR(dma_pitch_constants[i], planes[i].gbm.pitch);
+		ADD_ATTR(dma_pitch_constants[i], planes[i].gbm.stride);
 		if (planes[i].gbm.mod_hi || planes[i].gbm.mod_lo){
 			ADD_ATTR(dma_mod_constants[i*2+0], planes[i].gbm.mod_lo);
 			ADD_ATTR(dma_mod_constants[i*2+1], planes[i].gbm.mod_hi);
@@ -808,15 +813,17 @@ bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 	return true;
 }
 
-bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
-   uintptr_t display, uintptr_t tex_id,
-	 int* dhandle, size_t* dstride, int* dfmt)
+size_t arcan_shmifext_export_image(
+	struct arcan_shmif_cont* con,
+	uintptr_t display, uintptr_t tex_id,
+	size_t plane_limit, struct shmifext_buffer_plane* planes)
 {
 	if (!con || !con->addr || !con->privext || !con->privext->internal)
-		return -1;
+		return 0;
 
 	struct shmif_ext_hidden_int* ctx = con->privext->internal;
 
+/* built-in or provided egl-display? */
 	EGLDisplay* dpy = display == 0 ?
 		con->privext->internal->display : (EGLDisplay*) display;
 
@@ -824,6 +831,7 @@ bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
 	size_t next_i = (ctx->image_index + 1) % COUNT_OF(ctx->images);
 	free_image_index(dpy, ctx, next_i);
 
+/* texture/FBO to egl image */
 	EGLImage newimg = agp_eglenv.create_image(
 		dpy,
 		con->privext->internal->context,
@@ -831,31 +839,75 @@ bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
 		(EGLClientBuffer)(tex_id), NULL
 	);
 
+/* legacy - single plane / no-modifier version */
 	if (!newimg)
-		return false;
+		return 0;
 
+/* grab the metadata (number of planes, modifiers, ...) but also cap
+ * against both the caller limit (which might come from up high) and
+ * to a sanity check 'more than 4 planes is suspicious' */
 	int fourcc, nplanes;
-	if (!agp_eglenv.query_image_format(dpy, newimg, &fourcc, &nplanes, NULL)){
+	uint64_t modifiers;
+	if (!agp_eglenv.query_image_format(dpy, newimg,
+		&fourcc, &nplanes, &modifiers) || plane_limit < nplanes || nplanes > 4){
 		agp_eglenv.destroy_image(dpy, newimg);
-		return false;
+		return 0;
 	}
 
-/* currently unsupported */
-	if (nplanes != 1)
-		return false;
-
-	EGLint stride;
-	if (!agp_eglenv.export_dmabuf(dpy,
-		newimg, dhandle, &stride, NULL)|| stride < 0){
-		agp_eglenv.destroy_image(dpy, newimg);
-		return false;
+/* bugs experienced with the alpha- channel versions of these that a
+ * quick hack is better for the time being */
+	if (fourcc == DRM_FORMAT_ARGB8888){
+		fourcc = DRM_FORMAT_XRGB8888;
 	}
 
-	*dfmt = fourcc;
-	*dstride = stride;
+/* now grab the actual dma-buf, and repackage into our planes */
+	EGLint strides[4] = {-1, -1, -1, -1};
+	EGLint offsets[4] = {0, 0, 0, 0};
+	EGLint fds[4] = {-1, -1, -1, -1};
+
+	if (!agp_eglenv.export_dmabuf(dpy, newimg,
+		fds, strides, offsets) || strides[0] < 0){
+		agp_eglenv.destroy_image(dpy, newimg);
+		return 0;
+	}
+
+/* finally repackage - and remember in our outgoing queue */
 	ctx->images[next_i].image = newimg;
-	ctx->images[next_i].dmabuf = *dhandle;
 	ctx->image_index = next_i;
+
+	for (size_t i = 0; i < nplanes; i++){
+		planes[i] = (struct shmifext_buffer_plane){
+			.fd = fds[i],
+			.fence = -1,
+			.w = con->w,
+			.h = con->h,
+			.gbm.format = fourcc,
+			.gbm.stride = strides[i],
+			.gbm.offset = offsets[i],
+			.gbm.mod_hi = (modifiers >> 32),
+			.gbm.mod_lo = (modifiers & 0xffffffff)
+		};
+		ctx->images[next_i].planes[i] = planes[i];
+	}
+
+	return nplanes;
+}
+
+/* legacy interface - only support one plane so wrap it around the new */
+bool arcan_shmifext_gltex_handle(
+	struct arcan_shmif_cont* cont,
+	uintptr_t display, uintptr_t tex_id,
+ int* dhandle, size_t* dstride, int* dfmt)
+{
+	struct shmifext_buffer_plane plane = {};
+
+	size_t n_planes =
+		arcan_shmifext_export_image(cont, display, tex_id, 1, &plane);
+
+	*dfmt = plane.gbm.format;
+	*dstride = plane.gbm.stride;
+	*dhandle = plane.fd;
+
 	return true;
 }
 
@@ -872,6 +924,54 @@ int arcan_shmifext_isext(struct arcan_shmif_cont* con)
 		return 2;
 	else
 		return 1;
+}
+
+size_t arcan_shmifext_signal_planes(
+	struct arcan_shmif_cont* c,
+	int mask,
+	size_t n_planes,
+	struct shmifext_buffer_plane* planes
+)
+{
+	if (!c || !n_planes)
+		return 0;
+
+/* missing - we need to track which vbuffers that are locked using
+ * the vmask and then on stepframe check when they are released so
+ * that we can release them back to the caller */
+
+	struct arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(BUFFERSTREAM)
+	};
+
+	for (size_t i = 0; i < n_planes; i++){
+/* missing - another edge case is that when we transfer one plane but run out
+ * of descriptor slots on the server-side, basically the sanest case then is to
+ * simply fake-inject an event with a buffer-fail so that the rest of the setup
+ * falls back to readback and wait for a reset or device-hint to rebuild */
+		if (!arcan_pushhandle(planes[i].fd, c->epipe))
+			return i;
+		close(planes[i].fd);
+
+/* missing - the gpuid should be set based on what gpu the context is assigned
+ * to based on initial/device-hint - this is to make sure that we don't commit
+ * buffers to something that was not intended (particularly during hand-over)
+ * */
+		ev.ext.bstream.stride = planes[i].gbm.stride;
+		ev.ext.bstream.format = planes[i].gbm.format;
+		ev.ext.bstream.mod_lo = planes[i].gbm.mod_lo;
+		ev.ext.bstream.mod_hi = planes[i].gbm.mod_hi;
+		ev.ext.bstream.offset = planes[i].gbm.offset;
+		ev.ext.bstream.width  = planes[i].w;
+		ev.ext.bstream.height = planes[i].h;
+		ev.ext.bstream.left = n_planes - i - 1;
+
+		arcan_shmif_enqueue(c, &ev);
+	}
+
+	arcan_shmif_signal(c, mask);
+	return n_planes;
 }
 
 int arcan_shmifext_signal(struct arcan_shmif_cont* con,
@@ -911,14 +1011,16 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 	}
 
 /* begin extraction of the currently rendered-to buffer */
-	int fd, fourcc;
-	size_t stride;
+	size_t nplanes;
+	struct shmifext_buffer_plane planes[4];
+
 	if (con->privext->state_fl & STATE_NOACCEL ||
-			!arcan_shmifext_gltex_handle(con, display, tex_id, &fd, &stride, &fourcc))
+			!(nplanes=arcan_shmifext_export_image(con, display, tex_id, 4, planes)))
 		goto fallback;
 
-	unsigned res = arcan_shmif_signalhandle(con, mask, fd, stride, fourcc);
-	return res > INT_MAX ? INT_MAX : res;
+	arcan_shmifext_signal_planes(con, mask, nplanes, planes);
+	return INT_MAX;
+
 
 /* handle-passing is disabled or broken, instead perform a manual readback into
  * the shared memory segment and signal like a normal buffer */
@@ -935,6 +1037,7 @@ fallback:
 		};
 		agp_readback_synchronous(&vstore);
 	}
-	res = arcan_shmif_signal(con, mask);
+
+	unsigned res = arcan_shmif_signal(con, mask);
 	return res > INT_MAX ? INT_MAX : res;
 }

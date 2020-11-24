@@ -745,7 +745,6 @@ struct arcan_frameserver* platform_fsrv_alloc()
 	res->flags.autoclock = true;
 	res->parent.vid = ARCAN_EID;
 	res->desc.samplerate = ARCAN_SHMIF_SAMPLERATE;
-	res->vstream.handle = BADFD;
 	res->sockmode = S_IRWXU;
 	res->child = BROKEN_PROCESS_HANDLE;
 

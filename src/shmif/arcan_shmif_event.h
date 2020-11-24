@@ -515,6 +515,13 @@ enum ARCAN_TARGET_COMMAND {
  *              1: device type is render-node-Streams
  *              2: device type is usb descriptor
  *              4: (capability bit) render node can be used for scanout (lease)
+ *              8: (capability bit) append format descriptor (for 0)
+ *             16: (capability bit) format descriptor is preferred
+ *
+ * [for [3].iv & 8]
+ *              [4] = format
+ *              [5] = mod_hi
+ *              [6] = mod_lo
  *
  * [for [1].iv == 2..4]
  * 128-bit guid is packed in [2..5] as 64bit little-endian,
@@ -1351,12 +1358,23 @@ enum ARCAN_TARGET_SKIPMODE {
  * Platform specific content needed for some platforms to map a buffer, used
  * internally by backend and user-defined values may cause the connection to be
  * terminated, check arcan_shmif_sighandle and corresponding platform code
- * (pitch)  - row width in bytes
+ * (pitch) - row width in bytes
  * (format) - color format, also platform specific value
+ * (modifiers) - metadata to describe the contents of the buffer
+ * (gpuid) - source GPU as provided by a previous devicehint
+ * (width/height) - width/height of the buffer
+ * (left) - if there are multiple planes to the same transfer
  */
-		struct{
-			uint32_t pitch;
+		struct {
+			uint32_t stride;
 			uint32_t format;
+			uint32_t offset;
+			uint32_t mod_hi;
+			uint32_t mod_lo;
+			uint32_t gpuid;
+			uint32_t width;
+			uint32_t height;
+			uint8_t left;
 		} bstream;
 
 /*

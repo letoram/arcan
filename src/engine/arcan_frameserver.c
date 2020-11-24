@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2019, Björn Ståhl
+ * Copyright 2003-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -100,6 +100,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	arcan_conductor_deregister_frameserver(src);
+	arcan_frameserver_close_bufferqueues(src, true, true);
 
 	arcan_aobj_id aid = src->aid;
 	uintptr_t tag = src->tag;
@@ -199,6 +200,33 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 	}
 
 	return true;
+}
+
+void arcan_frameserver_close_bufferqueues(
+	arcan_frameserver* src, bool incoming, bool pending)
+{
+	if (!src)
+		return;
+
+	if (incoming){
+		for (size_t i = 0; i < src->vstream.incoming_used; i++){
+			if (src->vstream.incoming[i].fd > 0){
+				close(src->vstream.incoming[i].fd);
+				src->vstream.incoming[i].fd = -1;
+			}
+		}
+		src->vstream.incoming_used = 0;
+	}
+
+	if (pending){
+		for (size_t i = 0; i < src->vstream.pending_used; i++){
+			if (src->vstream.pending[i].fd > 0){
+				close(src->vstream.pending[i].fd);
+				src->vstream.pending[i].fd = -1;
+			}
+		}
+		src->vstream.pending_used = 0;
+	}
 }
 
 static bool push_buffer(arcan_frameserver* src,
@@ -315,16 +343,19 @@ static bool push_buffer(arcan_frameserver* src,
 		goto commit_mask;
 	}
 
-	if (-1 != src->vstream.handle){
+	if (src->vstream.pending_used){
 		bool failev = src->vstream.dead;
+
+		if (!failev){
+/* mapping and bound checking is done inside of arcan_event.c */
+			memcpy(stream.planes, src->vstream.pending,
+				sizeof(struct agp_buffer_plane) * src->vstream.pending_used);
+			stream.used = src->vstream.pending_used;
+			stream = agp_stream_prepare(store, stream, STREAM_HANDLE);
+			src->vstream.pending_used = 0;
 
 /* the vstream can die because of a format mismatch, platform validation failure
  * or triggered by manually disabling it for this frameserver */
-		if (!failev){
-			stream.handle = src->vstream.handle;
-			store->vinf.text.stride = src->vstream.stride;
-			store->vinf.text.format = src->vstream.format;
-			stream = agp_stream_prepare(store, stream, STREAM_HANDLE);
 			failev = !stream.state;
 		}
 
@@ -340,9 +371,9 @@ static bool push_buffer(arcan_frameserver* src,
  * mapped as a file-descriptor, if iostreams or windows is reintroduced, this
  * will need to be fixed */
 			arcan_event_enqueue(&src->outqueue, &ev);
+			arcan_frameserver_close_bufferqueues(src, true, true);
 			src->vstream.dead = true;
-			close(src->vstream.handle);
-			src->vstream.handle = -1;
+
 			TRACE_MARK_ONESHOT("frameserver", "buffer-handle", TRACE_SYS_WARN, src->vid, 0, "platform reject");
 		}
 		else
@@ -1308,6 +1339,12 @@ bool arcan_frameserver_tick_control(
 	with switching buffer strategies (valid buffer in one size, failed because
 	size over reach with other strategy, so now there's a failure mechanism.
  */
+
+/* Invalidate any ongoing buffer-streams */
+	if (src->desc.width != src->shm.ptr->w || src->desc.height != src->shm.ptr->h){
+		arcan_frameserver_close_bufferqueues(src, true, true);
+	}
+
 	int rzc = platform_fsrv_resynch(src);
 	if (rzc <= 0)
 		goto leave;

@@ -532,6 +532,12 @@ void platform_video_query_displays()
 {
 }
 
+bool platform_video_map_buffer(
+	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n)
+{
+	return false;
+}
+
 /*
  * Need to do this manually here so that when we run nested, we are still able
  * to import data from clients that give us buffers. When/ if we implement the

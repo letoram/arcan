@@ -703,7 +703,7 @@ struct shmifext_buffer_plane {
 	union {
 		struct {
 			uint32_t format;
-			uint64_t pitch;
+			uint64_t stride;
 			uint64_t offset;
 			uint32_t mod_hi;
 			uint32_t mod_lo;
@@ -723,6 +723,14 @@ bool arcan_shmifext_import_buffer(
 	size_t buffer_plane_sz
 );
 
+/* internal or advanced use (proxying planes) */
+size_t arcan_shmifext_signal_planes(
+	struct arcan_shmif_cont* c,
+	int mask,
+	size_t n_planes,
+	struct shmifext_buffer_plane* planes
+);
+
 /*
  * Similar behavior to signalhandle, but any conversion from the texture id
  * in [tex_id] is handled internally in accordance with the last _egl
@@ -735,6 +743,7 @@ bool arcan_shmifext_import_buffer(
  * If tex_id is SHMIFEXT_BUILTIN and context was setup with FBO management OR
  * with vidp- texture streaming, the color attachment for the active FBO OR
  * the latest imported buffer.
+ *
  *
  * Returns -1 on handle- generation/passing failure, otherwise the number
  * of miliseconds (clamped to INT_MAX) that elapsed from signal to ack.
