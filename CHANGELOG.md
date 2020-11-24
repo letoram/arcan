@@ -38,6 +38,7 @@
  * default event-queue sizes bumped to 127/127)
  * dequeue overwrites event store on use (0xff)
  * SEGREQ now takes desired dimensions hit to avoid possible resize roundtrip
+ * default maximum segment size bumped
 
 ## Tui
  * COPY_WINDOW feature extended with annotation tools, editing and highlighting
@@ -75,12 +76,14 @@
  * egl-dri BUILD_PRESET=everything added, builds arcan, arcan_sdl, arcan_headless
  * egl-dri HYBRID_SDL, HYBRID_HEADLESS options added
  * egl-dri nvidia/EGLstreams initialisation/scanout changes for > 385
+ * cmake build system simplified (thanks L. Bobrov)
  * sdl2 - add basic window drag resize support
  * the simple 'console' window manager is now included in the default install
  * hook scripts are moved from builtin/scripts/hook to builtin/hooks
  * basic work- docker images in github.com/letoram/arcan-docker
  * arcan-net and libarcan-a12 built by default
  * small -DCLIENT_LIBRARY_BUILD added, which provides only shmif+tui+a12/net code
+ * osx/big sur fixes (requires homebrew)
 
 ## Lua
  * Added focus_target to specify a frameserver that gets latency/synch priority
@@ -115,10 +118,13 @@
  * Add hooks for fencing
  * Mode selection heuristics that biases on higher refresh
  * Buffer import consolated into one set of helper functions in shmifext
+ * (+agp) Buffer import layering reworked to account for modifiers/multiplane/mailbox
+ * Work towards adaptive FBO- indirection or FBO-color0 from scanout memory
 
 ## Platform
  * sdl2: various mouse / input fixes
  * sdl2: fixed GL crashes when on linux/mesa drivers
+ * sdl2: basic drag resize implementation
  * lwa/agp: better response during resizes
  * agp: wire up context robustness to crash recovery
  * agp: multiple fixes to blend-mode setup

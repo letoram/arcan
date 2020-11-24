@@ -21,13 +21,6 @@ announcements, releases, videos / presentations and so on.
 
 * For developer information, see the HACKING.md
 
-For curated issues, use the [git-bug](https://github.com/MichaelMure/git-bug)
-tool to browse the currently tracked and acknowledged issues and their details.
-
-We do check the github issues page for user communication from time to time,
-and append as necessary, but it is not a priority - and in the long term github
-use will be reduced to a 'dumb mirror'.
-
 Getting Started
 ====
 
@@ -36,7 +29,8 @@ as part of its packages, so you can save yourself some work going for one of
 those.
 
 Docker- container templates (mainly used for headless development and testing)
-can be found here: [dockerfiles](https://github.com/letoram/arcan-docker).
+can be found here, quality varies wildly from bad to poor (just like Docker):
+[dockerfiles](https://github.com/letoram/arcan-docker).
 
 ## Compiling from Source
 
@@ -109,15 +103,22 @@ It will automatically try to figure out if it should be a native display
 server or run nested within another or even itself based on the presence
 of various environment variables (DISPLAY, WAYLAND\_DISPLAY, ARCAN\_CONNPATH).
 
-'welcome' is a name of a simple builtin welcome screen, that will shut down
-automatically after a few seconds of use. For something of more directly
-useful, you can try the builtin appl 'console':
+'welcome' is a name of a simple builtin welcome screen, *that will shut down
+automatically after a few seconds of use*.
+
+For something of more directly useful, you can try the builtin appl 'console':
 
     arcan console
 
 Which should work just like your normal console command-line, but with the
 added twist of being able to run (arcan compatible) graphical applications
 as well. For other projects, see the 'Related Projects' further below.
+
+If input devices are misbehaving, the quick and dirty 'eventtest' in:
+
+    /path/to/arcan/tests/interactive/eventtest
+
+Might be useful in figuring out who to blame.
 
 ### Hook-Scripts
 

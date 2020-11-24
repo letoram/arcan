@@ -1,5 +1,5 @@
 .\" groff -man -Tascii arcan.1
-.TH arcan 1 "August 2015" arcan "User manual"
+.TH arcan 1 "November 2020" arcan "User manual"
 .SH NAME
 Arcan \- Scriptable Multimedia Engine
 .SH SYNOPSIS
@@ -27,10 +27,6 @@ by the running appl. This value will be cached/fetched from the database.
 Set the desired active canvas height. Setting this value to zero will let
 the display driver chose based on connected displays. This can be overridden
 by the running appl. This value will be cached/fetched from the database.
-
-.IP "\fB-f, --fullscreen\fR"
-Fullscreen switch, the display driver will attempt to force the connected
-display resolution to match the specified canvas dimensions.
 
 .IP "\fB-m, --conservative\fR"
 Toggle conservative memory management profile. The engine will store just
@@ -123,6 +119,10 @@ Disable (silence) audio output.
 
 .IP "\fB-s, --windowed\fR"
 Set borderless, windowed display mode.
+
+.IP "\fB-f, --fullscreen\fR"
+Fullscreen switch, the display driver will attempt to force the connected
+display resolution to match the specified canvas dimensions.
 
 .IP "\fB-a, --multisamples\fR \fIsamples\fR"
 Enable multisampling (MSAA), default: 4 samples. If MSAA setup fails,
@@ -395,7 +395,7 @@ entries. For some issues, a copy of the database used and a list of files
 (with permissions) in applpath and resourcepath may also be relevant.
 
 .SH COPYRIGHT
-Copyright  ©  2003-2017  Bjorn Stahl. License GPLv2+ or BSD depending on build
+Copyright  ©  2003-2020 Bjorn Stahl. License GPLv2+ or BSD depending on build
 configuration. This is free software: you are free  to  change and redistribute
 it. There is NO WARRANTY, to the extent permitted by law.
 
