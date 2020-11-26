@@ -33,53 +33,64 @@
 -- not specified, it will be forced to 'default') or the configuration
 -- does not support the requested mode, BADID will be returned.
 --
--- @note: Possible statustbl.kind values: "preroll", "resized", "ident",
+-- The initial states a client goes through are as follow:
+-- "connected" (when using ref:target_alloc) -> "registered" (type information
+-- available) -> "preroll" (client waiting for initial state information) ->
+-- "resized" (first frame and subsequent resizes) -> [tblents below] -> "terminated".
+--
+-- Do note that the returned *new_vid* has no guaranteed initial size, and will be
+-- invisible regardless of ref:resize_image ref:blend_image calls until the first
+-- "resized" event has been delivered through the *handler*. While it can be
+-- constrained, the client can always initiate resizes within a valid range and
+-- layout, animations and so on need to be able to adapt.
+--
+-- Possible statustbl.kind values: "preroll", "resized", "ident",
 -- "coreopt", "message", "failure", "framestatus", "streaminfo",
 -- "streamstatus", "cursor_input", "key_input", "segment_request",
 -- "state_size", "viewport", "alert", "content_state", "resource_status",
 -- "registered", "clock", "cursor", "bchunkstate", "proto_update", "unknown"
 --
--- @note: "preroll" {string:segkind, aid:source_audio} is an initial state
+-- @tblent: "preroll" {string:segkind, aid:source_audio} is an initial state
 -- where the resources for the target have been reserved, and it is possible
 -- to run some actions on the target to set up desired initial state, and
 -- valid actions here are currently:
 -- ref:target_displayhint, ref:target_outputhint, ref:target_fonthint,
 -- ref:target_geohint.
 --
--- @note: "resized" {int:width, int:height, bool:origo_ll} the underlying
+-- @tblent: "resized" {int:width, int:height, bool:origo_ll} the underlying
 -- storage has changed dimensions. If origo_ll is set, the source data is
 -- stored with origo at lower left rather than upper left. To account for
 -- this, look into ref:image_set_txcos_default to flip the Y axis.
 --
--- @note: "message" {string:message, bool:multipart} - generic text message
+-- @tblent: "message" {string:message, bool:multipart} - generic text message
 -- (UTF-8) that terminates when multipart is set to false. This mechanism is
 -- primarily for customized hacks or, on special subsegments such as titlebar
 -- or popup, to provide a textual representation of the contents.
 --
--- @note: "framestatus" {int:frame,int:pts,int:acquired,int:fhint} - timing
+-- @tblent: "framestatus" {int:frame,int:pts,int:acquired,int:fhint} - timing
 -- metadata about the last delivered frame from the client perspective.
 --
--- @note: "frame" (int:pts,int:number,int:x,int:y,int:width,int:height)
+-- @tblent: "frame" (int:pts,int:number,int:x,int:y,int:width,int:height)
 -- generated if the VERBOSE flags has been set on the vid. This is the
 -- server side version of the "framestatus" event above.
 --
--- @note: "terminated" {string:last_words} - the underlying process has
+-- @tblent: "terminated" {string:last_words} - the underlying process has
 -- died, no new data or events will be received.
 --
--- @note: "streaminfo" {string:lang, int:streamid, string:type} - for decode/
+-- @tblent: "streaminfo" {string:lang, int:streamid, string:type} - for decode/
 -- multimedia purposes, the source has multiplle selectable streams. type can
 -- be one of 'audio', 'video', 'text', 'overlay'.
 --
--- @note: "coreopt" {string:argument, int:slot, string:type} - the target
+-- @tblent: "coreopt" {string:argument, int:slot, string:type} - the target
 -- supports key/value configuration persistance.
 --
--- @note: "input" - Provides an extended table as a third argument to the
+-- @tblent: "input" - Provides an extended table as a third argument to the
 -- callback. This table is compatible with the normal _input event handler
 -- from the global scope. By redirecting to _G[APPLNAME.."_input"](tbl) the
 -- frameserver can act as a regular input device. Be careful with devid
 -- collisions as that namespace is only 16-bits.
 --
--- @note: "segment_request" {
+-- @tblent: "segment_request" {
 -- string:segkind, number:width, number:height, number:parent,
 -- string:(split-dir | position-dir)}
 -- The source would like an additional segment to work with, see
@@ -95,18 +106,18 @@
 -- should retain the same size, if possible. This also has an added
 -- position-dir of 'tab'.
 --
--- @note: "alert" {string:message} - version of "message" that hints a
+-- @tblent: "alert" {string:message} - version of "message" that hints a
 -- user-interface alert to the segment. If "message" is empty, alert is
 -- to be interpreted as a request for focus. If "message" is a URI, alert
 -- is to be interpreted as a request for the URI to be opened by some
 -- unspecified means. Otherwise, message notifies about some neutral/positive
 -- user-readable event, i.e. the completion of some state transfer.
 --
--- @note: "failure" {string:message} - some internal operation has failed,
+-- @tblent: "failure" {string:message} - some internal operation has failed,
 -- non-terminal error indication with a user presentable description of the
 -- failure.
 --
--- @note: "viewport" {bool:invisible, bool:focus, bool:anchor_edge,
+-- @tblent: "viewport" {bool:invisible, bool:focus, bool:anchor_edge,
 -- bool:anchor_pos, bool:embedded, int:rel_order, int:rel_x, int:rel_y,
 -- int:anch_w, int:anch_h, int:edge, inttbl:border[4], int:parent}
 -- this hint is the catch-all for embedding or positioning one segment
@@ -122,7 +133,7 @@
 -- rel_order values. This is mainly a concern when dealing with handover
 -- segment allocations.
 --
--- @note: "content_state" {number:rel_x, number:rel_y,
+-- @tblent: "content_state" {number:rel_x, number:rel_y,
 -- number:wnd_w, number:wnd_h, number:x_size, number:y_size,
 -- number:cell_w, number: cell_h, int:min_w, int:max_w, int:min_h, int:max_h}
 -- indicates the values and range for a position marker such as scrollbars
@@ -131,7 +142,7 @@
 -- interpreted as having a cell/tile like constraint to sizing and displayhint/
 -- surface drawing can be constrained accordingly.
 --
--- @note: "input_label" {string:labelhint, string:description, string:datatype,
+-- @tblent: "input_label" {string:labelhint, string:description, string:datatype,
 -- int:initial, int:modifiers, string:vsym} - suggest that the target supports customized
 -- abstract input labels for use with the target_input function. May be called repeatedly,
 -- input_label values, are restricted to 16 characters in the [a-z,0-9_] set
@@ -148,16 +159,16 @@
 -- accumulated set of labels are no longer accepted and and state tracking
 -- should be reset.
 --
--- @note: "input_mask" - Hints that the mask of accepted input devices and/or
+-- @tblent: "input_mask" - Hints that the mask of accepted input devices and/or
 -- types have been changed. ref:target_input calls that attempts to forward a
 -- masked type will have matching events dropped automatically. The actual
 -- mask details can be queried through ref:input_capabilities.
 --
--- @note: "clock" (value, monotonic, once) - frameserver wants a periodic or
+-- @tblent: "clock" (value, monotonic, once) - frameserver wants a periodic or
 -- fire-once stepframe event call. monotonic suggests the time-frame relative to
 -- the built-in CLOCKRATE (clock_pulse)
 --
--- @note: "cursorhint" {message} - lacking a customized cursor using a subseg
+-- @tblent: "cursorhint" {message} - lacking a customized cursor using a subseg
 -- request for a cursor window, this is a text suggestion of what local visual
 -- state the mouse cursor should have. The content of message is implementation
 -- defined, though suggested values are: normal, wait, select-inv, select,
@@ -166,7 +177,7 @@
 -- diag-ll, drag-diag, datafield, move, typefield, forbidden, help and
 -- vertical-datafield.
 --
--- @note: "bchunkstate" {number:size, bool:input, bool:stream, bool:disable,
+-- @tblent: "bchunkstate" {number:size, bool:input, bool:stream, bool:disable,
 -- bool:multipart, bool:wildcard, string:multipart, bool:hint} -
 -- indicates that the frameserver wants to [hint=true] or is capable of [hint=false]
 -- of receiving (input=true) or sending binary data. It also indicates size (if
@@ -175,7 +186,7 @@
 -- If *multipart* is true, extensions should append to the previous bchunkstate.
 -- If *wildcard* is true, the client will also accept data of any type.
 --
--- @note: "registered", {segkind, title, guid} - notice that the underlying engine
+-- @tblent: "registered", {segkind, title, guid} - notice that the underlying engine
 -- has completed negotiating with the frameserver and it identified its primary
 -- segment as 'segkind', which can be one of the following: "lightweight arcan",
 -- "multimedia", "terminal", "tui", "popup", "icon", "remoting", "game", "hmd-l",
@@ -183,23 +194,20 @@
 -- "browser", "encoder", "titlebar", "sensor", "service", "bridge-x11",
 -- "bridge-wayland", "debug", "widget"
 --
--- @note: "proto_update", {cm, vr, hdrf16, ldr, vobj} - the set of negotiated
+-- @tblent: "proto_update", {cm, vr, hdrf16, ldr, vobj} - the set of negotiated
 -- subprotocols has changed, each member is a boolean indicating if the subprotocol
 -- is available or not.
 --
--- @note: "ramp_update", {index} - for clients that have been allowed access to
+-- @tblent: "ramp_update", {index} - for clients that have been allowed access to
 -- the color ramp subprotocol, this event will be triggered for each mapped ramp
 -- index. For more information on this system, see ref:video_displaygamma
 --
--- @note: "privdrop", {external, networked, sandboxed} - this is used to indicate
+-- @tblent: "privdrop", {external, networked, sandboxed} - this is used to indicate
 -- that the privilege context a client operates within has changed. trusted launch
 -- can become external in origin, proxied connections can flip between being
 -- have network access or not, and any connection can switch to being in a
 -- sandboxed context.
 --
--- @note: The initial states goes through the following transitions:
--- "connected" (only on target_alloc, not launch_target) -> "registered" ->
--- "preroll" -> "resized" -> [most events possible] -> "terminated"
 -- @related: target_accept, target_alloc
 -- @group: targetcontrol
 -- @alias: target_launch
