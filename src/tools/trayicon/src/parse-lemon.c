@@ -6,38 +6,41 @@
 
 #include "parser.h"
 
-static void set_attr(struct tui_screen_attr* a, char ch, bool val)
+static int ch_mask(char ch)
 {
 	switch (ch){
 	case 'i':
-		a->italic = val;
+		return TUI_ATTR_ITALIC;
 	break;
 	case 'u':
-		a->underline = val;
+		return TUI_ATTR_UNDERLINE;
 	break;
 	case 'b':
-		a->bold = val;
+		return TUI_ATTR_BOLD;
 	break;
 	default:
+		return 0;
 	break;
 	}
 }
 
+static void set_attr(struct tui_screen_attr* a, char ch, bool val)
+{
+	int mask = ch_mask(ch);
+	if (!mask)
+		return;
+
+	if (val){
+		a->aflags |= mask;
+	}
+	else
+		a->aflags &= ~mask;
+}
+
 static void flip_attr(struct tui_screen_attr* a, char ch)
 {
-	switch (ch){
-	case 'i':
-		a->italic = !a->italic;
-	break;
-	case 'u':
-		a->underline = !a->underline;
-	break;
-	case 'b':
-		a->bold = !a->bold;
-	break;
-	default:
-	break;
-	}
+	int mask = ch_mask(ch);
+	a->aflags ^= mask;
 }
 
 static uint8_t hexv(char ch)
@@ -106,7 +109,7 @@ static void update_cattr(
 /* we can't color underline at the moment */
 	break;
 	case 'u':
-		state->attr.underline = true;
+		state->attr.aflags |= TUI_ATTR_UNDERLINE;
 	break;
 	case 'o':
 	break;
