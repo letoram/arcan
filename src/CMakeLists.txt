@@ -404,8 +404,6 @@ else()
 		find_package(SQLite3 REQUIRED QUIET)
 	endif()
 
-	find_package(SSE QUIET)
-
 	include(${PLATFORM_ROOT}/cmake/CMakeLists.AGP)
 	include(${PLATFORM_ROOT}/cmake/CMakeLists.Video)
 	set(EXTMAKE_CMD make)
@@ -523,18 +521,21 @@ else()
 		platform/stub/mem.c
 	)
 
-	if (ENABLE_SIMD AND SSE_FOUND)
-		if (SIMD_ALIGNED)
+	if (ENABLE_SIMD)
+		find_package(SSE QUIET)
+		if (SSE_FOUND)
+			if (SIMD_ALIGNED)
+				set_property(SOURCE engine/arcan_math_simd.c
+					APPEND PROPERTY COMPILE_DEFINITIONS ARCAN_MATH_ALIGNED_SIMD)
+			endif()
+
+			set_property(SOURCE engine/arcan_math.c
+				APPEND PROPERTY COMPILE_DEFINITIONS ARCAN_MATH_SIMD)
+			list(APPEND SOURCES engine/arcan_math_simd.c)
+
 			set_property(SOURCE engine/arcan_math_simd.c
-				APPEND PROPERTY COMPILE_DEFINITIONS ARCAN_MATH_ALIGNED_SIMD)
+				APPEND PROPERTY COMPILE_FLAGS -msse3)
 		endif()
-
-		set_property(SOURCE engine/arcan_math.c
-			APPEND PROPERTY COMPILE_DEFINITIONS ARCAN_MATH_SIMD)
-		list(APPEND SOURCES engine/arcan_math_simd.c)
-
-		set_property(SOURCE engine/arcan_math_simd.c
-			APPEND PROPERTY COMPILE_FLAGS -msse3)
 	endif()
 
 	if (LUA51_JIT)

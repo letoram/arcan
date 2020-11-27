@@ -6,6 +6,7 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	add_definitions(-D_DEBUG)
 endif()
 
+find_package(PkgConfig REQUIRED)
 find_package(arcan_shmif REQUIRED)
 pkg_check_modules(FUSE3 REQUIRED fuse3)
 find_package(Math REQUIRED)
