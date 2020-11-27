@@ -137,6 +137,7 @@ else()
 		if (NOT VIDEO_PLATFORM)
 			set(VIDEO_PLATFORM "egl-dri")
 		endif()
+		include(GNUInstallDirs)
 	endif()
 	set(AGPPLATFORM_STR "gl21, gles2, gles3, stub")
 
