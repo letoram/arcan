@@ -97,8 +97,12 @@ add_definitions(
 	${BSD_VARIANT_DEFINITIONS}
 )
 
-find_library(ICONV NAMES iconv REQUIRED)
-LIST(APPEND ARCAN_LIBRARIES ${ICONV})
+include(CheckSymbolExists)
+check_symbol_exists(iconv "iconv.h" HAVE_ICONV)
+if (NOT HAVE_ICONV)
+	find_library(ICONV_LIBRARY NAMES iconv REQUIRED)
+	list(APPEND ARCAN_LIBRARIES ${ICONV_LIBRARY})
+endif()
 
 set_property(SOURCE platform/posix/fdpassing.c
 	APPEND PROPERTY COMPILE_FLAGS -w)
