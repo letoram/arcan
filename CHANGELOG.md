@@ -7,6 +7,9 @@
 ## Tui
  * Lowered the constraint for wndhint to also work for main window
 
+## Lua
+ * Whitelist os.date
+
 ## 0.6.0
 ## Engine
  * Position fix to anchor_image/center_image when using CR anchor
