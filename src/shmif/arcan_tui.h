@@ -615,8 +615,6 @@ struct tui_context* arcan_tui_setup(
  * In those cases, setup the new context already when making the subwindow
  * request, then in the event handler, should the request be approved - issue a
  * bind on the context.
- *
- * There is no guarantee that a wndhint will
  */
 bool arcan_tui_bind(
 	arcan_tui_conn* con, struct tui_context* orphan);
@@ -760,12 +758,11 @@ bool arcan_tui_update_handlers(struct tui_context*,
 	const struct tui_cbcfg* new_handlers, struct tui_cbcfg* old, size_t cb_sz);
 
 /*
- * Signal visibility, position and dimension intent for a subwindow [wnd]
- * relative to a possible parent [par].
+ * Signal visibility, position and dimension intent for a window or subwindow
+ * [wnd] relative to a possible parent [par].
  *
- * [wnd] must have been allocated via the _request_subwnd -> subwindow
- * call path. [par] must be NULL or refer to the same context
- * as the subwnd call initiated from.
+ * [par] must be NULL or refer to the same tui_contextas the subwnd call
+ * initiated from.
  *
  * The dimensions inside the constraints structure are a hint, not a guarantee.
  * The rendering handler need to always be able to draw / layout to any size,
