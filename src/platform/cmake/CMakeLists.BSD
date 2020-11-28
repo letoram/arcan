@@ -90,7 +90,7 @@ endif()
 set(OS_DYLIB_EXTENSION=\".so\")
 add_definitions(
 	-DPLATFORM_HEADER=\"${PLATFORM_ROOT}/platform.h\"
-	-D_WITH_DPRINTF_
+	-D_WITH_GETLINE
 	-D__UNIX
 	-D__BSD
 	-DLIBUSB_BSD
