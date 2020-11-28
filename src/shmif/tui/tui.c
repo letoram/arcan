@@ -454,37 +454,38 @@ void arcan_tui_wndhint(struct tui_context* C,
 	if (!C)
 		return;
 
-/* this only deals with anchoring, should really be cached
- * inside the context and reissued on reset etc. */
-	struct arcan_event viewport = (struct arcan_event){
-		.category = EVENT_EXTERNAL,
-		.ext.kind = ARCAN_EVENT(VIEWPORT),
-		.ext.viewport = {
-			.x = cons.anch_col * C->cell_w,
-			.y = cons.anch_row * C->cell_h,
-			.w = cons.max_cols * C->cell_w,
-			.h = cons.max_rows * C->cell_h
-		}
-	};
+/* first send any sizing constraints */
+	if (cons.max_rows || cons.min_rows || cons.max_cols || cons.min_cols){
+		struct arcan_event content = (struct arcan_event){
+			.category = EVENT_EXTERNAL,
+			.ext.kind = ARCAN_EVENT(CONTENT),
+			.ext.content = {
+				.min_w = cons.min_cols * C->cell_w,
+				.min_h = cons.min_rows * C->cell_h,
+				.max_w = cons.max_cols * C->cell_w,
+				.max_h = cons.max_rows * C->cell_h,
+				.cell_w = C->cell_w,
+				.cell_h = C->cell_h
+			}
+		};
+		arcan_shmif_enqueue(&C->acon, &content);
+	}
 
+/* and if we want anchoring, add that */
 	if (par){
-		viewport.ext.viewport.parent = par->acon.segment_token;
+		struct arcan_event viewport =
+			(struct arcan_event){
+			.category = EVENT_EXTERNAL,
+			.ext.kind = ARCAN_EVENT(VIEWPORT),
+			.ext.viewport.parent = par->acon.segment_token,
+			.ext.viewport.x = cons.anch_col * C->cell_w,
+			.ext.viewport.y = cons.anch_row * C->cell_h
+		};
+
+		arcan_shmif_enqueue(&C->acon, &viewport);
 	}
 
-/* fake-emit a resize regardless even if one might appear later, this might
- * seem uninituitive but helps verify that the event handler is actually hooked
- * up and that the client do handle the case that the viewport is mostly
- * ignored */
 	C->last_constraints = cons;
-	if (C->handlers.resized){
-		C->handlers.resized(C,
-			C->acon.w, C->acon.h, C->cols, C->rows, C->handlers.tag);
-	}
-
-/* the contenthint for setting scrollbar etc. need to be managed
- * elsewhere, so just save the desired constraints for now */
-
-	arcan_shmif_enqueue(&C->acon, &viewport);
 }
 
 void arcan_tui_bgcopy(

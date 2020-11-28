@@ -20,6 +20,11 @@
 #include "tsm/libtsm_int.h"
 #include "tsm/shl-pty.h"
 
+struct line {
+	size_t count;
+	struct tui_cell* cells;
+};
+
 static struct {
 	struct tui_context* screen;
 	struct tsm_vte* vte;
@@ -32,11 +37,19 @@ static struct {
 	pid_t child;
 
 	_Atomic volatile bool alive;
+
 	bool die_on_term;
 	bool complete_signal;
 	bool pipe;
 
-	long last_input;
+/* if the terminal has 'died' and 'fit' is set - we crop the stored
+ * buffer to bounding box of 'real' (non-whitespace content) cells */
+	bool fit_contents;
+
+/* when the terminal has died and !die_on_term, we need to be able
+ * to re-populate the contents on resize since the terminal state machine
+ * itself won't be able to anymore - so save this here */
+	struct line** volatile _Atomic restore;
 
 /* sockets to communicate between terminal thread and render thread */
 	int dirtyfd;
@@ -47,6 +60,114 @@ static struct {
 	.synch = PTHREAD_MUTEX_INITIALIZER,
 	.hold = PTHREAD_MUTEX_INITIALIZER
 };
+
+static void reset_restore_buffer()
+{
+	struct line** cur = atomic_load(&term.restore);
+	atomic_store(&term.restore, NULL);
+
+	if (!cur)
+		return;
+
+	for(size_t i = 0; cur[i]; i++){
+		if (cur[i]->count)
+			free(cur[i]->cells);
+		free(cur[i]);
+	}
+
+	free(cur);
+}
+
+static void apply_restore_buffer()
+{
+	arcan_tui_erase_screen(term.screen, false);
+	struct line** cur = atomic_load(&term.restore);
+	size_t row = 0;
+	if (!cur)
+		return;
+
+	size_t rows, cols;
+	arcan_tui_dimensions(term.screen, &rows, &cols);
+
+	for (size_t row = 0; row < rows && cur[row]; row++){
+		arcan_tui_move_to(term.screen, 0, row);
+		struct tui_cell* cells = cur[row]->cells;
+		size_t n = cur[row]->count;
+
+		for (size_t i = 0; i < n && i < cols; i++){
+			struct tui_cell* c= &cells[i];
+			uint32_t ch = c->draw_ch ? c->draw_ch : c->ch;
+			arcan_tui_write(term.screen, c->ch, &c->attr);
+		}
+	}
+}
+
+static void create_restore_buffer()
+{
+	reset_restore_buffer();
+	size_t rows, cols;
+	arcan_tui_dimensions(term.screen, &rows, &cols);
+
+	size_t bufsz = sizeof(struct line*) * (rows + 1);
+	struct line** buffer = malloc(bufsz);
+	memset(buffer, '\0', bufsz);
+
+	size_t max_row = 0;
+	size_t max_col = 0;
+
+	for (size_t row = 0; row < rows; row++){
+		buffer[row] = malloc(sizeof(struct line));
+		if (!buffer[row])
+			goto fail;
+
+		bufsz = sizeof(struct tui_cell) * cols;
+		struct tui_cell* cells = malloc(bufsz);
+
+		if (!cells)
+			goto fail;
+
+		buffer[row]->cells = cells;
+		buffer[row]->count = cols;
+
+		memset(cells, '\0', bufsz);
+		bool row_dirty = false;
+
+		for (size_t col = 0; col < cols; col++){
+			struct tui_cell cell = arcan_tui_getxy(term.screen, col, row, true);
+
+			uint32_t ch = cell.draw_ch ? cell.draw_ch : cell.ch;
+			row_dirty |= ch && ch != ' ';
+
+			if (ch && ch != ' ' && max_col < col+1)
+					max_col = col+1;
+
+			cells[col] = cell;
+		}
+
+		if (row_dirty)
+			max_row = row+1;
+	}
+
+/* if fit_content, we can ignore the 'die on fail' if there is nothing */
+	if (term.fit_contents){
+		if (max_row && max_col){
+			arcan_tui_wndhint(term.screen, NULL, (struct tui_constraints){
+				.max_rows = max_row, .min_rows = max_row,
+				.max_cols = max_col, .min_cols = max_col
+			});
+		}
+		else
+			term.die_on_term = true;
+	}
+
+	atomic_store(&term.restore, buffer);
+	return;
+
+fail:
+	atomic_store(&term.restore, buffer);
+	reset_restore_buffer();
+	term.die_on_term = true;
+}
 
 static inline void trace(const char* msg, ...)
 {
@@ -140,7 +261,7 @@ void* pump_pty()
 	if (term.pipe)
 		set[3].fd = STDIN_FILENO;
 
-	while (term.alive){
+	while (atomic_load(&term.alive)){
 		set[2].fd = tsm_vte_debugfd(term.vte);
 		shl_pty_dispatch(term.pty);
 
@@ -201,6 +322,7 @@ static void dump_help()
 		" exec        \t cmd       \t allows arcan scripts to run shell commands\n"
 #endif
 		" keep_alive  \t           \t don't exit if the terminal or shell terminates\n"
+		" autofit     \t           \t (with exec, keep_alive) shrink window to fit\n"
 		" pipe        \t           \t map stdin-stdout\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 		" tpack       \t           \t use text-pack (server-side rendering) mode\n"
@@ -306,8 +428,13 @@ static void on_resize(struct tui_context* c,
 	size_t neww, size_t newh, size_t col, size_t row, void* t)
 {
 	trace("resize(%zu(%zu),%zu(%zu))", neww, col, newh, row);
-	if (term.pty)
+	if (term.pty){
 		shl_pty_resize(term.pty, col, row);
+	}
+	if (atomic_load(&term.restore)){
+		apply_restore_buffer();
+	}
+
 	last_frame = 0;
 }
 
@@ -527,6 +654,7 @@ static void on_exec_state(struct tui_context* tui, int state, void* tag)
 static bool setup_build_term()
 {
 	size_t rows = 0, cols = 0;
+	arcan_tui_reset(term.screen);
 	arcan_tui_dimensions(term.screen, &rows, &cols);
 	term.complete_signal = false;
 
@@ -595,7 +723,7 @@ static void on_reset(struct tui_context* tui, int state, void* tag)
 
 /* hard, try to re-execute command, send HUP if still alive then mark as dead */
 	case 1:
-		arcan_tui_reset(tui);
+	reset_restore_buffer();
 		tsm_vte_hard_reset(term.vte);
 		if (atomic_load(&term.alive)){
 			on_exec_state(tui, 2, tag);
@@ -706,6 +834,14 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 
 /*
+ * when the keep_alive state is entered, try and shrink the window
+ * to the bounding box of the contents itself
+ */
+	if (arg_lookup(args, "autofit", 0, NULL)){
+		term.fit_contents = true;
+	}
+
+/*
  * forward the colors defined in tui (where we only really track
  * forground and background, though tui should have a defined palette
  * for the normal groups when the other bits are in place
@@ -746,7 +882,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	pledge(SHMIF_PLEDGE_PREFIX " tty", NULL);
 #endif
 
-	while(atomic_load(&term.alive) || !term.die_on_term){
+	bool alive;
+	while((alive = atomic_load(&term.alive)) || !term.die_on_term){
 		pthread_mutex_lock(&term.synch);
 		struct tui_process_res res =
 			arcan_tui_process(&term.screen, 1, &term.signalfd, 1, -1);
@@ -763,6 +900,12 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		}
 
 		arcan_tui_refresh(term.screen);
+
+/* screen contents have been synched and updated, but we don't have a
+ * restore spot for dealing with resize or contents boundary */
+		if (!alive && !atomic_load(&term.restore)){
+			create_restore_buffer();
+		}
 
 	/* flush out the signal pipe, don't care about contents, assume
 	 * it is about unlocking for now */

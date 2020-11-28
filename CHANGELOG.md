@@ -1,3 +1,12 @@
+## 0.6.1
+
+## Frameservers
+ * Terminal: added autofit argument to keep_alive
+ * Terminal: save and rebuild 'dead' terminal window on resize
+
+## Tui
+ * Lowered the constraint for wndhint to also work for main window
+
 ## 0.6.0
 ## Engine
  * Position fix to anchor_image/center_image when using CR anchor

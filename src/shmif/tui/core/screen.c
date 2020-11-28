@@ -430,14 +430,14 @@ int tui_screen_refresh(struct tui_context* tui)
 /* synch vscreen -> screen buffer */
 	tui->flags = tsm_screen_get_flags(tui->screen);
 
+/* this will repeatedly call tsm_draw_callback which, in turn, will update
+ * the front buffer with new glyphs. */
+	tui->age = tsm_screen_draw(tui->screen, tsm_draw_callback, tui);
+
 	if (arcan_shmif_signalstatus(&tui->acon) > 0){
 		errno = EAGAIN;
 		return -1;
 	}
-
-/* this will repeatedly call tsm_draw_callback which, in turn, will update
- * the front buffer with new glyphs. */
-	tui->age = tsm_screen_draw(tui->screen, tsm_draw_callback, tui);
 
 	uint8_t* rbuf;
 	size_t rbuf_sz;
