@@ -90,7 +90,8 @@ local env = {
 	os = {
 		clock = os.clock,
 		difftime = os.difftime,
-		time = os.time
+		time = os.time,
+		date = os.date
 	},
 	coroutine = {
 		create = coroutine.create,
