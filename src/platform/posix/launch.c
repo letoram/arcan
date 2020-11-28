@@ -91,6 +91,8 @@ unsigned long arcan_target_launch_external(const char* fname,
 	pid_t child = fork();
 
 	if (child > 0) {
+		arcan_conductor_toggle_watchdog();
+
 		int stat_loc;
 		waitpid(child, &stat_loc, 0);
 
@@ -101,6 +103,8 @@ unsigned long arcan_target_launch_external(const char* fname,
 			*exitc = EXIT_FAILURE;
 
 		unsigned long ticks = arcan_timemillis();
+
+		arcan_conductor_toggle_watchdog();
 		return arcan_timemillis() - ticks;
 	}
 	else {
