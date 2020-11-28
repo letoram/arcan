@@ -31,6 +31,7 @@ int main(int argc, char** argv)
 				.input.translated = {
 					.scancode = rand() % 256,
 					.active = rand() % 2 == 0,
+					.utf8 = {'a' + rand() %10}
 				}
 			}
 		})){
