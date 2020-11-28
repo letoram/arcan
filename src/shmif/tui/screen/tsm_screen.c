@@ -321,7 +321,11 @@ static int screen_scroll_up(struct tsm_screen *con, unsigned int num)
 			for (j = 0; j < con->size_x; ++j)
 				cell_init(con, &cache[i]->cells[j]);
 		}
+		con->vanguard--;
 	}
+
+	if (con->vanguard < 0)
+		con->vanguard = 0;
 
 	if (num < max) {
 		memmove(&con->lines[con->margin_top],
@@ -380,7 +384,11 @@ static int screen_scroll_down(struct tsm_screen *con, unsigned int num)
 		cache[i] = con->lines[con->margin_bottom - i];
 		for (j = 0; j < con->size_x; ++j)
 			cell_init(con, &cache[i]->cells[j]);
+		con->vanguard++;
 	}
+
+	if (con->vanguard >= con->size_y)
+		con->vanguard = con->size_y - 1;
 
 	if (num < max) {
 		memmove(&con->lines[con->margin_top + num],
@@ -432,6 +440,9 @@ static void screen_write(struct tsm_screen *con, unsigned int x,
 		line->cells[x + i].age = con->age_cnt;
 		line->cells[x + i].width = 0;
 	}
+
+	if (y > con->vanguard)
+		con->vanguard = y;
 }
 
 void tsm_screen_erase_region(struct tsm_screen *con,
@@ -586,8 +597,8 @@ int tsm_screen_resize(
 	struct tsm_screen *con, unsigned int x, unsigned int y)
 {
 	struct line **cache;
-	unsigned int i, j, width, diff, start;
-	int ret;
+	unsigned int i, j, width, start;
+	int ret, diff;
 	bool *tab_ruler;
 
 	if (!con || !x || !y)
@@ -712,8 +723,8 @@ int tsm_screen_resize(
 		move_cursor(con, con->size_x - 1, con->cursor_y);
 
 	/* scroll buffer if screen height shrinks */
-	if (con->cursor_y && y < con->size_y) {
-		diff = con->size_y - y;
+	diff = ((int)con->size_y - (int)y) - ((int)con->size_y - (con->vanguard + 1));
+	if (diff > 0){
 		screen_scroll_up(con, diff);
 		if (con->cursor_y > diff)
 			move_cursor(con, con->cursor_x, con->cursor_y - diff);
@@ -1595,6 +1606,8 @@ void tsm_screen_insert_lines(struct tsm_screen *con, unsigned int num)
 		cache[i] = con->lines[con->margin_bottom - i];
 		for (j = 0; j < con->size_x; ++j)
 			cell_init(con, &cache[i]->cells[j]);
+		if (con->cursor_y < con->vanguard)
+			con->vanguard++;
 	}
 
 	if (num < max) {
@@ -1634,6 +1647,8 @@ void tsm_screen_delete_lines(struct tsm_screen *con, unsigned int num)
 		cache[i] = con->lines[con->cursor_y + i];
 		for (j = 0; j < con->size_x; ++j)
 			cell_init(con, &cache[i]->cells[j]);
+		if (con->cursor_y <= con->vanguard)
+			con->vanguard--;
 	}
 
 	if (num < max) {
@@ -1782,6 +1797,8 @@ void tsm_screen_erase_current_line(struct tsm_screen *con,
 
 	tsm_screen_erase_region(con,
 		0, con->cursor_y, con->size_x - 1, con->cursor_y, protect);
+	if (con->cursor_y == con->vanguard)
+		con->vanguard--;
 }
 
 SHL_EXPORT
@@ -1792,6 +1809,8 @@ void tsm_screen_erase_screen_to_cursor(struct tsm_screen *con,
 		return;
 
 	tsm_screen_erase_region(con, 0, 0, con->cursor_x, con->cursor_y, protect);
+	if (con->cursor_y > con->vanguard)
+		con->vanguard = 0;
 }
 
 SHL_EXPORT
@@ -1820,6 +1839,7 @@ void tsm_screen_erase_screen(struct tsm_screen *con, bool protect)
 
 	tsm_screen_erase_region(con,
 		0, 0, con->size_x - 1, con->size_y - 1, protect);
+	con->vanguard = 0;
 }
 
 /*
