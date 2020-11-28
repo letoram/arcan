@@ -132,6 +132,7 @@ struct tsm_screen {
 	struct line **main_lines;
 	struct line **alt_lines;
 	tsm_age_t age;
+	int vanguard;
 
 	/* scroll-back buffer */
 	unsigned int sb_count;		/* number of lines in sb */
