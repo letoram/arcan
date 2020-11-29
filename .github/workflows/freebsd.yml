@@ -1,0 +1,24 @@
+name: FreeBSD 12.2 amd64
+
+on: [ push, pull_request ]
+
+jobs:
+  build-everything:
+    runs-on: macos-latest # until https://github.com/actions/runner/issues/385
+    steps:
+    - uses: actions/checkout@v2
+    - name: test
+      uses: vmactions/freebsd-vm@v0.0.9 # on update bump workflow name
+      with:
+        prepare: |
+          pkg install -y cmake ninja pkgconf # build
+          pkg install -y freetype2 luajit openal-soft sqlite3 # common
+          pkg install -y -x '^mesa($|-libs)' # egl-dri
+          pkg install -y wayland-protocols wayland xcb-util-wm libxkbcommon # wayland
+          pkg install -y sdl2 # sdl (hybrid)
+          pkg install -y espeak vlc # decode
+          pkg install -y ffmpeg libvncserver tesseract # encode
+        run: |
+          cmake -B _build -G Ninja -S src -DBUILD_PRESET:STRING="everything"
+          cmake --build _build
+          cmake --install _build
