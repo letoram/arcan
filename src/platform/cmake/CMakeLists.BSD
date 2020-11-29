@@ -90,15 +90,19 @@ endif()
 set(OS_DYLIB_EXTENSION=\".so\")
 add_definitions(
 	-DPLATFORM_HEADER=\"${PLATFORM_ROOT}/platform.h\"
-	-D_WITH_DPRINTF_
+	-D_WITH_GETLINE
 	-D__UNIX
 	-D__BSD
 	-DLIBUSB_BSD
 	${BSD_VARIANT_DEFINITIONS}
 )
 
-find_library(ICONV NAMES iconv REQUIRED)
-LIST(APPEND ARCAN_LIBRARIES ${ICONV})
+include(CheckSymbolExists)
+check_symbol_exists(iconv "iconv.h" HAVE_ICONV)
+if (NOT HAVE_ICONV)
+	find_library(ICONV_LIBRARY NAMES iconv REQUIRED)
+	list(APPEND ARCAN_LIBRARIES ${ICONV_LIBRARY})
+endif()
 
 set_property(SOURCE platform/posix/fdpassing.c
 	APPEND PROPERTY COMPILE_FLAGS -w)

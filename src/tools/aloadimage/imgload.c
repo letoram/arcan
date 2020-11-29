@@ -17,8 +17,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <signal.h>
-#if defined(__APPLE__) || defined(__OpenBSD__)
-#else
+#ifdef ENABLE_SECCOMP
 #include <sys/prctl.h>
 #endif
 #include <sys/wait.h>

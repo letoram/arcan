@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <netdb.h>
+#include <netinet/in.h>
 #include <netinet/tcp.h>
 
 #include "a12.h"
