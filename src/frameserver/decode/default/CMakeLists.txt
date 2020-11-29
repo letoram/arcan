@@ -52,31 +52,35 @@ if (LIBVLC_FOUND)
 			${DECODE_DEFS}
 		)
 
-		pkg_check_modules(LIBUSB_1 REQUIRED libusb-1.0)
 		pkg_check_modules(FFMPEG REQUIRED libavcodec libavdevice libavfilter libavformat libavutil libswresample libswscale)
 
-		ExternalProject_Add(libuvc
-			SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/frameserver/decode/libuvc"
-			BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/libuvc_static"
-			UPDATE_COMMAND ""
-			GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/libuvc"
-			${EXTERNAL_DEFS}
-			${CMAKE_EXTERNAL_DEFS}
-			-DBUILD_UVC_STATIC=ON
-		)
+		if (STATIC_LIBUVC)
+			pkg_check_modules(LIBUSB_1 REQUIRED libusb-1.0)
+			ExternalProject_Add(libuvc
+				SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/frameserver/decode/libuvc"
+				BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/libuvc_static"
+				UPDATE_COMMAND ""
+				GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/libuvc"
+				${EXTERNAL_DEFS}
+				${CMAKE_EXTERNAL_DEFS}
+				-DBUILD_UVC_STATIC=ON
+			)
+			set(DECODE_DEPS libuvc)
+			set(LIBUVC_INCLUDE_DIRS ${LIBUSB_1_INCLUDE_DIRS} ${CMAKE_CURRENT_BINARY_DIR}/libuvc_static/include)
+			set(LIBUVC_LINK_LIBRARIES ${LIBUSB_1_LINK_LIBRARIES} ${CMAKE_CURRENT_BINARY_DIR}/libuvc_static/libuvc.a)
+		else()
+			pkg_check_modules(LIBUVC REQUIRED libuvc)
+		endif()
 
-	set(DECODE_DEPS libuvc)
 		set(DECODE_INCLUDE_DIRS
 			${DECODE_INCLUDE_DIRS}
-			${LIBUSB_1_INCLUDE_DIRS}
 			${FFMPEG_INCLUDE_DIRS}
-			${CMAKE_CURRENT_BINARY_DIR}/libuvc_static/include
+			${LIBUVC_INCLUDE_DIRS}
 			${CMAKE_CURRENT_BINARY_DIR}/../../../include)
 		set(DECODE_LIBS
 			${FFMPEG_LINK_LIBRARIES}
 			${DECODE_LIBS}
-			${LIBUSB_1_LINK_LIBRARIES}
-			${CMAKE_CURRENT_BINARY_DIR}/libuvc_static/libuvc.a
+			${LIBUVC_LINK_LIBRARIES}
 		)
 		set(DECODE_SOURCES
 			${DECODE_SOURCES}
