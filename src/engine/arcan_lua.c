@@ -7613,7 +7613,6 @@ void arcan_lua_dostring(lua_State* ctx, const char* code, const char* name)
 		code, strlen(code), name) || lua_pcall(ctx, 0, LUA_MULTRET, 0);
 }
 
-static jmp_buf watchdog_dst;
 static void error_hook(lua_State* ctx, lua_Debug* ar)
 {
 /* will longjump into the pcall error handler which will trigger recovery */
@@ -12393,6 +12392,7 @@ static const luaL_Reg tgtfuns[] = {
 {"rendertarget_id",            rendertargetid           },
 {"rendertarget_range",         rendertargetrange        },
 {"rendertarget_metrics",       rendertargetmetrics      },
+{"rendertarget_reconfigure",   renderreconf             },
 {"launch_decode",              launchdecode             },
 {"launch_avfeed",              launchavfeed             },
 {NULL, NULL}
