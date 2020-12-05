@@ -19,14 +19,14 @@ set(A12_VERSION_MAJOR 0)
 set(A12_VERSION_MINOR 1)
 
 if (FFMPEG_FOUND)
-	amsg("(a12) ffmpeg support found, H264 enc/dec enabled")
+	amsg("(a12) ${CL_GRN} ffmpeg support found, H264 enc/dec enabled ${CL_RST}")
 	add_definitions(-DWANT_H264_DEC)
 	add_definitions(-DWANT_H264_ENC)
 
 	list(APPEND LIBRARIES ${FFMPEG_LINK_LIBRARIES})
 	include_directories(${FFMPEG_INCLUDE_DIRS})
 else()
-	amsg("(a12) ffmpeg support NOT found, video enc/dec DISABLED")
+	amsg("(a12) ${CL_YEL} ffmpeg support NOT found, video enc/dec DISABLED ${CL_RST}")
 endif()
 
 set(A12_SOURCES
