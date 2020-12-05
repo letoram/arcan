@@ -21,7 +21,7 @@ pkg_check_modules(XKB REQUIRED xkbcommon)
 
 # The required bits and xwm can be made optional if there ever comes a day
 # that Wayland is mostly useful without Xwayland ..
-pkg_check_modules(XCB REQUIRED xcb xcb-composite xcb-icccm xcb-xfixes)
+pkg_check_modules(XCB REQUIRED xcb xcb-composite xcb-icccm xcb-xfixes xcb-util)
 
 set(WAYBRIDGE_INCLUDES
 	xwl
