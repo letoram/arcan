@@ -131,7 +131,7 @@ struct whitelist whitelist[] = {
  * is needed for backlight controls as backlight resolves here */
 	{"/sys/devices/", -1, MODE_PREFIX},
 	{"/dev/tty", -1, MODE_PREFIX | MODE_TTY},
-#elif defined(__OpenBSD__)
+#elif defined(__OpenBSD__) || defined (__NetBSD__)
 	{"/dev/wsmouse", -1, MODE_DEFAULT},
 	{"/dev/wsmouse0", -1, MODE_DEFAULT},
 	{"/dev/wsmouse1", -1, MODE_DEFAULT},
@@ -180,14 +180,10 @@ struct whitelist whitelist[] = {
 	{"/dev/drmR130", -1, MODE_DEFAULT},
 	{"/dev/drmR131", -1, MODE_DEFAULT},
 	{"/dev/amdmsr", -1, MODE_DEFAULT}
-#elif defined(__FreeBSD__)
+#elif defined(__FreeBSD__) || defined(__DragonFly__)
 	{"/dev/input/", -1, MODE_PREFIX},
 	{"/dev/sysmouse", -1, MODE_DEFAULT},
-	{"/dev/dri/card0", -1, MODE_DRM},
-	{"/dev/dri/card1", -1, MODE_DRM},
-	{"/dev/dri/card2", -1, MODE_DRM},
-	{"/dev/dri/card3", -1, MODE_DRM},
-	{"/dev/dri/card4", -1, MODE_DRM}
+	{"/dev/dri/", -1, MODE_PREFIX}
 #else
 	fatal_posix_psep_open_but_no_ostable
 #endif
