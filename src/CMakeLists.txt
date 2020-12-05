@@ -170,6 +170,7 @@ else()
 	amsg("")
 	amsg("${CL_WHT}Cmake Options:${CL_RST}")
 	amsg("${CL_YEL}\t-DCMAKE_BUILD_TYPE=${CL_GRN}[Debug|Release|Profile|DebugTrace]")
+	amsg("${CL_YEL}\t-DENABLE_WALL_SPAM=${CL_GRN}[Off|On]${CL_RST} - More build warnings")
 	amsg("${CL_YEL}\t-DENABLE_SIMD=${CL_GRN}[On|Off]${CL_RST} - Enable SIMD optimized instructions")
 	# amsg("    -DENABLE_PBO=[Appl-path] : Profile-based Optimization prepass with appl")
 	# amsg("                               as optimization profile.")
@@ -207,25 +208,20 @@ endif()
 # can ignore this abomination on BSD
 set(CSTD gnu11)
 
-if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
-	if (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client")
-		execute_process(
-			COMMAND ${CMAKE_C_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
-	endif()
+add_compile_options(-Wall)
+if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU" AND NOT ENABLE_WALL_SPAM)
 	add_compile_options(
-		-Wall
 		-Wno-deprecated-declarations
 		-Wno-missing-braces
 		-Wno-unused-function
 		-Wno-unused-value
 		-Wno-unused-variable
+		-Wno-unused-result
 		-Wformat=0
-		-Wno-atomic-alignment
 	)
 
-elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
+elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang" AND NOT ENABLE_WALL_SPAM)
 	add_compile_options(
-		-Wall
 		-Wno-deprecated-declarations
 		-Wno-unknown-warning-option
 		-Wno-unused-const-variable
@@ -234,10 +230,9 @@ elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
 		-Wno-unused-function
 		-Wno-atomic-alignment
 		-Wno-unused-variable
+		-Wno-unused-result
 		-Wno-macro-redefined
 	)
-else()
-	message(FATAL_ERROR "${CL_RED}Arcan requires an ISO C 9899:2011 capable compiler (Clang-3.3+ or gcc 4.7+)${CL_RST}")
 endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
