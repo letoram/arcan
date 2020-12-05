@@ -840,7 +840,7 @@ void arcan_tui_write(struct tui_context* c,
 	if (!c)
 		return;
 
-	int ss = tsm_screen_write(c->screen, ucode, attr);
+	tsm_screen_write(c->screen, ucode, attr);
 
 	flag_cursor(c);
 }

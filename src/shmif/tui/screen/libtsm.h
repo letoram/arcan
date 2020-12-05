@@ -208,7 +208,7 @@ void tsm_screen_set_tabstop(struct tsm_screen *con);
 void tsm_screen_reset_tabstop(struct tsm_screen *con);
 void tsm_screen_reset_all_tabstops(struct tsm_screen *con);
 
-int tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
+void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
 		const struct tui_screen_attr *attr);
 int tsm_screen_newline(struct tsm_screen *con);
 int tsm_screen_scroll_up(struct tsm_screen *con, unsigned int num);

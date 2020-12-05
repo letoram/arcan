@@ -655,6 +655,7 @@ static bool setup_build_term()
 {
 	size_t rows = 0, cols = 0;
 	arcan_tui_reset(term.screen);
+	tsm_vte_hard_reset(term.vte);
 	arcan_tui_dimensions(term.screen, &rows, &cols);
 	term.complete_signal = false;
 

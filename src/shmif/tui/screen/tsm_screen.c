@@ -302,8 +302,7 @@ static int screen_scroll_up(struct tsm_screen *con, unsigned int num)
 	 * also be small enough so we do not get stack overflows. */
 	if (num > 128) {
 		screen_scroll_up(con, 128);
-		screen_scroll_up(con, num - 128);
-		return num;
+		return screen_scroll_up(con, num - 128);
 	}
 	struct line *cache[num];
 
@@ -375,8 +374,7 @@ static int screen_scroll_down(struct tsm_screen *con, unsigned int num)
 	/* see screen_scroll_up() for an explanation */
 	if (num > 128) {
 		screen_scroll_down(con, 128);
-		screen_scroll_down(con, num - 128);
-		return num;
+		return screen_scroll_down(con, num - 128);
 	}
 	struct line *cache[num];
 
@@ -413,7 +411,7 @@ static void screen_write(struct tsm_screen *con, unsigned int x,
 			  const struct tui_screen_attr *attr)
 {
 	struct line *line;
-	unsigned int i;
+	int i;
 
 	if (!len)
 		return;
@@ -1160,18 +1158,21 @@ void tsm_screen_reset_all_tabstops(struct tsm_screen *con)
 }
 
 SHL_EXPORT
-int tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
+void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
 			  const struct tui_screen_attr *attr)
 {
-	unsigned int last, len;
-	int rv = 0;
+	int last, len;
 
 	if (!con)
-		return 0;
+		return;
 
 	len = tsm_symbol_get_width(con->sym_table, ch);
 	if (!len)
-		return 0;
+		return;
+		else if (len < 0) {
+			ch = 0x0000fffd;
+			len = 1;
+		}
 
 	inc_age(con);
 
@@ -1182,23 +1183,23 @@ int tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
 		last = con->size_y - 1;
 
 	if (con->cursor_x >= con->size_x) {
-		if (con->flags & TSM_SCREEN_AUTO_WRAP){
+		if (con->flags & TSM_SCREEN_AUTO_WRAP)
 			move_cursor(con, 0, con->cursor_y + 1);
-			rv = 0;
-		}
 		else
 			move_cursor(con, con->size_x - 1, con->cursor_y);
 	}
 
 	if (con->cursor_y > last) {
 		move_cursor(con, con->cursor_x, last);
-		return screen_scroll_up(con, 1);
+		screen_scroll_up(con, 1);
+		return;
 	}
 
 	screen_write(con,
 		con->cursor_x, con->cursor_y, ch, len, attr ? attr : &con->def_attr);
 	move_cursor(con, con->cursor_x + len, con->cursor_y);
-	return rv;
+
+	return;
 }
 
 struct export_metadata {
