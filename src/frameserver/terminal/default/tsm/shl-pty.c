@@ -15,7 +15,7 @@
 
 #ifdef __APPLE__
 #include <util.h>
-#elif defined(__OpenBSD__)
+#elif defined(__OpenBSD__) || defined(__NetBSD__)
 #ifndef IUTF8
 #define IUTF8 0x00004000
 #endif
