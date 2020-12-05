@@ -5,7 +5,7 @@ function(message)
 	list(GET ARGV 0 TYPE)
 	if (TYPE STREQUAL "FATAL_ERROR")
 		list(REMOVE_AT ARGV 0)
-		_message(${TYPE} ${ARGV})
+		_message(${TYPE} ${CL_RED} "${ARGV}" ${CL_RST})
 	endif()
 endfunction()
 
@@ -734,6 +734,9 @@ else()
 			${VIDEO_PLATFORM_SOURCES}
 			${PLATFORM_ROOT}/sdl2/event.c
 		)
+		if (MAIN_DEPS)
+			add_dependencies(arcan_sdl ${MAIN_DEPS})
+		endif()
 		target_include_directories(arcan_sdl PRIVATE ${INCLUDE_DIRS})
 		target_compile_definitions(arcan_sdl PRIVATE
 			${ARCAN_DEFINITIONS} ${ARCAN_NOLWA_DEFINITIONS}
