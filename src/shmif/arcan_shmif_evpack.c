@@ -101,7 +101,14 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 			snprintf(work, dsz,"EXT:FAILURE()");
 		break;
 		case EVENT_EXTERNAL_BUFFERSTREAM:
-			snprintf(work, dsz,"EXT:BUFFERSTREAM()");
+			snprintf(work, dsz,"EXT:BUFFERSTREAM(%zu, w*h: %zu*%zu, fmt: %d, "
+				"stride: %zu, offset: %zu, mod(lo,hi): %"PRIu32",%"PRIu32")",
+				(size_t)ev.ext.bstream.left,
+				(size_t)ev.ext.bstream.width, (size_t)ev.ext.bstream.height,
+				(int)ev.ext.bstream.format,
+				(size_t)ev.ext.bstream.stride, (uint32_t)ev.ext.bstream.mod_lo,
+				(uint32_t)ev.ext.bstream.mod_hi
+			);
 		break;
 		case EVENT_EXTERNAL_FRAMESTATUS:
 			snprintf(work, dsz,"EXT:FRAMESTATUS(DEPRECATED)");

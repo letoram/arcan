@@ -114,6 +114,8 @@ static void zdmattr_add(struct wl_client* cl,
  * the [fd] will get closed by plane import, so remember to dup this when
  * forwarding */
 			.fd = fd,
+			.w = buf->w,
+			.h = buf->h,
 			.gbm = {
 				.offset = ofs,
 				.stride = stride,

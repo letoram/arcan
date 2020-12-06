@@ -1,5 +1,8 @@
 ## 0.6.1
 
+## Engine
+ * Disable watchdog during launch_external
+
 ## Frameservers
  * Terminal: added autofit argument to keep_alive
  * Terminal: save and rebuild 'dead' terminal window on resize
@@ -9,6 +12,12 @@
 
 ## Lua
  * Whitelist os.date
+
+## Build
+ * A whole lot of FreeBSD build fixes courtesy of J.Beich
+
+## Wayland
+ * arcan-wayland did not pack drm/dma-buf right, causing import failures
 
 ## 0.6.0
 ## Engine

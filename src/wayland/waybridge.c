@@ -340,7 +340,7 @@ static bool waybridge_instance_keymap(
 		free_kbd_state(&cl->kbd_state);
 		return false;
 	}
-	unlink(chfn);
+//	unlink(chfn);
 
 	*out_sz = strlen(cl->kbd_state.map_str) + 1;
 	if (*out_sz != write(fd, cl->kbd_state.map_str, *out_sz)){
