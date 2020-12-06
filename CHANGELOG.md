@@ -9,6 +9,7 @@
 
 ## Tui
  * Lowered the constraint for wndhint to also work for main window
+ * Tpack is now the only output, local rasterization is dead
 
 ## Lua
  * Whitelist os.date
