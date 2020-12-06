@@ -335,6 +335,21 @@ bind_drm(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 		wl_resource_post_event(resource, WL_DRM_CAPABILITIES, capabilities);
 }
 
+static struct shmifext_buffer_plane buffer_to_plane(struct wl_drm_buffer* buf)
+{
+	return (struct shmifext_buffer_plane){
+		.fd = arcan_shmif_dupfd(buf->fd, -1, false),
+		.fence = -1,
+		.w = buf->width,
+		.h = buf->height,
+		.gbm = {
+			.format = buf->format,
+			.stride = buf->stride[0],
+			.offset = buf->offset[0]
+		}
+	};
+}
+
 static void wayland_drm_commit(struct comp_surf* surf,
 	struct wl_drm_buffer* buf, struct arcan_shmif_cont* con)
 {
@@ -360,17 +375,7 @@ static void wayland_drm_commit(struct comp_surf* surf,
 /* the interface can deal with multiple planes to a buffer, though the current
  * implementation restricts us to 1, so assume that for now - we need to dup
  * the handle since the import procedure closes the handle */
-		struct shmifext_buffer_plane plane = {
-			.fd = arcan_shmif_dupfd(buf->fd, -1, false),
-			.fence = -1,
-			.w = buf->width,
-			.h = buf->height,
-			.gbm = {
-				.format = buf->format,
-				.stride = buf->stride[0],
-				.offset = buf->offset[0]
-			}
-		};
+		struct shmifext_buffer_plane plane = buffer_to_plane(buf);
 
 /* now we can readback into the store (possible asynch through a PBO if we have
  * multiple clients and don't want to stall, or as a separate thread that
@@ -391,8 +396,9 @@ static void wayland_drm_commit(struct comp_surf* surf,
  * here - basically in this layer it should only be setting a flag on the
  * SHMIF_SIGNAL to indicate a continuation, and repeat for all buffers
  */
-	arcan_shmif_signalhandle(con,
-		SHMIF_SIGVID, buf->fd, buf->stride[0], buf->format);
+	struct shmifext_buffer_plane planes[4] = {buffer_to_plane(buf)};
+
+	arcan_shmifext_signal_planes(con, SHMIF_SIGVID, 1, planes);
 }
 
 static struct wl_drm_buffer *
