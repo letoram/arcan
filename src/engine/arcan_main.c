@@ -294,7 +294,6 @@ static void add_hookscript(const char* instr)
 	}
 
 /* and copy the final script into the array */
-	const char* dupscr = NULL;
 	if (arr_hooks.count + 1 >= arr_hooks.limit)
 		arcan_mem_growarr(&arr_hooks);
 

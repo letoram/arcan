@@ -16,14 +16,6 @@ static void display_hint(struct tui_context* tui, arcan_tgtevent* ev)
 /* did we get an updated cell-state and we are in server-side rendering? */
 	int hcw = ev->ioevs[5].iv;
 	int hch = ev->ioevs[6].iv;
-	if (tui->rbuf_fwd && hcw > 0 && tui->cell_w != hcw){
-		cell_changed = true;
-		tui->cell_w = hcw;
-	}
-	if (tui->rbuf_fwd && hch > 0 && tui->cell_h != hch){
-		cell_changed = true;
-		tui->cell_h = hch;
-	}
 
 /* anything that would case relayout, resize, renegotiation */
 	if (cell_changed ||
