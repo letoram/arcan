@@ -40,8 +40,6 @@ static void resize_cellbuffer(struct tui_context* tui)
 {
 	if (tui->base){
 		free(tui->base);
-		if (!tui->rbuf_fwd)
-			free(tui->rbuf);
 	}
 
 	tui->base = NULL;
@@ -53,25 +51,14 @@ static void resize_cellbuffer(struct tui_context* tui)
 		((tui->rows+2) * sizeof(struct tui_raster_line))
 	;
 
-	if (!tui->rbuf_fwd){
-		tui->rbuf = NULL;
-		tui->rbuf = malloc(rbuf_sz);
-		if (!tui->rbuf){
-			LOG("couldn't allocate output text buffer\n");
-			return;
-		}
-	}
-
 	tui->base = malloc(buffer_sz);
 	if (!tui->base){
-		free(tui->rbuf);
-		tui->rbuf = NULL;
 		LOG("couldn't allocate screen buffers\n");
 		return;
 	}
 
 	memset(tui->base, '\0', buffer_sz);
-	memset(tui->rbuf, '\0', rbuf_sz);
+	memset(tui->acon.vidb, '\0', rbuf_sz);
 
 	tui->front = tui->base;
 	tui->back = &tui->base[tui->rows * tui->cols];
@@ -170,7 +157,7 @@ int tui_screen_tpack(struct tui_context* tui,
 	arcan_tui_get_color(tui, TUI_COL_BG, hdr.bgc);
 	hdr.bgc[3] = tui->alpha;
 
-	uint8_t* out = tui->rbuf;
+	uint8_t* out = tui->acon.vidb;
 	size_t outsz = sizeof(hdr);
 
 	if (opts.back){
@@ -303,7 +290,7 @@ int tui_screen_tpack(struct tui_context* tui,
 			line.offset = tui->last_cursor.col;
 
 /* NOTE: REPLACE WITH PROPER PACKING */
-			memcpy(&tui->rbuf[outsz], &line, sizeof(line));
+			memcpy(&tui->acon.vidb[outsz], &line, sizeof(line));
 
 			outsz += raster_line_sz;
 			outsz += cell_to_rcell(&tui->front[
@@ -319,7 +306,7 @@ int tui_screen_tpack(struct tui_context* tui,
 		line.offset = tui->last_cursor.col;
 
 /* NOTE: REPLACE WITH PROPER PACKING */
-		memcpy(&tui->rbuf[outsz], &line, sizeof(line));
+		memcpy(&tui->acon.vidb[outsz], &line, sizeof(line));
 		outsz += raster_line_sz;
 		outsz += cell_to_rcell(&tui->front[
 			line.start_line * tui->cols + line.offset], &out[outsz], 1);
@@ -342,9 +329,8 @@ int tui_screen_tpack(struct tui_context* tui,
 
 /* write the header and return */
 /* NOTE: REPLACE WITH PROPER PACKING */
-	memcpy(tui->rbuf, &hdr, sizeof(hdr));
+	memcpy(tui->acon.vidb, &hdr, sizeof(hdr));
 	*rbuf_sz = outsz;
-	*rbuf = tui->rbuf;
 	return rv;
 }
 
@@ -382,10 +368,6 @@ void tui_screen_resized(struct tui_context* tui)
 	tui->pad_w = tui->acon.w - (cols * tui->cell_w);
 	tui->pad_h = tui->acon.h - (rows * tui->cell_h);
 
-	if (tui->rbuf_fwd){
-		tui->rbuf = tui->acon.vidb;
-	}
-
 /* if the number of cells has actually changed, we need to propagate */
 	if (cols != tui->cols || rows != tui->rows){
 		tui->cols = cols;
@@ -401,24 +383,6 @@ void tui_screen_resized(struct tui_context* tui)
 		if (tui->handlers.resized)
 			tui->handlers.resized(tui,
 				tui->acon.w, tui->acon.h, cols, rows, tui->handlers.tag);
-	}
-
-/* client side rasterization need to clear the pad region as the rasterizer
- * only considers clearing the actual screen areas */
-	if (!tui->rbuf_fwd){
-		uint8_t col[3];
-		arcan_tui_get_color(tui, TUI_COL_BG, col);
-		shmif_pixel bg = SHMIF_RGBA(col[0], col[1], col[2], tui->alpha);
-
-		if (tui->pad_w){
-			draw_box(&tui->acon,
-				tui->acon.w - tui->pad_w, 0, tui->pad_w, tui->acon.h, bg);
-		}
-
-		if (tui->pad_h){
-			draw_box(&tui->acon,
-				0, tui->acon.h - tui->pad_h, tui->acon.w, tui->pad_h, bg);
-		}
 	}
 
 	tui->dirty |= DIRTY_FULL;
@@ -447,15 +411,7 @@ int tui_screen_refresh(struct tui_context* tui)
 
 /* if we raster locally or server- side is determined by the rbuf_fwd flag */
 	if (rv){
-		if (!tui->rbuf_fwd){
-			if (1 != tui_raster_render(tui->raster, &tui->acon, rbuf, rbuf_sz))
-				return 0;
-
-			arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
-			return 0;
-		}
-
-		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
+		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 /* last offset feedback buffer can be read here for kernel offset / lookup */
  	}
 

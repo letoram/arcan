@@ -41,16 +41,6 @@ struct tui_context {
 
 	float progress[5];
 
-/* rbuf is used to package / convert the representation in base(front|back)
- * to a line format that can be used to forward to a raster engine. The size
- * is derived when allocating base
- */
-	uint8_t* rbuf;
-
-/* fwd_rbuf is a temporary thing while we move to always just forward /
- * write into the rbuf with no rendering */
-	bool rbuf_fwd;
-
 	unsigned flags;
 	bool inactive, subseg;
 	int inact_timer;

@@ -210,13 +210,7 @@ static bool late_bind(
 
 	tui_fontmgmt_setup(res, init);
 
-/* TEMPORARY: while moving to server-side rasterization as the new default */
-	res->rbuf_fwd = getenv("TUI_RPACK") != NULL;
-	if (res->rbuf_fwd)
-		res->acon.hints = SHMIF_RHINT_TPACK;
-	else
-		res->acon.hints = SHMIF_RHINT_SUBREGION;
-	res->acon.hints |= SHMIF_RHINT_VSIGNAL_EV;
+	res->acon.hints = SHMIF_RHINT_TPACK | SHMIF_RHINT_VSIGNAL_EV;
 
 /* clipboard, timer callbacks, no IDENT */
 	tui_queue_requests(res, true, false);
