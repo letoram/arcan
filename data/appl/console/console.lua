@@ -610,4 +610,14 @@ function console_display_state(status)
 			end
 		end
 	end
+
+-- since density, font and so on might have changed - we want to rebuild the
+-- osd keyboard to account for that
+	local target = workspaces[ws_index]
+	if not target then
+		console_osdkbd_destroy(0)
+		return
+	end
+
+	console_osdkbd_invalidate(workspaces, target)
 end
