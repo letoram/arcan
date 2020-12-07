@@ -390,10 +390,11 @@ refill:
  * until we implement a global 'lock-all-threads' then continue this one as
  * write may continue to come in on our fdin at a higher rate than drain to
  * fdout, which in turn would block the dup2 swapback */
-	if (mim_flush(tui, buf, buf_pos, fdout)){
+	if (mim_flush(tui, buf, buf_pos, fdout) && status == 0){
 		buf_pos = 0;
 		arcan_tui_bufferwnd_tell(tui, &opts);
 		read_data = true;
+		arcan_tui_bufferwnd_release(tui);
 		goto refill;
 	}
 
