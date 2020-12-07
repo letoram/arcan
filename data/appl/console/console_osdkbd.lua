@@ -582,16 +582,16 @@ console_clock_pulse = clock
 
 -- the context has changed so rebuild / setup
 function console_osdkbd_invalidate(wm, dst)
+	console_osdkbd_destroy(0)
+
 	if not active then
 		return
 	end
 
 	local page = active.page_index
-	console_osdkbd_destroy(0)
+
 	spawn_keyboard(wm, dst, last_io.x, last_io.y, 0)
-	if active then
-		active:set_page(page)
-	end
+	active:set_page(page)
 end
 
 function console_osdkbd_input(wm, dst, io)
@@ -607,6 +607,12 @@ function console_osdkbd_input(wm, dst, io)
 		if active and in_tap and CLOCK - in_tap > 1 then
 			in_tap = false
 		end
+		return
+	end
+
+-- don't let the mouse join in for now, it is better to activate that
+-- through a keybinding so the default is mouse forwarding
+	if not io.touch then
 		return
 	end
 
@@ -626,6 +632,8 @@ function console_osdkbd_input(wm, dst, io)
 	if not active then
 		spawn_keyboard(wm, dst, io.x, io.y, speed)
 		return true
+
+-- 'tap' is treated as a mouse gesture
 	else
 		return mouse_touch_at(io.x, io.y, io.subid, "tap")
 	end
