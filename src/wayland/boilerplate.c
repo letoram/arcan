@@ -137,64 +137,6 @@ static const struct org_kde_kwin_server_decoration_manager_interface kwindecor_i
 	.create = kwindecor_create
 };
 
-#include "wayland-xdg-shell-unstable-v6-server-protocol.h"
-#include "wlimpl/zxdg_positioner.c"
-static struct zxdg_positioner_v6_interface zxdgpos_if = {
-	.destroy = zxdgpos_destroy,
-	.set_size = zxdgpos_size,
-	.set_anchor_rect = zxdgpos_anchor_rect,
-	.set_anchor = zxdgpos_anchor,
-	.set_gravity = zxdgpos_gravity,
-	.set_constraint_adjustment = zxdgpos_consadj,
-	.set_offset = zxdgpos_offset
-};
-
-#include "wlimpl/zxdg_popup.c"
-static struct zxdg_popup_v6_interface zxdgpop_if = {
-	.destroy = zxdgpop_destroy,
-	.grab = zxdgpop_grab
-};
-
-#include "wlimpl/zxdg_toplevel.c"
-static struct zxdg_toplevel_v6_interface zxdgtop_if = {
-	.destroy = zxdgtop_destroy,
-	.set_parent = zxdgtop_setparent,
-	.set_title = zxdgtop_title,
-	.set_app_id = zxdgtop_appid,
-	.show_window_menu = zxdgtop_wndmenu,
-	.move = zxdgtop_move,
-	.resize = zxdgtop_resize,
-	.set_max_size = zxdgtop_set_max,
-	.set_min_size = zxdgtop_set_min,
-	.set_maximized = zxdgtop_maximize,
-	.unset_maximized = zxdgtop_demaximize,
-	.set_fullscreen = zxdgtop_fullscreen,
-	.unset_fullscreen = zxdgtop_unset_fullscreen,
-	.set_minimized = zxdgtop_minimize
-};
-
-#include "wlimpl/zxdg_ssurf.c"
-static struct zxdg_surface_v6_interface zxdgsurf_if = {
-	.destroy = zxdgsurf_destroy,
-	.get_toplevel = zxdgsurf_toplevel,
-	.get_popup = zxdgsurf_getpopup,
-	.set_window_geometry = zxdgsurf_set_geometry,
-	.ack_configure = zxdgsurf_ackcfg,
-};
-
-#include "wlimpl/zxdg_shell.c"
-static const struct zxdg_shell_v6_interface zxdgshell_if = {
-	.get_xdg_surface = zxdg_getsurf,
-	.create_positioner = zxdg_createpos,
-	.pong = zxdg_pong,
-	.destroy = zxdg_destroy
-};
-
-/*
- * most of these are just differently named vtables that map to the same zxdg-
- * implementation, should these diverge, simply copy the zxdg_ version and add
- * xdg_ versions.
- */
 #include "wayland-xdg-shell-server-protocol.h"
 #include "wlimpl/xdg_positioner.c"
 static struct xdg_positioner_interface xdgpos_if = {

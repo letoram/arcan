@@ -106,19 +106,6 @@ static void bind_shell(struct wl_client* client,
 	wl_resource_set_implementation(res, &shell_if, NULL, NULL);
 }
 
-static void bind_zxdg(struct wl_client* client,
-	void *data, uint32_t version, uint32_t id)
-{
-	trace(TRACE_ALLOC, "wl_bind(zxdg %d:%d)", version, id);
-	struct wl_resource* res = wl_resource_create(client,
-		&zxdg_shell_v6_interface, version, id);
-	if (!res){
-		wl_client_post_no_memory(client);
-		return;
-	}
-	wl_resource_set_implementation(res, &zxdgshell_if, NULL, NULL);
-}
-
 static void bind_xdg(struct wl_client* client,
 	void *data, uint32_t version, uint32_t id)
 {

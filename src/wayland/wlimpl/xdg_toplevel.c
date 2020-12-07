@@ -19,6 +19,10 @@ static bool xdgtoplevel_shmifev_handler(
 /* and then, if something has changed, send the configure event */
 			int w = ev->tgt.ioevs[0].iv;
 			int h = ev->tgt.ioevs[1].iv;
+			if (!w)
+				w = surf->acon.w;
+			if (!h)
+				h = surf->acon.h;
 
 			bool resized = (w && h && (w != surf->acon.w || h != surf->acon.h));
 			if (!resized){
