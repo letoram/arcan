@@ -1129,8 +1129,7 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-shm           disable the shm protocol\n"
 "\t-no-seat          disable the seat protocol\n"
 "\t-no-relative-ptr  disable the relative pointer protocol\n"
-"\t-no-xdg           disable the xdg protocol\n"
-"\t-no-zxdg          disable the zxdg protocol\n"
+"\t-no-xdg           disable the xdg-wm-base protocol\n"
 "\t-no-output        disable the output protocol\n"
 "\t-no-xdg-output    disable the xdg-output protocol\n"
 "\t-no-constraints   disable the pointer constraints protocol\n"
@@ -1245,7 +1244,7 @@ int main(int argc, char* argv[])
  */
 	struct {
 		int compositor, shell, shm, seat, output, ddev;
-		int egl, zxdg, xdg, subcomp, drm, relp, dma, cons, xdg_output, xdg_decor, kwin_decor;
+		int egl, xdg, subcomp, drm, relp, dma, cons, xdg_output, xdg_decor, kwin_decor;
 	} protocols = {
 		.compositor = 4,
 		.shell = 1,
@@ -1253,7 +1252,6 @@ int main(int argc, char* argv[])
 		.seat = 7,
 		.output = 2,
 		.egl = 1,
-		.zxdg = 1,
 		.xdg = 1,
 		.drm = 1,
 		.dma = 3,
@@ -1376,8 +1374,6 @@ int main(int argc, char* argv[])
 			protocols.output = 0;
 		else if (strcmp(argv[arg_i], "-no-xdg-output") == 0)
 			protocols.xdg_output = 0;
-		else if (strcmp(argv[arg_i], "-no-zxdg") == 0)
-			protocols.zxdg = 0;
 		else if (strcmp(argv[arg_i], "-no-dma") == 0)
 			protocols.dma = 0;
 		else if (strcmp(argv[arg_i], "-no-xdg") == 0)
@@ -1585,9 +1581,6 @@ int main(int argc, char* argv[])
 	if (protocols.output)
 		wl_global_create(wl.disp, &wl_output_interface,
 			protocols.output, NULL, &bind_output);
-	if (protocols.zxdg)
-		wl_global_create(wl.disp, &zxdg_shell_v6_interface,
-			protocols.zxdg, NULL, &bind_zxdg);
 	if (protocols.xdg)
 		wl_global_create(wl.disp, &xdg_wm_base_interface,
 			protocols.xdg, NULL, &bind_xdg);
