@@ -340,7 +340,7 @@ static bool waybridge_instance_keymap(
 		free_kbd_state(&cl->kbd_state);
 		return false;
 	}
-//	unlink(chfn);
+	unlink(chfn);
 
 	*out_sz = strlen(cl->kbd_state.map_str) + 1;
 	if (*out_sz != write(fd, cl->kbd_state.map_str, *out_sz)){
@@ -1122,7 +1122,7 @@ static int show_use(const char* msg, const char* arg)
 "\nProtocol Filters:\n"
 "\t-no-egl           disable the wayland-egl extensions\n"
 "\t       -no-drm    disable the drm subprotocol\n"
-"\t       -dma       ENABLE  the dma-buf subprotocol\n"
+"\t       -no-dma    disable the dma-buf subprotocol\n"
 "\t-no-compositor    disable the compositor protocol\n"
 "\t-no-subcompositor disable the sub-compositor/surface protocol\n"
 "\t-no-shell         disable the shell protocol\n"
@@ -1256,7 +1256,7 @@ int main(int argc, char* argv[])
 		.zxdg = 1,
 		.xdg = 1,
 		.drm = 1,
-		.dma = 0,
+		.dma = 3,
 		.subcomp = 1,
 		.ddev = 3,
 		.relp = 1,
@@ -1378,8 +1378,8 @@ int main(int argc, char* argv[])
 			protocols.xdg_output = 0;
 		else if (strcmp(argv[arg_i], "-no-zxdg") == 0)
 			protocols.zxdg = 0;
-		else if (strcmp(argv[arg_i], "-dma") == 0)
-			protocols.dma = 3;
+		else if (strcmp(argv[arg_i], "-no-dma") == 0)
+			protocols.dma = 0;
 		else if (strcmp(argv[arg_i], "-no-xdg") == 0)
 			protocols.xdg = 0;
 		else if (strcmp(argv[arg_i], "-no-subcompositor") == 0)

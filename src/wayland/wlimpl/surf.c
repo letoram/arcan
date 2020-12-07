@@ -247,6 +247,11 @@ static bool shm_to_gl(
 	fenv->pixel_storei(GL_UNPACK_ROW_LENGTH, 0);
 	fenv->bind_texture(GL_TEXTURE_2D, 0);
 
+/* this seems to be needed still or the texture contents will be invalid,
+ * better still is to have an explicit fence and queue the release of the
+ * buffer until the upload is finished */
+	fenv->flush();
+
 /* build descriptors */
 	int fd;
 	size_t stride_out;
@@ -270,7 +275,7 @@ static bool shm_to_gl(
 		fd, stride_out, out_fmt
 	);
 
-//	fenv->delete_textures(1, &glid);
+	fenv->delete_textures(1, &glid);
 	return true;
 }
 

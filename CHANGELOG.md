@@ -19,6 +19,8 @@
 
 ## Wayland
  * arcan-wayland did not pack drm/dma-buf right, causing import failures
+ * egl-shm mode working (bridge converts to dma-buf before fwd)
+ * enable dma-buf by default
 
 ## 0.6.0
 ## Engine
