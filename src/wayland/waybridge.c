@@ -1104,7 +1104,7 @@ static int show_use(const char* msg, const char* arg)
 "     arcan-wayland [arguments] -exec /path/to/bin arg1 arg2 ...\n\n"
 "Compatibility:\n"
 "\t-egl-device path  set path to render node (/dev/dri/renderD128)\n"
-"\t-xwl              enable XWayland\n\n"
+"\t-xwl              enable XWayland (implies -no-dma) \n\n"
 "Security/Performance:\n"
 "\t-exec bin arg1 .. end of arg parsing, single-client mode (recommended)\n"
 "\t-exec-x11 bin arg same as -xwl -exec bin arg1 .. form\n"
@@ -1278,8 +1278,10 @@ int main(int argc, char* argv[])
 
 	size_t arg_i = 1;
 	for (; arg_i < argc; arg_i++){
-		if (strcmp(argv[arg_i], "-xwl") == 0)
+		if (strcmp(argv[arg_i], "-xwl") == 0){
 			wl.use_xwayland = true;
+			protocols.dma = 0;
+		}
 		else if (strcmp(argv[arg_i], "-shm-egl") == 0){
 			wl.default_accel_surface = 0;
 		}
@@ -1393,6 +1395,7 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[arg_i], "-exec-x11") == 0){
 			wl.exec_mode = true;
 			wl.use_xwayland = true;
+			protocols.dma = 0;
 			arg_i++;
 			break;
 		}
