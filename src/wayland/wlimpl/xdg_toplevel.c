@@ -26,8 +26,10 @@ static bool xdgtoplevel_shmifev_handler(
 
 			bool resized = (w && h && (w != surf->acon.w || h != surf->acon.h));
 			if (!resized){
-				w = surf->geom_w;
-				h = surf->geom_h;
+				if (surf->geom_w)
+					w = surf->geom_w;
+				if (surf->geom_h)
+					h = surf->geom_h;
 			}
 
 			if (changed || resized){
