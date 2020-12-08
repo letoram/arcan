@@ -509,6 +509,14 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 		return;
 	}
 
+/* xwayland surface that is unpaired? */
+	if (surf->cookie != 0xfeedface && res != surf->client->cursor){
+		if (!xwl_pair_surface(cl, surf, res)){
+			trace(TRACE_SURF, "defer commit until paired");
+			return;
+		}
+	}
+
 	if (!surf->cbuf){
 		trace(TRACE_SURF, "no buffer");
 		if (surf->internal){
@@ -559,11 +567,7 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * like to figure out if this is correct or not - so wrap around a query
  * function. Since there can be stalls etc. in the corresponding wm, we need to
  * tag this surface as pending on failure */
-		else if (!xwl_pair_surface(cl, surf, res)){
-			trace(TRACE_SURF, "defer commit until paired");
-			return;
-		}
-	}
+}
 
 	if (!acon || !acon->addr){
 		trace(TRACE_SURF, "couldn't map to arcan connection");

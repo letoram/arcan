@@ -82,6 +82,18 @@ static struct xwl_window* xwl_find(uint32_t id)
 	return NULL;
 }
 
+static void dump_unpaired()
+{
+	for (size_t i = 0; i < COUNT_OF(xwl_windows); i++){
+		struct xwl_window* wnd = &xwl_windows[i];
+
+		if (!wnd->paired && (wnd->id || wnd->surface_id)){
+			trace(TRACE_XWL, "unpaired_index=%zu:xid=%"PRIu32":wlid=%"PRIu32":type=%s:queue=%zu",
+				i, wnd->id, wnd->surface_id, wnd->xtype ? wnd->xtype : "unknown", wnd->queue_count);
+		}
+	}
+}
+
 static int wnd_queue(struct xwl_window* wnd, struct arcan_event* ev)
 {
 	bool res = false;
@@ -286,8 +298,10 @@ static int process_input(const char* msg)
 		uint32_t surface_id = strtoul(arg, NULL, 10);
 		trace(TRACE_XWL, "surface id:%"PRIu32"-%"PRIu32, id, surface_id);
 		struct xwl_window* wnd = xwl_find_surface(surface_id);
-		if (!wnd)
+		if (!wnd){
 			wnd = xwl_find_alloc(id);
+			dump_unpaired();
+		}
 		if (!wnd)
 			goto cleanup;
 
@@ -456,6 +470,19 @@ static int process_input(const char* msg)
 
 /* and either reflect now or later */
 		wnd_viewport(wnd);
+	}
+	else if (strcmp(arg, "destroy") == 0){
+		if (!arg_lookup(cmd, "id", 0, &arg)){
+			trace(TRACE_XWL, "malformed surface argument: missing surface id");
+			goto cleanup;
+		}
+		uint32_t id = strtoul(arg, NULL, 10);
+		struct xwl_window* wnd = xwl_find(id);
+		if (!wnd){
+			trace(TRACE_XWL, "destroy on unknown id %"PRIu32, id);
+			goto cleanup;
+		}
+		*wnd = (struct xwl_window){};
 	}
 /* just forward */
 	else if (arg_lookup(cmd, "fullscreen", 0, &arg) && arg){
@@ -854,6 +881,7 @@ static bool xwl_pair_surface(
 			"unpaired surface-ID: %"PRIu32, wl_resource_get_id(res));
 		wnd->pending_res = res;
 		wnd->pending_client = cl;
+		dump_unpaired();
 
 		return false;
 	}
