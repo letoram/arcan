@@ -23,6 +23,10 @@ int arcan_conductor_run(arcan_tick_cb cb);
 void arcan_conductor_enable_watchdog();
 void arcan_conductor_toggle_watchdog();
 
+/* will return true after one complete event-flush -> scanout cycle
+ * has been completed */
+bool arcan_conductor_valid_cycle();
+
 /* [ called from platform ]
  * Specify the relationship between display, gpu, synch and object - displays
  * are never 'lost' though they can be disabled with a bad vobj. */

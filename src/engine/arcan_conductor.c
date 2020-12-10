@@ -502,6 +502,16 @@ static uint64_t postframe_synch(uint64_t next)
 	return next;
 }
 
+/* Reset when starting _run, and set to true after we have managed to pass a
+ * full event-context flush and display scanout. This is to catch errors that
+ * persist and re-introduce min the main event handler during warmup and make
+ * sure we don't get stuck in an endless recover->main->flush->recover loop */
+static bool valid_cycle;
+bool arcan_conductor_valid_cycle()
+{
+	return valid_cycle;
+}
+
 static int trigger_video_synch(float frag)
 {
 	conductor.set_deadline = -1;
@@ -522,6 +532,7 @@ static int trigger_video_synch(float frag)
 
 	TRACE_MARK_ONESHOT("conductor", "frame-over", TRACE_SYS_DEFAULT, 0, conductor.set_deadline, "");
 
+	valid_cycle = true;
 /* if the platform wants us to wait, it'll provide a new deadline at synch */
 	return conductor.set_deadline > 0 ? conductor.set_deadline : 0;
 }
@@ -538,6 +549,7 @@ int arcan_conductor_run(arcan_tick_cb tick)
 	uint64_t last_synch = arcan_timemillis();
 	uint64_t next_synch = 0;
 	int sstate = -1;
+	valid_cycle = false;
 
 	for(;;){
 /*
