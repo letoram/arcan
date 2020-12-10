@@ -2,6 +2,7 @@
 
 ## Engine
  * Disable watchdog during launch_external
+ * Require a full scanout cycle before marking crash recover as over
 
 ## Frameservers
  * Terminal: added autofit argument to keep_alive

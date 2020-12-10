@@ -733,7 +733,7 @@ int MAIN_REDIR(int argc, char* argv[])
 	}
 /* fallback recovery with adoption */
 	else if (jumpcode == ARCAN_LUA_RECOVERY_SWITCH){
-		if (in_recover){
+		if (in_recover || !arcan_conductor_valid_cycle()){
 			arcan_warning("Double-Failure (main appl + adopt appl), giving up.\n");
 			goto error;
 		}
