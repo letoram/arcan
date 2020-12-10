@@ -18,6 +18,9 @@
 ## Build
  * A whole lot of FreeBSD build fixes courtesy of J.Beich
 
+## Platform
+ * Egl-dri: don't forward modifiers for linear/invalid
+
 ## Wayland
  * arcan-wayland did not pack drm/dma-buf right, causing import failures
  * egl-shm mode working (bridge converts to dma-buf before fwd)

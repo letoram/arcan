@@ -235,8 +235,21 @@ struct dispout {
 		uint32_t cur_fb;
 		int format;
 		struct gbm_surface* surface;
-		struct drm_mode_map_dumb dumb;
-		size_t dumb_pitch;
+
+/* If a vobj- has been set to be directly mapped and is of a compatible type
+ * (e.g. shm or tui mapped) we use a single dumb buffer as our fb and draw
+ * directly into it (the shmpage itself is our "back buffer") - the store
+ * pointer will be our reference. With TUI, the rasterizer draws right into the
+ * front buffer. This will currently cause tearing. The improvement there is a
+ * synch interface so that we can have a worker thread that does the final
+ * blit/upload from the text screen buffer.
+ */
+		struct {
+			bool enabled;
+			size_t sz;
+			struct agp_vstore agp;
+			struct agp_vstore* ref;
+		} dumb;
 	} buffer;
 
 	struct {
@@ -254,6 +267,9 @@ struct dispout {
 		size_t blob_sz;
 		size_t gamma_size;
 		uint16_t* orig_gamma;
+
+/* should track a small amount of possible overlay planes (one or two) and
+ * allow the platform_map call to set them and their offsets individually */
 	} display;
 
 /* internal v-store and system mappings, rules for drawing final output */
@@ -505,6 +521,11 @@ static void release_card(size_t i)
 	nodes[i].active = false;
 }
 
+/* the criterion for direct- mapping is a bit weird:
+ * if the backing is entirely GPU based, then we need to juggle / queue buffers.
+ * if there are multiple consumers so the display doesn't hold a lock when we
+ * need to update.
+ */
 static bool sane_direct_vobj(arcan_vobject* vobj)
 {
 	return vobj
@@ -574,6 +595,10 @@ bool platform_video_map_buffer(
 		PRIu32, fcc[0], fcc[1], fcc[2], fcc[3], planes[0].w, planes[0].h);
 #endif
 
+	uint64_t mod =
+		((uint64_t)planes[0].gbm.mod_hi << (uint64_t)32) |
+		(uint64_t)(planes[0].gbm.mod_lo);
+
 	ADD_ATTR(EGL_WIDTH, planes[0].w);
 	ADD_ATTR(EGL_HEIGHT, planes[0].h);
 	ADD_ATTR(EGL_LINUX_DRM_FOURCC_EXT, planes[0].gbm.format);
@@ -587,7 +612,7 @@ bool platform_video_map_buffer(
 		ADD_ATTR(dma_fd_constants[i], planes[i].fd);
 		ADD_ATTR(dma_offset_constants[i], planes[i].gbm.offset);
 		ADD_ATTR(dma_pitch_constants[i], planes[i].gbm.stride);
-		if (planes[i].gbm.mod_hi || planes[i].gbm.mod_lo){
+		if (mod != DRM_FORMAT_MOD_INVALID && mod != DRM_FORMAT_MOD_LINEAR){
 			ADD_ATTR(dma_mod_constants[i*2+0], planes[i].gbm.mod_hi);
 			ADD_ATTR(dma_mod_constants[i*2+1], planes[i].gbm.mod_lo);
 		}
@@ -2191,6 +2216,7 @@ static bool set_dumb_fb(struct dispout* d)
 		.height = d->display.mode.vdisplay,
 		.bpp = 32
 	};
+
 	int fd = d->device->disp_fd;
 	if (drmIoctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &create) < 0){
 		TRACE_MARK_ONESHOT("egl-dri", "create-dumb", TRACE_SYS_ERROR, 0, 0, "");
@@ -2206,8 +2232,8 @@ static bool set_dumb_fb(struct dispout* d)
 		return false;
 	}
 
-	d->buffer.dumb.handle = create.handle;
-	d->buffer.dumb_pitch = create.pitch;
+	d->buffer.dumb.agp.vinf.text.handle = create.handle;
+	d->buffer.dumb.agp.vinf.text.stride = create.pitch;
 	if (drmIoctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &d->buffer.dumb) < 0){
 		drmModeRmFB(fd, d->buffer.cur_fb);
 		d->buffer.cur_fb = 0;
@@ -2216,8 +2242,10 @@ static bool set_dumb_fb(struct dispout* d)
 		return false;
 	}
 
+/* note, do we get an offset here? */
 	void* mem = mmap(0,
-		create.size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, d->buffer.dumb.offset);
+		create.size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+
 	if (MAP_FAILED == mem){
 		debug_print("(%d) couldn't mmap dumb-fb", (int) d->id);
 		TRACE_MARK_ONESHOT("egl-dri", "create-dumb-mmap", TRACE_SYS_ERROR, 0, 0, "");
@@ -2228,8 +2256,12 @@ static bool set_dumb_fb(struct dispout* d)
 
 	TRACE_MARK_ONESHOT("egl-dri", "create-dumb", TRACE_SYS_DEFAULT, 0, 0, "");
 	memset(mem, 0xaa, create.size);
-/* NOTE: should we munmap here? */
 	return true;
+}
+
+static void release_dumb_fb(struct dispout* d)
+{
+
 }
 
 static bool resolve_add(int fd, drmModeAtomicReqPtr dst, uint32_t obj_id,
@@ -2675,10 +2707,12 @@ retry:
 			debug_print("(%d) setup_kms, atomic-find_plane fail", (int)d->id);
 			ok = false;
 		}
+/* map a buffer to it so we get it to behave */
 		else if (!set_dumb_fb(d)){
 			debug_print("(%d) setup_kms, atomic dumb-fb fail", (int)d->id);
 			ok = false;
 		}
+/* and finally commit */
 		else if (!atomic_set_mode(d)){
 			debug_print("(%d) setup_kms, atomic modeset fail", (int)d->id);
 			drmModeRmFB(d->device->disp_fd, d->buffer.cur_fb);
@@ -2847,9 +2881,6 @@ bool map_handle_stream(struct agp_vstore* dst, int64_t handle)
 	return false;
 }
 
-/* This interface is insufficient for dealing multi-planar formats and
- * individual plane updates. Something to worry about when we have a test
- * set that actually works for that usecase.. */
 bool platform_video_map_handle(
 	struct agp_vstore* dst, int64_t handle)
 {

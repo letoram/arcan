@@ -796,6 +796,7 @@ static bool xwlsurf_shmifev_handler(
 	break;
 	case TARGET_COMMAND_EXIT:
 		fprintf(wmfd_output, "kind=destroy:id=%"PRIu32"\n", wnd->id);
+		*wnd = (struct xwl_window){};
 		return true;
 	default:
 	break;

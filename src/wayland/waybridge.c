@@ -1254,7 +1254,7 @@ int main(int argc, char* argv[])
 		.egl = 1,
 		.xdg = 1,
 		.drm = 1,
-		.dma = 3,
+		.dma = 2,
 		.subcomp = 1,
 		.ddev = 3,
 		.relp = 1,
@@ -1280,7 +1280,6 @@ int main(int argc, char* argv[])
 	for (; arg_i < argc; arg_i++){
 		if (strcmp(argv[arg_i], "-xwl") == 0){
 			wl.use_xwayland = true;
-			protocols.dma = 0;
 		}
 		else if (strcmp(argv[arg_i], "-shm-egl") == 0){
 			wl.default_accel_surface = 0;
@@ -1395,7 +1394,6 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[arg_i], "-exec-x11") == 0){
 			wl.exec_mode = true;
 			wl.use_xwayland = true;
-			protocols.dma = 0;
 			arg_i++;
 			break;
 		}
