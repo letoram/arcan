@@ -3,7 +3,7 @@
 #include "arcan_math.h"
 #include <arcan_shmif.h>
 #include <arcan_shmif_sub.h>
-#include <hidapi/hidapi.h>
+#include <hidapi.h>
 #include <pthread.h>
 #include "vrbridge.h"
 #include "avr_test.h"
