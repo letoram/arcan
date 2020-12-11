@@ -18,6 +18,9 @@
 ## Build
  * A whole lot of FreeBSD build fixes courtesy of J.Beich
 
+## Distribution
+ * New hookscript: 'hook/alloc_debug.lua' that forces backtrace into image-tag for all allocations
+
 ## Platform
  * Egl-dri: don't forward modifiers for linear/invalid
 
