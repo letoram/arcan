@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include "arcan_math.h"
 #include <arcan_shmif.h>
-#include <hidapi/hidapi.h>
+#include <hidapi.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <inttypes.h>

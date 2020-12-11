@@ -29,6 +29,7 @@ add_definitions(
 include_directories(
 	${ARCAN_SHMIF_INCLUDE_DIR}
 	${ARCAN_ROOT_DIR}/src/engine
+	${ARCAN_ROOT_DIR}/external/hidapi
 )
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
