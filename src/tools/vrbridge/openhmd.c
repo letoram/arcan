@@ -4,7 +4,7 @@
 #include "arcan_math.h"
 #include <arcan_shmif.h>
 #include <arcan_shmif_sub.h>
-#include <hidapi/hidapi.h>
+#include <hidapi.h>
 #include <pthread.h>
 #include <openhmd.h>
 #include "vrbridge.h"
