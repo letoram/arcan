@@ -91,7 +91,7 @@ set(SOURCES
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 if (DEFINED NO_BUILTIN_OPENHMD)
-	pkg_check_module(OPENHMD REQUIRED openhmd)
+	pkg_check_modules(OPENHMD REQUIRED openhmd)
 	if (OPENHMD_FOUND)
 		include_directories(${OPENHMD_INCLUDE_DIRS})
 		list(APPEND LIBRARIES ${OPENHMD_LINK_LIBRARIES})
