@@ -29,7 +29,6 @@ add_definitions(
 include_directories(
 	${ARCAN_SHMIF_INCLUDE_DIR}
 	${ARCAN_ROOT_DIR}/src/engine
-	${ARCAN_ROOT_DIR}/external/hidapi
 )
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -46,44 +45,43 @@ SET(LIBRARIES
 	${ARCAN_SHMIF_LIBRARY}
 )
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-	pkg_check_modules(LIBUSB_1 REQUIRED libusb-1.0)
-	set(PLATFORM_SOURCES
-		${ARCAN_ROOT_DIR}/external/hidapi/hid.c
-		${ARCAN_ROOT_DIR}/src/platform/posix/time.c
-	)
-	set(LIBRARIES ${LIBRARIES} ${LIBUSB_1_LINK_LIBRARIES})
-	include_directories(${LIBUSB_1_INCLUDE_DIRS})
-
-elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-	find_library(IOKIT NAMES IOKit)
-	find_library(COREFOUNDATION NAMES CoreFoundation)
-	set(PLATFORM_SOURCES
-		${ARCAN_ROOT_DIR}/external/hidapi/hid_darwin.c
-		${ARCAN_ROOT_DIR}/src/platform/darwin/time.c
-	)
-	set(LIBRARIES ${LIBRARIES} ${IOKIT} ${COREFOUNDATION})
-
-elseif (${CMAKE_SYSTEM_NAME} MATCHES "BSD|DragonFly")
-	pkg_check_modules(LIBUSB_1 REQUIRED libusb-1.0)
-	add_definitions(-DLIBUSB_BSD)
-	include_directories(${LIBUSB_1_INCLUDE_DIRS})
-	list(APPEND LIBRARIES ${LIBUSB_1_LINK_LIBRARIES})
-	include(CheckSymbolExists)
-	check_symbol_exists(iconv "iconv.h" HAVE_ICONV)
-	if (NOT HAVE_ICONV)
-		find_library(ICONV_LIBRARY NAMES iconv REQUIRED)
-		list(APPEND LIBRARIES ${ICONV_LIBRARY})
-	endif()
-	set(PLATFORM_SOURCES
-		${ARCAN_ROOT_DIR}/src/platform/posix/time.c
-		${ARCAN_ROOT_DIR}/external/hidapi/hid.c
-	)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	list(APPEND PLATFORM_SOURCES ${ARCAN_ROOT_DIR}/src/platform/darwin/time.c)
 else()
-	set(PLATFORM_SOURCES
-		${ARCAN_ROOT_DIR}/external/hidapi/hid.c
-		${ARCAN_ROOT_DIR}/src/platform/posix/time.c
-	)
+	list(APPEND PLATFORM_SOURCES ${ARCAN_ROOT_DIR}/src/platform/posix/time.c)
+endif()
+
+if (DEFINED NO_BUILTIN_HIDAPI)
+	pkg_check_modules(HIDAPI REQUIRED hidapi)
+	include_directories(${HIDAPI_INCLUDE_DIRS})
+	list(APPEND LIBRARIES ${HIDAPI_LINK_LIBRARIES})
+else()
+	include_directories(${ARCAN_ROOT_DIR}/external/hidapi)
+	if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+		pkg_check_modules(LIBUSB_1 REQUIRED libusb-1.0)
+		include_directories(${LIBUSB_1_INCLUDE_DIRS})
+		list(APPEND LIBRARIES ${LIBUSB_1_LINK_LIBRARIES})
+		list(APPEND PLATFORM_SOURCES ${ARCAN_ROOT_DIR}/external/hidapi/hid.c)
+	elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+		find_library(IOKIT NAMES IOKit)
+		find_library(COREFOUNDATION NAMES CoreFoundation)
+		list(APPEND LIBRARIES ${IOKIT} ${COREFOUNDATION})
+		list(APPEND PLATFORM_SOURCES ${ARCAN_ROOT_DIR}/external/hidapi/hid_darwin.c)
+	elseif (${CMAKE_SYSTEM_NAME} MATCHES "BSD|DragonFly")
+		pkg_check_modules(LIBUSB_1 REQUIRED libusb-1.0)
+		add_definitions(-DLIBUSB_BSD)
+		include_directories(${LIBUSB_1_INCLUDE_DIRS})
+		list(APPEND LIBRARIES ${LIBUSB_1_LINK_LIBRARIES})
+		include(CheckSymbolExists)
+		check_symbol_exists(iconv "iconv.h" HAVE_ICONV)
+		if (NOT HAVE_ICONV)
+			find_library(ICONV_LIBRARY NAMES iconv REQUIRED)
+			list(APPEND LIBRARIES ${ICONV_LIBRARY})
+		endif()
+		list(APPEND PLATFORM_SOURCES ${ARCAN_ROOT_DIR}/external/hidapi/hid.c)
+	else()
+		list(APPEND PLATFORM_SOURCES ${ARCAN_ROOT_DIR}/external/hidapi/hid.c)
+	endif()
 endif()
 
 set(SOURCES
