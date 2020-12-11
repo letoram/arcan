@@ -67,8 +67,14 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "BSD|DragonFly")
 	pkg_check_modules(LIBUSB_1 REQUIRED libusb-1.0)
 	add_definitions(-DLIBUSB_BSD)
-	set(LIBRARIES ${LIBRARIES} iconv ${LIBUSB_1_LINK_LIBRARIES})
 	include_directories(${LIBUSB_1_INCLUDE_DIRS})
+	list(APPEND LIBRARIES ${LIBUSB_1_LINK_LIBRARIES})
+	include(CheckSymbolExists)
+	check_symbol_exists(iconv "iconv.h" HAVE_ICONV)
+	if (NOT HAVE_ICONV)
+		find_library(ICONV_LIBRARY NAMES iconv REQUIRED)
+		list(APPEND LIBRARIES ${ICONV_LIBRARY})
+	endif()
 	set(PLATFORM_SOURCES
 		${ARCAN_ROOT_DIR}/src/platform/posix/time.c
 		${ARCAN_ROOT_DIR}/external/hidapi/hid.c
