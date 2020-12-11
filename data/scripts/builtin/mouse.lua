@@ -653,7 +653,7 @@ function mouse_cursortag(ref, id, handler, vid)
 	end
 
 	image_mask_set(vid, MASK_UNPICKABLE);
-	link_image(vid, mstate.cursor, ANCOR_LR);
+	link_image(vid, mstate.cursor, ANCHOR_LR);
 	image_inherit_order(vid, true);
 	order_image(vid, -1);
 	local props = image_surface_properties(vid);
