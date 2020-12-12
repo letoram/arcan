@@ -416,6 +416,7 @@ else()
 	set(LUA_LINKTYPE "dynamic")
 
 	if (NOT DISABLE_JIT)
+		set(LUA_TAG "luajit51")
 		if (EXISTS ${EXTERNAL_SRC_DIR}/git/luajit)
 			ExternalProject_Add(luajit
 				SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/luajit
@@ -431,7 +432,6 @@ else()
 			)
 			set(LUA_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/luajit/src/libluajit.a")
 			set(LUA_LIBRARIES ${LUA_LIBRARY})
-			set(LUA51_JIT ON)
 			set(LUA_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/luajit/src")
 			list(APPEND MAIN_DEPS luajit)
 			set(LUA_LINKTYPE "static")
@@ -444,6 +444,7 @@ else()
 	endif()
 
 	if (NOT LUA_LIBRARY OR DISABLE_JIT)
+		set(LUA_TAG "lua51")
 		if (NOT BUILTIN_LUA)
 			find_package(Lua51 REQUIRED)
 		else()
@@ -452,7 +453,6 @@ else()
 			set(LUA_LIBRARIES lua51)
 			set(LUA_LINKTYPE "static")
 		endif()
-		set(LUA51_JIT OFF)
 	endif()
 
 	LIST (APPEND
@@ -537,14 +537,6 @@ else()
 			set_property(SOURCE engine/arcan_math_simd.c
 				APPEND PROPERTY COMPILE_FLAGS -msse3)
 		endif()
-	endif()
-
-	if (LUA51_JIT)
-		set_property(SOURCE engine/arcan_lua.c APPEND PROPERTY
-			COMPILE_DEFINITIONS LUA51_JIT)
-		set(LUA_TAG "luajit51")
-	else()
-		set(LUA_TAG "lua51")
 	endif()
 
 	# can we get sane literal concatenation one day?

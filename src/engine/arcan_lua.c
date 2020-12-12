@@ -65,12 +65,6 @@
 
 #include <poll.h>
 
-#ifdef LUA51_JIT
-#include <luajit.h>
-#else
-
-#endif
-
 #if LUA_VERSION_NUM == 501
 	#define lua_rawlen(x, y) lua_objlen(x, y)
 #endif
