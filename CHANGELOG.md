@@ -14,6 +14,7 @@
 
 ## Lua
  * Whitelist os.date
+ * Add 'forget' analogfilter option to discard/release device
 
 ## Build
  * A whole lot of FreeBSD build fixes courtesy of J.Beich
