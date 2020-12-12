@@ -355,6 +355,17 @@ is launched) as a tool to make it easier to attach a debugger to it. The
 delay can be configured through debugstall=val (default is 10) on the command-
 line.
 
+.IP "\fBhook/alloc_debug\fR"
+This scripts intercepts all allocation functions and attaches a debug traceback
+as the 'tag' property of the video object. This can then be used in
+system_snapshot and crash-dumps to figure out where a certain allocation came
+from.
+
+.IP "\fBhook/touch_simulator.lua\fR"
+This script takes over mouse input and re-injects as touch input. Since it
+intercepts the input appl- handler, it is best used as a pre: hook rather than
+the default (post).
+
 .SH DIAGNOSTICS
 There are a number of ways the engine can shut down, especially if the engine
 was built in Debug mode. A governing principle for user supplied scripts is
