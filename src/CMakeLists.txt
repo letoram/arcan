@@ -416,6 +416,7 @@ else()
 	set(LUA_LINKTYPE "dynamic")
 
 	if (NOT DISABLE_JIT)
+		set(LUA51_JIT ON)
 		if (EXISTS ${EXTERNAL_SRC_DIR}/git/luajit)
 			ExternalProject_Add(luajit
 				SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/luajit
@@ -431,7 +432,6 @@ else()
 			)
 			set(LUA_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/luajit/src/libluajit.a")
 			set(LUA_LIBRARIES ${LUA_LIBRARY})
-			set(LUA51_JIT ON)
 			set(LUA_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/luajit/src")
 			list(APPEND MAIN_DEPS luajit)
 			set(LUA_LINKTYPE "static")
@@ -452,7 +452,6 @@ else()
 			set(LUA_LIBRARIES lua51)
 			set(LUA_LINKTYPE "static")
 		endif()
-		set(LUA51_JIT OFF)
 	endif()
 
 	LIST (APPEND
