@@ -2960,7 +2960,7 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 		/*
 		 TODO: What should we do with this key? Sending XOFF is awful as
 		       there is no simple way on modern keyboards to send XON
-		       again. If someone wants this, we can re-eanble it and set
+		       again. If someone wants this, we can re-enable it and set
 		       some flag.
 		case TUIK_Pause:
 			vte_write(vte, "\x13", 1);
