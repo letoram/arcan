@@ -1,8 +1,28 @@
 -- inputanalog_filter
 -- @short: Change filtering / sampling options for a single analog input source.
--- @inargs: joyid, axisid, deadzone, lower, upper, buffer, modestr
--- @note: accepted modestr values are "drop, pass, average or latest".
+-- @inargs: devid, axisid, deadzone, lower, upper, buffer, modestr
+-- @longdescr:
+-- This function adds controls for how a specific device filters and forwards
+-- input samples for analog sources. These controls are needed to reduce overall
+-- system load and latency, as high sampling rates have a tendency to clog event
+-- queues - even when not in active use.
+-- In order to find the right *devid* and *axisid* to use, consult
+-- ref:inputanalog_query, and ref:inputanalog_toggle, as well as the applname_input
+-- event handler. The bondary values in *deadzone*, *lower* and *upper* are
+-- expressed as signed 16-bit values due to legacy.
+-- Values within the +-*deadzone* range will be silently discarded, but not
+-- re-normalized. The *buffer* parameter sets a number of samples that will be
+-- collected before filters are applied.
+-- *modestring* can be one out of "drop", "pass", "average", "latest" or "forget".
+-- For "drop" all samples will be discarded.
+-- For "pass" all samples will be forwarded.
+-- For "average" all samples in the buffer will be averaged together, with
+-- a single sample emitted.
+-- For "latest" only the last sample in the buffer will be forwarded.
+-- For "forget" the entire device will be disconnected and ignored. This is
+-- mainly to allow other subsystems to have access to the device for input
+-- platforms that enforce exclusive access on such devices. This will be treated
+-- as a device-unplug scenario, causing related events to be emitted.
 -- @group: iodev
 -- @cfunction: inputfilteranalog
 -- @related: inputanalog_query, inputanalog_toggle
-

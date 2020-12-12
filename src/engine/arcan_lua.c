@@ -11658,6 +11658,8 @@ static int inputfilteranalog(lua_State* ctx)
 		mode = ARCAN_ANALOGFILTER_AVG;
 	else if (strcmp(smode, "latest") == 0)
 		mode = ARCAN_ANALOGFILTER_ALAST;
+	else if (strcmp(smode, "forget") == 0)
+		mode = ARCAN_ANALOGFILTER_FORGET;
 	else
 		arcan_warning("inputfilteranalog(), unsupported mode (%s)\n", smode);
 
