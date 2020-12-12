@@ -11685,6 +11685,9 @@ static void tblanalogenum(lua_State* ctx, int ttop,
 	case ARCAN_ANALOGFILTER_ALAST:
 		tblstr(ctx, "mode", "latest", ttop);
 	break;
+	case ARCAN_ANALOGFILTER_FORGET:
+		tblstr(ctx, "mode", "forget", ttop);
+	break;
 	}
 }
 
