@@ -485,10 +485,23 @@ void platform_event_analogall(bool enable, bool mouse)
  */
 }
 
+static void disconnect(struct arcan_evctx* ctx, struct devnode* node);
 void platform_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
 {
+/* this was added here rather than a separate entry-point to deal with backward
+ * and forward compatiblity from an API angle */
+	if (kind == ARCAN_ANALOGFILTER_FORGET){
+		struct devnode* node = lookup_devnode(devid);
+
+/* this is also a piece of legacy, other functions operate on an explicit
+ * context, but there is really only one */
+		if (node)
+			disconnect(arcan_event_defaultctx(), node);
+		return;
+	}
+
 	bool node;
 	struct axis_opts* axis = find_axis(devid, axisid, &node);
 	if (!axis)
