@@ -416,7 +416,7 @@ else()
 	set(LUA_LINKTYPE "dynamic")
 
 	if (NOT DISABLE_JIT)
-		set(LUA51_JIT ON)
+		set(LUA_TAG "luajit51")
 		if (EXISTS ${EXTERNAL_SRC_DIR}/git/luajit)
 			ExternalProject_Add(luajit
 				SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/luajit
@@ -444,6 +444,7 @@ else()
 	endif()
 
 	if (NOT LUA_LIBRARY OR DISABLE_JIT)
+		set(LUA_TAG "lua51")
 		if (NOT BUILTIN_LUA)
 			find_package(Lua51 REQUIRED)
 		else()
@@ -536,14 +537,6 @@ else()
 			set_property(SOURCE engine/arcan_math_simd.c
 				APPEND PROPERTY COMPILE_FLAGS -msse3)
 		endif()
-	endif()
-
-	if (LUA51_JIT)
-		set_property(SOURCE engine/arcan_lua.c APPEND PROPERTY
-			COMPILE_DEFINITIONS LUA51_JIT)
-		set(LUA_TAG "luajit51")
-	else()
-		set(LUA_TAG "lua51")
 	endif()
 
 	# can we get sane literal concatenation one day?
