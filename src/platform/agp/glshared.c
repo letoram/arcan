@@ -134,16 +134,41 @@ static void erase_store(struct agp_vstore* os)
 	os->vinf.text.s_raw = 0;
 }
 
+static void update_fbo_color(struct agp_rendertarget* dst, unsigned id)
+{
+	GLint cfbo;
+	struct agp_fenv* env = agp_env();
+
+/* switch rendertarget if we're not already there */
+#if defined(GLES2) || defined(GLES3)
+	cfbo = st_last_fbo;
+#else
+	env->get_integer_v(GL_DRAW_FRAMEBUFFER_BINDING, &cfbo);
+#endif
+
+	if (dst->fbo != cfbo)
+		BIND_FRAMEBUFFER(dst->fbo);
+
+	env->framebuffer_texture_2d(
+		GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, id, 0);
+
+	/* and switch back to the old rendertarget */
+	if (dst->fbo != cfbo)
+		BIND_FRAMEBUFFER(cfbo);
+}
+
 /*
  * build alternate stores for rendertarget swapping
  */
 static void setup_stores(struct agp_rendertarget* dst)
 {
 /* need this tracking because there's no external memory management for _back */
-	dst->store_ind = 0;
 	dst->n_stores = MAX_BUFFERS;
 	dst->dirty_flip = MAX_BUFFERS;
 	dst->dirty_region_decay = dst->dirty_region = 0;
+
+	TRACE_MARK_ONESHOT("agp", "setup-rtgt-vstore-swap",
+		TRACE_SYS_DEFAULT, (uintptr_t) dst, MAX_BUFFERS, "");
 
 /* build the current ones based on the reference store properties */
 	for (size_t i = 0; i < MAX_BUFFERS; i++){
@@ -151,13 +176,15 @@ static void setup_stores(struct agp_rendertarget* dst)
 			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 		dst->stores[i]->vinf.text.s_fmt = dst->store->vinf.text.s_fmt;
 		dst->stores[i]->vinf.text.d_fmt = dst->store->vinf.text.d_fmt;
+
 		if (dst->alloc){
 			dst->stores[i]->w = dst->store->w;
 			dst->stores[i]->h = dst->store->h;
 			dst->alloc(dst, dst->stores[i], RTGT_ALLOC_SETUP, dst->alloc_tag);
 		}
-		else
+		else{
 			agp_empty_vstore(dst->stores[i], dst->store->w, dst->store->h);
+		}
 	}
 }
 
@@ -225,25 +252,29 @@ void agp_rendertarget_dropswap(struct agp_rendertarget* tgt)
 
 	verbose_print("dropping normal and shadow stores");
 	for (size_t i = 0; i < tgt->n_stores; i++){
-		agp_drop_vstore(tgt->stores[i]);
-/*
- * might occur if the source is deleted while we are in an unflushed resize
- */
+		if (tgt->alloc){
+			tgt->alloc(tgt, tgt->stores[i], RTGT_ALLOC_FREE, tgt->alloc_tag);
+		}
+		else
+			agp_drop_vstore(tgt->stores[i]);
+/* if the source is deleted while we are in an unflushed resize */
 		if (tgt->shadow[i]){
-			agp_drop_vstore(tgt->shadow[i]);
+			if (tgt->alloc)
+				tgt->alloc(tgt, tgt->shadow[i], RTGT_ALLOC_FREE, tgt->alloc_tag);
+			else
+				agp_drop_vstore(tgt->shadow[i]);
+
 			arcan_mem_free(tgt->shadow[i]);
 			tgt->shadow[i] = NULL;
 		}
 	}
+
+/* revert to 'default' buffer */
 	tgt->n_stores = 0;
 	tgt->store->vinf.text.glid_proxy = NULL;
+	update_fbo_color(tgt, tgt->store->vinf.text.glid);
 
-	BIND_FRAMEBUFFER(tgt->fbo);
-
-	env->framebuffer_texture_2d(GL_FRAMEBUFFER,
-		GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tgt->store->vinf.text.glid, 0);
-
-	BIND_FRAMEBUFFER(0);
+/* mark that we need to treat as dirty regardless of contents */
 	tgt->dirty_flip++;
 }
 
@@ -271,27 +302,21 @@ uint64_t agp_rendertarget_swap(struct agp_rendertarget* dst, bool* swap)
 		return 0;
 	}
 
-/* multi-buffer setup */
+	int old_front = dst->store_ind;
+	int front = dst->store_ind;
+
+/* multi-buffer setup - no need to swap until we have populated one frame */
 	if (!dst->n_stores){
 		verbose_print("(%"PRIxPTR") first swap, alloc buffers", (uintptr_t) dst);
 		setup_stores(dst);
+		FLAG_DIRTY();
 		*swap = false;
 	}
-
-	GLint cfbo;
-
-/* switch rendertarget if we're not already there */
-#if defined(GLES2) || defined(GLES3)
-	cfbo = st_last_fbo;
-#else
-	env->get_integer_v(GL_DRAW_FRAMEBUFFER_BINDING, &cfbo);
-#endif
-
-	if (dst->fbo != cfbo)
-		BIND_FRAMEBUFFER(dst->fbo);
-
-	int old_front = dst->store_ind;
-	int front = dst->store_ind = (dst->store_ind + 1) % MAX_BUFFERS;
+/* already setup - can swap out old-front */
+	else {
+		front = dst->store_ind = (dst->store_ind + 1) % MAX_BUFFERS;
+		*swap = true;
+	}
 
 /* Attach new front, update alias. We use the alias on the normal store to make
  * sure that 'image_sharestorage' calls will reference the currently active buffer
@@ -299,23 +324,20 @@ uint64_t agp_rendertarget_swap(struct agp_rendertarget* dst, bool* swap)
 	verbose_print("(%"PRIxPTR") proxy+COLOR0 set to: %u",
 		(uintptr_t) dst, dst->stores[front]->vinf.text.glid);
 
-	env->framebuffer_texture_2d(GL_FRAMEBUFFER,
-		GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dst->stores[front]->vinf.text.glid, 0);
-	dst->store->vinf.text.glid_proxy = &dst->stores[front]->vinf.text.glid;
+update_fbo_color(dst, dst->stores[front]->vinf.text.glid);
+dst->store->vinf.text.glid_proxy = &dst->stores[front]->vinf.text.glid;
 
-/* and switch back to the old rendertarget */
-	if (dst->fbo != cfbo)
-		BIND_FRAMEBUFFER(cfbo);
-
-/* the contents are dirty, check the swap- count until shadow buffer flush */
-	*swap = true;
+/* the contents are dirty, check the swap- count until shadow buffer flush so that
+ * there is no buffer in flight or elsewise used that rely on the 'old' size */
 	if (dst->dirty_flip > 0){
 		dst->dirty_flip--;
 		FLAG_DIRTY();
 		verbose_print("(%"PRIxPTR") dirty left: %zu", (uintptr_t) dst, dst->dirty_flip);
 
 /* now that we have 'dirtied out' and any external users should have received
- * copies of our current buffers, we can clean them up */
+ * copies of our current buffers, we can clean them up - could also let them
+ * decay in 'order' but the slight memory burst should not be that big of a
+ * concern */
 		if (!dst->dirty_flip){
 			for (size_t i = 0; i < MAX_BUFFERS; i++){
 				if (!dst->shadow[i])
@@ -323,7 +345,12 @@ uint64_t agp_rendertarget_swap(struct agp_rendertarget* dst, bool* swap)
 
 				verbose_print("(%"PRIxPTR") shadow %zu:%u cleared",
 					(uintptr_t) dst, i, (unsigned)dst->shadow[i]->vinf.text.glid);
-				erase_store(dst->shadow[i]);
+
+				if (dst->alloc)
+					dst->alloc(dst, dst->shadow[i], RTGT_ALLOC_FREE, dst->alloc_tag);
+				else
+					erase_store(dst->shadow[i]);
+
 				arcan_mem_free(dst->shadow[i]);
 				dst->shadow[i] = NULL;
 			}
@@ -1168,15 +1195,13 @@ void agp_resize_rendertarget(
 	tgt->viewport[1] = 0;
 	tgt->viewport[2] = neww;
 	tgt->viewport[3] = newh;
-	tgt->store_ind = 0;
 	tgt->rz_ack = true;
 
 	if (tgt->n_stores){
 		for (size_t i = 0; i < tgt->n_stores; i++){
 /*
- * Multiple resizes in short succession with pending buffers still
- * might possibly lead to bad frame contents being shown,
- * experimentation needed.
+ * Multiple resizes in short succession with pending buffers still might
+ * possibly lead to bad frame contents being shown, experimentation needed.
  */
 			if (tgt->shadow[i]){
 				verbose_print(
@@ -1186,15 +1211,19 @@ void agp_resize_rendertarget(
 				}
 				else
 					erase_store(tgt->shadow[i]);
+
 				arcan_mem_free(tgt->shadow[i]);
 				tgt->shadow[i] = NULL;
 			}
 
+/*
+ * Set the old as shadow now
+ */
 			tgt->shadow[i] = tgt->stores[i];
 			tgt->stores[i] = NULL;
 		}
 
-		tgt->store_ind = 0;
+/* allocate new ones from fresh index */
 		setup_stores(tgt);
 		tgt->store->vinf.text.glid_proxy = &tgt->stores[0]->vinf.text.glid;
 		verbose_print(

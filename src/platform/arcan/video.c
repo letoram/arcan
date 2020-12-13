@@ -140,34 +140,34 @@ void platform_video_reset(int id, int swap)
  */
 }
 
+struct alloc_tracker {
+	struct shmifext_color_buffer buf[16];
+	uint16_t alloc;
+};
+
 static bool scanout_alloc(
 	struct agp_rendertarget* tgt, struct agp_vstore* vs, int action, void* tag)
 {
 	struct dispout* display = tag;
 	struct agp_fenv* env = agp_env();
+	struct alloc_tracker* track = tag;
 
-	static ssize_t cnt;
 	if (action == RTGT_ALLOC_FREE){
+/* find the matching index */
+/*  shmifext_free_color(con, tracker->buf[ind]);
+ */
+/* not found? just kill the texture */
 		env->delete_textures(1, &vs->vinf.text.glid);
 		vs->vinf.text.glid = 0;
-		cnt--;
 		return true;
 	}
 
-	cnt++;
-	agp_empty_vstore(vs, vs->w, vs->h);
+/* this will give a color buffer that is suitable for FBO and sharing */
+	struct shmifext_color_buffer buf;
 
-/*
- * interesting properties:
- * w,
- * h,
- * bpp,
- * s_raw,
- * txmapped
- * s_fmt (GL_PIXEL_STORE)
- * d_fmt (GL_STORE_PIXEL_FORMAT)
+	if (!arcan_shmifext_alloc_color(&disp[0].conn, &buf)){
+		agp_empty_vstore(vs, vs->w, vs->h);
 	}
-*/
 
 	return true;
 }
@@ -696,7 +696,9 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		bool swap;
 		got_frame = true;
 		verbose_print("first-frame swap");
-/*	agp_rendertarget_allocator(arcan_vint_worldrt(), scanout_alloc, NULL); */
+		struct alloc_tracker* track = malloc(sizeof(struct alloc_tracker));
+		memset(track, '\0', sizeof(struct alloc_tracker));
+/*	agp_rendertarget_allocator(arcan_vint_worldrt(), scanout_alloc, track); */
 		agp_rendertarget_swap(arcan_vint_worldrt(), &swap);
 	}
 
@@ -710,7 +712,6 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * now until the shmif_deadline communication is more robust, then we can just
  * plug the next deadline and the conductor will wake us accordingly. */
 	if (!nupd){
-/*		glFinish(); */
 		left = cost > 16 ? 0 : 16 - cost;
 		TRACE_MARK_ONESHOT("video", "synch-stall", TRACE_SYS_SLOW, 0, 0, "nothing to do");
 		verbose_print("skip frame");
