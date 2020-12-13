@@ -140,6 +140,38 @@ void platform_video_reset(int id, int swap)
  */
 }
 
+static bool scanout_alloc(
+	struct agp_rendertarget* tgt, struct agp_vstore* vs, int action, void* tag)
+{
+	struct dispout* display = tag;
+	struct agp_fenv* env = agp_env();
+
+	static ssize_t cnt;
+	if (action == RTGT_ALLOC_FREE){
+		env->delete_textures(1, &vs->vinf.text.glid);
+		vs->vinf.text.glid = 0;
+		cnt--;
+		return true;
+	}
+
+	cnt++;
+	agp_empty_vstore(vs, vs->w, vs->h);
+
+/*
+ * interesting properties:
+ * w,
+ * h,
+ * bpp,
+ * s_raw,
+ * txmapped
+ * s_fmt (GL_PIXEL_STORE)
+ * d_fmt (GL_STORE_PIXEL_FORMAT)
+	}
+*/
+
+	return true;
+}
+
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames, const char* title)
 {
@@ -664,6 +696,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		bool swap;
 		got_frame = true;
 		verbose_print("first-frame swap");
+/*	agp_rendertarget_allocator(arcan_vint_worldrt(), scanout_alloc, NULL); */
 		agp_rendertarget_swap(arcan_vint_worldrt(), &swap);
 	}
 

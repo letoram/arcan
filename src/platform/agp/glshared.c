@@ -152,7 +152,9 @@ static void setup_stores(struct agp_rendertarget* dst)
 		dst->stores[i]->vinf.text.s_fmt = dst->store->vinf.text.s_fmt;
 		dst->stores[i]->vinf.text.d_fmt = dst->store->vinf.text.d_fmt;
 		if (dst->alloc){
-			dst->alloc(dst, dst->stores[i], 1, dst->alloc_tag);
+			dst->stores[i]->w = dst->store->w;
+			dst->stores[i]->h = dst->store->h;
+			dst->alloc(dst, dst->stores[i], RTGT_ALLOC_SETUP, dst->alloc_tag);
 		}
 		else
 			agp_empty_vstore(dst->stores[i], dst->store->w, dst->store->h);
@@ -168,19 +170,51 @@ void agp_rendertarget_allocator(struct agp_rendertarget* tgt, bool (*handler)(
 /* free anything currently allocated on the rendertarget before
  * swapping out allocator */
 	if (tgt->alloc){
-		for (size_t i = 0; i < MAX_BUFFERS; i++){
+		for (size_t i = 0; i < tgt->n_stores; i++){
 			tgt->alloc(tgt, tgt->stores[i], RTGT_ALLOC_FREE, tgt->alloc_tag);
+			if (tgt->shadow[i]){
+				tgt->alloc(tgt, tgt->shadow[i], RTGT_ALLOC_FREE, tgt->alloc_tag);
+				arcan_mem_free(tgt->shadow[i]);
+				tgt->shadow[i] = NULL;
+			}
 		}
 	}
 
 	tgt->alloc = handler;
 	tgt->alloc_tag = tag;
 
+/* only re-allocate if _swap has been called, otherwise those allocations
+ * will come soon enough */
+	if (!tgt->n_stores)
+		return;
+
 /* and now re-allocate the buffers using the allocator, if this
  * fails, revert back (again) to the default one */
-
-	for (size_t i = 0; i < MAX_BUFFERS; i++){
+	for (size_t i = 0; i < tgt->n_stores; i++){
+		tgt->alloc(tgt, tgt->stores[i], RTGT_ALLOC_SETUP, tgt->alloc_tag);
 	}
+
+/* ID might have changed, so re-attach to FBO */
+	struct agp_fenv* env = agp_env();
+
+/* same procedure as with agp_rendertarget_swap */
+	GLint cfbo;
+#if defined(GLES2) || defined(GLES3)
+	cfbo = st_last_fbo;
+#else
+	env->get_integer_v(GL_DRAW_FRAMEBUFFER_BINDING, &cfbo);
+#endif
+
+	if (tgt->fbo != cfbo)
+		BIND_FRAMEBUFFER(tgt->fbo);
+	int front = tgt->store_ind;
+
+	env->framebuffer_texture_2d(GL_FRAMEBUFFER,
+		GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tgt->stores[front]->vinf.text.glid, 0);
+
+/* the glid_proxy is a pointer so it will still be valid */
+
+	BIND_FRAMEBUFFER(cfbo);
 }
 
 void agp_rendertarget_dropswap(struct agp_rendertarget* tgt)
@@ -1148,7 +1182,7 @@ void agp_resize_rendertarget(
 				verbose_print(
 					"in-rz shadow store %zu:%zu", i, tgt->shadow[i]->vinf.text.glid);
 				if (tgt->alloc){
-					tgt->alloc(tgt, tgt->shadow[i], 0, tgt->alloc_tag);
+					tgt->alloc(tgt, tgt->shadow[i], RTGT_ALLOC_FREE, tgt->alloc_tag);
 				}
 				else
 					erase_store(tgt->shadow[i]);
@@ -1160,6 +1194,7 @@ void agp_resize_rendertarget(
 			tgt->stores[i] = NULL;
 		}
 
+		tgt->store_ind = 0;
 		setup_stores(tgt);
 		tgt->store->vinf.text.glid_proxy = &tgt->stores[0]->vinf.text.glid;
 		verbose_print(

@@ -591,6 +591,37 @@ void arcan_shmifext_swap_context(
 	struct arcan_shmif_cont* con, unsigned context);
 
 /*
+ * Allocate a buffer that is valid for passing output and that can be bound as
+ * a rendertarget color output. Sets *out to point to the buffer based on the
+ * context type provided on shmifext_setup. This needs to be freed and
+ * re-allocated on GPU switch (DEVICE_HINT) and after resizing.
+ *
+ * arcan_shmifext_setup with the built-in framebuffer will already allocate
+ * such a buffer if necessary. This call should only be needed if the client
+ * itself needs to allocate FBOs that should be passed on.
+ *
+ * It will fail if there is not enough memory or the OS platform has no such
+ * mechanism. In those cases, normal GL/VK allocations should be used.
+ */
+struct shmifext_color_buffer {
+	union {
+		unsigned int gl;
+	} id;
+
+	void* alloc_tags[4];
+	int type;
+};
+
+bool arcan_shmifext_alloc_color(
+	struct arcan_shmif_cont* con, struct shmifext_color_buffer* out);
+
+/*
+ * Release resources tied to an allocation from arcan_shmifext_alloc_color.
+ */
+void arcan_shmifext_free_color(
+	struct arcan_shmif_cont* con, struct shmifext_color_buffer* in);
+
+/*
  * Uses lookupfun to get the function pointers needed, writes back matching
  * EGLNativeDisplayType into *display and tags *con as accelerated.
  * Can be called multiple times as response to DEVICE_NODE calls or to

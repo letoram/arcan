@@ -22,8 +22,12 @@
 ## Distribution
  * New hookscript: 'hook/alloc_debug.lua' that forces backtrace into image-tag for all allocations
 
+## Shmif
+ * Shmifext- allocator interface for server- directed FBO color allocation
+
 ## Platform
  * Egl-dri: don't forward modifiers for linear/invalid
+ * Lwa: use shmifext allocator interface for mapped rendertargets
 
 ## Wayland
  * arcan-wayland did not pack drm/dma-buf right, causing import failures

@@ -68,6 +68,17 @@ int arcan_shmifext_isext(struct arcan_shmif_cont* con)
 	return 0;
 }
 
+bool arcan_shmifext_alloc_color(
+	struct arcan_shmif_cont* con, struct shmifext_color_buffer* out)
+{
+	return false;
+}
+
+void arcan_shmifext_free_color(
+	struct arcan_shmif_cont* con, struct shmifext_color_buffer* out)
+{
+}
+
 bool arcan_shmifext_drop(struct arcan_shmif_cont* con)
 {
 	if (!con || !con->privext || !con->privext->internal)

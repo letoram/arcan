@@ -29,6 +29,17 @@ int arcan_shmifext_dev(struct arcan_shmif_cont* con,
 	return -1;
 }
 
+void arcan_shmifext_free_color(
+	struct arcan_shmif_cont* con, struct shmifext_color_buffer* out)
+{
+}
+
+bool arcan_shmifext_alloc_color(
+	struct arcan_shmif_cont* con, struct shmifext_color_buffer* out)
+{
+	return false;
+}
+
 size_t arcan_shmifext_signal_planes(
 	struct arcan_shmif_cont* c,
 	int mask,

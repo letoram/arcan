@@ -795,6 +795,60 @@ void arcan_shmifext_bind(struct arcan_shmif_cont* con)
 	}
 }
 
+void arcan_shmifext_free_color(
+	struct arcan_shmif_cont* con, struct shmifext_color_buffer* in)
+{
+	if (!con || !in || !in->id.gl)
+		return;
+
+	EGLDisplay* dpy = con->privext->internal->display;
+
+	struct agp_fenv* fenv = arcan_shmifext_getfenv(con);
+	arcan_shmifext_make_current(con);
+
+	fenv->delete_textures(1, &in->id.gl);
+	in->id.gl = 0;
+
+/* need to destroy the gbm-bo and egl image separately */
+	agp_eglenv.destroy_image(dpy, in->alloc_tags[1]);
+	gbm_bo_destroy(in->alloc_tags[0]);
+	in->alloc_tags[0] = NULL;
+	in->alloc_tags[1] = NULL;
+}
+
+bool arcan_shmifext_alloc_color(
+	struct arcan_shmif_cont* con, struct shmifext_color_buffer* out)
+{
+	struct gbm_bo* bo;
+	EGLImage img;
+
+	struct agp_fenv* fenv = arcan_shmifext_getfenv(con);
+	arcan_shmifext_make_current(con);
+
+/* if we have modifier information:
+ *
+ * gbm_bo_create_with_modifiers(
+ * 	con->privext->internal->dev,
+ * 	con->w, con->h, DRM_FORMAT_XRGB8888,
+ * 	modifiers,
+ * 	num_modifiers);
+ * otherwise:
+ * gbm_bo_create(con->privext->internal->dev,
+ * 	con->w, con->h, DRM_FORMAT_XRGB8888, GBM_BO_USE_RENDERING);
+ * 	append GBM_BO_USE_SCANOUT if we got information that it will
+ * 	be scanned out directly
+ *
+ * now take the BO and give us shmifext_buffer_planes,
+ * then repackage as a fake vstore, use the 'import_buffer'
+ *
+ * we might actually be able to ignore all of this if the device-hint
+ * sends the buffer to us..
+ *
+ * take the glid and return in out, track bo and img
+ */
+	return false;
+}
+
 bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 {
 	if (!con || !con->privext || !con->privext->internal ||

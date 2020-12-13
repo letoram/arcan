@@ -220,6 +220,17 @@ bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
 	return false;
 }
 
+void arcan_shmifext_free_color(
+	struct arcan_shmif_cont* con, struct shmifext_color_buffer* out)
+{
+}
+
+bool arcan_shmifext_alloc_color(
+	struct arcan_shmif_cont* con, struct shmifext_color_buffer* out)
+{
+	return false;
+}
+
 bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 {
 	if (!con || !con->privext || !con->privext->internal)
