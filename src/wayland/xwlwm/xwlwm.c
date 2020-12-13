@@ -117,7 +117,6 @@ static inline void trace(const char* msg, ...)
 	va_end( args);
 }
 
-#define _DEBUG
 #ifdef _DEBUG
 #define TRACE_PREFIX "kind=trace:"
 #define trace(Y, ...) do { \
