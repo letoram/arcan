@@ -17,6 +17,7 @@
 #include <dlfcn.h>
 #include <inttypes.h>
 #include <sys/mman.h>
+#include <sys/ioctl.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -68,6 +69,18 @@
 #endif
 
 #include "egl.h"
+
+#define shmifext_buffer_plane agp_buffer_plane
+struct shmifext_color_buffer {
+	union {
+		unsigned int gl;
+	} id;
+
+	void* alloc_tags[4];
+	int type;
+};
+
+#include "egl_gbm_helper.h"
 
 static const char* egl_errstr();
 static void* lookup(void* tag, const char* sym, bool req)
@@ -536,38 +549,6 @@ static bool sane_direct_vobj(arcan_vobject* vobj)
 	&& vobj->vstore->refcount == 1;
 }
 
-static int dma_fd_constants[] = {
-	EGL_DMA_BUF_PLANE0_FD_EXT,
-	EGL_DMA_BUF_PLANE1_FD_EXT,
-	EGL_DMA_BUF_PLANE2_FD_EXT,
-	EGL_DMA_BUF_PLANE3_FD_EXT
-};
-
-static int dma_offset_constants[] = {
-	EGL_DMA_BUF_PLANE0_OFFSET_EXT,
-	EGL_DMA_BUF_PLANE1_OFFSET_EXT,
-	EGL_DMA_BUF_PLANE2_OFFSET_EXT,
-	EGL_DMA_BUF_PLANE3_OFFSET_EXT
-};
-
-static int dma_pitch_constants[] = {
-	EGL_DMA_BUF_PLANE0_PITCH_EXT,
-	EGL_DMA_BUF_PLANE1_PITCH_EXT,
-	EGL_DMA_BUF_PLANE2_PITCH_EXT,
-	EGL_DMA_BUF_PLANE3_PITCH_EXT
-};
-
-static int dma_mod_constants[] = {
-	EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT,
-	EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT,
-	EGL_DMA_BUF_PLANE1_MODIFIER_HI_EXT,
-	EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT,
-	EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT,
-	EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT,
-	EGL_DMA_BUF_PLANE3_MODIFIER_HI_EXT,
-	EGL_DMA_BUF_PLANE3_MODIFIER_LO_EXT,
-};
-
 bool platform_video_map_buffer(
 	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n_planes)
 {
@@ -575,71 +556,18 @@ bool platform_video_map_buffer(
 		return false;
 
 	struct dev_node* device = &nodes[0];
-	EGLDisplay display = device->display;
-	struct egl_env* eglenv = &device->eglenv;
+	EGLDisplay dpy = device->display;
+	struct egl_env* egl = &device->eglenv;
 
-	size_t n_attr = 0;
-	EGLint attrs[64] = {};
-#define ADD_ATTR(X, Y) { attrs[n_attr++] = (X); attrs[n_attr++] = (Y); }
-
-#ifdef _DEBUG
-	uint32_t fourcc = planes[0].gbm.format;
-	uint8_t fcc[4] = {
-		fourcc & 0xff,
-		(fourcc >> 8) & 0xff,
-		(fourcc >> 16) & 0xff,
-		(fourcc >> 24) & 0xff
-	};
-
-	verbose_print("attempt-import: fourcc(%c%c%c%c), w: %"PRIu32", h: %"
-		PRIu32, fcc[0], fcc[1], fcc[2], fcc[3], planes[0].w, planes[0].h);
-#endif
-
-	uint64_t mod =
-		((uint64_t)planes[0].gbm.mod_hi << (uint64_t)32) |
-		(uint64_t)(planes[0].gbm.mod_lo);
-
-	ADD_ATTR(EGL_WIDTH, planes[0].w);
-	ADD_ATTR(EGL_HEIGHT, planes[0].h);
-	ADD_ATTR(EGL_LINUX_DRM_FOURCC_EXT, planes[0].gbm.format);
-
-	for (size_t i = 0; i < n_planes; i++){
-#ifdef _DEBUG
-		verbose_print("plane(%zu): offset=%"PRIu32" stride=%"PRIu32
-			" mod_lo=%"PRIu32 " mod_hi=%"PRIu32, planes[i].gbm.offset,
-			planes[i].gbm.stride, planes[i].gbm.mod_hi, planes[i].gbm.mod_lo);
-#endif
-		ADD_ATTR(dma_fd_constants[i], planes[i].fd);
-		ADD_ATTR(dma_offset_constants[i], planes[i].gbm.offset);
-		ADD_ATTR(dma_pitch_constants[i], planes[i].gbm.stride);
-		if (mod != DRM_FORMAT_MOD_INVALID && mod != DRM_FORMAT_MOD_LINEAR){
-			ADD_ATTR(dma_mod_constants[i*2+0], planes[i].gbm.mod_hi);
-			ADD_ATTR(dma_mod_constants[i*2+1], planes[i].gbm.mod_lo);
-		}
-	}
-
-	ADD_ATTR(EGL_NONE, EGL_NONE);
-#undef ADD_ATTR
-
-	EGLImage img = eglenv->create_image(
-		display, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, attrs);
-
+	EGLImage img = helper_dmabuf_eglimage(agp_env(), egl, dpy, planes, n_planes);
 	if (!img){
 		debug_print("buffer import failed (%s)", egl_errstr());
 		return false;
 	}
 
-/* eglImage is suposed to dup internally */
-	for (size_t i = 0; i < n_planes; i++){
-		if (-1 != planes[i].fd){
-			close(planes[i].fd);
-			planes[i].fd = -1;
-		}
-	}
-
 /* might have an old eglImage around */
 	if (0 != vs->vinf.text.tag){
-		eglenv->destroy_image(display, (EGLImageKHR) vs->vinf.text.tag);
+		egl->destroy_image(dpy, (EGLImageKHR) vs->vinf.text.tag);
 	}
 
 	vs->w = planes[0].w;
@@ -648,7 +576,7 @@ bool platform_video_map_buffer(
 	vs->txmapped = TXSTATE_TEX2D;
 
 	agp_activate_vstore(vs);
-		eglenv->image_target_texture2D(GL_TEXTURE_2D, img);
+		egl->image_target_texture2D(GL_TEXTURE_2D, img);
 	agp_deactivate_vstore(vs);
 
 	vs->vinf.text.tag = (uintptr_t) img;
@@ -2009,7 +1937,7 @@ static bool lookup_drm_propval(int fd,
 }
 
 /* We have a direct object that we want to push out rather than
- * blitting to any specific gbm buffer. Do this by:
+ * blitting to any specific gbm buffer.
  * 1. EGLImage from our texture,
  * 2. Dmabuf from 1.
  * 3. GBM-BO from DMAbuf.
@@ -2134,6 +2062,11 @@ static int get_gbm_fb(struct dispout* d,
 			if (!swap)
 				return 0;
 
+/* if the rendertarget has been allocated through our scanout-allocator,
+ * the referencing EGLImage is still part of the handle property of the
+ * vobj, which means that we can import the EGLImage as a BO direct and
+ * send that - at the same time we could just use the shared export dma
+ * and add that */
 			TRACE_MARK_ONESHOT("egl-dri", "rendertarget-swap", TRACE_SYS_DEFAULT, col, 0, "");
 			bo = vobj_to_bo(d, vobj, col);
 		}
@@ -2751,84 +2684,25 @@ drop_disp:
 	return -1;
 }
 
-/* NOTE: this does not handle multiple planes correctly,
- * interface needs to carry both that, strides/offsets and designated-gpu +
- * modifiers */
+/* this is the deprecated interface - import buffer has replaced it */
 static bool map_handle_gbm(struct agp_vstore* dst, int64_t handle)
 {
-	if (!nodes[0].eglenv.create_image || !nodes[0].eglenv.image_target_texture2D)
-		return false;
+	uint64_t invalid = DRM_FORMAT_MOD_INVALID;
+	uint32_t hi = invalid >> 32;
+	uint32_t lo = invalid & 0xffffffff;
 
-	EGLint attrs[] = {
-		EGL_DMA_BUF_PLANE0_FD_EXT,
-		handle,
-		EGL_DMA_BUF_PLANE0_PITCH_EXT,
-		dst->vinf.text.stride,
-		EGL_DMA_BUF_PLANE0_OFFSET_EXT,
-		0,
-		EGL_WIDTH,
-		dst->w,
-		EGL_HEIGHT,
-		dst->h,
-		EGL_LINUX_DRM_FOURCC_EXT,
-		dst->vinf.text.format,
-		EGL_NONE
+	struct agp_buffer_plane plane = {
+		.fd = handle,
+		.gbm = {
+			.mod_hi = DRM_FORMAT_MOD_INVALID >> 32,
+			.mod_lo = DRM_FORMAT_MOD_INVALID & 0xffffffff,
+			.offset = 0,
+			.stride = dst->vinf.text.stride,
+			.format = dst->vinf.text.format
+		}
 	};
 
-/*
- * Security notice: stride and format comes from an untrusted data source, it
- * has not been verified if MESA- implementation of eglCreateImageKHR etc.
- * treats this as trusted in respect to the buffer or not, otherwise this is a
- * possibly source for crashes etc. and I see no good way for verifying the
- * buffer manually.
- */
-	if (0 != dst->vinf.text.tag){
-		nodes[0].eglenv.destroy_image(
-			nodes[0].display, (EGLImageKHR) dst->vinf.text.tag);
-		dst->vinf.text.tag = 0;
-
-/*
- * Usage note, this goes against what the spec says - but from what it seems
- * like in mesa, we leak one handle per connection without this, and if we
- * close every time, the driver live-locks.
- */
-		if (handle != dst->vinf.text.handle){
-			close(dst->vinf.text.handle);
-		}
-		dst->vinf.text.handle = -1;
-	}
-
-	if (-1 == handle)
-		return false;
-
-/*
- * in addition, we actually need to know which render-node this
- * little bugger comes from, this approach is flawed for multi-gpu
- */
-	EGLImageKHR img = nodes[0].eglenv.create_image(
-		nodes[0].display,
-		EGL_NO_CONTEXT,
-		EGL_LINUX_DMA_BUF_EXT,
-		(EGLClientBuffer)NULL, attrs
-	);
-
-	if (img == EGL_NO_IMAGE_KHR){
-		debug_print("could not import EGL buffer (%zu * %zu), "
-			"stride: %d, format: %d from %d", dst->w, dst->h,
-		 dst->vinf.text.stride, dst->vinf.text.format,handle
-		);
-		close(handle);
-		return false;
-	}
-
-/* other option ?
- * EGLImage -> gbm_bo -> glTexture2D with EGL_NATIVE_PIXMAP_KHR */
-	agp_activate_vstore(dst);
-	nodes[0].eglenv.image_target_texture2D(GL_TEXTURE_2D, img);
-	dst->vinf.text.tag = (uintptr_t) img;
-	dst->vinf.text.handle = handle;
-	agp_deactivate_vstore(dst);
-	return true;
+	return platform_video_map_buffer(dst, &plane, 1);
 }
 
 /*
