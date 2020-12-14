@@ -106,7 +106,9 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 				(size_t)ev.ext.bstream.left,
 				(size_t)ev.ext.bstream.width, (size_t)ev.ext.bstream.height,
 				(int)ev.ext.bstream.format,
-				(size_t)ev.ext.bstream.stride, (uint32_t)ev.ext.bstream.mod_lo,
+				(size_t)ev.ext.bstream.stride,
+				(size_t)ev.ext.bstream.offset,
+				(uint32_t)ev.ext.bstream.mod_lo,
 				(uint32_t)ev.ext.bstream.mod_hi
 			);
 		break;
