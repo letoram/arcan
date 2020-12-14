@@ -179,8 +179,9 @@ enum stream_type {
 	STREAM_HANDLE
 };
 
-/* this matches the form defined in arcan_shmif_interop.h,
- * not necessary to keep in synch as they are packed/unpacked */
+/* This matches the form defined in arcan_shmif_interop.h,
+ * While they are packed/unpacked across the barrier - make sure these have
+ * the same structure so the prototype in egl_kms_helper.h can be re-used! */
 struct agp_buffer_plane {
 	int fd;
 	int fence;

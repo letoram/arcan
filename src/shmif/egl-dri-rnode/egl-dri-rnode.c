@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2019, Björn Ståhl
+ * Copyright 2016-2020, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description: egl-dri specific render-node based backend support
@@ -30,6 +30,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <sys/ioctl.h>
+
+#include "egl-dri/egl_gbm_helper.h"
 
 _Thread_local static struct arcan_shmif_cont* active_context;
 
@@ -65,10 +68,13 @@ static struct egl_env agp_eglenv;
 
 struct shmif_ext_hidden_int {
 	struct gbm_device* dev;
+
 	struct agp_rendertarget* rtgt;
 	struct agp_vstore buf;
 
-/* we buffer- queue the cleanup of these images (rtgt is already swapchain) */
+/* we buffer- queue the cleanup of these images (rtgt is already swapchain),
+ * but these could / should be migrated to the rtgt- allocator interface and
+ * just freed: that way */
 	struct {
 		EGLImage image;
 		size_t n_planes;
@@ -188,38 +194,6 @@ struct arcan_shmifext_setup arcan_shmifext_defaults(
 	};
 }
 
-static int dma_fd_constants[] = {
-	EGL_DMA_BUF_PLANE0_FD_EXT,
-	EGL_DMA_BUF_PLANE1_FD_EXT,
-	EGL_DMA_BUF_PLANE2_FD_EXT,
-	EGL_DMA_BUF_PLANE3_FD_EXT
-};
-
-static int dma_offset_constants[] = {
-	EGL_DMA_BUF_PLANE0_OFFSET_EXT,
-	EGL_DMA_BUF_PLANE1_OFFSET_EXT,
-	EGL_DMA_BUF_PLANE2_OFFSET_EXT,
-	EGL_DMA_BUF_PLANE3_OFFSET_EXT
-};
-
-static int dma_pitch_constants[] = {
-	EGL_DMA_BUF_PLANE0_PITCH_EXT,
-	EGL_DMA_BUF_PLANE1_PITCH_EXT,
-	EGL_DMA_BUF_PLANE2_PITCH_EXT,
-	EGL_DMA_BUF_PLANE3_PITCH_EXT
-};
-
-static int dma_mod_constants[] = {
-	EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT,
-	EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT,
-	EGL_DMA_BUF_PLANE1_MODIFIER_HI_EXT,
-	EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT,
-	EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT,
-	EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT,
-	EGL_DMA_BUF_PLANE3_MODIFIER_HI_EXT,
-	EGL_DMA_BUF_PLANE3_MODIFIER_LO_EXT,
-};
-
 bool arcan_shmifext_import_buffer(
 	struct arcan_shmif_cont* con,
 	int format,
@@ -243,6 +217,7 @@ bool arcan_shmifext_import_buffer(
 	}
 
 	struct agp_vstore* vs = &I->buf;
+	vs->txmapped = TXSTATE_TEX2D;
 
 	if (I->rtgt){
 		agp_drop_rendertarget(I->rtgt);
@@ -250,39 +225,11 @@ bool arcan_shmifext_import_buffer(
 		memset(vs, '\0', sizeof(struct agp_vstore));
 	}
 
-	size_t n_attr = 0;
-	EGLint attrs[64] = {};
-#define ADD_ATTR(X, Y) { attrs[n_attr++] = (X); attrs[n_attr++] = (Y); }
-	ADD_ATTR(EGL_WIDTH, planes[0].w);
-	ADD_ATTR(EGL_HEIGHT, planes[0].h);
-	ADD_ATTR(EGL_LINUX_DRM_FOURCC_EXT, planes[0].gbm.format);
-
-	for (size_t i = 0; i < n_planes; i++){
-		ADD_ATTR(dma_fd_constants[i], planes[i].fd);
-		ADD_ATTR(dma_offset_constants[i], planes[i].gbm.offset);
-		ADD_ATTR(dma_pitch_constants[i], planes[i].gbm.stride);
-		if (planes[i].gbm.mod_hi || planes[i].gbm.mod_lo){
-			ADD_ATTR(dma_mod_constants[i*2+0], planes[i].gbm.mod_lo);
-			ADD_ATTR(dma_mod_constants[i*2+1], planes[i].gbm.mod_hi);
-		}
-	}
-
-	ADD_ATTR(EGL_NONE, EGL_NONE);
-#undef ADD_ATTR
-
-	EGLImage img = agp_eglenv.create_image(display,
-		EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, attrs);
+	EGLImage img = helper_dmabuf_eglimage(
+		&agp_fenv, &agp_eglenv, display, planes, n_planes);
 
 	if (!img)
 		return false;
-
-/* eglImage is suposed to dup internally */
-	for (size_t i = 0; i < n_planes; i++){
-		if (-1 != planes[i].fd){
-			close(planes[i].fd);
-			planes[i].fd = -1;
-		}
-	}
 
 /* might have an old eglImage around */
 	if (0 != vs->vinf.text.tag){
@@ -292,24 +239,7 @@ bool arcan_shmifext_import_buffer(
 	I->buf.w = planes[0].w;
 	I->buf.h = planes[0].h;
 
-/* bind eglImage to GLID, and we don't have any filtering for external,
- * also cheat a bit around vstore setup */
-	if (!vs->vinf.text.glid){
-		agp_fenv.gen_textures(1, &vs->vinf.text.glid);
-		agp_fenv.active_texture(GL_TEXTURE0);
-		agp_fenv.bind_texture(GL_TEXTURE_2D, vs->vinf.text.glid);
-		agp_fenv.tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		agp_fenv.tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		agp_fenv.tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		agp_fenv.tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		vs->txmapped = TXSTATE_TEX2D;
-		vs->bpp = sizeof(shmif_pixel);
-	}
-
-	agp_activate_vstore(vs);
-		agp_eglenv.image_target_texture2D(GL_TEXTURE_2D, img);
-	agp_deactivate_vstore(vs);
-
+	helper_eglimage_color(&agp_fenv, &agp_eglenv, img, &vs->vinf.text.glid);
 	vs->vinf.text.tag = (uintptr_t) img;
 
 	return true;
@@ -821,32 +751,21 @@ bool arcan_shmifext_alloc_color(
 {
 	struct gbm_bo* bo;
 	EGLImage img;
+	if (!con || !con->privext || !con->privext->internal)
+		return false;
 
+	struct shmif_ext_hidden_int* ext = con->privext->internal;
 	struct agp_fenv* fenv = arcan_shmifext_getfenv(con);
-	arcan_shmifext_make_current(con);
 
-/* if we have modifier information:
- *
- * gbm_bo_create_with_modifiers(
- * 	con->privext->internal->dev,
- * 	con->w, con->h, DRM_FORMAT_XRGB8888,
- * 	modifiers,
- * 	num_modifiers);
- * otherwise:
- * gbm_bo_create(con->privext->internal->dev,
- * 	con->w, con->h, DRM_FORMAT_XRGB8888, GBM_BO_USE_RENDERING);
- * 	append GBM_BO_USE_SCANOUT if we got information that it will
- * 	be scanned out directly
- *
- * now take the BO and give us shmifext_buffer_planes,
- * then repackage as a fake vstore, use the 'import_buffer'
- *
- * we might actually be able to ignore all of this if the device-hint
- * sends the buffer to us..
- *
- * take the glid and return in out, track bo and img
- */
-	return false;
+/* and now EGL-image into out texture */
+	int fmt = DRM_FORMAT_XRGB8888;
+
+	return
+		helper_alloc_color(&agp_fenv, &agp_eglenv,
+			ext->dev, ext->display, out, con->w, con->h,
+			fmt, con->privext->state_fl,
+			con->privext->n_modifiers, con->privext->modifiers
+		);
 }
 
 bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)

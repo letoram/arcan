@@ -27,6 +27,10 @@ struct shmif_ext_hidden {
 /* tracking information for active use */
 	int state_fl;
 
+/* metadata for allocation help */
+	size_t n_modifiers;
+	uint64_t modifiers[64];
+
 /* platform- specific */
 	struct shmif_ext_hidden_int* internal;
 };
