@@ -143,7 +143,6 @@ void platform_video_reset(int id, int swap)
 static bool scanout_alloc(
 	struct agp_rendertarget* tgt, struct agp_vstore* vs, int action, void* tag)
 {
-	struct dispout* display = tag;
 	struct agp_fenv* env = agp_env();
 	struct arcan_shmif_cont* conn = tag;
 
@@ -754,44 +753,38 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * state, which would be needed for server-side text anyhow
  */
 		struct rendertarget* rtgt = arcan_vint_findrt_vstore(disp[i].vstore);
+		struct agp_rendertarget* art = arcan_vint_worldrt();
+
 		if (disp[i].nopass || (disp[i].vstore && !rtgt)){
 			verbose_print("force-disable readback pass");
 			synch_copy(&disp[i],
 				disp[i].vstore ? disp[i].vstore : arcan_vint_world());
+			continue;
 		}
-		else if (disp[i].vstore){
+
+		if (disp[i].vstore){
 /* there are conditions where could go with synch- handle + passing, but
  * with streaming sources we have no reliable way of knowing if its safe */
 			if (!rtgt){
 				verbose_print("synch-copy non-rt source");
 				synch_copy(&disp[i], disp[i].vstore);
+				continue;
 			}
-			else {
-				bool swap;
-				unsigned col = agp_rendertarget_swap(rtgt->art, &swap);
-				if (swap){
-					verbose_print("rendertarget signal: %u, pending: %d",
-						col, arcan_shmif_signalstatus(&disp[i].conn));
-					arcan_shmifext_signal(
-						&disp[i].conn, 0, SHMIF_SIGVID | SHMIF_SIGBLK_NONE, col);
-				}
-				else{
-					verbose_print("rendertarget-no-swap");
-				}
-			}
+			art = rtgt->art;
 		}
-		else {
-			bool swap;
-			unsigned col = agp_rendertarget_swap(arcan_vint_worldrt(), &swap);
-			if (swap){
-				verbose_print("rendertarget signal world-rt: %u, pending: %d",
-					col, arcan_shmif_signalstatus(&disp[i].conn));
-				arcan_shmifext_signal(
-					&disp[i].conn, 0, SHMIF_SIGVID | SHMIF_SIGBLK_NONE, col);
-			}
-			else {
-				verbose_print("world-rt-no-swap");
-			}
+
+/* got the rendertarget vstore, export it to planes */
+		bool swap;
+		struct agp_vstore* vs = agp_rendertarget_swap(art, &swap);
+		if (swap){
+			size_t n_pl = 4;
+			struct shmifext_buffer_plane planes[n_pl];
+			n_pl = arcan_shmifext_export_image(
+				&disp[i].conn, 0, vs->vinf.text.glid, n_pl, planes);
+
+			if (n_pl)
+				arcan_shmifext_signal_planes(&disp[i].conn,
+					SHMIF_SIGVID | SHMIF_SIGBLK_NONE, n_pl, planes);
 		}
 	}
 

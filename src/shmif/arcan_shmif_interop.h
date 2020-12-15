@@ -742,6 +742,15 @@ struct shmifext_buffer_plane {
 	};
 };
 
+/*
+ * Convert a previous allocated color buffer (shmifext_alloc_color) into
+ * an exportable set of planes that can be used with 'signal_planes'
+ */
+size_t arcan_shmifext_export_image(
+	struct arcan_shmif_cont* con,
+	uintptr_t display, uintptr_t tex_id,
+	size_t plane_limit, struct shmifext_buffer_plane* planes);
+
 enum shmifext_buffer_format {
 	SHMIFEXT_BUFFER_GBM = 0,
 };

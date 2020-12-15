@@ -132,8 +132,9 @@ enum vsynch_method {
 };
 
 enum display_update_state {
-	UPDATE_FLIP,
+	UPDATE_FLIP, /* swap between front and back bo */
 	UPDATE_DIRECT,
+	UPDATE_FRONT,
 	UPDATE_SKIP
 };
 
@@ -1936,111 +1937,6 @@ static bool lookup_drm_propval(int fd,
 	return false;
 }
 
-/* We have a direct object that we want to push out rather than
- * blitting to any specific gbm buffer.
- * 1. EGLImage from our texture,
- * 2. Dmabuf from 1.
- * 3. GBM-BO from DMAbuf.
- *
- * Then return that BO and attach it as a drm framebuffer
- */
-static struct gbm_bo* vobj_to_bo(
-	struct dispout* d, arcan_vobject* vobj, uintptr_t glid)
-{
-	struct gbm_bo* res = NULL;
-
-/*
- * For direct-mapping an external source, we already have img
- * as the EGLimage to export, and we can go from there. It makes
- * more sense to just retain the dmabuf data when we receive
- * it though, but measure and see first if it is actually worth
- * the refactoring.
- *	vobj->vstore->vinf.text.tag = (uintptr_t) img;
- *  vobj->vstore->vinf.text.handle = handle;
- */
-
-/* 1. EGLImage from texture - we can omit this step if we already
- *    have the appropriate dma-buffer-bound EGLimage in agp_vstore.
- */
-	EGLImage newimg = d->device->eglenv.create_image(
-		d->device->display,
-		d->buffer.context ? d->buffer.context : d->device->context,
-		EGL_GL_TEXTURE_2D_KHR,
-		(EGLClientBuffer) glid, NULL
-	);
-
-	if (!newimg){
-		debug_print("(%d) failed to convert vobject to eglimage", (int)d->id);
-		return NULL;
-	}
-
-/* EGLImage to DMA-buf or direct to gbm_bo? */
-	if (0){
-		res = gbm_bo_import(
-			d->device->buffer.gbm,
-			GBM_BO_IMPORT_EGL_IMAGE, newimg,
-			GBM_BO_USE_SCANOUT
-		);
-
-		if (!res){
-			debug_print("(%d) dma-buf to gbm-scanout rejected", (int)d->id);
-			goto bad;
-		}
-	}
-	else {
-		int fourcc, nplanes;
-		if (!d->device->eglenv.query_image_format(
-			d->device->display, newimg, &fourcc, &nplanes, NULL)){
-			debug_print("(%d) couldn't query image format", (int) d->id);
-			goto bad;
-		}
-
-		EGLint stride;
-		int handle;
-		if (!d->device->eglenv.export_dmabuf(
-			d->device->display, newimg, &handle, &stride, NULL) || stride < 0){
-			debug_print("(%d) could not export dma-buffer", (int) d->id);
-			goto bad;
-		}
-
-		res = gbm_bo_import(d->device->buffer.gbm,
-			GBM_BO_IMPORT_FD, &(struct gbm_import_fd_data){
-			.width = vobj->vstore->w,
-			.height = vobj->vstore->h,
-			.format = fourcc,
-			.stride = stride,
-			.fd = handle
-			}, GBM_BO_USE_SCANOUT
-		);
-
-		if (!res){
-			uint8_t fcc[4] = {
-				fourcc & 0xff,
-				(fourcc >> 8) & 0xff,
-				(fourcc >> 16) & 0xff,
-				(fourcc >> 24) & 0xff
-			};
-
-			debug_print("(%d) couldn't convert dma-buffer, fourcc:"
-				"%"PRIu32"(%c%c%c%c) w: %zu, height: %zu, stride: %zu",
-				(int) d->id,
-				(uint32_t)fourcc,
-				fcc[0], fcc[1], fcc[2], fcc[3],
-				(size_t) vobj->vstore->w,
-				(size_t) vobj->vstore->h, (size_t) stride
-			);
-			close(handle);
-		}
-	}
-
-/* safe to destroy the backing EGLimage as the BO resource lifetime
- * is independent, though we don't want to destroy it for the vobj
- * as it might be mapped / used elsewhere */
-bad:
-	d->device->eglenv.destroy_image(d->device->display, newimg);
-	return res;
-}
-
 /*
  * called once per updated display per frame, as part of the normal
  * draw / flip / ... cycle, bo is the returned gbm_surface_lock_front
@@ -2054,24 +1950,26 @@ static int get_gbm_fb(struct dispout* d,
 	if (dstate == UPDATE_DIRECT){
 		arcan_vobject* vobj = arcan_video_getobject(d->vid);
 		struct rendertarget* newtgt = arcan_vint_findrt(vobj);
+		if (!newtgt)
+			return -1;
 
 /* though the rendertarget might not be ready for the first frame */
-		if (newtgt){
-			bool swap;
-			unsigned col = agp_rendertarget_swap(newtgt->art, &swap);
-			if (!swap)
-				return 0;
+		bool swap;
+		struct agp_vstore* vs = agp_rendertarget_swap(newtgt->art, &swap);
+		if (!swap)
+			return 0;
 
-/* if the rendertarget has been allocated through our scanout-allocator,
- * the referencing EGLImage is still part of the handle property of the
- * vobj, which means that we can import the EGLImage as a BO direct and
- * send that - at the same time we could just use the shared export dma
- * and add that */
-			TRACE_MARK_ONESHOT("egl-dri", "rendertarget-swap", TRACE_SYS_DEFAULT, col, 0, "");
-			bo = vobj_to_bo(d, vobj, col);
+		if (!vs->vinf.text.handle){
+			TRACE_MARK_ONESHOT(
+				"egl-dri", "rendertarget-swap", TRACE_SYS_ERROR, 0, 0, "no allocator handle");
+			return -1;
 		}
-		else
-			bo = vobj_to_bo(d, vobj, vobj->vstore->vinf.text.glid);
+
+		struct shmifext_color_buffer* buf =
+			(struct shmifext_color_buffer*) vs->vinf.text.handle;
+
+		bo = (struct gbm_bo*) buf->alloc_tags[0];
+		TRACE_MARK_ONESHOT("egl-dri", "rendertarget-swap", TRACE_SYS_DEFAULT, 0, 0, "");
 	}
 
 	if (!bo){
@@ -2132,11 +2030,10 @@ static int get_gbm_fb(struct dispout* d,
 				"(%d) failed to add framebuffer (%s)", (int)d->id, strerror(errno));
 			return -1;
 		}
-
-		TRACE_MARK_ONESHOT("egl-dri", "drm-gbm-addfb2", TRACE_SYS_DEFAULT, 0, 0, "");
+		TRACE_MARK_ONESHOT("egl-dri", "drm-gbm-addfb", TRACE_SYS_DEFAULT, 0, 0, "");
 	}
 	else {
-		TRACE_MARK_ONESHOT("egl-dri", "drm-gbm-addfb", TRACE_SYS_DEFAULT, 0, 0, "");
+		TRACE_MARK_ONESHOT("egl-dri", "drm-gbm-addfb2", TRACE_SYS_DEFAULT, 0, 0, "");
 	}
 
 	return 1;
@@ -3927,7 +3824,7 @@ static bool direct_scanout_alloc(
 	struct agp_fenv* env = agp_env();
 
 	if (action == RTGT_ALLOC_FREE){
-		debug_print("scanout_free:card=%d", (int) display->id);
+		debug_print("scanout_free:display=%d", (int) display->id);
 		struct shmifext_color_buffer* buf =
 			(struct shmifext_color_buffer*) vs->vinf.text.handle;
 
@@ -3948,7 +3845,9 @@ static bool direct_scanout_alloc(
 		}
 	}
 	else if (action == RTGT_ALLOC_SETUP){
-		debug_print("scanout_alloc:card=%d", (int) display->id);
+		debug_print("scanout_alloc:display=%d:w=%zu:h=%zu",
+			(int) display->id, (size_t) display->dispw, (size_t) display->disph);
+
 		struct shmifext_color_buffer* buf =
 			malloc(sizeof(struct shmifext_color_buffer));
 		*buf = (struct shmifext_color_buffer){
@@ -3971,7 +3870,7 @@ static bool direct_scanout_alloc(
 			free(buf);
 		}
 		else{
-			debug_print("scanout_alloc:ok:id=%zu", (size_t) buf->id.gl);
+			debug_print("scanout_alloc:ok:glid=%zu", (size_t) buf->id.gl);
 			vs->vinf.text.glid = buf->id.gl;
 			vs->vinf.text.handle = (uintptr_t) buf;
 		}
@@ -4031,7 +3930,7 @@ bool platform_video_map_display(
 				arcan_video_display.default_txcos), sizeof(float) * 8
 		);
 
-	debug_print("map_display(%d->%d) ok @%zu*%zu+%zu,%zu, txcos: %d, hint: %d",
+	debug_print("map_display(%d->%d) ok @%zu*%zu+%zu,%zu, hint: %d",
 		(int) id, (int) disp, (size_t) d->dispw, (size_t) d->disph,
 		(size_t) d->dispx, (size_t) d->dispy, (int) hint);
 
@@ -4080,7 +3979,7 @@ bool platform_video_map_display(
  * in a 'good enough' order. */
  				bool swap;
 				agp_rendertarget_allocator(newtgt->art, direct_scanout_alloc, d);
-				unsigned col = agp_rendertarget_swap(newtgt->art, &swap);
+				(void*) agp_rendertarget_swap(newtgt->art, &swap);
 			}
 
 /* even then we have an option for a mapped rendertarget, and that is to try
@@ -4308,9 +4207,8 @@ static bool update_display(struct dispout* d)
 				d->force_compose = true;
 				dstate = draw_display(d);
 
-/* This will cause a possible rendertarget to have a useless swapchain,
- * so drop / remove that again and rebuild. This switch will also increment
- * the number of 'blackframes' dirty prefill */
+/* Free all textures/buffer objects, disable allocator for the rendertarget and
+ * revert to normal 'gbm-flip + drawing to EGLSurface */
 				drop_swapchain(d);
 			}
 			else {
@@ -4334,13 +4232,13 @@ static bool update_display(struct dispout* d)
 				gbm_surface_release_buffer(d->buffer.surface, d->buffer.next_bo);
 				goto out;
 			}
-		}
 
-		if (rv == 0){
-			TRACE_MARK_ONESHOT("egl-dri", "gbm-buffer-release", TRACE_SYS_DEFAULT, d->id, 0, "");
-			gbm_surface_release_buffer(d->buffer.surface, d->buffer.next_bo);
-			verbose_print("(%d) - no update for display", (int)d->id);
-			goto out;
+			if (rv == 0){
+				TRACE_MARK_ONESHOT("egl-dri", "gbm-buffer-release", TRACE_SYS_DEFAULT, d->id, 0, "");
+				gbm_surface_release_buffer(d->buffer.surface, d->buffer.next_bo);
+				verbose_print("(%d) - no update for display", (int)d->id);
+				goto out;
+			}
 		}
 	}
 	break;
@@ -4387,8 +4285,10 @@ static bool update_display(struct dispout* d)
 		verbose_print("(%d) request flip (fd: %d, crtc: %"PRIxPTR", fb: %d)",
 			(int)d->id, (uintptr_t) d->display.crtc, (int) next_fb);
 
-		if (!drmModePageFlip(d->device->disp_fd, d->display.crtc,
-			next_fb, DRM_MODE_PAGE_FLIP_EVENT, d)){
+/* for Atomic, there is also a
+ * DRM_MODE_ATOMIC_NONBLOCK (poll fd), DRM_MODE_ATOMIC_ALLOW_MODESET */
+		if (!drmModePageFlip(d->device->disp_fd,
+			d->display.crtc, next_fb, DRM_MODE_PAGE_FLIP_EVENT, d)){
 			TRACE_MARK_ONESHOT("egl-dri", "vsynch-req", TRACE_SYS_DEFAULT, d->id, next_fb, "flip");
 			d->buffer.in_flip = 1;
 			verbose_print("(%d) in flip", (int)d->id);

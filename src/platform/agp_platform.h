@@ -340,7 +340,6 @@ enum rendertarget_mode {
 	RENDERTARGET_COLOR = 1,
 	RENDERTARGET_COLOR_DEPTH = 2,
 	RENDERTARGET_COLOR_DEPTH_STENCIL = 4,
-	RENDERTARGET_DOUBLEBUFFER = 8,
 	RENDERTARGET_RETAIN_ALPHA = 16,
 	RENDERTARGET_MSAA = 32
 };
@@ -424,14 +423,14 @@ void agp_rendertarget_proxy(struct agp_rendertarget* tgt,
 
 /*
  * Swap out the color attachment in the rendertarget, and return a graphics
- * library buffer ID for the latest 'rendered-to' buffer. On the first call,
- * this will internally make the rendertarget into a multi-buffered one,
- * regardless of the default.
+ * library buffer ID for the latest 'rendered-to' buffer as the vstore that
+ * has previously been run through the allocator.
  *
- * [swap] is set to false if the frame should be skipped instead of forwarded
- * / scanned out. This can happen following an initial setup or a resize.
+ * [swap] is set to false if the frame should be skipped instead of forwarded /
+ * scanned out. This can happen following an initial setup, a resize or a
+ * non-dirty rendertarget.
  */
-uint64_t agp_rendertarget_swap(struct agp_rendertarget*, bool* swap);
+struct agp_vstore* agp_rendertarget_swap(struct agp_rendertarget*, bool* swap);
 
 /*
  * Reset the internal extra resources indirectly allocated via a call to
