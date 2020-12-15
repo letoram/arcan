@@ -72,16 +72,6 @@ struct shmif_ext_hidden_int {
 	struct agp_rendertarget* rtgt;
 	struct agp_vstore buf;
 
-/* we buffer- queue the cleanup of these images (rtgt is already swapchain),
- * but these could / should be migrated to the rtgt- allocator interface and
- * just freed: that way */
-	struct {
-		EGLImage image;
-		size_t n_planes;
-		struct shmifext_buffer_plane planes[4];
-	} images[3];
-	size_t image_index;
-
 /* need to account for multiple contexts being created on the same setup */
 	uint64_t ctx_alloc;
 	EGLContext alt_contexts[64];
@@ -130,20 +120,6 @@ static void zap_vstore(struct agp_vstore* vstore)
 	vstore->vinf.text.s_raw = 0;
 }
 
-static void free_image_index(
-	EGLDisplay* dpy, struct shmif_ext_hidden_int* in, size_t i)
-{
-	if (!in->images[i].image)
-		return;
-
-	agp_eglenv.destroy_image(dpy, in->images[i].image);
-	in->images[i].image = NULL;
-	for (size_t j = 0; j < in->images[i].n_planes; j++){
-		close(in->images[i].planes[j].fd);
-		in->images[i].planes[j].fd = -1;
-	}
-}
-
 static void gbm_drop(struct arcan_shmif_cont* con)
 {
 	if (!con->privext->internal)
@@ -156,19 +132,16 @@ static void gbm_drop(struct arcan_shmif_cont* con)
 		if (in->rtgt){
 			agp_drop_rendertarget(in->rtgt);
 		}
-		for (size_t i = 0; i < COUNT_OF(in->images); i++){
-			free_image_index(in->display, in, i);
-		}
-/* are we managing the context or is the user providing his own? */
-		if (in->managed){
-			agp_eglenv.make_current(in->display,
-				EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-			if (in->context)
-				agp_eglenv.destroy_context(in->display, in->context);
-			agp_eglenv.terminate(in->display);
-		}
-		in->dev = NULL;
 	}
+/* are we managing the context or is the user providing his own? */
+	if (in->managed){
+		agp_eglenv.make_current(in->display,
+			EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+		if (in->context)
+			agp_eglenv.destroy_context(in->display, in->context);
+		agp_eglenv.terminate(in->display);
+	}
+	in->dev = NULL;
 
 	free(con->privext->internal);
 	con->privext->internal = NULL;
@@ -402,6 +375,44 @@ void arcan_shmifext_swap_context(
 	agp_eglenv.make_current(ctx->display, ctx->surface, ctx->surface, ctx->context);
 }
 
+static bool scanout_alloc(
+	struct agp_rendertarget* tgt, struct agp_vstore* vs, int action, void* tag)
+{
+	struct agp_fenv* env = agp_env();
+	struct arcan_shmif_cont* conn = tag;
+
+	if (action == RTGT_ALLOC_FREE){
+		struct shmifext_color_buffer* buf =
+			(struct shmifext_color_buffer*) vs->vinf.text.handle;
+
+		if (buf)
+			arcan_shmifext_free_color(conn, buf);
+		else
+			env->delete_textures(1, &vs->vinf.text.glid);
+
+		vs->vinf.text.handle = 0;
+		vs->vinf.text.glid = 0;
+
+		return true;
+	}
+
+/* this will give a color buffer that is suitable for FBO and sharing */
+	struct shmifext_color_buffer* buf =
+		malloc(sizeof(struct shmifext_color_buffer));
+
+	if (!arcan_shmifext_alloc_color(conn, buf)){
+		agp_empty_vstore(vs, vs->w, vs->h);
+		free(buf);
+		return true;
+	}
+
+/* remember the metadata for free later */
+	vs->vinf.text.glid = buf->id.gl;
+	vs->vinf.text.handle = (uintptr_t) buf;
+
+	return true;
+}
+
 enum shmifext_setup_status arcan_shmifext_setup(
 	struct arcan_shmif_cont* con,
 	struct arcan_shmifext_setup arg)
@@ -498,8 +509,11 @@ enum shmifext_setup_status arcan_shmifext_setup(
 				.w = con->w,
 				.h = con->h
 		};
-		ctx->rtgt = agp_setup_rendertarget(&ctx->buf,
-			RENDERTARGET_DOUBLEBUFFER | RENDERTARGET_COLOR_DEPTH_STENCIL);
+
+		ctx->rtgt = agp_setup_rendertarget(
+			&ctx->buf, RENDERTARGET_COLOR_DEPTH_STENCIL);
+
+		agp_rendertarget_allocator(ctx->rtgt, scanout_alloc, con);
 	}
 
 	arcan_shmifext_make_current(con);
@@ -800,10 +814,6 @@ size_t arcan_shmifext_export_image(
 	EGLDisplay* dpy = display == 0 ?
 		con->privext->internal->display : (EGLDisplay*) display;
 
-/* step buffer, clean / free */
-	size_t next_i = (ctx->image_index + 1) % COUNT_OF(ctx->images);
-	free_image_index(dpy, ctx, next_i);
-
 /* texture/FBO to egl image */
 	EGLImage newimg = agp_eglenv.create_image(
 		dpy,
@@ -844,10 +854,6 @@ size_t arcan_shmifext_export_image(
 		return 0;
 	}
 
-/* finally repackage - and remember in our outgoing queue */
-	ctx->images[next_i].image = newimg;
-	ctx->image_index = next_i;
-
 	for (size_t i = 0; i < nplanes; i++){
 		planes[i] = (struct shmifext_buffer_plane){
 			.fd = fds[i],
@@ -860,9 +866,9 @@ size_t arcan_shmifext_export_image(
 			.gbm.mod_hi = (modifiers >> 32),
 			.gbm.mod_lo = (modifiers & 0xffffffff)
 		};
-		ctx->images[next_i].planes[i] = planes[i];
 	}
 
+	agp_eglenv.destroy_image(dpy, newimg);
 	return nplanes;
 }
 
@@ -971,16 +977,18 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 /* swap and forward the state of the builtin- rendertarget or the latest
  * imported buffer depending on how the context was configured */
 	if (tex_id == SHMIFEXT_BUILTIN){
-		if (!ctx->rtgt && ctx->buf.vinf.text.tag){
-			tex_id = ctx->buf.vinf.text.glid;
-			goto fallback;
-		}
-		else {
-			bool swap;
-			tex_id = agp_rendertarget_swap(ctx->rtgt, &swap);
-			if (!swap)
-				return INT_MAX;
-		}
+		if (!ctx->rtgt)
+			return -1;
+
+		agp_activate_rendertarget(NULL);
+		glFinish();
+
+		bool swap;
+		struct agp_vstore* vs = agp_rendertarget_swap(ctx->rtgt, &swap);
+		if (!swap)
+			return INT_MAX;
+
+		tex_id = vs->vinf.text.glid;
 	}
 
 /* begin extraction of the currently rendered-to buffer */

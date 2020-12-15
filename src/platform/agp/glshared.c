@@ -91,7 +91,7 @@ static struct agp_rendertarget* active_rendertarget;
  * within AGP. This still won't fix other indirect bindings, i.e. being used
  * for slices in a 3D texture or a cubemap.
  */
-#define MAX_BUFFERS 3
+#define MAX_BUFFERS 4
 
 struct agp_rendertarget
 {
@@ -297,12 +297,13 @@ size_t agp_rendertarget_dirty(
 	return dst->dirty_region_decay;
 }
 
-uint64_t agp_rendertarget_swap(struct agp_rendertarget* dst, bool* swap)
+struct agp_vstore*
+	agp_rendertarget_swap(struct agp_rendertarget* dst, bool* swap)
 {
 	struct agp_fenv* env = agp_env();
 	if (!dst || !dst->store){
 		*swap = false;
-		return 0;
+		return NULL;
 	}
 
 	int old_front = dst->store_ind;
@@ -366,14 +367,14 @@ dst->store->vinf.text.glid_proxy = &dst->stores[front]->vinf.text.glid;
 			verbose_print("(%"PRIxPTR") rz-ack defer swap", (uintptr_t) dst);
 			*swap = false;
 			dst->rz_ack = false;
-			return 0;
+			return NULL;
 		}
 	}
 
 	verbose_print("(%"PRIxPTR") swap out glid: %u",
 		(uintptr_t) dst, (unsigned) dst->stores[old_front]->vinf.text.glid);
 
-	return dst->stores[old_front]->vinf.text.glid;
+	return dst->stores[old_front];
 }
 
 static void drop_msaa(struct agp_rendertarget* dst)
@@ -394,8 +395,7 @@ static void drop_msaa(struct agp_rendertarget* dst)
 static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 {
 	struct agp_fenv* env = agp_env();
-	int mode = dst->mode & (
-		~(RENDERTARGET_DOUBLEBUFFER | RENDERTARGET_RETAIN_ALPHA));
+	int mode = dst->mode & (~RENDERTARGET_RETAIN_ALPHA);
 
 /* recall this is actually OpenGL 3.0, so it's not at all certain
  * that we will actually get it. Then we fallback 'gracefully' */

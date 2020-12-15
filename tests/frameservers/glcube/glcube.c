@@ -345,7 +345,7 @@ static bool pump_connection(struct arcan_shmif_cont* con, size_t* i)
 	arcan_event ev;
 
 	int ps;
-	arcan_shmifext_make_current(con);
+	arcan_shmifext_bind(con);
 
 	while ( (ps = arcan_shmif_poll(con, &ev) ) > 0){
 		switch (ev.tgt.kind){
