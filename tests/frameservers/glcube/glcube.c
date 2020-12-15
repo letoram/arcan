@@ -353,6 +353,7 @@ static bool pump_connection(struct arcan_shmif_cont* con, size_t* i)
 			if (ev.tgt.ioevs[0].iv && ev.tgt.ioevs[1].iv &&
 				(ev.tgt.ioevs[0].iv != con->w || ev.tgt.ioevs[1].iv != con->h)){
 				arcan_shmif_resize(con, ev.tgt.ioevs[0].iv, ev.tgt.ioevs[1].iv);
+				arcan_shmifext_bind(con);
 			}
 		break;
 		default:
