@@ -12,13 +12,17 @@ static bool helper_bo_dmabuf(
 /* sooo - in order to convert the bo to an eglimage so that we can import it
  * into GL we first extract planes / strides / meta-data then re-package as
  * the corresponding EGL bits */
+
 	size_t np = gbm_bo_get_plane_count(bo);
-	if (np < DMABUF_PLANES_LIMIT)
+	if (np > DMABUF_PLANES_LIMIT)
 		return NULL;
 
 	uint64_t mod = gbm_bo_get_modifier(bo);
 	planes[0].w = w;
 	planes[0].h = h;
+
+	uint32_t mod_hi = mod >> 32;
+	uint32_t mod_lo = mod & 0xffffffff;
 
 	for (size_t i = 0; i < np; i++){
 		union gbm_bo_handle h = gbm_bo_get_handle_for_plane(bo, i);
@@ -34,7 +38,12 @@ static bool helper_bo_dmabuf(
 		planes[i].gbm.offset = gbm_bo_get_offset(bo, i);
 		planes[i].gbm.format = fmt;
 		planes[i].fd = prime.fd;
+		planes[i].gbm.mod_hi = mod_hi;
+		planes[i].gbm.mod_lo = mod_lo;
 	}
+
+	*n_planes = np;
+	return true;
 
 cleanup:
 	for (size_t i = 0; i < np; i++)
@@ -98,8 +107,8 @@ static EGLImage helper_dmabuf_eglimage(
 		ADD_ATTR(dma_pitch_constants[i], planes[i].gbm.stride);
 
 		if (mod != DRM_FORMAT_MOD_INVALID && mod != DRM_FORMAT_MOD_LINEAR){
-			ADD_ATTR(dma_mod_constants[i*2+0], planes[i].gbm.mod_lo);
-			ADD_ATTR(dma_mod_constants[i*2+1], planes[i].gbm.mod_hi);
+			ADD_ATTR(dma_mod_constants[i*2+0], planes[i].gbm.mod_hi);
+			ADD_ATTR(dma_mod_constants[i*2+1], planes[i].gbm.mod_lo);
 		}
 	}
 
@@ -182,5 +191,8 @@ static bool helper_alloc_color(
 
 /* remember egl image for destruction later */
 	out->alloc_tags[1] = img;
+
+/* last stage- build a color attachment that uses our new fresh img */
+	helper_eglimage_color(agp, egl, img, &out->id.gl);
 	return true;
 }
