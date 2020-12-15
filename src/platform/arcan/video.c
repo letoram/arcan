@@ -703,9 +703,8 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		bool swap;
 		got_frame = true;
 		verbose_print("first-frame swap");
-/*
- * agp_rendertarget_allocator(
-			arcan_vint_worldrt(), scanout_alloc, &disp[0].conn); */
+		agp_rendertarget_allocator(
+			arcan_vint_worldrt(), scanout_alloc, &disp[0].conn);
 		agp_rendertarget_swap(arcan_vint_worldrt(), &swap);
 	}
 

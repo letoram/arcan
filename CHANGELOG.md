@@ -28,6 +28,7 @@
 ## Platform
  * Egl-dri: don't forward modifiers for linear/invalid
  * Lwa: use shmifext allocator interface for mapped rendertargets
+ * Egl-dri: direct-scanout of 'sane- video objects' (e.g. FBO without post-processing)
 
 ## Wayland
  * arcan-wayland did not pack drm/dma-buf right, causing import failures
