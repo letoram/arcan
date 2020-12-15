@@ -140,34 +140,41 @@ void platform_video_reset(int id, int swap)
  */
 }
 
-struct alloc_tracker {
-	struct shmifext_color_buffer buf[16];
-	uint16_t alloc;
-};
-
 static bool scanout_alloc(
 	struct agp_rendertarget* tgt, struct agp_vstore* vs, int action, void* tag)
 {
 	struct dispout* display = tag;
 	struct agp_fenv* env = agp_env();
-	struct alloc_tracker* track = tag;
+	struct arcan_shmif_cont* conn = tag;
 
 	if (action == RTGT_ALLOC_FREE){
-/* find the matching index */
-/*  shmifext_free_color(con, tracker->buf[ind]);
- */
-/* not found? just kill the texture */
-		env->delete_textures(1, &vs->vinf.text.glid);
+		struct shmifext_color_buffer* buf =
+			(struct shmifext_color_buffer*) vs->vinf.text.handle;
+
+		if (buf)
+			arcan_shmifext_free_color(conn, buf);
+		else
+			env->delete_textures(1, &vs->vinf.text.glid);
+
+		vs->vinf.text.handle = 0;
 		vs->vinf.text.glid = 0;
+
 		return true;
 	}
 
 /* this will give a color buffer that is suitable for FBO and sharing */
-	struct shmifext_color_buffer buf;
+	struct shmifext_color_buffer* buf =
+		malloc(sizeof(struct shmifext_color_buffer));
 
-	if (!arcan_shmifext_alloc_color(&disp[0].conn, &buf)){
+	if (!arcan_shmifext_alloc_color(conn, buf)){
 		agp_empty_vstore(vs, vs->w, vs->h);
+		free(buf);
+		return true;
 	}
+
+/* remember the metadata for free later */
+	vs->vinf.text.glid = buf->id.gl;
+	vs->vinf.text.handle = (uintptr_t) buf;
 
 	return true;
 }
@@ -696,9 +703,9 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		bool swap;
 		got_frame = true;
 		verbose_print("first-frame swap");
-		struct alloc_tracker* track = malloc(sizeof(struct alloc_tracker));
-		memset(track, '\0', sizeof(struct alloc_tracker));
-/*	agp_rendertarget_allocator(arcan_vint_worldrt(), scanout_alloc, track); */
+/*
+ * agp_rendertarget_allocator(
+			arcan_vint_worldrt(), scanout_alloc, &disp[0].conn); */
 		agp_rendertarget_swap(arcan_vint_worldrt(), &swap);
 	}
 
