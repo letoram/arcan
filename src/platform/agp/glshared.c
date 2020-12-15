@@ -211,7 +211,7 @@ void agp_rendertarget_allocator(struct agp_rendertarget* tgt, bool (*handler)(
 	tgt->alloc_tag = tag;
 
 /* only re-allocate if _swap has been called, otherwise those allocations
- * will come soon enough */
+ * will come soon enough, if the allocator is disabled */
 	if (!tgt->n_stores)
 		return;
 
@@ -272,6 +272,9 @@ void agp_rendertarget_dropswap(struct agp_rendertarget* tgt)
 /* revert to 'default' buffer */
 	tgt->n_stores = 0;
 	tgt->store->vinf.text.glid_proxy = NULL;
+	tgt->alloc = NULL;
+	tgt->alloc_tag = NULL;
+
 	update_fbo_color(tgt, tgt->store->vinf.text.glid);
 
 /* mark that we need to treat as dirty regardless of contents */

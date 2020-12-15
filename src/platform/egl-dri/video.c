@@ -3924,25 +3924,59 @@ static bool direct_scanout_alloc(
 	struct agp_rendertarget* tgt, struct agp_vstore* vs, int action, void* tag)
 {
 	struct dispout* display = tag;
+	struct agp_fenv* env = agp_env();
 
 	if (action == RTGT_ALLOC_FREE){
 		debug_print("scanout_free:card=%d", (int) display->id);
+		struct shmifext_color_buffer* buf =
+			(struct shmifext_color_buffer*) vs->vinf.text.handle;
 
+/* slightly different to the one used in arcan/video.c as we keep the glid alive */
+		if (buf){
+			env->delete_textures(1, &vs->vinf.text.glid);
+			display->device->eglenv.destroy_image(
+				display->device->display, buf->alloc_tags[1]);
+			gbm_bo_destroy(buf->alloc_tags[0]);
+			buf->alloc_tags[0] = NULL;
+			buf->alloc_tags[1] = NULL;
+			free(buf);
+			vs->vinf.text.glid = 0;
+			vs->vinf.text.handle = 0;
+		}
+		else {
+			agp_drop_vstore(vs);
+		}
 	}
 	else if (action == RTGT_ALLOC_SETUP){
 		debug_print("scanout_alloc:card=%d", (int) display->id);
-/* fields:
- * w,
- * h,
- * bpp,
- * s_raw,
- * txmapped
- * s_fmt (GL_PIXEL_STORE)
- * d_fmt (GL_STORE_PIXEL_FORMAT)
- */
-	}
+		struct shmifext_color_buffer* buf =
+			malloc(sizeof(struct shmifext_color_buffer));
+		*buf = (struct shmifext_color_buffer){
+			.id.gl = vs->vinf.text.glid
+		};
 
-	return false;
+		if (!helper_alloc_color(env,
+			&display->device->eglenv,
+			display->device->buffer.gbm,
+			display->device->display,
+			buf,
+			display->dispw,
+			display->disph,
+			display->buffer.format,
+			4, /* becomes USE_SCANOUT */
+			0, NULL
+		)){
+			debug_print("scanout_alloc:failed_fallback");
+			agp_empty_vstore(vs, vs->w, vs->h);
+			free(buf);
+		}
+		else{
+			debug_print("scanout_alloc:ok:id=%zu", (size_t) buf->id.gl);
+			vs->vinf.text.glid = buf->id.gl;
+			vs->vinf.text.handle = (uintptr_t) buf;
+		}
+	}
+	return true;
 }
 
 bool platform_video_map_display(
@@ -4062,15 +4096,20 @@ bool platform_video_map_display(
 					newtgt->projection, 0, vobj->origw, vobj->origh, 0, 0, 1);
 			}
 		}
+		else
+			agp_rendertarget_dropswap(newtgt->art);
 	}
-/* Heuristics are needed here to determine if we can do the vobj- direct
- * mapping with a render pass, these are not complete yet as we want to get the
- * rendertarget- mapping more robust first - the benefits is mainly if it comes
- * from an external source and we can send that external source scanout capable
- * buffers. There should also be a special 'non-GPU' approach for certain
- * sources here where we can just use a dumb framebuffer and directly raster
- * into */
-	else if (0 && sane_direct_vobj(vobj)){
+/* ok:
+ *  - handle based external backend with bo_use_scanout and the right
+ *    modifiers, if the object is ok but the allocation isn't, wait for
+ *    a resize and then retry- mapping
+ *
+ *  - shm based backing where we can just blit into a dumb buffer
+ *
+ *  - tui based contents where we can raster into a dumb buffer
+ */
+	else if (sane_direct_vobj(vobj)){
+/* missing - display_dumb_buffer(d, true) */
 	}
 	else {
 	}
@@ -4095,6 +4134,7 @@ static void drop_swapchain(struct dispout* d)
 	if (!newtgt)
 		return;
 
+/* this will also reset any allocator set */
 	agp_rendertarget_dropswap(newtgt->art);
 	arcan_video_display.ignore_dirty += 3;
 }
