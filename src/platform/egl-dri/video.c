@@ -1280,6 +1280,40 @@ bool platform_video_get_display_gamma(
 	return rv;
 }
 
+static void fetch_edid(struct dispout* d)
+{
+	drmModePropertyPtr prop;
+	bool done = false;
+
+/* stick with the cached one */
+	if (d->display.edid_blob){
+		return;
+	}
+
+	for (size_t i = 0; i < d->display.con->count_props && !done; i++){
+		prop = drmModeGetProperty(d->device->disp_fd, d->display.con->props[i]);
+		if (!prop)
+			continue;
+
+		if (!(prop->flags&DRM_MODE_PROP_BLOB) || strcmp(prop->name, "EDID") != 0)
+			continue;
+
+		drmModePropertyBlobPtr blob = drmModeGetPropertyBlob(
+			d->device->disp_fd, d->display.con->prop_values[i]);
+
+		if (!blob || (int)blob->length <= 0)
+			continue;
+
+		if ((d->display.edid_blob = malloc(blob->length))){
+			d->display.blob_sz = blob->length;
+			memcpy(d->display.edid_blob, blob->data, blob->length);
+			done = true;
+		}
+
+		drmModeFreePropertyBlob(blob);
+	}
+}
+
 bool platform_video_display_edid(
 	platform_display_id did, char** out, size_t* sz)
 {
@@ -1289,6 +1323,9 @@ bool platform_video_display_edid(
 
 	*out = NULL;
 	*sz = 0;
+
+/* attempt to re-acquire the blob */
+	fetch_edid(d);
 
 /* allocate a new scratch copy of the cached blob */
 	if (d->display.edid_blob){
@@ -2395,34 +2432,7 @@ retry:
  * there are multiple EDID queries in flight which can happen as part of
  * on_hotplug(func) style event storms in independent software.
  */
-	drmModePropertyPtr prop;
-	bool done = false;
-	for (size_t i = 0; i < d->display.con->count_props && !done; i++){
-		prop = drmModeGetProperty(d->device->disp_fd, d->display.con->props[i]);
-		if (!prop)
-			continue;
-
-		if ((prop->flags & DRM_MODE_PROP_BLOB) &&
-			0 == strcmp(prop->name, "EDID")){
-			drmModePropertyBlobPtr blob =
-				drmModeGetPropertyBlob(d->device->disp_fd, d->display.con->prop_values[i]);
-
-			if (blob && blob->length > 0){
-				d->display.edid_blob = malloc(blob->length);
-				if (d->display.edid_blob){
-					d->display.blob_sz = blob->length;
-					memcpy(d->display.edid_blob, blob->data, blob->length);
-					done = true;
-				}
-			}
-			else {
-				debug_print("(%d) edid blob could not be retrieved\n", (int) d->id);
-			}
-
-			drmModeFreePropertyBlob(blob);
-		}
-		drmModeFreeProperty(prop);
-	}
+	fetch_edid(d);
 
 /*
  * foreach(encoder)
