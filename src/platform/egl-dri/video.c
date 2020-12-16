@@ -292,7 +292,6 @@ struct dispout {
 	bool disallow_rtproxy;
 	bool skip_blit;
 	size_t dispw, disph, dispx, dispy;
-	float vrefresh;
 
 	_Alignas(16) float projection[16];
 	_Alignas(16) float txcos[8];
@@ -2333,7 +2332,7 @@ retry:
 				d->display.mode_set = i;
 				d->dispw = cm->hdisplay;
 				d->disph = cm->vdisplay;
-				vrefresh = d->vrefresh = cm->vrefresh;
+				vrefresh = cm->vrefresh;
 				try_inherited_mode = false;
 				found = true;
 				debug_print("(%d) hand-picked (-w, -h): "
@@ -2368,8 +2367,7 @@ retry:
 			d->display.mode_set = 0;
 			d->dispw = cm->hdisplay;
 			d->disph = cm->vdisplay;
-			d->vrefresh = cm->vrefresh;
-			vrefresh = d->vrefresh;
+			vrefresh = cm->vrefresh;
 			found = true;
 			debug_print("(%d) default connector mode: %d*%d@%dHz",
 				d->id, d->dispw, d->disph, vrefresh);
@@ -2383,7 +2381,6 @@ retry:
 			d->display.mode_set = 0;
 			d->dispw = d->display.mode.hdisplay;
 			d->disph = d->display.mode.vdisplay;
-			d->vrefresh = 0;
 			debug_print("(%d) setup-kms, couldn't find any useful mode");
 		}
 
@@ -2811,7 +2808,7 @@ static void query_card(struct dev_node* node)
 			.vid.cardid = d->device->card_id
 		};
 		arcan_conductor_register_display(
-			d->device->card_id, d->id, SYNCH_STATIC, d->vrefresh, d->vid);
+			d->device->card_id, d->id, SYNCH_STATIC, d->display.mode.vrefresh, d->vid);
 
 		arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 		continue; /* don't want to free con */
@@ -3429,7 +3426,11 @@ static void page_flip_handler(int fd, unsigned int frame,
 	break;
 	}
 
-	float deadline = 1000.0f / (float)(d->vrefresh ? d->vrefresh : 60.0);
+/* there is no VRR method marker here - and we should really return the next one
+ * based on slew- rate for target vrefresh rather than a jump (do that when the
+ * handler is switched to the 'per crtc' one) */
+	float deadline = 1000.0f / (float)
+		(d->display.mode.vrefresh ? d->display.mode.vrefresh : 60.0);
 	arcan_conductor_deadline(deadline);
 }
 
@@ -3689,8 +3690,8 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		i = 0;
 		while ((d = get_display(i++))){
 			if (d->state == DISP_MAPPED){
-				if (d->vrefresh > 0 && d->vrefresh > refresh)
-					refresh = d->vrefresh;
+				if (d->display.mode.vrefresh && d->display.mode.vrefresh > refresh)
+					refresh = d->display.mode.vrefresh;
 			}
 		}
 
@@ -3958,7 +3959,7 @@ bool platform_video_map_display(
 	d->hint = hint & ~(HINT_FL_PRIMARY);
 	d->vid = id;
 	arcan_conductor_register_display(
-		d->device->card_id, d->id, SYNCH_STATIC, d->vrefresh, d->vid);
+		d->device->card_id, d->id, SYNCH_STATIC, d->display.mode.vrefresh, d->vid);
 
 /* we might have messed around with the projection, rebuild it to be sure */
 	struct rendertarget* newtgt = arcan_vint_findrt(vobj);
@@ -3967,7 +3968,7 @@ bool platform_video_map_display(
 		build_orthographic_matrix(
 			newtgt->projection, 0, vobj->origw, 0, vobj->origh, 0, 1);
 
-		if (sane_direct_vobj(vobj)){
+		if (sane_direct_vobj(vobj) && !hint){
 /* the rendertarget color attachment will need buffering in order to not have
  * tearing or implicit locks when attempting direct scanout, so enable that by
  * running a swap here. */
@@ -4008,7 +4009,8 @@ bool platform_video_map_display(
  *  - tui based contents where we can raster into a dumb buffer
  */
 	else if (sane_direct_vobj(vobj)){
-/* missing - display_dumb_buffer(d, true) */
+		TRACE_MARK_ONESHOT("egl-dri", "dumb-bo", TRACE_SYS_DEFAULT, d->id, 0, "");
+		debug_print("(%d) switching to dumb mode", d->id);
 	}
 	else {
 	}
@@ -4277,7 +4279,7 @@ static bool update_display(struct dispout* d)
 			}
 		}
 		arcan_conductor_register_display(
-			d->device->card_id, d->id, SYNCH_STATIC, d->vrefresh, d->vid);
+			d->device->card_id, d->id, SYNCH_STATIC, d->display.mode.vrefresh, d->vid);
 	}
 
 /* let DRM drive synch and wait for vsynch events on the file descriptor */
