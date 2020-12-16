@@ -264,10 +264,6 @@ struct lent {
 };
 
 #ifdef _DEBUG
-#define STB_ONLY_PNG
-#define STB_IMAGE_WRITE_STATIC
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "../../../engine/external/stb_image_write.h"
 #include <stdio.h>
 static bool dump_dbg(struct tui_context* tui)
 {
@@ -302,10 +298,6 @@ static bool dump_dbg(struct tui_context* tui)
 		fwrite(rbuf, rbuf_sz, 1, fout);
 		fclose(fout);
 	}
-
-/* dump shmif out into a png */
-	snprintf(buf, 64, "/tmp/tui.%d.shmif.png", getpid());
-	stbi_write_png(buf, tui->acon.w, tui->acon.h, 4, tui->acon.vidb, tui->acon.stride);
 
 	return true;
 }
