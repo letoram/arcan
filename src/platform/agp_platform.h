@@ -658,6 +658,14 @@ int agp_shader_envv(enum agp_shader_envts slot, void* value, size_t size);
 const char* agp_shader_symtype(enum agp_shader_envts env);
 
 /*
+ * Copy [x1, y1, x2, y2] regionn from src to dst
+ */
+void agp_vstore_copyreg(
+	struct agp_vstore* restrict src, struct agp_vstore* restrict dst,
+	size_t x1, size_t y1, size_t x2, size_t y2
+);
+
+/*
  * Update the uniform value of the currently bound shader and uniform group
  */
 void agp_shader_forceunif(const char* label, enum shdrutype type, void* value);
