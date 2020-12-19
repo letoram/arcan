@@ -184,6 +184,7 @@ enum storage_source {
 	STORAGE_TEXTARRAY
 };
 
+struct agp_vstore;
 struct agp_vstore {
 	size_t refcount;
 	uint32_t update_ts;
@@ -233,6 +234,9 @@ struct agp_vstore {
 			float b;
 		} col;
 	} vinf;
+
+/* if set, a local copy will be synched in here */
+	struct agp_vstore* dst_copy;
 
 	size_t w, h;
 	uint8_t bpp, txmapped,

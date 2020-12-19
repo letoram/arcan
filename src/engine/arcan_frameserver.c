@@ -287,6 +287,9 @@ static bool push_buffer(arcan_frameserver* src,
 		store->vinf.text.d_fmt = (src->desc.hints & SHMIF_RHINT_IGNORE_ALPHA) ||
 			src->flags.no_alpha_copy ? GL_NOALPHA_PIXEL_FORMAT : GL_STORE_PIXEL_FORMAT;
 
+/* this might not take if the store is locked - i.e. GPU resources will not
+ * match local copies, the main context where that matters is if the vobj is
+ * mapped to an output display and thus has a fixed buffer resolution */
 		arcan_video_resizefeed(src->vid, src->desc.width, src->desc.height);
 
 		src->desc.rz_flag = false;

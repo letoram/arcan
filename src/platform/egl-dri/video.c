@@ -41,6 +41,7 @@
 #include "arcan_videoint.h"
 #include "arcan_led.h"
 #include "arcan_shmif.h"
+#include "arcan_frameserver.h"
 #include "../agp/glfun.h"
 #include "arcan_event.h"
 #include "libbacklight.h"
@@ -128,7 +129,8 @@ enum buffer_method {
 
 enum vsynch_method {
 	VSYNCH_FLIP = 0,
-	VSYNCH_CLOCK = 1
+	VSYNCH_CLOCK = 1,
+	VSYNCH_IGNORE = 2
 };
 
 enum display_update_state {
@@ -263,6 +265,7 @@ struct dispout {
 			size_t sz;
 			struct agp_vstore agp;
 			struct agp_vstore* ref;
+			int fd;
 		} dumb;
 	} buffer;
 
@@ -536,8 +539,10 @@ static void release_card(size_t i)
 
 /* the criterion for direct- mapping is a bit weird:
  * if the backing is entirely GPU based, then we need to juggle / queue buffers.
- * if there are multiple consumers so the display doesn't hold a lock when we
- * need to update.
+ *
+ * The 'refcount' property is somewhat problematic as it means that the backing
+ * store might be locked with scanout while we are also waiting to update it for
+ * another consumer.
  */
 static bool sane_direct_vobj(arcan_vobject* vobj)
 {
@@ -545,8 +550,7 @@ static bool sane_direct_vobj(arcan_vobject* vobj)
 	&& vobj->vstore
 	&& !vobj->txcos
 	&& (!vobj->program || vobj->program == agp_default_shader(BASIC_2D))
-	&& vobj->vstore->txmapped == TXSTATE_TEX2D
-	&& vobj->vstore->refcount == 1;
+	&& vobj->vstore->txmapped == TXSTATE_TEX2D;
 }
 
 bool platform_video_map_buffer(
@@ -2075,6 +2079,7 @@ static int get_gbm_fb(struct dispout* d,
 	return 1;
 }
 
+/* switch the display to work in 'dumb' mode with a single 'direct-out' buffer */
 static bool set_dumb_fb(struct dispout* d)
 {
 	struct drm_mode_create_dumb create = {
@@ -2090,6 +2095,13 @@ static bool set_dumb_fb(struct dispout* d)
 			(int) d->id, create.width, create.height, create.bpp);
 		return false;
 	}
+
+/* drop the current frame-buffer (if set) */
+	if (d->buffer.cur_fb){
+		drmModeRmFB(fd, d->buffer.cur_fb);
+		d->buffer.cur_fb = 0;
+	}
+
 	if (drmModeAddFB(fd,
 		d->display.mode.hdisplay, d->display.mode.vdisplay, 24, 32,
 		create.pitch, create.handle, &d->buffer.cur_fb)){
@@ -2100,20 +2112,28 @@ static bool set_dumb_fb(struct dispout* d)
 
 	d->buffer.dumb.agp.vinf.text.handle = create.handle;
 	d->buffer.dumb.agp.vinf.text.stride = create.pitch;
-	if (drmIoctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &d->buffer.dumb) < 0){
+	d->buffer.dumb.agp.vinf.text.s_raw = create.size;
+	d->buffer.dumb.enabled = true;
+
+	d->device->vsynch_method = VSYNCH_IGNORE;
+
+	struct drm_mode_map_dumb mreq = {
+		.handle = create.handle
+	};
+	if (drmIoctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &mreq) < 0){
 		drmModeRmFB(fd, d->buffer.cur_fb);
 		d->buffer.cur_fb = 0;
 		TRACE_MARK_ONESHOT("egl-dri", "create-dumb-fbmap", TRACE_SYS_ERROR, 0, 0, "");
-		debug_print("(%d) couldn't map dumb-fb", (int) d->id);
+		debug_print("(%d) couldn't map dumb-fb: %s", (int) d->id, strerror(errno));
 		return false;
 	}
 
 /* note, do we get an offset here? */
-	void* mem = mmap(0,
-		create.size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	d->buffer.dumb.agp.vinf.text.raw = mmap(0,
+		create.size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, mreq.offset);
 
-	if (MAP_FAILED == mem){
-		debug_print("(%d) couldn't mmap dumb-fb", (int) d->id);
+	if (MAP_FAILED == d->buffer.dumb.agp.vinf.text.raw){
+		debug_print("(%d) couldn't mmap dumb-fb: %s", (int) d->id, strerror(errno));
 		TRACE_MARK_ONESHOT("egl-dri", "create-dumb-mmap", TRACE_SYS_ERROR, 0, 0, "");
 		drmModeRmFB(fd, d->buffer.cur_fb);
 		d->buffer.cur_fb = 0;
@@ -2121,13 +2141,26 @@ static bool set_dumb_fb(struct dispout* d)
 	}
 
 	TRACE_MARK_ONESHOT("egl-dri", "create-dumb", TRACE_SYS_DEFAULT, 0, 0, "");
-	memset(mem, 0xaa, create.size);
+	memset(d->buffer.dumb.agp.vinf.text.raw, 0xaa, create.size);
 	return true;
 }
 
 static void release_dumb_fb(struct dispout* d)
 {
-
+	if (d->buffer.dumb.enabled){
+		drmModeRmFB(d->buffer.dumb.fd, d->buffer.cur_fb);
+		struct drm_mode_destroy_dumb dreq = {
+			.handle = d->buffer.dumb.fd
+		};
+		drmIoctl(d->buffer.dumb.fd, DRM_IOCTL_MODE_DESTROY_DUMB, &dreq);
+		close(d->buffer.dumb.fd);
+		d->buffer.dumb.fd = -1;
+		d->buffer.cur_fb = 0;
+		munmap(d->buffer.dumb.agp.vinf.text.raw, d->buffer.dumb.sz);
+		d->buffer.dumb.agp = (struct agp_vstore){};
+		d->buffer.dumb.enabled = false;
+		d->device->vsynch_method = VSYNCH_FLIP;
+	}
 }
 
 static bool resolve_add(int fd, drmModeAtomicReqPtr dst, uint32_t obj_id,
@@ -2594,6 +2627,14 @@ static bool map_handle_gbm(struct agp_vstore* dst, int64_t handle)
 	uint64_t invalid = DRM_FORMAT_MOD_INVALID;
 	uint32_t hi = invalid >> 32;
 	uint32_t lo = invalid & 0xffffffff;
+
+	if (-1 == handle){
+		struct dispout* d = &displays[0];
+		d->device->eglenv.destroy_image(
+			d->device->display, (EGLImage) dst->vinf.text.tag);
+		dst->vinf.text.tag = 0;
+		return true;
+	}
 
 	struct agp_buffer_plane plane = {
 		.fd = handle,
@@ -3973,8 +4014,11 @@ bool platform_video_map_display(
 
 /* we might have messed around with the projection, rebuild it to be sure */
 	struct rendertarget* newtgt = arcan_vint_findrt(vobj);
+	release_dumb_fb(d);
+
 	if (newtgt){
 		newtgt->inv_y = false;
+
 		build_orthographic_matrix(
 			newtgt->projection, 0, vobj->origw, 0, vobj->origh, 0, 1);
 
@@ -4021,8 +4065,35 @@ bool platform_video_map_display(
 	else if (sane_direct_vobj(vobj)){
 		TRACE_MARK_ONESHOT("egl-dri", "dumb-bo", TRACE_SYS_DEFAULT, d->id, 0, "");
 		debug_print("(%d) switching to dumb mode", d->id);
-	}
-	else {
+
+		if (set_dumb_fb(d)){
+			int rv = drmModeSetCrtc(d->device->disp_fd, d->display.crtc,
+				d->buffer.cur_fb, 0, 0, &d->display.con_id, 1, &d->display.mode);
+
+/* now swap in our 'real-object' - copy-blit as is for the first pass then
+ * swap in our storage into the mapped source */
+			struct arcan_frameserver* fsrv = vobj->feed.state.ptr;
+
+			struct agp_vstore* src = vobj->vstore;
+			struct agp_vstore* dst = &d->buffer.dumb.agp;
+
+/* refcount and track so it doesn't disappear before we have released */
+			src->refcount++;
+			d->buffer.dumb.ref = src;
+
+/* this requires a local copy */
+			if (fsrv){
+				fsrv->flags.local_copy = true;
+				src->dst_copy = dst;
+			}
+
+/* synch what we have first so we don't have to wait for an update */
+			agp_vstore_copyreg(src, dst, 0, 0, dst->w, dst->h);
+
+/* MISSING: setting locked flag and aligning to vsync can save tearing, should
+ * not be needed for tui as we can just reraster from the source but that part
+ * is not finished */
+		}
 	}
 
 /* reset the 'force composition' output path, this may cost a frame

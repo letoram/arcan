@@ -940,6 +940,14 @@ void agp_init()
 */
 }
 
+void agp_vstore_copyreg(
+	struct agp_vstore* restrict src, struct agp_vstore* restrict dst,
+	size_t x1, size_t y1, size_t x2, size_t y2
+)
+{
+
+}
+
 void agp_drop_rendertarget(struct agp_rendertarget* tgt)
 {
 	if (!tgt)
