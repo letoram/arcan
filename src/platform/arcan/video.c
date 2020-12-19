@@ -52,12 +52,27 @@ extern jmp_buf arcanmain_recover_state;
 #include "../EGL/egl.h"
 #include "../EGL/eglext.h"
 
+/* shmifext doesn't expose these - and to run correctly nested we need to be
+ * able to import buffers from ourselves. While there is no other platform to
+ * grab from, just use this. */
 #ifdef EGL_DMA_BUF
-typedef void* GLeglImageOES;
-static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR;
-static PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR;
-typedef void (EGLAPIENTRY* PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)(GLenum target, GLeglImageOES image);
-static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <drm.h>
+#include <drm_mode.h>
+#include <drm_fourcc.h>
+
+#include <xf86drm.h>
+#include <xf86drmMode.h>
+#include <gbm.h>
+
+#include "../egl-dri/egl.h"
+#include "../egl-dri/egl_gbm_helper.h"
+
+static struct egl_env agp_eglenv;
+
 #endif
 
 #ifdef _DEBUG
@@ -178,6 +193,14 @@ static bool scanout_alloc(
 	return true;
 }
 
+static void* lookup_egl(void* tag, const char* sym, bool req)
+{
+	void* res = arcan_shmifext_lookup((struct arcan_shmif_cont*) tag, sym);
+	if (!res && req)
+		arcan_fatal("agp lookup(%s) failed, missing req. symbol.\n", sym);
+	return res;
+}
+
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames, const char* title)
 {
@@ -239,6 +262,9 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	arcan_shmif_setprimary(SHMIF_INPUT, &disp[0].conn);
 	arcan_shmifext_make_current(&disp[0].conn);
 
+	map_egl_functions(&agp_eglenv, lookup_egl, &disp[0].conn);
+	map_eglext_functions(&agp_eglenv, lookup_egl, &disp[0].conn);
+
 /*
  * switch rendering mode since our coordinate system differs
  */
@@ -273,14 +299,6 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	disp[0].focused = true;
 
 #ifdef EGL_DMA_BUF
-	eglCreateImageKHR = (PFNEGLCREATEIMAGEKHRPROC)
-		eglGetProcAddress("eglCreateImageKHR");
-
-	eglDestroyImageKHR = (PFNEGLDESTROYIMAGEKHRPROC)
-		eglGetProcAddress("eglDestroyImageKHR");
-
-	glEGLImageTargetTexture2DOES = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)
-		eglGetProcAddress("glEGLImageTargetTexture2DOES");
 #endif
 
 /* we provide our own cursor that is blended in the output, this might change
@@ -570,9 +588,50 @@ void platform_video_query_displays()
 {
 }
 
+static EGLDisplay conn_egl_display(struct arcan_shmif_cont* con)
+{
+	uintptr_t display;
+	if (!arcan_shmifext_egl_meta(&disp[0].conn, &display, NULL, NULL))
+		return NULL;
+
+	EGLDisplay disp = (EGLDisplay) display;
+	return disp;
+}
+
 bool platform_video_map_buffer(
 	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n)
 {
+#ifdef EGL_DMA_BUF
+	struct agp_fenv* fenv = arcan_shmifext_getfenv(&disp[0].conn);
+	EGLDisplay egldpy = conn_egl_display(&disp[0].conn);
+	if (!egldpy)
+		return false;
+
+	EGLImage img = helper_dmabuf_eglimage(
+		fenv, &agp_eglenv, egldpy, (struct shmifext_buffer_plane*) planes, n);
+
+	if (!img){
+		debug_print("buffer import failed");
+		return false;
+	}
+
+/* might have an old eglImage around */
+	if (0 != vs->vinf.text.tag){
+		agp_eglenv.destroy_image(disp, (EGLImageKHR) vs->vinf.text.tag);
+	}
+
+	vs->w = planes[0].w;
+	vs->h = planes[0].h;
+	vs->bpp = sizeof(shmif_pixel);
+	vs->txmapped = TXSTATE_TEX2D;
+
+	agp_activate_vstore(vs);
+		agp_eglenv.image_target_texture2D(GL_TEXTURE_2D, img);
+	agp_deactivate_vstore(vs);
+
+	vs->vinf.text.tag = (uintptr_t) img;
+	return true;
+#endif
 	return false;
 }
 
@@ -584,65 +643,30 @@ bool platform_video_map_buffer(
  */
 bool platform_video_map_handle(struct agp_vstore* dst, int64_t handle)
 {
-#ifdef EGL_DMA_BUF
-	EGLint attrs[] = {
-		EGL_DMA_BUF_PLANE0_FD_EXT,
-		handle,
-		EGL_DMA_BUF_PLANE0_PITCH_EXT,
-		dst->vinf.text.stride,
-		EGL_DMA_BUF_PLANE0_OFFSET_EXT,
-		0,
-		EGL_WIDTH,
-		dst->w,
-		EGL_HEIGHT,
-		dst->h,
-		EGL_LINUX_DRM_FOURCC_EXT,
-		dst->vinf.text.format,
-		EGL_NONE
+	uint64_t invalid = DRM_FORMAT_MOD_INVALID;
+	uint32_t hi = invalid >> 32;
+	uint32_t lo = invalid & 0xffffffff;
+
+/* special case, destroy the backing image */
+	if (-1 == handle){
+		agp_eglenv.destroy_image(
+			conn_egl_display(&disp[0].conn), (EGLImage) dst->vinf.text.tag);
+		dst->vinf.text.tag = 0;
+		return true;
+	}
+
+	struct agp_buffer_plane plane = {
+		.fd = handle,
+		.gbm = {
+			.mod_hi = DRM_FORMAT_MOD_INVALID >> 32,
+			.mod_lo = DRM_FORMAT_MOD_INVALID & 0xffffffff,
+			.offset = 0,
+			.stride = dst->vinf.text.stride,
+			.format = dst->vinf.text.format
+		}
 	};
 
-	if (!eglCreateImageKHR || !glEGLImageTargetTexture2DOES)
-		return false;
-
-	uintptr_t display;
-	arcan_shmifext_egl_meta(&disp[0].conn, &display, NULL, NULL);
-
-	if (0 != dst->vinf.text.tag){
-		eglDestroyImageKHR((EGLDisplay) display, (EGLImageKHR) dst->vinf.text.tag);
-		dst->vinf.text.tag = 0;
-		if (handle != dst->vinf.text.handle){
-			close(dst->vinf.text.handle);
-		}
-		dst->vinf.text.handle = -1;
-	}
-
-	if (-1 == handle)
-		return false;
-
-	EGLImageKHR img = eglCreateImageKHR(
-		(EGLDisplay) display,
-		EGL_NO_CONTEXT,
-		EGL_LINUX_DMA_BUF_EXT,
-		(EGLClientBuffer)NULL, attrs
-	);
-
-	if (img == EGL_NO_IMAGE_KHR){
-		arcan_warning("could not import EGL buffer (%zu * %zu), "
-			"stride: %d, format: %d from %d\n", dst->w, dst->h,
-		 dst->vinf.text.stride, dst->vinf.text.format,handle
-		);
-		close(handle);
-		return false;
-	}
-
-	agp_activate_vstore(dst);
-	glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, img);
-	dst->vinf.text.tag = (uintptr_t) img;
-	dst->vinf.text.handle = handle;
-	agp_deactivate_vstore(dst);
-	return true;
-#endif
-	return false;
+	return platform_video_map_buffer(dst, &plane, 1);
 }
 
 /*
