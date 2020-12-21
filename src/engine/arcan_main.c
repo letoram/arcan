@@ -72,6 +72,7 @@ static const struct option longopts[] = {
 	{ "windowed",     no_argument,       NULL, 's'},
 	{ "debug",        no_argument,       NULL, 'g'},
 	{ "binpath",      required_argument, NULL, 'B'},
+	{ "libpath",      required_argument, NULL, 'L'},
 	{ "rpath",        required_argument, NULL, 'p'},
 	{ "applpath" ,    required_argument, NULL, 't'},
 	{ "conservative", no_argument,       NULL, 'm'},
@@ -140,6 +141,7 @@ printf("Usage: arcan [-whfmWMOqspTBtHbdgaSV] applname "
 #else
 "-B\t--binpath     \tchange default searchpath for arcan_frameserver/afsrv*\n"
 #endif
+"-L\t--libpath     \tchange library search patch\n"
 #ifdef ARCAN_LWA
 "-1\t--pipe-stdout \t(for pipe-mode) negotiate an initial connection\n"
 #endif
@@ -409,7 +411,7 @@ int MAIN_REDIR(int argc, char* argv[])
 	struct arcan_strarr tmplist = {0};
 
 	while ((ch = getopt_long(argc, argv,
-		"w:h:mx:y:fsW:d:Sq:a:p:b:B:M:O:t:T:H:g01V", longopts, NULL)) >= 0){
+		"w:h:mx:y:fsW:d:Sq:a:p:b:B:L:M:O:t:T:H:g01V", longopts, NULL)) >= 0){
 	switch (ch) {
 	case '?' :
 		usage();
@@ -469,6 +471,9 @@ int MAIN_REDIR(int argc, char* argv[])
 	break;
 	case 'B' :
 		arcan_override_namespace(optarg, RESOURCE_SYS_BINS);
+	break;
+	case 'L' :
+		arcan_override_namespace(optarg, RESOURCE_SYS_LIBS);
 	break;
 	case 'g' :
 		debuglevel++;
