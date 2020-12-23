@@ -113,7 +113,6 @@ static char* egl_envopts[] = {
 	"device_wait", "loop until an active connector is found",
 	"device_nodpms", "set to disable power management controls",
 	"device_direct", "enable direct rendertarget scanout (experimental)",
-	"device_no_rtproxy", "set to disable rendertarget proxying",
 	"display_context=1", "set outer shared headless context, per display contexts",
 	NULL
 };
@@ -292,7 +291,6 @@ struct dispout {
 /* internal v-store and system mappings, rules for drawing final output */
 	arcan_vobj_id vid;
 	bool force_compose;
-	bool disallow_rtproxy;
 	bool skip_blit;
 	size_t dispw, disph, dispx, dispy;
 
@@ -345,8 +343,6 @@ static struct dispout* allocate_display(struct dev_node* node)
  * issues with scanning out fbo color attachments */
 			displays[i].force_compose =
 				!get_config("video_device_direct", 0, NULL, tag);
-			displays[i].disallow_rtproxy =
-				!get_config("video_device_rtproxy", 0, NULL, tag);
 			debug_print("(%zu) added, force composition? %d",
 				i, (int) displays[i].force_compose);
 			return &displays[i];
@@ -4035,19 +4031,6 @@ bool platform_video_map_display(
  				bool swap;
 				agp_rendertarget_allocator(newtgt->art, direct_scanout_alloc, d);
 				(void*) agp_rendertarget_swap(newtgt->art, &swap);
-			}
-
-/* even then we have an option for a mapped rendertarget, and that is to try
- * and proxy it -> can we forego it and use the egl buffer directly? that's
- * possible if the composition isn't used for anything else (recordtarget,
- * multiple users, ...) */
-			else if (!d->disallow_rtproxy && newtgt->art) {
-				agp_rendertarget_proxy(newtgt->art,
-					display_rtgt_proxy, (uintptr_t)(void*)d);
-/* but this requires a different projection than the default */
-				newtgt->inv_y = true;
-				build_orthographic_matrix(
-					newtgt->projection, 0, vobj->origw, vobj->origh, 0, 0, 1);
 			}
 		}
 		else
