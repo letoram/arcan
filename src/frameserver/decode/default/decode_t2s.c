@@ -1,5 +1,5 @@
 #include <arcan_shmif.h>
-#include <espeak/speak_lib.h>
+#include <speak_lib.h>
 #include <errno.h>
 
 enum pack_format {
