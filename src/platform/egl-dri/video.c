@@ -66,7 +66,7 @@
 						arcan_timemillis(), "egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 #ifndef verbose_print
-#define verbose_print
+#define verbose_print debug_print
 #endif
 
 #include "egl.h"
@@ -241,7 +241,7 @@ struct dispout {
 /* the output buffers, actual fields use will vary with underlying
  * method, i.e. different for normal gbm, headless gbm and eglstreams */
 	struct {
-		int in_flip, in_destroy;
+		int in_flip, in_destroy, in_dumb_set;
 		EGLConfig config;
 		EGLContext context;
 		EGLSurface esurf;
@@ -265,6 +265,7 @@ struct dispout {
 			struct agp_vstore agp;
 			struct agp_vstore* ref;
 			int fd;
+			uint32_t fb;
 		} dumb;
 	} buffer;
 
@@ -2084,6 +2085,8 @@ static bool set_dumb_fb(struct dispout* d)
 		.bpp = 32
 	};
 
+	assert(!d->buffer.dumb.enabled);
+
 	int fd = d->device->disp_fd;
 	if (drmIoctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &create) < 0){
 		TRACE_MARK_ONESHOT("egl-dri", "create-dumb", TRACE_SYS_ERROR, 0, 0, "");
@@ -2092,33 +2095,22 @@ static bool set_dumb_fb(struct dispout* d)
 		return false;
 	}
 
-/* drop the current frame-buffer (if set) */
-	if (d->buffer.cur_fb){
-		drmModeRmFB(fd, d->buffer.cur_fb);
-		d->buffer.cur_fb = 0;
-	}
+	struct agp_vstore* buf = &d->buffer.dumb.agp;
 
-	if (drmModeAddFB(fd,
-		d->display.mode.hdisplay, d->display.mode.vdisplay, 24, 32,
-		create.pitch, create.handle, &d->buffer.cur_fb)){
-		TRACE_MARK_ONESHOT("egl-dri", "create-dumb-addfb", TRACE_SYS_ERROR, 0, 0, "");
-		debug_print("(%d) couldn't add dumb-fb", (int) d->id);
-		return false;
-	}
-
-	d->buffer.dumb.agp.vinf.text.handle = create.handle;
-	d->buffer.dumb.agp.vinf.text.stride = create.pitch;
-	d->buffer.dumb.agp.vinf.text.s_raw = create.size;
+	buf->vinf.text.handle = create.handle;
+	buf->vinf.text.stride = create.pitch;
+	buf->vinf.text.s_raw = create.size;
+	buf->w = d->display.mode.hdisplay;
+	buf->h = d->display.mode.vdisplay;
 	d->buffer.dumb.enabled = true;
 
-	d->device->vsynch_method = VSYNCH_IGNORE;
+/* mark to switch on the next flip */
+	d->buffer.in_dumb_set = true;
 
 	struct drm_mode_map_dumb mreq = {
 		.handle = create.handle
 	};
 	if (drmIoctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &mreq) < 0){
-		drmModeRmFB(fd, d->buffer.cur_fb);
-		d->buffer.cur_fb = 0;
 		TRACE_MARK_ONESHOT("egl-dri", "create-dumb-fbmap", TRACE_SYS_ERROR, 0, 0, "");
 		debug_print("(%d) couldn't map dumb-fb: %s", (int) d->id, strerror(errno));
 		return false;
@@ -2131,32 +2123,45 @@ static bool set_dumb_fb(struct dispout* d)
 	if (MAP_FAILED == d->buffer.dumb.agp.vinf.text.raw){
 		debug_print("(%d) couldn't mmap dumb-fb: %s", (int) d->id, strerror(errno));
 		TRACE_MARK_ONESHOT("egl-dri", "create-dumb-mmap", TRACE_SYS_ERROR, 0, 0, "");
-		drmModeRmFB(fd, d->buffer.cur_fb);
-		d->buffer.cur_fb = 0;
+
 		return false;
 	}
 
 	TRACE_MARK_ONESHOT("egl-dri", "create-dumb", TRACE_SYS_DEFAULT, 0, 0, "");
 	memset(d->buffer.dumb.agp.vinf.text.raw, 0xaa, create.size);
+
 	return true;
 }
 
 static void release_dumb_fb(struct dispout* d)
 {
-	if (d->buffer.dumb.enabled){
-		drmModeRmFB(d->buffer.dumb.fd, d->buffer.cur_fb);
-		struct drm_mode_destroy_dumb dreq = {
-			.handle = d->buffer.dumb.fd
-		};
-		drmIoctl(d->buffer.dumb.fd, DRM_IOCTL_MODE_DESTROY_DUMB, &dreq);
-		close(d->buffer.dumb.fd);
-		d->buffer.dumb.fd = -1;
-		d->buffer.cur_fb = 0;
-		munmap(d->buffer.dumb.agp.vinf.text.raw, d->buffer.dumb.sz);
-		d->buffer.dumb.agp = (struct agp_vstore){};
-		d->buffer.dumb.enabled = false;
-		d->device->vsynch_method = VSYNCH_FLIP;
+	if (!d->buffer.dumb.enabled)
+		return;
+
+	drmModeRmFB(d->device->disp_fd, d->buffer.dumb.fd);
+	struct drm_mode_destroy_dumb dreq = {
+		.handle = d->buffer.dumb.fd
+	};
+
+	drmIoctl(d->device->disp_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &dreq);
+	close(d->buffer.dumb.fd);
+	d->buffer.dumb.fd = -1;
+
+	munmap(d->buffer.dumb.agp.vinf.text.raw, d->buffer.dumb.sz);
+	d->buffer.dumb.agp = (struct agp_vstore){};
+	d->buffer.dumb.enabled = false;
+
+/* if we have succeeded with switching to another framebuffer, restore
+ * the old one by setting whatever was in that slot */
+	if (d->buffer.dumb.fb){
+		drmModeRmFB(d->device->disp_fd, d->buffer.dumb.fb);
+		d->buffer.dumb.fb = 0;
+		drmModeSetCrtc(d->device->disp_fd, d->display.crtc,
+			d->buffer.cur_fb, 0, 0, &d->display.con_id, 1, &d->display.mode);
 	}
+
+	verbose_print("(%d) released dumb framebuffer", d->id);
+	d->device->vsynch_method = VSYNCH_FLIP;
 }
 
 static bool resolve_add(int fd, drmModeAtomicReqPtr dst, uint32_t obj_id,
@@ -3458,13 +3463,41 @@ static void page_flip_handler(int fd, unsigned int frame,
 
 	switch(d->device->buftype){
 	case BUF_GBM:{
+
+/* won't happen first frame or to-from dumb transition */
 		if (d->buffer.cur_bo)
 			gbm_surface_release_buffer(d->buffer.surface, d->buffer.cur_bo);
 
+/* with in_dumb_set we have waited for flip to be released, then we will switch
+ * to the 'dumb' flip handler in the future */
+		if (d->buffer.in_dumb_set){
+			debug_print("(%d) page-flip, switch to single-dumb buffer", d->id);
+			struct agp_vstore* buf = &d->buffer.dumb.agp;
+
+/* create the framebuffer tied to the dumb buffer and set to the Crtc,
+ * if it fails just continue as 'normal' without the dumb buffer */
+			if (0 == drmModeAddFB(d->device->disp_fd, buf->w, buf->h, 24, 32,
+				buf->vinf.text.stride, buf->vinf.text.handle, &d->buffer.dumb.fb)){
+				d->buffer.cur_bo = NULL;
+				d->device->vsynch_method = VSYNCH_IGNORE;
+				drmModeSetCrtc(d->device->disp_fd, d->display.crtc,
+					d->buffer.dumb.fb, 0, 0, &d->display.con_id, 1, &d->display.mode);
+				debug_print("(%d) dumb-fb on crtc", d->id);
+			}
+			else {
+				debug_print("(%d) couldn't add dumb-fb, revert", d->id);
+				release_dumb_fb(d);
+				d->buffer.cur_bo = d->buffer.next_bo;
+			}
+
+			d->buffer.in_dumb_set = false;
+		}
+		else
+			d->buffer.cur_bo = d->buffer.next_bo;
+		d->buffer.next_bo = NULL;
+
 		verbose_print("(%d) gbm-bo, release %"PRIxPTR" with %"PRIxPTR,
 			(int)d->id, (uintptr_t) d->buffer.cur_bo, (uintptr_t) d->buffer.next_bo);
-		d->buffer.cur_bo = d->buffer.next_bo;
-		d->buffer.next_bo = NULL;
 	}
 	break;
 	case BUF_STREAM:
@@ -4050,9 +4083,6 @@ bool platform_video_map_display(
 		debug_print("(%d) switching to dumb mode", d->id);
 
 		if (set_dumb_fb(d)){
-			int rv = drmModeSetCrtc(d->device->disp_fd, d->display.crtc,
-				d->buffer.cur_fb, 0, 0, &d->display.con_id, 1, &d->display.mode);
-
 /* now swap in our 'real-object' - copy-blit as is for the first pass then
  * swap in our storage into the mapped source */
 			struct arcan_frameserver* fsrv = vobj->feed.state.ptr;
@@ -4071,7 +4101,7 @@ bool platform_video_map_display(
 			}
 
 /* synch what we have first so we don't have to wait for an update */
-			agp_vstore_copyreg(src, dst, 0, 0, dst->w, dst->h);
+//			agp_vstore_copyreg(src, dst, 0, 0, dst->w, dst->h);
 
 /* MISSING: setting locked flag and aligning to vsync can save tearing, should
  * not be needed for tui as we can just reraster from the source but that part
@@ -4109,6 +4139,11 @@ static enum display_update_state draw_display(struct dispout* d)
 	bool swap_display = true;
 	arcan_vobject* vobj = arcan_video_getobject(d->vid);
 	agp_shader_id shid = agp_default_shader(BASIC_2D);
+
+/* dumb buffers has its own draw tactic */
+	if (!d->buffer.in_dumb_set && d->buffer.dumb.enabled){
+		return UPDATE_SKIP;
+	}
 
 /*
  * If the following conditions are valid, we can simply add the source vid
@@ -4353,10 +4388,12 @@ static bool update_display(struct dispout* d)
 
 /* for Atomic, there is also a
  * DRM_MODE_ATOMIC_NONBLOCK (poll fd), DRM_MODE_ATOMIC_ALLOW_MODESET */
-		if (!drmModePageFlip(d->device->disp_fd,
+		if (0 == drmModePageFlip(d->device->disp_fd,
 			d->display.crtc, next_fb, DRM_MODE_PAGE_FLIP_EVENT, d)){
 			TRACE_MARK_ONESHOT("egl-dri", "vsynch-req", TRACE_SYS_DEFAULT, d->id, next_fb, "flip");
 			d->buffer.in_flip = 1;
+			d->buffer.cur_fb = next_fb;
+
 			verbose_print("(%d) in flip", (int)d->id);
 		}
 		else {
