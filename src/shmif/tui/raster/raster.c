@@ -388,7 +388,8 @@ void tui_raster_offset(
  */
 #ifndef NO_ARCAN_AGP
 void tui_raster_renderagp(struct tui_raster_context* ctx,
-	struct agp_vstore* dst, uint8_t* buf, size_t buf_sz)
+	struct agp_vstore* dst, uint8_t* buf, size_t buf_sz,
+	struct stream_meta* out)
 {
 	if (!ctx || !dst || buf_sz < sizeof(struct tui_raster_header))
 		return;
@@ -396,17 +397,16 @@ void tui_raster_renderagp(struct tui_raster_context* ctx,
 	uint16_t x1, y1, x2, y2;
 
 	if (-1 == raster_tobuf(ctx, dst->vinf.text.raw, dst->w,
-		dst->w, dst->h, &x1, &y1, &x2, &y2, buf, buf_sz))
-		return;
-
-	struct stream_meta stream = {
-		.buf = dst->vinf.text.raw,
-		.x1 = x1, .y1 = y1, .w = x2 - x1, .h = y2 - y1,
-		.dirty = true
-	};
-
-	stream = agp_stream_prepare(dst, stream, STREAM_RAW_DIRECT);
-	agp_stream_commit(dst, stream);
+		dst->w, dst->h, &x1, &y1, &x2, &y2, buf, buf_sz)){
+		*out = (struct stream_meta){0};
+	}
+	else {
+		*out = (struct stream_meta){
+			.buf = dst->vinf.text.raw,
+			.x1 = x1, .y1 = y1, .w = x2 - x1, .h = y2 - y1,
+			.dirty = true
+		};
+	}
 }
 #endif
 

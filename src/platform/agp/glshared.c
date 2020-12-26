@@ -942,10 +942,42 @@ void agp_init()
 
 void agp_vstore_copyreg(
 	struct agp_vstore* restrict src, struct agp_vstore* restrict dst,
-	size_t x1, size_t y1, size_t x2, size_t y2
-)
+	size_t x1, size_t y1, size_t x2, size_t y2)
 {
+	if (!src || !dst || y1 > dst->h || y1 > src->h || x1 > dst->w || x1 > src->w)
+		return;
 
+	if (y2 > dst->h)
+		y2 = dst->h;
+
+	if (y2 > src->h)
+		y2 = src->h;
+
+	if (x2 > dst->w)
+		x2 = dst->w;
+
+	if (x2 > src->w)
+		x2 = src->w;
+
+	if (x2 <= x1 || y2 <= y1)
+		return;
+
+	size_t line_w = (x2 - x1) * sizeof(av_pixel);
+	size_t dst_pitch = dst->vinf.text.stride / sizeof(av_pixel);
+	size_t src_pitch = src->vinf.text.stride / sizeof(av_pixel);
+
+	if (!dst_pitch)
+		dst_pitch = src->h * sizeof(av_pixel);
+
+	if (!src_pitch)
+		src_pitch = src->w;
+
+	for (size_t y = y1; y < y2; y++){
+		memcpy(
+			&dst->vinf.text.raw[y * dst_pitch + x1],
+			&src->vinf.text.raw[y * src_pitch + x1], line_w
+		);
+	}
 }
 
 void agp_drop_rendertarget(struct agp_rendertarget* tgt)

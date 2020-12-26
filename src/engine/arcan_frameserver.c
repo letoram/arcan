@@ -320,8 +320,18 @@ static bool push_buffer(arcan_frameserver* src,
  * a tpack_vstore and then use normal txcos etc. to pick our visible set, and a
  * MSDF text atlas to get drawing lists, removing the last 'big buffer'
  * requirement, as well as drawing the cursor separately. */
-		tui_raster_renderagp(raster, store,
-			(uint8_t*) buf, src->desc.width * src->desc.height * sizeof(shmif_pixel));
+		tui_raster_renderagp(raster, store, (uint8_t*) buf,
+			src->desc.width * src->desc.height * sizeof(shmif_pixel), &stream);
+
+/* The dst-copy is also a hack / problematic in that way, as we can't rely
+ * on reading back the dumb buffer once we are done with it */
+		if (store->dst_copy){
+			agp_vstore_copyreg(store, store->dst_copy,
+				stream.x1, stream.y1, stream.x1 + stream.w, stream.y1 + stream.h);
+		}
+
+		stream = agp_stream_prepare(store, stream, STREAM_RAW_DIRECT);
+		agp_stream_commit(store, stream);
 
 /* Return feedback on kerning in px. Set the entire buffer regardless of delta
  * since when we get an actual kerning table in the vstore - it will be cheaper
