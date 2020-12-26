@@ -53,6 +53,8 @@
  * bit 0: glyph-index
  * bit 1: border-right
  * bit 2: border-down
+ * bit 3: treat color as palette reference (first byte of front_color)
+ * bit 4: glyph-index-alt-font
  */
 #include "raster_const.h"
 
@@ -170,8 +172,10 @@ void tui_raster_get_cell_size(
  * Synch the raster state into the agp_store
  */
 #ifndef NO_ARCAN_AGP
+
 void tui_raster_renderagp(struct tui_raster_context* ctx,
-	struct agp_vstore* dst, uint8_t* buf, size_t buf_sz);
+	struct agp_vstore* dst, uint8_t* buf, size_t buf_sz,
+	struct stream_meta* out);
 #endif
 
 /*

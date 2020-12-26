@@ -66,7 +66,7 @@
 						arcan_timemillis(), "egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 #ifndef verbose_print
-#define verbose_print debug_print
+#define verbose_print
 #endif
 
 #include "egl.h"
@@ -3480,8 +3480,10 @@ static void page_flip_handler(int fd, unsigned int frame,
 				buf->vinf.text.stride, buf->vinf.text.handle, &d->buffer.dumb.fb)){
 				d->buffer.cur_bo = NULL;
 				d->device->vsynch_method = VSYNCH_IGNORE;
+
 				drmModeSetCrtc(d->device->disp_fd, d->display.crtc,
 					d->buffer.dumb.fb, 0, 0, &d->display.con_id, 1, &d->display.mode);
+
 				debug_print("(%d) dumb-fb on crtc", d->id);
 			}
 			else {
@@ -4094,14 +4096,16 @@ bool platform_video_map_display(
 			src->refcount++;
 			d->buffer.dumb.ref = src;
 
-/* this requires a local copy */
+/* ensure local copying when there is a buffer transfer */
 			if (fsrv){
-				fsrv->flags.local_copy = true;
+				if (!(fsrv->desc.hints & SHMIF_RHINT_TPACK))
+					fsrv->flags.local_copy = true;
 				src->dst_copy = dst;
-			}
 
-/* synch what we have first so we don't have to wait for an update */
-//			agp_vstore_copyreg(src, dst, 0, 0, dst->w, dst->h);
+/* is there a pre-existing local store? */
+				if (src->vinf.text.raw)
+					agp_vstore_copyreg(src, src->dst_copy, 0, 0, src->w, src->h);
+			}
 
 /* MISSING: setting locked flag and aligning to vsync can save tearing, should
  * not be needed for tui as we can just reraster from the source but that part
@@ -4142,6 +4146,9 @@ static enum display_update_state draw_display(struct dispout* d)
 
 /* dumb buffers has its own draw tactic */
 	if (!d->buffer.in_dumb_set && d->buffer.dumb.enabled){
+		drmModeSetCrtc(d->device->disp_fd, d->display.crtc,
+			d->buffer.dumb.fb, 0, 0, &d->display.con_id, 1, &d->display.mode);
+
 		return UPDATE_SKIP;
 	}
 

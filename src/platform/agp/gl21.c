@@ -256,11 +256,6 @@ static void pbo_stream(struct agp_vstore* s,
 		else
 			for (size_t i = 0; i < ntc; i++)
 				*ptr++ = *buf++;
-
-		if (s->dst_copy){
-			agp_vstore_copyreg(s, s->dst_copy, 0, 0, s->w, s->h);
-			s->dst_copy->update_ts = arcan_timemillis();
-		}
 	}
 
 	verbose_print(
@@ -310,11 +305,6 @@ static void pbo_stream_sub(struct agp_vstore* s,
 			memcpy(&cpy[y * s->w + meta->x1], &buf[y * s->w + meta->x1], row_sz);
 
 		s->update_ts = arcan_timemillis();
-
-		if (s->dst_copy){
-			agp_vstore_copyreg(s, s->dst_copy, meta->x1, meta->y1, x2, y2);
-			s->dst_copy->update_ts = arcan_timemillis();
-		}
 	}
 
 /*
@@ -421,15 +411,17 @@ struct stream_meta agp_stream_prepare(struct agp_vstore* s,
 				s->vinf.text.s_fmt ? s->vinf.text.s_fmt : GL_PIXEL_FORMAT,
 				GL_UNSIGNED_BYTE, meta.buf
 			);
+
 			reset_pixel_store();
 		}
-		else
+		else{
 			verbose_print(
 				"(%"PRIxPTR") raw synch (%zu*%zu)", (uintptr_t) s, meta.w, meta.h);
 				env->tex_subimage_2d(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
 				s->vinf.text.s_fmt ? s->vinf.text.s_fmt : GL_PIXEL_FORMAT,
 				GL_UNSIGNED_BYTE, meta.buf
 			);
+		}
 		agp_deactivate_vstore();
 	break;
 
