@@ -138,6 +138,12 @@ void platform_video_query_displays()
 {
 }
 
+void platform_video_invalidate_map(
+	struct agp_vstore* vstore, struct agp_region region)
+{
+/* NOP for the time being - might change for direct forwarding of client */
+}
+
 size_t platform_video_displays(platform_display_id* dids, size_t* lim)
 {
 	if (dids && lim && *lim > 0){
@@ -182,10 +188,22 @@ struct monitor_mode* platform_video_query_modes(
 	return &mode;
 }
 
+void platform_video_invalidate_map(
+	struct agp_vstore* vstore, struct agp_region region)
+{
+/* NOP for the time being - might change for direct forwarding of client */
+}
+
 bool platform_video_map_display(
 	arcan_vobj_id id, platform_display_id disp, enum blitting_hint hint)
 {
 	return false; /* no multidisplay /redirectable output support */
+}
+
+ssize_t platform_video_map_display_layer(arcan_vobj_id vid,
+	platform_display_id id, size_t layer_index, struct display_layer_cfg cfg)
+{
+	return -1;
 }
 
 const char* platform_video_capstr()

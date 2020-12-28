@@ -32,24 +32,6 @@ void platform_video_preinit();
 bool platform_video_init(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* caption);
 
-enum platform_config_flags {
-	REQUIRE_DRM_MASTER = 1,
-	DISPLAYLESS_CONTEXT = 2,
-	EGL_BUFFER_MODE = 4,
-	GBM_BUFFER_MODE = 8,
-	DUMP_CONNECTORS = 16
-};
-struct platform_video_config;
-
-/*
- * Begin a new opaque configuration
- */
-struct platform_video_config* platform_video_build_config();
-void platform_video_add_gpu(
-	struct platform_video_config*, const char* device, int fd,
-		const char** libraries, int flags, const char* path, ...);
-void platform_video_release_config(struct platform_video_config*);
-
 /*
  * Sent as a trigger to notify that higher scripting levels have recovered
  * from an error and possible video- layer related events are possibly missing
@@ -290,11 +272,34 @@ enum blitting_hint {
 	HINT_YFLIP = 8,
 	HINT_ROTATE_CW_90 = 16,
 	HINT_ROTATE_CCW_90 = 32,
-	HINT_ENDM = 32
+	HINT_CURSOR = 64, /* not permitted for layer == 0 */
+	HINT_ENDM = 64
 };
 
-bool platform_video_map_display(arcan_vobj_id id,
-	platform_display_id disp, enum blitting_hint);
+/* This replaces the platform_video_map_display call and can be used for
+ * runtime configuration of hardware accelerated composition and special
+ * display features. Will return the upper limit of possible layers left based
+ * on the current configuration, or -1 if the combination cannot be solved for. */
+struct display_layer_cfg {
+	size_t x;
+	size_t y;
+	enum blitting_hint hint;
+	float opacity;
+};
+
+ssize_t platform_video_map_display_layer(arcan_vobj_id id,
+	platform_display_id disp, size_t layer_index, struct display_layer_cfg cfg);
+
+/* For all displays that map the supplied vstore at any layer, mark the related
+ * region as having been changed - this is mainly intended for dynamic vstores
+ * where damage tracking is possible. Mappings that act as render-targets are
+ * excluded by default. */
+void platform_video_invalidate_map(
+	struct agp_vstore*, struct agp_region region);
+
+/* deprecated - simply maps to display_layer=0 */
+bool platform_video_map_display(
+	arcan_vobj_id id, platform_display_id disp, enum blitting_hint);
 
 void platform_video_shutdown();
 

@@ -326,11 +326,30 @@ struct monitor_mode platform_video_dimensions()
 	return res;
 }
 
-bool platform_video_map_display(arcan_vobj_id id,
-	platform_display_id disp, enum blitting_hint hint)
+bool platform_video_map_display(
+	arcan_vobj_id vid, platform_display_id id, enum blitting_hint hint)
 {
-	if (disp != 0)
-		return false;
+	struct display_layer_cfg cfg = {
+		.opacity = 1.0,
+		.hint = hint
+	};
+
+	return platform_video_map_display_layer(vid, id, 0, cfg) >= 0;
+}
+
+void platform_video_invalidate_map(
+	struct agp_vstore* vstore, struct agp_region region)
+{
+/* NOP for the time being - might change for direct forwarding of client */
+}
+
+ssize_t platform_video_map_display_layer(arcan_vobj_id id,
+	platform_display_id disp, size_t layer_index, struct display_layer_cfg cfg)
+{
+	if (disp != 0 || layer_index)
+		return -1;
+
+	enum blitting_hint hint = cfg.hint;
 
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	bool isrt = arcan_vint_findrt(vobj) != NULL;
@@ -338,7 +357,7 @@ bool platform_video_map_display(arcan_vobj_id id,
 	if (vobj && vobj->vstore->txmapped != TXSTATE_TEX2D){
 		arcan_warning("platform_video_map_display(), attempted to map a "
 			"video object with an invalid backing store");
-		return false;
+		return -1;
 	}
 
 /*
@@ -365,7 +384,7 @@ bool platform_video_map_display(arcan_vobj_id id,
 	}
 	arcan_video_display.ignore_dirty += iframes;
 	sdl.vid = id;
-	return true;
+	return 0;
 }
 
 bool platform_video_display_id(platform_display_id id,

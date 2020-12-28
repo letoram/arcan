@@ -149,6 +149,23 @@ size_t platform_video_decay()
 	return 0;
 }
 
+bool platform_video_map_display(
+	arcan_vobj_id vid, platform_display_id id, enum blitting_hint hint)
+{
+	struct display_layer_cfg cfg = {
+		.opacity = 1.0,
+		.hint = hint
+	};
+
+	return platform_video_map_display_layer(vid, id, 0, cfg) >= 0;
+}
+
+void platform_video_invalidate_map(
+	struct agp_vstore* vstore, struct agp_region region)
+{
+/* NOP for the time being - might change for direct forwarding of client */
+}
+
 int PLATFORM_SYMBOL(_video_cardhandle)(int cardn,
 		int* buffer_method, size_t* metadata_sz, uint8_t** metadata)
 {
@@ -163,10 +180,10 @@ bool PLATFORM_SYMBOL(_video_display_edid)(platform_display_id did,
 	return false;
 }
 
-bool PLATFORM_SYMBOL(_video_map_display)(
-	arcan_vobj_id id, platform_display_id disp, enum blitting_hint hint)
+ssize_t platform_video_map_display_layer(arcan_vobj_id id,
+	platform_display_id disp, size_t layer_index, struct display_layer_cfg cfg)
 {
-	return false;
+	return -1;
 }
 
 void PLATFORM_SYMBOL(_video_reset)(int id, int swap)

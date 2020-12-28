@@ -225,6 +225,12 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 	return disp == 0 && mode == 0;
 }
 
+void platform_video_invalidate_map(
+	struct agp_vstore* vstore, struct agp_region region)
+{
+/* NOP for the time being - might change for direct forwarding of client */
+}
+
 struct monitor_mode* platform_video_query_modes(
 	platform_display_id id, size_t* count)
 {
@@ -253,11 +259,24 @@ struct monitor_mode platform_video_dimensions()
 	return res;
 }
 
-bool platform_video_map_display(arcan_vobj_id id,
-	platform_display_id disp, enum blitting_hint hint)
+bool platform_video_map_display(
+	arcan_vobj_id vid, platform_display_id id, enum blitting_hint hint)
 {
-	if (disp != 0)
-		return false;
+	struct display_layer_cfg cfg = {
+		.opacity = 1.0,
+		.hint = hint
+	};
+
+	return platform_video_map_display_layer(vid, id, 0, cfg) >= 0;
+}
+
+ssize_t platform_video_map_display_layer(arcan_vobj_id id,
+	platform_display_id disp, size_t layer_index, struct display_layer_cfg cfg)
+{
+	if (disp != 0 || layer_index)
+	truetruetrue	return false;
+
+	enum blitting_hint hint = cfg.hint;
 
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	bool isrt = arcan_vint_findrt(vobj) != NULL;
