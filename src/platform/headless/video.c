@@ -489,11 +489,28 @@ struct monitor_mode* platform_video_query_modes(
 	return &mode;
 }
 
-bool platform_video_map_display(
-	arcan_vobj_id id, platform_display_id disp, enum blitting_hint hint)
+void platform_video_invalidate_map(
+	struct agp_vstore* vstore, struct agp_region region)
 {
-	if (disp != 0)
-		return false;
+/* NOP for the time being - might change for direct forwarding of client */
+}
+
+bool platform_video_map_display(
+	arcan_vobj_id vid, platform_display_id id, enum blitting_hint hint)
+{
+	struct display_layer_cfg cfg = {
+		.opacity = 1.0,
+		.hint = hint
+	};
+
+	return platform_video_map_display_layer(vid, id, 0, cfg) >= 0;
+}
+
+ssize_t platform_video_map_display_layer(arcan_vobj_id id,
+	platform_display_id disp, size_t layer_index, struct display_layer_cfg cfg)
+{
+	if (disp != 0 || layer_index > 0)
+		return -1;
 
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
@@ -510,7 +527,7 @@ bool platform_video_map_display(
  */
 	if (id == ARCAN_EID){
 		global.encode.block = true;
-		return true;
+		return 0;
 	}
 
 	global.encode.block = false;
@@ -521,12 +538,12 @@ bool platform_video_map_display(
 	if (id == ARCAN_VIDEO_WORLDID || !vobj){
 		arcan_warning("(headless) map display, worldid or no object, invert-y\n");
 		global.encode.flip_y = true;
-		return true;
+		return 0;
 	}
 
 	if (vobj->vstore->txmapped != TXSTATE_TEX2D){
 		arcan_warning("(headless) map display called with bad source vobj\n");
-		return false;
+		return -1;
 	}
 
 /*
@@ -541,7 +558,7 @@ bool platform_video_map_display(
 	global.vstore = vobj->vstore;
 	arcan_warning("(headless) mapped source, invert-y: %d\n", global.encode.flip_y);
 
-	return true;
+	return 0;
 }
 
 size_t platform_video_decay()

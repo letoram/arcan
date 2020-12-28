@@ -450,9 +450,6 @@ void agp_drop_rendertarget(struct agp_rendertarget*);
  * so far. if [dirty] is set to NULL, no changes will be marked, but counter
  * will still be returned.
  */
-struct agp_region {
-	size_t x1, y1, x2, y2;
-};
 size_t agp_rendertarget_dirty(
 	struct agp_rendertarget* dst, struct agp_region* dirty);
 

@@ -184,6 +184,10 @@ enum storage_source {
 	STORAGE_TEXTARRAY
 };
 
+struct agp_region {
+	size_t x1, y1, x2, y2;
+};
+
 struct agp_vstore;
 struct agp_vstore {
 	size_t refcount;

@@ -3961,14 +3961,54 @@ static bool direct_scanout_alloc(
 	return true;
 }
 
-bool platform_video_map_display(
-	arcan_vobj_id id, platform_display_id disp, enum blitting_hint hint)
+void platform_video_invalidate_map(
+	struct agp_vstore* vstore, struct agp_region region)
 {
+/* the same store could be mapped to multiple displays */
+	for (size_t i = 0; i <  MAX_DISPLAYS; i++){
+		if (displays[i].state == DISP_UNUSED ||
+			&displays[i].buffer.dumb.agp != vstore ||
+			!displays[i].buffer.dumb.fb)
+			continue;
+
+		drmModeClip reg = {
+			.x1 = region.x1,
+			.y1 = region.y1,
+			.x2 = region.x2,
+			.y2 = region.y2
+		};
+
+		drmModeDirtyFB(
+			displays[i].device->disp_fd, displays[i].buffer.dumb.fb, &reg, 1);
+	}
+}
+
+bool platform_video_map_display(
+	arcan_vobj_id vid, platform_display_id id, enum blitting_hint hint)
+{
+	struct display_layer_cfg cfg = {
+		.opacity = 1.0,
+		.hint = hint
+	};
+
+	return platform_video_map_display_layer(vid, id, 0, cfg) >= 0;
+}
+
+ssize_t platform_video_map_display_layer(arcan_vobj_id id,
+	platform_display_id disp, size_t layer, struct display_layer_cfg cfg)
+
+{
+	enum blitting_hint hint = cfg.hint;
 	struct dispout* d = get_display(disp);
+
+/* incomplete - should try and deal with cursor etc. */
+	if (layer)
+		return -1;
+
 	if (!d || d->state == DISP_UNUSED){
 		debug_print(
 			"map_display(%d->%d) attempted on unused disp", (int)id, (int)disp);
-		return false;
+		return -1;
 	}
 
 /* we have a known but previously unmapped display, set it up */
@@ -3980,7 +4020,7 @@ bool platform_video_map_display(
 			d->display.mode_set != -1 ? d->display.mode.vdisplay : 0) ||
 			setup_buffers(d) == -1){
 			debug_print("map_display(%d->%d) alloc/map failed", (int)id, (int)disp);
-			return false;
+			return -1;
 		}
 		d->state = DISP_MAPPED;
 	}
@@ -3992,7 +4032,7 @@ bool platform_video_map_display(
 		d->vid = id;
 		arcan_conductor_release_display(d->device->card_id, d->id);
 
-		return true;
+		return 0;
 	}
 
 /* the more recent rpack- based mapping format could/should get special
@@ -4002,7 +4042,7 @@ bool platform_video_map_display(
 	if (vobj->vstore->txmapped != TXSTATE_TEX2D){
 		debug_print("map_display(%d->%d) rejected, source not a valid texture",
 			(int) id, (int) disp);
-		return false;
+		return -1;
 	}
 
 /* normal object may have origo in UL, WORLDID FBO in LL */
@@ -4120,7 +4160,7 @@ bool platform_video_map_display(
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
 	d->force_compose = !get_config("video_device_direct", 0, NULL, tag);
 
-	return true;
+	return 0;
 }
 
 static void drop_swapchain(struct dispout* d)
@@ -4144,11 +4184,9 @@ static enum display_update_state draw_display(struct dispout* d)
 	arcan_vobject* vobj = arcan_video_getobject(d->vid);
 	agp_shader_id shid = agp_default_shader(BASIC_2D);
 
-/* dumb buffers has its own draw tactic */
+/* placeholder - the real 'dirty' marking on the agp object should be
+ * done at a lower level, e.g. agp itself */
 	if (!d->buffer.in_dumb_set && d->buffer.dumb.enabled){
-		drmModeSetCrtc(d->device->disp_fd, d->display.crtc,
-			d->buffer.dumb.fb, 0, 0, &d->display.con_id, 1, &d->display.mode);
-
 		return UPDATE_SKIP;
 	}
 

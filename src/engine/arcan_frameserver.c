@@ -323,11 +323,18 @@ static bool push_buffer(arcan_frameserver* src,
 		tui_raster_renderagp(raster, store, (uint8_t*) buf,
 			src->desc.width * src->desc.height * sizeof(shmif_pixel), &stream);
 
-/* The dst-copy is also a hack / problematic in that way, as we can't rely
- * on reading back the dumb buffer once we are done with it */
+/* The dst-copy is also a hack / problematic in that way - the invalidation
+ * should really be handled in some other way */
 		if (store->dst_copy){
-			agp_vstore_copyreg(store, store->dst_copy,
-				stream.x1, stream.y1, stream.x1 + stream.w, stream.y1 + stream.h);
+			struct agp_region reg = {
+				.x1 = stream.x1,
+				.y1 = stream.y1,
+				.x2 = stream.x1 + stream.w,
+				.y2 = stream.y1 + stream.h
+			};
+			agp_vstore_copyreg(store,
+				store->dst_copy, reg.x1, reg.y1, reg.x2, reg.y2);
+			platform_video_invalidate_map(store->dst_copy, reg);
 		}
 
 		stream = agp_stream_prepare(store, stream, STREAM_RAW_DIRECT);

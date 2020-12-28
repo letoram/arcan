@@ -504,6 +504,23 @@ static bool check_store(platform_display_id id)
 	return true;
 }
 
+bool platform_video_map_display(
+	arcan_vobj_id vid, platform_display_id id, enum blitting_hint hint)
+{
+	struct display_layer_cfg cfg = {
+		.opacity = 1.0,
+		.hint = hint
+	};
+
+	return platform_video_map_display_layer(vid, id, 0, cfg) >= 0;
+}
+
+void platform_video_invalidate_map(
+	struct agp_vstore* vstore, struct agp_region region)
+{
+/* NOP for the time being - might change for direct forwarding of client */
+}
+
 /*
  * Two things that are currently wrong with this approach to mapping:
  * 1. hint is ignored entirely, mapping mode is just based on WORLDID
@@ -513,16 +530,17 @@ static bool check_store(platform_display_id id)
  * to cover all possible mapping modes, and a on-gpu rtarget- style blit
  * with extra buffer or partial synch and VIEWPORT events.
  */
-bool platform_video_map_display(
-	arcan_vobj_id vid, platform_display_id id, enum blitting_hint hint)
+ssize_t platform_video_map_display_layer(arcan_vobj_id vid,
+	platform_display_id id, size_t layer_index, struct display_layer_cfg cfg)
 {
+
 	if (id > MAX_DISPLAYS)
-		return false;
+		return -1;
 
 	if (!disp[id].conn.addr){
-		arcan_warning("platform_video_map_display(), attempt to map "
-			"unconnected display.\n");
-		return false;
+		arcan_warning("platform_video_map_display_layer(), "
+			"attempt to map unconnected display.\n");
+		return -1;
 	}
 
 	if (id < MAX_DISPLAYS && disp[id].vstore){
@@ -536,27 +554,27 @@ bool platform_video_map_display(
 
 	if (vid == ARCAN_VIDEO_WORLDID){
 		if (!arcan_vint_world())
-			return false;
+			return -1;
 
 		disp[id].conn.hints = SHMIF_RHINT_ORIGO_LL;
 		disp[id].vstore = arcan_vint_world();
 		disp[id].mapped = true;
-		return true;
+		return 0;
 	}
 	else if (vid == ARCAN_EID)
-		return true;
+		return 0;
 	else{
 		arcan_vobject* vobj = arcan_video_getobject(vid);
 		if (vobj == NULL){
-			arcan_warning("platform_video_map_display(), attempted to map a "
-				"non-existing video object");
-			return false;
+			arcan_warning("platform_video_map_display(), "
+				"attempted to map a non-existing video object");
+			return 0;
 		}
 
 		if (vobj->vstore->txmapped != TXSTATE_TEX2D){
-			arcan_warning("platform_video_map_display(), attempted to map a "
-				"video object with an invalid backing store");
-			return false;
+			arcan_warning("platform_video_map_display(), "
+				"attempted to map a video object with an invalid backing store");
+			return 0;
 		}
 
 		disp[id].conn.hints = 0;
@@ -568,12 +586,12 @@ bool platform_video_map_display(
  * when doing a buffer passing operation
  */
 	if (!check_store(id))
-		return false;
+		return -1;
 
 	disp[id].vstore->refcount++;
 	disp[id].mapped = true;
 
-	return true;
+	return 0;
 }
 
 struct monitor_mode* platform_video_query_modes(
