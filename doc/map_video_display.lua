@@ -1,8 +1,9 @@
 -- map_video_display
 -- @short: Specify virtual object to output mapping.
 -- @inargs: vid:src, number:display
--- @inargs: vid:src, number:display, number:blithint
--- @outargs: bool:success
+-- @inargs: vid:src, number:display, number:blithint, number:layer_index
+-- @inargs: vid:src, number:display, number:blithint, number:layer_index, number:x, number:y
+-- @outargs: bool:success, number:free_layers
 -- @longdescr: This functions updates the mapping between a higher level
 -- visual object *src* and an output *display*. This includes the currently
 -- set shader, custom texture coordinates and so on.
@@ -17,7 +18,16 @@
 -- display SHOULD be prioritized in the case of multiple displays.
 -- The function returns *true* if the object was successfully mapped to
 -- the display, and *false* if the underlying platform rejected it for some
--- reason, as not all outputs can accept all kinds of sources.
+-- reason, as not all outputs can accept all kinds of sources or an arbitrary
+-- number of layers.
+-- It will also return the maximum number of currently free mapping layers,
+-- this is not a guarantee that a certain object can be mapped to a higher layer,
+-- the combination need to be tested for the current combination of screens,
+-- resolutions and mappings.
+-- Providing a *layer_index* along with an *x* and *y* coordinate allows
+-- multiple objects to be mapped to the same logical output and composited
+-- accordinly. One layer at an index larger than 0 is permitted to have the
+-- special *blithint* HINT_CURSOR which allows for alpha blending.
 -- @note: A *src* referencing an object with a feed- function, such as
 -- one coming from ref:define_recordtarget, ref:define_calctarget and so
 -- on, is a terminal state transition.
@@ -30,6 +40,11 @@
 -- when going from 'as a texture' to 'as an output' behavior and may end
 -- up inverted. The engine will attempt to account for this, but only if
 -- no custom texture coordinate set has been defined for the object.
+-- @note: Mapping the same rendertarget to multiple displays is undefined
+-- behaviour. The reason is that the backing store of *src* might need to
+-- mutate to fit the scanout characteristics of *display*. Even for the same
+-- display, these tend to have slight changes that make sharing semantics
+-- have subtle edge cases that are hard to predict.
 -- @group: vidsys
 -- @cfunction: videomapping
 -- @related:

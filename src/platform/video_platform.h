@@ -281,8 +281,8 @@ enum blitting_hint {
  * display features. Will return the upper limit of possible layers left based
  * on the current configuration, or -1 if the combination cannot be solved for. */
 struct display_layer_cfg {
-	size_t x;
-	size_t y;
+	ssize_t x;
+	ssize_t y;
 	enum blitting_hint hint;
 	float opacity;
 };
