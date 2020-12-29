@@ -26,8 +26,14 @@
 -- resolutions and mappings.
 -- Providing a *layer_index* along with an *x* and *y* coordinate allows
 -- multiple objects to be mapped to the same logical output and composited
--- accordinly. One layer at an index larger than 0 is permitted to have the
--- special *blithint* HINT_CURSOR which allows for alpha blending.
+-- accordinly.
+-- For layers higher than zero, additional hint flags can be set:
+--
+-- HINT_CURSOR - the layer will be treated as a cursor layer and implies
+-- alpha blending. This may be updated out of the normal processing pipeline
+-- and as part of a raw input handler where other graphics functions might
+-- be unavailable.
+--
 -- @note: A *src* referencing an object with a feed- function, such as
 -- one coming from ref:define_recordtarget, ref:define_calctarget and so
 -- on, is a terminal state transition.
@@ -43,7 +49,7 @@
 -- @note: Mapping the same rendertarget to multiple displays is undefined
 -- behaviour. The reason is that the backing store of *src* might need to
 -- mutate to fit the scanout characteristics of *display*. Even for the same
--- display, these tend to have slight changes that make sharing semantics
+-- display, these ted to have slight changes that make sharing semantics
 -- have subtle edge cases that are hard to predict.
 -- @group: vidsys
 -- @cfunction: videomapping
