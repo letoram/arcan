@@ -66,7 +66,7 @@
 						arcan_timemillis(), "egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 #ifndef verbose_print
-#define verbose_print
+#define verbose_print debug_print
 #endif
 
 #include "egl.h"
@@ -166,6 +166,7 @@ struct dev_node {
  * crtc is an allocation bitmap for output port<->display allocation
  * atomic is set if the driver kms side supports/needs atomic modesetting */
 	bool wait_connector;
+	bool explicit_synch;
 	int card_id;
 	bool atomic;
 
@@ -246,6 +247,8 @@ struct dispout {
 		EGLContext context;
 		EGLSurface esurf;
 		EGLStreamKHR stream;
+		EGLSyncKHR synch;
+
 		struct gbm_bo* cur_bo, (* next_bo);
 		uint32_t cur_fb;
 		int format;
@@ -333,8 +336,8 @@ static struct dispout* allocate_display(struct dev_node* node)
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){
 		if (displays[i].state == DISP_UNUSED){
 			displays[i].device = node;
-			displays[i].id = i;
 			displays[i].display.primary = false;
+			displays[i].id = i;
 
 			node->refc++;
 			displays[i].state = DISP_KNOWN;
@@ -896,6 +899,8 @@ static int setup_buffers_gbm(struct dispout* d)
 			lookup_call, d->device->eglenv.get_proc_address);
 	}
 
+/* preference order with -1 omitted. whatever is user-set on the display will
+ * be added as preference, with the safe-bets at the end */
 	int gbm_formats[] = {
 		-1, /* 565 */
 		-1, /* 10-bit, X */
@@ -907,13 +912,13 @@ static int setup_buffers_gbm(struct dispout* d)
 	};
 
 	const char* fmt_lbls[] = {
-		"RGB565 16-bit",
-		"xRGB 30-bit",
-		"aRGB 30-bit",
-		"xRGB 64-bit",
-		"aRGB 64-bit",
-		"xRGB 24-bit",
-		"aRGB 24-bit"
+		"RGB565",
+		"R10G10B10X",
+		"R10G10B10A2",
+		"F16X",
+		"F16A",
+		"xR8G8B8",
+		"A8R8G8B8",
 	};
 
 /*
@@ -1139,6 +1144,27 @@ int platform_video_cardhandle(int cardn,
 	return nodes[cardn].client_meta.fd;
 }
 
+static bool realloc_buffers(struct dispout* d)
+{
+	switch (d->device->buftype){
+	case BUF_GBM:
+		gbm_surface_destroy(d->buffer.surface);
+		d->buffer.surface = NULL;
+		if (setup_buffers_gbm(d) != 0)
+			return false;
+	break;
+	case BUF_HEADLESS:
+	break;
+	case BUF_STREAM:
+		d->device->eglenv.destroy_stream(d->device->display, d->buffer.stream);
+		d->buffer.stream = EGL_NO_STREAM_KHR;
+		if (setup_buffers_stream(d) != 0)
+			return false;
+	break;
+	}
+	return true;
+}
+
 bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 {
 	struct dispout* d = get_display(disp);
@@ -1194,22 +1220,8 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 /*
  * setup / allocate a new set of buffers that match the new mode
  */
-	switch (d->device->buftype){
-	case BUF_GBM:
-		gbm_surface_destroy(d->buffer.surface);
-		d->buffer.surface = NULL;
-		if (setup_buffers_gbm(d) != 0)
-			return false;
-	break;
-	case BUF_HEADLESS:
-	break;
-	case BUF_STREAM:
-		d->device->eglenv.destroy_stream(d->device->display, d->buffer.stream);
-		d->buffer.stream = EGL_NO_STREAM_KHR;
-		if (setup_buffers_stream(d) != 0)
-			return false;
-	break;
-	}
+	if (!realloc_buffers(d))
+		return false;
 
 	d->state = DISP_MAPPED;
 
@@ -1319,7 +1331,7 @@ bool platform_video_display_edid(
 	platform_display_id did, char** out, size_t* sz)
 {
 	struct dispout* d = get_display(did);
-	if (!d)
+	if (!d || d->state == DISP_UNUSED)
 		return false;
 
 	*out = NULL;
@@ -1993,8 +2005,10 @@ static int get_gbm_fb(struct dispout* d,
 /* though the rendertarget might not be ready for the first frame */
 		bool swap;
 		struct agp_vstore* vs = agp_rendertarget_swap(newtgt->art, &swap);
-		if (!swap)
+		if (!swap){
+			verbose_print("(%d) no-swap on rtgt", d->id);
 			return 0;
+		}
 
 		if (!vs->vinf.text.handle){
 			TRACE_MARK_ONESHOT(
@@ -2004,6 +2018,20 @@ static int get_gbm_fb(struct dispout* d,
 
 		struct shmifext_color_buffer* buf =
 			(struct shmifext_color_buffer*) vs->vinf.text.handle;
+
+/* Now buf represents what we want, but it might still be pending - so create a fence
+ * if we have fencing enabled and flush-out. */
+		if (d->device->explicit_synch){
+			d->buffer.synch =
+				d->device->eglenv.create_synch(d->device->display,
+				EGL_SYNC_NATIVE_FENCE_ANDROID, (EGLint[]){
+					EGL_SYNC_NATIVE_FENCE_FD_ANDROID,
+					EGL_NO_NATIVE_FENCE_FD_ANDROID, EGL_NONE}
+			);
+		}
+
+		struct agp_fenv* env = agp_env();
+		env->flush();
 
 		bo = (struct gbm_bo*) buf->alloc_tags[0];
 		TRACE_MARK_ONESHOT("egl-dri", "rendertarget-swap", TRACE_SYS_DEFAULT, 0, 0, "");
@@ -2146,6 +2174,18 @@ static void release_dumb_fb(struct dispout* d)
 	drmIoctl(d->device->disp_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &dreq);
 	close(d->buffer.dumb.fd);
 	d->buffer.dumb.fd = -1;
+
+/* unref- the store, unlikely that we are the last consumer of this but some
+ * edge (map -> vlayer deletes -> maps different, it can happen */
+	d->buffer.dumb.ref->refcount--;
+	if (!d->buffer.dumb.ref->refcount){
+
+		if (d->buffer.dumb.ref->vinf.text.raw)
+			arcan_mem_free(d->buffer.dumb.ref->vinf.text.raw);
+
+		agp_drop_vstore(d->buffer.dumb.ref);
+	}
+	d->buffer.dumb.ref = NULL;
 
 	munmap(d->buffer.dumb.agp.vinf.text.raw, d->buffer.dumb.sz);
 	d->buffer.dumb.agp = (struct agp_vstore){};
@@ -3530,8 +3570,11 @@ static bool dirty_displays()
 		if (!tgt)
 			continue;
 
-		if (d->frame_cookie != tgt->frame_cookie)
+		if (d->frame_cookie != tgt->frame_cookie){
+			verbose_print("(%d) frame-cookie (%zu) "
+				"changed to (%zu)", d->id, d->frame_cookie, tgt->frame_cookie);
 			return true;
+		}
 	}
 
 	return false;
@@ -4184,10 +4227,26 @@ static enum display_update_state draw_display(struct dispout* d)
 	arcan_vobject* vobj = arcan_video_getobject(d->vid);
 	agp_shader_id shid = agp_default_shader(BASIC_2D);
 
-/* placeholder - the real 'dirty' marking on the agp object should be
- * done at a lower level, e.g. agp itself */
 	if (!d->buffer.in_dumb_set && d->buffer.dumb.enabled){
 		return UPDATE_SKIP;
+	}
+
+/* if a rendertarget is mapped to the display, check so that that rtgt itself
+ * has had actual drawing operations done to it - as the same target can be
+ * mapped with different scissor rects yielding no change and so on */
+	struct rendertarget* newtgt = arcan_vint_findrt(vobj);
+	if (newtgt){
+		size_t nd = agp_rendertarget_dirty(newtgt->art, NULL);
+		verbose_print("(%d) draw display, dirty regions: %zu", nd);
+		if (nd || newtgt->frame_cookie != d->frame_cookie){
+			agp_rendertarget_dirty_reset(newtgt->art, NULL);
+		}
+		else{
+			verbose_print("(%d) no dirty, skip");
+			return UPDATE_SKIP;
+		}
+
+		newtgt->frame_cookie = d->frame_cookie;
 	}
 
 /*
@@ -4212,40 +4271,6 @@ static enum display_update_state draw_display(struct dispout* d)
 
 		agp_activate_vstore(
 			d->vid == ARCAN_VIDEO_WORLDID ? arcan_vint_world() : vobj->vstore);
-	}
-
-/*
- * This is an ugly sinner, due to the whole 'anything can be mapped as
- * anything' with a lot of potential candidates being in non scanout- capable
- * memory. The multi-display strategy with first drawing into a rendertarget(RT),
- * then blitting this into the EGLDisplay here is very costly.
- *
- * There is a 'proxy' path where the various other RT uses are probed and if
- * the RT is not actually used for render-to-texture or other sharing /
- * effects (custom shaders), we ignore the use as a RT and just compose to
- * the underlying EGL bit. The flow for that is as follows:
- *
- *  map_display(obj) -> sanity check(is_rtgt?) -> set proxy.
- *
- *  in renderloop:
- *     activate_rtgt, has proxy? -> registered callback()
- *     in callback, if it is a valid direct target, switch the drawing
- *     destination to the direct display instead of rendertarget, flag
- *     the display as already drawn.
- */
-	struct rendertarget* newtgt = arcan_vint_findrt(vobj);
-	if (newtgt){
-		size_t nd = agp_rendertarget_dirty(newtgt->art, NULL);
-		verbose_print("(%d) draw display, dirty regions: %zu", nd);
-		if (nd || newtgt->frame_cookie != d->frame_cookie){
-			agp_rendertarget_dirty_reset(newtgt->art, NULL);
-		}
-		else{
-			verbose_print("(%d) no dirty, skip");
-			return UPDATE_SKIP;
-		}
-
-		newtgt->frame_cookie = d->frame_cookie;
 	}
 
 	if (d->skip_blit){
