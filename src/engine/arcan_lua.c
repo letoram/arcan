@@ -7009,7 +7009,7 @@ static int videomapping(lua_State* ctx)
 		arcan_fatal("map_video_display(), invalid target display id (%d)\n", id);
 
 	struct display_layer_cfg layer = {
-		.hint = luaL_optnumber(ctx, 3, HINT_NONE),
+		.hint = luaL_optnumber(ctx, 4, HINT_NONE),
 		.opacity = 1.0
 	};
 
@@ -7031,10 +7031,10 @@ static int videomapping(lua_State* ctx)
 		}
 	}
 
-	size_t layer_ind = luaL_optnumber(ctx, 3, 0);
+	size_t layer_ind = luaL_optnumber(ctx, 4, 0);
 	if (layer_ind > 0){
-		layer.x = luaL_optnumber(ctx, 4, 0);
-		layer.y = luaL_optnumber(ctx, 5, 0);
+		layer.x = luaL_optnumber(ctx, 5, 0);
+		layer.y = luaL_optnumber(ctx, 6, 0);
 	}
 
 	ssize_t left = platform_video_map_display_layer(vid, id, layer_ind, layer);
