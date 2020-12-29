@@ -345,8 +345,8 @@ static struct dispout* allocate_display(struct dev_node* node)
 /* we currently force composition on all displays unless
  * explicitly turned on, as there seem to be some driver
  * issues with scanning out fbo color attachments */
-			displays[i].force_compose =
-				!get_config("video_device_direct", 0, NULL, tag);
+			displays[i].force_compose = get_config(
+				"video_device_force_compose", 0, NULL, tag);
 			debug_print("(%zu) added, force composition? %d",
 				i, (int) displays[i].force_compose);
 			return &displays[i];
@@ -4078,6 +4078,18 @@ ssize_t platform_video_map_display_layer(arcan_vobj_id id,
 		return 0;
 	}
 
+/* remove any previous rendertarget scanout buffering */
+	if (d->vid){
+		arcan_vobject* old = arcan_video_getobject(id);
+		struct rendertarget* tgt = NULL;
+
+		if (old)
+			tgt = arcan_vint_findrt(vobj);
+
+		if (tgt)
+			agp_rendertarget_dropswap(tgt->art);
+	}
+
 /* the more recent rpack- based mapping format could/should get special
  * consideration here as we could then raster into a buffer directly for a
  * non-GL scanout path, avoiding some of the possible driver fuzz and latency
@@ -4136,23 +4148,16 @@ ssize_t platform_video_map_display_layer(arcan_vobj_id id,
 		build_orthographic_matrix(
 			newtgt->projection, 0, vobj->origw, 0, vobj->origh, 0, 1);
 
-		if (sane_direct_vobj(vobj) && !hint){
-/* the rendertarget color attachment will need buffering in order to not have
- * tearing or implicit locks when attempting direct scanout, so enable that by
- * running a swap here. */
-			if (!d->force_compose){
+		if (sane_direct_vobj(vobj) && !d->hint && !d->force_compose){
 /* before swapping, set an allocator for the rendertarget so that we can ensure
  * that we allocate from scanout capable memory - note that in that case the
  * contents is invalidated and a new render pass on the target is needed. This
  * is not that problematic with the normal render loop as the map call will come
  * in a 'good enough' order. */
- 				bool swap;
-				agp_rendertarget_allocator(newtgt->art, direct_scanout_alloc, d);
-				(void*) agp_rendertarget_swap(newtgt->art, &swap);
-			}
+ 			bool swap;
+			agp_rendertarget_allocator(newtgt->art, direct_scanout_alloc, d);
+			(void*) agp_rendertarget_swap(newtgt->art, &swap);
 		}
-		else
-			agp_rendertarget_dropswap(newtgt->art);
 	}
 /* ok:
  *  - handle based external backend with bo_use_scanout and the right
