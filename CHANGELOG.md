@@ -15,6 +15,7 @@
 ## Lua
  * Whitelist os.date
  * Add 'forget' analogfilter option to discard/release device
+ * Extend map_video_display to allow layer-index and offsets
 
 ## Build
  * A whole lot of FreeBSD build fixes courtesy of J.Beich
@@ -31,6 +32,7 @@
  * Egl-dri: direct-scanout of 'sane- video objects' (e.g. FBO without post-processing)
  * Agp/Video: add support for hardware composition layers
  * Agp/Video: Allow mapped vstores to support dirty regions
+ * EGl-dri: default to FBO direct-scanout when possible
 
 ## Wayland
  * arcan-wayland did not pack drm/dma-buf right, causing import failures

@@ -7008,11 +7008,14 @@ static int videomapping(lua_State* ctx)
 	if (id < 0)
 		arcan_fatal("map_video_display(), invalid target display id (%d)\n", id);
 
-	enum blitting_hint hint = luaL_optnumber(ctx, 3, HINT_NONE);
+	struct display_layer_cfg layer = {
+		.hint = luaL_optnumber(ctx, 3, HINT_NONE),
+		.opacity = 1.0
+	};
 
-	if (hint < HINT_NONE){
+	if (layer.hint < HINT_NONE){
 		arcan_fatal("map_video_display(), invalid blitting "
-			"hint specified (%d)\n", (int) hint);
+			"hint specified (%d)\n", (int) layer.hint);
 	}
 
 	if (vid != ARCAN_VIDEO_WORLDID && vid != ARCAN_EID){
@@ -7028,8 +7031,16 @@ static int videomapping(lua_State* ctx)
 		}
 	}
 
-	lua_pushboolean(ctx, platform_video_map_display(vid, id, hint));
-	LUA_ETRACE("map_video_display", NULL, 0);
+	size_t layer_ind = luaL_optnumber(ctx, 3, 0);
+	if (layer_ind > 0){
+		layer.x = luaL_optnumber(ctx, 4, 0);
+		layer.y = luaL_optnumber(ctx, 5, 0);
+	}
+
+	ssize_t left = platform_video_map_display_layer(vid, id, layer_ind, layer);
+	lua_pushboolean(ctx, left >= 0);
+	lua_pushnumber(ctx, left);
+	LUA_ETRACE("map_video_display", NULL, 2);
 }
 
 static const char* dpms_to_str(int dpms)
@@ -12828,6 +12839,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"HINT_ROTATE_CW_90", HINT_ROTATE_CW_90},
 {"HINT_ROTATE_CCW_90", HINT_ROTATE_CCW_90},
 {"HINT_YFLIP", HINT_YFLIP},
+{"HINT_CURSOR", HINT_CURSOR},
 {"TD_HINT_CONTINUED", 1},
 {"TD_HINT_INVISIBLE", 2},
 {"TD_HINT_UNFOCUSED", 4},

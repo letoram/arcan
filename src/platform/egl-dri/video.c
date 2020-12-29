@@ -66,7 +66,7 @@
 						arcan_timemillis(), "egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 #ifndef verbose_print
-#define verbose_print debug_print
+#define verbose_print
 #endif
 
 #include "egl.h"
@@ -112,7 +112,7 @@ static char* egl_envopts[] = {
 	"device_connector=ind", "primary display connector index",
 	"device_wait", "loop until an active connector is found",
 	"device_nodpms", "set to disable power management controls",
-	"device_direct", "enable direct rendertarget scanout (experimental)",
+	"device_force_compose", "disable direct rendertarget scanout",
 	"display_context=1", "set outer shared headless context, per display contexts",
 	NULL
 };
@@ -4201,7 +4201,7 @@ ssize_t platform_video_map_display_layer(arcan_vobj_id id,
  * fail, causing force_composition to be set */
 	uintptr_t tag;
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
-	d->force_compose = !get_config("video_device_direct", 0, NULL, tag);
+	d->force_compose = get_config("video_device_force_compose", 0, NULL, tag);
 
 	return 0;
 }
