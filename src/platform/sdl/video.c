@@ -274,7 +274,7 @@ ssize_t platform_video_map_display_layer(arcan_vobj_id id,
 	platform_display_id disp, size_t layer_index, struct display_layer_cfg cfg)
 {
 	if (disp != 0 || layer_index)
-	truetruetrue	return false;
+		return false;
 
 	enum blitting_hint hint = cfg.hint;
 
