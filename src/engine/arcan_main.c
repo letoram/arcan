@@ -820,9 +820,11 @@ int MAIN_REDIR(int argc, char* argv[])
 	free(msg);
 
 	if (!arcan_lua_callvoidfun(main_lua_context, "", false, (const char**)
-		(argc > optind ? (argv + optind + 1) : NULL)))
-		arcan_fatal("couldn't load appl, missing %s function\n", arcan_appl_id() ?
-		arcan_appl_id() : "");
+		(argc > optind ? (argv + optind + 1) : NULL))){
+		arcan_warning("\n\x1b[1mCouldn't load (\x1b[33m%s\x1b[39m):"
+			"\x1b[35m missing '%s' function\x1b[22m\x1b[39m\n\n", arcan_appl_id(), arcan_appl_id());
+		goto error;
+	}
 
 /* mark that we are in hook so a script can know that is being used as a hook-
  * scripts and not as embedded by the appl itself */
