@@ -328,8 +328,8 @@ struct agp_vstore*
 	verbose_print("(%"PRIxPTR") proxy+COLOR0 set to: %u",
 		(uintptr_t) dst, dst->stores[front]->vinf.text.glid);
 
-update_fbo_color(dst, dst->stores[front]->vinf.text.glid);
-dst->store->vinf.text.glid_proxy = &dst->stores[front]->vinf.text.glid;
+	update_fbo_color(dst, dst->stores[front]->vinf.text.glid);
+	dst->store->vinf.text.glid_proxy = &dst->stores[front]->vinf.text.glid;
 
 /* the contents are dirty, check the swap- count until shadow buffer flush so that
  * there is no buffer in flight or elsewise used that rely on the 'old' size */

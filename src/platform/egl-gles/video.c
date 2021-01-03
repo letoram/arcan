@@ -138,8 +138,8 @@ static bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
 #define EGL_NATIVE_DISPLAY EGL_DEFAULT_DISPLAY
 #endif
 
-bool PLATFORM_SYMBOL(_video_set_mode)(
-	platform_display_id disp, platform_mode_id mode)
+bool platform_video_set_mode(platform_display_id disp,
+	platform_mode_id mode, struct platform_mode_opts opts)
 {
 	return disp == 0 && mode == 0;
 }

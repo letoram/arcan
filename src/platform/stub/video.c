@@ -138,10 +138,10 @@ void platform_video_query_displays()
 {
 }
 
-void platform_video_invalidate_map(
-	struct agp_vstore* vstore, struct agp_region region)
+bool platform_video_set_mode(platform_display_id disp,
+	platform_mode_id mode, struct platform_mode_opts opts)
 {
-/* NOP for the time being - might change for direct forwarding of client */
+	return disp == 0 && mode == 0;
 }
 
 size_t platform_video_displays(platform_display_id* dids, size_t* lim)
@@ -159,11 +159,6 @@ size_t platform_video_displays(platform_display_id* dids, size_t* lim)
 bool platform_video_map_handle(struct agp_vstore* dst, int64_t handle)
 {
 	return false;
-}
-
-bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
-{
-	return disp == 0 && mode == 0;
 }
 
 struct monitor_mode platform_video_dimensions()

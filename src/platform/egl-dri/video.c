@@ -222,11 +222,16 @@ enum disp_state {
 #endif
 static struct dev_node nodes[VIDEO_MAX_NODES];
 
+/*
+ * we don't go with the normal GBM_ buffer names in order to have something
+ * that maps between EGLStreams/... and covers the set of 'common' display
+ * formats
+ */
 enum output_format {
-	OUTPUT_888 = 0,
-	OUTPUT_10b = 1,
-	OUTPUT_565 = 2,
-	OUTPUT_64b = 3
+	OUTPUT_DEFAULT = 0, /* RGB888 */
+	OUTPUT_DEEP    = 1,
+	OUTPUT_LOW     = 2,
+	OUTPUT_HDR     = 3
 };
 
 /*
@@ -927,15 +932,15 @@ static int setup_buffers_gbm(struct dispout* d)
  * is somewhat fucked, the gbm output buffer defines the configuration of
  * the EGL node, note the other way around.
  */
-	if (d->output_format == OUTPUT_565){
+	if (d->output_format == OUTPUT_LOW){
 		gbm_formats[0] = GBM_FORMAT_RGB565;
 	}
 
-	if (d->output_format == OUTPUT_10b){
+	if (d->output_format == OUTPUT_DEEP){
 		gbm_formats[1] = GBM_FORMAT_XRGB2101010;
 		gbm_formats[2] = GBM_FORMAT_ARGB2101010;
 	}
-	else if (d->output_format == OUTPUT_64b){
+	else if (d->output_format == OUTPUT_HDR){
 /* older distributions may still carry a header without this one so go the
  * preprocessor route for enabling */
 #ifdef GBM_FORMAT_XBGR16161616F
@@ -1165,7 +1170,17 @@ static bool realloc_buffers(struct dispout* d)
 	return true;
 }
 
-bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
+static float deadline_for_display(struct dispout* d)
+{
+/* [FIX-VRR: the actual target including 'slew' rate stepping should be
+ *           presented / calculated here based on the last synch, the
+ *           target and the stepping rate                              ] */
+	return 1000.0f / (float)
+		(d->display.mode.vrefresh ? d->display.mode.vrefresh : 60.0);
+}
+
+bool platform_video_set_mode(platform_display_id disp,
+	platform_mode_id mode, struct platform_mode_opts opts)
 {
 	struct dispout* d = get_display(disp);
 
@@ -1178,6 +1193,29 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 	d->display.reset_mode = true;
 	d->display.mode = d->display.con->modes[mode];
 	d->display.mode_set = mode;
+
+/* changes to the output format are reflected first in rebuild_buffers, if that
+ * fails (e.g. the buffers do not fit the qualities of the display) it reverts
+ * back to whatever OUTPUT_DEFAULT is set to rather than failing */
+	switch(opts.depth){
+	case VSTORE_HINT_LODEF:
+		d->output_format = OUTPUT_LOW;
+	break;
+	case VSTORE_HINT_HIDEF:
+		d->output_format = OUTPUT_DEEP;
+	break;
+	case VSTORE_HINT_F16:
+	case VSTORE_HINT_F32:
+		d->output_format = OUTPUT_HDR;
+	break;
+	default:
+		d->output_format = OUTPUT_DEFAULT;
+	}
+
+/* [FIX-VRR: enable Property on vrr value, check mapped object if prediction
+ *  can be handled and forwarded/set properly */
+
+/* ATOMIC test goes here */
 
 	debug_print("(%d) schedule mode switch to %zu * %zu", (int) disp,
 		d->display.mode.hdisplay, d->display.mode.vdisplay);
@@ -3548,12 +3586,7 @@ static void page_flip_handler(int fd, unsigned int frame,
 	break;
 	}
 
-/* there is no VRR method marker here - and we should really return the next one
- * based on slew- rate for target vrefresh rather than a jump (do that when the
- * handler is switched to the 'per crtc' one) */
-	float deadline = 1000.0f / (float)
-		(d->display.mode.vrefresh ? d->display.mode.vrefresh : 60.0);
-	arcan_conductor_deadline(deadline);
+	arcan_conductor_deadline(deadline_for_display(d));
 }
 
 static bool dirty_displays()
@@ -3618,16 +3651,20 @@ static void flush_display_events(int timeout, bool yield)
 		period = 0;
 	}
 
+/*
+ * NOTE: recent versions of DRM has added support to let us know which CRTC
+ * actually provided a synch signal (through a .page_flip_handler2).  When this
+ * is more wide-spread, we should really switch to that kind of a system
+ * because this is horrid.
+ *
+ * [SCANOUT-note] this is also where we have a .vblank_handler that would let
+ * us re-raster / synch any directly mapped vobjs to the output.
+ */
 	drmEventContext evctx = {
 			.version = DRM_EVENT_CONTEXT_VERSION,
 			.page_flip_handler = page_flip_handler
 	};
 
-/*
- * NOTE: recent versions of DRM has added support to let us know which
- * CRTC actually provided a synch signal. When this is more wide-spread,
- * we should really switch to that kind of a system.
- */
 	do{
 /* MULTICARD> for multiple cards, extend this pollset */
 		struct pollfd fds = {
@@ -3769,16 +3806,15 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	if (get_pending(false))
 		flush_display_events(-1, false);
 
+/* the 'nd' here is much too coarse-grained, we need the affected objects and
+ * rendertargets so that we can properly decide which ones to synch or not -
+ * this is basically a left-over from old / naive design */
 	size_t nd;
 	uint32_t cost_ms = arcan_vint_refresh(fract, &nd);
 
 /*
  * At this stage, the contents of all RTs have been synched, with nd == 0,
  * nothing has changed from what was draw last time.
- *
- * The damage tracking is currently binary, a dirty- region style flow should
- * be added to the _agp layer in order to not miss anything (shaders, source-
- * updates and so on)
  */
 	arcan_bench_register_cost( cost_ms );
 
@@ -3805,6 +3841,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		if (get_pending(false) || updated)
 			flush_display_events(clocked ? 16 : 0, true);
 	}
+
 /*
  * If there are no updates, just 'fake' synch to the display with the lowest
  * refresh unless the yield function tells us to run in a processing- like
@@ -3831,8 +3868,9 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 /*
  * The LEDs that are mapped as backlights via the internal pipe-led protocol
- * needs to be flushed separately, here is a decent time to get that out of
- * the way.
+ * needs to be flushed separately, here is a decent time to get that out of the
+ * way. [HDR-note] this might be insufficient for the HDR related backlight
+ * control interfaces that seem to take a different path.
  */
 	flush_leds();
 

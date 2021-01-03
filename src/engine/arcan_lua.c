@@ -6960,6 +6960,7 @@ static int videodisplay(lua_State* ctx)
 {
 	LUA_TRACE("video_displaymodes");
 	platform_display_id id;
+	struct platform_mode_opts opts = {0};
 
 	switch(lua_gettop(ctx)){
 	case 0: /* rescan */
@@ -6976,7 +6977,18 @@ static int videodisplay(lua_State* ctx)
 	case 2: /* specify hardcoded mode */
 		id = luaL_checknumber(ctx, 1);
 		platform_mode_id mode = luaL_checknumber(ctx, 2);
-		lua_pushboolean(ctx, platform_video_set_mode(id, mode));
+
+/* add options */
+		if (lua_type(ctx, 3) == LUA_TTABLE){
+			if (lua_type(ctx, -1) == LUA_TNUMBER){
+				opts.vrr = lua_tonumber(ctx, -1);
+			}
+			lua_pop(ctx, 1);
+
+			/* get "vrr" */
+			/* get "quality" */
+		}
+		lua_pushboolean(ctx, platform_video_set_mode(id, mode, opts));
 		LUA_ETRACE("video_displaymodes", NULL, 1);
 	break;
 
@@ -8261,7 +8273,10 @@ static int targetfonthint(lua_State* ctx)
 		lua_pushboolean(ctx, ARCAN_OK == platform_fsrv_pushevent(fsrv, &outev));
 	}
 
-	LUA_ETRACE("target_fonthint", NULL, 1);
+	lua_pushnumber(ctx, fsrv->desc.text.cellw);
+	lua_pushnumber(ctx, fsrv->desc.text.cellh);
+
+	LUA_ETRACE("target_fonthint", NULL, 3);
 }
 
 static int xlt_dev(int inv)
@@ -8514,7 +8529,10 @@ static int targetdisphint(lua_State* ctx)
 	ev.tgt.timestamp = arcan_timemillis();
 	tgtevent(tgt, ev);
 
-	LUA_ETRACE("target_displayhint", NULL, 0);
+	lua_pushnumber(ctx, fsrv->desc.text.cellw);
+	lua_pushnumber(ctx, fsrv->desc.text.cellh);
+
+	LUA_ETRACE("target_displayhint", NULL, 2);
 }
 
 static int targetgraph(lua_State* ctx)
