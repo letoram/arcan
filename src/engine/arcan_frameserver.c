@@ -323,6 +323,14 @@ static bool push_buffer(arcan_frameserver* src,
 		tui_raster_renderagp(raster, store, (uint8_t*) buf,
 			src->desc.width * src->desc.height * sizeof(shmif_pixel), &stream);
 
+/* Raster failed for some reason - tactics would be to send reset and after
+ * n- fails kill it for not complying with format - something to finish when
+ * we have the atlas bits in place, and have a DEBUG+dump buffer version */
+		if (!stream.buf){
+			arcan_warning("client-tpack() - couldn't raster buffer\n");
+			goto commit_mask;
+		}
+
 /* The dst-copy is also a hack / problematic in that way - the invalidation
  * should really be handled in some other way */
 		if (store->dst_copy){
