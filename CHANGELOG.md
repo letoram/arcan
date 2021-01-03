@@ -16,6 +16,8 @@
  * Whitelist os.date
  * Add 'forget' analogfilter option to discard/release device
  * Extend map_video_display to allow layer-index and offsets
+ * Extend video_displaymodes with controls for depth (low, deep, hdr) and vrr- target rate
+ * target_fonthint and target_displayhint return the last known cell w/h that tpack might use
 
 ## Build
  * A whole lot of FreeBSD build fixes courtesy of J.Beich
@@ -32,7 +34,9 @@
  * Egl-dri: direct-scanout of 'sane- video objects' (e.g. FBO without post-processing)
  * Agp/Video: add support for hardware composition layers
  * Agp/Video: Allow mapped vstores to support dirty regions
- * EGl-dri: default to FBO direct-scanout when possible
+ * Egl-dri: default to FBO direct-scanout when possible
+ * Egl-dri: let preferred display buffer resolution drive map_video_display
+ * Egl-dri: single-buffered drawing mode for fullscreen mapped tui/terminal clients
 
 ## Wayland
  * arcan-wayland did not pack drm/dma-buf right, causing import failures

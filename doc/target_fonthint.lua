@@ -1,7 +1,10 @@
 -- target_fonthint
 -- @short: Send font drawing hints to target frameserver.
--- @inargs: dstvid, *fontres*, size_mm, strength, *merge*
--- @outargs: bool
+-- @inargs: vid:dst, string:font, number:size_mm, int:hint
+-- @inargs: vid:dst, string:font, number:size_mm, int:hint, int:cont
+-- @inargs: vid:dst, number:size_mm, int:hint
+-- @inargs: vid:dst, number:size_mm, int:hint, int:cont
+-- @outargs: bool:state, int:cellw, int:cellh
 -- @longdescr: The target_fonthint function sends a hint (and
 -- optionally a descriptor to the specified font resource in the
 -- ARCAN_SYS_FONT namespace) about how frameserver rendered text should be
@@ -13,8 +16,12 @@
 -- It is still up to the renderer in the receiving frameserver to respect
 -- these flags and to match any rendering properties with corresponding
 -- displayhints in order for sizes to match.
--- If the *merge* option is set, this font is intended to be chained as a
--- fallback in the case of missing glyphs in previously supplied font.
+-- If the *cont* option is set to 1, this font is intended to be chained as a
+-- fallback in the case of missing glyphs in previously supplied fonts.
+-- The function returns true if the font was found and was forwarded correctly
+-- to the client, as well as the estimated cell width/height that will currently
+-- be used for size calculations of server-side text in monospaced form with the
+-- supplied fonts.
 -- @note: If -1 is used for *size_mm* and/or *strength*, the recipient
 -- should keep the currently hinted size.
 -- @note: To translate from the Postscript 'point size' to
@@ -24,7 +31,6 @@
 -- function.
 -- @note: .default is a reserved name for propagating the font that is
 -- currently set as the default (using ref:system_defaultfont)
--- @note:
 -- @group: targetcontrol
 -- @cfunction: targetfonthint
 -- @related: system_defaultfont
