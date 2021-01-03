@@ -1325,8 +1325,8 @@ static void update_state(int code, bool state, unsigned* statev)
 		*statev &= ~modifier;
 }
 
-static void defhandler_kbd(struct arcan_evctx* out,
-	struct devnode* node)
+static void defhandler_kbd(
+	struct arcan_evctx* out, struct devnode* node)
 {
 	struct input_event inev[64];
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));

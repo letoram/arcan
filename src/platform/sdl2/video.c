@@ -291,7 +291,8 @@ bool platform_video_specify_mode(
 	return true;
 }
 
-bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
+bool platform_video_set_mode(platform_display_id disp,
+	platform_mode_id mode, struct platform_mode_opts opts)
 {
 	return disp == 0 && mode == 0;
 }

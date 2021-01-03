@@ -189,10 +189,16 @@ bool platform_video_display_edid(platform_display_id did,
 
 /*
  * switch mode on the display to a previously queried one from
- * platform_video_query_modes
+ * platform_video_query_modes along with override options to enable low and
+ * high- definition outputs as well as target variable refresh-rates.
  */
+struct platform_mode_opts {
+	int depth;
+	float vrr;
+};
+
 bool platform_video_set_mode(
-	platform_display_id, platform_mode_id mode_id);
+	platform_display_id, platform_mode_id mode_id, struct platform_mode_opts opts);
 
 /*
  * update the gamma ramps for the specified display.

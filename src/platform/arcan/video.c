@@ -473,7 +473,8 @@ struct monitor_mode platform_video_dimensions()
 	return mode;
 }
 
-bool platform_video_set_mode(platform_display_id id, platform_mode_id newmode)
+bool platform_video_set_mode(
+	platform_display_id id, platform_mode_id newmode, struct platform_mode_opts opts)
 {
 	struct monitor_mode* mode = get_platform_mode(newmode);
 
