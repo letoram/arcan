@@ -3693,6 +3693,12 @@ static int targetsuspend(lua_State* ctx)
 	}
 	arcan_frameserver* fsrv = state->ptr;
 
+/* this means that target-lock is blocked in the preroll stage */
+	if (!fsrv->flags.activated){
+		fsrv->flags.activated = 2;
+		LUA_ETRACE("suspend_target", NULL, 0);
+	}
+
 	arcan_event ev = {
 		.category = EVENT_TARGET,
 		.tgt.kind = TARGET_COMMAND_PAUSE
@@ -3725,7 +3731,11 @@ static int targetresume(lua_State* ctx)
 		.tgt.kind = TARGET_COMMAND_UNPAUSE
 	};
 
-	if (!rsusp)
+	if (fsrv->flags.activated == 2){
+		ev.tgt.kind = TARGET_COMMAND_ACTIVATE;
+		fsrv->flags.activated = 1;
+	}
+	else if (!rsusp)
 		arcan_frameserver_resume(fsrv);
 
 	platform_fsrv_pushevent(fsrv, &ev);
@@ -4654,10 +4664,15 @@ static void do_preroll(lua_State* ctx, intptr_t ref,
 		luactx.cb_source_kind = CB_SOURCE_PREROLL;
 	}
 
-	tgtevent(vid, (arcan_event){
-		.category = EVENT_TARGET,
-		.tgt.kind = TARGET_COMMAND_ACTIVATE
-	});
+/* there is the possiblity of 'deferred' activation so that the WM
+ * can control the sequence in which multiple clients are unlocked */
+	if (fsrv->flags.activated == 0){
+		fsrv->flags.activated = 1;
+		tgtevent(vid, (arcan_event){
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_ACTIVATE
+		});
+	}
 }
 
 static bool tgtevent(arcan_vobj_id dst, arcan_event ev)
@@ -8938,10 +8953,12 @@ static int targetstepframe(lua_State* ctx)
 	LUA_TRACE("stepframe_target");
 
 /* three main paths for this function:
+ *
  *  - request a fetch (readback) into local store (synch/asynch),
  *    this can be used internally (calctarget, ...)
  *  - forward this fetch to an external client (recordtarget)
- *  - control frame pacing of an external client */
+ *  - control frame pacing or activation of an external client
+ **/
 
 	arcan_vobject* vobj;
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, &vobj);
@@ -10523,6 +10540,7 @@ static int spawn_recfsrv(lua_State* ctx,
 	if (naids > 1)
 		arcan_frameserver_avfeed_mixer(mvctx, naids, aidlocks);
 
+	mvctx->flags.activated = 1;
 	tgtevent(did, (arcan_event){
 		.category = EVENT_TARGET,
 		.tgt.kind = TARGET_COMMAND_ACTIVATE
@@ -12047,6 +12065,8 @@ static bool lua_launch_fsrv(lua_State* ctx,
 		.category = EVENT_TARGET,
 		.tgt.kind = TARGET_COMMAND_ACTIVATE
 	});
+	ref->flags.activated = 1;
+
 	lua_pushvid(ctx, ref->vid);
 	trace_allocation(ctx, "net", ref->vid);
 	return true;
