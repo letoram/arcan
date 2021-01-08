@@ -55,7 +55,7 @@
 -- to run some actions on the target to set up desired initial state, and
 -- valid actions here are currently:
 -- ref:target_displayhint, ref:target_outputhint, ref:target_fonthint,
--- ref:target_geohint.
+-- ref:target_geohint, ref:suspend_target.
 --
 -- @tblent: "resized" {int:width, int:height, bool:origo_ll} the underlying
 -- storage has changed dimensions. If origo_ll is set, the source data is
