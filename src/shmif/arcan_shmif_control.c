@@ -2383,7 +2383,7 @@ static int dupfd_to(int fd, int dstnum, int fflags, int fdopt)
 	if (-1 == fd)
 		return -1;
 
-	if (dstnum > 0)
+	if (dstnum >= 0)
 		while (-1 == (rfd = dup2(fd, dstnum)) && errno == EINTR){}
 
 	if (-1 == rfd)
