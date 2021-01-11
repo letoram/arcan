@@ -1018,7 +1018,7 @@ static const char* spawn_action(struct debug_ctx* dctx,
 
 	if (-1 == pipe(fdarg_in)){
 		close(fdarg_out[0]);
-		close(fdarg_in[0]);
+		close(fdarg_out[1]);
 		return err_build_pipe;
 	}
 
