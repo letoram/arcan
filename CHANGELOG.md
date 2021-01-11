@@ -20,6 +20,7 @@
  * Extend video_displaymodes with controls for depth (low, deep, hdr) and vrr- target rate
  * target_fonthint and target_displayhint return the last known cell w/h that tpack might use
  * Allow suspend_target, resume_target for controlling preroll state transition
+ * bond_target sent the wrong pipe pair ends
 
 ## Build
  * A whole lot of FreeBSD build fixes courtesy of J.Beich

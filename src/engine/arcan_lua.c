@@ -8879,12 +8879,12 @@ static int targetbond(lua_State* ctx)
 	};
 	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", descr_a);
 
-	platform_fsrv_pushfd(fsrv_a, &ev, pair[0]);
+	platform_fsrv_pushfd(fsrv_a, &ev, pair[1]);
 
 	ev.tgt.kind = val ? TARGET_COMMAND_BCHUNK_IN : TARGET_COMMAND_RESTORE;
 	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", descr_b);
 
-	platform_fsrv_pushfd(fsrv_b, &ev, pair[1]);
+	platform_fsrv_pushfd(fsrv_b, &ev, pair[0]);
 
 	close(pair[0]);
 	close(pair[1]);
