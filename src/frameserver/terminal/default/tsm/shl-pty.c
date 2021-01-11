@@ -82,7 +82,8 @@
 
 struct shl_pty {
 	unsigned long ref;
-	int fd;
+	int fd_in, fd_out;
+	bool pipe;
 	pid_t child;
 	char in_buf[SHL_PTY_BUFSIZE];
 	struct shl_ring out_buf;
@@ -205,6 +206,70 @@ static int pty_init_child(int fd)
 	return slave;
 }
 
+/* just write the same kind of struct as shl_pty, but with other setup */
+pid_t shl_pipe_open(struct shl_pty **out, bool alloc)
+{
+	struct shl_pty* fakepty = malloc(sizeof(struct shl_pty));
+	if (!fakepty)
+		return -1;
+
+	*fakepty = (struct shl_pty){
+		.fd_in = -1,
+		.fd_out = -1,
+		.pipe = true
+	};
+
+/* just copy  and cloexec */
+	if (!alloc){
+		fakepty->fd_in = STDIN_FILENO;
+		fakepty->fd_out = STDOUT_FILENO;
+		*out = fakepty;
+		return fork();
+	}
+
+/* build pipe-pair (0 == read_end) */
+	int fdarg_out[2];
+	int fdarg_in[2];
+
+	/* grab the pipe pairs that will be inherited into the child */
+	if (-1 == pipe(fdarg_out)){
+		return -1;
+	}
+
+	if (-1 == pipe(fdarg_in)){
+		close(fdarg_out[0]);
+		close(fdarg_out[1]);
+		return -1;
+	}
+
+	pid_t res = fork();
+	if (0 == res){
+		close(fdarg_in[0]);
+		close(fdarg_out[1]);
+		dup2(fdarg_in[1], STDOUT_FILENO);
+		dup2(fdarg_out[0], STDIN_FILENO);
+		close(fdarg_in[1]);
+		close(fdarg_out[0]);
+/* call works like fork() from the outside so no more actions here */
+		return 0;
+	}
+	else if (-1 == res){
+		close(fdarg_out[0]);
+		close(fdarg_out[1]);
+		close(fdarg_in[0]);
+		close(fdarg_in[1]);
+		return -1;
+	}
+
+/* server-end */
+	fakepty->fd_in = fdarg_in[0];
+	close(fdarg_in[1]);
+	fakepty->fd_out = fdarg_out[1];
+	close(fdarg_out[0]);
+	*out = fakepty;
+	return res;
+}
+
 pid_t shl_pty_open(struct shl_pty **out,
 		   shl_pty_input_fn fn_input,
 		   void *fn_input_data,
@@ -225,7 +290,8 @@ pid_t shl_pty_open(struct shl_pty **out,
 		return -ENOMEM;
 
 	pty->ref = 1;
-	pty->fd = -1;
+	pty->fd_in = -1;
+	pty->fd_out = -1;
 	pty->fn_input = fn_input;
 	pty->fn_input_data = fn_input_data;
 
@@ -278,7 +344,8 @@ pid_t shl_pty_open(struct shl_pty **out,
 	}
 
 	/* parent */
-	pty->fd = fd;
+	pty->fd_in = fd;
+	pty->fd_out = fd;
 	pty->child = pid;
 
 	close(comm[1]);
@@ -315,16 +382,23 @@ void shl_pty_unref(struct shl_pty *pty)
 
 void shl_pty_close(struct shl_pty *pty)
 {
-	if (!pty || pty->fd < 0)
+	if (!pty || pty->fd_in < 0)
 		return;
 
-	close(pty->fd);
-	pty->fd = -1;
+	if (pty->fd_in != -1 && pty->fd_in != STDIN_FILENO)
+		close(pty->fd_in);
+
+	pty->fd_in = -1;
+
+	if (pty->fd_out != -1 && pty->fd_out != STDOUT_FILENO)
+		close(pty->fd_out);
+
+	pty->fd_out = -1;
 }
 
 bool shl_pty_is_open(struct shl_pty *pty)
 {
-	return pty && pty->fd >= 0;
+	return pty && pty->fd_in >= 0;
 }
 
 int shl_pty_get_fd(struct shl_pty *pty)
@@ -332,7 +406,7 @@ int shl_pty_get_fd(struct shl_pty *pty)
 	if (!pty)
 		return -EINVAL;
 
-	return pty->fd >= 0 ? pty->fd : -EPIPE;
+	return pty->fd_in >= 0 ? pty->fd_in : -EPIPE;
 }
 
 pid_t shl_pty_get_child(struct shl_pty *pty)
@@ -362,7 +436,7 @@ static int pty_write(struct shl_pty *pty)
 		if (!num)
 			return 0;
 
-		r = writev(pty->fd, vec, (int)num);
+		r = writev(pty->fd_out, vec, (int)num);
 		if (r < 0) {
 			if (errno == EAGAIN)
 				return 0;
@@ -395,7 +469,7 @@ static int pty_read(struct shl_pty *pty)
 	 */
 
 	for (i = 0; i < 2; ++i) {
-		len = read(pty->fd, pty->in_buf, sizeof(pty->in_buf) - 1);
+		len = read(pty->fd_in, pty->in_buf, sizeof(pty->in_buf) - 1);
 		if (len < 0) {
 			if (errno == EAGAIN)
 				return 0;
@@ -448,7 +522,11 @@ int shl_pty_signal(struct shl_pty *pty, int sig)
 	if (!shl_pty_is_open(pty))
 		return -ENODEV;
 
-	return ioctl(pty->fd, TIOCSIG, sig) < 0 ? -errno : 0;
+/* ignore the signal, we have no guarantee that the pid_t owns the fds anymore */
+	if (pty->pipe)
+		return 0;
+
+	return ioctl(pty->fd_out, TIOCSIG, sig) < 0 ? -errno : 0;
 }
 
 int shl_pty_resize(struct shl_pty *pty,
@@ -463,9 +541,12 @@ int shl_pty_resize(struct shl_pty *pty,
 	if (!shl_pty_is_open(pty))
 		return -ENODEV;
 
+	if (pty->pipe)
+		return 0;
+
 	/*
 	 * This will send SIGWINCH to the pty slave foreground process group.
 	 * We will also get one, but we don't need it.
 	 */
-	return ioctl(pty->fd, TIOCSWINSZ, &ws) < 0 ? -errno : 0;
+	return ioctl(pty->fd_out, TIOCSWINSZ, &ws) < 0 ? -errno : 0;
 }

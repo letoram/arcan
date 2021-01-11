@@ -199,8 +199,13 @@ static ssize_t flush_buffer(int fd, char dst[static 4096])
 
 static void vte_forward(char* buf, size_t nb)
 {
-	if (term.pipe)
+/* in pipe mode we can either provide statistics about what we forward,
+ * or a 'visible' view of the contents (or both) - running as a bufferwnd
+ * is also a possibility */
+	if (term.pipe){
 		fwrite(buf, nb, 1, stdout);
+	}
+
 	tsm_vte_input(term.vte, buf, nb);
 }
 
@@ -263,6 +268,8 @@ void* pump_pty()
 
 	while (atomic_load(&term.alive)){
 		set[2].fd = tsm_vte_debugfd(term.vte);
+
+/* dispatch might just flush whatever is queued for writing */
 		shl_pty_dispatch(term.pty);
 
 		if (-1 == poll(set, 4, 10))
@@ -658,7 +665,10 @@ static bool setup_build_term()
 	arcan_tui_dimensions(term.screen, &rows, &cols);
 	term.complete_signal = false;
 
-	term.child = shl_pty_open(&term.pty, NULL, NULL, cols, rows);
+	if (term.pipe)
+		term.child = shl_pipe_open(&term.pty, true);
+	else
+		term.child = shl_pty_open(&term.pty, NULL, NULL, cols, rows);
 	if (term.child < 0){
 		arcan_tui_destroy(term.screen, "Shell process died unexpectedly");
 		return false;
@@ -733,6 +743,7 @@ static void on_reset(struct tui_context* tui, int state, void* tag)
 		if (!term.die_on_term){
 			arcan_tui_progress(term.screen, TUI_PROGRESS_INTERNAL, 0.0);
 		}
+		shl_pty_close(term.pty);
 		setup_build_term();
 	break;
 

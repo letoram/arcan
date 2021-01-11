@@ -7,6 +7,7 @@
 ## Frameservers
  * Terminal: added autofit argument to keep_alive
  * Terminal: save and rebuild 'dead' terminal window on resize
+ * Terminal: 'pipe' mode sidesteps pty
 
 ## Tui
  * Lowered the constraint for wndhint to also work for main window
@@ -18,6 +19,7 @@
  * Extend map_video_display to allow layer-index and offsets
  * Extend video_displaymodes with controls for depth (low, deep, hdr) and vrr- target rate
  * target_fonthint and target_displayhint return the last known cell w/h that tpack might use
+ * Allow suspend_target, resume_target for controlling preroll state transition
 
 ## Build
  * A whole lot of FreeBSD build fixes courtesy of J.Beich

@@ -48,6 +48,7 @@ static inline void shl_pty_unref_p(struct shl_pty **pty)
 bool shl_pty_is_open(struct shl_pty *pty);
 int shl_pty_get_fd(struct shl_pty *pty);
 pid_t shl_pty_get_child(struct shl_pty *pty);
+pid_t shl_pipe_open(struct shl_pty **out, bool alloc);
 
 int shl_pty_dispatch(struct shl_pty *pty);
 int shl_pty_write(struct shl_pty *pty, const char *u8, size_t len);
