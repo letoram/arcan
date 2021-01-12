@@ -717,17 +717,22 @@ void arcan_tui_announce_io(struct tui_context* c,
 	};
 
 	if (input_descr){
-		send_list(c, bchunk, NULL, output_descr);
+		const char* suffix = ";stdin";
+		if (strlen(input_descr) == 0){
+			arcan_shmif_enqueue(&c->acon, &bchunk);
+			suffix = "stdin";
+		}
+		send_list(c, bchunk, suffix, output_descr);
 	}
 
 	if (output_descr){
 		bchunk.ext.bchunk.input = false;
-		const char* suffix =  ";tuiraw";
+		const char* suffix =  ";tuiraw;stdout;stderr";
 
 /* request to flush? then re-announce tuiraw */
 		if (strlen(output_descr) == 0){
 			arcan_shmif_enqueue(&c->acon, &bchunk);
-			suffix = "tuiraw";
+			suffix = "tuiraw;stdout;stderr";
 		}
 
 		send_list(c, bchunk, suffix, output_descr);
