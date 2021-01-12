@@ -54,6 +54,12 @@
 --
 --  configure(window, [type]):
 --      request for an initial size for a toplevel window (if any)
+--      should return w, h, x, y
+--
+--  state_change(window, state={
+--      "fullscreen", "realized", "composed",
+--      "maximized", "visible", "focused", "toplevel"}
+--      , [popup|parent], [grab])
 --
 --  mapped(window):
 --      called when a new toplevel window is ready to be drawn
@@ -138,7 +144,7 @@ local wl_top_lut =
 	end,
 	["demaximize"] =
 	function(ctx)
-		ctx.wm.state_change(ctx)
+		ctx.wm.state_change(ctx, "demaximize")
 	end,
 	["menu"] =
 	function(ctx)
@@ -185,6 +191,8 @@ local wl_top_lut =
 -- new window geometry
 	["geom"] =
 	function(ctx, x, y, w, h)
+		ctx.wm.log("toplevel", ctx.wm.fmt("anchor_geom:x=%f:y=%f:w=%f:h=%f", x, y, w, h))
+		ctx.anchor_offset = {x, y}
 	end
 }
 
@@ -470,7 +478,7 @@ local function self_own(self, vid)
 	return self.vid == vid or (self.mouse_proxy and vid == self.mouse_proxy)
 end
 
-local function x11_wnd_realize(wnd)
+local function x11_wnd_realize(wnd, popup, grab)
 	if wnd.realized then
 		return
 	end
@@ -484,6 +492,8 @@ local function x11_wnd_realize(wnd)
 	target_displayhint(wnd.vid, wnd.w, wnd.h)
 	mouse_addlistener(wnd, {"motion", "drag", "drop", "button", "over", "out"})
 	table.insert(wnd.wm.window_stack, 1, wnd)
+
+	wnd.wm.state_change(wnd, "realized", popup, grab)
 	wnd.realized = true
 end
 
@@ -519,6 +529,7 @@ local function x11_nudge(wnd, dx, dy)
 	wnd.x = x
 	wnd.y = y
 	local msg = string.format("kind=move:x=%d:y=%d", x, y);
+
 	wnd.wm.log("wl_x11", msg)
 	target_input(wnd.vid, msg)
 end
@@ -731,23 +742,33 @@ end
 -- calls a destroy function if clicked.
 local function setup_grab_surface(popup)
 	local vid = null_surface(popup.wm.disptbl.width, popup.wm.disptbl.height)
+	rendertarget_attach(popup.wm.disptbl.rt, vid, RENDERTARGET_DETACH)
+
 	show_image(vid)
 	order_image(vid, 65530)
 	image_tracetag(vid, "popup_grab")
+
+	local done = false
 	local tbl = {
 		name = "popup_grab_mh",
 		own = function(ctx, tgt)
 			return vid == tgt
 		end,
-		click = function()
-			popup:destroy()
+		button = function()
+			if not done then
+				done = true
+				popup:destroy()
+			end
 		end
 	}
-	mouse_addlistener(tbl, {"click"})
+	mouse_addlistener(tbl, {"button"})
+	popup.wm.log("popup", popup.wm.fmt("grab_on"))
 
 	return function()
+		popup.wm.log("popup", popup.wm.fmt("grab_free"))
 		mouse_droplistener(tbl)
 		delete_image(vid)
+		done = true
 	end
 end
 
@@ -800,7 +821,7 @@ local function on_popup(popup, source, status)
 -- if we have a popup that has not been assigned to anything when we get
 -- the next one already, not entirely 100% whether that is permitted, and
 -- more importantly, actually used/sanctioned behaviour
-		if valid_vid(wnd.pending_popup) then
+		if wnd.pending_popup and valid_vid(wnd.pending_popup.vid) then
 			wnd.pending_popup:destroy()
 		end
 
@@ -935,7 +956,13 @@ local function on_toplevel(wnd, source, status)
 -- i.e. that should cause this window to hide or otherwise be masked, and
 -- the parent set to order above it (until unset)
 	elseif status.kind == "viewport" then
-		wnd.wm.log("wl_toplevel", "viewport incomplete, swap toplevels")
+		local parent = wnd.wm.windows[status.parent]
+		if parent then
+			wnd.wm.log("wl_toplevel", wnd.wm.fmt("reparent=%d",status.parent))
+			wnd.wm.state_change(wnd, "toplevel", parent)
+		else
+			wnd.wm.log("wl_toplevel", wnd.wm.fmt("viewport:unknown_parent:%d", status.parent))
+		end
 
 -- wl specific wm hacks
 	elseif status.kind == "message" then
@@ -1075,11 +1102,14 @@ local function on_x11(wnd, source, status)
 
 		wnd.known_surfaces[vid] = true
 
-	-- send our preset position, might not matter if it is override-redirect
-		local msg = string.format("kind=move:x=%d:y=%d", x, y)
-		wnd.log("wl_x11", msg)
-		target_input(vid, msg)
-		show_image(vid)
+-- send our preset position, might not matter if it is override-redirect
+-- this was removed as it caused a race condition, 'create' doesn't mean that
+-- the window is realized yet, so defer that until it happens
+--
+--		local msg = string.format("kind=move:x=%d:y=%d", x, y)
+--		wnd.log("wl_x11", msg)
+--		target_input(vid, msg)
+--		show_image(vid)
 
 		x11.vid = vid
 		x11.cookie = cookie

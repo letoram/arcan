@@ -350,7 +350,7 @@ static void update_client_output(
 		(float)cl->output_state.size_px[1] / cl->output_state.density[1] * 10.0,
 		0, /* init.fonts[0] hinting should work */
 		"unknown", "unknown",
-		0
+		WL_OUTPUT_TRANSFORM_NORMAL
 	);
 
 	wl_output_send_mode(
@@ -376,7 +376,7 @@ static void update_client_output(
 	if (xdg){
 		zxdg_output_v1_send_logical_position(xdg, 0, 0);
 		zxdg_output_v1_send_logical_size(xdg,
-			cl->output_state.size_px[0], cl->output_state.size_px[0]);
+			cl->output_state.size_px[0], cl->output_state.size_px[1]);
 
 		if (wl_resource_get_version(xdg) < 3){
 			zxdg_output_v1_send_done(xdg);
