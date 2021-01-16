@@ -262,8 +262,10 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	arcan_shmif_setprimary(SHMIF_INPUT, &disp[0].conn);
 	arcan_shmifext_make_current(&disp[0].conn);
 
+#ifdef EGL_DMA_BUF
 	map_egl_functions(&agp_eglenv, lookup_egl, &disp[0].conn);
 	map_eglext_functions(&agp_eglenv, lookup_egl, &disp[0].conn);
+#endif
 
 /*
  * switch rendering mode since our coordinate system differs
@@ -662,14 +664,21 @@ bool platform_video_map_buffer(
  */
 bool platform_video_map_handle(struct agp_vstore* dst, int64_t handle)
 {
-	uint64_t invalid = DRM_FORMAT_MOD_INVALID;
+	uint64_t invalid =
+#ifdef EGL_DMA_BUF
+		DRM_FORMAT_MOD_INVALID;
+#else
+	-1;
+#endif
 	uint32_t hi = invalid >> 32;
 	uint32_t lo = invalid & 0xffffffff;
 
 /* special case, destroy the backing image */
 	if (-1 == handle){
+#ifdef EGL_DMA_BUF
 		agp_eglenv.destroy_image(
 			conn_egl_display(&disp[0].conn), (EGLImage) dst->vinf.text.tag);
+#endif
 		dst->vinf.text.tag = 0;
 		return true;
 	}
@@ -677,8 +686,10 @@ bool platform_video_map_handle(struct agp_vstore* dst, int64_t handle)
 	struct agp_buffer_plane plane = {
 		.fd = handle,
 		.gbm = {
+	#ifdef EGL_DMA_BUF
 			.mod_hi = DRM_FORMAT_MOD_INVALID >> 32,
 			.mod_lo = DRM_FORMAT_MOD_INVALID & 0xffffffff,
+	#endif
 			.offset = 0,
 			.stride = dst->vinf.text.stride,
 			.format = dst->vinf.text.format
