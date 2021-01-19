@@ -173,10 +173,6 @@ printf("Usage: arcan [-whfmWMOqspTBtHbdgaSV] applname "
 
 /* built-in envopts for _event.c, should really be moved there */
 	printf("Input platform configuration options:\n");
-	printf("(use ARCAN_EVENT_XXX for env, event_xxx for db)\n");
-	printf("\trecord=file - record input-layer events to file\n");
-	printf("\treplay=file - playback previous input recording\n");
-	printf("\tshutdown=keysym:modifiers - press to inject shutdown event\n");
 	cur = platform_event_envopts();
 	if (*cur){
 	while(1){
