@@ -908,6 +908,9 @@ static void finish_trace_buffer(lua_State* ctx)
 		case TRACE_SYS_WARN:
 			tblstr(ctx, "path", "warning", top);
 		break;
+		case TRACE_SYS_FAST:
+			tblstr(ctx, "path", "fast", top);
+		break;
 		case TRACE_SYS_ERROR:
 			tblstr(ctx, "path", "error", top);
 		break;
