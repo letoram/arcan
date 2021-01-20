@@ -468,46 +468,63 @@ static void ucs4_to_utf8(uint32_t g, char *txt)
 }
 
 /*
- * ugly hack to emulate normal uskeyboard behavior to reduce the need for
+ * ugly hack to emulate normal us-keyboard behavior to reduce the need for
  * remapping everything at higher levels
  */
 static void apply_mod(uint8_t ch[5], int mod)
 {
 	char oldch = ch[0];
-	if (mod)
-		ch[0] = '\0';
 
-	if (oldch > 127 || ch[1] != 0)
+/* unicode or unmodified? then leave it intact */
+	if (oldch > 127 || ch[1] != 0 || !mod)
 		return;
 
-	if (mod == ARKMOD_LSHIFT || mod == ARKMOD_RSHIFT
-		|| mod == (ARKMOD_LSHIFT | ARKMOD_RSHIFT)){
+/* ctrl/alt ignored entirely and just reset */
+	bool upper = mod & (ARKMOD_LSHIFT | ARKMOD_RSHIFT | KMOD_CAPS);
+	if (!upper){
+		ch[0] = 0;
+		return;
+	}
+
+/* make sense to upcase? */
+	if (isalpha(oldch)){
+		ch[0] = toupper(oldch);
+		return;
+	}
+
+	ch[0] = '\0';
+
+	if (upper){
 		if (isalpha(oldch)){
 			ch[0] = toupper(oldch);
 			return;
 		}
-		switch(oldch){
-		case '1': ch[0] = '!'; break;
-		case '2': ch[0] = '"'; break;
-		case '3': ch[0] = '#'; break;
-		case '4': ch[0] = '$'; break;
-		case '5': ch[0] = '%'; break;
-		case '6': ch[0] = '^'; break;
-		case '7': ch[0] = '&'; break;
-		case '8': ch[0] = '*'; break;
-		case '9': ch[0] = '('; break;
-		case '0': ch[0] = ')'; break;
-		case '-': ch[0] = '_'; break;
-		case '=': ch[0] = '+'; break;
-		case '[': ch[0] = '{'; break;
-		case ']': ch[0] = '}'; break;
-		case ';': ch[0] = ':'; break;
-		case '\'': ch[0] = '"'; break;
-		case '\\': ch[0] = '|'; break;
-		case ',': ch[0] = '<'; break;
-		case '.': ch[0] = '>'; break;
-		case '/': ch[0] = '?'; break;
-		case '~': ch[0] = '`'; break;
+
+/* don't shift+num workaround for caps-lock */
+		if (mod & (ARKMOD_LSHIFT | ARKMOD_RSHIFT)){
+			switch(oldch){
+			case '1': ch[0] = '!'; break;
+			case '2': ch[0] = '"'; break;
+			case '3': ch[0] = '#'; break;
+			case '4': ch[0] = '$'; break;
+			case '5': ch[0] = '%'; break;
+			case '6': ch[0] = '^'; break;
+			case '7': ch[0] = '&'; break;
+			case '8': ch[0] = '*'; break;
+			case '9': ch[0] = '('; break;
+			case '0': ch[0] = ')'; break;
+			case '-': ch[0] = '_'; break;
+			case '=': ch[0] = '+'; break;
+			case '[': ch[0] = '{'; break;
+			case ']': ch[0] = '}'; break;
+			case ';': ch[0] = ':'; break;
+			case '\'': ch[0] = '"'; break;
+			case '\\': ch[0] = '|'; break;
+			case ',': ch[0] = '<'; break;
+			case '.': ch[0] = '>'; break;
+			case '/': ch[0] = '?'; break;
+			case '~': ch[0] = '`'; break;
+			}
 		}
 	}
 	else if (mod == ARKMOD_RALT){
