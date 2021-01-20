@@ -657,8 +657,19 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.pts = event.key.timestamp;
 			newevent.io.input.translated.active = true;
 
-/* keysym / keycodes have changed since the SDL1.2 days, but a lot of scripts
- * rely on the old format, so convert back and keep the code as sub */
+/*
+ * Keysym / keycodes have changed since the SDL1.2 days, but a lot of scripts
+ * rely on the old format, so convert back and keep the code as sub.
+ *
+ * A note here is that on x11 we don't get access to the native (typically
+ * linux) sym. This means that for clients that expect OS representation for
+ * keypresses and apply their own translation tables, most notably
+ * arcan-wayland and qemu, the information necessary for correct input is lost
+ * in transit. The only real option is to have some kind of generator go from
+ * the SDL tables back to linux ones.
+ *
+ * Since we know the type of the client, we can pick such tables automatically.
+ */
 			newevent.io.input.translated.keysym =
 				sdl2_sym_to_12sym(event.key.keysym.scancode);
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
