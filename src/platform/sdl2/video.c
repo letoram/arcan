@@ -30,16 +30,25 @@
 #include "arcan_shmif.h"
 #include "arcan_event.h"
 
+#define VIDEO_PLATFORM_IMPL
+#include "../../engine/arcan_conductor.h"
+
 static struct {
 	SDL_Window* screen;
 	int sdlarg;
 	char* caption;
 	size_t canvasw, canvash;
 	size_t draww, drawh, drawx, drawy;
+
 	arcan_vobj_id vid;
+	uint64_t vid_ts;
+
 	uint64_t last;
+	size_t refresh;
 	float txcos[8];
-} sdl;
+} sdl = {
+	.refresh = 60
+};
 
 static char* envopts[] = {
 	"ARCAN_VIDEO_MULTISAMPLES=1", "attempt to enable multisampling",
@@ -59,6 +68,18 @@ void platform_video_prepare_external()
 	SDL_DestroyWindow(sdl.screen);
 	if (arcan_video_display.fullscreen)
 		SDL_QuitSubSystem(SDL_INIT_VIDEO);
+}
+
+static void update_refresh()
+{
+	SDL_DisplayMode mode = {
+		SDL_PIXELFORMAT_UNKNOWN
+	};
+
+	if (!SDL_GetDisplayMode(0, 0, &mode) || !mode.refresh_rate)
+		return;
+
+	sdl.refresh = mode.refresh_rate;
 }
 
 SDL_Window* sdl2_platform_activewnd()
@@ -103,6 +124,7 @@ static bool rebuild_screen()
 	sdl.canvash = h;
 	sdl.draww = w;
 	sdl.drawh = h;
+	update_refresh();
 
 	SDL_GL_CreateContext(sdl.screen);
 	glViewport(0, 0, sdl.canvasw, sdl.canvash);
@@ -184,29 +206,40 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	if (vobj->program > 0)
 		shid = vobj->program;
 
-	agp_activate_vstore(sdl.vid == ARCAN_VIDEO_WORLDID ?
-		arcan_vint_world() : vobj->vstore);
+/* Unfortunately SDL2 (and few platforms) doesn't provide a way for sending our
+ * FBO directly, so this will cause an extra blit pass. In the specific case of
+ * the worldid rendertarget being mapped directly without any transform shader,
+ * it would be possible to just draw to whatever context SDL2 provides itself.
+ *
+ * The easiest way to do that (investigate) is to mark the color attachment of
+ * the vint_world to be NULL before running vint_refresh when there are no refs
+ * to it.
+ *
+ * This is not >that< dissimilar from the sane_direct_vobj in egl-dri video. */
+	uint64_t now = arcan_frametime();
+	uint8_t deadline = floorf(1000.0f / (float) sdl.refresh);
 
+	struct agp_vstore* ds =
+		sdl.vid == ARCAN_VIDEO_WORLDID ? arcan_vint_world() : vobj->vstore;
+
+/* Since a store can be directly mapped to the 'screen', explicitly check for
+ * when it last was updated versus when it was last sent to the display. When
+ * we can trigger a display on a specific store, omit the deadline step. */
+	if (nd == 0 && sdl.vid_ts == ds->update_ts){
+		arcan_conductor_fakesynch(deadline);
+		goto out;
+	}
+
+	agp_activate_vstore(ds);
 	agp_shader_activate(shid);
+	sdl.vid_ts = ds->update_ts;
 
 	agp_draw_vobj(sdl.drawx, sdl.drawy, sdl.draww, sdl.drawh, sdl.txcos, NULL);
 	arcan_vint_drawcursor(false);
 
-/*
- * NOTE: heuristic fix-point for direct- mapping dedicated source for
- * low latency here when we fix up internal syncing paths.
- */
 	SDL_GL_SwapWindow(sdl.screen);
 
-/* With dynamic, we run an artificial vsync if the time between swaps
- * become to low. This is a workaround for a driver issue spotted on
- * nvidia and friends from time to time where multiple swaps in short
- * regression in combination with 'only redraw' adds bubbles */
-	int delta = arcan_frametime() - sdl.last;
-	if (delta >= 0 && delta < 8){
-		arcan_timesleep(16 - delta);
-	}
-
+out:
 	sdl.last = arcan_frametime();
 	if (post)
 		post();
@@ -305,7 +338,8 @@ struct monitor_mode* platform_video_query_modes(
 	mode.width  = sdl.canvasw;
 	mode.height = sdl.canvash;
 	mode.depth  = sizeof(av_pixel) * 8;
-	mode.refresh = 60; /* should be queried */
+	update_refresh();
+	mode.refresh = sdl.refresh;
 
 	*count = 1;
 	return &mode;
@@ -352,6 +386,7 @@ ssize_t platform_video_map_display_layer(arcan_vobj_id id,
 
 	enum blitting_hint hint = cfg.hint;
 
+	printf("attempt mapping: %d - %d\n", disp, hint);
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	bool isrt = arcan_vint_findrt(vobj) != NULL;
 
@@ -367,24 +402,26 @@ ssize_t platform_video_map_display_layer(arcan_vobj_id id,
  * and world normally etc. a huge mess)
  */
 	size_t iframes = 0;
-	if (isrt){
-		arcan_vint_applyhint(vobj, hint, vobj->txcos ? vobj->txcos :
-			arcan_video_display.mirror_txcos, sdl.txcos,
-			&sdl.drawx, &sdl.drawy,
-			&sdl.draww, &sdl.drawh,
-			&iframes);
-	}
-/* direct VOBJ mapping, prepared for indirect drawying so flip yhint */
-	else {
-		arcan_vint_applyhint(vobj,
-		(hint & HINT_YFLIP) ? (hint & (~HINT_YFLIP)) : (hint | HINT_YFLIP),
-		vobj->txcos ? vobj->txcos : arcan_video_display.default_txcos, sdl.txcos,
+	float* txcos = vobj ? vobj->txcos : NULL;
+
+	if (!txcos)
+		txcos = arcan_video_display.default_txcos;
+
+	if (isrt)
+		hint ^= HINT_YFLIP;
+
+	arcan_vint_applyhint(vobj,
+		hint,
+		txcos, sdl.txcos,
 		&sdl.drawx, &sdl.drawy,
 		&sdl.draww, &sdl.drawh,
-		&iframes);
-	}
+		&iframes
+	);
+
 	arcan_video_display.ignore_dirty += iframes;
 	sdl.vid = id;
+	sdl.vid_ts = (uint64_t) -1;
+
 	return 0;
 }
 
