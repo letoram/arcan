@@ -471,8 +471,8 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.devkind  = EVENT_IDEVKIND_MOUSE;
 			switch(event.button.button){
 			case SDL_BUTTON_LEFT: newevent.io.subid = 1; break;
-			case SDL_BUTTON_MIDDLE: newevent.io.subid = 2; break;
-			case SDL_BUTTON_RIGHT: newevent.io.subid = 3; break;
+			case SDL_BUTTON_MIDDLE: newevent.io.subid = 3; break;
+			case SDL_BUTTON_RIGHT: newevent.io.subid = 2; break;
 			default:
 				newevent.io.subid = event.button.button;
 			break;
