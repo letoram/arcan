@@ -386,7 +386,6 @@ ssize_t platform_video_map_display_layer(arcan_vobj_id id,
 
 	enum blitting_hint hint = cfg.hint;
 
-	printf("attempt mapping: %d - %d\n", disp, hint);
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	bool isrt = arcan_vint_findrt(vobj) != NULL;
 
