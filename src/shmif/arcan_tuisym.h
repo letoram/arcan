@@ -152,7 +152,8 @@ enum tui_subwnd_type {
  * [B] : set_color and set_bgcolor will work on different values
  *
  * Even if the bgcolor isn't explicitly set (either by caller or via the
- * display server), the elements that return a bgcolor
+ * display server), the elements that return a bgcolor will pick from the
+ * COL_BG group.
  */
 enum tui_color_group {
 /* 0 / 1 are reserved values */
@@ -173,7 +174,12 @@ enum tui_color_group {
 	TUI_COL_REFERENCE,   /* [B] External reference / link (e.g. url) */
 	TUI_COL_INACTIVE,    /* [B] Possible highlight/label but not in use due to
 													    some state dependent reason */
-	TUI_COL_UI           /* [B] internal UI elements / bars / ... */
+	TUI_COL_UI,          /* [B] internal UI elements / bars / ... */
+/*
+ * The range in between is used to allow mapping the legacy terminal color
+ * slots for terminal emulator class clients.
+ */
+	TUI_COL_LIMIT = 36
 };
 
 enum tui_cursors {
