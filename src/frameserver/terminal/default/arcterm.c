@@ -201,7 +201,7 @@ static void vte_forward(char* buf, size_t nb)
 {
 /* in pipe mode we can either provide statistics about what we forward,
  * or a 'visible' view of the contents (or both) - running as a bufferwnd
- * is also a possibility */
+ * is also a possibility, as is showing the printables and respecting */
 	if (term.pipe){
 		fwrite(buf, nb, 1, stdout);
 	}
@@ -755,6 +755,60 @@ static void on_reset(struct tui_context* tui, int state, void* tag)
 /* reset vte state */
 }
 
+struct labelent {
+	void (* handler)();
+	struct tui_labelent ent;
+};
+
+static void force_autofit()
+{
+	bool old_fit = term.fit_contents;
+	term.fit_contents = true;
+	create_restore_buffer();
+	term.fit_contents = old_fit;
+}
+
+static struct labelent labels[] = {
+	{
+		.handler = force_autofit,
+		.ent =
+		{
+			.label = "AUTOFIT",
+			.descr = "Resize window to buffer contents",
+			.initial = TUIK_F1,
+			.modifiers = TUIM_LSHIFT
+		}
+	}
+};
+
+static bool on_label_query(struct tui_context* T,
+	size_t index, const char* country, const char* lang,
+	struct tui_labelent* dstlbl, void* t)
+{
+	struct bufferwnd_meta* M = t;
+	if (index < COUNT_OF(labels)){
+		*dstlbl = labels[index].ent;
+		return true;
+	}
+	return false;
+}
+
+static bool on_label_input(
+	struct tui_context* T, const char* label, bool active, void* tag)
+{
+	if (!active)
+		return true;
+
+	for (size_t i = 0; i < COUNT_OF(labels); i++){
+		if (strcmp(label, labels[i].ent.label) == 0){
+			labels[i].handler();
+			return true;
+		}
+	}
+
+	return false;
+}
+
 static int parse_color(const char* inv, uint8_t outv[4])
 {
 	return sscanf(inv, "%"SCNu8",%"SCNu8",%"SCNu8",%"SCNu8,
@@ -794,6 +848,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	struct tui_cbcfg cbcfg = {
 		.input_mouse_motion = on_mouse_motion,
 		.input_mouse_button = on_mouse_button,
+		.query_label = on_label_query,
+		.input_label = on_label_input,
 		.input_utf8 = on_u8,
 		.input_key = on_key,
 		.utf8 = on_utf8_paste,
@@ -844,9 +900,9 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 
 /*
- * forward the colors defined in tui (where we only really track
- * forground and background, though tui should have a defined palette
- * for the normal groups when the other bits are in place
+ * forward the colors defined in tui (where we only really track forground and
+ * background, though tui should have a defined palette for the normal groups
+ * when the other bits are in place
  */
 	if (arg_lookup(args, "palette", 0, &val)){
 		tsm_vte_set_palette(term.vte, val);

@@ -348,7 +348,7 @@ void tui_expose_labels(struct tui_context* tui)
 			snprintf(ev.ext.labelhint.descr,
 				COUNT_OF(ev.ext.labelhint.descr), "%s", dstlbl.descr);
 			ev.ext.labelhint.subv = dstlbl.subv;
-			ev.ext.labelhint.idatatype = dstlbl.idatatype;
+			ev.ext.labelhint.idatatype = dstlbl.idatatype ? dstlbl.idatatype : EVENT_IDATATYPE_DIGITAL;
 			ev.ext.labelhint.modifiers = dstlbl.modifiers;
 			ev.ext.labelhint.initial = dstlbl.initial;
 			snprintf((char*)ev.ext.labelhint.vsym,
