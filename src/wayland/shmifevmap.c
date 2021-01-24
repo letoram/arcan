@@ -110,18 +110,17 @@ static void scroll_axis_digital(
 			continue;
 		}
 
-		wl_pointer_send_axis_source(seat->ptr, WL_POINTER_AXIS_SOURCE_WHEEL);
-
 		uint32_t ver = wl_resource_get_version(seat->ptr);
-		if (ver >= WL_POINTER_AXIS_DISCRETE_SINCE_VERSION){
+		if (ver >= WL_POINTER_AXIS_SOURCE_SINCE_VERSION)
+			wl_pointer_send_axis_source(seat->ptr, WL_POINTER_AXIS_SOURCE_WHEEL);
+
+		if (ver >= WL_POINTER_AXIS_DISCRETE_SINCE_VERSION)
 			wl_pointer_send_axis_discrete(seat->ptr, ind, dir);
-		}
 
 		wl_pointer_send_axis(seat->ptr, pts, ind, wl_fixed_from_int(dir * 10));
 
-		if (ver >= WL_POINTER_FRAME_SINCE_VERSION){
+		if (ver >= WL_POINTER_FRAME_SINCE_VERSION)
 			wl_pointer_send_frame(seat->ptr);
-		}
 	}
 }
 
@@ -136,8 +135,9 @@ static void mouse_button_send(struct bridge_client* bcl,
 			continue;
 
 		wl_pointer_send_button(seat->ptr, serial, pts, wl_ind, btn_state);
-		if (wl_resource_get_version(seat->ptr))
+		if (wl_resource_get_version(seat->ptr) >= WL_POINTER_FRAME_SINCE_VERSION){
 			wl_pointer_send_frame(seat->ptr);
+		}
 	}
 }
 
