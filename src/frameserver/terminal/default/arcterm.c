@@ -209,6 +209,15 @@ static void vte_forward(char* buf, size_t nb)
 	tsm_vte_input(term.vte, buf, nb);
 }
 
+static void on_recolor(struct tui_context* tui, void* tag)
+{
+
+
+/* this will redraw the window and update the colors where possible */
+	create_restore_buffer();
+	apply_restore_buffer();
+}
+
 static bool readout_pty(int fd)
 {
 	char buf[4096];
@@ -579,6 +588,7 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 #else
 	if (arg_lookup(argarr, "exec", 0, &val)){
 		exec_arg = strdup(val);
+		arcan_tui_ident(term.screen, exec_arg);
 	}
 #endif
 
@@ -815,6 +825,24 @@ static int parse_color(const char* inv, uint8_t outv[4])
 		&outv[0], &outv[1], &outv[2], &outv[3]);
 }
 
+static bool copy_palette(struct tui_context* tc, uint8_t* out)
+{
+	bool has_overrides = false;
+	uint8_t ref[3] = {0, 0, 0};
+
+/* we check if any of the legacy color slots have been set to a !0 val,
+ * if so assume the display server side knows what it is doing */
+	for (size_t i = TUI_COL_TBASE; i < TUI_COL_LIMIT; i++){
+		size_t ofs = (i - TUI_COL_TBASE) * 3;
+		arcan_tui_get_color(tc, i, &out[ofs]);
+
+		if (!has_overrides)
+			has_overrides = memcmp(&out[ofs], ref, 3) != 0;
+	}
+
+	return has_overrides;
+}
+
 int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 {
 	if (!con)
@@ -856,7 +884,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.resized = on_resize,
 		.subwindow = on_subwindow,
 		.exec_state = on_exec_state,
-		.reset = on_reset
+		.reset = on_reset,
+		.recolor = on_recolor
 /*
  * for advanced rendering, but not that interesting
  * .substitute = on_subst
@@ -869,13 +898,19 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		fprintf(stderr, "failed to setup TUI connection\n");
 		return EXIT_FAILURE;
 	}
+
+/* make a preroll- state copy of legacy-palette range */
+	uint8_t palette_copy[TUI_COL_LIMIT * 3];
+	bool custom_palette = copy_palette(term.screen, palette_copy);
+
 	arcan_tui_reset_flags(term.screen, TUI_ALTERNATE);
 	arcan_tui_refresh(term.screen);
 	term.args = args;
 
 /*
- * now we have the display server connection and the abstract screen,
- * configure the terminal state machine
+ * Now we have the display server connection and the abstract screen,
+ * configure the terminal state machine. This will override the palette
+ * that might be inside tui, so rebuild from our copy.
  */
 	if (tsm_vte_new(&term.vte, term.screen, write_callback, NULL) < 0){
 		arcan_tui_destroy(term.screen, "Couldn't setup terminal emulator");
@@ -899,15 +934,15 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		term.fit_contents = true;
 	}
 
-/*
- * forward the colors defined in tui (where we only really track forground and
- * background, though tui should have a defined palette for the normal groups
- * when the other bits are in place
- */
+/* if a command-line palette override is set, apply that - BUT if there was
+ * custom color overrides defined during preroll (tui_setup) those take
+ * precedence */
 	if (arg_lookup(args, "palette", 0, &val)){
 		tsm_vte_set_palette(term.vte, val);
 	}
 
+/* this will also indirectly set the corresponding TUI_COL_TBASE+IND entries
+ * for the tui context */
 	int ind = 0;
 	uint8_t ccol[4];
 	while(arg_lookup(args, "ci", ind++, &val)){
@@ -918,6 +953,9 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	signal(SIGHUP, sighuph);
 
+/*
+ * these are permissible command-line overrides, but can also be defined in
+ */
 	uint8_t fgc[3], bgc[3];
 	tsm_vte_get_color(term.vte, VTE_COLOR_BACKGROUND, bgc);
 	tsm_vte_get_color(term.vte, VTE_COLOR_FOREGROUND, fgc);
@@ -939,6 +977,13 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 #ifdef __OpenBSD__
 	pledge(SHMIF_PLEDGE_PREFIX " tty", NULL);
 #endif
+
+/* synch back custom colors */
+	if (custom_palette){
+		for (size_t i = 0; i < VTE_COLOR_NUM; i++){
+			tsm_vte_set_color(term.vte, i, &palette_copy[i * 3]);
+		}
+	}
 
 	bool alive;
 	while((alive = atomic_load(&term.alive)) || !term.die_on_term){

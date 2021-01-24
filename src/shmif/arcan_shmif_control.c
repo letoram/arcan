@@ -2661,6 +2661,24 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 			if (ev.tgt.ioevs[1].iv)
 				def.display_height_px = ev.tgt.ioevs[1].iv;
 		break;
+
+		case TARGET_COMMAND_GRAPHMODE:{
+			bool bg = (ev.tgt.ioevs[0].iv & 256) > 0;
+			int slot = ev.tgt.ioevs[0].iv & (~256);
+			if (slot >= 0 && slot < COUNT_OF(def.colors)){
+				uint8_t* dst = def.colors[slot].fg;
+				if (bg){
+					def.colors[slot].bg_set = true;
+					dst = def.colors[slot].bg;
+				}
+				else
+					def.colors[slot].fg_set = true;
+				dst[0] = ev.tgt.ioevs[1].fv;
+				dst[1] = ev.tgt.ioevs[2].fv;
+				dst[2] = ev.tgt.ioevs[3].fv;
+			}
+		}
+
 		case TARGET_COMMAND_DEVICE_NODE:
 /* alt-con will be updated automatically, due to normal wait handler */
 			if (ev.tgt.ioevs[0].iv != -1){

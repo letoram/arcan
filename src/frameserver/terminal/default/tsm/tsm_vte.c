@@ -511,29 +511,21 @@ static void to_rgb(struct tsm_vte *vte, bool defattr)
 
 	if (fgc >= 0) {
 		/* bold causes light colors */
-		if (TUI_HAS_ATTR((*attr), TUI_ATTR_BOLD) && fgc < 8)
+		if (TUI_HAS_ATTR((*attr), TUI_ATTR_BOLD) && fgc < 8 && !vte->faint)
 			fgc += 8;
 		if (fgc >= VTE_COLOR_NUM)
 			fgc = VTE_COLOR_FOREGROUND;
 
-		attr->fr = vte->palette[fgc][0];
-		attr->fg = vte->palette[fgc][1];
-		attr->fb = vte->palette[fgc][2];
-
-		if (vte->faint){
-			attr->fr = attr->fr >> 1;
-			attr->fg = attr->fg >> 1;
-			attr->fb = attr->fb >> 1;
-		}
+		attr->fr = TUI_COL_TBASE + fgc;
+		attr->aflags |= TUI_ATTR_COLOR_INDEXED;
 	}
 
 	if (bgc >= 0) {
 		if (bgc >= VTE_COLOR_NUM)
 			bgc = VTE_COLOR_BACKGROUND;
 
-		attr->br = vte->palette[bgc][0];
-		attr->bg = vte->palette[bgc][1];
-		attr->bb = vte->palette[bgc][2];
+		attr->br = TUI_COL_TBASE + bgc;
+		attr->aflags |= TUI_ATTR_COLOR_INDEXED;
 	}
 }
 
@@ -563,14 +555,12 @@ static void set_rgb(struct tsm_vte* vte,
 		return;
 
 	if (fg){
-		attr->fr = vte->palette[code][0];
-		attr->fg = vte->palette[code][1];
-		attr->fb = vte->palette[code][2];
+		attr->fr = TUI_COL_TBASE + code;
+		attr->aflags |= TUI_ATTR_COLOR_INDEXED;
 	}
 	else{
-		attr->br = vte->palette[code][0];
-		attr->bg = vte->palette[code][1];
-		attr->bb = vte->palette[code][2];
+		attr->br = TUI_COL_TBASE + code;
+		attr->aflags |= TUI_ATTR_COLOR_INDEXED;
 	}
 }
 
@@ -598,6 +588,9 @@ int tsm_vte_new(struct tsm_vte **out, struct tui_context *con,
 	set_rgb(vte, &vte->def_attr, true, VTE_COLOR_FOREGROUND);
 	set_rgb(vte, &vte->def_attr, false, VTE_COLOR_BACKGROUND);
 	memcpy(&vte->cattr, &vte->def_attr, sizeof(struct tui_screen_attr));
+
+	for (size_t i = 0; i < VTE_COLOR_NUM; i++)
+		arcan_tui_set_color(vte->con, TUI_COL_TBASE+i, &palette[i * 3]);
 
 	ret = tsm_utf8_mach_new(&vte->mach);
 	if (ret)
@@ -656,9 +649,13 @@ void tsm_vte_set_color(struct tsm_vte *vte,
 	if (ind >= VTE_COLOR_NUM || (int)ind < 0)
 		return;
 
+	uint8_t rgb_rw[3];
+	memcpy(rgb_rw, rgb, 3);
+
 	vte->palette[ind][0] = rgb[0];
 	vte->palette[ind][1] = rgb[1];
 	vte->palette[ind][2] = rgb[2];
+	arcan_tui_set_color(vte->con, TUI_COL_TBASE + ind, rgb_rw);
 
 /*
  * NOTE: this does not update the actual color on cattr/def_attr
@@ -699,6 +696,10 @@ int tsm_vte_set_palette(struct tsm_vte *vte, const char *pstr)
 	set_rgb(vte, &vte->def_attr, false, VTE_COLOR_BACKGROUND);
 	to_rgb(vte, true);
 	memcpy(&vte->cattr, &vte->def_attr, sizeof(vte->cattr));
+
+/* forward the palette into the tui context in the terminal slots */
+	for (size_t i = 0; i < VTE_COLOR_NUM; i++)
+		arcan_tui_set_color(vte->con, TUI_COL_TBASE+i, &palette[i * 3]);
 
 	arcan_tui_defattr(vte->con, &vte->def_attr);
 	arcan_tui_erase_screen(vte->con, false);
@@ -1603,6 +1604,7 @@ static void csi_attribute(struct tsm_vte *vte)
 					set_rgb(vte, &vte->cattr, true, code);
 				}
 				else{
+					vte->cattr.aflags &= ~TUI_ATTR_COLOR_INDEXED;
 					vte->cattr.fr = cr;
 					vte->cattr.fg = cg;
 					vte->cattr.fb = cb;
@@ -1613,6 +1615,7 @@ static void csi_attribute(struct tsm_vte *vte)
 					set_rgb(vte, &vte->cattr, false, code);
 				}
 				else {
+					vte->cattr.aflags &= ~TUI_ATTR_COLOR_INDEXED;
 					vte->cattr.br = cr;
 					vte->cattr.bg = cg;
 					vte->cattr.bb = cb;

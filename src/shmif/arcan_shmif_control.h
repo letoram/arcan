@@ -841,6 +841,20 @@ struct arcan_shmif_initial {
 
 /* UTC + */
 	int timezone;
+
+/* 16+16 possible color slots
+ *
+ *  [0,1] are reserved
+ *  2..14: primary, secondary, bg, text, cursor, altcursor, highlight, label,
+ *         warning, error, alert, reference, inactive, ui
+ *
+ *   15..: segment specific reference (terminal)
+ */
+	struct {
+		uint8_t fg[3];
+		uint8_t bg[3];
+		bool fg_set, bg_set;
+	} colors[36];
 };
 
 enum rhint_mask {

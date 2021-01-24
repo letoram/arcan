@@ -225,6 +225,16 @@ static bool late_bind(
 		}
 	);
 
+	for (size_t i = 0; i < COUNT_OF(init->colors) && i < COUNT_OF(res->colors); i++){
+		if (init->colors[i].fg_set)
+			memcpy(res->colors[i].rgb, init->colors[i].fg, 3);
+
+		if (init->colors[i].bg_set){
+			memcpy(res->colors[i].bg, init->colors[i].bg, 3);
+			res->colors[i].bgset = true;
+		}
+	}
+
 	tui_screen_resized(res);
 
 	if (res->handlers.resized)

@@ -55,9 +55,10 @@ enum tui_attr_flags {
 	TUI_ATTR_BLINK = 64,
 	TUI_ATTR_STRIKETHROUGH = 128,
 	TUI_ATTR_SHAPE_BREAK = 256,
-	TUI_ATTR_INDEXED = 512,
+	TUI_ATTR_COLOR_INDEXED = 512,
 	TUI_ATTR_BORDER_RIGHT = 1024,
 	TUI_ATTR_BORDER_DOWN = 2048,
+	TUI_ATTR_GLYPH_INDEXED = 4096
 };
 
 /*
@@ -179,6 +180,7 @@ enum tui_color_group {
  * The range in between is used to allow mapping the legacy terminal color
  * slots for terminal emulator class clients.
  */
+	TUI_COL_TBASE,
 	TUI_COL_LIMIT = 36
 };
 

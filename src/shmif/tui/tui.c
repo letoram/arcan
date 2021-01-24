@@ -48,11 +48,6 @@ _Static_assert(PIPE_BUF >= 4, "pipe atomic write should be >= 4");
 
 #include "arcan_ttf.h"
 
-#ifndef COUNT_OF
-#define COUNT_OF(x) \
-	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
-#endif
-
 #include "screen/libtsm.h"
 #include "screen/libtsm_int.h"
 #include "tui_int.h"
@@ -499,7 +494,7 @@ void arcan_tui_bgcopy(
 void arcan_tui_get_color(
 	struct tui_context* tui, int group, uint8_t rgb[3])
 {
-	if (group <= TUI_COL_INACTIVE && group >= TUI_COL_PRIMARY){
+	if (group < TUI_COL_LIMIT && group >= TUI_COL_PRIMARY){
 		memcpy(rgb, tui->colors[group].rgb, 3);
 	}
 }
@@ -577,7 +572,7 @@ struct arcan_shmif_cont* arcan_tui_acon(struct tui_context* c)
 void arcan_tui_set_color(
 	struct tui_context* tui, int group, uint8_t rgb[3])
 {
-	if (group <= TUI_COL_INACTIVE && group >= TUI_COL_PRIMARY){
+	if (group < TUI_COL_LIMIT && group >= TUI_COL_PRIMARY){
 		memcpy(tui->colors[group].rgb, rgb, 3);
 	}
 }
