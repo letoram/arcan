@@ -8,10 +8,15 @@
  * Terminal: added autofit argument to keep_alive
  * Terminal: save and rebuild 'dead' terminal window on resize
  * Terminal: 'pipe' mode sidesteps pty
+ * Terminal: live-redefinition of colours, overlay server-side palette on terminal one
+ * Terminal: exec-mode sets ident to command
 
 ## Tui
  * Lowered the constraint for wndhint to also work for main window
  * Tpack is now the only output, local rasterization is dead
+ * Recolor/runtime palette remapping through target_graphmode
+ * Extended colour slots to cover a 16- legacy group
+ * Allow indexed cell attribute flag (fg.r, bg.r becomes colour slot index + lookup)
 
 ## Lua
  * Whitelist os.date
@@ -30,6 +35,7 @@
 
 ## Shmif
  * Shmifext- allocator interface for server- directed FBO color allocation
+ * Add graphmode palette definition to preroll stage
 
 ## Platform
  * Egl-dri: don't forward modifiers for linear/invalid
@@ -46,6 +52,7 @@
  * egl-shm mode working (bridge converts to dma-buf before fwd)
  * enable dma-buf by default
  * drop zxdg-shell-unstable-v6
+ * older client termination on mouse-wheel version check fixed
 
 ## 0.6.0
 ## Engine

@@ -2,6 +2,11 @@
 
 #define REQID_COPYWINDOW 0xbaab
 
+#ifndef COUNT_OF
+#define COUNT_OF(x) \
+	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+#endif
+
 enum dirty_state {
 	DIRTY_NONE = 0,
 	DIRTY_CURSOR = 1,

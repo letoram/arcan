@@ -91,18 +91,28 @@ static void pack_u32(uint32_t src, uint8_t* outb)
 	outb[3] = (uint8_t)(src >> 24);
 }
 
-static size_t cell_to_rcell(
+static size_t cell_to_rcell(struct tui_context* tui,
 struct tui_cell* tcell, uint8_t* outb, uint8_t has_cursor)
 {
+	uint8_t* fc = tcell->attr.fc;
+	uint8_t* bc = tcell->attr.bc;
+
+/* if indexed, then fc[0] and bc[0] refer to color index to draw rather
+ * than the actual values */
+	if (tcell->attr.aflags & TUI_ATTR_COLOR_INDEXED){
+		fc = tui->colors[fc[0] % TUI_COL_LIMIT].rgb;
+		bc = tui->colors[bc[0] % TUI_COL_LIMIT].rgb;
+	}
+
 /* inverse isn't an attribute on the packing level, we simply modify the colors
  * as the 'inverse' attribute is a left-over from the terminal emulation days */
 	if (tcell->attr.aflags & TUI_ATTR_INVERSE){
 /* use the tactic of picking 'new foreground / background' based on the
  * intensity of the current-cell colours rather than say, fg <=> bg */
 		float intens =
-			(0.299f * tcell->attr.fc[0] +
-			 0.587f * tcell->attr.fc[1] +
-			 0.114f * tcell->attr.fc[2]) / 255.0f;
+			(0.299f * fc[0] +
+			 0.587f * fc[1] +
+			 0.114f * fc[2]) / 255.0f;
 
 		if (intens < 0.5f){
 			*outb++ = 0xff; *outb++ = 0xff; *outb++ = 0xff;
@@ -110,17 +120,17 @@ struct tui_cell* tcell, uint8_t* outb, uint8_t has_cursor)
 		else {
 			*outb++ = 0x00; *outb++ = 0x00; *outb++ = 0x00;
 		}
-		*outb++ = tcell->attr.fc[0];
-		*outb++ = tcell->attr.fc[1];
-		*outb++ = tcell->attr.fc[2];
+		*outb++ = fc[0];
+		*outb++ = fc[1];
+		*outb++ = fc[2];
 	}
 	else {
-		*outb++ = tcell->attr.fc[0];
-		*outb++ = tcell->attr.fc[1];
-		*outb++ = tcell->attr.fc[2];
-		*outb++ = tcell->attr.bc[0];
-		*outb++ = tcell->attr.bc[1];
-		*outb++ = tcell->attr.bc[2];
+		*outb++ = fc[0];
+		*outb++ = fc[1];
+		*outb++ = fc[2];
+		*outb++ = bc[0];
+		*outb++ = bc[1];
+		*outb++ = bc[2];
 	}
 
 /* this deviates from the tui cell here, the terminal- legacy blink
@@ -195,7 +205,7 @@ int tui_screen_tpack(struct tui_context* tui,
 				struct tui_screen_attr* attr = &front->attr;
 				if (opts.synch)
 					*back = *front;
-				outsz += cell_to_rcell(front, &out[outsz], 0);
+				outsz += cell_to_rcell(tui, front, &out[outsz], 0);
 				back++;
 				front++;
 			}
@@ -237,7 +247,7 @@ int tui_screen_tpack(struct tui_context* tui,
 					tui->back[row_base + ofs] = *attr;
 
 				line.ncells++;
-				outsz += cell_to_rcell(attr, &out[outsz], 0);
+				outsz += cell_to_rcell(tui, attr, &out[outsz], 0);
 /* iterate forward */
 				ssize_t last_ofs = ofs;
 				ofs = find_row_ofs(tui, row, ofs+1);
@@ -293,7 +303,7 @@ int tui_screen_tpack(struct tui_context* tui,
 			memcpy(&tui->acon.vidb[outsz], &line, sizeof(line));
 
 			outsz += raster_line_sz;
-			outsz += cell_to_rcell(&tui->front[
+			outsz += cell_to_rcell(tui, &tui->front[
 				line.start_line * tui->cols + line.offset], &out[outsz], 0);
 		}
 
@@ -308,7 +318,7 @@ int tui_screen_tpack(struct tui_context* tui,
 /* NOTE: REPLACE WITH PROPER PACKING */
 		memcpy(&tui->acon.vidb[outsz], &line, sizeof(line));
 		outsz += raster_line_sz;
-		outsz += cell_to_rcell(&tui->front[
+		outsz += cell_to_rcell(tui, &tui->front[
 			line.start_line * tui->cols + line.offset], &out[outsz], 1);
 
 /* figure out what shape we want it in, style, blink rate etc. are

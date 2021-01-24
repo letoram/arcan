@@ -533,14 +533,15 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_DEVICE_NODE,
 
 /*
- * Graph- mode is a special case thing for switching between active
- * representation for a specific segment. It is a reserved implementation
- * defined command used for special segment types, typically TUI. See the
- * definition for target_graphmode.lua and the corresponding tuisym.h for more
- * details.
+ * Graph- mode is a special case for tuning drawing for a specific segment, for
+ * most cases this means a basic semantic and legacy palette. The meaning has
+ * drifted some over time and its format is mainly due to legacy.
  *
- * ioev[0].iv = mode,
- * ioev[1].fv .. ioev[4].fv = user defined, mode related values
+ * See the definition for target_graphmode.lua and the corresponding tuisym.h
+ * entries as well as the 'initial' structure in the control.h header.
+ *
+ * ioev[0].iv = mode (bit 1..7 = group, bit 8 == background)
+ * ioev[1..3].fv = (0..255) linear-RGB color, packed [0:R, 1:G, 2:B].
  */
 	TARGET_COMMAND_GRAPHMODE,
 
