@@ -203,20 +203,38 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 
 	switch (ev->kind){
 /* GRAPHMODE is here used to signify a buffered update of the colors */
-	case TARGET_COMMAND_GRAPHMODE:
-		if (ev->ioevs[0].iv == 0){
+	case TARGET_COMMAND_GRAPHMODE:{
+/* check the background bit */
+		bool bg = (ev->ioevs[0].iv & 256) > 0;
+		int slot = ev->ioevs[0].iv & (~256);
+
+/* commit action? */
+		if (!slot){
 			if (tui->handlers.recolor)
 				tui->handlers.recolor(tui, tui->handlers.tag);
+			return;
 		}
-		else if (ev->ioevs[0].iv == 1){
+
+/* special alpha slot? */
+		if (1 == slot){
 			tui->alpha = ev->ioevs[1].fv;
 			tui->dirty = DIRTY_FULL;
+			return;
 		}
-		else if (ev->ioevs[0].iv <= TUI_COL_INACTIVE){
-			tui->colors[ev->ioevs[0].iv].rgb[0] = ev->ioevs[1].iv;
-			tui->colors[ev->ioevs[0].iv].rgb[1] = ev->ioevs[2].iv;
-			tui->colors[ev->ioevs[0].iv].rgb[2] = ev->ioevs[3].iv;
-		}
+
+/* bad slot? */
+		if (TUI_COL_LIMIT <= slot)
+			return;
+
+		uint8_t* dst = tui->colors[slot].rgb;
+		if (bg)
+			dst = tui->colors[slot].bg;
+
+/* and write color values */
+		dst[0] = ev->ioevs[1].fv;
+		dst[1] = ev->ioevs[2].fv;
+		dst[2] = ev->ioevs[3].fv;
+	}
 	break;
 
 /* sigsuspend to group */
@@ -256,7 +274,7 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 /* 'drag-and-drop' style data transfer requests */
 	case TARGET_COMMAND_BCHUNK_IN:
 		if (strcmp(ev->message, "stdin") == 0){
-			dump_to_fd(tui, arcan_shmif_dupfd(ev->ioevs[0].iv, STDIN_FILENO, false));
+			arcan_shmif_dupfd(ev->ioevs[0].iv, STDIN_FILENO, false);
 			return;
 		}
 		if (tui->handlers.bchunk)

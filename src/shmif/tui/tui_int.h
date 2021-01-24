@@ -81,7 +81,7 @@ struct tui_context {
 	int cell_w, cell_h, pad_w, pad_h;
 	int modifiers;
 
-	struct color colors[TUI_COL_INACTIVE+1];
+	struct color colors[TUI_COL_LIMIT];
 
 	bool cursor_off; /* current blink state */
 	bool cursor_hard_off; /* user / state toggle */
