@@ -816,6 +816,7 @@ struct tui_screen_attr arcan_tui_defcattr(struct tui_context* c, int group)
 	out = tsm_screen_get_def_attr(c->screen);
 	arcan_tui_get_color(c, group, out.fc);
 	arcan_tui_get_bgcolor(c, group, out.bc);
+	out.aflags |= TUI_ATTR_COLOR_INDEXED;
 
 	return out;
 }
