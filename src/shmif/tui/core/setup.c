@@ -225,7 +225,8 @@ static bool late_bind(
 		}
 	);
 
-	for (size_t i = 0; i < COUNT_OF(init->colors) && i < COUNT_OF(res->colors); i++){
+	for (size_t i = 0; init && i <
+			COUNT_OF(init->colors) && i < COUNT_OF(res->colors); i++){
 		if (init->colors[i].fg_set)
 			memcpy(res->colors[i].rgb, init->colors[i].fg, 3);
 
@@ -297,7 +298,6 @@ struct tui_context* arcan_tui_setup(
 /* tui_fontmgmt is also responsible for building the raster context */
 /* if we have a parent, we should derive settings etc. from there */
 	if (parent){
-		memcpy(res->colors, parent->colors, sizeof(res->colors));
 		res->alpha = parent->alpha;
 		res->cursor = parent->cursor;
 		res->ppcm = parent->ppcm;
@@ -336,6 +336,9 @@ struct tui_context* arcan_tui_setup(
 
 	if (con)
 		late_bind(con, res, true);
+
+	if (parent)
+		memcpy(res->colors, parent->colors, sizeof(res->colors));
 
 /* allow our own formats to be exposed */
 	arcan_tui_announce_io(res, false, NULL, "tui-raw");
