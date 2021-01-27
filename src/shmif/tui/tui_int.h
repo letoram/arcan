@@ -83,6 +83,9 @@ struct tui_context {
 /* color, cursor and other drawing states */
 	int rows;
 	int cols;
+
+/* if the server-side has hinted with valid cell dimensions, skip probing */
+	bool cell_auth;
 	int cell_w, cell_h, pad_w, pad_h;
 	int modifiers;
 

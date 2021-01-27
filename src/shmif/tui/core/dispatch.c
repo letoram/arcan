@@ -16,6 +16,15 @@ static void display_hint(struct tui_context* tui, arcan_tgtevent* ev)
 /* did we get an updated cell-state and we are in server-side rendering? */
 	int hcw = ev->ioevs[5].iv;
 	int hch = ev->ioevs[6].iv;
+	if (hcw)
+		tui->cell_w = hcw;
+
+	if (hch)
+		tui->cell_h = hch;
+
+/* then mark it as authoritative and ignore any font-local probing */
+	if (hcw && hch)
+		tui->cell_auth = true;
 
 /* anything that would case relayout, resize, renegotiation */
 	if (cell_changed ||

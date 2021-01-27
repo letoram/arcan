@@ -208,6 +208,12 @@ static bool late_bind(
 			res->ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
 	}
 
+	if (!res->cell_w)
+		res->cell_w = 8;
+
+	if (!res->cell_h)
+		res->cell_h = 8;
+
 	tui_fontmgmt_setup(res, init);
 
 	res->acon.hints = SHMIF_RHINT_TPACK | SHMIF_RHINT_VSIGNAL_EV;
