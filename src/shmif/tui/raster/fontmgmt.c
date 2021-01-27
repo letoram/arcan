@@ -47,8 +47,10 @@ static bool tryload_truetype(struct tui_context* tui,
 	if (mode == 0){
 		size_t dw = 0, dh = 0;
 		TTF_ProbeFont(tui->font[0]->truetype, &dw, &dh);
-		tui->cell_w = dw;
-		tui->cell_h = dh;
+		if (dw && dh && !tui->cell_auth){
+			tui->cell_w = dw;
+			tui->cell_h = dh;
+		}
 		LOG("open_font::probe(%zu, %zu)\n", dw, dh);
 /* optimization here is that in tui cell mode, we only really need the
  * font to determine the presence of a glyph, so maybe there are caches
