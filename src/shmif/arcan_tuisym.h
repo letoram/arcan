@@ -157,8 +157,11 @@ enum tui_subwnd_type {
  * COL_BG group.
  */
 enum tui_color_group {
-/* 0 / 1 are reserved values */
-
+/* 0 / 1 are reserved slots,
+ *
+ * [hack] background color for slot 1 can be used to check if the built-in
+ *        default colorset is active or we have received a user override.
+ */
 /* Primary and secondary colors are hints to a caller that have preset colors
  * to chose from and want guidance on which ones to pick. */
 	TUI_COL_PRIMARY = 2, /* [R] Reference base color */

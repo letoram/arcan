@@ -126,8 +126,10 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 	}
 /* draw prompt like normal */
 	else {
-		for (size_t i = 0; i < M->prompt_len; i++)
+		for (size_t i = 0; i < M->prompt_len; i++){
 			arcan_tui_write(T, M->prompt[i].ch, &M->prompt[i].attr);
+		}
+
 		limit = limit - prompt_len;
 	}
 
@@ -582,29 +584,16 @@ void arcan_tui_set_prompt(struct tui_context* T, const struct tui_cell* prompt)
 		return;
 	}
 
-	bool same = !!(M->prompt);
+	bool same = M->prompt != NULL;
 
 /* both len and cmp */
 	size_t len = 0;
-	for (; prompt[len].ch; len++){
-		if (same && M->prompt){
-			if (len <= M->prompt_len){
-				const struct tui_cell* a = &M->prompt[len];
-				const struct tui_cell* b = &prompt[len];
-				same &= tui_attr_equal(a->attr, b->attr) && a->ch == b->ch;
-			}
-			else{
-				same = false;
-			}
-		}
-	}
+	for (; prompt[len].ch; len++){}
 
 	M->prompt = prompt;
 	M->prompt_len = len;
 
-	if (!same){
-		refresh(T, M);
-	}
+	refresh(T, M);
 }
 
 static void reset_boundaries(

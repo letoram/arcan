@@ -25,6 +25,14 @@ struct line {
 	struct tui_cell* cells;
 };
 
+enum pipe_modes {
+/* just forward from in-out and draw into terminal */
+	PIPE_RAW = 0,
+
+/* respect line-feed */
+	PIPE_PLAIN_LF = 1
+};
+
 static struct {
 	struct tui_context* screen;
 	struct tsm_vte* vte;
@@ -41,6 +49,7 @@ static struct {
 	bool die_on_term;
 	bool complete_signal;
 	bool pipe;
+	int pipe_mode;
 
 /* if the terminal has 'died' and 'fit' is set - we crop the stored
  * buffer to bounding box of 'real' (non-whitespace content) cells */
@@ -197,13 +206,37 @@ static ssize_t flush_buffer(int fd, char dst[static 4096])
 	return nr;
 }
 
+static void flush_ascii_lf(char* buf, size_t nb)
+{
+	size_t pos = 0;
+
+	while (pos < nb){
+		if (isascii(buf[pos])){
+			if (buf[pos] == '\n')
+				arcan_tui_newline(term.screen);
+			else
+				arcan_tui_write(term.screen, buf[pos], NULL);
+		}
+		pos++;
+	}
+}
+
 static void vte_forward(char* buf, size_t nb)
 {
-/* in pipe mode we can either provide statistics about what we forward,
- * or a 'visible' view of the contents (or both) - running as a bufferwnd
- * is also a possibility, as is showing the printables and respecting */
+/* in pipe mode we can either provide statistics about what we forward, or a
+ * 'visible' view of the contents (or both) - running as a bufferwnd is also a
+ * possibility */
 	if (term.pipe){
+		bool out = false;
+
+		if (term.pipe_mode == PIPE_PLAIN_LF){
+			flush_ascii_lf(buf, nb);
+			out = true;
+		}
+
 		fwrite(buf, nb, 1, stdout);
+		if (out)
+			return;
 	}
 
 	tsm_vte_input(term.vte, buf, nb);
@@ -211,8 +244,6 @@ static void vte_forward(char* buf, size_t nb)
 
 static void on_recolor(struct tui_context* tui, void* tag)
 {
-
-
 /* this will redraw the window and update the colors where possible */
 	create_restore_buffer();
 	apply_restore_buffer();
@@ -324,14 +355,8 @@ static void dump_help()
 		"-------------\t-----------\t-----------------\n"
 		" env         \t key=val   \t override default environment (repeatable)\n"
 		" chdir       \t dir       \t change working dir before spawning shell\n"
-		" bgalpha     \t rv(0..255)\t background opacity (default: 255, opaque)\n"
-		" bgc         \t r,g,b     \t background color \n"
-		" fgc         \t r,g,b     \t foreground color \n"
+		" bgalpha     \t rv(0..255)\t opacity (default: 255, opaque) - deprecated\n"
 		" ci          \t ind,r,g,b \t override palette at index\n"
-		" cc          \t r,g,b     \t cursor color\n"
-		" cl          \t r,g,b     \t cursor alternate (locked) state color\n"
-		" cursor      \t name      \t set cursor (block, frame, halfblock,\n"
-		"             \t           \t vline, uline)\n"
 		" blink       \t ticks     \t set blink period, 0 to disable (default: 12)\n"
 		" login       \t [user]    \t login (optional: user, only works for root)\n"
 #ifndef FSRV_TERMINAL_NOEXEC
@@ -339,7 +364,7 @@ static void dump_help()
 #endif
 		" keep_alive  \t           \t don't exit if the terminal or shell terminates\n"
 		" autofit     \t           \t (with exec, keep_alive) shrink window to fit\n"
-		" pipe        \t           \t map stdin-stdout\n"
+		" pipe        \t [mode]    \t map stdin-stdout (mode: raw, lf)\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 		" cli         \t           \t switch to non-vt cli/builtin shell mode\n"
 		"Built-in palettes:\n"
@@ -840,7 +865,10 @@ static bool copy_palette(struct tui_context* tc, uint8_t* out)
 			has_overrides = memcmp(&out[ofs], ref, 3) != 0;
 	}
 
-	return has_overrides;
+/* special hack, the bg color for the reserved-1 slot will be set if we
+ * have received an upstream palette */
+	arcan_tui_get_bgcolor(tc, 1, ref);
+	return ref[0] == 255;
 }
 
 int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
@@ -848,8 +876,12 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	if (!con)
 		return EXIT_FAILURE;
 
-	if (arg_lookup(args, "pipe", 0, NULL)){
+	const char* val;
+/* more possible modes needed here, UTF8, stats */
+	if (arg_lookup(args, "pipe", 0, &val)){
 		term.pipe = true;
+		if (val && strcmp(val, "lf") == 0)
+			term.pipe_mode = PIPE_PLAIN_LF;
 		setvbuf(stdout, NULL, _IONBF, 0);
 		setvbuf(stdin, NULL, _IONBF, 0);
 	}
@@ -862,7 +894,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return arcterm_cli_run(con, args);
 	}
 
-	const char* val;
 	if (arg_lookup(args, "help", 0, &val)){
 		dump_help();
 		return EXIT_SUCCESS;
@@ -953,15 +984,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	signal(SIGHUP, sighuph);
 
-/*
- * these are permissible command-line overrides, but can also be defined in
- */
-	uint8_t fgc[3], bgc[3];
-	tsm_vte_get_color(term.vte, VTE_COLOR_BACKGROUND, bgc);
-	tsm_vte_get_color(term.vte, VTE_COLOR_FOREGROUND, fgc);
-	arcan_tui_set_color(term.screen, TUI_COL_BG, bgc);
-	arcan_tui_set_color(term.screen, TUI_COL_TEXT, fgc);
-
 /* socket pair used to signal between the threads, this will be kept
  * alive even between reset/re-execute on a terminated terminal */
 	int pair[2];
@@ -984,6 +1006,14 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 			tsm_vte_set_color(term.vte, i, &palette_copy[i * 3]);
 		}
 	}
+
+/* re-fetch fg/bg from the vte so the palette can be considered, slated
+ * to be removed when the builtin/ scripts cover the color definition bits */
+	uint8_t fgc[3], bgc[3];
+	tsm_vte_get_color(term.vte, VTE_COLOR_BACKGROUND, bgc);
+	tsm_vte_get_color(term.vte, VTE_COLOR_FOREGROUND, fgc);
+	arcan_tui_set_color(term.screen, TUI_COL_BG, bgc);
+	arcan_tui_set_color(term.screen, TUI_COL_TEXT, fgc);
 
 	bool alive;
 	while((alive = atomic_load(&term.alive)) || !term.die_on_term){

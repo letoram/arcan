@@ -196,7 +196,7 @@ static void setup_cmd_mode(struct ext_cmd* cmd,
  * ourselves got (sans -cli) or lest let a few of them through for color
  * overrides and the likes */
 		asprintf(&new_env[2],
-			"ARCAN_ARG=keep_alive:bgalpha=%"PRIu8, cli_state.bgalpha);
+			"ARCAN_ARG=keep_alive:autofit:bgalpha=%"PRIu8, cli_state.bgalpha);
 		free_strtbl(cmd->env);
 		cmd->env = new_env;
 		*env = cmd->env;
@@ -358,6 +358,8 @@ static bool eval_to_cmd(char* out, struct ext_cmd* cmd, bool noexec)
 	return false;
 }
 
+/* this updates at quite a high clock (25Hz) so for simple prompts that
+ * don't query the local environment, just early out */
 static void rebuild_prompt(struct tui_context* T, struct cli_state* S)
 {
 	const char* pwd = getenv("PWD");
@@ -375,7 +377,7 @@ static void rebuild_prompt(struct tui_context* T, struct cli_state* S)
 	}
 
 /* placeholder prompt, plugin or expansion format goes here */
-	struct tui_screen_attr attr = arcan_tui_defcattr(T, TUI_COL_LABEL);
+	struct tui_screen_attr attr = arcan_tui_defcattr(T, TUI_COL_UI);
 	if (!S->prompt){
 		S->prompt = malloc(sizeof(struct cli_state) * 256);
 		if (!S->prompt)
@@ -613,9 +615,8 @@ int arcterm_cli_run(struct arcan_shmif_cont* c, struct arg_arr* args)
 
 	while (cli_state.alive){
 		int status;
+		rebuild_prompt(tui, &cli_state);
 		while (!(status = arcan_tui_readline_finished(tui, &out)) && cli_state.alive){
-			rebuild_prompt(tui, &cli_state);
-
 			struct tui_process_res res = arcan_tui_process(&tui, 1, NULL, 0, -1);
 			if (res.errc == TUI_ERRC_OK){
 				if (-1 == arcan_tui_refresh(tui) && errno == EINVAL)

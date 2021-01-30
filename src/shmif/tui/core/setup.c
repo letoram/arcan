@@ -56,39 +56,7 @@ static void apply_arg(struct tui_context* src, struct arg_arr* args)
 	if (!args)
 		return;
 
-	const char* val;
-	uint8_t ccol[4] = {0x00, 0x00, 0x00, 0xff};
-	long vbufv = 0;
-
-	if (!(arg_lookup(args, "fgc", 0, &val)
-		&& val && parse_color(val, ccol) >= 3)){
-		ccol[0] = 0xff;
-		ccol[1] = 0xff;
-		ccol[2] = 0xff;
-	}
-	arcan_tui_set_color(src, TUI_COL_TEXT, ccol);
-
-	if (!(arg_lookup(args, "bgc", 0, &val) && parse_color(val, ccol) >= 3)){
-		ccol[0] = 0x00;
-		ccol[1] = 0x00;
-		ccol[2] = 0x00;
-	}
-	arcan_tui_set_color(src, TUI_COL_BG, ccol);
-
-	if (!(arg_lookup(args, "cc", 0, &val) && parse_color(val, ccol) >= 3)){
-		ccol[0] = 0x00;
-		ccol[1] = 0xaa;
-		ccol[2] = 0x00;
-	}
-	arcan_tui_set_color(src, TUI_COL_CURSOR, ccol);
-
-	if (!(arg_lookup(args, "clc", 0, &val) && parse_color(val, ccol) >= 3)){
-		ccol[0] = 0x00;
-		ccol[1] = 0xaa;
-		ccol[2] = 0x00;
-	}
-	arcan_tui_set_color(src, TUI_COL_ALTCURSOR, ccol);
-
+	const char* val = NULL;
 	if (arg_lookup(args, "bgalpha", 0, &val) && val)
 		src->alpha = strtoul(val, NULL, 10);
 }
@@ -148,25 +116,69 @@ static void tsm_log(void* data, const char* file, int line,
 }
 
 /*
- * though we are supposed to be prerolled the colors from our display
- * server connection, it's best to have something that gets activated
- * initially regardless..
+ * though we are supposed to be prerolled the colors from our display server
+ * connection, it's best to have something that gets activated initially
+ * regardless..
  */
 static void set_builtin_palette(struct tui_context* ctx)
 {
-	ctx->colors[TUI_COL_CURSOR] = (struct color){0x00, 0xff, 0x00};
-	ctx->colors[TUI_COL_ALTCURSOR] = (struct color){0x00, 0xff, 0x00};
-	ctx->colors[TUI_COL_HIGHLIGHT] = (struct color){0x26, 0x8b, 0xd2};
-	ctx->colors[TUI_COL_BG] = (struct color){0x2b, 0x2b, 0x2b};
-	ctx->colors[TUI_COL_PRIMARY] = (struct color){0x13, 0x13, 0x13};
-	ctx->colors[TUI_COL_SECONDARY] = (struct color){0x42, 0x40, 0x3b};
-	ctx->colors[TUI_COL_TEXT] = (struct color){0xff, 0xff, 0xff};
-	ctx->colors[TUI_COL_LABEL] = (struct color){0xff, 0xff, 0x00};
-	ctx->colors[TUI_COL_WARNING] = (struct color){0xaa, 0xaa, 0x00};
-	ctx->colors[TUI_COL_ERROR] = (struct color){0xaa, 0x00, 0x00};
-	ctx->colors[TUI_COL_ALERT] = (struct color){0xaa, 0x00, 0xaa};
-	ctx->colors[TUI_COL_REFERENCE] = (struct color){0x20, 0x30, 0x20};
-	ctx->colors[TUI_COL_INACTIVE] = (struct color){0x20, 0x20, 0x20};
+	arcan_tui_set_color(ctx, TUI_COL_CURSOR, (uint8_t[]){0x00, 0xff, 0x00});
+	arcan_tui_set_bgcolor(ctx, TUI_COL_CURSOR, (uint8_t[]){0x00, 0xff, 0x00});
+
+	arcan_tui_set_color(ctx, TUI_COL_ALTCURSOR, (uint8_t[]){0xff, 0xff, 0x00});
+	arcan_tui_set_bgcolor(ctx, TUI_COL_ALTCURSOR, (uint8_t[]){0xff, 0xff, 0x00});
+
+	arcan_tui_set_color(ctx, TUI_COL_PRIMARY, (uint8_t[]){0xff, 0xff, 0xff});
+	arcan_tui_set_color(ctx, TUI_COL_SECONDARY, (uint8_t[]){0xaa, 0xaa, 0xaa});
+
+	arcan_tui_set_bgcolor(ctx, TUI_COL_BG, (uint8_t[]){0x10, 0x10, 0x10});
+
+	arcan_tui_set_color(ctx, TUI_COL_TEXT, (uint8_t[]){0xaa, 0xaa, 0xaa});
+	arcan_tui_set_bgcolor(ctx, TUI_COL_TEXT, (uint8_t[]){0x10, 0x10, 0x10});
+
+	arcan_tui_set_color(ctx, TUI_COL_HIGHLIGHT, (uint8_t[]){246, 84, 0});
+	arcan_tui_set_bgcolor(ctx, TUI_COL_HIGHLIGHT, (uint8_t[]){0x10, 0x10, 0x10});
+
+	arcan_tui_set_color(ctx, TUI_COL_LABEL, (uint8_t[]){0xff, 0xff, 0xff});
+	arcan_tui_set_bgcolor(ctx, TUI_COL_LABEL, (uint8_t[]){0x00, 0x00, 0x00});
+
+	arcan_tui_set_color(ctx, TUI_COL_WARNING, (uint8_t[]){255, 255, 255});
+	arcan_tui_set_bgcolor(ctx, TUI_COL_WARNING, (uint8_t[]){246, 84, 0});
+
+	arcan_tui_set_color(ctx, TUI_COL_ERROR, (uint8_t[]){255, 255, 255});
+	arcan_tui_set_bgcolor(ctx, TUI_COL_ERROR, (uint8_t[]){190, 0, 0});
+
+	arcan_tui_set_color(ctx, TUI_COL_ALERT, (uint8_t[]){190, 0, 0});
+	arcan_tui_set_bgcolor(ctx, TUI_COL_ALERT, (uint8_t[]){0x10, 0x10, 0x10});
+
+	arcan_tui_set_color(ctx, TUI_COL_REFERENCE, (uint8_t[]){31, 104, 230});
+	arcan_tui_set_bgcolor(ctx, TUI_COL_REFERENCE, (uint8_t[]){0x10, 0x10, 0x10});
+
+	arcan_tui_set_color(ctx, TUI_COL_INACTIVE, (uint8_t[]){0x80, 0x80, 0x80});
+	arcan_tui_set_bgcolor(ctx, TUI_COL_INACTIVE, (uint8_t[]){0x00, 0x00, 0x00});
+
+	arcan_tui_set_color(ctx, TUI_COL_UI, (uint8_t[]){255, 255, 255});
+	arcan_tui_set_bgcolor(ctx, TUI_COL_UI, (uint8_t[]){31, 104, 230});
+
+/* legacy terminal color-set */
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+0, (uint8_t[]){0, 0, 0});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+1, (uint8_t[]){205, 0, 0});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+2, (uint8_t[]){0, 205, 0});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+3, (uint8_t[]){205, 205, 0});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+4, (uint8_t[]){0, 0, 238});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+5, (uint8_t[]){205, 0, 205});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+6, (uint8_t[]){0, 205, 205});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+7, (uint8_t[]){229, 229, 229});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+8, (uint8_t[]){127, 127, 127});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+9, (uint8_t[]){255, 0, 0});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+10, (uint8_t[]){0, 255, 0});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+11, (uint8_t[]){255, 255, 0});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+12, (uint8_t[]){0, 0, 255});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+13, (uint8_t[]){255, 0, 255});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+14, (uint8_t[]){0, 255, 255});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+15, (uint8_t[]){255, 255, 255});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+16, (uint8_t[]){229, 229, 229});
+	arcan_tui_set_color(ctx, TUI_COL_TBASE+17, (uint8_t[]){0, 0, 0});
 }
 
 static bool late_bind(
@@ -331,9 +343,9 @@ struct tui_context* arcan_tui_setup(
 			.fr = res->colors[TUI_COL_TEXT].rgb[0],
 			.fg = res->colors[TUI_COL_TEXT].rgb[1],
 			.fb = res->colors[TUI_COL_TEXT].rgb[2],
-			.br = res->colors[TUI_COL_BG].rgb[0],
-			.bg = res->colors[TUI_COL_BG].rgb[1],
-			.bb = res->colors[TUI_COL_BG].rgb[2]
+			.br = res->colors[TUI_COL_BG].bg[0],
+			.bg = res->colors[TUI_COL_BG].bg[1],
+			.bb = res->colors[TUI_COL_BG].bg[2]
 		}
 	);
 
