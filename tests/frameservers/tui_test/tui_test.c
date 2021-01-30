@@ -20,6 +20,167 @@ static inline void trace(const char* msg, ...)
 #endif
 }
 
+static void redraw(struct tui_context* c)
+{
+	struct tui_screen_attr attr = arcan_tui_defattr(c, NULL);
+	arcan_tui_erase_screen(c, false);
+
+	struct {
+		const char* text;
+		int fgc, bgc;
+	}
+	lines[] = {
+		{
+			.text = "PRIMARY foreground ",
+			.fgc = TUI_COL_PRIMARY,
+			.bgc = TUI_COL_SECONDARY,
+		},
+		{
+			.text = "TEXT foreground, BACKGROUND background",
+			.fgc = TUI_COL_TEXT,
+			.bgc = TUI_COL_BG
+		},
+		{
+			.text = "TEXT foreground, TEXT background",
+			.fgc = TUI_COL_TEXT,
+		},
+		{
+			.text = "CURSOR foreground",
+			.fgc = TUI_COL_CURSOR,
+			.bgc = TUI_COL_CURSOR
+		},
+		{
+			.text = "ALTCURSOR foreground",
+			.fgc = TUI_COL_ALTCURSOR,
+			.bgc = TUI_COL_ALTCURSOR
+		},
+		{
+			.text = "HIGHLIGHT foreground, HIGHLIGHT background",
+			.fgc = TUI_COL_HIGHLIGHT,
+			.bgc = TUI_COL_HIGHLIGHT,
+		},
+		{
+			.text = "LABEL foreground, LABEL background",
+			.fgc = TUI_COL_LABEL,
+			.bgc = TUI_COL_LABEL,
+		},
+		{
+			.text = "WARNING foreground, WARNING background",
+			.fgc = TUI_COL_WARNING,
+			.bgc = TUI_COL_WARNING,
+		},
+		{
+			.text = "ERROR foreground, ERROR background",
+			.fgc = TUI_COL_ERROR,
+			.bgc = TUI_COL_ERROR,
+		},
+		{
+			.text = "ALERT foreground, ALERT background",
+			.fgc = TUI_COL_ALERT,
+			.bgc = TUI_COL_ALERT,
+		},
+		{
+			.text = "REFERENCE (links) foreground, REFERENCE background",
+			.fgc = TUI_COL_REFERENCE,
+			.bgc = TUI_COL_REFERENCE,
+		},
+		{
+			.text = "INACTIVE foreground, INACTIVE background",
+			.fgc = TUI_COL_INACTIVE,
+			.bgc = TUI_COL_INACTIVE,
+		},
+		{
+			.text = "UI foreground, UI background",
+			.fgc = TUI_COL_UI,
+			.bgc = TUI_COL_UI,
+		},
+		{
+			.text = "Term-BLACK",
+			.fgc = TUI_COL_TBASE + 0,
+		},
+		{
+			.text = "Term-RED",
+			.fgc = TUI_COL_TBASE + 1,
+		},
+		{
+			.text = "Term-GREEN",
+			.fgc = TUI_COL_TBASE + 2,
+		},
+		{
+			.text = "Term-YELLOW",
+			.fgc = TUI_COL_TBASE + 3,
+		},
+		{
+			.text = "term-BLUE",
+			.fgc = TUI_COL_TBASE + 4,
+		},
+		{
+			.text = "Term-MAGENTA",
+			.fgc = TUI_COL_TBASE + 5,
+		},
+		{
+			.text = "Term-CYAN",
+			.fgc = TUI_COL_TBASE + 6,
+		},
+		{
+			.text = "Term-LIGHT-GREY",
+			.fgc = TUI_COL_TBASE + 7,
+		},
+		{
+			.text = "term-DARK-GREY",
+			.fgc = TUI_COL_TBASE + 8,
+		},
+		{
+			.text = "term-LIGHT-RED",
+			.fgc = TUI_COL_TBASE + 9,
+		},
+		{
+			.text = "term-LIGHT-GREEN",
+			.fgc = TUI_COL_TBASE + 10,
+		},
+		{
+			.text = "term-LIGHT-YELLOW",
+			.fgc = TUI_COL_TBASE + 11,
+		},
+		{
+			.text = "term-LIGHT-BLUE",
+			.fgc = TUI_COL_TBASE + 12,
+		},
+		{
+			.text = "term-LIGHT-MAGENTA",
+			.fgc = TUI_COL_TBASE + 13
+		},
+		{
+			.text = "term-LIGHT-CYAN",
+			.fgc = TUI_COL_TBASE + 14
+		},
+		{
+			.text = "term-LIGHT-WHITE",
+			.fgc = TUI_COL_TBASE + 15
+		},
+		{
+			.text = "term-LIGHT-FOREGROUND",
+			.fgc = TUI_COL_TBASE + 16
+		},
+		{
+			.text = "term-LIGHT-BACKGROUND",
+			.fgc = TUI_COL_TBASE + 17
+		},
+		};
+
+	for (size_t i = 0; i < sizeof(lines) / sizeof(lines[0]); i++){
+		arcan_tui_move_to(c, 0, i);
+		arcan_tui_get_color(c, lines[i].fgc, attr.fc);
+
+		if (lines[i].fgc >= TUI_COL_TBASE)
+			arcan_tui_get_color(c, TUI_COL_TBASE + 17, attr.bc);
+		else
+			arcan_tui_get_bgcolor(c, lines[i].bgc, attr.bc);
+
+		arcan_tui_writestr(c, lines[i].text, &attr);
+	}
+}
+
 static bool query_label(struct tui_context* ctx,
 	size_t ind, const char* country, const char* lang,
 	struct tui_labelent* dstlbl, void* t)
@@ -108,6 +269,12 @@ static void on_resize(struct tui_context* c,
 	size_t neww, size_t newh, size_t col, size_t row, void* t)
 {
 	trace("resize(%zu(%zu),%zu(%zu))", neww, col, newh, row);
+	redraw(c);
+}
+
+static void on_recolor(struct tui_context* c, void* t)
+{
+	redraw(c);
 }
 
 int main(int argc, char** argv)
@@ -131,7 +298,8 @@ int main(int argc, char** argv)
 		.apaste = on_apaste,
 		.tick = on_tick,
 		.utf8 = on_utf8_paste,
-		.resized = on_resize
+		.resized = on_resize,
+		.recolor = on_recolor
 	};
 
 /* even though we handle over management of con to TUI, we can
@@ -141,6 +309,55 @@ int main(int argc, char** argv)
 	if (!tui){
 		fprintf(stderr, "failed to setup TUI connection\n");
 		return EXIT_FAILURE;
+	}
+
+	const char* cnametbl[] = {
+		"reserved",
+		"reserved",
+		"primary",
+		"secondary",
+		"bg",
+		"text",
+		"cursor",
+		"altcursor",
+		"highlight",
+		"label",
+		"warning",
+		"error",
+		"alert",
+		"reference",
+		"inactive",
+		"ui",
+		"term-black",
+		"term-red",
+		"term-green",
+		"term-yellow",
+		"term-blue",
+		"term-magenta",
+		"term-cyan",
+		"term-light-grey",
+		"term-dark-grey",
+		"term-light-red",
+		"term-light-green",
+		"term-light-yellow",
+		"term-light-blue",
+		"term-light-magenta",
+		"term-light-cyan",
+		"term-light-white",
+		"term-light-fg",
+		"term-light-bg",
+	};
+
+/* dump the color tables */
+	for (size_t i = 2; i < TUI_COL_LIMIT; i++){
+		struct tui_screen_attr fg = {0};
+
+		arcan_tui_get_color(tui, i+2, fg.fc);
+		arcan_tui_get_bgcolor(tui, i+2, fg.bc);
+		printf("[%zu:%s] fg [%"PRIu8", %"PRIu8", %"PRIu8"] [%"PRIu8", %"PRIu8", %"PRIu8"]\n",
+			i,
+			i < sizeof(cnametbl)/sizeof(cnametbl[0]) ? cnametbl[i] : "undefined",
+			fg.fc[0], fg.fc[1], fg.fc[2], fg.bc[0], fg.bc[1], fg.bc[2]);
 	}
 
 /*

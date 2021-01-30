@@ -216,6 +216,8 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 /* check the background bit */
 		bool bg = (ev->ioevs[0].iv & 256) > 0;
 		int slot = ev->ioevs[0].iv & (~256);
+		tui->colors[1].bgset = true;
+		tui->colors[1].bg[0] = 255;
 
 /* commit action? */
 		if (!slot){

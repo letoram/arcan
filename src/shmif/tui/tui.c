@@ -505,6 +505,7 @@ void arcan_tui_get_bgcolor(
 	switch (group){
 /* IF a background has been explicitly set for the color groups,
  * enable it, otherwise fall back to the reference TUI_COL_BG */
+	case 1:
 	case TUI_COL_TEXT:
 	case TUI_COL_HIGHLIGHT:
 	case TUI_COL_LABEL:
@@ -574,6 +575,11 @@ void arcan_tui_set_color(
 {
 	if (group < TUI_COL_LIMIT && group >= TUI_COL_PRIMARY){
 		memcpy(tui->colors[group].rgb, rgb, 3);
+
+		if (group >= TUI_COL_TBASE){
+			tui->colors[group].bgset = true;
+			memcpy(tui->colors[group].bg, rgb, 3);
+		}
 	}
 }
 
@@ -816,7 +822,7 @@ struct tui_screen_attr arcan_tui_defcattr(struct tui_context* c, int group)
 	out = tsm_screen_get_def_attr(c->screen);
 	arcan_tui_get_color(c, group, out.fc);
 	arcan_tui_get_bgcolor(c, group, out.bc);
-	out.aflags |= TUI_ATTR_COLOR_INDEXED;
+	out.aflags &= ~TUI_ATTR_COLOR_INDEXED;
 
 	return out;
 }
