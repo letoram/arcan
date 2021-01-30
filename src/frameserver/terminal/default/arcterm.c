@@ -934,8 +934,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	uint8_t palette_copy[TUI_COL_LIMIT * 3];
 	bool custom_palette = copy_palette(term.screen, palette_copy);
 
-	arcan_tui_reset_flags(term.screen, TUI_ALTERNATE);
-	arcan_tui_refresh(term.screen);
 	term.args = args;
 
 /*
@@ -972,14 +970,26 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		tsm_vte_set_palette(term.vte, val);
 	}
 
-/* this will also indirectly set the corresponding TUI_COL_TBASE+IND entries
- * for the tui context */
+/* synch back custom colors */
+	if (custom_palette){
+		for (size_t i = 0; i < VTE_COLOR_NUM; i++){
+			tsm_vte_set_color(term.vte, i, &palette_copy[i * 3]);
+		}
+	}
+
+/* DEPRECATED - custom command-line color overrides */
 	int ind = 0;
 	uint8_t ccol[4];
 	while(arg_lookup(args, "ci", ind++, &val)){
 		if (4 == parse_color(val, ccol))
 			tsm_vte_set_color(term.vte, ccol[0], &ccol[1]);
 	}
+
+/* Immediately reset / draw so that we get a window before the shell wakes */
+	arcan_tui_reset_flags(term.screen, TUI_ALTERNATE);
+	arcan_tui_erase_screen(term.screen, NULL);
+	arcan_tui_refresh(term.screen);
+
 	tsm_set_strhandler(term.vte, str_callback, 256, NULL);
 
 	signal(SIGHUP, sighuph);
@@ -999,13 +1009,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 #ifdef __OpenBSD__
 	pledge(SHMIF_PLEDGE_PREFIX " tty", NULL);
 #endif
-
-/* synch back custom colors */
-	if (custom_palette){
-		for (size_t i = 0; i < VTE_COLOR_NUM; i++){
-			tsm_vte_set_color(term.vte, i, &palette_copy[i * 3]);
-		}
-	}
 
 /* re-fetch fg/bg from the vte so the palette can be considered, slated
  * to be removed when the builtin/ scripts cover the color definition bits */
