@@ -59,6 +59,7 @@ static struct {
  * to re-populate the contents on resize since the terminal state machine
  * itself won't be able to anymore - so save this here */
 	struct line** volatile _Atomic restore;
+	size_t restore_cxy[2];
 
 /* sockets to communicate between terminal thread and render thread */
 	int dirtyfd;
@@ -109,6 +110,8 @@ static void apply_restore_buffer()
 			arcan_tui_write(term.screen, c->ch, &c->attr);
 		}
 	}
+
+	arcan_tui_move_to(term.screen, term.restore_cxy[0], term.restore_cxy[1]);
 }
 
 static void create_restore_buffer()
@@ -121,6 +124,7 @@ static void create_restore_buffer()
 	struct line** buffer = malloc(bufsz);
 	memset(buffer, '\0', bufsz);
 
+	arcan_tui_cursorpos(term.screen, &term.restore_cxy[0], &term.restore_cxy[1]);
 	size_t max_row = 0;
 	size_t max_col = 0;
 
@@ -246,6 +250,7 @@ static void on_recolor(struct tui_context* tui, void* tag)
 {
 /* this will redraw the window and update the colors where possible */
 	create_restore_buffer();
+	arcan_tui_erase_screen(tui, NULL);
 	apply_restore_buffer();
 }
 
