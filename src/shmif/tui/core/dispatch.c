@@ -218,6 +218,7 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 		int slot = ev->ioevs[0].iv & (~256);
 		tui->colors[1].bgset = true;
 		tui->colors[1].bg[0] = 255;
+		tui->dirty = DIRTY_FULL;
 
 /* commit action? */
 		if (!slot){
@@ -229,7 +230,6 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 /* special alpha slot? */
 		if (1 == slot){
 			tui->alpha = ev->ioevs[1].fv;
-			tui->dirty = DIRTY_FULL;
 			return;
 		}
 
