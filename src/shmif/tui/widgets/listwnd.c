@@ -61,6 +61,7 @@ struct listwnd_meta {
 /* to restore the context */
 	struct tui_cbcfg old_handlers;
 	int old_flags;
+	size_t orig_w, orig_h;
 };
 
 /* context validation, perform on every exported symbol */
@@ -116,14 +117,17 @@ static void redraw(struct tui_context* T, struct listwnd_meta* M)
 		ofs = get_visible_offset(M);
 	}
 
-	struct tui_screen_attr reset_def = arcan_tui_defattr(T, NULL);
-	struct tui_screen_attr def = arcan_tui_defcattr(T, TUI_COL_LABEL);
-	struct tui_screen_attr sel = arcan_tui_defcattr(T, TUI_COL_HIGHLIGHT);
-	struct tui_screen_attr inact = arcan_tui_defcattr(T, TUI_COL_INACTIVE);
-	struct tui_screen_attr label = arcan_tui_defcattr(T, TUI_COL_TEXT);
+#define GET_COL_INDEX(X) {.aflags = TUI_ATTR_COLOR_INDEXED, .fc[0] = X, .bc[0] = X};
+
+	struct tui_screen_attr reset_def = GET_COL_INDEX(TUI_COL_TEXT);
+	struct tui_screen_attr def = GET_COL_INDEX(TUI_COL_LABEL);
+	struct tui_screen_attr sel = GET_COL_INDEX(TUI_COL_HIGHLIGHT);
+	sel.aflags |= TUI_ATTR_BOLD;
+	struct tui_screen_attr inact = GET_COL_INDEX(TUI_COL_INACTIVE);
+	struct tui_screen_attr label = GET_COL_INDEX(TUI_COL_LABEL);
 
 /* erase the screen as well as the entries can be fewer than the number of rows */
-	arcan_tui_defattr(T, &def);
+	arcan_tui_defattr(T, &reset_def);
 	arcan_tui_erase_screen(T, false);
 
 /* now we can just clear / draw the items on the page */
@@ -159,7 +163,7 @@ static void redraw(struct tui_context* T, struct listwnd_meta* M)
 /* clear the target line with the attribute (as it can contain bgc) */
 		size_t ofs = 0;
 		arcan_tui_defattr(T, cattr);
-		arcan_tui_erase_region(T, 0, c_row, cols, 1, false);
+		arcan_tui_erase_region(T, 0, c_row, cols, c_row, false);
 
 /* tactic: draw as much as possible from starting label offset,
  * recall (& 0xc0) != 0x80 for utf8- start */
@@ -487,6 +491,14 @@ void arcan_tui_listwnd_release(struct tui_context* T)
 		.magic = 0xdeadbeef
 	};
 
+	arcan_tui_wndhint(T, NULL,
+		(struct tui_constraints){
+			.min_cols = -1, .min_rows = -1,
+			.max_cols = M->orig_w, .max_rows = M->orig_h,
+			.anch_row = -1, .anch_col = -1
+		}
+	);
+
 	free(M);
 }
 
@@ -676,6 +688,26 @@ bool arcan_tui_listwnd_setup(
 
 /* and check for misuse */
 	assert(meta->old_handlers.resize != resize);
+
+/* rough utf8-len based on labels alone */
+	size_t max_w = 0;
+	for (size_t i = 0; i < n_entries; i++){
+		size_t j = 0, w = 0;
+		while (L[i].label[j]){
+			w += (L[i].label[j++] & 0xc0) != 0x80;
+		}
+		if (w > max_w)
+			max_w = w;
+	}
+
+	arcan_tui_dimensions(T, &meta->orig_h, &meta->orig_w);
+	arcan_tui_wndhint(T, NULL,
+		(struct tui_constraints){
+			.min_cols = -1, .min_rows = -1,
+			.max_cols = max_w + 4, .max_rows = n_entries + 1,
+			.anch_row = -1, .anch_col = -1
+		}
+	);
 
 /* requery label through new handles (removes existing ones) */
 	arcan_tui_reset_labels(T);

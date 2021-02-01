@@ -244,6 +244,9 @@ static bool on_subwindow(struct tui_context* T,
 {
 	bool res = false;
 
+	if (type == SEGID_DEBUG)
+		return false;
+
 /* find the pending command and handover_exec */
 	for (size_t i = 0; i < 4; i++){
 		if (cli_state.pending[i].id == id){
@@ -377,7 +380,12 @@ static void rebuild_prompt(struct tui_context* T, struct cli_state* S)
 	}
 
 /* placeholder prompt, plugin or expansion format goes here */
-	struct tui_screen_attr attr = arcan_tui_defcattr(T, TUI_COL_UI);
+	struct tui_screen_attr attr = {
+		.aflags = TUI_ATTR_COLOR_INDEXED,
+		.fc[0] = TUI_COL_UI,
+		.bc[0] = TUI_COL_UI
+	};
+
 	if (!S->prompt){
 		S->prompt = malloc(sizeof(struct cli_state) * 256);
 		if (!S->prompt)

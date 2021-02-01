@@ -2665,6 +2665,9 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 		case TARGET_COMMAND_GRAPHMODE:{
 			bool bg = (ev.tgt.ioevs[0].iv & 256) > 0;
 			int slot = ev.tgt.ioevs[0].iv & (~256);
+			def.colors[1].bg[0] = 255;
+			def.colors[1].bg_set = true;
+
 			if (slot >= 0 && slot < COUNT_OF(def.colors)){
 				uint8_t* dst = def.colors[slot].fg;
 				if (bg){

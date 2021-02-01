@@ -101,6 +101,10 @@ void arcan_tui_listwnd_dirty(struct tui_context*);
 /*
  * Return the context to its original state. This may invoke multiple
  * handlers, e.g. resize query_labels.
+ *
+ * The window dimensions, anchoring and constraints will be re-hinted
+ * to what they were previous to calling arcan_tui_listwnd_setup, but
+ * not any parent- reference.
  */
 void arcan_tui_listwnd_release(struct tui_context*);
 
