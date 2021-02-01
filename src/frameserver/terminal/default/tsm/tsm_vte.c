@@ -2747,16 +2747,18 @@ SHL_EXPORT bool tsm_vte_debug(struct tsm_vte* in,
 		.input_key = on_key,
 		.resized = on_resize
 	};
+
+/* already have one, let other implementations take a stab at it */
+	if (in->debug){
+		return false;
+	}
+
 	struct tui_context* newctx =
 		arcan_tui_setup(conn, c, &cbcfg, sizeof(cbcfg));
 
 	if (!newctx)
 		return false;
 
-/* already have one, let other implementations take a stab at it */
-	if (in->debug){
-		return false;
-	}
 
 /* no cursor, no scrollback, synch resize */
 	in->debug = newctx;
