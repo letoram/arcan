@@ -857,17 +857,10 @@ static int parse_color(const char* inv, uint8_t outv[4])
 
 static bool copy_palette(struct tui_context* tc, uint8_t* out)
 {
-	bool has_overrides = false;
 	uint8_t ref[3] = {0, 0, 0};
-
-/* we check if any of the legacy color slots have been set to a !0 val,
- * if so assume the display server side knows what it is doing */
 	for (size_t i = TUI_COL_TBASE; i < TUI_COL_LIMIT; i++){
 		size_t ofs = (i - TUI_COL_TBASE) * 3;
 		arcan_tui_get_color(tc, i, &out[ofs]);
-
-		if (!has_overrides)
-			has_overrides = memcmp(&out[ofs], ref, 3) != 0;
 	}
 
 /* special hack, the bg color for the reserved-1 slot will be set if we

@@ -74,6 +74,7 @@ struct bufferwnd_meta {
 /* tracked in hex-mode where there are two+pad cells per byte */
 	bool cursor_halfb;
 
+	size_t orig_w, orig_h;
 	struct tui_bufferwnd_opts opts;
 };
 
@@ -111,6 +112,15 @@ void arcan_tui_bufferwnd_release(struct tui_context* T)
 /* requery label through original handles */
 	arcan_tui_update_handlers(T, &meta->old_handlers, NULL, sizeof(struct tui_cbcfg));
 	arcan_tui_reset_labels(T);
+
+/* restore the wnd-size we had before */
+	arcan_tui_wndhint(T, NULL,
+		(struct tui_constraints){
+			.min_cols = -1, .min_rows = -1,
+			.max_cols = meta->orig_w, .max_rows = meta->orig_h,
+			.anch_row = -1, .anch_col = -1
+		}
+	);
 
 /* LTO could possibly do something about this, but basically just safeguard
  * on a safeguard (UAF detection) for the bufferwnd_meta after freeing it */
@@ -213,8 +223,17 @@ static void draw_footer(struct tui_context* T, struct bufferwnd_meta* M,
 
 /* define the UI region and clear */
 	struct tui_screen_attr reset_def = arcan_tui_defattr(T, NULL);
-	struct tui_screen_attr def = arcan_tui_defcattr(T, TUI_COL_LABEL);
-	struct tui_screen_attr def_text = arcan_tui_defcattr(T, TUI_COL_TEXT);
+	struct tui_screen_attr def = {
+		.aflags = TUI_ATTR_COLOR_INDEXED,
+		.fc = TUI_COL_UI,
+		.bc = TUI_COL_UI
+	};
+
+	struct tui_screen_attr def_text = {
+		.aflags = TUI_ATTR_COLOR_INDEXED,
+		.fc = TUI_COL_TEXT,
+		.bc = TUI_COL_TEXT
+	};
 
 /* no erase with attr */
 	size_t c_row = *rows - n_reserved;
@@ -578,7 +597,9 @@ static void redraw_text(struct tui_context* T, struct bufferwnd_meta* M,
 static void monochrome(struct tui_context* T, void* tag,
 	uint8_t bytev, size_t pos, uint32_t* dch, struct tui_screen_attr* attr)
 {
-	arcan_tui_get_color(T, TUI_COL_TEXT, attr->fc);
+	attr->aflags |= TUI_ATTR_COLOR_INDEXED;
+	attr->fc[0] = TUI_COL_TEXT;
+	attr->bc[0] = TUI_COL_TEXT;
 }
 
 #include "hex_colors.h"
@@ -609,6 +630,8 @@ static void color_lut(struct tui_context* T, void* tag,
 	uint8_t bytev, size_t pos, uint32_t* dch, struct tui_screen_attr* attr)
 {
 	memcpy(attr->fc, &color_tbl[bytev], 3);
+	attr->aflags &= ~TUI_ATTR_COLOR_INDEXED;
+	arcan_tui_get_bgcolor(T, TUI_COL_TEXT, attr->bc);
 }
 
 _Thread_local static struct
@@ -739,6 +762,12 @@ static void redraw_bufferwnd(struct tui_context* T, struct bufferwnd_meta* M)
 
 static void on_resized(struct tui_context* T,
 	size_t neww, size_t newh, size_t col, size_t row, void* t)
+{
+	struct bufferwnd_meta* M = t;
+	redraw_bufferwnd(T, M);
+}
+
+static void on_recolor(struct tui_context* T, void* t)
 {
 	struct bufferwnd_meta* M = t;
 	redraw_bufferwnd(T, M);
@@ -1456,6 +1485,18 @@ void arcan_tui_bufferwnd_setup(struct tui_context* T,
 		.exit_status = 1
 	};
 
+	arcan_tui_dimensions(T, &meta->orig_h, &meta->orig_w);
+
+	if (meta->orig_w < 80 || meta->orig_h < 24){
+		arcan_tui_wndhint(T, NULL,
+			(struct tui_constraints){
+				.min_cols = -1, .min_rows = -1,
+				.max_cols = 80, .max_rows = 24,
+				.anch_row = -1, .anch_col = -1
+			}
+		);
+	}
+
 	if (opts){
 		meta->opts = *opts;
 	}
@@ -1468,7 +1509,8 @@ void arcan_tui_bufferwnd_setup(struct tui_context* T,
 		.input_key = on_key_input,
 		.input_mouse_button = mouse_button,
 		.input_utf8 = on_u8,
-		.subwindow = on_subwindow
+		.subwindow = on_subwindow,
+		.recolor = on_recolor
 	};
 
 /* save old flags and just set clean + ALTERNATE */

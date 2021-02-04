@@ -769,6 +769,8 @@ bool arcan_tui_update_handlers(struct tui_context*,
  * even if that means cropping. Handover windows are special in the sense that
  * after forwarded, they can't be controlled other than having its requested
  * anchor being 'scrolled' with the scrollhint.
+ *
+ * Negative values in the constraints means retaining the current values.
  */
 void arcan_tui_wndhint(struct tui_context* wnd,
 	struct tui_context* par, struct tui_constraints cons);

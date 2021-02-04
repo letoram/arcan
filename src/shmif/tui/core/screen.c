@@ -101,7 +101,7 @@ struct tui_cell* tcell, uint8_t* outb, uint8_t has_cursor)
  * than the actual values */
 	if (tcell->attr.aflags & TUI_ATTR_COLOR_INDEXED){
 		fc = tui->colors[fc[0] % TUI_COL_LIMIT].rgb;
-		bc = tui->colors[bc[0] % TUI_COL_LIMIT].rgb;
+		bc = tui->colors[bc[0] % TUI_COL_LIMIT].bg;
 	}
 
 /* inverse isn't an attribute on the packing level, we simply modify the colors

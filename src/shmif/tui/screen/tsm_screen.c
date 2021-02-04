@@ -513,9 +513,9 @@ int tsm_screen_new(struct tsm_screen **out, tsm_log_t log, void *log_data)
 	con->ref = 1;
 	con->age_cnt = 1;
 	con->age = con->age_cnt;
-	con->def_attr.fr = 255;
-	con->def_attr.fg = 255;
-	con->def_attr.fb = 255;
+	con->def_attr.aflags = TUI_ATTR_COLOR_INDEXED;
+	con->def_attr.fr = TUI_COL_TEXT;
+	con->def_attr.br = TUI_COL_TEXT;
 
 	ret = tsm_symbol_table_new(&con->sym_table);
 	if (ret)

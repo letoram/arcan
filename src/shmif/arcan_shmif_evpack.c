@@ -310,8 +310,8 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 		break;
 		case TARGET_COMMAND_GRAPHMODE:
 			snprintf(work, dsz,"TGT:GRAPHMODE(group: %d, value: %.0f, %.0f, %.0f)",
-				ev.tgt.ioevs[0].iv, ev.tgt.ioevs[1].fv, ev.tgt.ioevs[2].fv,
-				ev.tgt.ioevs[3].iv, ev.tgt.ioevs[4].fv);
+				ev.tgt.ioevs[0].iv,
+				ev.tgt.ioevs[1].fv, ev.tgt.ioevs[2].fv, ev.tgt.ioevs[3].fv);
 		break;
 		case TARGET_COMMAND_MESSAGE:
 			snprintf(work, dsz,"TGT:MESSAGE(%s)", ev.tgt.message);

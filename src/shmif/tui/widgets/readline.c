@@ -100,7 +100,11 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 
 /* standard prompt attribute */
 /* then error alert if we have a bad offset */
-	struct tui_screen_attr alert = arcan_tui_defcattr(T, TUI_COL_WARNING);
+	struct tui_screen_attr alert = {
+		.aflags = TUI_ATTR_COLOR_INDEXED,
+		.fc[0] = TUI_COL_WARNING,
+		.bc[0] = TUI_COL_WARNING
+	};
 
 /* reset our reserved range to the default attribute as that might have
  * a different background style in order to indicate 'input' field */
@@ -164,7 +168,7 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 
 		pos += step;
 		arcan_tui_write(T, ch,
-			M->broken_offset != -1 && pos >= M->broken_offset ? &alert : NULL);
+			M->broken_offset != -1 && pos >= M->broken_offset ? &alert : &alert);
 	}
 
 	if (cx)
