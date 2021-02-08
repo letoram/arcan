@@ -35,17 +35,17 @@ void mult_matrix_vecf(const float* ina,
 	assert((uintptr_t)dst % 16 == 0);
 	assert((uintptr_t)ina % 16 == 0);
 	assert((uintptr_t)inv % 16 == 0);
-	__m128 r0 = _mm_loadu_ps(&ina[0]);
-	__m128 r1 = _mm_loadu_ps(&ina[4]);
-	__m128 r2 = _mm_loadu_ps(&ina[8]);
-	__m128 r3 = _mm_loadu_ps(&ina[12]);
-	const __m128 ir = _mm_loadu_ps(inv);
-#else
 	__m128 r0 = _mm_load_ps(&ina[0]);
 	__m128 r1 = _mm_load_ps(&ina[4]);
 	__m128 r2 = _mm_load_ps(&ina[8]);
 	__m128 r3 = _mm_load_ps(&ina[12]);
 	const __m128 ir = _mm_load_ps(inv);
+#else
+	__m128 r0 = _mm_loadu_ps(&ina[0]);
+	__m128 r1 = _mm_loadu_ps(&ina[4]);
+	__m128 r2 = _mm_loadu_ps(&ina[8]);
+	__m128 r3 = _mm_loadu_ps(&ina[12]);
+	const __m128 ir = _mm_loadu_ps(inv);
 #endif
 /* column major curses .. */
 	_MM_TRANSPOSE4_PS(r0, r1, r2, r3);
@@ -60,9 +60,9 @@ void mult_matrix_vecf(const float* ina,
 	__m128 rs = _mm_hadd_ps(a1, a2);
 
 #ifdef ARCAN_MATH_ALIGNED_SIMD
-	_mm_storeu_ps(dst, rs);
-#else
 	_mm_store_ps(dst, rs);
+#else
+	_mm_storeu_ps(dst, rs);
 #endif
 }
 
@@ -74,15 +74,15 @@ void multiply_matrix(float* restrict dst,
 	assert(((uintptr_t)ina % 16) == 0);
 	assert(((uintptr_t)inb % 16) == 0);
 
-	const __m128 a = _mm_loadu_ps(&ina[0]);
-	const __m128 b = _mm_loadu_ps(&ina[4]);
-	const __m128 c = _mm_loadu_ps(&ina[8]);
-	const __m128 d = _mm_loadu_ps(&ina[12]);
-#else
 	const __m128 a = _mm_load_ps(&ina[0]);
 	const __m128 b = _mm_load_ps(&ina[4]);
 	const __m128 c = _mm_load_ps(&ina[8]);
 	const __m128 d = _mm_load_ps(&ina[12]);
+#else
+	const __m128 a = _mm_loadu_ps(&ina[0]);
+	const __m128 b = _mm_loadu_ps(&ina[4]);
+	const __m128 c = _mm_loadu_ps(&ina[8]);
+	const __m128 d = _mm_loadu_ps(&ina[12]);
 #endif
 
  	__m128 t1, t2;
