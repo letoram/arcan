@@ -40,7 +40,7 @@ failure:
 	errno = EIO;
 	return -1;
 }
-#elif __FreeBSD__
+#elif defined(__FreeBSD__) && __FreeBSD__ < 12
 #include <sys/sysctl.h>
 extern int __sysctl(int*, u_int, void*, size_t*, void*, size_t);
 static int getentropy(void* buf, size_t buflen)
@@ -66,7 +66,7 @@ out:
 	return 0;
 }
 
-#elif __OpenBSD__
+#elif defined(__FreeBSD__) || defined(__OpenBSD__)
 #include <unistd.h>
 #else
 #include <sys/random.h>
