@@ -243,6 +243,7 @@ static bool on_subwindow(struct tui_context* T,
 	arcan_tui_conn* conn, uint32_t id, uint8_t type, void* c)
 {
 	bool res = false;
+	struct cli_state* S = c;
 
 	if (type == SEGID_DEBUG)
 		return false;
@@ -270,6 +271,13 @@ static bool on_subwindow(struct tui_context* T,
  * stdin/stdout/stderr */
 			setup_cmd_mode(cmd, &bin, &argv, &env, &flags);
 			pid_t pid = arcan_tui_handover(T, conn, NULL, bin, argv, env, flags);
+
+			if (S->in_debug){
+				char debugspawn[64];
+				snprintf(debugspawn, 64, "%zu: %s", (size_t) pid, bin);
+				arcan_tui_message(T, TUI_MESSAGE_FAILURE, debugspawn);
+			}
+
 			free_cmd(cmd);
 			res = true;
 			break;
@@ -427,6 +435,7 @@ static void rebuild_prompt(struct tui_context* T, struct cli_state* S)
 	}
 	S->prompt[i].ch = '\0';
 
+	arcan_tui_ident(T, pwd);
 	arcan_tui_set_prompt(T, S->prompt);
 }
 

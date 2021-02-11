@@ -1,6 +1,6 @@
 /*
  * Arcan Text-Oriented User Interface Library, Extensions
- * Copyright: 2019-2020, Bjorn Stahl
+ * Copyright: 2019-2021, Bjorn Stahl
  * License: 3-clause BSD
  * Description: Implementation of a readline/linenoise replacement.
  * Missing:
@@ -17,8 +17,6 @@
  *
  *  Undo- buffer
  *   - (just copy on modification into a window of n buffers, undo/redo pick)
- *
- *  Yank to clipboard
  *
  *  Accessibility subwindow
  *
@@ -193,7 +191,7 @@ static bool validate_context(struct tui_context* T, struct readline_meta** M)
 
 static void step_cursor_left(struct tui_context* T, struct readline_meta* M)
 {
-	while(M->cursor && (M->work[--M->cursor] & 0xc0) == 0x80){}
+	while(M->cursor && M->work && (M->work[--M->cursor] & 0xc0) == 0x80){}
 }
 
 static void step_cursor_right(struct tui_context* T, struct readline_meta* M)
@@ -261,6 +259,9 @@ static void delete_last_word(struct tui_context* T, struct readline_meta* M)
 
 static void cut_to_eol(struct tui_context* T, struct readline_meta* M)
 {
+	if (!M->work)
+		return;
+
 	arcan_tui_copy(T, &M->work[M->cursor]);
 
 	M->work[M->cursor] = '\0';
@@ -278,6 +279,9 @@ static void cut_to_eol(struct tui_context* T, struct readline_meta* M)
 
 static void cut_to_sol(struct tui_context* T, struct readline_meta* M)
 {
+	if (!M->work)
+		return;
+
 	memmove(M->work, &M->work[M->cursor], M->work_ofs - M->cursor);
 	M->work[M->cursor] = '\0';
 	arcan_tui_copy(T, M->work);

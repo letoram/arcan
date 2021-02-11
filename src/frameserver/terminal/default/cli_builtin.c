@@ -201,6 +201,22 @@ static struct ext_cmd* cmd_exit(
 	return NULL;
 }
 
+/* this should really be an option that sets up a debug subsegment that
+ * chainloads the real binary with gdb attached like the preload tool we have */
+static struct ext_cmd* cmd_debugstall(
+	struct cli_state* state, char** argv, ssize_t* ofs, char** err)
+{
+	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
+		unsetenv("ARCAN_FRAMESERVER_DEBUGSTALL");
+		state->in_debug = false;
+	}
+	else{
+		setenv("ARCAN_FRAMESERVER_DEBUGSTALL", "10", 1);
+		state->in_debug = false;
+	}
+	return NULL;
+}
+
 /*
  * these all lack the completion interface, underlying UI path still
  * in progress
@@ -222,6 +238,10 @@ struct cli_command commands[] = {
 		.name = "exit",
 		.exec = cmd_exit
 	},
+	{
+		.name = "debugstall",
+		.exec = cmd_debugstall
+	}
 };
 
 struct cli_command* cli_get_builtin(const char* cmd)

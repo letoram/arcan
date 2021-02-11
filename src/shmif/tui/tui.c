@@ -1250,8 +1250,12 @@ void arcan_tui_message(
 
 	if (target == TUI_MESSAGE_PROMPT){
 	}
+/* should also have failure here */
 	else if (target == TUI_MESSAGE_ALERT){
 		outev.ext.kind = EVENT_EXTERNAL_ALERT;
+	}
+	else if (target == TUI_MESSAGE_FAILURE){
+		outev.ext.kind = EVENT_EXTERNAL_FAILURE;
 	}
 /* reserved first > for prompt */
 	else if (target == TUI_MESSAGE_NOTIFICATION){
