@@ -46,9 +46,9 @@
 --
 -- Possible statustbl.kind values: "preroll", "resized", "ident",
 -- "coreopt", "message", "failure", "framestatus", "streaminfo",
--- "streamstatus", "cursor_input", "key_input", "segment_request",
--- "state_size", "viewport", "alert", "content_state", "resource_status",
--- "registered", "clock", "cursor", "bchunkstate", "proto_update", "unknown"
+-- "streamstatus", "segment_request", "state_size",
+-- "viewport", "alert", "content_state", "registered", "clock", "cursor",
+-- "bchunkstate", "proto_update", "mask_input", "ramp_update"
 --
 -- @tblent: "preroll" {string:segkind, aid:source_audio} is an initial state
 -- where the resources for the target have been reserved, and it is possible
@@ -78,7 +78,7 @@
 -- died, no new data or events will be received.
 --
 -- @tblent: "streaminfo" {string:lang, int:streamid, string:type} - for decode/
--- multimedia purposes, the source has multiplle selectable streams. type can
+-- multimedia purposes, the source has multiple selectable streams. type can
 -- be one of 'audio', 'video', 'text', 'overlay'.
 --
 -- @tblent: "coreopt" {string:argument, int:slot, string:type} - the target
@@ -207,6 +207,15 @@
 -- can become external in origin, proxied connections can flip between being
 -- have network access or not, and any connection can switch to being in a
 -- sandboxed context.
+--
+-- @tblent: "mask_update" - client has changed the set of inputs that it accepts.
+-- This can be queried through ref:input_capabilities but the current active mask
+-- will always be applied to ref:target_input calls.
+--
+-- @tblent: "state_size" - client indicates that it is capable of storing and
+-- restoring state snapshots, along with an estimate of the size of the state
+-- (in bytes) as well as internal type identifier in order to cross communicate
+-- with instances of itself (using ref:bond_target and similar functions).
 --
 -- @related: target_accept, target_alloc
 -- @group: targetcontrol
