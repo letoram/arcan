@@ -5,11 +5,15 @@
  * Require a full scanout cycle before marking crash recover as over
 
 ## Frameservers
+ * ARCAN_FRAMESERVER_DEBUGSTALL is now performed after _open and the pid is sent as 'ident'
  * Terminal: added autofit argument to keep_alive
  * Terminal: save and rebuild 'dead' terminal window on resize
  * Terminal: 'pipe' mode sidesteps pty
  * Terminal: live-redefinition of colours, overlay server-side palette on terminal one
  * Terminal: exec-mode sets ident to command
+ * Terminal: (cli) ident is updated with path and execution mode
+ * Terminal: (cli) forward error messages on handover allocation rejection
+ * Terminal: (cli) add 'debugstall' command to add time for debug- attach
 
 ## Tui
  * Lowered the constraint for wndhint to also work for main window
@@ -17,6 +21,7 @@
  * Recolor/runtime palette remapping through target_graphmode
  * Extended colour slots to cover a 16- legacy group
  * Allow indexed cell attribute flag (fg.r, bg.r becomes colour slot index + lookup)
+ * add FAILURE message notification type
 
 ## Lua
  * Whitelist os.date

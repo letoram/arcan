@@ -168,7 +168,9 @@ typedef int (*mode_fun)(struct arcan_shmif_cont*, struct arg_arr*);
 int launch_mode(const char* modestr,
 	mode_fun fptr, enum ARCAN_SEGID id, enum ARCAN_FLAGS flags, char* altarg)
 {
-	if (!getenv("ARCAN_FRAMESERVER_DEBUGSTALL"))
+	char* debug = getenv("ARCAN_FRAMESERVER_DEBUGSTALL");
+
+	if (!debug)
 		toggle_logdev(modestr);
 
 	struct arg_arr* arg = NULL;
@@ -177,6 +179,37 @@ int launch_mode(const char* modestr,
 
 	if (!arg && altarg)
 		arg = arg_unpack(altarg);
+
+	if (debug){
+		arcan_shmif_signal(&con, SHMIF_SIGVID);
+		int sleeplen = strtoul(debug, NULL, 10);
+
+		struct arcan_event ev = {
+			.ext.kind = ARCAN_EVENT(IDENT)
+		};
+		arcan_shmif_enqueue(&con, &ev);
+		snprintf(
+			(char*)ev.ext.message.data,
+			sizeof(ev.ext.message.data), "debugstall:%d:%zu", sleeplen, (size_t)getpid()
+		);
+
+		if (sleeplen <= 0){
+			fprintf(stdout, "\x1b[1mARCAN_FRAMESERVER_DEBUGSTALL,\x1b[0m "
+				"spin-waiting for debugger.\n \tAttach to pid: "
+				"\x1b[32m%d\x1b[39m\x1b[0m and break out of loop"
+				" (set loop = 0)\n", getpid()
+			);
+
+			volatile int loop = 1;
+			while(loop == 1);
+		}
+		else{
+			fprintf(stdout,"\x1b[1mARCAN_FRAMESERVER_DEBUGSTALL set, waiting %d s.\n"
+				"\tfor debugging/tracing, attach to pid: \x1b[32m%d\x1b[39m\x1b[0m\n",
+				sleeplen, (int) getpid());
+			sleep(sleeplen);
+		}
+	}
 
 	return fptr(con.addr ? &con : NULL, arg);
 }
@@ -217,31 +250,6 @@ int main(int argc, char** argv)
 		}
 	}
 #endif
-
-/*
- * set this env whenever you want to step through the
- * frameserver as launched from the parent
- */
-	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
-		int sleeplen = strtoul(getenv("ARCAN_FRAMESERVER_DEBUGSTALL"), NULL, 10);
-
-		if (sleeplen <= 0){
-			fprintf(stdout, "\x1b[1mARCAN_FRAMESERVER_DEBUGSTALL,\x1b[0m "
-				"spin-waiting for debugger.\n \tAttach to pid: "
-				"\x1b[32m%d\x1b[39m\x1b[0m and break out of loop"
-				" (set loop = 0)\n", getpid()
-			);
-
-			volatile int loop = 1;
-			while(loop == 1);
-		}
-		else{
-			fprintf(stdout,"\x1b[1mARCAN_FRAMESERVER_DEBUGSTALL set, waiting %d s.\n"
-				"\tfor debugging/tracing, attach to pid: \x1b[32m%d\x1b[39m\x1b[0m\n",
-				sleeplen, (int) getpid());
-			sleep(sleeplen);
-		}
-	}
 
 /*
  * These are enabled based on build-system toggles,

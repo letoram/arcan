@@ -34,6 +34,7 @@ struct cli_state {
 	uint32_t id_counter;
 	struct ext_cmd pending[4];
 	bool blocked;
+	bool in_debug;
 	struct tui_cell* prompt;
 	size_t prompt_sz;
 };

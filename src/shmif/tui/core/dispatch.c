@@ -349,6 +349,8 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 /* if the highest bit is set in the request, it's an external request
  * and it should be forwarded to the event handler */
 	case TARGET_COMMAND_REQFAIL:
+		LOG("segid-request (%d) failed:\n", ev->ioevs[0].iv);
+
 		if ( ((uint32_t)ev->ioevs[0].iv & (1 << 31)) ){
 			if (tui->handlers.subwindow){
 				tui->handlers.subwindow(tui, NULL,
@@ -369,8 +371,10 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 			ev->ioevs[2].iv != SEGID_ACCESSIBILITY &&
 			ev->ioevs[2].iv != SEGID_CLIPBOARD_PASTE &&
 			ev->ioevs[2].iv != SEGID_CLIPBOARD
-		)
+		){
+			LOG("ignoring NEWSEGMENT of unsupported type: %d\n", ev->ioevs[2].iv);
 			return;
+		}
 
 		if (ev->ioevs[2].iv == SEGID_CLIPBOARD_PASTE){
 			if (!tui->clip_in.vidp){
@@ -399,8 +403,10 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 				arcan_shmif_acquire(&tui->acon, NULL, ev->ioevs[2].iv, 0);
 			if (acon.addr)
 				arcan_tui_copywnd(tui, acon);
-			else
+			else{
+				LOG("request-id conflict: got copy-window without copy pending\n");
 				drop_pending(&tui->pending_copy_window);
+			}
 		}
 /*
  * new caller requested segment, even though acon is auto- scope allocated
@@ -421,6 +427,7 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
  * setting up the subsegment or the shmif_handover_exec implementation will
  * fail */
 				if (ev->ioevs[2].iv == SEGID_HANDOVER){
+					LOG("handover-segment received, sending to consumer\n");
 					tui->got_pending = true;
 					tui->pending_wnd = *aev;
 					tui->handlers.subwindow(
@@ -433,8 +440,10 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 					arcan_shmif_acquire(&tui->acon, NULL, ev->ioevs[2].iv, 0);
 
 /* defimpl will clean up, so no leak here */
-				if (!tui->handlers.subwindow(tui, &acon, id, kind, tui->handlers.tag))
+				if (!tui->handlers.subwindow(tui, &acon, id, kind, tui->handlers.tag)){
+					LOG("client ignored subwindow, applying default-implementation\n");
 					arcan_shmif_defimpl(&acon, ev->ioevs[2].iv, tui);
+				}
 			}
 		}
 	break;

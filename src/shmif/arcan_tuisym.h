@@ -77,7 +77,8 @@ enum tui_wndhint_flags {
 enum tui_message_slots {
 	TUI_MESSAGE_PROMPT = 0,
 	TUI_MESSAGE_ALERT = 1,
-	TUI_MESSAGE_NOTIFICATION = 2
+	TUI_MESSAGE_NOTIFICATION = 2,
+	TUI_MESSAGE_FAILURE = 3
 };
 
 enum tui_progress_type {

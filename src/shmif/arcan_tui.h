@@ -1055,6 +1055,9 @@ bool arcan_tui_hasglyph(struct tui_context*, uint32_t);
  * TUI_MESSAGE_NOTIFICATION:
  *  - signal the occurence of some status event that should grab the
  *    user's attention, but is not as severe as ALERT
+ * TUI_MESSAGE_FAILURE:
+ *  - signal some asynchronous error message that does not fit within the
+ *    current UI language
  */
 void arcan_tui_message(struct tui_context*, int target, const char* msg);
 
