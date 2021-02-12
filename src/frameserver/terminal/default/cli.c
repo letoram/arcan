@@ -157,8 +157,8 @@ static char* prepend_str(const char* a, const char* b)
 /* bin, argv and env are aliases into offsets of the contents of cmd, if any
  * dynamic allocation occurs, replace in [cmd] as they will be freed after the
  * exec_handover is done */
-static void setup_cmd_mode(struct ext_cmd* cmd,
-	char** bin, char*** argv, char*** env, int* flags)
+static void setup_cmd_mode(
+	struct ext_cmd* cmd, char** bin, char*** argv, char*** env, int* flags)
 {
 	*bin = cmd->argv[0];
 	*env = cmd->env;
@@ -188,15 +188,17 @@ static void setup_cmd_mode(struct ext_cmd* cmd,
 		*argv = new_arg;
 
 /* attach them to our env */
-		char** new_env = duplicate_strtbl(cmd->env, 3, 0);
+		char** new_env = duplicate_strtbl(cmd->env, 5, 0);
 		new_env[0] = arg_exec;
 		new_env[1] = arg_env;
 
 /* question if we should build the entire thing from the arguments that we
  * ourselves got (sans -cli) or lest let a few of them through for color
  * overrides and the likes */
-		asprintf(&new_env[2],
-			"ARCAN_ARG=keep_alive:autofit:bgalpha=%"PRIu8, cli_state.bgalpha);
+		asprintf(&new_env[2], "ARCAN_ARG=keep_alive:autofit");
+		if (cli_state.in_debug)
+			new_env[3] = strdup(cli_state.in_debug);
+
 		free_strtbl(cmd->env);
 		cmd->env = new_env;
 		*env = cmd->env;
@@ -243,7 +245,6 @@ static bool on_subwindow(struct tui_context* T,
 	arcan_tui_conn* conn, uint32_t id, uint8_t type, void* c)
 {
 	bool res = false;
-	struct cli_state* S = c;
 
 	if (type == SEGID_DEBUG)
 		return false;
@@ -272,7 +273,7 @@ static bool on_subwindow(struct tui_context* T,
 			setup_cmd_mode(cmd, &bin, &argv, &env, &flags);
 			pid_t pid = arcan_tui_handover(T, conn, NULL, bin, argv, env, flags);
 
-			if (S->in_debug){
+			if (cli_state.in_debug){
 				char debugspawn[64];
 				snprintf(debugspawn, 64, "%zu: %s", (size_t) pid, bin);
 				arcan_tui_message(T, TUI_MESSAGE_FAILURE, debugspawn);

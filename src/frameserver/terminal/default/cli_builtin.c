@@ -206,14 +206,10 @@ static struct ext_cmd* cmd_exit(
 static struct ext_cmd* cmd_debugstall(
 	struct cli_state* state, char** argv, ssize_t* ofs, char** err)
 {
-	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
-		unsetenv("ARCAN_FRAMESERVER_DEBUGSTALL");
-		state->in_debug = false;
-	}
-	else{
-		setenv("ARCAN_FRAMESERVER_DEBUGSTALL", "10", 1);
-		state->in_debug = false;
-	}
+	if (state->in_debug)
+		return state->in_debug = NULL, NULL;
+
+	state->in_debug = strdup("ARCAN_FRAMESERVER_DEBUGSTALL=10");
 	return NULL;
 }
 
