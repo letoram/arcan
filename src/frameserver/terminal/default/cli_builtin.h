@@ -17,6 +17,7 @@ struct ext_cmd {
 	char** env;
 	char* wd;
 	enum launch_mode mode;
+	bool stall;
 	void(*closure)(uintptr_t);
 	uintptr_t closure_tag;
 };
@@ -34,7 +35,7 @@ struct cli_state {
 	uint32_t id_counter;
 	struct ext_cmd pending[4];
 	bool blocked;
-	bool in_debug;
+	char* in_debug;
 	struct tui_cell* prompt;
 	size_t prompt_sz;
 };
