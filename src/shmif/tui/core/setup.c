@@ -95,10 +95,13 @@ void arcan_tui_destroy(struct tui_context* tui, const char* message)
 	if (tui->clip_out.vidp)
 		arcan_shmif_drop(&tui->clip_out);
 
-	if (message)
-		arcan_shmif_last_words(&tui->acon, message);
+	if (tui->acon.addr){
+		if (message)
+			arcan_shmif_last_words(&tui->acon, message);
 
-	arcan_shmif_drop(&tui->acon);
+		arcan_shmif_drop(&tui->acon);
+	}
+
 	tsm_utf8_mach_free(tui->ucsconv);
 
 	free(tui->base);
@@ -189,12 +192,21 @@ static bool late_bind(
  * context store here and move it to our tui context
  */
 	bool managed = false;
+
+/* unbind from current? */
+	if (!con){
+		res->acon = (struct arcan_shmif_cont){0};
+		return true;
+	}
+
+/* or attach new */
 	res->acon = *con;
 	if( (uintptr_t)con->user == 0xdeadbeef){
 		if (managed)
 			free(con);
 		managed = true;
 	}
+
 
 /*
  * only in a managed context can we retrieve the initial state truthfully, as
@@ -208,7 +220,7 @@ static bool late_bind(
 		LOG("initial structure size mismatch, out-of-synch header/shmif lib\n");
 		arcan_shmif_drop(&res->acon);
 		free(res);
-		return NULL;
+		return false;
 	}
 
 /* this could have been set already by deriving from a parent */
