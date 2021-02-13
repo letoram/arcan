@@ -383,7 +383,6 @@ static bool check_window_support(xcb_window_t wnd, xcb_atom_t atom)
 		}
 	}
 
-	xcb_icccm_get_wm_protocols_reply_wipe(&protocols);
 	return false;
 }
 
