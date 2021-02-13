@@ -615,6 +615,13 @@ struct tui_context* arcan_tui_setup(
  * In those cases, setup the new context already when making the subwindow
  * request, then in the event handler, should the request be approved - issue a
  * bind on the context.
+ *
+ * This can also be used to unbind a connection (set it to null) from an
+ * existing tui context. This will cause _destroy to leave the connection
+ * intact.
+ *
+ * ONLY _bind and _destroy are defined for a context without a connection bound
+ * to it.
  */
 bool arcan_tui_bind(
 	arcan_tui_conn* con, struct tui_context* orphan);
