@@ -176,9 +176,11 @@ static struct anet_cl_connection forward_shmifsrv_cl(
 			break;
 
 		if (!anet.state){
-			fputs(anet.errmsg, stderr);
-			free(anet.errmsg);
-			anet.errmsg = NULL;
+			if (anet.errmsg){
+				fputs(anet.errmsg, stderr);
+				free(anet.errmsg);
+				anet.errmsg = NULL;
+			}
 
 			if (timesleep < 10)
 				timesleep++;

@@ -93,7 +93,6 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 		return res;
 	}
 
-/* missing: lookup keyid and (unless host/port provided) the hostlist */
 	struct addrinfo hints = {
 		.ai_family = AF_UNSPEC,
 		.ai_socktype = SOCK_STREAM
@@ -133,6 +132,11 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 			if (nw == -1){
 				if (errno == EAGAIN || errno == EINTR)
 					continue;
+
+				char buf[64];
+				snprintf(buf, sizeof(buf), "write(%d) during authentication", errno);
+				res.errmsg = strdup(buf);
+
 				goto fail;
 			}
 			else {
@@ -146,8 +150,13 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 		if (nr > 0){
 			a12_unpack(res.state, (uint8_t*)inbuf, nr, NULL, NULL);
 		}
-		else if (nr == 0 || (errno != EAGAIN && errno != EINTR))
+		else if (nr == 0 || (errno != EAGAIN && errno != EINTR)){
+			char buf[64];
+			snprintf(buf, sizeof(buf), "read(%d) during authentication", errno);
+			res.errmsg = strdup(buf);
+
 			goto fail;
+		}
 
 	} while (a12_poll(res.state) > 0 && !a12_auth_state(res.state));
 
