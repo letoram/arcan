@@ -370,6 +370,13 @@ void tsm_vte_update_debug(struct tsm_vte* vte)
 		return;
 	}
 
+	struct tui_screen_attr tattr = {
+		.fg = TUI_COL_TBASE + VTE_COLOR_FOREGROUND,
+		.bg = TUI_COL_TBASE + VTE_COLOR_BACKGROUND,
+		.aflags = TUI_ATTR_COLOR_INDEXED
+	};
+	arcan_tui_defattr(vte->debug, &vte->def_attr);
+
 	arcan_tui_erase_screen(vte->debug, false);
 	size_t rows = 0, cols = 0, crow = 0;
 	arcan_tui_dimensions(vte->debug, &rows, &cols);
@@ -457,6 +464,19 @@ void tsm_vte_update_debug(struct tsm_vte* vte)
  * autowrap or apply their own wrapping rules */
 	msg = arcan_tui_statedescr(vte->con);
 	crow = wrap_write(vte, crow, msg);
+
+/* draw the current colorscheme */
+	arcan_tui_move_to(vte->debug, 0, crow);
+	for (size_t i = 0; i < 16; i++){
+		struct tui_screen_attr tattr = {
+			.br = TUI_COL_TBASE + i,
+			.fr = TUI_COL_TBASE + i,
+			.aflags = TUI_ATTR_COLOR_INDEXED
+		};
+		arcan_tui_write(vte->debug, (uint32_t)' ', &tattr);
+	}
+
+	crow++;
 
 /* fill out with history logent */
 	size_t pos = vte->debug_pos > 0 ? vte->debug_pos - 1 : DEBUG_HISTORY - 1;
@@ -2739,13 +2759,19 @@ static void on_resize(struct tui_context* tui,
 	tsm_vte_update_debug(tag);
 }
 
+static void on_recolor(struct tui_context* tui, void* tag)
+{
+	tsm_vte_update_debug(tag);
+}
+
 SHL_EXPORT bool tsm_vte_debug(struct tsm_vte* in,
 	arcan_tui_conn* conn, struct tui_context* c)
 {
 	struct tui_cbcfg cbcfg = {
 		.tag = in,
 		.input_key = on_key,
-		.resized = on_resize
+		.resized = on_resize,
+		.recolor = on_recolor
 	};
 
 /* already have one, let other implementations take a stab at it */
@@ -2758,7 +2784,6 @@ SHL_EXPORT bool tsm_vte_debug(struct tsm_vte* in,
 
 	if (!newctx)
 		return false;
-
 
 /* no cursor, no scrollback, synch resize */
 	in->debug = newctx;
