@@ -755,8 +755,10 @@ checkfd:
 					rv = 1;
 			}
 			else if (blocking){
-				debug_print(STATUS, c,
-					"failure on blocking fd-wait: %s", strerror(errno));
+				debug_print(STATUS, c, "failure on blocking fd-wait: %s, %s",
+					strerror(errno), arcan_shmif_eventstr(&priv->pev.ev, NULL, 0));
+				if (errno == EAGAIN)
+					continue;
 			}
 
 			goto done;
@@ -840,6 +842,7 @@ checkfd:
  * interest to override default font */
 			case TARGET_COMMAND_FONTHINT:
 				if (dst->tgt.ioevs[1].iv == 1){
+					priv->pev.ev = *dst;
 					priv->pev.gotev = true;
 					goto checkfd;
 				}
@@ -884,6 +887,7 @@ checkfd:
 /* event that request us to switch connection point */
 				else if (iev >= 1 && iev <= 3){
 					if (dst->tgt.message[0] == '\0'){
+						priv->pev.ev = *dst;
 						priv->pev.gotev = true;
 						goto checkfd;
 					}

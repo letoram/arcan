@@ -41,6 +41,7 @@
 ## Shmif
  * Shmifext- allocator interface for server- directed FBO color allocation
  * Add graphmode palette definition to preroll stage
+ * Preroll EAGAIN kernel race causing premature shutdown fixed
 
 ## Platform
  * Egl-dri: don't forward modifiers for linear/invalid
