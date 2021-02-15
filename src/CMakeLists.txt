@@ -67,12 +67,6 @@ set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 set(PLATFORM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/platform)
 set(ENGINE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 
-if (BUILD_PRESET STREQUAL "everything" AND NOT (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client" OR ${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
-	set(VIDEO_PLATFORM "egl-dri")
-	set(HYBRID_SDL ON)
-	set(HYBRID_HEADLESS ON)
-endif()
-
 # distributions packaging a build should tag this accordingly so we
 # can take that into consideration for bug reports
 if (NOT DEFINED DISTR_TAG)
@@ -203,6 +197,12 @@ else()
 
 	# no other audio platforms supported currently
 	set(AUDIO_PLATFORM "openal")
+endif()
+
+if (BUILD_PRESET STREQUAL "everything" AND NOT (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client" OR ${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
+	set(VIDEO_PLATFORM "egl-dri")
+	set(HYBRID_SDL ON)
+	set(HYBRID_HEADLESS ON)
 endif()
 
 # can ignore this abomination on BSD
