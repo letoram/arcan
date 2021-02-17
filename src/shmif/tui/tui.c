@@ -577,7 +577,7 @@ void arcan_tui_set_color(
 		memcpy(tui->colors[group].rgb, rgb, 3);
 
 		if (group >= TUI_COL_TBASE){
-			tui->colors[group].bgset = true;
+			memcpy(tui->colors[group].rgb, rgb, 3);
 			memcpy(tui->colors[group].bg, rgb, 3);
 		}
 	}
