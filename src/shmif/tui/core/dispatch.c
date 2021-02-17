@@ -206,6 +206,13 @@ block_dump:
 	free(outb);
 }
 
+static void ev_to_col(struct arcan_tgtevent* ev, uint8_t* dst)
+{
+	dst[0] = ev->ioevs[1].fv;
+	dst[1] = ev->ioevs[2].fv;
+	dst[2] = ev->ioevs[3].fv;
+}
+
 static void target_event(struct tui_context* tui, struct arcan_event* aev)
 {
 	arcan_tgtevent* ev = &aev->tgt;
@@ -237,14 +244,14 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 		if (TUI_COL_LIMIT <= slot)
 			return;
 
-		uint8_t* dst = tui->colors[slot].rgb;
-		if (bg)
-			dst = tui->colors[slot].bg;
-
-/* and write color values */
-		dst[0] = ev->ioevs[1].fv;
-		dst[1] = ev->ioevs[2].fv;
-		dst[2] = ev->ioevs[3].fv;
+/* or the reserved set where fg=bg */
+		if (slot >= TUI_COL_TBASE){
+			ev_to_col(ev, tui->colors[slot].rgb);
+			ev_to_col(ev, tui->colors[slot].bg);
+		}
+		else {
+			ev_to_col(ev, bg ? tui->colors[slot].bg : tui->colors[slot].rgb);
+		}
 	}
 	break;
 
