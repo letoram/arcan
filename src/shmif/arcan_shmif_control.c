@@ -1186,6 +1186,22 @@ const char* arcan_shmif_segment_key(struct arcan_shmif_cont* dst)
 	return dst->priv->shm_key;
 }
 
+static bool ensure_stdio()
+{
+/* this would create a stdin that is writable, but that is a lesser evil */
+	int fd = 0;
+	while (fd < STDERR_FILENO && fd != -1)
+		fd = open("/dev/null", O_RDWR);
+
+	if (fd > STDERR_FILENO)
+		close(fd);
+
+	if (-1 == fd)
+		return false;
+
+	return true;
+}
+
 static void map_shared(const char* shmkey, struct arcan_shmif_cont* dst)
 {
 	assert(shmkey);
@@ -1193,6 +1209,19 @@ static void map_shared(const char* shmkey, struct arcan_shmif_cont* dst)
 
 	int fd = -1;
 	fd = shm_open(shmkey, O_RDWR, 0700);
+
+/* This has happened, and while 'technically' legal - it can (and will in most
+ * cases) lead to nasty bugs. Since we need to keep the descriptor around in
+ * order to resize/remap, chances are that some part of normal processing will
+ * printf to stdout, stderr - potentially causing a write into the shared
+ * memory page. The server side will likely detect this due to the validation
+ * cookie failing, causing it to terminate the connection. */
+	if (fd <= STDERR_FILENO){
+		close(fd);
+		if (!ensure_stdio())
+			return;
+		fd = shm_open(shmkey, O_RDWR, 0700);
+	}
 
 	if (-1 == fd){
 		debug_print(FATAL,
@@ -1203,27 +1232,6 @@ static void map_shared(const char* shmkey, struct arcan_shmif_cont* dst)
 	dst->addr = mmap(NULL, ARCAN_SHMPAGE_START_SZ,
 		PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	dst->shmh = fd;
-
-	if (MAP_FAILED == dst->addr){
-map_fail:
-		debug_print(FATAL, dst, "couldn't map keyfile"
-			"	(%s), reason: %s", shmkey, strerror(errno));
-		close(fd);
-		dst->addr = NULL;
-		return;
-	}
-
-/* parent suggested a different size from the start, need to remap */
-	if (dst->addr->segment_size != (size_t) ARCAN_SHMPAGE_START_SZ){
-		debug_print(STATUS, dst, "different initial size, remapping.");
-		size_t sz = dst->addr->segment_size;
-		munmap(dst->addr, ARCAN_SHMPAGE_START_SZ);
-		dst->addr = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-		if (MAP_FAILED == dst->addr)
-			goto map_fail;
-	}
-
-	debug_print(STATUS, dst, "segment mapped to %" PRIxPTR, (uintptr_t) dst->addr);
 
 /* step 2, semaphore handles */
 	size_t slen = strlen(shmkey) + 1;
@@ -1242,6 +1250,26 @@ map_fail:
 	if (dst->asem == 0x0 || dst->esem == 0x0 || dst->vsem == 0x0){
 		debug_print(FATAL, dst, "couldn't map semaphores: %s", shmkey);
 		free(dst->addr);
+		close(fd);
+		dst->addr = NULL;
+		return;
+	}
+
+/* parent suggested a different size from the start, need to remap */
+	if (dst->addr->segment_size != (size_t) ARCAN_SHMPAGE_START_SZ){
+		debug_print(STATUS, dst, "different initial size, remapping.");
+		size_t sz = dst->addr->segment_size;
+		munmap(dst->addr, ARCAN_SHMPAGE_START_SZ);
+		dst->addr = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+		if (MAP_FAILED == dst->addr)
+			goto map_fail;
+	}
+
+	debug_print(STATUS, dst, "segment mapped to %" PRIxPTR, (uintptr_t) dst->addr);
+	if (MAP_FAILED == dst->addr){
+map_fail:
+		debug_print(FATAL, dst, "couldn't map keyfile"
+			"	(%s), reason: %s", shmkey, strerror(errno));
 		close(fd);
 		dst->addr = NULL;
 		return;
