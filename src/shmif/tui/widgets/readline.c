@@ -166,7 +166,7 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 
 		pos += step;
 		arcan_tui_write(T, ch,
-			M->broken_offset != -1 && pos >= M->broken_offset ? &alert : &alert);
+			M->broken_offset != -1 && pos >= M->broken_offset ? &alert : NULL);
 	}
 
 	if (cx)

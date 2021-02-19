@@ -350,17 +350,6 @@ struct tui_context* arcan_tui_setup(
 		return NULL;
 	}
 
-	tsm_screen_set_def_attr(res->screen,
-		&(struct tui_screen_attr){
-			.fr = res->colors[TUI_COL_TEXT].rgb[0],
-			.fg = res->colors[TUI_COL_TEXT].rgb[1],
-			.fb = res->colors[TUI_COL_TEXT].rgb[2],
-			.br = res->colors[TUI_COL_BG].bg[0],
-			.bg = res->colors[TUI_COL_BG].bg[1],
-			.bb = res->colors[TUI_COL_BG].bg[2]
-		}
-	);
-
 /* TEMPORARY: when deprecating tsm any scrollback become the widgets problem */
 	tsm_screen_set_max_sb(res->screen, 1000);
 
