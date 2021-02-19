@@ -123,7 +123,10 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	src->desc.text.group = NULL;
 
 	char msg[32];
-	if (!platform_fsrv_lastwords(src, msg, COUNT_OF(msg)))
+
+	if (src->cookie_fail)
+		snprintf(msg, COUNT_OF(msg), "Integrity cookie mismatch");
+	else if (!platform_fsrv_lastwords(src, msg, COUNT_OF(msg)))
 		snprintf(msg, COUNT_OF(msg), "Couldn't access metadata (SIGBUS?)");
 
 /* will free, so no UAF here - only time the function returns false is when we
@@ -168,9 +171,19 @@ static void default_adoph(arcan_frameserver* tgt, arcan_vobj_id id)
 bool arcan_frameserver_control_chld(arcan_frameserver* src){
 /* bunch of terminating conditions -- frameserver messes with the structure to
  * provoke a vulnerability, frameserver dying or timing out, ... */
-	bool alive = src->flags.alive && src->shm.ptr &&
-		src->shm.ptr->cookie == arcan_shmif_cookie() &&
-		platform_fsrv_validchild(src);
+	bool cookie_match = true;
+	bool alive = src->flags.alive && src->shm.ptr;
+
+/* specifically track the cookie failing issue so that we can forward that as an
+ * important failure reason since it is indicative of something more than just a
+ * buggy client */
+	if (alive){
+		alive = platform_fsrv_validchild(src);
+		if (alive && src->shm.ptr->cookie != arcan_shmif_cookie()){
+			src->cookie_fail = true;
+			alive = false;
+		}
+	}
 
 /* subsegment may well be alive when the parent has just died, thus we need to
  * check the state of the parent and if it is dead, clean up just the same,

@@ -204,6 +204,7 @@ struct arcan_frameserver {
 
 /* per segment identification cookie */
 	uint32_t cookie;
+	bool cookie_fail;
 
 /* state tracking for accelerated buffer sharing, populated by handle events
  * that accompany signalling if enabled - buffering is done inside of
