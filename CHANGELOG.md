@@ -60,6 +60,9 @@
  * drop zxdg-shell-unstable-v6
  * older client termination on mouse-wheel version check fixed
 
+## Tools
+ * added tool arcan-dbgcapture for use as a /proc/core_pattern to help core dump management
+
 ## 0.6.0
 ## Engine
  * Position fix to anchor_image/center_image when using CR anchor
