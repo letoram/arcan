@@ -29,9 +29,7 @@ enum {
 
 /* incremented on bchunk transfers
  * _Atomic int pending = ATOMIC_VAR_INIT(0),
- * pending number of bytes are then expected from signalfd before exiting
-*/
-
+ * pending number of bytes are then expected from signalfd before exiting */
 static void on_bchunk(struct tui_context* c,
 	bool input, uint64_t size, int tgt, const char* id, void* t)
 {
@@ -86,11 +84,18 @@ static void drop_to_user(const char* uname)
 }
 
 /* we need the descriptor to the source so we can send on request */
-static FILE* grab_bin(const char* arg_pid)
+static FILE* grab_bin(const char* arg_pid, char** name_out)
 {
 	char fnbuf[strlen(arg_pid) + sizeof("/proc//exe")];
 	snprintf(fnbuf, sizeof(fnbuf), "/proc/%s/exe", arg_pid);
 	app_fd = open(fnbuf, O_RDONLY);
+
+	char tmpbuf[64] = {0};
+	readlink(fnbuf, tmpbuf, 64);
+	char* beg = strrchr(tmpbuf, '/');
+	if (beg)
+		*name_out = strdup(&beg[1]);
+
 	return fdopen(app_fd, "r");
 }
 
@@ -352,7 +357,8 @@ int main(int argc, char** argv)
 
 /* we need to get the application (and core) when we are still root as it might need the 'exe'
  * entry from proc with weird permissions */
-	FILE* fbin = grab_bin(arg_pid);
+	char* title = NULL;
+	FILE* fbin = grab_bin(arg_pid, &title);
 	FILE* fcore = grab_core(arg_core);
 
 /* we can't create the tmp until we are the target user, or unlink won't work */
@@ -385,9 +391,15 @@ int main(int argc, char** argv)
 		setenv("XDG_RUNTIME_DIR", arg_rtdir, 1);
 
 	setenv("ARCAN_CONNPATH", arg_connpath, 1);
-	struct arcan_shmif_cont c = arcan_shmif_open(SEGID_TUI, 0, NULL);
+	struct arcan_shmif_cont c = arcan_shmif_open_ext(0, NULL,
+		(struct shmif_open_ext){
+			.title = "arcan-dbgcapture",
+			.ident = title,
+			.type = SEGID_TUI
+		},
+		sizeof(struct shmif_open_ext)
+	);
 	if (!c.addr){
-		while(1);
 		goto out;
 	}
 
