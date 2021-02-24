@@ -81,7 +81,7 @@ int main(int argc, char** argv)
 		arcan_event ev;
 
 /* throw out the requests, but delay! */
-		if (n_cont && arcan_timemillis() - last > 1000){
+		if (n_cont > 1 && arcan_timemillis() - last > 1000){
 			block_grab(&cont[0].cont, &cont[cont_ofs].cont);
 			cont_ofs++;
 			n_cont--;
