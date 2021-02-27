@@ -92,5 +92,5 @@ static void xdgdecor_get(struct wl_client* cl,
 		wl_client_post_no_memory(cl);
 	}
 
-	wl_resource_set_implementation(decor, &tldecor_impl, &surf, NULL);
+	wl_resource_set_implementation(decor, &tldecor_impl, surf, NULL);
 }
