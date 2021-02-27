@@ -897,15 +897,21 @@ error:
 		arcan_verify_namespaces(true);
 	}
 
+/* first write the reason as 'last words' if we are running in lwa as that
+ * needs to be done BEFORE video_shutdown as that closes the context */
+	const char* crashmsg = arcan_lua_crash_source(main_lua_context);
+#ifdef ARCAN_LWA
+	arcan_shmif_last_words(arcan_shmif_primary(SHMIF_INPUT), crashmsg);
+#endif
+
+/* now we can shutdown the subsystems themselves */
 	arcan_event_deinit(evctx);
 	arcan_mem_free(dbfname);
 	arcan_audio_shutdown();
 	arcan_video_shutdown(false);
 
-/* now that video has been shut down, it should be safe to write the
- * last known Lua VM crash state information to stdout without risking
- * it being dropped due to TTY in GRAPHICS mode */
-	const char* crashmsg = arcan_lua_crash_source(main_lua_context);
+/* and finally write the reason to stdout as well now that native platforms
+ * have restored the context to having valid stdout/stderr */
 	if (crashmsg){
 		arcan_warning(
 			"\n\x1b[1mImproper API use from Lua script\n"

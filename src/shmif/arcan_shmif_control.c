@@ -2464,7 +2464,7 @@ void arcan_shmif_last_words(
 /* it's volatile so manually write in */
 	size_t lim = COUNT_OF(cont->addr->last_words);
 	size_t i = 0;
-	for (; i < lim-1 && msg[i] != '\0'; i++)
+	for (; i < lim-1 && msg[i] != '\0' && msg[i] != '\n'; i++)
 		cont->addr->last_words[i] = msg[i];
 	cont->addr->last_words[i] = '\0';
 }

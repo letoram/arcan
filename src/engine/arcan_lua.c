@@ -7838,7 +7838,12 @@ static void rectrigger(const char* msg, ...)
 	FILE* stream = open_memstream(&buf, &buf_sz);
 	if (stream){
 		va_start(args, msg);
+
+/* with LWA we shouldn't format the crash source as it will go to last_words
+ * first, and arcan will treat the message as garbage */
+#ifndef ARCAN_LWA
 			fprintf(stream, "\x1b[0m\n");
+#endif
 			vfprintf(stream, msg, args);
 			fprintf(stream, "\n");
 			dump_call_trace(ctx, stream);
