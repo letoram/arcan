@@ -514,14 +514,6 @@ enum ARCAN_TARGET_COMMAND {
  * ioev[3].iv = 0: device type is render-node-GBM
  *              1: device type is render-node-Streams
  *              2: device type is usb descriptor
- *              4: (capability bit) render node can be used for scanout (lease)
- *              8: (capability bit) append format descriptor (for 0)
- *             16: (capability bit) format descriptor is preferred
- *
- * [for [3].iv & 8]
- *              [4] = format
- *              [5] = mod_hi
- *              [6] = mod_lo
  *
  * [for [1].iv == 2..4]
  * 128-bit guid is packed in [2..5] as 64bit little-endian,
@@ -624,6 +616,21 @@ enum ARCAN_TARGET_COMMAND {
  * This token can be used to re-authenticate in the event of a server crash
  */
 	TARGET_COMMAND_ACTIVATE,
+
+/*
+ * Modifies the current DEVICE_NODE for shmifext - provides context state.
+ * [0].iv == 0 : indirect
+ *           1 : direct (scanout capable)
+ *           2 : reset-metadata
+ *           3 : define_metadata (dependent on device-type)
+ *
+ * for [0].iv == 3
+ * [1].iv    modifier_hi
+ * [2].iv    modifier_lo
+ * [3].iv    modifier_hint (1 : preferred)
+ */
+	TARGET_COMMAND_DEVICESTATE,
+
 
 	TARGET_COMMAND_LIMIT = INT_MAX
 };

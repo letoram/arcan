@@ -1658,6 +1658,10 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	current_context->stdoutp.max_order = 65536;
 	current_context->stdoutp.shid = agp_default_shader(BASIC_2D);
 	current_context->stdoutp.vppcm = current_context->stdoutp.hppcm;
+
+	arcan_renderfun_outputdensity(
+		current_context->stdoutp.hppcm, current_context->stdoutp.vppcm);
+
 /*
  * By default, expected video output display matches canvas 1:1,
  * canvas can be explicitly resized and these two matrices will still

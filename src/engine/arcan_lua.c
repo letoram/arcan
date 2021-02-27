@@ -5088,6 +5088,7 @@ void arcan_lwa_subseg_ev(
 	case TARGET_COMMAND_STREAMSET:
 	case TARGET_COMMAND_SETIODEV:
 	case TARGET_COMMAND_AUDDELAY:
+	case TARGET_COMMAND_DEVICESTATE:
 	case TARGET_COMMAND_GEOHINT:
 		lua_settop(ctx, reset);
 		return;
@@ -12945,6 +12946,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	lua_pushnumber(ctx, 0.352778);
 	lua_setglobal(ctx, "FONT_PT_SZ");
 
+	arcan_video_rendertargetdensity(ARCAN_VIDEO_WORLDID, hppcm, vppcm, false, false);
 	arcan_lua_setglobalstr(ctx, "GL_VERSION", agp_ident());
 	arcan_lua_setglobalstr(ctx, "SHADER_LANGUAGE", agp_shader_language());
 	arcan_lua_setglobalstr(ctx, "FRAMESERVER_MODES", arcan_frameserver_atypes());

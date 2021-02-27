@@ -172,7 +172,7 @@ void arcan_video_fontdefaults(file_handle* fd, int* pt_sz, int* hint)
 		*hint = default_hint;
 }
 
-void arcan_renderfun_outputdensity(float vppcm, float hppcm)
+void arcan_renderfun_outputdensity(float hppcm, float vppcm)
 {
 	default_hdpi = vppcm > EPSILON ? 2.54 * vppcm : 72.0;
 	default_vdpi = hppcm > EPSILON ? 2.54 * hppcm : 72.0;
