@@ -1217,39 +1217,54 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
  * be able to handle relayouting in an event-driven manner, so we translate and
  * forward as a monitor event.
  */
-		case TARGET_COMMAND_DISPLAYHINT:
+		case TARGET_COMMAND_DISPLAYHINT:{
+			bool update = false;
+			size_t w = d->conn.w;
+			size_t h = d->conn.h;
+
 			if (ev.tgt.ioevs[0].iv && ev.tgt.ioevs[1].iv){
-				arcan_event_denqueue(ctx, &(arcan_event){
-					.category = EVENT_VIDEO,
-					.vid.kind = EVENT_VIDEO_DISPLAY_RESET,
-					.vid.source = -1,
-					.vid.displayid = d->id,
-					.vid.width = ev.tgt.ioevs[0].iv,
-					.vid.height = ev.tgt.ioevs[1].iv,
-					.vid.flags = ev.tgt.ioevs[2].iv,
-					.vid.vppcm = ev.tgt.ioevs[4].fv,
-				});
+				update |= ev.tgt.ioevs[0].iv != d->conn.w;
+				update |= ev.tgt.ioevs[1].iv != d->conn.h;
+				w = ev.tgt.ioevs[0].iv;
+				h = ev.tgt.ioevs[1].iv;
 			}
 
+/*
+ * These properties are >currently< not forwarded - as the idea of mapping
+ * windows as 'displays' is problematic with 'visibility and focus' not
+ * making direct sense as such.
+ *
+ * This should probably be forwarded as the special _LWA events so that
+ * any focus state or mouse cursor state can be updated accordingly.
+ * The best option is 'probably' to use arcan_lwa_subseg_ev and some
+ * _arcan event entry-point for the primary display.
+ *
+ * Currently the flags are forwarded raw so the reset event handler can
+ * take them into account, but it is not pretty.
+ */
 			if (!(ev.tgt.ioevs[2].iv & 128)){
 				d->visible = !((ev.tgt.ioevs[2].iv & 2) > 0);
 				d->focused = !((ev.tgt.ioevs[2].iv & 4) > 0);
 			}
 
-/*
- * If the density has changed, grab the current standard font size
- * and convert to mm to get the scaling factor, apply and update default
- */
-			if (ev.tgt.ioevs[4].fv > 0){
-				TRACE_MARK_ONESHOT("video", "switch-system-font", TRACE_SYS_DEFAULT, 0, 0, "");
-				int font_sz;
-				int hint;
-				arcan_video_fontdefaults(NULL, &font_sz, &hint);
-				float sf = ev.tgt.ioevs[4].fv / d->ppcm;
-				arcan_video_defaultfont("arcan-default",
-					BADFD, (float)font_sz * sf, hint, false);
+			if (ev.tgt.ioevs[4].fv > 0 && ev.tgt.ioevs[4].fv != d->ppcm){
+				update = true;
 				d->ppcm = ev.tgt.ioevs[4].fv;
 			}
+
+			if (update){
+				arcan_event_denqueue(ctx, &(arcan_event){
+					.category = EVENT_VIDEO,
+					.vid.kind = EVENT_VIDEO_DISPLAY_RESET,
+					.vid.source = -1,
+					.vid.displayid = d->id,
+					.vid.width = w,
+					.vid.height = h,
+					.vid.flags = ev.tgt.ioevs[2].iv,
+					.vid.vppcm = d->ppcm
+				});
+			}
+		}
 		break;
 /*
  * This behavior may be a bit strong, but we allow the display server
@@ -1276,7 +1291,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 				.vid.source = -2,
 				.vid.displayid = d->id,
 				.vid.vppcm = ev.tgt.ioevs[2].fv,
-				.vid.width = ev.tgt.ioevs[3].iv
+
 			});
 		}
 		break;

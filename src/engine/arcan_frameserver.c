@@ -1496,6 +1496,23 @@ arcan_errc arcan_frameserver_setfont(
 
 /* first time and main slot? then build the group */
 		if (!fsrv->desc.text.group){
+			if (fsrv->desc.hint.ppcm < EPSILON){
+				arcan_vobject* vobj = arcan_video_getobject(fsrv->vid);
+
+/* Protect against someone in the future creating a frameserver first and
+ * force-setting a font in the platform or elsewhere without properly attaching
+ * it to a valid and attached vobject - note that vppcm/hppcm are treated as
+ * uniform here which isn't entirely correct. Freetype can deal with vdpi!=hdpi
+ * but we missed it in the DISPLAYHINT event format "square assumed" */
+				struct rendertarget* tgt;
+				if (!vobj || !(tgt = arcan_vint_findrt(vobj))){
+					fsrv->desc.hint.ppcm = 38.7;
+				}
+				else {
+					fsrv->desc.hint.ppcm = tgt->vppcm;
+				}
+			}
+
 			fsrv->desc.text.group =
 				arcan_renderfun_fontgroup((int[]){dup(fd), BADFD, BADFD, BADFD}, 4);
 			replace = false;
