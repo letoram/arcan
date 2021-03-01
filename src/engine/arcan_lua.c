@@ -4558,6 +4558,13 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
  * path.
  */
 	if (ev->vid.source == -1){
+
+/* minor protection against bad displays */
+		if (ev->vid.vppcm > 18.0){
+			arcan_lua_setglobalint(ctx, "VPPCM", ev->vid.vppcm);
+			arcan_lua_setglobalint(ctx, "HPPCM", ev->vid.vppcm);
+		}
+
 		lua_getglobal(ctx, "VRES_AUTORES");
 		if (!lua_isfunction(ctx, -1) && ev->vid.width && ev->vid.height){
 			lua_pop(ctx, 1);
@@ -9689,6 +9696,19 @@ static int renderreconf(lua_State* ctx)
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
 	float hppcm = luaL_checknumber(ctx, 2);
 	float vppcm = luaL_checknumber(ctx, 3);
+
+/* this is already dangerously low */
+	if (hppcm < 18.0)
+		hppcm = 18.0;
+
+	if (vppcm < 18.0)
+		vppcm = 18.0;
+
+	if (did == ARCAN_VIDEO_WORLDID){
+		arcan_lua_setglobalint(ctx, "VPPCM", hppcm);
+		arcan_lua_setglobalint(ctx, "HPPCM", vppcm);
+	}
+
 	arcan_video_rendertargetdensity(did, vppcm, hppcm, true, true);
 	LUA_ETRACE("rendertarget_reconfigure", NULL, 0);
 }

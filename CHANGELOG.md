@@ -3,6 +3,7 @@
 ## Engine
  * Disable watchdog during launch_external
  * Require a full scanout cycle before marking crash recover as over
+ * Use attachment density if no displayhint on fsrv with tpack font-init
 
 ## Frameservers
  * ARCAN_FRAMESERVER_DEBUGSTALL is now performed after _open and the pid is sent as 'ident'
@@ -17,7 +18,7 @@
 
 ## Tui
  * Lowered the constraint for wndhint to also work for main window
- * Tpack is now the only output, local rasterization is dead
+ * Tpack is now the only output, local rasterization is dead - long live server side text
  * Recolor/runtime palette remapping through target_graphmode
  * Extended colour slots to cover a 16- legacy group
  * Allow indexed cell attribute flag (fg.r, bg.r becomes colour slot index + lookup)
@@ -31,9 +32,13 @@
  * target_fonthint and target_displayhint return the last known cell w/h that tpack might use
  * Allow suspend_target, resume_target for controlling preroll state transition
  * bond_target sent the wrong pipe pair ends
+ * Set default font density to match platform ppcm on init
+ * update HPPCM/VPPCM on rendertarget_reconfigure on WORLDID
 
 ## Build
  * A whole lot of FreeBSD build fixes courtesy of J.Beich
+ * Wrong ALIGNED_SIMD args set courtesy of moon-chilled
+ * sdl2 first-build fix courtesy of Lahvuun
 
 ## Distribution
  * New hookscript: 'hook/alloc_debug.lua' that forces backtrace into image-tag for all allocations
@@ -42,16 +47,20 @@
  * Shmifext- allocator interface for server- directed FBO color allocation
  * Add graphmode palette definition to preroll stage
  * Preroll EAGAIN kernel race causing premature shutdown fixed
+ * Ensure control socket or page never gets allocated on 0,1,2
 
 ## Platform
  * Egl-dri: don't forward modifiers for linear/invalid
  * Lwa: use shmifext allocator interface for mapped rendertargets
+ * Lwa: set last-words on script-error / arcan_fatal
+ * Lwa: forward density to font renderer
  * Egl-dri: direct-scanout of 'sane- video objects' (e.g. FBO without post-processing)
  * Agp/Video: add support for hardware composition layers
  * Agp/Video: Allow mapped vstores to support dirty regions
  * Egl-dri: default to FBO direct-scanout when possible
  * Egl-dri: let preferred display buffer resolution drive map_video_display
  * Egl-dri: single-buffered drawing mode for fullscreen mapped tui/terminal clients
+ * Sdl2: mouse wheel/button input fuxes
 
 ## Wayland
  * arcan-wayland did not pack drm/dma-buf right, causing import failures
@@ -59,6 +68,7 @@
  * enable dma-buf by default
  * drop zxdg-shell-unstable-v6
  * older client termination on mouse-wheel version check fixed
+ * xdg-decor set with the wrong surface state
 
 ## Tools
  * added tool arcan-dbgcapture for use as a /proc/core_pattern to help core dump management
