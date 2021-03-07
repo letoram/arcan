@@ -696,7 +696,7 @@ void platform_event_process(arcan_evctx* ctx)
 				ucs4_to_utf8(event.key.keysym.sym,
 					(char*)newevent.io.input.translated.utf8);
 
-				if (event.key.keysym.mod){
+				if (event.key.keysym.mod & ~(KMOD_NUM)){
 					apply_mod(newevent.io.input.translated.utf8, event.key.keysym.mod);
 				}
 /* some hacks to make more of the translated table work, use special modifier
