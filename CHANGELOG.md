@@ -69,6 +69,8 @@
  * drop zxdg-shell-unstable-v6
  * older client termination on mouse-wheel version check fixed
  * xdg-decor set with the wrong surface state
+ * link in pulse/native in -exec tmpdir pulse/native
+ * handle no XDG_RUNTIME_DIR case for normal and -exec
 
 ## Tools
  * added tool arcan-dbgcapture for use as a /proc/core_pattern to help core dump management

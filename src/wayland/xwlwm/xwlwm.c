@@ -1346,7 +1346,8 @@ int main (int argc, char **argv)
 		}
 		else if (0 == exec_child){
 /* remove the display variable, but also unlink the parent socket for the
- * normal 'default' display as some toolkits also fallback and check for it */
+ * normal 'default' display as some toolkits also fallback and check for it,
+ * might be 'safer' to rename it but we are already quite far out in wtfsville */
 			const char* disp = getenv("WAYLAND_DISPLAY");
 			if (!disp)
 				disp = "wayland-0";
