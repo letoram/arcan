@@ -1276,11 +1276,7 @@ map_fail:
 	}
 }
 
-/*
- * The rules for socket sharing are shared between all
- */
- int arcan_shmif_resolve_connpath(
-	const char* key, char* dbuf, size_t dbuf_sz)
+static int try_connpath(const char* key, char* dbuf, size_t dbuf_sz, int attempt)
 {
 	if (!key || key[0] == '\0')
 		return -1;
@@ -1291,7 +1287,7 @@ map_fail:
 		return snprintf(dbuf, dbuf_sz, "%s", key);
 
 /* 2. Otherwise we check for an XDG_RUNTIME_DIR */
-	if (getenv("XDG_RUNTIME_DIR"))
+	if (attempt == 0 && getenv("XDG_RUNTIME_DIR"))
 		return snprintf(dbuf, dbuf_sz, "%s/%s", getenv("XDG_RUNTIME_DIR"), key);
 
 /* 3. Last (before giving up), HOME + prefix */
@@ -1300,6 +1296,15 @@ map_fail:
 
 /* no env no nothing? bad environment */
 	return -1;
+}
+
+/*
+ * The rules for socket sharing are shared between all
+ */
+ int arcan_shmif_resolve_connpath(
+	const char* key, char* dbuf, size_t dbuf_sz)
+{
+	return try_connpath(key, dbuf, dbuf_sz, 0);
 }
 
 static void shmif_exit(int c)
@@ -1320,16 +1325,24 @@ char* arcan_shmif_connect(
 		return NULL;
 	}
 
+	int len;
 	char* res = NULL;
-	int len = arcan_shmif_resolve_connpath(connpath, (char*)&dst.sun_path, lim);
+	int index = 0;
+	int sock = -1;
+
+retry:
+	len = try_connpath(connpath, (char*)&dst.sun_path, lim, index++);
 
 	if (len < 0){
 		debug_print(FATAL, NULL, "couldn't resolve connection path");
+		if (sock != -1)
+			close(sock);
 		return NULL;
 	}
 
 /* 1. treat connpath as socket and connect */
-	int sock = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (sock == -1)
+		sock = socket(AF_UNIX, SOCK_STREAM, 0);
 
 #ifdef __APPLE__
 	int val = 1;
@@ -1341,11 +1354,12 @@ char* arcan_shmif_connect(
 		goto end;
 	}
 
+/* if connection fails, the socket will be re-used with a different address
+ * until we run out - this normally will just involve XDG_RUNTIME_DIR then HOME */
 	if (connect(sock, (struct sockaddr*) &dst, sizeof(dst))){
 		debug_print(FATAL, NULL,
 			"couldn't connect to (%s): %s", dst.sun_path, strerror(errno));
-		close(sock);
-		goto end;
+		goto retry;
 	}
 
 /* 2. send (optional) connection key, we send that first (keylen + linefeed) */
