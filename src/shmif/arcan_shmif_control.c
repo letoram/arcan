@@ -1291,7 +1291,7 @@ static int try_connpath(const char* key, char* dbuf, size_t dbuf_sz, int attempt
 		return snprintf(dbuf, dbuf_sz, "%s/%s", getenv("XDG_RUNTIME_DIR"), key);
 
 /* 3. Last (before giving up), HOME + prefix */
-	if (getenv("HOME"))
+	if (getenv("HOME") && attempt == 1)
 		return snprintf(dbuf, dbuf_sz, "%s/.%s", getenv("HOME"), key);
 
 /* no env no nothing? bad environment */
