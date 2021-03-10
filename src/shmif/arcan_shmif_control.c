@@ -2727,6 +2727,7 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 				dst[2] = ev.tgt.ioevs[3].fv;
 			}
 		}
+		break;
 
 		case TARGET_COMMAND_DEVICE_NODE:
 /* alt-con will be updated automatically, due to normal wait handler */
