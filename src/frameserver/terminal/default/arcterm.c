@@ -19,6 +19,7 @@
 #include "tsm/libtsm.h"
 #include "tsm/libtsm_int.h"
 #include "tsm/shl-pty.h"
+#include "b64dec.h"
 
 struct line {
 	size_t count;
@@ -60,6 +61,12 @@ static struct {
  * itself won't be able to anymore - so save this here */
 	struct line** volatile _Atomic restore;
 	size_t restore_cxy[2];
+
+/* if the client provides large b64 encoded data through OSC */
+	volatile struct {
+		uint8_t* buf;
+		size_t buf_sz;
+	} pending_bout;
 
 /* sockets to communicate between terminal thread and render thread */
 	int dirtyfd;
@@ -505,14 +512,73 @@ static void str_callback(struct tsm_vte* vte, enum tsm_vte_group group,
 		return;
 	}
 
+/* Clipboard controls
+ *
+ * Ps = 5 2
+ *
+ * param 1 : (zero or more of cpqs0..7), ignore and default to c
+ * param 2 : ? (paste) or base64encoded content, otherwise 'reset'
+ *
+ * this (should) come base64 */
+	if (len > 5 && msg[0] == '5' && msg[1] == '2' && msg[2] == ';'){
+		size_t i = 3;
+
+/* skip to second argument */
+		for (; i < len-1 && msg[i] != ';'; i++){}
+		i++;
+
+		if (i >= len){
+			debug_log(vte, "OSC 5 2 sequence overflow\n");
+			return;
+		}
+
+/* won't be shared with other clients so it is rather pointless to have paste,
+ * we could practically announce any bin-io as capable input, keep it around
+ * and on paste- request deal with it - but serial transfer this way is pain */
+		if (msg[i] == '?'){
+			debug_log(vte, "OSC 5 2 paste unsupported\n");
+			return;
+		}
+
+		size_t outlen;
+		uint8_t* outb = from_base64((const uint8_t*)&msg[i], &outlen);
+		if (!outb){
+			debug_log(vte, "OSC 5 2 bad base64 encoding\n");
+			return;
+		}
+
+/* there are multiple paths we might need to take dependent on the contents,
+ * if it is not a proper string or too long we can only really announce it as
+ * a bchunk */
+		size_t pos = 0;
+		for (;outb[pos] && pos < outlen; pos++){}
+		bool is_terminated = pos < outlen && !outb[pos];
+
+/* if it actually behaves and looks like short utf8- go with that */
+		if (is_terminated && outlen < 8192){
+			if (arcan_tui_copy(term.screen, (const char*) outb)){
+				free(outb);
+				return;
+			}
+		}
+
+/* from_base64 always adds null-termination here, even when we might not want it */
+		outlen--;
+
+/* otherwise send as an immediate file transfer request rather than clipboard */
+		if (term.pending_bout.buf)
+			free(term.pending_bout.buf);
+		term.pending_bout.buf = outb;
+		term.pending_bout.buf_sz = outlen;
+
+		arcan_tui_announce_io(term.screen, true, NULL, "bin");
+		return;
+	}
+
 	debug_log(vte,
 		"%d:unhandled OSC command (PS: %d), len: %zu\n",
 		vte->log_ctr++, (int)msg[0], len
 	);
-
-/* 4 : change color */
-/* 5 : special color */
-/* 52 : clipboard contents */
 }
 
 static char* get_shellenv()
@@ -773,7 +839,7 @@ static void on_reset(struct tui_context* tui, int state, void* tag)
 
 /* hard, try to re-execute command, send HUP if still alive then mark as dead */
 	case 1:
-	reset_restore_buffer();
+		reset_restore_buffer();
 		tsm_vte_hard_reset(term.vte);
 		if (atomic_load(&term.alive)){
 			on_exec_state(tui, 2, tag);
@@ -849,6 +915,20 @@ static bool on_label_input(
 	return false;
 }
 
+static void on_bchunk(struct tui_context* c,
+	bool input, uint64_t size, int fd, const char* tag, void* t)
+{
+	if (input || !term.pending_bout.buf)
+		return;
+
+/* blocking rather dumb, but it is really just for OSC 5 2 */
+	FILE* fpek = fdopen(fd, "w+");
+	fwrite(term.pending_bout.buf, term.pending_bout.buf_sz, 1, fpek);
+	fclose(fpek);
+	free(term.pending_bout.buf);
+	term.pending_bout.buf = NULL;
+}
+
 static int parse_color(const char* inv, uint8_t outv[4])
 {
 	return sscanf(inv, "%"SCNu8",%"SCNu8",%"SCNu8",%"SCNu8,
@@ -909,6 +989,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.input_label = on_label_input,
 		.input_utf8 = on_u8,
 		.input_key = on_key,
+		.bchunk = on_bchunk,
 		.utf8 = on_utf8_paste,
 		.resized = on_resize,
 		.subwindow = on_subwindow,
