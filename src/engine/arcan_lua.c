@@ -2258,11 +2258,14 @@ static int resampleimage(lua_State* ctx)
 			width, MAX_SURFACEW, height, MAX_SURFACEH
 		);
 
+	agp_shader_id osh = vobj->program;
 	if (ARCAN_OK != arcan_video_setprogram(sid, shid))
 		arcan_warning("arcan_video_setprogram(%d, %d) -- couldn't set shader,"
 			"invalid vobj or shader id specified.\n", sid, shid);
-	else
+	else {
 		arcan_video_resampleobject(sid, did, width, height, shid, nosynch);
+		vobj->program = osh;
+	}
 
 	LUA_ETRACE("resample_image", NULL, 0);
 }
