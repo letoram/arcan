@@ -227,6 +227,9 @@ if(_SSE_TEST_10)
   endif()
 endif()
 
+# Don't leak -march=native into other CMake files
+unset(CMAKE_REQUIRED_FLAGS)
+
 # If no SSE support is found, print an error message.
 if(NOT SSE_FOUND)
 
