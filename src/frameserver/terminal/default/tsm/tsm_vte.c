@@ -304,7 +304,7 @@ void debug_log(struct tsm_vte* vte, const char* msg, ...)
 #define STEP_ROW() { \
 	crow++; \
 	if (crow < rows)\
-		 arcan_tui_move_to(vte->debug, 0, crow);\
+		 arcan_tui_move_to(*(vte->debug), 0, crow);\
 	else\
 		goto out;\
 	}
@@ -315,7 +315,7 @@ static size_t wrap_write(struct tsm_vte* vte, size_t crow, const char* msg)
 		return crow;
 
 	size_t rows = 0, cols = 0;
-	arcan_tui_dimensions(vte->debug, &rows, &cols);
+	arcan_tui_dimensions(*(vte->debug), &rows, &cols);
 
 	size_t xpos = 0;
 	const char* cur = msg;
@@ -334,7 +334,7 @@ static size_t wrap_write(struct tsm_vte* vte, size_t crow, const char* msg)
 			STEP_ROW();
 		}
 
-		arcan_tui_writeu8(vte->debug, (uint8_t*) cur, next, NULL);
+		arcan_tui_writeu8(*(vte->debug), (uint8_t*) cur, next, NULL);
 		xpos += next;
 		cur += next;
 	}
@@ -344,18 +344,6 @@ out:
 	return crow;
 }
 
-int tsm_vte_debugfd(struct tsm_vte* vte)
-{
-	if (!vte || !vte->debug)
-		return -1;
-
-	int fdout = -1;
-	if (1 == arcan_tui_get_handles(&vte->debug, 1, &fdout, 1)){
-		return fdout;
-	}
-	return -1;
-}
-
 void tsm_vte_update_debug(struct tsm_vte* vte)
 {
 	char* msg = NULL;
@@ -363,24 +351,18 @@ void tsm_vte_update_debug(struct tsm_vte* vte)
 	if (!vte || !vte->debug)
 		return;
 
-	struct tui_process_res res = arcan_tui_process(&vte->debug, 1, NULL, 0, 0);
-	if (res.errc < TUI_ERRC_OK || res.bad){
-		arcan_tui_destroy(vte->debug, NULL);
-		vte->debug = NULL;
-		return;
-	}
+	struct tui_context* debug = *(vte->debug);
 
 	struct tui_screen_attr tattr = {
 		.fg = TUI_COL_TBASE + VTE_COLOR_FOREGROUND,
 		.bg = TUI_COL_TBASE + VTE_COLOR_BACKGROUND,
 		.aflags = TUI_ATTR_COLOR_INDEXED
 	};
-	arcan_tui_defattr(vte->debug, &vte->def_attr);
-
-	arcan_tui_erase_screen(vte->debug, false);
+	arcan_tui_defattr(debug, &vte->def_attr);
+	arcan_tui_erase_screen(debug, false);
 	size_t rows = 0, cols = 0, crow = 0;
-	arcan_tui_dimensions(vte->debug, &rows, &cols);
-	arcan_tui_move_to(vte->debug, 0, 0);
+	arcan_tui_dimensions(debug, &rows, &cols);
+	arcan_tui_move_to(debug, 0, 0);
 
 	char linebuf[256];
 	unsigned fl = vte->csi_flags;
@@ -398,7 +380,7 @@ void tsm_vte_update_debug(struct tsm_vte* vte)
 		(fl & CSI_PLUS) ? ")" : "",
 		(vte->debug_verbose) ? "verbose" : "normal"
 	);
-	arcan_tui_writeu8(vte->debug, (uint8_t*) linebuf, strlen(linebuf), NULL);
+	arcan_tui_writeu8(debug, (uint8_t*) linebuf, strlen(linebuf), NULL);
 	STEP_ROW();
 
 	const char* state = "none";
@@ -466,14 +448,14 @@ void tsm_vte_update_debug(struct tsm_vte* vte)
 	crow = wrap_write(vte, crow, msg);
 
 /* draw the current colorscheme */
-	arcan_tui_move_to(vte->debug, 0, crow);
+	arcan_tui_move_to(debug, 0, crow);
 	for (size_t i = 0; i < 16; i++){
 		struct tui_screen_attr tattr = {
 			.br = TUI_COL_TBASE + i,
 			.fr = TUI_COL_TBASE + i,
 			.aflags = TUI_ATTR_COLOR_INDEXED
 		};
-		arcan_tui_write(vte->debug, (uint32_t)' ', &tattr);
+		arcan_tui_write(debug, (uint32_t)' ', &tattr);
 	}
 
 	crow++;
@@ -490,15 +472,14 @@ void tsm_vte_update_debug(struct tsm_vte* vte)
 
 /* should reverse this direction */
 	while ( row_lim-- && (ent = vte->debug_lines[pos]) && pos != vte->debug_pos){
-		arcan_tui_move_to(vte->debug, 0, crow);
-		arcan_tui_writeu8(vte->debug, (uint8_t*)ent, strlen(ent), NULL);
+		arcan_tui_move_to(debug, 0, crow);
+		arcan_tui_writeu8(debug, (uint8_t*)ent, strlen(ent), NULL);
 		crow--;
 		pos = pos > 0 ? pos - 1 : DEBUG_HISTORY - 1;
 	}
 
 #undef STEP_ROW
 out:
-	arcan_tui_refresh(vte->debug);
 	if (msg)
 		free(msg);
 
@@ -655,8 +636,11 @@ void tsm_vte_unref(struct tsm_vte *vte)
 			free(vte->debug_lines[i]);
 	}
 
-	if (vte->debug)
-		arcan_tui_destroy(vte->debug, NULL);
+	if (vte->debug){
+		arcan_tui_destroy(*(vte->debug), NULL);
+		*(vte->debug) = NULL;
+		vte->debug = NULL;
+	}
 
 	free(vte);
 }
@@ -2765,7 +2749,7 @@ static void on_recolor(struct tui_context* tui, void* tag)
 }
 
 SHL_EXPORT bool tsm_vte_debug(struct tsm_vte* in,
-	arcan_tui_conn* conn, struct tui_context* c)
+	struct tui_context** dst, arcan_tui_conn* conn, struct tui_context* c)
 {
 	struct tui_cbcfg cbcfg = {
 		.tag = in,
@@ -2779,15 +2763,14 @@ SHL_EXPORT bool tsm_vte_debug(struct tsm_vte* in,
 		return false;
 	}
 
-	struct tui_context* newctx =
-		arcan_tui_setup(conn, c, &cbcfg, sizeof(cbcfg));
+	*dst = arcan_tui_setup(conn, c, &cbcfg, sizeof(cbcfg));
 
-	if (!newctx)
+	if (!*dst)
 		return false;
 
 /* no cursor, no scrollback, synch resize */
-	in->debug = newctx;
-	arcan_tui_set_flags(in->debug, TUI_ALTERNATE | TUI_HIDE_CURSOR);
+	in->debug = dst;
+	arcan_tui_set_flags(*dst, TUI_ALTERNATE | TUI_HIDE_CURSOR);
 
 	tsm_vte_update_debug(in);
 	return true;

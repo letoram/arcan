@@ -46,7 +46,7 @@ static inline void shl_pty_unref_p(struct shl_pty **pty)
 #define _shl_pty_unref_ _shl_cleanup_(shl_pty_unref_p)
 
 bool shl_pty_is_open(struct shl_pty *pty);
-int shl_pty_get_fd(struct shl_pty *pty);
+int shl_pty_get_fd(struct shl_pty *pty, bool write);
 pid_t shl_pty_get_child(struct shl_pty *pty);
 pid_t shl_pipe_open(struct shl_pty **out, bool alloc);
 

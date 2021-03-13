@@ -131,8 +131,8 @@ struct tsm_vte {
 	char *colbuf;
 
 	struct tui_context *con;
+	struct tui_context **debug;
 
-	struct tui_context* debug;
 	bool debug_verbose;
 	size_t debug_ofs;
 	char* debug_lines[DEBUG_HISTORY];
