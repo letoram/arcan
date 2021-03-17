@@ -475,6 +475,7 @@ static void* client_thread(void* inarg)
 /* the ext-io thread might be sleeping waiting for input, when we finished
  * one pass/burst and know there is queued data to be sent, wake it up */
 	bool dirty = false;
+	redirect_exit(data->C, data->opts.redirect_exit);
 
 	for(;;){
 		if (dirty){
