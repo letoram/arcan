@@ -82,7 +82,7 @@
 
 struct shl_pty {
 	unsigned long ref;
-	int fd_in, fd_out;
+	int p2c, c2p;
 	bool pipe;
 	pid_t child;
 	char in_buf[SHL_PTY_BUFSIZE];
@@ -214,58 +214,58 @@ pid_t shl_pipe_open(struct shl_pty **out, bool alloc)
 		return -1;
 
 	*fakepty = (struct shl_pty){
-		.fd_in = -1,
-		.fd_out = -1,
+		.p2c = -1,
+		.c2p = -1,
 		.pipe = true
 	};
 
 /* just copy  and cloexec */
 	if (!alloc){
-		fakepty->fd_in = STDIN_FILENO;
-		fakepty->fd_out = STDOUT_FILENO;
+		fakepty->p2c = STDOUT_FILENO;
+		fakepty->c2p = STDIN_FILENO;
 		*out = fakepty;
 		return fork();
 	}
 
 /* build pipe-pair (0 == read_end) */
-	int fdarg_out[2];
-	int fdarg_in[2];
+	int fdarg_c2p[2];
+	int fdarg_p2c[2];
 
 	/* grab the pipe pairs that will be inherited into the child */
-	if (-1 == pipe(fdarg_out)){
+	if (-1 == pipe(fdarg_c2p)){
 		return -1;
 	}
 
-	if (-1 == pipe(fdarg_in)){
-		close(fdarg_out[0]);
-		close(fdarg_out[1]);
+	if (-1 == pipe(fdarg_p2c)){
+		close(fdarg_c2p[0]);
+		close(fdarg_c2p[1]);
 		return -1;
 	}
 
 	pid_t res = fork();
 	if (0 == res){
-		close(fdarg_in[0]);
-		close(fdarg_out[1]);
-		dup2(fdarg_in[1], STDOUT_FILENO);
-		dup2(fdarg_out[0], STDIN_FILENO);
-		close(fdarg_in[1]);
-		close(fdarg_out[0]);
+		close(fdarg_c2p[0]);
+		close(fdarg_p2c[1]);
+		dup2(fdarg_c2p[1], STDOUT_FILENO);
+		dup2(fdarg_p2c[0], STDIN_FILENO);
+		close(fdarg_p2c[1]);
+		close(fdarg_c2p[0]);
 /* call works like fork() from the outside so no more actions here */
 		return 0;
 	}
 	else if (-1 == res){
-		close(fdarg_out[0]);
-		close(fdarg_out[1]);
-		close(fdarg_in[0]);
-		close(fdarg_in[1]);
+		close(fdarg_c2p[0]);
+		close(fdarg_c2p[1]);
+		close(fdarg_p2c[0]);
+		close(fdarg_p2c[1]);
 		return -1;
 	}
 
 /* server-end */
-	fakepty->fd_in = fdarg_in[0];
-	close(fdarg_in[1]);
-	fakepty->fd_out = fdarg_out[1];
-	close(fdarg_out[0]);
+	fakepty->c2p = fdarg_c2p[0];
+	close(fdarg_c2p[1]);
+	fakepty->p2c = fdarg_p2c[1];
+	close(fdarg_p2c[0]);
 	*out = fakepty;
 	return res;
 }
@@ -290,8 +290,8 @@ pid_t shl_pty_open(struct shl_pty **out,
 		return -ENOMEM;
 
 	pty->ref = 1;
-	pty->fd_in = -1;
-	pty->fd_out = -1;
+	pty->p2c = -1;
+	pty->c2p = -1;
 	pty->fn_input = fn_input;
 	pty->fn_input_data = fn_input_data;
 
@@ -344,8 +344,8 @@ pid_t shl_pty_open(struct shl_pty **out,
 	}
 
 	/* parent */
-	pty->fd_in = fd;
-	pty->fd_out = fd;
+	pty->p2c = fd;
+	pty->c2p = fd;
 	pty->child = pid;
 
 	close(comm[1]);
@@ -382,31 +382,34 @@ void shl_pty_unref(struct shl_pty *pty)
 
 void shl_pty_close(struct shl_pty *pty)
 {
-	if (!pty || pty->fd_in < 0)
+	if (!pty || pty->p2c < 0)
 		return;
 
-	if (pty->fd_in != -1 && pty->fd_in != STDIN_FILENO)
-		close(pty->fd_in);
+	if (pty->p2c != -1 && pty->p2c > STDOUT_FILENO)
+		close(pty->p2c);
 
-	pty->fd_in = -1;
+	pty->p2c = -1;
 
-	if (pty->fd_out != -1 && pty->fd_out != STDOUT_FILENO)
-		close(pty->fd_out);
+	if (pty->c2p != -1 && pty->c2p > STDOUT_FILENO)
+		close(pty->c2p);
 
-	pty->fd_out = -1;
+	pty->c2p = -1;
 }
 
 bool shl_pty_is_open(struct shl_pty *pty)
 {
-	return pty && pty->fd_in >= 0;
+	return pty && pty->p2c >= 0;
 }
 
-int shl_pty_get_fd(struct shl_pty *pty)
+int shl_pty_get_fd(struct shl_pty *pty, bool write)
 {
 	if (!pty)
 		return -EINVAL;
 
-	return pty->fd_in >= 0 ? pty->fd_in : -EPIPE;
+	if (write){
+		return pty->p2c >= 0 ? pty->p2c : -EPIPE;
+	}
+	return pty->c2p >= 0 ? pty->c2p : -EPIPE;
 }
 
 pid_t shl_pty_get_child(struct shl_pty *pty)
@@ -436,7 +439,7 @@ static int pty_write(struct shl_pty *pty)
 		if (!num)
 			return 0;
 
-		r = writev(pty->fd_out, vec, (int)num);
+		r = writev(pty->p2c, vec, (int)num);
 		if (r < 0) {
 			if (errno == EAGAIN)
 				return 0;
@@ -469,7 +472,7 @@ static int pty_read(struct shl_pty *pty)
 	 */
 
 	for (i = 0; i < 2; ++i) {
-		len = read(pty->fd_in, pty->in_buf, sizeof(pty->in_buf) - 1);
+		len = read(pty->c2p, pty->in_buf, sizeof(pty->in_buf) - 1);
 		if (len < 0) {
 			if (errno == EAGAIN)
 				return 0;
@@ -526,7 +529,7 @@ int shl_pty_signal(struct shl_pty *pty, int sig)
 	if (pty->pipe)
 		return 0;
 
-	return ioctl(pty->fd_out, TIOCSIG, sig) < 0 ? -errno : 0;
+	return ioctl(pty->p2c, TIOCSIG, sig) < 0 ? -errno : 0;
 }
 
 int shl_pty_resize(struct shl_pty *pty,
@@ -548,5 +551,5 @@ int shl_pty_resize(struct shl_pty *pty,
 	 * This will send SIGWINCH to the pty slave foreground process group.
 	 * We will also get one, but we don't need it.
 	 */
-	return ioctl(pty->fd_out, TIOCSWINSZ, &ws) < 0 ? -errno : 0;
+	return ioctl(pty->p2c, TIOCSWINSZ, &ws) < 0 ? -errno : 0;
 }

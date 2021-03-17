@@ -27,15 +27,19 @@ struct line {
 };
 
 enum pipe_modes {
-/* just forward from in-out and draw into terminal */
+/* just forward from in-out and draw the visible characters into screen */
 	PIPE_RAW = 0,
 
-/* respect line-feed */
+/* respect line-feed and UTF8 */
 	PIPE_PLAIN_LF = 1
 };
 
 static struct {
 	struct tui_context* screen;
+
+/* only main one and debug window */
+	struct tui_context* screens[2];
+
 	struct tsm_vte* vte;
 	struct shl_pty* pty;
 	struct arg_arr* args;
@@ -47,6 +51,7 @@ static struct {
 
 	_Atomic volatile bool alive;
 
+/* track re-execute (reset) as well as working with stdin/stdout forwarding */
 	bool die_on_term;
 	bool complete_signal;
 	bool pipe;
@@ -55,6 +60,10 @@ static struct {
 /* if the terminal has 'died' and 'fit' is set - we crop the stored
  * buffer to bounding box of 'real' (non-whitespace content) cells */
 	bool fit_contents;
+	struct {
+		size_t rows;
+		size_t cols;
+	} initial_hint;
 
 /* when the terminal has died and !die_on_term, we need to be able
  * to re-populate the contents on resize since the terminal state machine
@@ -168,16 +177,22 @@ static void create_restore_buffer()
 			max_row = row+1;
 	}
 
-/* if fit_content, we can ignore the 'die on fail' if there is nothing */
 	if (term.fit_contents){
 		if (max_row && max_col){
+
+/* so that we can 're-fit' on a reset when fit_contents has already been sent */
+			if (!term.initial_hint.rows || !term.initial_hint.cols){
+				term.initial_hint.rows = rows;
+				term.initial_hint.cols = cols;
+			}
+
 			arcan_tui_wndhint(term.screen, NULL, (struct tui_constraints){
 				.max_rows = max_row, .min_rows = max_row,
 				.max_cols = max_col, .min_cols = max_col
 			});
 		}
-		else
-			term.die_on_term = true;
+
+/* should we mark that the buffer is empty? */
 	}
 
 	atomic_store(&term.restore, buffer);
@@ -217,13 +232,24 @@ static ssize_t flush_buffer(int fd, char dst[static 4096])
 	return nr;
 }
 
-static void flush_ascii_lf(char* buf, size_t nb)
+static bool synch_quit(int fd)
+{
+	char buf[256];
+	ssize_t nr = read(fd, buf, 256);
+	for (ssize_t i = 0; i < nr; i++)
+		if (buf[i] == 'q')
+			return true;
+
+	return false;
+}
+
+static void flush_ascii(uint8_t* buf, size_t nb, bool raw)
 {
 	size_t pos = 0;
 
 	while (pos < nb){
 		if (isascii(buf[pos])){
-			if (buf[pos] == '\n')
+			if (!raw && buf[pos] == '\n')
 				arcan_tui_newline(term.screen);
 			else
 				arcan_tui_write(term.screen, buf[pos], NULL);
@@ -232,25 +258,38 @@ static void flush_ascii_lf(char* buf, size_t nb)
 	}
 }
 
-static void vte_forward(char* buf, size_t nb)
+static void flush_out(uint8_t* buf, size_t* left, size_t* ofs, int fdout, bool* die)
 {
-/* in pipe mode we can either provide statistics about what we forward, or a
- * 'visible' view of the contents (or both) - running as a bufferwnd is also a
- * possibility */
-	if (term.pipe){
-		bool out = false;
+	struct pollfd set[] = {
+		{.fd = fdout, .events = POLLOUT},
+		{.fd = term.dirtyfd, .events = POLLIN}
+	};
 
-		if (term.pipe_mode == PIPE_PLAIN_LF){
-			flush_ascii_lf(buf, nb);
-			out = true;
-		}
+	if (!*left)
+		return;
 
-		fwrite(buf, nb, 1, stdout);
-		if (out)
-			return;
+	if (-1 == poll(set, 2, *die ? 0 : -1))
+		return;
+
+	if (set[1].revents && synch_quit(term.dirtyfd)){
+		*die = true;
+		return;
 	}
 
-	tsm_vte_input(term.vte, buf, nb);
+/* flushing out is allowed to be blocking unless >die< is alreayd set */
+	ssize_t nw = 0;
+	if (set[0].revents)
+		nw = write(fdout, &buf[*ofs], *left);
+
+	if (nw < 0){
+		if (errno != EAGAIN && errno != EINTR){
+			*die = true;
+		}
+		return;
+	}
+
+	*left -= nw;
+	*ofs += nw;
 }
 
 static void on_recolor(struct tui_context* tui, void* tag)
@@ -270,6 +309,9 @@ static bool readout_pty(int fd)
 	if (nr < 0)
 		return false;
 
+	if (nr == 0)
+		return true;
+
 	if (0 != pthread_mutex_trylock(&term.synch)){
 		pthread_mutex_lock(&term.hold);
 		write(term.dirtyfd, &(char){'1'}, 1);
@@ -277,10 +319,11 @@ static bool readout_pty(int fd)
 		got_hold = true;
 	}
 
-	vte_forward(buf, nr);
+	tsm_vte_input(term.vte, buf, nr);
 
-/* could possibly also match against parser state, or specific total
- * timeout before breaking out and releasing the terminal */
+/* We could possibly also match against parser state, or specific total timeout
+ * before breaking out and releasing the terminal - the reason for this
+ * complicated scheme is to try and balance latency vs throughput vs tearing */
 	size_t w, h;
 	arcan_tui_dimensions(term.screen, &w, &h);
 	ssize_t cap = w * h * 4;
@@ -288,7 +331,7 @@ static bool readout_pty(int fd)
 		(struct pollfd[]){ {.fd = fd, .events = POLLIN } }, 1, 0)){
 		nr = flush_buffer(fd, buf);
 		if (nr > 0){
-			vte_forward(buf, nr);
+			tsm_vte_input(term.vte, buf, nr);
 			cap -= nr;
 		}
 	}
@@ -301,56 +344,132 @@ static bool readout_pty(int fd)
 	return true;
 }
 
-void* pump_pty()
+/*
+ * In 'pipe' mode we just buffer in from the fake-pty (exec) and from STDIN,
+ * flush to STDOUT and update the 'view' with either statistics or some
+ * filtered version of the data itself.
+ */
+static void* pump_pipe()
 {
-	int fd = shl_pty_get_fd(term.pty);
-	short pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;
+	uint8_t buffer[4096];
+	size_t left = 0;
+	size_t ofs = 0;
+	bool die = false;
+	int out_dst = STDOUT_FILENO;
 
-	struct pollfd set[4] = {
-		{.fd = fd, .events = pollev},
-		{.fd = term.dirtyfd, pollev},
-		{.fd = -1, .events = pollev},
-		{.fd = -1, .events = POLLIN}
+	struct pollfd set[] = {
+		{.fd = shl_pty_get_fd(term.pty, false), .events = POLLIN | POLLERR | POLLNVAL | POLLHUP},
+		{.fd = STDIN_FILENO, .events = POLLIN},
+		{.fd = term.dirtyfd, .events = POLLIN},
 	};
 
-/* with pipe-forward mode we also read from stdin and inject into the pty as
- * well as forward the pty data to stdout */
-	if (term.pipe)
-		set[3].fd = STDIN_FILENO;
+/* The reason for having the signaling socket alive here still is also to allow
+ * for a future 'detach' mode where an input label allows us to let the stdio
+ * mapping remain and drop the ability to inspect - i.e. just fork / splice */
+	while (atomic_load(&term.alive) && !die){
+		if (left){
+/* we can get here if the incoming pipe or pty dies, then we should still flush */
+			flush_out(buffer, &left, &ofs, out_dst, &die);
+			continue;
+		}
 
-	while (atomic_load(&term.alive)){
-		set[2].fd = tsm_vte_debugfd(term.vte);
-
-/* dispatch might just flush whatever is queued for writing */
-		shl_pty_dispatch(term.pty);
-
-		if (-1 == poll(set, 4, 10))
+		if (-1 == poll(set, sizeof(set) / sizeof(set[0]), -1))
 			continue;
 
-		if (term.pipe && set[3].revents){
-			char buf[4096];
-			size_t nr = fread(buf, 1, 4096, stdin);
-			if (nr)
-				shl_pty_write(term.pty, buf, nr);
+/* Signal to quit takes priority as it might mean reset and then the data is
+ * considered outdated and the pty will be closed */
+		if (set[2].revents && synch_quit(term.dirtyfd)){
+			die = true;
+			break;
 		}
 
-/* tty determines lifecycle */
-		if (set[0].revents){
-			if (!readout_pty(fd))
-				return NULL;
+		ssize_t nr = 0;
+
+/* Then flushing pty takes priority so that we don't block on backpressure,
+ * and we show the output of the pty routing */
+		if (set[0].revents & POLLIN){
+			nr = read(set[0].fd, buffer, 4096);
+
+			if (nr > 0){
+/* different pipe modes have different agendas here, and we might want to
+ * be able to toggle representation (RAW, UTF8/whitespace, statistics) */
+				flush_ascii(buffer, nr, true);
+				left = nr;
+				ofs = 0;
+				out_dst = STDOUT_FILENO;
+				continue;
+			}
 		}
 
-/* just flush out the signal/wakeup descriptor */
-		if (set[1].revents){
-			char buf[256];
-			read(set[1].fd, buf, 256);
+/* If the data >COMES< from STDIN we have to route to the PTY, which may bounce
+ * back or it may perform some kind of processing - this could've safely been a
+ * separate thread, but then would face problems with 'reset' state synch in the
+ * same way we use the signalling socket now */
+		if (nr <= 0 && (set[1].revents & POLLIN)){
+			nr = read(set[1].fd, buffer, 4096);
+			if (nr > 0){
+				left = nr;
+				ofs = 0;
+				out_dst = shl_pty_get_fd(term.pty, true);
+				continue;
+			}
 		}
 
-		if (set[2].revents){
-			tsm_vte_update_debug(term.vte);
+/* Then if the dies we should give up, not if STDIN does as the pty can
+ * still emit data as a function of previous input (decompression for instance).
+ * STDOUT is checked in the flush out routine below */
+		if (nr <= 0){
+			if (set[1].revents & (POLLERR | POLLNVAL | POLLHUP)){
+				die = true;
+				break;
+			}
+			continue;
 		}
 	}
 
+/* allow flush out unless we have received a 'quit now' */
+	flush_out(buffer, &left, &ofs, out_dst, &die);
+
+/* could possibly check what is mapped on stdin, proc-scrape the backing store
+ * and figure out if it is possible to grok the size - but hardly worth it */
+	arcan_tui_progress(term.screen, TUI_PROGRESS_INTERNAL, 1.0);
+
+	write(term.dirtyfd, &(char){'Q'}, 1);
+	atomic_store(&term.alive, false);
+
+	return NULL;
+}
+
+static void* pump_pty()
+{
+	int fd = shl_pty_get_fd(term.pty, false);
+	short pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;
+
+	struct pollfd set[2] = {
+		{.fd = fd, .events = pollev},
+		{.fd = term.dirtyfd, pollev},
+	};
+
+	while (atomic_load(&term.alive)){
+/* dispatch might just flush whatever is queued for writing, which can come from
+ * the callbacks in the UI thread */
+		shl_pty_dispatch(term.pty);
+
+		if (-1 == poll(set, 2, -1))
+			continue;
+
+/* tty determines lifecycle */
+		if (set[0].revents){
+			if (!readout_pty(fd) || (set[0].revents & POLLHUP))
+				break;
+		}
+
+/* flush signal / wakeup, quit if we got that value as we might need to reset */
+		if (set[1].revents && synch_quit(set[1].fd))
+			break;
+	}
+
+	write(term.dirtyfd, &(char){'Q'}, 1);
 	return NULL;
 }
 
@@ -413,14 +532,10 @@ static bool on_subwindow(struct tui_context* c,
 {
 	struct tui_cbcfg cbcfg = {};
 
-/* only bind the debug type and bind it to the terminal emulator state machine */
-	if (type == TUI_WND_DEBUG){
-		char mark = 'a';
-		bool ret = tsm_vte_debug(term.vte, newconn, c);
-		write(term.signalfd, &mark, 1);
-		return ret;
-	}
-	return false;
+	if (term.screens[1] || type != TUI_WND_DEBUG)
+		return false;
+
+	return tsm_vte_debug(term.vte, &term.screens[1], newconn, c);
 }
 
 static void on_mouse_motion(struct tui_context* c,
@@ -446,20 +561,19 @@ static void on_key(struct tui_context* c, uint32_t keysym,
 	uint8_t scancode, uint8_t mods, uint16_t subid, void* t)
 {
 	trace("on_key(%"PRIu32",%"PRIu8",%"PRIu16")", keysym, scancode, subid);
+	if (term.pipe)
+		return;
+
 	tsm_vte_handle_keyboard(term.vte,
 		keysym, isascii(keysym) ? keysym : 0, mods, subid);
 }
 
 static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 {
-	uint8_t buf[5] = {0};
-	trace("utf8-input: %s", u8);
-	memcpy(buf, u8, len >= 5 ? 4 : len);
-
-	int fd = shl_pty_get_fd(term.pty);
-	int rv = write(fd, u8, len);
-
-	if (rv < 0){
+/* special little nuance here is that this goes straight to the descriptor,
+ * so there might be some conflict with queueing if we paste a large block */
+	if (write(shl_pty_get_fd(term.pty, true), u8, len) < 0
+		&& errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR){
 		atomic_store(&term.alive, false);
 		arcan_tui_set_flags(c, TUI_HIDE_CURSOR);
 	}
@@ -771,10 +885,13 @@ static bool setup_build_term()
 	arcan_tui_dimensions(term.screen, &rows, &cols);
 	term.complete_signal = false;
 
+/* just to re-use the same interfaces in the case where we want exec and
+ * just control stdin/stdout versus a full posix_openpt */
 	if (term.pipe)
 		term.child = shl_pipe_open(&term.pty, true);
 	else
 		term.child = shl_pty_open(&term.pty, NULL, NULL, cols, rows);
+
 	if (term.child < 0){
 		arcan_tui_destroy(term.screen, "Shell process died unexpectedly");
 		return false;
@@ -818,7 +935,8 @@ static bool setup_build_term()
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
 	atomic_store(&term.alive, true);
 
-	if (-1 == pthread_create(&pth, &pthattr, pump_pty, NULL)){
+	if (-1 == pthread_create(&pth,
+		&pthattr, term.pipe ? pump_pipe : pump_pty, NULL)){
 		atomic_store(&term.alive, false);
 	}
 
@@ -841,14 +959,30 @@ static void on_reset(struct tui_context* tui, int state, void* tag)
 	case 1:
 		reset_restore_buffer();
 		tsm_vte_hard_reset(term.vte);
+
+/* hang-up any existing terminal, tell the current process thread to give up
+ * and wait for that to be acknowledged. */
 		if (atomic_load(&term.alive)){
 			on_exec_state(tui, 2, tag);
+			char q = 'q';
+			write(term.signalfd, &q, 1);
+			while (q != 'Q'){
+				read(term.signalfd, &q, 1);
+			}
 			atomic_store(&term.alive, false);
 		}
 
 		if (!term.die_on_term){
 			arcan_tui_progress(term.screen, TUI_PROGRESS_INTERNAL, 0.0);
 		}
+
+		if (term.initial_hint.rows && term.initial_hint.cols){
+			arcan_tui_wndhint(term.screen, NULL, (struct tui_constraints){
+				.max_rows = term.initial_hint.rows, .min_rows = term.initial_hint.rows,
+				.max_cols = term.initial_hint.cols, .min_cols = term.initial_hint.cols
+			});
+		}
+
 		shl_pty_close(term.pty);
 		setup_build_term();
 	break;
@@ -960,8 +1094,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		term.pipe = true;
 		if (val && strcmp(val, "lf") == 0)
 			term.pipe_mode = PIPE_PLAIN_LF;
-		setvbuf(stdout, NULL, _IONBF, 0);
-		setvbuf(stdin, NULL, _IONBF, 0);
 	}
 
 /*
@@ -1097,11 +1229,15 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	arcan_tui_set_color(term.screen, TUI_COL_BG, bgc);
 	arcan_tui_set_color(term.screen, TUI_COL_TEXT, fgc);
 
+	term.screens[0] = term.screen;
+
 	bool alive;
 	while((alive = atomic_load(&term.alive)) || !term.die_on_term){
 		pthread_mutex_lock(&term.synch);
-		struct tui_process_res res =
-			arcan_tui_process(&term.screen, 1, &term.signalfd, 1, -1);
+		tsm_vte_update_debug(term.vte);
+
+		struct tui_process_res res = arcan_tui_process(
+			term.screens, term.screens[1] ? 2 : 1, &term.signalfd, 1, -1);
 
 		if (res.errc < TUI_ERRC_OK){
 			break;
@@ -1114,7 +1250,9 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 			term.complete_signal = true;
 		}
 
-		arcan_tui_refresh(term.screen);
+		arcan_tui_refresh(term.screens[0]);
+		if (term.screens[1])
+			arcan_tui_refresh(term.screens[1]);
 
 /* screen contents have been synched and updated, but we don't have a
  * restore spot for dealing with resize or contents boundary */
@@ -1134,6 +1272,5 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 
 	arcan_tui_destroy(term.screen, NULL);
-
 	return EXIT_SUCCESS;
 }
