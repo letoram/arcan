@@ -287,7 +287,8 @@ static void setup_descriptor_store(struct shmifsrv_thread_data* data,
 	a12int_trace(A12_TRACE_MISSING, "descriptor_store_setup");
 }
 
-static void redirect_exit(struct shmifsrv_client* C, const char* path)
+static void redirect_exit(
+	struct shmifsrv_client* C, int level, const char* path)
 {
 	if (!path)
 		return;
@@ -296,7 +297,7 @@ static void redirect_exit(struct shmifsrv_client* C, const char* path)
 		.category = EVENT_TARGET,
 		.tgt.kind = TARGET_COMMAND_DEVICE_NODE,
 		.tgt.ioevs[0].iv = -1,
-		.tgt.ioevs[1].iv = 2,
+		.tgt.ioevs[1].iv = level,
 /* this will ignore the GUID setting */
 		};
 
@@ -369,7 +370,7 @@ static void on_srv_event(
  */
  	if (data->opts.redirect_exit && chid == 0 &&
 		ev->category == EVENT_TARGET && ev->tgt.kind == TARGET_COMMAND_EXIT){
-		redirect_exit(srv_cl, data->opts.redirect_exit);
+		redirect_exit(srv_cl, 2, data->opts.redirect_exit);
 		return;
 	}
 
@@ -475,6 +476,7 @@ static void* client_thread(void* inarg)
 /* the ext-io thread might be sleeping waiting for input, when we finished
  * one pass/burst and know there is queued data to be sent, wake it up */
 	bool dirty = false;
+	redirect_exit(data->C, 4, data->opts.redirect_exit);
 
 	for(;;){
 		if (dirty){
@@ -757,5 +759,5 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 
 /* only the primary segment left, we will try and migrate that one,
  * sending the DEVICE_NODE migrate event and performing a non-dms drop */
-	redirect_exit(C, opts.redirect_exit);
+	redirect_exit(C, 2, opts.redirect_exit);
 }
