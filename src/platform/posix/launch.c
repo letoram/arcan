@@ -383,9 +383,15 @@ struct arcan_frameserver* platform_launch_fork(
 		}
 		setpriority(PRIO_PROCESS, 0, level);
 
+/* do this twice so that they have the correct mode and the 'right' ops fail */
 		int nfd = open("/dev/null", O_RDONLY);
 		if (-1 != nfd){
 			dup2(nfd, STDIN_FILENO);
+			close(nfd);
+		}
+
+		nfd = open("/dev/null", O_WRONLY);
+		if (-1 != nfd){
 			dup2(nfd, STDOUT_FILENO);
 			dup2(nfd, STDERR_FILENO);
 			close(nfd);
