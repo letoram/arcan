@@ -1506,8 +1506,10 @@ static void root_menu(struct debug_ctx* dctx)
 			struct tui_process_res res =
 				arcan_tui_process(&dctx->tui, 1, NULL, 0, -1);
 
-			if (-1 == arcan_tui_refresh(dctx->tui) && errno == EINVAL)
+			if (-1 == arcan_tui_refresh(dctx->tui) && errno == EINVAL){
+				dctx->dead = true;
 				return;
+			}
 
 			struct tui_list_entry* ent;
 			if (arcan_tui_listwnd_status(dctx->tui, &ent)){
