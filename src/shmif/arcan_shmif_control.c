@@ -1991,9 +1991,8 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	int samplerate = ext.samplerate;
 	int adata = ext.meta;
 
-/* attempt to resize on a dead connection will trigger forced-
- * fallback or reconnect style behavior */
-	if (!arg->addr->dms){
+/* resize on a dead context triggers migration */
+	if (!check_dms(arg)){
 		if (SHMIF_MIGRATE_OK != fallback_migrate(arg, priv->alt_conn, true))
 			return false;
 	}
@@ -2006,6 +2005,13 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	if (atomic_load(&arg->addr->aready)){
 		while (atomic_load(&arg->addr->aready) && check_dms(arg))
 			arcan_sem_wait(arg->asem);
+	}
+
+/* since the vready wait can be long and be an error prone operation,
+ * the context might have died between the check above and here */
+	if (!check_dms(arg)){
+		if (SHMIF_MIGRATE_OK != fallback_migrate(arg, priv->alt_conn, true))
+			return false;
 	}
 
 	width = width < 1 ? 1 : width;
@@ -2063,20 +2069,14 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	FORCE_SYNCH();
 	arg->addr->resized = 1;
 	do{
-		arcan_sem_wait(arg->vsem);
+		if (0 == arcan_sem_trywait(arg->vsem))
+			arcan_timesleep(16);
 	}
-	while (arg->addr->resized && check_dms(arg));
+	while (arg->addr->resized > 0 && check_dms(arg));
 
-/*
- * spin until acknowledged, re-using the "wait on sync-fd" approach might be
- * worthwile, but previous latency etc. showed it's not worth it based on the
- * code overhead from needing to buffer, manage descriptors, etc. as there
- * might be other events 'in flight'.
- */
-	while(arg->addr->resized == 1 && check_dms(arg)){}
-
+/* post-size data commit is the last fragile moment server-side */
 	if (!check_dms(arg)){
-		debug_print(FATAL, arg, "dead man switch pulled during resize");
+		fallback_migrate(arg, priv->alt_conn, true);
 		return false;
 	}
 
