@@ -809,7 +809,8 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		struct rendertarget* rtgt = arcan_vint_findrt_vstore(disp[i].vstore);
 		struct agp_rendertarget* art = arcan_vint_worldrt();
 
-		if (disp[i].nopass || (disp[i].vstore && !rtgt)){
+		if (disp[i].nopass || (disp[i].vstore && !rtgt) ||
+			!arcan_shmif_handle_permitted(&disp[i].conn)){
 			verbose_print("force-disable readback pass");
 			synch_copy(&disp[i],
 				disp[i].vstore ? disp[i].vstore : arcan_vint_world());
@@ -1196,10 +1197,6 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 
 		case TARGET_COMMAND_REQFAIL:
 			scan_subseg(&ev.tgt, false);
-		break;
-
-		case TARGET_COMMAND_BUFFER_FAIL:
-			d->nopass = true;
 		break;
 
 /*
