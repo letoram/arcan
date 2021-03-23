@@ -9390,24 +9390,28 @@ static int targetalloc(lua_State* ctx)
 static int targetlaunch(lua_State* ctx)
 {
 	LUA_TRACE("launch_target");
-	arcan_configid cid = BAD_CONFIG;
 	size_t rc = 0;
-	int lmode;
+	int ofs = 2;
+	int lmode = LAUNCH_INTERNAL;
 
-	if (!fsrv_ok){
+	const char* tname = luaL_checkstring(ctx, 1);
+	const char* cfg = "default";
+
+	if (lua_type(ctx, 2) == LUA_TSTRING){
+		cfg = lua_tostring(ctx, 2);
+		ofs++;
 	}
 
-	if (lua_type(ctx, 1) == LUA_TSTRING){
-		cid = arcan_db_configid(DBHANDLE, arcan_db_targetid(DBHANDLE,
-			luaL_checkstring(ctx, 1), NULL), luaL_optstring(ctx, 2, "default"));
-		lmode = luaL_optnumber(ctx, 3, LAUNCH_INTERNAL);
+	arcan_configid cid = arcan_db_configid(DBHANDLE,
+		arcan_db_targetid(DBHANDLE, tname, NULL), cfg);
+
+	if (lua_type(ctx, ofs) == LUA_TNUMBER){
+		lmode = lua_tonumber(ctx, ofs++);
 	}
-	else
-		lmode = luaL_checknumber(ctx, 2);
 
 	if (lmode != LAUNCH_EXTERNAL && lmode != LAUNCH_INTERNAL)
-		arcan_fatal("launch_target(), invalid mode -- expected LAUNCH_INTERNAL "
-			" or LAUNCH_EXTERNAL ");
+		arcan_fatal("launch_target(), "
+			"invalid mode -- expected LAUNCH_INTERNAL or LAUNCH_EXTERNAL ");
 
 	intptr_t ref = find_lua_callback(ctx);
 
@@ -9415,17 +9419,16 @@ static int targetlaunch(lua_State* ctx)
 	enum DB_BFORMAT bfmt;
 	argv = env = libs;
 
-	char* exec = arcan_db_targetexec(DBHANDLE, cid,
-		&bfmt, &argv, &env, &libs);
+	char* exec = arcan_db_targetexec(DBHANDLE, cid, &bfmt, &argv, &env, &libs);
 
-/* means strarrs won't be populated */
+/* means strarrs won't be populated, this is not fatal due to the race potential
+ * with external modification of the database TOCTU */
 	if (!exec){
 		arcan_warning("launch_target(), failed -- invalid configuration\n");
 		LUA_ETRACE("launch_target", "invalid configuration", 0);
 	}
 
-/* external launch */
-	if (lmode == 0){
+	if (lmode == LAUNCH_EXTERNAL){
 		if (bfmt != BFRM_EXTERN){
 			arcan_warning("launch_target(), failed -- binary format not suitable "
 				" for external launch.");
@@ -9439,8 +9442,8 @@ static int targetlaunch(lua_State* ctx)
 			goto cleanup;
 		}
 
-		unsigned long tv = arcan_target_launch_external(
-			exec, &argv, &env, &libs, &retc);
+		unsigned long tv =
+			arcan_target_launch_external(exec, &argv, &env, &libs, &retc);
 		lua_pushnumber(ctx, retc);
 		lua_pushnumber(ctx, tv);
 		rc = 2;

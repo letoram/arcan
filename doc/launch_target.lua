@@ -1,17 +1,20 @@
 -- launch_target
 -- @short: Setup and launch an external program.
--- @inargs: int:target, int:configuration
--- @inargs: int:target, int:configuration, int:mode
--- @inargs: int:target, int:configuration, int:mode, function:handler
--- @inargs: int:target, int:configuration, int:mode, function:handler, string:args
+-- @inargs: string:target
+-- @inargs: string:target, string:config=default
+-- @inargs: string:target, int:mode=LAUNCH_INTERNAL
+-- @inargs: string:target, string:config=default, int:mode
+-- @inargs: string:target, string:config=default, int:mode=LAUNCH_INTERNAL
+-- @inargs: string:target, string:config=default, int:mode=LAUNCH_INTERNAL
+-- @inargs: ... function:handler(source, status)
 -- @outargs: vid:new_vid, aid:new_aid, int:cookie
 -- @outargs: int:return_code, int:elapsed
 -- @longdescr: Launch Target uses the database to build an execution environment
--- for the specific tuple of *target* and *configuration*. The mode can be set to
--- either LAUNCH_INTERNAL (default) or LAUNCH_EXTERNAL.
+-- for the specific tuple of *target* and *config* and launch a matching external
+-- client. The *mode* can be set to either LAUNCH_INTERNAL (default) or LAUNCH_EXTERNAL.
 --
 -- if (LAUNCH_INTERNAL) is set, arcan will set up a frameserver container,
--- launch the configuration and continue executing as normal. The callback
+-- launch the config and continue executing as normal. The callback
 -- specified with *handler* will be used to receive events connected with the
 -- new frameserver, and the returned *vid* handle can be used to control and
 -- communicate with the frameserver. The notes section below covers events
@@ -24,14 +27,14 @@
 -- for suspend/resume and similar situations. It only works if the binary format
 -- in the database entry has also been set explicitly to EXTERNAL.
 --
--- Depending on the binary format of the specified target, an additional
--- *args* string may be forwarded as the ARCAN_ARG environment variable and
--- follows the key1=value:key2:key3=value format (: delimiter, = indicates key
--- value pair, otherwise just key.
+-- If the target:config tuple does not exist (if config is not specified, it
+-- will be forced to 'default') or the config does not support the requested
+-- mode, BADID will be returned.
 --
--- If the target:configuration tuple does not exist (if configuration is
--- not specified, it will be forced to 'default') or the configuration
--- does not support the requested mode, BADID will be returned.
+-- Every argument combination takes a callback function argument at the end.
+-- If this is not set, it should be defined through ref:target_updatehandler or
+-- there may be a terminal state transition on the first event received from the
+-- target .
 --
 -- The initial states a client goes through are as follow:
 -- "connected" (when using ref:target_alloc) -> "registered" (type information

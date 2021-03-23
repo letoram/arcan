@@ -34,6 +34,7 @@
  * bond_target sent the wrong pipe pair ends
  * Set default font density to match platform ppcm on init
  * update HPPCM/VPPCM on rendertarget_reconfigure on WORLDID
+ * Strictened definition of launch_target
 
 ## Build
  * A whole lot of FreeBSD build fixes courtesy of J.Beich
@@ -48,12 +49,14 @@
  * Add graphmode palette definition to preroll stage
  * Preroll EAGAIN kernel race causing premature shutdown fixed
  * Ensure control socket or page never gets allocated on 0,1,2
+ * Two edge condition races on crash- triggered migration during resize
 
 ## Platform
  * Egl-dri: don't forward modifiers for linear/invalid
  * Lwa: use shmifext allocator interface for mapped rendertargets
  * Lwa: set last-words on script-error / arcan_fatal
  * Lwa: forward density to font renderer
+ * Lwa: fix buffer-export fail handling
  * Egl-dri: direct-scanout of 'sane- video objects' (e.g. FBO without post-processing)
  * Agp/Video: add support for hardware composition layers
  * Agp/Video: Allow mapped vstores to support dirty regions
@@ -74,6 +77,9 @@
 
 ## Tools
  * added tool arcan-dbgcapture for use as a /proc/core_pattern to help core dump management
+
+## Networking
+ * enable redirect_exit connection point immediately on client connection
 
 ## 0.6.0
 ## Engine
