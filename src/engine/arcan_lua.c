@@ -7050,7 +7050,7 @@ static int videomapping(lua_State* ctx)
 		arcan_fatal("map_video_display(), invalid target display id (%d)\n", id);
 
 	struct display_layer_cfg layer = {
-		.hint = luaL_optnumber(ctx, 4, HINT_NONE),
+		.hint = luaL_optnumber(ctx, 3, HINT_NONE),
 		.opacity = 1.0
 	};
 
