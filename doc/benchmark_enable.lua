@@ -37,3 +37,4 @@
 -- be disabled while inside the callback.
 -- @cfunction: togglebench
 -- @related: benchmark_data, benchmark_timestamp, benchmark_tracedata
+
