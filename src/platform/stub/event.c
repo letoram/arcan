@@ -28,6 +28,15 @@ void platform_event_analogall(bool enable, bool mouse)
 {
 }
 
+void platform_event_translation(int devid, int action, const char** names)
+{
+}
+
+int platform_event_device_request(int space, const char* path)
+{
+	return -1;
+}
+
 enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** out)
 {
 	if (out)

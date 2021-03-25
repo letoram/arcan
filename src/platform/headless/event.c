@@ -43,6 +43,15 @@ void platform_event_analogfilter(int devid,
 {
 }
 
+void platform_event_translation(int devid, int action, const char** names)
+{
+}
+
+int platform_event_device_request(int space, const char* path)
+{
+	return -1;
+}
+
 extern int headless_flush_encode_events();
 void platform_event_process(arcan_evctx* ctx)
 {

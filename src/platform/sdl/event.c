@@ -611,6 +611,15 @@ static unsigned gen_devid(unsigned hid)
 	return hid;
 }
 
+void platform_event_translation(int devid, int action, const char** names)
+{
+}
+
+int platform_event_device_request(int space, const char* path)
+{
+	return -1;
+}
+
 void drop_joytbl(struct arcan_evctx* ctx)
 {
 	for(int i=0; i < iodev.n_joy; i++){

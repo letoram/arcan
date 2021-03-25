@@ -223,13 +223,13 @@ static struct devnode* lookup_devnode(int devid)
 		devid = iodev.mouseid;
 
 	if (devid < iodev.sz_nodes){
-		verbose_print("%d => %"PRIxPTR, devid, &iodev.nodes[devid]);
+		verbose_print("lookup(%d) => %"PRIxPTR, devid, &iodev.nodes[devid]);
 		return &iodev.nodes[devid];
 	}
 
 	for (size_t i = 0; i < iodev.sz_nodes; i++){
 		if (iodev.nodes[i].devnum == devid){
-			verbose_print("%d:%zu => %"PRIxPTR, devid, i, &iodev.nodes[i]);
+			verbose_print("lookup(%d:%zu) => %"PRIxPTR, devid, i, &iodev.nodes[i]);
 			return &iodev.nodes[i];
 		}
 	}
@@ -1085,6 +1085,87 @@ static void send_device_added(struct arcan_evctx* ctx, struct devnode* node)
 	arcan_event_enqueue(ctx, &addev);
 }
 
+void platform_event_translation(int devid, int action, const char** arg)
+{
+	struct devnode* node = lookup_devnode(devid);
+	if (!node || node->type != DEVNODE_KEYBOARD)
+		return;
+
+#ifdef HAVE_XKBCOMMON
+	char* rules = NULL;
+	char* model = NULL;
+	char* variant = NULL;
+	char* options = NULL;
+	char* layout = NULL;
+
+	struct xkb_rule_names names = {0};
+
+	if (!xkb_context)
+		return;
+
+/* Config takes priority - Then explicitly fill with environment,
+ *
+ * An omitted path here is to incrementally index keyboards and allow multiple
+ * slots so different keyboards can get different layouts from the start. The
+ * problem with this is the usual one of persistant IDs across instances as
+ * anyone with a multiple keyboard setup that calls for different layouts
+ * already have very .. exotic tastes.
+ */
+	if (action == EVENT_TRANSLATION_CLEAR){
+		uintptr_t tag;
+		cfg_lookup_fun get_config = platform_config_lookup(&tag);
+		get_config("event_xkb_rules", 0, &rules, tag);
+		get_config("event_xkb_variant", 0, &variant, tag);
+		get_config("event_xkb_model", 0, &model, tag);
+		get_config("event_xkb_options", 0, &options, tag);
+		get_config("event_xkb_layout", 0, &layout, tag);
+
+		names.rules = rules ? rules : getenv("XKB_DEFAULT_RULES");
+		names.model = model ? model : getenv("XKB_DEFAULT_MODEL");
+		names.variant = variant ? variant : getenv("XKB_DEFAULT_VARIANT");
+		names.options = options ? options : getenv("XKB_DEFAULT_OPTIONS");
+		names.layout = layout ? options : getenv("XKB_DEFAULT_LAYOUT");
+	}
+/* just fill struct from arg */
+	else if (action == EVENT_TRANSLATION_SET){
+		names.layout = arg[0];
+		if (names.layout)
+			names.layout = arg[1];
+		if (names.rules)
+			names.rules = arg[2];
+		if (names.model)
+			names.variant = arg[3];
+		if (names.variant)
+			names.options = arg[4];
+	}
+	else
+		return;
+
+	if (node->keyboard.xkb_layout){
+		if (node->keyboard.xkb_state)
+			xkb_state_unref(node->keyboard.xkb_state);
+		xkb_keymap_unref(node->keyboard.xkb_layout);
+		node->keyboard.xkb_state = NULL;
+	}
+
+	node->keyboard.xkb_layout =
+		xkb_keymap_new_from_names(xkb_context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
+
+	if (node->keyboard.xkb_layout)
+		node->keyboard.xkb_state = xkb_state_new(node->keyboard.xkb_layout);
+
+	free(rules);
+	free(model);
+	free(variant);
+	free(options);
+#endif
+}
+
+int platform_event_device_request(int space, const char* path)
+{
+	return -EINVAL;
+}
+
 static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 {
 	struct devnode node = {
@@ -1198,15 +1279,6 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 			node.type = DEVNODE_KEYBOARD;
 			node.keyboard.state = 0;
 
-#ifdef HAVE_XKBCOMMON
-			if (xkb_context){
-				node.keyboard.xkb_layout = xkb_keymap_new_from_names(
-					xkb_context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
-				if (node.keyboard.xkb_layout)
-					node.keyboard.xkb_state = xkb_state_new(node.keyboard.xkb_layout);
-			}
-#endif
-
 /* FIX: query current LED states and set corresponding states in the devnode */
 			struct kbd_repeat kbrv = {0};
 			ioctl(node.handle, KDKBDREP, &kbrv);
@@ -1246,6 +1318,10 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 		}
 	}
 	iodev.nodes[hole] = node;
+
+	if (node.type == DEVNODE_KEYBOARD){
+		platform_event_translation(node.devnum, EVENT_TRANSLATION_CLEAR, NULL);
+	}
 
 	verbose_print("input: (%s:%s) added as type: %s",
 		path, node.label, lookup_type(node.type));
@@ -1386,10 +1462,10 @@ static void defhandler_kbd(
 			}
 			else if (inev[i].value == 1 || (inev[i].value == 2 && xkb_keymap_key_repeats(
 				node->keyboard.xkb_layout, inev[i].code+8))){
+				xkb_state_key_get_utf8(node->keyboard.xkb_state,
+					inev[i].code + 8, (char*) newev.io.input.translated.utf8, 5);
 				xkb_state_update_key(
 					node->keyboard.xkb_state, inev[i].code + 8, XKB_KEY_DOWN);
-					xkb_state_key_get_utf8(node->keyboard.xkb_state,
-						inev[i].code + 8, (char*) newev.io.input.translated.utf8, 5);
 			}
 		}
 #endif
@@ -1951,8 +2027,7 @@ void platform_event_init(arcan_evctx* ctx)
 	gstate.notify = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
 	init_keyblut();
 #ifdef HAVE_XKBCOMMON
-	if (!xkb_context && getenv("XKB_DEFAULT_LAYOUT"))
-		xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 #endif
 
 	if (!notify_scan_dir)

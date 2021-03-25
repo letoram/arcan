@@ -35,6 +35,7 @@
  * Set default font density to match platform ppcm on init
  * update HPPCM/VPPCM on rendertarget_reconfigure on WORLDID
  * Strictened definition of launch_target
+ * Add target_geohint for dynamic language/position updates
 
 ## Build
  * A whole lot of FreeBSD build fixes courtesy of J.Beich
@@ -64,6 +65,7 @@
  * Egl-dri: let preferred display buffer resolution drive map_video_display
  * Egl-dri: single-buffered drawing mode for fullscreen mapped tui/terminal clients
  * Sdl2: mouse wheel/button input fuxes
+ * Evdev: runtime switching xkb keylayout (libxkbcommon builds)
 
 ## Wayland
  * arcan-wayland did not pack drm/dma-buf right, causing import failures
