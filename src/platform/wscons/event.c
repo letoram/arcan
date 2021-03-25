@@ -319,6 +319,15 @@ void platform_event_keyrepeat(arcan_evctx* ctx, int* period, int* delay)
 	}
 }
 
+void platform_event_translation(int devid, int action, const char** names)
+{
+}
+
+int platform_event_device_request(int space, const char* path)
+{
+	return -1;
+}
+
 void platform_event_rescan_idev(arcan_evctx* ctx)
 {
 }

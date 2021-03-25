@@ -92,6 +92,39 @@ void platform_event_process(struct arcan_evctx* ctx);
  */
 enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** dst);
 
+enum translation_actions {
+/*
+ * Revert to config or environment default.
+ */
+	EVENT_TRANSLATION_CLEAR = 0,
+/*
+ * Apply a preset (e.g. "sv")
+ */
+	EVENT_TRANSLATION_SET = 1,
+/*
+ * Apply a custom remap (e.g. code+mods=ucs4)
+ */
+	EVENT_TRANSLATION_REMAP = 2
+};
+
+/*
+ * Apply a platform specific name translation set for a device
+ */
+void platform_event_translation(int devid, int action, const char** names);
+
+/*
+ * Attempt to get a file descriptor referencing a device path in some device
+ * namespace. This is mainly intended for USB- like device forwarding access
+ * and forwarding.
+ *
+ * Returns a file descriptor on success, or -ERRNO on failure.
+ */
+enum device_namespaces {
+/* path is interpreted as [/]vendor/product[/index] */
+	EVENT_NAMESPACE_USB = 0
+};
+int platform_event_device_request(int space, const char* path);
+
 /*
  * Update/get the active filter setting for the specific devid / axis (-1 for
  * all) lower_bound / upper_bound sets the [lower < n < upper] where only n
@@ -109,6 +142,5 @@ void platform_event_analogfilter(int devid,
 arcan_errc platform_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode);
-
 
 #endif

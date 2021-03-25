@@ -251,6 +251,15 @@ static struct bsdkey decode_tok(char* tok)
 	return res;
 }
 
+void platform_event_translation(int devid, int action, const char** names)
+{
+}
+
+int platform_event_device_request(int space, const char* path)
+{
+	return -1;
+}
+
 static bool load_keymap(struct devnode* dst, const char* path)
 {
 	char line_in[128];

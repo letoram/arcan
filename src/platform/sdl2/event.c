@@ -201,6 +201,15 @@ void platform_event_samplebase(int devid, float xyz[3])
  */
 }
 
+void platform_event_translation(int devid, int action, const char** names)
+{
+}
+
+int platform_event_device_request(int space, const char* path)
+{
+	return -1;
+}
+
 static inline void process_mousemotion(arcan_evctx* ctx,
 	const SDL_MouseMotionEvent* const ev)
 {
