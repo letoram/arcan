@@ -149,17 +149,17 @@ class DocReader
 		}
 
 		while (line.strip! == "")
-			line = a.readline
-			if (line == nil) then
-				return res
-			end
+      begin
+        line = a.readline
+      rescue EOFError
+        return res
+      end
 		end
 
 		lines = a.readlines
 		lines.insert(0, line)
 		remainder = lines.join("\n")
 
-		main = ""
 		ok, err = extract_examples(res.name, remainder)
 		res.examples[ 0 ] = ok
 		res.examples[ 1 ] = err
@@ -227,7 +227,7 @@ end
 
 def add_function(groupname, symname, cname)
 	fn = "#{symname}.lua"
-	if (File.exists?(fn))
+	if (File.exist?(fn))
 		true
 #
 # should checksum C source function, compare to
@@ -263,25 +263,25 @@ end
 # push to the function pointer in cfun
 #
 def cscan(cfun, cfile)
-	in_grp = false
+  in_grp = false
   linec = 0
-	File.open(cfile).each_line{|line|
-		linec = linec + 1
-	if (not in_grp and line =~ /\#define\sEXT_MAPTBL_(\w+)/)
-		in_grp = $1
-	elsif (in_grp)
-			if (line =~ /\#undef\sEXT_MAPTBL_(\w+)/)
-				in_grp = nil
-			else
-				line =~ /\{\"([a-z0-9_]+)\",\s*([a-z0-9_]+)\s*\}/
-				if ($1 != nil and $2 != nil) then
-					send(cfun, in_grp.downcase, $1, $2)
-				end
-			end
-		end
-	}
-rescue
-	STDOUT.print("exception at line #{linec}")
+  File.open(cfile).each_line{|line|
+    linec = linec + 1
+    if (not in_grp and line =~ /\#define\sEXT_MAPTBL_(\w+)/)
+      in_grp = $1
+    elsif (in_grp)
+      if (line =~ /\#undef\sEXT_MAPTBL_(\w+)/)
+        in_grp = nil
+      else
+        line =~ /\{\"([a-z0-9_]+)\",\s*([a-z0-9_]+)\s*\}/
+        if ($1 != nil and $2 != nil) then
+          send(cfun, in_grp.downcase, $1, $2)
+        end
+      end
+    end
+  }
+rescue => er
+	STDOUT.print("exception at line #{linec}:#{er} in #{cfile}")
 end
 
 $grouptbl = {}
@@ -347,8 +347,6 @@ end
 #
 
 def funtoman(fname, outm)
-	cgroup = nil
-
 	inf = DocReader.Open("#{fname}.lua")
 	outm << ".\\\" groff -man -Tascii #{fname}.3\n"
 	outm << ".TH \"#{fname}\" 3 \"#{Time.now.strftime(
@@ -452,8 +450,8 @@ when "vimgen" then
 	fname = ARGV[1]
 	if fname == nil then
 		Dir["/usr/share/vim/vim*"].each{|a|
-			next unless Dir.exists?(a)
-			if File.exists?("#{a}/syntax/lua.vim") then
+			next unless Dir.exist?(a)
+			if File.exist?("#{a}/syntax/lua.vim") then
 				fname = "#{a}/syntax/lua.vim"
 				break
 			end
@@ -466,7 +464,7 @@ when "vimgen" then
 	end
 
 	consts = []
-	if (File.exists?("constdump/consts.list"))
+	if (File.exist?("constdump/consts.list"))
 		File.open("constdump/consts.list").each_line{|a|
 			consts << a.chop
 		}
@@ -570,7 +568,7 @@ when "view" then
 when "mangen" then
 	inf = File.open("arcan_api_overview_hdr")
 
-	if (Dir.exists?("mantmp"))
+	if (Dir.exist?("mantmp"))
 		Dir["mantmp/*"].each{|a| File.delete(a) }
 	else
 		Dir.mkdir("mantmp")
@@ -592,7 +590,7 @@ when "mangen" then
 		val.each{|i|
 			outf << "\\&\\fI#{i}\\fR\\|(3)\n"
 
-			if File.exists?("#{i}.lua")
+			if File.exist?("#{i}.lua")
 				funtoman(i, File.new("mantmp/#{i}.3", IO::CREAT | IO::RDWR))
 			end
 		}

@@ -8239,6 +8239,51 @@ static int layout_tonum(const char* layout)
 	return 0;
 }
 
+static int targetgeohint(lua_State* ctx)
+{
+/* latitude, longitude, elevation, timezone, country, spoken-lang, written-lang */
+	LUA_TRACE("target_geohint");
+
+	arcan_vobject* vobj;
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, &vobj);
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+
+	int numind = 2;
+	file_handle fd = BADFD;
+
+	if (!fsrv || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV){
+		arcan_fatal("target_geohint() -- " FATAL_MSG_FRAMESERV);
+	}
+
+	const char* country = luaL_checkstring(ctx, 4);
+	const char* written = luaL_checkstring(ctx, 5);
+	const char* spoken = luaL_checkstring(ctx, 6);
+
+	if (strlen(country) != 3)
+		arcan_fatal("target_geohint(country) - expected ISO-3166-1-alpha3");
+
+	if (strlen(written) != 3)
+		arcan_fatal("target_geohint(written language) - expected ISO-639-2-alpha 3");
+
+	if (strlen(spoken) != 3)
+		arcan_fatal("target_geohint(spoken language) - expected ISO-639-2-alpha 3");
+
+	arcan_event outev = {
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_GEOHINT,
+		.tgt.ioevs[0].fv = luaL_checknumber(ctx, 1), /* latitude */
+		.tgt.ioevs[1].fv = luaL_checknumber(ctx, 2), /* longitude */
+		.tgt.ioevs[2].fv = luaL_checknumber(ctx, 3), /* elevation */
+		.tgt.ioevs[3].cv = {country[0], country[1], country[2]},
+		.tgt.ioevs[4].cv = {spoken[0],   spoken[1],  spoken[2]},
+		.tgt.ioevs[5].cv = {written[0], written[1], written[2]},
+		.tgt.ioevs[6].iv = luaL_checknumber(ctx, 7) /* gm_offset tz */
+	};
+
+	tgtevent(tgt, outev);
+	LUA_ETRACE("target_geohint", NULL, 0);
+}
+
 static int targetfonthint(lua_State* ctx)
 {
 /* (dstfsrv, [fontstr], size (pt), hinting -1 or (0..5), merge */
@@ -12453,6 +12498,7 @@ static const luaL_Reg tgtfuns[] = {
 {"target_displayhint",         targetdisphint           },
 {"target_devicehint",          targetdevhint            },
 {"target_fonthint",            targetfonthint           },
+{"target_geohint",             targetgeohint            },
 {"target_seek",                targetseek               },
 {"target_parent",              targetparent             },
 {"target_coreopt",             targetcoreopt            },

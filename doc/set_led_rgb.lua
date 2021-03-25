@@ -12,3 +12,4 @@
 -- can happen if many LED update queries are being pushed to a slow device.
 -- If the optional boolean *buffer* is set, the request may be queued and the queue
 -- will not dispatch until a non-buffered update is called.
+
