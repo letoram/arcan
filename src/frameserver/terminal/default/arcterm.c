@@ -10,6 +10,7 @@
 #include <ctype.h>
 #include <signal.h>
 #include <pthread.h>
+#include <fcntl.h>
 #include <poll.h>
 #include <unistd.h>
 
@@ -30,8 +31,14 @@ enum pipe_modes {
 /* just forward from in-out and draw the visible characters into screen */
 	PIPE_RAW = 0,
 
-/* respect line-feed and UTF8 */
-	PIPE_PLAIN_LF = 1
+/* pipe-raw but respect line-feed characters */
+	PIPE_PLAIN_LF = 1,
+
+/* treat as utf8 with a sliding window on decode fail */
+	PIPE_UTF8 = 2,
+
+/* only show minimal information about the transfer itself */
+	PIPE_STATS_BASIC = 3
 };
 
 static struct {
@@ -55,7 +62,10 @@ static struct {
 	bool die_on_term;
 	bool complete_signal;
 	bool pipe;
-	int pipe_mode;
+	size_t bytes_in;
+	size_t bytes_out;
+	uint8_t u8_buf[4];
+	volatile uint8_t pipe_mode;
 
 /* if the terminal has 'died' and 'fit' is set - we crop the stored
  * buffer to bounding box of 'real' (non-whitespace content) cells */
@@ -108,7 +118,6 @@ static void apply_restore_buffer()
 {
 	arcan_tui_erase_screen(term.screen, false);
 	struct line** cur = atomic_load(&term.restore);
-	size_t row = 0;
 	if (!cur)
 		return;
 
@@ -119,6 +128,7 @@ static void apply_restore_buffer()
 		arcan_tui_move_to(term.screen, 0, row);
 		struct tui_cell* cells = cur[row]->cells;
 		size_t n = cur[row]->count;
+		bool dirty = false;
 
 		for (size_t i = 0; i < n && i < cols; i++){
 			struct tui_cell* c= &cells[i];
@@ -130,12 +140,14 @@ static void apply_restore_buffer()
 	arcan_tui_move_to(term.screen, term.restore_cxy[0], term.restore_cxy[1]);
 }
 
-static void create_restore_buffer()
+static void create_restore_buffer(bool refit)
 {
 	reset_restore_buffer();
 	size_t rows, cols;
-	arcan_tui_dimensions(term.screen, &rows, &cols);
+	if (!term.screen)
+		return;
 
+	arcan_tui_dimensions(term.screen, &rows, &cols);
 	size_t bufsz = sizeof(struct line*) * (rows + 1);
 	struct line** buffer = malloc(bufsz);
 	memset(buffer, '\0', bufsz);
@@ -177,9 +189,8 @@ static void create_restore_buffer()
 			max_row = row+1;
 	}
 
-	if (term.fit_contents){
+	if (refit){
 		if (max_row && max_col){
-
 /* so that we can 're-fit' on a reset when fit_contents has already been sent */
 			if (!term.initial_hint.rows || !term.initial_hint.cols){
 				term.initial_hint.rows = rows;
@@ -258,6 +269,28 @@ static void flush_ascii(uint8_t* buf, size_t nb, bool raw)
 	}
 }
 
+static void write_number(size_t num)
+{
+	arcan_tui_printf(term.screen, NULL, "MISSING");
+}
+
+static void flush_stats()
+{
+	arcan_tui_erase_screen(term.screen, false);
+	arcan_tui_move_to(term.screen, 0, 0);
+	arcan_tui_printf(term.screen, NULL, "In: ");
+	write_number(term.bytes_in);
+	arcan_tui_move_to(term.screen, 0, 1);
+	arcan_tui_printf(term.screen, NULL, "Out: ");
+	write_number(term.bytes_out);
+}
+
+static void flush_utf8(uint8_t* buf, size_t nb)
+{
+	arcan_tui_move_to(term.screen, 0, 0);
+	arcan_tui_printf(term.screen, NULL, "MISSING-U8");
+}
+
 static void flush_out(uint8_t* buf, size_t* left, size_t* ofs, int fdout, bool* die)
 {
 	struct pollfd set[] = {
@@ -276,7 +309,7 @@ static void flush_out(uint8_t* buf, size_t* left, size_t* ofs, int fdout, bool* 
 		return;
 	}
 
-/* flushing out is allowed to be blocking unless >die< is alreayd set */
+/* flushing out is allowed to be blocking unless >die< is already set */
 	ssize_t nw = 0;
 	if (set[0].revents)
 		nw = write(fdout, &buf[*ofs], *left);
@@ -288,16 +321,15 @@ static void flush_out(uint8_t* buf, size_t* left, size_t* ofs, int fdout, bool* 
 		return;
 	}
 
+	term.bytes_out += nw;
+	if (term.pipe_mode == PIPE_STATS_BASIC)
+		flush_stats();
+
 	*left -= nw;
 	*ofs += nw;
-}
 
-static void on_recolor(struct tui_context* tui, void* tag)
-{
-/* this will redraw the window and update the colors where possible */
-	create_restore_buffer();
-	arcan_tui_erase_screen(tui, NULL);
-	apply_restore_buffer();
+/* tail recurse until flushed or the >die< trigger gets set */
+	return flush_out(buf, left, ofs, fdout, die);
 }
 
 static bool readout_pty(int fd)
@@ -325,7 +357,7 @@ static bool readout_pty(int fd)
  * before breaking out and releasing the terminal - the reason for this
  * complicated scheme is to try and balance latency vs throughput vs tearing */
 	size_t w, h;
-	arcan_tui_dimensions(term.screen, &w, &h);
+	arcan_tui_dimensions(term.screen, &h, &w);
 	ssize_t cap = w * h * 4;
 	while (nr > 0 && cap > 0 && 1 == poll(
 		(struct pollfd[]){ {.fd = fd, .events = POLLIN } }, 1, 0)){
@@ -391,9 +423,24 @@ static void* pump_pipe()
 			nr = read(set[0].fd, buffer, 4096);
 
 			if (nr > 0){
+				term.bytes_in += nr;
+
 /* different pipe modes have different agendas here, and we might want to
  * be able to toggle representation (RAW, UTF8/whitespace, statistics) */
-				flush_ascii(buffer, nr, true);
+				switch(term.pipe_mode){
+					case PIPE_RAW:
+						flush_ascii(buffer, nr, true);
+					break;
+					case PIPE_PLAIN_LF:
+						flush_ascii(buffer, nr, false);
+					break;
+					case PIPE_STATS_BASIC:
+						flush_stats(buffer, nr);
+					break;
+					case PIPE_UTF8:
+						flush_utf8(buffer, nr);
+					break;
+				}
 				left = nr;
 				ofs = 0;
 				out_dst = STDOUT_FILENO;
@@ -593,12 +640,19 @@ static unsigned long long last_frame;
 static void on_resize(struct tui_context* c,
 	size_t neww, size_t newh, size_t col, size_t row, void* t)
 {
+	create_restore_buffer(false);
+}
+
+static void on_resized(struct tui_context* c,
+	size_t neww, size_t newh, size_t col, size_t row, void* t)
+{
 	trace("resize(%zu(%zu),%zu(%zu))", neww, col, newh, row);
+	if (atomic_load(&term.restore) && !term.alive){
+		apply_restore_buffer();
+	}
+
 	if (term.pty){
 		shl_pty_resize(term.pty, col, row);
-	}
-	if (atomic_load(&term.restore)){
-		apply_restore_buffer();
 	}
 
 	last_frame = 0;
@@ -935,9 +989,20 @@ static bool setup_build_term()
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
 	atomic_store(&term.alive, true);
 
-	if (-1 == pthread_create(&pth,
-		&pthattr, term.pipe ? pump_pipe : pump_pty, NULL)){
-		atomic_store(&term.alive, false);
+/* with pipe- mode, we want stdout to be non-blocking */
+	if (term.pipe){
+		if (-1 == pthread_create(&pth, &pthattr, pump_pipe, NULL)){
+			int flags = fcntl(STDOUT_FILENO, F_GETFL);
+			fcntl(STDOUT_FILENO, flags | O_NONBLOCK);
+			atomic_store(&term.alive, false);
+			return EXIT_FAILURE;
+		}
+	}
+	else {
+		if (-1 == pthread_create(&pth, &pthattr, pump_pty, NULL)){
+			atomic_store(&term.alive, false);
+			return EXIT_FAILURE;
+		}
 	}
 
 	return true;
@@ -995,20 +1060,30 @@ static void on_reset(struct tui_context* tui, int state, void* tag)
 /* reset vte state */
 }
 
+struct labelent;
 struct labelent {
-	void (* handler)();
+	void (* handler)(struct labelent* self);
+	bool disabled;
+	int tag;
 	struct tui_labelent ent;
 };
 
-static void force_autofit()
+static void force_autofit(struct labelent* S)
 {
 	bool old_fit = term.fit_contents;
 	term.fit_contents = true;
-	create_restore_buffer();
+	create_restore_buffer(term.fit_contents);
 	term.fit_contents = old_fit;
 }
 
-static struct labelent labels[] = {
+static void set_pipe(struct labelent* S)
+{
+	arcan_tui_erase_screen(term.screen, false);
+	term.pipe_mode = S->tag;
+}
+
+static struct labelent labels[] =
+{
 	{
 		.handler = force_autofit,
 		.ent =
@@ -1018,7 +1093,51 @@ static struct labelent labels[] = {
 			.initial = TUIK_F1,
 			.modifiers = TUIM_LSHIFT
 		}
-	}
+	},
+	{
+		.handler = set_pipe,
+		.disabled = true,
+		.tag = PIPE_RAW,
+		.ent =
+		{
+			.label = "VIEW_RAW",
+			.descr = "Show pipe output in window as unfiltered",
+			.initial = TUIK_F1
+		},
+	},
+	{
+		.handler = set_pipe,
+		.disabled = true,
+		.tag = PIPE_RAW,
+		.ent =
+		{
+			.label = "VIEW_RAW_LF",
+			.descr = "Show pipe output in window as unfiltered, respect linefeed",
+			.initial = TUIK_F1
+		},
+	},
+	{
+		.handler = set_pipe,
+		.disabled = true,
+		.tag = PIPE_PLAIN_LF,
+		.ent =
+		{
+			.label = "VIEW_UTF8",
+			.descr = "Convert input to UTF8, mark invalid values",
+			.initial = TUIK_F2
+		}
+	},
+	{
+		.handler = set_pipe,
+		.disabled = true,
+		.tag = PIPE_STATS_BASIC,
+		.ent =
+		{
+			.label = "VIEW_STATS",
+			.descr = "Only show read/written/pending",
+			.initial = TUIK_F3
+		}
+	},
 };
 
 static bool on_label_query(struct tui_context* T,
@@ -1026,8 +1145,16 @@ static bool on_label_query(struct tui_context* T,
 	struct tui_labelent* dstlbl, void* t)
 {
 	struct bufferwnd_meta* M = t;
-	if (index < COUNT_OF(labels)){
-		*dstlbl = labels[index].ent;
+	size_t current = 0;
+
+/* poor complexity in this search but few entries */
+	do {
+		while(current < COUNT_OF(labels) && labels[current].disabled)
+			current++;
+	} while (index-- > 0 && current++ < COUNT_OF(labels));
+
+	if (current < COUNT_OF(labels) && !labels[current].disabled){
+		*dstlbl = labels[current].ent;
 		return true;
 	}
 	return false;
@@ -1040,8 +1167,8 @@ static bool on_label_input(
 		return true;
 
 	for (size_t i = 0; i < COUNT_OF(labels); i++){
-		if (strcmp(label, labels[i].ent.label) == 0){
-			labels[i].handler();
+		if (strcmp(label, labels[i].ent.label) == 0 && !labels[i].disabled){
+			labels[i].handler(&labels[i]);
 			return true;
 		}
 	}
@@ -1123,11 +1250,11 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.input_key = on_key,
 		.bchunk = on_bchunk,
 		.utf8 = on_utf8_paste,
-		.resized = on_resize,
+		.resize = on_resize,
+		.resized = on_resized,
 		.subwindow = on_subwindow,
 		.exec_state = on_exec_state,
 		.reset = on_reset,
-		.recolor = on_recolor
 /*
  * for advanced rendering, but not that interesting
  * .substitute = on_subst
@@ -1257,7 +1384,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 /* screen contents have been synched and updated, but we don't have a
  * restore spot for dealing with resize or contents boundary */
 		if (!alive && !atomic_load(&term.restore)){
-			create_restore_buffer();
+			create_restore_buffer(term.fit_contents);
 		}
 
 	/* flush out the signal pipe, don't care about contents, assume
