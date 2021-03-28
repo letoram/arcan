@@ -23,6 +23,7 @@ static void subsurf_position(
 	}
 	else
 		trace(TRACE_SURF, "x,y - %"PRId32", %"PRId32, x, y);
+
 	surf->viewport.ext.viewport.x = x;
 	surf->viewport.ext.viewport.y = y;
 	arcan_shmif_enqueue(&surf->acon, &surf->viewport);
@@ -42,6 +43,16 @@ static void subsurf_placeabove(
 
 	if (surf_sibl->viewport.ext.viewport.order < 127)
 		surf->viewport.ext.viewport.order = surf_sibl->viewport.ext.viewport.order+1;
+
+/* synch parent cookie token */
+	struct comp_surf* surf_parent = wl_resource_get_user_data(surf->sub_parent_res);
+	if (surf_parent && surf_parent->acon.addr){
+		surf->viewport.ext.viewport.parent = surf_parent->acon.segment_token;
+	}
+	else {
+		trace(TRACE_SHELL, "placeabove on empty parent\n");
+	}
+
 	arcan_shmif_enqueue(&surf->acon, &surf->viewport);
 }
 
