@@ -7134,6 +7134,35 @@ static int inputbase(lua_State* ctx)
 	LUA_ETRACE("input_samplebase", NULL, 0);
 }
 
+static int inputremaptranslation(lua_State* ctx)
+{
+	LUA_TRACE("input_remap_translation")
+	int devid = luaL_checknumber(ctx, 1);
+	int act = luaL_checknumber(ctx, 2);
+
+	if (
+		act != EVENT_TRANSLATION_CLEAR &&
+		act != EVENT_TRANSLATION_SET &&
+		act != EVENT_TRANSLATION_REMAP){
+		arcan_fatal("input_remap_translation() - unknown op: %d\n", act);
+	}
+
+
+	int ttop = lua_gettop(ctx);
+	const char* arr[ttop-2];
+	for (size_t i = 0; i < ttop - 2; i++){
+		arr[i] = luaL_checkstring(ctx, i+3);
+	}
+
+	arr[ttop-2] = NULL;
+	const char* err = "";
+	bool res = platform_event_translation(devid, act, arr, &err);
+	lua_pushboolean(ctx, res);
+	lua_pushstring(ctx, err);
+
+	LUA_ETRACE("input_remap_translation", NULL, 2)
+}
+
 static int inputcap(lua_State* ctx)
 {
 	LUA_TRACE("input_capabilities");
@@ -12716,6 +12745,7 @@ static const luaL_Reg iofuns[] = {
 {"toggle_mouse_grab",   mousegrab        },
 {"input_capabilities",  inputcap         },
 {"input_samplebase",    inputbase        },
+{"input_remap_translation", inputremaptranslation },
 {"set_led",             setled           },
 {"led_intensity",       led_intensity    },
 {"set_led_rgb",         led_rgb          },
@@ -12996,6 +13026,9 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"NOPERSIST", 0},
 {"PERSIST", 1},
 {"NET_BROADCAST", 0},
+{"TRANSLATION_CLEAR", EVENT_TRANSLATION_CLEAR},
+{"TRANSLATION_SET", EVENT_TRANSLATION_SET},
+{"TRANSLATION_REMAP", EVENT_TRANSLATION_REMAP},
 {"DEBUGLEVEL", luactx.debug}
 };
 #undef EXT_CONSTTBL_GLOBINT
@@ -13023,7 +13056,11 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalstr(ctx, "SHADER_LANGUAGE", agp_shader_language());
 	arcan_lua_setglobalstr(ctx, "FRAMESERVER_MODES", arcan_frameserver_atypes());
 	arcan_lua_setglobalstr(ctx, "APPLID", arcan_appl_id());
+#ifdef ARCAN_LWA
+	arcan_lua_setglobalstr(ctx, "API_ENGINE_BUILD", ARCAN_LWAVERSION);
+#else
 	arcan_lua_setglobalstr(ctx, "API_ENGINE_BUILD", ARCAN_BUILDVERSION);
+#endif
 
 	arcan_process_title(arcan_appl_id());
 

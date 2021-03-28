@@ -201,8 +201,11 @@ void platform_event_samplebase(int devid, float xyz[3])
  */
 }
 
-void platform_event_translation(int devid, int action, const char** names)
+bool platform_event_translation(
+	int devid, int action, const char** names, const char** err)
 {
+	*err = "Unsupported";
+	return -1;
 }
 
 int platform_event_device_request(int space, const char* path)

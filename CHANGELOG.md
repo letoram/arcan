@@ -36,6 +36,7 @@
  * update HPPCM/VPPCM on rendertarget_reconfigure on WORLDID
  * Strictened definition of launch_target
  * Add target_geohint for dynamic language/position updates
+ * added input_remap_translation for runtime input platform tuning
 
 ## Build
  * A whole lot of FreeBSD build fixes courtesy of J.Beich

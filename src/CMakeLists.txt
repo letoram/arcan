@@ -541,6 +541,7 @@ else()
 
 	# can we get sane literal concatenation one day?
 	set(PFT ${VIDEO_PLATFORM}-${AGP_PLATFORM}-${AUDIO_PLATFORM}-${INPUT_PLATFORM})
+	set(LWA_BUILDTAG ${ENGINE_BUILDTAG}-LWA-${LUA_TAG}-${DISTR_TAG})
 	set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-${PFT}-${LUA_TAG}-${DISTR_TAG})
 	unset(PFT)
 endif()
@@ -625,6 +626,7 @@ else()
 	set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c
 		APPEND PROPERTY COMPILE_DEFINITIONS
 		ARCAN_BUILDVERSION=\"${ENGINE_BUILDTAG}\"
+		ARCAN_LWAVERSION=\"${LWA_BUILDTAG}\"
 		${FSRV_DISABLE}
 	)
 

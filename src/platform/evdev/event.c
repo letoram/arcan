@@ -1085,11 +1085,32 @@ static void send_device_added(struct arcan_evctx* ctx, struct devnode* node)
 	arcan_event_enqueue(ctx, &addev);
 }
 
-void platform_event_translation(int devid, int action, const char** arg)
+bool platform_event_translation(
+	int devid, int action, const char** arg, const char** err)
 {
-	struct devnode* node = lookup_devnode(devid);
-	if (!node || node->type != DEVNODE_KEYBOARD)
-		return;
+	struct devnode* node = NULL;
+
+/* find the n'th device on a negative id */
+	if (devid < 0){
+		devid *= -1;
+
+		for (size_t i = 0; i < iodev.sz_nodes; i++){
+			if (iodev.nodes[i].type == DEVNODE_KEYBOARD){
+				devid--;
+				if (!devid){
+					node = &iodev.nodes[i];
+					break;
+				}
+			}
+		}
+	}
+	else
+		node = lookup_devnode(devid);
+
+	if (!node || node->type != DEVNODE_KEYBOARD){
+		*err = "No such device";
+		return false;
+	}
 
 #ifdef HAVE_XKBCOMMON
 	char* rules = NULL;
@@ -1100,8 +1121,10 @@ void platform_event_translation(int devid, int action, const char** arg)
 
 	struct xkb_rule_names names = {0};
 
-	if (!xkb_context)
-		return;
+	if (!xkb_context){
+		*err = "Missing XKB context";
+		return false;
+	}
 
 /* Config takes priority - Then explicitly fill with environment,
  *
@@ -1130,23 +1153,29 @@ void platform_event_translation(int devid, int action, const char** arg)
 	else if (action == EVENT_TRANSLATION_SET){
 		names.layout = arg[0];
 		if (names.layout)
-			names.layout = arg[1];
-		if (names.rules)
-			names.rules = arg[2];
+			names.model = arg[1];
 		if (names.model)
-			names.variant = arg[3];
+			names.variant = arg[2];
 		if (names.variant)
-			names.options = arg[4];
+			names.options = arg[3];
 	}
-	else
-		return;
+	else {
+		*err = "Unsupported action";
+		return false;
+	}
 
 	if (node->keyboard.xkb_layout){
 		if (node->keyboard.xkb_state)
 			xkb_state_unref(node->keyboard.xkb_state);
 		xkb_keymap_unref(node->keyboard.xkb_layout);
 		node->keyboard.xkb_state = NULL;
+		node->keyboard.xkb_layout = NULL;
 	}
+
+/* Disable xkb translation entirely */
+	if (!names.rules && !names.model &&
+		!names.variant && !names.options && !names.layout)
+		return false;
 
 	node->keyboard.xkb_layout =
 		xkb_keymap_new_from_names(xkb_context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
@@ -1158,7 +1187,12 @@ void platform_event_translation(int devid, int action, const char** arg)
 	free(model);
 	free(variant);
 	free(options);
+
+	return true;
 #endif
+
+	*err = "Engine built without libxkbcommon support";
+	return false;
 }
 
 int platform_event_device_request(int space, const char* path)
@@ -1320,7 +1354,8 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 	iodev.nodes[hole] = node;
 
 	if (node.type == DEVNODE_KEYBOARD){
-		platform_event_translation(node.devnum, EVENT_TRANSLATION_CLEAR, NULL);
+		const char* err;
+		platform_event_translation(node.devnum, EVENT_TRANSLATION_CLEAR, NULL, &err);
 	}
 
 	verbose_print("input: (%s:%s) added as type: %s",
