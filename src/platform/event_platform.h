@@ -108,9 +108,17 @@ enum translation_actions {
 };
 
 /*
- * Apply a platform specific name translation set for a device
+ * Apply a platform specific name translation set for a device.
+ *
+ * A negative devid value means looking for the abs(devid)th device with
+ * translation capabilities.
+ *
+ * Returns true on success and *errmsg is left intact.
+ * Returns false of ailure and sets *errmsg to a user presentable string
+ *               indicating the cause.
  */
-void platform_event_translation(int devid, int action, const char** names);
+bool platform_event_translation(
+	int devid, int action, const char** names, const char** errmsg);
 
 /*
  * Attempt to get a file descriptor referencing a device path in some device
