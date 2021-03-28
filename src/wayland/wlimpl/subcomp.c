@@ -41,13 +41,30 @@ static bool subcomp_defer_handler(
 
 	if (req->parent){
 		struct comp_surf* psurf = wl_resource_get_user_data(req->parent);
+		surf->viewport.ext.kind = ARCAN_EVENT(VIEWPORT);
+
+/*
+ * So we have an attachment to a deferred parent surface, that's just great -
+ * so on commit we need to try and re-set the parent relationship - the other
+ * tactic is that we can force a shmif surface to do this through by entering
+ * another allocation loop, create a fully translucent main surface in order
+ * to get the parent token and a realized window we can do something with.
+ *
+ * This is completely idiotic, and continues down the path of how broken this
+ * definition of subsurfaces really is. Should anyone care, I no longer do,
+ * then the real solution to deal with this fustercluck is to have a
+ * composition stage in waybridge itself, and aggregate all subsurfaces unto
+ * a main surface and stop the taint here.
+ */
 		if (!psurf->acon.addr){
 			trace(TRACE_ALLOC, "bad subsurface, broken parent");
-			return false;
+/* if we return false here, the subsurface will be in an incomplete state
+ * and UAF chances abound, so just go with it.. */
 		}
-		surf->viewport.ext.kind = ARCAN_EVENT(VIEWPORT);
-		surf->viewport.ext.viewport.parent = psurf->acon.segment_token;
-		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
+		else {
+			surf->viewport.ext.viewport.parent = psurf->acon.segment_token;
+			arcan_shmif_enqueue(&surf->acon, &surf->viewport);
+		}
 	}
 
 	trace(TRACE_ALLOC, "subsurface");
