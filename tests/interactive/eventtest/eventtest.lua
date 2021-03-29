@@ -12,6 +12,19 @@ function drawline(text, size)
     return render_text("\\f," .. tostring(size) .. " " .. text);
 end
 
+local function reposition()
+	local w3 = VRESW / 3;
+	local h2 = VRESH / 2;
+	if not valid_vid(analabel) then
+		return
+	end
+	move_image(analabel, 0, 0);
+	move_image(digilabel, w3, 0);
+	move_image(translabel, w3 + w3, 0);
+	move_image(touchlabel, 0, h2);
+	move_image(statuslabel, w3 + w3, h2);
+end
+
 function eventtest()
 	symtable = system_load("builtin/keyboard.lua")();
 
@@ -21,16 +34,9 @@ function eventtest()
 	statuslabel = drawline([[\bStatus]], 12);
 	translabel = drawline([[\bTranslated]], 12);
 
+	reposition()
 	inputanalog_toggle(1);
 	tc = null_surface(1, 1);
-
-	local w3 = VRESW / 3;
-	local h2 = VRESH / 2;
-	move_image(analabel, 0, 0);
-	move_image(digilabel, w3, 0);
-	move_image(translabel, w3 + w3, 0);
-	move_image(touchlabel, 0, h2);
-	move_image(statuslabel, w3 + w3, h2);
 
 	show_image({statuslabel, analabel, digilabel, translabel, touchlabel});
 
@@ -225,3 +231,7 @@ function eventtest_input( iotbl )
 	end
 end
 
+function eventtest_display_state(status)
+	resize_video_canvas(VRESW, VRESH)
+	reposition()
+end
