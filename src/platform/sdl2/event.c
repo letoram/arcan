@@ -19,6 +19,7 @@
 #include <arcan_event.h>
 
 #include "sdl2_12_lut.h"
+#include "code_sc_evdev.h"
 
 SDL_Window* sdl2_platform_activewnd();
 static const char* envopts[] =
@@ -685,9 +686,8 @@ void platform_event_process(arcan_evctx* ctx)
  * keypresses and apply their own translation tables, most notably
  * arcan-wayland and qemu, the information necessary for correct input is lost
  * in transit. The only real option is to have some kind of generator go from
- * the SDL tables back to linux ones.
- *
- * Since we know the type of the client, we can pick such tables automatically.
+ * the SDL tables back to x11 ones. The one used here (sdl_sc_evdev) comes from
+ * reverse-mapping the sdl2/src/events/scancodes_linux header.
  */
 			newevent.io.input.translated.keysym =
 				sdl2_sym_to_12sym(event.key.keysym.scancode);
@@ -701,6 +701,11 @@ void platform_event_process(arcan_evctx* ctx)
  * development so it might happen */
 			if (!newevent.io.input.translated.keysym)
 				newevent.io.input.translated.keysym = newevent.io.subid;
+
+			if (event.key.keysym.scancode < SDL_NUM_SCANCODES &&
+				sdl_sc_evdev[event.key.keysym.scancode]){
+				newevent.io.subid = sdl_sc_evdev[event.key.keysym.scancode];
+			}
 
 /* there's no having old .unicode behavior back unfortunately, so the SDL2
  * users will need a keymap on the scripting level */
@@ -736,6 +741,11 @@ void platform_event_process(arcan_evctx* ctx)
 
 			if (!newevent.io.input.translated.keysym)
 				newevent.io.input.translated.keysym = newevent.io.subid;
+
+			if (
+				event.key.keysym.scancode < SDL_NUM_SCANCODES &&
+				sdl_sc_evdev[event.key.keysym.scancode])
+				newevent.io.subid = sdl_sc_evdev[event.key.keysym.scancode];
 
 			arcan_event_enqueue(ctx, &newevent);
 		break;
@@ -1027,6 +1037,8 @@ void platform_event_init(arcan_evctx* ctx)
 
 	if (!first_init){
 		init_lut();
+		init_sdl_sc_evdev();
+
 		platform_event_analogfilter(-1, 0,
 			-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_PASS);
 		platform_event_analogfilter(-1, 1,
