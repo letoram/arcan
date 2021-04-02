@@ -23,6 +23,11 @@
 #include <al.h>
 #include <alc.h>
 
+/* Apple++ does not have the extension header in question (of course) so go
+ * with lifted definitions and dynamic loading */
+static void (*alc_device_pause_soft)(ALCdevice*);
+static void (*alc_device_resume_soft)(ALCdevice*);
+
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_shmif.h"
@@ -324,10 +329,11 @@ arcan_errc arcan_audio_setup(bool nosound)
 			ALC_FREQUENCY, ARCAN_SHMIF_SAMPLERATE,
 			0
 		};
+
 /* unfortunately, the pretty poorly thought out alcOpenDevice/alcCreateContext
- * doesn't allow you to create a nosound or debug/testing audio device
- * (or for that matter, enumerate without an extension, seriously..)
- * so to avoid yet another codepath, we'll just set the listenerGain to 0 */
+ * doesn't allow you to create a nosound or debug/testing audio device (or for
+ * that matter, enumerate without an extension, seriously..) so to avoid yet
+ * another codepath, we'll just set the listenerGain to 0 */
 #ifdef ARCAN_LWA
 		current_acontext->device = alcOpenDevice("arcan");
 #else
@@ -341,12 +347,22 @@ arcan_errc arcan_audio_setup(bool nosound)
 			alListenerf(AL_GAIN, 0.0);
 		}
 
+		if (
+			alcIsExtensionPresent(current_acontext->device, "alcDevicePauseSOFT") &&
+			alcIsExtensionPresent(current_acontext->device, "alcDeviceResumeSOFT"))
+		{
+			alc_device_pause_soft = alcGetProcAddress(
+				current_acontext->device, "alcDevicePauseSOFT");
+			alc_device_resume_soft = alcGetProcAddress(
+				current_acontext->device, "alcDeviceResumeSOFT");
+		}
+
 		current_acontext->al_active = true;
 		rv = ARCAN_OK;
 
 		/* just give a slightly "random" base so that
-		 * user scripts don't get locked into hard-coded ids .. */
-		current_acontext->lastid = rand() % 32768;
+		 user scripts don't get locked into hard-coded ids .. */
+		arcan_random((unsigned char*)&current_acontext->lastid, sizeof(arcan_aobj_id));
 	}
 
 	return rv;
@@ -593,6 +609,9 @@ arcan_errc arcan_audio_suspend()
 	}
 
 	current_acontext->al_active = false;
+	if (alc_device_pause_soft)
+		alc_device_pause_soft(current_acontext->device);
+
 	rv = ARCAN_OK;
 
 	return rv;
@@ -602,6 +621,9 @@ arcan_errc arcan_audio_resume()
 {
 	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
 	arcan_aobj* current = current_acontext->first;
+
+	if (alc_device_resume_soft)
+		alc_device_resume_soft(current_acontext->device);
 
 	while (current) {
 		if (current->id != AL_NONE)
