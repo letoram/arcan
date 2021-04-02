@@ -1,35 +1,38 @@
 -- define_recordtarget
 -- @short: Create a rendertarget with a periodic readback
--- @inargs: dest_buffer, dest_res, arguments, vids, aids,
--- detach, scale, samplerate, *callback*
+-- @inargs: vid:buffer, string:resource, string:arguments, vidtbl:vids,
+-- aidtbl:aids, int:detach, int:scale, int:samplerate, function:callback
+-- @inargs: vid:buffer, vid:resource, string:arguments, vidtbl:vids,
+-- aidtbl:aids, int:detach, int:scale, int:samplerate, function:callback
 -- @outargs:
 -- @longdescr: This function inherits from ref:define_rendertarget. Please
 -- refer to the description of that function for assistance with the
--- *detach*, *scale* and *samplerate* functions.
+-- *detach*, *scale* and *samplerate* arguments.
 --
 -- There are two distinct cases for using recordtargets. One is to create
--- a new frameserver(encode) session used for features such as streaming
--- and remote displays. The other is to create a new output segment in an
--- existing external connection.
+-- a new frameserver (afsrv_encode process) session used for features such
+-- as streaming and remote displays i.e. lossy output.
 --
--- For the first case, *dest_res* will be used as the output resource path
+-- In this case, *resource* will be used as the output resource path
 -- which will either be mapped to a NULL file (in the case of container=stream
--- in *arguments or "") or created in the APPL_TEMP namespace, and *arguments*
--- will be forwarded using the ARCAN_ARG environment variable.
+-- in *arguments* or "") or created in the APPL_TEMP namespace, and passed as
+-- a file descriptor into the process on creation. *arguments* will be forwarded
+-- using the ARCAN_ARG environment variable. ARCAN_ARG=help afsrv_encode from
+-- a command-line can be used to see the possible values for *arguments*.
 --
--- For the second case, *arguments* will be ignored and *dest_res* is expected
--- to refer to a VID that is also a segment in a frameserver. Trying to push a
--- subsegment to a VID that is not a connected frameserver is a terminal
--- state transition.
+-- The second usecase is the create an *output* segment in an existing client.
+-- Here, *arguments* will be ignored and *resource* is expected to refer to
+-- a valid (ref:valid_vid) frameserver segment. Trying to push a subsegment
+-- to a VID that is not a connected frameserver is a terminal state transition.
 --
--- The optional *callback* argument should point to a Lua defined function
--- that accepts a source_id(will match *dest_buffer*) and a table with
--- members that describe events that are performed on the underlying segment.
+-- The *callback* argument should point to a Lua defined function that accepts
+-- a source_id(will match *dest_buffer*) and a table with members that describe
+-- events that are performed on the underlying segment.
 --
 -- *aids* should either be a table of valid AIDs that should be mixed and
 -- forwarded, or to WORLDID as a means of hooking all arcan managed audio
--- input. By default, they are mixed and clipped equally. This can be changed
--- using ref:recordtarget_gain.
+-- input. By default, they are mixed and clipped equally.
+-- This can be changed using ref:recordtarget_gain.
 --
 -- @group: targetcontrol
 -- @cfunction: recordset
