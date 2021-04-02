@@ -447,8 +447,8 @@ static struct monitor_mode* get_platform_mode(platform_mode_id mode)
 	return NULL;
 }
 
-bool platform_video_specify_mode(platform_display_id id,
-	struct monitor_mode mode)
+bool platform_video_specify_mode(
+	platform_display_id id, struct monitor_mode mode)
 {
 	if (!(id < MAX_DISPLAYS && disp[id].conn.addr)){
 		verbose_print("rejected bad id/connection (%d)", (int) id);
@@ -462,6 +462,7 @@ bool platform_video_specify_mode(platform_display_id id,
 		return false;
 	}
 
+/* a crash during resize will trigger migration that might trigger _drop that might lock */
 	bool rz = arcan_shmif_resize(&disp[id].conn, mode.width, mode.height);
 	if (!rz){
 		verbose_print("display "
@@ -1311,6 +1312,8 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 			else if (ev.tgt.ioevs[0].iv == 1)
 				longjmp(arcanmain_recover_state, ARCAN_LUA_SWITCH_APPL_NOADOPT);
 			else {
+/* We are in migrate state, so force-mark frames as dirty */
+				arcan_video_display.ignore_dirty = 2;
 			}
 		break;
 
