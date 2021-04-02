@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019, Björn Ståhl
+ * Copyright 2012-2021, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -153,6 +153,9 @@ struct shmif_hidden {
 	uint8_t abuf_ind, abuf_cnt;
 	shmif_asample* abuf[ARCAN_SHMIF_ABUFC_LIM];
 
+	shmif_reset_hook reset_hook;
+	void* reset_hook_tag;
+
 /* Initial contents gets dropped after first valid !initial call after open,
  * otherwise we will be left with file descriptors in the process that might
  * not get used. What argues against keeping them after is that we also need
@@ -206,8 +209,10 @@ struct shmif_hidden {
 /* Typically not used, but some multithreaded clients that need locking controls
  * have mutexes allocated and kept here, then we can log / warn / detect if a
  * resize or migrate call is performed when it is unsafe */
-	int lock_refc;
 	pthread_mutex_t lock;
+	bool in_lock, in_signal, in_migrate;
+	pthread_t lock_id;
+	pthread_t primary_id;
 
 /* during automatic pause, we want displayhint and fonthint events to queue and
  * aggregate so we can return immediately on release, this pattern can be
@@ -264,23 +269,13 @@ static void* guard_thread(void* gstruct);
 
 static inline bool parent_alive(struct shmif_hidden* gs)
 {
-/* based on the idea that init inherits an orphaned process, return getppid()
- * != 1; won't work for hijack targets that double fork, and we don't have
- * the means for an inhertied connection right now (though a reasonable
- * possibility) */
+	/* for authoritative connections, a parent monitoring pid is set. */
 	if (-1 != kill(gs->guard.parent, 0))
 		return true;
 
-/* for nonauth/processes, it is not this simple. We don't want to ping/pong
- * over the socket as we don't know the state, and a timestamp and timeout
- * is not a good idea. Checking the proc/pid relies on /proc being available
- * which we don't want to. Left is to try and peek the socket and do a recvmsg */
-	if (errno == EPERM){
+/* start by peeking the socket (if it exists) and see if we get an error back */
+	if (-1 != gs->guard.parent_fd){
 		unsigned char ch;
-
-/* nothing we can do, if the server crashes at a synch-point, we may lock */
-		if (-1 == gs->guard.parent_fd)
-			return true;
 
 /* try to peek a byte and hope that will tell us the connection status */
 		if (-1 == recv(gs->guard.parent_fd, &ch, 1, MSG_PEEK | MSG_DONTWAIT) &&
@@ -627,7 +622,7 @@ static enum shmif_migrate_status fallback_migrate(
 		if (!force)
 			break;
 
-/* try return to the last known connection point after a few tries */
+/* try to return to the last known connection point after a few tries */
 		else if (current == cpoint && c->priv->alt_conn)
 			current = c->priv->alt_conn;
 		else
@@ -647,6 +642,11 @@ static enum shmif_migrate_status fallback_migrate(
 	switch (sv){
 /* dealt with above already */
 	case SHMIF_MIGRATE_NOCON:
+	break;
+	case SHMIF_MIGRATE_BAD_SOURCE:
+/* this means that multiple threads tried to migrate at the same time,
+ * and we come from one that isn't the primary one */
+		return sv;
 	break;
 	case SHMIF_MIGRATE_BADARG:
 		debug_print(FATAL, c, "recovery failed, broken path / key");
@@ -701,9 +701,6 @@ reset:
  * cases where a connection may be suspended for a long time and normal system
  * state (move window between displays, change global fonts) may be silently
  * ignored, when we actually want them delivered immediately upon UNPAUSE */
-#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
-	pthread_mutex_lock(&ctx->synch.lock);
-#endif
 
 	if (!priv->paused && priv->ph){
 		if (priv->ph & 1){
@@ -893,8 +890,7 @@ checkfd:
 					}
 /* try to migrate automatically, but ignore on failure */
 					else {
-						if (fallback_migrate(
-							c, dst->tgt.message, false) != SHMIF_MIGRATE_OK){
+						if (fallback_migrate(c,dst->tgt.message, false)!=SHMIF_MIGRATE_OK){
 							rv = 0;
 							goto done;
 						}
@@ -943,10 +939,6 @@ checkfd:
 		goto checkfd;
 
 done:
-#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
-	pthread_mutex_unlock(&ctx->synch.lock);
-#endif
-
 	return check_dms(c) || noks ? rv : -1;
 }
 
@@ -1051,8 +1043,8 @@ int arcan_shmif_wait(struct arcan_shmif_cont* c, struct arcan_event* dst)
 	return rv > 0;
 }
 
-int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
-	const struct arcan_event* const src)
+static int enqueue_internal(
+	struct arcan_shmif_cont* c, const struct arcan_event* const src, bool try)
 {
 	assert(c);
 	if (!c || !c->addr || !c->priv)
@@ -1064,7 +1056,7 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
  * either an event that might not fit in the current context, or an event that
  * gets lost. Neither is good. The counterargument is that crash recovery is a
  * 'best effort basis' - we're still dealing with an actual crash. */
-	if (!check_dms(c)){
+	if (!check_dms(c) && !try){
 		fallback_migrate(c, c->priv->alt_conn, true);
 		return 0;
 	}
@@ -1083,10 +1075,6 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 		struct arcan_event ev;
 		process_events(c, &ev, true, true);
 	}
-
-#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
-	pthread_mutex_lock(&ctx->synch.lock);
-#endif
 
 	while ( check_dms(c) &&
 			((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
@@ -1114,41 +1102,19 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 	FORCE_SYNCH();
 	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
 
-#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
-	pthread_mutex_unlock(&ctx->synch.lock);
-#endif
-
 	return 1;
+}
+
+int arcan_shmif_enqueue(
+	struct arcan_shmif_cont* c, const struct arcan_event* const src)
+{
+	return enqueue_internal(c, src, false);
 }
 
 int arcan_shmif_tryenqueue(
 	struct arcan_shmif_cont* c, const arcan_event* const src)
 {
-	assert(c);
-	if (!c || !src || !c->addr || !check_dms(c))
-		return 0;
-
-	struct arcan_evctx* ctx = &c->priv->outev;
-	if (c->priv->paused)
-		return 0;
-
-#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
-	pthread_mutex_lock(&ctx->synch.lock);
-#endif
-
-	if (((*ctx->front + 1) % ctx->eventbuf_sz) == *ctx->back){
-#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
-	pthread_mutex_unlock(&ctx->synch.lock);
-#endif
-
-		return 0;
-	}
-
-#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
-	pthread_mutex_unlock(&ctx->synch.lock);
-#endif
-
-	return arcan_shmif_enqueue(c, src);
+	return enqueue_internal(c, src, true);
 }
 
 static void unlink_keyed(const char* key)
@@ -1604,9 +1570,8 @@ struct arcan_shmif_cont arcan_shmif_acquire(struct arcan_shmif_cont* parent,
 	return res;
 }
 
-/* this act as our safeword (or well safebyte), if either party
- * for _any_reason decides that it is not worth going - the dms
- * (dead man's switch) is pulled. */
+/* this act as our safeword (or well safebyte), if either party for _any_reason
+ * decides that it is not worth going the dms (dead man's switch) is pulled. */
 static void* guard_thread(void* gs)
 {
 	struct shmif_hidden* gstr = gs;
@@ -1829,11 +1794,26 @@ unsigned arcan_shmif_signal(
 		return 0;
 	}
 
-/* to protect against some callers being stuck in a 'just signal
- * as a means of draining buffers' */
+/* if we are in migration there is no reason to go into signal until that
+ * has been dealt with */
+	if (priv->in_migrate)
+		return 0;
+
+/* and if we are in signal, migration will need to unlock semaphores so we
+ * leave signal and any held mutex on the context will be released until NEXT
+ * signal that would then let migration continue on other thread. */
+	priv->in_signal = true;
+
+/*
+ * To protect against some callers being stuck in a 'just signal as a means of
+ * draining buffers'. We can only initiate fallback recovery here if the
+ * context is not unlocked, the current thread is holding the lock and there
+ * is no on-going migration
+ */
 	if (!ctx->addr->dms || !atomic_load(&priv->guard.local_dms)){
 		ctx->abufused = ctx->abufpos = 0;
 		fallback_migrate(ctx, ctx->priv->alt_conn, true);
+		priv->in_signal = false;
 		return 0;
 	}
 
@@ -1879,6 +1859,7 @@ unsigned arcan_shmif_signal(
 			arcan_sem_trywait(ctx->vsem);
 	}
 
+	priv->in_signal = false;
 	return arcan_timemillis() - startt;
 }
 
@@ -1928,25 +1909,6 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 		arg_cleanup(gstr->args);
 	}
 
-/*
- * recall, as per posix: an implementation is required to allow
- * object-destroy immediately after object-unlock
- */
-#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
-	if (inctx->inev.synch.init){
-		inctx->inev.synch.init = false;
-		pthread_mutex_lock(&inctx->inev.synch.lock);
-		pthread_mutex_unlock(&inctx->inev.synch.lock);
-		pthread_mutex_destroy(&inctx->inev.synch.lock);
-	}
-	if (inctx->outev.synch.init){
-		inctx->outev.synch.init = false;
-		pthread_mutex_lock(&inctx->outev.synch.lock);
-		pthread_mutex_unlock(&inctx->outev.synch.lock);
-		pthread_mutex_destroy(&inctx->outev.synch.lock);
-	}
-#endif
-
 /* guard thread will clean up on its own */
 	free(inctx->priv->alt_conn);
 	if (inctx->privext->cleanup)
@@ -1957,9 +1919,6 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	if (inctx->privext->pending_fd != -1)
 		close(inctx->privext->pending_fd);
 
-	if (inctx->priv->lock_refc > 0){
-		debug_print(FATAL, inctx, "destroy on segment with active locks, in-UB");
-	}
 	pthread_mutex_unlock(&inctx->priv->lock);
 	pthread_mutex_destroy(&inctx->priv->lock);
 
@@ -1993,8 +1952,13 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 
 /* resize on a dead context triggers migration */
 	if (!check_dms(arg)){
-		if (SHMIF_MIGRATE_OK != fallback_migrate(arg, priv->alt_conn, true))
+		if (priv->reset_hook)
+			priv->reset_hook(SHMIF_RESET_LOST, priv->reset_hook_tag);
+
+/* fallback migrate will trigger the reset_hook on REMAP / FAIL */
+		if (SHMIF_MIGRATE_OK != fallback_migrate(arg, priv->alt_conn, true)){
 			return false;
+		}
 	}
 
 /* wait for any outstanding v/asynch */
@@ -2007,9 +1971,12 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 			arcan_sem_wait(arg->asem);
 	}
 
-/* since the vready wait can be long and be an error prone operation,
+/* since the vready wait can be long and an error prone operation,
  * the context might have died between the check above and here */
 	if (!check_dms(arg)){
+		if (priv->reset_hook)
+			priv->reset_hook(SHMIF_RESET_LOST, priv->reset_hook_tag);
+
 		if (SHMIF_MIGRATE_OK != fallback_migrate(arg, priv->alt_conn, true))
 			return false;
 	}
@@ -2032,11 +1999,13 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 		!dimensions_changed &&
 		!bufcnt_changed &&
 		!hints_changed &&
-		!bufsz_changed)
+		!bufsz_changed){
+		if (priv->reset_hook)
+			priv->reset_hook(SHMIF_RESET_NOCHG, priv->reset_hook_tag);
 		return true;
+	}
 
-/* synchronize hints as _ORIGO_LL and similar changes only synch
- * on resize */
+/* synchronize hints as _ORIGO_LL and similar changes only synch on resize */
 	atomic_store(&arg->addr->hints, arg->hints);
 	atomic_store(&arg->addr->apad_type, adata);
 
@@ -2076,6 +2045,11 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 
 /* post-size data commit is the last fragile moment server-side */
 	if (!check_dms(arg)){
+		if (priv->reset_hook){
+			priv->reset_hook(SHMIF_RESET_NOCHG, priv->reset_hook_tag);
+			priv->reset_hook(SHMIF_RESET_LOST, priv->reset_hook_tag);
+		}
+
 		fallback_migrate(arg, priv->alt_conn, true);
 		return false;
 	}
@@ -2083,6 +2057,8 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 /* resized failed, old settings still in effect */
 	if (arg->addr->resized == -1){
 		arg->addr->resized = 0;
+		if (priv->reset_hook)
+			priv->reset_hook(SHMIF_RESET_NOCHG, priv->reset_hook_tag);
 		return false;
 	}
 
@@ -2091,6 +2067,8 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
  * the dms. BUT now the dms may be relocated so we must lock guard and update
  * and recalculate everything.
  */
+	uintptr_t old_addr = (uintptr_t) arg->addr;
+
 	if (arg->shmsize != arg->addr->segment_size){
 		size_t new_sz = arg->addr->segment_size;
 		struct shmif_hidden* gs = priv;
@@ -2118,6 +2096,11 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	arcan_shmif_setevqs(arg->addr,
 		arg->esem, &priv->inev, &priv->outev, false);
 	setup_avbuf(arg);
+
+	if (priv->reset_hook){
+			priv->reset_hook(old_addr != (uintptr_t)arg->addr ?
+				SHMIF_RESET_REMAP : SHMIF_RESET_NOCHG, priv->reset_hook_tag);
+	}
 
 	return true;
 }
@@ -2372,27 +2355,44 @@ bool arcan_shmif_acquireloop(struct arcan_shmif_cont* c,
 	return false;
 }
 
-bool arcan_shmif_lock(struct arcan_shmif_cont* ctx)
+bool arcan_shmif_lock(struct arcan_shmif_cont* C)
 {
-	if (!ctx || !ctx->addr)
+	if (!C || !C->addr)
 		return false;
 
-	if (-1 == pthread_mutex_lock(&ctx->priv->lock))
+	struct shmif_hidden* P = C->priv;
+
+/* locking ourselves when we already have the lock is a bad idea,
+ * we don't rely on having access to recursive mutexes */
+	if (P->in_lock && pthread_equal(P->lock_id, pthread_self())){
+		return false;
+	}
+
+	if (0 != pthread_mutex_lock(&P->lock))
 		return false;
 
-	ctx->priv->lock_refc++;
+	P->in_lock = true;
+	P->lock_id = pthread_self();
 	return true;
 }
 
-bool arcan_shmif_unlock(struct arcan_shmif_cont* ctx)
+bool arcan_shmif_unlock(struct arcan_shmif_cont* C)
 {
-	if (!ctx || !ctx->addr || ctx->priv->lock_refc == 0)
+	if (!C || !C->addr || !C->priv->in_lock){
+		debug_print(FATAL, C, "unlock on unlocked/invalid context");
+		return false;
+	}
+
+/* don't unlock from any other thread than the locking one */
+	if (!pthread_equal(C->priv->lock_id, pthread_self())){
+		debug_print(FATAL, C, "mutex theft attempted");
+		return false;
+	}
+
+	if (0 != pthread_mutex_unlock(&C->priv->lock))
 		return false;
 
-	if (-1 == pthread_mutex_unlock(&ctx->priv->lock))
-		return false;
-
-	ctx->priv->lock_refc--;
+	C->priv->in_lock = false;
 	return true;
 }
 
@@ -2500,6 +2500,11 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	if (!cont || !cont->addr || !newpath)
 		return SHMIF_MIGRATE_BADARG;
 
+	struct shmif_hidden* P = cont->priv;
+
+	if (!pthread_equal(P->primary_id, pthread_self()))
+		return SHMIF_MIGRATE_BAD_SOURCE;
+
 	file_handle dpipe;
 	char* keyfile = NULL;
 
@@ -2513,63 +2518,64 @@ enum shmif_migrate_status arcan_shmif_migrate(
 /* re-use tracked "old" credentials" */
 	fcntl(dpipe, F_SETFD, FD_CLOEXEC);
 	struct arcan_shmif_cont ret =
-		arcan_shmif_acquire(NULL, keyfile, cont->priv->type, cont->priv->flags);
+		arcan_shmif_acquire(NULL, keyfile, P->type, P->flags);
 	ret.epipe = dpipe;
 
 	if (!ret.addr){
 		close(dpipe);
 		return SHMIF_MIGRATE_NOCON;
 	}
+
+/* all preconditions GO */
+	P->in_migrate = true;
 	ret.priv->guard.parent_fd = dpipe;
 
 /* REGISTER is special, as GUID can be internally generated but should persist */
-	if (cont->priv->flags & SHMIF_NOREGISTER){
+	if (P->flags & SHMIF_NOREGISTER){
 		struct arcan_event ev = {
 			.category = EVENT_EXTERNAL,
 			.ext.kind = ARCAN_EVENT(REGISTER),
-			.ext.registr.kind = cont->priv->type,
+			.ext.registr.kind = P->type,
 			.ext.registr.guid = {
-				cont->priv->guid[0], cont->priv->guid[1]
+				P->guid[0], P->guid[1]
 			}
 		};
 		arcan_shmif_enqueue(&ret, &ev);
 	}
 
-/* got a valid connection, first synch source segment so we don't have
- * anything pending */
-	while(atomic_load(&cont->addr->vready) && check_dms(cont))
-		arcan_sem_wait(cont->vsem);
+/* allow a reset-hook to release anything pending */
+	if (cont->priv->reset_hook)
+		cont->priv->reset_hook(SHMIF_RESET_REMAP, cont->priv->reset_hook_tag);
 
-	while(atomic_load(&cont->addr->aready) && check_dms(cont))
-		arcan_sem_wait(cont->asem);
-
-	size_t w = atomic_load(&cont->addr->w);
-	size_t h = atomic_load(&cont->addr->h);
-
-/* extract settings from the page, and forward into the new struct -
+/* extract settings from the page and context, forward into the new struct -
  * possibly just actually cache this inside ext would be safer */
+	size_t w = cont->w;
+	size_t h = cont->h;
+
 	struct shmif_resize_ext ext = {
 		.abuf_sz = cont->abufsize,
-		.vbuf_cnt = cont->priv->vbuf_cnt,
-		.abuf_cnt = cont->priv->abuf_cnt,
+		.vbuf_cnt = P->vbuf_cnt,
+		.abuf_cnt = P->abuf_cnt,
 		.samplerate = cont->samplerate,
-		.meta = cont->priv->atype,
+		.meta = P->atype,
 		.rows = atomic_load(&cont->addr->rows),
 		.cols = atomic_load(&cont->addr->cols)
 	};
 
 /* Copy the drawing/formatting hints, this is particularly important in case of
  * certain extended features such as TPACK as the size calculations are
- * different */
+ * different, then remap / resize the new context accordingly */
 	ret.hints = cont->hints;
+	shmif_resize(&ret, w, h, ext);
 
-	if (!shmif_resize(&ret, w, h, ext)){
-		return SHMIF_MIGRATE_TRANSFER_FAIL;
-	}
+/* and wake anything possibly blocking still as whatever was there is dead */
+	arcan_sem_post(cont->vsem);
+	arcan_sem_post(cont->asem);
+	arcan_sem_post(cont->esem);
 
 /* Copy the audio/video contents of [cont] into [ret], if possible, a possible
  * workaround on failure is to check if we have VSIGNAL- state and inject one
- * of those, or a RESET */
+ * of those, or delay-slot queue a RESET */
 	size_t vbuf_sz_new =
 		arcan_shmif_vbufsz(
 			ret.priv->atype, ret.hints, ret.w, ret.h,
@@ -2579,15 +2585,14 @@ enum shmif_migrate_status arcan_shmif_migrate(
 
 	size_t vbuf_sz_old =
 		arcan_shmif_vbufsz(
-			cont->priv->atype, cont->hints, cont->w, cont->h, ext.rows, ext.cols
-		);
+			P->atype, cont->hints, cont->w, cont->h, ext.rows, ext.cols);
 
 /* This might miss the bit where the new vs the old connection has the same
  * format but enforce different padding rules - but that edge case is better
  * off as accepting the buffer as lost */
 	if (vbuf_sz_new == vbuf_sz_old){
-		for (size_t i = 0; i < cont->priv->vbuf_cnt; i++)
-			memcpy(ret.priv->vbuf[i], cont->priv->vbuf[i], vbuf_sz_new);
+		for (size_t i = 0; i < P->vbuf_cnt; i++)
+			memcpy(ret.priv->vbuf[i], P->vbuf[i], vbuf_sz_new);
 	}
 /* Set some indicator color so this can be detected visually */
 	else{
@@ -2602,9 +2607,10 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	}
 
 /* The audio buffering parameters >should< be simpler as the negotiation
- * there does not have hint- or subprotocol- dependent constraints */
-	for (size_t i = 0; i < cont->priv->abuf_cnt; i++)
-		memcpy(ret.priv->abuf[i], cont->priv->abuf[i], cont->abufsize);
+ * there does not have hint- or subprotocol- dependent constraints, though
+ * again we could just delay-slot queue a FLUSH */
+	for (size_t i = 0; i < P->abuf_cnt; i++)
+		memcpy(ret.priv->abuf[i], P->abuf[i], cont->abufsize);
 
 	void* contaddr = cont->addr;
 
@@ -2612,6 +2618,20 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	void* olduser = cont->user;
 	int oldhints = cont->hints;
 	struct arcan_shmif_region olddirty = cont->dirty;
+
+/* But not before transferring privext or accel would be lost, no platform has
+ * any back-refs inside of the privext so that's fine - chances are that we
+ * should switch render device though. That can't be done here as there is
+ * state in the outer client that needs to come with, so when we have delay
+ * slots, another one of those is needed for DEVICEHINT */
+	ret.privext = cont->privext;
+	cont->privext = malloc(sizeof(struct shmif_ext_hidden));
+	*cont->privext = (struct shmif_ext_hidden){
+		.cleanup = NULL,
+		.active_fd = -1,
+		.pending_fd = -1,
+	};
+
 	arcan_shmif_drop(cont);
 
 /* last step, replace the relevant members of cont with the values from ret */
@@ -2620,6 +2640,7 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	void* alias = mmap(contaddr, ret.shmsize,
 		PROT_READ | PROT_WRITE, MAP_SHARED, ret.shmh, 0);
 
+/* prepare the guard-thread in the returned context to have its dms swapped */
 	pthread_mutex_lock(&ret.priv->guard.synch);
 	if (alias != contaddr){
 		munmap(alias, ret.shmsize);
@@ -2649,6 +2670,14 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	cont->hints = oldhints;
 	cont->dirty = olddirty;
 	cont->user = olduser;
+
+/* and signal the reset hook listener that the contents have now been
+ * remapped and can be filled with new data */
+	if (cont->priv->reset_hook){
+		cont->priv->reset_hook(SHMIF_RESET_REMAP, cont->priv->reset_hook_tag);
+	}
+
+	P->in_migrate = false;
 
 /* This does not currently handle subsegment remapping as they typically
  * depend on more state "server-side" and there are not that many safe
@@ -2782,6 +2811,8 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 		}
 	}
 
+/* this will only be called during first setup, so the _drop is safe here
+ * as the mutex lock it performs have not been exposed to the user */
 	debug_print(FATAL, cont, "no-activate event, connection died/timed out");
 	cont->priv->valid_initial = true;
 	arcan_shmif_drop(cont);
@@ -3036,6 +3067,8 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 		if (!wait_for_activation(&ret, !(flags & SHMIF_NOACTIVATE_RESIZE))){
 			goto fail;
 		}
+
+	ret.priv->primary_id = pthread_self();
 	return ret;
 
 fail:
@@ -3531,6 +3564,21 @@ void arcan_shmif_bgcopy(
 		}
 		free(fds);
 	}
+}
+
+shmif_reset_hook arcan_shmif_resetfunc(
+	struct arcan_shmif_cont* C, shmif_reset_hook hook, void* tag)
+{
+	if (!C)
+		return NULL;
+
+	struct shmif_hidden* hs = C->priv;
+	shmif_reset_hook old_hook = hs->reset_hook;
+
+	hs->reset_hook = hook;
+	hs->reset_hook_tag = tag;
+
+	return old_hook;
 }
 
 /*

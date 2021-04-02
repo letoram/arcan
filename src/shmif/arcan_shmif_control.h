@@ -233,6 +233,8 @@ struct arcan_shmif_initial;
 typedef enum arcan_shmif_sigmask(
 	*shmif_trigger_hook)(struct arcan_shmif_cont*);
 
+typedef void (*shmif_reset_hook)(int state, void* tag);
+
 enum ARCAN_FLAGS {
 	SHMIF_NOFLAGS = 0,
 
@@ -396,7 +398,8 @@ enum shmif_migrate_status {
 	SHMIF_MIGRATE_OK = 0,
 	SHMIF_MIGRATE_BADARG = -1,
 	SHMIF_MIGRATE_NOCON = -2,
-	SHMIF_MIGRATE_TRANSFER_FAIL = -4
+	SHMIF_MIGRATE_TRANSFER_FAIL = -4,
+	SHMIF_MIGRATE_BAD_SOURCE = -8
 };
 
 enum shmif_migrate_status arcan_shmif_migrate(
@@ -636,13 +639,43 @@ bool arcan_shmif_lock(struct arcan_shmif_cont*);
 bool arcan_shmif_unlock(struct arcan_shmif_cont*);
 
 /*
- * update the failure callback associated with a context- remapping due to
+ * Update the failure callback associated with a context- remapping due to
  * a connection failure. Although ->vidp and ->audp may be correct, there are
  * no guarantees and any aliases to these buffers should be updated in the
  * callback.
+ *
+ * This is mainly useful for cases where the same shmif context is shared
+ * across multiple threads, e.g. when there is an audio producer thread and
+ * a video producer thread.
+ *
+ * The pitfalls are tied to automatic migration from crash recovery, where one
+ * producer can be stuck in signalling a data transfer, and another in event
+ * dispatch.
+ *
+ * The event dispatch discovers a forced migration, which will cause the
+ * segment mappings to be dropped, which will first lock the context. If this
+ * happens while one of the producers is holding a lock, we would enter a
+ * deadlock state.
+ *
+ * The reset callback can be triggered in multiple states:
+ *
+ *   0 : in event handler / resized
+ *   1 : context is lost and will be remapped (multiple calls)
+ *   2 : context have been remapped
+ *   3 : context didn't need to be remapped
+ *   4 : context recovery failed / broken
+ *
+ * The function returns any previous reset hook defined on the context.
  */
-void arcan_shmif_resetfunc(struct arcan_shmif_cont*,
-	void (*resetf)(struct arcan_shmif_cont*));
+enum shmif_reset_hook {
+	SHMIF_RESET_RESIZE  = 0,
+	SHMIF_RESET_LOST    = 1,
+	SHMIF_RESET_REMAP   = 2,
+	SHMIF_RESET_NOCHG   = 3,
+	SHMIF_RESET_FAIL    = 4
+};
+shmif_reset_hook arcan_shmif_resetfunc(
+	struct arcan_shmif_cont*, shmif_reset_hook, void* tag);
 
 /*
  * This should be called periodically to prevent more subtle bugs from

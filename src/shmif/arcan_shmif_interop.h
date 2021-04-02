@@ -183,22 +183,21 @@ void arcan_shmif_defimpl(
 	struct arcan_shmif_cont* newchild, int type, void* pref);
 
 /*
- * Try and enqueue the element to the queue. If the context is set to lossless,
- * enqueue may block, sleep (or spinlock).
+ * Try and enqueue the element to the queue.
+ * If the context is set to lossless, enqueue may block, sleep (or spinlock).
  *
  * returns the number of FREE slots left on success or a negative value on
  * failure. The purpose of the try- approach is to let the user distinguish
  * between necessary and merely "helpful" events (e.g. frame numbers, net
  * ping-pongs etc.)
  *
- * These methods are thread-safe if and only if ARCAN_SHMIF_THREADSAFE_QUEUE
- * has been defined at build-time and not during a pending resize operation.
+ * These are THREAD_UNSAFE, lock the context before using from multiple threads.
  */
-int arcan_shmif_enqueue(struct arcan_shmif_cont*,
-	const struct arcan_event* const);
+int arcan_shmif_enqueue(
+	struct arcan_shmif_cont*, const struct arcan_event* const);
 
-int arcan_shmif_tryenqueue(struct arcan_shmif_cont*,
-	const struct arcan_event* const);
+int arcan_shmif_tryenqueue(
+	struct arcan_shmif_cont*, const struct arcan_event* const);
 
 /*
  * Provide a text representation useful for logging, tracing and debugging

@@ -1635,11 +1635,6 @@ struct arcan_evctx {
 	struct {
 		volatile uint8_t* killswitch;
 		sem_handle handle;
-
-#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
-		uint8_t init;
-		pthread_mutex_t lock;
-#endif
 	} synch;
 
 };
