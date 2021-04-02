@@ -577,7 +577,7 @@ enum ARCAN_TARGET_COMMAND {
  * ioev[3].cv = ISO-3166-1 Alpha 3 code for country + \'0'
  * ioev[4].cv = ISO-639-2, Alpha 3 code for language (spoken) + \'0'
  * ioev[5].cv = ISO-639-2, Alpha 3 code for language (written) + \'0'
- * ioev[6].iv = timezone
+ * ioev[6].iv = timezone as gm_offset
  */
 	TARGET_COMMAND_GEOHINT,
 
