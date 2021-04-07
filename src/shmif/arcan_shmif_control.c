@@ -270,22 +270,21 @@ static void* guard_thread(void* gstruct);
 static inline bool parent_alive(struct shmif_hidden* gs)
 {
 	/* for authoritative connections, a parent monitoring pid is set. */
-	if (-1 != kill(gs->guard.parent, 0))
-		return true;
+	if (gs->guard.parent > 0){
+		if (-1 == kill(gs->guard.parent, 0))
+			return false;
+	}
 
-/* start by peeking the socket (if it exists) and see if we get an error back */
+/* peek the socket (if it exists) and see if we get an error back */
 	if (-1 != gs->guard.parent_fd){
 		unsigned char ch;
 
-/* try to peek a byte and hope that will tell us the connection status */
-		if (-1 == recv(gs->guard.parent_fd, &ch, 1, MSG_PEEK | MSG_DONTWAIT) &&
-			(errno == EBADF || errno == ENOTCONN || errno == ENOTSOCK))
+		if (-1 == recv(gs->guard.parent_fd, &ch, 1, MSG_PEEK | MSG_DONTWAIT)
+			&& (errno != EWOULDBLOCK && errno != EAGAIN))
 			return false;
-
-		return true;
 	}
 
-	return false;
+	return true;
 }
 
 /*
