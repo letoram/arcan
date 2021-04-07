@@ -31,6 +31,7 @@
 
 static pthread_mutex_t logout_synch = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t wm_synch = PTHREAD_MUTEX_INITIALIZER;
+static pid_t exec_child = -1;
 
 /* retries before ICCCM destroy requests are ignored and we just kill
  * the client outright */
@@ -1176,9 +1177,58 @@ static void* xcb_msg_thread(void* arg)
 	return NULL;
 }
 
+static int launch_child(bool unlink_display, char** argv)
+{
+/*
+ * Now it should be safe to chain-execute any single client we'd want, and
+ * unlink on connect should we want to avoid more clients connecting to the
+ * display, this will block / stop clients that proxy/spawn multiples etc.
+ *
+ * To retain that kind of isolation the other option is to create a
+ * new namespace for this tree and keep the references around in there.
+ */
+	exec_child = fork();
+	if (-1 == exec_child){
+		trace("setup=fail:message=fork-fail");
+		return EXIT_FAILURE;
+	}
+	else if (0 == exec_child){
+/* remove the display variable, but also unlink the parent socket for the
+ * normal 'default' display as some toolkits also fallback and check for it,
+ * might be 'safer' to rename it but we are already quite far out in wtfsville */
+		const char* disp = getenv("WAYLAND_DISPLAY");
+		if (!disp)
+			disp = "wayland-0";
+
+/* should be guaranteed here but just to be certain, length is at sun_path (108) */
+		if (getenv("XDG_RUNTIME_DIR") && unlink_display){
+			char path[128];
+			snprintf(path, 128, "%s/%s", getenv("XDG_RUNTIME_DIR"), disp);
+			unlink(path);
+		}
+
+		unsetenv("WAYLAND_DISPLAY");
+
+		int ndev = open("/dev/null", O_RDWR);
+		dup2(ndev, STDIN_FILENO);
+		dup2(ndev, STDOUT_FILENO);
+		dup2(ndev, STDERR_FILENO);
+		close(ndev);
+		setsid();
+
+		execvp(argv[0], argv);
+		return EXIT_FAILURE;
+	}
+	else {
+		trace("client_exec=%s", argv[1]);
+	}
+	return EXIT_SUCCESS;
+}
+
 int main (int argc, char **argv)
 {
 	int code;
+	int exec_ind = 1;
 
 	sigaction(SIGCHLD, &(struct sigaction){
 		.sa_handler = on_chld, .sa_flags = 0}, 0);
@@ -1189,7 +1239,25 @@ int main (int argc, char **argv)
 /* standalone mode is to test/debug the WM against an externally managed X,
  * this runs without the normal inherited/rootless setup */
 	xwm_standalone = argc > 1 && strcmp(argv[1], "-standalone") == 0;
-	bool single_exec = !xwm_standalone && argc > 1;
+	bool single_exec = !xwm_standalone && argc > exec_ind;
+	bool use_notification = !xwm_standalone;
+
+	char* binary = "Xwayland";
+	char* binary_arg = "-rootless";
+
+/* Allow substituting Xwayland for Xarcan, normally this mode should not be
+ * needed as we can run the WM passing logic through Xarcan itself and skip the
+ * middle man, but for testing / development it works fine. Ideally we should
+ * also preload the xcb open and get rid of the /tmp/X11 hardcoded path in
+ * favor of XDG_RUNTIME */
+	if (strcmp(argv[1], "-xarcan") == 0){
+		binary = "Xarcan";
+		binary_arg = "-noreset";
+		xwm_standalone = true;
+		use_notification = true;
+		exec_ind = 2;
+		single_exec = argc > exec_ind;
+	}
 
 /*
  * Now we spawn the XWayland instance with a pipe- pair so that we can
@@ -1213,7 +1281,7 @@ int main (int argc, char **argv)
 	if (0 == xwayland){
 		close(notification[0]);
 		char* argv[] = {
-			"Xwayland", "-rootless",
+			binary, binary_arg,
 			"-displayfd", NULL,
 			"-wm", NULL,
 			NULL, NULL};
@@ -1224,7 +1292,9 @@ int main (int argc, char **argv)
 
 		asprintf(&argv[5], "%d", wmfd[1]);
 
-/* note, we also have -noreset, -eglstream (?) */
+/* noreset will not really hit unless the wm itself exists, which we don't
+ * expose real controls for in the single-exec mode. If we map to Xarcan stdio
+ * can be restored through preroll bonding the descriptors */
 		int ndev = open("/dev/null", O_RDWR);
 		dup2(ndev, STDIN_FILENO);
 		dup2(ndev, STDOUT_FILENO);
@@ -1232,18 +1302,18 @@ int main (int argc, char **argv)
 		close(ndev);
 		setsid();
 
-		execvp("Xwayland", argv);
+		execvp(binary, argv);
 		exit(EXIT_FAILURE);
 	}
 	else if (-1 == xwayland){
 		trace("setup=fail:message=failed to fork xwayland");
 		return EXIT_FAILURE;
 	}
-	trace("xwayland:pid=%d", xwayland);
+	trace("%s:pid=%d", binary, xwayland);
 /*
  * wait for a reply from the Xwayland setup, we can also get that as a SIGUSR1
  */
-	if (!xwm_standalone){
+	if (use_notification){
 		trace("xwayland:status=initializing");
 		char inbuf[64] = {0};
 		close(notification[1]);
@@ -1311,6 +1381,8 @@ int main (int argc, char **argv)
  * dispatch and another thread for outgoing dispatch
  */
 	if (xwm_standalone){
+		if (single_exec)
+			launch_child(false, &argv[exec_ind]);
 		for (;;){
 			run_event();
 		}
@@ -1329,52 +1401,8 @@ int main (int argc, char **argv)
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
 	pthread_create(&pth, &pthattr, xcb_msg_thread, NULL);
 
-/*
- * Now it should be safe to chain-execute any single client we'd want, and
- * unlink on connect should we want to avoid more clients connecting to the
- * display, this will block / stop clients that proxy/spawn multiples etc.
- *
- * To retain that kind of isolation the other option is to create a
- * new namespace for this tree and keep the references around in there.
- */
-	pid_t exec_child = -1;
-	if (single_exec){
-		exec_child = fork();
-		if (-1 == exec_child){
-			trace("setup=fail:message=fork-fail");
-			return EXIT_FAILURE;
-		}
-		else if (0 == exec_child){
-/* remove the display variable, but also unlink the parent socket for the
- * normal 'default' display as some toolkits also fallback and check for it,
- * might be 'safer' to rename it but we are already quite far out in wtfsville */
-			const char* disp = getenv("WAYLAND_DISPLAY");
-			if (!disp)
-				disp = "wayland-0";
-
-/* should be guaranteed here but just to be certain, length is at sun_path (108) */
-			if (getenv("XDG_RUNTIME_DIR")){
-				char path[128];
-				snprintf(path, 128, "%s/%s", getenv("XDG_RUNTIME_DIR"), disp);
-				unlink(path);
-			}
-
-			unsetenv("WAYLAND_DISPLAY");
-
-			int ndev = open("/dev/null", O_RDWR);
-			dup2(ndev, STDIN_FILENO);
-			dup2(ndev, STDOUT_FILENO);
-			dup2(ndev, STDERR_FILENO);
-			close(ndev);
-			setsid();
-
-			execvp(argv[1], &argv[1]);
-			return EXIT_FAILURE;
-		}
-		else {
-			trace("client_exec=%s", argv[1]);
-		}
-	}
+	if (single_exec)
+		launch_child(true, &argv[exec_ind]);
 
 	for(;;){
 		uint8_t ch;
