@@ -335,7 +335,7 @@ static void run_callback(struct comp_surf* surf)
 	for (size_t i = 0; i < COUNT_OF(surf->scratch) && surf->frames_pending; i++){
 		if (surf->scratch[i].type == 1){
 			surf->scratch[i].type = 0;
-			wl_callback_send_done(surf->scratch[i].res, surf->scratch[i].id);
+			wl_callback_send_done(surf->scratch[i].res, arcan_timemillis());
 			wl_resource_destroy(surf->scratch[i].res);
 			surf->frames_pending--;
 			trace(TRACE_SURF, "reply callback: %"PRIu32, surf->scratch[i].id);

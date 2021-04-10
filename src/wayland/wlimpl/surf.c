@@ -164,7 +164,7 @@ static void surf_frame(
  * and the client requests a callback, ack:it immediately */
 	if (!surf->shell_res){
 		trace(TRACE_SURF, "preemptive-cb-ack");
-		wl_callback_send_done(cbres, cb);
+		wl_callback_send_done(cbres, arcan_timemillis());
 		wl_resource_destroy(cbres);
 		return;
 	}
