@@ -59,9 +59,9 @@ For encoding and decoding options you would also want:
 First we need some in-source dependencies that are cloned manually for now:
 
     git clone https://github.com/letoram/arcan.git
-    cd external/git
-    ../clone.sh
-    cd ../arcan
+    cd arcan/external/git
+    ./clone.sh
+    cd ../../
 
 These are typically not needed, with the exception of our temporary openAL
 patches pending refactoring of that subsystem in time for the ~0.7 series of
