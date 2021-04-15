@@ -68,6 +68,7 @@ static struct egl_env agp_eglenv;
 
 struct shmif_ext_hidden_int {
 	struct gbm_device* dev;
+	char* device_path;
 
 	struct agp_rendertarget* rtgt;
 	struct agp_vstore buf;
@@ -143,7 +144,12 @@ static void gbm_drop(struct arcan_shmif_cont* con)
 	}
 	in->dev = NULL;
 
-	free(con->privext->internal);
+	if (in->device_path){
+		free(in->device_path);
+		in->device_path = NULL;
+	}
+
+	free(in);
 	con->privext->internal = NULL;
 	con->privext->cleanup = NULL;
 }
@@ -604,13 +610,25 @@ int arcan_shmifext_dev(struct arcan_shmif_cont* con,
 	if (!con || !con->privext || !con->privext->internal)
 		return -1;
 
-	if (dev)
-		*dev = (uintptr_t) con->privext->internal->dev;
+	struct shmif_ext_hidden_int* I = con->privext->internal;
 
+	if (dev)
+		*dev = (uintptr_t)(void*)I->dev;
+
+/* see the note about device_path in shmifext_egl */
 	if (clone){
-		int fd = arcan_shmif_dupfd(con->privext->active_fd, -1, true);
+		int fd = -1;
+		if (I->device_path){
+			fd = open(I->device_path, O_RDWR);
+		}
+
+		if (-1 == fd)
+			arcan_shmif_dupfd(con->privext->active_fd, -1, true);
+
+/* this can soon be removed entirely, the cardN path is dying */
 		if (-1 != fd)
 			authenticate_fd(con, fd);
+
 		return fd;
 	}
 	else
@@ -651,12 +669,27 @@ bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 	else if (-1 != con->privext->active_fd){
 		dfd = con->privext->active_fd;
 	}
-/* or first setup without a pending_fd, with the preroll state added it is
+
+/*
+ * Or first setup without a pending_fd, with the preroll state added it is
  * likely that we no longer need this - if we don't get a handle in the preroll
- * state we don't have extended graphics */
-	else if (!con->privext->internal){
-		const char* nodestr = getenv("ARCAN_RENDER_NODE") ?
-			getenv("ARCAN_RENDER_NODE") : "/dev/dri/renderD128";
+ * state we don't have extended graphics.
+ *
+ * There is a caveat to this in that some drivers expect the render node itself
+ * to not be shared onwards to other processes. This is relevant in bridging
+ * cases like for X11 and Wayland.
+ *
+ * In particular, AMDGPU may get triggered by this and fail on context creation
+ * in the 3rd party client - bailing with a cryptic message like "failed to
+ * create context".
+ *
+ * Thus, for the 'clone' case we need to remember the backing path and open a
+ * new node rather than trying to dup the descriptor.
+ */
+	const char* nodestr = "/dev/dri/renderD128";
+	if (!con->privext->internal){
+		if (getenv("ARCAN_RENDER_NODE"))
+			nodestr = getenv("ARCAN_RENDER_NODE");
 		dfd = open(nodestr, O_RDWR | O_CLOEXEC);
 	}
 /* mode-switch is no-op in init here, but we still may need
@@ -682,8 +715,15 @@ bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 			return false;
 		}
 
+/* The 'no-fdpass' is forcing a manual readback as a way of probing if the
+ * rather fragile cross-process GPU sharing breaks. Normally this comes as
+ * an event that dynamically changes the same state_fl. This causes the
+ * signalling to revert to GPU-readback into SHM as a way of still getting
+ * the data across. */
 		memset(con->privext->internal, '\0', sizeof(struct shmif_ext_hidden_int));
 		con->privext->state_fl = STATE_NOACCEL * (getenv("ARCAN_VIDEO_NO_FDPASS") ? 1 : 0);
+		con->privext->internal->device_path = strdup(nodestr);
+
 		if (NULL == (con->privext->internal->dev = gbm_create_device(dfd))){
 			gbm_drop(con);
 			return false;
