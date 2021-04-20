@@ -28,7 +28,8 @@ static void drain_video(struct a12_channel* ch, struct video_frame* cvf)
 	a12int_trace(A12_TRACE_VIDEO,
 		"kind=drain:dest=user:ts=%llu", arcan_timemillis());
 		if (ch->raw.signal_video){
-
+			ch->raw.signal_video(cvf->x, cvf->y,
+				cvf->x + cvf->w, cvf->y + cvf->h, ch->raw.tag);
 		}
 		return;
 	}
