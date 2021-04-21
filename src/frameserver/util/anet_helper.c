@@ -145,6 +145,9 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 			}
 		}
 
+		if (a12_auth_state(res.state) == AUTH_FULL_PK)
+			break;
+
 		char inbuf[4096];
 		ssize_t nr = read(res.fd, inbuf, 4096);
 		if (nr > 0){

@@ -65,15 +65,6 @@ enum control_commands {
 	COMMAND_REKEY        = 8  /* new x25519 change               */
 };
 
-enum authentic_state {
-	AUTH_UNAUTHENTICATED   = 0, /* first packet, authk- use and nonce                    */
-	AUTH_SERVER_HBLOCK     = 1, /* server received client HELLO with nonce               */
-	AUTH_POLITE_HELLO_SENT = 2, /* client->server, HELLO (ephemeral Pubk)                */
-	AUTH_EPHEMERAL_PK      = 3, /* server->client, HELLO (ephemeral Pubk, switch cipher) */
-	AUTH_REAL_HELLO_SENT   = 4, /* client->server, HELLO (real Pubk, switch cipher)      */
-	AUTH_FULL_PK           = 5, /* server->client, HELLO - now rekeying can be scheduled */
-};
-
 enum hello_mode {
 	HELLO_MODE_NOASYM = 0,
 	HELLO_MODE_REALPK = 1,
