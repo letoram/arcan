@@ -322,27 +322,27 @@ void a12int_encode_rgb(PACK_ARGS)
 		a12int_append_out(S, STATE_VIDEO_PACKET, outb, hdr_sz + bpb, NULL, 0);
 	}
 
-/* last chunk */
-	size_t left = ((w * h) - (blocks * ppb)) * px_sz;
-	if (left){
-		pack_u16(left, &outb[5]);
-/* sweep the incoming frame, and pack maximum block size */
-		size_t row_len = w;
-		for (size_t i = 0; i < blocks; i++){
-			for (size_t j = 0; j < bpb; j += px_sz){
-				uint8_t ign;
-				uint8_t* dst = &outb[hdr_sz+j];
-				SHMIF_RGBA_DECOMP(inbuf[pos++], &dst[0], &dst[1], &dst[2], &ign);
-				row_len--;
-				if (row_len == 0){
-					pos += vb->pitch - w;
-					row_len = w;
-				}
-/* dispatch to out-queue(s) */
-			}
+/* pack the last chunk (if w * h % ppb != 0)
+ */
+	size_t bytes_left = ((w * h) - (blocks * ppb)) * px_sz;
+	if (bytes_left){
+		size_t ofs = 0;
+		pack_u16(bytes_left, &outb[5]);
 
-			a12int_append_out(S, STATE_VIDEO_PACKET, outb, hdr_sz + left, NULL, 0);
+		while (bytes_left - ofs){
+			uint8_t ign;
+			uint8_t* dst = &outb[hdr_sz+ofs];
+			SHMIF_RGBA_DECOMP(inbuf[pos++], &dst[0], &dst[1], &dst[2], &ign);
+			ofs += px_sz;
+
+			row_len--;
+			if (row_len == 0){
+				pos += vb->pitch - w;
+				row_len = w;
+			}
 		}
+
+		a12int_append_out(S, STATE_VIDEO_PACKET, outb, hdr_sz + bytes_left, NULL, 0);
 	}
 
 	free(outb);
