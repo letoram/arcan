@@ -263,12 +263,18 @@ a12_enqueue_bstream(
 int
 a12_poll(struct a12_state*);
 
+enum authentic_state {
+	AUTH_UNAUTHENTICATED   = 0, /* first packet, authk- use and nonce                    */
+	AUTH_SERVER_HBLOCK     = 1, /* server received client HELLO with nonce               */
+	AUTH_POLITE_HELLO_SENT = 2, /* client->server, HELLO (ephemeral Pubk)                */
+	AUTH_EPHEMERAL_PK      = 3, /* server->client, HELLO (ephemeral Pubk, switch cipher) */
+	AUTH_REAL_HELLO_SENT   = 4, /* client->server, HELLO (real Pubk, switch cipher)      */
+	AUTH_FULL_PK           = 5, /* server->client, HELLO - now rekeying can be scheduled */
+};
+
 /*
  * Get the authentication state,
- * 0 = authenticating
- * 1 = authenticated, MAC only - no cipher or key-exchange
- * 1 = authenticated, pre-shared secret
- * 2 = authenticated, x25519 derived session key
+ * return values are as set above.
  */
 int
 a12_auth_state(struct a12_state*);
@@ -339,6 +345,13 @@ enum a12_vframe_compression_bias {
 	VFRAME_BIAS_QUALITY
 };
 
+/* properties to forward to the last stage in order to avoid extra
+ * repacks or conversions */
+enum a12_vframe_postprocess {
+	VFRAME_POSTPROCESS_SRGB = 1,
+	VFRAME_POSTPROCESS_ORIGO_LL = 2
+};
+
 /*
  * Open ended question here is if it is worth it (practically speaking) to
  * allow caching of various blocks and subregions vs. just normal compression.
@@ -348,6 +361,7 @@ enum a12_vframe_compression_bias {
 struct a12_vframe_opts {
 	enum a12_vframe_method method;
 	enum a12_vframe_compression_bias bias;
+	enum a12_vframe_postprocess postprocess;
 
 	bool variable;
 	union {

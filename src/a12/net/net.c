@@ -306,7 +306,7 @@ static bool show_usage(const char* msg)
 	"\t              \t overrides A12_CACHE_DIR environment\n"
 	"\t-a, --auth n  \t Read authentication secret from stdin\n"
 	"\t-t            \t Single- client (no fork/mt)\n"
-	"\t-d bitmap     \t set trace bitmap (bitmask or key1,key2,...)\n"
+	"\t-d bitmap     \t set trace bitmap (bitmask or key1,key2,...)\n\n"
 	"Keystore mode (ignores connection arguments):\n"
 	"\tAdd key: arcan-net keystore [-b dir] tag host [port=6680]\n"
 	"\nTrace groups (stderr):\n"
