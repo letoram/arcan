@@ -2106,23 +2106,7 @@ a12_poll(struct a12_state* S)
 int
 a12_auth_state(struct a12_state* S)
 {
-	switch (S->authentic){
-	case AUTH_FULL_PK:
-		if (!S->dec_state)
-			return 1;
-
-		if (S->opts->pk_lookup)
-			return 3;
-
-		return 2;
-	break;
-	case AUTH_REAL_HELLO_SENT:
-	case AUTH_EPHEMERAL_PK:
-	case AUTH_SERVER_HBLOCK:
-	case AUTH_POLITE_HELLO_SENT:
-	default:
-		return 0;
-	}
+	return S->authentic;
 }
 
 void
