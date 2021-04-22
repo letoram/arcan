@@ -77,3 +77,6 @@ encfwd/ connect once as an encoder, and then as a normal client that
 
 
 noreg/ tests what happens if a client connects but refuses to register
+
+dbox/ tests dirty updates by moving a 32x32 square +8,+8 with region
+      updates every event-clocked frame or reset event
