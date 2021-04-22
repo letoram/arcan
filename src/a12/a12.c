@@ -1011,10 +1011,10 @@ static void command_videoframe(struct a12_state* S)
 	}
 
 	a12int_trace(A12_TRACE_VIDEO, "kind=frame_header:method=%d:"
-		"source_w=%zu:source_h=%zu:dst_w=%zu:dst_h=%zu:x=%zu,y=%zu:"
+		"source_w=%zu:source_h=%zu:w=%zu:h=%zu:x=%zu,y=%zu:"
 		"bytes_in=%zu:bytes_out=%zu",
-		(int) vframe->postprocess, (size_t) vframe->w, (size_t) vframe->h,
-		(size_t) vframe->sw, (size_t) vframe->sh, (size_t) vframe->x, (size_t) vframe->y,
+		(int) vframe->postprocess, (size_t) vframe->sw, (size_t) vframe->sh,
+		(size_t) vframe->w, (size_t) vframe->h, (size_t) vframe->x, (size_t) vframe->y,
 		(size_t) vframe->inbuf_sz, (size_t) vframe->expanded_sz
 	);
 
