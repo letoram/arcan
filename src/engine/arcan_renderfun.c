@@ -1576,6 +1576,8 @@ static void set_font_slot(
 	grp->font[slot].truetype = TTF_OpenFontFD(fd, pt_sz, dpi, dpi);
 	if (!grp->font[slot].truetype){
 		close(fd);
+		grp->font[slot].vector = false;
+		grp->font[slot].fd = -1;
 		return;
 	}
 
