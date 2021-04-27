@@ -1,7 +1,7 @@
 #include <inttypes.h>
 #include "../../arcan_shmif.h"
 #include "../../arcan_tui.h"
-#define SHMIF_TTF
+
 #include "arcan_ttf.h"
 #include "../tui_int.h"
 
