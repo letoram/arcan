@@ -3,9 +3,13 @@
 # do an in-source build of shmif- and its platform (automated build/
 # test systems etc) without a full installation.
 #
-# defines:
+# Defines:
 # ARCAN_SHMIF_INCLUDE_DIR
 # ARCAN_SHMIF_LIBRARY (set to arcan_shmif_int)
+#
+# Out-outs:
+# SHMIF_DISABLE_DEBUGIF
+# TUI_RASTER_NO_TTF
 #
 # Targets:
 # arcan_shmif
@@ -120,9 +124,8 @@ set(SHMIF_TUI_SOURCES
 	${ASD}/shmif/tui/screen/tsm_unicode.c
 	${ASD}/shmif/tui/screen/shl_htable.c
 	${ASD}/shmif/tui/screen/wcwidth.c
-	${ASD}/engine/arcan_ttf.c
 
-# support widgers
+# support widgets
 	${ASD}/shmif/tui/widgets/copywnd.c
 	${ASD}/shmif/tui/widgets/bufferwnd.c
 	${ASD}/shmif/tui/widgets/listwnd.c
@@ -139,8 +142,18 @@ set(SHMIF_SERVER_SOURCES
 	${ASD}/shmif/arcan_shmif_evpack.c
 )
 
-set_property(SOURCE ${ASD}/engine/arcan_ttf.c
-	APPEND PROPERTY COMPILE_DEFINITIONS SHMIF_TTF)
+if (NOT TUI_RASTER_NO_TTF)
+	list(APPEND
+		SHMIF_TUI_SOURCES
+		${ASD}/engine/arcan_ttf.c
+	)
+	set_property(SOURCE ${ASD}/engine/arcan_ttf.c
+		APPEND PROPERTY COMPILE_DEFINITIONS SHMIF_TTF)
+else()
+	list(APPEND
+		SHMIF_TUI_SOURCES
+		${ASD}/shmif/tui/raster/ttfstub.c)
+endif()
 
 set_property(SOURCE ${ASD}/shmif/tui/raster/raster.c
 	APPEND PROPERTY COMPILE_DEFINITIONS NO_ARCAN_AGP)
@@ -164,8 +177,7 @@ add_library(arcan_shmif_ext SHARED ${SHMIF_EXT_SOURCES})
 add_library(arcan_shmif_intext SHARED ${SHMIF_EXT_SOURCES})
 add_library(arcan_shmif_server SHARED ${SHMIF_SERVER_SOURCES} ${SHMIF_PLATFORM})
 
-add_sanitizers(arcan_shmif_int arcan_shmif arcan_shmif_ext arcan_shmif_intext
-	arcan_shmif_server)
+add_sanitizers(arcan_shmif_int arcan_shmif arcan_shmif_ext arcan_shmif_intext	arcan_shmif_server)
 
 if (NOT SHMIF_DISABLE_DEBUGIF)
 	target_compile_definitions(arcan_shmif PRIVATE SHMIF_DEBUG_IF)
@@ -188,7 +200,13 @@ set(TUI_LIBRARIES arcan_shmif)
 
 # STATIC_FREETYPE is inherited from the outer scope, means we have our own build
 # of freetype that we should link to statically - this should be dropped when the
-# rendering is only TPACK.
+# rendering is only TPACK, or at least made optional (TUI_RASTER_NO_TTF).
+#
+# The consequence for tui client side not having advanced font support is that
+# the client might try and use 'drawing characters' that does not have a valid
+# version in the font, or miss control over ligature substitutions and other
+# similar font features. Shape-break attribute is intended to mitigate that
+# somewhat.
 if (STATIC_FREETYPE)
 	add_library(arcan_tui STATIC ${SHMIF_TUI_SOURCES})
 	target_link_libraries(arcan_tui
@@ -219,7 +237,10 @@ if (STATIC_FREETYPE)
 # Harfbuzz- style shaping separately though.
 else()
 	add_library(arcan_tui SHARED ${SHMIF_TUI_SOURCES})
-	target_link_libraries(arcan_tui PRIVATE ${STDLIB} ${TUI_LIBRARIES} ${FREETYPE_LIBRARIES})
+	if (NOT TUI_RASTER_NO_TTF)
+		list(APPEND TUI_LIBRARIES ${FREETYPE_LIBRARIES})
+	endif()
+	target_link_libraries(arcan_tui PRIVATE ${STDLIB} ${TUI_LIBRARIES})
 	set_target_properties(arcan_tui PROPERTIES VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR})
 endif()
 
