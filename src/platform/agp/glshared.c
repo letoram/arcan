@@ -733,18 +733,22 @@ bool agp_slice_synch(
 void agp_empty_vstoreext(struct agp_vstore* vs,
 	size_t w, size_t h, enum vstore_hint hint)
 {
+	size_t bpp = 4;
+
 	switch (hint){
 	case VSTORE_HINT_LODEF:
 		verbose_print("(%"PRIxPTR") empty fmt: lodef", (uintptr_t) vs);
-		vs->vinf.text.d_fmt = GL_UNSIGNED_SHORT_4_4_4_4;
-		vs->vinf.text.s_fmt = GL_RGBA;
+		vs->vinf.text.d_fmt = GL_RGB5_A1;
+		vs->vinf.text.s_fmt = GL_RGB;
 		vs->vinf.text.s_type = GL_UNSIGNED_SHORT;
+		bpp = 2;
 	break;
 	case VSTORE_HINT_LODEF_NOALPHA:
 		verbose_print("(%"PRIxPTR") empty fmt: lodef-no-alpha", (uintptr_t) vs);
-		vs->vinf.text.d_fmt = GL_UNSIGNED_SHORT_5_6_5;
+		vs->vinf.text.d_fmt = GL_RGB565;
 		vs->vinf.text.s_fmt = GL_RGB;
 		vs->vinf.text.s_type = GL_UNSIGNED_SHORT;
+		bpp = 2;
 	break;
 	case VSTORE_HINT_NORMAL:
 	case VSTORE_HINT_NORMAL_NOALPHA:
@@ -754,35 +758,38 @@ void agp_empty_vstoreext(struct agp_vstore* vs,
 #if !defined(GLES2) && !defined(GLES3)
 	case VSTORE_HINT_HIDEF:
 	case VSTORE_HINT_HIDEF_NOALPHA:
-		verbose_print("(%"PRIxPTR") empty fmt: hidef", (uintptr_t) vs);
-		vs->vinf.text.d_fmt = GL_UNSIGNED_INT_10_10_10_2;
+		vs->vinf.text.d_fmt = GL_RGB10_A2;
 		vs->vinf.text.s_type = GL_UNSIGNED_INT_10_10_10_2;
-		vs->vinf.text.s_fmt = GL_UNSIGNED_INT;
-		vs->vinf.text.s_raw = sizeof(unsigned) * w * h * 4;
+		vs->vinf.text.s_fmt = GL_RGBA;
+		bpp = 4;
 	break;
 	case VSTORE_HINT_F16:
 		verbose_print("(%"PRIxPTR") empty fmt: half-float", (uintptr_t) vs);
 		vs->vinf.text.d_fmt = GL_RGB16F;
 		vs->vinf.text.s_type = GL_FLOAT;
-		vs->vinf.text.s_raw = w * h * sizeof(float) * 4;
+		vs->vinf.text.s_fmt = GL_RGBA;
+		bpp = 8;
 	break;
 	case VSTORE_HINT_F16_NOALPHA:
 		verbose_print("(%"PRIxPTR") empty fmt: half-float-no-alpha", (uintptr_t) vs);
 		vs->vinf.text.d_fmt = GL_RGBA16F;
 		vs->vinf.text.s_type = GL_FLOAT;
-		vs->vinf.text.s_raw = w * h * sizeof(float) * 4;
+		vs->vinf.text.s_fmt = GL_RGBA;
+		bpp = 8;
 	break;
 	case VSTORE_HINT_F32:
 		verbose_print("(%"PRIxPTR") empty fmt: float", (uintptr_t) vs);
 		vs->vinf.text.d_fmt = GL_RGBA32F;
 		vs->vinf.text.s_type = GL_FLOAT;
-		vs->vinf.text.s_raw = w * h * sizeof(float) * 4;
+		vs->vinf.text.s_fmt = GL_RGBA;
+		bpp = 16;
 	break;
 	case VSTORE_HINT_F32_NOALPHA:
 		verbose_print("(%"PRIxPTR") empty fmt: float-no-alpha", (uintptr_t) vs);
 		vs->vinf.text.d_fmt = GL_RGB32F;
 		vs->vinf.text.s_type = GL_FLOAT;
-		vs->vinf.text.s_raw = w * h * sizeof(float) * 4;
+		vs->vinf.text.s_fmt = GL_RGBA;
+		bpp = 16;
 	break;
 #endif
 	default:
@@ -793,14 +800,20 @@ void agp_empty_vstoreext(struct agp_vstore* vs,
  * don't break one of the many functions that was built on this assumption */
 	vs->w = w;
 	vs->h = h;
-	vs->bpp = sizeof(av_pixel);
+	vs->vinf.text.s_raw = w * h * bpp;
+	vs->bpp = bpp;
+
 	vs->vinf.text.s_raw = vs->bpp * vs->w * vs->h;
+
+/* note that alloc_mem VBUFFER assumes RGBA so we'd need to initialize the
+ * others differently for 'zero' state - this is incorrect but not that
+ * important */
 	vs->vinf.text.raw = arcan_alloc_mem(
 		vs->vinf.text.s_raw,
 		ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE
 	);
-	vs->txmapped = TXSTATE_TEX2D;
 
+	vs->txmapped = TXSTATE_TEX2D;
 	agp_update_vstore(vs, true);
 
 	arcan_mem_free(vs->vinf.text.raw);
