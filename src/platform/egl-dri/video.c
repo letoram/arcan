@@ -244,6 +244,9 @@ struct dispout {
 	int output_format;
 	uint64_t frame_cookie;
 
+	struct monitor_mode* mode_cache;
+	size_t mode_cache_sz;
+
 /* the output buffers, actual fields use will vary with underlying
  * method, i.e. different for normal gbm, headless gbm and eglstreams */
 	struct {
@@ -323,9 +326,16 @@ static struct {
 	int ledid, ledind;
 	uint8_t ledval[3];
 	int ledpair[2];
+
+	long long last_card_scan;
+	bool scan_pending;
 } egl_dri = {
 	.ledind = 255
 };
+
+#ifndef CARD_RESCAN_DELAY_MS
+#define CARD_RESCAN_DELAY_MS 500
+#endif
 
 #ifndef MAX_DISPLAYS
 #define MAX_DISPLAYS 16
@@ -2803,6 +2813,37 @@ bool platform_video_map_handle(
 	return false;
 }
 
+static void update_mode_cache(struct dispout* d)
+{
+	debug_print("(%d) issuing mode scan", (int) d->id);
+	drmModeConnector* conn = d->display.con;
+	drmModeRes* res = drmModeGetResources(d->device->disp_fd);
+
+	int count = conn->count_modes;
+	if (!count)
+		return;
+
+	d->mode_cache_sz = count;
+	d->mode_cache = arcan_alloc_mem(
+		sizeof(struct monitor_mode) * d->mode_cache_sz,
+		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
+	);
+
+	for (size_t i = 0; i < conn->count_modes; i++){
+		d->mode_cache[i].refresh = conn->modes[i].vrefresh;
+		d->mode_cache[i].width = conn->modes[i].hdisplay;
+		d->mode_cache[i].height = conn->modes[i].vdisplay;
+		d->mode_cache[i].subpixel = subpixel_type(conn->subpixel);
+		d->mode_cache[i].phy_width = conn->mmWidth;
+		d->mode_cache[i].phy_height = conn->mmHeight;
+		d->mode_cache[i].dynamic = false;
+		d->mode_cache[i].id = i;
+		d->mode_cache[i].depth = sizeof(av_pixel) * 8;
+	}
+
+	drmModeFreeResources(res);
+}
+
 struct monitor_mode* platform_video_query_modes(
 	platform_display_id id, size_t* count)
 {
@@ -2812,35 +2853,15 @@ struct monitor_mode* platform_video_query_modes(
 	if (!d || d->state == DISP_UNUSED)
 		return NULL;
 
-	debug_print("(%d) issuing mode scan", (int) d->id);
-	drmModeConnector* conn = d->display.con;
-	drmModeRes* res = drmModeGetResources(d->device->disp_fd);
+	update_mode_cache(d);
 
-	static struct monitor_mode* mcache;
-	static size_t mcache_sz;
-
-	*count = conn->count_modes;
-
-	if (*count > mcache_sz){
-		mcache_sz = *count;
-		arcan_mem_free(mcache);
-		mcache = arcan_alloc_mem(sizeof(struct monitor_mode) * mcache_sz,
-			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+	if (d->mode_cache){
+		*count = d->mode_cache_sz;
+		return d->mode_cache;
 	}
 
-	for (size_t i = 0; i < conn->count_modes; i++){
-		mcache[i].refresh = conn->modes[i].vrefresh;
-		mcache[i].width = conn->modes[i].hdisplay;
-		mcache[i].height = conn->modes[i].vdisplay;
-		mcache[i].subpixel = subpixel_type(conn->subpixel);
-		mcache[i].phy_width = conn->mmWidth;
-		mcache[i].phy_height = conn->mmHeight;
-		mcache[i].dynamic = false;
-		mcache[i].id = i;
-		mcache[i].depth = sizeof(av_pixel) * 8;
-	}
-
-	return mcache;
+	*count = 0;
+	return NULL;
 }
 
 static struct dispout* match_connector(int fd, drmModeConnector* con)
@@ -2940,6 +2961,7 @@ static void query_card(struct dev_node* node)
 		arcan_conductor_register_display(
 			d->device->card_id, d->id, SYNCH_STATIC, d->display.mode.vrefresh, d->vid);
 
+		update_mode_cache(d);
 		arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 		continue; /* don't want to free con */
 	}
@@ -2949,16 +2971,7 @@ static void query_card(struct dev_node* node)
 void platform_video_query_displays()
 {
 	debug_print("issuing display requery");
-
-/*
- * each device node, each connector, check against each display
- * ugly scan complexity, but low values of n.
- */
-	for (size_t j = 0; j < COUNT_OF(nodes); j++){
-		debug_print("query_card: %zu", j);
-		if (nodes[j].disp_fd != -1)
-			query_card(&nodes[j]);
-	}
+	egl_dri.scan_pending = true;
 }
 
 static void disable_display(struct dispout* d, bool dealloc)
@@ -2974,6 +2987,11 @@ static void disable_display(struct dispout* d, bool dealloc)
 		d->buffer.in_destroy = true;
 		egl_dri.destroy_pending |= 1 << d->id;
 		return;
+	}
+
+	if (d->mode_cache){
+		arcan_mem_free(d->mode_cache);
+		d->mode_cache = NULL;
 	}
 
 	d->device->refc--;
@@ -3778,8 +3796,8 @@ static void flush_parent_commands()
  * tearfree? lowest possible latency in regards to other external clocks etc.)
  * - especially when mixing in future synch models that don't require VBlank
  */
-void platform_video_synch(uint64_t tick_count, float fract,
-	video_synchevent pre, video_synchevent post)
+void platform_video_synch(
+	uint64_t tick_count, float fract, video_synchevent pre, video_synchevent post)
 {
 	if (pre)
 		pre();
@@ -3805,6 +3823,24 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * skip updating one frame, so do a quick no-yield flush first */
 	if (get_pending(false))
 		flush_display_events(-1, false);
+
+/*
+ * Rescanning displays is binned to this as well along with a rate limiting
+ * timeout. This is to mitigate storms from KVMs plugging in multiple displays
+ * or display events causing appl to reissue scan causing events causing new
+ * scans.
+ */
+	if (egl_dri.scan_pending && abs(
+		arcan_timemillis() - egl_dri.last_card_scan) > CARD_RESCAN_DELAY_MS){
+		egl_dri.scan_pending = false;
+		egl_dri.last_card_scan = arcan_timemillis();
+
+		for (size_t j = 0; j < COUNT_OF(nodes); j++){
+			debug_print("query_card: %zu", j);
+			if (nodes[j].disp_fd != -1)
+				query_card(&nodes[j]);
+		}
+	}
 
 /* the 'nd' here is much too coarse-grained, we need the affected objects and
  * rendertargets so that we can properly decide which ones to synch or not -
