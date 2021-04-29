@@ -21,6 +21,10 @@
 #include <libswresample/swresample.h>
 #endif
 
+#ifndef VIDEO_FRAME_DRIFT_WINDOW
+#define VIDEO_FRAME_DRIFT_WINDOW 8
+#endif
+
 #define MAC_BLOCK_SZ 16
 #define CONTROL_PACKET_SIZE 128
 #define CIPHER_ROUNDS 8
@@ -92,10 +96,16 @@ enum {
 	POSTPROCESS_VIDEO_DMINIZ = 3, /* DEFLATE - P frame (I -> P | P->P)    */
 	POSTPROCESS_VIDEO_MINIZ  = 4, /* DEFLATE - I frame                    */
 	POSTPROCESS_VIDEO_H264   = 5, /* ffmpeg or native decompressor        */
-	POSTPROCESS_VIDEO_TZ     = 6  /* DEFLATE+tpack (see shmif/tui/raster) */
+	POSTPROCESS_VIDEO_TZ     = 6, /* DEFLATE+tpack (see shmif/tui/raster) */
+	POSTPROCESS_VIDEO_TZSTD  = 7,
+	POSTPROCESS_VIDEO_DZSTD  = 8,
+	POSTPROCESS_VIDEO_ZSTD   = 9
 };
 
 size_t a12int_header_size(int type);
+
+struct ZSTD_CCtx_s;
+struct ZSTD_DCtx_s;
 
 struct audio_frame {
 	uint32_t rate;
@@ -154,6 +164,8 @@ struct video_frame {
 	} ffmpeg;
 #endif
 
+	struct ZSTD_DCtx_s* zstd;
+
 	/* bytes left on current row for raw-dec */
 };
 
@@ -186,6 +198,7 @@ struct a12_channel {
 	struct shmifsrv_vbuffer acc;
 	struct {
 		uint8_t* compression;
+		struct ZSTD_CCtx_s* zstd;
 #if defined(WANT_H264_ENC) || defined(WANT_H264_DEC)
 		struct {
 			AVCodecParserContext* parser;
@@ -210,6 +223,16 @@ struct a12_state {
 	uint64_t current_seqnr;
 	uint64_t last_seen_seqnr;
 	uint64_t out_stream;
+
+/* The biggest concern of congestion is video frames as that tends to be most
+ * primary data. The decision to act upon this is still up to the tool feeding
+ * the state machine, there might be other priorities and factors to weigh in
+ * on. While we indirectly do measure latency and so on, the better congestion
+ * control channel for that is left up to the carrier. */
+	struct {
+		uint64_t frame_window[VIDEO_FRAME_DRIFT_WINDOW]; /* seqnrs tied to vframes */
+		size_t pending; /* updated whenever we send something out */
+	} congestion_stats;
 
 /* populate and forwarded output buffer */
 	size_t buf_sz[2];

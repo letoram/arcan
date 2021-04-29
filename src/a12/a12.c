@@ -2223,6 +2223,9 @@ a12_channel_vframe(struct a12_state* S,
 	case VFRAME_METHOD_RAW_NOALPHA:
 		a12int_encode_rgb(argstr);
 	break;
+	case VFRAME_METHOD_DZSTD:
+		a12int_encode_dzstd(argstr);
+	break;
 	case VFRAME_METHOD_DPNG:
 		a12int_encode_dpng(argstr);
 	break;
