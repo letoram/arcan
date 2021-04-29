@@ -421,8 +421,10 @@ void a12int_encode_tz(PACK_ARGS)
 	free(cres.out_buf);
 }
 
+#define ZSTD_H_ZSTD_STATIC_LINKING_ONLY
+#include "zstd.h"
 static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
-	struct shmifsrv_vbuffer* vb, size_t* x, size_t* y, size_t* w, size_t* h)
+	struct shmifsrv_vbuffer* vb, size_t* x, size_t* y, size_t* w, size_t* h, bool zstd)
 {
 	int type;
 	uint8_t* compress_in;
@@ -441,9 +443,17 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 		S->channels[ch].compression = NULL;
 	}
 
+	if (!S->channels[ch].zstd && zstd){
+		S->channels[ch].zstd = ZSTD_createCCtx();
+		if (!S->channels[ch].zstd){
+			return (struct compress_res){};
+		}
+		ZSTD_CCtx_setParameter(S->channels[ch].zstd, ZSTD_c_nbWorkers, 4);
+	}
+
 /* first, reset or no-delta mode, build accumulation buffer and copy */
 	if (!ab->buffer){
-		type = POSTPROCESS_VIDEO_MINIZ;
+		type = zstd ? POSTPROCESS_VIDEO_ZSTD : POSTPROCESS_VIDEO_MINIZ;
 		*ab = *vb;
 		size_t nb = vb->w * vb->h * 3;
 		ab->buffer = malloc(nb);
@@ -508,13 +518,36 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 				rs += 3;
 			}
 		}
-		type = POSTPROCESS_VIDEO_DMINIZ;
+		type = zstd ? POSTPROCESS_VIDEO_DZSTD : POSTPROCESS_VIDEO_DMINIZ;
 	}
 
 	size_t out_sz;
+	uint8_t* buf;
 
-	uint8_t* buf = tdefl_compress_mem_to_heap(
-			compress_in, compress_in_sz, &out_sz, 0);
+	if (zstd){
+		out_sz = ZSTD_compressBound(compress_in_sz);
+		buf = malloc(out_sz);
+			if (!buf)
+				return (struct compress_res){};
+
+			out_sz = ZSTD_compressCCtx(
+				S->channels[ch].zstd, buf, out_sz, compress_in, compress_in_sz, 1);
+
+			if (ZSTD_isError(out_sz)){
+				a12int_trace(A12_TRACE_ALLOC,
+					"kind=zstd_fail:message=%s", ZSTD_getErrorName(out_sz));
+				free(buf);
+				return (struct compress_res){};
+			}
+
+		a12int_trace(A12_TRACE_VDETAIL,
+			"kind=status:codec=dzstd:b_in=%zu:b_out=%zu:ratio=%.2f",
+			compress_in_sz, out_sz, (float)(compress_in_sz+1.0) / (float)(out_sz+1.0)
+		);
+	}
+	else {
+		buf = tdefl_compress_mem_to_heap(compress_in, compress_in_sz, &out_sz, 0);
+	}
 
 	return (struct compress_res){
 		.type = type,
@@ -525,9 +558,33 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 	};
 }
 
+void a12int_encode_dzstd(PACK_ARGS)
+{
+	struct compress_res cres = compress_deltaz(S, chid, vb, &x, &y, &w, &h, true);
+	if (!cres.ok)
+		return;
+
+	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
+	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
+		cres.type, 0, vb->w, vb->h, w, h, x, y,
+		cres.out_sz, cres.in_sz, 1
+	);
+
+	a12int_trace(A12_TRACE_VDETAIL,
+		"kind=status:codec=dzstd:b_in=%zu:b_out=%zu", w * h * 3, cres.out_sz
+	);
+
+	a12int_append_out(S,
+		STATE_CONTROL_PACKET, hdr_buf, CONTROL_PACKET_SIZE, NULL, 0);
+	chunk_pack(S, STATE_VIDEO_PACKET, chid, cres.out_buf, cres.out_sz, chunk_sz);
+
+	free(cres.out_buf);
+}
+
+
 void a12int_encode_dpng(PACK_ARGS)
 {
-	struct compress_res cres = compress_deltaz(S, chid, vb, &x, &y, &w, &h);
+	struct compress_res cres = compress_deltaz(S, chid, vb, &x, &y, &w, &h, false);
 	if (!cres.ok)
 		return;
 

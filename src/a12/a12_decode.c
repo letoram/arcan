@@ -45,7 +45,9 @@ bool a12int_buffer_format(int method)
 		method == POSTPROCESS_VIDEO_H264 ||
 		method == POSTPROCESS_VIDEO_MINIZ ||
 		method == POSTPROCESS_VIDEO_DMINIZ ||
-		method == POSTPROCESS_VIDEO_TZ;
+		method == POSTPROCESS_VIDEO_TZ ||
+		method == POSTPROCESS_VIDEO_ZSTD ||
+		method == POSTPROCESS_VIDEO_DZSTD;
 }
 
 static int video_miniz(const void* buf, int len, void* user)
@@ -73,7 +75,8 @@ static int video_miniz(const void* buf, int len, void* user)
 		}
 
 /* and commit */
-		if (cvf->postprocess == POSTPROCESS_VIDEO_DMINIZ){
+		if (cvf->postprocess == POSTPROCESS_VIDEO_DMINIZ ||
+			cvf->postprocess == POSTPROCESS_VIDEO_DZSTD){
 			uint8_t r, g, b, a;
 			SHMIF_RGBA_DECOMP(cont->vidp[cvf->out_pos], &r, &g, &b, &a);
 
@@ -110,7 +113,8 @@ static int video_miniz(const void* buf, int len, void* user)
 /* pixel-aligned fill/unpack, same as everywhere else */
 	size_t npx = (len / 3) * 3;
 	for (size_t i = 0; i < npx; i += 3){
-		if (cvf->postprocess == POSTPROCESS_VIDEO_DMINIZ){
+		if (cvf->postprocess == POSTPROCESS_VIDEO_DMINIZ ||
+			cvf->postprocess == POSTPROCESS_VIDEO_DZSTD){
 			uint8_t r, g, b, a;
 			SHMIF_RGBA_DECOMP(cont->vidp[cvf->out_pos], &r, &g, &b, &a);
 
@@ -281,13 +285,57 @@ bool a12int_vframe_setup(struct a12_channel* ch, struct video_frame* dst, int me
 	return true;
 }
 
+#include "zstd.h"
 void a12int_decode_vbuffer(struct a12_state* S,
 	struct a12_channel* ch, struct video_frame* cvf, struct arcan_shmif_cont* cont)
 {
 	a12int_trace(A12_TRACE_VIDEO, "decode vbuffer, method: %d", cvf->postprocess);
-	if (cvf->postprocess == POSTPROCESS_VIDEO_MINIZ ||
+	if ( cvf->postprocess == POSTPROCESS_VIDEO_DZSTD
+		|| cvf->postprocess == POSTPROCESS_VIDEO_ZSTD)
+	{
+		uint64_t content_sz = ZSTD_getFrameContentSize(cvf->inbuf, cvf->inbuf_pos);
+
+/* repeat and compare, don't le/gt */
+		if (content_sz == cvf->expanded_sz){
+			if (!ch->unpack_state.vframe.zstd &&
+				!(ch->unpack_state.vframe.zstd = ZSTD_createDCtx())){
+				a12int_trace(A12_TRACE_SYSTEM,
+					"kind=alloc_error:zstd_context_alloc");
+			}
+/* actually decompress */
+			else {
+				void* buffer = malloc(content_sz);
+				if (buffer){
+					uint64_t decode =
+						ZSTD_decompressDCtx(ch->unpack_state.vframe.zstd,
+							buffer, content_sz, cvf->inbuf, cvf->inbuf_pos);
+					a12int_trace(A12_TRACE_VIDEO, "kind=ztd_state:%"PRIu64, decode);
+					video_miniz(buffer, content_sz, S);
+					free(buffer);
+				}
+			}
+		}
+		else {
+			a12int_trace(A12_TRACE_SYSTEM,
+				"kind=decode_error:in_sz=%zu:exp_sz=%s:message=size mismatch");
+		}
+
+		free(cvf->inbuf);
+		cvf->inbuf = NULL;
+		cvf->carry = 0;
+
+/* this is a junction where other local transfer strategies should be considered,
+ * i.e. no-block and defer process on the next stepframe or spin on the vready */
+		if (cvf->commit && cvf->commit != 255){
+			drain_video(ch, cvf);
+		}
+		return;
+	}
+	else if (
+			cvf->postprocess == POSTPROCESS_VIDEO_MINIZ  ||
 			cvf->postprocess == POSTPROCESS_VIDEO_DMINIZ ||
-			cvf->postprocess == POSTPROCESS_VIDEO_TZ){
+			cvf->postprocess == POSTPROCESS_VIDEO_TZ)
+	{
 		size_t inbuf_pos = cvf->inbuf_pos;
 		tinfl_decompress_mem_to_callback(cvf->inbuf, &inbuf_pos, video_miniz, S, 0);
 

@@ -83,6 +83,7 @@
 
 ## Networking
  * enable redirect_exit connection point immediately on client connection
+ * Swap out DEFLATE for ZSTD
 
 ## 0.6.0
 ## Engine

@@ -123,7 +123,7 @@ static struct a12_vframe_opts vopts_from_segment(
 		a12int_trace(A12_TRACE_VIDEO,
 			"default (%d) -> dpng", shmifsrv_client_type(data->C));
 		return (struct a12_vframe_opts){
-			.method = VFRAME_METHOD_DPNG
+			.method = VFRAME_METHOD_DZSTD
 		};
 	break;
 	}
@@ -452,6 +452,7 @@ static void on_srv_event(
 static void on_audio_cb(shmif_asample* buf,
 	size_t n_samples,  unsigned channels, unsigned rate, void* tag)
 {
+	return;
 	struct a12_state* S = tag;
 	a12_channel_aframe(S, buf, n_samples,
 		(struct a12_aframe_cfg){
