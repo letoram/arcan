@@ -38,12 +38,42 @@ set(A12_SOURCES
 	${PLATFORM_ROOT}/posix/random.c
 )
 
+set (ZSTD_SOURCES
+	external/zstd/common/pool.c
+	external/zstd/common/debug.c
+	external/zstd/common/entropy_common.c
+	external/zstd/common/error_private.c
+	external/zstd/common/fse_decompress.c
+	external/zstd/common/pool.c
+	external/zstd/common/threading.c
+	external/zstd/common/xxhash.c
+	external/zstd/common/zstd_common.c
+	external/zstd/compress/fse_compress.c
+	external/zstd/compress/hist.c
+	external/zstd/compress/huf_compress.c
+	external/zstd/compress/zstd_compress.c
+	external/zstd/compress/zstd_compress_literals.c
+	external/zstd/compress/zstd_compress_sequences.c
+	external/zstd/compress/zstd_compress_superblock.c
+	external/zstd/compress/zstd_double_fast.c
+	external/zstd/compress/zstd_fast.c
+	external/zstd/compress/zstd_lazy.c
+	external/zstd/compress/zstd_ldm.c
+	external/zstd/compress/zstd_opt.c
+	external/zstd/compress/zstdmt_compress.c
+	external/zstd/decompress/huf_decompress.c
+	external/zstd/decompress/zstd_ddict.c
+	external/zstd/decompress/zstd_decompress.c
+	external/zstd/decompress/zstd_decompress_block.c
+)
+
 set(EXTERNAL_SOURCES
 	external/blake3/blake3.c
 	external/blake3/blake3_dispatch.c
 	external/blake3/blake3_portable.c
 	external/miniz/miniz.c
 	external/x25519.c
+	${ZSTD_SOURCES}
 )
 
 add_library(arcan_a12 SHARED ${A12_SOURCES} ${EXTERNAL_SOURCES})
@@ -56,6 +86,8 @@ set_target_properties(arcan_a12 PROPERTIES
 
 target_include_directories(arcan_a12 PRIVATE
 	external/blake3
+	external/zstd
+	external/zstd/common
 	external
 	${PLATFORM_ROOT}/../engine
 	${PLATFORM_ROOT}/../shmif
