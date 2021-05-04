@@ -68,21 +68,18 @@ static struct a12_vframe_opts vopts_from_segment(
 		};
 	}
 
+/* FIXME:
+ * 1. check REJECT mask and make sure we pick the fallback in those cases.
+ * 2. load CONFIG from XDG_CONFIG_DIR or $HOME to pick the default,
+ * 3. check segment backpressure and set the bias thereafter
+ */
+
 	if (vb.flags.tpack){
 		a12int_trace(A12_TRACE_VIDEO, "tpack segment");
 		return (struct a12_vframe_opts){
-			.method = VFRAME_METHOD_TPACK
+			.method = VFRAME_METHOD_TPACK_ZSTD
 		};
 	}
-
-/* fun little test, every frame is a new encoding method */
-#ifdef SADISTIC
-	static int counter = 0;
-	counter = (counter + 1) % VFRAME_METHOD_TPACK;
-	return (struct a12_vframe_opts){
-		.method = counter
-	}
-#endif
 
 	switch (shmifsrv_client_type(data->C)){
 	case SEGID_LWA:

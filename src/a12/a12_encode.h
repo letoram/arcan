@@ -17,6 +17,8 @@ void a12int_encode_dpng(PACK_ARGS);
 void a12int_encode_h264(PACK_ARGS);
 void a12int_encode_tz(PACK_ARGS);
 void a12int_encode_dzstd(PACK_ARGS);
+void a12int_encode_ztz(PACK_ARGS);
+void a12int_encode_drop(struct a12_state* S, int chid, bool failed);
 
 void a12int_encode_araw(struct a12_state* S,
 	uint8_t chid,

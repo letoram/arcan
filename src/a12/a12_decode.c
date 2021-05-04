@@ -13,6 +13,7 @@
 
 #include "a12.h"
 #include "a12_int.h"
+#include "zstd.h"
 
 #ifdef LOG_FRAME_OUTPUT
 #define STB_IMAGE_WRITE_STATIC
@@ -46,6 +47,7 @@ bool a12int_buffer_format(int method)
 		method == POSTPROCESS_VIDEO_MINIZ ||
 		method == POSTPROCESS_VIDEO_DMINIZ ||
 		method == POSTPROCESS_VIDEO_TZ ||
+		method == POSTPROCESS_VIDEO_TZSTD ||
 		method == POSTPROCESS_VIDEO_ZSTD ||
 		method == POSTPROCESS_VIDEO_DZSTD;
 }
@@ -103,7 +105,8 @@ static int video_miniz(const void* buf, int len, void* user)
 
 /* tpack is easier, just write into vidb, ensure that we don't exceed
  * the size from a missed resize_ call and the rest is done consumer side */
-	if (cvf->postprocess == POSTPROCESS_VIDEO_TZ){
+	if (cvf->postprocess == POSTPROCESS_VIDEO_TZ
+		|| cvf->postprocess == POSTPROCESS_VIDEO_TZSTD){
 		memcpy(&cont->vidb[cvf->out_pos], inbuf, len);
 		cvf->out_pos += len;
 		cvf->expanded_sz -= len;
@@ -262,6 +265,20 @@ static bool ffmpeg_alloc(struct a12_channel* ch, int method)
 }
 #endif
 
+void a12int_decode_drop(struct a12_state* S, int chid, bool failed)
+{
+	if (S->channels[chid].unpack_state.vframe.zstd){
+		ZSTD_freeDCtx(S->channels[chid].unpack_state.vframe.zstd);
+		S->channels[chid].zstd = NULL;
+	}
+
+#if defined(WANT_H264_ENC) || defined(WANT_H264_DEC)
+	if (!S->channels[chid].videnc.encdec)
+		return;
+
+#endif
+}
+
 bool a12int_vframe_setup(struct a12_channel* ch, struct video_frame* dst, int method)
 {
 	*dst = (struct video_frame){};
@@ -285,13 +302,13 @@ bool a12int_vframe_setup(struct a12_channel* ch, struct video_frame* dst, int me
 	return true;
 }
 
-#include "zstd.h"
 void a12int_decode_vbuffer(struct a12_state* S,
 	struct a12_channel* ch, struct video_frame* cvf, struct arcan_shmif_cont* cont)
 {
 	a12int_trace(A12_TRACE_VIDEO, "decode vbuffer, method: %d", cvf->postprocess);
 	if ( cvf->postprocess == POSTPROCESS_VIDEO_DZSTD
-		|| cvf->postprocess == POSTPROCESS_VIDEO_ZSTD)
+		|| cvf->postprocess == POSTPROCESS_VIDEO_ZSTD
+		|| cvf->postprocess == POSTPROCESS_VIDEO_TZSTD)
 	{
 		uint64_t content_sz = ZSTD_getFrameContentSize(cvf->inbuf, cvf->inbuf_pos);
 
