@@ -1,5 +1,5 @@
 /*
- * Copyright: 2017-2019, Björn Ståhl
+ * Copyright: Björn Ståhl
  * Description: A12 protocol state machine
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: https://arcan-fe.com
@@ -14,6 +14,9 @@
 #include "a12.h"
 #include "a12_int.h"
 #include "a12_encode.h"
+
+#define ZSTD_H_ZSTD_STATIC_LINKING_ONLY
+#include "zstd.h"
 
 /*
  * create the control packet
@@ -33,10 +36,12 @@ static void a12int_vframehdr_build(uint8_t buf[CONTROL_PACKET_SIZE],
 
 	memset(buf, '\0', CONTROL_PACKET_SIZE);
 	pack_u64(last_seen, &buf[0]);
+	arcan_random(&buf[8], 8);
+
 /* uint8_t entropy[8]; */
 	buf[16] = chid; /* [16] : channel-id */
 	buf[17] = COMMAND_VIDEOFRAME; /* [17] : command */
-	pack_u32(0, &buf[18]); /* [18..21] : stream-id */
+	pack_u32(sid, &buf[18]); /* [18..21] : stream-id */
 	buf[22] = type; /* [22] : type */
 	pack_u16(sw, &buf[23]); /* [23..24] : surfacew */
 	pack_u16(sh, &buf[25]); /* [25..26] : surfaceh */
@@ -348,6 +353,22 @@ void a12int_encode_rgb(PACK_ARGS)
 	free(outb);
 }
 
+/* Model indicates which pre-trained model to use, this is currently only
+ * used for TPACK but if there is more domain information to be had, here
+ * is the slot to patch that in. */
+static bool setup_zstd(struct a12_state* S, uint8_t ch, int model)
+{
+	if (!S->channels[ch].zstd){
+		S->channels[ch].zstd = ZSTD_createCCtx();
+		if (!S->channels[ch].zstd){
+			return false;
+		}
+		ZSTD_CCtx_setParameter(S->channels[ch].zstd, ZSTD_c_nbWorkers, 4);
+	}
+
+	return true;
+}
+
 struct compress_res {
 	bool ok;
 	uint8_t type;
@@ -356,9 +377,18 @@ struct compress_res {
 	uint8_t* out_buf;
 };
 
-static struct compress_res compress_tz(struct a12_state* S,
-	uint8_t ch, struct shmifsrv_vbuffer* vb)
+static void compress_tz(struct a12_state* S, uint8_t ch,
+	struct shmifsrv_vbuffer* vb, int w, int h, size_t chunk_sz, bool zstd)
 {
+	int type = POSTPROCESS_VIDEO_TZ;
+
+	if (zstd){
+		if (!setup_zstd(S, ch, SEGID_TUI)){
+			return;
+		}
+		type = POSTPROCESS_VIDEO_TZSTD;
+	}
+
 /* full header-size: 4 + 2 + 2 + 1 + 2 + 4 + 1 = 16 bytes */
 /* first 4 bytes is length */
 	uint32_t compress_in_sz;
@@ -375,54 +405,67 @@ static struct compress_res compress_tz(struct a12_state* S,
 /* line-header size (2 + 2 + 2 + 3 = 9 bytes), cell size = 12 bytes) */
 	if (compress_in_sz != n_lines * 9 + n_cells * 12 + 16){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:message=corrupt TPACK buffer");
-		return (struct compress_res){};
+		return;
 	}
 
-/* all the cell attributes and colors etc. lend themselves well to
- * compression, so lets go ahead with miniz */
 	size_t out_sz;
-	uint8_t* buf = tdefl_compress_mem_to_heap(
-		vb->buffer_bytes, compress_in_sz, &out_sz, 0);
+	uint8_t* buf;
+	if (zstd){
+		out_sz = ZSTD_compressBound(compress_in_sz);
+		buf = malloc(out_sz);
+
+		out_sz = ZSTD_compressCCtx(
+			S->channels[ch].zstd, buf, out_sz, vb->buffer_bytes, compress_in_sz, 1);
+
+		if (ZSTD_isError(out_sz)){
+			a12int_trace(A12_TRACE_ALLOC,
+				"kind=zstd_fail:message=%s", ZSTD_getErrorName(out_sz));
+			free(buf);
+			return;
+		}
+
+		a12int_trace(A12_TRACE_VDETAIL,
+			"kind=status:codec=dzstd:b_in=%zu:b_out=%zu:ratio=%.2f",
+			compress_in_sz, out_sz, (float)(compress_in_sz+1.0) / (float)(out_sz+1.0)
+		);
+	}
+	else
+		buf = tdefl_compress_mem_to_heap(
+			vb->buffer_bytes, compress_in_sz, &out_sz, 0);
 
 	if (!buf){
 		a12int_trace(A12_TRACE_ALLOC, "failed to build compressed TPACK output");
-		return (struct compress_res){};
+		return;
 	}
 
-	return (struct compress_res){
-		.type = POSTPROCESS_VIDEO_TZ,
-		.ok = true,
-		.out_buf = buf,
-		.out_sz = out_sz,
-		.in_sz = compress_in_sz
-	};
-}
-
-void a12int_encode_tz(PACK_ARGS)
-{
-	struct compress_res cres = compress_tz(S, chid, vb);
-	if (!cres.ok)
-		return;
-
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
-	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
-		cres.type, 0, vb->w, vb->h, w, h, 0, 0,
-		cres.out_sz, cres.in_sz, 1
+	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, ch,
+		type, 0, vb->w, vb->h, w, h, 0, 0,
+		out_sz, compress_in_sz, 1
 	);
 
 	a12int_trace(A12_TRACE_VDETAIL,
-		"kind=status:codec=tpack:b_in=%zu:b_out=%zu", cres.in_sz, cres.out_sz
+		"kind=status:codec=tpack:b_in=%zu:b_out=%zu:zstd=%d",
+		compress_in_sz, compress_in_sz, out_sz, (int) zstd
 	);
 
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, hdr_buf, CONTROL_PACKET_SIZE, NULL, 0);
-	chunk_pack(S, STATE_VIDEO_PACKET, chid, cres.out_buf, cres.out_sz, chunk_sz);
 
-	free(cres.out_buf);
+	chunk_pack(S, STATE_VIDEO_PACKET, ch, buf, out_sz, chunk_sz);
+	free(buf);
 }
 
-#define ZSTD_H_ZSTD_STATIC_LINKING_ONLY
-#include "zstd.h"
+void a12int_encode_ztz(PACK_ARGS)
+{
+	compress_tz(S, chid, vb, w, h, chunk_sz, true);
+}
+
+void a12int_encode_tz(PACK_ARGS)
+{
+	compress_tz(S, chid, vb, w, h, chunk_sz, false);
+}
+
 static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 	struct shmifsrv_vbuffer* vb, size_t* x, size_t* y, size_t* w, size_t* h, bool zstd)
 {
@@ -443,12 +486,8 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 		S->channels[ch].compression = NULL;
 	}
 
-	if (!S->channels[ch].zstd && zstd){
-		S->channels[ch].zstd = ZSTD_createCCtx();
-		if (!S->channels[ch].zstd){
-			return (struct compress_res){};
-		}
-		ZSTD_CCtx_setParameter(S->channels[ch].zstd, ZSTD_c_nbWorkers, 4);
+	if (!setup_zstd(S, ch, SEGID_APPLICATION)){
+		return (struct compress_res){};
 	}
 
 /* first, reset or no-delta mode, build accumulation buffer and copy */
@@ -605,9 +644,14 @@ void a12int_encode_dpng(PACK_ARGS)
 	free(cres.out_buf);
 }
 
-#if defined(WANT_H264_ENC) || defined(WANT_H264_DEC)
-void a12int_drop_videnc(struct a12_state* S, int chid, bool failed)
+void a12int_encode_drop(struct a12_state* S, int chid, bool failed)
 {
+	if (S->channels[chid].zstd){
+		ZSTD_freeCCtx(S->channels[chid].zstd);
+		S->channels[chid].zstd = NULL;
+	}
+
+#if defined(WANT_H264_ENC) || defined(WANT_H264_DEC)
 	if (!S->channels[chid].videnc.encdec)
 		return;
 
@@ -626,10 +670,12 @@ void a12int_drop_videnc(struct a12_state* S, int chid, bool failed)
 
 /* free both sets NULL and noops on NULL */
 	av_packet_free(&S->channels[chid].videnc.packet);
+#endif
 
 	a12int_trace(A12_TRACE_VIDEO, "dropping h264 context");
 }
 
+#if defined(WANT_H264_ENC) || defined(WANT_H264_DEC)
 static unsigned long pick_bitrate(size_t w, size_t h, struct a12_vframe_opts o)
 {
 /* Just some rough 'better than nothing' table for when we don't get a CRF or a
@@ -767,14 +813,14 @@ void a12int_encode_h264(PACK_ARGS)
  * go with the cheap one for now. */
 #ifdef WANT_H264_ENC
 	if (vb->w % 2 != 0 || vb->h % 2 != 0){
-		a12int_drop_videnc(S, chid, true);
+		a12int_encode_drop(S, chid, true);
 	}
 
 /* On resize, rebuild the encoder stage and send new headers etc. */
 	else if (
 		vb->w != S->channels[chid].videnc.w ||
 		vb->h != S->channels[chid].videnc.h)
-		a12int_drop_videnc(S, chid, false);
+		a12int_encode_drop(S, chid, false);
 
 /* If we don't have an encoder (first time or reset due to resize),
  * try to configure, and if the configuration fails (i.e. still no
@@ -783,7 +829,7 @@ void a12int_encode_h264(PACK_ARGS)
 			!S->channels[chid].videnc.failed){
 		if (!open_videnc(S, opts, vb, chid, AV_CODEC_ID_H264)){
 			a12int_trace(A12_TRACE_SYSTEM, "kind=error:message=h264 codec failed");
-			a12int_drop_videnc(S, chid, true);
+			a12int_encode_drop(S, chid, true);
 		}
 		else
 			a12int_trace(A12_TRACE_VIDEO, "kind=status:ch=%d:message=set-h264", chid);
@@ -807,7 +853,7 @@ void a12int_encode_h264(PACK_ARGS)
 		src, src_stride, 0, vb->h, frame->data, frame->linesize);
 	if (rv < 0){
 		a12int_trace(A12_TRACE_VIDEO, "rescaling failed: %d", rv);
-		a12int_drop_videnc(S, chid, true);
+		a12int_encode_drop(S, chid, true);
 		goto fallback;
 	}
 
@@ -816,7 +862,7 @@ again:
 	ret = avcodec_send_frame(encoder, frame);
 	if (ret < 0 && ret != AVERROR(EAGAIN)){
 		a12int_trace(A12_TRACE_VIDEO, "encoder failed: %d", ret);
-		a12int_drop_videnc(S, chid, true);
+		a12int_encode_drop(S, chid, true);
 		goto fallback;
 	}
 
@@ -830,7 +876,7 @@ again:
 		else if (out_ret < 0){
 			a12int_trace(
 				A12_TRACE_VIDEO, "error getting packet from encoder: %d", rv);
-			a12int_drop_videnc(S, chid, true);
+			a12int_encode_drop(S, chid, true);
 			goto fallback;
 		}
 

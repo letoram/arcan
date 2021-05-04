@@ -530,6 +530,9 @@ a12_channel_close(struct a12_state* S)
 		return;
 	}
 
+	a12int_encode_drop(S, S->out_channel, false);
+	a12int_decode_drop(S, S->out_channel, false);
+
 	if (S->channels[S->out_channel].active){
 		S->channels[S->out_channel].cont = NULL;
 		S->channels[S->out_channel].active = false;
@@ -659,6 +662,7 @@ static void command_cancelstream(
 	struct a12_state* S, uint32_t streamid, uint8_t reason)
 {
 	struct blob_out* node = S->pending;
+	a12int_trace(A12_TRACE_SYSTEM, "stream_cancel:%"PRIu32":%"PRIu8, streamid, reason);
 
 /* the other end indicated that the current codec or data source is broken,
  * propagate the error to the client (if in direct passing mode) otherwise just
@@ -921,6 +925,22 @@ struct a12_state* S, void (*on_event)
 	on_event(S->channels[channel].cont, channel, &ev, tag);
 }
 
+void a12int_stream_fail(struct a12_state* S, uint8_t ch, uint32_t id, int fail)
+{
+	uint8_t outb[CONTROL_PACKET_SIZE] = {0};
+
+	step_sequence(S, outb);
+	arcan_random(&outb[8], 8);
+
+	outb[16] = ch;
+	outb[17] = 3; /* stream-cancel */
+	pack_u32(id, &outb[18]);
+	outb[22] = (uint8_t) fail; /* user-cancel, can't handle, already cached */
+
+	a12int_append_out(S,
+		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+}
+
 static void command_videoframe(struct a12_state* S)
 {
 	uint8_t ch = S->decode[16];
@@ -935,8 +955,8 @@ static void command_videoframe(struct a12_state* S)
  * and that some codecs need to retain state between frames.
  */
 	if (!a12int_vframe_setup(channel, vframe, method)){
-		a12int_trace(A12_TRACE_SYSTEM, "rejected codec:%d on channel %d", ch, method);
 		vframe->commit = 255;
+		a12int_stream_fail(S, ch, 1, STREAM_FAIL_UNKNOWN);
 		return;
 	}
 
@@ -980,12 +1000,15 @@ static void command_videoframe(struct a12_state* S)
 /* set the possible consumer presentation / repacking options, or resize
  * if the source / destination dimensions no longer match */
 	bool hints_changed = false;
-	if (vframe->postprocess == POSTPROCESS_VIDEO_TZ && !(cont->hints & SHMIF_RHINT_TPACK)){
+	if ((vframe->postprocess == POSTPROCESS_VIDEO_TZ ||
+		vframe->postprocess == POSTPROCESS_VIDEO_TZSTD) &&
+		!(cont->hints & SHMIF_RHINT_TPACK)){
 		cont->hints |= SHMIF_RHINT_TPACK;
 		hints_changed = true;
 	}
 	else if ((cont->hints & SHMIF_RHINT_TPACK) &&
-		vframe->postprocess != POSTPROCESS_VIDEO_TZ){
+		(vframe->postprocess != POSTPROCESS_VIDEO_TZ &&
+		 vframe->postprocess != POSTPROCESS_VIDEO_TZSTD)){
 		cont->hints = cont->hints & (~SHMIF_RHINT_TPACK);
 		hints_changed = true;
 	}
@@ -2235,9 +2258,9 @@ a12_channel_vframe(struct a12_state* S,
 	case VFRAME_METHOD_TPACK:
 		a12int_encode_tz(argstr);
 	break;
-/*
- * FLIV and dav1d missing
- */
+	case VFRAME_METHOD_TPACK_ZSTD:
+		a12int_encode_ztz(argstr);
+	break;
 	default:
 		a12int_trace(A12_TRACE_SYSTEM, "unknown format: %d\n", opts.method);
 	break;

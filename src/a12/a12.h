@@ -1,7 +1,7 @@
 /*
  A12, Arcan Line Protocol implementation
 
- Copyright (c) 2017-2020, Bjorn Stahl
+ Copyright (c) Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
@@ -331,13 +331,14 @@ a12_set_trace_level(int mask, FILE* dst);
  * forward a vbuffer from shm
  */
 enum a12_vframe_method {
-	VFRAME_METHOD_NORMAL = 0,
+	VFRAME_METHOD_NORMAL = 0, /* to deprecate */
 	VFRAME_METHOD_RAW_NOALPHA,
 	VFRAME_METHOD_RAW_RGB565,
-	VFRAME_METHOD_DPNG,
+	VFRAME_METHOD_DPNG, /* to deprecate */
 	VFRAME_METHOD_H264,
-	VFRAME_METHOD_TPACK,
-	VFRAME_METHOD_DZSTD
+	VFRAME_METHOD_TPACK, /* to deprecate */
+	VFRAME_METHOD_DZSTD,
+	VFRAME_METHOD_TPACK_ZSTD
 };
 
 enum a12_vframe_compression_bias {

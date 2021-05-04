@@ -97,9 +97,9 @@ enum {
 	POSTPROCESS_VIDEO_MINIZ  = 4, /* DEFLATE - I frame                    */
 	POSTPROCESS_VIDEO_H264   = 5, /* ffmpeg or native decompressor        */
 	POSTPROCESS_VIDEO_TZ     = 6, /* DEFLATE+tpack (see shmif/tui/raster) */
-	POSTPROCESS_VIDEO_TZSTD  = 7,
-	POSTPROCESS_VIDEO_DZSTD  = 8,
-	POSTPROCESS_VIDEO_ZSTD   = 9
+	POSTPROCESS_VIDEO_TZSTD  = 7, /* ZSTD+tpack                           */
+	POSTPROCESS_VIDEO_DZSTD  = 8, /* ZSTD - P frame                       */
+	POSTPROCESS_VIDEO_ZSTD   = 9  /* ZSTD - I frame                       */
 };
 
 size_t a12int_header_size(int type);
@@ -289,6 +289,13 @@ struct a12_state {
 	struct chacha_ctx* enc_state;
 	struct chacha_ctx* dec_state;
 };
+
+enum {
+	STREAM_FAIL_OUTDATED = 0,
+	STREAM_FAIL_UNKNOWN = 1,
+	STREAM_FAIL_ALREADY_KNOWN = 2
+};
+void a12int_stream_fail(struct a12_state* S, uint8_t ch, uint32_t id, int fail);
 
 void a12int_append_out(
 	struct a12_state* S, uint8_t type, uint8_t* out, size_t out_sz,
