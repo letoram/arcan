@@ -293,6 +293,39 @@ function string.dump(msg)
 end
 end
 
+if not string.unpack_shmif_argstr then
+function string.unpack_shmif_argstr(a1, a2)
+	local arg
+	local res
+
+	if type(a1) == "table" then
+		res = a1
+		arg = a2
+	else
+		arg = a1
+		res = {}
+	end
+
+	if type(arg) ~= "string" or #arg == 0 then
+		return res
+	end
+
+	local entries = string.split(arg, ":")
+	for _,v in ipairs(entries) do
+		local elem = string.split(v, "=")
+		if elem and elem[1] and #elem[1] > 0 then
+			if #elem == 1 then
+				res[elem[1]] = true
+			elseif #elem == 2 then
+				res[elem[1]] = string.gsub(elem[2], "\t", ":")
+			end
+		end
+	end
+
+	return res
+end
+end
+
 -- add (slow) string.format workaround for the string.format bug, this is still
 -- not complete as trailing	'nil' will still not be converted and there seem to
 -- be no stable solution to this as we won't get the count of trailing 'nil'
