@@ -1,6 +1,8 @@
 #!/usr/bin/ruby
 require 'fileutils'
 
+Encoding.default_external = Encoding::UTF_8
+
 def scangrp(inf)
 	line = ""
 	res = {}
