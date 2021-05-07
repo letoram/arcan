@@ -26,8 +26,9 @@ static void drain_video(struct a12_channel* ch, struct video_frame* cvf)
 {
 	cvf->commit = 0;
 	if (ch->active == CHANNEL_RAW){
-	a12int_trace(A12_TRACE_VIDEO,
-		"kind=drain:dest=user:ts=%llu", arcan_timemillis());
+		a12int_trace(A12_TRACE_VIDEO,
+			"kind=drain:dest=user:ts=%llu", arcan_timemillis());
+
 		if (ch->raw.signal_video){
 			ch->raw.signal_video(cvf->x, cvf->y,
 				cvf->x + cvf->w, cvf->y + cvf->h, ch->raw.tag);
@@ -194,13 +195,11 @@ void ffmpeg_decode_pkt(
 		sws_scale(scaler, (const uint8_t* const*) cvf->ffmpeg.frame->data,
 			cvf->ffmpeg.frame->linesize, 0, cvf->h, dst, dst_stride);
 
-/* So if a packet contains multiple frames, we should use the vsignal- to milk
- * more data out of this beforehand or establish a framequeue (start by just
- * switching the context to n-buffered), but also feed back queue state on the
- * producer side to get better frame pacing vs. playback - can do this on the
- * first buffer - synch mismatch though */
-		if (cvf->commit && cvf->commit != 255)
+/* Mark that we should send a ping so the other side can update the drift wnd */
+		if (cvf->commit && cvf->commit != 255){
+			S->ack_pending = true;
 			drain_video(&S->channels[S->in_channel], cvf);
+		}
 
 		sws_freeContext(scaler);
 	}
