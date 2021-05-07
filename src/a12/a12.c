@@ -118,6 +118,15 @@ static void step_sequence(struct a12_state* S, uint8_t* outb)
 	pack_u64(S->last_seen_seqnr, outb);
 }
 
+static void build_control_header(struct a12_state* S, uint8_t* outb, uint8_t cmd)
+{
+	memset(outb, '\0', CONTROL_PACKET_SIZE);
+	step_sequence(S, outb);
+	arcan_random(&outb[8], 8);
+	outb[16] = S->out_channel;
+	outb[17] = cmd;
+}
+
 static void fail_state(struct a12_state* S)
 {
 #ifndef _DEBUG
@@ -927,13 +936,10 @@ struct a12_state* S, void (*on_event)
 
 void a12int_stream_fail(struct a12_state* S, uint8_t ch, uint32_t id, int fail)
 {
-	uint8_t outb[CONTROL_PACKET_SIZE] = {0};
-
-	step_sequence(S, outb);
-	arcan_random(&outb[8], 8);
+	uint8_t outb[CONTROL_PACKET_SIZE];
+	build_control_header(S, outb, COMMAND_CANCELSTREAM);
 
 	outb[16] = ch;
-	outb[17] = 3; /* stream-cancel */
 	pack_u32(id, &outb[18]);
 	outb[22] = (uint8_t) fail; /* user-cancel, can't handle, already cached */
 
@@ -1936,6 +1942,16 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 /* slide window and tail- if needed */
 	if (buf_sz)
 		a12_unpack(S, &buf[ntr], buf_sz, tag, on_event);
+
+/* when all out, check if any vframes on any channels warrant a pingback to
+ * let the other side update its congestion stats */
+	else if (S->ack_pending){
+		uint8_t outb[CONTROL_PACKET_SIZE];
+		build_control_header(S, outb, COMMAND_PING);
+		a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+		S->ack_pending = 0;
+
+	}
 }
 
 /*
@@ -2020,11 +2036,11 @@ static size_t queue_node(struct a12_state* S, struct blob_out* node)
 
 /* not activated, so build a header first */
 	if (!node->active){
-		uint8_t outb[CONTROL_PACKET_SIZE] = {0};
-		step_sequence(S, outb);
-		S->out_stream++;
+		uint8_t outb[CONTROL_PACKET_SIZE];
+		build_control_header(S, outb, COMMAND_BINARYSTREAM);
 		outb[16] = node->chid;
-		outb[17] = COMMAND_BINARYSTREAM;
+
+		S->out_stream++;
 		pack_u32(S->out_stream, &outb[18]); /* [18 .. 21] stream-id */
 		pack_u64(node->left, &outb[22]); /* [22 .. 29] total-size */
 		outb[30] = node->type;
@@ -2136,10 +2152,9 @@ void
 a12_channel_new(struct a12_state* S,
 	uint8_t chid, uint8_t segkind, uint32_t cookie)
 {
-	uint8_t outb[CONTROL_PACKET_SIZE] = {0};
-	step_sequence(S, outb);
+	uint8_t outb[CONTROL_PACKET_SIZE];
+	build_control_header(S, outb, COMMAND_NEWCH);
 
-	outb[17] = COMMAND_NEWCH;
 	outb[18] = chid;
 	outb[19] = segkind;
 	outb[20] = 0;

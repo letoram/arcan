@@ -283,6 +283,7 @@ struct a12_state {
 /* client side needs to send the first packet with MAC+nonce, server side
  * needs to interpret first packet with MAC+nonce */
 	bool server;
+	bool ack_pending;
 	int authentic;
 	blake3_hasher out_mac, in_mac;
 

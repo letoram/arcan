@@ -408,6 +408,16 @@ static void compress_tz(struct a12_state* S, uint8_t ch,
 		return;
 	}
 
+#ifdef DUMP_TRAIN
+	static size_t counter = 0;
+	char tmpnam[16];
+	snprintf(tmpnam, 16, "tp_%zu.raw", counter);
+	FILE* fout = fopen(tmpnam, "w+");
+	fwrite(vb->buffer_bytes, compress_in_sz, 1, fout);
+	fclose(fout);
+	counter++;
+#endif
+
 	size_t out_sz;
 	uint8_t* buf;
 	if (zstd){
