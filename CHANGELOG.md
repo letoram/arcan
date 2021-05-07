@@ -6,8 +6,8 @@
  * Use attachment density if no displayhint on fsrv with tpack font-init
 
 ## Frameservers
- * ARCAN_FRAMESERVER_DEBUGSTALL is now performed after _open and the pid is sent as 'ident'
- * Terminal: added autofit argument to keep_alive
+ * ARCAN_FRAMESERVER_DEBUGSTALL is now performed after \_open and the pid is sent as 'ident'
+ * Terminal: added autofit argument to keep\_alive
  * Terminal: save and rebuild 'dead' terminal window on resize
  * Terminal: 'pipe' mode sidesteps pty
  * Terminal: live-redefinition of colours, overlay server-side palette on terminal one
@@ -19,7 +19,7 @@
 ## Tui
  * Lowered the constraint for wndhint to also work for main window
  * Tpack is now the only output, local rasterization is dead - long live server side text
- * Recolor/runtime palette remapping through target_graphmode
+ * Recolor/runtime palette remapping through target\_graphmode
  * Extended colour slots to cover a 16- legacy group
  * Allow indexed cell attribute flag (fg.r, bg.r becomes colour slot index + lookup)
  * add FAILURE message notification type
@@ -27,24 +27,26 @@
 ## Lua
  * Whitelist os.date
  * Add 'forget' analogfilter option to discard/release device
- * Extend map_video_display to allow layer-index and offsets
- * Extend video_displaymodes with controls for depth (low, deep, hdr) and vrr- target rate
- * target_fonthint and target_displayhint return the last known cell w/h that tpack might use
- * Allow suspend_target, resume_target for controlling preroll state transition
- * bond_target sent the wrong pipe pair ends
+ * Extend map\_video\_display to allow layer-index and offsets
+ * Extend video\_displaymodes with controls for depth (low, deep, hdr) and vrr- target rate
+ * target\_fonthint and target\_displayhint return the last known cell w/h that tpack might use
+ * Allow suspend\_target, resume\_target for controlling preroll state transition
+ * bond\_target sent the wrong pipe pair ends
  * Set default font density to match platform ppcm on init
- * update HPPCM/VPPCM on rendertarget_reconfigure on WORLDID
- * Strictened definition of launch_target
- * Add target_geohint for dynamic language/position updates
- * added input_remap_translation for runtime input platform tuning
+ * update HPPCM/VPPCM on rendertarget\_reconfigure on WORLDID
+ * Strictened definition of launch\_target
+ * Add target\_geohint for dynamic language/position updates
+ * added input\_remap\_translation for runtime input platform tuning
+ * relink\_target now properly accounts for different anchor points
 
 ## Build
  * A whole lot of FreeBSD build fixes courtesy of J.Beich
- * Wrong ALIGNED_SIMD args set courtesy of moon-chilled
+ * Wrong ALIGNED\_SIMD args set courtesy of moon-chilled
  * sdl2 first-build fix courtesy of Lahvuun
 
 ## Distribution
- * New hookscript: 'hook/alloc_debug.lua' that forces backtrace into image-tag for all allocations
+ * New hookscript: 'hook/alloc\_debug.lua' that forces backtrace into image-tag for all allocations
+ * builtin/string.lua: add string.unpack\_shmif\_argstr
 
 ## Shmif
  * Shmifext- allocator interface for server- directed FBO color allocation
@@ -56,7 +58,7 @@
 ## Platform
  * Egl-dri: don't forward modifiers for linear/invalid
  * Lwa: use shmifext allocator interface for mapped rendertargets
- * Lwa: set last-words on script-error / arcan_fatal
+ * Lwa: set last-words on script-error / arcan\_fatal
  * Lwa: forward density to font renderer
  * Lwa: fix buffer-export fail handling
  * Egl-dri: direct-scanout of 'sane- video objects' (e.g. FBO without post-processing)
@@ -76,10 +78,10 @@
  * older client termination on mouse-wheel version check fixed
  * xdg-decor set with the wrong surface state
  * link in pulse/native in -exec tmpdir pulse/native
- * handle no XDG_RUNTIME_DIR case for normal and -exec
+ * handle no XDG\_RUNTIME\_DIR case for normal and -exec
 
 ## Tools
- * added tool arcan-dbgcapture for use as a /proc/core_pattern to help core dump management
+ * added tool arcan-dbgcapture for use as a /proc/core\_pattern to help core dump management
 
 ## Networking
  * enable redirect_exit connection point immediately on client connection

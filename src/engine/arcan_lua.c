@@ -5934,14 +5934,25 @@ static int relinkimage(lua_State* ctx)
 	surface_properties sprop = arcan_video_resolve_properties(sid);
 
 /* will also reset transforms */
-	arcan_errc rv = arcan_video_linkobjs(sid, did, smask, ap, sp);
+	arcan_errc rv = arcan_video_linkobjs(sid, did, smask, ANCHORP_UL, sp);
 
-/* but if the link succeeds, we translate their coordinates to retain the
- * real-world ration before relinking or unlinking */
+/* if the re-linking suceeded, we can now apply the world-space delta */
 	if (rv == ARCAN_OK){
 		float new_x = sprop.position.x - pprop.position.x;
 		float new_y = sprop.position.y - pprop.position.y;
 		float new_z = sprop.position.z - pprop.position.z;
+
+/* but if the anchor point is different, we first need to resolve what
+ * the local anchor delta is, and merge the two translations */
+		if (ap != ANCHORP_UL){
+			arcan_video_objectmove(sid, 0, 0, 0, 0);
+			surface_properties base = arcan_video_resolve_properties(sid);
+			arcan_video_linkobjs(sid, did, smask, ap, sp);
+			surface_properties anchor = arcan_video_resolve_properties(sid);
+			new_x -= anchor.position.x - base.position.x;
+			new_y -= anchor.position.y - base.position.y;
+			new_z -= anchor.position.z - base.position.z;
+		}
 
 		arcan_video_objectmove(sid, new_x, new_y, new_z, 0);
 	}
