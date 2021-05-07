@@ -1565,6 +1565,7 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid,
 	src->p_anchor = anchorp;
 	src->mask = mask;
 	src->p_scale = scalem;
+	src->valid_cache = false;
 
 /* already linked to dst? do nothing */
 		if (src->parent == dst)
