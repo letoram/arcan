@@ -26,7 +26,7 @@ static void enter_seat(
 	struct seat* seat, long serial)
 {
 	if (seat->ptr && seat->in_ptr != cl->res){
-		if (seat->in_ptr && cl->has_ptr){
+		if (seat->in_ptr){
 			trace(TRACE_SEAT, "leave-ptr@%ld:seat(%"PRIxPTR")-surface:%"
 				PRIxPTR, serial, (uintptr_t)seat, (uintptr_t)seat->in_ptr, cl->res);
 			wl_pointer_send_leave(seat->ptr, serial, seat->in_ptr);
@@ -50,7 +50,10 @@ static void enter_seat(
 	}
 
 	if (seat->kbd && seat->in_kbd != cl->res){
-		if (seat->in_kbd && cl->has_kbd){
+		if (seat->in_kbd){
+			trace(TRACE_SEAT, "leave-kbd@%ld:seat(%"PRIxPTR")-surface:%"
+				PRIxPTR, serial, (uintptr_t)seat, (uintptr_t)cl->res, cl->res);
+
 			wl_keyboard_send_leave(seat->kbd, serial, seat->in_kbd);
 		}
 
