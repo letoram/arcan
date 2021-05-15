@@ -1437,6 +1437,10 @@ enum ARCAN_TARGET_SKIPMODE {
  *
  *  (order)          - parent-relative drawing order (+- #segments)
  *
+ *  (ext_id)         - Identifier used to specify virtual (tok) when nesting
+ *                     windowing systems where it is not useful to have a 1:1
+ *                     mapping between segments and 'windows' (x11, win32, ...).
+ *
  * Since order is relative to 'parent', the embedding order may be that a
  * negative value will have the effect that 'the child' is visually/hierarchy
  * speaking 'the parent'. The edge case where such a relationship might be
@@ -1456,6 +1460,7 @@ enum ARCAN_TARGET_SKIPMODE {
 			uint8_t focus;
 			uint8_t anchor_edge;
 			uint8_t anchor_pos;
+			uint32_t ext_id;
 		} viewport;
 
 /*
