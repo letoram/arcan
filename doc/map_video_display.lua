@@ -34,6 +34,14 @@
 -- and as part of a raw input handler where other graphics functions might
 -- be unavailable.
 --
+-- There is also an experimental HINT_DIRECT flag that, if set, will disable
+-- any platform controlled heuristic between direct scanout and forced
+-- composition. This is an optimization that has a number of driver and backend
+-- bugs still. For normal/simple display configurations it is likely to work,
+-- but with edge cases for multi-display hotplug, rotated secondary displays
+-- and so on. This is marked experimental, but if the feature is deprecated
+-- that flag will simply resolve to 0 so it is API-wise safe for use.
+--
 -- @note: A *src* referencing an object with a feed- function, such as
 -- one coming from ref:define_recordtarget, ref:define_calctarget and so
 -- on, is a terminal state transition.

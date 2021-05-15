@@ -4719,6 +4719,7 @@ static void push_view(lua_State* ctx,
 	tblnum(ctx, "anchor_w", ev->viewport.w, top);
 	tblnum(ctx, "anchor_h",ev->viewport.h, top);
 	tblnum(ctx, "edge", ev->viewport.edge, top);
+	tblnum(ctx, "ext_id", ev->viewport.ext_id, top);
 
 	lua_pushstring(ctx, "border");
 	lua_createtable(ctx, 4, 0);
@@ -13000,6 +13001,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"HINT_ROTATE_CCW_90", HINT_ROTATE_CCW_90},
 {"HINT_YFLIP", HINT_YFLIP},
 {"HINT_CURSOR", HINT_CURSOR},
+{"HINT_DIRECT", HINT_DIRECT},
 {"TD_HINT_CONTINUED", 1},
 {"TD_HINT_INVISIBLE", 2},
 {"TD_HINT_UNFOCUSED", 4},

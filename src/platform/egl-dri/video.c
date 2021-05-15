@@ -112,7 +112,7 @@ static char* egl_envopts[] = {
 	"device_connector=ind", "primary display connector index",
 	"device_wait", "loop until an active connector is found",
 	"device_nodpms", "set to disable power management controls",
-	"device_force_compose", "disable direct rendertarget scanout",
+	"device_direct_scanout", "enable direct rendertarget scanout",
 	"display_context=1", "set outer shared headless context, per display contexts",
 	NULL
 };
@@ -360,8 +360,8 @@ static struct dispout* allocate_display(struct dev_node* node)
 /* we currently force composition on all displays unless
  * explicitly turned on, as there seem to be some driver
  * issues with scanning out fbo color attachments */
-			displays[i].force_compose = get_config(
-				"video_device_force_compose", 0, NULL, tag);
+			displays[i].force_compose = !get_config(
+				"video_device_direct_scanout", 0, NULL, tag);
 			debug_print("(%zu) added, force composition? %d",
 				i, (int) displays[i].force_compose);
 			return &displays[i];
@@ -4205,6 +4205,9 @@ ssize_t platform_video_map_display_layer(arcan_vobj_id id,
 		d->display.dpms = ADPMS_ON;
 	}
 
+	if (hint & HINT_DIRECT)
+		d->force_compose = false;
+
 /* need to remove this from the mapping hint so that it doesn't
  * hit HINT_NONE tests */
 	d->hint = hint & ~(HINT_FL_PRIMARY);
@@ -4280,7 +4283,7 @@ ssize_t platform_video_map_display_layer(arcan_vobj_id id,
  * fail, causing force_composition to be set */
 	uintptr_t tag;
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
-	d->force_compose = get_config("video_device_force_compose", 0, NULL, tag);
+	d->force_compose = !get_config("video_device_direct_scanout", 0, NULL, tag);
 
 	return 0;
 }
