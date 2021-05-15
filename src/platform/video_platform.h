@@ -279,7 +279,8 @@ enum blitting_hint {
 	HINT_ROTATE_CW_90 = 16,
 	HINT_ROTATE_CCW_90 = 32,
 	HINT_CURSOR = 64, /* not permitted for layer == 0 */
-	HINT_ENDM = 64
+	HINT_DIRECT = 128, /* attempt direct scanout (ignore force_compose setting) */
+	HINT_ENDM = 128
 };
 
 /* This replaces the platform_video_map_display call and can be used for
