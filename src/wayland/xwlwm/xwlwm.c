@@ -1250,7 +1250,7 @@ int main (int argc, char **argv)
  * middle man, but for testing / development it works fine. Ideally we should
  * also preload the xcb open and get rid of the /tmp/X11 hardcoded path in
  * favor of XDG_RUNTIME */
-	if (strcmp(argv[1], "-xarcan") == 0){
+	if (argc > 1 && strcmp(argv[1], "-xarcan") == 0){
 		binary = "Xarcan";
 		binary_arg = "-noreset";
 		xwm_standalone = true;
