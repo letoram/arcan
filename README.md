@@ -17,7 +17,8 @@ roadmap, changelogs, notes on contributing and so on, please refer to the
 There is also a [website](https://arcan-fe.com) that collects other links,
 announcements, releases, videos / presentations and so on.
 
-* For community contact, check out the IRC channel #arcan on irc.freenode.net.
+* For community contact, check out the IRC channel #arcan on irc.libera.chat
+  and/or the [discord (invite-link)](https://discord.com/invite/sdNzrgXMn7)
 
 * For developer information, see the HACKING.md
 
@@ -36,7 +37,8 @@ can be found here, quality varies wildly from bad to poor (just like Docker):
 
 There are many ways to tune the build steps in order to reduce dependencies.
 There are even more ways to configure and integrate the components depending
-on what you are going for,
+on what you are going for; running as a native desktop or as an application
+runtime inside another desktop?
 
 Most options are exposed via the build output from running cmake on the src
 directory.
@@ -63,9 +65,13 @@ First we need some in-source dependencies that are cloned manually for now:
     ./clone.sh
     cd ../../
 
-These are typically not needed, with the exception of our temporary openAL
-patches pending refactoring of that subsystem in time for the ~0.7 series of
-releases.
+These are typically not needed, the main use is for ensuring certain build
+options that might vary between distributions (freetype/luajit) and to ensure
+that a recoverable desktop can be statically linked and executed in an
+otherwise broken userspace (so embedded bringup). The one exception is OpenAL
+which is patched to be used by a special (arcan-lwa) build. This is slated for
+refactoring to remove that dependency, but there are other priorities in the
+way.
 
 ### Compiling
 
@@ -116,7 +122,7 @@ as well. For other projects, see the 'Related Projects' further below.
 
 If input devices are misbehaving, the quick and dirty 'eventtest' in:
 
-    /path/to/arcan/tests/interactive/eventtest
+    arcan /path/to/arcan/tests/interactive/eventtest
 
 Might be useful in figuring out who to blame.
 
@@ -164,15 +170,16 @@ Or on a case by case basis, like:
 
 For a compliant wayland client, and:
 
-    arcan-wayland -xwl -exec xterm
+    arcan-wayland -exec-x11 xterm
 
 For an X client. The 'per case' basis is recommended as it is safer and more
 secure than letting multiple clients share the same bridge process, at a
 negilable cost. The downside is that some complex clients that rely on making
-multiple distinct wayland connections may fail to do so.
+multiple distinct wayland connections may fail to work properly. Firefox is a
+known offender.
 
-There is a number of tuning and troubleshooting options due to the
-complexity of using wayland, consult the manpage and --help toggle.
+There is a number of tuning and troubleshooting options due to the complexity
+of using wayland, consult the manpage and the --help toggle.
 
 ### Database
 
@@ -241,15 +248,15 @@ projects that you might want to look into:
 * [Safespaces](https://github.com/letoram/safespaces) is an experimental
   VR/3D desktop environment.
 
-* [Prio](https://github.com/letoram/prio) is a simple window manager
-  that mimics Plan9- Rio.
+* [Pipeworld](https://github.com/letoram/pipeworld) is a dataflow
+  (think excel) programming environment
 
 * [Arcan-Devices](https://github.com/letoram/arcan-devices) accumulates
   extra drivers.
 
 To get support for more types of clients and so on, there is also:
 
-* Wayland support (see Wayland section below, and src/wayland/README.md).
+* Wayland support (see Wayland section above, and src/wayland/README.md).
 
 * [QEmu](https://github.com/letoram/qemu) a patched QEmu version that
   adds a -ui arcan option.
@@ -257,6 +264,8 @@ To get support for more types of clients and so on, there is also:
 * [Xarcan](https://github.com/letoram/xarcan) is a patched Xorg that
   allows you to run an X session 'as a window'.
 
+* [nvim-arcan](https://github.com/letoram/nvim-arcan) is a neovim frontend
+  that act as a native arcan client.
 
 Tools
 =====
@@ -289,31 +298,31 @@ mountpoint.
 Aclip is a clipboard manager similar to Xclip. It allows for bridging the
 clipboard between a desktop environment like Durden, and that of an X server.
 
-This requires that clipboard bridging has been allowed (disabled by default
-for security reaons). In Durden this is activated via
+This requires that clipboard bridging has been allowed (disabled by default for
+security reasons). In Durden this is activated via
 global/settings/system/clipboard where you can control how much clipboard
 access the tool gets.
 
 ## Aloadimage
 
-Aloadimage is a simple sandboxing image loader, similar to xloadimage. It
-is useful both for testing client behavior when developing applications
-using arcan, but also as an image viewer in its own right, with reasonably
-fast image loading, basic playlist controls and so on.
+Aloadimage is a simple sandboxing image loader, similar to xloadimage. It is
+useful both for testing client behavior when developing applications using
+arcan, but also as an image viewer in its own right, with reasonably fast image
+loading, basic playlist controls and so on.
 
 ## Vrbridge
 
-VR bridge is an optional input driver that provides the arcan\_vr binary
-which adds support for various head-mounted displays. More detailed
-instructions on its setup and use can be found as part of the Safespaces
-project mentioned in the 'Related Projects 'section.
+VR bridge is an optional input driver that provides the arcan\_vr binary which
+adds support for various head-mounted displays. More detailed instructions on
+its setup and use can be found as part of the Safespaces project mentioned in
+the 'Related Projects 'section.
 
 ## Trayicon
 
-Arcan-trayicon is a tool that chain-loads another arcan client, along with
-two reference images (active and inactive). It tries to register itself in
-the icon-tray of a running arcan application, though it must explicitly
-enable the support. In Durden, this is done via the path:
+Arcan-trayicon is a tool that chain-loads another arcan client, along with two
+reference images (active and inactive). It tries to register itself in the
+icon-tray of a running arcan application, though it must explicitly enable the
+support. In Durden, this is done via the path:
 
     global/settings/statusbar/buttons/right/add_external=tray
 
