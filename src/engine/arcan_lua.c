@@ -13515,7 +13515,7 @@ local inf = math.huge;\n\
 local vobj = {};\n\
 local props = {};\n\
 local restbl = {\n\
-\tversion = [[%s]]\n\
+\tversion = [[%s]],\n\
 \tdisplay = {\n\
 \t\twidth = %d,\n\
 \t\theight = %d,\n\
@@ -13525,8 +13525,8 @@ local restbl = {\n\
 \t\timageproc = %d,\n\
 \t\tscalemode = %d,\n\
 \t\tfiltermode = %d,\n\
-\t};\n\
-\tvcontexts = {};\
+\t},\n\
+\tvcontexts = {}\
 };\n\
 ",
 	ARCAN_BUILDVERSION,
