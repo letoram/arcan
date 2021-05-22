@@ -188,11 +188,15 @@ typedef struct {
 } ZSTD_compressedBlockState_t;
 
 typedef struct {
-    BYTE const* nextSrc;    /* next block here to continue on current prefix */
-    BYTE const* base;       /* All regular indexes relative to this position */
-    BYTE const* dictBase;   /* extDict indexes relative to this position */
-    U32 dictLimit;          /* below that point, need extDict */
-    U32 lowLimit;           /* below that point, no more valid data */
+    BYTE const* nextSrc;       /* next block here to continue on current prefix */
+    BYTE const* base;          /* All regular indexes relative to this position */
+    BYTE const* dictBase;      /* extDict indexes relative to this position */
+    U32 dictLimit;             /* below that point, need extDict */
+    U32 lowLimit;              /* below that point, no more valid data */
+    U32 nbOverflowCorrections; /* Number of times overflow correction has run since
+                                * ZSTD_window_init(). Useful for debugging coredumps
+                                * and for ZSTD_WINDOW_OVERFLOW_CORRECT_FREQUENTLY.
+                                */
 } ZSTD_window_t;
 
 typedef struct ZSTD_matchState_t ZSTD_matchState_t;
@@ -218,6 +222,8 @@ struct ZSTD_matchState_t {
     U32* hashTable;
     U32* hashTable3;
     U32* chainTable;
+
+    U32 forceNonContiguous; /* Non-zero if we should force non-contiguous load for the next window update. */
 
     int dedicatedDictSearch;  /* Indicates whether this matchState is using the
                                * dedicated dictionary search structure.
@@ -317,6 +323,9 @@ struct ZSTD_CCtx_params_s {
     /* Param for deciding whether to use row-based matchfinder */
     ZSTD_useRowMatchFinderMode_e useRowMatchFinder;
 
+    /* Always load a dictionary in ext-dict mode (not prefix mode)? */
+    int deterministicRefPrefix;
+
     /* Internal use, for createCCtxParams() and freeCCtxParams() only */
     ZSTD_customMem customMem;
 };  /* typedef'd to ZSTD_CCtx_params within "zstd.h" */
@@ -340,6 +349,7 @@ struct ZSTD_CCtx_s {
     int bmi2;                            /* == 1 if the CPU supports BMI2 and 0 otherwise. CPU support is determined dynamically once per context lifetime. */
     ZSTD_CCtx_params requestedParams;
     ZSTD_CCtx_params appliedParams;
+    ZSTD_CCtx_params simpleApiParams;    /* Param storage used by the simple API - not sticky. Must only be used in top-level simple API functions for storage. */
     U32   dictID;
     size_t dictContentSize;
 
@@ -872,6 +882,13 @@ MEM_STATIC void ZSTD_window_clear(ZSTD_window_t* window)
     window->dictLimit = end;
 }
 
+MEM_STATIC U32 ZSTD_window_isEmpty(ZSTD_window_t const window)
+{
+    return window.dictLimit == 1 &&
+           window.lowLimit == 1 &&
+           (window.nextSrc - window.base) == 1;
+}
+
 /**
  * ZSTD_window_hasExtDict():
  * Returns non-zero if the window has a non-empty extDict.
@@ -895,15 +912,69 @@ MEM_STATIC ZSTD_dictMode_e ZSTD_matchState_dictMode(const ZSTD_matchState_t *ms)
             ZSTD_noDict;
 }
 
+/* Defining this macro to non-zero tells zstd to run the overflow correction
+ * code much more frequently. This is very inefficient, and should only be
+ * used for tests and fuzzers.
+ */
+#ifndef ZSTD_WINDOW_OVERFLOW_CORRECT_FREQUENTLY
+#  ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+#    define ZSTD_WINDOW_OVERFLOW_CORRECT_FREQUENTLY 1
+#  else
+#    define ZSTD_WINDOW_OVERFLOW_CORRECT_FREQUENTLY 0
+#  endif
+#endif
+
+/**
+ * ZSTD_window_canOverflowCorrect():
+ * Returns non-zero if the indices are large enough for overflow correction
+ * to work correctly without impacting compression ratio.
+ */
+MEM_STATIC U32 ZSTD_window_canOverflowCorrect(ZSTD_window_t const window,
+                                              U32 cycleLog,
+                                              U32 maxDist,
+                                              U32 loadedDictEnd,
+                                              void const* src)
+{
+    U32 const cycleSize = 1u << cycleLog;
+    U32 const curr = (U32)((BYTE const*)src - window.base);
+    U32 const minIndexToOverflowCorrect = cycleSize + MAX(maxDist, cycleSize);
+
+    /* Adjust the min index to backoff the overflow correction frequency,
+     * so we don't waste too much CPU in overflow correction. If this
+     * computation overflows we don't really care, we just need to make
+     * sure it is at least minIndexToOverflowCorrect.
+     */
+    U32 const adjustment = window.nbOverflowCorrections + 1;
+    U32 const adjustedIndex = MAX(minIndexToOverflowCorrect * adjustment,
+                                  minIndexToOverflowCorrect);
+    U32 const indexLargeEnough = curr > adjustedIndex;
+
+    /* Only overflow correct early if the dictionary is invalidated already,
+     * so we don't hurt compression ratio.
+     */
+    U32 const dictionaryInvalidated = curr > maxDist + loadedDictEnd;
+
+    return indexLargeEnough && dictionaryInvalidated;
+}
+
 /**
  * ZSTD_window_needOverflowCorrection():
  * Returns non-zero if the indices are getting too large and need overflow
  * protection.
  */
 MEM_STATIC U32 ZSTD_window_needOverflowCorrection(ZSTD_window_t const window,
+                                                  U32 cycleLog,
+                                                  U32 maxDist,
+                                                  U32 loadedDictEnd,
+                                                  void const* src,
                                                   void const* srcEnd)
 {
     U32 const curr = (U32)((BYTE const*)srcEnd - window.base);
+    if (ZSTD_WINDOW_OVERFLOW_CORRECT_FREQUENTLY) {
+        if (ZSTD_window_canOverflowCorrect(window, cycleLog, maxDist, loadedDictEnd, src)) {
+            return 1;
+        }
+    }
     return curr > ZSTD_CURRENT_MAX;
 }
 
@@ -915,7 +986,6 @@ MEM_STATIC U32 ZSTD_window_needOverflowCorrection(ZSTD_window_t const window,
  *
  * The least significant cycleLog bits of the indices must remain the same,
  * which may be 0. Every index up to maxDist in the past must be valid.
- * NOTE: (maxDist & cycleMask) must be zero.
  */
 MEM_STATIC U32 ZSTD_window_correctOverflow(ZSTD_window_t* window, U32 cycleLog,
                                            U32 maxDist, void const* src)
@@ -939,17 +1009,25 @@ MEM_STATIC U32 ZSTD_window_correctOverflow(ZSTD_window_t* window, U32 cycleLog,
      * 3. (cctx->lowLimit + 1<<windowLog) < 1<<32:
      *    windowLog <= 31 ==> 3<<29 + 1<<windowLog < 7<<29 < 1<<32.
      */
-    U32 const cycleMask = (1U << cycleLog) - 1;
+    U32 const cycleSize = 1u << cycleLog;
+    U32 const cycleMask = cycleSize - 1;
     U32 const curr = (U32)((BYTE const*)src - window->base);
     U32 const currentCycle0 = curr & cycleMask;
     /* Exclude zero so that newCurrent - maxDist >= 1. */
-    U32 const currentCycle1 = currentCycle0 == 0 ? (1U << cycleLog) : currentCycle0;
-    U32 const newCurrent = currentCycle1 + maxDist;
+    U32 const currentCycle1 = currentCycle0 == 0 ? cycleSize : currentCycle0;
+    U32 const newCurrent = currentCycle1 + MAX(maxDist, cycleSize);
     U32 const correction = curr - newCurrent;
-    assert((maxDist & cycleMask) == 0);
+    /* maxDist must be a power of two so that:
+     *   (newCurrent & cycleMask) == (curr & cycleMask)
+     * This is required to not corrupt the chains / binary tree.
+     */
+    assert((maxDist & (maxDist - 1)) == 0);
+    assert((curr & cycleMask) == (newCurrent & cycleMask));
     assert(curr > newCurrent);
-    /* Loose bound, should be around 1<<29 (see above) */
-    assert(correction > 1<<28);
+    if (!ZSTD_WINDOW_OVERFLOW_CORRECT_FREQUENTLY) {
+        /* Loose bound, should be around 1<<29 (see above) */
+        assert(correction > 1<<28);
+    }
 
     window->base += correction;
     window->dictBase += correction;
@@ -964,6 +1042,8 @@ MEM_STATIC U32 ZSTD_window_correctOverflow(ZSTD_window_t* window, U32 cycleLog,
     /* Ensure that lowLimit and dictLimit didn't underflow. */
     assert(window->lowLimit <= newCurrent);
     assert(window->dictLimit <= newCurrent);
+
+    ++window->nbOverflowCorrections;
 
     DEBUGLOG(4, "Correction of 0x%x bytes to lowLimit=0x%x", correction,
              window->lowLimit);
@@ -1074,6 +1154,7 @@ MEM_STATIC void ZSTD_window_init(ZSTD_window_t* window) {
     window->dictLimit = 1;    /* start from 1, so that 1st position is valid */
     window->lowLimit = 1;     /* it ensures first and later CCtx usages compress the same */
     window->nextSrc = window->base + 1;   /* see issue #1241 */
+    window->nbOverflowCorrections = 0;
 }
 
 /**
@@ -1084,7 +1165,8 @@ MEM_STATIC void ZSTD_window_init(ZSTD_window_t* window) {
  * Returns non-zero if the segment is contiguous.
  */
 MEM_STATIC U32 ZSTD_window_update(ZSTD_window_t* window,
-                                  void const* src, size_t srcSize)
+                                  void const* src, size_t srcSize,
+                                  int forceNonContiguous)
 {
     BYTE const* const ip = (BYTE const*)src;
     U32 contiguous = 1;
@@ -1094,7 +1176,7 @@ MEM_STATIC U32 ZSTD_window_update(ZSTD_window_t* window,
     assert(window->base != NULL);
     assert(window->dictBase != NULL);
     /* Check if blocks follow each other */
-    if (src != window->nextSrc) {
+    if (src != window->nextSrc || forceNonContiguous) {
         /* not contiguous */
         size_t const distanceFromBase = (size_t)(window->nextSrc - window->base);
         DEBUGLOG(5, "Non contiguous blocks, new segment starts at %u", window->dictLimit);
