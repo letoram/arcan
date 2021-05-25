@@ -13499,6 +13499,39 @@ vobj.glstore_refc = %zu;\n", src->vstore->vinf.text.glid,
 	free(mask);
 }
 
+static void dump_rtgt(FILE* dst, struct rendertarget* rtgt)
+{
+	fprintf(dst, "\
+local rtgt = {\n\
+	attached = {");
+	struct arcan_vobject_litem* first = rtgt->first;
+	while(first){
+		fprintf(dst, "%" PRIxVOBJ", ", first->elem->cellid);
+		first = first->next;
+	}
+	fprintf(dst, "},\n\
+color_id = %" PRIxVOBJ",\n"
+#ifdef _DEBUG
+"attach_refc = %d,\n"
+#endif
+"readback = %d,\n\
+readcnt = %d,\n\
+refresh = %d,\n\
+refreshcnt = %d,\n\
+transfc = %zu,\n\
+camtag = %"PRIxVOBJ",\n\
+flags = %d\n\
+};\n\
+table.insert(ctx.rtargets, rtgt);\n\
+", rtgt->color ? rtgt->color->cellid : ARCAN_EID,
+#ifdef _DEBUG
+	rtgt->color->extrefc.attachments,
+#endif
+	rtgt->readback, rtgt->readcnt, rtgt->refresh, rtgt->refreshcnt,
+	rtgt->transfc, rtgt->camtag, rtgt->flags
+);
+}
+
 void arcan_lua_statesnap(FILE* dst, const char* tag, bool delim)
 {
 /*
@@ -13570,37 +13603,9 @@ vobj.cellid_translated = %ld;\n\
 ctx.vobjs[vobj.cellid] = vobj;\n", (long int)vid_toluavid(i));
 		}
 
+		dump_rtgt(dst, &ctx->stdoutp);
 		for (size_t i = 0; i < ctx->n_rtargets; i++){
-			struct rendertarget* rtgt = &ctx->rtargets[i];
-			fprintf(dst, "\
-local rtgt = {\n\
-	attached = {");
-			struct arcan_vobject_litem* first = rtgt->first;
-			while(first){
-				fprintf(dst, "%" PRIxVOBJ", ", first->elem->cellid);
-				first = first->next;
-			}
-			fprintf(dst, "},\n\
-color_id = %" PRIxVOBJ",\n"
-#ifdef _DEBUG
-"attach_refc = %d,\n"
-#endif
-"readback = %d,\n\
-readcnt = %d,\n\
-refresh = %d,\n\
-refreshcnt = %d,\n\
-transfc = %zu,\n\
-camtag = %"PRIxVOBJ",\n\
-flags = %d\n\
-};\n\
-table.insert(ctx.rtargets, rtgt);\n\
-", rtgt->color ? rtgt->color->cellid : ARCAN_EID,
-#ifdef _DEBUG
-		rtgt->color->extrefc.attachments,
-#endif
-		rtgt->readback, rtgt->readcnt, rtgt->refresh, rtgt->refreshcnt,
-		rtgt->transfc, rtgt->camtag, rtgt->flags
-);
+			dump_rtgt(dst, &ctx->rtargets[i]);
 		}
 
 		fprintf(dst,"table.insert(restbl.vcontexts, ctx);");
