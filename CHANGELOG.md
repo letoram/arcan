@@ -38,6 +38,7 @@
  * Add target\_geohint for dynamic language/position updates
  * added input\_remap\_translation for runtime input platform tuning
  * relink\_target now properly accounts for different anchor points
+ * reduce unnecessary pushstrings where pushlstring/pushliteral would suffice
 
 ## Build
  * A whole lot of FreeBSD build fixes courtesy of J.Beich
@@ -86,6 +87,7 @@
 ## Networking
  * enable redirect_exit connection point immediately on client connection
  * Swap out DEFLATE for ZSTD
+ * added keystore
 
 ## 0.6.0
 ## Engine
