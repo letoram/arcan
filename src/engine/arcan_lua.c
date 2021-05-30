@@ -415,35 +415,44 @@ static void dump_call_trace(lua_State* ctx, FILE* out)
 	luaL_nil_banned(ctx);
 }
 
-static void tblstr(lua_State* ctx,
-	const char* k, const char* v, int top)
+static void set_tblstr(lua_State* ctx,
+	const char* k, const char* v, int top, size_t k_sz, size_t v_sz)
 {
-	lua_pushstring(ctx, k);
+	lua_pushlstring(ctx, k, k_sz);
+	lua_pushlstring(ctx, v, v_sz);
+	lua_rawset(ctx, top);
+}
+
+static void set_tbldynstr(lua_State* ctx,
+	const char* k, const char* v, int top, size_t k_sz)
+{
+	lua_pushlstring(ctx, k, k_sz);
 	lua_pushstring(ctx, v);
 	lua_rawset(ctx, top);
 }
 
-static void tbllstr(lua_State* ctx,
-	const char* k, const char* v, size_t len, int top)
+static void set_tblnum(
+	lua_State* ctx, const char* k, double v, int top, size_t k_sz)
 {
-	lua_pushstring(ctx, k);
-	lua_pushlstring(ctx, v, len);
-	lua_rawset(ctx, top);
-}
-
-static void tblnum(lua_State* ctx, char* k, double v, int top)
-{
-	lua_pushstring(ctx, k);
+	lua_pushlstring(ctx, k, k_sz);
 	lua_pushnumber(ctx, v);
 	lua_rawset(ctx, top);
 }
 
-static void tblbool(lua_State* ctx, char* k, bool v, int top)
+static void set_tblbool(lua_State* ctx, char* k, bool v, int top, size_t k_sz)
 {
-	lua_pushstring(ctx, k);
+	lua_pushlstring(ctx, k, k_sz);
 	lua_pushboolean(ctx, v);
 	lua_rawset(ctx, top);
 }
+
+#define tblstr(L, K, V, T) set_tblstr(L, (K), (V), (T),\
+	((sizeof(K)/sizeof(char))-1),\
+	((sizeof(V)/sizeof(char))-1)\
+)
+#define tbldynstr(L, K, V, T) set_tbldynstr(L, (K), (V), (T), (sizeof(K)/sizeof(char))-1)
+#define tblnum(L, K, V, T) set_tblnum(L, (K), (V), (T), (sizeof(K)/sizeof(char))-1)
+#define tblbool(L, K, V, T) set_tblbool(L, (K), (V), (T), (sizeof(K)/sizeof(char))-1)
 
 static void set_nonblock_cloexec(int fd, bool socket)
 {
@@ -784,40 +793,49 @@ static bool grabapplfunction(lua_State* ctx, const char* funame, size_t funlen)
 	return true;
 }
 
-/* the places in _lua.c that calls this function should probably have a better
+/* The places in _lua.c that calls this function should probably have a better
  * handover as this incurs additional and almost always unnecessary strlen
- * calls */
-static const char* intblstr(lua_State* ctx, int ind, const char* field)
+ * calls. To do that:
+ *
+ * lua_pushlstring(L, field, fsz),
+ * lua_rawget(L, ind)
+ */
+static const char* intblstr_sz(
+	lua_State* ctx, int ind, const char* field, size_t fsz)
 {
 	lua_getfield(ctx, ind, field);
 	const char* rv = lua_tostring(ctx, -1);
 	lua_pop(ctx, 1);
 	return rv;
 }
+#define intblstr(L, I, F) intblstr_sz(L, (I), (F), (sizeof(F)/sizeof(char))-1)
 
-static float intblfloat(lua_State* ctx, int ind, const char* field)
+static float intblfloat_sz(lua_State* ctx, int ind, const char* field, size_t fsz)
 {
 	lua_getfield(ctx, ind, field);
 	float rv = lua_tonumber(ctx, -1);
 	lua_pop(ctx, 1);
 	return rv;
 }
+#define intblfloat(L, I, F) intblfloat_sz(L, (I), (F), (sizeof(F)/sizeof(char))-1)
 
-static int intblint(lua_State* ctx, int ind, const char* field)
+static int intblint_sz(lua_State* ctx, int ind, const char* field, size_t fsz)
 {
 	lua_getfield(ctx, ind, field);
 	int rv = lua_tointeger(ctx, -1);
 	lua_pop(ctx, 1);
 	return rv;
 }
+#define intblint(L, I, F) intblint_sz(L, (I), (F), (sizeof(F)/sizeof(char))-1)
 
-static bool intblbool(lua_State* ctx, int ind, const char* field)
+static bool intblbool_sz(lua_State* ctx, int ind, const char* field, size_t fsz)
 {
 	lua_getfield(ctx, ind, field);
 	bool rv = lua_toboolean(ctx, -1);
 	lua_pop(ctx, 1);
 	return rv;
 }
+#define intblbool(L, I, F) intblbool_sz(L, (I), (F), (sizeof(F)/sizeof(char))-1)
 
 static char* findresource(const char* arg, enum arcan_namespaces space)
 {
@@ -884,12 +902,16 @@ static void finish_trace_buffer(lua_State* ctx)
 
 /* system */
 		size_t nb = strlen(&buf[pos]);
-		tbllstr(ctx, "system", &buf[pos], nb, top);
+		lua_pushliteral(ctx, "system");
+		lua_pushlstring(ctx, &buf[pos], nb);
+		lua_rawset(ctx, top);
 		pos += nb + 1;
 
 /* subsystem */
 		nb = strlen(&buf[pos]);
-		tbllstr(ctx, "subsystem", &buf[pos], nb, top);
+		lua_pushliteral(ctx, "subsystem");
+		lua_pushlstring(ctx, &buf[pos], nb);
+		lua_rawset(ctx, top);
 		pos += nb + 1;
 
 /* trigger */
@@ -933,7 +955,9 @@ static void finish_trace_buffer(lua_State* ctx)
 
 /* caller message */
 		nb = strlen(&buf[pos]);
-		tbllstr(ctx, "message", &buf[pos], nb, top);
+		lua_pushliteral(ctx, "message");
+		lua_pushlstring(ctx, &buf[pos], nb);
+		lua_rawset(ctx, top);
 		pos += nb + 1;
 
 /* step outer table */
@@ -1043,8 +1067,8 @@ bool arcan_lua_launch_cp(
 	}
 
 	lua_pushvid(ctx, res->vid);
-	lua_pushstring(ctx, "_stdin");
-	lua_pushstring(ctx, "");
+	lua_pushliteral(ctx, "_stdin");
+	lua_pushliteral(ctx, "");
 	lua_pushvid(ctx, ARCAN_EID);
 	lua_pushboolean(ctx, true);
 
@@ -1575,7 +1599,7 @@ static int funtable(lua_State* ctx, uint32_t kind)
 {
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
-	lua_pushstring(ctx, "kind");
+	lua_pushliteral(ctx, "kind");
 	lua_pushnumber(ctx, kind);
 	lua_rawset(ctx, top);
 
@@ -2904,28 +2928,28 @@ static int imagestate(lua_State* ctx)
 
 	vfunc_state* state = arcan_video_feedstate(vid);
 	if (!state)
-		lua_pushstring(ctx, "static");
+		lua_pushliteral(ctx, "static");
 	else
 		switch(state->tag){
 		case ARCAN_TAG_FRAMESERV:
-			lua_pushstring(ctx, "frameserver");
+			lua_pushliteral(ctx, "frameserver");
 		break;
 
 		case ARCAN_TAG_3DOBJ:
-			lua_pushstring(ctx, "3d object");
+			lua_pushliteral(ctx, "3d object");
 		break;
 
 		case ARCAN_TAG_ASYNCIMGLD:
 		case ARCAN_TAG_ASYNCIMGRD:
-			lua_pushstring(ctx, "asynchronous state");
+			lua_pushliteral(ctx, "asynchronous state");
 		break;
 
 		case ARCAN_TAG_3DCAMERA:
-			lua_pushstring(ctx, "3d camera");
+			lua_pushliteral(ctx, "3d camera");
 		break;
 
 		default:
-			lua_pushstring(ctx, "unknown");
+			lua_pushliteral(ctx, "unknown");
 		}
 
 	LUA_ETRACE("image_state", NULL, 1);
@@ -3973,7 +3997,7 @@ static int vr_getmeta(lua_State* ctx)
 	tblnum(ctx, "eye_display", md.eye_display, top);
 	tblnum(ctx, "ipd", md.ipd, top);
 
-	lua_pushstring(ctx, "distortion");
+	lua_pushliteral(ctx, "distortion");
 	lua_createtable(ctx, 0, 4);
 	int ttop = lua_gettop(ctx);
 	for (size_t i = 0; i < 4; i++){
@@ -3983,7 +4007,7 @@ static int vr_getmeta(lua_State* ctx)
 	}
 	lua_rawset(ctx, top);
 
-	lua_pushstring(ctx, "abberation");
+	lua_pushliteral(ctx, "abberation");
 	lua_createtable(ctx, 0, 4);
 	ttop = lua_gettop(ctx);
 	for (size_t i = 0; i < 4; i++){
@@ -3993,7 +4017,7 @@ static int vr_getmeta(lua_State* ctx)
 	}
 	lua_rawset(ctx, top);
 
-	lua_pushstring(ctx, "projection_left");
+	lua_pushliteral(ctx, "projection_left");
 	lua_createtable(ctx, 0, 16);
 	ttop = lua_gettop(ctx);
 	for (size_t i = 0; i < 16; i++){
@@ -4003,7 +4027,7 @@ static int vr_getmeta(lua_State* ctx)
 	}
 	lua_rawset(ctx, top);
 
-	lua_pushstring(ctx, "projection_right");
+	lua_pushliteral(ctx, "projection_right");
 	lua_createtable(ctx, 0, 16);
 	ttop = lua_gettop(ctx);
 	for (size_t i = 0; i < 16; i++){
@@ -4138,9 +4162,6 @@ static int contextusage(lua_State* ctx)
 	LUA_ETRACE("current_context_usage", NULL, 2);
 }
 
-/*
- * trused -> untrused
- */
 static void get_utf8(const char* instr, uint8_t dst[5])
 {
 	if (!instr){
@@ -4494,51 +4515,51 @@ static void push_displaymodes(lua_State* ctx, platform_display_id id)
 
 		int jtop = lua_gettop(ctx);
 
-		lua_pushstring(ctx, "cardid");
+		lua_pushliteral(ctx, "cardid");
 		lua_pushnumber(ctx, 0);
 		lua_rawset(ctx, jtop);
 
-		lua_pushstring(ctx, "displayid");
+		lua_pushliteral(ctx, "displayid");
 		lua_pushnumber(ctx, id);
 		lua_rawset(ctx, jtop);
 
-		lua_pushstring(ctx, "phy_width_mm");
+		lua_pushliteral(ctx, "phy_width_mm");
 		lua_pushnumber(ctx, modes[j].phy_width);
 		lua_rawset(ctx, jtop);
 
-		lua_pushstring(ctx, "phy_height_mm");
+		lua_pushliteral(ctx, "phy_height_mm");
 		lua_pushnumber(ctx, modes[j].phy_height);
 		lua_rawset(ctx, jtop);
 
-		lua_pushstring(ctx, "subpixel_layout");
+		lua_pushliteral(ctx, "subpixel_layout");
 		lua_pushstring(ctx, modes[j].subpixel ? modes[j].subpixel : "unknown");
 		lua_rawset(ctx, jtop);
 
-		lua_pushstring(ctx, "dynamic");
+		lua_pushliteral(ctx, "dynamic");
 		lua_pushboolean(ctx, modes[j].dynamic);
 		lua_rawset(ctx, jtop);
 
-		lua_pushstring(ctx, "primary");
+		lua_pushliteral(ctx, "primary");
 		lua_pushboolean(ctx, modes[j].primary);
 		lua_rawset(ctx, jtop);
 
-		lua_pushstring(ctx, "modeid");
+		lua_pushliteral(ctx, "modeid");
 		lua_pushnumber(ctx, modes[j].id);
 		lua_rawset(ctx, jtop);
 
-		lua_pushstring(ctx, "width");
+		lua_pushliteral(ctx, "width");
 		lua_pushnumber(ctx, modes[j].width);
 		lua_rawset(ctx, jtop);
 
-		lua_pushstring(ctx, "height");
+		lua_pushliteral(ctx, "height");
 		lua_pushnumber(ctx, modes[j].height);
 		lua_rawset(ctx, jtop);
 
-		lua_pushstring(ctx, "refresh");
+		lua_pushliteral(ctx, "refresh");
 		lua_pushnumber(ctx, modes[j].refresh);
 		lua_rawset(ctx, jtop);
 
-		lua_pushstring(ctx, "depth");
+		lua_pushliteral(ctx, "depth");
 		lua_pushnumber(ctx, modes[j].depth);
 		lua_rawset(ctx, jtop);
 
@@ -4607,7 +4628,7 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
 		return;
 
-	lua_pushstring(ctx, "reset");
+	lua_pushliteral(ctx, "reset");
 
 	alua_call(ctx, 1, 0, LINE_TAG":display_state:reset");
 }
@@ -4617,18 +4638,18 @@ static void display_added(lua_State* ctx, arcan_event* ev)
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
 		return;
 
-	lua_pushstring(ctx, "added");
+	lua_pushliteral(ctx, "added");
 	lua_pushnumber(ctx, ev->vid.displayid);
 
 	lua_createtable(ctx, 0, 3);
 	int top = lua_gettop(ctx);
-	lua_pushstring(ctx, "ledctrl");
+	lua_pushliteral(ctx, "ledctrl");
 	lua_pushnumber(ctx, ev->vid.ledctrl);
 	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "ledind");
+	lua_pushliteral(ctx, "ledind");
 	lua_pushnumber(ctx, ev->vid.ledid);
 	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "card");
+	lua_pushliteral(ctx, "card");
 	lua_pushnumber(ctx, ev->vid.cardid);
 	lua_rawset(ctx, top);
 
@@ -4640,7 +4661,7 @@ static void display_changed(lua_State* ctx, arcan_event* ev)
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
 		return;
 
-	lua_pushstring(ctx, "changed");
+	lua_pushliteral(ctx, "changed");
 	alua_call(ctx, 1, 0, LINE_TAG":display_state:changed");
 }
 
@@ -4649,7 +4670,7 @@ static void display_removed(lua_State* ctx, arcan_event* ev)
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
 		return;
 
-	lua_pushstring(ctx, "removed");
+	lua_pushliteral(ctx, "removed");
 	lua_pushnumber(ctx, ev->vid.displayid);
 	alua_call(ctx, 2, 0, LINE_TAG":display_state:removed");
 }
@@ -4670,7 +4691,7 @@ static void do_preroll(lua_State* ctx, intptr_t ref,
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
 		tblstr(ctx, "kind", "preroll", top);
-		tblstr(ctx, "segkind", fsrvtos(fsrv->segid), top);
+		tbldynstr(ctx, "segkind", fsrvtos(fsrv->segid), top);
 		tblnum(ctx, "source_audio", aid, top);
 		luactx.cb_source_tag = vid;
 		alua_call(ctx, 2, 0, LINE_TAG":frameserver:preroll");
@@ -4721,7 +4742,7 @@ static void push_view(lua_State* ctx,
 	tblnum(ctx, "edge", ev->viewport.edge, top);
 	tblnum(ctx, "ext_id", ev->viewport.ext_id, top);
 
-	lua_pushstring(ctx, "border");
+	lua_pushliteral(ctx, "border");
 	lua_createtable(ctx, 4, 0);
 	int top2 = lua_gettop(ctx);
 	for (size_t i = 0; i < 4; i++){
@@ -4796,7 +4817,7 @@ static void emit_segreq(
 	}
 
 	tblnum(ctx, "parent", parent->cookie, top);
-	tblstr(ctx, "segkind", fsrvtos(ev->segreq.kind), top);
+	tbldynstr(ctx, "segkind", fsrvtos(ev->segreq.kind), top);
 
 	luactx.cb_source_tag = ev->source;
 	luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
@@ -4887,17 +4908,6 @@ static const char* kindstr(int num)
 	}
 }
 
-static const char* domain_str(int num)
-{
-	switch(num){
-	case 0:	return "platform"; break;
-	case 1: return "led"; break;
-	default:
-	return "unknown-report";
-	break;
-	}
-}
-
 /*
  * emit input() call based on a arcan_event, uses a separate format and
  * translation to make it easier for the user to modify. This is a rather ugly
@@ -4916,15 +4926,15 @@ static void append_iotable(lua_State* ctx, arcan_ioevent* ev)
 {
 	int top = funtable(ctx, ev->kind);
 
-	lua_pushstring(ctx, "kind");
+	lua_pushliteral(ctx, "kind");
 	if (ev->label[0] && ev->kind != EVENT_IO_STATUS &&
 		ev->label[COUNT_OF(ev->label)-1] == '\0'){
-		tblstr(ctx, "label", ev->label, top);
+		tbldynstr(ctx, "label", ev->label, top);
 	}
 
 	switch (ev->kind){
 	case EVENT_IO_TOUCH:
-		lua_pushstring(ctx, "touch");
+		lua_pushliteral(ctx, "touch");
 		lua_rawset(ctx, top);
 
 		tblbool(ctx, "touch", true, top);
@@ -4938,7 +4948,7 @@ static void append_iotable(lua_State* ctx, arcan_ioevent* ev)
 	break;
 
 	case EVENT_IO_EYES:
-		lua_pushstring(ctx, "eyes");
+		lua_pushliteral(ctx, "eyes");
 		lua_rawset(ctx, top);
 
 		tblbool(ctx, "eyes", true, top);
@@ -4961,26 +4971,38 @@ static void append_iotable(lua_State* ctx, arcan_ioevent* ev)
 
 	case EVENT_IO_STATUS:{
 		const char* lbl = platform_event_devlabel(ev->devid);
-		lua_pushstring(ctx, "status");
+		lua_pushliteral(ctx, "status");
 		lua_rawset(ctx, top);
 		tblbool(ctx, "status", true, top);
 		tblnum(ctx, "devid", ev->devid, top);
 		tblnum(ctx, "subid", ev->subid, top);
 		if (lbl)
-			tblstr(ctx, "extlabel", lbl, top);
+			tbldynstr(ctx, "extlabel", lbl, top);
 
-		tblstr(ctx, "devkind", kindstr(ev->input.status.devkind), top);
-		tblstr(ctx, "label", ev->label, top);
+		tbldynstr(ctx, "devkind", kindstr(ev->input.status.devkind), top);
+		tbldynstr(ctx, "label", ev->label, top);
 		tblnum(ctx, "devref", ev->input.status.devref, top);
-		tblstr(ctx, "domain", domain_str(ev->input.status.domain), top);
-		tblstr(ctx, "action", (ev->input.status.action == EVENT_IDEV_ADDED ?
-			"added" : (ev->input.status.action == EVENT_IDEV_REMOVED ?
-				"removed" : "blocked")), top);
+		switch(ev->input.status.domain){
+		case 0: tblstr(ctx, "domain", "platform", top); break;
+		case 1: tblstr(ctx, "domain", "led", top); break;
+		default: tblstr(ctx, "domain", "unknown-report", top); break;
+		}
+		switch(ev->input.status.action){
+		case EVENT_IDEV_ADDED:
+			tblstr(ctx, "action", "added", top);
+		break;
+		case EVENT_IDEV_REMOVED:
+			tblstr(ctx, "action", "removed", top);
+		break;
+		default:
+			tblstr(ctx, "action", "blocked", top);
+		break;
+		}
 	}
 	break;
 
 	case EVENT_IO_AXIS_MOVE:
-		lua_pushstring(ctx, "analog");
+		lua_pushliteral(ctx, "analog");
 		lua_rawset(ctx, top);
 		if (ev->devkind == EVENT_IDEVKIND_MOUSE){
 			tblbool(ctx, "mouse", true, top);
@@ -4995,7 +5017,7 @@ static void append_iotable(lua_State* ctx, arcan_ioevent* ev)
 		tblbool(ctx, "analog", true, top);
 		tblbool(ctx, "relative", ev->input.analog.gotrel,top);
 
-		lua_pushstring(ctx, "samples");
+		lua_pushliteral(ctx, "samples");
 		lua_createtable(ctx, ev->input.analog.nvalues, 0);
 		int top2 = lua_gettop(ctx);
 			for (size_t i = 0; i < ev->input.analog.nvalues; i++){
@@ -5007,7 +5029,7 @@ static void append_iotable(lua_State* ctx, arcan_ioevent* ev)
 	break;
 
 	case EVENT_IO_BUTTON:
-		lua_pushstring(ctx, "digital");
+		lua_pushliteral(ctx, "digital");
 		lua_rawset(ctx, top);
 		tblbool(ctx, "digital", true, top);
 
@@ -5018,7 +5040,7 @@ static void append_iotable(lua_State* ctx, arcan_ioevent* ev)
 			tblnum(ctx, "modifiers", ev->input.translated.modifiers, top);
 			tblnum(ctx, "devid", ev->devid, top);
 			tblnum(ctx, "subid", ev->subid, top);
-			tblstr(ctx, "utf8", (char*)ev->input.translated.utf8, top);
+			tbldynstr(ctx, "utf8", (char*)ev->input.translated.utf8, top);
 			tblbool(ctx, "active", ev->input.translated.active, top);
 			tblstr(ctx, "device", "translated", top);
 			tblbool(ctx, "keyboard", true, top);
@@ -5042,7 +5064,7 @@ static void append_iotable(lua_State* ctx, arcan_ioevent* ev)
 	break;
 
 	default:
-		lua_pushstring(ctx, "unknown");
+		lua_pushliteral(ctx, "unknown");
 		lua_rawset(ctx, top);
 		arcan_warning("Engine -> Script: "
 			"ignoring IO event: %i\n",ev->kind);
@@ -5109,7 +5131,7 @@ void arcan_lwa_subseg_ev(
 		tblstr(ctx, "kind", "message", top);
 		MSGBUF_UTF8(ev->tgt.message);
 		tblbool(ctx, "multipart", ev->tgt.ioevs[0].iv != 0, top);
-		tblstr(ctx, "message", msgbuf, top);
+		tbldynstr(ctx, "message", msgbuf, top);
 	}
 	break;
 	case TARGET_COMMAND_EXIT:
@@ -5176,13 +5198,13 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		case EVENT_EXTERNAL_IDENT:
 			tblstr(ctx, "kind", "ident", top);
 			MSGBUF_UTF8(ev->ext.message.data);
-			tblstr(ctx, "message", msgbuf, top);
+			tbldynstr(ctx, "message", msgbuf, top);
 		break;
 		case EVENT_EXTERNAL_COREOPT:
 			tblstr(ctx, "kind", "coreopt", top);
 			tblnum(ctx, "slot", ev->ext.coreopt.index, top);
 			MSGBUF_UTF8(ev->ext.message.data);
-			tblstr(ctx, "argument", msgbuf, top);
+			tbldynstr(ctx, "argument", msgbuf, top);
 			if (ev->ext.coreopt.type == 0)
 				tblstr(ctx, "type", "key", top);
 			else if (ev->ext.coreopt.type == 1)
@@ -5232,7 +5254,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		break;
 		case EVENT_EXTERNAL_CURSORHINT:
 			FLTPUSH(ev->ext.message.data, flt_alpha, '?');
-			tblstr(ctx, "cursor", msgbuf, top);
+			tbldynstr(ctx, "cursor", msgbuf, top);
 			tblstr(ctx, "kind", "cursorhint", top);
 		break;
 		case EVENT_EXTERNAL_ALERT:
@@ -5242,12 +5264,12 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblstr(ctx, "kind", "message", top);
 			MSGBUF_UTF8(ev->ext.message.data);
 			tblbool(ctx, "multipart", ev->ext.message.multipart != 0, top);
-			tblstr(ctx, "message", msgbuf, top);
+			tbldynstr(ctx, "message", msgbuf, top);
 		break;
 		case EVENT_EXTERNAL_FAILURE:
 			tblstr(ctx, "kind", "failure", top);
 			MSGBUF_UTF8(ev->ext.message.data);
-			tblstr(ctx, "message", msgbuf, top);
+			tbldynstr(ctx, "message", msgbuf, top);
 		break;
 		case EVENT_EXTERNAL_FRAMESTATUS:
 			tblstr(ctx, "kind", "framestatus", top);
@@ -5260,17 +5282,17 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		case EVENT_EXTERNAL_STREAMINFO:
 			FLTPUSH(ev->ext.streaminf.langid, flt_Alpha, '?');
 			tblstr(ctx, "kind", "streaminfo", top);
-			tblstr(ctx, "lang", msgbuf, top);
+			tbldynstr(ctx, "lang", msgbuf, top);
 			tblnum(ctx, "streamid", ev->ext.streaminf.streamid, top);
-			tblstr(ctx, "type",
+			tbldynstr(ctx, "type",
 				streamtype(ev->ext.streaminf.datakind),top);
 		break;
 		case EVENT_EXTERNAL_STREAMSTATUS:
 			tblstr(ctx, "kind", "streamstatus", top);
 			FLTPUSH(ev->ext.streamstat.timestr, flt_num, '?');
-			tblstr(ctx, "ctime", msgbuf, top);
+			tbldynstr(ctx, "ctime", msgbuf, top);
 			FLTPUSH(ev->ext.streamstat.timelim, flt_num, '?');
-			tblstr(ctx, "endtime", msgbuf, top);
+			tbldynstr(ctx, "endtime", msgbuf, top);
 			tblnum(ctx,"completion",ev->ext.streamstat.completion,top);
 			tblnum(ctx, "frameno", ev->ext.streamstat.frameno, top);
 			tblnum(ctx,"streaming",
@@ -5287,15 +5309,15 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				return;
 			}
 			MSGBUF_UTF8(ev->ext.labelhint.descr);
-			tblstr(ctx, "description", msgbuf, top);
+			tbldynstr(ctx, "description", msgbuf, top);
 			tblstr(ctx, "kind", "input_label", top);
 			FLTPUSH(ev->ext.labelhint.label, flt_Alphanum, '?');
-			tblstr(ctx, "labelhint", msgbuf, top);
+			tbldynstr(ctx, "labelhint", msgbuf, top);
 			tblnum(ctx, "initial", ev->ext.labelhint.initial, top);
-			tblstr(ctx, "datatype", idt, top);
+			tbldynstr(ctx, "datatype", idt, top);
 			tblnum(ctx, "modifiers", ev->ext.labelhint.modifiers, top);
 			MSGBUF_UTF8(ev->ext.labelhint.vsym);
-			tblstr(ctx, "vsym", msgbuf, top);
+			tbldynstr(ctx, "vsym", msgbuf, top);
 		}
 		break;
 		case EVENT_EXTERNAL_BCHUNKSTATE:
@@ -5309,19 +5331,19 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblbool(ctx, "disable", ev->ext.bchunk.extensions[0] == 0, top);
 			if (ev->ext.bchunk.extensions[0]){
 				FLTPUSH(ev->ext.bchunk.extensions, flt_chunkfn, '\0');
-				tblstr(ctx, "extensions", msgbuf, top);
+				tbldynstr(ctx, "extensions", msgbuf, top);
 			}
 		break;
 /* This event does not arrive raw, the tracking properties are
  * projected unto the event during queuetransfer */
 		case EVENT_EXTERNAL_PRIVDROP:
-			tblstr(ctx, "kind", "privdrop", top);
+			tbldynstr(ctx, "kind", "privdrop", top);
 			tblbool(ctx, "external", ev->ext.privdrop.external, top);
 			tblbool(ctx, "sandboxed", ev->ext.privdrop.external, top);
 			tblbool(ctx, "networked", ev->ext.privdrop.external, top);
 		break;
 		case EVENT_EXTERNAL_STATESIZE:
-			tblstr(ctx, "kind", "state_size", top);
+			tbldynstr(ctx, "kind", "state_size", top);
 			tblnum(ctx, "state_size", ev->ext.stateinf.size, top);
 			tblnum(ctx, "typeid", ev->ext.stateinf.type, top);
 		break;
@@ -5344,15 +5366,15 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				preroll = true;
 			}
 			tblstr(ctx, "kind", "registered", top);
-			tblstr(ctx, "segkind", fsrvtos(ev->ext.registr.kind), top);
+			tbldynstr(ctx, "segkind", fsrvtos(ev->ext.registr.kind), top);
 			MSGBUF_UTF8(ev->ext.registr.title);
 			snprintf(fsrv->title, COUNT_OF(fsrv->title), "%s", msgbuf);
-			tblstr(ctx, "title", msgbuf, top);
+			tbldynstr(ctx, "title", msgbuf, top);
 
 			size_t dsz;
 			char* b64 = (char*) arcan_base64_encode(
 				(uint8_t*)&ev->ext.registr.guid[0], 16, &dsz, 0);
-			tblstr(ctx, "guid", b64, top);
+			tbldynstr(ctx, "guid", b64, top);
 			arcan_mem_free(b64);
 		}
 		break;
@@ -5397,7 +5419,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			int top = lua_gettop(ctx);
 			tblstr(ctx, "kind", "terminated", top);
 			MSGBUF_UTF8(ev->fsrv.message);
-			tblstr(ctx, "last_words", msgbuf, top);
+			tbldynstr(ctx, "last_words", msgbuf, top);
 			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
 			alua_call(ctx, 2, 0, LINE_TAG":frameserver:event");
 			luactx.cb_source_kind = CB_SOURCE_NONE;
@@ -5420,12 +5442,12 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			if (ev->fsrv.kind == EVENT_FSRV_ADDVRLIMB){
 				tblstr(ctx, "kind", "limb_added", top);
 				tblnum(ctx, "id",  ev->fsrv.limb, top);
-				tblstr(ctx, "name", limb_name(ev->fsrv.limb), top);
+				tbldynstr(ctx, "name", limb_name(ev->fsrv.limb), top);
 			}
 			else{
 				tblstr(ctx, "kind", "limb_lost", top);
 				tblnum(ctx, "id", ev->fsrv.limb, top);
-				tblstr(ctx, "name", limb_name(ev->fsrv.limb), top);
+				tbldynstr(ctx, "name", limb_name(ev->fsrv.limb), top);
 			}
 			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
 			alua_call(ctx, 2, 0, LINE_TAG":frameserver:vr");
@@ -5495,14 +5517,14 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			char msgbuf[COUNT_OF(ev->fsrv.ident)+1];
 			tblstr(ctx, "kind", "connected", top);
 			MSGBUF_UTF8(ev->fsrv.ident);
-			tblstr(ctx, "key", msgbuf, top);
+			tbldynstr(ctx, "key", msgbuf, top);
 			luactx.pending_socket_label = strdup(msgbuf);
 			luactx.pending_socket_descr = ev->fsrv.descriptor;
 			adopt_check = true;
 		}
 		break;
 		case EVENT_FSRV_RESIZED :
-			tblstr(ctx, "kind", "resized", top);
+			tbldynstr(ctx, "kind", "resized", top);
 			tblnum(ctx, "width", ev->fsrv.width, top);
 			tblnum(ctx, "height", ev->fsrv.height, top);
 
@@ -5565,7 +5587,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		case EVENT_VIDEO_ASYNCHIMAGE_LOADED:
 			evmsg = "video_event(asynchimg_loaded), callback";
 			luactx.cb_source_kind = CB_SOURCE_IMAGE;
-			tblstr(ctx, "kind", "loaded", top);
+			tbldynstr(ctx, "kind", "loaded", top);
 /* C trick warning */
 			if (0)
 		case EVENT_VIDEO_ASYNCHIMAGE_FAILED:
@@ -5574,8 +5596,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				evmsg = "video_event(asynchimg_load_fail), callback";
 				tblstr(ctx, "kind", "load_failed", top);
 			}
-			tblstr(ctx, "resource", srcobj && srcobj->vstore->vinf.text.source ?
-				srcobj->vstore->vinf.text.source : "unknown", top);
+			if (srcobj && srcobj->vstore->vinf.text.source)
+				tbldynstr(ctx, "resource", srcobj->vstore->vinf.text.source, top);
+			else
+				tblstr(ctx, "resource", "unknown", top);
 			tblnum(ctx, "width", ev->vid.width, top);
 			tblnum(ctx, "height", ev->vid.height, top);
 		break;
@@ -5967,51 +5991,51 @@ static int pushprop(lua_State* ctx,
 {
 	lua_createtable(ctx, 0, 11);
 
-	lua_pushstring(ctx, "x");
+	lua_pushliteral(ctx, "x");
 	lua_pushnumber(ctx, prop.position.x);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "y");
+	lua_pushliteral(ctx, "y");
 	lua_pushnumber(ctx, prop.position.y);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "z");
+	lua_pushliteral(ctx, "z");
 	lua_pushnumber(ctx, prop.position.z);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "width");
+	lua_pushliteral(ctx, "width");
 	lua_pushnumber(ctx, prop.scale.x);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "height");
+	lua_pushliteral(ctx, "height");
 	lua_pushnumber(ctx, prop.scale.y);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "depth");
+	lua_pushliteral(ctx, "depth");
 	lua_pushnumber(ctx, prop.scale.z);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "angle");
+	lua_pushliteral(ctx, "angle");
 	lua_pushnumber(ctx, prop.rotation.roll);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "roll");
+	lua_pushliteral(ctx, "roll");
 	lua_pushnumber(ctx, prop.rotation.roll);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "pitch");
+	lua_pushliteral(ctx, "pitch");
 	lua_pushnumber(ctx, prop.rotation.pitch);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "yaw");
+	lua_pushliteral(ctx, "yaw");
 	lua_pushnumber(ctx, prop.rotation.yaw);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "opacity");
+	lua_pushliteral(ctx, "opacity");
 	lua_pushnumber(ctx, prop.opa);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "order");
+	lua_pushliteral(ctx, "order");
 	lua_pushnumber(ctx, zv);
 	lua_rawset(ctx, -3);
 
@@ -6449,41 +6473,41 @@ static int getimagestorageprop(lua_State* ctx)
 	img_cons cons = arcan_video_storage_properties(id);
 	lua_createtable(ctx, 0, 3);
 
-	lua_pushstring(ctx, "bpp");
+	lua_pushliteral(ctx, "bpp");
 	lua_pushnumber(ctx, cons.bpp);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "height");
+	lua_pushliteral(ctx, "height");
 	lua_pushnumber(ctx, cons.h);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "width");
+	lua_pushliteral(ctx, "width");
 	lua_pushnumber(ctx, cons.w);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "refc");
+	lua_pushliteral(ctx, "refc");
 	lua_pushnumber(ctx, vobj->vstore->refcount);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "type");
+	lua_pushliteral(ctx, "type");
 	switch(vobj->vstore->txmapped){
 	case TXSTATE_OFF:
-		lua_pushstring(ctx, "color");
+		lua_pushliteral(ctx, "color");
 	break;
 	case TXSTATE_TEX2D:
-		lua_pushstring(ctx, "2d");
+		lua_pushliteral(ctx, "2d");
 	break;
 	case TXSTATE_DEPTH:
-		lua_pushstring(ctx, "depth");
+		lua_pushliteral(ctx, "depth");
 	break;
 	case TXSTATE_TEX3D:
-		lua_pushstring(ctx, "3d");
+		lua_pushliteral(ctx, "3d");
 	break;
 	case TXSTATE_CUBE:
-		lua_pushstring(ctx, "cube");
+		lua_pushliteral(ctx, "cube");
 	break;
 	case TXSTATE_TPACK:
-		lua_pushstring(ctx, "tpack");
+		lua_pushliteral(ctx, "tpack");
 	break;
 	}
 	lua_rawset(ctx, -3);
@@ -7758,7 +7782,7 @@ void arcan_lua_mapfunctions(lua_State* ctx, int debuglevel)
 
 /* only allow eval() style operation in explicit debug modes */
 	if (luactx.debug){
-		lua_pushstring(ctx, "loadstring");
+		lua_pushliteral(ctx, "loadstring");
 		lua_pushcclosure(ctx, luaB_loadstring, 1);
 		lua_setglobal(ctx, "loadstring");
 	}
@@ -8033,11 +8057,14 @@ static int resource(lua_State* ctx)
 	char* res = arcan_find_resource(label, mask, ARES_FILE | ARES_FOLDER);
 	if (!res){
 		lua_pushstring(ctx, res);
-		lua_pushstring(ctx, "not found");
+		lua_pushliteral(ctx, "not found");
 	}
 	else{
 		lua_pushstring(ctx, res);
-		lua_pushstring(ctx, arcan_isdir(res) ? "directory" : "file");
+		if (arcan_isdir(res))
+			lua_pushliteral(ctx, "directory");
+		else
+			lua_pushliteral(ctx, "file");
 		arcan_mem_free(res);
 	}
 
@@ -8166,7 +8193,7 @@ static int arcantargethint(lua_State* ctx)
  *  CONTENT (content: x_pos/x_sz, y_pos/y_sz, min_w, min_h, max_w, max_h)
  *  ALERT (message: notification string)
  *  CLOCKREQ (ignore, we already have a clocking mechanism)
- *  BCHUNKSTATE (
+ *  BCHUNKSTATE (platform/arcan/video.c has dibs on .lua though)
  *  PRIVDROP (ignore, privsep for lwa is default)
  *  INPUTMASK (ignore, uncertain if this adds much of value here)
  */
@@ -9702,15 +9729,15 @@ static int rendertargetmetrics(lua_State* ctx)
 			", specified vid does not reference a rendertarget");
 
 	lua_newtable(ctx);
-	lua_pushstring(ctx, "dirty");
+	lua_pushliteral(ctx, "dirty");
 	lua_pushnumber(ctx, rtgt->dirtyc);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "transfers");
+	lua_pushliteral(ctx, "transfers");
 	lua_pushnumber(ctx, rtgt->uploadc);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "updates");
+	lua_pushliteral(ctx, "updates");
 	lua_pushnumber(ctx, rtgt->transfc);
 	lua_rawset(ctx, -3);
 
@@ -9723,19 +9750,19 @@ static int rendertargetmetrics(lua_State* ctx)
 		current = current->next;
 	}
 
-	lua_pushstring(ctx, "time_move");
+	lua_pushliteral(ctx, "time_move");
 	lua_pushnumber(ctx, cs.move);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "time_blend");
+	lua_pushliteral(ctx, "time_blend");
 	lua_pushnumber(ctx, cs.blend);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "time_scale");
+	lua_pushliteral(ctx, "time_scale");
 	lua_pushnumber(ctx, cs.scale);
 	lua_rawset(ctx, -3);
 
-	lua_pushstring(ctx, "time_rotate");
+	lua_pushliteral(ctx, "time_rotate");
 	lua_pushnumber(ctx, cs.rotate);
 	lua_rawset(ctx, -3);
 
@@ -11873,7 +11900,7 @@ static int singlequery(lua_State* ctx, int devid, int axid)
 		if (lbl != NULL){
 			lua_newtable(ctx);
 			int ttop = lua_gettop(ctx);
-			tblstr(ctx, "label", platform_event_devlabel(devid), ttop);
+			tbldynstr(ctx, "label", platform_event_devlabel(devid), ttop);
 			tblnum(ctx, "devid", devid, ttop);
 			return 1;
 		}
@@ -11885,7 +11912,7 @@ static int singlequery(lua_State* ctx, int devid, int axid)
 	int ttop = lua_gettop(ctx);
 	tblnum(ctx, "devid", devid, ttop);
 	tblnum(ctx, "subid", axid, ttop);
-	tblstr(ctx, "label", platform_event_devlabel(devid), ttop);
+	tbldynstr(ctx, "label", platform_event_devlabel(devid), ttop);
 	tblnum(ctx, "upper_bound", ubound, ttop);
 	tblnum(ctx, "lower_bound", lbound, ttop);
 	tblnum(ctx, "deadzone", dz, ttop);
@@ -11955,7 +11982,7 @@ static int inputanalogquery(lua_State* ctx)
 
 			tblnum(ctx, "devid", devid, ttop);
 			tblnum(ctx, "subid", axid, ttop);
-			tblstr(ctx, "label", platform_event_devlabel(devid), ttop);
+			tbldynstr(ctx, "label", platform_event_devlabel(devid), ttop);
 			tblnum(ctx, "upper_bound", ubound, ttop);
 			tblnum(ctx, "lower_bound", lbound, ttop);
 			tblnum(ctx, "deadzone", dz, ttop);
@@ -12437,15 +12464,15 @@ static void extend_baseapi(lua_State* ctx)
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
 
-	lua_pushstring(ctx, "to_base64");
+	lua_pushliteral(ctx, "to_base64");
 	lua_pushcfunction(ctx, base64_encode);
 	lua_rawset(ctx, top);
 
-	lua_pushstring(ctx, "from_base64");
+	lua_pushliteral(ctx, "from_base64");
 	lua_pushcfunction(ctx, base64_decode);
 	lua_rawset(ctx, top);
 
-	lua_pushstring(ctx, "hash");
+	lua_pushliteral(ctx, "hash");
 	lua_pushcfunction(ctx, hash_string);
 	lua_rawset(ctx, top);
 
