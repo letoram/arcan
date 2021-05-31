@@ -3519,11 +3519,26 @@ arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst)
 	return rv;
 }
 
-arcan_vobj_id arcan_video_findparent(arcan_vobj_id id)
+arcan_vobj_id arcan_video_findparent(arcan_vobj_id id, arcan_vobj_id ref)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
-	return (vobj && vobj->parent && vobj->parent->owner) ?
-		vobj->parent->cellid : ARCAN_EID;
+	if (!vobj)
+		return ARCAN_EID;
+
+	if (!vobj->parent || !vobj->parent->owner)
+		return ARCAN_EID;
+
+	if (ref != ARCAN_EID){
+		while (vobj && vobj->parent){
+			vobj = vobj->parent;
+			if (ref == vobj->cellid){
+				return vobj->cellid;
+			}
+		}
+		return ARCAN_EID;
+	}
+
+	return vobj->parent->cellid;
 }
 
 arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs)

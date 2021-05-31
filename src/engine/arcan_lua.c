@@ -5647,8 +5647,8 @@ static int imageparent(lua_State* ctx)
 	LUA_TRACE("image_parent");
 	arcan_vobject* srcobj;
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, &srcobj);
-
-	arcan_vobj_id pid = arcan_video_findparent(id);
+	arcan_vobj_id ref = luavid_tovid(luaL_optnumber(ctx, 2, ARCAN_EID));
+	arcan_vobj_id pid = arcan_video_findparent(id, ref);
 
 	lua_pushvid(ctx, pid);
 	lua_pushvid(ctx, srcobj->owner ?
