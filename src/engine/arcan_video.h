@@ -571,8 +571,8 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id id, arcan_vobj_id did,
 /* Object hierarchy related functions */
 arcan_errc arcan_video_linkobjs(arcan_vobj_id src, arcan_vobj_id parent,
 	enum arcan_transform_mask mask, enum parent_anchor, enum parent_scale);
-arcan_vobj_id arcan_video_findparent(arcan_vobj_id id);
 arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs);
+arcan_vobj_id arcan_video_findparent(arcan_vobj_id id, arcan_vobj_id ref);
 
 /*
  * Recursively resolves if [vid] is linked to any of parents near

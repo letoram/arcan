@@ -39,6 +39,7 @@
  * added input\_remap\_translation for runtime input platform tuning
  * relink\_target now properly accounts for different anchor points
  * reduce unnecessary pushstrings where pushlstring/pushliteral would suffice
+ * image\_parent - add overloaded form for testing full hierarchy
 
 ## Build
  * A whole lot of FreeBSD build fixes courtesy of J.Beich
