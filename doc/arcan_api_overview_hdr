@@ -54,6 +54,17 @@ Signifies that the current input buffer is empty. This can be used as an
 input optimization trigger to accumulate input events before processing
 them forward.
 
+.IP "\fBxxx_input_raw()\fr"
+This behaves like an advanced complement to xxx_input.
+By implementing it the application signals that it can handle out of loop
+input events. This can be used to reduce input latency in cases where events
+arrive while GPUs are locked for scanout.
+The contract is that if this function is present, you cannot call any part of
+the API that would modify GPU related state. The safe option is to restrict
+handling to patching and forwarding input to an external client. If the input
+was consumed, return true. Otherwise the input will be re-injected when the
+GPUs have been unlocked.
+
 .IP "\fBxxx_adopt(vid, kind, title, parent, last)\fr"
 Invoked as part of system_collapse, script crash recovery fallback or on
 --pipe-stdin. Implies that there already exists a frameserver connection

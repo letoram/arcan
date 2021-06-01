@@ -39,6 +39,7 @@
 
 static struct arcan_frameserver* tag;
 static sigjmp_buf recover;
+static size_t counter;
 
 static void bus_handler(int signo)
 {
@@ -51,6 +52,7 @@ static void bus_handler(int signo)
 void platform_fsrv_enter(struct arcan_frameserver* m, jmp_buf out)
 {
 	static bool initialized;
+	counter++;
 
 	if (!initialized){
 		initialized = true;
@@ -66,6 +68,11 @@ void platform_fsrv_enter(struct arcan_frameserver* m, jmp_buf out)
 	}
 
 	tag = m;
+}
+
+size_t platform_fsrv_clock()
+{
+	return counter;
 }
 
 void platform_fsrv_leave()

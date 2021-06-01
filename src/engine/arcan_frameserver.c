@@ -99,6 +99,11 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	if (!src)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
+	if (src->fused){
+		src->fuse_blown = true;
+		return ARCAN_OK;
+	}
+
 	arcan_conductor_deregister_frameserver(src);
 	arcan_frameserver_close_bufferqueues(src, true, true);
 
@@ -757,8 +762,20 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 
 	case FFUNC_RENDER:
 		TRACE_MARK_ENTER("frameserver", "queue-transfer", TRACE_SYS_DEFAULT, tgt->vid, 0, "");
-			arcan_event_queuetransfer(
-				arcan_event_defaultctx(), &tgt->inqueue, tgt->queue_mask, 0.5, tgt);
+			switch (arcan_event_queuetransfer(
+				arcan_event_defaultctx(),
+				&tgt->inqueue, tgt->queue_mask, tgt->xfer_sat, tgt))
+			{
+			case -2: /* fuse-fail, free */
+				arcan_frameserver_free( tgt );
+				TRACE_MARK_EXIT("frameserver", "queue-transfer", TRACE_SYS_DEFAULT, tgt->vid, 0, "");
+				goto no_out;
+			break;
+			case -1: /* re-arm, lost */
+				TRAMP_GUARD(FRV_NOFRAME, tgt);
+			break;
+			default: break;
+			}
 		TRACE_MARK_EXIT("frameserver", "queue-transfer", TRACE_SYS_DEFAULT, tgt->vid, 0, "");
 
 		struct arcan_vobject* vobj = arcan_video_getobject(tgt->vid);
@@ -891,8 +908,11 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy FFUNC_HEAD
 		if (src->flags.autoclock && src->clock.frame)
 			autoclock_frame(src);
 
-		arcan_event_queuetransfer(
-			arcan_event_defaultctx(), &src->inqueue, src->queue_mask, 0.5, src);
+		if (-2 ==
+			arcan_event_queuetransfer(arcan_event_defaultctx(),
+				&src->inqueue, src->queue_mask, src->xfer_sat, src)){
+			arcan_frameserver_free(src);
+		}
 	}
 
 leave:
@@ -1350,13 +1370,20 @@ bool arcan_frameserver_tick_control(
 		!src->shm.ptr->dms || src->playstate == ARCAN_PAUSED)
 		goto leave;
 
-/*
- * Only allow the two categories below, and only let the internal event queue
- * be filled to half in order to not have a crazy frameserver starve the main
- * process.
- */
-	arcan_event_queuetransfer(
-		arcan_event_defaultctx(), &src->inqueue, src->queue_mask, 0.5, src);
+/* Same event-queue transfer issues as marked elsewhere, if xfer-sat goes to
+ * drain, VM accepts drain and modifies fsrv state special action is needed.
+ * Nesting longjmp handlers </3 */
+	int rv =
+		arcan_event_queuetransfer(arcan_event_defaultctx(),
+			&src->inqueue, src->queue_mask, src->xfer_sat, src);
+
+	if (-2 == rv){
+		arcan_frameserver_free(src);
+		goto leave;
+	}
+
+	if (-1 == rv)
+		goto leave;
 
 	if (!src->shm.ptr->resized){
 		fail = false;

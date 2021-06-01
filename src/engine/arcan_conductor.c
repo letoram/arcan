@@ -33,6 +33,7 @@
 
 /* defined in platform.h, used in psep open, shared memory */
 _Atomic uint64_t* volatile arcan_watchdog_ping = NULL;
+static size_t gpu_lock_bitmap;
 
 void arcan_conductor_enable_watchdog()
 {
@@ -205,12 +206,19 @@ void arcan_conductor_lock_gpu(
  * be that video_synch -> lock_gpu[gpu_id, fence_fd] and a process callback
  * when there's data on the fence_fd (which might potentially call unlock)
  */
+	gpu_lock_bitmap |= 1 << gpu_id;
 	TRACE_MARK_ENTER("conductor", "gpu", TRACE_SYS_DEFAULT, gpu_id, 0, "");
 }
 
 void arcan_conductor_release_gpu(size_t gpu_id)
 {
+	gpu_lock_bitmap &= ~(1 << gpu_id);
 	TRACE_MARK_EXIT("conductor", "gpu", TRACE_SYS_DEFAULT, gpu_id, 0, "");
+}
+
+size_t arcan_conductor_gpus_locked()
+{
+	return gpu_lock_bitmap;
 }
 
 void arcan_conductor_register_display(size_t gpu_id,
@@ -373,15 +381,15 @@ void arcan_conductor_focus(struct arcan_frameserver* fsrv)
 	if (-1 == dst_i)
 		return;
 
-	if (frameservers.focus){
+	if (frameservers.focus)
 		frameservers.focus->flags.locked = false;
-	}
 
 	TRACE_MARK_ONESHOT("conductor", "synchronization",
 		TRACE_SYS_DEFAULT, fsrv->vid, 0, "synch-focus");
 
 /* And this is for 'set' */
 	frameservers.focus = fsrv;
+
 	switch(synchopt){
 	default:
 	break;
@@ -413,23 +421,83 @@ void arcan_conductor_deregister_frameserver(struct arcan_frameserver* fsrv)
 }
 
 extern struct arcan_luactx* main_lua_context;
-static void process_event(arcan_event* ev, int drain)
+static size_t event_count;
+static bool process_event(arcan_event* ev, int drain)
 {
-/* [ mutex ]
- * can't perform while any of the frameservers are in a resizing state */
-	static size_t event_count;
-
+/*
+ * The event_counter here is used to determine if we should forward an
+ * end-of-stream marker in order to let the lua scripts also have some buffer
+ * window. It will trigger the '_input_end" event handler as a flush trigger.
+ *
+ * The cases where that is interesting and relevant is expensive actions where
+ * there is buffer backpressure on something (mouse motion in drag-rz)
+ * (buffer-bloat mitigation) and scenarios like:
+ *
+ *  (local event -> lua event -> displayhint -> [client resizes quickly] ->
+ *  resize event -> next local event)
+ *
+ * to instead allow:
+ *
+ *  (local event -> lua event -> [accumulator])
+ *  (end marker -> lua event end -> apply accumulator)
+ */
 	if (!ev){
 		if (event_count){
 			event_count = 0;
 			arcan_lua_pushevent(main_lua_context, NULL);
 		}
 
-		return;
+		return true;
 	}
 
 	event_count++;
 	arcan_lua_pushevent(main_lua_context, ev);
+	return true;
+}
+
+/*
+ * The case for this one is slightly different to process_event (which is used
+ * for flushing the master queue).
+ *
+ * Processing frameservers might cause a queue transfer that might block
+ * if the master event queue is saturated above a safety threshold.
+ *
+ * It is possible to opt-in allow certain frameservers to exceed this
+ * threshold, as well as process 'direct to drain' without being multiplexed on
+ * the master queue, saving a copy/queue. This breaks ordering guarantees so
+ * can only safely be enabled at the preroll synchpoint.
+ *
+ * This can also be used to force inject events when the video pipeline is
+ * blocked due to scanout through arcan_event_denqueue. The main engine itself
+ * has no problems with manipulating the video pipeline during scanout, but the
+ * driver stack and agp layer (particularly GL) may be of an entirely different
+ * opinion.
+ *
+ * Therefore there is a soft contract:
+ *
+ * (lua:input_raw) that will only be triggered if an input event sample is
+ * received as a drain-enqueue while we are also locked to scanout. If the
+ * entry point is implemented, the script 'promises' to not perform actions
+ * that would manipulate GPU state (readbacks, rendertarget updates, ...).
+ *
+ * input_raw can also _defer_ input sample processing:
+ *           denqueue:
+ *             overflow_drain:
+ *               lua:input_raw:
+ *                 <- false (nak)
+ *             <- false (nak)
+ *           attempt normal enqueue <- this is problematic then as that
+ *
+ *
+ */
+static bool overflow_drain(arcan_event* ev, int drain)
+{
+	if (arcan_lua_pushevent(main_lua_context, ev)){
+		event_count++;
+		return true;
+	}
+
+	return false;
 }
 
 static int estimate_frame_cost()
@@ -550,6 +618,8 @@ int arcan_conductor_run(arcan_tick_cb tick)
 	uint64_t next_synch = 0;
 	int sstate = -1;
 	valid_cycle = false;
+
+	arcan_event_setdrain(evctx, overflow_drain);
 
 	for(;;){
 /*

@@ -36,9 +36,9 @@ typedef void (*arcan_tick_cb)(int count);
  * dequeue-race, and in the rare case of feedback loops (drain function leads
  * to more enqueue calls) break ordering.
  */
-typedef void (*arcan_event_handler)(arcan_event*, int);
+typedef bool (*arcan_event_handler)(arcan_event*, int);
 void arcan_event_init(struct arcan_evctx*);
-void arcan_event_set_drain(arcan_event_handler);
+void arcan_event_setdrain(struct arcan_evctx*, arcan_event_handler);
 
 /*
  * Time- keeping function, need to be pumped regularly (will take care of
@@ -58,11 +58,24 @@ bool arcan_event_feed(struct arcan_evctx*, arcan_event_handler hnd, int* ec);
  * Convert as many external events in [srcqueue] to [dstqueue] as possible
  * without breaking [saturation] (% of dstqueue slots, 0..1 range).
  *
- * Some events will need rewriting, specify source- vobj id (can be EID but
- * should typically be a valid VID).
+ * If [saturation] is set to a negative value, the queuetransfer will be direct
+ * to drain - meaning that the copy will instead go to the designated sink (Lua
+ * VM) and only be queued if rejected by the sink (locking constraints).
+ *
+ * While this will increase throughput and lower latency, very few events gain
+ * from that, and there is a number of subtle and dangerous edge cases.
+ * Normally outbound events (from here to frameserver) outnumber inbound events
+ * (from frameserver to here) by a large factor. The exception are protocol
+ * bridges input device drivers and backpressure/stalled clients.
+ *
+ * This should be called with the reference frameserver in guarded mode, see
+ * enter/leave in platform/fsrv_platform.h. If the function returns -1, this
+ * guard needs to be activated and the failure treated as the initial guard
+ * failure. If the function returns -2, it means that the frameserver died
+ * during processing of one event in the queue and is expected to be freed.
  */
 struct arcan_frameserver;
-void arcan_event_queuetransfer(
+int arcan_event_queuetransfer(
 	struct arcan_evctx* dstqueue, struct arcan_evctx* srcqueue,
 	enum ARCAN_EVENT_CATEGORY allowed, float saturation, struct arcan_frameserver*
 );
@@ -76,7 +89,8 @@ int arcan_event_enqueue(struct arcan_evctx*, const struct arcan_event* const);
 
 /*
  * if the event context has a drain function, forward the event straight to
- * the drain, if not, act as a normal arcan_event_enqueue.
+ * the drain, if not (or the drain function rejects the event), act as a normal
+ * arcan_event_enqueue.
  */
 int arcan_event_denqueue(struct arcan_evctx*, const struct arcan_event* const);
 

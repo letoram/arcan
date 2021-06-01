@@ -743,6 +743,7 @@ struct arcan_frameserver* platform_fsrv_alloc()
 	res->playstate = ARCAN_PLAYING;
 	res->flags.alive = true;
 	res->flags.autoclock = true;
+	res->xfer_sat = 0.5;
 	res->parent.vid = ARCAN_EID;
 	res->desc.samplerate = ARCAN_SHMIF_SAMPLERATE;
 	res->sockmode = S_IRWXU;

@@ -4,6 +4,7 @@
  * Disable watchdog during launch_external
  * Require a full scanout cycle before marking crash recover as over
  * Use attachment density if no displayhint on fsrv with tpack font-init
+ * Re-add event queue drain management
 
 ## Frameservers
  * ARCAN_FRAMESERVER_DEBUGSTALL is now performed after \_open and the pid is sent as 'ident'
@@ -40,6 +41,7 @@
  * relink\_target now properly accounts for different anchor points
  * reduce unnecessary pushstrings where pushlstring/pushliteral would suffice
  * image\_parent - add overloaded form for testing full hierarchy
+ * add input\_raw entry point for out-of-loop io event processing (footgun warning)
 
 ## Build
  * A whole lot of FreeBSD build fixes courtesy of J.Beich

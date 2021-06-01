@@ -120,6 +120,7 @@ int platform_fsrv_socketauth(struct arcan_frameserver* src);
 #include <setjmp.h>
 void platform_fsrv_enter(struct arcan_frameserver*, jmp_buf ctx);
 void platform_fsrv_leave();
+size_t platform_fsrv_clock();
 
 /*
  * disconnect, clean up resources, free. The connection should be considered
