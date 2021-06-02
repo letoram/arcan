@@ -384,6 +384,8 @@ struct tui_cbcfg {
 /*
  * request to send [input=false] or receive a binary chunk, [input=true,size=0] for streams
  * of unknown size, [input=false] then size is 'recommended' upper limit, if set.
+ * handler takes ownership of [fd] and should close() it when done. [fd] will
+ * be opened in non-blocking mode.
  */
 	void (*bchunk)(
 		struct tui_context*, bool input, uint64_t size, int fd, const char* type, void*);

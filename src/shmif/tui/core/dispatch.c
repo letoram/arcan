@@ -295,13 +295,14 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 			arcan_shmif_dupfd(ev->ioevs[0].iv, STDIN_FILENO, false);
 			return;
 		}
-		if (tui->handlers.bchunk)
-			tui->handlers.bchunk(tui, true,
-				ev->ioevs[1].iv | (ev->ioevs[2].iv << 31),
-				ev->ioevs[0].iv,
-				ev->message,
-				tui->handlers.tag
-			);
+		if (tui->handlers.bchunk){
+			int fd = arcan_shmif_dupfd(ev->ioevs[0].iv, -1, false);
+			if (-1 != fd){
+				tui->handlers.bchunk(tui, true,
+					ev->ioevs[1].iv | (ev->ioevs[2].iv << 31),
+					fd, ev->message, tui->handlers.tag);
+			}
+		}
 		break;
 	case TARGET_COMMAND_BCHUNK_OUT:
 /* overload custom bchunk handler */
@@ -319,13 +320,14 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 			arcan_shmif_dupfd(ev->ioevs[0].iv, STDERR_FILENO, false);
 			return;
 		}
-		if (tui->handlers.bchunk)
-			tui->handlers.bchunk(tui, false,
-				ev->ioevs[1].iv | (ev->ioevs[2].iv << 31),
-				ev->ioevs[0].iv,
-				ev->message,
-				tui->handlers.tag
-			);
+		if (tui->handlers.bchunk){
+			int fd = arcan_shmif_dupfd(ev->ioevs[0].iv, -1, false);
+			if (-1 != fd){
+				tui->handlers.bchunk(tui, false,
+					ev->ioevs[1].iv | (ev->ioevs[2].iv << 31),
+					fd, ev->message, tui->handlers.tag);
+			}
+		}
 	break;
 
 /* scrolling- command */
