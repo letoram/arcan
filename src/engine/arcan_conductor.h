@@ -24,7 +24,8 @@ void arcan_conductor_enable_watchdog();
 void arcan_conductor_toggle_watchdog();
 
 /* will return true after one complete event-flush -> scanout cycle
- * has been completed */
+ * has been completed, this is a test heuristic to determine if the
+ * platform has gotten stuck in some recoverable state. */
 bool arcan_conductor_valid_cycle();
 
 /* [ called from platform ]
@@ -39,7 +40,7 @@ void arcan_conductor_release_display(size_t gpu_id, size_t disp_id);
 
 /* [ called from platform ]
  * mark GPU as locked and add [fence] to pollset, when there's data on fence,
- * invoke the lockhandler callback which [may] release the gpu
+ * invoke the lockhandler callback which [may] release the gpu.
  */
 typedef void (*arcan_gpu_lockhandler)(size_t, int);
 void arcan_conductor_lock_gpu(size_t gpu_id, int fence, arcan_gpu_lockhandler);
@@ -49,6 +50,11 @@ void arcan_conductor_lock_gpu(size_t gpu_id, int fence, arcan_gpu_lockhandler);
  * as part of the argument are matched against the bitmask vstore_t used by
  * various producers and consumers */
 void arcan_conductor_release_gpu(size_t gpu_id);
+
+/* Return a bitmap of the GPUs that are currently in a locked state.
+ * This may need to be queried in order to determine if an event can be
+ * processed without altering GPU state */
+size_t arcan_conductor_gpus_locked();
 
 /*
  * Return a list of available synch-options that can be used as input to

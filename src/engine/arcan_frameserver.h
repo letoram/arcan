@@ -148,6 +148,13 @@ struct arcan_frameserver {
 /* bitmap of sample types to block from enqueueing */
 	unsigned datamask;
 
+/* queuetransfer saturation cap */
+	float xfer_sat;
+
+/* use as a detection for _free during critical sections */
+	bool fused;
+	bool fuse_blown;
+
 /* special transfer state flags */
 	struct {
 		bool alive : 1;
@@ -305,8 +312,8 @@ struct frameserver_envp {
  * or act as a more generic execv of a program that uses the same
  * shmpage interface and protocol.
  */
-arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* dst,
-	struct frameserver_envp*);
+arcan_errc arcan_frameserver_spawn_server(
+	arcan_frameserver* dst, struct frameserver_envp*);
 
 /*
  * Playback control, temporarly disable buffering / synchronizing.
@@ -418,7 +425,6 @@ enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD;
  * if the attached resources or process fail to pass validation.
  */
 bool arcan_frameserver_control_chld(arcan_frameserver* src);
-
 
 /*
  * Used as monitor hook for frameserver audio feeds, will be reworked

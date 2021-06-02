@@ -1,11 +1,14 @@
 -- target_flags
 -- @short: Set special frameserver processing flags
--- @inargs: id, flag_val, *toggle* or (max_w, max_h)
+-- @inargs: vid:tgt, number:flag
+-- @inargs: vid:tgt, number:flag, bool:enable=true
+-- @inargs: vid:tgt, number:flag, number:max_w, number:max_h
 -- @longdescr: Some frameserver features and management behaviors that
--- are unsafe to use as a default can be toggled on a per-target basis
--- through the use of this function. The flag argument is used to specify
--- the feature in question, and the optional toggle argument is if the
--- state should be set to on or off (boolean, default: on).
+-- are unsafe to use as a default can be enabled/disabled on a per-target basis
+-- through the use of this function. The flag argument is used to specify the
+-- feature in question, and the optional enable argument is if the
+-- state should be set to on or off.
+--
 -- The special max_w and max_h argument interpretation is only for the
 -- TARGET_FORCESIZE and TARGET_LIMITSIZE flags.
 --
@@ -14,9 +17,8 @@
 -- TARGET_AUTOCLOCK, TARGET_VERBOSE, TARGET_NOBUFFERPASS, TARGET_ALLOWCM,
 -- TARGET_ALLOWLODEF, TARGET_ALLOWHDR, TARGET_ALLOWVECTOR, TARGET_ALLOWINPUT,
 -- TARGET_FORCESIZE, TARGET_ALLOWGPU, TARGET_LIMITSIZE, TARGET_SYNCHSIZE,
--- TARGET_BLOCKADOPT
--- Optional *toggle* argument is by default set to on, to turn off a
--- specific flag, set *toggle* to 0.
+-- TARGET_BLOCKADOPT, TARGET_DRAINQUEUE
+--
 -- @note: flag, TARGET_VSTORE_SYNCH makes sure that there is a local
 -- copy of the buffer that is also uploaded to the GPU. This saves a
 -- readback in cases where direct access to pixel values are needed.
@@ -76,6 +78,12 @@
 -- pending. On stepframe, the next update will contain the new buffer contents.
 -- @note: flag: TARGET_BLOCKADOPT prevents the engine from preserving the target
 -- on calls to ref:system_collapse or on script-error recovery.
+-- @note: flag: TARGET_DRAINQUEUE allows events coming from the frameserver to
+-- be queued directly into the script event handler without being multiplexed
+-- on the master queue. This is a complex operation mainly intended for more
+-- trusted clients that act as protocol bridges or external input drivers where
+-- a higher event dispatch rate and lower event dispatch latency might be
+-- beneficial.
 -- @group: targetcontrol
 -- @cfunction: targetflags
 -- @related:

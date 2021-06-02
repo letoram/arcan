@@ -5158,7 +5158,7 @@ void arcan_lwa_subseg_ev(
 }
 #endif
 
-void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
+bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
 	bool adopt_check = false;
 	char msgbuf[sizeof(arcan_event)+1];
@@ -5166,28 +5166,49 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		if (grabapplfunction(ctx, "input_end", 9)){
 			alua_call(ctx, 0, 0, LINE_TAG":event:input_eob");
 		}
-		return;
+		return true;
 	}
 
 	if (ev->category == EVENT_IO){
+/* try to deliver the raw out-of-loop input, but defer / reinject if the
+ * script can't handle it or rejects it */
+		if (arcan_conductor_gpus_locked()){
+			bool consumed = false;
+			if (grabapplfunction(ctx, "input_raw", 9)){
+				append_iotable(ctx, &ev->io);
+				alua_call(ctx, 1, 1, LINE_TAG":event:input_raw");
+				if (lua_type(ctx, -1) == LUA_TBOOLEAN && lua_toboolean(ctx, -1)){
+					consumed = true;
+				}
+				lua_pop(ctx, 1);
+			}
+			return consumed;
+		}
+
 		if (grabapplfunction(ctx, "input", 5)){
 			append_iotable(ctx, &ev->io);
 			alua_call(ctx, 1, 0, LINE_TAG":event:input");
 		}
-		return;
+		return true;
 	}
-	else if (ev->category == EVENT_EXTERNAL){
+
+/* reject all non-input events if sent here out of loop */
+	if (arcan_conductor_gpus_locked()){
+		return false;
+	}
+
+	if (ev->category == EVENT_EXTERNAL){
 		bool preroll = false;
 /* need to jump through a few hoops to get hold of the possible callback */
 		arcan_vobject* vobj = arcan_video_getobject(ev->ext.source);
 		if (!vobj || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV){
-			return;
+			return true;
 		}
 
 		int reset = lua_gettop(ctx);
 		arcan_frameserver* fsrv = vobj->feed.state.ptr;
 		if (fsrv->tag == LUA_NOREF){
-			return;
+			return true;
 		}
 		lua_rawgeti(ctx, LUA_REGISTRYINDEX, fsrv->tag);
 		lua_pushvid(ctx, ev->ext.source);
@@ -5215,7 +5236,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblstr(ctx, "type", "current", top);
 			else {
 				lua_settop(ctx, reset);
-				return;
+				return true;
 			}
 		break;
 		case EVENT_EXTERNAL_CLOCKREQ:
@@ -5300,13 +5321,14 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		break;
 /* special semantics for segreq */
 		case EVENT_EXTERNAL_SEGREQ:
-			return emit_segreq(ctx, fsrv, &ev->ext);
+			emit_segreq(ctx, fsrv, &ev->ext);
+			return true;
 		break;
 		case EVENT_EXTERNAL_LABELHINT:{
 			const char* idt = lookup_idatatype(ev->ext.labelhint.idatatype);
 			if (!idt){
 				lua_settop(ctx, reset);
-				return;
+				return true;
 			}
 			MSGBUF_UTF8(ev->ext.labelhint.descr);
 			tbldynstr(ctx, "description", msgbuf, top);
@@ -5358,7 +5380,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				arcan_warning("client (%d) attempted to register a reserved (%d) "
 					"type which is not permitted.\n", fsrv->segid, id);
 				lua_settop(ctx, reset);
-				return;
+				return true;
 			}
 /* update and mark for pre-roll unless protected */
 			if (fsrv->segid == SEGID_UNKNOWN){
@@ -5401,7 +5423,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			if (ev->fsrv.otag != LUA_NOREF){
 				luaL_unref(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 			}
-			return;
+			return true;
 		}
 
 /* the backing frameserver is already free:d at this point, hence why we need
@@ -5409,7 +5431,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		if (ev->fsrv.kind == EVENT_FSRV_TERMINATED){
 			if (ev->fsrv.otag == LUA_NOREF)
-				return;
+				return true;
 
 /* function, source, status */
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
@@ -5424,7 +5446,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			alua_call(ctx, 2, 0, LINE_TAG":frameserver:event");
 			luactx.cb_source_kind = CB_SOURCE_NONE;
 			luaL_unref(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
-			return;
+			return true;
 		}
 
 /*
@@ -5433,7 +5455,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
  */
 		if (vobj->feed.state.tag == ARCAN_TAG_VR){
 			if (ev->fsrv.otag == LUA_NOREF)
-				return;
+				return true;
 
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 			lua_pushvid(ctx, ev->fsrv.video);
@@ -5452,19 +5474,19 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
 			alua_call(ctx, 2, 0, LINE_TAG":frameserver:vr");
 			luactx.cb_source_kind = CB_SOURCE_NONE;
-			return;
+			return true;
 		}
 
 		if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
-			return;
+			return true;
 
 		arcan_frameserver* fsrv = vobj->feed.state.ptr;
 		if (LUA_NOREF == fsrv->tag)
-			return;
+			return true;
 
 		if (ev->fsrv.kind == EVENT_FSRV_PREROLL){
 			do_preroll(ctx, fsrv->tag, fsrv->vid, fsrv->aid);
-			return;
+			return true;
 		}
 
 /* function, source, status */
@@ -5544,26 +5566,26 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	else if (ev->category == EVENT_VIDEO){
 		if (ev->vid.kind == EVENT_VIDEO_DISPLAY_ADDED){
 			display_added(ctx, ev);
-			return;
+			return true;
 		}
 		else if (ev->vid.kind == EVENT_VIDEO_DISPLAY_RESET){
 			display_reset(ctx, ev);
-			return;
+			return true;
 		}
 		else if (ev->vid.kind == EVENT_VIDEO_DISPLAY_REMOVED){
 			display_removed(ctx, ev);
-			return;
+			return true;
 		}
 		else if (ev->vid.kind == EVENT_VIDEO_DISPLAY_CHANGED){
 			display_changed(ctx, ev);
-			return;
+			return true;
 		}
 
 /* terminating conditions: no callback or source vid broken */
 		intptr_t dst_cb = (intptr_t) ev->vid.data;
 		arcan_vobject* srcobj = arcan_video_getobject(ev->vid.source);
 		if (0 == dst_cb || !srcobj)
-			return;
+			return true;
 
 		const char* evmsg = "video_event";
 
@@ -5638,6 +5660,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			luaL_unref(ctx, LUA_REGISTRYINDEX, ev->aud.otag);
 		}
 	}
+	return true;
 }
 #undef FLTPUSH
 #undef MSGBUF_UTF8
@@ -7953,10 +7976,14 @@ static void alua_call(
 	int errind = 0;
 	errind = lua_gettop(ctx) - nargs;
 
+/* These should >really< be looked up once during setup and then kept on the
+ * stack, this is substantial overhead added to each and every call into the VM
+ * (entry-point lookup -> error function lookup). The possible compromise to
+ * allow the dynamic behavior still is to have a trigger for _G changing the
+ * respective functions, and inject a default _fatal function that returns
+ * debug.traceback(). */
 	if (grabapplfunction(ctx, "fatal", 5)){
 	}
-/* a possible optimization here is to cache the value of the global
- * and keep it here forever so we save the field lookup */
 	else{
 		lua_getglobal(ctx, "debug");
 		lua_getfield(ctx, -1, "traceback");
@@ -7985,6 +8012,7 @@ static void alua_call(
 		wraperr(ctx, errc, src);
 		return;
 	}
+
 	lua_remove(ctx, errind);
 }
 
@@ -8797,6 +8825,7 @@ enum target_flags {
 	TARGET_FLAG_LIMIT_SIZE,
 	TARGET_FLAG_SYNCH_SIZE,
 	TARGET_FLAG_NO_ADOPT,
+	TARGET_FLAG_DRAIN_QUEUE,
 	TARGET_FLAG_ENDM
 };
 
@@ -8886,6 +8915,13 @@ static void updateflag(arcan_vobj_id vid, enum target_flags flag, bool toggle)
 
 	case TARGET_FLAG_SYNCH_SIZE:
 		fsrv->flags.rz_ack = toggle;
+	break;
+
+	case TARGET_FLAG_DRAIN_QUEUE:
+		if (toggle)
+			fsrv->xfer_sat = -1.0;
+		else
+			fsrv->xfer_sat = 0.5;
 	break;
 
 	case TARGET_FLAG_ENDM:
@@ -12948,6 +12984,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"TARGET_LIMITSIZE", TARGET_FLAG_LIMIT_SIZE},
 {"TARGET_SYNCHSIZE", TARGET_FLAG_SYNCH_SIZE},
 {"TARGET_BLOCKADOPT", TARGET_FLAG_NO_ADOPT},
+{"TARGET_DRAINQUEUE", TARGET_FLAG_DRAIN_QUEUE},
 {"DISPLAY_STANDBY", ADPMS_STANDBY},
 {"DISPLAY_OFF", ADPMS_OFF},
 {"DISPLAY_SUSPEND", ADPMS_SUSPEND},

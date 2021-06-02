@@ -87,10 +87,20 @@ static void pull_killswitch(arcan_evctx* ctx)
 	ctx->synch.killswitch = NULL;
 }
 
+static bool queue_full(arcan_evctx* ctx)
+{
+	 return (((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front);
+}
+
+static bool queue_empty(arcan_evctx* ctx)
+{
+	return (*ctx->front == *ctx->back);
+}
+
 int arcan_event_poll(arcan_evctx* ctx, struct arcan_event* dst)
 {
 	assert(dst);
-	if (*ctx->front == *ctx->back)
+	if (queue_empty(ctx))
 		return 0;
 
 /* overflow in external connection? pull killswitch that will hopefully
@@ -153,11 +163,11 @@ int arcan_event_denqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 {
 	if (ctx->drain){
 		arcan_event ev = *src;
-		ctx->drain(&ev, 1);
-		return ARCAN_OK;
+		if (ctx->drain(&ev, 1))
+			return ARCAN_OK;
 	}
-	else
-		return arcan_event_enqueue(ctx, src);
+
+	return arcan_event_enqueue(ctx, src);
 }
 
 /*
@@ -180,14 +190,17 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
  * Given that we have special treatment for _EXPIRE and similar calls,
  * there shouldn't be any functions that has this behavior. Still, broken
  * ordering is better than running out of space. */
-
-	 if (((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
+	 if (queue_full(ctx)){
 		if (ctx->drain){
 			TRACE_MARK_ONESHOT("event", "queue-drain", TRACE_SYS_SLOW, 0, 0, "drain");
-/* very rare / impossible, but safe-guard against future bad code */
+
+/* very rare / impossible, but safe-guard against future bad code where the
+ * force-feeding below would trigger new events that would bring us back */
 			if ((ctx->state_fl & EVSTATE_IN_DRAIN) > 0){
 				arcan_event ev = *src;
-				ctx->drain(&ev, 1);
+				if (ctx->drain(&ev, 1))
+					return ARCAN_OK;
+				return ARCAN_ERRC_OUT_OF_SPACE;
 			}
 /* tradeoff, can cascade to embarassing GC pause or video- stall but better
  * than data corruption and unpredictable states -- this can theoretically
@@ -204,6 +217,11 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 		}
 	}
 
+/* this is problematic to keep here - either it should be part of the watchdog
+ * process when / if we can process input there (and then it will not follow
+ * keymap) or at least move to the platform stage so the event doesn't get
+ * queued as input at all but rather sent to the watchdog and have it clean up
+ * correctly */
 	if (panic_keysym != -1 && panic_keymod != -1 &&
 		src->category == EVENT_IO && src->io.kind == EVENT_IO_BUTTON &&
 		src->io.devkind == EVENT_IDEVKIND_KEYBOARD &&
@@ -286,26 +304,39 @@ fail:
 }
 
 
-void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
+int arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 	enum ARCAN_EVENT_CATEGORY allowed, float sat, struct arcan_frameserver* tgt)
 {
 	if (!srcqueue || !dstqueue || (srcqueue && !srcqueue->front)
 		|| (srcqueue && !srcqueue->back))
-		return;
+		return 0;
 
 	bool wake = false;
+	bool drain = false;
 
-	sat = (sat > 1.0 ? 1.0 : sat < 0.5 ? 0.5 : sat);
+/* If we set negative saturation, it means that it is permitted for this source
+ * to send directly to drain (though mask and filters still apply). While this
+ * should not be needed for the vast majority of clients, the exception is
+ * external input device drivers and bridges e.g. X11 where a client is
+ * expected to break the ev.in / ev.out rate asymetry. */
+	if (sat < 0.0){
+		drain = true;
+		sat = 1.0;
+/* see the comments further below where the drain variable is used */
+	}
 
-	while ( srcqueue->front && *srcqueue->front != *srcqueue->back &&
-			floor((float)dstqueue->eventbuf_sz * sat) > queue_used(dstqueue)) {
+	size_t cap = floor((float)dstqueue->eventbuf_sz * sat);
 
+	while (!queue_empty(srcqueue) && queue_used(dstqueue) < cap){
 		arcan_event inev;
 		if (arcan_event_poll(srcqueue, &inev) == 0)
 			break;
 
-/* ioevents have special behavior as the routed path (via frameserver
- * callback or global event handler) can be decided here */
+/* Ioevents have special behavior as the routed path (via frameserver callback
+ * or global event handler) can be decided here: if raw transfers have been
+ * permitted we don't change the category as those events can be pushed out of
+ * loop. Otherwise we go the slow defaultpath and forward the events through
+ * the normal callback event handler. */
 		if (inev.category == EVENT_IO && tgt){
 			if (inev.category & allowed)
 				;
@@ -409,11 +440,54 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 		}
 		wake = true;
 
+/* it might be slightly faster to drain multiple events here, but since the
+ * source might be mapped to an untrusted in-memory queue it would still take a
+ * full filter+copy path - so likely not worth pursuing.
+ *
+ * There is a complex and subtle danger here:
+ *  0.Recall we are being called from the TRAMP_GUARD
+ *    (against sigbus on the shared page).
+ *
+ *  1.In the drain function, we will jump into the callback handler in the
+ *    Lua VM, still with the TRAMP_GUARD set. If that callback handler then
+ *    queues an event into the frameserver, a new TRAMP_GUARD will be set
+ *    for that scope, but when finished it will CLEAR the existing
+ *    tramp-guard, causing the next event transfer to be performed without
+ *    a guard in place. In a sense this is similar to the recursive mutex
+ *    problem and atfork handling.
+ *
+ *  2.Another nasty possibility is that the frameserver structure might get
+ *    killed off as a response to a transferred event. That's really bad.
+ *
+ * The mitigations are:
+ *  1. Re-arm the guard based on counter changes, forward the failure.
+ *  2. Add a fuse to _free, if that one blows, forward the failure.
+ */
+		if (drain && dstqueue->drain){
+			tgt->fused = true;
+			size_t last_stamp = platform_fsrv_clock();
+
+			if (dstqueue->drain(&inev, 1)){
+				if (last_stamp != platform_fsrv_clock()){
+					TRAMP_GUARD(-1, tgt);
+				}
+
+				tgt->fused = false;
+				if (tgt->fuse_blown){
+					break;
+				}
+			}
+			tgt->fused = false;
+			continue;
+		}
+
 		arcan_event_enqueue(dstqueue, &inev);
 	}
 
 	if (wake)
 		arcan_sem_post(srcqueue->synch.handle);
+
+	return tgt->fuse_blown ? -2 : 0;
 }
 
 void arcan_event_blacklist(const char* idstr)
