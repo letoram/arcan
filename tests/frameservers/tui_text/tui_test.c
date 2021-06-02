@@ -133,6 +133,7 @@ static void on_state(struct tui_context* c, bool input, int fd, void* t)
 static void on_bchunk(struct tui_context* c,
 	bool input, uint64_t size, int fd, const char* id, void* t)
 {
+	close(fd);
 	trace("on_bchunk(%"PRIu64", in:%d)", size, (int)input);
 }
 
