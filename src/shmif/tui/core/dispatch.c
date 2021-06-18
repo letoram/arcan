@@ -332,6 +332,23 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 
 /* scrolling- command */
 	case TARGET_COMMAND_SEEKCONTENT:
+		if (tui->flags & TUI_ALTERNATE){
+			if (ev->ioevs[0].iv){
+				if (tui->handlers.seek_relative){
+					tui->handlers.seek_relative(tui,
+						ev->ioevs[1].iv, ev->ioevs[2].iv, tui->handlers.tag);
+				}
+			}
+			else {
+				if (tui->handlers.seek_absolute){
+					float v = ev->ioevs[1].fv;
+					if (v >= 0.0 && v <= 1.0)
+						tui->handlers.seek_absolute(tui, ev->ioevs[1].fv, tui->handlers.tag);
+				}
+			}
+			return;
+		}
+
 		if (ev->ioevs[0].iv){ /* relative */
 			if (ev->ioevs[1].iv < 0){
 				arcan_tui_scroll_up(tui, -1 * ev->ioevs[1].iv);

@@ -24,6 +24,7 @@
  * Extended colour slots to cover a 16- legacy group
  * Allow indexed cell attribute flag (fg.r, bg.r becomes colour slot index + lookup)
  * add FAILURE message notification type
+ * Add handlers for seeking contents and content\_size call to indicate scrolling support
 
 ## Lua
  * Whitelist os.date

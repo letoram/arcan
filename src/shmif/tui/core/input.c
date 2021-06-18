@@ -67,7 +67,6 @@ static bool page_up(struct tui_context* tui)
 
 	tui->cursor_upd = true;
 	tui->cursor_off = true;
-	tui->sbofs += tui->rows;
 	arcan_tui_scroll_up(tui, tui->rows);
 	return true;
 }
