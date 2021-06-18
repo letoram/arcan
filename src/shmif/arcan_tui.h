@@ -508,7 +508,10 @@ struct tui_cbcfg {
 	void (*exec_state)(struct tui_context*, int state, void*);
 
 /*
- * This is used for interactive CLI UI integration.
+ * This is intended for completion style command-line integration, mainly as a
+ * building block for a 'libreadline' replacement widget but hopefully also for
+ * cooperative 'int main(argv..)' style command line evaluation as part of
+ * building new shells with runtime feedback.
  *
  * [argv] is a NULL terminated array of the on-going / current set of arguments.
  *
@@ -525,7 +528,7 @@ struct tui_cbcfg {
  * TUI_CLI_INVALID
  *
  * The callee retains ownership of feedback results, but the results should
- * be remain valid until the next EVAL, COMMIT or CANCEL.
+ * remain valid until the next EVAL, COMMIT or CANCEL.
  *
  * A response to EVAL may be ACCEPT if the command is acceptible as is, or
  * SUGGEST if there is a set of possible completion options that expand on
@@ -540,6 +543,27 @@ struct tui_cbcfg {
 		const char** const argv, size_t n_elem, int command,
 		const char** feedback, size_t* n_results
 	);
+
+/*
+ * This is normally mapped to 'scrolling' - changing content starting offset
+ * in order to slide the visible subset when there is more content than can
+ * be presented than there is space in the window.
+ *
+ * The absolute form only covers the upper left corner 'start' and is in the
+ * 0..1 range where 0 indicates the start of all contents and 1 means the 'end
+ * of contents'.
+ *
+ * The relative form allows stepping both vertically and horizontally (where
+ * applicable) and is relative to the current window base. Horizontal scrolling
+ * should be avoided in favor of reflowing wherever possible.
+ *
+ * In order to indicate support, use arcan_tui_content_size to provide rough
+ * estimates on the current size. This needs to be updated in response to
+ * certain events and actions, such as after the window has changed size or
+ * updated its set of handlers.
+ */
+	void (*seek_absolute)(struct tui_context*, float pct, void*);
+	void (*seek_relative)(struct tui_context*, ssize_t rows, ssize_t cols, void*);
 
 /*
  * Add new callbacks here as needed, since the setup requires a sizeof of
@@ -807,6 +831,28 @@ void arcan_tui_wndhint(struct tui_context* wnd,
  */
 void arcan_tui_announce_io(struct tui_context* c,
 	bool immediately, const char* input_descr, const char* output_descr);
+
+/*
+ * Indicate the relationship between how much available contents that can be
+ * presented versus how much is actually being shown. This is window size
+ * dependent and will influence seek_absolute/seek_relative requests.
+ *
+ * Offset and total are in lines, and invalid values or underflows will
+ * indicate that the window does not support scrolling/seeking in that
+ * direction (vertical, horizontal).
+ *
+ * The constraints for invalid/underflow are:
+ *
+ * (row_ofs, col_ofs) == 0 || offset > total - (wnd_rows, wnd_cols)
+ * [row/col_tot] < wnd_(rows, cols)
+ *
+ * Content size is assumed to be unknown by default and is reset/ignored
+ * on_resized and on handler updates. Proper event handlers should thus
+ * re-issue content_size hints when that happens.
+ * This includes switching a window to using one of the helper windows.
+ */
+void arcan_tui_content_size(struct tui_context* wnd,
+	size_t row_ofs, size_t row_tot, size_t col_ofs, size_t col_tot);
 
 /*
  * Asynchronously transfer the contents of [fdin] to [fdout]. This is
@@ -1259,6 +1305,7 @@ typedef void (* PTUIHANDOVER)(struct tui_context*, arcan_tui_conn*,
 typedef size_t (* PTUIUCS4UTF8)(uint32_t, char dst[static 4]);
 typedef size_t (* PTUIUCS4UTF8_S)(uint32_t, char dst[static 5]);
 typedef ssize_t (* PTUIUTF8UCS4)(const char dst[static 4], uint32_t);
+typedef void (* PTUICONTENTSIZE)(struct tui_context*, size_t, size_t, size_t, size_t);
 
 static PTUIHANDOVER arcan_tui_handover;
 static PTUISETUP arcan_tui_setup;
@@ -1337,6 +1384,7 @@ static PTUIBGCOPY arcan_tui_bgcopy;
 static PTUIUCS4UTF8 arcan_tui_ucs4utf8;
 static PTUIUCS4UTF8_S arcan_tui_ucs4utf8_s;
 static PTUIUTF8UCS4 arcan_tui_utf8ucs4;
+static PTUICONTENTSIZE arcan_tui_content_size;
 
 /* dynamic loading function */
 static bool arcan_tui_dynload(void*(*lookup)(void*, const char*), void* tag)
@@ -1420,6 +1468,7 @@ M(PTUIUCS4UTF8, arcan_tui_ucs4utf8);
 M(PTUIUCS4UTF8_S, arcan_tui_ucs4utf8_s);
 M(PTUIUTF8UCS4, arcan_tui_utf8ucs4);
 M(PTUIPROGRESS, arcan_tui_progress);
+M(PTUICONTENTSIZE, arcan_tui_content_size);
 
 #undef M
 

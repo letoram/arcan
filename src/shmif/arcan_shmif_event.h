@@ -357,8 +357,8 @@ enum ARCAN_TARGET_COMMAND {
  *  ioevs[1].iv = y-axis: step 'n' logic steps (impl. defined size)
  *  ioevs[2].iv = x-axis: step 'n' logic steps (impl. defined size)
  * if (seek_absolute)
- *  ioevs[1].fv = y-axis: set content position (ignore < 0 <= n <= 1)
- *  ioevs[2].fv = x-axis: set content position (ignore < 0 <= n <= 1)
+ *  ioevs[1].fv = y-axis: set content position (ignore : 0 <= n <= 1)
+ *  ioevs[2].fv = x-axis: set content position (ignore : 0 <= n <= 1)
  *  ioevs[3].fv = z-axis: set content magnification (for 'zooming')
  */
 	TARGET_COMMAND_SEEKCONTENT,
@@ -927,6 +927,8 @@ enum ARCAN_TARGET_SKIPMODE {
 
 	enum ARCAN_EVENT_SYSTEM {
 		EVENT_SYSTEM_EXIT = 0,
+		EVENT_SYSTEM_DATA_IN = 1,
+		EVENT_SYSTEM_DATA_OUT = 2
 	};
 
 	enum ARCAN_EVENT_AUDIO {
@@ -1165,6 +1167,7 @@ enum ARCAN_TARGET_SKIPMODE {
 	typedef struct arcan_sevent {
 		enum ARCAN_EVENT_SYSTEM kind;
 		int errcode;
+
 		union {
 			struct {
 				uint32_t hitag, lotag;
@@ -1172,6 +1175,15 @@ enum ARCAN_TARGET_SKIPMODE {
 			struct {
 				char* dyneval_msg;
 			} mesg;
+
+/* used by EVENT_SYSTEM_DATA_IN/OUT and comes from arcan_event.c into the drain
+ * function when the non-blocking I/O state of a pollable descriptor gets to
+ * pollin or pollout. */
+			struct {
+				bool input;
+				int fd;
+				intptr_t otag;
+			} data;
 			char message[64];
 		};
 	} arcan_sevent;
@@ -1600,6 +1612,15 @@ typedef enum {
 #ifdef PLATFORM_HEADER
 #include PLATFORM_HEADER
 #endif
+
+struct arcan_event_trigger {
+	union {
+		int fd;
+	};
+	int type;
+	bool in, out;
+	uint64_t tag;
+};
 
 struct arcan_evctx {
 /* time and mask- tracking, only used parent-side */

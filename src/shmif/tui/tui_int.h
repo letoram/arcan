@@ -77,12 +77,10 @@ struct tui_context {
  * interpreteation where drag, click, dblclick, wheelup, wheeldown work */
 	bool gesture_support;
 
-/* tracking when to reset scrollback */
-	int sbofs;
-
 /* color, cursor and other drawing states */
 	int rows;
 	int cols;
+	int sbofs;
 
 /* if the server-side has hinted with valid cell dimensions, skip probing */
 	bool cell_auth;

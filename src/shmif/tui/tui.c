@@ -1307,3 +1307,36 @@ pid_t arcan_tui_handover(struct tui_context* c,
 	return arcan_shmif_handover_exec(
 		&c->acon, c->pending_wnd, path, argv, env, detach);
 }
+
+void arcan_tui_content_size(struct tui_context* c,
+	size_t row_ofs, size_t row_tot, size_t col_ofs, size_t col_tot)
+{
+	if (!c)
+		return;
+
+	struct arcan_event ev = (struct arcan_event){
+			.category = EVENT_EXTERNAL,
+			.ext.kind = ARCAN_EVENT(CONTENT),
+			.ext.content = {
+				.x_sz = 1.0,
+				.y_sz = 1.0
+			}
+	};
+
+/* note, OOB (1.0 - x_pos < 0.0 is possible and would indicate that we are
+ * panning outside the valuable contents range - judgement call if this is
+ * wise or not but can defer that to the caller. */
+	if (col_tot > c->cols && col_ofs < col_tot){
+		ev.ext.content.x_sz = (float)c->cols / (float)col_tot;
+		ev.ext.content.x_pos = (float)col_ofs / (float)col_tot;
+		ev.ext.content.width = 1.0 / (col_tot - c->cols);
+	}
+
+	if (row_tot > c->rows && row_ofs < row_tot){
+		ev.ext.content.y_sz = (float)c->rows / (float)row_tot;
+		ev.ext.content.y_pos = (float)row_ofs / (float)row_tot;
+		ev.ext.content.height = 1.0 / (row_tot - c->rows);
+	}
+
+	arcan_shmif_enqueue(&c->acon, &ev);
+}
