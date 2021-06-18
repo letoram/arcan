@@ -269,6 +269,9 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 
 	case TARGET_COMMAND_RESET:
 		tui->modifiers = 0;
+		tsm_screen_sb_reset(tui->screen);
+		tui->sbofs = 0;
+
 		switch(ev->ioevs[0].iv){
 		case 0:
 		case 1:
@@ -352,11 +355,9 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 		if (ev->ioevs[0].iv){ /* relative */
 			if (ev->ioevs[1].iv < 0){
 				arcan_tui_scroll_up(tui, -1 * ev->ioevs[1].iv);
-				tui->sbofs -= ev->ioevs[1].iv;
 			}
 			else{
 				arcan_tui_scroll_down(tui, ev->ioevs[1].iv);
-				tui->sbofs += ev->ioevs[1].iv;
 			}
 		}
 	break;

@@ -83,10 +83,12 @@ static bool page_down(struct tui_context* tui)
 		tui->cursor_off = true;
 	}
 
-	if (tui->sbofs == 0){
+	if (tui->sbofs <= 0){
 		tui->cursor_off = false;
 		tui->cursor_upd = true;
+		tsm_screen_sb_reset(tui->screen);
 	}
+
 	arcan_tui_scroll_down(tui, tui->rows);
 
 	return true;
@@ -132,7 +134,6 @@ static bool scroll_up(struct tui_context* tui)
 
 	int nf = mod_to_scroll(tui->modifiers, tui->rows);
 	arcan_tui_scroll_up(tui, nf);
-	tui->sbofs += nf;
 	return true;
 }
 
@@ -144,9 +145,7 @@ static bool scroll_down(struct tui_context* tui)
 	int nf = mod_to_scroll(tui->modifiers, tui->rows);
 	if (tui->sbofs > 0){
 		arcan_tui_scroll_down(tui, nf);
-		tui->sbofs -= nf;
-		tui->sbofs = tui->sbofs < 0 ? 0 : tui->sbofs;
-		return true;
+				return true;
 	}
 	return false;
 }

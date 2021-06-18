@@ -1113,7 +1113,7 @@ void arcan_tui_scroll_up(struct tui_context* c, size_t n)
 	if (!c || (c->flags & TUI_ALTERNATE))
 		return;
 
-	int ss = tsm_screen_sb_up(c->screen, n);
+	c->sbofs += tsm_screen_sb_up(c->screen, n);
 
 	flag_cursor(c);
 }
@@ -1123,7 +1123,9 @@ void arcan_tui_scroll_down(struct tui_context* c, size_t n)
 	if (!c || (c->flags & TUI_ALTERNATE))
 		return;
 
-	tsm_screen_sb_down(c->screen, n);
+	c->sbofs -= tsm_screen_sb_down(c->screen, n);
+	c->sbofs = c->sbofs < 0 ? 0 : c->sbofs;
+
 	flag_cursor(c);
 }
 
