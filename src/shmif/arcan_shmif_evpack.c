@@ -157,9 +157,11 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 			);
 		break;
 		case EVENT_EXTERNAL_CONTENT:
-			snprintf(work, dsz,"EXT:CONTENT(x: %f/%f, y: %f/%f)",
+			snprintf(work, dsz,"EXT:CONTENT(x: %f/%f, y: %f/%f, wh: %f/%f)",
 				ev.ext.content.x_pos, ev.ext.content.x_sz,
-				ev.ext.content.y_pos, ev.ext.content.y_sz);
+				ev.ext.content.y_pos, ev.ext.content.y_sz,
+				ev.ext.content.width, ev.ext.content.height
+			);
 		break;
 		case EVENT_EXTERNAL_LABELHINT:
 			snprintf(work, dsz,"EXT:LABELHINT(label: %.16s, default: %d, descr: %.58s, "

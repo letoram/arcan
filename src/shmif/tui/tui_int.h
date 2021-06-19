@@ -80,7 +80,15 @@ struct tui_context {
 /* color, cursor and other drawing states */
 	int rows;
 	int cols;
-	int sbofs;
+
+/* track scrollback state so that we can send content-hints accordingly */
+	long sbofs;
+	struct {
+		long ofs;
+		unsigned len;
+		struct arcan_event hint;
+		bool dirty;
+	} sbstat;
 
 /* if the server-side has hinted with valid cell dimensions, skip probing */
 	bool cell_auth;
