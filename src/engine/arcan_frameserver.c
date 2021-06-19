@@ -177,7 +177,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 /* bunch of terminating conditions -- frameserver messes with the structure to
  * provoke a vulnerability, frameserver dying or timing out, ... */
 	bool cookie_match = true;
-	bool alive = src->flags.alive && src->shm.ptr;
+	bool alive = src->flags.alive && src->shm.ptr && src->shm.ptr->dms;
 
 /* specifically track the cookie failing issue so that we can forward that as an
  * important failure reason since it is indicative of something more than just a
@@ -1366,8 +1366,7 @@ bool arcan_frameserver_tick_control(
 	arcan_frameserver* src, bool tick, int dst_ffunc)
 {
 	bool fail = true;
-	if (!arcan_frameserver_control_chld(src) || !src || !src->shm.ptr ||
-		!src->shm.ptr->dms || src->playstate == ARCAN_PAUSED)
+	if (!arcan_frameserver_control_chld(src) || src->playstate == ARCAN_PAUSED)
 		goto leave;
 
 /* Same event-queue transfer issues as marked elsewhere, if xfer-sat goes to

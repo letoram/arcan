@@ -195,10 +195,13 @@ end
 -- e.g. arcan_db add_appl_kv console terminal env=LC_ALL=C:palette=solarized
 function spawn_terminal()
 	local term_arg = (
-		get_key("terminal") or "tpack:palette=solarized") ..
+		get_key("terminal") or "palette=solarized") ..
 		":env=ARCAN_CONNPATH=" .. connection_point
 
-	return launch_avfeed(term_arg, "terminal", client_event_handler)
+	return launch_avfeed(term_arg, "terminal",
+		function(source, status)
+			return client_event_handler(source, status)
+	end)
 end
 
 local function scale_client(ws, w, h)
@@ -241,6 +244,7 @@ function client_event_handler(source, status)
 			local w, h = scale_client(ws, status.width, status.height)
 			resize_image(source, w, h)
 			center_image(source, workspaces.anchor)
+			image_set_txcos_default(source, status.origo_ll)
 			ws.aid = status.source_audio
 		else
 			delete_image(source)
@@ -270,7 +274,6 @@ function client_event_handler(source, status)
 
 			wayland_connection(source,
 				function(source, status)
-					print("new client on connection", source)
 					local _, wl_cl = new_client(source, {block_mouse = true})
 					local cfg = wayland_config(wl_cl)
 					local cl = wayland_client(source, status, cfg)
