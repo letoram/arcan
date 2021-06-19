@@ -421,9 +421,10 @@ bool platform_fsrv_validchild(arcan_frameserver* src){
  * to monitor as hint to what the state of a child is, the child is free to
  * redirect to anything (heck, including init)..
  */
+	errno = 0;
 	int ec = waitpid(src->child, &status, WNOHANG);
 
-	if (ec == src->child){
+	if (ec == src->child || errno == ECHILD){
 		errno = EINVAL;
 		return false;
 	}
