@@ -99,6 +99,14 @@ static inline void flag_cursor(struct tui_context* c)
 	c->cursor_upd = true;
 	c->dirty |= DIRTY_CURSOR;
 	c->inact_timer = -4;
+
+	if (c->sbstat.ofs != c->sbofs ||
+		c->sbstat.len != c->screen->sb_count){
+		c->sbstat.ofs = c->sbofs;
+		c->sbstat.len = c->screen->sb_count;
+		arcan_tui_content_size(c,
+			c->screen->sb_count - c->sbofs, c->screen->sb_count + c->rows, 0, 0);
+	}
 }
 
 bool arcan_tui_copy(struct tui_context* tui, const char* utf8_msg)
@@ -425,6 +433,11 @@ int arcan_tui_refresh(struct tui_context* tui)
 	if (!tui || !tui->acon.addr){
 		errno = EINVAL;
 		return -1;
+	}
+
+	if (tui->sbstat.dirty){
+		arcan_shmif_enqueue(&tui->acon, &tui->sbstat.hint);
+		tui->sbstat.dirty = false;
 	}
 
 	if (tui->dirty){
@@ -1027,8 +1040,17 @@ int arcan_tui_set_flags(struct tui_context* c, int flags)
 		tsm_screen_sb_reset(c->screen);
 
 	bool want_alternate = !!(c->flags & TUI_ALTERNATE);
-	if (in_alternate != want_alternate)
+
+	if (in_alternate != want_alternate){
+		if (want_alternate)
+			arcan_tui_content_size(c, 0, 0, 0, 0);
+		else
+			arcan_tui_content_size(c,
+				c->screen->sb_count, c->screen->sb_count + c->rows, 0, 0);
+
+
 		arcan_tui_reset_labels(c);
+	}
 
 	if (flags & (TUI_MOUSE | TUI_MOUSE_FULL))
 		c->mouse_forward = true;
@@ -1113,7 +1135,9 @@ void arcan_tui_scroll_up(struct tui_context* c, size_t n)
 	if (!c || (c->flags & TUI_ALTERNATE))
 		return;
 
-	c->sbofs += tsm_screen_sb_up(c->screen, n);
+	c->sbofs -= tsm_screen_sb_up(c->screen, n);
+	arcan_tui_content_size(c,
+		c->screen->sb_count - c->sbofs, c->screen->sb_count + c->rows, 0, 0);
 
 	flag_cursor(c);
 }
@@ -1204,7 +1228,14 @@ void arcan_tui_newline(struct tui_context* c)
 	if (!c)
 		return;
 
+	unsigned last = c->screen->sb_count;
 	int ss = tsm_screen_newline(c->screen);
+
+/* only send new content hint if the scrollback state changed */
+	if (last != c->screen->sb_count){
+		arcan_tui_content_size(c,
+			c->screen->sb_count - c->sbofs, c->screen->sb_count + c->rows, 0, 0);
+	}
 
 	flag_cursor(c);
 }
@@ -1340,5 +1371,6 @@ void arcan_tui_content_size(struct tui_context* c,
 		ev.ext.content.height = 1.0 / (row_tot - c->rows);
 	}
 
-	arcan_shmif_enqueue(&c->acon, &ev);
+	c->sbstat.dirty = true;
+	c->sbstat.hint = ev;
 }
