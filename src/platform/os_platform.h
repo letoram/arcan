@@ -100,15 +100,18 @@ void arcan_closefrom(int num);
 void arcan_process_title(const char* new_title);
 
 /*
- * Don't have much need for more fine-grained data model in regards to the
- * filesystem other than 'is it possible that this, at the moment, refers
- * to a file (loadable resource) or a container of files? Trace calls to this
- * function for verifying against TOCTU vulns.
- * Depending on how the windows platform develops, we should consider moving
- * this in hardening phase to return descriptor to dir/file instead
+ * implemented in <platform>/paths.c
+ * return true if the path key indicated by <fn> exists and
+ * is a directory, otherwise, false.
+ */
+bool arcan_isdir(const char* fn);
+
+/*
+ * implemented in <platform>/paths.c
+ * return true if the path key indicated by <fn> exists and
+ * is a file or special (e.g. FIFO), otherwise, false.
  */
 bool arcan_isfile(const char*);
-bool arcan_isdir(const char*);
 
 /*
  * get a NULL terminated list of input- platform specific environment options
@@ -122,8 +125,171 @@ bool arcan_isdir(const char*);
 void arcan_warning(const char* msg, ...);
 void arcan_fatal(const char* msg, ...);
 
+/*
+ * implemented in <platform>/namespace.c
+ * Expand <label> into the path denoted by <arcan_namespaces>
+ * verifies traversal on <label>.
+ * Returns dynamically allocated string.
+ */
+char* arcan_expand_resource(const char* label, enum arcan_namespaces);
+
+/*
+ * implemented in <platform>/namespace.c
+ * Search <namespaces> after matching <label> (exist and resource_type match)
+ * ordered by individual enum value (low to high).
+ * Returns dynamically allocated string on match, else NULL.
+ */
+char* arcan_find_resource(const char* label,
+	enum arcan_namespaces, enum resource_type);
+
+/*
+ * implemented in <platform>/namespace.c
+ * concatenate <path> and <label>, then forward to arcan_find_resource
+ * return dynamically allocated string on match, else NULL.
+ */
+char* arcan_find_resource_path(
+	const char* label, const char* path, enum arcan_namespaces);
+
+/*
+ * implemented in <platform>/strip_traverse.c
+ * returns <in> on valid string, NULL if traversal rules
+ * would expand outside namespace (symlinks, bind-mounts purposefully allowed)
+ */
+const char* verify_traverse(const char* in);
+
+/*
+ * implemented in <platform>/resource_io.c
+ * take a <name> resolved from arcan_find_*, arcan_resolve_*,
+ * open / lock / reserve <name> and store relevant metadata in data_source.
+ *
+ * On failure, data_source.fd == BADFD and data_source.source == NULL
+ */
+data_source arcan_open_resource(const char* name);
+
+/*
+ * implemented in <platform>/resource_io.c
+ * take a previously allocated <data_source> and unlock / release associated
+ * resources. Values in <data_source> are undefined afterwards.
+ */
+void arcan_release_resource(data_source*);
+
+/*
+ * implemented in <platform>/resource_io.c
+ * take an opened <data_source> and create a suitable memory mapping
+ * default protection <read_only>, <read/write> if <wr> is set.
+ * <read/write/execute> is not supported.
+ */
+map_region arcan_map_resource(data_source*, bool wr);
+
+/*
+ * implemented in <platform>/resource_io.c
+ * aliases to contents of <map_region.ptr> will be undefined after call.
+ * returns <true> on successful release.
+ */
+bool arcan_release_map(map_region region);
+
+/*
+ * implemented in <platform>/fmt_open.c
+ * open a file using a format string (fmt + variadic),
+ * slated for DEPRECATION, regular _map / resource lookup should
+ * be used whenever possible.
+ *
+ */
+int fmt_open(int flags, mode_t mode, const char* fmt, ...);
+
+/*
+ * implemented in <platform>/glob.c
+ * glob <enum_namespaces> based on traditional lookup rules
+ * for pattern matching basename (* wildcard expansion supported).
+ * invoke <cb(relative path, tag)> for each entry found.
+ * returns number of times <cb> was invoked.
+ */
+unsigned arcan_glob(char* basename, enum arcan_namespaces,
+	void (*cb)(char*, void*), void* tag);
+
 /* replace the thread_local logging output destination with outf.
  * This can be null (and by default is null) in order to disable log output */
 void arcan_log_destination(FILE* outf, int minlevel);
+
+/*
+ * implemented in <platform>/paths.c,
+ * takes the NULL terminated array of dynamically allocated strings
+ * and expands namespaces according to the following rules:
+ * \x1bNAMESPACE_IDENTIER\x1b|0
+ *
+ * \x1b without a namespace identifier will be treated as a warning
+ * and will not expand (with the side effect of not permitting escape
+ * codes in filenames).
+ *
+ * Namespace identifiers are platform dependent (typically match
+ * environment variables used to redirect specific namespaces).
+ *
+ * Primary use for this is launch.c for treating argv/envv/libs
+ * that come from the database.
+ */
+char** arcan_expand_namespaces(char** inargs);
+
+/*
+ * to avoid the pattern arcan_expand_namespace("", space) as that
+ * entails dynamic memory allocation which may or may not be safe
+ * in some contexts.
+ */
+char* arcan_fetch_namespace(enum arcan_namespaces space);
+
+/*
+ * implemented in <platform>/paths.c
+ * search for a suitable arcan setup through configuration files,
+ * environment variables, etc.
+ */
+void arcan_set_namespace_defaults();
+
+/*
+ * implemented in <platform>/namespace.c
+ * enumerate the available namespaces, return true if all are set.
+ * if there are missing namespaces and report is set, arcan_warning
+ * will be used to notify which ones are broken.
+ */
+bool arcan_verify_namespaces(bool report);
+
+/*
+ * implemented in <platform>/namespace.c,
+ * replaces the slot specified by space with the new path [path]
+ */
+void arcan_override_namespace(const char* path, enum arcan_namespaces space);
+
+/*
+ * implemented in <platform>/namespace.c,
+ * replaces the slot specified by space with the new path [path]
+ * if the slot is currently empty.
+ */
+void arcan_softoverride_namespace(const char* newp, enum arcan_namespaces space);
+
+
+/*
+ * implemented in <platform>/namespace.c,
+ * prevent the specific slot from being overridden with either soft/hard
+ * modes. Intended for more sensitive namespaces (APPLBASE, FONT, STATE, DEBUG)
+ * for settings that need the control. Can't be undone.
+ */
+void arcan_pin_namespace(enum arcan_namespaces space);
+
+/*
+ * implemented in <platform>/appl.c
+ * ensure a sane setup (all namespaces have mapped paths + proper permissions)
+ * then locate / load / map /setup setup a new application with <appl_id>
+ * can be called multiple times (will then unload previous <appl_id>
+ * if the operation fails, the function will return false and <*errc> will
+ * be set to a static error message.
+ */
+bool arcan_verifyload_appl(const char* appl_id, const char** errc);
+
+/*
+ * implemented in <platform>/appl.c
+ * returns the starting scripts of the specified appl,
+ * along with ID tag and a cached strlen.
+ */
+const char* arcan_appl_basesource(bool* file);
+const char* arcan_appl_id();
+size_t arcan_appl_id_len();
 
 #endif
