@@ -315,7 +315,7 @@ int arcan_conductor_yield(struct conductor_display* disps, size_t pset_count)
 	return conductor.timestep;
 }
 
-ssize_t find_frameserver(struct arcan_frameserver* fsrv)
+static ssize_t find_frameserver(struct arcan_frameserver* fsrv)
 {
 	for (size_t i = 0; i < frameservers.count; i++)
 		if (frameservers.ref[i] == fsrv)
