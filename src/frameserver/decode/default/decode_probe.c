@@ -59,7 +59,7 @@ int decode_probe(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	if (!arg_lookup(args, "file", 0, &outf)){
 
 /* announce that we want it all */
-		while ((fd = wait_for_file(cont, "*")) > 0){
+		while ((fd = wait_for_file(cont, "*", NULL)) > 0){
 			const char* error = run_magic(cont, magic, fd);
 			if (error)
 				shmif_msgchunk(cont, error, strlen(error));

@@ -13,12 +13,17 @@ if (LIBVLC_FOUND)
 		${CMAKE_CURRENT_SOURCE_DIR}/decode_text.c
 		${CMAKE_CURRENT_SOURCE_DIR}/decode_3d.c
 		${CMAKE_CURRENT_SOURCE_DIR}/decode_av.c
+		${CMAKE_CURRENT_SOURCE_DIR}/decode_img.c
 		${EXTERNAL_SRC_DIR}/fft/kiss_fft.c
 		${EXTERNAL_SRC_DIR}/fft/kiss_fftr.c
+		${FSRV_ROOT}/../platform/posix/map_resource.c
+		${FSRV_ROOT}/../platform/posix/resource_io.c
 	)
 
 	set(DECODE_INCLUDE_DIRS
 		${LIBVLC_INCLUDE_DIRS}
+		${FSRV_ROOT}/../engine/external
+		${FSRV_ROOT}/../platform
 		${EXTERNAL_SRC_DIR}/fft
 	)
 

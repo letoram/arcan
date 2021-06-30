@@ -1,9 +1,8 @@
 /*
- * Copyright 2014-2016, Björn Ståhl
+ * Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
-
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -15,13 +14,12 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include <arcan_math.h>
-#include <arcan_general.h>
+#include "platform_types.h"
+#include "os_platform.h"
 
 /*
- * some mapping mechanisms other than arcan_map_resource
- * should be used for dealing with single resources larger
- * than this size.
+ * some mapping mechanisms other than arcan_map_resource should be used for
+ * dealing with single resources larger than this size.
  */
 #ifndef MAX_RESMAP_SIZE
 #define MAX_RESMAP_SIZE (1024 * 1024 * 40)

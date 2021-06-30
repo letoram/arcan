@@ -32,7 +32,7 @@ int show_use(struct arcan_shmif_cont* cont, const char* msg)
 #ifdef HAVE_PROBE
 		" protocol\t probe     \t set 'probe' mode\n"
 #endif
-
+		" protocol\t image     \t set 'image' mode\n"
 #ifdef HAVE_T2S
 		" protocol\t t2s       \t set 'text-to-speech' mode\n"
 #endif
@@ -64,6 +64,10 @@ int show_use(struct arcan_shmif_cont* cont, const char* msg)
 		"---------\t-----------\t-----------------\n"
 		"\n"
 #endif
+		" Image protocol does not take any arguments, it operates solely \n"
+		" in a service mode where incoming BCHUNK hints are decoded as they \n"
+		" come and re-rastered on density changes.\n"
+		"\n"
 		" Accepted text arguments:\n"
 		"   key   \t   value   \t   description\n"
 		"---------\t-----------\t-----------------\n"
@@ -102,18 +106,23 @@ int show_use(struct arcan_shmif_cont* cont, const char* msg)
 	return EXIT_FAILURE;
 }
 
-int wait_for_file(struct arcan_shmif_cont* cont, const char* extstr)
+int wait_for_file(
+	struct arcan_shmif_cont* cont, const char* extstr, char** idstr)
 {
 	int res = -1;
 	struct arcan_event ev;
 
+	if (idstr)
+		*idstr = NULL;
+
 	arcan_event bchunk = {
 		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
 		.category = EVENT_EXTERNAL,
-		.ext.bchunk = {.hint = true}
+		.ext.bchunk = {.hint = true, .input = true}
 	};
 	snprintf((char*)bchunk.ext.bchunk.extensions,
 		COUNT_OF(bchunk.ext.bchunk.extensions), "%s", extstr);
+	arcan_shmif_enqueue(cont, &bchunk);
 
 	while (arcan_shmif_wait(cont, &ev)){
 		if (ev.category != EVENT_TARGET)
@@ -122,8 +131,10 @@ int wait_for_file(struct arcan_shmif_cont* cont, const char* extstr)
 		if (ev.tgt.kind == TARGET_COMMAND_EXIT)
 			return 0;
 /* dup as the next call into shmif will close */
-		else if (ev.tgt.kind == TARGET_COMMAND_BCHUNK_OUT){
+		else if (ev.tgt.kind == TARGET_COMMAND_BCHUNK_IN){
 			res = arcan_shmif_dupfd(ev.tgt.ioevs[0].iv, -1, true);
+			if (idstr)
+				*idstr = strdup(ev.tgt.message);
 			break;
 		}
 	}
@@ -160,6 +171,9 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 	if (strcasecmp(type, "text") == 0)
 		return decode_text(cont, args);
+
+	if (strcasecmp(type, "image") == 0)
+		return decode_image(cont, args);
 
 #ifdef HAVE_T2S
 	if (strcasecmp(type, "t2s") == 0)
