@@ -2728,6 +2728,10 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 				h = ev.tgt.ioevs[1].iv;
 			if (ev.tgt.ioevs[4].fv > 0.0001)
 				def.density = ev.tgt.ioevs[4].fv;
+			if (ev.tgt.ioevs[5].iv)
+				def.cell_w = ev.tgt.ioevs[5].iv;
+			if (ev.tgt.ioevs[6].iv)
+				def.cell_h = ev.tgt.ioevs[6].iv;
 		break;
 		case TARGET_COMMAND_OUTPUTHINT:
 			if (ev.tgt.ioevs[0].iv)

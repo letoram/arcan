@@ -888,6 +888,12 @@ struct arcan_shmif_initial {
 		uint8_t bg[3];
 		bool fg_set, bg_set;
 	} colors[36];
+
+/* pixel size for cell alignment, this is mainly intended for TUI clients
+ * but could also be useful for grid- based UI components in toolkits that
+ * support such controls (CAD/CAM) */
+	size_t cell_w;
+	size_t cell_h;
 };
 
 enum rhint_mask {

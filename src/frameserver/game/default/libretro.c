@@ -31,8 +31,6 @@
 #endif
 #include <arcan_shmif.h>
 
-#include <arcan_namespace.h>
-#include <arcan_resource.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 

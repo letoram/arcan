@@ -1,7 +1,10 @@
 /*
- * This needs decoupling from tsm_ still, and only rely on the tui-
- * exposed functions for making a copy of the active screen and the
- * copy buffer.
+ * This needs decoupling from tsm_ still, and only rely on the tui- exposed
+ * functions for making a copy of the active screen and the copy buffer.
+ *
+ * It also discards the index state for colors, blocking attempts at
+ * recoloring. This should only need to happen for the cells that we mark or
+ * otherwise annotate.
  */
 
 #include <unistd.h>
@@ -149,6 +152,14 @@ static void copywnd_mark_cell(
 {
 	tsm_symbol_t ch;
 	struct tui_screen_attr attr =	tsm_attr_at_cursor(c->screen, &ch);
+
+/* remove the indexed state */
+	if (attr.aflags & TUI_ATTR_COLOR_INDEXED){
+		arcan_tui_get_color(c, attr.bc[0], attr.bc);
+		arcan_tui_get_color(c, attr.fc[0], attr.fc);
+		attr.aflags &= ~TUI_ATTR_COLOR_INDEXED;
+	}
+
 	attr.bc[0] = color_palette[tag->color_index][0];
 	attr.bc[1] = color_palette[tag->color_index][1];
 	attr.bc[2] = color_palette[tag->color_index][2];
@@ -486,7 +497,7 @@ void arcan_tui_copywnd(struct tui_context* src, struct arcan_shmif_cont con)
 		.reset = copywnd_reset
 	};
 
-	ctx->tui = arcan_tui_setup(&con, NULL, &cbs, sizeof(cbs));
+	ctx->tui = arcan_tui_setup(&con, src, &cbs, sizeof(cbs));
 	if (!ctx->tui){
 		arcan_shmif_drop(&con);
 		close(ctx->iopipes[0]);
