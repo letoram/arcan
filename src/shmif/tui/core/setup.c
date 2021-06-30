@@ -227,6 +227,8 @@ static bool late_bind(
 	if (!res->ppcm){
 		if (init){
 			res->ppcm = init->density;
+			res->cell_w = init->cell_w;
+			res->cell_h = init->cell_h;
 		}
 		else
 			res->ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
