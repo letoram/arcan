@@ -356,6 +356,8 @@ enum ARCAN_TARGET_COMMAND {
  * if (seek_relative)
  *  ioevs[1].iv = y-axis: step 'n' logic steps (impl. defined size)
  *  ioevs[2].iv = x-axis: step 'n' logic steps (impl. defined size)
+ *  ioevs[3].fv = z-axis: step magnification (for 'zooming')
+ *
  * if (seek_absolute)
  *  ioevs[1].fv = y-axis: set content position (ignore : 0 <= n <= 1)
  *  ioevs[2].fv = x-axis: set content position (ignore : 0 <= n <= 1)

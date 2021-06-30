@@ -19,8 +19,8 @@
 #include <stdarg.h>
 #include <time.h>
 
-#include <arcan_math.h>
-#include <arcan_general.h>
+#include "platform_types.h"
+#include "platform.h"
 
 static char* tag_resleak = "resource_leak";
 

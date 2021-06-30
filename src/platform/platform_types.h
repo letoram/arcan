@@ -297,6 +297,7 @@ typedef struct {
 		char* ptr;
 		uint8_t* u8;
 	};
+	char zbyte; /* 'guarantees' ptr/u8 has a 0-byte end */
 	size_t sz;
 	bool mmap;
 } map_region;
