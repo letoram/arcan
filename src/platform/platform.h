@@ -215,6 +215,13 @@ int platform_device_pollfd();
 void platform_device_init();
 
 /*
+ * Used by the conductor to determine the dominant clock to use for
+ * scheduling. The cost_us is an estimate of the overhead of a timesleep
+ * or other yield- like actions. In time.c
+ */
+struct platform_timing platform_hardware_clockcfg();
+
+/*
  * Support function for implementing threaded platform devices.
  * This will return a non-blocking read-end of a pipe where arcan_events
  * can be read from.

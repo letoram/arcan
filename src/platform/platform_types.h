@@ -398,4 +398,9 @@ enum arcan_namespaces {
 	RESOURCE_SYS_ENDM = 2048
 };
 
+struct platform_timing {
+	bool tickless;
+	unsigned cost_us;
+};
+
 #endif
