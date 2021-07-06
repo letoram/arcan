@@ -686,6 +686,10 @@ int arcan_conductor_run(arcan_tick_cb tick)
 	return exit_code;
 }
 
+/* We arrive here when the video platform decides that the system should behave
+ * like there is a synchronization period to respect, but leaves it up to us
+ * to decide how to clock and interleave. Left sets the number of milliseconds
+ * that should be 'burnt' for the synch signal to be complete. */
 void arcan_conductor_fakesynch(uint8_t left)
 {
 	int real_left = left;
@@ -693,7 +697,12 @@ void arcan_conductor_fakesynch(uint8_t left)
 	TRACE_MARK_ENTER("conductor", "synchronization",
 		TRACE_SYS_SLOW, 0, left, "fake synch");
 
-	while ((step = arcan_conductor_yield(NULL, 0)) != -1 && left > step){
+/* Some platforms have a high cost for sleep / yield operations and the overhead
+ * alone might eat up what is actually left in the timing buffer */
+	struct platform_timing timing = platform_hardware_clockcfg();
+	size_t sleep_cost = !timing.tickless * (timing.cost_us / 1000);
+
+	while ((step = arcan_conductor_yield(NULL, 0)) != -1 && left > step + sleep_cost){
 		arcan_timesleep(step);
 		left -= step;
 	}
