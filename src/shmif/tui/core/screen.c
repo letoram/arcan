@@ -380,12 +380,12 @@ void tui_screen_resized(struct tui_context* tui)
 
 /* if the number of cells has actually changed, we need to propagate */
 	if (cols != tui->cols || rows != tui->rows){
-		tui->cols = cols;
-		tui->rows = rows;
-
 		if (tui->handlers.resize)
 			tui->handlers.resize(tui,
 				tui->acon.w, tui->acon.h, cols, rows, tui->handlers.tag);
+
+		tui->cols = cols;
+		tui->rows = rows;
 
 		tsm_screen_resize(tui->screen, cols, rows);
 		resize_cellbuffer(tui);
