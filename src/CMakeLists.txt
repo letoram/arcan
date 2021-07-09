@@ -109,6 +109,8 @@ if (NOT DEFINED ENGINE_BUILDTAG)
 		set(ENGINE_BUILDTAG arcan-relukn-${VERSION})
 	endif()
 endif()
+set(SOURCE_TAG ${ENGINE_BUILDTAG})
+set(ENGINE_BUILDTAG "")
 
 set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_READ WORLD_READ)
 set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
@@ -137,7 +139,6 @@ else()
 
 	# we can remove some of this cruft when 'buntu LTS gets ~3.0ish
 	option(DISABLE_JIT "Don't use the luajit-5.1 VM (if found)" OFF)
-	option(NO_FSRV "Disable building/launching frameservers" OFF)
 	option(STATIC_SQLite3 "Use SQLite3 Amalgamation" OFF)
 	option(STATIC_FREETYPE "Use static Freetype (external/git folder)" OFF)
 	option(STATIC_OPENAL "Use static OpenAL (external/git folder)" OFF)
@@ -181,7 +182,6 @@ else()
 	amsg("${CL_YEL}\t-DENABLE_LWA=${CL_GRN}[Off|On]${CL_RST} - Build LWA Arcan client (nesting support)")
 	amsg("${CL_YEL}\t-DDISABLE_JIT=${CL_GRN}[Off|On]${CL_RST} - Don't Link with luajit51 (even if found)")
 	amsg("${CL_YEL}\t-DBUILTIN_LUA=${CL_GRN}[Off|On]${CL_RST} - Static build lua51 (with disable_jit)")
-	amsg("${CL_YEL}\t-DNO_FSRV=${CL_GRN}[Off|On]${CL_RST} - Build Arcan without support for frameservers")
 	amsg("${CL_YEL}\t-DSHMIF_DISABLE_DEBUGIF=${CL_GRN}[Off|On]${CL_RST} - Remove server- controlled debug layer")
 	amsg("")
 	amsg("${CL_WHT}Frameserver flags:${CL_RST}")
@@ -538,12 +538,6 @@ else()
 				APPEND PROPERTY COMPILE_FLAGS -msse3)
 		endif()
 	endif()
-
-	# can we get sane literal concatenation one day?
-	set(PFT ${VIDEO_PLATFORM}-${AGP_PLATFORM}-${AUDIO_PLATFORM}-${INPUT_PLATFORM})
-	set(LWA_BUILDTAG ${ENGINE_BUILDTAG}-LWA-${LUA_TAG}-${DISTR_TAG})
-	set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-${PFT}-${LUA_TAG}-${DISTR_TAG})
-	unset(PFT)
 endif()
 
 #
@@ -570,8 +564,6 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
  else()
 	message(FATAL_ERROR "${CL_RED}Unsupported OS(${CMAKE_SYSTEM_NAME}) detected, abandon ship!${CL_RST}")
 endif()
-
-set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-${CMAKE_SYSTEM_NAME})
 
 if (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client")
 	set(AGP_PLATFORM "stub")
@@ -616,19 +608,7 @@ if (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client")
 
 	set(BIN_INSTALL)
 else()
-	if (NO_FSRV)
-		set(FSRV_DISABLE DISABLE_FRAMESERVERS)
-		amsg("${CL_YEL}frameservers\t${CL_RED}disabled${CL_RST}")
-	else()
-		add_subdirectory(frameserver)
-	endif()
-
-	set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c
-		APPEND PROPERTY COMPILE_DEFINITIONS
-		ARCAN_BUILDVERSION=\"${ENGINE_BUILDTAG}\"
-		ARCAN_LWAVERSION=\"${LWA_BUILDTAG}\"
-		${FSRV_DISABLE}
-	)
+	add_subdirectory(frameserver)
 
 	if (EXISTS ${EXTERNAL_SRC_DIR}/git/openal)
 		if(ENABLE_LWA AND LWA_PLATFORM_STR)
@@ -658,10 +638,12 @@ else()
 	string(STRIP ${FRAMESERVER_MODESTRING} FRAMESERVER_MODESTRING)
 	endif()
 
+	set(PLATFORM_BUILDTAG ${VIDEO_PLATFORM}-${AGP_PLATFORM}-${AUDIO_PLATFORM}-${INPUT_PLATFORM}-${LUA_TAG}-${DISTR_TAG})
 	target_include_directories(arcan PRIVATE ${INCLUDE_DIRS})
 	target_compile_definitions(arcan PRIVATE
 		${ARCAN_DEFINITIONS}
 		${ARCAN_NOLWA_DEFINITIONS}
+		ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${PLATFORM_BUILDTAG}-${CMAKE_SYSTEM_NAME}\"
 		FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
 	)
 
@@ -727,8 +709,12 @@ else()
 			add_dependencies(arcan_sdl ${MAIN_DEPS})
 		endif()
 		target_include_directories(arcan_sdl PRIVATE ${INCLUDE_DIRS})
+
+		set(PLATFORM_BUILDTAG sdl2-${AGP_PLATFORM}-sdl2-sdl2-${LUA_TAG}-${DISTR_TAG})
 		target_compile_definitions(arcan_sdl PRIVATE
-			${ARCAN_DEFINITIONS} ${ARCAN_NOLWA_DEFINITIONS}
+			${ARCAN_DEFINITIONS}
+			${ARCAN_NOLWA_DEFINITIONS}
+			ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${PLATFORM_BUILDTAG}-${CMAKE_SYSTEM_NAME}\"
 			FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
 		)
 		target_link_libraries(arcan_sdl
@@ -768,9 +754,12 @@ else()
 			add_dependencies(arcan_headless ${MAIN_DEPS})
 		endif()
 		target_include_directories(arcan_headless PRIVATE ${INCLUDE_DIRS})
+
+		set(PLATFORM_BUILDTAG headless-${AGP_PLATFORM}-${AUDIO_PLATFORM}-headless-${LUA_TAG}-${DISTR_TAG})
 		target_compile_definitions(arcan_headless PRIVATE
 			${ARCAN_DEFINITIONS} ${ARCAN_NOLWA_DEFINITIONS} ARCAN_HEADLESS
 			FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
+			ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${PLATFORM_BUILDTAG}-${CMAKE_SYSTEM_NAME}\"
 		)
 		target_link_libraries(arcan_headless
 			${STDLIB} ${ARCAN_LIBRARIES} ${VIDEO_LIBRARIES} ${OPENAL_LIBRARY}
