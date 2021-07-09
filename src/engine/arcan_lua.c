@@ -13133,11 +13133,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalstr(ctx, "SHADER_LANGUAGE", agp_shader_language());
 	arcan_lua_setglobalstr(ctx, "FRAMESERVER_MODES", arcan_frameserver_atypes());
 	arcan_lua_setglobalstr(ctx, "APPLID", arcan_appl_id());
-#ifdef ARCAN_LWA
-	arcan_lua_setglobalstr(ctx, "API_ENGINE_BUILD", ARCAN_LWAVERSION);
-#else
 	arcan_lua_setglobalstr(ctx, "API_ENGINE_BUILD", ARCAN_BUILDVERSION);
-#endif
 
 	arcan_process_title(arcan_appl_id());
 
