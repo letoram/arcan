@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <time.h>
 #include <math.h>
+#include <unistd.h>
 
 #include <stdint.h>
 #include <stdbool.h>
