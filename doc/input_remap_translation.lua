@@ -11,7 +11,7 @@
 -- a mapping.
 --
 -- The *devid* is provided by input devices and is thus discovered dynamically,
--- but it can also be indirectly probed by sweeping negative indices in thew
+-- but it can also be indirectly probed by sweeping negative indices in the
 -- way shown in the example further below.
 --
 -- The *action* can be one out of:

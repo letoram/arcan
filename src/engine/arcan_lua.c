@@ -7068,13 +7068,8 @@ static int videodisplay(lua_State* ctx)
 
 /* add options */
 		if (lua_type(ctx, 3) == LUA_TTABLE){
-			if (lua_type(ctx, -1) == LUA_TNUMBER){
-				opts.vrr = lua_tonumber(ctx, -1);
-			}
-			lua_pop(ctx, 1);
-
-			/* get "vrr" */
-			/* get "quality" */
+			opts.vrr = intblstr(ctx, 3, "vrr") != NULL;
+			opts.direct_out = intblstr(ctx, 3, "direct") != NULL;
 		}
 		lua_pushboolean(ctx, platform_video_set_mode(id, mode, opts));
 		LUA_ETRACE("video_displaymodes", NULL, 1);
@@ -7205,7 +7200,6 @@ static int inputremaptranslation(lua_State* ctx)
 		act != EVENT_TRANSLATION_REMAP){
 		arcan_fatal("input_remap_translation() - unknown op: %d\n", act);
 	}
-
 
 	int ttop = lua_gettop(ctx);
 	const char* arr[ttop-2];
