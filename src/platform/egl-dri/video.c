@@ -1992,15 +1992,19 @@ static int setup_node_gbm(int devind,
 	char* rdev = drmGetRenderDeviceNameFromFd(node->draw_fd);
 	if (rdev){
 		debug_print("derived render-node: %s", rdev);
-		setenv("ARCAN_RENDER_NODE", rdev, 1);
+		node->client_meta.fd = open(rdev, O_RDWR | O_CLOEXEC);
+		if (-1 != node->client_meta.fd)
+			setenv("ARCAN_RENDER_NODE", rdev, 1);
 		free(rdev);
 	}
-/* assume default */
-	else {
+
+/* If this fails for some reason (e.g. libdrm packaging on OpenBSD, then
+ * try to fallback to a hardcoded default */
+	if (-1 == node->client_meta.fd){
 		setenv("ARCAN_RENDER_NODE", pbuf, 1);
+		node->client_meta.fd = open(pbuf, O_RDWR | O_CLOEXEC);
 	}
 
-	node->client_meta.fd = open(pbuf, O_RDWR | O_CLOEXEC);
 	return 0;
 }
 
@@ -3375,16 +3379,7 @@ static bool setup_cards_db(int w, int h)
  */
 static bool setup_cards_basic(int w, int h)
 {
-/*
- * on OpenBSD etc. we have a different path, /dev/drm0
- */
-#ifndef VDEV_GLOB
-#ifdef __OpenBSD__
-#define DEVICE_PATH "/dev/drm%zu"
-#else
 #define DEVICE_PATH "/dev/dri/card%zu"
-#endif
-#endif
 
 /* sweep as there might be more GPUs but without any connected
  * display, indicating that it's not a valid target for autodetect. */
@@ -3408,6 +3403,8 @@ static bool setup_cards_basic(int w, int h)
 				close(fd);
 			}
 		}
+		else
+			debug_print("could not open %s - %s", buf, strerror(errno));
 	}
 
 	/* in the no-dealloc state we still want to remember which CRTCs etc were
@@ -3812,7 +3809,7 @@ void platform_video_synch(
 	struct dispout* d;
 	while (egl_dri.destroy_pending){
 		flush_display_events(30, true);
-		int ind = ffsll(egl_dri.destroy_pending) - 1;
+		int ind = __builtin_ffsll(egl_dri.destroy_pending) - 1;
 		debug_print("synch, %d - destroy %d", ind);
 		disable_display(&displays[ind], true);
 		egl_dri.destroy_pending &= ~(1 << ind);
@@ -3830,8 +3827,11 @@ void platform_video_synch(
  * or display events causing appl to reissue scan causing events causing new
  * scans.
  */
-	if (egl_dri.scan_pending && abs(
-		arcan_timemillis() - egl_dri.last_card_scan) > CARD_RESCAN_DELAY_MS){
+	unsigned long long ts = arcan_timemillis();
+
+	if (egl_dri.scan_pending &&
+		((ts < egl_dri.last_card_scan) ||
+		 (ts - egl_dri.last_card_scan) > CARD_RESCAN_DELAY_MS)){
 		egl_dri.scan_pending = false;
 		egl_dri.last_card_scan = arcan_timemillis();
 
