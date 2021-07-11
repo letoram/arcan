@@ -251,6 +251,10 @@ typedef int acoord;
 #define LAUNCH_INTERNAL 1
 #endif
 
+#ifndef LUACTX_OPEN_FILES
+#define LUACTX_OPEN_FILES 64
+#endif
+
 /*
  * disable support for all builtin frameservers
  * which removes most (launch_target and target_alloc remain)
@@ -300,14 +304,30 @@ enum arcan_cb_source {
 	CB_SOURCE_PREROLL     = 4
 };
 
+struct io_job;
+struct io_job {
+	char* buf;
+	size_t sz;
+	size_t ofs;
+	struct io_job* next;
+};
+
 struct nonblock_io {
+/* in line-buffered mode, this is used for input */
 	char buf[4096];
 	bool eofm;
 	off_t ofs;
 	int fd;
+
+	struct io_job* out_queue;
+	intptr_t write_handler; /* callback when queue flushed */
+
 	mode_t mode;
 	char* unlink_fn;
 	char* pending;
+	intptr_t data_handler; /* callback on_data_in */
+
+	intptr_t ref; /* :self reference to block GC */
 };
 
 static struct {
@@ -343,6 +363,12 @@ static struct {
 	uint8_t* trace_buffer;
 	size_t trace_buffer_sz;
 	intptr_t trace_cb;
+
+/* open_nonblock and similar functions need to register their fds here as they
+ * are force-closed on context shutdown, this is necessary with crash recovery
+ * and scripting errors. The limit is set based on the same open limit imposed
+ * by arcan_event_ sources. */
+	struct nonblock_io open_fds[LUACTX_OPEN_FILES];
 } luactx = {0};
 
 extern char* _n_strdup(const char* instr, const char* alt);
@@ -1734,12 +1760,21 @@ static int bufread(lua_State* ctx, struct nonblock_io* ib, bool nonbuffered)
 	if ( (nr = read(ib->fd, ib->buf + ib->ofs, buf_sz - ib->ofs - 1)) > 0)
 		ib->ofs += nr;
 
-	if (nr == 0 ||
-		(-1 == nr && errno != EINTR && errno != EAGAIN)){
-		lua_pushlstring(ctx, ib->buf, ib->ofs);
-		lua_pushboolean(ctx, false);
-		ib->eofm = true;
-		ib->ofs = 0;
+	if (nr == 0 || (-1 == nr && errno != EINTR && errno != EAGAIN)){
+
+/* reading might still fail on pipe with 0 returned, special case it */
+		struct pollfd pfd = {.fd = ib->fd, .events = POLLERR | POLLHUP};
+		if (nr == 0 && 1 == poll(&pfd, 1, 0)){
+			lua_pushnil(ctx);
+			lua_pushboolean(ctx, false);
+		}
+		else {
+			lua_pushlstring(ctx, ib->buf, ib->ofs);
+			lua_pushboolean(ctx, true);
+			ib->ofs = 0;
+			ib->eofm = true;
+		}
+
 		return 2;
 	}
 
@@ -1764,18 +1799,87 @@ static int bufread(lua_State* ctx, struct nonblock_io* ib, bool nonbuffered)
 	}
 }
 
-static int nbio_close(struct nonblock_io** ib)
+static void drop_all_jobs(struct nonblock_io* ib)
 {
-	if (-1 != (*ib)->fd)
-		close((*ib)->fd);
-
-	if ((*ib)->unlink_fn){
-		unlink((*ib)->unlink_fn);
-		arcan_mem_free((*ib)->unlink_fn);
+	struct io_job* job = ib->out_queue;
+	while (job){
+		struct io_job* cur = job;
+		job = job->next;
+		arcan_mem_free(cur->buf);
+		arcan_mem_free(cur);
 	}
-	free((*ib)->pending);
-	free(*ib);
-	*ib = NULL;
+	ib->out_queue = NULL;
+}
+
+static int process_write(lua_State* ctx, struct nonblock_io* ib)
+{
+	struct io_job* job = ib->out_queue;
+
+	while (job){
+		ssize_t nw = write(ib->fd, &job->buf[job->ofs], job->sz - job->ofs);
+		if (-1 == nw){
+			if (nw == EINTR || nw == EAGAIN)
+				return 0;
+			return -1;
+		}
+
+		job->ofs += nw;
+
+/* slide on completion */
+		if (job->ofs == job->sz){
+			ib->out_queue = job->next;
+			arcan_mem_free(job->buf);
+			arcan_mem_free(job);
+			job = ib->out_queue;
+		}
+	}
+
+/* when no more jobs, return true -> trigger callback */
+	return 1;
+}
+
+static int nbio_close(lua_State* ctx, struct nonblock_io** ibb)
+{
+	struct nonblock_io* ib = *ibb;
+	int fd = ib->fd;
+	if (fd > 0)
+		close(fd);
+
+/* another safety option would be to have a rename_lock and rename_to stage for
+ * atomic commit / swap on close to avoid possible partial outputs from queued
+ * data handlers */
+	if (ib->unlink_fn){
+		unlink(ib->unlink_fn);
+		arcan_mem_free(ib->unlink_fn);
+	}
+
+	free(ib->pending);
+	drop_all_jobs(ib);
+
+	if (ib->ref)
+		luaL_unref(ctx, LUA_REGISTRYINDEX, ib->ref);
+
+	if (ib->data_handler)
+		luaL_unref(ctx, LUA_REGISTRYINDEX, ib->data_handler);
+
+	if (ib->write_handler)
+		luaL_unref(ctx, LUA_REGISTRYINDEX, ib->write_handler);
+
+/* no-op if nothing registered */
+	arcan_event_del_source(arcan_event_defaultctx(), fd, NULL);
+
+	free(ib);
+	*ibb = NULL;
+
+/* remove the entry, close will be called from nbio_close, and any current
+ * event handlers and triggers will be removed through drop_all_jobs */
+	for (size_t i = 0; i < LUACTX_OPEN_FILES; i++){
+		if (luactx.open_fds[i].fd == fd){
+			luactx.open_fds[i] = (struct nonblock_io){0};
+			break;
+		}
+	}
+
 	return 0;
 }
 
@@ -1789,8 +1893,55 @@ static int nbio_closer(lua_State* ctx)
 	if (!(*ib))
 		LUA_ETRACE("open_nonblock:close", "already closed", 0);
 
-	nbio_close(ib);
+	nbio_close(ctx, ib);
+
 	LUA_ETRACE("open_nonblock:close", NULL, 0);
+}
+
+static int nbio_datahandler(lua_State* ctx)
+{
+	LUA_TRACE("open_nonblock:data_handler");
+	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIO");
+	if (!(*ib))
+		LUA_ETRACE("open_nonblock:data_handler", "already closed", 0);
+
+/* always remove the last known handler refs */
+	if ((*ib)->data_handler){
+		luaL_unref(ctx, LUA_REGISTRYINDEX, (*ib)->data_handler);
+		(*ib)->data_handler = 0;
+	}
+
+/* the same goes for the reference used to tag events */
+	intptr_t out;
+	if (arcan_event_del_source(arcan_event_defaultctx(), (*ib)->fd, &out)){
+		luaL_unref(ctx, LUA_REGISTRYINDEX, out);
+	}
+
+/* update the handler field in ib, then we get the reference to ib and
+ * send to the source - but also remove any previous one */
+	if (lua_type(ctx, 2) == LUA_TFUNCTION){
+		intptr_t ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
+		(*ib)->data_handler = ref;
+
+/* now get the reference to the userdata and attach that to the event-source,
+ * this is so that we can later trigger on the event and access the userdata */
+		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
+
+/* luaL_ pops the stack so make sure it is balanced */
+		lua_pushvalue(ctx, 1);
+		lua_pushvalue(ctx, 1);
+
+		arcan_event_add_source(arcan_event_defaultctx(),
+			(*ib)->fd, (*ib)->write_handler ? O_RDWR : O_RDONLY, ref);
+	}
+	else if (lua_type(ctx, 2) == LUA_TNIL){
+/* do nothing */
+	}
+	else {
+		arcan_fatal("open_nonblock:data_handler "
+			"argument error, expected function or nil");
+	}
+	return 0;
 }
 
 static int nbio_socketclose(lua_State* ctx)
@@ -1800,7 +1951,7 @@ static int nbio_socketclose(lua_State* ctx)
 	if (!(*ib))
 		LUA_ETRACE("open_nonblock:close", "already closed", 0);
 
-	nbio_close(ib);
+	nbio_close(ctx, ib);
 	LUA_ETRACE("open_nonblock:close", NULL, 0);
 }
 
@@ -1862,8 +2013,8 @@ static int nbio_write(lua_State* ctx)
 	if (iw->mode == O_RDONLY)
 		LUA_ETRACE("open_nonblock:write", "invalid mode (r) for write", 0);
 
-	const char* buf = luaL_checkstring(ctx, 2);
-	size_t len = strlen(buf);
+	size_t len;
+	const char* buf = luaL_checklstring(ctx, 2, &len);
 	off_t of = 0;
 
 /* special case for FIFOs that aren't hooked up on creation */
@@ -1883,28 +2034,42 @@ static int nbio_write(lua_State* ctx)
 		}
 	}
 
-/* non-block, so don't allow too many attempts, but we push the
- * responsibility of buffering to the caller */
-	int retc = 5;
-	bool rc = true;
-	while (retc && (len - of)){
-		size_t nw = write(iw->fd, buf + of, len - of);
+/* direct non-block output mode (legacy) */
+	if (lua_type(ctx, 3) != LUA_TFUNCTION && !iw->out_queue){
+		int retc = 5;
+		bool rc = true;
+		while (retc && (len - of)){
+			size_t nw = write(iw->fd, buf + of, len - of);
 
-		if (-1 == nw){
-			if (errno == EAGAIN || errno == EINTR){
-				retc--;
-				continue;
+			if (-1 == nw){
+				if (errno == EAGAIN || errno == EINTR){
+					retc--;
+					continue;
+				}
+				rc = false;
+				break;
 			}
-			rc = false;
-			break;
+			else
+				of += nw;
 		}
-		else
-			of += nw;
+
+		lua_pushnumber(ctx, of);
+		lua_pushboolean(ctx, rc);
+		LUA_ETRACE("open_nonblock:write", NULL, 2);
 	}
 
-	lua_pushnumber(ctx, of);
-	lua_pushboolean(ctx, rc);
+/* deferred / callback driven mode, new handler? */
+	if (lua_type(ctx, 3) == LUA_TFUNCTION){
+		if (iw->write_handler){
 
+		}
+	}
+
+	arcan_event_add_source(arcan_event_defaultctx(),
+		iw->fd, iw->data_handler ? O_RDWR : O_RDONLY, iw->ref);
+
+	lua_pushnumber(ctx, len);
+	lua_pushboolean(ctx, true);
 	LUA_ETRACE("open_nonblock:write", NULL, 2);
 }
 
@@ -1935,7 +2100,7 @@ static int readrawresource(lua_State* ctx)
 		LUA_ETRACE("read_rawresource", NULL, 0);
 	}
 
-	if (luactx.rawres.fd < 0){
+	if (luactx.rawres.fd <= 0){
 		LUA_ETRACE("read_rawresource", "no open file", 0);
 	}
 
@@ -5177,6 +5342,7 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			if (grabapplfunction(ctx, "input_raw", 9)){
 				append_iotable(ctx, &ev->io);
 				alua_call(ctx, 1, 1, LINE_TAG":event:input_raw");
+
 				if (lua_type(ctx, -1) == LUA_TBOOLEAN && lua_toboolean(ctx, -1)){
 					consumed = true;
 				}
@@ -5192,7 +5358,72 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		return true;
 	}
 
-/* reject all non-input events if sent here out of loop */
+	if (ev->category == EVENT_SYSTEM){
+		struct arcan_evctx* evctx = arcan_event_defaultctx();
+
+		if (ev->sys.kind == EVENT_SYSTEM_DATA_IN){
+			if (ev->sys.data.otag == LUA_NOREF)
+				return true;
+
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->sys.data.otag);
+			struct nonblock_io** ibb = luaL_checkudata(ctx, -1, "nonblockIO");
+			struct nonblock_io* ib = *ibb;
+			lua_pop(ctx, 1);
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ib->data_handler);
+			intptr_t ch = ib->data_handler;
+			ib->data_handler = 0;
+
+/* disarm the event source listener until re-armed through a new data_handler
+ * unless there is also a write handler alive and queued */
+			arcan_event_del_source(evctx, ib->fd, NULL);
+			if (ib->write_handler)
+				arcan_event_add_source(evctx, ib->fd, O_WRONLY, ev->sys.data.otag);
+
+			lua_pushboolean(ctx, arcan_conductor_gpus_locked());
+			alua_call(ctx, 1, 0, LINE_TAG":data_handler_cb");
+
+/* and since we require re-arming, remove the old references, unless there
+ * is a write_handler alive */
+			luaL_unref(ctx, LUA_REGISTRYINDEX, ch);
+			luaL_unref(ctx, LUA_REGISTRYINDEX, ev->sys.data.otag);
+		}
+		else if (ev->sys.kind == EVENT_SYSTEM_DATA_OUT){
+			if (ev->sys.data.otag == LUA_NOREF)
+				return true;
+
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->sys.data.otag);
+			struct nonblock_io** ibb = luaL_checkudata(ctx, -1, "nonblockIO");
+			struct nonblock_io* ib = *ibb;
+			lua_pop(ctx, 1);
+
+			if (!ib->write_handler || !ib->out_queue)
+				return true;
+
+/* all pending writes are done, notify and check if there is still a job */
+			int status = process_write(ctx, ib);
+			if (status != 0){
+				lua_rawgeti(ctx, LUA_REGISTRYINDEX, ib->write_handler);
+				lua_pushboolean(ctx, status == 1);
+				lua_pushboolean(ctx, arcan_conductor_gpus_locked());
+				alua_call(ctx, 2, 0, LINE_TAG":write_handler_cb");
+
+/* remove the current event-source, and if there is a data handler still around
+ * we need to re-register but fire only for read events while keeping the
+ * reference mapping between nonblock_io lua-space job and event tag */
+				if (!ib->out_queue){
+					arcan_event_del_source(arcan_event_defaultctx(), ib->fd, NULL);
+					if (ib->data_handler)
+						arcan_event_add_source(
+							arcan_event_defaultctx(), ib->fd, O_RDONLY, ev->sys.data.otag);
+					else
+						luaL_unref(ctx, LUA_REGISTRYINDEX, ev->sys.data.otag);
+				}
+			}
+		}
+		return true;
+	}
+
+	/* all other events are prohibited while gpus are locked */
 	if (arcan_conductor_gpus_locked()){
 		return false;
 	}
@@ -5434,6 +5665,7 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				return true;
 
 /* function, source, status */
+			printf("terminated lookup function: %lld\n", (intptr_t) ev->fsrv.otag);
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 			lua_pushvid(ctx, ev->fsrv.video);
 			lua_newtable(ctx);
@@ -7724,14 +7956,39 @@ static int warning(lua_State* ctx)
 
 void arcan_lua_shutdown(lua_State* ctx)
 {
-/* deal with:
- * luactx : rawres, lastsrc, cb_source_kind, db_source_tag, last_segreq,
- * pending_socket_label, pending_socket_descr */
 	TRACE_MARK_ONESHOT("scripting", "shutdown", TRACE_SYS_DEFAULT, 0, 0, "");
 	arcan_trace_setbuffer(NULL, 0, NULL);
 	if (luactx.got_trace_buffer){
 		finish_trace_buffer(ctx);
 	}
+
+/* make sure there are no registered event sources that would remain open
+ * without any interpreter-space accessible recipients */
+	for (size_t i = 0; i < LUACTX_OPEN_FILES; i++){
+		struct nonblock_io* ent = &luactx.open_fds[i];
+		if (ent->fd > 0){
+			arcan_event_del_source(arcan_event_defaultctx(), ent->fd, NULL);
+			close(ent->fd);
+		}
+		drop_all_jobs(ent);
+		luactx.open_fds[i] = (struct nonblock_io){0};
+	}
+
+/* and special case the open_rawresource (which would be nice to one day
+ * get rid off..) */
+	if (luactx.rawres.fd > 0){
+		close(luactx.rawres.fd);
+		luactx.rawres.fd = -1;
+	}
+
+/* only some properties are reset in order for certain state to carry over
+ * between system_collapse calls and crash/script error recovery code */
+	luactx.rawres = (struct nonblock_io){0};
+	luactx.lastsrc = NULL;
+	luactx.last_segreq = NULL;
+	luactx.pending_socket_label = NULL;
+	luactx.pending_socket_descr = 0;
+
 	lua_close(ctx);
 }
 
@@ -8245,7 +8502,6 @@ static int targethandler(lua_State* ctx)
 
 /* takes care of the type checking or setting an empty ref */
 	intptr_t ref = find_lua_callback(ctx);
-
 	fsrv->tag = ref;
 
 #ifndef offsetof
@@ -8255,7 +8511,7 @@ static int targethandler(lua_State* ctx)
 
 	arcan_event dummy;
 
-	assert(sizeof(dummy.fsrv.otag) == sizeof(ref));
+	_Static_assert(sizeof(dummy.fsrv.otag) == sizeof(ref));
 
 /* for the already pending events referring to the specific frameserver,
  * rewrite the otag to match that of the new function */
@@ -8766,7 +9022,7 @@ static int targetseek(lua_State* ctx)
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	float val = luaL_checknumber(ctx, 2);
 	bool relative = luaL_optbnumber(ctx, 3, true);
-	bool time = luaL_optnumber(ctx, 4, true);
+	bool time = luaL_optbnumber(ctx, 4, true);
 
 	vfunc_state* state = arcan_video_feedstate(tgt);
 
@@ -12555,6 +12811,8 @@ static const luaL_Reg resfuns[] = {
 	lua_setfield(ctx, -2, "write");
 	lua_pushcfunction(ctx, nbio_closer);
 	lua_setfield(ctx, -2, "__gc");
+	lua_pushcfunction(ctx, nbio_datahandler);
+	lua_setfield(ctx, -2, "data_handler");
 	lua_pushcfunction(ctx, nbio_closer);
 	lua_setfield(ctx, -2, "close");
 	lua_pop(ctx, 1);
@@ -13000,6 +13258,10 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"SHADER_DOMAIN_RENDERTARGET_HARD", 2},
 {"ROTATE_RELATIVE", CONST_ROTATE_RELATIVE},
 {"ROTATE_ABSOLUTE", CONST_ROTATE_ABSOLUTE},
+{"SEEK_RELATIVE", 1},
+{"SEEK_ABSOLUTE", 0},
+{"SEEK_TIME", 1},
+{"SEEK_SPACE", 0},
 {"TEX_REPEAT", ARCAN_VTEX_REPEAT},
 {"TEX_CLAMP", ARCAN_VTEX_CLAMP},
 {"FILTER_NONE", ARCAN_VFILTER_NONE},

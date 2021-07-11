@@ -5983,9 +5983,8 @@ bool arcan_video_prepare_external(bool keep_events)
 
 /* this still leaves rendertargets alive, normally this is ok but if the
  * platform swaps gpus, contexts whatever in the meanwhile, it is not! */
-
 	if (!keep_events)
-		arcan_event_deinit(arcan_event_defaultctx());
+		arcan_event_deinit(arcan_event_defaultctx(), false);
 
 	platform_video_prepare_external();
 
