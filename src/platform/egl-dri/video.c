@@ -83,6 +83,9 @@ struct shmifext_color_buffer {
 
 #include "egl_gbm_helper.h"
 
+static bool lookup_drm_propval(int fd,
+	uint32_t oid, uint32_t otype, const char* name, uint64_t* val, bool id);
+
 static const char* egl_errstr();
 static void* lookup(void* tag, const char* sym, bool req)
 {
@@ -1222,11 +1225,19 @@ bool platform_video_set_mode(platform_display_id disp,
 		d->output_format = OUTPUT_DEFAULT;
 	}
 
-/* [FIX-VRR: enable Property on vrr value, check mapped object if prediction
- *  can be handled and forwarded/set properly */
+	uint64_t pid;
+	if (lookup_drm_propval(d->device->disp_fd,
+		d->display.crtc, DRM_MODE_OBJECT_CRTC, "type", &pid, true)){
+		debug_print("setting_vrr");
+		drmModeObjectSetProperty(
+			d->device->disp_fd, d->display.crtc, DRM_MODE_OBJECT_CRTC, pid, opts.vrr);
+	}
+	else
+		debug_print("vrr_ignored:missing_vrr_property");
+
+	d->force_compose = !opts.direct_out;
 
 /* ATOMIC test goes here */
-
 	debug_print("(%d) schedule mode switch to %zu * %zu", (int) disp,
 		d->display.mode.hdisplay, d->display.mode.vdisplay);
 
@@ -1341,6 +1352,21 @@ bool platform_video_get_display_gamma(
 	return rv;
 }
 
+static drmModePropertyPtr get_connector_property(
+	struct dispout* d, const char* name, size_t* i)
+{
+	for (; *i < d->display.con->count_props; *i++){
+		drmModePropertyPtr prop =
+			drmModeGetProperty(d->device->disp_fd, d->display.con->props[*i]);
+		if (!prop)
+			continue;
+		if (strcmp(prop->name, name) == 0)
+			return prop;
+		drmModeFreeProperty(prop);
+	}
+	return NULL;
+}
+
 static void fetch_edid(struct dispout* d)
 {
 	drmModePropertyPtr prop;
@@ -1356,14 +1382,18 @@ static void fetch_edid(struct dispout* d)
 		if (!prop)
 			continue;
 
-		if (!(prop->flags&DRM_MODE_PROP_BLOB) || strcmp(prop->name, "EDID") != 0)
+		if (!(prop->flags&DRM_MODE_PROP_BLOB) || strcmp(prop->name, "EDID") != 0){
+			drmModeFreeProperty(prop);
 			continue;
+		}
 
 		drmModePropertyBlobPtr blob = drmModeGetPropertyBlob(
 			d->device->disp_fd, d->display.con->prop_values[i]);
 
-		if (!blob || (int)blob->length <= 0)
+		if (!blob || (int)blob->length <= 0){
+			drmModeFreeProperty(prop);
 			continue;
+		}
 
 		if ((d->display.edid_blob = malloc(blob->length))){
 			d->display.blob_sz = blob->length;
@@ -1372,6 +1402,7 @@ static void fetch_edid(struct dispout* d)
 		}
 
 		drmModeFreePropertyBlob(blob);
+		drmModeFreeProperty(prop);
 	}
 }
 
@@ -2014,7 +2045,7 @@ static int setup_node_gbm(int devind,
  *   found if name matches modprob -> true:set_val
  */
 static bool lookup_drm_propval(int fd,
-	uint32_t oid, uint32_t otype, const char* name, uint64_t* val)
+	uint32_t oid, uint32_t otype, const char* name, uint64_t* val, bool id)
 {
 	drmModeObjectPropertiesPtr oprops =
 		drmModeObjectGetProperties(fd, oid, otype);
@@ -2025,7 +2056,12 @@ static bool lookup_drm_propval(int fd,
 			continue;
 
 		if (strcmp(name, mprops->name) == 0){
-			*val = oprops->prop_values[i];
+			if (id){
+				*val = mprops->prop_id;
+			}
+			else
+				*val = oprops->prop_values[i];
+
 			drmModeFreeObjectProperties(oprops);
 			drmModeFreeProperty(mprops);
 			return true;
@@ -2379,7 +2415,7 @@ static bool find_plane(struct dispout* d)
 
 		uint64_t val;
 		if (!lookup_drm_propval(d->device->disp_fd,
-			plane_res->planes[i], DRM_MODE_OBJECT_PLANE, "type", &val))
+			plane_res->planes[i], DRM_MODE_OBJECT_PLANE, "type", &val, false))
 			continue;
 
 /* NOTE: There are additional constraints for PRIMARY planes that don't
