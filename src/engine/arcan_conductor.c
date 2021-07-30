@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2019, Björn Ståhl
+ * Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in the arcan source repository.
  * Reference: https://arcan-fe.com
  * Description: The conductor is responsible for figuring out what to synch
@@ -55,9 +55,16 @@ void arcan_conductor_toggle_watchdog()
 
 /*
  * checklist:
- *  [ ] actual setup to realtime- plot the different timings and stages
- *      so it is easier (possible) to debug and evaluate the different strategies,
- *      for sake of comparison, chrome has a builtin viewer for a json format
+ *  [ ] Actual setup to realtime- plot the different timings and stages. This can
+ *      be done partially now in that the key sites are instrumented and can log
+ *      into a buffer accessible from Lua, but for faster/better realtime the
+ *      build should be patched to map those points to tracey.
+ *
+ *  [ ] dma-bufs are getting a sync_file API for better fencing which should be
+ *      added to the compose- eval ("can we finish the current set within the
+ *      time alotted"), and before that propagates, we should use the
+ *      pending-set part along with POLLIN on the dma-buf set to determine if
+ *      we should compose with the new set or the last-safe set.
  *
  *  [ ] parallelize PBO uploads
  *      (thought: test the systemic effects of not doing shm->gpu in process but
@@ -180,7 +187,7 @@ static void step_herd(int mode)
 
 static void internal_yield()
 {
-	arcan_timesleep(conductor.timestep);
+	arcan_event_poll_sources(arcan_event_defaultctx(), conductor.timestep);
 	TRACE_MARK_ONESHOT("conductor", "yield",
 		TRACE_SYS_DEFAULT, 0, conductor.timestep, "step");
 }
@@ -643,6 +650,8 @@ int arcan_conductor_run(arcan_tick_cb tick)
  */
 		arcan_video_pollfeed();
 		arcan_audio_refresh();
+		arcan_event_poll_sources(evctx, 0);
+
 		last_tickcount = conductor.tick_count;
 
 		TRACE_MARK_ENTER("conductor", "event",
@@ -703,7 +712,7 @@ void arcan_conductor_fakesynch(uint8_t left)
 	size_t sleep_cost = !timing.tickless * (timing.cost_us / 1000);
 
 	while ((step = arcan_conductor_yield(NULL, 0)) != -1 && left > step + sleep_cost){
-		arcan_timesleep(step);
+		arcan_event_poll_sources(arcan_event_defaultctx(), step);
 		left -= step;
 	}
 

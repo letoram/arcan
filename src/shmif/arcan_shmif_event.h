@@ -1182,7 +1182,6 @@ enum ARCAN_TARGET_SKIPMODE {
  * function when the non-blocking I/O state of a pollable descriptor gets to
  * pollin or pollout. */
 			struct {
-				bool input;
 				int fd;
 				intptr_t otag;
 			} data;

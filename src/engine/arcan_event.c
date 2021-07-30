@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2020, Björn Ståhl
+ * Copyright: Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description: The event-queue interface has gone through a lot of hacks
@@ -18,6 +18,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <sys/types.h>
+#include <poll.h>
 #include <errno.h>
 #include <math.h>
 #include <assert.h>
@@ -50,6 +51,8 @@ static arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
 static uint8_t eventfront = 0, eventback = 0;
 static int64_t epoch;
 
+/* basic context is just mapped on the static buffer, the reason for this
+ * construct is to share code with the event ring buffers in shmif */
 static struct arcan_evctx default_evctx = {
 	.eventbuf = eventbuf,
 	.eventbuf_sz = ARCAN_EVENT_QUEUE_LIM,
@@ -68,6 +71,16 @@ static struct arcan_evctx default_evctx = {
 /* set through environment variable to ensure we can shut down
  * cleanly based on a certain keybinding */
 static int panic_keysym = -1, panic_keymod = -1;
+
+/* fixed size 64 entries bitmap for dynamic event source tracking */
+struct evsrc_meta {
+	intptr_t tag;
+	mode_t mode;
+};
+
+static struct pollfd evsrc_pollset[64];
+static struct evsrc_meta evsrc_meta[64];
+static uint64_t evsrc_bitmap;
 
 arcan_evctx* arcan_event_defaultctx(){
 	return &default_evctx;
@@ -613,17 +626,16 @@ void arcan_bench_register_frame()
 	lastframe = ftime;
 }
 
-void arcan_event_deinit(arcan_evctx* ctx)
+void arcan_event_deinit(arcan_evctx* ctx, bool flush)
 {
 	platform_event_deinit(ctx);
 
-/*
- * Actually resetting the contents of the event queue is no longer a part of
- * the eventqueue as it would introduce possible event-loss in the cases where
- * we have an interrupt-driven event-deinit (VT switching) which would result
- * in events being silently dropped.
+/* This separation is to avoid some edge cases like VT switching causing events
+ * to be dropped even when there are dependencies such as key-down to key-up */
+	if (!flush)
+		return;
+
 	eventfront = eventback = 0;
- */
 }
 
 #ifdef _DEBUG
@@ -676,7 +688,6 @@ bool arcan_event_feed(struct arcan_evctx* ctx,
 					hnd(ev, 0);
 			break;
 
-/* this event category is never propagated to the scripting engine itself */
 			case EVENT_SYSTEM:
 				if (ev->sys.kind == EVENT_SYSTEM_EXIT){
 					ctx->state_fl |= EVSTATE_DEAD;
@@ -694,6 +705,102 @@ bool arcan_event_feed(struct arcan_evctx* ctx,
 		return arcan_event_feed(ctx, hnd, exit_code);
 	else
 		return true;
+}
+
+bool arcan_event_add_source(
+	struct arcan_evctx* ctx, int fd, mode_t mode, intptr_t otag)
+{
+	int mask = 0;
+	if (mode == O_RDWR)
+		mode = POLLIN | POLLOUT;
+	else if (mode == O_WRONLY)
+		mode = POLLOUT;
+	else if (mode == O_RDONLY)
+		mode = POLLIN;
+
+/* just update mode/tag? */
+	for (size_t i = 0; i < 64; i++)
+		if (evsrc_pollset[i].fd == fd){
+			evsrc_meta[i].mode = mode;
+			evsrc_meta[i].tag = otag;
+			return true;
+		}
+
+/* allocate new */
+	uint64_t i = __builtin_ffsll(~evsrc_bitmap);
+	if (!i)
+		return false;
+
+	i--;
+	evsrc_pollset[i].fd = fd;
+	evsrc_pollset[i].events = POLLERR | POLLHUP | mode;
+
+	evsrc_meta[i].mode = mode;
+	evsrc_meta[i].tag = otag;
+	evsrc_bitmap |= (uint64_t)1 << i;
+
+	return true;
+}
+
+void arcan_event_poll_sources(struct arcan_evctx* ctx, int timeout)
+{
+	ssize_t nelem = poll(evsrc_pollset, 64, timeout);
+	if (nelem <= 0){
+		if (timeout > 0)
+			arcan_timesleep(timeout);
+		return;
+	}
+
+	for (size_t i = 0; i < 64; i++){
+		struct pollfd* ent = &evsrc_pollset[i];
+		if (ent->fd <= 0 || !ent->revents)
+			continue;
+
+		struct arcan_event ev = (struct arcan_event){
+			.category = EVENT_SYSTEM,
+			.sys.data.fd = evsrc_pollset[i].fd,
+			.sys.data.otag = evsrc_meta[i].tag
+		};
+
+/* Note that we send IN/OUT even in the case of failure. This is to force the
+ * recipient to use normal error handling for read/write to react to a
+ * monitored source failing. */
+		if (ent->revents & POLLIN ||
+			((ent->revents & (POLLERR | POLLHUP)) && (ent->events & POLLIN))){
+				ev.sys.kind = EVENT_SYSTEM_DATA_IN;
+				arcan_event_denqueue(ctx, &ev);
+			}
+
+/* This is subtle - the events here go direct to drain. That means that
+ * infinitely many calls to add_source and del_source can happen between these
+ * two, possibly changing the otag being used to map to VM objects. Removing
+ * the source is save though, as the pollset is cleared when the source is
+ * removed, and this condition won't fire an extraneous event. */
+		if (ent->revents & POLLOUT ||
+			((ent->revents & (POLLERR | POLLHUP)) && (ent->events & POLLOUT))){
+			ev.sys.kind = EVENT_SYSTEM_DATA_OUT;
+			arcan_event_denqueue(ctx, &ev);
+		}
+	}
+}
+
+/* Remove a source previously added through add_source. Will return true if
+ * the source existed and set the last known otag in *out if provided. */
+bool arcan_event_del_source(struct arcan_evctx* ctx, int fd, intptr_t* out)
+{
+	for (uint64_t i = 0; i < 64; i++){
+		if (evsrc_pollset[i].fd == fd){
+			evsrc_pollset[i].fd = -1;
+			evsrc_bitmap &= ~((uint64_t)1 << i);
+			if (out)
+				*out = evsrc_meta[i].tag;
+			evsrc_meta[i] = (struct evsrc_meta){0};
+			evsrc_pollset[i] = (struct pollfd){0};
+			return true;
+		}
+	}
+
+	return false;
 }
 
 void arcan_event_setdrain(arcan_evctx* ctx, arcan_event_handler drain)

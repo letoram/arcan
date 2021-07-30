@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2016, Björn Ståhl
+ * Copyright Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description: Internal engine event queue handler and pseudo-monotonic
@@ -46,6 +46,29 @@ void arcan_event_setdrain(struct arcan_evctx*, arcan_event_handler);
  * Returns the fraction of the next tick (useful for interpolation).
  */
 float arcan_event_process(struct arcan_evctx*, arcan_tick_cb);
+
+/* Add a polling source to the normal processing loop. This will not trigger on
+ * errors, only on read/write capability. It is up to the caller to manually
+ * remove the source if reading/writing from it indicates that the backing has
+ * failed. When the level changes for the descriptor, an event will be pused in
+ * the EVENT_SYSTEM_DATA_IN/EVENT_SYSTEM_DATA_OUT category, which is eligible
+ * for being sent direct to drain (e.g. while GPUs are locked).
+ *
+ * Each unique descriptor is only allowed to be added once, subsequent calls
+ * will only updated / modify the input/output mask and the otag, overriding
+ * previously set states. */
+bool arcan_event_add_source(
+	struct arcan_evctx*, int fd, mode_t mode, intptr_t otag);
+
+/* Remove a source previously added through add_source. Will return true if
+ * the source existed and set the last known otag in *out if provided. */
+bool arcan_event_del_source(struct arcan_evctx*, int fd, intptr_t* out);
+
+/* Work through the list of registered sources and queue events for the ones
+ * that are readable/writable as EVENT_SYSTEM_DATA_IN/OUT. This is intended to
+ * be run as part of the conductor scheduler. The internal queueing is
+ * direct-to-drain. */
+void arcan_event_poll_sources(struct arcan_evctx* ctx, int timeout);
 
 /*
  * Process the entire event queue and forward relevant events through [hnd].
@@ -149,7 +172,9 @@ int arcan_event_poll(struct arcan_evctx*, struct arcan_event* dst);
 
 /*
  * Try and cleanly close down device drivers and other platform specifics.
- * Any pending events are lost rather than processed.
+ *
+ * If [flush] is set to true, any pending events or monitored input sources
+ * will be dropped.
  */
-void arcan_event_deinit(struct arcan_evctx*);
+void arcan_event_deinit(struct arcan_evctx*, bool flush);
 #endif

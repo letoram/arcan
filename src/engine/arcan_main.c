@@ -876,7 +876,7 @@ run_loop:
 	arcan_lua_callvoidfun(main_lua_context, "shutdown", false, NULL);
 	arcan_mem_freearr(&arr_hooks);
 	arcan_led_shutdown();
-	arcan_event_deinit(evctx);
+	arcan_event_deinit(evctx, true);
 	arcan_audio_shutdown();
 	arcan_video_shutdown(exit_code != 256);
 	arcan_mem_free(dbfname);
@@ -905,7 +905,7 @@ error:
 #endif
 
 /* now we can shutdown the subsystems themselves */
-	arcan_event_deinit(evctx);
+	arcan_event_deinit(evctx, true);
 	arcan_mem_free(dbfname);
 	arcan_audio_shutdown();
 	arcan_video_shutdown(false);
