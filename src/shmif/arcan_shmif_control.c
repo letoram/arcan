@@ -28,6 +28,7 @@
 
 #include "arcan_shmif.h"
 #include "shmif_privext.h"
+#include "platform/shmif_platform.h"
 
 #include <signal.h>
 #include <poll.h>
@@ -146,6 +147,7 @@ struct shmif_hidden {
 	shmif_trigger_hook video_hook;
 	void* video_hook_data;
 	uint8_t vbuf_ind, vbuf_cnt;
+	bool vbuf_nbuf_active;
 	shmif_pixel* vbuf[ARCAN_SHMIF_VBUFC_LIM];
 
 	shmif_trigger_hook audio_hook;
@@ -489,6 +491,57 @@ static void reset_dirty(struct arcan_shmif_cont* ctx)
 	ctx->dirty.y2 = ctx->dirty.x2 = 0;
 	ctx->dirty.y1 = ctx->h;
 	ctx->dirty.x1 = ctx->w;
+}
+
+static bool calc_dirty(
+	struct arcan_shmif_cont* ctx, shmif_pixel* old, shmif_pixel* new)
+{
+	shmif_pixel diff = SHMIF_RGBA(0, 0, 0, 255);
+	shmif_pixel ref = SHMIF_RGBA(0, 0, 0, 255);
+
+/* find dirty y1, if this does not find anything, short-out */
+	size_t cy = 0;
+	for (; cy < ctx->h && diff == ref; cy++){
+		for (size_t x = 0; x < ctx->w && diff == ref; x++)
+			diff |= old[ctx->pitch * cy + x] ^ new[ctx->pitch * cy + x];
+	}
+
+	if (diff == ref)
+		return false;
+
+	ctx->dirty.y1 = cy - 1;
+
+/* find dirty y2, since y1 is dirty there must be one */
+	diff = ref;
+	for (cy = ctx->h - 1; cy && diff == ref; cy--){
+		for (size_t x = 0; x < ctx->w && diff == ref; x++)
+			diff |= old[ctx->pitch * cy + x] ^ new[ctx->pitch * cy + x];
+	}
+
+/* dirty region starts at y1 and ends < y2 */
+	ctx->dirty.y2 = cy + 1;
+
+/* now do x in the same way, the order matters as the search space is hopefully
+ * reduced with y, and the data access patterns are much more predictor
+ * friendly */
+
+	size_t cx;
+	diff = ref;
+	for (cx = 0; cx < ctx->w && diff == ref; cx++){
+		for (cy = ctx->dirty.y1; cy < ctx->dirty.y2 && diff == ref; cy++)
+			diff |= old[ctx->pitch * cy + cx] ^ new[ctx->pitch * cy + cx];
+	}
+	ctx->dirty.x1 = cx - 1;
+
+	diff = ref;
+	for (cx = ctx->w - 1; cx > 0 && diff == ref; cx--){
+		for (cy = ctx->dirty.y1; cy < ctx->dirty.y2 && diff == ref; cy++)
+			diff |= old[ctx->pitch * cy + cx] ^ new[ctx->pitch * cy + cx];
+	}
+
+	ctx->dirty.x2 = cx + 1;
+
+	return true;
 }
 
 static bool scan_disp_event(struct arcan_evctx* c, struct arcan_event* old)
@@ -1386,6 +1439,7 @@ static void setup_avbuf(struct arcan_shmif_cont* res)
 
 	res->priv->abuf_ind = 0;
 	res->priv->vbuf_ind = 0;
+	res->priv->vbuf_nbuf_active = false;
 	atomic_store(&res->addr->vpending, 0);
 	atomic_store(&res->addr->apending, 0);
 	res->abufused = res->abufpos = 0;
@@ -1705,7 +1759,7 @@ unsigned arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx,
 	return arcan_shmif_signal(ctx, mask);
 }
 
-static bool step_v(struct arcan_shmif_cont* ctx)
+static bool step_v(struct arcan_shmif_cont* ctx, int sigv)
 {
 	struct shmif_hidden* priv = ctx->priv;
 	bool lock = false;
@@ -1718,8 +1772,42 @@ static bool step_v(struct arcan_shmif_cont* ctx)
  * itself. this is a design flaw that should be moved into a
  * VBI- style post-buffer footer */
 	if (ctx->hints & SHMIF_RHINT_SUBREGION){
+
+/* set if we should trim the dirty region based on current ^ last buffer,
+ * but it only works if we are >= double buffered and buffers are populated */
+		if ((sigv & SHMIF_SIGVID_AUTO_DIRTY) &&
+			priv->vbuf_nbuf_active && priv->vbuf_cnt > 1){
+			shmif_pixel* old;
+			if (priv->vbuf_ind == 0)
+				old = priv->vbuf[priv->vbuf_cnt-1];
+			else
+				old = priv->vbuf[priv->vbuf_ind-1];
+
+			if (!calc_dirty(ctx, ctx->vidp, old)){
+				log_print("%lld: SIGVID (auto-region: no-op)", arcan_timemillis());
+				return false;
+			}
+		}
+
+		if (priv->log_event){
+			log_print("%lld: SIGVID (block: %d region: %zu,%zu-%zu,%zu)",
+				arcan_timemillis(),
+				(sigv & SHMIF_SIGBLK_NONE) ? 0 : 1,
+				(size_t)ctx->dirty.x1, (size_t)ctx->dirty.y1,
+				(size_t)ctx->dirty.x2, (size_t)ctx->dirty.y2
+			);
+		}
+
 		atomic_store(&ctx->addr->dirty, ctx->dirty);
 		reset_dirty(ctx);
+	}
+	else {
+		if (priv->log_event){
+			log_print("%lld: SIGVID (block: %d full)\n",
+				arcan_timemillis(),
+				(sigv & SHMIF_SIGBLK_NONE) ? 0 : 1
+			);
+		}
 	}
 
 /* mark the current buffer as pending, this is used when we have
@@ -1732,6 +1820,7 @@ static bool step_v(struct arcan_shmif_cont* ctx)
 /* slide window so the caller don't have to care about which
  * buffer we are actually working against */
 	priv->vbuf_ind++;
+	priv->vbuf_nbuf_active = true;
 	if (priv->vbuf_ind == priv->vbuf_cnt)
 		priv->vbuf_ind = 0;
 
@@ -1835,20 +1924,11 @@ unsigned arcan_shmif_signal(
 /* for sub-region multi-buffer synch, we currently need to
  * check before running the step_v */
 	if (mask & SHMIF_SIGVID){
-		if (priv->log_event){
-			log_print("%lld: SIGVID (block: %d region: %zu,%zu-%zu,%zu)",
-				arcan_timemillis(),
-				(mask & SHMIF_SIGBLK_NONE) ? 0 : 1,
-				(size_t)ctx->dirty.x1, (size_t)ctx->dirty.y1,
-				(size_t)ctx->dirty.x2, (size_t)ctx->dirty.y2
-			);
-		}
-
 		while ((ctx->hints & SHMIF_RHINT_SUBREGION)
 			&& ctx->addr->vready && check_dms(ctx))
 			arcan_sem_wait(ctx->vsem);
 
-		bool lock = step_v(ctx);
+		bool lock = step_v(ctx, mask);
 
 		if (lock && !(mask & SHMIF_SIGBLK_NONE)){
 			while (ctx->addr->vready && check_dms(ctx))
@@ -3295,98 +3375,11 @@ pid_t arcan_shmif_handover_exec(
 	if (-1 == dup_fd)
 		return -1;
 
-/* Prepare env even if there isn't env as we need to propagate connection
- * primitives etc. Since we don't know the inherit intent behind the exec
- * we need to rely on dup to create the new connection socket.
- * Append: ARCAN_SHMKEY, ARCAN_SOCKIN_FD, ARCAN_HANDOVER, NULL */
-	size_t nelem = 0;
-	if (env){
-		for (; env[nelem]; nelem++){}
-	}
-	nelem += 4;
-	size_t env_sz = nelem * sizeof(char*);
-	char** new_env = malloc(env_sz);
-	if (!new_env){
-		close(dup_fd);
-		return -1;
-	}
-	else
-		memset(new_env, '\0', env_sz);
+	pid_t res = shmif_platform_execve(
+		dup_fd, ev.tgt.message, path, argv, env, detach, NULL);
+	close(dup_fd);
 
-/* sweep from the last set index downwards, free strdups, this is done to clean
- * up after, as we can't dynamically allocate the args safely from fork() */
-#define CLEAN_ENV() {\
-		for (ofs = ofs - 1; ofs - 1 >= 0; ofs--){\
-			free(new_env[ofs]);\
-		}\
-		free(new_env);\
-		close(dup_fd);\
-	}
-
-/* duplicate the input environment */
-	int ofs = 0;
-	if (env){
-		for (; env[ofs]; ofs++){
-			new_env[ofs] = strdup(env[ofs]);
-			if (!new_env[ofs]){
-				CLEAN_ENV();
-				return -1;
-			}
-		}
-	}
-
-/* expand with information about the connection primitives */
-	char tmpbuf[sizeof("ARCAN_SOCKIN_FD=65536") + COUNT_OF(ev.tgt.message)];
-	snprintf(tmpbuf, sizeof(tmpbuf), "ARCAN_SHMKEY=%s", ev.tgt.message);
-
-	if (NULL == (new_env[ofs++] = strdup(tmpbuf))){
-		CLEAN_ENV();
-		return -1;
-	}
-
-	snprintf(tmpbuf, sizeof(tmpbuf), "ARCAN_SOCKIN_FD=%d", dup_fd);
-	if (NULL == (new_env[ofs++] = strdup(tmpbuf))){
-		CLEAN_ENV();
-		return -1;
-	}
-
-	if (NULL == (new_env[ofs++] = strdup("ARCAN_HANDOVER=1"))){
-		CLEAN_ENV();
-		return -1;
-	}
-
-/* null- terminate or we have an invalid address on our hands */
-	new_env[ofs] = NULL;
-
-	pid_t pid = fork();
-	if (pid == 0){
-
-/* just leverage the sparse allocation property and that process creation
- * or libc safeguards typically ensure correct stdin/stdout/stderr */
-		if (detach & 2){
-			close(STDIN_FILENO);
-			open("/dev/null", O_RDONLY);
-		}
-
-		if (detach & 4){
-			close(STDOUT_FILENO);
-			open("/dev/null", O_WRONLY);
-		}
-		if (detach & 8){
-			close(STDERR_FILENO);
-			open("/dev/null", O_WRONLY);
-		}
-
-		if ((detach & 1) && (pid = fork()) != 0)
-			_exit(pid > 0 ? EXIT_SUCCESS : EXIT_FAILURE);
-
-/* GNU or BSD4.2 */
-		execve(path, argv, new_env);
-		_exit(EXIT_FAILURE);
-	}
-
-	CLEAN_ENV();
-	return pid;
+	return res;
 }
 
 int arcan_shmif_deadline(

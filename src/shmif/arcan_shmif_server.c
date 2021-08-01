@@ -19,6 +19,7 @@ struct arcan_aobj;
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_frameserver.h"
+#include "platform/shmif_platform.h"
 
 /*
  * temporary workaround, this symbol should really have its visiblity lowered.
@@ -172,8 +173,25 @@ struct shmifsrv_client* shmifsrv_spawn_client(
 	res->con = platform_fsrv_spawn_server(
 		SEGID_UNKNOWN, env.init_w, env.init_h, 0, clsocket);
 
-	if (statuscode)
+	if (statuscode){
 		*statuscode = SHMIFSRV_OK;
+
+/* if path is provided we switch over to build/inherit mode */
+		if (env.path){
+			pid_t rpid = shmif_platform_execve(
+				*clsocket, "", env.path, env.argv, env.envv, env.detach, NULL);
+
+			if (-1 == rpid){
+				*statuscode = SHMIFSRV_EXEC_FAILED;
+				shmifsrv_free(res, SHMIFSRV_FREE_FULL);
+				return NULL;
+			}
+
+/* there is no API for returning / binding the pid here, the use for that seems
+ * rather fringe (possibly for kill like mechanics), if needed we should tie it
+ * to the context and add an accessor */
+		}
+	}
 
 	return res;
 }
