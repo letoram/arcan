@@ -46,18 +46,21 @@ struct shmifsrv_client;
  * preroll- event stage.
  */
 struct shmifsrv_envp {
-	const char* path;
-	const char** argv;
-	const char** envv;
+	char* path;
+	char** argv;
+	char** envv;
 
 	size_t init_w;
 	size_t init_h;
+
+	int detach;
 };
 
 enum shmifsrv_status {
 	SHMIFSRV_OK = 1,
 	SHMIFSRV_INVALID_ARGUMENT = -1,
 	SHMIFSRV_OUT_OF_MEMORY = -2,
+	SHMIFSRV_EXEC_FAILED = -3
 };
 
 /*

@@ -222,7 +222,14 @@ enum arcan_shmif_sigmask {
 
 /* Extra flag, always return immediately, further writes may cause
  * tearing and other visual/aural artifacts */
-	SHMIF_SIGBLK_NONE  = 4
+	SHMIF_SIGBLK_NONE  = 4,
+
+/* For >= 2 buffered contexts, compare the current to the previous submitted
+ * buffer and shrink the dirty region to the boundary of the actually changed
+ * context. If there are no visible changes, the signalling will return
+ * immediately. This will only work if the buffer history is complete and no
+ * manual dirty management has been applied. */
+	SHMIF_SIGVID_AUTO_DIRTY = 8,
 };
 
 struct arcan_shmif_cont;
@@ -289,7 +296,7 @@ enum ARCAN_FLAGS {
 	SHMIF_NOACTIVATE = 512,
 
 /* Setting this flag will avoid sending the register event on acquire */
-	SHMIF_NOREGISTER = 1024,
+	SHMIF_NOREGISTER = 1024
 };
 
 /*

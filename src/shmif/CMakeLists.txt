@@ -59,6 +59,7 @@ set (SHMIF_SOURCES
 	${ASD}/shmif/arcan_shmif_sub.c
 	${ASD}/shmif/arcan_shmif_evpack.c
 	${ASD}/engine/arcan_trace.c
+	${ASD}/shmif/platform/exec.c
 )
 
 if (LWA_PLATFORM_STR AND IS_DIRECTORY "${ASD}/shmif/${LWA_PLATFORM_STR}" AND
