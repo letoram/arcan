@@ -46,6 +46,11 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 	struct shmifsrv_client* C, int fd_in, int fd_out, struct a12helper_opts);
 
 /*
+ * Single threaded read/write until the context has been authenticated
+ */
+bool a12helper_wait_for_auth(struct a12_state* S, int fd_in, int fd_out);
+
+/*
  * Take a prenegotiated connection [S] serialized over [fd_in/fd_out] and
  * map to connections accessible via the [cp] connection point.
  *

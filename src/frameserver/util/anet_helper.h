@@ -1,12 +1,6 @@
 #ifndef HAVE_ARCAN_NET_HELPER
 #define HAVE_ARCAN_NET_HELPER
 
-enum anet_mode {
-	ANET_SHMIF_CL = 1,
-	ANET_SHMIF_SRV = 2,
-	ANET_SHMIF_SRV_INHERIT = 3
-};
-
 /*
  * keystore provider types and constraints
  */
@@ -132,6 +126,13 @@ bool a12helper_keystore_accept(const uint8_t pubk[static 32], const char* connp)
  * to connect, return the connected socket or -1 if it failed
  */
 int anet_clfd(struct addrinfo* addr);
+
+/*
+ * Blocking read/write cycle that feeds the state machine until authentication
+ * either goes through(=true) or fails(=false). The context is alive regardless
+ * and it is the caller that is responsible for cleaning up.
+ */
+bool anet_authenticate(struct a12_state* S, int fdin, int fdout, char** err);
 
 /*
  * Using the configuration structure in anet_options, build a listening

@@ -48,6 +48,49 @@ int anet_clfd(struct addrinfo* addr)
 	return clfd;
 }
 
+bool anet_authenticate(struct a12_state* S, int fdin, int fdout, char** err)
+{
+/* repeat until we fail or get authenticated */
+	do {
+		uint8_t* buf;
+		size_t out = a12_flush(S, &buf, 0);
+		while (out){
+			ssize_t nw = write(fdout, buf, out);
+			if (nw == -1){
+				if (errno == EAGAIN || errno == EINTR)
+					continue;
+
+				char buf[64];
+				snprintf(buf, sizeof(buf), "write(%d) during authentication", errno);
+				*err = strdup(buf);
+				return false;
+			}
+			else {
+				out -= nw;
+				buf += nw;
+			}
+		}
+
+		if (a12_auth_state(S) == AUTH_FULL_PK)
+			break;
+
+		char inbuf[4096];
+		ssize_t nr = read(fdin, inbuf, 4096);
+		if (nr > 0){
+			a12_unpack(S, (uint8_t*)inbuf, nr, NULL, NULL);
+		}
+		else if (nr == 0 || (errno != EAGAIN && errno != EINTR)){
+			char buf[64];
+			snprintf(buf, sizeof(buf), "read(%d) during authentication", errno);
+			*err = strdup(buf);
+			return false;
+		}
+
+	} while (a12_poll(S) > 0 && !a12_auth_state(S));
+
+	return true;
+}
+
 struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 {
 	struct anet_cl_connection res = {
@@ -122,50 +165,9 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 
 /* at this stage we have a valid connection, time to build the state machine */
 	res.state = a12_client(arg->opts);
+	if (anet_authenticate(res.state, res.fd, res.fd, &res.errmsg))
+		return res;
 
-/* repeat until we fail or get authenticated */
-	do {
-		uint8_t* buf;
-		size_t out = a12_flush(res.state, &buf, 0);
-		while (out){
-			ssize_t nw = write(res.fd, buf, out);
-			if (nw == -1){
-				if (errno == EAGAIN || errno == EINTR)
-					continue;
-
-				char buf[64];
-				snprintf(buf, sizeof(buf), "write(%d) during authentication", errno);
-				res.errmsg = strdup(buf);
-
-				goto fail;
-			}
-			else {
-				out -= nw;
-				buf += nw;
-			}
-		}
-
-		if (a12_auth_state(res.state) == AUTH_FULL_PK)
-			break;
-
-		char inbuf[4096];
-		ssize_t nr = read(res.fd, inbuf, 4096);
-		if (nr > 0){
-			a12_unpack(res.state, (uint8_t*)inbuf, nr, NULL, NULL);
-		}
-		else if (nr == 0 || (errno != EAGAIN && errno != EINTR)){
-			char buf[64];
-			snprintf(buf, sizeof(buf), "read(%d) during authentication", errno);
-			res.errmsg = strdup(buf);
-
-			goto fail;
-		}
-
-	} while (a12_poll(res.state) > 0 && !a12_auth_state(res.state));
-
-	return res;
-
-fail:
 	if (-1 != res.fd)
 		shutdown(res.fd, SHUT_RDWR);
 
