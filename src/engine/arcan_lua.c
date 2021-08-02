@@ -5665,7 +5665,6 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				return true;
 
 /* function, source, status */
-			printf("terminated lookup function: %lld\n", (intptr_t) ev->fsrv.otag);
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 			lua_pushvid(ctx, ev->fsrv.video);
 			lua_newtable(ctx);
