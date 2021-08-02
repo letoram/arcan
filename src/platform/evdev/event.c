@@ -33,8 +33,9 @@
 #include "arcan_videoint.h"
 #include "keycode_xlate.h"
 
-#include <linux/kd.h>
+#ifndef __FreeBSD__
 #include <sys/inotify.h>
+#endif
 
 #ifdef HAVE_XKBCOMMON
 #include <xkbcommon/xkbcommon.h>
@@ -699,6 +700,8 @@ void platform_event_process(struct arcan_evctx* ctx)
 /* lovely little variable length field at end of struct here /sarcasm,
  * could get away with running the notify polling less often than once
  * every frame, somewhat excessive. */
+#ifdef __FreeBSD__
+#else
 	if (-1 != gstate.notify){
 		char inbuf[1024];
 		ssize_t nr = read(gstate.notify, inbuf, sizeof(inbuf));
@@ -716,7 +719,7 @@ void platform_event_process(struct arcan_evctx* ctx)
 				}
 			}
 	}
-
+#endif
 	TRACE_MARK_ENTER("event", "flush-pending-in", TRACE_SYS_DEFAULT, 0, 0, "flush-in");
 
 	if (gstate.pending)
@@ -754,7 +757,6 @@ void platform_event_process(struct arcan_evctx* ctx)
 			}
 		}
 	}
-
 	TRACE_MARK_EXIT("event", "flush-pending-in", TRACE_SYS_DEFAULT, 0, 0, "flush-in");
 }
 
@@ -1313,9 +1315,10 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 			node.type = DEVNODE_KEYBOARD;
 			node.keyboard.state = 0;
 
-/* FIX: query current LED states and set corresponding states in the devnode */
-			struct kbd_repeat kbrv = {0};
-			ioctl(node.handle, KDKBDREP, &kbrv);
+/* FIX: query current LED states and set corresponding states in the devnode,
+ * this does not save / restore the built-in repeats */
+			unsigned rep[2] = {0, 0};
+			ioctl(node.handle, EVIOCSREP, rep);
 		}
 
 		node.hnd.handler = defhandlers[node.type];
@@ -2059,7 +2062,11 @@ void platform_event_init(arcan_evctx* ctx)
 	uintptr_t tag;
 
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+
+#ifdef __LINUX
 	gstate.notify = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+#endif
+
 	init_keyblut();
 #ifdef HAVE_XKBCOMMON
 	xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
@@ -2079,6 +2086,7 @@ void platform_event_init(arcan_evctx* ctx)
 /* chances are the CREATE events are actually racey, but with the
  * _device_open refactor this won't really matter as the suid part
  * allows us access anyway */
+#ifdef __LINUX
 	if (-1 == gstate.notify || inotify_add_watch(
 		gstate.notify, notify_scan_dir, IN_CREATE) == -1){
 		arcan_warning("inotify initialization failure (%s),"
@@ -2089,6 +2097,10 @@ void platform_event_init(arcan_evctx* ctx)
 			gstate.notify = -1;
 		}
 	}
+#elif __FreeBSD__
+/* there is a way to get devd to cooperate */
+#else
+#endif
 
 	platform_event_rescan_idev(ctx);
 }
