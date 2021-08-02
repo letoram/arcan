@@ -74,12 +74,6 @@ else()
 	set(BSD_VARIANT_DEFINITIONS
 		-DCLOCK_MONOTONIC_RAW=CLOCK_REALTIME_FAST)
 
-# come FreeBSD 12 this is actually a bit hairier as the setup can
-# be either evdev or freebsd, so we need to check if the build args
-# actually meant evdev or if it came from the video platform setup.
-	if(${INPUT_PLATFORM} STREQUAL "evdev")
-		SET(INPUT_PLATFORM "syscons")
-	endif()
 	if (VIDEO_PLATFORM STREQUAL "egl-dri")
 		list(APPEND ARCAN_PLATFORM ${PLATFORM_PATH}/psep_open.c)
 	else()
