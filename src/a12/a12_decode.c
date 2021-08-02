@@ -333,7 +333,9 @@ void a12int_decode_vbuffer(struct a12_state* S,
 		}
 		else {
 			a12int_trace(A12_TRACE_SYSTEM,
-				"kind=decode_error:in_sz=%zu:exp_sz=%s:message=size mismatch");
+				"kind=decode_error:in_sz=%zu:exp_sz=%zu:message=size mismatch",
+				(size_t) content_sz, (size_t) cvf->expanded_sz
+			);
 		}
 
 		free(cvf->inbuf);

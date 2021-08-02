@@ -126,6 +126,8 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 	}
 }
 
+extern char** environ;
+
 static bool handover_setup(struct a12_state* S,
 	int fd, struct arcan_net_meta* meta, struct shmifsrv_client** C)
 {
@@ -135,7 +137,7 @@ static bool handover_setup(struct a12_state* S,
 /* wait for authentication before going for the shmifsrv processing mode */
 	char* msg;
 	if (!anet_authenticate(S, fd, fd, &msg)){
-		a12int_trace(A12_TRACE_SYSTEM, "authentication failed: %s", *msg);
+		a12int_trace(A12_TRACE_SYSTEM, "authentication failed: %s", msg);
 		free(msg);
 		shutdown(fd, SHUT_RDWR);
 		return false;

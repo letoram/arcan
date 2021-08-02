@@ -436,7 +436,8 @@ static void compress_tz(struct a12_state* S, uint8_t ch,
 
 		a12int_trace(A12_TRACE_VDETAIL,
 			"kind=status:codec=dzstd:b_in=%zu:b_out=%zu:ratio=%.2f",
-			compress_in_sz, out_sz, (float)(compress_in_sz+1.0) / (float)(out_sz+1.0)
+			(size_t)compress_in_sz,
+			(size_t) out_sz, (float)(compress_in_sz+1.0) / (float)(out_sz+1.0)
 		);
 	}
 	else
@@ -456,7 +457,7 @@ static void compress_tz(struct a12_state* S, uint8_t ch,
 
 	a12int_trace(A12_TRACE_VDETAIL,
 		"kind=status:codec=tpack:b_in=%zu:b_out=%zu:zstd=%d",
-		compress_in_sz, compress_in_sz, out_sz, (int) zstd
+		(size_t) compress_in_sz, (size_t) compress_in_sz, (size_t) out_sz, (int)zstd
 	);
 
 	a12int_append_out(S,
