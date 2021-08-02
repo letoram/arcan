@@ -163,34 +163,46 @@ struct shmifsrv_client* shmifsrv_spawn_client(
 
 	struct shmifsrv_client* res = alloc_client();
 
-	if (res){
-		if (statuscode){
+	if (!res){
+		if (statuscode)
 			*statuscode = SHMIFSRV_OUT_OF_MEMORY;
-			return NULL;
-		}
+		return NULL;
 	}
 
 	res->con = platform_fsrv_spawn_server(
 		SEGID_UNKNOWN, env.init_w, env.init_h, 0, clsocket);
 
-	if (statuscode){
+	if (!res){
+		if (statuscode)
+			*statuscode = SHMIFSRV_OUT_OF_MEMORY;
+		shmifsrv_free(res, SHMIFSRV_FREE_FULL);
+		return NULL;
+	}
+
+	res->cookie = arcan_shmif_cookie();
+	res->status = AUTHENTICATING;
+
+	if (statuscode)
 		*statuscode = SHMIFSRV_OK;
 
 /* if path is provided we switch over to build/inherit mode */
-		if (env.path){
-			pid_t rpid = shmif_platform_execve(
-				*clsocket, "", env.path, env.argv, env.envv, env.detach, NULL);
+	if (env.path){
+		pid_t rpid = shmif_platform_execve(
+			*clsocket, res->con->shm.key,
+			env.path, env.argv, env.envv, env.detach, NULL
+		);
 
-			if (-1 == rpid){
+		if (-1 == rpid){
+			if (statuscode)
 				*statuscode = SHMIFSRV_EXEC_FAILED;
-				shmifsrv_free(res, SHMIFSRV_FREE_FULL);
-				return NULL;
-			}
+
+			shmifsrv_free(res, SHMIFSRV_FREE_FULL);
+			return NULL;
+		}
 
 /* there is no API for returning / binding the pid here, the use for that seems
  * rather fringe (possibly for kill like mechanics), if needed we should tie it
  * to the context and add an accessor */
-		}
 	}
 
 	return res;

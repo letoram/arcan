@@ -356,7 +356,6 @@ int a12helper_a12srv_shmifcl(
 	uint8_t inbuf[9000];
 	uint8_t* outbuf = NULL;
 	size_t outbuf_sz = 0;
-	bool auth_unlocked = false;
 	a12int_trace(A12_TRACE_SYSTEM, "got proxy connection, waiting for source");
 
 /*

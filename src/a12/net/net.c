@@ -22,9 +22,23 @@
 #include "a12_helper.h"
 #include "anet_helper.h"
 
+enum anet_mode {
+	ANET_SHMIF_CL = 1,
+	ANET_SHMIF_SRV = 2,
+	ANET_SHMIF_SRV_INHERIT = 3,
+	ANET_SHMIF_EXEC = 4
+};
+
 enum mt_mode {
 	MT_SINGLE = 0,
 	MT_FORK = 1
+};
+
+struct arcan_net_meta {
+	struct anet_options* opts;
+	int argc;
+	char** argv;
+	char* bin;
 };
 
 static const char* trace_groups[] = {
@@ -112,9 +126,60 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 	}
 }
 
+static bool handover_setup(struct a12_state* S,
+	int fd, struct arcan_net_meta* meta, struct shmifsrv_client** C)
+{
+	if (meta->opts->mode != ANET_SHMIF_EXEC)
+		return true;
+
+/* wait for authentication before going for the shmifsrv processing mode */
+	char* msg;
+	if (!anet_authenticate(S, fd, fd, &msg)){
+		a12int_trace(A12_TRACE_SYSTEM, "authentication failed: %s", *msg);
+		free(msg);
+		shutdown(fd, SHUT_RDWR);
+		return false;
+	}
+	a12int_trace(A12_TRACE_SYSTEM, "client connected, spawning: %s", meta->bin);
+
+/* connection is ok, tie it to a new shmifsrv_client via the exec arg. The GUID
+ * is left 0 here as the local bound applications tend to not have much of a
+ * perspective on that. Should it become relevant, just stepping Kp with a local
+ * salt through the hash should do the trick. */
+	int socket, errc;
+	struct shmifsrv_envp env = {
+		.init_w = 32, .init_h = 32,
+		.path = meta->bin,
+		.argv = meta->argv, .envv = environ
+	};
+
+	*C = shmifsrv_spawn_client(env, &socket, &errc, 0);
+	if (!*C){
+		shutdown(fd, SHUT_RDWR);
+		return false;
+	}
+
+	return true;
+}
+
 static void single_a12srv(struct a12_state* S, int fd, void* tag)
 {
-	a12helper_a12srv_shmifcl(S, NULL, fd, fd);
+	struct shmifsrv_client* C = NULL;
+	struct arcan_net_meta* meta = tag;
+
+	if (!handover_setup(S, fd, meta, &C))
+		return;
+
+	if (C){
+		a12helper_a12cl_shmifsrv(S, C, fd, fd, (struct a12helper_opts){
+			.dirfd_temp = -1,
+			.dirfd_cache = -1,
+			.redirect_exit = meta->opts->redirect_exit,
+			.devicehint_cp = meta->opts->devicehint_cp
+		});
+	}
+	else
+		a12helper_a12srv_shmifcl(S, NULL, fd, fd);
 }
 
 static void a12cl_dispatch(
@@ -292,10 +357,14 @@ static int a12_preauth(struct anet_options* args,
 static bool show_usage(const char* msg)
 {
 	fprintf(stderr, "%s%sUsage:\n"
-	"Forward local arcan applications: arcan-net [-Xtd] -s connpoint [tag@]host port\n"
-	"                                  (keystore-mode) -s connpoint tag@\n"
-	"                                  (inherit socket) -S fd_no host port\n"
-	"Bridge remote arcan applications: arcan-net [-Xtd] -l port [ip]\n\n"
+	"Forward local arcan applications (push): \n"
+	"    arcan-net [-Xtd] -s connpoint [tag@]host port\n"
+	"         (keystore-mode) -s connpoint tag@\n"
+	"         (inherit socket) -S fd_no host port\n\n"
+	"Server local arcan application (pull): \n"
+	"         -l port [ip] -exec /usr/bin/app arg1 arg2 argn\n\n"
+	"Bridge remote arcan applications: "
+	"    arcan-net [-Xtd] -l port [ip]\n\n"
 	"Forward-local options:\n"
 	"\t-X            \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n"
 	"\t-r, --retry n \t Limit retry-reconnect attempts to 'n' tries\n\n"
@@ -317,9 +386,10 @@ static bool show_usage(const char* msg)
 	return false;
 }
 
-static bool apply_commandline(int argc, char** argv, struct anet_options* opts)
+static bool apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 {
 	const char* modeerr = "Mixed or multiple -s or -l arguments";
+	struct anet_options* opts = meta->opts;
 
 	size_t i = 1;
 /* mode defining switches and shared switches */
@@ -412,11 +482,31 @@ static bool apply_commandline(int argc, char** argv, struct anet_options* opts)
 				if (opts->port[ind] < '0' || opts->port[ind] > '9')
 					return show_usage("Invalid values in port argument");
 
-			if (i < argc - 1)
-				opts->host = argv[++i];
+/* more optional / annoying components here, find host if host is there,
+ * then check if we should exec map something to an authenticated connection */
+			if (i == argc - 1)
+				return true;
 
-			if (i != argc - 1)
-				return show_usage("Trailing arguments to -l port");
+			if (strcmp(argv[i], "-exec") != 0){
+				opts->host = argv[++i];
+			}
+
+			if (i == argc - 1)
+				return true;
+
+			if (strcmp(argv[++i], "-exec") != 0){
+				return show_usage("Unexpected trailing argument, expected -exec or end");
+			}
+
+			if (i == argc - 1)
+				return show_usage("-exec without bin arg0 .. argn");
+
+			i++;
+			meta->bin = argv[i];
+			meta->argv = &argv[i];
+			opts->mode = ANET_SHMIF_EXEC;
+
+			return true;
 		}
 		else if (strcmp(argv[i], "-t") == 0){
 			opts->mt_mode = MT_SINGLE;
@@ -502,6 +592,11 @@ int main(int argc, char** argv)
 		.retry_count = -1,
 		.mt_mode = MT_FORK
 	};
+
+	struct arcan_net_meta meta = {
+		.opts = &anet
+	};
+
 	anet.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));
 
 /* set this as default, so the remote side can't actually close */
@@ -512,8 +607,8 @@ int main(int argc, char** argv)
 		return apply_keystore_command(argc-2, argv+2);
 	}
 
-	if (!apply_commandline(argc, argv, &anet))
-		return show_usage("Invalid arguments");
+	if (!apply_commandline(argc, argv, &meta))
+		return EXIT_FAILURE;
 
 /* parsing done, route to the right connection mode */
 	if (!anet.mode)
@@ -521,13 +616,14 @@ int main(int argc, char** argv)
 
 	char* errmsg;
 
-	if (anet.mode == ANET_SHMIF_CL){
+	if (anet.mode == ANET_SHMIF_CL || anet.mode == ANET_SHMIF_EXEC){
+/* scan backwards to find the -exec again */
 		switch (anet.mt_mode){
 		case MT_SINGLE:
-			anet_listen(&anet, &errmsg, single_a12srv, NULL);
+			anet_listen(&anet, &errmsg, single_a12srv, &meta);
 			fprintf(stderr, "%s", errmsg ? errmsg : "");
 		case MT_FORK:
-			anet_listen(&anet, &errmsg, fork_a12srv, NULL);
+			anet_listen(&anet, &errmsg, fork_a12srv, &meta);
 			fprintf(stderr, "%s", errmsg ? errmsg : "");
 			free(errmsg);
 		break;
