@@ -24,9 +24,10 @@
 
 enum anet_mode {
 	ANET_SHMIF_CL = 1,
-	ANET_SHMIF_SRV = 2,
-	ANET_SHMIF_SRV_INHERIT = 3,
-	ANET_SHMIF_EXEC = 4
+	ANET_SHMIF_CL_REVERSE = 2,
+	ANET_SHMIF_SRV,
+	ANET_SHMIF_SRV_INHERIT,
+	ANET_SHMIF_EXEC
 };
 
 enum mt_mode {
@@ -110,6 +111,8 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
  * we won't act as a possible ASLR break */
 		arcan_shmif_privsep(NULL, "shmif", NULL, 0);
 		int rc = a12helper_a12srv_shmifcl(S, NULL, fd, fd);
+		shutdown(fd, SHUT_RDWR);
+		close(fd);
 		exit(rc < 0 ? EXIT_FAILURE : EXIT_SUCCESS);
 	}
 	else if (fpid == -1){
@@ -140,6 +143,7 @@ static bool handover_setup(struct a12_state* S,
 		a12int_trace(A12_TRACE_SYSTEM, "authentication failed: %s", msg);
 		free(msg);
 		shutdown(fd, SHUT_RDWR);
+		close(fd);
 		return false;
 	}
 	a12int_trace(A12_TRACE_SYSTEM, "client connected, spawning: %s", meta->bin);
@@ -179,9 +183,13 @@ static void single_a12srv(struct a12_state* S, int fd, void* tag)
 			.redirect_exit = meta->opts->redirect_exit,
 			.devicehint_cp = meta->opts->devicehint_cp
 		});
+		shmifsrv_free(C, SHMIFSRV_FREE_NO_DMS);
 	}
-	else
+	else{
 		a12helper_a12srv_shmifcl(S, NULL, fd, fd);
+		shutdown(fd, SHUT_RDWR);
+		close(fd);
+	}
 }
 
 static void a12cl_dispatch(
@@ -227,16 +235,15 @@ static void fork_a12cl_dispatch(
 	}
 }
 
-/* connect / authloop shmifsrv */
-static struct anet_cl_connection forward_shmifsrv_cl(
-	struct shmifsrv_client* cl, struct anet_options* opts)
+static struct anet_cl_connection find_connection(
+	struct anet_options* opts, struct shmifsrv_client* cl)
 {
-	struct anet_cl_connection anet = {};
+	struct anet_cl_connection anet;
 	int rc = opts->retry_count;
 	int timesleep = 1;
 
 /* connect loop until retry count exceeded */
-	while (rc != 0 && shmifsrv_poll(cl) != CLIENT_DEAD){
+	while (rc != 0 && (!cl || (shmifsrv_poll(cl) != CLIENT_DEAD))){
 		anet = anet_cl_setup(opts);
 
 		if (anet.state)
@@ -259,6 +266,15 @@ static struct anet_cl_connection forward_shmifsrv_cl(
 			continue;
 		}
 	}
+
+	return anet;
+}
+
+/* connect / authloop shmifsrv */
+static struct anet_cl_connection forward_shmifsrv_cl(
+	struct shmifsrv_client* cl, struct anet_options* opts)
+{
+	struct anet_cl_connection anet = find_connection(opts, cl);
 
 /* failed, or retry-count exceeded? */
 	if (!anet.state || shmifsrv_poll(cl) == CLIENT_DEAD){
@@ -345,6 +361,7 @@ static int a12_preauth(struct anet_options* args,
 		fprintf(stderr, "(shmif::arcan-net) "
 			"couldn't build connection from socket (%d)\n", sc);
 		shutdown(args->sockfd, SHUT_RDWR);
+		close(args->sockfd);
 		return EXIT_FAILURE;
 	}
 
@@ -365,30 +382,32 @@ static bool show_usage(const char* msg)
 	"         (inherit socket) -S fd_no host port\n\n"
 	"Server local arcan application (pull): \n"
 	"         -l port [ip] -exec /usr/bin/app arg1 arg2 argn\n\n"
-	"Bridge remote arcan applications: "
+	"Bridge remote inbound arcan applications (to ARCAN_CONNPATH): \n"
 	"    arcan-net [-Xtd] -l port [ip]\n\n"
+	"Bridge remote outbound arcan application: \n"
+	"    arcan-net [tag@]host port\n\n"
 	"Forward-local options:\n"
 	"\t-X            \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n"
 	"\t-r, --retry n \t Limit retry-reconnect attempts to 'n' tries\n\n"
 	"Options:\n"
-	"\t-b dir        \t Set keystore basedir to <dir>\n"
-	"\t              \t overrides ARCAN_STATEPATH environment\n"
-	"\t-c dir        \t Set binary data cachedir to <dir>\n"
-	"\t              \t overrides A12_CACHE_DIR environment\n"
 	"\t-a, --auth n  \t Read authentication secret from stdin\n"
+	"\t              \t if [n] is provided, add n first auth pubkeys to store\n"
 	"\t-t            \t Single- client (no fork/mt)\n"
 	"\t-d bitmap     \t set trace bitmap (bitmask or key1,key2,...)\n\n"
+	"Environment variables:\n"
+	"\tARCAN_STATEPATH\t Used for keystore and state blobs\n"
+	"\tA12_CACHE_DIR  \t Used for caching binary stores (fonts, ...)\n\n"
 	"Keystore mode (ignores connection arguments):\n"
-	"\tAdd key: arcan-net keystore [-b dir] tag host [port=6680]\n"
+	"\tAdd/Append key: arcan-net keystore [-b dir] tag host [port=6680]\n"
 	"\nTrace groups (stderr):\n"
 	"\tvideo:1      audio:2      system:4    event:8      transfer:16\n"
 	"\tdebug:32     missing:64   alloc:128  crypto:256    vdetail:512\n"
-	"\tbtransfer:1024\n\n", msg, msg ? "\n" : ""
+	"\tbtransfer:1024\n\n", msg ? msg : "", msg ? "\n" : ""
 	);
 	return false;
 }
 
-static bool apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
+static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 {
 	const char* modeerr = "Mixed or multiple -s or -l arguments";
 	struct anet_options* opts = meta->opts;
@@ -487,16 +506,15 @@ static bool apply_commandline(int argc, char** argv, struct arcan_net_meta* meta
 /* more optional / annoying components here, find host if host is there,
  * then check if we should exec map something to an authenticated connection */
 			if (i == argc - 1)
-				return true;
-
-			if (strcmp(argv[i], "-exec") != 0){
-				opts->host = argv[++i];
-			}
-
-			if (i == argc - 1)
-				return true;
+				return i;
 
 			if (strcmp(argv[++i], "-exec") != 0){
+				opts->host = argv[i++];
+				if (i == argc - 1)
+					return i;
+			}
+
+			if (strcmp(argv[i], "-exec") != 0){
 				return show_usage("Unexpected trailing argument, expected -exec or end");
 			}
 
@@ -508,7 +526,7 @@ static bool apply_commandline(int argc, char** argv, struct arcan_net_meta* meta
 			meta->argv = &argv[i];
 			opts->mode = ANET_SHMIF_EXEC;
 
-			return true;
+			return i;
 		}
 		else if (strcmp(argv[i], "-t") == 0){
 			opts->mt_mode = MT_SINGLE;
@@ -525,7 +543,25 @@ static bool apply_commandline(int argc, char** argv, struct arcan_net_meta* meta
 		}
 	}
 
-	return true;
+	return i;
+}
+
+static int get_keystore_dirfd(const char** err)
+{
+	char* basedir = getenv("ARCAN_STATEPATH");
+
+	if (!basedir){
+		*err = "Missing basedir with keystore (set ARCAN_STATEPATH)";
+		return -1;
+	}
+
+	int dir = open(basedir, O_RDWR | O_CREAT | O_DIRECTORY, S_IRWXU);
+	if (-1 == dir){
+		*err = "Error opening basedir, check permissions and type";
+		return -1;
+	}
+
+	return dir;
 }
 
 static int apply_keystore_command(int argc, char** argv)
@@ -534,23 +570,10 @@ static int apply_keystore_command(int argc, char** argv)
 	if (!argc)
 		return show_usage("Missing keystore command arguments");
 
-	char* basedir = getenv("ARCAN_STATEPATH");
-
-	if (strcmp(argv[0], "-b") == 0){
-		if (argc < 2)
-			return show_usage("Missing basedir argument to -b");
-
-		basedir = argv[1];
-		argc -= 2;
-		argv += 2;
-	}
-
-	if (!basedir)
-		return show_usage("Missing basedir with keystore (use -b or ARCAN_STATEPATH)");
-
-	int dir = open(basedir, O_RDWR | O_CREAT | O_DIRECTORY, S_IRWXU);
+	const char* err;
+	int dir = get_keystore_dirfd(&err);
 	if (-1 == dir)
-		return show_usage("Error opening basedir, check permissions and type");
+		return show_usage(err);
 
 	struct keystore_provider prov = {
 		.directory.dirfd = dir,
@@ -592,7 +615,7 @@ int main(int argc, char** argv)
 {
 	struct anet_options anet = {
 		.retry_count = -1,
-		.mt_mode = MT_FORK
+		.mt_mode = MT_FORK,
 	};
 
 	struct arcan_net_meta meta = {
@@ -609,12 +632,57 @@ int main(int argc, char** argv)
 		return apply_keystore_command(argc-2, argv+2);
 	}
 
-	if (!apply_commandline(argc, argv, &meta))
+	if (argc < 2 || (argc == 2 &&
+		(strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0)))
+		return show_usage(NULL);
+
+	size_t argi = apply_commandline(argc, argv, &meta);
+	if (!argi)
 		return EXIT_FAILURE;
 
-/* parsing done, route to the right connection mode */
-	if (!anet.mode)
-		return show_usage("No mode specified, please use -s or -l form");
+/* no mode? if there's arguments left, assume it is is the 'reverse' mode
+ * where the connection is outbound but we get the a12 'client' view back
+ * to pair with an -exec arcan-net. */
+	if (!anet.mode){
+
+		if (argi <= argc - 1){
+/* Treat as a key- 'tag' for connecting? This act as a namespace separator
+ * so the other option would be to */
+			char* toksep = strrchr(argv[argi], '@');
+			if (toksep){
+				*toksep = '\0';
+				anet.key = argv[argi];
+			}
+/* Or just go host / [port] */
+			else {
+				anet.host = argv[argi++];
+				anet.port = "6680";
+
+				if (argi <= argc - 1){
+					anet.port = argv[argi];
+				}
+			}
+
+/* Make the outbound connection */
+			struct anet_cl_connection cl = find_connection(&anet, NULL);
+			if (!cl.state){
+				if (anet.key)
+					fprintf(stderr, "couldn't connect to any host for key %s\n", anet.key);
+				else
+					fprintf(stderr, "couldn't connect to %s\n", anet.host);
+
+				return EXIT_FAILURE;
+			}
+
+			int rc = a12helper_a12srv_shmifcl(cl.state, NULL, cl.fd, cl.fd);
+			shutdown(cl.fd, SHUT_RDWR);
+			close(cl.fd);
+
+			return rc < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
+		}
+		else
+			return show_usage("No mode specified, please use -s or -l form");
+	}
 
 	char* errmsg;
 

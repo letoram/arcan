@@ -169,8 +169,9 @@ struct shmifsrv_client* shmifsrv_spawn_client(
 		return NULL;
 	}
 
+	int childend;
 	res->con = platform_fsrv_spawn_server(
-		SEGID_UNKNOWN, env.init_w, env.init_h, 0, clsocket);
+		SEGID_UNKNOWN, env.init_w, env.init_h, 0, &childend);
 
 	if (!res){
 		if (statuscode)
@@ -179,6 +180,7 @@ struct shmifsrv_client* shmifsrv_spawn_client(
 		return NULL;
 	}
 
+	*clsocket = res->con->dpipe;
 	res->cookie = arcan_shmif_cookie();
 	res->status = AUTHENTICATING;
 
@@ -188,9 +190,10 @@ struct shmifsrv_client* shmifsrv_spawn_client(
 /* if path is provided we switch over to build/inherit mode */
 	if (env.path){
 		pid_t rpid = shmif_platform_execve(
-			*clsocket, res->con->shm.key,
+			childend, res->con->shm.key,
 			env.path, env.argv, env.envv, env.detach, NULL
 		);
+		close(childend);
 
 		if (-1 == rpid){
 			if (statuscode)

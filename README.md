@@ -126,6 +126,23 @@ If input devices are misbehaving, the quick and dirty 'eventtest' in:
 
 Might be useful in figuring out who to blame.
 
+### SUID Notes
+
+The produced egl-dri platform 'arcan' binary installs suid by default. This is
+not strictly necessary unless some specific features are desired, e.g. laptop
+backlight controls on Linux as those require access to sysfs and friends.
+
+Do note that your current user then still requires access to relevant
+/dev/input/event and /dev/dri/cardN and /dev/dri/renderN files to work properly
+otherwise input and/or graphics devices might not be detected or useable.
+
+The binary does split off into a non-suid part that the main engine runs off
+of, see posix/psep\_open.c for auditing what is being run with higher
+privileges as well as the code for dropping privileges. The privileged process
+is responsible for negotiating device access, implementing virtual-terminal
+switching and as a watchdog for recovering the main process on live locks or
+some GPU failures.
+
 ### Hook-Scripts
 
 Another way to extend engine behavior regardless of the appl being used are
