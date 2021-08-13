@@ -13,11 +13,26 @@
 static void on_cl_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
+	struct a12_state* S = tag;
+
+	if (ev->category == EVENT_EXTERNAL){
+		switch (ev->ext.kind){
+		case EVENT_EXTERNAL_REGISTER:
+			a12_channel_enqueue(S, &(struct arcan_event){
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_ACTIVATE
+			});
+		break;
+
+		default:
+		break;
+		}
+	}
+
 /*
- * the events here are what a remote 'window' would provide you with,
- * which would basically be data transfers (you requested to copy something)
- * as the videos are handled by the a12 state machine itself
- * printf("got client event: %s\n", arcan_shmif_eventstr(ev, NULL, 0));
+ * first off, REGISTER here need to provide an ACTIVATE after we send any
+ * known initials. Those initials can be extracted (somewhat) from the cont
+ * above.
  */
 }
 
@@ -49,7 +64,7 @@ static void main_loop(
 		if (fds[0].revents & POLLIN){
 			ssize_t nr = read(fds[0].fd, inbuf, 9000);
 			if (nr > 0){
-				a12_unpack(S, inbuf, nr, C, on_cl_event);
+				a12_unpack(S, inbuf, nr, S, on_cl_event);
 			}
 		}
 

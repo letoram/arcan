@@ -59,6 +59,7 @@
  * Preroll EAGAIN kernel race causing premature shutdown fixed
  * Ensure control socket or page never gets allocated on 0,1,2
  * Two edge condition races on crash- triggered migration during resize
+ * shmif-server: spawn\_client support function added/working
 
 ## Platform
  * Egl-dri: don't forward modifiers for linear/invalid
@@ -91,7 +92,8 @@
 ## Networking
  * enable redirect_exit connection point immediately on client connection
  * Swap out DEFLATE for ZSTD
- * added keystore
+ * added experimental keystore
+ * add 'forward' connection modes (arcan-net -l port -exec shmif-bin) (arcan-net host)
 
 ## 0.6.0
 ## Engine

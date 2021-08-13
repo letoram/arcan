@@ -1,49 +1,87 @@
 # arcan-net
 
-This tool provides network translation for clients and services built
-using the arcan-shmif IPC client library. The code is still in an
-immature state, tunnel over VPN/SSH if you worry about the safety of
+This tool provides network translation for clients and services built using the
+arcan-shmif IPC client library. The code is still in an immature state, tunnel
+over VPN/SSH if you worry about the confidentiality, privacy and integrity of
 your traffic.
 
-Basic use is as follows:
+# Basic Use
 
-On the receiving display server side where you want clients to be
-presented, simply run:
+It can serve and access arcan-shmif clients over the a12 protocol in both a
+'pull' fashion where you make an outbound connection to an a12 server that
+serves you an application, and a 'push' one where you listen for inbound
+connections and applications connect to you.
 
-    arcan-net -l 6666
+## Pull
+The 'pull' model then is when you connect to an application 'server'.
 
-Where 6666 is any port of your choice. On the side where you have
-clients to forward, a few more arguments are needed:
+The 'pull' mode is the simpler default setup, and arcan-net knows to use it due
+to the absence of the '-s' argument or the ARCAN_CONNPATH=a12.. environment.
 
-    arcan-net -s cpoint 10.0.0.1 6666
+The server end is setup as follows:
 
-Where the 10.0.0.1 is substituted with the IP or host of the server
-that is running, with the port matching the one chosen there. This
-will allow shmif clients to start with:
+    arcan-net -l 6680 -exec /some/arcan/executable arg1 arg2 .. argn
 
-    ARCAN_CONNPATH=cpoint some_client
+Whenever a client connects and authenticates, the executable will be fired up
+and presented to the client.
 
-Individual clients can also perform setup with less effort:
+The client end then simply specifies:
 
-    ARCAN_CONNPATH=a12://keyfile@host:port some_client
+    arcan-net remote.ip 6680
 
-Host and keys are resolved from a path structure using a basedir
-set on the command-line:
+## Push
 
-    arcan-net -b $HOME/.config/a12 -s test keyfile@myhost
+The 'push' model has traditionally been used with X11 implementations by
+setting the DISPLAY environment variable or through some SSH tricks.
 
-or as an environment:
+The corresponding version here is through ARCAN_CONNPATH:
 
-    A12_BASE_DIR=$HOME/.config/a12 arcan-net -s test myhost
+    ARCAN_CONNPATH=a12://host:port some_arcan_client
 
-In that case, the user argument will be used to grab private key from:
+You can also use a keyfile (see keystore further below)
 
-    basedir/keys/keyfile
+    ARCAN_CONNPATH=a12://mytag@ some_arcan_client
+
+There is also a 'service mode' that is easier for testing/debugging/development:
+
+    arcan-net -s myname host:port
+		ARCAN_CONNPATH=myname some_arcan_client
+		ARCAN_CONNPATH=myname another_arcan_client
+
+This is also suitable when using 'migration' where you explicitly redirect
+a client to another 'connection point' (myname in the example above). How
+this is activated depends on your window manager. For instance, in durden
+it can be done through the /target/share/migrate=myname path.
+
+There also needs to be something listening on the other end (of course)
+that can bridge to the right arcan instance.
+
+    arcan-net -l 6680
+		ARCAN_CONNPATH=durden arcan-net -l 6680
+
+# Keystore
+
+arcan-net does not mandate a specific public key infrastructure or necessarily
+a 'trust on first use' kind of scheme, though there is some support for
+enabling the later. The way cryptographic keys and identities are used are as
+follows:
+
+The argument '-b' is used to set a basedir. This directory is used for things
+such as keystore as well as for caching for faster transfers and compression
+(if the 'cache' subdirectory is present).
+
+    arcan-net -b $HOME/.config/a12 -s test mymachine@
+
+This would setup the 'push' mode to authenticate remotely using the host and
+cryptographic keys specified in the keyfile for 'mymachine' within the keystore
+in the basedir.
+
+    $HOME/.config/a12/keys/mymachine
 
 Where the keyfile name is restricted to visible [a-Z0-9] part of the ASCII set
 of characters. The key is, per x25519, 32-bytes crypotgraphically secure
-randomness. There can be multiple hosts per keyfile and the first whitespace
-on each line separates key from b64 encoded private key.
+randomness. There can be multiple hosts per keyfile and the first whitespace on
+each line separates key from b64 encoded private key.
 
     myhost1:port b64encoded-privk
 		10.0.1.20:port b64encoded-privk
@@ -55,48 +93,33 @@ This means that you can simply reference:
 And it will try the list in sequential priority until one connects, or migrate
 should the server- end of the connection fail hard.
 
-For the server side, authenticated public keys are retrieved from:
+For verifying the identity of the other end, a different folder is used:
 
     basedir/allowed_keys/*
 
+Each file in that format will be treated as a raw binary x25519 public key.
+Anyone with a matching private key in there will be allowed to connect.
+
 These can be populated by allowing a one-time auth session:
 
-    cat 'my_preshared_password' | arcan-net -a 1 -l 6666
+    cat 'my_preshared_password_file' | arcan-net -a 2 -l 6666
 
-Which would accept the next public key that authenticate with
-'temporarypassword' and write into the keystore.
+Which would accept the next (n=2 here) public keys that authenticate with what
+was in the preshared password file and write into the keystore.
 
 This is strictly for bootstrapping a system where it is inconvenient to add the
-public key using some other media.
-
-There is no equivalent to the "I don't know this key please just type yes"
-form of key authentication that SSH allows.
-
-To provide an authentication word to your key:
-
-    ARCAN_CONNPATH=a12://keyname
-		echo 'temporarypassword' | arcan-net -a -s test host port
-
-If the _cache_ subdirectory is present in the basedir, it will be used
-as a scratch folder for caching some binary transfers, e.g. fonts.
+public key using some other media. If no number argument is provided to the
+authentication secret, public keys will not be store in the set of allowed_keys
+for later. This reduces the system to simply using the secret as a 'password'.
 
 # Compilation
 
-For proper video encoding, the ffmpeg libraries (libavcodec, libswscale,
-...) are required and must have h264 support. Due to patent or licensing
-issues that may or may not apply, check you distribution and build.
+For proper video encoding, the ffmpeg libraries (libavcodec, libswscale, ...)
+are required and must have h264 support. Due to patent or licensing issues that
+may or may not apply, check you distribution and build.
 
-If ffmpeg reports errors, is missing or is missing h264 support entirely
-the system will fallback to raw- or only lightly- compressed buffers.
-
-# Use / Testing
-
-The easiest way to test on a local system that already has arcan and one
-WM running with a terminal that has the ARCAN\_CONNPATH environment:
-
-    arcan-net -l 6666
-		arcan-net -s test localhost 6666
-		ARCAN_CONNPATH=test afsrv_terminal
+If ffmpeg reports errors, is missing or is missing h264 support entirely the
+system will fallback to raw- or only lightly- compressed buffers.
 
 # Todo
 
@@ -133,14 +156,13 @@ Milestone 2 - closer to useful (0.6.x)
 - [ ] Basic privsep/sandboxing (a)
 - [ ] External key-provider / negotiation (a)
   -  [ ] FIDO2 (through libfido2) (a)
-- [ ] Preferred-hosts list migration / handover (a)
+- [x] Preferred-hosts list migration / handover (a)
   - [ ] Config for retry limits, sleep delays and backoff (a)
 - [ ] Output segments (p)
 - [ ] Compression Heuristics for binary transfers (entropy estimation)(p)
-- [ ] Pipe pack/unpack option (a)
 - [ ] Quad-tree for DPNG (p)
   - [ ] Tile-map and caching (p)
-	- [ ] Evaluate if LZ4 is a better fit than DEFLATE
+	- [x] Remove DEFLATE and mote to ZSTD
 - [ ] Jpeg-XL progressive mode (p)
 - [ ] Frame Cancellation / dynamic framerate on window drift (p)
 - [ ] vframe-caching on certain types (first-frame on new, ...) (p)
@@ -153,6 +175,7 @@ Milestone 2 - closer to useful (0.6.x)
 - [ ] Add TUI- mode for -net with statistics / controls (a)
   - [ ] Show unauthenticated public keys as QR code in window (a)
 - [ ] Fexec(self) handover on completed negotiation (p)(a)
+- [ ] Compression tunable .configuration file
 
 Milestone 3 - big stretch (0.6.x)
 
@@ -162,9 +185,9 @@ Milestone 3 - big stretch (0.6.x)
 - [ ] UDP based carrier (UDT) (a)
 - [ ] 'ALT' arcan-lwa interfacing (px)
 - [ ] 'AGP' level- packing (px)
+- [ ] Ramp-up transfer based on timestamp to reduce cache loss (b)
 - [ ] Optimized version of ChaCha / BLAKE (avx, neon, ...) (p)
   - [ ] Evaluate in-place merged encrypt+mac instead of enc then mac
-- [ ] ZSTD with dictionary on whole source (p)
 - [ ] Subprotocols (p)
   - [ ] VR
 	- [ ] HDR
