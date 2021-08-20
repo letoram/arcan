@@ -2071,7 +2071,7 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	bool dimensions_changed = width != arg->w || height != arg->h;
 	bool bufcnt_changed = vidc != priv->vbuf_cnt || audc != priv->abuf_cnt;
 	bool hints_changed = arg->addr->hints != arg->hints;
-	bool bufsz_changed = arg->addr->abufsize != abufsz;
+	bool bufsz_changed = abufsz && arg->addr->abufsize != abufsz;
 
 /* don't negotiate unless the goals have changed */
 	if (arg->vidp &&
@@ -2081,6 +2081,7 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 		!bufsz_changed){
 		if (priv->reset_hook)
 			priv->reset_hook(SHMIF_RESET_NOCHG, priv->reset_hook_tag);
+
 		return true;
 	}
 
@@ -3284,7 +3285,7 @@ bool arcan_shmif_mousestate(
 			int dy = inev->io.input.analog.axisval[2] - ms->ly;
 			ms->lx = inev->io.input.analog.axisval[0];
 			ms->ly = inev->io.input.analog.axisval[2];
-			if (abs(dx) > 20 || abs(dy) > 20 || (!dx && !dy)){
+			if (!dx && !dy){
 				return false;
 			}
 			*out_x = dx;
@@ -3310,7 +3311,7 @@ bool arcan_shmif_mousestate(
 			}
 			int dx = inev->io.input.analog.axisval[0] - ms->lx;
 			ms->lx = inev->io.input.analog.axisval[0];
-			if (abs(dx) > 20 || !dx)
+			if (!dx)
 				return false;
 			*out_x = dx;
 			*out_y = 0;
@@ -3335,7 +3336,7 @@ bool arcan_shmif_mousestate(
 			}
 			int dy = inev->io.input.analog.axisval[0] - ms->ly;
 			ms->ly = inev->io.input.analog.axisval[0];
-			if (abs(dy) > 20 || !dy)
+			if (!dy)
 				return false;
 			*out_x = 0;
 			*out_y = dy;
