@@ -503,6 +503,16 @@ void arcan_vint_applyhint(arcan_vobject* src, enum blitting_hint hint,
 		txout[6] = txin[4];
 		txout[7] = txin[5];
 	}
+	else if (hint & HINT_ROTATE_180){
+		txout[0] = txin[4];
+		txout[1] = txin[5];
+		txout[2] = txin[6];
+		txout[3] = txin[7];
+		txout[4] = txin[0];
+		txout[5] = txin[1];
+		txout[6] = txin[2];
+		txout[7] = txin[3];
+	}
 
 	if (hint & HINT_YFLIP){
 		float flipb[8];
