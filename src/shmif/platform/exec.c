@@ -83,6 +83,11 @@ pid_t shmif_platform_execve(int fd, const char* shmif_key,
 	pid_t pid = fork();
 	if (pid == 0){
 
+/* ensure that the socket is not CLOEXEC */
+		int flags = fcntl(fd, F_GETFD);
+		if (-1 != flags)
+			fcntl(fd, F_SETFD, flags & (~FD_CLOEXEC));
+
 /* just leverage the sparse allocation property and that process creation
  * or libc safeguards typically ensure correct stdin/stdout/stderr */
 		if (opts & 2){

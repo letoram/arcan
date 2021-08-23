@@ -39,6 +39,8 @@ struct arcan_frameserver* platform_fsrv_listen_external(
  * to a new process. Note that this will only prepare the context and resources
  * not control how connection primitives are transmitted, hence why the client
  * end of the socket is passed in [clsocket].
+ *
+ * NOTE: This socket is set to NONBLOCK and CLOSE_ON_EXEC.
  */
 struct arcan_frameserver* platform_fsrv_spawn_server(
 	int segid, size_t w, size_t h, uintptr_t tag, int* clsocket);

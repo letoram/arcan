@@ -1439,45 +1439,6 @@ done:
 	return state;
 }
 
-int platform_fsrv_prepare(struct arcan_frameserver* ctx, int* clsock)
-{
-	if (ctx == NULL)
-		return ARCAN_ERRC_BAD_ARGUMENT;
-
-	int sockp[2] = {-1, -1};
-
-	if (!sockpair_alloc(sockp, 1, false)){
-		arcan_warning("posix/frameserver.c() couldn't get socket pairs\n");
-		return ARCAN_ERRC_UNACCEPTED_STATE;
-	}
-
-	if (!shmalloc(ctx, false, NULL, -1)){
-		arcan_warning("posix/frameserver.c() shmalloc failed\n");
-		close(sockp[0]);
-		close(sockp[1]);
-		return ARCAN_ERRC_UNACCEPTED_STATE;
-	}
-
-	ctx->queue_mask = EVENT_EXTERNAL;
-
-/* two separate queues for passing events back and forth between main program
- * and frameserver, set the buffer pointers to the relevant offsets in
- * backend_shmpage */
-	arcan_shmif_setevqs(ctx->shm.ptr,
-		ctx->esync, &(ctx->inqueue), &(ctx->outqueue), true);
-	ctx->inqueue.synch.killswitch = (void*) ctx;
-	ctx->outqueue.synch.killswitch = (void*) ctx;
-
-#ifdef __APPLE__
-	int val = 1;
-	setsockopt(sockp[0], SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
-#endif
-	fcntl(sockp[0], F_SETFD, FD_CLOEXEC);
-	*clsock = sockp[1];
-
-	return ARCAN_OK;
-}
-
 struct arcan_frameserver* platform_fsrv_listen_external(const char* key,
 	const char* auth, int fd, mode_t mode, size_t w, size_t h, uintptr_t tag)
 {
