@@ -191,7 +191,9 @@ bool tui_fontmgmt_hasglyph(struct tui_context* c, uint32_t cp)
 		return TTF_FindGlyph(ary, count, cp, 0, false);
 	}
 
-	return tui_pixelfont_hascp(c->font[0]->bitmap, cp);
+	return c->font[0]->bitmap ?
+		tui_pixelfont_hascp(c->font[0]->bitmap, cp) :
+		true;
 }
 
 /*
