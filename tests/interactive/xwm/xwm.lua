@@ -1,12 +1,19 @@
-local degenerates = {}
-local native = {}
-local pending = {}
+local degenerates = {} -- set of known visible regions
+local root        = {id = 0} -- tree of current stacking order
+local idt         = {} -- mapping between xids stacking tree nodes
+local native      = {} -- VIDs for arcan native clients
+local pending     = {} -- set of pending attributes to apply
+local paired      = {} -- lookup from XID to native
+local dirty       = true
+root.children     = {}
+
 local input_focus
 local xarcan_client
 local native_handler
+local input_grab
 
-local function set_txcos(wnd, tbl)
-	local props = image_storage_properties(wnd.source)
+local function set_txcos(vid, tbl)
+	local props = image_storage_properties(vid)
 
 -- convert to surface local coordinates, windows can lie in negative
 -- in coordinate space, so shrink the rectangle and clamp the coordinates
@@ -29,94 +36,186 @@ local function set_txcos(wnd, tbl)
 	local bw = tbl.anchor_w * ss
 	local bh = tbl.anchor_h * st
 
-	image_set_txcos(wnd.vid,
+	image_set_txcos(vid,
 	{
 		bx,    by,    bx+bw, by,
 		bx+bw, by+bh, bx,    by+bh
 	})
 end
 
--- align updating the changeset to frame delivery for content to synch
-local function apply_pending()
-	if #pending == 0 then
+-- return the (sub)tree in processing order (DFS)
+local function flatten(tree)
+	local tmp = {}
+	local add
+
+	add = function(node)
+		table.insert(tmp, node)
+		for _,v in ipairs(node.children) do
+			add(v)
+		end
+	end
+
+	for _,v in ipairs(tree.children) do
+		add(v)
+	end
+
+	return tmp
+end
+
+-- we reparent on viewport and restack calls
+local function add_to_stack(xid)
+	if idt[xid] then
 		return
 	end
 
-	for _,v in ipairs(pending) do
-		local tbl = v.pending
-		local vid = v.vid
-		local props = image_surface_properties(vid)
+	local new = {
+		parent = root,
+		id = xid,
+		children = {}
+	}
 
-		if tbl.invisible then
-			if props.opacity >= 0.99 then
-			end
-			hide_image(vid)
-		else
-			if props.opacity < 0.99 then
-			end
-			show_image(vid, 1.0)
-		end
-
-		order_image(vid, tbl.rel_order + 129)
-		local parent = degenerates[tbl.parent]
-		if parent then
-			link_image(vid, parent.vid)
-			image_mask_clear(vid, MASK_LIVING)
-			image_mask_clear(parent.vid, MASK_LIVING)
-		end
-
--- client resize might not make it to this batch, need an autocrop shader for that
-		if native[v.source] then
-		else
-			set_txcos(v, v.pending)
-		end
-
-		resize_image(vid, tbl.anchor_w, tbl.anchor_h)
-		move_image(vid, tbl.rel_x, tbl.rel_y)
-	end
-
-	pending = {}
+	table.insert(root.children, new)
+	idt[xid] = new
+	dirty = true
 end
 
-local function build_degenerate_surface(w, h)
-	local res = null_surface(w, h)
-	image_inherit_order(res, true)
-	image_mask_clear(res, MASK_POSITION)
-	image_mask_clear(res, MASK_OPACITY)
-	return res
-end
-
-local function paired(vid, xid)
-	if not vid or not native[vid] then
+local function drop_from_stack(xid)
+	local src = idt[xid]
+	if not src then
+		warning("attempt to destroy unknown: " .. tostring(xid))
 		return
 	end
 
--- we might get paired before the x surface has been fully mapped
-	local dtbl = degenerates[xid]
-	if not dtbl then
-		dtbl = {
-			vid = build_degenerate_surface(32, 32)
-		}
-		degenerates[xid] = dtbl
+	idt[xid] = nil
+
+-- get rid of the visible scene graph node
+	if degenerates[xid] then
+		delete_image(degenerates[xid])
+		degenerates[xid] = nil
 	end
 
--- the source might refer to the shared composited root, the per-degen
--- redirected backing store or the arcan proxy vid
-	dtbl.source = vid
-	dtbl.xid = xid
-	dtbl.block_txcos = true
-	dtbl.got_proxy = true
-	image_tracetag(dtbl.vid, "proxy:xid=" .. tostring(xid))
-	image_sharestorage(vid, dtbl.vid)
+-- it is a native window, get rid off it
+	if paired[xid] then
+		delete_image(paired[xid])
+		native[paired[xid]] = nil
+		paired[xid] = nil
+	end
 
-	native[vid] = dtbl
+-- unlink from tree
+	local parent = src.parent
+	local pre = #parent.children
+	print("drop", src.id)
+	table.remove_match(parent.children, src)
+	local post = #parent.children
+	assert(pre ~= post, "could not remove")
+
+-- let parent adopt children, this might need to change to unlink
+	for _,v in ipairs(src.children) do
+		v.parent = parent
+		table.insert(parent.children, v)
+	end
+	dirty = true
+end
+
+local function restack(xid, parent, nextsib)
+	local src = idt[xid]
+	dirty = true
+
+	if not src then
+		warning("attempt to unknown source: " .. tostring(xid))
+		return
+	end
+
+-- become new root
+	local ptable
+	if not parent or parent == -1 then
+		ptable = root
+	elseif not idt[parent] then
+		warning("attempt to restack to unknown parent: " .. tostring(parent))
+		return
+	else
+		ptable = idt[parent]
+	end
+
+	local res = table.remove_match(src.parent.children, src)
+	if not res then
+		print("no match in parent")
+		for _,v in ipairs(src.parent.children) do
+			print(v.xid)
+		end
+	end
+
+	local sibindex = 1
+
+	if not nextsib or nextsib <= 0 then
+		sibindex = #ptable.children
+
+	elseif not idt[nextsib] then
+		warning("invalid next sibling sent: " .. tostring(nextsib))
+	else
+		for k,v in ipairs(ptable.children) do
+			if v.id == nextsib then
+				sibindex = k
+				break
+			end
+		end
+	end
+
+	src.parent = ptable
+	table.insert(ptable.children, sibindex, src)
+--	local out = {}
+--	for _,v in ipairs(ptable.children) do
+--		table.insert(out, v.id)
+--	end
+--	print(table.concat(out, " -> "))
+end
+
+local function apply_stack()
+	dirty = false
+	local lst = flatten(root)
+
+-- go through the current stack and match against pending updates
+	for i, v in ipairs(lst) do
+		local id = v.id
+
+		if not degenerates[id] and pending[id] and not pending[id].invisible then
+			local new = null_surface(32, 32)
+			if paired[id] then
+				image_sharestorage(paired[id], new)
+-- could / should apply some cropping if there is a disagreement on size
+			else
+				image_sharestorage(xarcan_client, new)
+			end
+			degenerates[id] = new
+		end
+
+-- synch changes
+		if degenerates[id] and pending[id] then
+			order_image(degenerates[id], i) --1 + pending[id].rel_order)
+			if paired[id] then
+				image_set_txcos_default(degenerates[id], false)
+			else
+				set_txcos(degenerates[id], pending[id])
+			end
+			resize_image(degenerates[id], pending[id].anchor_w, pending[id].anchor_h)
+			move_image(degenerates[id], pending[id].rel_x, pending[id].rel_y)
+			show_image(degenerates[id])
+			pending[id] = nil
+		end
+	end
+end
+
+local function cursor_handler(source, status)
+	print("cursor", status.kind)
+end
+
+local function clipboard_handler(source, status)
+	print("clipboard", status.kind, status.message)
 end
 
 local handler
 handler =
 function(source, status)
---	show_image(source)
-
 	if status.kind == "terminated" then
 		delete_image(source)
 
@@ -125,93 +224,97 @@ function(source, status)
 			if valid_vid(v.vid) then
 				delete_image(v.vid)
 			end
+			mouse_droplistener(v.vid)
 		end
 		degenerates = {}
+		stack = {}
 
+-- requesting initial screen properties
 	elseif status.kind == "preroll" then
 		target_displayhint(source, VRESW, VRESH)
 
--- we want to apply the pending-set only when a new composited frame
--- has been delivered, or the set coordinates won't make sense.
-	elseif status.kind == "frame" then
-		apply_pending()
+	elseif status.kind == "segment_request" then
+		if status.segkind == "cursor" then
+			accept_target(32, 32, cursor_handler)
 
+		elseif status.segkind == "clipboard" then
+			CLIPBOARD = accept_target(32, 32, clipboard_handler)
+		end
+
+	elseif status.kind == "frame" then
+		if dirty then
+			apply_stack()
+		end
+
+-- randr changed resolution
 	elseif status.kind == "resized" then
 		resize_image(source, status.width, status.height)
 
---
--- This will give us degenerate regions that represent all known windows
--- 'parent' will be set to, the 'parent' is actually the XID and the
--- mapping between our proxy windows and XID are conveyed over message.
---
--- This means that when 'our' windows are focused, we don't actually
--- send keypresses necessarily (or they only get masked to the ones
--- that are allowed to have it.
---
--- It it also not a given if a native surface should receive input from
--- the Xserver or not, the behavior here is to just ignore it.
---
+-- remove immediately, scene-graph only contains currently visible
 	elseif status.kind == "viewport" then
-		local wnd = degenerates[status.ext_id]
-		if not wnd then
-			wnd = {
-				vid = build_degenerate_surface(status.anchor_w, status.anchor_h),
-				source = source,
-				parent = status.parent
-			}
-			degenerates[status.ext_id] = wnd
-			image_sharestorage(source, wnd.vid)
-			image_mask_set(wnd.vid, MASK_UNPICKABLE)
+		local node = idt[status.ext_id]
+		if not node then
+			warning("viewport on unknown node: " .. tostring(status.ext_id))
+			return
 		end
 
-		local props = image_surface_properties(wnd.vid)
-		if status.invisible and props.opacity > 0.99 then
-			hide_image(wnd.vid)
-		end
-		wnd.pending = status
-
-		image_tracetag(
-			wnd.vid,
-			string.format("native:%d:parent=%d:focus=%s",
-				status.ext_id, status.parent, status.focus and "yes" or "no")
-		)
-
--- forward information about the actual size here along with focus state,
--- this might cause the client to resize/submit a new frame
-		if wnd.source ~= xarcan_client then
-			if status.focus then
-				input_focus = wnd.source
-				target_displayhint(
-					wnd.source, status.anchor_w, status.anchor_h, 0)
-			else
-				if input_focus == wnd.source then
-					input_focus = xarcan_client
-				end
-				target_displayhint(
-					wnd.source, status.anchor_w, status.anchor_h, TD_HINT_UNFOCUSED)
+		if status.invisible then
+			if degenerates[status.ext_id] then
+				print("dropping degenerate")
+				delete_image(degenerates[status.ext_id])
+				degenerates[status.ext_id] = nil
 			end
+		else
+			dirty = true
+			pending[status.ext_id] = status
 		end
 
-		table.insert(pending, wnd)
+		if idt[status.parent] and node.parent ~= idt[status.parent] then
+--			print("reparent", node.parent.id, status.parent)
+--			table.insert(idt[status.parent].children, node)
+--			table.remove_match(node.parent.children, node)
+--			node.parent = idt[status.parent]
+		end
 
 -- this is in the format used with ARCAN_ARG and so on as an env- packed argv
 	elseif status.kind == "message" then
 		local args = string.unpack_shmif_argstr(status.message)
 
 		if args.kind == "pair" then
-			paired(tonumber(args.vid), tonumber(args.xid))
+			local xid = tonumber(args.xid)
+			local vid = tonumber(args.vid)
+			if not xid or not vid then
+				warning("pair argument error, missing xid/vid")
+				return
+			end
+			if not native[vid] then
+				warning("pair error, no such vid")
+				return
+			end
+			if not idt[xid] then
+				add_to_stack(xid)
+			end
+			print("paired", xid, vid)
+			paired[xid] = vid
+
+		elseif args.kind == "restack" then
+			local xid = tonumber(args.xid)
+			local parent = tonumber(args.parent)
+			local sibling = tonumber(args.next)
+
+			print("restack", xid, parent, sibling)
+			restack(xid, parent, sibling)
+
+		elseif args.kind == "create" then
+			local id = tonumber(args.xid)
+			add_to_stack(id)
 
 		elseif args.kind == "destroy" then
 			local id = tonumber(args.xid)
-			if id and degenerates[id] then
-				delete_image(degenerates[id].vid)
-				if degenerates[id].source ~= xarcan_client then
-					delete_image(degenerates[id].source)
-				end
-				if degenerates[id].source == input_focus then
-					input_focus = xarcan_client
-				end
-				degenerates[id] = nil
+			drop_from_stack(id)
+
+			if not valid_vid(input_focus) then
+				input_focus = xarcan_client
 			end
 		end
 	end
@@ -220,6 +323,7 @@ end
 function xwm(arguments)
 	symtable = system_load("builtin/keyboard.lua")()
 	system_load("builtin/string.lua")()
+	system_load("builtin/table.lua")()
 	system_load("builtin/mouse.lua")()
 	mouse_setup(fill_surface(8, 8, 0, 255, 0), 65535, 1, true, false)
 
@@ -231,22 +335,80 @@ function xwm(arguments)
 
 	input_focus = xarcan_client
 	target_flags(xarcan_client, TARGET_VERBOSE) -- enable 'frame update' events
+	target_flags(xarcan_client, TARGET_DRAINQUEUE)
+	assert(TARGET_DRAINQUEUE > 0)
+end
+
+local function wnd_meta(wnd)
+	res = ""
+
+	if wnd.mark then
+		res = res .. " color=\"deepskyblue\""
+	end
+
+	if degenerates[wnd.id] then
+		res = res .. " shape=\"triangle\""
+	end
+
+	return res
+end
+
+local function dump_nodes(io, tree)
+	local id = tree.id
+	local shape = "square"
+	if degenerates[id] then
+		if paired[id] then
+			shape = "triangle"
+		else
+			shape = "circle"
+		end
+	end
+
+	io:write(
+		string.format(
+			"%.0f[label=\"%.0f\" shape=\"%s\"]\n",
+			id, id, shape
+		)
+	)
+
+	for _,v in ipairs(tree.children) do
+		dump_nodes(io, v)
+	end
+end
+
+local function dump_relations(io, tree)
+	local lst = {}
+	local visit
+
+	for _,v in ipairs(tree.children) do
+		io:write(string.format("%d->%d;\n", tree.id, v.id))
+		io:write(string.format("%d->%d;\n", v.id, v.parent.id))
+	end
+
+	for _,v in ipairs(tree.children) do
+		dump_relations(io, v)
+	end
 end
 
 local bindings = {
 	F1 =
 	function()
-		local new = target_alloc("test", native_handler)
+		local new = target_alloc("demo", native_handler)
 		native[new] = {}
 		target_input(xarcan_client, "kind=new:x=100:y=100:w=640:h=480:id=" .. new)
 	end,
 	F2 =
 	function()
-		for _,v in pairs(degenerates) do
-			local props = image_surface_resolve(v.vid)
-			if props.opacity > 0.0 then
-				print(string.format("surface(%s:%d) x=%.2f:y=%.2f:w=%.0f:h=%.0f:z=%d:opa=%.2f",
-					image_tracetag(v.vid), v.vid, props.x, props.y, props.width, props.height, props.order, props.opacity))
+		if valid_vid(CLIPBOARD) then
+			local io = open_nonblock(CLIPBOARD, false, "primary:utf-8")
+			xwm_clock_pulse = function()
+				local msg, ok = io:read()
+				if not ok then
+					xwn_clock_pulse = nil
+					io:close()
+				elseif msg and #msg > 0 then
+					print("read: ", msg)
+				end
 			end
 		end
 	end,
@@ -258,29 +420,51 @@ local bindings = {
 	end,
 	F4 =
 	function()
-		target_input(xarcan_client, "kind=synch")
+		print("creating dump.dot")
+		zap_resource("dump.dot")
+		local io = open_nonblock("dump.dot", true)
+		io:write("digraph g{\n")
+		dump_nodes(io, root)
+		dump_relations(io, root)
+		io:write("subgraph order {")
+		local lst = {}
+		for _,v in ipairs(flatten(root)) do
+			if degenerates[v.id] then
+				local ch = "o"
+				if paired[v.id] then
+					ch = "P"
+				end
+				local name = ch .. tostring(v.id)
+				io:write(string.format("%s[label=\"%s\" %s]\n", name, name, wnd_meta(v)))
+				table.insert(lst, name)
+			end
+		end
+		io:write(table.concat(lst, "->"))
+		io:write(";\n}}\n")
+		io:close()
 	end,
 	F5 =
 	function()
-		local fn = tostring(benchmark_timestamp(1))
-		snapshot_target(xarcan_client, "xorg_" .. fn .. ".svg", APPL_TEMP_RESOURCE, "svg")
-		snapshot_target(xarcan_client, "xorg_" .. fn .. ".dot", APPL_TEMP_RESOURCE, "dot")
-		system_snapshot("xorg_" .. fn .. ".lua", APPL_TEMP_RESOURCE)
+		snapshot_target(xarcan_client, "xorg.dot", APPL_TEMP_RESOURCE, "dot")
 	end,
 	F6 =
 	function()
 		local x, y = mouse_xy()
-		local items = pick_items(x, y, 1)
+		local items = pick_items(x, y, 1, true)
 		if items[1] then
-			print("active item:", items[1], image_tracetag(items[1]))
-		end
-
-		for k,v in pairs(degenerates) do
-			local opa = image_surface_properties(v.vid).opacity
-			if opa > 0.0 then
-				print("visible", image_tracetag(v.vid))
+			for k,v in pairs(degenerates) do
+				if v == items[1] then
+					print("matched xid:", k)
+					idt[k].mark = true
+					break
+				end
 			end
 		end
+	end,
+	F10 = shutdown,
+	F12 =
+	function()
+		input_grab = not input_grab
 	end
 }
 
@@ -326,8 +510,18 @@ function xwm_input(iotbl)
 		return
 	end
 
+-- If the WM is completely window controlled, this will conflict with modifiers
+-- when a native arcan client is selected as keyboard focus won't be able to
+-- 'jump' without some kind of toggle on our level. While basic keys will have
+-- the mod mask set, the 'release' event won't have the modifiers, causing ghost
+-- releases being sent to X. For this demo we use F12 as an 'arcan client'
+-- toggle.
 	if iotbl.translated then
-		target_input(input_focus, iotbl)
+		if input_focus ~= xarcan_client and input_grab then
+			target_input(input_focus, iotbl)
+		else
+			target_input(xarcan_client, iotbl)
+		end
 	else
 		target_input(xarcan_client, iotbl)
 	end
