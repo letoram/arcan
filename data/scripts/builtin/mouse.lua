@@ -1182,6 +1182,10 @@ function mouse_addlistener(tbl, events)
 		warning(" -- mouse listener missing identifier -- ");
 		warning( debug.traceback() );
 		tbl.name = "__missing__";
+	elseif (type(tbl.name) ~= "string") then
+		warning(" -- mouse listener invalid field name type : " .. type(tbl.name));
+		warning( debug.traceback() );
+		tbl.name = "__broken__";
 	end
 
 	if (DEBUGLEVEL > 2) then
