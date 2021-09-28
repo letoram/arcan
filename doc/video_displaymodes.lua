@@ -42,7 +42,8 @@
 -- Calling this function on a display that supports dynamic (caller-defined)
 -- modes, with a width and a height set will try to force that specific
 -- dynamic mode and return success or not as a boolean.
---
+-- @bug: LUA_API_VERSION_MAJOR/MINOR <= 0 11 (arcan < 0.6.1) incorrectly
+-- handles the (int, int, tbl) argument form.
 -- @note: possible modelist table members are: cardid, displayid,
 -- phy_width_mm, phy_height_mm, subpixel_layout, dynamic, primary,
 -- modeid, width, height, refresh, depth

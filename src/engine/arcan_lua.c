@@ -7297,23 +7297,28 @@ static int videodisplay(lua_State* ctx)
 		id = luaL_checknumber(ctx, 1);
 		platform_mode_id mode = luaL_checknumber(ctx, 2);
 
-/* add options */
-		if (lua_type(ctx, 3) == LUA_TTABLE){
-			opts.vrr = intblfloat(ctx, 3, "vrr");
-		}
 		lua_pushboolean(ctx, platform_video_set_mode(id, mode, opts));
 		LUA_ETRACE("video_displaymodes", NULL, 1);
 	break;
 
 	case 3: /* specify custom mode */
 		id = luaL_checknumber(ctx, 1);
-		size_t w = luaL_checknumber(ctx, 2);
-		size_t h = luaL_checknumber(ctx, 3);
-		struct monitor_mode mmode = {
-			.width = w,
-			.height = h
-		};
-		lua_pushboolean(ctx, platform_video_specify_mode(id, mmode));
+/* add options */
+		if (lua_type(ctx, 3) == LUA_TTABLE){
+			platform_mode_id mode = luaL_checknumber(ctx, 2);
+			lua_pushboolean(ctx, platform_video_set_mode(id, mode, opts));
+			opts.vrr = intblfloat(ctx, 3, "vrr");
+		}
+		else {
+			size_t h = luaL_checknumber(ctx, 3);
+			size_t w = luaL_checknumber(ctx, 2);
+			struct monitor_mode mmode = {
+				.width = w,
+				.height = h
+			};
+			lua_pushboolean(ctx, platform_video_specify_mode(id, mmode));
+		}
+
 		LUA_ETRACE("video_displaymodes", NULL, 1);
 
 	default:
