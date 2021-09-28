@@ -195,7 +195,6 @@ bool platform_video_display_edid(platform_display_id did,
 struct platform_mode_opts {
 	int depth;
 	float vrr;
-	bool direct_out;
 };
 
 bool platform_video_set_mode(

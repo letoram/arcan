@@ -1935,12 +1935,20 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 /* remove the original target store, substitute in our own */
 	arcan_vint_drop_vstore(dst->vstore);
 
+	struct rendertarget* rtgt = arcan_vint_findrt(dst);
+
 /* if the source is broken, convert dst to null store (color with bad prg) */
 	if (src->vstore->txmapped == TXSTATE_OFF ||
 		src->vstore->vinf.text.glid == 0 ||
 		FL_TEST(src, FL_PRSIST) ||
 		FL_TEST(dst, FL_PRSIST)
 	){
+
+/* but leave rendertarget vstore alone */
+		if (rtgt){
+			return ARCAN_OK;
+		}
+
 		populate_vstore(&src->vstore);
 		struct agp_vstore* store = src->vstore;
 		store->txmapped = TXSTATE_OFF;
@@ -1963,6 +1971,15 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 	else if (dst->txcos){
 		arcan_mem_free(dst->txcos);
 		dst->txcos = NULL;
+	}
+
+/* for rendertarget, we also need to rebuild attachments and so on, the easiest
+ * approach for this is to drop the FBO entirely and rebuild with the new store
+ * as the store affects format. */
+	if (rtgt){
+		agp_drop_rendertarget(rtgt->art);
+		agp_setup_rendertarget(rtgt->color->vstore, rtgt->mode);
+		arcan_video_forceupdate(did, true);
 	}
 
 	FLAG_DIRTY(dst);
@@ -6150,7 +6167,6 @@ void arcan_video_shutdown(bool release_fsrv)
 	agp_shader_flush();
 	deallocate_gl_context(current_context, true, NULL);
 	arcan_video_reset_fontcache();
-	agp_rendertarget_clear();
 	TTF_Quit();
 	platform_video_shutdown();
 }

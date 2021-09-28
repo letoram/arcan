@@ -40,7 +40,8 @@
 -- bugs still. For normal/simple display configurations it is likely to work,
 -- but with edge cases for multi-display hotplug, rotated secondary displays
 -- and so on. This is marked experimental, but if the feature is deprecated
--- that flag will simply resolve to 0 so it is API-wise safe for use.
+-- that flag will simply resolve to 0 so it is API-wise safe for use. The
+-- caveats should be conveyed to a user.
 --
 -- @note: A *src* referencing an object with a feed- function, such as
 -- one coming from ref:define_recordtarget, ref:define_calctarget and so
