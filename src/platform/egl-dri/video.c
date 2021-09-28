@@ -1235,8 +1235,6 @@ bool platform_video_set_mode(platform_display_id disp,
 	else
 		debug_print("vrr_ignored:missing_vrr_property");
 
-	d->force_compose = !opts.direct_out;
-
 /* ATOMIC test goes here */
 	debug_print("(%d) schedule mode switch to %zu * %zu", (int) disp,
 		d->display.mode.hdisplay, d->display.mode.vdisplay);

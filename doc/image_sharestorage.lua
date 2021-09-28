@@ -7,15 +7,18 @@
 -- or external source tied to the vid. As a means of preventing multiple views
 -- of the same storage, this function can be used to share the storage of vid
 -- as the storage of dst.
--- @note: texture coordinates are initially copied over but are otherwise
+-- @note: Texture coordinates are initially copied over but are otherwise
 -- managed separately in each object.
 -- @note: WORLDID is a valid src argument, (WORLDID as dst is undefined) but
 -- any surface that shares storage with WORLDID should not be part of a visible
 -- rendertarget.
--- @note: video image post processing (scale, flips and filtermode) are bound
+-- @note: Video image post processing (scale, flips and filtermode) are bound
 -- to the texture store and not to any- single object.
 -- @note: non-textured objects (null, color, instances and persistant) cannot
 -- bu used as src.
+-- @note: Sharing into a *dst* that is also used as the storage for a
+-- rendertarget will invalidate the state of the rendertarget and an explicit
+-- ref:rendertarget_forceupdate will be called.
 -- @note: There is no ordering imposed in rendertarget updates, which means
 -- that a store that is used as the destination for a rendertarget will need
 -- to have all dependent rendertargets manually updated in the preframe

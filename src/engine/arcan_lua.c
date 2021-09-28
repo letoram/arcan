@@ -7299,8 +7299,7 @@ static int videodisplay(lua_State* ctx)
 
 /* add options */
 		if (lua_type(ctx, 3) == LUA_TTABLE){
-			opts.vrr = intblstr(ctx, 3, "vrr") != NULL;
-			opts.direct_out = intblstr(ctx, 3, "direct") != NULL;
+			opts.vrr = intblfloat(ctx, 3, "vrr");
 		}
 		lua_pushboolean(ctx, platform_video_set_mode(id, mode, opts));
 		LUA_ETRACE("video_displaymodes", NULL, 1);
@@ -8510,7 +8509,7 @@ static int targethandler(lua_State* ctx)
 
 	arcan_event dummy;
 
-	_Static_assert(sizeof(dummy.fsrv.otag) == sizeof(ref));
+	_Static_assert(sizeof(dummy.fsrv.otag) == sizeof(ref), "bad tag sz");
 
 /* for the already pending events referring to the specific frameserver,
  * rewrite the otag to match that of the new function */

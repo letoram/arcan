@@ -23,21 +23,25 @@
 --
 -- Calling this function with a display index and a modeid obtained
 -- from a previous table from video_displaymodes will attempt to switch
--- the display to that mode and return success or not as a boolean. This
--- can be further hinted by providing a *modeopts* table that currently
--- accepts a "number:vrr" target and a "int:quality" where the quality
--- value is one of ALLOC_QUALITY_LOW (typically RGB565),
--- ALLOC_QUALITY_NORMAL (RGB888), ALLOC_QUALITY_HIGH (R10G10B10, "deep"),
--- ALLOC_QUALITY_FLOAT16 (HDR-FP16) or ALLOC_QUALITY_FLOAT32 (HDR-FP32).
--- Any rendertarget that gets mapped to this display may have its backing
--- store changed to fit the requirements of the display it is mapped to.
+-- the display to that mode and return success or not as a boolean.
+--
+-- This can be further hinted by providing a *modeopts* table.
+--
+-- The valid keys for this table are:
+-- *modeopts:number:vrr* for setting the refresh rate target (Hz) or a <= 0 value
+-- for letting the platform dynamically decide.
+-- *modeopts:int:quality* for setting the mode scanout quality. This overrides
+-- the behaviour for WORLDID and directly composited output only. If another
+-- rendertarget has been set as the direct output through ref:map_video_display
+-- then the properties of the rendertarget store takes precendent. The permitted
+-- quality options are the same as for ref:alloc_surface:
+-- ALLOC_QUALITY_LOW (typically RGB565), ALLOC_QUALITY_NORMAL (RGB888),
+-- ALLOC_QUALITY_HIGH (R10G10B10, "deep"), ALLOC_QUALITY_FLOAT16 (HDR-FP16) or
+-- ALLOC_QUALITY_FLOAT32 (HDR-FP32).
 --
 -- Calling this function on a display that supports dynamic (caller-defined)
 -- modes, with a width and a height set will try to force that specific
 -- dynamic mode and return success or not as a boolean.
---
--- The *refresh* field of the *moderef* table may be set to a negative value
--- to indicate a target variable framerate.
 --
 -- @note: possible modelist table members are: cardid, displayid,
 -- phy_width_mm, phy_height_mm, subpixel_layout, dynamic, primary,
