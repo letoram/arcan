@@ -562,8 +562,18 @@ static void release_card(size_t i)
  * store might be locked with scanout while we are also waiting to update it for
  * another consumer.
  */
-static bool sane_direct_vobj(arcan_vobject* vobj)
+static bool sane_direct_vobj(arcan_vobject* vobj, const char* domain)
 {
+	debug_print(
+		"direct=%s:sane_direct=%d:vobj=%d:no_txcos=%d:default_prg=%d:2d=%d",
+		domain,
+		(int)(vobj != NULL),
+		(int)(vobj->vstore != NULL),
+		(int)(vobj->txcos == NULL),
+		(int)(!vobj->program || vobj->program == agp_default_shader(BASIC_2D)),
+		(int)(vobj->vstore->txmapped == TXSTATE_TEX2D)
+	);
+
 	return vobj
 	&& vobj->vstore
 	&& !vobj->txcos
@@ -602,33 +612,6 @@ bool platform_video_map_buffer(
 	agp_deactivate_vstore(vs);
 
 	vs->vinf.text.tag = (uintptr_t) img;
-
-	return true;
-}
-
-static bool display_rtgt_proxy(struct agp_rendertarget* tgt, uintptr_t tag)
-{
-	struct dispout* d = (struct dispout*) tag;
-
-/* The dispouts come frome a static pool, so they can never go memory-
- * wise UAF, though there are higher level states to consider, such as
- * mapped or not. Point being: don't need to consider 'unregister'. */
-	if (d->state != DISP_MAPPED){
-		verbose_print("(%d) reject unmapped fastpath", (int)d->id);
-		return false;
-	}
-
-	arcan_vobject* vobj = arcan_video_getobject(d->vid);
-	if (!vobj || !sane_direct_vobj(vobj)){
-		verbose_print("(%d) reject unsound vobject", (int)d->id);
-		return false;
-	}
-/* We have a vobj that can be mapped directly, and we know that we
- * have to compose into the egl display, so do that. */
-
-	verbose_print("fastpath, proxy rendertarget");
-	d->skip_blit = true;
-	set_display_context(d);
 
 	return true;
 }
@@ -1228,9 +1211,9 @@ bool platform_video_set_mode(platform_display_id disp,
 	uint64_t pid;
 	if (lookup_drm_propval(d->device->disp_fd,
 		d->display.crtc, DRM_MODE_OBJECT_CRTC, "type", &pid, true)){
-		debug_print("setting_vrr");
-		drmModeObjectSetProperty(
-			d->device->disp_fd, d->display.crtc, DRM_MODE_OBJECT_CRTC, pid, opts.vrr);
+		debug_print("setting_vrr: %f", opts.vrr);
+		drmModeObjectSetProperty(d->device->disp_fd,
+			d->display.crtc, DRM_MODE_OBJECT_CRTC, pid, fabs(opts.vrr) > EPSILON);
 	}
 	else
 		debug_print("vrr_ignored:missing_vrr_property");
@@ -4244,7 +4227,7 @@ ssize_t platform_video_map_display_layer(arcan_vobj_id id,
 
 /* need to remove this from the mapping hint so that it doesn't
  * hit HINT_NONE tests */
-	d->hint = hint & ~(HINT_FL_PRIMARY);
+	d->hint = hint & ~(HINT_FL_PRIMARY | HINT_DIRECT);
 	d->vid = id;
 	arcan_conductor_register_display(
 		d->device->card_id, d->id, SYNCH_STATIC, d->display.mode.vrefresh, d->vid);
@@ -4259,13 +4242,14 @@ ssize_t platform_video_map_display_layer(arcan_vobj_id id,
 		build_orthographic_matrix(
 			newtgt->projection, 0, vobj->origw, 0, vobj->origh, 0, 1);
 
-		if (sane_direct_vobj(vobj) && !d->hint && !d->force_compose){
+		if (!d->hint && !d->force_compose && sane_direct_vobj(vobj, "rtgt")){
 /* before swapping, set an allocator for the rendertarget so that we can ensure
  * that we allocate from scanout capable memory - note that in that case the
  * contents is invalidated and a new render pass on the target is needed. This
  * is not that problematic with the normal render loop as the map call will come
  * in a 'good enough' order. */
  			bool swap;
+			debug_print("(%d) setting up rtgt allocator for direct out");
 			agp_rendertarget_allocator(newtgt->art, direct_scanout_alloc, d);
 			(void*) agp_rendertarget_swap(newtgt->art, &swap);
 		}
@@ -4279,7 +4263,7 @@ ssize_t platform_video_map_display_layer(arcan_vobj_id id,
  *
  *  - tui based contents where we can raster into a dumb buffer
  */
-	else if (sane_direct_vobj(vobj)){
+	else if (sane_direct_vobj(vobj, "simple_vid")){
 		TRACE_MARK_ONESHOT("egl-dri", "dumb-bo", TRACE_SYS_DEFAULT, d->id, 0, "");
 		debug_print("(%d) switching to dumb mode", d->id);
 
@@ -4369,7 +4353,8 @@ static enum display_update_state draw_display(struct dispout* d)
  * If the following conditions are valid, we can simply add the source vid
  * to the display directly, saving a full screen copy.
  */
-	if (sane_direct_vobj(vobj) && d->hint == HINT_NONE && !d->force_compose){
+	if (d->hint == HINT_NONE &&
+		!d->force_compose && sane_direct_vobj(vobj, "rt_swap")){
 		swap_display = false;
 		goto out;
 	}
