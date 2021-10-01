@@ -141,6 +141,7 @@ set(SHMIF_SERVER_SOURCES
 	${ASD}/platform/posix/fsrv_guard.c
 	${ASD}/platform/posix/mem.c
 	${ASD}/shmif/arcan_shmif_evpack.c
+	${ASD}/shmif/platform/exec.c
 )
 
 if (NOT TUI_RASTER_NO_TTF)

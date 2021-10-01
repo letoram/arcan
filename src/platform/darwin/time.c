@@ -9,7 +9,10 @@
 #include <assert.h>
 #include <sys/time.h>
 #include <time.h>
+#include <stdbool.h>
 #include <math.h>
+
+#include "../platform_types.h"
 
 #include <mach/mach_time.h>
 
@@ -70,4 +73,12 @@ void arcan_timesleep(unsigned long val)
 				break;
 		}
 	}
+}
+
+struct platform_timing platform_hardware_clockcfg()
+{
+	return (struct platform_timing){
+		.cost_us = 0,
+		.tickless = true
+	};
 }

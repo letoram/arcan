@@ -74,7 +74,7 @@ set_property(SOURCE engine/arcan_lua.c
 		OS_DYLIB_EXTENSION=".dylib")
 
 # doing like this as we don't want or
-set(ARCAN_NOLWA_DEFINITIONS MAIN_REDIR=SDL_main)
+# set(ARCAN_NOLWA_DEFINITIONS MAIN_REDIR=SDL_main)
 
 LIST(APPEND ARCAN_LIBRARIES ${IOKIT} ${COREFOUNDATION})
 LIST(APPEND LWA_LIBRARIES ${IOKIT} ${COCOA} ${COREAUDIO} ${AUDIOTOOLBOX} ${AUDIOUNIT})
@@ -93,7 +93,6 @@ set(ARCAN_PLATFORM
 	${PLATFORM_PATH}/../darwin/sem.c
 	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/../darwin/time.c
-	${PLATFORM_PATH}/../stub/fsrv_guard.c
 	${PLATFORM_PATH}/../stub/setproctitle.c
 	${PLATFORM_PATH}/launch.c
 	${PLATFORM_PATH}/namespace.c
@@ -103,6 +102,7 @@ set(ARCAN_PLATFORM
 	${PLATFORM_PATH}/launch.c
 	${PLATFORM_PATH}/config.c
 	${PLATFORM_PATH}/random.c
+	${PLATFORM_PATH}/fsrv_guard.c
 )
 
 set(ARCAN_LNK_FLAGS
@@ -143,7 +143,7 @@ set (LWA_PLATFORM_SOURCES
 LIST(APPEND PLATFORM_SOURCES
 	${PLATFORM_PATH}/../${VIDEO_PLATFORM}/video.c
 	${PLATFORM_PATH}/../${INPUT_PLATFORM}/event.c
-	${PLATFORM_PATH}/../darwin/SDLMain.m
+#	${PLATFORM_PATH}/../darwin/SDLMain.m
 )
 
 SET(HIJACK_SOURCES
