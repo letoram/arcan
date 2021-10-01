@@ -9,7 +9,6 @@
 /* we already have a reasonably sane GL environment here */
 #include <OpenGL/gl.h>
 #include <OpenGL/glext.h>
-#else
 
 #ifdef GLES2
 #include <GLES2/gl2.h>
@@ -31,6 +30,12 @@
 #endif
 
 #endif
+#endif
+
+/* Not available across all GL, but typically available anyhow in the actual
+ * implementations because of course they are. */
+#ifndef GL_RGB565
+#define GL_RGB565 0x8D62
 #endif
 
 /*
