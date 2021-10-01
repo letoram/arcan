@@ -10,6 +10,13 @@
 #include <OpenGL/gl.h>
 #include <OpenGL/glext.h>
 
+/* Not available across all GL, but typically available anyhow in the actual
+ * implementations because of course they are. */
+#ifndef GL_RGB565
+#define GL_RGB565 0x8D62
+#endif
+
+#else
 #ifdef GLES2
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
@@ -30,12 +37,6 @@
 #endif
 
 #endif
-#endif
-
-/* Not available across all GL, but typically available anyhow in the actual
- * implementations because of course they are. */
-#ifndef GL_RGB565
-#define GL_RGB565 0x8D62
 #endif
 
 /*

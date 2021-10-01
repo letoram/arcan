@@ -76,7 +76,7 @@ char* arcan_tui_statedescr(struct tui_context* tui)
 		(int) tui->scroll_lock,
 		tui->rows, tui->cols, tui->cell_w, tui->cell_h,
 		tui->ppcm, tui->font_sz, tui->hint,
-		tui->scrollback, tui->sbofs, 1, 1,
+		tui->scrollback, (int) tui->sbofs, 1, 1,
 		tui->modifiers, tui->inact_timer,
 		cx, cy,
 		tui->cursor_off, tui->cursor_hard_off, tui->cursor_period,
