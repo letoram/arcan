@@ -330,6 +330,11 @@ static struct {
 	uint8_t ledval[3];
 	int ledpair[2];
 
+/* on rendertarget rebuild and so on the decay is set to a certain number
+ * of frames (typically 3 - current, in-flight, draw-dst) so that the full
+ * swapchain reflects the same contents and format */
+	size_t decay;
+
 	long long last_card_scan;
 	bool scan_pending;
 } egl_dri = {
@@ -892,7 +897,7 @@ static int setup_buffers_stream(struct dispout* d)
 
 static int setup_buffers_gbm(struct dispout* d)
 {
-	SET_SEGV_MSG("libgbm(), creating ecanout buffer"
+	SET_SEGV_MSG("libgbm(), creating scanout buffer"
 		" failed catastrophically.\n")
 
 	if (!d->device->eglenv.create_image){
@@ -4031,7 +4036,9 @@ enum dpms_state platform_video_dpms(
 
 size_t platform_video_decay()
 {
-	return 2;
+	size_t ret = egl_dri.decay;
+	egl_dri.decay = 0;
+	return ret;
 }
 
 static bool direct_scanout_alloc(
@@ -4301,7 +4308,8 @@ ssize_t platform_video_map_display_layer(arcan_vobj_id id,
  * fail, causing force_composition to be set */
 	uintptr_t tag;
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
-	d->force_compose = !get_config("video_device_direct_scanout", 0, NULL, tag);
+	d->force_compose = !(hint & HINT_DIRECT) &&
+		!get_config("video_device_direct_scanout", 0, NULL, tag);
 
 	return 0;
 }
@@ -4547,6 +4555,7 @@ static bool update_display(struct dispout* d)
 				debug_print("(%d) error (%d) setting Crtc for %d:%d(con:%d)",
 					(int)d->id, errno, d->device->disp_fd, d->display.crtc, d->display.con_id);
 			}
+			egl_dri.decay = 4;
 		}
 		arcan_conductor_register_display(
 			d->device->card_id, d->id, SYNCH_STATIC, d->display.mode.vrefresh, d->vid);
