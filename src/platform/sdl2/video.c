@@ -354,7 +354,7 @@ bool platform_video_specify_mode(
 	float sw = (ww && dw) ? dw / ww : 1.0;
 	float sh = (wh && dh) ? dh / wh : 1.0;
 
-	SDL_SetWindowSize(sdl.screen, sw * mode.width, sh * mode.height);
+	SDL_SetWindowSize(sdl.screen, sw / mode.width, sh / mode.height);
 
 	sdl.canvasw = mode.width;
 	sdl.canvash = mode.height;
