@@ -44,6 +44,8 @@ static struct {
 	uint64_t vid_ts;
 
 	uint64_t last;
+	uint64_t last_resize;
+
 	size_t refresh;
 	float txcos[8];
 } sdl = {
@@ -311,15 +313,55 @@ bool platform_video_specify_mode(
 		return false;
 
 /*
- * this shouldn't be done if we come from a manual resize as that would
- * create a feedback loop on retina as the WindowSize is in scaled pixels
-	SDL_SetWindowSize(sdl.screen, mode.width, mode.height);
+ * Worse still, there are bad applications that might also just spam-resize
+ * themselves in a conflict with the window managing scheme triggering the
+ * same feedback loop:
+ *
+ *  -> (new w/h event)
+ *   |
+ *   -> display_state(reset)
+ *    |
+ *    -> specify_mode(VRESW, VRESH)
+ *     |
+ *     |-> injects (new w/h event) bounced throw windowing system
+ *
+ * Best case it will flicker and produce nonsense, worst case? live-lock
+ * and unresponsive. In that case the only way out is to sacrifice quality
+ * over denial-of-service and have a timer for the window.
  */
+
+	if (arcan_timemillis() - sdl.last_resize < 16.0){
+		return false;
+	}
+
+/*
+ * There is a major headache hidden here that causes divergent behaviour across
+ * windowing systems. The main one is that OSX, Wayland etc. fucks around with
+ * 'scaling' pixels even if you are DPI aware and can do DPI accurate rendering.
+ *
+ * SDL does not expose the current windowing scale factor, even though it is
+ * being tracked. When SDL_SetWindowSize is applied, the scale factor gets
+ * applied to our desired width/height.
+ *
+ * Query the DrawableSize AND the WindowSize to get the current factor, then
+ * downscale the desired width/height so that the WindowSize request will
+ * actually match the desired.
+ */
+	int dw, dh, ww, wh;
+	SDL_GL_GetDrawableSize(sdl.screen, &dw, &dh);
+	SDL_GetWindowSize(sdl.screen, &ww, &wh);
+
+	float sw = (ww && dw) ? dw / ww : 1.0;
+	float sh = (wh && dh) ? dh / wh : 1.0;
+
+	SDL_SetWindowSize(sdl.screen, sw * mode.width, sh * mode.height);
 
 	sdl.canvasw = mode.width;
 	sdl.canvash = mode.height;
 	sdl.draww = mode.width;
 	sdl.drawh = mode.height;
+
+	sdl.last_resize = arcan_timemillis();
 
 	return true;
 }
