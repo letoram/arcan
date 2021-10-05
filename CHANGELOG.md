@@ -5,6 +5,7 @@
  * Require a full scanout cycle before marking crash recover as over
  * Use attachment density if no displayhint on fsrv with tpack font-init
  * Re-add event queue drain management
+ * More aggressive pipeline dirty state tracking
 
 ## Frameservers
  * ARCAN_FRAMESERVER_DEBUGSTALL is now performed after \_open and the pid is sent as 'ident'
@@ -68,13 +69,15 @@
  * Lwa: set last-words on script-error / arcan\_fatal
  * Lwa: forward density to font renderer
  * Lwa: fix buffer-export fail handling
- * Egl-dri: direct-scanout of 'sane- video objects' (e.g. FBO without post-processing)
  * Agp/Video: add support for hardware composition layers
  * Agp/Video: Allow mapped vstores to support dirty regions
- * Egl-dri: default to FBO direct-scanout when possible
+ * Egl-dri: direct-scanout of 'sane- video objects' (e.g. FBO without post-processing)
  * Egl-dri: let preferred display buffer resolution drive map_video_display
  * Egl-dri: single-buffered drawing mode for fullscreen mapped tui/terminal clients
- * Sdl2: mouse wheel/button input fuxes
+ * Egl-dri: set platform buffer decay flush on transition eglSurface <-> FBO
+ * Egl-dri: add buffer quality mode transitions (LDR-SDR-Deep-HDR)
+ * Sdl2: mouse wheel/button input fixes
+ * Sdl2: automatic window resizes HIDPI resize-loop fixes
  * Evdev: runtime switching xkb keylayout (libxkbcommon builds)
 
 ## Wayland

@@ -4188,6 +4188,11 @@ static inline float lerp_fract(float startt, float endt, float ts)
 	return rv;
 }
 
+/* This is run for each active rendertarget and once for each object by
+ * generating a cookie (stamp) so that objects that exist in multiple
+ * rendertargets do not get updated several times.
+ *
+ * It returns the number of transforms applied to the object. */
 static int update_object(arcan_vobject* ci, unsigned long long stamp)
 {
 	int upd = 0;
@@ -4956,7 +4961,9 @@ static void ffunc_process(arcan_vobject* dst, bool step)
 		TRACE_MARK_EXIT("video", "feed-render", TRACE_SYS_DEFAULT, dst->cellid, 0, dst->tracetag);
 
 /* for statistics, mark an upload */
+		arcan_video_display.dirty++;
 		dst->owner->uploadc++;
+		dst->owner->transfc++;
 	}
 
 	return;
@@ -5216,6 +5223,10 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 {
 	arcan_vobject_litem* current;
 
+/* If the rendertarget links to the pipeline of another, inherit the dirty
+ * state from that. This comes from define-linktarget, though it might also be
+ * that an extended view (merge two rendertargets) would be useful. If that
+ * turns out to be the case, simply run link first then ourselves. */
 	if (tgt->link){
 		current = tgt->link->first;
 		tgt->dirtyc += tgt->link->dirtyc;
@@ -5224,8 +5235,14 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 	else
 		current = tgt->first;
 
-	if (arcan_video_display.ignore_dirty == 0 &&
-		(tgt->dirtyc == 0 && tgt->transfc == 0))
+/* If there are no ongoing transformations, or the platform has flagged that we
+ * need to redraw everything, and there are no actual changes to the rtgt pipe
+ * (FLAG_DIRTY) then early out. This does not cover content update from
+ * external sources directly as those are set during ffunc_process/pollfeed */
+	if (
+		!arcan_video_display.dirty &&
+		!arcan_video_display.ignore_dirty &&
+		!tgt->dirtyc && !tgt->transfc)
 		return 0;
 
 	tgt->uploadc = 0;
@@ -5544,15 +5561,16 @@ static size_t steptgt(float fract, struct rendertarget* tgt)
 	}
 
 	size_t transfc = 0;
-	if (tgt->refresh < 0 && process_counter(tgt,
-		&tgt->refreshcnt, tgt->refresh, fract)){
-		process_rendertarget(tgt, fract);
-		transfc = tgt->transfc;
+	if (tgt->refresh < 0 && process_counter(
+		tgt, &tgt->refreshcnt, tgt->refresh, fract)){
+		transfc += process_rendertarget(tgt, fract);
 		tgt->dirtyc = 0;
+
 /* may need to readback even if we havn't updated as it may
  * be used as clock (though optimization possibility of using buffer) */
 		process_readback(tgt, fract);
 	}
+
 	return transfc;
 }
 
@@ -5568,29 +5586,29 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 	arcan_random((void*)&arcan_video_display.cookie, 8);
 
 /* active shaders with counter counts towards dirty */
-	arcan_video_display.dirty +=
-		agp_shader_envv(FRACT_TIMESTAMP_F, &fract, sizeof(float));
+	transfc += agp_shader_envv(FRACT_TIMESTAMP_F, &fract, sizeof(float));
 
-/* workaround coarse control (which should be per rendertarget- really
- * but that takes some refactoring of the drawing API to complete) */
-	if (arcan_video_display.ignore_dirty > 0)
+/* the user/developer or the platform can decide that all dirty tracking should
+ * be enabled - we do that with a global counter and then 'fake' a transform */
+	if (arcan_video_display.ignore_dirty > 0){
+		transfc++;
 		arcan_video_display.ignore_dirty--;
+	}
 
-/* right now there is an explicit 'first come first update' kind of
- * order except for worldid as everything else might be composed there. */
+/* Right now there is an explicit 'first come first update' kind of
+ * order except for worldid as everything else might be composed there.
+ *
+ * The opption would be to build the dependency graph between rendertargets
+ * and account for cycles, but has so far not shown worth it. */
 	size_t tgt_dirty = 0;
 	for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
 		struct rendertarget* tgt = &current_context->rtargets[ind];
-
-/* apply the base dirty- flag to the rendertarget, this is for the case where
- * platform forces everything dirty for a set number of frames */
-		tgt->dirtyc += arcan_video_display.dirty;
 
 		const char* tag = tgt->color ? tgt->color->tracetag : NULL;
 		TRACE_MARK_ENTER("video", "process-rendertarget", TRACE_SYS_DEFAULT, ind, 0, tag);
 			tgt_dirty = steptgt(fract, tgt);
 			transfc += tgt_dirty;
-		TRACE_MARK_EXIT("video", "process-rendertarget", TRACE_SYS_DEFAULT, ind, 0, tag);
+		TRACE_MARK_EXIT("video", "process-rendertarget", TRACE_SYS_DEFAULT, ind, tgt_dirty, tag);
 	}
 
 /* reset the bound rendertarget, otherwise we may be in an undefined
@@ -5599,19 +5617,15 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 	agp_activate_rendertarget(NULL);
 
 	TRACE_MARK_ENTER("video", "process-world-rendertarget", TRACE_SYS_DEFAULT, 0, 0, "world");
-		current_context->stdoutp.dirtyc += arcan_video_display.dirty;
 		tgt_dirty = steptgt(fract, &current_context->stdoutp);
 		transfc += tgt_dirty;
 	TRACE_MARK_EXIT("video", "process-world-rendertarget", TRACE_SYS_DEFAULT, 0, tgt_dirty, "world");
-	*ndirty = arcan_video_display.dirty;
+	*ndirty = transfc + arcan_video_display.dirty;
+	arcan_video_display.dirty = 0;
 
-/* transfc will give us the number of dirty transformations and possibly
- * pending video transfers and will be used as heuristic to the conductor */
-	arcan_video_display.dirty = transfc;
-
-/* This is part of another dirty workaround when n buffers are needed
- * by the video platform for a flip to reach the display and we want
- * the same contents in every buffer stage at the cost of rendering */
+/* This is part of another dirty workaround when n buffers are needed by the
+ * video platform for a flip to reach the display and we want the same contents
+ * in every buffer stage at the cost of rendering */
 	if (*ndirty && arcan_video_display.ignore_dirty == 0){
 		arcan_video_display.ignore_dirty = platform_video_decay();
 	}
