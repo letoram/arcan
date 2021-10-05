@@ -18,6 +18,9 @@
 #include <arcan_general.h>
 #include <arcan_event.h>
 
+#include "arcan_video.h"
+#include "arcan_videoint.h"
+
 #include "sdl2_12_lut.h"
 #include "code_sc_evdev.h"
 
@@ -812,6 +815,9 @@ SDL_SetModState(KMOD_NONE);
 					.vid.width = w,
 					.vid.height = h
 				});
+			}
+			else if (event.window.event == SDL_WINDOWEVENT_EXPOSED){
+				arcan_video_display.ignore_dirty = 2;
 			}
 		break;
 	}
