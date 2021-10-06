@@ -47,6 +47,28 @@
 #include "libbacklight.h"
 
 /*
+ * Current details / notes:
+ *
+ *  - The EGL Context management rules have mutated over the years, currently
+ *  we mess around with a shared 'device' context and then per display contexts
+ *  that we render to based on the buffer format properties desired for that
+ *  device.
+ *
+ *  - The crutch to that is that when different format options are desired, say
+ *  a 565 one and a 10bit on EGL will choke since it does not fit the config on
+ *  the shared context. There is an extension to this, EGL_KHR_no_config_context
+ *  where we can simply stop and remove/refactor all the device_context/display
+ *  context settings.
+ *
+ *  - But this is not the entire truth - enter multiGPU where we actually have
+ *  discrete and different contexts and possible different GL implementations
+ *  living in the same TLS.
+ *
+ *  - For that case we need to track afinity to a agp_vstore and upload/synch
+ *  into each context based on that affinity.
+ */
+
+/*
  * mask out these types as they won't be useful,
  */
 #define VIDEO_PLATFORM_IMPL
@@ -1060,7 +1082,7 @@ static int setup_buffers_gbm(struct dispout* d)
 	}
 
 	EGLContext context = d->device->eglenv.create_context(
-		d->device->display, d->buffer.config,
+		d->device->display, EGL_NO_CONFIG_KHR, /* d->buffer.config, */
 		shared_dev ? NULL : d->device->context, context_attribs
 	);
 
@@ -1269,6 +1291,7 @@ bool platform_video_set_mode(platform_display_id disp,
 		return false;
 
 	d->state = DISP_MAPPED;
+/*	platform_video_reset(0, 0); */
 
 	return true;
 }
@@ -1757,10 +1780,10 @@ static bool setup_node(struct dev_node* node)
 	const char* ident = agp_ident();
 	EGLint attrtbl[24] = {
 		EGL_RENDERABLE_TYPE, 0,
-		EGL_RED_SIZE, OUT_DEPTH_R,
-		EGL_GREEN_SIZE, OUT_DEPTH_G,
-		EGL_BLUE_SIZE, OUT_DEPTH_B,
-		EGL_ALPHA_SIZE, OUT_DEPTH_A,
+		EGL_RED_SIZE, 5,
+		EGL_GREEN_SIZE, 6,
+		EGL_BLUE_SIZE, 5,
+		EGL_ALPHA_SIZE, 0,
 		EGL_DEPTH_SIZE, 1,
 		EGL_STENCIL_SIZE, 1,
 	};
@@ -1833,7 +1856,7 @@ static bool setup_node(struct dev_node* node)
 	EGLint match = 0;
 	node->eglenv.choose_config(node->display, node->attrtbl, &node->config, 1, &match);
 	node->context = node->eglenv.create_context(
-		node->display, node->config, EGL_NO_CONTEXT, context_attribs);
+		node->display, EGL_NO_CONFIG_KHR, EGL_NO_CONTEXT, context_attribs);
 
 	if (!node->context){
 		debug_print(
