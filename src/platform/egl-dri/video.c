@@ -742,8 +742,9 @@ static int setup_buffers_stream(struct dispout* d)
 		return -1;
 	}
 
-	const char* extstr = d->device->eglenv.query_string(
-		d->device->display, EGL_EXTENSIONS);
+	const char* extstr =
+		d->device->eglenv.query_string(d->device->display, EGL_EXTENSIONS);
+
 	const char* lastext;
 	if (!check_ext(lastext = "EGL_EXT_output_base", extstr) ||
 		!check_ext(lastext = "EGL_EXT_output_drm", extstr) ||
@@ -1040,7 +1041,6 @@ static int setup_buffers_gbm(struct dispout* d)
 		gbm_surface_destroy(d->buffer.surface);
 		d->buffer.surface = NULL;
 	}
-
 	if (!d->buffer.surface){
 		debug_print("couldn't find a gbm buffer format matching EGL display");
 		return -1;
@@ -1049,7 +1049,7 @@ static int setup_buffers_gbm(struct dispout* d)
 /* finally, build the display- specific context with the new surface and
  * context - might not always use it due to direct-scanout vs. shaders etc.
  * but still needed */
-	const EGLint context_attribs[] = {
+	EGLint context_attribs[] = {
 		EGL_CONTEXT_CLIENT_VERSION, 2,
 		EGL_NONE
 	};
@@ -1081,9 +1081,12 @@ static int setup_buffers_gbm(struct dispout* d)
 		return 0;
 	}
 
+/* LEGACY: EGL_NO_CONFIG_KHR used to point to d->buffer.config but now
+ * assumes that we can create contexts where any valid surface is also
+ * valid as the context format */
+	EGLContext device = shared_dev ? NULL : d->device->context;
 	EGLContext context = d->device->eglenv.create_context(
-		d->device->display, EGL_NO_CONFIG_KHR, /* d->buffer.config, */
-		shared_dev ? NULL : d->device->context, context_attribs
+		d->device->display, EGL_NO_CONFIG_KHR, device, context_attribs
 	);
 
 	if (!context){
@@ -1291,7 +1294,6 @@ bool platform_video_set_mode(platform_display_id disp,
 		return false;
 
 	d->state = DISP_MAPPED;
-/*	platform_video_reset(0, 0); */
 
 	return true;
 }
@@ -1771,10 +1773,17 @@ static void dump_connectors(FILE* dst, struct dev_node* node, bool shorth)
  */
 static bool setup_node(struct dev_node* node)
 {
-	const EGLint context_attribs[] = {
+	EGLint context_attribs[] = {
 		EGL_CONTEXT_CLIENT_VERSION, 2,
+		EGL_NONE, /* pad for robustness */
+		EGL_NONE, /* pad for robustness */
+		EGL_NONE, /* pad for strategy */
+		EGL_NONE, /* pad for strategy */
+		EGL_NONE, /* pad for PRIORITY */
+		EGL_NONE, /* pad for PRIORTIY */
 		EGL_NONE
 	};
+	int ca_offset = 2;
 
 	EGLint apiv;
 	const char* ident = agp_ident();
@@ -1786,6 +1795,10 @@ static bool setup_node(struct dev_node* node)
 		EGL_ALPHA_SIZE, 0,
 		EGL_DEPTH_SIZE, 1,
 		EGL_STENCIL_SIZE, 1,
+/* this only allows the context to return CONFIGs with floating point outputs,
+ * the actual selection of such a config happens based on the GBM surface type
+ * in setup_buffers */
+		EGL_COLOR_COMPONENT_TYPE_EXT, EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT,
 	};
 	int attrofs = 14;
 
@@ -1807,12 +1820,17 @@ static bool setup_node(struct dev_node* node)
  * xGL,VK/EGL which will be a problem for a software based AGP. When we get
  * one, we need a fourth scanout path (ffs) where the worldid rendertarget
  * writes into the scanout buffer immediately. It might be possibly for that
- * AGP to provide a 'faux' EGL implementation though */
+ * AGP to provide a 'faux' EGL implementation though. There also is the path
+ * in here already for special calls to map_video_display via dumb buffers so
+ * the best way forward is probably the fake EGL one. */
 	size_t i = 0;
+	bool gles = true;
+
 	if (strcmp(ident, "OPENGL21") == 0){
 		apiv = EGL_OPENGL_API;
 		for (i = 0; attrtbl[i] != EGL_RENDERABLE_TYPE; i++);
 		attrtbl[i+1] = EGL_OPENGL_BIT;
+		gles = false;
 	}
 	else if (strcmp(ident, "GLES3") == 0 ||
 		strcmp(ident, "GLES2") == 0){
@@ -1854,9 +1872,30 @@ static bool setup_node(struct dev_node* node)
 	memcpy(node->attrtbl, attrtbl, sizeof(attrtbl));
 
 	EGLint match = 0;
+
 	node->eglenv.choose_config(node->display, node->attrtbl, &node->config, 1, &match);
 	node->context = node->eglenv.create_context(
 		node->display, EGL_NO_CONFIG_KHR, EGL_NO_CONTEXT, context_attribs);
+
+	bool priority = false;
+
+	const char* extstr =
+		node->eglenv.query_string(node->display, EGL_EXTENSIONS);
+
+	if (check_ext("EGL_IMG_context_priority", extstr)){
+		priority = true;
+		context_attribs[ca_offset++] = EGL_CONTEXT_PRIORITY_LEVEL_IMG;
+		context_attribs[ca_offset++] = EGL_CONTEXT_PRIORITY_HIGH_IMG;
+	}
+
+/* Context creation can fail on an unavailable high priority level - then
+ * try to downgrade and try again */
+	if (!node->context && priority){
+		context_attribs[--ca_offset] = EGL_NONE;
+		context_attribs[--ca_offset] = EGL_NONE;
+		node->context = node->eglenv.create_context(
+			node->display, EGL_NO_CONFIG_KHR, node, context_attribs);
+	}
 
 	if (!node->context){
 		debug_print(

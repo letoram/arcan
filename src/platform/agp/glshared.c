@@ -765,30 +765,30 @@ void agp_empty_vstoreext(struct agp_vstore* vs,
 	break;
 	case VSTORE_HINT_F16:
 		verbose_print("(%"PRIxPTR") empty fmt: half-float", (uintptr_t) vs);
-		vs->vinf.text.d_fmt = GL_RGB16F;
-		vs->vinf.text.s_type = GL_FLOAT;
+		vs->vinf.text.d_fmt = GL_RGBA16F;
+		vs->vinf.text.s_type = GL_HALF_FLOAT;
 		vs->vinf.text.s_fmt = GL_RGBA;
 		bpp = 8;
 	break;
 	case VSTORE_HINT_F16_NOALPHA:
 		verbose_print("(%"PRIxPTR") empty fmt: half-float-no-alpha", (uintptr_t) vs);
-		vs->vinf.text.d_fmt = GL_RGBA16F;
-		vs->vinf.text.s_type = GL_FLOAT;
-		vs->vinf.text.s_fmt = GL_RGBA;
+		vs->vinf.text.d_fmt = GL_RGB16F;
+		vs->vinf.text.s_type = GL_HALF_FLOAT;
+		vs->vinf.text.s_fmt = GL_RGB;
 		bpp = 8;
 	break;
 	case VSTORE_HINT_F32:
 		verbose_print("(%"PRIxPTR") empty fmt: float", (uintptr_t) vs);
-		vs->vinf.text.d_fmt = GL_RGBA32F;
+		vs->vinf.text.d_fmt = GL_RGB32F;
 		vs->vinf.text.s_type = GL_FLOAT;
 		vs->vinf.text.s_fmt = GL_RGBA;
 		bpp = 16;
 	break;
 	case VSTORE_HINT_F32_NOALPHA:
 		verbose_print("(%"PRIxPTR") empty fmt: float-no-alpha", (uintptr_t) vs);
-		vs->vinf.text.d_fmt = GL_RGB32F;
+		vs->vinf.text.d_fmt = GL_RGBA32F;
 		vs->vinf.text.s_type = GL_FLOAT;
-		vs->vinf.text.s_fmt = GL_RGBA;
+		vs->vinf.text.s_fmt = GL_RGB;
 		bpp = 16;
 	break;
 #endif

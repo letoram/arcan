@@ -71,6 +71,7 @@
  * Lwa: fix buffer-export fail handling
  * Agp/Video: add support for hardware composition layers
  * Agp/Video: Allow mapped vstores to support dirty regions
+ * Agp/Video: fixes to float/half-float FBO allocation
  * Egl-dri: direct-scanout of 'sane- video objects' (e.g. FBO without post-processing)
  * Egl-dri: let preferred display buffer resolution drive map_video_display
  * Egl-dri: single-buffered drawing mode for fullscreen mapped tui/terminal clients

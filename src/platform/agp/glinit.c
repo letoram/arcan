@@ -62,6 +62,9 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 #define lookup_opt(tag, sym) lookfun(tag, sym, false)
 #define lookup(tag, sym) lookfun(tag, sym, true)
 
+/* When trying to push for a more recent openGL base, this one is actually
+ * removed 3.1+ glGetIntegeri(GL_NUM_EXTENSIONS, dst) then glGetStringi for
+ * each from 0 up to [dst] to iterate */
 	const char* ext = (char*) glGetString(GL_EXTENSIONS);
 	if (check_ext("GL_ARB_robustness", ext) || check_ext("GL_KHR_robustness", ext)){
 		dst->reset_status = (int(*)(void)) lookup_opt(tag, "glGetGraphicsResetStatusARB");
