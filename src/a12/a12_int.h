@@ -4,13 +4,6 @@
 #include "blake3.h"
 #include "pack.h"
 
-/* this is frightening */
-#define MINIZ_USE_UNALIGNED_LOADS_AND_STORES 0
-#define MINIZ_LITTLE_ENDIAN 1
-#define MINIZ_HAS_64BIT_REGISTERS 1
-#define MINIZ_UNALIGNED_USE_MEMCPY
-#include "miniz/miniz.h"
-
 #if defined(WANT_H264_DEC) || defined(WANT_H264_ENC)
 #include <libavcodec/avcodec.h>
 #include <libavcodec/version.h>
@@ -93,10 +86,7 @@ enum {
 	POSTPROCESS_VIDEO_RGBA   = 0,
 	POSTPROCESS_VIDEO_RGB    = 1,
 	POSTPROCESS_VIDEO_RGB565 = 2,
-	POSTPROCESS_VIDEO_DMINIZ = 3, /* DEFLATE - P frame (I -> P | P->P)    */
-	POSTPROCESS_VIDEO_MINIZ  = 4, /* DEFLATE - I frame                    */
 	POSTPROCESS_VIDEO_H264   = 5, /* ffmpeg or native decompressor        */
-	POSTPROCESS_VIDEO_TZ     = 6, /* DEFLATE+tpack (see shmif/tui/raster) */
 	POSTPROCESS_VIDEO_TZSTD  = 7, /* ZSTD+tpack                           */
 	POSTPROCESS_VIDEO_DZSTD  = 8, /* ZSTD - P frame                       */
 	POSTPROCESS_VIDEO_ZSTD   = 9  /* ZSTD - I frame                       */

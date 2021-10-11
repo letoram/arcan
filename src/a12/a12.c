@@ -1006,15 +1006,13 @@ static void command_videoframe(struct a12_state* S)
 /* set the possible consumer presentation / repacking options, or resize
  * if the source / destination dimensions no longer match */
 	bool hints_changed = false;
-	if ((vframe->postprocess == POSTPROCESS_VIDEO_TZ ||
-		vframe->postprocess == POSTPROCESS_VIDEO_TZSTD) &&
+	if (vframe->postprocess == POSTPROCESS_VIDEO_TZSTD &&
 		!(cont->hints & SHMIF_RHINT_TPACK)){
 		cont->hints |= SHMIF_RHINT_TPACK;
 		hints_changed = true;
 	}
 	else if ((cont->hints & SHMIF_RHINT_TPACK) &&
-		(vframe->postprocess != POSTPROCESS_VIDEO_TZ &&
-		 vframe->postprocess != POSTPROCESS_VIDEO_TZSTD)){
+		 vframe->postprocess != POSTPROCESS_VIDEO_TZSTD){
 		cont->hints = cont->hints & (~SHMIF_RHINT_TPACK);
 		hints_changed = true;
 	}
@@ -2264,14 +2262,8 @@ a12_channel_vframe(struct a12_state* S,
 	case VFRAME_METHOD_DZSTD:
 		a12int_encode_dzstd(argstr);
 	break;
-	case VFRAME_METHOD_DPNG:
-		a12int_encode_dpng(argstr);
-	break;
 	case VFRAME_METHOD_H264:
 		a12int_encode_h264(argstr);
-	break;
-	case VFRAME_METHOD_TPACK:
-		a12int_encode_tz(argstr);
 	break;
 	case VFRAME_METHOD_TPACK_ZSTD:
 		a12int_encode_ztz(argstr);

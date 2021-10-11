@@ -45,9 +45,6 @@ bool a12int_buffer_format(int method)
 {
 	return
 		method == POSTPROCESS_VIDEO_H264 ||
-		method == POSTPROCESS_VIDEO_MINIZ ||
-		method == POSTPROCESS_VIDEO_DMINIZ ||
-		method == POSTPROCESS_VIDEO_TZ ||
 		method == POSTPROCESS_VIDEO_TZSTD ||
 		method == POSTPROCESS_VIDEO_ZSTD ||
 		method == POSTPROCESS_VIDEO_DZSTD;
@@ -78,8 +75,7 @@ static int video_miniz(const void* buf, int len, void* user)
 		}
 
 /* and commit */
-		if (cvf->postprocess == POSTPROCESS_VIDEO_DMINIZ ||
-			cvf->postprocess == POSTPROCESS_VIDEO_DZSTD){
+		if (cvf->postprocess == POSTPROCESS_VIDEO_DZSTD){
 			uint8_t r, g, b, a;
 			SHMIF_RGBA_DECOMP(cont->vidp[cvf->out_pos], &r, &g, &b, &a);
 
@@ -106,8 +102,7 @@ static int video_miniz(const void* buf, int len, void* user)
 
 /* tpack is easier, just write into vidb, ensure that we don't exceed
  * the size from a missed resize_ call and the rest is done consumer side */
-	if (cvf->postprocess == POSTPROCESS_VIDEO_TZ
-		|| cvf->postprocess == POSTPROCESS_VIDEO_TZSTD){
+	if (cvf->postprocess == POSTPROCESS_VIDEO_TZSTD){
 		memcpy(&cont->vidb[cvf->out_pos], inbuf, len);
 		cvf->out_pos += len;
 		cvf->expanded_sz -= len;
@@ -117,8 +112,7 @@ static int video_miniz(const void* buf, int len, void* user)
 /* pixel-aligned fill/unpack, same as everywhere else */
 	size_t npx = (len / 3) * 3;
 	for (size_t i = 0; i < npx; i += 3){
-		if (cvf->postprocess == POSTPROCESS_VIDEO_DMINIZ ||
-			cvf->postprocess == POSTPROCESS_VIDEO_DZSTD){
+		if (cvf->postprocess == POSTPROCESS_VIDEO_DZSTD){
 			uint8_t r, g, b, a;
 			SHMIF_RGBA_DECOMP(cont->vidp[cvf->out_pos], &r, &g, &b, &a);
 
@@ -338,26 +332,6 @@ void a12int_decode_vbuffer(struct a12_state* S,
 			);
 		}
 
-		free(cvf->inbuf);
-		cvf->inbuf = NULL;
-		cvf->carry = 0;
-
-/* this is a junction where other local transfer strategies should be considered,
- * i.e. no-block and defer process on the next stepframe or spin on the vready */
-		if (cvf->commit && cvf->commit != 255){
-			drain_video(ch, cvf);
-		}
-		return;
-	}
-	else if (
-			cvf->postprocess == POSTPROCESS_VIDEO_MINIZ  ||
-			cvf->postprocess == POSTPROCESS_VIDEO_DMINIZ ||
-			cvf->postprocess == POSTPROCESS_VIDEO_TZ)
-	{
-		size_t inbuf_pos = cvf->inbuf_pos;
-		tinfl_decompress_mem_to_callback(cvf->inbuf, &inbuf_pos, video_miniz, S, 0);
-
-		a12int_trace(A12_TRACE_ALLOC, "freeing zlib/png input block");
 		free(cvf->inbuf);
 		cvf->inbuf = NULL;
 		cvf->carry = 0;
