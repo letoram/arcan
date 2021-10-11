@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020, Björn Ståhl
+ * Copyright 2014-2021, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description: Platform that draws to an arcan display server using the shmif.
@@ -9,15 +9,17 @@
  * This is not a particularly good 'arcan-client' in the sense that some
  * event mapping and other behaviors is still being plugged in.
  *
- * Some things of note that are missing:
+ * Some things of note:
+ *
  *  1. a pushed subsegment is treated as a new 'display'
  *  2. custom-requested subsegments (display.sub[]) are treated as recordtargets
  *     which, in principle, is fine - but currently transfers using readback and
- *     copy, not accelerated buffer transfers
+ *     copy, not accelerated buffer transfers and rotating backing stores.
  *  3. more considerations need to happen with events that gets forwarded into
  *     the events that go to the scripting layer handler
  *  4. dirty-regions don't propagate in signal
  *  5. resizing the rendertarget bound to a subsegment is also painful
+ *
  */
 #include <stdint.h>
 #include <stdbool.h>
@@ -114,7 +116,6 @@ static struct monitor_mode mmodes[] = {
 
 struct subseg_output {
 	int id;
-	bool pending;
 	uintptr_t cbtag;
 	arcan_vobj_id vid;
 	struct arcan_shmif_cont con;
@@ -123,6 +124,8 @@ struct subseg_output {
 
 struct display {
 	struct arcan_shmif_cont conn;
+	size_t decay;
+	bool pending;
 	bool mapped, visible, focused, nopass;
 	enum dpms_state dpms;
 	struct agp_vstore* vstore;
@@ -135,9 +138,11 @@ struct display {
 } disp[MAX_DISPLAYS] = {0};
 
 static struct arg_arr* shmarg;
+static bool event_process_disp(arcan_evctx* ctx, struct display* d);
 
 static struct {
 	uint64_t magic;
+	bool signal_pending;
 	volatile uint8_t resize_pending;
 } primary_udata = {
 	.magic = 0xfeedface
@@ -270,7 +275,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 /*
  * switch rendering mode since our coordinate system differs
  */
-	disp[0].conn.hints = SHMIF_RHINT_ORIGO_LL;
+	disp[0].conn.hints = SHMIF_RHINT_ORIGO_LL | SHMIF_RHINT_VSIGNAL_EV;
 	arcan_shmif_resize(&disp[0].conn,
 		width > 0 ? width : disp[0].conn.w,
 		height > 0 ? height : disp[0].conn.h
@@ -300,9 +305,6 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	disp[0].visible = true;
 	disp[0].focused = true;
 
-#ifdef EGL_DMA_BUF
-#endif
-
 /* we provide our own cursor that is blended in the output, this might change
  * when we allow map_ as layers, then we treat those as subsegments and
  * viewport */
@@ -330,7 +332,13 @@ void platform_video_shutdown()
 
 size_t platform_video_decay()
 {
-	return 1;
+	size_t decay = 0;
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
+		if (disp[i].decay > decay)
+			decay = disp[i].decay;
+		disp[i].decay = 0;
+	}
+	return decay;
 }
 
 size_t platform_video_displays(platform_display_id* dids, size_t* lim)
@@ -746,24 +754,57 @@ static void synch_copy(struct display* disp, struct agp_vstore* vs)
 	TRACE_MARK_ENTER("video", "copy-blit", TRACE_SYS_SLOW, 0, 0, "");
 		agp_readback_synchronous(&store);
 		arcan_shmif_signal(&disp->conn, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+		disp->pending = true;
+		arcan_conductor_deadline(4);
 	TRACE_MARK_EXIT("video", "copy-blit", TRACE_SYS_SLOW, 0, 0, "");
 }
 
 /*
- * The three paths to consider here at the moment are:
- * 1. update, contents to synch, visible
- * 2. update, contents to synch, not visible
- * 3. no contents to synch
+ * The synch code here is rather rotten and should be reworked in its entirety
+ * in a bit. It is hinged on a few refactors however:
+ *
+ *  1. proper explicit fencing and pipeline semaphores.
+ *  2. screen deadline propagation.
+ *  3. per rendertarget invalidation and per rendertarget scanout.
+ *  4. rendertarget reblitter helper.
+ *
+ * This is to support both variable throughput, deadline throughput and
+ * presentation time accurate rendering where the latency in the pipeline is
+ * compensated for in animations and so on.
+ *
+ * The best configuration 'test' for this is to have two displays attached with
+ * each being on vastly different synch targets, e.g. 48hz and 140hz or so and
+ * both resizing.
  */
-void platform_video_synch(uint64_t tick_count, float fract,
-	video_synchevent pre, video_synchevent post)
+void platform_video_synch(
+	uint64_t tick_count, float fract, video_synchevent pre, video_synchevent post)
 {
+/* Check back in a little bit, this is where the event_process, and vframe sig.
+ * should be able to help. Setting the conductor display to the epipe and */
+	while (primary_udata.signal_pending){
+		struct conductor_display d = {
+			.fd = disp[0].conn.epipe,
+			.refresh = -1,
+		};
+
+		int ts = arcan_conductor_yield(&d, 1);
+		platform_event_process(arcan_event_defaultctx());
+
+/* the event processing while yielding / waiting for synch can reach EXIT and
+ * then we should refuse to continue regardless */
+		if (!disp[0].conn.vidp)
+			return;
+
+		if (primary_udata.signal_pending && ts > 0)
+			arcan_timesleep(ts);
+	}
+
 	if (pre)
 		pre();
 
-/* first frame, fake rendertarget_swap so the first frame doesn't get
- * lost into the vstore that doesn't get hidden buffers, for the rest
-* display mapped rendertargets case we can do that on-map */
+/* first frame, fake rendertarget_swap so the first frame doesn't get lost into
+ * the vstore that doesn't get hidden buffers, for the rest display mapped
+ * rendertargets case we can do that on-map */
 	static bool got_frame;
 	if (!got_frame){
 		bool swap;
@@ -776,7 +817,6 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 	static size_t last_nupd;
 	size_t nupd;
-	size_t left = 0;
 
 	unsigned cost = arcan_vint_refresh(fract, &nupd);
 
@@ -784,9 +824,12 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * now until the shmif_deadline communication is more robust, then we can just
  * plug the next deadline and the conductor will wake us accordingly. */
 	if (!nupd){
-		left = cost > 16 ? 0 : 16 - cost;
 		TRACE_MARK_ONESHOT("video", "synch-stall", TRACE_SYS_SLOW, 0, 0, "nothing to do");
 		verbose_print("skip frame");
+
+/* mark it as safe to process events for each display and then allow stepframe
+ * signal to break out of the block */
+		arcan_conductor_deadline(4);
 		goto pollout;
 	}
 /* so we have a buffered frame but this one didn't cause any updates,
@@ -796,7 +839,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 /* needed here or handle content will be broken, though what we would actually
  * want is a fence on the last drawcall to each mapped rendercall and yield
- * until finished */
+ * until finished or at least send with the buffer */
 	glFinish();
 
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){
@@ -853,43 +896,14 @@ void platform_video_synch(uint64_t tick_count, float fract,
 			if (n_pl)
 				arcan_shmifext_signal_planes(&disp[i].conn,
 					SHMIF_SIGVID | SHMIF_SIGBLK_NONE, n_pl, planes);
+
+/* wait for a stepframe before we continue with this rendertarget */
+			disp[i].pending = true;
+			arcan_conductor_deadline(4);
 		}
 	}
 
-/* sweep-yield-poll, switch to the server-side demand request API when
- * that is fully plugged in (~linux 5.0 should give the missing pieces) */
 pollout:
-	do {
-		bool waiting = false;
-		for (size_t i = 0; i < MAX_DISPLAYS; i++){
-			if (disp[i].conn.addr)
-				waiting |= arcan_shmif_signalstatus(&disp[i].conn) > 0;
-		}
-
-/* without the futex- based monitoring option we're still stuck going
- * with yield+sleep */
-		if (waiting){
-			int yv = arcan_conductor_yield(NULL, 0);
-			if (-1 == yv)
-				break;
-			else{
-				arcan_timesleep(yv);
-				left = left > yv ? left - yv : 0;
-			}
-		}
-/* no relevant updates, no screens pending, just let the conductor wait */
-		else {
-			arcan_conductor_fakesynch(left);
-			left = 0;
-		}
-	} while (left);
-
-/* place to add real deadline substitution, occurs with _yield saying
- * we are in processing mode */
-	if (left){
-		arcan_conductor_deadline(8);
-	}
-
 	if (post)
 		post();
 }
@@ -1018,7 +1032,6 @@ enum arcan_ffunc_rv arcan_lwa_ffunc FFUNC_HEAD
 	if (cmd == FFUNC_DESTROY){
 		arcan_shmif_drop(&outptr->con);
 		outptr->id = 0;
-		outptr->pending = false;
 		for (size_t i = 0; i < 8; i++)
 			if (outptr == &disp[0].sub[i]){
 				disp[0].subseg_alloc &= ~(1 << i);
@@ -1037,9 +1050,11 @@ enum arcan_ffunc_rv arcan_lwa_ffunc FFUNC_HEAD
 	if (cmd == FFUNC_TICK){
 	}
 
-/* This should only be reached / possible / used when we don't have the
+/*
+ * This should only be reached / possible / used when we don't have the
  * fast-path of simply rotating backing color buffer and forwarding the handle
- * to the rendertarget */
+ * to the rendertarget but lack of explicit synch wiring is the big thing here.
+ */
 	if (cmd == FFUNC_POLL){
 		struct arcan_event inev;
 		int ss = arcan_shmif_signalstatus(&outptr->con);
@@ -1096,7 +1111,6 @@ bool platform_lwa_allocbind_feed(struct arcan_luactx* ctx,
 
 	struct subseg_output* out = &disp[0].sub[ind];
 	*out = (struct subseg_output){
-		.pending = true,
 		.id = 0xcafe + ind,
 		.ctx = ctx,
 		.cbtag = cbtag,
@@ -1152,7 +1166,6 @@ static bool scan_subseg(arcan_tgtevent* ev, bool ok)
 		return false;
 
 	struct subseg_output* out = &disp[0].sub[ind];
-	out->pending = false;
 
 /* if !ok, mark as free, send EXIT event so the scripting side can terminate,
  * we won't release the bit until TERMINATE comes in the FFUNC on the vobj
@@ -1220,6 +1233,8 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
  */
 		case TARGET_COMMAND_STEPFRAME:
 			TRACE_MARK_ONESHOT("video", "signal-stepframe", TRACE_SYS_DEFAULT, d->id, 0, "");
+			arcan_conductor_deadline(0);
+			d->pending = false;
 		break;
 
 /*
@@ -1313,7 +1328,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 				longjmp(arcanmain_recover_state, ARCAN_LUA_SWITCH_APPL_NOADOPT);
 			else {
 /* We are in migrate state, so force-mark frames as dirty */
-				arcan_video_display.ignore_dirty = 2;
+				disp[0].decay = 4;
 			}
 		break;
 
@@ -1325,6 +1340,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 			if (d == &disp[0]){
 				ev.category = EVENT_SYSTEM;
 				ev.sys.kind = EVENT_SYSTEM_EXIT;
+				d->conn.vidp = NULL;
 				arcan_event_enqueue(ctx, &ev);
 			}
 /* Need to explicitly drop single segment */
@@ -1367,13 +1383,18 @@ void platform_event_keyrepeat(arcan_evctx* ctx, int* period, int* delay)
 
 void platform_event_process(arcan_evctx* ctx)
 {
+	bool locked = primary_udata.signal_pending;
+	primary_udata.signal_pending = false;
+
 /*
  * Most events can just be added to the local queue, but we want to handle some
  * of the target commands separately (with a special path to LUA and a
  * different hook)
  */
-	for (size_t i = 0; i < MAX_DISPLAYS; i++)
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
 		event_process_disp(ctx, &disp[i]);
+		primary_udata.signal_pending |= disp[i].pending;
+	}
 
 	int subs = disp[0].subseg_alloc;
 	int bits;
@@ -1381,7 +1402,8 @@ void platform_event_process(arcan_evctx* ctx)
 /*
  * Only first 'display' can have subsegments, sweep any of those if they are
  * allocated, this could again be done with monitoring threads on the futex
- * with better synch strategies.
+ * with better synch strategies. Their outputs act as recordtargets with
+ * swapchains, not as proper 'displays'
  */
 	while ((bits = ffs(subs))){
 		struct subseg_output* out = &disp[0].sub[bits-1];
