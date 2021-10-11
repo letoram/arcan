@@ -7306,9 +7306,9 @@ static int videodisplay(lua_State* ctx)
 /* add options */
 		if (lua_type(ctx, 3) == LUA_TTABLE){
 			platform_mode_id mode = luaL_checknumber(ctx, 2);
-			lua_pushboolean(ctx, platform_video_set_mode(id, mode, opts));
 			opts.vrr = intblfloat(ctx, 3, "vrr");
 			opts.depth = intblfloat(ctx, 3, "format");
+			lua_pushboolean(ctx, platform_video_set_mode(id, mode, opts));
 		}
 		else {
 			size_t h = luaL_checknumber(ctx, 3);
