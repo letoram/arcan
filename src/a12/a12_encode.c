@@ -377,17 +377,13 @@ struct compress_res {
 	uint8_t* out_buf;
 };
 
-static void compress_tz(struct a12_state* S, uint8_t ch,
-	struct shmifsrv_vbuffer* vb, int w, int h, size_t chunk_sz, bool zstd)
+static void compress_tzstd(struct a12_state* S, uint8_t ch,
+	struct shmifsrv_vbuffer* vb, int w, int h, size_t chunk_sz)
 {
-	int type = POSTPROCESS_VIDEO_TZ;
-
-	if (zstd){
-		if (!setup_zstd(S, ch, SEGID_TUI)){
-			return;
-		}
-		type = POSTPROCESS_VIDEO_TZSTD;
+	if (!setup_zstd(S, ch, SEGID_TUI)){
+		return;
 	}
+	int type = POSTPROCESS_VIDEO_TZSTD;
 
 /* full header-size: 4 + 2 + 2 + 1 + 2 + 4 + 1 = 16 bytes */
 /* first 4 bytes is length */
@@ -420,29 +416,24 @@ static void compress_tz(struct a12_state* S, uint8_t ch,
 
 	size_t out_sz;
 	uint8_t* buf;
-	if (zstd){
-		out_sz = ZSTD_compressBound(compress_in_sz);
-		buf = malloc(out_sz);
+	out_sz = ZSTD_compressBound(compress_in_sz);
+	buf = malloc(out_sz);
 
-		out_sz = ZSTD_compressCCtx(
-			S->channels[ch].zstd, buf, out_sz, vb->buffer_bytes, compress_in_sz, 1);
+	out_sz = ZSTD_compressCCtx(
+		S->channels[ch].zstd, buf, out_sz, vb->buffer_bytes, compress_in_sz, 1);
 
-		if (ZSTD_isError(out_sz)){
-			a12int_trace(A12_TRACE_ALLOC,
-				"kind=zstd_fail:message=%s", ZSTD_getErrorName(out_sz));
-			free(buf);
-			return;
-		}
-
-		a12int_trace(A12_TRACE_VDETAIL,
-			"kind=status:codec=dzstd:b_in=%zu:b_out=%zu:ratio=%.2f",
-			(size_t)compress_in_sz,
-			(size_t) out_sz, (float)(compress_in_sz+1.0) / (float)(out_sz+1.0)
-		);
+	if (ZSTD_isError(out_sz)){
+		a12int_trace(A12_TRACE_ALLOC,
+			"kind=zstd_fail:message=%s", ZSTD_getErrorName(out_sz));
+		free(buf);
+		return;
 	}
-	else
-		buf = tdefl_compress_mem_to_heap(
-			vb->buffer_bytes, compress_in_sz, &out_sz, 0);
+
+	a12int_trace(A12_TRACE_VDETAIL,
+		"kind=status:codec=dzstd:b_in=%zu:b_out=%zu:ratio=%.2f",
+		(size_t)compress_in_sz,
+		(size_t) out_sz, (float)(compress_in_sz+1.0) / (float)(out_sz+1.0)
+	);
 
 	if (!buf){
 		a12int_trace(A12_TRACE_ALLOC, "failed to build compressed TPACK output");
@@ -456,8 +447,8 @@ static void compress_tz(struct a12_state* S, uint8_t ch,
 	);
 
 	a12int_trace(A12_TRACE_VDETAIL,
-		"kind=status:codec=tpack:b_in=%zu:b_out=%zu:zstd=%d",
-		(size_t) compress_in_sz, (size_t) compress_in_sz, (size_t) out_sz, (int)zstd
+		"kind=status:codec=tpack:b_in=%zu:b_out=%zu",
+		(size_t) compress_in_sz, (size_t) out_sz
 	);
 
 	a12int_append_out(S,
@@ -469,12 +460,7 @@ static void compress_tz(struct a12_state* S, uint8_t ch,
 
 void a12int_encode_ztz(PACK_ARGS)
 {
-	compress_tz(S, chid, vb, w, h, chunk_sz, true);
-}
-
-void a12int_encode_tz(PACK_ARGS)
-{
-	compress_tz(S, chid, vb, w, h, chunk_sz, false);
+	compress_tzstd(S, chid, vb, w, h, chunk_sz);
 }
 
 static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
@@ -503,7 +489,7 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 
 /* first, reset or no-delta mode, build accumulation buffer and copy */
 	if (!ab->buffer){
-		type = zstd ? POSTPROCESS_VIDEO_ZSTD : POSTPROCESS_VIDEO_MINIZ;
+		type = POSTPROCESS_VIDEO_ZSTD;
 		*ab = *vb;
 		size_t nb = vb->w * vb->h * 3;
 		ab->buffer = malloc(nb);
@@ -568,36 +554,31 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 				rs += 3;
 			}
 		}
-		type = zstd ? POSTPROCESS_VIDEO_DZSTD : POSTPROCESS_VIDEO_DMINIZ;
+		type = POSTPROCESS_VIDEO_DZSTD;
 	}
 
 	size_t out_sz;
 	uint8_t* buf;
 
-	if (zstd){
-		out_sz = ZSTD_compressBound(compress_in_sz);
-		buf = malloc(out_sz);
-			if (!buf)
-				return (struct compress_res){};
+	out_sz = ZSTD_compressBound(compress_in_sz);
+	buf = malloc(out_sz);
+	if (!buf)
+		return (struct compress_res){};
 
-			out_sz = ZSTD_compressCCtx(
-				S->channels[ch].zstd, buf, out_sz, compress_in, compress_in_sz, 1);
+	out_sz = ZSTD_compressCCtx(
+		S->channels[ch].zstd, buf, out_sz, compress_in, compress_in_sz, 1);
 
-			if (ZSTD_isError(out_sz)){
-				a12int_trace(A12_TRACE_ALLOC,
-					"kind=zstd_fail:message=%s", ZSTD_getErrorName(out_sz));
-				free(buf);
-				return (struct compress_res){};
-			}
-
-		a12int_trace(A12_TRACE_VDETAIL,
-			"kind=status:codec=dzstd:b_in=%zu:b_out=%zu:ratio=%.2f",
-			compress_in_sz, out_sz, (float)(compress_in_sz+1.0) / (float)(out_sz+1.0)
-		);
+	if (ZSTD_isError(out_sz)){
+		a12int_trace(A12_TRACE_ALLOC,
+			"kind=zstd_fail:message=%s", ZSTD_getErrorName(out_sz));
+		free(buf);
+		return (struct compress_res){};
 	}
-	else {
-		buf = tdefl_compress_mem_to_heap(compress_in, compress_in_sz, &out_sz, 0);
-	}
+
+	a12int_trace(A12_TRACE_VDETAIL,
+		"kind=status:codec=dzstd:b_in=%zu:b_out=%zu:ratio=%.2f",
+		compress_in_sz, out_sz, (float)(compress_in_sz+1.0) / (float)(out_sz+1.0)
+	);
 
 	return (struct compress_res){
 		.type = type,
