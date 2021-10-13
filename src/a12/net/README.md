@@ -163,7 +163,8 @@ Milestone 2 - closer to useful (0.6.x)
 - [ ] Quad-tree for DPNG (p)
   - [ ] Tile-map and caching (p)
 	- [x] Remove DEFLATE and mote to ZSTD
-- [ ] Jpeg-XL progressive mode (p)
+	- [ ] varDCT
+	- [ ] XYB colorspace
 - [ ] Frame Cancellation / dynamic framerate on window drift (p)
 - [ ] vframe-caching on certain types (first-frame on new, ...) (p)
 - [ ] vframe-runahead / forward latency estimation (a)

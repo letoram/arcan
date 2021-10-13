@@ -168,6 +168,39 @@ static bool handover_setup(struct a12_state* S,
 	return true;
 }
 
+static struct a12_vframe_opts vcodec_tuning(
+	struct a12_state* S, int segid, struct shmifsrv_vbuffer* vb, void* tag)
+{
+/* should also be possible to extract know latency, latency trend (EMA)
+ * bitrate, backpressure and session load (channels + ...) then use that to set
+ * the desired target bitrate value */
+	int method = VFRAME_METHOD_DZSTD;
+	int bias = VFRAME_BIAS_BALANCED;
+
+	switch (segid){
+	case SEGID_LWA:
+		method = VFRAME_METHOD_H264;
+	break;
+	case SEGID_GAME:
+		method = VFRAME_METHOD_H264;
+		bias = VFRAME_BIAS_LATENCY;
+	break;
+/* this one is also a possible subject for codec passthrough, that will have to
+ * be implemented in the server util part as we need shmif to propagate if we
+ * can deal with passthrough and then device_fail that if the other end starts
+ * to reject the bitstream */
+	case SEGID_MEDIA:
+		method = VFRAME_METHOD_H264;
+		bias = VFRAME_BIAS_QUALITY;
+	break;
+	}
+
+	return (struct a12_vframe_opts){
+		.method = method,
+			.bias = bias
+	};
+}
+
 static void single_a12srv(struct a12_state* S, int fd, void* tag)
 {
 	struct shmifsrv_client* C = NULL;
@@ -181,7 +214,8 @@ static void single_a12srv(struct a12_state* S, int fd, void* tag)
 			.dirfd_temp = -1,
 			.dirfd_cache = -1,
 			.redirect_exit = meta->opts->redirect_exit,
-			.devicehint_cp = meta->opts->devicehint_cp
+			.devicehint_cp = meta->opts->devicehint_cp,
+			.eval_vcodec = vcodec_tuning
 		});
 		shmifsrv_free(C, SHMIFSRV_FREE_NO_DMS);
 	}

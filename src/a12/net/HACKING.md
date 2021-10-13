@@ -398,10 +398,10 @@ The format field defines the encoding method applied. Current values are:
  R8G8B8A8 = 0 : raw 8-bit red, green, blue and alpha values
  R8G8B8   = 1 : raw 8-bit red, green and blue values
  RGB565   = 2 : raw 5 bit red, 6 bit green, 5 bit red
- DMINIZ   = 3 : DEFLATE compressed block, set as ^ delta from last
- MINIZ    = 4 : DEFLATE compressed block
+ DMINIZ   = 3 : [deprecated] DEFLATE compressed block, set as ^ delta from last
+ MINIZ    = 4 : [deprecated] DEFLATE compressed block
  H264     = 5 : h264 stream
- TZ       = 6 : DEFLATE compressed tpack block
+ TZ       = 6 : [deprecated] DEFLATE compressed tpack block
  TZSTD    = 7 : ZSTD compressed tpack block
  DZSTD    = 8 : ZSTD compressed block, set as ^ delta from last
  ZSTD     = 9 : ZSTD compressed block
