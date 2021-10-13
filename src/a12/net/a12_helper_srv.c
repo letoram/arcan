@@ -60,20 +60,7 @@ static _Atomic volatile uint8_t n_segments;
 static struct a12_vframe_opts vopts_from_segment(
 	struct shmifsrv_thread_data* data, struct shmifsrv_vbuffer vb)
 {
-/* if the caller has explicitly provided us with options, go with that */
-	if (data->opts.default_vcodec > 0 && data->opts.force_default){
-		return (struct a12_vframe_opts){
-			.method = data->opts.default_vcodec,
-			.bias = data->opts.default_bias
-		};
-	}
-
-/* FIXME:
- * 1. check REJECT mask and make sure we pick the fallback in those cases.
- * 2. load CONFIG from XDG_CONFIG_DIR or $HOME to pick the default,
- * 3. check segment backpressure and set the bias thereafter
- */
-
+/* force tpack regardless, tpack doesn't have tuning like this */
 	if (vb.flags.tpack){
 		a12int_trace(A12_TRACE_VIDEO, "tpack segment");
 		return (struct a12_vframe_opts){
@@ -81,49 +68,16 @@ static struct a12_vframe_opts vopts_from_segment(
 		};
 	}
 
-	switch (shmifsrv_client_type(data->C)){
-	case SEGID_LWA:
-		a12int_trace(A12_TRACE_VIDEO, "lwa -> h264, balanced");
-		return (struct a12_vframe_opts){
-			.method = VFRAME_METHOD_H264,
-			.bias = VFRAME_BIAS_BALANCED
-		};
-	case SEGID_GAME:
-		a12int_trace(A12_TRACE_VIDEO, "game -> h264, latency");
-		return (struct a12_vframe_opts){
-			.method = VFRAME_METHOD_H264,
-			.bias = VFRAME_BIAS_LATENCY
-		};
-	break;
-	case SEGID_MEDIA:
-		a12int_trace(A12_TRACE_VIDEO, "media -> h264, quality");
-		return (struct a12_vframe_opts){
-			.method = VFRAME_METHOD_H264,
-			.bias = VFRAME_BIAS_QUALITY
-		};
-	break;
-	case SEGID_CURSOR:
-		a12int_trace(A12_TRACE_VIDEO, "cursor -> normal (raw/png/...)");
-		return (struct a12_vframe_opts){
-			.method = VFRAME_METHOD_NORMAL
-		};
-	break;
-	case SEGID_REMOTING:
-	case SEGID_VM:
-	default:
-		if (data->opts.default_vcodec > 0){
-			return (struct a12_vframe_opts){
-				.method = data->opts.default_vcodec,
-				.bias = data->opts.default_bias
-			};
-		}
-		a12int_trace(A12_TRACE_VIDEO,
-			"default (%d) -> dpng", shmifsrv_client_type(data->C));
-		return (struct a12_vframe_opts){
-			.method = VFRAME_METHOD_DZSTD
-		};
-	break;
+/* outsource eval */
+	if (data->opts.eval_vcodec){
+		return data->opts.eval_vcodec(data->S,
+			shmifsrv_client_type(data->C), &vb, data->opts.tag);
 	}
+
+	return (struct a12_vframe_opts){
+		.method = VFRAME_METHOD_DZSTD,
+			.bias = VFRAME_BIAS_BALANCED
+	};
 }
 
 extern uint8_t* arcan_base64_encode(

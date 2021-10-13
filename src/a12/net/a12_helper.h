@@ -17,11 +17,10 @@ enum a12helper_pollstate {
 };
 
 struct a12helper_opts {
-	int default_vcodec;
-	int default_bias;
+	struct a12_vframe_opts (*eval_vcodec)(
+		struct a12_state* S, int segid, struct shmifsrv_vbuffer*, void* tag);
+	void* tag;
 
-/* set to ignore type- heuristics and force a specific encoder */
-	bool force_default;
 	int dirfd_temp;
 	int dirfd_cache;
 
