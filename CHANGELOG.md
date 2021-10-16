@@ -45,6 +45,7 @@
  * image\_parent - add overloaded form for testing full hierarchy
  * add input\_raw entry point for out-of-loop io event processing (footgun warning)
  * add mapping hint for ROTATE\_180
+ * add placeholder user-namespace selector for glob-resource
 
 ## Build
  * A whole lot of FreeBSD build fixes courtesy of J.Beich
