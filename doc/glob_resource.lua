@@ -1,13 +1,16 @@
 -- glob_resource
 -- @short: Search the different datastores for resources matching a pattern.
--- @inargs: pattern, *domain*
+-- @inargs: string:pattern
+-- @inargs: string:pattern, int:domain
+-- @inargs: string:pattern, string:namespace
 -- @outargs: strtbl
--- @longdescr: There are a number of different namespaces (distinct group where
--- a certain resource key corresponds to a file or similar data-source). This
--- function allows you to query parts of these namespaces (indicated by a
--- search path, *pattern*).  By specifying a *domain* you can limit the search
--- to a specific set of namespaces.
--- Valid constants for domain (can be ORed) are APPL_RESOURCE,
+-- @longdescr: There are a number of different statically defined namespaces
+-- (distinct group where a certain resource key corresponds to a file or
+-- similar data-source). This function allows you to query parts of these namespaces
+-- (indicated by a search path, *pattern*).
+-- By specifying a *domain* you can limit the search to a specific set of namespaces.
+-- This domain can be a predefined bitmap of numeric constants, or a user-defined
+-- dynamic namespace tag. Valid constants for domain (can be ORed) are APPL_RESOURCE,
 -- APPL_TEMP_RESOURCE, SHARED_RESOURCE, SYS_APPL_RESOURCE, SYS_FONT_RESOURCE,
 -- APPL_STATE_RESOURCE,
 -- @note: the default domain is the compile-time defined (DEFAULT_USERMASK)

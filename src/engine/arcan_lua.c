@@ -8317,10 +8317,16 @@ static int globresource(lua_State* ctx)
 	};
 
 	char* label = (char*) luaL_checkstring(ctx, 1);
-	int mask = luaL_optinteger(ctx, 2, DEFAULT_USERMASK &
-		(DEFAULT_USERMASK | RESOURCE_APPL_STATE |
-		RESOURCE_SYS_APPLBASE | RESOURCE_SYS_FONT)
-	);
+	int mask = DEFAULT_USERMASK;
+
+	if (lua_type(ctx, 2) == LUA_TSTRING){
+/* placeholder to permit a db lookup of namespaces */
+	}
+	else if (lua_type(ctx, 2) == LUA_TNUMBER){
+		mask = luaL_checknumber(ctx, 2);
+		mask &= (DEFAULT_USERMASK |
+			RESOURCE_APPL_STATE | RESOURCE_SYS_APPLBASE | RESOURCE_SYS_FONT);
+	}
 
 	lua_newtable(ctx);
 	bptr.top = lua_gettop(ctx);
