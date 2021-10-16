@@ -54,6 +54,7 @@
 ## Distribution
  * New hookscript: 'hook/alloc\_debug.lua' that forces backtrace into image-tag for all allocations
  * builtin/string.lua: add string.unpack\_shmif\_argstr
+ * builtin/mouse.lua: simplified convenience patterns added to mouse\_setup/mouse\_input
 
 ## Shmif
  * Shmifext- allocator interface for server- directed FBO color allocation

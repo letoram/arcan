@@ -454,15 +454,20 @@ function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden)
 	mstate.x = math.floor(mstate.max_x * 0.5);
 	mstate.y = math.floor(mstate.max_y * 0.5);
 
+	clayer = type(clayer) == "number" and clayer or 65535;
+	pickdepth = type(pickdepth) == "number" and pickdepth or 1;
+	cachepick = cachepick == nil or true;
+
 	mstate.cursor = null_surface(1, 1);
 	image_mask_set(mstate.cursor, MASK_UNPICKABLE);
-	if (valid_vid(cvid)) then
-		mouse_add_cursor("default", cvid, 0, 0);
-		local props = image_surface_properties(cvid);
-		mstate.size = {props.width, props.height};
-	else
-		mstate.size = {32, 32};
+
+	if not valid_vid(cvid) then
+		cvid = fill_surface(32, 32, 0, 127, 0);
 	end
+
+	mouse_add_cursor("default", cvid, 0, 0);
+	local props = image_surface_properties(cvid);
+	mstate.size = {props.width, props.height};
 
 	mstate.rt = rt;
 	mouse_switch_cursor();
@@ -996,6 +1001,9 @@ end
 end
 
 function mouse_input(x, y, state, noinp)
+	if (type(x) == "table") then
+		return mouse_iotbl_input(x)
+	end
 
 -- if inertia is set, we first need to overcome that before continuing
 	if x ~= 0 or y ~= 0 then
