@@ -191,7 +191,6 @@ void ffmpeg_decode_pkt(
 
 /* Mark that we should send a ping so the other side can update the drift wnd */
 		if (cvf->commit && cvf->commit != 255){
-			S->ack_pending = true;
 			drain_video(&S->channels[S->in_channel], cvf);
 		}
 
@@ -469,6 +468,7 @@ void a12int_unpack_vbuffer(struct a12_state* S,
 	if (cvf->inbuf_sz == 0){
 		a12int_trace(A12_TRACE_VIDEO,
 			"video frame completed, commit:%"PRIu8, cvf->commit);
+		a12int_stream_ack(S, S->in_channel, cvf->id);
 		if (cvf->commit){
 			arcan_shmif_signal(cont, SHMIF_SIGVID);
 		}

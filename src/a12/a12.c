@@ -774,6 +774,9 @@ void a12_vstream_cancel(struct a12_state* S, uint8_t channel, int reason)
 	struct video_frame* vframe = &S->channels[channel].unpack_state.vframe;
 	vframe->commit = 255;
 
+/* note that the cancel itself does not affect the congestion stats, it is when
+ * we get a frame ack that is within the frame_window that the pending set is
+ * decreased */
 	outb[16] = channel;
 	outb[17] = COMMAND_CANCELSTREAM;
 	outb[18] = 1;
@@ -821,6 +824,7 @@ static void command_audioframe(struct a12_state* S)
 	uint8_t channel = S->decode[16];
 	struct audio_frame* aframe = &S->channels[channel].unpack_state.aframe;
 
+	unpack_u32(&aframe->id, &S->decode[18]);
 	aframe->format = S->decode[22];
 	aframe->encoding = S->decode[23];
 	aframe->channels = S->decode[22];
@@ -942,6 +946,18 @@ void a12int_stream_fail(struct a12_state* S, uint8_t ch, uint32_t id, int fail)
 	outb[16] = ch;
 	pack_u32(id, &outb[18]);
 	outb[22] = (uint8_t) fail; /* user-cancel, can't handle, already cached */
+
+	a12int_append_out(S,
+		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+}
+
+void a12int_stream_ack(struct a12_state* S, uint8_t ch, uint32_t id)
+{
+	uint8_t outb[CONTROL_PACKET_SIZE];
+	build_control_header(S, outb, COMMAND_PING);
+
+	outb[16] = ch;
+	pack_u32(id, &outb[18]);
 
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
@@ -1405,6 +1421,11 @@ static void process_hello_auth(struct a12_state* S)
 	}
 }
 
+static void command_pingpacket(struct a12_state* S, uint32_t sid)
+{
+
+}
+
 /*
  * Control command,
  * current MAC calculation in s->mac_dec
@@ -1447,8 +1468,11 @@ static void process_control(struct a12_state* S, void (*on_event)
 		command_cancelstream(S, streamid, S->decode[22]);
 	}
 	break;
-	case COMMAND_PING:
-		a12int_trace(A12_TRACE_MISSING, "Check ping packet");
+	case COMMAND_PING:{
+		uint32_t streamid;
+		unpack_u32(&streamid, &S->decode[18]);
+		command_pingpacket(S, streamid);
+	}
 	break;
 	case COMMAND_VIDEOFRAME:
 		command_videoframe(S);
@@ -1703,6 +1727,7 @@ static void process_video(struct a12_state* S)
 			a12int_decode_vbuffer(S, ch, cvf, cont);
 		}
 
+		a12int_stream_ack(S, S->in_channel, cvf->id);
 		reset_state(S);
 		return;
 	}
@@ -1940,16 +1965,6 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 /* slide window and tail- if needed */
 	if (buf_sz)
 		a12_unpack(S, &buf[ntr], buf_sz, tag, on_event);
-
-/* when all out, check if any vframes on any channels warrant a pingback to
- * let the other side update its congestion stats */
-	else if (S->ack_pending){
-		uint8_t outb[CONTROL_PACKET_SIZE];
-		build_control_header(S, outb, COMMAND_PING);
-		a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
-		S->ack_pending = 0;
-
-	}
 }
 
 /*
@@ -2259,6 +2274,8 @@ a12_channel_vframe(struct a12_state* S,
 	case VFRAME_METHOD_RAW_NOALPHA:
 		a12int_encode_rgb(argstr);
 	break;
+/* these are the same, the encoder will pick which based on ref. frame */
+	case VFRAME_METHOD_ZSTD:
 	case VFRAME_METHOD_DZSTD:
 		a12int_encode_dzstd(argstr);
 	break;
