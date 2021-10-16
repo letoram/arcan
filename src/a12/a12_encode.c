@@ -36,9 +36,8 @@ static void a12int_vframehdr_build(uint8_t buf[CONTROL_PACKET_SIZE],
 
 	memset(buf, '\0', CONTROL_PACKET_SIZE);
 	pack_u64(last_seen, &buf[0]);
-	arcan_random(&buf[8], 8);
+	arcan_random(&buf[8], 8); /* 0..8 entropy */
 
-/* uint8_t entropy[8]; */
 	buf[16] = chid; /* [16] : channel-id */
 	buf[17] = COMMAND_VIDEOFRAME; /* [17] : command */
 	pack_u32(sid, &buf[18]); /* [18..21] : stream-id */
@@ -56,6 +55,8 @@ static void a12int_vframehdr_build(uint8_t buf[CONTROL_PACKET_SIZE],
 /* [40] Commit on completion, this is always set right now but will change
  * when 'chain of deltas' mode for shmif is added */
 	buf[44] = commit;
+
+/* add the id to list of unack:ed video streams, checked on a PING later */
 }
 
 /*

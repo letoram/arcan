@@ -98,6 +98,8 @@ struct ZSTD_CCtx_s;
 struct ZSTD_DCtx_s;
 
 struct audio_frame {
+	uint32_t id;
+
 	uint32_t rate;
 	uint8_t encoding;
 	uint8_t channels;
@@ -273,7 +275,6 @@ struct a12_state {
 /* client side needs to send the first packet with MAC+nonce, server side
  * needs to interpret first packet with MAC+nonce */
 	bool server;
-	bool ack_pending;
 	int authentic;
 	blake3_hasher out_mac, in_mac;
 
@@ -287,6 +288,7 @@ enum {
 	STREAM_FAIL_ALREADY_KNOWN = 2
 };
 void a12int_stream_fail(struct a12_state* S, uint8_t ch, uint32_t id, int fail);
+void a12int_stream_ack(struct a12_state* S, uint8_t ch, uint32_t id);
 
 void a12int_append_out(
 	struct a12_state* S, uint8_t type, uint8_t* out, size_t out_sz,

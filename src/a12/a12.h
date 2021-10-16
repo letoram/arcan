@@ -331,18 +331,20 @@ a12_set_trace_level(int mask, FILE* dst);
  * forward a vbuffer from shm
  */
 enum a12_vframe_method {
+	VFRAME_METHOD_DEFER = -1, /* will be ignored */
 	VFRAME_METHOD_NORMAL = 0, /* to deprecate */
-	VFRAME_METHOD_RAW_NOALPHA,
-	VFRAME_METHOD_RAW_RGB565,
-	VFRAME_METHOD_H264,
-	VFRAME_METHOD_DZSTD,
-	VFRAME_METHOD_TPACK_ZSTD
+	VFRAME_METHOD_RAW_NOALPHA = 1,
+	VFRAME_METHOD_RAW_RGB565 = 2,
+	VFRAME_METHOD_H264 = 5,
+	VFRAME_METHOD_TPACK_ZSTD = 7,
+	VFRAME_METHOD_ZSTD = 8,
+	VFRAME_METHOD_DZSTD = 9
 };
 
 enum a12_vframe_compression_bias {
 	VFRAME_BIAS_LATENCY = 0,
 	VFRAME_BIAS_BALANCED,
-	VFRAME_BIAS_QUALITY
+	VFRAME_BIAS_QUALITY,
 };
 
 /* properties to forward to the last stage in order to avoid extra
@@ -515,6 +517,19 @@ enum vstream_cancel {
 	VSTREAM_CANCEL_KNOWN = 2
 };
 void a12_vstream_cancel(struct a12_state* S, uint8_t chid, int reason);
+
+struct a12_iostat {
+	size_t b_in;
+	size_t b_out;
+	size_t vframe_backpressure; /* number of encoded vframes vs. pending */
+	size_t roundtrip_latency;
+	size_t packets_pending; /* delta between seqnr and last-seen seqnr */
+};
+
+/*
+ * Sample the current rolling state statistics
+ */
+struct a12_iostat a12_state_iostat(struct a12_state* S);
 
 /*
  * debugging / tracing bits, just define a namespace that can be used

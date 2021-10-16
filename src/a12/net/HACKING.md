@@ -403,8 +403,8 @@ The format field defines the encoding method applied. Current values are:
  H264     = 5 : h264 stream
  TZ       = 6 : [deprecated] DEFLATE compressed tpack block
  TZSTD    = 7 : ZSTD compressed tpack block
- DZSTD    = 8 : ZSTD compressed block, set as ^ delta from last
- ZSTD     = 9 : ZSTD compressed block
+ ZSTD     = 8 : ZSTD compressed block
+ DZSTD    = 9 : ZSTD compressed block, set as ^ delta from last
 
 This list is likely to be reviewed / compressed into only ZSTD and H264
 variants, as well as allowing a FourCC passthrough block for hardware decoding.
@@ -448,8 +448,9 @@ can be interleaved. There can thus be multiple binary streams in flight in
 order to interrupt an ongoing one with a higher priority one.
 
 ### command - 7, ping
-No extra data needed in the control command, just used as a periodic carrier
-to keep the connection alive and measure drift.
+- [18..21] stream-id : uint32
+
+The stream-id is that of the last completed stream (if any).
 
 ### command - 8, rekey
 - [0...7] future-seqnr : uint64

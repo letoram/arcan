@@ -504,6 +504,10 @@ static void* client_thread(void* inarg)
 				struct shmifsrv_vbuffer vb = shmifsrv_video(data->C);
 				BEGIN_CRITICAL(&giant_lock, "video-buffer");
 					a12_set_channel(data->S, data->chid);
+
+/* vopts_from_segment here lets the caller pick compression parameters (coarse),
+ * including the special 'defer this frame until later' */
+
 					a12_channel_vframe(data->S, &vb, vopts_from_segment(data, vb));
 					dirty = true;
 				END_CRITICAL(&giant_lock);
