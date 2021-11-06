@@ -1640,6 +1640,7 @@ static const char flt_Alphanum[] = "abcdefghijklmnopqrstuvxwyz-0123456789-_"
 static const char flt_Alpha[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ-_"
 	"abcdefghijklmnopqrstuvwxyz";
 static const char flt_num[] = "0123456789_-";
+static const char flt_chint[] = "abcdefhijklmnopqrstuvwyz:1234567890";
 
 static void fltpush(char* dst, char ulim,
 	char* inmsg, const char* fltch, char replch)
@@ -5505,7 +5506,7 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			push_view(ctx, &ev->ext, fsrv, top);
 		break;
 		case EVENT_EXTERNAL_CURSORHINT:
-			FLTPUSH(ev->ext.message.data, flt_alpha, '?');
+			FLTPUSH(ev->ext.message.data, flt_chint, '?');
 			tbldynstr(ctx, "cursor", msgbuf, top);
 			tblstr(ctx, "kind", "cursorhint", top);
 		break;
