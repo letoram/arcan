@@ -158,7 +158,7 @@ void ffmpeg_decode_pkt(
 	int ret = avcodec_send_packet(cvf->ffmpeg.context, cvf->ffmpeg.packet);
 	if (ret < 0){
 		a12int_trace(A12_TRACE_VIDEO, "ffmpeg:packet_status=decode_fail");
-		a12_vstream_cancel(S, S->in_channel, VSTREAM_CANCEL_DECODE_ERROR);
+		a12_vstream_cancel(S, S->in_channel, STREAM_CANCEL_DECODE_ERROR);
 		return;
 	}
 
@@ -170,7 +170,7 @@ void ffmpeg_decode_pkt(
 		}
 		else if (ret != 0){
 			a12int_trace(A12_TRACE_SYSTEM, "ffmpeg:avcodec=fail:code=%d", ret);
-			a12_vstream_cancel(S, S->in_channel, VSTREAM_CANCEL_DECODE_ERROR);
+			a12_vstream_cancel(S, S->in_channel, STREAM_CANCEL_DECODE_ERROR);
 			return;
 		}
 

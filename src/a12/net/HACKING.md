@@ -364,11 +364,10 @@ which should be absorbed and translated in each proxy.
 ### command = 3, stream-cancel
 - [18..21] stream-id : uint32
 - [22]     code      : uint8
+- [23]     type      : uint8
 
-This command carries a 4 byte stream ID.
-Video is assigned the constant stream-id 1,
-Audio is assigned the constant stream-id 2,
-Bstream has an incremental counter that is stepped on each transfer.
+This command carries a 4 byte stream ID that refers to the identifier
+of an ongoing video, audio or bstream.
 
 The code dictates if the cancel is due to the information being dated or
 undesired (0), encoded in an unhandled format (1) or data is already known
@@ -378,6 +377,9 @@ In the event on vstreams or astreams receiving an unhandled format, (possible
 for H264 and future hardware-/ licensing- dependent encodings), the client
 should attempt to resend / reencode the buffer with one of the built-in
 formats.
+
+The type indicates if the idea of the stram is video (0), audio (1) or binary
+data (2).
 
 ### command - 4, define vstream
 - [18..21] : stream-id: uint32

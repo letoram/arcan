@@ -215,6 +215,7 @@ struct a12_state {
 	uint64_t current_seqnr;
 	uint64_t last_seen_seqnr;
 	uint64_t out_stream;
+	bool advenc_broken;
 
 /* The biggest concern of congestion is video frames as that tends to be most
  * primary data. The decision to act upon this is still up to the tool feeding
@@ -222,7 +223,7 @@ struct a12_state {
  * on. While we indirectly do measure latency and so on, the better congestion
  * control channel for that is left up to the carrier. */
 	struct {
-		uint64_t frame_window[VIDEO_FRAME_DRIFT_WINDOW]; /* seqnrs tied to vframes */
+		uint32_t frame_window[VIDEO_FRAME_DRIFT_WINDOW]; /* seqnrs tied to vframes */
 		size_t pending; /* updated whenever we send something out */
 	} congestion_stats;
 
@@ -293,5 +294,7 @@ void a12int_stream_ack(struct a12_state* S, uint8_t ch, uint32_t id);
 void a12int_append_out(
 	struct a12_state* S, uint8_t type, uint8_t* out, size_t out_sz,
 	uint8_t* prepend, size_t prepend_sz);
+
+void a12int_step_vstream(struct a12_state* S, uint32_t id);
 
 #endif
