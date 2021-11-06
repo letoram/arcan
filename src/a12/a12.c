@@ -422,9 +422,7 @@ static struct a12_state* a12_setup(struct a12_context_options* opt, bool srv)
 #endif
 
 	res->cookie = 0xfeedface;
-
-/* start counting binary stream identifiers on 3 (video = 1, audio = 2) */
-	res->out_stream = 3;
+	res->out_stream = 1;
 
 	return res;
 }
@@ -668,16 +666,19 @@ static void process_srvfirst(struct a12_state* S)
 }
 
 static void command_cancelstream(
-	struct a12_state* S, uint32_t streamid, uint8_t reason)
+	struct a12_state* S, uint32_t streamid, uint8_t reason, uint8_t stype)
 {
 	struct blob_out* node = S->pending;
 	a12int_trace(A12_TRACE_SYSTEM, "stream_cancel:%"PRIu32":%"PRIu8, streamid, reason);
 
 /* the other end indicated that the current codec or data source is broken,
  * propagate the error to the client (if in direct passing mode) otherwise just
- * switch the encoder for next frame */
-	if (streamid == 1){
-		if (reason == VSTREAM_CANCEL_DECODE_ERROR){
+ * switch the encoder for next frame - any recoverable decode error should
+ * really be in h264 et al. now so assume that. There might also be a point
+ * in force-inserting a RESET/STEPFRAME */
+	if (stype == 0){
+		if (reason == STREAM_CANCEL_DECODE_ERROR){
+			S->advenc_broken = true;
 		}
 
 /* other reasons means that the image contents is already known or too dated,
@@ -685,7 +686,8 @@ static void command_cancelstream(
  * use that for known types (cursor, ...) then reconsider */
 		return;
 	}
-	else if (streamid == 2){
+	else if (stype == 1){
+		return;
 	}
 
 /* try the blobs first */
@@ -779,8 +781,9 @@ void a12_vstream_cancel(struct a12_state* S, uint8_t channel, int reason)
  * decreased */
 	outb[16] = channel;
 	outb[17] = COMMAND_CANCELSTREAM;
-	outb[18] = 1;
-	outb[19] = reason;
+	pack_u32(1, &outb[18]);
+	outb[22] = reason;
+	outb[23] = STREAM_TYPE_VIDEO;
 
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 }
@@ -798,6 +801,7 @@ void a12_stream_cancel(struct a12_state* S, uint8_t channel)
 	outb[16] = channel;
 	outb[17] = COMMAND_CANCELSTREAM;
 	pack_u32(bframe->streamid, &outb[18]); /* [18 .. 21] stream-id */
+	outb[23] = STREAM_TYPE_BINARY;
 	bframe->active = false;
 	bframe->streamid = -1;
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
@@ -951,6 +955,16 @@ void a12int_stream_fail(struct a12_state* S, uint8_t ch, uint32_t id, int fail)
 		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 }
 
+/*
+static void dump_window(struct a12_state* S)
+{
+	printf("[%zu] -", S->congestion_stats.pending);
+	for (size_t i = 0; i < VIDEO_FRAME_DRIFT_WINDOW; i++){
+		printf(" %"PRIu32, S->congestion_stats.frame_window[i]);
+	}
+}
+*/
+
 void a12int_stream_ack(struct a12_state* S, uint8_t ch, uint32_t id)
 {
 	uint8_t outb[CONTROL_PACKET_SIZE];
@@ -958,6 +972,8 @@ void a12int_stream_ack(struct a12_state* S, uint8_t ch, uint32_t id)
 
 	outb[16] = ch;
 	pack_u32(id, &outb[18]);
+
+	a12int_trace(A12_TRACE_DEBUG, "ack=%"PRIu32, id);
 
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
@@ -987,6 +1003,7 @@ static void command_videoframe(struct a12_state* S)
 	* [36    ] : dataflags: uint8
 	*/
 /* [18..21] : stream-id: uint32 */
+	unpack_u32(&vframe->id, &S->decode[18]);
 	vframe->postprocess = method; /* [22] : format : uint8 */
 /* [23..24] : surfacew: uint16
  * [25..26] : surfaceh: uint16 */
@@ -1423,7 +1440,65 @@ static void process_hello_auth(struct a12_state* S)
 
 static void command_pingpacket(struct a12_state* S, uint32_t sid)
 {
+/* might get empty pings, ignore those as they only update last_seen_seq */
+	if (!sid)
+		return;
 
+	size_t i;
+	size_t wnd_sz = VIDEO_FRAME_DRIFT_WINDOW;
+	for (i = 0; i < wnd_sz; i++){
+		uint32_t cid = S->congestion_stats.frame_window[i];
+
+		if (!cid){
+			a12int_trace(A12_TRACE_DEBUG, "ack-sid %"PRIu32" not in wnd", sid);
+			return;
+		}
+
+		if (cid == sid)
+			break;
+	}
+
+/* the ID might be bad (after the last sent) or truncated or outdated.
+ * Truncation / outdating can happen if the source continues to push frames
+ * while fully congested. It is the user of the implementation that needs to
+ * determine actions on congestion/backpressure. */
+	if (i >= wnd_sz - 1){
+		uint32_t latest =
+			S->congestion_stats.frame_window[wnd_sz-1];
+
+		if (sid >= latest){
+			a12int_trace(A12_TRACE_DEBUG, "ack-sid %"PRIu32" after wnd", sid);
+			S->congestion_stats.pending = 0;
+			for (size_t i = 0; i < wnd_sz; i++){
+				S->congestion_stats.frame_window[i] = 0;
+			}
+			return;
+		}
+
+/* in the truncation case, we only retain the last 'sent' and slide
+ * the rest of the window */
+		if (i < latest)
+			i = wnd_sz - 2;
+	}
+
+	size_t i_start = i + 1;
+	size_t to_move = 0;
+
+/* shrink the moveset to only cover non-0 */
+	while (i_start + to_move < wnd_sz &&
+		S->congestion_stats.frame_window[i_start+to_move]){
+		to_move++;
+	}
+	S->congestion_stats.pending = to_move;
+
+	memmove(
+		S->congestion_stats.frame_window,
+		&S->congestion_stats.frame_window[i_start],
+		to_move * sizeof(uint32_t)
+	);
+
+	for (i = to_move; i < wnd_sz; i++)
+		S->congestion_stats.frame_window[i] = 0;
 }
 
 /*
@@ -1452,6 +1527,8 @@ static void process_control(struct a12_state* S, void (*on_event)
 		return;
 	}
 
+	a12int_trace(A12_TRACE_DEBUG, "cmd=%"PRIu8, command);
+
 	switch(command){
 	case COMMAND_HELLO:
 		process_hello_auth(S);
@@ -1465,12 +1542,13 @@ static void process_control(struct a12_state* S, void (*on_event)
 	case COMMAND_CANCELSTREAM:{
 		uint32_t streamid;
 		unpack_u32(&streamid, &S->decode[18]);
-		command_cancelstream(S, streamid, S->decode[22]);
+		command_cancelstream(S, streamid, S->decode[22], S->decode[23]);
 	}
 	break;
 	case COMMAND_PING:{
 		uint32_t streamid;
 		unpack_u32(&streamid, &S->decode[18]);
+		a12int_trace(A12_TRACE_DEBUG, "ping=%"PRIu32, streamid);
 		command_pingpacket(S, streamid);
 	}
 	break;
@@ -2203,6 +2281,20 @@ a12_channel_aframe(struct a12_state* S,
 	a12int_encode_araw(S, S->out_channel, buf, n_samples/2, cfg, opts, chunk_sz);
 }
 
+static uint32_t mark_alloc_vstream(struct a12_state* S)
+{
+	S->out_stream++;
+	size_t slot = S->congestion_stats.pending;
+
+/* clamp so that sz-1 compared to sz-2 can indicate how reckless the api
+ * user is with regards to backpressure */
+	if (S->congestion_stats.pending < VIDEO_FRAME_DRIFT_WINDOW - 1)
+		S->congestion_stats.pending++;
+
+	S->congestion_stats.frame_window[slot] = S->out_stream;
+	return S->out_stream;
+}
+
 /*
  * This function merely performs basic sanity checks of the input sources
  * then forwards to the corresponding _encode method that match the set opts.
@@ -2257,9 +2349,11 @@ a12_channel_vframe(struct a12_state* S,
  * then we have the problem of the meta- area that should take
  * other package types when we get there
  */
+	uint32_t sid = mark_alloc_vstream(S);
+
 	a12int_trace(A12_TRACE_VIDEO,
 		"out vframe: %zu*%zu @%zu,%zu+%zu,%zu", vb->w, vb->h, w, h, x, y);
-#define argstr S, vb, opts, x, y, w, h, chunk_sz, S->out_channel
+#define argstr S, vb, opts, sid, x, y, w, h, chunk_sz, S->out_channel
 
 	switch(opts.method){
 	case VFRAME_METHOD_RAW_RGB565:
@@ -2280,13 +2374,17 @@ a12_channel_vframe(struct a12_state* S,
 		a12int_encode_dzstd(argstr);
 	break;
 	case VFRAME_METHOD_H264:
-		a12int_encode_h264(argstr);
+		if (S->advenc_broken)
+			a12int_encode_dzstd(argstr);
+		else
+			a12int_encode_h264(argstr);
 	break;
 	case VFRAME_METHOD_TPACK_ZSTD:
 		a12int_encode_ztz(argstr);
 	break;
 	default:
 		a12int_trace(A12_TRACE_SYSTEM, "unknown format: %d\n", opts.method);
+		return;
 	break;
 	}
 }
@@ -2424,4 +2522,9 @@ void a12_sensitive_free(void* ptr, size_t buf)
 		pos[i] = 0;
 	}
 	arcan_mem_free(ptr);
+}
+
+void a12int_step_vstream(struct a12_state* S, uint32_t id)
+{
+/* find and slide congestion */
 }

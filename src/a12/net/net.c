@@ -47,6 +47,7 @@ static const char* trace_groups[] = {
 	"audio",
 	"system",
 	"event",
+	"debug",
 	"missing",
 	"alloc",
 	"crypto",
@@ -59,8 +60,8 @@ static int tracestr_to_bitmap(char* work)
 	int res = 0;
 	char* pt = strtok(work, ",");
 	while(pt != NULL){
-		for (size_t i = 0; i < COUNT_OF(trace_groups); i++){
-			if (strcasecmp(trace_groups[i], pt) == 0){
+		for (size_t i = 1; i < COUNT_OF(trace_groups); i++){
+			if (strcasecmp(trace_groups[i-1], pt) == 0){
 				res |= 1 << i;
 				break;
 			}
@@ -172,8 +173,9 @@ static struct a12_vframe_opts vcodec_tuning(
 	struct a12_state* S, int segid, struct shmifsrv_vbuffer* vb, void* tag)
 {
 /* should also be possible to extract know latency, latency trend (EMA)
- * bitrate, backpressure and session load (channels + ...) then use that to set
- * the desired target bitrate value */
+ * bitrate, backpressure and session load (channels + ...) then use that to
+ * set the desired target bitrate value based on some network estimator or
+ * config set threshold */
 	int method = VFRAME_METHOD_DZSTD;
 	int bias = VFRAME_BIAS_BALANCED;
 
@@ -185,10 +187,10 @@ static struct a12_vframe_opts vcodec_tuning(
 		method = VFRAME_METHOD_H264;
 		bias = VFRAME_BIAS_LATENCY;
 	break;
-/* this one is also a possible subject for codec passthrough, that will have to
- * be implemented in the server util part as we need shmif to propagate if we
- * can deal with passthrough and then device_fail that if the other end starts
- * to reject the bitstream */
+/* this one is also a possible subject for codec passthrough, that will have
+ * to be implemented in the server util part as we need shmif to propagate if
+ * we can deal with passthrough and then device_fail that if the other end
+ * starts to reject the bitstream */
 	case SEGID_MEDIA:
 		method = VFRAME_METHOD_H264;
 		bias = VFRAME_BIAS_QUALITY;

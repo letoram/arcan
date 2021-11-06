@@ -21,7 +21,8 @@
 /*
  * create the control packet
  */
-static void a12int_vframehdr_build(uint8_t buf[CONTROL_PACKET_SIZE],
+static void a12int_vframehdr_build(
+	uint8_t buf[CONTROL_PACKET_SIZE],
 	uint64_t last_seen, uint8_t chid,
 	int type, uint32_t sid,
 	uint16_t sw, uint16_t sh, uint16_t w, uint16_t h, uint16_t x, uint16_t y,
@@ -55,8 +56,6 @@ static void a12int_vframehdr_build(uint8_t buf[CONTROL_PACKET_SIZE],
 /* [40] Commit on completion, this is always set right now but will change
  * when 'chain of deltas' mode for shmif is added */
 	buf[44] = commit;
-
-/* add the id to list of unack:ed video streams, checked on a PING later */
 }
 
 /*
@@ -149,9 +148,10 @@ void a12int_encode_rgb565(PACK_ARGS)
 /* store the control frame that defines our video buffer */
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
 	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
-		POSTPROCESS_VIDEO_RGB565, 0, vb->w, vb->h, w, h, x, y,
+		POSTPROCESS_VIDEO_RGB565, sid, vb->w, vb->h, w, h, x, y,
 		w * h * px_sz, w * h * px_sz, 1
 	);
+	a12int_step_vstream(S, sid);
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, hdr_buf, CONTROL_PACKET_SIZE, NULL, 0);
 
@@ -230,9 +230,10 @@ void a12int_encode_rgba(PACK_ARGS)
 /* store the control frame that defines our video buffer */
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
 	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
-		POSTPROCESS_VIDEO_RGBA, 0, vb->w, vb->h, w, h, x, y,
+		POSTPROCESS_VIDEO_RGBA, sid, vb->w, vb->h, w, h, x, y,
 		w * h * px_sz, w * h * px_sz, 1
 	);
+	a12int_step_vstream(S, sid);
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, hdr_buf, CONTROL_PACKET_SIZE, NULL, 0);
 
@@ -300,9 +301,10 @@ void a12int_encode_rgb(PACK_ARGS)
 /* store the control frame that defines our video buffer */
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
 	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
-		POSTPROCESS_VIDEO_RGB, 0, vb->w, vb->h, w, h, x, y,
+		POSTPROCESS_VIDEO_RGB, sid, vb->w, vb->h, w, h, x, y,
 		w * h * px_sz, w * h * px_sz, 1
 	);
+	a12int_step_vstream(S, sid);
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, hdr_buf, CONTROL_PACKET_SIZE, NULL, 0);
 
@@ -379,7 +381,7 @@ struct compress_res {
 };
 
 static void compress_tzstd(struct a12_state* S, uint8_t ch,
-	struct shmifsrv_vbuffer* vb, int w, int h, size_t chunk_sz)
+	struct shmifsrv_vbuffer* vb, uint32_t sid, int w, int h, size_t chunk_sz)
 {
 	if (!setup_zstd(S, ch, SEGID_TUI)){
 		return;
@@ -443,7 +445,7 @@ static void compress_tzstd(struct a12_state* S, uint8_t ch,
 
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
 	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, ch,
-		type, 0, vb->w, vb->h, w, h, 0, 0,
+		type, sid, vb->w, vb->h, w, h, 0, 0,
 		out_sz, compress_in_sz, 1
 	);
 
@@ -452,6 +454,7 @@ static void compress_tzstd(struct a12_state* S, uint8_t ch,
 		(size_t) compress_in_sz, (size_t) out_sz
 	);
 
+	a12int_step_vstream(S, sid);
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, hdr_buf, CONTROL_PACKET_SIZE, NULL, 0);
 
@@ -461,7 +464,7 @@ static void compress_tzstd(struct a12_state* S, uint8_t ch,
 
 void a12int_encode_ztz(PACK_ARGS)
 {
-	compress_tzstd(S, chid, vb, w, h, chunk_sz);
+	compress_tzstd(S, chid, vb, sid, w, h, chunk_sz);
 }
 
 static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
@@ -598,7 +601,7 @@ void a12int_encode_dzstd(PACK_ARGS)
 
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
 	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
-		cres.type, 0, vb->w, vb->h, w, h, x, y,
+		cres.type, sid, vb->w, vb->h, w, h, x, y,
 		cres.out_sz, cres.in_sz, 1
 	);
 
@@ -606,6 +609,7 @@ void a12int_encode_dzstd(PACK_ARGS)
 		"kind=status:codec=dzstd:b_in=%zu:b_out=%zu", w * h * 3, cres.out_sz
 	);
 
+	a12int_step_vstream(S, sid);
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, hdr_buf, CONTROL_PACKET_SIZE, NULL, 0);
 	chunk_pack(S, STATE_VIDEO_PACKET, chid, cres.out_buf, cres.out_sz, chunk_sz);
@@ -622,7 +626,7 @@ void a12int_encode_dpng(PACK_ARGS)
 
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
 	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
-		cres.type, 0, vb->w, vb->h, w, h, x, y,
+		cres.type, sid, vb->w, vb->h, w, h, x, y,
 		cres.out_sz, cres.in_sz, 1
 	);
 
@@ -630,6 +634,7 @@ void a12int_encode_dpng(PACK_ARGS)
 		"kind=status:codec=dpng:b_in=%zu:b_out=%zu", w * h * 3, cres.out_sz
 	);
 
+	a12int_step_vstream(S, sid);
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, hdr_buf, CONTROL_PACKET_SIZE, NULL, 0);
 	chunk_pack(S, STATE_VIDEO_PACKET, chid, cres.out_buf, cres.out_sz, chunk_sz);
@@ -879,9 +884,10 @@ again:
  * maybe we could avoid it and the extra copy but uncertain */
 		uint8_t hdr_buf[CONTROL_PACKET_SIZE];
 		a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
-			POSTPROCESS_VIDEO_H264, 0, vb->w, vb->h, vb->w, vb->h,
+			POSTPROCESS_VIDEO_H264, sid, vb->w, vb->h, vb->w, vb->h,
 			0, 0, packet->size, vb->w * vb->h * 4, 1
 		);
+		a12int_step_vstream(S, sid);
 		a12int_append_out(S,
 			STATE_CONTROL_PACKET, hdr_buf, CONTROL_PACKET_SIZE, NULL, 0);
 

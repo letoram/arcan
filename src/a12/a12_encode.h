@@ -5,10 +5,11 @@
 #define PACK_ARGS \
 	struct a12_state* S,\
 	struct shmifsrv_vbuffer* vb, struct a12_vframe_opts opts,\
+	uint32_t sid,\
 	size_t x, size_t y, size_t w, size_t h,\
 	size_t chunk_sz, int chid\
 
-#define FWD_ARGS S, vb, opts, x, y, w, h, chunk_sz, chid
+#define FWD_ARGS S, vb, opts, sid, x, y, w, h, chunk_sz, chid
 
 void a12int_encode_rgb565(PACK_ARGS);
 void a12int_encode_rgb(PACK_ARGS);

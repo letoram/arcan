@@ -165,7 +165,7 @@ Milestone 2 - closer to useful (0.6.x)
 	- [x] Remove DEFLATE and mote to ZSTD
 	- [ ] varDCT
 	- [ ] XYB colorspace
-- [ ] Frame Cancellation / dynamic framerate on window drift (p)
+- [x] Frame Cancellation / dynamic framerate on window drift (p)
 - [ ] vframe-caching on certain types (first-frame on new, ...) (p)
 - [ ] vframe-runahead / forward latency estimation (a)
 - [ ] (Scheduling), better A / V / E interleaving (a)

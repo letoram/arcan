@@ -341,6 +341,12 @@ enum a12_vframe_method {
 	VFRAME_METHOD_DZSTD = 9
 };
 
+enum a12_stream_types {
+	STREAM_TYPE_VIDEO = 0,
+	STREAM_TYPE_AUDIO = 1,
+	STREAM_TYPE_BINARY = 2
+};
+
 enum a12_vframe_compression_bias {
 	VFRAME_BIAS_LATENCY = 0,
 	VFRAME_BIAS_BALANCED,
@@ -511,10 +517,10 @@ void a12_stream_cancel(struct a12_state* S, uint8_t chid);
 /*
  * Cancel a video stream that is ongoing in a specific channel
  */
-enum vstream_cancel {
-	VSTREAM_CANCEL_DONTWANT = 0,
-	VSTREAM_CANCEL_DECODE_ERROR = 1,
-	VSTREAM_CANCEL_KNOWN = 2
+enum stream_cancel {
+	STREAM_CANCEL_DONTWANT = 0,
+	STREAM_CANCEL_DECODE_ERROR = 1,
+	STREAM_CANCEL_KNOWN = 2
 };
 void a12_vstream_cancel(struct a12_state* S, uint8_t chid, int reason);
 
