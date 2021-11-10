@@ -66,7 +66,7 @@ static uint8_t b64enc_lut[] =
 	"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
 	"ghijklmnopqrstuvwxyz0123456789+/";
 
-uint8_t* to_b64(const uint8_t* data, size_t inl, size_t* outl)
+uint8_t* a12helper_tob64(const uint8_t* data, size_t inl, size_t* outl)
 {
 	size_t mlen = inl % 3;
 	off_t ofs = 0;
@@ -140,7 +140,7 @@ static bool from_b64(const uint8_t* instr, size_t lim, uint8_t outb[static 32])
 	return j >= lim;
 }
 
-struct key_ent* alloc_key_ent(uint8_t key[static 32])
+struct key_ent* alloc_key_ent(const uint8_t key[static 32])
 {
 	struct key_ent* res = malloc(sizeof(struct key_ent));
 	if (!res)
@@ -305,6 +305,9 @@ bool a12helper_keystore_accept(const uint8_t pubk[static 32], const char* connp)
 /* just random -> b64 until something sticks */
 	char tmpfn[9] = {0};
 	int fdout;
+	if (!keystore.open)
+		return false;
+
 	do {
 		gen_fn(tmpfn, 8);
 		fdout = openat(keystore.dirfd_accepted,
@@ -320,7 +323,7 @@ bool a12helper_keystore_accept(const uint8_t pubk[static 32], const char* connp)
 
 /* get base64 of pubk, just write that + space + connp <lf> */
 	size_t outl;
-	uint8_t* buf = to_b64(pubk, 32, &outl);
+	uint8_t* buf = a12helper_tob64(pubk, 32, &outl);
 	if (!buf){
 		unlinkat(keystore.dirfd_accepted, tmpfn, 0);
 		close(fdout);
@@ -329,7 +332,17 @@ bool a12helper_keystore_accept(const uint8_t pubk[static 32], const char* connp)
 
 	fprintf(fpek, "%s %s\n", connp, (char*) buf);
 	fclose(fpek);
+	free(buf);
 
+/* add to the existing keystore */
+	struct key_ent* host = keystore.hosts;
+	while ( host->next )
+		host = host->next;
+
+	host->next = alloc_key_ent(pubk);
+	if (host->next){
+		host->next->host = strdup(connp);
+	}
 	return true;
 }
 
@@ -458,13 +471,14 @@ bool a12helper_keystore_hostkey(const char* tagname, size_t index,
 
 /* Append or crete a new tag with the specified host, this will also create a key */
 bool a12helper_keystore_register(
-	const char* tagname, const char* host, uint16_t port)
+	const char* tagname, const char* host, uint16_t port, uint8_t pubk[static 32])
 {
 	if (!keystore.open)
 		return false;
 
 	uint8_t privk[32];
 	x25519_private_key(privk);
+	x25519_public_key(privk, pubk);
 
 /* going posix instead of fdout because of locking */
 	int fout = openat(keystore.dirfd_private,
@@ -476,7 +490,7 @@ bool a12helper_keystore_register(
 	}
 
 	size_t key_b64sz = 0;
-	uint8_t* b64 = to_b64(privk, 32, &key_b64sz);
+	uint8_t* b64 = a12helper_tob64(privk, 32, &key_b64sz);
 	if (!b64){
 		fprintf(stderr, "couldn't allocate intermediate buffer\n");
 		close(fout);
@@ -488,6 +502,8 @@ bool a12helper_keystore_register(
 
 	char buf[out_sz];
 	ssize_t res = snprintf(buf, sizeof(buf), "%s:%"PRIu16" %s\n", host, port, b64);
+	free(b64);
+
 	if (res < 0){
 		fprintf(stderr, "failed to create buffer\n");
 		close(fout);

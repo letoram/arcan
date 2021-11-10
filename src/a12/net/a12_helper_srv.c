@@ -425,6 +425,11 @@ static void* client_thread(void* inarg)
 		{ .fd = data->kill_fd, errmask }
 	};
 
+/* We don't have a monitorable trigger for inbound video/audio frames, so some
+ * timeout is in order for the time being. It might be useful to add that kind
+ * of signalling to shmif though */
+	size_t poll_step = 4;
+
 /* the ext-io thread might be sleeping waiting for input, when we finished
  * one pass/burst and know there is queued data to be sent, wake it up */
 	bool dirty = false;
@@ -436,7 +441,7 @@ static void* client_thread(void* inarg)
 			dirty = false;
 		}
 
-		if (-1 == poll(pfd, 2, 4)){
+		if (-1 == poll(pfd, 2, poll_step)){
 			if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR){
 				a12int_trace(A12_TRACE_SYSTEM,
 					"kind=error:status=EPOLL:message=%s", strerror(errno));
@@ -489,18 +494,30 @@ static void* client_thread(void* inarg)
 
 /* the shared buffer_out marks if we should wait a bit before releasing the
  * client as to not keep oversaturating with incoming video frames, we could
- * threshold this to something more reasonable, or better yet, track the
- * trending curve and time-delay and use that to adjust the encoding parameters */
+ * threshold this to something more reasonable, or just have two congestion
+ * levels, one for focused channel and one lower for the rest */
 			if (pv & CLIENT_VBUFFER_READY){
 				if (atomic_load(&buffer_out) > 0){
 					break;
 				}
 
+/* check the congestion window - there are many more options for congestion
+ * control here, and the tuning is not figured out. One venue would be to
+ * track which channel has a segment with focus, and prioritise those higher. */
+				struct a12_iostat stat = a12_state_iostat(data->S);
+				if (data->opts.vframe_block &&
+					stat.vframe_backpressure >= data->opts.vframe_block){
+					a12int_trace(A12_TRACE_VDETAIL,
+						"vbuffer=defer:congestion=%zu:limit=%zu",
+						stat.vframe_backpressure, data->opts.vframe_block);
+					break;
+				}
+
+
 /* two option, one is to map the dma-buf ourselves and do the readback, or with
  * streams map the stream and convert to h264 on gpu, but easiest now is to
  * just reject and let the caller do the readback. this is currently done by
  * default in shmifsrv.*/
-				a12int_trace(A12_TRACE_VDETAIL, "video-buffer");
 				struct shmifsrv_vbuffer vb = shmifsrv_video(data->C);
 				BEGIN_CRITICAL(&giant_lock, "video-buffer");
 					a12_set_channel(data->S, data->chid);
@@ -511,6 +528,12 @@ static void* client_thread(void* inarg)
 					a12_channel_vframe(data->S, &vb, vopts_from_segment(data, vb));
 					dirty = true;
 				END_CRITICAL(&giant_lock);
+				stat = a12_state_iostat(data->S);
+				a12int_trace(A12_TRACE_VDETAIL,
+					"vbuffer=release:time_ms=%zu:time_ms_px=%.4f:congestion=%zu",
+					stat.ms_vframe, stat.ms_vframe_px,
+					stat.vframe_backpressure
+				);
 
 /* the other part is to, after a certain while of VBUFFER_READY but not any
  * buffer- out space, track if any of our segments have focus, if so, inject it

@@ -177,6 +177,7 @@ Milestone 2 - closer to useful (0.6.x)
   - [ ] Show unauthenticated public keys as QR code in window (a)
 - [ ] Fexec(self) handover on completed negotiation (p)(a)
 - [ ] Compression tunable .configuration file
+- [ ] Shadow channel (as a pseudo progressive option)
 
 Milestone 3 - big stretch (0.6.x)
 

@@ -674,13 +674,6 @@ void a12int_encode_drop(struct a12_state* S, int chid, bool failed)
 }
 
 #if defined(WANT_H264_ENC) || defined(WANT_H264_DEC)
-static unsigned long pick_bitrate(size_t w, size_t h, struct a12_vframe_opts o)
-{
-/* Just some rough 'better than nothing' table for when we don't get a CRF or a
- * specified bitrate by the caller during setup or through a later backpressure
- * estimation */
-	return 1000000;
-}
 
 static bool open_videnc(struct a12_state* S,
 	struct a12_vframe_opts venc_opts,
@@ -702,7 +695,8 @@ static bool open_videnc(struct a12_state* S,
 
 /*
  * prior to this, we have a safeguard if the input resolution isn't % 2 so
- * this requirement for ffmpeg holds
+ * this requirement for ffmpeg holds -- the other option is to pad and crop
+ * as part of the swscale pixfmt conversion.
  */
 	AVCodecContext* encoder = avcodec_alloc_context3(codec);
 	S->channels[chid].videnc.encdec = encoder;
@@ -717,6 +711,7 @@ static bool open_videnc(struct a12_state* S,
 		case VFRAME_BIAS_LATENCY:
 			av_opt_set(encoder->priv_data, "preset", "veryfast", 0);
 			av_opt_set(encoder->priv_data, "tune", "zerolatency", 0);
+			a12int_trace(A12_TRACE_VIDEO, "kind=encopt:zerolatency");
 		break;
 
 /* Many more dynamic heuristics to consider here, doing rolling frame contents
@@ -725,23 +720,35 @@ static bool open_videnc(struct a12_state* S,
 		case VFRAME_BIAS_BALANCED:
 			av_opt_set(encoder->priv_data, "preset", "medium", 0);
 			av_opt_set(encoder->priv_data, "tune", "film", 0);
+			a12int_trace(A12_TRACE_VIDEO, "kind=encopt:mediumfilm");
 		break;
 
 		case VFRAME_BIAS_QUALITY:
 			av_opt_set(encoder->priv_data, "preset", "slow", 0);
 			av_opt_set(encoder->priv_data, "tune", "film", 0);
+			a12int_trace(A12_TRACE_VIDEO, "kind=encopt:slowfilm");
 		break;
 		}
 	}
 
-/* should expose a lot more options passable from the transport layer here,
- * but that's something for the 0.6 series */
-	if (venc_opts.variable){
-	}
-	else {
-		encoder->bit_rate = venc_opts.bitrate > 0 ?
-			(venc_opts.bitrate * 1000000.0f) : pick_bitrate(vb->w, vb->h, venc_opts);
-	}
+/* should expose a lot more options passable from the transport layer here */
+	if (!venc_opts.ratefactor)
+		venc_opts.ratefactor = 22;
+
+	char buf[8];
+	snprintf(buf, 8, "%d", venc_opts.ratefactor);
+	av_opt_set(encoder->priv_data, "crf", buf, 0);
+
+/* this caps the ratefactor based on an eval buffer window */
+	if (!venc_opts.bitrate)
+		venc_opts.bitrate = 1000;
+
+	snprintf(buf, 8, "%zu", (size_t) venc_opts.bitrate * 1000);
+	av_opt_set(encoder->priv_data, "maxrate", buf, 0);
+
+	a12int_trace(A12_TRACE_VIDEO,
+		"kind=encval:crf=%d:rate=%zu", venc_opts.ratefactor, venc_opts.bitrate);
+
 	encoder->width = vb->w;
 	encoder->height = vb->h;
 
@@ -842,6 +849,21 @@ void a12int_encode_h264(PACK_ARGS)
 	AVCodecContext* encoder = S->channels[chid].videnc.encdec;
 	AVPacket* packet = S->channels[chid].videnc.packet;
 	struct SwsContext* scaler = S->channels[chid].videnc.scaler;
+
+/* missing:
+ *
+ * there is associated-data that can be set to the frame which the encoder
+ * can use - a big and interesting one is REGIONS_OF_INTEREST that can be
+ * combined with our dirty-rectangles to help the encoder along.
+ *
+ * that should be something like av_set_side_data() and an
+ * 'adaptive quantization' mode  (aq_mode == variance or autovariance)
+ *
+ * would be nice with representative examples first and quantifiers to
+ * assess the effect.
+ *
+ * other useful tuning is marking sbs for vr
+ */
 
 /* and color-convert from src into frame */
 	int ret;

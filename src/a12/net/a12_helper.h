@@ -21,6 +21,12 @@ struct a12helper_opts {
 		struct a12_state* S, int segid, struct shmifsrv_vbuffer*, void* tag);
 	void* tag;
 
+/* Set to the maximum distance between acknowledged frame and pending outgoing
+ * and halt releasing client vframe until that resets back to within tolerance.
+ * This is a coarse congestion control mechanism, meant as a placeholder until
+ * something more refined can be developed. */
+	size_t vframe_block;
+
 	int dirfd_temp;
 	int dirfd_cache;
 
