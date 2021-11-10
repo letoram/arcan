@@ -226,6 +226,7 @@ struct a12_state {
 		uint32_t frame_window[VIDEO_FRAME_DRIFT_WINDOW]; /* seqnrs tied to vframes */
 		size_t pending; /* updated whenever we send something out */
 	} congestion_stats;
+	struct a12_iostat stats;
 
 /* populate and forwarded output buffer */
 	size_t buf_sz[2];

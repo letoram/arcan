@@ -323,6 +323,9 @@ enum trace_groups {
 
 /* binary blob transfer state information */
 	A12_TRACE_BTRANSFER = 1024,
+
+/* key-authentication and configuration warnings */
+	A12_TRACE_SECURITY = 2048
 };
 void
 a12_set_trace_level(int mask, FILE* dst);
@@ -371,11 +374,8 @@ struct a12_vframe_opts {
 	enum a12_vframe_compression_bias bias;
 	enum a12_vframe_postprocess postprocess;
 
-	bool variable;
-	union {
-		float bitrate; /* !variable, Mbit */
-		int ratefactor; /* variable (ffmpeg scale) */
-	};
+	int ratefactor; /* overrides bitrate, crf (0..51) */
+	size_t bitrate; /* kbit/s */
 };
 
 enum a12_aframe_method {
@@ -529,7 +529,9 @@ struct a12_iostat {
 	size_t b_out;
 	size_t vframe_backpressure; /* number of encoded vframes vs. pending */
 	size_t roundtrip_latency;
-	size_t packets_pending; /* delta between seqnr and last-seen seqnr */
+	size_t ms_vframe;           /* for last encoded video frame */
+	float ms_vframe_px;
+	size_t packets_pending;     /* delta between seqnr and last-seen seqnr */
 };
 
 /*

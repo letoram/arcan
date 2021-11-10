@@ -93,6 +93,8 @@ bool a12helper_keystore_open(struct keystore_provider*);
 /* release resources tied to the keystore */
 bool a12helper_keystore_release();
 
+uint8_t* a12helper_tob64(const uint8_t* data, size_t inl, size_t* outl);
+
 /* retrieve key and connect properties for a user-defined tag,
  * increment index to fetch the next possible host.
  *
@@ -103,7 +105,7 @@ bool a12helper_keystore_hostkey(const char* tagname, size_t index,
 /* Append or crete a new tag with the specified host, this will also
  * create a new private key if needed. Returns the public key in outk */
 bool a12helper_keystore_register(
-	const char* tagname, const char* host, uint16_t port);
+	const char* tagname, const char* host, uint16_t port, uint8_t pubk[static 32]);
 
 /*
  * Check if the public key is known and accepted for the supplied connection

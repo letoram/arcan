@@ -42,6 +42,15 @@ struct arcan_net_meta {
 	char* bin;
 };
 
+static struct {
+	bool soft_auth;
+	bool no_default;
+	size_t accept_n_pk_unknown;
+	size_t backpressure;
+} global = {
+	.backpressure = 6
+};
+
 static const char* trace_groups[] = {
 	"video",
 	"audio",
@@ -52,7 +61,8 @@ static const char* trace_groups[] = {
 	"alloc",
 	"crypto",
 	"vdetail",
-	"btransfer"
+	"btransfer",
+	"security"
 };
 
 static int tracestr_to_bitmap(char* work)
@@ -60,7 +70,7 @@ static int tracestr_to_bitmap(char* work)
 	int res = 0;
 	char* pt = strtok(work, ",");
 	while(pt != NULL){
-		for (size_t i = 1; i < COUNT_OF(trace_groups); i++){
+		for (size_t i = 1; i <= COUNT_OF(trace_groups); i++){
 			if (strcasecmp(trace_groups[i-1], pt) == 0){
 				res |= 1 << i;
 				break;
@@ -172,35 +182,61 @@ static bool handover_setup(struct a12_state* S,
 static struct a12_vframe_opts vcodec_tuning(
 	struct a12_state* S, int segid, struct shmifsrv_vbuffer* vb, void* tag)
 {
-/* should also be possible to extract know latency, latency trend (EMA)
- * bitrate, backpressure and session load (channels + ...) then use that to
- * set the desired target bitrate value based on some network estimator or
- * config set threshold */
-	int method = VFRAME_METHOD_DZSTD;
-	int bias = VFRAME_BIAS_BALANCED;
+	struct a12_vframe_opts opts = {
+		.method = VFRAME_METHOD_DZSTD,
+		.bias = VFRAME_BIAS_BALANCED
+	};
 
+/* missing: here a12_state_iostat could be used to get congestion information
+ * and encoder feedback, then use that to forward new parameters + bias */
 	switch (segid){
 	case SEGID_LWA:
-		method = VFRAME_METHOD_H264;
+		opts.method = VFRAME_METHOD_H264;
 	break;
 	case SEGID_GAME:
-		method = VFRAME_METHOD_H264;
-		bias = VFRAME_BIAS_LATENCY;
+		opts.method = VFRAME_METHOD_H264;
+		opts.bias = VFRAME_BIAS_LATENCY;
 	break;
+
 /* this one is also a possible subject for codec passthrough, that will have
  * to be implemented in the server util part as we need shmif to propagate if
  * we can deal with passthrough and then device_fail that if the other end
  * starts to reject the bitstream */
 	case SEGID_MEDIA:
-		method = VFRAME_METHOD_H264;
-		bias = VFRAME_BIAS_QUALITY;
+		opts.method = VFRAME_METHOD_H264;
+		opts.bias = VFRAME_BIAS_QUALITY;
 	break;
 	}
 
-	return (struct a12_vframe_opts){
-		.method = method,
-			.bias = bias
-	};
+/* this is temporary until we establish a config format where the parameters
+ * can be set in a non-commandline friendly way (recall ARCAN_CONNPATH can
+ * result in handover-exec arcan-net */
+	if (opts.method == VFRAME_METHOD_H264){
+		static bool got_opts;
+		static unsigned long cbr = 22;
+		static unsigned long br  = 1024;
+
+/* convert and clamp to the values supported by x264 in ffmpeg */
+		if (!got_opts){
+			char* tmp;
+			if ((tmp = getenv("A12_VENC_CRF"))){
+				cbr = strtoul(tmp, NULL, 10);
+				if (cbr > 55)
+					cbr = 55;
+			}
+			if ((tmp = getenv("A12_VENC_RATE"))){
+				br = strtoul(tmp, NULL, 10);
+				if (br * 1000 > INT_MAX)
+					br = INT_MAX;
+			}
+			got_opts = true;
+		}
+
+		opts.ratefactor = cbr;
+		opts.bitrate = br;
+	}
+
+	return opts;
 }
 
 static void single_a12srv(struct a12_state* S, int fd, void* tag)
@@ -217,6 +253,7 @@ static void single_a12srv(struct a12_state* S, int fd, void* tag)
 			.dirfd_cache = -1,
 			.redirect_exit = meta->opts->redirect_exit,
 			.devicehint_cp = meta->opts->devicehint_cp,
+			.vframe_block = global.backpressure,
 			.eval_vcodec = vcodec_tuning
 		});
 		shmifsrv_free(C, SHMIFSRV_FREE_NO_DMS);
@@ -236,6 +273,7 @@ static void a12cl_dispatch(
 	a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
 		.dirfd_temp = -1,
 		.dirfd_cache = -1,
+		.vframe_block = global.backpressure,
 		.redirect_exit = args->redirect_exit,
 		.devicehint_cp = args->devicehint_cp
 	});
@@ -251,6 +289,7 @@ static void fork_a12cl_dispatch(
 			a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
 			.dirfd_temp = -1,
 			.dirfd_cache = -1,
+			.vframe_block = global.backpressure,
 			.redirect_exit = args->redirect_exit,
 			.devicehint_cp = args->devicehint_cp
 		});
@@ -423,22 +462,29 @@ static bool show_usage(const char* msg)
 	"Bridge remote outbound arcan application: \n"
 	"    arcan-net [tag@]host port\n\n"
 	"Forward-local options:\n"
-	"\t-X            \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n"
-	"\t-r, --retry n \t Limit retry-reconnect attempts to 'n' tries\n\n"
+	"\t-X             \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n"
+	"\t-r, --retry n  \t Limit retry-reconnect attempts to 'n' tries\n\n"
 	"Options:\n"
-	"\t-a, --auth n  \t Read authentication secret from stdin\n"
-	"\t              \t if [n] is provided, add n first auth pubkeys to store\n"
-	"\t-t            \t Single- client (no fork/mt)\n"
-	"\t-d bitmap     \t set trace bitmap (bitmask or key1,key2,...)\n\n"
+	"\t-a, --auth n   \t Read authentication secret from stdin (maxlen:32)\n"
+	"\t --soft-auth   \t authentication secret (password) only, ignore keystore\n"
+	"\t               \t if [n] is provided, n keys added to trusted\n"
+	"\t-t             \t Single- client (no fork/mt - easier troubleshooting)\n"
+	"\t-d bitmap      \t set trace bitmap (bitmask or key1,key2,...)\n\n"
 	"Environment variables:\n"
-	"\tARCAN_STATEPATH\t Used for keystore and state blobs\n"
+	"\tARCAN_STATEPATH\t Used for keystore and state blobs (sensitive)\n"
+#ifdef WANT_H264_ENC
+	"\tA12_VENC_CRF   \t video rate factor (sane=17..28) (0=lossless,51=worst)\n"
+	"\tA12_VENC_RATE  \t bitrate in kilobits/s (hintcap to crf)\n"
+#endif
+	"\tA12_VENC_BP    \t backpressure cap (0..8)\n"
 	"\tA12_CACHE_DIR  \t Used for caching binary stores (fonts, ...)\n\n"
 	"Keystore mode (ignores connection arguments):\n"
-	"\tAdd/Append key: arcan-net keystore [-b dir] tag host [port=6680]\n"
+	"\tAdd/Append key: arcan-net keystore tag host [port=6680]\n"
+	"\t                tag=local is reserved (default reply)\n"
 	"\nTrace groups (stderr):\n"
 	"\tvideo:1      audio:2      system:4    event:8      transfer:16\n"
 	"\tdebug:32     missing:64   alloc:128  crypto:256    vdetail:512\n"
-	"\tbtransfer:1024\n\n", msg ? msg : "", msg ? "\n" : ""
+	"\tbtransfer:1024, security:2048 \n\n", msg ? msg : "", msg ? "\n\n" : ""
 	);
 	return false;
 }
@@ -447,6 +493,9 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 {
 	const char* modeerr = "Mixed or multiple -s or -l arguments";
 	struct anet_options* opts = meta->opts;
+
+/* default-trace security warnings */
+	a12_set_trace_level(2048, stderr);
 
 	size_t i = 1;
 /* mode defining switches and shared switches */
@@ -525,6 +574,9 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			if (i != argc - 1)
 				return show_usage("Trailing arguments to -S fd_in host port");
 		}
+		else if (strcmp(argv[i], "--soft-auth") == 0){
+			global.soft_auth = true;
+		}
 /* a12 server, shmif client */
 		else if (strcmp(argv[i], "-l") == 0){
 			if (opts->mode)
@@ -570,6 +622,26 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		else if (strcmp(argv[i], "-X") == 0){
 			opts->redirect_exit = NULL;
 		}
+		else if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--auth") == 0){
+			char msg[32];
+			if (fgets(msg, 32, stdin) <= 0)
+				return show_usage("-a,--auth couldn't get key from stdin");
+			size_t len = strlen(msg);
+
+			if (msg[len-1] == '\n')
+				msg[len-1] = '\0';
+
+
+			snprintf(opts->opts->secret, 32, "%s", msg);
+			global.no_default = true;
+		}
+		else if (strcmp(argv[i], "-B") == 0){
+			if (i == argc - 1)
+				return show_usage("-B without bitrate argument");
+
+			if (!isdigit(argv[i+1][0]))
+				return show_usage("-B bitrate should be a number");
+		}
 		else if (strcmp(argv[i], "-r") == 0 || strcmp(argv[i], "--retry") == 0){
 			if (1 < argc - 1){
 				opts->retry_count = (ssize_t) strtol(argv[++i], NULL, 10);
@@ -577,6 +649,13 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			else
 				return show_usage("Missing count argument to -r,--retry");
 		}
+	}
+
+	char* tmp;
+	if ((tmp = getenv("A12_VENC_BP"))){
+		size_t bp = strtoul(tmp, NULL, 10);
+		if (bp >= 0 && bp <= 8)
+			global.backpressure = bp;
 	}
 
 	return i;
@@ -587,17 +666,37 @@ static int get_keystore_dirfd(const char** err)
 	char* basedir = getenv("ARCAN_STATEPATH");
 
 	if (!basedir){
-		*err = "Missing basedir with keystore (set ARCAN_STATEPATH)";
+		*err = "Missing keystore (set ARCAN_STATEPATH)";
 		return -1;
 	}
 
-	int dir = open(basedir, O_RDWR | O_CREAT | O_DIRECTORY, S_IRWXU);
+	int dir = open(basedir, O_DIRECTORY);
 	if (-1 == dir){
 		*err = "Error opening basedir, check permissions and type";
 		return -1;
 	}
 
 	return dir;
+}
+
+/* keystore is singleton global */
+static bool open_keystore(const char** err)
+{
+	int dir = get_keystore_dirfd(err);
+	if (-1 == dir)
+		return false;
+
+	struct keystore_provider prov = {
+		.directory.dirfd = dir,
+		.type = A12HELPER_PROVIDER_BASEDIR
+	};
+
+	if (!a12helper_keystore_open(&prov)){
+		*err = "Couldn't open keystore from basedir (ARCAN_STATEPATH)";
+		return false;
+	}
+
+	return true;
 }
 
 static int apply_keystore_command(int argc, char** argv)
@@ -607,17 +706,9 @@ static int apply_keystore_command(int argc, char** argv)
 		return show_usage("Missing keystore command arguments");
 
 	const char* err;
-	int dir = get_keystore_dirfd(&err);
-	if (-1 == dir)
+	if (!open_keystore(&err)){
 		return show_usage(err);
-
-	struct keystore_provider prov = {
-		.directory.dirfd = dir,
-		.type = A12HELPER_PROVIDER_BASEDIR
-	};
-
-	if (!a12helper_keystore_open(&prov))
-		return show_usage("Couldn't open keystore from basedir");
+	}
 
 /* time for tag, host and port */
 	if (!argc || argc < 2){
@@ -639,12 +730,48 @@ static int apply_keystore_command(int argc, char** argv)
 		}
 	}
 
-	if (!a12helper_keystore_register(tag, host, port)){
+	uint8_t outpub[32];
+	if (!a12helper_keystore_register(tag, host, port, outpub)){
+		return show_usage("Couldn't add/create tag in keystore");
 	}
+
+	size_t outl;
+	unsigned char* b64 = a12helper_tob64(outpub, 32, &outl);
+	fprintf(stdout, "pubk.b64=%s *\n", b64);
+	free(b64);
 
 	a12helper_keystore_release();
 
 	return EXIT_SUCCESS;
+}
+
+static struct pk_response key_auth_local(uint8_t pk[static 32])
+{
+	struct pk_response auth = {0};
+	size_t outl;
+	unsigned char* out = a12helper_tob64(pk, 32, &outl);
+
+	if (a12helper_keystore_accepted(pk, NULL)){
+		char* tmp;
+		uint16_t tmpport;
+		auth.authentic = true;
+		a12int_trace(A12_TRACE_SECURITY, "accept=%s", out);
+		a12helper_keystore_hostkey("local", 0, auth.key, &tmp, &tmpport);
+	}
+/* trust from here-on now */
+	else if (global.accept_n_pk_unknown){
+		auth.authentic = true;
+		global.accept_n_pk_unknown--;
+		a12int_trace(A12_TRACE_SECURITY,
+			"left=%zu:accept-unknown=%s", global.accept_n_pk_unknown, out);
+		a12helper_keystore_accept(pk, NULL);
+	}
+	else {
+		a12int_trace(A12_TRACE_SECURITY, "reject-unknown=%s", out);
+	}
+
+	free(out);
+	return auth;
 }
 
 int main(int argc, char** argv)
@@ -652,6 +779,7 @@ int main(int argc, char** argv)
 	struct anet_options anet = {
 		.retry_count = -1,
 		.mt_mode = MT_FORK,
+/* do note that pk_lookup is left empty == only password auth */
 	};
 
 	struct arcan_net_meta meta = {
@@ -722,8 +850,34 @@ int main(int argc, char** argv)
 
 	char* errmsg;
 
+/* enable asymetric encryption and keystore */
+	const char* err;
+	if (global.soft_auth){
+		a12int_trace(A12_TRACE_SECURITY, "weak-security=password only");
+		if (!global.no_default){
+			a12int_trace(A12_TRACE_SECURITY, "no-security=default password");
+		}
+	}
+	else {
+		if (!open_keystore(&err)){
+			return show_usage(err);
+		}
+/* We have a keystore and are listening for an inbound connection, make sure
+ * that there is a local key defined that we can use for the reply. There is a
+ * point to making this more refined by also allowing the keystore to define
+ * specific reply pubk when marking a client as accepted in order to
+ * differentiate in both direction */
+		uint8_t priv[32];
+		char* outhost;
+		uint16_t outport;
+		if (!a12helper_keystore_hostkey("local", 0, priv, &outhost, &outport)){
+			uint8_t outp[32];
+			a12helper_keystore_register("local", "127.0.0.1", 6680, outp);
+		}
+		anet.opts->pk_lookup = key_auth_local;
+	}
+
 	if (anet.mode == ANET_SHMIF_CL || anet.mode == ANET_SHMIF_EXEC){
-/* scan backwards to find the -exec again */
 		switch (anet.mt_mode){
 		case MT_SINGLE:
 			anet_listen(&anet, &errmsg, single_a12srv, &meta);

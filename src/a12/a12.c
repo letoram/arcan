@@ -274,6 +274,8 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 	a12int_trace(A12_TRACE_CRYPTO, "kind=mac_enc:position=%zu", S->out_mac.counter);
 	trace_crypto_key(S->server, "mac_enc", &dst[mac_pos], mac_sz);
 
+	S->stats.b_out += out_sz + prepend_sz;
+
 /* if we have set a function, that will get the buffer immediately and then
  * we set the internal buffering state, this is a short-path that can be used
  * immediately and then we reset it. */
@@ -595,13 +597,14 @@ static void process_nopacket(struct a12_state* S)
 
 /* remember the last sequence number of the packet we processed */
 	unpack_u64(&S->last_seen_seqnr, &S->decode[MAC_BLOCK_SZ]);
+	if (S->last_seen_seqnr <= S->current_seqnr)
+		S->stats.packets_pending = S->last_seen_seqnr - S->current_seqnr;
 
 /* and finally the actual type in the inner block */
 	int state_id = S->decode[MAC_BLOCK_SZ + 8];
 
 	if (state_id >= STATE_BROKEN){
-		a12int_trace(A12_TRACE_SYSTEM,
-			"channel broken, unknown command val: %"PRIu8, S->state);
+		a12int_trace(A12_TRACE_SYSTEM, "state=broken:unknown_command=%"PRIu8, S->state);
 		S->state = STATE_BROKEN;
 		return;
 	}
@@ -609,8 +612,8 @@ static void process_nopacket(struct a12_state* S)
 /* transition to state based on type, from there we know how many bytes more
  * we need to process before the MAC can be checked */
 	S->state = state_id;
-	a12int_trace(A12_TRACE_TRANSFER, "seq: %"PRIu64
-		" left: %"PRIu16", state: %"PRIu8, S->last_seen_seqnr, S->left, S->state);
+	a12int_trace(A12_TRACE_TRANSFER, "seq=%"PRIu64
+		":left=%"PRIu16":state=%"PRIu8, S->last_seen_seqnr, S->left, S->state);
 	S->left = header_sizes[S->state];
 	S->decode_pos = 0;
 }
@@ -1497,6 +1500,9 @@ static void command_pingpacket(struct a12_state* S, uint32_t sid)
 		to_move * sizeof(uint32_t)
 	);
 
+	S->stats.vframe_backpressure = to_move +
+		(S->congestion_stats.frame_window[0] - sid);
+
 	for (i = to_move; i < wnd_sz; i++)
 		S->congestion_stats.frame_window[i] = 0;
 }
@@ -2002,6 +2008,7 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 	S->left -= ntr;
 	S->decode_pos += ntr;
 	buf_sz -= ntr;
+	S->stats.b_in += ntr;
 
 /* do we need to buffer more? */
 	if (S->left)
@@ -2281,20 +2288,6 @@ a12_channel_aframe(struct a12_state* S,
 	a12int_encode_araw(S, S->out_channel, buf, n_samples/2, cfg, opts, chunk_sz);
 }
 
-static uint32_t mark_alloc_vstream(struct a12_state* S)
-{
-	S->out_stream++;
-	size_t slot = S->congestion_stats.pending;
-
-/* clamp so that sz-1 compared to sz-2 can indicate how reckless the api
- * user is with regards to backpressure */
-	if (S->congestion_stats.pending < VIDEO_FRAME_DRIFT_WINDOW - 1)
-		S->congestion_stats.pending++;
-
-	S->congestion_stats.frame_window[slot] = S->out_stream;
-	return S->out_stream;
-}
-
 /*
  * This function merely performs basic sanity checks of the input sources
  * then forwards to the corresponding _encode method that match the set opts.
@@ -2349,12 +2342,13 @@ a12_channel_vframe(struct a12_state* S,
  * then we have the problem of the meta- area that should take
  * other package types when we get there
  */
-	uint32_t sid = mark_alloc_vstream(S);
+	uint32_t sid = S->out_stream;
 
 	a12int_trace(A12_TRACE_VIDEO,
 		"out vframe: %zu*%zu @%zu,%zu+%zu,%zu", vb->w, vb->h, w, h, x, y);
 #define argstr S, vb, opts, sid, x, y, w, h, chunk_sz, S->out_channel
 
+	size_t now = arcan_timemillis();
 	switch(opts.method){
 	case VFRAME_METHOD_RAW_RGB565:
 		a12int_encode_rgb565(argstr);
@@ -2386,6 +2380,11 @@ a12_channel_vframe(struct a12_state* S,
 		a12int_trace(A12_TRACE_SYSTEM, "unknown format: %d\n", opts.method);
 		return;
 	break;
+	}
+	size_t then = arcan_timemillis();
+	if (then > now){
+		S->stats.ms_vframe = then - now;
+		S->stats.ms_vframe_px = (float)(then - now) / (float)(w * h);
 	}
 }
 
@@ -2477,7 +2476,8 @@ static const char* groups[] = {
 	"alloc",
 	"crypto",
 	"vdetail",
-	"btransfer"
+	"btransfer",
+	"security"
 };
 
 static unsigned i_log2(uint32_t n)
@@ -2490,7 +2490,7 @@ static unsigned i_log2(uint32_t n)
 const char* a12int_group_tostr(int group)
 {
 	unsigned ind = i_log2(group);
-	if (ind > sizeof(groups)/sizeof(groups[0]))
+	if (ind >= sizeof(groups)/sizeof(groups[0]))
 		return "bad";
 	else
 		return groups[ind];
@@ -2509,10 +2509,28 @@ a12_set_bhandler(struct a12_state* S,
 	S->binary_handler_tag = tag;
 }
 
+struct a12_iostat a12_state_iostat(struct a12_state* S)
+{
+/* just an accessor, values are updated continously */
+	return S->stats;
+}
+
 void* a12_sensitive_alloc(size_t nb)
 {
 	return arcan_alloc_mem(nb,
 		ARCAN_MEM_EXTSTRUCT, ARCAN_MEM_SENSITIVE | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+}
+
+void a12int_step_vstream(struct a12_state* S, uint32_t id)
+{
+	size_t slot = S->congestion_stats.pending;
+
+/* clamp so that sz-1 compared to sz-2 can indicate how reckless the api
+ * user is with regards to backpressure */
+	if (S->congestion_stats.pending < VIDEO_FRAME_DRIFT_WINDOW - 1)
+		S->congestion_stats.pending++;
+
+	S->congestion_stats.frame_window[slot] = S->out_stream++;
 }
 
 void a12_sensitive_free(void* ptr, size_t buf)
@@ -2522,9 +2540,4 @@ void a12_sensitive_free(void* ptr, size_t buf)
 		pos[i] = 0;
 	}
 	arcan_mem_free(ptr);
-}
-
-void a12int_step_vstream(struct a12_state* S, uint32_t id)
-{
-/* find and slide congestion */
 }
