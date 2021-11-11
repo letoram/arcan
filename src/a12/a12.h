@@ -69,9 +69,9 @@ struct a12_context_options {
  * (re-)use. */
 	bool disable_ephemeral_k;
 
-/* If set, only MAC will be applied - this should only apply when there are
- * legal restrictions against cryptography. */
-	bool disable_cipher;
+/* This allows the server end to transition to authenticated state based on
+ * password alone, low-security / debugging situations only */
+	bool allow_symmetric_auth;
 
 /* if set, the shared secret will be used to authenticate public keymaterial,
  * message and cipher state for the first packets before DH exchange has been
@@ -513,6 +513,11 @@ a12_channel_close(struct a12_state*);
  * Cancel the binary stream that is ongoing in a specific channel
  */
 void a12_stream_cancel(struct a12_state* S, uint8_t chid);
+
+/*
+ * Check the status flag of the state machine
+ */
+bool a12_ok(struct a12_state* S);
 
 /*
  * Cancel a video stream that is ongoing in a specific channel

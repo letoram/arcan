@@ -1,5 +1,5 @@
 /*
- * Copyright: 2017-2020, Björn Ståhl
+ * Copyright: Björn Ståhl
  * Description: A12 protocol state machine, main translation unit.
  * Maintains connection state, multiplex and demultiplex then routes
  * to the corresponding decoding/encode stages.
@@ -13,6 +13,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include <math.h>
+#include <assert.h>
 
 #include "a12.h"
 #include "a12_int.h"
@@ -33,10 +34,6 @@
 int a12_trace_targets = 0;
 FILE* a12_trace_dst = NULL;
 
-/* generated on first init call, ^ with keys when not in use to prevent
- * a read gadget to extract without breaking ASLR */
-static uint8_t priv_key_cookie[32];
-
 static int header_sizes[] = {
 	MAC_BLOCK_SZ + 8 + 1, /* The outer frame */
 	CONTROL_PACKET_SIZE,
@@ -52,6 +49,7 @@ extern void arcan_random(uint8_t* dst, size_t);
 
 size_t a12int_header_size(int kind)
 {
+	assert(kind < COUNT_OF(header_sizes));
 	return header_sizes[kind];
 }
 
@@ -94,19 +92,13 @@ static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz, int ind)
 	return res;
 }
 
-static void toggle_key_mask(uint8_t key[static 32])
-{
-	for (size_t i = 0; i < 32; i++)
-		key[i] ^= priv_key_cookie[i];
-}
-
 /* never permit this to be traced in a normal build */
 static void trace_crypto_key(bool srv, const char* domain, uint8_t* buf, size_t sz)
 {
 #ifdef _DEBUG
 	char conv[sz * 3 + 2];
 	for (size_t i = 0; i < sz; i++){
-		sprintf(&conv[i * 3], "%02X%s", buf[i], i == sz - 1 ? "" : ":");
+		sprintf(&conv[i * 3], "%02X%s", buf[i], i == sz - 1 ? "" : "-");
 	}
 	a12int_trace(A12_TRACE_CRYPTO, "%s%s:key=%s", srv ? "server:" : "client:", domain, conv);
 #endif
@@ -148,6 +140,10 @@ static void send_hello_packet(struct a12_state* S,
 	outb[17] = COMMAND_HELLO;
 	outb[18] = ASHMIF_VERSION_MAJOR;
 	outb[19] = ASHMIF_VERSION_MINOR;
+
+/* mode indicates if we have an ephemeral-Kp exchange first or if we go
+ * straight to the real one, it is also reserved as a migration path if
+ * a new ciphersuite will need to be added */
 	outb[20] = mode;
 
 /* send it back to client */
@@ -238,34 +234,33 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 
 	size_t used = S->buf_ofs - data_pos;
 
-/* if we are the client and haven't sent the first authentication request
- * yet, setup the nonce part of the cipher to random and shorten the MAC */
+/*
+ * If we are the client and haven't sent the first authentication request
+ * yet, setup the nonce part of the cipher to random and shorten the MAC.
+ *
+ * Thus the first packet has a half-length MAC and use the other half to
+ * provide the nonce. This is mainly to reduce code complexity somewhat
+ * and not have a different pre-header length for the first packet.
+ */
 	size_t mac_sz = MAC_BLOCK_SZ;
-	if (!S->authentic && !S->server){
+	if (S->authentic != AUTH_FULL_PK && !S->server && !S->cl_firstout){
 		mac_sz >>= 1;
 		arcan_random(&dst[mac_sz], mac_sz);
+		S->cl_firstout = true;
 
-/* depending on flag, we need POLITE, REAL HELLO or full */
-		S->authentic = AUTH_FULL_PK;
-		if (S->dec_state){
-			chacha_set_nonce(S->dec_state, &dst[mac_sz]);
-			chacha_set_nonce(S->enc_state, &dst[mac_sz]);
-			a12int_trace(A12_TRACE_CRYPTO, "kind=cipher:status=init_nonce");
-			if (S->opts->pk_lookup){
-				S->authentic = AUTH_REAL_HELLO_SENT;
-			}
-		}
+		chacha_set_nonce(S->dec_state, &dst[mac_sz]);
+		chacha_set_nonce(S->enc_state, &dst[mac_sz]);
+		a12int_trace(A12_TRACE_CRYPTO, "kind=cipher:status=init_nonce");
 
 		trace_crypto_key(S->server, "nonce", &dst[mac_sz], mac_sz);
 /* don't forget to add the nonce to the first message MAC */
 		blake3_hasher_update(&S->out_mac, &dst[mac_sz], mac_sz);
 	}
 
-/* apply stream-cipher to buffer contents */
-	if (S->enc_state)
-		chacha_apply(S->enc_state, &dst[data_pos], used);
+/* apply stream-cipher to buffer contents - ETM */
+	chacha_apply(S->enc_state, &dst[data_pos], used);
 
-/* update MAC */
+/* update MAC with encrypted contents */
 	blake3_hasher_update(&S->out_mac, &dst[data_pos], used);
 
 /* sample MAC and write to buffer pos, remember it for debugging - no need to
@@ -276,8 +271,8 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 
 	S->stats.b_out += out_sz + prepend_sz;
 
-/* if we have set a function, that will get the buffer immediately and then
- * we set the internal buffering state, this is a short-path that can be used
+/* if we have set a function that will get the buffer immediately then we set
+ * the internal buffering state, this is a short-path that can be used
  * immediately and then we reset it. */
 	if (S->opts->sink){
 		if (!S->opts->sink(dst, S->buf_ofs, S->opts->sink_tag)){
@@ -293,7 +288,8 @@ static void reset_state(struct a12_state* S)
  * now it finishes and let validation failures etc. handle that particular
  * scenario */
 	S->left = header_sizes[STATE_NOPACKET];
-	S->state = STATE_NOPACKET;
+	if (S->state != STATE_1STSRV_PACKET)
+		S->state = STATE_NOPACKET;
 	S->decode_pos = 0;
 	S->in_channel = -1;
 }
@@ -328,28 +324,28 @@ static void update_keymaterial(
 	uint8_t srv_key[BLAKE3_KEY_LEN];
 	uint8_t  cl_key[BLAKE3_KEY_LEN];
 	_Static_assert(BLAKE3_KEY_LEN >= MAC_BLOCK_SZ, "misconfigured blake3 size");
+	_Static_assert(BLAKE3_KEY_LEN == 16 || BLAKE3_KEY_LEN == 32, "misconfigured blake3 size");
 
-	derive_encdec_key(S->opts->secret, len, mac_key, srv_key, cl_key);
+/* the secret is only used for the first packet */
+	derive_encdec_key(secret, len, mac_key, srv_key, cl_key);
 
 	blake3_hasher_init_keyed(&S->out_mac, mac_key);
 	blake3_hasher_init_keyed(&S->in_mac,  mac_key);
 
-/* and this will only be used until completed x25519 */
-	if (!S->opts->disable_cipher){
+	if (!S->dec_state){
+		S->dec_state = malloc(sizeof(struct chacha_ctx));
 		if (!S->dec_state){
-			S->dec_state = malloc(sizeof(struct chacha_ctx));
-			if (!S->dec_state){
-				fail_state(S);
-				return;
-			}
-
-			S->enc_state = malloc(sizeof(struct chacha_ctx));
-			if (!S->enc_state){
-				free(S->dec_state);
-				fail_state(S);
-				return;
-			}
+			fail_state(S);
+			return;
 		}
+	}
+
+	S->enc_state = malloc(sizeof(struct chacha_ctx));
+	if (!S->enc_state){
+		free(S->dec_state);
+		fail_state(S);
+		return;
+	}
 
 /* depending on who initates the connection, the cipher key will be different,
  *
@@ -363,25 +359,26 @@ static void update_keymaterial(
  *
  * the cipher-state is incomplete as we still need to apply the nonce from the
  * helo packet before the setup is complete. */
-		_Static_assert(BLAKE3_KEY_LEN == 16 || BLAKE3_KEY_LEN == 32, "misconfigured blake3 size");
-		if (S->server){
-			trace_crypto_key(S->server, "enc_key", srv_key, BLAKE3_KEY_LEN);
-			trace_crypto_key(S->server, "dec_key", cl_key, BLAKE3_KEY_LEN);
+	if (S->server){
+		trace_crypto_key(S->server, "enc_key", srv_key, BLAKE3_KEY_LEN);
+		trace_crypto_key(S->server, "dec_key", cl_key, BLAKE3_KEY_LEN);
 
-			chacha_setup(S->dec_state, cl_key, BLAKE3_KEY_LEN, 0, 8);
-			chacha_setup(S->enc_state, srv_key, BLAKE3_KEY_LEN, 0, 8);
-		}
-		else {
-			trace_crypto_key(S->server, "dec_key", srv_key, BLAKE3_KEY_LEN);
-			trace_crypto_key(S->server, "enc_key", cl_key, BLAKE3_KEY_LEN);
+		chacha_setup(S->dec_state, cl_key, BLAKE3_KEY_LEN, 0, 8);
+		chacha_setup(S->enc_state, srv_key, BLAKE3_KEY_LEN, 0, 8);
+	}
+	else {
+		trace_crypto_key(S->server, "dec_key", srv_key, BLAKE3_KEY_LEN);
+		trace_crypto_key(S->server, "enc_key", cl_key, BLAKE3_KEY_LEN);
 
-			chacha_setup(S->enc_state, cl_key, BLAKE3_KEY_LEN, 0, 8);
-			chacha_setup(S->dec_state, srv_key, BLAKE3_KEY_LEN, 0, 8);
-		}
+		chacha_setup(S->enc_state, cl_key, BLAKE3_KEY_LEN, 0, 8);
+		chacha_setup(S->dec_state, srv_key, BLAKE3_KEY_LEN, 0, 8);
 	}
 
-/* not all calls will need to set the nonce state, first packets is deferred */
-	if (nonce && S->enc_state){
+/* First setup won't have a nonce until one has been received. For that case,
+ * the key-dance is only to setup MAC - just reusing the same codepath for all
+ * keymanagement */
+	if (nonce){
+		trace_crypto_key(S->server, "state=set_nonce", nonce, 8);
 		chacha_set_nonce(S->enc_state, nonce);
 		chacha_set_nonce(S->dec_state, nonce);
 	}
@@ -435,8 +432,6 @@ static void a12_init()
 	if (init)
 		return;
 
-	arcan_random(priv_key_cookie, 32);
-
 /* make one nonsense- call first to figure out the current packing size */
 	uint8_t outb[512];
 	ssize_t evsz = arcan_shmif_eventpack(
@@ -470,7 +465,6 @@ struct a12_state* a12_client(struct a12_context_options* opt)
 
 	a12_init();
 	int mode = 0;
-	int state = AUTH_FULL_PK;
 
 	struct a12_state* S = a12_setup(opt, false);
 	if (!S)
@@ -482,35 +476,38 @@ struct a12_state* a12_client(struct a12_context_options* opt)
 	uint8_t empty[32] = {0};
 	uint8_t outpk[32];
 
-	if (memcmp(empty, opt->priv_key, 32) != 0){
-		memcpy(S->keys.real_priv, opt->priv_key, 32);
-
-/* single round, use correct key immediately */
-		if (opt->disable_ephemeral_k){
-			mode = HELLO_MODE_REALPK;
-			state = AUTH_REAL_HELLO_SENT;
-			memset(opt->priv_key, '\0', 32);
-			x25519_public_key(S->keys.real_priv, outpk);
-			trace_crypto_key(S->server, "cl-priv", S->keys.real_priv, 32);
-		}
-
-/* double-round, start by generating ephemeral key */
-		else {
-			mode = HELLO_MODE_EPHEMK;
-			x25519_private_key(S->keys.ephem_priv);
-			x25519_public_key(S->keys.ephem_priv, outpk);
-			state = AUTH_POLITE_HELLO_SENT;
-		}
-
-		toggle_key_mask(S->keys.real_priv);
+/* client didn't provide an outbound key, generate one at random */
+	if (memcmp(empty, opt->priv_key, 32) == 0){
+		a12int_trace(A12_TRACE_SECURITY, "no_private_key:generating");
+		x25519_private_key(opt->priv_key);
 	}
 
+	memcpy(S->keys.real_priv, opt->priv_key, 32);
+
+/* single round, use correct key immediately - drop the priv-key from the input
+ * arguments, keep it temporarily here until the shared secret can be
+ * calculated */
+	if (opt->disable_ephemeral_k){
+		mode = HELLO_MODE_REALPK;
+		S->authentic = AUTH_REAL_HELLO_SENT;
+		memset(opt->priv_key, '\0', 32);
+		x25519_public_key(S->keys.real_priv, outpk);
+		trace_crypto_key(S->server, "cl-priv", S->keys.real_priv, 32);
+	}
+
+/* double-round, start by generating ephemeral key */
+	else {
+		mode = HELLO_MODE_EPHEMPK;
+		x25519_private_key(S->keys.ephem_priv);
+		x25519_public_key(S->keys.ephem_priv, outpk);
+		S->authentic = AUTH_POLITE_HELLO_SENT;
+	}
+
+/* the nonce in the outbound won't be used, but it should look random still */
 	uint8_t nonce[8];
 	arcan_random(nonce, 8);
-
 	trace_crypto_key(S->server, "hello-pub", outpk, 32);
 	send_hello_packet(S, mode, outpk, nonce);
-	S->authentic = state;
 
 	return S;
 }
@@ -627,7 +624,7 @@ static void process_nopacket(struct a12_state* S)
 static void process_srvfirst(struct a12_state* S)
 {
 /* only foul play could bring us here */
-	if (S->authentic){
+	if (S->authentic > AUTH_REAL_HELLO_SENT){
 		fail_state(S);
 		return;
 	}
@@ -650,21 +647,25 @@ static void process_srvfirst(struct a12_state* S)
 	blake3_hasher_update(&S->in_mac, nonce, nonce_sz);
 	blake3_hasher_update(&S->in_mac, &S->decode[mac_sz+nonce_sz], 8 + 1);
 
-	if (S->dec_state){
-		chacha_set_nonce(S->dec_state, nonce);
-		chacha_set_nonce(S->enc_state, nonce);
+	if (!S->dec_state){
+		a12int_trace(A12_TRACE_SECURITY, "srvfirst:no_decode");
+		fail_state(S);
+		return;
+	}
 
-		a12int_trace(A12_TRACE_CRYPTO, "kind=cipher:status=init_nonce");
-		trace_crypto_key(S->server, "nonce", nonce, nonce_sz);
+	chacha_set_nonce(S->dec_state, nonce);
+	chacha_set_nonce(S->enc_state, nonce);
+
+	a12int_trace(A12_TRACE_CRYPTO, "kind=cipher:status=init_nonce");
+	trace_crypto_key(S->server, "nonce", nonce, nonce_sz);
 
 /* decrypt command byte and seqn */
-		size_t base = mac_sz + nonce_sz;
-		chacha_apply(S->dec_state, &S->decode[base], 9);
-		if (S->decode[base + 8] != STATE_CONTROL_PACKET){
-			a12int_trace(A12_TRACE_CRYPTO, "kind=error:status=bad_key_or_nonce");
-			fail_state(S);
-			return;
-		}
+	size_t base = mac_sz + nonce_sz;
+	chacha_apply(S->dec_state, &S->decode[base], 9);
+	if (S->decode[base + 8] != STATE_CONTROL_PACKET){
+		a12int_trace(A12_TRACE_CRYPTO, "kind=error:status=bad_key_or_nonce");
+		fail_state(S);
+		return;
 	}
 }
 
@@ -1312,59 +1313,70 @@ static void hello_auth_server_hello(struct a12_state* S)
 	uint8_t nonce[8];
 	int cfl = S->decode[20];
 	a12int_trace(A12_TRACE_CRYPTO, "state=complete:method=%d", cfl);
-	arcan_random(nonce, 8);
 
-/* public key is the real one */
-	if (cfl == 1){
-		if (!S->opts->pk_lookup){
-			a12int_trace(A12_TRACE_CRYPTO, "state=eimpl:kind=x25519-no-lookup");
-			fail_state(S);
-			return;
-		}
+	/* here is a spot for having more authentication modes if needed (version bump) */
+	if (cfl != HELLO_MODE_EPHEMPK && cfl != HELLO_MODE_REALPK){
+		a12int_trace(A12_TRACE_SECURITY, "unknown_helo");
+		fail_state(S);
+		return;
+	}
 
-/* authenticate it against whatever keystore we have, get the proper priv.key */
-		trace_crypto_key(S->server, "state=client_pk", &S->decode[21], 32);
-		struct pk_response res = S->opts->pk_lookup(&S->decode[21]);
-		if (!res.authentic){
-			a12int_trace(A12_TRACE_CRYPTO, "state=eperm:kind=x25519-pk-fail");
-			fail_state(S);
-			return;
-		}
-
-		x25519_public_key(res.key, pubk);
+/* public key is ephemeral, generate new pair, send a hello out with the new
+ * one THEN derive new keys for authentication and so on. After this the
+ * conneciton is flows just like if the ephem mode wasn't used - the client
+ * will send its real Pk and we respond in kind. The protection this affords us
+ * is that you need an active MiM to gather Pks for tracking. */
+	if (cfl == HELLO_MODE_EPHEMPK){
+		uint8_t ek[32];
+		x25519_private_key(ek);
+		x25519_public_key(ek, pubk);
 		arcan_random(nonce, 8);
-		send_hello_packet(S, 1, pubk, nonce);
-		trace_crypto_key(S->server, "state=client_pk_ok:respond_pk", pubk, 32);
+		send_hello_packet(S, HELLO_MODE_EPHEMPK, pubk, nonce);
 
-/* now we can switch keys */
-		x25519_shared_secret((uint8_t*)S->opts->secret, res.key, &S->decode[21]);
-		trace_crypto_key(S->server, "state=server_ssecret", (uint8_t*)S->opts->secret, 32);
+		x25519_shared_secret((uint8_t*)S->opts->secret, ek, &S->decode[21]);
+		trace_crypto_key(S->server, "ephem_pub", pubk, 32);
 		update_keymaterial(S, S->opts->secret, 32, nonce);
+		S->authentic = AUTH_EPHEMERAL_PK;
+		return;
+	}
+
+/* public key is the real one, use an external lookup function for mapping
+ * to keystores defined by the api user */
+	if (!S->opts->pk_lookup){
+		a12int_trace(A12_TRACE_CRYPTO, "state=eimpl:kind=x25519-no-lookup");
+		fail_state(S);
+		return;
+	}
+
+/* the lookup function returns the key that should be used in the reply
+ * and to calculate the shared secret */
+	trace_crypto_key(S->server, "state=client_pk", &S->decode[21], 32);
+	struct pk_response res = S->opts->pk_lookup(&S->decode[21]);
+	if (!res.authentic){
+		a12int_trace(A12_TRACE_CRYPTO, "state=eperm:kind=x25519-pk-fail");
+		fail_state(S);
+		return;
+	}
+
+/* hello packet here will still use the keystate from the process_srvfirst
+ * which will use the client provided nonce, KDF on preshare-pw */
+	x25519_public_key(res.key, pubk);
+	arcan_random(nonce, 8);
+	send_hello_packet(S, HELLO_MODE_REALPK, pubk, nonce);
+	trace_crypto_key(S->server, "state=client_pk_ok:respond_pk", pubk, 32);
+
+/* now we can switch keys, note that the new nonce applies for both enc and dec
+ * states regardless of the nonce the client provided in the first message */
+	x25519_shared_secret((uint8_t*)S->opts->secret, res.key, &S->decode[21]);
+	trace_crypto_key(S->server, "state=server_ssecret", (uint8_t*)S->opts->secret, 32);
+	update_keymaterial(S, S->opts->secret, 32, nonce);
 
 /* and done */
-		S->authentic = AUTH_FULL_PK;
-		return;
-	}
+	S->authentic = AUTH_FULL_PK;
+	if (S->on_auth)
+		S->on_auth(S, S->auth_tag);
 
-/* psk method only */
-	if (cfl != 2){
-		a12int_trace(A12_TRACE_CRYPTO, "state=ok:full_auth");
-		S->authentic = AUTH_FULL_PK;
-		return;
-	}
-
-/* public key is ephemeral, generate new pair, send a hello out with the
- * new one THEN derive new keys for authentication and so on */
-	uint8_t ek[32];
-	x25519_private_key(ek);
-	x25519_public_key(ek, pubk);
-	send_hello_packet(S, 2, pubk, nonce);
-
-/* client will receive hello, we will geat real Pk and mode[1] like normal */
-	x25519_shared_secret((uint8_t*)S->opts->secret, ek, &S->decode[21]);
-	trace_crypto_key(S->server, "ephem_pub", pubk, 32);
-	update_keymaterial(S, S->opts->secret, 32, nonce);
-	S->authentic = AUTH_EPHEMERAL_PK;
+	return;
 }
 
 static void hello_auth_client_hello(struct a12_state* S)
@@ -1380,16 +1392,20 @@ static void hello_auth_client_hello(struct a12_state* S)
 	if (!res.authentic){
 		a12int_trace(A12_TRACE_CRYPTO, "state=eperm:kind=25519-pk-fail");
 		fail_state(S);
+		return;
 	}
 
-/* there we go, shared secret is in store, use the server nonce and
- * any other crypto operations will be the rekeying */
-	trace_crypto_key(S->server, "state=client_priv", res.key, 32);
-	x25519_shared_secret((uint8_t*)S->opts->secret, res.key, &S->decode[21]);
+/* now we can calculate the x25519 shared secret, overwrite the preshared
+ * secret slot in the initial configuration and repeat the key derivation
+ * process to get new enc/dec/mac keys. */
+	x25519_shared_secret((uint8_t*)S->opts->secret, S->keys.real_priv, &S->decode[21]);
 	trace_crypto_key(S->server, "state=client_ssecret", (uint8_t*)S->opts->secret, 32);
 	update_keymaterial(S, S->opts->secret, 32, &S->decode[8]);
 
 	S->authentic = AUTH_FULL_PK;
+
+	if (S->on_auth)
+		S->on_auth(S, S->auth_tag);
 }
 
 static void process_hello_auth(struct a12_state* S)
@@ -1413,11 +1429,8 @@ static void process_hello_auth(struct a12_state* S)
 		x25519_shared_secret((uint8_t*)S->opts->secret, S->keys.ephem_priv, &S->decode[21]);
 		update_keymaterial(S, S->opts->secret, 32, &S->decode[8]);
 
-/* unmask the private key */
 		uint8_t realpk[32];
-		toggle_key_mask(S->keys.real_priv);
-			x25519_public_key(S->keys.real_priv, realpk);
-		toggle_key_mask(S->keys.real_priv);
+		x25519_public_key(S->keys.real_priv, realpk);
 
 		S->authentic = AUTH_REAL_HELLO_SENT;
 		arcan_random(nonce, 8);
@@ -2531,6 +2544,11 @@ void a12int_step_vstream(struct a12_state* S, uint32_t id)
 		S->congestion_stats.pending++;
 
 	S->congestion_stats.frame_window[slot] = S->out_stream++;
+}
+
+bool a12_ok(struct a12_state* S)
+{
+	return S->state != STATE_BROKEN;
 }
 
 void a12_sensitive_free(void* ptr, size_t buf)

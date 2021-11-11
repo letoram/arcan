@@ -63,9 +63,9 @@ enum control_commands {
 };
 
 enum hello_mode {
-	HELLO_MODE_NOASYM = 0,
-	HELLO_MODE_REALPK = 1,
-	HELLO_MODE_EPHEMK = 2
+	HELLO_MODE_NOASYM  = 0,
+	HELLO_MODE_REALPK  = 1,
+	HELLO_MODE_EPHEMPK = 2
 };
 
 enum channel_cfg {
@@ -254,6 +254,9 @@ struct a12_state {
 /* current encoding state, manipulate with set_channel */
 	int out_channel;
 
+	void (*on_auth)(struct a12_state*, void*);
+	void* auth_tag;
+
 /*
  * Incoming buffer, size of the buffer == size of the type - when there
  * is nothing left in the current frame, forward / dispatch to the correct
@@ -277,6 +280,7 @@ struct a12_state {
 /* client side needs to send the first packet with MAC+nonce, server side
  * needs to interpret first packet with MAC+nonce */
 	bool server;
+	bool cl_firstout;
 	int authentic;
 	blake3_hasher out_mac, in_mac;
 

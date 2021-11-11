@@ -121,20 +121,20 @@ static bool from_b64(const uint8_t* instr, size_t lim, uint8_t outb[static 32])
 	if (instr[inlen - 2] == '=')
 		len--;
 
-	if (len != lim)
+	if (len > lim)
 		return false;
 
 	uint32_t val;
-	int i, j;
-	for (i = 0, j = 0; i < inlen && j < lim; i += 4, j += 3) {
+	int i, j = 0;
+	for (i = 0; i < inlen; i += 4){
 		val  = (instr[i+0] == '=' ? 0 & (i+0) : b64dec_lut[instr[i+0]]) << 18;
 		val += (instr[i+1] == '=' ? 0 & (i+1) : b64dec_lut[instr[i+1]]) << 12;
 		val += (instr[i+2] == '=' ? 0 & (i+2) : b64dec_lut[instr[i+2]]) <<  6;
 		val += (instr[i+3] == '=' ? 0 & (i+3) : b64dec_lut[instr[i+3]]) <<  0;
 
-		outb[j  ] = (val >> 16) & 0xff;
-		outb[j+1] = (val >>  8) & 0xff;
-		outb[j+2] = (val >>  0) & 0xff;
+		if (j < len) outb[j++] = (val >> 16) & 0xff;
+		if (j < len) outb[j++] = (val >>  8) & 0xff;
+		if (j < len) outb[j++] = (val >>  0) & 0xff;
 	}
 
 	return j >= lim;
@@ -229,10 +229,13 @@ static void load_accepted_keys()
 
 /* only one host per file, getline will alloc needed */
 		while (getline(&inbuf, &len, fpek) != -1){
+			if (!len)
+				continue;
+
 			char* hoststr;
 			uint8_t key[32];
 
-			if (!decode_hostline(inbuf, len, &hoststr, key)){
+			if (!decode_hostline(inbuf, len-1, &hoststr, key)){
 				fprintf(stderr, "keystore_naive(): failed to parse %s\n", ent->d_name);
 				free(inbuf);
 				continue;
@@ -335,13 +338,14 @@ bool a12helper_keystore_accept(const uint8_t pubk[static 32], const char* connp)
 	free(buf);
 
 /* add to the existing keystore */
-	struct key_ent* host = keystore.hosts;
-	while ( host->next )
-		host = host->next;
+	struct key_ent** host = &keystore.hosts;
+	while (*host){
+		host = &(*host)->next;
+	}
 
-	host->next = alloc_key_ent(pubk);
-	if (host->next){
-		host->next->host = strdup(connp);
+	*host = alloc_key_ent(pubk);
+	if (*host){
+		(*host)->host = strdup(connp);
 	}
 	return true;
 }

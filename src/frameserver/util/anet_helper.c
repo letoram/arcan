@@ -106,7 +106,6 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 		}
 
 		size_t i = 0;
-		uint8_t privkey[32];
 		arg->key = NULL;
 
 		char* host;
@@ -116,7 +115,8 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 /* the cl_setup call will set errmsg on connection failure, so that need to be
  * cleaned up except for the last entry where we propagate any error message to
  * the caller */
-		while (a12helper_keystore_hostkey(arg->key, i++, privkey, &host, &port)){
+		while (a12helper_keystore_hostkey(
+			arg->key, i++, arg->opts->priv_key, &host, &port)){
 			if (res.errmsg){
 				free(res.errmsg);
 				res.errmsg = NULL;
@@ -134,6 +134,16 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 			free(host);
 		}
 		return res;
+	}
+/* use the reserved 'default' tag for tracking a default key */
+	else {
+		char* outhost;
+		uint16_t outport;
+		if (!a12helper_keystore_hostkey(
+			"default", 0, arg->opts->priv_key, &outhost, &outport)){
+			a12helper_keystore_register(
+				"default", "127.0.0.1", 6680, arg->opts->priv_key);
+		}
 	}
 
 	struct addrinfo hints = {
