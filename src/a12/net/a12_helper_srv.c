@@ -657,7 +657,7 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 	};
 
 	uint8_t inbuf[9000];
-	while(-1 != poll(fds, n_fd, -1)){
+	while(a12_ok(S) && -1 != poll(fds, n_fd, -1)){
 
 /* death by poll? */
 		if ((fds[0].revents & errmask) ||

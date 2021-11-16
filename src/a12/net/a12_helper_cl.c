@@ -315,6 +315,13 @@ bool spawn_thread(struct a12_state* S,
 	return true;
 }
 
+static void auth_handler(struct a12_state* S, void* tag)
+{
+	S->on_auth = NULL;
+	struct arcan_shmif_cont* C = tag;
+	spawn_thread(S, C->user, C, 0);
+}
+
 int a12helper_a12srv_shmifcl(
 	struct a12_state* S, const char* cp, int fd_in, int fd_out)
 {
@@ -332,8 +339,9 @@ int a12helper_a12srv_shmifcl(
 		.giant_lock = PTHREAD_MUTEX_INITIALIZER,
 	};
 
-/* primary segment is created without any type or activation, as it is the remote
- * client event that will map those events, just spawn a user thread for it */
+/* primary segment is created without any type or activation, as it is the
+ * remote client event that will map those events, defer thread-spawn until
+ * authentication is completed */
 	a12int_trace(A12_TRACE_ALLOC, "kind=segment:status=opening:chid=0");
 	struct arcan_shmif_cont cont =
 		arcan_shmif_open(SEGID_UNKNOWN, SHMIF_NOACTIVATE, NULL);
@@ -351,12 +359,15 @@ int a12helper_a12srv_shmifcl(
 	atomic_store(&cl.alloc[0], 1);
 	cl.kill_fd = pipe_pair[1];
 	cont.user = &cl;
-	spawn_thread(S, &cl, &cont, 0);
 
 	uint8_t inbuf[9000];
 	uint8_t* outbuf = NULL;
 	size_t outbuf_sz = 0;
 	a12int_trace(A12_TRACE_SYSTEM, "got proxy connection, waiting for source");
+
+/* hook authenticatino so that we can spawn the primary processing thread */
+	S->on_auth = auth_handler;
+	S->auth_tag = &cont;
 
 /*
  * Socket in/out liveness, buffer flush / dispatch
@@ -369,7 +380,7 @@ int a12helper_a12srv_shmifcl(
 		{.fd = fd_out,       .events = POLLOUT | errmask}
 	};
 
-	while(-1 != poll(fds, n_fd, -1)){
+	while(a12_ok(S) && -1 != poll(fds, n_fd, -1)){
 		if (
 			(fds[0].revents & errmask) ||
 			(fds[1].revents & errmask) ||
@@ -444,10 +455,16 @@ int a12helper_a12srv_shmifcl(
 		n_fd = outbuf_sz > 0 ? 3 : 2;
 	}
 
+/* things died before authenticating, drop the context */
+	if (S->on_auth){
+		arcan_shmif_drop(&cont);
+	}
+
 /* just spin until the rest understand, would look better as a join loop with
  * the chid- being read from the ipc pipe */
 	close(pipe_pair[0]);
 	while(atomic_load(&cl.n_segments) > 0){}
+
 	if (!a12_free(S)){
 		a12int_trace(A12_TRACE_ALLOC, "error cleaning up a12 context");
 	}

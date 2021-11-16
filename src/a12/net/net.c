@@ -4,6 +4,7 @@
 #include <arcan_shmif.h>
 #include <arcan_shmif_server.h>
 #include <errno.h>
+#include <pwd.h>
 #include <unistd.h>
 #include <signal.h>
 #include <poll.h>
@@ -364,6 +365,21 @@ static struct anet_cl_connection forward_shmifsrv_cl(
 		}
 	}
 
+/* wait / block the processing until we know the connection is authentic,
+ * this will callback into keystore and so on */
+	char* msg;
+	if (!anet_authenticate(anet.state,
+		anet.fd, anet.fd, &msg) || shmifsrv_poll(cl) == CLIENT_DEAD){
+		shmifsrv_free(cl, SHMIFSRV_FREE_NO_DMS);
+		if (anet.state){
+			a12_free(anet.state);
+			close(anet.fd);
+		}
+
+		if (anet.errmsg)
+			free(anet.errmsg);
+	}
+
 	return anet;
 }
 
@@ -469,7 +485,8 @@ static bool show_usage(const char* msg)
 	"\t --soft-auth   \t authentication secret (password) only, ignore keystore\n"
 	"\t               \t if [n] is provided, n keys added to trusted\n"
 	"\t-t             \t Single- client (no fork/mt - easier troubleshooting)\n"
-	"\t-d bitmap      \t set trace bitmap (bitmask or key1,key2,...)\n\n"
+	"\t --no-ephem-rt \t Disable ephemeral keypair roundtrip (outbound only)\n"
+	"\t-d bitmap      \t Set trace bitmap (bitmask or key1,key2,...)\n\n"
 	"Environment variables:\n"
 	"\tARCAN_STATEPATH\t Used for keystore and state blobs (sensitive)\n"
 #ifdef WANT_H264_ENC
@@ -480,7 +497,7 @@ static bool show_usage(const char* msg)
 	"\tA12_CACHE_DIR  \t Used for caching binary stores (fonts, ...)\n\n"
 	"Keystore mode (ignores connection arguments):\n"
 	"\tAdd/Append key: arcan-net keystore tag host [port=6680]\n"
-	"\t                tag=local is reserved (default reply)\n"
+	"\t                tag=default is reserved\n"
 	"\nTrace groups (stderr):\n"
 	"\tvideo:1      audio:2      system:4    event:8      transfer:16\n"
 	"\tdebug:32     missing:64   alloc:128  crypto:256    vdetail:512\n"
@@ -577,6 +594,9 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		else if (strcmp(argv[i], "--soft-auth") == 0){
 			global.soft_auth = true;
 		}
+		else if (strcmp(argv[i], "--no-ephem-rt") == 0){
+			opts->opts->disable_ephemeral_k = true;
+		}
 /* a12 server, shmif client */
 		else if (strcmp(argv[i], "-l") == 0){
 			if (opts->mode)
@@ -624,16 +644,38 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		}
 		else if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--auth") == 0){
 			char msg[32];
-			if (fgets(msg, 32, stdin) <= 0)
-				return show_usage("-a,--auth couldn't get key from stdin");
+
+			if (isatty(STDIN_FILENO)){
+				char* pwd = getpass("connection password: ");
+				snprintf(msg, 32, "%s", pwd);
+				while (*pwd){
+					(*pwd) = '\0';
+					pwd++;
+				}
+			}
+			else {
+				fprintf(stdout, "reading passphrase from stdin\n");
+				if (fgets(msg, 32, stdin) <= 0)
+					return show_usage("-a,--auth couldn't read secret from stdin");
+			}
 			size_t len = strlen(msg);
+			if (!len){
+				return show_usage("-a,--auth zero-length secret not permitted");
+			}
 
 			if (msg[len-1] == '\n')
 				msg[len-1] = '\0';
 
-
 			snprintf(opts->opts->secret, 32, "%s", msg);
 			global.no_default = true;
+
+			if (i < argc - 1 && isdigit(argv[i+1][0])){
+				global.accept_n_pk_unknown = strtoul(argv[i+1], NULL, 10);
+				i++;
+				a12int_trace(A12_TRACE_SECURITY,
+					"trust_first=%zu", global.accept_n_pk_unknown);
+			}
+
 		}
 		else if (strcmp(argv[i], "-B") == 0){
 			if (i == argc - 1)
@@ -745,26 +787,46 @@ static int apply_keystore_command(int argc, char** argv)
 	return EXIT_SUCCESS;
 }
 
+/*
+ * This is used both for the inbound and outbound connection, the difference
+ * though is that the outbound connection has already provided keymaterial
+ * as that is necessary for constructing the HELLO packet - so the auth is
+ * just against if the public key is known/trusted or not in that case.
+ *
+ * Thus the a12 implementation will only respect the 'authentic' part and
+ * disregard whatever is put in key.
+ *
+ * For inbound, there is an option of differentiation - a different keypair
+ * could be returned based on the public key.
+ */
 static struct pk_response key_auth_local(uint8_t pk[static 32])
 {
 	struct pk_response auth = {0};
+	char* tmp;
+	uint16_t tmpport;
 	size_t outl;
 	unsigned char* out = a12helper_tob64(pk, 32, &outl);
 
-	if (a12helper_keystore_accepted(pk, NULL)){
-		char* tmp;
-		uint16_t tmpport;
+/* don't really care about pk authenticity - password in first HMAC only */
+	if (global.soft_auth){
+		auth.authentic = true;
+		a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
+		a12int_trace(A12_TRACE_SECURITY, "soft-auth-trust=%s", out);
+	}
+/* or is the key in our trusted set? */
+	else if (a12helper_keystore_accepted(pk, NULL)){
 		auth.authentic = true;
 		a12int_trace(A12_TRACE_SECURITY, "accept=%s", out);
-		a12helper_keystore_hostkey("local", 0, auth.key, &tmp, &tmpport);
+		a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
 	}
-/* trust from here-on now */
+/* or should we add the first n unknown as implicitly trusted through pass */
 	else if (global.accept_n_pk_unknown){
 		auth.authentic = true;
 		global.accept_n_pk_unknown--;
 		a12int_trace(A12_TRACE_SECURITY,
 			"left=%zu:accept-unknown=%s", global.accept_n_pk_unknown, out);
 		a12helper_keystore_accept(pk, NULL);
+		a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
 	}
 	else {
 		a12int_trace(A12_TRACE_SECURITY, "reject-unknown=%s", out);
@@ -787,6 +849,7 @@ int main(int argc, char** argv)
 	};
 
 	anet.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));
+	anet.opts->pk_lookup = key_auth_local;
 
 /* set this as default, so the remote side can't actually close */
 	anet.redirect_exit = getenv("ARCAN_CONNPATH");
@@ -870,11 +933,11 @@ int main(int argc, char** argv)
 		uint8_t priv[32];
 		char* outhost;
 		uint16_t outport;
-		if (!a12helper_keystore_hostkey("local", 0, priv, &outhost, &outport)){
+		if (!a12helper_keystore_hostkey("default", 0, priv, &outhost, &outport)){
 			uint8_t outp[32];
-			a12helper_keystore_register("local", "127.0.0.1", 6680, outp);
+			a12helper_keystore_register("default", "127.0.0.1", 6680, outp);
+			a12int_trace(A12_TRACE_SECURITY, "key_added=default");
 		}
-		anet.opts->pk_lookup = key_auth_local;
 	}
 
 	if (anet.mode == ANET_SHMIF_CL || anet.mode == ANET_SHMIF_EXEC){
