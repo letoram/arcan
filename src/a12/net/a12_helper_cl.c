@@ -365,9 +365,14 @@ int a12helper_a12srv_shmifcl(
 	size_t outbuf_sz = 0;
 	a12int_trace(A12_TRACE_SYSTEM, "got proxy connection, waiting for source");
 
-/* hook authenticatino so that we can spawn the primary processing thread */
-	S->on_auth = auth_handler;
-	S->auth_tag = &cont;
+/* Hook authentication so that we can spawn the primary processing thread
+ * unless the context comes pre-authentication, then spawn immediately. */
+	if (a12_auth_state(S) == AUTH_FULL_PK)
+		spawn_thread(S, cont.user, &cont, 0);
+	else {
+		S->on_auth = auth_handler;
+		S->auth_tag = &cont;
+	}
 
 /*
  * Socket in/out liveness, buffer flush / dispatch
@@ -379,6 +384,9 @@ int a12helper_a12srv_shmifcl(
 		{.fd = pipe_pair[0], .events = POLLIN  | errmask},
 		{.fd = fd_out,       .events = POLLOUT | errmask}
 	};
+
+/* flush any left overs from authentication */
+	a12_unpack(S, NULL, 0, NULL, on_cl_event);
 
 	while(a12_ok(S) && -1 != poll(fds, n_fd, -1)){
 		if (

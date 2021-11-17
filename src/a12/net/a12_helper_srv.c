@@ -656,6 +656,9 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 		{ .fd = fd_out, .events = POLLOUT | errmask}
 	};
 
+/* flush authentication leftovers */
+	a12_unpack(S, NULL, 0, arg, on_srv_event);
+
 	uint8_t inbuf[9000];
 	while(a12_ok(S) && -1 != poll(fds, n_fd, -1)){
 

@@ -86,7 +86,7 @@ bool anet_authenticate(struct a12_state* S, int fdin, int fdout, char** err)
 			return false;
 		}
 
-	} while (a12_poll(S) > 0 && !a12_auth_state(S));
+	} while (a12_poll(S) > 0 && a12_auth_state(S) != AUTH_FULL_PK);
 
 	return true;
 }
