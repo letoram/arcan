@@ -282,6 +282,12 @@ struct a12_state {
 	bool server;
 	bool cl_firstout;
 	int authentic;
+
+/* saved between calls to unpack, see end of a12_unpack for explanation */
+	bool auth_latched;
+	size_t prepend_unpack_sz;
+	uint8_t* prepend_unpack;
+
 	blake3_hasher out_mac, in_mac;
 
 	struct chacha_ctx* enc_state;

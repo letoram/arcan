@@ -67,8 +67,8 @@ static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz, int ind)
 
 /* wrap around? give up */
 	if (pow < new_sz){
-		a12int_trace(A12_TRACE_SYSTEM, "possible queue size exceeded");
-		free(dst);
+		a12int_trace(A12_TRACE_SYSTEM, "error=grow_array:reason=limit");
+		DYNAMIC_FREE(dst);
 		*cur_sz = 0;
 		return NULL;
 	}
@@ -76,11 +76,11 @@ static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz, int ind)
 	new_sz = pow;
 
 	a12int_trace(A12_TRACE_ALLOC,
-		"grow outqueue(%d) %zu => %zu", ind, *cur_sz, new_sz);
+		"grow=queue:%d:from=%zu:to=%zu", ind, *cur_sz, new_sz);
 	uint8_t* res = DYNAMIC_REALLOC(dst, new_sz);
 	if (!res){
-		a12int_trace(A12_TRACE_SYSTEM, "couldn't grow queue");
-		free(dst);
+		a12int_trace(A12_TRACE_SYSTEM, "error=grow_array:reason=malloc_fail");
+		DYNAMIC_FREE(dst);
 		*cur_sz = 0;
 		return NULL;
 	}
@@ -333,16 +333,16 @@ static void update_keymaterial(
 	blake3_hasher_init_keyed(&S->in_mac,  mac_key);
 
 	if (!S->dec_state){
-		S->dec_state = malloc(sizeof(struct chacha_ctx));
+		S->dec_state = DYNAMIC_MALLOC(sizeof(struct chacha_ctx));
 		if (!S->dec_state){
 			fail_state(S);
 			return;
 		}
 	}
 
-	S->enc_state = malloc(sizeof(struct chacha_ctx));
+	S->enc_state = DYNAMIC_MALLOC(sizeof(struct chacha_ctx));
 	if (!S->enc_state){
-		free(S->dec_state);
+		DYNAMIC_FREE(S->dec_state);
 		fail_state(S);
 		return;
 	}
@@ -559,6 +559,12 @@ a12_free(struct a12_state* S)
 			a12int_trace(A12_TRACE_SYSTEM, "free with channel (%zu) active", i);
 			return false;
 		}
+	}
+
+	if (S->prepend_unpack){
+		DYNAMIC_FREE(S->prepend_unpack);
+		S->prepend_unpack = NULL;
+		S->prepend_unpack_sz = 0;
 	}
 
 	a12int_trace(A12_TRACE_ALLOC, "a12-state machine freed");
@@ -1131,7 +1137,7 @@ static void command_videoframe(struct a12_state* S)
 /* out_pos gets validated in the decode stage, so no OOB ->y ->x */
 		vframe->out_pos = vframe->y * cont->pitch + vframe->x;
 		vframe->inbuf_pos = 0;
-		vframe->inbuf = malloc(vframe->inbuf_sz);
+		vframe->inbuf = DYNAMIC_MALLOC(vframe->inbuf_sz);
 		if (!vframe->inbuf){
 			a12int_trace(A12_TRACE_ALLOC,
 				"couldn't allocate intermediate buffer store");
@@ -1164,7 +1170,7 @@ static void command_videoframe(struct a12_state* S)
 void a12_enqueue_bstream(
 	struct a12_state* S, int fd, int type, bool streaming, size_t sz)
 {
-	struct blob_out* next = malloc(sizeof(struct blob_out));
+	struct blob_out* next = DYNAMIC_MALLOC(sizeof(struct blob_out));
 	if (!next){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=ENOMEM");
 		return;
@@ -1371,12 +1377,12 @@ static void hello_auth_server_hello(struct a12_state* S)
 	trace_crypto_key(S->server, "state=server_ssecret", (uint8_t*)S->opts->secret, 32);
 	update_keymaterial(S, S->opts->secret, 32, nonce);
 
-/* and done */
+/* and done, mark latched so a12_unpack saves buffer and returns */
 	S->authentic = AUTH_FULL_PK;
+	S->auth_latched = true;
+
 	if (S->on_auth)
 		S->on_auth(S, S->auth_tag);
-
-	return;
 }
 
 static void hello_auth_client_hello(struct a12_state* S)
@@ -1403,6 +1409,7 @@ static void hello_auth_client_hello(struct a12_state* S)
 	update_keymaterial(S, S->opts->secret, 32, &S->decode[8]);
 
 	S->authentic = AUTH_FULL_PK;
+	S->auth_latched = true;
 
 	if (S->on_auth)
 		S->on_auth(S, S->auth_tag);
@@ -1986,7 +1993,7 @@ void a12_set_destination_raw(struct a12_state* S,
  * an afterthought, and it was a much larger task refactoring it out versus
  * adding a proxy and tagging */
 	size_t ct_sz = sizeof(struct arcan_shmif_cont);
-	struct arcan_shmif_cont* fake = malloc(ct_sz);
+	struct arcan_shmif_cont* fake = DYNAMIC_MALLOC(ct_sz);
 	if (!fake)
 		return;
 
@@ -2006,6 +2013,17 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 			"kind=error:status=EINVAL:message=state machine broken");
 		fail_state(S);
 		return;
+	}
+
+/* flush any prequeued buffer, see comment at the end of the function */
+	if (S->prepend_unpack){
+		uint8_t* tmp_buf = S->prepend_unpack;
+		size_t tmp_sz = S->prepend_unpack_sz;
+		a12int_trace(A12_TRACE_SYSTEM, "kind=prebuf:size=%zu", tmp_sz);
+		S->prepend_unpack_sz = 0;
+		S->prepend_unpack = NULL;
+		a12_unpack(S, tmp_buf, tmp_sz, tag, on_event);
+		DYNAMIC_FREE(tmp_buf);
 	}
 
 /* Unknown state? then we're back waiting for a command packet */
@@ -2060,9 +2078,42 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 	break;
 	}
 
-/* slide window and tail- if needed */
-	if (buf_sz)
-		a12_unpack(S, &buf[ntr], buf_sz, tag, on_event);
+/* This is an ugly thing - so a buffer can contain a completed authentication
+ * sequence and subsequent data. An API consumer may well need to do additional
+ * work in between completed authentication and proper use or data might get
+ * lost. The easiest way to solve this after the fact was to add a latched
+ * buffer stage.
+ *
+ *  on_authentication_completed:
+ *   - set latched state
+ *   - if data remaining: save a copy and return
+ *
+ *  next unpack:
+ *   - check if buffered data exist
+ *   - process first, then move on to submitted buffer
+ */
+	if (buf_sz){
+		if (!S->auth_latched){
+			a12_unpack(S, &buf[ntr], buf_sz, tag, on_event);
+			return;
+		}
+
+		S->auth_latched = false;
+		S->prepend_unpack = DYNAMIC_MALLOC(buf_sz);
+
+		if (!S->prepend_unpack){
+			a12int_trace(A12_TRACE_ALLOC, "kind=error:latch_buffer_sz=%zu", buf_sz);
+			fail_state(S);
+			return;
+		}
+
+		a12int_trace(A12_TRACE_SYSTEM, "kind=auth_latch:size=%zu", buf_sz);
+		memcpy(S->prepend_unpack, &buf[ntr], buf_sz);
+		S->prepend_unpack_sz = buf_sz;
+		return;
+	}
+	if (S->auth_latched)
+		S->auth_latched = false;
 }
 
 /*
@@ -2074,7 +2125,7 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
  */
 static void* read_data(int fd, size_t cap, uint16_t* nts, bool* die)
 {
-	void* buf = malloc(65536);
+	void* buf = DYNAMIC_MALLOC(65536);
 	if (!buf){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=ENOMEM");
 		*die = true;
@@ -2125,7 +2176,7 @@ static void unlink_node(struct a12_state* S, struct blob_out* node)
 	S->active_blobs--;
 	*dst = next;
 	close(node->fd);
-	free(node);
+	DYNAMIC_FREE(node);
 }
 
 static size_t queue_node(struct a12_state* S, struct blob_out* node)
@@ -2194,7 +2245,7 @@ static size_t queue_node(struct a12_state* S, struct blob_out* node)
 		);
 	}
 
-	free(buf);
+	DYNAMIC_FREE(buf);
 	return nts;
 }
 
