@@ -394,13 +394,19 @@ static struct a12_state* a12_setup(struct a12_context_options* opt, bool srv)
 	};
 
 	size_t len = 0;
-	if (!opt->secret[0]){
-		sprintf(opt->secret, "SETECASTRONOMY");
+	res->opts = DYNAMIC_MALLOC(sizeof(struct a12_context_options));
+	if (!res->opts){
+		DYNAMIC_FREE(res);
+		return NULL;
 	}
-	len = strlen(opt->secret);
-	res->opts = opt;
+	memcpy(res->opts, opt, sizeof(struct a12_context_options));
 
-	update_keymaterial(res, opt->secret, len, NULL);
+	if (!res->opts->secret[0]){
+		sprintf(res->opts->secret, "SETECASTRONOMY");
+	}
+
+	len = strlen(res->opts->secret);
+	update_keymaterial(res, res->opts->secret, len, NULL);
 
 /* easy-dump for quick debugging (i.e. cmp side vs side to find offset,
  * open/init/replay to step mac construction */
@@ -570,6 +576,8 @@ a12_free(struct a12_state* S)
 	a12int_trace(A12_TRACE_ALLOC, "a12-state machine freed");
 	DYNAMIC_FREE(S->bufs[0]);
 	DYNAMIC_FREE(S->bufs[1]);
+	DYNAMIC_FREE(S->opts);
+
 	*S = (struct a12_state){};
 	S->cookie = 0xdeadbeef;
 
