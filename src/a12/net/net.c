@@ -193,6 +193,7 @@ static bool handover_setup(struct a12_state* S,
 	*C = shmifsrv_spawn_client(env, &socket, &errc, 0);
 	if (!*C){
 		shutdown(fd, SHUT_RDWR);
+		close(fd);
 		return false;
 	}
 
@@ -297,6 +298,7 @@ static void a12cl_dispatch(
 		.redirect_exit = args->redirect_exit,
 		.devicehint_cp = args->devicehint_cp
 	});
+	close(fd);
 }
 
 static void fork_a12cl_dispatch(
@@ -319,6 +321,7 @@ static void fork_a12cl_dispatch(
 		fprintf(stderr, "fork_a12cl() couldn't fork new process, check ulimits\n");
 		shmifsrv_free(cl, SHMIFSRV_FREE_NO_DMS);
 		a12_channel_close(S);
+		close(fd);
 		return;
 	}
 	else {
