@@ -91,71 +91,24 @@ bool anet_authenticate(struct a12_state* S, int fdin, int fdout, char** err)
 	return true;
 }
 
-struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
+static struct anet_cl_connection connect_to(struct anet_options* arg)
 {
 	struct anet_cl_connection res = {
 		.fd = -1
 	};
 
-/* open the keystore and iteratively invoke cl_setup on each entry until
- * we get a working connection */
-	if (arg->key){
-		if (!a12helper_keystore_open(&arg->keystore)){
-			res.errmsg = strdup("couldn't open keystore");
-			return res;
-		}
-
-		size_t i = 0;
-		arg->key = NULL;
-
-		char* host;
-		uint16_t port;
-		res.errmsg = strdup("no matching keys for tag");
-
-/* the cl_setup call will set errmsg on connection failure, so that need to be
- * cleaned up except for the last entry where we propagate any error message to
- * the caller */
-		while (a12helper_keystore_hostkey(
-			arg->key, i++, arg->opts->priv_key, &host, &port)){
-			if (res.errmsg){
-				free(res.errmsg);
-				res.errmsg = NULL;
-			}
-
-/* since this gets forwarded to getaddrinfo we need to convert it back to a
- * decimal string in order for it to double as a 'service' reference */
-			struct anet_options tmpcfg = *arg;
-			tmpcfg.host = host;
-			char buf[sizeof("65536")];
-			snprintf(buf, sizeof(buf), "%"PRIu16, port);
-			tmpcfg.port = buf;
-
-			res = anet_cl_setup(&tmpcfg);
-			free(host);
-		}
-		return res;
-	}
-/* use the reserved 'default' tag for tracking a default key */
-	else {
-		char* outhost;
-		uint16_t outport;
-		if (!a12helper_keystore_hostkey(
-			"default", 0, arg->opts->priv_key, &outhost, &outport)){
-			a12helper_keystore_register(
-				"default", "127.0.0.1", 6680, arg->opts->priv_key);
-		}
-	}
-
 	struct addrinfo hints = {
 		.ai_family = AF_UNSPEC,
 		.ai_socktype = SOCK_STREAM
 	};
+
 	struct addrinfo* addr = NULL;
 
 	int ec = getaddrinfo(arg->host, arg->port, &hints, &addr);
 	if (ec){
 		char buf[64];
-		snprintf(buf, sizeof(buf), "couldn't resolve: %s", gai_strerror(ec));
+		snprintf(buf, sizeof(buf), "couldn't resolve %s: %s\n",
+			arg->host ? arg->host : "(host missing)", gai_strerror(ec));
 		res.errmsg = strdup(buf);
 
 		return res;
@@ -166,7 +119,7 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 	res.fd = anet_clfd(addr);
 	if (-1 == res.fd){
 		char buf[64];
-		snprintf(buf, sizeof(buf), "couldn't connect to %s:%s", arg->host, arg->port);
+		snprintf(buf, sizeof(buf), "couldn't connect to %s:%s\n", arg->host, arg->port);
 		res.errmsg = strdup(buf);
 
 		freeaddrinfo(addr);
@@ -185,6 +138,72 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 	a12_free(res.state);
 	res.state = NULL;
 	return res;
+}
+
+struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
+{
+	struct anet_cl_connection res = {
+		.fd = -1
+	};
+
+/* open the keystore and iteratively invoke cl_setup on each entry until
+ * we get a working connection */
+	if (arg->key){
+		a12helper_keystore_release();
+		if (!a12helper_keystore_open(&arg->keystore)){
+			res.errmsg = strdup("couldn't open keystore\n");
+			return res;
+		}
+
+		size_t i = 0;
+
+/* default fail is key-resolving failure, it gets cleared on successful lookup */
+		char* host;
+		uint16_t port;
+		char buf[64];
+		snprintf(buf, sizeof(buf), "keystore: no match for %s\n", arg->key);
+		res.errmsg = strdup(buf);
+
+/* the cl_setup call will set errmsg on connection failure, so that need to be
+ * cleaned up except for the last entry where we propagate any error message to
+ * the caller */
+		while (a12helper_keystore_hostkey(
+			arg->key, i++, arg->opts->priv_key, &host, &port)){
+			if (res.errmsg){
+				free(res.errmsg);
+				res.errmsg = NULL;
+			}
+
+/* since this gets forwarded to getaddrinfo we need to convert it back to a
+ * decimal string in order for it to double as a 'service' reference */
+			struct anet_options tmpcfg = *arg;
+			tmpcfg.host = host;
+			tmpcfg.key = NULL;
+
+			char buf[sizeof("65536")];
+			snprintf(buf, sizeof(buf), "%"PRIu16, port);
+			tmpcfg.port = buf;
+
+			res = connect_to(&tmpcfg);
+			free(host);
+
+			if (!res.errmsg)
+				break;
+		}
+
+		return res;
+	}
+/* ensure there is a 'default' key to use for outbound when there is no tag */
+	else {
+		char* outhost;
+		uint16_t outport;
+		if (!a12helper_keystore_hostkey(
+			"default", 0, arg->opts->priv_key, &outhost, &outport)){
+			a12helper_keystore_register(
+				"default", "127.0.0.1", 6680, arg->opts->priv_key);
+		}
+		return connect_to(arg);
+	}
 }
 
 bool anet_listen(struct anet_options* args, char** errdst,
