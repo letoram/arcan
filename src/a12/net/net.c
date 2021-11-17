@@ -101,6 +101,25 @@ void arcan_fatal(const char* msg, ...)
 	exit(EXIT_FAILURE);
 }
 
+static int get_keystore_dirfd(const char** err)
+{
+	char* basedir = getenv("ARCAN_STATEPATH");
+
+	if (!basedir){
+		*err = "Missing keystore (set ARCAN_STATEPATH)";
+		return -1;
+	}
+
+	int dir = open(basedir, O_DIRECTORY);
+	if (-1 == dir){
+		*err = "Error opening basedir, check permissions and type";
+		return -1;
+	}
+
+	return dir;
+}
+
+
 /*
  * in this mode we should really fexec ourselves so we don't risk exposing
  * aslr or canaries, as well as handle the key-generation
@@ -464,6 +483,20 @@ static int a12_preauth(struct anet_options* args,
 	return EXIT_SUCCESS;
 }
 
+static bool tag_host(struct anet_options* anet, char* hoststr, const char** err)
+{
+	char* toksep = strrchr(hoststr, '@');
+	if (!toksep)
+		return false;
+
+	*toksep = '\0';
+	anet->key = hoststr;
+	anet->keystore.type = A12HELPER_PROVIDER_BASEDIR;
+	anet->keystore.directory.dirfd = get_keystore_dirfd(err);
+
+	return true;
+}
+
 static bool show_usage(const char* msg)
 {
 	fprintf(stderr, "%s%sUsage:\n"
@@ -538,25 +571,34 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 
 			opts->mode = ANET_SHMIF_SRV;
 			if (i >= argc - 1)
-				return show_usage("Invalid arguments, -s without room for ip");
+				return show_usage("-s: Missing connpoint argument");
 			opts->cp = argv[++i];
 
+/* shmif connection points are restricted set */
 			for (size_t ind = 0; opts->cp[ind]; ind++)
 				if (!isalnum(opts->cp[ind]))
-					return show_usage("Invalid character in connpoint [a-Z,0-9]");
+					return show_usage("-s: Invalid character in connpoint [a-Z,0-9]");
 
-			if (i == argc)
-				return show_usage("-s without room for host/port");
+			i++;
+			if (i >= argc)
+				return show_usage("-s: Missing tag@ or host port argument");
 
-			opts->host = argv[++i];
+			const char* err = NULL;
+			if (tag_host(opts, argv[i], &err)){
+				if (err)
+					return show_usage(err);
+				continue;
+			}
 
-			if (i == argc)
-				return show_usage("-s without room for port");
+			opts->host = argv[i++];
 
-			opts->port = argv[++i];
+			if (i >= argc)
+				return show_usage("-s: Missing port argument");
+
+			opts->port = argv[i];
 
 			if (i != argc - 1)
-				return show_usage("Trailing arguments to -s connpoint host port");
+				return show_usage("-s: Trailing arguments after port");
 
 			continue;
 		}
@@ -579,16 +621,24 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 				return show_usage("-S descriptor does not point to a socket");
 
 			if (i == argc)
-				return show_usage("-S without room for host/port");
+				return show_usage("-S without room for tag or host/port");
 
-			opts->host = argv[++i];
+			i++;
+			const char* err = NULL;
+			if (tag_host(opts, argv[i], &err)){
+				if (err)
+					return show_usage(err);
+				continue;
+			}
+
+			opts->host = argv[i++];
 
 			if (i == argc)
-				return show_usage("-S without room for port");
+				return show_usage("-S host without room for port argument");
 
-			opts->port = argv[++i];
+			opts->port = argv[i++];
 
-			if (i != argc - 1)
+			if (i < argc)
 				return show_usage("Trailing arguments to -S fd_in host port");
 		}
 		else if (strcmp(argv[i], "--soft-auth") == 0){
@@ -701,24 +751,6 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 	}
 
 	return i;
-}
-
-static int get_keystore_dirfd(const char** err)
-{
-	char* basedir = getenv("ARCAN_STATEPATH");
-
-	if (!basedir){
-		*err = "Missing keystore (set ARCAN_STATEPATH)";
-		return -1;
-	}
-
-	int dir = open(basedir, O_DIRECTORY);
-	if (-1 == dir){
-		*err = "Error opening basedir, check permissions and type";
-		return -1;
-	}
-
-	return dir;
 }
 
 /* keystore is singleton global */
@@ -869,16 +901,16 @@ int main(int argc, char** argv)
 
 /* no mode? if there's arguments left, assume it is is the 'reverse' mode
  * where the connection is outbound but we get the a12 'client' view back
- * to pair with an -exec arcan-net. */
+ * to pair with an arcan-net -exec .. */
 	if (!anet.mode){
 
 		if (argi <= argc - 1){
 /* Treat as a key- 'tag' for connecting? This act as a namespace separator
  * so the other option would be to */
-			char* toksep = strrchr(argv[argi], '@');
-			if (toksep){
-				*toksep = '\0';
-				anet.key = argv[argi];
+			const char* err = NULL;
+			if (tag_host(&anet, argv[argi], &err)){
+				if (err)
+					return show_usage(err);
 			}
 /* Or just go host / [port] */
 			else {

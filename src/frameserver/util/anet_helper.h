@@ -30,8 +30,9 @@ struct anet_options {
  * specified 'host' or 'port' */
 	const char* key;
 
-/* tag from keystore to use for authentication (server reply) or if 'key'
- * is not set and [host,port]+[host_tag] is used */
+/* tag from keystore to use for authentication (server reply) or if 'key' is
+ * not set and [host,port]+[host_tag] is used - if host_tag is not set,
+ * 'default' will be used */
 	const char* host_tag;
 
 /* pre-inherited socket to use */
