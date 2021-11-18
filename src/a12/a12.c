@@ -701,6 +701,8 @@ static void command_cancelstream(
  * in force-inserting a RESET/STEPFRAME */
 	if (stype == 0){
 		if (reason == STREAM_CANCEL_DECODE_ERROR){
+			a12int_trace(A12_TRACE_VIDEO,
+				"kind=decode_degrade:codec=h264:reason=sink rejected format");
 			S->advenc_broken = true;
 		}
 
