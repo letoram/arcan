@@ -26,7 +26,7 @@ static void a12int_vframehdr_build(
 	uint64_t last_seen, uint8_t chid,
 	int type, uint32_t sid,
 	uint16_t sw, uint16_t sh, uint16_t w, uint16_t h, uint16_t x, uint16_t y,
-	uint32_t len, uint32_t exp_len, bool commit)
+	uint32_t len, uint32_t exp_len, bool commit, uint8_t flags)
 {
 	a12int_trace(A12_TRACE_VDETAIL,
 		"kind=header:ch=%"PRIu8":type=%d:stream=%"PRIu32
@@ -52,7 +52,8 @@ static void a12int_vframehdr_build(
 	pack_u32(len, &buf[36]); /* [36..39] : length */
 	pack_u32(exp_len, &buf[40]); /* [40..43] : exp-length */
 
-/* [35] : dataflags: uint8 */
+	buf[35] = flags; /* [35] : dataflags: uint8 */
+
 /* [40] Commit on completion, this is always set right now but will change
  * when 'chain of deltas' mode for shmif is added */
 	buf[44] = commit;
@@ -149,8 +150,7 @@ void a12int_encode_rgb565(PACK_ARGS)
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
 	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
 		POSTPROCESS_VIDEO_RGB565, sid, vb->w, vb->h, w, h, x, y,
-		w * h * px_sz, w * h * px_sz, 1
-	);
+		w * h * px_sz, w * h * px_sz, 1, vb->flags.origo_ll);
 	a12int_step_vstream(S, sid);
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, hdr_buf, CONTROL_PACKET_SIZE, NULL, 0);
@@ -231,7 +231,7 @@ void a12int_encode_rgba(PACK_ARGS)
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
 	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
 		POSTPROCESS_VIDEO_RGBA, sid, vb->w, vb->h, w, h, x, y,
-		w * h * px_sz, w * h * px_sz, 1
+		w * h * px_sz, w * h * px_sz, 1, vb->flags.origo_ll
 	);
 	a12int_step_vstream(S, sid);
 	a12int_append_out(S,
@@ -302,7 +302,7 @@ void a12int_encode_rgb(PACK_ARGS)
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
 	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
 		POSTPROCESS_VIDEO_RGB, sid, vb->w, vb->h, w, h, x, y,
-		w * h * px_sz, w * h * px_sz, 1
+		w * h * px_sz, w * h * px_sz, 1, vb->flags.origo_ll
 	);
 	a12int_step_vstream(S, sid);
 	a12int_append_out(S,
@@ -446,7 +446,7 @@ static void compress_tzstd(struct a12_state* S, uint8_t ch,
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
 	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, ch,
 		type, sid, vb->w, vb->h, w, h, 0, 0,
-		out_sz, compress_in_sz, 1
+		out_sz, compress_in_sz, 1, vb->flags.origo_ll
 	);
 
 	a12int_trace(A12_TRACE_VDETAIL,
@@ -602,7 +602,7 @@ void a12int_encode_dzstd(PACK_ARGS)
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
 	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
 		cres.type, sid, vb->w, vb->h, w, h, x, y,
-		cres.out_sz, cres.in_sz, 1
+		cres.out_sz, cres.in_sz, 1, vb->flags.origo_ll
 	);
 
 	a12int_trace(A12_TRACE_VDETAIL,
@@ -627,7 +627,7 @@ void a12int_encode_dpng(PACK_ARGS)
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
 	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
 		cres.type, sid, vb->w, vb->h, w, h, x, y,
-		cres.out_sz, cres.in_sz, 1
+		cres.out_sz, cres.in_sz, 1, vb->flags.origo_ll
 	);
 
 	a12int_trace(A12_TRACE_VDETAIL,
@@ -879,6 +879,7 @@ void a12int_encode_h264(PACK_ARGS)
 
 /* send to encoder, may return EAGAIN requesting a flush */
 again:
+	frame->pts++;
 	ret = avcodec_send_frame(encoder, frame);
 	if (ret < 0 && ret != AVERROR(EAGAIN)){
 		a12int_trace(A12_TRACE_VIDEO, "encoder failed: %d", ret);
@@ -907,7 +908,7 @@ again:
 		uint8_t hdr_buf[CONTROL_PACKET_SIZE];
 		a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
 			POSTPROCESS_VIDEO_H264, sid, vb->w, vb->h, vb->w, vb->h,
-			0, 0, packet->size, vb->w * vb->h * 4, 1
+			0, 0, packet->size, vb->w * vb->h * 4, 1, vb->flags.origo_ll
 		);
 		a12int_step_vstream(S, sid);
 		a12int_append_out(S,
@@ -915,7 +916,6 @@ again:
 
 		chunk_pack(S, STATE_VIDEO_PACKET, chid, packet->data, packet->size, chunk_sz);
 		av_packet_unref(packet);
-		frame->pts++;
 	}
 	while (out_ret >= 0);
 

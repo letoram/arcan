@@ -1044,6 +1044,7 @@ static void command_videoframe(struct a12_state* S)
 	unpack_u16(&vframe->h, &S->decode[33]);
 /* [35] : dataflags */
 	unpack_u32(&vframe->inbuf_sz, &S->decode[36]);
+
 /* [41]     : commit: uint8 */
 	unpack_u32(&vframe->expanded_sz, &S->decode[40]);
 	vframe->commit = S->decode[44];
@@ -1064,6 +1065,15 @@ static void command_videoframe(struct a12_state* S)
 /* set the possible consumer presentation / repacking options, or resize
  * if the source / destination dimensions no longer match */
 	bool hints_changed = false;
+
+	if (S->decode[35] ^ (!!(cont->hints & SHMIF_RHINT_ORIGO_LL))){
+		if (S->decode[35])
+			cont->hints = cont->hints | SHMIF_RHINT_ORIGO_LL;
+		else
+			cont->hints = cont->hints & (~SHMIF_RHINT_ORIGO_LL);
+		hints_changed = true;
+	}
+
 	if (vframe->postprocess == POSTPROCESS_VIDEO_TZSTD &&
 		!(cont->hints & SHMIF_RHINT_TPACK)){
 		cont->hints |= SHMIF_RHINT_TPACK;
