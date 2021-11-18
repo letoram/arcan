@@ -328,7 +328,8 @@ static bool identify(int fd, const char* path,
 			hash = rv & (uint16_t) 0xfffe;
 			if (hash < MAX_DEVICES)
 				hash += MAX_DEVICES;
-			i = -1;
+			if (i)
+				i -= 1;
 			continue;
 		}
 	}
