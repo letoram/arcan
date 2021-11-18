@@ -1803,7 +1803,7 @@ static bool step_v(struct arcan_shmif_cont* ctx, int sigv)
 	}
 	else {
 		if (priv->log_event){
-			log_print("%lld: SIGVID (block: %d full)\n",
+			log_print("%lld: SIGVID (block: %d full)",
 				arcan_timemillis(),
 				(sigv & SHMIF_SIGBLK_NONE) ? 0 : 1
 			);
