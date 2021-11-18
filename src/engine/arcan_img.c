@@ -221,7 +221,7 @@ arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
 	if (len >= 3){
 		if (strcasecmp(hint + (len - 3), "PNG") == 0 ||
 			strcasecmp(hint + (len - 3), "JPG") == 0 ||
-			(len == 4 && strcasecmp(hint + (len - 4), "JPEG") == 0)
+			(len >= 4 && strcasecmp(hint + (len - 4), "JPEG") == 0)
 		){
 			int outf;
 			int w, h;
