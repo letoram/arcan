@@ -6,6 +6,7 @@
  * Use attachment density if no displayhint on fsrv with tpack font-init
  * Re-add event queue drain management
  * More aggressive pipeline dirty state tracking
+ * Fixed jpeg identification courtesy of Salotz
 
 ## Frameservers
  * ARCAN_FRAMESERVER_DEBUGSTALL is now performed after \_open and the pid is sent as 'ident'
@@ -101,6 +102,9 @@
  * Swap out DEFLATE for ZSTD
  * added experimental keystore
  * add 'forward' connection modes (arcan-net -l port -exec shmif-bin) (arcan-net host)
+ * add basic congestion control on video backpuffer pressure
+ * respect origo-ll flags (y-axis inversion for some clients)
+ * refactoring / cleanup to logging and control structures, preparing for video passthrough
 
 ## 0.6.0
 ## Engine
