@@ -75,7 +75,7 @@ static int tracestr_to_bitmap(char* work)
 	while(pt != NULL){
 		for (size_t i = 1; i <= COUNT_OF(trace_groups); i++){
 			if (strcasecmp(trace_groups[i-1], pt) == 0){
-				res |= 1 << i;
+				res |= 1 << (i - 1);
 				break;
 			}
 		}
