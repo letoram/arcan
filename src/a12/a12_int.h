@@ -19,6 +19,7 @@
 #endif
 
 #define MAC_BLOCK_SZ 16
+#define NONCE_SIZE 8
 #define CONTROL_PACKET_SIZE 128
 #define CIPHER_ROUNDS 8
 

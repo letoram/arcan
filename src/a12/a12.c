@@ -298,11 +298,16 @@ static void derive_encdec_key(
 	const char* ssecret, size_t secret_len,
 	uint8_t out_mac[static BLAKE3_KEY_LEN],
 	uint8_t out_srv[static BLAKE3_KEY_LEN],
-	uint8_t  out_cl[static BLAKE3_KEY_LEN])
+	uint8_t  out_cl[static BLAKE3_KEY_LEN],
+	uint8_t* nonce)
 {
 	blake3_hasher temp;
 	blake3_hasher_init_derive_key(&temp, "arcan-a12 init-packet");
 	blake3_hasher_update(&temp, ssecret, secret_len);
+
+	if (nonce){
+		blake3_hasher_update(&temp, nonce, NONCE_SIZE);
+	}
 
 /* mac = H(ssecret_kdf) */
 	blake3_hasher_finalize(&temp, out_mac, BLAKE3_KEY_LEN);
@@ -327,7 +332,7 @@ static void update_keymaterial(
 	_Static_assert(BLAKE3_KEY_LEN == 16 || BLAKE3_KEY_LEN == 32, "misconfigured blake3 size");
 
 /* the secret is only used for the first packet */
-	derive_encdec_key(secret, len, mac_key, srv_key, cl_key);
+	derive_encdec_key(secret, len, mac_key, srv_key, cl_key, nonce);
 
 	blake3_hasher_init_keyed(&S->out_mac, mac_key);
 	blake3_hasher_init_keyed(&S->in_mac,  mac_key);
@@ -363,22 +368,22 @@ static void update_keymaterial(
 		trace_crypto_key(S->server, "enc_key", srv_key, BLAKE3_KEY_LEN);
 		trace_crypto_key(S->server, "dec_key", cl_key, BLAKE3_KEY_LEN);
 
-		chacha_setup(S->dec_state, cl_key, BLAKE3_KEY_LEN, 0, 8);
-		chacha_setup(S->enc_state, srv_key, BLAKE3_KEY_LEN, 0, 8);
+		chacha_setup(S->dec_state, cl_key, BLAKE3_KEY_LEN, 0, CIPHER_ROUNDS);
+		chacha_setup(S->enc_state, srv_key, BLAKE3_KEY_LEN, 0, CIPHER_ROUNDS);
 	}
 	else {
 		trace_crypto_key(S->server, "dec_key", srv_key, BLAKE3_KEY_LEN);
 		trace_crypto_key(S->server, "enc_key", cl_key, BLAKE3_KEY_LEN);
 
-		chacha_setup(S->enc_state, cl_key, BLAKE3_KEY_LEN, 0, 8);
-		chacha_setup(S->dec_state, srv_key, BLAKE3_KEY_LEN, 0, 8);
+		chacha_setup(S->enc_state, cl_key, BLAKE3_KEY_LEN, 0, CIPHER_ROUNDS);
+		chacha_setup(S->dec_state, srv_key, BLAKE3_KEY_LEN, 0, CIPHER_ROUNDS);
 	}
 
 /* First setup won't have a nonce until one has been received. For that case,
  * the key-dance is only to setup MAC - just reusing the same codepath for all
  * keymanagement */
 	if (nonce){
-		trace_crypto_key(S->server, "state=set_nonce", nonce, 8);
+		trace_crypto_key(S->server, "state=set_nonce", nonce, NONCE_SIZE);
 		chacha_set_nonce(S->enc_state, nonce);
 		chacha_set_nonce(S->dec_state, nonce);
 	}
