@@ -505,26 +505,39 @@ static void* client_thread(void* inarg)
  * control here, and the tuning is not figured out. One venue would be to
  * track which channel has a segment with focus, and prioritise those higher. */
 				struct a12_iostat stat = a12_state_iostat(data->S);
-				if (data->opts.vframe_block &&
-					stat.vframe_backpressure >= data->opts.vframe_block){
-					a12int_trace(A12_TRACE_VDETAIL,
-						"vbuffer=defer:congestion=%zu:limit=%zu",
-						stat.vframe_backpressure, data->opts.vframe_block);
-					break;
-				}
+				struct shmifsrv_vbuffer vb = shmifsrv_video(data->C);
 
+				if (data->opts.vframe_block &&
+					stat.vframe_backpressure >= data->opts.vframe_soft_block){
+
+/* the soft block caps at ~20% of buffer difs for large buffers, the other
+ * option is to have aggregation and dirty rectangles here, then invalidate if
+ * they accumulate to cover all */
+					size_t px_c = vb.w * vb.h;
+					size_t reg_c =
+						(vb.region.x2 - vb.region.x1) * (vb.region.y2 - vb.region.y1);
+					bool allow_soft = vb.flags.subregion &&
+						(reg_c < px_c) && ((float)reg_c / (float)px_c) <= 0.2;
+
+					if (stat.vframe_backpressure >= data->opts.vframe_block || !allow_soft){
+						a12int_trace(A12_TRACE_VDETAIL,
+							"vbuffer=defer:congestion=%zu:soft=:%zu:limit=%zu",
+							stat.vframe_backpressure, data->opts.vframe_soft_block,
+							data->opts.vframe_block
+						);
+						break;
+					}
+				}
 
 /* two option, one is to map the dma-buf ourselves and do the readback, or with
  * streams map the stream and convert to h264 on gpu, but easiest now is to
  * just reject and let the caller do the readback. this is currently done by
  * default in shmifsrv.*/
-				struct shmifsrv_vbuffer vb = shmifsrv_video(data->C);
 				BEGIN_CRITICAL(&giant_lock, "video-buffer");
 					a12_set_channel(data->S, data->chid);
 
 /* vopts_from_segment here lets the caller pick compression parameters (coarse),
  * including the special 'defer this frame until later' */
-
 					a12_channel_vframe(data->S, &vb, vopts_from_segment(data, vb));
 					dirty = true;
 				END_CRITICAL(&giant_lock);
