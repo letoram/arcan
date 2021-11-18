@@ -418,6 +418,10 @@ into 1..n packages, depending on interleaving and so on.
 Commit indicates if this is the final (1) update before the accumulation
 buffer can be forwarded without tearing, or if there are more blocks to come.
 
+The dataflags field is a bitmask that indicate if there is any special kind of
+post-processing to apply. The currently defined one is origo_ll (1) which means
+that the completed frame is to be presented with the y axis inverted.
+
 The length field indicates the number of total bytes for all the payloads
 in subsequent vstream-data packets.
 
