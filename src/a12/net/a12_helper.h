@@ -24,7 +24,12 @@ struct a12helper_opts {
 /* Set to the maximum distance between acknowledged frame and pending outgoing
  * and halt releasing client vframe until that resets back to within tolerance.
  * This is a coarse congestion control mechanism, meant as a placeholder until
- * something more refined can be developed. */
+ * something more refined can be developed.
+ *
+ * At 'soft_block' only partial frame updates will be let through,
+ * At 'block' all further updates will be deferred
+ */
+	size_t vframe_soft_block;
 	size_t vframe_block;
 
 	int dirfd_temp;

@@ -48,7 +48,9 @@ static struct {
 	bool no_default;
 	size_t accept_n_pk_unknown;
 	size_t backpressure;
+	size_t backpressure_soft;
 } global = {
+	.backpressure_soft = 2,
 	.backpressure = 6
 };
 
@@ -275,6 +277,7 @@ static void single_a12srv(struct a12_state* S, int fd, void* tag)
 			.redirect_exit = meta->opts->redirect_exit,
 			.devicehint_cp = meta->opts->devicehint_cp,
 			.vframe_block = global.backpressure,
+			.vframe_soft_block = global.backpressure_soft,
 			.eval_vcodec = vcodec_tuning
 		});
 		shmifsrv_free(C, SHMIFSRV_FREE_NO_DMS);
@@ -529,7 +532,8 @@ static bool show_usage(const char* msg)
 	"\tA12_VENC_CRF   \t video rate factor (sane=17..28) (0=lossless,51=worst)\n"
 	"\tA12_VENC_RATE  \t bitrate in kilobits/s (hintcap to crf)\n"
 #endif
-	"\tA12_VENC_BP    \t backpressure cap (0..8)\n"
+	"\tA12_VBP        \t backpressure maximium cap (0..8)\n"
+	"\tA12_VBP_SOFT   \t backpressure soft (full-frames) cap (< VBP)\n"
 	"\tA12_CACHE_DIR  \t Used for caching binary stores (fonts, ...)\n\n"
 	"Keystore mode (ignores connection arguments):\n"
 	"\tAdd/Append key: arcan-net keystore tag host [port=6680]\n"
@@ -747,10 +751,16 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 	}
 
 	char* tmp;
-	if ((tmp = getenv("A12_VENC_BP"))){
+	if ((tmp = getenv("A12_VBP"))){
 		size_t bp = strtoul(tmp, NULL, 10);
 		if (bp >= 0 && bp <= 8)
 			global.backpressure = bp;
+	}
+
+	if ((tmp = getenv("A12_VBP_SOFT"))){
+		size_t bp = strtoul(tmp, NULL, 10);
+		if (bp >= 0 && bp <= global.backpressure)
+			global.backpressure_soft = bp;
 	}
 
 	return i;
