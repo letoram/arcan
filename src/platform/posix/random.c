@@ -21,7 +21,7 @@ static _Thread_local struct chacha_ctx streamcipher;
  * getentropy of its own, though not always available..., */
 long syscall(long number, ...);
 #include <sys/syscall.h>
-static int getentropy(void* buf, size_t buflen)
+static int seedrnd(void* buf, size_t buflen)
 {
 	int ret;
 	if (buflen > 256)
@@ -43,7 +43,7 @@ failure:
 #elif defined(__FreeBSD__) && __FreeBSD__ < 12
 #include <sys/sysctl.h>
 extern int __sysctl(int*, u_int, void*, size_t*, void*, size_t);
-static int getentropy(void* buf, size_t buflen)
+static int seedrnd(void* buf, size_t buflen)
 {
 	int mib[2] = {CTL_KERN, KERN_ARND};
 	size_t size = buflen, len;
@@ -68,8 +68,10 @@ out:
 
 #elif defined(__FreeBSD__) || defined(__OpenBSD__)
 #include <unistd.h>
+#define seedrnd getentropy
 #else
 #include <sys/random.h>
+#define seedrnd getentropy
 #endif
 
 static void seed_csprng()
@@ -79,7 +81,7 @@ static void seed_csprng()
 
 /* fallback, /dev/urandom - hopefully it will never be used as it would need to
  * be taken into account when it comes to chroot/jail/privsep */
-	if (getentropy(seed, 16) != 0){
+	if (seedrnd(seed, 16) != 0){
 		FILE* fpek = fopen("/dev/urandom", "r");
 		if (!fpek || 1 != fread(seed, 16, 1, fpek))
 			arcan_fatal("couldn't seed CSPRNG, system not in a safe state\n");
