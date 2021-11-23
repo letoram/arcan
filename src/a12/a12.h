@@ -61,7 +61,7 @@ struct a12_context_options {
 /* Client only, provide the private key to use with the connection, this will
  * be xored with a per-execution session cookie stored random to avoid leaking
  * from a read primitive or crash dump. All [0] key will disable attempts at
- * asymetric operation. */
+* asymetric operation. */
 	uint8_t priv_key[32];
 
 /* default is to add a round-trip and use an ephemeral public key to transfer
@@ -77,6 +77,10 @@ struct a12_context_options {
  * message and cipher state for the first packets before DH exchange has been
  * completed */
 	char secret[32];
+
+/* if set, the connection is expected to act as a source to the other end,
+ * i.e. in control over presenting data to the primary channel. */
+	bool is_source;
 
 /* if set, the a12_flush() will not return a buffer to write out, but rather
  * call into the sink as soon as there is data to send. This helps debugging

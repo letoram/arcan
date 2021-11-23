@@ -136,6 +136,8 @@ static void send_hello_packet(struct a12_state* S,
 	memcpy(&outb[8], entropy, 8);
 	memcpy(&outb[21], pubk, 32);
 
+	outb[53] = S->opts->is_source ? 1 : 2;
+
 /* channel-id is empty */
 	outb[17] = COMMAND_HELLO;
 	outb[18] = ASHMIF_VERSION_MAJOR;
@@ -1446,8 +1448,28 @@ static void process_hello_auth(struct a12_state* S)
 - [18]      Version major : uint8 (shmif-version until 1.0)
 - [19]      Version minor : uint8 (shmif-version until 1.0)
 - [20]      Flags         : uint8
-- [21+ 32]  x25519 Pk     : blob
+- [21+ 32]  x25519 Pk     : blob,
+- [54]      Source/Sink
 	 */
+
+	if (S->decode[54]){
+		if ((S->opts->is_source && S->decode[54] == 2)){
+			a12int_trace(A12_TRACE_SYSTEM, "kind=match:local=source:remote=sink");
+		}
+		else if(!S->opts->is_source && S->decode[54] == 1){
+			a12int_trace(A12_TRACE_SYSTEM, "kind=match:local=sink:remote=source");
+		}
+		else {
+			fail_state(S);
+			a12int_trace(A12_TRACE_SYSTEM,
+				"kind=error:status=EINVALID:hello_kind=%"PRIu8, S->decode[64]);
+			return;
+		}
+	}
+/* ignore any mismatch for the time being in order to retain backwards compat. */
+	else
+		;
+
 	if (S->authentic == AUTH_SERVER_HBLOCK){
 		hello_auth_server_hello(S);
 		return;

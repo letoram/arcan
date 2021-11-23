@@ -118,7 +118,13 @@ static int get_keystore_dirfd(const char** err)
 		return -1;
 	}
 
-	return dir;
+	int keydir = openat(dir, "a12", O_DIRECTORY);
+	if (-1 == keydir){
+		mkdirat(dir, "a12", S_IRWXU);
+		keydir = openat(dir, "a12", O_DIRECTORY);
+	}
+
+	return keydir;
 }
 
 
@@ -481,6 +487,7 @@ static int a12_preauth(struct anet_options* args,
 		return EXIT_FAILURE;
 	}
 
+	args->opts->is_source = true;
 	struct anet_cl_connection anet = forward_shmifsrv_cl(cl, args);
 
 /* and ack the connection */
@@ -576,6 +583,7 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			if (opts->mode)
 				return show_usage(modeerr);
 
+			opts->opts->is_source = true;
 			opts->mode = ANET_SHMIF_SRV;
 			if (i >= argc - 1)
 				return show_usage("-s: Missing connpoint argument");
@@ -690,6 +698,7 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			meta->bin = argv[i];
 			meta->argv = &argv[i];
 			opts->mode = ANET_SHMIF_EXEC;
+			opts->opts->is_source = true;
 
 			return i;
 		}
