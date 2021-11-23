@@ -435,7 +435,7 @@ static void* pump_pipe()
 						flush_ascii(buffer, nr, false);
 					break;
 					case PIPE_STATS_BASIC:
-						flush_stats(buffer, nr);
+						flush_stats();
 					break;
 					case PIPE_UTF8:
 						flush_utf8(buffer, nr);
@@ -805,7 +805,7 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 		"COLUMNS", "LINES", "TERMCAP",
 		"ARCAN_ARG", "ARCAN_APPLPATH", "ARCAN_APPLTEMPPATH",
 		"ARCAN_FRAMESERVER_LOGDIR", "ARCAN_RESOURCEPATH",
-		"ARCAN_SHMKEY", "ARCAN_SOCKIN_FD", "ARCAN_STATEPATH"
+		"ARCAN_SHMKEY", "ARCAN_SOCKIN_FD"
 	};
 
 	int ind = 0;

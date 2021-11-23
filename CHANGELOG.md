@@ -1,3 +1,8 @@
+## 0.6.2
+
+# Terminal
+ * permit ARCAN\_STATEPATH to propagate into child env
+
 ## 0.6.1
 
 ## Engine
