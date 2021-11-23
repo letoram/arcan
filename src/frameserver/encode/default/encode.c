@@ -1,6 +1,6 @@
 /*
  * Encode reference frameserver archetype
- * Copyright 2012-2018, Björn Ståhl
+ * Copyright: Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Depends: FFMPEG (GPLv2,v3,LGPL)
@@ -33,6 +33,10 @@ extern void a12_serv_run(struct arg_arr*, struct arcan_shmif_cont);
 
 #ifdef HAVE_VNCSERVER
 extern void vnc_serv_run(struct arg_arr*, struct arcan_shmif_cont);
+#endif
+
+#ifdef HAVE_V4L2
+extern int v4l2_run(struct arg_arr*, struct arcan_shmif_cont);
 #endif
 
 void png_stream_run(struct arg_arr* args, struct arcan_shmif_cont cont);
@@ -694,6 +698,15 @@ static void dump_help()
 		" pass   \t string    \t set server password (insecure)\n"
 		" port   \t number    \t set server listen port\n\n"
 #endif
+#ifdef HAVE_V4L2
+		"protocol=cam\n"
+		" key    \t  value    \t   description\n"
+		"--------\t-----------\t-----------------\n"
+		" device \t  number   \t set videoN device to write into (/dev/videoN)\n"
+		" format \t  pxfmt    \t output pixel format (rgb, bgr)\n"
+		" fps    \t  fps      \t (=25), target framerate\n"
+		" fdout  \t           \t slow write path instead of mmap\n\n"
+#endif
 #ifdef HAVE_OCR
 		"protocol=ocr\n"
 		"  key   \t   value   \t   description\n"
@@ -746,6 +759,12 @@ int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		if (strcmp(argval, "vnc") == 0){
 			vnc_serv_run(args, *cont);
 			return EXIT_SUCCESS;
+		}
+#endif
+
+#ifdef HAVE_V4L2
+		if (strcmp(argval, "cam") == 0){
+			return v4l2_run(args, *cont);
 		}
 #endif
 

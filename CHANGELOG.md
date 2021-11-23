@@ -1,7 +1,10 @@
 ## 0.6.2
 
-# Terminal
+## Terminal
  * permit ARCAN\_STATEPATH to propagate into child env
+
+## Frameservers
+ * Encode: (linux) add support for a v4l2-loopback sink
 
 ## 0.6.1
 
