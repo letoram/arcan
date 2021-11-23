@@ -333,6 +333,7 @@ interleaving.
 - [19]      Version minor : uint8 (shmif-version until 1.0)
 - [20]      Mode          : uint8
 - [21+ 32]  x25519 Pk     : blob
+- [54]      Primary flow  : uint8
 
 The hello message contains key-material for normal x25519, according to
 the Mode byte [20].
@@ -345,6 +346,16 @@ auth and cipher to computed session key for all subsequent packets.
 
 2 : X25519 nested - Supplied Pk is ephemeral, return ephemeral Pk, switch
 to computed session key and treat next hello as direct.
+
+The primary flow is one of the following:
+0 : don't care
+1 : source
+2 : sink
+
+It is used to indicate what each end is expecting from the connection, a client
+that is configured to push (x11-style forwarding) want to act as a source and
+would send 1 in its first HELLO, otherwise 2 (sink). If this does not match the
+configuration/expectations of the other end, the connection MUST be terminated.
 
 ### command = 1, shutdown
 - [18..n] : last\_words : UTF-8

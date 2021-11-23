@@ -1,5 +1,10 @@
 ## 0.6.2
 
+## Net
+ * Protocol: add intent to HELLO (source or sink)
+ * Drop connection on intent conflict (source connect to source or sink to sink)
+ * Move keystore to statepath subdir (a12)
+
 ## Terminal
  * permit ARCAN\_STATEPATH to propagate into child env
 
