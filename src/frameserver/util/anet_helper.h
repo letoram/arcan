@@ -103,6 +103,9 @@ uint8_t* a12helper_tob64(const uint8_t* data, size_t inl, size_t* outl);
 bool a12helper_keystore_hostkey(const char* tagname, size_t index,
 	uint8_t privk[static 32], char** outhost, uint16_t* outport);
 
+/* list all the known outbound tags, terminates with a NULL tagname */
+bool a12helper_keystore_tags(bool (*cb)(const char* tagname, void*), void* tag);
+
 /* Append or crete a new tag with the specified host, this will also
  * create a new private key if needed. Returns the public key in outk */
 bool a12helper_keystore_register(
@@ -136,6 +139,12 @@ int anet_clfd(struct addrinfo* addr);
  * and it is the caller that is responsible for cleaning up.
  */
 bool anet_authenticate(struct a12_state* S, int fdin, int fdout, char** err);
+
+/*
+ * Used for the BASEDIR keystore method, using environment variables or config
+ * files to figure out where to store the keys.
+ */
+int a12helper_keystore_dirfd(const char** err);
 
 /*
  * Using the configuration structure in anet_options, build a listening

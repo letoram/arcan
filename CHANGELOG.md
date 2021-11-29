@@ -5,11 +5,18 @@
  * Drop connection on intent conflict (source connect to source or sink to sink)
  * Move keystore to statepath subdir (a12)
 
+## Lua
+ * net\_discover added, use this to find other a12 clients
+
 ## Terminal
  * permit ARCAN\_STATEPATH to propagate into child env
 
+## Shmif
+ * add EXTERNAL\_NETSTATE for fsrv\_net to convey known-set changes
+
 ## Frameservers
  * Encode: (linux) add support for a v4l2-loopback sink
+ * Net: added 'sweep' discovery mode
 
 ## 0.6.1
 

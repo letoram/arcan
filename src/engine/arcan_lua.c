@@ -255,6 +255,34 @@ typedef int acoord;
 #define LUACTX_OPEN_FILES 64
 #endif
 
+#ifndef CONST_DISCOVER_PASSIVE
+#define CONST_DISCOVER_PASSIVE 1
+#endif
+
+#ifndef CONST_DISCOVER_SWEEP
+#define CONST_DISCOVER_SWEEP 2
+#endif
+
+#ifndef CONST_DISCOVER_BROADCAST
+#define CONST_DISCOVER_BROADCAST 3
+#endif
+
+#ifndef CONST_DISCOVER_DIRECTORY
+#define CONST_DISCOVER_DIRECTORY 4
+#endif
+
+#ifndef CONST_TRUST_KNOWN
+#define CONST_TRUST_KNOWN 11
+#endif
+
+#ifndef CONST_TRUST_PERMIT_UNKNOWN
+#define CONST_TRUST_PERMIT_UNKNOWN 12
+#endif
+
+#ifndef CONST_TRUST_TRANSITIVE
+#define CONST_TRUST_TRANSITIVE 13
+#endif
+
 /*
  * disable support for all builtin frameservers
  * which removes most (launch_target and target_alloc remain)
@@ -5324,6 +5352,34 @@ void arcan_lwa_subseg_ev(
 }
 #endif
 
+/* from shmif_event.h: struct netstate definition */
+static char* spacetostr(int space)
+{
+	switch (space){
+	case 0:
+		return "tag";
+	break;
+	case 1:
+		return "basename";
+	break;
+	case 2:
+		return "subname";
+	break;
+	case 3:
+		return "ipv4";
+	break;
+	case 4:
+		return "ipv6";
+	break;
+	case 6:
+		return "a12pub";
+	break;
+	default:
+		return "unknown";
+	break;
+	}
+}
+
 bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
 	bool adopt_check = false;
@@ -5601,6 +5657,29 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx, "state_size", ev->ext.stateinf.size, top);
 			tblnum(ctx, "typeid", ev->ext.stateinf.type, top);
 		break;
+		case EVENT_EXTERNAL_NETSTATE:
+			tbldynstr(ctx, "kind", "state", top);
+			MSGBUF_UTF8(ev->ext.netstate.name);
+			tbldynstr(ctx, "name", msgbuf, top);
+			tbldynstr(ctx, "namespace", spacetostr(ev->ext.netstate.space), top);
+
+			if (ev->ext.netstate.state == 1)
+				tblbool(ctx, "discovered", true, top);
+			else if (ev->ext.netstate.state == 0)
+				tblbool(ctx, "lost", true, top);
+			else {
+				tblbool(ctx, "bad", true, top);
+			}
+
+			if (ev->ext.netstate.type & 1)
+				tblbool(ctx, "source", true, top);
+			if (ev->ext.netstate.type & 2)
+				tblbool(ctx, "sink", true, top);
+
+			if (ev->ext.netstate.type == 4)
+				tblbool(ctx, "directory", true, top);
+
+		break;
 		case EVENT_EXTERNAL_REGISTER:{
 /* prevent switching types */
 			int id = ev->ext.registr.kind;
@@ -5608,7 +5687,9 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				ev->ext.registr.kind != fsrv->segid){
 				id = ev->ext.registr.kind = fsrv->segid;
 			}
-			else if (id == SEGID_NETWORK_CLIENT || id == SEGID_NETWORK_SERVER){
+/* as well as registering protected types */
+			else if (fsrv->segid == SEGID_UNKNOWN &&
+				(id == SEGID_NETWORK_CLIENT || id == SEGID_NETWORK_SERVER)){
 				arcan_warning("client (%d) attempted to register a reserved (%d) "
 					"type which is not permitted.\n", fsrv->segid, id);
 				lua_settop(ctx, reset);
@@ -12493,7 +12574,8 @@ cleanup:
 }
 
 static bool lua_launch_fsrv(lua_State* ctx,
-	struct frameserver_envp* args, intptr_t callback)
+	struct frameserver_envp* args, intptr_t callback,
+	struct arcan_frameserver** out)
 {
 	if (!fsrv_ok){
 		lua_pushvid(ctx, ARCAN_EID);
@@ -12514,6 +12596,9 @@ static bool lua_launch_fsrv(lua_State* ctx,
 
 	lua_pushvid(ctx, ref->vid);
 	trace_allocation(ctx, "net", ref->vid);
+
+	if (out)
+		*out = ref;
 	return true;
 }
 
@@ -12552,7 +12637,12 @@ static int net_listen(lua_State* ctx)
 		.args.builtin.mode = "net-srv",
 		.args.builtin.resource = buf
 	};
-	lua_launch_fsrv(ctx, &args, ref);
+
+/* no point in exposing the frameserver on script-error migration */
+	struct arcan_frameserver* out;
+	lua_launch_fsrv(ctx, &args, ref, &out);
+	if (out)
+		out->flags.no_adopt = true;
 
 	LUA_ETRACE("net_listen", NULL, 1);
 }
@@ -12561,38 +12651,94 @@ static int net_discover(lua_State* ctx)
 {
 	LUA_TRACE("net_discover");
 
-	int ind = find_lua_type(ctx, LUA_TSTRING, 0);
-	intptr_t ref = find_lua_callback(ctx);
+	size_t ofs = 1;
+	size_t mode = CONST_DISCOVER_SWEEP;
+	size_t trust = CONST_TRUST_KNOWN;
+	const char* trustm;
+	const char* discm;
 
-	if (ind){
-		const char* lua_str = luaL_checkstring(ctx, ind);
-		char consstr[] = "mode=client:discover:";
-		size_t tmplen = strlen(lua_str) + sizeof(consstr);
+	if (lua_type(ctx, ofs) == LUA_TNUMBER){
+		mode = lua_tonumber(ctx, ofs);
+		ofs++;
+	}
 
-		char* tmpstr = arcan_alloc_mem(tmplen, ARCAN_MEM_STRINGBUF,
-			ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
+	if (lua_type(ctx, ofs) == LUA_TNUMBER){
+		trust = lua_tonumber(ctx, ofs);
+		ofs++;
+	}
 
-		snprintf(tmpstr, tmplen, "%s%s", consstr, lua_str);
+	switch (mode){
+	case CONST_DISCOVER_SWEEP:
+		discm = "sweep";
+	break;
+	case CONST_DISCOVER_PASSIVE:
+		discm = "passive";
+	break;
+	case CONST_DISCOVER_BROADCAST:
+		discm = "broadcast";
+	break;
+	case CONST_DISCOVER_DIRECTORY:
+		discm = "directory";
+	break;
+	default:
+		arcan_fatal("net_discover(): unknown discover mode: %zu", mode);
+	}
 
-		struct frameserver_envp args = {
-			.args.builtin.mode = "net-cl",
-			.use_builtin = true,
-			.args.builtin.resource = tmpstr
-		};
+	switch (trust){
+	case CONST_TRUST_KNOWN:
+		trustm = "known";
+	break;
+	case CONST_TRUST_PERMIT_UNKNOWN:
+		trustm = "unknown";
+	break;
+	case CONST_TRUST_TRANSITIVE:
+		trustm = "transitive";
+	break;
+	default:
+		arcan_fatal("net_discover(): unknown trust model: %zu", trust);
+	break;
+	}
 
-		lua_launch_fsrv(ctx, &args, ref);
-		arcan_mem_free(tmpstr);
+	const char* descr = "";
+	if (lua_type(ctx, ofs) == LUA_TSTRING){
+		descr = lua_tostring(ctx, ofs);
+		ofs++;
+	}
+
+	intptr_t ref = LUA_NOREF;
+	if (lua_isfunction(ctx, ofs) && !lua_iscfunction(ctx, ofs)){
+		lua_pushvalue(ctx, ofs);
+		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
 	}
 	else
-	{
-		struct frameserver_envp args = {
-			.args.builtin.mode = "net-cl",
-			.use_builtin = true,
-			.args.builtin.resource = "mode=client:discover"
-		};
+		arcan_fatal("net_discover(): argument error, expected event handler");
 
-		lua_launch_fsrv(ctx, &args, ref);
+	size_t len = sizeof("mode=client:discover=:trust=:opt=") +
+		sizeof("directory") + sizeof("transitive") + strlen(descr);
+
+	char* instr =
+		arcan_alloc_mem(
+			len,
+			ARCAN_MEM_STRINGBUF,
+			ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL,
+			ARCAN_MEMALIGN_NATURAL
+		);
+
+	if (!instr){
+		lua_pushvid(ctx, ARCAN_EID);
+		LUA_ETRACE("net_discover", NULL, 1);
 	}
+
+	snprintf(instr, len, "mode=client:discover=%s:trust=%s:opt=%s", discm, trustm, descr);
+
+	struct frameserver_envp args = {
+		.args.builtin.mode = "net-cl",
+		.use_builtin = true,
+		.args.builtin.resource = instr
+	};
+
+	lua_launch_fsrv(ctx, &args, ref, NULL);
+	arcan_mem_free(instr);
 
 	LUA_ETRACE("net_discover", NULL, 1);
 }
@@ -12624,7 +12770,7 @@ static int net_open(lua_State* ctx)
 		.args.builtin.resource = instr
 	};
 
-	lua_launch_fsrv(ctx, &args, ref);
+	lua_launch_fsrv(ctx, &args, ref, NULL);
 
 	free(instr);
 	free(workstr);
@@ -13370,7 +13516,13 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"NOW", 0},
 {"NOPERSIST", 0},
 {"PERSIST", 1},
-{"NET_BROADCAST", 0},
+{"DISCOVER_PASSIVE", CONST_DISCOVER_PASSIVE},
+{"DISCOVER_SWEEP", CONST_DISCOVER_SWEEP},
+{"DISCOVER_BROADCAST", CONST_DISCOVER_BROADCAST},
+{"DISCOVER_DIRECTORY", CONST_DISCOVER_DIRECTORY},
+{"TRUST_KNOWN", CONST_TRUST_KNOWN},
+{"TRUST_PERMIT_UNKNOWN", CONST_TRUST_PERMIT_UNKNOWN},
+{"TRUST_TRANSITIVE", CONST_TRUST_TRANSITIVE},
 {"TRANSLATION_CLEAR", EVENT_TRANSLATION_CLEAR},
 {"TRANSLATION_SET", EVENT_TRANSLATION_SET},
 {"TRANSLATION_REMAP", EVENT_TRANSLATION_REMAP},

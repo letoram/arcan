@@ -199,6 +199,15 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 				(char*)ev.ext.streamstat.timelim,
 				ev.ext.streamstat.completion, ev.ext.streamstat.streaming);
 		break;
+		case EVENT_EXTERNAL_NETSTATE:
+			snprintf(work, dsz,"EXT:NETSTATE(space=%"PRIu8":state=%"
+				PRIu8":type=%"PRIu8":name=%s",
+				ev.ext.netstate.space,
+				ev.ext.netstate.state,
+				ev.ext.netstate.type,
+				ev.ext.netstate.name
+			);
+		break;
 		default:
 			snprintf(work, dsz,"EXT:UNKNOWN(!)");
 		break;
