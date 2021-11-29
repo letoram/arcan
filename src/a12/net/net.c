@@ -103,31 +103,6 @@ void arcan_fatal(const char* msg, ...)
 	exit(EXIT_FAILURE);
 }
 
-static int get_keystore_dirfd(const char** err)
-{
-	char* basedir = getenv("ARCAN_STATEPATH");
-
-	if (!basedir){
-		*err = "Missing keystore (set ARCAN_STATEPATH)";
-		return -1;
-	}
-
-	int dir = open(basedir, O_DIRECTORY);
-	if (-1 == dir){
-		*err = "Error opening basedir, check permissions and type";
-		return -1;
-	}
-
-	int keydir = openat(dir, "a12", O_DIRECTORY);
-	if (-1 == keydir){
-		mkdirat(dir, "a12", S_IRWXU);
-		keydir = openat(dir, "a12", O_DIRECTORY);
-	}
-
-	return keydir;
-}
-
-
 /*
  * in this mode we should really fexec ourselves so we don't risk exposing
  * aslr or canaries, as well as handle the key-generation
@@ -505,7 +480,7 @@ static bool tag_host(struct anet_options* anet, char* hoststr, const char** err)
 	*toksep = '\0';
 	anet->key = hoststr;
 	anet->keystore.type = A12HELPER_PROVIDER_BASEDIR;
-	anet->keystore.directory.dirfd = get_keystore_dirfd(err);
+	anet->keystore.directory.dirfd = a12helper_keystore_dirfd(err);
 
 	return true;
 }
@@ -778,7 +753,7 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 /* keystore is singleton global */
 static bool open_keystore(const char** err)
 {
-	int dir = get_keystore_dirfd(err);
+	int dir = a12helper_keystore_dirfd(err);
 	if (-1 == dir)
 		return false;
 

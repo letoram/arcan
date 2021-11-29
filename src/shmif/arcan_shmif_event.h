@@ -633,7 +633,6 @@ enum ARCAN_TARGET_COMMAND {
  */
 	TARGET_COMMAND_DEVICESTATE,
 
-
 	TARGET_COMMAND_LIMIT = INT_MAX
 };
 
@@ -830,6 +829,12 @@ enum ARCAN_EVENT_EXTERNAL {
  * Uses the inputmask substructure.
  */
 	EVENT_EXTERNAL_INPUTMASK = 21,
+
+/*
+ * Used by afsrv_net (SEGID_NETWORK_*) and will be dropped or ignored if coming
+ * from any other segment type. Uses the netstate substructure.
+ */
+	EVENT_EXTERNAL_NETSTATE = 22,
 
 	EVENT_EXTERNAL_ULIM = INT_MAX
 };
@@ -1347,6 +1352,36 @@ enum ARCAN_TARGET_SKIPMODE {
 		uint32_t device;
 		uint32_t types;
 	} inputmask;
+
+/*
+ * Used by afsrv_net discovery and directory service to forward information
+ * about state changes.
+ *
+ * (space) : interpretation of (name)
+ *           0 = tag
+ *           1 = host [basename]
+ *           2 = host [append subdomain] - empty terminates
+ *           3 = ipv4
+ *           4 = ipv6
+ *           5 = a12 Kpub
+ *
+ * (name)  : identifier in [space] 0 terminated
+ *
+ * (state) : 0 = lost
+ *           1 = discovered
+ *
+ * (type)  : 0 = unknown
+ *           1 = source
+ *           2 = sink
+ *           3 = source | sink
+ *           4 = directory
+ */
+	struct {
+		char name[66]; /* covers local tag, chunked hostname, ipv6 string, ... */
+		uint8_t space;
+		uint8_t state;
+		uint8_t type;
+	} netstate;
 
 /*
  * Indicate that the connection supports abstract input labels, along

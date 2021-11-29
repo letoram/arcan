@@ -46,7 +46,10 @@ static struct {
 
 	bool open;
 	struct keystore_provider provider;
-} keystore;
+} keystore = {
+	.dirfd_private = -1,
+	.dirfd_accepted = -1
+};
 
 static uint8_t b64dec_lut[256] = {
 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -259,8 +262,16 @@ static void load_accepted_keys()
 
 bool a12helper_keystore_open(struct keystore_provider* p)
 {
-	if (!p || keystore.open)
+	if (!p)
 		return false;
+
+/* permit open on an already open keystore assuming it is the same provider */
+	if (keystore.open){
+		if (memcmp(p, &keystore.provider, sizeof(struct keystore_provider)) == 0)
+			return true;
+
+		return false;
+	}
 
 	keystore.provider = *p;
 	if (keystore.provider.type != A12HELPER_PROVIDER_BASEDIR)
@@ -279,12 +290,17 @@ bool a12helper_keystore_open(struct keystore_provider* p)
 	int fl = O_DIRECTORY | O_CLOEXEC;
 	if (-1 == (keystore.dirfd_accepted =
 		openat(keystore.provider.directory.dirfd, "accepted", fl))){
+		close(keystore.provider.directory.dirfd);
+		keystore.provider.directory.dirfd = -1;
 		return false;
 	}
 
 	if (-1 == (keystore.dirfd_private =
 		openat(keystore.provider.directory.dirfd, "hostkeys", fl))){
 		close(keystore.dirfd_accepted);
+		keystore.dirfd_accepted = -1;
+		close(keystore.provider.directory.dirfd);
+		keystore.provider.directory.dirfd = -1;
 		return false;
 	}
 
@@ -356,6 +372,12 @@ bool a12helper_keystore_release()
 		return false;
 
 	close(keystore.provider.directory.dirfd);
+	close(keystore.dirfd_accepted);
+	close(keystore.dirfd_private);
+
+	keystore.provider.directory.dirfd = -1;
+	keystore.dirfd_accepted = -1;
+	keystore.dirfd_private = -1;
 	keystore.open = false;
 
 	return true;
@@ -549,6 +571,34 @@ out:
 	return true;
 }
 
+bool a12helper_keystore_tags(bool (*cb)(const char*, void*), void* tag)
+{
+	if (!cb)
+		return false;
+
+	DIR* dir = fdopendir(keystore.dirfd_private);
+	if (!dir){
+		cb(NULL, tag);
+		return false;
+	}
+
+	struct dirent* dent;
+
+/* 'all applications are supposed to handle dt_unknown' but stat:ing and
+ * checking if it is a regular file and then opening thereafter is also meh -
+ * other keystores won't have this problem anyhow so just ignore. */
+	while ((dent = readdir(dir))){
+		if (dent->d_type == DT_REG){
+			if (!cb(dent->d_name, tag))
+				break;
+		}
+	}
+
+	cb(NULL, tag);
+	closedir(dir);
+	return true;
+}
+
 /*
  * this can be timed for a side-channel leak of:
  *
@@ -602,4 +652,28 @@ bool a12helper_keystore_accepted(const uint8_t pubk[static 32], const char* conn
 	}
 
 	return false;
+}
+
+int a12helper_keystore_dirfd(const char** err)
+{
+	char* basedir = getenv("ARCAN_STATEPATH");
+
+	if (!basedir){
+		*err = "Missing keystore (set ARCAN_STATEPATH)";
+		return -1;
+	}
+
+	int dir = open(basedir, O_DIRECTORY);
+	if (-1 == dir){
+		*err = "Error opening basedir, check permissions and type";
+		return -1;
+	}
+
+	int keydir = openat(dir, "a12", O_DIRECTORY);
+	if (-1 == keydir){
+		mkdirat(dir, "a12", S_IRWXU);
+		keydir = openat(dir, "a12", O_DIRECTORY);
+	}
+
+	return keydir;
 }

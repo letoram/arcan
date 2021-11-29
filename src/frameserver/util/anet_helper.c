@@ -147,11 +147,15 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 	};
 
 /* open the keystore and iteratively invoke cl_setup on each entry until
- * we get a working connection */
+ * we get a working connection - the keystore gets released if it can't
+ * be opened (i.e. there is a change between the contents of the keystore
+ * arg between invocations */
 	if (arg->key){
-		a12helper_keystore_release();
 		if (!a12helper_keystore_open(&arg->keystore)){
-			res.errmsg = strdup("couldn't open keystore\n");
+			a12helper_keystore_release();
+			if (!a12helper_keystore_open(&arg->keystore)){
+				res.errmsg = strdup("couldn't open keystore\n");
+			}
 			return res;
 		}
 
