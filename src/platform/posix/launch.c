@@ -300,9 +300,11 @@ struct arcan_frameserver* platform_launch_fork(
 		}
 		else if (strcmp(setup->args.builtin.mode, "net-cl") == 0){
 			ctx->segid = SEGID_NETWORK_CLIENT;
+			setup->args.builtin.mode = "net";
 		}
 		else if (strcmp(setup->args.builtin.mode, "net-srv") == 0){
 			ctx->segid = SEGID_NETWORK_SERVER;
+			setup->args.builtin.mode = "net";
 		}
 		else if (strcmp(setup->args.builtin.mode, "encode") == 0){
 			ctx->segid = SEGID_ENCODER;
