@@ -78,9 +78,8 @@ struct a12_context_options {
  * completed */
 	char secret[32];
 
-/* if set, the connection is expected to act as a source to the other end,
- * i.e. in control over presenting data to the primary channel. */
-	bool is_source;
+/* can be set to ROLE_PROBE, ROLE_SOURCE, ROLE_SINK or ROLE_DIR(EIMPL) */
+	int local_role;
 
 /* if set, the a12_flush() will not return a buffer to write out, but rather
  * call into the sink as soon as there is data to send. This helps debugging
@@ -274,6 +273,14 @@ enum authentic_state {
 	AUTH_EPHEMERAL_PK      = 3, /* server->client, HELLO (ephemeral Pubk, switch cipher) */
 	AUTH_REAL_HELLO_SENT   = 4, /* client->server, HELLO (real Pubk, switch cipher)      */
 	AUTH_FULL_PK           = 5, /* server->client, HELLO - now rekeying can be scheduled */
+};
+
+enum self_roles {
+	ROLE_NONE   = 0, /* legacy compatibility */
+	ROLE_SOURCE = 1,
+	ROLE_SINK   = 2,
+	ROLE_PROBE  = 3, /* terminate after authenticate, don't activate source */
+	ROLE_DIR    = 4  /* EIMPL still */
 };
 
 /*
@@ -522,6 +529,11 @@ void a12_stream_cancel(struct a12_state* S, uint8_t chid);
  * Check the status flag of the state machine
  */
 bool a12_ok(struct a12_state* S);
+
+/*
+ * Check the state of the remote end primary channel (source, sink, ...)
+ */
+int a12_remote_mode(struct a12_state* S);
 
 /*
  * Cancel a video stream that is ongoing in a specific channel

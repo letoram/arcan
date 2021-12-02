@@ -46,6 +46,7 @@ struct arcan_net_meta {
 static struct {
 	bool soft_auth;
 	bool no_default;
+	bool probe_only;
 	size_t accept_n_pk_unknown;
 	size_t backpressure;
 	size_t backpressure_soft;
@@ -150,6 +151,13 @@ static bool handover_setup(struct a12_state* S,
 {
 	if (meta->opts->mode != ANET_SHMIF_EXEC)
 		return true;
+
+	if (S->remote_mode == ROLE_PROBE){
+		a12int_trace(A12_TRACE_SYSTEM, "probed:terminating");
+		shutdown(fd, SHUT_RDWR);
+		close(fd);
+		return false;
+	}
 
 /* wait for authentication before going for the shmifsrv processing mode */
 	char* msg;
@@ -291,7 +299,6 @@ static void fork_a12cl_dispatch(
 {
 	pid_t fpid = fork();
 	if (fpid == 0){
-/* missing: extend sandboxing, close stdio */
 			a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
 			.dirfd_temp = -1,
 			.dirfd_cache = -1,
@@ -462,7 +469,7 @@ static int a12_preauth(struct anet_options* args,
 		return EXIT_FAILURE;
 	}
 
-	args->opts->is_source = true;
+	args->opts->local_role = ROLE_SOURCE;
 	struct anet_cl_connection anet = forward_shmifsrv_cl(cl, args);
 
 /* and ack the connection */
@@ -507,6 +514,7 @@ static bool show_usage(const char* msg)
 	"\t               \t if [n] is provided, n keys added to trusted\n"
 	"\t-t             \t Single- client (no fork/mt - easier troubleshooting)\n"
 	"\t --no-ephem-rt \t Disable ephemeral keypair roundtrip (outbound only)\n"
+	"\t --probe-only  \t (outbound) Authenticate and print server primary state\n"
 	"\t-d bitmap      \t Set trace bitmap (bitmask or key1,key2,...)\n\n"
 	"Environment variables:\n"
 	"\tARCAN_STATEPATH\t Used for keystore and state blobs (sensitive)\n"
@@ -533,6 +541,9 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 	const char* modeerr = "Mixed or multiple -s or -l arguments";
 	struct anet_options* opts = meta->opts;
 
+/* the default role is sink, -s -exec changes this to source */
+	opts->opts->local_role = ROLE_SINK;
+
 /* default-trace security warnings */
 	a12_set_trace_level(2048, stderr);
 
@@ -558,7 +569,7 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			if (opts->mode)
 				return show_usage(modeerr);
 
-			opts->opts->is_source = true;
+			opts->opts->local_role = ROLE_SOURCE;
 			opts->mode = ANET_SHMIF_SRV;
 			if (i >= argc - 1)
 				return show_usage("-s: Missing connpoint argument");
@@ -637,6 +648,9 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		else if (strcmp(argv[i], "--no-ephem-rt") == 0){
 			opts->opts->disable_ephemeral_k = true;
 		}
+		else if (strcmp(argv[i], "--probe-only") == 0){
+			global.probe_only = true;
+		}
 /* a12 server, shmif client */
 		else if (strcmp(argv[i], "-l") == 0){
 			if (opts->mode)
@@ -673,7 +687,7 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			meta->bin = argv[i];
 			meta->argv = &argv[i];
 			opts->mode = ANET_SHMIF_EXEC;
-			opts->opts->is_source = true;
+			opts->opts->local_role = ROLE_SOURCE;
 
 			return i;
 		}
@@ -928,6 +942,13 @@ int main(int argc, char** argv)
 					fprintf(stderr, "couldn't connect to %s\n", anet.host);
 
 				return EXIT_FAILURE;
+			}
+
+			if (global.probe_only){
+				printf("authenticated:remote_mode=%d\n", a12_remote_mode(cl.state));
+				shutdown(cl.fd, SHUT_RDWR);
+				close(cl.fd);
+				return EXIT_SUCCESS;
 			}
 
 			int rc = a12helper_a12srv_shmifcl(cl.state, NULL, cl.fd, cl.fd);

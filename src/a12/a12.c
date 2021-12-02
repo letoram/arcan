@@ -136,7 +136,12 @@ static void send_hello_packet(struct a12_state* S,
 	memcpy(&outb[8], entropy, 8);
 	memcpy(&outb[21], pubk, 32);
 
-	outb[53] = S->opts->is_source ? 1 : 2;
+	if (S->opts->local_role == ROLE_SOURCE){
+		outb[54] = 1;
+	}
+	else if (S->opts->local_role == ROLE_SINK){
+		outb[54] = 2;
+	}
 
 /* channel-id is empty */
 	outb[17] = COMMAND_HELLO;
@@ -1437,6 +1442,8 @@ static void hello_auth_client_hello(struct a12_state* S)
 
 	S->authentic = AUTH_FULL_PK;
 	S->auth_latched = true;
+	S->remote_mode = S->decode[54];
+	a12int_trace(A12_TRACE_SYSTEM, "remote_mode=%d", S->remote_mode);
 
 	if (S->on_auth)
 		S->on_auth(S, S->auth_tag);
@@ -1453,11 +1460,26 @@ static void process_hello_auth(struct a12_state* S)
 	 */
 
 	if (S->decode[54]){
-		if ((S->opts->is_source && S->decode[54] == 2)){
+		S->remote_mode = ROLE_PROBE;
+		if ((S->opts->local_role == ROLE_SOURCE && S->decode[54] == ROLE_SINK)){
 			a12int_trace(A12_TRACE_SYSTEM, "kind=match:local=source:remote=sink");
 		}
-		else if(!S->opts->is_source && S->decode[54] == 1){
+		else if(S->opts->local_role == ROLE_SINK && S->decode[54] == ROLE_SOURCE){
 			a12int_trace(A12_TRACE_SYSTEM, "kind=match:local=sink:remote=source");
+		}
+		else if (S->decode[54] == ROLE_PROBE){
+			if (S->authentic == AUTH_SERVER_HBLOCK){
+/* only the client end is allowed to probe */
+			}
+			else {
+				a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EINVAL:probe");
+				fail_state(S);
+				return;
+			}
+		}
+		else if (S->decode[64] == ROLE_DIR){
+			fail_state(S);
+			a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EIMPL:directory_mode");
 		}
 		else {
 			fail_state(S);
@@ -2656,4 +2678,9 @@ void a12_sensitive_free(void* ptr, size_t buf)
 		pos[i] = 0;
 	}
 	arcan_mem_free(ptr);
+}
+
+int a12_remote_mode(struct a12_state* S)
+{
+	return S->remote_mode;
 }

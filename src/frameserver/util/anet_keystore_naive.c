@@ -257,6 +257,7 @@ static void load_accepted_keys()
 		fclose(fpek);
 	}
 
+	rewinddir(dir);
 	closedir(dir);
 }
 
@@ -492,7 +493,7 @@ bool a12helper_keystore_hostkey(const char* tagname, size_t index,
 	if (!res)
 		free(*outhost);
 
-	return res;
+	return res && index == 0;
 }
 
 /* Append or crete a new tag with the specified host, this will also create a key */
@@ -576,8 +577,16 @@ bool a12helper_keystore_tags(bool (*cb)(const char*, void*), void* tag)
 	if (!cb)
 		return false;
 
-	DIR* dir = fdopendir(keystore.dirfd_private);
+	lseek(keystore.dirfd_private, 0, SEEK_SET);
+	int tmpdfd = dup(keystore.dirfd_private);
+	if (-1 == tmpdfd)
+		return false;
+
+	DIR* dir = fdopendir(tmpdfd);
 	if (!dir){
+		if (-1 != tmpdfd)
+			close(tmpdfd);
+
 		cb(NULL, tag);
 		return false;
 	}
@@ -586,15 +595,17 @@ bool a12helper_keystore_tags(bool (*cb)(const char*, void*), void* tag)
 
 /* 'all applications are supposed to handle dt_unknown' but stat:ing and
  * checking if it is a regular file and then opening thereafter is also meh -
- * other keystores won't have this problem anyhow so just ignore. */
+ * other keystores won't have this problem anyhow so just ignore.The default
+ * key is ignored as that one points to localhost */
 	while ((dent = readdir(dir))){
-		if (dent->d_type == DT_REG){
+		if (dent->d_type == DT_REG && strcmp(dent->d_name, "default") != 0){
 			if (!cb(dent->d_name, tag))
 				break;
 		}
 	}
 
 	cb(NULL, tag);
+
 	closedir(dir);
 	return true;
 }
