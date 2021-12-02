@@ -253,6 +253,11 @@ bool anet_listen(struct anet_options* args, char** errdst,
 		return false;
 	}
 
+/* SOCK_STREAM | SOCK_CLOEXEC is still not in OSX */
+	int flags;
+	if (-1 != (flags = fcntl(sockin_fd, F_GETFD)))
+		fcntl(sockin_fd, F_SETFD, flags | FD_CLOEXEC);
+
 	int optval = 1;
 	setsockopt(sockin_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 	setsockopt(sockin_fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
