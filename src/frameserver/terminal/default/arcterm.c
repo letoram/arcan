@@ -1338,6 +1338,13 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	if (-1 == socketpair(AF_UNIX, SOCK_STREAM, 0, pair))
 		return EXIT_FAILURE;
 
+	int flags;
+	if (-1 != (flags = fcntl(pair[0], F_GETFD)))
+		fcntl(pair[0], F_SETFD, flags | FD_CLOEXEC);
+
+	if (-1 != (flags = fcntl(pair[1], F_GETFD)))
+		fcntl(pair[1], F_SETFD, flags | FD_CLOEXEC);
+
 	term.dirtyfd = pair[0];
 	term.signalfd = pair[1];
 
