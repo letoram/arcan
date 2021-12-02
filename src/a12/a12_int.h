@@ -283,6 +283,7 @@ struct a12_state {
 	bool server;
 	bool cl_firstout;
 	int authentic;
+	int remote_mode;
 
 /* saved between calls to unpack, see end of a12_unpack for explanation */
 	bool auth_latched;
