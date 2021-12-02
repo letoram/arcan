@@ -69,6 +69,9 @@ static const char* trace_groups[] = {
 	"security"
 };
 
+static struct a12_vframe_opts vcodec_tuning(
+	struct a12_state* S, int segid, struct shmifsrv_vbuffer* vb, void* tag);
+
 static int tracestr_to_bitmap(char* work)
 {
 	int res = 0;
@@ -103,48 +106,6 @@ void arcan_fatal(const char* msg, ...)
 	va_end(args);
 	exit(EXIT_FAILURE);
 }
-
-/*
- * in this mode we should really fexec ourselves so we don't risk exposing
- * aslr or canaries, as well as handle the key-generation
- */
-static void fork_a12srv(struct a12_state* S, int fd, void* tag)
-{
-	pid_t fpid = fork();
-	if (fpid == 0){
-/* Split the log output on debug so we see what is going on */
-#ifdef _DEBUG
-		char buf[sizeof("cl_log_xxxxxx.log")];
-		snprintf(buf, sizeof(buf), "cl_log_%.6d.log", (int) getpid());
-		FILE* fpek = fopen(buf, "w+");
-		if (fpek){
-			a12_set_trace_level(a12_trace_targets, fpek);
-		}
-		close(STDERR_FILENO);
-#endif
-/* we should really re-exec ourselves with the 'socket-passing' setup so that
- * we won't act as a possible ASLR break */
-		arcan_shmif_privsep(NULL, "shmif", NULL, 0);
-		int rc = a12helper_a12srv_shmifcl(S, NULL, fd, fd);
-		shutdown(fd, SHUT_RDWR);
-		close(fd);
-		exit(rc < 0 ? EXIT_FAILURE : EXIT_SUCCESS);
-	}
-	else if (fpid == -1){
-		a12int_trace(A12_TRACE_SYSTEM, "couldn't fork/dispatch, ulimits reached?\n");
-		a12_channel_close(S);
-		close(fd);
-		return;
-	}
-	else {
-/* just ignore and return to caller */
-		a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d", (int)fpid);
-		a12_channel_close(S);
-		close(fd);
-	}
-}
-
-extern char** environ;
 
 static bool handover_setup(struct a12_state* S,
 	int fd, struct arcan_net_meta* meta, struct shmifsrv_client** C)
@@ -190,6 +151,84 @@ static bool handover_setup(struct a12_state* S,
 
 	return true;
 }
+
+
+/*
+ * in this mode we should really fexec ourselves so we don't risk exposing
+ * aslr or canaries, as well as handle the key-generation
+ */
+static void fork_a12srv(struct a12_state* S, int fd, void* tag)
+{
+	pid_t fpid = fork();
+
+/* just ignore and return to caller */
+	if (fpid > 0){
+		a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d", (int)fpid);
+		a12_channel_close(S);
+		close(fd);
+		return;
+	}
+
+	if (fpid == -1){
+		a12int_trace(A12_TRACE_SYSTEM, "couldn't fork/dispatch, ulimits reached?\n");
+		a12_channel_close(S);
+		close(fd);
+		return;
+	}
+
+/* Split the log output on debug so we see what is going on */
+#ifdef _DEBUG
+		char buf[sizeof("cl_log_xxxxxx.log")];
+		snprintf(buf, sizeof(buf), "cl_log_%.6d.log", (int) getpid());
+		FILE* fpek = fopen(buf, "w+");
+		if (fpek){
+			a12_set_trace_level(a12_trace_targets, fpek);
+		}
+#endif
+
+/* make sure that we don't leak / expose whatever the listening process has,
+ * not much to do to guarantee or communicate the failure on these three -
+ * possibly creating a slush-pipe and dup:ing that .. */
+	close(STDIN_FILENO);
+	close(STDOUT_FILENO);
+	close(STDERR_FILENO);
+	open("/dev/null", O_RDONLY);
+	open("/dev/null", O_WRONLY);
+	open("/dev/null", O_WRONLY);
+
+	struct shmifsrv_client* C = NULL;
+	struct arcan_net_meta* meta = tag;
+
+	if (!handover_setup(S, fd, meta, &C)){
+		return;
+	}
+
+	arcan_shmif_privsep(NULL, "shmif", NULL, 0);
+	int rc = 0;
+	if (C){
+		a12helper_a12cl_shmifsrv(S, C, fd, fd, (struct a12helper_opts){
+			.dirfd_temp = -1,
+			.dirfd_cache = -1,
+			.redirect_exit = meta->opts->redirect_exit,
+			.devicehint_cp = meta->opts->devicehint_cp,
+			.vframe_block = global.backpressure,
+			.vframe_soft_block = global.backpressure_soft,
+			.eval_vcodec = vcodec_tuning
+		});
+		shmifsrv_free(C, SHMIFSRV_FREE_NO_DMS);
+	}
+	else {
+/* we should really re-exec ourselves with the 'socket-passing' setup so that
+ * we won't act as a possible ASLR break */
+		rc = a12helper_a12srv_shmifcl(S, NULL, fd, fd);
+	}
+
+	shutdown(fd, SHUT_RDWR);
+	close(fd);
+	exit(rc < 0 ? EXIT_FAILURE : EXIT_SUCCESS);
+}
+
+extern char** environ;
 
 static struct a12_vframe_opts vcodec_tuning(
 	struct a12_state* S, int segid, struct shmifsrv_vbuffer* vb, void* tag)
