@@ -121,7 +121,7 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src);
 static void attach_object(struct rendertarget* dst, arcan_vobject* src);
 static arcan_errc update_zv(arcan_vobject* vobj, int newzv);
 static void rebase_transform(struct surface_transform*, int64_t);
-static size_t process_rendertarget(struct rendertarget*, float);
+static size_t process_rendertarget(struct rendertarget*, float, bool nest);
 static arcan_vobject* new_vobject(arcan_vobj_id* id,
 struct arcan_video_context* dctx);
 static inline void build_modelview(float* dmatr,
@@ -1242,11 +1242,6 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 	if (dst->camtag == src->cellid)
 		dst->camtag = ARCAN_EID;
 
-/* chain onwards if dst refers to a link target */
-	if (dst->link){
-		return detach_fromtarget(dst->link, src);
-	}
-
 /* or empty set */
  	if (!dst->first)
 		return false;
@@ -1350,9 +1345,6 @@ void arcan_vint_reraster(arcan_vobject* src, struct rendertarget* rtgt)
 
 static void attach_object(struct rendertarget* dst, arcan_vobject* src)
 {
-	if (dst->link)
-		return attach_object(dst->link, src);
-
 	arcan_vobject_litem* new_litem =
 		arcan_alloc_mem(sizeof *new_litem,
 			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_NATURAL);
@@ -1704,11 +1696,11 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 			agp_resize_rendertarget(current_context->stdoutp.art, neww, newh);
 	}
 
-	build_orthographic_matrix(arcan_video_display.window_projection, 0,
-		mode.width, mode.height, 0, 0, 1);
+	build_orthographic_matrix(
+		arcan_video_display.window_projection, 0, mode.width, mode.height, 0,0,1);
 
-	build_orthographic_matrix(arcan_video_display.default_projection, 0,
-		mode.width, mode.height, 0, 0, 1);
+	build_orthographic_matrix(
+		arcan_video_display.default_projection, 0, mode.width, mode.height, 0,0,1);
 
 	memcpy(current_context->stdoutp.projection,
 		arcan_video_display.default_projection, sizeof(float) * 16);
@@ -2297,12 +2289,22 @@ arcan_errc arcan_video_linkrendertarget(arcan_vobj_id did,
 	if (!tgt)
 		return ARCAN_ERRC_BAD_ARGUMENT;
 
-	arcan_errc rv = arcan_video_setuprendertarget(did, 0, refresh, scale, format);
-	if (rv != ARCAN_OK)
-		return rv;
-
+/* this can be used to update the link state of an existing rendertarget
+ * or to define a new one based on the pipeline of an existing one */
 	vobj = arcan_video_getobject(did);
 	struct rendertarget* newtgt = arcan_vint_findrt(vobj);
+	if (!newtgt){
+		arcan_errc rv =
+			arcan_video_setuprendertarget(did, 0, refresh, scale, format);
+		if (rv != ARCAN_OK)
+			return rv;
+
+		newtgt = arcan_vint_findrt(vobj);
+	}
+
+	if (!newtgt || newtgt == tgt)
+		return ARCAN_ERRC_BAD_ARGUMENT;
+
 	newtgt->link = tgt;
 	return ARCAN_OK;
 }
@@ -3270,6 +3272,15 @@ static void drop_rtarget(arcan_vobject* vobj)
 
 	if (!dst)
 		return;
+
+/* make sure to drop references from any linktarget */
+	for (size_t i = 0; i < current_context->n_rtargets; i++){
+		if (i == dstind)
+			continue;
+
+		if (current_context->rtargets[dstind].link == dst)
+			current_context->rtargets[dstind].link = NULL;
+	}
 
 	if (current_context->attachment == dst)
 		current_context->attachment = NULL;
@@ -4427,7 +4438,7 @@ static int tick_rendertarget(struct rendertarget* tgt)
 
 	if (tgt->refresh > 0 && process_counter(tgt,
 		&tgt->refreshcnt, tgt->refresh, 0.0)){
-		tgt->transfc += process_rendertarget(tgt, 0.0);
+		tgt->transfc += process_rendertarget(tgt, 0.0, false);
 		tgt->dirtyc = 0;
 	}
 
@@ -5219,21 +5230,33 @@ struct rendertarget* arcan_vint_current_rt()
 	return current_rendertarget;
 }
 
-static size_t process_rendertarget(struct rendertarget* tgt, float fract)
+static size_t process_rendertarget(
+	struct rendertarget* tgt, float fract, bool nest)
 {
 	arcan_vobject_litem* current;
+	size_t pc = arcan_video_display.ignore_dirty ? 1 : 0;
 
-/* If the rendertarget links to the pipeline of another, inherit the dirty
- * state from that. This comes from define-linktarget, though it might also be
- * that an extended view (merge two rendertargets) would be useful. If that
- * turns out to be the case, simply run link first then ourselves. */
+/* If a link- target is defined, we implement that by first running the linked
+ * chain as if it was part of ourselves - then we run our own chain on top of
+ * that. This could be used to create cycles (a link to b link to a) but that
+ * would get thwarted with the tgt->link = NULL write. */
 	if (tgt->link){
-		current = tgt->link->first;
+		struct rendertarget* tmp_tgt = tgt->link;
+		arcan_vobject_litem* tmp_cur = tgt->first;
+		tgt->first = tgt->link->first;
+		tgt->link = NULL;
+
+		pc += process_rendertarget(tgt, fract, false);
+		nest = pc > 0;
+
+		tgt->first = tmp_cur;
+		tgt->link = tmp_tgt;
+
 		tgt->dirtyc += tgt->link->dirtyc;
 		tgt->transfc += tgt->link->transfc;
 	}
-	else
-		current = tgt->first;
+
+	current = tgt->first;
 
 /* If there are no ongoing transformations, or the platform has flagged that we
  * need to redraw everything, and there are no actual changes to the rtgt pipe
@@ -5250,7 +5273,7 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 /* this does not really swap the stores unless they are actually different, it
  * is cheaper to do it here than shareglstore as the search for vobj to rtgt is
  * expensive */
-	if (tgt->color)
+	if (tgt->color && !nest)
 		agp_rendertarget_swapstore(tgt->art, tgt->color->vstore);
 
 	current_rendertarget = tgt;
@@ -5258,10 +5281,8 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 	agp_shader_envv(RTGT_ID, &tgt->id, sizeof(int));
 	agp_shader_envv(OBJ_OPACITY, &(float){1.0}, sizeof(float));
 
-	if (!FL_TEST(tgt, TGTFL_NOCLEAR))
+	if (!FL_TEST(tgt, TGTFL_NOCLEAR) && !nest)
 		agp_rendertarget_clear();
-
-	size_t pc = arcan_video_display.ignore_dirty ? 1 : 0;
 
 /* first, handle all 3d work (which may require multiple passes etc.) */
 	if (tgt->order3d == ORDER3D_FIRST && current && current->elem->order < 0){
@@ -5465,7 +5486,7 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid, bool forcedirty)
 		arcan_video_display.ignore_dirty = 0;
 	}
 
-	process_rendertarget(tgt, arcan_video_display.c_lerp);
+	process_rendertarget(tgt, arcan_video_display.c_lerp, false);
 	tgt->dirtyc = 0;
 
 	arcan_video_display.ignore_dirty = id;
@@ -5563,7 +5584,7 @@ static size_t steptgt(float fract, struct rendertarget* tgt)
 	size_t transfc = 0;
 	if (tgt->refresh < 0 && process_counter(
 		tgt, &tgt->refreshcnt, tgt->refresh, fract)){
-		transfc += process_rendertarget(tgt, fract);
+		transfc += process_rendertarget(tgt, fract, false);
 		tgt->dirtyc = 0;
 
 /* may need to readback even if we havn't updated as it may

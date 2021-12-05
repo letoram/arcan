@@ -7,6 +7,7 @@
 
 ## Lua
  * net\_discover added, use this to find other a12 clients
+ * define\_linktarget semantics reworked
 
 ## Terminal
  * permit ARCAN\_STATEPATH to propagate into child env
