@@ -55,11 +55,16 @@
 -- when going from 'as a texture' to 'as an output' behavior and may end
 -- up inverted. The engine will attempt to account for this, but only if
 -- no custom texture coordinate set has been defined for the object.
+-- @note: When calling ref:map_video_display with a rendertarget as src, its
+-- projection transform may be rebuilt. This will override any coordinate
+-- system changes made by ref:image_resize_storage which then needs to be
+-- repeated.
 -- @note: Mapping the same rendertarget to multiple displays is undefined
 -- behaviour. The reason is that the backing store of *src* might need to
 -- mutate to fit the scanout characteristics of *display*. Even for the same
--- display, these ted to have slight changes that make sharing semantics
--- have subtle edge cases that are hard to predict.
+-- display, these ted to have slight changes that make sharing semantics have
+-- subtle edge cases that are hard to predict. The best workaround for this is
+-- to create additional rendertargets through ref:define_linktarget.
 -- @group: vidsys
 -- @cfunction: videomapping
 -- @related:
