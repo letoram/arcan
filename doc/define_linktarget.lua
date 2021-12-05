@@ -13,19 +13,17 @@
 -- and storage parameters since either two identical sets needed to be managed, leading
 -- to a high vid allocation count with all the adverse performance considerations that
 -- follows. This function creates a rendertarget that renders into *dst* just like
--- ref:define_rendertarget, but the the pipeline is forcibly tied to *link*.
+-- ref:define_rendertarget, but the pipeline is combined with *link*.
 -- This setup may also prompt the engine to process linked rendertargets in
 -- parallel, making it a more efficient solution for certain 3D effects.
--- @note: deleting the rendertarget referenced by *link* will also delete the the
--- object referenced by *dst*.
--- @note: since the attachement is shared, the targeted density (hppcm, vppcm) is
--- always forced to that of the *link* rendertarget.
+-- @note: if *dst* already is a rendertarget its link target will be updated and the
+-- original pipeline in *dst* will be kept.
+-- @note: the densities of objects respect their primary attachment
 -- @note: passing a vid that is not a qualified rendertarget as *link* is a terminal
 -- state transition.
--- @note: if *link* is deleted, *dst* turns into a normal rendertarget.
--- @note: any attach or detach operations that are used with the new linktarget as
--- destination will be FORWARDED to the *link*.
--- @note: trying to link to a another linktarget will forward to its target.
+-- @note: if *link* is deleted, *dst* reverts into a normal rendertarget.
+-- @note: creating cycles by chaining linktargets together will go through, but the
+-- processing will be stopped when the first cycle reference is found.
 -- @group: targetcontrol
 -- @cfunction: linkset
 -- @related: define_rendertarget
