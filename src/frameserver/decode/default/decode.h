@@ -27,3 +27,7 @@ int decode_probe(struct arcan_shmif_cont* cont, struct arg_arr* args);
 #ifdef HAVE_T2S
 int decode_t2s(struct arcan_shmif_cont* cont, struct arg_arr* args);
 #endif
+
+#ifdef HAVE_PDF
+int decode_pdf(struct arcan_shmif_cont* cont, struct arg_arr* args);
+#endif

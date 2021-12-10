@@ -33,6 +33,9 @@ int show_use(struct arcan_shmif_cont* cont, const char* msg)
 		" protocol\t probe     \t set 'probe' mode\n"
 #endif
 		" protocol\t image     \t set 'image' mode\n"
+#ifdef HAVE_PDF
+		" protocol\t pdf       \t set 'pdf' mode\n"
+#endif
 #ifdef HAVE_T2S
 		" protocol\t t2s       \t set 'text-to-speech' mode\n"
 #endif
@@ -53,6 +56,12 @@ int show_use(struct arcan_shmif_cont* cont, const char* msg)
 		" ssml    \t           \t interpret text as 'ssml' formatted <voice> .. \n"
 		" phonemes\t           \t interpret text as 'phoneme' ([[]]) encoded\n"
 		"---------\t-----------\t----------------\n"
+		"\n"
+#endif
+#ifdef HAVE_PDF
+		" Acceped pdf arguments:\n"
+		"   key   \t   value   \t   description\n"
+		"---------\t-----------\t-----------------\n"
 		"\n"
 #endif
 #ifdef HAVE_PROBE
@@ -161,6 +170,11 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
  * the results from probe is then switched to decode_(av, 3d, text, ...) */
 	if (strcasecmp(type, "probe") == 0)
 		return decode_probe(cont, args);
+#endif
+
+#ifdef HAVE_PDF
+	if (strcasecmp(type, "pdf") == 0)
+		return decode_pdf(cont, args);
 #endif
 
 	if (strcasecmp(type, "media") == 0)
