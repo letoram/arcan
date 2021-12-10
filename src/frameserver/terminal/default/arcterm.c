@@ -128,12 +128,11 @@ static void apply_restore_buffer()
 		arcan_tui_move_to(term.screen, 0, row);
 		struct tui_cell* cells = cur[row]->cells;
 		size_t n = cur[row]->count;
-		bool dirty = false;
 
 		for (size_t i = 0; i < n && i < cols; i++){
 			struct tui_cell* c= &cells[i];
 			uint32_t ch = c->draw_ch ? c->draw_ch : c->ch;
-			arcan_tui_write(term.screen, c->ch, &c->attr);
+			arcan_tui_write(term.screen, ch, &c->attr);
 		}
 	}
 
@@ -544,7 +543,7 @@ static void dump_help()
 		" autofit     \t           \t (with exec, keep_alive) shrink window to fit\n"
 		" pipe        \t [mode]    \t map stdin-stdout (mode: raw, lf)\n"
 		" palette     \t name      \t use built-in palette (below)\n"
-		" cli         \t           \t switch to non-vt cli/builtin shell mode\n"
+		" cli         \t [lua]     \t switch to non-vt cli/builtin shell mode\n"
 		"Built-in palettes:\n"
 		"default, solarized, solarized-black, solarized-white, srcery\n"
 		"-------------\t-----------\t----------------\n\n"
@@ -560,14 +559,6 @@ static void dump_help()
 	);
 }
 
-static void tsm_log(void* data, const char* file, int line,
-	const char* func, const char* subs, unsigned int sev,
-	const char* fmt, va_list arg)
-{
-	fprintf(stderr, "[%d] %s:%d - %s, %s()\n", sev, file, line, subs, func);
-	vfprintf(stderr, fmt, arg);
-}
-
 static void sighuph(int num)
 {
 	if (term.pty)
@@ -577,8 +568,6 @@ static void sighuph(int num)
 static bool on_subwindow(struct tui_context* c,
 	arcan_tui_conn* newconn, uint32_t id, uint8_t type, void* tag)
 {
-	struct tui_cbcfg cbcfg = {};
-
 	if (term.screens[1] || type != TUI_WND_DEBUG)
 		return false;
 
@@ -903,15 +892,18 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 	exit(EXIT_FAILURE);
 }
 
+/*
 static bool on_subst(struct tui_context* tui,
 	struct tui_cell* cells, size_t n_cells, size_t row, void* t)
 {
 	bool res = false;
 	for (size_t i = 0; i < n_cells-1; i++){
+ */
 /* far from an optimal shaping rule, but check for special forms of continuity,
  * 3+ of (+_-) like shapes horizontal or vertical, n- runs of whitespace or
  * vertical similarities in terms of whitespace+character
  */
+/*
 		if ( (isspace(cells[i].ch) && isspace(cells[i+1].ch)) ){
 			cells[i].attr.aflags |= TUI_ATTR_SHAPE_BREAK;
 			res = true;
@@ -920,6 +912,7 @@ static bool on_subst(struct tui_context* tui,
 
 	return res;
 }
+*/
 
 static void on_exec_state(struct tui_context* tui, int state, void* tag)
 {
@@ -1144,7 +1137,6 @@ static bool on_label_query(struct tui_context* T,
 	size_t index, const char* country, const char* lang,
 	struct tui_labelent* dstlbl, void* t)
 {
-	struct bufferwnd_meta* M = t;
 	size_t current = 0;
 
 /* poor complexity in this search but few entries */
@@ -1227,8 +1219,11 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
  * this is the first migration part we have out of the normal vt- legacy,
  * see cli.c
  */
-	if (arg_lookup(args, "cli", 0, NULL)){
-		return arcterm_cli_run(con, args);
+	if (arg_lookup(args, "cli", 0, &val)){
+		if (val && strcmp(val, "lua") == 0)
+			return arcterm_luacli_run(con, args);
+		else
+			return arcterm_cli_run(con, args);
 	}
 
 	if (arg_lookup(args, "help", 0, &val)){

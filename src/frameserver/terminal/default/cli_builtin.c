@@ -91,7 +91,6 @@ static struct ext_cmd* cmd_cd(
 /* not that we are a posix shell, but should -L / -P be supported?
  * right now it isn't - possibly that the shell type should be a .so
  * plugin that gets to override builtins and prompt */
-
 	if (0 == chdir(argv[1])){
 		synch_cwd(&current, true);
 	}
