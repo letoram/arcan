@@ -11,6 +11,7 @@
 
 ## Terminal
  * permit ARCAN\_STATEPATH to propagate into child env
+ * the basic/recovery cli (arg=cli) now has a lua shell mode(cli=lua) with tui-lua bindings
 
 ## Shmif
  * add EXTERNAL\_NETSTATE for fsrv\_net to convey known-set changes

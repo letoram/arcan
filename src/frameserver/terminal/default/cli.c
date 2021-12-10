@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <inttypes.h>
+#include "cli.h"
 #include "cli_builtin.h"
 
 static struct cli_state cli_state = {
@@ -331,7 +332,6 @@ static bool eval_to_cmd(char* out, struct ext_cmd* cmd, bool noexec)
 		.sep = ' '
 	};
 	char** argv = extract_argv(out, opts, &err_ofs);
-	int pos = 0;
 
 	if (!argv)
 		return false;
