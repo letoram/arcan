@@ -19,6 +19,7 @@
 ## Frameservers
  * Encode: (linux) add support for a v4l2-loopback sink
  * Net: added 'sweep' discovery mode
+ * Decode: added protocol=pdf (dependency, mupdf) mode
 
 ## 0.6.1
 

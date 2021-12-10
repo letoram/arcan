@@ -42,6 +42,18 @@ if (LIBVLC_FOUND)
 		amsg("(${CL_GRN}decode${CL_RST}) Espeak- not found, ${CL_RED} text-to-speech${CL_RST} disabled")
 	endif()
 
+	find_package(MuPDF)
+
+	if (MUPDF_FOUND)
+		amsg("(${CL_GRN}decode${CL_RST}) adding support for ${CL_GRN} PDF via MuPDF${CL_RST}")
+		list(APPEND DECODE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/decode_pdf.c)
+		list(APPEND DECODE_DEFS HAVE_PDF)
+		list(APPEND DECODE_LIBS ${MUPDF_LIBRARIES})
+		list(APPEND DECODE_INCLUDE_DIRS ${MUPDF_INCLUDE_DIR})
+	else()
+		amsg("(${CL_GRN}decode${CL_RST}) MuPDF not found, ${CL_RED} PDF support${CL_RST} disabled")
+	endif()
+
 	if (MAGIC_FOUND)
 		amsg("(${CL_GRN}decode${CL_RST}) adding support for ${CL_GRN} probe (libmagic) ${CL_RST}")
 		list(APPEND DECODE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/decode_probe.c)
