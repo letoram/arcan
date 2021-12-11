@@ -39,6 +39,7 @@ int show_use(struct arcan_shmif_cont* cont, const char* msg)
 #ifdef HAVE_T2S
 		" protocol\t t2s       \t set 'text-to-speech' mode\n"
 #endif
+		" protocol\t list      \t send list of supported protocols as messages\n"
 		"---------\t-----------\t----------------\n"
 		"\n"
 #ifdef HAVE_T2S
@@ -171,6 +172,26 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	if (strcasecmp(type, "probe") == 0)
 		return decode_probe(cont, args);
 #endif
+
+	if (strcasecmp(type, "list") == 0){
+		const char* pstr = "media:3d:text:image"
+#ifdef HAVE_T2S
+			":t2s"
+#endif
+#ifdef HAVE_PDF
+			":pdf"
+#endif
+			"";
+		arcan_event ev = {
+			.ext.kind = ARCAN_EVENT(MESSAGE),
+			.category = EVENT_EXTERNAL
+		};
+		snprintf((char*)ev.ext.message.data, COUNT_OF(ev.ext.message.data), "%s", pstr);
+		arcan_shmif_enqueue(cont, &ev);
+		while (arcan_shmif_wait(cont, &ev)){}
+		arcan_shmif_drop(cont);
+		return EXIT_SUCCESS;
+	}
 
 #ifdef HAVE_PDF
 	if (strcasecmp(type, "pdf") == 0)
