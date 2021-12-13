@@ -437,7 +437,7 @@ static void rebuild_prompt(struct tui_context* T, struct cli_state* S)
 	S->prompt[i].ch = '\0';
 
 	arcan_tui_ident(T, pwd);
-	arcan_tui_set_prompt(T, S->prompt);
+	arcan_tui_readline_prompt(T, S->prompt);
 }
 
 static void on_bchunk(struct tui_context* T, bool input,
