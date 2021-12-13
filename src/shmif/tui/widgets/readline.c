@@ -656,7 +656,7 @@ static void on_resized(struct tui_context* T,
 		return;
 
 	if (M->old_handlers.resized)
-		M->old_handlers.resized(T, neww, newh, cols, rows, tag);
+		M->old_handlers.resized(T, neww, newh, cols, rows, M->old_handlers.tag);
 
 	reset_boundaries(T, M, cols, rows);
 	refresh(T, M);
@@ -685,7 +685,7 @@ static bool on_subwindow(struct tui_context* T,
 		return false;
 
 	if (M->old_handlers.subwindow)
-		return M->old_handlers.subwindow(T, connection, id, type, tag);
+		return M->old_handlers.subwindow(T, connection, id, type, M->old_handlers.tag);
 
 	return false;
 }
