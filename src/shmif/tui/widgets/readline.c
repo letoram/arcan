@@ -438,8 +438,9 @@ void on_key_input(struct tui_context* T,
 		delete_at_cursor(T, M);
 
 /* finish or if multi-line and meta-held, add '\n' */
-	else if (keysym == TUIK_RETURN)
+	else if (keysym == TUIK_RETURN){
 		add_linefeed(T, M);
+	}
 }
 
 static void add_input(
@@ -578,7 +579,7 @@ void arcan_tui_readline_reset(struct tui_context* T)
  * space for it to fit, or it will be truncated) - only cause a refresh
  * if the contents have changed from the last drawn prompt.
  */
-void arcan_tui_set_prompt(struct tui_context* T, const struct tui_cell* prompt)
+void arcan_tui_readline_prompt(struct tui_context* T, const struct tui_cell* prompt)
 {
 	struct readline_meta* M;
 	if (!validate_context(T, &M))
@@ -732,7 +733,8 @@ void arcan_tui_readline_setup(
 
 	*meta = (struct readline_meta){
 		.magic = READLINE_MAGIC,
-		.opts = *opts
+		.opts = *opts,
+		.broken_offset = -1
 	};
 
 	size_t sz = sizeof(struct tui_readline_opts);
@@ -810,6 +812,10 @@ int arcan_tui_readline_finished(struct tui_context* T, char** buffer)
 	return M->finished;
 }
 
+void arcan_tui_readline_history(struct tui_context* T, const char** buf, size_t count)
+{
+}
+
 #ifdef EXAMPLE
 
 #include <errno.h>
@@ -844,11 +850,6 @@ static bool no_num(uint32_t ch, size_t length, void* tag)
 		return false;
 
 	return true;
-}
-
-void arcan_tui_readline_history(struct tui_context* T, const char** buf, size_t count)
-{
-
 }
 
 int main(int argc, char** argv)
@@ -919,7 +920,7 @@ int main(int argc, char** argv)
 		{0}
 	};
 
-	arcan_tui_set_prompt(tui, prompt);
+	arcan_tui_readline_prompt(tui, prompt);
 
 	char* out;
 	bool running = true;

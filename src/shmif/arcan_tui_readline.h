@@ -92,7 +92,7 @@ void arcan_tui_readline_history(struct tui_context*, const char**, size_t count)
  * Note:
  * The length of prompt is NUL terminated based on the .ch field.
  */
-void arcan_tui_set_prompt(struct tui_context* T, const struct tui_cell* prompt);
+void arcan_tui_readline_prompt(struct tui_context* T, const struct tui_cell* prompt);
 
 /*
  * Restore event handler table and cancel any input operation
