@@ -45,6 +45,22 @@ enum tui_builtin_widgets {
 	TWND_LINEWND = 4
 };
 
+struct tui_lmeta;
+
+struct widget_meta {
+	struct tui_lmeta* parent;
+	int widget_type;
+	union {
+		struct {
+			intptr_t suggest;
+			intptr_t verify;
+
+			char** history;
+			size_t history_sz;
+		} readline;
+	};
+};
+
 /*
  * user-data structures passed as tui-tags
  */
@@ -68,6 +84,8 @@ struct tui_lmeta {
 	uint8_t pending_mask;
 	intptr_t pending[8];
 
+	struct widget_meta* widget_meta;
+
 /* linked list of bchunk like processing jobs */
 	struct blobio_meta* blobs;
 
@@ -88,10 +106,6 @@ struct blobio_meta {
 
 	struct blobio_meta* next;
 	struct tui_lmeta* owner;
-};
-
-struct tui_attr {
-	struct tui_screen_attr attr;
 };
 
 struct tui_context*
