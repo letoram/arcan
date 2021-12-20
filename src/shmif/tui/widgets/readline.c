@@ -171,6 +171,8 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 			arcan_tui_cursorpos(T, &cx, &cy);
 		}
 		ssize_t step = arcan_tui_utf8ucs4((char*) &M->work[pos], &ch);
+		if (M->opts.mask_character)
+			ch = M->opts.mask_character;
 
 		pos += step;
 		arcan_tui_write(T, ch,
