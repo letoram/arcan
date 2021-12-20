@@ -60,6 +60,11 @@ struct readline_meta {
 
 	int finished;
 
+	const char** history;
+	char* in_history;
+	size_t history_sz;
+	size_t history_pos;
+
 /* restore on release */
 	struct tui_cbcfg old_handlers;
 	int old_flags;
@@ -68,6 +73,9 @@ struct readline_meta {
 /* generic 'insert at cursor' */
 static void add_input(
 	struct tui_context* T, struct readline_meta* M, const char* u8, size_t len);
+
+static void replace_str(
+	struct tui_context* T, struct readline_meta* M, const char* str, size_t len);
 
 static void refresh(struct tui_context* T, struct readline_meta* M)
 {
@@ -329,6 +337,13 @@ static bool on_utf8_input(
 	if (!validate_context(T, &M))
 		return true;
 
+/* difference to gnu-readline here is that history is immutable */
+	if (M->in_history){
+		replace_str(T, M, M->in_history, strlen(M->in_history));
+		free(M->in_history);
+		M->in_history = NULL;
+	}
+
 /* if it is a commit, refuse on validation failure - 0-length should
  * be filtered through filter_character so no reason to forward it here */
 	if (*u8 == '\n' || *u8 == '\r')
@@ -355,6 +370,44 @@ static bool on_utf8_input(
 
 	refresh(T, M);
 	return true;
+}
+
+static void step_history(
+	struct tui_context* T, struct readline_meta* M, ssize_t step)
+{
+	if (!M->history_sz)
+		return;
+
+/* first time stepping, save the current work string */
+	if (!M->in_history){
+		if (step < 0)
+			return;
+
+		M->in_history = strdup(M->work);
+		if (!M->in_history)
+			return;
+
+		replace_str(T, M,
+			M->history[M->history_pos], strlen(M->history[M->history_pos]));
+		M->history_pos++;
+		return;
+	}
+
+/* are we stepping back into normal mode? */
+	if (!M->history_pos && step < 0){
+		replace_str(T, M, M->in_history, strlen(M->in_history));
+		free(M->in_history);
+		M->in_history = NULL;
+		return;
+	}
+
+/* step and clamp then update */
+	M->history_pos += step > 0 ? 1 : -1;
+	if (M->history_pos >= M->history_sz)
+		M->history_pos = M->history_sz - 1;
+
+	replace_str(T, M,
+		M->history[M->history_pos], strlen(M->history[M->history_pos]));
 }
 
 void on_key_input(struct tui_context* T,
@@ -395,9 +448,11 @@ void on_key_input(struct tui_context* T,
 		}
 /* step previous in history */
 		else if (keysym == TUIK_P){
+			step_history(T, M, 1);
 		}
 /* step next in history */
 		else if (keysym == TUIK_N){
+			step_history(T, M, -1);
 		}
 		else if (keysym == TUIK_A){
 /* start of line, same as HOME */
@@ -425,7 +480,12 @@ void on_key_input(struct tui_context* T,
 		refresh(T, M);
 		step_cursor_right(T, M);
 	}
-
+	else if (keysym == TUIK_UP){
+		step_history(T, M, 1);
+	}
+	else if (keysym == TUIK_DOWN){
+		step_history(T, M, -1);
+	}
 	else if (keysym == TUIK_ESCAPE && M->opts.allow_exit){
 		arcan_tui_readline_reset(T);
 		M->finished = -1;
@@ -443,21 +503,53 @@ void on_key_input(struct tui_context* T,
 	}
 }
 
+static bool ensure_size(
+	struct tui_context* T, struct readline_meta* M, size_t sz)
+{
+	if (sz < M->work_sz)
+		return true;
+
+	size_t cols;
+	arcan_tui_dimensions(T, NULL, &cols);
+	char* new_buf = realloc(M->work, sz);
+	if (NULL == new_buf){
+		return false;
+	}
+
+	M->work = new_buf;
+	memset(&M->work[M->work_ofs], '\0', sz - M->work_ofs);
+	M->work_sz = sz;
+	return true;
+}
+
+static void replace_str(
+	struct tui_context* T, struct readline_meta* M, const char* str, size_t len)
+{
+	if (!ensure_size(T, M, len+1))
+		return;
+
+	memcpy(M->work, str, len);
+	M->work[len] = '\0';
+	M->work_ofs = len;
+	M->cursor = len;
+
+	size_t pos = 0;
+	size_t count = 0;
+
+	while (pos < len){
+		if ((str[pos++] & 0xc0) != 0x80)
+			count++;
+	}
+	M->work_len = count;
+
+	refresh(T, M);
+}
+
 static void add_input(
 	struct tui_context* T, struct readline_meta* M, const char* u8, size_t len)
 {
-/* grow / reallocate, keep space for NUL */
-	if (M->work_ofs + len + 1 >= M->work_sz){
-		size_t cols;
-		arcan_tui_dimensions(T, NULL, &cols);
-		char* new_buf = realloc(M->work, M->work_sz + cols + 1);
-		if (NULL == new_buf){
-			return;
-		}
-		M->work = new_buf;
-		M->work_sz += cols + 1;
-		M->work[M->work_ofs] = '\0';
-	}
+	if (!ensure_size(T, M, M->work_ofs + len + 1))
+		return;
 
 /* add the input, move the cursor if we are at the end */
 	if (M->cursor == M->work_ofs){
@@ -814,6 +906,13 @@ int arcan_tui_readline_finished(struct tui_context* T, char** buffer)
 
 void arcan_tui_readline_history(struct tui_context* T, const char** buf, size_t count)
 {
+	struct readline_meta* M;
+	if (!validate_context(T, &M))
+		return;
+
+	M->history = buf;
+	M->history_sz = count;
+	M->history_pos = 0;
 }
 
 #ifdef EXAMPLE
