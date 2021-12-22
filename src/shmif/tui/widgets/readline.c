@@ -1,33 +1,29 @@
 /*
  * Arcan Text-Oriented User Interface Library, Extensions
- * Copyright: 2019-2021, Bjorn Stahl
+ * Copyright: Bjorn Stahl
  * License: 3-clause BSD
  * Description: Implementation of a readline/linenoise replacement.
- * Missing:
- *  Vim mode
  *
- *  Search Through History (if caller sets history buffer)
- *   - temporary override prompt with state, hide cursor, ...
- *
+ * Incomplete:
  *  Multiline support
  *  Completion popup
- *   -
  *
- *  Respect geohint (LTR, RTL, double-width)
+ * Open ideas:
+ *  - Swappable input method
+ *  - History search (might be better to offload to consumer)
+ *  - Undo- buffer
+ *  - Accessibility subwindow
+ *  - Native popup toggle
  *
- *  Undo- buffer
- *   - (just copy on modification into a window of n buffers, undo/redo pick)
- *
- *  Accessibility subwindow
- *
- *  .readline rc file
- *
- *  State/Preference persistance?
+ * Unknowns:
+ *  Geohint (LTR, RTL, double-width)
+ *  .readline rc file?
  */
 #include <unistd.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <stdint.h>
+#include <ctype.h>
 
 #include "../../arcan_shmif.h"
 #include "../../arcan_tui.h"
@@ -51,8 +47,10 @@ struct readline_meta {
 /* -1 as ok, modified by verify callback */
 	ssize_t broken_offset;
 
-/* provided by callback in opts or through setter functions */
+/* suggestion && tab completion feature (externally managed) */
+	const char* current_suggestion;
 	uint8_t* autocomplete;
+	const char** in_completion;
 
 /* if we overfit-, this might be drawn with middle truncated to 2/3 of capacity */
 	const struct tui_cell* prompt;
@@ -60,6 +58,7 @@ struct readline_meta {
 
 	int finished;
 
+/* history feature (externally managed) */
 	const char** history;
 	char* in_history;
 	size_t history_sz;
@@ -77,6 +76,44 @@ static void add_input(
 static void replace_str(
 	struct tui_context* T, struct readline_meta* M, const char* str, size_t len);
 
+static size_t utf8len(size_t end, const char* msg)
+{
+	size_t pos = 0;
+	size_t len = 0;
+
+	while (pos < end){
+		if ((msg[pos++] & 0xc0) != 0x80)
+			len++;
+	}
+	return len;
+}
+
+static size_t utf8fwd(size_t pos, const char* msg, size_t max)
+{
+	if (pos == max)
+		return max;
+
+	pos++;
+	while (msg[pos] && (msg[pos] & 0xc0) == 0x80){
+		pos++;
+	}
+
+	return pos;
+}
+
+static size_t utf8back(size_t pos, const char* msg)
+{
+	if (!pos)
+		return pos;
+
+	pos--;
+	while (pos && (msg[pos] & 0xc0) == 0x80){
+		pos--;
+	}
+
+	return pos;
+}
+
 static void refresh(struct tui_context* T, struct readline_meta* M)
 {
 	size_t rows, cols;
@@ -85,6 +122,13 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 /* first redraw everything so that we are sure we have synched contents */
 	if (M->old_handlers.recolor){
 		M->old_handlers.recolor(T, M->old_handlers.tag);
+	}
+
+/* might have an autofill if we are at the end */
+	if (M->cursor == M->work_ofs && M->opts.suggest){
+		if (!M->opts.autocomplete(M->work,
+			&M->current_suggestion, M->current_suggestion, M->old_handlers.tag))
+			M->current_suggestion = NULL;
 	}
 
 /* these are resolved on resize and calls to update margin */
@@ -111,6 +155,8 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 		.fc[0] = TUI_COL_WARNING,
 		.bc[0] = TUI_COL_WARNING
 	};
+
+	struct tui_screen_attr hint = alert;
 
 /* reset our reserved range to the default attribute as that might have
  * a different background style in order to indicate 'input' field */
@@ -144,7 +190,7 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 	}
 
 /* if the core text does not fit, start with the cursor position, scan forwards
- * and backwards until filled - this is preped to be content dependent for
+ * and backwards until filled - this is prep:ed to be content dependent for
  * double-width etc. later */
 	size_t pos = 0;
 	if (M->work_len > limit){
@@ -174,9 +220,21 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 		if (M->opts.mask_character)
 			ch = M->opts.mask_character;
 
-		pos += step;
+		if (step > 0)
+			pos += step;
 		arcan_tui_write(T, ch,
 			M->broken_offset != -1 && pos >= M->broken_offset ? &alert : NULL);
+	}
+
+	const char* cs = M->current_suggestion;
+	if (cs){
+		for (size_t i = M->work_len, j = 0; cs[j] && i < limit; i++, j++){
+			uint32_t ch;
+			ssize_t step = arcan_tui_utf8ucs4((char*) &cs[j], &ch);
+			if (step > 0)
+				j += step;
+			arcan_tui_write(T, ch, &alert);
+		}
 	}
 
 	if (cx)
@@ -201,16 +259,34 @@ static bool validate_context(struct tui_context* T, struct readline_meta** M)
 
 static void step_cursor_left(struct tui_context* T, struct readline_meta* M)
 {
-	while(M->cursor && M->work && (M->work[--M->cursor] & 0xc0) == 0x80){}
+	if (!M->cursor)
+		return;
+
+	M->cursor = utf8back(M->cursor, M->work);
+	refresh(T, M);
 }
 
 static void step_cursor_right(struct tui_context* T, struct readline_meta* M)
 {
-	while(M->cursor < M->work_ofs && (M->work[++M->cursor] & 0xc0) == 0x80){}
+	if (M->cursor < M->work_ofs)
+		M->cursor = utf8fwd(M->cursor, M->work, M->work_ofs);
+
+	refresh(T, M);
 }
 
 static bool delete_at_cursor(struct tui_context* T, struct readline_meta* M)
 {
+	if (M->cursor == M->work_ofs)
+		return true;
+
+	size_t c_cursor = utf8fwd(M->cursor, M->work, M->work_ofs);
+	memmove(&M->work[M->cursor], &M->work[c_cursor], M->work_ofs - c_cursor);
+	M->work[M->work_ofs] = '\0';
+	M->work_ofs--;
+	M->work_len = utf8len(M->work_ofs, M->work);
+
+	refresh(T, M);
+
 	return true;
 }
 
@@ -220,10 +296,7 @@ static bool erase_at_cursor(struct tui_context* T, struct readline_meta* M)
 		return true;
 
 /* sweep to previous utf8 start */
-	size_t c_cursor = M->cursor - 1;
-	while (c_cursor && (M->work[c_cursor] & 0xc0) == 0x80)
-		c_cursor--;
-
+	size_t c_cursor = utf8back(M->cursor, M->work);
 	size_t len = M->cursor - c_cursor;
 
 /* and either '0 out' if at end, or slide */
@@ -263,8 +336,38 @@ static bool add_linefeed(struct tui_context* T, struct readline_meta* M)
 
 static void delete_last_word(struct tui_context* T, struct readline_meta* M)
 {
-/* start from current cursor position, find the first non-space, then find the
- * beginning or the next space and memset + memmove from there */
+/* 0. early out / no-op */
+	if (!M->cursor)
+		return;
+
+/* 1. ignore whitespace */
+	size_t cursor = M->cursor;
+	if (cursor == M->work_ofs)
+		cursor--;
+
+	while (cursor && isspace(M->work[cursor]))
+		cursor = utf8back(cursor, M->work);
+
+/* 2. find start */
+	size_t beg = cursor;
+	while (beg && !isspace(M->work[beg]))
+		beg = utf8back(beg, M->work);
+
+/* 3. find end */
+	size_t end = cursor;
+	while (end < M->work_ofs && !isspace(M->work[end])){
+		end = utf8fwd(end, M->work, M->work_ofs);
+	}
+	if (end > M->work_ofs)
+		end = M->work_ofs;
+
+	M->cursor = beg;
+	size_t ntr = end - beg;
+	M->work_ofs -= ntr;
+	memmove(&M->work[beg], &M->work[end], M->work_ofs);
+	M->work_len = utf8len(M->work_ofs, M->work);
+
+	refresh(T, M);
 }
 
 static void cut_to_eol(struct tui_context* T, struct readline_meta* M)
@@ -276,14 +379,7 @@ static void cut_to_eol(struct tui_context* T, struct readline_meta* M)
 
 	M->work[M->cursor] = '\0';
 	M->work_ofs = M->cursor;
-
-	M->work_len = 0;
-	size_t pos = 0;
-	while (pos < M->cursor){
-		if ((M->work[pos++] & 0xc0) != 0x80)
-			M->work_len++;
-	}
-
+	M->work_len = utf8len(M->cursor, M->work);
 	refresh(T, M);
 }
 
@@ -297,13 +393,7 @@ static void cut_to_sol(struct tui_context* T, struct readline_meta* M)
 	arcan_tui_copy(T, M->work);
 	M->work_ofs = M->cursor;
 	M->cursor = 0;
-
-	M->work_len = 0;
-	size_t pos = 0;
-	while (pos < M->cursor){
-		if ((M->work[pos++] & 0xc0) != 0x80)
-			M->work_len++;
-	}
+	M->work_len = utf8len(M->work_ofs, M->work);
 
 	refresh(T, M);
 }
@@ -341,7 +431,6 @@ static bool on_utf8_input(
 
 /* difference to gnu-readline here is that history is immutable */
 	if (M->in_history){
-		replace_str(T, M, M->in_history, strlen(M->in_history));
 		free(M->in_history);
 		M->in_history = NULL;
 	}
@@ -412,6 +501,11 @@ static void step_history(
 		M->history[M->history_pos], strlen(M->history[M->history_pos]));
 }
 
+static void synch_completion(struct tui_context* T, struct readline_meta* M)
+{
+
+}
+
 void on_key_input(struct tui_context* T,
 	uint32_t keysym, uint8_t scancode, uint8_t mods, uint16_t subid, void* tag)
 {
@@ -477,7 +571,6 @@ void on_key_input(struct tui_context* T,
 		step_cursor_left(T, M);
 		refresh(T, M);
 	}
-
 	else if (keysym == TUIK_RIGHT){
 		refresh(T, M);
 		step_cursor_right(T, M);
@@ -488,16 +581,23 @@ void on_key_input(struct tui_context* T,
 	else if (keysym == TUIK_DOWN){
 		step_history(T, M, -1);
 	}
-	else if (keysym == TUIK_ESCAPE && M->opts.allow_exit){
-		arcan_tui_readline_reset(T);
-		M->finished = -1;
+	else if (keysym == TUIK_ESCAPE){
+		if (M->in_completion){
+			free(M->in_completion);
+			M->in_completion = NULL;
+			refresh(T, M);
+		}
+		else if (M->opts.allow_exit){
+			arcan_tui_readline_reset(T);
+			M->finished = -1;
+		}
 	}
-
 	else if (keysym == TUIK_BACKSPACE)
 		erase_at_cursor(T, M);
-
 	else if (keysym == TUIK_DELETE)
 		delete_at_cursor(T, M);
+	else if (keysym == TUIK_TAB)
+		synch_completion(T, M);
 
 /* finish or if multi-line and meta-held, add '\n' */
 	else if (keysym == TUIK_RETURN){
@@ -534,15 +634,7 @@ static void replace_str(
 	M->work[len] = '\0';
 	M->work_ofs = len;
 	M->cursor = len;
-
-	size_t pos = 0;
-	size_t count = 0;
-
-	while (pos < len){
-		if ((str[pos++] & 0xc0) != 0x80)
-			count++;
-	}
-	M->work_len = count;
+	M->work_len = utf8len(len, str);
 
 	refresh(T, M);
 }
@@ -664,6 +756,10 @@ void arcan_tui_readline_reset(struct tui_context* T)
 	M->work_ofs = 0;
 	M->work_len = 0;
 	M->cursor = 0;
+	M->history = NULL;
+	if (M->in_history)
+		free(M->in_history);
+	M->in_history = NULL;
 
 	refresh(T, M);
 }
@@ -932,7 +1028,6 @@ static void test_refresh(struct tui_context* T)
 static void test_resize(struct tui_context* T,
 	size_t neww, size_t newh, size_t col, size_t row, void* M)
 {
-	printf("resize\n");
 	test_refresh(T);
 }
 

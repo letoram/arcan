@@ -41,6 +41,9 @@ struct tui_readline_opts {
  *     the context is released or the next call to autocomplete, the last
  *     pointer will be provided in return.
  *
+ *     The result MUST be provided as a suffix to be appended to message,
+ *     not as the full final string.
+ *
  * return true if [result] was set.
  */
 	bool (*autocomplete)(const char* message,
