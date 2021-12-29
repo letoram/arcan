@@ -14,6 +14,7 @@
  *  - Undo- buffer
  *  - Accessibility subwindow
  *  - Native popup toggle
+ *  - Helper test (space above or below, toggle on F1)
  *
  * Unknowns:
  *  Geohint (LTR, RTL, double-width)
@@ -49,8 +50,9 @@ struct readline_meta {
 
 /* suggestion && tab completion feature (externally managed) */
 	const char* current_suggestion;
-	uint8_t* autocomplete;
-	const char** in_completion;
+	bool show_completion;
+	const char** completion;
+	size_t completion_sz;
 
 /* if we overfit-, this might be drawn with middle truncated to 2/3 of capacity */
 	const struct tui_cell* prompt;
@@ -70,8 +72,8 @@ struct readline_meta {
 };
 
 /* generic 'insert at cursor' */
-static void add_input(
-	struct tui_context* T, struct readline_meta* M, const char* u8, size_t len);
+static void add_input(struct tui_context* T,
+	struct readline_meta* M, const char* u8, size_t len, bool noverify);
 
 static void replace_str(
 	struct tui_context* T, struct readline_meta* M, const char* str, size_t len);
@@ -114,6 +116,15 @@ static size_t utf8back(size_t pos, const char* msg)
 	return pos;
 }
 
+static void verify(struct tui_context* T, struct readline_meta* M)
+{
+	if (!M->opts.verify)
+		return;
+
+	M->broken_offset = M->opts.verify(
+		(const char*)M->work, M->cursor, false, M->old_handlers.tag);
+}
+
 static void refresh(struct tui_context* T, struct readline_meta* M)
 {
 	size_t rows, cols;
@@ -122,13 +133,6 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 /* first redraw everything so that we are sure we have synched contents */
 	if (M->old_handlers.recolor){
 		M->old_handlers.recolor(T, M->old_handlers.tag);
-	}
-
-/* might have an autofill if we are at the end */
-	if (M->cursor == M->work_ofs && M->opts.suggest){
-		if (!M->opts.autocomplete(M->work,
-			&M->current_suggestion, M->current_suggestion, M->old_handlers.tag))
-			M->current_suggestion = NULL;
 	}
 
 /* these are resolved on resize and calls to update margin */
@@ -233,8 +237,9 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 			ssize_t step = arcan_tui_utf8ucs4((char*) &cs[j], &ch);
 			if (step > 0)
 				j += step;
-			arcan_tui_write(T, ch, &alert);
+			arcan_tui_write(T, ch, &hint);
 		}
+		printf("wrote: %s\n", cs);
 	}
 
 	if (cx)
@@ -311,10 +316,7 @@ static bool erase_at_cursor(struct tui_context* T, struct readline_meta* M)
 	M->work_ofs -= len;
 
 /* check if we are broken at some offset */
-	if (M->opts.verify){
-		M->broken_offset = M->opts.verify((const char*)M->work, M->old_handlers.tag);
-	}
-
+	verify(T, M);
 	refresh(T, M);
 
 	return true;
@@ -411,12 +413,12 @@ static void on_utf8_paste(
 			uint32_t ch;
 			size_t step = arcan_tui_utf8ucs4((char*)&u8[i], &ch);
 			if (M->opts.filter_character(ch, M->work_len + 1, M->old_handlers.tag))
-				add_input(T, M, (char*)&u8[i], step);
+				add_input(T, M, (char*)&u8[i], step, false);
 			i += step;
 		}
 	}
 	else {
-		add_input(T, M, (char*)u8, len);
+		add_input(T, M, (char*)u8, len, false);
 	}
 
 	refresh(T, M);
@@ -454,7 +456,7 @@ static bool on_utf8_input(
 		}
 	}
 
-	add_input(T, M, u8, len);
+	add_input(T, M, u8, len, false);
 
 /* missing - if we have a valid suggestion popup, rebuild it with
  * the new filter-set and reset the cursor in the popup to the current position */
@@ -503,7 +505,11 @@ static void step_history(
 
 static void synch_completion(struct tui_context* T, struct readline_meta* M)
 {
-
+	M->broken_offset = M->opts.verify(
+		(const char*)M->work, M->cursor, true, M->old_handlers.tag);
+	M->show_completion = true;
+	if (M->completion)
+		synch_completion(T, M);
 }
 
 void on_key_input(struct tui_context* T,
@@ -582,9 +588,9 @@ void on_key_input(struct tui_context* T,
 		step_history(T, M, -1);
 	}
 	else if (keysym == TUIK_ESCAPE){
-		if (M->in_completion){
-			free(M->in_completion);
-			M->in_completion = NULL;
+		M->show_completion = false;
+		if (M->show_completion){
+			M->show_completion = false;
 			refresh(T, M);
 		}
 		else if (M->opts.allow_exit){
@@ -596,8 +602,9 @@ void on_key_input(struct tui_context* T,
 		erase_at_cursor(T, M);
 	else if (keysym == TUIK_DELETE)
 		delete_at_cursor(T, M);
-	else if (keysym == TUIK_TAB)
+	else if (keysym == TUIK_TAB){
 		synch_completion(T, M);
+	}
 
 /* finish or if multi-line and meta-held, add '\n' */
 	else if (keysym == TUIK_RETURN){
@@ -639,8 +646,8 @@ static void replace_str(
 	refresh(T, M);
 }
 
-static void add_input(
-	struct tui_context* T, struct readline_meta* M, const char* u8, size_t len)
+static void add_input(struct tui_context* T,
+	struct readline_meta* M, const char* u8, size_t len, bool noverify)
 {
 	if (!ensure_size(T, M, M->work_ofs + len + 1))
 		return;
@@ -664,10 +671,8 @@ static void add_input(
 		M->cursor += len;
 	}
 
-/* check if we are broken at some offset */
-	if (M->opts.verify){
-		M->broken_offset = M->opts.verify((const char*)M->work, M->old_handlers.tag);
-	}
+	if (!noverify)
+		verify(T, M);
 
 /* number of code points have changed, now we need to convert to logical pos */
 	size_t pos = 0;
@@ -745,12 +750,8 @@ static void on_recolor(struct tui_context* T, void* tag)
 	refresh(T, M);
 }
 
-void arcan_tui_readline_reset(struct tui_context* T)
+static void reset(struct readline_meta* M)
 {
-	struct readline_meta* M;
-	if (!validate_context(T, &M) || !M->work)
-		return;
-
 	M->finished = 0;
 	M->work[0] = 0;
 	M->work_ofs = 0;
@@ -760,6 +761,60 @@ void arcan_tui_readline_reset(struct tui_context* T)
 	if (M->in_history)
 		free(M->in_history);
 	M->in_history = NULL;
+}
+
+void arcan_tui_readline_autocomplete(struct tui_context* T, const char* suffix)
+{
+	struct readline_meta* M;
+	if (!validate_context(T, &M) || !M->work)
+		return;
+
+	M->current_suggestion = suffix;
+}
+
+void arcan_tui_readline_suggest(
+	struct tui_context* T, const char** set, size_t sz)
+{
+	struct readline_meta* M;
+	if (!validate_context(T, &M) || !M->work)
+		return;
+
+	M->completion = set;
+	M->completion_sz = sz;
+
+	if (M->show_completion){
+		refresh(T, M);
+	}
+}
+
+void arcan_tui_readline_reset(struct tui_context* T)
+{
+	struct readline_meta* M;
+	if (!validate_context(T, &M) || !M->work)
+		return;
+
+	reset(M);
+	refresh(T, M);
+}
+
+void arcan_tui_readline_set(struct tui_context* T, const char* msg)
+{
+	struct readline_meta* M;
+	if (!validate_context(T, &M) || !M->work)
+		return;
+
+	reset(M);
+
+	while(msg && *msg){
+		uint32_t ch;
+		ssize_t step = arcan_tui_utf8ucs4(msg, &ch);
+		if (step > 0){
+			add_input(T, M, msg, step, true);
+			msg += step;
+		}
+		else
+			break;
+	}
 
 	refresh(T, M);
 }
@@ -968,6 +1023,7 @@ void arcan_tui_readline_setup(
 	size_t rows, cols;
 	arcan_tui_dimensions(T, &rows, &cols);
 	reset_boundaries(T, meta, cols, rows);
+	ensure_size(T, meta, 32);
 	refresh(T, meta);
 }
 

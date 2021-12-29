@@ -1004,8 +1004,8 @@ int arcan_tui_set_flags(struct tui_context*, int tui_flags);
 void arcan_tui_reset_flags(struct tui_context*, int tui_flags);
 
 /*
- * use from within a on_subwindow handler in order to forward the subwindow
- * to an external process. Only a connection from within the handle will work.
+ * Use from within a on_subwindow handler in order to forward the subwindow
+ * to an external process. Only a connection from within the handler will work.
  * Optional constraints suggest anchoring and sizing constraints.
  *
  * [Path] points to an absolute path of the binary to hand over control to.
@@ -1014,15 +1014,18 @@ void arcan_tui_reset_flags(struct tui_context*, int tui_flags);
  * [Env]  is a null-terminated array of strings that will be set as the new
  *        process environments.
  *
- * [flags] is a bitmap of resources handover controls. See tuisym.h for enum.
+ * [flags] is a bitmap of resources handover controls.
  *          TUI_DETACH_PROCESS | TUI_DETACH_STDIN | TUI_DETACH_STDOUT |
  *          TUI_DETACH_STDERR
  *
- * will reparent the handover window (double-fork like semantics)
- * otherwise the returned pid_t will need to be handled like a normal child
- * (using wait() class of functions or a SIGCHLD handler).
+ * DETACH_(STDIN/STDOUT/STDERR) will make sure that these are not inherited
+ * and replaced with /dev/null or something with a similar effect.
  *
- * Will return -1 on failure to spawn,exec,hand-over.
+ * DETACH_PROCESS will reparent the handover window (double-fork like
+ * semantics) otherwise the returned pid_t will need to be handled like a
+ * normal child (using wait() class of functions or a SIGCHLD handler).
+ *
+ * Will return -1 on failure to spawn,exec or hand-over.
  */
 pid_t arcan_tui_handover(struct tui_context*, arcan_tui_conn*,
 	struct tui_constraints* constraints,
@@ -1035,11 +1038,18 @@ pid_t arcan_tui_handover(struct tui_context*, arcan_tui_conn*,
  * so that the render may smooth-scroll between the contents of the
  * last update and the new one.
  *
+ * There are many ways of misusing this call. Scrolling a larger dx,dy than
+ * there are rows/columns in the region makes it impossible to actually
+ * implement smooth scrolling on the server side. Queueing overlapping regions
+ * or a high number of them may also have the scrolling revert back to
+ * immediate rather than smooth. The rule of thumb is to stick to one or two
+ * large regions with small step sizes.
+
  * [ALLOCATION NOTES]
  * This allocation is not tracked and will be used/referenced until
  * the next screen refresh call. After it has been used, the dx and dy
  * fields will be set to 0.
- */
+*/
 void arcan_tui_scrollhint(
 	struct tui_context*, size_t n_regions, struct tui_region*);
 

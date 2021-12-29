@@ -29,6 +29,7 @@
 #include <arcan_tui_linewnd.h>
 #include <arcan_tui_readline.h>
 
+#include <assert.h>
 #include <stdbool.h>
 #include <lua.h>
 #include <lauxlib.h>
@@ -59,7 +60,7 @@ static struct tui_cbcfg shared_cbcfg = {};
 #define SETUP_HREF(X, B) \
 	struct tui_lmeta* meta = t;\
 	lua_State* L = meta->lua;\
-	if (meta->href == LUA_REFNIL)\
+	if (meta->href == LUA_NOREF)\
 		return B;\
 	lua_rawgeti(L, LUA_REGISTRYINDEX, meta->href);\
 	lua_getfield(L, -1, X);\
@@ -67,15 +68,38 @@ static struct tui_cbcfg shared_cbcfg = {};
 		lua_pop(L, 2);\
 		return B;\
 	}\
-	lua_pushvalue(L, -3);
+	lua_rawgeti(L, LUA_REGISTRYINDEX, meta->tui_state);\
 
 #define END_HREF lua_pop(L, 1);
 
 #define RUN_CALLBACK(X, Y, Z) do {\
-	if (-1 == lua_pcall(L, (Y), (Z), 0)){\
+	if (0 != lua_pcall(L, (Y), (Z), 0)){\
 		luaL_error(L, lua_tostring(L, -1));\
 	}\
 } while(0);
+
+static const char* udata_list[] = {
+	TUI_METATABLE,
+	"widget_readline",
+	"blob_asio"
+};
+
+/* just used for dump_stack, pos can't be relative */
+static const char* match_udata(lua_State* L, ssize_t pos){
+	lua_getmetatable(L, pos);
+
+	for (size_t i = 0; i < COUNT_OF(udata_list); i++){
+		luaL_getmetatable(L, udata_list[i]);
+		if (lua_rawequal(L, -1, -2)){
+			lua_pop(L, 2);
+			return udata_list[i];
+		}
+		lua_pop(L, 1);
+	}
+
+	lua_pop(L, 1);
+	return NULL;
+}
 
 static void register_tuimeta(lua_State* L);
 static void dump_stack(lua_State* ctx)
@@ -96,6 +120,14 @@ static void dump_stack(lua_State* ctx)
 		case LUA_TNUMBER:
 			fprintf(stderr, "%zu\t%g\n", i, lua_tonumber(ctx, i));
 			break;
+		case LUA_TUSERDATA:{
+			const char* type = match_udata(ctx, i);
+			if (type)
+				fprintf(stderr, "%zu\tuserdata:%s\n", i, type);
+			else
+				fprintf(stderr, "%zu\tuserdata(unknown)\n", i);
+		}
+		break;
 		default:
 			fprintf(stderr, "%zu\t%s\n", i, lua_typename(ctx, t));
 			break;
@@ -139,6 +171,16 @@ static void dump_stack(lua_State* ctx)
 	struct tui_lmeta* ib = meta->parent;\
 	if (!ib || !ib->tui || ib->widget_mode != TWND_READLINE)\
 		luaL_error(L, "window not in readline state");
+
+static void init_lmeta(struct tui_lmeta* l)
+{
+	*l = (struct tui_lmeta){
+		.widget_closure = LUA_NOREF,
+		.href = LUA_NOREF,
+		.widget_state = LUA_NOREF,
+		.tui_state = LUA_NOREF
+	};
+}
 
 static lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
 {
@@ -388,6 +430,7 @@ static bool on_subwindow(struct tui_context* T,
 		return true;
 	}
 
+	init_lmeta(nud);
 	nud->tui = ctx;
 	luaL_getmetatable(L, TUI_METATABLE);
 	lua_setmetatable(L, -2);
@@ -485,7 +528,7 @@ static void on_seek_absolute(struct tui_context* T, float pct, void* t)
 {
 	SETUP_HREF("seek_absolute", );
 		lua_pushnumber(L, pct);
-		RUN_CALLBACK("seek_absolute", 0, 0);
+		RUN_CALLBACK("seek_absolute", 2, 0);
 	END_HREF;
 }
 
@@ -495,8 +538,89 @@ static void on_seek_relative(
 	SETUP_HREF("seek_relative", );
 		lua_pushnumber(L, rows);
 		lua_pushnumber(L, cols);
-		RUN_CALLBACK("seek_relative", 1, 0);
+		RUN_CALLBACK("seek_relative", 3, 0);
 	END_HREF;
+}
+
+static bool on_readline_filter(uint32_t ch, size_t len, void* t)
+{
+	struct tui_lmeta* meta = t;
+	if (!meta->widget_meta || meta->widget_meta->readline.filter == LUA_NOREF){
+		return true;
+	}
+
+	char buf[4];
+	size_t used = arcan_tui_ucs4utf8(ch, buf);
+	if (!used){
+		return true;
+	}
+
+	bool res = true;
+	lua_State* L = meta->lua;
+
+/* function(self, input, strlen) -> accept or reject */
+	lua_rawgeti(meta->lua,
+		LUA_REGISTRYINDEX, meta->widget_meta->readline.filter);
+	lua_rawgeti(meta->lua, LUA_REGISTRYINDEX, meta->widget_state);
+
+	lua_pushlstring(L, buf, used);
+	lua_pushinteger(L, len);
+
+	if (0 != lua_pcall(L, 3, 1, 0)){
+		luaL_error(L, lua_tostring(L, -1));
+	}
+
+	if (lua_type(L, -1) == LUA_TBOOLEAN){
+		res = lua_toboolean(L, -1);
+	}
+	else if (lua_type(L, -1) == LUA_TNIL){
+	}
+	else
+		luaL_error(L, "verify() bad return type, expected boolean");
+
+	lua_pop(L, 1);
+	return res;
+}
+
+static ssize_t on_readline_verify(
+	const char* message, size_t prefix, bool suggest, void* t)
+{
+	struct tui_lmeta* meta = t;
+	if (!meta->widget_meta || meta->widget_meta->readline.verify == LUA_NOREF){
+		return -1;
+	}
+
+	lua_State* L = meta->lua;
+	lua_rawgeti(meta->lua,
+		LUA_REGISTRYINDEX, meta->widget_meta->readline.verify);
+	lua_rawgeti(meta->lua, LUA_REGISTRYINDEX, meta->widget_state);
+
+	ssize_t res = -1;
+/* function(self, prefix, full, suggest) -> offset or accept/reject */
+	lua_pushlstring(L, message, prefix);
+	lua_pushstring(L, message);
+	lua_pushboolean(L, suggest);
+
+	int rv = lua_pcall(L, 4, 1, 0);
+	printf("call over, rv: %d\n", rv);
+	if (0 != rv){
+		luaL_error(L, lua_tostring(L, -1));
+	}
+
+/* just binary good/bad */
+	if (lua_type(L, -1) == LUA_TBOOLEAN){
+		if (!lua_toboolean(L, -1))
+			res = 0;
+	}
+/* or failure offset */
+	else if (lua_type(L, -1) == LUA_TNUMBER){
+		res = lua_tointeger(L, -1);
+		if (res > 0)
+			res *= -1;
+	}
+
+	END_HREF
+	return res;
 }
 
 static int on_cli_command(struct tui_context* T,
@@ -606,6 +730,19 @@ static void free_history(struct widget_meta* m)
 	m->readline.history = NULL;
 }
 
+static void free_suggest(struct widget_meta* m)
+{
+	if (!m->readline.suggest)
+		return;
+
+	for (size_t i = 0; i < m->readline.suggest_sz; i++){
+		free(m->readline.suggest[i]);
+	}
+
+	free(m->readline.suggest);
+	m->readline.suggest = NULL;
+}
+
 static void revert(lua_State* L, struct tui_lmeta* M)
 {
 	switch (M->widget_mode){
@@ -621,13 +758,14 @@ static void revert(lua_State* L, struct tui_lmeta* M)
 		arcan_tui_readline_release(M->tui);
 		if (M->widget_meta){
 			struct widget_meta* wm = M->widget_meta;
+
 			if (wm->readline.verify){
 				luaL_unref(L, LUA_REGISTRYINDEX, wm->readline.verify);
 				M->widget_meta->readline.verify = LUA_NOREF;
 			}
-			if (wm->readline.suggest){
-				luaL_unref(L, LUA_REGISTRYINDEX, wm->readline.suggest);
-				M->widget_meta->readline.suggest = LUA_NOREF;
+			if (wm->readline.filter){
+				luaL_unref(L, LUA_REGISTRYINDEX, wm->readline.filter);
+				M->widget_meta->readline.filter = LUA_NOREF;
 			}
 
 /* There might be a case for actually not freeing the history in the case
@@ -635,6 +773,7 @@ static void revert(lua_State* L, struct tui_lmeta* M)
  * the current history buffer. The reason for that is simply that setting
  * history is O(n) and converting to-from Lua space into a string table. */
 			free_history(wm);
+			free_suggest(wm);
 		}
 	break;
 	case TWND_LINEWND:
@@ -649,9 +788,13 @@ static void revert(lua_State* L, struct tui_lmeta* M)
 		M->widget_meta->parent = NULL;
 		M->widget_meta = NULL;
 	}
-	if (M->widget_closure){
+	if (M->widget_closure != LUA_NOREF){
 		luaL_unref(L, LUA_REGISTRYINDEX, M->widget_closure);
 		M->widget_closure = LUA_NOREF;
+	}
+	if (M->widget_state != LUA_NOREF){
+		luaL_unref(L, LUA_REGISTRYINDEX, M->widget_state);
+		M->widget_state = LUA_NOREF;
 	}
 }
 
@@ -822,7 +965,9 @@ ltui_inherit(lua_State* L, arcan_tui_conn* conn)
 	if (!meta){
 		return NULL;
 	}
-	*meta = (struct tui_lmeta){0};
+	init_lmeta(meta);
+	lua_pushvalue(L, -1);
+	meta->tui_state = luaL_ref(L, LUA_REGISTRYINDEX);
 
 /* set the TUI api table to our metadata */
 	luaL_getmetatable(L, TUI_METATABLE);
@@ -862,7 +1007,7 @@ ltui_inherit(lua_State* L, arcan_tui_conn* conn)
 		.seek_relative = on_seek_relative,
 		.tag = meta
 	};
-	meta->href = LUA_REFNIL;
+	meta->href = LUA_NOREF;
 
 /*
  * get a reference to the callback table so we can extract it from
@@ -894,6 +1039,8 @@ static int tuiclose(lua_State* L)
 	TUI_UDATA;
 	arcan_tui_destroy(ib->tui, luaL_optstring(L, 2, NULL));
 	ib->tui = NULL;
+	luaL_unref(L, LUA_REGISTRYINDEX, ib->tui_state);
+	ib->tui_state = LUA_NOREF;
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, ib->href);
 	lua_getfield(L, -1, "destroy");
@@ -917,9 +1064,9 @@ static int collect(lua_State* L)
 		arcan_tui_destroy(ib->tui, ib->last_words);
 		ib->tui = NULL;
 	}
-	if (ib->href != LUA_REFNIL){
+	if (ib->href != LUA_NOREF){
 		luaL_unref(L, LUA_REGISTRYINDEX, ib->href);
-		ib->href = LUA_REFNIL;
+		ib->href = LUA_NOREF;
 	}
 
 	return 0;
@@ -928,9 +1075,9 @@ static int collect(lua_State* L)
 static int settbl(lua_State* L)
 {
 	TUI_UDATA;
-	if (ib->href != LUA_REFNIL){
+	if (ib->href != LUA_NOREF){
 		luaL_unref(L, LUA_REGISTRYINDEX, ib->href);
-		ib->href = LUA_REFNIL;
+		ib->href = LUA_NOREF;
 	}
 
 	luaL_checktype(L, 2, LUA_TTABLE);
@@ -961,7 +1108,7 @@ static int reqwnd(lua_State* L)
 
 	const char* type = luaL_optstring(L, 2, "tui");
 	int ind;
-	intptr_t ref = LUA_REFNIL;
+	intptr_t ref = LUA_NOREF;
 	if ( (ind = 2, lua_isfunction(L, 2)) || (ind = 3, lua_isfunction(L, 3)) ){
 		lua_pushvalue(L, ind);
 		luaL_ref(L, LUA_REGISTRYINDEX);
@@ -1297,12 +1444,10 @@ static int readline(lua_State* L)
 		.margin_left = 0,
 		.margin_right = 0,
 		.allow_exit = false,
-		.autocomplete = NULL, /* on_readline_autocomplete */
-		.filter_character = NULL, /* on_readline_filter_character */
 		.mask_character = 0,
 		.multiline = false,
-		.verify = NULL, /* on_readline_verify */
-		.suggest = NULL, /* on_readline_suggest */
+		.filter_character = on_readline_filter,
+		.verify = on_readline_verify
 	};
 
 	if (!lua_isfunction(L, ofs) || lua_iscfunction(L, ofs)){
@@ -1317,7 +1462,7 @@ static int readline(lua_State* L)
 	*meta = (struct widget_meta){
 		.readline = {
 			.verify = LUA_NOREF,
-			.suggest = LUA_NOREF
+			.filter = LUA_NOREF
 		}
 	};
 
@@ -1346,15 +1491,15 @@ static int readline(lua_State* L)
 			arcan_tui_utf8ucs4(lua_tostring(L, -1), &opts.mask_character);
 		}
 		lua_pop(L, 1);
-		lua_getfield(L, tbl, "suggest");
-		if (lua_isfunction(L, -1) && !lua_iscfunction(L, -1)){
-			meta->readline.suggest = luaL_ref(L, LUA_REGISTRYINDEX);
-		}
-		else
-			lua_pop(L, 1);
 		lua_getfield(L, tbl, "verify");
 		if (lua_isfunction(L, -1) && !lua_iscfunction(L, -1)){
 			meta->readline.verify = luaL_ref(L, LUA_REGISTRYINDEX);
+		}
+		else
+			lua_pop(L, 1);
+		lua_getfield(L, tbl, "filter");
+		if (lua_isfunction(L, -1) && !lua_iscfunction(L, -1)){
+			meta->readline.filter = luaL_ref(L, LUA_REGISTRYINDEX);
 		}
 		else
 			lua_pop(L, 1);
@@ -1367,6 +1512,7 @@ static int readline(lua_State* L)
 	ib->widget_mode = TWND_READLINE;
 	meta->parent = ib;
 	ib->widget_meta = meta;
+
 	luaL_getmetatable(L, "widget_readline");
 	lua_setmetatable(L, -2);
 
@@ -1375,8 +1521,15 @@ static int readline(lua_State* L)
  *    be matched
  */
 	lua_pushvalue(L, -4);
+
 	arcan_tui_readline_setup(ib->tui, &opts, sizeof(opts));
 	lua_pop(L, 1);
+
+/* 5. save a reference to the widget context in order to forward it in
+ *    callback handlers later
+ */
+	lua_pushvalue(L, -1);
+	ib->widget_state = luaL_ref(L, LUA_REGISTRYINDEX);
 
 	return 1;
 }
@@ -1491,6 +1644,7 @@ static int readline_prompt(lua_State* L)
 				lua_pop(L, 1);
 			}
 		}
+
 		prompt[celli] = (struct tui_cell){0};
 	}
 	else if (lua_type(L, 2) == LUA_TSTRING){
@@ -1512,7 +1666,73 @@ static int readline_prompt(lua_State* L)
 	else
 		luaL_error(L, "expected table or string");
 
+/* Same trap as elsewhere - when the callback is invoked, it will likely
+ * trigger redraw / recolor that will chain into the outer implementation. */
 	arcan_tui_readline_prompt(ib->tui, prompt);
+
+	return 0;
+}
+
+static int readline_suggest(lua_State* L)
+{
+	TUI_READLINEDATA
+
+	size_t count = 0;
+	char** new_suggest = NULL;
+	if (lua_type(L, 2) != LUA_TTABLE){
+		luaL_error(L, "suggest(table) - missing table");
+	}
+
+	ssize_t nelem = lua_rawlen(L, 2);
+	if (nelem < 0){
+		luaL_error(L, "suggest(table) - negative length");
+	}
+
+	if (nelem){
+		new_suggest = malloc(nelem * sizeof(char*));
+		if (!new_suggest){
+			luaL_error(L, "set_suggest(alloc) - out of memory");
+		}
+		for (size_t i = 0; i < (size_t) nelem; i++){
+			lua_rawgeti(L, 2, i+1);
+			if (lua_type(L, -1) != LUA_TSTRING)
+				luaL_error(L, "set_suggest - expected string in suggest");
+			new_suggest[i] = strdup(lua_tostring(L, -1));
+			count++;
+			lua_pop(L, 1);
+		}
+	}
+
+	free_suggest(meta);
+	meta->readline.suggest = new_suggest;
+	meta->readline.history_sz = count;
+	arcan_tui_readline_suggest(
+		meta->parent->tui, (const char**) new_suggest, count);
+
+	return 0;
+}
+
+static int readline_set(lua_State* L)
+{
+	TUI_READLINEDATA
+	const char* msg = luaL_checkstring(L, 2);
+	if (strlen(msg) == 0)
+		arcan_tui_readline_set(ib->tui, NULL);
+	else
+		arcan_tui_readline_set(ib->tui, msg);
+
+	return 0;
+}
+
+static int readline_autocomplete(lua_State* L)
+{
+	TUI_READLINEDATA
+	const char* msg = luaL_checkstring(L, 2);
+	if (strlen(msg) == 0)
+		arcan_tui_readline_autocomplete(ib->tui, NULL);
+	else{
+		arcan_tui_readline_autocomplete(ib->tui, msg);
+	}
 	return 0;
 }
 
@@ -1551,6 +1771,7 @@ static int readline_history(lua_State* L)
 	meta->readline.history_sz = count;
 	arcan_tui_readline_history(
 		meta->parent->tui, (const char**) new_history, count);
+
 	return 0;
 }
 
@@ -1609,13 +1830,6 @@ static void register_tuimeta(lua_State* L)
 		{"revert", revertwnd},
 		{"set_list", listwnd},
 		{"readline", readline},
-/* set_buffer
- */
-
-/* MISSING:
- * getxy,
- * writestr,
- */
 	};
 
 	/* will only be set if it does not already exist */
@@ -1871,6 +2085,12 @@ static void register_tuimeta(lua_State* L)
 	lua_setfield(L, -2, "set_prompt");
 	lua_pushcfunction(L, readline_history);
 	lua_setfield(L, -2, "set_history");
+	lua_pushcfunction(L, readline_suggest);
+	lua_setfield(L, -2, "suggest");
+	lua_pushcfunction(L, readline_set);
+	lua_setfield(L, -2, "set");
+	lua_pushcfunction(L, readline_autocomplete);
+	lua_setfield(L, -2, "autocomplete");
 	lua_pop(L, 1);
 
 /*

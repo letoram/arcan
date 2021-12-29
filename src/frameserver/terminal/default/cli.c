@@ -54,7 +54,8 @@ static char** duplicate_strtbl(char** arg, size_t prepad, size_t pad)
 	return buf;
 }
 
-static ssize_t parse_command(const char* message, void* tag)
+static ssize_t parse_command(
+	const char* message, size_t pos, bool suggest, void* tag)
 {
 /* missing: this should run the normal extract_argv and built-in check,
  * (eval_to_cmd with noxec) if tui- mode is here and we have an oracle, forward
