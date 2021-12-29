@@ -64,13 +64,17 @@ struct tui_readline_opts {
 /* line-feeds are accepted into the buffer, and empty */
 	bool multiline;
 
-/* check the contents (utf-8, NUL terminated) of [message].
- * return -1 on success or the buffer offset where the content failed */
-	ssize_t (*verify)(const char* message, void* T);
-
-/* based on [message] return a sorted list of possible candidates in [set]
- * and the number of elements as function return value */
-	size_t (*suggest)(const char* message, const char** set, void* T);
+/* Check the contents (utf-8, NUL terminated) of [message].
+ * [prefix] contains the subset of message up to the current cursor position.
+ *
+ * return -1 on success or the buffer offset where the content stops being
+ * valid.
+ *
+ * If [suggest] is set, the user has requested that a set of possible
+ * options based on the current prefix is added.
+ */
+	ssize_t (*verify)(
+		const char* message, size_t prefix, bool suggest, void* T);
 };
 
 void arcan_tui_readline_setup(
@@ -103,6 +107,23 @@ void arcan_tui_readline_prompt(struct tui_context* T, const struct tui_cell* pro
 void arcan_tui_readline_release(struct tui_context*);
 
 /*
+ * Set a possible non-authoritative completion suffix that the user can use to
+ * automatically fill in the rest of the string.
+ */
+void arcan_tui_readline_autocomplete(struct tui_context* t, const char* suffix);
+
+/*
+ * Update a set of possible strings that can be inserted at the current
+ * position. This is most useful through the verify callback when the user
+ * has explicitly requested a set of suggestions.
+ *
+ * The caller retains ownership of [set] and it is expected to be valid until
+ * the next call to _suggestion or until readline_release.
+ */
+void arcan_tui_readline_suggest(
+	struct tui_context* t, const char** set, size_t set_sz);
+
+/*
  * Call as part of normal processing loop to retrieve a reference to the
  * current input buffer.
  *
@@ -124,19 +145,33 @@ int arcan_tui_readline_finished(struct tui_context*, char** buffer);
  */
 void arcan_tui_readline_reset(struct tui_context*);
 
+/*
+ * Clear current input buffer and replace with [msg].
+ *
+ * This will not trigger any of the assigned callbacks to avoid misuse from
+ * being called from within another callback.
+ */
+void arcan_tui_readline_set(struct tui_context*, const char* msg);
+
 #else
 typedef bool(* PTUIRL_SETUP)(
 	struct tui_context*, struct tui_readline_opts*, size_t opt_sz);
 typedef bool(* PTUIRL_FINISHED)(struct tui_context*, char** buffer);
-typedef void(* PTUIRL_RESET)(struct tui_context*);
+typedef void(* PTUIRL_RESET)(struct tui_context*, const char*);
 typedef void(* PTUIRL_HISTORY)(struct tui_context*, const char**, size_t);
 typedef void(* PTUIRL_PROMPT)(struct tui_context*, const struct tui_cell*);
+typedef void(* PTUIRL_SET)(struct tui_context*, const char* msg);
+typedef void(* PTUIRL_COMPLETE)(struct tui_context*, const char*);
+typedef void(* PTUIRL_SUGGEST)(struct tui_context*, const char**, size_t);
 
 static PTUIRL_SETUP arcan_tui_readline_setup;
 static PTUIRL_FINISHED arcan_tui_readline_finished;
 static PTUIRL_RESET arcan_tui_readline_reset;
 static PTUIRL_HISTORY arcan_tui_readline_history;
 static PTUIRL_PROMPT arcan_tui_readline_prompt;
+static PTUIRL_SET arcan_tui_readline_set;
+static PTUIRL_COMPLETE arcan_tui_readline_complete;
+static PTUIRL_SUGGEST arcan_tui_readline_suggest;
 
 static bool arcan_tui_readline_dynload(
 	void*(*lookup)(void*, const char*), void* tag)
@@ -147,6 +182,9 @@ M(PTUIRL_FINISHED, arcan_tui_readline_finished);
 M(PTUIRL_RESET, arcan_tui_readline_reset);
 M(PTUIRL_HISTORY, arcan_tui_readline_history);
 M(PTUIRL_PROMPT, arcan_tui_readline_prompt);
+M(PTUIRL_SET, arcan_tui_readline_set);
+M(PTUIRL_COMPLETE, arcan_tui_readline_complete);
+M(PTUIRL_SUGGEST, arcan_tui_readline_suggest);
 #undef M
 }
 

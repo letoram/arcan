@@ -4,6 +4,7 @@
  * Protocol: add intent to HELLO (source or sink)
  * Drop connection on intent conflict (source connect to source or sink to sink)
  * Move keystore to statepath subdir (a12)
+ * Added Sweep Discovery mode
 
 ## Lua
  * net\_discover added, use this to find other a12 clients
@@ -16,10 +17,17 @@
 ## Shmif
  * add EXTERNAL\_NETSTATE for fsrv\_net to convey known-set changes
 
+## Tui
+ * Readline: added history navigation inputs
+ * Readline: cleaned up API for history/completion controls, reduced callbacks
+ * Readline: delete last word implemented
+ * Readline: draw/navigate completion set on request
+
 ## Frameservers
  * Encode: (linux) add support for a v4l2-loopback sink
  * Net: added 'sweep' discovery mode
  * Decode: added protocol=pdf (dependency, mupdf) mode
+ * Decode: added protocol=list for probing
 
 ## 0.6.1
 

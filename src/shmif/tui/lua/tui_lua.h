@@ -49,14 +49,18 @@ struct tui_lmeta;
 
 struct widget_meta {
 	struct tui_lmeta* parent;
+
 	int widget_type;
 	union {
 		struct {
-			intptr_t suggest;
 			intptr_t verify;
+			intptr_t filter;
 
 			char** history;
 			size_t history_sz;
+
+			char** suggest;
+			size_t suggest_sz;
 		} readline;
 	};
 };
@@ -78,7 +82,9 @@ struct tui_lmeta {
 	struct tui_list_entry* tmplist;
 
 	intptr_t href;
+	intptr_t tui_state;
 	intptr_t widget_closure;
+	intptr_t widget_state;
 
 /* pending subsegment requests and their respective lua references */
 	uint8_t pending_mask;
