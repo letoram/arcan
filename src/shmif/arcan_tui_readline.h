@@ -64,6 +64,11 @@ struct tui_readline_opts {
 /* line-feeds are accepted into the buffer, and empty */
 	bool multiline;
 
+/* Tab is a bit special as some sources do provide this as a keyboard symbols
+ * while others might treat it as a '\t' - in that case it would be subject to
+ * filter_character callback. */
+	bool tab_completion;
+
 /* Check the contents (utf-8, NUL terminated) of [message].
  * [prefix] contains the subset of message up to the current cursor position.
  *
@@ -119,9 +124,21 @@ void arcan_tui_readline_autocomplete(struct tui_context* t, const char* suffix);
  *
  * The caller retains ownership of [set] and it is expected to be valid until
  * the next call to _suggestion or until readline_release.
+ *
+ * The mode specifies how activation of a suggestion will be applied and
+ * presented.
+ *
+ * For 'insert' the text will be added at the current cursor position.
+ * For 'word' the last word will be removed and swapped for the suggested entry.
+ * For 'substitute' the entire input set will be replaced.
  */
+enum tui_readline_suggestion_mode {
+	READLINE_SUGGEST_INSERT = 0,
+	READLINE_SUGGEST_WORD = 1,
+	READLINE_SUGGEST_SUBSTITUTE = 2
+};
 void arcan_tui_readline_suggest(
-	struct tui_context* t, const char** set, size_t set_sz);
+	struct tui_context* t, int mode, const char** set, size_t set_sz);
 
 /*
  * Call as part of normal processing loop to retrieve a reference to the
@@ -162,7 +179,7 @@ typedef void(* PTUIRL_HISTORY)(struct tui_context*, const char**, size_t);
 typedef void(* PTUIRL_PROMPT)(struct tui_context*, const struct tui_cell*);
 typedef void(* PTUIRL_SET)(struct tui_context*, const char* msg);
 typedef void(* PTUIRL_COMPLETE)(struct tui_context*, const char*);
-typedef void(* PTUIRL_SUGGEST)(struct tui_context*, const char**, size_t);
+typedef void(* PTUIRL_SUGGEST)(struct tui_context*, int, const char**, size_t);
 
 static PTUIRL_SETUP arcan_tui_readline_setup;
 static PTUIRL_FINISHED arcan_tui_readline_finished;

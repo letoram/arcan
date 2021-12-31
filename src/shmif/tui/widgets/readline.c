@@ -53,6 +53,9 @@ struct readline_meta {
 	bool show_completion;
 	const char** completion;
 	size_t completion_sz;
+	size_t completion_width;
+	size_t completion_mode;
+	size_t completion_pos;
 
 /* if we overfit-, this might be drawn with middle truncated to 2/3 of capacity */
 	const struct tui_cell* prompt;
@@ -74,6 +77,9 @@ struct readline_meta {
 /* generic 'insert at cursor' */
 static void add_input(struct tui_context* T,
 	struct readline_meta* M, const char* u8, size_t len, bool noverify);
+
+static void synch_completion(struct tui_context* T, struct readline_meta* M);
+static void delete_last_word(struct tui_context* T, struct readline_meta* M);
 
 static void replace_str(
 	struct tui_context* T, struct readline_meta* M, const char* str, size_t len);
@@ -122,7 +128,92 @@ static void verify(struct tui_context* T, struct readline_meta* M)
 		return;
 
 	M->broken_offset = M->opts.verify(
-		(const char*)M->work, M->cursor, false, M->old_handlers.tag);
+		(const char*)M->work, M->cursor, M->show_completion, M->old_handlers.tag);
+}
+
+static void drop_completion(
+	struct tui_context* T, struct readline_meta* M, bool run)
+{
+	if (!M->show_completion)
+		return;
+
+	if (run){
+		switch (M->completion_mode){
+			case READLINE_SUGGEST_WORD:
+				if (!isspace(M->work[M->cursor]))
+					delete_last_word(T, M);
+
+/* fallthough */
+			case READLINE_SUGGEST_INSERT:{
+				const char* msg = M->completion[M->completion_pos];
+				while (*msg){
+					uint32_t ch;
+					ssize_t step = arcan_tui_utf8ucs4(msg, &ch);
+					if (step <= 0)
+						break;
+					add_input(T, M, msg, step, true);
+					msg += step;
+				}
+			}
+			break;
+
+			case READLINE_SUGGEST_SUBSTITUTE:
+				arcan_tui_readline_set(T, M->completion[M->completion_pos]);
+			break;
+		}
+	}
+
+	M->show_completion = false;
+}
+
+static void draw_completion(struct tui_context* T, struct readline_meta* M)
+{
+	if (!M->show_completion || !M->completion || !M->completion_sz)
+		return;
+
+/* There are two ways of doing this, one is by having a separate non-grab
+ * cursor attached popup in listwnd state that we simply move around and attach
+ * to our normal processing loop.
+ *
+ * This is not always available (and depends on the window management scheme)
+ * so we need some kind of fallback to start with and make sure the rest of
+ * the feature actually works as intended.
+ */
+
+	size_t rows, cols;
+	arcan_tui_dimensions(T, &rows, &cols);
+	size_t cx = 0, cy = 0;
+	arcan_tui_cursorpos(T, &cx, &cy);
+
+/* can't really show popup in this format unless we have the 'separate window'
+ * form active */
+	if (rows < 2)
+		return;
+
+/* Based on window dimensions and cursor position, figure out the number of
+ * items to draw. If we are closer to the top, position it above - otherwise
+ * below. */
+	ssize_t step = 1;
+	if (rows - cy < (rows >> 1))
+		step = -1;
+
+/* this drawing is not good enough - we should crop and set attributes for
+ * marking BORDER_RIGHT, BORDER_DOWN (meaning we also need to poke the cells to
+ * the top / left and append that attribute, as well as shape break(?) */
+	struct tui_screen_attr attr = arcan_tui_defcattr(T, TUI_COL_UI);
+
+/* Other style choice when we draw on canvas like this is if to set the width
+ * to match all elements (i.e. find the widets and pad with empty), left-align
+ * or right-align vs. cursor. */
+	for (ssize_t i = 0, j = cy + step;
+		i < M->completion_sz && j >= 0 && j < rows; i++, j += step){
+		arcan_tui_move_to(T, cx, j);
+		if (i == M->completion_pos)
+			arcan_tui_writeu8(T, (const uint8_t*) "> ", 2, &attr);
+		arcan_tui_writestr(T, M->completion[i], &attr);
+	}
+
+	arcan_tui_move_to(T, cx, cy);
 }
 
 static void refresh(struct tui_context* T, struct readline_meta* M)
@@ -230,8 +321,15 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 			M->broken_offset != -1 && pos >= M->broken_offset ? &alert : NULL);
 	}
 
+	draw_completion(T, M);
+
 	const char* cs = M->current_suggestion;
 	if (cs){
+/* writing out the suggestion will move the cursor to a different position if
+ * the cursor is at the end, so remember before writing so we can jump back */
+		if (!cx)
+			arcan_tui_cursorpos(T, &cx, &cy);
+
 		for (size_t i = M->work_len, j = 0; cs[j] && i < limit; i++, j++){
 			uint32_t ch;
 			ssize_t step = arcan_tui_utf8ucs4((char*) &cs[j], &ch);
@@ -239,7 +337,6 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 				j += step;
 			arcan_tui_write(T, ch, &hint);
 		}
-		printf("wrote: %s\n", cs);
 	}
 
 	if (cx)
@@ -324,6 +421,12 @@ static bool erase_at_cursor(struct tui_context* T, struct readline_meta* M)
 
 static bool add_linefeed(struct tui_context* T, struct readline_meta* M)
 {
+	if (M->show_completion){
+		drop_completion(T, M, true);
+		refresh(T, M);
+		return true;
+	}
+
 	if (!M->opts.multiline){
 /* if normal validation has refused it, don't allow commit */
 		if (-1 != M->broken_offset){
@@ -407,6 +510,9 @@ static void on_utf8_paste(
 	if (!validate_context(T, &M))
 		return;
 
+	bool old_tc = M->opts.tab_completion;
+	M->opts.tab_completion = false;
+
 /* split up into multiple calls based on filter character if needed */
 	if (M->opts.filter_character){
 		for (size_t i = 0; i < len;){
@@ -421,6 +527,7 @@ static void on_utf8_paste(
 		add_input(T, M, (char*)u8, len, false);
 	}
 
+	M->opts.tab_completion = old_tc;
 	refresh(T, M);
 }
 
@@ -437,10 +544,19 @@ static bool on_utf8_input(
 		M->in_history = NULL;
 	}
 
+/* just forward escape in any form */
+	if (*u8 == '\033')
+		return false;
+
 /* if it is a commit, refuse on validation failure - 0-length should
  * be filtered through filter_character so no reason to forward it here */
 	if (*u8 == '\n' || *u8 == '\r')
 		return add_linefeed(T, M);
+
+	if (*u8 == '\t' && M->opts.tab_completion){
+		synch_completion(T, M);
+		return true;
+	}
 
 /* backspace */
 	else if (*u8 == 0x08)
@@ -507,9 +623,16 @@ static void synch_completion(struct tui_context* T, struct readline_meta* M)
 {
 	M->broken_offset = M->opts.verify(
 		(const char*)M->work, M->cursor, true, M->old_handlers.tag);
+
+/* just the one option? then just insert / add */
+	if (M->completion_sz == 1){
+
+	}
+
+/* the call into verify might have defined a completion set, if so, show it. */
 	M->show_completion = true;
 	if (M->completion)
-		synch_completion(T, M);
+		refresh(T, M);
 }
 
 void on_key_input(struct tui_context* T,
@@ -527,12 +650,19 @@ void on_key_input(struct tui_context* T,
 		else if (keysym == TUIK_L){
 			arcan_tui_readline_reset(T);
 		}
-/* delete at/right of cursor, same as DELETE, if line is empty,
- * as escape with hint to exit */
 		else if (keysym == TUIK_D){
+			if (!M->work_ofs){
+				if (M->opts.allow_exit){
+					arcan_tui_readline_reset(T);
+					M->finished = -1;
+					return;
+				}
+			}
+			else
+				delete_at_cursor(T, M);
 		}
-/* swap with previous */
 		else if (keysym == TUIK_T){
+/* MISSING: swap with previous */
 		}
 		else if (keysym == TUIK_B){
 			step_cursor_left(T, M);
@@ -548,11 +678,9 @@ void on_key_input(struct tui_context* T,
 		else if (keysym == TUIK_U){
 			cut_to_sol(T, M);
 		}
-/* step previous in history */
 		else if (keysym == TUIK_P){
 			step_history(T, M, 1);
 		}
-/* step next in history */
 		else if (keysym == TUIK_N){
 			step_history(T, M, -1);
 		}
@@ -570,27 +698,44 @@ void on_key_input(struct tui_context* T,
 /* delete last word */
 			delete_last_word(T, M);
 		}
+		else if (keysym == TUIK_TAB){
+			synch_completion(T, M);
+		}
 		return;
 	}
 
 	if (keysym == TUIK_LEFT){
+		drop_completion(T, M, false);
 		step_cursor_left(T, M);
 		refresh(T, M);
 	}
 	else if (keysym == TUIK_RIGHT){
+		drop_completion(T, M, true);
 		refresh(T, M);
 		step_cursor_right(T, M);
 	}
 	else if (keysym == TUIK_UP){
-		step_history(T, M, 1);
+		if (M->show_completion){
+			if (!M->completion_pos)
+				M->completion_pos = M->completion_sz - 1;
+			else
+				M->completion_pos--;
+			refresh(T, M);
+		}
+		else
+			step_history(T, M, 1);
 	}
 	else if (keysym == TUIK_DOWN){
-		step_history(T, M, -1);
+		if (M->show_completion){
+		 M->completion_pos = (M->completion_pos + 1) % M->completion_sz;
+		 refresh(T, M);
+		}
+		else
+			step_history(T, M, -1);
 	}
 	else if (keysym == TUIK_ESCAPE){
-		M->show_completion = false;
 		if (M->show_completion){
-			M->show_completion = false;
+			drop_completion(T, M, false);
 			refresh(T, M);
 		}
 		else if (M->opts.allow_exit){
@@ -602,10 +747,9 @@ void on_key_input(struct tui_context* T,
 		erase_at_cursor(T, M);
 	else if (keysym == TUIK_DELETE)
 		delete_at_cursor(T, M);
-	else if (keysym == TUIK_TAB){
+	else if (keysym == TUIK_TAB && M->opts.tab_completion){
 		synch_completion(T, M);
 	}
-
 /* finish or if multi-line and meta-held, add '\n' */
 	else if (keysym == TUIK_RETURN){
 		add_linefeed(T, M);
@@ -773,7 +917,7 @@ void arcan_tui_readline_autocomplete(struct tui_context* T, const char* suffix)
 }
 
 void arcan_tui_readline_suggest(
-	struct tui_context* T, const char** set, size_t sz)
+	struct tui_context* T, int mode, const char** set, size_t sz)
 {
 	struct readline_meta* M;
 	if (!validate_context(T, &M) || !M->work)
@@ -781,6 +925,16 @@ void arcan_tui_readline_suggest(
 
 	M->completion = set;
 	M->completion_sz = sz;
+	M->completion_mode = mode;
+	M->completion_pos = 0;
+
+/* pre-calculate the completion set width so refresh can reposition as needed */
+	M->completion_width = 0;
+	for (size_t i = 0; i < M->completion_sz; i++){
+		size_t len = strlen(M->completion[i]);
+		if (len > M->completion_width)
+			M->completion_width = len;
+	}
 
 	if (M->show_completion){
 		refresh(T, M);
@@ -837,8 +991,6 @@ void arcan_tui_readline_prompt(struct tui_context* T, const struct tui_cell* pro
 		refresh(T, M);
 		return;
 	}
-
-	bool same = M->prompt != NULL;
 
 /* both len and cmp */
 	size_t len = 0;
