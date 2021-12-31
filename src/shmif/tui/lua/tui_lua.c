@@ -1447,7 +1447,8 @@ static int readline(lua_State* L)
 		.mask_character = 0,
 		.multiline = false,
 		.filter_character = on_readline_filter,
-		.verify = on_readline_verify
+		.verify = on_readline_verify,
+		.tab_completion = true
 	};
 
 	if (!lua_isfunction(L, ofs) || lua_iscfunction(L, ofs)){
@@ -1486,6 +1487,8 @@ static int readline(lua_State* L)
 			opts.allow_exit = true;
 		if (intblbool(L, tbl, "multiline"))
 			opts.multiline = true;
+		if (intblbool(L, tbl, "tab_input"))
+			opts.tab_completion = false;
 		lua_getfield(L, tbl, "mask_character");
 		if (lua_isstring(L, -1)){
 			arcan_tui_utf8ucs4(lua_tostring(L, -1), &opts.mask_character);
@@ -1704,10 +1707,24 @@ static int readline_suggest(lua_State* L)
 	}
 
 	free_suggest(meta);
+	const char* mode = luaL_optstring(L, 3, "word");
+	int mv = READLINE_SUGGEST_WORD;
+	if (strcasecmp(mode, "insert") == 0){
+		mv = READLINE_SUGGEST_INSERT;
+	}
+	else if (strcasecmp(mode, "word") == 0){
+		mv = READLINE_SUGGEST_WORD;
+	}
+	else if (strcasecmp(mode, "substitute") == 0){
+		mv = READLINE_SUGGEST_SUBSTITUTE;
+	}
+	else
+		luaL_error(L, "set_suggest(str:mode) expected insert, word or substitute");
+
 	meta->readline.suggest = new_suggest;
 	meta->readline.history_sz = count;
 	arcan_tui_readline_suggest(
-		meta->parent->tui, (const char**) new_suggest, count);
+		meta->parent->tui, mv, (const char**) new_suggest, count);
 
 	return 0;
 }
@@ -2077,7 +2094,6 @@ static void register_tuimeta(lua_State* L)
 	lua_setfield(L, -2, "data_handler");
 	lua_pop(L, 1);
 
-/* the tui-readline widget return */
 	luaL_newmetatable(L, "widget_readline");
 	lua_pushvalue(L, -1);
 	lua_setfield(L, -2, "__index");
