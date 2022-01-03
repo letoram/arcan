@@ -87,39 +87,15 @@
 
 #define arcan_luactx lua_State
 #include "arcan_lua.h"
+#include "alt/types.h"
+#include "alt/support.h"
+#include "alt/nbio.h"
+#include "alt/trace.h"
 
 /*
  * tradeoff (extra branch + loss in precision vs. assymetry and UB)
  */
 #define abs( x ) ( abs( (x) == INT_MIN ? ((x)+1) : x ) )
-
-/*
- * namespaces permitted to be searched for regular resource lookups
- */
-#ifndef DEFAULT_USERMASK
-#define DEFAULT_USERMASK \
-	(RESOURCE_APPL | RESOURCE_APPL_SHARED | RESOURCE_APPL_TEMP)
-#endif
-
-#ifndef CAREFUL_USERMASK
-#define CAREFUL_USERMASK DEFAULT_USERMASK | RESOURCE_SYS_SCRIPTS
-#endif
-
-#ifndef MODULE_USERMASK
-#define MODULE_USERMASK \
-	(RESOURCE_SYS_LIBS)
-#endif
-
-#define STRJOIN2(X) #X
-#define STRJOIN(X) STRJOIN2(X)
-#define LINE_TAG STRJOIN(__LINE__)
-
-/*
- * defined in engine/arcan_main.c, rather than terminating directly
- * we'll longjmp to this and hopefully the engine can switch scripts
- * or take similar user-defined action.
- */
-extern jmp_buf arcanmain_recover_state;
 
 /*
  * some operations, typically resize, move and rotate suffered a lot from
@@ -134,28 +110,7 @@ typedef int acoord;
  * these should only forward to arcan_fatal if there's no recovery script
  * set.
  */
-#define arcan_fatal(...) do { rectrigger( __VA_ARGS__); } while(0)
-
-/*
- * Each function that crosses the LUA->C barrier has a LUA_TRACE
- * macro reference first to allow quick build-time interception.
- */
-#ifdef LUA_TRACE_STDERR
-#define LUA_TRACE(fsym) fprintf(stderr, "(%lld:%s)->%s\n", \
-	arcan_timemillis(), luactx.lastsrc, fsym);
-
-/*
- * This trace function scans the stack and writes the information about
- * calls to a CSV file (arcan.trace): function;timestamp;type;type
- * This is useful for benchmarking / profiling / test coverage and
- * hardening.
- */
-#elif defined(LUA_TRACE_COVERAGE)
-#define LUA_TRACE(fsym) trace_coverage(fsym, ctx);
-
-#else
-#define LUA_TRACE(fsym)
-#endif
+#define arcan_fatal(...) do { alt_fatal( __VA_ARGS__); } while(0)
 
 /*
  * ETRACE is used in stead of a normal return and is used to both track
@@ -176,12 +131,6 @@ typedef int acoord;
  *  return argc;\
  * }
  */
-#define LUA_ETRACE(fsym,reason, X){ return X; }
-
-#define LUA_DEPRECATE(fsym) \
-	arcan_warning("%s, DEPRECATED, discontinue "\
-	"the use of this function immediately as it is slated for removal.\n", fsym);
-
 #include "arcan_img.h"
 #include "arcan_ttf.h"
 
@@ -249,10 +198,6 @@ typedef int acoord;
 
 #ifndef LAUNCH_INTERNAL
 #define LAUNCH_INTERNAL 1
-#endif
-
-#ifndef LUACTX_OPEN_FILES
-#define LUACTX_OPEN_FILES 64
 #endif
 
 #ifndef CONST_DISCOVER_PASSIVE
@@ -324,52 +269,10 @@ static const int DEVICE_LOST = CONST_DEVICE_LOST;
 
 #define DBHANDLE arcan_db_get_shared(NULL)
 
-enum arcan_cb_source {
-	CB_SOURCE_NONE        = 0,
-	CB_SOURCE_FRAMESERVER = 1,
-	CB_SOURCE_IMAGE       = 2,
-	CB_SOURCE_TRANSFORM   = 3,
-	CB_SOURCE_PREROLL     = 4
-};
-
-struct io_job;
-struct io_job {
-	char* buf;
-	size_t sz;
-	size_t ofs;
-	struct io_job* next;
-};
-
-struct nonblock_io {
-/* in line-buffered mode, this is used for input */
-	char buf[4096];
-	bool eofm;
-	off_t ofs;
-	int fd;
-
-	struct io_job* out_queue;
-	intptr_t write_handler; /* callback when queue flushed */
-
-	mode_t mode;
-	char* unlink_fn;
-	char* pending;
-	intptr_t data_handler; /* callback on_data_in */
-
-	intptr_t ref; /* :self reference to block GC */
-};
-
 static struct {
 	struct nonblock_io rawres;
 
-	const char* lastsrc;
-
-	bool in_panic, in_fatal;
-	unsigned char debug;
-	unsigned lua_vidbase;
 	unsigned char grab;
-
-	enum arcan_cb_source cb_source_kind;
-	long long cb_source_tag;
 
 /* limits themename + identifier to this length
  * will be modified in when calling into lua */
@@ -380,32 +283,17 @@ static struct {
 	char* pending_socket_label;
 	int pending_socket_descr;
 
-	char* last_crash_source;
-
 	const char** last_argv;
 	lua_State* last_ctx;
 
 	size_t last_clock;
 
-	bool got_trace_buffer;
-	uint8_t* trace_buffer;
-	size_t trace_buffer_sz;
-	intptr_t trace_cb;
-
-/* open_nonblock and similar functions need to register their fds here as they
- * are force-closed on context shutdown, this is necessary with crash recovery
- * and scripting errors. The limit is set based on the same open limit imposed
- * by arcan_event_ sources. */
-	struct nonblock_io open_fds[LUACTX_OPEN_FILES];
 } luactx = {0};
 
 extern char* _n_strdup(const char* instr, const char* alt);
 static const char* fsrvtos(enum ARCAN_SEGID ink);
 static bool tgtevent(arcan_vobj_id dst, arcan_event ev);
 static int alua_exposefuncs(lua_State* ctx, unsigned char debugfuncs);
-static bool grabapplfunction(lua_State* ctx, const char* funame, size_t funlen);
-static void rectrigger(const char* msg, ...);
-static void wraperr(lua_State* ctx, int errc, const char* src);
 static bool stack_to_uiarray(lua_State* ctx,
 	int memtype, unsigned** dst, size_t* n, size_t count);
 static bool stack_to_farray(lua_State* ctx,
@@ -420,109 +308,6 @@ static char* colon_escape(char* in)
 		instr++;
 	}
 	return in;
-}
-
-/*
- * Nil out whatever functions / tables the build- system defined that we should
- * not have. Should possibly replace this with a function that maps a warning
- * about the banned function.
- */
-#include "arcan_bootstrap.h"
-static void luaL_nil_banned(struct arcan_luactx* ctx)
-{
-	int rv = luaL_loadbuffer(ctx, (const char*) arcan_bootstrap_lua,
-		arcan_bootstrap_lua_len, "bootstrap");
-
-	if (0 != rv){
-		arcan_warning("BROKEN BUILD: bootstrap code couldn't be parsed\n");
-	}
-	else
-/* called from err-handler will be ignored as it'll fatal or reload */
-		rv = lua_pcall(ctx, 0, 0, 0);
-}
-
-static void dump_call_trace(lua_State* ctx, FILE* out)
-{
-/*
- * we can't trust debug.traceback to be present or in an intact state,
- * the user script might try to hide something from us -- so reset
- * the lua namespace then re-apply the restrictions.
- */
-	char* res = NULL;
-	luaL_openlibs(ctx);
-
-	lua_settop(ctx, -2);
-	lua_getfield(ctx, LUA_GLOBALSINDEX, "debug");
-	if (!lua_istable(ctx, -1))
-		lua_pop(ctx, 1);
-	else {
-		lua_getfield(ctx, -1, "traceback");
-		if (!lua_isfunction(ctx, -1))
-			lua_pop(ctx, 2);
-		else {
-			lua_call(ctx, 0, 1);
-			const char* str = lua_tostring(ctx, -1);
-			fprintf(out, "%s\n", str);
-		}
-	}
-
-	luaL_nil_banned(ctx);
-}
-
-static void set_tblstr(lua_State* ctx,
-	const char* k, const char* v, int top, size_t k_sz, size_t v_sz)
-{
-	lua_pushlstring(ctx, k, k_sz);
-	lua_pushlstring(ctx, v, v_sz);
-	lua_rawset(ctx, top);
-}
-
-static void set_tbldynstr(lua_State* ctx,
-	const char* k, const char* v, int top, size_t k_sz)
-{
-	lua_pushlstring(ctx, k, k_sz);
-	lua_pushstring(ctx, v);
-	lua_rawset(ctx, top);
-}
-
-static void set_tblnum(
-	lua_State* ctx, const char* k, double v, int top, size_t k_sz)
-{
-	lua_pushlstring(ctx, k, k_sz);
-	lua_pushnumber(ctx, v);
-	lua_rawset(ctx, top);
-}
-
-static void set_tblbool(lua_State* ctx, char* k, bool v, int top, size_t k_sz)
-{
-	lua_pushlstring(ctx, k, k_sz);
-	lua_pushboolean(ctx, v);
-	lua_rawset(ctx, top);
-}
-
-#define tblstr(L, K, V, T) set_tblstr(L, (K), (V), (T),\
-	((sizeof(K)/sizeof(char))-1),\
-	((sizeof(V)/sizeof(char))-1)\
-)
-#define tbldynstr(L, K, V, T) set_tbldynstr(L, (K), (V), (T), (sizeof(K)/sizeof(char))-1)
-#define tblnum(L, K, V, T) set_tblnum(L, (K), (V), (T), (sizeof(K)/sizeof(char))-1)
-#define tblbool(L, K, V, T) set_tblbool(L, (K), (V), (T), (sizeof(K)/sizeof(char))-1)
-
-static void set_nonblock_cloexec(int fd, bool socket)
-{
-#ifdef __APPLE__
-	if (socket){
-		int val = 1;
-		setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
-	}
-#endif
-
-	int flags = fcntl(fd, F_GETFL);
-	if (-1 != flags)
-		fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-
-	if (-1 != (flags = fcntl(fd, F_GETFD)))
-		fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
 }
 
 /* slightly more flexible argument management, just find the first callback */
@@ -569,9 +354,9 @@ static const char* luaL_lastcaller(lua_State* ctx)
 
 static void trace_allocation(lua_State* ctx, const char* sym, arcan_vobj_id id)
 {
-	if (luactx.debug > 2)
+	if (lua_debug_level > 2)
 		arcan_warning("\x1b[1m %s: alloc(%s) => %"PRIxVOBJ")\x1b[39m\x1b[0m\n",
-			luaL_lastcaller(ctx), sym, id + luactx.lua_vidbase);
+			luaL_lastcaller(ctx), sym, id + lua_vid_base);
 }
 
 static void trace_coverage(const char* fsym, lua_State* ctx)
@@ -639,42 +424,6 @@ retry:
 }
 
 /*
- * version of luaL_checknumber that accepts true/false as numbers
- */
-static lua_Number luaL_checkbnumber(lua_State* L, int narg)
-{
-	lua_Number d = lua_tonumber(L, narg);
-	if (d == 0 && !lua_isnumber(L, narg)){
-		if (!lua_isboolean(L, narg))
-			luaL_typerror(L, narg, "number or boolean");
-		else
-			d = lua_toboolean(L, narg);
-	}
-	return d;
-}
-
-static lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
-{
-	if (lua_isnumber(L, narg))
-		return lua_tonumber(L, narg);
-	else if (lua_isboolean(L, narg))
-		return lua_toboolean(L, narg);
-	else
-		return opt;
-}
-
-/*
- * Arcan to Lua call with a version that provides more detailed stack data
- * on error, this is primarily for the case where we have C->lua->callback
- * and later C->callback->error where stack unwinding clears data.
- *
- * The details are only added on a debug build as this is invoked quite
- * frequently and it is not cheap.
- */
-static void alua_call(
-	struct arcan_luactx* ctx, int nargs, int retc, const char* src);
-
-/*
  * iterate all vobject and drop any known tag-cb associations that
  * are used to map events to lua functions
  */
@@ -696,7 +445,7 @@ void arcan_lua_cbdrop()
 
 const char* arcan_lua_crash_source(struct arcan_luactx* ctx)
 {
-	return luactx.last_crash_source;
+	return alt_trace_crash_source(NULL);
 }
 
 static arcan_vobj_id luaL_checkaid(lua_State* ctx, int num)
@@ -707,7 +456,7 @@ static arcan_vobj_id luaL_checkaid(lua_State* ctx, int num)
 static void lua_pushvid(lua_State* ctx, arcan_vobj_id id)
 {
 	if (id != ARCAN_EID && id != ARCAN_VIDEO_WORLDID)
-		id += luactx.lua_vidbase;
+		id += lua_vid_base;
 
 	lua_pushnumber(ctx, (double) id);
 }
@@ -750,101 +499,6 @@ void arcan_state_dump(const char* key, const char* msg, const char* src)
 		arcan_warning("crashdump requested but (%s) is not accessible.\n", fname);
 
 	arcan_mem_free(fname);
-}
-
-/* dump argument stack, stack trace are shown only when --debug is set */
-static void dump_stack(lua_State* ctx, FILE* dst)
-{
-	int top = lua_gettop(ctx);
-	arcan_warning("-- stack dump (%d)--\n", top);
-
-	for (size_t i = 1; i <= top; i++){
-		int t = lua_type(ctx, i);
-
-		switch (t){
-		case LUA_TBOOLEAN:
-			arcan_warning(lua_toboolean(ctx, i) ? "true" : "false");
-		break;
-		case LUA_TSTRING:
-			arcan_warning("%d\t'%s'\n", i, lua_tostring(ctx, i));
-			break;
-		case LUA_TNUMBER:
-			arcan_warning("%d\t%g\n", i, lua_tonumber(ctx, i));
-			break;
-		default:
-			arcan_warning("%d\t%s\n", i, lua_typename(ctx, t));
-			break;
-		}
-	}
-
-	arcan_warning("\n");
-}
-
-static arcan_aobj_id luaaid_toaid(lua_Number innum)
-{
-	return (arcan_aobj_id) innum;
-}
-
-static arcan_vobj_id luavid_tovid(lua_Number innum)
-{
-	arcan_vobj_id res = ARCAN_VIDEO_WORLDID;
-
-	if (innum != ARCAN_EID && innum != ARCAN_VIDEO_WORLDID)
-		res = (arcan_vobj_id) innum - luactx.lua_vidbase;
-	else if (innum != res)
-		res = ARCAN_EID;
-
-	return res;
-}
-
-static lua_Number vid_toluavid(arcan_vobj_id innum)
-{
-	if (innum != ARCAN_EID && innum != ARCAN_VIDEO_WORLDID)
-		innum += luactx.lua_vidbase;
-
-	return (double) innum;
-}
-
-static arcan_vobj_id luaL_checkvid(
-		lua_State* ctx, int num, arcan_vobject** dptr)
-{
-	arcan_vobj_id lnum = luaL_checknumber(ctx, num);
-	arcan_vobj_id res = luavid_tovid( lnum );
-
-	if (dptr){
-		*dptr = arcan_video_getobject(res);
-		if (!(*dptr))
-			arcan_fatal("invalid VID requested (%"PRIxVOBJ")\n", res);
-	}
-
-	return res;
-}
-
-/*
- * A more optimized approach than this one would be to track when the globals
- * change for C<->LUA related transfer functions and just have
- * cached function pointers.
- */
-static bool grabapplfunction(lua_State* ctx, const char* funame, size_t funlen)
-{
-	if (funlen > 0){
-		strncpy(luactx.prefix_buf +
-			luactx.prefix_ofs + 1, funame, 32);
-
-		luactx.prefix_buf[luactx.prefix_ofs] = '_';
-		luactx.prefix_buf[luactx.prefix_ofs + funlen + 1] = '\0';
-	}
-	else
-		luactx.prefix_buf[luactx.prefix_ofs] = '\0';
-
-	lua_getglobal(ctx, luactx.prefix_buf);
-
-	if (!lua_isfunction(ctx, -1)){
-		lua_pop(ctx, 1);
-		return false;
-	}
-
-	return true;
 }
 
 /* The places in _lua.c that calls this function should probably have a better
@@ -901,7 +555,7 @@ static char* findresource(const char* arg, enum arcan_namespaces space)
  * or bad resources anyhow, we also know which subdirectories to attach
  * to OS specific event monitoring effects */
 
-	if (luactx.debug){
+	if (lua_debug_level){
 		arcan_warning("Debug, resource lookup for %s, yielded: %s\n", arg, res);
 	}
 
@@ -930,111 +584,6 @@ static int alua_doresolve(lua_State* ctx, const char* inp)
 	return rv;
 }
 
-static void finish_trace_buffer(lua_State* ctx)
-{
-	if (!luactx.got_trace_buffer)
-		return;
-
-	lua_rawgeti(ctx, LUA_REGISTRYINDEX, luactx.trace_cb);
-	lua_newtable(ctx);
-	int ttop = lua_gettop(ctx);
-
-	char* buf = (char*)luactx.trace_buffer;
-	size_t pos = 0;
-
-	size_t ind = 1;
-	while (luactx.trace_buffer[pos++] == 0xff){
-		lua_pushnumber(ctx, ind++);
-		lua_newtable(ctx);
-		int top = lua_gettop(ctx);
-
-/* timestamp */
-		uint64_t ts;
-		memcpy(&ts, &buf[pos], sizeof(ts));
-		pos += 8;
-		tblnum(ctx, "timestamp", ts, top);
-
-/* system */
-		size_t nb = strlen(&buf[pos]);
-		lua_pushliteral(ctx, "system");
-		lua_pushlstring(ctx, &buf[pos], nb);
-		lua_rawset(ctx, top);
-		pos += nb + 1;
-
-/* subsystem */
-		nb = strlen(&buf[pos]);
-		lua_pushliteral(ctx, "subsystem");
-		lua_pushlstring(ctx, &buf[pos], nb);
-		lua_rawset(ctx, top);
-		pos += nb + 1;
-
-/* trigger */
-		uint8_t inb = luactx.trace_buffer[pos++];
-		tblnum(ctx, "trigger", inb, top);
-
-/* tracelevel */
-		inb = luactx.trace_buffer[pos++];
-		switch (inb){
-		case TRACE_SYS_DEFAULT:
-			tblstr(ctx, "path", "default", top);
-		break;
-		case TRACE_SYS_SLOW:
-			tblstr(ctx, "path", "slow", top);
-		break;
-		case TRACE_SYS_WARN:
-			tblstr(ctx, "path", "warning", top);
-		break;
-		case TRACE_SYS_FAST:
-			tblstr(ctx, "path", "fast", top);
-		break;
-		case TRACE_SYS_ERROR:
-			tblstr(ctx, "path", "error", top);
-		break;
-		default:
-			tblstr(ctx, "path", "broken", top);
-		break;
-		}
-
-/* identifier */
-		uint64_t ident;
-		memcpy(&ident, &buf[pos], 8);
-		pos += 8;
-		tblnum(ctx, "identifier", ident, top);
-
-/* quantifier */
-		uint32_t quant;
-		memcpy(&quant, &buf[pos], 4);
-		pos += 4;
-		tblnum(ctx, "quantity", quant, top);
-
-/* caller message */
-		nb = strlen(&buf[pos]);
-		lua_pushliteral(ctx, "message");
-		lua_pushlstring(ctx, &buf[pos], nb);
-		lua_rawset(ctx, top);
-		pos += nb + 1;
-
-/* step outer table */
-		lua_rawset(ctx, ttop);
-	}
-
-/* process and repack - format is described in arcan_trace.c,
- * free first so that we can call ourselves even from the fatal handler */
-	free(luactx.trace_buffer);
-	arcan_trace_setbuffer(NULL, 0, NULL);
-	luactx.trace_buffer = NULL;
-	luactx.trace_buffer_sz = 0;
-	luactx.got_trace_buffer = false;
-
-/* this might incur some heavy processing, so the tradeoff with the
- * watchdog might hurt a bit too much and the data itself is more
- * important so disable it (should it be enabled) */
-	arcan_conductor_toggle_watchdog();
-		alua_call(ctx, 1, 0, LINE_TAG":trace");
-	arcan_conductor_toggle_watchdog();
-	luaL_unref(ctx, LUA_REGISTRYINDEX, luactx.trace_cb);
-}
-
 void arcan_lua_tick(lua_State* ctx, size_t nticks, size_t global)
 {
 	if (!nticks)
@@ -1046,48 +595,42 @@ void arcan_lua_tick(lua_State* ctx, size_t nticks, size_t global)
 /* Many applications misused the callback handler, ignoring the nticks and
  * global fields causing timed tasks to drift more than desired. Switch to
  * have one preferred 'batched' and then one where we emit each tick */
-	if (grabapplfunction(ctx, "clock_pulse_batch", 17)){
+	if (alt_lookup_entry(ctx, "clock_pulse_batch", 17)){
 		TRACE_MARK_ENTER("scripting", "clock-pulse", TRACE_SYS_DEFAULT, global, nticks, "digital");
 			lua_pushnumber(ctx, global);
 			lua_pushnumber(ctx, nticks);
-			alua_call(ctx, 2, 0, LINE_TAG":clock_pulse_batch");
+			alt_call(ctx, CB_SOURCE_NONE, 0, 2, 0, LINE_TAG":clock_pulse_batch");
 		TRACE_MARK_EXIT("scripting", "clock-pulse", TRACE_SYS_DEFAULT, global, nticks, "digital");
 		return;
 	}
 
 	while (nticks){
 		nticks--;
-		if (!grabapplfunction(ctx, "clock_pulse", 11))
+		if (!alt_lookup_entry(ctx, "clock_pulse", 11))
 			break;
 
 		TRACE_MARK_ENTER("scripting", "clock-pulse", TRACE_SYS_DEFAULT, global, 0, "digital");
 			lua_pushnumber(ctx, global);
 			lua_pushnumber(ctx, 1);
-			alua_call(ctx, 2, 0, LINE_TAG":clock_pulse");
+			alt_call(ctx, CB_SOURCE_NONE, 0, 2, 0, LINE_TAG":clock_pulse");
 		TRACE_MARK_EXIT("scripting", "clock-pulse", TRACE_SYS_DEFAULT, global, 0, "digital");
 	}
 
 /* trace job finished? unpack into table of tables */
-	if (luactx.got_trace_buffer)
-		finish_trace_buffer(ctx);
+	alt_trace_finish(ctx);
 }
 
 char* arcan_lua_main(lua_State* ctx, const char* inp, bool file)
 {
-/* since we prefix scriptname to functions that we look-up,
- * we need a buffer to expand into with as few read/writes/allocs
- * as possible, arcan_lua_dofile is only ever invoked when
- * an appl is about to be loaded so here is a decent entrypoint */
-	const int suffix_lim = 34;
+	bool fail = false;
 
-	free(luactx.prefix_buf);
-	luactx.prefix_ofs = arcan_appl_id_len();
-	luactx.prefix_buf = arcan_alloc_mem( arcan_appl_id_len() + suffix_lim,
-		ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_SIMD
-	);
-	memcpy(luactx.prefix_buf, arcan_appl_id(), luactx.prefix_ofs);
+	if (file){
+		fail = alua_doresolve(ctx, inp) != 0;
+	}
+	else
+		fail = luaL_dofile(ctx, inp) == 1;
 
-	if ( (file ? alua_doresolve(ctx, inp) != 0 : luaL_dofile(ctx, inp)) == 1){
+	if (fail){
 		const char* msg = lua_tostring(ctx, -1);
 		if (msg)
 			return strdup(msg);
@@ -1105,7 +648,7 @@ bool arcan_lua_launch_cp(
 	if (!cp || !ctx)
 		return false;
 
-	if (!grabapplfunction(ctx, "adopt", sizeof("adopt")-1)){
+	if (!alt_lookup_entry(ctx, "adopt", sizeof("adopt")-1)){
 		arcan_warning("target appl lacks an _adopt handler\n");
 		return false;
 	}
@@ -1126,7 +669,7 @@ bool arcan_lua_launch_cp(
 	lua_pushvid(ctx, ARCAN_EID);
 	lua_pushboolean(ctx, true);
 
-	alua_call(ctx, 5, 1, LINE_TAG":adopt");
+	alt_call(ctx, CB_SOURCE_NONE, 0, 5, 1, LINE_TAG":adopt");
 	if (lua_type(ctx, -1) == LUA_TBOOLEAN && lua_toboolean(ctx, -1)){
 		lua_pop(ctx, 1);
 		return true;
@@ -1187,7 +730,7 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 		fsrv->tag = LUA_NOREF;
 
 		bool delete = true;
-		if (grabapplfunction(ctx, "adopt", sizeof("adopt") - 1) &&
+		if (alt_lookup_entry(ctx, "adopt", sizeof("adopt") - 1) &&
 			arcan_video_getobject(ids[count]) != NULL){
 			lua_pushvid(ctx, vobj->cellid);
 			lua_pushstring(ctx, fsrvtos(fsrv->segid));
@@ -1195,7 +738,7 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 			lua_pushvid(ctx, fsrv->parent.vid);
 			lua_pushboolean(ctx, count < n_fsrv-1);
 
-			alua_call(ctx, 5, 1, LINE_TAG":adopt");
+			alt_call(ctx, CB_SOURCE_NONE, 0, 5, 1, LINE_TAG":adopt");
 
 /* if we don't get an explicit accept, assume deletion */
 			if (lua_type(ctx, -1) == LUA_TBOOLEAN &&
@@ -1279,322 +822,6 @@ static int zapresource(lua_State* ctx)
 	arcan_mem_free(path);
 
 	LUA_ETRACE("zap_resource", NULL, 1);
-}
-
-static int opennonblock_tgt(lua_State* ctx, bool wr)
-{
-	arcan_vobject* vobj;
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1, &vobj);
-	arcan_frameserver* fsrv = vobj->feed.state.ptr;
-
-	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
-		arcan_fatal("open_nonblock(tgt), target must be a valid frameserver.\n");
-
-	int outp[2];
-	if (-1 == pipe(outp)){
-		arcan_warning("open_nonblock(tgt), pipe-pair creation failed: %d\n", errno);
-		return 0;
-	}
-
-	const char* type = luaL_optstring(ctx, 3, "stream");
-
-/* WRITE mode = 'INPUT' in the client space */
-	int dst = wr ? outp[0] : outp[1];
-	int src = wr ? outp[1] : outp[0];
-
-/* in any scenario where this would fail, "blocking" behavior is acceptable */
-	set_nonblock_cloexec(src, true);
-	struct arcan_event ev = {
-		.category = EVENT_TARGET,
-		.tgt.kind = wr ? TARGET_COMMAND_BCHUNK_IN : TARGET_COMMAND_BCHUNK_OUT
-	};
-	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", type);
-
-	if (ARCAN_OK != platform_fsrv_pushfd(fsrv, &ev, dst)){
-		close(dst);
-		close(src);
-		return 0;
-	}
-	close(dst);
-
-	struct nonblock_io* conn = arcan_alloc_mem(sizeof(struct nonblock_io),
-			ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-
-	if (!conn){
-		close(src);
-		return 0;
-	}
-
-	conn->mode = wr ? O_WRONLY : O_RDONLY;
-	conn->fd = src;
-	conn->pending = NULL;
-
-	uintptr_t* dp = lua_newuserdata(ctx, sizeof(uintptr_t));
-	*dp = (uintptr_t) conn;
-	luaL_getmetatable(ctx, "nonblockIO");
-	lua_setmetatable(ctx, -2);
-
-	return 1;
-}
-
-static int connect_trypath(const char* local, const char* remote, int type)
-{
-/* always the risk of this expanding to something too large as well, fsck
- * the socket api design, really. So first bind to the local path */
-	int fd = socket(AF_UNIX, type, 0);
-	if (-1 == fd)
-		return fd;
-
-	struct sockaddr_un addr_local = {
-		.sun_family = AF_UNIX
-	};
-	snprintf(addr_local.sun_path, COUNT_OF(addr_local.sun_path), "%s", local);
-	struct sockaddr_un addr_remote = {
-		.sun_family = AF_UNIX
-	};
-	snprintf(addr_remote.sun_path, COUNT_OF(addr_remote.sun_path), "%s", remote);
-
-	int rv = bind(fd, (struct sockaddr*) &addr_local, sizeof(addr_local));
-	if (-1 == rv){
-		close(fd);
-		return -1;
-	}
-
-/* the other option here is to allow the allocation to go through and treat
- * it as a 'reconnect on operation' in order to deal with normal failures
- * during connection as well, but start conservative */
-	set_nonblock_cloexec(fd, true);
-
-	if (-1 == connect(fd, (struct sockaddr*) &addr_remote, sizeof(addr_remote))){
-		unlink(local);
-		close(fd);
-		return -1;
-	}
-
-	return fd;
-}
-
-static int connect_stream_to(const char* path, char** out)
-{
-/* we still need to bind a path that we can then unlink after connection */
-	char* local_path = NULL;
-	int retry = 3;
-
-/* find a temporary name to use in the appl-temp namespace, with a fail
- * retry counter to counteract the rare collision vs. permanent problem */
-	do {
-		char tmpname[16];
-		union {
-			uint32_t rnd;
-			uint8_t buf[4];
-		} rnd;
-		arcan_random(rnd.buf, 4);
-		snprintf(tmpname, sizeof(tmpname), "_sock%"PRIu32, rnd.rnd);
-		char* tmppath = findresource(tmpname, RESOURCE_APPL_TEMP);
-		if (!tmppath){
-			local_path = arcan_expand_resource(tmpname, RESOURCE_APPL_TEMP);
-		}
-		else
-			free(tmppath);
-	} while (!local_path && retry--);
-
-	if (!local_path)
-		return -1;
-
-	int fd = connect_trypath(local_path, path, SOCK_STREAM);
-
-/* so it might be a dgram socket */
-	if (-1 == fd){
-		if (errno == EPROTOTYPE){
-			fd = connect_trypath(local_path, path, SOCK_DGRAM);
-		}
-		if (-1 == fd){
-			unlink(local_path);
-			arcan_mem_free(local_path);
-		}
-/* and if it is, we need to defer unlinking or the other side can't respond */
-		else {
-			*out = local_path;
-		}
-	}
-	else {
-		unlink(local_path);
-		arcan_mem_free(local_path);
-	}
-
-	return fd;
-}
-
-/*
- * ugly little thing, should really be refactored into different typed versions
- * as part of the big 'split the monster.lua' project, as should all of the
- * posixism be forced into the platform layer.
- */
-static int opennonblock(lua_State* ctx)
-{
-	LUA_TRACE("open_nonblock");
-
-	const char* metatable = "nonblockIO";
-	char* unlink_fn = NULL;
-	int wrmode = luaL_optbnumber(ctx, 2, 0) ? O_WRONLY : O_RDONLY;
-	bool fifo = false, ignerr = false, use_socket = false;
-	char* path;
-	int fd;
-
-	if (lua_type(ctx, 1) == LUA_TNUMBER){
-		int rv = opennonblock_tgt(ctx, wrmode == O_WRONLY);
-		LUA_ETRACE("open_nonblock(), ", NULL, rv);
-	}
-
-	const char* str = luaL_checkstring(ctx, 1);
-	if (str[0] == '<'){
-		fifo = true;
-		str++;
-	}
-	else if (str[0] == '='){
-		use_socket = true;
-		str++;
-	}
-
-/* note on file-system races: it is an explicit contract that the namespace
- * provided for RESOURCE_APPL_TEMP is single- user (us) only. Anyhow, this
- * code turned out a lot messier than needed, refactor when time permits. */
-	if (wrmode == O_WRONLY){
-		struct stat fi;
-		path = findresource(str, RESOURCE_APPL_TEMP);
-
-/* we require a zap_resource call if the file already exists, except for in
- * the case of a fifo dst- that we can open in (w) mode */
-		bool dst_fifo = (path && -1 != stat(path, &fi) && S_ISFIFO(fi.st_mode));
-		if (!dst_fifo && (path || !(path =
-			arcan_expand_resource(str, RESOURCE_APPL_TEMP)))){
-			arcan_warning("open_nonblock(), refusing to open "
-				"existing file for writing\n");
-			arcan_mem_free(path);
-
-			LUA_ETRACE("open_nonblock", "write on already existing file", 0);
-		}
-
-		int fl = O_NONBLOCK | O_WRONLY | O_CLOEXEC;
-		if (fifo){
-/* this is susceptible to the normal race conditions, but we also expect
- * APPL_TEMP to be mapped to a 'safe' path */
-			if (-1 == mkfifo(path, S_IRWXU)){
-				if (errno != EEXIST || -1 == stat(path, &fi) || !S_ISFIFO(fi.st_mode)){
-					arcan_warning("open_nonblock(): mkfifo (%s) failed\n", path);
-					LUA_ETRACE("open_nonblock", "mkfifo failed", 0);
-				}
-			}
-			unlink_fn = strdup(path);
-			ignerr = true;
-		}
-		else
-			fl |= O_CREAT;
-
-/* failure to open fifo can be expected, then opening will be deferred */
-		fd = open(path, fl, S_IRWXU);
-		if (-1 != fd && fifo && (-1 == fstat(fd, &fi) || !S_ISFIFO(fi.st_mode))){
-			close(fd);
-			LUA_ETRACE("open_nonblock", "opened file not fifo", 0);
-		}
-	}
-/* recall, socket binding is supposed to go to a 'safe' namespace, so the
- * normal filesystem races are less than a concern than normally */
-	else if (use_socket){
-		struct sockaddr_un addr = {
-			.sun_family = AF_UNIX
-		};
-		size_t lim = COUNT_OF(addr.sun_path);
-		path = findresource(str, RESOURCE_APPL_TEMP);
-		if (path || !(path = arcan_expand_resource(str, RESOURCE_APPL_TEMP))){
-			arcan_warning("open_nonblock(), refusing to overwrite file\n");
-			LUA_ETRACE("open_nonblock", "couldn't create socket", 0);
-		}
-
-		if (strlen(path) > COUNT_OF(addr.sun_path) -1){
-			arcan_warning("open_nonblock(), socket path too long\n");
-			LUA_ETRACE("open_nonblock", "socket path too lpng", 0);
-		}
-		snprintf(addr.sun_path, COUNT_OF(addr.sun_path), "%s", path);
-
-		metatable = "nonblockIOs";
-
-		fd = socket(AF_UNIX, SOCK_STREAM, 0);
-		if (-1 == fd){
-			arcan_warning("open_nonblock(): couldn't create socket\n");
-			arcan_mem_free(path);
-			LUA_ETRACE("open_nonblock", "couldn't create socket", 0);
-		}
-		fchmod(fd, S_IRWXU);
-
-		set_nonblock_cloexec(fd, true);
-		int rv = bind(fd, (struct sockaddr*) &addr, sizeof(addr));
-		if (-1 == rv){
-			close(fd);
-			arcan_mem_free(path);
-			arcan_warning(
-				"open_nonblock(): bind (%s) failed: %s\n", path, strerror(errno));
-			LUA_ETRACE("open_nonblock", "couldn't bind socket", 0);
-		}
-		listen(fd, 5);
-		unlink_fn = path;
-		path = NULL; /* don't mark as pending */
-	}
-	else {
-retryopen:
-		path = findresource(str, fifo ? RESOURCE_APPL_TEMP : DEFAULT_USERMASK);
-
-/* fifo and doesn't exist? create */
-		if (!path){
-			if (fifo && (path = arcan_expand_resource(str, RESOURCE_APPL_TEMP))){
-				if (-1 == mkfifo(path, S_IRWXU)){
-					arcan_warning("open_nonblock(): mkfifo (%s) failed\n", path);
-					LUA_ETRACE("open_nonblock", "mkfifo failed", 0);
-				}
-				goto retryopen;
-			}
-			else{
-				LUA_ETRACE("open_nonblock", "file does not exist", 0);
-			}
-		}
-/* normal file OR socket */
-		else{
-			fd = open(path, O_NONBLOCK | O_CLOEXEC | O_RDONLY);
-
-/* socket, 'connect mode' */
-			if (-1 == fd && errno == ENXIO){
-				fd = connect_stream_to(path, &unlink_fn);
-				wrmode = O_RDWR;
-			}
-		}
-
-		arcan_mem_free(path);
-		path = NULL;
-	}
-
-	if (fd < 0 && !ignerr){
-		arcan_mem_free(path);
-		LUA_ETRACE("open_nonblock", "couldn't open file", 0);
-	}
-
-	struct nonblock_io* conn = arcan_alloc_mem(sizeof(struct nonblock_io),
-			ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-
-	conn->fd = fd;
-
-/* this little crutch was better than differentiating the userdata as the
- * support for polymorphism there is rather clunky */
-	conn->mode = wrmode;
-	conn->pending = path;
-	conn->unlink_fn = unlink_fn;
-
-	uintptr_t* dp = lua_newuserdata(ctx, sizeof(uintptr_t));
-	*dp = (uintptr_t) conn;
-
-	luaL_getmetatable(ctx, metatable);
-	lua_setmetatable(ctx, -2);
-
-	LUA_ETRACE("open_nonblock", NULL, 1);
 }
 
 static int rawresource(lua_State* ctx)
@@ -1740,387 +967,6 @@ static char* streamtype(int num)
 	return "broken";
 }
 
-static int push_resstr(lua_State* ctx, struct nonblock_io* ib, off_t ofs)
-{
-	size_t in_sz = COUNT_OF(ib->buf);
-
-	lua_pushlstring(ctx, ib->buf, ofs);
-
-/* slide or reset buffering */
-	if (ofs >= in_sz - 1){
-		ib->ofs = 0;
-	}
-	else{
-		memmove(ib->buf, ib->buf + ofs + 1, ib->ofs - ofs - 1);
-		ib->ofs -= ofs + 1;
-	}
-
-	lua_pushboolean(ctx, true);
-	return 2;
-}
-
-static size_t bufcheck(lua_State* ctx, struct nonblock_io* ib)
-{
-	size_t in_sz = COUNT_OF(ib->buf);
-	for (size_t i = 0; i < ib->ofs; i++){
-		if (ib->buf[i] == '\n')
-			return push_resstr(ctx, ib, i);
-	}
-
-	if (in_sz - ib->ofs == 1)
-		return push_resstr(ctx, ib, in_sz - 1);
-
-	return 0;
-}
-
-static int bufread(lua_State* ctx, struct nonblock_io* ib, bool nonbuffered)
-{
-	size_t buf_sz = COUNT_OF(ib->buf);
-
-	if (!ib || ib->fd < 0)
-		return 0;
-
-	ib->eofm = false;
-	size_t bufch = bufcheck(ctx, ib);
-	if (bufch)
-		return bufch;
-
-	ssize_t nr;
-	if ( (nr = read(ib->fd, ib->buf + ib->ofs, buf_sz - ib->ofs - 1)) > 0)
-		ib->ofs += nr;
-
-	if (nr == 0 || (-1 == nr && errno != EINTR && errno != EAGAIN)){
-
-/* reading might still fail on pipe with 0 returned, special case it */
-		struct pollfd pfd = {.fd = ib->fd, .events = POLLERR | POLLHUP};
-		if (nr == 0 && 1 == poll(&pfd, 1, 0)){
-			lua_pushnil(ctx);
-			lua_pushboolean(ctx, false);
-		}
-		else {
-			lua_pushlstring(ctx, ib->buf, ib->ofs);
-			lua_pushboolean(ctx, true);
-			ib->ofs = 0;
-			ib->eofm = true;
-		}
-
-		return 2;
-	}
-
-	if (nonbuffered){
-		if (!ib->ofs){
-			lua_pushnil(ctx);
-			lua_pushboolean(ctx, true);
-			return 2;
-		}
-
-		lua_pushlstring(ctx, ib->buf, ib->ofs);
-		ib->ofs = 0;
-		lua_pushboolean(ctx, true);
-		return 2;
-	}
-	else{
-		if (0 == bufcheck(ctx, ib)){
-			lua_pushnil(ctx);
-			lua_pushboolean(ctx, true);
-		}
-		return 2;
-	}
-}
-
-static void drop_all_jobs(struct nonblock_io* ib)
-{
-	struct io_job* job = ib->out_queue;
-	while (job){
-		struct io_job* cur = job;
-		job = job->next;
-		arcan_mem_free(cur->buf);
-		arcan_mem_free(cur);
-	}
-	ib->out_queue = NULL;
-}
-
-static int process_write(lua_State* ctx, struct nonblock_io* ib)
-{
-	struct io_job* job = ib->out_queue;
-
-	while (job){
-		ssize_t nw = write(ib->fd, &job->buf[job->ofs], job->sz - job->ofs);
-		if (-1 == nw){
-			if (nw == EINTR || nw == EAGAIN)
-				return 0;
-			return -1;
-		}
-
-		job->ofs += nw;
-
-/* slide on completion */
-		if (job->ofs == job->sz){
-			ib->out_queue = job->next;
-			arcan_mem_free(job->buf);
-			arcan_mem_free(job);
-			job = ib->out_queue;
-		}
-	}
-
-/* when no more jobs, return true -> trigger callback */
-	return 1;
-}
-
-static int nbio_close(lua_State* ctx, struct nonblock_io** ibb)
-{
-	struct nonblock_io* ib = *ibb;
-	int fd = ib->fd;
-	if (fd > 0)
-		close(fd);
-
-/* another safety option would be to have a rename_lock and rename_to stage for
- * atomic commit / swap on close to avoid possible partial outputs from queued
- * data handlers */
-	if (ib->unlink_fn){
-		unlink(ib->unlink_fn);
-		arcan_mem_free(ib->unlink_fn);
-	}
-
-	free(ib->pending);
-	drop_all_jobs(ib);
-
-	if (ib->ref)
-		luaL_unref(ctx, LUA_REGISTRYINDEX, ib->ref);
-
-	if (ib->data_handler)
-		luaL_unref(ctx, LUA_REGISTRYINDEX, ib->data_handler);
-
-	if (ib->write_handler)
-		luaL_unref(ctx, LUA_REGISTRYINDEX, ib->write_handler);
-
-/* no-op if nothing registered */
-	arcan_event_del_source(arcan_event_defaultctx(), fd, NULL);
-
-	free(ib);
-	*ibb = NULL;
-
-/* remove the entry, close will be called from nbio_close, and any current
- * event handlers and triggers will be removed through drop_all_jobs */
-	for (size_t i = 0; i < LUACTX_OPEN_FILES; i++){
-		if (luactx.open_fds[i].fd == fd){
-			luactx.open_fds[i] = (struct nonblock_io){0};
-			break;
-		}
-	}
-
-	return 0;
-}
-
-/*
- * same function, just different lookup strings for the Lua- udata types
- */
-static int nbio_closer(lua_State* ctx)
-{
-	LUA_TRACE("open_nonblock:close");
-	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIO");
-	if (!(*ib))
-		LUA_ETRACE("open_nonblock:close", "already closed", 0);
-
-	nbio_close(ctx, ib);
-
-	LUA_ETRACE("open_nonblock:close", NULL, 0);
-}
-
-static int nbio_datahandler(lua_State* ctx)
-{
-	LUA_TRACE("open_nonblock:data_handler");
-	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIO");
-	if (!(*ib))
-		LUA_ETRACE("open_nonblock:data_handler", "already closed", 0);
-
-/* always remove the last known handler refs */
-	if ((*ib)->data_handler){
-		luaL_unref(ctx, LUA_REGISTRYINDEX, (*ib)->data_handler);
-		(*ib)->data_handler = 0;
-	}
-
-/* the same goes for the reference used to tag events */
-	intptr_t out;
-	if (arcan_event_del_source(arcan_event_defaultctx(), (*ib)->fd, &out)){
-		luaL_unref(ctx, LUA_REGISTRYINDEX, out);
-	}
-
-/* update the handler field in ib, then we get the reference to ib and
- * send to the source - but also remove any previous one */
-	if (lua_type(ctx, 2) == LUA_TFUNCTION){
-		intptr_t ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
-		(*ib)->data_handler = ref;
-
-/* now get the reference to the userdata and attach that to the event-source,
- * this is so that we can later trigger on the event and access the userdata */
-		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
-
-/* luaL_ pops the stack so make sure it is balanced */
-		lua_pushvalue(ctx, 1);
-		lua_pushvalue(ctx, 1);
-
-		arcan_event_add_source(arcan_event_defaultctx(),
-			(*ib)->fd, (*ib)->write_handler ? O_RDWR : O_RDONLY, ref);
-	}
-	else if (lua_type(ctx, 2) == LUA_TNIL){
-/* do nothing */
-	}
-	else {
-		arcan_fatal("open_nonblock:data_handler "
-			"argument error, expected function or nil");
-	}
-	return 0;
-}
-
-static int nbio_socketclose(lua_State* ctx)
-{
-	LUA_TRACE("open_nonblock:close");
-	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIOs");
-	if (!(*ib))
-		LUA_ETRACE("open_nonblock:close", "already closed", 0);
-
-	nbio_close(ctx, ib);
-	LUA_ETRACE("open_nonblock:close", NULL, 0);
-}
-
-static int nbio_socketaccept(lua_State* ctx)
-{
-	LUA_TRACE("open_nonblock:accept");
-
-	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIOs");
-	if (!(*ib))
-		LUA_ETRACE("open_nonblock:accept", "already closed", 0);
-
-	struct nonblock_io* is = *ib;
-	int newfd = accept(is->fd, NULL, NULL);
-	if (-1 == newfd)
-		LUA_ETRACE("open_nonblock:accept", NULL, 0);
-
-	int flags = fcntl(newfd, F_GETFL);
-	if (-1 != flags)
-		fcntl(newfd, F_SETFL, flags | O_NONBLOCK);
-
-	if (-1 != (flags = fcntl(newfd, F_GETFD)))
-		fcntl(newfd, F_SETFD, flags | FD_CLOEXEC);
-
-	struct nonblock_io* conn = arcan_alloc_mem(
-		sizeof(struct nonblock_io), ARCAN_MEM_BINDING, 0, ARCAN_MEMALIGN_NATURAL);
-
-	(*conn) = (struct nonblock_io){
-		.fd = newfd,
-		.mode = O_RDWR,
-	};
-
-	if (!conn){
-		close(newfd);
-		LUA_ETRACE("open_nonblock:accept", "out of memory", 0);
-	}
-
-	uintptr_t* dp = lua_newuserdata(ctx, sizeof(uintptr_t));
-	if (!dp){
-		close(newfd);
-		arcan_mem_free(conn);
-		LUA_ETRACE("open_nonblock:accept", "couldn't alloc UD", 0);
-	}
-
-	*dp = (uintptr_t) conn;
-	luaL_getmetatable(ctx, "nonblockIO");
-	lua_setmetatable(ctx, -2);
-	LUA_ETRACE("open_nonblock:accept", NULL, 1);
-}
-
-static int nbio_write(lua_State* ctx)
-{
-	LUA_TRACE("open_nonblock:write");
-	struct nonblock_io** ud = luaL_checkudata(ctx, 1, "nonblockIO");
-	struct nonblock_io* iw = *ud;
-
-	if (!iw)
-		LUA_ETRACE("open_nonblock:close", "already closed", 0);
-
-	if (iw->mode == O_RDONLY)
-		LUA_ETRACE("open_nonblock:write", "invalid mode (r) for write", 0);
-
-	size_t len;
-	const char* buf = luaL_checklstring(ctx, 2, &len);
-	off_t of = 0;
-
-/* special case for FIFOs that aren't hooked up on creation */
-	if (-1 == iw->fd && iw->pending){
-		iw->fd = open(iw->pending, O_NONBLOCK | O_WRONLY | O_CLOEXEC);
-
-/* but still make sure that we actually got a FIFO */
-		if (-1 != iw->fd){
-			struct stat fi;
-
-/* and if not, don't try to write */
-			if (-1 != fstat(iw->fd, &fi) && !S_ISFIFO(fi.st_mode)){
-				lua_pushnumber(ctx, 0);
-				lua_pushboolean(ctx, false);
-				LUA_ETRACE("open_nonblock:write", NULL, 2);
-			}
-		}
-	}
-
-/* direct non-block output mode (legacy) */
-	if (lua_type(ctx, 3) != LUA_TFUNCTION && !iw->out_queue){
-		int retc = 5;
-		bool rc = true;
-		while (retc && (len - of)){
-			size_t nw = write(iw->fd, buf + of, len - of);
-
-			if (-1 == nw){
-				if (errno == EAGAIN || errno == EINTR){
-					retc--;
-					continue;
-				}
-				rc = false;
-				break;
-			}
-			else
-				of += nw;
-		}
-
-		lua_pushnumber(ctx, of);
-		lua_pushboolean(ctx, rc);
-		LUA_ETRACE("open_nonblock:write", NULL, 2);
-	}
-
-/* deferred / callback driven mode, new handler? */
-	if (lua_type(ctx, 3) == LUA_TFUNCTION){
-		if (iw->write_handler){
-
-		}
-	}
-
-	arcan_event_add_source(arcan_event_defaultctx(),
-		iw->fd, iw->data_handler ? O_RDWR : O_RDONLY, iw->ref);
-
-	lua_pushnumber(ctx, len);
-	lua_pushboolean(ctx, true);
-	LUA_ETRACE("open_nonblock:write", NULL, 2);
-}
-
-static int nbio_read(lua_State* ctx)
-{
-	LUA_TRACE("open_nonblock:read");
-	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIO");
-	struct nonblock_io* ir = *ib;
-
-	if (!ir)
-		LUA_ETRACE("open_nonblock:read", "already closed", 0);
-
-	if (ir->mode == O_WRONLY)
-		LUA_ETRACE("open_nonblock:read", "invalid mode (w) for read", 0);
-
-	bool nonbuffered = luaL_optbnumber(ctx, 2, 0);
-	bool eofm;
-	int	nr = bufread(ctx, *ib, nonbuffered);
-
-	LUA_ETRACE("open_nonblock:read", NULL, nr);
-}
-
 static int readrawresource(lua_State* ctx)
 {
 	LUA_TRACE("read_rawresource");
@@ -2133,7 +979,7 @@ static int readrawresource(lua_State* ctx)
 		LUA_ETRACE("read_rawresource", "no open file", 0);
 	}
 
-	int n = bufread(ctx, &luactx.rawres, false);
+	int n = alt_nbio_process_read(ctx, &luactx.rawres, false);
 	LUA_ETRACE("read_rawresource", NULL, n);
 }
 
@@ -2745,7 +1591,7 @@ static int maxorderimage(lua_State* ctx)
 		luaL_optnumber(ctx, 1, ARCAN_VIDEO_WORLDID);
 
 	if (rtgt != ARCAN_EID && rtgt != ARCAN_VIDEO_WORLDID)
-		rtgt -= luactx.lua_vidbase;
+		rtgt -= lua_vid_base;
 
 	uint16_t rv = 0;
 	arcan_video_maxorder(rtgt, &rv);
@@ -3593,7 +2439,7 @@ static int pick(lua_State* ctx)
 		luaL_optnumber(ctx, 5, ARCAN_VIDEO_WORLDID);
 
 	if (res != ARCAN_EID && res != ARCAN_VIDEO_WORLDID)
-		res -= luactx.lua_vidbase;
+		res -= lua_vid_base;
 
 	static arcan_vobj_id pickbuf[64];
 	if (limit > 64)
@@ -3724,14 +2570,21 @@ static int syscollapse(lua_State* ctx)
  * not be used */
 #undef arcan_fatal
 		if (!arcan_verifyload_appl(switch_appl, &errmsg)){
-			if (luactx.debug > 0)
+			if (lua_debug_level)
 				arcan_verify_namespaces(true);
 
 			arcan_fatal("system_collapse(), "
 				"failed to load appl (%s), reason: %s\n", switch_appl, errmsg);
 		}
-#define arcan_fatal(...) do { rectrigger( __VA_ARGS__); } while(0)
+#define arcan_fatal(...) do { alt_fatal( __VA_ARGS__); } while(0)
 	}
+
+/*
+ * defined in engine/arcan_main.c, rather than terminating directly
+ * we'll longjmp to this and hopefully the engine can switch scripts
+ * or take similar user-defined action.
+ */
+	extern jmp_buf arcanmain_recover_state;
 
 	longjmp(arcanmain_recover_state,
 		luaL_optbnumber(ctx, 2, 0) ?
@@ -4801,7 +3654,7 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 			lua_pushnumber(ctx, ev->vid.vppcm);
 			lua_pushnumber(ctx, ev->vid.flags);
 			lua_pushnumber(ctx, ev->vid.displayid);
-			alua_call(ctx, 5, 0, LINE_TAG":VRES_AUTORES");
+			alt_call(ctx, CB_SOURCE_NONE, 0, 5, 0, LINE_TAG":VRES_AUTORES");
 		}
 	}
 /* Same thing applies to fonts, but this is only really arcan_lwa */
@@ -4814,22 +3667,22 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 			lua_pushnumber(ctx, ev->vid.vppcm);
 			lua_pushnumber(ctx, ev->vid.width);
 			lua_pushnumber(ctx, ev->vid.displayid);
-			alua_call(ctx, 3, 0, LINE_TAG":VRES_AUTOFONT");
+			alt_call(ctx, CB_SOURCE_NONE, 0, 3, 0, LINE_TAG":VRES_AUTOFONT");
 		}
 	}
 #endif
 
-	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
+	if (!alt_lookup_entry(ctx, "display_state", sizeof("display_state")-1))
 		return;
 
 	lua_pushliteral(ctx, "reset");
 
-	alua_call(ctx, 1, 0, LINE_TAG":display_state:reset");
+	alt_call(ctx, CB_SOURCE_NONE, 0, 1, 0, LINE_TAG":display_state:reset");
 }
 
 static void display_added(lua_State* ctx, arcan_event* ev)
 {
-	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
+	if (!alt_lookup_entry(ctx, "display_state", sizeof("display_state")-1))
 		return;
 
 	lua_pushliteral(ctx, "added");
@@ -4847,26 +3700,26 @@ static void display_added(lua_State* ctx, arcan_event* ev)
 	lua_pushnumber(ctx, ev->vid.cardid);
 	lua_rawset(ctx, top);
 
-	alua_call(ctx, 3, 0, LINE_TAG":display_state:added");
+	alt_call(ctx, CB_SOURCE_NONE, 0, 3, 0, LINE_TAG":display_state:added");
 }
 
 static void display_changed(lua_State* ctx, arcan_event* ev)
 {
-	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
+	if (!alt_lookup_entry(ctx, "display_state", sizeof("display_state")-1))
 		return;
 
 	lua_pushliteral(ctx, "changed");
-	alua_call(ctx, 1, 0, LINE_TAG":display_state:changed");
+	alt_call(ctx, CB_SOURCE_NONE, 0, 1, 0, LINE_TAG":display_state:changed");
 }
 
 static void display_removed(lua_State* ctx, arcan_event* ev)
 {
-	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
+	if (!alt_lookup_entry(ctx, "display_state", sizeof("display_state")-1))
 		return;
 
 	lua_pushliteral(ctx, "removed");
 	lua_pushnumber(ctx, ev->vid.displayid);
-	alua_call(ctx, 2, 0, LINE_TAG":display_state:removed");
+	alt_call(ctx, CB_SOURCE_NONE, 0, 2, 0, LINE_TAG":display_state:removed");
 }
 
 static void do_preroll(lua_State* ctx, intptr_t ref,
@@ -4887,9 +3740,7 @@ static void do_preroll(lua_State* ctx, intptr_t ref,
 		tblstr(ctx, "kind", "preroll", top);
 		tbldynstr(ctx, "segkind", fsrvtos(fsrv->segid), top);
 		tblnum(ctx, "source_audio", aid, top);
-		luactx.cb_source_tag = vid;
-		alua_call(ctx, 2, 0, LINE_TAG":frameserver:preroll");
-		luactx.cb_source_kind = CB_SOURCE_PREROLL;
+		alt_call(ctx, CB_SOURCE_PREROLL, vid, 2, 0, LINE_TAG":frameserver:preroll");
 	}
 
 /* there is the possiblity of 'deferred' activation so that the WM
@@ -5013,10 +3864,8 @@ static void emit_segreq(
 	tblnum(ctx, "parent", parent->cookie, top);
 	tbldynstr(ctx, "segkind", fsrvtos(ev->segreq.kind), top);
 
-	luactx.cb_source_tag = ev->source;
-	luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
-	alua_call(ctx, 2, 0, LINE_TAG":frameserver:segment_request");
-	luactx.cb_source_kind = CB_SOURCE_NONE;
+	alt_call(ctx, CB_SOURCE_FRAMESERVER,
+		ev->source, 2, 0, LINE_TAG":frameserver:segment_request");
 
 /* call into callback, if we have been consumed,
  * do nothing, otherwise a reject */
@@ -5289,7 +4138,7 @@ void arcan_lwa_subseg_ev(
 	if (ev->category == EVENT_IO){
 /* re-use the same table mapping as normal */
 		append_iotable(ctx, &ev->io);
-		alua_call(ctx, 2, 0, LINE_TAG":event:lwa_io");
+		alt_call(ctx, CB_SOURCE_NONE, 0, 2, 0, LINE_TAG":event:lwa_io");
 		return;
 	}
 
@@ -5348,7 +4197,7 @@ void arcan_lwa_subseg_ev(
 	break;
 	}
 
-	alua_call(ctx, 2, 0, LINE_TAG":event:lwa");
+	alt_call(ctx, CB_SOURCE_NONE, 0, 2, 0, LINE_TAG":event:lwa");
 }
 #endif
 
@@ -5385,8 +4234,8 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	bool adopt_check = false;
 	char msgbuf[sizeof(arcan_event)+1];
 	if (!ev){
-		if (grabapplfunction(ctx, "input_end", 9)){
-			alua_call(ctx, 0, 0, LINE_TAG":event:input_eob");
+		if (alt_lookup_entry(ctx, "input_end", 9)){
+			alt_call(ctx, CB_SOURCE_NONE, 0, 0, 0, LINE_TAG":event:input_eob");
 		}
 		return true;
 	}
@@ -5396,9 +4245,9 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
  * script can't handle it or rejects it */
 		if (arcan_conductor_gpus_locked()){
 			bool consumed = false;
-			if (grabapplfunction(ctx, "input_raw", 9)){
+			if (alt_lookup_entry(ctx, "input_raw", 9)){
 				append_iotable(ctx, &ev->io);
-				alua_call(ctx, 1, 1, LINE_TAG":event:input_raw");
+				alt_call(ctx, CB_SOURCE_NONE, 0, 1, 1, LINE_TAG":event:input_raw");
 
 				if (lua_type(ctx, -1) == LUA_TBOOLEAN && lua_toboolean(ctx, -1)){
 					consumed = true;
@@ -5408,9 +4257,9 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			return consumed;
 		}
 
-		if (grabapplfunction(ctx, "input", 5)){
+		if (alt_lookup_entry(ctx, "input", 5)){
 			append_iotable(ctx, &ev->io);
-			alua_call(ctx, 1, 0, LINE_TAG":event:input");
+			alt_call(ctx, CB_SOURCE_NONE, 0, 1, 0, LINE_TAG":event:input");
 		}
 		return true;
 	}
@@ -5422,60 +4271,13 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			if (ev->sys.data.otag == LUA_NOREF)
 				return true;
 
-			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->sys.data.otag);
-			struct nonblock_io** ibb = luaL_checkudata(ctx, -1, "nonblockIO");
-			struct nonblock_io* ib = *ibb;
-			lua_pop(ctx, 1);
-			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ib->data_handler);
-			intptr_t ch = ib->data_handler;
-			ib->data_handler = 0;
-
-/* disarm the event source listener until re-armed through a new data_handler
- * unless there is also a write handler alive and queued */
-			arcan_event_del_source(evctx, ib->fd, NULL);
-			if (ib->write_handler)
-				arcan_event_add_source(evctx, ib->fd, O_WRONLY, ev->sys.data.otag);
-
-			lua_pushboolean(ctx, arcan_conductor_gpus_locked());
-			alua_call(ctx, 1, 0, LINE_TAG":data_handler_cb");
-
-/* and since we require re-arming, remove the old references, unless there
- * is a write_handler alive */
-			luaL_unref(ctx, LUA_REGISTRYINDEX, ch);
-			luaL_unref(ctx, LUA_REGISTRYINDEX, ev->sys.data.otag);
+			alt_nbio_data_in(ctx, ev->sys.data.otag);
 		}
 		else if (ev->sys.kind == EVENT_SYSTEM_DATA_OUT){
 			if (ev->sys.data.otag == LUA_NOREF)
 				return true;
 
-			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->sys.data.otag);
-			struct nonblock_io** ibb = luaL_checkudata(ctx, -1, "nonblockIO");
-			struct nonblock_io* ib = *ibb;
-			lua_pop(ctx, 1);
-
-			if (!ib->write_handler || !ib->out_queue)
-				return true;
-
-/* all pending writes are done, notify and check if there is still a job */
-			int status = process_write(ctx, ib);
-			if (status != 0){
-				lua_rawgeti(ctx, LUA_REGISTRYINDEX, ib->write_handler);
-				lua_pushboolean(ctx, status == 1);
-				lua_pushboolean(ctx, arcan_conductor_gpus_locked());
-				alua_call(ctx, 2, 0, LINE_TAG":write_handler_cb");
-
-/* remove the current event-source, and if there is a data handler still around
- * we need to re-register but fire only for read events while keeping the
- * reference mapping between nonblock_io lua-space job and event tag */
-				if (!ib->out_queue){
-					arcan_event_del_source(arcan_event_defaultctx(), ib->fd, NULL);
-					if (ib->data_handler)
-						arcan_event_add_source(
-							arcan_event_defaultctx(), ib->fd, O_RDONLY, ev->sys.data.otag);
-					else
-						luaL_unref(ctx, LUA_REGISTRYINDEX, ev->sys.data.otag);
-				}
-			}
+			alt_nbio_data_out(ctx, ev->sys.data.otag);
 		}
 		return true;
 	}
@@ -5718,10 +4520,8 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx, "kind_num", ev->ext.kind, top);
 		}
 
-		luactx.cb_source_tag  = ev->ext.source;
-		luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
-		alua_call(ctx, 2, 0, LINE_TAG":frameserver:event");
-		luactx.cb_source_kind = CB_SOURCE_NONE;
+		alt_call(ctx, CB_SOURCE_FRAMESERVER,
+			ev->ext.source,	2, 0, LINE_TAG":frameserver:event");
 /* special: external connection + connected->registered sequence finished */
 		if (preroll)
 			do_preroll(ctx, fsrv->tag, fsrv->vid, fsrv->aid);
@@ -5755,9 +4555,8 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblstr(ctx, "kind", "terminated", top);
 			MSGBUF_UTF8(ev->fsrv.message);
 			tbldynstr(ctx, "last_words", msgbuf, top);
-			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
-			alua_call(ctx, 2, 0, LINE_TAG":frameserver:event");
-			luactx.cb_source_kind = CB_SOURCE_NONE;
+			alt_call(ctx, CB_SOURCE_FRAMESERVER,
+				ev->fsrv.otag, 2, 0, LINE_TAG":frameserver:event");
 			luaL_unref(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 			return true;
 		}
@@ -5784,9 +4583,8 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblnum(ctx, "id", ev->fsrv.limb, top);
 				tbldynstr(ctx, "name", limb_name(ev->fsrv.limb), top);
 			}
-			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
-			alua_call(ctx, 2, 0, LINE_TAG":frameserver:vr");
-			luactx.cb_source_kind = CB_SOURCE_NONE;
+			alt_call(ctx,
+				CB_SOURCE_FRAMESERVER, ev->fsrv.otag, 2, 0, LINE_TAG":frameserver:vr");
 			return true;
 		}
 
@@ -5871,10 +4669,8 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		break;
 		}
 
-		luactx.cb_source_tag = ev->fsrv.video;
-		luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
-		alua_call(ctx, argc, 0, LINE_TAG":frameserver:event");
-		luactx.cb_source_kind = CB_SOURCE_NONE;
+		alt_call(ctx, CB_SOURCE_FRAMESERVER,
+			ev->fsrv.video, argc, 0, LINE_TAG":frameserver:event");
 	}
 	else if (ev->category == EVENT_VIDEO){
 		if (ev->vid.kind == EVENT_VIDEO_DISPLAY_ADDED){
@@ -5908,6 +4704,7 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		lua_pushvid(ctx, ev->vid.source);
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
+		int source = CB_SOURCE_NONE;
 
 		switch (ev->vid.kind){
 		case EVENT_VIDEO_EXPIRE :
@@ -5916,18 +4713,18 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		case EVENT_VIDEO_CHAIN_OVER:
 			evmsg = "video_event(chain_tag reached), callback";
-			luactx.cb_source_kind = CB_SOURCE_TRANSFORM;
+			source = CB_SOURCE_TRANSFORM;
 		break;
 
 		case EVENT_VIDEO_ASYNCHIMAGE_LOADED:
 			evmsg = "video_event(asynchimg_loaded), callback";
-			luactx.cb_source_kind = CB_SOURCE_IMAGE;
+			source = CB_SOURCE_IMAGE;
 			tbldynstr(ctx, "kind", "loaded", top);
 /* C trick warning */
 			if (0)
 		case EVENT_VIDEO_ASYNCHIMAGE_FAILED:
 			{
-				luactx.cb_source_kind = CB_SOURCE_IMAGE;
+				source = CB_SOURCE_IMAGE;
 				evmsg = "video_event(asynchimg_load_fail), callback";
 				tblstr(ctx, "kind", "load_failed", top);
 			}
@@ -5944,11 +4741,10 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			"	unknown video event (%i)\n", ev->vid.kind);
 		}
 
-		if (luactx.cb_source_kind != CB_SOURCE_NONE){
-			luactx.cb_source_tag = ev->vid.source;
+		if (source != CB_SOURCE_NONE){
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
 			lua_replace(ctx, 1);
-			alua_call(ctx, 2, 0, evmsg);
+			alt_call(ctx, source, ev->vid.source, 2, 0, evmsg);
 		}
 		else
 			lua_settop(ctx, 0);
@@ -5961,15 +4757,13 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				luactx.pending_socket_label = NULL;
 			}
 		}
-
-		luactx.cb_source_kind = CB_SOURCE_NONE;
 	}
 	else if (ev->category == EVENT_AUDIO){
 		if (
 			ev->aud.kind == EVENT_AUDIO_PLAYBACK_FINISHED &&
 			ev->aud.otag != LUA_NOREF){
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->aud.otag);
-			alua_call(ctx, 0, 0, LINE_TAG":audio:finished");
+			alt_call(ctx, CB_SOURCE_NONE, 0, 0, 0, LINE_TAG":audio:finished");
 			luaL_unref(ctx, LUA_REGISTRYINDEX, ev->aud.otag);
 		}
 	}
@@ -6029,7 +4823,7 @@ static int validvid(lua_State* ctx)
 	arcan_vobj_id res = (arcan_vobj_id) luaL_optnumber(ctx, 1, ARCAN_EID);
 
 	if (res != ARCAN_EID && res != ARCAN_VIDEO_WORLDID)
-		res -= luactx.lua_vidbase;
+		res -= lua_vid_base;
 
 	if (res < 0)
 		res = ARCAN_EID;
@@ -6185,7 +4979,7 @@ static int imagetess(lua_State* ctx)
 			lua_pushnumber(ctx, ms->vertex_size);
 			ud->mesh = ms;
 			ud->vobj = vobj;
-			alua_call(ctx, 3, 0, LINE_TAG":tesselate_image");
+			alt_call(ctx, CB_SOURCE_NONE, 0, 3, 0, LINE_TAG":tesselate_image");
 			ud->mesh = NULL;
 		}
 	}
@@ -7280,8 +6074,8 @@ static int videodispgamma(lua_State* ctx)
 /* separate "to frameserver instead of display?" path: */
 	int64_t id = luaL_checknumber(ctx, 1);
 	if (id != ARCAN_EID && id !=
-		ARCAN_VIDEO_WORLDID && id > luactx.lua_vidbase){
-		fsrv_dst = arcan_video_getobject(id-luactx.lua_vidbase);
+		ARCAN_VIDEO_WORLDID && id > lua_vid_base){
+		fsrv_dst = arcan_video_getobject(id-lua_vid_base);
 		if (fsrv_dst)
 			return fsrv_gamma(ctx, fsrv_dst);
 	}
@@ -8044,21 +6838,8 @@ void arcan_lua_shutdown(lua_State* ctx)
 {
 	TRACE_MARK_ONESHOT("scripting", "shutdown", TRACE_SYS_DEFAULT, 0, 0, "");
 	arcan_trace_setbuffer(NULL, 0, NULL);
-	if (luactx.got_trace_buffer){
-		finish_trace_buffer(ctx);
-	}
-
-/* make sure there are no registered event sources that would remain open
- * without any interpreter-space accessible recipients */
-	for (size_t i = 0; i < LUACTX_OPEN_FILES; i++){
-		struct nonblock_io* ent = &luactx.open_fds[i];
-		if (ent->fd > 0){
-			arcan_event_del_source(arcan_event_defaultctx(), ent->fd, NULL);
-			close(ent->fd);
-		}
-		drop_all_jobs(ent);
-		luactx.open_fds[i] = (struct nonblock_io){0};
-	}
+	alt_trace_finish(ctx);
+	alt_nbio_release();
 
 /* and special case the open_rawresource (which would be nice to one day
  * get rid off..) */
@@ -8070,7 +6851,6 @@ void arcan_lua_shutdown(lua_State* ctx)
 /* only some properties are reset in order for certain state to carry over
  * between system_collapse calls and crash/script error recovery code */
 	luactx.rawres = (struct nonblock_io){0};
-	luactx.lastsrc = NULL;
 	luactx.last_segreq = NULL;
 	luactx.pending_socket_label = NULL;
 	luactx.pending_socket_descr = 0;
@@ -8133,15 +6913,28 @@ static int luaB_loadstring (lua_State* ctx) {
 	return 2;
 }
 
+static bool add_source(int fd, mode_t mode, intptr_t otag)
+{
+	return
+		arcan_event_add_source(arcan_event_defaultctx(), fd, mode, otag);
+}
+
+static bool del_source(int fd, intptr_t* out)
+{
+	return
+		arcan_event_del_source(arcan_event_defaultctx(), fd, out);
+}
+
 void arcan_lua_mapfunctions(lua_State* ctx, int debuglevel)
 {
-	luaL_nil_banned(ctx);
+	alt_setup_context(ctx, arcan_appl_id());
 	alua_exposefuncs(ctx, debuglevel);
 /* update with debuglevel etc. */
 	arcan_lua_pushglobalconsts(ctx);
+	alt_nbio_register(ctx, add_source, del_source);
 
 /* only allow eval() style operation in explicit debug modes */
-	if (luactx.debug){
+	if (lua_debug_level){
 		lua_pushliteral(ctx, "loadstring");
 		lua_pushcclosure(ctx, luaB_loadstring, 1);
 		lua_setglobal(ctx, "loadstring");
@@ -8174,204 +6967,6 @@ static int alua_shutdown(lua_State *ctx)
 	}
 
 	LUA_ETRACE("shutdown", NULL, 0);
-}
-
-/*
- * There are four error paths,
- * [wraperr] is called on a lua_pcall() failure, panic or parent watchdog
- * [panic]   is called by the lua VM on an internal failure
- * [rectrigger] is called on C API functions from Lua with bad arguments
- *              (through arcan_fatal redefinition)
- * [SIGINT-handler] is used by the parent process if we fail to ping the
- *                  watchdog (conductor processing)
- *
- * + the special 'alua_call' wrapper that may forward here with
- * the results from calling either _fatal entry point or debug:traceback
- */
-static void fatal_handover(lua_State* ctx)
-{
-/* We reach this when the arcan-lua API has been misused, most of the time
- * this should simply be a fatal error, being lenient on this will degrade
- * quality of scripts over time. The exception is when the calls come from
- * an external process, which is part of letting other languages and tools
- * drive the rendering - or when part of automated testing.
- *
- * In those cases we need a way to alert that the client did something bad
- * and is expected to have recovered from the argument errors. For this we
- * use yet another entry point [_fatal_handover]. */
-		if (!grabapplfunction(ctx, "fatal_handover", 14) || luactx.in_fatal){
-		luactx.in_fatal = false;
-		return;
-	}
-
-/* still check from script error in the error function */
-	luactx.in_fatal = true;
-	lua_settop(ctx, 0);
-	grabapplfunction(ctx, "fatal_handover", 14);
-	lua_pushstring(ctx,
-		luactx.last_crash_source ? luactx.last_crash_source : "");
-	alua_call(ctx, 1, 1, LINE_TAG":fatal_handover");
-	luactx.in_fatal = false;
-
-	if (lua_type(ctx, -1) == LUA_TBOOLEAN && lua_toboolean(ctx, -1)){
-		lua_pop(ctx, 1);
-		longjmp(arcanmain_recover_state, ARCAN_LUA_RECOVERY_FATAL_IGNORE);
-	}
-}
-
-static void wraperr(lua_State* ctx, int errc, const char* src)
-{
-	if (luactx.debug)
-		luactx.lastsrc = src;
-
-	const char* mesg = luactx.in_panic ?
-		"Lua VM state broken, panic" :
-		luaL_optstring(ctx, -1, "unknown");
-
-/*
- * currently unused, pending refactor of arcan_warning/arcan_fatal
- * int severity = luaL_optnumber(ctx, 2, 0);
- */
-	arcan_state_dump("crash", mesg, src);
-	char* buf;
-	size_t buf_sz;
-	FILE* stream = open_memstream(&buf, &buf_sz);
-
-	if (stream){
-		if (luactx.debug){
-			fprintf(stream, "Warning: wraperr((), %s, from %s\n", mesg, src);
-			dump_call_trace(ctx, stream);
-			dump_stack(ctx, stream);
-		}
-
-		fprintf(stream, "\n\x1b[1mScript failure:\n \x1b[32m %s\n"
-		"\x1b[39mC-entry point: \x1b[32m %s \x1b[39m\x1b[0m.\n", mesg, src);
-
-		fprintf(stream,
-			"\nHanding over to recovery script (or shutdown if none present).\n");
-
-		fclose(stream);
-		luactx.last_crash_source = buf;
-	}
-	else
-		luactx.last_crash_source = strdup(mesg);
-
-/* first try cooperative script error recovery */
-	fatal_handover(ctx);
-
-/* if that fails, well switch to a recovery script */
-	longjmp(arcanmain_recover_state, ARCAN_LUA_RECOVERY_SWITCH);
-}
-
-static void rectrigger(const char* msg, ...)
-{
-	va_list args;
-
-	lua_State* ctx = luactx.last_ctx;
-
-	char* buf;
-	size_t buf_sz;
-	FILE* stream = open_memstream(&buf, &buf_sz);
-	if (stream){
-		va_start(args, msg);
-
-/* with LWA we shouldn't format the crash source as it will go to last_words
- * first, and arcan will treat the message as garbage */
-#ifndef ARCAN_LWA
-			fprintf(stream, "\x1b[0m\n");
-#endif
-			vfprintf(stream, msg, args);
-			fprintf(stream, "\n");
-			dump_call_trace(ctx, stream);
-			fclose(stream);
-			luactx.last_crash_source = buf;
-		va_end(args);
-	}
-	else
-		luactx.last_crash_source = "couldn't build stream";
-
-	fatal_handover(ctx);
-
-	if (luactx.debug > 2)
-		arcan_state_dump("misuse", luactx.last_crash_source, "");
-
-	longjmp(arcanmain_recover_state, ARCAN_LUA_RECOVERY_SWITCH);
-}
-
-static void alua_call(
-	struct arcan_luactx* ctx, int nargs, int retc, const char* src)
-{
-/* Safeguard against mismanaged alua_call stack, if the first argument isn't a
- * function - somebody screwed up. The fatal/shutdown action in those cases are
- * "difficult" to say the least" */
-	if (lua_type(ctx, -(nargs+1)) != LUA_TFUNCTION){
-		dump_stack(ctx, stderr);
-		lua_settop(ctx, 0);
-		return;
-	}
-
-	int errind = 0;
-	errind = lua_gettop(ctx) - nargs;
-
-/* These should >really< be looked up once during setup and then kept on the
- * stack, this is substantial overhead added to each and every call into the VM
- * (entry-point lookup -> error function lookup). The possible compromise to
- * allow the dynamic behavior still is to have a trigger for _G changing the
- * respective functions, and inject a default _fatal function that returns
- * debug.traceback(). */
-	if (grabapplfunction(ctx, "fatal", 5)){
-	}
-	else{
-		lua_getglobal(ctx, "debug");
-		lua_getfield(ctx, -1, "traceback");
-		lua_remove(ctx, -2);
-	}
-
-	lua_insert(ctx, errind);
-	int errc = lua_pcall(ctx, nargs, retc, errind);
-
-	if (errc != 0){
-/* if we have a tracing session going, try to finish that one along
- * with the backtrace we might have received, this should be robust
- * from recursion (scripting error in the callback handler) since
- * the got_trace_buffer trigger is cleared between calls */
-		const char* msg = luaL_optstring(ctx, -1, "no backtrace");
-		lua_remove(ctx, errind);
-
-		if (luactx.trace_buffer){
-			TRACE_MARK_ONESHOT("scripting", "crash", TRACE_SYS_ERROR, 0, 0, msg);
-			arcan_trace_setbuffer(NULL, 0, NULL);
-			if (luactx.got_trace_buffer){
-				finish_trace_buffer(ctx);
-			}
-		}
-
-		wraperr(ctx, errc, src);
-		return;
-	}
-
-	lua_remove(ctx, errind);
-}
-
-static void panic(lua_State* ctx)
-{
-	luactx.debug = 2;
-
-	if (luactx.cb_source_kind != CB_SOURCE_NONE){
-		char vidbuf[64] = {0};
-		snprintf(vidbuf, 63, "script error in callback for VID (%"PRIxVOBJ")",
-			luactx.lua_vidbase + luactx.cb_source_tag);
-		wraperr(ctx, -1, vidbuf);
-	} else{
-		luactx.in_panic = true;
-		wraperr(ctx, -1, "(panic)");
-	}
-
-	arcan_warning("LUA VM is in a panic state, "
-		"recovery handover might be impossible.\n");
-
-	luactx.last_crash_source = strdup("VM panic");
-	longjmp(arcanmain_recover_state, ARCAN_LUA_RECOVERY_SWITCH);
 }
 
 struct globs{
@@ -8471,7 +7066,7 @@ bool arcan_lua_callvoidfun(lua_State* ctx,
 	if (argv)
 		luactx.last_argv = argv;
 
-	if ( grabapplfunction(ctx, fun, strlen(fun)) ){
+	if ( alt_lookup_entry(ctx, fun, strlen(fun)) ){
 		int argc = 0;
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
@@ -8481,7 +7076,7 @@ bool arcan_lua_callvoidfun(lua_State* ctx,
 			lua_rawset(ctx, top);
 		}
 
-		alua_call(ctx, 1, 0, fun);
+		alt_call(ctx, CB_SOURCE_NONE, 0, 1, 0, fun);
 		return true;
 	}
 	else if (warn)
@@ -10845,17 +9440,9 @@ enum arcan_ffunc_rv arcan_lua_proctarget FFUNC_HEAD
 	ud->valid = true;
 	ud->packing = HIST_DIRTY;
 
-	luactx.cb_source_kind = CB_SOURCE_IMAGE;
-
  	lua_pushnumber(src->ctx, width);
 	lua_pushnumber(src->ctx, height);
-	alua_call(src->ctx, 3, 0, "calc_target:callback");
-
-/*
- * Even if the lua function maintains a reference to this userdata,
- * we know that it's accessed outside scope and can put a fatal error on it.
- */
-	luactx.cb_source_kind = CB_SOURCE_NONE;
+	alt_call(src->ctx, CB_SOURCE_IMAGE, 0, 3, 0, "calc_target:callback");
 	ud->valid = false;
 
 	return 0;
@@ -10907,7 +9494,7 @@ static int imagestorage(lua_State* ctx)
 	lua_pushnumber(ctx, ud->width);
 	lua_pushnumber(ctx, ud->height);
 
-	alua_call(ctx, 3, 0, "calctarget:callback");
+	alt_call(ctx, CB_SOURCE_IMAGE, 0, 3, 0, "calctarget:callback");
 
 	lua_pushboolean(ctx, true);
 	LUA_ETRACE("image_access_storage", NULL, 1);
@@ -11570,28 +10157,15 @@ static int togglebench(lua_State* ctx)
 
 /* trigger existing */
 	arcan_trace_setbuffer(NULL, 0, NULL);
-	finish_trace_buffer(ctx);
+	alt_trace_finish(ctx);
 
 /* callback form? allocate collection buffer and enable tracing */
 	intptr_t callback = find_lua_callback(ctx);
 	if (lua_type(ctx, 1) == LUA_TNUMBER && callback){
 		size_t buf_sz = lua_tonumber(ctx, 1) * 1024;
-		uint8_t* interim =
-			arcan_alloc_mem(buf_sz,
-				ARCAN_MEM_EXTSTRUCT,
-				ARCAN_MEM_BZERO | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_NATURAL
-			);
-
-		if (!interim){
-			luaL_unref(ctx, LUA_REGISTRYINDEX, callback);
+		if (!alt_trace_start(ctx, callback, buf_sz)){
 			LUA_ETRACE("benchmark_enable", "out-of-memory", 0);
 		}
-
-		arcan_trace_setbuffer(interim, buf_sz, &luactx.got_trace_buffer);
-		luactx.trace_buffer = interim;
-		luactx.trace_buffer_sz = buf_sz;
-		luactx.trace_cb = callback;
-
 		LUA_ETRACE("benchmark_enable", NULL, 0);
 	}
 
@@ -12929,15 +11503,7 @@ static int alua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	if (!ctx)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	luactx.debug = debugfuncs;
-	lua_atpanic(ctx, (lua_CFunction) panic);
-
-/* this is merely a "don't be dump" protection against someone storing
- * static vid values, getting away with it and causing bugs later on */
-	uint32_t rv;
-	arcan_random((uint8_t*)&rv, 4);
-	luactx.lua_vidbase = 256 + (rv % 32768);
-	arcan_renderfun_vidoffset(luactx.lua_vidbase);
+	lua_debug_level = debugfuncs;
 
 /* these defines / tables are also scriptably extracted and
  * mapped to build / documentation / static verification to ensure
@@ -12948,7 +11514,7 @@ static const luaL_Reg resfuns[] = {
 {"resource",          resource        },
 {"glob_resource",     globresource    },
 {"zap_resource",      zapresource     },
-{"open_nonblock",     opennonblock    },
+{"open_nonblock",     alt_nbio_open   },
 {"open_rawresource",  rawresource     },
 {"close_rawresource", rawclose        },
 {"write_rawresource", pushrawstr      },
@@ -12958,32 +11524,6 @@ static const luaL_Reg resfuns[] = {
 };
 #undef EXT_MAPTBL_RESOURCE
 	register_tbl(ctx, resfuns);
-
-	luaL_newmetatable(ctx, "nonblockIO");
-	lua_pushvalue(ctx, -1);
-	lua_setfield(ctx, -2, "__index");
-	lua_pushcfunction(ctx, nbio_read);
-	lua_setfield(ctx, -2, "read");
-	lua_pushcfunction(ctx, nbio_write);
-	lua_setfield(ctx, -2, "write");
-	lua_pushcfunction(ctx, nbio_closer);
-	lua_setfield(ctx, -2, "__gc");
-	lua_pushcfunction(ctx, nbio_datahandler);
-	lua_setfield(ctx, -2, "data_handler");
-	lua_pushcfunction(ctx, nbio_closer);
-	lua_setfield(ctx, -2, "close");
-	lua_pop(ctx, 1);
-
-	luaL_newmetatable(ctx, "nonblockIOs");
-	lua_pushvalue(ctx, -1);
-	lua_setfield(ctx, -2, "__index");
-	lua_pushcfunction(ctx, nbio_socketaccept);
-	lua_setfield(ctx, -2, "accept");
-	lua_pushcfunction(ctx, nbio_socketclose);
-	lua_setfield(ctx, -2, "close");
-	lua_pushcfunction(ctx, nbio_socketclose);
-	lua_setfield(ctx, -2, "_gc");
-	lua_pop(ctx, 1);
 
 #define EXT_MAPTBL_TARGETCONTROL
 static const luaL_Reg tgtfuns[] = {
@@ -13526,7 +12066,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"TRANSLATION_CLEAR", EVENT_TRANSLATION_CLEAR},
 {"TRANSLATION_SET", EVENT_TRANSLATION_SET},
 {"TRANSLATION_REMAP", EVENT_TRANSLATION_REMAP},
-{"DEBUGLEVEL", luactx.debug}
+{"DEBUGLEVEL", lua_debug_level},
 };
 #undef EXT_CONSTTBL_GLOBINT
 
@@ -13557,10 +12097,9 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 
 	arcan_process_title(arcan_appl_id());
 
-	if (luactx.last_crash_source){
-		arcan_lua_setglobalstr(ctx, "CRASH_SOURCE", luactx.last_crash_source);
-		free(luactx.last_crash_source);
-		luactx.last_crash_source = NULL;
+	if (alt_trace_crash_source()){
+		arcan_lua_setglobalstr(ctx, "CRASH_SOURCE", alt_trace_crash_source());
+		alt_trace_set_crash_source(NULL);
 	}
 }
 

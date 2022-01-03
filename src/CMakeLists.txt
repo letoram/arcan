@@ -477,6 +477,10 @@ else()
 	list (APPEND SOURCES
 		engine/arcan_event.c
 		engine/arcan_lua.c
+		engine/alt/nbio.c
+		engine/alt/support.c
+		engine/alt/types.c
+		engine/alt/trace.c
 		engine/arcan_main.c
 		engine/arcan_conductor.c
 		engine/arcan_db.c
