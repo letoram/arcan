@@ -57,7 +57,7 @@ void arcan_lua_setglobalstr(struct arcan_luactx* ctx,
  * blocking state OR (event not input / no input_raw handler).
  *
  * If [ev] is empty it is used as a marker for a completed buffer flush. */
-bool arcan_lua_pushevent(struct arcan_luactx* ctx, arcan_event* ev);
+bool arcan_lua_pushevent(struct arcan_luactx* ctx, struct arcan_event* ev);
 
 /* Run the entry-point named [fun], the applname specific prefix will be
  * added internally. Any elements in argv will be added as an integer
