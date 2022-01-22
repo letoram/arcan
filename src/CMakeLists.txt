@@ -211,7 +211,6 @@ set(CSTD gnu11)
 add_compile_options(-Wall)
 if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU" AND NOT ENABLE_WALL_SPAM)
 	add_compile_options(
-		-Wno-deprecated-declarations
 		-Wno-missing-braces
 		-Wno-unused-function
 		-Wno-unused-value
@@ -222,7 +221,6 @@ if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU" AND NOT ENABLE_WALL_SPAM)
 
 elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang" AND NOT ENABLE_WALL_SPAM)
 	add_compile_options(
-		-Wno-deprecated-declarations
 		-Wno-unknown-warning-option
 		-Wno-unused-const-variable
 		-Wno-unused-value

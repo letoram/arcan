@@ -196,7 +196,7 @@ struct a12_channel {
 		struct {
 			AVCodecParserContext* parser;
 			AVCodecContext* encdec;
-			AVCodec* codec;
+			const AVCodec* codec;
 			AVFrame* frame;
 			AVPacket* packet;
 			struct SwsContext* scaler;
