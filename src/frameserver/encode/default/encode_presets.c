@@ -1,14 +1,13 @@
 /*
- * Copyright 2013-2016, Björn Ståhl
+ * Copyright: Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
-
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavformat/avio.h>
 #include <libavutil/imgutils.h>
-
+#include <libavutil/channel_layout.h>
 #include <sys/stat.h>
 #include <assert.h>
 #include <stdbool.h>
@@ -71,11 +70,11 @@ static bool default_vcodec_setup(struct codec_ent* dst, unsigned width,
 	return true;
 }
 
-static bool default_acodec_setup(struct codec_ent* dst, unsigned channels,
-	unsigned samplerate, unsigned abr)
+static bool default_acodec_setup(
+	struct codec_ent* dst, unsigned channels, unsigned samplerate, unsigned abr)
 {
 	AVCodecContext* ctx = dst->storage.audio.context;
-	AVCodec* codec = dst->storage.audio.codec;
+	const AVCodec* codec = dst->storage.audio.codec;
 
 	assert(channels == 2);
 	assert(samplerate > 0 && samplerate <= 48000);
@@ -333,7 +332,7 @@ static struct codec_ent lookup_default(const char* const req,
 	struct codec_ent* tbl, size_t nmemb, bool audio)
 {
 	struct codec_ent res = {.name = req};
-	AVCodec** dst = audio ? &res.storage.audio.codec : &res.storage.video.codec;
+	const AVCodec** dst = audio ? &res.storage.audio.codec : &res.storage.video.codec;
 
 	if (req){
 /* make sure that if the user supplies a name already in the standard table,

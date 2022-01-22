@@ -681,7 +681,7 @@ static bool open_videnc(struct a12_state* S,
 {
 	a12int_trace(A12_TRACE_VIDEO,
 		"kind=codec:status=open:ch=%d:codec=%d", chid, codecid);
-	AVCodec* codec = S->channels[chid].videnc.codec;
+	const AVCodec* codec = S->channels[chid].videnc.codec;
 	AVFrame* frame = NULL;
 	AVPacket* packet = NULL;
 	struct SwsContext* scaler = NULL;

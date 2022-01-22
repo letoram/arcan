@@ -22,14 +22,14 @@ struct codec_ent
 
 	union {
 		struct {
-		AVCodec* codec;
+		const AVCodec* codec;
 		AVCodecContext* context;
 		AVFrame* pframe;
-		int channel_layout; /* copy here for <= v53 */
+		int channel_layout;
 		} video, audio;
 
 		struct {
-			AVOutputFormat*  format;
+			const AVOutputFormat*  format;
 			AVFormatContext* context;
 		} container;
 
