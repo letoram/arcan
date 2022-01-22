@@ -3529,6 +3529,7 @@ static void* copy_thread(void* inarg)
 
 	if (-1 != fds[2]){
 		write(fds[2], &sc, 1);
+		close(fds[2]);
 	}
 
 	free(fds);
