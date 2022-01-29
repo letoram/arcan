@@ -456,9 +456,11 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 				if (ev->ioevs[2].iv == SEGID_HANDOVER){
 					LOG("handover-segment received, sending to consumer\n");
 					tui->got_pending = true;
+					tui->pending_handover = ev->ioevs[3].uiv;
 					tui->pending_wnd = *aev;
 					tui->handlers.subwindow(
 						tui, (void*)(uintptr_t)-1, id, kind, tui->handlers.tag);
+					tui->pending_handover = 0;
 					tui->got_pending = false;
 					return;
 				}

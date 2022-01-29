@@ -328,7 +328,18 @@ struct tui_context* arcan_tui_setup(
 	apply_arg(res, arcan_shmif_args(con));
 
 /* tui_fontmgmt is also responsible for building the raster context */
-/* if we have a parent, we should derive settings etc. from there */
+/* if we have a parent, we should derive settings etc. from there.
+ *
+ * There is a special state parent can be in if there is a handover subsegment
+ * pending. This is used to be able to embed a handover segment into ourselves
+ * and to make the API for that work like everything else, the tactic is to
+ * create an non-bound context where we track the cookie for handover. See the
+ * newsegment in dispatch.c
+ *
+ * This also allows us to have a way of forwarding events to the handover
+ * context (say by implementing a shmif-server inherited connection), unpack
+ * into the proxy- window and blit into ourselves if our connection rejects
+ * additional subwindows. */
 	if (parent){
 		res->alpha = parent->alpha;
 		res->cursor = parent->cursor;
@@ -345,6 +356,11 @@ struct tui_context* arcan_tui_setup(
 					.fd = arcan_shmif_dupfd(parent->font[1]->fd, -1, true)
 				}
 		}});
+
+		if (parent->pending_handover){
+			res->viewport_proxy = parent->pending_handover;
+			parent->pending_handover = 0;
+		}
 	}
 
 	if (0 != tsm_utf8_mach_new(&res->ucsconv)){

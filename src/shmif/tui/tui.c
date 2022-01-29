@@ -487,10 +487,17 @@ void arcan_tui_wndhint(struct tui_context* C,
 			.ext.kind = ARCAN_EVENT(VIEWPORT),
 			.ext.viewport.parent = par->acon.segment_token,
 			.ext.viewport.x = cons.anch_col * C->cell_w,
-			.ext.viewport.y = cons.anch_row * C->cell_h
+			.ext.viewport.y = cons.anch_row * C->cell_h,
 		};
 
-		arcan_shmif_enqueue(&C->acon, &viewport);
+		if (C->viewport_proxy){
+			viewport.ext.viewport.embedded = C->viewport_proxy > 0;
+			viewport.ext.viewport.parent = C->viewport_proxy;
+			viewport.ext.viewport.order = -1;
+			arcan_shmif_enqueue(&par->acon, &viewport);
+		}
+		else
+			arcan_shmif_enqueue(&C->acon, &viewport);
 	}
 
 	C->last_constraints = cons;
@@ -1322,10 +1329,14 @@ pid_t arcan_tui_handover(struct tui_context* c,
 		return -1;
 	}
 
-/* send an event translating the constraints to a VIEWPORT event that
- * parents the HANDOVER segment to fit the constraints. */
-	if (constraints){
-/*
+/* this should be treated as a VIEWPORT+DISPLAYHINT event that gets
+ * injected into the child, though we have to pass it as an ENV or so
+ * that steps around the preroll synch.
+ *
+ * before something like that is added, the other option is to simply
+ *
+ *
+ * if (constraints){
  * struct arcan_event viewport = (struct arcan_event){
 			.category = EVENT_EXTERNAL,
 			.ext.kind = ARCAN_EVENT(VIEWPORT),
@@ -1334,8 +1345,8 @@ pid_t arcan_tui_handover(struct tui_context* c,
 				.y = cons.anch_row * C->cell_h,
 			},
 		};
- */
 	}
+ */
 
 	return arcan_shmif_handover_exec(
 		&c->acon, c->pending_wnd, path, argv, env, detach);
