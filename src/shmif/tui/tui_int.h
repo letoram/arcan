@@ -117,6 +117,10 @@ struct tui_context {
 	struct arcan_shmif_cont clip_in;
 	struct arcan_shmif_cont clip_out;
 
+/* track before calling on_subwindow when it is a handover type */
+	uint32_t pending_handover;
+	uint32_t viewport_proxy;
+
 /* retain these so that we can renegotiate on crash */
 	struct arcan_event last_ident;
 	struct arcan_event last_state_sz;
