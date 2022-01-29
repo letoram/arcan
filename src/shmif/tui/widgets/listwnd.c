@@ -534,6 +534,10 @@ static void resize(struct tui_context* T,
 
 static void tick(struct tui_context* T, void* t)
 {
+	struct listwnd_meta* M = t;
+	if (M->old_handlers.tick){
+		M->old_handlers.tick(T, M->old_handlers.tag);
+	}
 /* if current item is cropped, scroll it */
 }
 
