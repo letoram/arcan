@@ -12,6 +12,8 @@ SET(TERMINAL_SOURCES
 	${CMAKE_CURRENT_SOURCE_DIR}/cli_builtin.c
 	${CMAKE_CURRENT_SOURCE_DIR}/cli_lua.c
 	${TUI_BASE}/lua/tui_lua.c
+	${TUI_BASE}/lua/tui_nbio.c
+	${TUI_BASE}/lua/tui_popen.c
 	PARENT_SCOPE
 )
 

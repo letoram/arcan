@@ -62,6 +62,10 @@ struct widget_meta {
 			char** suggest;
 			size_t suggest_sz;
 		} readline;
+		struct {
+			struct tui_list_entry* ents;
+			size_t n_ents;
+		} listview;
 	};
 };
 
@@ -80,6 +84,9 @@ struct tui_lmeta {
 	size_t n_subs;
 	int widget_mode;
 	struct tui_list_entry* tmplist;
+	char* cwd;
+	size_t cwd_sz;
+	int cwd_fd;
 
 	intptr_t href;
 	intptr_t tui_state;
