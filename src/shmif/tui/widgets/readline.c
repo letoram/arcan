@@ -137,6 +137,11 @@ static void drop_completion(
 	if (!M->show_completion)
 		return;
 
+	if (!M->completion){
+		M->show_completion = false;
+		return;
+	}
+
 	if (run){
 		switch (M->completion_mode){
 			case READLINE_SUGGEST_WORD:
