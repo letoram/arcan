@@ -3705,6 +3705,7 @@ static bool dirty_displays()
 		if (d->frame_cookie != tgt->frame_cookie){
 			verbose_print("(%d) frame-cookie (%zu) "
 				"changed to (%zu)", d->id, d->frame_cookie, tgt->frame_cookie);
+			d->frame_cookie = tgt->frame_cookie;
 			return true;
 		}
 	}
