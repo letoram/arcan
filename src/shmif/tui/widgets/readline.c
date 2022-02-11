@@ -35,6 +35,7 @@
 struct readline_meta {
 	uint32_t magic;
 	struct tui_readline_opts opts;
+	bool in_refresh;
 
 /* re-built on resize */
 	size_t start_col, stop_col, start_row, stop_row;
@@ -60,7 +61,6 @@ struct readline_meta {
 /* if we overfit-, this might be drawn with middle truncated to 2/3 of capacity */
 	const struct tui_cell* prompt;
 	size_t prompt_len;
-
 	int finished;
 
 /* history feature (externally managed) */
@@ -224,6 +224,12 @@ static void draw_completion(struct tui_context* T, struct readline_meta* M)
 static void refresh(struct tui_context* T, struct readline_meta* M)
 {
 	size_t rows, cols;
+
+/* have a guard against a recolor handler that triggers the original refresh */
+	if (M->in_refresh)
+		return;
+	M->in_refresh = true;
+
 	arcan_tui_dimensions(T, &rows, &cols);
 
 /* first redraw everything so that we are sure we have synched contents */
@@ -239,12 +245,12 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 
 /* can't do nothing if we don't have the space */
 	if (x1 > x2 || y1 > y2)
-		return;
+		goto out;
 
 	size_t cx = 0, cy = 0;
 	size_t limit = (x2 - x1) + 1;
 	if (limit < 3)
-		return;
+		goto out;
 
 	arcan_tui_move_to(T, x1, y1);
 
@@ -346,6 +352,9 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 
 	if (cx)
 		arcan_tui_move_to(T, cx, cy);
+
+out:
+	M->in_refresh = false;
 }
 
 static bool validate_context(struct tui_context* T, struct readline_meta** M)
@@ -1023,8 +1032,8 @@ static void reset_boundaries(
 	}
 /* align from top */
 	else if (M->opts.anchor_row > 0){
-		M->start_row = 0;
-		M->stop_row = M->stop_row + M->opts.n_rows - 1;
+		M->start_row = M->opts.anchor_row - 1;
+		M->stop_row = M->start_row + M->opts.n_rows - 1;
 	}
 /* manual mode, ignore */
 	else {

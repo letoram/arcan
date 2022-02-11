@@ -20,6 +20,7 @@ struct cell {
 	shmif_pixel bc;
 	uint32_t ucs4;
 	uint8_t attr;
+	uint8_t attr_ext;
 };
 
 struct tui_raster_context {
@@ -73,7 +74,7 @@ void tui_raster_cell_size(struct tui_raster_context* ctx, size_t w, size_t h)
 	ctx->cell_h = h;
 }
 
-void unpack_u32(uint32_t* dst, uint8_t* inbuf)
+static void unpack_u32(uint32_t* dst, uint8_t* inbuf)
 {
 	*dst =
 		((uint64_t)inbuf[0] <<  0) |
@@ -87,6 +88,7 @@ static void unpack_cell(uint8_t unpack[static 12], struct cell* dst, uint8_t alp
 	dst->fc = SHMIF_RGBA(unpack[0], unpack[1], unpack[2], 0xff);
 	dst->bc = SHMIF_RGBA(unpack[3], unpack[4], unpack[5], alpha);
 	dst->attr = unpack[6];
+	dst->attr_ext = unpack[7];
 	unpack_u32(&dst->ucs4, &unpack[8]);
 }
 

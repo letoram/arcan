@@ -913,7 +913,19 @@ static int nbio_flush(lua_State* L)
 	return 1;
 }
 
-bool alt_nbio_import(lua_State* L, int fd, mode_t mode, struct nonblock_io** out)
+static int nbio_size(lua_State* L)
+{
+	LUA_TRACE("open_nonblock:resize");
+	struct nonblock_io** ib = luaL_checkudata(L, 1, "nonblockIO");
+	if (!(*ib))
+		LUA_ETRACE("open_nonblock:resize", "already closed", 0);
+
+
+	return 0;
+}
+
+bool alt_nbio_import(
+	lua_State* L, int fd, mode_t mode, struct nonblock_io** out)
 {
 	if (-1 == fd){
 		lua_pushnil(L);
@@ -977,6 +989,8 @@ void alt_nbio_register(lua_State* L,
 	lua_setfield(L, -2, "close");
 	lua_pushcfunction(L, nbio_flush);
 	lua_setfield(L, -2, "flush");
+	lua_pushcfunction(L, nbio_size);
+	lua_setfield(L, -2, "resize");
 	lua_pop(L, 1);
 
 	luaL_newmetatable(L, "nonblockIOs");

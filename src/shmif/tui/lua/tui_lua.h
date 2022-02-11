@@ -35,6 +35,8 @@
 #ifndef HAVE_ARCAN_SHMIF_TUI_LUA
 #define HAVE_ARCAN_SHMIF_TUI_LUA
 
+/* <= 64, should fit a uint64_t bitmap */
+#define SEGMENT_LIMIT 64
 struct blobio_meta;
 
 enum tui_builtin_widgets {
@@ -66,43 +68,65 @@ struct widget_meta {
 			struct tui_list_entry* ents;
 			size_t n_ents;
 		} listview;
+		struct {
+			uint8_t* buf;
+			size_t sz;
+		} bufferview;
 	};
 };
 
 /*
- * user-data structures passed as tui-tags
+ * User-data structures passed as tui-tags.
+ *
+ * This represents a window tree of a 'toplevel' window in X11.
+ *
+ * The 'tag' property of each tui context is used to reference back to
+ * tui_lmeta. Running :process on a window will thus cover the window and all
+ * its children.
  */
+struct tui_lmeta;
 struct tui_lmeta {
 
-/* just have a fixed cap of these and compact on free, this is still
- * an absurd amount of subwindows */
+/* These are squished together to fit arcan_tui_process multiplexing the
+ * processing of multiple windows. Modifying subs[n] should match the reference
+ * in submeta[refs]. tui->handlers.tag can't be used here as the widget states
+ * proxy them with its own state tag. */
 	union {
 		struct tui_context* tui;
-		struct tui_context* subs[64];
+		struct tui_context* subs[SEGMENT_LIMIT];
 	};
-
+	struct tui_lmeta* submeta[SEGMENT_LIMIT];
+	struct tui_lmeta* parent;
 	size_t n_subs;
-	int widget_mode;
-	struct tui_list_entry* tmplist;
-	char* cwd;
-	size_t cwd_sz;
-	int cwd_fd;
-
-	intptr_t href;
-	intptr_t tui_state;
-	intptr_t widget_closure;
-	intptr_t widget_state;
 
 /* pending subsegment requests and their respective lua references */
 	uint8_t pending_mask;
 	intptr_t pending[8];
 
+/* reference to the tui context itself, kept for subwindows as they have a
+ * reference to the parent internally even if the Lua state does not
+ * acknowledge it. */
+	intptr_t tui_state;
+
+/* reference to the currently active handler table */
+	intptr_t href;
+
+/* one 'tui' connection can be in multiple widget states, and these get
+ * discrete 'on-completion' handlers as well their own metatables - the
+ * following is used for mapping that */
+	int widget_mode;
+	intptr_t widget_closure;
+	intptr_t widget_state;
 	struct widget_meta* widget_meta;
 
 /* linked list of bchunk like processing jobs */
 	struct blobio_meta* blobs;
 
-	const char* last_words;
+/* process- state that needs to be tracked locally for asio/popen/... */
+	char* cwd;
+	size_t cwd_sz;
+	int cwd_fd;
+
 	lua_State* lua;
 };
 
