@@ -17,7 +17,8 @@ struct nonblock_io {
 	char buf[4096];
 	bool eofm;
 	off_t ofs;
-	int fd;
+
+	int fd; /* will be read from */
 
 	struct io_job* out_queue;
 	intptr_t write_handler; /* callback when queue flushed */
@@ -25,6 +26,8 @@ struct nonblock_io {
 	mode_t mode;
 	char* unlink_fn;
 	char* pending;
+
+	bool data_rearmed;
 	intptr_t data_handler; /* callback on_data_in */
 	intptr_t ref; /* :self reference to block GC */
 };
@@ -67,5 +70,14 @@ void alt_nbio_data_out(lua_State*, intptr_t);
 
 /* Cancel / close / free all pending jobs. */
 void alt_nbio_release();
+
+/* Take ownership of a descriptor, bind to nbio and leave the userdata on top
+ * of the stack of [L] - returns true if the import was successful, false if
+ * not. If the import fails, the descriptor will still be closed. */
+bool alt_nbio_import(lua_State* L, int fd, mode_t mode, struct nonblock_io** dst);
+
+/* Manually close an imported nonblock_io, this is normally performed in the
+ * Lua space directly or through the garbage collection */
+int alt_nbio_close(lua_State* L, struct nonblock_io** ibb);
 
 #endif

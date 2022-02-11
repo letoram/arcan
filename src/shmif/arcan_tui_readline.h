@@ -163,6 +163,13 @@ int arcan_tui_readline_finished(struct tui_context*, char** buffer);
 void arcan_tui_readline_reset(struct tui_context*);
 
 /*
+ * If things were setup without an anchor row, reanchoring is a manual process
+ * by setting the bounding box for the readline widget using this function.
+ */
+void arcan_tui_readline_region(
+	struct tui_context*, size_t x1, size_t y1, size_t x2, size_t y2);
+
+/*
  * Clear current input buffer and replace with [msg].
  *
  * This will not trigger any of the assigned callbacks to avoid misuse from
@@ -180,6 +187,7 @@ typedef void(* PTUIRL_PROMPT)(struct tui_context*, const struct tui_cell*);
 typedef void(* PTUIRL_SET)(struct tui_context*, const char* msg);
 typedef void(* PTUIRL_COMPLETE)(struct tui_context*, const char*);
 typedef void(* PTUIRL_SUGGEST)(struct tui_context*, int, const char**, size_t);
+typedef void(* PTUIRL_REGION)(struct tui_context*, size_t, size_t, size_t, size_t);
 
 static PTUIRL_SETUP arcan_tui_readline_setup;
 static PTUIRL_FINISHED arcan_tui_readline_finished;
@@ -189,6 +197,7 @@ static PTUIRL_PROMPT arcan_tui_readline_prompt;
 static PTUIRL_SET arcan_tui_readline_set;
 static PTUIRL_COMPLETE arcan_tui_readline_complete;
 static PTUIRL_SUGGEST arcan_tui_readline_suggest;
+static PTUIRL_REGION arcan_tui_readline_region;
 
 static bool arcan_tui_readline_dynload(
 	void*(*lookup)(void*, const char*), void* tag)
@@ -202,6 +211,7 @@ M(PTUIRL_PROMPT, arcan_tui_readline_prompt);
 M(PTUIRL_SET, arcan_tui_readline_set);
 M(PTUIRL_COMPLETE, arcan_tui_readline_complete);
 M(PTUIRL_SUGGEST, arcan_tui_readline_suggest);
+M(PTUIRL_REGION, arcan_tui_readline_region);
 #undef M
 }
 

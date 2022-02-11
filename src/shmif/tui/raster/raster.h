@@ -42,30 +42,42 @@
  * attribute bits (byte 0)
  * bit 0: bold
  * bit 1: underline
- * bit 2: italic
- * bit 3: strikethrough
- * bit 4: shape break (re-align to grid)
+ * bit 2: underwave
+ * bit 3: italic
+ * bit 4: strikethrough
  * bit 5: cursor
- * bit 6: underwave
+ * bit 6: shape break (re-align to grid)
  * bit 7: skip-bit (double-width)
  *
  * (byte 1)
  * bit 0: glyph-index
- * bit 1: border-right
- * bit 2: border-down
- * bit 3: treat color as palette reference (first byte of front_color)
- * bit 4: glyph-index-alt-font
+ * bit 1: glyph-index-alt-font
+ * bit 2: border-right
+ * bit 3: border-down
+ * bit 4: border-left
+ * bit 5: border-top
+ * bit 6: treat color as palette reference (first byte of front_color)
  */
 #include "raster_const.h"
 
 enum cell_attr {
 	CATTR_BOLD = 0,
 	CATTR_UNDERLINE = 1,
-	CATTR_ITALIC = 2,
-	CATTR_STRIKETHROUGH = 3,
-	CATTR_BREAK = 4,
+	CATTR_UNDERLINE_ALT = 2,
+	CATTR_ITALIC = 3,
+	CATTR_STRIKETHROUGH = 4,
 	CATTR_CURSOR = 5,
+	CATTR_SHAPEBREAK = 6,
 	CATTR_SKIP = 7
+};
+
+enum cell_extr_attr {
+	CEATTR_GLYPH_IND = 0,
+	CEATTR_AGLYPH_IND = 1,
+	CEATTR_BORDER_R = 2,
+	CEATTR_BORDER_D = 3,
+	CEATTR_BORDER_L = 4,
+	CEATTR_BORDER_T = 5,
 };
 
 enum raster_content {
@@ -97,10 +109,10 @@ struct __attribute__((packed)) tui_raster_line {
 };
 
 enum cursor_states {
-	CURSOR_NONE = 0,
+	CURSOR_NONE     = 0,
 	CURSOR_INACTIVE = 1,
-	CURSOR_ACTIVE = 2,
-	CURSOR_BLINK = 4, /* attribute- bit */
+	CURSOR_ACTIVE   = 2,
+	CURSOR_BLINK    = 4, /* attribute- bit */
 };
 
 struct tui_font {

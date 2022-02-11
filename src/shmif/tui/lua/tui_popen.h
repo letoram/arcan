@@ -30,3 +30,15 @@ int tui_popen(lua_State* L);
  * is undefined behaviour.
  */
 int tui_pid_status(lua_State* L);
+
+/* Send a signal to the pid passed as argument,
+ *
+ * this takes a pid and a string representation of a supported string or raw
+ * signal number.
+ *
+ *  kill, close, usr1, usr2, hup, suspend, resume
+ */
+int tui_pid_signal(lua_State* L);
+
+/* Try to resize a pty bound to a nbio by performing the TIOCSWINSZ ioctl. */
+int tui_pty_resize(lua_State* L);

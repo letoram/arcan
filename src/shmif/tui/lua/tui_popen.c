@@ -15,6 +15,7 @@
  * Mike Bourgeous
  * https://github.com/nitrogenlogic
  */
+#define _XOPEN_SOURCE 700
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -24,6 +25,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <errno.h>
+#include <termios.h>
+#include <string.h>
+#include <strings.h>
 
 #include <lua.h>
 #include <lualib.h>
@@ -31,6 +35,28 @@
 
 #include "tui_nbio.h"
 #include "tui_popen.h"
+
+/* for Apple we also need to workaround the bit that pty will not work in
+ * non-blocking mode, likely by a consumer / copy-thread if it is worth even
+ * caring about at this stage. */
+#ifdef __APPLE__
+#include <util.h>
+#elif defined(__OpenBSD__) || defined(__NetBSD__)
+#ifndef IUTF8
+#define IUTF8 0x00004000
+#endif
+#elif defined(__BSD)
+#include <libutil.h>
+#ifndef IUTF8
+#define IUTF8 0x00004000
+#endif
+#else
+#include <pty.h>
+#endif
+
+#ifndef SIGUNUSED
+#define SIGUNUSED 31
+#endif
 
 /*
  * Sets the FD_CLOEXEC flag.  Returns 0 on success, -1 on error.
@@ -62,8 +88,11 @@ static int set_cloexec(int fd)
  *
  * Returns the child PID on success, -1 on error.
  */
-static pid_t popen3(const char *command,
-	int stdin_fd, int *writefd, int *readfd, int *errfd, char** env)
+static pid_t popen3(
+	const char *command,
+	int stdin_fd, int *writefd, int *readfd,
+	int *errfd, char** argv, char** env,
+	bool pty)
 {
 	int in_pipe[2] = {-1, -1};
 	int out_pipe[2] = {-1, -1};
@@ -157,8 +186,13 @@ static pid_t popen3(const char *command,
 				}
 			}
 
-			execl("/bin/sh",
-				"/bin/sh", "-c", command, (char *)NULL, env, (char *) NULL);
+			if (argv){
+				execve(argv[0], &argv[1], env);
+			}
+			else
+				execl("/bin/sh",
+					"/bin/sh", "-c", command, (char *)NULL, env, (char *) NULL);
+
 			perror("Error executing command in child process");
 			exit(-1);
 
@@ -221,6 +255,85 @@ extern char** environ;
 	#define lua_rawlen(x, y) lua_objlen(x, y)
 #endif
 
+static char** table_to_argv(lua_State* L, int ind)
+{
+	size_t count = lua_rawlen(L, ind);
+	char** res = malloc(sizeof(char*) * (count+1));
+	if (!res)
+		luaL_error(L, "popen: couldn't allocate argument store");
+
+	res[count] = NULL;
+
+	for (size_t i = 0; i < count; i++){
+		lua_rawgeti(L, ind, i+1);
+		res[i] = strdup(luaL_checkstring(L, -1));
+		if (!res[i])
+			luaL_error(L, "popen: couldn't copy argument");
+		lua_pop(L, 1);
+	}
+
+	return res;
+}
+
+static char** table_to_env(lua_State* L, int ind)
+{
+	size_t count = 0;
+	char** env;
+	lua_pushvalue(L, ind);
+	lua_pushnil(L);
+
+/* One pass to count the number of valid entries, then alloc to match. */
+	while (lua_next(L, -2)){
+		int type = lua_type(L, -1);
+		int ktype = lua_type(L, -2);
+		if (ktype == LUA_TSTRING){
+			if (type == LUA_TBOOLEAN){
+				if (lua_toboolean(L, -1))
+					count++;
+			}
+			else if (type == LUA_TSTRING)
+				count++;
+		}
+		lua_pop(L, 1);
+	}
+
+	size_t nb = (count + 1) * sizeof(char*);
+	if (nb < count){
+		lua_pop(L, 1);
+		return NULL;
+	}
+
+	env = malloc(nb);
+	lua_pushnil(L);
+	count = 0;
+	while (lua_next(L, -2)){
+		int type = lua_type(L, -1);
+		if (type == LUA_TBOOLEAN){
+			env[count] = strdup(lua_tostring(L, -2));
+		}
+		else if (type == LUA_TSTRING){
+			const char* key = lua_tostring(L, -2);
+			const char* val = lua_tostring(L, -1);
+			size_t l1 = strlen(key);
+			size_t l2 = strlen(val);
+			char* dst = malloc(l1 + l2 + 2);
+			if (dst){
+				memcpy(dst, key, l1);
+				dst[l1] = '=';
+				memcpy(&dst[l1+1], val, l2);
+				dst[l1+l2+1] = '\0';
+				env[count] = dst;
+			}
+		}
+		if (env[count])
+			count++;
+		lua_pop(L, 1);
+	}
+	env[count] = NULL;
+	lua_pop(L, 1);
+	return env;
+}
+
 int tui_popen(lua_State* L)
 {
 	size_t ci = 1;
@@ -228,7 +341,18 @@ int tui_popen(lua_State* L)
 		ci++;
 	}
 
-	const char* command = luaL_checkstring(L, ci++);
+	const char* command = NULL;
+	char** argv = NULL;
+
+	if (lua_type(L, ci) == LUA_TTABLE){
+		argv = table_to_argv(L, ci);
+	}
+	else if (lua_type(L, ci) == LUA_TSTRING){
+		command = luaL_checkstring(L, ci);
+	}
+	else
+		luaL_error(L, "popen: expected string or table command argument");
+	ci++;
 
 	int stdin_fd = -1;
 	if (lua_type(L, ci) == LUA_TUSERDATA){
@@ -243,59 +367,11 @@ int tui_popen(lua_State* L)
 
 	const char* mode = luaL_optstring(L, ci++, "rwe");
 	char** env = environ;
+
 	bool free_env = false;
 
 	if (lua_type(L, ci) == LUA_TTABLE){
-		size_t count = 0;
-		lua_pushnil(L);
-
-/* One pass to count the number of valid entries, then alloc to match. */
-		while (lua_next(L, -2)){
-			int type = lua_type(L, -1);
-			int ktype = lua_type(L, -2);
-			if (ktype == LUA_TSTRING){
-				if (type == LUA_TBOOLEAN){
-					if (lua_toboolean(L, -1))
-						count++;
-				}
-				else if (type == LUA_TSTRING){
-					count++;
-				}
-			}
-			lua_pop(L, 1);
-		}
-
-		size_t nb = (count + 1) * sizeof(char*);
-		if (nb < count)
-			return 0;
-
-		env = malloc(nb);
-		lua_pushnil(L);
-		count = 0;
-		while (lua_next(L, -2)){
-			int type = lua_type(L, -1);
-			if (type == LUA_TBOOLEAN){
-				env[count] = strdup(lua_tostring(L, -2));
-			}
-			else if (type == LUA_TSTRING){
-				const char* key = lua_tostring(L, -2);
-				const char* val = lua_tostring(L, -1);
-				size_t l1 = strlen(key);
-				size_t l2 = strlen(val);
-				char* dst = malloc(l1 + l2 + 2);
-				if (dst){
-					memcpy(dst, key, l1);
-					dst[l1] = '=';
-					memcpy(&dst[l1+1], val, l2);
-					dst[l1+l2+1] = '\0';
-					env[count] = dst;
-				}
-			}
-			if (env[count])
-				count++;
-			lua_pop(L, 1);
-		}
-		env[count] = NULL;
+		env = table_to_env(L, ci);
 		free_env = true;
 	}
 
@@ -307,17 +383,76 @@ int tui_popen(lua_State* L)
 	int* sout = NULL;
 	int* serr = NULL;
 
-	if (strchr(mode, (int)'r'))
-		sout = &sout_fd;
+/* Nuances with [pty] is that we need both 'sigwinch' and sighup handling, we
+ * can do that through our own kill() abstraction and have a 'resize' signal. */
+	pid_t pid;
 
-	if (strchr(mode, (int)'w'))
-		sin = &sin_fd;
+	if (strcmp(mode, "pty") == 0){
+		int pty = posix_openpt(O_RDWR | O_NOCTTY);
+		switch (pid = fork()){
+		case -1:
+			close(pty);
+		break;
+		case 0:{
+			struct termios attr;
+			grantpt(pty);
+			unlockpt(pty);
+			char* name = ptsname(pty);
+			int fd = open(name, O_RDWR | O_CLOEXEC | O_NOCTTY);
 
-	if (strchr(mode, (int)'e'))
-		serr = &serr_fd;
+/* New group and terminal with backspace as verase, and input as utf8 */
+			setsid();
+			tcgetattr(pty, &attr);
+			attr.c_cc[VERASE] = 010;
+			attr.c_iflag |= IUTF8;
+			tcsetattr(fd, TCSANOW, &attr);
+
+/* Replace stdio- slots with copies of the same fd */
+			dup2(fd, STDIN_FILENO);
+			dup2(fd, STDOUT_FILENO);
+			dup2(fd, STDERR_FILENO);
+			ioctl(fd, TIOCSCTTY, 0);
+
+			if (fd > 2)
+				close(fd);
+
+/* Rreset all signals to default */
+			for (size_t i = 0; i < SIGUNUSED; i++)
+				signal(i, SIG_DFL);
+
+			close(pty);
+
+/* Finally exec */
+			if (argv){
+				execve(argv[0], &argv[1], env);
+			}
+			else
+				execlp(command,
+					"/bin/sh", command, (char *)NULL, env, (char *) NULL);
+
+			exit(EXIT_FAILURE);
+		}
+		break;
+		default:
+/* duplicate so we can handle close() individually */
+			sout_fd = pty;
+			sin_fd = dup(pty);
+		break;
+		}
+	}
+	else {
+		if (strchr(mode, (int)'r'))
+			sout = &sout_fd;
+
+		if (strchr(mode, (int)'w'))
+			sin = &sin_fd;
+
+		if (strchr(mode, (int)'e'))
+			serr = &serr_fd;
 
 /* need to also return the pid so that waitpid is possible */
-	pid_t pid = popen3(command, stdin_fd, sin, sout, serr, env);
+		pid = popen3(command, stdin_fd, sin, sout, serr, NULL, env, false);
+	}
 
 /* only if env wasn't grabbed from ext-environ */
 	if (free_env){
@@ -325,6 +460,13 @@ int tui_popen(lua_State* L)
 			free(env[i]);
 		}
 		free(env);
+	}
+
+	if (argv){
+		for (size_t i = 0; argv[i]; i++){
+			free(argv[i]);
+		}
+		free(argv);
 	}
 
 	if (-1 == pid)
@@ -338,6 +480,61 @@ int tui_popen(lua_State* L)
 	return 4;
 }
 
+int tui_pty_resize(lua_State* L)
+{
+	struct nonblock_io** io = luaL_checkudata(L, 1, "nonblockIO");
+	struct winsize ws;
+
+	ws.ws_col = luaL_checkinteger(L, 2);
+	ws.ws_row = luaL_checkinteger(L, 3);
+
+	if (!*io)
+		luaL_error(L, "pty_resize called on closed nbio");
+
+	lua_pushboolean(L, ioctl((*io)->fd, TIOCSWINSZ, &ws) == 0);
+	return 1;
+}
+
+int tui_pid_signal(lua_State* L)
+{
+	size_t ci = 1;
+	if (lua_type(L, ci) == LUA_TUSERDATA){
+		ci++;
+	}
+
+	pid_t pid = luaL_checkinteger(L, ci);
+	int sig = SIGKILL;
+
+	if (lua_type(L, ci) == LUA_TSTRING){
+		const char* s = lua_tostring(L, ci);
+		if (strcasecmp(s, "kill") == 0)
+			sig = SIGKILL;
+		else if (strcasecmp(s, "hup") == 0)
+			sig = SIGHUP;
+		else if (strcasecmp(s, "user1") == 0)
+			sig = SIGUSR1;
+		else if (strcasecmp(s, "user2") == 0)
+			sig = SIGUSR2;
+		else if (strcasecmp(s, "stop") == 0)
+			sig = SIGSTOP;
+		else if (strcasecmp(s, "quit") == 0)
+			sig = SIGQUIT;
+		else if (strcasecmp(s, "continue") == 0)
+			sig = SIGCONT;
+		else
+			luaL_error(L, "unknown signal requested");
+
+	}
+	else if (lua_type(L, ci) == LUA_TNUMBER){
+		sig = lua_tonumber(L, ci);
+	}
+	else
+		luaL_error(L, "tui:pkill(signal) - wrong / missing type for signal");
+
+	lua_pushboolean(L, kill(pid, sig) == 0);
+	return 1;
+}
+
 int tui_pid_status(lua_State* L)
 {
 	size_t ci = 1;
@@ -345,7 +542,7 @@ int tui_pid_status(lua_State* L)
 		ci++;
 	}
 
-	pid_t pid = luaL_checkint(L, ci);
+	pid_t pid = luaL_checkinteger(L, ci);
 	int status;
 	pid_t res = waitpid(pid, &status, WNOHANG);
 	if (-1 == res){

@@ -91,6 +91,31 @@ static void pack_u32(uint32_t src, uint8_t* outb)
 	outb[3] = (uint8_t)(src >> 24);
 }
 
+static void unpack_u32(uint32_t* dst, uint8_t* inbuf)
+{
+	*dst =
+		((uint64_t)inbuf[0] <<  0) |
+		((uint64_t)inbuf[1] <<  8) |
+		((uint64_t)inbuf[2] << 16) |
+		((uint64_t)inbuf[3] << 24);
+}
+
+static struct tui_cell rcell_to_cell(uint8_t unpack[static 12])
+{
+	struct tui_cell res = {0};
+
+	res.attr.fc[0] = unpack[0];
+	res.attr.fc[1] = unpack[1];
+	res.attr.fc[2] = unpack[2];
+	res.attr.bc[0] = unpack[3];
+	res.attr.bc[1] = unpack[4];
+	res.attr.bc[2] = unpack[5];
+	res.attr.aflags = unpack[6];
+	unpack_u32(&res.ch, &unpack[8]);
+
+	return res;
+}
+
 static size_t cell_to_rcell(struct tui_context* tui,
 struct tui_cell* tcell, uint8_t* outb, uint8_t has_cursor)
 {
@@ -138,16 +163,20 @@ struct tui_cell* tcell, uint8_t* outb, uint8_t has_cursor)
 	*outb++ = (
 		(!!(tcell->attr.aflags & TUI_ATTR_BOLD))          << 0 |
 		(!!(tcell->attr.aflags & TUI_ATTR_UNDERLINE))     << 1 |
-		(!!(tcell->attr.aflags & TUI_ATTR_ITALIC))        << 2 |
-		(!!(tcell->attr.aflags & TUI_ATTR_STRIKETHROUGH)) << 3 |
-		(!!(tcell->attr.aflags & TUI_ATTR_SHAPE_BREAK))   << 4 |
-		                                       has_cursor << 5 |
-		(!!(tcell->attr.aflags & TUI_ATTR_UNDERLINE_ALT)) << 6
+		(!!(tcell->attr.aflags & TUI_ATTR_UNDERLINE_ALT)) << 2 |
+		(!!(tcell->attr.aflags & TUI_ATTR_ITALIC))        << 3 |
+		(!!(tcell->attr.aflags & TUI_ATTR_STRIKETHROUGH)) << 4 |
+		(!!(tcell->attr.aflags & TUI_ATTR_SHAPE_BREAK))   << 6 |
+		                                       has_cursor << 5
 	);
 
 	*outb++ = (
-		(!!(tcell->attr.aflags & TUI_ATTR_BORDER_RIGHT)) << 0 |
-		(!!(tcell->attr.aflags & TUI_ATTR_BORDER_DOWN))  << 1
+		(!!(tcell->attr.aflags & TUI_ATTR_GLYPH_INDEXED))  << 0 |
+		(!!(tcell->attr.aflags & TUI_ATTR_AGLYPH_INDEXED)) << 1 |
+		(!!(tcell->attr.aflags & TUI_ATTR_BORDER_RIGHT))   << 2 |
+		(!!(tcell->attr.aflags & TUI_ATTR_BORDER_DOWN))    << 3 |
+		(!!(tcell->attr.aflags & TUI_ATTR_BORDER_LEFT))    << 4 |
+		(!!(tcell->attr.aflags & TUI_ATTR_BORDER_TOP))     << 5
 	);
 
 	pack_u32(tcell->ch, outb);
@@ -397,6 +426,58 @@ void tui_screen_resized(struct tui_context* tui)
 
 	tui->dirty |= DIRTY_FULL;
 	update_screen(tui, true);
+}
+
+int tui_tpack_unpack(struct tui_context* C,
+	uint8_t* buf, size_t buf_sz, size_t x, size_t y, size_t w, size_t h)
+{
+	struct tui_raster_header hdr;
+	if (!buf_sz || buf_sz < sizeof(struct tui_raster_header))
+		return -1;
+
+/* just verbatim the same as raster_tobuf, but unpacks cell into C instead */
+	bool update = false;
+	memcpy(&hdr, buf, sizeof(struct tui_raster_header));
+
+	size_t hdr_ver_sz = hdr.lines * raster_line_sz +
+		hdr.cells * raster_cell_sz + raster_hdr_sz;
+
+	if (hdr.data_sz > buf_sz || hdr.data_sz != hdr_ver_sz){
+		return -1;
+	}
+
+	buf_sz -= sizeof(struct tui_raster_header);
+	buf += sizeof(struct tui_raster_header);
+
+/* if it is not a delta frame, just clear region to bgcolor first */
+	if (!(hdr.flags & RPACK_DFRAME)){
+		struct tui_screen_attr empty = arcan_tui_defcattr(C, TUI_COL_BG);
+		arcan_tui_eraseattr_region(C, x, y, x+w, y+h, false, empty);
+	}
+
+	for (size_t i = 0, j = y; i < hdr.lines, j < h; i++, j++){
+		if (buf_sz < sizeof(struct tui_raster_line))
+			return -1;
+
+/* read / unpack line metadata */
+		struct tui_raster_line line;
+
+		memcpy(&line, buf, sizeof(struct tui_raster_line));
+		buf += sizeof(line);
+
+		for (size_t i = line.offset; line.ncells && buf_sz >= raster_cell_sz; i++){
+			line.ncells--;
+
+/* extract each cell */
+			struct tui_cell cell = rcell_to_cell(buf);
+			buf += raster_cell_sz;
+			buf_sz -= raster_cell_sz;
+
+/* just write cell into C */
+		}
+	}
+
+	return 1;
 }
 
 int tui_screen_refresh(struct tui_context* tui)

@@ -6,45 +6,8 @@
 #include <arcan_tui.h>
 #include "tui_lua.h"
 
-/* placeholder:
- *
- * What is needed is a short known 'loader' that pulls in user-config
- * scripts in a safe and recoverable way.
- *
- * eventually the builtin- safe outer should match what we are doing
- * in the normal cli.c so that it can be removed entirely.
- */
-const char* hello = "\
-local function redraw(wnd)\n\
-	print(\"redrawing\")\n\
-	wnd:write_to(1, 1, \"hello world\")\n\
-end\n\
-root:set_handlers({resized = redraw})\n\
-\
-	print(\"hi\")\n\
-while (root:process()) do\n\
-	root:refresh()\n\
-end\n\
-	print(\"done\")\n\
-";
+#include "lash.h"
 
-/*
- * perhaps useful to share the lexer from pipeworld to process readline
- * or translate the one from cli
- */
-
-/*
- * we need some shell support functions,
- * e.g. fchdir, resolve path, ...
- * handover exec, asynch_popen, log
- *
- * then share some fuctions from the arcan platform, asynch globbing as
- * something that makes sense - though really - just asio_popen find makes more
- * sense in this context where spawning processes is kindof what we do.
- *
- * perhaps abstraction gain some process information that requires
- * proc magic vs sysctl vs.. to not lose portability
- */
 int arcterm_luacli_run(struct arcan_shmif_cont* shmif, struct arg_arr* args)
 {
 	lua_State* lua = luaL_newstate();
@@ -65,7 +28,7 @@ int arcterm_luacli_run(struct arcan_shmif_cont* shmif, struct arg_arr* args)
 	lua_setglobal(lua, "root");
 	lua_setglobal(lua, "tui");
 
-	if (LUA_OK != luaL_dostring(lua, hello)){
+	if (LUA_OK != luaL_loadbuffer(lua, (const char*) lash_lua, lash_lua_len, "lash")){
 		const char* msg = lua_tostring(lua, -1);
 		if (isatty(STDOUT_FILENO)){
 			fprintf(stdout, "lua_cli failed: %s", msg);
@@ -73,8 +36,11 @@ int arcterm_luacli_run(struct arcan_shmif_cont* shmif, struct arg_arr* args)
 		else{
 			LOG("lua_cli failed: %s", msg);
 		}
+		return EXIT_FAILURE;
 		arcan_tui_destroy(tui, "error running builtin script");
 	}
+
+	lua_call(lua, 0, 0);
 
 /* should GC the tui context, but verify this at some point to make valgrind
  * and other leak detectors less cranky */

@@ -8,7 +8,7 @@
  * TODO:
  *   [ ] handover exec on new window
  *       [ ] with media embed
- *
+ *   [ ] detached windows
  *   notes:
  *       arcan_tui_handover_exec(T, subwnd, constraints, path, argv, env, flags)
  *       TUI_DETACH_ [process, stdin, stdout, stderr] -> pid
@@ -16,15 +16,16 @@
  *       - do we treat this as pwnd?
  *         how do we send external wndhint?
  *
+ *   [ ] subwnd req (hint + rows + cols)
+ *   [ ] PUSH new_window
  *   [ ] arcan_tui_wndhint support
- *
- *   [ ] multiple windows
- *       add to wnd:process for parent
- *       allow extended form with window creation hints
- *
+ *   [ ] nbio to bufferwnd?
+ *   [ ] screencopy (src, dst, ...)
+ *   [ ] tpack to buffer
+ *   [ ] tunpack from buffer
+ *   [ ] cross-window blit
  *   [ ] apaste/vpaste does nothing - map to bchunk_in?
  *   [ ] Hasglyph
- *   [ ] Handover media embed
  */
 
 #include <arcan_shmif.h>
@@ -55,7 +56,7 @@
 	#define lua_rawlen(x, y) lua_objlen(x, y)
 #endif
 
-static const uint32_t req_cookie = 0xfeedface;
+static const uint32_t req_cookie = 0xfeed;
 static struct tui_cbcfg shared_cbcfg = {};
 
 #ifndef COUNT_OF
@@ -185,10 +186,18 @@ static void dump_stack(lua_State* ctx)
 #define TUI_LWNDDATA \
 	struct widget_meta* meta = luaL_checkudata(L, 1, "widget_listview");\
 	if (!meta || !meta->parent)\
-		luaL_error(L, "widget metadata freed");\
+		luaL_error(L, "listview: API error, widget metadata freed");\
 	struct tui_lmeta* ib = meta->parent;\
 	if (!ib || !ib->tui || ib->widget_mode != TWND_LISTWND)\
-		luaL_error(L, "window not in listview state");
+		luaL_error(L, "listview: API error, not in listview state");
+
+#define TUI_BWNDDATA \
+	struct widget_meta* meta = luaL_checkudata(L, 1, "widget_bufferview");\
+	if (!meta || !meta->parent)\
+		luaL_error(L, "bufferview: API error, widget metadata freed");\
+	struct tui_lmeta* ib = meta->parent;\
+	if (!ib || !ib->tui || ib->widget_mode != TWND_BUFWND)\
+		luaL_error(L, "bufferview: API error, not in bufferview state");
 
 #define TUI_READLINEDATA \
 	struct widget_meta* meta = luaL_checkudata(L, 1, "widget_readline");\
@@ -206,6 +215,7 @@ static void init_lmeta(struct tui_lmeta* l)
 		.widget_state = LUA_NOREF,
 		.tui_state = LUA_NOREF
 	};
+	l->submeta[0] = l;
 }
 
 static lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
@@ -394,8 +404,14 @@ static void on_resize(struct tui_context* T,
 static bool on_subwindow(struct tui_context* T,
 	arcan_tui_conn* new, uint32_t id, uint8_t type, void* t)
 {
-	SETUP_HREF("subwindow",false);
 	id ^= req_cookie;
+
+/* we invoke a specific closure rather than a subwindow handler (except for
+ * push- segments which are ignored for now) */
+	struct tui_lmeta* meta = t;
+	lua_State* L = meta->lua;
+	if (meta->href == LUA_NOREF)
+		return false;
 
 /* indicates that there's something wrong with the connection */
 	if (id >= 8 || !(meta->pending_mask & (1 << id)))
@@ -405,9 +421,22 @@ static bool on_subwindow(struct tui_context* T,
 	meta->pending[id] = 0;
 	meta->pending_mask &= ~(1 << id);
 
-/* pcall and deref */
+/* indicates that something is wrong with the new_window handler */
+	lua_rawgeti(L, LUA_REGISTRYINDEX, cb);
+	if (lua_type(L, -1) != LUA_TFUNCTION)
+		luaL_error(L, "on_subwindow() bad/broken cb-id");
+
+	lua_rawgeti(L, LUA_REGISTRYINDEX, meta->tui_state);
+
+/* This failure scenario is still uncertain, right now the outer shell can
+ * reject any new subwindow request and we have to honor that. It is however
+ * possible to create a placebo- subwindow (as used with embedding etc.) and
+ * blit it / do window management locally. Such a fix is better handled in the
+ * tui libraries themselves however. When that happens, this path will never
+ * trigger unless for handover-allocation like scenarios. */
 	if (!new){
 		RUN_CALLBACK("subwindow_fail", 1, 0);
+		luaL_unref(L, LUA_REGISTRYINDEX, cb);
 		END_HREF;
 		return false;
 	}
@@ -417,13 +446,16 @@ static bool on_subwindow(struct tui_context* T,
 		arcan_tui_setup(new, T, &shared_cbcfg, sizeof(shared_cbcfg));
 	if (!ctx){
 		RUN_CALLBACK("subwindow_setup_fail", 1, 0);
+		luaL_unref(L, LUA_REGISTRYINDEX, cb);
 		END_HREF;
 		return true;
 	}
 
+/* build our new window */
 	struct tui_lmeta* nud = lua_newuserdata(L, sizeof(struct tui_lmeta));
 	if (!nud){
 		RUN_CALLBACK("subwindow_ud_fail", 1, 0);
+		luaL_unref(L, LUA_REGISTRYINDEX, cb);
 		END_HREF;
 		return true;
 	}
@@ -433,11 +465,28 @@ static bool on_subwindow(struct tui_context* T,
 	luaL_getmetatable(L, TUI_METATABLE);
 	lua_setmetatable(L, -2);
 	nud->lua = L;
-	nud->last_words = NULL;
-	nud->href = cb;
+	nud->href = LUA_NOREF;
+	nud->parent = meta;
 
-/* missing - attach to parent and add to its context list for processing */
+/* cycle- reference ourselves */
+	lua_pushvalue(L, -1);
+	nud->tui_state = luaL_ref(L, LUA_REGISTRYINDEX);
+
+/* register with parent so :process() hits the right hierarchy */
+	for (size_t i = 0; i < SEGMENT_LIMIT; i++){
+		if (!meta->subs[i]){
+			meta->subs[i] = ctx;
+			meta->submeta[i] = nud;
+			meta->n_subs++;
+			break;
+		}
+	}
+
+/* the check for pending-id + the check on request means that there there is a
+ * fitting slot in parent[subs] - and even if there wouldn't be, it would just
+ * block the implicit :process, explicit would still work. */
 	RUN_CALLBACK("subwindow_ok", 2, 0);
+	luaL_unref(L, LUA_REGISTRYINDEX, cb);
 	END_HREF;
 	return true;
 }
@@ -754,6 +803,10 @@ static void revert(lua_State* L, struct tui_lmeta* M)
 	break;
 	case TWND_BUFWND:
 		arcan_tui_bufferwnd_release(M->tui);
+		if (M->widget_meta){
+			free(M->widget_meta->bufferview.buf);
+			M->widget_meta->bufferview.buf = NULL;
+		}
 	break;
 	case TWND_READLINE:
 		arcan_tui_readline_release(M->tui);
@@ -885,7 +938,7 @@ static int defattr(lua_State* L)
 static int wnd_scroll(lua_State* L)
 {
 	TUI_UDATA;
-	int steps = luaL_checkint(L, 2);
+	int steps = luaL_checkinteger(L, 2);
 	if (steps > 0)
 		arcan_tui_scroll_down(ib->tui, steps);
 	else
@@ -906,10 +959,10 @@ static int screen_dimensions(lua_State* L)
 static int erase_region(lua_State* L)
 {
 	TUI_UDATA;
-	size_t x1 = luaL_checkint(L, 2);
-	size_t y1 = luaL_checkint(L, 3);
-	size_t x2 = luaL_checkint(L, 4);
-	size_t y2 = luaL_checkint(L, 5);
+	size_t x1 = luaL_checkinteger(L, 2);
+	size_t y1 = luaL_checkinteger(L, 3);
+	size_t x2 = luaL_checkinteger(L, 4);
+	size_t y2 = luaL_checkinteger(L, 5);
 	bool prot = luaL_optbnumber(L, 6, false);
 	size_t rows, cols;
 	arcan_tui_dimensions(ib->tui, &rows, &cols);
@@ -931,8 +984,8 @@ static int erase_screen(lua_State* L)
 static int cursor_to(lua_State* L)
 {
 	TUI_UDATA;
-	int x = luaL_checkint(L, 2);
-	int y = luaL_checkint(L, 3);
+	int x = luaL_checkinteger(L, 2);
+	int y = luaL_checkinteger(L, 3);
 	size_t rows, cols;
 	arcan_tui_dimensions(ib->tui, &rows, &cols);
 
@@ -1047,7 +1100,6 @@ ltui_inherit(lua_State* L, arcan_tui_conn* conn)
 /* reference the lua context as part of the tag that is tied to the
  * shmif/tui context struct so we can reach lua from callbacks */
 	meta->lua = L;
-	meta->last_words = NULL;
 	meta->cwd = NULL;
 	meta->cwd_fd = -1;
 	synch_wd(meta);
@@ -1112,20 +1164,44 @@ static int tuiclose(lua_State* L)
 {
 	TUI_UDATA;
 	revert(L, ib);
+
 	arcan_tui_destroy(ib->tui, luaL_optstring(L, 2, NULL));
 	ib->tui = NULL;
 	luaL_unref(L, LUA_REGISTRYINDEX, ib->tui_state);
 	ib->tui_state = LUA_NOREF;
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, ib->href);
-	lua_getfield(L, -1, "destroy");
-
-	if (lua_type(L, -1) != LUA_TFUNCTION){
-		lua_pop(L, 2);
-		return 0;
+/* deregister from parent list of subs by finding and compacting */
+	if (ib->parent){
+		for (size_t i = 1; i < ib->parent->n_subs+1; i++){
+			if (ib->parent->submeta[i] == ib){
+				memmove(
+					&ib->parent->submeta[i  ],
+					&ib->parent->submeta[i+1],
+					sizeof(void*) * (SEGMENT_LIMIT - i)
+				);
+				memmove(
+					&ib->parent->subs[i  ],
+					&ib->parent->subs[i+1],
+					sizeof(void*) * (SEGMENT_LIMIT - i)
+				);
+				ib->parent->n_subs--;
+				break;
+			}
+		}
 	}
-	lua_pushvalue(L, -3);
-	RUN_CALLBACK("destroy", 1, 0);
+
+	if (ib->href != LUA_NOREF){
+		lua_rawgeti(L, LUA_REGISTRYINDEX, ib->href);
+		lua_getfield(L, -1, "destroy");
+
+		if (lua_type(L, -1) != LUA_TFUNCTION){
+			lua_pop(L, 2);
+			return 0;
+		}
+
+		lua_pushvalue(L, -3);
+		RUN_CALLBACK("destroy", 1, 0);
+	}
 
 	return 0;
 }
@@ -1137,7 +1213,7 @@ static int collect(lua_State* L)
 		return 0;
 
 	if (ib->tui){
-		arcan_tui_destroy(ib->tui, ib->last_words);
+		arcan_tui_destroy(ib->tui, NULL);
 		ib->tui = NULL;
 	}
 
@@ -1196,7 +1272,7 @@ static int reqwnd(lua_State* L)
 	intptr_t ref = LUA_NOREF;
 	if ( (ind = 2, lua_isfunction(L, 2)) || (ind = 3, lua_isfunction(L, 3)) ){
 		lua_pushvalue(L, ind);
-		luaL_ref(L, LUA_REGISTRYINDEX);
+		ref = luaL_ref(L, LUA_REGISTRYINDEX);
 	}
 	else
 		luaL_error(L, "no closure provided");
@@ -1212,7 +1288,10 @@ static int reqwnd(lua_State* L)
 		return 1;
 	}
 
-	int bitind = ffs(ib->pending_mask) - 1;
+/* use a xor cookie and an index as part of the request so that we can match an
+ * incoming window to one of our previous requests, there might be multiple
+ * in-flight. */
+	int bitind = ffs(~(ib->pending_mask)) - 1;
 	ib->pending[bitind] = ref;
 	ib->pending_mask |= 1 << bitind;
 	lua_pushboolean(L, true);
@@ -1270,6 +1349,71 @@ static void run_outbound_pollset(lua_State* L)
 	}
 }
 
+static void process_widget(lua_State* L, struct tui_lmeta* T)
+{
+	if (!T->widget_mode)
+		return;
+
+	switch(T->widget_mode){
+	case TWND_LISTWND:{
+		struct tui_list_entry* ent;
+		if (arcan_tui_listwnd_status(T->tui, &ent)){
+			lua_rawgeti(L, LUA_REGISTRYINDEX, T->widget_closure);
+			if (ent){
+				lua_pushnumber(L, ent->tag);
+			}
+			else {
+				lua_pushnil(L);
+			}
+			revert(L, T);
+			RUN_CALLBACK("listwnd_ok", 1, 0);
+		}
+	}
+	break;
+	case TWND_BUFWND:{
+		int sc = arcan_tui_bufferwnd_status(T->tui);
+		lua_rawgeti(L, LUA_REGISTRYINDEX, T->widget_closure);
+		lua_rawgeti(L, LUA_REGISTRYINDEX, T->widget_state);
+		if (sc == 1)
+			return;
+		if (sc == 0){
+			lua_pushlstring(L,
+				(char*) T->widget_meta->bufferview.buf,
+				T->widget_meta->bufferview.sz
+			);
+		}
+		else if (sc == -1){
+			lua_pushnil(L);
+		}
+		revert(L, T);
+		RUN_CALLBACK("bufferview_ok", 2, 0);
+	}
+
+	break;
+	case TWND_READLINE:{
+		char* buf;
+		int sc = arcan_tui_readline_finished(T->tui, &buf);
+		if (sc){
+			lua_rawgeti(L, LUA_REGISTRYINDEX, T->widget_closure);
+			lua_rawgeti(L, LUA_REGISTRYINDEX, T->widget_state);
+			if (buf){
+				lua_pushstring(L, buf);
+			}
+			else {
+				lua_pushnil(L);
+			}
+/* Restore the context to its initial state so that the closure is allowed to
+ * request a new readline request. Revert will actually free buf. */
+			revert(L, T);
+			RUN_CALLBACK("readline_ok", 2, 0);
+		}
+	}
+	break;
+	default:
+	break;
+	}
+}
+
 static int process(lua_State* L)
 {
 	TUI_UDATA;
@@ -1295,53 +1439,15 @@ static int process(lua_State* L)
 		run_outbound_pollset(L);
 	}
 
-/* WRONG: this should be done per subwindow active and not just ib */
-	if (ib->widget_mode){
-		switch(ib->widget_mode){
-		case TWND_LISTWND:{
-			struct tui_list_entry* ent;
-			if (arcan_tui_listwnd_status(ib->tui, &ent)){
-				lua_rawgeti(L, LUA_REGISTRYINDEX, ib->widget_closure);
-				if (ent){
-					lua_pushnumber(L, ent->tag);
-				}
-				else {
-					lua_pushnil(L);
-				}
-				revert(L, ib);
-				RUN_CALLBACK("listwnd_ok", 1, 0);
-			}
-		}
-		break;
-		case TWND_BUFWND:
-		break;
-		case TWND_READLINE:{
-			char* buf;
-			int sc = arcan_tui_readline_finished(ib->tui, &buf);
-			if (sc){
-				lua_rawgeti(L, LUA_REGISTRYINDEX, ib->widget_closure);
-				lua_rawgeti(L, LUA_REGISTRYINDEX, ib->href);
-				if (buf){
-					lua_pushstring(L, buf);
-				}
-				else {
-					lua_pushnil(L);
-				}
-/* Restore the context to its initial state so that the closure is allowed to
- * request a new readline request. Revert will actually free buf. */
-				revert(L, ib);
-				RUN_CALLBACK("readline_ok", 2, 0);
-			}
-		}
-		break;
-		default:
-		break;
+/* don't know which contexts that actually had updates as that goes straight
+ * through the vtables, enumerate all used */
+	for (size_t i = 0; i < ib->n_subs + 1; i++){
+		struct tui_cbcfg out;
+		if (arcan_tui_update_handlers(ib->subs[i], NULL, &out, sizeof(out))){
+			process_widget(L, ib->submeta[i]);
 		}
 	}
 
-/*
- * FIXME: extract / translate error code and result-sets
- */
 	if (res.errc == TUI_ERRC_OK){
 		lua_pushboolean(L, true);
 		return 1;
@@ -1383,8 +1489,8 @@ static int write_tou8(lua_State* L)
 	struct tui_screen_attr mattr = {};
 	size_t len;
 
-	size_t x = luaL_checkint(L, 2);
-	size_t y = luaL_checkint(L, 3);
+	size_t x = luaL_checkinteger(L, 2);
+	size_t y = luaL_checkinteger(L, 3);
 	size_t ox, oy;
 	arcan_tui_cursorpos(ib->tui, &ox, &oy);
 	const char* buf =	luaL_checklstring(L, 4, &len);
@@ -1435,7 +1541,7 @@ static int color_get(lua_State* L)
 {
 	TUI_UDATA;
 	uint8_t dst[3] = {128, 128, 128};
-	arcan_tui_get_color(ib->tui, luaL_checkint(L, 2), dst);
+	arcan_tui_get_color(ib->tui, luaL_checkinteger(L, 2), dst);
 	lua_pushnumber(L, dst[0]);
 	lua_pushnumber(L, dst[1]);
 	lua_pushnumber(L, dst[2]);
@@ -1448,7 +1554,7 @@ static int set_flags(lua_State* L)
 	uint32_t flags = TUI_ALTERNATE;
 
 	for (size_t i = 2; i < lua_gettop(L); i++){
-		uint32_t val = luaL_checkint(L, i);
+		uint32_t val = luaL_checkinteger(L, i);
 		if (val && (val & (val - 1)) == 0){
 			flags |= val;
 		}
@@ -1465,11 +1571,11 @@ static int color_set(lua_State* L)
 {
 	TUI_UDATA;
 	uint8_t dst[3] = {
-		luaL_checkint(L, 3),
-		luaL_checkint(L, 4),
-		luaL_checkint(L, 5)
+		luaL_checkinteger(L, 3),
+		luaL_checkinteger(L, 4),
+		luaL_checkinteger(L, 5)
 	};
-	arcan_tui_set_color(ib->tui, luaL_checkint(L, 2), dst);
+	arcan_tui_set_color(ib->tui, luaL_checkinteger(L, 2), dst);
 	return 0;
 }
 
@@ -1494,11 +1600,31 @@ static int failure(lua_State* L)
 	return 0;
 }
 
+static int refresh_node(struct tui_lmeta* t)
+{
+	int rc = arcan_tui_refresh(t->tui);
+	for (size_t i = 0; i < t->n_subs; i++){
+		refresh_node(t->submeta[i+1]);
+	}
+	return rc;
+}
+
 static int refresh(lua_State* L)
 {
 	TUI_UDATA;
-/* primary blocks processing on failure */
-	int rc = arcan_tui_refresh(ib->tui);
+
+/* recurse is opt-out as it masks the return-code of refresh, though with the
+ * suggested main-loop this does not really matter */
+	bool recurse = true;
+	if (lua_type(L, 2) == LUA_TBOOLEAN && !lua_toboolean(L, 2))
+		recurse = false;
+
+	int rc;
+	if (!recurse)
+		rc = arcan_tui_refresh(ib->tui);
+	else
+		rc = refresh_node(ib);
+
 	lua_pushnumber(L, rc);
 	return 1;
 }
@@ -1531,7 +1657,7 @@ static int request_io(lua_State* L)
 static int statesize(lua_State* L)
 {
 	TUI_UDATA;
-	size_t state_sz = luaL_checkint(L, 2);
+	size_t state_sz = luaL_checkinteger(L, 2);
 	arcan_tui_statesize(ib->tui, state_sz);
 	return 0;
 }
@@ -1539,10 +1665,10 @@ static int statesize(lua_State* L)
 static int contentsize(lua_State* L)
 {
 	TUI_UDATA;
-	size_t row_ofs = luaL_checkint(L, 2);
-	size_t row_tot = luaL_checkint(L, 3);
-	size_t col_ofs = luaL_optint(L, 4, 0);
-	size_t col_tot = luaL_optint(L, 5, 0);
+	size_t row_ofs = luaL_checkinteger(L, 2);
+	size_t row_tot = luaL_checkinteger(L, 3);
+	size_t col_ofs = luaL_optinteger(L, 4, 0);
+	size_t col_tot = luaL_optinteger(L, 5, 0);
 	arcan_tui_content_size(ib->tui, row_ofs, row_tot, col_ofs, col_tot);
 	return 0;
 }
@@ -1705,35 +1831,113 @@ static int readline(lua_State* L)
 	return 1;
 }
 
+static int readline_region(lua_State* L)
+{
+	TUI_READLINEDATA;
+
+	size_t x1 = luaL_checkinteger(L, 2);
+	size_t y1 = luaL_checkinteger(L, 3);
+	size_t x2 = luaL_checkinteger(L, 4);
+	size_t y2 = luaL_checkinteger(L, 5);
+
+	arcan_tui_readline_region(ib->tui, x1, y1, x2, y2);
+
+	return 0;
+}
+
+static int bufferwnd_seek(lua_State* L)
+{
+	TUI_BWNDDATA;
+	size_t pos = luaL_checkinteger(L, 2);
+	arcan_tui_bufferwnd_seek(ib->tui, pos);
+	return 0;
+}
+
+static int bufferwnd_tell(lua_State* L)
+{
+	TUI_BWNDDATA;
+	size_t pos = arcan_tui_bufferwnd_tell(ib->tui, NULL);
+	lua_pushinteger(L, pos);
+	return 1;
+}
+
+/* input_buffer, closure, [options] */
 static int bufferwnd(lua_State* L)
 {
 	TUI_WNDDATA;
 	revert(L, ib);
 
-/* options:
- *  read_only
- *  allow_exit
- *  hide_cursor
- *
- *  [view_mode, wrap_mode, color_mode, hex_mode]
- *
- *   custom_attr (callback for coloring)
- *   commit (callback for writing)
- */
+/* the default prefs for the bufferwnd should really be something that should
+ * be configurable for the widget in general and rarely forwarded here. */
+	struct tui_bufferwnd_opts opts =
+	{
+		.read_only = true,
+		.allow_exit = true,
+		.hide_cursor = false,
+		.view_mode = BUFFERWND_VIEW_UTF8, /* ASCII, HEX, HEX_DETAIL */
+		.wrap_mode = BUFFERWND_WRAP_ALL, /* ACCEPT_LF, ACCEPT_CR_LF */
+		.color_mode = BUFFERWND_COLOR_NONE, /* PALETTE, CUSTOM */
+		.hex_mode = BUFFERWND_HEX_BASIC, /* _ASCII, ANNOTATE, META */
+		.offset = 0, /* just affects presentation */
+		.commit = NULL,
+		.custom_attr = NULL /*T, tag, bytev, pos, *ch, *attr */
+	};
 
-/* high level lua function to add:
- *  completion callback
- *  import nbio
- */
+	if (lua_type(L, 2) != LUA_TSTRING){
+		luaL_error(L, "bufferview(wnd, >string<, closure, opts - missing data string");
+	}
 
-/* functions:
- *  status (poll), part of normal process
- *  synch (neo buffer)
- *  seek (set position in buffer)
- *  tell (get position)
- */
+	if (!lua_isfunction(L, 3) || lua_iscfunction(L, 3)){
+		luaL_error(L, "bufferview(wnd, string, >closure<, opts - missing closure");
+	}
 
-	return 0;
+	if (lua_istable(L, 4)){
+		if (intblbool(L, 4, "hex")){
+			opts.view_mode = BUFFERWND_VIEW_HEX;
+		}
+		if (!intblbool(L, 4, "read_only")){
+			opts.read_only = false;
+		}
+		if (intblbool(L, 4, "block_exit")){
+			opts.allow_exit = false;
+		}
+		if (intblbool(L, 4, "hide_cursor")){
+			opts.hide_cursor = true;
+		}
+	}
+
+/* build new reference table with right metatable */
+	struct widget_meta* meta = lua_newuserdata(L, sizeof(struct widget_meta));
+	if (!meta)
+		luaL_error(L, "couldn't allocate userdata");
+
+	*meta = (struct widget_meta){
+		.parent = ib
+	};
+
+	size_t len;
+	const char* buf = luaL_checklstring(L, 2, &len);
+	meta->bufferview.buf = malloc(len);
+	if (!meta->bufferview.buf)
+		luaL_error(L, "bufferview buffer allocation failure");
+	memcpy(meta->bufferview.buf, buf, len);
+	meta->bufferview.sz = len;
+
+	ib->widget_mode = TWND_BUFWND;
+	ib->widget_meta = meta;
+
+	lua_pushvalue(L, 3);
+	ib->widget_closure = luaL_ref(L, LUA_REGISTRYINDEX);
+
+	lua_pushvalue(L, 1);
+	arcan_tui_bufferwnd_setup(ib->tui,
+		meta->bufferview.buf, meta->bufferview.sz, &opts, sizeof(opts));
+	lua_pop(L, 1);
+
+	lua_pushvalue(L, -1);
+	ib->widget_state = luaL_ref(L, LUA_REGISTRYINDEX);
+
+	return 1;
 }
 
 static void table_to_list(lua_State* L, struct widget_meta* M, int ind)
@@ -1825,7 +2029,11 @@ static ssize_t utf8len(const char* msg)
 
 static int utf8length(lua_State* L)
 {
-	const char* msg = luaL_checkstring(L, 1);
+	size_t ci = 1;
+	if (lua_type(L, ci) == LUA_TUSERDATA){
+		ci++;
+	}
+	const char* msg = luaL_checkstring(L, ci);
 	lua_pushinteger(L, utf8len(msg));
 	return 1;
 }
@@ -2049,7 +2257,6 @@ static int listwnd_pos(lua_State* L)
 static int listwnd_update(lua_State* L)
 {
 	TUI_LWNDDATA
-	dump_stack(L);
 	int pos = luaL_checknumber(L, 2);
 	if (pos <= 0 || pos >= meta->listview.n_ents)
 		luaL_error(L, "listview:update(index, tbl) - index out of bounds");
@@ -2057,7 +2264,6 @@ static int listwnd_update(lua_State* L)
 	pos--;
 
 	if (lua_type(L, 3) != LUA_TTABLE){
-		dump_stack(L);
 		luaL_error(L, "listview:update(index, tbl) - tbl argument bad / missing");
 	}
 
@@ -2118,9 +2324,13 @@ tui_tostring(lua_State* L)
 static int utf8step(lua_State* L)
 {
 /* byte position search based on start of string > 0 */
-	const char* msg = luaL_checkstring(L, 1);
-	ssize_t step = luaL_optnumber(L, 2, 1);
-	ssize_t ofs = luaL_optnumber(L, 3, 1) - 1; /* maintain lua 1-index */
+	size_t ci = 1;
+	if (lua_type(L, ci) == LUA_TUSERDATA){
+		ci++;
+	}
+	const char* msg = luaL_checkstring(L, ci);
+	ssize_t step = luaL_optnumber(L, ci+1, 1);
+	ssize_t ofs = luaL_optnumber(L, ci+2, 1) - 1; /* maintain lua 1-index */
 	ssize_t len = strlen(msg);
 
 	if (!len || ofs > len || ofs < 0){
@@ -2394,6 +2604,7 @@ static void register_tuimeta(lua_State* L)
 		{"utf8_len", utf8length},
 		{"popen", popen_wrap},
 		{"pwait", tui_pid_status},
+		{"psignal", tui_pid_signal},
 		{"fopen", tui_fopen},
 		{"bgcopy", tui_fbond},
 		{"getenv", tui_getenv},
@@ -2648,6 +2859,8 @@ static void register_tuimeta(lua_State* L)
 	lua_setfield(L, -2, "suggest");
 	lua_pushcfunction(L, readline_set);
 	lua_setfield(L, -2, "set");
+	lua_pushcfunction(L, readline_region);
+	lua_setfield(L, -2, "bounding_box");
 	lua_pushcfunction(L, readline_autocomplete);
 	lua_setfield(L, -2, "autocomplete");
 	lua_pop(L, 1);
@@ -2659,6 +2872,17 @@ static void register_tuimeta(lua_State* L)
 	lua_setfield(L, -2, "position");
 	lua_pushcfunction(L, listwnd_update);
 	lua_setfield(L, -2, "update");
+	lua_pop(L, 1);
+
+	luaL_newmetatable(L, "widget_bufferview");
+	lua_pushvalue(L, -1);
+	lua_setfield(L, -2, "__index");
+	lua_pushcfunction(L, bufferwnd_seek);
+	lua_setfield(L, -2, "seek");
+	lua_pushcfunction(L, bufferwnd_tell);
+	lua_setfield(L, -2, "position");
+/* The synch etc. is not really needed, revert + setup again works as we don't
+ * have shared buffers between Lua and C. */
 	lua_pop(L, 1);
 }
 

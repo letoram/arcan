@@ -808,6 +808,8 @@ static bool label_color_cycle(struct tui_context* T, struct bufferwnd_meta* M)
 
 static bool label_hex_cycle(struct tui_context* T, struct bufferwnd_meta* M)
 {
+	M->opts.view_mode = BUFFERWND_VIEW_HEX;
+
 	if (M->opts.hex_mode == BUFFERWND_HEX_BASIC){
 		M->opts.hex_mode = BUFFERWND_HEX_ASCII;
 	}
