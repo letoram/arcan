@@ -6,7 +6,7 @@
  *
  * Incomplete:
  *  Multiline support
- *  Completion popup
+ *  Mouse selection
  *
  * Open ideas:
  *  - Swappable input method
@@ -844,6 +844,58 @@ static void add_input(struct tui_context* T,
 	M->work_len += count;
 }
 
+static void on_visibility(struct tui_context* T, bool visible, bool focus, void* tag)
+{
+	struct readline_meta* M;
+	if (!validate_context(T, &M) || !M->old_handlers.visibility)
+		return;
+
+	M->old_handlers.visibility(T, visible, focus, M->old_handlers.tag);
+}
+
+static void on_exec_state(struct tui_context* T, int state, void* tag)
+{
+
+	struct readline_meta* M;
+	if (!validate_context(T, &M) || !M->old_handlers.exec_state)
+		return;
+
+	M->old_handlers.exec_state(T, state, M->old_handlers.tag);
+}
+
+static void on_tick(
+	struct tui_context* T, void* tag)
+{
+	struct readline_meta* M;
+	if (!validate_context(T, &M) || !M->old_handlers.tick)
+		return;
+
+	M->old_handlers.tick(T, M->old_handlers.tag);
+}
+
+static void on_bchunk(struct tui_context* T,
+	bool input, uint64_t size, int fd, const char* type, void* tag)
+{
+	struct readline_meta* M;
+	if (!validate_context(T, &M) || !M->old_handlers.bchunk)
+		return;
+
+	M->old_handlers.bchunk(T, input, size, fd, type, M->old_handlers.tag);
+}
+
+static void on_mouse_motion(struct tui_context* T,
+	bool relative, int x, int y, int modifiers, void* tag)
+{
+	struct readline_meta* M;
+	if (!validate_context(T, &M))
+		return;
+
+	if (M->opts.mouse_forward && M->old_handlers.input_mouse_button){
+		M->old_handlers.input_mouse_motion(T,
+			relative, x, y, modifiers, M->old_handlers.tag);
+	}
+}
+
 static void on_mouse_button_input(struct tui_context* T,
 	int x, int y, int button, bool active, int modifiers, void* tag)
 {
@@ -854,8 +906,13 @@ static void on_mouse_button_input(struct tui_context* T,
 	if (!(
 		x >= M->start_col && x <= M->stop_col &&
 		y >= M->start_row && y <= M->stop_row)){
-		if (M->opts.allow_exit)
-			M->finished = -1;
+		if (M->opts.mouse_forward && M->old_handlers.input_mouse_button){
+			M->old_handlers.input_mouse_button(T,
+				x, y, button, active, modifiers, M->old_handlers.tag);
+		}
+		else
+			if (M->opts.allow_exit)
+				M->finished = -1;
 		return;
 	}
 
@@ -869,6 +926,7 @@ static void on_mouse_button_input(struct tui_context* T,
 	if (m_ofs == c_ofs){
 		return;
 	}
+
 	else if (m_ofs > c_ofs){
 		for (size_t i = 0; i < m_ofs - c_ofs; i++)
 			step_cursor_right(T, M);
@@ -1164,21 +1222,19 @@ void arcan_tui_readline_setup(
 		.subwindow = on_subwindow,
 		.query_label = on_label_query,
 		.reset = on_reset,
+		.input_mouse_motion = on_mouse_motion,
+		.bchunk = on_bchunk,
+		.tick = on_tick,
+		.visibility = on_visibility,
+		.exec_state = on_exec_state,
+/* geohint, uncertain - forward?
+ * state, uncertain - block?
+ */
 /* input_alabel - block */
-/* input_mouse_motion - block? or treat as selection for replace */
 /* input_misc - block */
-/* state - block */
-/* bchunk - block / forward */
 /* vpaste - block / forward */
 /* apaste - block / forward */
-/* tick - forward */
-/* utf8 - treat as multiple input_text calls */
-/* resized - forward */
-/* reset - trigger recolor, forward */
-/* geohint - forward */
 /* substitute - block */
-/* visibility - forward */
-/* exec_state - forward */
 		.tag = meta
 	};
 

@@ -80,6 +80,11 @@ struct tui_readline_opts {
  */
 	ssize_t (*verify)(
 		const char* message, size_t prefix, bool suggest, void* T);
+
+/*
+ * Forward mouse events that occur outside of the current readline bounding box
+ */
+	bool mouse_forward;
 };
 
 void arcan_tui_readline_setup(
