@@ -1553,7 +1553,7 @@ static int set_flags(lua_State* L)
 	TUI_UDATA;
 	uint32_t flags = TUI_ALTERNATE;
 
-	for (size_t i = 2; i < lua_gettop(L); i++){
+	for (size_t i = 2; i <= lua_gettop(L); i++){
 		uint32_t val = luaL_checkinteger(L, i);
 		if (val && (val & (val - 1)) == 0){
 			flags |= val;

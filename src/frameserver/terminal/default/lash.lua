@@ -189,33 +189,39 @@ local function run_usershell(wnd, name)
 	local dirs = {}
 
 	if os.getenv('LASH_BASE') then
-		table.insert(dirs, string.format("%s/?.lua", os.getenv('LASH_BASE')))
+		table.insert(dirs, string.format("%s/", os.getenv('LASH_BASE')))
 	end
 
 	if os.getenv('HOME') then
-		table.insert(dirs, string.format("%s/.arcan/lash/?.lua", os.getenv('HOME')))
+		table.insert(dirs, string.format("%s/.arcan/lash/", os.getenv('HOME')))
 	end
 
 	if os.getenv('XDG_CONFIG_HOME') then
-		table.insert(dirs, string.format("%s/arcan/lash/?.lua", os.getenv('XDG_CONFIG_HOME')))
+		table.insert(dirs, string.format("%s/arcan/lash/", os.getenv('XDG_CONFIG_HOME')))
 	end
 
 -- prepend the search dirs, reason why we do not substitute them completely is to be able
 -- to have the usershell scripts themselves require other lua modules or luarocks ones
 	if #dirs > 0 then
-		local op = package.path
-		package.path = table.concat(dirs, ";") .. ";" .. op
-		local errc, msg = pcall(require, name)
-		root:set_handlers(fallback_handlers)
-		package.path = op
-		if not errc then
-			return false, error
-		else
-			return true
+		for _,v in ipairs(dirs) do
+			local path = v .. name .. ".lua"
+			local file = io.open(path)
+			if file then
+				local fptr, msg = loadfile(v .. name .. ".lua")
+				if not fptr then
+					return false, msg
+				end
+				local ok, msg = pcall(fptr)
+				if not ok then
+					return false, msg
+				else
+					return true
+				end
+			end
 		end
 	end
 
-	return false, "no shell paths defined ($LASH_BASE, $HOME/.arcan/lash or $XDG_CONFIG_HOME)"
+	return false, "shell " .. name .. " not found in ($LASH_BASE, $HOME/.arcan/lash or $XDG_CONFIG_HOME)"
 end
 
 local function finish_job(wnd, job, code, cols)
@@ -405,8 +411,7 @@ local function readline_handler(wnd, self, line)
 
 -- add command visually to message history
 	local cmd = "$ " .. line
-	table.insert(lash.messages, cmd)
-	add_split(wnd, cmd, cols, lash.message_fmt)
+	add_message(wnd, cmd, cols)
 
 	if not msg then
 		msg = parse_tokens(wnd, tokens, types)
@@ -414,8 +419,7 @@ local function readline_handler(wnd, self, line)
 
 -- add to window message history, this is forwarded to the user script rules
 	if msg then
-		table.insert(lash.messages, msg)
-		add_split(wnd, msg, cols, lash.message_fmt)
+		add_message(wnd, msg, cols)
 	end
 
 -- remember the input [if unique] and re-arm the window
@@ -447,15 +451,21 @@ end
 
 -- root is set in global scope if running from afsrv_terminal
 if not root then
-	local tui = require 'arcantui'
+	tui = require 'arcantui'
 	root = tui.open("lash", "", {handlers = fallback_handlers})
 end
 
 root:set_handlers(fallback_handlers)
 
 local shellname = os.getenv("LASH_SHELL") and os.getenv("LASH_SHELL") or "default"
-run_usershell(root, shellname)
+local res, msg = run_usershell(root, shellname)
+-- need to cleanup lash.jobs and root-wnd state (if still alive)
+
 setup_window(root)
+if not res then
+	local cols, _ = root:dimensions()
+	add_message(root, msg, cols)
+end
 
 -- [lexer.lua] starts here
 -- vendored as to be able to pull it all in binary as static,
