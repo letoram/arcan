@@ -92,7 +92,10 @@ int main(int argc, char** argv)
 
 /* grab a handover video that we will pass to afsrv_decode */
 	fill(tui);
-	arcan_tui_request_subwnd(tui, TUI_WND_HANDOVER, 0xa);
+	arcan_tui_request_subwnd_ext(
+		tui, TUI_WND_HANDOVER, 0xa,
+		(struct tui_subwnd_req){.hint = TUIWND_EMBED}, sizeof(struct tui_subwnd_req)
+	);
 
 	while (1){
 		struct tui_process_res res = arcan_tui_process(&tui, 1, NULL, 0, -1);
