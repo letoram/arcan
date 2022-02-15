@@ -861,7 +861,7 @@ static int apply_keystore_command(int argc, char** argv)
 
 	size_t outl;
 	unsigned char* b64 = a12helper_tob64(outpub, 32, &outl);
-	fprintf(stdout, "pubk.b64=%s *\n", b64);
+	fprintf(stdout, "add a12/accepted/(filename) in remote keystore:\n* %s\n", b64);
 	free(b64);
 
 	a12helper_keystore_release();
