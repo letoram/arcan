@@ -519,9 +519,9 @@ static void* client_thread(void* inarg)
 					bool allow_soft = vb.flags.subregion &&
 						(reg_c < px_c) && ((float)reg_c / (float)px_c) <= 0.2;
 
-					if (stat.vframe_backpressure >= data->opts.vframe_block || !allow_soft){
+					if (stat.vframe_backpressure >= data->opts.vframe_block && !allow_soft){
 						a12int_trace(A12_TRACE_VDETAIL,
-							"vbuffer=defer:congestion=%zu:soft=:%zu:limit=%zu",
+							"vbuffer=defer:congestion=%zu:soft=%zu:limit=%zu",
 							stat.vframe_backpressure, data->opts.vframe_soft_block,
 							data->opts.vframe_block
 						);
