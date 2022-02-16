@@ -94,7 +94,7 @@ int main(int argc, char** argv)
 
 /* then we collect them and continue when we have all */
 		while (pending){
-			for (size_t i = 0; i < cont_ofs; i++){
+			for (size_t i = 0; i < cont_ofs && pending; i++){
 				if(!arcan_shmif_wait(&cont[i].cont, &ev))
 					goto out;
 
