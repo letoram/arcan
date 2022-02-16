@@ -2912,21 +2912,10 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 
 	size_t start = sizeof("a12://") - 1;
 
-/* (keyid) */
-/* char* key = NULL; */
-	for (size_t i = start; work[i]; i++){
-		if (work[i] == '@'){
-			work[i] = '\0';
-/*		key = &work[start];  -- should resolve this against a keydb */
-			start = i+1;
-			break;
-		}
-	}
-
-/* (:port) */
+/* (:port or ' port' - both are fine) */
 	const char* port = "6680";
 	for (size_t i = start; work[i]; i++){
-		if (work[i] == ':'){
+		if (work[i] == ':' || work[i] == ' '){
 			work[i] = '\0';
 			port = &work[i+1];
 		}

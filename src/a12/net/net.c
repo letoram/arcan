@@ -60,12 +60,13 @@ static const char* trace_groups[] = {
 	"audio",
 	"system",
 	"event",
+	"transfer",
 	"debug",
 	"missing",
 	"alloc",
 	"crypto",
 	"vdetail",
-	"btransfer",
+	"binary",
 	"security"
 };
 
@@ -537,7 +538,7 @@ static bool show_usage(const char* msg)
 	"Forward local arcan applications (push): \n"
 	"    arcan-net [-Xtd] -s connpoint [tag@]host port\n"
 	"         (keystore-mode) -s connpoint tag@\n"
-	"         (inherit socket) -S fd_no host port\n\n"
+	"         (inherit socket) -S fd_no [tag@]host port\n\n"
 	"Server local arcan application (pull): \n"
 	"         -l port [ip] -exec /usr/bin/app arg1 arg2 argn\n\n"
 	"Bridge remote inbound arcan applications (to ARCAN_CONNPATH): \n"
@@ -569,8 +570,8 @@ static bool show_usage(const char* msg)
 	"\t                tag=default is reserved\n"
 	"\nTrace groups (stderr):\n"
 	"\tvideo:1      audio:2      system:4    event:8      transfer:16\n"
-	"\tdebug:32     missing:64   alloc:128  crypto:256    vdetail:512\n"
-	"\tbtransfer:1024, security:2048 \n\n", msg ? msg : "", msg ? "\n\n" : ""
+	"\tdebug:32     missing:64   alloc:128   crypto:256   vdetail:512\n"
+	"\tbinary:1024  security:2048\n\n", msg ? msg : "", msg ? "\n\n" : ""
 	);
 	return false;
 }
