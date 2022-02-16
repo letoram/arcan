@@ -155,8 +155,8 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 			a12helper_keystore_release();
 			if (!a12helper_keystore_open(&arg->keystore)){
 				res.errmsg = strdup("couldn't open keystore\n");
+				return res;
 			}
-			return res;
 		}
 
 		size_t i = 0;

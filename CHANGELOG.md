@@ -5,6 +5,9 @@
  * Drop connection on intent conflict (source connect to source or sink to sink)
  * Move keystore to statepath subdir (a12)
  * Added Sweep Discovery mode
+ * Initial connection for host-tags should now be faster
+ * Connpath=a12://tag@ resolution fixed for one-off source-push connections
+ * Congestion control blocking issue resolved
 
 ## Lua
  * net\_discover added, use this to find other a12 clients
