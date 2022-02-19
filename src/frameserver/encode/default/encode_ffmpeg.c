@@ -576,6 +576,13 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 			recctx.silence_samples = presilence;
 	}
 
+	recctx.ccontext = sws_getContext(
+		recctx.shmcont.addr->w, recctx.shmcont.addr->h,
+		SHMIF_RGBA(0,0,255,0) == 0xff ? AV_PIX_FMT_BGRA : AV_PIX_FMT_RGBA,
+		recctx.shmcont.addr->w, recctx.shmcont.addr->h, AV_PIX_FMT_YUV420P,
+		SWS_FAST_BILINEAR, NULL, NULL, NULL
+	);
+
 	return true;
 }
 
@@ -586,43 +593,37 @@ int ffmpeg_run(struct arg_arr* args, struct arcan_shmif_cont* C)
 	bool firstframe = false;
 	recctx.last_fd = -1;
 
+	volatile bool inv = true;
+	while(inv){}
+
 	if (arg_lookup(args, "file", 0, &argval) == 0 && argval){
 		recctx.last_fd = open(argval, O_CREAT | O_RDWR, 0600);
 		if (-1 == recctx.last_fd){
 			LOG("couldn't open output (%s)\n", argval);
 			return EXIT_FAILURE;
 		}
+		if (!setup_ffmpeg_encode(args,
+			recctx.shmcont.addr->w, recctx.shmcont.addr->h))
+			return EXIT_FAILURE;
+
+		atexit(encoder_atexit);
 	}
 
 	arcan_event ev;
-	while (arcan_shmif_wait(&recctx.shmcont, &ev)){
-/* fail here means there's something wrong with
- * frameserver - main app connection */
-		arcan_event ev;
-		if (!arcan_shmif_wait(&recctx.shmcont, &ev))
-			break;
 
+	while (arcan_shmif_wait(&recctx.shmcont, &ev)){
 		if (ev.category == EVENT_TARGET){
 			switch (ev.tgt.kind){
-
 /* on the first one, we get the target for storage - but there is also the case
  * where we get a DEVICEHINT (extend to accelerated) and then zero-copy platform
  * handles if/where supported */
 			case TARGET_COMMAND_STORE:
 				recctx.last_fd = dup(ev.tgt.ioevs[0].iv);
 				LOG("received file-descriptor, setting up encoder.\n");
-				atexit(encoder_atexit);
-				if (!setup_ffmpeg_encode(args, recctx.shmcont.addr->w,
-					recctx.shmcont.addr->h))
+				if (!setup_ffmpeg_encode(args,
+					recctx.shmcont.addr->w, recctx.shmcont.addr->h))
 					return EXIT_FAILURE;
-				else{
-					recctx.ccontext   = sws_getContext(
-						recctx.shmcont.addr->w, recctx.shmcont.addr->h,
-							SHMIF_RGBA(0,0,255,0) == 0xff ? AV_PIX_FMT_BGRA : AV_PIX_FMT_RGBA,
-						recctx.shmcont.addr->w, recctx.shmcont.addr->h, AV_PIX_FMT_YUV420P,
-						SWS_FAST_BILINEAR, NULL, NULL, NULL
-					);
-				}
+				atexit(encoder_atexit);
 			break;
 
 /* the atexit handler flushes stream buffers and finalizes output headers */
