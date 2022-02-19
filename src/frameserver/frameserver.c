@@ -56,6 +56,7 @@ static void toggle_logdev(const char* prefix)
 		if (!freopen("/dev/null", "a", stderr))
 			fclose(stderr);
 	}
+	setlinebuf(stderr);
 }
 #endif
 

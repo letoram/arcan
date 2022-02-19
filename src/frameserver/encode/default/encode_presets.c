@@ -430,10 +430,9 @@ static int fdr(void* fd, uint8_t* buf, int buf_size)
 }
 
 /* slightly difference scanning function here so can't re-use lookup_default */
-struct codec_ent encode_getcontainer(const char* const requested,
-	int dst, const char* remote)
+struct codec_ent encode_getcontainer(
+	const char* const requested, int dst, const char* remote)
 {
-	AVFormatContext* ctx;
 	struct codec_ent res = {0};
 
 	if (requested && strcmp(requested, "stream") == 0){
@@ -442,6 +441,7 @@ struct codec_ent encode_getcontainer(const char* const requested,
 		if (!res.storage.container.format)
 			LOG("(encode) couldn't setup streaming output.\n");
 		else {
+			AVFormatContext* ctx;
 			ctx = avformat_alloc_context();
 			ctx->oformat = res.storage.container.format;
 			res.storage.container.context = ctx;
@@ -470,8 +470,11 @@ struct codec_ent encode_getcontainer(const char* const requested,
 		return res;
 	}
 
-	avformat_alloc_output_context2(&ctx, res.storage.container.format,
-	NULL, NULL);
+	avformat_alloc_output_context2(
+		&res.storage.container.context,
+		res.storage.container.format,
+		NULL, NULL
+	);
 
 /*
  * Since there's no sane way for us to just pass a file descriptor and
@@ -480,9 +483,9 @@ struct codec_ent encode_getcontainer(const char* const requested,
  */
 	int* fdbuf = malloc(sizeof(int));
 	*fdbuf = dst;
-	ctx->pb = avio_alloc_context(av_malloc(4096), 4096, 1, fdbuf, fdr, fdw, fds);
+	res.storage.container.context->pb =
+		avio_alloc_context(av_malloc(4096), 4096, 1, fdbuf, fdr, fdw, fds);
 
-	res.storage.container.context = ctx;
 	res.setup.muxer = default_format_setup;
 
 	return res;
