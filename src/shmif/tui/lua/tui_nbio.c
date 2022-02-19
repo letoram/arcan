@@ -443,9 +443,13 @@ static int push_resstr(lua_State* L, struct nonblock_io* ib, off_t ofs)
 static size_t bufcheck(lua_State* L, struct nonblock_io* ib)
 {
 	size_t in_sz = COUNT_OF(ib->buf);
+
 	for (size_t i = 0; i < ib->ofs; i++){
-		if (ib->buf[i] == '\n')
+		if (ib->buf[i] == '\n'){
+			if (!ib->lfstrip)
+				continue;
 			return push_resstr(L, ib, i);
+		}
 	}
 
 	if (in_sz - ib->ofs == 1)
@@ -510,6 +514,17 @@ int alt_nbio_process_read
 		}
 		return 2;
 	}
+}
+
+static int nbio_lf(lua_State* L)
+{
+	LUA_TRACE("open_nonblock:lf_strip")
+	struct nonblock_io** ib = luaL_checkudata(L, 1, "nonblockIO");
+	struct nonblock_io* ir = *ib;
+
+	ir->lfstrip = luaL_optbnumber(L, 2, 0);
+
+	LUA_ETRACE("open_nonblock:lf_strip", NULL, 0);
 }
 
 static int nbio_read(lua_State* L)
@@ -991,6 +1006,8 @@ void alt_nbio_register(lua_State* L,
 	lua_setfield(L, -2, "flush");
 	lua_pushcfunction(L, nbio_size);
 	lua_setfield(L, -2, "resize");
+	lua_pushcfunction(L, nbio_lf);
+	lua_setfield(L, -2, "lf_strip");
 	lua_pop(L, 1);
 
 	luaL_newmetatable(L, "nonblockIOs");
