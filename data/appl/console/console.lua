@@ -9,7 +9,7 @@ local wayland_connection
 local wayland_client
 local wayland_config
 
-function console()
+function console(args)
 	KEYBOARD = system_load("builtin/keyboard.lua")() -- get a keyboard state machine
 	system_load("builtin/mouse.lua")() -- get basic mouse button definitions
 	system_load("builtin/debug.lua")()
@@ -197,6 +197,13 @@ function spawn_terminal()
 	local term_arg = (
 		get_key("terminal") or "palette=solarized") ..
 		":env=ARCAN_CONNPATH=" .. connection_point
+
+	local inarg = appl_arguments()
+	for _,v in ipairs(inarg) do
+		if v == "lash" then
+			term_arg = "cli=lua:" .. term_arg
+		end
+	end
 
 	return launch_avfeed(term_arg, "terminal",
 		function(source, status)

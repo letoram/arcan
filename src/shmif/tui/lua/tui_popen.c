@@ -102,7 +102,7 @@ static pid_t popen3(
 	// 2011 implementation of popen3() by Mike Bourgeous
 	// https://gist.github.com/1022231
 
-	if(command == NULL) {
+	if(command == NULL && !argv) {
 		fprintf(stderr, "Cannot popen3() a NULL command.\n");
 		goto error;
 	}
@@ -187,7 +187,8 @@ static pid_t popen3(
 			}
 
 			if (argv){
-				execve(argv[0], &argv[1], env);
+				__environ = env;
+				execvp(argv[0], &argv[1]);
 			}
 			else
 				execl("/bin/sh",
@@ -424,6 +425,7 @@ int tui_popen(lua_State* L)
 
 /* Finally exec */
 			if (argv){
+				__environ = env;
 				execve(argv[0], &argv[1], env);
 			}
 			else
@@ -451,7 +453,7 @@ int tui_popen(lua_State* L)
 			serr = &serr_fd;
 
 /* need to also return the pid so that waitpid is possible */
-		pid = popen3(command, stdin_fd, sin, sout, serr, NULL, env, false);
+		pid = popen3(command, stdin_fd, sin, sout, serr, argv, env, false);
 	}
 
 /* only if env wasn't grabbed from ext-environ */

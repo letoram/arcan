@@ -661,7 +661,7 @@ static ssize_t on_readline_verify(
 /* or failure offset */
 	else if (lua_type(L, -1) == LUA_TNUMBER){
 		res = lua_tointeger(L, -1);
-		if (res > 0)
+		if (res < 0)
 			res *= -1;
 	}
 
@@ -910,6 +910,7 @@ static int tui_attr(lua_State* L)
 		struct tui_lmeta* ib = luaL_checkudata(L, ci++, TUI_METATABLE);
 		arcan_tui_get_color(ib->tui, TUI_COL_PRIMARY, attr.fc);
 		arcan_tui_get_color(ib->tui, TUI_COL_BG, attr.bc);
+		ci++;
 	}
 
 	if (lua_type(L, ci) == LUA_TTABLE)
@@ -1505,9 +1506,11 @@ static int write_tou8(lua_State* L)
 	lua_pushboolean(L,
 		arcan_tui_writeu8(ib->tui, (uint8_t*)buf, len, attr));
 
-	arcan_tui_move_to(ib->tui, ox, oy);
+	arcan_tui_cursorpos(ib->tui, &ox, &oy);
+	lua_pushinteger(L, ox);
+	lua_pushinteger(L, oy);
 
-	return 1;
+	return 3;
 }
 
 static int writeu8(lua_State* L)
@@ -1742,7 +1745,8 @@ static int readline(lua_State* L)
 		.multiline = false,
 		.filter_character = on_readline_filter,
 		.verify = on_readline_verify,
-		.tab_completion = true
+		.tab_completion = true,
+		.mouse_forward = false
 	};
 
 	if (!lua_isfunction(L, ofs) || lua_iscfunction(L, ofs)){
@@ -1783,6 +1787,8 @@ static int readline(lua_State* L)
 			opts.multiline = true;
 		if (intblbool(L, tbl, "tab_input"))
 			opts.tab_completion = false;
+		if (intblbool(L, tbl, "forward_mouse"))
+			opts.mouse_forward = true;
 		lua_getfield(L, tbl, "mask_character");
 		if (lua_isstring(L, -1)){
 			arcan_tui_utf8ucs4(lua_tostring(L, -1), &opts.mask_character);
@@ -1875,7 +1881,7 @@ static int bufferwnd(lua_State* L)
 		.allow_exit = true,
 		.hide_cursor = false,
 		.view_mode = BUFFERWND_VIEW_UTF8, /* ASCII, HEX, HEX_DETAIL */
-		.wrap_mode = BUFFERWND_WRAP_ALL, /* ACCEPT_LF, ACCEPT_CR_LF */
+		.wrap_mode = BUFFERWND_WRAP_ACCEPT_LF, /* ACCEPT_LF, ACCEPT_CR_LF */
 		.color_mode = BUFFERWND_COLOR_NONE, /* PALETTE, CUSTOM */
 		.hex_mode = BUFFERWND_HEX_BASIC, /* _ASCII, ANNOTATE, META */
 		.offset = 0, /* just affects presentation */
@@ -1903,6 +1909,9 @@ static int bufferwnd(lua_State* L)
 		}
 		if (intblbool(L, 4, "hide_cursor")){
 			opts.hide_cursor = true;
+		}
+		if (intblbool(L, 4, "ignore_lf")){
+			opts.wrap_mode = BUFFERWND_WRAP_ALL;
 		}
 	}
 
@@ -2019,8 +2028,8 @@ static ssize_t utf8len(const char* msg)
 	uint32_t tmp;
 	while (*msg){
 		ssize_t step = arcan_tui_utf8ucs4(msg, &tmp);
-		if (-1 == step)
-			return -1;
+		if (step < 0)
+			return step;
 		msg += step;
 		res++;
 	}
@@ -2648,6 +2657,10 @@ static void register_tuimeta(lua_State* L)
 	}
 	lua_settable(L, -3);
 
+	lua_pushliteral(L, "attr");
+	lua_pushcfunction(L, tui_attr);
+	lua_settable(L, -3);
+
 	struct { const char* key; int val; } coltbl[] = {
 	{"primary", TUI_COL_PRIMARY},
 	{"secondary", TUI_COL_SECONDARY},
@@ -2848,41 +2861,44 @@ static void register_tuimeta(lua_State* L)
 	}
 	lua_settable(L, -3);
 
-	luaL_newmetatable(L, "widget_readline");
-	lua_pushvalue(L, -1);
-	lua_setfield(L, -2, "__index");
-	lua_pushcfunction(L, readline_prompt);
-	lua_setfield(L, -2, "set_prompt");
-	lua_pushcfunction(L, readline_history);
-	lua_setfield(L, -2, "set_history");
-	lua_pushcfunction(L, readline_suggest);
-	lua_setfield(L, -2, "suggest");
-	lua_pushcfunction(L, readline_set);
-	lua_setfield(L, -2, "set");
-	lua_pushcfunction(L, readline_region);
-	lua_setfield(L, -2, "bounding_box");
-	lua_pushcfunction(L, readline_autocomplete);
-	lua_setfield(L, -2, "autocomplete");
+	if (luaL_newmetatable(L, "widget_readline")){
+		lua_pushvalue(L, -1);
+		lua_setfield(L, -2, "__index");
+		lua_pushcfunction(L, readline_prompt);
+		lua_setfield(L, -2, "set_prompt");
+		lua_pushcfunction(L, readline_history);
+		lua_setfield(L, -2, "set_history");
+		lua_pushcfunction(L, readline_suggest);
+		lua_setfield(L, -2, "suggest");
+		lua_pushcfunction(L, readline_set);
+		lua_setfield(L, -2, "set");
+		lua_pushcfunction(L, readline_region);
+		lua_setfield(L, -2, "bounding_box");
+		lua_pushcfunction(L, readline_autocomplete);
+		lua_setfield(L, -2, "autocomplete");
+	}
 	lua_pop(L, 1);
 
-	luaL_newmetatable(L, "widget_listview");
-	lua_pushvalue(L, -1);
-	lua_setfield(L, -2, "__index");
-	lua_pushcfunction(L, listwnd_pos);
-	lua_setfield(L, -2, "position");
-	lua_pushcfunction(L, listwnd_update);
-	lua_setfield(L, -2, "update");
+	if (luaL_newmetatable(L, "widget_listview")){
+		lua_pushvalue(L, -1);
+		lua_setfield(L, -2, "__index");
+		lua_pushcfunction(L, listwnd_pos);
+		lua_setfield(L, -2, "position");
+		lua_pushcfunction(L, listwnd_update);
+		lua_setfield(L, -2, "update");
+	}
 	lua_pop(L, 1);
 
-	luaL_newmetatable(L, "widget_bufferview");
-	lua_pushvalue(L, -1);
-	lua_setfield(L, -2, "__index");
-	lua_pushcfunction(L, bufferwnd_seek);
-	lua_setfield(L, -2, "seek");
-	lua_pushcfunction(L, bufferwnd_tell);
-	lua_setfield(L, -2, "position");
-/* The synch etc. is not really needed, revert + setup again works as we don't
- * have shared buffers between Lua and C. */
+/* The synch etc. functions are not really needed, revert + setup again works
+ * as we don't have shared buffers between Lua and C. */
+	if (luaL_newmetatable(L, "widget_bufferview")){
+		lua_pushvalue(L, -1);
+		lua_setfield(L, -2, "__index");
+		lua_pushcfunction(L, bufferwnd_seek);
+		lua_setfield(L, -2, "seek");
+		lua_pushcfunction(L, bufferwnd_tell);
+		lua_setfield(L, -2, "position");
+	}
 	lua_pop(L, 1);
 }
 
@@ -2893,7 +2909,6 @@ luaopen_arcantui(lua_State* L)
 		{"APIVersion", apiversion},
 		{"APIVersionString", apiversionstr},
 		{"open", tui_open},
-		{"attr", tui_attr}
 	};
 
 	lua_newtable(L);

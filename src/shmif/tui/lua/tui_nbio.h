@@ -16,6 +16,7 @@ struct nonblock_io {
 /* in line-buffered mode, this is used for input */
 	char buf[4096];
 	bool eofm;
+	bool lfstrip;
 	off_t ofs;
 
 	int fd; /* will be read from */

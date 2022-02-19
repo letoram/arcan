@@ -101,7 +101,9 @@ local function get_prompt(wnd)
 end
 
 local function add_split(wnd, msg, cap, dst)
-	msg = string.trim(msg)
+	assert(type(msg) == "string", debug.traceback())
+	msg = string.gsub(msg, "\t", "  ")
+
 	local len = wnd:utf8_len(msg)
 	local blen = #msg
 
@@ -176,7 +178,16 @@ local function add_message(wnd, msg, cols)
 		return
 	end
 
-	add_split(wnd, msg, cols, lash.message_fmt)
+	if type(msg) == "table" then
+	elseif type(msg) == "string" then
+		msg = string.split(msg, "\n")
+	end
+
+	for _,v in ipairs(msg) do
+		assert(type(v) == "string")
+		add_split(wnd, v, cols, lash.message_fmt)
+	end
+
 	table.insert(lash.messages, msg)
 	lash.dirty = true
 end
@@ -213,7 +224,12 @@ local function run_usershell(wnd, name)
 				end
 				local ok, msg = pcall(fptr)
 				if not ok then
-					return false, msg
+					msg = string.split(msg, ": ")
+					local res = {"usershell (" .. name .. ") failed: "}
+					for i,v in ipairs(msg) do
+						table.insert(res, string.rep("\t", i-1) .. v)
+					end
+					return false, res
 				else
 					return true
 				end
@@ -235,7 +251,7 @@ local function finish_job(wnd, job, code, cols)
 		add_message(msg, cols)
 	end
 
-	if code ~= 0 then
+	if code ~= 0 and job.cmd then
 		add_message(wnd, "! " .. job.cmd .. " terminated with " .. tostring(code), cols)
 	end
 end
@@ -262,10 +278,12 @@ local function process_jobs(wnd)
 			add_message(wnd, msg, cols)
 		end
 
-		local running, code = wnd:pwait(job.pid)
-		if not running then
-			finish_job(wnd, job, code, cols)
-			table.remove(lash.jobs, i)
+		if job.pid then
+			local running, code = wnd:pwait(job.pid)
+			if not running then
+				finish_job(wnd, job, code, cols)
+				table.remove(lash.jobs, i)
+			end
 		end
 	end
 
@@ -278,7 +296,13 @@ function fallback_handlers.resized(wnd)
 	lash.message_fmt = {}
 	local msg = lash.messages
 	for i=#msg,1,-1 do
-		add_split(wnd, msg[i], cols, lash.message_fmt)
+		if type(msg[i]) == "table" then
+			for _,v in ipairs(msg[i]) do
+				add_split(wnd, v, cols, lash.message_fmt)
+			end
+		else
+			add_split(wnd, msg[i], cols, lash.message_fmt)
+		end
 	end
 
 	lash.dirty = true
@@ -372,7 +396,7 @@ local function parse_tokens(wnd, tokens, types)
 -- could be used to build our own command pipeline here instead rather than letting
 -- popen/sh do all the work
 		elseif tok[1] == types.OPERATOR then
-			if tok[2] == OP_PIPE then
+			if tok[2] == types.OP_PIPE then
 				table.insert(arg, " | ")
 			else
 				return "parser error: unsupported operator"
@@ -449,22 +473,23 @@ function(wnd)
 	readline:set_history(lash.history)
 end
 
+local function init()
 -- root is set in global scope if running from afsrv_terminal
-if not root then
-	tui = require 'arcantui'
-	root = tui.open("lash", "", {handlers = fallback_handlers})
-end
+	if not root then
+		tui = require 'arcantui'
+		root = tui.open("lash", "", {handlers = fallback_handlers})
+	end
 
-root:set_handlers(fallback_handlers)
-
-local shellname = os.getenv("LASH_SHELL") and os.getenv("LASH_SHELL") or "default"
-local res, msg = run_usershell(root, shellname)
+	local shellname = os.getenv("LASH_SHELL") and os.getenv("LASH_SHELL") or "default"
+	local res, msg = run_usershell(root, shellname)
+	root:set_handlers(fallback_handlers)
 -- need to cleanup lash.jobs and root-wnd state (if still alive)
 
-setup_window(root)
-if not res then
-	local cols, _ = root:dimensions()
-	add_message(root, msg, cols)
+	setup_window(root)
+	if not res then
+		local cols, _ = root:dimensions()
+		add_message(root, msg, cols)
+	end
 end
 
 -- [lexer.lua] starts here
@@ -504,6 +529,9 @@ local tokens = {
 	OP_ASS   = 27,
 	OP_SEP   = 28,
 	OP_PIPE  = 29,
+	OP_ADDR  = 30,
+	OP_RELADDR = 31,
+	OP_STATESEP = 32,
 
 -- return result states
 	ERROR    = 40,
@@ -525,7 +553,10 @@ local operators = {
 ['%'] = tokens.OP_MOD,
 ['='] = tokens.OP_ASS,
 [','] = tokens.OP_SEP,
-['|'] = tokens.OP_PIPE
+['|'] = tokens.OP_PIPE,
+['$'] = tokens.OP_RELADDR,
+['@'] = tokens.OP_SYMADDR,
+[';'] = tokens.OP_STATESEP
 }
 
 -- operators that we ignore and treat as 'whitespace terminated strings' in
@@ -892,13 +923,15 @@ function(msg, simple)
 		ofs = nofs
 		state.last_ch = ch
 
-	until nofs > len or state.error ~= nil
+	until nofs < 0 or nofs > len or state.error ~= nil
 	scope("\0", tokout, state, ofs)
 
 	return tokout, state.error, state.error_ofs, tokens
 end
 
+init()
 while root:process() do
 	process_jobs(root)
+	readline:set_prompt(get_prompt(root))
 	root:refresh()
 end
