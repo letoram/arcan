@@ -61,23 +61,23 @@
 #include "raster_const.h"
 
 enum cell_attr {
-	CATTR_BOLD = 0,
-	CATTR_UNDERLINE = 1,
-	CATTR_UNDERLINE_ALT = 2,
-	CATTR_ITALIC = 3,
-	CATTR_STRIKETHROUGH = 4,
-	CATTR_CURSOR = 5,
-	CATTR_SHAPEBREAK = 6,
-	CATTR_SKIP = 7
+	CATTR_BOLD          = 1,
+	CATTR_UNDERLINE     = 2,
+	CATTR_UNDERLINE_ALT = 4,
+	CATTR_ITALIC        = 8,
+	CATTR_STRIKETHROUGH = 16,
+	CATTR_CURSOR        = 32,
+	CATTR_SHAPEBREAK    = 64,
+	CATTR_SKIP          = 128
 };
 
 enum cell_extr_attr {
-	CEATTR_GLYPH_IND = 0,
-	CEATTR_AGLYPH_IND = 1,
-	CEATTR_BORDER_R = 2,
-	CEATTR_BORDER_D = 3,
-	CEATTR_BORDER_L = 4,
-	CEATTR_BORDER_T = 5,
+	CEATTR_GLYPH_IND    = 1,
+	CEATTR_AGLYPH_IND   = 2,
+	CEATTR_BORDER_R     = 4,
+	CEATTR_BORDER_D     = 8,
+	CEATTR_BORDER_L     = 16,
+	CEATTR_BORDER_T     = 32,
 };
 
 enum raster_content {

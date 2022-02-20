@@ -89,6 +89,7 @@ static void unpack_cell(uint8_t unpack[static 12], struct cell* dst, uint8_t alp
 	dst->bc = SHMIF_RGBA(unpack[3], unpack[4], unpack[5], alpha);
 	dst->attr = unpack[6];
 	dst->attr_ext = unpack[7];
+
 	unpack_u32(&dst->ucs4, &unpack[8]);
 }
 
@@ -118,7 +119,7 @@ static size_t drawglyph(struct tui_raster_context* ctx, struct cell* cell,
 	if (!ctx->fonts[0]->vector){
 
 /* mouse-cursor drawing in this mode is a bit primitive */
-		if (cell->attr & (1 << CATTR_CURSOR)){
+		if (cell->attr & CATTR_CURSOR){
 			if (ctx->cursor_state == CURSOR_ACTIVE){
 				cell->bc = ctx->cc;
 			}
@@ -130,11 +131,12 @@ static size_t drawglyph(struct tui_raster_context* ctx, struct cell* cell,
 
 /* add line-marks */
 		if (cell->ucs4 &&
-			cell->attr & ((1 << CATTR_STRIKETHROUGH) | (1 << CATTR_UNDERLINE)))
+			cell->attr & (CATTR_STRIKETHROUGH | CATTR_UNDERLINE)){
 			linehint(ctx, cell, vidp, pitch, x, y, maxx, maxy,
-				cell->attr & (1 << CATTR_STRIKETHROUGH),
-				cell->attr & (1 << CATTR_UNDERLINE)
+				cell->attr & CATTR_STRIKETHROUGH,
+				cell->attr & CATTR_UNDERLINE
 			);
+		}
 
 		return ctx->cell_w;
 	}
@@ -152,7 +154,7 @@ static size_t drawglyph(struct tui_raster_context* ctx, struct cell* cell,
  * fg/bg swap as even in unshaped the glyph might be conditionally
  * smaller than the cell size */
 	shmif_pixel bc = cell->bc;
-	if ((cell->attr & (1 << CATTR_CURSOR)) && ctx->cursor_state == CURSOR_ACTIVE)
+	if ((cell->attr & CATTR_CURSOR) && ctx->cursor_state == CURSOR_ACTIVE)
 		bc = ctx->cc;
 
 	draw_box_px(vidp,
@@ -164,8 +166,8 @@ static size_t drawglyph(struct tui_raster_context* ctx, struct cell* cell,
 	}
 
 	int prem = TTF_STYLE_NORMAL;
-	prem |= TTF_STYLE_ITALIC * !!(cell->attr & (1 << CATTR_ITALIC));
-	prem |= TTF_STYLE_BOLD * !!(cell->attr & (1 << CATTR_BOLD));
+	prem    |= TTF_STYLE_ITALIC * !!(cell->attr & CATTR_ITALIC);
+	prem    |= TTF_STYLE_BOLD   * !!(cell->attr & CATTR_BOLD);
 
 /* seriously expensive so only perform if we actually need to as it can cause a
  * glyph cache flush (bold / italic / ...), other option would be to run
@@ -192,15 +194,19 @@ static size_t drawglyph(struct tui_raster_context* ctx, struct cell* cell,
 		fg, bg, true, true, ctx->last_style, &adv, &ind
 	);
 
-/* add line-marks, this actually does not belong here, it should be part
- * of the style marker to the TTF_RenderUNICODEglyph - the code should be
- * added as part of arcan_ttf.c */
-	if (cell->ucs4 &&
-		cell->attr & ((1 << CATTR_STRIKETHROUGH) | (1 << CATTR_UNDERLINE)))
-		linehint(ctx, cell, vidp, pitch, x, y, maxx, maxy,
-			cell->attr & (1 << CATTR_STRIKETHROUGH),
-			cell->attr & (1 << CATTR_UNDERLINE)
+/* add line-marks, this actually does not belong here, it should be part of the
+ * style marker to the TTF_RenderUNICODEglyph - the code should be added as
+ * part of arcan_ttf.c was with the 'wavy' underline in alt color */
+	if (
+		cell->ucs4 &&
+		cell->attr & (CATTR_STRIKETHROUGH | CATTR_UNDERLINE))
+	{
+		linehint(
+			ctx, cell, vidp, pitch, x, y, maxx, maxy,
+			cell->attr & CATTR_STRIKETHROUGH,
+			cell->attr & CATTR_UNDERLINE
 		);
+	}
 
 	return ctx->cell_w;
 }
@@ -320,7 +326,7 @@ static int raster_tobuf(
 
 /* skip bit is set, note that for a shaped line, this means that
  * we need to have an offset- map to advance correctly */
-			if (cell.attr & (1 << CATTR_SKIP)){
+			if (cell.attr & CATTR_SKIP){
 				draw_x += ctx->cell_w;
 				continue;
 			}
