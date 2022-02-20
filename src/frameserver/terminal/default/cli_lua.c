@@ -74,6 +74,7 @@ int arcterm_luacli_run(struct arcan_shmif_cont* shmif, struct arg_arr* args)
 	if (!lua)
 		return EXIT_FAILURE;
 
+	long long last = arcan_timemillis();
 	luaL_openlibs(lua);
 
 /* get a table:
@@ -107,7 +108,6 @@ int arcterm_luacli_run(struct arcan_shmif_cont* shmif, struct arg_arr* args)
  * -2 "root"
  * -1 userdata (alias)
  */
-	lua_pushvalue(lua, -2);
 	lua_settable(lua, -4);
 
 /* stack:
