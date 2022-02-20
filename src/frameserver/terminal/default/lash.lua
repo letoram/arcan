@@ -475,21 +475,25 @@ end
 
 local function init()
 -- root is set in global scope if running from afsrv_terminal
-	if not root then
+	if not tui and tui.root then
 		tui = require 'arcantui'
-		root = tui.open("lash", "", {handlers = fallback_handlers})
+		lash.root = tui.open("lash", "", {handlers = fallback_handlers})
+	else
+		lash.root = tui.root
 	end
 
 	local shellname = os.getenv("LASH_SHELL") and os.getenv("LASH_SHELL") or "default"
-	local res, msg = run_usershell(root, shellname)
-	root:set_handlers(fallback_handlers)
+	local res, msg = run_usershell(lash.root, shellname)
+	lash.root:set_handlers(fallback_handlers)
 -- need to cleanup lash.jobs and root-wnd state (if still alive)
 
-	setup_window(root)
+	setup_window(lash.root)
 	if not res then
-		local cols, _ = root:dimensions()
-		add_message(root, msg, cols)
+		local cols, _ = lash.root:dimensions()
+		add_message(lash.root, msg, cols)
 	end
+
+	lash.root:refresh()
 end
 
 -- [lexer.lua] starts here
@@ -915,6 +919,7 @@ function(msg, simple)
 		end
 	end
 
+	local root = lash.root
 	repeat
 		nofs = root.utf8_step(msg, 1, ofs)
 		local ch = string.sub(msg, ofs, nofs-1)
@@ -930,8 +935,8 @@ function(msg, simple)
 end
 
 init()
-while root:process() do
-	process_jobs(root)
-	readline:set_prompt(get_prompt(root))
-	root:refresh()
+while lash.root:process() do
+	process_jobs(lash.root)
+	readline:set_prompt(get_prompt(lash.root))
+	lash.root:refresh()
 end
