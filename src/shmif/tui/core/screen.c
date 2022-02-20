@@ -161,22 +161,22 @@ struct tui_cell* tcell, uint8_t* outb, uint8_t has_cursor)
 /* this deviates from the tui cell here, the terminal- legacy blink
  * and protect bits are not kept */
 	*outb++ = (
-		(!!(tcell->attr.aflags & TUI_ATTR_BOLD))          << 0 |
-		(!!(tcell->attr.aflags & TUI_ATTR_UNDERLINE))     << 1 |
-		(!!(tcell->attr.aflags & TUI_ATTR_UNDERLINE_ALT)) << 2 |
-		(!!(tcell->attr.aflags & TUI_ATTR_ITALIC))        << 3 |
-		(!!(tcell->attr.aflags & TUI_ATTR_STRIKETHROUGH)) << 4 |
-		(!!(tcell->attr.aflags & TUI_ATTR_SHAPE_BREAK))   << 6 |
-		                                       has_cursor << 5
+		CATTR_BOLD          * (!!(tcell->attr.aflags & TUI_ATTR_BOLD))          |
+		CATTR_UNDERLINE     * (!!(tcell->attr.aflags & TUI_ATTR_UNDERLINE))     |
+		CATTR_UNDERLINE_ALT * (!!(tcell->attr.aflags & TUI_ATTR_UNDERLINE_ALT)) |
+		CATTR_ITALIC        * (!!(tcell->attr.aflags & TUI_ATTR_ITALIC))        |
+		CATTR_STRIKETHROUGH * (!!(tcell->attr.aflags & TUI_ATTR_STRIKETHROUGH)) |
+		CATTR_SHAPEBREAK    * (!!(tcell->attr.aflags & TUI_ATTR_SHAPE_BREAK))   |
+		CATTR_CURSOR        * has_cursor
 	);
 
 	*outb++ = (
-		(!!(tcell->attr.aflags & TUI_ATTR_GLYPH_INDEXED))  << 0 |
-		(!!(tcell->attr.aflags & TUI_ATTR_AGLYPH_INDEXED)) << 1 |
-		(!!(tcell->attr.aflags & TUI_ATTR_BORDER_RIGHT))   << 2 |
-		(!!(tcell->attr.aflags & TUI_ATTR_BORDER_DOWN))    << 3 |
-		(!!(tcell->attr.aflags & TUI_ATTR_BORDER_LEFT))    << 4 |
-		(!!(tcell->attr.aflags & TUI_ATTR_BORDER_TOP))     << 5
+		CEATTR_GLYPH_IND  * (!!(tcell->attr.aflags & TUI_ATTR_GLYPH_INDEXED))  |
+		CEATTR_AGLYPH_IND * (!!(tcell->attr.aflags & TUI_ATTR_AGLYPH_INDEXED)) |
+		CEATTR_BORDER_R   * (!!(tcell->attr.aflags & TUI_ATTR_BORDER_RIGHT))   |
+		CEATTR_BORDER_D   * (!!(tcell->attr.aflags & TUI_ATTR_BORDER_DOWN))    |
+		CEATTR_BORDER_L   * (!!(tcell->attr.aflags & TUI_ATTR_BORDER_LEFT))    |
+		CEATTR_BORDER_T   * (!!(tcell->attr.aflags & TUI_ATTR_BORDER_TOP))
 	);
 
 	pack_u32(tcell->ch, outb);
