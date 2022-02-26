@@ -29,8 +29,8 @@
 #include <lualib.h>
 #include <lauxlib.h>
 
-#include "tui_nbio.h"
-#include "tui_nbio_local.h"
+#include "nbio.h"
+#include "nbio_local.h"
 
 #if LUA_VERSION_NUM == 501
 	#define lua_rawlen(x, y) lua_objlen(x, y)
