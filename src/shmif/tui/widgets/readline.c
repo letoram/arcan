@@ -900,7 +900,7 @@ static void on_mouse_button_input(struct tui_context* T,
 	int x, int y, int button, bool active, int modifiers, void* tag)
 {
 	struct readline_meta* M;
-	if (!validate_context(T, &M) || !active)
+	if (!validate_context(T, &M))
 		return;
 
 	if (!(
@@ -915,6 +915,9 @@ static void on_mouse_button_input(struct tui_context* T,
 				M->finished = -1;
 		return;
 	}
+
+	if (!active)
+		return;
 
 	size_t cx, cy;
 	arcan_tui_cursorpos(T, &cx, &cy);

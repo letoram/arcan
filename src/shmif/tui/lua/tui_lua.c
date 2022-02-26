@@ -274,7 +274,8 @@ static void on_mouse_button(struct tui_context* T,
 		lua_pushnumber(L, x);
 		lua_pushnumber(L, y);
 		lua_pushnumber(L, modifiers);
-		RUN_CALLBACK("mouse_button", 5, 0);
+		lua_pushboolean(L, active);
+		RUN_CALLBACK("mouse_button", 6, 0);
 	END_HREF;
 }
 
@@ -1289,6 +1290,10 @@ static int reqwnd(lua_State* L)
 		return 1;
 	}
 
+/* if an options table is provided, we switch to subwnd_ext,
+ * with hint (split-[dir], or join-[dir], or tab or embed)
+ * + rows and columns */
+
 /* use a xor cookie and an index as part of the request so that we can match an
  * incoming window to one of our previous requests, there might be multiple
  * in-flight. */
@@ -1900,6 +1905,12 @@ static int bufferwnd(lua_State* L)
 	if (lua_istable(L, 4)){
 		if (intblbool(L, 4, "hex")){
 			opts.view_mode = BUFFERWND_VIEW_HEX;
+		}
+		if (intblbool(L, 4, "hex_detail")){
+			opts.view_mode = BUFFERWND_VIEW_HEX_DETAIL;
+		}
+		if (intblbool(L, 4, "hex_detail_meta")){
+			opts.hex_mode = BUFFERWND_HEX_META;
 		}
 		if (!intblbool(L, 4, "read_only")){
 			opts.read_only = false;

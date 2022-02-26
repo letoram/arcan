@@ -475,7 +475,7 @@ end
 
 local function init()
 -- root is set in global scope if running from afsrv_terminal
-	if not tui and tui.root then
+	if not tui or not tui.root then
 		tui = require 'arcantui'
 		lash.root = tui.open("lash", "", {handlers = fallback_handlers})
 	else
@@ -534,8 +534,10 @@ local tokens = {
 	OP_SEP   = 28,
 	OP_PIPE  = 29,
 	OP_ADDR  = 30,
-	OP_RELADDR = 31,
+	OP_RELADDR  = 31,
 	OP_STATESEP = 32,
+	OP_NOT      = 33,
+	OP_POUND    = 34,
 
 -- return result states
 	ERROR    = 40,
@@ -560,7 +562,9 @@ local operators = {
 ['|'] = tokens.OP_PIPE,
 ['$'] = tokens.OP_RELADDR,
 ['@'] = tokens.OP_SYMADDR,
-[';'] = tokens.OP_STATESEP
+[';'] = tokens.OP_STATESEP,
+['!'] = tokens.OP_NOT,
+['#'] = tokens.OP_POUND,
 }
 
 -- operators that we ignore and treat as 'whitespace terminated strings' in
