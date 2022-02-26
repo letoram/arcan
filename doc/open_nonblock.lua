@@ -24,11 +24,25 @@
 -- The accept function takes no arguments and returns a table in both read
 -- and write mode when there is a client waiting.
 --
--- The read(bool:nobuf):str,bool function takes one optional argument, *nobuf*
--- which disables local buffering. The default behavior of the read function is
--- otherwise to buffer until a full line, a fixed buffer size or eof has been
--- encountered.  It returns two values, a string (possibly empty) and a boolean
--- indicating if the connection or file is still alive or not.
+-- The read(bool:nobuf, [arg]):str,bool function takes one optional argument,
+-- *nobuf* which disables local buffering. The default behavior of the read
+-- function is otherwise to buffer until a full line, a fixed buffer size or
+-- eof has been encountered.  It returns two values, a string (possibly empty)
+-- and a boolean indicating if the connection or file is still alive or not.
+-- It also supports two optional reading modes that are more convenient and
+-- faster than multiple calls to read.
+-- If [arg] is a lua function, it will be invoked as a callback(str:line,
+-- bool:eof) with each line in the current buffer along with if there backing
+-- data store is still connected and has more data that could be read or arrive
+-- in the future (sockets, pipes).
+-- If [arg] is a table, it will be treated as n indexed and new lines will be
+-- appending at the end of the table [#tbl+1] = line1; [#tbl+2] = line2; and so
+-- on.
+--
+-- The lf_strip(bool) function affects read results to include or exclude a
+-- splitting linefeed if operating in linefeed mode. This is mainly an
+-- optimization to avoid additional string manipulation when linefeeds aren't
+-- desired in the resulting string.
 --
 -- The write(buf, [callback(ok, gpublock)]):int,bool function takes a buffer string as
 -- argument, and returns the number of bytes written (short writes are possible)

@@ -32,6 +32,10 @@
 #include "tui_nbio.h"
 #include "tui_nbio_local.h"
 
+#if LUA_VERSION_NUM == 501
+	#define lua_rawlen(x, y) lua_objlen(x, y)
+#endif
+
 static struct nonblock_io open_fds[LUACTX_OPEN_FILES];
 
 /* open_nonblock and similar functions need to register their fds here as they
@@ -421,97 +425,134 @@ static int nbio_write(lua_State* L)
 	LUA_ETRACE("open_nonblock:write", NULL, 2);
 }
 
-static int push_resstr(lua_State* L, struct nonblock_io* ib, off_t ofs)
+static char* nextline(
+	struct nonblock_io* ib, size_t start, bool* eof, size_t* nb, size_t* step)
 {
-	size_t in_sz = COUNT_OF(ib->buf);
+	if (!ib->ofs)
+		return NULL;
 
-	lua_pushlstring(L, ib->buf, ofs);
-
-/* slide or reset buffering */
-	if (ofs >= in_sz - 1){
-		ib->ofs = 0;
-	}
-	else{
-		memmove(ib->buf, ib->buf + ofs + 1, ib->ofs - ofs - 1);
-		ib->ofs -= ofs + 1;
-	}
-
-	lua_pushboolean(L, true);
-	return 2;
-}
-
-static size_t bufcheck(lua_State* L, struct nonblock_io* ib)
-{
-	size_t in_sz = COUNT_OF(ib->buf);
-
-	for (size_t i = 0; i < ib->ofs; i++){
+	for (size_t i = start; i < ib->ofs; i++){
 		if (ib->buf[i] == '\n'){
-			if (!ib->lfstrip)
-				continue;
-			return push_resstr(L, ib, i);
+			*nb = ib->lfstrip ? (i - start) : (i - start) + 1;
+			*step = (i - start) + 1;
+			return &ib->buf[start];
 		}
 	}
 
-	if (in_sz - ib->ofs == 1)
-		return push_resstr(L, ib, in_sz - 1);
-
-	return 0;
+	if (eof){
+		*nb = ib->ofs;
+		return ib->buf;
+	}
+	return NULL;
 }
 
-int alt_nbio_process_read
-	(lua_State* L, struct nonblock_io* ib, bool nonbuffered)
+int alt_nbio_process_read(
+	lua_State* L, struct nonblock_io* ib, bool nonbuffered)
 {
 	size_t buf_sz = COUNT_OF(ib->buf);
+	char* ch = NULL;
+	size_t len = 0, step = 0;
 
 	if (!ib || ib->fd < 0)
 		return 0;
 
-	ib->eofm = false;
-	if (!nonbuffered){
-		size_t bufch = bufcheck(L, ib);
-		if (bufch)
-			return bufch;
-	}
+/*
+ * The normal ugly edge case is EOF when where is strings in the buffer
+ * still pending and the caller wants returns per logical line to avoid
+ * excess and expensive string processing.
+ *
+ * In such a case, read will first fail and EOF marker is set. Then the
+ * nextline function will treat end of buffer as the last 'linefeed'.
+ *
+ * The 'eof' value witll propagate as the function return, indicating to
+ * the caller that the descriptor can be closed.
+ */
+	bool eof = false;
+	ssize_t nr = read(ib->fd, &ib->buf[ib->ofs], buf_sz - ib->ofs);
 
-	ssize_t nr;
-	if ( (nr = read(ib->fd, ib->buf + ib->ofs, buf_sz - ib->ofs - 1)) > 0)
-		ib->ofs += nr;
-
-	if (nr == 0 || (-1 == nr && errno != EINTR && errno != EAGAIN)){
-
-/* reading might still fail on pipe with 0 returned, special case it */
-		struct pollfd pfd = {.fd = ib->fd, .events = POLLERR | POLLHUP};
-		if (nr == 0 && 1 == poll(&pfd, 1, 0)){
-			lua_pushnil(L);
-			lua_pushboolean(L, false);
+	if (0 == nr){
+		struct pollfd fd = {
+			.fd = ib->fd,
+			.events = POLLERR | POLLHUP | POLLNVAL
+		};
+		if (1 == poll(&fd, 1, 0) && fd.revents){
+			eof = true;
 		}
 		else {
-			lua_pushlstring(L, ib->buf, ib->ofs);
-			lua_pushboolean(L, true);
-			ib->ofs = 0;
-			ib->eofm = true;
-		}
-
-		return 2;
-	}
-
-	if (nonbuffered){
-		if (!ib->ofs){
 			lua_pushnil(L);
 			lua_pushboolean(L, true);
 			return 2;
 		}
-
-		lua_pushlstring(L, ib->buf, ib->ofs);
-		ib->ofs = 0;
-		lua_pushboolean(L, true);
-		return 2;
 	}
-	else{
-		if (0 == bufcheck(L, ib)){
+	else if (-1 == nr){
+		if (errno == EAGAIN || errno == EINTR){
 			lua_pushnil(L);
 			lua_pushboolean(L, true);
+			return 2;
 		}
+		eof = true;
+	}
+	else
+		ib->ofs += nr;
+
+	if (nonbuffered){
+		if (ib->ofs)
+			lua_pushlstring(L, ib->buf, ib->ofs);
+		lua_pushboolean(L, !eof);
+		ib->ofs = 0;
+		return 2;
+	}
+
+/* three different transfer modes based on the top argument.
+ * 1. just return the first string as a call result.
+ * 2. append to table at -1.
+ * 3. forward to the callback at -1.
+ */
+#define SLIDE(X) do{\
+	memmove(ib->buf, &ib->buf[ib->ofs], buf_sz - ib->ofs);\
+	ib->ofs = 0;\
+}while(0)
+
+	if (lua_type(L, -1) == LUA_TFUNCTION){
+		size_t ci = 0;
+		while ((ch = nextline(ib, ci, &eof, &len, &step))){
+			lua_pushvalue(L, -1);
+			lua_pushlstring(L, ch, len);
+			lua_pushboolean(L, eof);
+			ci += step;
+			alt_call(L, CB_SOURCE_NONE, 0, 2, 0, LINE_TAG":read_cb");
+		}
+		SLIDE();
+
+		lua_pushnil(L);
+		lua_pushboolean(L, !eof);
+		return 2;
+	}
+	else if (lua_type(L, -1) == LUA_TTABLE){
+		size_t ind = lua_objlen(L, -1) + 1;
+		size_t ci = 0;
+
+		while ((ch = nextline(ib, ci, &eof, &len, &step))){
+			lua_pushinteger(L, ind++);
+			lua_pushlstring(L, ch, len);
+			lua_rawset(L, -3);
+			ci += step;
+		}
+		SLIDE();
+		lua_pushnil(L);
+		lua_pushboolean(L, !eof);
+		return 2;
+	}
+	else {
+		if ((ch = nextline(ib, 0, &eof, &len, &step))){
+			lua_pushlstring(L, ch, len);
+			memmove(ib->buf, &ib->buf[step], buf_sz - step);
+			ib->ofs -= step;
+		}
+		else
+			lua_pushnil(L);
+
+		lua_pushboolean(L, !eof);
 		return 2;
 	}
 }

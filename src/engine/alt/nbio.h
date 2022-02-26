@@ -16,6 +16,7 @@ struct nonblock_io {
 /* in line-buffered mode, this is used for input */
 	char buf[4096];
 	bool eofm;
+	bool lfstrip;
 	off_t ofs;
 
 	int fd; /* will be read from */
@@ -49,8 +50,19 @@ void alt_nbio_register(lua_State* ctx,
  * Read and forward inbound data from the referenced nonblock_io struct into
  * its respective handler. the 'nonbuf' state indicates if line-buffering is
  * desired.
+ *
+ * If line-buffering is set, the type of the top argument will determine
+ * the line processing behaviour:
+ *
+ *  table    : append (n-indexed)
+ *  function : callback(line, eof)
+ *  else     : return line, alive
+ *
+ * The object property lfstrip will provide the strings without linefeeds
+ * if set. This is to reduce excessive copying / postprocessing.
  */
-int alt_nbio_process_read(lua_State*, struct nonblock_io*, bool nonbuf);
+int alt_nbio_process_read(
+	lua_State*, struct nonblock_io*, bool nonbuf);
 
 /*
  * Normally part of the Lua-side API for resolving a resource string to a
