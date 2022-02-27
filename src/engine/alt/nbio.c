@@ -471,18 +471,7 @@ int alt_nbio_process_read(
 	ssize_t nr = read(ib->fd, &ib->buf[ib->ofs], buf_sz - ib->ofs);
 
 	if (0 == nr){
-		struct pollfd fd = {
-			.fd = ib->fd,
-			.events = POLLERR | POLLHUP | POLLNVAL
-		};
-		if (1 == poll(&fd, 1, 0) && fd.revents){
-			eof = true;
-		}
-		else {
-			lua_pushnil(L);
-			lua_pushboolean(L, true);
-			return 2;
-		}
+		eof = true;
 	}
 	else if (-1 == nr){
 		if (errno == EAGAIN || errno == EINTR){
