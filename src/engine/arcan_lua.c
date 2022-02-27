@@ -856,6 +856,7 @@ static int rawresource(lua_State* ctx)
 		arcan_mem_free(path);
 	}
 
+	luactx.rawres.lfstrip = true;
 	lua_pushboolean(ctx, luactx.rawres.fd > 0);
 	LUA_ETRACE("open_rawresource", "", 1);
 }
