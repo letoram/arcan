@@ -33,7 +33,7 @@
 #include <lualib.h>
 #include <lauxlib.h>
 
-#include "tui_nbio.h"
+#include "nbio.h"
 #include "tui_popen.h"
 
 /* for Apple we also need to workaround the bit that pty will not work in

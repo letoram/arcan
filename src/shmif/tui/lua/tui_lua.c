@@ -47,7 +47,7 @@
 #include <poll.h>
 
 #include "tui_lua.h"
-#include "tui_nbio.h"
+#include "nbio.h"
 #include "tui_popen.h"
 
 #define TUI_METATABLE	"Arcan TUI"
