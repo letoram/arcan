@@ -439,7 +439,7 @@ static char* nextline(
 		}
 	}
 
-	if (eof){
+	if (*eof){
 		*nb = ib->ofs;
 		return ib->buf;
 	}
