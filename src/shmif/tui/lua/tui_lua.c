@@ -6,17 +6,7 @@
  * able to open/connect using tui_open() -> context.
  *
  * TODO:
- *   [ ] handover exec on new window
- *       [ ] with media embed
- *   [ ] detached windows
- *   notes:
- *       arcan_tui_handover_exec(T, subwnd, constraints, path, argv, env, flags)
- *       TUI_DETACH_ [process, stdin, stdout, stderr] -> pid
- *
- *       - do we treat this as pwnd?
- *         how do we send external wndhint?
- *
- *   [ ] subwnd req (hint + rows + cols)
+ *   [ ] detached (virtual) windows
  *   [ ] PUSH new_window
  *   [ ] arcan_tui_wndhint support
  *   [ ] nbio to bufferwnd?
@@ -402,6 +392,55 @@ static void on_resize(struct tui_context* T,
 	END_HREF;
 }
 
+static int tui_phandover(lua_State* L)
+{
+	struct tui_lmeta* ib = luaL_checkudata(L, 1, TUI_METATABLE);
+	if (!ib->in_subwnd){
+		luaL_error(L, "phandover(...) - only permitted inside subwindow closure");
+	}
+
+/* phandover(wnd, path, argv, [env], [cons]) -> window */
+
+/* 1. window constraints? (options)
+ * 2. path, argv, env, flags - TUI_DETACH_ ...
+ * 3./
+ *       arcan_tui_handover_exec(T, subwnd,
+ *       constraints (rows, cols, anch_row, anch_col, ...)
+ *       	path, argv, env, flags)
+ *       TUI_DETACH_ [process, stdin, stdout, stderr] -> pid */
+
+	char** env = NULL;
+	char** argv = NULL;
+	const char* path = luaL_checkstring(L, 2);
+
+	ib->subwnd_handover =
+		arcan_tui_handover(
+			ib->tui, ib->in_subwnd,
+			NULL, /* constraints */
+			path,
+			argv,
+			env,
+			0
+		);
+
+	if (env){
+		char** cur = env;
+		while (*cur)
+			free(*cur++);
+		free(env);
+	}
+
+	if (argv){
+		char** cur = argv;
+		while (*cur)
+			free(*cur++);
+		free(argv);
+	}
+
+	ib->in_subwnd = NULL;
+	return 0;
+}
+
 static bool on_subwindow(struct tui_context* T,
 	arcan_tui_conn* new, uint32_t id, uint8_t type, void* t)
 {
@@ -458,6 +497,7 @@ static bool on_subwindow(struct tui_context* T,
 		RUN_CALLBACK("subwindow_ud_fail", 1, 0);
 		luaL_unref(L, LUA_REGISTRYINDEX, cb);
 		END_HREF;
+		meta->in_subwnd = NULL;
 		return true;
 	}
 
@@ -474,10 +514,11 @@ static bool on_subwindow(struct tui_context* T,
 	nud->tui_state = luaL_ref(L, LUA_REGISTRYINDEX);
 
 /* register with parent so :process() hits the right hierarchy */
-	for (size_t i = 0; i < SEGMENT_LIMIT; i++){
-		if (!meta->subs[i]){
-			meta->subs[i] = ctx;
-			meta->submeta[i] = nud;
+	size_t wnd_i = 0;
+	for (; wnd_i < SEGMENT_LIMIT; wnd_i++){
+		if (!meta->subs[wnd_i]){
+			meta->subs[wnd_i] = ctx;
+			meta->submeta[wnd_i] = nud;
 			meta->n_subs++;
 			break;
 		}
@@ -486,10 +527,28 @@ static bool on_subwindow(struct tui_context* T,
 /* the check for pending-id + the check on request means that there there is a
  * fitting slot in parent[subs] - and even if there wouldn't be, it would just
  * block the implicit :process, explicit would still work. */
+	if (type == TUI_WND_HANDOVER){
+		meta->in_subwnd = new;
+	}
 	RUN_CALLBACK("subwindow_ok", 2, 0);
+
+/* this means that the window has been handed over to a new process, it can
+ * still be 'used' as a window in regards to hinting, drawing and so on, but
+ * refresh and processing won't have any effect. The special case is when the
+ * phandover call fails and we need to false-return so the backend cleans up */
+	bool ok = true;
+	if (!meta->in_subwnd && type == TUI_WND_HANDOVER){
+		meta->n_subs--;
+		meta->subs[wnd_i] = NULL;
+		meta->submeta[wnd_i] = NULL;
+		meta->n_subs--;
+		ok = nud->subwnd_handover;
+	}
+	meta->in_subwnd = NULL;
+
 	luaL_unref(L, LUA_REGISTRYINDEX, cb);
 	END_HREF;
-	return true;
+	return ok;
 }
 
 static bool query_label(struct tui_context* T,
@@ -1269,6 +1328,13 @@ static int reqwnd(lua_State* L)
 {
 	TUI_UDATA;
 
+	struct tui_subwnd_req meta =
+	{
+		.rows = 0,
+		.cols = 0,
+		.hint = 0, /* TUIWND_SPLIT_(LEFT, RIGHT, TOP, BOTTOM) _JOIN_, TAB, EMBED */
+	};
+
 	const char* type = luaL_optstring(L, 2, "tui");
 	int ind;
 	intptr_t ref = LUA_NOREF;
@@ -1277,7 +1343,70 @@ static int reqwnd(lua_State* L)
 		ref = luaL_ref(L, LUA_REGISTRYINDEX);
 	}
 	else
-		luaL_error(L, "no closure provided");
+		luaL_error(L, "new_window(type, >closure<, ...) closure missing");
+
+	const char* hintstr = NULL;
+
+	while(++ind != lua_gettop(L)){
+		if (lua_type(L, ind) == LUA_TNUMBER){
+			if (!meta.rows)
+				meta.rows = lua_tonumber(L, ind);
+			else if (!meta.cols)
+				meta.cols = lua_tonumber(L, ind);
+			else
+				luaL_error(L,
+					"new_window(type, closure, >w, h<, [hint]) number argument overflow ");
+		}
+		else if (lua_type(L, ind) == LUA_TSTRING){
+			if (hintstr)
+				luaL_error(L,
+					"new_window(type, closure, [w, h], hint) hint argument overflow");
+
+			hintstr = lua_tostring(L, ind);
+		}
+		else
+			luaL_error(L,
+				"new_window(type, closure, >...<) unexpected argument type");
+	}
+
+	if (hintstr){
+		if (strcmp(hintstr, "split") == 0){
+			meta.hint = TUIWND_SPLIT_NONE;
+		}
+		else if (strcmp(hintstr, "split-l") == 0){
+			meta.hint = TUIWND_SPLIT_LEFT;
+		}
+		else if (strcmp(hintstr, "split-r") == 0){
+			meta.hint = TUIWND_SPLIT_RIGHT;
+		}
+		else if (strcmp(hintstr, "split-t") == 0){
+			meta.hint = TUIWND_SPLIT_TOP;
+		}
+		else if (strcmp(hintstr, "split-d") == 0){
+			meta.hint = TUIWND_SPLIT_DOWN;
+		}
+		else if (strcmp(hintstr, "join-l") == 0){
+			meta.hint = TUIWND_JOIN_LEFT;
+		}
+		else if (strcmp(hintstr, "join-r") == 0){
+			meta.hint = TUIWND_JOIN_RIGHT;
+		}
+		else if (strcmp(hintstr, "join-t") == 0){
+			meta.hint = TUIWND_JOIN_TOP;
+		}
+		else if (strcmp(hintstr, "join-d") == 0){
+			meta.hint = TUIWND_JOIN_DOWN;
+		}
+		else if (strcmp(hintstr, "tab") == 0){
+			meta.hint = TUIWND_TAB;
+		}
+		else if (strcmp(hintstr, "embed") == 0){
+			meta.hint = TUIWND_EMBED;
+		}
+		else
+			luaL_error(L,"new_window(..., >hint<) "
+				"unknown hint (split-(tldr), join-(tldr), tab or embed");
+	}
 
 	int tui_type = TUI_WND_TUI;
 	if (strcmp(type, "popup") == 0)
@@ -1301,7 +1430,8 @@ static int reqwnd(lua_State* L)
 	ib->pending[bitind] = ref;
 	ib->pending_mask |= 1 << bitind;
 	lua_pushboolean(L, true);
-	arcan_tui_request_subwnd(ib->tui, tui_type, (uint32_t) bitind ^ req_cookie);
+	arcan_tui_request_subwnd_ext(ib->tui,
+		tui_type, (uint32_t) bitind ^ req_cookie, meta, sizeof(meta));
 
 	return 1;
 }
@@ -1905,11 +2035,14 @@ static int bufferwnd(lua_State* L)
 	if (lua_istable(L, 4)){
 		if (intblbool(L, 4, "hex")){
 			opts.view_mode = BUFFERWND_VIEW_HEX;
+			opts.hex_mode = BUFFERWND_HEX_BASIC;
 		}
 		if (intblbool(L, 4, "hex_detail")){
 			opts.view_mode = BUFFERWND_VIEW_HEX_DETAIL;
+			opts.hex_mode = BUFFERWND_HEX_ASCII;
 		}
 		if (intblbool(L, 4, "hex_detail_meta")){
+			opts.view_mode = BUFFERWND_VIEW_HEX_DETAIL;
 			opts.hex_mode = BUFFERWND_HEX_META;
 		}
 		if (!intblbool(L, 4, "read_only")){
@@ -2625,10 +2758,11 @@ static void register_tuimeta(lua_State* L)
 		{"popen", popen_wrap},
 		{"pwait", tui_pid_status},
 		{"psignal", tui_pid_signal},
+		{"phandover", tui_phandover},
 		{"fopen", tui_fopen},
 		{"bgcopy", tui_fbond},
 		{"getenv", tui_getenv},
-		{"chdir", tui_chdir}
+		{"chdir", tui_chdir},
 	};
 
 	/* will only be set if it does not already exist */

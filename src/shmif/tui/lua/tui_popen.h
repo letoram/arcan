@@ -40,5 +40,12 @@ int tui_pid_status(lua_State* L);
  */
 int tui_pid_signal(lua_State* L);
 
+/* Extract an execve friendly environment table and argument vector from the
+ * lua ttable at ind. All strings inside the returned array are dynamically
+ * allocated and should be iterated until NULL and freed.
+ */
+char** tui_popen_tbltoenv(lua_State* L, int ind);
+char** tui_popen_tbltoargv(lua_State* L, int ind);
+
 /* Try to resize a pty bound to a nbio by performing the TIOCSWINSZ ioctl. */
 int tui_pty_resize(lua_State* L);

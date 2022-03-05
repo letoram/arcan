@@ -1,20 +1,3 @@
-/*
- * Re: POPEN3:
- * This implementation of popen3() was created from scratch in June of 2011.  It
- * is less likely to leak file descriptors if an error occurs than the 2007
- * version and has been tested under valgrind.  It also differs from the 2007
- * version in its behavior if one of the file descriptor parameters is NULL.
- * Instead of closing the corresponding stream, it is left unmodified (typically
- * sharing the same terminal as the parent process).  It also lacks the
- * non-blocking option present in the 2007 version.
- *
- * No warranty of correctness, safety, performance, security, or usability is
- * given.  This implementation is released into the public domain, but if used
- * in an open source application, attribution would be appreciated.
- *
- * Mike Bourgeous
- * https://github.com/nitrogenlogic
- */
 #define _XOPEN_SOURCE 700
 #include <stdio.h>
 #include <stdlib.h>
@@ -99,8 +82,10 @@ static pid_t popen3(
 	int err_pipe[2] = {-1, -1};
 	pid_t pid;
 
-	// 2011 implementation of popen3() by Mike Bourgeous
-	// https://gist.github.com/1022231
+/* 2011 implementation of popen3() by Mike Bourgeous
+   https://gist.github.com/1022231
+	 modified to allow explicit substitution of pipes and non sh -c forms.
+ */
 
 	if(command == NULL && !argv) {
 		fprintf(stderr, "Cannot popen3() a NULL command.\n");
@@ -256,7 +241,7 @@ extern char** environ;
 	#define lua_rawlen(x, y) lua_objlen(x, y)
 #endif
 
-static char** table_to_argv(lua_State* L, int ind)
+char** tui_popen_tbltoargv(lua_State* L, int ind)
 {
 	size_t count = lua_rawlen(L, ind);
 	char** res = malloc(sizeof(char*) * (count+1));
@@ -276,7 +261,7 @@ static char** table_to_argv(lua_State* L, int ind)
 	return res;
 }
 
-static char** table_to_env(lua_State* L, int ind)
+char** tui_popen_tbltoenv(lua_State* L, int ind)
 {
 	size_t count = 0;
 	char** env;
@@ -346,7 +331,7 @@ int tui_popen(lua_State* L)
 	char** argv = NULL;
 
 	if (lua_type(L, ci) == LUA_TTABLE){
-		argv = table_to_argv(L, ci);
+		argv = tui_popen_tbltoargv(L, ci);
 	}
 	else if (lua_type(L, ci) == LUA_TSTRING){
 		command = luaL_checkstring(L, ci);
@@ -372,7 +357,7 @@ int tui_popen(lua_State* L)
 	bool free_env = false;
 
 	if (lua_type(L, ci) == LUA_TTABLE){
-		env = table_to_env(L, ci);
+		env = tui_popen_tbltoenv(L, ci);
 		free_env = true;
 	}
 
