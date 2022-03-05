@@ -597,7 +597,7 @@ enum tui_subwnd_hint {
 	TUIWND_SPLIT_LEFT = 1,
 	TUIWND_SPLIT_RIGHT = 2,
 	TUIWND_SPLIT_TOP = 3,
-	TUIWND_SPLIT_BOTTOM = 4,
+	TUIWND_SPLIT_DOWN = 4,
 	TUIWND_JOIN_LEFT = 5,
 	TUIWND_JOIN_RIGHT = 6,
 	TUIWND_JOIN_TOP = 7,
@@ -609,7 +609,7 @@ enum tui_subwnd_hint {
 struct tui_subwnd_req {
 	int hint;
 	size_t rows;
-	size_t columns;
+	size_t cols;
 };
 
 #ifndef ARCAN_TUI_DYNAMIC
