@@ -269,7 +269,7 @@ local function process_jobs(wnd)
 	for i=#lash.jobs,1 do
 		local job = lash.jobs[i]
 
-		while true do
+		while job.out do
 			local msg = job.out:read()
 			if not msg then
 				break
