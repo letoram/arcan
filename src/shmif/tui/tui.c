@@ -185,7 +185,7 @@ void arcan_tui_request_subwnd_ext(struct tui_context* T,
 
 /* in future revisions, go with offsetof to annotate the new fields */
 	if (req_sz == sizeof(struct tui_subwnd_req)){
-		ev.ext.segreq.width = req.columns * T->cell_w;
+		ev.ext.segreq.width = req.cols * T->cell_w;
 		ev.ext.segreq.height = req.rows * T->cell_h;
 		ev.ext.segreq.dir = req.hint;
 		return;

@@ -715,6 +715,10 @@ void on_key_input(struct tui_context* T,
 		else if (keysym == TUIK_TAB){
 			synch_completion(T, M);
 		}
+		if (M->old_handlers.input_key){
+			M->old_handlers.input_key(T,
+				keysym, scancode, mods, subid, M->old_handlers.tag);
+		}
 		return;
 	}
 
