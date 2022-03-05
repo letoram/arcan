@@ -127,6 +127,9 @@ struct tui_lmeta {
 	size_t cwd_sz;
 	int cwd_fd;
 
+	arcan_tui_conn* in_subwnd;
+	int subwnd_handover;
+
 	lua_State* lua;
 };
 
