@@ -266,10 +266,11 @@ struct lent {
 static bool dump_dbg(struct tui_context* tui)
 {
 /* dump front-delta, front, back to different files */
-	uint8_t* rbuf = NULL;
-	size_t rbuf_sz = 0;
+	size_t rbuf_sz = tui_screen_tpack_sz(tui);
+	uint8_t* rbuf = malloc(rbuf_sz);
+
 	tui_screen_tpack(tui,
-		(struct tpack_gen_opts){.full = true, .synch = false}, &rbuf, &rbuf_sz);
+		(struct tpack_gen_opts){.full = true, .synch = false}, rbuf, rbuf_sz);
 
 	char buf[64];
 	snprintf(buf, 64, "/tmp/tui.%d.delta.front.tpack", getpid());
@@ -280,7 +281,7 @@ static bool dump_dbg(struct tui_context* tui)
 	}
 
 	tui_screen_tpack(tui,
-		(struct tpack_gen_opts){.full = true, .back = true}, &rbuf, &rbuf_sz);
+		(struct tpack_gen_opts){.full = true, .back = true}, rbuf, rbuf_sz);
 	snprintf(buf, 64, "/tmp/tui.%d.full.back.tpack", getpid());
 	fout = fopen(buf, "w");
 	if (fout){
@@ -289,7 +290,7 @@ static bool dump_dbg(struct tui_context* tui)
 	}
 
 	tui_screen_tpack(tui,
-		(struct tpack_gen_opts){0}, &rbuf, &rbuf_sz);
+		(struct tpack_gen_opts){0}, rbuf, rbuf_sz);
 	snprintf(buf, 64, "/tmp/tui.%d.full.front.tpack", getpid());
 	fout = fopen(buf, "w");
 	if (fout){
@@ -297,6 +298,7 @@ static bool dump_dbg(struct tui_context* tui)
 		fclose(fout);
 	}
 
+	free(rbuf);
 	return true;
 }
 #endif

@@ -1347,7 +1347,7 @@ static int reqwnd(lua_State* L)
 
 	const char* hintstr = NULL;
 
-	while(++ind != lua_gettop(L)){
+	while(++ind < lua_gettop(L)){
 		if (lua_type(L, ind) == LUA_TNUMBER){
 			if (!meta.rows)
 				meta.rows = lua_tonumber(L, ind);

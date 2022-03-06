@@ -140,6 +140,8 @@ struct __attribute__((packed)) tui_raster_header {
 	uint32_t data_sz;
 	uint16_t lines;
 	uint16_t cells;
+
+/* used to indicate that update is a scroll in a direction (up, right, down, left) */
 	uint8_t direction;
 	uint16_t flags;
 	uint8_t bgc[4];
