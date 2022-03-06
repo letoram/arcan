@@ -45,11 +45,7 @@ static void resize_cellbuffer(struct tui_context* tui)
 	tui->base = NULL;
 
 	size_t buffer_sz = 2 * tui->rows * tui->cols * sizeof(struct tui_cell);
-	size_t rbuf_sz =
-		sizeof(struct tui_raster_header) + /* always there */
-		((tui->rows * tui->cols + 2) * raster_cell_sz) + /* worst case, includes cursor */
-		((tui->rows+2) * sizeof(struct tui_raster_line))
-	;
+	size_t rbuf_sz = tui_screen_tpack_sz(tui);
 
 	tui->base = malloc(buffer_sz);
 	if (!tui->base){
@@ -58,7 +54,9 @@ static void resize_cellbuffer(struct tui_context* tui)
 	}
 
 	memset(tui->base, '\0', buffer_sz);
-	memset(tui->acon.vidb, '\0', rbuf_sz);
+
+	if (tui->acon.vidb)
+		memset(tui->acon.vidb, '\0', rbuf_sz);
 
 	tui->front = tui->base;
 	tui->back = &tui->base[tui->rows * tui->cols];
@@ -183,20 +181,28 @@ struct tui_cell* tcell, uint8_t* outb, uint8_t has_cursor)
 	return raster_cell_sz;
 }
 
-int tui_screen_tpack(struct tui_context* tui,
-	struct tpack_gen_opts opts, uint8_t** rbuf, size_t* rbuf_sz)
+size_t tui_screen_tpack_sz(struct tui_context* tui)
+{
+	return
+		sizeof(struct tui_raster_header) + /* always there */
+		((tui->rows * tui->cols + 2) * raster_cell_sz) + /* worst case, includes cursor */
+		((tui->rows+2) * sizeof(struct tui_raster_line))
+	;
+}
+
+size_t tui_screen_tpack(struct tui_context* tui,
+	struct tpack_gen_opts opts, uint8_t* rbuf, size_t rbuf_sz)
 {
 /* start with header */
-	int rv = 0;
 	if (!opts.full && tui->dirty == DIRTY_NONE)
-		return rv;
+		return 0;
 
 /* header gets written to the buffer last */
 	struct tui_raster_header hdr = {};
 	arcan_tui_get_color(tui, TUI_COL_BG, hdr.bgc);
 	hdr.bgc[3] = tui->alpha;
 
-	uint8_t* out = tui->acon.vidb;
+	uint8_t* out = rbuf;
 	size_t outsz = sizeof(hdr);
 
 	if (opts.back){
@@ -239,7 +245,6 @@ int tui_screen_tpack(struct tui_context* tui,
 				front++;
 			}
 		}
-		rv = 2;
 	}
 
 /* delta update, find_row_ofs gives the next mismatch on the row */
@@ -301,7 +306,6 @@ int tui_screen_tpack(struct tui_context* tui,
 		}
 
 		hdr.flags |= RPACK_DFRAME;
-		rv = 1;
 	}
 
 /* cursor management may expose 2 separate line + cell updates (less
@@ -318,7 +322,6 @@ int tui_screen_tpack(struct tui_context* tui,
 
 		if (tui->dirty == DIRTY_CURSOR){
 			hdr.flags |= RPACK_DFRAME;
-			rv = 1;
 		}
 
 /* restore the last cursor position */
@@ -329,7 +332,7 @@ int tui_screen_tpack(struct tui_context* tui,
 			line.offset = tui->last_cursor.col;
 
 /* NOTE: REPLACE WITH PROPER PACKING */
-			memcpy(&tui->acon.vidb[outsz], &line, sizeof(line));
+			memcpy(&rbuf[outsz], &line, sizeof(line));
 
 			outsz += raster_line_sz;
 			outsz += cell_to_rcell(tui, &tui->front[
@@ -345,7 +348,7 @@ int tui_screen_tpack(struct tui_context* tui,
 		line.offset = tui->last_cursor.col;
 
 /* NOTE: REPLACE WITH PROPER PACKING */
-		memcpy(&tui->acon.vidb[outsz], &line, sizeof(line));
+		memcpy(&rbuf[outsz], &line, sizeof(line));
 		outsz += raster_line_sz;
 		outsz += cell_to_rcell(tui, &tui->front[
 			line.start_line * tui->cols + line.offset], &out[outsz], 1);
@@ -368,9 +371,8 @@ int tui_screen_tpack(struct tui_context* tui,
 
 /* write the header and return */
 /* NOTE: REPLACE WITH PROPER PACKING */
-	memcpy(tui->acon.vidb, &hdr, sizeof(hdr));
-	*rbuf_sz = outsz;
-	return rv;
+	memcpy(rbuf, &hdr, sizeof(hdr));
+	return outsz;
 }
 
 static void update_screen(struct tui_context* tui, bool ign_inact)
@@ -429,16 +431,16 @@ void tui_screen_resized(struct tui_context* tui)
 }
 
 int tui_tpack_unpack(struct tui_context* C,
-	uint8_t* buf, size_t buf_sz, size_t x, size_t y, size_t w, size_t h)
+	uint8_t* buf, size_t buf_sz, size_t x, size_t y, size_t x2, size_t y2)
 {
 	struct tui_raster_header hdr;
 	if (!buf_sz || buf_sz < sizeof(struct tui_raster_header))
 		return -1;
 
 /* just verbatim the same as raster_tobuf, but unpacks cell into C instead */
-	bool update = false;
 	memcpy(&hdr, buf, sizeof(struct tui_raster_header));
 
+/* recalculate and compare */
 	size_t hdr_ver_sz = hdr.lines * raster_line_sz +
 		hdr.cells * raster_cell_sz + raster_hdr_sz;
 
@@ -449,13 +451,48 @@ int tui_tpack_unpack(struct tui_context* C,
 	buf_sz -= sizeof(struct tui_raster_header);
 	buf += sizeof(struct tui_raster_header);
 
-/* if it is not a delta frame, just clear region to bgcolor first */
+/* if it is not a delta frame, just clear region to bgcolor first and
+ * make sure the window size match (unless w, h are set) */
 	if (!(hdr.flags & RPACK_DFRAME)){
+		if ( (!x2 || !y2) && (C->rows != hdr.lines || C->cols != hdr.cells)){
+			size_t px_w = C->cell_w * hdr.cells;
+			size_t px_h = C->cell_h * hdr.lines;
+			x2 = hdr.cells;
+			y2 = hdr.lines;
+
+/* this is done on the 'shmif' level in order to behave as if the DISPLAYHINT
+ * event was received, including event propagation to resize-resized etc. */
+			bool resized = false;
+			if (!C->acon.addr){
+				C->acon.w = px_w;
+				C->acon.h = px_h;
+				tui_screen_resized(C);
+				resized = true;
+			}
+			else
+				resized = arcan_shmif_resize_ext(&C->acon, px_w, px_h,
+				(struct shmif_resize_ext){
+					.vbuf_cnt = -1,
+					.abuf_cnt = -1,
+					.rows = hdr.lines,
+					.cols = hdr.cells
+				});
+
+			if (resized)
+				tui_screen_resized(C);
+		}
+
 		struct tui_screen_attr empty = arcan_tui_defcattr(C, TUI_COL_BG);
-		arcan_tui_eraseattr_region(C, x, y, x+w, y+h, false, empty);
+		arcan_tui_eraseattr_region(C, x, y, x2, y2, false, empty);
 	}
 
-	for (size_t i = 0, j = y; i < hdr.lines, j < h; i++, j++){
+	if (!x2 || (x2 > C->cols))
+		x2 = C->cols;
+
+	if (!y2 || (y2 > C->rows))
+		y2 = C->rows;
+
+	for (size_t i = 0; i < hdr.lines; i++){
 		if (buf_sz < sizeof(struct tui_raster_line))
 			return -1;
 
@@ -473,10 +510,13 @@ int tui_tpack_unpack(struct tui_context* C,
 			buf += raster_cell_sz;
 			buf_sz -= raster_cell_sz;
 
-/* just write cell into C */
+/* just write cell into C if it is within the clipping region */
+			if (line.start_line < y2 && i < x2)
+				C->front[line.start_line * C->cols + i] = cell;
 		}
 	}
 
+	C->dirty = true;
 	return 1;
 }
 
@@ -489,18 +529,15 @@ int tui_screen_refresh(struct tui_context* tui)
  * the front buffer with new glyphs. */
 	tui->age = tsm_screen_draw(tui->screen, tsm_draw_callback, tui);
 
-	if (arcan_shmif_signalstatus(&tui->acon) > 0){
+	if (arcan_shmif_signalstatus(&tui->acon) != 0){
 		errno = EAGAIN;
 		return -1;
 	}
 
-	uint8_t* rbuf;
-	size_t rbuf_sz;
 	int rv = tui_screen_tpack(tui,
-		(struct tpack_gen_opts){.synch = true}, &rbuf, &rbuf_sz);
+		(struct tpack_gen_opts){.synch = true}, tui->acon.vidb, tui->acon.vbufsize);
 	tui->dirty = DIRTY_NONE;
 
-/* if we raster locally or server- side is determined by the rbuf_fwd flag */
 	if (rv){
 		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 /* last offset feedback buffer can be read here for kernel offset / lookup */

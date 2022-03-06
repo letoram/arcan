@@ -171,8 +171,19 @@ struct tpack_gen_opts {
 	bool back;
 };
 
-int tui_screen_tpack(struct tui_context* tui,
-	struct tpack_gen_opts opts, uint8_t** rbuf, size_t* rbuf_sz);
+size_t tui_screen_tpack_sz(struct tui_context*);
+
+size_t tui_screen_tpack(struct tui_context* tui,
+	struct tpack_gen_opts opts, uint8_t* rbuf, size_t rbuf_sz);
+
+/* unpack a previously provided tpack buffer unto a tui context,
+ *
+ * optionally as a clipped subregion. If [w | h] is set to 0 and the size
+ * of the tpack content does not match that of the [tui] context, it will
+ * be resized to match.
+ */
+int tui_tpack_unpack(struct tui_context* tui,
+	uint8_t* buf, size_t buf_sz, size_t x, size_t y, size_t w, size_t h);
 
 /* ========================================================================== */
 /*                  DISPATCH  (tui_dispatch.c) related code                   */

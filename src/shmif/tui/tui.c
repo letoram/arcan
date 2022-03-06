@@ -1385,3 +1385,53 @@ void arcan_tui_content_size(struct tui_context* c,
 	c->sbstat.dirty = true;
 	c->sbstat.hint = ev;
 }
+
+bool arcan_tui_tpack(struct tui_context* tui, uint8_t** rbuf, size_t* rbuf_sz)
+{
+	if (!rbuf || !rbuf_sz)
+		return false;
+
+	size_t cap = tui_screen_tpack_sz(tui);
+	*rbuf = malloc(cap);
+	if (!*rbuf)
+		return false;
+
+	*rbuf_sz = tui_screen_tpack(tui,
+		(struct tpack_gen_opts){.full = true}, *rbuf, cap);
+
+	return true;
+}
+
+bool arcan_tui_tunpack(struct tui_context* tui,
+	uint8_t* buf, size_t buf_sz,  size_t x, size_t y, size_t w, size_t h)
+{
+	return tui_tpack_unpack(tui, buf, buf_sz, x, y, w, h) >= 0;
+}
+
+void arcan_tui_screencopy(
+	struct tui_context* src, struct tui_context* dst,
+	size_t s_x1, size_t s_y1,
+	size_t s_x2, size_t s_y2,
+	size_t d_x1, size_t d_y1
+)
+{
+	if (!src || !dst || s_x1 > s_x2 || s_y1 > s_y2)
+		return;
+
+	size_t d_x2 = dst->cols;
+	size_t d_y2 = dst->rows;
+	if (s_x2 > src->cols)
+		s_x2 = src->cols;
+
+	if (s_y2 > src->rows)
+		s_y2 = src->rows;
+
+	for (size_t cy = s_y1, dy = d_y1; cy < s_y2, dy < d_y2; cy++, dy++){
+		for (size_t cx = s_x1, dx = d_x1; cx < s_x2, dx < d_x2; cx++, dx++){
+			struct tui_cell data = src->front[cy * src->rows + cx];
+			dst->front[dy * dst->rows + dx] = data;
+		}
+	}
+
+	dst->dirty = true;
+}

@@ -902,7 +902,7 @@ void arcan_tui_eraseattr_region(struct tui_context*, size_t x1,
 void arcan_tui_screencopy(
 	struct tui_context* src, struct tui_context* dst,
 	size_t s_x1, size_t s_y1, size_t s_x2, size_t s_y2,
-	size_t d_x1, size_t d_y1, size_t d_x2, size_t d_y2
+	size_t x, size_t y
 );
 
 /* render the front buffer to a serializable lineformat.
@@ -912,7 +912,7 @@ bool arcan_tui_tpack(struct tui_context* tui, uint8_t** rbuf, size_t* rbuf_sz);
 /* unpack [buf] into a destination region in [tui], clipping to
  * the defined x,y,x+w,y+h region */
 bool arcan_tui_tunpack(struct tui_context* tui,
-	size_t x, size_t y, size_t w, size_t h, uint8_t* buf, size_t buf_sz);
+	uint8_t* buf, size_t buf_sz, size_t x, size_t y, size_t w, size_t h);
 
 /*
  * helpers that match erase_region + invalidate + cursporpos
@@ -1333,10 +1333,9 @@ typedef size_t (* PTUIUCS4UTF8_S)(uint32_t, char dst[static 5]);
 typedef ssize_t (* PTUIUTF8UCS4)(const char dst[static 4], uint32_t);
 typedef void (* PTUICONTENTSIZE)(struct tui_context*, size_t, size_t, size_t, size_t);
 typedef bool (* PTUITPACK)(struct tui_context*, uint8_t**, size_t*);
-typedef bool (* PTUITUNPACK)(struct tui_context*, size_t, size_t, size_t, size_t, uint8_t*, size_t);
+typedef bool (* PTUITUNPACK)(struct tui_context*, uint8_t*, size_t, size_t, size_t, size_t, size_t);
 typedef void (* PTUISCREENCOPY)(
-	struct tui_context*, struct tui_context*,
-	size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+	struct tui_context*, struct tui_context*, size_t, size_t, size_t, size_t, size_t, size_t);
 
 static PTUIHANDOVER arcan_tui_handover;
 static PTUISETUP arcan_tui_setup;
@@ -1417,7 +1416,7 @@ static PTUIUCS4UTF8_S arcan_tui_ucs4utf8_s;
 static PTUIUTF8UCS4 arcan_tui_utf8ucs4;
 static PTUICONTENTSIZE arcan_tui_content_size;
 static PTUITPACK arcan_tui_tpack;
-static PTUITUNPACK arcan_tui_tupack;
+static PTUITUNPACK arcan_tui_tunpack;
 static PTUISCREENCOPY arcan_tui_screencopy;
 
 /* dynamic loading function */
@@ -1504,7 +1503,7 @@ M(PTUIUTF8UCS4, arcan_tui_utf8ucs4);
 M(PTUIPROGRESS, arcan_tui_progress);
 M(PTUICONTENTSIZE, arcan_tui_content_size);
 M(PTUITPACK, arcan_tui_tpack);
-M(PTUITUNPACK, arcan_tui_tupack);
+M(PTUITUNPACK, arcan_tui_tunpack);
 M(PTUISCREENCOPY, arcan_tui_screencopy);
 
 #undef M
