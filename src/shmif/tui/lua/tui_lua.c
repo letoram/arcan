@@ -120,7 +120,20 @@ static const char* match_udata(lua_State* L, ssize_t pos){
 	return NULL;
 }
 
+__attribute__((used))
+static void dump_traceback(lua_State* L)
+{
+	lua_getglobal(L, "debug");
+	lua_getfield(L, -1, "traceback");
+	lua_call(L, 0, 1);
+	const char* trace = lua_tostring(L, -1);
+	printf("%s\n", trace);
+	lua_pop(L, 1);
+}
+
 static void register_tuimeta(lua_State* L);
+
+__attribute__((used))
 static void dump_stack(lua_State* ctx)
 {
 	int top = lua_gettop(ctx);
@@ -1555,9 +1568,6 @@ static int process(lua_State* L)
 	TUI_UDATA;
 
 	int timeout = luaL_optnumber(L, 2, -1);
-
-	if (0)
-		dump_stack(L);
 
 	struct tui_process_res res = arcan_tui_process(
 		ib->subs, ib->n_subs+1, nbio_jobs.fdin, nbio_jobs.fdin_used, timeout);

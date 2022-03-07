@@ -128,11 +128,16 @@ struct tui_cell arcan_tui_getxy(
 void arcan_tui_request_subwnd(
 	struct tui_context* tui, unsigned type, uint16_t id)
 {
-	if (!tui || !tui->acon.addr)
+	arcan_tui_request_subwnd_ext(tui,
+		type, id, (struct tui_subwnd_req){0}, sizeof(struct tui_subwnd_req));
+}
+
+void arcan_tui_request_subwnd_ext(struct tui_context* T,
+	unsigned type, uint16_t id, struct tui_subwnd_req req, size_t req_sz)
+{
+	if (!T || !T->acon.addr)
 		return;
 
-/* only allow a certain subset so shmif- doesn't bleed into this library more
- * than it already does */
 	switch (type){
 	case TUI_WND_TUI:
 		type = SEGID_TUI;
@@ -150,31 +155,6 @@ void arcan_tui_request_subwnd(
 		return;
 	}
 
-	arcan_shmif_enqueue(&tui->acon, &(struct arcan_event){
-		.ext.kind = ARCAN_EVENT(SEGREQ),
-		.ext.segreq.kind = type,
-		.ext.segreq.id = (uint32_t) id | (1 << 31),
-		.ext.segreq.width = tui->acon.w,
-		.ext.segreq.height = tui->acon.h
-	});
-}
-
-void arcan_tui_request_subwnd_ext(struct tui_context* T,
-	unsigned type, uint16_t id, struct tui_subwnd_req req, size_t req_sz)
-{
-	if (!T || !T->acon.addr)
-		return;
-
-	switch (type){
-	case TUI_WND_TUI:
-	case TUI_WND_POPUP:
-	case TUI_WND_DEBUG:
-	case TUI_WND_HANDOVER:
-	break;
-	default:
-		return;
-	}
-
 	struct arcan_event ev = {
 		.ext.kind = ARCAN_EVENT(SEGREQ),
 		.ext.segreq.kind = type,
@@ -185,10 +165,11 @@ void arcan_tui_request_subwnd_ext(struct tui_context* T,
 
 /* in future revisions, go with offsetof to annotate the new fields */
 	if (req_sz == sizeof(struct tui_subwnd_req)){
-		ev.ext.segreq.width = req.cols * T->cell_w;
-		ev.ext.segreq.height = req.rows * T->cell_h;
+		if (req.cols)
+			ev.ext.segreq.width = req.cols * T->cell_w;
+		if (req.rows)
+			ev.ext.segreq.height = req.rows * T->cell_h;
 		ev.ext.segreq.dir = req.hint;
-		return;
 	}
 
 	arcan_shmif_enqueue(&T->acon, &ev);
