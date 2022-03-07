@@ -1234,6 +1234,31 @@ ltui_inherit(lua_State* L, arcan_tui_conn* conn)
 	return meta->tui;
 }
 
+/* plug any holes by moving left, then reducing n_subs */
+static void compact(struct tui_lmeta* ib)
+{
+	for (size_t i = 1; i < ib->n_subs+1;){
+		if (ib->subs[i]){
+			i++;
+			continue;
+		}
+
+		memmove(
+			&ib->submeta[i  ],
+			&ib->submeta[i+1],
+			sizeof(void*) * (SEGMENT_LIMIT - i)
+		);
+
+		memmove(
+			&ib->subs[i  ],
+			&ib->subs[i+1],
+			sizeof(void*) * (SEGMENT_LIMIT - i)
+		);
+
+		ib->n_subs--;
+	}
+}
+
 static int tuiclose(lua_State* L)
 {
 	TUI_UDATA;
@@ -1248,19 +1273,11 @@ static int tuiclose(lua_State* L)
 	if (ib->parent){
 		for (size_t i = 1; i < ib->parent->n_subs+1; i++){
 			if (ib->parent->submeta[i] == ib){
-				memmove(
-					&ib->parent->submeta[i  ],
-					&ib->parent->submeta[i+1],
-					sizeof(void*) * (SEGMENT_LIMIT - i)
-				);
-				memmove(
-					&ib->parent->subs[i  ],
-					&ib->parent->subs[i+1],
-					sizeof(void*) * (SEGMENT_LIMIT - i)
-				);
-				ib->parent->n_subs--;
+				ib->parent->submeta[i] = NULL;
+				ib->parent->subs[i] = NULL;
 				break;
 			}
+			compact(ib->parent);
 		}
 	}
 
@@ -1475,6 +1492,21 @@ static void run_bitmap(lua_State* L, int map)
 	}
 }
 
+static void run_sub_bitmap(struct tui_lmeta* ib, int map)
+{
+/* note that the first 'sub' is actually the primary and ignored here */
+	int count = 0;
+	while (ffs(map) && count < 32){
+		int pos = ffs(map) - 1;
+		map &= ~(1 << pos);
+		if (pos){
+			ib->subs[pos] = NULL;
+			ib->submeta[pos] = NULL;
+		}
+	}
+	compact(ib);
+}
+
 static void run_outbound_pollset(lua_State* L)
 {
 	intptr_t set[32];
@@ -1568,9 +1600,27 @@ static int process(lua_State* L)
 	TUI_UDATA;
 
 	int timeout = luaL_optnumber(L, 2, -1);
+	struct tui_process_res res;
 
-	struct tui_process_res res = arcan_tui_process(
+repoll:
+	res = arcan_tui_process(
 		ib->subs, ib->n_subs+1, nbio_jobs.fdin, nbio_jobs.fdin_used, timeout);
+
+/* if there are bad contexts, the descriptors won't get their time */
+	if (res.errc == TUI_ERRC_BAD_CTX){
+		if (ib->n_subs){
+			run_sub_bitmap(ib, res.bad);
+			compact(ib);
+		}
+
+		if (1 & res.bad){
+			lua_pushboolean(L, false);
+			lua_pushstring(L, "primary context terminated");
+			return 2;
+		}
+
+		goto repoll;
+	}
 
 /* Only care about bad vs ok, nbio will do the rest. For both inbound and
  * outbound job triggers we need to first cache the tags on the stack, then

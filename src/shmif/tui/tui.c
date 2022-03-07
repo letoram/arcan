@@ -341,7 +341,7 @@ struct tui_process_res arcan_tui_process(
 	}
 
 	if (res.bad){
-		res.errc = TUI_ERRC_BAD_ARG;
+		res.errc = TUI_ERRC_BAD_CTX;
 		return res;
 	}
 
@@ -400,6 +400,8 @@ struct tui_process_res arcan_tui_process(
 			else
 				res.bad |= 1 << (i - fdset_ofs);
 		}
+	if (res.bad)
+		res.errc = TUI_ERRC_BAD_FD;
 
 	return res;
 }
