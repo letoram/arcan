@@ -938,9 +938,119 @@ function(msg, simple)
 	return tokout, state.error, state.error_ofs, tokens
 end
 
+local tracer
+
+local function Indent(N)
+  return string.rep(" ", N)
+end
+
+local function GetInfo(StackLvl, WithLineNum)
+-- StackLvl is reckoned from the caller's level:
+  StackLvl = StackLvl + 1
+  local Ret
+  local Info = debug.getinfo(StackLvl, "nlS")
+  if Info then
+    local Name, What, LineNum, ShortSrc =
+    Info.name, Info.what, Info.currentline, Info.short_src
+    if What == "tail" then
+      Ret = "overwritten stack frame"
+    else
+      if not Name then
+        if What == "main" then
+          Name = "chunk"
+        else
+          Name = What .. "function"
+        end
+      end
+
+      if Name == "C function" then
+        Ret = Name
+      else
+        -- Only use real line numbers:
+        LineNum = LineNum >= 1 and LineNum
+        if WithLineNum and LineNum then
+          Ret = Name .. " (" .. ShortSrc .. ", line " .. LineNum .. ")"
+        else
+          Ret = Name .. " (" .. ShortSrc .. ")"
+        end
+      end
+    end
+  else
+    -- Below the bottom of the stack:
+    Ret = "nowhere"
+  end
+  return Ret
+end
+
+-- The hook function set by Trace:
+local function Hook(tracer, Event)
+  -- Info for the running function being called or returned from:
+  local Running = GetInfo(2)
+  -- Info for the function that called that function:
+  local Caller = GetInfo(3, true)
+
+  if not string.find(Running..Caller, "modules") then
+    if Event == "call" then
+			if Running == "Untrace ([string \"lash\"])" or Running == 'sethook ([C])' then
+			else
+				tracer(string.format("%s %s <- %s", Depth, Indent(Depth), Running, Caller));
+			end
+			Depth = Depth + 1
+    else
+      local RetType
+--(uncomment to trace returns)
+--io.stderr:write(Indent(Depth), RetType, Running, " to ", Caller,"\n")
+--     if Event == "return" then
+--       RetType = "returning from "
+--    elseif Event == "tail return" then
+--        RetType = "tail-returning from "
+--     end
+			Depth = Depth - 1
+    end
+	end
+end
+
+function lash.Trace(scope, reportfn)
+	tracer = reportfn and reportfn or print;
+
+	if type(scope) == "function" then
+		Trace(nil, reportfn)
+			scope()
+		Untrace()
+		return;
+	end
+
+  if not Depth then
+    -- Before setting the hook, make an iterator that calls
+    -- debug.getinfo repeatedly in search of the bottom of the stack:
+    Depth = 1
+    for Info in
+      function()
+      return debug.getinfo(Depth, "n")
+      end
+    do
+      Depth = Depth + 1
+    end
+
+    -- Don't count the iterator itself or the empty frame counted at
+    -- the end of the loop:
+    Depth = Depth - 2
+    debug.sethook(function(...) return Hook(tracer, ...) end, "cr")
+  else
+    -- Do nothing if Trace() is called twice.
+  end
+end
+
+function lash.Untrace()
+	debug.sethook()
+	Depth = nil
+end
+
 init()
 while lash.root:process() do
 	process_jobs(lash.root)
 	readline:set_prompt(get_prompt(lash.root))
-	lash.root:refresh()
+	if lash.dirty then
+		lash.root:refresh()
+	end
 end
