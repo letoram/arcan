@@ -199,6 +199,10 @@ bool tui_push_message(struct arcan_shmif_cont* tui,
 void tui_event_poll(struct tui_context* tui);
 
 /*
+ * Process an event as if it had originated from the display server connection
+ */
+void tui_event_inject(struct tui_context* tui, arcan_event* ev);
+/*
  * necessary on setup and when having been 'reset'
  */
 void tui_queue_requests(struct tui_context* tui, bool clipboard, bool ident);

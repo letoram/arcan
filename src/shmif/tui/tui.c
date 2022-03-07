@@ -445,6 +445,24 @@ void arcan_tui_wndhint(struct tui_context* C,
 	if (!C)
 		return;
 
+/* special case, detached window so inject as displayhint */
+	if (!C->acon.addr){
+		C->last_constraints = cons;
+		int cols = cons.max_cols ? cons.max_cols : cons.min_cols;
+		int rows = cons.max_rows ? cons.max_rows : cons.min_rows;
+
+		if (cols){
+			C->acon.w = C->cell_w * cols;
+		}
+
+		if (rows){
+			C->acon.h = C->cell_h * rows;
+		}
+
+		tui_screen_resized(C);
+		return;
+	}
+
 /* first send any sizing constraints */
 	if (cons.max_rows || cons.min_rows || cons.max_cols || cons.min_cols){
 		struct arcan_event content = (struct arcan_event){
@@ -1299,40 +1317,24 @@ void arcan_tui_message(
 	tui_push_message(&c->acon, &outev, msg, len);
 }
 
-pid_t arcan_tui_handover(struct tui_context* c,
+pid_t arcan_tui_handover(
+	struct tui_context* c,
 	arcan_tui_conn* conn,
-	struct tui_constraints* constraints,
 	const char* path, char* const argv[], char* const env[],
-	int detach)
+	int flags)
 {
-/* we tag the connection so we can pair the subwindow handler with the
- * event dispatch, as the handover semantics are different from window
- * allocation controls */
-	if ((uintptr_t)(void*)conn != (uintptr_t)-1 || !c || !c->got_pending){
-		return -1;
-	}
-
-/* this should be treated as a VIEWPORT+DISPLAYHINT event that gets
- * injected into the child, though we have to pass it as an ENV or so
- * that steps around the preroll synch.
- *
- * before something like that is added, the other option is to simply
- *
- *
- * if (constraints){
- * struct arcan_event viewport = (struct arcan_event){
-			.category = EVENT_EXTERNAL,
-			.ext.kind = ARCAN_EVENT(VIEWPORT),
-			.ext.viewport = {
-				.x = cons.anch_col * C->cell_w,
-				.y = cons.anch_row * C->cell_h,
-			},
-		};
-	}
- */
-
 	return arcan_shmif_handover_exec(
-		&c->acon, c->pending_wnd, path, argv, env, detach);
+		&c->acon, c->pending_wnd, path, argv, env, flags);
+}
+
+pid_t arcan_tui_handover_pipe(
+	struct tui_context* c,
+	arcan_tui_conn* conn,
+	const char* path, char* const argv[], char* const env[],
+	int* fds[], size_t fds_sz)
+{
+	return arcan_shmif_handover_exec_pipe(
+		&c->acon, c->pending_wnd, path, argv, env, 0, fds, fds_sz);
 }
 
 void arcan_tui_content_size(struct tui_context* c,

@@ -344,10 +344,10 @@ void arcan_shmif_last_words(struct arcan_shmif_cont* cont, const char* msg);
  * handover relevant variables.
  *
  * [detach] is treated as a bitmap, where the bits set:
- *   1: detach process (double-fork)
- *   2: stdin (becomes /dev/null or similar)
- *   3: stdout (becomes /dev/null or similar)
- *   4: stderr (becomes /dev/null or similar)
+ *   1 << 0: detach process (double-fork)
+ *   1 << 1: stdin (becomes /dev/null or similar)
+ *   1 << 2: stdout (becomes /dev/null or similar)
+ *   1 << 3: stderr (becomes /dev/null or similar)
  * Other descriptors follow normal system specific inheritance semantics.
  *
  * The function returns the pid of the new process, or -1 in the event
@@ -364,6 +364,17 @@ pid_t arcan_shmif_handover_exec(
 	struct arcan_shmif_cont* cont, struct arcan_event ev,
 	const char* path, char* const argv[], char* const env[],
 	int detach);
+
+/*
+ * Similar to shmif_handover_exec, but one where detach has been swapped out
+ * for stdio creation except for processes. Provide pointers to descriptor
+ * destinations, populate with invalid descriptors for pipe creation, valid
+ * descriptors for forwarding, or NULL for detachment.
+ */
+pid_t arcan_shmif_handover_exec_pipe(
+	struct arcan_shmif_cont* cont, struct arcan_event ev,
+	const char* path, char* const argv[], char* const env[],
+	int detach, int* fds[], size_t fds_sz);
 
 /*
  * Mark, for the current frame (this is reset each signal on sigvid) buffer

@@ -242,6 +242,64 @@ static bool on_label(struct tui_context* T, const char* label, bool act, void* t
 	return false;
 }
 
+static bool intblbool(lua_State* L, int ind, const char* field)
+{
+	lua_getfield(L, ind, field);
+	bool rv = lua_toboolean(L, -1);
+	lua_pop(L, 1);
+	return rv;
+}
+
+static int intblint(lua_State* L, int ind, const char* field, bool* ok)
+{
+	lua_getfield(L, ind, field);
+	*ok = lua_isnumber(L, -1);
+	int rv = lua_tointeger(L, -1);
+	lua_pop(L, 1);
+	return rv;
+}
+
+static struct tui_constraints get_wndhint(lua_State* L, int ind)
+{
+	struct tui_constraints res =
+	{
+		.anch_row = -1,
+		.anch_col = -1,
+		.max_rows = -1,
+		.min_rows = -1,
+		.hide = false
+	};
+
+	bool ok;
+	int num = intblint(L, ind, "anchor_row", &ok);
+	if (ok)
+		res.anch_row = num;
+
+	num = intblint(L, ind, "anchor_col", &ok);
+	if (ok)
+		res.anch_col = num;
+
+	num = intblint(L, ind, "max_rows", &ok);
+	if (ok)
+		res.max_rows = num;
+
+	num = intblint(L, ind, "min_rows", &ok);
+	if (ok)
+		res.min_rows = num;
+
+	num = intblint(L, ind, "max_cols", &ok);
+	if (ok)
+		res.max_cols = num;
+
+	num = intblint(L, ind, "min_cols", &ok);
+	if (ok)
+		res.min_cols = num;
+
+	res.hide = intblbool(L, ind, "hidden");
+
+	return res;
+}
+
 static bool on_u8(struct tui_context* T, const char* u8, size_t len, void* t)
 {
 	SETUP_HREF("utf8", false);
@@ -412,29 +470,68 @@ static int tui_phandover(lua_State* L)
 		luaL_error(L, "phandover(...) - only permitted inside subwindow closure");
 	}
 
-/* phandover(wnd, path, argv, [env], [cons]) -> window */
-
-/* 1. window constraints? (options)
- * 2. path, argv, env, flags - TUI_DETACH_ ...
- * 3./
- *       arcan_tui_handover_exec(T, subwnd,
- *       constraints (rows, cols, anch_row, anch_col, ...)
- *       	path, argv, env, flags)
- *       TUI_DETACH_ [process, stdin, stdout, stderr] -> pid */
-
+/* There is a mechanism missing here still for more dynamic controls
+ * of a tui/shmif child. Several possible ways, all of them painful:
+ *
+ *    1. pack events over the SOCKIN_FD (complicates shmif)
+ *
+ *    2. add a tui- only channel for injecting events
+ *       (this duplicates work)
+ *
+ *    3. shmif-server proxying
+ *
+ *    4. Have a 'relay' mode where handover-exec allocated windows
+ *       can have events forwarded to them by the server. Basically:
+ *
+ *        a. EVENT_EXTERNAL_RELAYDST (token)
+ *           events to 'inject' (TARGET_COMMAND_..., TARGET_IO)
+ *
+ * 4. Is probably the most interesting but it still forces us to expose several
+ * shmif- parts all of a sudden. Thus it should probably be added on a lower
+ * level, then provide methods for sending events to other windows. It would
+ * also not work for handover windows that migrate to other servers.
+ *
+ * The relevant subset of events should be rather small though, mainly:
+ *
+ *   1. keyboard/analog/mouse input.
+ *   2. reset-state.
+ *   3. state-serialization.
+ *   4. bchunk.
+ */
 	char** env = NULL;
 	char** argv = NULL;
+
+/* path */
 	const char* path = luaL_checkstring(L, 2);
 
-	ib->subwnd_handover =
-		arcan_tui_handover(
-			ib->tui, ib->in_subwnd,
-			NULL, /* constraints */
-			path,
-			argv,
-			env,
-			0
-		);
+/* mode */
+	const char* mode = luaL_checkstring(L, 3);
+
+/* argv */
+	if (lua_type(L, 3) == LUA_TTABLE){
+		argv = tui_popen_tbltoargv(L, 4);
+	}
+
+/* env */
+	if (lua_type(L, 4) == LUA_TTABLE){
+		argv = tui_popen_tbltoenv(L, 5);
+	}
+
+	int fds[3] = {-1, -1, -1};
+	int* fds_ptr[3] = {&fds[0], &fds[1], &fds[2]};
+	if (!strchr(mode, (int)'r'))
+		fds_ptr[1] = NULL;
+
+	if (!strchr(mode, (int)'w'))
+		fds_ptr[0] = NULL;
+
+	if (!strchr(mode, (int)'e'))
+		fds_ptr[2] = NULL;
+
+	pid_t pid = arcan_tui_handover_pipe(
+			ib->tui, ib->in_subwnd, path, argv, env, fds_ptr, 3);
+
+	ib->subwnd_handover = pid != -1;
 
 	if (env){
 		char** cur = env;
@@ -451,7 +548,17 @@ static int tui_phandover(lua_State* L)
 	}
 
 	ib->in_subwnd = NULL;
-	return 0;
+
+	if (-1 == pid)
+		return 0;
+
+/* create proxy-window and return along with requested stdio */
+	alt_nbio_import(L, fds[0], O_WRONLY, NULL);
+	alt_nbio_import(L, fds[1], O_RDONLY, NULL);
+	alt_nbio_import(L, fds[2], O_RDONLY, NULL);
+	lua_pushnumber(L, pid);
+
+	return 4;
 }
 
 static bool on_subwindow(struct tui_context* T,
@@ -776,23 +883,6 @@ static int on_cli_command(struct tui_context* T,
  * items refer to possible additional items to [argv].
  */
 	return TUI_CLI_INVALID;
-}
-
-static bool intblbool(lua_State* L, int ind, const char* field)
-{
-	lua_getfield(L, ind, field);
-	bool rv = lua_toboolean(L, -1);
-	lua_pop(L, 1);
-	return rv;
-}
-
-static int intblint(lua_State* L, int ind, const char* field, bool* ok)
-{
-	lua_getfield(L, ind, field);
-	*ok = lua_isnumber(L, -1);
-	int rv = lua_tointeger(L, -1);
-	lua_pop(L, 1);
-	return rv;
 }
 
 static void add_attr_tbl(lua_State* L, struct tui_screen_attr attr)

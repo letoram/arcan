@@ -325,7 +325,11 @@ struct tui_context* arcan_tui_setup(
 	memcpy(&res->handlers, cbs, cbs_sz);
 
 	set_builtin_palette(res);
-	apply_arg(res, arcan_shmif_args(con));
+
+/* con can be bad (NULL) or reserved (-1) and in those cases we should not
+ * try to extract the default set of arguments because there aren't any. */
+	if (con && (uintptr_t)-1 != (uintptr_t) con)
+		apply_arg(res, arcan_shmif_args(con));
 
 /* tui_fontmgmt is also responsible for building the raster context */
 /* if we have a parent, we should derive settings etc. from there.
@@ -371,7 +375,7 @@ struct tui_context* arcan_tui_setup(
 /* TEMPORARY: when deprecating tsm any scrollback become the widgets problem */
 	tsm_screen_set_max_sb(res->screen, 1000);
 
-	if (con)
+	if (con && (uintptr_t)-1 != (uintptr_t) con)
 		late_bind(con, res, true);
 
 	if (parent)
