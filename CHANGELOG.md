@@ -19,6 +19,7 @@
 
 ## Shmif
  * add EXTERNAL\_NETSTATE for fsrv\_net to convey known-set changes
+ * add handover\_exec\_pipe mode call with better fd inheritance semantics
 
 ## Tui
  * Readline: added history navigation inputs

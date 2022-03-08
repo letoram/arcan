@@ -273,7 +273,7 @@ static bool on_subwindow(struct tui_context* T,
 /* another option here is that we can using pending streams to inject as
  * stdin/stdout/stderr */
 			setup_cmd_mode(cmd, &bin, &argv, &env, &flags);
-			pid_t pid = arcan_tui_handover(T, conn, NULL, bin, argv, env, flags);
+			pid_t pid = arcan_tui_handover(T, conn, bin, argv, env, flags);
 
 			if (cli_state.in_debug){
 				char debugspawn[64];

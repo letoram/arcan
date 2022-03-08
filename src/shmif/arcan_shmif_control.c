@@ -3336,10 +3336,10 @@ bool arcan_shmif_mousestate(
 		return false;
 }
 
-pid_t arcan_shmif_handover_exec(
+pid_t arcan_shmif_handover_exec_pipe(
 	struct arcan_shmif_cont* cont, struct arcan_event ev,
 	const char* path, char* const argv[], char* const env[],
-	int detach)
+	int detach, int* fds[], size_t fdset_sz)
 {
 	if (!cont || !cont->addr || ev.category != EVENT_TARGET || ev.tgt.kind
 		!= TARGET_COMMAND_NEWSEGMENT || ev.tgt.ioevs[2].iv != SEGID_HANDOVER)
@@ -3365,11 +3365,46 @@ pid_t arcan_shmif_handover_exec(
 	if (-1 == dup_fd)
 		return -1;
 
-	pid_t res = shmif_platform_execve(
-		dup_fd, ev.tgt.message, path, argv, env, detach, NULL);
+	pid_t res =
+		shmif_platform_execve(
+			dup_fd, ev.tgt.message,
+			path, argv, env,
+			detach, fds, fdset_sz, NULL
+		);
 	close(dup_fd);
 
 	return res;
+}
+
+pid_t arcan_shmif_handover_exec(
+	struct arcan_shmif_cont* cont, struct arcan_event ev,
+	const char* path, char* const argv[], char* const env[],
+	int detach)
+{
+	int in = STDIN_FILENO;
+	int out = STDOUT_FILENO;
+	int err = STDERR_FILENO;
+
+	int* fds[3] = {&in, &out, &err};
+
+	if (detach & 2){
+		detach &= ~(int)2;
+		fds[0] = NULL;
+	}
+
+	if (detach & 4){
+		detach &= ~(int)4;
+		fds[1] = NULL;
+	}
+
+	if (detach & 8){
+		detach &= ~(int)8;
+		fds[2] = NULL;
+	}
+
+	return
+		arcan_shmif_handover_exec_pipe(
+			cont, ev, path, argv, env, detach, fds, 3);
 }
 
 int arcan_shmif_deadline(

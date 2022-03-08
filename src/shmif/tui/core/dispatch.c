@@ -529,6 +529,16 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 	}
 }
 
+void tui_event_inject(struct tui_context* tui, arcan_event* ev)
+{
+	if (ev->category == EVENT_IO){
+		tui_input_event(tui, &(ev->io), ev->io.label);
+	}
+	else if (ev->category == EVENT_TARGET){
+		target_event(tui, ev);
+	}
+}
+
 void tui_event_poll(struct tui_context* tui)
 {
 	arcan_event ev;

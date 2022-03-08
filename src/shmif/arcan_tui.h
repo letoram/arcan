@@ -202,7 +202,6 @@ struct tui_constraints {
 	int anch_row, anch_col;
 	int max_rows, max_cols;
 	int min_rows, min_cols;
-	bool embed;
 	bool hide;
 };
 
@@ -1031,8 +1030,9 @@ void arcan_tui_reset_flags(struct tui_context*, int tui_flags);
  *        process environments.
  *
  * [flags] is a bitmap of resources handover controls.
- *          TUI_DETACH_PROCESS | TUI_DETACH_STDIN | TUI_DETACH_STDOUT |
- *          TUI_DETACH_STDERR
+ *          TUI_DETACH_PROCESS |
+ *          TUI_DETACH_(STDIN, STDOUT, STDERR) : will map stdio to null
+ *          TUI_BIND_(STDIN, STDOUT, STDERR) : will allocate pipes and return in res
  *
  * DETACH_(STDIN/STDOUT/STDERR) will make sure that these are not inherited
  * and replaced with /dev/null or something with a similar effect.
@@ -1041,12 +1041,42 @@ void arcan_tui_reset_flags(struct tui_context*, int tui_flags);
  * semantics) otherwise the returned pid_t will need to be handled like a
  * normal child (using wait() class of functions or a SIGCHLD handler).
  *
- * Will return -1 on failure to spawn,exec or hand-over.
+ * BIND_(STDIN/STDOUT/STDERR) will allocate corresponding pipes and inject
+ * into the child and return handles to the corresponding parent- ends.
+ *
+ * The contents of the result will depend on the flags set.
+ *
+ * Detach / bind are mutually exclusive per slot, with bind behaviour taking
+ * precedence in the event of a conflict.
  */
-pid_t arcan_tui_handover(struct tui_context*, arcan_tui_conn*,
-	struct tui_constraints* constraints,
-	const char* path, char* const argv[], char* const env[],
-	int flags);
+pid_t	arcan_tui_handover(
+		struct tui_context*, arcan_tui_conn*,
+		const char* path, char* const argv[], char* const env[],
+		int flags
+	);
+
+/* Similar to handover but with additional file-descriptor inheritance.
+ *
+ * The first three [in, out, err] have special semantics:
+ *
+ * if they are set to [NULL] they will be replaced by something equivalent
+ * to /dev/null in the new process.
+ *
+ * if they are set to [-1], corresponding pipes will be allocated and
+ * returned in the corresponding slots (if possible without running out
+ * of descriptors in the parent process).
+ *
+ * if they are set to [>2], the values will be mapped into the
+ * corresponding slot. (dup2 like behaviour).
+ *
+ * For the other descriptors, they will be passed into the child as is
+ * (inheriting the current descriptor positions)
+ */
+pid_t arcan_tui_handover_pipe(
+		struct tui_context*, arcan_tui_conn*,
+		const char* path, char* const argv[], char* const env[],
+		int* fds[], size_t fds_sz
+	);
 
 /*
  * Hint that certain regions have scrolled:
@@ -1326,8 +1356,10 @@ typedef char* (* PTUISTATEDESCR)(struct tui_context*);
 typedef size_t (* PTUIPRINTF)(struct tui_context*, struct tui_screen_attr*, const char*, ...);
 typedef void (* PTUIBGCOPY)(struct tui_context*, int fdin, int fdout, int sig, int fl);
 typedef size_t (* PTUIGETHANDLES)(struct tui_context**, size_t, int[], size_t);
-typedef void (* PTUIHANDOVER)(struct tui_context*, arcan_tui_conn*,
+typedef pid_t (* PTUIHANDOVER)(struct tui_context*, arcan_tui_conn*,
 	struct tui_constraints*, const char*, char* const[], char* const[], int);
+typedef pid_t (* PTUIHANDOVERPIPE)(struct tui_context*, arcan_tui_conn*,
+	struct tui_constraints*, const char*, char* const[], char* const[], int**, size_t);
 typedef size_t (* PTUIUCS4UTF8)(uint32_t, char dst[static 4]);
 typedef size_t (* PTUIUCS4UTF8_S)(uint32_t, char dst[static 5]);
 typedef ssize_t (* PTUIUTF8UCS4)(const char dst[static 4], uint32_t);
@@ -1338,6 +1370,7 @@ typedef void (* PTUISCREENCOPY)(
 	struct tui_context*, struct tui_context*, size_t, size_t, size_t, size_t, size_t, size_t);
 
 static PTUIHANDOVER arcan_tui_handover;
+static PTUIHANDOVERPIPE arcan_tui_handover_pipe;
 static PTUISETUP arcan_tui_setup;
 static PTUIBIND arcan_tui_bind;
 static PTUIDESTROY arcan_tui_destroy;
@@ -1424,6 +1457,7 @@ static bool arcan_tui_dynload(void*(*lookup)(void*, const char*), void* tag)
 {
 #define M(TYPE, SYM) if (! (SYM = (TYPE) lookup(tag, #SYM)) ) return false
 M(PTUIHANDOVER,arcan_tui_handover);
+M(PTUIHANDOVERPIPE, arcan_tui_handover_pipe);
 M(PTUIDESTROY,arcan_tui_destroy);
 M(PTUISETUP,arcan_tui_setup);
 M(PTUIBIND,arcan_tui_bind);

@@ -3,13 +3,24 @@
 #include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
+#include <stdbool.h>
 
 #include "shmif_platform.h"
 
 extern char** environ;
 
+/* used for /dev/null mapping */
+static void ensure_at(int num, const char* fn)
+{
+	int fd = open(fn, O_RDWR);
+	dup2(num, fd);
+	if (fd != num)
+		close(fd);
+}
+
 pid_t shmif_platform_execve(int fd, const char* shmif_key,
-	const char* path, char* const argv[], char* const env[], int opts, char** err)
+	const char* path, char* const argv[], char* const env[],
+	int opts, int* fds[], size_t fdset_sz, char** err)
 {
 /* Prepare env even if there isn't env as we need to propagate connection
  * primitives etc. Since we don't know the inherit intent behind the exec we
@@ -77,6 +88,66 @@ pid_t shmif_platform_execve(int fd, const char* shmif_key,
 		return -1;
 	}
 
+	int stdin_src = STDIN_FILENO;
+	int stdout_src = STDOUT_FILENO;
+	int stderr_src = STDERR_FILENO;
+
+/* if custom stdin/stdout is desired, fix that now */
+	bool close_in = false;
+	bool close_out = false;
+	bool close_err = false;
+
+	if (fdset_sz > 0){
+		if (!fds[0])
+			stdin_src = -1;
+		else if (*fds[0] == -1){
+			int pin[2];
+			if (pipe(pin)){
+				*err = strdup("failed to build stdin pipe");
+				CLEAN_ENV();
+				return -1;
+			}
+			stdin_src = pin[0];
+			*fds[0] = pin[1];
+			close_in = true;
+		}
+		else stdin_src = *fds[0];
+	}
+
+	if (fdset_sz > 1){
+		if (!fds[1])
+			stdout_src = -1;
+		else if (*fds[1] == -1){
+			int pout[2];
+			if (pipe(pout)){
+				*err = strdup("failed to build stdout pipe");
+				CLEAN_ENV();
+				return -1;
+			}
+			stdout_src = pout[1];
+			*fds[1] = pout[0];
+			close_out = true;
+		}
+		else stdout_src = *fds[1];
+	}
+
+	if (fdset_sz > 2){
+		if (!fds[2])
+			stderr_src = -1;
+		else if (*fds[1] == -1){
+			int perr[2];
+			if (pipe(perr)){
+				*err = strdup("failed to build stderr pipe");
+				CLEAN_ENV();
+				return -1;
+			}
+			stderr_src = perr[1];
+			*fds[2] = perr[0];
+			close_err = true;
+		}
+		else stdout_src = *fds[1];
+	}
+
 /* null- terminate or we have an invalid address on our hands */
 	new_env[ofs] = NULL;
 
@@ -90,20 +161,56 @@ pid_t shmif_platform_execve(int fd, const char* shmif_key,
 
 /* just leverage the sparse allocation property and that process creation
  * or libc safeguards typically ensure correct stdin/stdout/stderr */
-		if (opts & 2){
-			close(STDIN_FILENO);
-			open("/dev/null", O_RDONLY);
+		if (-1 != stdin_src){
+			if (stdin_src != STDIN_FILENO){
+				dup2(stdin_src, STDIN_FILENO);
+				close(stdin_src);
+			}
+		}
+		else
+			ensure_at(STDIN_FILENO, "/dev/null");
+
+		if (-1 != stdout_src){
+			if (stdout_src != STDOUT_FILENO){
+				dup2(stdout_src, STDOUT_FILENO);
+				close(stdout_src);
+			}
+		}
+		else
+			ensure_at(STDOUT_FILENO, "/dev/null");
+
+		if (-1 != stderr_src){
+			if (stderr_src != STDERR_FILENO){
+				dup2(stderr_src, STDERR_FILENO);
+				close(stderr_src);
+			}
+		}
+		else
+			ensure_at(STDERR_FILENO, "/dev/null");
+
+/* now we are basically free to enumerate from 3 .. fd_sz and get the highest
+ * valid of that or 'fd' (shmif-socket) and close everything not in the set or
+ * beyound the highest known, as well as make sure that none in set are CLOEXEC */
+		for (size_t i = 2; i < fdset_sz; i++){
+			if (!fds[i] || -1 == *fds[i])
+				continue;
+
+			int flags = fcntl(*fds[i], F_GETFD);
+			if (-1 != flags)
+				fcntl(*fds[i], F_SETFD, flags & (~FD_CLOEXEC));
 		}
 
-		if (opts & 4){
-			close(STDOUT_FILENO);
-			open("/dev/null", O_WRONLY);
-		}
-		if (opts & 8){
-			close(STDERR_FILENO);
-			open("/dev/null", O_WRONLY);
-		}
+/* and if the caller wanted pipes created, the other end should not be kept */
+		if (close_out)
+			close(*fds[1]);
 
+		if (close_in)
+			close(*fds[0]);
+
+		if (close_err)
+			close(*fds[2]);
+
+/* double-fork if detach is desired */
 		if ((opts & 1) && (pid = fork()) != 0)
 			_exit(pid > 0 ? EXIT_SUCCESS : EXIT_FAILURE);
 

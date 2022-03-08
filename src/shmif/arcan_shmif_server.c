@@ -187,11 +187,32 @@ struct shmifsrv_client* shmifsrv_spawn_client(
 	if (statuscode)
 		*statuscode = SHMIFSRV_OK;
 
+	int in = STDIN_FILENO;
+	int out = STDOUT_FILENO;
+	int err = STDERR_FILENO;
+
+	int* fds[3] = {&in, &out, &err};
+
+	if (env.detach & 2){
+		env.detach &= ~(int)2;
+		fds[0] = NULL;
+	}
+
+	if (env.detach & 4){
+		env.detach &= ~(int)4;
+		fds[1] = NULL;
+	}
+
+	if (env.detach & 8){
+		env.detach &= ~(int)8;
+		fds[2] = NULL;
+	}
+
 /* if path is provided we switch over to build/inherit mode */
 	if (env.path){
 		pid_t rpid = shmif_platform_execve(
 			childend, res->con->shm.key,
-			env.path, env.argv, env.envv, env.detach, NULL
+			env.path, env.argv, env.envv, env.detach, fds, 3, NULL
 		);
 		close(childend);
 
