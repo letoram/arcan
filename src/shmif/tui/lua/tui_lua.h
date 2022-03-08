@@ -101,7 +101,11 @@ struct tui_lmeta {
 
 /* pending subsegment requests and their respective lua references */
 	uint8_t pending_mask;
-	intptr_t pending[8];
+	struct {
+		intptr_t id;
+		int hint;
+	} pending[8];
+	int embed; /* appended to wndhint based on allocation request */
 
 /* reference to the tui context itself, kept for subwindows as they have a
  * reference to the parent internally even if the Lua state does not

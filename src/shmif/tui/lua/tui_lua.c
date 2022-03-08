@@ -210,15 +210,21 @@ static void dump_stack(lua_State* ctx)
 	if (!ib || !ib->tui || ib->widget_mode != TWND_READLINE)\
 		luaL_error(L, "window not in readline state");
 
-static void init_lmeta(struct tui_lmeta* l)
+static void init_lmeta(lua_State* L, struct tui_lmeta* l, struct tui_lmeta* p)
 {
 	*l = (struct tui_lmeta){
 		.widget_closure = LUA_NOREF,
 		.href = LUA_NOREF,
 		.widget_state = LUA_NOREF,
-		.tui_state = LUA_NOREF
+		.tui_state = LUA_NOREF,
+		.lua = L,
+		.cwd = NULL,
+		.cwd_fd = -1,
+		.parent = p
 	};
 	l->submeta[0] = l;
+	luaL_getmetatable(L, TUI_METATABLE);
+	lua_setmetatable(L, -2);
 }
 
 static lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
@@ -529,7 +535,7 @@ static int tui_phandover(lua_State* L)
 		fds_ptr[2] = NULL;
 
 	pid_t pid = arcan_tui_handover_pipe(
-			ib->tui, ib->in_subwnd, path, argv, env, fds_ptr, 3);
+			ib->tui, NULL, path, argv, env, fds_ptr, 3);
 
 	ib->subwnd_handover = pid != -1;
 
@@ -577,8 +583,8 @@ static bool on_subwindow(struct tui_context* T,
 	if (id >= 8 || !(meta->pending_mask & (1 << id)))
 		return false;
 
-	intptr_t cb = meta->pending[id];
-	meta->pending[id] = 0;
+	intptr_t cb = meta->pending[id].id;
+	meta->pending[id].id = 0;
 	meta->pending_mask &= ~(1 << id);
 
 /* indicates that something is wrong with the new_window handler */
@@ -617,37 +623,31 @@ static bool on_subwindow(struct tui_context* T,
 		RUN_CALLBACK("subwindow_ud_fail", 1, 0);
 		luaL_unref(L, LUA_REGISTRYINDEX, cb);
 		END_HREF;
-		meta->in_subwnd = NULL;
 		return true;
 	}
-
-	init_lmeta(nud);
+	init_lmeta(L, nud, meta);
 	nud->tui = ctx;
-	luaL_getmetatable(L, TUI_METATABLE);
-	lua_setmetatable(L, -2);
-	nud->lua = L;
-	nud->href = LUA_NOREF;
-	nud->parent = meta;
 
+	if (type != TUI_WND_HANDOVER){
 /* cycle- reference ourselves */
-	lua_pushvalue(L, -1);
-	nud->tui_state = luaL_ref(L, LUA_REGISTRYINDEX);
+		lua_pushvalue(L, -1);
+		nud->tui_state = luaL_ref(L, LUA_REGISTRYINDEX);
 
 /* register with parent so :process() hits the right hierarchy */
-	size_t wnd_i = 0;
-	for (; wnd_i < SEGMENT_LIMIT; wnd_i++){
-		if (!meta->subs[wnd_i]){
-			meta->subs[wnd_i] = ctx;
-			meta->submeta[wnd_i] = nud;
-			meta->n_subs++;
-			break;
+		size_t wnd_i = 0;
+		for (; wnd_i < SEGMENT_LIMIT; wnd_i++){
+			if (!meta->subs[wnd_i]){
+				meta->subs[wnd_i] = ctx;
+				meta->submeta[wnd_i] = nud;
+				meta->n_subs++;
+				break;
+			}
 		}
 	}
-
 /* the check for pending-id + the check on request means that there there is a
  * fitting slot in parent[subs] - and even if there wouldn't be, it would just
  * block the implicit :process, explicit would still work. */
-	if (type == TUI_WND_HANDOVER){
+	else {
 		meta->in_subwnd = new;
 	}
 	RUN_CALLBACK("subwindow_ok", 2, 0);
@@ -658,11 +658,7 @@ static bool on_subwindow(struct tui_context* T,
  * phandover call fails and we need to false-return so the backend cleans up */
 	bool ok = true;
 	if (!meta->in_subwnd && type == TUI_WND_HANDOVER){
-		meta->n_subs--;
-		meta->subs[wnd_i] = NULL;
-		meta->submeta[wnd_i] = NULL;
-		meta->n_subs--;
-		ok = nud->subwnd_handover;
+		ok = meta->subwnd_handover;
 	}
 	meta->in_subwnd = NULL;
 
@@ -1194,6 +1190,28 @@ static void synch_wd(struct tui_lmeta* md)
 	}
 }
 
+static int tui_wndhint(lua_State* L)
+{
+	TUI_UDATA;
+	int tbli = 2;
+
+	struct tui_lmeta* parent = NULL;
+	if (lua_type(L, 2) == LUA_TUSERDATA){
+		parent = luaL_checkudata(L, 2, TUI_METATABLE);
+		tbli = 3;
+	}
+
+	struct tui_constraints cons = {0};
+	if (lua_type(L, tbli) == LUA_TTABLE){
+		cons = get_wndhint(L, tbli);
+	}
+
+/* this is treated as non-mutable and set on window request */
+	cons.embed = ib->embed;
+	arcan_tui_wndhint(ib->tui, parent ? parent->tui : NULL, cons);
+	return 0;
+}
+
 static int tui_chdir(lua_State* L)
 {
 	TUI_UDATA;
@@ -1253,19 +1271,9 @@ ltui_inherit(lua_State* L, arcan_tui_conn* conn)
 	if (!meta){
 		return NULL;
 	}
-	init_lmeta(meta);
+	init_lmeta(L, meta, NULL);
 	lua_pushvalue(L, -1);
 	meta->tui_state = luaL_ref(L, LUA_REGISTRYINDEX);
-
-/* set the TUI api table to our metadata */
-	luaL_getmetatable(L, TUI_METATABLE);
-	lua_setmetatable(L, -2);
-
-/* reference the lua context as part of the tag that is tied to the
- * shmif/tui context struct so we can reach lua from callbacks */
-	meta->lua = L;
-	meta->cwd = NULL;
-	meta->cwd_fd = -1;
 	synch_wd(meta);
 
 /* Hook up the tui/callbacks, these forward into a handler table
@@ -1547,7 +1555,8 @@ static int reqwnd(lua_State* L)
  * incoming window to one of our previous requests, there might be multiple
  * in-flight. */
 	int bitind = ffs(~(ib->pending_mask)) - 1;
-	ib->pending[bitind] = ref;
+	ib->pending[bitind].id = ref;
+	ib->pending[bitind].hint = meta.hint;
 	ib->pending_mask |= 1 << bitind;
 	lua_pushboolean(L, true);
 	arcan_tui_request_subwnd_ext(ib->tui,
@@ -2913,6 +2922,7 @@ static void register_tuimeta(lua_State* L)
 		{"bgcopy", tui_fbond},
 		{"getenv", tui_getenv},
 		{"chdir", tui_chdir},
+		{"hint", tui_wndhint},
 	};
 
 	/* will only be set if it does not already exist */
