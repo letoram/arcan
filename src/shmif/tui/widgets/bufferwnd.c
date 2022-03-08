@@ -1,6 +1,6 @@
 /*
  Arcan Text-Oriented User Inteface Library, Text/Hex buffer window
- Copyright: 2018-2019, Bjorn Stahl
+ Copyright: Bjorn Stahl
  License: 3-clause BSD
 */
 
