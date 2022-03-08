@@ -489,7 +489,7 @@ int tui_pid_signal(lua_State* L)
 		ci++;
 	}
 
-	pid_t pid = luaL_checkinteger(L, ci);
+	pid_t pid = luaL_checkinteger(L, ci++);
 	int sig = SIGKILL;
 
 	if (lua_type(L, ci) == LUA_TSTRING){

@@ -229,6 +229,12 @@ local function run_usershell(wnd, name)
 					for i,v in ipairs(msg) do
 						table.insert(res, string.rep("\t", i-1) .. v)
 					end
+					lash.lasterr = res
+					for _,v in ipairs(lash.jobs) do
+						if v.out then
+							v.out:lf_strip(true)
+						end
+					end
 					return false, res
 				else
 					return true
@@ -319,6 +325,16 @@ function commands.shell(wnd, name)
 	local res, msg = run_usershell(wnd, name)
 	if not res then
 		return msg
+	end
+end
+
+function commands.lasterr(wnd)
+	local cols, _ = wnd:dimensions()
+
+	if lash.lasterr then
+		for _,v in ipairs(lash.lasterr) do
+			add_split(wnd, v, cols, lash.message_fmt)
+		end
 	end
 end
 
