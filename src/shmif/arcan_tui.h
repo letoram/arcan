@@ -203,6 +203,7 @@ struct tui_constraints {
 	int max_rows, max_cols;
 	int min_rows, min_cols;
 	bool hide;
+	bool embed;
 };
 
 struct tui_screen_attr {

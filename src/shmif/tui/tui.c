@@ -445,11 +445,18 @@ void arcan_tui_wndhint(struct tui_context* C,
 	if (!C)
 		return;
 
+	int cols = cons.max_cols ? cons.max_cols : cons.min_cols;
+	int rows = cons.max_rows ? cons.max_rows : cons.min_rows;
+
 /* special case, detached window so inject as displayhint */
-	if (!C->acon.addr){
+	if (!C->acon.addr && (cols > 0 || rows > 0)){
 		C->last_constraints = cons;
-		int cols = cons.max_cols ? cons.max_cols : cons.min_cols;
-		int rows = cons.max_rows ? cons.max_rows : cons.min_rows;
+
+		if (cols <= 0)
+			cols = C->cols;
+
+		if (rows <= 0)
+			rows = C->rows;
 
 		if (cols){
 			C->acon.w = C->cell_w * cols;
@@ -460,11 +467,9 @@ void arcan_tui_wndhint(struct tui_context* C,
 		}
 
 		tui_screen_resized(C);
-		return;
 	}
-
 /* first send any sizing constraints */
-	if (cons.max_rows || cons.min_rows || cons.max_cols || cons.min_cols){
+	if (cols > 0 || rows > 0){
 		struct arcan_event content = (struct arcan_event){
 			.category = EVENT_EXTERNAL,
 			.ext.kind = ARCAN_EVENT(CONTENT),
@@ -477,7 +482,9 @@ void arcan_tui_wndhint(struct tui_context* C,
 				.cell_h = C->cell_h
 			}
 		};
-		arcan_shmif_enqueue(&C->acon, &content);
+
+		if (C->acon.addr)
+			arcan_shmif_enqueue(&C->acon, &content);
 	}
 
 /* and if we want anchoring, add that */
@@ -492,12 +499,13 @@ void arcan_tui_wndhint(struct tui_context* C,
 		};
 
 		if (C->viewport_proxy){
-			viewport.ext.viewport.embedded = C->viewport_proxy > 0;
+			viewport.ext.viewport.embedded = cons.embed;
 			viewport.ext.viewport.parent = C->viewport_proxy;
 			viewport.ext.viewport.order = -1;
-			arcan_shmif_enqueue(&par->acon, &viewport);
+			if (par->acon.addr)
+				arcan_shmif_enqueue(&par->acon, &viewport);
 		}
-		else
+		else if (C->acon.addr)
 			arcan_shmif_enqueue(&C->acon, &viewport);
 	}
 
