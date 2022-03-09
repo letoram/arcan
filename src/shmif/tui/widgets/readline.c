@@ -981,8 +981,6 @@ static void reset(struct readline_meta* M)
 	M->work_len = 0;
 	M->cursor = 0;
 	M->history = NULL;
-	if (M->in_history)
-		free(M->in_history);
 	M->in_history = NULL;
 }
 
