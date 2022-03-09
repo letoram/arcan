@@ -3827,38 +3827,36 @@ static void emit_segreq(
 	tblnum(ctx, "yofs", ev->segreq.yofs, top);
 	switch(ev->segreq.dir){
 	case 1:
-		tblstr(ctx, "split-dir", "left", top);
+		tblstr(ctx, "split", "left", top);
 	break;
 	case 2:
-		tblstr(ctx, "split-dir", "right", top);
+		tblstr(ctx, "split", "right", top);
 	break;
 	case 3:
-		tblstr(ctx, "split-dir", "top", top);
+		tblstr(ctx, "split", "top", top);
 	break;
 	case 4:
-		tblstr(ctx, "split-dir", "bottom", top);
+		tblstr(ctx, "split", "bottom", top);
 	break;
 	case 5:
-		tblstr(ctx, "position-dir", "left", top);
+		tblstr(ctx, "position", "left", top);
 	break;
 	case 6:
-		tblstr(ctx, "position-dir", "right", top);
+		tblstr(ctx, "position", "right", top);
 	break;
 	case 7:
-		tblstr(ctx, "position-dir", "top", top);
+		tblstr(ctx, "position", "top", top);
 	break;
 	case 8:
-		tblstr(ctx, "position-dir", "bottom", top);
+		tblstr(ctx, "position", "bottom", top);
 	break;
 	case 9:
-		tblstr(ctx, "position-dir", "tab", top);
+		tblstr(ctx, "position", "tab", top);
 	break;
 	case 10:
-		tblstr(ctx, "position-dir", "embed", top);
+		tblstr(ctx, "position", "embed", top);
 	break;
 	default:
-		tblstr(ctx, "split-dir", "none", top);
-		tblstr(ctx, "position-dir", "none", top);
 	break;
 	}
 

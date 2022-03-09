@@ -95,19 +95,19 @@
 --
 -- @tblent: "segment_request" {
 -- string:segkind, number:width, number:height, number:parent,
--- string:(split-dir | position-dir)}
+-- string:(split | position)}
 -- The source would like an additional segment to work with, see
 -- ref:accept_target for how to accept the request. If the request is not
 -- responded to during the scope of the handler execution, the request will
 -- be denied. The hint- sizes are in pixels, even if the segment may operate
 -- in a cell- based mode (tui and terminal clients).
--- The split-dir is a hint for tiling window management and for cases where
+-- The split is a hint for tiling window management and for cases where
 -- the source-window can logically be split into two parts, with the new
 -- one best placed in one direction out of: left, right, top, bottom.
--- Instead of a split-dir a position dir may be defined. This indicates that
+-- Instead of a split a position dir may be defined. This indicates that
 -- the window should be positioned relative to the parent, but that the parent
 -- should retain the same size, if possible. This also has an added
--- position-dir of 'tab'.
+-- position of 'tab' and of 'embed'.
 --
 -- @tblent: "alert" {string:message} - version of "message" that hints a
 -- user-interface alert to the segment. If "message" is empty, alert is
