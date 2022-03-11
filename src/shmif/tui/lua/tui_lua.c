@@ -514,13 +514,13 @@ static int tui_phandover(lua_State* L)
 	const char* mode = luaL_checkstring(L, 3);
 
 /* argv */
-	if (lua_type(L, 3) == LUA_TTABLE){
+	if (lua_type(L, 4) == LUA_TTABLE){
 		argv = tui_popen_tbltoargv(L, 4);
 	}
 
 /* env */
-	if (lua_type(L, 4) == LUA_TTABLE){
-		argv = tui_popen_tbltoenv(L, 5);
+	if (lua_type(L, 5) == LUA_TTABLE){
+		env = tui_popen_tbltoenv(L, 5);
 	}
 
 	int fds[3] = {-1, -1, -1};
@@ -1475,7 +1475,7 @@ static int reqwnd(lua_State* L)
 
 	const char* hintstr = NULL;
 
-	while(++ind < lua_gettop(L)){
+	while(++ind <= lua_gettop(L)){
 		if (lua_type(L, ind) == LUA_TNUMBER){
 			if (!meta.rows)
 				meta.rows = lua_tonumber(L, ind);
