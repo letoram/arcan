@@ -146,7 +146,6 @@ local function add_split(wnd, msg, cap, dst)
 end
 
 local function draw(wnd)
-	lash.dirty = false
 	wnd:erase()
 	local cols, rows = wnd:dimensions()
 	local count = #lash.message_fmt
@@ -189,7 +188,6 @@ local function add_message(wnd, msg, cols)
 	end
 
 	table.insert(lash.messages, msg)
-	lash.dirty = true
 end
 
 -- Run [name.lua] via require from HOME/.arcan/lash or XDG_CONFIG_HOME and
@@ -222,6 +220,7 @@ local function run_usershell(wnd, name)
 				if not fptr then
 					return false, msg
 				end
+				lash.scriptdir = v
 				local ok, msg = pcall(fptr)
 				if not ok then
 					msg = string.split(msg, ": ")
@@ -230,11 +229,6 @@ local function run_usershell(wnd, name)
 						table.insert(res, string.rep("\t", i-1) .. v)
 					end
 					lash.lasterr = res
-					for _,v in ipairs(lash.jobs) do
-						if v.out then
-							v.out:lf_strip(true)
-						end
-					end
 					return false, res
 				else
 					return true
@@ -248,7 +242,7 @@ end
 
 local function finish_job(wnd, job, code, cols)
 -- it's dead, flush the output
-	while true do
+	while job.out do
 		local msg = job.out:read()
 		if not msg or #msg == 0 then
 			break
@@ -311,7 +305,6 @@ function fallback_handlers.resized(wnd)
 		end
 	end
 
-	lash.dirty = true
 	draw(wnd)
 end
 
@@ -473,6 +466,7 @@ setup_window =
 function(wnd)
 	wnd:revert()
 	readline = nil
+	wnd:set_handlers(fallback_handlers)
 
 	readline =
 	wnd:readline(
@@ -500,10 +494,8 @@ local function init()
 
 	local shellname = os.getenv("LASH_SHELL") and os.getenv("LASH_SHELL") or "default"
 	local res, msg = run_usershell(lash.root, shellname)
-	lash.root:set_handlers(fallback_handlers)
--- need to cleanup lash.jobs and root-wnd state (if still alive)
-
 	setup_window(lash.root)
+
 	if not res then
 		local cols, _ = lash.root:dimensions()
 		add_message(lash.root, msg, cols)
@@ -551,9 +543,10 @@ local tokens = {
 	OP_PIPE  = 29,
 	OP_ADDR  = 30,
 	OP_RELADDR  = 31,
-	OP_STATESEP = 32,
-	OP_NOT      = 33,
-	OP_POUND    = 34,
+	OP_SYMADDR  = 32,
+	OP_STATESEP = 33,
+	OP_NOT      = 34,
+	OP_POUND    = 35,
 
 -- return result states
 	ERROR    = 40,
@@ -590,7 +583,7 @@ local simple_operator_mask = {
 ['-'] = true,
 ['/'] = true,
 [','] = true,
-['='] = true
+['='] = true,
 }
 
 local constant_ascii_a = string.byte("a")
@@ -610,13 +603,6 @@ local function issymch(state, ch, ofs)
 -- special character '_', num allowed unless first pos
 	if isnum(ch) or ch == "_" or ch == "." or ch == ":" then
 		return ofs > 0
-	end
-
--- special prefixes allowed on first pos
-	if ofs == 0 then
-		if ch == "$" then
-			return true
-		end
 	end
 
 -- numbers and +- are allowed on pos2 if we have $ at the beginning
@@ -680,7 +666,7 @@ function(ch, tok, state, ofs)
 
 	elseif operators[ch] ~= nil then
 		if state.simple then
-			if simple_operator_mask[ch] then
+			if state.operator_mask[ch] then
 				state.buffer = ch
 				return lex_whstr
 			end
@@ -714,6 +700,9 @@ function()
 	return lex_error
 end
 
+-- used in simple mode where a lot of operators and symbols become
+-- strings instead, the only thing that terminates it is end,
+-- whitespace, matched " or a non-masked operator
 lex_whstr =
 function(ch, tok, state, ofs)
 	if not ch or #ch == 0  or ch == "\0" then
@@ -733,6 +722,12 @@ function(ch, tok, state, ofs)
 	if ch == ' ' or ch == '\t' or ch == '\n' or ch == '"' then
 		add_token(state, tok, tokens.STRING, state.buffer, ofs)
 		state.buffer = ""
+		return lex_default
+
+	elseif operators[ch] and not state.operator_mask[ch] then
+		add_token(state, tok, tokens.STRING, state.buffer, ofs)
+		state.buffer = ""
+		add_token(state, tok, tokens.OPERATOR, operators[ch], ofs)
 		return lex_default
 
 	elseif ch == '\\' then
@@ -911,13 +906,25 @@ end
 -- the simple-mode ignored number conversion and treats arithmetic
 -- operators and . as whitespace terminated strings
 lash.tokenize_command =
-function(msg, simple)
+function(msg, simple, opts)
 	local ofs = 1
 	local nofs = ofs
 	local len = #msg
 
 	local tokout = {}
 	local state = {buffer = "", simple = simple}
+
+-- allow operators vs string interpretation be controlled by the caller
+	if simple then
+		state.operator_mask = simple_operator_mask
+	end
+
+	if opts then
+		for k,v in pairs(opts) do
+			state[k] = v
+		end
+	end
+
 	local scope = lex_default
 
 	local scopestr =
@@ -954,119 +961,8 @@ function(msg, simple)
 	return tokout, state.error, state.error_ofs, tokens
 end
 
-local tracer
-
-local function Indent(N)
-  return string.rep(" ", N)
-end
-
-local function GetInfo(StackLvl, WithLineNum)
--- StackLvl is reckoned from the caller's level:
-  StackLvl = StackLvl + 1
-  local Ret
-  local Info = debug.getinfo(StackLvl, "nlS")
-  if Info then
-    local Name, What, LineNum, ShortSrc =
-    Info.name, Info.what, Info.currentline, Info.short_src
-    if What == "tail" then
-      Ret = "overwritten stack frame"
-    else
-      if not Name then
-        if What == "main" then
-          Name = "chunk"
-        else
-          Name = What .. "function"
-        end
-      end
-
-      if Name == "C function" then
-        Ret = Name
-      else
-        -- Only use real line numbers:
-        LineNum = LineNum >= 1 and LineNum
-        if WithLineNum and LineNum then
-          Ret = Name .. " (" .. ShortSrc .. ", line " .. LineNum .. ")"
-        else
-          Ret = Name .. " (" .. ShortSrc .. ")"
-        end
-      end
-    end
-  else
-    -- Below the bottom of the stack:
-    Ret = "nowhere"
-  end
-  return Ret
-end
-
--- The hook function set by Trace:
-local function Hook(tracer, Event)
-  -- Info for the running function being called or returned from:
-  local Running = GetInfo(2)
-  -- Info for the function that called that function:
-  local Caller = GetInfo(3, true)
-
-  if not string.find(Running..Caller, "modules") then
-    if Event == "call" then
-			if Running == "Untrace ([string \"lash\"])" or Running == 'sethook ([C])' then
-			else
-				tracer(string.format("%s %s <- %s", Depth, Indent(Depth), Running, Caller));
-			end
-			Depth = Depth + 1
-    else
-      local RetType
---(uncomment to trace returns)
---io.stderr:write(Indent(Depth), RetType, Running, " to ", Caller,"\n")
---     if Event == "return" then
---       RetType = "returning from "
---    elseif Event == "tail return" then
---        RetType = "tail-returning from "
---     end
-			Depth = Depth - 1
-    end
-	end
-end
-
-function lash.Trace(scope, reportfn)
-	tracer = reportfn and reportfn or print;
-
-	if type(scope) == "function" then
-		Trace(nil, reportfn)
-			scope()
-		Untrace()
-		return;
-	end
-
-  if not Depth then
-    -- Before setting the hook, make an iterator that calls
-    -- debug.getinfo repeatedly in search of the bottom of the stack:
-    Depth = 1
-    for Info in
-      function()
-      return debug.getinfo(Depth, "n")
-      end
-    do
-      Depth = Depth + 1
-    end
-
-    -- Don't count the iterator itself or the empty frame counted at
-    -- the end of the loop:
-    Depth = Depth - 2
-    debug.sethook(function(...) return Hook(tracer, ...) end, "cr")
-  else
-    -- Do nothing if Trace() is called twice.
-  end
-end
-
-function lash.Untrace()
-	debug.sethook()
-	Depth = nil
-end
-
 init()
 while lash.root:process() do
 	process_jobs(lash.root)
-	readline:set_prompt(get_prompt(lash.root))
-	if lash.dirty then
-		lash.root:refresh()
-	end
+	lash.root:refresh()
 end
