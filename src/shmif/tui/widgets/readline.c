@@ -53,6 +53,8 @@ struct readline_meta {
 	const char* current_suggestion;
 	bool show_completion;
 	const char** completion;
+	char* suggest_prefix;
+	size_t suggest_prefix_sz;
 	size_t completion_sz;
 	size_t completion_width;
 	size_t completion_mode;
@@ -122,6 +124,17 @@ static size_t utf8back(size_t pos, const char* msg)
 	return pos;
 }
 
+static void reset(struct readline_meta* M)
+{
+	M->finished = 0;
+	M->work[0] = 0;
+	M->work_ofs = 0;
+	M->work_len = 0;
+	M->cursor = 0;
+	M->history = NULL;
+	M->in_history = NULL;
+}
+
 static void verify(struct tui_context* T, struct readline_meta* M)
 {
 	if (!M->opts.verify)
@@ -143,28 +156,36 @@ static void drop_completion(
 	}
 
 	if (run){
+		const char* msg = M->completion[M->completion_pos];
+
 		switch (M->completion_mode){
 			case READLINE_SUGGEST_WORD:
 				if (!isspace(M->work[M->cursor]))
 					delete_last_word(T, M);
-
-/* fallthough */
+			break;
 			case READLINE_SUGGEST_INSERT:{
-				const char* msg = M->completion[M->completion_pos];
-				while (*msg){
-					uint32_t ch;
-					ssize_t step = arcan_tui_utf8ucs4(msg, &ch);
-					if (step <= 0)
-						break;
-					add_input(T, M, msg, step, true);
-					msg += step;
-				}
+				if (M->suggest_prefix)
+					add_input(T, M, M->suggest_prefix, M->suggest_prefix_sz, true);
 			}
 			break;
 
 			case READLINE_SUGGEST_SUBSTITUTE:
-				arcan_tui_readline_set(T, M->completion[M->completion_pos]);
+				M->work[0] = 0;
+				M->work_ofs = 0;
+				M->work_len = 0;
+				M->cursor = 0;
+				if (M->suggest_prefix)
+					add_input(T, M, M->suggest_prefix, M->suggest_prefix_sz, true);
 			break;
+		}
+
+		while (*msg){
+			uint32_t ch;
+			ssize_t step = arcan_tui_utf8ucs4(msg, &ch);
+			if (step <= 0)
+				break;
+			add_input(T, M, msg, step, true);
+			msg += step;
 		}
 	}
 
@@ -371,6 +392,29 @@ static bool validate_context(struct tui_context* T, struct readline_meta** M)
 
 	*M = ch;
 	return true;
+}
+
+void arcan_tui_readline_suggest_prefix(struct tui_context* T, const char* msg)
+{
+	struct readline_meta* M;
+	if (!validate_context(T, &M))
+		return;
+
+	size_t nb = strlen(msg);
+	char* copy = malloc(nb + 1);
+	if (!copy)
+		return;
+
+	if (M->suggest_prefix){
+		free(M->suggest_prefix);
+		M->suggest_prefix = NULL;
+		M->suggest_prefix_sz = 0;
+	}
+
+	memcpy(copy, msg, nb);
+	copy[nb] = '\0';
+	M->suggest_prefix = copy;
+	M->suggest_prefix_sz = nb;
 }
 
 static void step_cursor_left(struct tui_context* T, struct readline_meta* M)
@@ -973,17 +1017,6 @@ static void on_recolor(struct tui_context* T, void* tag)
 	refresh(T, M);
 }
 
-static void reset(struct readline_meta* M)
-{
-	M->finished = 0;
-	M->work[0] = 0;
-	M->work_ofs = 0;
-	M->work_len = 0;
-	M->cursor = 0;
-	M->history = NULL;
-	M->in_history = NULL;
-}
-
 void arcan_tui_readline_autocomplete(struct tui_context* T, const char* suffix)
 {
 	struct readline_meta* M;
@@ -1260,11 +1293,16 @@ void arcan_tui_readline_release(struct tui_context* T)
 	if (!validate_context(T, &M))
 		return;
 
+	if (M->suggest_prefix){
+		free(M->suggest_prefix);
+		M->suggest_prefix = NULL;
+		M->suggest_prefix_sz = 0;
+	}
+
 	M->magic = 0xdeadbeef;
 	free(M->work);
 
 /* completion buffers etc. are retained by the user so ignore */
-
 	arcan_tui_update_handlers(T, &M->old_handlers, NULL, sizeof(struct tui_cbcfg));
 	free(M);
 }

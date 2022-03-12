@@ -140,10 +140,19 @@ void arcan_tui_readline_autocomplete(struct tui_context* t, const char* suffix);
 enum tui_readline_suggestion_mode {
 	READLINE_SUGGEST_INSERT = 0,
 	READLINE_SUGGEST_WORD = 1,
-	READLINE_SUGGEST_SUBSTITUTE = 2
+	READLINE_SUGGEST_SUBSTITUTE = 2,
 };
 void arcan_tui_readline_suggest(
 	struct tui_context* t, int mode, const char** set, size_t set_sz);
+
+/*
+ * Set an insertion prefix used with any of the suggestion modes above.
+ *
+ * [Str] will be copied and used internally and freed on the next call to
+ * suggest_prefix or releasing the context.
+ */
+void arcan_tui_readline_suggest_prefix(
+	struct tui_context* t, const char* str);
 
 /*
  * Call as part of normal processing loop to retrieve a reference to the
@@ -192,6 +201,7 @@ typedef void(* PTUIRL_PROMPT)(struct tui_context*, const struct tui_cell*);
 typedef void(* PTUIRL_SET)(struct tui_context*, const char* msg);
 typedef void(* PTUIRL_COMPLETE)(struct tui_context*, const char*);
 typedef void(* PTUIRL_SUGGEST)(struct tui_context*, int, const char**, size_t);
+typedef void(* PTUIRL_SUGGEST_PREFIX)(struct tui_context*, const char*);
 typedef void(* PTUIRL_REGION)(struct tui_context*, size_t, size_t, size_t, size_t);
 
 static PTUIRL_SETUP arcan_tui_readline_setup;
@@ -202,6 +212,7 @@ static PTUIRL_PROMPT arcan_tui_readline_prompt;
 static PTUIRL_SET arcan_tui_readline_set;
 static PTUIRL_COMPLETE arcan_tui_readline_complete;
 static PTUIRL_SUGGEST arcan_tui_readline_suggest;
+static PTUIRL_SUGGEST_PREFIX arcan_tui_readline_suggest_prefix;
 static PTUIRL_REGION arcan_tui_readline_region;
 
 static bool arcan_tui_readline_dynload(
@@ -216,6 +227,7 @@ M(PTUIRL_PROMPT, arcan_tui_readline_prompt);
 M(PTUIRL_SET, arcan_tui_readline_set);
 M(PTUIRL_COMPLETE, arcan_tui_readline_complete);
 M(PTUIRL_SUGGEST, arcan_tui_readline_suggest);
+M(PTUIRL_SUGGEST_PREFIX, arcan_tui_readline_suggest_prefix);
 M(PTUIRL_REGION, arcan_tui_readline_region);
 #undef M
 }
