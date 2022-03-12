@@ -295,7 +295,7 @@ static bool on_subwindow(struct tui_context* t,
 	}
 
 	arcan_tui_handover(
-		t, new_wnd, NULL, exec_path, argv, env,
+		t, new_wnd, exec_path, argv, env,
 		TUI_DETACH_PROCESS | TUI_DETACH_STDIN | TUI_DETACH_STDOUT);
 	return true;
 }
