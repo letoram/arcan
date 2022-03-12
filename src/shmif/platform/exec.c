@@ -134,7 +134,7 @@ pid_t shmif_platform_execve(int fd, const char* shmif_key,
 	if (fdset_sz > 2){
 		if (!fds[2])
 			stderr_src = -1;
-		else if (*fds[1] == -1){
+		else if (*fds[2] == -1){
 			int perr[2];
 			if (pipe(perr)){
 				*err = strdup("failed to build stderr pipe");
@@ -145,7 +145,7 @@ pid_t shmif_platform_execve(int fd, const char* shmif_key,
 			*fds[2] = perr[0];
 			close_err = true;
 		}
-		else stdout_src = *fds[1];
+		else stdout_src = *fds[2];
 	}
 
 /* null- terminate or we have an invalid address on our hands */
