@@ -633,7 +633,7 @@ function(ch, tok, state, ofs)
 -- alpha? move to symbol state
 	if issymch(state, ch, 0) then
 		state.buffer = ch
-		return lex_symbol
+		return state.simple and lex_whstr or lex_symbol
 
 -- number constant? process and switch state
 	elseif isnum(ch) then
@@ -665,11 +665,9 @@ function(ch, tok, state, ofs)
 		return lex_default
 
 	elseif operators[ch] ~= nil then
-		if state.simple then
-			if state.operator_mask[ch] then
-				state.buffer = ch
-				return lex_whstr
-			end
+		if state.operator_mask[ch] then
+			state.buffer = ch
+			return lex_whstr
 		end
 
 -- if we have '-num' ' -num' or 'operator-num' then set state.negate
@@ -858,8 +856,6 @@ function(ch, tok, state, ofs)
 -- we are done
 		if state.got_addr then
 			add_token(state, tok, tokens.SYMBOL, state.got_addr, ofs, string.lower(state.buffer))
-		elseif state.simple then
-			add_token(state, tok, tokens.STRING, state.buffer, ofs)
 		else
 			local lc = string.lower(state.buffer)
 			if lc == "true" then
@@ -917,6 +913,8 @@ function(msg, simple, opts)
 -- allow operators vs string interpretation be controlled by the caller
 	if simple then
 		state.operator_mask = simple_operator_mask
+	else
+		state.operator_mask = {}
 	end
 
 	if opts then
