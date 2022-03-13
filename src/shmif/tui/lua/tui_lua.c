@@ -2481,7 +2481,7 @@ static int readline_suggest(lua_State* L)
 		luaL_error(L, "set_suggest(str:mode) expected insert, word or substitute");
 
 	meta->readline.suggest = new_suggest;
-	meta->readline.history_sz = count;
+	meta->readline.suggest_sz = count;
 	arcan_tui_readline_suggest(
 		meta->parent->tui, mv, (const char**) new_suggest, count);
 
