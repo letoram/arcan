@@ -26,6 +26,7 @@
  * Readline: cleaned up API for history/completion controls, reduced callbacks
  * Readline: delete last word implemented
  * Readline: draw/navigate completion set on request
+ * Readline: add insertion prefix controls
 
 ## Frameservers
  * Encode: (linux) add support for a v4l2-loopback sink
