@@ -151,7 +151,6 @@ static void drop_completion(
 		return;
 
 	if (!M->completion){
-		M->show_completion = false;
 		return;
 	}
 
@@ -188,8 +187,6 @@ static void drop_completion(
 			msg += step;
 		}
 	}
-
-	M->show_completion = false;
 }
 
 static void draw_completion(struct tui_context* T, struct readline_meta* M)
@@ -479,8 +476,9 @@ static bool erase_at_cursor(struct tui_context* T, struct readline_meta* M)
 
 static bool add_linefeed(struct tui_context* T, struct readline_meta* M)
 {
-	if (M->show_completion){
+	if (M->show_completion && M->completion_sz){
 		drop_completion(T, M, true);
+		verify(T, M);
 		refresh(T, M);
 		return true;
 	}
@@ -682,7 +680,8 @@ static void synch_completion(struct tui_context* T, struct readline_meta* M)
 	M->broken_offset = M->opts.verify(
 		(const char*)M->work, M->cursor, true, M->old_handlers.tag);
 
-/* just the one option? then just insert / add */
+/* just the one option? could just autocomplete - otoh better to let the dev
+ * chose with the suggestion form */
 	if (M->completion_sz == 1){
 
 	}
@@ -797,6 +796,7 @@ void on_key_input(struct tui_context* T,
 	}
 	else if (keysym == TUIK_ESCAPE){
 		if (M->show_completion){
+			M->show_completion = false;
 			drop_completion(T, M, false);
 			refresh(T, M);
 		}
