@@ -95,6 +95,10 @@ void arcan_tui_readline_setup(
  * has been called or replaced with another buffer */
 void arcan_tui_readline_history(struct tui_context*, const char**, size_t count);
 
+/* explicitly enable / disable the automatic suggestion (tab completion) */
+void arcan_tui_readline_autosuggest(struct tui_context*, bool);
+
+
 /*
  * Set prefix/prompt that will be drawn
  * (assuming there is enough space for it to fit, or it will be drawn truncated).
@@ -203,6 +207,7 @@ typedef void(* PTUIRL_COMPLETE)(struct tui_context*, const char*);
 typedef void(* PTUIRL_SUGGEST)(struct tui_context*, int, const char**, size_t);
 typedef void(* PTUIRL_SUGGEST_PREFIX)(struct tui_context*, const char*);
 typedef void(* PTUIRL_REGION)(struct tui_context*, size_t, size_t, size_t, size_t);
+typedef void(* PTUIRL_AUTOSUGGEST)(struct tui_context*, bool);
 
 static PTUIRL_SETUP arcan_tui_readline_setup;
 static PTUIRL_FINISHED arcan_tui_readline_finished;
@@ -214,6 +219,7 @@ static PTUIRL_COMPLETE arcan_tui_readline_complete;
 static PTUIRL_SUGGEST arcan_tui_readline_suggest;
 static PTUIRL_SUGGEST_PREFIX arcan_tui_readline_suggest_prefix;
 static PTUIRL_REGION arcan_tui_readline_region;
+static PTUIRL_AUTOSUGGEST arcan_tui_readline_autosuggest;
 
 static bool arcan_tui_readline_dynload(
 	void*(*lookup)(void*, const char*), void* tag)
@@ -229,6 +235,7 @@ M(PTUIRL_COMPLETE, arcan_tui_readline_complete);
 M(PTUIRL_SUGGEST, arcan_tui_readline_suggest);
 M(PTUIRL_SUGGEST_PREFIX, arcan_tui_readline_suggest_prefix);
 M(PTUIRL_REGION, arcan_tui_readline_region);
+M(PTUIRL_AUTOSUGGEST, arcan_tui_readline_autosuggest);
 #undef M
 }
 

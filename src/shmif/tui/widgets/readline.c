@@ -480,7 +480,6 @@ static bool add_linefeed(struct tui_context* T, struct readline_meta* M)
 		drop_completion(T, M, true);
 		verify(T, M);
 		refresh(T, M);
-		return true;
 	}
 
 	if (!M->opts.multiline){
@@ -1228,6 +1227,16 @@ static void on_reset(struct tui_context* T, int level, void* tag)
 		M->old_handlers.reset(T, level, M->old_handlers.tag);
 }
 
+void arcan_tui_readline_autosuggest(struct tui_context* T, bool vl)
+{
+	struct readline_meta* M;
+	if (!validate_context(T, &M))
+		return;
+
+	M->show_completion = vl;
+	refresh(T, M);
+}
+
 void arcan_tui_readline_setup(
 	struct tui_context* T, struct tui_readline_opts* opts, size_t opt_sz)
 {
@@ -1241,7 +1250,7 @@ void arcan_tui_readline_setup(
 	*meta = (struct readline_meta){
 		.magic = READLINE_MAGIC,
 		.opts = *opts,
-		.broken_offset = -1
+		.broken_offset = -1,
 	};
 
 	size_t sz = sizeof(struct tui_readline_opts);
