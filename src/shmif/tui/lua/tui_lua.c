@@ -8,7 +8,6 @@
  * TODO:
  *   [ ] detached (virtual) windows
  *   [ ] PUSH new_window
- *   [ ] arcan_tui_wndhint support
  *   [ ] nbio to bufferwnd?
  *   [ ] screencopy (src, dst, ...)
  *   [ ] tpack to buffer
@@ -2441,11 +2440,18 @@ static int readline_suggest(lua_State* L)
 
 	size_t count = 0;
 	char** new_suggest = NULL;
-	if (lua_type(L, 2) != LUA_TTABLE){
+	size_t index = 2;
+
+	if (lua_type(L, 2) == LUA_TBOOLEAN){
+		arcan_tui_readline_autosuggest(ib->tui, lua_toboolean(L, 2));
+		return 0;
+	}
+
+	if (lua_type(L, index) != LUA_TTABLE){
 		luaL_error(L, "suggest(table) - missing table");
 	}
 
-	ssize_t nelem = lua_rawlen(L, 2);
+	ssize_t nelem = lua_rawlen(L, index);
 	if (nelem < 0){
 		luaL_error(L, "suggest(table) - negative length");
 	}
@@ -2466,7 +2472,7 @@ static int readline_suggest(lua_State* L)
 	}
 
 	free_suggest(meta);
-	const char* mode = luaL_optstring(L, 3, "word");
+	const char* mode = luaL_optstring(L, index + 1, "word");
 	int mv = READLINE_SUGGEST_WORD;
 	if (strcasecmp(mode, "insert") == 0){
 		mv = READLINE_SUGGEST_INSERT;
@@ -2485,7 +2491,7 @@ static int readline_suggest(lua_State* L)
 	arcan_tui_readline_suggest(
 		meta->parent->tui, mv, (const char**) new_suggest, count);
 
-	const char* prefix = luaL_optstring(L, 4, NULL);
+	const char* prefix = luaL_optstring(L, index + 2, NULL);
 	if (prefix)
 		arcan_tui_readline_suggest_prefix(meta->parent->tui, prefix);
 
