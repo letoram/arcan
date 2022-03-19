@@ -159,13 +159,14 @@ static void drop_completion(
 
 		switch (M->completion_mode){
 			case READLINE_SUGGEST_WORD:
-				if (!isspace(M->work[M->cursor]))
+				if (!isspace(M->work[M->cursor])){
 					delete_last_word(T, M);
+					if (M->cursor)
+						add_input(T, M, " ", 1, true);
+				}
 			break;
-			case READLINE_SUGGEST_INSERT:{
-				if (M->suggest_prefix)
-					add_input(T, M, M->suggest_prefix, M->suggest_prefix_sz, true);
-			}
+
+			case READLINE_SUGGEST_INSERT:
 			break;
 
 			case READLINE_SUGGEST_SUBSTITUTE:
@@ -173,10 +174,11 @@ static void drop_completion(
 				M->work_ofs = 0;
 				M->work_len = 0;
 				M->cursor = 0;
-				if (M->suggest_prefix)
-					add_input(T, M, M->suggest_prefix, M->suggest_prefix_sz, true);
 			break;
 		}
+
+		if (M->suggest_prefix)
+			add_input(T, M, M->suggest_prefix, M->suggest_prefix_sz, true);
 
 		while (*msg){
 			uint32_t ch;
@@ -776,7 +778,7 @@ void on_key_input(struct tui_context* T,
 	}
 	else if (keysym == TUIK_UP){
 		if (M->show_completion){
-			if (!M->completion_pos)
+			if (!M->completion_pos && M->completion_sz)
 				M->completion_pos = M->completion_sz - 1;
 			else
 				M->completion_pos--;
@@ -786,7 +788,7 @@ void on_key_input(struct tui_context* T,
 			step_history(T, M, 1);
 	}
 	else if (keysym == TUIK_DOWN){
-		if (M->show_completion){
+		if (M->show_completion && M->completion_sz > 0){
 		 M->completion_pos = (M->completion_pos + 1) % M->completion_sz;
 		 refresh(T, M);
 		}
