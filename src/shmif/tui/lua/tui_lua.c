@@ -2492,8 +2492,7 @@ static int readline_suggest(lua_State* L)
 		meta->parent->tui, mv, (const char**) new_suggest, count);
 
 	const char* prefix = luaL_optstring(L, index + 2, NULL);
-	if (prefix)
-		arcan_tui_readline_suggest_prefix(meta->parent->tui, prefix);
+	arcan_tui_readline_suggest_prefix(meta->parent->tui, prefix);
 
 	return 0;
 }

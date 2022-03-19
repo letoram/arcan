@@ -399,16 +399,19 @@ void arcan_tui_readline_suggest_prefix(struct tui_context* T, const char* msg)
 	if (!validate_context(T, &M))
 		return;
 
-	size_t nb = strlen(msg);
-	char* copy = malloc(nb + 1);
-	if (!copy)
-		return;
-
 	if (M->suggest_prefix){
 		free(M->suggest_prefix);
 		M->suggest_prefix = NULL;
 		M->suggest_prefix_sz = 0;
 	}
+
+	if (!msg)
+		return;
+
+	size_t nb = strlen(msg);
+	char* copy = malloc(nb + 1);
+	if (!copy)
+		return;
 
 	memcpy(copy, msg, nb);
 	copy[nb] = '\0';
@@ -777,8 +780,8 @@ void on_key_input(struct tui_context* T,
 		step_cursor_right(T, M);
 	}
 	else if (keysym == TUIK_UP){
-		if (M->show_completion){
-			if (!M->completion_pos && M->completion_sz)
+		if (M->show_completion && M->completion_sz > 0){
+			if (!M->completion_pos)
 				M->completion_pos = M->completion_sz - 1;
 			else
 				M->completion_pos--;
