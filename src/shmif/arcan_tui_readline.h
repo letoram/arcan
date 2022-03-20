@@ -150,13 +150,14 @@ void arcan_tui_readline_suggest(
 	struct tui_context* t, int mode, const char** set, size_t set_sz);
 
 /*
- * Set an insertion prefix used with any of the suggestion modes above.
+ * Set an insertion prefix and/or suffix used with any of the suggestion
+ * modes above.
  *
- * [Str] will be copied and used internally and freed on the next call to
- * suggest_prefix or releasing the context.
+ * [prefix,suffix] will be copied and used internally and freed on the
+ * next call to suggest_fix or releasing the context.
  */
-void arcan_tui_readline_suggest_prefix(
-	struct tui_context* t, const char* str);
+void arcan_tui_readline_suggest_fix(
+	struct tui_context* t, const char* prefix, const char* suffix);
 
 /*
  * Call as part of normal processing loop to retrieve a reference to the
@@ -205,7 +206,7 @@ typedef void(* PTUIRL_PROMPT)(struct tui_context*, const struct tui_cell*);
 typedef void(* PTUIRL_SET)(struct tui_context*, const char* msg);
 typedef void(* PTUIRL_COMPLETE)(struct tui_context*, const char*);
 typedef void(* PTUIRL_SUGGEST)(struct tui_context*, int, const char**, size_t);
-typedef void(* PTUIRL_SUGGEST_PREFIX)(struct tui_context*, const char*);
+typedef void(* PTUIRL_SUGGEST_FIX)(struct tui_context*, const char*, const char*);
 typedef void(* PTUIRL_REGION)(struct tui_context*, size_t, size_t, size_t, size_t);
 typedef void(* PTUIRL_AUTOSUGGEST)(struct tui_context*, bool);
 
@@ -217,7 +218,7 @@ static PTUIRL_PROMPT arcan_tui_readline_prompt;
 static PTUIRL_SET arcan_tui_readline_set;
 static PTUIRL_COMPLETE arcan_tui_readline_complete;
 static PTUIRL_SUGGEST arcan_tui_readline_suggest;
-static PTUIRL_SUGGEST_PREFIX arcan_tui_readline_suggest_prefix;
+static PTUIRL_SUGGEST_FIX arcan_tui_readline_suggest_prefix;
 static PTUIRL_REGION arcan_tui_readline_region;
 static PTUIRL_AUTOSUGGEST arcan_tui_readline_autosuggest;
 
@@ -233,7 +234,7 @@ M(PTUIRL_PROMPT, arcan_tui_readline_prompt);
 M(PTUIRL_SET, arcan_tui_readline_set);
 M(PTUIRL_COMPLETE, arcan_tui_readline_complete);
 M(PTUIRL_SUGGEST, arcan_tui_readline_suggest);
-M(PTUIRL_SUGGEST_PREFIX, arcan_tui_readline_suggest_prefix);
+M(PTUIRL_SUGGEST_FIX, arcan_tui_readline_suggest_fix);
 M(PTUIRL_REGION, arcan_tui_readline_region);
 M(PTUIRL_AUTOSUGGEST, arcan_tui_readline_autosuggest);
 #undef M
