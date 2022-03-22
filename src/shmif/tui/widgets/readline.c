@@ -55,6 +55,8 @@ struct readline_meta {
 	const char** completion;
 	char* suggest_prefix;
 	size_t suggest_prefix_sz;
+	char* suggest_suffix;
+	size_t suggest_suffix_sz;
 	size_t completion_sz;
 	size_t completion_width;
 	size_t completion_mode;
@@ -189,6 +191,9 @@ static void drop_completion(
 			msg += step;
 		}
 	}
+
+	if (M->suggest_suffix)
+		add_input(T, M, M->suggest_suffix, M->suggest_suffix_sz, true);
 }
 
 static void draw_completion(struct tui_context* T, struct readline_meta* M)
@@ -393,7 +398,8 @@ static bool validate_context(struct tui_context* T, struct readline_meta** M)
 	return true;
 }
 
-void arcan_tui_readline_suggest_prefix(struct tui_context* T, const char* msg)
+void arcan_tui_readline_suggest_fix(
+	struct tui_context* T, const char* pre, const char* suf)
 {
 	struct readline_meta* M;
 	if (!validate_context(T, &M))
@@ -405,18 +411,34 @@ void arcan_tui_readline_suggest_prefix(struct tui_context* T, const char* msg)
 		M->suggest_prefix_sz = 0;
 	}
 
-	if (!msg)
-		return;
+	if (M->suggest_suffix){
+		free(M->suggest_suffix);
+		M->suggest_suffix = NULL;
+		M->suggest_suffix_sz = 0;
+	}
 
-	size_t nb = strlen(msg);
-	char* copy = malloc(nb + 1);
-	if (!copy)
-		return;
+	if (pre){
+		size_t nb = strlen(pre);
+		char* copy = malloc(nb + 1);
+		if (!copy)
+			return;
 
-	memcpy(copy, msg, nb);
-	copy[nb] = '\0';
-	M->suggest_prefix = copy;
-	M->suggest_prefix_sz = nb;
+		memcpy(copy, pre, nb);
+		copy[nb] = '\0';
+		M->suggest_prefix = copy;
+		M->suggest_prefix_sz = nb;
+	}
+	if (suf){
+		size_t nb = strlen(suf);
+		char* copy = malloc(nb + 1);
+		if (!copy)
+			return;
+
+		memcpy(copy,suf, nb);
+		copy[nb] = '\0';
+		M->suggest_suffix = copy;
+		M->suggest_suffix_sz = nb;
+	}
 }
 
 static void step_cursor_left(struct tui_context* T, struct readline_meta* M)
@@ -772,10 +794,12 @@ void on_key_input(struct tui_context* T,
 	if (keysym == TUIK_LEFT){
 		drop_completion(T, M, false);
 		step_cursor_left(T, M);
+		verify(T, M);
 		refresh(T, M);
 	}
 	else if (keysym == TUIK_RIGHT){
 		drop_completion(T, M, true);
+		verify(T, M);
 		refresh(T, M);
 		step_cursor_right(T, M);
 	}
@@ -1311,6 +1335,12 @@ void arcan_tui_readline_release(struct tui_context* T)
 		free(M->suggest_prefix);
 		M->suggest_prefix = NULL;
 		M->suggest_prefix_sz = 0;
+	}
+
+	if (M->suggest_suffix){
+		free(M->suggest_suffix);
+		M->suggest_suffix = NULL;
+		M->suggest_suffix_sz = 0;
 	}
 
 	M->magic = 0xdeadbeef;
