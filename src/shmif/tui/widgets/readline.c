@@ -844,6 +844,10 @@ void on_key_input(struct tui_context* T,
 	else if (keysym == TUIK_RETURN){
 		add_linefeed(T, M);
 	}
+	else if (M->old_handlers.input_key){
+		M->old_handlers.input_key(T,
+			keysym, scancode, mods, subid, M->old_handlers.tag);
+	}
 }
 
 static bool ensure_size(
@@ -1086,6 +1090,7 @@ void arcan_tui_readline_reset(struct tui_context* T)
 		return;
 
 	reset(M);
+	verify(T, M);
 	refresh(T, M);
 }
 
