@@ -1374,8 +1374,8 @@ static int tuiclose(lua_State* L)
 				ib->parent->subs[i] = NULL;
 				break;
 			}
-			compact(ib->parent);
 		}
+		compact(ib->parent);
 	}
 
 	if (ib->href != LUA_NOREF){
