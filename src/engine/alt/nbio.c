@@ -487,6 +487,8 @@ int alt_nbio_process_read(
 	if (nonbuffered){
 		if (ib->ofs)
 			lua_pushlstring(L, ib->buf, ib->ofs);
+		else
+			lua_pushnil(L);
 		lua_pushboolean(L, !eof);
 		ib->ofs = 0;
 		return 2;
