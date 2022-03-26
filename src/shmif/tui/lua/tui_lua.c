@@ -268,10 +268,6 @@ static struct tui_constraints get_wndhint(lua_State* L, int ind)
 {
 	struct tui_constraints res =
 	{
-		.anch_row = -1,
-		.anch_col = -1,
-		.max_rows = -1,
-		.min_rows = -1,
 		.hide = false
 	};
 
