@@ -13,7 +13,7 @@ extern char** environ;
 static void ensure_at(int num, const char* fn)
 {
 	int fd = open(fn, O_RDWR);
-	dup2(num, fd);
+	dup2(fd, num);
 	if (fd != num)
 		close(fd);
 }
