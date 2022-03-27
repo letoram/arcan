@@ -160,8 +160,13 @@ static void drop_completion(
 		const char* msg = M->completion[M->completion_pos];
 
 		switch (M->completion_mode){
+/* Delete the word first, but only if we are actually 'on' a word. This needs
+ * to cover the edge cases of just having added a space and starting on a new
+ * word either through cursor- stepping (1) or inserting at the end. (2) */
 			case READLINE_SUGGEST_WORD:
-				if (!isspace(M->work[M->cursor])){
+				if (
+						(M->work[M->cursor] && !isspace(M->work[M->cursor])) || /* (1) */
+						(!M->work[M->cursor] && M->cursor && !isspace(M->work[M->cursor-1]))){ /* (2) */
 					delete_last_word(T, M);
 					if (M->cursor)
 						add_input(T, M, " ", 1, true);
