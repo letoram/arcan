@@ -131,7 +131,7 @@ int arcterm_luacli_run(struct arcan_shmif_cont* shmif, struct arg_arr* args)
 	lua_remove(lua, -2);
 
 /* parse-run builtin script */
-	if (LUA_OK != luaL_loadbuffer(lua, (const char*) lash_lua, lash_lua_len, "lash")){
+	if (0 != luaL_loadbuffer(lua, (const char*) lash_lua, lash_lua_len, "lash")){
 		const char* msg = lua_tostring(lua, -1);
 		if (isatty(STDOUT_FILENO)){
 			fprintf(stdout, "lua_cli failed: %s", msg);
