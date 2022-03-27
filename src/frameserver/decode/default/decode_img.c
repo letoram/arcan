@@ -1,4 +1,6 @@
 #include <arcan_shmif.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 /* Should have the option for a more complete svg rasterizer/parser
  * here, with all the w3c-terrible that comes with it.
@@ -273,9 +275,20 @@ int decode_image(struct arcan_shmif_cont* C, struct arg_arr* args)
 		current.ppcm = init->density;
 	}
 
-	int fd = wait_for_file(C, "svg;jpg;png", NULL);
+	const char* val = NULL;
+	int fd = -1;
+	if (arg_lookup(args, "file", 0, &val)){
+		if (!val || strlen(val) == 0){
+			return show_use(C, "file=arg [arg] missing");
+		}
+		fd = open(val, O_RDONLY);
+	}
+	else
+		fd = wait_for_file(C, "svg;jpg;png", NULL);
+
 	if (-1 == fd)
 		return EXIT_SUCCESS;
+
 	do_file(C, fd);
 	reraster(C);
 
