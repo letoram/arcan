@@ -7,14 +7,9 @@
  *
  * TODO:
  *   [ ] detached (virtual) windows
+ *   [ ] bgcopy progress and controls for out-close
  *   [ ] PUSH new_window
- *   [ ] nbio to bufferwnd?
- *   [ ] screencopy (src, dst, ...)
- *   [ ] tpack to buffer
- *   [ ] tunpack from buffer
- *   [ ] cross-window blit
  *   [ ] apaste/vpaste does nothing - map to bchunk_in?
- *   [ ] Hasglyph
  */
 
 #include <arcan_shmif.h>
@@ -2873,6 +2868,65 @@ static int tui_getenv(lua_State* L)
 	return 1;
 }
 
+static int tui_tpack(lua_State* L)
+{
+	TUI_UDATA;
+	uint8_t* buf;
+	size_t buf_sz;
+
+	if (arcan_tui_tpack(ib->tui, &buf, &buf_sz)){
+		lua_pushlstring(L, (const char*) buf, buf_sz);
+		free(buf);
+	}
+	else
+		lua_pushnil(L);
+
+	return 1;
+}
+
+static int tui_screencopy(lua_State* L)
+{
+	TUI_UDATA;
+
+/* srcwnd x1, y1, x2, y2, dstwnd [x, y] */
+
+	size_t x1 = luaL_checknumber(L, 2);
+	size_t y1 = luaL_checknumber(L, 3);
+	size_t x2 = luaL_checknumber(L, 4);
+	size_t y2 = luaL_checknumber(L, 5);
+
+	struct tui_lmeta* db = luaL_checkudata(L, 6, TUI_METATABLE);
+	if (!db || !db->tui) {
+		luaL_error(L, !ib ? "no userdata" : "no tui context on dst");
+	}
+
+	size_t dx = luaL_optnumber(L, 7, 0);
+	size_t dy = luaL_optnumber(L, 8, 0);
+
+	arcan_tui_screencopy(ib->tui, db->tui, x1, y1, x2, y2, dx, dy);
+	return 0;
+}
+
+static int tui_tunpack(lua_State* L)
+{
+	TUI_UDATA;
+	size_t len;
+	const char* buf = luaL_checklstring(L, 2, &len);
+
+	size_t rows, cols;
+	arcan_tui_dimensions(ib->tui, &rows, &cols);
+
+	size_t x = luaL_optnumber(L, 3, 0);
+	size_t y = luaL_optnumber(L, 4, 0);
+	size_t w = luaL_optnumber(L, 5, 0);
+	size_t h = luaL_optnumber(L, 6, 0);
+
+	lua_pushboolean(L,
+		arcan_tui_tunpack(ib->tui, (uint8_t*) buf, len, x, y, w, h));
+
+	return 1;
+}
+
 static int popen_wrap(lua_State* L)
 {
 	TUI_UDATA;
@@ -2881,6 +2935,35 @@ static int popen_wrap(lua_State* L)
 		chdir(ib->cwd);
 
 	return tui_popen(L);
+}
+
+static int tui_hasglyph(lua_State* L)
+{
+	TUI_UDATA;
+	uint32_t cp = 0;
+
+	if (lua_type(L, -1) == LUA_TNUMBER){
+		cp = (uint32_t) lua_tonumber(L, -1);
+	}
+	else if (lua_type(L, -1) == LUA_TSTRING){
+		const char* buf = lua_tostring(L, -1);
+		char work[4] = {0};
+
+		for (size_t i = 0; i < 4 && buf[i]; i++)
+			work[i] = buf[i];
+
+		if (-1 != arcan_tui_utf8ucs4(work, &cp)){
+			lua_pushboolean(L, false);
+			lua_pushboolean(L, false);
+			return 2;
+		}
+	}
+	else
+		luaL_error(L, "has_glyph: expected u32-cp (number) or utf8- string");
+
+	lua_pushboolean(L, arcan_tui_hasglyph(ib->tui, cp));
+	lua_pushboolean(L, true);
+	return 2;
 }
 
 static void register_tuimeta(lua_State* L)
@@ -2930,6 +3013,10 @@ static void register_tuimeta(lua_State* L)
 		{"getenv", tui_getenv},
 		{"chdir", tui_chdir},
 		{"hint", tui_wndhint},
+		{"has_glyph", tui_hasglyph},
+		{"tpack", tui_tpack},
+		{"tunpack", tui_tunpack},
+		{"copy_region", tui_screencopy}
 	};
 
 	/* will only be set if it does not already exist */
