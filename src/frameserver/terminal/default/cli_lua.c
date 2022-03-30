@@ -68,6 +68,7 @@ static int emptyf(lua_State* L)
 	return 0;
 }
 
+#include "../../../engine/external/bit.c"
 int arcterm_luacli_run(struct arcan_shmif_cont* shmif, struct arg_arr* args)
 {
 	lua_State* lua = luaL_newstate();
