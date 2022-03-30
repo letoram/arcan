@@ -751,10 +751,9 @@ void arcan_tui_announce_io(struct tui_context* c,
 	if (input_descr){
 		const char* suffix = ";stdin";
 		if (strlen(input_descr) == 0){
-			arcan_shmif_enqueue(&c->acon, &bchunk);
 			suffix = "stdin";
 		}
-		send_list(c, bchunk, suffix, output_descr);
+		send_list(c, bchunk, suffix, input_descr);
 	}
 
 	if (output_descr){
@@ -763,10 +762,8 @@ void arcan_tui_announce_io(struct tui_context* c,
 
 /* request to flush? then re-announce tuiraw */
 		if (strlen(output_descr) == 0){
-			arcan_shmif_enqueue(&c->acon, &bchunk);
 			suffix = "tuiraw;stdout;stderr";
 		}
-
 		send_list(c, bchunk, suffix, output_descr);
 	}
 }

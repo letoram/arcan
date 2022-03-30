@@ -1567,7 +1567,7 @@ static int alive(lua_State* L)
 
 /* correlate a bitmap of indices to the map of file descriptors to uintptr_t
  * tags, collect them in a set and forward to alt_nbio */
-static void run_bitmap(lua_State* L, int map)
+static int run_bitmap(lua_State* L, int map)
 {
 	uintptr_t set[32];
 	int count = 0;
@@ -1579,6 +1579,7 @@ static void run_bitmap(lua_State* L, int map)
 	for (int i = 0; i < count; i++){
 		alt_nbio_data_in(L, set[i]);
 	}
+	return map;
 }
 
 static void run_sub_bitmap(struct tui_lmeta* ib, int map)
@@ -1715,8 +1716,8 @@ repoll:
  * outbound job triggers we need to first cache the tags on the stack, then
  * trigger the nbio as nbio_jobs may be modified from the nbio_data call */
 	if (nbio_jobs.fdin_used && (res.bad || res.ok)){
-		run_bitmap(L, res.ok);
-		run_bitmap(L, res.bad);
+		res.ok = run_bitmap(L, res.ok);
+		res.bad = run_bitmap(L, res.bad);
 	}
 
 /* _process only multiplexes on inbound so we need to flush outbound as well */
@@ -1733,7 +1734,7 @@ repoll:
 		}
 	}
 
-	if (res.errc == TUI_ERRC_OK){
+	if (res.errc == TUI_ERRC_OK || res.errc == TUI_ERRC_BAD_FD){
 		lua_pushboolean(L, true);
 		return 1;
 	}
@@ -1742,9 +1743,6 @@ repoll:
 	switch (res.errc){
 	case TUI_ERRC_BAD_ARG:
 		lua_pushliteral(L, "bad argument");
-	break;
-	case TUI_ERRC_BAD_FD:
-		lua_pushliteral(L, "bad descriptor in set");
 	break;
 	case TUI_ERRC_BAD_CTX:
 		lua_pushliteral(L, "broken context");
@@ -2818,8 +2816,24 @@ static int tui_fbond(lua_State* L)
 
 	sio->fd = -1;
 	dio->fd = -1;
-	alt_nbio_close(L, src);
-	alt_nbio_close(L, dst);
+
+	const char* optstr = luaL_optstring(L, 4, "");
+	int flags = 0;
+
+	if (!strchr(optstr, 'r')){
+		alt_nbio_close(L, src);
+	}
+	else
+		flags |= TUI_BGCOPY_KEEPIN;
+
+	if (!strchr(optstr, 'w')){
+		alt_nbio_close(L, dst);
+	}
+	else
+		flags |= TUI_BGCOPY_KEEPOUT;
+
+	if (strchr(optstr, 'p'))
+		flags |= TUI_BGCOPY_PROGRESS;
 
 	fcntl(pair[0], F_SETFD, fcntl(pair[0], F_GETFD) | FD_CLOEXEC);
 	fcntl(pair[1], F_SETFD, fcntl(pair[0], F_GETFD) | FD_CLOEXEC);
@@ -2827,7 +2841,7 @@ static int tui_fbond(lua_State* L)
 	struct nonblock_io* ret;
 	alt_nbio_import(L, pair[0], O_RDONLY, &ret);
 	if (ret)
-		arcan_tui_bgcopy(ib->tui, fdin, fdout, pair[1], 0);
+		arcan_tui_bgcopy(ib->tui, fdin, fdout, pair[1], flags);
 	return 1;
 }
 
