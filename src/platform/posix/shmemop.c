@@ -12,9 +12,10 @@ size_t arcan_shmif_vbufsz(
 	int meta, uint8_t hints, size_t w, size_t h, size_t rows, size_t cols)
 {
 	if ((hints & SHMIF_RHINT_TPACK) && rows && cols){
-		size_t sz =
-			raster_hdr_sz * (rows * cols * raster_cell_sz) + (rows * raster_line_sz);
-		return sz;
+	return
+		raster_hdr_sz + /* always there */
+		(rows * cols + 2) * raster_cell_sz + /* worst case, includes cursor */
+		(rows + 2) * raster_line_sz;
 	}
 	else
 		return w * h * sizeof(shmif_pixel);
