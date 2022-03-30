@@ -383,14 +383,15 @@ enum ARCAN_TARGET_COMMAND {
  * quality in regard to a physical display (having things displayed at a
  * known physical size and layout)
  *
- * ioevs[0].iv = width,
- * ioevs[1].iv = height,
- * ioevs[2].iv = bitmask hintflags: 0: normal, 1: drag resize,
- *               2: invisible, 4: unfocused, 8: maximized, 16: fullscreen
- * ioevs[3].iv = RGB layout (0 RGB, 1 BGR, 2 VRGB, 3 VBGR)
- * ioevs[4].fv = ppcm (pixels per centimeter, square assumed), < 0 ignored.
- * ioevs[5].iv = cell_width (rpack- feedback)
- * ioevs[6].iv = cell_height (rpack- feedback)
+ * ioevs[0].iv  = width,
+ * ioevs[1].iv  = height,
+ * ioevs[2].iv  = bitmask hintflags: 0: normal, 1: drag resize,
+ *                2: invisible, 4: unfocused, 8: maximized, 16: fullscreen
+ * ioevs[3].iv  = RGB layout (0 RGB, 1 BGR, 2 VRGB, 3 VBGR)
+ * ioevs[4].fv  = ppcm (pixels per centimeter, square assumed), < 0 ignored.
+ * ioevs[5].iv  = cell_width (rpack- feedback)
+ * ioevs[6].iv  = cell_height (rpack- feedback)
+ * ioevs[7].uiv = segment_token
  *
  * There are subtle side-effects from the UNIQUE/AGGREGATE approach,
  * some other events may be relative to current display dimensions (typically
@@ -400,6 +401,9 @@ enum ARCAN_TARGET_COMMAND {
  * AIO, AIO, AIO, DH possibly changing the effect of the AIO. If this corner
  * case is an actual risk, it should be taken into consideration by the ARCAN-
  * APPL side.
+ *
+ * A segment token might be provided to indicate that the displayhint refers
+ * to a segment that was handed over and is marked as embedded.
  */
 	TARGET_COMMAND_DISPLAYHINT,
 
