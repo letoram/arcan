@@ -104,10 +104,17 @@ static const char* envopts[] = {
 	"evdev_mouse=label", "Force device matching 'label' as a mouse",
 #ifdef HAVE_XKBCOMMON
 	"", "",
-	"[XKB-ARGUMENTS]", "[these are ENV- only (fwd to libxkbcommon)]",
+	"[XKB db keys]", "(libkbcommon specific, no ARCAN_ env prefix)",
+	"event_xkb_rules", "Ruleset (evdev)",
+	"event_xkb_variant", "Variant within the keymap (intl,dvorak)",
+	"event_xkb_model", "Keyboard model (pc105)",
+	"event_xkb_layout", "Layout groups (fr,us)",
+	"event_xkb_options", "Mapping options (ctrl:nocaps)",
+	"[XKB-ENVVARS]", "(might be blocked by suid, libxkbcommon)",
 	"XKB_DEFAULT_LAYOUT=lang", "enable XKB translation maps for keyboards",
 	"XKB_DEFAULT_VARIANT=variant", "define XKB layout variant",
 	"XKB_DEFAULT_MODEL=pc101", "define XKB keyboard model",
+	"XKB_DEFAULT_RULES=evdev", "define XKB ruleset",
 #endif
 	NULL
 };
