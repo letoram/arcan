@@ -3526,11 +3526,24 @@ static void* copy_thread(void* inarg)
 {
 	int* fds = inarg;
 	char inbuf[4096];
-
 	int8_t sc = 0;
 
-/* depending on type and OS, there are a number of options e.g.
- * sendfile, splice, sosplice, ... right now just use a slow/safe */
+	size_t tot = 0;
+	size_t acc = 0;
+	size_t last_acc = 0;
+	uint64_t time_last = arcan_timemillis();
+	static const size_t report_mb = 10;
+
+	struct stat fs;
+
+/* might not remain accurate but fair to keep around, slightly more
+ * diligent is re-stating on boundary invalidation (st_size < acc) */
+	if (-1 != fstat(fds[0], &fs) && fs.st_size > 0){
+		tot = fs.st_size;
+	}
+
+/* depending on type and OS, there are a number of options e.g. sendfile,
+ * splice, sosplice, ... right now just use a slow/safe */
 	for(;;){
 		ssize_t nr = read(fds[0], inbuf, sizeof(inbuf));
 		if (-1 == nr){
@@ -3546,13 +3559,39 @@ static void* copy_thread(void* inarg)
 			sc = -2;
 			break;
 		}
+
+/* PIPE_BUF is required to be >= 512 on POSIX, only update every n megabytes or
+ * every second or so as to not block unnecessarily on reporting while still
+ * being responsive. */
+		if (fds[3] & SHMIF_BGCOPY_PROGRESS){
+			acc += nr;
+
+			if (acc - last_acc > report_mb * 1024 * 1024 ||
+				arcan_timemillis() - time_last > 1000){
+
+				time_last = arcan_timemillis();
+				int n = snprintf(inbuf,
+					sizeof(inbuf), "%zu:%zu:%zu\n", (size_t) nr, acc, tot);
+				write(fds[2], inbuf, n);
+			}
+		}
 	}
 
-	close(fds[0]);
-	close(fds[1]);
+	if (!(fds[3] & SHMIF_BGCOPY_KEEPIN))
+		close(fds[0]);
+	if (!(fds[3] & SHMIF_BGCOPY_KEEPOUT))
+		close(fds[1]);
 
 	if (-1 != fds[2]){
-		write(fds[2], &sc, 1);
+		if (fds[3] & SHMIF_BGCOPY_PROGRESS){
+			int n = snprintf(inbuf, sizeof(inbuf), "%d:%zu:%zu\n", sc, acc, tot);
+			while (-1 == write(fds[2], inbuf, n) &&
+				(errno == EAGAIN || errno == EINTR)){}
+		}
+		else
+			while (-1 == write(fds[2], &sc, 1) &&
+				(errno == EAGAIN || errno == EINTR)){}
+
 		close(fds[2]);
 	}
 
@@ -3563,13 +3602,14 @@ static void* copy_thread(void* inarg)
 void arcan_shmif_bgcopy(
 	struct arcan_shmif_cont* c, int fdin, int fdout, int sigfd, int fl)
 {
-	int* fds = malloc(sizeof(int) * 2);
+	int* fds = malloc(sizeof(int) * 4);
 	if (!fds)
 		return;
 
 	fds[0] = fdin;
 	fds[1] = fdout;
 	fds[2] = sigfd;
+	fds[3] = fl;
 
 /* options, fork or thread */
 	pthread_t pth;
@@ -3578,8 +3618,10 @@ void arcan_shmif_bgcopy(
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
 
 	if (-1 == pthread_create(&pth, &pthattr, copy_thread, fds)){
-		close(fdin);
-		close(fdout);
+		if (!(fl & SHMIF_BGCOPY_KEEPIN))
+			close(fdin);
+		if (!(fl & SHMIF_BGCOPY_KEEPOUT))
+			close(fdout);
 		if (-1 != sigfd){
 			int8_t ch = -3;
 			write(sigfd, &ch, 1);

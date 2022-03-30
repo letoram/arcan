@@ -64,6 +64,12 @@ enum tui_attr_flags {
 	TUI_ATTR_AGLYPH_INDEXED = 8192,
 };
 
+enum tui_bgcopy_flags {
+	TUI_BGCOPY_KEEPIN = 1,
+	TUI_BGCOPY_KEEPOUT = 2,
+	TUI_BGCOPY_PROGRESS = 4
+};
+
 /*
  * positioning / drawing hints, BITMASK.
  */

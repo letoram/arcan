@@ -470,7 +470,21 @@ int arcan_shmif_deadline(
  *   -3 (alloc/arg error)
  *    0 (ok)
  *
+ * Flags that can also modify behaviour:
+ *
+ * SHMIF_BGCOPY_KEEPIN,   (won't close fdin on completion)
+ * SHMIF_BGCOPY_KEEPOUT,  (won't close fdout on completion)
+ * SHMIF_BGCOPY_PROGRESS, (ascii: status:current:total\n into sigfd)
+ *
+ * If progress is set and [sigfd] is set, write-fails on buffer overflow
+ * will spin for the completion byte.
  */
+enum shmif_bgcopy_flags {
+	SHMIF_BGCOPY_KEEPIN = 1,
+	SHMIF_BGCOPY_KEEPOUT = 2,
+	SHMIF_BGCOPY_PROGRESS = 4
+};
+
 void arcan_shmif_bgcopy(
 	struct arcan_shmif_cont*, int fdin, int fdout, int sigfd, int flags);
 
