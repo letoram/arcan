@@ -738,7 +738,7 @@ int alt_nbio_open(lua_State* L)
 
 		if (strlen(path) > lim - 1){
 			arcan_warning("open_nonblock(), socket path too long\n");
-			LUA_ETRACE("open_nonblock", "socket path too lpng", 0);
+			LUA_ETRACE("open_nonblock", "socket path too long", 0);
 		}
 		snprintf(addr.sun_path, lim, "%s", path);
 
