@@ -61,15 +61,18 @@ static void display_hint(struct tui_context* tui, arcan_tgtevent* ev)
 	if ((ev->ioevs[2].iv & 2) ^ tui->inactive){
 		tui->inactive = (ev->ioevs[2].iv & 2);
 		tui->dirty |= DIRTY_CURSOR;
-		if (tui->handlers.visibility)
-			tui->handlers.visibility(tui, !tui->inactive, !tui->defocus, tui->handlers.tag);
+		update = true;
 	}
 
 	if ((ev->ioevs[2].iv & 4) ^ tui->defocus){
 		tui->defocus = ev->ioevs[2].iv & 4;
 		tui->dirty |= DIRTY_CURSOR;
 		tui->modifiers = 0;
+		update = true;
 	}
+
+	if (update && tui->handlers.visibility)
+			tui->handlers.visibility(tui, !tui->inactive, !tui->defocus, tui->handlers.tag);
 
 /* did we get an update indicating that the screen density changed? that
  * will affect the font manager, which in turn may try and resize the screen */
