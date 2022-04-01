@@ -85,6 +85,11 @@ struct tui_readline_opts {
  * Forward mouse events that occur outside of the current readline bounding box
  */
 	bool mouse_forward;
+
+/*
+ * Chain to default handler on text paste rather than inserting
+ */
+	bool paste_forward;
 };
 
 void arcan_tui_readline_setup(
@@ -104,7 +109,7 @@ void arcan_tui_readline_autosuggest(struct tui_context*, bool);
  * (assuming there is enough space for it to fit, or it will be drawn truncated).
  *
  * Ownership:
- * Caller retains ownership of prompt, callee retains a refrence that may be used
+ * Caller retains ownership of prompt, callee retains a reference that may be used
  * until next call to set_prompt or release on the tui context.
  *
  * Note:
