@@ -402,7 +402,7 @@ void tui_screen_resized(struct tui_context* tui)
 	int rows = tui->acon.h / tui->cell_h;
 
 	LOG("update screensize (%d * %d), (%d * %d)\n",
-		cols, rows, (int)tui->acon.w, (int)tui->acon.h);
+		rows, cols, (int)tui->acon.w, (int)tui->acon.h);
 
 /* calculate the rpad/bpad regions based on the desired output size and the
  * amount consumed by the aligned number of cells, this should ideally be zero */

@@ -675,7 +675,7 @@ static void add_to_event(struct tui_context* c, bool more,
 	}
 }
 
-/* split list up into multiple messages if needed, and append wild-cards last */
+/* split list up into multiple messages if needed */
 static void send_list(struct tui_context* c,
 	struct arcan_event ev, const char* suffix, const char* list)
 {
@@ -739,7 +739,7 @@ void arcan_tui_announce_io(struct tui_context* c,
 	if (!c)
 		return;
 
-	arcan_event bchunk = {
+	arcan_event ev = {
 		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
 		.category = EVENT_EXTERNAL,
 		.ext.bchunk = {
@@ -748,23 +748,50 @@ void arcan_tui_announce_io(struct tui_context* c,
 		}
 	};
 
+/* for the hints we append [tuiraw, stdio] but for direct-req only the
+ * caller provided extensions will be used */
+	if (immediately){
+		if (input_descr){
+			if (strlen(input_descr) == 0){
+				ev.ext.bchunk.hint |= 2; /* wildcard */
+				arcan_shmif_enqueue(&c->acon, &ev);
+			}
+			else {
+				send_list(c, ev, "", input_descr);
+			}
+		}
+
+		if (output_descr){
+			ev.ext.bchunk.hint = 0;
+			ev.ext.bchunk.input = false;
+			if (strlen(output_descr) == 0){
+				ev.ext.bchunk.hint |= 2; /* wildcard */
+				arcan_shmif_enqueue(&c->acon, &ev);
+			}
+			else
+				send_list(c, ev, "", output_descr);
+		}
+
+		return;
+	}
+
 	if (input_descr){
 		const char* suffix = ";stdin";
 		if (strlen(input_descr) == 0){
 			suffix = "stdin";
 		}
-		send_list(c, bchunk, suffix, input_descr);
+		send_list(c, ev, suffix, input_descr);
 	}
 
 	if (output_descr){
-		bchunk.ext.bchunk.input = false;
+		ev.ext.bchunk.input = false;
 		const char* suffix =  ";tuiraw;stdout;stderr";
 
 /* request to flush? then re-announce tuiraw */
 		if (strlen(output_descr) == 0){
 			suffix = "tuiraw;stdout;stderr";
 		}
-		send_list(c, bchunk, suffix, output_descr);
+		send_list(c, ev, suffix, output_descr);
 	}
 }
 

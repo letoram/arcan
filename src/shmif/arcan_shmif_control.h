@@ -1,7 +1,7 @@
 /*
  Arcan Shared Memory Interface
 
- Copyright (c) 2012-2018, Bjorn Stahl
+ Copyright (c) Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
@@ -1080,7 +1080,7 @@ struct arcan_shmif_page {
  * dimensions are needed, undefined unless in TPACK hint state. This should
  * be a value that can be calculated from fonthint etc. but that is asynch.
  */
-	volatile _Atomic uint_least8_t rows, cols;
+	volatile _Atomic uint_least16_t rows, cols;
 
 /*
  * [FSRV-SET (aready signal), ARCAN-ACK]

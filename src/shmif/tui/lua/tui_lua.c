@@ -385,7 +385,7 @@ static void on_bchunk(struct tui_context* T,
 	bool input, uint64_t size, int fd, const char* type, void* t)
 {
 	SETUP_HREF((input ?"bchunk_in":"bchunk_out"), );
-		if (alt_nbio_import(L, fd, input ? O_WRONLY : O_RDONLY, NULL)){
+		if (alt_nbio_import(L, fd, input ? O_RDONLY : O_WRONLY, NULL)){
 			lua_pushstring(L, type);
 			RUN_CALLBACK("bchunk_inout", 3, 0);
 		}
