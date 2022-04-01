@@ -33,7 +33,8 @@ pid_t shl_pty_open(struct shl_pty **out,
 		   shl_pty_input_fn fn_input,
 		   void *fn_input_data,
 		   unsigned short term_width,
-		   unsigned short term_height);
+		   unsigned short term_height,
+			 int stderr_fileno);
 void shl_pty_ref(struct shl_pty *pty);
 void shl_pty_unref(struct shl_pty *pty);
 void shl_pty_close(struct shl_pty *pty);

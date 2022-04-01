@@ -219,6 +219,15 @@ pid_t shmif_platform_execve(int fd, const char* shmif_key,
 		_exit(EXIT_FAILURE);
 	}
 
+	if (close_out)
+		close(stdout_src);
+
+	if (close_in)
+		close(stdin_src);
+
+	if (close_err)
+		close(stderr_src);
+
 	CLEAN_ENV();
 	return pid;
 }
