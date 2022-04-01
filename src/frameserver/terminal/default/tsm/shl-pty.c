@@ -122,7 +122,8 @@ static int pty_send(int fd, char d)
 
 static int pty_setup_child(int slave,
 			   unsigned short term_width,
-			   unsigned short term_height)
+			   unsigned short term_height,
+				 int stderr_fileno)
 {
 	struct termios attr;
 	struct winsize ws;
@@ -147,9 +148,11 @@ static int pty_setup_child(int slave,
 	if (ioctl(slave, TIOCSWINSZ, &ws) < 0)
 		return -errno;
 
+/* if a stderr fileno is provided, then dup that into the slot */
 	if (dup2(slave, STDIN_FILENO) != STDIN_FILENO ||
 	    dup2(slave, STDOUT_FILENO) != STDOUT_FILENO ||
-	    dup2(slave, STDERR_FILENO) != STDERR_FILENO)
+	    dup2(stderr_fileno ?
+				stderr_fileno : slave, STDERR_FILENO) != STDERR_FILENO)
 		return -errno;
 
 	return 0;
@@ -274,7 +277,8 @@ pid_t shl_pty_open(struct shl_pty **out,
 		   shl_pty_input_fn fn_input,
 		   void *fn_input_data,
 		   unsigned short term_width,
-		   unsigned short term_height)
+		   unsigned short term_height,
+			 int stderr_fileno)
 {
 	_shl_pty_unref_ struct shl_pty *pty = NULL;
 	_shl_close_ int fd = -1;
@@ -327,7 +331,7 @@ pid_t shl_pty_open(struct shl_pty **out,
 		free(pty);
 		pty = NULL;
 
-		r = pty_setup_child(slave, term_width, term_height);
+		r = pty_setup_child(slave, term_width, term_height, stderr_fileno);
 		if (r < 0)
 			exit(1);
 

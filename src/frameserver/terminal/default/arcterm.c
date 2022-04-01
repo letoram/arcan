@@ -62,6 +62,7 @@ static struct {
 	bool die_on_term;
 	bool complete_signal;
 	bool pipe;
+	int keep_stderr; /* 'saved' stderr descriptor if desired */
 	size_t bytes_in;
 	size_t bytes_out;
 	uint8_t u8_buf[4];
@@ -540,6 +541,8 @@ static void dump_help()
 		" exec        \t cmd       \t allows arcan scripts to run shell commands\n"
 #endif
 		" keep_alive  \t           \t don't exit if the terminal or shell terminates\n"
+		" keep_stderr \t           \t forward whatever [stderr] is into the child\n"
+		"             \t           \t and disable logging for afsrv_terminal\n"
 		" autofit     \t           \t (with exec, keep_alive) shrink window to fit\n"
 		" pipe        \t [mode]    \t map stdin-stdout (mode: raw, lf)\n"
 		" palette     \t name      \t use built-in palette (below)\n"
@@ -937,7 +940,7 @@ static bool setup_build_term()
 	if (term.pipe)
 		term.child = shl_pipe_open(&term.pty, true);
 	else
-		term.child = shl_pty_open(&term.pty, NULL, NULL, cols, rows);
+		term.child = shl_pty_open(&term.pty, NULL, NULL, cols, rows, term.keep_stderr);
 
 	if (term.child < 0){
 		arcan_tui_destroy(term.screen, "Shell process died unexpectedly");
@@ -1215,6 +1218,17 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 			term.pipe_mode = PIPE_PLAIN_LF;
 	}
 
+/* save stderr to a specific descriptor that gets inherited into the new
+ * subprocess (and survives resets), remove our ability to write into it */
+	if (arg_lookup(args, "keep_stderr", 0, &val)){
+		term.keep_stderr = dup(STDERR_FILENO);
+		fcntl(term.keep_stderr, F_SETFD, FD_CLOEXEC);
+
+		int ndev = open("/dev/null", O_WRONLY);
+		dup2(ndev, STDERR_FILENO);
+		close(ndev);
+	}
+
 /*
  * this is the first migration part we have out of the normal vt- legacy,
  * see cli.c
@@ -1399,6 +1413,9 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 			pthread_mutex_unlock(&term.hold);
 		}
 	}
+
+	if (term.keep_stderr)
+		close(term.keep_stderr);
 
 	arcan_tui_destroy(term.screen, NULL);
 	return EXIT_SUCCESS;
