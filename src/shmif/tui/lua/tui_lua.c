@@ -2028,7 +2028,8 @@ static int readline(lua_State* L)
 		.filter_character = on_readline_filter,
 		.verify = on_readline_verify,
 		.tab_completion = true,
-		.mouse_forward = false
+		.mouse_forward = false,
+		.paste_forward = false
 	};
 
 	if (!lua_isfunction(L, ofs) || lua_iscfunction(L, ofs)){
@@ -2069,8 +2070,10 @@ static int readline(lua_State* L)
 			opts.multiline = true;
 		if (intblbool(L, tbl, "tab_input"))
 			opts.tab_completion = false;
-		if (intblbool(L, tbl, "forward_mouse"))
-			opts.mouse_forward = true;
+
+		opts.mouse_forward = intblbool(L, tbl, "forward_mouse");
+		opts.paste_forward = intblbool(L, tbl, "forward_paste");
+
 		lua_getfield(L, tbl, "mask_character");
 		if (lua_isstring(L, -1)){
 			arcan_tui_utf8ucs4(lua_tostring(L, -1), &opts.mask_character);

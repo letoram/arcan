@@ -572,6 +572,8 @@ static void cut_to_eol(struct tui_context* T, struct readline_meta* M)
 	M->work[M->cursor] = '\0';
 	M->work_ofs = M->cursor;
 	M->work_len = utf8len(M->cursor, M->work);
+
+	verify(T, M);
 	refresh(T, M);
 }
 
@@ -587,6 +589,7 @@ static void cut_to_sol(struct tui_context* T, struct readline_meta* M)
 	M->cursor = 0;
 	M->work_len = utf8len(M->work_ofs, M->work);
 
+	verify(T, M);
 	refresh(T, M);
 }
 
@@ -597,6 +600,12 @@ static void on_utf8_paste(
 	if (!validate_context(T, &M))
 		return;
 
+	if (M->opts.paste_forward){
+		if (M->old_handlers.utf8)
+			return on_utf8_paste(T, u8, len, cont, M->old_handlers.tag);
+	}
+
+/* temporarily block completion */
 	bool old_tc = M->opts.tab_completion;
 	M->opts.tab_completion = false;
 
@@ -613,8 +622,9 @@ static void on_utf8_paste(
 	else {
 		add_input(T, M, (char*)u8, len, false);
 	}
-
 	M->opts.tab_completion = old_tc;
+
+	verify(T, M);
 	refresh(T, M);
 }
 
@@ -1288,9 +1298,12 @@ void arcan_tui_readline_setup(
 
 	*meta = (struct readline_meta){
 		.magic = READLINE_MAGIC,
-		.opts = *opts,
 		.broken_offset = -1,
 	};
+
+	if (opt_sz > sizeof(struct readline_meta))
+		return;
+	memcpy(&meta->opts, opts, opt_sz);
 
 	size_t sz = sizeof(struct tui_readline_opts);
 	memcpy(&meta->opts, opts, opt_sz > sz ? sz : opt_sz);
