@@ -41,7 +41,7 @@
  * during _integrity_check
  */
 #define ASHMIF_VERSION_MAJOR 0
-#define ASHMIF_VERSION_MINOR 14
+#define ASHMIF_VERSION_MINOR 15
 
 #ifndef LOG
 #define LOG(X, ...) (fprintf(stderr, "[%lld]" X, arcan_timemillis(), ## __VA_ARGS__))

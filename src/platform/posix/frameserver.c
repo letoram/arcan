@@ -1371,6 +1371,9 @@ int platform_fsrv_resynch(struct arcan_frameserver* s)
 /* commit to local tracking */
 	atomic_store(&shmpage->w, w);
 	atomic_store(&shmpage->h, h);
+	atomic_store(&shmpage->rows, rows);
+	atomic_store(&shmpage->cols, cols);
+
 	s->desc.width = w;
 	s->desc.height = h;
 	s->desc.rows = rows;
@@ -1429,6 +1432,8 @@ fail:
 	atomic_store(&shmpage->vpending, s->vbuf_cnt);
 	atomic_store(&shmpage->w, s->desc.width);
 	atomic_store(&shmpage->h, s->desc.height);
+	atomic_store(&shmpage->cols, s->desc.cols);
+	atomic_store(&shmpage->rows, s->desc.rows);
 	shmpage->resized = -1;
 	state = -1;
 
