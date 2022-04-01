@@ -504,7 +504,7 @@ int decode_pdf(struct arcan_shmif_cont* C, struct arg_arr* args)
 	if (!open_document(fpek, idstr))
 		return EXIT_FAILURE;
 
-	apdf.con = arcan_shmif_open(SEGID_APPLICATION, SHMIF_ACQUIRE_FATALFAIL, 0);
+	apdf.con = *C;
 	labelhint_table(ihandlers);
 	labelhint_announce(&apdf.con);
 
