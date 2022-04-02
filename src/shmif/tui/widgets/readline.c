@@ -602,7 +602,7 @@ static void on_utf8_paste(
 
 	if (M->opts.paste_forward){
 		if (M->old_handlers.utf8)
-			return on_utf8_paste(T, u8, len, cont, M->old_handlers.tag);
+			return M->old_handlers.utf8(T, u8, len, cont, M->old_handlers.tag);
 	}
 
 /* temporarily block completion */
