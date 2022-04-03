@@ -21,6 +21,7 @@
 #include "tsm/libtsm_int.h"
 #include "tsm/shl-pty.h"
 #include "b64dec.h"
+#include "../../../shmif/tui/tui_int.h"
 
 struct line {
 	size_t count;
@@ -544,6 +545,7 @@ static void dump_help()
 		" keep_stderr \t           \t forward whatever [stderr] is into the child\n"
 		"             \t           \t and disable logging for afsrv_terminal\n"
 		" autofit     \t           \t (with exec, keep_alive) shrink window to fit\n"
+		" record      \t fname     \t record everything in main window in tpackani fmt\n"
 		" pipe        \t [mode]    \t map stdin-stdout (mode: raw, lf)\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 		" cli         \t [lua]     \t switch to non-vt cli/builtin shell mode\n"
@@ -1300,6 +1302,27 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	if (arg_lookup(args, "keep_alive", 0, NULL)){
 		term.die_on_term = false;
 		arcan_tui_progress(term.screen, TUI_PROGRESS_INTERNAL, 0.0);
+	}
+
+/*
+ * inject the event before anything is actually up and running, this
+ * uses symbols internal to our tui implementation - for other settings
+ * it is better to simply send the event during preroll as normal
+ */
+	if (arg_lookup(args, "record", 0, &val) && val){
+		int fd = open(val, O_WRONLY | O_CREAT, 0600);
+		if (-1 != fd){
+			tui_event_inject(term.screen, &(struct arcan_event){
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_BCHUNK_OUT,
+				.tgt.ioevs[0] = fd,
+				.tgt.message = "tuiani"
+			});
+			close(fd);
+		}
+		else{
+			LOG("record=%s : couldn't create file for tuiani out\n", val);
+		}
 	}
 
 /*
