@@ -534,14 +534,33 @@ int tui_screen_refresh(struct tui_context* tui)
 		return -1;
 	}
 
-	int rv = tui_screen_tpack(tui,
+	size_t rv = tui_screen_tpack(tui,
 		(struct tpack_gen_opts){.synch = true}, tui->acon.vidb, tui->acon.vbufsize);
 	tui->dirty = DIRTY_NONE;
 
-	if (rv){
-		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
-/* last offset feedback buffer can be read here for kernel offset / lookup */
- 	}
+	if (!rv)
+		return 0;
 
+/* every frame gets synched in a mixed with a CSV
+ * [screen_id;anch_x;anch_y;cols;rows;bytes;timestamp_ms]\n[n_bytes] */
+	if (tui->tpack_recdst){
+		fprintf(
+			tui->tpack_recdst,
+			"%d;%d;%d;%d;%d;%zu;%zu\n",
+			0, 0, 0, /* screen_id, anc_x, anc_y */
+			tui->cols, tui->rows, rv, (size_t)arcan_timemillis()
+		);
+		fwrite(tui->acon.vidb, rv, 1, tui->tpack_recdst);
+	}
+
+	arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+
+/* last offset feedback buffer can be read here for kernel offset / lookup, or
+ * the translation should be made server side - it is somewhat up for grabs */
+
+/* flush here when there is a stalled window anyhow */
+	if (tui->tpack_recdst){
+		fflush(tui->tpack_recdst);
+	}
 	return 0;
 }

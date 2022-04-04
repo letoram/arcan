@@ -73,6 +73,8 @@ struct tui_context {
 	bool select_townd;
 	bool defocus;
 
+	FILE* tpack_recdst;
+
 /* if we receive a label set in mouse events, we switch to a different
  * interpreteation where drag, click, dblclick, wheelup, wheeldown work */
 	bool gesture_support;

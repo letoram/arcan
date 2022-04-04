@@ -316,6 +316,14 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 			dump_to_fd(tui, arcan_shmif_dupfd(ev->ioevs[0].iv, -1, false));
 			return;
 		}
+		else if (strcmp(ev->message, "tuiani") == 0){
+			if (tui->tpack_recdst)
+				fclose(tui->tpack_recdst);
+			int fd = arcan_shmif_dupfd(ev->ioevs[0].iv, -1, false);
+			tui->tpack_recdst = fdopen(fd, "w");
+			fprintf(tui->tpack_recdst, "tpk1\n");
+			return;
+		}
 /* question if this should be part of shmif or not (outside of the preroll
  * stage where it already is), but opting against it for the time being */
 		else if (strcmp(ev->message, "stdout") == 0){

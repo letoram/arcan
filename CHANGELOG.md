@@ -12,14 +12,20 @@
 ## Lua
  * net\_discover added, use this to find other a12 clients
  * define\_linktarget semantics reworked
+ * open\_nonblock class functions (nbio) extended with more read/write options
 
 ## Terminal
  * permit ARCAN\_STATEPATH to propagate into child env
  * the basic/recovery cli (arg=cli) now has a lua shell mode(cli=lua) with tui-lua bindings
+ * add controls for stderr propagation
+ * add control for tpackani recording from start
 
 ## Shmif
  * add EXTERNAL\_NETSTATE for fsrv\_net to convey known-set changes
  * add handover\_exec\_pipe mode call with better fd inheritance semantics
+ * fixed bug with TPACK- window sometimes causing null-deref on resize storms
+ * TPACK- window size cap bumped
+ * TPACK size calculation wasn't correctly applied, with edge-case force-disconnects
 
 ## Tui
  * Readline: added history navigation inputs
@@ -27,9 +33,14 @@
  * Readline: delete last word implemented
  * Readline: draw/navigate completion set on request
  * Readline: add insertion prefix controls
+ * Readline: add paste forward control
+ * General: fixes to view-state and other handler propagations
+ * General: handover-embed and other wnd-hints working
+ * General: tpackani format added for recording
 
 ## Frameservers
  * Encode: (linux) add support for a v4l2-loopback sink
+ * Encode: synched to ffmpeg-5.0 api
  * Net: added 'sweep' discovery mode
  * Decode: added protocol=pdf (dependency, mupdf) mode
  * Decode: added protocol=list for probing
