@@ -31,7 +31,13 @@ local SYMTABLE_DOMAIN =
 local GLOBPATH = "devmaps/keyboard/";
 
 -- for legacy reasons, we provide an sdl compatible symtable
-local symtable = {};
+local symtable =
+{
+	counter = 0,
+	delay = 0,
+	period = 0
+};
+
  symtable[8] = "BACKSPACE";
  symtable["BACKSPACE"] = 8;
  symtable[9] = "TAB";
@@ -520,9 +526,58 @@ symtable.u8lut = {};
 symtable.u8basic = {};
 symtable.symlut = {};
 
+function symtable.tick(tbl)
+	if not tbl.last or tbl.period == 0 then
+		return
+	end
+
+	tbl.counter = tbl.counter - 1
+	if tbl.counter < 0 and (-tbl.counter) % tbl.period == 0 then
+		_G[APPLID .. "_input"](tbl.last)
+	end
+end
+
+function symtable.kbd_repeat(tbl, ctr, period)
+-- disable platform key-repeat and leave it to builtin/keyboard
+	kbd_repeat(0, 0)
+
+-- fallback to defaults unless parameters are provided
+	if not ctr then
+		local key = get_key("keydelay")
+		if key and tonumber(key) then
+			ctr = tonumber(key)
+		else
+			ctr = 10
+		end
+	end
+
+	if not period then
+		local per = get_key("keyrate")
+		if per and tonumber(per) then
+			period = tonumber(per)
+		else
+			period = 4
+		end
+	end
+
+	tbl.counter = ctr
+	tbl.period = period
+	tbl.delay = ctr
+end
+
 symtable.patch = function(tbl, iotbl)
 	local mods = table.concat(decode_modifiers(iotbl.modifiers), "_");
 	iotbl.old_utf8 = iotbl.utf8;
+
+-- Remember for repeating in .tick(), only the same modifier table will
+-- actually continue the repeats, so holding l until repeat then pressing shift
+-- L will reset the repeat counter.
+	if iotbl.active then
+		tbl.last = iotbl;
+	else
+		tbl.last = nil;
+	end
+	tbl.counter = tbl.delay;
 
 -- apply utf8 translation and modify supplied utf8 with keymap
 	if (tbl.keymap) then
@@ -699,9 +754,13 @@ symtable.list_keymaps = function(tbl, cached)
 	return res;
 end
 
-symtable.load_keymap = function(tbl, km)
-	if (resource(GLOBPATH .. km, SYMTABLE_DOMAIN)) then
-		local res = tryload(km);
+function symtable.load_keymap(tbl, name)
+	if not name then
+		name = get_key("keymap") or "default.lua"
+	end
+
+	if (resource(GLOBPATH .. name, SYMTABLE_DOMAIN)) then
+		local res = tryload(name);
 
 		if (res) then
 			symtable.keymap = res;
@@ -715,6 +774,7 @@ end
 
 symtable.reset = function(tbl)
 	tbl.keymap = nil;
+	tbl.counter = tbl.delay;
 	tbl.u8basic = {};
 end
 

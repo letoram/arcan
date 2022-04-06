@@ -39,7 +39,9 @@ function console(args)
 		name = "wm_anchor"
 	}, {"tap"})
 
-	KEYBOARD:load_keymap(get_key("keymap") or "devmaps/keyboard/default.lua")
+-- let the keymap handle repetition with whatever defaUlts exist
+	KEYBOARD:kbd_repeat()
+	KEYBOARD:load_keymap()
 	switch_workspace(ws_index)
 
 -- Spin up a new 'connection point' where one external connect can connect,
@@ -83,6 +85,9 @@ function console_input(input)
 		return
 	end
 
+	if (not input.kind) then
+		print(debug.traceback())
+	end
 	target:input(input)
 end
 
@@ -604,6 +609,7 @@ end
 
 function console_clock_pulse()
 	mouse_tick(1)
+	KEYBOARD:tick()
 end
 
 function console_display_state(status)
