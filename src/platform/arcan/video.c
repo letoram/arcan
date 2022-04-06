@@ -125,7 +125,7 @@ struct subseg_output {
 struct display {
 	struct arcan_shmif_cont conn;
 	size_t decay;
-	bool pending;
+	unsigned long long pending;
 	bool mapped, visible, focused, nopass;
 	enum dpms_state dpms;
 	struct agp_vstore* vstore;
@@ -754,7 +754,7 @@ static void synch_copy(struct display* disp, struct agp_vstore* vs)
 	TRACE_MARK_ENTER("video", "copy-blit", TRACE_SYS_SLOW, 0, 0, "");
 		agp_readback_synchronous(&store);
 		arcan_shmif_signal(&disp->conn, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
-		disp->pending = true;
+		disp->pending = arcan_timemillis();
 		arcan_conductor_deadline(4);
 	TRACE_MARK_EXIT("video", "copy-blit", TRACE_SYS_SLOW, 0, 0, "");
 }
@@ -893,12 +893,14 @@ void platform_video_synch(
 			n_pl = arcan_shmifext_export_image(
 				&disp[i].conn, 0, vs->vinf.text.glid, n_pl, planes);
 
-			if (n_pl)
+			if (n_pl){
 				arcan_shmifext_signal_planes(&disp[i].conn,
 					SHMIF_SIGVID | SHMIF_SIGBLK_NONE, n_pl, planes);
 
+				disp[i].pending = arcan_timemillis();
+			}
+
 /* wait for a stepframe before we continue with this rendertarget */
-			disp[i].pending = true;
 			arcan_conductor_deadline(4);
 		}
 	}
@@ -1234,7 +1236,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 		case TARGET_COMMAND_STEPFRAME:
 			TRACE_MARK_ONESHOT("video", "signal-stepframe", TRACE_SYS_DEFAULT, d->id, 0, "");
 			arcan_conductor_deadline(0);
-			d->pending = false;
+			d->pending = 0;
 		break;
 
 /*
@@ -1388,12 +1390,21 @@ void platform_event_process(arcan_evctx* ctx)
 
 /*
  * Most events can just be added to the local queue, but we want to handle some
- * of the target commands separately (with a special path to LUA and a
+ * of the target commands separately (with a special path to Lua and a
  * different hook)
  */
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){
 		event_process_disp(ctx, &disp[i]);
-		primary_udata.signal_pending |= disp[i].pending;
+
+/*
+ * normally we should just return to polling when there is a display still
+ * waiting for a frame release, but there is some kind of initial timing race
+ * where a STEPFRAME fails to emit properly. Since much of this need to be
+ * reworked when we have proper fences on buffers ("any day now") solving it
+ * isn't worth the hassle.
+ */
+		if (disp[i].pending && arcan_timemillis() - disp[i].pending < 64)
+			primary_udata.signal_pending = true;
 	}
 
 	int subs = disp[0].subseg_alloc;
