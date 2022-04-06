@@ -2,6 +2,7 @@
  * the constraints of the lua bindings are lesser than running inside
  * arcan, so just define simpler placeholders
  */
+#include <string.h>
 
 #ifndef COUNT_OF
 #define COUNT_OF(x) \

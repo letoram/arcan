@@ -137,6 +137,7 @@ static bool handover_setup(struct a12_state* S,
  * perspective on that. Should it become relevant, just stepping Kp with a local
  * salt through the hash should do the trick. */
 	int socket, errc;
+	extern char** environ;
 	struct shmifsrv_envp env = {
 		.init_w = 32, .init_h = 32,
 		.path = meta->bin,
