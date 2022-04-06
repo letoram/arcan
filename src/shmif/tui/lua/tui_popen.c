@@ -11,6 +11,8 @@
 #include <termios.h>
 #include <string.h>
 #include <strings.h>
+#include <signal.h>
+#include <sys/ioctl.h>
 
 #include <lua.h>
 #include <lualib.h>
@@ -24,6 +26,9 @@
  * caring about at this stage. */
 #ifdef __APPLE__
 #include <util.h>
+#ifndef IUTF8
+#define IUTF8 0x00004000
+#endif
 #elif defined(__OpenBSD__) || defined(__NetBSD__)
 #ifndef IUTF8
 #define IUTF8 0x00004000
@@ -171,8 +176,9 @@ static pid_t popen3(
 				}
 			}
 
+			extern char** environ;
 			if (argv){
-				__environ = env;
+				environ = env;
 				execvp(argv[0], &argv[1]);
 			}
 			else
@@ -410,7 +416,8 @@ int tui_popen(lua_State* L)
 
 /* Finally exec */
 			if (argv){
-				__environ = env;
+				extern char** environ;
+				environ = env;
 				execve(argv[0], &argv[1], env);
 			}
 			else
