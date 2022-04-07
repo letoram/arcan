@@ -575,7 +575,7 @@ local function clock()
 end
 
 if console_clock_pulse then
-	local old_clock = console_clock_pulse
+	old_clock = console_clock_pulse
 end
 
 console_clock_pulse = clock
