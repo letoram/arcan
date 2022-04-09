@@ -1824,13 +1824,11 @@ static bool setup_node(struct dev_node* node)
  * in here already for special calls to map_video_display via dumb buffers so
  * the best way forward is probably the fake EGL one. */
 	size_t i = 0;
-	bool gles = true;
 
 	if (strcmp(ident, "OPENGL21") == 0){
 		apiv = EGL_OPENGL_API;
 		for (i = 0; attrtbl[i] != EGL_RENDERABLE_TYPE; i++);
 		attrtbl[i+1] = EGL_OPENGL_BIT;
-		gles = false;
 	}
 	else if (strcmp(ident, "GLES3") == 0 ||
 		strcmp(ident, "GLES2") == 0){

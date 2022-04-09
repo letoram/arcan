@@ -323,6 +323,7 @@ static void auth_handler(struct a12_state* S, void* tag)
 }
 
 int a12helper_a12srv_shmifcl(
+	struct arcan_shmif_cont* prealloc,
 	struct a12_state* S, const char* cp, int fd_in, int fd_out)
 {
 	if (!cp)
@@ -330,7 +331,7 @@ int a12helper_a12srv_shmifcl(
 	else
 		setenv("ARCAN_CONNPATH", cp, 1);
 
-	if (!cp){
+	if (!cp && !prealloc){
 		a12int_trace(A12_TRACE_SYSTEM, "No connection point was specified");
 		return -ENOENT;
 	}
@@ -343,7 +344,7 @@ int a12helper_a12srv_shmifcl(
  * remote client event that will map those events, defer thread-spawn until
  * authentication is completed */
 	a12int_trace(A12_TRACE_ALLOC, "kind=segment:status=opening:chid=0");
-	struct arcan_shmif_cont cont =
+	struct arcan_shmif_cont cont = prealloc ? *prealloc :
 		arcan_shmif_open(SEGID_UNKNOWN, SHMIF_NOACTIVATE, NULL);
 
 	if (!cont.addr){

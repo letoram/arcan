@@ -24,6 +24,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include "a12.h"
+#include "net/a12_helper.h"
 #include "../../util/anet_helper.h"
 
 enum trust {
@@ -301,11 +302,93 @@ static int discover_directory(struct arcan_shmif_cont* C, int trust, const char*
 	return EXIT_FAILURE;
 }
 
+static struct pk_response key_auth_local(uint8_t pk[static 32])
+{
+	struct pk_response auth = {0};
+	auth.authentic = a12helper_keystore_accepted(pk, NULL);
+	return auth;
+}
+
+static int connect_to_host(
+	struct arcan_shmif_cont* C, struct arg_arr* args)
+{
+	struct keystore_provider prov;
+	if (!get_keystore(C, &prov))
+		return EXIT_FAILURE;
+
+	struct a12_context_options a12opts = {
+		.local_role = ROLE_SINK,
+		.pk_lookup = key_auth_local
+	};
+
+	a12_set_trace_level(4095, stderr);
+
+	const char* name;
+	if (!arg_lookup(args, "host", 0, &name) || name == NULL || !strlen(name)){
+		arcan_shmif_last_words(C, "missing host argument");
+		return EXIT_FAILURE;
+	}
+
+	struct anet_options opts =
+	{
+		.key = name,
+		.opts = &a12opts,
+		.keystore = prov,
+	};
+
+/* some might want to provide another secret, this only matters for deep
+ * as it won't apply until the authentication handshake takes place */
+	const char* secret;
+	if (arg_lookup(args, "secret", 0, &secret) && secret && strlen(secret)){
+		snprintf(a12opts.secret, sizeof(a12opts.secret), "%s", opts.key);
+	}
+
+/* this will depth- first the tag, and if a connection is there, the 'deep'
+ * option will also attempt to authenticate before shutting down the socket */
+	struct anet_cl_connection con = anet_cl_setup(&opts);
+	if (con.errmsg || !con.state){
+		arcan_shmif_last_words(C, con.errmsg);
+		arcan_shmif_drop(C);
+		return EXIT_FAILURE;
+	}
+
+	arcan_shmif_enqueue(C, &(struct arcan_event){
+			.ext.kind = ARCAN_EVENT(SEGREQ),
+			.ext.segreq.kind = SEGID_HANDOVER
+		});
+
+	arcan_event acq_event;
+	struct arcan_event* evpool = NULL;
+	ssize_t evpool_sz;
+
+	if (!arcan_shmif_acquireloop(C, &acq_event, &evpool ,&evpool_sz)){
+		arcan_shmif_last_words(C, "client handover-req failed");
+		return EXIT_FAILURE;
+	}
+
+	struct arcan_shmif_cont S =
+		arcan_shmif_acquire(C, NULL, SEGID_UNKNOWN, SHMIF_NOACTIVATE);
+	if (!S.addr){
+		arcan_shmif_last_words(C, "couldn't map new segment");
+		return EXIT_FAILURE;
+	}
+
+/* more can be done here with the original context to provide data / state and
+ * a logpath, easiest is probably just to convert to TUI and let it use a
+ * bufferwnd */
+	a12helper_a12srv_shmifcl(&S, con.state, NULL, con.fd, con.fd);
+	arcan_shmif_drop(C);
+	return EXIT_SUCCESS;
+}
+
 int afsrv_netcl(struct arcan_shmif_cont* C, struct arg_arr* args)
 {
 /* lua:net_discover maps to this */
 	const char* dmethod = NULL;
-	if (arg_lookup(args, "discover", 0, &dmethod)){
+	if (arg_lookup(args, "host", 0, &dmethod)){
+		return connect_to_host(C, args);
+	}
+	else if (arg_lookup(args, "discover", 0, &dmethod)){
 		const char* trust = NULL;
 		const char* opt = NULL;
 

@@ -59,6 +59,10 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
  * Take a prenegotiated connection [S] serialized over [fd_in/fd_out] and
  * map to connections accessible via the [cp] connection point.
  *
+ * If a [prealloc] context is provided, it will be used instead of the [cp].
+ * Note that it should come in a SEGID_UNKNOWN/SHMIF_NOACTIVATE state so
+ * that the incoming events from the source will map correctly.
+ *
  * Returns:
  * a12helper_pollstate bitmap
  *
@@ -67,6 +71,7 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
  *  -ENOENT : couldn't make shmif connection
  */
 int a12helper_a12srv_shmifcl(
+	struct arcan_shmif_cont* prealloc,
 	struct a12_state* S, const char* cp, int fd_in, int fd_out);
 
 #endif

@@ -222,7 +222,7 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 	else {
 /* we should really re-exec ourselves with the 'socket-passing' setup so that
  * we won't act as a possible ASLR break */
-		rc = a12helper_a12srv_shmifcl(S, NULL, fd, fd);
+		rc = a12helper_a12srv_shmifcl(NULL, S, NULL, fd, fd);
 	}
 
 	shutdown(fd, SHUT_RDWR);
@@ -313,7 +313,7 @@ static void single_a12srv(struct a12_state* S, int fd, void* tag)
 		shmifsrv_free(C, SHMIFSRV_FREE_NO_DMS);
 	}
 	else{
-		a12helper_a12srv_shmifcl(S, NULL, fd, fd);
+		a12helper_a12srv_shmifcl(NULL, S, NULL, fd, fd);
 		shutdown(fd, SHUT_RDWR);
 		close(fd);
 	}
@@ -992,7 +992,7 @@ int main(int argc, char** argv)
 				return EXIT_SUCCESS;
 			}
 
-			int rc = a12helper_a12srv_shmifcl(cl.state, NULL, cl.fd, cl.fd);
+			int rc = a12helper_a12srv_shmifcl(NULL, cl.state, NULL, cl.fd, cl.fd);
 			shutdown(cl.fd, SHUT_RDWR);
 			close(cl.fd);
 
