@@ -88,7 +88,7 @@ bool anet_authenticate(struct a12_state* S, int fdin, int fdout, char** err)
 
 	} while (a12_poll(S) > 0 && a12_auth_state(S) != AUTH_FULL_PK);
 
-	return true;
+	return a12_auth_state(S) == AUTH_FULL_PK;
 }
 
 static struct anet_cl_connection connect_to(struct anet_options* arg)

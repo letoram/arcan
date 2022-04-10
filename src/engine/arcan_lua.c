@@ -11320,22 +11320,22 @@ static int net_open(lua_State* ctx)
 {
 	LUA_TRACE("net_open");
 
-	char* host = lua_isstring(ctx, 1) ?
-		(char*) luaL_checkstring(ctx, 1) : NULL;
-
+	char* host = strdup(luaL_checkstring(ctx, 1));
 	intptr_t ref = find_lua_callback(ctx);
 
 /* populate and escape, due to IPv6 addresses etc. actively using :: */
 	char* workstr = NULL;
-	size_t work_sz = 0;
+	const char prefix[] = "mode=client:host=";
+	size_t work_sz = strlen(host) + sizeof(prefix) + 1;
 
 	if (host)
 		colon_escape(host);
 
-	char* instr = arcan_alloc_mem(work_sz + strlen("mode=client:host=") + 1,
-		ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
+	char* instr = arcan_alloc_mem(
+		work_sz, ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
 
-	sprintf(instr,"mode=client%s%s", host ? ":host=" : "", workstr ? workstr:"");
+	snprintf(instr, work_sz, "%s%s", prefix, host);
+	free(host);
 
 	struct frameserver_envp args = {
 		.use_builtin = true,
