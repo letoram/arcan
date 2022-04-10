@@ -2969,7 +2969,7 @@ static int tui_hasglyph(lua_State* L)
 		for (size_t i = 0; i < 4 && buf[i]; i++)
 			work[i] = buf[i];
 
-		if (-1 != arcan_tui_utf8ucs4(work, &cp)){
+		if (-1 == arcan_tui_utf8ucs4(work, &cp)){
 			lua_pushboolean(L, false);
 			lua_pushboolean(L, false);
 			return 2;
