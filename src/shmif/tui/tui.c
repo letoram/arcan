@@ -274,12 +274,12 @@ ssize_t arcan_tui_utf8ucs4(const char src[static 4], uint32_t* dst)
 		used = 2;
 	}
 	else if ((c & 0xF0) == 0xE0){
-		*dst = 0;
+		*dst = (c & 0x0f) << 12;
 		left = 2;
 		used = 3;
 	}
 	else if ((c & 0xF8) == 0xF0){
-		*dst = 0;
+		*dst = (c & 0x07) << 18;
 		left = 3;
 		used = 4;
 	}
