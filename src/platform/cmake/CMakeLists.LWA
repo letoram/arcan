@@ -82,9 +82,6 @@ endif()
 
 add_dependencies(openal_lwa arcan_shmif_int)
 add_dependencies(arcan_lwa arcan_shmif_int arcan_shmif_intext openal_lwa ${MAIN_DEPS})
-if(STATIC_FREETYPE)
-	add_dependencies(arcan_lwa Freetype)
-endif()
 
 target_compile_definitions(arcan_lwa PRIVATE
 	ARCAN_LWA

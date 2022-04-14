@@ -140,7 +140,6 @@ else()
 	# we can remove some of this cruft when 'buntu LTS gets ~3.0ish
 	option(DISABLE_JIT "Don't use the luajit-5.1 VM (if found)" OFF)
 	option(STATIC_SQLite3 "Use SQLite3 Amalgamation" OFF)
-	option(STATIC_FREETYPE "Use static Freetype (external/git folder)" OFF)
 	option(STATIC_OPENAL "Use static OpenAL (external/git folder)" OFF)
 	option(STATIC_LIBUVC "Use static libuvc (external/git folder)" ON)
 	option(ENABLE_LTO "Build with Link-Time Optimization enabled" OFF)
@@ -175,7 +174,6 @@ else()
 	amsg("${CL_WHT}Dependency Management:${CL_RST}")
 	amsg("${CL_YEL}\t-DSTATIC_SQLite3=${CL_GRN}[Off|On]${CL_RST} - In-source SQLite3")
 	amsg("${CL_YEL}\t-DSTATIC_OPENAL=${CL_GRN}[Off|On]${CL_RST} - In-source OpenAL, see external/README")
-	amsg("${CL_YEL}\t-DSTATIC_FREETYPE=${CL_GRN}[Off|On]${CL_RST} - In-source Freetype")
 	amsg("${CL_YEL}\t-DSTATIC_LIBUVC=${CL_GRN}[Off|On]${CL_RST} - In-source libuvc")
 	amsg("")
 	amsg("${CL_WHT}Optional engine flags:${CL_RST}")
@@ -309,51 +307,9 @@ if (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client")
 		${FREETYPE_DEFAULT_INCLUDE_DIRS}
 	)
 else()
-	if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype AND STATIC_FREETYPE)
-		amsg("${CL_YEL}Building Freetype static from external/git mirror${CL_RST}")
-		find_package(PNG REQUIRED QUIET)
-		find_package(BZip2 REQUIRED QUIET)
-		pkg_check_modules(HARFBUZZ REQUIRED QUIET harfbuzz)
-		ExternalProject_Add(Freetype
-			SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/freetype"
-			UPDATE_COMMAND ""
-			GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/freetype"
-			${EXTERNAL_DEFS}
-			${CMAKE_EXTERNAL_DEFS}
-			-DWITH_ZLIB=OFF
-			-DWITH_BZip2=OFF
-		)
-
-		if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-			set(FREETYPE_LIBFILE "libfreetyped.a")
-		else()
-			set(FREETYPE_LIBFILE "libfreetype.a")
-		endif()
-
-		set(FREETYPE_LIB64 "${CMAKE_CURRENT_BINARY_DIR}/lib64/${FREETYPE_LIBFILE}")
-		set(FREETYPE_LIB "${CMAKE_CURRENT_BINARY_DIR}/lib/${FREETYPE_LIBFILE}")
-		if (EXISTS "${FREETYPE_LIB64}")
-			set(FREETYPE_STATIC_LIBRARY "${FREETYPE_LIB64}")
-		else()
-			set(FREETYPE_STATIC_LIBRARY "${FREETYPE_LIB}")
-		endif()
-
-		set(FREETYPE_STATIC_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include/freetype2")
-		set(FREETYPE_DEFAULT_LIBRARIES
-			${FREETYPE_STATIC_LIBRARY}
-			${PNG_LIBRARIES}
-			${BZIP2_LIBRARIES}
-			${HARFBUZZ_LINK_LIBRARIES}
-		)
-		set(FREETYPE_DEFAULT_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include/freetype2")
-		list(APPEND MAIN_DEPS Freetype)
-	else()
-	# need this maneuver to deal with the combination of
-	# static:arcan,arcan_lwa,arcan_shmif_tui] but also [dynamic:arcan_shmif_tui]
-		find_package(Freetype REQUIRED QUIET)
-		set(FREETYPE_DEFAULT_LIBRARIES ${FREETYPE_LIBRARIES})
-		set(FREETYPE_DEFAULT_INCLUDE_DIRS ${FREETYPE_INCLUDE_DIRS})
-	endif()
+	find_package(Freetype REQUIRED QUIET)
+	set(FREETYPE_DEFAULT_LIBRARIES ${FREETYPE_LIBRARIES})
+	set(FREETYPE_DEFAULT_INCLUDE_DIRS ${FREETYPE_INCLUDE_DIRS})
 
 	# need the separation here to not confuse openAL here with
 	# the version that we patch into LWA
