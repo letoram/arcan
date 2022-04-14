@@ -200,51 +200,17 @@ set(TUI_INCLUDE_DIRS
 
 set(TUI_LIBRARIES arcan_shmif)
 
-# STATIC_FREETYPE is inherited from the outer scope, means we have our own build
-# of freetype that we should link to statically - this should be dropped when the
-# rendering is only TPACK, or at least made optional (TUI_RASTER_NO_TTF).
-#
 # The consequence for tui client side not having advanced font support is that
 # the client might try and use 'drawing characters' that does not have a valid
 # version in the font, or miss control over ligature substitutions and other
 # similar font features. Shape-break attribute is intended to mitigate that
 # somewhat.
-if (STATIC_FREETYPE)
-	add_library(arcan_tui STATIC ${SHMIF_TUI_SOURCES})
-	target_link_libraries(arcan_tui
-		PRIVATE ${STDLIB} ${FREETYPE_DEFAULT_LIBRARIES} ${TUI_LIBRARIES})
-
-	find_package(Freetype QUIET)
-	if (FREETYPE_FOUND)
-		add_library(arcan_tuiext SHARED ${SHMIF_TUI_SOURCES})
-		target_link_libraries(arcan_tuiext PRIVATE
-			${STDLIB} ${FREETYPE_LIBRARIES} ${TUI_LIBRARIES})
-		set_target_properties(arcan_tuiext PROPERTIES
-			COMPILE_FLAGS -fPIC
-			OUTPUT_NAME arcan_tui
-			VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
-		)
-		target_compile_definitions(arcan_tuiext PRIVATE ${TUI_DEFINITIONS})
-		set(TARGET_LIST ${TARGET_LIST} arcan_tuiext)
-		target_include_directories(arcan_tuiext PRIVATE
-			${TUI_INCLUDE_DIRS}
-		)
-# Due to the accelerated- GPU flags, we also NEED to build a shared library
-# version as this likely pulls in libraries that we can't deal with statically
-	else()
-		amsg("${CL_YEL}only static freetype found, dynamic/accel shmif_tui disabled ${CL_RST}")
-	endif()
-# This means we already have a find-package for Freetype (parent requires it)
-# and we can inherit/use those flags. For the time being, we need to treat
-# Harfbuzz- style shaping separately though.
-else()
-	add_library(arcan_tui SHARED ${SHMIF_TUI_SOURCES})
-	if (NOT TUI_RASTER_NO_TTF)
-		list(APPEND TUI_LIBRARIES ${FREETYPE_LIBRARIES})
-	endif()
-	target_link_libraries(arcan_tui PRIVATE ${STDLIB} ${TUI_LIBRARIES})
-	set_target_properties(arcan_tui PROPERTIES VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR})
+add_library(arcan_tui SHARED ${SHMIF_TUI_SOURCES})
+if (NOT TUI_RASTER_NO_TTF)
+	list(APPEND TUI_LIBRARIES ${FREETYPE_LIBRARIES})
 endif()
+target_link_libraries(arcan_tui PRIVATE ${STDLIB} ${TUI_LIBRARIES})
+set_target_properties(arcan_tui PROPERTIES VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR})
 
 target_compile_definitions(arcan_tui PRIVATE ${TUI_DEFINITIONS})
 target_include_directories(arcan_tui PRIVATE ${TUI_INCLUDE_DIRS})
