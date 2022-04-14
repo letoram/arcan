@@ -3788,6 +3788,9 @@ static void push_view(lua_State* ctx,
 	tblnum(ctx, "edge", ev->viewport.edge, top);
 	tblnum(ctx, "ext_id", ev->viewport.ext_id, top);
 
+	tblbool(ctx, "scaled", ev->viewport.embedded == 2, top);
+	tblbool(ctx, "hintfwd", ev->viewport.embedded == 3, top);
+
 	lua_pushliteral(ctx, "border");
 	lua_createtable(ctx, 4, 0);
 	int top2 = lua_gettop(ctx);
@@ -4637,6 +4640,7 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		break;
 		case EVENT_FSRV_IONESTED:
 			tblstr(ctx, "kind", "input", top);
+			tblnum(ctx, "tgtid", ev->fsrv.input.dst, top);
 			append_iotable(ctx, &ev->fsrv.input);
 			argc = 3;
 		break;
@@ -7544,6 +7548,7 @@ static int targetdisphint(lua_State* ctx)
 	int width = luaL_checknumber(ctx, 2);
 	int height = luaL_checknumber(ctx, 3);
 	int cont = luaL_optnumber(ctx, 4, 128);
+	uint32_t cookie = 0;
 
 /* clamp to not have client propagate illegal dimensions */
 	width = width > ARCAN_SHMPAGE_MAXW ? ARCAN_SHMPAGE_MAXW : width;
@@ -7573,6 +7578,17 @@ static int targetdisphint(lua_State* ctx)
 			.tgt.ioevs[3].iv = 32,
 			.tgt.ioevs[4].iv = 32
 		});
+	}
+	else if (type == LUA_TNUMBER){
+		arcan_vobject* vobj;
+		arcan_vobj_id seg = luaL_checkvid(ctx, 5, &vobj);
+		if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV){
+			arcan_warning(
+				"target_displayhint() - vid reference not connected to frameserver");
+		}
+		else {
+			cookie = ((arcan_frameserver*)vobj->feed.state.ptr)->cookie;
+		}
 	}
 	else if (type == LUA_TTABLE){
 		float nv = intblfloat(ctx, 5, "ppcm");
@@ -7633,7 +7649,8 @@ static int targetdisphint(lua_State* ctx)
 		.tgt.ioevs[4].fv = ppcm,
 /* this is kept updated from _displayhint and _fonthint */
 		.tgt.ioevs[5].iv = fsrv->desc.text.cellw,
-		.tgt.ioevs[6].iv = fsrv->desc.text.cellh
+		.tgt.ioevs[6].iv = fsrv->desc.text.cellh,
+		.tgt.ioevs[7].uiv = cookie
 	};
 	fsrv->desc.hint.last = ev;
 
@@ -12024,6 +12041,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"TD_HINT_UNFOCUSED", 4},
 {"TD_HINT_MAXIMIZED", 8},
 {"TD_HINT_FULLSCREEN", 16},
+{"TD_HINT_DETACHED", 32},
 {"TD_HINT_IGNORE", 128},
 {"MASK_LIVING", MASK_LIVING},
 {"MASK_ORIENTATION", MASK_ORIENTATION},

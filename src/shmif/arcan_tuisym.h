@@ -70,19 +70,6 @@ enum tui_bgcopy_flags {
 	TUI_BGCOPY_PROGRESS = 4
 };
 
-/*
- * positioning / drawing hints, BITMASK.
- */
-enum tui_wndhint_flags {
-	TUI_WND_NORMAL = 0,
-
-/* BITMASK: window should be in focus for the rest of the group */
-	TUI_WND_FOCUS = 1,
-
-/* window is not expected to be visible at all (minimize to tray, ...) */
-	TUI_WND_HIDDEN = 2,
-};
-
 enum tui_message_slots {
 	TUI_MESSAGE_PROMPT = 0,
 	TUI_MESSAGE_ALERT = 1,

@@ -7,7 +7,6 @@
  *
  * TODO:
  *   [ ] detached (virtual) windows
- *   [ ] bgcopy progress and controls for out-close
  *   [ ] PUSH new_window
  *   [ ] apaste/vpaste does nothing - map to bchunk_in?
  */
@@ -617,6 +616,7 @@ static bool on_subwindow(struct tui_context* T,
 	}
 	init_lmeta(L, nud, meta);
 	nud->tui = ctx;
+	nud->embed = meta->pending[id].embed;
 
 	if (type != TUI_WND_HANDOVER){
 /* cycle- reference ourselves */
@@ -1196,8 +1196,8 @@ static int tui_wndhint(lua_State* L)
 		cons = get_wndhint(L, tbli);
 	}
 
-/* this is treated as non-mutable and set on window request */
 	cons.embed = ib->embed;
+/* this is treated as non-mutable and set on window request */
 	arcan_tui_wndhint(ib->tui, parent ? parent->tui : NULL, cons);
 	return 0;
 }
@@ -1487,6 +1487,7 @@ static int reqwnd(lua_State* L)
 				"new_window(type, closure, >...<) unexpected argument type");
 	}
 
+	int embed_fl = 0;
 	if (hintstr){
 		if (strcmp(hintstr, "split") == 0){
 			meta.hint = TUIWND_SPLIT_NONE;
@@ -1519,7 +1520,16 @@ static int reqwnd(lua_State* L)
 			meta.hint = TUIWND_TAB;
 		}
 		else if (strcmp(hintstr, "embed") == 0){
+			embed_fl = 1;
 			meta.hint = TUIWND_EMBED;
+		}
+		else if (strcmp(hintstr, "embed-scale") == 0){
+			meta.hint = TUIWND_EMBED;
+			embed_fl = 2;
+		}
+		else if (strcmp(hintstr, "embed-sync") == 0){
+			meta.hint = TUIWND_EMBED;
+			embed_fl = 3;
 		}
 		else
 			luaL_error(L,"new_window(..., >hint<) "
@@ -1547,6 +1557,7 @@ static int reqwnd(lua_State* L)
 	int bitind = ffs(~(ib->pending_mask)) - 1;
 	ib->pending[bitind].id = ref;
 	ib->pending[bitind].hint = meta.hint;
+	ib->pending[bitind].embed = embed_fl;
 	ib->pending_mask |= 1 << bitind;
 	lua_pushboolean(L, true);
 	arcan_tui_request_subwnd_ext(ib->tui,
@@ -1955,6 +1966,58 @@ static int contentsize(lua_State* L)
 	size_t col_ofs = luaL_optinteger(L, 4, 0);
 	size_t col_tot = luaL_optinteger(L, 5, 0);
 	arcan_tui_content_size(ib->tui, row_ofs, row_tot, col_ofs, col_tot);
+	return 0;
+}
+
+static int sendkey(lua_State* L)
+{
+	TUI_UDATA;
+
+	size_t l;
+	const char* u8 = luaL_checklstring(L, 2, &l);
+	if (lua_type(L, 3) != LUA_TBOOLEAN)
+		luaL_error(L, "sendkey(u8, >active<) expected boolean");
+	bool pressed = lua_toboolean(L, 3);
+
+/* rest are optional */
+	uint32_t sym = 0;
+	uint8_t scode = 0;
+	uint16_t mods = 0;
+	uint16_t sub  = 0;
+	const char* label = NULL;
+
+	size_t ind = 3;
+	while(++ind <= lua_gettop(L)){
+		if (lua_type(L, ind) == LUA_TSTRING){
+			if (label){
+				luaL_error(L, "sendkey, label provided twice");
+			}
+			label = lua_tostring(L, ind);
+		}
+		else if (lua_type(L, ind) == LUA_TNUMBER){
+			if (!sym)
+				sym = lua_tointeger(L, ind);
+			else if (!mods)
+				mods = lua_tointeger(L, ind);
+			else if (!sub)
+				sub = lua_tointeger(L, ind);
+			else if (!scode)
+				scode = lua_tointeger(L, ind);
+			else
+				luaL_error(L, "sendkey, too many arguments provided");
+		}
+		else
+			luaL_error(L, "sendkey, unexpected argument (expected number or string)");
+	}
+
+	uint8_t key[4] = {0};
+	if (l <= 4){
+		memcpy(key, u8, l);
+	}
+	else
+		luaL_error(L, "sendkey, expected single utf8 codepoint");
+
+	arcan_tui_send_key(ib->tui, key, label, pressed, sym, scode, mods, sub);
 	return 0;
 }
 
@@ -3015,6 +3078,7 @@ static void register_tuimeta(lua_State* L)
 		{"failure", failure},
 		{"state_size", statesize},
 		{"content_size", contentsize},
+		{"send_key", sendkey},
 		{"revert", revertwnd},
 		{"listview", listwnd},
 		{"bufferview", bufferwnd},

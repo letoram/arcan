@@ -2,8 +2,9 @@
 -- @short: Send visibility / drawing hint to target frameserver.
 -- @inargs: vid:dst, int:width, int:height
 -- @inargs: vid:dst, int:width, int:height, int:flags
--- @inargs: vid:dst, int:width, int:height, int:WORLDID
--- @inargs: vid:dst, int:width, int:height, tbl:disptbl
+-- @inargs: vid:dst, int:width, int:height, int:flags, vid:proxy
+-- @inargs: vid:dst, int:width, int:height, int:flags, int:WORLDID
+-- @inargs: vid:dst, int:width, int:height, int:flags, tbl:disptbl
 -- @outargs: int:cellw, int:cellh
 -- @longdescr: The target_displayhint sends a hint to the specified target
 -- that it should try and resize its shared memory connection to the desired
@@ -22,6 +23,9 @@
 -- will change their visible behavior if they know that they are in this state.
 -- TD_HINT_FULLSCREEN - window is in a 'fullscreen' state, similar to the
 -- maximized state, some UI toolkits may want this.
+-- TD_HINT_DETACHED - (with provided embedded proxy), the associated window
+-- has been detached from the embedding and should not be considered in local
+-- layouting.
 --
 -- If the optional *disptbl* is set and is a table, the fields 'ppcm' and
 -- 'subpixel_layout' are expected to be present.
