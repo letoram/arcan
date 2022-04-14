@@ -202,8 +202,8 @@ struct tui_constraints {
 	int anch_row, anch_col;
 	int max_rows, max_cols;
 	int min_rows, min_cols;
-	bool hide;
-	bool embed;
+	int hide;
+	int embed;
 };
 
 struct tui_screen_attr {
@@ -366,7 +366,7 @@ struct tui_cbcfg {
  * (should be last-line of defence after label->utf8|sym->mouse->[key].
  *
  * [keysym] matches a value from the table in arcan_tuisym.h (TUIK prefix)
- * :Ex
+ *
  */
 	void (*input_key)(struct tui_context*, uint32_t symest,
 		uint8_t scancode, uint8_t mods, uint16_t subid, void* tag);
@@ -1200,6 +1200,15 @@ void arcan_tui_message(struct tui_context*, int target, const char* msg);
  */
 void arcan_tui_progress(struct tui_context*, int type, float status);
 
+/* Inject an input event into a tui window. This is intended for both
+ * testing/automation as well as forwarding to a window that is a proxy for a
+ * handover-process. When used locally, this will only forward to the active
+ * event handler itself, any other internal interception of inputs will be
+ * ignored. */
+void arcan_tui_send_key(struct tui_context*,
+	uint8_t utf8[static 4], const char* lbl, bool active,
+	uint32_t keysym, uint8_t scancode, uint16_t mods, uint16_t subid);
+
 /*
  * mark the current cursor position as a tabstop
  * [DEPRECATE -> widget]
@@ -1369,7 +1378,10 @@ typedef bool (* PTUITPACK)(struct tui_context*, uint8_t**, size_t*);
 typedef bool (* PTUITUNPACK)(struct tui_context*, uint8_t*, size_t, size_t, size_t, size_t, size_t);
 typedef void (* PTUISCREENCOPY)(
 	struct tui_context*, struct tui_context*, size_t, size_t, size_t, size_t, size_t, size_t);
+typedef void (* PTUISENDKEY)(
+	struct tui_context*, uint8_t[static 4], const char*, bool, uint32_t, uint8_t, uint16_t, uint16_t);
 
+static PTUISENDKEY arcan_tui_send_key;
 static PTUIHANDOVER arcan_tui_handover;
 static PTUIHANDOVERPIPE arcan_tui_handover_pipe;
 static PTUISETUP arcan_tui_setup;

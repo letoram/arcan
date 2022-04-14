@@ -91,7 +91,11 @@
 -- callback. This table is compatible with the normal _input event handler
 -- from the global scope. By redirecting to _G[APPLNAME.."_input"](tbl) the
 -- frameserver can act as a regular input device. Be careful with devid
--- collisions as that namespace is only 16-bits.
+-- collisions as that namespace is only 16-bits. This table also carries a
+-- possible extra tgtid that should correspond to the segment cookie of another
+-- window. If set, this can either be discarded (to block input forwarding) or
+-- routed to a segment with a matching cookie. The cases where this is most
+-- useful is when external clients have segments embedded into others.
 --
 -- @tblent: "segment_request" {
 -- string:segkind, number:width, number:height, number:parent,
@@ -121,7 +125,8 @@
 -- failure.
 --
 -- @tblent: "viewport" {bool:invisible, bool:focus, bool:anchor_edge,
--- bool:anchor_pos, bool:embedded, int:rel_order, int:rel_x, int:rel_y,
+-- bool:anchor_pos, bool:embedded, bool: scale, bool:hintfwd,
+-- int:rel_order, int:rel_x, int:rel_y,
 -- int:anch_w, int:anch_h, int:edge, inttbl:border[4], int:parent}
 -- this hint is the catch-all for embedding or positioning one segment
 -- relative to another.
@@ -134,7 +139,10 @@
 -- ref:launch_target and ref:launch_avfeed. The other option for embedding
 -- or reordering based on pre-established relationship to use negative
 -- rel_order values. This is mainly a concern when dealing with handover
--- segment allocations.
+-- segment allocations. For embedded surfaces they can be presented scaled
+-- with aspect preserved if *scale* is set. If *hintfwd* is set, the source
+-- should be informed about presentation state changes via
+-- ref:target_displayhint.
 --
 -- @tblent: "content_state" {number:rel_x, number:rel_y,
 -- number:wnd_w, number:wnd_h, number:x_size, number:y_size,

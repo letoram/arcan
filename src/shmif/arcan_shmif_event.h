@@ -1092,8 +1092,10 @@ enum ARCAN_TARGET_SKIPMODE {
 			uint16_t subid;
 		};
 		uint16_t id[2];
-		uint32_t iid;
 		};
+
+/* set to request that it is routed to a specific subsegment */
+		uint32_t dst;
 
 	/* relative to connection start, for scheduling future I/O without
 	 * risking a saturated event-queue or latency blocks from signal */
@@ -1273,17 +1275,6 @@ enum ARCAN_TARGET_SKIPMODE {
 			uint32_t size;
 			uint32_t type;
 		} stateinf;
-
-/* Used for remoting, indicate keyboard button state change:
- * (id)     - numeric key ID, for use when we have translation tables
- * (keysym) - currently horrible, XKeySym with SDL- related translation (legacy)
- * (active) - & !0 > 0 active (pressed)
- */
-		struct{
-			uint8_t id;
-			uint32_t keysym;
-			uint8_t active;
-		} key;
 
 /* Used with the CLOCKREQ event for hinting how the server should provide
  * STEPFRAME events. if once is set, it is interpreted as a hint to register as
@@ -1472,6 +1463,14 @@ enum ARCAN_TARGET_SKIPMODE {
  *	(embedded)       - The segment will attach as a part of its parent.
  *	                   This forces the edge to be UL and the segment contents
  *	                   will be clipped against the parent surface.
+ *                     Scaling hints can be applied for the embedded segment:
+ *                     1 : (don't care)
+ *                     2 : scale-aspect
+ *                     3 : hint-presented
+ *                     With hint-presented the segment itself will receive
+ *                     display hint with its presentation dimensions, and the
+ *                     actual consumed surface will be fed back through
+ *                     displayhints.
  *
  *  (anchor-edge)    - enable anchoring to parent.
  *

@@ -1454,3 +1454,45 @@ void arcan_tui_screencopy(
 
 	dst->dirty = true;
 }
+
+void arcan_tui_send_key(struct tui_context* C,
+	uint8_t utf8[static 4], const char* lbl, bool active,
+	uint32_t keysym, uint8_t scancode, uint16_t mods, uint16_t subid)
+{
+	if (!C)
+		return;
+
+/* with the proxy mode we can pack devid/subid to match the segment_cookie of
+ * the proxy window */
+	arcan_event ev =
+	{
+		.category = EVENT_IO,
+		.io = {
+			.datatype = EVENT_IDATATYPE_TRANSLATED,
+			.devkind = EVENT_IDEVKIND_KEYBOARD,
+			.kind = EVENT_IO_BUTTON,
+			.subid = subid,
+			.input = {
+				.translated = {
+					.active = active,
+					.keysym = keysym,
+					.scancode = scancode,
+					.modifiers = mods
+				}
+			}
+		}
+	};
+	if (lbl){
+		snprintf(ev.io.label, COUNT_OF(ev.io.label), "%s", lbl);
+	}
+	memcpy(ev.io.input.translated.utf8, utf8, 4);
+
+	if (C->viewport_proxy){
+		ev.io.dst = C->viewport_proxy;
+		if (C->acon.addr)
+			arcan_shmif_enqueue(&C->acon, &ev);
+		return;
+	}
+
+	tui_input_event(C, &ev.io, ev.io.label);
+}

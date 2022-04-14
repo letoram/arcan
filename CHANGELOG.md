@@ -13,6 +13,10 @@
  * net\_discover added, use this to find other a12 clients
  * define\_linktarget semantics reworked
  * open\_nonblock class functions (nbio) extended with more read/write options
+ * net\_open re-enabled for use with tags from net\_discover
+ * target\_displayhint extended with forwarding subsegment cookie for embedded surfaces
+ * viewport events now propagate embedded surface scaling preferences
+ * input events can now carry a destination segment cookie
 
 ## Terminal
  * permit ARCAN\_STATEPATH to propagate into child env
@@ -37,6 +41,7 @@
  * General: fixes to view-state and other handler propagations
  * General: handover-embed and other wnd-hints working
  * General: tpackani format added for recording
+ * Input: added send\_key and send\_mouse
 
 ## Frameservers
  * Encode: (linux) add support for a v4l2-loopback sink
@@ -44,6 +49,9 @@
  * Net: added 'sweep' discovery mode
  * Decode: added protocol=pdf (dependency, mupdf) mode
  * Decode: added protocol=list for probing
+
+## Build
+ * Vendored static freetype build evicted
 
 ## 0.6.1
 

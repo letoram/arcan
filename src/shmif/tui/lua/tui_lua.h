@@ -104,6 +104,7 @@ struct tui_lmeta {
 	struct {
 		intptr_t id;
 		int hint;
+		int embed;
 	} pending[8];
 	int embed; /* appended to wndhint based on allocation request */
 
