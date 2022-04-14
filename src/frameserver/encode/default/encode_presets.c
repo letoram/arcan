@@ -443,7 +443,7 @@ struct codec_ent encode_getcontainer(
 		else {
 			AVFormatContext* ctx;
 			ctx = avformat_alloc_context();
-			ctx->oformat = res.storage.container.format;
+/*		ctx->oformat = res.storage.container.format; */
 			res.storage.container.context = ctx;
 			res.setup.muxer = default_format_setup;
 			int rv = avio_open2(&ctx->pb, remote, AVIO_FLAG_WRITE, NULL, NULL);
