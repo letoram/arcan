@@ -200,7 +200,9 @@ void nsvgDelete(NSVGimage* image);
 #define NSVG_ALIGN_SLICE 2
 
 #define NSVG_NOTUSED(v) do { (void)(1 ? (void)0 : ( (void)(v) ) ); } while(0)
+#ifndef NSVG_RGB
 #define NSVG_RGB(r, g, b) (((unsigned int)r) | ((unsigned int)g << 8) | ((unsigned int)b << 16))
+#endif
 
 #ifdef _MSC_VER
 	#pragma warning (disable: 4996) // Switch off security warnings
