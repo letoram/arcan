@@ -15,6 +15,7 @@ static struct {
 	bool hinted;
 	bool dirty;
 	bool locked;
+	bool rezoom;
 
 /* context tracking */
 	fz_context* ctx;
@@ -43,6 +44,9 @@ static struct {
 	.annotations = true,
 	.dirty = true,
 };
+
+static bool auto_size(void* tag);
+static void calculate_zoom_factor();
 
 static fz_matrix get_transform(bool translate)
 {
@@ -189,7 +193,17 @@ static void rebuild_pixmap()
 		h = apdf.hh;
 	}
 
+/* prevent the thing from starting with a bad size / resolution */
+	if (w < 32 && h < 32){
+		auto_size(NULL);
+		apdf.rezoom = true;
+	}
+
 	arcan_shmif_resize_ext(&apdf.con, w, h, (struct shmif_resize_ext){.vbuf_cnt = 2});
+	if (apdf.rezoom){
+		calculate_zoom_factor();
+		apdf.rezoom = false;
+	}
 
 /* Now we have the 'negotiated' size - that might not match the actual size of
  * the page though so we might want to pan / offset. Doing that requires we
@@ -446,6 +460,7 @@ static void run_event(struct arcan_event* ev)
 	}
 
 	if (ev->tgt.kind == TARGET_COMMAND_DISPLAYHINT){
+		apdf.hinted = false;
 		if (ev->tgt.ioevs[0].iv && ev->tgt.ioevs[1].iv){
 			apdf.hw = ev->tgt.ioevs[0].iv;
 			apdf.hh = ev->tgt.ioevs[1].iv;
