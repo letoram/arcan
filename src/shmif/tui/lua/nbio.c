@@ -425,8 +425,8 @@ static int nbio_write(lua_State* L)
 	LUA_ETRACE("open_nonblock:write", NULL, 2);
 }
 
-static char* nextline(
-	struct nonblock_io* ib, size_t start, bool* eof, size_t* nb, size_t* step)
+static char* nextline(struct nonblock_io* ib,
+	size_t start, bool eof, size_t* nb, size_t* step, bool* gotline)
 {
 	if (!ib->ofs)
 		return NULL;
@@ -435,14 +435,17 @@ static char* nextline(
 		if (ib->buf[i] == '\n'){
 			*nb = ib->lfstrip ? (i - start) : (i - start) + 1;
 			*step = (i - start) + 1;
+			*gotline = true;
 			return &ib->buf[start];
 		}
 	}
 
-	if (*eof){
+	if (eof){
+		*gotline = false;
 		*nb = ib->ofs;
 		return ib->buf;
 	}
+
 	return NULL;
 }
 
@@ -487,6 +490,8 @@ int alt_nbio_process_read(
 	if (nonbuffered){
 		if (ib->ofs)
 			lua_pushlstring(L, ib->buf, ib->ofs);
+		else
+			lua_pushnil(L);
 		lua_pushboolean(L, !eof);
 		ib->ofs = 0;
 		return 2;
@@ -501,16 +506,26 @@ int alt_nbio_process_read(
 	memmove(ib->buf, &ib->buf[ib->ofs], buf_sz - ib->ofs);\
 	ib->ofs = 0;\
 }while(0)
+	bool gotline;
 
 	if (lua_type(L, -1) == LUA_TFUNCTION){
 		size_t ci = 0;
-		while ((ch = nextline(ib, ci, &eof, &len, &step))){
+		bool got_lf = eof;
+
+/* several invariants:
+ * 1. normal lf -> string
+ * 2. eof but multiple lines in buffer
+ * 3. eof but no ending lf
+ */
+		while ((ch = nextline(ib, ci, eof, &len, &step, &gotline))){
 			lua_pushvalue(L, -1);
 			lua_pushlstring(L, ch, len);
-			lua_pushboolean(L, eof);
+			lua_pushboolean(L, eof && !gotline);
 			ci += step;
 			alt_call(L, CB_SOURCE_NONE, 0, 2, 0, LINE_TAG":read_cb");
+			got_lf = eof;
 		}
+
 		SLIDE();
 
 		lua_pushnil(L);
@@ -521,7 +536,7 @@ int alt_nbio_process_read(
 		size_t ind = lua_objlen(L, -1) + 1;
 		size_t ci = 0;
 
-		while ((ch = nextline(ib, ci, &eof, &len, &step))){
+		while ((ch = nextline(ib, ci, eof, &len, &step, &gotline))){
 			lua_pushinteger(L, ind++);
 			lua_pushlstring(L, ch, len);
 			lua_rawset(L, -3);
@@ -533,7 +548,7 @@ int alt_nbio_process_read(
 		return 2;
 	}
 	else {
-		if ((ch = nextline(ib, 0, &eof, &len, &step))){
+		if ((ch = nextline(ib, 0, eof, &len, &step, &gotline))){
 			lua_pushlstring(L, ch, len);
 			memmove(ib->buf, &ib->buf[step], buf_sz - step);
 			ib->ofs -= step;
