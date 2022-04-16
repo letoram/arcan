@@ -1206,7 +1206,7 @@ void arcan_tui_progress(struct tui_context*, int type, float status);
  * event handler itself, any other internal interception of inputs will be
  * ignored. */
 void arcan_tui_send_key(struct tui_context*,
-	uint8_t utf8[static 4], const char* lbl, bool active,
+	uint8_t utf8[static 4], const char* lbl,
 	uint32_t keysym, uint8_t scancode, uint16_t mods, uint16_t subid);
 
 /*

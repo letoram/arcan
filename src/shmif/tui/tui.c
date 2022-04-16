@@ -1456,7 +1456,7 @@ void arcan_tui_screencopy(
 }
 
 void arcan_tui_send_key(struct tui_context* C,
-	uint8_t utf8[static 4], const char* lbl, bool active,
+	uint8_t utf8[static 4], const char* lbl,
 	uint32_t keysym, uint8_t scancode, uint16_t mods, uint16_t subid)
 {
 	if (!C)
@@ -1474,7 +1474,7 @@ void arcan_tui_send_key(struct tui_context* C,
 			.subid = subid,
 			.input = {
 				.translated = {
-					.active = active,
+					.active = true,
 					.keysym = keysym,
 					.scancode = scancode,
 					.modifiers = mods
@@ -1489,10 +1489,15 @@ void arcan_tui_send_key(struct tui_context* C,
 
 	if (C->viewport_proxy){
 		ev.io.dst = C->viewport_proxy;
-		if (C->acon.addr)
+		if (C->acon.addr){
 			arcan_shmif_enqueue(&C->acon, &ev);
+			ev.io.input.translated.active = false;
+			arcan_shmif_enqueue(&C->acon, &ev);
+		}
 		return;
 	}
 
+	tui_input_event(C, &ev.io, ev.io.label);
+	ev.io.input.translated.active = false;
 	tui_input_event(C, &ev.io, ev.io.label);
 }

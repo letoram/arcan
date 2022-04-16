@@ -1975,9 +1975,6 @@ static int sendkey(lua_State* L)
 
 	size_t l;
 	const char* u8 = luaL_checklstring(L, 2, &l);
-	if (lua_type(L, 3) != LUA_TBOOLEAN)
-		luaL_error(L, "sendkey(u8, >active<) expected boolean");
-	bool pressed = lua_toboolean(L, 3);
 
 /* rest are optional */
 	uint32_t sym = 0;
@@ -1986,7 +1983,7 @@ static int sendkey(lua_State* L)
 	uint16_t sub  = 0;
 	const char* label = NULL;
 
-	size_t ind = 3;
+	size_t ind = 2;
 	while(++ind <= lua_gettop(L)){
 		if (lua_type(L, ind) == LUA_TSTRING){
 			if (label){
@@ -1995,14 +1992,14 @@ static int sendkey(lua_State* L)
 			label = lua_tostring(L, ind);
 		}
 		else if (lua_type(L, ind) == LUA_TNUMBER){
-			if (!sym)
-				sym = lua_tointeger(L, ind);
-			else if (!mods)
-				mods = lua_tointeger(L, ind);
-			else if (!sub)
+			if (!sub)
 				sub = lua_tointeger(L, ind);
+			else if (!sym)
+				sym = lua_tointeger(L, ind);
 			else if (!scode)
 				scode = lua_tointeger(L, ind);
+			else if (!mods)
+				mods = lua_tointeger(L, ind);
 			else
 				luaL_error(L, "sendkey, too many arguments provided");
 		}
@@ -2017,7 +2014,7 @@ static int sendkey(lua_State* L)
 	else
 		luaL_error(L, "sendkey, expected single utf8 codepoint");
 
-	arcan_tui_send_key(ib->tui, key, label, pressed, sym, scode, mods, sub);
+	arcan_tui_send_key(ib->tui, key, label, sym, scode, mods, sub);
 	return 0;
 }
 
