@@ -198,7 +198,7 @@ static void dump_stack(lua_State* ctx)
 #define TUI_READLINEDATA \
 	struct widget_meta* meta = luaL_checkudata(L, 1, "widget_readline");\
 	if (!meta || !meta->parent)\
-		luaL_error(L, "widget metadata freed");\
+		luaL_error(L, "readline: API error, widget metadata freed");\
 	struct tui_lmeta* ib = meta->parent;\
 	if (!ib || !ib->tui || ib->widget_mode != TWND_READLINE)\
 		luaL_error(L, "window not in readline state");
@@ -2073,7 +2073,7 @@ static void extract_listent(lua_State* L, struct tui_list_entry* base, size_t i)
 
 static int readline(lua_State* L)
 {
-	TUI_WNDDATA;
+	TUI_UDATA;
 	revert(L, ib);
 	ssize_t ofs = 2;
 
@@ -2551,9 +2551,27 @@ static int readline_suggest(lua_State* L)
 	return 0;
 }
 
+static int readline_get(lua_State* L)
+{
+	TUI_READLINEDATA
+	char* buf;
+	arcan_tui_readline_finished(ib->tui, &buf);
+	if (buf){
+		lua_pushstring(L, buf);
+	}
+	else {
+		lua_pushstring(L, "");
+	}
+	return 1;
+}
+
 static int readline_set(lua_State* L)
 {
 	TUI_READLINEDATA
+
+/* if a 3rd table is provided, it is expected to be [chofs, fmttbl, chofs,
+ * fmttbl] and map to arcan_tui_readline_format */
+
 	const char* msg = luaL_checkstring(L, 2);
 	if (strlen(msg) == 0)
 		arcan_tui_readline_set(ib->tui, NULL);
@@ -3349,6 +3367,8 @@ static void register_tuimeta(lua_State* L)
 		lua_setfield(L, -2, "suggest");
 		lua_pushcfunction(L, readline_set);
 		lua_setfield(L, -2, "set");
+		lua_pushcfunction(L, readline_get);
+		lua_setfield(L, -2, "get");
 		lua_pushcfunction(L, readline_region);
 		lua_setfield(L, -2, "bounding_box");
 		lua_pushcfunction(L, readline_autocomplete);
