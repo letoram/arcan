@@ -510,7 +510,6 @@ int alt_nbio_process_read(
 
 	if (lua_type(L, -1) == LUA_TFUNCTION){
 		size_t ci = 0;
-		bool got_lf = eof;
 
 /* several invariants:
  * 1. normal lf -> string
@@ -523,7 +522,6 @@ int alt_nbio_process_read(
 			lua_pushboolean(L, eof && !gotline);
 			ci += step;
 			alt_call(L, CB_SOURCE_NONE, 0, 2, 0, LINE_TAG":read_cb");
-			got_lf = eof;
 		}
 
 		SLIDE();
