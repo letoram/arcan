@@ -2089,7 +2089,8 @@ static int readline(lua_State* L)
 		.verify = on_readline_verify,
 		.tab_completion = true,
 		.mouse_forward = false,
-		.paste_forward = false
+		.paste_forward = false,
+		.block_builtin_bindings = false
 	};
 
 	if (!lua_isfunction(L, ofs) || lua_iscfunction(L, ofs)){
@@ -2130,6 +2131,8 @@ static int readline(lua_State* L)
 			opts.multiline = true;
 		if (intblbool(L, tbl, "tab_input"))
 			opts.tab_completion = false;
+		if (intblbool(L, tbl, "block_builtin"))
+			opts.block_builtin_bindings = true;
 
 		opts.mouse_forward = intblbool(L, tbl, "forward_mouse");
 		opts.paste_forward = intblbool(L, tbl, "forward_paste");
@@ -2571,12 +2574,48 @@ static int readline_set(lua_State* L)
 
 /* if a 3rd table is provided, it is expected to be [chofs, fmttbl, chofs,
  * fmttbl] and map to arcan_tui_readline_format */
+	int ind = 2;
 
-	const char* msg = luaL_checkstring(L, 2);
-	if (strlen(msg) == 0)
-		arcan_tui_readline_set(ib->tui, NULL);
-	else
-		arcan_tui_readline_set(ib->tui, msg);
+	if (lua_type(L, ind) == LUA_TSTRING){
+		const char* msg = luaL_checkstring(L, 2);
+		if (strlen(msg) == 0)
+			arcan_tui_readline_set(ib->tui, NULL);
+		else
+			arcan_tui_readline_set(ib->tui, msg);
+		ind++;
+	}
+
+	if (lua_type(L, ind) == LUA_TTABLE){
+		ssize_t nelem = lua_rawlen(L, ind);
+		if (nelem <= 0)
+			return 0;
+
+		if (nelem % 2 != 0)
+			luaL_error(L, "readline:set(>table<) "
+				"table fmt should be {ofs, fmttbl, ofs2, fmttbl2, ...}");
+
+		size_t count = nelem / 2;
+		size_t* ofs = malloc(count * sizeof(size_t));
+		struct tui_screen_attr* attr = malloc(count * sizeof(struct tui_screen_attr));
+
+		for (size_t i = 0; i < count; i++){
+			lua_rawgeti(L, ind, i * 2);
+			if (lua_type(L, -1) != LUA_TNUMBER){
+				luaL_error(L, "readline:set(>table<) expected ch offset number");
+			}
+			ofs[i] = lua_tonumber(L, -1);
+			lua_pop(L, 1);
+
+			lua_rawgeti(L, ind, i * 2 + 1);
+			if (lua_type(L, -1) != LUA_TTABLE){
+				luaL_error(L, "readline:set(>table<) expected attribute table");
+			}
+			apply_table(L, -1, &attr[i]);
+			lua_pop(L, 1);
+		}
+
+		arcan_tui_readline_format(ib->tui, ofs, attr, count);
+	}
 
 	return 0;
 }
