@@ -90,6 +90,12 @@ struct tui_readline_opts {
  * Chain to default handler on text paste rather than inserting
  */
 	bool paste_forward;
+
+/*
+ * Disable all default keybindings, any regular readline options have to be
+ * implemented by the caller.
+ */
+	bool block_builtin_bindings;
 };
 
 void arcan_tui_readline_setup(
@@ -102,7 +108,6 @@ void arcan_tui_readline_history(struct tui_context*, const char**, size_t count)
 
 /* explicitly enable / disable the automatic suggestion (tab completion) */
 void arcan_tui_readline_autosuggest(struct tui_context*, bool);
-
 
 /*
  * Set prefix/prompt that will be drawn
@@ -149,7 +154,7 @@ void arcan_tui_readline_autocomplete(struct tui_context* t, const char* suffix);
 enum tui_readline_suggestion_mode {
 	READLINE_SUGGEST_INSERT = 0,
 	READLINE_SUGGEST_WORD = 1,
-	READLINE_SUGGEST_SUBSTITUTE = 2,
+	READLINE_SUGGEST_SUBSTITUTE = 2
 };
 void arcan_tui_readline_suggest(
 	struct tui_context* t, int mode, const char** set, size_t set_sz);
@@ -201,6 +206,23 @@ void arcan_tui_readline_region(
  */
 void arcan_tui_readline_set(struct tui_context*, const char* msg);
 
+/*
+ * Move the cursor to the logical character position [pos] or at the
+ * end of string if pos would cause it to overflow. If relative is set
+ * to true, pos will nudge the cursor n steps left (< 0) or right ( > 0)
+ */
+void arcan_tui_readline_set_cursor(
+	struct tui_context*, ssize_t pos, bool relative);
+
+/*
+ * Assign a set of formatting attributes along with the character offsets from
+ * where they should apply. [ofs] and [attr] are assumed to be dynamically
+ * allocated and the implementation assumes ownership and will free on the
+ * next call to format or when the widget is released.
+ */
+void arcan_tui_readline_format(struct tui_context*,
+	size_t* ofs, struct tui_screen_attr* attr, size_t n);
+
 #else
 typedef bool(* PTUIRL_SETUP)(
 	struct tui_context*, struct tui_readline_opts*, size_t opt_sz);
@@ -214,6 +236,8 @@ typedef void(* PTUIRL_SUGGEST)(struct tui_context*, int, const char**, size_t);
 typedef void(* PTUIRL_SUGGEST_FIX)(struct tui_context*, const char*, const char*);
 typedef void(* PTUIRL_REGION)(struct tui_context*, size_t, size_t, size_t, size_t);
 typedef void(* PTUIRL_AUTOSUGGEST)(struct tui_context*, bool);
+typedef void(* PTUIRL_SETCURSOR)(struct tui_context*, size_t pos);
+typedef void(* PTUIRL_FORMAT)(struct tui_context*, size_t*, struct tui_screen_attr*attr, size_t);
 
 static PTUIRL_SETUP arcan_tui_readline_setup;
 static PTUIRL_FINISHED arcan_tui_readline_finished;
@@ -226,6 +250,8 @@ static PTUIRL_SUGGEST arcan_tui_readline_suggest;
 static PTUIRL_SUGGEST_FIX arcan_tui_readline_suggest_prefix;
 static PTUIRL_REGION arcan_tui_readline_region;
 static PTUIRL_AUTOSUGGEST arcan_tui_readline_autosuggest;
+static PTUIRL_SETCURSOR arcan_tui_readline_set_cursor;
+static PTUIRL_FORMAT arcan_tui_readline_format;
 
 static bool arcan_tui_readline_dynload(
 	void*(*lookup)(void*, const char*), void* tag)
@@ -242,6 +268,9 @@ M(PTUIRL_SUGGEST, arcan_tui_readline_suggest);
 M(PTUIRL_SUGGEST_FIX, arcan_tui_readline_suggest_fix);
 M(PTUIRL_REGION, arcan_tui_readline_region);
 M(PTUIRL_AUTOSUGGEST, arcan_tui_readline_autosuggest);
+M(PTUIRL_SETCURSOR, arcan_tui_readline_set_cursor);
+M(PTUIRL_FORMAT, arcan_tui_readline_format);
+
 #undef M
 }
 

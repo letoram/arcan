@@ -7,17 +7,13 @@
  * Incomplete:
  *  Multiline support
  *  Mouse selection
- *
- * Open ideas:
- *  - Swappable input method
- *  - History search (might be better to offload to consumer)
- *  - Undo- buffer
- *  - Accessibility subwindow
- *  - Native popup toggle
- *  - Helper test (space above or below, toggle on F1)
+ *  Native popup
+ *  Helper text slot
+ *  Extended suggestion form (with formatting lines and cursor control)
  *
  * Unknowns:
  *  Geohint (LTR, RTL, double-width)
+ *  Accessibility?
  *  .readline rc file?
  */
 #include <unistd.h>
@@ -62,6 +58,11 @@ struct readline_meta {
 	size_t completion_mode;
 	size_t completion_pos;
 
+/* used to colorize the data part when drawing, offsets are in codepoints */
+	struct tui_screen_attr* line_format;
+	size_t* line_format_ofs;
+	size_t line_format_sz;
+
 /* if we overfit-, this might be drawn with middle truncated to 2/3 of capacity */
 	const struct tui_cell* prompt;
 	size_t prompt_len;
@@ -87,6 +88,18 @@ static void delete_last_word(struct tui_context* T, struct readline_meta* M);
 
 static void replace_str(
 	struct tui_context* T, struct readline_meta* M, const char* str, size_t len);
+
+static void release_line_format(struct readline_meta* M)
+{
+	if (!M->line_format)
+		return;
+
+	free(M->line_format);
+	free(M->line_format_ofs);
+	M->line_format = NULL;
+	M->line_format_ofs = NULL;
+	M->line_format_sz = 0;
+}
 
 static size_t utf8len(size_t end, const char* msg)
 {
@@ -199,6 +212,40 @@ static void drop_completion(
 
 	if (M->suggest_suffix)
 		add_input(T, M, M->suggest_suffix, M->suggest_suffix_sz, true);
+}
+
+/* find the codepoint that is within the next format offset (if any) ofs is in
+ * bytes so linear search (not cheap but small n and only circumstantial use,
+ * simple optimization would otherwise be to assume ofs will grow and cache
+ * ch+fmt_i between calls */
+static struct tui_screen_attr* get_attr_for_ofs(struct readline_meta* M, size_t ofs)
+{
+	size_t ch = 0;
+	size_t fmt_i = 0;
+
+	if (!M->line_format)
+		return NULL;
+
+/* invariant: attr applies from 0, ofs to get attr from is also at 0 */
+	struct tui_screen_attr* fmt = NULL;
+	if (!M->line_format_ofs[0])
+		fmt = &M->line_format[0];
+
+	for (size_t i = 0; i < M->work_sz &&
+			i <= ofs; i = utf8fwd(i, M->work, M->work_sz)){
+
+		while (M->line_format_ofs[fmt_i] <= ch){
+			fmt_i++;
+			if (fmt_i >= M->line_format_sz)
+				break;
+
+			fmt = &M->line_format[fmt_i];
+		}
+
+		ch = ch + 1;
+	}
+
+	return fmt;
 }
 
 static void draw_completion(struct tui_context* T, struct readline_meta* M)
@@ -329,6 +376,8 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
  * and backwards until filled - this is prep:ed to be content dependent for
  * double-width etc. later */
 	size_t pos = 0;
+	size_t pos_cp = 0;
+
 	if (M->work_len > limit){
 		pos = M->cursor;
 		size_t tail = M->cursor;
@@ -358,8 +407,12 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 
 		if (step > 0)
 			pos += step;
-		arcan_tui_write(T, ch,
-			M->broken_offset != -1 && pos >= M->broken_offset ? &alert : NULL);
+
+		struct tui_screen_attr* attr = get_attr_for_ofs(M, pos);
+		if (M->broken_offset != -1 && pos >= M->broken_offset)
+			arcan_tui_write(T, ch, &alert);
+		else
+			arcan_tui_write(T, ch, attr);
 	}
 
 	draw_completion(T, M);
@@ -739,6 +792,14 @@ void on_key_input(struct tui_context* T,
 	struct readline_meta* M;
 	if (!validate_context(T, &M))
 		return;
+
+/* some might want to do this all by themselves */
+	if (M->opts.block_builtin_bindings){
+		if (M->old_handlers.input_key)
+			M->old_handlers.input_key(T,
+				keysym, scancode, mods, subid, M->old_handlers.tag);
+		return;
+	}
 
 	bool meta = mods & (TUIM_LCTRL | TUIM_RCTRL);
 	if (meta){
@@ -1286,6 +1347,44 @@ void arcan_tui_readline_autosuggest(struct tui_context* T, bool vl)
 	refresh(T, M);
 }
 
+void arcan_tui_readline_set_cursor(
+	struct tui_context* T, ssize_t pos, bool relative)
+{
+	struct readline_meta* M;
+	if (!validate_context(T, &M))
+		return;
+
+	if (!relative)
+		M->cursor = 0;
+
+	for (ssize_t i = 0; i < abs((int)pos); i++){
+		if (pos < 0){
+			M->cursor = utf8back(M->cursor, M->work);
+			if (!M->cursor)
+				break;
+		}
+		else{
+			if (M->cursor >= M->work_ofs)
+				break;
+			M->cursor = utf8fwd(M->cursor, M->work, M->work_ofs);
+		}
+	}
+}
+
+void arcan_tui_readline_format(
+	struct tui_context* T, size_t* ofs, struct tui_screen_attr* attr, size_t n)
+{
+	struct readline_meta* M;
+	if (!validate_context(T, &M))
+		return;
+
+	release_line_format(M);
+	M->line_format = attr;
+	M->line_format_ofs = ofs;
+	M->line_format_sz = 0;
+	refresh(T, M);
+}
+
 void arcan_tui_readline_setup(
 	struct tui_context* T, struct tui_readline_opts* opts, size_t opt_sz)
 {
@@ -1365,6 +1464,8 @@ void arcan_tui_readline_release(struct tui_context* T)
 		M->suggest_suffix = NULL;
 		M->suggest_suffix_sz = 0;
 	}
+
+	release_line_format(M);
 
 	M->magic = 0xdeadbeef;
 	free(M->work);
