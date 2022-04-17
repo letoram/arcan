@@ -15,7 +15,7 @@ size_t arcan_shmif_vbufsz(
 	return
 		raster_hdr_sz + /* always there */
 		(rows * cols + 2) * raster_cell_sz + /* worst case, includes cursor */
-		(rows + 2) * raster_line_sz;
+		(rows + 2) * raster_line_sz + raster_hdr_pad;
 	}
 	else
 		return w * h * sizeof(shmif_pixel);

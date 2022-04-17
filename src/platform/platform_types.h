@@ -175,13 +175,14 @@ enum txstate {
 	TXSTATE_DEPTH = 2,
 	TXSTATE_TEX3D = 3,
 	TXSTATE_CUBE  = 4,
-	TXSTATE_TPACK = 5,
+	TXSTATE_TPACK = 5, /* vstore buffer contents is an atlas */
 };
 
 enum storage_source {
 	STORAGE_IMAGE_URI,
 	STORAGE_TEXT,
-	STORAGE_TEXTARRAY
+	STORAGE_TEXTARRAY,
+	STORAGE_TPACK /* this means the source buffer has the raw tpack 'screen' */
 };
 
 struct agp_region {
@@ -222,6 +223,11 @@ struct agp_vstore {
 			union {
 				char* source;
 				char** source_arr;
+				struct {
+					size_t rows, cols;
+					size_t buf_sz; /* the resolved / unpacked TPACK screen */
+					uint8_t* buf;
+				} tpack;
 			};
 
 /* used if we have an external buffered backing store

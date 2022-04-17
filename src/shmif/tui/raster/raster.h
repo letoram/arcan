@@ -12,11 +12,11 @@
  * packs the buffer so that all affected cells are actually part of a delta
  * update. Relevant such cases are:
  *
- * 1. 'italic' attribute may kern across cells, and should thus continue across
- * all cells.
+ * 1. 'italic' attribute may kern across cells, and should thus continue
+ * across all cells affter (including one over).
  *
- * 2. shaped lines needs to invalidate full lines as the cursor behavior /
- * position will be dependent on the contents.
+ * 2. shaped lines needs to invalidate full lines as the cursor
+ * behavior / position will be dependent on the contents.
  *
  * 3. shaped lines needs to use the offset lookup function in order to
  * translate mouse input actions or the cursor / selection will be wrong.
@@ -113,6 +113,7 @@ enum cursor_states {
 	CURSOR_INACTIVE = 1,
 	CURSOR_ACTIVE   = 2,
 	CURSOR_BLINK    = 4, /* attribute- bit */
+	CURSOR_EXTHDRv1 = 8, /* after raster-header comes cursor header */
 };
 
 struct tui_font {
@@ -130,6 +131,10 @@ struct tui_font {
 enum raster_flags {
 	RPACK_IFRAME = 1,
 	RPACK_DFRAME = 2
+};
+
+struct cursor_header {
+	uint8_t color[3];
 };
 
 /*
@@ -160,6 +165,9 @@ struct tui_raster_context* tui_raster_setup(size_t cell_w, size_t cell_h);
  * been drawn with the SHAPED attribute set for the offsets to be available. */
 void tui_raster_offset(
 	struct tui_raster_context* ctx, size_t px_x, size_t row, size_t* offset);
+
+void tui_raster_cursor_color(
+	struct tui_raster_context* ctx, uint8_t col[static 3]);
 
 /*
  * Set font- slots to use for rasterization. This will alias [src]
