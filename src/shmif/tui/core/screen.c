@@ -203,7 +203,7 @@ size_t tui_screen_tpack(struct tui_context* tui,
 	hdr.bgc[3] = tui->alpha;
 
 	uint8_t* out = rbuf;
-	size_t outsz = sizeof(hdr);
+	size_t outsz = sizeof(hdr) + 3; /* always send CURSOR_EXTHDRv1 */
 
 	if (opts.back){
 		opts.full = true;
@@ -302,7 +302,6 @@ size_t tui_screen_tpack(struct tui_context* tui,
 			memcpy(&out[line_dst], &line, sizeof(struct tui_raster_line));
 			hdr.cells += line.ncells;
 			hdr.lines++;
-			assert(outsz == raster_hdr_sz + raster_line_sz * hdr.lines + raster_cell_sz * hdr.cells);
 		}
 
 		hdr.flags |= RPACK_DFRAME;
@@ -362,16 +361,21 @@ size_t tui_screen_tpack(struct tui_context* tui,
 			hdr.cursor_state = tui->defocus ? CURSOR_INACTIVE : CURSOR_ACTIVE;
 		}
 
-		assert(outsz == raster_hdr_sz + raster_line_sz * hdr.lines + raster_cell_sz * hdr.cells);
 		tui->last_cursor.active = true;
 	}
 
 	hdr.data_sz = hdr.lines * raster_line_sz +
-		hdr.cells * raster_cell_sz + raster_hdr_sz;
+		hdr.cells * raster_cell_sz + raster_hdr_sz + 3;
+
+	hdr.cursor_state |= CURSOR_EXTHDRv1;
 
 /* write the header and return */
 /* NOTE: REPLACE WITH PROPER PACKING */
 	memcpy(rbuf, &hdr, sizeof(hdr));
+	rbuf[sizeof(hdr)+0] = tui->colors[TUI_COL_CURSOR].rgb[0];
+	rbuf[sizeof(hdr)+1] = tui->colors[TUI_COL_CURSOR].rgb[1];
+	rbuf[sizeof(hdr)+2] = tui->colors[TUI_COL_CURSOR].rgb[2];
+
 	return outsz;
 }
 

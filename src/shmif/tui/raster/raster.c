@@ -30,6 +30,18 @@ struct tui_raster_context {
 
 	shmif_pixel cc;
 
+/* custom hook, when set the cursor won't actually be drawn but instead
+ * forwarded here in order to provide more styling / efficient drawing. */
+	void (*ext_cursor)(
+		struct tui_raster_context*,
+		size_t x, size_t y,
+		size_t px, size_t py,
+		size_t cw, size_t pxw,
+		int style,
+		uint8_t col[static 3],
+		void*
+	);
+
 	size_t cell_w;
 	size_t cell_h;
 
@@ -72,6 +84,20 @@ void tui_raster_cell_size(struct tui_raster_context* ctx, size_t w, size_t h)
 {
 	ctx->cell_w = w;
 	ctx->cell_h = h;
+}
+
+void tui_raster_cursor_color(struct tui_raster_context* ctx, uint8_t col[static 3])
+{
+	ctx->cc = SHMIF_RGBA(col[0], col[1], col[2], 0xff);
+}
+
+void tui_raster_cursor_control
+	(struct tui_raster_context* ctx,
+	void (*ext_cursor)
+		(struct tui_raster_context*, size_t, size_t,
+		 size_t, size_t, size_t, size_t, int, uint8_t[static 3], void*), void* tag)
+{
+	ctx->ext_cursor = ext_cursor;
 }
 
 static void unpack_u32(uint32_t* dst, uint8_t* inbuf)
@@ -120,7 +146,7 @@ static size_t drawglyph(struct tui_raster_context* ctx, struct cell* cell,
 
 /* mouse-cursor drawing in this mode is a bit primitive */
 		if (cell->attr & CATTR_CURSOR){
-			if (ctx->cursor_state == CURSOR_ACTIVE){
+			if (ctx->cursor_state & CURSOR_ACTIVE){
 				cell->bc = ctx->cc;
 			}
 		}
@@ -154,8 +180,10 @@ static size_t drawglyph(struct tui_raster_context* ctx, struct cell* cell,
  * fg/bg swap as even in unshaped the glyph might be conditionally
  * smaller than the cell size */
 	shmif_pixel bc = cell->bc;
-	if ((cell->attr & CATTR_CURSOR) && ctx->cursor_state == CURSOR_ACTIVE)
+	if ((cell->attr & CATTR_CURSOR) &&
+		(ctx->cursor_state & CURSOR_ACTIVE)){
 		bc = ctx->cc;
+	}
 
 	draw_box_px(vidp,
 		pitch, maxx, maxy, x, y, ctx->cell_w, ctx->cell_h, bc);
@@ -223,12 +251,14 @@ static int raster_tobuf(
 
 	bool update = false;
 	memcpy(&hdr, buf, sizeof(struct tui_raster_header));
+	bool extcursor = !!(hdr.cursor_state & CURSOR_EXTHDRv1);
 
 /* the caller might provide a larger input buffer than what the header sets,
  * and that will still clamp/drop-out etc. but mismatch between the header
  * fields is, of course, not permitted. */
 	size_t hdr_ver_sz = hdr.lines * raster_line_sz +
-		hdr.cells * raster_cell_sz + raster_hdr_sz;
+		hdr.cells * raster_cell_sz + raster_hdr_sz +
+		extcursor * 3;
 
 	if (hdr.data_sz > buf_sz || hdr.data_sz != hdr_ver_sz){
 		return -1;
@@ -236,6 +266,13 @@ static int raster_tobuf(
 
 	buf_sz -= sizeof(struct tui_raster_header);
 	buf += sizeof(struct tui_raster_header);
+
+	if (extcursor){
+		tui_raster_cursor_color(ctx, buf);
+		buf_sz -= 3;
+		buf += 3;
+	}
+
 	shmif_pixel bgc = SHMIF_RGBA(hdr.bgc[0], hdr.bgc[1], hdr.bgc[2], hdr.bgc[3]);
 
 /* dframe, set 'always replaced' region */
@@ -324,6 +361,21 @@ static int raster_tobuf(
 			buf += raster_cell_sz;
 			buf_sz -= raster_cell_sz;
 
+/* outsource cursor? then invoke external - for more custom cursors that cover
+ * a larger area or multiple cursors on the same buffer, these need to be
+ * queued separately and drawn in another pass - though that queueing can be
+ * handled in the ext_cursor handler */
+			if ((cell.attr & CATTR_CURSOR) && ctx->ext_cursor){
+				uint8_t rgba[4];
+				SHMIF_RGBA_DECOMP(ctx->cc, &rgba[0], &rgba[1], &rgba[2], &rgba[3]);
+				ctx->ext_cursor(ctx,
+					i, cur_y, draw_x, draw_y, ctx->cell_w, ctx->cell_h,
+					ctx->cursor_state, rgba, NULL
+				);
+
+				cell.attr &= ~CATTR_CURSOR;
+			}
+
 /* skip bit is set, note that for a shaped line, this means that
  * we need to have an offset- map to advance correctly */
 			if (cell.attr & CATTR_SKIP){
@@ -349,7 +401,6 @@ static int raster_tobuf(
 
 	*y2 = (last_line + 1) * ctx->cell_h;
 
-/* sweep through the context struct and blit the glyphs */
 	return 1;
 }
 

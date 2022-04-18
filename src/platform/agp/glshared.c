@@ -1746,7 +1746,9 @@ void agp_drop_vstore(struct agp_vstore* s)
 	if (s->vinf.text.kind == STORAGE_TEXT){
 		arcan_mem_free(s->vinf.text.source);
 	}
-
+	else if (s->vinf.text.kind == STORAGE_TPACK){
+		arcan_mem_free(s->vinf.text.tpack.buf);
+	}
 	if (s->vinf.text.kind == STORAGE_TEXTARRAY){
 		char** work = s->vinf.text.source_arr;
 		while(*work){
