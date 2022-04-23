@@ -899,7 +899,7 @@ void on_key_input(struct tui_context* T,
 			step_history(T, M, -1);
 	}
 	else if (keysym == TUIK_ESCAPE){
-		if (M->show_completion){
+		if (M->show_completion && M->completion){
 			M->show_completion = false;
 			drop_completion(T, M, false);
 			refresh(T, M);
