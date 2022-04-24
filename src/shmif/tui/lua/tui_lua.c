@@ -67,7 +67,7 @@ static struct tui_cbcfg shared_cbcfg = {};
 
 #define RUN_CALLBACK(X, Y, Z) do {\
 	if (0 != lua_pcall(L, (Y), (Z), 0)){\
-		luaL_error(L, lua_tostring(L, -1));\
+		lua_tostring(L, -1);\
 	}\
 } while(0);
 
@@ -1209,8 +1209,11 @@ static int tui_chdir(lua_State* L)
 /* first need to switch to ensure we have that of the window */
 	int status = 0;
 
-	if (-1 != ib->cwd_fd || -1 == fchdir(ib->cwd_fd))
-		chdir(ib->cwd);
+	if (-1 == ib->cwd_fd && -1 == fchdir(ib->cwd_fd)){
+		lua_pushstring(L, "[unknown]");
+		lua_pushstring(L, "couldn't open .");
+		return 2;
+	}
 
 /* if the user provides a string, chdir to that */
 	const char* wd = luaL_optstring(L, 2, NULL);
@@ -1219,6 +1222,7 @@ static int tui_chdir(lua_State* L)
 
 /* now update the string cache */
 	synch_wd(ib);
+
 	lua_pushstring(L, ib->cwd ? ib->cwd : "[unknown]");
 	if (-1 == status){
 		lua_pushstring(L, strerror(errno));
@@ -1264,7 +1268,10 @@ ltui_inherit(lua_State* L, arcan_tui_conn* conn)
 	init_lmeta(L, meta, NULL);
 	lua_pushvalue(L, -1);
 	meta->tui_state = luaL_ref(L, LUA_REGISTRYINDEX);
+
+/* make sure we know what directory we are in and that we hold a dirfd */
 	synch_wd(meta);
+	meta->cwd_fd = open(".", O_RDONLY | O_DIRECTORY);
 
 /* Hook up the tui/callbacks, these forward into a handler table
  * that the user provide a reference to. */
@@ -2804,11 +2811,9 @@ static bool queue_nbio(int fd, mode_t mode, intptr_t tag)
 	if (fd == -1)
 		return false;
 
-/* before queueing a dequeue on the same descriptor will have
- * been called so we can be certain there are no duplicates */
-
-/* need to split read/write so we can use the regular tui multiplex */
-	if (mode == O_RDWR || mode == O_RDONLY){
+/* need to split read/write so we can use the regular tui multiplex as well as
+ * mix in our own pollset */
+	if (mode == O_RDONLY){
 		if (nbio_jobs.fdin_used >= LIMIT_JOBS)
 			return false;
 
@@ -2817,7 +2822,7 @@ static bool queue_nbio(int fd, mode_t mode, intptr_t tag)
 		nbio_jobs.fdin_used++;
 	}
 
-	if (mode == O_RDWR || mode == O_WRONLY){
+	if (mode == O_WRONLY){
 		if (nbio_jobs.fdout_used >= LIMIT_JOBS)
 			return false;
 
@@ -2827,15 +2832,25 @@ static bool queue_nbio(int fd, mode_t mode, intptr_t tag)
 		nbio_jobs.fdout_used++;
 	}
 
+/* misuse, dangerous to continue */
+	if (mode != O_RDONLY && mode != O_WRONLY)
+		abort();
+
 	return true;
 }
 
-static bool dequeue_nbio(int fd, intptr_t* tag)
+static bool dequeue_nbio(int fd, mode_t mode, intptr_t* tag)
 {
 	bool found = false;
 
-	for (size_t i = 0; i < nbio_jobs.fdin_used; i++){
+	for (size_t i = 0; mode == O_RDONLY && i < nbio_jobs.fdin_used; i++){
 		if (nbio_jobs.fdin[i] == fd){
+			memmove(
+				&nbio_jobs.fdin_tags[i],
+				&nbio_jobs.fdin_tags[i+1],
+				(nbio_jobs.fdin_used - i) * sizeof(intptr_t)
+			);
+
 			memmove(
 				&nbio_jobs.fdin[i],
 				&nbio_jobs.fdin[i+1],
@@ -2849,11 +2864,21 @@ static bool dequeue_nbio(int fd, intptr_t* tag)
 
 	for (size_t i = 0; i < nbio_jobs.fdout_used; i++){
 		if (nbio_jobs.fdout[i].fd == fd){
+			if (tag)
+				*tag = nbio_jobs.fdout_tags[i];
+
+			memmove(
+				&nbio_jobs.fdout_tags[i],
+				&nbio_jobs.fdout_tags[i+1],
+				(nbio_jobs.fdout_used - i) * sizeof(intptr_t)
+			);
+
 			memmove(
 				&nbio_jobs.fdout[i],
 				&nbio_jobs.fdout[i+1],
 				(nbio_jobs.fdout_used - i) * sizeof(struct pollfd)
 			);
+
 			nbio_jobs.fdout_used--;
 			found = true;
 			break;
@@ -2861,6 +2886,41 @@ static bool dequeue_nbio(int fd, intptr_t* tag)
 	}
 
 	return found;
+}
+
+static int tui_frename(lua_State* L)
+{
+	TUI_UDATA;
+	const char* src = luaL_checkstring(L, 2);
+	const char* dst = luaL_checkstring(L, 3);
+	int rv = renameat(ib->cwd_fd, src, ib->cwd_fd, dst);
+	if (rv == -1){
+		lua_pushboolean(L, false);
+		lua_pushstring(L, strerror(errno));
+		return 2;
+	}
+	lua_pushboolean(L, true);
+	return 1;
+}
+
+static int tui_funlink(lua_State* L)
+{
+	TUI_UDATA;
+	const char* name = luaL_checkstring(L, 2);
+	if (-1 == ib->cwd_fd){
+		lua_pushboolean(L, false);
+		lua_pushstring(L, "invalid current working directory");
+		return 2;
+	}
+
+	if (-1 == unlinkat(ib->cwd_fd, name, 0)){
+		lua_pushboolean(L, false);
+		lua_pushstring(L, strerror(errno));
+		return 2;
+	}
+
+	lua_pushboolean(L, true);
+	return 1;
 }
 
 static int tui_fopen(lua_State* L)
@@ -2872,11 +2932,6 @@ static int tui_fopen(lua_State* L)
 	mode_t omode = O_RDONLY;
 	int flags = 0;
 
-/* prefer descriptor based reference / swapping, but if that is not
- * possible, simply switch to last known */
-	if (-1 != ib->cwd_fd || -1 == fchdir(ib->cwd_fd))
-		chdir(ib->cwd);
-
 	if (strcmp(mode, "r") == 0)
 		omode = O_RDONLY;
 	else if (strcmp(mode, "w") == 0){
@@ -2886,7 +2941,7 @@ static int tui_fopen(lua_State* L)
 	else
 		luaL_error(L, "unsupported file mode, expected 'r' or 'w'");
 
-	int fd = openat(ib->cwd_fd, name, omode | flags, 0600);
+	int	fd = openat(ib->cwd_fd, name, omode | flags, 0600);
 
 	if (-1 == fd){
 		lua_pushboolean(L, false);
@@ -3065,7 +3120,7 @@ static int popen_wrap(lua_State* L)
 {
 	TUI_UDATA;
 
-	if (-1 != ib->cwd_fd || -1 == fchdir(ib->cwd_fd))
+	if (-1 == ib->cwd_fd || -1 == fchdir(ib->cwd_fd))
 		chdir(ib->cwd);
 
 	return tui_popen(L);
@@ -3144,6 +3199,8 @@ static void register_tuimeta(lua_State* L)
 		{"psignal", tui_pid_signal},
 		{"phandover", tui_phandover},
 		{"fopen", tui_fopen},
+		{"funlink", tui_funlink},
+		{"frename", tui_frename},
 		{"bgcopy", tui_fbond},
 		{"getenv", tui_getenv},
 		{"chdir", tui_chdir},

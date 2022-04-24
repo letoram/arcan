@@ -61,8 +61,11 @@ bool arcan_event_add_source(
 	struct arcan_evctx*, int fd, mode_t mode, intptr_t otag);
 
 /* Remove a source previously added through add_source. Will return true if
- * the source existed and set the last known otag in *out if provided. */
-bool arcan_event_del_source(struct arcan_evctx*, int fd, intptr_t* out);
+ * the source existed and set the last known otag in *out if provided. Since
+ * the same descriptor can be registered multiple times (each with a different
+ * mode) the mode specified should also match. */
+bool arcan_event_del_source(
+	struct arcan_evctx*, int fd, mode_t mode, intptr_t* out);
 
 /* Work through the list of registered sources and queue events for the ones
  * that are readable/writable as EVENT_SYSTEM_DATA_IN/OUT. This is intended to
