@@ -44,15 +44,19 @@
 -- optimization to avoid additional string manipulation when linefeeds aren't
 -- desired in the resulting string.
 --
--- The write(buf, [callback(ok, gpublock)]):int,bool function takes a buffer string as
--- argument, and returns the number of bytes written (short writes are possible)
--- and a boolean indicating if the output is still alive or not.
--- If a callback is provided the write will be queued, and the callback triggered
--- if writing encounters a terminal state or all queued writes have been completed.
+-- The write(buf, [callback(ok, gpublock)]):int,bool function takes a buffer string
+-- or table of buffer strings as argument and queues for writing.
+-- If a callback is provided, it will be triggered if writing encounters a
+-- terminal state or all queued writes have been completed.
 -- Multiple subsequent write calls will add buffers to the queue, and the last
 -- provided callback will be the only one to fire.
 -- The callback form can also fail (returns 0, false) if the number of polled data
 -- sources exceed some system bound or if the source is not opened for writing.
+--
+-- The queue processing status can be queried through the
+-- outqueue():count,queue with the returned count being accumulated bytes in
+-- total, and queue the current remaining queued bytes. These counters are
+-- flushed when the queue has finished processing and the callback is invoked.
 --
 -- The data_handler(callback(gpublock)):bool function sets a callback that will
 -- be invoked when the descriptor becomes available for reading. This will only
@@ -65,6 +69,12 @@
 -- pipeline state are permitted or would trigger undefined behaviour. This is
 -- likely to be set as the scheduler will try to defer I/O operations to when
 -- it is blocked on rendering or scanning out to a display.
+--
+-- Some files support absolute and/or relative seeking. For relative seeking
+-- based on the current file position, call :seek(ofs):bool,int. To set an
+-- aboslute file position, call set_position(pos):bool,int with negative values
+-- being treated as the offset from file end. Both forms return if the seek
+-- succeeded and the last known absolute file position.
 --
 -- @note: Do note that input processing has soft realtime constraints, and care
 -- should be taken to not process large chunks of data in one go as it may

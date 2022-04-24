@@ -707,24 +707,22 @@ bool arcan_event_feed(struct arcan_evctx* ctx,
 		return true;
 }
 
-bool arcan_event_add_source(
-	struct arcan_evctx* ctx, int fd, mode_t mode, intptr_t otag)
+static int mode_to_poll(mode_t mode)
 {
-	int mask = 0;
 	if (mode == O_RDWR)
 		mode = POLLIN | POLLOUT;
 	else if (mode == O_WRONLY)
 		mode = POLLOUT;
 	else if (mode == O_RDONLY)
 		mode = POLLIN;
+	return mode | POLLERR | POLLHUP;
+}
 
-/* just update mode/tag? */
-	for (size_t i = 0; i < 64; i++)
-		if (evsrc_pollset[i].fd == fd){
-			evsrc_meta[i].mode = mode;
-			evsrc_meta[i].tag = otag;
-			return true;
-		}
+bool arcan_event_add_source(
+	struct arcan_evctx* ctx, int fd, mode_t mode, intptr_t otag)
+{
+	int mask = 0;
+	mode = mode_to_poll(mode);
 
 /* allocate new */
 	uint64_t i = __builtin_ffsll(~evsrc_bitmap);
@@ -733,8 +731,7 @@ bool arcan_event_add_source(
 
 	i--;
 	evsrc_pollset[i].fd = fd;
-	evsrc_pollset[i].events = POLLERR | POLLHUP | mode;
-
+	evsrc_pollset[i].events = mode;
 	evsrc_meta[i].mode = mode;
 	evsrc_meta[i].tag = otag;
 	evsrc_bitmap |= (uint64_t)1 << i;
@@ -786,10 +783,12 @@ void arcan_event_poll_sources(struct arcan_evctx* ctx, int timeout)
 
 /* Remove a source previously added through add_source. Will return true if
  * the source existed and set the last known otag in *out if provided. */
-bool arcan_event_del_source(struct arcan_evctx* ctx, int fd, intptr_t* out)
+bool arcan_event_del_source(
+	struct arcan_evctx* ctx, int fd, mode_t mode, intptr_t* out)
 {
+	mode = mode_to_poll(mode);
 	for (uint64_t i = 0; i < 64; i++){
-		if (evsrc_pollset[i].fd == fd){
+		if (evsrc_pollset[i].fd == fd && evsrc_pollset[i].events == mode){
 			evsrc_pollset[i].fd = -1;
 			evsrc_bitmap &= ~((uint64_t)1 << i);
 			if (out)

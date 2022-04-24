@@ -6922,10 +6922,10 @@ static bool add_source(int fd, mode_t mode, intptr_t otag)
 		arcan_event_add_source(arcan_event_defaultctx(), fd, mode, otag);
 }
 
-static bool del_source(int fd, intptr_t* out)
+static bool del_source(int fd, mode_t mode, intptr_t* out)
 {
 	return
-		arcan_event_del_source(arcan_event_defaultctx(), fd, out);
+		arcan_event_del_source(arcan_event_defaultctx(), fd, mode, out);
 }
 
 void arcan_lua_mapfunctions(lua_State* ctx, int debuglevel)

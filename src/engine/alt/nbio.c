@@ -43,7 +43,7 @@ static struct nonblock_io open_fds[LUACTX_OPEN_FILES];
  * and scripting errors. The limit is set based on the same open limit imposed
  * by arcan_event_ sources. */
 static bool (*add_job)(int fd, mode_t mode, intptr_t tag);
-static bool (*remove_job)(int fd, intptr_t* out);
+static bool (*remove_job)(int fd, mode_t mode, intptr_t* out);
 
 static void set_nonblock_cloexec(int fd, bool socket)
 {
@@ -153,15 +153,17 @@ int alt_nbio_process_write(lua_State* L, struct nonblock_io* ib)
 	while (job){
 		ssize_t nw = write(ib->fd, &job->buf[job->ofs], job->sz - job->ofs);
 		if (-1 == nw){
-			if (nw == EINTR || nw == EAGAIN)
+			if (errno == EINTR || errno == EAGAIN)
 				return 0;
 			return -1;
 		}
 
 		job->ofs += nw;
+		ib->out_count += nw;
 
 /* slide on completion */
 		if (job->ofs == job->sz){
+			ib->out_queued -= job->sz;
 			ib->out_queue = job->next;
 			arcan_mem_free(job->buf);
 			arcan_mem_free(job);
@@ -183,6 +185,35 @@ static void drop_all_jobs(struct nonblock_io* ib)
 		arcan_mem_free(cur);
 	}
 	ib->out_queue = NULL;
+	ib->out_queue_tail = &(ib->out_queue);
+	ib->out_queued = 0;
+	ib->out_count = 0;
+}
+
+static struct io_job* queue_out(struct nonblock_io* ib, const char* buf, size_t len)
+{
+	struct io_job* res = malloc(sizeof(struct io_job));
+	if (!res)
+		return NULL;
+
+	*res = (struct io_job){0};
+	res->buf = malloc(len);
+	if (!res->buf){
+		free(res);
+		return NULL;
+	}
+
+	memcpy(res->buf, buf, len);
+	res->sz = len;
+	ib->out_queued += len;
+
+	if (!ib->out_queue_tail){
+		ib->out_queue_tail = &ib->out_queue;
+	}
+	*(ib->out_queue_tail) = res;
+	ib->out_queue_tail = &(res->next);
+
+	return res;
 }
 
 int alt_nbio_close(lua_State* L, struct nonblock_io** ibb)
@@ -203,9 +234,6 @@ int alt_nbio_close(lua_State* L, struct nonblock_io** ibb)
 	free(ib->pending);
 	drop_all_jobs(ib);
 
-	if (ib->ref)
-		luaL_unref(L, LUA_REGISTRYINDEX, ib->ref);
-
 	if (ib->data_handler)
 		luaL_unref(L, LUA_REGISTRYINDEX, ib->data_handler);
 
@@ -213,7 +241,13 @@ int alt_nbio_close(lua_State* L, struct nonblock_io** ibb)
 		luaL_unref(L, LUA_REGISTRYINDEX, ib->write_handler);
 
 /* no-op if nothing registered */
-	remove_job(fd, NULL);
+	intptr_t tag;
+	if (remove_job(fd, O_RDONLY, &tag)){
+		luaL_unref(L, LUA_REGISTRYINDEX, tag);
+	}
+	if (remove_job(fd, O_WRONLY, &tag)){
+		luaL_unref(L, LUA_REGISTRYINDEX, tag);
+	}
 
 	free(ib);
 	*ibb = NULL;
@@ -263,7 +297,7 @@ static int nbio_datahandler(lua_State* L)
 
 /* the same goes for the reference used to tag events */
 	intptr_t out;
-	if (remove_job((*ib)->fd, &out)){
+	if (remove_job((*ib)->fd, O_RDONLY, &out)){
 		luaL_unref(L, LUA_REGISTRYINDEX, out);
 	}
 
@@ -283,8 +317,12 @@ static int nbio_datahandler(lua_State* L)
 
 /* the job can fail to queue if a set amount of read_handler descriptors
  * are exceeded */
-		lua_pushboolean(L, add_job(
-			(*ib)->fd, (*ib)->write_handler ? O_RDWR : O_RDONLY, ref));
+		if (!add_job((*ib)->fd, O_RDONLY, ref)){
+			luaL_unref(L, LUA_REGISTRYINDEX, ref);
+			lua_pushboolean(L, false);
+		}
+
+		lua_pushboolean(L, true);
 
 		return 1;
 	}
@@ -357,6 +395,29 @@ static int nbio_socketaccept(lua_State* L)
 	LUA_ETRACE("open_nonblock:accept", NULL, 1);
 }
 
+static int nbio_writequeue(lua_State* L)
+{
+	LUA_TRACE("open_nonblock:writequeue");
+	struct nonblock_io** ib = luaL_checkudata(L, 1, "nonblockIO");
+	if (!(*ib)){
+		lua_pushnumber(L, 0);
+		lua_pushnumber(L, 0);
+		LUA_ETRACE("open_nonblock:writequeue", "already closed", 2);
+	}
+
+	struct nonblock_io* iw = *ib;
+	if (!iw->out_queue){
+		lua_pushnumber(L, 0);
+		lua_pushnumber(L, 0);
+	}
+	else {
+		lua_pushnumber(L, iw->out_count);
+		lua_pushnumber(L, iw->out_queued);
+	}
+
+	LUA_ETRACE("open_nonblock:writequeue", NULL, 2);
+}
+
 static int nbio_write(lua_State* L)
 {
 	LUA_TRACE("open_nonblock:write");
@@ -369,9 +430,19 @@ static int nbio_write(lua_State* L)
 	if (iw->mode == O_RDONLY)
 		LUA_ETRACE("open_nonblock:write", "invalid mode (r) for write", 0);
 
-	size_t len;
-	const char* buf = luaL_checklstring(L, 2, &len);
-	off_t of = 0;
+	size_t len = 0;
+	const char* buf = NULL;
+
+	if (lua_type(L, 2) == LUA_TSTRING){
+		buf = luaL_checklstring(L, 2, &len);
+		if (!len)
+			LUA_ETRACE("open_nonblock:write", "no data", 0);
+	}
+	else if (lua_type(L, 2) == LUA_TTABLE){
+/* handled later */
+	}
+	else
+		arcan_fatal("open_nonblock:write(data, cb) unexpected data type (str or tbl)");
 
 /* special case for FIFOs that aren't hooked up on creation */
 	if (-1 == iw->fd && iw->pending){
@@ -390,7 +461,8 @@ static int nbio_write(lua_State* L)
 		}
 	}
 
-/* direct non-block output mode (legacy) */
+/* direct non-block output mode (legacy)
+ * ignored in favour of using the queue even for 'immediate'
 	if (lua_type(L, 3) != LUA_TFUNCTION && !iw->out_queue){
 		int retc = 5;
 		bool rc = true;
@@ -413,12 +485,64 @@ static int nbio_write(lua_State* L)
 		lua_pushboolean(L, rc);
 		LUA_ETRACE("open_nonblock:write", NULL, 2);
 	}
+	* this means there's no immediate feedback if the write failed
+	*/
 
-/* API Note:
- * other option was to provide a function handler here, but was ignored
- * in favour of the shared data_handler API */
+/* might be swapping out one handler for another */
+	if (lua_type(L, 3) == LUA_TFUNCTION){
+		if (iw->write_handler){
+			luaL_unref(L, LUA_REGISTRYINDEX, iw->write_handler);
+			iw->write_handler = 0;
+		}
 
-	add_job(iw->fd, iw->data_handler ? O_RDWR : O_RDONLY, iw->ref);
+		lua_pushvalue(L, 3);
+		iw->write_handler = luaL_ref(L, LUA_REGISTRYINDEX);
+	}
+
+/* means we have a table, iterate and queue each entry */
+	if (!len){
+		int count = lua_rawlen(L, 2);
+		for (ssize_t i = 0; i < count; i++){
+			lua_rawgeti(L, 2, i+1);
+			buf = lua_tolstring(L, -1, &len);
+			if (!len){
+				lua_pop(L, 1);
+				continue;
+			}
+			if (!buf || !queue_out(iw, buf, len)){
+				drop_all_jobs(iw);
+				lua_pop(L, 1);
+				lua_pushnumber(L, 0);
+				lua_pushboolean(L, false);
+				LUA_ETRACE("open_nonblock:write", "couldn't queue buffer", 2);
+			}
+			lua_pop(L, 1);
+		}
+	}
+	else {
+		if (!queue_out(iw, buf, len)){
+			lua_pushnumber(L, 0);
+			lua_pushboolean(L, false);
+			LUA_ETRACE("open_nonblock:write", NULL, 2);
+		}
+	}
+
+/* replace any existing job reference, but it might also be for the
+ * first time so only unreference if it was actually removed */
+	intptr_t ref;
+	if (remove_job(iw->fd, O_WRONLY, &ref)){
+		luaL_unref(L, LUA_REGISTRYINDEX, ref);
+	}
+
+/* register the ref and the write mode to some outer dispatch */
+	lua_pushvalue(L, 1);
+	ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	add_job(iw->fd, O_WRONLY, ref);
+
+/* might be tempting to dispatch immediately but that would break
+ * multiple sequential write()s
+	alt_nbio_process_write(L, iw);
+ */
 
 	lua_pushnumber(L, len);
 	lua_pushboolean(L, true);
@@ -531,7 +655,7 @@ int alt_nbio_process_read(
 		return 2;
 	}
 	else if (lua_type(L, -1) == LUA_TTABLE){
-		size_t ind = lua_objlen(L, -1) + 1;
+		size_t ind = lua_rawlen(L, -1) + 1;
 		size_t ci = 0;
 
 		while ((ch = nextline(ib, ci, eof, &len, &step, &gotline))){
@@ -649,11 +773,13 @@ static int opennonblock_tgt(lua_State* L, bool wr)
 void alt_nbio_release()
 {
 /* make sure there are no registered event sources that would remain open
- * without any interpreter-space accessible recipients */
+ * without any interpreter-space accessible recipients - the L context is
+ * already dead or dying so ignore unref */
 	for (size_t i = 0; i < LUACTX_OPEN_FILES; i++){
 		struct nonblock_io* ent = &open_fds[i];
 		if (ent->fd > 0){
-			remove_job(ent->fd, NULL);
+			remove_job(ent->fd, O_RDONLY, NULL);
+			remove_job(ent->fd, O_WRONLY, NULL);
 			close(ent->fd);
 		}
 		drop_all_jobs(ent);
@@ -843,30 +969,40 @@ void alt_nbio_data_out(lua_State* L, intptr_t tag)
 	struct nonblock_io* ib = *ibb;
 	lua_pop(L, 1);
 
-	if (!ib->write_handler || !ib->out_queue)
+	if (!ib->out_queue)
 		return;
 
 /* all pending writes are done, notify and check if there is still a job */
 	int status = alt_nbio_process_write(L, ib);
-	if (status != 0){
-		lua_rawgeti(L, LUA_REGISTRYINDEX, ib->write_handler);
-		lua_pushboolean(L, status == 1);
-#ifdef WANT_ARCAN_BASE
-		lua_pushboolean(L, arcan_conductor_gpus_locked());
-#else
-		lua_pushboolean(L, false);
-#endif
-		alt_call(L, CB_SOURCE_NONE, 0, 2, 0, LINE_TAG":write_handler_cb");
 
-/* remove the current event-source, and if there is a data handler still around
- * we need to re-register but fire only for read events while keeping the
- * reference mapping between nonblock_io lua-space job and event tag */
-		if (!ib->out_queue){
-			remove_job(ib->fd, NULL);
-			if (ib->data_handler)
-				add_job(ib->fd, O_RDONLY, tag);
-			else
-				luaL_unref(L, LUA_REGISTRYINDEX, tag);
+	if (status == 0)
+		return;
+
+/* no registered handler? then just ensure empty queue on finish/fail */
+	if (!ib->write_handler){
+		drop_all_jobs(ib);
+		return;
+	}
+
+/* the gpu locked is only interesting / useful for arcan where there are
+ * certain restrictions on doing things while the GPU is locked, while still
+ * being able to process other IO */
+	lua_rawgeti(L, LUA_REGISTRYINDEX, ib->write_handler);
+	lua_pushboolean(L, status == 1);
+#ifdef WANT_ARCAN_BASE
+	lua_pushboolean(L, arcan_conductor_gpus_locked());
+#else
+	lua_pushboolean(L, false);
+#endif
+	drop_all_jobs(ib);
+	alt_call(L, CB_SOURCE_NONE, 0, 2, 0, LINE_TAG":write_handler_cb");
+
+/* Remove the current event-source unless a new handler has already been queued
+ * in its place (alt_call callback is colored) - then the tag has already been
+ * unref:d */
+	if (!ib->out_queue){
+		if (remove_job(ib->fd, O_WRONLY, &tag)){
+			luaL_unref(L, LUA_REGISTRYINDEX, tag);
 		}
 	}
 }
@@ -898,12 +1034,11 @@ void alt_nbio_data_in(lua_State* L, intptr_t tag)
 /* or remove and assume that this is no longer wanted */
 	else {
 		luaL_unref(L, LUA_REGISTRYINDEX, ch);
-		luaL_unref(L, LUA_REGISTRYINDEX, tag);
 
 /* but make sure that we don't remove any data-out handler while at it */
-		remove_job(ib->fd, NULL);
-		if (ib->write_handler)
-			add_job(ib->fd, O_WRONLY, ib->data_handler);
+		if (remove_job(ib->fd, O_RDONLY, &tag)){
+			luaL_unref(L, LUA_REGISTRYINDEX, tag);
+		}
 	}
 	lua_pop(L, 1);
 }
@@ -912,6 +1047,42 @@ void alt_nbio_data_in(lua_State* L, intptr_t tag)
  * implementation, thus it is not particularly nice to rely on it - on the
  * other hand vendoring in the code is also annoying */
 extern unsigned long long arcan_timemillis();
+
+/* set_position and seek are split to leave room for the theoretically possible
+ * on sockets / pipes as a positive seek being (skip n bytes) */
+static int nbio_seek(lua_State* L)
+{
+	struct nonblock_io** ibb = luaL_checkudata(L, 1, "nonblockIO");
+	struct nonblock_io* ib = *ibb;
+	if (!ib)
+		arcan_fatal("nbio:seek on closed file");
+
+	lua_Number ofs = lua_tonumber(L, 1);
+	off_t pos = lseek(ib->fd, ofs, SEEK_CUR);
+
+	lua_pushboolean(L, pos != -1);
+	lua_pushnumber(L, pos);
+	return 2;
+}
+
+static int nbio_position(lua_State* L)
+{
+	struct nonblock_io** ibb = luaL_checkudata(L, 1, "nonblockIO");
+	if (!ibb)
+		arcan_fatal("nbio:set_position on closed file");
+
+	struct nonblock_io* ib = *ibb;
+
+	lua_Number pos = lua_tonumber(L, 1);
+	if (pos < 0)
+		pos = lseek(ib->fd, -pos, SEEK_END);
+	else
+		pos = lseek(ib->fd, pos, SEEK_SET);
+
+	lua_pushboolean(L, pos != -1);
+	lua_pushnumber(L, pos);
+	return 2;
+}
 
 static int nbio_flush(lua_State* L)
 {
@@ -971,17 +1142,6 @@ static int nbio_flush(lua_State* L)
 	return 1;
 }
 
-static int nbio_size(lua_State* L)
-{
-	LUA_TRACE("open_nonblock:resize");
-	struct nonblock_io** ib = luaL_checkudata(L, 1, "nonblockIO");
-	if (!(*ib))
-		LUA_ETRACE("open_nonblock:resize", "already closed", 0);
-
-
-	return 0;
-}
-
 bool alt_nbio_import(
 	lua_State* L, int fd, mode_t mode, struct nonblock_io** out)
 {
@@ -1027,7 +1187,7 @@ bool alt_nbio_import(
 
 void alt_nbio_register(lua_State* L,
 	bool (*add)(int fd, mode_t, intptr_t tag),
-	bool (*remove)(int fd, intptr_t* out))
+	bool (*remove)(int fd, mode_t, intptr_t* out))
 {
 	add_job = add;
 	remove_job = remove;
@@ -1041,14 +1201,18 @@ void alt_nbio_register(lua_State* L,
 	lua_setfield(L, -2, "write");
 	lua_pushcfunction(L, nbio_closer);
 	lua_setfield(L, -2, "__gc");
+	lua_pushcfunction(L, nbio_writequeue);
+	lua_setfield(L, -2, "outqueue");
 	lua_pushcfunction(L, nbio_datahandler);
 	lua_setfield(L, -2, "data_handler");
 	lua_pushcfunction(L, nbio_closer);
 	lua_setfield(L, -2, "close");
 	lua_pushcfunction(L, nbio_flush);
+	lua_setfield(L, -2, "seek");
+	lua_pushcfunction(L, nbio_seek);
+	lua_setfield(L, -2, "set_position");
+	lua_pushcfunction(L, nbio_position);
 	lua_setfield(L, -2, "flush");
-	lua_pushcfunction(L, nbio_size);
-	lua_setfield(L, -2, "resize");
 	lua_pushcfunction(L, nbio_lf);
 	lua_setfield(L, -2, "lf_strip");
 	lua_pop(L, 1);
