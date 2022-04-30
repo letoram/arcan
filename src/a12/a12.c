@@ -142,6 +142,13 @@ static void send_hello_packet(struct a12_state* S,
 	else if (S->opts->local_role == ROLE_SINK){
 		outb[54] = 2;
 	}
+	else if (S->opts->local_role == ROLE_PROBE){
+		outb[54] = 3;
+	}
+	else {
+		fprintf(stderr, "EIMPL:role-DIR\n");
+		exit(EXIT_FAILURE);
+	}
 
 /* channel-id is empty */
 	outb[17] = COMMAND_HELLO;
@@ -1467,6 +1474,10 @@ static void process_hello_auth(struct a12_state* S)
 		else if(S->opts->local_role == ROLE_SINK && S->decode[54] == ROLE_SOURCE){
 			a12int_trace(A12_TRACE_SYSTEM, "kind=match:local=sink:remote=source");
 		}
+/* client: we might just be probing, if so continue without matching */
+		else if (S->opts->local_role == ROLE_PROBE){
+		}
+/* server: client is just probing, continue with normal auth */
 		else if (S->decode[54] == ROLE_PROBE){
 			if (S->opts->local_role != ROLE_PROBE){
 /* both sides probing is fishy */
@@ -1477,7 +1488,7 @@ static void process_hello_auth(struct a12_state* S)
 				return;
 			}
 		}
-		else if (S->decode[64] == ROLE_DIR){
+		else if (S->decode[54] == ROLE_DIR){
 			fail_state(S);
 			a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EIMPL:directory_mode");
 		}

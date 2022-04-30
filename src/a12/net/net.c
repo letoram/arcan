@@ -691,6 +691,7 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			opts->opts->disable_ephemeral_k = true;
 		}
 		else if (strcmp(argv[i], "--probe-only") == 0){
+			opts->opts->local_role = ROLE_PROBE;
 			global.probe_only = true;
 		}
 /* a12 server, shmif client */
