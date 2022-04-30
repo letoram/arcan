@@ -485,6 +485,7 @@ bool a12helper_keystore_hostkey(const char* tagname, size_t index,
 			break;
 		}
 
+		res = false;
 		index--;
 	}
 

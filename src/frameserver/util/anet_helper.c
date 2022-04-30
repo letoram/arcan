@@ -126,7 +126,6 @@ static struct anet_cl_connection connect_to(struct anet_options* arg)
 		char buf[64];
 		snprintf(buf, sizeof(buf), "couldn't connect to %s:%s\n", arg->host, arg->port);
 		res.errmsg = strdup(buf);
-
 		freeaddrinfo(addr);
 		return res;
 	}
@@ -136,8 +135,10 @@ static struct anet_cl_connection connect_to(struct anet_options* arg)
 	if (anet_authenticate(res.state, res.fd, res.fd, &res.errmsg))
 		return res;
 
-	if (-1 != res.fd)
+	if (-1 != res.fd){
 		shutdown(res.fd, SHUT_RDWR);
+		close(res.fd);
+	}
 
 	res.fd = -1;
 	a12_free(res.state);
