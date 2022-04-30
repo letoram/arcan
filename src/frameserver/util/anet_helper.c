@@ -48,45 +48,50 @@ int anet_clfd(struct addrinfo* addr)
 	return clfd;
 }
 
+static bool flushout(struct a12_state* S, int fdout, char** err)
+{
+	uint8_t* buf;
+	size_t out = a12_flush(S, &buf, 0);
+
+	while (out){
+		ssize_t nw = write(fdout, buf, out);
+		if (nw == -1){
+			if (errno == EAGAIN || errno == EINTR)
+				continue;
+
+			char buf[64];
+			snprintf(buf, sizeof(buf), "write(%d) during authentication", errno);
+			*err = strdup(buf);
+			return false;
+		}
+		else {
+			out -= nw;
+			buf += nw;
+		}
+	}
+
+	return true;
+}
+
 bool anet_authenticate(struct a12_state* S, int fdin, int fdout, char** err)
 {
+	char inbuf[4096];
+
 /* repeat until we fail or get authenticated */
-	do {
-		uint8_t* buf;
-		size_t out = a12_flush(S, &buf, 0);
-		while (out){
-			ssize_t nw = write(fdout, buf, out);
-			if (nw == -1){
-				if (errno == EAGAIN || errno == EINTR)
-					continue;
-
-				char buf[64];
-				snprintf(buf, sizeof(buf), "write(%d) during authentication", errno);
-				*err = strdup(buf);
-				return false;
-			}
-			else {
-				out -= nw;
-				buf += nw;
-			}
-		}
-
-		if (a12_auth_state(S) == AUTH_FULL_PK)
-			break;
-
-		char inbuf[4096];
+	while (flushout(S, fdout, err) &&
+		a12_auth_state(S) != AUTH_FULL_PK && a12_poll(S) >= 0)
+	{
 		ssize_t nr = read(fdin, inbuf, 4096);
 		if (nr > 0){
 			a12_unpack(S, (uint8_t*)inbuf, nr, NULL, NULL);
 		}
 		else if (nr == 0 || (errno != EAGAIN && errno != EINTR)){
 			char buf[64];
-			snprintf(buf, sizeof(buf), "read(%d) during authentication", errno);
+			snprintf(buf, sizeof(buf), "read(%d) => %zd during authentication", errno, nr);
 			*err = strdup(buf);
 			return false;
 		}
-
-	} while (a12_poll(S) > 0 && a12_auth_state(S) != AUTH_FULL_PK);
+	}
 
 	return a12_auth_state(S) == AUTH_FULL_PK;
 }

@@ -114,18 +114,19 @@ static bool handover_setup(struct a12_state* S,
 	if (meta->opts->mode != ANET_SHMIF_EXEC)
 		return true;
 
-	if (S->remote_mode == ROLE_PROBE){
-		a12int_trace(A12_TRACE_SYSTEM, "probed:terminating");
-		shutdown(fd, SHUT_RDWR);
-		close(fd);
-		return false;
-	}
-
 /* wait for authentication before going for the shmifsrv processing mode */
 	char* msg;
 	if (!anet_authenticate(S, fd, fd, &msg)){
 		a12int_trace(A12_TRACE_SYSTEM, "authentication failed: %s", msg);
 		free(msg);
+		shutdown(fd, SHUT_RDWR);
+		close(fd);
+		return false;
+	}
+
+
+	if (S->remote_mode == ROLE_PROBE){
+		a12int_trace(A12_TRACE_SYSTEM, "probed:terminating");
 		shutdown(fd, SHUT_RDWR);
 		close(fd);
 		return false;
@@ -702,18 +703,24 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 				return show_usage("-l without room for port argument");
 
 			opts->port = argv[++i];
+
 			for (size_t ind = 0; opts->port[ind]; ind++)
 				if (opts->port[ind] < '0' || opts->port[ind] > '9')
 					return show_usage("Invalid values in port argument");
 
-/* more optional / annoying components here, find host if host is there,
- * then check if we should exec map something to an authenticated connection */
-			if (i == argc - 1)
+/* three paths, -l port host -exec ..
+ * or -l port -exec
+ * or just -l port */
+			i++;
+
+			if (i == argc)
 				return i;
 
-			if (strcmp(argv[++i], "-exec") != 0){
+			if (strcmp(argv[i], "-exec") != 0){
 				opts->host = argv[i++];
-				if (i == argc - 1)
+
+/* no exec, just host */
+				if (i >= argc - 1)
 					return i;
 			}
 
@@ -721,10 +728,10 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 				return show_usage("Unexpected trailing argument, expected -exec or end");
 			}
 
-			if (i == argc - 1)
+			i++;
+			if (i == argc)
 				return show_usage("-exec without bin arg0 .. argn");
 
-			i++;
 			meta->bin = argv[i];
 			meta->argv = &argv[i];
 			opts->mode = ANET_SHMIF_EXEC;

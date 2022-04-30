@@ -1468,8 +1468,8 @@ static void process_hello_auth(struct a12_state* S)
 			a12int_trace(A12_TRACE_SYSTEM, "kind=match:local=sink:remote=source");
 		}
 		else if (S->decode[54] == ROLE_PROBE){
-			if (S->authentic == AUTH_SERVER_HBLOCK){
-/* only the client end is allowed to probe */
+			if (S->opts->local_role != ROLE_PROBE){
+/* both sides probing is fishy */
 			}
 			else {
 				a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EINVAL:probe");
