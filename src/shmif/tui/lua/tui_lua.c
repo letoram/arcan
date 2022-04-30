@@ -67,7 +67,7 @@ static struct tui_cbcfg shared_cbcfg = {};
 
 #define RUN_CALLBACK(X, Y, Z) do {\
 	if (0 != lua_pcall(L, (Y), (Z), 0)){\
-		lua_tostring(L, -1);\
+		luaL_error(L, lua_tostring(L, -1));\
 	}\
 } while(0);
 
@@ -98,7 +98,8 @@ static struct {
 
 /* just used for dump_stack, pos can't be relative */
 static const char* match_udata(lua_State* L, ssize_t pos){
-	lua_getmetatable(L, pos);
+	if (0 == lua_getmetatable(L, pos))
+		return NULL;
 
 	for (size_t i = 0; i < COUNT_OF(udata_list); i++){
 		luaL_getmetatable(L, udata_list[i]);
@@ -2179,7 +2180,6 @@ static int readline(lua_State* L)
  *    be matched
  */
 	lua_pushvalue(L, -4);
-
 	arcan_tui_readline_setup(ib->tui, &opts, sizeof(opts));
 	lua_pop(L, 1);
 
