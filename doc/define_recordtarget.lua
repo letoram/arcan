@@ -20,7 +20,7 @@
 -- using the ARCAN_ARG environment variable. ARCAN_ARG=help afsrv_encode from
 -- a command-line can be used to see the possible values for *arguments*.
 --
--- The second usecase is the create an *output* segment in an existing client.
+-- The second usecase is creating an *output* segment in an existing client.
 -- Here, *arguments* will be ignored and *resource* is expected to refer to
 -- a valid (ref:valid_vid) frameserver segment. Trying to push a subsegment
 -- to a VID that is not a connected frameserver is a terminal state transition.

@@ -17,6 +17,8 @@
  * target\_displayhint extended with forwarding subsegment cookie for embedded surfaces
  * viewport events now propagate embedded surface scaling preferences
  * input events can now carry a destination segment cookie
+ * list\_namespaces for enumerating namespaces, nsname:/path to all resource functions
+ * glob\_resource second argument form string type for user namespaces
 
 ## Terminal
  * permit ARCAN\_STATEPATH to propagate into child env

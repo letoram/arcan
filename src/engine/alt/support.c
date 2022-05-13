@@ -59,7 +59,7 @@ extern jmp_buf arcanmain_recover_state;
 static void dump_stack(lua_State* L, FILE* dst)
 {
 	int top = lua_gettop(L);
-	arcan_warning("-- stack dump (%d)--\n", top);
+	fprintf(dst, "-- stack dump (%d)--\n", top);
 
 	for (size_t i = 1; i <= top; i++){
 		int t = lua_type(L, i);

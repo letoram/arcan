@@ -17,8 +17,39 @@
 #include <arcan_math.h>
 #include <arcan_general.h>
 
-unsigned arcan_glob(char* basename, enum arcan_namespaces space,
-	void (*cb)(char*, void*), void* tag)
+unsigned arcan_glob_userns(
+	char* basename, const char* space, void (*cb)(char*, void*), void* tag)
+{
+	struct arcan_userns ns;
+
+	if (
+		!basename || verify_traverse(basename) == NULL ||
+		!arcan_lookup_namespace(space, &ns, false))
+		return 0;
+
+	size_t len = strlen(basename) + sizeof(ns.path) + 1;
+	char* buf = malloc(len);
+	snprintf(buf, len, "%s/%s", ns.path, basename);
+
+	glob_t res = {0};
+	size_t count = 0;
+
+	if (glob(buf, 0, NULL, &res) == 0){
+		char** beg = res.gl_pathv;
+		while (*beg){
+			cb(strrchr(*beg, '/') ? strrchr(*beg, '/')+1 : *beg, tag);
+			beg++;
+			count++;
+		}
+	}
+
+	free(buf);
+	return count;
+}
+
+unsigned arcan_glob(
+	char* basename,
+	enum arcan_namespaces space, void (*cb)(char*, void*), void* tag)
 {
 	unsigned count = 0;
 

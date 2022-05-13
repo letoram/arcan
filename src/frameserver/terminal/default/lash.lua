@@ -547,6 +547,7 @@ local tokens = {
 	OP_STATESEP = 33,
 	OP_NOT      = 34,
 	OP_POUND    = 35,
+	OP_AND      = 36,
 
 -- return result states
 	ERROR    = 40,
@@ -574,6 +575,7 @@ local operators = {
 [';'] = tokens.OP_STATESEP,
 ['!'] = tokens.OP_NOT,
 ['#'] = tokens.OP_POUND,
+['&'] = tokens.OP_AND
 }
 
 -- operators that we ignore and treat as 'whitespace terminated strings' in

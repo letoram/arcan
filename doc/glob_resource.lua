@@ -12,7 +12,8 @@
 -- This domain can be a predefined bitmap of numeric constants, or a user-defined
 -- dynamic namespace tag. Valid constants for domain (can be ORed) are APPL_RESOURCE,
 -- APPL_TEMP_RESOURCE, SHARED_RESOURCE, SYS_APPL_RESOURCE, SYS_FONT_RESOURCE,
--- APPL_STATE_RESOURCE,
+-- APPL_STATE_RESOURCE, The dynamic namespace tag has to match a valid name from
+-- ref:list_namespaces.
 -- @note: the default domain is the compile-time defined (DEFAULT_USERMASK)
 -- which is comprised of (application- specific, application shared,
 -- application temporary)
