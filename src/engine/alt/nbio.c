@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <ctype.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -99,7 +100,7 @@ static int connect_trypath(const char* local, const char* remote, int type)
 	return fd;
 }
 
-static int connect_stream_to(const char* path, char** out)
+static int connect_stream_to(const char* path, int ns, char** out)
 {
 /* we still need to bind a path that we can then unlink after connection */
 	char* local_path = NULL;
@@ -111,9 +112,9 @@ static int connect_stream_to(const char* path, char** out)
 		char tmpname[16];
 		long rnd = random();
 		snprintf(tmpname, sizeof(tmpname), "_sock%ld", rnd);
-		char* tmppath = arcan_find_resource(tmpname, RESOURCE_APPL_TEMP, ARES_FILE);
+		char* tmppath = arcan_find_resource(tmpname, ns, ARES_FILE, NULL);
 		if (!tmppath){
-			local_path = arcan_expand_resource(tmpname, RESOURCE_APPL_TEMP);
+			local_path = arcan_expand_resource(tmpname, ns);
 		}
 		else
 			free(tmppath);
@@ -122,6 +123,11 @@ static int connect_stream_to(const char* path, char** out)
 	if (!local_path)
 		return -1;
 
+/* This should eventually respect IPC marked user defined namespaces,
+ * as it might be useful for some other things - wpa_supplicant like
+ * application interfaces being one example. If so, the namespace.c
+ * prefix check function should be reused and explicitly resolve the
+ * ns prefix to see it supports it. */
 	int fd = connect_trypath(local_path, path, SOCK_STREAM);
 
 /* so it might be a dgram socket */
@@ -787,22 +793,19 @@ void alt_nbio_release()
 	}
 }
 
-/*
- * ugly little thing, should really be refactored into different typed versions
- * as part of the big 'split the monster.lua' project, as should all of the
- * posixism be forced into the platform layer.
- */
 int alt_nbio_open(lua_State* L)
 {
 	LUA_TRACE("open_nonblock");
 
 	const char* metatable = "nonblockIO";
 	char* unlink_fn = NULL;
+
 	int wrmode = luaL_optbnumber(L, 2, 0) ? O_WRONLY : O_RDONLY;
 	bool fifo = false, ignerr = false, use_socket = false;
 	char* path;
 	int fd;
 
+/* nonblock-io write to/from an explicit vid */
 #ifdef WANT_ARCAN_BASE
 	if (lua_type(L, 1) == LUA_TNUMBER){
 		int rv = opennonblock_tgt(L, wrmode == O_WRONLY);
@@ -810,6 +813,7 @@ int alt_nbio_open(lua_State* L)
 	}
 #endif
 
+	int namespace = RESOURCE_APPL_TEMP;
 	const char* str = luaL_checkstring(L, 1);
 	if (str[0] == '<'){
 		fifo = true;
@@ -819,19 +823,25 @@ int alt_nbio_open(lua_State* L)
 		use_socket = true;
 		str++;
 	}
+	else {
+		size_t i = 0;
+		for (;str[i] && isalnum(str[i]); i++);
+		if (str[i] == ':' && str[i+1] == '/'){
+			namespace = RESOURCE_NS_USER;
+		}
+	}
 
 /* note on file-system races: it is an explicit contract that the namespace
  * provided for RESOURCE_APPL_TEMP is single- user (us) only. Anyhow, this
  * code turned out a lot messier than needed, refactor when time permits. */
 	if (wrmode == O_WRONLY){
 		struct stat fi;
-		path = arcan_find_resource(str, RESOURCE_APPL_TEMP, ARES_FILE);
+		path = arcan_find_resource(str, namespace, ARES_FILE, NULL);
 
 /* we require a zap_resource call if the file already exists, except for in
  * the case of a fifo dst- that we can open in (w) mode */
 		bool dst_fifo = (path && -1 != stat(path, &fi) && S_ISFIFO(fi.st_mode));
-		if (!dst_fifo && (path || !(path =
-			arcan_expand_resource(str, RESOURCE_APPL_TEMP)))){
+		if (!dst_fifo && (path || !(path = arcan_expand_resource(str, namespace)))){
 			arcan_warning("open_nonblock(), refusing to open "
 				"existing file for writing\n");
 			arcan_mem_free(path);
@@ -862,15 +872,15 @@ int alt_nbio_open(lua_State* L)
 			LUA_ETRACE("open_nonblock", "opened file not fifo", 0);
 		}
 	}
-/* recall, socket binding is supposed to go to a 'safe' namespace, so the
- * normal filesystem races are less than a concern than normally */
+/* recall, socket binding is supposed to go to a 'safe' namespace, so
+ * filesystem races are less than a concern than normally */
 	else if (use_socket){
 		struct sockaddr_un addr = {
 			.sun_family = AF_UNIX
 		};
 		size_t lim = COUNT_OF(addr.sun_path);
-		path = arcan_find_resource(str, RESOURCE_APPL_TEMP, ARES_FILE);
-		if (path || !(path = arcan_expand_resource(str, RESOURCE_APPL_TEMP))){
+		path = arcan_find_resource(str, namespace, ARES_FILE, NULL);
+		if (path || !(path = arcan_expand_resource(str, namespace))){
 			arcan_warning("open_nonblock(), refusing to overwrite file\n");
 			LUA_ETRACE("open_nonblock", "couldn't create socket", 0);
 		}
@@ -906,12 +916,11 @@ int alt_nbio_open(lua_State* L)
 	}
 	else {
 retryopen:
-		path = arcan_find_resource(str,
-			fifo ? RESOURCE_APPL_TEMP : DEFAULT_USERMASK, ARES_FILE);
+		path = arcan_find_resource(str, namespace, ARES_FILE, NULL);
 
 /* fifo and doesn't exist? create */
 		if (!path){
-			if (fifo && (path = arcan_expand_resource(str, RESOURCE_APPL_TEMP))){
+			if (fifo && (path = arcan_expand_resource(str, namespace))){
 				if (-1 == mkfifo(path, S_IRWXU)){
 					arcan_warning("open_nonblock(): mkfifo (%s) failed\n", path);
 					LUA_ETRACE("open_nonblock", "mkfifo failed", 0);
@@ -928,7 +937,7 @@ retryopen:
 
 /* socket, 'connect mode' */
 			if (-1 == fd && errno == ENXIO){
-				fd = connect_stream_to(path, &unlink_fn);
+				fd = connect_stream_to(path, namespace, &unlink_fn);
 				wrmode = O_RDWR;
 			}
 		}
@@ -942,7 +951,8 @@ retryopen:
 		LUA_ETRACE("open_nonblock", "couldn't open file", 0);
 	}
 
-	struct nonblock_io* conn = arcan_alloc_mem(sizeof(struct nonblock_io),
+	struct nonblock_io* conn = arcan_alloc_mem(
+			sizeof(struct nonblock_io),
 			ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	conn->fd = fd;

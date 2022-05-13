@@ -317,7 +317,10 @@ typedef struct {
 
 enum resource_type {
 	ARES_FILE = 1,
-	ARES_FOLDER = 2
+	ARES_FOLDER = 2,
+	ARES_SOCKET = 3,
+	ARES_CREATE = 256,
+	ARES_RDONLY = 512
 };
 
 /*
@@ -399,9 +402,24 @@ enum arcan_namespaces {
 	RESOURCE_SYS_SCRIPTS = 2048,
 
 /*
- * must be set to the vale of the last element
+ * the label will be interpreted as having a possible namespace prefix,
+ * e.g. [myns]somewhere/something.
+ */
+	RESOURCE_NS_USER = 4096,
+/*
+ * must be set to the vale of the last system element (NS_USER ignored)
  */
 	RESOURCE_SYS_ENDM = 2048
+};
+
+struct arcan_userns {
+	bool read;
+	bool write;
+	bool ipc;
+	int dirfd;
+	char label[64];
+	char name[32];
+	char path[256];
 };
 
 struct platform_timing {

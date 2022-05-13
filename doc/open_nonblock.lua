@@ -13,8 +13,12 @@
 -- The *identifier* argument can then be used to specify some client announced
 -- type identifier, or one of the reserved "stdin", "stdout", "stderr".
 -- If *res* is a string, the initial character determines if it creates a
--- FIFO (<) or a SOCKET (=). FIFOs and SOCKETs are always created in the
--- RESOURCE_APPL_TEMP namespace.
+-- FIFO (<) or a SOCKET (=). Unless a namespace is explicitly set and the
+-- namespace is marked as valid for IPC, FIFOs and SOCKETs will be created
+-- in the RESOURCE_APPL_TEMP namespace.
+-- If the string starts with a valid namespace identifier and separator
+-- (alphanum:/)  the identifier will first be matched to a user defined
+-- namespace (see ref:list_namespaces).
 -- If successful, FIFOs and normal resources return a table wih a close
 -- operation (which is activated on garbage collection unless called in
 -- beforehand) and a read or write function depending on the mode that
@@ -32,9 +36,9 @@
 -- It also supports two optional reading modes that are more convenient and
 -- faster than multiple calls to read.
 -- If [arg] is a lua function, it will be invoked as a callback(str:line,
--- bool:eof) with each line in the current buffer along with if there backing
--- data store is still connected and has more data that could be read or arrive
--- in the future (sockets, pipes).
+-- bool:eof) with each line in the current buffer along with information (eof)
+-- if the backing data store is still connected and has more data that
+-- could be read or arrive in the future (sockets, pipes) or not.
 -- If [arg] is a table, it will be treated as n indexed and new lines will be
 -- appending at the end of the table [#tbl+1] = line1; [#tbl+2] = line2; and so
 -- on.
@@ -72,15 +76,15 @@
 --
 -- Some files support absolute and/or relative seeking. For relative seeking
 -- based on the current file position, call :seek(ofs):bool,int. To set an
--- aboslute file position, call set_position(pos):bool,int with negative values
+-- absolute file position, call set_position(pos):bool,int with negative values
 -- being treated as the offset from file end. Both forms return if the seek
 -- succeeded and the last known absolute file position.
 --
 -- @note: Do note that input processing has soft realtime constraints, and care
--- should be taken to not process large chunks of data in one go as it may
--- affect responsiveness.
--- @note: FIFOs that were created in the APPL_TEMP namespace will be unlinked
--- when the close method is called or when the table is garbage collected.
+-- should be taken to avoid processing large chunks of data in one go as it may
+-- affect application responsiveness.
+-- @note: FIFOs that were created will be unlinked when the close method is
+-- called or when the table reference is garbage collected.
 -- @group: resource
 -- @cfunction: opennonblock
 -- @related:

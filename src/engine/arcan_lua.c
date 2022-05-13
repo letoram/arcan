@@ -370,8 +370,7 @@ retry:
 
 	if (!outf){
 		init = true;
-		char* fname = arcan_expand_resource(
-			"arcan.coverage", RESOURCE_SYS_DEBUG);
+		char* fname = arcan_expand_resource("arcan.coverage", RESOURCE_SYS_DEBUG);
 
 		if (!fname)
 			return;
@@ -545,9 +544,10 @@ static bool intblbool_sz(lua_State* ctx, int ind, const char* field, size_t fsz)
 }
 #define intblbool(L, I, F) intblbool_sz(L, (I), (F), (sizeof(F)/sizeof(char))-1)
 
-static char* findresource(const char* arg, enum arcan_namespaces space)
+static char* findresource(
+	const char* arg, enum arcan_namespaces space, enum resource_type type)
 {
-	char* res = arcan_find_resource(arg, space, ARES_FILE);
+	char* res = arcan_find_resource(arg, space, type, NULL);
 /* since this is invoked extremely frequently and is involved in file-system
  * related stalls, maybe a sort of caching mechanism should be implemented
  * (invalidate / refill every N ticks or have a flag to side-step it -- as a lot
@@ -812,7 +812,9 @@ static int zapresource(lua_State* ctx)
 {
 	LUA_TRACE("zap_resource");
 
-	char* path = findresource(luaL_checkstring(ctx, 1), RESOURCE_APPL_TEMP);
+	const char* srcpath = luaL_checkstring(ctx, 1);
+	char* path = findresource(srcpath,
+		RESOURCE_APPL_TEMP | RESOURCE_NS_USER, ARES_FILE);
 
 	if (path && unlink(path) != -1)
 		lua_pushboolean(ctx, true);
@@ -839,7 +841,8 @@ static int rawresource(lua_State* ctx)
 		luactx.rawres.eofm = false;
 	}
 
-	char* path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
+	char* path = findresource(
+		luaL_checkstring(ctx, 1), DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY);
 
 	if (!path){
 		char* fname = arcan_expand_resource(
@@ -1059,7 +1062,9 @@ static int loadimage(lua_State* ctx)
 	LUA_TRACE("load_image");
 
 	arcan_vobj_id id = ARCAN_EID;
-	char* path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
+	const char* srcstr = luaL_checkstring(ctx, 1);
+	char* path = findresource(srcstr,
+		DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY);
 
 	uint8_t prio = luaL_optint(ctx, 2, 0);
 	unsigned desw = luaL_optint(ctx, 3, 0);
@@ -1083,7 +1088,9 @@ static int loadimageasynch(lua_State* ctx)
 	arcan_vobj_id id = ARCAN_EID;
 	intptr_t ref = 0;
 
-	char* path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
+	const char* srcstr = luaL_checkstring(ctx, 1);
+	char* path = findresource(srcstr,
+		DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY);
 
 	if (lua_isfunction(ctx, 2) && !lua_iscfunction(ctx, 2)){
 		lua_pushvalue(ctx, 2);
@@ -1823,7 +1830,8 @@ static int loadasample(lua_State* ctx)
 	}
 
 	const char* rname = luaL_checkstring(ctx, 1);
-	char* resource = findresource(rname, DEFAULT_USERMASK);
+	char* resource = findresource(rname,
+		DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY);
 	float gain = luaL_optnumber(ctx, 2, 1.0);
 	arcan_aobj_id sid = arcan_audio_load_sample(resource, gain, NULL);
 	arcan_mem_free(resource);
@@ -2600,7 +2608,7 @@ static int syssnap(lua_State* ctx)
 	LUA_TRACE("system_snapshot");
 
 	const char* instr = luaL_checkstring(ctx, 1);
-	char* fname = findresource(instr, RESOURCE_APPL_TEMP);
+	char* fname = findresource(instr, RESOURCE_APPL_TEMP, O_WRONLY);
 
 	if (fname){
 		arcan_warning("system_statesnap(), "
@@ -2610,7 +2618,8 @@ static int syssnap(lua_State* ctx)
 		LUA_ETRACE("system_snapshot", "file exists", 0);
 	}
 
-	fname = arcan_expand_resource(luaL_checkstring(ctx, 1), RESOURCE_APPL_TEMP);
+	fname = arcan_expand_resource(
+		luaL_checkstring(ctx, 1), RESOURCE_APPL_TEMP);
 	FILE* outf;
 
 	if (fname && (outf = fopen(fname, "w+"))){
@@ -2664,7 +2673,8 @@ static int systemload(lua_State* ctx)
 		snprintf(workbuf, len, "%s%s", instr, OS_DYLIB_EXTENSION);
 
 /* countermeasure 2, MODULE_USERMASK namespace => RESOURCE_SYS_LIBS */
-		char* fname = findresource(workbuf, MODULE_USERMASK);
+		char* fname = findresource(
+			workbuf, MODULE_USERMASK, ARES_FILE | ARES_RDONLY);
 		if (!fname){
 			const char* msg = "Couldn't find required module: (%s)\n";
 			if (dieonfail)
@@ -2737,7 +2747,8 @@ static int systemload(lua_State* ctx)
 	}
 #endif
 
-	char* fname = findresource(instr, CAREFUL_USERMASK);
+	char* fname = findresource(instr,
+		CAREFUL_USERMASK, ARES_RDONLY | ARES_FILE);
 	int res = 0;
 
 	if (fname){
@@ -2934,7 +2945,7 @@ static int launchdecode(lua_State* ctx)
 		fname = strdup(resource);
 /* resolve in the resource namespace unless some special pattern */
 	else {
-		fname = findresource(resource, DEFAULT_USERMASK);
+		fname = findresource(resource, DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY);
 		if (!fname)
 			LUA_ETRACE("launch_decode", "couldn't resolve resource", 0);
 
@@ -5328,7 +5339,8 @@ static int loadmesh(lua_State* ctx)
 	if (lua_type(ctx, 2) != LUA_TSTRING)
 		arcan_fatal("add_3dmesh(), invalid resource type");
 
-	char* path = findresource(luaL_checkstring(ctx, 2), DEFAULT_USERMASK);
+	char* path = findresource(
+		luaL_checkstring(ctx, 2), DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY);
 	data_source indata = arcan_open_resource(path);
 	if (indata.fd != BADFD){
 		arcan_errc rv = arcan_3d_addmesh(did, indata, nmaps);
@@ -5794,7 +5806,7 @@ static int push_stringres(lua_State* ctx, struct arcan_strarr* res)
 
 	if (res->data){
 		char** curr = res->data;
-		unsigned int count = 1; /* 1 indexing, seriously LUA ... */
+		unsigned int count = 1;
 
 		curr = res->data;
 
@@ -6675,20 +6687,22 @@ static int rawsurface(lua_State* ctx)
 		}
 
 	if (dumpstr){
-		char* fname = arcan_find_resource(dumpstr, RESOURCE_APPL_TEMP, ARES_FILE);
-		if (fname){
-			arcan_warning("rawsurface() -- refusing to "
-				"overwrite existing file (%s)\n", fname);
+		int fd;
+		char* fname = arcan_find_resource(
+			dumpstr, RESOURCE_APPL_TEMP, ARES_FILE | ARES_CREATE, &fd);
+		if (!fname){
+			arcan_warning(
+				"rawsurface() -- refusing to overwrite existing file (%s)\n", fname);
 		}
-		else if ((fname = arcan_expand_resource(dumpstr, RESOURCE_APPL_TEMP))){
-			FILE* fpek = fopen(fname, "wb");
+		else {
+			FILE* fpek = fdopen(fd, "wb");
 			if (!fpek)
 				arcan_warning("rawsurface() - - couldn't open (%s).\n", fname);
 			else
 				arcan_img_outpng(fpek, buf, desw, desh, 0);
 			fclose(fpek);
+			arcan_mem_free(fname);
 		}
-		arcan_mem_free(fname);
 	}
 
 	arcan_vobj_id id = arcan_video_rawobject(buf, cons, desw, desh, 0);
@@ -6987,6 +7001,50 @@ static void globcb(char* arg, void* tag)
 	lua_rawset(bptr->ctx, bptr->top);
 }
 
+static int listns(lua_State* ctx)
+{
+	LUA_TRACE("list_namespaces");
+	struct arcan_strarr ns = arcan_user_namespaces();
+	lua_newtable(ctx);
+	struct arcan_userns** cn = (struct arcan_userns**) ns.cdata;
+
+	int count = 1;
+	while (count <= ns.count && ns.cdata){
+		struct arcan_userns* cn = ns.cdata[count-1];
+		if (!cn)
+			break;
+
+		lua_pushnumber(ctx, count);
+
+		lua_newtable(ctx);
+			lua_pushliteral(ctx, "label");
+			lua_pushstring(ctx, cn->label);
+			lua_rawset(ctx, -3);
+
+			lua_pushliteral(ctx, "name");
+			lua_pushstring(ctx, cn->name);
+			lua_rawset(ctx, -3);
+
+			lua_pushliteral(ctx, "read");
+			lua_pushboolean(ctx, cn->read);
+			lua_rawset(ctx, -3);
+
+			lua_pushliteral(ctx, "write");
+			lua_pushboolean(ctx, cn->write);
+			lua_rawset(ctx, -3);
+
+			lua_pushliteral(ctx, "ipc");
+			lua_pushboolean(ctx, cn->ipc);
+			lua_rawset(ctx, -3);
+		lua_rawset(ctx, -3);
+
+		count++;
+	}
+
+	arcan_mem_freearr(&ns);
+	LUA_ETRACE("list_namespaces", NULL, 1);
+}
+
 static int globresource(lua_State* ctx)
 {
 	LUA_TRACE("glob_resource");
@@ -6996,22 +7054,34 @@ static int globresource(lua_State* ctx)
 		.index = 1
 	};
 
-	char* label = (char*) luaL_checkstring(ctx, 1);
+	char* label = strdup(luaL_checkstring(ctx, 1));
+	const char* userns = NULL;
+
 	int mask = DEFAULT_USERMASK;
 
 	if (lua_type(ctx, 2) == LUA_TSTRING){
-/* placeholder to permit a db lookup of namespaces */
+		userns = lua_tostring(ctx, 2);
 	}
 	else if (lua_type(ctx, 2) == LUA_TNUMBER){
 		mask = luaL_checknumber(ctx, 2);
-		mask &= (DEFAULT_USERMASK |
-			RESOURCE_APPL_STATE | RESOURCE_SYS_APPLBASE | RESOURCE_SYS_FONT);
+		mask &=
+			(
+				DEFAULT_USERMASK
+				|RESOURCE_APPL_STATE
+				|RESOURCE_SYS_APPLBASE
+				|RESOURCE_SYS_FONT
+			);
 	}
 
 	lua_newtable(ctx);
 	bptr.top = lua_gettop(ctx);
 
-	arcan_glob(label, mask, globcb, &bptr);
+	if (userns)
+		arcan_glob_userns(label, userns, globcb, &bptr);
+	else
+		arcan_glob(label, mask, globcb, &bptr);
+
+	free(label);
 
 	LUA_ETRACE("glob_resource", NULL, 1);
 }
@@ -7023,7 +7093,9 @@ static int resource(lua_State* ctx)
 	const char* label = luaL_checkstring(ctx, 1);
 /* can only be used to test for resource so don't & against mask */
 	int mask = luaL_optinteger(ctx, 2, DEFAULT_USERMASK);
-	char* res = arcan_find_resource(label, mask, ARES_FILE | ARES_FOLDER);
+	char* res = arcan_find_resource(
+		label, mask, ARES_FILE | ARES_FOLDER, O_RDONLY);
+
 	if (!res){
 		lua_pushstring(ctx, res);
 		lua_pushliteral(ctx, "not found");
@@ -7344,9 +7416,9 @@ static int targetfonthint(lua_State* ctx)
 			arcan_video_fontdefaults(&fd, NULL, NULL);
 		}
 		else{
-			char* fname = arcan_expand_resource(instr, RESOURCE_SYS_FONT);
-			if (fname && arcan_isfile(fname))
-				fd = open(fname, O_RDONLY | O_CLOEXEC);
+			int fd = BADFD;
+			char* fname = arcan_find_resource(
+				instr, RESOURCE_SYS_FONT, ARES_FILE, &fd);
 			arcan_mem_free(fname);
 			if (BADFD == fd){
 				lua_pushboolean(ctx, false);
@@ -8043,7 +8115,7 @@ static int targetrestore(lua_State* ctx)
 	}
 
 /* resolve from requested namespace, only accept files */
-	char* fname = arcan_find_resource(snapkey, ns, ARES_FILE);
+	char* fname = arcan_find_resource(snapkey, ns, ARES_FILE, O_RDONLY);
 	int fd = -1;
 	if (fname)
 		fd = open(fname, O_CLOEXEC |O_RDONLY);
@@ -8209,11 +8281,8 @@ static int targetsnapshot(lua_State* ctx)
  * don't really have a good setup for figuring out when the writing
  * is finished, as otherwise a deferred job or commit- stage would
  * be better so we could atomically CAS rather than trunc-write */
-	char* fname = arcan_expand_resource(snapkey, ns);
 	int fd = -1;
-	if (fname)
-		fd = open(fname, O_CREAT | O_WRONLY |
-			O_TRUNC | O_CLOEXEC, S_IRUSR | S_IWUSR);
+	char* fname = arcan_find_resource(snapkey, ns, ARES_FILE, &fd);
 	arcan_mem_free(fname);
 
 	if (-1 == fd){
@@ -9625,13 +9694,14 @@ static int spawn_recfsrv(lua_State* ctx,
 		"container=stream") != NULL || strlen(resf) == 0)
 		fd = open(NULFILE, O_WRONLY | O_CLOEXEC);
 	else {
-		char* fn = arcan_expand_resource(resf, RESOURCE_APPL_TEMP);
+		char* fn = arcan_find_resource(resf,
+			RESOURCE_APPL_TEMP, ARES_FILE | ARES_CREATE, &fd);
 
 /* it is currently allowed to "record over" an existing file without forcing
  * the caller to use zap_resource first, this should possibly be reconsidered*/
-		if (fn && -1 == (fd = open(fn, O_CREAT | O_RDWR, S_IRWXU))){
-			arcan_warning("couldn't create output (%s), "
-				"recorded data will be lost\n", fn);
+		if (!fn){
+			arcan_warning(
+				"couldn't create output (%s), recorded data will be lost\n", fn);
 			fd = open(NULFILE, O_WRONLY | O_CLOEXEC);
 		}
 
@@ -11107,24 +11177,17 @@ static int screenshot(lua_State* ctx)
 		LUA_ETRACE("save_screenshot", NULL, 0);
 	}
 
-/* Note: we assume TOCTU- free APPL_TEMP, done twice here as _find
- * returns nothing if it doesn't exist */
-	char* fname = arcan_find_resource(resstr, RESOURCE_APPL_TEMP, ARES_FILE);
-	if (fname){
-		arcan_warning("save_screeenshot() -- refusing to "
-			"overwrite existing file.\n");
+	int infd = -1;
+	char* fname = arcan_find_resource(
+		resstr, DEFAULT_USERMASK, ARES_FILE | ARES_CREATE, &infd);
+	if (!fname){
+		arcan_warning(
+			"save_screeenshot() -- refusing to overwrite existing file.\n");
 		goto cleanup;
 	}
-	fname = arcan_expand_resource(resstr, RESOURCE_APPL_TEMP);
+
 	if (!fname)
 		goto cleanup;
-
-	int infd = open(fname, O_WRONLY | O_CLOEXEC | O_CREAT, S_IRUSR | S_IWUSR);
-	if (-1 == infd){
-		arcan_warning("save_screenshot(%s) failed, %s.\n", fname, strerror(errno));
-		arcan_mem_free(fname);
-		goto cleanup;
-	}
 	arcan_mem_free(fname);
 
 	job = arcan_alloc_mem(sizeof(struct pthr_imgwr), ARCAN_MEM_VSTRUCT,
@@ -11420,7 +11483,8 @@ static int setdefaultfont(lua_State* ctx)
 
 	const char* fontn = luaL_optstring(ctx, 1, NULL);
 
-	char* fn = arcan_find_resource(fontn, RESOURCE_SYS_FONT, ARES_FILE);
+	char* fn = arcan_find_resource(
+		fontn, RESOURCE_SYS_FONT, ARES_FILE, O_RDONLY);
 	if (!fn){
 		lua_pushboolean(ctx, false);
 		LUA_ETRACE("system_defaultfont", "couldn't find font in namespace", 1);
@@ -11529,6 +11593,7 @@ static int alua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 static const luaL_Reg resfuns[] = {
 {"resource",          resource        },
 {"glob_resource",     globresource    },
+{"list_namespaces",   listns          },
 {"zap_resource",      zapresource     },
 {"open_nonblock",     alt_nbio_open   },
 {"open_rawresource",  rawresource     },

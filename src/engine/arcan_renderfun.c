@@ -422,8 +422,12 @@ void arcan_video_reset_fontcache()
 static void text_loadimage(struct text_format* dst,
 	const char* const infn, img_cons cons)
 {
-	char* path = arcan_find_resource(infn,
-		RESOURCE_SYS_FONT | RESOURCE_APPL_SHARED | RESOURCE_APPL, ARES_FILE);
+	char* path =
+		arcan_find_resource(infn,
+			RESOURCE_SYS_FONT |
+			RESOURCE_APPL_SHARED |
+			RESOURCE_APPL, ARES_FILE, NULL
+		);
 
 	data_source inres = arcan_open_resource(path);
 
@@ -573,8 +577,13 @@ static char* extract_font(struct text_format* prev, char* base){
  * This is currently not strongly enforced as it will break some older
  * applications.
  */
-	char* fname = arcan_find_resource(fontbase,
-		RESOURCE_SYS_FONT | RESOURCE_APPL_SHARED | RESOURCE_APPL, ARES_FILE);
+	char* fname = arcan_find_resource(
+		fontbase,
+		RESOURCE_SYS_FONT |
+		RESOURCE_APPL_SHARED |
+		RESOURCE_APPL, ARES_FILE,
+		NULL
+	);
 
 	if (!fname)
 		arcan_warning("arcan_video_renderstring(), couldn't find "

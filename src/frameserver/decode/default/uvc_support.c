@@ -419,12 +419,12 @@ bool uvc_support_activate(
 	if (uvc_get_stream_ctrl_format_size(
 		devh, &ctrl, fmt, width, height, fps) < 0){
 		fprintf(stderr, "kind=EINVAL:message="
-			"format request (%zu*%zu@%zu fps)@%d failed\n", width, height, fps, fmt);
+			"format request (%zu*%zu@%d fps)@%d failed\n", width, height, fps, fmt);
 
 		if (uvc_get_stream_ctrl_format_size(
 			devh, &ctrl, UVC_FRAME_FORMAT_ANY, width, height, fps) < 0){
 			fprintf(stderr, "kind=EINVAL:message="
-				"format request (%zu*%zu@%zu fps)@ANY failed\n", width, height, fps);
+				"format request (%zu*%zu@%d fps)@ANY failed\n", width, height, fps);
 		}
 		goto out;
 	}
