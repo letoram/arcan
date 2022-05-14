@@ -50,6 +50,7 @@ static struct {
 	size_t accept_n_pk_unknown;
 	size_t backpressure;
 	size_t backpressure_soft;
+	bool directory;
 } global = {
 	.backpressure_soft = 2,
 	.backpressure = 6
@@ -542,11 +543,13 @@ static bool show_usage(const char* msg)
 	"         (keystore-mode) -s connpoint tag@\n"
 	"         (inherit socket) -S fd_no [tag@]host port\n\n"
 	"Server local arcan application (pull): \n"
-	"         -l port [ip] -exec /usr/bin/app arg1 arg2 argn\n\n"
+	"         -l port [ip] -- /usr/bin/app arg1 arg2 argn\n\n"
 	"Bridge remote inbound arcan applications (to ARCAN_CONNPATH): \n"
 	"    arcan-net [-Xtd] -l port [ip]\n\n"
 	"Bridge remote outbound arcan application: \n"
 	"    arcan-net [tag@]host port\n\n"
+	"Directory/discovery server (uses ARCAN_APPLBASEPATH): \n"
+	"    arcan-net -l port [ip] --directory\n\n"
 	"Forward-local options:\n"
 	"\t-X             \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n"
 	"\t-r, --retry n  \t Limit retry-reconnect attempts to 'n' tries\n\n"
@@ -709,15 +712,15 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 				if (opts->port[ind] < '0' || opts->port[ind] > '9')
 					return show_usage("Invalid values in port argument");
 
-/* three paths, -l port host -exec ..
- * or -l port -exec
+/* three paths, -l port host --exec ..
+ * or -l port --exec
  * or just -l port */
 			i++;
 
 			if (i == argc)
 				return i;
 
-			if (strcmp(argv[i], "-exec") != 0){
+			if (strcmp(argv[i], "--exec") != 0 && strcmp(argv[i], "--") != 0){
 				opts->host = argv[i++];
 
 /* no exec, just host */
@@ -725,13 +728,13 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 					return i;
 			}
 
-			if (strcmp(argv[i], "-exec") != 0){
-				return show_usage("Unexpected trailing argument, expected -exec or end");
+			if (strcmp(argv[i], "--exec") != 0 && strcmp(argv[i], "--") != 0){
+				return show_usage("Unexpected trailing argument, expected --exec or end");
 			}
 
 			i++;
 			if (i == argc)
-				return show_usage("-exec without bin arg0 .. argn");
+				return show_usage("--exec without bin arg0 .. argn");
 
 			meta->bin = argv[i];
 			meta->argv = &argv[i];
@@ -742,6 +745,9 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		}
 		else if (strcmp(argv[i], "-t") == 0){
 			opts->mt_mode = MT_SINGLE;
+		}
+		else if (strcmp(argv[i], "--directory") == 0){
+			global.directory = true;
 		}
 		else if (strcmp(argv[i], "-X") == 0){
 			opts->redirect_exit = NULL;
@@ -899,17 +905,17 @@ static struct pk_response key_auth_local(uint8_t pk[static 32])
 	size_t outl;
 	unsigned char* out = a12helper_tob64(pk, 32, &outl);
 
-/* don't really care about pk authenticity - password in first HMAC only */
+/* is the key in our trusted set? */
+	if (a12helper_keystore_accepted(pk, NULL)){
+		auth.authentic = true;
+		a12int_trace(A12_TRACE_SECURITY, "accept=%s", out);
+		a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
+	}
+/* or do we not care about pk authenticity - password in first HMAC only */
 	if (global.soft_auth){
 		auth.authentic = true;
 		a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
 		a12int_trace(A12_TRACE_SECURITY, "soft-auth-trust=%s", out);
-	}
-/* or is the key in our trusted set? */
-	else if (a12helper_keystore_accepted(pk, NULL)){
-		auth.authentic = true;
-		a12int_trace(A12_TRACE_SECURITY, "accept=%s", out);
-		a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
 	}
 /* or should we add the first n unknown as implicitly trusted through pass */
 	else if (global.accept_n_pk_unknown){
@@ -961,7 +967,7 @@ int main(int argc, char** argv)
 
 /* no mode? if there's arguments left, assume it is is the 'reverse' mode
  * where the connection is outbound but we get the a12 'client' view back
- * to pair with an arcan-net -exec .. */
+ * to pair with an arcan-net --exec .. */
 	if (!anet.mode){
 
 		if (argi <= argc - 1){

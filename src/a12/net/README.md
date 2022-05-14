@@ -20,7 +20,7 @@ to the absence of the '-s' argument or the ARCAN_CONNPATH=a12.. environment.
 
 The server end is setup as follows:
 
-    arcan-net -l 6680 -exec /some/arcan/executable arg1 arg2 .. argn
+    arcan-net -l 6680 -- /some/arcan/executable arg1 arg2 .. argn
 
 Whenever a client connects and authenticates, the executable will be fired up
 and presented to the client.
@@ -58,6 +58,23 @@ that can bridge to the right arcan instance.
 
     arcan-net -l 6680
 		ARCAN_CONNPATH=durden arcan-net -l 6680
+
+# Directory
+
+Another way of using arcan-net is to have it act in 'directory' mode. This is
+experimental and currently actively developed.
+
+In directory mode, the ARCAN\_APPLBASEPATH can be enumerated by connected
+clients and any present appl can be downloaded and executed. Before enabling
+a server in directory mode, one should verify that there is no sensitive data
+in the path. On normal/default setups this is supported by appl output being
+directed to a separate 'appltemp' namespace by default, letting applbase be
+read-only.
+
+If the public key a client is trusted (in keystore), it can also be used as a
+state store for storing/restoring the appl execution state. Other (planned)
+modes of operation for this feature is to act as a pub/sub for sources/sinks/
+other directories to find eachother.
 
 # Keystore
 
@@ -108,9 +125,15 @@ Which would accept the next (n=2 here) public keys that authenticate with what
 was in the preshared password file and write into the keystore.
 
 This is strictly for bootstrapping a system where it is inconvenient to add the
-public key using some other media. If no number argument is provided to the
-authentication secret, public keys will not be store in the set of allowed_keys
-for later. This reduces the system to simply using the secret as a 'password'.
+public key using some other media.
+
+If the '--soft-auth' long argument is used, all public keys will be accepted
+but not added to the keystore. This reduces the system to simply using the secret
+as a 'password', and if no secret is provided -- a completely open server.
+
+This might be desired in trusted networks or public servers acting in directory
+mode. Such keys will not have access to storing state or other privileged
+directory operations.
 
 # Compilation
 
@@ -201,6 +224,14 @@ Milestone 3 - big stretch (0.6.x)
 - [ ] Dynamic encoding parameters (p)
 - [ ] Side-channel Resistance (ax)
 - [ ] Directory/Rendezvous Server (axp)
+  - [ ] serve appl- (.tar)
+	- [ ] enumerate / fetch / execute appl
+	- [ ] register as source
+	- [ ] register as sink
+	- [ ] notify on new source/sink
+	- [ ] relay a12 traffing between source/sink
+	- [ ] NAT-punch between source/sink
+	- [ ] state store/restore
 - [ ] Add to afsrv\_net (x)
 - [ ] Fast-forward known partial binary transfer (resume)
 - [ ] Resume- session from different IP (ap)
