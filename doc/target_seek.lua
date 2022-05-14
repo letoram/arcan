@@ -54,3 +54,4 @@ end
 #ifdef ERROR
 	target_seek(BADID)
 end
+#endif
