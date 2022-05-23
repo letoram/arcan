@@ -14,6 +14,7 @@
 #include "a12.h"
 #include "a12_int.h"
 #include "a12_encode.h"
+#include "../shmif/tui/raster/raster_const.h"
 
 #define ZSTD_H_ZSTD_STATIC_LINKING_ONLY
 #include "zstd.h"
@@ -356,9 +357,6 @@ void a12int_encode_rgb(PACK_ARGS)
 	free(outb);
 }
 
-/* Model indicates which pre-trained model to use, this is currently only
- * used for TPACK but if there is more domain information to be had, here
- * is the slot to patch that in. */
 static bool setup_zstd(struct a12_state* S, uint8_t ch, int model)
 {
 	if (!S->channels[ch].zstd){
@@ -401,8 +399,14 @@ static void compress_tzstd(struct a12_state* S, uint8_t ch,
 	uint16_t n_cells;
 	unpack_u16(&n_cells, &vb->buffer_bytes[6]);
 
-/* line-header size (2 + 2 + 2 + 3 = 9 bytes), cell size = 12 bytes) */
-	if (compress_in_sz != n_lines * 9 + n_cells * 12 + 16){
+/* cursor state is last, do we have an extended header? */
+	bool extcursor = (vb->buffer_bytes[15] & 8) == 8;
+
+	size_t hdr_ver_sz = n_lines * raster_line_sz +
+		n_cells * raster_cell_sz + raster_hdr_sz +
+		extcursor * 3;
+
+	if (compress_in_sz != hdr_ver_sz){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:message=corrupt TPACK buffer");
 		return;
 	}

@@ -6,6 +6,7 @@
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: https://arcan-fe.com
  */
+
 /* shared state machine structure */
 #include <arcan_shmif.h>
 #include <arcan_shmif_server.h>
@@ -119,6 +120,45 @@ static void build_control_header(struct a12_state* S, uint8_t* outb, uint8_t cmd
 	outb[17] = cmd;
 }
 
+void
+a12int_request_dirlist(struct a12_state* S, bool notify)
+{
+	if (!S || S->cookie != 0xfeedface){
+		return;
+	}
+
+	uint8_t outb[CONTROL_PACKET_SIZE] = {0};
+	step_sequence(S, outb);
+	outb[16] = S->out_channel;
+	outb[17] = COMMAND_DIRLIST;
+	outb[18] = notify;
+
+	a12int_trace(A12_TRACE_DIRECTORY, "request_list");
+	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+}
+
+struct appl_meta* a12int_get_directory(struct a12_state* S, uint64_t* clk)
+{
+	if (clk)
+		*clk = S->directory_clk;
+	return S->directory;
+}
+
+void a12int_set_directory(struct a12_state* S, struct appl_meta* M)
+{
+	struct appl_meta* C = S->directory;
+	while (C){
+		struct appl_meta* old = C;
+		if (C->handle)
+			fclose(C->handle);
+
+		C = C->next;
+		DYNAMIC_FREE(old);
+	}
+
+	S->directory = M;
+}
+
 static void fail_state(struct a12_state* S)
 {
 #ifndef _DEBUG
@@ -145,9 +185,13 @@ static void send_hello_packet(struct a12_state* S,
 	else if (S->opts->local_role == ROLE_PROBE){
 		outb[54] = 3;
 	}
+	else if (S->opts->local_role == ROLE_DIR){
+		outb[54] = 4;
+	}
 	else {
-		fprintf(stderr, "EIMPL:role-DIR\n");
-		exit(EXIT_FAILURE);
+		fail_state(S);
+		a12int_trace(A12_TRACE_SYSTEM, "unknown_role");
+		return;
 	}
 
 /* channel-id is empty */
@@ -585,6 +629,8 @@ a12_free(struct a12_state* S)
 			return false;
 		}
 	}
+
+	a12int_set_directory(S, NULL);
 
 	if (S->prepend_unpack){
 		DYNAMIC_FREE(S->prepend_unpack);
@@ -1188,6 +1234,74 @@ static void command_videoframe(struct a12_state* S)
 	}
 }
 
+static struct blob_out** alloc_attach_blob(struct a12_state* S)
+{
+	struct blob_out* next = DYNAMIC_MALLOC(sizeof(struct blob_out));
+	if (!next){
+		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=ENOMEM");
+		return NULL;
+	}
+
+	*next = (struct blob_out){
+		.type = A12_BTYPE_BLOB,
+		.streaming = true,
+		.fd = -1,
+		.chid = S->out_channel
+	};
+
+	struct blob_out** parent = &S->pending;
+	size_t n_streaming = 0;
+	size_t n_known = 0;
+
+	while(*parent){
+		if ((*parent)->streaming)
+			n_streaming++;
+		else
+			n_known += (*parent)->left;
+		parent = &(*parent)->next;
+	}
+	*parent = next;
+
+	a12int_trace(A12_TRACE_BTRANSFER,
+		"kind=reserve:queue=%zu:total=%zu", n_streaming, n_known);
+
+	return parent;
+}
+
+/*
+ * Simplified form of enqueue bstream below, we already have the buffer
+ * in memory so just build a different blob-out node with a copy
+ */
+void a12_enqueue_blob(struct a12_state* S, const char* const buf, size_t buf_sz)
+{
+	struct blob_out** next = alloc_attach_blob(S);
+	if (!next)
+		return;
+
+	char* nbuf = malloc(buf_sz);
+	if (!buf){
+		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=ENOMEM");
+		DYNAMIC_FREE(*next);
+		*next = NULL;
+		return;
+	}
+
+	memcpy(nbuf, buf, buf_sz);
+	(*next)->buf = nbuf;
+	(*next)->buf_sz = buf_sz;
+	(*next)->left = buf_sz;
+
+	blake3_hasher hash;
+	blake3_hasher_init(&hash);
+	blake3_hasher_update(&hash, nbuf, buf_sz);
+	blake3_hasher_finalize(&hash, (*next)->checksum, 16);
+
+	a12int_trace(A12_TRACE_BTRANSFER,
+		"kind=added:type=fixed_blob:stream=no:size=%zu", buf_sz);
+
+	S->active_blobs++;
+}
+
 /*
  * Binary transfers comes in different shapes:
  *
@@ -1209,29 +1323,12 @@ static void command_videoframe(struct a12_state* S)
 void a12_enqueue_bstream(
 	struct a12_state* S, int fd, int type, bool streaming, size_t sz)
 {
-	struct blob_out* next = DYNAMIC_MALLOC(sizeof(struct blob_out));
-	if (!next){
-		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=ENOMEM");
+	struct blob_out** parent = alloc_attach_blob(S);
+	if (!parent)
 		return;
-	}
 
-	*next = (struct blob_out){
-		.type = type,
-		.streaming = streaming,
-		.fd = -1,
-		.chid = S->out_channel
-	};
-
-	struct blob_out** parent = &S->pending;
-	size_t n_streaming = 0;
-	size_t n_known = 0;
-
-	while(*parent){
-		if ((*parent)->streaming)
-			n_streaming++;
-		else
-			n_known += (*parent)->left;
-		parent = &(*parent)->next;
+	struct blob_out* next = *parent;
+	next->type = type;
 
 /* [MISSING]
  * Insertion priority sort goes here, be wary of channel-id in heuristic
@@ -1239,9 +1336,6 @@ void a12_enqueue_bstream(
  * don't - and if not appending, the unlink at the fail-state need to
  * preserve forward integrity
  **/
-	}
-	*parent = next;
-
 /* note, next->fd will be non-blocking */
 	next->fd = arcan_shmif_dupfd(fd, -1, false);
 	if (-1 == next->fd){
@@ -1276,9 +1370,7 @@ void a12_enqueue_bstream(
 		case EOVERFLOW:
 			next->streaming = true;
 			a12int_trace(A12_TRACE_BTRANSFER,
-				"kind=added:type=%d:stream=yes:size=%zu:queue=%zu:total=%zu\n",
-				type, next->left, n_streaming, n_known
-			);
+				"kind=added:type=%d:stream=yes:size=%zu", type, next->left);
 			return;
 		break;
 		case EINVAL:
@@ -1470,9 +1562,11 @@ static void process_hello_auth(struct a12_state* S)
 		S->remote_mode = ROLE_PROBE;
 		if ((S->opts->local_role == ROLE_SOURCE && S->decode[54] == ROLE_SINK)){
 			a12int_trace(A12_TRACE_SYSTEM, "kind=match:local=source:remote=sink");
+			S->remote_mode = ROLE_SINK;
 		}
 		else if(S->opts->local_role == ROLE_SINK && S->decode[54] == ROLE_SOURCE){
 			a12int_trace(A12_TRACE_SYSTEM, "kind=match:local=sink:remote=source");
+			S->remote_mode = ROLE_SOURCE;
 		}
 /* client: we might just be probing, if so continue without matching */
 		else if (S->opts->local_role == ROLE_PROBE){
@@ -1489,8 +1583,26 @@ static void process_hello_auth(struct a12_state* S)
 			}
 		}
 		else if (S->decode[54] == ROLE_DIR){
-			fail_state(S);
-			a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EIMPL:directory_mode");
+			S->remote_mode = ROLE_DIR;
+			if (S->opts->local_role != ROLE_SINK && S->opts->local_role != ROLE_SOURCE){
+				a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EIMPL:dir2dir");
+				fail_state(S);
+				return;
+			}
+			else {
+				a12int_trace(A12_TRACE_SYSTEM, "kind=match:local=source:remote=dir");
+			}
+		}
+/* we are directory, the other can be directory, source or sink */
+		else if (S->opts->local_role == ROLE_DIR){
+			S->remote_mode = S->decode[54];
+			if (S->remote_mode != ROLE_SOURCE &&
+				S->remote_mode != ROLE_DIR && S->remote_mode != ROLE_SINK){
+				fail_state(S);
+				a12int_trace(A12_TRACE_SYSTEM,
+					"kind=error:status=EINVALID:local=dir:remote=unknown");
+				return;
+			}
 		}
 		else {
 			fail_state(S);
@@ -1607,6 +1719,94 @@ static void command_pingpacket(struct a12_state* S, uint32_t sid)
 		S->congestion_stats.frame_window[i] = 0;
 }
 
+static void send_dirlist(struct a12_state* S)
+{
+	uint8_t outb[CONTROL_PACKET_SIZE];
+	struct appl_meta* C = S->directory;
+
+	while (C){
+		build_control_header(S, outb, COMMAND_DIRSTATE);
+		pack_u16(C->identifier, &outb[18]);
+		pack_u16(C->categories, &outb[20]);
+		pack_u16(C->permissions, &outb[22]);
+		memcpy(&outb[24], C->hash, 4);
+		pack_u64(C->buf_sz, &outb[28]);
+		memcpy(&outb[36], C->applname, 18);
+		memcpy(&outb[55], C->short_descr, 69);
+		a12int_append_out(S,
+			STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+		a12int_trace(A12_TRACE_DIRECTORY, "send:name=%s", C->applname);
+		C = C->next;
+	}
+
+/* empty to terminate */
+	memset(outb, '\0', CONTROL_PACKET_SIZE);
+	build_control_header(S, outb, COMMAND_DIRSTATE);
+	a12int_append_out(S,
+		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+}
+
+static void add_dirent(struct a12_state* S)
+{
+/* end of update is marked with an empty entry */
+	if (S->decode[36] == '\0'){
+		S->directory_clk = arcan_timemillis();
+		return;
+	}
+
+	struct appl_meta* new = malloc(sizeof(struct appl_meta));
+	if (!new)
+		return;
+
+/* buf / buf_sz are left empty until we request / retrieve it as a
+ * file based on the current server id */
+	*new = (struct appl_meta){0};
+
+	unpack_u16(&new->identifier, &S->decode[18]);
+	unpack_u16(&new->categories, &S->decode[20]);
+	unpack_u16(&new->permissions, &S->decode[22]);
+	memcpy(new->hash, &S->decode[24], 4);
+	unpack_u64(&new->buf_sz, &S->decode[28]);
+	memcpy(new->applname, &S->decode[36], 18);
+	memcpy(new->short_descr, &S->decode[55], 69);
+	new->update_ts = arcan_timemillis();
+	new->remote = true;
+
+	if (!S->directory){
+		S->directory = new;
+		return;
+	}
+
+	struct appl_meta* cur = S->directory;
+	struct appl_meta* prev = NULL;
+
+	while (cur){
+/* override / update? */
+		if (cur->identifier == new->identifier && cur->remote){
+			new->next = cur->next;
+			if (prev)
+				prev->next = new;
+			else
+				S->directory = new;
+			free(cur);
+			return;
+		}
+
+/* or attach to end */
+		if (!cur->next){
+			cur->next = new;
+			return;
+		}
+
+/* or step */
+		prev = cur;
+		cur = cur->next;
+	}
+
+/* shouldn't be reached */
+	free(new);
+}
+
 /*
  * Control command,
  * current MAC calculation in s->mac_dec
@@ -1672,6 +1872,20 @@ static void process_control(struct a12_state* S, void (*on_event)
  * 2. generate new keypair and add to the rekey slot.
  * 3. if this is not a rekey response package, send the new pubk in response */
 	break;
+	case COMMAND_DIRLIST:
+		send_dirlist(S);
+	break;
+
+/* Security notice: this allows the remote end to update / populate the
+ * local directory list for the ongoing session. If we are operating in
+ * 'directory to directory' this might end up being important yet desired.
+ *
+ * Allowing the local list to be updated, and it being shared with a server
+ * instance becomes a building block for relaying appl transfers dynamically.
+ */
+	case COMMAND_DIRSTATE:
+		add_dirent(S);
+	break;
 	default:
 		a12int_trace(A12_TRACE_SYSTEM, "Unknown message type: %d", (int)command);
 	break;
@@ -1735,9 +1949,9 @@ static void process_blob(struct a12_state* S)
 	}
 
 	struct arcan_shmif_cont* cont = S->channels[S->in_channel].cont;
-	if (!cont){
+	if (!cont && !S->binary_handler){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EINVAL:"
-			"ch=%d:message=no segment mapped", S->in_channel);
+			"ch=%d:message=no segment or bhandler mapped", S->in_channel);
 		reset_state(S);
 		return;
 	}
@@ -2267,7 +2481,20 @@ static size_t queue_node(struct a12_state* S, struct blob_out* node)
 		cap = 64096;
 
 	bool die;
-	void* buf = read_data(node->fd, cap, &nts, &die);
+	bool free_buf;
+	char* buf;
+
+/* if we have a non-streaming pre-allocated source */
+	if (node->buf){
+		buf = &node->buf[node->buf_sz - node->left];
+		nts = cap;
+		die = false;
+		free_buf = false;
+	}
+	else {
+		buf = read_data(node->fd, cap, &nts, &die);
+	}
+
 	if (!buf){
 		/* MISSING: SEND STREAM CANCEL */
 		if (die){
@@ -2303,7 +2530,7 @@ static size_t queue_node(struct a12_state* S, struct blob_out* node)
 	pack_u32(node->streamid, &outb[1]);
 	pack_u16(nts, &outb[5]);
 
-	a12int_append_out(S, STATE_BLOB_PACKET, buf, nts, outb, sizeof(outb));
+	a12int_append_out(S, STATE_BLOB_PACKET, (uint8_t*) buf, nts, outb, sizeof(outb));
 
 	if (node->left){
 		node->left -= nts;
@@ -2325,7 +2552,9 @@ static size_t queue_node(struct a12_state* S, struct blob_out* node)
 		);
 	}
 
-	DYNAMIC_FREE(buf);
+	if (free_buf){
+		DYNAMIC_FREE(buf);
+	}
 	return nts;
 }
 

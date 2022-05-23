@@ -292,8 +292,8 @@ masks the 1-round x25519 one.
 
 The command- code can be one out of the following types:
 
-1. control (128b fixed size)
-2. event, tied to the format of arcan\_shmif\_evpack()
+e. control (128b fixed size)
+e. event, tied to the format of arcan\_shmif\_evpack()
 3. video-stream data chunk
 4. audio-stream data chunk
 5. binary-stream data chunk
@@ -470,8 +470,8 @@ order to interrupt an ongoing one with a higher priority one.
 The stream-id is that of the last completed stream (if any).
 
 ### command - 8, rekey
-- [0...7] future-seqnr : uint64
-- [8..39] new (P)key   : uint8[32]
+- [18...25] future-seqnr : uint64
+- [26  +16] new (P)key   : uint8[32]
 
 This command indicate a sequence number in the future outside of the expected
 established drift range along with a safety factor. When this sequence number
@@ -479,6 +479,31 @@ has been seen, new message and cipher keys will be derived from the new key and
 used instead of the old one which is discarded and safely erased. The same
 packet with a new corresponding public key will be sent from the other side
 as well.
+
+### command - 9, directory-list
+- [18     ] notify : uint8
+
+This command is respected if the receiver is running in directory mode. If
+permitted (rate limit, key access restrictions, ...) it will result in a series
+of directory-state updates, giving the current set of available appls.
+
+If notify is set to !0, the sender requests that any changes to the set will
+be provided dynamically without the caller polling through additional
+directory-list commands.
+
+### command - 10, directory-state
+- [18..19 ] identifier : uint16   server-local identifier
+- [20..21 ] catbmp     : uint16   category bitmap
+- [22..23 ] permbmp    : uint16   permission bitmap
+- [24..27 ] hash       : uint8[4] (blake3-hash on uncompressed appl tar)
+- [28..35 ] size       : uint64   uncompressed size
+- [36..54 ] name       : user presentable applname (0 or len terminates)
+- [55+    ] descr      : geohint adjusted short description
+
+This is sent as a reply to the directory list command and is used to notify
+about the update, removal, creation or presence of a retrievable application.
+An empty identifier terminates. The applname can be used as the extension
+field of a BCHUNKSTATE event to initiate the actual transfer.
 
 ##  Event (2), fixed length
 - [0..7] sequence number : uint64

@@ -182,7 +182,9 @@ Milestone 2 - closer to useful (0.6.x)
 - [x] Preferred-hosts list migration / handover (a)
   - [ ] Config for retry limits, sleep delays and backoff (a)
 - [ ] Output segments (p)
-- [ ] Compression Heuristics for binary transfers (entropy estimation)(p)
+- [ ] Bchunk compression controls (p)
+    [ ] Entropy estimator per packet
+		[ ] Compress low-entropy per chunk
 - [ ] Quad-tree for DPNG (p)
   - [ ] Tile-map and caching (p)
 	- [x] Remove DEFLATE and mote to ZSTD
@@ -192,7 +194,7 @@ Milestone 2 - closer to useful (0.6.x)
 - [ ] vframe-caching on certain types (first-frame on new, ...) (p)
 - [ ] vframe-runahead / forward latency estimation (a)
 - [ ] (Scheduling), better A / V / E interleaving (a)
-- [ ] Passthrough of compressed video sources (a)
+- [p] Passthrough of compressed video sources (a)
 - [ ] Traffic monitoring tools (re-use proxy code + inherit mode) (x)
 - [ ] Splicing / Local mirroring (a)
 - [ ] Rekeying / Key Deletion (Forward Secrecy) (p)
@@ -223,11 +225,11 @@ Milestone 3 - big stretch (0.6.x)
 - [ ] Externalize A/V decoding (p)
 - [ ] Dynamic encoding parameters (p)
 - [ ] Side-channel Resistance (ax)
-- [ ] Directory/Rendezvous Server (axp)
-  - [ ] serve appl- (.tar)
-	- [ ] enumerate / fetch / execute appl
-	- [ ] register as source
-	- [ ] register as sink
+- [p] Directory/Rendezvous Server (axp)
+  - [x] serve appl- (.tar)
+	- [x] enumerate / fetch / execute appl
+	- [x] register as source
+	- [x] register as sink
 	- [ ] notify on new source/sink
 	- [ ] relay a12 traffing between source/sink
 	- [ ] NAT-punch between source/sink

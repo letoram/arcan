@@ -22,13 +22,14 @@
 #include "a12_int.h"
 #include "a12_helper.h"
 #include "anet_helper.h"
+#include "directory.h"
 
 enum anet_mode {
 	ANET_SHMIF_CL = 1,
 	ANET_SHMIF_CL_REVERSE = 2,
 	ANET_SHMIF_SRV,
 	ANET_SHMIF_SRV_INHERIT,
-	ANET_SHMIF_EXEC
+	ANET_SHMIF_EXEC,
 };
 
 enum mt_mode {
@@ -50,10 +51,12 @@ static struct {
 	size_t accept_n_pk_unknown;
 	size_t backpressure;
 	size_t backpressure_soft;
-	bool directory;
+	int directory;
+	const char* reqname;
 } global = {
 	.backpressure_soft = 2,
-	.backpressure = 6
+	.backpressure = 6,
+	.directory = -1
 };
 
 static const char* trace_groups[] = {
@@ -68,7 +71,8 @@ static const char* trace_groups[] = {
 	"crypto",
 	"vdetail",
 	"binary",
-	"security"
+	"security",
+	"directory"
 };
 
 static struct a12_vframe_opts vcodec_tuning(
@@ -112,7 +116,7 @@ void arcan_fatal(const char* msg, ...)
 static bool handover_setup(struct a12_state* S,
 	int fd, struct arcan_net_meta* meta, struct shmifsrv_client** C)
 {
-	if (meta->opts->mode != ANET_SHMIF_EXEC)
+	if (meta->opts->mode != ANET_SHMIF_EXEC && global.directory <= 0)
 		return true;
 
 /* wait for authentication before going for the shmifsrv processing mode */
@@ -125,6 +129,12 @@ static bool handover_setup(struct a12_state* S,
 		return false;
 	}
 
+	if (global.directory > 0){
+		anet_directory_srv(S,
+			(struct anet_dirsrv_opts){.basedir = global.directory}, fd, fd);
+		shutdown(fd, SHUT_RDWR);
+		return false;
+	}
 
 	if (S->remote_mode == ROLE_PROBE){
 		a12int_trace(A12_TRACE_SYSTEM, "probed:terminating");
@@ -132,6 +142,7 @@ static bool handover_setup(struct a12_state* S,
 		close(fd);
 		return false;
 	}
+
 	a12int_trace(A12_TRACE_SYSTEM, "client connected, spawning: %s", meta->bin);
 
 /* connection is ok, tie it to a new shmifsrv_client via the exec arg. The GUID
@@ -325,6 +336,18 @@ static void a12cl_dispatch(
 	struct anet_options* args,
 	struct a12_state* S, struct shmifsrv_client* cl, int fd)
 {
+/* Directory mode has a simpler processing loop so treat it special here, also
+ * reducing attack surface since very little actual forwarding or processing is
+ * needed. */
+	if (global.directory){
+		struct anet_dircl_opts opts = {
+			.basedir = global.directory
+		};
+		anet_directory_cl(S, opts, fd, fd);
+		close(fd);
+		return;
+	}
+
 /* note that the a12helper will do the cleanup / free */
 	a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
 		.dirfd_temp = -1,
@@ -342,13 +365,7 @@ static void fork_a12cl_dispatch(
 {
 	pid_t fpid = fork();
 	if (fpid == 0){
-			a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
-			.dirfd_temp = -1,
-			.dirfd_cache = -1,
-			.vframe_block = global.backpressure,
-			.redirect_exit = args->redirect_exit,
-			.devicehint_cp = args->devicehint_cp
-		});
+		a12cl_dispatch(args, S, cl, fd);
 		exit(EXIT_SUCCESS);
 	}
 	else if (fpid == -1){
@@ -426,6 +443,10 @@ static struct anet_cl_connection forward_shmifsrv_cl(
 	char* msg;
 	if (!anet_authenticate(anet.state,
 		anet.fd, anet.fd, &msg) || shmifsrv_poll(cl) == CLIENT_DEAD){
+		if (msg){
+			a12int_trace(A12_TRACE_SYSTEM, "authentication_failed=%s", msg);
+		}
+
 		shmifsrv_free(cl, SHMIFSRV_FREE_NO_DMS);
 		if (anet.state){
 			a12_free(anet.state);
@@ -550,6 +571,8 @@ static bool show_usage(const char* msg)
 	"    arcan-net [tag@]host port\n\n"
 	"Directory/discovery server (uses ARCAN_APPLBASEPATH): \n"
 	"    arcan-net -l port [ip] --directory\n\n"
+	"Directory/discovery client: \n"
+	"    arcan-net --directory [tag@]host port [appl]\n\n"
 	"Forward-local options:\n"
 	"\t-X             \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n"
 	"\t-r, --retry n  \t Limit retry-reconnect attempts to 'n' tries\n\n"
@@ -747,7 +770,15 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			opts->mt_mode = MT_SINGLE;
 		}
 		else if (strcmp(argv[i], "--directory") == 0){
-			global.directory = true;
+			if (!getenv("ARCAN_APPLBASEPATH")){
+				return show_usage("--directory without ARCAN_APPLBASEPATH set");
+			}
+
+			global.directory = open(getenv("ARCAN_APPLBASEPATH"), O_DIRECTORY);
+			if (-1 == global.directory){
+				return show_usage("--directory ARCAN_APPLBASEPATH couldn't be opened");
+			}
+			opts->opts->local_role = ROLE_DIR;
 		}
 		else if (strcmp(argv[i], "-X") == 0){
 			opts->redirect_exit = NULL;
@@ -926,7 +957,7 @@ static struct pk_response key_auth_local(uint8_t pk[static 32])
 		a12helper_keystore_accept(pk, NULL);
 		a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
 	}
-	else {
+	else if (!auth.authentic){
 		a12int_trace(A12_TRACE_SECURITY, "reject-unknown=%s", out);
 	}
 
@@ -977,14 +1008,15 @@ int main(int argc, char** argv)
 			if (tag_host(&anet, argv[argi], &err)){
 				if (err)
 					return show_usage(err);
+				argi++;
 			}
 /* Or just go host / [port] */
 			else {
 				anet.host = argv[argi++];
 				anet.port = "6680";
 
-				if (argi <= argc - 1){
-					anet.port = argv[argi];
+				if (argi <= argc - 1 && isdigit(argv[argi][0])){
+					anet.port = argv[argi++];
 				}
 			}
 
@@ -1006,7 +1038,25 @@ int main(int argc, char** argv)
 				return EXIT_SUCCESS;
 			}
 
-			int rc = a12helper_a12srv_shmifcl(NULL, cl.state, NULL, cl.fd, cl.fd);
+/* Could also be a connection to a directory server, then we switch to a
+ * different processing loop that globs list of available appls, sources
+ * sinks and other directories. */
+			int rc = 0;
+			if (a12_remote_mode(cl.state) == ROLE_DIR){
+				struct anet_dircl_opts opts = {
+					.applname = global.reqname,
+					.die_on_list = true,
+					.basedir = global.directory
+				};
+				if (argi <= argc - 1){
+					opts.applname = argv[argi];
+				}
+
+				anet_directory_cl(cl.state, opts, cl.fd, cl.fd);
+			}
+			else {
+				rc = a12helper_a12srv_shmifcl(NULL, cl.state, NULL, cl.fd, cl.fd);
+			}
 			shutdown(cl.fd, SHUT_RDWR);
 			close(cl.fd);
 
@@ -1045,6 +1095,7 @@ int main(int argc, char** argv)
 		}
 	}
 
+/* the directory option is not applied through the mode/role */
 	if (anet.mode == ANET_SHMIF_CL || anet.mode == ANET_SHMIF_EXEC){
 		switch (anet.mt_mode){
 		case MT_SINGLE:
@@ -1060,6 +1111,9 @@ int main(int argc, char** argv)
 		}
 		return EXIT_FAILURE;
 	}
+
+/* we have one shmif connection pre-established that should be mapped to
+ * an outbound connection (ARCAN_CONNPATH=a12.. */
 	if (anet.mode == ANET_SHMIF_SRV_INHERIT){
 		return a12_preauth(&anet, a12cl_dispatch);
 	}

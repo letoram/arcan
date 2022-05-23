@@ -256,6 +256,9 @@ void
 a12_enqueue_bstream(
 	struct a12_state*, int fd, int type, bool streaming, size_t sz);
 
+void
+a12_enqueue_blob(struct a12_state*, const char* const, size_t);
+
 /*
  * Get a status code indicating the state of the connection.
  *
@@ -280,7 +283,7 @@ enum self_roles {
 	ROLE_SOURCE = 1,
 	ROLE_SINK   = 2,
 	ROLE_PROBE  = 3, /* terminate after authenticate, don't activate source */
-	ROLE_DIR    = 4  /* EIMPL still */
+	ROLE_DIR    = 4
 };
 
 /*
@@ -336,8 +339,12 @@ enum trace_groups {
 	A12_TRACE_BTRANSFER = 1024,
 
 /* key-authentication and configuration warnings */
-	A12_TRACE_SECURITY = 2048
+	A12_TRACE_SECURITY = 2048,
+
+/* actions related to the directory mode features */
+	A12_TRACE_DIRECTORY = 4096,
 };
+
 void
 a12_set_trace_level(int mask, FILE* dst);
 

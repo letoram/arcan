@@ -8,6 +8,7 @@
  * Initial connection for host-tags should now be faster
  * Connpath=a12://tag@ resolution fixed for one-off source-push connections
  * Congestion control blocking issue resolved
+ * First drafts of 'directory' mode added
 
 ## Lua
  * net\_discover added, use this to find other a12 clients
