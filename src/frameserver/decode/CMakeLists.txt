@@ -22,5 +22,5 @@ if (DECODE_SOURCES)
 		add_dependencies(afsrv_decode ${DECODE_DEPS})
 	endif()
 
-	install(TARGETS afsrv_decode DESTINATION bin)
+	install(TARGETS afsrv_decode DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()

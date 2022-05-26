@@ -24,5 +24,5 @@ if (TERMINAL_SOURCES)
 		add_dependencies(afsrv_terminal ${TERMINAL_DEPENDENCIES})
 	endif()
 
-	install(TARGETS afsrv_terminal DESTINATION bin)
+	install(TARGETS afsrv_terminal DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
