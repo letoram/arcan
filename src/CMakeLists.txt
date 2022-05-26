@@ -747,7 +747,7 @@ else()
 	#
 	if (VIDEO_PLATFORM STREQUAL "egl-dri")
 		amsg("${CL_YEL}egl-dri+privsep${CL_RST}\t${CL_GRN}installing SUID${CL_RST}")
-		install(TARGETS arcan DESTINATION bin
+		install(TARGETS arcan DESTINATION ${CMAKE_INSTALL_BINDIR}
 			PERMISSIONS
 				SETUID
 				OWNER_WRITE OWNER_READ OWNER_EXECUTE
@@ -755,10 +755,10 @@ else()
 				WORLD_READ WORLD_EXECUTE
 		)
 	else()
-	install(TARGETS arcan DESTINATION bin)
+	install(TARGETS arcan DESTINATION ${CMAKE_INSTALL_BINDIR})
 	endif()
 
-	install(TARGETS ${BIN_INSTALL} DESTINATION bin)
+	install(TARGETS ${BIN_INSTALL} DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 	install(DIRECTORY ${CMAKE_SOURCE_DIR}/../data/appl
 		DESTINATION ${APPL_DEST}

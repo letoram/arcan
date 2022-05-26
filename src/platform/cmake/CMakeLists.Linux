@@ -41,11 +41,11 @@ if (NOT RES_DEST)
 endif()
 
 if (NOT APIMAN_DEST)
-	set(APIMAN_DEST ${CMAKE_INSTALL_PREFIX}/share/man/man3)
+	set(APIMAN_DEST ${CMAKE_INSTALL_MANDIR}/man3)
 endif()
 
 if (NOT MAN_DEST)
-	set(MAN_DEST ${CMAKE_INSTALL_PREFIX}/share/man/man1)
+	set(MAN_DEST ${CMAKE_INSTALL_MANDIR}/man1)
 endif()
 
 set(ARCAN_PLATFORM

@@ -22,5 +22,5 @@ if (REMOTING_SOURCES)
 		${REMOTING_INCLUDE_DIRS}
 	)
 	target_link_libraries(afsrv_remoting ${STDLIB} arcan_shmif_int ${REMOTING_LIBS})
-	install(TARGETS afsrv_remoting DESTINATION bin)
+	install(TARGETS afsrv_remoting DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()

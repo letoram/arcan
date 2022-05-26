@@ -31,8 +31,6 @@ else()
 	set(ASD ${CMAKE_CURRENT_SOURCE_DIR}/../)
 endif()
 
-set(ASHMIF_INSTPATH lib)
-
 set (TUI_HEADERS
 	${ASD}/shmif/arcan_tui.h
 	${ASD}/shmif/arcan_tuidefs.h
@@ -273,9 +271,9 @@ target_include_directories(arcan_shmif_server PRIVATE ${ASD}/shmif)
 
 if (NOT ARCAN_SOURCE_DIR)
 	install(TARGETS ${TARGET_LIST}
-		LIBRARY DESTINATION ${ASHMIF_INSTPATH}
-		ARCHIVE DESTINATION ${ASHMIF_INSTPATH}
+		LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+		ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 	)
-	install(FILES ${SHMIF_HEADERS} DESTINATION include/arcan/shmif)
-	install(FILES ${TUI_HEADERS} DESTINATION include/arcan)
+	install(FILES ${SHMIF_HEADERS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/arcan/shmif)
+	install(FILES ${TUI_HEADERS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/arcan)
 endif()
