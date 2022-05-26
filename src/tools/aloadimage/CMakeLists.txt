@@ -67,8 +67,4 @@ target_link_libraries(${PROJECT_NAME} ${LIBRARIES})
 install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_BINDIR})
 add_sanitizers(${PROJECT_NAME})
 
-if (CMAKE_SYSTEM_NAME MATCHES "(DragonFly|FreeBSD|NetBSD|OpenBSD)")
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/aloadimage.1 DESTINATION man/man1)
-else()
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/aloadimage.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
-endif()

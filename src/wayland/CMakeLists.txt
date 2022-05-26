@@ -99,8 +99,4 @@ add_sanitizers(arcan-wayland)
 install(TARGETS arcan-wayland DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(TARGETS arcan_xwm DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-if (CMAKE_SYSTEM_NAME MATCHES "(DragonFly|FreeBSD|NetBSD|OpenBSD)")
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/arcan-wayland.1 DESTINATION man/man1)
-else()
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/arcan-wayland.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
-endif()#install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/arcan-wayland.1 DESTINATION man)
