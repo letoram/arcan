@@ -111,4 +111,4 @@ target_compile_definitions(arcan_lwa PRIVATE
 	ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${PLATFORM_BUILDTAG}-${CMAKE_SYSTEM_NAME}\"
 )
 
-install(TARGETS arcan_lwa DESTINATION bin)
+install(TARGETS arcan_lwa DESTINATION ${CMAKE_INSTALL_BINDIR})

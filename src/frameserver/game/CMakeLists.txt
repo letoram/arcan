@@ -28,5 +28,5 @@ if (GAME_SOURCES)
 		arcan_shmif_int
 		${GAME_LIBS}
 	)
-	install(TARGETS afsrv_game DESTINATION bin)
+	install(TARGETS afsrv_game DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
