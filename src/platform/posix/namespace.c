@@ -107,9 +107,9 @@ static char* handle_dynfile(char* base, enum resource_type ares, int* dfd)
 	if (!dfd)
 		return base;
 
-	int fl = 0;
+	int fl = O_CLOEXEC;
 	if (ares & ARES_FOLDER)
-		fl = O_DIRECTORY;
+		fl |= O_DIRECTORY;
 
 	if (ares & ARES_CREATE){
 		*dfd = open(base, fl | O_CREAT | O_RDWR | O_EXCL, S_IRWXU);

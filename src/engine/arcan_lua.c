@@ -7094,7 +7094,7 @@ static int resource(lua_State* ctx)
 /* can only be used to test for resource so don't & against mask */
 	int mask = luaL_optinteger(ctx, 2, DEFAULT_USERMASK);
 	char* res = arcan_find_resource(
-		label, mask, ARES_FILE | ARES_FOLDER, O_RDONLY);
+		label, mask, ARES_FILE | ARES_FOLDER, NULL);
 
 	if (!res){
 		lua_pushstring(ctx, res);
@@ -7416,9 +7416,9 @@ static int targetfonthint(lua_State* ctx)
 			arcan_video_fontdefaults(&fd, NULL, NULL);
 		}
 		else{
-			int fd = BADFD;
+			fd = BADFD;
 			char* fname = arcan_find_resource(
-				instr, RESOURCE_SYS_FONT, ARES_FILE, &fd);
+				instr, RESOURCE_SYS_FONT, ARES_FILE | ARES_RDONLY, &fd);
 			arcan_mem_free(fname);
 			if (BADFD == fd){
 				lua_pushboolean(ctx, false);
@@ -8115,13 +8115,12 @@ static int targetrestore(lua_State* ctx)
 	}
 
 /* resolve from requested namespace, only accept files */
-	char* fname = arcan_find_resource(snapkey, ns, ARES_FILE, O_RDONLY);
-	int fd = -1;
-	if (fname)
-		fd = open(fname, O_CLOEXEC |O_RDONLY);
+	int fd = BADFD;
+	char* fname = arcan_find_resource(
+		snapkey, ns, ARES_FILE | ARES_RDONLY, &fd);
 	free(fname);
 
-	if (-1 == fd){
+	if (BADFD == fd){
 		arcan_warning("couldn't load / resolve (%s)\n", snapkey);
 		lua_pushboolean(ctx, false);
 		LUA_ETRACE("restore_target", "could not load file", 1);
@@ -11482,15 +11481,15 @@ static int setdefaultfont(lua_State* ctx)
 	LUA_TRACE("system_defaultfont");
 
 	const char* fontn = luaL_optstring(ctx, 1, NULL);
+	int fd = BADFD;
 
 	char* fn = arcan_find_resource(
-		fontn, RESOURCE_SYS_FONT, ARES_FILE, O_RDONLY);
+		fontn, RESOURCE_SYS_FONT, ARES_FILE | ARES_RDONLY, &fd);
 	if (!fn){
 		lua_pushboolean(ctx, false);
 		LUA_ETRACE("system_defaultfont", "couldn't find font in namespace", 1);
 	}
 
-	int fd = open(fn, O_RDONLY);
 	free(fn);
 	if (BADFD == fd){
 		lua_pushboolean(ctx, false);
