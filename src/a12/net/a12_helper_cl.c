@@ -1,5 +1,5 @@
 /*
- * Copyright: 2018-2020, Bjorn Stahl
+ * Copyright: Bjorn Stahl
  * License: 3-Clause BSD
  * Description: Implements a support wrapper for the a12 function patterns used
  * to implement a single a12- server that translated to an a12- client

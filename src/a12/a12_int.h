@@ -60,7 +60,9 @@ enum control_commands {
 	COMMAND_AUDIOFRAME   = 5, /* next packets will be audio data */
 	COMMAND_BINARYSTREAM = 6, /* cut and paste, state, font, ... */
 	COMMAND_PING         = 7, /* keepalive, latency masurement   */
-	COMMAND_REKEY        = 8  /* new x25519 change               */
+	COMMAND_REKEY        = 8, /* new x25519 change               */
+	COMMAND_DIRLIST      = 9, /* request list of items           */
+	COMMAND_DIRSTATE     = 10,/* update / present a new appl     */
 };
 
 enum hello_mode {
@@ -97,6 +99,7 @@ size_t a12int_header_size(int type);
 
 struct ZSTD_CCtx_s;
 struct ZSTD_DCtx_s;
+struct appl_meta;
 
 struct audio_frame {
 	uint32_t id;
@@ -169,6 +172,8 @@ struct blob_out {
 	uint8_t chid;
 	int type;
 	size_t left;
+	char* buf;
+	size_t buf_sz;
 	bool streaming;
 	bool active;
 	uint64_t streamid;
@@ -189,6 +194,7 @@ struct a12_channel {
 
 /* used for both encoding and decoding, state is aliased into unpack_state */
 	struct shmifsrv_vbuffer acc;
+
 	struct {
 		uint8_t* compression;
 		struct ZSTD_CCtx_s* zstd;
@@ -210,6 +216,9 @@ struct a12_channel {
 struct a12_state;
 struct a12_state {
 	struct a12_context_options* opts;
+	struct appl_meta* directory;
+	uint64_t directory_clk;
+
 	uint8_t last_mac_in[MAC_BLOCK_SZ];
 
 /* data needed to synthesize the next package */
@@ -309,5 +318,35 @@ void a12int_append_out(
 	uint8_t* prepend, size_t prepend_sz);
 
 void a12int_step_vstream(struct a12_state* S, uint32_t id);
+
+struct appl_meta {
+	FILE* handle;
+	char* buf;
+	size_t buf_sz;
+	struct appl_meta* next;
+
+	uint16_t identifier;
+	uint16_t categories;
+	uint16_t permissions;
+	uint8_t hash[4];
+
+	char applname[18];
+	char short_descr[69];
+	bool remote;
+	uint64_t update_ts;
+};
+
+/* takes ownership of appl_meta */
+void a12int_set_directory(struct a12_state*, struct appl_meta*);
+
+/* get the current directory -
+ * this is only valid between a12* calls on the state.
+ * The clock is an atomic counter that increments each time the directory
+ * is updated. */
+struct appl_meta* a12int_get_directory(struct a12_state*, uint64_t* clk);
+
+/* send the command to get a directory listing,
+ * results will be provided as BCHUNKHINT events */
+void a12int_request_dirlist(struct a12_state*, bool);
 
 #endif
