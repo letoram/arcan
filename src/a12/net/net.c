@@ -53,6 +53,7 @@ static struct {
 	size_t backpressure_soft;
 	int directory;
 	const char* reqname;
+	struct anet_dirsrv_opts dirsrv;
 } global = {
 	.backpressure_soft = 2,
 	.backpressure = 6,
@@ -130,8 +131,7 @@ static bool handover_setup(struct a12_state* S,
 	}
 
 	if (global.directory > 0){
-		anet_directory_srv(S,
-			(struct anet_dirsrv_opts){.basedir = global.directory}, fd, fd);
+		anet_directory_srv(S, global.dirsrv, fd, fd);
 		shutdown(fd, SHUT_RDWR);
 		return false;
 	}
@@ -1095,8 +1095,15 @@ int main(int argc, char** argv)
 		}
 	}
 
-/* the directory option is not applied through the mode/role */
+/* the directory option is not applied through the mode/role but rather as part
+ * of handover_setup, but before then (since we can chose between single or
+ * forking) we should scan / cache the applstore - then devise a way to do
+ * dynamic updates. */
 	if (anet.mode == ANET_SHMIF_CL || anet.mode == ANET_SHMIF_EXEC){
+		if (global.directory != -1){
+			global.dirsrv.basedir = global.directory;
+			anet_directory_srv_rescan(&global.dirsrv);
+		}
 		switch (anet.mt_mode){
 		case MT_SINGLE:
 			anet_listen(&anet, &errmsg, single_a12srv, &meta);
