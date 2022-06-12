@@ -30,6 +30,39 @@ struct cb_tag {
 	FILE* outf;
 };
 
+static FILE* cmd_to_membuf(const char* cmd, char** out, size_t* out_sz)
+{
+	FILE* applin = popen(cmd, "r");
+	if (!applin)
+		return NULL;
+
+	FILE* applbuf = open_memstream(out, out_sz);
+	if (!applbuf){
+		fclose(applin);
+		return NULL;
+	}
+
+	char buf[4096];
+	size_t nr;
+	bool ok = true;
+
+	while ((nr = fread(buf, 1, 4096, applin))){
+		if (1 != fwrite(buf, nr, 1, applbuf)){
+			ok = false;
+			break;
+		}
+	}
+
+	fclose(applin);
+	if (!ok){
+		fclose(applbuf);
+		return NULL;
+	}
+
+	fflush(applbuf);
+	return applbuf;
+}
+
 /* This part is much more PoC - we'd need a nicer cache / store (sqlite?) so
  * that each time we start up, we don't have to rescan and the other end don't
  * have to redownload if nothing's changed. */
@@ -50,59 +83,27 @@ static size_t scan_appdir(int fd, struct appl_meta* dst)
 		fchdir(fd);
 		chdir(ent->d_name);
 
-		FILE* applin = popen("tar cf - .", "r");
-		if (!applin)
+		struct appl_meta* new = malloc(sizeof(struct appl_meta));
+		if (!new)
+			break;
+
+		*dst = (struct appl_meta){0};
+		dst->handle = cmd_to_membuf("tar cf - .", &dst->buf, &dst->buf_sz);
+		if (!dst->handle){
+			free(new);
 			continue;
-
-		FILE* applbuf = open_memstream(&dst->buf, &dst->buf_sz);
-		if (!applbuf){
-			fclose(applin);
-			continue;
 		}
+		dst->identifier = count++;
 
-		char buf[4096];
-		size_t nr;
-		bool ok = true;
+		blake3_hasher temp;
+		blake3_hasher_init(&temp);
+		blake3_hasher_update(&temp, dst->buf, dst->buf_sz);
+		blake3_hasher_finalize(&temp, dst->hash, 4);
+		snprintf(dst->applname, 18, "%s", ent->d_name);
 
-		while ((nr = fread(buf, 1, 4096, applin))){
-			if (1 != fwrite(buf, nr, 1, applbuf)){
-				ok = false;
-				break;
-			}
-		}
-
-		fclose(applin);
-
-		if (ok){
-			struct appl_meta* new = malloc(sizeof(struct appl_meta));
-			if (!new){
-				fclose(applbuf);
-				break;
-			}
-
-/* there is still no manifest / icon format in order to define more */
-			*dst = (struct appl_meta){
-				.handle = applbuf,
-				.identifier = count++,
-				.categories = 0,
-				.permissions = 0,
-				.short_descr = ""
-			};
-			fflush(applbuf);
-
-			blake3_hasher temp;
-			blake3_hasher_init(&temp);
-			blake3_hasher_update(&temp, dst->buf, dst->buf_sz);
-			blake3_hasher_finalize(&temp, dst->hash, 4);
-			snprintf(dst->applname, 18, "%s", ent->d_name);
-
-			*new = (struct appl_meta){0};
-			dst->next = new;
-			dst = new;
-		}
-		else {
-			fclose(applbuf);
-		}
+		*new = (struct appl_meta){0};
+		dst->next = new;
+		dst = new;
 	}
 
 	closedir(dir);
@@ -211,23 +212,30 @@ static void ioloop(struct a12_state* S, void* tag, int fdin, int fdout, void
 
 }
 
+/* this will just keep / cache the built .tars in memory, the startup times
+ * will still be long and there is no detection when / if to rebuild or when
+ * the state has changed - a better server would use sqlite and some basic
+ * signalling. */
+void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
+{
+	opts->dir_count = scan_appdir(dup(opts->basedir), &opts->dir);
+}
+
 void anet_directory_srv(
 	struct a12_state* S, struct anet_dirsrv_opts opts, int fdin, int fdout)
 {
-	struct appl_meta out;
 	struct cb_tag cbt = {
-		.dir = &out,
+		.dir = &opts.dir,
 		.S = S
 	};
 
-	size_t n = scan_appdir(dup(opts.basedir), &out);
-	if (!n){
+	if (!opts.dir_count){
 		a12int_trace(A12_TRACE_DIRECTORY, "shutdown:reason=no_valid_appls");
 		return;
 	}
 
-	a12int_set_directory(S, &out);
-	ioloop(S, &out, fdin, fdout, on_srv_event, NULL);
+	a12int_set_directory(S, &opts.dir);
+	ioloop(S, &cbt, fdin, fdout, on_srv_event, NULL);
 }
 
 static void on_cl_event(
@@ -267,19 +275,11 @@ static bool ensure_appldir(const char* name, int basedir)
 static bool handover_exec(
 	struct a12_state* S, const char* name, struct anet_dircl_opts* opts)
 {
-/* interesting / open questions here:
- *
- * 1. how to re-use the existing connection for state load/store,
- * 2. allow the net_ class of functions to reuse this connection
- *    as 'stdin/stdout' in a way that meshes with discovery.
- * 3. should we cache the existing appl? track it in a manifest
- *    or as arcan-net through arcan_db?
- */
 	char buf[strlen(name) + sizeof("./")];
 	snprintf(buf, sizeof(buf), "./%s", name);
 
 	char* argv[] = {&buf[2], buf, NULL};
-	execvp("arcan_lwa", argv);
+	execvp("arcan", argv);
 	return false;
 }
 
@@ -310,6 +310,9 @@ static struct a12_bhandler_res cl_bevent(
 			return res;
 		}
 
+/* for restoring the DB, can simply popen to arcan_db with the piped
+ * mode (arcan_db add_appl_kv basename key value) and send a SIGUSR2
+ * to the process to indicate that the state has been updated. */
 		cbt->outf = popen("tar xf -", "w");
 		res.fd = fileno(cbt->outf);
 		res.flag = A12_BHANDLER_NEWFD;
