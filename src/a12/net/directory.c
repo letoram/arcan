@@ -11,6 +11,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <inttypes.h>
+#include <stdint.h>
 
 #include "../a12.h"
 #include "../a12_int.h"
