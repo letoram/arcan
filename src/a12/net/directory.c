@@ -1,7 +1,9 @@
 #include <arcan_shmif.h>
 #include <arcan_shmif_server.h>
 
+#include <ftw.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <sys/stat.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -21,6 +23,7 @@
 
 #include <sys/types.h>
 #include <sys/file.h>
+#include <sys/wait.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -61,6 +64,7 @@ static FILE* cmd_to_membuf(const char* cmd, char** out, size_t* out_sz)
 		return NULL;
 	}
 
+/* actually keep both in order to allow appending elsewhere */
 	fflush(applbuf);
 	return applbuf;
 }
@@ -82,6 +86,11 @@ static size_t scan_appdir(int fd, struct appl_meta* dst)
 			continue;
 		}
 
+	/* just want directories */
+		struct stat sbuf;
+		if (-1 == stat(ent->d_name, &sbuf) || (sbuf.st_mode & S_IFMT) != S_IFDIR)
+			continue;
+
 		fchdir(fd);
 		chdir(ent->d_name);
 
@@ -91,6 +100,8 @@ static size_t scan_appdir(int fd, struct appl_meta* dst)
 
 		*dst = (struct appl_meta){0};
 		dst->handle = cmd_to_membuf("tar cf - .", &dst->buf, &dst->buf_sz);
+		fchdir(fd);
+
 		if (!dst->handle){
 			free(new);
 			continue;
@@ -133,7 +144,7 @@ static void on_srv_event(
 			if (extid == meta->identifier){
 				a12int_trace(A12_TRACE_DIRECTORY,
 					"event=bchunkstate:send=%s", meta->applname);
-				a12_enqueue_blob(cbt->S, meta->buf, meta->buf_sz);
+				a12_enqueue_blob(cbt->S, meta->buf, meta->buf_sz, meta->identifier);
 				return;
 			}
 			meta = meta->next;
@@ -161,6 +172,9 @@ static void ioloop(struct a12_state* S, void* tag, int fdin, int fdout, void
 	uint8_t inbuf[9000];
 	uint8_t* outbuf = NULL;
 	uint64_t ts = 0;
+
+	fcntl(fdin, F_SETFD, FD_CLOEXEC);
+	fcntl(fdout, F_SETFD, FD_CLOEXEC);
 
 	size_t outbuf_sz = a12_flush(S, &outbuf, A12_FLUSH_ALL);
 	if (outbuf_sz)
@@ -249,10 +263,25 @@ static void on_cl_event(
 	a12int_trace(A12_TRACE_DIRECTORY, "event=%s", arcan_shmif_eventstr(ev, NULL, 0));
 }
 
+static int cleancb(
+	const char* path, const struct stat* s, int tfl, struct FTW* ftwbuf)
+{
+	if (remove(path))
+		fprintf(stderr, "error during cleanup of %s\n", path);
+	return 0;
+}
+
 static bool clean_appldir(const char* name, int basedir)
 {
-/* should unlink (nftw, FWD_DEPTH) with remove */
-	return true;
+	if (-1 != basedir){
+		fchdir(basedir);
+	}
+
+/* more careful would get the current pressure through rlimits and sweep until
+ * we know how many real slots are available and break at that, better option
+ * still would be to just keep this in a memfs like setup and rebuild the
+ * scratch dir entirely */
+	return 0 == nftw(name, cleancb, 32, FTW_DEPTH | FTW_PHYS);
 }
 
 static bool ensure_appldir(const char* name, int basedir)
@@ -274,14 +303,172 @@ static bool ensure_appldir(const char* name, int basedir)
 	return true;
 }
 
-static bool handover_exec(
-	struct a12_state* S, const char* name, struct anet_dircl_opts* opts)
+/* assumes that cwd points to our scratch folder for extracted appls */
+static bool handover_exec(struct a12_state* S,
+	const char* name, struct anet_dircl_opts* opts, int* state, size_t* state_sz)
 {
 	char buf[strlen(name) + sizeof("./")];
 	snprintf(buf, sizeof(buf), "./%s", name);
+	*state_sz = 0;
 
-	char* argv[] = {&buf[2], buf, NULL};
-	execvp("arcan", argv);
+	const char* binary = "arcan";
+	const char* cpath = getenv("ARCAN_CONNPATH");
+	size_t maxlen = sizeof((struct sockaddr_un){0}.sun_path);
+	char cpath_full[maxlen];
+
+/* to avoid the connpaths duelling with an outer arcan, or the light security
+ * issue of the loaded appl being able to namespace-collide/ override - first
+ * make sure to resolve the current connpath to absolute - then set the XDG_
+ * runtime dir to our scratch folder. */
+	if (cpath){
+		if (cpath[0] != '/'){
+			char* basedir = getenv("XDG_RUNTIME_DIR");
+			if (snprintf(cpath_full, maxlen, "%s/%s%s",
+				basedir ? basedir : getenv("HOME"),
+				basedir ? "" : ".", cpath) >= maxlen){
+				fprintf(stderr,
+					"Resolved path too long, cannot handover to arcan(_lwa)\n");
+				return false;
+				*state = -1;
+			}
+		}
+
+		binary = "arcan_lwa";
+	}
+
+	char logfd_str[16];
+	int pstdin[2], pstdout[2];
+
+	if (-1 == pipe(pstdin) || -1 == pipe(pstdout)){
+		fprintf(stderr,
+			"Couldn't setup control pipe in arcan handover\n");
+		return false;
+		*state = -1;
+	}
+
+	snprintf(logfd_str, 16, "LOGFD:%d", pstdout[1]);
+
+/*
+ * The current default here is to collect crash- dumps or in-memory k/v store
+ * synch and push them back to us, while taking controls from stdin.
+ *
+ * One thing that is important yet on the design- table is to allow the appl to
+ * access a12- networked resources (or other protocols for that matter) and
+ * have the request routed through the directory end and mapped to the
+ * define_recordtarget, net_open, ... class of .lua functions.
+ *
+ * A use-case to 'test' against would be an appl that fetches a remote image
+ * resource, takes a local webcam, overlays the remote image and streams the
+ * result somewhere else - like a sink attached to the directory.
+ */
+	char* argv[] = {&buf[2],
+		"-d", ":memory:",
+		"-M", "-1",
+		"-O", logfd_str,
+		"-C",
+		buf, NULL
+	};
+
+/* exec- over and monitor, keep connection alive */
+	pid_t pid = fork();
+	if (pid == 0){
+/* remap control into STDIN */
+		if (cpath)
+			setenv("ARCAN_CONNPATH", cpath_full, 1);
+		setenv("XDG_RUNTIME_DIR", "./", 1);
+		dup2(pstdin[0], STDIN_FILENO);
+		close(pstdin[0]);
+		close(pstdin[1]);
+		close(pstdout[0]);
+		close(STDERR_FILENO);
+		close(STDOUT_FILENO);
+		open("/dev/null", O_WRONLY);
+		open("/dev/null", O_WRONLY);
+		execvp(binary, argv);
+	}
+	if (pid == -1){
+		clean_appldir(name, opts->basedir);
+		fprintf(stderr, "Couldn't spawn child process");
+		*state = -1;
+		return false;
+	}
+	close(pstdin[0]);
+	close(pstdout[1]);
+
+	FILE* pfin = fdopen(pstdin[1], "w");
+	FILE* pfout = fdopen(pstdout[0], "r");
+	setlinebuf(pfin);
+	setlinebuf(pfout);
+
+/* if we have state, now is a good time to do something with it */
+	fprintf(pfin, "continue\n");
+
+/* capture the state block, write into an unlinked tmp-file so the
+ * file descriptor can be rewound and set as a bstream */
+	int pret = 0;
+	char* out = NULL;
+	char filename[] = "statetemp-XXXXXX";
+	int state_fd;
+	if (-1 == (state_fd = mkstemp(filename))){
+		fprintf(stderr, "Couldn't create temp-store, state transfer disabled\n");
+	}
+	else
+		unlink(filename);
+
+	while (!feof(pfout)){
+		char buf[4096];
+
+/* couldn't get more state, STDOUT is likely broken - process dead or dying */
+		if (!fgets(buf, 4096, pfout)){
+			while ((waitpid(pid, &pret, 0)) != pid
+				&& (errno == EINTR || errno == EAGAIN)){}
+		}
+
+/* try to cache it to our temporary state store */
+		else if (-1 != state_fd){
+			size_t ntw = strlen(buf);
+			size_t pos = 0;
+
+/* normal POSIX write shenanigans */
+			while (ntw){
+				ssize_t nw = write(state_fd, &buf[pos], ntw);
+				if (-1 == nw){
+					if (errno == EAGAIN || errno == EINTR)
+						continue;
+
+					fprintf(stderr, "Out of space caching state, transfer disabled\n");
+					close(state_fd);
+					state_fd = -1;
+					*state_sz = 0;
+					break;
+				}
+
+				ntw -= nw;
+				pos += nw;
+				*state_sz += nw;
+			}
+		}
+	}
+
+/* exited successfully? then the state snapshot should only contain the K/V
+ * dump, and if empty - nothing to do */
+	clean_appldir(name, opts->basedir);
+	*state = state_fd;
+
+	if (WIFEXITED(pret) && !WEXITSTATUS(pret)){
+		return true;
+	}
+/* exited with error code or sig(abrt,kill,...) */
+	if (
+		(WIFEXITED(pret) && WEXITSTATUS(pret)) ||
+		WIFSIGNALED(pret))
+	{
+		;
+	}
+	else {
+		fprintf(stderr, "unhandled application termination state\n");
+	}
+
 	return false;
 }
 
@@ -297,9 +484,36 @@ static struct a12_bhandler_res cl_bevent(
 	switch (M.state){
 	case A12_BHANDLER_COMPLETED:
 		if (cbt->outf){
+			int state_out = -1;
+			size_t state_sz = 0;
+
 			pclose(cbt->outf);
 			cbt->outf = NULL;
-			handover_exec(S, cbt->clopt->applname, cbt->clopt);
+
+/*
+ * run the appl, collect state into *state_out and if need be, synch it onwards
+ * - the a12 implementation will take care of the actual transfer and
+ *   cancellation should the other end not care for our state synch
+ *
+ * this is a placeholder setup, the better approach is to keep track of the
+ * child we are running while still processing other a12 events - to open up
+ * for multiplexing any resources the child might want dynamically, as well
+ * as handle 'push' updates to the appl itself and just 'force' through the
+ * monitor interface.
+ */
+			bool exec_res = handover_exec(S,
+				cbt->clopt->applname, cbt->clopt, &state_out, &state_sz);
+
+			if (-1 != state_out){
+				if (state_sz){
+					a12_enqueue_bstream(S, state_out,
+						exec_res ? A12_BTYPE_STATE : A12_BTYPE_CRASHDUMP,
+						M.identifier, false, state_sz
+					);
+				}
+				else
+					close(state_out);
+			}
 		}
 	break;
 	case A12_BHANDLER_INITIALIZE:{
@@ -311,6 +525,8 @@ static struct a12_bhandler_res cl_bevent(
 			fprintf(stderr, "Couldn't create temporary appl directory");
 			return res;
 		}
+
+		fprintf(stderr, "got identifier: %"PRIu32"\n", M.identifier);
 
 /* for restoring the DB, can simply popen to arcan_db with the piped
  * mode (arcan_db add_appl_kv basename key value) and send a SIGUSR2
@@ -390,6 +606,8 @@ void anet_directory_cl(
 		.S = S,
 		.clopt = &opts
 	};
+
+	sigaction(SIGPIPE,&(struct sigaction){.sa_handler = SIG_IGN}, 0);
 
 /* always request dirlist so we can resolve applname against the server-local
  * ID as that might change */

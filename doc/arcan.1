@@ -44,12 +44,18 @@ the --help command-line argument.
 .IP "\fB-M, --monitor\fR \fIrate\fR"
 Enable monitoring mode, every \fIrate\fR ticks, save a snapshot of the
 scripting engine state to a monitoring target (see -O, --monitor-out).
+If the rate is set to a negative value, only script errors will be written.
 
 .IP "\fB-O, --monitor-out \fItarget\fR"
 Defines the monitoring data recipient, used in combination with -M, --monitor.
-Either specify LOG:filename for a text-based recipient or a valid
-\fIappl\fR for launching two arcan sessions where the monitoring snapshots
-are forwarded to the other instance for analysis and visualization.
+Either specify LOG:filename or LOGFD:fdno for a file destination or for
+
+.IP "\fB-C, --monitor-ctrl\fR"
+Sets STDIN to work as a blocking control interface / watchdog that is triggered
+upon sending SIGUSR1 to the process. This can preempt script execution and is
+intended as an internal developer facing channel for building better inspection
+and debugging tools. Refer to the source implementation for arcan_monitor.c for
+commands and processing.
 
 .IP "\fB-p, --rpath \fIpath\fR"
 Change default searchpath for shared resources, see the \fInamespaces\fR
@@ -136,28 +142,40 @@ related to the various input platforms. These are printed when you start
 arcan with the --help argument and vary depending on how the engine was
 compiled.
 
+.SH USER-NAMESPACES
+For dynamically exposing files and folders with user controlled petnames and
+access restructions, the database and the 'arcan' appl key value store is used.
+This is mainly useful / intended for cases where Arcan is used as the system
+display server and desktop. The keys and values follows the format:
+key=ns_petname value=Label:permissions:path.
+
+As an example, exposing the user home directory on a POSIX system would be:
+arcan_db add_appl_kv arcan ns_home Home:rw:/home/me
+
+This is intended to be controlled / managed by dynamic tools, like an external
+drive or encrypted storage mounting daemon.
+
 .SH NAMESPACES
-There is a large assortment of namespaces that the engine will search for
-when an appl requests read access to- or the creation of- a resource.
-The way these are set up will vary depending on command-line arguments,
-operating-system specific scans, if applname was specified as a
-relative/absolute path and on a series of environment variables.
+There is a large assortment of namespaces that the engine will search for when
+an appl requests read access to- or the creation of- a resource. The way these
+are set up will vary depending on command-line arguments, operating-system
+specific scans, if applname was specified as a relative/absolute path and on a
+series of environment variables.
 
-For a more detailed explanation on how this works from an appl perspective,
-please refer to the developer documentation on the wiki.
+For a more detailed explanation on how this works from an appl developer
+perspective, please refer to the developer documentation on the wiki.
 
-This setup is rather complex in order to account for a large range of
-platforms and use-cases, with the most simple configuration being an
-application base folder (controlled with the \fB-t\fR command-line switch)
-and a shared resource folder (Controlled with the \fB-p\fR switch).
+This setup is rather complex in order to account for a large range of platforms
+and use-cases, with the most simple configuration being an application base
+folder (controlled with the \fB-t\fR command-line switch) and a shared resource
+folder (Controlled with the \fB-p\fR switch).
 
 The most important namespaces are the APPLBASE and the RESOURCEPATH.
 
-Appls can manipulate (create, open, read, write) the files within
-the confines of the \fBAPPLBASE/APPNAME\fR. Traversal (../) outside
-this path will be blocked, but a user can explicitly map
-(symlink, bind-mounts or similar) other paths into this namespace
-and the engine will allow it.
+Appls can manipulate (create, open, read, write) the files within the confines
+of the \fBAPPLBASE/APPNAME\fR. Traversal (../) outside this path will be
+blocked, but a user can explicitly map (symlink, bind-mounts or similar) other
+paths into this namespace and the engine will allow it.
 
 Scripts are treated as an overlay namespace where there is a priority order in
 the event of a collision. By default, scripts are treated in the order of
@@ -378,8 +396,8 @@ description will be provided (color-coded) to the standard output, and that a
 state dump will be generated and stored in the namespace specified by
 ARCAN_LOGPATH.
 
-This state dump is a Lua parsable script that can be loaded either by a
-monitoring script (similar to monitoring mode) or a regular Lua interpreter.
+This state dump is a Lua parsable script that can be loaded either by a regular
+Lua interpreter.
 
 The environment variable \fBARCAN_FRAMESERVER_DEBUGSTALL\fR can be set if you
 suspect that a frameserver is involved, or to blame, for an issue. This will

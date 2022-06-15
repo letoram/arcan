@@ -8,28 +8,8 @@
  * specific heuristics, it exposes a user facing set of strategies to chose
  * from.
  */
-#include <stdint.h>
-#include <stdlib.h>
-#include <inttypes.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <stdatomic.h>
 
-#include "arcan_math.h"
-#include "arcan_general.h"
-#include "arcan_shmif.h"
-#include "arcan_event.h"
-#include "arcan_audio.h"
-#include "arcan_frameserver.h"
-#include "arcan_conductor.h"
-#include "arcan_lua.h"
-#include "arcan_video.h"
-#include "arcan_videoint.h"
-#include "arcan_mem.h"
-
-#include "../platform/platform.h"
-#include "../platform/video_platform.h"
+#include "arcan_hmeta.h"
 
 /* defined in platform.h, used in psep open, shared memory */
 _Atomic uint64_t* volatile arcan_watchdog_ping = NULL;

@@ -4,7 +4,8 @@
  * Reference: http://arcan-fe.com
  */
 
-#ifndef _HAVE_ARCAN_DB
+#ifndef HAVE_ARCAN_DB
+#define HAVE_ARCAN_DB
 
 struct arcan_dbh;
 

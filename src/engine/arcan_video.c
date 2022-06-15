@@ -1,52 +1,17 @@
 /*
- * Copyright 2003-2020, Björn Ståhl
+ * Copyright: Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
 
-#include <stdint.h>
-#include <inttypes.h>
-#include <stdbool.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <fcntl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <signal.h>
-#include <stddef.h>
-#include <math.h>
-#include <limits.h>
-#include <assert.h>
-#include <errno.h>
-#include <stdalign.h>
-#include <stdarg.h>
-
-#include <pthread.h>
-#include <semaphore.h>
+#include "arcan_hmeta.h"
+#include "arcan_ttf.h"
 
 #define CLAMP(x, l, h) (((x) > (h)) ? (h) : (((x) < (l)) ? (l) : (x)))
 
 #ifndef ASYNCH_CONCURRENT_THREADS
 #define ASYNCH_CONCURRENT_THREADS 12
 #endif
-
-#include PLATFORM_HEADER
-
-#include "arcan_shmif.h"
-#include "arcan_shmif_sub.h"
-#include "arcan_math.h"
-#include "arcan_general.h"
-#include "arcan_video.h"
-#include "arcan_ttf.h"
-#include "arcan_audio.h"
-#include "arcan_event.h"
-#include "arcan_frameserver.h"
-#include "arcan_renderfun.h"
-#include "arcan_videoint.h"
-#include "arcan_3dbase.h"
-#include "arcan_img.h"
 
 #ifndef offsetof
 #define offsetof(type, member) ((size_t)((char*)&(*(type*)0).member\

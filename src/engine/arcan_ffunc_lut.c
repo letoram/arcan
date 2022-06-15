@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <sys/mman.h>
+#include <lua.h>
 
 #define FRAMESERVER_PRIVATE
 #define LUA_PRIVATE

@@ -33,59 +33,15 @@
  *   12345,6789
  */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <stdbool.h>
-#include <string.h>
-#include <unistd.h>
-#include <stddef.h>
-#include <signal.h>
-#include <errno.h>
-#include <ctype.h>
-#include <setjmp.h>
-#include <dlfcn.h>
-#include <pthread.h>
-
-#include <string.h>
-#include <fcntl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/socket.h>
-#include <sys/wait.h>
-#include <sys/un.h>
-#include <math.h>
-
-#include <assert.h>
-
-#include <lua.h>
+#define arcan_luactx lua_State
+#include "arcan_hmeta.h"
 #include <lualib.h>
 #include <lauxlib.h>
-
-#include <poll.h>
 
 #if LUA_VERSION_NUM == 501
 	#define lua_rawlen(x, y) lua_objlen(x, y)
 #endif
 
-#include "arcan_math.h"
-#include "arcan_general.h"
-#include "arcan_shmif.h"
-#include "arcan_shmif_sub.h"
-#include "arcan_video.h"
-#include "arcan_videoint.h"
-#include "arcan_renderfun.h"
-#include "arcan_3dbase.h"
-#include "arcan_audio.h"
-#include "arcan_event.h"
-#include "arcan_db.h"
-#include "arcan_frameserver.h"
-#include "arcan_led.h"
-#include "arcan_vr.h"
-#include "arcan_conductor.h"
-
-#define arcan_luactx lua_State
 #include "arcan_lua.h"
 #include "alt/types.h"
 #include "alt/support.h"
@@ -285,6 +241,7 @@ static struct {
 
 	const char** last_argv;
 	lua_State* last_ctx;
+	void (*error_hook)(lua_State*, lua_Debug*);
 
 	size_t last_clock;
 
@@ -6883,7 +6840,8 @@ void arcan_lua_dostring(lua_State* ctx, const char* code, const char* name)
 
 static void error_hook(lua_State* ctx, lua_Debug* ar)
 {
-/* will longjump into the pcall error handler which will trigger recovery */
+/* will longjump into the pcall error handler which will trigger recovery,
+ * unless there is another watchdog monitor control set */
 	luaL_error(ctx, "ANR - Application Not Responding");
 }
 
@@ -6891,11 +6849,11 @@ static void sig_watchdog(int sig, siginfo_t* info, void* unused)
 {
 	if (getppid() == info->si_pid){
 /* set a hook that we can use to then invoke our error handler path */
-		lua_sethook(luactx.last_ctx, error_hook, LUA_MASKCOUNT, 1);
+		lua_sethook(luactx.last_ctx, luactx.error_hook, LUA_MASKCOUNT, 1);
 	}
 }
 
-lua_State* arcan_lua_alloc()
+lua_State* arcan_lua_alloc(void (*watchdog)(lua_State*, lua_Debug*))
 {
 	lua_State* res = luaL_newstate();
 
@@ -6903,6 +6861,8 @@ lua_State* arcan_lua_alloc()
  * limit / "null-out" the undesired subset of the LUA API */
 	if (res)
 		luaL_openlibs(res);
+
+	luactx.error_hook = watchdog;
 
 /* watchdog has triggered with an ANR, continue the bouncy castle towards
  * the 'normal' scripting recovery stage so we get information on where
@@ -12642,6 +12602,9 @@ void arcan_lua_statesnap(FILE* dst, const char* tag, bool delim)
 	struct arcan_video_display* disp = &arcan_video_display;
 	struct monitor_mode mmode = platform_video_dimensions();
 
+if (delim)
+	fputs("#BEGINSTATE\n", dst);
+
 fprintf(dst, " do \n\
 local nan = 0/0;\n\
 local inf = math.huge;\n\
@@ -12744,7 +12707,7 @@ ctx.vobjs[vobj.cellid] = vobj;\n", (long int)vid_toluavid(i));
 	}
 
 /* foreach context, footer */
-	fprintf(dst, "return restbl;\nend\n%s", delim ? "#ENDBLOCK\n" : "");
+	fprintf(dst, "return restbl;\nend\n%s", delim ? "#ENDSTATE\n" : "");
 	fflush(dst);
 }
 

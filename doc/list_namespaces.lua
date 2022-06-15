@@ -4,7 +4,7 @@
 -- @longdescr: The user can dynamically add and remove namespaces for the
 -- purpose of file i/o and local IPC. These are controlled externally and
 -- defined in the database that the arcan application was launched with.
--- An example of this would be "arcan_db add_appl_kv arcan ns_home:Home:rw:/home/me"
+-- An example of this would be "arcan_db add_appl_kv arcan ns_home Home:rw:/home/me"
 -- This function returns a list of the currently known ones in an n-indexed
 -- table of tables, where each table specifies its reference name, a user
 -- presentable label and the set or permissions (e.g. read, write and ipc).

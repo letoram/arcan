@@ -6,6 +6,8 @@
  * between the various subsystem refreshments, enforcing synchronization
  * strategy to optimize for throughput, latency or energy efficiency.
  */
+#ifndef HAVE_ARCAN_CONDUCTOR
+#define HAVE_ARCAN_CONDUCTOR
 
 enum synch_method {
 	SYNCH_NONE = 0,
@@ -130,4 +132,5 @@ void arcan_conductor_register_frameserver(struct arcan_frameserver* fsrv);
  * all processing on the frameserver should be suspended or as part of the
  * deallocation sequence */
 void arcan_conductor_deregister_frameserver(struct arcan_frameserver* fsrv);
+#endif
 #endif

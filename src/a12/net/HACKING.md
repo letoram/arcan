@@ -455,8 +455,8 @@ The following encodings are allowed:
 ### command - 6, define bstream
 - [18..21] stream-id   : uint32
 - [22..29] total-size  : uint64 (0 on streaming source)
-- [30]     stream-type : uint8 (0: state, 1:bchunk, 2: font, 3: font-secondary)
-- [31..34] id-token    : uint32 (used for bchunk pairing on _out/_store)
+- [30]     stream-type : uint8 (0: state, 1:bchunk, 2: font, 3: font-secondary, 4: debug)
+- [31..34] id-token    : uint32 (used for bchunk pairing on \_out/\_store)
 - [35 +16] blake3-hash : blob (0 if unknown)
 
 This defines a new or continued binary transfer stream. The block-size sets the
@@ -495,8 +495,8 @@ directory-list commands.
 - [18..19 ] identifier : uint16   server-local identifier
 - [20..21 ] catbmp     : uint16   category bitmap
 - [22..23 ] permbmp    : uint16   permission bitmap
-- [24..27 ] hash       : uint8[4] (blake3-hash on uncompressed appl tar)
-- [28..35 ] size       : uint64   uncompressed size
+- [24..27 ] hash       : uint8(4) (blake3-hash on uncompressed appl tar)
+- [28..35 ] size       : uint64   state-size
 - [36..54 ] name       : user presentable applname (0 or len terminates)
 - [55+    ] descr      : geohint adjusted short description
 
