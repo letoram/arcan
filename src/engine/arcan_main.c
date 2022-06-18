@@ -1,54 +1,10 @@
 /*
- * Copyright 2003-2020, Björn Ståhl
+ * Copyright: Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
 
-#include <stdlib.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <stdbool.h>
-#include <pthread.h>
-#include <setjmp.h>
-
-#include <string.h>
-#include <signal.h>
-#include <fcntl.h>
-
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-
-#include <sys/resource.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/wait.h>
-
-#include <math.h>
-#include <limits.h>
-#include <errno.h>
-#include <time.h>
-#include <ctype.h>
-
-#include <sqlite3.h>
-
-#include "getopt.h"
-#include "arcan_math.h"
-#include "arcan_general.h"
-#include "arcan_shmif.h"
-#include "arcan_event.h"
-#include "arcan_audio.h"
-#include "arcan_video.h"
-#include "arcan_img.h"
-#include "arcan_frameserver.h"
-#include "arcan_lua.h"
-#include "../platform/video_platform.h"
-#include "arcan_led.h"
-#include "arcan_db.h"
-#include "arcan_videoint.h"
-#include "arcan_conductor.h"
+#include "arcan_hmeta.h"
 
 /*
  * list of scripts to inject
@@ -87,6 +43,7 @@ static const struct option longopts[] = {
 	{ "pipe-stdin",   no_argument,       NULL, '0'},
 	{ "monitor",      required_argument, NULL, 'M'},
 	{ "monitor-out",  required_argument, NULL, 'O'},
+	{ "monitor-ctrl", no_argument,       NULL, 'C'},
 	{ "version",      no_argument,       NULL, 'V'},
 	{ NULL,           no_argument,       NULL,  0 }
 };
@@ -133,8 +90,9 @@ printf("Usage: arcan [-whfmWMOqspTBtHbdgaSV] applname "
 "-f\t--fullscreen  \ttoggle fullscreen mode ON (default: off)\n"
 "-m\t--conservative\ttoggle conservative memory management (default: off)\n"
 "-W\t--sync-strat  \tspecify video synchronization strategy (see below)\n"
-"-M\t--monitor     \tenable monitor session (arg: samplerate, ticks/sample)\n"
-"-O\t--monitor-out \tLOG:fname or applname\n"
+"-M\t--monitor     \tenable monitor session (arg: [ticks/sample], -1 debug only)\n"
+"-O\t--monitor-out \tLOG:fname or LOGFD:num\n"
+"-C\t--monitor-ctrl\tuse STDIN as control interface (with SIGUSR1)\n"
 "-s\t--windowed    \ttoggle borderless window mode\n"
 #ifdef DISABLE_FRAMESERVERS
 "-B\t--binpath     \tno-op, frameserver support was disabled compile-time\n"
@@ -242,30 +200,6 @@ static void fatal_shutdown()
 	arcan_video_shutdown(false);
 }
 
-/* invoked from the conductor when it has processed a monotonic tick */
-static struct {
-	bool in_monitor;
-	int monitor, monitor_counter;
-	int mon_infd;
-	FILE* mon_outf;
-} settings = {0};
-
-static void main_cycle()
-{
-	if (settings.monitor && !settings.in_monitor){
-		if (--settings.monitor_counter == 0){
-			static int mc;
-			char buf[8];
-			snprintf(buf, 8, "%d", mc++);
-			settings.monitor_counter = settings.monitor;
-			arcan_lua_statesnap(settings.mon_outf, buf, true);
-		}
-	}
-
-	if (settings.in_monitor)
-		arcan_lua_stategrab(main_lua_context, "sample", settings.mon_infd);
-}
-
 static void add_hookscript(const char* instr)
 {
 /* convert to filesystem path */
@@ -370,7 +304,6 @@ int MAIN_REDIR(int argc, char* argv[])
 
 	arcan_mem_growarr(&arr_hooks);
 
-	settings.in_monitor = getenv("ARCAN_MONITOR_FD") != NULL;
 	bool windowed = false;
 	bool fullscreen = false;
 	bool conservative = false;
@@ -385,7 +318,9 @@ int MAIN_REDIR(int argc, char* argv[])
 
 /* only used when monitor mode is activated, where we want some
  * of the global paths etc. accessible, but not *all* of them */
-	char* monitor_arg = "LOG";
+	int monitor_rate = 0;
+	char* monitor_arg = NULL;
+	FILE* monitor_ctrl = NULL;
 
 /*
  * if we crash in the Lua VM, switch to this app and have it
@@ -407,7 +342,7 @@ int MAIN_REDIR(int argc, char* argv[])
 	struct arcan_strarr tmplist = {0};
 
 	while ((ch = getopt_long(argc, argv,
-		"w:h:mx:y:fsW:d:Sq:a:p:b:B:L:M:O:t:T:H:g01V", longopts, NULL)) >= 0){
+		"w:h:mx:y:fsW:d:Sq:a:p:b:B:L:M:O:Ct:T:H:g01V", longopts, NULL)) >= 0){
 	switch (ch) {
 	case '?' :
 		usage();
@@ -443,13 +378,19 @@ int MAIN_REDIR(int argc, char* argv[])
 /* a prealloc:ed connection primitive is needed, defer this to when we have
  * enough resources and context allocated to be able to do so. This does not
  * survive appl-switching */
-	case '0' : stdin_connpoint = true; break;
+	case '0' :
+		if (monitor_ctrl){
+			arcan_fatal("argument misuse, cannot combing -0 with -C");
+		}
+		stdin_connpoint = true;
+	break;
 	case 'p' : override_resspaces(optarg); break;
 	case 'T' : arcan_override_namespace(optarg, RESOURCE_SYS_SCRIPTS); break;
 	case 'b' : fallback = strdup(optarg); break;
-	case 'V' : fprintf(stdout, "%s\nshmif-%" PRIu64"\nluaapi-%d:%d\n",
-		ARCAN_BUILDVERSION, arcan_shmif_cookie(), LUAAPI_VERSION_MAJOR,
-		LUAAPI_VERSION_MINOR
+	case 'V' :
+		fprintf(stdout, "%s\nshmif-%" PRIu64"\nluaapi-%d:%d\n",
+			ARCAN_BUILDVERSION, arcan_shmif_cookie(), LUAAPI_VERSION_MAJOR,
+			LUAAPI_VERSION_MINOR
 		);
 		exit(EXIT_SUCCESS);
 	break;
@@ -458,9 +399,18 @@ int MAIN_REDIR(int argc, char* argv[])
 			arcan_mem_growarr(&tmplist);
 		tmplist.data[tmplist.count++] = strdup(optarg);
 	break;
-	case 'M' : settings.monitor_counter = settings.monitor =
-		abs( (int)strtol(optarg, NULL, 10) ); break;
-	case 'O' : monitor_arg = strdup( optarg ); break;
+	case 'M' :
+		monitor_rate = (int)strtol(optarg, NULL, 10);
+	break;
+	case 'O' :
+		monitor_arg = strdup( optarg );
+	break;
+	case 'C' :
+		if (stdin_connpoint){
+			arcan_fatal("argument misuse, cannot combine -C with -O");
+		}
+		monitor_ctrl = stdin;
+	break;
 	case 't' :
 		arcan_override_namespace(optarg, RESOURCE_SYS_APPLBASE);
 		arcan_override_namespace(optarg, RESOURCE_SYS_APPLSTORE);
@@ -538,66 +488,13 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_mem_freearr(&tmplist);
 	}
 
-/* pipe to file, socket or launch script based on monitor output,
- * format will be LUA tables with the exception of each cell ending with
- * #ENDSAMPLE . The block will be sampled, parsed and should return a table
- * pushed through the sample() function in the LUA space */
-	if (settings.in_monitor){
-		settings.mon_infd = strtol( getenv("ARCAN_MONITOR_FD"), NULL, 10);
-	}
-	else if (settings.monitor > 0){
-		extern arcan_benchdata benchdata;
-		benchdata.bench_enabled = true;
-
-		if (strncmp(monitor_arg, "LOG:", 4) == 0){
-			settings.mon_outf = fopen(&monitor_arg[4], "w+");
-			if (NULL == settings.mon_outf)
-				arcan_fatal("couldn't open log output (%s) for writing\n",
-					monitor_arg[4]);
-			fcntl(fileno(settings.mon_outf), F_SETFD, FD_CLOEXEC);
-		}
-		else {
-			int pair[2];
-
-			pid_t p1;
-			if (pipe(pair) == 0)
-				;
-
-			if ( (p1 = fork()) == 0){
-				close(pair[1]);
-
-/* double-fork to get away from parent */
-				if (fork() != 0)
-					exit(EXIT_SUCCESS);
-
-/*
- * set the descriptor of the inherited pipe as an envvariable,
- * this will have the program be launched with in_monitor set to true
- * the monitor args will then be ignored and appname replaced with
- * the monitorarg
- */
-				char monfd_buf[8] = {0};
-				snprintf(monfd_buf, 8, "%d", pair[0]);
-				setenv("ARCAN_MONITOR_FD", monfd_buf, 1);
-				argv[optind] = strdup(monitor_arg);
-
-				execv(argv[0], argv);
-				exit(EXIT_FAILURE);
-			}
-			else {
-/* don't terminate just because the pipe gets broken (i.e. dead monitor) */
-				close(pair[0]);
-				settings.mon_outf = fdopen(pair[1], "w");
-			}
-		}
-
-		fullscreen = false;
-	}
+/* external cooperation - check arcan_monitor.c */
+	if (monitor_rate || monitor_ctrl)
+		arcan_monitor_configure(monitor_rate, monitor_arg, monitor_ctrl);
 
 /* two main sources for sigpipe, one being monitor and the other being
  * lua- layer open_nonblock calls, neither has any use for it so mask */
-	sigaction(SIGPIPE, &(struct sigaction){
-		.sa_handler = SIG_IGN, .sa_flags = 0}, 0);
+	sigaction(SIGPIPE,&(struct sigaction){.sa_handler = SIG_IGN}, 0);
 
 	struct arcan_dbh* dbhandle = NULL;
 /* fallback to whatever is the platform database- storepath */
@@ -605,8 +502,8 @@ int MAIN_REDIR(int argc, char* argv[])
 		dbhandle = arcan_db_open(dbfname, arcan_appl_id());
 
 	if (!dbhandle){
-		arcan_warning("Couldn't open/create database (%s), "
-			"fallback to :memory:\n", dbfname);
+		arcan_warning(
+			"Couldn't open/create database (%s), fallback to :memory:\n", dbfname);
 		dbhandle = arcan_db_open(":memory:", arcan_appl_id());
 	}
 
@@ -795,9 +692,13 @@ int MAIN_REDIR(int argc, char* argv[])
 	else if (jumpcode == ARCAN_LUA_RECOVERY_FATAL_IGNORE){
 		goto run_loop;
 	}
+	else if (jumpcode == ARCAN_LUA_KILL_SILENT){
+		goto cleanup;
+	}
 
 /* setup VM, map arguments and possible overrides */
-	main_lua_context = arcan_lua_alloc();
+	main_lua_context =
+		arcan_lua_alloc(monitor_ctrl ? arcan_monitor_watchdog : NULL);
 	arcan_lua_mapfunctions(main_lua_context, debuglevel);
 
 	bool inp_file;
@@ -815,8 +716,8 @@ int MAIN_REDIR(int argc, char* argv[])
 	}
 	free(msg);
 
-	if (!arcan_lua_callvoidfun(main_lua_context, "", false, (const char**)
-		(argc > optind ? (argv + optind + 1) : NULL))){
+	if (!arcan_lua_callvoidfun(main_lua_context, "", false,
+		(const char**) (argc > optind ? (argv + optind + 1) : NULL))){
 		arcan_warning("\n\x1b[1mCouldn't load (\x1b[33m%s\x1b[39m):"
 			"\x1b[35m missing '%s' function\x1b[22m\x1b[39m\n\n", arcan_appl_id(), arcan_appl_id());
 		goto error;
@@ -871,15 +772,21 @@ int MAIN_REDIR(int argc, char* argv[])
 	int exit_code = 0;
 
 run_loop:
-	exit_code = arcan_conductor_run(main_cycle);
-
+	if (monitor_ctrl)
+		arcan_monitor_watchdog((lua_State*)main_lua_context, NULL);
+	exit_code = arcan_conductor_run(arcan_monitor_tick);
 	arcan_lua_callvoidfun(main_lua_context, "shutdown", false, NULL);
+
+/* destroy monitor first as it will need to snapshot the lua/VM stat e*/
+cleanup:
+	arcan_monitor_finish(exit_code == 256);
 	arcan_mem_freearr(&arr_hooks);
 	arcan_led_shutdown();
 	arcan_event_deinit(evctx, true);
 	arcan_audio_shutdown();
 	arcan_video_shutdown(exit_code != 256);
 	arcan_mem_free(dbfname);
+
 	if (dbhandle){
 		arcan_db_close(&dbhandle);
 		arcan_db_set_shared(NULL);
@@ -888,7 +795,7 @@ run_loop:
 	return exit_code == 256 ? EXIT_SUCCESS : exit_code;
 
 error:
-	if (debuglevel > 1){
+	if (!monitor_ctrl && debuglevel > 1){
 		arcan_warning("fatal: main loop failed, arguments: \n");
 		for (size_t i = 0; i < argc; i++)
 			arcan_warning("%s ", argv[i]);
@@ -905,6 +812,7 @@ error:
 #endif
 
 /* now we can shutdown the subsystems themselves */
+	arcan_monitor_finish(false);
 	arcan_event_deinit(evctx, true);
 	arcan_mem_free(dbfname);
 	arcan_audio_shutdown();
@@ -912,7 +820,7 @@ error:
 
 /* and finally write the reason to stdout as well now that native platforms
  * have restored the context to having valid stdout/stderr */
-	if (crashmsg){
+	if (crashmsg && !monitor_ctrl){
 		arcan_warning(
 			"\n\x1b[1mImproper API use from Lua script\n"
 			":\n\t\x1b[32m%s\x1b[39m\n", crashmsg
@@ -923,6 +831,5 @@ error:
 		LUAAPI_VERSION_MINOR
 		);
 	}
-
 	return EXIT_FAILURE;
 }

@@ -151,6 +151,7 @@ void a12int_set_directory(struct a12_state* S, struct appl_meta* M)
 		struct appl_meta* old = C;
 		if (C->handle)
 			fclose(C->handle);
+		free(C->buf);
 
 		C = C->next;
 		DYNAMIC_FREE(old);
@@ -815,6 +816,7 @@ static void command_binarystream(struct a12_state* S)
 	bframe->streamid = streamid;
 	unpack_u64(&bframe->size, &S->decode[22]);
 	bframe->type = S->decode[30];
+	unpack_u32(&bframe->identifier, &S->decode[31]);
 	memcpy(bframe->checksum, &S->decode[35], 16);
 	bframe->tmp_fd = -1;
 
@@ -838,6 +840,7 @@ static void command_binarystream(struct a12_state* S)
 		.state = A12_BHANDLER_INITIALIZE,
 		.known_size = bframe->size,
 		.streamid = bframe->streamid,
+		.identifier = bframe->identifier,
 		.fd = -1
 	};
 
@@ -1272,7 +1275,8 @@ static struct blob_out** alloc_attach_blob(struct a12_state* S)
  * Simplified form of enqueue bstream below, we already have the buffer
  * in memory so just build a different blob-out node with a copy
  */
-void a12_enqueue_blob(struct a12_state* S, const char* const buf, size_t buf_sz)
+void a12_enqueue_blob(
+	struct a12_state* S, const char* const buf, size_t buf_sz, uint32_t id)
 {
 	struct blob_out** next = alloc_attach_blob(S);
 	if (!next)
@@ -1290,6 +1294,7 @@ void a12_enqueue_blob(struct a12_state* S, const char* const buf, size_t buf_sz)
 	(*next)->buf = nbuf;
 	(*next)->buf_sz = buf_sz;
 	(*next)->left = buf_sz;
+	(*next)->identifier = id;
 
 	blake3_hasher hash;
 	blake3_hasher_init(&hash);
@@ -1320,8 +1325,8 @@ void a12_enqueue_blob(struct a12_state* S, const char* const buf, size_t buf_sz)
  * asymmetric connection as they won't fight with other transfers.
  *
  */
-void a12_enqueue_bstream(
-	struct a12_state* S, int fd, int type, bool streaming, size_t sz)
+void a12_enqueue_bstream(struct a12_state* S,
+	int fd, int type, uint32_t id, bool streaming, size_t sz)
 {
 	struct blob_out** parent = alloc_attach_blob(S);
 	if (!parent)
@@ -2017,6 +2022,7 @@ static void process_blob(struct a12_state* S)
 				.type = cbf->type,
 				.streamid = cbf->streamid,
 				.channel = S->in_channel,
+				.identifier = cbf->identifier,
 				.fd = cbf->tmp_fd,
 				.dcont = cont,
 				.state = A12_BHANDLER_COMPLETED
@@ -2513,7 +2519,7 @@ static size_t queue_node(struct a12_state* S, struct blob_out* node)
 		pack_u32(S->out_stream, &outb[18]); /* [18 .. 21] stream-id */
 		pack_u64(node->left, &outb[22]); /* [22 .. 29] total-size */
 		outb[30] = node->type;
-		/* 31..34 : id-token, ignored for now */
+		pack_u32(node->identifier, &outb[31]); /* 31..34 : id-token */
 		memcpy(&outb[35], node->checksum, 16);
 		a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 		node->active = true;
@@ -2785,14 +2791,14 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
  * the rest */
 		case TARGET_COMMAND_RESTORE:
 			a12_enqueue_bstream(S,
-				ev->tgt.ioevs[0].iv, A12_BTYPE_STATE, false, 0);
+				ev->tgt.ioevs[0].iv, A12_BTYPE_STATE, false, 0, 0);
 			return true;
 		break;
 
 /* let the bstream- side determine if the source is streaming or not */
 		case TARGET_COMMAND_BCHUNK_IN:
 			a12_enqueue_bstream(S,
-				ev->tgt.ioevs[0].iv, A12_BTYPE_BLOB, false, 0);
+				ev->tgt.ioevs[0].iv, A12_BTYPE_BLOB, false, 0, 0);
 				return true;
 		break;
 
@@ -2802,7 +2808,7 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
 		case TARGET_COMMAND_FONTHINT:
 			a12_enqueue_bstream(S,
 				ev->tgt.ioevs[0].iv, ev->tgt.ioevs[4].iv == 1 ?
-				A12_BTYPE_FONT_SUPPL : A12_BTYPE_FONT, false, 0
+				A12_BTYPE_FONT_SUPPL : A12_BTYPE_FONT, false, 0, 0
 			);
 		break;
 		default:

@@ -466,6 +466,7 @@ else()
 		engine/arcan_db.h
 		engine/arcan_frameserver.h
 		engine/arcan_frameserver.c
+		engine/arcan_monitor.c
 		shmif/arcan_shmif_sub.c
 		engine/arcan_vr.h
 		engine/arcan_vr.c

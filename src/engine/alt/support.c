@@ -315,8 +315,9 @@ static void wraperr(lua_State* L, int errc, const char* src)
 		fprintf(stream,
 			"\nHanding over to recovery script (or shutdown if none present).\n");
 
-		fclose(stream);
+		fflush(stream);
 		alt_trace_set_crash_source(buf);
+		fclose(stream);
 	}
 	else
 		alt_trace_set_crash_source(mesg);

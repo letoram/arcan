@@ -8,7 +8,8 @@
  * Initial connection for host-tags should now be faster
  * Connpath=a12://tag@ resolution fixed for one-off source-push connections
  * Congestion control blocking issue resolved
- * First drafts of 'directory' mode added
+ * First drafts of 'directory' mode for hosting arcan appls
+ * Arcan-net can now list and download appls from an arcan-net directory server
 
 ## Lua
  * net\_discover added, use this to find other a12 clients
@@ -52,6 +53,12 @@
  * Net: added 'sweep' discovery mode
  * Decode: added protocol=pdf (dependency, mupdf) mode
  * Decode: added protocol=list for probing
+
+## Engine
+ * Added -C, (control) mode for replacing ANR watchdog with debug-interface
+ * Monitor modes now disable default scripting error state dump
+ * -O monitoring mode behaviour / output reworked
+ * Negative monitoring samplerate will only write crash dumps
 
 ## Build
  * Vendored static freetype build evicted

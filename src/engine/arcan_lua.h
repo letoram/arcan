@@ -18,7 +18,8 @@ enum {
 	ARCAN_LUA_SWITCH_APPL = 1,
 	ARCAN_LUA_SWITCH_APPL_NOADOPT = 2,
 	ARCAN_LUA_RECOVERY_SWITCH = 3,
-	ARCAN_LUA_RECOVERY_FATAL_IGNORE = 4
+	ARCAN_LUA_RECOVERY_FATAL_IGNORE = 4,
+	ARCAN_LUA_KILL_SILENT = 5
 };
 
 typedef struct luaL_Reg* (*module_init_prototype)(int, int, int);
@@ -26,8 +27,7 @@ typedef struct luaL_Reg* (*module_init_prototype)(int, int, int);
 /* we separate alloc and mapfunctions to allow partial VM execution
  * BEFORE we have exposed the engine functions. This allows "constants"
  * to be calculated while still enforcing the themename() entrypoint */
-struct arcan_luactx* arcan_lua_alloc();
-
+struct arcan_luactx* arcan_lua_alloc(void (*watchdog)(lua_State*, lua_Debug*));
 void arcan_lua_mapfunctions(
 	struct arcan_luactx* dst, int debuglevel);
 
@@ -83,7 +83,7 @@ void arcan_lua_adopt(struct arcan_luactx* ctx);
 /* nonblock/read from (dst) filestream until an #ENDBLOCK\n tag is encountered,
  * parse this and push it into the struct arcan_luactx as the first
  * and only argument to the function pointed out with (dstfun). */
-void arcan_lua_stategrab(struct arcan_luactx* ctx, char* dstfun, int fd);
+void arcan_lua_stategrab(struct arcan_luactx* ctx, char* dstfun, int infd);
 
 /*
  * create a new external listening endpoint and expose via the _adopt handler,
@@ -94,7 +94,7 @@ bool arcan_lua_launch_cp(
 
 #ifdef ARCAN_LWA
 struct subseg_output;
-bool platform_lwa_targetevent(struct subseg_output*, arcan_event* ev);
+bool platform_lwa_targetevent(struct subseg_output*, struct arcan_event* ev);
 bool platform_lwa_allocbind_feed(
 	struct arcan_luactx* ctx, arcan_vobj_id rtgt, enum ARCAN_SEGID type, uintptr_t cbtag);
 void arcan_lwa_subseg_ev(

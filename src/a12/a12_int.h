@@ -123,6 +123,7 @@ struct binary_frame {
 	int type;
 	bool active;
 	uint64_t size;
+	uint32_t identifier;
 	uint8_t checksum[16];
 	int64_t streamid; /* actual type is uint32 but -1 for cancel */
 };
@@ -171,6 +172,7 @@ struct blob_out {
 	int fd;
 	uint8_t chid;
 	int type;
+	uint32_t identifier;
 	size_t left;
 	char* buf;
 	size_t buf_sz;

@@ -31,6 +31,7 @@
 #include <setjmp.h>
 #include <math.h>
 #include <stdatomic.h>
+#include <lua.h>
 
 extern jmp_buf arcanmain_recover_state;
 
