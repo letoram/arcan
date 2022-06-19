@@ -614,6 +614,10 @@ a12_channel_close(struct a12_state* S)
 		S->channels[S->out_channel].active = false;
 	}
 
+	if (S->out_channel == 0){
+		S->state = STATE_BROKEN;
+	}
+
 	a12int_trace(A12_TRACE_SYSTEM, "closing channel (%d)", S->out_channel);
 }
 
