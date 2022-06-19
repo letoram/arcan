@@ -29,6 +29,10 @@ struct anet_dircl_opts {
 	int basedir;
 	const char* applname;
 	bool die_on_list;
+	bool reload;
+	bool block_state;
+	bool block_log;
+	bool keep_appl;
 };
 
 void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts);

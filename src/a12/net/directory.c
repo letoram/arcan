@@ -15,6 +15,7 @@
 #include <ctype.h>
 #include <inttypes.h>
 #include <stdint.h>
+#include <signal.h>
 
 #include "../a12.h"
 #include "../a12_int.h"
@@ -34,6 +35,8 @@ struct cb_tag {
 	struct anet_dircl_opts* clopt;
 	FILE* outf;
 };
+
+static bool g_shutdown;
 
 static FILE* cmd_to_membuf(const char* cmd, char** out, size_t* out_sz)
 {
@@ -181,7 +184,7 @@ static void ioloop(struct a12_state* S, void* tag, int fdin, int fdout, void
 		n_fd++;
 
 /* regular simple processing loop, wait for DIRECTORY-LIST command */
-	while (a12_ok(S) && -1 != poll(fds, n_fd, -1)){
+	while (a12_ok(S) && -1 != poll(fds, n_fd, -1) && !g_shutdown){
 		if (
 			(fds[0].revents & errmask) ||
 			(n_fd == 2 && fds[1].revents & errmask))
@@ -408,7 +411,8 @@ static bool handover_exec(struct a12_state* S,
 	int pret = 0;
 	char* out = NULL;
 	char filename[] = "statetemp-XXXXXX";
-	int state_fd;
+	int state_fd = -1;
+
 	if (-1 == (state_fd = mkstemp(filename))){
 		fprintf(stderr, "Couldn't create temp-store, state transfer disabled\n");
 	}
@@ -452,7 +456,8 @@ static bool handover_exec(struct a12_state* S,
 
 /* exited successfully? then the state snapshot should only contain the K/V
  * dump, and if empty - nothing to do */
-	clean_appldir(name, opts->basedir);
+	if (!opts->keep_appl)
+		clean_appldir(name, opts->basedir);
 	*state = state_fd;
 
 	if (WIFEXITED(pret) && !WEXITSTATUS(pret)){
@@ -483,12 +488,14 @@ static struct a12_bhandler_res cl_bevent(
 
 	switch (M.state){
 	case A12_BHANDLER_COMPLETED:
-		if (cbt->outf){
-			int state_out = -1;
-			size_t state_sz = 0;
+		if (!cbt->outf)
+			break;
 
-			pclose(cbt->outf);
-			cbt->outf = NULL;
+		int state_out = -1;
+		size_t state_sz = 0;
+
+		pclose(cbt->outf);
+		cbt->outf = NULL;
 
 /*
  * run the appl, collect state into *state_out and if need be, synch it onwards
@@ -501,20 +508,38 @@ static struct a12_bhandler_res cl_bevent(
  * as handle 'push' updates to the appl itself and just 'force' through the
  * monitor interface.
  */
-			bool exec_res = handover_exec(S,
-				cbt->clopt->applname, cbt->clopt, &state_out, &state_sz);
+		bool exec_res = handover_exec(S,
+			cbt->clopt->applname, cbt->clopt, &state_out, &state_sz);
 
-			if (-1 != state_out){
-				if (state_sz){
-					a12_enqueue_bstream(S, state_out,
-						exec_res ? A12_BTYPE_STATE : A12_BTYPE_CRASHDUMP,
-						M.identifier, false, state_sz
-					);
-				}
-				else
-					close(state_out);
+		if (-1 == state_out)
+			break;
+
+		if (state_sz){
+			if (exec_res && !cbt->clopt->block_state){
+				a12_enqueue_bstream(S,
+					state_out, A12_BTYPE_STATE, M.identifier, false, state_sz);
+				state_out = -1;
+			}
+			else if (!exec_res && !cbt->clopt->block_log){
+				a12_enqueue_bstream(S,
+					state_out, A12_BTYPE_CRASHDUMP, M.identifier, false, state_sz);
+				state_out = -1;
 			}
 		}
+
+/* never got adopted */
+		if (-1 != state_out)
+			close(state_out);
+
+/* backwards way to do it and should be reconsidered when we do processing
+ * while arcan_lwa / arcan is still running, but for now this will cause a
+ * new dirlist, a new match and a new request -> running */
+		if (cbt->clopt->reload){
+			a12int_request_dirlist(S, false);
+		}
+		else
+			g_shutdown = true;
+
 	break;
 	case A12_BHANDLER_INITIALIZE:{
 		if (cbt->outf){
@@ -525,8 +550,6 @@ static struct a12_bhandler_res cl_bevent(
 			fprintf(stderr, "Couldn't create temporary appl directory");
 			return res;
 		}
-
-		fprintf(stderr, "got identifier: %"PRIu32"\n", M.identifier);
 
 /* for restoring the DB, can simply popen to arcan_db with the piped
  * mode (arcan_db add_appl_kv basename key value) and send a SIGUSR2

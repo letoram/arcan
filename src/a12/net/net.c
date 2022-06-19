@@ -54,6 +54,7 @@ static struct {
 	int directory;
 	const char* reqname;
 	struct anet_dirsrv_opts dirsrv;
+	struct anet_dircl_opts dircl;
 } global = {
 	.backpressure_soft = 2,
 	.backpressure = 6,
@@ -166,7 +167,6 @@ static bool handover_setup(struct a12_state* S,
 
 	return true;
 }
-
 
 /*
  * in this mode we should really fexec ourselves so we don't risk exposing
@@ -340,10 +340,8 @@ static void a12cl_dispatch(
  * reducing attack surface since very little actual forwarding or processing is
  * needed. */
 	if (global.directory){
-		struct anet_dircl_opts opts = {
-			.basedir = global.directory
-		};
-		anet_directory_cl(S, opts, fd, fd);
+		global.dircl.basedir = global.directory;
+		anet_directory_cl(S, global.dircl, fd, fd);
 		close(fd);
 		return;
 	}
@@ -570,9 +568,9 @@ static bool show_usage(const char* msg)
 	"Bridge remote outbound arcan application: \n"
 	"    arcan-net [tag@]host port\n\n"
 	"Directory/discovery server (uses ARCAN_APPLBASEPATH): \n"
-	"    arcan-net -l port [ip] --directory\n\n"
+	"    arcan-net --directory -l port [ip]\n\n"
 	"Directory/discovery client: \n"
-	"    arcan-net --directory [tag@]host port [appl]\n\n"
+	"    arcan-net [tag@]host port [appl]\n\n"
 	"Forward-local options:\n"
 	"\t-X             \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n"
 	"\t-r, --retry n  \t Limit retry-reconnect attempts to 'n' tries\n\n"
@@ -584,6 +582,11 @@ static bool show_usage(const char* msg)
 	"\t --no-ephem-rt \t Disable ephemeral keypair roundtrip (outbound only)\n"
 	"\t --probe-only  \t (outbound) Authenticate and print server primary state\n"
 	"\t-d bitmap      \t Set trace bitmap (bitmask or key1,key2,...)\n\n"
+	"Directory client options: \n"
+	"\t --keep-appl   \t Don't wipe appl after execution\n"
+	"\t --reload      \t Re-request the same appl after completion\n"
+	"\t --block-log   \t Don't attempt to forward script errors or crash logs\n"
+	"\t --block-state \t Don't attempt to synch state before/after running appl\n\n"
 	"Environment variables:\n"
 	"\tARCAN_STATEPATH\t Used for keystore and state blobs (sensitive)\n"
 #ifdef WANT_H264_ENC
@@ -768,6 +771,18 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		}
 		else if (strcmp(argv[i], "-t") == 0){
 			opts->mt_mode = MT_SINGLE;
+		}
+		else if (strcmp(argv[i], "--keep-appl") == 0){
+			global.dircl.keep_appl = true;
+		}
+		else if (strcmp(argv[i], "--block-log") == 0){
+			global.dircl.block_log = true;
+		}
+		else if (strcmp(argv[i], "--block-state") == 0){
+			global.dircl.block_state = true;
+		}
+		else if (strcmp(argv[i], "--reload") == 0){
+			global.dircl.reload = true;
 		}
 		else if (strcmp(argv[i], "--directory") == 0){
 			if (!getenv("ARCAN_APPLBASEPATH")){
@@ -1043,16 +1058,14 @@ int main(int argc, char** argv)
  * sinks and other directories. */
 			int rc = 0;
 			if (a12_remote_mode(cl.state) == ROLE_DIR){
-				struct anet_dircl_opts opts = {
-					.applname = global.reqname,
-					.die_on_list = true,
-					.basedir = global.directory
-				};
+				global.dircl.applname = global.reqname;
+				global.dircl.die_on_list;
+				global.dircl.basedir = global.directory;
 				if (argi <= argc - 1){
-					opts.applname = argv[argi];
+					global.dircl.applname = argv[argi];
 				}
 
-				anet_directory_cl(cl.state, opts, cl.fd, cl.fd);
+				anet_directory_cl(cl.state, global.dircl, cl.fd, cl.fd);
 			}
 			else {
 				rc = a12helper_a12srv_shmifcl(NULL, cl.state, NULL, cl.fd, cl.fd);
