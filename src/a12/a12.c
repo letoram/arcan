@@ -1361,6 +1361,7 @@ void a12_enqueue_bstream(struct a12_state* S,
  * the other side to cancel the transfer if it is already known */
 	if (streaming){
 		next->streaming = true;
+		next->left = sz;
 		return;
 	}
 
@@ -1462,7 +1463,7 @@ static void hello_auth_server_hello(struct a12_state* S)
 
 	/* here is a spot for having more authentication modes if needed (version bump) */
 	if (cfl != HELLO_MODE_EPHEMPK && cfl != HELLO_MODE_REALPK){
-		a12int_trace(A12_TRACE_SECURITY, "unknown_helo");
+		a12int_trace(A12_TRACE_SECURITY, "unknown_hello");
 		fail_state(S);
 		return;
 	}
@@ -1509,6 +1510,7 @@ static void hello_auth_server_hello(struct a12_state* S)
 	x25519_public_key(res.key, pubk);
 	arcan_random(nonce, 8);
 	send_hello_packet(S, HELLO_MODE_REALPK, pubk, nonce);
+	memcpy(S->keys.remote_pub, &S->decode[21], 32);
 	trace_crypto_key(S->server, "state=client_pk_ok:respond_pk", pubk, 32);
 
 /* now we can switch keys, note that the new nonce applies for both enc and dec
@@ -1520,6 +1522,7 @@ static void hello_auth_server_hello(struct a12_state* S)
 /* and done, mark latched so a12_unpack saves buffer and returns */
 	S->authentic = AUTH_FULL_PK;
 	S->auth_latched = true;
+	S->state_access = res.state_access;
 
 	if (S->on_auth)
 		S->on_auth(S, S->auth_tag);
@@ -1551,6 +1554,7 @@ static void hello_auth_client_hello(struct a12_state* S)
 	S->authentic = AUTH_FULL_PK;
 	S->auth_latched = true;
 	S->remote_mode = S->decode[54];
+	memcpy(S->keys.remote_pub, &S->decode[21], 32);
 	a12int_trace(A12_TRACE_SYSTEM, "remote_mode=%d", S->remote_mode);
 
 	if (S->on_auth)
@@ -2934,3 +2938,13 @@ int a12_remote_mode(struct a12_state* S)
 {
 	return S->remote_mode;
 }
+
+int a12_access_state(
+	struct a12_state* S, const char* id, const char* mode, size_t sz)
+{
+	if (!S || !S->state_access)
+		return -1;
+
+	return S->state_access(S->keys.remote_pub, id, sz, mode);
+}
+

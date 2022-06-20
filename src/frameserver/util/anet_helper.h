@@ -124,6 +124,9 @@ bool a12helper_keystore_accepted(
  * if [connp] is NULL, it will only be added as a permitted outgoing connection
  * (client mode), otherwise set a comma separated list (or * for wildcard) of
  * valid connection points this key is allowed to bind to.
+ *
+ * the [state-cap] indicates if the owner of the key is allowed to store state
+ * locally or not, with 0 blocking state transfers
  */
 bool a12helper_keystore_accept(const uint8_t pubk[static 32], const char* connp);
 
@@ -139,6 +142,13 @@ int anet_clfd(struct addrinfo* addr);
  * and it is the caller that is responsible for cleaning up.
  */
 bool anet_authenticate(struct a12_state* S, int fdin, int fdout, char** err);
+
+/*
+ * Open or allocate (sz > 0) a name for assigning custom state data to a public
+ * key and return a FILE* abstraction for reading or writing based on 'mode'.
+ */
+int a12helper_keystore_statestore(
+	const uint8_t pubk[static 32], const char* name, size_t sz, const char* mode);
 
 /*
  * Used for the BASEDIR keystore method, using environment variables or config

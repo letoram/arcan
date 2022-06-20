@@ -287,7 +287,12 @@ struct a12_state {
 		uint8_t ephem_priv[32];
 		uint8_t real_priv[32];
 		uint64_t rekey_pos;
+		uint8_t remote_pub[32];
 	} keys;
+
+/* pk_lookup provided state accessor */
+	int (*state_access)(const uint8_t pub[static 32],
+		const char* name, size_t sz, const char* mode);
 
 /* client side needs to send the first packet with MAC+nonce, server side
  * needs to interpret first packet with MAC+nonce */

@@ -34,6 +34,7 @@ struct key_ent {
 	uint8_t key[32];
 	char* host;
 	size_t port;
+	char* fn;
 
 	struct key_ent* next;
 };
@@ -43,12 +44,14 @@ static struct {
 
 	int dirfd_private;
 	int dirfd_accepted;
+	int dirfd_state;
 
 	bool open;
 	struct keystore_provider provider;
 } keystore = {
 	.dirfd_private = -1,
-	.dirfd_accepted = -1
+	.dirfd_accepted = -1,
+	.dirfd_state = -1
 };
 
 static uint8_t b64dec_lut[256] = {
@@ -287,6 +290,7 @@ bool a12helper_keystore_open(struct keystore_provider* p)
  * running persistantly */
 	mkdirat(keystore.provider.directory.dirfd, "accepted", S_IRWXU);
 	mkdirat(keystore.provider.directory.dirfd, "hostkeys", S_IRWXU);
+	mkdirat(keystore.provider.directory.dirfd, "state", S_IRWXU);
 
 	int fl = O_DIRECTORY | O_CLOEXEC;
 	if (-1 == (keystore.dirfd_accepted =
@@ -304,6 +308,9 @@ bool a12helper_keystore_open(struct keystore_provider* p)
 		keystore.provider.directory.dirfd = -1;
 		return false;
 	}
+
+	keystore.dirfd_state =
+		openat(keystore.provider.directory.dirfd, "state", fl);
 
 	load_accepted_keys();
 	keystore.open = true;
@@ -375,10 +382,12 @@ bool a12helper_keystore_release()
 	close(keystore.provider.directory.dirfd);
 	close(keystore.dirfd_accepted);
 	close(keystore.dirfd_private);
+	close(keystore.dirfd_state);
 
 	keystore.provider.directory.dirfd = -1;
 	keystore.dirfd_accepted = -1;
 	keystore.dirfd_private = -1;
+	keystore.dirfd_state = -1;
 	keystore.open = false;
 
 	return true;
@@ -609,6 +618,34 @@ bool a12helper_keystore_tags(bool (*cb)(const char*, void*), void* tag)
 
 	closedir(dir);
 	return true;
+}
+
+int a12helper_keystore_statestore(
+	const uint8_t pubk[static 32], const char* name, size_t sz, const char* mode)
+{
+	if (keystore.dirfd_state == -1)
+		return -1;
+
+	struct key_ent* ent = keystore.hosts;
+	while (ent && memcmp(pubk, ent->key, 32) != 0)
+		ent = ent->next;
+
+	if (!ent)
+		return -1;
+
+/* need to save / store the cap somewhere, match the directory name to the
+ * same random name that was given to the key earlier */
+	mkdirat(keystore.dirfd_state, ent->fn, S_IRWXU);
+	int dir = openat(keystore.dirfd_state, ent->fn, O_DIRECTORY | O_CLOEXEC);
+	if (dir == -1)
+		return -1;
+
+/* sz is not enforced yet, just read a .cap file? */
+	if (strcmp(mode, "w+") == 0){
+		return openat(dir, name, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+	}
+	else
+		return openat(dir, name, O_RDONLY);
 }
 
 /*
