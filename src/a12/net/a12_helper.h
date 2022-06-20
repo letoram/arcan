@@ -32,9 +32,6 @@ struct a12helper_opts {
 	size_t vframe_soft_block;
 	size_t vframe_block;
 
-	int dirfd_temp;
-	int dirfd_cache;
-
 /* a12cl_shmifsrv- specific: set to a valid local connection-point and incoming
  * EXIT_ events will be translated to DEVICE_NODE events, preventing the remote
  * side from closing the window */

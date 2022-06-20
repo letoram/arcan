@@ -50,6 +50,11 @@ struct pk_response {
  * client if there is differentiation, for client-side, the private key in the
  * structure to a12_client will be used */
 	uint8_t key[32];
+
+/* If state store is provided / permitted for the key, return a lookup function
+ * for creating or reading named resources from it */
+	int (*state_access)(
+		const uint8_t pub[static 32], const char* name, size_t sz, const char* mode);
 };
 
 struct a12_context_options {
@@ -58,10 +63,8 @@ struct a12_context_options {
  * time or bytes before being terminated. */
 	struct pk_response (*pk_lookup)(uint8_t pub[static 32]);
 
-/* Client only, provide the private key to use with the connection, this will
- * be xored with a per-execution session cookie stored random to avoid leaking
- * from a read primitive or crash dump. All [0] key will disable attempts at
-* asymetric operation. */
+/* Client only, provide the private key to use with the connection. All [0]
+ * key will disable attempts at asymetric operation. */
 	uint8_t priv_key[32];
 
 /* default is to add a round-trip and use an ephemeral public key to transfer
@@ -554,6 +557,13 @@ enum stream_cancel {
 	STREAM_CANCEL_KNOWN = 2
 };
 void a12_vstream_cancel(struct a12_state* S, uint8_t chid, int reason);
+
+/*
+ * Return a descriptor to a state store for the a12 context+id pair
+ * with the desired access mode (r, w+) and (for w+) size boundary
+ */
+int a12_access_state(
+	struct a12_state* s, const char* id, const char* mode, size_t sz);
 
 struct a12_iostat {
 	size_t b_in;

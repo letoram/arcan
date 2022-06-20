@@ -145,6 +145,17 @@ static void on_srv_event(
 		struct appl_meta* meta = cbt->dir;
 		while (meta){
 			if (extid == meta->identifier){
+/* we have the applname, and the Kpub of the other end -
+ * use that to determine if we have any state block to send first */
+				int fd = a12_access_state(cbt->S, meta->applname, "r", 0);
+				if (-1 != fd){
+					a12int_trace(A12_TRACE_DIRECTORY,
+						"event=bchunkstate:send_state=%s", meta->applname);
+					a12_enqueue_bstream(
+						cbt->S, fd, A12_BTYPE_STATE, meta->identifier, false, 0);
+					close(fd);
+				}
+
 				a12int_trace(A12_TRACE_DIRECTORY,
 					"event=bchunkstate:send=%s", meta->applname);
 				a12_enqueue_blob(cbt->S, meta->buf, meta->buf_sz, meta->identifier);
@@ -477,6 +488,57 @@ static bool handover_exec(struct a12_state* S,
 	return false;
 }
 
+static struct appl_meta* find_identifier(struct appl_meta* base, unsigned id)
+{
+	while (base){
+		if (base->identifier == id)
+			return base;
+		base = base->next;
+	}
+	return NULL;
+}
+
+static struct a12_bhandler_res srv_bevent(
+	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
+{
+	struct a12_bhandler_res res = {
+		.fd = -1,
+		.flag = A12_BHANDLER_DONTWANT
+	};
+
+	struct cb_tag* cbt = tag;
+	struct appl_meta* meta = find_identifier(cbt->dir, M.identifier);
+	if (!meta)
+		return res;
+
+/* this is not robust or complete - the previous a12_access_state for the ID
+ * should really only be swapped when we have a complete transfer - one option
+ * is to first store under a temporary id, then on completion access and copy */
+	switch (M.state){
+	case A12_BHANDLER_COMPLETED:
+	break;
+	case A12_BHANDLER_CANCELLED:
+/* 1. truncate the existing state store for the slot */
+	break;
+	case A12_BHANDLER_INITIALIZE:
+/* 1. check that the identifier is valid. */
+/* 2. reserve the state slot - add suffix if it is debug */
+/* 3. setup the result structure. */
+		if (M.type == A12_BTYPE_BLOB)
+			res.fd = a12_access_state(S, meta->applname, "w+", M.known_size);
+		if (M.type == A12_BTYPE_CRASHDUMP){
+			char name[sizeof(meta->applname) + sizeof(".dump")];
+			snprintf(name, sizeof(name), "%s.dump", meta->applname);
+			res.fd = a12_access_state(S, name, "w+", M.known_size);
+		}
+	break;
+	}
+
+	if (-1 != res.fd)
+		res.flag = A12_BHANDLER_NEWFD;
+	return res;
+}
+
 static struct a12_bhandler_res cl_bevent(
 	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
 {
@@ -518,11 +580,13 @@ static struct a12_bhandler_res cl_bevent(
 			if (exec_res && !cbt->clopt->block_state){
 				a12_enqueue_bstream(S,
 					state_out, A12_BTYPE_STATE, M.identifier, false, state_sz);
+				close(state_out);
 				state_out = -1;
 			}
 			else if (!exec_res && !cbt->clopt->block_log){
 				a12_enqueue_bstream(S,
 					state_out, A12_BTYPE_CRASHDUMP, M.identifier, false, state_sz);
+				close(state_out);
 				state_out = -1;
 			}
 		}

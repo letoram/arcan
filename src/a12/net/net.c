@@ -222,8 +222,6 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 	int rc = 0;
 	if (C){
 		a12helper_a12cl_shmifsrv(S, C, fd, fd, (struct a12helper_opts){
-			.dirfd_temp = -1,
-			.dirfd_cache = -1,
 			.redirect_exit = meta->opts->redirect_exit,
 			.devicehint_cp = meta->opts->devicehint_cp,
 			.vframe_block = global.backpressure,
@@ -315,8 +313,6 @@ static void single_a12srv(struct a12_state* S, int fd, void* tag)
 
 	if (C){
 		a12helper_a12cl_shmifsrv(S, C, fd, fd, (struct a12helper_opts){
-			.dirfd_temp = -1,
-			.dirfd_cache = -1,
 			.redirect_exit = meta->opts->redirect_exit,
 			.devicehint_cp = meta->opts->devicehint_cp,
 			.vframe_block = global.backpressure,
@@ -348,8 +344,6 @@ static void a12cl_dispatch(
 
 /* note that the a12helper will do the cleanup / free */
 	a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
-		.dirfd_temp = -1,
-		.dirfd_cache = -1,
 		.vframe_block = global.backpressure,
 		.redirect_exit = args->redirect_exit,
 		.devicehint_cp = args->devicehint_cp
@@ -945,7 +939,8 @@ static int apply_keystore_command(int argc, char** argv)
  */
 static struct pk_response key_auth_local(uint8_t pk[static 32])
 {
-	struct pk_response auth = {0};
+	struct pk_response auth = {};
+
 	char* tmp;
 	uint16_t tmpport;
 	size_t outl;
@@ -974,6 +969,10 @@ static struct pk_response key_auth_local(uint8_t pk[static 32])
 	}
 	else if (!auth.authentic){
 		a12int_trace(A12_TRACE_SECURITY, "reject-unknown=%s", out);
+	}
+
+	if (auth.authentic && global.directory != -1){
+		auth.state_access = a12helper_keystore_statestore;
 	}
 
 	free(out);
