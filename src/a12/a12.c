@@ -1300,6 +1300,7 @@ void a12_enqueue_blob(
 	(*next)->buf_sz = buf_sz;
 	(*next)->left = buf_sz;
 	(*next)->identifier = id;
+	(*next)->type = A12_BTYPE_BLOB;
 
 	blake3_hasher hash;
 	blake3_hasher_init(&hash);

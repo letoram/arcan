@@ -41,6 +41,9 @@ struct cb_tag {
 
 static bool g_shutdown;
 
+static struct a12_bhandler_res srv_bevent(
+	struct a12_state* S, struct a12_bhandler_meta M, void* tag);
+
 static FILE* cmd_to_membuf(const char* cmd, char** out, size_t* out_sz)
 {
 	FILE* applin = popen(cmd, "r");
@@ -271,6 +274,7 @@ void anet_directory_srv(
 	}
 
 	a12int_set_directory(S, &opts.dir);
+	a12_set_bhandler(S, srv_bevent, &cbt);
 	ioloop(S, &cbt, fdin, fdout, on_srv_event, NULL);
 }
 
@@ -522,6 +526,8 @@ static struct a12_bhandler_res srv_bevent(
  * is to first store under a temporary id, then on completion access and copy */
 	switch (M.state){
 	case A12_BHANDLER_COMPLETED:
+		a12int_trace(
+			A12_TRACE_DIRECTORY, "kind=status:completed:identifier=%"PRIu16, M.identifier);
 	break;
 	case A12_BHANDLER_CANCELLED:
 /* 1. truncate the existing state store for the slot */
@@ -530,9 +536,9 @@ static struct a12_bhandler_res srv_bevent(
 /* 1. check that the identifier is valid. */
 /* 2. reserve the state slot - add suffix if it is debug */
 /* 3. setup the result structure. */
-		if (M.type == A12_BTYPE_BLOB)
+		if (M.type == A12_BTYPE_STATE)
 			res.fd = a12_access_state(S, meta->applname, "w+", M.known_size);
-		if (M.type == A12_BTYPE_CRASHDUMP){
+		else if (M.type == A12_BTYPE_CRASHDUMP){
 			char name[sizeof(meta->applname) + sizeof(".dump")];
 			snprintf(name, sizeof(name), "%s.dump", meta->applname);
 			res.fd = a12_access_state(S, name, "w+", M.known_size);
