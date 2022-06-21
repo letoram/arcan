@@ -845,6 +845,7 @@ static void command_binarystream(struct a12_state* S)
 		.known_size = bframe->size,
 		.streamid = bframe->streamid,
 		.identifier = bframe->identifier,
+		.type = bframe->type,
 		.fd = -1
 	};
 
@@ -1338,6 +1339,7 @@ void a12_enqueue_bstream(struct a12_state* S,
 
 	struct blob_out* next = *parent;
 	next->type = type;
+	next->identifier = id;
 
 /* [MISSING]
  * Insertion priority sort goes here, be wary of channel-id in heuristic
