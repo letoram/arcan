@@ -251,6 +251,7 @@ static void load_accepted_keys()
 			*host = alloc_key_ent(key);
 			if (*host){
 				(*host)->host = strdup(hoststr);
+				(*host)->fn = strdup(ent->d_name);
 				host = &(*host)->next;
 			}
 
