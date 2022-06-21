@@ -2866,7 +2866,8 @@ static const char* groups[] = {
 	"crypto",
 	"vdetail",
 	"btransfer",
-	"security"
+	"security",
+	"directory"
 };
 
 static unsigned i_log2(uint32_t n)
