@@ -33,7 +33,10 @@ struct cb_tag {
 	struct appl_meta* dir;
 	struct a12_state* S;
 	struct anet_dircl_opts* clopt;
-	FILE* outf;
+	FILE* appl_out;
+	bool appl_out_complete;
+	int state_in;
+	bool state_in_complete;
 };
 
 static bool g_shutdown;
@@ -195,7 +198,7 @@ static void ioloop(struct a12_state* S, void* tag, int fdin, int fdout, void
 		n_fd++;
 
 /* regular simple processing loop, wait for DIRECTORY-LIST command */
-	while (a12_ok(S) && -1 != poll(fds, n_fd, -1) && !g_shutdown){
+	while (a12_ok(S) && -1 != poll(fds, n_fd, -1)){
 		if (
 			(fds[0].revents & errmask) ||
 			(n_fd == 2 && fds[1].revents & errmask))
@@ -235,6 +238,9 @@ static void ioloop(struct a12_state* S, void* tag, int fdin, int fdout, void
 
 		if (!outbuf_sz){
 			outbuf_sz = a12_flush(S, &outbuf, A12_FLUSH_ALL);
+			if (!outbuf_sz && g_shutdown){
+				break;
+			}
 		}
 
 		n_fd = outbuf_sz > 0 ? 2 : 1;
@@ -318,8 +324,8 @@ static bool ensure_appldir(const char* name, int basedir)
 }
 
 /* assumes that cwd points to our scratch folder for extracted appls */
-static bool handover_exec(struct a12_state* S,
-	const char* name, struct anet_dircl_opts* opts, int* state, size_t* state_sz)
+static bool handover_exec(struct a12_state* S, const char* name,
+	FILE* state_in, struct anet_dircl_opts* opts, int* state, size_t* state_sz)
 {
 	char buf[strlen(name) + sizeof("./")];
 	snprintf(buf, sizeof(buf), "./%s", name);
@@ -539,25 +545,34 @@ static struct a12_bhandler_res srv_bevent(
 	return res;
 }
 
-static struct a12_bhandler_res cl_bevent(
-	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
+static void mark_xfer_complete(
+	struct a12_state* S, struct a12_bhandler_meta M, struct cb_tag* cbt)
 {
-	struct cb_tag* cbt = tag;
-	struct a12_bhandler_res res = {
-		.fd = -1,
-		.flag = A12_BHANDLER_DONTWANT
-	};
+/* state transfer will be initiated before appl transfer (if one is present),
+ * but might complete afterwards - defer the actual execution until BOTH have
+ * been completed */
+	if (M.type == A12_BTYPE_STATE){
+		cbt->state_in_complete = true;
+		if (cbt->appl_out_complete)
+			goto run;
+		return;
+	}
+	else if (M.type != A12_BTYPE_BLOB)
+		return;
 
-	switch (M.state){
-	case A12_BHANDLER_COMPLETED:
-		if (!cbt->outf)
-			break;
+/* signs of foul-play */
+	if (!cbt->appl_out){
+		fprintf(stderr, "xfer completed on blob without an active state");
+		g_shutdown = true;
+		return;
+	}
 
-		int state_out = -1;
-		size_t state_sz = 0;
+	cbt->appl_out_complete = true;
 
-		pclose(cbt->outf);
-		cbt->outf = NULL;
+/* still need to wait for the state block to finish */
+	if (cbt->state_in != -1 && !cbt->state_in_complete){
+		return;
+	}
 
 /*
  * run the appl, collect state into *state_out and if need be, synch it onwards
@@ -570,13 +585,33 @@ static struct a12_bhandler_res cl_bevent(
  * as handle 'push' updates to the appl itself and just 'force' through the
  * monitor interface.
  */
-		bool exec_res = handover_exec(S,
-			cbt->clopt->applname, cbt->clopt, &state_out, &state_sz);
+run:
+	pclose(cbt->appl_out);
+	cbt->appl_out = NULL;
+	cbt->appl_out_complete = false;
 
-		if (-1 == state_out)
-			break;
+/* rewind the state block and pass it (if present) to the execution setup */
+	FILE* state_in = NULL;
+	if (-1 != cbt->state_in){
+		lseek(cbt->state_in, 0, SEEK_SET);
+		state_in = fdopen(cbt->state_in, "r");
+		cbt->state_in = -1;
+		cbt->state_in_complete = false;
+	}
 
-		if (state_sz){
+	int state_out = -1;
+	size_t state_sz = 0;
+	bool exec_res = handover_exec(S,
+		cbt->clopt->applname, state_in, cbt->clopt, &state_out, &state_sz);
+
+/* execution completed - this is where we could/should actually continue and
+ * switch to an ioloop that check the child process for completion or for appl
+ * 'push' updates */
+	if (-1 == state_out)
+		return;
+
+/* if permitted and we got state or crashdump, synch it back */
+	if (state_sz){
 			if (exec_res && !cbt->clopt->block_state){
 				a12_enqueue_bstream(S,
 					state_out, A12_BTYPE_STATE, M.identifier, false, state_sz);
@@ -592,34 +627,71 @@ static struct a12_bhandler_res cl_bevent(
 		}
 
 /* never got adopted */
-		if (-1 != state_out)
-			close(state_out);
+	if (-1 != state_out)
+		close(state_out);
 
 /* backwards way to do it and should be reconsidered when we do processing
  * while arcan_lwa / arcan is still running, but for now this will cause a
  * new dirlist, a new match and a new request -> running */
-		if (cbt->clopt->reload){
-			a12int_request_dirlist(S, false);
-		}
-		else
-			g_shutdown = true;
+	if (cbt->clopt->reload){
+		a12int_request_dirlist(S, false);
+	}
+	else
+		g_shutdown = true;
+}
 
+static struct a12_bhandler_res cl_bevent(
+	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
+{
+	struct cb_tag* cbt = tag;
+	struct a12_bhandler_res res = {
+		.fd = -1,
+		.flag = A12_BHANDLER_DONTWANT
+	};
+
+	switch (M.state){
+	case A12_BHANDLER_COMPLETED:
+		mark_xfer_complete(S, M, tag);
 	break;
 	case A12_BHANDLER_INITIALIZE:{
-		if (cbt->outf){
-			return res;
-		}
-/* could also use -C */
-		if (!ensure_appldir(cbt->clopt->applname, cbt->clopt->basedir)){
-			fprintf(stderr, "Couldn't create temporary appl directory");
+/* if we get a state blob before the binary blob, it should be kept until the
+ * binary blob is completed and injected as part of the monitoring setup -
+ * wrap this around a FILE* abstraction */
+		if (M.type == A12_BTYPE_STATE){
+			if (-1 != cbt->state_in){
+				fprintf(stderr, "Server sent multiple state blocks, ignoring\n");
+				return res;
+			}
+
+/* create a tempfile / unlink it */
+			char filename[] = "statetemp-XXXXXX";
+			if (-1 == (cbt->state_in = mkstemp(filename))){
+				fprintf(stderr, "Couldn't allocate temp-store, ignoring state\n");
+				return res;
+			}
+
+			cbt->state_in_complete = true;
+			res.fd = cbt->state_in;
+			res.flag = A12_BHANDLER_NEWFD;
 			return res;
 		}
 
-/* for restoring the DB, can simply popen to arcan_db with the piped
- * mode (arcan_db add_appl_kv basename key value) and send a SIGUSR2
- * to the process to indicate that the state has been updated. */
-		cbt->outf = popen("tar xf -", "w");
-		res.fd = fileno(cbt->outf);
+		if (cbt->appl_out){
+			fprintf(stderr, "Appl transfer initiated while one was pending\n");
+			return res;
+		}
+
+/* could also use -C */
+		if (!ensure_appldir(cbt->clopt->applname, cbt->clopt->basedir)){
+			fprintf(stderr, "Couldn't create temporary appl directory\n");
+			return res;
+		}
+
+/* for restoring the DB, can simply popen to arcan_db with the piped mode
+ * (arcan_db add_appl_kv basename key value) and send a SIGUSR2 to the process
+ * to indicate that the state has been updated. */
+		cbt->appl_out = popen("tar xf -", "w");
+		res.fd = fileno(cbt->appl_out);
 		res.flag = A12_BHANDLER_NEWFD;
 
 		if (-1 != cbt->clopt->basedir)
@@ -628,14 +700,26 @@ static struct a12_bhandler_res cl_bevent(
 			chdir("..");
 	}
 	break;
-/* set to fail for now? */
+
+/* set to fail for now? this is most likely to happen if write to the backing
+ * FD fails (though the server is free to cancel for other reasons) */
 	case A12_BHANDLER_CANCELLED:
 		fprintf(stderr, "appl download cancelled\n");
-		if (cbt->outf){
-			pclose(cbt->outf);
-			cbt->outf = NULL;
+		if (M.type == A12_BTYPE_STATE){
+			close(cbt->state_in);
+			cbt->state_in = -1;
+			cbt->state_in_complete = false;
 		}
-		clean_appldir(cbt->clopt->applname, cbt->clopt->basedir);
+		else if (M.type == A12_BTYPE_BLOB){
+			if (cbt->appl_out){
+				pclose(cbt->appl_out);
+				cbt->appl_out = NULL;
+				cbt->appl_out_complete = false;
+			}
+			clean_appldir(cbt->clopt->applname, cbt->clopt->basedir);
+		}
+		else
+			;
 	break;
 	}
 
@@ -691,7 +775,8 @@ void anet_directory_cl(
 {
 	struct cb_tag cbt = {
 		.S = S,
-		.clopt = &opts
+		.clopt = &opts,
+		.state_in = -1
 	};
 
 	sigaction(SIGPIPE,&(struct sigaction){.sa_handler = SIG_IGN}, 0);
