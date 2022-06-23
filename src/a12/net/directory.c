@@ -424,7 +424,31 @@ static bool handover_exec(struct a12_state* S, const char* name,
 	setlinebuf(pfin);
 	setlinebuf(pfout);
 
-/* if we have state, now is a good time to do something with it */
+/* if we have state, now is a good time to do something with it, now the format
+ * here isn't great - lf without escape is problematic as values with lf is
+ * permitted so this needs to be modified a bit, but the _lwa to STATE_OUT
+ * handler also calls for this so can wait until that is in place */
+	if (state_in){
+		char buf[4096];
+		bool in_kv = false;
+
+		while (fgets(buf, 4096, state_in)){
+			if (in_kv){
+				if (strcmp(buf, "#ENDKV\n") == 0){
+					in_kv = false;
+					continue;
+				}
+				fputs("loadkey ", pfin);
+				fputs(buf, pfin);
+			}
+			else {
+				if (strcmp(buf, "#BEGINKV\n") == 0){
+					in_kv = true;
+				}
+				continue;
+			}
+		}
+	}
 	fprintf(pfin, "continue\n");
 
 /* capture the state block, write into an unlinked tmp-file so the
@@ -610,6 +634,9 @@ run:
 	bool exec_res = handover_exec(S,
 		cbt->clopt->applname, state_in, cbt->clopt, &state_out, &state_sz);
 
+	if (state_in)
+		fclose(state_in);
+
 /* execution completed - this is where we could/should actually continue and
  * switch to an ioloop that check the child process for completion or for appl
  * 'push' updates */
@@ -679,6 +706,7 @@ static struct a12_bhandler_res cl_bevent(
 			cbt->state_in_complete = true;
 			res.fd = cbt->state_in;
 			res.flag = A12_BHANDLER_NEWFD;
+			unlink(filename);
 			return res;
 		}
 

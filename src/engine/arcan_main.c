@@ -716,6 +716,9 @@ int MAIN_REDIR(int argc, char* argv[])
 	}
 	free(msg);
 
+	if (monitor_ctrl)
+		arcan_monitor_watchdog((lua_State*)main_lua_context, NULL);
+
 	if (!arcan_lua_callvoidfun(main_lua_context, "", false,
 		(const char**) (argc > optind ? (argv + optind + 1) : NULL))){
 		arcan_warning("\n\x1b[1mCouldn't load (\x1b[33m%s\x1b[39m):"
@@ -772,14 +775,12 @@ int MAIN_REDIR(int argc, char* argv[])
 	int exit_code = 0;
 
 run_loop:
-	if (monitor_ctrl)
-		arcan_monitor_watchdog((lua_State*)main_lua_context, NULL);
 	exit_code = arcan_conductor_run(arcan_monitor_tick);
 	arcan_lua_callvoidfun(main_lua_context, "shutdown", false, NULL);
 
 /* destroy monitor first as it will need to snapshot the lua/VM stat e*/
 cleanup:
-	arcan_monitor_finish(exit_code == 256);
+	arcan_monitor_finish(exit_code == 256 || exit_code == 0);
 	arcan_mem_freearr(&arr_hooks);
 	arcan_led_shutdown();
 	arcan_event_deinit(evctx, true);
@@ -792,7 +793,7 @@ cleanup:
 		arcan_db_set_shared(NULL);
 	}
 
-	return exit_code == 256 ? EXIT_SUCCESS : exit_code;
+	return exit_code == 256 || exit_code == 0 ? EXIT_SUCCESS : exit_code;
 
 error:
 	if (!monitor_ctrl && debuglevel > 1){
