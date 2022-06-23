@@ -27,7 +27,7 @@ static void cmd_dumpkeys(char* arg)
 		arcan_db_get_shared(NULL), arcan_appl_id(), "%");
 	char** curr = res.data;
 	while(*curr){
-		printf("%s\n", *curr++);
+		fprintf(m_out, "%s\n", *curr++);
 	}
 	arcan_mem_freearr(&res);
 	fprintf(m_out, "#ENDKV\n");
@@ -39,6 +39,7 @@ static void cmd_loadkey(char* arg)
 	if (!arg[0] || arg[0] == '\n')
 		return;
 
+/* split on = */
 	char* pos = arg;
 	while (*pos && *pos != '=')
 		pos++;
@@ -46,16 +47,22 @@ static void cmd_loadkey(char* arg)
 	if (!*pos)
 		return;
 
+/* trim */
 	*pos++ = '\0';
+	size_t len = strlen(pos);
+	if (pos[len-1] == '\n')
+		pos[len-1] = '\0';
 
+/* enable transaction on the first new key */
 	if (!m_transaction){
 		m_transaction = true;
 		arcan_db_begin_transaction(
-			arcan_db_get_shared(NULL), DVT_TARGET,
+			arcan_db_get_shared(NULL), DVT_APPL,
 			(union arcan_dbtrans_id){.applname = arcan_appl_id()}
 		);
 	}
 
+/* append to transaction */
 	arcan_db_add_kvpair(arcan_db_get_shared(NULL), arg, pos);
 }
 
@@ -158,12 +165,12 @@ void arcan_monitor_finish(bool ok)
 	m_locked = false;
 
 	if (m_srate < 0 && m_out && !ok){
-		fprintf(m_out, "#LASTSOURCE");
+		fprintf(m_out, "#LASTSOURCE\n");
 		const char* msg = arcan_lua_crash_source(main_lua_context);
 		if (msg){
 			fprintf(m_out, "%s", msg);
 		}
-		fprintf(m_out, "#ENDLASTSOURCE");
+		fprintf(m_out, "#ENDLASTSOURCE\n");
 		arcan_lua_statesnap(m_out, "state", true);
 	}
 
