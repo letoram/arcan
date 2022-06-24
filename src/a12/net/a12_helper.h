@@ -40,6 +40,9 @@ struct a12helper_opts {
 /* a12cl_shmifsrv- specific: set to a valid local connection-point and it will
  * be set as the DEVICE_NODE alternate for incoming connections */
 	const char* devicehint_cp;
+
+/* opendir to populate with b64[checksum] for fonts and other cacheables */
+	int bcache_dir;
 };
 
 /*

@@ -98,7 +98,7 @@ static void dispatch_bdata(
 	break;
 /* There is a difference to the local case here in that the event which carries
  * the desired size etc. will be sent in advance, thus there will be two times
- * the number of FONTHINTS, which can result in glitches.  This may cost an
+ * the number of FONTHINTS, which can result in glitches. This may cost an
  * update / redraw, but allows blocking font transfers and still maintaing the
  * right size. */
 	case A12_BTYPE_FONT:
@@ -139,6 +139,7 @@ static void dispatch_bdata(
 static struct a12_bhandler_res incoming_bhandler(
 	struct a12_state* S, struct a12_bhandler_meta md, void* tag)
 {
+	struct a12helper_opts* opts = tag;
 	struct a12_bhandler_res res = {
 		.fd = -1,
 		.flag = A12_BHANDLER_DONTWANT
@@ -165,6 +166,42 @@ static struct a12_bhandler_res incoming_bhandler(
 		return res;
 	}
 
+	bool got_checksum = false;
+/* But that requires a checksum */
+	for (size_t i = 0; i < 16; i++){
+		if (md.checksum[i] != 0){
+			got_checksum = true;
+			break;
+		}
+	}
+
+/* If a cache dir is provided, check against that first -
+ * just do this on fonts for the time being */
+	if (got_checksum && opts->bcache_dir != -1 && md.type == A12_BTYPE_FONT){
+/* We got one, convert to b64 and try to open */
+		size_t len;
+		char* fname = (char*) arcan_base64_encode(md.checksum, 16, &len, 0);
+		arcan_mem_free(fname);
+		res.fd = openat(opts->bcache_dir, fname, O_RDONLY);
+
+/* and if it is there, cancel out the stream and trigger our bhandler */
+		if (-1 != res.fd){
+			res.flag = A12_BHANDLER_CACHED;
+			a12int_trace(A12_TRACE_TRANSFER, "kind=font:cached=true:name=%s", fname);
+			dispatch_bdata(S, res.fd, A12_BTYPE_FONT, md.dcont->user);
+			return res;
+		}
+
+/* otherwise, create the cache entry */
+		res.fd = openat(opts->bcache_dir, fname, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+		if (-1 != res.fd){
+			a12int_trace(A12_TRACE_TRANSFER, "kind=font:cached=false:create=%s", fname);
+			res.flag = A12_BHANDLER_NEWFD;
+			dispatch_bdata(S, res.fd, md.type, md.dcont->user);
+			return res;
+		}
+	}
+
 /* So the handler wants a descriptor for us to store or stream the transfer
  * into. If it is streaming, a pipe is sufficient and we can start the fwd
  * immediately. */
@@ -173,25 +210,8 @@ static struct a12_bhandler_res incoming_bhandler(
 		if (-1 != pipe(fd)){
 			res.flag = A12_BHANDLER_NEWFD;
 			res.fd = fd[1];
-			dispatch_bdata(S, md.fd, res.fd, md.dcont->user);
+			dispatch_bdata(S, res.fd, md.type, md.dcont->user);
 		}
-		return res;
-	}
-
-/* INCOMPLETE
- * If there is a !0 checksum and a cache_dir has been set, check the cache for
- * a possible match by going to base64 and try to open. If successful, update
- * its timestamp, return that it was cached and trigger dispatch_bdata */
-	size_t i = 0;
-	for (; i < 16; i++){
-		if (md.checksum[i] != 0){
-			break;
-		}
-	}
-	if (0 && i == 16){
-		a12int_trace(A12_TRACE_MISSING,
-			"btransfer cache-lookup and forward");
-		res.flag = A12_BHANDLER_CACHED;
 		return res;
 	}
 
