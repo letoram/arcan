@@ -168,6 +168,15 @@ static bool handover_setup(struct a12_state* S,
 	return true;
 }
 
+static int get_bcache_dir()
+{
+	const char* base = getenv("A12_BCACHE_DIR");
+	if (!base)
+		return -1;
+
+	return open(base, O_DIRECTORY);
+}
+
 /*
  * in this mode we should really fexec ourselves so we don't risk exposing
  * aslr or canaries, as well as handle the key-generation
@@ -220,13 +229,15 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 
 	arcan_shmif_privsep(NULL, "shmif", NULL, 0);
 	int rc = 0;
+
 	if (C){
 		a12helper_a12cl_shmifsrv(S, C, fd, fd, (struct a12helper_opts){
 			.redirect_exit = meta->opts->redirect_exit,
 			.devicehint_cp = meta->opts->devicehint_cp,
 			.vframe_block = global.backpressure,
 			.vframe_soft_block = global.backpressure_soft,
-			.eval_vcodec = vcodec_tuning
+			.eval_vcodec = vcodec_tuning,
+			.bcache_dir = get_bcache_dir()
 		});
 		shmifsrv_free(C, SHMIFSRV_FREE_NO_DMS);
 	}
@@ -317,7 +328,8 @@ static void single_a12srv(struct a12_state* S, int fd, void* tag)
 			.devicehint_cp = meta->opts->devicehint_cp,
 			.vframe_block = global.backpressure,
 			.vframe_soft_block = global.backpressure_soft,
-			.eval_vcodec = vcodec_tuning
+			.eval_vcodec = vcodec_tuning,
+			.bcache_dir = get_bcache_dir()
 		});
 		shmifsrv_free(C, SHMIFSRV_FREE_NO_DMS);
 	}
@@ -346,7 +358,8 @@ static void a12cl_dispatch(
 	a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
 		.vframe_block = global.backpressure,
 		.redirect_exit = args->redirect_exit,
-		.devicehint_cp = args->devicehint_cp
+		.devicehint_cp = args->devicehint_cp,
+		.bcache_dir = get_bcache_dir()
 	});
 	close(fd);
 }
