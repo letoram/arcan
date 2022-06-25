@@ -434,7 +434,8 @@ struct a12_aframe_cfg {
 enum a12_bhandler_flag {
 	A12_BHANDLER_CACHED = 0,
 	A12_BHANDLER_NEWFD,
-	A12_BHANDLER_DONTWANT
+	A12_BHANDLER_DONTWANT,
+	A12_BHANDLER_NEWFD_NOCOMPRESS
 };
 
 enum a12_bhandler_state {

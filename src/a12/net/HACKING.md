@@ -458,6 +458,7 @@ The following encodings are allowed:
 - [30]     stream-type : uint8 (0: state, 1:bchunk, 2: font, 3: font-secondary, 4: debug)
 - [31..34] id-token    : uint32 (used for bchunk pairing on \_out/\_store)
 - [35 +16] blake3-hash : blob (0 if unknown)
+- [52    ] compression : 0 (raw), 1 (zstd)
 
 This defines a new or continued binary transfer stream. The block-size sets the
 number of continuous bytes in the stream until the point where another transfer
@@ -520,12 +521,15 @@ by injecting discard- events is kept outside the protocol implementation, and
 deferred to the UI/window manager.
 
 ## Vstream-data (3), Astream-data (4), Bstream-data (5) (variable length)
-- [0   ] channel-id : uint8
-- [1..4] stream-id  : uint32
-- [5..6] length     : uint16
+- [0   ] channel-id  : uint8
+- [1..4] stream-id   : uint32
+- [5..6] length      : uint16
 
-The data messages themselves will make out the bulk of communication,
-and ties to a pre-defined channel/stream.
+The data messages themselves will make out the bulk of communication, and ties
+to a pre-defined channel/stream.
+
+Bstream data applies compression based on each individual chunk rather than
+stream-scope.
 
 # Compressions and Codecs
 
