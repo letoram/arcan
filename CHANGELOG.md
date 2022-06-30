@@ -10,6 +10,8 @@
  * Congestion control blocking issue resolved
  * First drafts of 'directory' mode for hosting arcan appls
  * Arcan-net can now list and download appls from an arcan-net directory server
+ * Fonts now cache when A12\_CACHE\_DIR is provided
+ * Binary transfers now stream-compress with zstd
 
 ## Lua
  * net\_discover added, use this to find other a12 clients

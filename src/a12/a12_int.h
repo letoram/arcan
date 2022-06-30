@@ -14,6 +14,14 @@
 #include <libswresample/swresample.h>
 #endif
 
+#ifndef ZSTD_DEFAULT_LEVEL
+#define ZSTD_DEFAULT_LEVEL 3
+#endif
+
+#ifndef ZSTD_VIDEO_LEVEL
+#define ZSTD_VIDEO_LEVEL 2
+#endif
+
 #ifndef VIDEO_FRAME_DRIFT_WINDOW
 #define VIDEO_FRAME_DRIFT_WINDOW 8
 #endif
@@ -22,6 +30,10 @@
 #define NONCE_SIZE 8
 #define CONTROL_PACKET_SIZE 128
 #define CIPHER_ROUNDS 8
+
+#ifndef BLOB_QUEUE_CAP
+#define BLOB_QUEUE_CAP (128 * 1024)
+#endif
 
 #ifndef DYNAMIC_FREE
 #define DYNAMIC_FREE free
@@ -126,6 +138,7 @@ struct binary_frame {
 	uint32_t identifier;
 	uint8_t checksum[16];
 	int64_t streamid; /* actual type is uint32 but -1 for cancel */
+	struct ZSTD_DCtx_s* zstd;
 };
 
 struct video_frame {
@@ -179,6 +192,9 @@ struct blob_out {
 	bool streaming;
 	bool active;
 	uint64_t streamid;
+	uint64_t rampup_seqnr;
+
+	struct ZSTD_CCtx_s* zstd;
 	struct blob_out* next;
 };
 

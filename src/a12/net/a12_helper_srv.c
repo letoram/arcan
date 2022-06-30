@@ -177,18 +177,29 @@ static struct a12_bhandler_res incoming_bhandler(
 
 /* If a cache dir is provided, check against that first -
  * just do this on fonts for the time being */
-	if (got_checksum && opts->bcache_dir != -1 && md.type == A12_BTYPE_FONT){
+	if (got_checksum && opts->bcache_dir != -1 &&
+		(md.type == A12_BTYPE_FONT || md.type == A12_BTYPE_FONT_SUPPL)){
 /* We got one, convert to b64 and try to open */
 		size_t len;
 		char* fname = (char*) arcan_base64_encode(md.checksum, 16, &len, 0);
-		arcan_mem_free(fname);
 		res.fd = openat(opts->bcache_dir, fname, O_RDONLY);
 
-/* and if it is there, cancel out the stream and trigger our bhandler */
+/* If it was truncated (failure on first transfer), re-attempt as new,
+ * otherwise return the font as cached so the stream gets cancelled */
 		if (-1 != res.fd){
-			res.flag = A12_BHANDLER_CACHED;
-			a12int_trace(A12_TRACE_TRANSFER, "kind=font:cached=true:name=%s", fname);
-			dispatch_bdata(S, res.fd, A12_BTYPE_FONT, md.dcont->user);
+			struct stat fsinf;
+			if (-1 == fstat(res.fd, &fsinf) || 0 == fsinf.st_size){
+				res.flag = A12_BHANDLER_NEWFD;
+				a12int_trace(
+					A12_TRACE_TRANSFER, "kind=font:cached=broken:create=%s", fname);
+				dispatch_bdata(S, res.fd, md.type, md.dcont->user);
+			}
+			else{
+				a12int_trace(A12_TRACE_TRANSFER, "kind=font:cached=true:name=%s", fname);
+				res.flag = A12_BHANDLER_CACHED;
+				dispatch_bdata(S, res.fd, md.type, md.dcont->user);
+			}
+			arcan_mem_free(fname);
 			return res;
 		}
 
@@ -197,9 +208,9 @@ static struct a12_bhandler_res incoming_bhandler(
 		if (-1 != res.fd){
 			a12int_trace(A12_TRACE_TRANSFER, "kind=font:cached=false:create=%s", fname);
 			res.flag = A12_BHANDLER_NEWFD;
-			dispatch_bdata(S, res.fd, md.type, md.dcont->user);
 			return res;
 		}
+		arcan_mem_free(fname);
 	}
 
 /* So the handler wants a descriptor for us to store or stream the transfer
@@ -764,6 +775,9 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 		}
 		n_fd = outbuf_sz > 0 ? 3 : 2;
 	}
+
+	if (opts.bcache_dir > 0)
+		close(opts.bcache_dir);
 
 	a12int_trace(A12_TRACE_SYSTEM, "(srv) shutting down connection");
 	close(pipe_pair[0]);

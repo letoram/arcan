@@ -318,7 +318,7 @@ void a12int_decode_vbuffer(struct a12_state* S,
 					uint64_t decode =
 						ZSTD_decompressDCtx(ch->unpack_state.vframe.zstd,
 							buffer, content_sz, cvf->inbuf, cvf->inbuf_pos);
-					a12int_trace(A12_TRACE_VIDEO, "kind=ztd_state:%"PRIu64, decode);
+					a12int_trace(A12_TRACE_VIDEO, "kind=zstd_state:%"PRIu64, decode);
 					video_miniz(buffer, content_sz, S);
 					free(buffer);
 				}

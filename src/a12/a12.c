@@ -32,6 +32,8 @@
 #include <unistd.h>
 #include <errno.h>
 
+#include "external/zstd/zstd.h"
+
 int a12_trace_targets = 0;
 FILE* a12_trace_dst = NULL;
 
@@ -127,10 +129,8 @@ a12int_request_dirlist(struct a12_state* S, bool notify)
 		return;
 	}
 
-	uint8_t outb[CONTROL_PACKET_SIZE] = {0};
-	step_sequence(S, outb);
-	outb[16] = S->out_channel;
-	outb[17] = COMMAND_DIRLIST;
+	uint8_t outb[CONTROL_PACKET_SIZE];
+	build_control_header(S, outb, COMMAND_DIRLIST);
 	outb[18] = notify;
 
 	a12int_trace(A12_TRACE_DIRECTORY, "request_list");
@@ -163,7 +163,8 @@ void a12int_set_directory(struct a12_state* S, struct appl_meta* M)
 static void fail_state(struct a12_state* S)
 {
 #ifndef _DEBUG
-/* overwrite all relevant state, dealloc mac/chacha */
+/* overwrite all relevant state, dealloc mac/chacha - mark n random bytes for
+ * continuous transfer before shutting down to be even less useful as an oracle */
 #endif
 	S->state = STATE_BROKEN;
 }
@@ -260,7 +261,7 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 	if (S->buf_sz[S->buf_ind] < required){
 		a12int_trace(A12_TRACE_SYSTEM,
 			"realloc failed: size (%zu) vs required (%zu)", S->buf_sz[S->buf_ind], required);
-		S->state = STATE_BROKEN;
+		fail_state(S);
 		return;
 	}
 	uint8_t* dst = S->bufs[S->buf_ind];
@@ -606,16 +607,24 @@ a12_channel_close(struct a12_state* S)
 		return;
 	}
 
+	struct a12_channel* ch = &S->channels[S->out_channel];
+
 	a12int_encode_drop(S, S->out_channel, false);
 	a12int_decode_drop(S, S->out_channel, false);
 
-	if (S->channels[S->out_channel].active){
-		S->channels[S->out_channel].cont = NULL;
-		S->channels[S->out_channel].active = false;
+	if (ch->unpack_state.bframe.zstd){
+		ZSTD_freeDCtx(ch->unpack_state.bframe.zstd);
+		ch->unpack_state.bframe.zstd = NULL;
 	}
 
+	if (ch->active){
+		ch->cont = NULL;
+		ch->active = false;
+	}
+
+/* closing the primary channel means no more operations are permitted */
 	if (S->out_channel == 0){
-		S->state = STATE_BROKEN;
+		fail_state(S);
 	}
 
 	a12int_trace(A12_TRACE_SYSTEM, "closing channel (%d)", S->out_channel);
@@ -686,7 +695,7 @@ static void process_nopacket(struct a12_state* S)
 
 	if (state_id >= STATE_BROKEN){
 		a12int_trace(A12_TRACE_SYSTEM, "state=broken:unknown_command=%"PRIu8, S->state);
-		S->state = STATE_BROKEN;
+		fail_state(S);
 		return;
 	}
 
@@ -790,7 +799,6 @@ static void command_cancelstream(
 		}
 		node = node->next;
 	}
-
 }
 
 static void command_binarystream(struct a12_state* S)
@@ -815,6 +823,16 @@ static void command_binarystream(struct a12_state* S)
 		return;
 	}
 
+	if (S->decode[52] == 1){
+		bframe->zstd = ZSTD_createDCtx();
+		if (!bframe->zstd){
+			a12_stream_cancel(S, channel);
+			a12int_trace(A12_TRACE_SYSTEM,
+				"kind=error:source=binarystream:kind=zstd_fail:ch=%d", (int) channel);
+			return;
+		}
+	}
+
 	uint32_t streamid;
 	unpack_u32(&streamid, &S->decode[18]);
 	bframe->streamid = streamid;
@@ -826,8 +844,8 @@ static void command_binarystream(struct a12_state* S)
 
 	bframe->active = true;
 	a12int_trace(A12_TRACE_BTRANSFER,
-		"kind=header:stream=%"PRId64":left=%"PRIu64":ch=%d",
-		bframe->streamid, bframe->size, channel
+		"kind=header:stream=%"PRId64":left=%"PRIu64":ch=%d:compressed=%d",
+		bframe->streamid, bframe->size, channel, (int) S->decode[52]
 	);
 
 /*
@@ -846,8 +864,10 @@ static void command_binarystream(struct a12_state* S)
 		.streamid = bframe->streamid,
 		.identifier = bframe->identifier,
 		.type = bframe->type,
+		.dcont = S->channels[channel].cont,
 		.fd = -1
 	};
+	memcpy(bm.checksum, bframe->checksum, 16);
 
 	if (S->binary_handler){
 		struct a12_bhandler_res res = S->binary_handler(S, bm, S->binary_handler_tag);
@@ -898,6 +918,11 @@ void a12_stream_cancel(struct a12_state* S, uint8_t channel)
 	bframe->active = false;
 	bframe->streamid = -1;
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+
+	if (bframe->zstd){
+		ZSTD_freeDCtx(bframe->zstd);
+		bframe->zstd = NULL;
+	}
 
 /* forward the cancellation request to the eventhandler, due to the active tracking
  * we are protected against bad use (handler -> cancel -> handler) */
@@ -1287,7 +1312,7 @@ void a12_enqueue_blob(
 	if (!next)
 		return;
 
-	char* nbuf = malloc(buf_sz);
+	char* nbuf = DYNAMIC_MALLOC(buf_sz);
 	if (!buf){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=ENOMEM");
 		DYNAMIC_FREE(*next);
@@ -1342,6 +1367,9 @@ void a12_enqueue_bstream(struct a12_state* S,
 	next->type = type;
 	next->identifier = id;
 
+	if (type == A12_BTYPE_FONT_SUPPL || type == A12_BTYPE_FONT)
+		next->rampup_seqnr = S->current_seqnr + 1;
+
 /* [MISSING]
  * Insertion priority sort goes here, be wary of channel-id in heuristic
  * though, and try to prioritize channel that has focus over those that
@@ -1372,7 +1400,7 @@ void a12_enqueue_bstream(struct a12_state* S,
 	if (fend == 0){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EEMPTY");
 		*parent = NULL;
-		free(next);
+		DYNAMIC_FREE(next);
 		return;
 	}
 
@@ -1428,7 +1456,7 @@ fail:
 		close(next->fd);
 
 	*parent = NULL;
-	free(next);
+	DYNAMIC_FREE(next);
 }
 
 static bool authdec_buffer(const char* src, struct a12_state* S, size_t block_sz)
@@ -1804,7 +1832,7 @@ static void add_dirent(struct a12_state* S)
 				prev->next = new;
 			else
 				S->directory = new;
-			free(cur);
+			DYNAMIC_FREE(cur);
 			return;
 		}
 
@@ -1820,7 +1848,7 @@ static void add_dirent(struct a12_state* S)
 	}
 
 /* shouldn't be reached */
-	free(new);
+	DYNAMIC_FREE(new);
 }
 
 /*
@@ -1953,7 +1981,6 @@ static void process_blob(struct a12_state* S)
 		S->decode_pos = 0;
 		a12int_trace(A12_TRACE_BTRANSFER,
 			"kind=header:channel=%d:size=%"PRIu16, S->in_channel, S->left);
-
 		return;
 	}
 
@@ -1990,6 +2017,50 @@ static void process_blob(struct a12_state* S)
 		return;
 	}
 
+/* compression enabled? */
+	size_t ntw = S->decode_pos;
+	uint8_t* buf = S->decode;
+	bool free_buf = false;
+
+/* for now each zstd transfer is self-contained and thus capped to a ~64k
+ * output per message and should be determinable from each received message.
+ * This is hardly the best / most efficient use of zstd here (similar applies
+ * to video, but there the output size is always determinable and can be
+ * calculated independently and compared) and will need to be reworked */
+	if (cbf->zstd){
+		uint64_t content_sz = ZSTD_getFrameContentSize(S->decode, S->decode_pos);
+		if (ZSTD_CONTENTSIZE_UNKNOWN == content_sz ||
+		    ZSTD_CONTENTSIZE_ERROR == content_sz){
+			a12int_trace(A12_TRACE_SYSTEM, "kind=zstd_bad:unknown_size");
+			a12_stream_cancel(S, S->in_channel);
+			reset_state(S);
+			return;
+		}
+
+		buf = DYNAMIC_MALLOC(content_sz);
+		if (!buf){
+			a12int_trace(A12_TRACE_ALLOC,
+				"kind=zstd_buffer_fail:size=%zu", content_sz);
+			a12_stream_cancel(S, S->in_channel);
+			reset_state(S);
+			return;
+		}
+
+		uint64_t decode =
+			ZSTD_decompressDCtx(cbf->zstd, buf, content_sz, S->decode, S->decode_pos);
+
+		if (ZSTD_isError(decode)){
+			a12int_trace(A12_TRACE_SYSTEM, "kind=zstd_fail:code=%zu", decode);
+			a12_stream_cancel(S, S->in_channel);
+			reset_state(S);
+			return;
+		}
+		else
+			a12int_trace(A12_TRACE_BTRANSFER, "kind=zstd_state:%"PRIu64, decode);
+
+		free_buf = true;
+	}
+
 /* Flush it out to the assigned descriptor, this is currently likely to be
  * blocking and can cascade quite far down the chain, consider a drag and drop
  * that routes via a pipe onwards to another client. Normal splice etc.
@@ -1997,35 +2068,50 @@ static void process_blob(struct a12_state* S)
  * processing we would have to buffer / flush this separately, with a big
  * complexity leap. */
 	if (-1 != cbf->tmp_fd){
-			size_t pos = 0;
+		size_t pos = 0;
 
-			while(pos < S->decode_pos){
-				ssize_t status = write(cbf->tmp_fd, &S->decode[pos], S->decode_pos - pos);
-				if (-1 == status){
-					if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-						continue;
+		while(pos < ntw){
+			ssize_t status = write(cbf->tmp_fd, &buf[pos], ntw - pos);
+			if (-1 == status){
+				if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+					continue;
 
 /* so there was a problem writing (dead pipe, out of space etc). send a cancel
  * on the stream,this will also forward the status change to the event handler
  * itself who is responsible for closing the tmp_fd */
-					a12_stream_cancel(S, S->in_channel);
-					reset_state(S);
-					return;
-				}
-				else
-					pos += status;
+				a12_stream_cancel(S, S->in_channel);
+				reset_state(S);
+				if (free_buf)
+					DYNAMIC_FREE(buf);
+				return;
 			}
+			else
+				pos += status;
 		}
+	}
 
-	if (cbf->size > 0){
-		cbf->size -= S->decode_pos;
+	if (free_buf)
+		DYNAMIC_FREE(buf);
+
+	if (!S->binary_handler)
+		return;
+
+/* is it a streaming transfer or a known size? */
+	if (cbf->size){
+		if (ntw > cbf->size){
+			a12int_trace(A12_TRACE_SYSTEM,
+				"kind=btransfer_overflow:size=%zu:ch=%d:stream=%"PRId64,
+				(size_t)(ntw - cbf->size), S->in_channel, cbf->streamid
+			);
+			cbf->size = 0;
+		}
+		else
+			cbf->size -= ntw;
 
 		if (!cbf->size){
 			a12int_trace(A12_TRACE_BTRANSFER,
 				"kind=completed:ch=%d:stream=%"PRId64, S->in_channel, cbf->streamid);
 			cbf->active = false;
-			if (!S->binary_handler)
-				return;
 
 /* finally forward all the metadata to the handler and let the recipient
  * pack it into the proper event structure and so on. */
@@ -2048,6 +2134,8 @@ static void process_blob(struct a12_state* S)
 			cbf->tmp_fd = -1;
 			S->binary_handler(S, bm, S->binary_handler_tag);
 
+			if (free_buf)
+				DYNAMIC_FREE(buf);
 			return;
 		}
 	}
@@ -2289,7 +2377,7 @@ void a12_set_destination(
 	}
 
 	if (S->channels[chid].active == CHANNEL_RAW){
-		free(S->channels[chid].cont);
+		DYNAMIC_FREE(S->channels[chid].cont);
 		S->channels[chid].cont = NULL;
 	}
 
@@ -2454,13 +2542,13 @@ static void* read_data(int fd, size_t cap, uint16_t* nts, bool* die)
 		else
 			*die = true;
 
-		free(buf);
+		DYNAMIC_FREE(buf);
 		return NULL;
 	}
 
 	*die = false;
 	if (nr == 0){
-		free(buf);
+		DYNAMIC_FREE(buf);
 		return NULL;
 	}
 
@@ -2474,6 +2562,7 @@ static void unlink_node(struct a12_state* S, struct blob_out* node)
 	/* close the socket and other resources */
 	struct blob_out* next = node->next;
 	struct blob_out** dst = &S->pending;
+
 	while (*dst != node && *dst){
 		dst = &((*dst)->next);
 	}
@@ -2484,10 +2573,159 @@ static void unlink_node(struct a12_state* S, struct blob_out* node)
 	}
 
 	a12int_trace(A12_TRACE_ALLOC, "unlinked:stream=%"PRIu64, node->streamid);
+
 	S->active_blobs--;
 	*dst = next;
 	close(node->fd);
+	if (node->zstd){
+		ZSTD_freeCCtx(node->zstd);
+		node->zstd = NULL;
+	}
+
 	DYNAMIC_FREE(node);
+}
+
+/*
+ * tail-recurse back into queue_node until the
+ */
+static size_t queue_node(struct a12_state* S, struct blob_out* node);
+static bool flush_compressed(
+	struct a12_state* S, struct blob_out* node, char* buf, size_t nts)
+{
+	uint8_t outb[1 + 4 + 2];
+	outb[0] = node->chid;
+	pack_u32(node->streamid, &outb[1]);
+
+	if (!node->left && !nts){
+		a12int_trace(A12_TRACE_BTRANSFER,
+			"kind=compressed_stream_over:stream=%"PRIu64":ch=%d",
+			(size_t)node->streamid, (int) node->chid
+		);
+		return false;
+	}
+
+/* Nts and buffer size comes from the read function and its static upper buffer
+ * bound, this is mainly to balance between interleaving (higher prio data) and
+ * throughput. An external oracle should be allowed to influence this using
+ * transport information on bandwidth and MTUs. There are better (?) ways of
+ * using ZSTD here, but all are quite complicated. The problem is the normal of
+ * chunking+metadata and the discrepancy between bytes in vs bytes out. A
+ * trivially compressible input set might just yield a byte or two for a full
+ * input buffer, yet we will 'terminate' compression and send of a chunk with
+ * header regardless - reducing efficiency.
+ *
+ * The flow here might be unintuitive but -
+ *  - a12_flush checks if there is space to interleave binary data
+ *  - if so, append_blob will check if there is a binary transfer queued
+ *    it picks this in first come first server order, but could be reordered
+ *  - it enters queue_node which reads up to a cap of bytes into a buffer
+ *  - this buffer is forwarded to flush_compressed or uncompressed depending
+ *    on the zstd- context availability which should be setup when the stream
+ *    is initialised.
+ *  - we arrive here, compress and flush whatever is provided, and return if
+ *    there is more data to be processed (the nts for the blob stream)
+ *    and if there isn't, queue_node will unlink and free us.
+ *  - otherwise a12int_append_out will increase the outgoing buffer that
+ *    a12_flush checks, and the cycle repeats itself.
+ * */
+
+	size_t max = ZSTD_compressBound(nts);
+	if (max >= 65536){
+		a12int_trace(A12_TRACE_SYSTEM,
+			"kind=compressed_stream_overflow:cap=64k:size=%zu", max);
+		return false;
+	}
+
+	void* compressed = DYNAMIC_MALLOC(max);
+	size_t out = ZSTD_compressCCtx(node->zstd, compressed, max, buf, nts, 3);
+	pack_u16(out, &outb[5]);
+
+	a12int_append_out(S,
+		STATE_BLOB_PACKET, (uint8_t*) compressed, out, outb, sizeof(outb));
+
+	DYNAMIC_FREE(compressed);
+
+	if (node->left){
+		a12int_trace(A12_TRACE_BTRANSFER, "kind=compressed_block:"
+			"stream=%"PRIu64":ch=%d:size=%zu:base=%zu:left=%zu",
+			(size_t)node->streamid, (int) node->chid, out, nts, node->left
+		);
+		node->left -= nts;
+		return node->left != 0;
+	}
+
+	a12int_trace(A12_TRACE_BTRANSFER, "kind=compressed_:"
+		"stream=%"PRIu64":ch=%d:size=%zu:base=%zu",
+		(size_t)node->streamid, (int) node->chid, out, nts
+	);
+
+	return true;
+}
+
+static bool flush_uncompressed(
+	struct a12_state* S, struct blob_out* node, char* buf, size_t nts)
+{
+	uint8_t outb[1 + 4 + 2];
+	outb[0] = node->chid;
+	pack_u32(node->streamid, &outb[1]);
+	pack_u16(nts, &outb[5]);
+	a12int_append_out(S, STATE_BLOB_PACKET, (uint8_t*) buf, nts, outb, sizeof(outb));
+
+/* if we have a fixed known size .. */
+	if (node->left){
+		node->left -= nts;
+		a12int_trace(A12_TRACE_BTRANSFER,
+			"kind=block:stream=%"PRIu64":ch=%d:size=%zu:left=%zu",
+			node->streamid, (int)node->chid, nts, node->left
+			);
+		return node->left != 0;
+	}
+
+	a12int_trace(A12_TRACE_BTRANSFER,
+		"kind=block:stream=%zu:ch=%d:streaming:size=%zu",
+		(size_t) node->streamid, (int)node->chid, nts
+	);
+
+/* otherwise we are streaming from an unknown source and the EOB determines */
+	return nts != 0;
+}
+
+static size_t begin_bstream(struct a12_state* S, struct blob_out* node)
+{
+	uint8_t outb[CONTROL_PACKET_SIZE];
+
+	build_control_header(S, outb, COMMAND_BINARYSTREAM);
+	outb[16] = node->chid;
+
+	S->out_stream++;
+	pack_u32(S->out_stream, &outb[18]);      /* [18 .. 21] stream-id */
+	pack_u64(node->left, &outb[22]);         /* [22 .. 29] total-size */
+	outb[30] = node->type;
+	pack_u32(node->identifier, &outb[31]);   /* 31..34 : id-token */
+	memcpy(&outb[35], node->checksum, 16);
+
+/* enable compression if possible - zstd has a decent entropy estimator so even
+ * for precompressed source material the overhead isn't that substantial, still
+ * could be added as an option for the bstream creation function but just let
+ * it be the default for now */
+	node->zstd = ZSTD_createCCtx();
+	if (node->zstd){
+		ZSTD_CCtx_setParameter(node->zstd, ZSTD_c_nbWorkers, 4);
+		outb[52] = 1;
+	}
+	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+
+	node->active = true;
+	node->streamid = S->out_stream;
+	a12int_trace(
+		A12_TRACE_BTRANSFER, "kind=created:size=%zu:stream:%"PRIu64":ch=%d",
+		node->left, node->streamid, node->chid
+	);
+
+/* set a small cap for the first packet, and defer the next queue node until
+ * the ack:ed serial has advanced a bit to let the other end cancel before we
+ * push too much so that we don't just burst - better rampup is needed here */
+	return 16384;
 }
 
 static size_t queue_node(struct a12_state* S, struct blob_out* node)
@@ -2501,7 +2739,11 @@ static size_t queue_node(struct a12_state* S, struct blob_out* node)
 	bool free_buf;
 	char* buf;
 
-/* if we have a non-streaming pre-allocated source */
+/* not activated, so build a header first */
+	if (!node->active)
+		cap = begin_bstream(S, node);
+
+/* if we have a non-streaming pre-allocated source, just slice off and keep */
 	if (node->buf){
 		buf = &node->buf[node->buf_sz - node->left];
 		nts = cap;
@@ -2512,66 +2754,28 @@ static size_t queue_node(struct a12_state* S, struct blob_out* node)
 		buf = read_data(node->fd, cap, &nts, &die);
 	}
 
-	if (!buf){
-		/* MISSING: SEND STREAM CANCEL */
+/* streaming or file source that broke before we finished sending it all */
+	if (!buf && (die || !node->zstd)){
+		a12_stream_cancel(S, S->in_channel);
 		if (die){
 			unlink_node(S, node);
 		}
 		return 0;
 	}
 
-/* not activated, so build a header first */
-	if (!node->active){
-		uint8_t outb[CONTROL_PACKET_SIZE];
-		build_control_header(S, outb, COMMAND_BINARYSTREAM);
-		outb[16] = node->chid;
+/* keep it around and referenced for being able to revert / disable compression
+ * should some edge case need arise */
+	if (node->zstd)
+		die = !flush_compressed(S, node, buf, nts);
+	else
+		die = !flush_uncompressed(S, node, buf, nts);
 
-		S->out_stream++;
-		pack_u32(S->out_stream, &outb[18]); /* [18 .. 21] stream-id */
-		pack_u64(node->left, &outb[22]); /* [22 .. 29] total-size */
-		outb[30] = node->type;
-		pack_u32(node->identifier, &outb[31]); /* 31..34 : id-token */
-		memcpy(&outb[35], node->checksum, 16);
-		a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
-		node->active = true;
-		node->streamid = S->out_stream;
-		a12int_trace(A12_TRACE_BTRANSFER,
-			"kind=created:size=%zu:stream:%"PRIu64":ch=%d",
-			node->left, node->streamid, node->chid
-		);
-	}
-
-/* prepend the bstream header */
-	uint8_t outb[1 + 4 + 2];
-	outb[0] = node->chid;
-	pack_u32(node->streamid, &outb[1]);
-	pack_u16(nts, &outb[5]);
-
-	a12int_append_out(S, STATE_BLOB_PACKET, (uint8_t*) buf, nts, outb, sizeof(outb));
-
-	if (node->left){
-		node->left -= nts;
-		if (!node->left){
-
-			unlink_node(S, node);
-		}
-		else {
-			a12int_trace(A12_TRACE_BTRANSFER,
-				"kind=block:stream=%"PRIu64":ch=%d:size=%"PRIu16":left=%zu",
-				node->streamid, (int)node->chid, nts, node->left
-			);
-		}
-	}
-	else {
-		a12int_trace(A12_TRACE_BTRANSFER,
-			"kind=block:stream=%zu:ch=%d:streaming:size=%"PRIu16,
-			(size_t) node->streamid, (int)node->chid, nts
-		);
-	}
-
-	if (free_buf){
+	if (free_buf)
 		DYNAMIC_FREE(buf);
-	}
+
+	if (die)
+		unlink_node(S, node);
+
 	return nts;
 }
 
@@ -2580,6 +2784,19 @@ static size_t append_blob(struct a12_state* S, int mode)
 /* find suitable blob */
 	if (mode == A12_FLUSH_NOBLOB || !S->pending)
 		return 0;
+
+/* The last seen seqnr shows how big the window drift is between us and the
+ * other side. Control packets contain sequence numbers, and the last one
+ * seen. When a binary transfer that is likely to be rejected due to being
+ * cached - transfer is delayed until the other end has had enough time to
+ * cancel the stream. */
+	if (
+		S->pending->rampup_seqnr &&
+		S->last_seen_seqnr < S->pending->rampup_seqnr)
+	{
+		return 0;
+	}
+
 /* only current channel? */
 	else if (mode == A12_FLUSH_CHONLY){
 		struct blob_out* parent = S->pending;
@@ -2590,6 +2807,7 @@ static size_t append_blob(struct a12_state* S, int mode)
 		}
 		return 0;
 	}
+
 	return queue_node(S, S->pending);
 }
 
@@ -2599,11 +2817,14 @@ a12_flush(struct a12_state* S, uint8_t** buf, int allow_blob)
 	if (S->state == STATE_BROKEN || S->cookie != 0xfeedface)
 		return 0;
 
-/* nothing in the outgoing buffer? then we can pull in whatever data transfer
- * is pending, if there are any queued */
+/* Nothing in the outgoing buffer? then we can pull in whatever data transfer
+ * is pending, if there are any queued. Repeat the append- until we have an
+ * outgoing buffer of a certain size. */
 	if (S->buf_ofs == 0){
-		if (allow_blob > A12_FLUSH_NOBLOB && append_blob(S, allow_blob)){}
-		else
+		while (allow_blob > A12_FLUSH_NOBLOB &&
+			append_blob(S, allow_blob) && S->buf_ofs < BLOB_QUEUE_CAP){}
+
+		if (!S->buf_ofs)
 			return 0;
 	}
 
@@ -2654,7 +2875,8 @@ a12_channel_new(struct a12_state* S,
 void
 a12_set_channel(struct a12_state* S, uint8_t chid)
 {
-	a12int_trace(A12_TRACE_SYSTEM, "channel_out=%"PRIu8, chid);
+	if (chid != S->out_channel)
+		a12int_trace(A12_TRACE_SYSTEM, "channel_out=%"PRIu8, chid);
 	S->out_channel = chid;
 }
 
@@ -2931,10 +3153,7 @@ bool a12_ok(struct a12_state* S)
 
 void a12_sensitive_free(void* ptr, size_t buf)
 {
-	volatile unsigned char* pos = ptr;
-	for (size_t i = 0; i < buf; i++){
-		pos[i] = 0;
-	}
+	arcan_random(ptr, buf);
 	arcan_mem_free(ptr);
 }
 

@@ -357,7 +357,7 @@ void a12int_encode_rgb(PACK_ARGS)
 	free(outb);
 }
 
-static bool setup_zstd(struct a12_state* S, uint8_t ch, int model)
+static bool setup_zstd(struct a12_state* S, uint8_t ch)
 {
 	if (!S->channels[ch].zstd){
 		S->channels[ch].zstd = ZSTD_createCCtx();
@@ -381,7 +381,7 @@ struct compress_res {
 static void compress_tzstd(struct a12_state* S, uint8_t ch,
 	struct shmifsrv_vbuffer* vb, uint32_t sid, int w, int h, size_t chunk_sz)
 {
-	if (!setup_zstd(S, ch, SEGID_TUI)){
+	if (!setup_zstd(S, ch)){
 		return;
 	}
 	int type = POSTPROCESS_VIDEO_TZSTD;
@@ -426,8 +426,8 @@ static void compress_tzstd(struct a12_state* S, uint8_t ch,
 	out_sz = ZSTD_compressBound(compress_in_sz);
 	buf = malloc(out_sz);
 
-	out_sz = ZSTD_compressCCtx(
-		S->channels[ch].zstd, buf, out_sz, vb->buffer_bytes, compress_in_sz, 1);
+	out_sz = ZSTD_compressCCtx(S->channels[ch].zstd,
+		buf, out_sz, vb->buffer_bytes, compress_in_sz, ZSTD_VIDEO_LEVEL);
 
 	if (ZSTD_isError(out_sz)){
 		a12int_trace(A12_TRACE_ALLOC,
@@ -491,7 +491,7 @@ static struct compress_res compress_deltaz(struct a12_state* S, uint8_t ch,
 		S->channels[ch].compression = NULL;
 	}
 
-	if (!setup_zstd(S, ch, SEGID_APPLICATION)){
+	if (!setup_zstd(S, ch)){
 		return (struct compress_res){};
 	}
 

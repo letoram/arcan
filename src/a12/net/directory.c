@@ -560,8 +560,10 @@ static struct a12_bhandler_res srv_bevent(
 /* 1. check that the identifier is valid. */
 /* 2. reserve the state slot - add suffix if it is debug */
 /* 3. setup the result structure. */
-		if (M.type == A12_BTYPE_STATE)
+		if (M.type == A12_BTYPE_STATE){
 			res.fd = a12_access_state(S, meta->applname, "w+", M.known_size);
+			ftruncate(res.fd, 0);
+		}
 		else if (M.type == A12_BTYPE_CRASHDUMP){
 			char name[sizeof(meta->applname) + sizeof(".dump")];
 			snprintf(name, sizeof(name), "%s.dump", meta->applname);

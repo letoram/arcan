@@ -76,6 +76,24 @@ state store for storing/restoring the appl execution state. Other (planned)
 modes of operation for this feature is to act as a pub/sub for sources/sinks/
 other directories to find eachother.
 
+# Cache
+
+Some types of A12 sources support letting the sink define the font that will be
+used for rendering, notable the default arcan terminal.
+
+For unicode features to work, both sides need to be aware of the capabilities
+of the font set, which can add noticeable delays to startup. Since such
+preferences tend to be static, font transfers can be preempted by setting a
+cache.
+
+This is defined through the A12\_CACHE\_DIR environment variable, if set, font
+transfers will have the B64 form of their checksum stored locally. A transfer
+that has a local match will be cancelled and substituted with the local form.
+
+This feature is also intended for large base transfers, notably static base
+images for sinks like Qemu - and possibly merkle-tree transfer/resume like
+scenarios for large clipboard/drag-and-drop.
+
 # Keystore
 
 arcan-net does not mandate a specific public key infrastructure or necessarily
@@ -148,8 +166,8 @@ system will fallback to raw- or only lightly- compressed buffers.
 
 The following are basic expected TODO points and an estimate as to where
 on the timeline the respective features will be developed/available. The
-parts marked with (a) refer to arcan-net tool, (p) the protocol, and (x)
-for extended/engine/aux parts.
+parts marked with (a) refer to arcan-net tool, (o) omitted (p) the
+protocol, and (x) for extended/engine/aux parts.
 
 Milestone 1 - basic features (0.5.x)
 
@@ -166,7 +184,7 @@ Milestone 1 - basic features (0.5.x)
 - [x] Basic authentication / DH / Cipher (blake2+chacha8+x25519) (ap)
 - [x] One-time password for key-auth (p)
 - [x] TUI- text channel (p)
-- [ ] Cache process / directory for file operations (a)
+- [x] Cache process / directory for file operations (a)
 - [x] ARCAN\_CONNPATH=a12:// handover support (ax)
 - [x] Add to encode, remoting (x)
 - [x] Complete naive-local key-store management (a)
@@ -182,12 +200,12 @@ Milestone 2 - closer to useful (0.6.x)
 - [x] Preferred-hosts list migration / handover (a)
   - [ ] Config for retry limits, sleep delays and backoff (a)
 - [ ] Output segments (p)
-- [ ] Bchunk compression controls (p)
-    [ ] Entropy estimator per packet
-		[ ] Compress low-entropy per chunk
+- [o] Bchunk compression controls (o) (omitted, zstd is good enough)
+    [o] Entropy estimator per packet
+		[o] Compress low-entropy per chunk
 - [ ] Quad-tree for DPNG (p)
   - [ ] Tile-map and caching (p)
-	- [x] Remove DEFLATE and mote to ZSTD
+	- [x] Remove DEFLATE and move to ZSTD
 	- [ ] varDCT
 	- [ ] XYB colorspace
 - [x] Frame Cancellation / dynamic framerate on window drift (p)
@@ -207,6 +225,7 @@ Milestone 2 - closer to useful (0.6.x)
 Milestone 3 - big stretch (0.6.x)
 
 - [ ] Embed binary transfer progress into parent window (p)
+- [ ] switch to arcan style malloc/free API (p)
 - [ ] Dynamic audio resampling (p)
 - [ ] Media- segment buffering window, controls and progress (p)
 - [ ] UDP based carrier (UDT) (a)
@@ -242,7 +261,7 @@ Milestone 3 - big stretch (0.6.x)
 
 # Licenses
 
-arcan-net is (c) Bjorn Stahl 2017-2020 and licensed under the 3-clause BSD
+arcan-net is (c) Bjorn Stahl 2017-2022 and licensed under the 3-clause BSD
 license. It is dependent on BLAKE3- (CC or Apache-2.0, see COPYING.BLAKE3)
 , on ChaCha8, x25519 (Public Domain) and Miniz (MIT-like, see miniz/LICENSE).
 
