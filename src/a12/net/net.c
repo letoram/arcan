@@ -170,7 +170,7 @@ static bool handover_setup(struct a12_state* S,
 
 static int get_bcache_dir()
 {
-	const char* base = getenv("A12_BCACHE_DIR");
+	const char* base = getenv("A12_CACHE_DIR");
 	if (!base)
 		return -1;
 

@@ -2050,7 +2050,7 @@ static void process_blob(struct a12_state* S)
 			ZSTD_decompressDCtx(cbf->zstd, buf, content_sz, S->decode, S->decode_pos);
 
 		if (ZSTD_isError(decode)){
-			a12int_trace(A12_TRACE_SYSTEM, "kind=zstd_fail:code=%zu", decode);
+			a12int_trace(A12_TRACE_SYSTEM, "kind=zstd_fail:code=%zu", (size_t) decode);
 			a12_stream_cancel(S, S->in_channel);
 			reset_state(S);
 			return;
@@ -2598,7 +2598,7 @@ static bool flush_compressed(
 
 	if (!node->left && !nts){
 		a12int_trace(A12_TRACE_BTRANSFER,
-			"kind=compressed_stream_over:stream=%"PRIu64":ch=%d",
+			"kind=compressed_stream_over:stream=%zu:ch=%d",
 			(size_t)node->streamid, (int) node->chid
 		);
 		return false;
@@ -2654,8 +2654,8 @@ static bool flush_compressed(
 		return node->left != 0;
 	}
 
-	a12int_trace(A12_TRACE_BTRANSFER, "kind=compressed_:"
-		"stream=%"PRIu64":ch=%d:size=%zu:base=%zu",
+	a12int_trace(A12_TRACE_BTRANSFER,
+		"kind=compressed_stream=%zu:ch=%d:size=%zu:base=%zu",
 		(size_t)node->streamid, (int) node->chid, out, nts
 	);
 

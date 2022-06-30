@@ -345,7 +345,7 @@ void a12int_step_vstream(struct a12_state* S, uint32_t id);
 struct appl_meta {
 	FILE* handle;
 	char* buf;
-	size_t buf_sz;
+	uint64_t buf_sz;
 	struct appl_meta* next;
 
 	uint16_t identifier;
