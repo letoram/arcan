@@ -2038,6 +2038,8 @@ static void process_blob(struct a12_state* S)
 		}
 
 		buf = DYNAMIC_MALLOC(content_sz);
+		ntw = content_sz;
+
 		if (!buf){
 			a12int_trace(A12_TRACE_ALLOC,
 				"kind=zstd_buffer_fail:size=%zu", content_sz);
@@ -2048,6 +2050,7 @@ static void process_blob(struct a12_state* S)
 
 		uint64_t decode =
 			ZSTD_decompressDCtx(cbf->zstd, buf, content_sz, S->decode, S->decode_pos);
+		S->decode_pos = 0;
 
 		if (ZSTD_isError(decode)){
 			a12int_trace(A12_TRACE_SYSTEM, "kind=zstd_fail:code=%zu", (size_t) decode);
