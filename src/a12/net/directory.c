@@ -94,13 +94,13 @@ static size_t scan_appdir(int fd, struct appl_meta* dst)
 			strcmp(ent->d_name, "..") == 0 || strcmp(ent->d_name, ".") == 0){
 			continue;
 		}
+		fchdir(fd);
 
 	/* just want directories */
 		struct stat sbuf;
 		if (-1 == stat(ent->d_name, &sbuf) || (sbuf.st_mode & S_IFMT) != S_IFDIR)
 			continue;
 
-		fchdir(fd);
 		chdir(ent->d_name);
 
 		struct appl_meta* new = malloc(sizeof(struct appl_meta));
