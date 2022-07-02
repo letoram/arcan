@@ -2137,8 +2137,6 @@ static void process_blob(struct a12_state* S)
 			cbf->tmp_fd = -1;
 			S->binary_handler(S, bm, S->binary_handler_tag);
 
-			if (free_buf)
-				DYNAMIC_FREE(buf);
 			return;
 		}
 	}
