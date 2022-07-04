@@ -588,7 +588,8 @@ static bool show_usage(const char* msg)
 	"\t-t             \t Single- client (no fork/mt - easier troubleshooting)\n"
 	"\t --no-ephem-rt \t Disable ephemeral keypair roundtrip (outbound only)\n"
 	"\t --probe-only  \t (outbound) Authenticate and print server primary state\n"
-	"\t-d bitmap      \t Set trace bitmap (bitmask or key1,key2,...)\n\n"
+	"\t-d bitmap      \t Set trace bitmap (bitmask or key1,key2,...)\n"
+	"\t-v, --version  \t Print build/version information to stdout\n\n"
 	"Directory client options: \n"
 	"\t --keep-appl   \t Don't wipe appl after execution\n"
 	"\t --reload      \t Re-request the same appl after completion\n"
@@ -630,7 +631,11 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 	for (; i < argc; i++){
 		if (argv[i][0] != '-')
 			break;
-
+		if (strcmp(argv[i], "-V") == 0 || strcmp(argv[i], "--version") == 0){
+			fprintf(stdout,
+				"%s\nshmif-%" PRIu64"\n", ARCAN_BUILDVERSION, arcan_shmif_cookie());
+			exit(EXIT_SUCCESS);
+		}
 		if (strcmp(argv[i], "-d") == 0){
 			if (i == argc - 1)
 				return show_usage("-d without trace value argument");
