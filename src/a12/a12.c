@@ -2741,8 +2741,11 @@ static size_t queue_node(struct a12_state* S, struct blob_out* node)
 	char* buf;
 
 /* not activated, so build a header first */
-	if (!node->active)
-		cap = begin_bstream(S, node);
+	if (!node->active){
+		size_t rampup = begin_bstream(S, node);
+		if (rampup < cap)
+			cap = rampup;
+	}
 
 /* if we have a non-streaming pre-allocated source, just slice off and keep */
 	if (node->buf){
