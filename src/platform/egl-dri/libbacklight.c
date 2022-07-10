@@ -249,18 +249,27 @@ struct backlight *backlight_init(
 
 		buffer[ret] = '\0';
 
-		parent = basename(buffer);
-
 		/* Perform matching for raw and firmware backlights -
 		   platform backlights have to be assumed to match */
+
+		/* Change from upstream - if the name exists but doesn't
+		 * match, print a warning but continue - for some setups
+		 * it still resolves correctly so this method is likely
+		 * flawed.
+		 */
+	/*
+		parent = basename(buffer);
 		if (entry_type == BACKLIGHT_RAW ||
 		    entry_type == BACKLIGHT_FIRMWARE) {
-			if (!((drm_name && !strcmp(drm_name, parent))))
+			if (!((drm_name && !strcmp(drm_name, parent)))){
 				goto out;
+			}
 		}
+	*/
 
-		if (entry_type < type)
+		if (!drm_name || entry_type < type){
 			goto out;
+		}
 
 		type = entry_type;
 
@@ -289,6 +298,7 @@ struct backlight *backlight_init(
 		goto err;
 
 	backlight->brightness = backlight_get_actual_brightness(backlight);
+
 	if (backlight->brightness < 0)
 		goto err;
 
