@@ -933,6 +933,13 @@ void arcan_tui_write(struct tui_context*,
 	uint32_t ucode, const struct tui_screen_attr*);
 
 /*
+ * Update only the attribute field of a cell at a specific position,
+ * keeping the current codepoint(s) intact.
+ */
+void arcan_tui_writeattr_at(struct tui_context* c,
+	const struct tui_screen_attr *attr, size_t x, size_t y);
+
+/*
  * This converts [n] bytes from [u8] as UTF-8 into multiple UCS4 writes.
  * It is a more expensive form of arcan_tui_write. If the UTF-8 failed to
  * validate completely, the function will return false - but codepoints
@@ -1310,6 +1317,7 @@ typedef uint32_t (* PTUISCREENS)(struct tui_context*);
 typedef void (* PTUIWRITE)(struct tui_context*, uint32_t, struct tui_screen_attr*);
 typedef bool (* PTUIWRITEU8)(struct tui_context*, const uint8_t*, size_t, struct tui_screen_attr*);
 typedef bool (* PTUIWRITESTR)(struct tui_context*, const char*, struct tui_screen_attr*);
+typedef void (* PTUIWRITEATTR)(struct tui_context*, struct tui_screen_attr*, size_t x, size_t y);
 typedef void (* PTUICURSORPOS)(struct tui_context*, size_t*, size_t*);
 typedef struct tui_screen_attr (* PTUIDEFCATTR)(struct tui_context*, int);
 typedef void (* PTUIGETCOLOR)(struct tui_context* tui, int, uint8_t*);
@@ -1405,6 +1413,7 @@ static PTUISTATESZ arcan_tui_statesize;
 static PTUIWRITE arcan_tui_write;
 static PTUIWRITEU8 arcan_tui_writeu8;
 static PTUIWRITESTR arcan_tui_writestr;
+static PTUIWRITEATTR arcan_tui_writeattr_at;
 static PTUICURSORPOS arcan_tui_cursorpos;
 static PTUIDEFCATTR arcan_tui_defcattr;
 static PTUIGETCOLOR arcan_tui_get_color;
@@ -1493,6 +1502,7 @@ M(PTUISTATESZ,arcan_tui_statesize);
 M(PTUIWRITE,arcan_tui_write);
 M(PTUIWRITEU8,arcan_tui_writeu8);
 M(PTUIWRITESTR,arcan_tui_writestr);
+M(PTUIWRITEATTR,arcan_tui_writeattr_at);
 M(PTUICURSORPOS,arcan_tui_cursorpos);
 M(PTUIDEFCATTR,arcan_tui_defcattr);
 M(PTUIGETCOLOR,arcan_tui_get_color);

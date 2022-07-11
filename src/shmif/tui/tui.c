@@ -907,6 +907,16 @@ void arcan_tui_write(struct tui_context* c,
 	flag_cursor(c);
 }
 
+void arcan_tui_writeattr_at(struct tui_context* c,
+	const struct tui_screen_attr *attr, size_t x, size_t y)
+{
+	if (!c)
+		return;
+
+	tsm_screen_setattr(c->screen, attr, x, y);
+	flag_cursor(c);
+}
+
 void arcan_tui_ident(struct tui_context* c, const char* ident)
 {
 	arcan_event nev = {

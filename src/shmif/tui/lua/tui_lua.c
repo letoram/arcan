@@ -1795,6 +1795,15 @@ static int write_tou8(lua_State* L)
 	size_t y = luaL_checkinteger(L, 3);
 	size_t ox, oy;
 	arcan_tui_cursorpos(ib->tui, &ox, &oy);
+
+/* overloaded form, only swap out the attribute */
+	if (lua_type(L, 4) == LUA_TTABLE){
+		apply_table(L, 4, &mattr);
+		arcan_tui_writeattr_at(ib->tui, &mattr, x, y);
+		lua_pushboolean(L, true);
+		goto out;
+	}
+
 	const char* buf =	luaL_checklstring(L, 4, &len);
 
 	if (lua_type(L, 5) == LUA_TTABLE){
@@ -1807,6 +1816,7 @@ static int write_tou8(lua_State* L)
 	lua_pushboolean(L,
 		arcan_tui_writeu8(ib->tui, (uint8_t*)buf, len, attr));
 
+out:
 	arcan_tui_cursorpos(ib->tui, &ox, &oy);
 	lua_pushinteger(L, ox);
 	lua_pushinteger(L, oy);
