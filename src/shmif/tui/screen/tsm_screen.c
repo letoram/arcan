@@ -1157,6 +1157,21 @@ void tsm_screen_reset_all_tabstops(struct tsm_screen *con)
 		con->tab_ruler[i] = false;
 }
 
+void tsm_screen_setattr(struct tsm_screen *con,
+	const struct tui_screen_attr *attr, size_t x, size_t y)
+{
+	inc_age(con);
+
+	if (x >= con->size_x || y >= con->size_y) {
+		return;
+	}
+
+	struct line *line = con->lines[y];
+
+	line->cells[x].age = con->age_cnt;
+	memcpy(&line->cells[x].attr, attr, sizeof(*attr));
+}
+
 SHL_EXPORT
 void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
 			  const struct tui_screen_attr *attr)
