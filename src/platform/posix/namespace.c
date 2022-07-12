@@ -181,6 +181,12 @@ char* arcan_find_resource(const char* label,
 		){
 			return handle_dynfile(strdup(scratch), ares, dfd);
 		}
+/* this assumes that the write- permission is enforced by the layer making the
+ * request, e.g. the matching arcan-lua call as well as by the env. itself (os
+ * mount / path setup and permissions) */
+		else if (ares & ARES_CREATE){
+			return handle_dynfile(strdup(scratch), ares, dfd);
+		}
 	}
 
 	return NULL;

@@ -29,7 +29,7 @@ struct codec_ent
 		} video, audio;
 
 		struct {
-			AVOutputFormat*  format;
+			const AVOutputFormat*  format;
 			AVFormatContext* context;
 		} container;
 

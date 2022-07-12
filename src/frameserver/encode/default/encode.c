@@ -86,12 +86,12 @@ static void dump_help()
 
 int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 {
-	if (!args || !cont){
+	const char* argval;
+	if (!args || !cont || arg_lookup(args, "help", 0, &argval)){
 		dump_help();
 		return EXIT_FAILURE;
 	}
 
-	const char* argval;
 	if (arg_lookup(args, "protocol", 0, &argval)){
 
 #ifdef HAVE_VNCSERVER

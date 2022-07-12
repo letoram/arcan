@@ -218,10 +218,13 @@ static uint8_t* s16swrconv(int* size, int* nsamp)
 	static uint8_t** resamp_outbuf = NULL;
 
 	if (!resampler){
-		resampler = swr_alloc_set_opts(NULL, AV_CH_LAYOUT_STEREO,
-			recctx.acontext->sample_fmt,
-			recctx.acontext->sample_rate, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16,
-			ARCAN_SHMIF_SAMPLERATE, 0, NULL);
+		resampler = swr_alloc();
+		av_opt_set_chlayout(resampler, "in_chlayout", &recctx.acontext->ch_layout, 0);
+		av_opt_set_int(resampler, "in_sample_rate", recctx.acontext->sample_rate, 0);
+		av_opt_set_sample_fmt(resampler, "in_sample_fmt", AV_SAMPLE_FMT_S16, 0);
+		av_opt_set_chlayout(resampler, "out_chlayout", &recctx.acontext->ch_layout, 0);
+		av_opt_set_int(resampler, "out_sample_rate", recctx.acontext->sample_rate, 0);
+		av_opt_set_sample_fmt(resampler, "out_sample_fmt", recctx.acontext->sample_fmt, 0);
 
 		resamp_outbuf = av_malloc(sizeof(uint8_t*) * ARCAN_SHMIF_ACHANNELS);
 		av_samples_alloc(resamp_outbuf, NULL, ARCAN_SHMIF_ACHANNELS,
@@ -260,16 +263,19 @@ static void write_frame(AVCodecContext* AV,
 
 	while (rv >= 0){
 		rv = avcodec_receive_packet(AV, pkt);
-		if (rv == AVERROR(EAGAIN) || rv == AVERROR_EOF){
-			LOG("(encode) : encode_audio, couldn't encode, giving up.\n");
+		if (rv == AVERROR(EAGAIN) || rv == AVERROR_EOF)
+			break;
+		else if (rv < 0){
+			LOG("(encode) : Frame error: %s\n", av_err2str(rv));
 			exit(EXIT_FAILURE);
 		}
 
 		av_packet_rescale_ts(pkt, AV->time_base, stream->time_base);
 		pkt->stream_index = stream->index;
 
-		if (0 != av_interleaved_write_frame(recctx.fcontext, pkt) && !flush){
-			LOG("(encode) : encode_audio, write_frame failed, giving up.\n");
+		rv = av_interleaved_write_frame(recctx.fcontext, pkt);
+		if (rv < 0 && !flush){
+			LOG("(encode) : Writing frame failed: %s\n", av_err2str(rv));
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -288,7 +294,12 @@ static bool encode_audio(bool flush)
 
 /* av_interleaved_write_frame takes over the frame allocation */
 	frame = av_frame_alloc();
-	frame->channel_layout = audio->channel_layout;
+	if (!frame){
+		LOG("Failed to allocate audio output frame\n");
+		exit(EXIT_FAILURE);
+	}
+
+	av_channel_layout_copy(&frame->ch_layout, &audio->ch_layout);
 
 	int buffer_sz;
 	uint8_t* ptr;
@@ -514,13 +525,23 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 			recctx.encvbuf_sz = desw * desh * bpp;
 			recctx.bpp = bpp;
 			recctx.encvbuf = av_malloc(recctx.encvbuf_sz);
+
 			recctx.vstream = avformat_new_stream(
-				muxer.storage.container.context, video.storage.video.codec);
+				muxer.storage.container.context,
+				video.storage.video.codec
+			);
+
+			recctx.vstream->id = muxer.storage.container.context->nb_streams - 1;
 			recctx.vcodec = video.storage.video.codec;
 			recctx.vcontext = video.storage.video.context;
 			recctx.vframe  = video.storage.video.pframe;
 			recctx.vpacket = av_packet_alloc();
 			recctx.fps = fps;
+			avcodec_parameters_from_context(recctx.vstream->codecpar, recctx.vcontext);
+
+			if (muxer.storage.container.format->flags & AVFMT_GLOBALHEADER)
+				recctx.vcontext->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+
 			LOG("(encode) Video output stream: %d x %d %f fps\n", desw, desh, fps);
 		}
 	}
@@ -531,11 +552,16 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 			recctx.encabuf_ofs = 0;
 			recctx.encabuf = av_malloc(recctx.encabuf_sz);
 
-			recctx.astream=avformat_new_stream(
-				muxer.storage.container.context,audio.storage.audio.codec);
+			recctx.astream = avformat_new_stream(
+				muxer.storage.container.context,
+				audio.storage.audio.codec
+			);
+
 			recctx.acontext = audio.storage.audio.context;
 			recctx.acodec = audio.storage.audio.codec;
 			recctx.apacket = av_packet_alloc();
+			recctx.astream->id = muxer.storage.container.context->nb_streams - 1;
+			avcodec_parameters_from_context(recctx.astream->codecpar, recctx.acontext);
 
 /* feeding audio encoder by this much each time,
  * frame_size = number of samples per frame, might need to supply the
@@ -563,6 +589,7 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 
 /* lastly, now that all streams are added, write the header */
 	recctx.fcontext = muxer.storage.container.context;
+
 	if (!muxer.setup.muxer(&muxer)){
 		LOG("(encode) muxer setupa failed, giving up.\n");
 		return false;
@@ -592,9 +619,6 @@ int ffmpeg_run(struct arg_arr* args, struct arcan_shmif_cont* C)
 	recctx.shmcont = *C;
 	bool firstframe = false;
 	recctx.last_fd = -1;
-
-	volatile bool inv = true;
-	while(inv){}
 
 	if (arg_lookup(args, "file", 0, &argval) == 0 && argval){
 		recctx.last_fd = open(argval, O_CREAT | O_RDWR, 0600);
