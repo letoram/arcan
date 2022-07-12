@@ -84,10 +84,10 @@ and executed. The scripts are fetched from the system scripts namespace (-T,
 \fIhookscripts\fR section below for additional details.
 
 .IP "\fB-b, --fallback \fIapplname\fR"
-If the running application crashes due to scripting error or from misuse
-of the API, all running external, \fIframeserver\fR, connections will be
-transferred to \fIapplname\fR. If applname is set to the reserved value
-:self the same appl will be used without running a verifyload cycle.
+If the running application crashes due to scripting error or from misuse of the
+API, all running external or recoverable \fIframeserver\fR, connections will be
+transferred to \fIapplname\fR. If applname is set to the reserved value :self
+the same appl will be used without running a verifyload cycle.
 
 .IP "\fB-d, --database \fIdbname\fR"
 Specify a different database for use when launching external targets and
@@ -247,71 +247,11 @@ that should be sandboxed to as large a degree as possible with the
 principle of least privilege in mind. It should be the active application
 (set of user-supplied scripts) that dynamically control the level of
 privilege, communication and data storage that such processes have access
-to. Processes under such control are referred to as \fIFrameservers\fR to
-which there are several archetypes defined. These are as follows:
+to.
 
-.IP "\fBNET\fR"
-Can be started in either client or server mode and implements a basic
-communication, identification and discovery protocol.
-
-.IP "\fBDECODE\fR"
-Decode is used to decode audio / video feeds and is expected to be able
-to hand seeking commands and can cover multiple user-selectable data streams,
-and overlay secondary information e.g. subtitles. It should be able to work
-in a container without a working file-system with input provided from passed
-handle descriptors but may need access to privileged devices (hardware
-assisted decoding).
-
-.IP "\fBRECORD\fR"
-Is used to implement audio/video recording or streaming, but also for
-related applications that depend on receiving data from the main process.
-One such related application is that of remote control (e.g. a VNC/RDP server).
-
-.IP "\fBREMOTING\fR"
-This archetype is similar to \fIdecode\fR but prioritizes interactivity
-and dynamic change in regards to user input. The default implementation uses
-VNC/RDP and as such requires network access.
-
-.IP "\fBGAME\fR"
-This archetype represents gaming and the default implementation uses the
-libretro interface (which provides games and emulators in the form of
-dynamically loadable shared libraries, cores) which has the characteristics
-of a high throughput, low-latency, timing sensitive and interactive data source.
-
-.IP "\fBAVFEED\fR"
-Avfeed is a special frameserever in the sense that the default implementation
-only tests that the interface and control is working. It is primarily used to
-swiftly develop and test customized integration with some third party interface.
-
-.IP "\fBTERMINAL\fR"
-Used to provide a terminal - a primarily event-driven and text oriented
-interface that can be bound to a shell or data pipes and may span multiple
-levels of privilege.
-
-For more detailed information on the default implementations of these
-archetypes, please refer to their individual manpages as referred to in the
-\fISee Also\fR section at the end of this manpage.
-
-All frameservers interact with the main arcan process through the use of
-a (BSD licensed) shared memory interface which provides IPC primitives e.g.
-event queues and dynamically resizeable buffers for audio and video transfers.
-
-There are two ways frameservers can be activated: authoritative and
-non-authoritative (also referred to as \fIexternal\fR).
-
-Authoritative frameservers are spawned by the main arcan process and has
-access handles etc. already mapped into the process at launch. These are
-sandboxed through the use of a privileged chain-loader that prepares
-file-system namespace, activity monitoring and system call filtering.
-
-Non-authoritative frameservers connect through one (or two) environment
-variables, ARCAN_CONNPATH and ARCAN_CONNKEY. These need to be explicitly
-allocated and activated by the running application for each connection,
-see target_alloc in the scripting API for more details.
-
-From a user perspective, this mode can be considered similar to how a
-desktop application would connect to an X server through the DISPLAY
-environment variable.
+These are mainly an internal developer detail, some scripting functions
+transparently set them up - e.g. launch_decode(...) and
+define_recordtarget(...).
 
 .SH LIGHTWEIGHT (LWA) ARCAN
 
@@ -415,9 +355,7 @@ https://arcan-fe.com
 .SH SEE-ALSO
 .IX Header "SEE ALSO"
 \&\fIarcan_api_overview\fR\|(3) \&\fIarcan_lwa\fR\|(1) \&\fIarcan_frameserver\fR\|(1)
-\&\fIarcan_db\fR\|(1) \&\fIafsrv_game\fR\|(1) \&\fIafsrv_decode\fR\|(1)
-\&\fIarcan_encode\fR\|(1) \&\fIafsrv_remoting\fR\|(1)
-\&\fIafsrv_net\fR\|(1) \&\fIafsrv_terminal\fR\|(1)
+\&\fIarcan_db\fR\|(1)
 
 .SH BUGS
 You can report bugs through the tracker on the github page. For normal contact
