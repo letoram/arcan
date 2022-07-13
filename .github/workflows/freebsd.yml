@@ -1,4 +1,4 @@
-name: FreeBSD 13.0 amd64
+name: FreeBSD 13.1 amd64
 
 on: [ push, pull_request ]
 
@@ -8,7 +8,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Test in FreeBSD VM
-      uses: vmactions/freebsd-vm@v0.1.6 # on update bump workflow name
+      uses: vmactions/freebsd-vm@v0.1.7 # on update bump workflow name
       with:
         prepare: |
           pkg install -y cmake ninja pkgconf # build
