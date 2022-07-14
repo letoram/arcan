@@ -76,35 +76,6 @@ static bool default_acodec_setup(
 	AVCodecContext* ctx = dst->storage.audio.context;
 	const AVCodec* codec = dst->storage.audio.codec;
 
-	assert(channels == 2);
-	assert(samplerate > 0 && samplerate <= 48000);
-	assert(codec);
-
-	ctx->channels       = channels;
-	ctx->channel_layout = av_get_default_channel_layout(channels);
-
-	ctx->sample_rate    = samplerate;
-	ctx->time_base      = av_d2q(1.0 / (double) samplerate, 1000000);
-	ctx->sample_fmt     = codec->sample_fmts[0];
-
-/* kept for documentation, now we assume the swr_convert just
- * handles all sample formats for us,
- * if we prefer or require a certain on in the future, the following code
- * shows how:
-	for (int i = 0; codec->sample_fmts[i] != -1 && ctx->sample_fmt ==
-	AV_SAMPLE_FMT_NONE; i++){
-		if (codec->sample_fmts[i] == AV_SAMPLE_FMT_S16 ||
-		codec->sample_fmts[i] == AV_SAMPLE_FMT_FLTP)
-			ctx->sample_fmt = codec->sample_fmts[i];
-	}
-
-	if (ctx->sample_fmt == AV_SAMPLE_FMT_NONE){
-		LOG("(encoder) Couldn't find supported matching sample format for
-		codec, giving up.\n");
-		return false;
-	}
-*/
-
 /* rough quality estimate */
 	if (abr <= 10)
 		ctx->bit_rate = 1024 * ( 320 - 240 * ((float)(11.0 - abr) / 11.0) );
@@ -118,8 +89,8 @@ static bool default_acodec_setup(
 		"got %d kbit/s using %s\n", samplerate, abr,
 		(int)(ctx->bit_rate / 1000), codec->name);
 
-	if (avcodec_open2(dst->storage.audio.context,
-		dst->storage.audio.codec, NULL) != 0){
+	if (avcodec_open2(
+		dst->storage.audio.context, dst->storage.audio.codec, NULL) != 0){
 		avcodec_close(dst->storage.audio.context);
 		dst->storage.audio.context = NULL;
 		dst->storage.audio.codec   = NULL;
@@ -132,7 +103,9 @@ static bool default_acodec_setup(
 static bool default_format_setup(struct codec_ent* dst)
 {
 	int rc = avformat_write_header(dst->storage.container.context, NULL);
-	LOG("(encode) header status (%d)\n", rc);
+	if (rc < 0){
+		LOG("(encode) failed to write header: %s\n", av_err2str(rc));
+	}
 	return rc == 0;
 }
 
@@ -328,8 +301,8 @@ static struct codec_ent acodec_tbl[] = {
 					.setup.audio = default_acodec_setup}
 };
 
-static struct codec_ent lookup_default(const char* const req,
-	struct codec_ent* tbl, size_t nmemb, bool audio)
+static struct codec_ent lookup_default(
+	const char* const req, struct codec_ent* tbl, size_t nmemb, bool audio)
 {
 	struct codec_ent res = {.name = req};
 	const AVCodec** dst = audio ? &res.storage.audio.codec : &res.storage.video.codec;
@@ -402,33 +375,6 @@ struct codec_ent encode_getacodec(const char* const req, int flags)
 	return res;
 }
 
-static int64_t fds(void* infd, int64_t pos, int whence)
-{
-	int fd = *(int*) infd;
-
-	int64_t ret;
-
-	if (whence == AVSEEK_SIZE){
-		struct stat st;
-		ret = fstat(fd, &st);
-
-		return ret < 0 ? AVERROR(errno) : (S_ISFIFO(st.st_mode) ? 0 : st.st_size);
-	}
-
-	ret = lseek(fd, pos, whence);
-	return ret < 0 ? AVERROR(errno) : ret;
-}
-
-static int fdw(void* fd, uint8_t* buf, int buf_size)
-{
-	return write(*(int*)fd, buf, buf_size);
-}
-
-static int fdr(void* fd, uint8_t* buf, int buf_size)
-{
-	return read(*(int*)fd, buf, buf_size);
-}
-
 /* slightly difference scanning function here so can't re-use lookup_default */
 struct codec_ent encode_getcontainer(
 	const char* const requested, int dst, const char* remote)
@@ -438,13 +384,15 @@ struct codec_ent encode_getcontainer(
 	if (requested && strcmp(requested, "stream") == 0){
 		res.storage.container.format = av_guess_format("flv", NULL, NULL);
 
-		if (!res.storage.container.format)
+		if (!res.storage.container.format){
 			LOG("(encode) couldn't setup streaming output.\n");
+			return res;
+		}
 		else {
 			AVFormatContext* ctx;
 			ctx = avformat_alloc_context();
-/*		ctx->oformat = res.storage.container.format; */
 			res.storage.container.context = ctx;
+			ctx->oformat = res.storage.container.format;
 			res.setup.muxer = default_format_setup;
 			int rv = avio_open2(&ctx->pb, remote, AVIO_FLAG_WRITE, NULL, NULL);
 			LOG("(encode) attempting to open: %s, result: %d\n", remote, rv);
@@ -477,16 +425,27 @@ struct codec_ent encode_getcontainer(
 	);
 
 /*
- * Since there's no sane way for us to just pass a file descriptor and
- * not be limited to pipe behaviors, we have to provide an entire
- * custom avio class..
+ * accept that we're limited to pipe behaviour in the output and just wrap
+ * the avio through the pipe url handler.
  */
-	int* fdbuf = malloc(sizeof(int));
-	*fdbuf = dst;
-	res.storage.container.context->pb =
-		avio_alloc_context(av_malloc(4096), 4096, 1, fdbuf, fdr, fdw, fds);
+	char* fdurl;
+	if (-1 == asprintf(&fdurl, "pipe:%d", dst)){
+		LOG("(encode) couldn't allocate pipe buffer.\n");
+		return res;
+	}
 
-	res.setup.muxer = default_format_setup;
+	int ret =
+		avio_open(
+			&res.storage.container.context->pb,
+			fdurl,
+			AVIO_FLAG_WRITE
+		);
+
+	if (ret < 0){
+		LOG("(encode) failed to setup avio context: %s\n", av_err2str(ret));
+	}
+	else
+		res.setup.muxer = default_format_setup;
 
 	return res;
 }
