@@ -27,7 +27,8 @@ Getting Started
 
 Some distributions, e.g. [voidlinux](https://voidlinux.org) have most of arcan
 as part of its packages, so you can save yourself some work going for one of
-those.
+those. Other ones with an active community would be through Nix (for example:
+nix-shell -p arcan.all-wrapped).
 
 Docker- container templates (mainly used for headless development and testing)
 can be found here, quality varies wildly from bad to poor (just like Docker):
@@ -53,10 +54,10 @@ Specific package names depend on your distribution, but common ones are:
     sqlite3, openal-soft, sdl2, opengl, luajit, gbm, kms, freetype, harfbuzz
     libxkbcommon
 
-For encoding and decoding options you would also want:
+For more encoding and decoding options you might also want:
 
-    libvlc-core (videolan), the ffmpeg suite, leptonica, tesseract
-    libvncserver libusb1
+    libvlc-core (videolan), the ffmpeg suite, leptonica + tesseract (ocr)
+    libvncserver libusb1, v4l2-loopback, mupdf
 
 First we need some in-source dependencies that are cloned manually for now:
 
@@ -66,10 +67,10 @@ First we need some in-source dependencies that are cloned manually for now:
     cd ../../
 
 These are typically not needed, the main use is for ensuring certain build
-options that might vary between distributions (freetype/luajit) and to ensure
-that a recoverable desktop can be statically linked and executed in an
-otherwise broken userspace (so embedded bringup). The one exception is OpenAL
-which is patched to be used by a special (arcan-lwa) build. This is slated for
+options that might vary between distributions (luajit) and to ensure that a
+recoverable desktop can be statically linked and executed in an otherwise
+broken userspace (so embedded bringup). The one exception is OpenAL which is
+patched to be used by a special (arcan-lwa) build. This is slated for
 refactoring to remove that dependency, but there are other priorities in the
 way.
 
@@ -110,7 +111,7 @@ server or run nested within another or even itself based on the presence
 of various environment variables (DISPLAY, WAYLAND\_DISPLAY, ARCAN\_CONNPATH).
 
 'welcome' is a name of a simple builtin welcome screen, *that will shut down
-automatically after a few seconds of use*.
+automatically after a few seconds*.
 
 For something of more directly useful, you can try the builtin appl 'console':
 
@@ -132,9 +133,10 @@ The produced egl-dri platform 'arcan' binary installs suid by default. This is
 not strictly necessary unless some specific features are desired, e.g. laptop
 backlight controls on Linux as those require access to sysfs and friends.
 
-Do note that your current user then still requires access to relevant
-/dev/input/event and /dev/dri/cardN and /dev/dri/renderN files to work properly
-otherwise input and/or graphics devices might not be detected or useable.
+If that is not relevant, you can strip the suid property on the binary, but do
+note that your current user still requires access to relevant /dev/input/event
+and /dev/dri/cardN and /dev/dri/renderN files to work properly -- otherwise
+input and/or graphics devices might not be detected or useable.
 
 The binary does split off into a non-suid part that the main engine runs off
 of, see posix/psep\_open.c for auditing what is being run with higher
@@ -165,11 +167,11 @@ These are covered in more detail in the manpage.
 
 ### Networking
 
-Arcan-net is a binary that allows you to forward one or many arcan clients
-over a network. It is built by default, and can be triggered both as a
-separate network tool as well as being launched indirectly from shmif by
-setting ARCAN\_CONNPATH=a12://id@host:port, or when issuing a migration
-request by the window manager.
+Arcan-net is a binary that allows you to forward one or many arcan clients over
+a network. It is built by default, and can be triggered both as a separate
+network tool as well as being launched indirectly from shmif by setting
+ARCAN\_CONNPATH=a12://id@host:port, or when issuing a migration request by the
+window manager.
 
 See also: src/a12/net/README.md and src/a12/net/HACKING.md.
 
