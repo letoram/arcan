@@ -249,7 +249,10 @@ int v4l2_run(struct arg_arr* args, struct arcan_shmif_cont cont)
 			int64_t elapsed = arcan_timemillis() - last;
 			last = arcan_timemillis();
 			int64_t step = 0.8 * (1.0 / (float)fps * 1000.0);
-			arcan_timesleep(step - elapsed);
+			step -= elapsed;
+
+			if (step > 0)
+				arcan_timesleep(step);
 
 /* both mmap and repack code does mostly the same work, with mmap disabled
  * we need to chunk into a number of write calls which is rather poor */
