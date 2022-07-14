@@ -726,7 +726,7 @@ static struct a12_bhandler_res cl_bevent(
 /* for restoring the DB, can simply popen to arcan_db with the piped mode
  * (arcan_db add_appl_kv basename key value) and send a SIGUSR2 to the process
  * to indicate that the state has been updated. */
-		cbt->appl_out = popen("tar xf -", "w");
+		cbt->appl_out = popen("tar xfm -", "w");
 		res.fd = fileno(cbt->appl_out);
 		res.flag = A12_BHANDLER_NEWFD;
 
