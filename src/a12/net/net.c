@@ -202,12 +202,14 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 
 /* Split the log output on debug so we see what is going on */
 #ifdef _DEBUG
+	if (a12_trace_targets){
 		char buf[sizeof("cl_log_xxxxxx.log")];
 		snprintf(buf, sizeof(buf), "cl_log_%.6d.log", (int) getpid());
 		FILE* fpek = fopen(buf, "w+");
 		if (fpek){
 			a12_set_trace_level(a12_trace_targets, fpek);
 		}
+	}
 #endif
 
 /* make sure that we don't leak / expose whatever the listening process has,

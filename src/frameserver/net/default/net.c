@@ -46,7 +46,14 @@ static bool flush_shmif(struct arcan_shmif_cont* C)
 	return rv == 0;
 }
 
-static int discover_broadcast(struct arcan_shmif_cont* C, int trust, const char* opt)
+static struct pk_response key_auth_local(uint8_t pk[static 32])
+{
+	struct pk_response auth = {0};
+	auth.authentic = a12helper_keystore_accepted(pk, NULL);
+	return auth;
+}
+
+static int discover_broadcast(struct arcan_shmif_cont* C, int trust)
 {
 /* first iteration:
  *
@@ -75,7 +82,7 @@ static int discover_broadcast(struct arcan_shmif_cont* C, int trust, const char*
 	return EXIT_FAILURE;
 }
 
-static int discover_passive(struct arcan_shmif_cont* C, int trust, const char* opt)
+static int discover_passive(struct arcan_shmif_cont* C, int trust)
 {
 /*
  * related to discover_passive so the implementation for this should be in the helper
@@ -122,6 +129,7 @@ static void mark_lost(struct arcan_shmif_cont* C, struct listent** first)
  * send an event marking it as unknown and then unlink from the list */
 	while (cur){
 		if (!cur->seen){
+			LOG("lost-known: %s\n", cur->name);
 			arcan_event ev = {
 				.ext.kind = ARCAN_EVENT(NETSTATE),
 				.ext.netstate = {0}
@@ -169,7 +177,8 @@ static bool tagh(const char* name, void* tag)
 {
 	struct tagopt* opt = tag;
 	struct a12_context_options a12opts = {
-		.local_role = ROLE_PROBE
+		.local_role = ROLE_PROBE,
+		.pk_lookup = key_auth_local
 	};
 	struct anet_options opts =
 	{
@@ -181,15 +190,19 @@ static bool tagh(const char* name, void* tag)
 	if (!name)
 		return true;
 
+LOG("sweep: petname %s\n", name);
 /* keystore gets released between each cl_setup call */
 	if (!get_keystore(opt->C, &opts.keystore)){
+		LOG("fail, couldn't access keystore\n");
 		return false;
 	}
 
 /* some might want to provide another secret, this only matters for deep
  * as it won't apply until the authentication handshake takes place */
-	if (opt->key)
+	if (opt->key){
 		snprintf(a12opts.secret, sizeof(a12opts.secret), "%s", opt->key);
+		LOG("setting custom secret (****)\n");
+	}
 
 /* this will depth- first the tag, and if a connection is there, the 'deep'
  * option will also attempt to authenticate before shutting down the socket */
@@ -216,15 +229,18 @@ static bool tagh(const char* name, void* tag)
 		if (strcmp((*cur)->name, name) == 0){
 			close(con.fd);
 			(*cur)->seen = true;
+			LOG("known-seen(%s)\n", name);
 			goto out;
 		}
 		cur = &((*cur)->next);
 	}
+
 	*cur = malloc(sizeof(struct listent));
 	**cur = (struct listent){
 		.seen = true
 	};
 	snprintf((*cur)->name, 64, "%s", name);
+	LOG("discovered:%s\n", name);
 
 /* if deep is desired, perform authentication and set (type) to
  * 1: source, 2: sink or 4: directory. */
@@ -253,7 +269,7 @@ out:
 	return true;
 }
 
-static int discover_sweep(struct arcan_shmif_cont* C, int trust, const char* opt)
+static int discover_sweep(struct arcan_shmif_cont* C, int trust)
 {
 	struct tagopt tag = {
 		.C = C,
@@ -283,8 +299,9 @@ static int discover_sweep(struct arcan_shmif_cont* C, int trust, const char* opt
 	return EXIT_SUCCESS;
 }
 
-static int discover_directory(struct arcan_shmif_cont* C, int trust, const char* opt)
+static int discover_directory(struct arcan_shmif_cont* C, int trust)
 {
+	LOG("EIMPL: discover-directory\n");
 /*
  * 1. grab tag from opt, connect to it.
  * 2. authenticate, check directory type.
@@ -300,13 +317,6 @@ static int discover_directory(struct arcan_shmif_cont* C, int trust, const char*
  * 7.           wilder things - register as cache? (file-swarm..)
  */
 	return EXIT_FAILURE;
-}
-
-static struct pk_response key_auth_local(uint8_t pk[static 32])
-{
-	struct pk_response auth = {0};
-	auth.authentic = a12helper_keystore_accepted(pk, NULL);
-	return auth;
 }
 
 static int connect_to_host(
@@ -381,10 +391,35 @@ static int connect_to_host(
 	return EXIT_SUCCESS;
 }
 
+static int show_help()
+{
+	fprintf(stdout,
+		"Net (client) should be run authoritatively (spawned from arcan)\n"
+		"Running from the command-line is only intended for developing/debugging\n\n"
+		"ARCAN_ARG (environment variable, key1=value:key2:key3=value), arguments: \n"
+		"  key     \t   value   \t   description\n"
+		"----------\t-----------\t-----------------\n"
+		" host     \t  dsthost  \t Specify host or keystore tag@ to connect to\n"
+		" discover \t  method   \t Set discovery mode (method=sweep | passive |"
+		"          \t           \t                     broadcast | directory)\n"
+		"\n"
+		"discovery arguments\n"
+		"  key   \t   value   \t   description\n"
+		"--------\t-----------\t-----------------\n"
+		" trust  \t   mode    \t Set the trust model for unknown keys\n"
+	);
+
+	return EXIT_FAILURE;
+}
+
 int afsrv_netcl(struct arcan_shmif_cont* C, struct arg_arr* args)
 {
 /* lua:net_discover maps to this */
 	const char* dmethod = NULL;
+	if (arg_lookup(args, "help", 0, &dmethod)){
+		return show_help();
+	}
+
 	if (arg_lookup(args, "host", 0, &dmethod)){
 		return connect_to_host(C, args);
 	}
@@ -397,16 +432,16 @@ int afsrv_netcl(struct arcan_shmif_cont* C, struct arg_arr* args)
 		int trustm = TRUST_KNOWN;
 
 		if (strcmp(dmethod, "sweep") == 0){
-			return discover_sweep(C, trustm, opt);
+			return discover_sweep(C, trustm);
 		}
 		else if (strcmp(dmethod, "passive") == 0){
-			return discover_passive(C, trustm, opt);
+			return discover_passive(C, trustm);
 		}
 		else if (strcmp(dmethod, "broadcast") == 0){
-			return discover_broadcast(C, trustm, opt);
+			return discover_broadcast(C, trustm);
 		}
 		else if (strcmp(dmethod, "directory") == 0){
-			return discover_directory(C, trustm, opt);
+			return discover_directory(C, trustm);
 		}
 		else {
 			arcan_shmif_last_words(C, "unsupported discovery method");
