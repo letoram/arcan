@@ -30,9 +30,9 @@
 -- @tblent: ffname,size_pt switch primary font, use f,size to use default
 -- font which can be set with system_defaultfont or through the first used
 -- successful render_text call. Set size to = 0 or add a sign specifier
--- (- or +) to specify relative to default font. Size is in points
--- assuming 28.8 ppcm density output as the internal font management cannot
--- currently take output display into account when rendering.
+-- (- or +) to specify relative to default font. Size is in points and will
+-- be resolved to a pixel size based on the density of the rendertarget it
+-- gets attached to.
 -- @tblent: #rrggbb switch font color
 -- @tblent: pfname embed image
 -- @tblent: Pfname,w,h embed image, scale to w*h
