@@ -754,7 +754,6 @@ arcan_vobj_id arcan_3d_buildcylinder(float r,
 	newmodel->flags.complete = true;
 
 /* pass one, base data */
-	size_t vc = 0;
 	float step_sz = 2 * M_PI / (float) steps;
 	float txf = 2 * M_PI;
 
@@ -777,7 +776,6 @@ arcan_vobj_id arcan_3d_buildcylinder(float r,
 		*vp++ = r * x; *vp++ = -hh; *vp++ = r * z;
 		*tp++ = p / txf; *tp++ = 1;
 		*np++ = x; *np++ = 0; *np++ = z;
-		vc += 2;
 	}
 
 /* pass two, index buffer */

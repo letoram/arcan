@@ -218,6 +218,18 @@ static uint8_t* s16swrconv(int* size, int* nsamp)
 	static uint8_t** resamp_outbuf = NULL;
 
 	if (!resampler){
+		resampler =
+			swr_alloc_set_opts(
+				NULL,
+				AV_CH_LAYOUT_STEREO,
+				recctx.acontext->sample_fmt,
+				recctx.acontext->sample_rate,
+				AV_CH_LAYOUT_STEREO,
+				AV_SAMPLE_FMT_S16,
+				ARCAN_SHMIF_SAMPLERATE, 0, NULL);
+
+/*
+ * This is intended to be the 'coming interface' versus the factory above..
 		resampler = swr_alloc();
 		av_opt_set_chlayout(resampler, "in_chlayout", &recctx.acontext->ch_layout, 0);
 		av_opt_set_int(resampler, "in_sample_rate", recctx.acontext->sample_rate, 0);
@@ -225,6 +237,7 @@ static uint8_t* s16swrconv(int* size, int* nsamp)
 		av_opt_set_chlayout(resampler, "out_chlayout", &recctx.acontext->ch_layout, 0);
 		av_opt_set_int(resampler, "out_sample_rate", recctx.acontext->sample_rate, 0);
 		av_opt_set_sample_fmt(resampler, "out_sample_fmt", recctx.acontext->sample_fmt, 0);
+	*/
 
 		resamp_outbuf = av_malloc(sizeof(uint8_t*) * ARCAN_SHMIF_ACHANNELS);
 		av_samples_alloc(resamp_outbuf, NULL, ARCAN_SHMIF_ACHANNELS,
@@ -299,7 +312,12 @@ static bool encode_audio(bool flush)
 		exit(EXIT_FAILURE);
 	}
 
+	frame->channel_layout = audio->channel_layout;
+/*
+ * same as with setup above, this the direct assignment will be
+ * deprecated ..
 	av_channel_layout_copy(&frame->ch_layout, &audio->ch_layout);
+ */
 
 	int buffer_sz;
 	uint8_t* ptr;
