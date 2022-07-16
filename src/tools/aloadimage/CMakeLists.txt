@@ -19,6 +19,8 @@ find_package(DL REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Sanitizers REQUIRED)
 
+include(GNUInstallDirs) # CMAKE_INSTALL_MANDIR
+
 SET(LIBRARIES
 	Math::Math
 	RT::RT
