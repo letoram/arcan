@@ -17,6 +17,8 @@ find_package(RT REQUIRED)
 find_package(Threads REQUIRED)
 find_package(DL REQUIRED)
 
+include(GNUInstallDirs) # CMAKE_INSTALL_MANDIR
+
 add_definitions(
 	-Wall
 	-D__UNIX
