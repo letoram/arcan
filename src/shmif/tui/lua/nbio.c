@@ -564,7 +564,7 @@ static char* nextline(struct nonblock_io* ib,
 		}
 	}
 
-	if (eof){
+	if (eof || (!start && ib->ofs == COUNT_OF(ib->buf))){
 		*gotline = false;
 		*nb = ib->ofs;
 		return ib->buf;
@@ -627,8 +627,8 @@ int alt_nbio_process_read(
  * 3. forward to the callback at -1.
  */
 #define SLIDE(X) do{\
-	memmove(ib->buf, &ib->buf[ib->ofs], buf_sz - ib->ofs);\
-	ib->ofs = 0;\
+	memmove(ib->buf, &ib->buf[ci], ib->ofs - ci);\
+	ib->ofs -= ci;\
 }while(0)
 	bool gotline;
 
