@@ -26,6 +26,14 @@ function main()
 	end);
 #endif
 
+#ifdef MAIN2
+	if valid_vid(WORLDID, TYPE_FRAMESERVER) then
+		target_updatehandler(WORLDID, function(source, status)
+			print("wm event", status.kind)
+		end)
+	end
+#endif
+
 #ifdef ERROR
 	a = launch_avfeed("", "avfeed", function() end);
 	target_updatehandler(a, target_updatehandler);
