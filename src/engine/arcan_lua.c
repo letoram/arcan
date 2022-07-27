@@ -1,7 +1,15 @@
 /*
- * Copyright 2003-2020, Björn Ståhl
+ * Copyright: Björn Ståhl
  * License: GPLv2+, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
+ */
+
+/*
+ * LWA changes:
+ *  1. split target_message into a special form for LWA
+ *  2. add an target_updatehandler for WORLDID that tracks a callback
+ *     handler for the subseg_ev implementation.
+ *  3. map in the BCHUNK hints at least
  */
 
 /*
@@ -242,6 +250,9 @@ static struct {
 	const char** last_argv;
 	lua_State* last_ctx;
 	void (*error_hook)(lua_State*, lua_Debug*);
+
+/* used by arcan_lwa to attach a handler for WORLDID display events */
+	intptr_t worldid_tag;
 
 	size_t last_clock;
 
@@ -3189,6 +3200,55 @@ static void get_utf8(const char* instr, uint8_t dst[5])
 	memcpy(dst, instr, len <= 4 ? len : 4);
 }
 
+#ifdef ARCAN_LWA
+static int lwamessage(
+	lua_State* ctx, size_t len, const char* msg, struct subseg_output* sseg)
+{
+	arcan_event ev =
+	{
+		.category = EVENT_EXTERNAL,
+		.ext.kind = EVENT_EXTERNAL_MESSAGE
+	};
+
+	uint32_t state = 0, codepoint = 0;
+	const char* outs = msg;
+	size_t maxlen = sizeof(ev.ext.message.data) - 1;
+
+/* utf8- point aligned against block size */
+	while (len > maxlen){
+		size_t i, lastok = 0;
+		state = 0;
+		for (i = 0; i <= maxlen - 1; i++){
+			if (UTF8_ACCEPT == utf8_decode(&state, &codepoint, (uint8_t)(msg[i])))
+				lastok = i;
+
+			if (i != lastok){
+				if (0 == i)
+					return false;
+			}
+		}
+
+		memcpy(ev.ext.message.data, outs, lastok);
+		ev.ext.message.data[lastok] = '\0';
+		len -= lastok;
+		outs += lastok;
+		if (len)
+			ev.ext.message.multipart = 1;
+		else
+			ev.ext.message.multipart = 0;
+		platform_lwa_targetevent(sseg, &ev);
+	}
+
+/* flush remaining */
+	if (len){
+		snprintf((char*)ev.ext.message.data, maxlen, "%s", outs);
+		ev.ext.message.multipart = 0;
+		platform_lwa_targetevent(sseg, &ev);
+	}
+	return 0;
+}
+#endif
+
 static int targetmessage(lua_State* ctx)
 {
 	LUA_TRACE("message_target");
@@ -3208,17 +3268,17 @@ static int targetmessage(lua_State* ctx)
 	vfunc_state* vstate = arcan_video_feedstate(vid);
 	arcan_frameserver* fsrv = NULL;
 
-/* special case for lwa is that we can message the connection */
+	size_t len = 0;
+	const char* msg = luaL_checklstring(ctx, tblind, &len);
+
+/* LWA needs to use the other direction, i.e. EVENT_EXTERNAL */
 #ifdef ARCAN_LWA
 	struct subseg_output* sseg = NULL;
-	bool route_lwa = false;
 	if (vid == ARCAN_VIDEO_WORLDID){
-		route_lwa = true;
-		vstate = NULL;
+		return lwamessage(ctx, len, msg, NULL);
 	}
 	else if (vstate && vstate->tag == ARCAN_TAG_LWA){
-		route_lwa = true;
-		sseg = vstate->ptr;
+		return lwamessage(ctx, len, msg, vstate->ptr);
 	}
 #endif
 
@@ -3226,24 +3286,13 @@ static int targetmessage(lua_State* ctx)
 		fsrv = vstate->ptr;
 	}
 
-	if (!fsrv
-#ifdef ARCAN_LWA
-		&& !route_lwa
-#endif
-	){
+	if (!fsrv){
 		lua_pushnumber(ctx, -1);
 		LUA_ETRACE("message_target", "dst not a frameserver", 1);
 	}
 
-	arcan_event ev = {
-		.category = EVENT_TARGET,
-		.tgt.kind = TARGET_COMMAND_MESSAGE
-	};
-
-	const char* msg = luaL_checkstring(ctx, tblind);
-
 /* "strlen" + validate the entire message */
-	uint32_t state = 0, codepoint = 0, len = 0;
+	uint32_t state = 0, codepoint = 0;
 	while(msg[len])
 		if (UTF8_REJECT == utf8_decode(&state, &codepoint,(uint8_t)(msg[len++]))){
 			lua_pushnumber(ctx, -1);
@@ -3255,6 +3304,11 @@ static int targetmessage(lua_State* ctx)
 		LUA_ETRACE("message_trarget", "truncated utf-8", 1);
 	}
 
+	struct arcan_event ev =
+	{
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_MESSAGE
+	};
 /* pack in multipart '\0' */
 	size_t msgsz = COUNT_OF(ev.tgt.message) - 1;
 	while (len > msgsz){
@@ -3272,11 +3326,7 @@ static int targetmessage(lua_State* ctx)
 /* copy into buffer and forward */
 		memcpy(ev.tgt.message, msg, i);
 		ev.tgt.message[i] = '\0';
-#ifdef ARCAN_LWA
-		if (route_lwa)
-			platform_lwa_targetevent(sseg, &ev);
-		else
-#endif
+
 		if (ARCAN_OK != platform_fsrv_pushevent(fsrv, &ev)){
 			lua_pushnumber(ctx, len);
 			LUA_ETRACE("message_target", "truncation", 1);
@@ -3290,10 +3340,6 @@ static int targetmessage(lua_State* ctx)
 	if (len){
 		memcpy(ev.tgt.message, msg, len);
 		ev.tgt.message[len] = '\0';
-#ifdef ARCAN_LWA
-		if (route_lwa)
-			platform_lwa_targetevent(sseg, &ev);
-#endif
 		if (ARCAN_OK != platform_fsrv_pushevent(fsrv, &ev)){
 			lua_pushnumber(ctx, len);
 			LUA_ETRACE("message_target", "truncation", 1);
@@ -4085,6 +4131,23 @@ static void append_iotable(lua_State* ctx, arcan_ioevent* ev)
 }
 
 #ifdef ARCAN_LWA
+static bool import_btype(arcan_luactx* L,
+	int top, int reset, const char* key, int mode, int fd)
+{
+	struct nonblock_io* dst;
+
+	tbldynstr(L, "kind", key, top);
+	lua_pushstring(L, key);
+	fd = arcan_shmif_dupfd(fd, -1, false);
+	if (alt_nbio_import(L, fd, mode, &dst)){
+		lua_rawset(L, top);
+		return true;
+	}
+
+	lua_settop(L, reset);
+	return false;
+}
+
 void arcan_lwa_subseg_ev(
 	arcan_luactx* ctx, arcan_vobj_id source, uintptr_t cb_tag, arcan_event* ev)
 {
@@ -4092,6 +4155,9 @@ void arcan_lwa_subseg_ev(
 
 	if (ev->category != EVENT_TARGET && ev->category != EVENT_IO)
 		return;
+
+	if (source == ARCAN_VIDEO_WORLDID)
+		cb_tag = luactx.worldid_tag;
 
 	if (cb_tag == LUA_NOREF){
 /* if we don't get a callback tag, it is added to the worldid as an 'arcan'
@@ -4118,24 +4184,34 @@ void arcan_lwa_subseg_ev(
 	switch (ev->tgt.kind){
 /* unfinished */
 	case TARGET_COMMAND_STORE:
+		if (!import_btype(ctx, top, reset, "store", O_WRONLY, ev->tgt.ioevs[0].iv))
+			return;
 	case TARGET_COMMAND_RESTORE:
+		if (!import_btype(ctx, top, reset, "restore", O_RDONLY, ev->tgt.ioevs[0].iv))
+			return;
 	case TARGET_COMMAND_BCHUNK_IN:
+		if (!import_btype(ctx, top, reset, "bchunk-in", O_RDONLY, ev->tgt.ioevs[0].iv))
+			return;
+	break;
 	case TARGET_COMMAND_BCHUNK_OUT:
+		if (!import_btype(ctx, top, reset, "bchunk-out", O_WRONLY, ev->tgt.ioevs[0].iv))
+			return;
 	case TARGET_COMMAND_FRAMESKIP:
 	case TARGET_COMMAND_STEPFRAME:
 	case TARGET_COMMAND_PAUSE:
 	case TARGET_COMMAND_UNPAUSE:
 	case TARGET_COMMAND_GRAPHMODE:
+/* handled in platform */
 	case TARGET_COMMAND_RESET:
-	case TARGET_COMMAND_SEEKCONTENT:
-	case TARGET_COMMAND_COREOPT:
-	case TARGET_COMMAND_SEEKTIME:
-	case TARGET_COMMAND_ATTENUATE:
-	case TARGET_COMMAND_STREAMSET:
-	case TARGET_COMMAND_SETIODEV:
-	case TARGET_COMMAND_AUDDELAY:
-	case TARGET_COMMAND_DEVICESTATE:
-	case TARGET_COMMAND_GEOHINT:
+	case TARGET_COMMAND_SEEKCONTENT: /* scrolling */
+	case TARGET_COMMAND_COREOPT: /* dynamic key-value */
+	case TARGET_COMMAND_SEEKTIME: /* scrolling? */
+	case TARGET_COMMAND_ATTENUATE: /* should go directly to audio */
+	case TARGET_COMMAND_STREAMSET: /* doesn't apply */
+	case TARGET_COMMAND_SETIODEV: /* doesn't apply */
+	case TARGET_COMMAND_AUDDELAY: /* should go directly to audio */
+	case TARGET_COMMAND_DEVICESTATE: /* doesn't apply */
+	case TARGET_COMMAND_GEOHINT: /* should be forwarded */
 		lua_settop(ctx, reset);
 		return;
 	break;
@@ -4154,14 +4230,14 @@ void arcan_lwa_subseg_ev(
 
 /* already handled internally */
 	case TARGET_COMMAND_REQFAIL:
-	case TARGET_COMMAND_OUTPUTHINT:
-	case TARGET_COMMAND_ACTIVATE:
-	case TARGET_COMMAND_NEWSEGMENT:
-	case TARGET_COMMAND_DISPLAYHINT:
-	case TARGET_COMMAND_FONTHINT:
-	case TARGET_COMMAND_BUFFER_FAIL:
-	case TARGET_COMMAND_DEVICE_NODE:
-	case TARGET_COMMAND_LIMIT:
+	case TARGET_COMMAND_OUTPUTHINT: /* might be useful with more vr bits */
+	case TARGET_COMMAND_ACTIVATE: /* shouldn't apply */
+	case TARGET_COMMAND_NEWSEGMENT: /* should already be handled */
+	case TARGET_COMMAND_DISPLAYHINT: /* should already be handled */
+	case TARGET_COMMAND_FONTHINT: /* should already be handled */
+	case TARGET_COMMAND_BUFFER_FAIL: /* should already be handled */
+	case TARGET_COMMAND_DEVICE_NODE: /* should already be handled */
+	case TARGET_COMMAND_LIMIT: /* can't happen */
 		lua_settop(ctx, reset);
 		return;
 	break;
@@ -4796,12 +4872,18 @@ static int validvid(lua_State* ctx)
 	if (res != ARCAN_EID && res != ARCAN_VIDEO_WORLDID)
 		res -= lua_vid_base;
 
-	if (res < 0)
+	if (res < 0 && res != ARCAN_VIDEO_WORLDID)
 		res = ARCAN_EID;
 
 	int type = luaL_optnumber(ctx, 2, -1);
 	if (-1 != type){
 		arcan_vobject* vobj = arcan_video_getobject(res);
+#ifdef ARCAN_LWA
+		if (type == ARCAN_TAG_FRAMESERV && res == ARCAN_VIDEO_WORLDID){
+			lua_pushboolean(ctx, true);
+			LUA_ETRACE("valid_vid", NULL, 1);
+		}
+#endif
 		lua_pushboolean(ctx, vobj && vobj->feed.state.tag == type);
 	}
 	else
@@ -6856,6 +6938,7 @@ static void sig_watchdog(int sig, siginfo_t* info, void* unused)
 lua_State* arcan_lua_alloc(void (*watchdog)(lua_State*, lua_Debug*))
 {
 	lua_State* res = luaL_newstate();
+	luactx.worldid_tag = LUA_NOREF;
 
 /* in the future, we need a hook here to
  * limit / "null-out" the undesired subset of the LUA API */
@@ -7208,10 +7291,23 @@ static int targethandler(lua_State* ctx)
 	arcan_vobject* vobj;
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, &vobj);
 
+/* special handler here to get WM events on WORLDID */
+#ifdef ARCAN_LWA
+	if (id == ARCAN_VIDEO_WORLDID){
+		if (luactx.worldid_tag != LUA_NOREF){
+			luaL_unref(ctx, LUA_REGISTRYINDEX, luactx.worldid_tag);
+		}
+		intptr_t ref = find_lua_callback(ctx);
+		luactx.worldid_tag = ref;
+		return 0;
+	}
+#endif
+
 /* unreference the old one so we don't leak */
-	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
+	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV){
 		arcan_fatal("target_updatehandler(), specified vid (arg 1) not "
 			"associated with a frameserver.");
+	}
 
 	arcan_frameserver* fsrv = vobj->feed.state.ptr;
 	if (!fsrv)

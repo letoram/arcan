@@ -6,6 +6,9 @@
 -- frameserver. In some cases, one might want to update or replace
 -- the function associated with a specific frameserver connected VID,
 -- e.g. when adopting as part of a system collapse or fallback script.
+-- @note: if WORLDID is a frameserver (valid_vid(WORLDID, TYPE_FRAMESERVER)
+-- this function can be used to attach a handler to that as well. This can
+-- be the case when there is an outer windowing system to integrate with.
 -- @note: if *callback_function* is set to nil, frameserver related
 -- events will be silently dropped, except for special cases that
 -- are handled internally (see event_queuetransfer in engine/arcan_event.c).
