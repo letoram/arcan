@@ -3,7 +3,7 @@
  * nbio-linebuffer callback read truncation edge case fixed
  * message\_target and valid\_vid now work on WORLDID for LWA
  * event handler can now be attached to WORLDID for outer WM integration
- * more shmif events mapped to arcantarget handlers
+ * more shmif events mapped to arcantarget handlers (bchunk-io, state)
 
 ## 0.6.2
 

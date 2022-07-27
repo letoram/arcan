@@ -4137,7 +4137,7 @@ static bool import_btype(arcan_luactx* L,
 	struct nonblock_io* dst;
 
 	tbldynstr(L, "kind", key, top);
-	lua_pushstring(L, key);
+	lua_pushstring(L, "io");
 	fd = arcan_shmif_dupfd(fd, -1, false);
 	if (alt_nbio_import(L, fd, mode, &dst)){
 		lua_rawset(L, top);
@@ -4180,6 +4180,7 @@ void arcan_lwa_subseg_ev(
 
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
+	char msgbuf[COUNT_OF(ev->tgt.message) + 1];
 
 	switch (ev->tgt.kind){
 /* unfinished */
@@ -4192,10 +4193,14 @@ void arcan_lwa_subseg_ev(
 	case TARGET_COMMAND_BCHUNK_IN:
 		if (!import_btype(ctx, top, reset, "bchunk-in", O_RDONLY, ev->tgt.ioevs[0].iv))
 			return;
+		MSGBUF_UTF8(ev->tgt.message);
+		tbldynstr(ctx, "id", msgbuf, top);
 	break;
 	case TARGET_COMMAND_BCHUNK_OUT:
 		if (!import_btype(ctx, top, reset, "bchunk-out", O_WRONLY, ev->tgt.ioevs[0].iv))
 			return;
+		MSGBUF_UTF8(ev->tgt.message);
+		tbldynstr(ctx, "id", msgbuf, top);
 	case TARGET_COMMAND_FRAMESKIP:
 	case TARGET_COMMAND_STEPFRAME:
 	case TARGET_COMMAND_PAUSE:
@@ -4216,10 +4221,9 @@ void arcan_lwa_subseg_ev(
 		return;
 	break;
 	case TARGET_COMMAND_MESSAGE:{
-		char msgbuf[COUNT_OF(ev->tgt.message) + 1];
 		tblstr(ctx, "kind", "message", top);
-		MSGBUF_UTF8(ev->tgt.message);
 		tblbool(ctx, "multipart", ev->tgt.ioevs[0].iv != 0, top);
+		MSGBUF_UTF8(ev->tgt.message);
 		tbldynstr(ctx, "message", msgbuf, top);
 	}
 	break;
