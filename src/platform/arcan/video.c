@@ -139,7 +139,7 @@ struct display {
 } disp[MAX_DISPLAYS] = {0};
 
 static struct arg_arr* shmarg;
-static bool event_process_disp(arcan_evctx* ctx, struct display* d);
+static bool event_process_disp(arcan_evctx* ctx, struct display* d, size_t i);
 
 static struct {
 	uint64_t magic;
@@ -1192,7 +1192,8 @@ send_error:
 /*
  * return true if the segment has expired
  */
-static bool event_process_disp(arcan_evctx* ctx, struct display* d)
+extern struct arcan_luactx* main_lua_context;
+static bool event_process_disp(arcan_evctx* ctx, struct display* d, size_t i)
 {
 	if (!d->conn.addr)
 		return true;
@@ -1367,6 +1368,9 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 		break;
 
 		default:
+			if (i == 0){
+				arcan_lwa_subseg_ev(main_lua_context, ARCAN_VIDEO_WORLDID, 0, &ev);
+			}
 		break;
 		}
 		else
@@ -1395,7 +1399,7 @@ void platform_event_process(arcan_evctx* ctx)
  * different hook)
  */
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){
-		event_process_disp(ctx, &disp[i]);
+		event_process_disp(ctx, &disp[i], i);
 
 /*
  * normally we should just return to polling when there is a display still
