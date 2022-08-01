@@ -1100,7 +1100,8 @@ static int nbio_flush(lua_State* L)
 	struct nonblock_io* ib = *ibb;
 	lua_pop(L, 1);
 
-	if (!ib->write_handler || !ib->out_queue || ib->fd == -1){
+/* if we have a write_handler it should be handled through the regular loop */
+	if (ib->write_handler || !ib->out_queue || ib->fd == -1){
 		lua_pushboolean(L, false);
 		return 1;
 	}
@@ -1217,11 +1218,11 @@ void alt_nbio_register(lua_State* L,
 	lua_setfield(L, -2, "data_handler");
 	lua_pushcfunction(L, nbio_closer);
 	lua_setfield(L, -2, "close");
-	lua_pushcfunction(L, nbio_flush);
-	lua_setfield(L, -2, "seek");
 	lua_pushcfunction(L, nbio_seek);
-	lua_setfield(L, -2, "set_position");
+	lua_setfield(L, -2, "seek");
 	lua_pushcfunction(L, nbio_position);
+	lua_setfield(L, -2, "set_position");
+	lua_pushcfunction(L, nbio_flush);
 	lua_setfield(L, -2, "flush");
 	lua_pushcfunction(L, nbio_lf);
 	lua_setfield(L, -2, "lf_strip");

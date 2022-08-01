@@ -77,7 +77,7 @@ int arcterm_luacli_run(struct arcan_shmif_cont* shmif, struct arg_arr* args)
 
 	long long last = arcan_timemillis();
 	luaL_openlibs(lua);
-	luaopen_bit(lua);
+	lua_pop(lua, luaopen_bit(lua));
 
 /* get a table:
  *   require 'arcantui' -> stack */

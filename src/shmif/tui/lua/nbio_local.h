@@ -60,6 +60,7 @@ static void alt_call(lua_State* L,
 } while (0);
 
 #define RESOURCE_APPL_TEMP 1
+#define RESOURCE_NS_USER 2
 #define ARES_FILE 0
 #define DEFAULT_USERMASK 2
 
@@ -68,7 +69,7 @@ static char* arcan_expand_resource(const char* prefix, int ns)
 	return prefix ? strdup(prefix) : NULL;
 }
 
-static char* arcan_find_resource(const char* prefix, int ns, int kind)
+static char* arcan_find_resource(const char* prefix, int ns, int kind, int* dfd)
 {
 	char* res = arcan_expand_resource(prefix, ns);
 	if (!res)
