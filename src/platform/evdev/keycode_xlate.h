@@ -320,6 +320,7 @@ alut[KEY_KPASTERISK] = '*';
 klut[KEY_LEFTALT] = K_LALT;
 klut[KEY_SPACE] = K_SPACE;
 alut[KEY_SPACE] = ' ';
+shlut[KEY_SPACE] = K_SPACE;
 klut[KEY_CAPSLOCK] = K_CAPSLOCK;
 klut[KEY_F1] = K_F1;
 klut[KEY_F2] = K_F2;

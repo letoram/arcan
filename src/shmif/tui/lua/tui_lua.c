@@ -373,7 +373,7 @@ static void on_reset(struct tui_context* T, int level, void* t)
 static void on_state(struct tui_context* T, bool input, int fd, void* t)
 {
 	SETUP_HREF( (input?"state_in":"state_out"), );
-		if (alt_nbio_import(L, fd, input ? O_WRONLY : O_RDONLY, NULL)){
+		if (alt_nbio_import(L, fd, input ? O_RDONLY : O_WRONLY, NULL)){
 			RUN_CALLBACK("state_inout", 2, 0);
 		}
 		else

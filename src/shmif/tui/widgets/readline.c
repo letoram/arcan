@@ -1265,6 +1265,30 @@ static void reset_boundaries(
 		M->stop_col = cols - 1;
 }
 
+static void on_state(struct tui_context* T, bool input, int fd, void* tag)
+{
+	struct readline_meta* M;
+	if (!validate_context(T, &M))
+		return;
+
+	if (M->old_handlers.state)
+		M->old_handlers.state(T, input, fd, M->old_handlers.tag);
+}
+
+static void on_geohint(
+	struct tui_context* T,
+	float lat, float lng, float elev,
+	const char* a3_c, const char* a3_lang, void* tag)
+{
+	struct readline_meta* M;
+	if (!validate_context(T, &M))
+		return;
+
+	if (M->old_handlers.geohint)
+		M->old_handlers.geohint(
+			T, lat, lng, elev, a3_c, a3_lang, M->old_handlers.tag);
+}
+
 static void on_resized(struct tui_context* T,
 	size_t neww, size_t newh, size_t cols, size_t rows, void* tag)
 {
@@ -1425,9 +1449,8 @@ void arcan_tui_readline_setup(
 		.tick = on_tick,
 		.visibility = on_visibility,
 		.exec_state = on_exec_state,
-/* geohint, uncertain - forward?
- * state, uncertain - block?
- */
+		.state = on_state,
+		.geohint = on_geohint,
 /* input_alabel - block */
 /* input_misc - block */
 /* vpaste - block / forward */

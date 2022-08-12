@@ -8167,11 +8167,6 @@ static int targetrestore(lua_State* ctx)
 /* verify namespace for reading */
 	if (ns != RESOURCE_APPL_STATE){
 		command = TARGET_COMMAND_BCHUNK_IN;
-		if (ns != RESOURCE_APPL && ns == RESOURCE_APPL_TEMP &&
-				ns != RESOURCE_APPL_SHARED){
-			lua_pushboolean(ctx, false);
-			LUA_ETRACE("restore_target", NULL, 1);
-		}
 	}
 
 /* resolve from requested namespace, only accept files */
@@ -8319,7 +8314,10 @@ static int targetsnapshot(lua_State* ctx)
 
 /* verify that it is a safe namespace for writing */
 	if (ns != RESOURCE_APPL_STATE){
-		if (ns == RESOURCE_APPL_SHARED || ns == RESOURCE_APPL_TEMP){
+		if (ns ==
+			RESOURCE_APPL_SHARED ||
+			ns == RESOURCE_APPL_TEMP ||
+			RESOURCE_NS_USER){
 			command = TARGET_COMMAND_BCHUNK_OUT;
 		}
 		else {
@@ -8341,7 +8339,8 @@ static int targetsnapshot(lua_State* ctx)
  * is finished, as otherwise a deferred job or commit- stage would
  * be better so we could atomically CAS rather than trunc-write */
 	int fd = -1;
-	char* fname = arcan_find_resource(snapkey, ns, ARES_FILE, &fd);
+	char* fname = arcan_find_resource(
+		snapkey, ns, ARES_FILE | ARES_CREATE, &fd);
 	arcan_mem_free(fname);
 
 	if (-1 == fd){

@@ -13,8 +13,6 @@ struct io_job {
 };
 
 struct nonblock_io {
-/* in line-buffered mode, this is used for input */
-	char buf[4096];
 	bool eofm;
 	bool lfstrip;
 	off_t ofs;
@@ -35,6 +33,9 @@ struct nonblock_io {
 	bool data_rearmed;
 	intptr_t data_handler; /* callback on_data_in */
 	intptr_t ref; /* :self reference to block GC */
+
+/* in line-buffered mode, this is used for input */
+	char buf[4096];
 };
 
 /*
