@@ -561,6 +561,8 @@ static char* nextline(struct nonblock_io* ib,
 	if (!ib->ofs)
 		return NULL;
 
+	*step = 0;
+
 	for (size_t i = start; i < ib->ofs; i++){
 		if (ib->buf[i] == '\n'){
 			*nb = ib->lfstrip ? (i - start) : (i - start) + 1;
@@ -648,6 +650,7 @@ int alt_nbio_process_read(
  */
 		bool cancel = false;
 		while (
+			!cancel &&
 			(ch = nextline(ib, ci, eof, &len, &step, &gotline))){
 			lua_pushvalue(L, -1);
 			lua_pushlstring(L, ch, len);
@@ -667,7 +670,6 @@ int alt_nbio_process_read(
 	else if (lua_type(L, -1) == LUA_TTABLE){
 		size_t ind = lua_rawlen(L, -1) + 1;
 		size_t ci = 0;
-		size_t limit = 1;
 
 	/* let the table set ceiling on the number of lines per call, if the field
  * isnt't there count will be set to 0 and we just turn it into SIZET_MAX */

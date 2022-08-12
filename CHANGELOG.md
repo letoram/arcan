@@ -4,6 +4,11 @@
  * message\_target and valid\_vid now work on WORLDID for LWA
  * event handler can now be attached to WORLDID for outer WM integration
  * more shmif events mapped to arcantarget handlers (bchunk-io, state)
+ * tui-lua state transfer fixes
+ * snapshot/restore did not respect namespace api change
+
+## Platform
+ * evdev: masked SH+space not setting keysym
 
 ## 0.6.2
 
