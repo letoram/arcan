@@ -2526,6 +2526,8 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 static void* read_data(int fd, size_t cap, uint16_t* nts, bool* die)
 {
 	void* buf = DYNAMIC_MALLOC(65536);
+	*nts = 0;
+
 	if (!buf){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=ENOMEM");
 		*die = true;
@@ -2766,6 +2768,10 @@ static size_t queue_node(struct a12_state* S, struct blob_out* node)
 		}
 		return 0;
 	}
+
+/* might not have data to send yet */
+	if (!nts)
+		return nts;
 
 /* keep it around and referenced for being able to revert / disable compression
  * should some edge case need arise */
