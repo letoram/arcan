@@ -8317,7 +8317,7 @@ static int targetsnapshot(lua_State* ctx)
 		if (ns ==
 			RESOURCE_APPL_SHARED ||
 			ns == RESOURCE_APPL_TEMP ||
-			RESOURCE_NS_USER){
+			ns == RESOURCE_NS_USER){
 			command = TARGET_COMMAND_BCHUNK_OUT;
 		}
 		else {
