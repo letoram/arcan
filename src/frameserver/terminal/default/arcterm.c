@@ -58,6 +58,7 @@ static struct {
 	pid_t child;
 
 	_Atomic volatile bool alive;
+	_Atomic volatile int defer_resize;
 
 /* track re-execute (reset) as well as working with stdin/stdout forwarding */
 	bool die_on_term;
@@ -501,9 +502,16 @@ static void* pump_pty()
 	while (atomic_load(&term.alive)){
 /* dispatch might just flush whatever is queued for writing, which can come from
  * the callbacks in the UI thread */
+		if (atomic_load(&term.defer_resize)){
+			size_t rows, cols;
+			atomic_fetch_add(&term.defer_resize, -1);
+			arcan_tui_dimensions(term.screen, &rows, &cols);
+			shl_pty_resize(term.pty, cols, rows);
+		}
+
 		shl_pty_dispatch(term.pty);
 
-		if (-1 == poll(set, 2, -1))
+		if (-1 == poll(set, 2, 30))
 			continue;
 
 /* tty determines lifecycle */
@@ -641,14 +649,12 @@ static void on_resized(struct tui_context* c,
 	size_t neww, size_t newh, size_t col, size_t row, void* t)
 {
 	trace("resize(%zu(%zu),%zu(%zu))", neww, col, newh, row);
+
 	if (atomic_load(&term.restore) && !term.alive){
 		apply_restore_buffer();
 	}
 
-	if (term.pty){
-		shl_pty_resize(term.pty, col, row);
-	}
-
+	atomic_fetch_add(&term.defer_resize, 1);
 	last_frame = 0;
 }
 
@@ -1028,9 +1034,9 @@ static void on_reset(struct tui_context* tui, int state, void* tag)
 		if (atomic_load(&term.alive)){
 			on_exec_state(tui, 2, tag);
 			char q = 'q';
-			write(term.signalfd, &q, 1);
+			write(term.dirtyfd, &q, 1);
 			while (q != 'Q'){
-				read(term.signalfd, &q, 1);
+				read(term.dirtyfd, &q, 1);
 			}
 			atomic_store(&term.alive, false);
 		}
