@@ -259,7 +259,7 @@ static int intblint(lua_State* L, int ind, const char* field, bool* ok)
 	return rv;
 }
 
-static struct tui_constraints get_wndhint(lua_State* L, int ind)
+static struct tui_constraints get_wndhint(struct tui_lmeta* ib, lua_State* L, int ind)
 {
 	struct tui_constraints res =
 	{
@@ -291,8 +291,15 @@ static struct tui_constraints get_wndhint(lua_State* L, int ind)
 	if (ok)
 		res.min_cols = num;
 
-	res.hide = intblbool(L, ind, "hidden");
+	if (ib->embed){
+		if (intblbool(L, ind, "scale"))
+			ib->embed = 1;
+		else
+			ib->embed = 2;
+	}
 
+	res.embed = ib->embed;
+	res.hide = intblbool(L, ind, "hidden");
 	return res;
 }
 
@@ -1192,12 +1199,11 @@ static int tui_wndhint(lua_State* L)
 		tbli = 3;
 	}
 
-	struct tui_constraints cons = {0};
+	struct tui_constraints cons = {.embed = ib->embed};
 	if (lua_type(L, tbli) == LUA_TTABLE){
-		cons = get_wndhint(L, tbli);
+		cons = get_wndhint(ib, L, tbli);
 	}
 
-	cons.embed = ib->embed;
 /* this is treated as non-mutable and set on window request */
 	arcan_tui_wndhint(ib->tui, parent ? parent->tui : NULL, cons);
 	return 0;

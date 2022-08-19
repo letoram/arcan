@@ -114,6 +114,11 @@ struct tui_context {
 /* track last time counter we did update on to avoid overdraw */
 	uint_fast32_t age;
 
+/* for embedding purposes, parent-children relationships need to be tracked
+ * in order for proxy-window event routing to work. */
+	struct tui_context* parent;
+	struct tui_context* children[256];
+
 /* upstream connection */
 	struct arcan_shmif_cont acon;
 	struct arcan_shmif_cont clip_in;

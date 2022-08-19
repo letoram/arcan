@@ -456,8 +456,11 @@ static void consume(struct arcan_shmif_cont* c)
  *  5. Use timestamp component of new event, if it is not there
  *     force it to the process local one
 */
-static inline void merge_dh(arcan_event* new, arcan_event* old)
+static inline bool merge_dh(arcan_event* new, arcan_event* old)
 {
+	if (new->tgt.ioevs[7].uiv != old->tgt.ioevs[7].uiv)
+		return false;
+
 	if (!new->tgt.ioevs[0].iv)
 		new->tgt.ioevs[0].iv = old->tgt.ioevs[0].iv;
 
@@ -484,6 +487,8 @@ static inline void merge_dh(arcan_event* new, arcan_event* old)
 	if (!new->tgt.timestamp){
 		new->tgt.timestamp = arcan_timemillis();
 	}
+
+	return true;
 }
 
 static void reset_dirty(struct arcan_shmif_cont* ctx)
@@ -550,8 +555,8 @@ static bool scan_disp_event(struct arcan_evctx* c, struct arcan_event* old)
 
 	while (cur != *c->back){
 		struct arcan_event* ev = &c->eventbuf[cur];
-		if (ev->category == EVENT_TARGET && ev->tgt.kind == old->tgt.kind){
-			merge_dh(ev, old);
+		if (ev->category == EVENT_TARGET &&
+			ev->tgt.kind == old->tgt.kind && merge_dh(ev, old)){
 			return true;
 		}
 		cur = (cur + 1) % c->eventbuf_sz;
