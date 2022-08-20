@@ -139,7 +139,7 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 		break;
 		case EVENT_EXTERNAL_VIEWPORT:
 			snprintf(work, dsz,"EXT:VIEWPORT(id: %"PRIu32" parent: %"PRIu32
-				"@x,y+w,y: +%"PRId32",%"PRId32"+%"PRIu16",%"PRIu16
+				"@x,y+w,h: +%"PRId32",%"PRId32"+%"PRIu16",%"PRIu16
 				", border: %d,%d,%d,%d embed: %d focus: %d, invisible: %d, "
 				"anchor-edge: %d, anchor-pos: %d, edge: %d, z: %d)",
 				ev.ext.viewport.ext_id,
@@ -275,14 +275,15 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 		break;
 		case TARGET_COMMAND_DISPLAYHINT:
 			snprintf(work, dsz,
-			"TGT:DISPLAYHINT(%d*%d, ppcm: %f, flags: %s%s%s%s%s, cell: %d, %d",
+			"TGT:DISPLAYHINT(%d*%d, ppcm: %f, flags: %s%s%s%s%s, cell: %d, %d, tgt: %u",
 				ev.tgt.ioevs[0].iv, ev.tgt.ioevs[1].iv, ev.tgt.ioevs[4].fv,
 				(ev.tgt.ioevs[2].iv & 1) ? "drag-sz " : "",
 				(ev.tgt.ioevs[2].iv & 2) ? "invis " : "",
 				(ev.tgt.ioevs[2].iv & 4) ? "unfocus " : "",
 				(ev.tgt.ioevs[2].iv & 8) ? "maximized " : "",
 				(ev.tgt.ioevs[2].iv & 16) ? "minimized " : "",
-				ev.tgt.ioevs[5].iv, ev.tgt.ioevs[6].iv
+				ev.tgt.ioevs[5].iv, ev.tgt.ioevs[6].iv,
+				ev.tgt.ioevs[7].uiv
 			);
 		break;
 		case TARGET_COMMAND_SETIODEV:

@@ -89,6 +89,21 @@ void arcan_tui_destroy(struct tui_context* tui, const char* message)
 	if (!tui)
 		return;
 
+	if (tui->parent){
+		for (size_t i = 0; i < COUNT_OF(tui->parent->children); i++){
+			if (tui->parent->children[i] == tui){
+				tui->parent->children[i] = NULL;
+				break;
+			}
+		}
+		tui->parent = NULL;
+	}
+
+	for (size_t i = 0; i < COUNT_OF(tui->children); i++){
+		if (tui->children[i] && tui->children[i]->parent == tui)
+			tui->children[i]->parent = NULL;
+	}
+
 	if (tui->clip_in.vidp)
 		arcan_shmif_drop(&tui->clip_in);
 
@@ -364,6 +379,15 @@ struct tui_context* arcan_tui_setup(
 		if (parent->pending_handover){
 			res->viewport_proxy = parent->pending_handover;
 			parent->pending_handover = 0;
+/* track hierarchical relationship,
+ * used for embedding to work when there is a handover */
+			res->parent = parent;
+			for (size_t i = 0; i < COUNT_OF(parent->children); i++){
+				if (!parent->children[i]){
+					parent->children[i] = res;
+					break;
+				}
+			}
 		}
 	}
 
