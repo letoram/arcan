@@ -81,6 +81,13 @@ int alt_nbio_process_read(
  */
 int alt_nbio_open(lua_State*);
 
+/* mark the descriptor as non-blocking and close-on-exec */
+void alt_nbio_nonblock_cloexec(int fd, bool socket);
+
+/* connect to a domain socket, setting *out if a listening end is needed
+ * for handling a DGRAM destination */
+int alt_nbio_socket(const char* path, int ns, char** out);
+
 /* The backing store is accepting new data, process buffer transfers and
  * update any possible queues / scheduled transfers. */
 int alt_nbio_process_write(lua_State*, struct nonblock_io*);
@@ -93,8 +100,13 @@ void alt_nbio_release();
 
 /* Take ownership of a descriptor, bind to nbio and leave the userdata on top
  * of the stack of [L] - returns true if the import was successful, false if
- * not. If the import fails, the descriptor will still be closed. */
-bool alt_nbio_import(lua_State* L, int fd, mode_t mode, struct nonblock_io** dst);
+ * not. If the import fails, the descriptor will still be closed.
+ *
+ * if unlink_fn is provided, the path will be unlinked when the object is
+ * collected or closed. _import takes ownership of the string and will free it. */
+bool alt_nbio_import(
+	lua_State* L, int fd, mode_t mode, struct nonblock_io** dst,
+	char** unlink_fn);
 
 /* Manually close an imported nonblock_io, this is normally performed in the
  * Lua space directly or through the garbage collection */

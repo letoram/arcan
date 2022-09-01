@@ -4139,7 +4139,7 @@ static bool import_btype(arcan_luactx* L,
 	tbldynstr(L, "kind", key, top);
 	lua_pushstring(L, "io");
 	fd = arcan_shmif_dupfd(fd, -1, false);
-	if (alt_nbio_import(L, fd, mode, &dst)){
+	if (alt_nbio_import(L, fd, mode, &dst, NULL)){
 		lua_rawset(L, top);
 		return true;
 	}

@@ -466,9 +466,9 @@ int tui_popen(lua_State* L)
 	if (-1 == pid)
 		return 0;
 
-	alt_nbio_import(L, sin_fd, O_WRONLY, NULL);
-	alt_nbio_import(L, sout_fd, O_RDONLY, NULL);
-	alt_nbio_import(L, serr_fd, O_RDONLY, NULL);
+	alt_nbio_import(L, sin_fd, O_WRONLY, NULL, NULL);
+	alt_nbio_import(L, sout_fd, O_RDONLY, NULL, NULL);
+	alt_nbio_import(L, serr_fd, O_RDONLY, NULL, NULL);
 	lua_pushnumber(L, pid);
 
 	return 4;
