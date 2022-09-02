@@ -29,6 +29,12 @@
 #include <strings.h>
 #include <poll.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/wait.h>
+#include <sys/un.h>
+
 #include "tui_lua.h"
 #include "nbio.h"
 #include "tui_popen.h"
@@ -138,7 +144,7 @@ static void dump_stack(lua_State* ctx)
 
 		switch (t){
 		case LUA_TBOOLEAN:
-			fprintf(stderr, lua_toboolean(ctx, i) ? "true" : "false");
+			fprintf(stderr, "%zu\t%s\n", i, lua_toboolean(ctx, i) ? "true" : "false");
 		break;
 		case LUA_TSTRING:
 			fprintf(stderr, "%zu\t'%s'\n", i, lua_tostring(ctx, i));
@@ -380,7 +386,8 @@ static void on_reset(struct tui_context* T, int level, void* t)
 static void on_state(struct tui_context* T, bool input, int fd, void* t)
 {
 	SETUP_HREF( (input?"state_in":"state_out"), );
-		if (alt_nbio_import(L, fd, input ? O_RDONLY : O_WRONLY, NULL)){
+		if (alt_nbio_import(
+			L, fd, input ? O_RDONLY : O_WRONLY, NULL, NULL)){
 			RUN_CALLBACK("state_inout", 2, 0);
 		}
 		else
@@ -392,7 +399,8 @@ static void on_bchunk(struct tui_context* T,
 	bool input, uint64_t size, int fd, const char* type, void* t)
 {
 	SETUP_HREF((input ?"bchunk_in":"bchunk_out"), );
-		if (alt_nbio_import(L, fd, input ? O_RDONLY : O_WRONLY, NULL)){
+		if (alt_nbio_import(
+			L, fd, input ? O_RDONLY : O_WRONLY, NULL, NULL)){
 			lua_pushstring(L, type);
 			RUN_CALLBACK("bchunk_inout", 3, 0);
 		}
@@ -556,9 +564,9 @@ static int tui_phandover(lua_State* L)
 		return 0;
 
 /* create proxy-window and return along with requested stdio */
-	alt_nbio_import(L, fds[0], O_WRONLY, NULL);
-	alt_nbio_import(L, fds[1], O_RDONLY, NULL);
-	alt_nbio_import(L, fds[2], O_RDONLY, NULL);
+	alt_nbio_import(L, fds[0], O_WRONLY, NULL, NULL);
+	alt_nbio_import(L, fds[1], O_RDONLY, NULL, NULL);
+	alt_nbio_import(L, fds[2], O_RDONLY, NULL, NULL);
 	lua_pushnumber(L, pid);
 
 	return 4;
@@ -2939,6 +2947,8 @@ static int tui_funlink(lua_State* L)
 	return 1;
 }
 
+/* could've re-used alt_nbio_open but the special prefixes vs. having
+ * the modestr set the desired type favoues the modestr */
 static int tui_fopen(lua_State* L)
 {
 	TUI_UDATA;
@@ -2954,8 +2964,24 @@ static int tui_fopen(lua_State* L)
 		omode = O_WRONLY;
 		flags = O_CREAT;
 	}
+
+/* the datagram socket type requires us to provide a local name,
+ * which comes with a ton of quirks - including deferred unlink */
+	else if (strcmp(mode, "unix") == 0){
+		char* unlink_fn;
+		int fd = alt_nbio_socket(name, 0, &unlink_fn);
+		if (fd != -1){
+			alt_nbio_import(L, fd, O_RDWR, NULL, &unlink_fn);
+			alt_nbio_nonblock_cloexec(fd, true);
+			return 1;
+		}
+
+		lua_pushboolean(L, false);
+		lua_pushstring(L, strerror(errno));
+		return 2;
+	}
 	else
-		luaL_error(L, "unsupported file mode, expected 'r' or 'w'");
+		luaL_error(L, "unsupported file mode, expected 'r', 'w' or 'unix'");
 
 	int	fd = openat(ib->cwd_fd, name, omode | flags, 0600);
 
@@ -2964,7 +2990,7 @@ static int tui_fopen(lua_State* L)
 		return 1;
 	}
 
-	alt_nbio_import(L, fd, omode, NULL);
+	alt_nbio_import(L, fd, omode, NULL, NULL);
 	return 1;
 }
 
@@ -3030,7 +3056,7 @@ static int tui_fbond(lua_State* L)
 	fcntl(pair[1], F_SETFD, fcntl(pair[0], F_GETFD) | FD_CLOEXEC);
 
 	struct nonblock_io* ret;
-	alt_nbio_import(L, pair[0], O_RDONLY, &ret);
+	alt_nbio_import(L, pair[0], O_RDONLY, &ret, NULL);
 	if (ret)
 		arcan_tui_bgcopy(ib->tui, fdin, fdout, pair[1], flags);
 	return 1;

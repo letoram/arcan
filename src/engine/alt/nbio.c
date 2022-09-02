@@ -46,7 +46,7 @@ static struct nonblock_io open_fds[LUACTX_OPEN_FILES];
 static bool (*add_job)(int fd, mode_t mode, intptr_t tag);
 static bool (*remove_job)(int fd, mode_t mode, intptr_t* out);
 
-static void set_nonblock_cloexec(int fd, bool socket)
+void alt_nbio_nonblock_cloexec(int fd, bool socket)
 {
 #ifdef __APPLE__
 	if (socket){
@@ -89,7 +89,7 @@ static int connect_trypath(const char* local, const char* remote, int type)
 /* the other option here is to allow the allocation to go through and treat
  * it as a 'reconnect on operation' in order to deal with normal failures
  * during connection as well, but start conservative */
-	set_nonblock_cloexec(fd, true);
+	alt_nbio_nonblock_cloexec(fd, true);
 
 	if (-1 == connect(fd, (struct sockaddr*) &addr_remote, sizeof(addr_remote))){
 		unlink(local);
@@ -100,7 +100,7 @@ static int connect_trypath(const char* local, const char* remote, int type)
 	return fd;
 }
 
-static int connect_stream_to(const char* path, int ns, char** out)
+int alt_nbio_socket(const char* path, int ns, char** out)
 {
 /* we still need to bind a path that we can then unlink after connection */
 	char* local_path = NULL;
@@ -759,7 +759,7 @@ static int opennonblock_tgt(lua_State* L, bool wr)
 	int src = wr ? outp[1] : outp[0];
 
 /* in any scenario where this would fail, "blocking" behavior is acceptable */
-	set_nonblock_cloexec(src, true);
+	alt_nbio_nonblock_cloexec(src, true);
 	struct arcan_event ev = {
 		.category = EVENT_TARGET,
 		.tgt.kind = wr ? TARGET_COMMAND_BCHUNK_IN : TARGET_COMMAND_BCHUNK_OUT
@@ -919,7 +919,7 @@ int alt_nbio_open(lua_State* L)
 		}
 		fchmod(fd, S_IRWXU);
 
-		set_nonblock_cloexec(fd, true);
+		alt_nbio_nonblock_cloexec(fd, true);
 		int rv = bind(fd, (struct sockaddr*) &addr, sizeof(addr));
 		if (-1 == rv){
 			close(fd);
@@ -955,7 +955,7 @@ retryopen:
 
 /* socket, 'connect mode' */
 			if (-1 == fd && errno == ENXIO){
-				fd = connect_stream_to(path, namespace, &unlink_fn);
+				fd = alt_nbio_socket(path, namespace, &unlink_fn);
 				wrmode = O_RDWR;
 			}
 		}
@@ -1172,7 +1172,8 @@ static int nbio_flush(lua_State* L)
 }
 
 bool alt_nbio_import(
-	lua_State* L, int fd, mode_t mode, struct nonblock_io** out)
+	lua_State* L, int fd, mode_t mode, struct nonblock_io** out,
+	char** unlink_fn)
 {
 	if (-1 == fd){
 		lua_pushnil(L);
@@ -1201,13 +1202,14 @@ bool alt_nbio_import(
 
 	*nbio = (struct nonblock_io){
 		.fd = fd,
-		.mode = mode
+		.mode = mode,
+		.unlink_fn = (unlink_fn ? *unlink_fn : NULL)
 	};
 
 	if (out)
 		*out = nbio;
 
-	set_nonblock_cloexec(fd, false);
+	alt_nbio_nonblock_cloexec(fd, false);
 
 	luaL_getmetatable(L, "nonblockIO");
 	lua_setmetatable(L, -2);
