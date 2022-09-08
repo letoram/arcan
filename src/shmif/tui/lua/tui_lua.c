@@ -2912,6 +2912,38 @@ static bool dequeue_nbio(int fd, mode_t mode, intptr_t* tag)
 	return found;
 }
 
+static int tui_fstatus(lua_State* L)
+{
+	TUI_UDATA;
+	const char* src = luaL_checkstring(L, 2);
+	struct stat s;
+
+	if (-1 == fstatat(
+		ib->cwd_fd, src, &s, AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW)){
+		lua_pushboolean(L, false);
+		lua_pushstring(L, strerror(errno));
+		return 2;
+	}
+
+	lua_pushboolean(L, true);
+	if (S_ISDIR(s.st_mode)){
+		lua_pushstring(L, "directory");
+	}
+	else if (S_ISREG(s.st_mode)){
+		lua_pushstring(L, "file");
+	}
+	else if (S_ISFIFO(s.st_mode)){
+		lua_pushstring(L, "fifo");
+	}
+	else if (S_ISSOCK(s.st_mode)){
+		lua_pushstring(L, "socket");
+	}
+	else
+		lua_pushstring(L, "unknown");
+
+	return 2;
+}
+
 static int tui_frename(lua_State* L)
 {
 	TUI_UDATA;
@@ -3243,6 +3275,7 @@ static void register_tuimeta(lua_State* L)
 		{"fopen", tui_fopen},
 		{"funlink", tui_funlink},
 		{"frename", tui_frename},
+		{"fstatus", tui_fstatus},
 		{"bgcopy", tui_fbond},
 		{"getenv", tui_getenv},
 		{"chdir", tui_chdir},
