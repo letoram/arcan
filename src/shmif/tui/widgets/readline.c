@@ -874,7 +874,7 @@ void on_key_input(struct tui_context* T,
 		refresh(T, M);
 	}
 	else if (keysym == TUIK_RIGHT){
-		drop_completion(T, M, true);
+		drop_completion(T, M, M->cursor == M->work_ofs);
 		verify(T, M);
 		refresh(T, M);
 		step_cursor_right(T, M);
