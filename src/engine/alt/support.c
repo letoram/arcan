@@ -259,14 +259,18 @@ void alt_fatal(const char* msg, ...)
 	if (stream){
 		va_start(args, msg);
 
-/* with LWA we shouldn't format the crash source as it will go to last_words
- * first, and arcan will treat the message as garbage */
+/* With LWA we shouldn't format the crash source as it will go to last_words
+ * first, and arcan will treat the message as garbage. The use of
+ * open_memstream here will leak the length of the crash source but we'd rather
+ * want it in bound memory in case of an unexpected crash and being able to
+ * recover this. */
 #ifndef ARCAN_LWA
 			fprintf(stream, "\x1b[0m\n");
 #endif
 			vfprintf(stream, msg, args);
 			fprintf(stream, "\n");
 			alt_trace_callstack(L, stream);
+			fflush(stream);
 			alt_trace_set_crash_source(buf);
 			fclose(stream);
 		va_end(args);
