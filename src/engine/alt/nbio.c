@@ -654,7 +654,7 @@ int alt_nbio_process_read(
 			(ch = nextline(ib, ci, eof, &len, &step, &gotline))){
 			lua_pushvalue(L, -1);
 			lua_pushlstring(L, ch, len);
-			lua_pushboolean(L, eof && !gotline);
+			lua_pushboolean(L, eof);
 			ci += step;
 			alt_call(L, CB_SOURCE_NONE, 0, 2, 1, LINE_TAG":read_cb");
 			cancel = lua_toboolean(L, -1);

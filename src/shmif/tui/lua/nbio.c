@@ -109,9 +109,9 @@ int alt_nbio_socket(const char* path, int ns, char** out)
 /* find a temporary name to use in the appl-temp namespace, with a fail
  * retry counter to counteract the rare collision vs. permanent problem */
 	do {
-		char tmpname[16];
+		char tmpname[32];
 		long rnd = random();
-		snprintf(tmpname, sizeof(tmpname), "_sock%ld", rnd);
+		snprintf(tmpname, sizeof(tmpname), "/tmp/_sock%ld_%d", rnd, getpid());
 		char* tmppath = arcan_find_resource(tmpname, ns, ARES_FILE, NULL);
 		if (!tmppath){
 			local_path = arcan_expand_resource(tmpname, ns);
@@ -174,6 +174,10 @@ int alt_nbio_process_write(lua_State* L, struct nonblock_io* ib)
 			arcan_mem_free(job->buf);
 			arcan_mem_free(job);
 			job = ib->out_queue;
+
+/* edge case, all jobs have been finished and the tail is dropped */
+			if (!job)
+				ib->out_queue_tail = &ib->out_queue;
 		}
 	}
 
@@ -202,6 +206,7 @@ static struct io_job* queue_out(struct nonblock_io* ib, const char* buf, size_t 
 	if (!res)
 		return NULL;
 
+/* prepare new write job */
 	*res = (struct io_job){0};
 	res->buf = malloc(len);
 	if (!res->buf){
@@ -209,13 +214,17 @@ static struct io_job* queue_out(struct nonblock_io* ib, const char* buf, size_t 
 		return NULL;
 	}
 
+/* copy out so lua can drop the buffer */
 	memcpy(res->buf, buf, len);
 	res->sz = len;
 	ib->out_queued += len;
 
+/* remember tail so next queue is faster */
 	if (!ib->out_queue_tail){
 		ib->out_queue_tail = &ib->out_queue;
 	}
+
+/* append and step tail */
 	*(ib->out_queue_tail) = res;
 	ib->out_queue_tail = &(res->next);
 
@@ -575,6 +584,7 @@ static char* nextline(struct nonblock_io* ib,
 	if (eof || (!start && ib->ofs == COUNT_OF(ib->buf))){
 		*gotline = false;
 		*nb = ib->ofs;
+		*step = ib->ofs;
 		return ib->buf;
 	}
 
@@ -608,13 +618,24 @@ int alt_nbio_process_read(
 	if (0 == nr){
 		eof = true;
 	}
+
+/*
+ * For the old :read() -> line, ok form there is a case where we try to read,
+ * manages to get a line, call a read again and it fails with valid data still
+ * in buffer. In that case we fall through (ib->ofs set) and the normal nonbuf
+ * or nextline approach will continue correctly.
+ */
 	else if (-1 == nr){
 		if (errno == EAGAIN || errno == EINTR){
-			lua_pushnil(L);
-			lua_pushboolean(L, true);
-			return 2;
+			if (!ib->ofs){
+				lua_pushnil(L);
+				lua_pushboolean(L, true);
+				if (!ib->ofs)
+					return 2;
+			}
 		}
-		eof = true;
+		else
+			eof = true;
 	}
 	else
 		ib->ofs += nr;
@@ -624,7 +645,7 @@ int alt_nbio_process_read(
 			lua_pushlstring(L, ib->buf, ib->ofs);
 		else
 			lua_pushnil(L);
-		lua_pushboolean(L, !eof);
+		lua_pushboolean(L, !eof || ib->ofs);
 		ib->ofs = 0;
 		return 2;
 	}
@@ -1041,6 +1062,9 @@ void alt_nbio_data_in(lua_State* L, intptr_t tag)
 
 	struct nonblock_io** ibb = luaL_checkudata(L, -1, "nonblockIO");
 	struct nonblock_io* ib = *ibb;
+	if (!ib)
+		return;
+
 	lua_pop(L, 1);
 	lua_rawgeti(L, LUA_REGISTRYINDEX, ib->data_handler);
 	intptr_t ch = ib->data_handler;
