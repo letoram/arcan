@@ -52,6 +52,7 @@ static void alt_call(lua_State* L,
 
 #define arcan_fatal(...) do {\
 	fprintf(stderr, __VA_ARGS__);\
+	fprintf(stderr, "\n");\
 	exit(EXIT_FAILURE);\
 }while (0);
 

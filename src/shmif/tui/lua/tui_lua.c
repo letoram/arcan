@@ -2538,6 +2538,13 @@ static int readline_suggest(lua_State* L)
 	}
 
 	ssize_t nelem = lua_rawlen(L, index);
+	bool hint_ext = false;
+	lua_getfield(L, index, "hint");
+	if (lua_type(L, -1) == LUA_TTABLE){
+		hint_ext = true;
+	}
+	lua_pop(L, 1);
+
 	if (nelem < 0){
 		luaL_error(L, "suggest(table) - negative length");
 	}
@@ -2547,14 +2554,45 @@ static int readline_suggest(lua_State* L)
 		if (!new_suggest){
 			luaL_error(L, "set_suggest(alloc) - out of memory");
 		}
+
+/* two forms, if there is a hint_ext we need concatenate the strings
+ * with a \0 separator and run twice the number of elements. */
 		for (size_t i = 0; i < (size_t) nelem; i++){
 			lua_rawgeti(L, 2, i+1);
 			if (lua_type(L, -1) != LUA_TSTRING)
 				luaL_error(L, "set_suggest - expected string in suggest");
-			new_suggest[i] = strdup(lua_tostring(L, -1));
+			const char* a1 = lua_tostring(L, -1);
+
+/* for the hints, check if the corresponding index has a hints entry,
+ * this was chosen over using twice nelem and pack to avoid breaking
+ * backwards compatibility. */
+			if (hint_ext){
+				lua_getfield(L, index, "hint");
+				lua_rawgeti(L, -1, i+1);
+				if (lua_type(L, -1) == LUA_TSTRING){
+					const char* a2 = lua_tostring(L, -1);
+					if (-1 == asprintf(&new_suggest[i], "%s%c%s", a1, (char) 0, a2)){
+						new_suggest[i] = NULL;
+					}
+				}
+				else
+					new_suggest[i] = strdup(a1);
+				lua_pop(L, 2);
+			}
+			else{
+				new_suggest[i] = strdup(a1);
+				if (!new_suggest[i]){
+					free(new_suggest);
+					luaL_error(L, "set_suggest(hint, alloc) - out of memory");
+				}
+			}
+
 			count++;
 			lua_pop(L, 1);
 		}
+
+		if (hint_ext)
+			nelem >> 1;
 	}
 
 	free_suggest(meta);
@@ -2571,6 +2609,9 @@ static int readline_suggest(lua_State* L)
 	}
 	else
 		luaL_error(L, "set_suggest(str:mode) expected insert, word or substitute");
+
+	if (hint_ext)
+		mv |= READLINE_SUGGEST_HINT;
 
 	meta->readline.suggest = new_suggest;
 	meta->readline.suggest_sz = count;

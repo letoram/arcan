@@ -583,8 +583,15 @@ static char* nextline(struct nonblock_io* ib,
 
 	if (eof || (!start && ib->ofs == COUNT_OF(ib->buf))){
 		*gotline = false;
-		*nb = ib->ofs;
-		*step = ib->ofs;
+		if (ib->ofs < start){
+			*nb = 0;
+			*step = 0;
+			ib->ofs = 0;
+		}
+		else {
+			*nb = ib->ofs - start;
+			*step = ib->ofs - start;
+		}
 		return ib->buf;
 	}
 
@@ -765,7 +772,7 @@ static int opennonblock_tgt(lua_State* L, bool wr)
 	arcan_frameserver* fsrv = vobj->feed.state.ptr;
 
 	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
-		arcan_fatal("open_nonblock(tgt), target must be a valid frameserver.\n");
+		arcan_fatal("open_nonblock(tgt), target must be a valid frameserver.");
 
 	int outp[2];
 	if (-1 == pipe(outp)){
