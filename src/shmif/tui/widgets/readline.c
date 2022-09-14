@@ -57,6 +57,7 @@ struct readline_meta {
 	size_t completion_width;
 	size_t completion_mode;
 	size_t completion_pos;
+	int completion_hint;
 
 /* used to colorize the data part when drawing, offsets are in codepoints */
 	struct tui_screen_attr* line_format;
@@ -290,9 +291,22 @@ static void draw_completion(struct tui_context* T, struct readline_meta* M)
 	for (ssize_t i = 0, j = cy + step;
 		i < M->completion_sz && j >= 0 && j < rows; i++, j += step){
 		arcan_tui_move_to(T, cx, j);
+
 		if (i == M->completion_pos)
 			arcan_tui_writeu8(T, (const uint8_t*) "> ", 2, &attr);
+
 		arcan_tui_writestr(T, M->completion[i], &attr);
+
+/*
+ * Alternate intepretation is two tightly packed strings with the second
+ * being for presentation only.
+ */
+		if (M->completion_hint & READLINE_SUGGEST_HINT){
+			const char* hint = M->completion[i];
+			hint = &hint[strlen(hint)] + 1;
+			arcan_tui_write(T, ' ', &attr);
+			arcan_tui_writestr(T, hint, &attr);
+		}
 	}
 
 	arcan_tui_move_to(T, cx, cy);
@@ -748,7 +762,6 @@ static void step_history(
 
 		replace_str(T, M,
 			M->history[M->history_pos], strlen(M->history[M->history_pos]));
-		M->history_pos++;
 		return;
 	}
 
@@ -1141,9 +1154,12 @@ void arcan_tui_readline_suggest(
 	if (!validate_context(T, &M) || !M->work)
 		return;
 
+	int mask = READLINE_SUGGEST_HINT;
+
 	M->completion = set;
 	M->completion_sz = sz;
-	M->completion_mode = mode;
+	M->completion_mode = mode & ~(mask);
+	M->completion_hint = mode & mask;
 	M->completion_pos = 0;
 
 /* pre-calculate the completion set width so refresh can reposition as needed */
