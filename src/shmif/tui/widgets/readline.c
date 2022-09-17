@@ -170,45 +170,48 @@ static void drop_completion(
 		return;
 	}
 
-	if (run){
-		const char* msg = M->completion[M->completion_pos];
+/* this looks like nop, but helped debugging to have the same entry-point for
+ * all ways completion can be activated or not for easy access breakpoint */
+	if (!run)
+		return;
 
-		switch (M->completion_mode){
+	const char* msg = M->completion[M->completion_pos];
+
+	switch (M->completion_mode){
 /* Delete the word first, but only if we are actually 'on' a word. This needs
  * to cover the edge cases of just having added a space and starting on a new
  * word either through cursor- stepping (1) or inserting at the end. (2) */
-			case READLINE_SUGGEST_WORD:
-				if (
-						(M->work[M->cursor] && !isspace(M->work[M->cursor])) || /* (1) */
-						(!M->work[M->cursor] && M->cursor && !isspace(M->work[M->cursor-1]))){ /* (2) */
-					delete_last_word(T, M);
-					if (M->cursor)
-						add_input(T, M, " ", 1, true);
-				}
+		case READLINE_SUGGEST_WORD:
+			if (
+					(M->work[M->cursor] && !isspace(M->work[M->cursor])) || /* (1) */
+					(!M->work[M->cursor] && M->cursor && !isspace(M->work[M->cursor-1]))){ /* (2) */
+				delete_last_word(T, M);
+				if (M->cursor)
+					add_input(T, M, " ", 1, true);
+			}
+		break;
+
+		case READLINE_SUGGEST_INSERT:
+		break;
+
+		case READLINE_SUGGEST_SUBSTITUTE:
+			M->work[0] = 0;
+			M->work_ofs = 0;
+			M->work_len = 0;
+			M->cursor = 0;
+		break;
+	}
+
+	if (M->suggest_prefix)
+		add_input(T, M, M->suggest_prefix, M->suggest_prefix_sz, true);
+
+	while (*msg){
+		uint32_t ch;
+		ssize_t step = arcan_tui_utf8ucs4(msg, &ch);
+		if (step <= 0)
 			break;
-
-			case READLINE_SUGGEST_INSERT:
-			break;
-
-			case READLINE_SUGGEST_SUBSTITUTE:
-				M->work[0] = 0;
-				M->work_ofs = 0;
-				M->work_len = 0;
-				M->cursor = 0;
-			break;
-		}
-
-		if (M->suggest_prefix)
-			add_input(T, M, M->suggest_prefix, M->suggest_prefix_sz, true);
-
-		while (*msg){
-			uint32_t ch;
-			ssize_t step = arcan_tui_utf8ucs4(msg, &ch);
-			if (step <= 0)
-				break;
-			add_input(T, M, msg, step, true);
-			msg += step;
-		}
+		add_input(T, M, msg, step, true);
+		msg += step;
 	}
 
 	if (M->suggest_suffix)
