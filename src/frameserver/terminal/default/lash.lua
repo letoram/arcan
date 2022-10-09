@@ -221,7 +221,7 @@ local function run_usershell(wnd, name)
 					return false, msg
 				end
 				lash.scriptdir = v
-				local ok, msg = pcall(fptr)
+				local ok, msg = xpcall(fptr, debug.traceback)
 				if not ok then
 					msg = string.split(msg, ": ")
 					local res = {"usershell (" .. name .. ") failed: "}

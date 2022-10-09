@@ -4,6 +4,8 @@
 #include <lualib.h>
 #include <lauxlib.h>
 #include <arcan_tui.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include "tui_lua.h"
 
 #include "lash.h"
@@ -69,6 +71,8 @@ static int emptyf(lua_State* L)
 }
 
 #include "../../../engine/external/bit.c"
+#include "../../../shmif/tui/tui_int.h"
+
 int arcterm_luacli_run(struct arcan_shmif_cont* shmif, struct arg_arr* args)
 {
 	lua_State* lua = luaL_newstate();
@@ -84,6 +88,27 @@ int arcterm_luacli_run(struct arcan_shmif_cont* shmif, struct arg_arr* args)
 
 	lua_newtable(lua);
 	struct tui_context* tui = ltui_inherit(lua, (arcan_tui_conn*) shmif);
+
+/* the record option for debugging / easy sharing etc. should be available
+ * immediately so we don't miss any frames and we can't do it before as the
+ * ltui_inherit calls builds the context we're supposed to use. */
+	const char* val;
+	if (arg_lookup(args, "record", 0, &val) && val){
+		int fd = open(val, O_WRONLY | O_CREAT, 0600);
+		if (-1 != fd){
+			tui_event_inject(tui, &(struct arcan_event){
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_BCHUNK_OUT,
+				.tgt.ioevs[0] = fd,
+				.tgt.message = "tuiani"
+			});
+			close(fd);
+		}
+		else{
+			LOG("record=%s : couldn't create file for tuiani out\n", val);
+		}
+	}
+
 
 /* stack:
  *  -2 table
