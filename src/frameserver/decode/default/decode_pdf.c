@@ -246,6 +246,38 @@ static bool zoom_in(void* tag)
 	return true;
 }
 
+static bool page_prev(void* tag)
+{
+	set_page(apdf.page_no - 1);
+	apdf.dx = 0;
+	apdf.dy = 0;
+	return true;
+}
+
+static bool page_next(void* tag)
+{
+	set_page(apdf.page_no + 1);
+	apdf.dx = 0;
+	apdf.dy = 0;
+	return true;
+}
+
+static bool line_up(void* tag)
+{
+/* better metrics calculations are needed here - the number of pixels depends
+ * on the scale over the current density, and font size */
+	apdf.dirty = true;
+	apdf.dy -= apdf.con.h * 0.1;
+	return true;
+}
+
+static bool line_down(void* tag)
+{
+	apdf.dy += apdf.con.h * 0.1;
+	apdf.dirty = true;
+	return true;
+}
+
 static bool zoom_out(void* tag)
 {
 	apdf.scale -= 0.1;
@@ -288,31 +320,61 @@ static struct labelent ihandlers[] =
 		.descr = "Increment zoom level by 10%",
 /*	.vsym = right_arrow */
 		.ptr = zoom_in,
-	},
-	{
-		.lbl = "ZOOM_RESET",
-		.descr = "Reset magnification",
-		.ptr = zoom_reset,
-	},
-	{
-		.lbl = "ZOOM_AUTO",
-		.descr = "Toggle auto-zoom to fit window on/off",
-		.ptr = zoom_auto,
+		.initial = TUIK_EQUALS,
 	},
 	{
 		.lbl = "ZOOM_OUT",
 		.descr = "Decrement zoom level by 10%",
 		.ptr = zoom_out,
+		.initial = TUIK_MINUS,
+	},
+	{
+		.lbl = "ZOOM_RESET",
+		.descr = "Reset magnification",
+		.ptr = zoom_reset,
+		.initial = TUIK_R,
+	},
+	{
+		.lbl = "ZOOM_AUTO",
+		.descr = "Toggle auto-zoom to fit window on/off",
+		.ptr = zoom_auto,
+		.initial = TUIK_F1,
 	},
 	{
 		.lbl = "AUTO_SIZE",
 		.descr = "Resize window to fit page content at current zoom",
 		.ptr = auto_size,
+		.initial = TUIK_F2,
 	},
 	{
 		.lbl = "REFLOW",
 		.descr = "Reflow page layout to fit current window",
 		.ptr = NULL, /* set dynamically based on if document supports or not */
+		.initial = TUIK_F3
+	},
+	{
+		.lbl = "LINE_BACK",
+		.descr = "Scroll page backwards",
+		.ptr = line_up,
+		.initial = TUIK_UP
+	},
+	{
+		.lbl = "LINE_FWD",
+		.descr = "Scroll page forward",
+		.ptr = line_down,
+		.initial = TUIK_DOWN
+	},
+	{
+		.lbl = "NEXT_PAGE",
+		.descr = "Step to the next page",
+		.ptr = page_next,
+		.initial = TUIK_RIGHT
+	},
+	{
+		.lbl = "PREV_PAGE",
+		.descr = "Step to the previous page",
+		.ptr = page_prev,
+		.initial = TUIK_LEFT
 	},
 /*
  * we have:
@@ -357,27 +419,23 @@ static void process_input(arcan_event* inev)
 			break;
 			case MBTN_WHEEL_UP_IND:
 				if (apdf.modifiers){
-					apdf.scale += 0.1;
-					apdf.dirty = true;
+					zoom_in(NULL);
 				}
-				else
-					delta = -1;
+				else if (ev->input.digital.active)
+					page_prev(NULL);
 			break;
 			case MBTN_WHEEL_DOWN_IND:
 				if (apdf.modifiers){
-					apdf.scale -= 0.1;
-					apdf.dirty = true;
+					zoom_out(NULL);
 				}
-				else
-					delta = 1;
+				else if (ev->input.digital.active)
+					page_next(NULL);
 			break;
 			}
-/* only rising edge */
-			if (delta && ev->input.digital.active)
-				set_page(apdf.page_no + delta);
 			return;
 		}
 
+/* track modifiers for mod+mouse */
 		if (ev->devkind == EVENT_IDEVKIND_KEYBOARD &&
 			ev->datatype == EVENT_IDATATYPE_TRANSLATED){
 			int sym = ev->input.translated.keysym;
@@ -385,8 +443,39 @@ static void process_input(arcan_event* inev)
 				apdf.modifiers = ev->input.translated.active;
 		}
 
+/* labelhint helper will check for tagged and apply to any input event */
 		if (labelhint_consume(ev, NULL))
 			return;
+
+/* some appls doesn't provide tagging (booh) so the polite fallback is
+ * to provide some kind of keyboard defaults for stepping, ... */
+		if (
+			ev->devkind == EVENT_IDEVKIND_KEYBOARD &&
+			ev->datatype == EVENT_IDATATYPE_TRANSLATED)
+		{
+			if (!ev->input.translated.active)
+				return;
+			switch (ev->input.translated.keysym){
+			case TUIK_UP:
+			case TUIK_K:
+				line_up(NULL);
+			break;
+			case TUIK_DOWN:
+			case TUIK_J:
+				line_down(NULL);
+			break;
+			case TUIK_RIGHT:
+			case TUIK_L:
+				page_next(NULL);
+			break;
+			case TUIK_LEFT:
+			case TUIK_H:
+				page_prev(NULL);
+			break;
+			default:
+				return;
+			}
+		}
 	}
 
 	if (ev->devkind == EVENT_IDEVKIND_MOUSE &&
@@ -425,6 +514,10 @@ static void run_event(struct arcan_event* ev)
  * outline, password authentication, form, bookmarks, links, annotations,
  * forwarding the content appropriate side or force scaling, decryption key,
  * ...
+ *
+ * for clipboard there is the option to create a text output and draw to it,
+ * but for selections there is mupdf_page_extrace_text and fz_copy_selection
+ * from(ctx, text, pa, pb)
  *
  * presentation details and CLOCK for autostep (fz_page_presentation)
  *

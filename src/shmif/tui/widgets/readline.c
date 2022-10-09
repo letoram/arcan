@@ -148,6 +148,7 @@ static void reset(struct readline_meta* M)
 	M->work_len = 0;
 	M->cursor = 0;
 	M->history = NULL;
+	M->history_sz = 0;
 	M->in_history = NULL;
 }
 
@@ -758,7 +759,7 @@ static bool on_utf8_input(
 static void step_history(
 	struct tui_context* T, struct readline_meta* M, ssize_t step)
 {
-	if (!M->history_sz)
+	if (!M->history || !M->history_sz)
 		return;
 
 /* first time stepping, save the current work string */
@@ -780,6 +781,7 @@ static void step_history(
 		replace_str(T, M, M->in_history, strlen(M->in_history));
 		free(M->in_history);
 		M->in_history = NULL;
+		M->history_sz = 0;
 		return;
 	}
 

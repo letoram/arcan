@@ -1,14 +1,38 @@
-## 0.6.3
+## 0.6.2.1
 ## Lua
  * nbio-linebuffer callback read truncation edge case fixed
  * message\_target and valid\_vid now work on WORLDID for LWA
  * event handler can now be attached to WORLDID for outer WM integration
  * more shmif events mapped to arcantarget handlers (bchunk-io, state)
- * tui-lua state transfer fixes
  * snapshot/restore did not respect namespace api change
+ * nbio- read return value to cancel out
+ * nbio read-to-tbl allow read\_cap field to limit lines per call
+
+## Terminal
+ * switch lash over to xpcall for better error messages
+ * forward traw record to lash mode as well
+ * improve altscreen- vt100 signalling races on resize storms
+ * bitop inclusion stack garbage
+
+## Tui
+ * embedding modes improved and working
+ * multiple fixes to subwindow processing being tagged to parent
+ * readline: reduced reallocation frequency
+ * readline: only right-complete when at end of string
+ * readline+lua: allow hint- annotations (\0\0) to suggestions
+ * lua: state transfer bchunk transfers fixed
+ * nbio: write-queue fail to requeue fix for dgram
+ * lua: expose 'unix' (domain/dgram) to tui-fopen
+
+## Wayland
+ * xdg-toplevel scale factor input regression
 
 ## Platform
  * evdev: masked SH+space not setting keysym
+
+## Build
+ * add stub builtin/legacy.lua
+ * increase verbosity for debug builds (include macro expansion meta)
 
 ## 0.6.2
 
