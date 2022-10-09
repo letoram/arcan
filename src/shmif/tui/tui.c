@@ -497,7 +497,8 @@ void arcan_tui_wndhint(struct tui_context* C,
 			.ext.viewport.x = cons.anch_col * C->cell_w,
 			.ext.viewport.y = cons.anch_row * C->cell_h,
 			.ext.viewport.w = cons.max_cols * C->cell_w,
-			.ext.viewport.h = cons.max_rows * C->cell_h
+			.ext.viewport.h = cons.max_rows * C->cell_h,
+			.ext.viewport.invisible = cons.hide
 		};
 
 		if (C->viewport_proxy){

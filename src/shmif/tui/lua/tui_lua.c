@@ -299,9 +299,9 @@ static struct tui_constraints get_wndhint(struct tui_lmeta* ib, lua_State* L, in
 
 	if (ib->embed){
 		if (intblbool(L, ind, "scale"))
-			ib->embed = 1;
-		else
 			ib->embed = 2;
+		else
+			ib->embed = 1;
 	}
 
 	res.embed = ib->embed;
@@ -444,13 +444,14 @@ static void on_utf8_paste(struct tui_context* T,
 static void on_resized(struct tui_context* T,
 	size_t neww, size_t newh, size_t col, size_t row, void* t)
 {
+	SETUP_HREF("resized",);
 /* ugly little edge condition - the first on_resized will actually be called in
  * tui-setup already where we don't have the rest of the context or things
  * otherwise prepared. This will cause our TUI_UDATA etc. to fail as the tui
  * member has not yet been set. */
-	SETUP_HREF("resized",);
 		if (!meta->tui)
 			meta->tui = T;
+
 		lua_pushnumber(L, col);
 		lua_pushnumber(L, row);
 		lua_pushnumber(L, neww);
@@ -462,7 +463,19 @@ static void on_resized(struct tui_context* T,
 static void on_resize(struct tui_context* T,
 	size_t neww, size_t newh, size_t col, size_t row, void* t)
 {
-	SETUP_HREF("resize",);
+	struct tui_lmeta* meta = t;
+	lua_State* L = meta->lua;
+	if (meta->href == LUA_NOREF)
+		return;
+	lua_rawgeti(L, LUA_REGISTRYINDEX, meta->href);
+	lua_getfield(L, -1, "resize");
+	if (lua_type(L, -1) != LUA_TFUNCTION){
+		lua_pop(L, 2);
+		return;
+	}\
+	lua_rawgeti(L, LUA_REGISTRYINDEX, meta->tui_state);
+
+/*	SETUP_HREF("resize",); */
 /* same as with on_resized above */
 		if (!meta->tui)
 			meta->tui = T;
@@ -589,13 +602,14 @@ static bool on_subwindow(struct tui_context* T,
 		return false;
 
 	intptr_t cb = meta->pending[id].id;
-	meta->pending[id].id = 0;
+	meta->pending[id].id = LUA_NOREF;
 	meta->pending_mask &= ~(1 << id);
 
 /* indicates that something is wrong with the new_window handler */
 	lua_rawgeti(L, LUA_REGISTRYINDEX, cb);
 	if (lua_type(L, -1) != LUA_TFUNCTION)
 		luaL_error(L, "on_subwindow() bad/broken cb-id");
+	luaL_unref(L, LUA_REGISTRYINDEX, cb);
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, meta->tui_state);
 
@@ -607,17 +621,20 @@ static bool on_subwindow(struct tui_context* T,
  * trigger unless for handover-allocation like scenarios. */
 	if (!new){
 		RUN_CALLBACK("subwindow_fail", 1, 0);
-		luaL_unref(L, LUA_REGISTRYINDEX, cb);
 		END_HREF;
 		return false;
 	}
 
+/* setup as the basic shared handlers, but the tag is wrong */
+	static struct tui_cbcfg cbcfg;
+	memcpy(&cbcfg, &shared_cbcfg, sizeof(cbcfg));
+	cbcfg.tag = NULL;
+
 /* let the caller be responsible for updating the handlers */
 	struct tui_context* ctx =
-		arcan_tui_setup(new, T, &shared_cbcfg, sizeof(shared_cbcfg));
+		arcan_tui_setup(new, T, &cbcfg, sizeof(cbcfg));
 	if (!ctx){
 		RUN_CALLBACK("subwindow_setup_fail", 1, 0);
-		luaL_unref(L, LUA_REGISTRYINDEX, cb);
 		END_HREF;
 		return true;
 	}
@@ -626,20 +643,31 @@ static bool on_subwindow(struct tui_context* T,
 	struct tui_lmeta* nud = lua_newuserdata(L, sizeof(struct tui_lmeta));
 	if (!nud){
 		RUN_CALLBACK("subwindow_ud_fail", 1, 0);
-		luaL_unref(L, LUA_REGISTRYINDEX, cb);
 		END_HREF;
 		return true;
 	}
 	init_lmeta(L, nud, meta);
 	nud->tui = ctx;
 	nud->embed = meta->pending[id].embed;
+	cbcfg.tag = nud;
+	arcan_tui_update_handlers(ctx, &cbcfg, NULL, sizeof(cbcfg));
 
-	if (type != TUI_WND_HANDOVER){
+/* if the subwindow is a handover, mark it as such before triggering the
+ * callback so that the :phandover call is permitted */
+	if (type == TUI_WND_HANDOVER)
+		meta->in_subwnd = new;
+
+/* handover windows normally do not need to be tracked or part of the parent
+ * process loop, except for when they are embedded */
+	if (type != TUI_WND_HANDOVER || nud->embed){
 /* cycle- reference ourselves */
 		lua_pushvalue(L, -1);
 		nud->tui_state = luaL_ref(L, LUA_REGISTRYINDEX);
 
-/* register with parent so :process() hits the right hierarchy */
+/* register with parent so :process() hits the right hierarchy, the check for
+ * pending-id + the check on request means that there there is a fitting slot
+ * in parent[subs] - and even if there wouldn't be, it would just block the
+ * implicit :process, explicit would still work. */
 		size_t wnd_i = 0;
 		for (; wnd_i < SEGMENT_LIMIT; wnd_i++){
 			if (!meta->subs[wnd_i]){
@@ -649,12 +677,6 @@ static bool on_subwindow(struct tui_context* T,
 				break;
 			}
 		}
-	}
-/* the check for pending-id + the check on request means that there there is a
- * fitting slot in parent[subs] - and even if there wouldn't be, it would just
- * block the implicit :process, explicit would still work. */
-	else {
-		meta->in_subwnd = new;
 	}
 	RUN_CALLBACK("subwindow_ok", 2, 0);
 
@@ -668,7 +690,6 @@ static bool on_subwindow(struct tui_context* T,
 	}
 	meta->in_subwnd = NULL;
 
-	luaL_unref(L, LUA_REGISTRYINDEX, cb);
 	END_HREF;
 	return ok;
 }
@@ -1334,7 +1355,6 @@ ltui_inherit(lua_State* L, arcan_tui_conn* conn)
 		}
 	}
 
-/* display cleanup is now in the hand of _setup */
 	meta->tui = arcan_tui_setup(conn, NULL, &shared_cbcfg, sizeof(shared_cbcfg));
 	if (!meta->tui){
 		lua_pop(L, 1);
@@ -1437,12 +1457,16 @@ static int collect(lua_State* L)
 static int settbl(lua_State* L)
 {
 	TUI_UDATA;
+
+/* remove the existing table */
 	if (ib->href != LUA_NOREF){
 		luaL_unref(L, LUA_REGISTRYINDEX, ib->href);
 		ib->href = LUA_NOREF;
 	}
 
+/* ensure that we get the handler table, and balance the stack */
 	luaL_checktype(L, 2, LUA_TTABLE);
+	lua_pushvalue(L, 2);
 	ib->href = luaL_ref(L, LUA_REGISTRYINDEX);
 
 	return 0;

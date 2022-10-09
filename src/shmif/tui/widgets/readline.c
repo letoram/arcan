@@ -8,7 +8,6 @@
  *  Multiline support
  *  Mouse selection
  *  Native popup
- *  Helper text slot
  *  Extended suggestion form (with formatting lines and cursor control)
  *
  * Unknowns:
@@ -25,6 +24,7 @@
 #include "../../arcan_shmif.h"
 #include "../../arcan_tui.h"
 #include "../../arcan_tui_readline.h"
+#include "../../tui/tui_int.h"
 
 #define READLINE_MAGIC 0xfefef00d
 
@@ -252,20 +252,17 @@ static struct tui_screen_attr* get_attr_for_ofs(struct readline_meta* M, size_t 
 	return fmt;
 }
 
-static void draw_completion(struct tui_context* T, struct readline_meta* M)
-{
-	if (!M->show_completion || !M->completion || !M->completion_sz)
-		return;
-
-/* There are two ways of doing this, one is by having a separate non-grab
- * cursor attached popup in listwnd state that we simply move around and attach
- * to our normal processing loop.
+/*
+ * Whether the completion is in the popup form or in the 'embedded' form we
+ * draw it much the same. The popup form simply also hints / reanchors to
+ * its parent.
  *
- * This is not always available (and depends on the window management scheme)
- * so we need some kind of fallback to start with and make sure the rest of
- * the feature actually works as intended.
+ * Sizing the completion in popup mode is more complex and we defer the
+ * decision to the server end and just provide the content dimensions.
  */
-
+static void draw_completion(
+	struct tui_context* T, struct readline_meta* M, struct tui_context* P)
+{
 	size_t rows, cols;
 	arcan_tui_dimensions(T, &rows, &cols);
 	size_t cx = 0, cy = 0;
@@ -432,7 +429,17 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 			arcan_tui_write(T, ch, attr);
 	}
 
-	draw_completion(T, M);
+	if (M->show_completion && M->completion && M->completion_sz){
+		draw_completion(T, M, M->opts.popup);
+	}
+/* toggle the hidden property if not already set */
+	else if (M->opts.popup && !M->opts.popup->last_constraints.hide){
+		arcan_tui_wndhint(M->opts.popup, T,
+			(struct tui_constraints){
+				.hide = true
+			}
+		);
+	}
 
 	const char* cs = M->current_suggestion;
 	if (cs){

@@ -8,10 +8,45 @@
 
 static void display_hint(struct tui_context* tui, arcan_tgtevent* ev)
 {
+/* are we actually proxying this for something else? if so then just
+ * forward the display event itself */
+	if (ev->ioevs[7].uiv){
+		for (size_t i = 0; i < COUNT_OF(tui->children); i++){
+			struct tui_context* tgt = tui->children[i];
+			if (!tgt || tgt->viewport_proxy != ev->ioevs[7].uiv)
+				continue;
+
+/* since the proxied window can be of any type, or have different font, the
+ * rows/cols part does not make sense and has no guarantee that it is accurate
+ * (though [5,6] could be provided), regardless align rows/cols to the size of
+ * the parent cells. */
+			size_t w = ev->ioevs[0].uiv;
+			size_t h = ev->ioevs[1].uiv;
+			size_t cols = 0;
+			size_t rows = 0;
+
+			if (w && tui->cell_w)
+				cols = (size_t) ceilf(w / tui->cell_w);
+
+			if (h && tui->cell_w)
+				rows = (size_t) ceilf(h / tui->cell_h);
+
+/* the flag that is interesting is TD_HINT_DETACHED - if that one is set the
+ * window has changed visibility status as well and is not supposed to be in
+ * layout */
+			if (tgt->handlers.resized && w && h)
+				tui->handlers.resized(tgt, w, h, cols, rows, tui->handlers.tag);
+
+			if (tgt->handlers.visibility)
+				tui->handlers.visibility(tgt, true, true, tui->handlers.tag);
+			break;
+		}
+		return;
+	}
+
 /* first, are other dimensions than our current ones requested? */
 	int w = ev->ioevs[0].iv ? ev->ioevs[0].iv : tui->acon.w;
 	int h = ev->ioevs[1].iv ? ev->ioevs[1].iv : tui->acon.h;
-	bool cell_changed = false;
 
 /* did we get an updated cell-state and we are in server-side rendering? */
 	int hcw = ev->ioevs[5].iv;
@@ -27,7 +62,7 @@ static void display_hint(struct tui_context* tui, arcan_tgtevent* ev)
 		tui->cell_auth = true;
 
 /* anything that would case relayout, resize, renegotiation */
-	if (cell_changed ||
+	if (
 		(abs((int)w - (int)tui->acon.w) > 0) ||
 		(abs((int)h - (int)tui->acon.h) > 0))
 	{
