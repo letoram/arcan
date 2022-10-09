@@ -952,19 +952,24 @@ void on_key_input(struct tui_context* T,
 static bool ensure_size(
 	struct tui_context* T, struct readline_meta* M, size_t sz)
 {
-	if (sz < M->work_sz)
+	if (sz <= M->work_sz)
 		return true;
 
+/* pick a larger step size just to cut down on the number of allocations in
+ * the common "type/paste" scenario */
+	sz += 1024;
 	size_t cols;
 	arcan_tui_dimensions(T, NULL, &cols);
-	char* new_buf = realloc(M->work, sz);
-	if (NULL == new_buf){
+	char* new_buf = malloc(sz);
+	if (!new_buf)
 		return false;
-	}
 
+	memset(new_buf, '\0', sz);
+	memcpy(new_buf, M->work, M->work_ofs);
+	free(M->work);
 	M->work = new_buf;
-	memset(&M->work[M->work_ofs], '\0', sz - M->work_ofs);
 	M->work_sz = sz;
+
 	return true;
 }
 
