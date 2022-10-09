@@ -62,6 +62,9 @@ static struct tui_cbcfg shared_cbcfg = {};
 	if (meta->href == LUA_NOREF)\
 		return B;\
 	lua_rawgeti(L, LUA_REGISTRYINDEX, meta->href);\
+	if (lua_type(L, -1) != LUA_TTABLE){\
+		luaL_error(L, "broken href in handler for " # B);\
+	}\
 	lua_getfield(L, -1, X);\
 	if (lua_type(L, -1) != LUA_TFUNCTION){\
 		lua_pop(L, 2);\
@@ -300,6 +303,8 @@ static struct tui_constraints get_wndhint(struct tui_lmeta* ib, lua_State* L, in
 	if (ib->embed){
 		if (intblbool(L, ind, "scale"))
 			ib->embed = 2;
+		else if (intblbool(L, ind, "scale-hint"))
+			ib->embed = 3;
 		else
 			ib->embed = 1;
 	}
