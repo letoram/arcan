@@ -96,6 +96,15 @@ struct tui_readline_opts {
  * implemented by the caller.
  */
 	bool block_builtin_bindings;
+
+/*
+ * Provide to use a popup window for presenting the completion.
+ * This window will be resized/repositioned/anchored during refresh.
+ *
+ * The popup is expected to be kept alive / allocated during the lifetime of
+ * the readline state but the caller retains ownership.
+ */
+	struct tui_context* popup;
 };
 
 void arcan_tui_readline_setup(

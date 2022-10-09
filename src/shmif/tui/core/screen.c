@@ -545,16 +545,46 @@ int tui_screen_refresh(struct tui_context* tui)
 	if (!rv)
 		return 0;
 
-/* every frame gets synched in a mixed with a CSV
- * [screen_id;anch_x;anch_y;cols;rows;bytes;timestamp_ms]\n[n_bytes] */
+/* Every frame gets synched in a mixed with a CSV
+ * [screen_id;anch_x;anch_y;cols;rows;bytes;timestamp_ms]\n[n_bytes]
+ *
+ * To handle multiple screens, we work from the perspective of the child, go to
+ * the parent, figure out our offset in its list of children and use that with
+ * the last anchor hint.
+ *
+ * Embedded foreign windows won't be recorded in this way, hidden windows
+ * are marked as such through the invalid dimensions and no contents.
+ *
+ * In order for playback to be timing-accurate we would need information about
+ * when the window was actually mapped and try to account for delays introduced
+ * by the display server taking more time processing the request for a new
+ * window during playback. In reality it may make more sense to simply compose
+ * subwindows for most playback scenarios, even though they won't match 100%.
+ */
 	if (tui->tpack_recdst){
-		fprintf(
-			tui->tpack_recdst,
-			"%d;%d;%d;%d;%d;%zu;%zu\n",
-			0, 0, 0, /* screen_id, anc_x, anc_y */
-			tui->cols, tui->rows, rv, (size_t)arcan_timemillis()
-		);
-		fwrite(tui->acon.vidb, rv, 1, tui->tpack_recdst);
+		int sid = 0, anchor_x = 0, anchor_y = 0;
+		size_t rows = tui->rows, cols = tui->cols;
+
+		if (tui->parent){
+			sid = -1;
+			for (size_t i = 0; i < 256; i++)
+				if (tui->parent->children[i] == tui){
+					sid = i;
+					anchor_x = tui->last_constraints.anch_col;
+					anchor_y = tui->last_constraints.anch_row;
+					break;
+				}
+		}
+
+		if (-1 != sid){
+			fprintf(
+				tui->tpack_recdst,
+				"%d;%d;%d;%d;%d;%zu;%zu\n",
+				sid, anchor_x, anchor_y,
+				tui->cols, tui->rows, rv, (size_t)arcan_timemillis()
+			);
+			fwrite(tui->acon.vidb, rv, 1, tui->tpack_recdst);
+		}
 	}
 
 	arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
