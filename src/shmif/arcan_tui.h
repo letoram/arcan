@@ -496,7 +496,9 @@ struct tui_cbcfg {
 		size_t neww, size_t newh, size_t cols, size_t rows, void*);
 
 /*
- * Window visibility and input focus state has changed
+ * Window visibility and input focus state has changed. If the context
+ * references an embedded subwindow, visibility state is that of the parent and
+ * refers to being manually decomposed/detached(= false) or not (= true).
  */
 	void (*visibility)(struct tui_context*, bool visible, bool focus, void*);
 

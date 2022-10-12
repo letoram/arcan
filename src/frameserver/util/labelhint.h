@@ -49,6 +49,11 @@ static void labelhint_announce(struct arcan_shmif_cont* c)
 static bool labelhint_consume(arcan_ioevent* ioev, void* tag)
 {
 	const struct labelent* cur = lent_table;
+
+/* early-out untagged */
+	if (!ioev->label[0])
+		return false;
+
 	while (cur && cur->lbl){
 		if (strcmp(ioev->label, cur->lbl) == 0){
 			if (cur->ptr)

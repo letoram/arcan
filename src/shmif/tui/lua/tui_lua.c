@@ -57,6 +57,7 @@ static struct tui_cbcfg shared_cbcfg = {};
  * convenience macro prolog for all TUI callbacks
  */
 #define SETUP_HREF(X, B) \
+	if (!t) return B;\
 	struct tui_lmeta* meta = t;\
 	lua_State* L = meta->lua;\
 	if (meta->href == LUA_NOREF)\
@@ -633,7 +634,16 @@ static bool on_subwindow(struct tui_context* T,
 /* setup as the basic shared handlers, but the tag is wrong */
 	static struct tui_cbcfg cbcfg;
 	memcpy(&cbcfg, &shared_cbcfg, sizeof(cbcfg));
-	cbcfg.tag = NULL;
+
+/* build our new window */
+	struct tui_lmeta* nud = lua_newuserdata(L, sizeof(struct tui_lmeta));
+	cbcfg.tag = nud;
+	if (!nud){
+		RUN_CALLBACK("subwindow_ud_fail", 1, 0);
+		END_HREF;
+		return false;
+	}
+	init_lmeta(L, nud, meta);
 
 /* let the caller be responsible for updating the handlers */
 	struct tui_context* ctx =
@@ -641,20 +651,11 @@ static bool on_subwindow(struct tui_context* T,
 	if (!ctx){
 		RUN_CALLBACK("subwindow_setup_fail", 1, 0);
 		END_HREF;
-		return true;
+		return false;
 	}
 
-/* build our new window */
-	struct tui_lmeta* nud = lua_newuserdata(L, sizeof(struct tui_lmeta));
-	if (!nud){
-		RUN_CALLBACK("subwindow_ud_fail", 1, 0);
-		END_HREF;
-		return true;
-	}
-	init_lmeta(L, nud, meta);
 	nud->tui = ctx;
 	nud->embed = meta->pending[id].embed;
-	cbcfg.tag = nud;
 	arcan_tui_update_handlers(ctx, &cbcfg, NULL, sizeof(cbcfg));
 
 /* if the subwindow is a handover, mark it as such before triggering the

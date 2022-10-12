@@ -257,7 +257,7 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 		list(APPEND ARCAN_DEFINITIONS LUA_TRACE_COVERAGE)
 	endif()
 
-	add_definitions(-g -D_DEBUG -O0 -fno-omit-frame-pointer)
+	add_definitions(-g -g3 -ggdb -D_DEBUG -O0 -fno-omit-frame-pointer)
 
 endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
 

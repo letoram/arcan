@@ -31,14 +31,18 @@ static void display_hint(struct tui_context* tui, arcan_tgtevent* ev)
 			if (h && tui->cell_w)
 				rows = (size_t) ceilf(h / tui->cell_h);
 
-/* the flag that is interesting is TD_HINT_DETACHED - if that one is set the
+			tgt->defocus = ev->ioevs[2].iv & 4;
+			tgt->inactive = !!(ev->ioevs[2].iv & 32);
+/* The flag that is interesting is TD_HINT_DETACHED - if that one is set the
  * window has changed visibility status as well and is not supposed to be in
- * layout */
+ * layout. Unfortunately the shmif side of all this tracks invisibility while
+ * the APIs here tracks visibility so easy to get the two confused. */
 			if (tgt->handlers.resized && w && h)
-				tui->handlers.resized(tgt, w, h, cols, rows, tui->handlers.tag);
+				tgt->handlers.resized(tgt, w, h, cols, rows, tgt->handlers.tag);
 
 			if (tgt->handlers.visibility)
-				tui->handlers.visibility(tgt, true, true, tui->handlers.tag);
+				tgt->handlers.visibility(
+					tgt, !tgt->inactive, tgt->defocus, tgt->handlers.tag);
 			break;
 		}
 		return;
