@@ -2989,6 +2989,13 @@ static int tui_fstatus(lua_State* L)
 	const char* src = luaL_checkstring(L, 2);
 	struct stat s;
 
+/* this will trigger slightly different behaviour on platforms that still
+ * doesn't support this flag, but the possible workaround is not worth the
+ * edge case handling here */
+#ifndef AT_EMPTY_PATH
+#define AT_EMPTY_PATH 0
+#endif
+
 	if (-1 == fstatat(
 		ib->cwd_fd, src, &s, AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW)){
 		lua_pushboolean(L, false);
