@@ -378,7 +378,7 @@ else()
 	if (NOT DISABLE_JIT)
 		set(LUA_TAG "luajit51")
 		if (EXISTS ${EXTERNAL_SRC_DIR}/git/luajit)
-			ExternalProject_Add(luajit
+			ExternalProject_Add(luajitbuild
 				SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/luajit
 				GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/luajit"
 				CONFIGURE_COMMAND ""
@@ -390,7 +390,10 @@ else()
 				DEFAULT_CC=${CMAKE_C_COMPILER}
 				${EXTERNAL_DEFS}
 			)
-			set(LUA_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/luajit/src/libluajit.a")
+			add_library(luajit STATIC IMPORTED)
+			add_dependencies(luajit luajitbuild)
+			set_target_properties(luajit PROPERTIES IMPORTED_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/luajit/src/libluajit.a")
+			set(LUA_LIBRARY luajit)
 			set(LUA_LIBRARIES ${LUA_LIBRARY})
 			set(LUA_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/luajit/src")
 			list(APPEND MAIN_DEPS luajit)
