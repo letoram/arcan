@@ -1300,7 +1300,7 @@ bool arcan_frameserver_setramps(arcan_frameserver* src,
  * buffering works. Hence we ignore queing to the selected buffer, and instead
  * use a populate function to retrieve at most n' buffers that we then fill.
  */
-arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
+arcan_errc arcan_frameserver_audioframe_direct(void* aobj,
 	arcan_aobj_id id, unsigned buffer, bool cont, void* tag)
 {
 	arcan_frameserver* src = (arcan_frameserver*) tag;

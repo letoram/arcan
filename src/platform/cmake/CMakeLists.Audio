@@ -1,0 +1,56 @@
+#
+# Expects:
+#  AUDIO_PLATFORM (or FATAL)
+#  PLATFORM_ROOT
+#
+# Defines:
+#  AUDIO_LIBRARIES
+#  AUDIO_PLATFORM_SOURCES
+#
+# Modifies:
+#  INCLUDE_DIRS
+#
+
+# reset if we are included multiple times with different video_platform
+set(AUDIO_LIBRARIES "")
+set(AUDIO_PLATFORM_SOURCES "")
+
+if(AUDIO_PLATFORM STREQUAL "openal")
+	# need the separation here to not confuse openAL here with
+	# the version that we patch into LWA
+	if (EXISTS ${EXTERNAL_SRC_DIR}/git/openal AND STATIC_OPENAL)
+		amsg("${CL_YEL}Building OpenAL static from external/git mirror${CL_RST}")
+		ExternalProject_Add(OpenAL
+			SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/openal
+			BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/openal_static
+			UPDATE_COMMAND ""
+			GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/openal"
+			${EXTERNAL_DEFS}
+			${CMAKE_EXTERNAL_DEFS}
+			-DALSOFT_BACKEND_DSOUND=OFF
+			-DALSOFT_BACKEND_MMDEVAPI=OFF
+			-DALSOFT_BACKEND_OPENSL=OFF
+			-DALSOFT_BACKEND_PORTAUDIO=OFF
+			-DALSOFT_BACKEND_SOLARIS=OFF
+			-DALSOFT_BACKEND_SNDIO=OFF
+			-DALSOFT_BACKEND_QSA=OFF
+			-DALSOFT_BACKEND_WAVE=OFF
+			-DALSOFT_BACKEND_WINMM=OFF
+		)
+		set(OPENAL_LIBRARY
+			"${CMAKE_CURRENT_BINARY_DIR}/openal_static/libopenal.a"
+		)
+		set(OPENAL_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/include/AL")
+		list(APPEND MAIN_DEPS OpenAL)
+	else()
+		find_package(OpenAL REQUIRED QUIET)
+	endif()
+
+	list(APPEND INCLUDE_DIRS ${OPENAL_INCLUDE_DIR})
+
+	set(AUDIO_PLATFORM_SOURCES ${PLATFORM_ROOT}/audio/openal.c)
+	list(APPEND AUDIO_LIBRARIES ${OPENAL_LIBRARY})
+else()
+	message(FATAL_ERROR
+"${CLB_WHT}No audio platform defined${CLB_RST}, see -DAUDIO_PLATFORM=xx above${CL_RST}.")
+endif()

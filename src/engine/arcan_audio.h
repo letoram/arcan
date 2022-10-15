@@ -7,48 +7,7 @@
 #ifndef _HAVE_ARCAN_AUDIO
 #define _HAVE_ARCAN_AUDIO
 
-/*
- * This part of the engine has received notably less attention, We've so- far
- * stuck with fixed format, fixed frequency etc.  Many of the more interesting
- * OpenAL bits (effects) are missing. The entire interface, buffer management
- * and platform abstraction is slated for rework in 0.6.
- */
-
-enum aobj_kind {
-	AOBJ_INVALID,
-	AOBJ_STREAM,
-	AOBJ_SAMPLE,
-	AOBJ_FRAMESTREAM,
-	AOBJ_CAPTUREFEED
-};
-struct arcan_aobj;
-
-/*
- * Request a [buffer] to be filled using buffer_data. Provides a negative
- * value to indicate that the audio object is being destructed. [tag] is a a
- * caller-provided that used when creating the feed.  Expects  ARCAN_OK as
- * result to indicate that the buffer should be queued for playback.
- * if [cont] is set, more buffers will be provided if [ARCAN_OK] is
- * returned. Expects [ARCAN_ERRC_NOTREADY] to indicate that there is no more
- * data to feed. Any other error leads to cleanup / destruction.
- */
-typedef arcan_errc(*arcan_afunc_cb)(struct arcan_aobj* aobj,
-	arcan_aobj_id id, ssize_t buffer, bool cont, void* tag);
-
-/*
- * There is one global hook that can be used to get access to audio
- * data as it is beeing flushed to lower layers, and this is the form
- * of that callback.
- */
-typedef void(*arcan_monafunc_cb)(arcan_aobj_id id, uint8_t* buf,
-	size_t bytes, unsigned channels, unsigned frequency, void* tag);
-
-/*
- * It is possible that the frameserver is a process parasite in another
- * process where we would like to interface audio control anyhow throuh
- * a gain proxy. This callback is used for those purposes.
- */
-typedef arcan_errc(*arcan_again_cb)(float gain, void* tag);
+#include "platform_types.h"
 
 /*
  * Setting nosound enforces a global silence, data will still be buffered

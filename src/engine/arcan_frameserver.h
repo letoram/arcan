@@ -433,7 +433,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src);
 void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf,
 	size_t buf_sz, unsigned channels, unsigned frequency, void* tag);
 
-arcan_errc arcan_frameserver_audioframe_direct(struct arcan_aobj* aobj,
+arcan_errc arcan_frameserver_audioframe_direct(void* aobj,
 	arcan_aobj_id id, unsigned buffer, bool cont, void* tag);
 
 /*

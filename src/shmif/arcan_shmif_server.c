@@ -15,7 +15,6 @@
  * no reason for the two implementations.
  */
 typedef int shm_handle;
-struct arcan_aobj;
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_frameserver.h"
