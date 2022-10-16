@@ -302,9 +302,9 @@ static int nbio_datahandler(lua_State* L)
 		LUA_ETRACE("open_nonblock:data_handler", "already closed", 0);
 
 /* always remove the last known handler refs */
-	if ((*ib)->data_handler){
+	if ((*ib)->data_handler != LUA_NOREF){
 		luaL_unref(L, LUA_REGISTRYINDEX, (*ib)->data_handler);
-		(*ib)->data_handler = 0;
+		(*ib)->data_handler = LUA_NOREF;
 	}
 
 /* tracking to ensure that we detect nbio_data_in -> cb ->data_handler */
@@ -319,20 +319,20 @@ static int nbio_datahandler(lua_State* L)
 /* update the handler field in ib, then we get the reference to ib and
  * send to the source - but also remove any previous one */
 	if (lua_type(L, 2) == LUA_TFUNCTION){
+		lua_pushvalue(L, 2);
 		intptr_t ref = luaL_ref(L, LUA_REGISTRYINDEX);
 		(*ib)->data_handler = ref;
 
 /* now get the reference to the userdata and attach that to the event-source,
  * this is so that we can later trigger on the event and access the userdata */
+		lua_pushvalue(L, 1);
 		ref = luaL_ref(L, LUA_REGISTRYINDEX);
-
-/* luaL_ pops the stack so make sure it is balanced */
-		lua_pushvalue(L, 1);
-		lua_pushvalue(L, 1);
 
 /* the job can fail to queue if a set amount of read_handler descriptors
  * are exceeded */
 		if (!add_job((*ib)->fd, O_RDONLY, ref)){
+			luaL_unref(L, LUA_REGISTRYINDEX, (*ib)->data_handler);
+			(*ib)->data_handler = LUA_NOREF;
 			luaL_unref(L, LUA_REGISTRYINDEX, ref);
 			lua_pushboolean(L, false);
 		}
@@ -812,6 +812,7 @@ static int opennonblock_tgt(lua_State* L, bool wr)
 	conn->mode = wr ? O_WRONLY : O_RDONLY;
 	conn->fd = src;
 	conn->pending = NULL;
+	conn->data_handler = LUA_NOREF;
 
 	uintptr_t* dp = lua_newuserdata(L, sizeof(uintptr_t));
 	*dp = (uintptr_t) conn;
@@ -1008,6 +1009,7 @@ retryopen:
 	conn->mode = wrmode;
 	conn->pending = path;
 	conn->unlink_fn = unlink_fn;
+	conn->data_handler = LUA_NOREF;
 
 	uintptr_t* dp = lua_newuserdata(L, sizeof(uintptr_t));
 	*dp = (uintptr_t) conn;
@@ -1069,11 +1071,21 @@ void alt_nbio_data_in(lua_State* L, intptr_t tag)
 
 	struct nonblock_io** ibb = luaL_checkudata(L, -1, "nonblockIO");
 	struct nonblock_io* ib = *ibb;
-	if (!ib)
+
+	if (!ib || ib->data_handler == LUA_NOREF)
 		return;
 
 	lua_pop(L, 1);
 	lua_rawgeti(L, LUA_REGISTRYINDEX, ib->data_handler);
+
+/* shouldn't happen but safeguard out anyhow */
+	if (lua_type(L, -1) != LUA_TFUNCTION){
+		lua_pop(L, 1);
+		luaL_unref(L, LUA_REGISTRYINDEX, ib->data_handler);
+		ib->data_handler = LUA_NOREF;
+		return;
+	}
+
 	intptr_t ch = ib->data_handler;
 	ib->data_rearmed = false;
 
