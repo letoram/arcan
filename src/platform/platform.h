@@ -15,6 +15,7 @@
 #include "platform_types.h"
 #include "agp_platform.h"
 #include "video_platform.h"
+#include "audio_platform.h"
 #include "fsrv_platform.h"
 #include "os_platform.h"
 #include "event_platform.h"

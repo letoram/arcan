@@ -272,6 +272,7 @@ int MAIN_REDIR(int argc, char* argv[])
  */
 	platform_device_init();
 	platform_video_preinit();
+	platform_audio_preinit();
 	platform_event_preinit();
 	arcan_log_destination(stderr, 0);
 
