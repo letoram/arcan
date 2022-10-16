@@ -122,6 +122,9 @@ enum tui_subwnd_type {
  * operation and no- state or ability should be lost as an effect of doing so */
 	TUI_WND_POPUP = 16,
 
+/* used for system tray/launch bar and similar embeddings. */
+	TUI_WND_DOCKICON = 17,
+
 /* explicitly pushed by parents, when enabled, output a simplified, screen-
  * reader friendly version of the active contents to render / consider */
 	TUI_WND_ACCESSIBILITY = 19,

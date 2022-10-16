@@ -1591,6 +1591,8 @@ static int reqwnd(lua_State* L)
 	int tui_type = TUI_WND_TUI;
 	if (strcmp(type, "popup") == 0)
 		tui_type = TUI_WND_POPUP;
+	else if (strcmp(type, "dockicon") == 0)
+		tui_type = TUI_WND_DOCKICON;
 	else if (strcmp(type, "handover") == 0)
 		tui_type = TUI_WND_HANDOVER;
 
