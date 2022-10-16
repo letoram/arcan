@@ -71,6 +71,7 @@ add_executable(arcan_lwa
 	${AGP_SOURCES}
 	${LWA_PLATFORM}
 	${PLATFORM_ROOT}/arcan/video.c
+	${PLATFORM_ROOT}/audio/openal.c
 )
 
 add_sanitizers(arcan_lwa)
