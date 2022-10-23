@@ -947,8 +947,10 @@ static void add_attr_tbl(lua_State* L, struct tui_screen_attr attr)
 	SET_BIV("blink", attr.aflags & TUI_ATTR_BLINK);
 	SET_BIV("strikethrough", attr.aflags & TUI_ATTR_STRIKETHROUGH);
 	SET_BIV("break", attr.aflags & TUI_ATTR_SHAPE_BREAK);
+	SET_BIV("border_left", attr.aflags & TUI_ATTR_BORDER_LEFT);
 	SET_BIV("border_right", attr.aflags & TUI_ATTR_BORDER_RIGHT);
 	SET_BIV("border_down", attr.aflags & TUI_ATTR_BORDER_DOWN);
+	SET_BIV("border_top", attr.aflags & TUI_ATTR_BORDER_TOP);
 	SET_KIV("id", attr.custom_id);
 
 #undef SET_KIV
@@ -1057,6 +1059,10 @@ static void apply_table(lua_State* L, int ind, struct tui_screen_attr* attr)
 	attr->aflags |= TUI_ATTR_BLINK * intblbool(L, ind, "blink");
 	attr->aflags |= TUI_ATTR_STRIKETHROUGH * intblbool(L, ind, "strikethrough");
 	attr->aflags |= TUI_ATTR_SHAPE_BREAK * intblbool(L, ind, "break");
+	attr->aflags |= TUI_ATTR_BORDER_LEFT * intblbool(L, ind, "border_left");
+	attr->aflags |= TUI_ATTR_BORDER_RIGHT * intblbool(L, ind, "border_right");
+	attr->aflags |= TUI_ATTR_BORDER_TOP * intblbool(L, ind, "border_top");
+	attr->aflags |= TUI_ATTR_BORDER_DOWN * intblbool(L, ind, "border_down");
 
 	bool ok;
 	attr->custom_id = intblint(L, ind, "id", &ok);
@@ -2571,6 +2577,7 @@ static int readline_suggest(lua_State* L)
 
 	ssize_t nelem = lua_rawlen(L, index);
 	bool hint_ext = false;
+
 	lua_getfield(L, index, "hint");
 	if (lua_type(L, -1) == LUA_TTABLE){
 		hint_ext = true;
@@ -2603,8 +2610,10 @@ static int readline_suggest(lua_State* L)
 				lua_rawgeti(L, -1, i+1);
 				if (lua_type(L, -1) == LUA_TSTRING){
 					const char* a2 = lua_tostring(L, -1);
-					if (-1 == asprintf(&new_suggest[i], "%s%c%s", a1, (char) 0, a2)){
-						new_suggest[i] = NULL;
+					size_t len = strlen(a1) + strlen(a2) + 2;
+					new_suggest[i] = malloc(strlen(a1) + strlen(a2) + 2);
+					if (new_suggest[i]){
+						snprintf(new_suggest[i], len, "%s%c%s", a1, (char) 0, a2);
 					}
 				}
 				else
@@ -2622,9 +2631,6 @@ static int readline_suggest(lua_State* L)
 			count++;
 			lua_pop(L, 1);
 		}
-
-		if (hint_ext)
-			nelem >> 1;
 	}
 
 	free_suggest(meta);

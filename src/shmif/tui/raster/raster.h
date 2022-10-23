@@ -78,6 +78,7 @@ enum cell_extr_attr {
 	CEATTR_BORDER_D     = 8,
 	CEATTR_BORDER_L     = 16,
 	CEATTR_BORDER_T     = 32,
+	CEATTR_BORDER_ALL   = 60
 };
 
 enum raster_content {
