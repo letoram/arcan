@@ -119,6 +119,43 @@ static void unpack_cell(uint8_t unpack[static 12], struct cell* dst, uint8_t alp
 	unpack_u32(&dst->ucs4, &unpack[8]);
 }
 
+static void drawborder_edge(
+	struct tui_raster_context* ctx, struct cell* cell, shmif_pixel* vidp,
+	size_t pitch, int x, int y, size_t maxx, size_t maxy, int bv)
+{
+/* Missing:
+ * Other heuristics to consider here would be LEFT,RIGHT+TOP,BOTTOM and use
+ * that to draw a rounded border. If there is cell-spacing inserted half the
+ * spacing area should be used instead. */
+
+/* increase the border size when the cell size goes up, but keep uniform */
+	int n_row = (ctx->cell_h + 15) / 16;
+	int n_col = (ctx->cell_w + 15) / 16;
+
+	if (n_row > n_col)
+		n_row = n_col;
+	else
+		n_col = n_row;
+
+	if (bv & CEATTR_BORDER_T){
+		draw_box_px(vidp, pitch, maxx, maxy, x, y, ctx->cell_w, n_row, cell->fc);
+	}
+
+	if (bv & CEATTR_BORDER_D){
+		draw_box_px(vidp, pitch, maxx, maxy,
+			x, y + ctx->cell_h - n_row, ctx->cell_w, n_row, cell->fc);
+	}
+
+	if (bv & CEATTR_BORDER_L){
+		draw_box_px(vidp, pitch, maxx, maxy, x, y, n_col, ctx->cell_h, cell->fc);
+	}
+
+	if (bv & CEATTR_BORDER_R){
+		draw_box_px(vidp, pitch, maxx, maxy,
+			x + ctx->cell_w - n_col, y, n_col, ctx->cell_h, cell->fc);
+	}
+}
+
 static void linehint(struct tui_raster_context* ctx, struct cell* cell,
 	shmif_pixel* vidp, size_t pitch, int x, int y, size_t maxx, size_t maxy,
 	bool strikethrough, bool underline)
@@ -128,6 +165,13 @@ static void linehint(struct tui_raster_context* ctx, struct cell* cell,
 		draw_box_px(vidp, pitch, maxx, maxy,
 			x, y + ctx->cell_h - n_lines, ctx->cell_w, n_lines, cell->fc);
 	}
+/* the 'alt' underline mode should be drawn doubly or squiggly - e.g.
+ * float xf = 2pi/w
+ * for x to x+cell_w: y = yf * cos(x * xf) + y + 1
+ * and grab y based on cell_h - underline start (then center Y in that)
+ * with rough wu antialiasing, i.e. calculate floor/ceil of y into y1,y2
+ * and y - y1 gives i1, y2 - y gives i2, premut to color and draw.
+ */
 
 /* the y value should be retrievable from the font rather than using the cell */
 	if (strikethrough){
@@ -163,6 +207,8 @@ static size_t drawglyph(struct tui_raster_context* ctx, struct cell* cell,
 				cell->attr & CATTR_UNDERLINE
 			);
 		}
+
+		drawborder_edge(ctx, cell, vidp, pitch, x, y, maxx, maxy, cell->attr_ext);
 
 		return ctx->cell_w;
 	}
@@ -235,6 +281,8 @@ static size_t drawglyph(struct tui_raster_context* ctx, struct cell* cell,
 			cell->attr & CATTR_UNDERLINE
 		);
 	}
+
+	drawborder_edge(ctx, cell, vidp, pitch, x, y, maxx, maxy, cell->attr_ext);
 
 	return ctx->cell_w;
 }
