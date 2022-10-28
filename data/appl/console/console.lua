@@ -1,6 +1,7 @@
 local workspaces = {} -- use to track client states
 local ws_index = 1 -- active workspace
 local hotkey_modifier = "lalt"
+local syskey_modifier = "lalt_lctrl"
 local clipboard_last = ""
 local connection_point = "console"
 local ws_limit = 100
@@ -39,7 +40,7 @@ function console(args)
 		name = "wm_anchor"
 	}, {"tap"})
 
--- let the keymap handle repetition with whatever defaUlts exist
+-- let the keymap handle repetition with whatever defaults exist
 	KEYBOARD:kbd_repeat()
 	KEYBOARD:load_keymap()
 	switch_workspace(ws_index)
@@ -283,7 +284,6 @@ function client_event_handler(source, status)
 -- wayland needs a completely different ruleset and an outer 'client' that deals
 -- with bootstrapping the rest
 		if status.segkind == "bridge-wayland" then
-
 			wayland_connection(source,
 				function(source, status)
 					local _, wl_cl = new_client(source, {block_mouse = true})
@@ -427,42 +427,53 @@ function find_client(vid)
 end
 
 function valid_hotkey(input)
--- absorb right-shift as our modifier key
-	if decode_modifiers(input.modifiers, "") ~= hotkey_modifier then
+
+-- use falling edge and two different sets of actions based on impact
+	local mods = decode_modifiers(input.modifiers, "_")
+
+	if not input.active or
+		(mods ~= hotkey_modifier and mods ~= syskey_modifier) then
 		return false
--- only trigger on 'rising edge'
-	elseif input.active then
-		if input.keysym == KEYBOARD.v then
-			clipboard_paste(clipboard_last)
+	end
+
+	if mods == syskey_modifier then
+-- for handy testing of adoption etc.
+		if input.keysym == KEYBOARD.SYSREQ then
+			system_collapse()
+
+		elseif input.keysym == KEYBOARD.BACKSPACE then
+			return shutdown()
+		end
+
+		return true
+	end
+
+	if input.keysym == KEYBOARD.v then
+		clipboard_paste(clipboard_last)
 
 -- forcibly destroy the current workspace
-		elseif input.keysym == KEYBOARD.DELETE then
-			if workspaces[ws_index] and workspaces[ws_index].vid then
-				delete_workspace(ws_index)
-			end
+	elseif input.keysym == KEYBOARD.DELETE then
+		if workspaces[ws_index] and workspaces[ws_index].vid then
+			delete_workspace(ws_index)
+		end
 
 -- toggle mute on a specific audio source by querying the current value
 -- and inverting it (1.0 - n)
-		elseif input.keysym == KEYBOARD.m then
-			if workspaces[ws_index] and workspaces[ws_index].aid then
-				local current = audio_gain(workspaces[ws_index].aid, nil)
-				audio_gain(workspaces[ws_index].aid, 1.0 - current)
-			end
+	elseif input.keysym == KEYBOARD.m then
+		if workspaces[ws_index] and workspaces[ws_index].aid then
+			local current = audio_gain(workspaces[ws_index].aid, nil)
+			audio_gain(workspaces[ws_index].aid, 1.0 - current)
+		end
 
-		elseif input.keysym == KEYBOARD.l then
-			next_workspace()
+	elseif input.keysym == KEYBOARD.l then
+		next_workspace()
 
-		elseif input.keysym == KEYBOARD.h then
-			previous_workspace()
-
--- for handy testing of adoption etc.
-		elseif input.keysym == KEYBOARD.SYSREQ then
-			system_collapse()
+	elseif input.keysym == KEYBOARD.h then
+		previous_workspace()
 
 -- covert Fn key to numeric index and switch workspace
-		elseif input.keysym >= KEYBOARD.F1 and input.keysym <= KEYBOARD.F10 then
-			switch_workspace(input.keysym - KEYBOARD.F1 + 1)
-		end
+	elseif input.keysym >= KEYBOARD.F1 and input.keysym <= KEYBOARD.F10 then
+		switch_workspace(input.keysym - KEYBOARD.F1 + 1)
 	end
 
 	return true
