@@ -8940,8 +8940,8 @@ static int renderreconf(lua_State* ctx)
 		vppcm = 18.0;
 
 	if (did == ARCAN_VIDEO_WORLDID){
-		arcan_lua_setglobalint(ctx, "VPPCM", hppcm);
-		arcan_lua_setglobalint(ctx, "HPPCM", vppcm);
+		arcan_lua_setglobalint(ctx, "VPPCM", vppcm);
+		arcan_lua_setglobalint(ctx, "HPPCM", hppcm);
 	}
 
 	arcan_video_rendertargetdensity(did, vppcm, hppcm, true, true);
