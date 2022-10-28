@@ -1145,6 +1145,23 @@ static int wnd_scroll(lua_State* L)
 	return 0;
 }
 
+static int getxy(lua_State* L)
+{
+	TUI_UDATA;
+	size_t x = luaL_checkinteger(L, 2);
+	size_t y = luaL_checkinteger(L, 3);
+	bool front = luaL_optbnumber(L, 4, true);
+
+	struct tui_cell cell = arcan_tui_getxy(ib->tui, x, y, front);
+
+	char str[4];
+	arcan_tui_ucs4utf8(cell.ch, str);
+	lua_pushlstring(L, str, 4);
+
+	add_attr_tbl(L, cell.attr);
+	return 2;
+}
+
 static int screen_dimensions(lua_State* L)
 {
 	TUI_UDATA;
@@ -3323,6 +3340,7 @@ static void register_tuimeta(lua_State* L)
 		{"refresh", refresh},
 		{"write", writeu8},
 		{"write_to", write_tou8},
+		{"get", getxy},
 		{"set_handlers", settbl},
 		{"update_identity", setident},
 		{"set_default", defattr},
