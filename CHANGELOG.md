@@ -1,3 +1,22 @@
+## Lua
+
+## Core
+ * respect border attribute in text rasteriser
+
+## Tui
+ * nbio asynch type confusion fix (function becomes pcall:userdata)
+ * dock subtype exposed for bar/tray like integration
+ * readline: add completion style control (border)
+
+## Terminal
+ * SGR reset fix, add CNL / CPL
+
+## Platform
+ * audio: engine audio split out into platform bit
+
+## Package / Build
+ * console: added binding for shutdown
+
 ## 0.6.2.1
 ## Lua
  * nbio-linebuffer callback read truncation edge case fixed

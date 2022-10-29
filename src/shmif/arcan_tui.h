@@ -1183,6 +1183,16 @@ bool arcan_tui_hasglyph(struct tui_context*, uint32_t);
 void arcan_tui_message(struct tui_context*, int target, const char* msg);
 
 /*
+ * Walk from x1,y1 around to x2,y2 and set the corresponding _ATTR_BORDER
+ * (will overwrite existing .attr field but leave cells otherwise intact.
+ *
+ * flags are reserved for future style controls.
+ */
+void arcan_tui_write_border(struct tui_context*,
+	struct tui_screen_attr attr,
+	size_t x1, size_t y1, size_t x2, size_t y2, int flags);
+
+/*
  * Indicate an estimated progression state of an operation that would
  * block or affect the client response to user input. [status] indicates
  * the percentage from (0 = new_job) to (1 = complete).
@@ -1390,6 +1400,8 @@ typedef void (* PTUISCREENCOPY)(
 	struct tui_context*, struct tui_context*, size_t, size_t, size_t, size_t, size_t, size_t);
 typedef void (* PTUISENDKEY)(
 	struct tui_context*, uint8_t[static 4], const char*, bool, uint32_t, uint8_t, uint16_t, uint16_t);
+typedef void (* PTUIBORDER)(
+	struct tui_context*, struct tui_screen_attr, size_t x1, size_t y1, size_t x2, size_t y2, int flags);
 
 static PTUISENDKEY arcan_tui_send_key;
 static PTUIHANDOVER arcan_tui_handover;
@@ -1475,6 +1487,7 @@ static PTUICONTENTSIZE arcan_tui_content_size;
 static PTUITPACK arcan_tui_tpack;
 static PTUITUNPACK arcan_tui_tunpack;
 static PTUISCREENCOPY arcan_tui_screencopy;
+static PTUIBORDER arcan_tui_write_border;
 
 /* dynamic loading function */
 static bool arcan_tui_dynload(void*(*lookup)(void*, const char*), void* tag)
@@ -1564,6 +1577,7 @@ M(PTUICONTENTSIZE, arcan_tui_content_size);
 M(PTUITPACK, arcan_tui_tpack);
 M(PTUITUNPACK, arcan_tui_tunpack);
 M(PTUISCREENCOPY, arcan_tui_screencopy);
+M(PTUIBORDER, arcan_tui_write_border);
 
 #undef M
 

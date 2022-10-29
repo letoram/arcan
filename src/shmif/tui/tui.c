@@ -1466,6 +1466,42 @@ void arcan_tui_screencopy(
 	dst->dirty = true;
 }
 
+void arcan_tui_write_border(
+	struct tui_context* T, struct tui_screen_attr attr,
+	size_t x1, size_t y1, size_t x2, size_t y2, int fl)
+{
+	if (!T || x1 > x2 || y1 > y2)
+		return;
+
+	attr.aflags = TUI_ATTR_BORDER_TOP | TUI_ATTR_BORDER_LEFT;
+	arcan_tui_writeattr_at(T, &attr, x1, y1);
+
+	attr.aflags = TUI_ATTR_BORDER_TOP;
+	for (size_t i = x1 + 1; i < x2; i++)
+		arcan_tui_writeattr_at(T, &attr, i, y1);
+
+	attr.aflags = TUI_ATTR_BORDER_TOP | TUI_ATTR_BORDER_RIGHT;
+	arcan_tui_writeattr_at(T, &attr, x2, y1);
+
+	attr.aflags = TUI_ATTR_BORDER_LEFT;
+	for (size_t i = y1 + 1; i < y2; i++)
+		arcan_tui_writeattr_at(T, &attr, x1, i);
+
+	attr.aflags = TUI_ATTR_BORDER_RIGHT;
+	for (size_t i = y1 + 1; i < y2; i++)
+		arcan_tui_writeattr_at(T, &attr, x2, i);
+
+	attr.aflags = TUI_ATTR_BORDER_DOWN | TUI_ATTR_BORDER_LEFT;
+	arcan_tui_writeattr_at(T, &attr, x1, y2);
+
+	attr.aflags = TUI_ATTR_BORDER_DOWN;
+	for (size_t i = x1 + 1; i < x2; i++)
+		arcan_tui_writeattr_at(T, &attr, i, y2);
+
+	attr.aflags = TUI_ATTR_BORDER_DOWN | TUI_ATTR_BORDER_RIGHT;
+	arcan_tui_writeattr_at(T, &attr, x2, y2);
+}
+
 void arcan_tui_send_key(struct tui_context* C,
 	uint8_t utf8[static 4], const char* lbl,
 	uint32_t keysym, uint8_t scancode, uint16_t mods, uint16_t subid)
