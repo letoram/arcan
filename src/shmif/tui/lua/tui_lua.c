@@ -1614,10 +1614,13 @@ static int reqwnd(lua_State* L)
 	int tui_type = TUI_WND_TUI;
 	if (strcmp(type, "popup") == 0)
 		tui_type = TUI_WND_POPUP;
-	else if (strcmp(type, "dockicon") == 0)
+	else if (strcmp(type, "dock") == 0)
 		tui_type = TUI_WND_DOCKICON;
 	else if (strcmp(type, "handover") == 0)
 		tui_type = TUI_WND_HANDOVER;
+	else
+		luaL_error(L,
+			"new_window(>type<, ...) unsupported type (popup, handover, dock)");
 
 	if (ib->pending_mask == 255){
 		lua_pushboolean(L, false);
@@ -1851,6 +1854,26 @@ static int getcursor(lua_State* L)
 	lua_pushnumber(L, x);
 	lua_pushnumber(L, y);
 	return 2;
+}
+
+static int write_border(lua_State* L)
+{
+	TUI_UDATA;
+	size_t x1 = luaL_checkinteger(L, 2);
+	size_t y1 = luaL_checkinteger(L, 3);
+	size_t x2 = luaL_checkinteger(L, 4);
+	size_t y2 = luaL_checkinteger(L, 5);
+	int fl = luaL_optinteger(L, 7, 0);
+
+	struct tui_screen_attr mattr;
+	arcan_tui_defattr(ib->tui, &mattr);
+
+	if (lua_type(L, 6) == LUA_TTABLE){
+		apply_table(L, 6, &mattr);
+	}
+
+	arcan_tui_write_border(ib->tui, mattr, x1, y1, x2, y2, fl);
+	return 0;
 }
 
 static int write_tou8(lua_State* L)
@@ -2177,7 +2200,8 @@ static int readline(lua_State* L)
 		.tab_completion = true,
 		.mouse_forward = false,
 		.paste_forward = false,
-		.block_builtin_bindings = false
+		.block_builtin_bindings = false,
+		.completion_compact = false
 	};
 
 	if (!lua_isfunction(L, ofs) || lua_iscfunction(L, ofs)){
@@ -2220,6 +2244,8 @@ static int readline(lua_State* L)
 			opts.tab_completion = false;
 		if (intblbool(L, tbl, "block_builtin"))
 			opts.block_builtin_bindings = true;
+		if (intblbool(L, tbl, "compact"))
+			opts.completion_compact = true;
 
 		opts.mouse_forward = intblbool(L, tbl, "forward_mouse");
 		opts.paste_forward = intblbool(L, tbl, "forward_paste");
@@ -3340,6 +3366,7 @@ static void register_tuimeta(lua_State* L)
 		{"refresh", refresh},
 		{"write", writeu8},
 		{"write_to", write_tou8},
+		{"write_border", write_border},
 		{"get", getxy},
 		{"set_handlers", settbl},
 		{"update_identity", setident},

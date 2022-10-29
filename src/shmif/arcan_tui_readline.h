@@ -105,6 +105,13 @@ struct tui_readline_opts {
  * the readline state but the caller retains ownership.
  */
 	struct tui_context* popup;
+
+/*
+ * (no-op with popup)
+ * When completion is drawn the default is to pad to the widest element and
+ * annotate with a border. Using this toggle will only draw the actual items.
+ */
+	bool completion_compact;
 };
 
 void arcan_tui_readline_setup(

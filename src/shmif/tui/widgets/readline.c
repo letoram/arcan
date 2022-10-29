@@ -253,6 +253,22 @@ static struct tui_screen_attr* get_attr_for_ofs(struct readline_meta* M, size_t 
 	return fmt;
 }
 
+static size_t u8len(const char* buf)
+{
+	size_t len = 0;
+	while (*buf){
+		uint32_t ucs4 = 0;
+		ssize_t step = arcan_tui_utf8ucs4(buf, &ucs4);
+		len++;
+		if (step <= 0){
+			buf++;
+		}
+		else
+			buf += step;
+	}
+	return len;
+}
+
 /*
  * Whether the completion is in the popup form or in the 'embedded' form we
  * draw it much the same. The popup form simply also hints / reanchors to
@@ -286,12 +302,34 @@ static void draw_completion(
  * the top / left and append that attribute, as well as shape break(?) */
 	struct tui_screen_attr attr = arcan_tui_defcattr(T, TUI_COL_UI);
 
+	size_t maxw = 0;
+	for (size_t i = 0, j = cy + step;
+		!M->opts.completion_compact &&
+		i < M->completion_sz && j >= 0 && j < rows; i++, j += step){
+		size_t len = 0;
+		len += u8len(M->completion[i]);
+
+		if (M->completion_hint & READLINE_SUGGEST_HINT){
+			const char* hint = M->completion[i];
+			len += u8len(&hint[strlen(hint)] + 1 + 1);
+		}
+
+/* leave room for the > */
+		len += 3;
+		if (len > maxw)
+			maxw = len;
+	}
+
 /* Other style choice when we draw on canvas like this is if to set the width
- * to match all elements (i.e. find the widets and pad with empty), left-align
+ * to match all elements (i.e. find the widests and pad with empty), left-align
  * or right-align vs. cursor. */
+	size_t lasty = 0;
+	maxw += cx;
+
 	for (ssize_t i = 0, j = cy + step;
 		i < M->completion_sz && j >= 0 && j < rows; i++, j += step){
 		arcan_tui_move_to(T, cx, j);
+		lasty = j;
 
 		if (i == M->completion_pos)
 			arcan_tui_writeu8(T, (const uint8_t*) "> ", 2, &attr);
@@ -308,6 +346,28 @@ static void draw_completion(
 			arcan_tui_write(T, ' ', &attr);
 			arcan_tui_writestr(T, hint, &attr);
 		}
+
+/*
+ * In the non-compact presentation mode pad to the widest visible entry
+ */
+		size_t tx, ty;
+		arcan_tui_cursorpos(T, &tx, &ty);
+		for (; !M->opts.completion_compact && tx < maxw; tx++)
+			arcan_tui_write(T, ' ', &attr);
+	}
+
+/*
+ * if a border is desired (requires padding and no popup) walk again and add that flag
+ */
+	if (!M->opts.completion_compact){
+		size_t x1 = cx;
+		size_t x2 = maxw - 1;
+		size_t y1 = cy + step, y2 = lasty;
+		if (lasty < cy + step){
+			y1 = lasty;
+			y2 = cy + step;
+		}
+		arcan_tui_write_border(T, attr, x1, y1, x2, y2, 0);
 	}
 
 	arcan_tui_move_to(T, cx, cy);
