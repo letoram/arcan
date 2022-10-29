@@ -1397,8 +1397,7 @@ static void csi_attribute(struct tsm_vte *vte)
 
 	for (i = 0; i < vte->csi_argc; ++i) {
 		switch (vte->csi_argv[i]) {
-		case -1:
-			break;
+		case -1: /* SGR reset */
 		case 0:
 			vte->c_fgcode = vte->d_fgcode;
 			vte->cattr.fr = vte->def_attr.fr;
@@ -1780,7 +1779,7 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 			else
 				arcan_tui_reset_flags(vte->con, TUI_REL_ORIGIN);
 			continue;
-		case 7: /* DECAWM */
+		case 7: /* DECAWN */
 			set_reset_flag(vte, set, FLAG_AUTO_WRAP_MODE);
 			if (set)
 				arcan_tui_set_flags(vte->con, TUI_AUTO_WRAP);
@@ -2008,6 +2007,14 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		arcan_tui_move_to(vte->con, x, num - 1);
 		break;
 	}
+	case 'E':{ /* CNL */
+		num = vte->csi_argv[0];
+		if (num <= 0)
+			num = 1;
+		arcan_tui_move_down(vte->con, num, false);
+		arcan_tui_move_line_home(vte->con);
+		break;
+	}
 	case 'e':{ /* VPR */
 		/* Vertical Line Position Relative */
 		num = vte->csi_argv[0];
@@ -2018,6 +2025,13 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		x = cx; y = cy;
 		arcan_tui_move_to(vte->con, x, y + num);
 	break;
+	}
+	case 'F':{ /* CPL */
+		num = vte->csi_argv[0];
+		if (num <= 0)
+			num = 1;
+		arcan_tui_move_up(vte->con, num, false);
+		arcan_tui_move_line_home(vte->con);
 	}
 	case 'H': /* CUP */
 	case 'f': /* HVP */
@@ -2099,7 +2113,6 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 			/* DECRQM: Request DEC Private Mode */
 			/* If CSI_WHAT is set, then enable,
 			 * otherwise disable */
-			csi_soft_reset(vte);
 		} else {
 			/* DECSCL: Compatibility Level */
 			/* Sometimes CSI_DQUOTE is set here, too */
