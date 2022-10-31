@@ -1473,28 +1473,47 @@ void arcan_tui_write_border(
 	if (!T || x1 > x2 || y1 > y2)
 		return;
 
+/* edge-case: 1xn or nx1 would have the normal TLDR+corner walk overwrite */
 	attr.aflags = TUI_ATTR_BORDER_TOP | TUI_ATTR_BORDER_LEFT;
+	if (y2 - y1 == 0)
+		attr.aflags |= TUI_ATTR_BORDER_DOWN;
+	if (x2 - x1 == 0)
+		attr.aflags |= TUI_ATTR_BORDER_RIGHT;
 	arcan_tui_writeattr_at(T, &attr, x1, y1);
 
 	attr.aflags = TUI_ATTR_BORDER_TOP;
+	if (y2 - y1 == 0)
+		attr.aflags |= TUI_ATTR_BORDER_DOWN;
 	for (size_t i = x1 + 1; i < x2; i++)
 		arcan_tui_writeattr_at(T, &attr, i, y1);
 
-	attr.aflags = TUI_ATTR_BORDER_TOP | TUI_ATTR_BORDER_RIGHT;
-	arcan_tui_writeattr_at(T, &attr, x2, y1);
+	if (x2 - x1 > 0){
+		attr.aflags = TUI_ATTR_BORDER_TOP | TUI_ATTR_BORDER_RIGHT;
+		if (y2 - y1 == 0)
+			attr.aflags |= TUI_ATTR_BORDER_DOWN;
+		arcan_tui_writeattr_at(T, &attr, x2, y1);
+	}
 
 	attr.aflags = TUI_ATTR_BORDER_LEFT;
+	if (x2 - x1 == 0)
+		attr.aflags |= TUI_ATTR_BORDER_RIGHT;
 	for (size_t i = y1 + 1; i < y2; i++)
 		arcan_tui_writeattr_at(T, &attr, x1, i);
 
-	attr.aflags = TUI_ATTR_BORDER_RIGHT;
-	for (size_t i = y1 + 1; i < y2; i++)
-		arcan_tui_writeattr_at(T, &attr, x2, i);
+	if (x2 - x1 > 0){
+		attr.aflags = TUI_ATTR_BORDER_RIGHT;
+		for (size_t i = y1 + 1; i < y2; i++)
+			arcan_tui_writeattr_at(T, &attr, x2, i);
+	}
+
+	if (y2 - y1 == 0)
+		return;
 
 	attr.aflags = TUI_ATTR_BORDER_DOWN | TUI_ATTR_BORDER_LEFT;
 	arcan_tui_writeattr_at(T, &attr, x1, y2);
 
 	attr.aflags = TUI_ATTR_BORDER_DOWN;
+
 	for (size_t i = x1 + 1; i < x2; i++)
 		arcan_tui_writeattr_at(T, &attr, i, y2);
 
