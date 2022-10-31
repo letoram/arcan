@@ -297,9 +297,6 @@ static void draw_completion(
 	if (rows - cy < (rows >> 1))
 		step = -1;
 
-/* this drawing is not good enough - we should crop and set attributes for
- * marking BORDER_RIGHT, BORDER_DOWN (meaning we also need to poke the cells to
- * the top / left and append that attribute, as well as shape break(?) */
 	struct tui_screen_attr attr = arcan_tui_defcattr(T, TUI_COL_UI);
 
 	size_t maxw = 0;
