@@ -13,6 +13,8 @@
 
 ## Platform
  * audio: engine audio split out into platform bit
+ * egl-dri: evict streams
+ * egl-dri: default to atomic over legacy
 
 ## Package / Build
  * console: added binding for shutdown

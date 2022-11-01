@@ -1,5 +1,5 @@
 /*
- * copyright 2014-2020, björn ståhl
+ * copyright: björn ståhl
  * license: 3-clause bsd, see copying file in arcan source repository.
  * reference: http://arcan-fe.com
  */
@@ -49,24 +49,40 @@
 /*
  * Current details / notes:
  *
- *  - The EGL Context management rules have mutated over the years, currently
- *  we mess around with a shared 'device' context and then per display contexts
- *  that we render to based on the buffer format properties desired for that
- *  device.
+ * For asymetric MultiGPU AGP-Vstore and the upload code still need to handle
+ * display affinity and synch to all recipients where appropriate and cross-
+ * blit when it cannot be solved in other ways.
  *
- *  - The crutch to that is that when different format options are desired, say
- *  a 565 one and a 10bit on EGL will choke since it does not fit the config on
- *  the shared context. There is an extension to this, EGL_KHR_no_config_context
- *  where we can simply stop and remove/refactor all the device_context/display
- *  context settings.
+ * For HDR:
+ *  - EDID parsing should be moved to afsrv_decode, it is simply to bad a
+ *    format to run anywhere privileged. The other option is to have an
+ *    external tool that spits out a .lua valid config and load that.
  *
- *  - But this is not the entire truth - enter multiGPU where we actually have
- *  discrete and different contexts and possible different GL implementations
- *  living in the same TLS.
+ *  - We need a selector for metadata format (EOTF, ...), frameserver synch
+ *    has the mechanisms via aproto for negotiating so that is ok, just the
+ *    actual blob assignment missing.
+ *    (u16: x,y coords for primaries and whitepoint, max/min luma + cll + fall)
  *
- *  - For that case we need to track afinity to a agp_vstore and upload/synch
- *  into each context based on that affinity.
- */
+ *  - A lot should still be left to the WM, it needs to:
+ *    set output buffer format (map_) to get FP16 or R10..
+ *    map extended local metadata (low - high) as a rendertarget prop.
+ *
+ *  - the DRM properties would be
+ *    COLOR_ENCODING (ITU-R BT.601, BT.709, BT.2020 YCbCr)
+ *    COLOR_RANGE (YCbCr full, limited range)
+ *    HDR_OUTPUT_METADATA + blob
+ *
+ *  - gamma format?
+ *
+ * For VRR / Explicit Synch:
+ *  - Some code still belongs/is missing in the conductor, but we really
+ *    need reliable live tracing for this to not be an academic exercise.
+ *    The hooks are there but not the mapping to something like tracy.
+ *
+ *  - The interface is so-so when communicating special parameters like
+ *    slew interval, see deadline_for_display.
+ *
+  */
 
 /*
  * mask out these types as they won't be useful,
@@ -132,7 +148,7 @@ static char* egl_envopts[] = {
 	"[ for multiple devices, append _n to key (e.g. device_2=) ]", "",
 	"display_device=/path/to/dev", "for multiple devices suffix with _n (n = 2,3..)",
 	"draw_device=/path/to/dev", "set to display device unless provided",
-	"device_buffer=method", "set buffer transfer method (gbm, streams)",
+	"device_legacy", "force-revert to legacy modeset",
 	"device_libs=lib1:lib2", "libs used for device",
 	"device_connector=ind", "primary display connector index",
 	"device_wait", "loop until an active connector is found",
@@ -148,7 +164,6 @@ enum buffer_method {
  * that is to build the display around a pbuffer, but there seem to be
  * little utility to having that over this form of 'headless' */
 	BUF_HEADLESS,
-	BUF_STREAM
 };
 
 enum vsynch_method {
@@ -191,9 +206,10 @@ struct dev_node {
  * crtc is an allocation bitmap for output port<->display allocation
  * atomic is set if the driver kms side supports/needs atomic modesetting */
 	bool wait_connector;
-	bool explicit_synch;
 	int card_id;
 	bool atomic;
+	bool fb2_modifiers;
+	bool ts_monotonic;
 
 /*
  * method is the key driver for most paths in here, see the M_ enum values
@@ -247,11 +263,6 @@ enum disp_state {
 #endif
 static struct dev_node nodes[VIDEO_MAX_NODES];
 
-/*
- * we don't go with the normal GBM_ buffer names in order to have something
- * that maps between EGLStreams/... and covers the set of 'common' display
- * formats
- */
 enum output_format {
 	OUTPUT_DEFAULT = 0, /* RGB888 */
 	OUTPUT_DEEP    = 1,
@@ -273,14 +284,14 @@ struct dispout {
 	size_t mode_cache_sz;
 
 /* the output buffers, actual fields use will vary with underlying
- * method, i.e. different for normal gbm, headless gbm and eglstreams */
+ * method, i.e. different for normal gbm and headless gbm */
 	struct {
 		int in_flip, in_destroy, in_dumb_set;
 		EGLConfig config;
 		EGLContext context;
 		EGLSurface esurf;
-		EGLStreamKHR stream;
 		EGLSyncKHR synch;
+		int synch_fence;
 
 		struct gbm_bo* cur_bo, (* next_bo);
 		uint32_t cur_fb;
@@ -383,6 +394,8 @@ static struct dispout* allocate_display(struct dev_node* node)
 			displays[i].device = node;
 			displays[i].display.primary = false;
 			displays[i].id = i;
+			displays[i].buffer.synch_fence = -1;
+			displays[i].buffer.synch = EGL_NO_SYNC_KHR;
 
 			node->refc++;
 			displays[i].state = DISP_KNOWN;
@@ -565,9 +578,6 @@ static void release_card(size_t i)
 	case BUF_HEADLESS:
 /* Should be destroyed with the EGL context */
 	break;
-	case BUF_STREAM:
-/* Should be destroyed with the EGL context */
-	break;
 	}
 
 	close_devices(&nodes[i]);
@@ -725,197 +735,6 @@ static const char* egl_errstr()
 	default:
 		return "Uknown Error";
 	}
-}
-
-static int setup_buffers_stream(struct dispout* d)
-{
-	debug_print("EGLStream, building buffers for display");
-	if (!d->device->eglenv.create_stream ||
-		!d->device->eglenv.query_devices ||
-		!d->device->eglenv.query_device_string ||
-		!d->device->eglenv.get_platform_display ||
-		!d->device->eglenv.get_output_layers ||
-		!d->device->eglenv.create_stream ||
-		!d->device->eglenv.stream_consumer_output ||
-		!d->device->eglenv.create_stream_producer_surface){
-		debug_print("EGLStreams, buffers failed, missing functions");
-		return -1;
-	}
-
-	const char* extstr =
-		d->device->eglenv.query_string(d->device->display, EGL_EXTENSIONS);
-
-	const char* lastext;
-	if (!check_ext(lastext = "EGL_EXT_output_base", extstr) ||
-		!check_ext(lastext = "EGL_EXT_output_drm", extstr) ||
-		!check_ext(lastext = "EGL_KHR_stream", extstr) ||
-		!check_ext(lastext = "EGL_EXT_stream_consumer_egloutput", extstr) ||
-		!check_ext(lastext = "EGL_KHR_stream_producer_eglsurface", extstr)){
-		debug_print("EGLstreams, couldn't find extension (%s)", lastext);
-			return -1;
-	}
-
-	EGLAttrib layer_attrs[3] = {};
-	if (d->display.plane_id){
-		debug_print("(%d) match layer to drm plane (%d)", d->id, d->display.plane_id);
-		layer_attrs[0] = EGL_DRM_PLANE_EXT;
-		layer_attrs[1] = d->display.plane_id;
-		layer_attrs[2] = EGL_NONE;
-	}
-	else {
-		debug_print("(%d) match layer to crtc (%d)", d->id, d->display.crtc);
-		layer_attrs[0] = EGL_DRM_CRTC_EXT;
-		layer_attrs[1] = d->display.crtc;
-		layer_attrs[2] = EGL_NONE;
-	};
-
-/*
- * 1. Match output layer to KMS plane
- */
-	EGLOutputLayerEXT layer;
-	EGLint n_layers = 0;
-	if (!d->device->eglenv.get_output_layers(
-		d->device->display, layer_attrs, &layer, 1, &n_layers) || !n_layers){
-		debug_print("EGLstreams, couldn't get output layer for display");
-		return -1;
-	}
-
-/*
- * 2. Create stream
- */
-	EGLint stream_attrs[] = {
-/*
- * EGL_STREAM_FIFO_LENGTH_KHR, 1,
- * EGL_CONSUMER_AUTO_ACQUIRE_EXT, EGL_TRUE,
- */
-		EGL_NONE
-	};
-	d->buffer.stream =
-		d->device->eglenv.create_stream(d->device->display, stream_attrs);
-	if (d->buffer.stream == EGL_NO_STREAM_KHR){
-		debug_print("EGLstreams - couldn't create output stream");
-		return -1;
-	}
-
-/*
- * 3. Map stream output
- */
-	if (!d->device->eglenv.stream_consumer_output(
-		d->device->display, d->buffer.stream, layer)){
-		d->device->eglenv.destroy_stream(d->device->display, d->buffer.stream);
-		d->buffer.stream = EGL_NO_STREAM_KHR;
-		debug_print("EGLstreams - couldn't map output stream");
-		return -1;
-	}
-
-/* 4. Get config and context,
- * two possible variants here - the default:
- * all displays uses the device context, the 'mixed HDR/SDR' setup is a
- * different display context that shares parts of the device context */
-	EGLint nc;
-	if (!d->device->eglenv.choose_config(
-		d->device->display, d->device->attrtbl, &d->buffer.config, 1, &nc)){
-		debug_print("couldn't chose a configuration (%s)", egl_errstr());
-		return -1;
-	}
-
-	const EGLint context_attribs[] = {
-		EGL_CONTEXT_CLIENT_VERSION, 2,
-		EGL_NONE
-	};
-
-	uintptr_t tag;
-	cfg_lookup_fun get_config = platform_config_lookup(&tag);
-	size_t devind = 0;
-	for (; devind < COUNT_OF(nodes); devind++)
-		if (&nodes[devind] == d->device)
-			break;
-
-	bool shared_dev = !get_config("video_display_context", devind, NULL, tag);
-/* shared device context, no display context */
-	if (shared_dev){
-		debug_print("per-device context for display");
-		d->buffer.context = EGL_NO_CONTEXT;
-
-/* First display on the device re-creates the context, difference to the gbm
- * version here is that we still need to create the stream-bound surface even
- * if we have a context on the device. The reason for re-creating the context
- * is that the config the display needs is un-known at the time of first
- * creation */
-		if (!d->device->context_refc){
-			debug_print("first display on device, rebuild context to match");
-			d->device->eglenv.destroy_context(d->device->display, d->device->context);
-			d->device->context = d->device->eglenv.create_context(
-				d->device->display, d->buffer.config, EGL_NO_CONTEXT, context_attribs);
-		}
-		d->device->context_refc++;
-	}
-	else {
-		verbose_print("creating NEW context for display with SHARED device context");
-		d->buffer.context = d->device->eglenv.create_context(
-			d->device->display, d->buffer.config, d->device->context, context_attribs);
-
-		if (d->buffer.context == NULL) {
-			debug_print("couldn't create display context");
-			return false;
-		}
-	}
-
-/*
- * 5. Create stream-bound surface
- */
-	EGLint surface_attrs[] = {
-		EGL_WIDTH, d->display.mode.hdisplay,
-		EGL_HEIGHT, d->display.mode.vdisplay,
-		EGL_NONE
-	};
-	d->buffer.esurf = d->device->eglenv.create_stream_producer_surface(
-		d->device->display, d->buffer.config, d->buffer.stream, surface_attrs);
-
-	if (!d->buffer.esurf){
-		d->device->eglenv.destroy_stream(d->device->display, d->buffer.stream);
-		d->buffer.stream = EGL_NO_STREAM_KHR;
-		d->device->eglenv.destroy_context(d->device->display, d->buffer.context);
-		d->buffer.context = EGL_NO_CONTEXT;
-		debug_print("EGLstreams - couldn't create output surface");
-		return -1;
-	}
-
-/*
- * 6. Activate context and buffers
- */
-	egl_dri.last_display = d;
-	set_display_context(d);
-
-/*
- * 5. Set synchronization attributes on stream
- */
- if (d->device->eglenv.stream_consumer_acquire_attrib){
-		EGLAttrib attr[] = {
-			EGL_DRM_FLIP_EVENT_DATA_NV, (EGLAttrib) d,
-			EGL_NONE,
-		};
-		d->device->eglenv.stream_consumer_acquire_attrib(
-			d->device->display, d->buffer.stream, attr);
-	}
-
-/*
- * 8. make the drm node non-blocking (might be needed for
- * multiscreen, somewhat uncertain)
- */
-	int flags = fcntl(d->device->disp_fd, F_GETFL);
-	if (-1 != flags)
-		fcntl(d->device->disp_fd, F_SETFL, flags | O_NONBLOCK);
-
-/*
- * 8. we don't have a path for streaming the FBO directly,
- * (seems to be reasonably trivial though), so disable the
- * optimization for now
- */
-	d->force_compose = true;
-
-	set_device_context(d->device);
-	return 0;
 }
 
 static int setup_buffers_gbm(struct dispout* d)
@@ -1125,9 +944,6 @@ static int setup_buffers(struct dispout* d)
 /* won't be needed, we only ever accept FBO management */
 		return 0;
 	break;
-	case BUF_STREAM:
-		return setup_buffers_stream(d);
-	break;
 	}
 	return 0;
 }
@@ -1186,12 +1002,6 @@ static bool realloc_buffers(struct dispout* d)
 	break;
 	case BUF_HEADLESS:
 	break;
-	case BUF_STREAM:
-		d->device->eglenv.destroy_stream(d->device->display, d->buffer.stream);
-		d->buffer.stream = EGL_NO_STREAM_KHR;
-		if (setup_buffers_stream(d) != 0)
-			return false;
-	break;
 	}
 	return true;
 }
@@ -1216,6 +1026,8 @@ bool platform_video_set_mode(platform_display_id disp,
 		&d->display.con->modes[mode], sizeof(drmModeModeInfo)) == 0)
 		return true;
 
+/* [FIX: ATOMIC: we can test the modeset in order to fail here if there
+ * should be insuficcient bandwidth, use DRM_STATE_TEST_ONLY */
 	d->display.reset_mode = true;
 	d->display.mode = d->display.con->modes[mode];
 	d->display.mode_set = mode;
@@ -1809,10 +1621,6 @@ static bool setup_node(struct dev_node* node)
 	break;
 	case BUF_HEADLESS:
 	break;
-	case BUF_STREAM:
-		attrtbl[attrofs++] = EGL_SURFACE_TYPE;
-		attrtbl[attrofs++] = EGL_STREAM_BIT_KHR;
-	break;
 	}
 	attrtbl[attrofs++] = EGL_NONE;
 
@@ -1905,106 +1713,6 @@ static bool setup_node(struct dev_node* node)
 	return true;
 }
 
-/*
- * We have a circular dependency problem here "kind of": we need to know what
- * driver to pick in order to setup EGL for the node, but there is also an Egl
- * function to setup the EGLDevice from which we can get the node. For most
- * cases the driver would just resolve to a GLvnd implementation anyhow, but we
- * don't know and don't want the restriction when it comes to switching between
- * test drivers etc.
- */
-static int setup_node_egl(int dst_ind, struct dev_node* node, int fd)
-{
-	if (!node->eglenv.query_string){
-		debug_print("EGLStreams, couldn't get EGL extension string");
-		return -1;
-	}
-
-	const char* extstr = node->eglenv.query_string(EGL_NO_DISPLAY,EGL_EXTENSIONS);
-	const char* lastext;
-	if (!check_ext(lastext = "EGL_EXT_platform_base", extstr)){
-		debug_print("EGLStreams, missing extension (%s)", lastext);
-		return -1;
-	}
-
-	if (!node->eglenv.query_devices){
-		debug_print("EGLStreams, couldn't find extensions/functions");
-		return -1;
-	}
-
-	EGLint numdev;
-	if (!node->eglenv.query_devices(0, NULL, &numdev) || numdev < 1){
-		debug_print("EGLStreams, query failed or no devices found");
-		return -1;
-	}
-
-	EGLDeviceEXT devs[numdev];
-	if (!node->eglenv.query_devices(numdev, devs, &numdev)){
-		debug_print("EGLStreams, couldn't query device data");
-		return -1;
-	}
-
-/*
- * sweep all devices that matches and expose the necessary extensions and pick
- * the first one (should possibly change that to a counter for multiple cards
- * again) or, if fd is provided, the one with stat data that match.
- */
-	bool found = false;
-
-	for (size_t i = 0; i < numdev && !found; i++){
-		const char* ext = node->eglenv.query_device_string(devs[i], EGL_EXTENSIONS);
-		if (!check_ext(lastext = "EGL_EXT_device_drm", ext))
-			continue;
-
-		const char* fn =
-			node->eglenv.query_device_string(devs[i], EGL_DRM_DEVICE_FILE_EXT);
-
-		if (!fn)
-			continue;
-
-		int lfd = platform_device_open(fn, O_RDWR);
-
-/* no caller provided device, go with the one we found */
-		if (-1 == fd){
-			fd = lfd;
-			found = true;
-			node->buffer.egldev = devs[i];
-		}
-/* we we want to pair the incoming descriptor with the suggested one */
-		else {
-			struct stat s1, s2;
-			if (-1 == fstat(lfd, &s2) || -1 == fstat(fd, &s1) ||
-				s1.st_ino != s2.st_ino || s1.st_dev != s2.st_dev){
-					close(lfd);
-			}
-			else{
-				found = true;
-				node->buffer.egldev = devs[i];
-			}
-		}
-	}
-
-/*
- * 1:1 for card-node:egldisplay might not be correct for the setup here
- * (with normal GBM, this doesn't really matter that much as we have
- * finer control over buffer scanout)
- */
-	if (found){
-		EGLint attribs[] = {EGL_DRM_MASTER_FD_EXT, fd, EGL_NONE};
-		node->disp_fd = node->draw_fd = fd;
-		node->buftype = BUF_STREAM;
-		node->atomic =
-			drmSetClientCap(fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1) == 0 &&
-			drmSetClientCap(fd, DRM_CLIENT_CAP_ATOMIC, 1) == 0;
-		node->display = node->eglenv.get_platform_display(
-			EGL_PLATFORM_DEVICE_EXT, node->buffer.egldev, attribs);
-		node->eglenv.swap_interval(node->display, 0);
-		return 0;
-	}
-
-	return -1;
-}
-
 static void cleanup_node_gbm(struct dev_node* node)
 {
 	close_devices(node);
@@ -2054,10 +1762,17 @@ static int setup_node_gbm(int devind,
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
 	char* devstr, (* cfgstr), (* altstr);
 	node->atomic =
-		get_config("video_device_atomic", devind, NULL, tag) && (
+		!get_config("video_device_legacy", devind, NULL, tag) && (
 		drmSetClientCap(node->disp_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1) == 0 &&
 		drmSetClientCap(node->disp_fd, DRM_CLIENT_CAP_ATOMIC, 1) == 0
 	);
+
+	uint64_t cap;
+	node->ts_monotonic =
+		drmGetCap(node->disp_fd, DRM_CAP_TIMESTAMP_MONOTONIC, &cap);
+	node->fb2_modifiers =
+		drmGetCap(node->disp_fd, DRM_CAP_ADDFB2_MODIFIERS, &cap);
+
 	debug_print("gbm, node in atomic mode: %s", node->atomic ? "yes" : "no");
 
 /* Set the render node environment variable here, this is primarily for legacy
@@ -2120,6 +1835,34 @@ static bool lookup_drm_propval(int fd,
 	return false;
 }
 
+/* call on a pre-sync to setup the EGL fence, then post-sync to get the kms */
+static void ensure_out_fence(struct dispout* d, bool pre)
+{
+	if (!d->device->atomic || !d->device->eglenv.create_synch){
+		debug_print("non-atomic:ignore-fence");
+		d->buffer.synch = EGL_NO_SYNC_KHR;
+		return;
+	}
+
+	if (pre){
+		d->buffer.synch =
+			d->device->eglenv.create_synch(d->device->display,
+			EGL_SYNC_NATIVE_FENCE_ANDROID, (EGLint[]){
+				EGL_SYNC_NATIVE_FENCE_FD_ANDROID,
+				EGL_NO_NATIVE_FENCE_FD_ANDROID, EGL_NONE}
+		);
+		debug_print("EGLSync:fence:%"PRIxPTR, (uintptr_t) d->buffer.synch);
+	}
+	else if (d->buffer.synch != EGL_NO_SYNC_KHR) {
+		int fd = d->device->eglenv.dup_fence_fd(d->device->display, d->buffer.synch);
+		d->buffer.synch_fence = arcan_shmif_dupfd(fd, -1, false);
+		debug_print("KMSFence:Created(%d->%d)", fd, d->buffer.synch_fence);
+		d->device->eglenv.destroy_synch(d->device->display, d->buffer.synch);
+		close(fd);
+		d->buffer.synch = EGL_NO_SYNC_KHR;
+	}
+}
+
 /*
  * called once per updated display per frame, as part of the normal
  * draw / flip / ... cycle, bo is the returned gbm_surface_lock_front
@@ -2153,19 +1896,10 @@ static int get_gbm_fb(struct dispout* d,
 		struct shmifext_color_buffer* buf =
 			(struct shmifext_color_buffer*) vs->vinf.text.handle;
 
-/* Now buf represents what we want, but it might still be pending - so create a fence
- * if we have fencing enabled and flush-out. */
-		if (d->device->explicit_synch){
-			d->buffer.synch =
-				d->device->eglenv.create_synch(d->device->display,
-				EGL_SYNC_NATIVE_FENCE_ANDROID, (EGLint[]){
-					EGL_SYNC_NATIVE_FENCE_FD_ANDROID,
-					EGL_NO_NATIVE_FENCE_FD_ANDROID, EGL_NONE}
-			);
-		}
-
-		struct agp_fenv* env = agp_env();
-		env->flush();
+/* fence the object composition / shader postprocess */
+		ensure_out_fence(d, true);
+			struct agp_fenv* env = agp_env();
+			env->flush();
 
 		bo = (struct gbm_bo*) buf->alloc_tags[0];
 		TRACE_MARK_ONESHOT("egl-dri", "rendertarget-swap", TRACE_SYS_DEFAULT, 0, 0, "");
@@ -2206,6 +1940,7 @@ static int get_gbm_fb(struct dispout* d,
 
 	size_t bo_width = gbm_bo_get_width(bo);
 	size_t bo_height = gbm_bo_get_height(bo);
+	ensure_out_fence(d, false);
 
 /* nop:ed for now, but the path for dealing with modifiers should be
  * considered as soon as we have the other setup for direct-scanout
@@ -2265,8 +2000,6 @@ static bool set_dumb_fb(struct dispout* d)
 	buf->w = d->display.mode.hdisplay;
 	buf->h = d->display.mode.vdisplay;
 	d->buffer.dumb.enabled = true;
-
-/* mark to switch on the next flip */
 	d->buffer.in_dumb_set = true;
 
 	struct drm_mode_map_dumb mreq = {
@@ -2311,15 +2044,17 @@ static void release_dumb_fb(struct dispout* d)
 
 /* unref- the store, unlikely that we are the last consumer of this but some
  * edge (map -> vlayer deletes -> maps different, it can happen */
-	d->buffer.dumb.ref->refcount--;
-	if (!d->buffer.dumb.ref->refcount){
+	if (d->buffer.dumb.ref){
+		d->buffer.dumb.ref->refcount--;
+		if (!d->buffer.dumb.ref->refcount){
 
-		if (d->buffer.dumb.ref->vinf.text.raw)
-			arcan_mem_free(d->buffer.dumb.ref->vinf.text.raw);
+			if (d->buffer.dumb.ref->vinf.text.raw)
+				arcan_mem_free(d->buffer.dumb.ref->vinf.text.raw);
 
-		agp_drop_vstore(d->buffer.dumb.ref);
+			agp_drop_vstore(d->buffer.dumb.ref);
+		}
+		d->buffer.dumb.ref = NULL;
 	}
-	d->buffer.dumb.ref = NULL;
 
 	munmap(d->buffer.dumb.agp.vinf.text.raw, d->buffer.dumb.sz);
 	d->buffer.dumb.agp = (struct agp_vstore){};
@@ -2357,7 +2092,7 @@ static bool resolve_add(int fd, drmModeAtomicReqPtr dst, uint32_t obj_id,
 	return false;
 }
 
-static bool atomic_set_mode(struct dispout* d)
+static bool atomic_set_mode(struct dispout* d, int fl)
 {
 	uint32_t mode;
 	bool rv = false;
@@ -2402,31 +2137,46 @@ static bool atomic_set_mode(struct dispout* d)
 		goto cleanup;
 	}
 
-	unsigned width = d->display.mode.hdisplay << 16;
-	unsigned height = d->display.mode.vdisplay << 16;
+	unsigned width = d->display.mode.hdisplay;
+	unsigned height = d->display.mode.vdisplay;
+	int fbid = d->buffer.cur_fb;
+	if (!fbid)
+		fbid = d->buffer.dumb.fb;
+
+	if (d->buffer.synch_fence > 0){
+		AADD(d->display.plane_id, "IN_FENCE_FD", d->buffer.synch_fence);
+		debug_print("(%d)atomic-fence:%d", d->id, d->buffer.synch_fence);
+	}
 
 	AADD(d->display.plane_id, "SRC_X", 0);
 	AADD(d->display.plane_id, "SRC_Y", 0);
-	AADD(d->display.plane_id, "SRC_W", width);
-	AADD(d->display.plane_id, "SRC_H", height);
+	AADD(d->display.plane_id, "SRC_W", width << 16);
+	AADD(d->display.plane_id, "SRC_H", height << 16);
 	AADD(d->display.plane_id, "CRTC_X", 0);
 	AADD(d->display.plane_id, "CRTC_Y", 0);
 	AADD(d->display.plane_id, "CRTC_W", width);
 	AADD(d->display.plane_id, "CRTC_H", height);
-	AADD(d->display.plane_id, "FB_ID", d->buffer.cur_fb);
+	AADD(d->display.plane_id, "FB_ID", fbid);
 	AADD(d->display.plane_id, "CRTC_ID", d->display.crtc);
+
+/* CRTC_OUT_FENCE_PTR to add a commit-fence that will be signalled when the
+ * commit completes, which is different from the page-flip event */
 #undef AADD
 
 /* resolve sym:id for the properties on the objects we need:
  */
 
-	if (0 != drmModeAtomicCommit(fd,aptr, DRM_MODE_ATOMIC_ALLOW_MODESET, NULL)){
+	if (0 != drmModeAtomicCommit(fd,aptr, fl, NULL)){
 		goto cleanup;
 	}
 	else
 		rv = true;
 
 cleanup:
+	if (d->buffer.synch_fence > 0){
+		close(d->buffer.synch_fence);
+		d->buffer.synch_fence = -1;
+	}
 	drmModeAtomicFree(aptr);
 	drmModeDestroyPropertyBlob(fd, mode);
 
@@ -2745,41 +2495,6 @@ retry:
 		}
 	}
 
-/* find a matching output-plane for atomic/streams */
-	if (d->device->atomic){
-		bool ok = true;
-		if (!find_plane(d)){
-			debug_print("(%d) setup_kms, atomic-find_plane fail", (int)d->id);
-			ok = false;
-		}
-/* map a buffer to it so we get it to behave */
-		else if (!set_dumb_fb(d)){
-			debug_print("(%d) setup_kms, atomic dumb-fb fail", (int)d->id);
-			ok = false;
-		}
-/* and finally commit */
-		else if (!atomic_set_mode(d)){
-			debug_print("(%d) setup_kms, atomic modeset fail", (int)d->id);
-			drmModeRmFB(d->device->disp_fd, d->buffer.cur_fb);
-			d->buffer.cur_fb = 0;
-			ok = false;
-		}
-/* just disable atomic */
-		if (!ok){
-			debug_print("(%d) setup_kms, "
-				"atomic modeset failed, fallback to legacy", d->id);
-			d->device->atomic = false;
-			drmModeFreeConnector(d->display.con);
-			d->display.con = NULL;
-			drmModeFreeResources(res);
-			drmSetClientCap(d->device->disp_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 0);
-			drmSetClientCap(d->device->disp_fd, DRM_CLIENT_CAP_ATOMIC, 0);
-			return setup_kms(d, conn_id, w, h);
-		}
-		else if (!ok)
-			goto drop_disp;
-	}
-
 	build_orthographic_matrix(d->projection,
 		0, d->display.mode.hdisplay, d->display.mode.vdisplay, 0, 0, 1);
 
@@ -2825,56 +2540,6 @@ static bool map_handle_gbm(struct agp_vstore* dst, int64_t handle)
 	return platform_video_map_buffer(dst, &plane, 1);
 }
 
-/*
- * There's a really ugly GLES- inheritance GOTCHA here that makes streams
- * a ******** pain to work with. 99.9% of all existing code works against
- * GL_TEXTURE_2D as the target for 2D buffers. Of course, there's a 'special'
- * GL_TEXTURE_EXTERNAL_OES target that also requires a different sampler in
- * the shader code. This leaves us with 3-ish options.
- * This is actually true for GBM- buffers as well, but so far MESA doesn't
- * really give a duck.
- *
- * 1. Mimic 'CopyTextureCHROMIUM' - explicit render-to-texture pass.
- * 2. The 'Cogl' approach - Make shader management exponentially worse by
- *    tracking the dst- and when binding to a backend, compile/generate variants
- *    where the sampler references are replaced with the 'right' target by
- *    basically doing string- replacement on the program source.
- * 3. Move the complexity to the script level, breaking the opaqueness of
- *    VIDs by forcing separate rules and gotcha's when the VID comes from an
- *    external source. Possibly on the shader level by allowing additional
- *    rule-slots.
- * +. Find some long-lost OpenGL function that relies on semi-defined behavior
- *    to get rid of the _OES sampler type. There's probably something in
- *    EGLImage.
- * +. Nasty hybrid: have a special external version of the 'default' and
- *    when/if that one fails, fall back to 1/2.
- *
- * Granted, we need something similar for dma-buf when the source is one of
- * the many YUUVUUVUV formats.
- *
- * OpenGL: an arcane language with 400 different words for memcpy, where you
- * won't be sure of what src is, or dst, how much will actually be copied or
- * what happens to data in transit.
- */
-bool map_handle_stream(struct agp_vstore* dst, int64_t handle)
-{
-/*
- * 1. eglCreateStreamFromFileDescriptorKHR(dpy, handle)
- * 2. glBindTexture (GL_TEXTURE_EXTERNAL_OES)
- * 3. eglStreamConsumerGLTextureExternalKHR(dpy, stream)
- *
- * to 'poll' the stream, we can go with eglStreamConsumerQueryStream and
- * check that for EGL_STREAM_STATE_NEW_FRAME_AVAILABLE_KHR. We need semantics
- * the the BUFFER_ calls in shmif and the corresponding place in engine/
- * arcan_event.c to use a reserved identifier for matching against the
- * handle.
- *
- * then we have eglStreamConsumerAcquireKHR(dpy, stream)
- */
-
-	return false;
-}
-
 bool platform_video_map_handle(
 	struct agp_vstore* dst, int64_t handle)
 {
@@ -2888,9 +2553,6 @@ bool platform_video_map_handle(
 	switch (nodes[0].buftype){
 	case BUF_GBM:
 		return map_handle_gbm(dst, handle);
-	break;
-	case BUF_STREAM:
-		return map_handle_stream(dst, handle);
 	break;
 	case BUF_HEADLESS:
 		return false;
@@ -3156,7 +2818,7 @@ static void disable_display(struct dispout* d, bool dealloc)
 		debug_print("(%d) old mode found, trying to reset", (int)d->id);
 		if (d->device->atomic){
 			d->display.mode = d->display.old_crtc->mode;
-			if (atomic_set_mode(d)){
+			if (atomic_set_mode(d, DRM_MODE_ATOMIC_ALLOW_MODESET)){
 				debug_print("(%d) atomic-modeset failed on (%d)",
 					(int)d->id, (int)d->display.con_id);
 			}
@@ -3311,14 +2973,6 @@ static bool try_node(int draw_fd, int disp_fd, const char* pathref,
 			return false;
 		}
 	break;
-	case BUF_STREAM:
-		if (0 != setup_node_egl(dst_ind, node, disp_fd)){
-			debug_print("couldn't open (%d:%s) in EGLStreams mode",
-				draw_fd, pathref ? pathref : "(no path)");
-			release_card(dst_ind);
-			return false;
-		}
-	break;
 	case BUF_HEADLESS:
 	break;
 	}
@@ -3387,17 +3041,6 @@ static bool try_card(size_t devind, int w, int h, size_t* dstind)
  * specified path, if so, open but don't activate this one */
 	}
 
-	if (get_config("video_device_buffer", devind, &cfgstr, tag)){
-		if (strcmp(cfgstr, "streams") == 0){
-			gbm = false;
-			debug_print("device_buffer forced to EGLstreams");
-		}
-		else {
-			debug_print("device_buffer fallback to GBM");
-		}
-		free(cfgstr);
-	}
-
 /* reload any possible library references */
 	if (nodes[devind].agplib){
 		free(nodes[devind].agplib);
@@ -3423,8 +3066,8 @@ static bool try_card(size_t devind, int w, int h, size_t* dstind)
 	int drawfd = (drawdevstr ?
 		platform_device_open(drawdevstr, O_RDWR | O_CLOEXEC) : dispfd);
 
-	if (try_node(drawfd, dispfd, dispdevstr,
-		*dstind, gbm ? BUF_GBM : BUF_STREAM, connind, w, h, false)){
+	if (try_node(drawfd, dispfd,
+		dispdevstr, *dstind, BUF_GBM, connind, w, h, false)){
 		debug_print("card at %d added", *dstind);
 		nodes[*dstind].pathref = dispdevstr;
 		nodes[*dstind].card_id = *dstind;
@@ -3471,10 +3114,6 @@ static bool setup_cards_basic(int w, int h)
 		int fd = platform_device_open(buf, O_RDWR | O_CLOEXEC);
 		debug_print("trying [basic/auto] setup on %s", buf);
 		if (-1 != fd){
-/* on Linux (basically only place that'd be relevant for now) we could
- * check proc/modules for nvidia, then go the sysfs route for the card node,
- * grab the vendor string and switch to streams that way - if so we could
- * dynamically load the GL libs etc. */
 			if (try_node(fd, fd, buf, 0, BUF_GBM, -1, w, h, false) ||
 				try_node(fd, fd, buf, 0, BUF_GBM, -1, w, h, false)){
 					nodes[0].pathref = strdup(buf);
@@ -3627,10 +3266,30 @@ void platform_video_recovery()
 	arcan_video_resize_canvas(displays[0].dispw, displays[0].disph);
 }
 
-static void page_flip_handler(int fd, unsigned int frame,
-	unsigned int sec, unsigned int usec, void* data)
+static struct dispout* get_display_for_crtc(unsigned int crtc)
 {
-	struct dispout* d = data;
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
+		if (displays[i].state != DISP_UNUSED && displays[i].display.crtc == crtc)
+			return &displays[i];
+		}
+	return NULL;
+}
+
+static void
+page_flip_handler(
+	int fd,
+	unsigned int frame,
+	unsigned int sec,
+	unsigned int usec,
+	unsigned int crtc,
+	void* data)
+{
+	struct dispout* d = get_display_for_crtc(crtc);
+	if (!d){
+		debug_print("page-flip: missing display for crtc: %d", (int) crtc);
+		return;
+	}
+
 	d->buffer.in_flip = 0;
 	TRACE_MARK_ONESHOT("egl-dri", "flip-ack", TRACE_SYS_DEFAULT, d->id, frame, "flip");
 
@@ -3676,8 +3335,6 @@ static void page_flip_handler(int fd, unsigned int frame,
 		verbose_print("(%d) gbm-bo, release %"PRIxPTR" with %"PRIxPTR,
 			(int)d->id, (uintptr_t) d->buffer.cur_bo, (uintptr_t) d->buffer.next_bo);
 	}
-	break;
-	case BUF_STREAM:
 	break;
 	case BUF_HEADLESS:
 	break;
@@ -3759,8 +3416,8 @@ static void flush_display_events(int timeout, bool yield)
  * us re-raster / synch any directly mapped vobjs to the output.
  */
 	drmEventContext evctx = {
-			.version = DRM_EVENT_CONTEXT_VERSION,
-			.page_flip_handler = page_flip_handler
+		.version = DRM_EVENT_CONTEXT_VERSION,
+		.page_flip_handler2 = page_flip_handler
 	};
 
 	do{
@@ -4056,8 +3713,8 @@ const char* platform_video_capstr()
 	struct dispout* disp = get_display(0);
 
 	if (disp){
-		eglexts = (const char*)disp->device->eglenv.query_string(
-		disp->device->display, EGL_EXTENSIONS);
+		eglexts = (const char*)
+			disp->device->eglenv.query_string(disp->device->display, EGL_EXTENSIONS);
 		dump_connectors(stream, disp->device, true);
 	}
 	fprintf(stream, "Video Platform (EGL-DRI)\n"
@@ -4390,6 +4047,25 @@ static void drop_swapchain(struct dispout* d)
 	arcan_video_display.ignore_dirty += 3;
 }
 
+static void ensure_in_fence(struct dispout* d)
+{
+/* Actual drawing into display buffer,
+ * this does not deal with kms still holding the destination buffer via
+ * fencing. For timelines and verification this should really go through
+ * the conductor.
+ *
+ * For purpose of investigation:
+ * EGLint attr[] = {EGL_SYNC_NATIVE_FENCE_FD_ANDROID, fence_fd, EGL_NONE};
+ * EGLSyncKHR sync;
+ * synch = EGLenv.create_sync(EGLDisplay, EGL_SYNC_NATIVE_FENCE_ANDROID, attr);
+ * fence_fd = -1;
+ * EGLenv.wait_sync(EGLDisplay, synch, 0);
+ * destroy_sync(EGLDisplay, sync);
+ *
+ * Since we don't queue ahead of time rendering this shouldn't be necessary.
+ */
+}
+
 static enum display_update_state draw_display(struct dispout* d)
 {
 	bool swap_display = true;
@@ -4447,7 +4123,9 @@ static enum display_update_state draw_display(struct dispout* d)
 		verbose_print("(%d) skip draw, already composed", (int)d->id);
 		d->skip_blit = false;
 	}
+
 	else {
+		ensure_in_fence(d);
 		agp_shader_activate(shid);
 		agp_shader_envv(PROJECTION_MATR, d->projection, sizeof(float)*16);
 		agp_rendertarget_clear();
@@ -4473,6 +4151,7 @@ static enum display_update_state draw_display(struct dispout* d)
 out:
 	if (swap_display){
 		verbose_print("(%d) pre-swap", (int)d->id);
+			ensure_out_fence(d, true);
 			d->device->eglenv.swap_buffers(d->device->display, d->buffer.esurf);
 		verbose_print("(%d) swapped", (int)d->id);
 		return UPDATE_FLIP;
@@ -4510,33 +4189,18 @@ static bool update_display(struct dispout* d)
  * fillrate/bw. This should likely be added to the agp_ layer as a simple dirty
  * list that the draw_vobj calls append to. Some is prepared for (see
  * agp_rendertarget_dirty), but more is needed in the drawing logic itself.
+ *
+ * We can also sidestep the EGL bits entirely and simply go with
+ * FB_DAMAGE_CLIPS where applicable.
  */
 	enum display_update_state dstate = draw_display(d);
 
 	uint32_t next_fb = 0;
-	switch(d->device->buftype){
-	case BUF_STREAM:{
-		EGLAttrib attr[] = {
-			EGL_DRM_FLIP_EVENT_DATA_NV, (EGLAttrib) d,
-			EGL_NONE,
-		};
-		if (d->device->vsynch_method == VSYNCH_FLIP){
-			if (!d->device->eglenv.stream_consumer_acquire_attrib(
-				d->device->display, d->buffer.stream, attr)){
-				d->device->vsynch_method = VSYNCH_CLOCK;
-				TRACE_MARK_ONESHOT("egl-dri", "eglstream-clock",
-					TRACE_SYS_WARN, d->id, 0, "eglstream-vsynch fail");
-				debug_print("(%d) - no acq-attr, revert to clock", (int)d->id);
-			}
-		}
-/* dumb buffer, will never change */
-		next_fb = d->buffer.cur_fb;
-	}
-	break;
-	case BUF_GBM:{
-		int rv = -1;
+	int rv = -1;
 /* We use rendertarget_swap for implementing front/back buffering in the
  * case of rendertarget scanout. */
+	switch (d->device->buftype){
+	case BUF_GBM:
 		if (dstate == UPDATE_DIRECT){
 			if ((rv = get_gbm_fb(d, dstate, NULL, &next_fb)) == -1){
 
@@ -4573,6 +4237,7 @@ static bool update_display(struct dispout* d)
 				gbm_surface_release_buffer(d->buffer.surface, d->buffer.next_bo);
 				goto out;
 			}
+			d->buffer.cur_fb = next_fb;
 
 			if (rv == 0){
 				TRACE_MARK_ONESHOT("egl-dri", "gbm-buffer-release", TRACE_SYS_DEFAULT, d->id, 0, "");
@@ -4580,7 +4245,6 @@ static bool update_display(struct dispout* d)
 				verbose_print("(%d) - no update for display", (int)d->id);
 				goto out;
 			}
-		}
 	}
 	break;
 	case BUF_HEADLESS:
@@ -4606,18 +4270,25 @@ static bool update_display(struct dispout* d)
 			(int) d->id, d->dispw, d->disph, d->display.mode.hdisplay,
 			d->display.mode.vdisplay, d->display.mode.vrefresh
 		);
+
 		if (d->device->atomic){
-			atomic_set_mode(d);
+			if (!find_plane(d) || !atomic_set_mode(d, DRM_MODE_ATOMIC_ALLOW_MODESET)){
+				debug_print("(%d) atomic modeset failed, revert to legacy\n", (int) d->id);
+				d->device->atomic = false;
+				drmSetClientCap(d->device->disp_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 0);
+				drmSetClientCap(d->device->disp_fd, DRM_CLIENT_CAP_ATOMIC, 0);
+			}
 		}
-		else {
+
+		if (!d->device->atomic){
 			int rv = drmModeSetCrtc(d->device->disp_fd, d->display.crtc,
 				next_fb, 0, 0, &d->display.con_id, 1, &d->display.mode);
 			if (rv < 0){
 				debug_print("(%d) error (%d) setting Crtc for %d:%d(con:%d)",
 					(int)d->id, errno, d->device->disp_fd, d->display.crtc, d->display.con_id);
 			}
-			egl_dri.decay = 4;
 		}
+		egl_dri.decay = 4;
 		arcan_conductor_register_display(
 			d->device->card_id, d->id, SYNCH_STATIC, d->display.mode.vrefresh, d->vid);
 	}
@@ -4625,11 +4296,19 @@ static bool update_display(struct dispout* d)
 /* let DRM drive synch and wait for vsynch events on the file descriptor */
 	if (d->device->vsynch_method == VSYNCH_FLIP){
 		verbose_print("(%d) request flip (fd: %d, crtc: %"PRIxPTR", fb: %d)",
-			(int)d->id, (uintptr_t) d->display.crtc, (int) next_fb);
+			(int)d->id, d->device->disp_fd, (uintptr_t) d->display.crtc, (int) next_fb);
 
-/* for Atomic, there is also a
- * DRM_MODE_ATOMIC_NONBLOCK (poll fd), DRM_MODE_ATOMIC_ALLOW_MODESET */
-		if (0 == drmModePageFlip(d->device->disp_fd,
+/* set the new buffer, but ignore if we just did through modeset */
+		if (d->device->atomic){
+			if (!new_crtc){
+				uint32_t fl = DRM_MODE_ATOMIC_NONBLOCK | DRM_MODE_PAGE_FLIP_EVENT;
+				d->buffer.cur_fb = next_fb;
+				d->buffer.in_flip = 1;
+				atomic_set_mode(d, fl);
+			}
+		}
+/* LEGACY: */
+		else if (0 == drmModePageFlip(d->device->disp_fd,
 			d->display.crtc, next_fb, DRM_MODE_PAGE_FLIP_EVENT, d)){
 			TRACE_MARK_ONESHOT("egl-dri", "vsynch-req", TRACE_SYS_DEFAULT, d->id, next_fb, "flip");
 			d->buffer.in_flip = 1;

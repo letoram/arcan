@@ -53,8 +53,6 @@ typedef EGLBoolean (EGLAPIENTRY* PFNEGLBINDAPIPROC)(EGLenum);
 typedef EGLBoolean (EGLAPIENTRY* PFNEGLGETCONFIGSPROC)
 	(EGLDisplay, EGLConfig*, EGLint, EGLint*);
 typedef const char* (EGLAPIENTRY* PFNEGLQUERYSTRINGPROC)(EGLDisplay, EGLenum);
-typedef EGLBoolean (EGLAPIENTRY* PFNEGLSTREAMCONSUMERACQUIREATTRIBNVPROC)(EGLDisplay,
-	EGLStreamKHR, const EGLAttrib*);
 typedef EGLBoolean (EGLAPIENTRY* PFNEGLGETCONFIGATTRIBPROC)(EGLDisplay, EGLConfig, EGLint, EGLint*);
 
 struct egl_env {
@@ -69,25 +67,15 @@ struct egl_env {
 	PFNEGLEXPORTDMABUFIMAGEMESAPROC export_dmabuf;
 	PFNEGLEXPORTDMABUFIMAGEQUERYMESAPROC query_image_format;
 
-/* EGLStreams */
-	PFNEGLQUERYDEVICESEXTPROC query_devices;
-	PFNEGLQUERYDEVICESTRINGEXTPROC query_device_string;
-	PFNEGLGETPLATFORMDISPLAYEXTPROC get_platform_display;
-	PFNEGLGETOUTPUTLAYERSEXTPROC get_output_layers;
-	PFNEGLCREATESTREAMKHRPROC create_stream;
-	PFNEGLDESTROYSTREAMKHRPROC destroy_stream;
-	PFNEGLSTREAMCONSUMEROUTPUTEXTPROC stream_consumer_output;
-	PFNEGLCREATESTREAMPRODUCERSURFACEKHRPROC create_stream_producer_surface;
-	PFNEGLSTREAMCONSUMERACQUIREKHRPROC stream_consumer_acquire;
-	PFNEGLSTREAMCONSUMERACQUIREATTRIBNVPROC stream_consumer_acquire_attrib;
-
 /* Explicit Sync */
 	PFNEGLCREATESYNCKHRPROC create_synch;
 	PFNEGLWAITSYNCKHRPROC wait_synch;
 	PFNEGLDESTROYSYNCKHRPROC destroy_synch;
+	PFNEGLCLIENTWAITSYNCKHRPROC client_wait_synch;
 	PFNEGLDUPNATIVEFENCEFDANDROIDPROC dup_fence_fd;
 
 /* Basic EGL */
+	PFNEGLGETPLATFORMDISPLAYEXTPROC get_platform_display;
 	PFNEGLDESTROYSURFACEPROC destroy_surface;
 	PFNEGLGETERRORPROC get_error;
 	PFNEGLCREATEWINDOWSURFACEPROC create_window_surface;
@@ -121,6 +109,20 @@ static void map_eglext_functions(struct egl_env* denv,
 	denv->image_target_texture2D = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)
 		lookup(tag, "glEGLImageTargetTexture2DOES", false);
 
+	denv->create_synch =
+		(PFNEGLCREATESYNCKHRPROC) lookup(tag, "eglCreateSyncKHR", false);
+	denv->wait_synch =
+		(PFNEGLWAITSYNCKHRPROC) lookup(tag, "eglWaitSyncKHR", false);
+	denv->destroy_synch =
+		(PFNEGLDESTROYSYNCKHRPROC) lookup(tag, "eglDestroySyncKHR", false);
+	denv->client_wait_synch =
+		(PFNEGLCLIENTWAITSYNCKHRPROC) lookup(tag, "eglClientWaitSyncKHR", false);
+	denv->dup_fence_fd =
+		(PFNEGLDUPNATIVEFENCEFDANDROIDPROC)
+		lookup(tag, "eglDupNativeFenceFDANDROID", false);
+	denv->get_platform_display = (PFNEGLGETPLATFORMDISPLAYEXTPROC)
+		lookup(tag, "eglGetPlatformDisplayEXT", false );
+
 /* EGL_EXT_image_dma_buf_import_modifiers */
 	denv->query_dmabuf_modifiers = (PFNEGLQUERYDMABUFMODIFIERSEXTPROC)
 		lookup(tag, "eglQueryDmaBufModifiersEXT", false);
@@ -130,32 +132,6 @@ static void map_eglext_functions(struct egl_env* denv,
 		lookup(tag, "eglExportDMABUFImageQueryMESA", false);
 	denv->export_dmabuf = (PFNEGLEXPORTDMABUFIMAGEMESAPROC)
 		lookup(tag, "eglExportDMABUFImageMESA", false);
-
-/* EGLStreams */
-/* "EGL_EXT_device_query"
- * "EGL_EXT_device_enumeration"
- * "EGL_EXT_device_query" */
-
-	denv->query_device_string = (PFNEGLQUERYDEVICESTRINGEXTPROC)
-		lookup(tag, "eglQueryDeviceStringEXT", false);
-	denv->query_devices = (PFNEGLQUERYDEVICESEXTPROC)
-		lookup(tag, "eglQueryDevicesEXT", false);
-	denv->get_platform_display = (PFNEGLGETPLATFORMDISPLAYEXTPROC)
-		lookup(tag, "eglGetPlatformDisplayEXT", false );
-	denv->get_output_layers = (PFNEGLGETOUTPUTLAYERSEXTPROC)
-		lookup(tag, "eglGetOutputLayersEXT", false);
-	denv->create_stream = (PFNEGLCREATESTREAMKHRPROC)
-		lookup(tag, "eglCreateStreamKHR", false);
-	denv->destroy_stream = (PFNEGLDESTROYSTREAMKHRPROC)
-		lookup(tag, "eglDestroyStreamKHR", false);
-  denv->stream_consumer_output = (PFNEGLSTREAMCONSUMEROUTPUTEXTPROC)
-		lookup(tag, "eglStreamConsumerOutputEXT", false);
-	denv->create_stream_producer_surface = (PFNEGLCREATESTREAMPRODUCERSURFACEKHRPROC)
-		lookup(tag, "eglCreateStreamProducerSurfaceKHR", false);
-	denv->stream_consumer_acquire = (PFNEGLSTREAMCONSUMERACQUIREKHRPROC)
-		lookup(tag, "eglStreamConsumerAcquireKHR", false);
-	denv->stream_consumer_acquire_attrib = (PFNEGLSTREAMCONSUMERACQUIREATTRIBNVPROC)
-		lookup(tag, "eglStreamConsumerAcquireAttribNV", false);
 }
 
 static void map_egl_functions(struct egl_env* denv,
@@ -192,13 +168,6 @@ static void map_egl_functions(struct egl_env* denv,
 		(PFNEGLSWAPBUFFERSPROC) lookup(tag, "eglSwapBuffers", true);
 	denv->swap_interval =
 		(PFNEGLSWAPINTERVALPROC) lookup(tag, "eglSwapInterval", true);
-	denv->create_synch =
-		(PFNEGLCREATESYNCKHRPROC) lookup(tag, "eglCreateSyncKHR", false);
-	denv->wait_synch =
-		(PFNEGLWAITSYNCKHRPROC) lookup(tag, "eglWaitSyncKHR", false);
-	denv->dup_fence_fd =
-		(PFNEGLDUPNATIVEFENCEFDANDROIDPROC)
-		lookup(tag, "eglDupNativeFenceFDANDROID", false);
 }
 
 #endif
