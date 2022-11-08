@@ -1202,11 +1202,45 @@ static int cursor_to(lua_State* L)
 	TUI_UDATA;
 	int x = luaL_checkinteger(L, 2);
 	int y = luaL_checkinteger(L, 3);
+
+	int fl = 0;
+	const char* style = luaL_optstring(L, 4, NULL);
+	if (style){
+		if (strcmp(style, "block") == 0)
+			fl = CURSOR_BLOCK;
+		else if (strcmp(style, "bar") == 0)
+			fl = CURSOR_BAR;
+		else if (strcmp(style, "underline") == 0)
+			fl = CURSOR_UNDER;
+		else if (strcmp(style, "frame") == 0)
+			fl = CURSOR_HOLLOW;
+	}
+
+/* do we have a rgb triplet? */
+	uint8_t* col = NULL;
+	uint8_t colv[] = {0, 0, 0};
+	if (lua_type(L, 5) == LUA_TNUMBER && lua_type(L, 6) ==
+		LUA_TNUMBER && lua_type(L, 7) == LUA_TNUMBER){
+		colv[0] = (uint8_t) lua_tonumber(L, 5);
+		colv[1] = (uint8_t) lua_tonumber(L, 6);
+		colv[2] = (uint8_t) lua_tonumber(L, 7);
+		col = colv;
+
+/* and last arg is treated as blink bval */
+		if (luaL_optnumber(L, 8, 0))
+			fl |= CURSOR_BLINK;
+	}
+	else if (luaL_optnumber(L, 5, 0))
+		fl |= CURSOR_BLINK;
+
 	size_t rows, cols;
 	arcan_tui_dimensions(ib->tui, &rows, &cols);
 
 	if (x >= 0 && y >= 0 && x < cols && y < rows)
 		arcan_tui_move_to(ib->tui, x, y);
+
+	if (col || fl)
+		arcan_tui_cursor_style(ib->tui, fl, col);
 
 	return 0;
 }
@@ -1306,23 +1340,47 @@ static int tui_chdir(lua_State* L)
 	return 1;
 }
 
+static int tui_local(lua_State* L)
+{
+	struct tui_lmeta* ib = NULL;
+	size_t ci = 1;
+
+/* somewhere to derive color configuration from */
+	if (lua_type(L, ci) == LUA_TUSERDATA){
+		struct tui_lmeta* ib = luaL_checkudata(L, ci++, TUI_METATABLE);
+		ci++;
+	}
+
+/* base dimensions */
+	size_t w = 80;
+	size_t h = 25;
+	if (lua_type(L, ci) == LUA_TNUMBER){
+		w = lua_tonumber(L, ci);
+		h = luaL_optnumber(L, ci+1, 25);
+	}
+
+/* build / inherit but with a null connection */
+	struct tui_context* res = ltui_inherit(L, NULL, ib);
+	if (!res)
+		return 0;
+
+	arcan_tui_wndhint(res,
+		ib ? ib->tui : NULL, (struct tui_constraints){.max_rows = h, .max_cols = w});
+
+	return 1;
+}
+
 static int tui_open(lua_State* L)
 {
 	const char* title = luaL_checkstring(L, 1);
 	const char* ident = luaL_checkstring(L, 2);
 
 	arcan_tui_conn* conn = arcan_tui_open_display(title, ident);
-/* will be GCd */
-	if (!conn){
-		lua_pop(L, 1);
-		return 0;
-	}
-
-	return ltui_inherit(L, conn) ? 1 : 0;
+	return ltui_inherit(L, conn, NULL) ? 1 : 0;
 }
 
 struct tui_context*
-ltui_inherit(lua_State* L, arcan_tui_conn* conn)
+ltui_inherit(lua_State* L, arcan_tui_conn* conn, struct tui_lmeta* T)
 {
 	register_tuimeta(L);
 
@@ -1330,7 +1388,7 @@ ltui_inherit(lua_State* L, arcan_tui_conn* conn)
 	if (!meta){
 		return NULL;
 	}
-	init_lmeta(L, meta, NULL);
+	init_lmeta(L, meta, T);
 	lua_pushvalue(L, -1);
 	meta->tui_state = luaL_ref(L, LUA_REGISTRYINDEX);
 
@@ -1384,7 +1442,8 @@ ltui_inherit(lua_State* L, arcan_tui_conn* conn)
 		}
 	}
 
-	meta->tui = arcan_tui_setup(conn, NULL, &shared_cbcfg, sizeof(shared_cbcfg));
+	meta->tui = arcan_tui_setup(conn,
+		T ? T->tui : NULL, &shared_cbcfg, sizeof(shared_cbcfg));
 	if (!meta->tui){
 		lua_pop(L, 1);
 		return NULL;
@@ -3708,6 +3767,7 @@ luaopen_arcantui(lua_State* L)
 		{"APIVersion", apiversion},
 		{"APIVersionString", apiversionstr},
 		{"open", tui_open},
+		{"create_local", tui_local}
 	};
 
 	lua_newtable(L);

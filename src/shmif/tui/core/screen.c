@@ -10,32 +10,6 @@ typedef void* TTF_Font;
 #include "../raster/raster.h"
 #include "../raster/draw.h"
 
-/*
- * This is used to translate from the virtual screen in TSM to our own front/back
- * buffer structure that is then 'rendered' into the packing format used in
- * tui_raster.c
- *
- * Eventually this will be entirely unnecessary and we can rightfully kill off
- * TSM and ust draw into our buffers directly, as the line wrapping / tracking
- * behavior etc. doesn't really match how things are structured anymore
- */
-static int tsm_draw_callback(struct tsm_screen* screen, uint32_t id,
-	const uint32_t* ch, size_t len, unsigned width, unsigned x, unsigned y,
-	const struct tui_screen_attr* attr, tsm_age_t age, void* data)
-{
-	struct tui_context* tui = data;
-
-	if (!(age && tui->age && age <= tui->age) && x < tui->cols && y < tui->rows){
-		size_t pos = y * tui->cols + x;
-		tui->front[pos].draw_ch = tui->front[pos].ch = *ch;
-		tui->front[pos].attr = *attr;
-		tui->front[pos].fstamp = tui->fstamp;
-		tui->dirty |= DIRTY_PARTIAL;
-	}
-
-	return 0;
-}
-
 static void resize_cellbuffer(struct tui_context* tui)
 {
 	if (tui->base){
@@ -341,8 +315,16 @@ size_t tui_screen_tpack(struct tui_context* tui,
 /* send the new cursor */
 		hdr.lines++;
 		hdr.cells++;
-		tui->last_cursor.row = tsm_screen_get_cursor_y(tui->screen);
-		tui->last_cursor.col = tsm_screen_get_cursor_x(tui->screen);
+
+		if (tui->screen){
+			tui->last_cursor.row = tsm_screen_get_cursor_y(tui->screen);
+			tui->last_cursor.col = tsm_screen_get_cursor_x(tui->screen);
+		}
+		else {
+			tui->last_cursor.row = tui->cy;
+			tui->last_cursor.col = tui->cx;
+		}
+
 		line.start_line = tui->last_cursor.row;
 		line.offset = tui->last_cursor.col;
 
@@ -369,35 +351,24 @@ size_t tui_screen_tpack(struct tui_context* tui,
 
 	hdr.cursor_state |= CURSOR_EXTHDRv1;
 
+	hdr.cursor_state |=
+		(tui->cursor & (CURSOR_BLOCK | CURSOR_BAR | CURSOR_UNDER | CURSOR_HOLLOW));
+
 /* write the header and return */
 /* NOTE: REPLACE WITH PROPER PACKING */
 	memcpy(rbuf, &hdr, sizeof(hdr));
-	rbuf[sizeof(hdr)+0] = tui->colors[TUI_COL_CURSOR].rgb[0];
-	rbuf[sizeof(hdr)+1] = tui->colors[TUI_COL_CURSOR].rgb[1];
-	rbuf[sizeof(hdr)+2] = tui->colors[TUI_COL_CURSOR].rgb[2];
+	if (tui->cursor_color_override){
+		rbuf[sizeof(hdr)+0] = tui->cursor_color[0];
+		rbuf[sizeof(hdr)+1] = tui->cursor_color[1];
+		rbuf[sizeof(hdr)+2] = tui->cursor_color[2];
+	}
+	else {
+		rbuf[sizeof(hdr)+0] = tui->colors[TUI_COL_CURSOR].rgb[0];
+		rbuf[sizeof(hdr)+1] = tui->colors[TUI_COL_CURSOR].rgb[1];
+		rbuf[sizeof(hdr)+2] = tui->colors[TUI_COL_CURSOR].rgb[2];
+	}
 
 	return outsz;
-}
-
-static void update_screen(struct tui_context* tui, bool ign_inact)
-{
-/* don't redraw while we have an update pending or when we
- * are in an invisible state */
-	if (tui->inactive && !ign_inact)
-		return;
-
-/* dirty will be set from screen resize, fix the pad region */
-	if (tui->dirty & DIRTY_FULL){
-		tsm_screen_selection_reset(tui->screen);
-	}
-	else
-/* "always" erase previous cursor, except when cfg->nal screen state explicitly
- * say that cursor drawing should be turned off */
-		;
-
-	/* basic safe-guard */
-	if (!tui->front)
-		return;
 }
 
 void tui_screen_resized(struct tui_context* tui)
@@ -422,8 +393,11 @@ void tui_screen_resized(struct tui_context* tui)
 		tui->cols = cols;
 		tui->rows = rows;
 
-		tsm_screen_resize(tui->screen, cols, rows);
 		resize_cellbuffer(tui);
+
+		if (tui->hooks.resize){
+			tui->hooks.resize(tui);
+		}
 
 		if (tui->handlers.resized)
 			tui->handlers.resized(tui,
@@ -431,7 +405,6 @@ void tui_screen_resized(struct tui_context* tui)
 	}
 
 	tui->dirty |= DIRTY_FULL;
-	update_screen(tui, true);
 }
 
 int tui_tpack_unpack(struct tui_context* C,
@@ -447,6 +420,9 @@ int tui_tpack_unpack(struct tui_context* C,
 /* recalculate and compare */
 	size_t hdr_ver_sz = hdr.lines * raster_line_sz +
 		hdr.cells * raster_cell_sz + raster_hdr_sz;
+
+	if (hdr.cursor_state & CURSOR_EXTHDRv1)
+		hdr_ver_sz += 3;
 
 	if (hdr.data_sz > buf_sz || hdr.data_sz != hdr_ver_sz){
 		return -1;
@@ -526,12 +502,9 @@ int tui_tpack_unpack(struct tui_context* C,
 
 int tui_screen_refresh(struct tui_context* tui)
 {
-/* synch vscreen -> screen buffer */
-	tui->flags = tsm_screen_get_flags(tui->screen);
-
-/* this will repeatedly call tsm_draw_callback which, in turn, will update
- * the front buffer with new glyphs. */
-	tui->age = tsm_screen_draw(tui->screen, tsm_draw_callback, tui);
+	if (tui->hooks.refresh){
+		tui->hooks.refresh(tui);
+	}
 
 	if (arcan_shmif_signalstatus(&tui->acon) != 0){
 		errno = EAGAIN;

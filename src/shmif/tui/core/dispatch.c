@@ -311,7 +311,8 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 
 	case TARGET_COMMAND_RESET:
 		tui->modifiers = 0;
-		tsm_screen_sb_reset(tui->screen);
+		if (tui->hooks.reset)
+			tui->hooks.reset(tui);
 		tui->sbofs = 0;
 
 		switch(ev->ioevs[0].iv){

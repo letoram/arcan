@@ -42,6 +42,7 @@ struct tui_context {
 	struct tui_cell* base;
 	struct tui_cell* front;
 	struct tui_cell* back;
+	struct tui_screen_attr defattr;
 	uint8_t fstamp;
 
 	float progress[5];
@@ -95,6 +96,7 @@ struct tui_context {
 /* if the server-side has hinted with valid cell dimensions, skip probing */
 	bool cell_auth;
 	int cell_w, cell_h, pad_w, pad_h;
+	int cx, cy;
 	int modifiers;
 
 	struct color colors[TUI_COL_LIMIT];
@@ -108,6 +110,8 @@ struct tui_context {
 		size_t row, col;
 	} last_cursor;
 	enum tui_cursors cursor; /* visual style */
+	bool cursor_color_override;
+	uint8_t cursor_color[3];
 
 	uint8_t alpha;
 
@@ -140,6 +144,17 @@ struct tui_context {
 /* NEWSEGEMENT -> on_subwindow -> handover call chain */
 	bool got_pending;
 	struct arcan_event pending_wnd;
+
+/* event hooks for slowly decoupling deprecated code */
+	struct {
+		void(*cursor_update)(struct tui_context* c);
+		void(*input)(struct tui_context*, arcan_ioevent* iev, const char*);
+		void(*reset)(struct tui_context*);
+		void(*destroy)(struct tui_context*);
+		void(*resize)(struct tui_context*);
+		void(*refresh)(struct tui_context*);
+		int(*set_flags)(struct tui_context*, int fl);
+	} hooks;
 
 /* caller- event handlers */
 	struct tui_cbcfg handlers;
@@ -276,5 +291,10 @@ bool tui_fontmgmt_hasglyph(struct tui_context* tui, uint32_t cp);
  * may cause loading / unloading / build etc.
  */
 void tui_fontmgmt_invalidate(struct tui_context* tui);
+
+/*
+ * Internal deprecated
+ */
+void arcan_tui_legacy_labels(struct tui_context* c);
 
 #endif

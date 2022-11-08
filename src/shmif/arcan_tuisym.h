@@ -19,6 +19,7 @@
  */
 enum tui_context_flags {
 	TUI_INSERT_MODE = 1,
+
 	TUI_AUTO_WRAP = 2,
 /*
  * Relative origin, row/col are set to take margin values into account
@@ -188,12 +189,14 @@ enum tui_color_group {
 	TUI_COL_LIMIT = 36
 };
 
+/* values picked to match the ones used in TPACK, BLINK is a bitmap attr the
+ * others are exclusive-or */
 enum tui_cursors {
-	CURSOR_BLOCK = 0,
-	CURSOR_HALFBLOCK,
-	CURSOR_FRAME,
-	CURSOR_VLINE,
-	CURSOR_ULINE,
+	CURSOR_BLINK = 4,
+	CURSOR_BLOCK = 16,
+	CURSOR_BAR = 32,
+	CURSOR_UNDER = 64,
+	CURSOR_HOLLOW = 128,
 	CURSOR_END
 };
 

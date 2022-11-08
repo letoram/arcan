@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020, Björn Ståhl
+ * Copyright: Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description:
@@ -113,8 +113,12 @@ enum cursor_states {
 	CURSOR_NONE     = 0,
 	CURSOR_INACTIVE = 1,
 	CURSOR_ACTIVE   = 2,
-	CURSOR_BLINK    = 4, /* attribute- bit */
+/* CURSOR_BLINK    = 4 */
 	CURSOR_EXTHDRv1 = 8, /* after raster-header comes cursor header */
+/*	CURSOR_BLOCK    = 16,
+	CURSOR_BAR      = 32,
+	CURSOR_UNDER    = 64,
+	CURSOR_HOLLOW   = 128 */
 };
 
 struct tui_font {

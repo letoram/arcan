@@ -895,7 +895,6 @@ void arcan_tui_eraseattr_screen(
 
 void arcan_tui_erase_region(struct tui_context*,
 	size_t x1, size_t y1, size_t x2, size_t y2, bool protect);
-void arcan_tui_erase_sb(struct tui_context*);
 
 void arcan_tui_eraseattr_region(struct tui_context*, size_t x1,
 	size_t y1, size_t x2, size_t y2, bool protect, struct tui_screen_attr);
@@ -915,16 +914,6 @@ bool arcan_tui_tpack(struct tui_context* tui, uint8_t** rbuf, size_t* rbuf_sz);
  * the defined x,y,x+w,y+h region */
 bool arcan_tui_tunpack(struct tui_context* tui,
 	uint8_t* buf, size_t buf_sz, size_t x, size_t y, size_t w, size_t h);
-
-/*
- * helpers that match erase_region + invalidate + cursporpos
- */
-void arcan_tui_erase_cursor_to_screen(struct tui_context*, bool protect);
-void arcan_tui_erase_screen_to_cursor(struct tui_context*, bool protect);
-void arcan_tui_erase_cursor_to_end(struct tui_context*, bool protect);
-void arcan_tui_erase_home_to_cursor(struct tui_context*, bool protect);
-void arcan_tui_erase_current_line(struct tui_context*, bool protect);
-void arcan_tui_erase_chars(struct tui_context*, size_t n);
 
 /*
  * Insert a new unicode codepoint (expressed as UCS4) at the current cursor
@@ -1142,21 +1131,17 @@ struct tui_screen_attr arcan_tui_defattr(
 	struct tui_context*, struct tui_screen_attr* attr);
 
 /*
- * Simple reference counter that blocks _free from cleaning up until
- * no more references exist on the context.
- */
-void arcan_tui_refinc(struct tui_context*);
-
-/*
- * Simple reference counter that blocks _free from cleaning up until
- * no more references exist on the context.
- */
-void arcan_tui_refdec(struct tui_context*);
-
-/*
  * Set the absolute cursor position, clamped to 0,0,cols-1,rows-1
  */
 void arcan_tui_move_to(struct tui_context*, size_t x, size_t y);
+
+/*
+ * Change the current cursor drawing style,
+ * flags match enum tui_cursors (or 0 for ignore/keep)
+ * color (if set) is interpreted as a linear sRGB triple, otherwise it will
+ * revert to the default indexed cursor/altcursor in the palette.
+ */
+int arcan_tui_cursor_style(struct tui_context*, int fl, const uint8_t* const col);
 
 /*
  * Determine of the specific UC4 unicode codepoint can be drawn with the
@@ -1228,20 +1213,52 @@ void arcan_tui_send_key(struct tui_context*,
 	uint8_t utf8[static 4], const char* lbl,
 	uint32_t keysym, uint8_t scancode, uint16_t mods, uint16_t subid);
 
+#ifndef TUI_BLOCK_DEPRECATION
+#define TUI_ENABLE_DEPRECATION
+#endif
+
+/* These are only available for dynamic/static linking, not loading */
+#ifdef TUI_ENABLE_DEPRECATION
+void arcan_tui_allow_deprecated(struct tui_context*);
+
+/*
+ * Simple reference counter that blocks _free from cleaning up until
+ * no more references exist on the context.
+ */
+void arcan_tui_refinc(struct tui_context*);
+
+/*
+ * Simple reference counter that blocks _free from cleaning up until
+ * no more references exist on the context.
+ */
+void arcan_tui_refdec(struct tui_context*);
+
 /*
  * mark the current cursor position as a tabstop
- * [DEPRECATE -> widget]
  */
 void arcan_tui_set_tabstop(struct tui_context*);
 
 /*
- * [DEPRECATE -> widget]
+ * erase the scrollback history
+ */
+void arcan_tui_erase_sb(struct tui_context*);
+
+/*
+ * cursor-relative erase operations
+ */
+void arcan_tui_erase_cursor_to_screen(struct tui_context*, bool protect);
+void arcan_tui_erase_screen_to_cursor(struct tui_context*, bool protect);
+void arcan_tui_erase_cursor_to_end(struct tui_context*, bool protect);
+void arcan_tui_erase_home_to_cursor(struct tui_context*, bool protect);
+void arcan_tui_erase_current_line(struct tui_context*, bool protect);
+void arcan_tui_erase_chars(struct tui_context*, size_t n);
+
+/*
  * insert [n] number of empty lines with the default attributes
  */
 void arcan_tui_insert_lines(struct tui_context*, size_t);
 
 /*
- * [DEPRECATE -> widget]
  * CR / LF
  */
 void arcan_tui_newline(struct tui_context*);
@@ -1251,21 +1268,21 @@ void arcan_tui_newline(struct tui_context*);
  */
 void arcan_tui_delete_lines(struct tui_context*, size_t);
 
-/* [DEPRECATE -> widget]
+/*
  * insert [n] number of empty characters
  * (amounts to a loop of _write calls with the default attributes)
  */
 void arcan_tui_insert_chars(struct tui_context*, size_t);
 void arcan_tui_delete_chars(struct tui_context*, size_t);
 
-/* [DEPRECATE -> widget]
+/*
  * move cursor [n] tab-stops positions forward or backwards
  */
 void arcan_tui_tab_right(struct tui_context*, size_t);
 void arcan_tui_tab_left(struct tui_context*, size_t);
 
 /*
- * [DEPRECATE -> widget]
+ *
  * scroll the window [n] lines up or down in the scrollback
  * buffer this is a no-op in alt-screen.
  */
@@ -1273,32 +1290,21 @@ void arcan_tui_scroll_up(struct tui_context*, size_t);
 void arcan_tui_scroll_down(struct tui_context*, size_t);
 
 /*
- * [DEPRECATE -> widget]
+ *
  * remove the tabstop at the current position
  */
 void arcan_tui_reset_tabstop(struct tui_context*);
 void arcan_tui_reset_all_tabstops(struct tui_context*);
 
-/* [DEPRECATE -> widget] */
+/* cursor-relative / mode-relative motion with scroll controls */
 void arcan_tui_move_up(struct tui_context*, size_t num, bool scroll);
-
-/* [DEPRECATE -> widget] */
 void arcan_tui_move_down(struct tui_context*, size_t num, bool scroll);
-
-/* [DEPRECATE -> widget] */
 void arcan_tui_move_left(struct tui_context*, size_t);
-
-/* [DEPRECATE -> widget] */
 void arcan_tui_move_right(struct tui_context*, size_t);
-
-/* [DEPRECATE -> widget] */
 void arcan_tui_move_line_end(struct tui_context*);
-
-/* [DEPRECATE -> widget] */
 void arcan_tui_move_line_home(struct tui_context*);
-
-/* [DEPRECATE -> widget] */
 int arcan_tui_set_margins(struct tui_context*, size_t top, size_t bottom);
+#endif
 
 #else
 typedef struct tui_context*(* PTUISETUP)(
@@ -1356,6 +1362,7 @@ typedef void (* PTUIRESETTABSTOP)(struct tui_context*);
 typedef void (* PTUIRESETALLTABSTOPS)(struct tui_context*);
 typedef void (* PTUISCROLLHINT)(struct tui_context*, size_t, struct tui_region*);
 typedef void (* PTUIMOVETO)(struct tui_context*, size_t, size_t);
+typedef int (* PTUICURSORSTYLE)(struct tui_context*, int fl, const uint8_t* const col);
 typedef void (* PTUIMOVEUP)(struct tui_context*, size_t, bool);
 typedef void (* PTUIMOVEDOWN)(struct tui_context*, size_t, bool);
 typedef void (* PTUIMOVELEFT)(struct tui_context*, size_t);
@@ -1455,6 +1462,7 @@ static PTUIRESETTABSTOP arcan_tui_reset_tabstop;
 static PTUIRESETALLTABSTOPS arcan_tui_reset_all_tabstops;
 static PTUISCROLLHINT arcan_tui_scrollhint;
 static PTUIMOVETO arcan_tui_move_to;
+static PTUICURSORSTYLE arcan_tui_cursor_style;
 static PTUIMOVEUP arcan_tui_move_up;
 static PTUIMOVEDOWN arcan_tui_move_down;
 static PTUIMOVELEFT arcan_tui_move_left;
@@ -1542,6 +1550,7 @@ M(PTUIRESETTABSTOP,arcan_tui_reset_tabstop);
 M(PTUIRESETALLTABSTOPS,arcan_tui_reset_all_tabstops);
 M(PTUISCROLLHINT,arcan_tui_scrollhint);
 M(PTUIMOVETO,arcan_tui_move_to);
+M(PTUICURSORSTYLE,arcan_tui_cursor_style);
 M(PTUIMOVEUP,arcan_tui_move_up);
 M(PTUIMOVEDOWN,arcan_tui_move_down);
 M(PTUIMOVELEFT,arcan_tui_move_left);
