@@ -1048,4 +1048,5 @@ void arcan_tui_allow_deprecated(struct tui_context* c)
 
 	tsm_screen_new(&c->screen, tsm_log, c);
 	tsm_screen_set_max_sb(c->screen, 1000);
+	c->hooks.resize(c);
 }
