@@ -1,8 +1,6 @@
 #include "../../arcan_shmif.h"
 #include "../../arcan_tui.h"
 #include "../tui_int.h"
-#include "../screen/libtsm.h"
-#include "../screen/libtsm_int.h"
 #include "arcan_ttf.h"
 #include "../raster/raster.h"
 
@@ -117,20 +115,10 @@ void arcan_tui_destroy(struct tui_context* tui, const char* message)
 		arcan_shmif_drop(&tui->acon);
 	}
 
-	tsm_utf8_mach_free(tui->ucsconv);
-
 	free(tui->base);
 
 	memset(tui, '\0', sizeof(struct tui_context));
 	free(tui);
-}
-
-static void tsm_log(void* data, const char* file, int line,
-	const char* func, const char* subs, unsigned int sev,
-	const char* fmt, va_list arg)
-{
-	fprintf(stderr, "[%d] %s:%d - %s, %s()\n", sev, file, line, subs, func);
-	vfprintf(stderr, fmt, arg);
 }
 
 /*
@@ -320,11 +308,11 @@ struct tui_context* arcan_tui_setup(
 		.cell_h = 8
 	};
 
-	if (tsm_screen_new(&res->screen, tsm_log, res) < 0){
-		LOG("failed to build screen structure\n");
-		free(res);
-		return NULL;
-	}
+	res->defattr = (struct tui_screen_attr){
+		.bc = TUI_COL_TEXT,
+		.fc = TUI_COL_TEXT,
+		.aflags = TUI_ATTR_COLOR_INDEXED
+	};
 
 /*
  * due to handlers being default NULL, all fields are void* / fptr*
@@ -391,19 +379,13 @@ struct tui_context* arcan_tui_setup(
 		}
 	}
 
-	if (0 != tsm_utf8_mach_new(&res->ucsconv)){
-		free(res);
-		return NULL;
-	}
-
-/* TEMPORARY: when deprecating tsm any scrollback become the widgets problem */
-	tsm_screen_set_max_sb(res->screen, 1000);
-
 	if (con && (uintptr_t)-1 != (uintptr_t) con)
 		late_bind(con, res, true);
 
-	if (parent)
+	if (parent){
 		memcpy(res->colors, parent->colors, sizeof(res->colors));
+		res->defattr = parent->defattr;
+	}
 
 /* allow our own formats to be exposed */
 	arcan_tui_announce_io(res, false, NULL, "tui-raw");

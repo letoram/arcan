@@ -111,7 +111,7 @@
 -- Instead of a split a position dir may be defined. This indicates that
 -- the window should be positioned relative to the parent, but that the parent
 -- should retain the same size, if possible. This also has an added
--- position of 'tab' and of 'embed'.
+-- position of 'tab', 'embed' and 'swallow'.
 --
 -- @tblent: "alert" {string:message} - version of "message" that hints a
 -- user-interface alert to the segment. If "message" is empty, alert is

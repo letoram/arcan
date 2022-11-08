@@ -87,7 +87,8 @@ int arcterm_luacli_run(struct arcan_shmif_cont* shmif, struct arg_arr* args)
  *   require 'arcantui' -> stack */
 
 	lua_newtable(lua);
-	struct tui_context* tui = ltui_inherit(lua, (arcan_tui_conn*) shmif);
+	struct tui_context* tui =
+		ltui_inherit(lua, (arcan_tui_conn*) shmif, NULL);
 
 /* the record option for debugging / easy sharing etc. should be available
  * immediately so we don't miss any frames and we can't do it before as the

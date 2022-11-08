@@ -154,7 +154,7 @@ struct blobio_meta {
 };
 
 struct tui_context*
-ltui_inherit(lua_State* L, arcan_tui_conn*);
+	ltui_inherit(lua_State* L, arcan_tui_conn* conn, struct tui_lmeta*);
 
 int
 luaopen_arcantui(lua_State* L);

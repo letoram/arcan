@@ -1556,6 +1556,7 @@ enum ARCAN_TARGET_SKIPMODE {
  *            8: attach-b : (ofs-ignore), position below parent
  *            9: tab : set-up as a tab to the parent
  *            10: embed : segment is intended to viewport- attach
+ *            11: swallow : take the place of its parent until detroy or remove
  */
 		struct {
 			uint32_t id;

@@ -1284,6 +1284,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		fprintf(stderr, "failed to setup TUI connection\n");
 		return EXIT_FAILURE;
 	}
+	arcan_tui_allow_deprecated(term.screen);
 
 /* make a preroll- state copy of legacy-palette range */
 	uint8_t palette_copy[TUI_COL_LIMIT * 3];

@@ -107,6 +107,7 @@ set_property(SOURCE ${ASD}/platform/posix/fdpassing.c
 set(SHMIF_TUI_SOURCES
 # core implementation
 	${ASD}/shmif/tui/tui.c
+	${ASD}/shmif/tui/tui_deprecated.c
 	${ASD}/shmif/tui/core/clipboard.c
 	${ASD}/shmif/tui/core/input.c
 	${ASD}/shmif/tui/core/setup.c

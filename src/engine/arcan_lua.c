@@ -3873,6 +3873,9 @@ static void emit_segreq(
 	case 10:
 		tblstr(ctx, "position", "embed", top);
 	break;
+	case 11:
+		tblstr(ctx, "position", "swallow", top);
+	break;
 	default:
 	break;
 	}

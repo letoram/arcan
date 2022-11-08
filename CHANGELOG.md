@@ -6,7 +6,12 @@
 ## Tui
  * nbio asynch type confusion fix (function becomes pcall:userdata)
  * dock subtype exposed for bar/tray like integration
+ * add 'swallow' request for new windows
+ * cursor(caret) style and color override controls
  * readline: add completion style control (border)
+ * readline: allow attached popup to replace in-band completion
+ * fixes for screencopy on proxy window
+ * refactored deprecated tsm-screen away out of tui (1/2)
 
 ## Terminal
  * SGR reset fix, add CNL / CPL
