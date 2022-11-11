@@ -77,6 +77,7 @@
 #include <ctype.h>
 #include "../../arcan_shmif.h"
 #include "../../arcan_tui.h"
+#include "../../tui/tui_int.h"
 #include "libtsm.h"
 
 typedef void* TTF_Font;
@@ -1060,6 +1061,31 @@ void tsm_screen_reset(struct tsm_screen *con)
 	}
 }
 
+static void dump_flags(const char* prefix, unsigned flags)
+{
+	printf("flags: %s\n\t", prefix);
+
+	if (flags & TSM_SCREEN_AUTO_WRAP)
+		printf(" wrap ");
+
+	if (flags & TSM_SCREEN_REL_ORIGIN)
+		printf(" relative ");
+
+	if (flags & TSM_SCREEN_INVERSE)
+		printf("inverse ");
+
+	if (flags & TSM_SCREEN_INSERT_MODE)
+		printf(" insert ");
+
+	if (flags & TSM_SCREEN_FIXED_POS)
+		printf(" fixed ");
+
+	if (flags & TSM_SCREEN_ALTERNATE)
+		printf(" alternate ");
+	printf("\n");
+}
+
+
 SHL_EXPORT
 void tsm_screen_set_flags(struct tsm_screen *con, unsigned int flags)
 {
@@ -1203,13 +1229,11 @@ void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
 	else
 		last = con->size_y - 1;
 
-	screen_write(con,
-		con->cursor_x, con->cursor_y, ch, len, attr ? attr : &con->def_attr);
-	move_cursor(con, con->cursor_x + len, con->cursor_y);
-
 	if (con->cursor_x >= con->size_x) {
-		if (con->flags & TSM_SCREEN_AUTO_WRAP)
+		if (con->flags & TSM_SCREEN_AUTO_WRAP){
+			printf("it's a wrap\n");
 			move_cursor(con, 0, con->cursor_y + 1);
+		}
 		else
 			move_cursor(con, con->size_x - 1, con->cursor_y);
 	}
@@ -1219,6 +1243,10 @@ void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
 		screen_scroll_up(con, 1);
 		return;
 	}
+
+	screen_write(con,
+		con->cursor_x, con->cursor_y, ch, len, attr ? attr : &con->def_attr);
+	move_cursor(con, con->cursor_x + len, con->cursor_y);
 
 	return;
 }
