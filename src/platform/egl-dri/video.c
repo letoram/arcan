@@ -1851,12 +1851,12 @@ static void ensure_out_fence(struct dispout* d, bool pre)
 				EGL_SYNC_NATIVE_FENCE_FD_ANDROID,
 				EGL_NO_NATIVE_FENCE_FD_ANDROID, EGL_NONE}
 		);
-		debug_print("EGLSync:fence:%"PRIxPTR, (uintptr_t) d->buffer.synch);
+		verbose_print("EGLSync:fence:%"PRIxPTR, (uintptr_t) d->buffer.synch);
 	}
 	else if (d->buffer.synch != EGL_NO_SYNC_KHR) {
 		int fd = d->device->eglenv.dup_fence_fd(d->device->display, d->buffer.synch);
 		d->buffer.synch_fence = arcan_shmif_dupfd(fd, -1, false);
-		debug_print("KMSFence:Created(%d->%d)", fd, d->buffer.synch_fence);
+		verbose_print("KMSFence:Created(%d->%d)", fd, d->buffer.synch_fence);
 		d->device->eglenv.destroy_synch(d->device->display, d->buffer.synch);
 		close(fd);
 		d->buffer.synch = EGL_NO_SYNC_KHR;
@@ -2145,7 +2145,7 @@ static bool atomic_set_mode(struct dispout* d, int fl)
 
 	if (d->buffer.synch_fence > 0){
 		AADD(d->display.plane_id, "IN_FENCE_FD", d->buffer.synch_fence);
-		debug_print("(%d)atomic-fence:%d", d->id, d->buffer.synch_fence);
+		verbose_print("(%d)atomic-fence:%d", d->id, d->buffer.synch_fence);
 	}
 
 	AADD(d->display.plane_id, "SRC_X", 0);
@@ -3855,7 +3855,6 @@ bool platform_video_map_display(
 
 ssize_t platform_video_map_display_layer(arcan_vobj_id id,
 	platform_display_id disp, size_t layer, struct display_layer_cfg cfg)
-
 {
 	enum blitting_hint hint = cfg.hint;
 	struct dispout* d = get_display(disp);
