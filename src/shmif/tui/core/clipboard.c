@@ -2,9 +2,11 @@
 #include <stdio.h>
 #include "../../arcan_shmif.h"
 #include "../../arcan_tui.h"
+#include "../../../frameserver/util/utf8.c"
 #include "../tui_int.h"
 
-#include "../screen/utf8.c"
+#define UTF8_ACCEPT 0
+#define UTF8_REJECT 1
 
 void tui_clipboard_check(struct tui_context* tui)
 {

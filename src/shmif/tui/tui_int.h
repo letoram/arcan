@@ -84,7 +84,8 @@ struct tui_context {
 	int rows;
 	int cols;
 
-/* track scrollback state so that we can send content-hints accordingly */
+/* track scrollback state so that we can send content-hints accordingly, to be
+ * deprecated with the tsm cleanup as scrollback shouldn't exist in tui */
 	long sbofs;
 	struct {
 		long ofs;
@@ -103,12 +104,17 @@ struct tui_context {
 
 	bool cursor_off; /* current blink state */
 	bool cursor_hard_off; /* user / state toggle */
-	bool cursor_upd; /* invalidation, need to draw- old / new */
 	int cursor_period; /* blink setting */
+
+/* cached to determine if the cursor has changed or not before wasting a pack */
 	struct {
 		bool active;
 		size_t row, col;
+		int style;
+		uint8_t rgb[3];
+		bool color_override;
 	} last_cursor;
+
 	enum tui_cursors cursor; /* visual style */
 	bool cursor_color_override;
 	uint8_t cursor_color[3];
@@ -153,7 +159,7 @@ struct tui_context {
 		void(*destroy)(struct tui_context*);
 		void(*resize)(struct tui_context*);
 		void(*refresh)(struct tui_context*);
-		int(*set_flags)(struct tui_context*, int fl);
+		void(*cursor_lookup)(struct tui_context*, size_t* x, size_t* y);
 	} hooks;
 
 /* caller- event handlers */
@@ -291,10 +297,5 @@ bool tui_fontmgmt_hasglyph(struct tui_context* tui, uint32_t cp);
  * may cause loading / unloading / build etc.
  */
 void tui_fontmgmt_invalidate(struct tui_context* tui);
-
-/*
- * Internal deprecated
- */
-void arcan_tui_legacy_labels(struct tui_context* c);
 
 #endif

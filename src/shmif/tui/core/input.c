@@ -1,7 +1,7 @@
 #include "../../arcan_shmif.h"
 #include "../../arcan_tui.h"
 #include "../tui_int.h"
-#include "../screen/utf8.c"
+#include "../../../frameserver/util/utf8.c"
 
 #include <stdio.h>
 #include <inttypes.h>
@@ -20,9 +20,6 @@ struct lent {
 
 void tui_expose_labels(struct tui_context* tui)
 {
-	if (tui->screen)
-		return arcan_tui_legacy_labels(tui);
-
 	arcan_event ev = {
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(LABELHINT),
@@ -185,9 +182,6 @@ void tui_input_event(
 						tui->mouse_x, tui->mouse_y, tui->modifiers, tui->handlers.tag);
 					return;
 				}
-
-				if (upd)
-					tui->dirty |= DIRTY_PARTIAL | DIRTY_CURSOR;
 			}
 		}
 		else if (ioev->datatype == EVENT_IDATATYPE_DIGITAL){

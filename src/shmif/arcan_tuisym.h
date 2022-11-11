@@ -13,9 +13,9 @@
 #define TUIK_SYMS
 
 /*
- * The rest are just renamed / remapped arcan_tui_ calls from libtsm-
- * (which hides inside the tui_context) selected based on what the tsm/pty
- * management required assuming that it is good enough.
+ * The alternate, insert mode, rel-origin, inverse, ... flags are all
+ * remnants of tsm screen and are slated to be removed. There is only
+ * 'alternate'
  */
 enum tui_context_flags {
 	TUI_INSERT_MODE = 1,

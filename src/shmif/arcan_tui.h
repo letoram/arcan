@@ -134,39 +134,16 @@
  *  erase_region(ctx, x1, y1, x2, y2, prot)
  *  eraseattr_region(ctx, x1, y1, x2, y2, prot, attr)
  *  eraseattr_screen(ctx, prot, attr)
- *  erase_cursor_to_screen(ctx, prot)
- *  erase_home_to_cursor(ctx, prot)
- *  erase_current_line(ctgx)
- *  erase_chars(ctx, n)
  *  write(ucs4, attr)
  *  writeu8(uint8_t* u8, size_t n, attr)
- *  insert_lines(ctx, n)
- *  newline(ctx)
- *  delete_lines(ctx, n)
- *  insert_chars(ctx, n)
- *  delete_chars(ctx, n)
- *  set_tabstop(ctx)
- *  reset_tabstop(ctx)
- *  reset_all_tabstops(ctx)
  *
  * Virtual Screen management:
- *  scroll_up(ctx, n)
- *  scroll_down(ctx, n)
- *  set_margins(ctx, top, bottom)
  *  dimensions(ctx, size_t* rows, size_t* cols)
  *  request_subwnd(ctx, id, type)
  *
  * Cursor Management:
  *  cursorpos(ctx, size_t* x, size_t* y)
- *  tab_right(ctx, n)
- *  tab_left(ctx, n)
  *  move_to(ctx, x, y)
- *  move_up(ctx, num, scroll)
- *  move_down(ctx, num, scroll)
- *  move_left(ctx, num)
- *  move_right(ctx, num)
- *  move_line_end(ctx)
- *  move_line_home(ctx)
  *
  * Metadata:
  *  copy(ctx, msg)
@@ -175,7 +152,6 @@
  * Context Management:
  *  reset(ctx)
  *  set_flags(ctx, flags)
- *  reset_flags(ctx, flags)
  *  defattr(ctx, attr)
  *
  * Dynamic Loading:
@@ -186,13 +162,7 @@
  * name static scoped function pointers. In order to initialize them,
  * run the arcan_tui_dynload in the same compilation unit with a
  * loader function provided as a function pointer argument.
- *
- * [DEPRECATION/REFACTORING]
- *  [ ] Remove TSM
- *  [ ] Implement line- mode as a widget and remove all scrollback/
- *      wrapping control functions from the arcan_tui_xxx namespace
  */
-
 #include "arcan_tuidefs.h"
 #include "arcan_tuisym.h"
 
@@ -703,12 +673,6 @@ size_t arcan_tui_get_handles(
 int arcan_tui_refresh(struct tui_context*);
 
 /*
- * Explicitly invalidate the context, next refresh will likely
- * redraw fully. Should only be needed in exceptional cases
- */
-void arcan_tui_invalidate(struct tui_context*);
-
-/*
  * get temporary access to the current state of the TUI/context,
  * returned pointer is undefined between calls to process/refresh
  */
@@ -1013,11 +977,6 @@ void arcan_tui_reset_labels(struct tui_context*);
 int arcan_tui_set_flags(struct tui_context*, int tui_flags);
 
 /*
- * modify the current flags/state bitmask and unset the values of tui (& ~)
- */
-void arcan_tui_reset_flags(struct tui_context*, int tui_flags);
-
-/*
  * Use from within a on_subwindow handler in order to forward the subwindow
  * to an external process. Only a connection from within the handler will work.
  * Optional constraints suggest anchoring and sizing constraints.
@@ -1097,13 +1056,6 @@ pid_t arcan_tui_handover_pipe(
 */
 void arcan_tui_scrollhint(
 	struct tui_context*, size_t n_regions, struct tui_region*);
-
-/*
- * Build a dynamically allocated state description string that can be
- * combined with other debug information to assist in troubleshooting.
- * Caller assumes ownership of returned string.
- */
-char* arcan_tui_statedescr(struct tui_context*);
 
 /*
  * retrieve the current dimensions (same as accessible through _resize)
@@ -1222,6 +1174,13 @@ void arcan_tui_send_key(struct tui_context*,
 void arcan_tui_allow_deprecated(struct tui_context*);
 
 /*
+ * Build a dynamically allocated state description string that can be
+ * combined with other debug information to assist in troubleshooting.
+ * Caller assumes ownership of returned string.
+ */
+char* arcan_tui_statedescr(struct tui_context*);
+
+/*
  * Simple reference counter that blocks _free from cleaning up until
  * no more references exist on the context.
  */
@@ -1242,6 +1201,17 @@ void arcan_tui_set_tabstop(struct tui_context*);
  * erase the scrollback history
  */
 void arcan_tui_erase_sb(struct tui_context*);
+
+/*
+ * Explicitly invalidate the context, next refresh will likely
+ * redraw fully. Should only be needed in exceptional cases
+ */
+void arcan_tui_invalidate(struct tui_context*);
+
+/*
+ * modify the current flags/state bitmask and unset the values of tui (& ~)
+ */
+void arcan_tui_reset_flags(struct tui_context*, int tui_flags);
 
 /*
  * cursor-relative erase operations
@@ -1314,7 +1284,6 @@ typedef void (* PTUIDESTROY)(struct tui_context*, const char* message);
 typedef struct tui_process_res (* PTUIPROCESS)(
 struct tui_context**, size_t, int*, size_t, int);
 typedef int (* PTUIREFRESH)(struct tui_context*);
-typedef void (* PTUIINVALIDATE)(struct tui_context*);
 typedef arcan_tui_conn* (* PTUIACON)(struct tui_context*);
 typedef arcan_tui_conn* (* PTUIOPENDISPLAY)(const char*, const char*);
 typedef bool (* PTUICOPY)(struct tui_context*, const char*);
@@ -1372,8 +1341,6 @@ typedef void (* PTUIMOVELINEHOME)(struct tui_context*);
 typedef void (* PTUIDIMENSIONS)(struct tui_context*, size_t*, size_t*);
 typedef struct tui_screen_attr
 	(* PTUIDEFATTR)(struct tui_context*, struct tui_screen_attr*);
-typedef void (* PTUIREFINC)(struct tui_context*);
-typedef void (* PTUIREFDEC)(struct tui_context*);
 typedef int (* PTUISETMARGINS)(struct tui_context*, size_t, size_t);
 typedef void (* PTUIERASESCREEN)(struct tui_context*, bool);
 typedef void (* PTUIERASEATTRSCREEN)(struct tui_context*, bool, struct tui_screen_attr);
@@ -1389,7 +1356,6 @@ typedef void (* PTUIERASEHOMETOCURSOR)(struct tui_context*, bool);
 typedef void (* PTUIERASECURRENTLINE)(struct tui_context*, bool);
 typedef void (* PTUIERASECHARS)(struct tui_context*, size_t);
 typedef void (* PTUIERASEREGION)(struct tui_context*, size_t, size_t, size_t, size_t, bool);
-typedef char* (* PTUISTATEDESCR)(struct tui_context*);
 typedef size_t (* PTUIPRINTF)(struct tui_context*, struct tui_screen_attr*, const char*, ...);
 typedef void (* PTUIBGCOPY)(struct tui_context*, int fdin, int fdout, int sig, int fl);
 typedef size_t (* PTUIGETHANDLES)(struct tui_context**, size_t, int[], size_t);
@@ -1419,7 +1385,6 @@ static PTUIDESTROY arcan_tui_destroy;
 static PTUIPROCESS arcan_tui_process;
 static PTUIREFRESH arcan_tui_refresh;
 static PTUIGETHANDLES arcan_tui_get_handles;
-static PTUIINVALIDATE arcan_tui_invalidate;
 static PTUIACON arcan_tui_acon;
 static PTUIOPENDISPLAY arcan_tui_open_display;
 static PTUICOPY arcan_tui_copy;
@@ -1447,45 +1412,15 @@ static PTUISETFLAGS arcan_tui_set_flags;
 static PTUIHASGLYPH arcan_tui_hasglyph;
 static PTUIMESSAGE arcan_tui_message;
 static PTUIPROGRESS arcan_tui_progress;
-static PTUIRESETFLAGS arcan_tui_reset_flags;
-static PTUISETTABSTOP arcan_tui_set_tabstop;
-static PTUIINSERTLINES arcan_tui_insert_lines;
-static PTUINEWLINE arcan_tui_newline;
-static PTUIDELETELINES arcan_tui_delete_lines;
-static PTUIINSERTCHARS arcan_tui_insert_chars;
-static PTUIDELETECHARS arcan_tui_delete_chars;
-static PTUITABRIGHT arcan_tui_tab_right;
-static PTUITABLEFT arcan_tui_tab_left;
-static PTUISCROLLUP arcan_tui_scroll_up;
-static PTUISCROLLDOWN arcan_tui_scroll_down;
-static PTUIRESETTABSTOP arcan_tui_reset_tabstop;
-static PTUIRESETALLTABSTOPS arcan_tui_reset_all_tabstops;
 static PTUISCROLLHINT arcan_tui_scrollhint;
 static PTUIMOVETO arcan_tui_move_to;
 static PTUICURSORSTYLE arcan_tui_cursor_style;
-static PTUIMOVEUP arcan_tui_move_up;
-static PTUIMOVEDOWN arcan_tui_move_down;
-static PTUIMOVELEFT arcan_tui_move_left;
-static PTUIMOVERIGHT arcan_tui_move_right;
-static PTUIMOVELINEEND arcan_tui_move_line_end;
-static PTUIMOVELINEHOME arcan_tui_move_line_home;
 static PTUIDIMENSIONS arcan_tui_dimensions;
 static PTUIDEFATTR arcan_tui_defattr;
-static PTUIREFINC arcan_tui_refinc;
-static PTUIREFDEC arcan_tui_refdec;
-static PTUISETMARGINS arcan_tui_set_margins;
 static PTUIERASESCREEN arcan_tui_erase_screen;
 static PTUIERASEREGION arcan_tui_erase_region;
 static PTUIERASEATTRREGION arcan_tui_eraseattr_region;
 static PTUIERASEATTRSCREEN arcan_tui_eraseattr_screen;
-static PTUIERASESB arcan_tui_erase_sb;
-static PTUIERASECURSORTOSCR arcan_tui_erase_cursor_to_screen;
-static PTUIERASESCRTOCURSOR arcan_tui_erase_screen_to_cursor;
-static PTUIERASECURSORTOEND arcan_tui_erase_cursor_to_end;
-static PTUIERASEHOMETOCURSOR arcan_tui_erase_home_to_cursor;
-static PTUIERASECURRENTLINE arcan_tui_erase_current_line;
-static PTUIERASECHARS arcan_tui_erase_chars;
-static PTUISTATEDESCR arcan_tui_statedescr;
 static PTUIPRINTF arcan_tui_printf;
 static PTUIBGCOPY arcan_tui_bgcopy;
 static PTUIUCS4UTF8 arcan_tui_ucs4utf8;
@@ -1510,7 +1445,6 @@ M(PTUIDESTROY,arcan_tui_destroy);
 M(PTUIPROCESS,arcan_tui_process);
 M(PTUIREFRESH,arcan_tui_refresh);
 M(PTUIGETHANDLES,arcan_tui_get_handles);
-M(PTUIINVALIDATE,arcan_tui_invalidate);
 M(PTUIACON,arcan_tui_acon);
 M(PTUIOPENDISPLAY,arcan_tui_open_display);
 M(PTUICOPY,arcan_tui_copy);
@@ -1535,45 +1469,15 @@ M(PTUISETBGCOLOR,arcan_tui_set_bgcolor);
 M(PTUIRESET,arcan_tui_reset);
 M(PTUIRESETLABELS,arcan_tui_reset_labels);
 M(PTUISETFLAGS,arcan_tui_set_flags);
-M(PTUIRESETFLAGS,arcan_tui_reset_flags);
-M(PTUISETTABSTOP,arcan_tui_set_tabstop);
-M(PTUIINSERTLINES,arcan_tui_insert_lines);
-M(PTUINEWLINE,arcan_tui_newline);
-M(PTUIDELETELINES,arcan_tui_delete_lines);
-M(PTUIINSERTCHARS,arcan_tui_insert_chars);
-M(PTUIDELETECHARS,arcan_tui_delete_chars);
-M(PTUITABRIGHT,arcan_tui_tab_right);
-M(PTUITABLEFT,arcan_tui_tab_left);
-M(PTUISCROLLUP,arcan_tui_scroll_up);
-M(PTUISCROLLDOWN,arcan_tui_scroll_down);
-M(PTUIRESETTABSTOP,arcan_tui_reset_tabstop);
-M(PTUIRESETALLTABSTOPS,arcan_tui_reset_all_tabstops);
 M(PTUISCROLLHINT,arcan_tui_scrollhint);
 M(PTUIMOVETO,arcan_tui_move_to);
 M(PTUICURSORSTYLE,arcan_tui_cursor_style);
-M(PTUIMOVEUP,arcan_tui_move_up);
-M(PTUIMOVEDOWN,arcan_tui_move_down);
-M(PTUIMOVELEFT,arcan_tui_move_left);
-M(PTUIMOVERIGHT,arcan_tui_move_right);
-M(PTUIMOVELINEEND,arcan_tui_move_line_end);
-M(PTUIMOVELINEHOME,arcan_tui_move_line_home);
 M(PTUIDIMENSIONS,arcan_tui_dimensions);
 M(PTUIDEFATTR,arcan_tui_defattr);
-M(PTUIREFINC,arcan_tui_refinc);
-M(PTUIREFDEC,arcan_tui_refdec);
-M(PTUISETMARGINS,arcan_tui_set_margins);
 M(PTUIERASESCREEN,arcan_tui_erase_screen);
 M(PTUIERASEREGION,arcan_tui_erase_region);
 M(PTUIERASEATTRREGION,arcan_tui_eraseattr_region);
 M(PTUIERASEATTRSCREEN,arcan_tui_eraseattr_screen);
-M(PTUIERASESB,arcan_tui_erase_sb);
-M(PTUIERASECURSORTOSCR,arcan_tui_erase_cursor_to_screen);
-M(PTUIERASESCRTOCURSOR,arcan_tui_erase_screen_to_cursor);
-M(PTUIERASECURSORTOEND,arcan_tui_erase_cursor_to_end);
-M(PTUIERASEHOMETOCURSOR,arcan_tui_erase_home_to_cursor);
-M(PTUIERASECURRENTLINE,arcan_tui_erase_current_line);
-M(PTUIERASECHARS,arcan_tui_erase_chars);
-M(PTUISTATEDESCR, arcan_tui_statedescr);
 M(PTUIPRINTF, arcan_tui_printf);
 M(PTUIBGCOPY, arcan_tui_bgcopy);
 M(PTUIHASGLYPH, arcan_tui_hasglyph);

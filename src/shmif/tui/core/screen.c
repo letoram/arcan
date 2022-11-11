@@ -1,7 +1,6 @@
 #include "../../arcan_shmif.h"
 #include "../../arcan_tui.h"
 #include "../tui_int.h"
-#include "../screen/libtsm.h"
 #include <pthread.h>
 #include <errno.h>
 #include <assert.h>
@@ -297,8 +296,11 @@ size_t tui_screen_tpack(struct tui_context* tui,
 			hdr.flags |= RPACK_DFRAME;
 		}
 
-/* restore the last cursor position */
-		if (tui->last_cursor.active){
+/* restore the last cursor position, since that is a cell attribute and there
+ * can be multiple simultaneous cursors the original cell states need to be
+ * restored rather than letting tpack track it */
+		if (tui->last_cursor.active &&
+			(tui->last_cursor.col != tui->cx || tui->last_cursor.row != tui->cy)){
 			hdr.lines++;
 			hdr.cells++;
 			line.start_line = tui->last_cursor.row;
@@ -316,14 +318,12 @@ size_t tui_screen_tpack(struct tui_context* tui,
 		hdr.lines++;
 		hdr.cells++;
 
-		if (tui->screen){
-			tui->last_cursor.row = tsm_screen_get_cursor_y(tui->screen);
-			tui->last_cursor.col = tsm_screen_get_cursor_x(tui->screen);
-		}
-		else {
-			tui->last_cursor.row = tui->cy;
-			tui->last_cursor.col = tui->cx;
-		}
+		size_t x = tui->cx, y = tui->cy;
+		if (tui->hooks.cursor_lookup)
+			tui->hooks.cursor_lookup(tui, &x, &y);
+
+		tui->last_cursor.row = y;
+		tui->last_cursor.col = x;
 
 		line.start_line = tui->last_cursor.row;
 		line.offset = tui->last_cursor.col;
@@ -496,7 +496,7 @@ int tui_tpack_unpack(struct tui_context* C,
 		}
 	}
 
-	C->dirty = true;
+	C->dirty = DIRTY_FULL;
 	return 1;
 }
 

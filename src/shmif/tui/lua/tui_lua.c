@@ -1134,17 +1134,6 @@ static int defattr(lua_State* L)
 	return 1;
 }
 
-static int wnd_scroll(lua_State* L)
-{
-	TUI_UDATA;
-	int steps = luaL_checkinteger(L, 2);
-	if (steps > 0)
-		arcan_tui_scroll_down(ib->tui, steps);
-	else
-		arcan_tui_scroll_up(ib->tui, -steps);
-	return 0;
-}
-
 static int getxy(lua_State* L)
 {
 	TUI_UDATA;
@@ -3437,7 +3426,6 @@ static void register_tuimeta(lua_State* L)
 		{"new_window", reqwnd},
 		{"erase", erase_screen},
 		{"erase_region", erase_region},
-		{"scroll", wnd_scroll},
 		{"cursor_to", cursor_to},
 		{"dimensions", screen_dimensions},
 		{"close", tuiclose},

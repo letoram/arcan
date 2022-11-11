@@ -107,7 +107,6 @@ set_property(SOURCE ${ASD}/platform/posix/fdpassing.c
 set(SHMIF_TUI_SOURCES
 # core implementation
 	${ASD}/shmif/tui/tui.c
-	${ASD}/shmif/tui/tui_deprecated.c
 	${ASD}/shmif/tui/core/clipboard.c
 	${ASD}/shmif/tui/core/input.c
 	${ASD}/shmif/tui/core/setup.c
@@ -119,14 +118,7 @@ set(SHMIF_TUI_SOURCES
 	${ASD}/shmif/tui/raster/raster.c
 	${ASD}/shmif/tui/raster/fontmgmt.c
 
-# helper code
-	${ASD}/shmif/tui/screen/tsm_screen.c
-	${ASD}/shmif/tui/screen/tsm_unicode.c
-	${ASD}/shmif/tui/screen/shl_htable.c
-	${ASD}/shmif/tui/screen/wcwidth.c
-
 # support widgets
-	${ASD}/shmif/tui/widgets/copywnd.c
 	${ASD}/shmif/tui/widgets/bufferwnd.c
 	${ASD}/shmif/tui/widgets/listwnd.c
 	${ASD}/shmif/tui/widgets/linewnd.c
