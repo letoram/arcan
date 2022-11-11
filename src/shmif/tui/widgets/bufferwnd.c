@@ -106,7 +106,6 @@ void arcan_tui_bufferwnd_release(struct tui_context* T)
  * use the handle- table in that structure to restore */
 
 /* restore old flags */
-	arcan_tui_reset_flags(T, ~0);
 	arcan_tui_set_flags(T, meta->old_flags);
 
 /* requery label through original handles */
@@ -731,11 +730,7 @@ static void redraw_bufferwnd(struct tui_context* T, struct bufferwnd_meta* M)
 	arcan_tui_erase_screen(T, false);
 	size_t rows, cols;
 	arcan_tui_dimensions(T, &rows, &cols);
-
-	if (has_cursor(M))
-		arcan_tui_reset_flags(T, TUI_HIDE_CURSOR);
-	else
-		arcan_tui_set_flags(T, TUI_HIDE_CURSOR);
+	arcan_tui_set_flags(T, has_cursor(M) ? 0 : TUI_HIDE_CURSOR);
 
 	switch (M->opts.view_mode){
 	case BUFFERWND_VIEW_ASCII:
@@ -1515,10 +1510,8 @@ void arcan_tui_bufferwnd_setup(struct tui_context* T,
 		.recolor = on_recolor
 	};
 
-/* save old flags and just set clean + ALTERNATE */
-	meta->old_flags = arcan_tui_set_flags(T, 0);
-	arcan_tui_reset_flags(T, ~0);
-	arcan_tui_set_flags(T, TUI_ALTERNATE | TUI_MOUSE);
+/* save old flags and just set clean */
+	meta->old_flags = arcan_tui_set_flags(T, TUI_ALTERNATE | TUI_MOUSE);
 
 /* save old handlers */
 	arcan_tui_update_handlers(T,

@@ -49,6 +49,11 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <inttypes.h>
+
+#include <arcan_shmif.h>
+#include "arcan_tui.h"
+#include "../../../../shmif/tui/tui_int.h"
+#include "libtsm.h"
 #include "libtsm_int.h"
 
 /* Input parser states */
@@ -254,6 +259,8 @@ static uint8_t color_palette_srcery[VTE_COLOR_NUM][3] = {
 	[VTE_COLOR_BACKGROUND]    = {0x12,0x12,0x12 },
 };
 
+#define DEBUG_LOG(X, Y, ...)
+
 static uint8_t (*get_palette(struct tsm_vte *vte))[3]
 {
 	if (!vte->palette_name)
@@ -271,263 +278,27 @@ static uint8_t (*get_palette(struct tsm_vte *vte))[3]
 	return color_palette;
 }
 
-void debug_log(struct tsm_vte* vte, const char* msg, ...)
+static struct tui_screen_attr access_defattr(
+	struct tui_context* c, struct tui_screen_attr* attr)
 {
-	if (!vte || !vte->debug)
-		return;
-
-	vte->debug_ofs = 0;
-
-	char* out;
-	ssize_t len;
-
-	va_list args;
-	va_start(args, msg);
-		if ( (len = vasprintf(&out, msg, args)) == -1)
-			out = NULL;
-	va_end(args);
-
-	if (!out)
-		return;
-
-	if (vte->debug_lines[vte->debug_pos] != NULL){
-		free(vte->debug_lines[vte->debug_pos]);
-	}
-
-	vte->debug_lines[vte->debug_pos] = out;
-	vte->debug_pos = (vte->debug_pos + 1) % DEBUG_HISTORY;
-	tsm_vte_update_debug(vte);
+	struct tui_screen_attr out  = tsm_screen_get_def_attr(c->screen);
+	if (attr)
+		tsm_screen_set_def_attr(c->screen, (struct tui_screen_attr*) attr);
+	return out;
 }
 
-#define DEBUG_LOG(X, Y, ...) debug_log(X, "%d:" Y, (X)->log_ctr++, ##__VA_ARGS__)
-
-#define STEP_ROW() { \
-	crow++; \
-	if (crow < rows)\
-		 arcan_tui_move_to(*(vte->debug), 0, crow);\
-	else\
-		goto out;\
-	}
-
-static size_t wrap_write(struct tsm_vte* vte, size_t crow, const char* msg)
+static void cursor_pos(struct tui_context* c, size_t* x, size_t* y)
 {
-	if (!msg || strlen(msg) == 0)
-		return crow;
-
-	size_t rows = 0, cols = 0;
-	arcan_tui_dimensions(*(vte->debug), &rows, &cols);
-
-	size_t xpos = 0;
-	const char* cur = msg;
-	while (*cur){
-		size_t next = 0;
-
-		while (cur[next] && (cur[next] != ' ' || (next == 0 || cur[next-1] == ':')))
-			next++;
-
-		if (next >= cols && cols > 1){
-			next = cols-1;
-		}
-
-		if (xpos + next >= cols){
-			xpos = 0;
-			STEP_ROW();
-		}
-
-		arcan_tui_writeu8(*(vte->debug), (uint8_t*) cur, next, NULL);
-		xpos += next;
-		cur += next;
-	}
-
-	STEP_ROW();
-out:
-	return crow;
+	if (x)
+		*x = tsm_screen_get_cursor_x(c->screen);
+	if (y)
+		*y = tsm_screen_get_cursor_y(c->screen);
 }
 
-void tsm_vte_update_debug(struct tsm_vte* vte)
+static void move_to(struct tui_context* c, size_t x, size_t y)
 {
-	char* msg = NULL;
-
-	if (!vte || !vte->debug)
-		return;
-
-	struct tui_context* debug = *(vte->debug);
-
-	struct tui_screen_attr tattr = {
-		.fg = TUI_COL_TBASE + VTE_COLOR_FOREGROUND,
-		.bg = TUI_COL_TBASE + VTE_COLOR_BACKGROUND,
-		.aflags = TUI_ATTR_COLOR_INDEXED
-	};
-	arcan_tui_defattr(debug, &vte->def_attr);
-	arcan_tui_erase_screen(debug, false);
-	size_t rows = 0, cols = 0, crow = 0;
-	arcan_tui_dimensions(debug, &rows, &cols);
-	arcan_tui_move_to(debug, 0, 0);
-
-	char linebuf[256];
-	unsigned fl = vte->csi_flags;
-	snprintf(linebuf, sizeof(linebuf), "CSI: %s%s%s%s%s%s%s%s%s%s%s debug: %s",
-		(fl & CSI_BANG) ? "!" : "",
-		(fl & CSI_CASH) ? "$" : "",
-		(fl & CSI_WHAT) ? "?" : "",
-		(fl & CSI_GT) ? ">" : "",
-		(fl & CSI_SPACE) ? "'spce'" : "",
-		(fl & CSI_SQUOTE) ? "'" : "",
-		(fl & CSI_DQUOTE) ? "\"" : "",
-		(fl & CSI_MULT) ? "*" : "",
-		(fl & CSI_PLUS) ? "+" : "",
-		(fl & CSI_PLUS) ? "(" : "",
-		(fl & CSI_PLUS) ? ")" : "",
-		(vte->debug_verbose) ? "verbose" : "normal"
-	);
-	arcan_tui_writeu8(debug, (uint8_t*) linebuf, strlen(linebuf), NULL);
-	STEP_ROW();
-
-	const char* state = "none";
-	switch (vte->state){
-		case STATE_NONE: state = "none"; break;
-		case STATE_GROUND: state = "ground"; break;
-		case STATE_ESC: state = "esc"; break;
-		case STATE_ESC_INT: state = "int"; break;
-		case STATE_CSI_ENTRY: state = "entry"; break;
-		case STATE_CSI_PARAM: state = "param"; break;
-		case STATE_CSI_INT: state = "int"; break;
-		case STATE_CSI_IGNORE: state = "csi-ignore"; break;
-		case STATE_DCS_ENTRY: state = "entry"; break;
-		case STATE_DCS_PARAM: state = "param"; break;
-		case STATE_DCS_INT: state = "int"; break;
-		case STATE_DCS_PASS: state = "pass"; break;
-		case STATE_DCS_IGNORE: state = "dcs-ignore"; break;
-		case STATE_OSC_STRING: state = "string"; break;
-		case STATE_ST_IGNORE:	state = "st-ignore"; break;
-	}
-	fl = vte->flags;
-
-	snprintf(linebuf, sizeof(linebuf), "State: %s Flags:"
-		" %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s", state,
-		(fl & FLAG_CURSOR_KEY_MODE) ? "ckey " : "",
-		(fl & FLAG_KEYPAD_APPLICATION_MODE) ? "kp_app " : "",
-		(fl & FLAG_LINE_FEED_NEW_LINE_MODE) ? "lf_nl " : "",
-		(fl & FLAG_8BIT_MODE) ? "8b " : "",
-		(fl & FLAG_7BIT_MODE) ? "7b " : "",
-		(fl & FLAG_USE_C1) ? "c1 " : "",
-		(fl & FLAG_KEYBOARD_ACTION_MODE) ? "kbd_am " : "",
-		(fl & FLAG_INSERT_REPLACE_MODE) ? "irep " : "",
-		(fl & FLAG_SEND_RECEIVE_MODE) ? "snd_rcv " : "",
-		(fl & FLAG_TEXT_CURSOR_MODE) ? "txt_cursor " : "",
-		(fl & FLAG_INVERSE_SCREEN_MODE) ? "inv_scr " : "",
-		(fl & FLAG_ORIGIN_MODE) ? "origin " : "",
-		(fl & FLAG_AUTO_WRAP_MODE) ? "awrap " : "",
-		(fl & FLAG_AUTO_REPEAT_MODE) ? "arep " : "",
-		(fl & FLAG_NATIONAL_CHARSET_MODE) ? "nch " : "",
-		(fl & FLAG_BACKGROUND_COLOR_ERASE_MODE) ? "bgcl_er " : "",
-		(fl & FLAG_PREPEND_ESCAPE) ? "esc_prep " : "",
-		(fl & FLAG_TITE_INHIBIT_MODE) ? "alt_inhibit " : "",
-		(fl & FLAG_PASTE_BRACKET) ? "bpaste " : ""
-	);
-	crow = wrap_write(vte, crow, linebuf);
-
-	fl = vte->mstate;
-	snprintf(linebuf, sizeof(linebuf), "Mouse @(x,y): %zu, %zu Btn: %d State: "
-		"%s%s%s%s%s%s",
-		vte->saved_state.mouse_x, vte->saved_state.mouse_y, vte->mbutton,
-		(fl & MOUSE_BUTTON) ? "button " : "",
-		(fl & MOUSE_DRAG) ? "drag " : "",
-		(fl & MOUSE_MOTION) ? "motion " : "",
-		(fl & MOUSE_SGR) ? "sgr " : "",
-		(fl & MOUSE_X10) ? "x10 " : "",
-		(fl & MOUSE_RXVT) ? "rxvt " : ""
-	);
-	crow = wrap_write(vte, crow, linebuf);
-
-/* since this can be arbitrarily long, split on space unless preceeded by a
- * colon, unless the window is so small that the word doesn't fit, since it's
- * debugging data, just ignore utf8 - normal TUI applications would use either
- * autowrap or apply their own wrapping rules */
-	msg = arcan_tui_statedescr(vte->con);
-	crow = wrap_write(vte, crow, msg);
-
-/* draw the current colorscheme */
-	arcan_tui_move_to(debug, 0, crow);
-	for (size_t i = 0; i < 16; i++){
-		struct tui_screen_attr tattr = {
-			.br = TUI_COL_TBASE + i,
-			.fr = TUI_COL_TBASE + i,
-			.aflags = TUI_ATTR_COLOR_INDEXED
-		};
-		arcan_tui_write(debug, (uint32_t)' ', &tattr);
-	}
-
-	crow++;
-
-/* fill out with history logent */
-	size_t pos = vte->debug_pos > 0 ? vte->debug_pos - 1 : DEBUG_HISTORY - 1;
-	char* ent;
-
-	size_t row_lim = rows - crow;
-	crow = rows - 1;
-
-	for (size_t i = 0; i < vte->debug_ofs; i++)
-		pos = pos > 0 ? pos - 1 : DEBUG_HISTORY - 1;
-
-/* should reverse this direction */
-	while ( row_lim-- && (ent = vte->debug_lines[pos]) && pos != vte->debug_pos){
-		arcan_tui_move_to(debug, 0, crow);
-		arcan_tui_writeu8(debug, (uint8_t*)ent, strlen(ent), NULL);
-		crow--;
-		pos = pos > 0 ? pos - 1 : DEBUG_HISTORY - 1;
-	}
-
-#undef STEP_ROW
-out:
-	if (msg)
-		free(msg);
-
-/* last n warnings depending on how many rows we have
- * inputs before last synch
- * outputs before last synch
- * main tui settings (w, h, mode)
- * current foreground
- * current background
- * mouse state
- * wrap mode
- * origin mode
- * decode flags
- */
-}
-
-/* Several effects may occur when non-RGB colors are used. For instance, if bold
- * is enabled, then a dark color code is always converted to a light color to
- * simulate bold (even though bold may actually be supported!). To support this,
- * we need to differentiate between a set color-code and a set rgb-color.
- * This function actually converts a set color-code into an RGB color. This must
- * be called before passing the attribute to the console layer so the console
- * layer can always work with RGB values and does not have to care for color
- * codes. */
-static void to_rgb(struct tsm_vte *vte, bool defattr)
-{
-	struct tui_screen_attr* attr = defattr ? &vte->def_attr : &vte->cattr;
-	int fgc = defattr ? vte->d_fgcode : vte->c_fgcode;
-	int bgc = defattr ? vte->d_bgcode : vte->c_bgcode;
-
-	if (fgc >= 0) {
-		/* bold causes light colors */
-		if (TUI_HAS_ATTR((*attr), TUI_ATTR_BOLD) && fgc < 8 && !vte->faint)
-			fgc += 8;
-		if (fgc >= VTE_COLOR_NUM)
-			fgc = VTE_COLOR_FOREGROUND;
-
-		attr->fr = TUI_COL_TBASE + fgc;
-		attr->aflags |= TUI_ATTR_COLOR_INDEXED;
-	}
-
-	if (bgc >= 0) {
-		if (bgc >= VTE_COLOR_NUM)
-			bgc = VTE_COLOR_BACKGROUND;
-
-		attr->br = TUI_COL_TBASE + bgc;
-		attr->aflags |= TUI_ATTR_COLOR_INDEXED;
-	}
+	tsm_screen_move_to(c->screen, x, y);
+	arcan_tui_move_to(c, x, y);
 }
 
 /*
@@ -565,6 +336,12 @@ static void set_rgb(struct tsm_vte* vte,
 	}
 }
 
+static void erase_screen(struct tui_context* c, bool protect)
+{
+	tsm_screen_erase_region(c->screen, 0, 0, c->rows, c->cols, protect);
+	return;
+}
+
 SHL_EXPORT
 int tsm_vte_new(struct tsm_vte **out, struct tui_context *con,
 		tsm_vte_write_cb write_cb, void *data)
@@ -598,7 +375,7 @@ int tsm_vte_new(struct tsm_vte **out, struct tui_context *con,
 		goto err_free;
 
 	tsm_vte_reset(vte);
-	arcan_tui_erase_screen(vte->con, false);
+	erase_screen(vte->con, false);
 
 	DEBUG_LOG(vte, "new vte object");
 	arcan_tui_refinc(vte->con);
@@ -608,6 +385,102 @@ int tsm_vte_new(struct tsm_vte **out, struct tui_context *con,
 err_free:
 	free(vte);
 	return ret;
+}
+
+char* arcan_tui_statedescr(struct tui_context* tui)
+{
+	char* ret;
+	if (!tui)
+		return NULL;
+
+	int tfl = tui->screen->flags;
+	int cx = tui->cx;
+	int cy = tui->cy;
+
+	int sage = -1;
+	unsigned mt = 0, mb = 0;
+
+	if (tui->screen){
+		cx = tsm_screen_get_cursor_x(tui->screen);
+		cy = tsm_screen_get_cursor_y(tui->screen);
+		mt = tui->screen->margin_top;
+		mb = tui->screen->margin_bottom;
+	}
+
+	if (-1 == asprintf(&ret,
+		"frame: %d alpha: %d "
+		"scroll-lock: %d "
+		"rows: %d cols: %d cell_w: %d cell_h: %d "
+		"ppcm: %f font_sz: %f hint: %d "
+		"scrollback: %d sbofs: %d inscroll: %d backlog: %d "
+		"mods: %d iact: %d "
+		"cursor_x: %d cursor_y: %d off: %d hard_off: %d period: %d "
+		"(screen)age: %d margin_top: %u margin_bottom: %u "
+		"flags: %s%s%s%s%s%s",
+		(int) tui->fstamp, (int) tui->alpha,
+		(int) tui->scroll_lock,
+		tui->rows, tui->cols, tui->cell_w, tui->cell_h,
+		tui->ppcm, tui->font_sz, tui->hint,
+		tui->scrollback, (int) tui->sbofs, 1, 1,
+		tui->modifiers, tui->inact_timer,
+		cx, cy,
+		tui->cursor_off, tui->cursor_hard_off, tui->cursor_period,
+		sage, mt, mb,
+		(tfl & TSM_SCREEN_INSERT_MODE) ? "insert " : "",
+		(tfl & TSM_SCREEN_AUTO_WRAP) ? "autowrap " : "",
+		(tfl & TSM_SCREEN_REL_ORIGIN) ? "relorig " : "",
+		(tfl & TSM_SCREEN_INVERSE) ? "inverse " : "",
+		(tfl & TSM_SCREEN_FIXED_POS) ? "fixed " : "",
+		(tfl & TSM_SCREEN_ALTERNATE) ? "alternate " : ""
+		)
+	)
+		return NULL;
+
+	return ret;
+}
+
+static void reset_flags(struct tui_context* c, int flags)
+{
+	tsm_screen_reset_flags(c->screen, flags);
+}
+
+static void set_flags(struct tui_context* c, int flags)
+{
+	tsm_screen_set_flags(c->screen, flags);
+}
+
+/* Several effects may occur when non-RGB colors are used. For instance, if bold
+ * is enabled, then a dark color code is always converted to a light color to
+ * simulate bold (even though bold may actually be supported!). To support this,
+ * we need to differentiate between a set color-code and a set rgb-color.
+ * This function actually converts a set color-code into an RGB color. This must
+ * be called before passing the attribute to the console layer so the console
+ * layer can always work with RGB values and does not have to care for color
+ * codes. */
+static void to_rgb(struct tsm_vte *vte, bool defattr)
+{
+	struct tui_screen_attr* attr = defattr ? &vte->def_attr : &vte->cattr;
+	int fgc = defattr ? vte->d_fgcode : vte->c_fgcode;
+	int bgc = defattr ? vte->d_bgcode : vte->c_bgcode;
+
+	if (fgc >= 0) {
+		/* bold causes light colors */
+		if (TUI_HAS_ATTR((*attr), TUI_ATTR_BOLD) && fgc < 8 && !vte->faint)
+			fgc += 8;
+		if (fgc >= VTE_COLOR_NUM)
+			fgc = VTE_COLOR_FOREGROUND;
+
+		attr->fr = TUI_COL_TBASE + fgc;
+		attr->aflags |= TUI_ATTR_COLOR_INDEXED;
+	}
+
+	if (bgc >= 0) {
+		if (bgc >= VTE_COLOR_NUM)
+			bgc = VTE_COLOR_BACKGROUND;
+
+		attr->br = TUI_COL_TBASE + bgc;
+		attr->aflags |= TUI_ATTR_COLOR_INDEXED;
+	}
 }
 
 SHL_EXPORT
@@ -630,17 +503,6 @@ void tsm_vte_unref(struct tsm_vte *vte)
 
 	arcan_tui_refdec(vte->con);
 	tsm_utf8_mach_free(vte->mach);
-
-	for (size_t i = 0; i < DEBUG_HISTORY; i++){
-		if (vte->debug_lines[i])
-			free(vte->debug_lines[i]);
-	}
-
-	if (vte->debug){
-		arcan_tui_destroy(*(vte->debug), NULL);
-		*(vte->debug) = NULL;
-		vte->debug = NULL;
-	}
 
 	free(vte);
 }
@@ -705,8 +567,8 @@ int tsm_vte_set_palette(struct tsm_vte *vte, const char *pstr)
 	for (size_t i = 0; i < VTE_COLOR_NUM; i++)
 		arcan_tui_set_color(vte->con, TUI_COL_TBASE+i, &palette[i * 3]);
 
-	arcan_tui_defattr(vte->con, &vte->def_attr);
-	arcan_tui_erase_screen(vte->con, false);
+	access_defattr(vte->con, &vte->def_attr);
+	erase_screen(vte->con, false);
 
 	return 0;
 }
@@ -784,7 +646,8 @@ static void write_console(struct tsm_vte *vte, tsm_symbol_t sym)
 {
 	vte->last_symbol = sym;
 	to_rgb(vte, false);
-	arcan_tui_write(vte->con, sym, &vte->cattr);
+	struct tsm_screen* scr = vte->con->screen;
+	tsm_screen_write(scr, sym, &vte->cattr);
 }
 
 static void reset_state(struct tsm_vte *vte)
@@ -814,7 +677,7 @@ static void reset_state(struct tsm_vte *vte)
 
 static void save_state(struct tsm_vte *vte)
 {
-	arcan_tui_cursorpos(vte->con,
+	cursor_pos(vte->con,
 		&vte->saved_state.cursor_x, &vte->saved_state.cursor_y);
 	vte->saved_state.cattr = vte->cattr;
 	vte->saved_state.faint = vte->faint;
@@ -827,12 +690,11 @@ static void save_state(struct tsm_vte *vte)
 
 static void restore_state(struct tsm_vte *vte)
 {
-	arcan_tui_move_to(vte->con, vte->saved_state.cursor_x,
-			       vte->saved_state.cursor_y);
+	move_to(vte->con, vte->saved_state.cursor_x, vte->saved_state.cursor_y);
 	vte->cattr = vte->saved_state.cattr;
 	to_rgb(vte, false);
 	if (vte->flags & FLAG_BACKGROUND_COLOR_ERASE_MODE)
-		arcan_tui_defattr(vte->con, &vte->cattr);
+		access_defattr(vte->con, &vte->cattr);
 	vte->gl = vte->saved_state.gl;
 	vte->gr = vte->saved_state.gr;
 	vte->faint = vte->saved_state.faint;
@@ -840,18 +702,18 @@ static void restore_state(struct tsm_vte *vte)
 
 	if (vte->saved_state.wrap_mode) {
 		vte->flags |= FLAG_AUTO_WRAP_MODE;
-		arcan_tui_set_flags(vte->con, TUI_AUTO_WRAP);
+		set_flags(vte->con, TUI_AUTO_WRAP);
 	} else {
 		vte->flags &= ~FLAG_AUTO_WRAP_MODE;
-		arcan_tui_reset_flags(vte->con, TUI_AUTO_WRAP);
+		reset_flags(vte->con, TUI_AUTO_WRAP);
 	}
 
 	if (vte->saved_state.origin_mode) {
 		vte->flags |= FLAG_ORIGIN_MODE;
-		arcan_tui_set_flags(vte->con, TUI_REL_ORIGIN);
+		set_flags(vte->con, TUI_REL_ORIGIN);
 	} else {
 		vte->flags &= ~FLAG_ORIGIN_MODE;
-		arcan_tui_reset_flags(vte->con, TUI_REL_ORIGIN);
+		reset_flags(vte->con, TUI_REL_ORIGIN);
 	}
 }
 
@@ -875,7 +737,7 @@ void tsm_vte_reset(struct tsm_vte *vte)
 	vte->flags |= FLAG_BACKGROUND_COLOR_ERASE_MODE;
 	vte->last_symbol = ' ';
 	arcan_tui_reset(vte->con);
-	arcan_tui_set_flags(vte->con, TUI_AUTO_WRAP);
+	set_flags(vte->con, TUI_AUTO_WRAP);
 
 	tsm_utf8_mach_reset(vte->mach);
 	vte->state = STATE_GROUND;
@@ -892,7 +754,7 @@ void tsm_vte_reset(struct tsm_vte *vte)
 	vte->c_fgcode = vte->d_fgcode;
 	vte->c_bgcode = vte->d_bgcode;
 	to_rgb(vte, false);
-	arcan_tui_defattr(vte->con, &vte->def_attr);
+	access_defattr(vte->con, &vte->def_attr);
 
 	reset_state(vte);
 }
@@ -901,9 +763,9 @@ SHL_EXPORT
 void tsm_vte_hard_reset(struct tsm_vte *vte)
 {
 	tsm_vte_reset(vte);
-	arcan_tui_erase_screen(vte->con, false);
+	erase_screen(vte->con, false);
 	arcan_tui_erase_sb(vte->con);
-	arcan_tui_move_to(vte->con, 0, 0);
+	move_to(vte->con, 0, 0);
 }
 
 static void mouse_wr(struct tsm_vte *vte,
@@ -1633,7 +1495,7 @@ static void csi_attribute(struct tsm_vte *vte)
 
 	to_rgb(vte, false);
 	if (vte->flags & FLAG_BACKGROUND_COLOR_ERASE_MODE)
-		arcan_tui_defattr(vte->con, &vte->cattr);
+		access_defattr(vte->con, &vte->cattr);
 }
 
 static void csi_soft_reset(struct tsm_vte *vte)
@@ -1708,10 +1570,10 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 				set_reset_flag(vte, set,
 					       FLAG_INSERT_REPLACE_MODE);
 				if (set)
-					arcan_tui_set_flags(vte->con,
+					set_flags(vte->con,
 						TUI_INSERT_MODE);
 				else
-					arcan_tui_reset_flags(vte->con,
+					reset_flags(vte->con,
 						TUI_INSERT_MODE);
 				continue;
 			case 12: /* SRM */
@@ -1766,25 +1628,25 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 		case 5: /* DECSCNM */
 			set_reset_flag(vte, set, FLAG_INVERSE_SCREEN_MODE);
 			if (set)
-				arcan_tui_set_flags(vte->con,
+				set_flags(vte->con,
 						TUI_INVERSE);
 			else
-				arcan_tui_reset_flags(vte->con,
+				reset_flags(vte->con,
 						TUI_INVERSE);
 			continue;
 		case 6: /* DECOM */
 			set_reset_flag(vte, set, FLAG_ORIGIN_MODE);
 			if (set)
-				arcan_tui_set_flags(vte->con, TUI_REL_ORIGIN);
+				set_flags(vte->con, TUI_REL_ORIGIN);
 			else
-				arcan_tui_reset_flags(vte->con, TUI_REL_ORIGIN);
+				reset_flags(vte->con, TUI_REL_ORIGIN);
 			continue;
 		case 7: /* DECAWN */
 			set_reset_flag(vte, set, FLAG_AUTO_WRAP_MODE);
 			if (set)
-				arcan_tui_set_flags(vte->con, TUI_AUTO_WRAP);
+				set_flags(vte->con, TUI_AUTO_WRAP);
 			else
-				arcan_tui_reset_flags(vte->con, TUI_AUTO_WRAP);
+				reset_flags(vte->con, TUI_AUTO_WRAP);
 			continue;
 		case 8: /* DECARM */
 			set_reset_flag(vte, set, FLAG_AUTO_REPEAT_MODE);
@@ -1812,10 +1674,10 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 		case 25: /* DECTCEM */
 			set_reset_flag(vte, set, FLAG_TEXT_CURSOR_MODE);
 			if (set)
-				arcan_tui_reset_flags(vte->con,
+				reset_flags(vte->con,
 						TUI_HIDE_CURSOR);
 			else
-				arcan_tui_set_flags(vte->con,
+				set_flags(vte->con,
 						TUI_HIDE_CURSOR);
 			continue;
 
@@ -1832,9 +1694,9 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 				continue;
 
 			if (set)
-				arcan_tui_set_flags(vte->con, TUI_ALTERNATE);
+				set_flags(vte->con, TUI_ALTERNATE);
 			else
-				arcan_tui_reset_flags(vte->con, TUI_ALTERNATE);
+				reset_flags(vte->con, TUI_ALTERNATE);
 		continue;
 
 /* 59: kanji terminal
@@ -1877,10 +1739,10 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 				continue;
 
 			if (set) {
-				arcan_tui_set_flags(vte->con, TUI_ALTERNATE);
+				set_flags(vte->con, TUI_ALTERNATE);
 			} else {
-				arcan_tui_erase_screen(vte->con, false);
-				arcan_tui_reset_flags(vte->con, TUI_ALTERNATE);
+				erase_screen(vte->con, false);
+				reset_flags(vte->con, TUI_ALTERNATE);
 			}
 			continue;
 		case 1048: /* Set/Reset alternate-screen buffer cursor */
@@ -1888,9 +1750,9 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 				continue;
 
 			if (set) {
-					arcan_tui_cursorpos(vte->con, &vte->alt_cursor_x, &vte->alt_cursor_y);
+					cursor_pos(vte->con, &vte->alt_cursor_x, &vte->alt_cursor_y);
 			} else {
-				arcan_tui_move_to(vte->con, vte->alt_cursor_x, vte->alt_cursor_y);
+				move_to(vte->con, vte->alt_cursor_x, vte->alt_cursor_y);
 			}
 			continue;
 		case 1049: /* Alternate screen buffer with pre-erase+cursor */
@@ -1898,13 +1760,13 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 				continue;
 
 			if (set) {
-				arcan_tui_cursorpos(vte->con, &vte->alt_cursor_x, &vte->alt_cursor_y);
-				arcan_tui_set_flags(vte->con, TUI_ALTERNATE);
-				arcan_tui_erase_screen(vte->con, false);
+				cursor_pos(vte->con, &vte->alt_cursor_x, &vte->alt_cursor_y);
+				set_flags(vte->con, TUI_ALTERNATE);
+				erase_screen(vte->con, false);
 			} else {
-				arcan_tui_erase_screen(vte->con, false);
-				arcan_tui_reset_flags(vte->con, TUI_ALTERNATE);
-				arcan_tui_move_to(vte->con, vte->alt_cursor_x, vte->alt_cursor_y);
+				erase_screen(vte->con, false);
+				reset_flags(vte->con, TUI_ALTERNATE);
+				move_to(vte->con, vte->alt_cursor_x, vte->alt_cursor_y);
 			}
 			continue;
 		case 2004: /* Bracketed paste mode, pref.postf.paste with \e[200~ \e[201~ */
@@ -1942,7 +1804,7 @@ static void csi_dsr(struct tsm_vte *vte)
 	if (vte->csi_argv[0] == 5) {
 		vte_write(vte, "\e[0n", 4);
 	} else if (vte->csi_argv[0] == 6) {
-		arcan_tui_cursorpos(vte->con, &x, &y);
+		cursor_pos(vte->con, &x, &y);
 		len = snprintf(buf, sizeof(buf), "\e[%zu;%zuR", y+1, x+1);
 		if (len >= sizeof(buf))
 			vte_write(vte, "\e[0;0R", 6);
@@ -2002,9 +1864,9 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		if (num <= 0)
 			num = 1;
 		size_t cx, cy;
-		arcan_tui_cursorpos(vte->con, &cx, &cy);
+		cursor_pos(vte->con, &cx, &cy);
 		x = cx; y = cy;
-		arcan_tui_move_to(vte->con, x, num - 1);
+		move_to(vte->con, x, num - 1);
 		break;
 	}
 	case 'E':{ /* CNL */
@@ -2021,9 +1883,9 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		if (num <= 0)
 			num = 1;
 		size_t cx, cy;
-		arcan_tui_cursorpos(vte->con, &cx, &cy);
+		cursor_pos(vte->con, &cx, &cy);
 		x = cx; y = cy;
-		arcan_tui_move_to(vte->con, x, y + num);
+		move_to(vte->con, x, y + num);
 	break;
 	}
 	case 'F':{ /* CPL */
@@ -2042,7 +1904,8 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		y = vte->csi_argv[1];
 		if (y <= 0)
 			y = 1;
-		arcan_tui_move_to(vte->con, y - 1, x - 1);
+		/* DAFUQ */
+		move_to(vte->con, y - 1, x - 1);
 		break;
 	case 'G':{ /* CHA */
 		/* Cursor Character Absolute */
@@ -2050,9 +1913,9 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		if (num <= 0)
 			num = 1;
 		size_t cx, cy;
-		arcan_tui_cursorpos(vte->con, &cx, &cy);
+		cursor_pos(vte->con, &cx, &cy);
 		x = cx; y = cy;
-		arcan_tui_move_to(vte->con, num - 1, y);
+		move_to(vte->con, num - 1, y);
 	break;
 	}
 	case 'J':
@@ -2062,13 +1925,11 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 			protect = false;
 
 		if (vte->csi_argv[0] <= 0)
-			arcan_tui_erase_cursor_to_screen(vte->con,
-							      protect);
+			arcan_tui_erase_cursor_to_screen(vte->con, protect);
 		else if (vte->csi_argv[0] == 1)
-			arcan_tui_erase_screen_to_cursor(vte->con,
-							      protect);
+			arcan_tui_erase_screen_to_cursor(vte->con, protect);
 		else if (vte->csi_argv[0] == 2)
-			arcan_tui_erase_screen(vte->con, protect);
+			erase_screen(vte->con, protect);
 		else
 			DEBUG_LOG(vte, "unknown parameter to CSI-J: %d",
 				   vte->csi_argv[0]);
@@ -2134,7 +1995,7 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		if (lower < 0)
 			lower = 0;
 		arcan_tui_set_margins(vte->con, upper, lower);
-		arcan_tui_move_to(vte->con, 0, 0);
+		move_to(vte->con, 0, 0);
 		break;
 	case 'c': /* DA */
 		/* device attributes */
@@ -2245,9 +2106,6 @@ static uint32_t vte_map(struct tsm_vte *vte, uint32_t val)
 static void do_action(struct tsm_vte *vte, uint32_t data, int action)
 {
 	tsm_symbol_t sym;
-	if (vte->debug && vte->debug_verbose && action != ACTION_PRINT){
-		DEBUG_LOG(vte, "%s(%"PRIu32")", action_lut[action], data);
-	}
 
 	switch (action) {
 		case ACTION_NONE:
@@ -2720,73 +2578,8 @@ void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 			}
 		}
 	}
-}
 
-static void on_key(struct tui_context* c, uint32_t keysym,
-	uint8_t scancode, uint8_t mods, uint16_t subid, void* t)
-{
-	struct tsm_vte* in = t;
-	if (keysym == TUIK_TAB){
-		in->debug_verbose = !in->debug_verbose;
-	}
-	else if (keysym == TUIK_J || keysym == TUIK_DOWN){
-		in->debug_ofs++;
-	}
-	else if (keysym == TUIK_K || keysym == TUIK_UP){
-		if (in->debug_ofs > 0)
-			in->debug_ofs--;
-	}
-	else if (keysym == TUIK_M){
-	}
-	else if (keysym == TUIK_ESCAPE){
-		for (size_t i = 0; i < DEBUG_HISTORY; i++){
-			if (in->debug_lines[i]){
-				free(in->debug_lines[i]);
-				in->debug_lines[i] = NULL;
-			}
-		}
-		in->debug_ofs = 0;
-		in->debug_pos = 0;
-	}
-}
-
-static void on_resize(struct tui_context* tui,
-	size_t neww, size_t newh, size_t cols, size_t rows, void* tag)
-{
-	tsm_vte_update_debug(tag);
-}
-
-static void on_recolor(struct tui_context* tui, void* tag)
-{
-	tsm_vte_update_debug(tag);
-}
-
-SHL_EXPORT bool tsm_vte_debug(struct tsm_vte* in,
-	struct tui_context** dst, arcan_tui_conn* conn, struct tui_context* c)
-{
-	struct tui_cbcfg cbcfg = {
-		.tag = in,
-		.input_key = on_key,
-		.resized = on_resize,
-		.recolor = on_recolor
-	};
-
-/* already have one, let other implementations take a stab at it */
-	if (in->debug){
-		return false;
-	}
-
-	*dst = arcan_tui_setup(conn, c, &cbcfg, sizeof(cbcfg));
-
-	if (!*dst)
-		return false;
-
-/* no cursor, no scrollback, synch resize */
-	in->debug = dst;
-	arcan_tui_set_flags(*dst, TUI_ALTERNATE | TUI_HIDE_CURSOR);
-
-	tsm_vte_update_debug(in);
-	return true;
+	arcan_tui_move_to(vte->con, vte->con->screen->cursor_x, vte->con->screen->cursor_y);
 }
 
 SHL_EXPORT

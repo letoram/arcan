@@ -120,7 +120,6 @@ struct vte_saved_state {
 	bool origin_mode;
 };
 
-#define DEBUG_HISTORY 40
 struct tsm_vte {
 	unsigned long ref;
 
@@ -131,12 +130,6 @@ struct tsm_vte {
 	char *colbuf;
 
 	struct tui_context *con;
-	struct tui_context **debug;
-
-	bool debug_verbose;
-	size_t debug_ofs;
-	char* debug_lines[DEBUG_HISTORY];
-	size_t debug_pos;
 	int log_ctr;
 
 	tsm_vte_write_cb write_cb;
@@ -178,5 +171,74 @@ struct tsm_vte {
 	size_t alt_cursor_y;
 };
 
+struct cell {
+	tsm_symbol_t ch;
+	unsigned int width;
+	struct tui_screen_attr attr;
+	tsm_age_t age;
+};
+
+struct line {
+	struct line *next;
+	struct line *prev;
+
+	unsigned int size;
+	struct cell *cells;
+	uint64_t sb_id;
+	tsm_age_t age;
+};
+
+#define SELECTION_TOP -1
+struct selection_pos {
+	struct line *line;
+	unsigned int x;
+	int y;
+};
+
+struct tsm_screen {
+	size_t ref;
+	unsigned int flags;
+	struct tsm_symbol_table *sym_table;
+
+	/* default attributes for new cells */
+	struct tui_screen_attr def_attr;
+
+	/* ageing */
+	tsm_age_t age_cnt;
+	unsigned int age_reset : 1;
+
+	/* current buffer */
+	unsigned int size_x;
+	unsigned int size_y;
+	unsigned int margin_top;
+	unsigned int margin_bottom;
+	unsigned int line_num;
+	struct line **lines;
+	struct line **main_lines;
+	struct line **alt_lines;
+	tsm_age_t age;
+	int vanguard;
+
+	/* scroll-back buffer */
+	unsigned int sb_count;		/* number of lines in sb */
+	struct line *sb_first;		/* first line; was moved first */
+	struct line *sb_last;		/* last line; was moved last*/
+	unsigned int sb_max;		/* max-limit of lines in sb */
+	struct line *sb_pos;		/* current position in sb or NULL */
+	uint64_t sb_last_id;		/* last id given to sb-line */
+
+	/* cursor */
+	unsigned int cursor_x;
+	unsigned int cursor_y;
+
+	/* tab ruler */
+	bool *tab_ruler;
+
+	/* selection */
+	bool sel_active;
+	struct selection_pos sel_start;
+	struct selection_pos sel_end;
+	struct tui_context* owner;
+};
 
 #endif /* TSM_LIBTSM_INT_H */

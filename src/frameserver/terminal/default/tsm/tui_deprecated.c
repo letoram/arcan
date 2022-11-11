@@ -32,17 +32,16 @@ _Static_assert(PIPE_BUF >= 4, "pipe atomic write should be >= 4");
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#include "../arcan_shmif.h"
-#include "../arcan_tui.h"
+#include "arcan_shmif.h"
+#include "arcan_tui.h"
+#include "tui/tui_int.h"
 
-#include "screen/libtsm.h"
-#include "screen/libtsm_int.h"
-#include "tui_int.h"
-#include "screen/utf8.c"
+#include "libtsm.h"
+#include "libtsm_int.h"
+#include "../../../util/utf8.c"
 
-static inline void flag_cursor(struct tui_context* c)
+void tuiint_flag_cursor(struct tui_context* c)
 {
-	c->cursor_upd = true;
 	c->dirty |= DIRTY_CURSOR;
 	c->inact_timer = -4;
 
@@ -54,6 +53,58 @@ static inline void flag_cursor(struct tui_context* c)
 			c->screen->sb_count - c->sbofs, c->screen->sb_count + c->rows, 0, 0);
 	}
 }
+
+static void select_copy(struct tui_context* tui)
+{
+	char* sel = NULL;
+	ssize_t len;
+/*
+ * The tsm_screen selection code is really icky and well-deserving of a
+ * rewrite. The 'select_townd' toggle here is that the selection function
+ * originally converted to utf8, while we work with UCS4 locally
+ */
+	int dst = atomic_load(&paste_destination);
+	if (tui->select_townd && -1 != dst){
+		len = tsm_screen_selection_copy(tui->screen, &sel, false);
+		if (!len || len <= 1)
+			return;
+
+/* spinlock on block, we have already _Static_assert on PIPE_BUF */
+		while (len >= 4){
+			int rv = write(dst, sel, 4);
+			if (-1 == rv){
+				if (errno == EINVAL)
+					break;
+				else
+					continue;
+			}
+			len -= 4;
+			sel += 4;
+		}
+
+/* always send a new line (even if it doesn't go through) */
+		uint32_t ch = '\n';
+		write(dst, &ch, 4);
+		return;
+	}
+
+	len = tsm_screen_selection_copy(tui->screen, &sel, true);
+	if (!sel || len <= 1)
+		return;
+
+	len--;
+
+/* empty cells gets marked as NULL, but that would cut the copy short */
+	for (size_t i = 0; i < len; i++){
+		if (sel[i] == '\0')
+			sel[i] = ' ';
+	}
+
+	tui_clipboard_push(tui, sel, len);
+	free(sel);
+}
+
+#define flag_cursor tuiint_flag_cursor
 
 void arcan_tui_invalidate(struct tui_context* c)
 {
@@ -325,62 +376,11 @@ static int update_mods(int mods, int sym, bool pressed)
 	}
 }
 
-static void select_copy(struct tui_context* tui)
-{
-	char* sel = NULL;
-	ssize_t len;
-/*
- * The tsm_screen selection code is really icky and well-deserving of a
- * rewrite. The 'select_townd' toggle here is that the selection function
- * originally converted to utf8, while we work with UCS4 locally
- */
-	int dst = atomic_load(&paste_destination);
-	if (tui->select_townd && -1 != dst){
-		len = tsm_screen_selection_copy(tui->screen, &sel, false);
-		if (!len || len <= 1)
-			return;
-
-/* spinlock on block, we have already _Static_assert on PIPE_BUF */
-		while (len >= 4){
-			int rv = write(dst, sel, 4);
-			if (-1 == rv){
-				if (errno == EINVAL)
-					break;
-				else
-					continue;
-			}
-			len -= 4;
-			sel += 4;
-		}
-
-/* always send a new line (even if it doesn't go through) */
-		uint32_t ch = '\n';
-		write(dst, &ch, 4);
-		return;
-	}
-
-	len = tsm_screen_selection_copy(tui->screen, &sel, true);
-	if (!sel || len <= 1)
-		return;
-
-	len--;
-
-/* empty cells gets marked as NULL, but that would cut the copy short */
-	for (size_t i = 0; i < len; i++){
-		if (sel[i] == '\0')
-			sel[i] = ' ';
-	}
-
-	tui_clipboard_push(tui, sel, len);
-	free(sel);
-}
-
 static bool page_up(struct tui_context* tui)
 {
 	if (!tui || (tui->flags & TUI_ALTERNATE))
 		return true;
 
-	tui->cursor_upd = true;
 	tui->cursor_off = true;
 	arcan_tui_scroll_up(tui, tui->rows);
 	return true;
@@ -394,13 +394,12 @@ static bool page_down(struct tui_context* tui)
 	if (tui->sbofs > 0){
 		tui->sbofs -= tui->rows;
 		tui->sbofs = tui->sbofs < 0 ? 0 : tui->sbofs;
-		tui->cursor_upd = true;
 		tui->cursor_off = true;
 	}
 
 	if (tui->sbofs <= 0){
 		tui->cursor_off = false;
-		tui->cursor_upd = true;
+		tuiint_flag_cursor(tui);
 		tsm_screen_sb_reset(tui->screen);
 	}
 
@@ -421,25 +420,6 @@ static int mod_to_scroll(int mods, int screenh)
 	if (mods & ARKMOD_RCTRL)
 		rv += screenh >> 1;
 	return rv;
-}
-
-static bool copy_window(struct tui_context* tui)
-{
-/* if no pending copy-window request, make a copy of the active screen
- * and spawn a dispatch thread for it */
-	if (tui->pending_copy_window)
-		return true;
-
-	if (tsm_screen_save(
-		tui->screen, true, &tui->pending_copy_window)){
-		arcan_shmif_enqueue(&tui->acon, &(struct arcan_event){
-			.ext.kind = ARCAN_EVENT(SEGREQ),
-			.ext.segreq.kind = SEGID_TUI,
-			.ext.segreq.id = REQID_COPYWINDOW
-		});
-	}
-
-	return true;
 }
 
 static bool scroll_up(struct tui_context* tui)
@@ -547,9 +527,7 @@ static bool scroll_lock(struct tui_context* tui)
 	if (!tui->scroll_lock){
 		tui->sbofs = 0;
 		tsm_screen_sb_reset(tui->screen);
-		tui->cursor_upd = true;
-		tui->cursor_off = false;
-		tui->dirty |= DIRTY_PARTIAL;
+		tuiint_flag_cursor(tui);
 	}
 	return true;
 }
@@ -581,7 +559,6 @@ static bool forward_mouse(struct tui_context* tui)
  * Old version of input.c that uses tsm selection for most mouse actions and scrolling
  */
 struct lent {
-	int ctx;
 	const char* lbl;
 	const char* descr;
 	uint8_t vsym[5];
@@ -590,48 +567,47 @@ struct lent {
 	uint16_t modifiers;
 };
 
-static const struct lent labels[] = {
-	{1, "LINE_UP", "Scroll 1 row up", {}, scroll_up}, /* u+2191 */
-	{1, "LINE_DOWN", "Scroll 1 row down", {}, scroll_down}, /* u+2192 */
-	{1, "PAGE_UP", "Scroll one page up", {0xe2, 0x87, 0x9e}, page_up}, /* u+21de */
-	{1, "PAGE_DOWN", "Scroll one page down", {0xe2, 0x87, 0x9e}, page_down}, /* u+21df */
-	{0, "COPY_AT", "Copy word at cursor", {}, select_at}, /* u+21f8 */
-	{0, "COPY_ROW", "Copy cursor row", {}, select_row}, /* u+21a6 */
-	{0, "MOUSE_FORWARD", "Toggle mouse forwarding", {}, mouse_forward}, /* u+ */
-	{1, "SCROLL_LOCK", "Arrow- keys to pageup/down", {}, scroll_lock, TUIK_SCROLLLOCK}, /* u+ */
-	{1, "UP", "(scroll-lock) page up, UP keysym", {}, move_up}, /* u+ */
-	{1, "DOWN", "(scroll-lock) page down, DOWN keysym", {}, move_down}, /* u+ */
-	{0, "COPY_WND", "Copy window and scrollback", {}, copy_window}, /* u+ */
-	{2, "SELECT_TOGGLE", "Switch select destination (wnd, clipboard)", {}, sel_sw}, /* u+ */
-	{0}
+static const struct lent labels_alt[] =
+{
+	{"COPY_AT", "Copy word at cursor", {}, select_at}, /* u+21f8 */
+	{"COPY_ROW", "Copy cursor row", {}, select_row}, /* u+21a6 */
+	{"MOUSE_FORWARD", "Toggle mouse forwarding", {}, mouse_forward}, /* u+ */
 };
 
-static bool consume_label(struct tui_context* tui,
-	arcan_ioevent* ioev, const char* label)
+static const struct lent labels[] =
 {
+	{"LINE_UP", "Scroll 1 row up", {}, scroll_up}, /* u+2191 */
+	{"LINE_DOWN", "Scroll 1 row down", {}, scroll_down}, /* u+2192 */
+	{"PAGE_UP", "Scroll one page up", {0xe2, 0x87, 0x9e}, page_up}, /* u+21de */
+	{"PAGE_DOWN", "Scroll one page down", {0xe2, 0x87, 0x9e}, page_down}, /* u+21df */
+	{"COPY_AT", "Copy word at cursor", {}, select_at}, /* u+21f8 */
+	{"COPY_ROW", "Copy cursor row", {}, select_row}, /* u+21a6 */
+	{"MOUSE_FORWARD", "Toggle mouse forwarding", {}, mouse_forward}, /* u+ */
+	{"SCROLL_LOCK", "Arrow- keys to pageup/down", {}, scroll_lock, TUIK_SCROLLLOCK}, /* u+ */
+	{"UP", "(scroll-lock) page up, UP keysym", {}, move_up}, /* u+ */
+	{"DOWN", "(scroll-lock) page down, DOWN keysym", {}, move_down}, /* u+ */
+};
+
+bool legacy_consume_label(struct tui_context* tui, const char* label)
+{
+	size_t cap = COUNT_OF(labels);
 	const struct lent* cur = labels;
 
-/* priority to our normal label handlers, and if those fail, forward */
-	while(cur->lbl){
-		if (strcmp(label, cur->lbl) == 0){
-			if (cur->ptr(tui))
+	if (tui->flags & TUI_ALTERNATE){
+		cap = COUNT_OF(labels_alt);
+		cur = labels_alt;
+	}
+
+	for (size_t i = 0; i < cap; i++){
+		if (strcmp(cur[i].lbl, label) == 0){
+			if (cur[i].ptr(tui))
 				return true;
 			else
 				break;
 		}
-		cur++;
 	}
 
-	bool res = false;
-	if (tui->handlers.input_label){
-		res |= tui->handlers.input_label(tui, label, true, tui->handlers.tag);
-
-/* also send release if the forward was ok */
-		if (res)
-			tui->handlers.input_label(tui, label, false, tui->handlers.tag);
-	}
-
-	return res;
+	return false;
 }
 
 static void tsm_input_eh(
@@ -653,8 +629,16 @@ static void tsm_input_eh(
 			tsm_screen_selection_reset(tui->screen);
 		}
 		tui->inact_timer = -4;
-		if (label[0] && consume_label(tui, ioev, label))
-			return;
+
+		if (label[0] && tui->handlers.input_label){
+			bool res = tui->handlers.input_label(tui, label, true, tui->handlers.tag);
+
+/* also send release if the forward was ok */
+			if (res){
+				tui->handlers.input_label(tui, label, false, tui->handlers.tag);
+				return;
+			}
+		}
 
 /* modifiers doesn't get set for the symbol itself which is a problem
  * for when we want to forward modifier data to another handler like mbtn */
@@ -663,8 +647,7 @@ static void tsm_input_eh(
 
 /* reset scrollback on normal input */
 		if (oldm == tui->modifiers && tui->sbofs != 0){
-			tui->cursor_upd = true;
-			tui->cursor_off = false;
+			tuiint_flag_cursor(tui);
 			tui->sbofs = 0;
 			tsm_screen_sb_reset(tui->screen);
 			tui->dirty |= DIRTY_PARTIAL;
@@ -864,77 +847,28 @@ static void tsm_input_eh(
 
 }
 
-void arcan_tui_legacy_labels(struct tui_context* c)
+bool legacy_query_label(
+	struct tui_context* c, int ind, struct tui_labelent* dst)
 {
-	const struct lent* cur = labels;
-	arcan_event ev = {
-		.category = EVENT_EXTERNAL,
-		.ext.kind = ARCAN_EVENT(LABELHINT),
-		.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL
-	};
+	size_t cap = COUNT_OF(labels);
+	const struct lent* set = labels;
 
-/* send an empty label first as a reset */
-	arcan_shmif_enqueue(&c->acon, &ev);
-
-/* then forward to a possible callback handler */
-	size_t ind = 0;
-	if (c->handlers.query_label){
-		while (true){
-			struct tui_labelent dstlbl = {};
-			if (!c->handlers.query_label(c, ind++, "ENG", "ENG", &dstlbl, c->handlers.tag))
-				break;
-
-			snprintf(ev.ext.labelhint.label,
-				COUNT_OF(ev.ext.labelhint.label), "%s", dstlbl.label);
-			snprintf(ev.ext.labelhint.descr,
-				COUNT_OF(ev.ext.labelhint.descr), "%s", dstlbl.descr);
-			ev.ext.labelhint.subv = dstlbl.subv;
-			ev.ext.labelhint.idatatype = dstlbl.idatatype ? dstlbl.idatatype : EVENT_IDATATYPE_DIGITAL;
-			ev.ext.labelhint.modifiers = dstlbl.modifiers;
-			ev.ext.labelhint.initial = dstlbl.initial;
-			snprintf((char*)ev.ext.labelhint.vsym,
-				COUNT_OF(ev.ext.labelhint.vsym), "%s", dstlbl.vsym);
-			arcan_shmif_enqueue(&c->acon, &ev);
-		}
+	if (c->flags & TUI_ALTERNATE){
+		cap = COUNT_OF(labels_alt);
+		set = labels_alt;
 	}
 
-/* expose a set of basic built-in controls shared by all users, and this is
- * dependent, for now, on the mode of the context.  The reason is that 'line-'
- * oriented mode with it's special scrolling, selection etc. complexity should
- * be refactored and pushed to a separate layer. */
-	while(cur->lbl){
-		switch(cur->ctx){
-		case 0:
-/* all */
-		break;
-		case 1:
-/* not in 'alternate' */
-			if (c->flags & TUI_ALTERNATE){
-				cur++;
-				continue;
-			}
-		break;
-		case 2:
-/* only when not in copywnd */
-			if (!c->subseg){
-				cur++;
-				continue;
-			}
-		break;
-		}
+	if (ind >= cap)
+		return false;
 
-		snprintf(ev.ext.labelhint.label,
-			COUNT_OF(ev.ext.labelhint.label), "%s", cur->lbl);
-		snprintf(ev.ext.labelhint.descr,
-			COUNT_OF(ev.ext.labelhint.descr), "%s", cur->descr);
-		snprintf((char*)ev.ext.labelhint.vsym,
-			COUNT_OF(ev.ext.labelhint.vsym), "%s", cur->vsym);
-		cur++;
+	const struct lent* ent = &set[ind];
+	snprintf(dst->label, COUNT_OF(dst->label), "%s", ent->lbl);
+	snprintf(dst->descr, COUNT_OF(dst->descr), "%s", ent->descr);
+	snprintf((char*)dst->vsym, COUNT_OF(dst->vsym), "%s", ent->vsym);
+	dst->initial = ent->initial;
+	dst->modifiers = ent->modifiers;
 
-		ev.ext.labelhint.initial = cur->initial;
-		ev.ext.labelhint.modifiers = cur->modifiers;
-		arcan_shmif_enqueue(&c->acon, &ev);
-	}
+	return true;
 }
 
 void tsm_cursor_eh(struct tui_context* c)
@@ -957,23 +891,6 @@ static void tsm_destroy_eh(struct tui_context* c)
 	tsm_utf8_mach_free(c->ucsconv);
 }
 
-static int tsm_set_flags_eh(struct tui_context* c, int flags)
-{
-	tsm_screen_set_flags(c->screen, flags);
-
-	if (c->flags & TUI_ALTERNATE)
-		tsm_screen_sb_reset(c->screen);
-
-	bool in_alternate = !!(c->flags & TUI_ALTERNATE);
-	bool want_alternate = !!(flags & TUI_ALTERNATE);
-
-	if (in_alternate != want_alternate)
-		arcan_tui_content_size(c,
-			c->screen->sb_count, c->screen->sb_count + c->rows, 0, 0);
-
-	return tsm_screen_get_flags(c->screen);
-}
-
 /*
  * This is used to translate from the virtual screen in TSM to our own front/back
  * buffer structure that is then 'rendered' into the packing format used in
@@ -988,7 +905,6 @@ static int tsm_draw_callback(struct tsm_screen* screen, uint32_t id,
 	const struct tui_screen_attr* attr, tsm_age_t age, void* data)
 {
 	struct tui_context* tui = data;
-
 	if (!(age && tui->age && age <= tui->age) && x < tui->cols && y < tui->rows){
 		size_t pos = y * tui->cols + x;
 		tui->front[pos].draw_ch = tui->front[pos].ch = *ch;
@@ -1002,8 +918,9 @@ static int tsm_draw_callback(struct tsm_screen* screen, uint32_t id,
 
 static void tsm_refresh_eh(struct tui_context* tui)
 {
-/* synch vscreen -> screen buffer */
-	tui->flags = tsm_screen_get_flags(tui->screen);
+/* synch vscreen -> screen buffer
+	arcan_tui_set_flags(tui, tsm_screen_get_flags(tui->screen));
+ */
 
 /* this will repeatedly call tsm_draw_callback which, in turn, will update
  * the front buffer with new glyphs. */
@@ -1031,6 +948,12 @@ static void tsm_resize_eh(struct tui_context* tui)
 		;
 }
 
+static void tsm_cursor_lookup(struct tui_context* c, size_t* x, size_t* y)
+{
+	*y = tsm_screen_get_cursor_y(c->screen);
+	*x = tsm_screen_get_cursor_x(c->screen);
+}
+
 void arcan_tui_allow_deprecated(struct tui_context* c)
 {
 	if (c->screen)
@@ -1045,8 +968,9 @@ void arcan_tui_allow_deprecated(struct tui_context* c)
 	c->hooks.destroy = tsm_destroy_eh;
 	c->hooks.refresh = tsm_refresh_eh;
 	c->hooks.resize = tsm_resize_eh;
+	c->hooks.cursor_lookup = tsm_cursor_lookup;
 
-	tsm_screen_new(&c->screen, tsm_log, c);
+	tsm_screen_new(c, &c->screen, tsm_log, c);
 	tsm_screen_set_max_sb(c->screen, 1000);
 	c->hooks.resize(c);
 }

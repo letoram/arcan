@@ -2,15 +2,20 @@ SET(TUI_BASE
 	${CMAKE_CURRENT_SOURCE_DIR}/../../../shmif/tui)
 
 SET(TERMINAL_SOURCES
-	${CMAKE_CURRENT_SOURCE_DIR}/tsm/shl-pty.c
-	${CMAKE_CURRENT_SOURCE_DIR}/tsm/shl-ring.c
-	${CMAKE_CURRENT_SOURCE_DIR}/tsm/tsm_vte.c
-	${CMAKE_CURRENT_SOURCE_DIR}/tsm/tsm_vte_charsets.c
 	${CMAKE_CURRENT_SOURCE_DIR}/arcterm.c
 	${CMAKE_CURRENT_SOURCE_DIR}/cli.c
 	${CMAKE_CURRENT_SOURCE_DIR}/cli_parse.c
 	${CMAKE_CURRENT_SOURCE_DIR}/cli_builtin.c
 	${CMAKE_CURRENT_SOURCE_DIR}/cli_lua.c
+	${CMAKE_CURRENT_SOURCE_DIR}/tsm/tsm_vte.c
+	${CMAKE_CURRENT_SOURCE_DIR}/tsm/tsm_vte_charsets.c
+	${CMAKE_CURRENT_SOURCE_DIR}/tsm/shl-pty.c
+	${CMAKE_CURRENT_SOURCE_DIR}/tsm/shl-ring.c
+	${CMAKE_CURRENT_SOURCE_DIR}/tsm/tsm_screen.c
+	${CMAKE_CURRENT_SOURCE_DIR}/tsm/tui_deprecated.c
+	${CMAKE_CURRENT_SOURCE_DIR}/tsm/tsm_unicode.c
+	${CMAKE_CURRENT_SOURCE_DIR}/tsm/shl_htable.c
+	${CMAKE_CURRENT_SOURCE_DIR}/tsm/wcwidth.c
 	${TUI_BASE}/lua/tui_lua.c
 	${TUI_BASE}/lua/nbio.c
 	${TUI_BASE}/lua/tui_popen.c

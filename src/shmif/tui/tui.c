@@ -5,9 +5,7 @@
  * Description:
  *
  * This unit implements the main arcan_tui entrypoints, and mostly maps /
- * translates to internal functions. Some of the _tsm management is also
- * done here until that gets refactored away entirely. The triggers for
- * that is the contents of tui_deprecated.c and the use of c->screen.
+ * translates to internal functions.
  *
  * input.c       : interactive event response
  * dispatch.c    : incoming event routing, target commands
@@ -34,6 +32,7 @@
 #include <pthread.h>
 #include <limits.h>
 #include <assert.h>
+#include <stdarg.h>
 _Static_assert(PIPE_BUF >= 4, "pipe atomic write should be >= 4");
 
 #include <sys/types.h>
@@ -45,69 +44,12 @@ _Static_assert(PIPE_BUF >= 4, "pipe atomic write should be >= 4");
 
 #include "../arcan_shmif.h"
 #include "../arcan_tui.h"
-#include "screen/utf8.c"
 
 #include "arcan_ttf.h"
-
-#include "screen/libtsm.h"
-#include "screen/libtsm_int.h"
 #include "tui_int.h"
-
-char* arcan_tui_statedescr(struct tui_context* tui)
-{
-	char* ret;
-	if (!tui)
-		return NULL;
-
-	int tfl = tui->screen->flags;
-	int cx = tui->cx;
-	int cy = tui->cy;
-
-	int sage = -1;
-	unsigned mt = 0, mb = 0;
-
-	if (tui->screen){
-		cx = tsm_screen_get_cursor_x(tui->screen);
-		cy = tsm_screen_get_cursor_y(tui->screen);
-		mt = tui->screen->margin_top;
-		mb = tui->screen->margin_bottom;
-	}
-
-	if (-1 == asprintf(&ret,
-		"frame: %d alpha: %d "
-		"scroll-lock: %d "
-		"rows: %d cols: %d cell_w: %d cell_h: %d "
-		"ppcm: %f font_sz: %f hint: %d "
-		"scrollback: %d sbofs: %d inscroll: %d backlog: %d "
-		"mods: %d iact: %d "
-		"cursor_x: %d cursor_y: %d off: %d hard_off: %d period: %d "
-		"(screen)age: %d margin_top: %u margin_bottom: %u "
-		"flags: %s%s%s%s%s%s",
-		(int) tui->fstamp, (int) tui->alpha,
-		(int) tui->scroll_lock,
-		tui->rows, tui->cols, tui->cell_w, tui->cell_h,
-		tui->ppcm, tui->font_sz, tui->hint,
-		tui->scrollback, (int) tui->sbofs, 1, 1,
-		tui->modifiers, tui->inact_timer,
-		cx, cy,
-		tui->cursor_off, tui->cursor_hard_off, tui->cursor_period,
-		sage, mt, mb,
-		(tfl & TSM_SCREEN_INSERT_MODE) ? "insert " : "",
-		(tfl & TSM_SCREEN_AUTO_WRAP) ? "autowrap " : "",
-		(tfl & TSM_SCREEN_REL_ORIGIN) ? "relorig " : "",
-		(tfl & TSM_SCREEN_INVERSE) ? "inverse " : "",
-		(tfl & TSM_SCREEN_FIXED_POS) ? "fixed " : "",
-		(tfl & TSM_SCREEN_ALTERNATE) ? "alternate " : ""
-		)
-	)
-		return NULL;
-
-	return ret;
-}
 
 static inline void flag_cursor(struct tui_context* c)
 {
-	c->cursor_upd = true;
 	c->dirty |= DIRTY_CURSOR;
 	c->inact_timer = -4;
 
@@ -833,14 +775,6 @@ void arcan_tui_eraseattr_region(struct tui_context* c,
 	if (!c)
 		return;
 
-	if (c->screen){
-		struct tui_screen_attr def = arcan_tui_defattr(c, NULL);
-		arcan_tui_defattr(c, &attr);
-		tsm_screen_erase_region(c->screen, x1, y1, x2, y2, protect);
-		arcan_tui_defattr(c, &def);
-		return;
-	}
-
 	for (size_t y = y1; y < c->rows && y <= y2; y++)
 		for (size_t x = x1; x < c->cols && x <= x2; x++){
 			struct tui_cell* data = &c->front[y * c->cols + x];
@@ -878,10 +812,7 @@ struct tui_screen_attr arcan_tui_defcattr(struct tui_context* c, int group)
 	if (!c)
 		return out;
 
-	if (!c->screen)
-		out = c->defattr;
-	else
-		out = tsm_screen_get_def_attr(c->screen);
+	out = c->defattr;
 	arcan_tui_get_color(c, group, out.fc);
 	arcan_tui_get_bgcolor(c, group, out.bc);
 	out.aflags &= ~TUI_ATTR_COLOR_INDEXED;
@@ -899,12 +830,6 @@ struct tui_screen_attr
 	if (attr)
 		c->defattr = *attr;
 
-	if (c->screen){
-		out = tsm_screen_get_def_attr(c->screen);
-		if (attr)
-			tsm_screen_set_def_attr(c->screen, (struct tui_screen_attr*) attr);
-	}
-
 	return out;
 }
 
@@ -913,12 +838,6 @@ void arcan_tui_write(struct tui_context* c,
 {
 	if (!c)
 		return;
-
-	if (c->screen){
-		tsm_screen_write(c->screen, ucode, attr);
-		flag_cursor(c);
-		return;
-	}
 
 /* write + advance */
 	write_front_checked(c, c->cx, c->cy, ucode, attr);
@@ -944,9 +863,8 @@ void arcan_tui_writeattr_at(struct tui_context* c,
 	if (!c || !attr)
 		return;
 
-	if (c->screen)
-		tsm_screen_setattr(c->screen, attr, x, y);
-	else if (x < c->cols && y < c->rows){
+	assert(c->screen == NULL);
+	if (x < c->cols && y < c->rows){
 		c->front[y * c->cols + x].attr = *attr;
 	}
 
@@ -1005,13 +923,7 @@ void arcan_tui_cursorpos(struct tui_context* c, size_t* x, size_t* y)
 	if (!c)
 		return;
 
-	if (c->screen){
-		if (x)
-			*x = tsm_screen_get_cursor_x(c->screen);
-		if (y)
-			*y = tsm_screen_get_cursor_y(c->screen);
-		return;
-	}
+	assert(c->screen == NULL);
 
 	if (x)
 		*x = c->cx;
@@ -1033,19 +945,19 @@ void arcan_tui_reset(struct tui_context* c)
 	if (!c)
 		return;
 
-	if (c->screen){
-		tsm_screen_reset(c->screen);
-	}
-	else {
-		c->flags = TUI_ALTERNATE;
-		c->defattr = (struct tui_screen_attr){
-			.fc = TUI_COL_TEXT,
-			.bc = TUI_COL_TEXT,
-			.aflags = TUI_ATTR_COLOR_INDEXED
-		};
-		arcan_tui_eraseattr_screen(c, false, c->defattr);
+	if (c->hooks.reset){
+		c->hooks.reset(c);
+		return;
 	}
 
+	c->flags = TUI_ALTERNATE;
+	c->defattr = (struct tui_screen_attr){
+		.fc = TUI_COL_TEXT,
+		.bc = TUI_COL_TEXT,
+		.aflags = TUI_ATTR_COLOR_INDEXED
+	};
+
+	arcan_tui_eraseattr_screen(c, false, c->defattr);
 	flag_cursor(c);
 }
 
@@ -1086,51 +998,17 @@ int arcan_tui_set_flags(struct tui_context* c, int flags)
 	if (!c)
 		return -1;
 
-	bool oldv = c->cursor_hard_off;
+	int old_flags = c->flags;
+	c->flags = flags;
 	c->cursor_hard_off = flags & TUI_HIDE_CURSOR;
-	if (oldv != c->cursor_hard_off)
+
+	if (old_flags != flags)
 		flag_cursor(c);
-
-	bool in_alternate = !!(c->flags & TUI_ALTERNATE);
-
-	if (c->hooks.set_flags){
-		c->flags = c->hooks.set_flags(c, flags);
-	}
-	else
-		c->flags = flags;
-
-	bool want_alternate = !!(c->flags & TUI_ALTERNATE);
-
-	if (in_alternate != want_alternate){
-		if (want_alternate)
-			arcan_tui_content_size(c, 0, 0, 0, 0);
-		arcan_tui_reset_labels(c);
-	}
 
 	if (flags & (TUI_MOUSE | TUI_MOUSE_FULL))
 		c->mouse_forward = true;
 
-	return (int) c->flags;
-}
-
-void arcan_tui_reset_flags(struct tui_context* c, int flags)
-{
-	if (!c)
-		return;
-
-	bool in_alternate = !!(c->flags & TUI_ALTERNATE);
-
-	if (flags & TUI_HIDE_CURSOR){
-		c->cursor_hard_off = false;
-		flag_cursor(c);
-	}
-
-	tsm_screen_reset_flags(c->screen, flags);
-	c->flags = tsm_screen_get_flags(c->screen);
-
-	bool want_alternate = !!(c->flags & TUI_ALTERNATE);
-	if (in_alternate != want_alternate)
-		arcan_tui_reset_labels(c);
+	return old_flags;
 }
 
 void arcan_tui_move_to(struct tui_context* c, size_t x, size_t y)
@@ -1138,14 +1016,8 @@ void arcan_tui_move_to(struct tui_context* c, size_t x, size_t y)
 	if (!c)
 		return;
 
-	if (c->screen){
-		flag_cursor(c);
-		tsm_screen_move_to(c->screen, x, y);
-	}
-	else {
-		c->cx = x;
-		c->cy = y;
-	}
+	c->cx = x;
+	c->cy = y;
 }
 
 size_t arcan_tui_printf(struct tui_context* ctx,

@@ -1,8 +1,6 @@
 #include "../../arcan_shmif.h"
 #include "../../arcan_tui.h"
 #include "../tui_int.h"
-#include "../screen/libtsm.h"
-#include "../../arcan_tui_copywnd.h"
 #include <math.h>
 #include <pthread.h>
 
@@ -153,20 +151,7 @@ static void tick_cursor(struct tui_context* tui)
 			tui->cursor_off = tui->inact_timer > 1 ? !tui->cursor_off : false;
 	}
 
-	tui->cursor_upd = true;
 	tui->dirty |= DIRTY_CURSOR;
-}
-
-static void drop_pending(struct tsm_save_buf** tui)
-{
-	if (!*tui)
-		return;
-
-	free((*tui)->metadata);
-	free((*tui)->scrollback);
-	free((*tui)->screen);
-	free(*tui);
-	*tui = NULL;
 }
 
 /* this is raw without formatting */
@@ -386,29 +371,17 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 
 /* scrolling- command */
 	case TARGET_COMMAND_SEEKCONTENT:
-		if (tui->flags & TUI_ALTERNATE){
-			if (ev->ioevs[0].iv){
-				if (tui->handlers.seek_relative){
-					tui->handlers.seek_relative(tui,
-						ev->ioevs[1].iv, ev->ioevs[2].iv, tui->handlers.tag);
-				}
+		if (ev->ioevs[0].iv){
+			if (tui->handlers.seek_relative){
+				tui->handlers.seek_relative(tui,
+					ev->ioevs[1].iv, ev->ioevs[2].iv, tui->handlers.tag);
 			}
-			else {
-				if (tui->handlers.seek_absolute){
-					float v = ev->ioevs[1].fv;
-					if (v >= 0.0 && v <= 1.0)
-						tui->handlers.seek_absolute(tui, ev->ioevs[1].fv, tui->handlers.tag);
-				}
-			}
-			return;
 		}
-
-		if (ev->ioevs[0].iv){ /* relative */
-			if (ev->ioevs[1].iv < 0){
-				arcan_tui_scroll_up(tui, -1 * ev->ioevs[1].iv);
-			}
-			else{
-				arcan_tui_scroll_down(tui, ev->ioevs[1].iv);
+		else {
+			if (tui->handlers.seek_absolute){
+				float v = ev->ioevs[1].fv;
+				if (v >= 0.0 && v <= 1.0)
+					tui->handlers.seek_absolute(tui, ev->ioevs[1].fv, tui->handlers.tag);
 			}
 		}
 	break;
@@ -434,9 +407,6 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 				tui->handlers.subwindow(tui, NULL,
 					(uint32_t)ev->ioevs[0].iv & 0xffff, TUI_WND_TUI, tui->handlers.tag);
 			}
-		}
-		else if ((uint32_t)ev->ioevs[0].iv == REQID_COPYWINDOW){
-			drop_pending(&tui->pending_copy_window);
 		}
 	break;
 
@@ -472,19 +442,6 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 			}
 			else
 				LOG("multiple clipboards received, likely appl. error\n");
-		}
-/*
- * special handling for our pasteboard window
- */
-		else if (ev->ioevs[3].iv == REQID_COPYWINDOW && tui->pending_copy_window){
-			struct arcan_shmif_cont acon =
-				arcan_shmif_acquire(&tui->acon, NULL, ev->ioevs[2].iv, 0);
-			if (acon.addr)
-				arcan_tui_copywnd(tui, acon);
-			else{
-				LOG("request-id conflict: got copy-window without copy pending\n");
-				drop_pending(&tui->pending_copy_window);
-			}
 		}
 /*
  * new caller requested segment, even though acon is auto- scope allocated
@@ -537,14 +494,6 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 
 			if (tui->handlers.tick)
 				tui->handlers.tick(tui, tui->handlers.tag);
-
-			if (tui->in_select && tui->scrollback != 0){
-				if (tui->scrollback < 0)
-					arcan_tui_scroll_up(tui, abs(tui->scrollback));
-				else
-					arcan_tui_scroll_down(tui, tui->scrollback);
-				tui->dirty |= DIRTY_FULL;
-			}
 		}
 	break;
 

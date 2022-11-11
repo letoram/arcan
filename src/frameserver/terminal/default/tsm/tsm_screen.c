@@ -113,12 +113,15 @@ static struct cell *get_cursor_cell(struct tsm_screen *con)
 	return &con->lines[cur_y]->cells[cur_x];
 }
 
+extern void tuiint_flag_cursor(struct tui_context*);
 static void move_cursor(struct tsm_screen *con, unsigned int x, unsigned int y)
 {
 	struct cell *c;
 
 	con->cursor_x = x;
 	con->cursor_y = y;
+
+	 tuiint_flag_cursor(con->owner);
 }
 
 /*
@@ -496,7 +499,9 @@ static inline unsigned int to_abs_y(struct tsm_screen *con, unsigned int y)
 }
 
 SHL_EXPORT
-int tsm_screen_new(struct tsm_screen **out, tsm_log_t log, void *log_data)
+int tsm_screen_new(
+	struct tui_context* c,
+	struct tsm_screen **out, tsm_log_t log, void *log_data)
 {
 	struct tsm_screen *con;
 	int ret;
@@ -516,6 +521,7 @@ int tsm_screen_new(struct tsm_screen **out, tsm_log_t log, void *log_data)
 	con->def_attr.aflags = TUI_ATTR_COLOR_INDEXED;
 	con->def_attr.fr = TUI_COL_TEXT;
 	con->def_attr.br = TUI_COL_TEXT;
+	con->owner = c;
 
 	ret = tsm_symbol_table_new(&con->sym_table);
 	if (ret)
@@ -1197,6 +1203,10 @@ void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
 	else
 		last = con->size_y - 1;
 
+	screen_write(con,
+		con->cursor_x, con->cursor_y, ch, len, attr ? attr : &con->def_attr);
+	move_cursor(con, con->cursor_x + len, con->cursor_y);
+
 	if (con->cursor_x >= con->size_x) {
 		if (con->flags & TSM_SCREEN_AUTO_WRAP)
 			move_cursor(con, 0, con->cursor_y + 1);
@@ -1209,10 +1219,6 @@ void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
 		screen_scroll_up(con, 1);
 		return;
 	}
-
-	screen_write(con,
-		con->cursor_x, con->cursor_y, ch, len, attr ? attr : &con->def_attr);
-	move_cursor(con, con->cursor_x + len, con->cursor_y);
 
 	return;
 }
@@ -1388,8 +1394,8 @@ int tsm_screen_scroll_down(struct tsm_screen *con, unsigned int num)
 }
 
 SHL_EXPORT
-void tsm_screen_move_to(struct tsm_screen *con, unsigned int x,
-			    unsigned int y)
+void tsm_screen_move_to(
+	struct tsm_screen *con, unsigned int x, unsigned int y)
 {
 	unsigned int last;
 

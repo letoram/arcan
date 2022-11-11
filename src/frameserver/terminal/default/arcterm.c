@@ -23,7 +23,9 @@
 #include "b64dec.h"
 #include "../../../shmif/tui/tui_int.h"
 
-struct line {
+#define debug_log
+
+struct t_line {
 	size_t count;
 	struct tui_cell* cells;
 };
@@ -44,9 +46,6 @@ enum pipe_modes {
 
 static struct {
 	struct tui_context* screen;
-
-/* only main one and debug window */
-	struct tui_context* screens[2];
 
 	struct tsm_vte* vte;
 	struct shl_pty* pty;
@@ -81,7 +80,7 @@ static struct {
 /* when the terminal has died and !die_on_term, we need to be able
  * to re-populate the contents on resize since the terminal state machine
  * itself won't be able to anymore - so save this here */
-	struct line** volatile _Atomic restore;
+	struct t_line** volatile _Atomic restore;
 	size_t restore_cxy[2];
 
 /* if the client provides large b64 encoded data through OSC */
@@ -102,7 +101,7 @@ static struct {
 
 static void reset_restore_buffer()
 {
-	struct line** cur = atomic_load(&term.restore);
+	struct t_line** cur = atomic_load(&term.restore);
 	atomic_store(&term.restore, NULL);
 
 	if (!cur)
@@ -117,10 +116,12 @@ static void reset_restore_buffer()
 	free(cur);
 }
 
+extern void tuiint_flag_cursor(struct tui_context* tui);
+
 static void apply_restore_buffer()
 {
 	arcan_tui_erase_screen(term.screen, false);
-	struct line** cur = atomic_load(&term.restore);
+	struct t_line** cur = atomic_load(&term.restore);
 	if (!cur)
 		return;
 
@@ -128,18 +129,20 @@ static void apply_restore_buffer()
 	arcan_tui_dimensions(term.screen, &rows, &cols);
 
 	for (size_t row = 0; row < rows && cur[row]; row++){
-		arcan_tui_move_to(term.screen, 0, row);
+		tsm_screen_move_to(term.screen->screen, 0, row);
 		struct tui_cell* cells = cur[row]->cells;
 		size_t n = cur[row]->count;
 
 		for (size_t i = 0; i < n && i < cols; i++){
 			struct tui_cell* c= &cells[i];
 			uint32_t ch = c->draw_ch ? c->draw_ch : c->ch;
-			arcan_tui_write(term.screen, ch, &c->attr);
+			tsm_screen_write(term.screen->screen, ch, &c->attr);
 		}
 	}
 
-	arcan_tui_move_to(term.screen, term.restore_cxy[0], term.restore_cxy[1]);
+	tsm_screen_move_to(
+		term.screen->screen, term.restore_cxy[0], term.restore_cxy[1]);
+	tuiint_flag_cursor(term.screen);
 }
 
 static void create_restore_buffer(bool refit)
@@ -150,16 +153,18 @@ static void create_restore_buffer(bool refit)
 		return;
 
 	arcan_tui_dimensions(term.screen, &rows, &cols);
-	size_t bufsz = sizeof(struct line*) * (rows + 1);
-	struct line** buffer = malloc(bufsz);
+	size_t bufsz = sizeof(struct t_line*) * (rows + 1);
+	struct t_line** buffer = malloc(bufsz);
 	memset(buffer, '\0', bufsz);
 
-	arcan_tui_cursorpos(term.screen, &term.restore_cxy[0], &term.restore_cxy[1]);
+	term.restore_cxy[0] = tsm_screen_get_cursor_x(term.screen->screen);
+	term.restore_cxy[1] = tsm_screen_get_cursor_y(term.screen->screen);
+
 	size_t max_row = 0;
 	size_t max_col = 0;
 
 	for (size_t row = 0; row < rows; row++){
-		buffer[row] = malloc(sizeof(struct line));
+		buffer[row] = malloc(sizeof(struct t_line));
 		if (!buffer[row])
 			goto fail;
 
@@ -354,6 +359,7 @@ static bool readout_pty(int fd)
 	}
 
 	tsm_vte_input(term.vte, buf, nr);
+	term.screen->dirty |= DIRTY_PARTIAL;
 
 /* We could possibly also match against parser state, or specific total timeout
  * before breaking out and releasing the terminal - the reason for this
@@ -578,15 +584,6 @@ static void sighuph(int num)
 		term.pty = (shl_pty_close(term.pty), NULL);
 }
 
-static bool on_subwindow(struct tui_context* c,
-	arcan_tui_conn* newconn, uint32_t id, uint8_t type, void* tag)
-{
-	if (term.screens[1] || type != TUI_WND_DEBUG)
-		return false;
-
-	return tsm_vte_debug(term.vte, &term.screens[1], newconn, c);
-}
-
 static void on_mouse_motion(struct tui_context* c,
 	bool relative, int x, int y, int modifiers, void* t)
 {
@@ -624,7 +621,6 @@ static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 	if (write(shl_pty_get_fd(term.pty, true), u8, len) < 0
 		&& errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR){
 		atomic_store(&term.alive, false);
-		arcan_tui_set_flags(c, TUI_HIDE_CURSOR);
 	}
 
 	return true;
@@ -1144,7 +1140,8 @@ static struct labelent labels[] =
 	},
 };
 
-static bool on_label_query(struct tui_context* T,
+static bool on_label_query(
+	struct tui_context* T,
 	size_t index, const char* country, const char* lang,
 	struct tui_labelent* dstlbl, void* t)
 {
@@ -1160,7 +1157,8 @@ static bool on_label_query(struct tui_context* T,
 		*dstlbl = labels[current].ent;
 		return true;
 	}
-	return false;
+
+	return legacy_query_label(T, index - COUNT_OF(labels) - 1, dstlbl);
 }
 
 static bool on_label_input(
@@ -1175,6 +1173,8 @@ static bool on_label_input(
 			return true;
 		}
 	}
+
+	return legacy_consume_label(T, label);
 
 	return false;
 }
@@ -1199,6 +1199,14 @@ static int parse_color(const char* inv, uint8_t outv[4])
 		&outv[0], &outv[1], &outv[2], &outv[3]);
 }
 
+static void on_relative(struct tui_context* c, ssize_t dy, ssize_t dx, void* tag)
+{
+	if (dx < 0)
+		arcan_tui_scroll_up(c, -1 * dy);
+	else
+		arcan_tui_scroll_down(c, dy);
+}
+
 static bool copy_palette(struct tui_context* tc, uint8_t* out)
 {
 	uint8_t ref[3] = {0, 0, 0};
@@ -1211,6 +1219,17 @@ static bool copy_palette(struct tui_context* tc, uint8_t* out)
  * have received an upstream palette */
 	arcan_tui_get_bgcolor(tc, 1, ref);
 	return ref[0] == 255;
+}
+
+static void on_tick(struct tui_context* c, void* tag)
+{
+	if (c->in_select && c->scrollback != 0){
+		if (c->scrollback < 0)
+			arcan_tui_scroll_up(c, abs(c->scrollback));
+		else
+			arcan_tui_scroll_down(c, c->scrollback);
+		c->dirty |= DIRTY_FULL;
+	}
 }
 
 int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
@@ -1252,7 +1271,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		dump_help();
 		return EXIT_SUCCESS;
 	}
-
 /*
  * this table act as both callback- entry points and a list of features that we
  * actually use. So binary chunk transfers, video/audio paste, geohint etc.
@@ -1269,9 +1287,10 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.utf8 = on_utf8_paste,
 		.resize = on_resize,
 		.resized = on_resized,
-		.subwindow = on_subwindow,
 		.exec_state = on_exec_state,
 		.reset = on_reset,
+		.seek_relative = on_relative,
+		.tick = on_tick
 /*
  * for advanced rendering, but not that interesting
  * .substitute = on_subst
@@ -1363,7 +1382,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 
 /* Immediately reset / draw so that we get a window before the shell wakes */
-	arcan_tui_reset_flags(term.screen, TUI_ALTERNATE);
 	arcan_tui_erase_screen(term.screen, NULL);
 	arcan_tui_refresh(term.screen);
 
@@ -1402,15 +1420,12 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	arcan_tui_set_color(term.screen, TUI_COL_BG, bgc);
 	arcan_tui_set_color(term.screen, TUI_COL_TEXT, fgc);
 
-	term.screens[0] = term.screen;
-
 	bool alive;
 	while((alive = atomic_load(&term.alive)) || !term.die_on_term){
 		pthread_mutex_lock(&term.synch);
-		tsm_vte_update_debug(term.vte);
 
-		struct tui_process_res res = arcan_tui_process(
-			term.screens, term.screens[1] ? 2 : 1, &term.signalfd, 1, -1);
+		struct tui_process_res res =
+			arcan_tui_process(&term.screen, 1, &term.signalfd, 1, -1);
 
 		if (res.errc < TUI_ERRC_OK){
 			break;
@@ -1423,9 +1438,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 			term.complete_signal = true;
 		}
 
-		arcan_tui_refresh(term.screens[0]);
-		if (term.screens[1])
-			arcan_tui_refresh(term.screens[1]);
+		arcan_tui_refresh(term.screen);
 
 /* screen contents have been synched and updated, but we don't have a
  * restore spot for dealing with resize or contents boundary */
