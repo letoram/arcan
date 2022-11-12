@@ -282,8 +282,10 @@ static struct tui_screen_attr access_defattr(
 	struct tui_context* c, struct tui_screen_attr* attr)
 {
 	struct tui_screen_attr out  = tsm_screen_get_def_attr(c->screen);
-	if (attr)
+	if (attr){
 		tsm_screen_set_def_attr(c->screen, (struct tui_screen_attr*) attr);
+		c->defattr = *attr;
+	}
 	return out;
 }
 
@@ -673,6 +675,7 @@ static void reset_state(struct tsm_vte *vte)
 	vte->saved_state.cattr.bb = vte->def_attr.bb;
 	vte->saved_state.cattr.aflags = 0;
 	vte->saved_state.cattr.custom_id = 0;
+	vte->con->defattr = vte->saved_state.cattr;
 }
 
 static void save_state(struct tsm_vte *vte)

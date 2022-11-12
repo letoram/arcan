@@ -519,9 +519,7 @@ int tsm_screen_new(
 	con->ref = 1;
 	con->age_cnt = 1;
 	con->age = con->age_cnt;
-	con->def_attr.aflags = TUI_ATTR_COLOR_INDEXED;
-	con->def_attr.fr = TUI_COL_TEXT;
-	con->def_attr.br = TUI_COL_TEXT;
+	con->def_attr = c->defattr;
 	con->owner = c;
 
 	ret = tsm_symbol_table_new(&con->sym_table);
@@ -1231,7 +1229,6 @@ void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
 
 	if (con->cursor_x >= con->size_x) {
 		if (con->flags & TSM_SCREEN_AUTO_WRAP){
-			printf("it's a wrap\n");
 			move_cursor(con, 0, con->cursor_y + 1);
 		}
 		else
