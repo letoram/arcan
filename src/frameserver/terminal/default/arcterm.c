@@ -23,6 +23,10 @@
 #include "b64dec.h"
 #include "../../../shmif/tui/tui_int.h"
 
+#ifdef SALLOW_ST
+extern int st_tui_main(struct arcan_shmif_cont* con, struct arg_arr* args);
+#endif
+
 #define debug_log
 
 struct t_line {
@@ -563,6 +567,9 @@ static void dump_help()
 		" pipe        \t [mode]    \t map stdin-stdout (mode: raw, lf)\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 		" cli         \t [lua]     \t switch to non-vt cli/builtin shell mode\n"
+#ifdef SALLOW_ST
+		" interp      \t [tsm,st]  \t specify emulator state machine\n"
+#endif
 		"Built-in palettes:\n"
 		"default, solarized, solarized-black, solarized-white, srcery\n"
 		"-------------\t-----------\t----------------\n\n"
@@ -1255,6 +1262,14 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		dup2(ndev, STDERR_FILENO);
 		close(ndev);
 	}
+
+#ifdef SALLOW_ST
+	if (arg_lookup(args, "interp", 0, &val)){
+		if (val && strcmp(val, "st") == 0){
+			return st_tui_main(con, args);
+		}
+	}
+#endif
 
 /*
  * this is the first migration part we have out of the normal vt- legacy,

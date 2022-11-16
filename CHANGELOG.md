@@ -15,6 +15,7 @@
 
 ## Terminal
  * SGR reset fix, add CNL / CPL
+ * Add interp=st for suckless terminal based state machine
 
 ## Platform
  * audio: engine audio split out into platform bit
