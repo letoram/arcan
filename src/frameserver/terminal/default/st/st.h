@@ -86,6 +86,9 @@ void printsel(const Arg *);
 void sendbreak(const Arg *);
 void toggleprinter(const Arg *);
 
+int tscrolltop();
+int thisti();
+int tisaltscreen();
 int tattrset(int);
 void tnew(int, int);
 void tresize(int, int);
@@ -106,6 +109,9 @@ int selected(int, int);
 char *getsel(void);
 
 size_t utf8encode(Rune, char *);
+
+void kscrollup(const Arg* a);
+void kscrolldown(const Arg* a);
 
 void *xmalloc(size_t);
 void *xrealloc(void *, size_t);
