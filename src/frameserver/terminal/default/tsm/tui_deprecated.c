@@ -234,7 +234,7 @@ void arcan_tui_tab_left(struct tui_context* c, size_t n)
 
 void arcan_tui_scroll_up(struct tui_context* c, size_t n)
 {
-	if (!c || (c->flags & TUI_ALTERNATE) || !c->screen)
+	if (!c || !c->screen || (tsm_screen_get_flags(c->screen) & TUI_ALTERNATE))
 		return;
 
 	c->sbofs -= tsm_screen_sb_up(c->screen, n);
@@ -246,7 +246,7 @@ void arcan_tui_scroll_up(struct tui_context* c, size_t n)
 
 void arcan_tui_scroll_down(struct tui_context* c, size_t n)
 {
-	if (!c || (c->flags & TUI_ALTERNATE) || !c->screen)
+	if (!c || !c->screen || (tsm_screen_get_flags(c->screen) & TUI_ALTERNATE))
 		return;
 
 	c->sbofs -= tsm_screen_sb_down(c->screen, n);
@@ -378,7 +378,7 @@ static int update_mods(int mods, int sym, bool pressed)
 
 static bool page_up(struct tui_context* tui)
 {
-	if (!tui || (tui->flags & TUI_ALTERNATE))
+	if (!tui || !tui->screen || (tsm_screen_get_flags(tui->screen) & TUI_ALTERNATE))
 		return true;
 
 	tui->cursor_off = true;
@@ -388,7 +388,7 @@ static bool page_up(struct tui_context* tui)
 
 static bool page_down(struct tui_context* tui)
 {
-	if (!tui || (tui->flags & TUI_ALTERNATE))
+	if (!tui|| !tui->screen || (tsm_screen_get_flags(tui->screen) & TUI_ALTERNATE))
 		return true;
 
 	if (tui->sbofs > 0){
@@ -424,7 +424,7 @@ static int mod_to_scroll(int mods, int screenh)
 
 static bool scroll_up(struct tui_context* tui)
 {
-	if (!tui || (tui->flags & TUI_ALTERNATE))
+	if (!tui || !tui->screen || (tsm_screen_get_flags(tui->screen) & TUI_ALTERNATE))
 		return true;
 
 	int nf = mod_to_scroll(tui->modifiers, tui->rows);
@@ -434,7 +434,7 @@ static bool scroll_up(struct tui_context* tui)
 
 static bool scroll_down(struct tui_context* tui)
 {
-	if (!tui || (tui->flags & TUI_ALTERNATE))
+	if (!tui || !tui->screen || (tsm_screen_get_flags(tui->screen) & TUI_ALTERNATE))
 		return true;
 
 	int nf = mod_to_scroll(tui->modifiers, tui->rows);
@@ -547,7 +547,7 @@ static bool sel_sw(struct tui_context* tui)
 static bool forward_mouse(struct tui_context* tui)
 {
 	bool forward = tui->mouse_forward;
-	if (
+	if (!(tsm_screen_get_flags(tui->screen) & TUI_ALTERNATE) &&
 			!(tui->flags & TUI_MOUSE_FULL) &&
 			(tui->modifiers & (TUIM_LCTRL | TUIM_RCTRL))){
 		return !forward;
@@ -593,7 +593,7 @@ bool legacy_consume_label(struct tui_context* tui, const char* label)
 	size_t cap = COUNT_OF(labels);
 	const struct lent* cur = labels;
 
-	if (tui->flags & TUI_ALTERNATE){
+	if (tsm_screen_get_flags(tui->screen) & TUI_ALTERNATE){
 		cap = COUNT_OF(labels_alt);
 		cur = labels_alt;
 	}
@@ -798,7 +798,7 @@ static void tsm_input_eh(
 /* normal ALTSCREEN wheel doesn't really make sense, unless in
  * drag-select, map that to stepping selected row up/down?)
  * clients can still switch to manual mouse mode to get the other behavior */
-					if ((tui->flags & TUI_ALTERNATE)){
+					if (tsm_screen_get_flags(tui->screen) & TUI_ALTERNATE){
 						tui->handlers.input_key(tui,
 							((tui->modifiers & (ARKMOD_LSHIFT | ARKMOD_RSHIFT)) ? TUIK_PAGEUP : TUIK_UP),
 							ioev->input.translated.scancode,
@@ -812,7 +812,7 @@ static void tsm_input_eh(
 			}
 			else if (ioev->subid == TUIBTN_WHEEL_DOWN){
 				if (ioev->input.digital.active){
-					if ((tui->flags & TUI_ALTERNATE)){
+					if (tsm_screen_get_flags(tui->screen) & TUI_ALTERNATE){
 						tui->handlers.input_key(tui,
 							((tui->modifiers & (ARKMOD_LSHIFT | ARKMOD_RSHIFT)) ? TUIK_PAGEDOWN : TUIK_DOWN),
 							ioev->input.translated.scancode,
@@ -853,7 +853,7 @@ bool legacy_query_label(
 	size_t cap = COUNT_OF(labels);
 	const struct lent* set = labels;
 
-	if (c->flags & TUI_ALTERNATE){
+	if (!c || !c->screen || (tsm_screen_get_flags(c->screen) & TUI_ALTERNATE)){
 		cap = COUNT_OF(labels_alt);
 		set = labels_alt;
 	}

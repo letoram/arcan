@@ -84,6 +84,13 @@ static struct tui_cell glyph_to_cell(Glyph g)
 
 	struct tui_cell ret = {.ch = g.u};
 
+	int flags =
+		(!!(g.mode & ATTR_BOLD) * TUI_ATTR_BOLD) |
+		(!!(g.mode & ATTR_UNDERLINE) * TUI_ATTR_UNDERLINE) |
+		(!!(g.mode & ATTR_ITALIC) * TUI_ATTR_ITALIC) |
+		(!!(g.mode & ATTR_BLINK) * TUI_ATTR_BLINK) |
+		(!!(g.mode & ATTR_REVERSE) * TUI_ATTR_INVERSE);
+
 /* the annoyance is when fg is indexed and bg is not and vice versa,
  * then resolve and expect state machine to do the recoloring */
 	if (IS_TRUECOL(g.fg) ^ IS_TRUECOL(g.fg)){
@@ -97,7 +104,7 @@ static struct tui_cell glyph_to_cell(Glyph g)
 		ret.attr.bb = TRUEBLUE(g.bg);
 	}
 	else {
-		ret.attr.aflags = TUI_ATTR_COLOR_INDEXED;
+		flags |= TUI_ATTR_COLOR_INDEXED;
 		if (g.fg < 16){
 			ret.attr.fc[0] = TUI_COL_TBASE + g.fg;
 		}
@@ -114,6 +121,7 @@ static struct tui_cell glyph_to_cell(Glyph g)
 			printf("uknown bg index: %d\n", g.bg);
 	}
 
+	ret.attr.aflags = flags;
 	return ret;
 }
 
@@ -241,12 +249,34 @@ static void on_mouse_button(
 			selclear();
 		}
 	}
+	if (!tisaltscreen()){
+		if (btn == TUIBTN_WHEEL_UP){
+			if (mod & TUIM_SHIFT)
+				kscrollup(&(Arg){.i = -1});
+			else
+			kscrollup(&(Arg){.i = 1});
+		}
+		else if (btn == TUIBTN_WHEEL_DOWN){
+			if (mod & TUIM_SHIFT)
+				kscrolldown(&(Arg){.i = -1});
+			else
+				kscrolldown(&(Arg){.i = 1});
+		}
+	}
 }
 
 static void on_key(struct tui_context* c, uint32_t symest,
 	uint8_t scancode, uint8_t mods, uint16_t subid, void* t)
 {
 	char *str = NULL;
+	if (mods & TUIM_SHIFT){
+		if (symest == TUIK_PAGEUP){
+			kscrollup(&(Arg){.i = -1});
+		}
+		else if (symest == TUIK_PAGEDOWN){
+			kscrolldown(&(Arg){.i = -1});
+		}
+	}
 
 	for (size_t i = 0; i < LEN(key); i++){
 		if (key[i].k == symest){
