@@ -567,6 +567,7 @@ static void dump_help()
 		" pipe        \t [mode]    \t map stdin-stdout (mode: raw, lf)\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 		" cli         \t [lua]     \t switch to non-vt cli/builtin shell mode\n"
+		" cursor      \t [style]   \t set default cursor: block, bar, underline, hollow\n"
 #ifdef SALLOW_ST
 		" interp      \t [tsm,st]  \t specify emulator state machine\n"
 #endif
@@ -1239,6 +1240,23 @@ static void on_tick(struct tui_context* c, void* tag)
 	}
 }
 
+int cursor_style_arg(struct arg_arr* args)
+{
+	const char* val;
+/* more possible modes needed here, UTF8, stats */
+	if (!arg_lookup(args, "cursor", 0, &val) || !val)
+		return CURSOR_BLOCK;
+
+	if (strcmp(val, "underline") == 0)
+		return CURSOR_UNDER;
+	else if (strcmp(val, "hollow") == 0)
+		return CURSOR_HOLLOW;
+	else if (strcmp(val, "bar") == 0)
+		return CURSOR_BAR;
+
+	return CURSOR_BLOCK;
+}
+
 int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 {
 	if (!con)
@@ -1319,6 +1337,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 	arcan_tui_allow_deprecated(term.screen);
+	arcan_tui_cursor_style(term.screen, cursor_style_arg(args), NULL);
 
 /* make a preroll- state copy of legacy-palette range */
 	uint8_t palette_copy[TUI_COL_LIMIT * 3];

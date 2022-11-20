@@ -8,6 +8,7 @@
 #include <errno.h>
 #include "st.h"
 #include "win.h"
+#include "../cli.h"
 
 /* attributes
  * mouse;
@@ -340,7 +341,7 @@ static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 	return true;
 }
 
-int st_tui_main(arcan_tui_conn* conn, struct arg_arr** args)
+int st_tui_main(arcan_tui_conn* conn, struct arg_arr* args)
 {
 /* regular tui process loop and handler table */
 	const char *opt_line = NULL;
@@ -362,6 +363,7 @@ int st_tui_main(arcan_tui_conn* conn, struct arg_arr** args)
 	tnew(80, 25);
 	term.fd = ttynew(opt_line, shell, opt_io, opt_cmd);
 	term.T = arcan_tui_setup(conn, NULL, &cbcfg, sizeof(cbcfg));
+	arcan_tui_cursor_style(term.T, cursor_style_arg(args), NULL);
 
 	struct timespec now, last;
 	clock_gettime(CLOCK_MONOTONIC, &now);

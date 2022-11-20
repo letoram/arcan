@@ -616,6 +616,7 @@ int arcterm_cli_run(struct arcan_shmif_cont* c, struct arg_arr* args)
 	if (!tui)
 		return EXIT_FAILURE;
 
+	arcan_tui_cursor_style(tui, cursor_style_arg(args), NULL);
 	arcan_tui_readline_setup(tui, &opts, sizeof(opts));
 	char* out;
 
