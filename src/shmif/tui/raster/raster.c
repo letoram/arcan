@@ -182,17 +182,40 @@ static void linehint(struct tui_raster_context* ctx, struct cell* cell,
 	}
 }
 
+static void drawcursor_px(
+	struct tui_raster_context* ctx, shmif_pixel* vidp,
+	size_t pitch, int x, int y, size_t maxx, size_t maxy, shmif_pixel cc)
+{
+	struct cell cell = {
+		.fc = cc
+	};
+
+/* blending might be a better option here .. */
+	if (ctx->cursor_state & CURSOR_UNDER){
+		drawborder_edge(ctx, &cell, vidp, pitch, x, y, maxx, maxy, CEATTR_BORDER_D);
+	}
+	else if (ctx->cursor_state & CURSOR_HOLLOW){
+		drawborder_edge(ctx, &cell, vidp, pitch, x, y, maxx, maxy,
+			CEATTR_BORDER_D | CEATTR_BORDER_T | CEATTR_BORDER_L | CEATTR_BORDER_R);
+	}
+	else if (ctx->cursor_state & CURSOR_BAR){
+		drawborder_edge(ctx, &cell, vidp, pitch, x, y, maxx, maxy, CEATTR_BORDER_L);
+	}
+}
+
 static size_t drawglyph(struct tui_raster_context* ctx, struct cell* cell,
 	shmif_pixel* vidp, size_t pitch, int x, int y, size_t maxx, size_t maxy)
 {
 /* draw glyph based on font state */
-	if (!ctx->fonts[0]->vector){
+	bool draw_cursor = false;
 
-/* mouse-cursor drawing in this mode is a bit primitive */
+	if (!ctx->fonts[0]->vector){
+/* other style option would be to swap CC and FC when drawing .. */
 		if (cell->attr & CATTR_CURSOR){
-			if (ctx->cursor_state & CURSOR_ACTIVE){
+			if (ctx->cursor_state == (CURSOR_ACTIVE | CURSOR_BLOCK))
 				cell->bc = ctx->cc;
-			}
+			else
+				draw_cursor = true;
 		}
 
 /* linear search for cp, on fail, fill with background */
@@ -210,6 +233,10 @@ static size_t drawglyph(struct tui_raster_context* ctx, struct cell* cell,
 
 		drawborder_edge(ctx, cell, vidp, pitch, x, y, maxx, maxy, cell->attr_ext);
 
+		if (draw_cursor){
+			drawcursor_px(ctx, vidp, pitch, x, y, maxx, maxy, ctx->cc);
+		}
+
 		return ctx->cell_w;
 	}
 
@@ -221,21 +248,28 @@ static size_t drawglyph(struct tui_raster_context* ctx, struct cell* cell,
 		fonts[1] = ctx->fonts[1]->truetype;
 	}
 
-/* Clear to bg-color as the glyph drawing with background won't pad,
- * except if it is the cursor color, then use that. We can't do the
- * fg/bg swap as even in unshaped the glyph might be conditionally
- * smaller than the cell size */
+/* Clear to bg-color as the glyph drawing with background won't pad, except if
+ * it is the cursor color, then use that. We can't do the fg/bg swap as even in
+ * unshaped the glyph might be conditionally smaller than the cell size */
 	shmif_pixel bc = cell->bc;
-	if ((cell->attr & CATTR_CURSOR) &&
-		(ctx->cursor_state & CURSOR_ACTIVE)){
-		bc = ctx->cc;
+	if (cell->attr & CATTR_CURSOR){
+		if (ctx->cursor_state == (CURSOR_ACTIVE | CURSOR_BLOCK)){
+			bc = ctx->cc;
+		}
+		else
+			draw_cursor = true;
 	}
 
 	draw_box_px(vidp,
 		pitch, maxx, maxy, x, y, ctx->cell_w, ctx->cell_h, bc);
 
-/* fast-path, just clear to background */
+/* fast-path, just clear to background and draw line attrs */
 	if (!cell->ucs4){
+		drawborder_edge(ctx, cell, vidp, pitch, x, y, maxx, maxy, cell->attr_ext);
+		if (draw_cursor){
+			drawcursor_px(ctx, vidp, pitch, x, y, maxx, maxy, ctx->cc);
+		}
+
 		return ctx->cell_w;
 	}
 
@@ -283,6 +317,9 @@ static size_t drawglyph(struct tui_raster_context* ctx, struct cell* cell,
 	}
 
 	drawborder_edge(ctx, cell, vidp, pitch, x, y, maxx, maxy, cell->attr_ext);
+	if (draw_cursor){
+		drawcursor_px(ctx, vidp, pitch, x, y, maxx, maxy, ctx->cc);
+	}
 
 	return ctx->cell_w;
 }
@@ -351,7 +388,7 @@ static int raster_tobuf(
 		}
 	}
 
-	ctx->cursor_state = hdr.cursor_state;
+	ctx->cursor_state = hdr.cursor_state & (~CURSOR_EXTHDRv1);
 
 	ssize_t cur_y = -1;
 	size_t last_line = 0;

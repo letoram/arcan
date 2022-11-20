@@ -1016,8 +1016,11 @@ void arcan_tui_move_to(struct tui_context* c, size_t x, size_t y)
 	if (!c)
 		return;
 
-	c->cx = x;
-	c->cy = y;
+	if (x != c->cx || y != c->cy){
+		c->cx = x;
+		c->cy = y;
+		flag_cursor(c);
+	}
 }
 
 size_t arcan_tui_printf(struct tui_context* ctx,

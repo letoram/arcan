@@ -351,8 +351,11 @@ size_t tui_screen_tpack(struct tui_context* tui,
 
 	hdr.cursor_state |= CURSOR_EXTHDRv1;
 
-	hdr.cursor_state |=
-		(tui->cursor & (CURSOR_BLOCK | CURSOR_BAR | CURSOR_UNDER | CURSOR_HOLLOW));
+	if (!tui->cursor)
+		hdr.cursor_state |= CURSOR_BLOCK;
+	else
+		hdr.cursor_state |=
+			(tui->cursor & (CURSOR_BLOCK | CURSOR_BAR | CURSOR_UNDER | CURSOR_HOLLOW));
 
 /* write the header and return */
 /* NOTE: REPLACE WITH PROPER PACKING */
