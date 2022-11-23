@@ -572,12 +572,21 @@ symtable.patch = function(tbl, iotbl)
 -- Remember for repeating in .tick(), only the same modifier table will
 -- actually continue the repeats, so holding l until repeat then pressing shift
 -- L will reset the repeat counter.
-	if iotbl.active then
-		tbl.last = iotbl;
-	else
+	if tbl:is_modifier(iotbl) then
 		tbl.last = nil;
+		tbl.counter = tbl.delay;
+	else
+		if iotbl.active then
+			if tbl.last ~= iotbl then
+				tbl.counter = tbl.delay;
+			end
+
+			tbl.last = iotbl;
+		elseif tbl.last and tbl.last.keysym == iotbl.keysym then
+			tbl.last = nil;
+			tbl.counter = tbl.delay;
+		end
 	end
-	tbl.counter = tbl.delay;
 
 -- apply utf8 translation and modify supplied utf8 with keymap
 	if (tbl.keymap) then
