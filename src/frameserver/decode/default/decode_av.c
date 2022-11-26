@@ -589,6 +589,12 @@ int decode_av(struct arcan_shmif_cont* cont, struct arg_arr* args)
 /* special about stream devices is that we can specify external resources (e.g.
  * http://, rtmp:// etc. along with buffer dimensions */
 	if (arg_lookup(args, "stream", 0, &val)){
+		if (!val){
+			LOG("missing stream source argument.\n");
+			return EXIT_FAILURE;
+		}
+		LOG("trying to stream: %s\n", val);
+
 		media = libvlc_media_new_location(decctx.vlc, val);
 		libvlc_set_user_agent(decctx.vlc,
 			"MrSmith",
