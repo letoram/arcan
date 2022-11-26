@@ -3520,6 +3520,22 @@ static void register_tuimeta(lua_State* L)
 	{"inactive", TUI_COL_INACTIVE},
 	{"reference", TUI_COL_REFERENCE},
 	{"ui", TUI_COL_UI},
+	{"ref_black", TUI_COL_TBASE+0},
+	{"ref_red", TUI_COL_TBASE+1},
+	{"ref_green", TUI_COL_TBASE+2},
+	{"ref_yellow", TUI_COL_TBASE+3},
+	{"ref_blue", TUI_COL_TBASE+4},
+	{"ref_magenta", TUI_COL_TBASE+5},
+	{"ref_cyan", TUI_COL_TBASE+6},
+	{"ref_grey", TUI_COL_TBASE+8},
+	{"ref_light_grey", TUI_COL_TBASE+7},
+	{"ref_light_red", TUI_COL_TBASE+9},
+	{"ref_light_green", TUI_COL_TBASE+10},
+	{"ref_light_yellow", TUI_COL_TBASE+11},
+	{"ref_light_blue", TUI_COL_TBASE+12},
+	{"ref_light_magenta", TUI_COL_TBASE+13},
+	{"ref_light_cyan", TUI_COL_TBASE+14},
+	{"ref_white", TUI_COL_TBASE+15},
 	};
 	lua_pushliteral(L, "colors");
 	lua_newtable(L);
