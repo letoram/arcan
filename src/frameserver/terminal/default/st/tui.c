@@ -64,6 +64,7 @@ typedef struct {
 static
 struct {
 	int fd;
+	int mode;
 	struct tui_context *T;
 	bool dead;
 	bool mouse_sel;
@@ -128,11 +129,10 @@ static struct tui_cell glyph_to_cell(Glyph g)
 
 void xsetmode(int set, unsigned int flags)
 {
-/* enum win_mode:
- *  visible, focused, appkeypad, mousebtn, mousemotion
- *  reverse, kbdlock, hide, appcursor, mousegr, 8bit, blink
- *  fblink, focus, mousex10, mousemany, brcktpaste, numlock
- *  mouse */
+	int mode = term.mode;
+	MODBIT(term.mode, set, flags);
+	if ((term.mode & MODE_REVERSE) != (mode & MODE_REVERSE))
+		redraw();
 }
 
 int
@@ -286,6 +286,18 @@ static void on_key(struct tui_context* c, uint32_t symest,
 				mask == TUIK_ANY_MOD ||
 				(mask == TUIK_NO_MOD && !mods) ||
 				(mask & mods)){
+
+				if (key[i].appcursor){
+					if ((term.mode & MODE_APPCURSOR)){
+						if (key[i].appcursor < 0)
+							continue;
+					}
+					else {
+						if (key[i].appcursor > 0)
+							continue;
+					}
+				}
+
 				str = key[i].s;
 				break;
 			}
