@@ -1654,6 +1654,9 @@ static int reqwnd(lua_State* L)
 			meta.hint = TUIWND_EMBED;
 			embed_fl = 3;
 		}
+		else if (strcmp(hintstr, "swallow") == 0){
+			meta.hint = TUIWND_SWALLOW;
+		}
 		else
 			luaL_error(L,"new_window(..., >hint<) "
 				"unknown hint (split-(tldr), join-(tldr), tab or embed");
