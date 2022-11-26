@@ -575,7 +575,8 @@ enum tui_subwnd_hint {
 	TUIWND_JOIN_TOP = 7,
 	TUIWND_JOIN_DOWN = 8,
 	TUIWND_TAB = 9,
-	TUIWND_EMBED = 10
+	TUIWND_EMBED = 10,
+	TUIWND_SWALLOW = 11
 };
 
 struct tui_subwnd_req {
