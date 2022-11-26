@@ -171,8 +171,11 @@ int launch_mode(const char* modestr,
 {
 	char* debug = getenv("ARCAN_FRAMESERVER_DEBUGSTALL");
 
-	if (!debug)
+	if (!debug){
 		toggle_logdev(modestr);
+		fprintf(stderr, "mode: %s, arg: %s\n",
+			modestr, getenv("ARCAN_ARG") ? getenv("ARCAN_ARG") : " [missing] ");
+	}
 
 	struct arg_arr* arg = NULL;
 	struct arcan_shmif_cont con = arcan_shmif_open_ext(flags,
