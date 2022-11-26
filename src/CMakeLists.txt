@@ -201,8 +201,10 @@ else()
 	amsg("${CL_YEL}\t-D(APPL_DEST, RES_DEST, APIMAN_DEST, MAN_DEST, SCRIPTS_DEST)=${CL_GRN}/some/path${CL_RST}")
 	amsg("")
 
+	if (NOT DEFINED AUDIO_PLATFORM)
 	# no other audio platforms supported currently
-	set(AUDIO_PLATFORM "openal")
+		set(AUDIO_PLATFORM "openal")
+	endif()
 endif()
 
 if (BUILD_PRESET STREQUAL "everything" AND NOT (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client" OR ${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))

@@ -15,7 +15,10 @@
 set(AUDIO_LIBRARIES "")
 set(AUDIO_PLATFORM_SOURCES "")
 
-if(AUDIO_PLATFORM STREQUAL "openal")
+if (AUDIO_PLATFORM STREQUAL "stub")
+	set(AUDIO_PLATFORM_SOURCES ${PLATFORM_ROOT}/stub/audio.c)
+
+elseif(AUDIO_PLATFORM STREQUAL "openal")
 	# need the separation here to not confuse openAL here with
 	# the version that we patch into LWA
 	if (EXISTS ${EXTERNAL_SRC_DIR}/git/openal AND STATIC_OPENAL)

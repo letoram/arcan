@@ -1308,7 +1308,8 @@ arcan_errc arcan_frameserver_audioframe_direct(void* aobj,
 	if (buffer == -1 || src->segid == SEGID_UNKNOWN)
 		return ARCAN_ERRC_NOTREADY;
 
-	assert(src->watch_const == 0xfeed);
+	if (src->watch_const != 0xfeed)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 /* we need to switch to an interface where we can retrieve a set number of
  * buffers, matching the number of set bits in amask, then walk from ind-1 and
