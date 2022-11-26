@@ -19,6 +19,9 @@
 # of the licensing pollution and overhead.
 #
 
+add_executable(arcan_lwa)
+
+if (AUDIO_PLATFORM STREQUAL "openal")
 ExternalProject_Add(openal_lwa
 	SOURCE_DIR ${EXTERNAL_SRC_DIR}/git/openal
 	BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/openal_lwa_static
@@ -54,26 +57,35 @@ ExternalProject_Add(openal_lwa
 		-DARCAN_SHMIF_PLATFORM_HEADER=${CMAKE_CURRENT_SOURCE_DIR}/platform/platform.h
 )
 
-ExternalProject_Get_Property(openal_lwa SOURCE_DIR)
-ExternalProject_Get_Property(openal_lwa BINARY_DIR)
+	ExternalProject_Get_Property(openal_lwa SOURCE_DIR)
+	ExternalProject_Get_Property(openal_lwa BINARY_DIR)
 
-set(LWA_LIBRARIES
-	${LWA_LIBRARIES} ${CMAKE_CURRENT_BINARY_DIR}/openal_lwa_static/libopenal.a
-)
+	set(LWA_LIBRARIES
+		${LWA_LIBRARIES} ${CMAKE_CURRENT_BINARY_DIR}/openal_lwa_static/libopenal.a
+	)
 
-set(LWA_INCLUDES
-	${CMAKE_CURRENT_BINARY_DIR}/lwa/include/AL
-	${INCLUDE_DIRS}
-)
+	set(LWA_INCLUDES
+		${CMAKE_CURRENT_BINARY_DIR}/lwa/include/AL
+		${INCLUDE_DIRS}
+	)
 
-add_executable(arcan_lwa
+	set(LWA_SOURCES ${PLATFORM_ROOT}/audio/openal.c)
+	add_dependencies(openal_lwa arcan_shmif_int)
+	add_dependencies(arcan_lwa openal_lwa)
+
+elseif (AUDIO_PLATFORM STREQUAL "stub")
+	set(LWA_SOURCES ${PLATFORM_ROOT}/stub/audio.c)
+endif()
+
+set(LWA_SOURCES
 	${SOURCES}
 	${AGP_SOURCES}
 	${LWA_PLATFORM}
 	${PLATFORM_ROOT}/arcan/video.c
-	${PLATFORM_ROOT}/audio/openal.c
+	${LWA_SOURCES}
 )
 
+target_sources(arcan_lwa PUBLIC ${LWA_SOURCES})
 add_sanitizers(arcan_lwa)
 
 if (${VIDEO_PLATFORM} MATCHES "egl-dri")
@@ -81,15 +93,12 @@ if (${VIDEO_PLATFORM} MATCHES "egl-dri")
 		APPEND PROPERTY COMPILE_DEFINITIONS EGL_DMA_BUF)
 endif()
 
-add_dependencies(openal_lwa arcan_shmif_int)
-add_dependencies(arcan_lwa arcan_shmif_int arcan_shmif_intext openal_lwa ${MAIN_DEPS})
+add_dependencies(arcan_lwa arcan_shmif_int arcan_shmif_intext ${MAIN_DEPS})
 
 target_compile_definitions(arcan_lwa PRIVATE
 	ARCAN_LWA
 	${ARCAN_DEFINITIONS}
 )
-
-add_dependencies(arcan_lwa openal_lwa)
 
 target_include_directories(arcan_lwa PRIVATE ${INCLUDE_DIRS})
 target_link_libraries(arcan_lwa
