@@ -1281,14 +1281,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		close(ndev);
 	}
 
-#ifdef SALLOW_ST
-	if (arg_lookup(args, "interp", 0, &val)){
-		if (val && strcmp(val, "st") == 0){
-			return st_tui_main(con, args);
-		}
-	}
-#endif
-
 /*
  * this is the first migration part we have out of the normal vt- legacy,
  * see cli.c
@@ -1299,6 +1291,14 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		else
 			return arcterm_cli_run(con, args);
 	}
+
+#ifdef SALLOW_ST
+	if (arg_lookup(args, "interp", 0, &val)){
+		if (val && strcmp(val, "st") == 0){
+			return st_tui_main(con, args);
+		}
+	}
+#endif
 
 	if (arg_lookup(args, "help", 0, &val)){
 		dump_help();

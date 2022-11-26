@@ -282,8 +282,7 @@ static void on_key(struct tui_context* c, uint32_t symest,
 	for (size_t i = 0; i < LEN(key); i++){
 		if (key[i].k == symest){
 			int mask = key[i].mask;
-			if (
-				mask == TUIK_ANY_MOD ||
+			if (mask == TUIK_ANY_MOD ||
 				(mask == TUIK_NO_MOD && !mods) ||
 				(mask & mods)){
 
@@ -294,6 +293,17 @@ static void on_key(struct tui_context* c, uint32_t symest,
 					}
 					else {
 						if (key[i].appcursor > 0)
+							continue;
+					}
+				}
+
+				if (key[i].appkey){
+					if ((term.mode & MODE_APPKEYPAD)){
+						if (key[i].appkey < 0)
+							continue;
+					}
+					else {
+						if (key[i].appkey > 0)
 							continue;
 					}
 				}
@@ -371,6 +381,11 @@ int st_tui_main(arcan_tui_conn* conn, struct arg_arr* args)
 		.visibility = on_visibility,
 		.exec_state = on_exec_state
 	};
+
+	const char* val;
+	int ind = 0;
+	while (arg_lookup(args, "env", ind++, &val) && val)
+		putenv(strdup(val));
 
 	tnew(80, 25);
 	term.fd = ttynew(opt_line, shell, opt_io, opt_cmd);
