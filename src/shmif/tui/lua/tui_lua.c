@@ -1669,6 +1669,7 @@ static int reqwnd(lua_State* L)
 		tui_type = TUI_WND_DOCKICON;
 	else if (strcmp(type, "handover") == 0)
 		tui_type = TUI_WND_HANDOVER;
+	else if (strcmp(type, "tui") == 0){}
 	else
 		luaL_error(L,
 			"new_window(>type<, ...) unsupported type (popup, handover, dock)");
