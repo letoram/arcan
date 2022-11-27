@@ -582,7 +582,7 @@ symtable.patch = function(tbl, iotbl)
 			end
 
 			tbl.last = iotbl;
-		elseif tbl.last and tbl.last.keysym == iotbl.keysym then
+		elseif tbl.last and tbl.last.subid == iotbl.subid then
 			tbl.last = nil;
 			tbl.counter = tbl.delay;
 		end
