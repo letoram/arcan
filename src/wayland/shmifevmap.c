@@ -181,7 +181,7 @@ static void forward_key(struct bridge_client* cl, uint32_t key, bool pressed)
 		uint32_t depressed = xkb_state_serialize_mods(state,XKB_STATE_MODS_DEPRESSED);
 		uint32_t latched = xkb_state_serialize_mods(state, XKB_STATE_MODS_LATCHED);
 		uint32_t locked = xkb_state_serialize_mods(state, XKB_STATE_MODS_LOCKED);
-		uint32_t group = xkb_state_serialize_mods(state, XKB_STATE_MODS_EFFECTIVE);
+		uint32_t group = xkb_state_serialize_layout(state, XKB_STATE_LAYOUT_EFFECTIVE);
 
 		wl_keyboard_send_modifiers(seat->kbd, serial, depressed, latched, locked, group);
 		wl_keyboard_send_key(seat->kbd, serial, arcan_timemillis(), key, pressed);
