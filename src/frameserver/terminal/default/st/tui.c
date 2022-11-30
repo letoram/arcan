@@ -382,8 +382,19 @@ int st_tui_main(arcan_tui_conn* conn, struct arg_arr* args)
 		.exec_state = on_exec_state
 	};
 
-	const char* val;
+	static const char* unset[] = {
+		"COLUMNS", "LINES", "TERMCAP",
+		"ARCAN_ARG", "ARCAN_APPLPATH", "ARCAN_APPLTEMPPATH",
+		"ARCAN_FRAMESERVER_LOGDIR", "ARCAN_RESOURCEPATH",
+		"ARCAN_SHMKEY", "ARCAN_SOCKIN_FD"
+	};
+
 	int ind = 0;
+	const char* val;
+
+	for (int i=0; i < sizeof(unset)/sizeof(unset[0]); i++)
+		unsetenv(unset[i]);
+
 	while (arg_lookup(args, "env", ind++, &val) && val)
 		putenv(strdup(val));
 
