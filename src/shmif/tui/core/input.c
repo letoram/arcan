@@ -159,30 +159,20 @@ void tui_input_event(
 	}
 	else if (ioev->devkind == EVENT_IDEVKIND_MOUSE){
 		if (ioev->datatype == EVENT_IDATATYPE_ANALOG){
-			if (ioev->subid == 0){
-				tui->mouse_x = ioev->input.analog.axisval[0] / tui->cell_w;
-			}
-			else if (ioev->subid == 1){
-				int yv = ioev->input.analog.axisval[0];
-				tui->mouse_y = yv / tui->cell_h;
+			bool update = false;
+			int x, y;
+			if (!arcan_shmif_mousestate_ioev(&tui->acon, tui->mouse_state, ioev, &x, &y))
+				return;
 
-				bool upd = false;
-				if (tui->mouse_x != tui->lm_x){
-					tui->lm_x = tui->mouse_x;
-					upd = true;
-				}
-				if (tui->mouse_y != tui->lm_y){
-					tui->lm_y = tui->mouse_y;
-					upd = true;
-				}
+			tui->mouse_x = x / tui->cell_w;
+			tui->mouse_y = y / tui->cell_h;
 
-				if (tui->handlers.input_mouse_motion){
-					if (upd)
-					tui->handlers.input_mouse_motion(tui, false,
-						tui->mouse_x, tui->mouse_y, tui->modifiers, tui->handlers.tag);
-					return;
-				}
+			if (tui->handlers.input_mouse_motion){
+				tui->handlers.input_mouse_motion(tui, false,
+					tui->mouse_x, tui->mouse_y, tui->modifiers, tui->handlers.tag);
 			}
+
+			return;
 		}
 		else if (ioev->datatype == EVENT_IDATATYPE_DIGITAL){
 			if (ioev->subid){

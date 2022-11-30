@@ -63,6 +63,7 @@ struct tui_context {
 
 /* mouse and/or selection management */
 	int mouse_x, mouse_y;
+	uint8_t mouse_state[ASHMIF_MSTATE_SZ];
 	uint32_t mouse_btnmask;
 	int lm_x, lm_y;
 	int bsel_x, bsel_y;
