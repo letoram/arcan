@@ -1704,7 +1704,6 @@ int main(int argc, char* argv[])
 		SET_ARCAN_RUNTIME();
 	}
 
-
 #ifdef ENABLE_SECCOMP
 /* Unfortunately a rather obese list, part of it is our lack of control
  * over the whole FFI nonsense and the keylayout creation/transfer. You

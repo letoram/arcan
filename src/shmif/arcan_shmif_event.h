@@ -1081,7 +1081,7 @@ enum ARCAN_TARGET_SKIPMODE {
 		ARCAN_IOFL_LEAVE = 4,
 	};
 
-	typedef struct {
+	struct arcan_ioevent {
 		enum ARCAN_EVENT_IO kind;
 		enum ARCAN_EVENT_IDEVKIND devkind;
 		enum ARCAN_EVENT_IDATATYPE datatype;
@@ -1103,7 +1103,9 @@ enum ARCAN_TARGET_SKIPMODE {
 	 * risking a saturated event-queue or latency blocks from signal */
 		uint64_t pts;
 		arcan_ioevent_data input;
-	} arcan_ioevent;
+	};
+
+	typedef struct arcan_ioevent arcan_ioevent;
 
 	/*
 	 * internal engine only

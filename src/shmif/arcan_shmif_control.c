@@ -3214,14 +3214,21 @@ static bool absclamp(
 	return res;
 }
 
+bool arcan_shmif_mousestate(
+	struct arcan_shmif_cont* con, uint8_t* state,
+	struct arcan_event* inev, int* out_x, int* out_y)
+{
+	return arcan_shmif_mousestate_ioev(con, state, &inev->io, out_x, out_y);
+}
+
 /*
  * Weak attempt of trying to bring some order in the accumulated mouse
  * event handling chaos - definitely one of the bigger design fails that
  * can't be fixed easily due to legacy.
  */
-bool arcan_shmif_mousestate(
+bool arcan_shmif_mousestate_ioev(
 	struct arcan_shmif_cont* con, uint8_t* state,
-	struct arcan_event* inev, int* out_x, int* out_y)
+	struct arcan_ioevent* inev, int* out_x, int* out_y)
 {
 	struct mstate* ms = (struct mstate*) state;
 
@@ -3237,48 +3244,48 @@ bool arcan_shmif_mousestate(
 	}
 
 	if (!state ||
-		inev->io.datatype != EVENT_IDATATYPE_ANALOG ||
-		inev->io.devkind != EVENT_IDEVKIND_MOUSE
+		inev->datatype != EVENT_IDATATYPE_ANALOG ||
+		inev->devkind != EVENT_IDEVKIND_MOUSE
 	)
 		return false;
 
 /* state switched between samples, reset tracking */
-	bool gotrel = inev->io.input.analog.gotrel;
+	bool gotrel = inev->input.analog.gotrel;
 	if (gotrel != ms->inrel){
 		ms->inrel = gotrel;
 		ms->ax = ms->ay = ms->lx = ms->ly = 0;
 	}
 
 /* packed, both axes in one sample */
-	if (inev->io.subid == 2){
+	if (inev->subid == 2){
 /* relative input sample, are we in relative state? */
 		if (gotrel){
 /* good case, the sample is already what we want */
 			if (ms->rel){
-				*out_x = ms->lx = inev->io.input.analog.axisval[0];
-				*out_y = ms->ly = inev->io.input.analog.axisval[2];
+				*out_x = ms->lx = inev->input.analog.axisval[0];
+				*out_y = ms->ly = inev->input.analog.axisval[2];
 				return *out_x || *out_y;
 			}
 /* bad case, the sample is relative and we want absolute,
  * accumulate and clamp */
-			ms->ax += inev->io.input.analog.axisval[0];
-			ms->ay += inev->io.input.analog.axisval[2];
+			ms->ax += inev->input.analog.axisval[0];
+			ms->ay += inev->input.analog.axisval[2];
 
 			return absclamp(ms, con, out_x, out_y);
 		}
 /* good case, the sample is absolute and we want absolute, clamp */
     else {
 			if (!ms->rel){
-				ms->ax = inev->io.input.analog.axisval[0];
-				ms->ay = inev->io.input.analog.axisval[2];
+				ms->ax = inev->input.analog.axisval[0];
+				ms->ay = inev->input.analog.axisval[2];
 				return absclamp(ms, con, out_x, out_y);
 			}
 /* worst case, the sample is absolute and we want relative,
  * need history AND discard large jumps */
-			int dx = inev->io.input.analog.axisval[0] - ms->lx;
-			int dy = inev->io.input.analog.axisval[2] - ms->ly;
-			ms->lx = inev->io.input.analog.axisval[0];
-			ms->ly = inev->io.input.analog.axisval[2];
+			int dx = inev->input.analog.axisval[0] - ms->lx;
+			int dy = inev->input.analog.axisval[2] - ms->ly;
+			ms->lx = inev->input.analog.axisval[0];
+			ms->ly = inev->input.analog.axisval[2];
 			if (!dx && !dy){
 				return false;
 			}
@@ -3289,22 +3296,22 @@ bool arcan_shmif_mousestate(
 	}
 
 /* one sample, X axis */
-	else if (inev->io.subid == 0){
+	else if (inev->subid == 0){
 		if (gotrel){
 			if (ms->rel){
-				*out_x = ms->lx = inev->io.input.analog.axisval[0];
+				*out_x = ms->lx = inev->input.analog.axisval[0];
 				return *out_x;
 			}
-			ms->ax += inev->io.input.analog.axisval[0];
+			ms->ax += inev->input.analog.axisval[0];
 			return absclamp(ms, con, out_x, out_y);
 		}
 		else {
 			if (!ms->rel){
-				ms->ax = inev->io.input.analog.axisval[0];
+				ms->ax = inev->input.analog.axisval[0];
 				return absclamp(ms, con, out_x, out_y);
 			}
-			int dx = inev->io.input.analog.axisval[0] - ms->lx;
-			ms->lx = inev->io.input.analog.axisval[0];
+			int dx = inev->input.analog.axisval[0] - ms->lx;
+			ms->lx = inev->input.analog.axisval[0];
 			if (!dx)
 				return false;
 			*out_x = dx;
@@ -3314,22 +3321,22 @@ bool arcan_shmif_mousestate(
 	}
 
 /* one sample, Y axis */
-	else if (inev->io.subid == 1){
+	else if (inev->subid == 1){
 		if (gotrel){
 			if (ms->rel){
-				*out_y = ms->ly = inev->io.input.analog.axisval[0];
+				*out_y = ms->ly = inev->input.analog.axisval[0];
 				return *out_y;
 			}
-			ms->ay += inev->io.input.analog.axisval[0];
+			ms->ay += inev->input.analog.axisval[0];
 			return absclamp(ms, con, out_x, out_y);
 		}
 		else {
 			if (!ms->rel){
-				ms->ay = inev->io.input.analog.axisval[0];
+				ms->ay = inev->input.analog.axisval[0];
 				return absclamp(ms, con, out_x, out_y);
 			}
-			int dy = inev->io.input.analog.axisval[0] - ms->ly;
-			ms->ly = inev->io.input.analog.axisval[0];
+			int dy = inev->input.analog.axisval[0] - ms->ly;
+			ms->ly = inev->input.analog.axisval[0];
 			if (!dy)
 				return false;
 			*out_x = 0;

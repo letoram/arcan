@@ -210,7 +210,6 @@ static bool late_bind(
 		managed = true;
 	}
 
-
 /*
  * only in a managed context can we retrieve the initial state truthfully, as
  * it only takes a NEWSEGMENT event, not a context activation like for the
@@ -245,6 +244,7 @@ static bool late_bind(
 
 	tui_fontmgmt_setup(res, init);
 
+	arcan_shmif_mousestate_setup(&res->acon, false, res->mouse_state);
 	res->acon.hints = SHMIF_RHINT_TPACK | SHMIF_RHINT_VSIGNAL_EV;
 
 /* clipboard, timer callbacks, no IDENT */

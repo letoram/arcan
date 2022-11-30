@@ -74,6 +74,7 @@ int arcan_fdscan(int** listout);
 
 struct arcan_shmif_cont;
 struct arcan_event;
+struct arcan_ioevent;
 
 /*
  * Note the different semantics in return- values for _poll versus _wait
@@ -513,6 +514,10 @@ void arcan_shmif_mousestate_setup(
 bool arcan_shmif_mousestate(
 	struct arcan_shmif_cont*, uint8_t* state,
 	struct arcan_event* inev, int* out_x, int* out_y);
+
+bool arcan_shmif_mousestate_ioev(
+	struct arcan_shmif_cont*, uint8_t* state,
+	struct arcan_ioevent* inev, int* out_x, int* out_y);
 
 /*
  * Part of auxiliary library, pulls in more dependencies and boiler-plate
