@@ -1917,8 +1917,7 @@ static int write_border(lua_State* L)
 	size_t y2 = luaL_checkinteger(L, 5);
 	int fl = luaL_optinteger(L, 7, 0);
 
-	struct tui_screen_attr mattr;
-	arcan_tui_defattr(ib->tui, &mattr);
+	struct tui_screen_attr mattr = arcan_tui_defattr(ib->tui, NULL);
 
 	if (lua_type(L, 6) == LUA_TTABLE){
 		apply_table(L, 6, &mattr);

@@ -840,7 +840,7 @@ void arcan_tui_write(struct tui_context* c,
 		return;
 
 /* write + advance */
-	write_front_checked(c, c->cx, c->cy, ucode, attr);
+	write_front_checked(c, c->cx, c->cy, ucode, attr ? attr : &c->defattr);
 
 /* advance and wrap or clamp */
 	c->cx = c->cx + 1;
