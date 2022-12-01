@@ -271,11 +271,13 @@ static void on_key(struct tui_context* c, uint32_t symest,
 {
 	char *str = NULL;
 	if (mods & TUIM_SHIFT){
-		if (symest == TUIK_PAGEUP){
+		if (symest == TUIK_UP){
 			kscrollup(&(Arg){.i = -1});
+			return;
 		}
-		else if (symest == TUIK_PAGEDOWN){
+		else if (symest == TUIK_DOWN){
 			kscrolldown(&(Arg){.i = -1});
+			return;
 		}
 	}
 
