@@ -320,8 +320,8 @@ static Key key[] = {
 	{ TUIK_DELETE,        ControlMask,    "\033[3;5~",    +1,    0},
 	{ TUIK_DELETE,        ShiftMask,      "\033[2K",      -1,    0},
 	{ TUIK_DELETE,        ShiftMask,      "\033[3;2~",    +1,    0},
-	{ TUIK_DELETE,        TUIK_ANY_MOD,     "\033[P",       +1,    0},
-	{ TUIK_DELETE,        TUIK_ANY_MOD,     "\033[3~",      -1,    0},
+/*	{ TUIK_DELETE,        TUIK_ANY_MOD,     "\033[P",       +1,    0}, */
+	{ TUIK_DELETE,        TUIK_ANY_MOD,     "\033[3~",      0,    0},
 	{ TUIK_BACKSPACE,     0x0000,      "\177",          0,    0},
 	{ TUIK_BACKSPACE,     Mod1Mask,       "\033\177",      0,    0},
 	{ TUIK_HOME,          ShiftMask,      "\033[2J",       0,   -1},
