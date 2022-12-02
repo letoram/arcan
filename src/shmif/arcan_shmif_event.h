@@ -1613,6 +1613,8 @@ enum ARCAN_TARGET_SKIPMODE {
 			float fhint;
 		} framestatus;
 	};
+
+	uint64_t frame_id;
 } arcan_extevent;
 
 typedef struct arcan_event {
