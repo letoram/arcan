@@ -1,7 +1,11 @@
 ## Lua
+ * inbound events now have a 'frame' tag for pairing with verbose-frame notification
+ * util:random\_interval(low,high) added for CSPRNG non-biased interval RNG
+ * util:random\_bytes(len) added for CSPRNG byte string
 
 ## Core
  * respect border attribute in text rasteriser
+ * added frame\_id to external events that pairs with shmif-SIGVID signals
 
 ## Tui
  * nbio asynch type confusion fix (function becomes pcall:userdata)
@@ -19,6 +23,7 @@
 
 ## Platform
  * audio: engine audio split out into platform bit
+ * audio: stub platform added
  * egl-dri: evict streams
  * egl-dri: default to atomic over legacy
 

@@ -47,6 +47,16 @@
 -- constrained, the client can always initiate resizes within a valid range and
 -- layout, animations and so on need to be able to adapt.
 --
+-- Most of the key/values in sttatustbl depend on the kind, with a notable
+-- exception being 'frame'. Events are delivered in order, but their
+-- synchronisation to the stream of audio and video frames may drift. To
+-- counteract this there is a client provided clock. This can be combined with
+-- the verbose delivery mode (ref:target_flags) in order to more tightly couple
+-- an inbound event with its visual state at the time. This should rarely
+-- matter with the main exception being viewport events and custom messages as
+-- used with protocol bridges (e.g. X11) that may require a tighter timing when
+-- events are used to annotate the contents of a frame.
+--
 -- Possible statustbl.kind values: "preroll", "resized", "ident",
 -- "coreopt", "message", "failure", "framestatus", "streaminfo",
 -- "streamstatus", "segment_request", "state_size",

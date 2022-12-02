@@ -148,6 +148,7 @@ struct shmif_hidden {
 	void* video_hook_data;
 	uint8_t vbuf_ind, vbuf_cnt;
 	bool vbuf_nbuf_active;
+	uint64_t vframe_id;
 	shmif_pixel* vbuf[ARCAN_SHMIF_VBUFC_LIM];
 
 	shmif_trigger_hook audio_hook;
@@ -1146,14 +1147,18 @@ static int enqueue_internal(
 	if (!category)
 		ctx->eventbuf[*ctx->back].category = category = EVENT_EXTERNAL;
 
-/* some events affect internal state tracking, synch those here -
- * not particularly expensive as the frequency and max-rate of events
- * client->server is really low */
-	if (category == EVENT_EXTERNAL &&
-		src->ext.kind == ARCAN_EVENT(REGISTER) &&
-		(src->ext.registr.guid[0] || src->ext.registr.guid[1])){
-		c->priv->guid[0] = src->ext.registr.guid[0];
-		c->priv->guid[1] = src->ext.registr.guid[1];
+/* Some events affect internal state tracking, synch those here - not
+ * particularly expensive as the frequency and max-rate of events
+ * client->server is really low. Tag the event with the last signalled frame
+ * for it to act as a clock. */
+	if (category == EVENT_EXTERNAL){
+		ctx->eventbuf[*ctx->back].ext.frame_id = c->priv->vframe_id;
+
+		if (src->ext.kind == ARCAN_EVENT(REGISTER) &&
+			(src->ext.registr.guid[0] || src->ext.registr.guid[1])){
+			c->priv->guid[0] = src->ext.registr.guid[0];
+			c->priv->guid[1] = src->ext.registr.guid[1];
+		}
 	}
 
 	FORCE_SYNCH();
@@ -1772,6 +1777,7 @@ static bool step_v(struct arcan_shmif_cont* ctx, int sigv)
 /* store the current hint flags, could do away with this stage by
  * only changing hints at resize_ stage */
 	atomic_store(&ctx->addr->hints, ctx->hints);
+	priv->vframe_id++;
 
 /* subregion is part of the shared block and not the video buffer
  * itself. this is a design flaw that should be moved into a

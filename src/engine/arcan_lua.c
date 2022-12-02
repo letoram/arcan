@@ -3801,7 +3801,6 @@ static void push_view(lua_State* ctx,
 	tblnum(ctx, "anchor_h",ev->viewport.h, top);
 	tblnum(ctx, "edge", ev->viewport.edge, top);
 	tblnum(ctx, "ext_id", ev->viewport.ext_id, top);
-
 	tblbool(ctx, "scaled", ev->viewport.embedded == 2, top);
 	tblbool(ctx, "hintfwd", ev->viewport.embedded == 3, top);
 
@@ -4358,6 +4357,7 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
+		tblnum(ctx, "frame", ev->ext.frame_id, top);
 		switch (ev->ext.kind){
 		case EVENT_EXTERNAL_IDENT:
 			tblstr(ctx, "kind", "ident", top);
@@ -11582,6 +11582,50 @@ static int base64_encode(lua_State* ctx)
 	LUA_ETRACE("util:base64_encode", NULL, 1);
 }
 
+static int chacha_interval(lua_State* ctx)
+{
+	LOG("util:random_interval");
+	union {
+		uint8_t u8[8];
+		int64_t b64;
+	} buf;
+
+	int64_t low = luaL_checknumber(ctx, 1);
+	int64_t high = luaL_checknumber(ctx, 2);
+	unsigned long long len = high - low;
+
+	int shift = 64 - __builtin_clzll(len);
+
+	do {
+	  arcan_random(buf.u8, 8);
+		buf.b64 = buf.b64 >> shift;
+	}
+	while (buf.b64 >= len);
+
+	lua_pushnumber(ctx, (double) buf.b64);
+	return 1;
+}
+
+static int chacha_random(lua_State* ctx)
+{
+	LOG("util:random_bytes");
+	size_t count = luaL_checknumber(ctx, 1);
+	uint8_t* buf =
+		arcan_alloc_mem(count,
+			ARCAN_MEM_STRINGBUF,
+			ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL,
+			ARCAN_MEMALIGN_NATURAL
+		);
+	if (buf){
+		arcan_random(buf, count);
+		lua_pushlstring(ctx, (char*) buf, count);
+		arcan_mem_free(buf);
+		return 1;
+	}
+	else
+		return 0;
+}
+
 static int base64_decode(lua_State* ctx)
 {
 	LUA_TRACE("util:base64_encode");
@@ -11632,6 +11676,14 @@ static void extend_baseapi(lua_State* ctx)
 
 	lua_pushliteral(ctx, "hash");
 	lua_pushcfunction(ctx, hash_string);
+	lua_rawset(ctx, top);
+
+	lua_pushliteral(ctx, "random_interval");
+	lua_pushcfunction(ctx, chacha_interval);
+	lua_rawset(ctx, top);
+
+	lua_pushliteral(ctx, "random_bytes");
+	lua_pushcfunction(ctx, chacha_random);
 	lua_rawset(ctx, top);
 
 	lua_setglobal(ctx, "util");
