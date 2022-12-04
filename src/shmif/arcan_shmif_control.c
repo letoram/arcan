@@ -1121,6 +1121,8 @@ static int enqueue_internal(
 
 	if (c->priv->log_event){
 		struct arcan_event outev = *src;
+		if (!outev.category)
+			outev.category = EVENT_EXTERNAL;
 		log_print("(@%"PRIxPTR"->)%s",
 			(uintptr_t) c, arcan_shmif_eventstr(&outev, NULL, 0));
 	}
