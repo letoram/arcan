@@ -1896,7 +1896,6 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 
 /* if the source is broken, convert dst to null store (color with bad prg) */
 	if (src->vstore->txmapped == TXSTATE_OFF ||
-		src->vstore->vinf.text.glid == 0 ||
 		FL_TEST(src, FL_PRSIST) ||
 		FL_TEST(dst, FL_PRSIST)
 	){
@@ -1906,10 +1905,13 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 			return ARCAN_OK;
 		}
 
-		populate_vstore(&src->vstore);
-		struct agp_vstore* store = src->vstore;
+/* transfer the vstore data, this will have no effect for real txstate off
+ * but for the color_surface we copy the colors and the shader used */
+		populate_vstore(&dst->vstore);
+		struct agp_vstore* store = dst->vstore;
 		store->txmapped = TXSTATE_OFF;
-		src->program = 0;
+		store->vinf.col = src->vstore->vinf.col;
+		dst->program = src->program;
 
 		FLAG_DIRTY(dst);
 		return ARCAN_OK;
