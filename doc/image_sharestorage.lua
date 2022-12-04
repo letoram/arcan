@@ -14,8 +14,9 @@
 -- rendertarget.
 -- @note: Video image post processing (scale, flips and filtermode) are bound
 -- to the texture store and not to any- single object.
--- @note: non-textured objects (null, color, instances and persistant) cannot
--- bu used as src.
+-- @note: Using a broken or empty vstore as src will convert dst into the
+-- equivalent of a null_surface. Using a color surface will copy the colour
+-- values and the assigned shader.
 -- @note: Sharing into a *dst* that is also used as the storage for a
 -- rendertarget will invalidate the state of the rendertarget and an explicit
 -- ref:rendertarget_forceupdate will be called.
@@ -25,6 +26,8 @@
 -- stage or the result of using vid that shares backing store with a
 -- rendertarget will be undefined.
 -- @note: persistent objects and instances cannot be used as dst.
+-- @errata: prior to 0.6.3 src to dst transfer with a colour or null surface
+-- would transform both src and dst to null surface state.
 -- @group: image
 -- @cfunction: sharestorage
 -- @related: instance_image, null_surface
