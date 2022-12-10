@@ -1119,10 +1119,15 @@ static int enqueue_internal(
 		return 0;
 	}
 
+/* need some extra patching up for log-event to contain the proper values */
 	if (c->priv->log_event){
 		struct arcan_event outev = *src;
-		if (!outev.category)
+		if (!outev.category){
 			outev.category = EVENT_EXTERNAL;
+		}
+		if (outev.category == EVENT_EXTERNAL)
+			outev.ext.frame_id = c->priv->vframe_id;
+
 		log_print("(@%"PRIxPTR"->)%s",
 			(uintptr_t) c, arcan_shmif_eventstr(&outev, NULL, 0));
 	}
@@ -1803,8 +1808,9 @@ static bool step_v(struct arcan_shmif_cont* ctx, int sigv)
 		}
 
 		if (priv->log_event){
-			log_print("%lld: SIGVID (block: %d region: %zu,%zu-%zu,%zu)",
+			log_print("%lld: SIGVID (id: %"PRIu64", block: %d region: %zu,%zu-%zu,%zu)",
 				arcan_timemillis(),
+				priv->vframe_id,
 				(sigv & SHMIF_SIGBLK_NONE) ? 0 : 1,
 				(size_t)ctx->dirty.x1, (size_t)ctx->dirty.y1,
 				(size_t)ctx->dirty.x2, (size_t)ctx->dirty.y2
@@ -1816,8 +1822,9 @@ static bool step_v(struct arcan_shmif_cont* ctx, int sigv)
 	}
 	else {
 		if (priv->log_event){
-			log_print("%lld: SIGVID (block: %d full)",
+			log_print("%lld: SIGVID (id: %"PRIu64", block: %d full)",
 				arcan_timemillis(),
+				priv->vframe_id,
 				(sigv & SHMIF_SIGBLK_NONE) ? 0 : 1
 			);
 		}
