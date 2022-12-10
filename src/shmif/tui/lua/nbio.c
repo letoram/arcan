@@ -63,6 +63,52 @@ void alt_nbio_nonblock_cloexec(int fd, bool socket)
 		fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
 }
 
+static bool ensure_flush(lua_State* L, struct nonblock_io* ib, size_t timeout)
+{
+	bool rv = true;
+	struct pollfd fd = {
+		.fd = ib->fd,
+		.events = POLLOUT | POLLERR | POLLHUP | POLLNVAL
+	};
+
+/* since poll doesn't give much in terms of feedback across calls some crude
+ * timekeeping is needed to make sure we don't exceed a timeout by too much */
+	unsigned long long current = arcan_timemillis();
+	int status;
+
+/* writes can fail.. */
+	while ((status = alt_nbio_process_write(L, ib)) == 0){
+
+		if (timeout > 0){
+			unsigned long long now = arcan_timemillis();
+			if (now > current)
+				timeout -= now - current;
+			current = now;
+
+			if (timeout <= 0){
+				rv = false;
+				break;
+			}
+		}
+
+/* dst can die while waiting for write-state */
+		int rv = poll(&fd, 1, timeout);
+
+		if (-1 == rv && (errno == EAGAIN || errno == EINTR))
+				continue;
+
+		if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)){
+			rv = false;
+			break;
+		}
+	}
+
+	if (status < 0)
+		rv = false;
+
+	return rv;
+}
+
 static int connect_trypath(const char* local, const char* remote, int type)
 {
 /* always the risk of this expanding to something too large as well, fsck
@@ -289,6 +335,10 @@ static int nbio_closer(lua_State* L)
 	if (!(*ib))
 		LUA_ETRACE("open_nonblock:close", "already closed", 0);
 
+/* arbitrary timeout though we should not really hit this and the alternatives
+ * are all practically worse - the only other 'saving' grace' would be to fire
+ * the job in its own thread or fork() and let it timeout or die .. */
+	ensure_flush(L, *ib, 1000);
 	alt_nbio_close(L, ib);
 
 	LUA_ETRACE("open_nonblock:close", NULL, 0);
@@ -302,9 +352,9 @@ static int nbio_datahandler(lua_State* L)
 		LUA_ETRACE("open_nonblock:data_handler", "already closed", 0);
 
 /* always remove the last known handler refs */
-	if ((*ib)->data_handler != LUA_NOREF){
+	if ((*ib)->data_handler){
 		luaL_unref(L, LUA_REGISTRYINDEX, (*ib)->data_handler);
-		(*ib)->data_handler = LUA_NOREF;
+		(*ib)->data_handler = 0;
 	}
 
 /* tracking to ensure that we detect nbio_data_in -> cb ->data_handler */
@@ -319,20 +369,20 @@ static int nbio_datahandler(lua_State* L)
 /* update the handler field in ib, then we get the reference to ib and
  * send to the source - but also remove any previous one */
 	if (lua_type(L, 2) == LUA_TFUNCTION){
-		lua_pushvalue(L, 2);
 		intptr_t ref = luaL_ref(L, LUA_REGISTRYINDEX);
 		(*ib)->data_handler = ref;
 
 /* now get the reference to the userdata and attach that to the event-source,
  * this is so that we can later trigger on the event and access the userdata */
-		lua_pushvalue(L, 1);
 		ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+/* luaL_ pops the stack so make sure it is balanced */
+		lua_pushvalue(L, 1);
+		lua_pushvalue(L, 1);
 
 /* the job can fail to queue if a set amount of read_handler descriptors
  * are exceeded */
 		if (!add_job((*ib)->fd, O_RDONLY, ref)){
-			luaL_unref(L, LUA_REGISTRYINDEX, (*ib)->data_handler);
-			(*ib)->data_handler = LUA_NOREF;
 			luaL_unref(L, LUA_REGISTRYINDEX, ref);
 			lua_pushboolean(L, false);
 		}
@@ -787,7 +837,7 @@ static int opennonblock_tgt(lua_State* L, bool wr)
 	int src = wr ? outp[1] : outp[0];
 
 /* in any scenario where this would fail, "blocking" behavior is acceptable */
-	set_nonblock_cloexec(src, true);
+	alt_nbio_nonblock_cloexec(src, true);
 	struct arcan_event ev = {
 		.category = EVENT_TARGET,
 		.tgt.kind = wr ? TARGET_COMMAND_BCHUNK_IN : TARGET_COMMAND_BCHUNK_OUT
@@ -812,7 +862,6 @@ static int opennonblock_tgt(lua_State* L, bool wr)
 	conn->mode = wr ? O_WRONLY : O_RDONLY;
 	conn->fd = src;
 	conn->pending = NULL;
-	conn->data_handler = LUA_NOREF;
 
 	uintptr_t* dp = lua_newuserdata(L, sizeof(uintptr_t));
 	*dp = (uintptr_t) conn;
@@ -1009,7 +1058,6 @@ retryopen:
 	conn->mode = wrmode;
 	conn->pending = path;
 	conn->unlink_fn = unlink_fn;
-	conn->data_handler = LUA_NOREF;
 
 	uintptr_t* dp = lua_newuserdata(L, sizeof(uintptr_t));
 	*dp = (uintptr_t) conn;
@@ -1071,21 +1119,11 @@ void alt_nbio_data_in(lua_State* L, intptr_t tag)
 
 	struct nonblock_io** ibb = luaL_checkudata(L, -1, "nonblockIO");
 	struct nonblock_io* ib = *ibb;
-
-	if (!ib || ib->data_handler == LUA_NOREF)
+	if (!ib)
 		return;
 
 	lua_pop(L, 1);
 	lua_rawgeti(L, LUA_REGISTRYINDEX, ib->data_handler);
-
-/* shouldn't happen but safeguard out anyhow */
-	if (lua_type(L, -1) != LUA_TFUNCTION){
-		lua_pop(L, 1);
-		luaL_unref(L, LUA_REGISTRYINDEX, ib->data_handler);
-		ib->data_handler = LUA_NOREF;
-		return;
-	}
-
 	intptr_t ch = ib->data_handler;
 	ib->data_rearmed = false;
 
@@ -1167,48 +1205,8 @@ static int nbio_flush(lua_State* L)
 		return 1;
 	}
 
-	struct pollfd fd = {
-		.fd = ib->fd,
-		.events = POLLOUT | POLLERR | POLLHUP | POLLNVAL
-	};
-
-	bool rv = true;
-
-/* since poll doesn't give much in terms of feedback across calls some crude
- * timekeeping is needed to make sure we don't exceed a timeout by too much */
-	unsigned long long current = arcan_timemillis();
 	ssize_t timeout = luaL_optnumber(L, 2, -1);
-	int status;
-
-/* writes can fail.. */
-	while ((status = alt_nbio_process_write(L, ib)) == 0){
-
-		if (timeout > 0){
-			unsigned long long now = arcan_timemillis();
-			if (now > current)
-				timeout -= now - current;
-			current = now;
-
-			if (timeout <= 0){
-				rv = false;
-				break;
-			}
-		}
-
-/* dst can die while waiting for write-state */
-		int rv = poll(&fd, 1, timeout);
-
-		if (-1 == rv && (errno == EAGAIN || errno == EINTR))
-				continue;
-
-		if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)){
-			rv = false;
-			break;
-		}
-	}
-
-	if (status < 0)
-		rv = false;
+	bool rv = ensure_flush(L, ib, timeout);
 
 	lua_pushboolean(L, rv);
 	return 1;
