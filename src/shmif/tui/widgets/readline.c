@@ -838,7 +838,6 @@ static void step_history(
 		replace_str(T, M, M->in_history, strlen(M->in_history));
 		free(M->in_history);
 		M->in_history = NULL;
-		M->history_sz = 0;
 		return;
 	}
 
