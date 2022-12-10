@@ -3314,6 +3314,7 @@ static int targetmessage(lua_State* ctx)
 	while (len > msgsz){
 		size_t i, lastok = 0;
 		state = 0;
+
 /* search for the offset */
 		for (i = 0; i < msgsz && i < len; i++){
 			if (UTF8_ACCEPT == utf8_decode(&state, &codepoint, (uint8_t)(msg[i])))
@@ -3327,6 +3328,11 @@ static int targetmessage(lua_State* ctx)
 		memcpy(ev.tgt.message, msg, i);
 		ev.tgt.message[i] = '\0';
 
+/* mark multipart */
+		if (len - i){
+			ev.tgt.ioevs[0].iv = 1;
+		}
+
 		if (ARCAN_OK != platform_fsrv_pushevent(fsrv, &ev)){
 			lua_pushnumber(ctx, len);
 			LUA_ETRACE("message_target", "truncation", 1);
@@ -3337,6 +3343,7 @@ static int targetmessage(lua_State* ctx)
 		msg += i;
 	}
 
+	ev.tgt.ioevs[0].iv = 0;
 	if (len){
 		memcpy(ev.tgt.message, msg, len);
 		ev.tgt.message[len] = '\0';
