@@ -63,6 +63,52 @@ void alt_nbio_nonblock_cloexec(int fd, bool socket)
 		fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
 }
 
+static bool ensure_flush(lua_State* L, struct nonblock_io* ib, size_t timeout)
+{
+	bool rv = true;
+	struct pollfd fd = {
+		.fd = ib->fd,
+		.events = POLLOUT | POLLERR | POLLHUP | POLLNVAL
+	};
+
+/* since poll doesn't give much in terms of feedback across calls some crude
+ * timekeeping is needed to make sure we don't exceed a timeout by too much */
+	unsigned long long current = arcan_timemillis();
+	int status;
+
+/* writes can fail.. */
+	while ((status = alt_nbio_process_write(L, ib)) == 0){
+
+		if (timeout > 0){
+			unsigned long long now = arcan_timemillis();
+			if (now > current)
+				timeout -= now - current;
+			current = now;
+
+			if (timeout <= 0){
+				rv = false;
+				break;
+			}
+		}
+
+/* dst can die while waiting for write-state */
+		int rv = poll(&fd, 1, timeout);
+
+		if (-1 == rv && (errno == EAGAIN || errno == EINTR))
+				continue;
+
+		if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)){
+			rv = false;
+			break;
+		}
+	}
+
+	if (status < 0)
+		rv = false;
+
+	return rv;
+}
+
 static int connect_trypath(const char* local, const char* remote, int type)
 {
 /* always the risk of this expanding to something too large as well, fsck
@@ -289,6 +335,10 @@ static int nbio_closer(lua_State* L)
 	if (!(*ib))
 		LUA_ETRACE("open_nonblock:close", "already closed", 0);
 
+/* arbitrary timeout though we should not really hit this and the alternatives
+ * are all practically worse - the only other 'saving' grace' would be to fire
+ * the job in its own thread or fork() and let it timeout or die .. */
+	ensure_flush(L, *ib, 1000);
 	alt_nbio_close(L, ib);
 
 	LUA_ETRACE("open_nonblock:close", NULL, 0);
@@ -1155,48 +1205,8 @@ static int nbio_flush(lua_State* L)
 		return 1;
 	}
 
-	struct pollfd fd = {
-		.fd = ib->fd,
-		.events = POLLOUT | POLLERR | POLLHUP | POLLNVAL
-	};
-
-	bool rv = true;
-
-/* since poll doesn't give much in terms of feedback across calls some crude
- * timekeeping is needed to make sure we don't exceed a timeout by too much */
-	unsigned long long current = arcan_timemillis();
 	ssize_t timeout = luaL_optnumber(L, 2, -1);
-	int status;
-
-/* writes can fail.. */
-	while ((status = alt_nbio_process_write(L, ib)) == 0){
-
-		if (timeout > 0){
-			unsigned long long now = arcan_timemillis();
-			if (now > current)
-				timeout -= now - current;
-			current = now;
-
-			if (timeout <= 0){
-				rv = false;
-				break;
-			}
-		}
-
-/* dst can die while waiting for write-state */
-		int rv = poll(&fd, 1, timeout);
-
-		if (-1 == rv && (errno == EAGAIN || errno == EINTR))
-				continue;
-
-		if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)){
-			rv = false;
-			break;
-		}
-	}
-
-	if (status < 0)
-		rv = false;
+	bool rv = ensure_flush(L, ib, timeout);
 
 	lua_pushboolean(L, rv);
 	return 1;
