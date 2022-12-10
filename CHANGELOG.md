@@ -2,6 +2,7 @@
  * inbound events now have a 'frame' tag for pairing with verbose-frame notification
  * util:random\_interval(low,high) added for CSPRNG non-biased interval RNG
  * util:random\_bytes(len) added for CSPRNG byte string
+ * target_input long messages are now marked as multipart
 
 ## Core
  * respect border attribute in text rasteriser
@@ -9,11 +10,13 @@
 
 ## Tui
  * nbio asynch type confusion fix (function becomes pcall:userdata)
+ * nbio close without explicit flush
  * dock subtype exposed for bar/tray like integration
  * add 'swallow' request for new windows
  * cursor(caret) style and color override controls
  * readline: add completion style control (border)
  * readline: allow attached popup to replace in-band completion
+ * readline: history traversal early-stop fixed
  * fixes for screencopy on proxy window
  * refactored deprecated tsm-screen away out of tui (1/2)
 
@@ -29,6 +32,7 @@
 
 ## Package / Build
  * console: added binding for shutdown
+ * builtin/mouse: bugfixes to two-sample mode
 
 ## 0.6.2.1
 ## Lua

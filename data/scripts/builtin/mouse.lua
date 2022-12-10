@@ -961,15 +961,21 @@ function mouse_iotbl_input(iotbl)
 	if (iotbl.relative) then
 		if (iotbl.subid == 0) then
 			mouse_input(iotbl.samples[1], 0);
-		else
+		elseif (iotbl.subid == 1) then
 			mouse_input(0, iotbl.samples[1]);
+		elseif (iotbl.subid == 2) then
+			mouse_input(iotbl.samples[1], iotbl.samples[3]);
 		end
 	else
-		mid_v[iotbl.subid+1] = iotbl.samples[1];
-		mid_c = mid_c + 1;
-		if (mid_c == 2) then
-			mouse_absinput(mid_v[1], mid_v[2]);
-			mid_c = 0;
+		if iotbl.subid == 2 then
+			mouse_absinput(iotbl.samples[1], iotbl.samples[3]);
+		else
+			mid_v[iotbl.subid+1] = iotbl.samples[1];
+			mid_c = mid_c + 1;
+			if (mid_c == 2) then
+				mouse_absinput(mid_v[1], mid_v[2]);
+				mid_c = 0;
+			end
 		end
 	end
 
