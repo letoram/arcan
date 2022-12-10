@@ -73,6 +73,12 @@ static void reraster(struct arcan_shmif_cont* C)
 	size_t px_w = ceilf(current.svg->width * current.scale);
 	size_t px_h = ceilf(current.svg->height * current.scale);
 
+	if (px_w > PP_SHMPAGE_MAXW)
+		px_w = PP_SHMPAGE_MAXW;
+
+	if (px_h > PP_SHMPAGE_MAXH)
+		px_h = PP_SHMPAGE_MAXH;
+
 	if (!current.force_scale)
 		arcan_shmif_resize(C, px_w, px_h);
 
