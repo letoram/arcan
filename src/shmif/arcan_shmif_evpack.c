@@ -138,10 +138,12 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 			snprintf(work, dsz,"EXT:CURSORHINT(%s)", ev.ext.message.data);
 		break;
 		case EVENT_EXTERNAL_VIEWPORT:
-			snprintf(work, dsz,"EXT:VIEWPORT(id: %"PRIu32" parent: %"PRIu32
+			snprintf(work, dsz,"EXT:VIEWPORT(frame: %"PRIu64", "
+				"id: %"PRIu32" parent: %"PRIu32" "
 				"@x,y+w,h: +%"PRId32",%"PRId32"+%"PRIu16",%"PRIu16
 				", border: %d,%d,%d,%d embed: %d focus: %d, invisible: %d, "
 				"anchor-edge: %d, anchor-pos: %d, edge: %d, z: %d)",
+				ev.ext.frame_id,
 				ev.ext.viewport.ext_id,
 				ev.ext.viewport.parent,
 				ev.ext.viewport.x, ev.ext.viewport.y,
@@ -329,7 +331,8 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 				ev.tgt.ioevs[1].fv, ev.tgt.ioevs[2].fv, ev.tgt.ioevs[3].fv);
 		break;
 		case TARGET_COMMAND_MESSAGE:
-			snprintf(work, dsz,"TGT:MESSAGE(%s)", ev.tgt.message);
+			snprintf(work,
+				dsz,"TGT:MESSAGE(continued: %d, message: %s)", ev.tgt.ioevs[0].iv, ev.tgt.message);
 		break;
 		case TARGET_COMMAND_FONTHINT:
 			snprintf(work, dsz,"TGT:FONTHINT("
