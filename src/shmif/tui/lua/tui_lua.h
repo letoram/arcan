@@ -123,6 +123,7 @@ struct tui_lmeta {
 	intptr_t widget_closure;
 	intptr_t widget_state;
 	struct widget_meta* widget_meta;
+	bool full_revert;
 
 /* linked list of bchunk like processing jobs */
 	struct blobio_meta* blobs;
