@@ -5,10 +5,6 @@
  * Simply append- the related functions to a Lua context, and you should be
  * able to open/connect using tui_open() -> context.
  *
- * TODO:
- *   [ ] detached (virtual) windows
- *   [ ] PUSH new_window
- *   [ ] apaste/vpaste does nothing - map to bchunk_in?
  */
 
 #include <arcan_shmif.h>
@@ -124,20 +120,7 @@ static const char* match_udata(lua_State* L, ssize_t pos){
 	return NULL;
 }
 
-__attribute__((used))
-static void dump_traceback(lua_State* L)
-{
-	lua_getglobal(L, "debug");
-	lua_getfield(L, -1, "traceback");
-	lua_call(L, 0, 1);
-	const char* trace = lua_tostring(L, -1);
-	printf("%s\n", trace);
-	lua_pop(L, 1);
-}
-
-static void register_tuimeta(lua_State* L);
-
-__attribute__((used))
+	__attribute__((used))
 static void dump_stack(lua_State* ctx)
 {
 	int top = lua_gettop(ctx);
@@ -172,6 +155,22 @@ static void dump_stack(lua_State* ctx)
 
 	fprintf(stderr, "\n");
 }
+
+
+__attribute__((used))
+static void dump_traceback(lua_State* L)
+{
+	dump_stack(L);
+	lua_getglobal(L, "debug");
+	lua_getfield(L, -1, "traceback");
+	lua_call(L, 0, 1);
+	const char* trace = lua_tostring(L, -1);
+	printf("%s\n", trace);
+	lua_pop(L, 2);
+	dump_stack(L);
+}
+
+static void register_tuimeta(lua_State* L);
 
 /*
  * convenience macro prolog for all TUI window bound lua->c functions
@@ -983,7 +982,7 @@ static void free_suggest(struct widget_meta* m)
 	m->readline.suggest = NULL;
 }
 
-static void revert(lua_State* L, struct tui_lmeta* M)
+static void revert(lua_State* L, struct tui_lmeta* M, bool full)
 {
 	switch (M->widget_mode){
 	case TWND_NORMAL:
@@ -1007,11 +1006,11 @@ static void revert(lua_State* L, struct tui_lmeta* M)
 		if (M->widget_meta){
 			struct widget_meta* wm = M->widget_meta;
 
-			if (wm->readline.verify){
+			if (wm->readline.verify != LUA_NOREF){
 				luaL_unref(L, LUA_REGISTRYINDEX, wm->readline.verify);
 				M->widget_meta->readline.verify = LUA_NOREF;
 			}
-			if (wm->readline.filter){
+			if (wm->readline.filter != LUA_NOREF){
 				luaL_unref(L, LUA_REGISTRYINDEX, wm->readline.filter);
 				M->widget_meta->readline.filter = LUA_NOREF;
 			}
@@ -1036,6 +1035,11 @@ static void revert(lua_State* L, struct tui_lmeta* M)
 		M->widget_meta->parent = NULL;
 		M->widget_meta = NULL;
 	}
+
+	if (!full)
+		return;
+
+	M->full_revert = true;
 	if (M->widget_closure != LUA_NOREF){
 		luaL_unref(L, LUA_REGISTRYINDEX, M->widget_closure);
 		M->widget_closure = LUA_NOREF;
@@ -1044,6 +1048,32 @@ static void revert(lua_State* L, struct tui_lmeta* M)
 		luaL_unref(L, LUA_REGISTRYINDEX, M->widget_state);
 		M->widget_state = LUA_NOREF;
 	}
+}
+
+static void callback_revert(
+	lua_State* L, struct tui_lmeta* M, const char* src, int n, int r)
+{
+	intptr_t closure = M->widget_closure;
+	intptr_t state = M->widget_state;
+
+/* More onerous that it might seem, first we want the references themselves
+ * to be alive (uncertain how the tracking is when they are on the stack so
+ * this is the safer bet. We need the closure/state members reset though if
+ * the callback would cause a new widget state to be set (would happen with
+ * readline frequently). But it might also call revert/reset itself which
+ * then would clear the refs and we'd do double-unref. */
+	M->widget_closure = LUA_NOREF;
+	M->widget_state = LUA_NOREF;
+	revert(L, M, false);
+	RUN_CALLBACK(src, n, r);
+
+	if (!M->full_revert){
+		if (closure != LUA_NOREF)
+			luaL_unref(L, LUA_REGISTRYINDEX, closure);
+		if (state != LUA_NOREF)
+			luaL_unref(L, LUA_REGISTRYINDEX, state);
+	}
+	M->full_revert = true;
 }
 
 static void apply_table(lua_State* L, int ind, struct tui_screen_attr* attr)
@@ -1469,7 +1499,7 @@ static void compact(struct tui_lmeta* ib)
 static int tuiclose(lua_State* L)
 {
 	TUI_UDATA;
-	revert(L, ib);
+	revert(L, ib, true);
 
 	arcan_tui_destroy(ib->tui, luaL_optstring(L, 2, NULL));
 	ib->tui = NULL;
@@ -1779,8 +1809,7 @@ static void process_widget(lua_State* L, struct tui_lmeta* T)
 			else {
 				lua_pushnil(L);
 			}
-			revert(L, T);
-			RUN_CALLBACK("listwnd_ok", 1, 0);
+			callback_revert(L, T, "listwnd_ok", 1, 0);
 		}
 	}
 	break;
@@ -1799,8 +1828,7 @@ static void process_widget(lua_State* L, struct tui_lmeta* T)
 		else if (sc == -1){
 			lua_pushnil(L);
 		}
-		revert(L, T);
-		RUN_CALLBACK("bufferview_ok", 2, 0);
+		callback_revert(L, T, "bufferview_ok", 2, 0);
 	}
 
 	break;
@@ -1816,10 +1844,7 @@ static void process_widget(lua_State* L, struct tui_lmeta* T)
 			else {
 				lua_pushnil(L);
 			}
-/* Restore the context to its initial state so that the closure is allowed to
- * request a new readline request. Revert will actually free buf. */
-			revert(L, T);
-			RUN_CALLBACK("readline_ok", 2, 0);
+			callback_revert(L, T, "readline_ok", 2, 0);
 		}
 	}
 	break;
@@ -1989,7 +2014,7 @@ static int writeu8(lua_State* L)
 static int reset(lua_State* L)
 {
 	TUI_UDATA;
-	revert(L, ib);
+	revert(L, ib, true);
 	arcan_tui_reset(ib->tui);
 	return 0;
 }
@@ -2182,7 +2207,7 @@ static int sendkey(lua_State* L)
 static int revertwnd(lua_State* L)
 {
 	TUI_UDATA;
-	revert(L, ib);
+	revert(L, ib, true);
 	return 0;
 }
 
@@ -2235,7 +2260,7 @@ static void extract_listent(lua_State* L, struct tui_list_entry* base, size_t i)
 static int readline(lua_State* L)
 {
 	TUI_UDATA;
-	revert(L, ib);
+	revert(L, ib, true);
 	ssize_t ofs = 2;
 
 	struct tui_readline_opts opts = {
@@ -2382,7 +2407,7 @@ static int bufferwnd_tell(lua_State* L)
 static int bufferwnd(lua_State* L)
 {
 	TUI_WNDDATA;
-	revert(L, ib);
+	revert(L, ib, true);
 
 /* the default prefs for the bufferwnd should really be something that should
  * be configurable for the widget in general and rarely forwarded here. */
@@ -2502,7 +2527,7 @@ static int listwnd(lua_State* L)
 	TUI_WNDDATA;
 
 /* normally just drop whatever previous state we were in */
-	revert(L, ib);
+	revert(L, ib, true);
 
 /* take input table and closure */
 	if (lua_type(L, 2) != LUA_TTABLE){
