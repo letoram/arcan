@@ -108,7 +108,7 @@
 -- useful is when external clients have segments embedded into others.
 --
 -- @tblent: "segment_request" {
--- string:segkind, number:width, number:height, number:parent,
+-- string:segkind, number:width, number:height, number:parent, number:reqid,
 -- string:(split | position)}
 -- The source would like an additional segment to work with, see
 -- ref:accept_target for how to accept the request. If the request is not
