@@ -63,6 +63,11 @@ void alt_nbio_nonblock_cloexec(int fd, bool socket)
 		fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
 }
 
+/* this symbol comes parasitically with arcan-shmif and used inside the tui
+ * implementation, thus it is not particularly nice to rely on it - on the
+ * other hand vendoring in the code is also annoying */
+extern unsigned long long arcan_timemillis();
+
 static bool ensure_flush(lua_State* L, struct nonblock_io* ib, size_t timeout)
 {
 	bool rv = true;
@@ -760,6 +765,9 @@ int alt_nbio_process_read(
 	while (
 			count &&
 			(ch = nextline(ib, ci, eof, &len, &step, &gotline))){
+			if (eof && len == 0 && step == 0)
+				break;
+
 			lua_pushinteger(L, ind++);
 			lua_pushlstring(L, ch, len);
 			lua_rawset(L, -3);
@@ -1151,11 +1159,6 @@ void alt_nbio_data_in(lua_State* L, intptr_t tag)
 	}
 	lua_pop(L, 1);
 }
-
-/* this symbol comes parasitically with arcan-shmif and used inside the tui
- * implementation, thus it is not particularly nice to rely on it - on the
- * other hand vendoring in the code is also annoying */
-extern unsigned long long arcan_timemillis();
 
 /* set_position and seek are split to leave room for the theoretically possible
  * on sockets / pipes as a positive seek being (skip n bytes) */

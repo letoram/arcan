@@ -765,6 +765,9 @@ int alt_nbio_process_read(
 	while (
 			count &&
 			(ch = nextline(ib, ci, eof, &len, &step, &gotline))){
+			if (eof && len == 0 && step == 0)
+				break;
+
 			lua_pushinteger(L, ind++);
 			lua_pushlstring(L, ch, len);
 			lua_rawset(L, -3);
