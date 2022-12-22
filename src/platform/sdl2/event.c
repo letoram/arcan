@@ -72,6 +72,7 @@ struct arcan_stick {
 	bool tagged;
 
 	SDL_Joystick* handle;
+	SDL_JoystickID joyid;
 
 	unsigned long hashid;
 
@@ -92,6 +93,16 @@ static int find_devind(int devnum)
 {
 	for (int i = 0; i < iodev.n_joy; i++){
 		if (iodev.joys[i].devnum == devnum){
+			return i;
+		}
+	}
+	return -1;
+}
+
+static int find_devind_from_joyid(SDL_JoystickID id)
+{
+	for (int i = 0; i < iodev.n_joy; i++) {
+		if (iodev.joys[i].joyid == id) {
 			return i;
 		}
 	}
@@ -172,19 +183,19 @@ accept_sample:
 static inline void process_axismotion(
 	arcan_evctx* ctx, const SDL_JoyAxisEvent* const ev)
 {
-	int devid = ev->which;
+	int devind = find_devind_from_joyid(ev->which);
 
-	if (!iodev.joys || iodev.joys[devid].axis < ev->axis)
+	if (devind == -1 || iodev.joys[devind].axis < ev->axis)
 		return;
 
-	struct axis_opts* daxis = &iodev.joys[devid].adata[ev->axis];
+	struct axis_opts* daxis = &iodev.joys[devind].adata[ev->axis];
 	int16_t dstv;
 
 	if (process_axis(ctx, daxis, ev->value, &dstv)){
 		arcan_event newevent = {
 			.category = EVENT_IO,
 			.io.kind = EVENT_IO_AXIS_MOVE,
-			.io.devid = iodev.joys[devid].devnum,
+			.io.devid = iodev.joys[devind].devnum,
 			.io.subid = ev->axis,
 			.io.datatype = EVENT_IDATATYPE_ANALOG,
 			.io.devkind  = EVENT_IDEVKIND_GAMEDEV,
@@ -416,27 +427,28 @@ static unsigned long djb_hash(const char* str, size_t n)
 static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 	unsigned hatid, unsigned value)
 {
-	if (!iodev.joys)
+	int devind = find_devind_from_joyid(devid);
+	if (devind == -1)
 		return;
 
 	static unsigned hattbl[4] = {SDL_HAT_UP, SDL_HAT_DOWN,
 		SDL_HAT_LEFT, SDL_HAT_RIGHT};
 
-	assert(iodev.n_joy > devid);
-	assert(iodev.joys[devid].hats > hatid);
+	assert(iodev.n_joy > devind);
+	assert(iodev.joys[devind].hats > hatid);
 
 	arcan_event newevent = {
 		.category = EVENT_IO,
 		.io.kind = EVENT_IO_BUTTON,
 		.io.datatype = EVENT_IDATATYPE_DIGITAL,
 		.io.devkind = EVENT_IDEVKIND_GAMEDEV,
-		.io.devid = iodev.joys[devid].devnum,
+		.io.devid = iodev.joys[devind].devnum,
 		.io.subid = 128 + (hatid * 4)
 	};
 
 /* shouldn't really ever be the same, but not trusting SDL */
-	if (iodev.joys[devid].hattbls[ hatid ] != value){
-		unsigned oldtbl = iodev.joys[devid].hattbls[hatid];
+	if (iodev.joys[devind].hattbls[ hatid ] != value){
+		unsigned oldtbl = iodev.joys[devind].hattbls[hatid];
 
 		for (int i = 0; i < 4; i++){
 			if ( (oldtbl & hattbl[i]) != (value & hattbl[i]) ){
@@ -447,7 +459,7 @@ static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 			}
 		}
 
-		iodev.joys[devid].hattbls[hatid] = value;
+		iodev.joys[devind].hattbls[hatid] = value;
 	}
 }
 
@@ -926,6 +938,7 @@ void platform_event_rescan_idev(arcan_evctx* ctx)
 				}
 
 				dj->handle = SDL_JoystickOpen(i);
+				dj->joyid = SDL_JoystickInstanceID(dj->handle);
 				continue;
 			}
 		}
@@ -934,6 +947,7 @@ void platform_event_rescan_idev(arcan_evctx* ctx)
 		strncpy(dj->label, SDL_JoystickNameForIndex(i), 255);
 		dj->hashid = djb_hash((char*)SDL_JoystickGetDeviceGUID(i).data, 16);
 		dj->handle = SDL_JoystickOpen(i);
+		dj->joyid = SDL_JoystickInstanceID(dj->handle);
 		dj->devnum = gen_devid(dj->hashid);
 
 		dj->axis    = SDL_JoystickNumAxes(joys[i].handle);
