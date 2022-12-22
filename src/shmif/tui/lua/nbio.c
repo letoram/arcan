@@ -300,11 +300,15 @@ int alt_nbio_close(lua_State* L, struct nonblock_io** ibb)
 	free(ib->pending);
 	drop_all_jobs(ib);
 
-	if (ib->data_handler)
+	if (ib->data_handler != LUA_NOREF){
 		luaL_unref(L, LUA_REGISTRYINDEX, ib->data_handler);
+		ib->data_handler = LUA_NOREF;
+	}
 
-	if (ib->write_handler)
+	if (ib->write_handler != LUA_NOREF){
 		luaL_unref(L, LUA_REGISTRYINDEX, ib->write_handler);
+		ib->write_handler= LUA_NOREF;
+	}
 
 /* no-op if nothing registered */
 	intptr_t tag;
@@ -357,9 +361,9 @@ static int nbio_datahandler(lua_State* L)
 		LUA_ETRACE("open_nonblock:data_handler", "already closed", 0);
 
 /* always remove the last known handler refs */
-	if ((*ib)->data_handler){
+	if ((*ib)->data_handler != LUA_NOREF){
 		luaL_unref(L, LUA_REGISTRYINDEX, (*ib)->data_handler);
-		(*ib)->data_handler = 0;
+		(*ib)->data_handler = LUA_NOREF;
 	}
 
 /* tracking to ensure that we detect nbio_data_in -> cb ->data_handler */
@@ -560,9 +564,9 @@ static int nbio_write(lua_State* L)
 
 /* might be swapping out one handler for another */
 	if (lua_type(L, 3) == LUA_TFUNCTION){
-		if (iw->write_handler){
+		if (iw->write_handler != LUA_NOREF){
 			luaL_unref(L, LUA_REGISTRYINDEX, iw->write_handler);
-			iw->write_handler = 0;
+			iw->write_handler = LUA_NOREF;
 		}
 
 		lua_pushvalue(L, 3);
@@ -1093,7 +1097,7 @@ void alt_nbio_data_out(lua_State* L, intptr_t tag)
 		return;
 
 /* no registered handler? then just ensure empty queue on finish/fail */
-	if (!ib->write_handler){
+	if (ib->write_handler == LUA_NOREF){
 		drop_all_jobs(ib);
 		return;
 	}
@@ -1151,6 +1155,7 @@ void alt_nbio_data_in(lua_State* L, intptr_t tag)
 /* or remove and assume that this is no longer wanted */
 	else {
 		luaL_unref(L, LUA_REGISTRYINDEX, ch);
+		ib->data_handler = LUA_NOREF;
 
 /* but make sure that we don't remove any data-out handler while at it */
 		if (remove_job(ib->fd, O_RDONLY, &tag)){
@@ -1203,7 +1208,7 @@ static int nbio_flush(lua_State* L)
 	lua_pop(L, 1);
 
 /* if we have a write_handler it should be handled through the regular loop */
-	if (ib->write_handler || !ib->out_queue || ib->fd == -1){
+	if (ib->write_handler != LUA_NOREF || !ib->out_queue || ib->fd == -1){
 		lua_pushboolean(L, false);
 		return 1;
 	}
@@ -1247,7 +1252,9 @@ bool alt_nbio_import(
 	*nbio = (struct nonblock_io){
 		.fd = fd,
 		.mode = mode,
-		.unlink_fn = (unlink_fn ? *unlink_fn : NULL)
+		.unlink_fn = (unlink_fn ? *unlink_fn : NULL),
+		.write_handler = LUA_NOREF,
+		.data_handler = LUA_NOREF
 	};
 
 	if (out)
