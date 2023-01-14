@@ -38,13 +38,37 @@
 #endif
 
 static struct nonblock_io open_fds[LUACTX_OPEN_FILES];
-
 /* open_nonblock and similar functions need to register their fds here as they
  * are force-closed on context shutdown, this is necessary with crash recovery
  * and scripting errors. The limit is set based on the same open limit imposed
  * by arcan_event_ sources. */
 static bool (*add_job)(int fd, mode_t mode, intptr_t tag);
 static bool (*remove_job)(int fd, mode_t mode, intptr_t* out);
+static void (*trigger_error)(lua_State* L, int fd, intptr_t tag, const char*);
+
+static bool lookup_registry(lua_State* L, intptr_t tag, int type, const char* src)
+{
+	lua_rawgeti(L, LUA_REGISTRYINDEX, tag);
+	if (lua_type(L, -1) != type){
+		trigger_error(L, -1, tag, src);
+
+		lua_pop(L, 1);
+		return false;
+	}
+	return true;
+}
+
+static void unref_registry(lua_State* L, intptr_t tag, int type, const char* src)
+{
+#ifdef _DEBUG
+	if (lookup_registry(L, tag, type, src)){
+		lua_pop(L, 1);
+	}
+	else
+		return;
+#endif
+	luaL_unref(L, LUA_REGISTRYINDEX, tag);
+}
 
 void alt_nbio_nonblock_cloexec(int fd, bool socket)
 {
@@ -301,22 +325,22 @@ int alt_nbio_close(lua_State* L, struct nonblock_io** ibb)
 	drop_all_jobs(ib);
 
 	if (ib->data_handler != LUA_NOREF){
-		luaL_unref(L, LUA_REGISTRYINDEX, ib->data_handler);
+		unref_registry(L, ib->data_handler, LUA_TFUNCTION, "nbio_close_dh");
 		ib->data_handler = LUA_NOREF;
 	}
 
 	if (ib->write_handler != LUA_NOREF){
-		luaL_unref(L, LUA_REGISTRYINDEX, ib->write_handler);
-		ib->write_handler= LUA_NOREF;
+		unref_registry(L, ib->write_handler, LUA_TFUNCTION, "nbio_close_wh");
+		ib->write_handler = LUA_NOREF;
 	}
 
 /* no-op if nothing registered */
 	intptr_t tag;
 	if (remove_job(fd, O_RDONLY, &tag)){
-		luaL_unref(L, LUA_REGISTRYINDEX, tag);
+		unref_registry(L, tag, LUA_TUSERDATA, "nbio_close_rdmeta");
 	}
 	if (remove_job(fd, O_WRONLY, &tag)){
-		luaL_unref(L, LUA_REGISTRYINDEX, tag);
+		unref_registry(L, tag, LUA_TUSERDATA, "nbio_close_wrmeta");
 	}
 
 	free(ib);
@@ -326,7 +350,10 @@ int alt_nbio_close(lua_State* L, struct nonblock_io** ibb)
  * event handlers and triggers will be removed through drop_all_jobs */
 	for (size_t i = 0; i < LUACTX_OPEN_FILES; i++){
 		if (open_fds[i].fd == fd){
-			open_fds[i] = (struct nonblock_io){0};
+			open_fds[i] = (struct nonblock_io){
+				.data_handler = LUA_NOREF,
+				.write_handler = LUA_NOREF
+			};
 			break;
 		}
 	}
@@ -362,7 +389,7 @@ static int nbio_datahandler(lua_State* L)
 
 /* always remove the last known handler refs */
 	if ((*ib)->data_handler != LUA_NOREF){
-		luaL_unref(L, LUA_REGISTRYINDEX, (*ib)->data_handler);
+		unref_registry(L, (*ib)->data_handler, LUA_TFUNCTION, "nbio-dh-reset");
 		(*ib)->data_handler = LUA_NOREF;
 	}
 
@@ -372,7 +399,7 @@ static int nbio_datahandler(lua_State* L)
 /* the same goes for the reference used to tag events */
 	intptr_t out;
 	if (remove_job((*ib)->fd, O_RDONLY, &out)){
-		luaL_unref(L, LUA_REGISTRYINDEX, out);
+		unref_registry(L, out, LUA_TUSERDATA, "nbio-rdonly-meta-reset");
 	}
 
 /* update the handler field in ib, then we get the reference to ib and
@@ -392,7 +419,7 @@ static int nbio_datahandler(lua_State* L)
 /* the job can fail to queue if a set amount of read_handler descriptors
  * are exceeded */
 		if (!add_job((*ib)->fd, O_RDONLY, ref)){
-			luaL_unref(L, LUA_REGISTRYINDEX, ref);
+			unref_registry(L, ref, LUA_TUSERDATA, "nbio-rdonly-meta-fail");
 			lua_pushboolean(L, false);
 		}
 
@@ -449,6 +476,8 @@ static int nbio_socketaccept(lua_State* L)
 	(*conn) = (struct nonblock_io){
 		.fd = newfd,
 		.mode = O_RDWR,
+		.data_handler = LUA_NOREF,
+		.write_handler = LUA_NOREF
 	};
 
 	if (!conn){
@@ -565,7 +594,7 @@ static int nbio_write(lua_State* L)
 /* might be swapping out one handler for another */
 	if (lua_type(L, 3) == LUA_TFUNCTION){
 		if (iw->write_handler != LUA_NOREF){
-			luaL_unref(L, LUA_REGISTRYINDEX, iw->write_handler);
+			unref_registry(L, iw->write_handler, LUA_TFUNCTION, "nbio-write-cb-chg");
 			iw->write_handler = LUA_NOREF;
 		}
 
@@ -605,7 +634,7 @@ static int nbio_write(lua_State* L)
  * first time so only unreference if it was actually removed */
 	intptr_t ref;
 	if (remove_job(iw->fd, O_WRONLY, &ref)){
-		luaL_unref(L, LUA_REGISTRYINDEX, ref);
+		unref_registry(L, ref, LUA_TUSERDATA, "nbio-wrmeta-chg");
 	}
 
 /* register the ref and the write mode to some outer dispatch */
@@ -874,6 +903,8 @@ static int opennonblock_tgt(lua_State* L, bool wr)
 	conn->mode = wr ? O_WRONLY : O_RDONLY;
 	conn->fd = src;
 	conn->pending = NULL;
+	conn->data_handler = LUA_NOREF;
+	conn->write_handler = LUA_NOREF;
 
 	uintptr_t* dp = lua_newuserdata(L, sizeof(uintptr_t));
 	*dp = (uintptr_t) conn;
@@ -897,7 +928,11 @@ void alt_nbio_release()
 			close(ent->fd);
 		}
 		drop_all_jobs(ent);
-		open_fds[i] = (struct nonblock_io){0};
+		open_fds[i] =
+			(struct nonblock_io){
+			.data_handler = LUA_NOREF,
+			.write_handler = LUA_NOREF
+		};
 	}
 }
 
@@ -1070,6 +1105,8 @@ retryopen:
 	conn->mode = wrmode;
 	conn->pending = path;
 	conn->unlink_fn = unlink_fn;
+	conn->data_handler = LUA_NOREF;
+	conn->write_handler = LUA_NOREF;
 
 	uintptr_t* dp = lua_newuserdata(L, sizeof(uintptr_t));
 	*dp = (uintptr_t) conn;
@@ -1082,7 +1119,9 @@ retryopen:
 
 void alt_nbio_data_out(lua_State* L, intptr_t tag)
 {
-	lua_rawgeti(L, LUA_REGISTRYINDEX, tag);
+	if (!lookup_registry(L, tag, LUA_TUSERDATA, "data-out"))
+		return;
+
 	struct nonblock_io** ibb = luaL_checkudata(L, -1, "nonblockIO");
 	struct nonblock_io* ib = *ibb;
 	lua_pop(L, 1);
@@ -1105,7 +1144,9 @@ void alt_nbio_data_out(lua_State* L, intptr_t tag)
 /* the gpu locked is only interesting / useful for arcan where there are
  * certain restrictions on doing things while the GPU is locked, while still
  * being able to process other IO */
-	lua_rawgeti(L, LUA_REGISTRYINDEX, ib->write_handler);
+	if (!lookup_registry(L, ib->write_handler, LUA_TFUNCTION, "data-out-wh"))
+		return;
+
 	lua_pushboolean(L, status == 1);
 #ifdef WANT_ARCAN_BASE
 	lua_pushboolean(L, arcan_conductor_gpus_locked());
@@ -1120,14 +1161,15 @@ void alt_nbio_data_out(lua_State* L, intptr_t tag)
  * unref:d */
 	if (!ib->out_queue){
 		if (remove_job(ib->fd, O_WRONLY, &tag)){
-			luaL_unref(L, LUA_REGISTRYINDEX, tag);
+			unref_registry(L, tag, LUA_TUSERDATA, "nbio-open-wrmeta");
 		}
 	}
 }
 
 void alt_nbio_data_in(lua_State* L, intptr_t tag)
 {
-	lua_rawgeti(L, LUA_REGISTRYINDEX, tag);
+	if (!lookup_registry(L, tag, LUA_TUSERDATA, "data-in"))
+		return;
 
 	struct nonblock_io** ibb = luaL_checkudata(L, -1, "nonblockIO");
 	struct nonblock_io* ib = *ibb;
@@ -1135,7 +1177,9 @@ void alt_nbio_data_in(lua_State* L, intptr_t tag)
 		return;
 
 	lua_pop(L, 1);
-	lua_rawgeti(L, LUA_REGISTRYINDEX, ib->data_handler);
+	if (!lookup_registry(L, ib->data_handler, LUA_TFUNCTION, "data-in-dh"))
+		return;
+
 	intptr_t ch = ib->data_handler;
 	ib->data_rearmed = false;
 
@@ -1154,12 +1198,12 @@ void alt_nbio_data_in(lua_State* L, intptr_t tag)
 	}
 /* or remove and assume that this is no longer wanted */
 	else {
-		luaL_unref(L, LUA_REGISTRYINDEX, ch);
+		unref_registry(L, ch, LUA_TFUNCTION, "data-in-dontwant");
 		ib->data_handler = LUA_NOREF;
 
 /* but make sure that we don't remove any data-out handler while at it */
 		if (remove_job(ib->fd, O_RDONLY, &tag)){
-			luaL_unref(L, LUA_REGISTRYINDEX, tag);
+			unref_registry(L, tag, LUA_TUSERDATA, "data-in-meta-dontwant");
 		}
 	}
 	lua_pop(L, 1);
@@ -1254,7 +1298,7 @@ bool alt_nbio_import(
 		.mode = mode,
 		.unlink_fn = (unlink_fn ? *unlink_fn : NULL),
 		.write_handler = LUA_NOREF,
-		.data_handler = LUA_NOREF
+		.data_handler = LUA_NOREF,
 	};
 
 	if (out)
@@ -1269,10 +1313,12 @@ bool alt_nbio_import(
 
 void alt_nbio_register(lua_State* L,
 	bool (*add)(int fd, mode_t, intptr_t tag),
-	bool (*remove)(int fd, mode_t, intptr_t* out))
+	bool (*remove)(int fd, mode_t, intptr_t* out),
+	void (*error)(lua_State* L, int fd, intptr_t tag, const char*))
 {
 	add_job = add;
 	remove_job = remove;
+	trigger_error = error;
 
 	luaL_newmetatable(L, "nonblockIO");
 	lua_pushvalue(L, -1);

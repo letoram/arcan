@@ -1787,19 +1787,15 @@ static int alive(lua_State* L)
 
 /* correlate a bitmap of indices to the map of file descriptors to uintptr_t
  * tags, collect them in a set and forward to alt_nbio */
-static int run_bitmap(lua_State* L, int map)
+static size_t queue_bitmap(uintptr_t set[static 32], int map)
 {
-	uintptr_t set[32];
-	int count = 0;
+	size_t count = 0;
 	while (ffs(map) && count < 32){
 		int pos = ffs(map)-1;
 		map &= ~(1 << pos);
 		set[count++] = nbio_jobs.fdin_tags[pos];
 	}
-	for (int i = 0; i < count; i++){
-		alt_nbio_data_in(L, set[i]);
-	}
-	return map;
+	return count;
 }
 
 static void run_sub_bitmap(struct tui_lmeta* ib, int map)
@@ -1915,7 +1911,6 @@ repoll:
 	if (res.errc == TUI_ERRC_BAD_CTX){
 		if (ib->n_subs){
 			run_sub_bitmap(ib, res.bad);
-			compact(ib);
 		}
 
 		if (1 & res.bad){
@@ -1927,12 +1922,17 @@ repoll:
 		goto repoll;
 	}
 
-/* Only care about bad vs ok, nbio will do the rest. For both inbound and
- * outbound job triggers we need to first cache the tags on the stack, then
- * trigger the nbio as nbio_jobs may be modified from the nbio_data call */
+/* Regardless of ok or bad, just add to a set and process it - the sets do not
+ * have an intersection so anything in ok won't be in bad. The reason for this
+ * to be queued into a temporary buffer is that the alt_nbio_data_in call can
+ * modify the process bitmap used and the offsets would be wrong */
 	if (nbio_jobs.fdin_used && (res.bad || res.ok)){
-		res.ok = run_bitmap(L, res.ok);
-		res.bad = run_bitmap(L, res.bad);
+		uintptr_t set[64];
+		size_t count = 0;
+		count += queue_bitmap(set, res.ok);
+		count += queue_bitmap(&set[count], res.bad);
+		for (size_t i = 0; i < count; i++)
+			alt_nbio_data_in(L, set[i]);
 	}
 
 /* _process only multiplexes on inbound so we need to flush outbound as well */
@@ -3098,10 +3098,20 @@ static bool queue_nbio(int fd, mode_t mode, intptr_t tag)
 	return true;
 }
 
+static void error_nbio(lua_State* L, int fd, intptr_t tag, const char* src)
+{
+#ifdef _DEBUG
+	fprintf(stderr, "unexpected error in nbio(%s)\n", src);
+	dump_stack(L);
+#endif
+}
+
 static bool dequeue_nbio(int fd, mode_t mode, intptr_t* tag)
 {
 	bool found = false;
 
+/* need this to be compact and match both the tags and the descriptors,
+ * so separate move and reduce total count */
 	for (size_t i = 0; mode == O_RDONLY && i < nbio_jobs.fdin_used; i++){
 		if (nbio_jobs.fdin[i] == fd){
 			memmove(
@@ -3125,6 +3135,7 @@ static bool dequeue_nbio(int fd, mode_t mode, intptr_t* tag)
 		if (nbio_jobs.fdout[i].fd == fd){
 			if (tag)
 				*tag = nbio_jobs.fdout_tags[i];
+			nbio_jobs.fdout_used--;
 
 			memmove(
 				&nbio_jobs.fdout_tags[i],
@@ -3138,7 +3149,6 @@ static bool dequeue_nbio(int fd, mode_t mode, intptr_t* tag)
 				(nbio_jobs.fdout_used - i) * sizeof(struct pollfd)
 			);
 
-			nbio_jobs.fdout_used--;
 			found = true;
 			break;
 		}
@@ -3389,6 +3399,13 @@ static int tui_tpack(lua_State* L)
 	return 1;
 }
 
+static int debug(lua_State* L)
+{
+	TUI_UDATA;
+	dump_state(ib);
+	return 0;
+}
+
 static int tui_screencopy(lua_State* L)
 {
 	TUI_UDATA;
@@ -3475,6 +3492,7 @@ static void register_tuimeta(lua_State* L)
 {
 	struct luaL_Reg tui_methods[] = {
 		{"alive", alive},
+		{"debugtrigger", debug},
 		{"process", process},
 		{"refresh", refresh},
 		{"write", writeu8},
@@ -3545,7 +3563,7 @@ static void register_tuimeta(lua_State* L)
 		lua_pushcfunction(L, tui_tostring);
 		lua_setfield(L, -2, "__tostring");
 
-		alt_nbio_register(L, queue_nbio, dequeue_nbio);
+		alt_nbio_register(L, queue_nbio, dequeue_nbio, error_nbio);
 	}
 	lua_pop(L, 1);
 
