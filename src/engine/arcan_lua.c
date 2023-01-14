@@ -6999,13 +6999,17 @@ static bool del_source(int fd, mode_t mode, intptr_t* out)
 		arcan_event_del_source(arcan_event_defaultctx(), fd, mode, out);
 }
 
+static void error_nbio(lua_State* L, int fd, intptr_t tag, const char* src)
+{
+}
+
 void arcan_lua_mapfunctions(lua_State* ctx, int debuglevel)
 {
 	alt_setup_context(ctx, arcan_appl_id());
 	alua_exposefuncs(ctx, debuglevel);
 /* update with debuglevel etc. */
 	arcan_lua_pushglobalconsts(ctx);
-	alt_nbio_register(ctx, add_source, del_source);
+	alt_nbio_register(ctx, add_source, del_source, error_nbio);
 
 /* only allow eval() style operation in explicit debug modes */
 	if (lua_debug_level){
