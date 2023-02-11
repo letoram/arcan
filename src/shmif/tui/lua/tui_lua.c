@@ -133,24 +133,24 @@ static void dump_ltop(lua_State* ctx, int i)
 
 	switch (t){
 	case LUA_TBOOLEAN:
-		fprintf(stderr, "%zu\t%s\n", i, lua_toboolean(ctx, i) ? "true" : "false");
+		fprintf(stderr, "%d\t%s\n", i, lua_toboolean(ctx, i) ? "true" : "false");
 	break;
 	case LUA_TSTRING:
-		fprintf(stderr, "%zu\t'%s'\n", i, lua_tostring(ctx, i));
+		fprintf(stderr, "%d\t'%s'\n", i, lua_tostring(ctx, i));
 	break;
 	case LUA_TNUMBER:
-		fprintf(stderr, "%zu\t%g\n", i, lua_tonumber(ctx, i));
+		fprintf(stderr, "%d\t%g\n", i, lua_tonumber(ctx, i));
 	break;
 	case LUA_TUSERDATA:{
 		const char* type = match_udata(ctx, i);
 		if (type)
-			fprintf(stderr, "%zu\tuserdata:%s\n", i, type);
+			fprintf(stderr, "%d\tuserdata:%s\n", i, type);
 		else
-			fprintf(stderr, "%zu\tuserdata(unknown)\n", i);
+			fprintf(stderr, "%d\tuserdata(unknown)\n", i);
 	}
 	break;
 	default:
-		fprintf(stderr, "%zu\t%s\n", i, lua_typename(ctx, t));
+		fprintf(stderr, "%d\t%s\n", i, lua_typename(ctx, t));
 	break;
 	}
 }
