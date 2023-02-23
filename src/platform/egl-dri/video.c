@@ -286,12 +286,13 @@ struct dispout {
 /* the output buffers, actual fields use will vary with underlying
  * method, i.e. different for normal gbm and headless gbm */
 	struct {
-		int in_flip, in_destroy, in_dumb_set;
+		int in_destroy, in_dumb_set;
 		EGLConfig config;
 		EGLContext context;
 		EGLSurface esurf;
 		EGLSyncKHR synch;
 		int synch_fence;
+		uint64_t in_flip;
 
 		struct gbm_bo* cur_bo, (* next_bo);
 		uint32_t cur_fb;
@@ -2818,7 +2819,7 @@ static void disable_display(struct dispout* d, bool dealloc)
 		debug_print("(%d) old mode found, trying to reset", (int)d->id);
 		if (d->device->atomic){
 			d->display.mode = d->display.old_crtc->mode;
-			if (atomic_set_mode(d, DRM_MODE_ATOMIC_ALLOW_MODESET)){
+			if (!atomic_set_mode(d, DRM_MODE_ATOMIC_ALLOW_MODESET)){
 				debug_print("(%d) atomic-modeset failed on (%d)",
 					(int)d->id, (int)d->display.con_id);
 			}
@@ -3292,7 +3293,6 @@ page_flip_handler(
 
 	d->buffer.in_flip = 0;
 	TRACE_MARK_ONESHOT("egl-dri", "flip-ack", TRACE_SYS_DEFAULT, d->id, frame, "flip");
-
 	verbose_print("(%d) flip(frame: %u, @ %u.%u)", (int) d->id, frame, sec, usec);
 
 	switch(d->device->buftype){
@@ -3375,8 +3375,9 @@ static bool get_pending(bool primary_only)
 	struct dispout* d;
 
 	while((d = get_display(i++))){
-		if (!primary_only || d->display.primary)
-			pending |= d->buffer.in_flip;
+		if ((!primary_only || d->display.primary) && d->buffer.in_flip){
+			pending++;
+		}
 	}
 
 	return pending > 0;
@@ -3406,18 +3407,11 @@ static void flush_display_events(int timeout, bool yield)
 		period = 0;
 	}
 
-/*
- * NOTE: recent versions of DRM has added support to let us know which CRTC
- * actually provided a synch signal (through a .page_flip_handler2).  When this
- * is more wide-spread, we should really switch to that kind of a system
- * because this is horrid.
- *
- * [SCANOUT-note] this is also where we have a .vblank_handler that would let
- * us re-raster / synch any directly mapped vobjs to the output.
- */
 	drmEventContext evctx = {
 		.version = DRM_EVENT_CONTEXT_VERSION,
-		.page_flip_handler2 = page_flip_handler
+		.page_flip_handler2 = page_flip_handler, /* added in 2 */
+/*  .vblank_handler = NULL, added in 3 */
+/*  .sequence_handler = int fd, uint64_t sequence, ns, user_data added in 4 */
 	};
 
 	do{
@@ -4302,15 +4296,15 @@ static bool update_display(struct dispout* d)
 			if (!new_crtc){
 				uint32_t fl = DRM_MODE_ATOMIC_NONBLOCK | DRM_MODE_PAGE_FLIP_EVENT;
 				d->buffer.cur_fb = next_fb;
-				d->buffer.in_flip = 1;
-				atomic_set_mode(d, fl);
+				if (atomic_set_mode(d, fl))
+					d->buffer.in_flip = arcan_timemillis();
 			}
 		}
 /* LEGACY: */
 		else if (0 == drmModePageFlip(d->device->disp_fd,
 			d->display.crtc, next_fb, DRM_MODE_PAGE_FLIP_EVENT, d)){
 			TRACE_MARK_ONESHOT("egl-dri", "vsynch-req", TRACE_SYS_DEFAULT, d->id, next_fb, "flip");
-			d->buffer.in_flip = 1;
+			d->buffer.in_flip = arcan_timemillis();
 			d->buffer.cur_fb = next_fb;
 
 			verbose_print("(%d) in flip", (int)d->id);
