@@ -40,7 +40,7 @@ static bool flush_shmif(struct arcan_shmif_cont* C)
 
 	while ((rv = arcan_shmif_poll(C, &ev)) > 0){
 		if (ev.category == EVENT_TARGET && ev.tgt.kind == TARGET_COMMAND_EXIT)
-			return false;
+			return EXIT_FAILURE;
 	}
 
 	return rv == 0;
@@ -269,6 +269,59 @@ out:
 	return true;
 }
 
+static int discover_test(struct arcan_shmif_cont* C, int trust)
+{
+/* A set of fake keys that we randomly mark as discovered or lost, will cycle
+ * through, randomly discover or lose, sleep and repeat. This means that the
+ * arcan end may well receive unpaired added/ removed and flipping types as
+ * those are error cases to respond to. Each cycle adds 10 seconds to the delay
+ * for interactive use. */
+
+/* 0 == lost, 1 (source) 2 (sink) 4 (directory) */
+	size_t step = 10;
+	size_t counter = 1;
+	struct arcan_event ev[] =
+	{
+		{ .ext.kind = ARCAN_EVENT(NETSTATE),
+			.ext.netstate = {.state = 1, .type = 1, .name = "test_1"}
+		},
+		{ .ext.kind = ARCAN_EVENT(NETSTATE),
+			.ext.netstate = {.state = 1, .type = 2, .name = "test_2"}
+		},
+
+		{ .ext.kind = ARCAN_EVENT(NETSTATE),
+			.ext.netstate = {.state = 1, .type = 4, .name = "test_3"}
+		},
+		{ .ext.kind = ARCAN_EVENT(NETSTATE), /* invalid type */
+			.ext.netstate = {.state = 1, .type = 5, .name = "test_4"}
+		},
+		{ .ext.kind = ARCAN_EVENT(NETSTATE), /* flip to all roles */
+			.ext.netstate = {.state = 1, .type = (1 | 2 | 4), .name = "test_3"}
+		},
+	};
+
+	bool found = false;
+	while (flush_shmif(C)){
+		sleep(1);
+		counter -= 1;
+		if (!counter){
+			counter = step;
+			step += 10;
+		}
+		for (size_t i = 0; i < COUNT_OF(ev); i++){
+			int ot = ev[i].ext.netstate.type;
+			if (found)
+				ev[i].ext.netstate.type = 0;
+			arcan_shmif_enqueue(C, &ev[i]);
+			if (found)
+				ev[i].ext.netstate.type = ot;
+			sleep(1);
+		}
+		found = !found;
+	}
+	return EXIT_SUCCESS;
+}
+
 static int discover_sweep(struct arcan_shmif_cont* C, int trust)
 {
 	struct tagopt tag = {
@@ -297,6 +350,23 @@ static int discover_sweep(struct arcan_shmif_cont* C, int trust)
 
 	arcan_shmif_drop(C);
 	return EXIT_SUCCESS;
+}
+
+static int dircl_loop(
+	struct arcan_shmif_cont* C, struct anet_cl_connection* A, struct arg_arr* args)
+{
+/*
+ * if we have a name already, just request the applname through bchunkstate
+ * extension and on-binary handler to handover exec.
+ *
+ * and it will be sent as BCHUNKHINTs internally
+ * the mechanism for picking an appl to grab
+ *
+ * regular recv- / flush loop, send the BCHUNKSTATE event,
+ * on completion request a handover then
+ * use support handler from arcan-net (directory.c): handover_exec
+ * that one should take care of env and state transfer */
+	return EXIT_FAILURE;
 }
 
 static int discover_directory(struct arcan_shmif_cont* C, int trust)
@@ -339,6 +409,14 @@ static int connect_to_host(
 		return EXIT_FAILURE;
 	}
 
+/* With the afsrv_net:net_open path we are after a sink to source,
+ * directory/xxx or a directory/appl as a download or as inter-appl messaging.
+ * The case for acting as an outbound source comes through
+ * afsrv_encode:define_recordtarget.
+ *
+ * For the appl case, we connect to a directory first, then send a message
+ * for the resource we want.
+ */
 	struct anet_options opts =
 	{
 		.key = name,
@@ -359,6 +437,14 @@ static int connect_to_host(
 	if (con.errmsg || !con.state){
 		arcan_shmif_last_words(C, con.errmsg);
 		arcan_shmif_drop(C);
+		return EXIT_FAILURE;
+	}
+
+	if (a12_remote_mode(con.state) == ROLE_DIR){
+		return dircl_loop(C, &con, args);
+	}
+	else if (a12_remote_mode(con.state) == ROLE_SINK){
+		arcan_shmif_last_words(C, "host-mismatch:role=sink");
 		return EXIT_FAILURE;
 	}
 
@@ -400,8 +486,8 @@ static int show_help()
 		"  key     \t   value   \t   description\n"
 		"----------\t-----------\t-----------------\n"
 		" host     \t  dsthost  \t Specify host or keystore tag@ to connect to\n"
-		" discover \t  method   \t Set discovery mode (method=sweep | passive |"
-		"          \t           \t                     broadcast | directory)\n"
+		" discover \t  method   \t Set discovery mode (method=sweep,test,passive,\n"
+		"          \t           \t                     broadcast or directory)\n"
 		"\n"
 		"discovery arguments\n"
 		"  key   \t   value   \t   description\n"
@@ -442,6 +528,9 @@ int afsrv_netcl(struct arcan_shmif_cont* C, struct arg_arr* args)
 		}
 		else if (strcmp(dmethod, "directory") == 0){
 			return discover_directory(C, trustm);
+		}
+		else if (strcmp(dmethod, "test") == 0){
+			return discover_test(C, trustm);
 		}
 		else {
 			arcan_shmif_last_words(C, "unsupported discovery method");
