@@ -282,10 +282,10 @@ void tui_pixelfont_close(struct tui_pixelfont* ctx)
 		if (!ctx->fonts[i].shared_ht)
 			HASH_CLEAR(hh, ctx->fonts[i].ht);
 
-			free(ctx->fonts[i].font);
-			ctx->fonts[i].font = NULL;
-			ctx->fonts[i].sz = 0;
-			ctx->fonts[i].shared_ht = false;
+		free(ctx->fonts[i].font);
+		ctx->fonts[i].font = NULL;
+		ctx->fonts[i].sz = 0;
+		ctx->fonts[i].shared_ht = false;
 	}
 	free(ctx);
 }

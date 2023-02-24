@@ -5640,7 +5640,7 @@ void arcan_video_default_texmode(enum arcan_vtex_mode modes,
 	arcan_video_display.deftxt = modet;
 }
 
-arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
+arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector res[static 4])
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
 

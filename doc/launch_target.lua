@@ -70,10 +70,12 @@
 -- ref:target_displayhint, ref:target_outputhint, ref:target_fonthint,
 -- ref:target_geohint, ref:suspend_target.
 --
--- @tblent: "resized" {int:width, int:height, bool:origo_ll} the underlying
--- storage has changed dimensions. If origo_ll is set, the source data is
--- stored with origo at lower left rather than upper left. To account for
--- this, look into ref:image_set_txcos_default to flip the Y axis.
+-- @tblent: "resized" {int:width, int:height, bool:origo_ll, bool:tpack} the
+-- underlying storage has changed dimensions or backing format. If origo_ll is
+-- set, the source data is stored with origo at lower left rather than upper
+-- left. To account for this, look into ref:image_set_txcos_default to flip the
+-- Y axis. If tpack is set the segment is text only with server-side rendered
+-- text.
 --
 -- @tblent: "message" {string:message, bool:multipart} - generic text message
 -- (UTF-8) that terminates when multipart is set to false. This mechanism is

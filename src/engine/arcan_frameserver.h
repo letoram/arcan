@@ -394,7 +394,7 @@ bool arcan_frameserver_getramps(arcan_frameserver*,
 bool arcan_frameserver_setramps(arcan_frameserver*,
 	size_t index,
 	float* table, size_t table_sz,
-	size_t ch_sz[],
+	size_t ch_sz[static SHMIF_CMRAMP_PLIM],
 	uint8_t* edid, size_t edid_sz
 );
 
