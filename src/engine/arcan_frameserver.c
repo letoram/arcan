@@ -150,7 +150,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 		.category = EVENT_FSRV,
 		.fsrv.kind = EVENT_FSRV_TERMINATED,
 		.fsrv.video = vid,
-		.fsrv.glsource = false,
+		.fsrv.fmt_fl = 0,
 		.fsrv.audio = aid,
 		.fsrv.otag = tag
 	};
@@ -280,7 +280,9 @@ static bool push_buffer(arcan_frameserver* src,
 			.fsrv.video = src->vid,
 			.fsrv.audio = src->aid,
 			.fsrv.otag = src->tag,
-			.fsrv.glsource = src->desc.hints & SHMIF_RHINT_ORIGO_LL
+			.fsrv.fmt_fl =
+				(src->desc.hints & SHMIF_RHINT_ORIGO_LL) |
+				(src->desc.hints & SHMIF_RHINT_TPACK)
 		};
 
 /* Manually enabled mode where the WM side wants access to the resized buffer

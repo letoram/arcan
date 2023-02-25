@@ -3,6 +3,7 @@
  * util:random\_interval(low,high) added for CSPRNG non-biased interval RNG
  * util:random\_bytes(len) added for CSPRNG byte string
  * target_input long messages are now marked as multipart
+ * convey tui/tpack state in resize events
 
 ## Core
  * respect border attribute in text rasteriser

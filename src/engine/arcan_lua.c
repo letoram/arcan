@@ -736,7 +736,9 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 					.fsrv.video = fsrv->vid,
 					.fsrv.audio = fsrv->aid,
 					.fsrv.otag = fsrv->tag,
-					.fsrv.glsource = fsrv->desc.hints & SHMIF_RHINT_ORIGO_LL
+					.fsrv.fmt_fl =
+						(fsrv->desc.hints & SHMIF_RHINT_ORIGO_LL) |
+						(fsrv->desc.hints & SHMIF_RHINT_TPACK)
 				});
 
 /* the RESET event to the affected frameserver, though it could be used as a
@@ -4726,8 +4728,9 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx, "height", ev->fsrv.height, top);
 
 /* mirrored is incorrect but can't drop it for legacy reasons */
-			tblbool(ctx, "mirrored", ev->fsrv.glsource, top);
-			tblbool(ctx, "origo_ll", ev->fsrv.glsource, top);
+			tblbool(ctx, "mirrored", ev->fsrv.fmt_fl & SHMIF_RHINT_ORIGO_LL, top);
+			tblbool(ctx, "origo_ll", ev->fsrv.fmt_fl & SHMIF_RHINT_ORIGO_LL, top);
+			tblbool(ctx, "tpack", ev->fsrv.fmt_fl & SHMIF_RHINT_TPACK, top);
 		break;
 		default:
 		break;

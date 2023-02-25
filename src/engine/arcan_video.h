@@ -895,7 +895,7 @@ surface_properties arcan_video_current_properties(arcan_vobj_id id);
  * retrieve the screen-space coordinates of the 2d- object and store
  * the four oriented vertices in the x,y components of [dst].
  */
-arcan_errc arcan_video_screencoords(arcan_vobj_id, vector dst[4]);
+arcan_errc arcan_video_screencoords(arcan_vobj_id, vector dst[static 4]);
 
 /*
  * retrieve the object- space properties of [id] [ticks] into the future
