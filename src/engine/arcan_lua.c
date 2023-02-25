@@ -180,6 +180,10 @@ typedef int acoord;
 #define CONST_DISCOVER_DIRECTORY 4
 #endif
 
+#ifndef CONST_DISCOVER_TEST
+#define CONST_DISCOVER_TEST 8
+#endif
+
 #ifndef CONST_TRUST_KNOWN
 #define CONST_TRUST_KNOWN 11
 #endif
@@ -4525,7 +4529,7 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tbldynstr(ctx, "name", msgbuf, top);
 			tbldynstr(ctx, "namespace", spacetostr(ev->ext.netstate.space), top);
 
-			if (ev->ext.netstate.state == 1)
+			if (ev->ext.netstate.state & (1 | 2 | 4))
 				tblbool(ctx, "discovered", true, top);
 			else if (ev->ext.netstate.state == 0)
 				tblbool(ctx, "lost", true, top);
@@ -4537,8 +4541,7 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblbool(ctx, "source", true, top);
 			if (ev->ext.netstate.type & 2)
 				tblbool(ctx, "sink", true, top);
-
-			if (ev->ext.netstate.type == 4)
+			if (ev->ext.netstate.type & 4)
 				tblbool(ctx, "directory", true, top);
 
 		break;
@@ -11405,6 +11408,9 @@ static int net_discover(lua_State* ctx)
 	case CONST_DISCOVER_DIRECTORY:
 		discm = "directory";
 	break;
+	case CONST_DISCOVER_TEST:
+		discm = "test";
+	break;
 	default:
 		arcan_fatal("net_discover(): unknown discover mode: %zu", mode);
 	}
@@ -12266,6 +12272,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"DISCOVER_SWEEP", CONST_DISCOVER_SWEEP},
 {"DISCOVER_BROADCAST", CONST_DISCOVER_BROADCAST},
 {"DISCOVER_DIRECTORY", CONST_DISCOVER_DIRECTORY},
+{"DISCOVER_TEST", CONST_DISCOVER_TEST},
 {"TRUST_KNOWN", CONST_TRUST_KNOWN},
 {"TRUST_PERMIT_UNKNOWN", CONST_TRUST_PERMIT_UNKNOWN},
 {"TRUST_TRANSITIVE", CONST_TRUST_TRANSITIVE},

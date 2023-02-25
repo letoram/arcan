@@ -10,8 +10,9 @@
 --
 -- The short argument form uses whatever implementation defined default detection
 -- mechanism that is available, with the TRUST_KNOWN level of trust.
--- For more refined control, the *mode* argument can  be set to one of the following:
--- DISCOVER_PASSIVE, DISCOVER_SWEEP, DISCOVER_BROADCAST, DISCOVER_DIRECTORY.
+-- For more refined control, the *mode* argument can be set to one of the following:
+-- DISCOVER_PASSIVE, DISCOVER_SWEEP, DISCOVER_BROADCAST, DISCOVER_DIRECTORY or
+-- DISCOVER_TEST.
 --
 -- DISCOVER_PASSIVE silently listens on available network interfaces (or ones
 -- specified through the *description* argument) for broadcasting clients.
@@ -24,14 +25,19 @@
 -- delay=n:period=m form where the delay is a number in seconds between each
 -- attempted keyset, and period delay in seconds between sweeps.
 --
--- DISCOVER_DIRECTORY uses a directory service to discover which ones are
+-- DISCOVER_DIRECTORY uses a directory server to discover which devices are
 -- currently available. This mode can punch through NATed networks and is
 -- suitable for wide-area network use where you have access to a remote trusted
--- server.
+-- server. The *description* argument is used to reference the directory server
+-- to open.
 --
--- the *trust* argment changes how the discover modes based on a specified trust
--- model, which can be one of the following:
--- TRUST_KNOWN, TRUST_PERMIT_UNKNOWN, TRUST_TRANSITIVE.
+-- DISCOVER_TEST generates fake discovery/lost events, both valid and invalid,
+-- at increasingly longer intervals in order to provide testing and automation
+-- without causing any network traffic.
+--
+-- the *trust* argment changes how the discover modes based on a specified
+-- trust model, which can be one of the following: TRUST_KNOWN,
+-- TRUST_PERMIT_UNKNOWN, TRUST_TRANSITIVE.
 --
 -- TRUST_KNOWN will only forward and reply to messages that comes from
 -- previously known and trusted sources. Known sources are managed through an
@@ -50,22 +56,32 @@
 -- of relevance.
 --
 -- @tblent: "state" {string:name, string:namespace, bool:lost, bool:discovered,
--- bool:bad, bool:source, bool:sink, bool: directory}. Name is a user-presentable
--- identifier for the network resource that has changed state. The
--- interpretation of name is governed by the namespace (tag, basename, subname,
--- ipv4, ipv6, a12pub). Tag is a user-defined entry in the local keystore, while
--- basename/subname is a breakdown of components in a fully qualified domain
--- name. Multiple events may be used to provide a complete reverse entry:
--- basename.basename.subname (com.example.local) and is terminated with an
--- zero-length base- or subname. A12pub is a bit special in the sense that it
--- provides the public key for a previously unknown a12 connection.
--- The (source, sink and directory) states describe capabilities of the node at
--- the other end and if neither are set, the capabilities could not be derived
--- from the detection method. A source can provide an application, a sink
--- expects one, and a directory act as a 3rd party trust and state store for
--- DISCOVER_DIRECTORY with TRUST_TRANSITIVE.
--- The (lost, discovered, bad) states describes transitions, a name can appear
--- as either discovered or bad. A discovered name can later be lost.
+-- bool:bad, bool:source, bool:sink, bool: directory, bool:appl}.
+--
+-- Name is a user-presentable identifier for the network resource that has
+-- changed state. The interpretation of name is governed by the *namespace*
+-- (tag, basename, subname, ipv4, ipv6, a12pub). Tag is a user-defined entry in
+-- the local keystore, while basename/subname is a breakdown of components in a
+-- fully qualified domain name. Multiple events may be used to provide a
+-- complete reverse entry: basename.basename.subname (com.example.local) and is
+-- terminated with an zero-length base- or subname. A12pub is a bit special in
+-- the sense that it provides the public key for a previously unknown a12
+-- connection based on the TRUST_PERMIT_UNKNOWN trust model argument.
+--
+-- The (source, sink and directory) states describe the capabilities of the
+-- discovered node. If none of them are set, the capabilities could not be
+-- derived from the detection method. A source can provide data, a sink expects
+-- to be provided data. A directory can be used to launch a new discovery
+-- action, as well as proxy a connection to other sources and sinks. It can
+-- also provide other arcan appls that can be launched through ref:net_open
+-- and act as a state store for appls and launch targets.
+--
+-- Bad should normally never be set. If it is, it means that the afsrv_net
+-- process used to delegate the discovery process has provided events with
+-- unexpected values and should be investigated.
+--
+-- @note: Due to the asynchronous nature of discovery requests, it is possible
+-- to receive lost=true without first having discovered the name in question.
 --
 -- @note: specifying an invalid value for *trust* or *mode* is a terminal state
 -- transition.
@@ -78,13 +94,12 @@ function main()
 	function(source, status)
 		if status.kind == "terminated" then
 			delete_image(source)
-		elseif status.kind == "found" then
-			print("discovered", status.trusted, status.tag, status.host)
-			if not status.trusted then
-				return false
-			end
-		elseif status.kind == "lost" then
-			print("lost", status.tag)
+			return shutdown()
+		elseif status.kind ~= "state" then
+			return
+		end
+		for k,v in pairs(status) do
+			print(k, v)
 		end
 	end
 	)
