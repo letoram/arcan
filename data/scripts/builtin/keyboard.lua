@@ -292,6 +292,14 @@ local symtable =
 	period = 0
 };
 
+symtable.tolabel = function(keysym)
+	return KEYSYM_LABEL_LUT[keysym]
+end
+
+symtable.tokeysym = function(label)
+	return LABEL_KEYSYM_LUT[label]
+end
+
 symtable.tochar = function(ind)
 	return KEYSYM_ASCII_LUT[ind];
 end
