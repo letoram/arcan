@@ -247,6 +247,13 @@ enum ARCAN_SEGID {
  */
 	SEGID_HANDOVER = 28,
 
+/*
+ * Used for sensitive audio processing and secondary positional audio sources.
+ * Any video buffers are assumed to be empty or carry an FFT representation of
+ * the matching audio buffer window.
+ */
+	SEGID_AUDIO = 29,
+
 /* Can always be terminated without risk, may be stored as part of debug format
  * in terms of unexpected termination etc. */
 	SEGID_DEBUG = 255,

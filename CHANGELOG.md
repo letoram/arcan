@@ -31,6 +31,9 @@
  * egl-dri: evict streams
  * egl-dri: default to atomic over legacy
 
+## Shmif
+ * add audio only- segment type
+
 ## Package / Build
  * console: added binding for shutdown
  * builtin/mouse: bugfixes to two-sample mode
