@@ -4,6 +4,7 @@ local surf_dispatch = {}
 
 function xwm()
 	xwm_listen()
+	image_color(WORLDID, 64, 96, 64)
 end
 
 function xwm_listen()
@@ -79,7 +80,7 @@ function root_dispatch.segment_request(source, status)
 		end
 
 -- accelerated cursor, warping is done through viewport events - calls to map
--- display layer would also work
+-- display layer would also work.
 		root_cursor =
 			accept_target(status.width, status.height,
 			function(source, status)
@@ -87,11 +88,11 @@ function root_dispatch.segment_request(source, status)
 					show_image(source)
 					resize_image(source, status.width, status.height)
 				elseif status.kind == "viewport" then
-					show_image(source, not status.invisible)
 					move_image(source, status.rel_x, status.rel_y)
 				end
 			end
 		)
+
 		order_image(root_cursor, 65535)
 		show_image(root_cursor)
 	end
@@ -106,6 +107,7 @@ function root_dispatch.message(source, status)
 end
 
 function surf_dispatch.viewport(source, status)
+	blend_image(source, status.invisible and 0 or 1)
 	move_image(source, status.rel_x, status.rel_y)
 end
 
