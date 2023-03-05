@@ -263,8 +263,10 @@ int main(int argc, char** argv)
 #ifdef ENABLE_FSRV_DECODE
 	if (strcmp(fsrvmode, "decode") == 0)
 		return launch_mode("decode",
-			afsrv_decode, SEGID_MEDIA,
-			SHMIF_MANUAL_PAUSE | SHMIF_NOACTIVATE_RESIZE, argstr
+			afsrv_decode, SEGID_UNKNOWN,
+			SHMIF_MANUAL_PAUSE |
+			SHMIF_NOACTIVATE_RESIZE |
+			SHMIF_NOREGISTER, argstr
 		);
 #endif
 
