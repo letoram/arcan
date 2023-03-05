@@ -215,7 +215,7 @@
 -- "multimedia", "terminal", "tui", "popup", "icon", "remoting", "game", "hmd-l",
 -- "hmd-r", "hmd-sbs-lr", "vm", "application", "clipboard",
 -- "browser", "encoder", "titlebar", "sensor", "service", "bridge-x11",
--- "bridge-wayland", "debug", "widget"
+-- "bridge-wayland", "debug", "widget", "audio"
 --
 -- @tblent: "proto_update", {cm, vr, hdrf16, ldr, vobj} - the set of negotiated
 -- subprotocols has changed, each member is a boolean indicating if the subprotocol

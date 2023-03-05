@@ -274,7 +274,10 @@ static struct a12_vframe_opts vcodec_tuning(
 		opts.method = VFRAME_METHOD_H264;
 		opts.bias = VFRAME_BIAS_LATENCY;
 	break;
-
+	case SEGID_AUDIO:
+		opts.method = VFRAME_METHOD_RAW;
+		opts.bias = VFRAME_BIAS_LATENCY;
+	break;
 /* this one is also a possible subject for codec passthrough, that will have
  * to be implemented in the server util part as we need shmif to propagate if
  * we can deal with passthrough and then device_fail that if the other end
