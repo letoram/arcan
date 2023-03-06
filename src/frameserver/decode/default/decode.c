@@ -195,6 +195,17 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		return EXIT_SUCCESS;
 	}
 
+	int segkind = SEGID_MEDIA;
+	if (strcasecmp(type, "text") == 0){
+		segkind = SEGID_TUI;
+	}
+	struct arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(REGISTER),
+		.ext.registr.kind = segkind,
+	};
+	arcan_shmif_enqueue(cont, &ev);
+
 #ifdef HAVE_PDF
 	if (strcasecmp(type, "pdf") == 0)
 		return decode_pdf(cont, args);
@@ -203,11 +214,11 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	if (strcasecmp(type, "media") == 0)
 		return decode_av(cont, args);
 
-	if (strcasecmp(type, "3d") == 0)
-		return decode_3d(cont, args);
-
 	if (strcasecmp(type, "text") == 0)
 		return decode_text(cont, args);
+
+	if (strcasecmp(type, "3d") == 0)
+		return decode_3d(cont, args);
 
 	if (strcasecmp(type, "image") == 0)
 		return decode_image(cont, args);

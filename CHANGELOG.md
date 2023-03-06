@@ -34,6 +34,9 @@
 ## Shmif
  * add audio only- segment type
 
+## Decode
+ * defer REGISTER until proto argument has been parsed, let text register as TUI
+
 ## Package / Build
  * console: added binding for shutdown
  * builtin/mouse: bugfixes to two-sample mode
