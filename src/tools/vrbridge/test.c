@@ -71,10 +71,16 @@ bool test_init(struct dev_ent* ent,
  * tools being held (so basically what vive gives you)
  */
 	vrbridge_alloc_limb(ent, NECK, ID_NECK);
-	vrbridge_alloc_limb(ent, L_TOOL, ID_LTOOL);
-	vrbridge_alloc_limb(ent, R_TOOL, ID_RTOOL);
+
+	if (arg){
+		if (arg_lookup(arg, "l_tool", 0, NULL))
+			vrbridge_alloc_limb(ent, L_TOOL, ID_LTOOL);
+		if (arg_lookup(arg, "r_tool", 0, NULL))
+			vrbridge_alloc_limb(ent, R_TOOL, ID_RTOOL);
+	}
 	state->axis[0] = state->axis[1] = state->axis[2];
 	state->axis_ind = 0;
+	ent->state = state;
 
 	return true;
 }
