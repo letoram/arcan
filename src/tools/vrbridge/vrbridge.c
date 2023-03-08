@@ -15,6 +15,7 @@
 
 #include "vrbridge.h"
 #include "avr_test.h"
+#include "avr_nreal.h"
 #include "avr_openhmd.h"
 
 static volatile bool in_init = true;
@@ -86,6 +87,11 @@ static struct dev_ent dev_tbl[] =
 		.init = test_init,
 		.sample = test_sample,
 		.control = test_control
+	},
+	{
+		.init = nreal_init,
+		.sample = nreal_sample,
+		.control = nreal_control
 	},
 	{
 		.init = openhmd_init,
@@ -183,13 +189,18 @@ static void control_cmd(int cmd)
 
 static int console_main()
 {
+	struct arg_arr* aarg =
+		arg_unpack(getenv("ARCAN_ARG"));
 	debug_offline = true;
 	printf("console detected, switching to arcan-less mode\n");
 	vr_context = malloc(sizeof(struct arcan_shmif_vr));
 	*vr_context = (struct arcan_shmif_vr){};
 	debug_level = 10;
 
-	while(device_rescan(vr_context, NULL) == 0){
+	if (arg_lookup(aarg, "test", 0, NULL))
+		in_test_mode = true;
+
+	while(device_rescan(vr_context, aarg) == 0){
 		printf("vrbridge:setup() - ""no controllers found, sleep/rescan");
 		sleep(5);
 	}
@@ -198,7 +209,9 @@ static int console_main()
 	in_init = false;
 	epoch = arcan_timemillis();
 	vr_context->ready = true;
-	while (1){}
+	while (1){
+		sleep(1);
+	}
 
 	return EXIT_SUCCESS;
 }

@@ -88,6 +88,7 @@ set(SOURCES
 	vrbridge.c
 	ahrs.c
 	openhmd.c
+	nreal.c
 	test.c
 	${ARCAN_ROOT_DIR}/src/engine/arcan_math.c
 	${PLATFORM_SOURCES}
