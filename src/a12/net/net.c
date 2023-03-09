@@ -275,7 +275,7 @@ static struct a12_vframe_opts vcodec_tuning(
 		opts.bias = VFRAME_BIAS_LATENCY;
 	break;
 	case SEGID_AUDIO:
-		opts.method = VFRAME_METHOD_RAW;
+		opts.method = VFRAME_METHOD_RAW_NOALPHA;
 		opts.bias = VFRAME_BIAS_LATENCY;
 	break;
 /* this one is also a possible subject for codec passthrough, that will have
