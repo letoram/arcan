@@ -2756,7 +2756,6 @@ static void disable_display(struct dispout* d, bool dealloc)
 	}
 
 	if (d->state == DISP_KNOWN){
-		d->device = NULL;
 		d->state = DISP_UNUSED;
 		return;
 	}
@@ -2861,7 +2860,8 @@ static void disable_display(struct dispout* d, bool dealloc)
 	drmModeFreeCrtc(d->display.old_crtc);
 	d->display.old_crtc = NULL;
 
-/*	d->device = NULL; */
+/* keep the device mapping around as the conductor and other parts might
+ * need to scan/probe the device itself without the display actually used */
 	d->state = DISP_UNUSED;
 
 	if (d->backlight){

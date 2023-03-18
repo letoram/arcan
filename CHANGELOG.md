@@ -30,6 +30,7 @@
  * audio: stub platform added
  * egl-dri: evict streams
  * egl-dri: default to atomic over legacy
+ * egl-dri: retain device tracking for unmapped display
 
 ## Shmif
  * add audio only- segment type
