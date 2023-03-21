@@ -22,6 +22,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
 #include <fcntl.h>
@@ -42,6 +43,8 @@
 
 #include "external/stb_image_resize.h"
 
+#include "arcan_math.h"
+#include "arcan_general.h"
 #include "arcan_shmif.h"
 #include "arcan_ttf.h"
 
@@ -49,6 +52,8 @@
    supports 256 shades of gray, but we should instead key off of num_grays
    in the result FT_Bitmap after the FT_Render_Glyph() call. */
 #define NUM_GRAYS       256
+
+#define FONT_CACHE_SIZE  128
 
 /* Handy routines for converting from fixed point */
 #define FT_FLOOR(X)	((X & -64) / 64)
@@ -121,7 +126,31 @@ struct _TTF_Font {
 
 	/* really just flags passed into FT_Load_Glyph */
 	int hinting;
+
+	int cached_height;
+	int cached_width;
 };
+
+/* Font cache entry */
+typedef struct c_font {
+	struct _TTF_Font* font;
+
+	/* If this font is derived from other */
+	struct c_font* original;
+
+	dev_t dev;
+	ino_t ino;
+	int ptsize;
+	uint16_t hdpi;
+	uint16_t vdpi;
+	unsigned int ref_count;
+} c_font;
+
+/* Font cache reference */
+typedef struct c_font_ref {
+	struct _TTF_Font* font;
+	c_font* cache_entry;
+} c_font_ref;
 
 /* Handle a style only if the font does not already handle it */
 #define TTF_HANDLE_STYLE_BOLD(font) (((font)->style & TTF_STYLE_BOLD) && \
@@ -138,37 +167,201 @@ struct _TTF_Font {
 static _Thread_local FT_Library library;
 static _Thread_local int TTF_initialized = 0;
 
+static c_font font_cache[FONT_CACHE_SIZE];
+static int font_cache_usage = 0;
+
+bool TTF_FontIsEqual(const struct _TTF_Font* a, const struct _TTF_Font* b)
+{
+	return
+		a->face == b->face &&
+		a->height == b->height &&
+		a->ascent == b->ascent &&
+		a->descent == b->descent &&
+		a->lineskip == b->lineskip &&
+		a->face_style == b->face_style &&
+		a->style == b->style &&
+		a->outline == b->outline &&
+		a->kerning == b->kerning &&
+		a->glyph_overhang == b->glyph_overhang &&
+		a->glyph_italics == b->glyph_italics &&
+		a->underline_offset == b->underline_offset &&
+		a->underline_height == b->underline_height &&
+		a->font_size_family == b->font_size_family &&
+		a->ptsize == b->ptsize &&
+		a->hinting == b->hinting;
+}
+
+c_font* TTF_FindCachedFont(dev_t dev, ino_t ino, int ptsize, uint16_t hdpi, uint16_t vdpi)
+{
+	for (int i=0; i<font_cache_usage; i++) {
+		c_font* f = &font_cache[i];
+
+		if (f->original)
+			continue;
+
+		if (f->dev == dev &&
+		    f->ino == ino &&
+		    f->ptsize == ptsize &&
+		    f->hdpi == hdpi &&
+		    f->vdpi == vdpi) {
+
+			f->ref_count++;
+			TRACE_MARK_ONESHOT("font", "cache-hit", TRACE_SYS_DEFAULT, 0, 0, "");
+			return f;
+		}
+	}
+
+	for (int i=0; i<FONT_CACHE_SIZE; i++) {
+		if (font_cache[i].font != NULL)
+			continue;
+
+		c_font* f = &font_cache[i];
+		f->dev = dev;
+		f->ino = ino;
+		f->ptsize = ptsize;
+		f->hdpi = hdpi;
+		f->vdpi = vdpi;
+		f->original = NULL;
+		f->ref_count = 1;
+
+		if (i + 1 > font_cache_usage) {
+			font_cache_usage = i + 1;
+		}
+
+		TRACE_MARK_ONESHOT("font", "cache-miss", TRACE_SYS_DEFAULT, 0, 0, "");
+		return f;
+	}
+
+	TRACE_MARK_ONESHOT("font", "cache-overrun", TRACE_SYS_WARN, 0, 0, "");
+	return NULL;
+}
+
+c_font* TTF_FindOrForkCachedFont(c_font* original, const struct _TTF_Font* template)
+{
+	c_font* result = NULL;
+
+	for (int i=0; i<font_cache_usage; i++) {
+		if (font_cache[i].font == NULL)
+			continue;
+
+		if (!TTF_FontIsEqual(font_cache[i].font, template))
+			continue;
+
+		result = &font_cache[i];
+		break;
+	}
+
+	if (!result) {
+		for (int i=0; i<FONT_CACHE_SIZE; i++) {
+			if (font_cache[i].font != NULL)
+				continue;
+
+			result = &font_cache[i];
+
+			if (i + 1 > font_cache_usage) {
+				font_cache_usage = i + 1;
+			}
+			break;
+		}
+	}
+
+	if (!result)
+		return NULL;
+
+	if (result->font != NULL) {
+		result->ref_count++;
+		TRACE_MARK_ONESHOT("font", "cache-hit", TRACE_SYS_DEFAULT, 0, 0, "fork");
+		return result;
+	}
+	TRACE_MARK_ONESHOT("font", "cache-miss", TRACE_SYS_DEFAULT, 0, 0, "fork");
+
+	*result = *original;
+	result->original = original;
+	result->ref_count = 1;
+
+	struct _TTF_Font* forked = malloc(sizeof (struct _TTF_Font));
+	if (!forked) {
+		result->font = NULL;
+		return NULL;
+	}
+
+	*forked = *original->font;
+	forked->freesrc = 0;
+	forked->args.stream = NULL; // If it exists, parent should free it
+	forked->cached_height = 0;
+	forked->cached_width = 0;
+
+	// Reset glyph cache
+	forked->current = forked->cache;
+	int glyph_cache_size = sizeof( forked->cache ) / sizeof( forked->cache[0] );
+	for (int i=0; i<glyph_cache_size; i++) {
+		c_glyph* glyph = &forked->cache[i];
+		glyph->cached = 0;
+		glyph->stored = 0;
+		glyph->index = 0;
+		glyph->bitmap.buffer = NULL;
+		glyph->pixmap.buffer = NULL;
+	}
+
+	result->font = forked;
+	return result;
+}
+
+void TTF_ResetCachedFont(c_font* font)
+{
+	if (!font)
+		return;
+
+	int i;
+	for (i=0; i<font_cache_usage; i++) {
+		if (&font_cache[i] != font)
+			continue;
+
+		TRACE_MARK_ONESHOT("font", "cache-release", TRACE_SYS_DEFAULT, 0, 0, "");
+
+		font_cache[i].font = NULL;
+
+		if (i + 1 == font_cache_usage) {
+			font_cache_usage--;
+		}
+
+		return;
+	}
+
+	TRACE_MARK_ONESHOT("font", "cache-release-fail", TRACE_SYS_ERROR, 0, 0, "");
+}
+
 void TTF_SetError(const char* msg){
 }
 
 /* Gets the top row of the underline. The outline
    is taken into account.
 */
-int TTF_underline_top_row(TTF_Font *font)
+int TTF_underline_top_row(TTF_Font *font_ref)
 {
 	/* With outline, the underline_offset is underline_offset+outline. */
 	/* So, we don't have to remove the top part of the outline height. */
-	return font->ascent - font->underline_offset - 1;
+	return font_ref->font->ascent - font_ref->font->underline_offset - 1;
 }
 
-void* TTF_GetFtFace(TTF_Font* font)
+void* TTF_GetFtFace(TTF_Font* font_ref)
 {
-	if (!font)
+	if (!font_ref || !font_ref->font)
 		return NULL;
 
-	return (void*)font->face;
+	return (void*)font_ref->font->face;
 }
 
 /* Gets the bottom row of the underline. The outline
    is taken into account.
 */
-int TTF_underline_bottom_row(TTF_Font *font)
+int TTF_underline_bottom_row(TTF_Font *font_ref)
 {
-	int row = TTF_underline_top_row(font) + font->underline_height;
-	if( font->outline  > 0 ) {
+	int row = TTF_underline_top_row(font_ref) + font_ref->font->underline_height;
+	if( font_ref->font->outline  > 0 ) {
 		/* Add underline_offset outline offset and */
 		/* the bottom part of the outline. */
-		row += font->outline * 2;
+		row += font_ref->font->outline * 2;
 	}
 	return row;
 }
@@ -176,11 +369,11 @@ int TTF_underline_bottom_row(TTF_Font *font)
 /* Gets the top row of the strikethrough. The outline
    is taken into account.
 */
-int TTF_strikethrough_top_row(TTF_Font *font)
+int TTF_strikethrough_top_row(TTF_Font *font_ref)
 {
 	/* With outline, the first text row is 'outline'. */
 	/* So, we don't have to remove the top part of the outline height. */
-	return font->height / 2;
+	return font_ref->font->height / 2;
 }
 
 static void TTF_SetFTError(const char *msg, FT_Error error)
@@ -278,16 +471,19 @@ static int ft_sizeind(FT_Face face, float ys)
 	return ind;
 }
 
-void TTF_Resize(TTF_Font* font, int ptsize, uint16_t hdpi, uint16_t vdpi)
+void TTF_Resize(TTF_Font* font_ref, int ptsize, uint16_t hdpi, uint16_t vdpi)
 {
-	float emsize = ptsize * 64.0;
-	FT_Set_Char_Size(font->face, 0, emsize, hdpi, vdpi);
+	// This operation mutates FT_Face, which can not be cloned to ensure immutability
+	TRACE_MARK_ONESHOT("font", "stub", TRACE_SYS_WARN, 0, 0, "TTF_Resize is stubbed due to font caching constraints");
+	// float emsize = ptsize * 64.0;
+	// FT_Set_Char_Size(font_ref->font->face, 0, emsize, hdpi, vdpi);
 }
 
 TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize,
 	uint16_t hdpi, uint16_t vdpi, long index )
 {
-	TTF_Font* font;
+	struct _TTF_Font* font;
+	c_font_ref* font_ref;
 	FT_Error error;
 	FT_Face face;
 	FT_Fixed scale;
@@ -310,21 +506,31 @@ TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize,
 		return NULL;
 	}
 
-	font = (TTF_Font*) malloc(sizeof *font);
-	if ( font == NULL ) {
+	font_ref = (c_font_ref*) malloc(sizeof *font_ref);
+	if ( font_ref == NULL ) {
 		TTF_SetError( "Out of memory" );
 		fclose(src);
 		return NULL;
 	}
+
+	font = (struct _TTF_Font*) malloc(sizeof *font);
+	if ( font == NULL ) {
+		TTF_SetError( "Out of memory" );
+		fclose(src);
+		free(font_ref);
+		return NULL;
+	}
 	memset(font, 0, sizeof(*font));
 
+	font_ref->font = font;
+	font_ref->cache_entry = 0;
 	font->src = src;
 	font->freesrc = freesrc;
 
 	stream = (FT_Stream)malloc(sizeof(*stream));
 	if ( stream == NULL ) {
 		TTF_SetError( "Out of memory" );
-		TTF_CloseFont( font );
+		TTF_CloseFont( font_ref );
 		return NULL;
 	}
 	memset(stream, 0, sizeof(*stream));
@@ -343,7 +549,7 @@ TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize,
 	error = FT_Open_Face( library, &font->args, index, &font->face );
 	if( error ) {
 		TTF_SetFTError( "Couldn't load font file", error );
-		TTF_CloseFont( font );
+		TTF_CloseFont( font_ref );
 		return NULL;
 	}
 	face = font->face;
@@ -357,7 +563,7 @@ TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize,
 		error = FT_Set_Char_Size( font->face, 0, emsize, hdpi, vdpi);
 		if( error ) {
 			TTF_SetFTError( "Couldn't set font size", error );
-			TTF_CloseFont( font );
+			TTF_CloseFont( font_ref );
 			return NULL;
 	  }
 
@@ -384,7 +590,7 @@ TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize,
 	  	font->underline_height = FT_FLOOR(face->underline_thickness);
 		}
 		else {
-			TTF_CloseFont(font);
+			TTF_CloseFont(font_ref);
 			return NULL;
 		}
 	}
@@ -422,7 +628,10 @@ TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize,
 	font->glyph_italics = 0.207f;
 	font->glyph_italics *= font->height;
 
-	return font;
+	font->cached_width = 0;
+	font->cached_height = 0;
+
+	return font_ref;
 }
 
 TTF_Font* TTF_OpenFontRW( FILE* src, int freesrc, int ptsize,
@@ -434,13 +643,37 @@ TTF_Font* TTF_OpenFontRW( FILE* src, int freesrc, int ptsize,
 TTF_Font* TTF_OpenFontIndex( const char *file, int ptsize,
 	uint16_t hdpi, uint16_t vdpi, long index )
 {
+	struct stat f_stat;
+	if (stat(file, &f_stat) != 0)
+		return NULL;
+
+	c_font* cached = TTF_FindCachedFont(f_stat.st_dev, f_stat.st_ino, ptsize, hdpi, vdpi);
+	if (cached && cached->font) {
+		c_font_ref* font_ref = malloc(sizeof(c_font_ref));
+
+		if (!font_ref)
+			return NULL;
+
+		font_ref->font = cached->font;
+		font_ref->cache_entry = cached;
+		return font_ref;
+	}
+
 	FILE* rw = fopen(file, "r");
-	if (rw){
+	if (!rw)
+		// cached.font is still NULL so not releasing cache entry
+		return NULL;
+
 	fcntl(fileno(rw), F_SETFD, FD_CLOEXEC);
 
-		return TTF_OpenFontIndexRW(rw, 1, ptsize, hdpi, vdpi, index);
+	TTF_Font* font_ref = TTF_OpenFontIndexRW(rw, 1, ptsize, hdpi, vdpi, index);
+
+	if (cached) {
+		cached->font = font_ref->font;
+		font_ref->cache_entry = cached;
 	}
-	return NULL;
+
+	return font_ref;
 }
 
 TTF_Font* TTF_OpenFont( const char *file, int ptsize,
@@ -449,20 +682,20 @@ TTF_Font* TTF_OpenFont( const char *file, int ptsize,
 	return TTF_OpenFontIndex(file, ptsize, hdpi, vdpi, 0);
 }
 
-TTF_Font* TTF_ReplaceFont(TTF_Font* src, int ptsize, uint16_t hdpi, uint16_t vdpi)
+TTF_Font* TTF_ReplaceFont(TTF_Font* font_ref, int ptsize, uint16_t hdpi, uint16_t vdpi)
 {
-	int newfd = arcan_shmif_dupfd(fileno(src->src), -1, true);
+	int newfd = arcan_shmif_dupfd(fileno(font_ref->font->src), -1, true);
 	if (-1 == newfd)
-		return src;
+		return font_ref;
 
 	TTF_Font* new = TTF_OpenFontFD(newfd, ptsize, hdpi, vdpi);
 	close(newfd);
 
 	if (!new){
-		return src;
+		return font_ref;
 	}
 
-	TTF_CloseFont(src);
+	TTF_CloseFont(font_ref);
 	return new;
 }
 
@@ -471,6 +704,22 @@ TTF_Font* TTF_OpenFontFD(int fd,
 {
 	if (-1 == fd)
 		return NULL;
+
+	struct stat fd_stat;
+	if (fstat(fd, &fd_stat) != 0)
+		return NULL;
+
+	c_font* cached = TTF_FindCachedFont(fd_stat.st_dev, fd_stat.st_ino, ptsize, hdpi, vdpi);
+	if (cached && cached->font) {
+		c_font_ref* font_ref = malloc(sizeof(c_font_ref));
+
+		if (!font_ref)
+			return NULL;
+
+		font_ref->font = cached->font;
+		font_ref->cache_entry = cached;
+		return font_ref;
+	}
 
 	int nfd = arcan_shmif_dupfd(fd, -1, true);
 	if (-1 == nfd)
@@ -488,11 +737,15 @@ TTF_Font* TTF_OpenFontFD(int fd,
 	fseek(fstream, SEEK_SET, 0);
 	TTF_Font* res = TTF_OpenFontIndexRW(fstream, 1, ptsize, hdpi, vdpi, 0);
 
-/*
- * TTF_Open*** takes on the responsibility of freeing here
-	if (!res)
+	if (!res) {
 		fclose(fstream);
- */
+		return NULL;
+	}
+
+	if (cached) {
+		cached->font = res->font;
+		res->cache_entry = cached;
+	}
 
 	return res;
 }
@@ -512,7 +765,7 @@ static void Flush_Glyph( c_glyph* glyph )
 	glyph->cached = 0;
 }
 
-void TTF_Flush_Cache( TTF_Font* font )
+void TTF_Flush_Cache_Internal( struct _TTF_Font* font )
 {
 	int i;
 	int size = sizeof( font->cache ) / sizeof( font->cache[0] );
@@ -521,13 +774,19 @@ void TTF_Flush_Cache( TTF_Font* font )
 		if( font->cache[i].cached ) {
 			Flush_Glyph( &font->cache[i] );
 		}
-
 	}
 }
 
-static FT_Error Load_Glyph(
-	TTF_Font* font, uint32_t ch, c_glyph* cached, int want, bool by_ind )
+void TTF_Flush_Cache( TTF_Font* font_ref )
 {
+	TRACE_MARK_ONESHOT("font", "glyph-cache-flush", TRACE_SYS_DEFAULT, 0, 0, "");
+	TTF_Flush_Cache_Internal( font_ref->font );
+}
+
+static FT_Error Load_Glyph(
+	TTF_Font* font_ref, uint32_t ch, c_glyph* cached, int want, bool by_ind )
+{
+	struct _TTF_Font* font = font_ref->font;
 	FT_Face face;
 	FT_Error error;
 	FT_GlyphSlot glyph;
@@ -854,8 +1113,9 @@ static FT_Error Load_Glyph(
 }
 
 static FT_Error Find_Glyph(
-	TTF_Font* font, uint32_t ch, int want, bool by_ind)
+	TTF_Font* font_ref, uint32_t ch, int want, bool by_ind)
 {
+	struct _TTF_Font* font = font_ref->font;
 	int retval = 0;
 	int hsize = sizeof( font->cache ) / sizeof( font->cache[0] );
 
@@ -866,7 +1126,7 @@ static FT_Error Find_Glyph(
 		Flush_Glyph( font->current );
 
 	if ( (font->current->stored & want) != want ) {
-		retval = Load_Glyph( font, ch, font->current, want, by_ind );
+		retval = Load_Glyph( font_ref, ch, font->current, want, by_ind );
 	}
 	return retval;
 }
@@ -884,21 +1144,58 @@ TTF_Font* TTF_FindGlyph(
 	return NULL;
 }
 
-void TTF_CloseFont( TTF_Font* font )
+void TTF_CloseFontInternal( struct _TTF_Font* font, bool is_original )
 {
-	if ( font ) {
-		TTF_Flush_Cache( font );
-		if ( font->face ) {
+	TTF_Flush_Cache_Internal( font );
+
+	if (is_original) {
+		if ( font->face )
 			FT_Done_Face( font->face );
-		}
-		if ( font->args.stream ) {
+
+		if ( font->args.stream )
 			free( font->args.stream );
-		}
-		if ( font->freesrc ) {
+
+		if ( font->freesrc )
 			fclose( font->src );
-		}
-		free( font );
 	}
+
+	free( font );
+}
+
+void TTF_CloseFont( TTF_Font* font_ref )
+{
+	if ( !font_ref )
+		return;
+
+	if ( !font_ref->font ) {
+		free(font_ref);
+		return;
+	}
+
+	if ( font_ref->cache_entry ) {
+		c_font* current = font_ref->cache_entry;
+		c_font* original = font_ref->cache_entry->original;
+
+		current->ref_count--;
+
+		if (current->ref_count == 0) {
+			TTF_CloseFontInternal(current->font, original == NULL);
+			TTF_ResetCachedFont(current);
+		}
+
+		if (original) {
+			original->ref_count--;
+
+			if (original->ref_count == 0) {
+				TTF_CloseFontInternal(original->font, true);
+				TTF_ResetCachedFont(original);
+			}
+		}
+	} else {
+		TTF_CloseFontInternal(font_ref->font, true);
+	}
+
+	free( font_ref );
 }
 
 /*
@@ -977,54 +1274,70 @@ int UTF8_to_UTF32(uint32_t* out, const uint8_t* const in, size_t len)
 	return rc;
 }
 
-int TTF_FontHeight(const TTF_Font *font)
+int TTF_FontHeight(const TTF_Font *font_ref)
 {
-	return(font->height);
+	return font_ref->font->height;
 }
 
-int TTF_FontAscent(const TTF_Font *font)
+int TTF_FontAscent(const TTF_Font *font_ref)
 {
-	return(font->ascent);
+	return font_ref->font->ascent;
 }
 
-int TTF_FontDescent(const TTF_Font *font)
+int TTF_FontDescent(const TTF_Font *font_ref)
 {
-	return(font->descent);
+	return font_ref->font->descent;
 }
 
-int TTF_FontLineSkip(const TTF_Font *font)
+int TTF_FontLineSkip(const TTF_Font *font_ref)
 {
-	return(font->lineskip);
+	return font_ref->font->lineskip;
 }
 
-int TTF_GetFontKerning(const TTF_Font *font)
+int TTF_GetFontKerning(const TTF_Font *font_ref)
 {
-	return(font->kerning);
+	return font_ref->font->kerning;
 }
 
-void TTF_SetFontKerning(TTF_Font *font, int allowed)
+void TTF_SetFontKerning(TTF_Font *font_ref, int allowed)
 {
-	font->kerning = allowed;
+	if (font_ref->font->kerning == allowed)
+		return;
+
+	if (font_ref->cache_entry) {
+		struct _TTF_Font template = *font_ref->font;
+		template.kerning = allowed;
+
+		c_font* fork = TTF_FindOrForkCachedFont(font_ref->cache_entry, &template);
+
+		if (!fork)
+			return;
+
+		font_ref->font = fork->font;
+		font_ref->cache_entry = fork;
+	}
+
+	font_ref->font->kerning = allowed;
 }
 
-long TTF_FontFaces(const TTF_Font *font)
+long TTF_FontFaces(const TTF_Font *font_ref)
 {
-	return(font->face->num_faces);
+	return font_ref->font->face->num_faces;
 }
 
-int TTF_FontFaceIsFixedWidth(const TTF_Font *font)
+int TTF_FontFaceIsFixedWidth(const TTF_Font *font_ref)
 {
-	return(FT_IS_FIXED_WIDTH(font->face));
+	return FT_IS_FIXED_WIDTH(font_ref->font->face);
 }
 
-char *TTF_FontFaceFamilyName(const TTF_Font *font)
+char *TTF_FontFaceFamilyName(const TTF_Font *font_ref)
 {
-	return(font->face->family_name);
+	return font_ref->font->face->family_name;
 }
 
-char *TTF_FontFaceStyleName(const TTF_Font *font)
+char *TTF_FontFaceStyleName(const TTF_Font *font_ref)
 {
-	return(font->face->style_name);
+	return font_ref->font->face->style_name;
 }
 
 /*
@@ -1064,16 +1377,33 @@ int TTF_GlyphMetrics(TTF_Font *font, uint32_t ch,
 }
 */
 
-void TTF_SetFontStyle( TTF_Font* font, int style )
+void TTF_SetFontStyle( TTF_Font* font_ref, int style )
 {
-	int prev_style = font->style;
-	font->style = style | font->face_style;
+	int new_style = style | font_ref->font->face_style;
+
+	if ( font_ref->font->style == new_style )
+		return;
+
+	if (font_ref->cache_entry) {
+		struct _TTF_Font template = *font_ref->font;
+		template.style = new_style;
+
+		c_font* fork = TTF_FindOrForkCachedFont(font_ref->cache_entry, &template);
+
+		if (!fork)
+			return;
+
+		font_ref->font = fork->font;
+		font_ref->cache_entry = fork;
+	}
 
 	/* Flush the cache if the style has changed.
 	* Ignore UNDERLINE which does not impact glyph drawning.
 	* */
-	if ( (font->style | TTF_STYLE_NO_GLYPH_CHANGE ) != ( prev_style | TTF_STYLE_NO_GLYPH_CHANGE )) {
-		TTF_Flush_Cache( font );
+	int old_style = font_ref->font->style;
+	font_ref->font->style = new_style;
+	if ( (new_style | TTF_STYLE_NO_GLYPH_CHANGE) != (old_style | TTF_STYLE_NO_GLYPH_CHANGE ) ) {
+		TTF_Flush_Cache( font_ref );
 	}
 }
 
@@ -1137,11 +1467,11 @@ int TTF_SizeUNICODEchain(TTF_Font **font, size_t n,
 	}
 
 /* dominant (first) font in chain gets to control dimensions */
-	use_kerning = FT_HAS_KERNING( font[0]->face ) && font[0]->kerning;
+	use_kerning = FT_HAS_KERNING( font[0]->font->face ) && font[0]->font->kerning;
 
 /* Init outline handling */
-	if ( font[0]->outline  > 0 ) {
-		outline_delta = font[0]->outline * 2;
+	if ( font[0]->font->outline  > 0 ) {
+		outline_delta = font[0]->font->outline * 2;
 	}
 
 	x= 0;
@@ -1152,21 +1482,21 @@ int TTF_SizeUNICODEchain(TTF_Font **font, size_t n,
 		TTF_Font* outf = TTF_FindGlyph(font, n, c, CACHED_METRICS, false);
 		if (!outf)
 			continue;
-		glyph = outf->current;
+		glyph = outf->font->current;
 
 /* cheating with the manual_scale bitmap fonts */
 		if (glyph->manual_scale){
-			x += outf->ptsize;
-			maxx += outf->ptsize;
-			if (maxy < outf->ptsize)
-				maxy = outf->ptsize;
+			x += outf->font->ptsize;
+			maxx += outf->font->ptsize;
+			if (maxy < outf->font->ptsize)
+				maxy = outf->font->ptsize;
 			continue;
 		}
 
 /* kerning needs the index of the previous glyph and the current one */
 		if ( use_kerning && prev_index && glyph->index ) {
 			FT_Vector delta;
-			FT_Get_Kerning( outf->face, prev_index,
+			FT_Get_Kerning( outf->font->face, prev_index,
 				glyph->index, ft_kerning_default, &delta );
 			x += delta.x >> 6;
 		}
@@ -1195,8 +1525,8 @@ int TTF_SizeUNICODEchain(TTF_Font **font, size_t n,
 		if ( minx > z ) {
 			minx = z;
 		}
-		if ( TTF_HANDLE_STYLE_BOLD(outf) ) {
-			x += outf->glyph_overhang;
+		if ( TTF_HANDLE_STYLE_BOLD(outf->font) ) {
+			x += outf->font->glyph_overhang;
 		}
 		if ( glyph->advance > glyph->maxx ) {
 			z = x + glyph->advance;
@@ -1225,12 +1555,12 @@ int TTF_SizeUNICODEchain(TTF_Font **font, size_t n,
 	if ( h ) {
 		/* Some fonts descend below font height (FletcherGothicFLF) */
 		/* Add outline extra height */
-		*h = (font[0]->ascent - miny) + outline_delta;
-		if ( *h < font[0]->height ) {
-			*h = font[0]->height;
+		*h = (font[0]->font->ascent - miny) + outline_delta;
+		if ( *h < font[0]->font->height ) {
+			*h = font[0]->font->height;
 		}
 		/* Update height according to the needs of the underline style */
-		if( TTF_HANDLE_STYLE_UNDERLINE(font[0]) ) {
+		if( TTF_HANDLE_STYLE_UNDERLINE(font[0]->font) ) {
 			int bottom_row = TTF_underline_bottom_row(font[0]);
 			if ( *h < bottom_row ) {
 				*h = bottom_row;
@@ -1324,11 +1654,12 @@ static bool render_unicode(
 	PIXEL* dst,
 	size_t width, size_t height,
 	int stride, TTF_Font **font, size_t n,
-	TTF_Font* outf,
+	TTF_Font* outf_ref,
 	unsigned* xstart, uint8_t fg[4], uint8_t bg[4],
 	bool usebg, bool use_kerning, int style,
 	int* advance, unsigned* prev_index)
 {
+	struct _TTF_Font* outf = outf_ref->font;
 	PIXEL* ubound = dst + (height * stride) + width;
 	c_glyph* glyph = outf->current;
 	*advance = glyph->advance;
@@ -1367,7 +1698,7 @@ static bool render_unicode(
 		if (glyph->manual_scale){
 /* maintain AR and center around PTSIZE (as em = 1/72@72DPI = 1 px)	*/
 			float ar = glyph->pixmap.rows / glyph->pixmap.width;
-			int newh = font[0]->ptsize;
+			int newh = font[0]->font->ptsize;
 			int neww = newh * ar;
 			int yshift = 0;
 
@@ -1574,7 +1905,7 @@ bool TTF_RenderUTF8chain(PIXEL* dst, size_t width, size_t height,
 
 		TTF_RenderUNICODEglyph(dst, width, height, stride,
 			font, n, *ch, &xstart, fg, fg,
-			false, FT_HAS_KERNING(font[0]->face) && font[0]->kerning, style,
+			false, FT_HAS_KERNING(font[0]->font->face) && font[0]->font->kerning, style,
 			&advance, &prev_index
 		);
 
@@ -1586,49 +1917,88 @@ bool TTF_RenderUTF8chain(PIXEL* dst, size_t width, size_t height,
 
 int TTF_GetFontStyle( const TTF_Font* font )
 {
-	return font->style;
+	return font->font->style;
 }
 
-void TTF_SetFontOutline( TTF_Font* font, int outline )
+void TTF_SetFontOutline( TTF_Font* font_ref, int outline )
 {
-	font->outline = outline;
-	TTF_Flush_Cache( font );
+	if (font_ref->font->outline == outline)
+		return;
+
+	if (font_ref->cache_entry) {
+		struct _TTF_Font template = *font_ref->font;
+		template.outline = outline;
+
+		c_font* fork = TTF_FindOrForkCachedFont(font_ref->cache_entry, &template);
+
+		if (!fork)
+			return;
+
+		font_ref->font = fork->font;
+		font_ref->cache_entry = fork;
+	}
+
+	if (font_ref->font->outline != outline) {
+		font_ref->font->outline = outline;
+		TTF_Flush_Cache( font_ref );
+	}
 }
 
-int TTF_GetFontOutline( const TTF_Font* font )
+int TTF_GetFontOutline( const TTF_Font* font_ref )
 {
-	return font->outline;
+	return font_ref->font->outline;
 }
 
-void TTF_SetFontHinting( TTF_Font* font, int hinting )
+void TTF_SetFontHinting( TTF_Font* font_ref, int hinting )
 {
+	int new_hinting;
 	if (hinting == TTF_HINTING_LIGHT)
-		font->hinting = FT_RENDER_MODE_LIGHT;
+		new_hinting = FT_RENDER_MODE_LIGHT;
 	else if (hinting == TTF_HINTING_MONO)
-		font->hinting = FT_RENDER_MODE_MONO;
+		new_hinting = FT_RENDER_MODE_MONO;
 	else if (hinting == TTF_HINTING_NONE)
-		font->hinting = FT_RENDER_MODE_MONO;
+		new_hinting = FT_RENDER_MODE_MONO;
 	else if (hinting == TTF_HINTING_RGB)
-		font->hinting = FT_RENDER_MODE_LCD;
+		new_hinting = FT_RENDER_MODE_LCD;
 	else if (hinting == TTF_HINTING_VRGB)
-		font->hinting = FT_RENDER_MODE_LCD_V;
+		new_hinting = FT_RENDER_MODE_LCD_V;
 	else
-		font->hinting = FT_RENDER_MODE_NORMAL;
+		new_hinting = FT_RENDER_MODE_NORMAL;
 
-	TTF_Flush_Cache( font );
+	if (font_ref->font->hinting == new_hinting)
+		return;
+
+	if (font_ref->cache_entry) {
+		struct _TTF_Font template = *font_ref->font;
+		template.hinting = new_hinting;
+
+		c_font* fork = TTF_FindOrForkCachedFont(font_ref->cache_entry, &template);
+
+		if (!fork)
+			return;
+
+		font_ref->font = fork->font;
+		font_ref->cache_entry = fork;
+	}
+
+	if (font_ref->font->hinting != new_hinting) {
+		font_ref->font->hinting = new_hinting;
+		TTF_Flush_Cache( font_ref );
+	}
 }
 
-int TTF_GetFontHinting( const TTF_Font* font )
+int TTF_GetFontHinting( const TTF_Font* font_ref )
 {
-	if (font->hinting == FT_LOAD_TARGET_LIGHT)
+	int hinting = font_ref->font->hinting;
+	if (hinting == FT_LOAD_TARGET_LIGHT)
 		return TTF_HINTING_LIGHT;
-	else if (font->hinting == FT_LOAD_TARGET_MONO)
+	else if (hinting == FT_LOAD_TARGET_MONO)
 		return TTF_HINTING_MONO;
-	else if (font->hinting == FT_LOAD_NO_HINTING)
+	else if (hinting == FT_LOAD_NO_HINTING)
 		return TTF_HINTING_NONE;
-	else if (font->hinting == FT_RENDER_MODE_LCD)
+	else if (hinting == FT_RENDER_MODE_LCD)
 		return TTF_HINTING_RGB;
-	else if (font->hinting == FT_RENDER_MODE_LCD_V)
+	else if (hinting == FT_RENDER_MODE_LCD_V)
 		return TTF_HINTING_VRGB;
 	else
 		return TTF_HINTING_NORMAL;
@@ -1648,15 +2018,21 @@ int TTF_WasInit( void )
 	return TTF_initialized;
 }
 
-int TTF_GetFontKerningSize(TTF_Font* font, int prev_index, int index)
+int TTF_GetFontKerningSize(TTF_Font* font_ref, int prev_index, int index)
 {
 	FT_Vector delta;
-	FT_Get_Kerning( font->face, prev_index, index, ft_kerning_default, &delta );
+	FT_Get_Kerning( font_ref->font->face, prev_index, index, ft_kerning_default, &delta );
 	return (delta.x >> 6);
 }
 
-void TTF_ProbeFont(TTF_Font* font, size_t* dw, size_t* dh)
+void TTF_ProbeFont(TTF_Font* font_ref, size_t* dw, size_t* dh)
 {
+	if (font_ref->font->cached_width > 0 && font_ref->font->cached_height > 0) {
+		*dw = font_ref->font->cached_width;
+		*dh = font_ref->font->cached_height;
+		return;
+	}
+
 	static const char* msg[] = {
 		"A", "a", "!", "_", "J", "j", "G", "g", "M", "m", "`", "-", "=", NULL
 	};
@@ -1667,12 +2043,12 @@ void TTF_ProbeFont(TTF_Font* font, size_t* dw, size_t* dh)
 /*
  * Flush the cache so we're not biased or collide with byIndex or byValue
  */
-	TTF_Flush_Cache(font);
+	TTF_Flush_Cache(font_ref);
 
 	for (size_t i = 0; msg[i]; i++){
-		TTF_SizeUTF8(font, msg[i], &w, &h, TTF_STYLE_BOLD | TTF_STYLE_UNDERLINE);
+		TTF_SizeUTF8(font_ref, msg[i], &w, &h, TTF_STYLE_BOLD | TTF_STYLE_UNDERLINE);
 
-		if (font->hinting == TTF_HINTING_RGB)
+		if (font_ref->font->hinting == TTF_HINTING_RGB)
 			w++;
 
 		if (w > *dw)
@@ -1681,4 +2057,7 @@ void TTF_ProbeFont(TTF_Font* font, size_t* dw, size_t* dh)
 		if (h > *dh)
 			*dh = h;
 	}
+
+	font_ref->font->cached_width = *dw;
+	font_ref->font->cached_height = *dh;
 }
