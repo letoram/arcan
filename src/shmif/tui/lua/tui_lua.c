@@ -432,7 +432,7 @@ static void on_mouse_button(struct tui_context* T,
 }
 
 static void on_key(struct tui_context* T, uint32_t xkeysym,
-	uint8_t scancode, uint8_t mods, uint16_t subid, void* t)
+	uint8_t scancode, uint16_t mods, uint16_t subid, void* t)
 {
 	SETUP_HREF("key",);
 		lua_pushnumber(L, subid);
