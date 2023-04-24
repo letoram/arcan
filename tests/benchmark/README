@@ -1,16 +1,16 @@
-The benchmark applications in this folder all follows the 
+The benchmark applications in this folder all follows the
 same pattern, see fillrate/fillrate.lua for an example.
 
 They build on the scripts/benchmark.lua support script
 that works by collecting display timing data for a number
-of frames, doing a test if the framerate is above a 
+of frames, doing a test if the framerate is above a
 cutoff-point, and if so, increases the load. Thus, to use
 you need to set the resource path:
 
-arcan -p /path/to/arcan/data/resources /path/to/benchmark/test
+arcan -p /path/to/arcan/tests /path/to/benchmark/test
 
-the load- function is defined by each single tests and 
-the default output (report) is to standard output 
+the load- function is defined by each single tests and
+the default output (report) is to standard output
 in a CSV format e.g.
 
 count:min:max:avg:stddev
