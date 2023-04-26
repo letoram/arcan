@@ -1317,7 +1317,7 @@ static void step_cursor_e(struct tui_context* T, struct bufferwnd_meta* M)
 }
 
 static void on_key_input(struct tui_context* T, uint32_t keysym,
-	uint8_t scancode, uint8_t mods, uint16_t subid, void* tag)
+	uint8_t scancode, uint16_t mods, uint16_t subid, void* tag)
 {
 	struct bufferwnd_meta* M = tag;
 /* might want to provide the label based approach to these as well, UP/DOWN

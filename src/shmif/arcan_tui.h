@@ -339,7 +339,7 @@ struct tui_cbcfg {
  *
  */
 	void (*input_key)(struct tui_context*, uint32_t symest,
-		uint8_t scancode, uint8_t mods, uint16_t subid, void* tag);
+		uint8_t scancode, uint16_t mods, uint16_t subid, void* tag);
 
 /*
  * other input- that wasn't handled in the other callbacks
