@@ -612,7 +612,7 @@ static void on_mouse_button(struct tui_context* c,
 }
 
 static void on_key(struct tui_context* c, uint32_t keysym,
-	uint8_t scancode, uint8_t mods, uint16_t subid, void* t)
+	uint8_t scancode, uint16_t mods, uint16_t subid, void* t)
 {
 	trace("on_key(%"PRIu32",%"PRIu8",%"PRIu16")", keysym, scancode, subid);
 	if (term.pipe)

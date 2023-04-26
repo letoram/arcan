@@ -454,7 +454,7 @@ static bool on_label_input(
 }
 
 static void key_input(struct tui_context* T, uint32_t keysym,
-	uint8_t scancode, uint8_t mods, uint16_t subid, void* tag)
+	uint8_t scancode, uint16_t mods, uint16_t subid, void* tag)
 {
 	struct listwnd_meta* M = tag;
 	for (size_t i = 0; i < COUNT_OF(labels); i++){

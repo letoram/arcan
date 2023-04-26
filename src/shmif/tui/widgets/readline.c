@@ -868,7 +868,7 @@ static void synch_completion(struct tui_context* T, struct readline_meta* M)
 }
 
 void on_key_input(struct tui_context* T,
-	uint32_t keysym, uint8_t scancode, uint8_t mods, uint16_t subid, void* tag)
+	uint32_t keysym, uint8_t scancode, uint16_t mods, uint16_t subid, void* tag)
 {
 	struct readline_meta* M;
 	if (!validate_context(T, &M))
