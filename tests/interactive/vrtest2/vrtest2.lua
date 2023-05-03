@@ -276,7 +276,7 @@ function vrtest2_input(iotbl)
 		return;
 	end
 
-	local sym = symtable[iotbl.keysym];
+	local sym = symtable.tolabel(iotbl.keysym);
 	if (not sym) then
 		return;
 	end

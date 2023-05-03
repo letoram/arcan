@@ -76,7 +76,7 @@ end
 
 function soundtest_input( inputtbl )
 	if (inputtbl.kind == "digital" and inputtbl.active and inputtbl.translated) then
-		local sym = symtable[ inputtbl.keysym ]
+		local sym = symtable.tolabel(inputtbl.keysym)
 		local num = tonumber(sym)
 
 		if num and tones[num] then
@@ -97,7 +97,7 @@ function soundtest_input( inputtbl )
 			print("play", playback)
 			play_audio(playback, 1.0, queue_next)
 
-		elseif (symtable[ inputtbl.keysym ] == "f") then
+		elseif (sym == "f") then
 		    if (sample_countdown > 0) then
 			sample_countdown = 0;
 			print("disabling sample spam");
@@ -106,7 +106,7 @@ function soundtest_input( inputtbl )
 			sample_countdown = 15;
 		    end
 
-		elseif  (symtable[ inputtbl.keysym ] == "ESCAPE") then
+		elseif  (sym == "ESCAPE") then
 		    shutdown();
 		end
 	end

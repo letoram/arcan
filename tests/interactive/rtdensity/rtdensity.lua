@@ -15,8 +15,9 @@ end
 delta = 0;
 function rtdensity_input(iotbl)
 	if (iotbl.digital and iotbl.active) then
-		if (iotbl.translated and symtable[iotbl.keysym]) then
-			if (symtable[iotbl.keysym] == "m") then
+		local label = symtable.tolabel(iotbl.keysym)
+		if (iotbl.translated and label) then
+			if (label == "m") then
 				print("switching to 1");
 				local lst = rendertarget_vids(rt_2);
 				for k,v in ipairs(lst) do

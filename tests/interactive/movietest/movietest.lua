@@ -73,18 +73,19 @@ end
 function movietest_input( inputtbl )
 
 	if (inputtbl.kind == "digital" and inputtbl.translated and inputtbl.active) then
-		if (symtable[ inputtbl.keysym ] == "d") then
+		local label = symtable.tolabel(inputtbl.keysym)
+		if (label == "d") then
 
-		elseif (symtable[ inputtbl.keysym ] == "s") then
+		elseif (label == "s") then
 			vid, aid = launch_decode("movietest.avi");
 			img.last = vid;
 			move_image(vid, cursor.x, cursor.y);
 			show_image(vid);
 
-		elseif (symtable[ inputtbl.keysym ] == "p") then
+		elseif (label == "p") then
 			pause_movie(img.last);
 
-		elseif (symtable[ inputtbl.keysym ] == "w") then
+		elseif (label == "w") then
 			width = 128 + math.random(1024);
 			height = 128 + math.random(1024);
 			print("Requesting:", "capture:" .. webcam_ind, tostring(width) .. "x" .. tostring(height));
@@ -100,9 +101,9 @@ end );
 			move_image(vid, cursor.x, cursor.y);
 			show_image(vid);
 
-		elseif (symtable[ inputtbl.keysym] == "r") then
+		elseif (label == "r") then
 			resume_movie(img.last);
-		elseif (symtable[ inputtbl.keysym] == "ESCAPE") then
+		elseif (label == "ESCAPE") then
 			shutdown();
 		end
 

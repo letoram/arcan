@@ -65,7 +65,7 @@ function outputs()
 end
 
 function outputs_input(iotbl)
-	local sym = symtable[iotbl.keysym];
+	local sym = symtable.tolabel(iotbl.keysym);
 	if (iotbl.active and sym and sym == " ") then
 		modes[mode_ind](false);
 		mode_ind = mode_ind + 1;

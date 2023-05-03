@@ -30,13 +30,14 @@ end
 
 function segtest_input(iotbl)
 	if (iotbl.kind == "digital" and iotbl.active) then
-		if (symtable[iotbl.keysym] == "F10") then
+		local label = symtable.tolabel(iotbl.keysym)
+		if (label == "F10") then
 			print("dropping main seg");
 			delete_image(test);
-		elseif(symtable[iotbl.keysym] == "F9") then
+		elseif(label == "F9") then
 			print("dropping alt seg");
 			delete_image(newvid);
-		elseif (symtable[iotbl.keysym] == "F8") then
+		elseif (label == "F8") then
 			target_alloc("mykey", seg2);
 		else
 			print("input to:", newvid);
