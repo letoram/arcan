@@ -133,13 +133,18 @@ if not wm_touch_normalize then
 	local rangetbl = {}
 	wm_touch_normalize =
 	function(io)
--- there is no support script for touch- ranging yet as the scripts in durden
--- are not mature enough (and no input platform that does the job) - assume
--- values are ranged to the display, then autorange as needed.
 		local rt, w, h, _, _ = wm_active_display()
 		local range = rangetbl[io.devid]
 		if not range then
-			range = {w, h}
+			local x_axis = inputanalog_query(io.devid, 0);
+			local y_axis = inputanalog_query(io.devid, 1);
+
+			if (x_axis and y_axis) then
+				range = {x_axis.upper_bound, y_axis.upper_bound}
+			else
+				range = {w, h}
+			end
+
 			rangetbl[io.devid] = range
 		end
 
