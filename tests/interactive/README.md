@@ -79,6 +79,8 @@ soundtest - deprecated, test sample and streaming playback
 
 switcher - test appl switching
 
+touchtest - test touch input
+
 tracetst - using benchmark function to generate chrome friendly system trace
 
 vidtag - another record testing
