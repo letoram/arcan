@@ -19,7 +19,7 @@ meta_key = "LCTRL";
 
 function mdispwm()
 	system_load("scripts/composition_surface.lua")();
-	system_load("scripts/mouse.lua")();
+	system_load("builtin/mouse.lua")();
 	symtable = system_load("builtin/keyboard.lua")();
 
 -- ugly red square as mouse cursor
@@ -125,12 +125,13 @@ function mdispwm_input(iotbl)
 		end
 
 	elseif (iotbl.translated) then
+		local label = symtable.tolabel(iotbl.keysym)
 -- propagate meta-key state (for resize / drag / etc.)
-		if (symtable[ iotbl.keysym ] == meta_key) then
+		if (label == meta_key) then
 			wm.meta = iotbl.active and true or nil;
 
 -- spawn a random color surface for testing
-		elseif (symtable[ iotbl.keysym ] == "F11" and iotbl.active) then
+		elseif (label == "F11" and iotbl.active) then
 			surf = color_surface(128, 128, math.random(128)+127,
 				math.random(128)+127, math.random(128)+127);
 
@@ -138,7 +139,7 @@ function mdispwm_input(iotbl)
 			wnd:set_border(1);
 
 -- delete the selected window
-		elseif (symtable[ iotbl.keysym ] == "DELETE" and
+		elseif (label == "DELETE" and
 			wm.meta == true and wm.selected and iotbl.active) then
 
 			wm.selected:destroy();

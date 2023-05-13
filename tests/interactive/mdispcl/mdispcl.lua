@@ -63,15 +63,15 @@ end
 --
 -- Event callback for display configuration hotplug
 --
-function mdispcl_display_state(state, arg)
+function mdispcl_display_state(state, displayid)
 	if (state == "added") then
-		table.insert(active_displays, arg[1].displayid);
-		map_video_display(WORLDID, arg[1].displayid);
+		table.insert(active_displays, displayid);
+		map_video_display(WORLDID, displayid);
 
 	elseif (state == "removed") then
 
 		for k,v in ipairs(active_displays) do
-			if (v == arg) then
+			if (v == displayid) then
 				table.remove(active_displays, k);
 				break;
 			end
@@ -81,8 +81,9 @@ function mdispcl_display_state(state, arg)
 end
 
 function mdispcl_input(iotbl)
+	local label = symtable.tolabel(iotbl.keysym)
 	if (iotbl.translated and iotbl.active and
-		dispatch[symtable[iotbl.keysym]]) then
-		dispatch[symtable[iotbl.keysym]]();
+		dispatch[label]) then
+		dispatch[label]();
 	end
 end

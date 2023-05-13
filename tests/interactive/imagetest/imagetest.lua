@@ -121,46 +121,47 @@ end
 
 function imagetest_input(inputtbl)
 	if (inputtbl.kind == "digital" and inputtbl.translated and inputtbl.active) then
-		if (symtable[ inputtbl.keysym ] == "ESCAPE") then
+		local label = symtable.tolabel(inputtbl.keysym)
+		if (label == "ESCAPE") then
 			shutdown();
-		elseif (symtable[ inputtbl.keysym ] == "1") then
+		elseif (label == "1") then
 			print("Running instancing test");
 			instancing_test();
-		elseif (symtable[ inputtbl.keysym ] == "2") then
+		elseif (label == "2") then
 			print("Running Z order/limit test");
 			zordervidlim(false);
-		elseif (symtable[ inputtbl.keysym ] == "3") then
+		elseif (label == "3") then
 			print("Running image loading stress");
 			zordervidlim(true);
-		elseif (symtable[ inputtbl.keysym ] == "4") then
+		elseif (label == "4") then
 			print("Double stacksize for next layer");
 			stacksize = stacksize * 2;
 			system_context_size(stacksize);
-		elseif (symtable[ inputtbl.keysym ] == "l") then
+		elseif (label == "l") then
 			print("Loading image into context");
 			local vid = imagefun("imagetest.png");
 			resize_image(vid, 64, 64);
 			move_image(vid, math.random(VRESW - 64), math.random(VRESH - 64), 0);
 			order_image(vid, 0);
 			show_image(vid);
-		elseif (symtable[ inputtbl.keysym ] == "s") then
+		elseif (label == "s") then
 			text_vid = BADID;
 			print("Stack push => " .. tostring ( push_video_context() ) );
-		elseif (symtable[ inputtbl.keysym ] == "d") then
+		elseif (label == "d") then
 			num, vid = storepush_video_context();
 			show_image(vid);
 
 			print("Stack push store => " .. tostring(num) .. " => " .. tostring(vid));
-		elseif (symtable[ inputtbl.keysym ] == "f") then
+		elseif (label == "f") then
 			num, vid = storepop_video_context();
 			show_image(vid);
 			print("Stack pop store => " .. tostring(num) .. " => "  .. tostring(vid));
-		elseif (symtable[ inputtbl.keysym ] == "p") then
+		elseif (label == "p") then
 			print("Stack pop => " .. tostring ( pop_video_context() ) );
-		elseif (symtable[inputtbl.keysym] == "a") then
+		elseif (label == "a") then
 			print("Switching image mode\n");
 			imagefun = imagefun == load_image and load_image_asynch or load_image
-		elseif (symtable[inputtbl.keysym] == "r") then
+		elseif (label == "r") then
 			local tbl = {};
 			for i=1,(256 * 256) do
 				table.insert(tbl, math.random(255));

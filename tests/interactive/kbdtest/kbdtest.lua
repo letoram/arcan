@@ -54,10 +54,11 @@ end
 
 function kbdtest_input(inp)
 	if (inp.translated and inp.active) then
+		local label = symtable.tolabel(inp.keysym)
 		last_event = 500;
 		table.insert(history, {
 			CLOCK, inp.devid, inp.subid, inp.keysym,
-			symtable[inp.keysym] and symtable[inp.keysym] or ""
+			label or ""
 			}
 		);
 		if (#history > 10) then
@@ -72,15 +73,15 @@ function kbdtest_input(inp)
 			upd_period();
 		end
 
-		if (symtable[inp.keysym] == "F1") then
+		if (label == "F1") then
 			uprd(-per, -del);
-		elseif (symtable[inp.keysym] == "F2") then
+		elseif (label == "F2") then
 			uprd(20, 0);
-		elseif (symtable[inp.keysym] == "F3") then
+		elseif (label == "F3") then
 			uprd(-20, 0);
-		elseif (symtable[inp.keysym] == "F4") then
+		elseif (label == "F4") then
 			uprd(0, 20);
-		elseif (symtable[inp.keysym] == "F5") then
+		elseif (label == "F5") then
 			uprd(0, -20);
 		end
 	end
