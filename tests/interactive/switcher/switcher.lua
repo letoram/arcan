@@ -8,7 +8,7 @@ end
 
 function switcher_input(iotbl)
 	if (iotbl.translated) then
-		local key = symtable [ iotbl.keysym ]
+		local key = symtable.tolabel(iotbl.keysym)
 		local num = tonumber(key)
 		if (num and list[num]) then
 			pop_video_context()

@@ -1,4 +1,5 @@
 function vidtag()
+	local arguments = appl_arguments()
 	fname = arguments[1];
 	vfc = 0;
 	symtable = system_load("builtin/keyboard.lua")();
@@ -58,7 +59,7 @@ end
 
 function vidtag_input(iotbl)
 	if (iotbl.kind == "digital" and iotbl.translated and iotbl.active) then
-		sym = symtable[iotbl.keysym];
+		sym = symtable.tolabel(iotbl.keysym);
 
 		if (sym == " ") then
 			start_recording();

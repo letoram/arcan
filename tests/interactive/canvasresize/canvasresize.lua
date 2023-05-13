@@ -12,12 +12,13 @@ end
 
 function canvasresize_input(iotbl)
 	if (iotbl.kind == "digital" and iotbl.active) then
-		if (keysym[iotbl.keysym] == "F1") then
+		local label = keysym.tolabel(iotbl.keysym)
+		if (label == "F1") then
 			resize_video_canvas(VRESW * 2, VRESH * 2);
 			b = fill_surface(200, 200, 0, 255, 0);
 			show_image(b);
 			move_image(b, VRESW, VRESH, 200);
-		elseif (keysym[iotbl.keysym] == "F2") then
+		elseif (label == "F2") then
 			zap_resource("test.png");
 			save_screenshot("test.png", 1, WORLDID);
 		end

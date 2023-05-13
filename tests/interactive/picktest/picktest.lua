@@ -108,7 +108,7 @@ function picktest_input(iotbl)
 		print("done\n");
 	elseif (iotbl.kind == "digital") then
 		if (iotbl.translated) then
-			local sym = symtable[iotbl.keysym];
+			local sym = symtable.tolabel(iotbl.keysym);
 
 				if (iotbl.active) then
 					if (sym == "UP") then

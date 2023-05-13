@@ -1,6 +1,11 @@
 function failover()
-	a = list_games({})
 	symtbl = system_load("builtin/keyboard.lua")();
+
+	a = list_targets();
+
+	if (#a == 0) then
+		return shutdown("no targets found, can not run the test");
+	end
 
 	system_context_size(10);
 	pop_video_context();
@@ -9,7 +14,7 @@ function failover()
 
 	for i=1,2 do
 		local vid = launch_target(
-			a[math.random(#a)].gameid, LAUNCH_INTERNAL, cb);
+			a[math.random(#a)], LAUNCH_INTERNAL, cb);
 		table.insert(fsrvs, vid);
 		print(#fsrvs);
 	end
@@ -59,24 +64,25 @@ function failover_adopt(id)
 end
 
 function failover_input(iotbl)
+	local label = symtbl.tolabel(iotbl.keysym)
 	if (iotbl.kind == "digital" and iotbl.translated and iotbl.active) then
-		if (symtbl[iotbl.keysym] == "1") then
+		if (label == "1") then
 			local img = color_surface(32, 32,
 				math.random(127) + 127, math.random(127) + 127, 0);
 			show_image(img);
 			move_image(img, math.random(VRESW), math.random(VRESH));
 
-		elseif (symtbl[iotbl.keysym] == "2") then
+		elseif (label == "2") then
 			print("request collapse");
 			x_p = 0;
 			y_p = 0;
 			fsrvs = {};
 			system_collapse();
-		elseif (symtbl[iotbl.keysym] == "3") then
+		elseif (label == "3") then
 			system_collapse("failadopt");
-		elseif (symtbl[iotbl.keysym] == "4") then
+		elseif (label == "4") then
 			this_should_trigger_perror();
-		elseif (symtbl[iotbl.keysym] == "5") then
+		elseif (label == "5") then
 			print("pacify", #fsrvs);
 			for i=1,#fsrvs do
 				target_pacify(fsrvs[i]);

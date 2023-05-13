@@ -38,7 +38,7 @@ end
 
 function scan_input(iotbl)
 	if (iotbl.translated and iotbl.active) then
-		local sym = symtable[iotbl.keysym];
+		local sym = symtable.tolabel(iotbl.keysym);
 		if (sym == "F1") then
 			local modes = video_displaymodes(0);
 			mode = modes[math.random(1, #modes)];
@@ -68,9 +68,9 @@ function scan_input(iotbl)
 	end
 end
 
-function scan_display_state(a, b)
-	if (a == "added") then
-		video_displaymodes(b[1].displayid, b[1].modeid);
-		map_video_display(WORLDID, b[1].displayid);
+function scan_display_state(event, displayid)
+	if (event == "added") then
+		video_displaymodes(displayid);
+		map_video_display(WORLDID, displayid);
 	end
 end

@@ -110,11 +110,12 @@ function digital_str(iotbl)
 end
 
 function translate_str(iotbl)
+	local label = symtable.tolabel(iotbl.keysym)
 	table.insert(translatetbl, string.format("dev(%d:%d)%d[%s] => %s, %s, %s, %s",
 		iotbl.devid, iotbl.subid, iotbl.number,
 		table.concat(decode_modifiers(iotbl.modifiers),","),
 		iotbl.keysym, iotbl.active and "press" or "release",
-		symtable[iotbl.keysym] and symtable[iotbl.keysym] or "_nil",
+		label or "_nil",
 		iotbl.utf8)
 	);
 
