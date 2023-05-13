@@ -43,7 +43,7 @@
 #define _ARCAN_TTF_H
 
 /* The internal structure containing font information */
-typedef struct _TTF_Font TTF_Font;
+typedef struct c_font_ref TTF_Font;
 
 typedef struct {
 	uint8_t r, g, b;
