@@ -37,6 +37,7 @@
 
 ## Decode
  * defer REGISTER until proto argument has been parsed, let text register as TUI
+ * libuvc path now uses FFMPEG for h264 and mjpeg
 
 ## Package / Build
  * console: added binding for shutdown

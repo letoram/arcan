@@ -27,6 +27,8 @@
 #include <arcan_shmif.h>
 #include <libuvc/libuvc.h>
 #include <libswscale/swscale.h>
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
 #include <math.h>
 
 static int video_buffer_count = 1;
@@ -112,6 +114,94 @@ static void run_swscale(
 	arcan_shmif_signal(dst, SHMIF_SIGVID);
 }
 
+static void frame_ffmpeg(
+	uvc_frame_t* uvc, struct arcan_shmif_cont* cont, int fmt, const char* fmtstr)
+{
+	static const AVCodec* codec;
+	static AVCodecContext* decode;
+	static AVCodecParserContext* parser;
+	static AVFrame* frame;
+	static AVPacket* packet;
+
+/* missing:
+ *  - test shmif for the ability to tunnel raw h264 (important for a12)
+ */
+
+/* this is the same code used in a12/a12_decode.c */
+	if (!codec){
+		codec = avcodec_find_decoder(fmt);
+		if (!codec){
+			LOG("status=error:fatal:kind=missing:message=no %s support", fmtstr);
+			arcan_shmif_last_words(cont, "ffmpeg no matching codec");
+			arcan_shmif_drop(cont);
+			exit(EXIT_FAILURE);
+		}
+		decode = avcodec_alloc_context3(codec);
+		parser = av_parser_init(codec->id);
+		frame = av_frame_alloc();
+		packet = av_packet_alloc();
+		if (avcodec_open2(decode, codec, NULL) < 0){
+			LOG("status=error:fatal:kind=codec_fail:message=codec failed open");
+			arcan_shmif_drop(cont);
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	int ofs = 0;
+	while (uvc->data_bytes - ofs > 0){
+		int ret = av_parser_parse2(parser, decode,
+			&packet->data, &packet->size,
+			&((uint8_t*)uvc->data)[ofs],
+			uvc->data_bytes - ofs,
+			AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0
+		);
+
+		if (ret < 0){
+			LOG("status=error:fatal:kind=ebad:message=%s parser failed", fmtstr);
+			arcan_shmif_last_words(cont, "ffmpeg parser error");
+			arcan_shmif_drop(cont);
+			exit(EXIT_FAILURE);
+		}
+		ofs += ret;
+
+		if (packet->data){
+			ret = avcodec_send_packet(decode, packet);
+			if (ret < 0)
+				goto decode_fail;
+
+			while (ret >= 0){
+				ret = avcodec_receive_frame(decode, frame);
+				if (ret == AVERROR(EAGAIN) || ret == AVERROR(EOF)){
+					break;
+				}
+				else if (ret != 0)
+					goto decode_fail;
+
+				struct SwsContext* scaler =
+					sws_getContext(
+						frame->width, frame->height, AV_PIX_FMT_YUV420P,
+						cont->w, cont->h, AV_PIX_FMT_BGRA, SWS_BILINEAR, NULL, NULL, NULL);
+
+				uint8_t* const dst[] = {cont->vidb};
+				int dst_stride[] = {cont->stride};
+				sws_scale(scaler, (const uint8_t* const*) frame->data,
+						frame->linesize, 0, frame->height, dst, dst_stride);
+
+				sws_freeContext(scaler);
+				arcan_shmif_signal(cont, SHMIF_SIGVID);
+			}
+		}
+	}
+
+	return;
+
+decode_fail:
+	LOG("status=error:fatal:kind=ebad:message=%s decoder failed", fmtstr);
+	arcan_shmif_last_words(cont, "ffmpeg decoder error");
+	arcan_shmif_drop(cont);
+	exit(EXIT_FAILURE);
+}
+
 static void frame_rgb(uvc_frame_t* frame, struct arcan_shmif_cont* dst)
 {
 	uint8_t* buf = frame->data;
@@ -154,6 +244,12 @@ static void callback(uvc_frame_t* frame, void* tag)
 	break;
 	case UVC_FRAME_FORMAT_RGB:
 		frame_rgb(frame, cont);
+	break;
+	case UVC_FRAME_FORMAT_H264:
+		frame_ffmpeg(frame, cont, AV_CODEC_ID_H264, "h264");
+	break;
+	case UVC_FRAME_FORMAT_MJPEG:
+		frame_ffmpeg(frame, cont, AV_CODEC_ID_MJPEG, "mjpeg");
 	break;
 /* h264 and mjpeg should map into ffmpeg as well */
 	default:
@@ -198,12 +294,12 @@ static int fmt_score(const uint8_t fourcc[static 4], int* out)
 		},
 		{
 			.enumv = UVC_FRAME_FORMAT_MJPEG,
-			.score = -1,
+			.score = 4,
 			.fourcc = {'M', 'J', 'P', 'G'}
 		},
 		{
-			.enumv = UVC_FRAME_FORMAT_MJPEG,
-			.score = -1,
+			.enumv = UVC_FRAME_FORMAT_H264,
+			.score = 5,
 			.fourcc = {'H', '2', '6', '4'}
 		},
 	};
