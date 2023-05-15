@@ -689,51 +689,54 @@ static void tsm_input_eh(
 	}
 	else if (ioev->devkind == EVENT_IDEVKIND_MOUSE){
 		if (ioev->datatype == EVENT_IDATATYPE_ANALOG){
-			if (ioev->subid == 0){
-				tui->mouse_x = ioev->input.analog.axisval[0] / tui->cell_w;
+			int x, y;
+			if (!arcan_shmif_mousestate_ioev(&tui->acon, tui->mouse_state, ioev, &x, &y))
+				return;
+
+			tui->mouse_x = x / tui->cell_w;
+			tui->mouse_y = y / tui->cell_h;
+
+			bool upd = false;
+			bool dy = false;
+
+			if (tui->mouse_x != tui->lm_x){
+				tui->lm_x = tui->mouse_x;
+				upd = true;
 			}
-			else if (ioev->subid == 1){
-				int yv = ioev->input.analog.axisval[0];
-				tui->mouse_y = yv / tui->cell_h;
+			if (tui->mouse_y != tui->lm_y){
+				tui->lm_y = tui->mouse_y;
+				upd = true;
+				dy = true;
+			}
 
-				bool upd = false;
-				if (tui->mouse_x != tui->lm_x){
-					tui->lm_x = tui->mouse_x;
-					upd = true;
-				}
-				if (tui->mouse_y != tui->lm_y){
-					tui->lm_y = tui->mouse_y;
-					upd = true;
-				}
+			if (forward_mouse(tui) && tui->handlers.input_mouse_motion){
+				if (upd)
+				tui->handlers.input_mouse_motion(tui, false,
+					tui->mouse_x, tui->mouse_y, tui->modifiers, tui->handlers.tag);
+				return;
+			}
 
-				if (forward_mouse(tui) && tui->handlers.input_mouse_motion){
-					if (upd)
-					tui->handlers.input_mouse_motion(tui, false,
-						tui->mouse_x, tui->mouse_y, tui->modifiers, tui->handlers.tag);
-					return;
-				}
-
-				if (!tui->in_select)
-					return;
+			if (!tui->in_select || !upd)
+				return;
 
 /* we use the upper / lower regions as triggers for scrollback + selection,
- * with a magnitude based on how far "off" we are */
-				if (yv < 0.3 * tui->cell_h)
-					tui->scrollback = -1 * (1 + yv / tui->cell_h);
-				else if (yv > tui->rows * tui->cell_h + 0.3 * tui->cell_h)
-					tui->scrollback = 1 + (yv - tui->rows * tui->cell_h) / tui->cell_h;
-				else
-					tui->scrollback = 0;
+ * with a magnitude based on how far "off" we are - the actual scrolling takes
+ * n ticks of inactivity before it starts stepping. */
+			if (!tui->mouse_y && dy)
+				tui->scrollback = -5;
+			else if (tui->mouse_y == tui->rows - 1 && dy)
+				tui->scrollback = 5;
+			else
+				tui->scrollback = 0;
 
 /* in select and drag negative in window or half-size - then use ticker
  * to scroll and an accelerated scrollback */
-				if (upd){
-					tsm_screen_selection_target(tui->screen, tui->lm_x, tui->lm_y);
-					tui->dirty |= DIRTY_PARTIAL | DIRTY_CURSOR;
-				}
+			if (upd){
+				tsm_screen_selection_target(tui->screen, tui->lm_x, tui->lm_y);
+				tui->dirty |= DIRTY_PARTIAL | DIRTY_CURSOR;
+			}
 /* in select? check if motion tile is different than old, if so,
  * tsm_selection_target */
-			}
 		}
 /* press? press-point tsm_screen_selection_start,
  * release and press-tile ~= release_tile? copy */
@@ -970,6 +973,7 @@ void arcan_tui_allow_deprecated(struct tui_context* c)
 	c->hooks.resize = tsm_resize_eh;
 	c->hooks.cursor_lookup = tsm_cursor_lookup;
 
+	arcan_shmif_mousestate_setup(&c->acon, false, c->mouse_state);
 	tsm_screen_new(c, &c->screen, tsm_log, c);
 	tsm_screen_set_max_sb(c->screen, 1000);
 	c->hooks.resize(c);
