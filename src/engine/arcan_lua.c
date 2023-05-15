@@ -10309,7 +10309,11 @@ static int benchtracedata(lua_State* ctx)
 			"expecting: TRACE_PATH_DEFAULT, SLOW, FAST, WARN or ERROR\n");
 	}
 
-	arcan_trace_mark("lua", subsys, trigger, level, ident, quant, message);
+	lua_Debug ar;
+	lua_getstack(ctx, 2, &ar);
+	lua_getinfo(ctx, "nSl", &ar);
+
+	arcan_trace_mark("lua", subsys, trigger, level, ident, quant, message, ar.short_src, ar.name, ar.currentline);
 
 	LUA_ETRACE("benchmark_tracedata", NULL, 0);
 }
