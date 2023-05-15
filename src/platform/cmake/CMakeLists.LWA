@@ -98,6 +98,7 @@ add_dependencies(arcan_lwa arcan_shmif_int arcan_shmif_intext ${MAIN_DEPS})
 target_compile_definitions(arcan_lwa PRIVATE
 	ARCAN_LWA
 	${ARCAN_DEFINITIONS}
+	${PLATFORM_DEFINITIONS}
 )
 
 target_include_directories(arcan_lwa PRIVATE ${INCLUDE_DIRS})

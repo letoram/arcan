@@ -154,6 +154,7 @@ else()
 	option(ENABLE_LWA "Build LWA client (arcan-in-arcan)" ON)
 	option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
 	option(ENABLE_SIMD_ALIGNED "Assert that SIMD data sources are 16-byte aligned" OFF)
+	option(ENABLE_TRACY "Build with Tracy client integration (external/git folder)" OFF)
 	option(DISABLE_WAYLAND "Never build wayland support" OFF)
 	option(HYBRID_SDL "Produce an arcan_sdl main binary as well" OFF)
 	option(HYBRID_HEADLESS "Produce a headless binary as well" OFF)
@@ -179,6 +180,7 @@ else()
 	# amsg("                               as optimization profile.")
 	amsg("${CL_YEL}\t\t-DSIMD_ALIGNED=${CL_GRN}[Off|On]${CL_RST} - SIMD support assumes 16-byte alignment")
 	amsg("${CL_YEL}\t-DENABLE_LTO=${CL_GRN}[Off|On]${CL_RST} - Build with Link-Time Optimizations")
+	amsg("${CL_YEL}\t-DENABLE_TRACY=${CL_GRN}[Off|On]${CL_RST} - Build with Tracy integration")
 	amsg("")
 	amsg("${CL_WHT}Dependency Management:${CL_RST}")
 	amsg("${CL_YEL}\t-DSTATIC_SQLite3=${CL_GRN}[Off|On]${CL_RST} - In-source SQLite3")
@@ -531,6 +533,22 @@ else()
 	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 endif()
 
+if (ENABLE_TRACY)
+	option(TRACY_ENABLE "" ON)
+	option(TRACY_ON_DEMAND "" ON)
+	add_subdirectory(
+		${EXTERNAL_SRC_DIR}/git/tracy
+		${CMAKE_CURRENT_BINARY_DIR}/tracy
+	)
+	list(APPEND ARCAN_DEFINITIONS WITH_TRACY)
+	list(APPEND ARCAN_LIBRARIES
+		TracyClient
+	)
+	amsg("${CL_YEL}tracy support\t${CL_GRN}enabled${CL_RST}")
+else()
+	amsg("${CL_YEL}tracy support\t${CL_RED}disabled${CL_RST}")
+endif()
+
 set(SHMIF_TUI true)
 add_subdirectory(shmif)
 add_subdirectory(a12)
@@ -588,6 +606,7 @@ else()
 	target_compile_definitions(arcan PRIVATE
 		${ARCAN_DEFINITIONS}
 		${ARCAN_NOLWA_DEFINITIONS}
+		${PLATFORM_DEFINITIONS}
 		ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${PLATFORM_BUILDTAG}-${CMAKE_SYSTEM_NAME}\"
 		FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
 	)
@@ -628,8 +647,7 @@ else()
 		amsg("-- Appending sdl platform build--")
 		set(VIDEO_PLATFORM "sdl2")
 		set(INPUT_PLATFORM "sdl2")
-		set(ARCAN_DEFINITIONS "")
-		set(ARCAN_NOLWA_DEFINITIONS "")
+		set(PLATFORM_DEFINITIONS "")
 		set(VIDEO_PLATFORM_SOURCES "")
 		set(AUDIO_PLATFORM_SOURCES "")
 		set(INPUT_PLATFORM_SOURCES "")
@@ -662,6 +680,7 @@ else()
 		target_compile_definitions(arcan_sdl PRIVATE
 			${ARCAN_DEFINITIONS}
 			${ARCAN_NOLWA_DEFINITIONS}
+			${PLATFORM_DEFINITIONS}
 			ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${PLATFORM_BUILDTAG}-${CMAKE_SYSTEM_NAME}\"
 			FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
 		)
@@ -706,7 +725,10 @@ else()
 
 		set(PLATFORM_BUILDTAG headless-${AGP_PLATFORM}-${AUDIO_PLATFORM}-headless-${LUA_TAG}-${DISTR_TAG})
 		target_compile_definitions(arcan_headless PRIVATE
-			${ARCAN_DEFINITIONS} ${ARCAN_NOLWA_DEFINITIONS} ARCAN_HEADLESS
+			${ARCAN_DEFINITIONS}
+			${ARCAN_NOLWA_DEFINITIONS}
+			${PLATFORM_DEFINITIONS}
+			ARCAN_HEADLESS
 			FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
 			ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${PLATFORM_BUILDTAG}-${CMAKE_SYSTEM_NAME}\"
 		)

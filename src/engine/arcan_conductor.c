@@ -574,6 +574,10 @@ static int trigger_video_synch(float frag)
 	TRACE_MARK_ENTER("conductor", "platform-frame", TRACE_SYS_DEFAULT, conductor.tick_count, frag, "");
 		arcan_lua_callvoidfun(main_lua_context, "preframe_pulse", false, NULL);
 			platform_video_synch(conductor.tick_count, frag, NULL, NULL);
+
+			#ifdef WITH_TRACY
+			TracyCFrameMark
+			#endif
 		arcan_lua_callvoidfun(main_lua_context, "postframe_pulse", false, NULL);
 	TRACE_MARK_EXIT("conductor", "platform-frame", TRACE_SYS_DEFAULT, conductor.tick_count, frag, "");
 
