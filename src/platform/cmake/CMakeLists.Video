@@ -27,7 +27,7 @@ if(VIDEO_PLATFORM STREQUAL "egl-gles")
 
 	if (GLES2_BCM_IMPLEMENTATION)
 		amsg("broadcom (BCM) GLES implementation found, set BCM_ROOT to bad dir to disable")
-		list(APPEND ARCAN_DEFINITIONS WITH_BCM)
+		list(APPEND PLATFORM_DEFINITIONS WITH_BCM)
 		set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/platform/egl-gles/video.c
 			APPEND PROPERTY COMPILE_FLAGS -fgnu89-inline)
 	endif()
@@ -70,7 +70,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 				${PLATFORM_ROOT}/stub/libbacklight.c)
 	endif()
 	set(LWA_PLATFORM_STR "egl-dri-rnode")
-	list(APPEND ARCAN_DEFINITIONS ARCAN_EGL_DRI)
+	list(APPEND PLATFORM_DEFINITIONS ARCAN_EGL_DRI)
 #
 # only option on OSX/Windows currently, would also work for
 # drawing to Wayland compositors (though the list of dependencies

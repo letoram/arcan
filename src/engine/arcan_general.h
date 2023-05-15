@@ -193,7 +193,9 @@ void arcan_trace_mark(
 	const char* sys, const char* subsys,
 	uint8_t trigger, uint8_t tracelevel,
 	uint64_t identifier,
-	uint32_t quant, const char* message);
+	uint32_t quant, const char* message,
+	const char* file_name, const char* func_name,
+	uint32_t line);
 
 enum trace_level {
 	TRACE_SYS_DEFAULT = 0,
@@ -206,7 +208,7 @@ enum trace_level {
 #ifndef TRACE_MARK_ENTER
 #define TRACE_MARK_ENTER(A, B, C, D, E, F) do { \
 	if (arcan_trace_enabled){ \
-		arcan_trace_mark((A), (B), 1, (C), (D), (E), (F));\
+		arcan_trace_mark((A), (B), 1, (C), (D), (E), (F), __FILE__, __FUNCTION__, __LINE__);\
 	}\
 } while (0);
 #endif
@@ -214,7 +216,7 @@ enum trace_level {
 #ifndef TRACE_MARK_ONESHOT
 #define TRACE_MARK_ONESHOT(A, B, C, D, E, F) do { \
 	if (arcan_trace_enabled){ \
-		arcan_trace_mark((A), (B), 0, (C), (D), (E), (F));\
+		arcan_trace_mark((A), (B), 0, (C), (D), (E), (F), __FILE__, __FUNCTION__, __LINE__);\
 	}\
 } while (0);
 #endif
@@ -222,7 +224,7 @@ enum trace_level {
 #ifndef TRACE_MARK_EXIT
 #define TRACE_MARK_EXIT(A, B, C, D, E, F) do { \
 	if (arcan_trace_enabled){ \
-		arcan_trace_mark((A), (B), 2, (C), (D), (E), (F));\
+		arcan_trace_mark((A), (B), 2, (C), (D), (E), (F), __FILE__, __FUNCTION__, __LINE__);\
 	}\
 } while (0);
 #endif

@@ -35,6 +35,10 @@
 #include <sqlite3.h>
 #include <lua.h>
 
+#ifdef WITH_TRACY
+#include "tracy/TracyC.h"
+#endif
+
 #include "getopt.h"
 #include "arcan_math.h"
 #include "arcan_general.h"

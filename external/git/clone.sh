@@ -20,3 +20,4 @@ fi
 git clone http://luajit.org/git/luajit-2.0.git "$DIR/luajit"
 git clone https://github.com/letoram/openal.git "$DIR/openal"
 git clone https://github.com/libuvc/libuvc.git "$DIR/libuvc"
+git clone https://github.com/wolfpld/tracy.git "$DIR/tracy"
