@@ -86,6 +86,10 @@ static bool tryload_bitmap(struct tui_context* tui, int fd, int mode, size_t px_
 		goto out;
 
 /* not bitmap? return so we can try freetype */
+	if (1 != fread(buf, buf_sz, 1, fpek))
+		goto out;
+	fseek(fpek, 0, SEEK_SET);
+
 	if (!tui_pixelfont_valid(buf, buf_sz))
 		goto out;
 
@@ -108,9 +112,7 @@ static bool tryload_bitmap(struct tui_context* tui, int fd, int mode, size_t px_
 		tui->font[1]->bitmap = NULL;
 	}
 
-	if (1 == fread(buf, buf_sz, 1, fpek)){
-		rv = tui_pixelfont_load(tui->font[0]->bitmap, buf, buf_sz, px_sz, mode == 1);
-	}
+	rv = tui_pixelfont_load(tui->font[0]->bitmap, buf, buf_sz, px_sz, mode == 1);
 
 out:
 	free(buf);
