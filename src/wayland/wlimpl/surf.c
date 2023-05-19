@@ -94,6 +94,7 @@ static void surf_attach(struct wl_client* cl,
 		surf->acon.hints |= SHMIF_RHINT_IGNORE_ALPHA;
 		for (size_t y = 0; y < surf->acon.h; y++)
 			memset(&surf->acon.vidb[y * surf->acon.stride], '\0', surf->acon.stride);
+		arcan_shmif_dirty(&surf->acon, 0, 0, surf->acon.w, surf->acon.h, 0);
 		arcan_shmif_signal(&surf->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 	}
 
@@ -120,14 +121,7 @@ static void surf_damage(struct wl_client* cl,
 	trace(TRACE_SURF,"%s:(%"PRIxPTR") @x,y+w,h(%d+%d, %d+%d)",
 		surf->tracetag, (uintptr_t)res, (int)x, (int)w, (int)y, (int)h);
 
-if (x < surf->acon.dirty.x1)
-		surf->acon.dirty.x1 = x;
-	if (x+w > surf->acon.dirty.x2)
-		surf->acon.dirty.x2 = x+w;
-	if (y < surf->acon.dirty.y1)
-		surf->acon.dirty.y1 = y;
-	if (y+h > surf->acon.dirty.y2)
-		surf->acon.dirty.y2 = y+h;
+	arcan_shmif_dirty(&surf->acon, x, y, x+w, y+h, 0);
 }
 
 /*

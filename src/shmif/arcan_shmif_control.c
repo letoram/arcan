@@ -1486,6 +1486,7 @@ static void setup_avbuf(struct arcan_shmif_cont* res)
  */
 	res->vidp = res->priv->vbuf[0];
 	res->audp = res->priv->abuf[0];
+	reset_dirty(res);
 }
 
 /* using a base address where the meta structure will reside, allocate n- audio
@@ -1807,6 +1808,16 @@ static bool step_v(struct arcan_shmif_cont* ctx, int sigv)
 			}
 		}
 
+		if (ctx->dirty.x2 <= ctx->dirty.x1 || ctx->dirty.y2 <= ctx->dirty.y1){
+			log_print("%lld: SIGVID "
+				"(id: %"PRIu64", early-out: dirty-inval-region: %zu,%zu-%zu,%zu)",
+				arcan_timemillis(),
+				(size_t)ctx->dirty.x1, (size_t)ctx->dirty.y1,
+				(size_t)ctx->dirty.x2, (size_t)ctx->dirty.y2
+			);
+			return false;
+		}
+
 		if (priv->log_event){
 			log_print("%lld: SIGVID (id: %"PRIu64", block: %d region: %zu,%zu-%zu,%zu)",
 				arcan_timemillis(),
@@ -1897,7 +1908,7 @@ unsigned arcan_shmif_signal(
 	if (is_output_segment(priv->type)){
 		if (mask & SHMIF_SIGVID)
 			atomic_store(&ctx->addr->vready, 0);
-		if (mask & SHMIF_SIGVID)
+		if (mask & SHMIF_SIGAUD)
 			atomic_store(&ctx->addr->aready, 0);
 		return 0;
 	}
@@ -3456,21 +3467,42 @@ int arcan_shmif_dirty(struct arcan_shmif_cont* cont,
 	if (!cont || !cont->addr)
 		return -1;
 
-/* Resize to synch flags shouldn't cause a remap here, but some edge case
- * could possible have client-aliased context */
+/* precision problem here:
+ *
+ *  older arm atomic constraints forced the dirty region tracking to uint16_t
+ *  which would take an ABI bump to adjust. Since larger regions would expand
+ *  past the shmif MAXW/MAXH anyhow, if x2/y2 exceends UINT16_MAX clamp to
+ *  that first.
+ *
+ * On values outside of the range, grow to invalidate the entire segment.
+ */
+	if (x1 > UINT16_MAX)
+		x1 = 0;
+	if (x2 > UINT16_MAX)
+		x2 = UINT16_MAX;
+	if (y1 > UINT16_MAX)
+		y1 = 0;
+	if (y2 > UINT16_MAX)
+		y2 = UINT16_MAX;
+
+	if (x1 > x2){
+		size_t tmp = x1;
+		x1 = x2;
+		x2 = tmp;
+	}
+	if (y1 > y2){
+		size_t tmp = y1;
+		y1 = y2;
+		y2 = tmp;
+	}
+
+/* Resize to synch flags shouldn't cause a remap here, but some edge case could
+ * possible have client-aliased context where the flag would not hit - but that
+ * is on them. */
 	if (!(cont->hints & SHMIF_RHINT_SUBREGION)){
 		cont->hints |= SHMIF_RHINT_SUBREGION;
 		arcan_shmif_resize(cont, cont->w, cont->h);
 	}
-
-/* enforce all the little constraints, with some other packing mode, this
- * is where we can modify vidp and remaining size etc. to allow delta pack
- * on single buffer */
-	if (x1 >= x2)
-		x1 = 0;
-
-	if (y1 >= y2)
-		y1 = 0;
 
 /* grow to extents */
 	if (x1 < cont->dirty.x1)
@@ -3505,9 +3537,7 @@ int arcan_shmif_dirty(struct arcan_shmif_cont* cont,
 		shmif_pixel* buf = malloc(sizeof(shmif_pixel) *
 			(cont->dirty.y2 - cont->dirty.y1) * (cont->dirty.x2 - cont->dirty.x1));
 
-/* save and replace with green, then restore and synch real - this does not
- * clamp / bounds check on purpose, with this debug setting we want a crash
- * here to indicate that the boundary values are broken */
+/* save and replace with green, then restore and synch real */
 		if (buf){
 			size_t count = 0;
 			struct arcan_shmif_region od = cont->dirty;

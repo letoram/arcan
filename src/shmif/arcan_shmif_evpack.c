@@ -289,6 +289,12 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 				ev.tgt.ioevs[7].uiv
 			);
 		break;
+		case TARGET_COMMAND_ANCHORHINT:
+			snprintf(work, dsz,
+				"TGT:DISPLAYHINT(relxyz=%d,%d,%d:sref=%"PRIu32":dref=%"PRIu32,
+				ev.tgt.ioevs[0].iv, ev.tgt.ioevs[1].iv, ev.tgt.ioevs[2].iv,
+				ev.tgt.ioevs[3].uiv, ev.tgt.ioevs[4].uiv);
+		break;
 		case TARGET_COMMAND_SETIODEV:
 			snprintf(work, dsz,"TGT:IODEV(DEPRECATED)");
 		break;
