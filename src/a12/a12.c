@@ -2971,6 +2971,12 @@ a12_channel_vframe(struct a12_state* S,
 #define argstr S, vb, opts, sid, x, y, w, h, chunk_sz, S->out_channel
 
 	size_t now = arcan_timemillis();
+
+/* we have a pre-compressed passthrough - send it with the FOURCC stored
+ * in place of expanded length and just send the buffer as is */
+	if (vb->flags.compressed)
+		a12int_encode_passthrough(argstr);
+	else
 	switch(opts.method){
 	case VFRAME_METHOD_RAW_RGB565:
 		a12int_encode_rgb565(argstr);
@@ -3003,6 +3009,7 @@ a12_channel_vframe(struct a12_state* S,
 		return;
 	break;
 	}
+
 	size_t then = arcan_timemillis();
 	if (then > now){
 		S->stats.ms_vframe = then - now;

@@ -456,6 +456,9 @@ static void* client_thread(void* inarg)
 		{ .fd = data->kill_fd, errmask }
 	};
 
+/* enable encoded video passthrough */
+	shmifsrv_client_protomask(data->C, SHMIF_META_VENC);
+
 /* We don't have a monitorable trigger for inbound video/audio frames, so some
  * timeout is in order for the time being. It might be useful to add that kind
  * of signalling to shmif though */

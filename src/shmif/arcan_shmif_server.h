@@ -283,13 +283,9 @@ struct shmifsrv_vbuffer {
  * provided) the fourcc code will match that of the video format frame in
  * the buffer */
 	uint8_t fourcc[4];
+	size_t buffer_sz;
 
-	union {
-		struct {
-			size_t w, h, pitch, stride;
-		};
-		size_t buffer_sz;
-	};
+	size_t w, h, pitch, stride;
 
 /* desired presentation time since connection epoch, hint */
 	uint64_t vpts;

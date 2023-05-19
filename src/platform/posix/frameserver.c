@@ -827,6 +827,15 @@ static size_t fsrv_protosize(arcan_frameserver* ctx,
 	}
 	dofs->ofs_vector = dofs->sz_vector = 0;
 
+	if (proto & SHMIF_META_VENC){
+		dofs->ofs_venc = dofs->sz_venc = tot;
+		tot += sizeof(struct arcan_shmif_venc);
+		dofs->sz_venc = tot - dofs->sz_venc;
+	}
+
+	if (tot % sizeof(max_align_t) != 0)
+		tot += tot - (tot % sizeof(max_align_t));
+
 	if (proto & SHMIF_META_VR){
 		dofs->ofs_vr = dofs->sz_vr = tot;
 		tot += sizeof(struct arcan_shmif_vr);
@@ -1240,6 +1249,14 @@ static void fsrv_setproto(arcan_frameserver* ctx,
 	}
 	else
 		ctx->desc.aext.vr = NULL;
+
+	if (proto & SHMIF_META_VENC){
+		ctx->desc.aext.venc =
+			(struct arcan_shmif_venc*)(base + aofs->ofs_venc);
+		memset(ctx->desc.aext.venc, '\0', aofs->sz_venc);
+	}
+	else
+		ctx->desc.aext.venc = NULL;
 
 	ctx->desc.aproto = proto;
 }
