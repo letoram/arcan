@@ -30,6 +30,24 @@ else()
 	amsg("(a12) ${CL_YEL} ffmpeg support NOT found, video enc/dec DISABLED ${CL_RST}")
 endif()
 
+if (ENABLE_TRACY)
+	option(TRACY_ENABLE "" ON)
+	option(TRACY_ON_DEMAND "" ON)
+	if (NOT TARGET TracyClient)
+		add_subdirectory(
+			${EXTERNAL_SRC_DIR}/git/tracy
+			${CMAKE_CURRENT_BINARY_DIR}/tracy
+		)
+	endif()
+	set_target_properties(TracyClient PROPERTIES
+		COMPILE_FLAGS -fPIC)
+	list(APPEND DEFS WITH_TRACY)
+	list(APPEND LIBRARIES TracyClient)
+	amsg("(a12) ${CL_YEL}tracy support\t${CL_GRN}enabled${CL_RST}")
+else()
+	amsg("(a12) ${CL_YEL}tracy support\t${CL_RED}disabled${CL_RST}")
+endif()
+
 set(A12_SOURCES
 	a12.c
 	a12_decode.c
