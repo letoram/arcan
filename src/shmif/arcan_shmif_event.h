@@ -398,8 +398,8 @@ enum ARCAN_TARGET_COMMAND {
  *                8: maximized, 16: fullscreen, 32: detached
  * ioevs[3].iv  = RGB layout (0 RGB, 1 BGR, 2 VRGB, 3 VBGR)
  * ioevs[4].fv  = ppcm (pixels per centimeter, square assumed), < 0 ignored.
- * ioevs[5].iv  = cell_width (rpack- feedback)
- * ioevs[6].iv  = cell_height (rpack- feedback)
+ * ioevs[5].iv  = cell_width (tpack- feedback)
+ * ioevs[6].iv  = cell_height (tpack- feedback)
  * ioevs[7].uiv = segment_token
  *
  * There are subtle side-effects from the UNIQUE/AGGREGATE approach,
@@ -645,6 +645,35 @@ enum ARCAN_TARGET_COMMAND {
  * [3].iv    modifier_hint (1 : preferred)
  */
 	TARGET_COMMAND_DEVICESTATE,
+
+/*
+ * [UNIQUE/AGGREGATE]
+ * This hint is a complement to DISPLAYHINT and provides optional positioning
+ * feedback of the upper-left corner of the segment in relation to a reference
+ * (parent != 0).
+ *
+ * It can also be used to inform a client about changed position state for
+ * other sources than itself (source != 0) and complement client provided
+ * VIEWPORT hints for moving embedded foreign surfaces around.
+ *
+ * [0].iv  : rel_x
+ * [1].iv  : rel_y
+ * [2].iv  : rel_z
+ * [3].uiv : source
+ * [4].uiv : parent
+ *
+ * Most clients should not rely or depend on these events. They are mainly
+ * provided to bridge other windowing systems, for pseudo-window management of
+ * embedded subsegments and for delegated window management.
+ *
+ * Note that the origo_ll content presentation hint do not change the xyz as
+ * hinted here, they are always origo in upper left corner.
+ *
+ * The Z value may be used to carry stacking or draw order, e.g. < 0 the source
+ * is below the parent (drawn before), with > 0 is above the parent (drawn
+ * after).
+ */
+	TARGET_COMMAND_ANCHORHINT,
 
 	TARGET_COMMAND_LIMIT = INT_MAX
 };

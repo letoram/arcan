@@ -414,7 +414,6 @@ static bool request_surface(
  * as being in premult-alpha sRGB while we always start with linear-RGB nnormal
  * or no-alpha */
 	int hint_mask =
-		SHMIF_RHINT_SUBREGION  |
 		SHMIF_RHINT_VSIGNAL_EV |
 		SHMIF_RHINT_CSPACE_SRGB;
 
