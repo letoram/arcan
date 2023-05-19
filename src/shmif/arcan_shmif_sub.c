@@ -31,6 +31,9 @@ union shmif_ext_substruct arcan_shmif_substruct(
 	if (aofs->sz_vector)
 		sub.vector = (struct arcan_shmif_vector*)(base + aofs->ofs_vector);
 
+	if (aofs->sz_venc)
+		sub.venc = (struct arcan_shmif_venc*)(base + aofs->ofs_venc);
+
 	return sub;
 }
 

@@ -209,6 +209,20 @@ void a12int_encode_rgb565(PACK_ARGS)
 	free(outb);
 }
 
+void a12int_encode_passthrough(PACK_ARGS)
+{
+/* right now only step H264 fourcc, vb->compressed */
+	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
+
+	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
+		POSTPROCESS_VIDEO_H264, sid, vb->w, vb->h, w, h, x, y,
+		vb->buffer_sz, vb->w * vb->h * sizeof(shmif_pixel), 1, vb->flags.origo_ll);
+	a12int_step_vstream(S, sid);
+	a12int_append_out(S, STATE_CONTROL_PACKET, hdr_buf, CONTROL_PACKET_SIZE, NULL, 0);
+
+	chunk_pack(S, STATE_VIDEO_PACKET, chid, vb->buffer_bytes, vb->buffer_sz, chunk_sz);
+}
+
 void a12int_encode_rgba(PACK_ARGS)
 {
 	size_t px_sz = 4;

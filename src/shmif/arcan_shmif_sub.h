@@ -101,6 +101,7 @@ struct arcan_shmif_ofstbl {
 		uint32_t ofs_vr, sz_vr;
 		uint32_t ofs_hdr, sz_hdr;
 		uint32_t ofs_vector, sz_vector;
+		uint32_t ofs_venc, sz_venc;
 	};
 	uint32_t offsets[32];
 	};

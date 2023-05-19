@@ -21,6 +21,9 @@
  * fixes for screencopy on proxy window
  * refactored deprecated tsm-screen away out of tui (1/2)
 
+## Net
+ * allow h264 passthrough, sidestepping local encode
+
 ## Terminal
  * SGR reset fix, add CNL / CPL
  * Add interp=st for suckless terminal based state machine
@@ -34,6 +37,7 @@
 
 ## Shmif
  * add audio only- segment type
+ * wire up ext venc resize for compressed video passthrough
 
 ## Decode
  * defer REGISTER until proto argument has been parsed, let text register as TUI

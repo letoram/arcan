@@ -80,3 +80,6 @@ noreg/ tests what happens if a client connects but refuses to register
 
 dbox/ tests dirty updates by moving a 32x32 square +8,+8 with region
       updates every event-clocked frame or reset event
+
+passthrough/ tests h264 bitstream (with 00 00 00 01) passthrough of
+             preencoded video without reencode, use with arcan-net

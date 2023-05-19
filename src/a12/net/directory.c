@@ -108,7 +108,9 @@ static size_t scan_appdir(int fd, struct appl_meta* dst)
 			break;
 
 		*dst = (struct appl_meta){0};
-		dst->handle = cmd_to_membuf("tar cf - .", &dst->buf, &dst->buf_sz);
+		size_t buf_sz;
+		dst->handle = cmd_to_membuf("tar cf - .", &dst->buf, &buf_sz);
+		dst->buf_sz = buf_sz;
 		fchdir(fd);
 
 		if (!dst->handle){

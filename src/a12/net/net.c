@@ -352,7 +352,7 @@ static void a12cl_dispatch(
 /* Directory mode has a simpler processing loop so treat it special here, also
  * reducing attack surface since very little actual forwarding or processing is
  * needed. */
-	if (global.directory){
+	if (global.directory > 0){
 		global.dircl.basedir = global.directory;
 		anet_directory_cl(S, global.dircl, fd, fd);
 		close(fd);

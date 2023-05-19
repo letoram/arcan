@@ -471,6 +471,17 @@ struct shmifsrv_vbuffer shmifsrv_video(struct shmifsrv_client* cl)
 	res.buffer = cl->con->vbufs[vready];
 	res.region = atomic_load(&cl->con->shm.ptr->dirty);
 
+/* if we have negotiated compressed passthrough, set res.flags, copy /verify
+ * framesize - if that fails, we need to propagate the bufferfail so the client
+ * produces a new uncompressed one */
+	if (cl->con->desc.aproto & SHMIF_META_VENC){
+		if (cl->con->desc.aext.venc){
+			memcpy(res.fourcc, cl->con->desc.aext.venc->fourcc, 4);
+			res.buffer_sz = cl->con->desc.aext.venc->framesize;
+		}
+		res.flags.compressed = true;
+	}
+
 	return res;
 }
 
