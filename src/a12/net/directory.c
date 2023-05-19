@@ -52,7 +52,7 @@ static FILE* cmd_to_membuf(const char* cmd, char** out, size_t* out_sz)
 
 	FILE* applbuf = open_memstream(out, out_sz);
 	if (!applbuf){
-		fclose(applin);
+		pclose(applin);
 		return NULL;
 	}
 
@@ -67,7 +67,7 @@ static FILE* cmd_to_membuf(const char* cmd, char** out, size_t* out_sz)
 		}
 	}
 
-	fclose(applin);
+	pclose(applin);
 	if (!ok){
 		fclose(applbuf);
 		return NULL;
