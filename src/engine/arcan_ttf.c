@@ -738,7 +738,6 @@ TTF_Font* TTF_OpenFontFD(int fd,
 	TTF_Font* res = TTF_OpenFontIndexRW(fstream, 1, ptsize, hdpi, vdpi, 0);
 
 	if (!res) {
-		fclose(fstream);
 		return NULL;
 	}
 
