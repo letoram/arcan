@@ -137,24 +137,25 @@
 -- failure.
 --
 -- @tblent: "viewport" {bool:invisible, bool:focus, bool:anchor_edge,
--- bool:anchor_pos, bool:embedded, bool: scale, bool:hintfwd,
--- int:rel_order, int:rel_x, int:rel_y,
--- int:anch_w, int:anch_h, int:edge, inttbl:border[4], int:parent}
--- this hint is the catch-all for embedding or positioning one segment
--- relative to another.
--- edge refers to the anchoring edge for popups etc, counted from:
+-- bool:anchor_pos, bool:embedded, bool: scaled, bool:hintfwd, int:rel_order,
+-- int:rel_x, int:rel_y, int:anch_w, int:anch_h, int:edge, inttbl:border[4],
+-- int:parent, int:ext_id}
+-- This hint is the catch-all for embedding or positioning one segment relative
+-- to another. *edge* refers to the anchoring edge for popups etc, counted from:
 -- (free=0, UL, UC, UR, CL, C, CR, LL, LC, LR).
--- The parent id may be provided by the source of the event as a proof
+-- The *parent* id may be provided by the source of the event as a proof
 -- of a known / established relationship when the sources are of different
--- origin and hierarchy is not already known. This cookie can be received
+-- origin and hierarchy is not already known. This identifier can be received
 -- and tracked on allocation, see ref:accept_target, ref:target_alloc,
 -- ref:launch_target and ref:launch_avfeed. The other option for embedding
--- or reordering based on pre-established relationship to use negative
+-- or reordering based on pre-established relationships to use negative
 -- rel_order values. This is mainly a concern when dealing with handover
--- segment allocations. For embedded surfaces they can be presented scaled
--- with aspect preserved if *scale* is set. If *hintfwd* is set, the source
+-- segment allocations. For *embedded* surfaces they can be presented *scaled*
+-- with aspect preserved if *scaled* is set. If *hintfwd* is set, the source
 -- should be informed about presentation state changes via
--- ref:target_displayhint.
+-- ref:target_displayhint. The *ext_id* can be used to provide such
+-- identifiers. They have no internal meaning to the engine itself, and is a
+-- client dependent value used to enforce whatever tracking it has.
 --
 -- @tblent: "content_state" {number:rel_x, number:rel_y,
 -- number:wnd_w, number:wnd_h, number:x_size, number:y_size,
