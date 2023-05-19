@@ -1154,19 +1154,22 @@ static bool on_label_query(
 	struct tui_labelent* dstlbl, void* t)
 {
 	size_t current = 0;
+	size_t ti = index;
 
 /* poor complexity in this search but few entries */
-	do {
-		while(current < COUNT_OF(labels) && labels[current].disabled)
-			current++;
-	} while (index-- > 0 && current++ < COUNT_OF(labels));
+	for (size_t i = 0; i < COUNT_OF(labels); i++){
+		if (labels[i].disabled)
+			continue;
 
-	if (current < COUNT_OF(labels) && !labels[current].disabled){
-		*dstlbl = labels[current].ent;
-		return true;
+		if (index - current)
+			current++;
+		else{
+			*dstlbl = labels[i].ent;
+			return true;
+		}
 	}
 
-	return legacy_query_label(T, index - COUNT_OF(labels) - 1, dstlbl);
+	return legacy_query_label(T, index-current, dstlbl);
 }
 
 static bool on_label_input(
@@ -1232,11 +1235,21 @@ static bool copy_palette(struct tui_context* tc, uint8_t* out)
 static void on_tick(struct tui_context* c, void* tag)
 {
 	if (c->in_select && c->scrollback != 0){
-		if (c->scrollback < 0)
-			arcan_tui_scroll_up(c, abs(c->scrollback));
+		if (c->scrollback < 0){
+			if (c->scrollback < -1)
+				c->scrollback++;
+			else{
+				arcan_tui_scroll_up(c, abs(c->scrollback));
+				c->dirty |= DIRTY_FULL;
+			}
+		}
 		else
-			arcan_tui_scroll_down(c, c->scrollback);
-		c->dirty |= DIRTY_FULL;
+			if (c->scrollback > 1)
+				c->scrollback--;
+			else{
+				arcan_tui_scroll_down(c, c->scrollback);
+				c->dirty |= DIRTY_FULL;
+			}
 	}
 }
 
@@ -1453,6 +1466,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	tsm_vte_get_color(term.vte, VTE_COLOR_FOREGROUND, fgc);
 	arcan_tui_set_color(term.screen, TUI_COL_BG, bgc);
 	arcan_tui_set_color(term.screen, TUI_COL_TEXT, fgc);
+	arcan_tui_reset_labels(term.screen);
 
 	bool alive;
 	while((alive = atomic_load(&term.alive)) || !term.die_on_term){

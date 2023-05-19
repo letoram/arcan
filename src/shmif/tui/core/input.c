@@ -167,6 +167,12 @@ void tui_input_event(
 			tui->mouse_x = x / tui->cell_w;
 			tui->mouse_y = y / tui->cell_h;
 
+			if (tui->mouse_y >= tui->rows)
+				tui->mouse_y = tui->rows - 1;
+
+			if (tui->mouse_x >= tui->cols)
+				tui->mouse_x = tui->cols - 1;
+
 			if (tui->handlers.input_mouse_motion){
 				tui->handlers.input_mouse_motion(tui, false,
 					tui->mouse_x, tui->mouse_y, tui->modifiers, tui->handlers.tag);
