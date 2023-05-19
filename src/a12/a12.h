@@ -592,10 +592,30 @@ extern FILE* a12_trace_dst;
 const char* a12int_group_tostr(int group);
 
 #ifndef a12int_trace
-#define a12int_trace(group, fmt, ...) \
-            do { if (a12_trace_dst && (a12_trace_targets & group)) fprintf(a12_trace_dst, \
-						"group=%s:function=%s:" fmt "\n", \
-						a12int_group_tostr(group), __func__,##__VA_ARGS__); } while (0)
-#endif
 
-#endif
+#ifdef WITH_TRACY
+#include "tracy/TracyC.h"
+#define a12int_trace(group, fmt, ...) \
+	do { \
+	    TracyCZone(___trace_ctx, true); \
+	    const char *___trace_name = a12int_group_tostr(group); \
+	    TracyCZoneName(___trace_ctx, ___trace_name, strlen(___trace_name)); \
+	    char ___trace_buf[512]; \
+	    int ___trace_strlen = snprintf(___trace_buf, 512, \
+				"group=%s:function=%s:" fmt "\n", \
+				___trace_name, __func__,##__VA_ARGS__); \
+	    TracyCZoneText(___trace_ctx, ___trace_buf, MIN(511, ___trace_strlen)); \
+	    TracyCZoneEnd(___trace_ctx); \
+	} while (0)
+#else
+#define a12int_trace(group, fmt, ...) \
+	do { \
+	    if (a12_trace_dst && (a12_trace_targets & group)) \
+		    fprintf(a12_trace_dst, \
+				"group=%s:function=%s:" fmt "\n", \
+				a12int_group_tostr(group), __func__,##__VA_ARGS__); \
+	} while (0)
+#endif // WITH_TRACY
+
+#endif // a12int_trace
+#endif // HAVE_A12
