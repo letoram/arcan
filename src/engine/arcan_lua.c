@@ -196,6 +196,22 @@ typedef int acoord;
 #define CONST_TRUST_TRANSITIVE 13
 #endif
 
+#ifndef CONST_ANCHORHINT_SEGMENT
+#define CONST_ANCHORHINT_SEGMENT 10
+#endif
+
+#ifndef CONST_ANCHORHINT_EXTERNAL
+#define CONST_ANCHORHINT_EXTERNAL 11
+#endif
+
+#ifndef CONST_ANCHORHINT_PROXY
+#define CONST_ANCHORHINT_PROXY 12
+#endif
+
+#ifndef CONST_ANCHORHINT_PROXY_EXTERNAL
+#define CONST_ANCHORHINT_PROXY_EXTERNAL 13
+#endif
+
 /*
  * disable support for all builtin frameservers
  * which removes most (launch_target and target_alloc remain)
@@ -234,6 +250,10 @@ static const int RENDERFMT_RETAIN_ALPHA = RENDERTARGET_RETAIN_ALPHA;
 static const int DEVICE_INDIRECT = CONST_DEVICE_INDIRECT;
 static const int DEVICE_DIRECT = CONST_DEVICE_DIRECT;
 static const int DEVICE_LOST = CONST_DEVICE_LOST;
+static const int ANCHORHINT_SEGMENT = CONST_ANCHORHINT_SEGMENT;
+static const int ANCHORHINT_EXTERNAL = CONST_ANCHORHINT_EXTERNAL;
+static const int ANCHORHINT_PROXY = CONST_ANCHORHINT_PROXY;
+static const int ANCHORHINT_PROXY_EXTERNAL = CONST_ANCHORHINT_PROXY_EXTERNAL;
 
 #define DBHANDLE arcan_db_get_shared(NULL)
 
@@ -1083,12 +1103,12 @@ static int loadimageasynch(lua_State* ctx)
 
 static int imageloaded(lua_State* ctx)
 {
-	LUA_TRACE("imageloaded");
+	LUA_TRACE("image_loaded");
 	arcan_vobject* vobj;
 	luaL_checkvid(ctx, 1, &vobj);
 
 	lua_pushnumber(ctx, vobj->feed.state.tag == ARCAN_TAG_IMAGE);
-	LUA_ETRACE("load_image_asynch", NULL, 1);
+	LUA_ETRACE("image_loaded", NULL, 1);
 }
 
 static int moveimage(lua_State* ctx)
@@ -4221,8 +4241,10 @@ void arcan_lwa_subseg_ev(
 	case TARGET_COMMAND_PAUSE:
 	case TARGET_COMMAND_UNPAUSE:
 	case TARGET_COMMAND_GRAPHMODE:
-/* handled in platform */
-	case TARGET_COMMAND_RESET:
+	case TARGET_COMMAND_ANCHORHINT: /* should probably feed back to know position,
+																		 but unclear if _lwa applications should rely
+																		 on that */
+	case TARGET_COMMAND_RESET: /* handled in platform */
 	case TARGET_COMMAND_SEEKCONTENT: /* scrolling */
 	case TARGET_COMMAND_COREOPT: /* dynamic key-value */
 	case TARGET_COMMAND_SEEKTIME: /* scrolling? */
@@ -7813,6 +7835,71 @@ static int targetdisphint(lua_State* ctx)
 	lua_pushnumber(ctx, fsrv->desc.text.cellh);
 
 	LUA_ETRACE("target_displayhint", NULL, 2);
+}
+
+static unsigned int get_vid_token(lua_State* ctx, int ind)
+{
+	arcan_vobject* vobj;
+	arcan_vobj_id parent = luaL_checkvid(ctx, ind, &vobj);
+	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV){
+		arcan_fatal("target_anchorhint(vid, ANCHORHINT_SEGMENT, "
+			">parent<, ...) not connected to a frameserver");
+	}
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+	return fsrv->cookie;
+}
+
+static int targetanchor(lua_State* ctx)
+{
+
+	LUA_TRACE("target_anchorhint");
+	arcan_event ev = {
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_ANCHORHINT
+	};
+
+	arcan_vobject* vobj;
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, &vobj);
+
+	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV){
+		arcan_fatal("target_anchorhint(>vid<, ...) not connected to a frameserver");
+	}
+
+	int type = luaL_checknumber(ctx, 2);
+	bool swap_token = false;
+	bool want_source = false;
+	int coord_ofs = 4;
+
+	switch (type){
+	case CONST_ANCHORHINT_SEGMENT:
+		ev.tgt.ioevs[4].uiv = get_vid_token(ctx, 3);
+	break;
+	case CONST_ANCHORHINT_PROXY:
+		ev.tgt.ioevs[3].uiv = get_vid_token(ctx, 3);
+		ev.tgt.ioevs[4].uiv = get_vid_token(ctx, 4);
+	break;
+	case CONST_ANCHORHINT_EXTERNAL:
+		ev.tgt.ioevs[4].uiv = luaL_checknumber(ctx, 3);
+		ev.tgt.ioevs[5].iv = 1;
+		coord_ofs = 5;
+	break;
+	case CONST_ANCHORHINT_PROXY_EXTERNAL:
+		ev.tgt.ioevs[3].uiv = luaL_checknumber(ctx, 3);
+		ev.tgt.ioevs[4].uiv = luaL_checknumber(ctx, 4);
+		ev.tgt.ioevs[5].iv = 1;
+		coord_ofs = 5;
+	break;
+	default:
+		arcan_fatal("target_anchorhint(vid, >type<, ..) invalid type value");
+	break;
+	}
+
+	ev.tgt.ioevs[0].uiv = luaL_checknumber(ctx, coord_ofs + 0);
+	ev.tgt.ioevs[1].uiv = luaL_checknumber(ctx, coord_ofs + 1);
+	ev.tgt.ioevs[2].uiv = luaL_optnumber(ctx, coord_ofs + 2, 0);
+
+	tgtevent(vid, ev);
+	LUA_ETRACE("target_anchorhint", NULL, 0);
 }
 
 static int targetgraph(lua_State* ctx)
@@ -12159,6 +12246,10 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"DEVICE_INDIRECT", DEVICE_INDIRECT},
 {"DEVICE_DIRECT", DEVICE_DIRECT},
 {"DEVICE_LOST", DEVICE_LOST},
+{"ANCHORHINT_SEGMENT", ANCHORHINT_SEGMENT},
+{"ANCHORHINT_EXTERNAL", ANCHORHINT_EXTERNAL},
+{"ANCHORHINT_PROXY", ANCHORHINT_PROXY},
+{"ANCHORHINT_PROXY_EXTERNAL", ANCHORHINT_PROXY_EXTERNAL},
 {"RENDERTARGET_NOSCALE", RENDERTARGET_NOSCALE},
 {"RENDERTARGET_SCALE", RENDERTARGET_SCALE},
 {"RENDERTARGET_NODETACH", RENDERTARGET_NODETACH},
