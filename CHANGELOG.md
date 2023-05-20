@@ -5,6 +5,7 @@
  * target_input long messages are now marked as multipart
  * convey tui/tpack state in resize events
  * target\_anchorhint added for informing clients about positioning and hierarchy
+ * video\_displaymode expose eotf / coordinates for primaries and contents light levels
 
 ## Core
  * respect border attribute in text rasteriser
@@ -35,10 +36,13 @@
  * egl-dri: evict streams
  * egl-dri: default to atomic over legacy
  * egl-dri: retain device tracking for unmapped display
+ * egl-dri: add hdr infoframe metadata to platform
 
 ## Shmif
  * add audio only- segment type
  * wire up ext venc resize for compressed video passthrough
+ * extend hdr vsub with more metadata
+ * dropped unused rhints and rename hdr16f (version bump)
 
 ## Decode
  * defer REGISTER until proto argument has been parsed, let text register as TUI

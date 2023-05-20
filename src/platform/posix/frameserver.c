@@ -816,7 +816,7 @@ static size_t fsrv_protosize(arcan_frameserver* ctx,
 	if (tot % sizeof(max_align_t) != 0)
 		tot += tot - (tot % sizeof(max_align_t));
 
-	if (proto & SHMIF_META_HDRF16){
+	if (proto & SHMIF_META_HDR){
 /* nothing now, possibly reserved for tone-mapping */
 	}
 	dofs->ofs_hdr = dofs->sz_hdr = 0;
@@ -1224,8 +1224,10 @@ static void fsrv_setproto(arcan_frameserver* ctx,
 	else
 		ctx->desc.aext.gamma = NULL;
 
-	if (proto & SHMIF_META_HDRF16){
-/* shouldn't "need" anything here right now */
+/* The hinted metadata comes as per target_displayhint with a reference
+ * display, that stage checks for hdr metadata, locks and updates. In the other
+ * direction metadata is transferred on sigvid synch */
+	if (proto & SHMIF_META_HDR){
 		ctx->desc.aext.hdr = (struct arcan_shmif_hdr*)(base + aofs->ofs_hdr);
 		memset(ctx->desc.aext.hdr, '\0', aofs->sz_hdr);
 	}

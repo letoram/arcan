@@ -218,9 +218,9 @@
 -- "browser", "encoder", "titlebar", "sensor", "service", "bridge-x11",
 -- "bridge-wayland", "debug", "widget", "audio"
 --
--- @tblent: "proto_update", {cm, vr, hdrf16, ldr, vobj} - the set of negotiated
--- subprotocols has changed, each member is a boolean indicating if the subprotocol
--- is available or not.
+-- @tblent: "proto_update", {cm, vr, hdr, vobj} - the set of negotiated
+-- subprotocols has changed, each member is a boolean indicating if the
+-- subprotocol is available or not.
 --
 -- @tblent: "ramp_update", {index} - for clients that have been allowed access to
 -- the color ramp subprotocol, this event will be triggered for each mapped ramp
