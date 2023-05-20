@@ -4,6 +4,7 @@
  * util:random\_bytes(len) added for CSPRNG byte string
  * target_input long messages are now marked as multipart
  * convey tui/tpack state in resize events
+ * target\_anchorhint added for informing clients about positioning and hierarchy
 
 ## Core
  * respect border attribute in text rasteriser

@@ -118,6 +118,18 @@ static void surf_damage(struct wl_client* cl,
 	w *= surf->scale;
 	h *= surf->scale;
 
+	if (x < 0)
+		x = 0;
+
+	if (y < 0)
+		y = 0;
+
+	if (w < 0)
+		w = surf->acon.w;
+
+	if (h < 0)
+		h = surf->acon.h;
+
 	trace(TRACE_SURF,"%s:(%"PRIxPTR") @x,y+w,h(%d+%d, %d+%d)",
 		surf->tracetag, (uintptr_t)res, (int)x, (int)w, (int)y, (int)h);
 

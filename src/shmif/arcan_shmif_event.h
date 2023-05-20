@@ -661,6 +661,7 @@ enum ARCAN_TARGET_COMMAND {
  * [2].iv  : rel_z
  * [3].uiv : source
  * [4].uiv : parent
+ * [5].iv  : extns (!0)
  *
  * Most clients should not rely or depend on these events. They are mainly
  * provided to bridge other windowing systems, for pseudo-window management of
@@ -672,6 +673,9 @@ enum ARCAN_TARGET_COMMAND {
  * The Z value may be used to carry stacking or draw order, e.g. < 0 the source
  * is below the parent (drawn before), with > 0 is above the parent (drawn
  * after).
+ *
+ * If extns is set (!0) the values of source and parent refers to previously
+ * provded extids from viewport and segment requests rather than segment token.
  */
 	TARGET_COMMAND_ANCHORHINT,
 
