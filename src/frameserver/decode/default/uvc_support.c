@@ -32,6 +32,7 @@
 #include <math.h>
 
 static int video_buffer_count = 1;
+static bool h264_passthrough = false;
 
 /* should also have the option to convert to GPU texture here and pass
  * onwards rather than paying the conversion proce like this */
@@ -123,9 +124,18 @@ static void frame_ffmpeg(
 	static AVFrame* frame;
 	static AVPacket* packet;
 
-/* missing:
- *  - test shmif for the ability to tunnel raw h264 (important for a12)
- */
+/* use to free / reset parser context */
+	if (!uvc){
+		if (decode)
+			avcodec_free_context(&decode);
+		if (parser)
+			parser = (av_parser_close(parser), NULL);
+		if (packet)
+			av_packet_free(&packet);
+		if (frame)
+			av_frame_free(&frame);
+		return;
+	}
 
 /* this is the same code used in a12/a12_decode.c */
 	if (!codec){
@@ -224,8 +234,39 @@ static void callback(uvc_frame_t* frame, void* tag)
 /* guarantee dimensions */
 	if (cont->w != frame->width || cont->h != frame->height){
 		if (!arcan_shmif_resize_ext(cont, frame->width, frame->height,
-			(struct shmif_resize_ext){.vbuf_cnt = video_buffer_count})){
+			(struct shmif_resize_ext){
+				.vbuf_cnt = video_buffer_count,
+				.meta = h264_passthrough ? SHMIF_META_VENC : 0
+			})){
 			return;
+		}
+	}
+
+	if (h264_passthrough && frame->frame_format == UVC_FRAME_FORMAT_H264){
+		struct arcan_shmif_venc* venc =
+			arcan_shmif_substruct(cont, SHMIF_META_VENC).venc;
+		if (!venc){
+			h264_passthrough = false;
+			LOG("status=feature:h264_passthrough=false");
+		}
+/* sanity-check fail, revert to normal */
+		else {
+			if (frame->data_bytes > cont->w * cont->h * sizeof(shmif_pixel)){
+				venc->fourcc[0] = 0;
+				h264_passthrough = false;
+			}
+			else {
+				venc->fourcc[0] = 'H';
+				venc->fourcc[1] = '2';
+				venc->fourcc[2] = '6';
+				venc->fourcc[3] = '4';
+
+				venc->framesize = frame->data_bytes;
+				LOG("status=frame:h264_passthrough=true:size=%zu", (size_t) frame->data_bytes);
+				memcpy(cont->vidb, frame->data, venc->framesize);
+				arcan_shmif_signal(cont, SHMIF_SIGVID);
+				return;
+			}
 		}
 	}
 
@@ -525,17 +566,20 @@ bool uvc_support_activate(
 		goto out;
 	}
 
+	if (fmt == UVC_FRAME_FORMAT_H264 && !arg_lookup(args, "no_pass", 0, NULL)){
+		h264_passthrough = true;
+	}
+
 	int rv = uvc_start_streaming(devh, &ctrl, callback, cont, 0);
 	if (rv < 0){
 		arcan_shmif_last_words(cont, "uvc- error when streaming");
 		goto out;
 	}
 
-/* this one is a bit special, optimally we'd want to check cont and
- * see if we have GPU access - if there is one, we should try and get
- * the camera native format, upload that to a texture and repack /
- * convert there - for now just set RGBX and hope that uvc can unpack
- * without further conversion */
+/* this one is a bit special, optimally we'd want to check cont and see if we
+ * have GPU access - if there is one, we should try and get the camera native
+ * format, upload that to a texture and repack / convert there - for now just
+ * set RGBX and hope that uvc can unpack without further conversion */
 	arcan_shmif_privsep(cont, "minimal", NULL, 0);
 
 	struct arcan_event ev;

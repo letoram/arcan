@@ -479,7 +479,7 @@ struct shmifsrv_vbuffer shmifsrv_video(struct shmifsrv_client* cl)
 			memcpy(res.fourcc, cl->con->desc.aext.venc->fourcc, 4);
 			res.buffer_sz = cl->con->desc.aext.venc->framesize;
 		}
-		res.flags.compressed = true;
+		res.flags.compressed = res.fourcc[0] != 0;
 	}
 
 	return res;
