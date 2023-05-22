@@ -4705,8 +4705,7 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		case EVENT_FSRV_APROTO:
 			tblstr(ctx, "kind", "proto_change", top);
 			tblbool(ctx, "cm", (ev->fsrv.aproto & SHMIF_META_CM) > 0, top);
-			tblbool(ctx, "hdrf16", (ev->fsrv.aproto & SHMIF_META_HDRF16) > 0, top);
-			tblbool(ctx, "ldef", (ev->fsrv.aproto & SHMIF_META_LDEF) > 0, top);
+			tblbool(ctx, "hdr", (ev->fsrv.aproto & SHMIF_META_HDR) > 0, top);
 			tblbool(ctx, "vobj", (ev->fsrv.aproto & SHMIF_META_VOBJ) > 0, top);
 			tblbool(ctx, "vr", (ev->fsrv.aproto & SHMIF_META_VR) > 0, top);
 		break;
@@ -6280,6 +6279,20 @@ static int videodisplay(lua_State* ctx)
 			platform_mode_id mode = luaL_checknumber(ctx, 2);
 			opts.vrr = intblfloat(ctx, 3, "vrr");
 			opts.depth = intblfloat(ctx, 3, "format");
+
+			if
+				(opts.depth == VSTORE_HINT_HIDEF || opts.depth == VSTORE_HINT_F16 ||
+				 opts.depth == VSTORE_HINT_F32){
+					opts.primaries_xy.white[0] = intblfloat(ctx, 3, "whitepoint_x");
+					opts.primaries_xy.white[1] = intblfloat(ctx, 3, "whitepoint_y");
+					opts.primaries_xy.green[0] = intblfloat(ctx, 3, "primary_green_x");
+					opts.primaries_xy.green[1] = intblfloat(ctx, 3, "primary_green_y");
+					opts.primaries_xy.red[0] = intblfloat(ctx, 3, "primary_red_x");
+					opts.primaries_xy.red[1] = intblfloat(ctx, 3, "primary_red_y");
+					opts.primaries_xy.blue[0] = intblfloat(ctx, 3, "primary_blue_x");
+					opts.primaries_xy.blue[1] = intblfloat(ctx, 3, "primary_blue_y");
+				}
+
 			lua_pushboolean(ctx, platform_video_set_mode(id, mode, opts));
 		}
 		else {
@@ -8009,8 +8022,7 @@ enum target_flags {
 	TARGET_FLAG_AUTOCLOCK,
 	TARGET_FLAG_NO_BUFFERPASS,
 	TARGET_FLAG_ALLOW_CM,
-	TARGET_FLAG_ALLOW_HDRF16,
-	TARGET_FLAG_ALLOW_LDEF,
+	TARGET_FLAG_ALLOW_HDR,
 	TARGET_FLAG_ALLOW_VOBJ,
 	TARGET_FLAG_ALLOW_INPUT,
 	TARGET_FLAG_ALLOW_GPUAUTH,
@@ -8073,18 +8085,11 @@ static void updateflag(arcan_vobj_id vid, enum target_flags flag, bool toggle)
 			fsrv->metamask &= ~SHMIF_META_CM;
 	break;
 
-	case TARGET_FLAG_ALLOW_HDRF16:
+	case TARGET_FLAG_ALLOW_HDR:
 		if (toggle)
-			fsrv->metamask |= SHMIF_META_HDRF16;
+			fsrv->metamask |= SHMIF_META_HDR;
 		else
-			fsrv->metamask &= ~SHMIF_META_HDRF16;
-	break;
-
-	case TARGET_FLAG_ALLOW_LDEF:
-		if (toggle)
-			fsrv->metamask |= SHMIF_META_LDEF;
-		else
-			fsrv->metamask &= ~SHMIF_META_LDEF;
+			fsrv->metamask &= ~SHMIF_META_HDR;
 	break;
 
 	case TARGET_FLAG_ALLOW_VOBJ:
@@ -12230,8 +12235,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"TARGET_AUTOCLOCK", TARGET_FLAG_AUTOCLOCK},
 {"TARGET_NOBUFFERPASS", TARGET_FLAG_NO_BUFFERPASS},
 {"TARGET_ALLOWCM", TARGET_FLAG_ALLOW_CM},
-{"TARGET_ALLOWHDR", TARGET_FLAG_ALLOW_HDRF16},
-{"TARGET_ALLOWLODEF", TARGET_FLAG_ALLOW_LDEF},
+{"TARGET_ALLOWHDR", TARGET_FLAG_ALLOW_HDR},
+{"TARGET_ALLOWLODEF", 0}, /* deprecated */
 {"TARGET_ALLOWVECTOR", TARGET_FLAG_ALLOW_VOBJ},
 {"TARGET_ALLOWINPUT", TARGET_FLAG_ALLOW_INPUT},
 {"TARGET_ALLOWGPU", TARGET_FLAG_ALLOW_GPUAUTH},

@@ -514,11 +514,10 @@ enum shmif_ext_meta {
 	SHMIF_META_CM = 2,
 
 /*
- * The video buffers will be switched to represent a 16-bit Float(
- * R16,G16,B16,A16) format for HDR content and tone-mapping or HDR output
- * is expected of the arcan instance.
+ * The video buffers will be switched to represent uint10, fp16 or fp32
+ * format for higher precision SDR and for HDR contents.
  */
-	SHMIF_META_HDRF16 = 4,
+	SHMIF_META_HDR = 4,
 
 /*
  * This is reserved and not completely fleshed out yet,
@@ -536,16 +535,13 @@ enum shmif_ext_meta {
 	SHMIF_META_VR = 16,
 
 /*
- * Similar to HDR16, but switch to half-size mode (R8G8B8A8 -> RGB565)
+ * Similar to HDR - but the video buffer is interpreted as a compressed video
+ * frame. This is primarily to let clients that have a valid h264, av1, ...
+ * stream forward this without decoding. If the sink detects an unrecoverable
+ * error in the stream, BUFFER_FAIL will be emitted back. Compressed and raw
+ * formats can be toggled by setting a valid or empty ({0}) fourcc.
  */
-	SHMIF_META_LDEF = 32,
-
-/*
- * Similar to HDR16, LDEF - but the video buffer is interpreted as a
- * compressed video frame. This is primarily to let cliens that have
- * a valid h264, av1, ... stream forward this without decoding.
- */
-	SHMIF_META_VENC = 64
+	SHMIF_META_VENC = 32
 };
 
 /*
@@ -934,6 +930,8 @@ enum rhint_mask {
  * Setting this flag indicates that the source colorspace is in sRGB format
  * and that the engine should pick shaders and blending algorithms that can
  * take this non-linearity into account.
+ *
+ * This is ignored if HDR has been negotiated in resize_ext.
  */
 	SHMIF_RHINT_CSPACE_SRGB = 8,
 
@@ -954,16 +952,6 @@ enum rhint_mask {
  * the STEPFRAME event will not be emitted.
  */
 	SHMIF_RHINT_VSIGNAL_EV = 32,
-
-/*
- * [Reserved, not yet used]
- * Change the buffer contents management method to be a chain of dirty
- * rectangles rather than one continous buffer. This means that the contents of
- * the normal vidp, stride and pitch members may mutate between calls to
- * arcan_shmif_dirty and that it is write only, you can't use it for reliable
- * blending etc. Setting this bit will invalidate SHMIF_RHINT_SUBREGION.
- */
-	SHMIF_RHINT_SUBREGION_CHAIN = 64,
 
 /*
  * Changes the buffer contents to be packed in the TPACK format (see
