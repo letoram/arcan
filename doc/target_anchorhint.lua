@@ -26,8 +26,8 @@
 --
 -- The non-external types will have *src* and *parent* verified as valid
 -- frameservers and the VIDs substitued for the respective cookie identifier
--- (see ref:launch_target). If these point to an invalid vid or ones without
--- TYPE_FRAMESERVER the event will fail silent and be discarded.
+-- (see ref:launch_target). If no parenting relationship is required, use the
+-- global WORLDID as reference. Pointing to an invalid VID is a terminal state transition.
 --
 -- @group: targetcontrol
 -- @cfunction: targetdisphint

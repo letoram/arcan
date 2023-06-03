@@ -7854,6 +7854,10 @@ static unsigned int get_vid_token(lua_State* ctx, int ind)
 {
 	arcan_vobject* vobj;
 	arcan_vobj_id parent = luaL_checkvid(ctx, ind, &vobj);
+
+	if (parent == ARCAN_VIDEO_WORLDID)
+		return 0;
+
 	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV){
 		arcan_fatal("target_anchorhint(vid, ANCHORHINT_SEGMENT, "
 			">parent<, ...) not connected to a frameserver");
@@ -11858,6 +11862,7 @@ static const luaL_Reg tgtfuns[] = {
 {"target_synchronous",         targetsynchronous        },
 {"target_flags",               targetflags              },
 {"target_graphmode",           targetgraph              },
+{"target_anchorhint",          targetanchor             },
 {"target_displayhint",         targetdisphint           },
 {"target_devicehint",          targetdevhint            },
 {"target_fonthint",            targetfonthint           },

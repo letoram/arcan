@@ -217,8 +217,24 @@ enum ARCAN_SEGID {
 	SEGID_SERVICE = 25,
 
 /*
- * Used to indicate a protocol bridge and root windows
- * (where applicable and no other segtype or subsegtype- can be spawned).
+ * Used to indicate a protocol bridge and root windows.
+ *
+ * (where applicable and no other segtype or subsegtype- can be spawned)
+ * except for clipboard and cursor.
+ *
+ * The primary segment act as the root window and any subsegments requested
+ * indicate redirected surfaces. VIEWPORT, IDENT and RESET events are important
+ * on this one as the regular X11 type model does not map particularly well to
+ * shmif types.
+ *
+ * To delete X11 subsegments, meaning 'closing a window', use the soft RESET
+ * event on it rather than a hard _EXIT. This lets Xarcan reuse it for later
+ * rather than force a full re-allocation.
+ *
+ * VIEWPORT events are sent to map / unmap windows (invisible property) as well
+ * as reanchoring / moving windows around. IDENT is used both to provide a
+ * title and a type when prefixed with popup\t tooltip\t toolbar\t .. and so
+ * on based on the ICCCM _NET_WM_WINDOW_TYPE.
  */
 	SEGID_BRIDGE_X11 = 26,
 
@@ -709,8 +725,7 @@ enum ARCAN_EVENT_EXTERNAL {
  * [UNIQUE]
  * Dynamic data source identification string, similar to message but is
  * expected to come when something has changed radically, (streaming external
- * video sources redirecting to new url for instance).
- * uses the message field.
+ * video sources redirecting to new url for instance). uses the message field.
  */
 	EVENT_EXTERNAL_IDENT = 2,
 
@@ -1507,6 +1522,9 @@ enum ARCAN_TARGET_SKIPMODE {
  *	(embedded)       - The segment will attach as a part of its parent.
  *	                   This forces the edge to be UL and the segment contents
  *	                   will be clipped against the parent surface.
+ *
+ *                     Clipping is disabled for Wayland and X11 segment types.
+ *
  *                     Scaling hints can be applied for the embedded segment:
  *                     1 : (don't care)
  *                     2 : scale-aspect
