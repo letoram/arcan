@@ -158,6 +158,20 @@ debugging quickly becomes very disruptive, and tracing sources becomes more
 important to get valuable information. In this section a few such sources and
 tactics are listed.
 
+## Tracy
+
+Arcan has native optional built-in support for the Tracy tracer. Enabling it
+comes with some caveats (-DENABLE_TRACY=ON). First is to expect that it will
+hold a tcp port (default 8086) open and that any personal data exposed might
+be accessed this way, which is part of the point. Thus is it not intended to
+run on normal day-to-day production devices.
+
+Second is that it collides with crash recovery, so regular Lua scripting
+errors will become stalls. If running Arcan as the primary display server,
+this means that the display will be unusable. Be sure to have a second
+connection path, e.g. ssh or a12 into an afsrv\_terminal.
+
+
 ## Watchdog
 
 When running a low level platform where arcan acts as the display server,

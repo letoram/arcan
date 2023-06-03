@@ -8,7 +8,20 @@ static FILE* m_ctrl;
 static bool m_locked;
 static bool m_transaction;
 
-/* fgets ->
+/*
+ * Might just be a point to use shmif client API here and in arcan-net end use
+ * shmif inherited there as well. The slight annoyance is the conflict with
+ * LWA getting its primary connection.
+ *
+ * The other option would be to explicitly name a connection point and have two
+ * shmif connections, one for the monitor controls and one for the regular LWA.
+ *
+ * That makes more sense structurally then having this separate setup, especially
+ * as more entry points into scripts might be needed - e.g. state transfer.
+ *
+ * This would also mesh better with other debugging tools.
+ *
+ * fgets ->
  *  need command for:
  *       database externally modified (new namespaces, EVENT_SYSTEM)
  *       debug-controls
