@@ -492,13 +492,6 @@ static inline bool merge_dh(arcan_event* new, arcan_event* old)
 	return true;
 }
 
-static void reset_dirty(struct arcan_shmif_cont* ctx)
-{
-	ctx->dirty.y2 = ctx->dirty.x2 = 0;
-	ctx->dirty.y1 = ctx->h;
-	ctx->dirty.x1 = ctx->w;
-}
-
 static bool calc_dirty(
 	struct arcan_shmif_cont* ctx, shmif_pixel* old, shmif_pixel* new)
 {
@@ -1486,7 +1479,11 @@ static void setup_avbuf(struct arcan_shmif_cont* res)
  */
 	res->vidp = res->priv->vbuf[0];
 	res->audp = res->priv->abuf[0];
-	reset_dirty(res);
+
+/* mark the entire segment as dirty */
+	res->dirty.x1 = res->dirty.y1 = 0;
+	res->dirty.x2 = res->w;
+	res->dirty.y2 = res->h;
 }
 
 /* using a base address where the meta structure will reside, allocate n- audio
@@ -1829,7 +1826,12 @@ static bool step_v(struct arcan_shmif_cont* ctx, int sigv)
 		}
 
 		atomic_store(&ctx->addr->dirty, ctx->dirty);
-		reset_dirty(ctx);
+
+/* set an invalid dirty region so any subsequent signals would be ignored until
+ * they are updated (i.e. something has changed) */
+		ctx->dirty.y2 = ctx->dirty.x2 = 0;
+		ctx->dirty.y1 = ctx->h;
+		ctx->dirty.x1 = ctx->w;
 	}
 	else {
 		if (priv->log_event){
