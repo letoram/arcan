@@ -56,6 +56,19 @@ enum debug_level {
 	DETAILED = 2
 };
 
+struct mstate {
+	union {
+		struct {
+			int32_t ax, ay, lx, ly;
+			uint8_t rel : 1;
+			uint8_t inrel : 1;
+		};
+		uint8_t state[ASHMIF_MSTATE_SZ];
+	};
+};
+
+_Static_assert(sizeof(struct mstate) == ASHMIF_MSTATE_SZ, "invalid mstate sz");
+
 /*
  * Accessor for redirectable log output related to a shmif context
  * The context association is a placeholder for being able to handle
@@ -241,6 +254,8 @@ struct shmif_hidden {
 		int epipe;
 		char key[256];
 	} pseg;
+
+	struct mstate mstate;
 
 /* The 'guard' structure is used by a separate monitoring thread that will
  * track a pid or descriptor for aliveness. If the tracking fails, it will
@@ -3197,23 +3212,16 @@ int arcan_shmif_segkind(struct arcan_shmif_cont* con)
 	return (!con || !con->priv) ? SEGID_UNKNOWN : con->priv->type;
 }
 
-struct mstate {
-	union {
-		struct {
-			int32_t ax, ay, lx, ly;
-			uint8_t rel : 1;
-			uint8_t inrel : 1;
-		};
-		uint8_t state[ASHMIF_MSTATE_SZ];
-	};
-};
-
-_Static_assert(sizeof(struct mstate) == ASHMIF_MSTATE_SZ, "invalid mstate sz");
-
 void arcan_shmif_mousestate_setup(
 	struct arcan_shmif_cont* con, bool relative, uint8_t* state)
 {
+	if (!con || !con->priv)
+		return;
+
 	struct mstate* ms = (struct mstate*) state;
+	if (!ms)
+		ms = &con->priv->mstate;
+
 	*ms = (struct mstate){
 		.rel = relative
 	};
@@ -3259,8 +3267,13 @@ bool arcan_shmif_mousestate_ioev(
 	struct arcan_ioevent* inev, int* out_x, int* out_y)
 {
 	struct mstate* ms = (struct mstate*) state;
+	if (!con || !con->priv)
+		return false;
 
-	if (!state || !out_x || !out_y || !con)
+	if (!state)
+		ms = &con->priv->mstate;
+
+	if (!ms|| !out_x || !out_y)
 		return false;
 
 	if (!inev){
@@ -3271,7 +3284,7 @@ bool arcan_shmif_mousestate_ioev(
 		return true;
 	}
 
-	if (!state ||
+	if (!ms ||
 		inev->datatype != EVENT_IDATATYPE_ANALOG ||
 		inev->devkind != EVENT_IDEVKIND_MOUSE
 	)

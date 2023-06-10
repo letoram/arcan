@@ -494,6 +494,11 @@ void arcan_shmif_bgcopy(
  * devkind == EVENT_IDEVKIND_MOUSE for datatype == EVENT_IDATATYPE_ANALOG.
  * If >true< the status of have changed since last time.
  *
+ * If [state=NULL] an internal state tracking store inside the context will be
+ * used. This might not always be desired if you want to inspect the values
+ * yourself or if you are juggling multiple contexts with a shared state
+ * machine.
+ *
  * uint8_t mstate[ASHMIF_MSTATE_SZ];
  * arcan_shmif_mousestate_setup(acon, false, mstate);
  * ... in event loop ...
