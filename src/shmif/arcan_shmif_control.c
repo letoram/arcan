@@ -2951,6 +2951,22 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 	return false;
 }
 
+static size_t a12_cp(const char* conn_src, bool* weak)
+{
+	if (weak)
+		*weak = false;
+
+	if (strncmp(conn_src, "a12s://", 7) == 0)
+		return sizeof("a12s://") - 1;
+	else if (strncmp(conn_src, "a12://", 6) == 0){
+		if (weak)
+			*weak = true;
+		return sizeof("a12://") - 1;
+	}
+	else
+		return 0;
+}
+
 static char* spawn_arcan_net(const char* conn_src, int* dsock)
 {
 /* extract components from URL: a12://(keyid)@server(:port) */
@@ -2958,7 +2974,8 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	if (!work)
 		return NULL;
 
-	size_t start = sizeof("a12://") - 1;
+	bool weak;
+	size_t start = a12_cp(conn_src, &weak);
 
 /* (:port or ' port' - both are fine) */
 	const char* port = "6680";
@@ -2997,16 +3014,24 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	}
 	*dsock = spair[0];
 
+	char tmpbuf[8];
+	snprintf(tmpbuf, sizeof(tmpbuf), "%d", spair[1]);
+
 /* spawn the arcan-net process, zombie- tactic was either doublefork
  * or spawn a waitpid thread - given that the length/lifespan of net
  * may well be as long as the process, go with double-fork + wait */
 	pid_t pid = fork();
 	if (pid == 0){
 		if (0 == fork()){
-			char tmpbuf[8];
-			snprintf(tmpbuf, sizeof(tmpbuf), "%d", spair[1]);
-			execlp("arcan-net", "arcan-net", "-S",
-				tmpbuf, &work[start], port, (char*) NULL);
+			if (weak){
+				execlp("arcan-net", "arcan-net", "--soft-auth",
+					"-S", tmpbuf, &work[start], port, (char*) NULL);
+			}
+			else {
+				execlp("arcan-net", "arcan-net", "-S",
+					tmpbuf, &work[start], port, (char*) NULL);
+			}
+
 			shutdown(spair[1], SHUT_RDWR);
 			exit(EXIT_FAILURE);
 		}
@@ -3083,7 +3108,7 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
  * setup - for the remote part we still need some other mechanism in the url
  * to identify credential store though */
 	else if (conn_src){
-		if (strncmp(conn_src, "a12://", 6) == 0){
+		if (a12_cp(conn_src, NULL)){
 			keyfile = spawn_arcan_net(conn_src, &dpipe);
 			networked = true;
 		}
