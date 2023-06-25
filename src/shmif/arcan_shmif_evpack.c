@@ -212,8 +212,11 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 				ev.ext.netstate.name
 			);
 		break;
+		case EVENT_EXTERNAL_PRIVDROP:
+			snprintf(work, dsz,"EXT:PRIVDROP(level=%d)", (int)ev.tgt.ioevs[0].iv);
+		break;
 		default:
-			snprintf(work, dsz,"EXT:UNKNOWN(!)");
+			snprintf(work, dsz,"EXT:UNKNOWN(%d)", (int)ev.ext.kind);
 		break;
 		}
 	}

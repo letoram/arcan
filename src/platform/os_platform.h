@@ -289,7 +289,6 @@ void arcan_override_namespace(const char* path, enum arcan_namespaces space);
  */
 void arcan_softoverride_namespace(const char* newp, enum arcan_namespaces space);
 
-
 /*
  * implemented in <platform>/namespace.c,
  * prevent the specific slot from being overridden with either soft/hard
@@ -297,6 +296,12 @@ void arcan_softoverride_namespace(const char* newp, enum arcan_namespaces space)
  * for settings that need the control. Can't be undone.
  */
 void arcan_pin_namespace(enum arcan_namespaces space);
+
+/*
+ * implemented in <platform>/tempfile.c,
+ * take a buffer, write into a temporary file, unlink and return the descriptor
+ */
+int arcan_strbuf_tempfile(const char* msg, size_t msg_sz, const char** err);
 
 /*
  * implemented in <platform>/appl.c

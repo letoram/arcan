@@ -251,7 +251,7 @@ static struct bsdkey decode_tok(char* tok)
 	return res;
 }
 
-bool platform_event_translation(
+int platform_event_translation(
 	int devid, int action, const char** names, const char** err)
 {
 	*err = "Unsupported";

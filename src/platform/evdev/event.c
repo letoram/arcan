@@ -33,18 +33,15 @@
 #include "arcan_videoint.h"
 #include "keycode_xlate.h"
 
-#ifndef __FreeBSD__
-#include <sys/inotify.h>
-#endif
-
 #ifdef HAVE_XKBCOMMON
+static struct xkb_context* xkb_context;
 #include <xkbcommon/xkbcommon.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon-compose.h>
-/*
- * shared between all event queues
- */
-static struct xkb_context* xkb_context;
+#endif
+
+#ifndef __FreeBSD__
+#include <sys/inotify.h>
 #endif
 
 #ifdef _DEBUG
@@ -1017,6 +1014,23 @@ static void setup_led(struct devnode* dst, size_t bitn, int fd)
 	}
 }
 
+static int xkb_layout_to_fd(struct xkb_keymap* layout, const char** err)
+{
+	if (!layout){
+		*err = "no active map";
+		return -1;
+	}
+
+	char* map = xkb_map_get_as_string(layout);
+	if (!map){
+		*err = "serialization request rejected";
+		return -1;
+	}
+
+	int fd = arcan_strbuf_tempfile(map, strlen(map) + 1, err);
+	return fd;
+}
+
 static int alloc_node_slot(const char* path)
 {
 /* pre-existing? close old node and replace with this one, happens
@@ -1095,7 +1109,8 @@ static void send_device_added(struct arcan_evctx* ctx, struct devnode* node)
 	arcan_event_enqueue(ctx, &addev);
 }
 
-bool platform_event_translation(
+
+int platform_event_translation(
 	int devid, int action, const char** arg, const char** err)
 {
 	struct devnode* node = NULL;
@@ -1160,7 +1175,8 @@ bool platform_event_translation(
 		names.layout = layout ? options : getenv("XKB_DEFAULT_LAYOUT");
 	}
 /* just fill struct from arg */
-	else if (action == EVENT_TRANSLATION_SET){
+	else if (action == EVENT_TRANSLATION_SET ||
+		action == EVENT_TRANSLATION_SERIALIZE_SPEC){
 		names.layout = arg[0];
 		if (names.layout)
 			names.model = arg[1];
@@ -1169,9 +1185,23 @@ bool platform_event_translation(
 		if (names.variant)
 			names.options = arg[3];
 	}
+	else if (action == EVENT_TRANSLATION_SERIALIZE_CURRENT){
+		return xkb_layout_to_fd(node->keyboard.xkb_layout, err);
+	}
 	else {
 		*err = "Unsupported action";
 		return false;
+	}
+
+/* build the map and depending on if we should serialize or not, create a tmp
+ * file, write the string to it, seek back and return the descriptor */
+	struct xkb_keymap* map =
+		xkb_keymap_new_from_names(xkb_context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
+
+	if (action == EVENT_TRANSLATION_SERIALIZE_SPEC){
+		int fd = xkb_layout_to_fd(map, err);
+		xkb_keymap_unref(map);
+		return fd;
 	}
 
 	if (node->keyboard.xkb_layout){
@@ -1182,13 +1212,12 @@ bool platform_event_translation(
 		node->keyboard.xkb_layout = NULL;
 	}
 
+	node->keyboard.xkb_layout = map;
+
 /* Disable xkb translation entirely */
 	if (!names.rules && !names.model &&
 		!names.variant && !names.options && !names.layout)
 		return false;
-
-	node->keyboard.xkb_layout =
-		xkb_keymap_new_from_names(xkb_context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
 
 	if (node->keyboard.xkb_layout)
 		node->keyboard.xkb_state = xkb_state_new(node->keyboard.xkb_layout);

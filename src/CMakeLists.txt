@@ -511,6 +511,18 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	message(FATAL_ERROR "${CL_RED}Unsupported OS(${CMAKE_SYSTEM_NAME}) detected, abandon ship!${CL_RST}")
 endif()
 
+# XKB might be necessary to deal with nested clients of all platform types
+# and near necessary for wayland and x11 clients.
+pkg_check_modules(XKB QUIET xkbcommon)
+if (XKB_FOUND)
+	amsg("${CL_YEL}xkb keyboard: \t${CL_GRN}libxkbcommon${CL_RST}")
+	list(APPEND ARCAN_DEFINITIONS HAVE_XKBCOMMON)
+	list(APPEND ARCAN_LIBRARIES ${XKB_LINK_LIBRARIES})
+	list(APPEND INCLUDE_DIRS ${XKB_INCLUDE_DIRS})
+else()
+	amsg("${CL_YEL}xkb keyboard: \t${CL_RED}no libxkbcommon${CL_RST}")
+endif()
+
 if (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client")
 	set(AGP_PLATFORM "stub")
 else()

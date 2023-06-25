@@ -69,6 +69,7 @@ set(ARCAN_PLATFORM
 	${PLATFORM_PATH}/launch.c
 	${PLATFORM_PATH}/config.c
 	${PLATFORM_PATH}/random.c
+	${PLATFORM_PATH}/tempfile.c
 	${PLATFORM_PATH}/../stub/setproctitle.c
 	${PLATFORM_PATH}/prodthrd.c
 )

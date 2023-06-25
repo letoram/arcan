@@ -43,7 +43,7 @@ void platform_event_analogfilter(int devid,
 {
 }
 
-bool platform_event_translation(
+int platform_event_translation(
 	int devid, int action, const char** names, const char** err)
 {
 	*err = "Unsupported";

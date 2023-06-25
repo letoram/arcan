@@ -1,24 +1,32 @@
 -- open_nonblock
 -- @short: Open a file in read or write mode for non-blocking I/O.
--- @inargs: string:res
--- @inargs: string:res, bool:write
 -- @inargs: vid:res
 -- @inargs: vid:res, bool:write
 -- @inargs: vid:res, bool:write, string:identifier=stream
+-- @inargs: vid:res, bool:write, string:identifier=stream, blocktbl
+-- @inargs: string:res
+-- @inargs: string:res, bool:write
 -- @outargs: blocktbl
 -- @longdescr: Create or open the resource indicated by *res* in (default)
 -- read-mode or (if *mode* is provided, write mode)
--- If *res* is a vid connected to a frameserver, a streaming fifo session will
--- be set up over the connection along with the corresponding _BCHUNK events.
+--
+-- If *res* is a vid connected to a frameserver, either a streaming fifo
+-- session will be set up over the connection along with the corresponding
+-- _BCHUNK events or an pre-existing nonblock-io stream will be redirected to
+-- said client and the backing descriptor closed locally.
+--
 -- The *identifier* argument can then be used to specify some client announced
 -- type identifier, or one of the reserved "stdin", "stdout", "stderr".
+--
 -- If *res* is a string, the initial character determines if it creates a
 -- FIFO (<) or a SOCKET (=). Unless a namespace is explicitly set and the
 -- namespace is marked as valid for IPC, FIFOs and SOCKETs will be created
 -- in the RESOURCE_APPL_TEMP namespace.
+--
 -- If the string starts with a valid namespace identifier and separator
 -- (alphanum:/)  the identifier will first be matched to a user defined
 -- namespace (see ref:list_namespaces).
+--
 -- If successful, FIFOs and normal resources return a table wih a close
 -- operation (which is activated on garbage collection unless called in
 -- beforehand) and a read or write function depending on the mode that

@@ -611,7 +611,7 @@ static unsigned gen_devid(unsigned hid)
 	return hid;
 }
 
-bool platform_event_translation(
+int platform_event_translation(
 	int devid, int action, const char** names, const char** err)
 {
 	*err = "Unsupported";
