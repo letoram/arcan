@@ -147,16 +147,3 @@ if (NOT ENABLE_LWA)
 	set(LWA_PLATFORM_STR "stub")
 endif()
 
-if (INPUT_PLATFORM STREQUAL "evdev")
-	pkg_check_modules(XKB QUIET xkbcommon)
-	if (XKB_FOUND)
-		amsg("${CL_YEL}evdev    \t${CL_GRN}libxkbcommon${CL_RST}")
-		set_property(SOURCE ${PLATFORM_ROOT}/evdev/event.c APPEND PROPERTY
-			COMPILE_DEFINITIONS HAVE_XKBCOMMON)
-		list(APPEND VIDEO_LIBRARIES ${XKB_LINK_LIBRARIES})
-		list(APPEND INCLUDE_DIRS ${XKB_INCLUDE_DIRS})
-	else()
-		amsg("${CL_YEL}evdev    \t${CL_RED}no libxkbcommon${CL_RST}")
-	endif()
-endif()
-

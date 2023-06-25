@@ -1,7 +1,8 @@
 -- input_remap_translation
 -- @short: Reset or modify platform level keyboard translation
 -- @inargs: number:devid, number:action, string:arg_1, ...
--- @outargs: bool:ok, string:reason
+-- @inargs: number:devid, number:action, bool:extract, string:arg_1, ...
+-- @outargs: bool:ok, string:reason or nbiotbl
 -- @longdescr: For some low level platforms it makes sense modifying input
 -- translation before the inputs are processed and forwarded onwards and forego
 -- patchin in the scripting layer. The main case where this has caused problems
@@ -17,11 +18,18 @@
 -- The *action* can be one out of:
 -- TRANSLATION_CLEAR, TRANSLATION_SET and TRANSLATION_REMAP.
 -- TRANSLATION_CLEAR is to revert as close to as the initial state as possible.
--- TRANSLATION_MAP is to set/override a complete map.
+-- TRANSLATION_SET is to set/override a complete map.
 -- TRANSLATION_REMAP is to add a specific remapping.
 --
 -- The set of string arguments following the action will be raw-forwarded to
 -- the input platform and is thus platform dependent.
+--
+-- It is also possible to get a readable representation of the platform input
+-- map through the *extract* parameter form. With TRANSLATION_SET this will
+-- just give you the map based on the spec as an iostream (see
+-- ref:open_nonblock). With TRANSLATION_REMAP this will instead provide the
+-- current active map. No local modifications will be made with the *extract*
+-- form.
 --
 -- The constant API_ENGINE_BUILD can be used to obtain which input platform
 -- is currently in use, which mutates the interpretation and effect of the

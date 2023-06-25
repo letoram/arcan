@@ -6414,6 +6414,14 @@ static int inputremaptranslation(lua_State* ctx)
 	LUA_TRACE("input_remap_translation")
 	int devid = luaL_checknumber(ctx, 1);
 	int act = luaL_checknumber(ctx, 2);
+	bool getmap = false;
+	int ofs = 2;
+
+/* set if we want an iostream to the current (remap) or a desired one */
+	if (lua_type(ctx, 3) == LUA_TBOOLEAN || lua_type(ctx, 3) == LUA_TNUMBER){
+		getmap = luaL_checkbnumber(ctx, 3);
+		ofs++;
+	}
 
 	if (
 		act != EVENT_TRANSLATION_CLEAR &&
@@ -6423,14 +6431,30 @@ static int inputremaptranslation(lua_State* ctx)
 	}
 
 	int ttop = lua_gettop(ctx);
-	const char* arr[ttop-2];
-	for (size_t i = 0; i < ttop - 2; i++){
-		arr[i] = luaL_checkstring(ctx, i+3);
+	const char* arr[ttop];
+
+	if (ttop - ofs > 0){
+		for (size_t i = 0; i < ttop - ofs; i++){
+			arr[i] = luaL_checkstring(ctx, i+ofs+1);
+		}
+		arr[ttop-ofs] = NULL;
 	}
 
-	arr[ttop-2] = NULL;
 	const char* err = "";
-	bool res = platform_event_translation(devid, act, arr, &err);
+
+	if (getmap){
+		int mode = EVENT_TRANSLATION_SERIALIZE_CURRENT;
+		if (act == EVENT_TRANSLATION_SET)
+			mode = EVENT_TRANSLATION_SERIALIZE_SPEC;
+
+		int fd = platform_event_translation(devid, mode, arr, &err);
+		struct nonblock_io* dst;
+		alt_nbio_import(ctx, fd, mode, &dst, NULL);
+		lua_pushstring(ctx, err);
+		LUA_ETRACE("input_remap_translation", NULL, 2);
+	}
+
+	int res = platform_event_translation(devid, act, arr, &err);
 	lua_pushboolean(ctx, res);
 	lua_pushstring(ctx, err);
 
@@ -7275,8 +7299,7 @@ static int arcantargethint(lua_State* ctx)
 	if (lua_type(ctx, tblind) != LUA_TTABLE)
 		luaL_typerror(ctx, tblind, "expected argument table");
 
-/*  LABELHINT (labelhint: label, initial, descr, vsym, subv) */
-	if (strcmp(msg, "input_label") == 0){
+	else if (strcmp(msg, "input_label") == 0){
 		struct arcan_event ev = {
 			.category = EVENT_EXTERNAL,
 			.ext = EVENT_EXTERNAL_LABELHINT,

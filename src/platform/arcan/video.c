@@ -32,6 +32,7 @@
 #include <math.h>
 #include <stdatomic.h>
 #include <lua.h>
+#include <errno.h>
 
 extern jmp_buf arcanmain_recover_state;
 
@@ -75,13 +76,18 @@ extern jmp_buf arcanmain_recover_state;
 #include "../egl-dri/egl_gbm_helper.h"
 
 static struct egl_env agp_eglenv;
-
 #endif
 
 #ifdef _DEBUG
 #define DEBUG 1
 #else
 #define DEBUG 0
+#endif
+
+#ifdef HAVE_XKBCOMMON
+#include <xkbcommon/xkbcommon.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
+#include <xkbcommon/xkbcommon-compose.h>
 #endif
 
 #define debug_print(fmt, ...) \
@@ -132,6 +138,7 @@ struct display {
 	struct agp_vstore* vstore;
 	float ppcm;
 	int id;
+  map_region keymap;
 
 /* only used for first display */
 	uint8_t subseg_alloc;
@@ -420,11 +427,92 @@ int platform_video_cardhandle(int cardn, int* method, size_t* msz, uint8_t** dbu
 	return -1;
 }
 
-bool platform_event_translation(int devid,
+static char* names_to_keymap_str(const char** arg, const char** err)
+{
+#ifdef HAVE_XKBCOMMON
+/* setup / fill out pref. */
+	struct xkb_context* xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	struct xkb_rule_names names = {0};
+	names.layout = arg[0];
+	if (names.layout)
+		names.model = arg[1];
+	if (names.model)
+		names.variant = arg[2];
+	if (names.variant)
+		names.options = arg[3];
+
+/* compile / convert */
+	struct xkb_keymap* kmap =
+		xkb_keymap_new_from_names(xkb_context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
+	if (!kmap){
+		*err = "couldn't compile map";
+		xkb_context_unref(xkb_context);
+		return NULL;
+	}
+	char* map = xkb_map_get_as_string(kmap);
+	if (!map){
+		*err = "export failed";
+		xkb_keymap_unref(kmap);
+		xkb_context_unref(xkb_context);
+		return NULL;
+	}
+
+/* export / cleanup */
+	char* res = strdup(map);
+	if (!res){
+		*err = "map copy failed";
+	}
+	else
+		*err = "";
+
+	xkb_keymap_unref(kmap);
+	xkb_context_unref(xkb_context);
+	return res;
+#else
+	*err = "no xkb support";
+	return NULL;
+#endif
+}
+
+int platform_event_translation(int devid,
 	int action, const char** names, const char** err)
 {
+/*
+ * The serialize and remap can have meaning here as we might have native
+ * wayland / x11 clients that need the map client side and we are running
+ * inside another arcan that has it.
+ *
+ * If we get a BCHUNK event with 'xkb' type, the shared / cached 'current'
+ * is forwarded, and if not we build and set according to the shared helper
+ */
+	if ((devid == -1 || devid == 0) && disp[0].keymap.ptr){
+		switch (action){
+			case EVENT_TRANSLATION_SET:{
+				char* newmap = names_to_keymap_str(names, err);
+				if (!newmap){
+					return -1;
+				}
+				arcan_release_map(disp[0].keymap);
+				disp[0].keymap.ptr = newmap;
+				disp[0].keymap.sz = strlen(newmap);
+				return 0;
+			}
+			break;
+			case EVENT_TRANSLATION_SERIALIZE_SPEC:{
+				char* newmap = names_to_keymap_str(names, err);
+				int fd = arcan_strbuf_tempfile(newmap, strlen(newmap), err);
+				free(newmap);
+				return fd;
+			}
+			case EVENT_TRANSLATION_SERIALIZE_CURRENT:{
+				return arcan_strbuf_tempfile(disp[0].keymap.ptr, disp[0].keymap.sz, err);
+			}
+			break;
+		}
+	}
+
 	*err = "Not Supported";
-	return false;
+	return -1;
 }
 
 int platform_event_device_request(int space, const char* path)
@@ -1193,7 +1281,7 @@ send_error:
  * return true if the segment has expired
  */
 extern struct arcan_luactx* main_lua_context;
-static bool event_process_disp(arcan_evctx* ctx, struct display* d, size_t i)
+static bool event_process_disp(arcan_evctx* ctx, struct display* d, size_t did)
 {
 	if (!d->conn.addr)
 		return true;
@@ -1367,8 +1455,18 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d, size_t i)
 			return true; /* it's not safe here */
 		break;
 
+		case TARGET_COMMAND_BCHUNK_IN:
+			if (strcmp(ev.tgt.message, "xkb") == 0){
+			    data_source ds = {.fd = ev.tgt.ioevs[0].iv};
+					arcan_release_map(d->keymap);
+/* setting to write means that the fd won't be cached and the whole resource
+ * will be read in one go and copied, so no need to dup and keep a fd */
+					d->keymap = arcan_map_resource(&ds, true);
+			}
+
+/* fallthrough to default is intended */
 		default:
-			if (i == 0){
+			if (did == 0){
 				arcan_lwa_subseg_ev(main_lua_context, ARCAN_VIDEO_WORLDID, 0, &ev);
 			}
 		break;

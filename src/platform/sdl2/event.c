@@ -216,7 +216,7 @@ void platform_event_samplebase(int devid, float xyz[3])
  */
 }
 
-bool platform_event_translation(
+int platform_event_translation(
 	int devid, int action, const char** names, const char** err)
 {
 	*err = "Unsupported";

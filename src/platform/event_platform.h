@@ -97,14 +97,31 @@ enum translation_actions {
  * Revert to config or environment default.
  */
 	EVENT_TRANSLATION_CLEAR = 0,
+
 /*
  * Apply a preset (e.g. "sv")
  */
 	EVENT_TRANSLATION_SET = 1,
+
 /*
  * Apply a custom remap (e.g. code+mods=ucs4)
  */
-	EVENT_TRANSLATION_REMAP = 2
+	EVENT_TRANSLATION_REMAP = 2,
+
+/*
+ * Extract the current device map into some custom format for inspection
+ * or serializing to a system with the same translation language.
+ *
+ * Returns a fd or -1.
+ */
+	EVENT_TRANSLATION_SERIALIZE_CURRENT = 3,
+
+/*
+ * Like serialize_current but on a presentation like _SET.
+ *
+ * Returns a fd or -1.
+ */
+	EVENT_TRANSLATION_SERIALIZE_SPEC = 4
 };
 
 /*
@@ -117,7 +134,7 @@ enum translation_actions {
  * Returns false of ailure and sets *errmsg to a user presentable string
  *               indicating the cause.
  */
-bool platform_event_translation(
+int platform_event_translation(
 	int devid, int action, const char** names, const char** errmsg);
 
 /*

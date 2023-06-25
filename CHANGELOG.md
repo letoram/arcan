@@ -6,10 +6,13 @@
  * convey tui/tpack state in resize events
  * target\_anchorhint added for informing clients about positioning and hierarchy
  * video\_displaymode expose eotf / coordinates for primaries and contents light levels
+ * open\_nonblock can now adopt an existing iostream into a target vid
+ * input\_remap\_translation overloaded form for serializing backing keymap
 
 ## Core
  * respect border attribute in text rasteriser
  * added frame\_id to external events that pairs with shmif-SIGVID signals
+ * optional tracy build for profiling (-DENABLE\_TRACY)
 
 ## Tui
  * nbio asynch type confusion fix (function becomes pcall:userdata)
