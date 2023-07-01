@@ -20,5 +20,6 @@ set(NET_SOURCES
 
 	${A12NET_DIR}/a12_helper_cl.c
 	${A12NET_DIR}/a12_helper_srv.c
+	${A12NET_DIR}/directory.c
 	PARENT_SCOPE
 )
