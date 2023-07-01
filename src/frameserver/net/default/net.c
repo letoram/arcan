@@ -24,7 +24,9 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include "a12.h"
+#include "a12_int.h"
 #include "net/a12_helper.h"
+#include "net/directory.h"
 #include "../../util/anet_helper.h"
 
 enum trust {
@@ -190,7 +192,7 @@ static bool tagh(const char* name, void* tag)
 	if (!name)
 		return true;
 
-LOG("sweep: petname %s\n", name);
+	LOG("sweep: petname %s\n", name);
 /* keystore gets released between each cl_setup call */
 	if (!get_keystore(opt->C, &opts.keystore)){
 		LOG("fail, couldn't access keystore\n");
@@ -409,6 +411,8 @@ static int connect_to_host(
 		return EXIT_FAILURE;
 	}
 
+	char* work = strdup(name);
+
 /* With the afsrv_net:net_open path we are after a sink to source,
  * directory/xxx or a directory/appl as a download or as inter-appl messaging.
  * The case for acting as an outbound source comes through
@@ -417,6 +421,10 @@ static int connect_to_host(
  * For the appl case, we connect to a directory first, then send a message
  * for the resource we want.
  */
+	char* toksep = strrchr(work, '@');
+	if (toksep){
+	}
+
 	struct anet_options opts =
 	{
 		.key = name,
@@ -483,16 +491,18 @@ static int show_help()
 		"Net (client) should be run authoritatively (spawned from arcan)\n"
 		"Running from the command-line is only intended for developing/debugging\n\n"
 		"ARCAN_ARG (environment variable, key1=value:key2:key3=value), arguments: \n"
+		" Outobund connection: \n"
 		"  key     \t   value   \t   description\n"
 		"----------\t-----------\t-----------------\n"
 		" host     \t  dsthost  \t Specify host or keystore tag@ to connect to\n"
-		" discover \t  method   \t Set discovery mode (method=sweep,test,passive,\n"
-		"          \t           \t                     broadcast or directory)\n"
-		"\n"
-		"discovery arguments\n"
+		" mode     \t  role     \t Source, Sink or Directory\n"
+		" name     \t  resname  \t For mode=directory set an explicit resource\n"
+  	"\n"
+		" Discovery:\n "
 		"  key   \t   value   \t   description\n"
 		"--------\t-----------\t-----------------\n"
-		" trust  \t   mode    \t Set the trust model for unknown keys\n"
+		" discover \t  method   \t Set discovery mode (method=sweep,test,passive,\n"
+		"          \t           \t                     broadcast or directory)\n"
 	);
 
 	return EXIT_FAILURE;
@@ -514,7 +524,6 @@ int afsrv_netcl(struct arcan_shmif_cont* C, struct arg_arr* args)
 		const char* opt = NULL;
 
 		arg_lookup(args, "trust", 0, &trust);
-		arg_lookup(args, "opt", 0, &opt);
 		int trustm = TRUST_KNOWN;
 
 		if (strcmp(dmethod, "sweep") == 0){
@@ -546,7 +555,5 @@ int afsrv_netcl(struct arcan_shmif_cont* C, struct arg_arr* args)
 
 int afsrv_netsrv(struct arcan_shmif_cont* c, struct arg_arr* args)
 {
-/* just bind socket, wait for connection, then request subsegment and handover
- * exec with subsegment and socket into arcan-net */
 	return EXIT_FAILURE;
 }
