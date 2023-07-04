@@ -177,9 +177,9 @@ See also: src/a12/net/README.md and src/a12/net/HACKING.md.
 
 ### Wayland
 
-The 'arcan-wayland' or 'waybridge', as it is refered to in some places is
-binary adds support for wayland and X clients (via Xwayland). It can be run as
-either a global system service, e.g.
+The 'arcan-wayland' or 'waybridge', as it is refered to in some places is a
+binary that adds support for wayland and X clients (via Xwayland). It can be run
+as either a global system service, e.g.
 
     arcan-wayland -xwl
 
@@ -305,6 +305,7 @@ The main tools of interest are:
 Acfgfs is a tool that lets you mount certain arcan applications as a FUSE
 file-system. The application has to explicitly support it. For the Durden
 desktop environment, you can use global/settings/system/control=somename
+desktop environment, you can use global/config/system/control=somename
 and then:
 
     arcan_cfgfs --control=/path/to/durden/ipc/somename /mnt/desktop
