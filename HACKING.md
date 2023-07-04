@@ -17,7 +17,7 @@ the main source repository.
 
 # Development Structure
 
-Development is currently discussed in the IRC channel, #arcan on irc.freenode.net.
+Development is currently discussed in the IRC channel, #arcan on irc.libera.chat.
 Most activity goes into topic branches that are created and given a checklist
 file of planned changes. When all changes in a topic branch are finished, it is
 merged into master and tagged as a new minor release, then the branch is deleted.
