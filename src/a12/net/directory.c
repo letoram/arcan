@@ -29,16 +29,6 @@
 #include <fcntl.h>
 #include <poll.h>
 
-struct cb_tag {
-	struct appl_meta* dir;
-	struct a12_state* S;
-	struct anet_dircl_opts* clopt;
-	FILE* appl_out;
-	bool appl_out_complete;
-	int state_in;
-	bool state_in_complete;
-};
-
 static bool g_shutdown;
 
 static struct a12_bhandler_res srv_bevent(
@@ -137,7 +127,7 @@ static size_t scan_appdir(int fd, struct appl_meta* dst)
 static void on_srv_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
-	struct cb_tag* cbt = tag;
+	struct directory_meta* cbt = tag;
 
 /* the only concerns here are BCHUNK matching our directory IDs */
 	if (ev->ext.kind == EVENT_EXTERNAL_BCHUNKSTATE){
@@ -179,9 +169,13 @@ static void on_srv_event(
 			"event=%s", arcan_shmif_eventstr(ev, NULL, 0));
 }
 
-static void ioloop(struct a12_state* S, void* tag, int fdin, int fdout, void
-	(*on_event)(struct arcan_shmif_cont* cont, int chid, struct arcan_event*, void*),
-	bool (*on_directory)(struct a12_state* S, struct appl_meta* dir, void*))
+void anet_directory_ioloop
+	(struct a12_state* S, void* tag,
+	int fdin, int fdout,
+	int usrfd,
+	void (*on_event)(struct arcan_shmif_cont* cont, int chid, struct arcan_event*, void*),
+	bool (*on_directory)(struct a12_state* S, struct appl_meta* dir, void*),
+	void (*on_userfd)(struct a12_state* S, void*))
 {
 	int errmask = POLLERR | POLLNVAL | POLLHUP;
 	struct pollfd fds[2] =
@@ -265,7 +259,7 @@ void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
 void anet_directory_srv(
 	struct a12_state* S, struct anet_dirsrv_opts opts, int fdin, int fdout)
 {
-	struct cb_tag cbt = {
+	struct directory_meta cbt = {
 		.dir = &opts.dir,
 		.S = S
 	};
@@ -277,7 +271,7 @@ void anet_directory_srv(
 
 	a12int_set_directory(S, &opts.dir);
 	a12_set_bhandler(S, srv_bevent, &cbt);
-	ioloop(S, &cbt, fdin, fdout, on_srv_event, NULL);
+	anet_directory_ioloop(S, &cbt, fdin, fdout, -1, on_srv_event, NULL, NULL);
 }
 
 static void on_cl_event(
@@ -542,7 +536,7 @@ static struct a12_bhandler_res srv_bevent(
 		.flag = A12_BHANDLER_DONTWANT
 	};
 
-	struct cb_tag* cbt = tag;
+	struct directory_meta* cbt = tag;
 	struct appl_meta* meta = find_identifier(cbt->dir, M.identifier);
 	if (!meta)
 		return res;
@@ -580,7 +574,7 @@ static struct a12_bhandler_res srv_bevent(
 }
 
 static void mark_xfer_complete(
-	struct a12_state* S, struct a12_bhandler_meta M, struct cb_tag* cbt)
+	struct a12_state* S, struct a12_bhandler_meta M, struct directory_meta* cbt)
 {
 /* state transfer will be initiated before appl transfer (if one is present),
  * but might complete afterwards - defer the actual execution until BOTH have
@@ -680,7 +674,7 @@ run:
 static struct a12_bhandler_res cl_bevent(
 	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
 {
-	struct cb_tag* cbt = tag;
+	struct directory_meta* cbt = tag;
 	struct a12_bhandler_res res = {
 		.fd = -1,
 		.flag = A12_BHANDLER_DONTWANT
@@ -766,11 +760,9 @@ static struct a12_bhandler_res cl_bevent(
 
 static bool cl_got_dir(struct a12_state* S, struct appl_meta* M, void* tag)
 {
-	struct cb_tag* cbt = tag;
+	struct directory_meta* cbt = tag;
 
-	struct anet_dircl_opts* opts = tag;
 	while (M){
-
 /* use identifier to request binary */
 		if (cbt->clopt->applname){
 			if (strcasecmp(M->applname, cbt->clopt->applname) == 0){
@@ -811,7 +803,7 @@ static bool cl_got_dir(struct a12_state* S, struct appl_meta* M, void* tag)
 void anet_directory_cl(
 	struct a12_state* S, struct anet_dircl_opts opts, int fdin, int fdout)
 {
-	struct cb_tag cbt = {
+	struct directory_meta cbt = {
 		.S = S,
 		.clopt = &opts,
 		.state_in = -1
@@ -822,5 +814,5 @@ void anet_directory_cl(
 /* always request dirlist so we can resolve applname against the server-local
  * ID as that might change */
 	a12int_request_dirlist(S, false);
-	ioloop(S, &cbt, fdin, fdout, on_cl_event, cl_got_dir);
+	anet_directory_ioloop(S, &cbt, fdin, fdout, -1, on_cl_event, cl_got_dir, NULL);
 }
