@@ -22,6 +22,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <inttypes.h>
 #include <netdb.h>
 #include "a12.h"
 #include "a12_int.h"
@@ -48,10 +49,25 @@ static bool flush_shmif(struct arcan_shmif_cont* C)
 	return rv == 0;
 }
 
+static struct {
+	bool soft_auth;
+} global;
+
 static struct pk_response key_auth_local(uint8_t pk[static 32])
 {
 	struct pk_response auth = {0};
-	auth.authentic = a12helper_keystore_accepted(pk, NULL);
+	char* tmp;
+	uint16_t tmpport;
+
+/*
+ * here is the option of deferring pubk- auth to arcan end by sending it as a
+ * message onwards and wait for an accept or reject event before moving on.
+ */
+	if (a12helper_keystore_accepted(pk, NULL) || global.soft_auth){
+		auth.authentic = true;
+		a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
+	}
+
 	return auth;
 }
 
@@ -354,20 +370,155 @@ static int discover_sweep(struct arcan_shmif_cont* C, int trust)
 	return EXIT_SUCCESS;
 }
 
+/*
+ * the sequence:
+ *  1. initial list
+ *  2. forward as messages
+ *  3. server-end sends a NEWSEGMENT with HANDOVER with the reqid we want
+ *  4. shmif is marked as blocked (for now), BCHUNKSTATE sent to directory with the id
+ *  5. server sends possible state blob
+ *  6. server sends actual appl
+ *  7. forward handover to arcan_lwa
+ *  8. monitor control lwa
+ *  9. state changes are requested (periodically, at shut down or not at all)
+ *  10. any update is sent
+ */
+
+/*
+ * there are quite a few nuances missing with this:
+ *  1. signing states, appls and verifying signature
+ *  2. better metadata forwarding
+ *  3. cleaner monitor control and crash collection
+ *  4. autoupdate if appl changes
+ *  5. channel messaging
+ *  6. resource funnelling (btransfers within the active appl)
+ *
+ */
+struct dircl_meta {
+	int pending_reqid;
+	char* pending_reqname;
+
+	bool waiting_for_segment;
+	arcan_event segev;
+};
+
+static void dircl_event(struct arcan_shmif_cont* C, int chid, struct arcan_event* ev, void* tag)
+{
+	LOG("event=%s", arcan_shmif_eventstr(ev, NULL, 0));
+}
+
+static struct a12_bhandler_res dircl_bevent(
+	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
+{
+	struct a12_bhandler_res res = {
+		.fd = -1,
+		.flag = A12_BHANDLER_DONTWANT
+	};
+
+/* so:
+ * INITIALIZE:
+ * COMPLETED:
+ * CANCELLED:
+ */
+	return res;
+}
+
+/* returning false here would break us out of the ioloop */
+static bool dircl_dirent(struct a12_state* S, struct appl_meta* M, void* tag)
+{
+  struct arcan_shmif_cont* C = arcan_shmif_primary(SHMIF_INPUT);
+	struct directory_meta* dir = tag;
+	struct dircl_meta* client = C->user;
+
+/* are we just enumerating appls or do we have a pending request? */
+	while (M){
+		if (client->pending_reqname){
+			if (strcmp(M->applname, client->pending_reqname) == 0){
+				struct arcan_event ev =
+				{
+					.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
+					.category = EVENT_EXTERNAL,
+					.ext.bchunk = {
+						.input = true,
+						.hint = false
+					}
+				};
+				snprintf(
+					(char*)ev.ext.bchunk.extensions, 6, "%"PRIu16, M->identifier);
+				a12_channel_enqueue(S, &ev);
+				break;
+			}
+		}
+		else if (client->pending_reqid > 0){
+		}
+
+/* This is not good enough, should make better use of the short_descr and
+ * possibly other formats. One approach is to send the extended information as
+ * packed data in the actual bchunk on the ID, but it is an unnecessary step. */
+ 		else {
+			struct arcan_event out = {
+				.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
+				.ext.bchunk.hint = 1,
+			};
+
+			snprintf((char*)out.ext.bchunk.extensions,
+				COUNT_OF(out.ext.bchunk.extensions), "%s:%d", M->applname, M->identifier);
+
+			if (M->next)
+				out.ext.bchunk.hint |= 4;
+
+			arcan_shmif_enqueue(C, &out);
+		}
+
+		M = M->next;
+	}
+
+	return true;
+}
+
+static void dircl_userfd(struct a12_state* S, void* tag)
+{
+/* just flush the regular path unless we're blocked */
+  struct arcan_shmif_cont* C = arcan_shmif_primary(SHMIF_INPUT);
+	struct directory_meta* cbt = tag;
+	struct dircl_meta* cm = C->user;
+
+	if (cm->pending_reqid > 0)
+		return;
+
+/* if we get a new segment with a handover, the ID is the directory appl id
+ * we are after - so re-request dirlist and mark as pending */
+	arcan_event ev;
+	while (arcan_shmif_poll(C, &ev) > 0){
+	}
+}
+
 static int dircl_loop(
 	struct arcan_shmif_cont* C, struct anet_cl_connection* A, struct arg_arr* args)
 {
-/*
- * if we have a name already, just request the applname through bchunkstate
- * extension and on-binary handler to handover exec.
- *
- * and it will be sent as BCHUNKHINTs internally
- * the mechanism for picking an appl to grab
- *
- * regular recv- / flush loop, send the BCHUNKSTATE event,
- * on completion request a handover then
- * use support handler from arcan-net (directory.c): handover_exec
- * that one should take care of env and state transfer */
+/* request dirlist and set to receive notification on changed appls */
+	a12int_request_dirlist(A->state, true);
+  arcan_shmif_setprimary(SHMIF_INPUT, C);
+
+/* a mess glueing this together, but directory.h wasn't designed for the kind
+ * of use we want here, at the same time maintaining two implementations of the
+ * same idea would hinder progress */
+	struct dircl_meta dmeta = {
+	};
+
+	struct anet_dircl_opts clcfg = {
+	};
+
+	struct directory_meta dircfg = {
+		.S = A->state,
+		.clopt = &clcfg,
+	};
+
+	C->user = &dmeta;
+	a12_set_bhandler(A->state, dircl_bevent, &dmeta);
+	anet_directory_ioloop(A->state, &dircfg,
+		A->fd, A->fd, C->epipe, dircl_event, dircl_dirent, dircl_userfd);
+
 	return EXIT_FAILURE;
 }
 
@@ -418,19 +569,40 @@ static int connect_to_host(
  * The case for acting as an outbound source comes through
  * afsrv_encode:define_recordtarget.
  *
- * For the appl case, we connect to a directory first, then send a message
- * for the resource we want.
+ * For the appl case, we connect to a directory first, then send a message for
+ * the resource we want.
  */
-	char* toksep = strrchr(work, '@');
-	if (toksep){
-	}
-
 	struct anet_options opts =
 	{
-		.key = name,
 		.opts = &a12opts,
 		.keystore = prov,
 	};
+
+/* There are several keystore options that hit here, we might want:
+ *
+ * 1. a known and trusted key that resolves to a possible host (name@).
+ * 2. an explicit host, generating a new key and name with a custom secret ('tofu to petname').
+ * 3. an explicit host, a default key and default or custom secret. ('dontcare').
+ * 4. an explicit host, a throwaway key and default or custom secret. ('incognito').
+ *
+ * 2. is ignored for now as it lets the process mutate the keystore and the
+ * implications for that are far reaching - ideally the decision should be
+ * deferred to the appl level so that it can provide another interface for
+ * authentication the Kpub (and it is mostly there).
+ *
+ * starting with option 1. */
+	char* toksep = strrchr(work, '@');
+	if (toksep){
+		opts.key = work;
+	}
+/* apparently not, 3..4 */
+	else {
+		opts.host = work;
+		if (!arg_lookup(args, "port", 0, &opts.port) || !strlen(opts.port)){
+			opts.port = "6680";
+		}
+		global.soft_auth = true;
+	}
 
 /* some might want to provide another secret, this only matters for deep
  * as it won't apply until the authentication handshake takes place */
@@ -443,12 +615,14 @@ static int connect_to_host(
  * option will also attempt to authenticate before shutting down the socket */
 	struct anet_cl_connection con = anet_cl_setup(&opts);
 	if (con.errmsg || !con.state){
+		LOG("couldn't connect: %s", con.errmsg ? con.errmsg : "(unknown)");
 		arcan_shmif_last_words(C, con.errmsg);
 		arcan_shmif_drop(C);
 		return EXIT_FAILURE;
 	}
 
 	if (a12_remote_mode(con.state) == ROLE_DIR){
+		LOG("directory-client");
 		return dircl_loop(C, &con, args);
 	}
 	else if (a12_remote_mode(con.state) == ROLE_SINK){
