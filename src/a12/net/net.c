@@ -1082,11 +1082,12 @@ int main(int argc, char** argv)
  * sinks and other directories. */
 			int rc = 0;
 			if (a12_remote_mode(cl.state) == ROLE_DIR){
-				global.dircl.applname = global.reqname;
+				if (global.reqname)
+					snprintf(global.dircl.applname, 16, "%s", global.reqname);
 				global.dircl.die_on_list;
 				global.dircl.basedir = global.directory;
 				if (argi <= argc - 1){
-					global.dircl.applname = argv[argi];
+					snprintf(global.dircl.applname, 16, "%s", argv[argi]);
 				}
 
 				anet_directory_cl(cl.state, global.dircl, cl.fd, cl.fd);

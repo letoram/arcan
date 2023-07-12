@@ -24,6 +24,8 @@
 #include <sys/socket.h>
 #include <inttypes.h>
 #include <netdb.h>
+#include <fcntl.h>
+#include <errno.h>
 #include "a12.h"
 #include "a12_int.h"
 #include "net/a12_helper.h"
@@ -374,8 +376,8 @@ static int discover_sweep(struct arcan_shmif_cont* C, int trust)
  * the sequence:
  *  1. initial list
  *  2. forward as messages
- *  3. server-end sends a NEWSEGMENT with HANDOVER with the reqid we want
- *  4. shmif is marked as blocked (for now), BCHUNKSTATE sent to directory with the id
+ *  3. server-end sends a MESSAGE with a matching ID, we download
+ *  4. on completed download, segreqs for it
  *  5. server sends possible state blob
  *  6. server sends actual appl
  *  7. forward handover to arcan_lwa
@@ -398,29 +400,158 @@ struct dircl_meta {
 	int pending_reqid;
 	char* pending_reqname;
 
-	bool waiting_for_segment;
+	struct {
+		int id;
+		int statefd;
+		int applfd;
+	} appl;
+
 	arcan_event segev;
 };
+
+static void *dircl_alloc(struct a12_state* S, struct directory_meta* dir)
+{
+	struct arcan_shmif_cont* C = arcan_shmif_primary(SHMIF_INPUT);
+	arcan_shmif_enqueue(C, &(struct arcan_event){
+			.ext.kind = ARCAN_EVENT(SEGREQ),
+			.ext.segreq.kind = SEGID_HANDOVER
+		});
+
+	arcan_event acq_event;
+	struct arcan_event* evpool = NULL;
+	ssize_t evpool_sz;
+
+	if (!arcan_shmif_acquireloop(C, &acq_event, &evpool ,&evpool_sz)){
+		LOG("server rejected allocation");
+		return NULL;
+	}
+
+/* nothing principally stopping us from processing this, but right now there
+ * really shouldn't be any event in flight as we get to this point from an
+ * explicit 'run/block this appl */
+	if (evpool_sz){
+		LOG("ignoring_pending:%zu", evpool_sz);
+		free(evpool);
+	}
+
+/* need to track this, the dircl_exec function will be called later and this
+ * event will be grabbed and re-used then */
+	struct dircl_meta* client = C->user;
+	client->segev = acq_event;
+
+	return client;
+}
+
+static char* resolve_path(char* path, const char* fn)
+{
+	char test[PATH_MAX];
+	char* dir;
+	while ((dir = strsep(&path, ":"))){
+		if (*dir == '\0')
+			dir = ".";
+		if (snprintf(test, sizeof(test), "%s/%s", dir, fn) >= (int) sizeof(test))
+			continue;
+		if (access(test, X_OK) == 0)
+			return strdup(test);
+	}
+	return NULL;
+}
+
+static pid_t dircl_exec(struct a12_state* S,
+	struct directory_meta* dir, const char* name, void* tag, int* inf, int* outf)
+{
+/* make sure the identifier match what was requested */
+	struct arcan_shmif_cont* C = arcan_shmif_primary(SHMIF_INPUT);
+	struct dircl_meta* client = C->user;
+
+	char* path = getenv("PATH");
+	if (!path)
+		path = ".";
+	path = strdup(path);
+
+	char* lwabin = resolve_path(path, "arcan_lwa");
+	free(path);
+
+	if (!lwabin){
+		LOG("couldn't locate/access arcan_lwa in PATH");
+		return 0;
+	}
+
+/* we are cwd:ed to where the appl is unpacked */
+	char buf[strlen(name) + sizeof("./")];
+	snprintf(buf, sizeof(buf), "./%s", name);
+
+	int pstdin[2], pstdout[2];
+	if (-1 == pipe(pstdin) || -1 == pipe(pstdout)){
+		LOG("Couldn't setup control pipe in arcan handover");
+		return 0;
+	}
+	char logfd_str[16];
+	snprintf(logfd_str, 16, "LOGFD:%d", pstdout[1]);
+
+/* The set of arcan namespaces isn't manipulated or forwarding, which is a
+ * clear concern without good portable solutions. Same goes for blocking /
+ * masking frameservers or having a different set of them altogether.
+ *
+ * Some notes:
+ * afsrv_net should be swapped to a form that tunnels over the monitor
+ *           connection.
+ *
+ * afsrv_decode / encode should also have a mechanism to go that route.
+ *
+ * appltemp should go to an in-memory or otherwise volatile / temporary
+ *          filesystem that we clean
+ *
+ */
+
+	char* argv[] = {
+		"arcan_lwa",
+		"--database",     ":memory:",
+		"--monitor",      "-1",       /* monitor but don't periodically snapshot */
+		"--monitor-out",  logfd_str,  /* monitor out to specific fd */
+		"--monitor-ctrl",             /* stdin is controller interface */
+		buf, NULL                     /* applname */
+	};
+
+	int* fds[4] = {inf, outf, NULL, &pstdout[1]};
+	pid_t res =
+		arcan_shmif_handover_exec_pipe(C, client->segev, lwabin, argv, NULL, 0, fds, 4);
+
+	free(lwabin);
+	close(pstdout[1]);
+
+	return res;
+}
 
 static void dircl_event(struct arcan_shmif_cont* C, int chid, struct arcan_event* ev, void* tag)
 {
 	LOG("event=%s", arcan_shmif_eventstr(ev, NULL, 0));
 }
 
-static struct a12_bhandler_res dircl_bevent(
-	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
+void req_id(struct a12_state* S, uint16_t identifier, void* tag)
 {
-	struct a12_bhandler_res res = {
-		.fd = -1,
-		.flag = A12_BHANDLER_DONTWANT
+	struct arcan_shmif_cont* C = arcan_shmif_primary(SHMIF_INPUT);
+	struct dircl_meta* client = C->user;
+
+	struct arcan_event ev =
+	{
+		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
+		.category = EVENT_EXTERNAL,
+		.ext.bchunk = {
+			.input = true,
+			.hint = false
+		}
 	};
 
-/* so:
- * INITIALIZE:
- * COMPLETED:
- * CANCELLED:
- */
-	return res;
+	LOG("shmif:download:%"PRIu16, identifier);
+	snprintf(
+		(char*)ev.ext.bchunk.extensions, 6, "%"PRIu16, identifier);
+	a12_channel_enqueue(S, &ev);
+
+/* it would be possible to queue multiples here, just keep 1:1 for the time being */
+	client->appl.id = identifier;
+	client->appl.applfd = -1;
+	client->appl.statefd = -1;
 }
 
 /* returning false here would break us out of the ioloop */
@@ -434,22 +565,10 @@ static bool dircl_dirent(struct a12_state* S, struct appl_meta* M, void* tag)
 	while (M){
 		if (client->pending_reqname){
 			if (strcmp(M->applname, client->pending_reqname) == 0){
-				struct arcan_event ev =
-				{
-					.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
-					.category = EVENT_EXTERNAL,
-					.ext.bchunk = {
-						.input = true,
-						.hint = false
-					}
-				};
-				snprintf(
-					(char*)ev.ext.bchunk.extensions, 6, "%"PRIu16, M->identifier);
-				a12_channel_enqueue(S, &ev);
+				snprintf(dir->clopt->applname, 16, "%s", M->applname);
+				req_id(S, M->identifier, tag);
 				break;
 			}
-		}
-		else if (client->pending_reqid > 0){
 		}
 
 /* This is not good enough, should make better use of the short_descr and
@@ -462,7 +581,7 @@ static bool dircl_dirent(struct a12_state* S, struct appl_meta* M, void* tag)
 			};
 
 			snprintf((char*)out.ext.bchunk.extensions,
-				COUNT_OF(out.ext.bchunk.extensions), "%s:%d", M->applname, M->identifier);
+				COUNT_OF(out.ext.bchunk.extensions), "%s;%d", M->applname, M->identifier);
 
 			if (M->next)
 				out.ext.bchunk.hint |= 4;
@@ -490,6 +609,43 @@ static void dircl_userfd(struct a12_state* S, void* tag)
  * we are after - so re-request dirlist and mark as pending */
 	arcan_event ev;
 	while (arcan_shmif_poll(C, &ev) > 0){
+		if (ev.category != EVENT_TARGET){
+			continue;
+		}
+
+		switch (ev.tgt.kind){
+		case TARGET_COMMAND_MESSAGE:{
+			LOG("shmif:message=%s", ev.tgt.message);
+			char* err = NULL;
+			long id = strtoul(ev.tgt.message, &err, 10);
+			if (*err != '\0' || id < 0 || id > 65535){
+				LOG("shmif:bad_req_id");
+				return;
+			}
+/* re-resolve ID to applname for the folder name to match as the same arcan
+ * rules apply for applname/applname.lua with initialiser function applname(argv) */
+			struct appl_meta* am = a12int_get_directory(S, NULL);
+			while (am){
+				if (am->identifier == id){
+					snprintf(cbt->clopt->applname, 16, "%s", am->applname);
+					req_id(S, am->identifier, tag);
+					return;
+				}
+				am = am->next;
+			}
+			LOG("shmif:unknown_req_id=%d", (int)id);
+			return;
+		}
+		break;
+		case TARGET_COMMAND_NEWSEGMENT:
+			LOG("shmif:newsegment_without_request");
+		break;
+		case TARGET_COMMAND_REQFAIL:
+		break;
+		default:
+			LOG("shmif:event=%s", arcan_shmif_eventstr(&ev, NULL, 0));
+		break;
+		}
 	}
 }
 
@@ -506,20 +662,44 @@ static int dircl_loop(
 	struct dircl_meta dmeta = {
 	};
 
+	char templ[] = "/tmp/afsrv_net_XXXXXX";
+	char* tempdir = mkdtemp(templ);
+
+	if (!tempdir){
+		arcan_shmif_last_words(C, "Tempdir couldn't be created");
+		LOG("storage directory rejected");
+		return EXIT_FAILURE;
+	}
+	int dfd = open(tempdir, O_DIRECTORY);
+	if (-1 == dfd){
+		arcan_shmif_last_words(C, "Couldn't open tempdir");
+		LOG("storage directory open fail");
+		return EXIT_FAILURE;
+	}
+
 	struct anet_dircl_opts clcfg = {
+		.allocator = dircl_alloc,
+		.executor = dircl_exec,
+		.basedir = dfd,
 	};
 
 	struct directory_meta dircfg = {
 		.S = A->state,
 		.clopt = &clcfg,
+		.state_in = -1
 	};
 
 	C->user = &dmeta;
-	a12_set_bhandler(A->state, dircl_bevent, &dmeta);
+	a12_set_bhandler(A->state, anet_directory_cl_bhandler, &dircfg);
 	anet_directory_ioloop(A->state, &dircfg,
 		A->fd, A->fd, C->epipe, dircl_event, dircl_dirent, dircl_userfd);
 
-	return EXIT_FAILURE;
+	if (0 != rmdir(tempdir)){
+		LOG("rmdir(%s) failed: %s", tempdir, strerror(errno));
+		return EXIT_FAILURE;
+	}
+
+	return EXIT_SUCCESS;
 }
 
 static int discover_directory(struct arcan_shmif_cont* C, int trust)
