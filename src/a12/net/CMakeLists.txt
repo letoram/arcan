@@ -6,7 +6,9 @@ set(SOURCES
 	a12_helper_cl.c
 	a12_helper_srv.c
 	net.c
-	directory.c
+	dir_cl.c
+	dir_srv.c
+	dir_supp.c
 	${ARCAN_SRC}/frameserver/util/anet_helper.c
 	${ARCAN_SRC}/frameserver/util/anet_keystore_naive.c
 )
