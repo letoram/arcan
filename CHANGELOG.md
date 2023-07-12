@@ -28,6 +28,7 @@
 
 ## Net
  * allow h264 passthrough, sidestepping local encode
+ * re-add afsrv\_net, have it support directory, source and sink access modes.
 
 ## Terminal
  * SGR reset fix, add CNL / CPL
