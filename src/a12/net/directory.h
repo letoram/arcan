@@ -25,14 +25,19 @@ struct anet_dirsrv_opts {
  *
  * Which again ties into some need to be able to inject events into shmif
  */
+struct directory_meta;
 struct anet_dircl_opts {
 	int basedir;
-	const char* applname;
+	char applname[16];
 	bool die_on_list;
 	bool reload;
 	bool block_state;
 	bool block_log;
 	bool keep_appl;
+
+	void* (*allocator)(struct a12_state*, struct directory_meta*);
+	pid_t (*executor)(struct a12_state*,
+		struct directory_meta*, const char*, void* tag, int* inf, int* outf);
 };
 
 struct directory_meta {
@@ -52,6 +57,9 @@ void anet_directory_srv(
 
 void anet_directory_cl(
 	struct a12_state* S, struct anet_dircl_opts opts, int fdin, int fdout);
+
+struct a12_bhandler_res anet_directory_cl_bhandler(
+	struct a12_state* S, struct a12_bhandler_meta M, void* tag);
 
 /*
  * handle a12 on fdin/fdout,

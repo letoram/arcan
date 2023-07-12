@@ -178,13 +178,13 @@ void anet_directory_ioloop
 	void (*on_userfd)(struct a12_state* S, void*))
 {
 	int errmask = POLLERR | POLLNVAL | POLLHUP;
-	struct pollfd fds[2] =
+	struct pollfd fds[3] =
 	{
+		{.fd = usrfd, .events = POLLIN | errmask},
 		{.fd = fdin, .events = POLLIN | errmask},
-		{.fd = fdout, .events = POLLOUT | errmask}
+		{.fd = -fdout, .events = POLLOUT | errmask}
 	};
 
-	size_t n_fd = 1;
 	uint8_t inbuf[9000];
 	uint8_t* outbuf = NULL;
 	uint64_t ts = 0;
@@ -193,17 +193,20 @@ void anet_directory_ioloop
 	fcntl(fdout, F_SETFD, FD_CLOEXEC);
 
 	size_t outbuf_sz = a12_flush(S, &outbuf, A12_FLUSH_ALL);
+
 	if (outbuf_sz)
-		n_fd++;
+		fds[2].fd = fdout;
 
 /* regular simple processing loop, wait for DIRECTORY-LIST command */
-	while (a12_ok(S) && -1 != poll(fds, n_fd, -1)){
-		if (
-			(fds[0].revents & errmask) ||
-			(n_fd == 2 && fds[1].revents & errmask))
-				break;
+	while (a12_ok(S) && -1 != poll(fds, 3, -1)){
+		if ((fds[0].revents | fds[1].revents | fds[2].revents) & errmask)
+			break;
 
-		if (n_fd == 2 && (fds[1].revents & POLLOUT) && outbuf_sz){
+		if (fds[0].revents & POLLIN){
+			on_userfd(S, tag);
+		}
+
+		if ((fds[2].revents & POLLOUT) && outbuf_sz){
 			ssize_t nw = write(fdout, outbuf, outbuf_sz);
 			if (nw > 0){
 				outbuf += nw;
@@ -211,7 +214,7 @@ void anet_directory_ioloop
 			}
 		}
 
-		if (fds[0].revents & POLLIN){
+		if (fds[1].revents & POLLIN){
 			ssize_t nr = recv(fdin, inbuf, 9000, 0);
 			if (-1 == nr && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR){
 				a12int_trace(A12_TRACE_DIRECTORY, "shutdown:reason=rw_error");
@@ -242,9 +245,9 @@ void anet_directory_ioloop
 			}
 		}
 
-		n_fd = outbuf_sz > 0 ? 2 : 1;
+		fds[0].revents = fds[1].revents = fds[2].revents = 0;
+		fds[2].fd = outbuf_sz ? fdout : -1;
 	}
-
 }
 
 /* this will just keep / cache the built .tars in memory, the startup times
@@ -323,38 +326,51 @@ static bool ensure_appldir(const char* name, int basedir)
 	return true;
 }
 
-/* assumes that cwd points to our scratch folder for extracted appls */
-static bool handover_exec(struct a12_state* S, const char* name,
-	FILE* state_in, struct anet_dircl_opts* opts, int* state, size_t* state_sz)
-{
-	char buf[strlen(name) + sizeof("./")];
-	snprintf(buf, sizeof(buf), "./%s", name);
-	*state_sz = 0;
+struct default_meta {
+	const char* bin;
+	char* key;
+	char* val;
+};
 
-	const char* binary = "arcan";
+static void* alloc_cpath(struct a12_state* S, struct directory_meta* dir)
+{
 	const char* cpath = getenv("ARCAN_CONNPATH");
+	struct default_meta* res = malloc(sizeof(struct default_meta));
+	*res = (struct default_meta){.bin = "arcan"};
+
+	if (!cpath)
+		return NULL;
+
+/* this repeats the lookup code found in arcan_shmif_control.c */
 	size_t maxlen = sizeof((struct sockaddr_un){0}.sun_path);
 	char cpath_full[maxlen];
 
-/* to avoid the connpaths duelling with an outer arcan, or the light security
- * issue of the loaded appl being able to namespace-collide/ override - first
- * make sure to resolve the current connpath to absolute - then set the XDG_
- * runtime dir to our scratch folder. */
-	if (cpath){
-		if (cpath[0] != '/'){
-			char* basedir = getenv("XDG_RUNTIME_DIR");
-			if (snprintf(cpath_full, maxlen, "%s/%s%s",
-				basedir ? basedir : getenv("HOME"),
-				basedir ? "" : ".", cpath) >= maxlen){
-				fprintf(stderr,
-					"Resolved path too long, cannot handover to arcan(_lwa)\n");
-				return false;
-				*state = -1;
-			}
+	if ((cpath)[0] != '/'){
+		char* basedir = getenv("XDG_RUNTIME_DIR");
+		if (snprintf(cpath_full, maxlen, "%s/%s%s",
+			basedir ? basedir : getenv("HOME"),
+			basedir ? "" : ".", cpath) >= maxlen){
+			free(res);
+			fprintf(stderr,
+				"Resolved path too long, cannot handover to arcan(_lwa)\n");
+			return NULL;
 		}
-
-		binary = "arcan_lwa";
 	}
+
+	res->key = strdup("ARCAN_CONNPATH"),
+	res->val = strdup(cpath_full);
+	res->bin = "arcan_lwa";
+
+	return res;
+}
+
+static pid_t exec_cpath(struct a12_state* S,
+	struct directory_meta* dir, const char* name, void* tag, int* inf, int* outf)
+{
+	struct default_meta* ctx = tag;
+
+	char buf[strlen(name) + sizeof("./")];
+	snprintf(buf, sizeof(buf), "./%s", name);
 
 	char logfd_str[16];
 	int pstdin[2], pstdout[2];
@@ -362,8 +378,7 @@ static bool handover_exec(struct a12_state* S, const char* name,
 	if (-1 == pipe(pstdin) || -1 == pipe(pstdout)){
 		fprintf(stderr,
 			"Couldn't setup control pipe in arcan handover\n");
-		return false;
-		*state = -1;
+		return 0;
 	}
 
 	snprintf(logfd_str, 16, "LOGFD:%d", pstdout[1]);
@@ -393,8 +408,9 @@ static bool handover_exec(struct a12_state* S, const char* name,
 	pid_t pid = fork();
 	if (pid == 0){
 /* remap control into STDIN */
-		if (cpath)
-			setenv("ARCAN_CONNPATH", cpath_full, 1);
+		if (ctx->key)
+			setenv(ctx->key, ctx->val, 1);
+
 		setenv("XDG_RUNTIME_DIR", "./", 1);
 		dup2(pstdin[0], STDIN_FILENO);
 		close(pstdin[0]);
@@ -404,19 +420,69 @@ static bool handover_exec(struct a12_state* S, const char* name,
 		close(STDOUT_FILENO);
 		open("/dev/null", O_WRONLY);
 		open("/dev/null", O_WRONLY);
-		execvp(binary, argv);
+		execvp(ctx->bin, argv);
+		exit(EXIT_FAILURE);
 	}
+
+	close(pstdin[0]);
+	close(pstdout[1]);
+
+	*inf = pstdin[1];
+	*outf = pstdout[0];
+	free(ctx->key);
+	free(ctx->val);
+
+	return pid;
+}
+
+/*
+ * This entire function is protoype- quality and mainly for figuring out the
+ * interface / path between arcan (lwa), appl, arcan-net and a12.
+ *
+ * Its main purpose is to setup the env for arcan to either run the appl as a
+ * normal display server, within an existing arcan one or from within another
+ * desktop.
+ *
+ * It also launches / runs and blocks into a 'monitoring' mode used for setting
+ * the initial state, capture crash dumps and snapshot / backup state.
+ *
+ * It is likely that the stdin/stdout pipe/monitor interface would be better
+ * served by another shmif/shmif server connection, but right now it is just
+ * plaintext.
+ */
+static bool handover_exec(struct a12_state* S, const char* name,
+	FILE* state_in, struct directory_meta* dir, int* state, size_t* state_sz)
+{
+	struct anet_dircl_opts* opts = dir->clopt;
+
+	void* tag = opts->allocator(S, dir);
+	if (!tag){
+		*state = -1;
+		return false;
+	}
+
+/* ongoing refactor to break this out entirely */
+	int inf = -1;
+	int outf = -1;
+	*state_sz = 0;
+
+	pid_t pid = opts->executor(S, dir, name, tag, &inf, &outf);
+	if (pid <= 0){
+		free(tag);
+		fprintf(stderr, "executor-failed");
+		*state = -1;
+		return false;
+	}
+
 	if (pid == -1){
 		clean_appldir(name, opts->basedir);
 		fprintf(stderr, "Couldn't spawn child process");
 		*state = -1;
 		return false;
 	}
-	close(pstdin[0]);
-	close(pstdout[1]);
 
-	FILE* pfin = fdopen(pstdin[1], "w");
-	FILE* pfout = fdopen(pstdout[0], "r");
+	FILE* pfin = fdopen(inf, "w");
+	FILE* pfout = fdopen(outf, "r");
 	setlinebuf(pfin);
 	setlinebuf(pfout);
 
@@ -452,9 +518,8 @@ static bool handover_exec(struct a12_state* S, const char* name,
 	int pret = 0;
 	char* out = NULL;
 	char filename[] = "statetemp-XXXXXX";
-	int state_fd = -1;
-
-	if (-1 == (state_fd = mkstemp(filename))){
+	int state_fd = mkstemp(filename);
+	if (-1 == state_fd){
 		fprintf(stderr, "Couldn't create temp-store, state transfer disabled\n");
 	}
 	else
@@ -629,8 +694,9 @@ run:
 
 	int state_out = -1;
 	size_t state_sz = 0;
+
 	bool exec_res = handover_exec(S,
-		cbt->clopt->applname, state_in, cbt->clopt, &state_out, &state_sz);
+		cbt->clopt->applname, state_in, cbt, &state_out, &state_sz);
 
 	if (state_in)
 		fclose(state_in);
@@ -671,7 +737,7 @@ run:
 		g_shutdown = true;
 }
 
-static struct a12_bhandler_res cl_bevent(
+struct a12_bhandler_res anet_directory_cl_bhandler(
 	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
 {
 	struct directory_meta* cbt = tag;
@@ -764,7 +830,7 @@ static bool cl_got_dir(struct a12_state* S, struct appl_meta* M, void* tag)
 
 	while (M){
 /* use identifier to request binary */
-		if (cbt->clopt->applname){
+		if (cbt->clopt->applname[0]){
 			if (strcasecmp(M->applname, cbt->clopt->applname) == 0){
 				struct arcan_event ev =
 				{
@@ -780,16 +846,17 @@ static bool cl_got_dir(struct a12_state* S, struct appl_meta* M, void* tag)
 				a12_channel_enqueue(S, &ev);
 
 /* and register our store+launch handler */
-				a12_set_bhandler(S, cl_bevent, tag);
+				a12_set_bhandler(S, anet_directory_cl_bhandler, tag);
 				return true;
 			}
 		}
 		else
 			printf("name=%s\n", M->applname);
+
 		M = M->next;
 	}
 
-	if (cbt->clopt->applname){
+	if (cbt->clopt->applname[0]){
 		fprintf(stderr, "appl:%s not found\n", cbt->clopt->applname);
 		return false;
 	}
@@ -808,6 +875,11 @@ void anet_directory_cl(
 		.clopt = &opts,
 		.state_in = -1
 	};
+
+	if (!opts.allocator || !opts.executor){
+		opts.allocator = alloc_cpath;
+		opts.executor = exec_cpath;
+	}
 
 	sigaction(SIGPIPE,&(struct sigaction){.sa_handler = SIG_IGN}, 0);
 

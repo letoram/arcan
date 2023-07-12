@@ -1217,6 +1217,7 @@ void arcan_shmif_unlink(struct arcan_shmif_cont* dst)
 	if (!dst->priv->shm_key)
 		return;
 
+	debug_print(STATUS, dst, "release_shm_key:%s", dst->priv->shm_key);
 	unlink_keyed(dst->priv->shm_key);
 	dst->priv->shm_key = NULL;
 }
@@ -1527,6 +1528,7 @@ static struct arcan_shmif_cont shmif_acquire_int(
 		struct shmif_hidden* gs = parent->priv;
 		map_shared(gs->pseg.key, &res);
 		key_used = gs->pseg.key;
+		debug_print(STATUS, parent, "newsegment_shm_key:%s", key_used);
 
 		if (!(flags & SHMIF_DONT_UNLINK))
 			unlink_keyed(gs->pseg.key);
@@ -1538,6 +1540,7 @@ static struct arcan_shmif_cont shmif_acquire_int(
 		privps = true; /* can't set d/e fields yet */
 	}
 	else{
+		debug_print(STATUS, parent, "acquire_shm_key:%s", shmkey);
 		key_used = shmkey;
 		map_shared(shmkey, &res);
 		if (!(flags & SHMIF_DONT_UNLINK))
@@ -3103,6 +3106,7 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 		dpipe = (int) strtol(getenv("ARCAN_SOCKIN_FD"), NULL, 10);
 		unsetenv("ARCAN_SOCKIN_FD");
 		unsetenv("ARCAN_HANDOVER_EXEC");
+		unsetenv("ARCAN_SHMKEY");
 	}
 /* connection point based setup, check if we want local or remote connection
  * setup - for the remote part we still need some other mechanism in the url
