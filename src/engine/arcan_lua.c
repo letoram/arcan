@@ -4553,8 +4553,10 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tbldynstr(ctx, "name", msgbuf, top);
 			tbldynstr(ctx, "namespace", spacetostr(ev->ext.netstate.space), top);
 
-			if (ev->ext.netstate.state & (1 | 2 | 4))
+			if (ev->ext.netstate.state & (1 | 2 | 4)){
 				tblbool(ctx, "discovered", true, top);
+				tblbool(ctx, "multipart", ev->ext.netstate.state == 2, top);
+			}
 			else if (ev->ext.netstate.state == 0)
 				tblbool(ctx, "lost", true, top);
 			else {
@@ -7298,7 +7300,21 @@ static int arcantargethint(lua_State* ctx)
 	const char* msg = luaL_checkstring(ctx, tblind-1);
 	if (lua_type(ctx, tblind) != LUA_TTABLE)
 		luaL_typerror(ctx, tblind, "expected argument table");
-
+	else if (strcmp(msg, "state_size") == 0){
+		struct arcan_event ev = {
+			.category = EVENT_EXTERNAL,
+			.ext = EVENT_EXTERNAL_STATESIZE
+		};
+		int size = intblint(ctx, tblind, "state_size");
+		int typeid = intblint(ctx, tblind, "typeid");
+		if (size < 0)
+			size = 0;
+		if (typeid < 0)
+			typeid = 0;
+		ev.ext.stateinf.size = size;
+		ev.ext.stateinf.type = typeid;
+		lua_pushboolean(ctx, platform_lwa_targetevent(NULL, &ev));
+	}
 	else if (strcmp(msg, "input_label") == 0){
 		struct arcan_event ev = {
 			.category = EVENT_EXTERNAL,
@@ -7353,7 +7369,6 @@ static int arcantargethint(lua_State* ctx)
  *  FAILED (ignore for now, uncertain how to map cleanly)
  *  STREAMINFO (ignore for now)
  *  STREAMSTATUS (streamstat: completion and streaming are valid)
- *  STATESIZE (enable state transfer)
  *  CURSORHINT (message, default hidden)
  *  VIEWPORT (ignore for now, full SSD only, but will become more useful)
  *  CONTENT (content: x_pos/x_sz, y_pos/y_sz, min_w, min_h, max_w, max_h)
@@ -7363,7 +7378,7 @@ static int arcantargethint(lua_State* ctx)
  *  PRIVDROP (ignore, privsep for lwa is default)
  *  INPUTMASK (ignore, uncertain if this adds much of value here)
  */
-	lua_pushboolean(ctx, false);
+		lua_pushboolean(ctx, false);
 	LUA_ETRACE("arcantarget_hint", NULL, 1);
 }
 
