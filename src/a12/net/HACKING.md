@@ -486,7 +486,8 @@ as well.
 
 This command is respected if the receiver is running in directory mode. If
 permitted (rate limit, key access restrictions, ...) it will result in a series
-of directory-state updates, giving the current set of available appls.
+of directory-state updates, giving the current set of available appls,
+sources or sinks (depending if connecting as a source, or sink yourself).
 
 If notify is set to !0, the sender requests that any changes to the set will
 be provided dynamically without the caller polling through additional
@@ -505,6 +506,16 @@ This is sent as a reply to the directory list command and is used to notify
 about the update, removal, creation or presence of a retrievable application.
 An empty identifier terminates. The applname can be used as the extension
 field of a BCHUNKSTATE event to initiate the actual transfer.
+
+### command - 11, directory-discover
+- [18.. 19] role    : uint8 (0) source, (1) sink, (2) directory
+- [20     ] state   : uint8, (0) added, (1) lost
+- [21.. 36] petname : (+16) utf-8 server-generated identifier / user-provided
+- [37.. 52] id      : (+16) Kpub (x25519)
+
+This is provided when a new source or sink has flagged for availability or been
+disconnected. The petname is chosen by hashing into a server-local dictionary
+and allocated on first-use or provided on initial HELLO.
 
 ##  Event (2), fixed length
 - [0..7] sequence number : uint64

@@ -347,7 +347,7 @@ bool a12helper_keystore_accept(const uint8_t pubk[static 32], const char* connp)
 		return false;
 
 	if (!connp)
-		connp = "*";
+		connp = "outbound";
 
 /* get base64 of pubk, just write that + space + connp <lf> */
 	size_t outl;
@@ -662,6 +662,8 @@ int a12helper_keystore_statestore(
 bool a12helper_keystore_accepted(const uint8_t pubk[static 32], const char* connp)
 {
 	struct key_ent* ent = keystore.hosts;
+	if (!connp)
+		connp = "outbound";
 
 	while (ent){
 /* not this key? */
@@ -673,12 +675,6 @@ bool a12helper_keystore_accepted(const uint8_t pubk[static 32], const char* conn
 /* valid for every connection point? */
 		if (strcmp(ent->host, "*") == 0){
 			return true;
-		}
-
-/* nope, and this is an unspecified connection point, so ignore */
-		if (!connp){
-			ent = ent->next;
-			continue;
 		}
 
 /* then host- list is separated cp1,cp2,cp3,... so find needle in haystack */
