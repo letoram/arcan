@@ -55,6 +55,7 @@ static struct {
 	const char* reqname;
 	struct anet_dirsrv_opts dirsrv;
 	struct anet_dircl_opts dircl;
+	char* trust_domain;
 } global = {
 	.backpressure_soft = 2,
 	.backpressure = 6,
@@ -79,6 +80,26 @@ static const char* trace_groups[] = {
 
 static struct a12_vframe_opts vcodec_tuning(
 	struct a12_state* S, int segid, struct shmifsrv_vbuffer* vb, void* tag);
+
+/* keystore is singleton global */
+static bool open_keystore(const char** err)
+{
+	int dir = a12helper_keystore_dirfd(err);
+	if (-1 == dir)
+		return false;
+
+	struct keystore_provider prov = {
+		.directory.dirfd = dir,
+		.type = A12HELPER_PROVIDER_BASEDIR
+	};
+
+	if (!a12helper_keystore_open(&prov)){
+		*err = "Couldn't open keystore from basedir (ARCAN_STATEPATH)";
+		return false;
+	}
+
+	return true;
+}
 
 static int tracestr_to_bitmap(char* work)
 {
@@ -403,6 +424,14 @@ static struct anet_cl_connection find_connection(
 	int rc = opts->retry_count;
 	int timesleep = 1;
 
+	const char* err;
+	if (!open_keystore(&err)){
+		fprintf(stderr, "couldn't open keystore: %s\n", err);
+	}
+
+	if (!global.trust_domain)
+		global.trust_domain = strdup("outbound");
+
 /* connect loop until retry count exceeded */
 	while (rc != 0 && (!cl || (shmifsrv_poll(cl) != CLIENT_DEAD))){
 		anet = anet_cl_setup(opts);
@@ -588,12 +617,17 @@ static bool show_usage(const char* msg)
 	"Forward-local options:\n"
 	"\t-X             \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n"
 	"\t-r, --retry n  \t Limit retry-reconnect attempts to 'n' tries\n\n"
-	"Options:\n"
+	"Authentication:\n"
+	"\t --no-ephem-rt \t Disable ephemeral keypair roundtrip (outbound only)\n"
 	"\t-a, --auth n   \t Read authentication secret from stdin (maxlen:32)\n"
 	"\t --soft-auth   \t authentication secret (password) only, ignore keystore\n"
 	"\t               \t if [n] is provided, n keys added to trusted\n"
+	"\t-T, --trust s  \t Specify trust domain for splitting keystore\n"
+	"\t               \t outbound connections default to 'outbound' while\n"
+	"\t               \t serving/listening defaults to a wildcard ('*')\n\n",
+	""
+	"Options:\n"
 	"\t-t             \t Single- client (no fork/mt - easier troubleshooting)\n"
-	"\t --no-ephem-rt \t Disable ephemeral keypair roundtrip (outbound only)\n"
 	"\t --probe-only  \t (outbound) Authenticate and print server primary state\n"
 	"\t-d bitmap      \t Set trace bitmap (bitmask or key1,key2,...)\n"
 	"\t-v, --version  \t Print build/version information to stdout\n\n"
@@ -791,6 +825,13 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		else if (strcmp(argv[i], "-t") == 0){
 			opts->mt_mode = MT_SINGLE;
 		}
+		else if (strcmp(argv[i], "-T") == 0 || strcmp(argv[i], "--trust") == 0){
+			i++;
+			if (i == argc)
+				return show_usage("--trust without domain argument");
+
+			global.trust_domain = argv[i];
+		}
 		else if (strcmp(argv[i], "--keep-appl") == 0){
 			global.dircl.keep_appl = true;
 		}
@@ -850,7 +891,6 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 				a12int_trace(A12_TRACE_SECURITY,
 					"trust_first=%zu", global.accept_n_pk_unknown);
 			}
-
 		}
 		else if (strcmp(argv[i], "-B") == 0){
 			if (i == argc - 1)
@@ -882,26 +922,6 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 	}
 
 	return i;
-}
-
-/* keystore is singleton global */
-static bool open_keystore(const char** err)
-{
-	int dir = a12helper_keystore_dirfd(err);
-	if (-1 == dir)
-		return false;
-
-	struct keystore_provider prov = {
-		.directory.dirfd = dir,
-		.type = A12HELPER_PROVIDER_BASEDIR
-	};
-
-	if (!a12helper_keystore_open(&prov)){
-		*err = "Couldn't open keystore from basedir (ARCAN_STATEPATH)";
-		return false;
-	}
-
-	return true;
 }
 
 static int apply_keystore_command(int argc, char** argv)
@@ -954,13 +974,20 @@ static int apply_keystore_command(int argc, char** argv)
  * This is used both for the inbound and outbound connection, the difference
  * though is that the outbound connection has already provided keymaterial
  * as that is necessary for constructing the HELLO packet - so the auth is
- * just against if the public key is known/trusted or not in that case.
+ * just against if the public key is known/trusted or not in that case, with
+ * the options of what to do in the event of an unknown key:
+ *
+ *   1. reject / disconnect.
+ *   2. accept for this session.
+ *   3. accept and add to the trust store for outbound connections.
+ *   4. accept and add to the trust store for out and onbound.
+ *   5. prompt the user.
  *
  * Thus the a12 implementation will only respect the 'authentic' part and
  * disregard whatever is put in key.
  *
  * For inbound, there is an option of differentiation - a different keypair
- * could be returned based on the public key.
+ * could be returned based on the public key that the connecting party uses.
  */
 static struct pk_response key_auth_local(uint8_t pk[static 32])
 {
@@ -972,7 +999,7 @@ static struct pk_response key_auth_local(uint8_t pk[static 32])
 	unsigned char* out = a12helper_tob64(pk, 32, &outl);
 
 /* is the key in our trusted set? */
-	if (a12helper_keystore_accepted(pk, NULL)){
+	if (a12helper_keystore_accepted(pk, global.trust_domain)){
 		auth.authentic = true;
 		a12int_trace(A12_TRACE_SECURITY, "accept=%s", out);
 		a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
@@ -989,11 +1016,53 @@ static struct pk_response key_auth_local(uint8_t pk[static 32])
 		global.accept_n_pk_unknown--;
 		a12int_trace(A12_TRACE_SECURITY,
 			"left=%zu:accept-unknown=%s", global.accept_n_pk_unknown, out);
-		a12helper_keystore_accept(pk, NULL);
+
+/* trust-domain covers both case 3 and 4. */
+		a12helper_keystore_accept(pk, global.trust_domain);
 		a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
 	}
+
+/* Since SSH has trained people on this behaviour, allow interactive override.
+ * A caveat here with far reaching consequences is if 'remember' should mean
+ * to add it to the trust store for both inbound and outbound connections.
+ *
+ * There are arguments to be had for both cases. By adding it it also means
+ * that by default, should the local end ever listen for an external connection,
+ * previous servers would be allowed in. In the SSH case that would be terrible.
+ *
+ * Here it is more nuanced. One can argue that if you are serving you should
+ * split / config / domain of use separate the keystore anyhow and that the
+ * current one is called 'naive' for a reason. This is trivially done in the
+ * filesystem, though not as easy for the HCI side.
+ *
+ * At the same time the 'accept_n_pk' option is more explicit (and encourages
+ * another temporary password) for the pake 'first time setup' / sideband / f2f
+ * case.
+ */
 	else if (!auth.authentic){
-		a12int_trace(A12_TRACE_SECURITY, "reject-unknown=%s", out);
+		if (isatty(STDIN_FILENO)){
+			fprintf(stdout,
+				"The other end is using an unknown public key (%s).\n"
+				"Are you sure you want to continue (yes/no/remember):\n", out
+			);
+			char buf[16];
+			fgets(buf, 16, stdin);
+			if (strcmp(buf, "yes\n") == 0){
+				auth.authentic = true;
+				a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
+				a12int_trace(A12_TRACE_SECURITY, "interactive-soft-auth=%s", out);
+			}
+			else if (strcmp(buf, "remember\n") == 0){
+				auth.authentic = true;
+				a12helper_keystore_accept(pk, global.trust_domain);
+				a12int_trace(A12_TRACE_SECURITY, "interactive-add-trust=%s", out);
+				a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
+			}
+			else
+				a12int_trace(A12_TRACE_SECURITY, "rejected-interactive");
+		}
+		else
+			a12int_trace(A12_TRACE_SECURITY, "reject-unknown=%s", out);
 	}
 
 	if (auth.authentic && global.directory != -1){

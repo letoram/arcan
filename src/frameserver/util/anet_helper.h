@@ -100,20 +100,20 @@ uint8_t* a12helper_tob64(const uint8_t* data, size_t inl, size_t* outl);
  * increment index to fetch the next possible host.
  *
  * returns false when there are no more keys on the store */
-bool a12helper_keystore_hostkey(const char* tagname, size_t index,
+bool a12helper_keystore_hostkey(const char* petname, size_t index,
 	uint8_t privk[static 32], char** outhost, uint16_t* outport);
 
-/* list all the known outbound tags, terminates with a NULL tagname */
-bool a12helper_keystore_tags(bool (*cb)(const char* tagname, void*), void* tag);
+/* list all the known outbound tags, terminates with a NULL petname */
+bool a12helper_keystore_tags(bool (*cb)(const char* petname, void*), void* tag);
 
 /* Append or crete a new tag with the specified host, this will also
  * create a new private key if needed. Returns the public key in outk */
 bool a12helper_keystore_register(
-	const char* tagname, const char* host, uint16_t port, uint8_t pubk[static 32]);
+	const char* petname, const char* host, uint16_t port, uint8_t pubk[static 32]);
 
 /*
- * Check if the public key is known and accepted for the supplied connection
- * point (can be null for any connection point).
+ * Check if the public key is known and accepted for the specified trust domain
+ * (not to be confused with host/domain names as in DNS).
  */
 bool a12helper_keystore_accepted(
 	const uint8_t pubk[static 32], const char* connp);
@@ -121,12 +121,10 @@ bool a12helper_keystore_accepted(
 /*
  * add the supplied public key to the accepted keystore.
  *
- * if [connp] is NULL, it will only be added as a permitted outgoing connection
- * (client mode), otherwise set a comma separated list (or * for wildcard) of
- * valid connection points this key is allowed to bind to.
+ * if [connp] is NULL, the domain will default to 'outbound'.
  *
- * the [state-cap] indicates if the owner of the key is allowed to store state
- * locally or not, with 0 blocking state transfers
+ * otherwise connp is a comma separated list of local names (similar to
+ * connection points) or a wildcard '*'.
  */
 bool a12helper_keystore_accept(const uint8_t pubk[static 32], const char* connp);
 

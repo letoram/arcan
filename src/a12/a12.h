@@ -81,7 +81,7 @@ struct a12_context_options {
  * completed */
 	char secret[32];
 
-/* can be set to ROLE_PROBE, ROLE_SOURCE, ROLE_SINK or ROLE_DIR(EIMPL) */
+/* can be set to ROLE_PROBE, ROLE_SOURCE, ROLE_SINK or ROLE_DIR */
 	int local_role;
 
 /* if set, the a12_flush() will not return a buffer to write out, but rather

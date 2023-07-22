@@ -253,7 +253,7 @@ Milestone 3 - big stretch (0.6.x)
 	- [ ] relay a12 traffing between source/sink
 	- [ ] NAT-punch between source/sink
 	- [x] state store/restore
-- [ ] Add to afsrv\_net (x)
+- [x] Add to afsrv\_net (x)
 - [ ] Fast-forward known partial binary transfer (resume)
 - [ ] Resume- session from different IP (ap)
 - [ ] N-Key connection-unlock and monitors (a)

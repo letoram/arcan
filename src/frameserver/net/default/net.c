@@ -26,6 +26,7 @@
 #include <netdb.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <signal.h>
 #include "a12.h"
 #include "a12_int.h"
 #include "net/a12_helper.h"
@@ -53,6 +54,7 @@ static bool flush_shmif(struct arcan_shmif_cont* C)
 
 static struct {
 	bool soft_auth;
+	char* trust_domain;
 } global;
 
 static struct pk_response key_auth_local(uint8_t pk[static 32])
@@ -65,7 +67,7 @@ static struct pk_response key_auth_local(uint8_t pk[static 32])
  * here is the option of deferring pubk- auth to arcan end by sending it as a
  * message onwards and wait for an accept or reject event before moving on.
  */
-	if (a12helper_keystore_accepted(pk, NULL) || global.soft_auth){
+	if (a12helper_keystore_accepted(pk, global.trust_domain) || global.soft_auth){
 		auth.authentic = true;
 		a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
 	}
@@ -866,6 +868,9 @@ int afsrv_netcl(struct arcan_shmif_cont* C, struct arg_arr* args)
 {
 /* lua:net_discover maps to this */
 	const char* dmethod = NULL;
+	signal(SIGPIPE, SIG_IGN);
+	signal(SIGCHLD, SIG_IGN);
+
 	if (arg_lookup(args, "help", 0, &dmethod)){
 		return show_help();
 	}

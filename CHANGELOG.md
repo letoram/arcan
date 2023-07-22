@@ -29,6 +29,10 @@
 ## Net
  * allow h264 passthrough, sidestepping local encode
  * re-add afsrv\_net, have it support directory, source and sink access modes.
+ * split a12:// into a12:// and a12s:// ARCAN_CONNPATH with the former permitting connecting to unknowns
+ * add interactive accept/reject/trust for arcan-net use
+ * reserve 'outbound' domain for interactively added outbound keys
+ * enforce domain separation for allowed pubkeys
 
 ## Terminal
  * SGR reset fix, add CNL / CPL
