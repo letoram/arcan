@@ -1423,6 +1423,7 @@ enum ARCAN_TARGET_SKIPMODE {
  *
  * (state) : 0 = lost
  *           1 = discovered
+ *           2 = discovered - multipart
  *
  * (type)  : 0 = unknown
  *           1 = source
