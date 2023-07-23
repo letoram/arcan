@@ -1827,6 +1827,7 @@ static bool step_v(struct arcan_shmif_cont* ctx, int sigv)
 			log_print("%lld: SIGVID "
 				"(id: %"PRIu64", early-out: dirty-inval-region: %zu,%zu-%zu,%zu)",
 				arcan_timemillis(),
+				priv->vframe_id,
 				(size_t)ctx->dirty.x1, (size_t)ctx->dirty.y1,
 				(size_t)ctx->dirty.x2, (size_t)ctx->dirty.y2
 			);
