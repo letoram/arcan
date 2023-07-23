@@ -54,7 +54,6 @@ struct listwnd_meta {
 	size_t entry_pos;
 
 /* drawing characters for the flags */
-	uint32_t line_ch;
 	uint32_t check_ch;
 	uint32_t sub_ch;
 
@@ -154,8 +153,13 @@ static void redraw(struct tui_context* T, struct listwnd_meta* M)
 		}
 
 		if (lattr & LIST_SEPARATOR){
-			for (size_t c = 0; c < cols; c++)
-				arcan_tui_write(T, M->line_ch, &inact);
+			struct tui_screen_attr tl = inact;
+
+			tl.aflags |= TUI_ATTR_BORDER_TOP;
+
+			for (size_t c = 0; c < cols; c++){
+				arcan_tui_write(T, 0, &tl);
+			}
 			c_row++;
 			continue;
 		}
@@ -677,12 +681,8 @@ bool arcan_tui_listwnd_setup(
 		.bchunk = bchunk
 	};
 
-	/* BOX DRAWINGS LIGHT HORIZONTAL U+2500 */
-	meta->line_ch = arcan_tui_hasglyph(T, 0x2500) ? 0x2500 : '-';
-	/* MODIFIER LETTER RIGHT ARROWHEAD U+02c3 */
+/* MODIFIER LETTER RIGHT ARROWHEAD U+02c3 */
 	meta->sub_ch = arcan_tui_hasglyph(T, 0x02c3) ? 0x02c3 : '>';
-	/* CHECK MARK U+2713 */
-	meta->check_ch = arcan_tui_hasglyph(T, 0x2713) ? 0x2713 : '*';
 
 /* save old handlers and set new ones */
 	arcan_tui_update_handlers(T,
