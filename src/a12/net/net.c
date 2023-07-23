@@ -1211,6 +1211,10 @@ int main(int argc, char** argv)
 			global.dirsrv.basedir = global.directory;
 			anet_directory_srv_rescan(&global.dirsrv);
 		}
+
+		if (!global.trust_domain)
+			global.trust_domain = strdup("default");
+
 		switch (anet.mt_mode){
 		case MT_SINGLE:
 			anet_listen(&anet, &errmsg, single_a12srv, &meta);

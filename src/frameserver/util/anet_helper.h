@@ -113,9 +113,11 @@ bool a12helper_keystore_register(
 
 /*
  * Check if the public key is known and accepted for the specified trust domain
- * (not to be confused with host/domain names as in DNS).
+ * (not to be confused with host/domain names as in DNS). Returns the ,
+ * separated list of domains for the key or NULL if the key isn't in the
+ * keystore.
  */
-bool a12helper_keystore_accepted(
+const char* a12helper_keystore_accepted(
 	const uint8_t pubk[static 32], const char* connp);
 
 /*
@@ -123,8 +125,8 @@ bool a12helper_keystore_accepted(
  *
  * if [connp] is NULL, the domain will default to 'outbound'.
  *
- * otherwise connp is a comma separated list of local names (similar to
- * connection points) or a wildcard '*'.
+ * Otherwise connp is a comma separated list of local name. These names are
+ * intended to tie to local connection points or policy group names.
  */
 bool a12helper_keystore_accept(const uint8_t pubk[static 32], const char* connp);
 
@@ -143,7 +145,8 @@ bool anet_authenticate(struct a12_state* S, int fdin, int fdout, char** err);
 
 /*
  * Open or allocate (sz > 0) a name for assigning custom state data to a public
- * key and return a FILE* abstraction for reading or writing based on 'mode'.
+ * key and return a descriptor (seekable but may be at an offset) to a file open
+ * in the specified mode.
  */
 int a12helper_keystore_statestore(
 	const uint8_t pubk[static 32], const char* name, size_t sz, const char* mode);
