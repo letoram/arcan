@@ -659,11 +659,16 @@ int a12helper_keystore_statestore(
  * mitigate by call first for '*' connp, then the specific one (if desired)
  * mitigate by also asking for a few random keys
  */
-bool a12helper_keystore_accepted(const uint8_t pubk[static 32], const char* connp)
+const char*
+	a12helper_keystore_accepted(const uint8_t pubk[static 32], const char* connp)
 {
 	struct key_ent* ent = keystore.hosts;
 	if (!connp)
 		connp = "outbound";
+
+	size_t nlen = strlen(connp);
+	if (!nlen)
+		return NULL;
 
 	while (ent){
 /* not this key? */
@@ -674,11 +679,11 @@ bool a12helper_keystore_accepted(const uint8_t pubk[static 32], const char* conn
 
 /* valid for every connection point? */
 		if (strcmp(ent->host, "*") == 0){
-			return true;
+			return ent->host;
 		}
 
 /* then host- list is separated cp1,cp2,cp3,... so find needle in haystack */
-		const char* needle = strstr(connp, ent->host);
+		const char* needle = strstr(ent->host, connp);
 		if (!needle){
 			ent = ent->next;
 			continue;
@@ -687,17 +692,19 @@ bool a12helper_keystore_accepted(const uint8_t pubk[static 32], const char* conn
 /* that might be a partial match, i.e. key for connpath 'a' while not for 'ale'
  * so check that we are at a word boundary (at beginning, end or surrounded by , */
 		if (
-			(needle == ent->host) ||
-			(needle[-1] == ',' && (needle[1] == '\0' || needle[1] == ','))
-		){
-			return true;
+			(strcmp(ent->host, needle)) == 0 &&
+			(
+			 (needle == ent->host || needle[-1] == ',') && /* start on boundary */
+			 (needle[nlen] == '\0' || needle[nlen] == ',') /* end on boundary */
+			)){
+			return ent->host;
 		}
 
 /* continue as the pubk may exist multiple times */
 		ent = ent->next;
 	}
 
-	return false;
+	return NULL;
 }
 
 int a12helper_keystore_dirfd(const char** err)
