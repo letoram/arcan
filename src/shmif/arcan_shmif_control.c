@@ -3747,6 +3747,51 @@ shmif_reset_hook arcan_shmif_resetfunc(
 	return old_hook;
 }
 
+#include "../frameserver/util/utf8.c"
+bool arcan_shmif_pushutf8(
+	struct arcan_shmif_cont* acon, struct arcan_event* base,
+	const char* msg, size_t len)
+{
+	uint32_t state = 0, codepoint = 0;
+	const char* outs = msg;
+	size_t maxlen = sizeof(base->ext.message.data) - 1;
+
+/* utf8- point aligned against block size */
+	while (len > maxlen){
+		size_t i, lastok = 0;
+		state = 0;
+		for (i = 0; i <= maxlen - 1; i++){
+			if (UTF8_ACCEPT == utf8_decode(&state, &codepoint, (uint8_t)(msg[i])))
+				lastok = i;
+
+			if (i != lastok){
+				if (0 == i)
+					return false;
+			}
+		}
+
+		memcpy(base->ext.message.data, outs, lastok);
+		base->ext.message.data[lastok] = '\0';
+		len -= lastok;
+		outs += lastok;
+		if (len)
+			base->ext.message.multipart = 1;
+		else
+			base->ext.message.multipart = 0;
+
+		arcan_shmif_enqueue(acon, base);
+	}
+
+/* flush remaining */
+	if (len){
+		snprintf((char*)base->ext.message.data, maxlen, "%s", outs);
+		base->ext.message.multipart = 0;
+		arcan_shmif_enqueue(acon, base);
+	}
+
+	return true;
+}
+
 /*
  * Missing: special behavior for SHMIF_RHINT_SUBREGION_CHAIN, setup chain of
  * atomic [uint32_t, bitfl] and walk from first position to last free. Bitfl
