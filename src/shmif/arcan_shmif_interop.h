@@ -525,6 +525,20 @@ bool arcan_shmif_mousestate_ioev(
 	struct arcan_ioevent* inev, int* out_x, int* out_y);
 
 /*
+ * Support function for taking a small utf-8 encoded text string on top
+ * of [baseev] (will be modified).
+ *
+ * It will validate and terminate / return false if [msg] fails proper utf-8
+ * validation.
+ *
+ * This is mainly useful for _MESSAGE events on clipboard subsegments for
+ * shorter (comparable to non-incr text/utf-8 in X11).
+ */
+bool arcan_shmif_pushutf8(
+	struct arcan_shmif_cont*, struct arcan_event* baseev,
+	const char* msg, size_t msg_sz);
+
+/*
  * Part of auxiliary library, pulls in more dependencies and boiler-plate
  * for setting up accelerated graphics
  */

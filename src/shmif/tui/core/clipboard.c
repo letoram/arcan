@@ -37,49 +37,6 @@ void tui_clipboard_check(struct tui_context* tui)
 		arcan_shmif_drop(&tui->clip_in);
 }
 
-bool tui_push_message(struct arcan_shmif_cont* acon,
-	struct arcan_event* base, const char* msg, size_t len)
-{
-	uint32_t state = 0, codepoint = 0;
-	const char* outs = msg;
-	size_t maxlen = sizeof(base->ext.message.data) - 1;
-
-/* utf8- point aligned against block size */
-	while (len > maxlen){
-		size_t i, lastok = 0;
-		state = 0;
-		for (i = 0; i <= maxlen - 1; i++){
-			if (UTF8_ACCEPT == utf8_decode(&state, &codepoint, (uint8_t)(msg[i])))
-				lastok = i;
-
-			if (i != lastok){
-				if (0 == i)
-					return false;
-			}
-		}
-
-		memcpy(base->ext.message.data, outs, lastok);
-		base->ext.message.data[lastok] = '\0';
-		len -= lastok;
-		outs += lastok;
-		if (len)
-			base->ext.message.multipart = 1;
-		else
-			base->ext.message.multipart = 0;
-
-		arcan_shmif_enqueue(acon, base);
-	}
-
-/* flush remaining */
-	if (len){
-		snprintf((char*)base->ext.message.data, maxlen, "%s", outs);
-		base->ext.message.multipart = 0;
-		arcan_shmif_enqueue(acon, base);
-	}
-
-	return true;
-}
-
 bool tui_clipboard_push(struct tui_context* tui, const char* sel, size_t len)
 {
 /*
@@ -95,5 +52,5 @@ bool tui_clipboard_push(struct tui_context* tui, const char* sel, size_t len)
 		.ext.kind = ARCAN_EVENT(MESSAGE)
 	};
 
-	return tui_push_message(&tui->clip_out, &msgev, sel, len);
+	return arcan_shmif_pushutf8(&tui->clip_out, &msgev, sel, len);
 }

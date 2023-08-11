@@ -1075,14 +1075,14 @@ void arcan_tui_message(
 		workstr[0] = '>';
 		memcpy(&workstr[1], msg, len);
 		workstr[len+1] = '\0';
-		tui_push_message(&c->acon, &outev, msg, len);
+		arcan_shmif_pushutf8(&c->acon, &outev, msg, len);
 		free(workstr);
 		return;
 	}
 	else
 		return;
 
-	tui_push_message(&c->acon, &outev, msg, len);
+	arcan_shmif_pushutf8(&c->acon, &outev, msg, len);
 }
 
 pid_t arcan_tui_handover(
