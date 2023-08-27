@@ -53,6 +53,9 @@ struct rendertarget {
  * compare to this and see if it is different */
 	uint64_t frame_cookie;
 
+/* media-stream count, increments on each update */
+	uint64_t msc;
+
 /* useful for link targets, ignore whatever shader is assigned and use shid */
 	bool force_shid;
 

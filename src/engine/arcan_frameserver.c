@@ -86,8 +86,14 @@ static void autoclock_frame(arcan_frameserver* tgt)
 			.category = EVENT_TARGET,
 			.tgt.kind = TARGET_COMMAND_STEPFRAME,
 			.tgt.ioevs[0].iv = delta / tgt->clock.start,
-			.tgt.ioevs[1].iv = 1
+			.tgt.ioevs[1].uiv = tgt->clock.id
 		};
+
+/* don't re-arm if it is a one-off */
+		if (tgt->clock.once){
+			tgt->clock.left = 0;
+		}
+
 		platform_fsrv_pushevent(tgt, &ev);
 	}
 	else
@@ -683,12 +689,15 @@ int arcan_frameserver_releaselock(struct arcan_frameserver* tgt)
 	atomic_store_explicit(&tgt->shm.ptr->vready, 0, memory_order_release);
 	arcan_sem_post( tgt->vsync );
 		if (tgt->desc.hints & SHMIF_RHINT_VSIGNAL_EV){
+			arcan_vobject* vobj = arcan_video_getobject(tgt->vid);
+
 			TRACE_MARK_ONESHOT("frameserver", "signal", TRACE_SYS_DEFAULT, tgt->vid, 0, "");
 			platform_fsrv_pushevent(tgt, &(struct arcan_event){
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_STEPFRAME,
 				.tgt.ioevs[0].iv = 1,
-				.tgt.ioevs[1].iv = 0
+				.tgt.ioevs[1].iv = 0,
+				.tgt.ioevs[2].uiv = vobj ? vobj->owner->msc : 0
 			});
 		}
 
@@ -801,10 +810,35 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 			goto no_out;
 		}
 
-/* for tighter latency management, here is where the estimated next
- * synch deadline for any output it is used on could/should be set,
- * though it feeds back into the need of the conductor- refactor */
+/* TIMING/PRESENT:
+ *     for tighter latency management, here is where the estimated next synch
+ *     deadline for any output it is used on could/should be set, though it
+ *     feeds back into the need of the conductor- refactor */
 		dst_store->vinf.text.vpts = shmpage->vpts;
+
+/*     if there's a clock for being triggered in order to be able to submit
+ *     contents at a specific MSC on best effort, forward that now. */
+		if (tgt->clock.msc_feedback){
+			struct arcan_event ev = {
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_STEPFRAME,
+				.tgt.ioevs[0].iv = 1,
+				.tgt.ioevs[1].iv = 1,
+				.tgt.ioevs[2].uiv = vobj->owner->msc
+			};
+
+			if (tgt->clock.present &&
+				(tgt->clock.present + 1 <= vobj->owner->msc)){
+				TRACE_MARK_ONESHOT("frameserver", "present-msc", TRACE_SYS_DEFAULT, tgt->cookie, tgt->clock.present, "");
+				platform_fsrv_pushevent(tgt, &ev);
+				tgt->clock.present = 0;
+				tgt->clock.msc_feedback = false;
+			}
+			else if (!tgt->clock.present && tgt->clock.last_msc != vobj->owner->msc){
+				platform_fsrv_pushevent(tgt, &ev);
+				tgt->clock.last_msc = vobj->owner->msc;
+			}
+		}
 
 /* for some connections, we want additional statistics */
 		if (tgt->desc.callback_framestate)
@@ -824,7 +858,8 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 					.category = EVENT_TARGET,
 					.tgt.kind = TARGET_COMMAND_STEPFRAME,
 					.tgt.ioevs[0].iv = 1,
-					.tgt.ioevs[1].iv = 0
+					.tgt.ioevs[1].iv = 0,
+					.tgt.ioevs[2].uiv = vobj ? vobj->owner->msc : 0
 				});
 			}
 		}
@@ -1469,7 +1504,7 @@ leave:
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_STEPFRAME,
 				.tgt.ioevs[0].iv = 1,
-				.tgt.ioevs[1].iv = 1
+				.tgt.ioevs[1].iv = src->clock.id
 			});
 		}
 	}
