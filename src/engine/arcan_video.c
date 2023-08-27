@@ -5212,6 +5212,7 @@ static size_t process_rendertarget(
 		arcan_vobject_litem* tmp_cur = tgt->first;
 		tgt->first = tgt->link->first;
 		tgt->link = NULL;
+		size_t old_msc = tgt->msc;
 
 		pc += process_rendertarget(tgt, fract, false);
 		nest = pc > 0;
@@ -5221,6 +5222,7 @@ static size_t process_rendertarget(
 
 		tgt->dirtyc += tgt->link->dirtyc;
 		tgt->transfc += tgt->link->transfc;
+		tgt->msc = old_msc;
 	}
 
 	current = tgt->first;
@@ -5236,6 +5238,7 @@ static size_t process_rendertarget(
 		return 0;
 
 	tgt->uploadc = 0;
+	tgt->msc++;
 
 /* this does not really swap the stores unless they are actually different, it
  * is cheaper to do it here than shareglstore as the search for vobj to rtgt is

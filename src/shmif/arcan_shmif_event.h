@@ -292,19 +292,39 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_EXIT = 1,
 
 /*
- * Hints regarding how the underlying client should treat
- * rendering and video synchronization.
+ * Hints regarding how the underlying client should treat rendering and video
+ * synchronization.
+ *
  * ioevs[0].iv maps to TARGET_SKIP_*
  */
 	TARGET_COMMAND_FRAMESKIP,
 
 /*
+ * [AGGREGATE]
+ *
+ * STEPFRAME is a hint that new contents should be produced and synched and is
+ * influenced by any previously set FRAMESKIP modes, as well as if frame event
+ * feedback is set (SHMIF_RHINT_VSIGNAL_EV) or any custom timer sources has
+ * been requested for clocking.
+ *
+ * ioevs[1].uiv is the identifier of the step request source.
+ * For a custom CLOCKREQ this will match the ID provided in the source with
+ * a recommended range of 10..UINT32_MAX.
+ *
+ * Reserved IDs are:
+ * 0 : [rhint_vsignal],
+ * 1 : [present-feedback, see CLOCKREQ]
+ * 2 : [vblank-feedback, see CLOCKREQ]
+ *
+ * ioevs[0].iv represents the number of frames to skip forward or backwards.
+ *
  * in case of TARGET_SKIP_STEP, this can be used to specify
- * a relative amount of frames to process or rollback
+ * a relative amount of frames to process or rollback.
  * ioevs[0].iv represents the number of frames,
- * ioevs[1].iv can contain an ID (see CLOCKREQ)
- * ioevs[2].uiv (on CLOCKREQ) 0 or seconds (NTP- jan 1900 64-bit format)
- * ioevs[3].uiv (on CLOCKREQ) fractional second ( - " - ) in GEOHINT- tz
+ * ioevs[1].iv may contain a user ID or a reserved one (see CLOCKREQ).
+ * ioevs[2].uiv may contain the current attachment MSC (if avaiable)
+ *
+ * For present-feed
  */
 	TARGET_COMMAND_STEPFRAME,
 
@@ -1335,17 +1355,43 @@ enum ARCAN_TARGET_SKIPMODE {
 			uint32_t type;
 		} stateinf;
 
-/* Used with the CLOCKREQ event for hinting how the server should provide
- * STEPFRAME events. if once is set, it is interpreted as a hint to register as
- * a separate / independent timer.
- * (once) - & !0 > 0, fire once or use as periodic timer
- * (rate) - if once is set, relative to last tick otherwise every n ticks.
- * (id)   - caller specified ID that will be used in stepframe reply
- * (dynamic) - set to !0 if it should be hooked to video frame delivery rather
- *             than an approximate monotonic clock
+/*
+ * Used with the CLOCKREQ event for hinting how the server should provide
+ * autoclocked STEPFRAME events.
  *
- * there is one automatic clock- slot per connection, and will always have
- * ID 1 in the reply.
+ * There is >one< server managed coarse grained (25Hz tick) custom autoclock
+ * (dynamic = 0), any subsequent CLOCKREQs will override the previous setting.
+ *
+ * If (once) is set, it will not be re-armed after firing and (rate) represents
+ * the number of ticks that should elapse before firing. Otherwise the timer
+ * will be re-armed after firing.
+ *
+ * The (id) Will be provided in the returned stepframe,
+ *          with values 0 .. 10 reserved for other stepframe uses.
+ *          This matters only if you need to differentiate between different
+ *          kinds of stepframe requests.
+ *
+ * If (dynamic) is set to 1, the clock will be attached to presentation
+ *              feedback. If rate is set the STEPFRAME will fire once when
+ *              a new frame would be needed to be submitted to hit that
+ *              specific MSC. This will only fire once.
+ *
+ *              If rate is not set, each MSC increment will yield an event
+ *              until it is disabled with another CLOCKREQ.
+ *
+ *              See STEPFRAME for more information.
+ *
+ * If (dynamic) is set to 2, STEPFRAMEs will be emitted on each vblank of the
+ *              sink the segment is primarily mapped to. This does not have to
+ *              match any previous received OUTPUTHINT.
+ *
+ * The vblank dynamic clock act as a toggle, repeating the same CLOCKREQ would
+ * disable the previous.
+ *
+ * Being subscribed to a dynamic clock should be handled with care as it is
+ * very easy to drag behing in your processing loop and saturate the inbound
+ * queue. In such a case the dequeueing function might AGGREGATE
+ * (merge/discard) stepframe events.
  */
 		struct{
 			uint32_t rate;

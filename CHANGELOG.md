@@ -8,11 +8,13 @@
  * video\_displaymode expose eotf / coordinates for primaries and contents light levels
  * open\_nonblock can now adopt an existing iostream into a target vid
  * input\_remap\_translation overloaded form for serializing backing keymap
+ * clockreq no longer forwarded for frameserver event handler
 
 ## Core
  * respect border attribute in text rasteriser
  * added frame\_id to external events that pairs with shmif-SIGVID signals
  * optional tracy build for profiling (-DENABLE\_TRACY)
+ * frameserver clock(stepframe) event handling extended (see shmif)
 
 ## Tui
  * nbio asynch type confusion fix (function becomes pcall:userdata)
@@ -51,6 +53,7 @@
  * wire up ext venc resize for compressed video passthrough
  * extend hdr vsub with more metadata
  * dropped unused rhints and rename hdr16f (version bump)
+ * CLOCKREQ extended with options for latching to specific msc/vblank events
 
 ## Decode
  * defer REGISTER until proto argument has been parsed, let text register as TUI

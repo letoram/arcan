@@ -60,7 +60,7 @@
 -- Possible statustbl.kind values: "preroll", "resized", "ident",
 -- "coreopt", "message", "failure", "framestatus", "streaminfo",
 -- "streamstatus", "segment_request", "state_size",
--- "viewport", "alert", "content_state", "registered", "clock", "cursor",
+-- "viewport", "alert", "content_state", "registered", "cursor",
 -- "bchunkstate", "proto_update", "mask_input", "ramp_update"
 --
 -- @tblent: "preroll" {string:segkind, aid:source_audio} is an initial state
@@ -187,11 +187,7 @@
 -- types have been changed. ref:target_input calls that attempts to forward a
 -- masked type will have matching events dropped automatically. The actual
 -- mask details can be queried through ref:input_capabilities.
---
--- @tblent: "clock" (value, monotonic, once) - frameserver wants a periodic or
--- fire-once stepframe event call. monotonic suggests the time-frame relative to
--- the built-in CLOCKRATE (clock_pulse)
---
+-
 -- @tblent: "cursorhint" {message} - lacking a customized cursor using a subseg
 -- request for a cursor window, this is a text suggestion of what local visual
 -- state the mouse cursor should have. The content of message is implementation

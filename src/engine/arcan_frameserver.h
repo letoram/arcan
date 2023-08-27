@@ -184,7 +184,13 @@ struct arcan_frameserver {
 		uint32_t left;
 		uint32_t start;
 		int64_t frametime;
+		uint32_t id;
+		uint32_t present;
+		uint32_t last_msc;
+		bool msc_feedback;
 		bool frame;
+		bool once;
+		bool vblank;
 	} clock;
 
 /* for monitoring hooks, 0 entry terminates. */

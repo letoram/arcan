@@ -165,6 +165,24 @@ static void step_herd(int mode)
 		TRACE_SYS_DEFAULT, mode, conductor.transfer_cost, "step-herd");
 }
 
+static void forward_vblank()
+{
+	for (size_t i = 0; i < frameservers.count; i++){
+		struct arcan_frameserver* fsrv = frameservers.ref[i];
+		if (fsrv && fsrv->clock.vblank){
+			struct arcan_vobject* vobj = arcan_video_getobject(fsrv->vid);
+
+			platform_fsrv_pushevent(fsrv, &(struct arcan_event){
+					.category = EVENT_TARGET,
+					.tgt.kind = TARGET_COMMAND_STEPFRAME,
+					.tgt.ioevs[0].iv = 0,
+					.tgt.ioevs[1].iv = 2,
+					.tgt.ioevs[2].uiv = vobj->owner->msc,
+				});
+		}
+	}
+}
+
 static void internal_yield()
 {
 	arcan_event_poll_sources(arcan_event_defaultctx(), conductor.timestep);
@@ -553,6 +571,12 @@ static uint64_t postframe_synch(uint64_t next)
 	case SYNCH_IMMEDIATE:
 	break;
 	}
+
+/* this is not the 'correct' time to do this for multiscreen settings, we would
+ * need to let the platform expose that event per screen and bias to the one (if
+ * any) the frameserver is actually mapped to the vblank on. */
+	forward_vblank();
+
 	conductor.in_frame = false;
 	return next;
 }

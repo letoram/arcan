@@ -409,12 +409,25 @@ int arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 
 /* for autoclocking, only one-fire events are forwarded if flag has been set */
 				case EVENT_EXTERNAL_CLOCKREQ:
-					if (tgt->flags.autoclock && !inev.ext.clock.once){
+					if (inev.ext.clock.dynamic == 1){
+						if (inev.ext.clock.rate){
+							tgt->clock.present = inev.ext.clock.rate;
+							tgt->clock.msc_feedback = true;
+						}
+						else
+							tgt->clock.msc_feedback = !tgt->clock.msc_feedback;
+					}
+					else if (inev.ext.clock.dynamic == 2){
+						tgt->clock.vblank = !tgt->clock.vblank;
+					}
+					else if (tgt->flags.autoclock){
+						tgt->clock.once = inev.ext.clock.once;
 						tgt->clock.frame = inev.ext.clock.dynamic;
 						tgt->clock.left = tgt->clock.start = inev.ext.clock.rate;
-						wake = true;
-						continue;
+						tgt->clock.id = inev.ext.clock.id;
+						tgt->clock.once = inev.ext.clock.once;
 					}
+					continue;
 				break;
 
 				case EVENT_EXTERNAL_REGISTER:
