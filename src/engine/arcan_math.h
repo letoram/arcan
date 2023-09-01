@@ -8,6 +8,13 @@
 #define EPSILON 0.000001f
 #define DEG2RAD(X) (X * M_PI / 180)
 
+#ifndef MIN
+#define MIN(x,y) (((x)<(y))?(x):(y))
+#endif
+#ifndef MAX
+#define MAX(x,y) (((x)>(y))?(x):(y))
+#endif
+
 typedef struct {
 	union {
 		struct {
