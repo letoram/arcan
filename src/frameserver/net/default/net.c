@@ -183,8 +183,8 @@ static bool get_keystore(
 
 	if (ks.directory.dirfd == -1){
 		ks.type = A12HELPER_PROVIDER_BASEDIR;
-		const char** err = NULL;
-		ks.directory.dirfd = a12helper_keystore_dirfd(err);
+		const char* err = NULL;
+		ks.directory.dirfd = a12helper_keystore_dirfd(&err);
 		if (-1 == ks.directory.dirfd){
 			arcan_shmif_last_words(C, KEYSTORE_ERRMSG);
 			return false;
@@ -775,6 +775,7 @@ static int connect_to_host(
  * starting with option 1. */
 	char* toksep = strrchr(work, '@');
 	if (toksep){
+		*toksep = 0;
 		opts.key = work;
 	}
 /* apparently not, 3..4 */
