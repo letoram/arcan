@@ -2,14 +2,10 @@
  * This is just re-using the same code-paths as in arcan-net with a different
  * routine to argument parsing and debug output.
  *
- * What it needs 'extra' is basically a rendezvous / dictionary server used for
- * local / p2p service exchange to learn of keys.
- *
  * Another worthwhile distinction is that remoting and encode also provides
  * some a12 client/server functionality, but those are for working with
  * 'composited' desktops, while this one is between arcan clients across a12.
  */
-
 #include <arcan_shmif.h>
 #include <arcan_shmif_server.h>
 
@@ -296,12 +292,10 @@ static int discover_test(struct arcan_shmif_cont* C, int trust)
 /* A set of fake keys that we randomly mark as discovered or lost, will cycle
  * through, randomly discover or lose, sleep and repeat. This means that the
  * arcan end may well receive unpaired added/ removed and flipping types as
- * those are error cases to respond to. Each cycle adds 10 seconds to the delay
- * for interactive use. */
+ * those are error cases to respond to. */
 
 /* 0 == lost, 1 (source) 2 (sink) 4 (directory) */
-	size_t step = 10;
-	size_t counter = 1;
+	size_t step = 1;
 	struct arcan_event ev[] =
 	{
 		{ .ext.kind = ARCAN_EVENT(NETSTATE),
@@ -310,7 +304,6 @@ static int discover_test(struct arcan_shmif_cont* C, int trust)
 		{ .ext.kind = ARCAN_EVENT(NETSTATE),
 			.ext.netstate = {.state = 1, .type = 2, .name = "test_2"}
 		},
-
 		{ .ext.kind = ARCAN_EVENT(NETSTATE),
 			.ext.netstate = {.state = 1, .type = 4, .name = "test_3"}
 		},
@@ -318,25 +311,18 @@ static int discover_test(struct arcan_shmif_cont* C, int trust)
 			.ext.netstate = {.state = 1, .type = 5, .name = "test_4"}
 		},
 		{ .ext.kind = ARCAN_EVENT(NETSTATE), /* flip to all roles */
-			.ext.netstate = {.state = 1, .type = (1 | 2 | 4), .name = "test_3"}
+			.ext.netstate = {.state = 1, .type = (1 | 2), .name = "test_3"}
 		},
 	};
 
 	bool found = false;
 	while (flush_shmif(C)){
-		sleep(1);
-		counter -= 1;
-		if (!counter){
-			counter = step;
-			step += 10;
-		}
+		sleep(step);
+		step++;
 		for (size_t i = 0; i < COUNT_OF(ev); i++){
 			int ot = ev[i].ext.netstate.type;
-			if (found)
-				ev[i].ext.netstate.type = 0;
+			ev[i].ext.netstate.state = found;
 			arcan_shmif_enqueue(C, &ev[i]);
-			if (found)
-				ev[i].ext.netstate.type = ot;
 			sleep(1);
 		}
 		found = !found;
@@ -907,12 +893,20 @@ int afsrv_netcl(struct arcan_shmif_cont* C, struct arg_arr* args)
 		}
 	}
 
-	arcan_shmif_last_words(C, "basic net_open behaviour unfinished");
+	arcan_shmif_last_words(C, "missing connection mode");
 /* just resolve, connect and handover-exec into arcan-net */
 	return EXIT_FAILURE;
 }
 
 int afsrv_netsrv(struct arcan_shmif_cont* c, struct arg_arr* args)
 {
+/*
+ * for this mode we need a few options,
+ *
+ *   0. just listen
+ *   1. announce presence via lan
+ *   2. announce presence via directory
+ *   3. request directory to relay or hole-punch
+ */
 	return EXIT_FAILURE;
 }
