@@ -60,8 +60,8 @@
 -- Possible statustbl.kind values: "preroll", "resized", "ident",
 -- "coreopt", "message", "failure", "framestatus", "streaminfo",
 -- "streamstatus", "segment_request", "state_size",
--- "viewport", "alert", "content_state", "registered", "cursor",
--- "bchunkstate", "proto_update", "mask_input", "ramp_update"
+-- "viewport", "alert", "content_state", "registered", "clock", "cursor",
+-- "bchunkstate", "proto_update", "input_mask", "ramp_update"
 --
 -- @tblent: "preroll" {string:segkind, aid:source_audio} is an initial state
 -- where the resources for the target have been reserved, and it is possible
@@ -198,12 +198,13 @@
 -- vertical-datafield.
 --
 -- @tblent: "bchunkstate" {number:size, bool:input, bool:stream, bool:disable,
--- bool:multipart, bool:wildcard, string:multipart, bool:hint} -
+-- bool:multipart, bool:wildcard, bool:hint, string:extensions} -
 -- indicates that the frameserver wants to [hint=true] or is capable of [hint=false]
 -- of receiving (input=true) or sending binary data. It also indicates size (if
 -- applicable) and if the data can be processed in a streaming fashion or not.
--- If *disable* is true, previous announced bchunkstate capabilities are cancelled.
--- If *multipart* is true, extensions should append to the previous bchunkstate.
+-- If *disable* is true, previous announced bchunkstate capabilities are
+-- cancelled. If *multipart* is true, extensions append to the previous
+-- provided until terminated by a false multipart bchunkstate event.
 -- If *wildcard* is true, the client will also accept data of any type.
 --
 -- @tblent: "registered", {segkind, title, guid} - notice that the underlying engine
