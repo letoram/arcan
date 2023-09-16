@@ -830,7 +830,7 @@ static int setup_buffers_gbm(struct dispout* d)
 
 		if (!got_config){
 			debug_print("no matching gbm-format <-> visual "
-				"<-> egl config for fmt: %d", (int)gbm_formats[i]);
+				"<-> egl config for fmt: %s", fmt_lbls[i]);
 			continue;
 		}
 
@@ -1100,14 +1100,11 @@ bool platform_video_set_mode(platform_display_id disp,
 	}
 */
 
-/*
- * setup / allocate a new set of buffers that match the new mode
- */
-	if (!realloc_buffers(d))
+	if (!realloc_buffers(d)){
 		return false;
+	}
 
 	d->state = DISP_MAPPED;
-
 	return true;
 }
 
@@ -3917,8 +3914,10 @@ ssize_t platform_video_map_display_layer(arcan_vobj_id id,
 				arcan_video_display.default_txcos), sizeof(float) * 8
 		);
 
-	debug_print("map_display(%d->%d) ok @%zu*%zu+%zu,%zu, hint: %d",
-		(int) id, (int) disp, (size_t) d->dispw, (size_t) d->disph,
+	debug_print("map_display(%d:%s->%d) ok @%zu*%zu+%zu,%zu, hint: %d",
+		(int) id,
+		vobj->tracetag ? vobj->tracetag : "(notag)",
+		(int) disp, (size_t) d->dispw, (size_t) d->disph,
 		(size_t) d->dispx, (size_t) d->dispy, (int) hint);
 
 	d->frame_cookie = 0;
@@ -4075,7 +4074,9 @@ static enum display_update_state draw_display(struct dispout* d)
 	struct rendertarget* newtgt = arcan_vint_findrt(vobj);
 	if (newtgt){
 		size_t nd = agp_rendertarget_dirty(newtgt->art, NULL);
-		verbose_print("(%d) draw display, dirty regions: %zu", nd);
+		verbose_print(
+			"(%d:%s) draw display, dirty regions: %zu",
+			(int) d->id, vobj->tracetag ? vobj->tracetag : "(untagged)", nd);
 		if (nd || newtgt->frame_cookie != d->frame_cookie){
 			agp_rendertarget_dirty_reset(newtgt->art, NULL);
 		}
@@ -4124,8 +4125,10 @@ static enum display_update_state draw_display(struct dispout* d)
 		agp_rendertarget_clear();
 		agp_blendstate(BLEND_NONE);
 		agp_draw_vobj(0, 0, d->dispw, d->disph, d->txcos, NULL);
-		verbose_print("(%d) draw, shader: %d, %zu*%zu",
-			(int)d->id, (int)shid, (size_t)d->dispw, (size_t)d->disph);
+		verbose_print("(%d:%s) draw, shader: %d, %zu*%zu",
+			(int)d->id,
+			vobj->tracetag ? vobj->tracetag : "(notag)",
+			(int)shid, (size_t)d->dispw, (size_t)d->disph);
 	}
 	/*
 	 * another rough corner case, if we have a store that is not world ID but

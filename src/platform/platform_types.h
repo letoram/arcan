@@ -232,6 +232,15 @@ struct agp_region {
 	size_t x1, y1, x2, y2;
 };
 
+struct drm_hdr_meta {
+	int eotf;
+	uint16_t rx, ry, gx, gy, bx, by;
+	uint16_t wpx, wpy;
+	uint16_t master_min, master_max;
+	uint16_t cll;
+	uint16_t fll;
+};
+
 struct agp_vstore;
 struct agp_vstore {
 	size_t refcount;
@@ -294,6 +303,11 @@ struct agp_vstore {
 	size_t w, h;
 	uint8_t bpp, txmapped,
 		txu, txv, scale, imageproc, filtermode;
+
+	struct {
+		int model;
+		struct drm_hdr_meta drm;
+	} hdr;
 };
 
 /* Built in Shader Vertex Attributes */

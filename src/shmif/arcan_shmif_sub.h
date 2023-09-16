@@ -67,14 +67,14 @@ static inline uint16_t subp_checksum(const uint8_t* const buf, size_t len)
  */
 struct arcan_shmif_vr;
 struct arcan_shmif_ramp;
-struct arcan_shmif_hdr16f;
+struct arcan_shmif_hdr;
 struct arcan_shmif_vector;
 struct arcan_shmif_venc;
 
 union shmif_ext_substruct {
 	struct arcan_shmif_vr* vr;
 	struct arcan_shmif_ramp* cramp;
-	struct arcan_shmif_hdr16f* hdr;
+	struct arcan_shmif_hdr* hdr;
 	struct arcan_shmif_vector* vector;
 	struct arcan_shmif_venc* venc;
 };
@@ -107,28 +107,6 @@ struct arcan_shmif_ofstbl {
 	};
 };
 
-/*
- * Practically speaking these will only be used witin libdrm like settings,
- * thus the fields practically match libdrm expected metadata. For other
- * applications
- */
-struct arcan_shmif_hdr_metadata {
-	bool valid;
-	int eotf;
-
-	struct {
-		float white[2];
-		float red[2];
-		float green[2];
-		float blue[2];
-	} primaries;
-
-	uint16_t max_disp_luma;
-	uint16_t min_disp_luma;
-	uint16_t max_cll;
-	uint16_t max_fall;
-};
-
 /* HDR is something of a misnomer here, it can also refer to SDR contents with
  * higher precision (e.g. 10-bit). In that case the SDR eotf mode is specified.
  * The values here match what libdrm metadata takes. */
@@ -140,13 +118,16 @@ enum shmif_hdr_eotf {
 };
 
 struct arcan_shmif_hdr {
-	int format; /* 0 = fp32 rgba, 1 = fp16 rgba, 2 = 10-bit rgba in 1010102 */
+	uint8_t model; /* match eotf */
 
-/* PRODUCER SET */
-	struct arcan_shmif_hdr_metadata source;
-
-/* CONSUMER SET - updated on DISPLAYHINT, if known / applicable */
-	struct arcan_shmif_hdr_metadata sink;
+	struct {
+		int eotf;
+		uint16_t rx, ry, gx, gy, bx, by;
+		uint16_t wpx, wpy;
+		uint16_t master_min, master_max;
+		uint16_t cll_max;
+		uint16_t fll_max;
+	} drm;
 };
 
 /* verified during _signal, framesize <= w * h * sizeof(shmif_pixel) */
