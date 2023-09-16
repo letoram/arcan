@@ -35,6 +35,10 @@ struct anet_options {
  * 'default' will be used */
 	const char* host_tag;
 
+/* petname used to register as a source/linked directory in another - this is a
+ * hint, the server may well assign a different one */
+	const char petname[16];
+
 /* pre-inherited socket to use */
 	int sockfd;
 
@@ -51,7 +55,6 @@ struct anet_options {
 	const char* redirect_exit;
 
 /* similarly, remember any local connection point and use that */
-
 	const char* devicehint_cp;
 
 /* allow connection retries, -1 infinite, 0 no retry */

@@ -46,6 +46,8 @@ struct shmifsrv_client;
  * preroll- event stage.
  */
 struct shmifsrv_envp {
+
+	int fd_bin;
 	char* path;
 	char** argv;
 	char** envv;
@@ -188,7 +190,8 @@ enum shmifsrv_client_status {
 	CLIENT_DEAD = -1,
 	CLIENT_NOT_READY = 0,
 	CLIENT_VBUFFER_READY = 1,
-	CLIENT_ABUFFER_READY = 2
+	CLIENT_ABUFFER_READY = 2,
+	CLIENT_IDLE = 3
 };
 int shmifsrv_poll(struct shmifsrv_client*);
 
@@ -197,10 +200,6 @@ int shmifsrv_poll(struct shmifsrv_client*);
  * been created through shmifsrv_allocate_connpoint and is still in a listening
  * state, the underlying descriptor won't be closed in order for the connpoint
  * to be reused.
- *
- * If [full] is set to false, the client will not be directly told that the
- * connection is dead via the normal 'dead-man-switch' handle, only through
- * the event-queue - forcing the client to try and use some recovery mechanism.
  */
 enum shmifsrv_action {
 	SHMIFSRV_FREE_FULL   = 0,
@@ -335,7 +334,7 @@ bool shmifsrv_audio(struct shmifsrv_client* cl,
 		size_t n_samples, unsigned channels, unsigned rate, void* tag), void* tag);
 
 /*
- * [THREAD_UNSAFE]
+ * [THREAD:USES_TLS]
  * This is a helper function that returns the number of monotonic ticks
  * since the last time this function was called. It is thus a global state
  * shared by many clients, along with the optional time to next tick. The
@@ -351,7 +350,7 @@ bool shmifsrv_audio(struct shmifsrv_client* cl,
 int shmifsrv_monotonic_tick(int* left);
 
 /*
- * [THREAD_UNSAFE]
+ * [THREAD:USES_TLS]
  * Explicitly rebase the shared clock counter due to a large stall,
  * pause, global suspend action and so on.
  */
