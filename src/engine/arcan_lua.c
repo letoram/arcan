@@ -6802,7 +6802,7 @@ static int rawsurface(lua_State* ctx)
 	if (dumpstr){
 		int fd;
 		char* fname = arcan_find_resource(
-			dumpstr, RESOURCE_APPL_TEMP, ARES_FILE | ARES_CREATE, &fd);
+			dumpstr, CREATE_USERMASK, ARES_FILE | ARES_CREATE, &fd);
 		if (!fname){
 			arcan_warning(
 				"rawsurface() -- refusing to overwrite existing file (%s)\n", fname);
@@ -8461,10 +8461,7 @@ static int targetsnapshot(lua_State* ctx)
 
 /* verify that it is a safe namespace for writing */
 	if (ns != RESOURCE_APPL_STATE){
-		if (ns ==
-			RESOURCE_APPL_SHARED ||
-			ns == RESOURCE_APPL_TEMP ||
-			ns == RESOURCE_NS_USER){
+		if (ns && CREATE_USERMASK){
 			command = TARGET_COMMAND_BCHUNK_OUT;
 		}
 		else {
@@ -9959,7 +9956,7 @@ static int spawn_recfsrv(lua_State* ctx,
 		fd = open(NULFILE, O_WRONLY | O_CLOEXEC);
 	else {
 		char* fn = arcan_find_resource(resf,
-			RESOURCE_APPL_TEMP, ARES_FILE | ARES_CREATE, &fd);
+			CREATE_USERMASK, ARES_FILE | ARES_CREATE, &fd);
 
 /* it is currently allowed to "record over" an existing file without forcing
  * the caller to use zap_resource first, this should possibly be reconsidered*/
@@ -11447,7 +11444,7 @@ static int screenshot(lua_State* ctx)
 
 	int infd = -1;
 	char* fname = arcan_find_resource(
-		resstr, DEFAULT_USERMASK, ARES_FILE | ARES_CREATE, &infd);
+		resstr, CREATE_USERMASK, ARES_FILE | ARES_CREATE, &infd);
 	if (!fname){
 		arcan_warning(
 			"save_screeenshot() -- refusing to overwrite existing file.\n");

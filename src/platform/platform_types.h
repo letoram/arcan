@@ -389,22 +389,22 @@ enum resource_type {
  * exclusive(mask) = mask & (mask - 1) == 0
  */
 enum arcan_namespaces {
-/* .lua parse/load/execute,
- * generic resource load
- * special resource save (screenshots, ...)
- * rawresource open/write */
-	RESOURCE_APPL = 1,
-
-/*
- * shared resources between all appls.
- */
-	RESOURCE_APPL_SHARED = 2,
-
 /*
  * like RESOURCE_APPL, but contents can potentially be
  * reset on exit / reload.
  */
-	RESOURCE_APPL_TEMP = 4,
+	RESOURCE_APPL_TEMP = 1,
+
+/* .lua parse/load/execute,
+ * generic resource load
+ * special resource save (screenshots, ...)
+ * rawresource open/write */
+	RESOURCE_APPL = 2,
+
+/*
+ * shared resources between all appls.
+ */
+	RESOURCE_APPL_SHARED = 4,
 
 /*
  * eligible recipients for target snapshot/restore

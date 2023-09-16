@@ -10,6 +10,7 @@
  * input\_remap\_translation overloaded form for serializing backing keymap
  * clockreq no longer forwarded for frameserver event handler
  * image\_metadata added for annotating a vid used when streaming/sharing/scanout HDR contents
+ * functions creating files now apply a separate WRITEMASK (split from USERMASK)
 
 ## Core
  * respect border attribute in text rasteriser
@@ -42,6 +43,7 @@
  * Add interp=st for suckless terminal based state machine
 
 ## Platform
+ * paths: prioritise \_APPL_TEMP over \_APPL in load order
  * audio: engine audio split out into platform bit
  * audio: stub platform added
  * egl-dri: evict streams
