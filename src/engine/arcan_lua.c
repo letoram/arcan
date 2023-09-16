@@ -11690,6 +11690,7 @@ static int net_open(lua_State* ctx)
 
 	struct frameserver_envp args = {
 		.use_builtin = true,
+		.preserve_env = true,
 		.args.builtin.mode = "net-cl",
 		.args.builtin.resource = instr
 	};
