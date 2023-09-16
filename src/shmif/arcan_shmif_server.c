@@ -179,7 +179,7 @@ struct shmifsrv_client* shmifsrv_spawn_client(
 		return NULL;
 	}
 
-	*clsocket = res->con->dpipe;
+	*clsocket = childend;
 	res->cookie = arcan_shmif_cookie();
 	res->status = AUTHENTICATING;
 
@@ -354,8 +354,10 @@ int shmifsrv_poll(struct shmifsrv_client* cl)
 			int a = !!(atomic_load(&cl->con->shm.ptr->aready));
 			int v = !!(atomic_load(&cl->con->shm.ptr->vready));
 			shmifsrv_leave();
-			return
-				(CLIENT_VBUFFER_READY * v) | (CLIENT_ABUFFER_READY * a);
+			if (a || v)
+				return
+					(CLIENT_VBUFFER_READY * v) | (CLIENT_ABUFFER_READY * a);
+			return CLIENT_IDLE;
 		}
 		else
 			cl->status = BROKEN;
@@ -598,7 +600,9 @@ bool shmifsrv_tick(struct shmifsrv_client* cl)
 	return true;
 }
 
-static int64_t timebase, c_ticks;
+static _Thread_local int64_t timebase;
+static _Thread_local int64_t c_ticks;
+
 int shmifsrv_monotonic_tick(int* left)
 {
 	int64_t now = arcan_timemillis();
