@@ -26,7 +26,7 @@ union shmif_ext_substruct arcan_shmif_substruct(
 		sub.vr = (struct arcan_shmif_vr*)(base + aofs->ofs_vr);
 
 	if (aofs->sz_hdr)
-		sub.hdr = (struct arcan_shmif_hdr16f*)(base + aofs->ofs_hdr);
+		sub.hdr = (struct arcan_shmif_hdr*)(base + aofs->ofs_hdr);
 
 	if (aofs->sz_vector)
 		sub.vector = (struct arcan_shmif_vector*)(base + aofs->ofs_vector);
@@ -40,8 +40,8 @@ union shmif_ext_substruct arcan_shmif_substruct(
 bool arcan_shmifsub_getramp(
 	struct arcan_shmif_cont* cont, size_t ind, struct ramp_block* out)
 {
-	struct arcan_shmif_ramp* hdr = arcan_shmif_substruct(
-		cont, SHMIF_META_CM).cramp;
+	struct arcan_shmif_ramp* hdr =
+		arcan_shmif_substruct(cont, SHMIF_META_CM).cramp;
 
 	if (!hdr || hdr->magic != ARCAN_SHMIF_RAMPMAGIC || ind > (hdr->n_blocks >> 1))
 		return false;

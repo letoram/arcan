@@ -269,6 +269,27 @@ static bool push_buffer(arcan_frameserver* src,
 	vready = (vready <= 0 || vready > src->vbuf_cnt) ? 0 : vready - 1;
 	shmif_pixel* buf = src->vbufs[vready];
 
+/* If the HDR subprotocol is enabled, verify and translate into store metadata
+ * - explicitly map the metadata format. There is only the one to chose from
+ *   right now, but it wouldn't be surprising if that changes. */
+	if (src->desc.aext.hdr){
+		struct arcan_shmif_hdr fc = *src->desc.aext.hdr;
+		store->hdr.model = 1;
+		store->hdr.drm = (struct drm_hdr_meta){
+			.eotf = fc.drm.eotf,
+			.rx = fc.drm.rx,
+			.ry = fc.drm.ry,
+			.gx = fc.drm.gx,
+			.gy = fc.drm.gy,
+			.bx = fc.drm.bx,
+			.by = fc.drm.by,
+			.wpx = fc.drm.wpx,
+			.wpy = fc.drm.wpy,
+			.cll = fc.drm.cll_max,
+			.fll = fc.drm.fll_max
+		};
+	}
+
 /* Need to do this check here as-well as in the regular frameserver tick
  * control because the backing store might have changed somehwere else. */
 	if (src->desc.width != store->w || src->desc.height != store->h ||

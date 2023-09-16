@@ -9,6 +9,7 @@
  * open\_nonblock can now adopt an existing iostream into a target vid
  * input\_remap\_translation overloaded form for serializing backing keymap
  * clockreq no longer forwarded for frameserver event handler
+ * image\_metadata added for annotating a vid used when streaming/sharing/scanout HDR contents
 
 ## Core
  * respect border attribute in text rasteriser

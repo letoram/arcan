@@ -4553,9 +4553,8 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			}
 			else if (ev->ext.netstate.state == 0)
 				tblbool(ctx, "lost", true, top);
-			else {
+			else
 				tblbool(ctx, "bad", true, top);
-			}
 
 			if (ev->ext.netstate.type & 1)
 				tblbool(ctx, "source", true, top);
@@ -9739,6 +9738,65 @@ enum arcan_ffunc_rv arcan_lua_proctarget FFUNC_HEAD
 	return 0;
 }
 
+static int imagemetadata(lua_State* ctx)
+{
+	LUA_TRACE("image_metadata");
+	arcan_vobject* vobj;
+	luaL_checkvid(ctx, 1, &vobj);
+	if (vobj->vstore->txmapped != TXSTATE_TEX2D){
+		lua_pushboolean(ctx, false);
+		LUA_ETRACE("image_metadata", "storage_type mismatch", 1);
+	}
+
+	const char* model = luaL_checkstring(ctx, 2);
+	if (strcmp(model, "drmv1") != 0){
+		lua_pushboolean(ctx, false);
+		LUA_ETRACE("image_metadata", "metadata model missing", 1);
+	}
+
+	if (lua_type(ctx, 3) != LUA_TTABLE){
+		lua_pushboolean(ctx, false);
+		arcan_fatal("image_metadata(, , >tbl< ) expected table");
+		LUA_ETRACE("image_metadata", "expected table for coordinates", 1);
+	}
+
+	int ncords = lua_rawlen(ctx, 3);
+	if (ncords < 8){
+		arcan_fatal("image_metadata(), wrong coordinate set");
+		lua_pushboolean(ctx, false);
+		LUA_ETRACE("image_metadata", "expected 10 coordinates (rgb,w)", 1);
+	}
+
+	float coords[8];
+	for (size_t i = 0; i < 8; i++){
+		lua_rawgeti(ctx, 3, i+1);
+		coords[i] = lua_tonumber(ctx, -1);
+		lua_pop(ctx, 1);
+	}
+
+	struct drm_hdr_meta meta = {
+		.rx = coords[0],
+		.ry = coords[1],
+		.gx = coords[2],
+		.gy = coords[3],
+		.bx = coords[4],
+		.by = coords[5],
+		.wpx = coords[6],
+		.wpy = coords[7]
+	};
+
+	meta.master_min = luaL_checknumber(ctx, 4);
+	meta.master_max = luaL_checknumber(ctx, 5);
+	meta.cll = luaL_checknumber(ctx, 6);
+	meta.fll = luaL_checknumber(ctx, 7);
+
+	vobj->vstore->hdr.model = 1;
+	vobj->vstore->hdr.drm = meta;
+
+	lua_pushboolean(ctx, true);
+	LUA_ETRACE("image_metadata", NULL, 1);
+}
+
 static int imagestorage(lua_State* ctx)
 {
 	LUA_TRACE("image_access_storage");
@@ -12024,6 +12082,7 @@ static const luaL_Reg imgfuns[] = {
 {"image_state",              imagestate         },
 {"image_access_storage",     imagestorage       },
 {"image_resize_storage",     imageresizestorage },
+{"image_metadata",           imagemetadata      },
 {"image_sharestorage",       sharestorage       },
 {"image_matchstorage",       matchstorage       },
 {"cursor_setstorage",        cursorstorage      },
