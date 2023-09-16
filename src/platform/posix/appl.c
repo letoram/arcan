@@ -111,14 +111,14 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 	char* p_a = arcan_expand_resource("", RESOURCE_APPL_SHARED);
 	char* p_b = arcan_expand_resource("", RESOURCE_SYS_APPLSTATE);
 	if (!p_b)
-		arcan_override_namespace(p_a, RESOURCE_APPL_STATE);
+		arcan_softoverride_namespace(p_a, RESOURCE_APPL_STATE);
 	else if (strncmp(p_a, p_b, strlen(p_a)) == 0){
-		arcan_override_namespace(p_b, RESOURCE_APPL_STATE);
+		arcan_softoverride_namespace(p_b, RESOURCE_APPL_STATE);
 	}
 	else {
 		arcan_mem_free(p_b);
 		p_b = arcan_expand_resource(base, RESOURCE_SYS_APPLSTATE);
-		arcan_override_namespace(p_b, RESOURCE_APPL_STATE);
+		arcan_softoverride_namespace(p_b, RESOURCE_APPL_STATE);
 	}
 	arcan_mem_free(p_a);
 	arcan_mem_free(p_b);
