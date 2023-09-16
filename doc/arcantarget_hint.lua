@@ -10,8 +10,11 @@
 -- Otherwise it is expected that *fsrv* references a valid frameserver tied
 -- to a valid source from ref:define_arcantarget or retrieved through the
 -- _adopt event handler.
--- The currently supported ones are: input_label and the format of the
--- *hint* table matches that of the description in ref:launch_target.
+-- The currently supported ones are:
+-- * input_label and the format of the *hint* table matches that of the description in ref:launch_target.
+-- * ident with a string:message field in *hint*, provided as the new segment runtime identity (e.g. document name)
+-- * alert with a string:message field in *hint*, provided as the reason for user attention
+-- * statesize with a int:size field in *hint*, provided as the estimated current output size of a state-save
 -- @group: targetcontrol
 -- @cfunction: arcantargethint
 -- @related:

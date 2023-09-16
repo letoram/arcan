@@ -80,7 +80,9 @@
 -- callback is triggered from a state where calls that would alter graphics
 -- pipeline state are permitted or would trigger undefined behaviour. This is
 -- likely to be set as the scheduler will try to defer I/O operations to when
--- it is blocked on rendering or scanning out to a display.
+-- it is blocked on rendering or scanning out to a display. If processing the
+-- data would cause modifications to the rendering pipeline state, it should
+-- then be buffered and handled in the preframe_pulse event handler.
 --
 -- Some files support absolute and/or relative seeking. For relative seeking
 -- based on the current file position, call :seek(ofs):bool,int. To set an
