@@ -558,6 +558,25 @@ static bool calc_dirty(
 	return true;
 }
 
+static bool scan_stepframe_event(
+	struct arcan_evctx*c, struct arcan_event* old, int id)
+{
+	if (old->tgt.ioevs[1].iv != id)
+		return false;
+	uint8_t cur = *c->front;
+
+/* conservative merge on STEPFRAME so far is results from VBLANK polling only */
+	while (cur != *c->back){
+		struct arcan_event* ev = &c->eventbuf[cur];
+		if (ev->category == EVENT_TARGET &&
+			ev->tgt.kind == TARGET_COMMAND_STEPFRAME &&
+			ev->tgt.ioevs[1].iv == id)
+				return true;
+		cur = (cur + 1) % c->eventbuf_sz;
+	}
+	return false;
+}
+
 static bool scan_disp_event(struct arcan_evctx* c, struct arcan_event* old)
 {
 	uint8_t cur = *c->front;
@@ -801,8 +820,10 @@ reset:
  */
 checkfd:
 	do {
-		if (-1 == priv->pev.fd)
+		errno = 0;
+		if (-1 == priv->pev.fd){
 			priv->pev.fd = arcan_fetchhandle(c->epipe, blocking);
+		}
 
 		if (priv->pev.gotev){
 			if (blocking){
@@ -820,7 +841,7 @@ checkfd:
 			else if (blocking){
 				debug_print(STATUS, c, "failure on blocking fd-wait: %s, %s",
 					strerror(errno), arcan_shmif_eventstr(&priv->pev.ev, NULL, 0));
-				if (errno == EAGAIN)
+				if (!errno || errno == EAGAIN)
 					continue;
 			}
 
@@ -862,6 +883,11 @@ checkfd:
  * to descriptor- carrying events as more state tracking is needed. */
 			case TARGET_COMMAND_DISPLAYHINT:
 				if (!priv->valid_initial && scan_disp_event(ctx, dst))
+					goto reset;
+			break;
+
+			case TARGET_COMMAND_STEPFRAME:
+				if (scan_stepframe_event(ctx, dst, 2) || scan_stepframe_event(ctx, dst, 3))
 					goto reset;
 			break;
 
