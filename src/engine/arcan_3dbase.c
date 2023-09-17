@@ -1510,6 +1510,8 @@ arcan_errc arcan_3d_camtag(arcan_vobj_id tgtid,
 {
 	arcan_vobject* vobj = arcan_video_getobject(vid);
 	struct rendertarget* tgt = NULL;
+	struct camtag_data* camobj = NULL;
+
 	if (tgtid != ARCAN_EID){
 		arcan_vobject* tgtobj = arcan_video_getobject(tgtid);
 		tgt = arcan_vint_findrt(tgtobj);
@@ -1518,18 +1520,23 @@ arcan_errc arcan_3d_camtag(arcan_vobj_id tgtid,
 	va_list vl;
 	va_start(vl, flags);
 
-	if (vobj->feed.state.ptr)
-		return ARCAN_ERRC_UNACCEPTED_STATE;
+	if (vobj->feed.state.ptr){
+		if (vobj->feed.state.tag != ARCAN_TAG_3DCAMERA)
+			return ARCAN_ERRC_UNACCEPTED_STATE;
+		camobj = vobj->feed.state.ptr;
+	}
 
 	if (tgt)
 		tgt->camtag = vobj->cellid;
 	else
 		vobj->owner->camtag = vobj->cellid;
 
-	struct camtag_data* camobj = arcan_alloc_mem(
-		sizeof(struct camtag_data),
-		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_SIMD
-	);
+	if (!camobj)
+		camobj =
+			arcan_alloc_mem(
+				sizeof(struct camtag_data),
+				ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_SIMD
+			);
 
 	camobj->near = near;
 	camobj->far = far;
