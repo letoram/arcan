@@ -883,6 +883,7 @@ arcan_vobj_id arcan_3d_buildsphere(
 	newmodel->geometry->store.n_vertices = nv / 3;
 	newmodel->geometry->complete = true;
 	newmodel->radius = r;
+	newmodel->geometry->nmaps = nmaps;
 	newmodel->flags.complete = true;
 /* bbmin, bbmax */
 
