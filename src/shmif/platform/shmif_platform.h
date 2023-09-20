@@ -11,7 +11,10 @@
 
 enum platform_execve_opts {
 	EXECVE_NONE = 0,
-	EXECVE_DETACH_PROCESS = 1
+	EXECVE_DETACH_PROCESS = 1,
+	EXECVE_DETACH_STDIN   = 2,
+	EXECVE_DETACH_STDOUT  = 4,
+	EXECVE_DETACH_STDERR  = 8
 };
 
 /* Take a file descriptor (shmif_fd) that corresponds to the control socket

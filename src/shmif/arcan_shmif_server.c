@@ -3,6 +3,8 @@
 #include <errno.h>
 #include <stdatomic.h>
 #include <math.h>
+#include <sys/wait.h>
+#include <pthread.h>
 
 /*
  * This is needed in order to re-use some of the platform layer functions that
@@ -44,6 +46,7 @@ struct shmifsrv_client {
 /* need a 'per client' eventqueue */
 	struct arcan_frameserver* con;
 	enum connstatus status;
+	pid_t pid;
 	size_t errors;
 	uint64_t cookie;
 };
@@ -222,10 +225,7 @@ struct shmifsrv_client* shmifsrv_spawn_client(
 			shmifsrv_free(res, SHMIFSRV_FREE_FULL);
 			return NULL;
 		}
-
-/* there is no API for returning / binding the pid here, the use for that seems
- * rather fringe (possibly for kill like mechanics), if needed we should tie it
- * to the context and add an accessor */
+		res->pid = rpid;
 	}
 
 	return res;
@@ -368,6 +368,26 @@ int shmifsrv_poll(struct shmifsrv_client* cl)
 	return CLIENT_NOT_READY;
 }
 
+static void* nanny_thread(void* arg)
+{
+	pid_t* pid = (pid_t*) arg;
+	int counter = 10;
+	while (counter--){
+		int statusfl;
+		int rv = waitpid(*pid, &statusfl, WNOHANG);
+		if (rv > 0)
+			break;
+		else if (counter == 0){
+			kill(*pid, SIGKILL);
+			waitpid(*pid, &statusfl, 0);
+			break;
+		}
+		sleep(1);
+	}
+	free(pid);
+	return NULL;
+}
+
 void shmifsrv_free(struct shmifsrv_client* cl, int mode)
 {
 	if (!cl)
@@ -385,6 +405,20 @@ void shmifsrv_free(struct shmifsrv_client* cl, int mode)
 	case SHMIFSRV_FREE_LOCAL:
 		platform_fsrv_destroy_local(cl->con);
 	break;
+	}
+
+/* the same nanny-kill thread approach as used in platform-posix-frameserver */
+	if (cl->pid){
+		pid_t* pidptr = malloc(sizeof(pid_t));
+		pthread_attr_t nanny_attr;
+		pthread_attr_init(&nanny_attr);
+		pthread_attr_setdetachstate(&nanny_attr, PTHREAD_CREATE_DETACHED);
+		*pidptr = cl->pid;
+
+		pthread_t nanny;
+		if (0 != pthread_create(&nanny, &nanny_attr, nanny_thread, (void*) pidptr))
+			kill(cl->pid, SIGKILL);
+		pthread_attr_destroy(&nanny_attr);
 	}
 
 	cl->status = DEAD;

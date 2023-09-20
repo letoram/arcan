@@ -5,9 +5,11 @@
  * where is the basedir
  */
 struct anet_dirsrv_opts {
+	struct a12_context_options* a12_cfg;
 	int basedir;
 	struct appl_meta dir;
 	size_t dir_count;
+	const char* permit_source;
 };
 
 /*
@@ -35,6 +37,12 @@ struct anet_dircl_opts {
 	bool block_log;
 	bool keep_appl;
 
+/*
+ * set to source / exec an arcan-shmif client:
+ *  /path/to/bin arg1 arg2 arg3, ...
+ */
+	char** source_argv;
+
 	void* (*allocator)(struct a12_state*, struct directory_meta*);
 	pid_t (*executor)(struct a12_state*,
 		struct directory_meta*, const char*, void* tag, int* inf, int* outf);
@@ -44,10 +52,14 @@ struct directory_meta {
 	struct appl_meta* dir;
 	struct a12_state* S;
 	struct anet_dircl_opts* clopt;
+
 	FILE* appl_out;
 	bool appl_out_complete;
 	int state_in;
 	bool state_in_complete;
+
+	bool activated;
+	struct arcan_shmif_cont* C;
 };
 
 /*
@@ -56,7 +68,13 @@ struct directory_meta {
 void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts);
 
 void anet_directory_srv(
-	struct a12_state* S, struct anet_dirsrv_opts opts, int fdin, int fdout);
+	struct a12_context_options*, struct anet_dirsrv_opts, int fdin, int fdout);
+
+/*
+ * shmif connection to map to a thread for coordination
+ */
+void anet_directory_shmifsrv_thread(struct shmifsrv_client*);
+void anet_directory_shmifsrv_set(struct anet_dirsrv_opts* opts);
 
 /*
  * dir_cl.c

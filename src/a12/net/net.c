@@ -1,6 +1,3 @@
-/*
- * Simple implementation of a client/server proxy.
- */
 #include <arcan_shmif.h>
 #include <arcan_shmif_server.h>
 #include <errno.h>
@@ -30,6 +27,7 @@ enum anet_mode {
 	ANET_SHMIF_SRV,
 	ANET_SHMIF_SRV_INHERIT,
 	ANET_SHMIF_EXEC,
+	ANET_SHMIF_DIRSRV_INHERIT
 };
 
 enum mt_mode {
@@ -52,14 +50,14 @@ static struct {
 	size_t backpressure;
 	size_t backpressure_soft;
 	int directory;
-	const char* reqname;
 	struct anet_dirsrv_opts dirsrv;
 	struct anet_dircl_opts dircl;
 	char* trust_domain;
+	char* path_self;
 } global = {
 	.backpressure_soft = 2,
 	.backpressure = 6,
-	.directory = -1
+	.directory = -1,
 };
 
 static const char* trace_groups[] = {
@@ -152,12 +150,6 @@ static bool handover_setup(struct a12_state* S,
 		return false;
 	}
 
-	if (global.directory > 0){
-		anet_directory_srv(S, global.dirsrv, fd, fd);
-		shutdown(fd, SHUT_RDWR);
-		return false;
-	}
-
 	if (S->remote_mode == ROLE_PROBE){
 		a12int_trace(A12_TRACE_SYSTEM, "probed:terminating");
 		shutdown(fd, SHUT_RDWR);
@@ -195,15 +187,58 @@ static int get_bcache_dir()
 	if (!base)
 		return -1;
 
-	return open(base, O_DIRECTORY);
+	return open(base, O_DIRECTORY | O_CLOEXEC);
 }
 
-/*
- * in this mode we should really fexec ourselves so we don't risk exposing
- * aslr or canaries, as well as handle the key-generation
- */
+static void set_log_trace()
+{
+#ifdef DEBUG
+	if (!a12_trace_targets)
+		return;
+
+	char buf[sizeof("cl_log_xxxxxx.log")];
+	snprintf(buf, sizeof(buf), "cl_log_%.6d.log", (int) getpid());
+	FILE* fpek = fopen(buf, "w+");
+	if (fpek){
+		a12_set_trace_level(a12_trace_targets, fpek);
+	}
+#endif
+}
+
 static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 {
+/*
+ * With the directory server mode we also maintain a shmif server connection
+ * and inherit shmif into the forked child that is a re-execution of ourselves. */
+	int clsock = -1;
+	struct shmifsrv_client* cl = NULL;
+	struct arcan_net_meta* ameta = tag;
+
+	if (global.directory > 0){
+		char tmpfd[32], tmptrace[32];
+		snprintf(tmpfd, sizeof(tmpfd), "%d", fd);
+		snprintf(tmptrace, sizeof(tmptrace), "%d", a12_trace_targets);
+
+		char* argv[] = {global.path_self, "-d", tmptrace, "-S", tmpfd, NULL, NULL};
+
+	/* shmif-server lib will get to waitpid / kill so we don't need to care here */
+		struct shmifsrv_envp env = {
+			.path = global.path_self,
+			.envv = NULL,
+			.argv = argv,
+			.detach = 2 | 4 | 8
+		};
+
+		cl = shmifsrv_spawn_client(env, &clsock, NULL, 0);
+		if (cl){
+			anet_directory_shmifsrv_thread(cl);
+		}
+
+		a12_channel_close(S);
+		close(fd);
+		return;
+	}
+
 	pid_t fpid = fork();
 
 /* just ignore and return to caller */
@@ -211,6 +246,7 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 		a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d", (int)fpid);
 		a12_channel_close(S);
 		close(fd);
+		close(clsock);
 		return;
 	}
 
@@ -222,16 +258,7 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 	}
 
 /* Split the log output on debug so we see what is going on */
-#ifdef _DEBUG
-	if (a12_trace_targets){
-		char buf[sizeof("cl_log_xxxxxx.log")];
-		snprintf(buf, sizeof(buf), "cl_log_%.6d.log", (int) getpid());
-		FILE* fpek = fopen(buf, "w+");
-		if (fpek){
-			a12_set_trace_level(a12_trace_targets, fpek);
-		}
-	}
-#endif
+	set_log_trace();
 
 /* make sure that we don't leak / expose whatever the listening process has,
  * not much to do to guarantee or communicate the failure on these three -
@@ -243,13 +270,19 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 	open("/dev/null", O_WRONLY);
 	open("/dev/null", O_WRONLY);
 
+	if (cl){
+		shmifsrv_free(cl, SHMIFSRV_FREE_NO_DMS);
+	}
+
 	struct shmifsrv_client* C = NULL;
 	struct arcan_net_meta* meta = tag;
 
 	if (!handover_setup(S, fd, meta, &C)){
-		return;
+		goto out;
 	}
 
+/* this is for a full 'remote desktop' like scenario, directory is handled
+ * in handover_setup */
 	arcan_shmif_privsep(NULL, "shmif", NULL, 0);
 	int rc = 0;
 
@@ -270,6 +303,7 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 		rc = a12helper_a12srv_shmifcl(NULL, S, NULL, fd, fd);
 	}
 
+out:
 	shutdown(fd, SHUT_RDWR);
 	close(fd);
 	exit(rc < 0 ? EXIT_FAILURE : EXIT_SUCCESS);
@@ -614,14 +648,16 @@ static bool show_usage(const char* msg)
 	"    arcan-net --directory -l port [ip]\n\n"
 	"Directory/discovery client: \n"
 	"    arcan-net [tag@]host port [appl]\n\n"
+	"Directory/discovery source-client: \n"
+	"    arcan-net [tag@]host port -- name /usr/bin/app arg1 arg2 argn\n\n"
 	"Forward-local options:\n"
 	"\t-X             \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n"
 	"\t-r, --retry n  \t Limit retry-reconnect attempts to 'n' tries\n\n"
 	"Authentication:\n"
 	"\t --no-ephem-rt \t Disable ephemeral keypair roundtrip (outbound only)\n"
 	"\t-a, --auth n   \t Read authentication secret from stdin (maxlen:32)\n"
-	"\t --soft-auth   \t authentication secret (password) only, ignore keystore\n"
 	"\t               \t if [n] is provided, n keys added to trusted\n"
+	"\t --soft-auth   \t Permit unknown via authentication secret (password)\n"
 	"\t-T, --trust s  \t Specify trust domain for splitting keystore\n"
 	"\t               \t outbound connections default to 'outbound' while\n"
 	"\t               \t serving/listening defaults to a wildcard ('*')\n\n",
@@ -636,6 +672,9 @@ static bool show_usage(const char* msg)
 	"\t --reload      \t Re-request the same appl after completion\n"
 	"\t --block-log   \t Don't attempt to forward script errors or crash logs\n"
 	"\t --block-state \t Don't attempt to synch state before/after running appl\n\n"
+	"Directory server options: \n"
+	"\t --allow-src s \t Let clients in trust group [s, all=*] register as sources\n"
+	"\t --allow-dir s \t Let clients in trust group [s, all=*] register as directories\n\n"
 	"Environment variables:\n"
 	"\tARCAN_STATEPATH\t Used for keystore and state blobs (sensitive)\n"
 #ifdef WANT_H264_ENC
@@ -649,9 +688,9 @@ static bool show_usage(const char* msg)
 	"\tAdd/Append key: arcan-net keystore tag host [port=6680]\n"
 	"\t                tag=default is reserved\n"
 	"\nTrace groups (stderr):\n"
-	"\tvideo:1      audio:2      system:4    event:8      transfer:16\n"
-	"\tdebug:32     missing:64   alloc:128   crypto:256   vdetail:512\n"
-	"\tbinary:1024  security:2048\n\n", msg ? msg : "", msg ? "\n\n" : ""
+	"\tvideo:1      audio:2       system:4    event:8      transfer:16\n"
+	"\tdebug:32     missing:64    alloc:128   crypto:256   vdetail:512\n"
+	"\tbinary:1024  security:2048 directory:4096\n\n", msg ? msg : "", msg ? "\n\n" : ""
 	);
 	return false;
 }
@@ -733,14 +772,23 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 				return show_usage(modeerr);
 
 			opts->mode = ANET_SHMIF_SRV_INHERIT;
+
 			if (i >= argc - 1)
-				return show_usage("Invalid arguments, -S without room for ip");
+				return show_usage("Invalid arguments, -S without room for socket");
 
 			opts->sockfd = strtoul(argv[++i], NULL, 10);
 			struct stat fdstat;
 
 			if (-1 == fstat(opts->sockfd, &fdstat))
 				return show_usage("Couldn't stat -S descriptor");
+
+/* Both socket passed and preauth arcan shmif connection? treat that as the
+ * directory server forking off into itself to handle a client connection */
+			if (getenv("ARCAN_SOCKIN_FD")){
+				opts->mode = ANET_SHMIF_DIRSRV_INHERIT;
+				opts->opts->local_role = ROLE_DIR;
+				continue;
+			}
 
 			if ((fdstat.st_mode & S_IFMT) != S_IFSOCK)
 				return show_usage("-S descriptor does not point to a socket");
@@ -791,8 +839,9 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 				if (opts->port[ind] < '0' || opts->port[ind] > '9')
 					return show_usage("Invalid values in port argument");
 
-/* three paths, -l port host --exec ..
- * or -l port --exec
+/* three paths:
+ *    -l port host -- ..
+ * or -l port --
  * or just -l port */
 			i++;
 
@@ -844,12 +893,24 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		else if (strcmp(argv[i], "--reload") == 0){
 			global.dircl.reload = true;
 		}
+		else if (strcmp(argv[i], "--") == 0){
+			opts->opts->local_role = ROLE_SOURCE;
+			return i;
+		}
+		else if (strcmp(argv[i], "--permit-src") == 0){
+			i++;
+			if (i == argc)
+				return show_usage("--permit-src without domain argument");
+			global.dirsrv.permit_source = argv[i];
+		}
 		else if (strcmp(argv[i], "--directory") == 0){
 			if (!getenv("ARCAN_APPLBASEPATH")){
 				return show_usage("--directory without ARCAN_APPLBASEPATH set");
 			}
 
-			global.directory = open(getenv("ARCAN_APPLBASEPATH"), O_DIRECTORY);
+			global.directory = open(
+				getenv("ARCAN_APPLBASEPATH"), O_DIRECTORY | O_CLOEXEC);
+
 			if (-1 == global.directory){
 				return show_usage("--directory ARCAN_APPLBASEPATH couldn't be opened");
 			}
@@ -992,22 +1053,27 @@ static int apply_keystore_command(int argc, char** argv)
 static struct pk_response key_auth_local(uint8_t pk[static 32])
 {
 	struct pk_response auth = {};
+	uint8_t my_private_key[32];
 
 	char* tmp;
 	uint16_t tmpport;
 	size_t outl;
 	unsigned char* out = a12helper_tob64(pk, 32, &outl);
 
-/* is the key in our trusted set? */
+/* the trust domain (accepted return value) are ignored here, a separate
+ * request will check if a certain domain is trusted for the kpub when/if a
+ * request arrives that mandates it */
 	if (a12helper_keystore_accepted(pk, global.trust_domain)){
 		auth.authentic = true;
 		a12int_trace(A12_TRACE_SECURITY, "accept=%s", out);
-		a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
+		a12helper_keystore_hostkey("default", 0, my_private_key, &tmp, &tmpport);
+		a12_set_session(&auth, pk, my_private_key);
 	}
 /* or do we not care about pk authenticity - password in first HMAC only */
-	if (global.soft_auth){
+	else if (global.soft_auth){
 		auth.authentic = true;
-		a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
+		a12helper_keystore_hostkey("default", 0, my_private_key, &tmp, &tmpport);
+		a12_set_session(&auth, pk, my_private_key);
 		a12int_trace(A12_TRACE_SECURITY, "soft-auth-trust=%s", out);
 	}
 /* or should we add the first n unknown as implicitly trusted through pass */
@@ -1019,7 +1085,8 @@ static struct pk_response key_auth_local(uint8_t pk[static 32])
 
 /* trust-domain covers both case 3 and 4. */
 		a12helper_keystore_accept(pk, global.trust_domain);
-		a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
+		a12helper_keystore_hostkey("default", 0, my_private_key, &tmp, &tmpport);
+		a12_set_session(&auth, pk, my_private_key);
 	}
 
 /* Since SSH has trained people on this behaviour, allow interactive override.
@@ -1049,14 +1116,16 @@ static struct pk_response key_auth_local(uint8_t pk[static 32])
 			fgets(buf, 16, stdin);
 			if (strcmp(buf, "yes\n") == 0){
 				auth.authentic = true;
-				a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
+				a12helper_keystore_hostkey("default", 0, my_private_key, &tmp, &tmpport);
+				a12_set_session(&auth, pk, my_private_key);
 				a12int_trace(A12_TRACE_SECURITY, "interactive-soft-auth=%s", out);
 			}
 			else if (strcmp(buf, "remember\n") == 0){
 				auth.authentic = true;
 				a12helper_keystore_accept(pk, global.trust_domain);
 				a12int_trace(A12_TRACE_SECURITY, "interactive-add-trust=%s", out);
-				a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
+				a12helper_keystore_hostkey("default", 0, my_private_key, &tmp, &tmpport);
+				a12_set_session(&auth, pk, my_private_key);
 			}
 			else
 				a12int_trace(A12_TRACE_SECURITY, "rejected-interactive");
@@ -1087,6 +1156,7 @@ int main(int argc, char** argv)
 
 	anet.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));
 	anet.opts->pk_lookup = key_auth_local;
+	global.dirsrv.a12_cfg = anet.opts;
 
 /* set this as default, so the remote side can't actually close */
 	anet.redirect_exit = getenv("ARCAN_CONNPATH");
@@ -1100,8 +1170,10 @@ int main(int argc, char** argv)
 		(strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0)))
 		return show_usage(NULL);
 
+/* inherited directory server mode doesn't take extra listening parameters and
+ * was an afterthought not fitting with the rest of the (messy) arg parsing */
 	size_t argi = apply_commandline(argc, argv, &meta);
-	if (!argi)
+	if (!argi && anet.mode != ANET_SHMIF_DIRSRV_INHERIT)
 		return EXIT_FAILURE;
 
 /* no mode? if there's arguments left, assume it is is the 'reverse' mode
@@ -1128,7 +1200,7 @@ int main(int argc, char** argv)
 				}
 			}
 
-/* Make the outbound connection */
+/* Make the outbound connection, check if we are supposed to act as a source */
 			struct anet_cl_connection cl = find_connection(&anet, NULL);
 			if (!cl.state){
 				if (anet.key)
@@ -1146,17 +1218,36 @@ int main(int argc, char** argv)
 				return EXIT_SUCCESS;
 			}
 
-/* Could also be a connection to a directory server, then we switch to a
- * different processing loop that globs list of available appls, sources
- * sinks and other directories. */
+/* If we connect to a directory server, it can be used for:
+ *
+ *    1. sinkning a dynamically discovered remote source
+ *    2. listing appls and listening for changes
+ *    3. downloading / running an appl
+ *    4. sourcing a shmif application to some remote either directly or proxied
+ *    5. sourcing as a directory server ourselves
+ */
 			int rc = 0;
 			if (a12_remote_mode(cl.state) == ROLE_DIR){
-				if (global.reqname)
-					snprintf(global.dircl.applname, 16, "%s", global.reqname);
-				global.dircl.die_on_list;
+				global.dircl.die_on_list = true;
 				global.dircl.basedir = global.directory;
+
+/* any trailing arguments means we want 3. or 4. */
 				if (argi <= argc - 1){
-					snprintf(global.dircl.applname, 16, "%s", argv[argi]);
+					if (strcmp(argv[argi], "--") == 0){
+
+					}
+/* for
+ * 4. we need a clopts.basedir where the appl can be unpacked that
+ *    can be wiped later. Use XDG_ or /tmp for now (if global.directory
+ *    is set anet_directory_cl will switch to that)
+ */
+					else{
+						if (getenv("XDG_CACHE_HOME"))
+							chdir(getenv("XDG_CACHE_HOME"));
+						else
+							chdir("/tmp");
+						snprintf(global.dircl.applname, 16, "%s", argv[argi]);
+					}
 				}
 
 				anet_directory_cl(cl.state, global.dircl, cl.fd, cl.fd);
@@ -1183,7 +1274,9 @@ int main(int argc, char** argv)
 			a12int_trace(A12_TRACE_SECURITY, "no-security=default password");
 		}
 	}
-	else {
+
+/* keystore shouldn't be opened in the worker */
+	if (anet.mode != ANET_SHMIF_DIRSRV_INHERIT){
 		if (!open_keystore(&err)){
 			return show_usage(err);
 		}
@@ -1202,14 +1295,32 @@ int main(int argc, char** argv)
 		}
 	}
 
-/* the directory option is not applied through the mode/role but rather as part
+/* The directory option is not applied through the mode/role but rather as part
  * of handover_setup, but before then (since we can chose between single or
- * forking) we should scan / cache the applstore - then devise a way to do
- * dynamic updates. */
+ * forking) we should scan / cache the applstore.
+ *
+ * Also setup a shmif-srv-client connection to the new forked process and use
+ * that to route / convey dynamic messages and later a corresponding server-
+ * side set of appl rules. This also has the interesting effect of it itself
+ * being redirectable to another arcan-net instance as migration / load
+ * balance.
+ */
 	if (anet.mode == ANET_SHMIF_CL || anet.mode == ANET_SHMIF_EXEC){
 		if (global.directory != -1){
+/* for the server modes, we also require the ability to execute ourselves to
+ * hand out child processes with more strict sandboxing */
+			int fd = open(argv[0], O_RDONLY);
+			if (-1 == fd){
+				fprintf(stderr,
+					"environment error: arcan-net requires access to \n"
+					"its own valid executable as the first argument\n");
+				return EXIT_FAILURE;
+			}
+			close(fd);
+			global.path_self = argv[0];
 			global.dirsrv.basedir = global.directory;
 			anet_directory_srv_rescan(&global.dirsrv);
+			anet_directory_shmifsrv_set(&global.dirsrv);
 		}
 
 		if (!global.trust_domain)
@@ -1219,6 +1330,7 @@ int main(int argc, char** argv)
 		case MT_SINGLE:
 			anet_listen(&anet, &errmsg, single_a12srv, &meta);
 			fprintf(stderr, "%s", errmsg ? errmsg : "");
+		break;
 		case MT_FORK:
 			anet_listen(&anet, &errmsg, fork_a12srv, &meta);
 			fprintf(stderr, "%s", errmsg ? errmsg : "");
@@ -1234,6 +1346,14 @@ int main(int argc, char** argv)
  * an outbound connection (ARCAN_CONNPATH=a12.. */
 	if (anet.mode == ANET_SHMIF_SRV_INHERIT){
 		return a12_preauth(&anet, a12cl_dispatch);
+	}
+	else if (anet.mode == ANET_SHMIF_DIRSRV_INHERIT){
+		set_log_trace();
+		struct anet_dirsrv_opts diropts = {0};
+		anet_directory_srv(anet.opts, diropts, anet.sockfd, anet.sockfd);
+		shutdown(anet.sockfd, SHUT_RDWR);
+		close(anet.sockfd);
+		return EXIT_SUCCESS;
 	}
 
 /* ANET_SHMIF_SRV */

@@ -8,6 +8,7 @@ set(SOURCES
 	net.c
 	dir_cl.c
 	dir_srv.c
+	dir_srv_worker.c
 	dir_supp.c
 	${ARCAN_SRC}/frameserver/util/anet_helper.c
 	${ARCAN_SRC}/frameserver/util/anet_keystore_naive.c

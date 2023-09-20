@@ -113,7 +113,7 @@ uint8_t* a12helper_tob64(const uint8_t* data, size_t inl, size_t* outl)
 	return res;
 }
 
-static bool from_b64(const uint8_t* instr, size_t lim, uint8_t outb[static 32])
+bool a12helper_fromb64(const uint8_t* instr, size_t lim, uint8_t outb[static 32])
 {
 	size_t inlen = strlen((char*)instr);
 
@@ -191,7 +191,7 @@ static bool decode_hostline(char* buf,
 
 	*outhost = buf;
 /* decode keypart */
-	return from_b64((uint8_t*) cur, 32, key);
+	return a12helper_fromb64((uint8_t*) cur, 32, key);
 }
 
 static void flush_accepted_keys()
@@ -643,10 +643,10 @@ int a12helper_keystore_statestore(
 
 /* sz is not enforced yet, just read a .cap file? */
 	if (strcmp(mode, "w+") == 0){
-		return openat(dir, name, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+		return openat(dir, name, O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR);
 	}
 	else
-		return openat(dir, name, O_RDONLY);
+		return openat(dir, name, O_RDONLY | O_CLOEXEC);
 }
 
 /*
@@ -716,16 +716,16 @@ int a12helper_keystore_dirfd(const char** err)
 		return -1;
 	}
 
-	int dir = open(basedir, O_DIRECTORY);
+	int dir = open(basedir, O_DIRECTORY | O_CLOEXEC);
 	if (-1 == dir){
 		*err = "Error opening basedir, check permissions and type";
 		return -1;
 	}
 
-	int keydir = openat(dir, "a12", O_DIRECTORY);
+	int keydir = openat(dir, "a12", O_DIRECTORY | O_CLOEXEC);
 	if (-1 == keydir){
 		mkdirat(dir, "a12", S_IRWXU);
-		keydir = openat(dir, "a12", O_DIRECTORY);
+		keydir = openat(dir, "a12", O_DIRECTORY | O_CLOEXEC);
 	}
 
 	return keydir;

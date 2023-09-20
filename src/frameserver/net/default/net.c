@@ -64,8 +64,10 @@ static struct pk_response key_auth_local(uint8_t pk[static 32])
  * message onwards and wait for an accept or reject event before moving on.
  */
 	if (a12helper_keystore_accepted(pk, global.trust_domain) || global.soft_auth){
+		uint8_t key_priv[32];
 		auth.authentic = true;
-		a12helper_keystore_hostkey("default", 0, auth.key, &tmp, &tmpport);
+		a12helper_keystore_hostkey("default", 0, key_priv, &tmp, &tmpport);
+		a12_set_session(&auth, pk, key_priv);
 	}
 
 	return auth;

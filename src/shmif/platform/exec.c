@@ -145,7 +145,7 @@ pid_t shmif_platform_execve(int fd, const char* shmif_key,
 			*fds[2] = perr[0];
 			close_err = true;
 		}
-		else stdout_src = *fds[2];
+		else stderr_src = *fds[2];
 	}
 
 /* null- terminate or we have an invalid address on our hands */

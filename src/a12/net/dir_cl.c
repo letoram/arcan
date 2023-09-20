@@ -580,6 +580,10 @@ void anet_directory_cl(
 
 	sigaction(SIGPIPE,&(struct sigaction){.sa_handler = SIG_IGN}, 0);
 
+	if (opts.source_argv){
+		return;
+	}
+
 /* always request dirlist so we can resolve applname against the server-local
  * ID as that might change */
 	a12int_request_dirlist(S, false);
