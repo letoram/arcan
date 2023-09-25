@@ -123,6 +123,8 @@ static const char* envopts[] = {
  */
 #define MAX_DEVICES 256
 
+#define MAX_MT_SLOTS 5
+
 struct devnode;
 #include "device_db.h"
 
@@ -199,8 +201,8 @@ struct devnode {
 	struct {
 		bool active;
 		bool pending;
-		int x;
-		int y;
+		int x[MAX_MT_SLOTS];
+		int y[MAX_MT_SLOTS];
 		int pressure;
 		int size;
 		int ind;
@@ -1588,8 +1590,8 @@ static void flush_pending(
 	verbose_print("kind=touch:device=%d:base=%d", node->devnum, node->touch.ind);
 
 	newev.io.input.touch.active = node->touch.active;
-	newev.io.input.touch.x = node->touch.x;
-	newev.io.input.touch.y = node->touch.y;
+	newev.io.input.touch.x = node->touch.x[MIN(MAX_MT_SLOTS-1, node->touch.ind)];
+	newev.io.input.touch.y = node->touch.y[MIN(MAX_MT_SLOTS-1, node->touch.ind)];
 	newev.io.input.touch.pressure = node->touch.pressure;
 	newev.io.input.touch.size = node->touch.size;
 
@@ -1604,15 +1606,13 @@ static void decode_mt(struct arcan_evctx* ctx,
 /* there are multiple protocols and mappings for this that we don't
  * account for here, move it to a toch event with the basic information
  * and let higher layers deal with it */
-	int newind = -1;
-
 	switch(code){
 	case ABS_X:
 		if (node->touch.ind != 0 && node->touch.pending)
 			flush_pending(ctx, node);
 
 		node->touch.ind = 0;
-		node->touch.x = val;
+		node->touch.x[0] = val;
 		node->touch.pending = true;
 	break;
 	case ABS_Y:
@@ -1620,18 +1620,18 @@ static void decode_mt(struct arcan_evctx* ctx,
 			flush_pending(ctx, node);
 
 		node->touch.ind = 0;
-		node->touch.y = val;
+		node->touch.y[0] = val;
 		node->touch.pending = true;
 	break;
 	case ABS_MT_PRESSURE:
 		node->touch.pressure = val;
 	break;
 	case ABS_MT_POSITION_X:
-		node->touch.x = val;
+		node->touch.x[MIN(MAX_MT_SLOTS-1, node->touch.ind)] = val;
 		node->touch.pending = true;
 	break;
 	case ABS_MT_POSITION_Y:
-		node->touch.y = val;
+		node->touch.y[MIN(MAX_MT_SLOTS-1, node->touch.ind)] = val;
 		node->touch.pending = true;
 	break;
 	case ABS_DISTANCE:
