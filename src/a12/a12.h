@@ -42,14 +42,14 @@ struct a12_state;
  * and client- side or the communication will fail regardless of key validity.
  *
  * return the private key to use with the public key received (server only)
+ * OR (migration to better process- separation friendly interface), got_session
+ * set and key_pub + derived session will be provided rather than the key_priv.
  */
 struct pk_response {
 	bool authentic;
 
-/* For server-side, reply with the key that should be used with the specific
- * client if there is differentiation, for client-side, the private key in the
- * structure to a12_client will be used */
-	uint8_t key[32];
+	uint8_t key_pub[32];
+	uint8_t key_session[32];
 
 /* If state store is provided / permitted for the key, return a lookup function
  * for creating or reading named resources from it */
@@ -60,7 +60,9 @@ struct pk_response {
 struct a12_context_options {
 /* Provide to enable asymetric key authentication, set valid in the return to
  * allow the key, otherwise the session may be continued for a random number of
- * time or bytes before being terminated. */
+ * time or bytes before being terminated. If want_session is requested, the
+ * lookup function, if it is able to (legacy) should set got_session in the
+ * reply and calculate the x25519v shared secret itself. */
 	struct pk_response (*pk_lookup)(uint8_t pub[static 32]);
 
 /* Client only, provide the private key to use with the connection. All [0]
@@ -126,6 +128,14 @@ struct a12_state* a12_server(struct a12_context_options*);
  */
 bool
 a12_free(struct a12_state*);
+
+/*
+ * Used by the canonical key lookup function that provides the pk_response.
+ * Provide the remote public key in pubk, and the local private key in privk.
+ * Calculate the session key and local public key and set in [dst].
+ */
+void a12_set_session(
+	struct pk_response* dst, uint8_t pubk[static 32], uint8_t privk[static 32]);
 
 /*
  * Take an incoming byte buffer and append to the current state of
@@ -558,13 +568,6 @@ enum stream_cancel {
 	STREAM_CANCEL_KNOWN = 2
 };
 void a12_vstream_cancel(struct a12_state* S, uint8_t chid, int reason);
-
-/*
- * Return a descriptor to a state store for the a12 context+id pair
- * with the desired access mode (r, w+) and (for w+) size boundary
- */
-int a12_access_state(
-	struct a12_state* s, const char* id, const char* mode, size_t sz);
 
 struct a12_iostat {
 	size_t b_in;

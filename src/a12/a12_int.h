@@ -306,10 +306,6 @@ struct a12_state {
 		uint8_t remote_pub[32];
 	} keys;
 
-/* pk_lookup provided state accessor */
-	int (*state_access)(const uint8_t pub[static 32],
-		const char* name, size_t sz, const char* mode);
-
 /* client side needs to send the first packet with MAC+nonce, server side
  * needs to interpret first packet with MAC+nonce */
 	bool server;
@@ -343,9 +339,13 @@ void a12int_append_out(
 void a12int_step_vstream(struct a12_state* S, uint32_t id);
 
 struct appl_meta {
+
+/* These are used for local caching of contents, an update on the directory
+ * bound to the context or freeing the a12 state machine will free them. */
 	FILE* handle;
 	char* buf;
 	uint64_t buf_sz;
+
 	struct appl_meta* next;
 
 	uint16_t identifier;
@@ -355,7 +355,8 @@ struct appl_meta {
 
 	char applname[18];
 	char short_descr[69];
-	bool remote;
+
+	int role;
 	uint64_t update_ts;
 };
 
@@ -371,5 +372,4 @@ struct appl_meta* a12int_get_directory(struct a12_state*, uint64_t* clk);
 /* send the command to get a directory listing,
  * results will be provided as BCHUNKHINT events */
 void a12int_request_dirlist(struct a12_state*, bool);
-
 #endif

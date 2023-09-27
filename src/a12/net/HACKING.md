@@ -334,6 +334,7 @@ interleaving.
 - [20]      Mode          : uint8
 - [21+ 32]  x25519 Pk     : blob
 - [54]      Primary flow  : uint8
+- [55+ 16]  Petname       : UTF-8
 
 The hello message contains key-material for normal x25519, according to
 the Mode byte [20].
@@ -356,6 +357,9 @@ It is used to indicate what each end is expecting from the connection, a client
 that is configured to push (x11-style forwarding) want to act as a source and
 would send 1 in its first HELLO, otherwise 2 (sink). If this does not match the
 configuration/expectations of the other end, the connection MUST be terminated.
+
+The petname in the direct HELLO state is treated as a suggested (valid utf-8)
+visible simplified user presentable handle.
 
 ### command = 1, shutdown
 - [18..n] : last\_words : UTF-8
@@ -504,18 +508,43 @@ directory-list commands.
 
 This is sent as a reply to the directory list command and is used to notify
 about the update, removal, creation or presence of a retrievable application.
-An empty identifier terminates. The applname can be used as the extension
-field of a BCHUNKSTATE event to initiate the actual transfer.
+An empty identifier terminates. The applname or server-identifier can be used
+as the extension field of a BCHUNKSTATE event to initiate the actual transfer.
 
 ### command - 11, directory-discover
 - [18.. 19] role    : uint8 (0) source, (1) sink, (2) directory
 - [20     ] state   : uint8, (0) added, (1) lost
-- [21.. 36] petname : (+16) utf-8 server-generated identifier / user-provided
-- [37.. 52] id      : (+16) Kpub (x25519)
+- [21.. 36] id      : (+16) Kpub (x25519)
+- [37  +16] petname : UTF-8 identifier
 
-This is provided when a new source or sink has flagged for availability or been
-disconnected. The petname is chosen by hashing into a server-local dictionary
-and allocated on first-use or provided on initial HELLO.
+This is provided when a new source or sink has flagged for availability
+(state=0) or been disconnected (state=1). The petname is provided on initial
+source/sink/directory HELLO or chosen by the directory server due to local
+policy or name collision.
+
+### command - 12, directory-open
+- [18    ] Mode    : (0: direct, 1: tunnel)
+- [19..34] Kpub    : (+16) Kpub (x25519)
+- [35..50] petname : UTF-8 identifier
+
+This is used to request a connection / connection request to the provided
+petname. Kpub is the public key that will be used in the HELLO to the target.
+This can be the same Kpub used to make the connection to the directory server,
+but might also be a different one in order to differentiate between trust
+domains. It will be forwarded to the source/sink/directory in question.
+
+If mode is set to tunnnel:ed, the active connection will be used to route
+traffic to/from the nested connection. This is a workthrough for cases where
+a direct connection cannot be established, corresponding carriers for NAT
+traversal (UDP blocked, misconfigured routers) and might not be permitted
+by the server connection.
+
+A client is intended to first try to establish a direct connection, and after a
+failed attempt, try the tunnel route.
+
+### command - 14, directory-opened
+- [18    ] Status  : (0 failed, 1 direct ok, 2 tunnel ok)
+- [19 +16] Address : Status = 1, IPv6 address to the host, Status = 2, tunnel ID.
 
 ##  Event (2), fixed length
 - [0..7] sequence number : uint64

@@ -147,10 +147,9 @@ struct appl_meta* a12int_get_directory(struct a12_state* S, uint64_t* clk)
 void a12int_set_directory(struct a12_state* S, struct appl_meta* M)
 {
 	struct appl_meta* C = S->directory;
+
 	while (C){
 		struct appl_meta* old = C;
-		if (C->handle)
-			fclose(C->handle);
 		free(C->buf);
 
 		C = C->next;
@@ -1301,6 +1300,13 @@ static struct blob_out** alloc_attach_blob(struct a12_state* S)
 	return parent;
 }
 
+void a12_set_session(
+	struct pk_response* dst, uint8_t pubk[static 32], uint8_t privk[static 32])
+{
+	x25519_public_key(privk, dst->key_pub);
+	x25519_shared_secret(dst->key_session, privk, pubk);
+}
+
 /*
  * Simplified form of enqueue bstream below, we already have the buffer
  * in memory so just build a different blob-out node with a copy
@@ -1488,8 +1494,12 @@ static bool authdec_buffer(const char* src, struct a12_state* S, size_t block_sz
 static void hello_auth_server_hello(struct a12_state* S)
 {
 	uint8_t pubk[32];
+	uint8_t remote_pubk[32];
+
 	uint8_t nonce[8];
 	int cfl = S->decode[20];
+
+	memcpy(remote_pubk, &S->decode[21], 32);
 	a12int_trace(A12_TRACE_CRYPTO, "state=complete:method=%d", cfl);
 
 	/* here is a spot for having more authentication modes if needed (version bump) */
@@ -1511,7 +1521,7 @@ static void hello_auth_server_hello(struct a12_state* S)
 		arcan_random(nonce, 8);
 		send_hello_packet(S, HELLO_MODE_EPHEMPK, pubk, nonce);
 
-		x25519_shared_secret((uint8_t*)S->opts->secret, ek, &S->decode[21]);
+		x25519_shared_secret((uint8_t*)S->opts->secret, ek, remote_pubk);
 		trace_crypto_key(S->server, "ephem_pub", pubk, 32);
 		update_keymaterial(S, S->opts->secret, 32, nonce);
 		S->authentic = AUTH_EPHEMERAL_PK;
@@ -1528,17 +1538,19 @@ static void hello_auth_server_hello(struct a12_state* S)
 
 /* the lookup function returns the key that should be used in the reply
  * and to calculate the shared secret */
-	trace_crypto_key(S->server, "state=client_pk", &S->decode[21], 32);
-	struct pk_response res = S->opts->pk_lookup(&S->decode[21]);
+	trace_crypto_key(S->server, "state=client_pk", remote_pubk, 32);
+	struct pk_response res = S->opts->pk_lookup(remote_pubk);
 	if (!res.authentic){
 		a12int_trace(A12_TRACE_CRYPTO, "state=eperm:kind=x25519-pk-fail");
 		fail_state(S);
 		return;
 	}
 
+	memcpy((uint8_t*)S->opts->secret, res.key_session, 32);
+	memcpy(pubk, res.key_pub, 32);
+
 /* hello packet here will still use the keystate from the process_srvfirst
  * which will use the client provided nonce, KDF on preshare-pw */
-	x25519_public_key(res.key, pubk);
 	arcan_random(nonce, 8);
 	send_hello_packet(S, HELLO_MODE_REALPK, pubk, nonce);
 	memcpy(S->keys.remote_pub, &S->decode[21], 32);
@@ -1546,14 +1558,12 @@ static void hello_auth_server_hello(struct a12_state* S)
 
 /* now we can switch keys, note that the new nonce applies for both enc and dec
  * states regardless of the nonce the client provided in the first message */
-	x25519_shared_secret((uint8_t*)S->opts->secret, res.key, &S->decode[21]);
 	trace_crypto_key(S->server, "state=server_ssecret", (uint8_t*)S->opts->secret, 32);
 	update_keymaterial(S, S->opts->secret, 32, nonce);
 
 /* and done, mark latched so a12_unpack saves buffer and returns */
 	S->authentic = AUTH_FULL_PK;
 	S->auth_latched = true;
-	S->state_access = res.state_access;
 
 	if (S->on_auth)
 		S->on_auth(S, S->auth_tag);
@@ -1814,7 +1824,6 @@ static void add_dirent(struct a12_state* S)
 	memcpy(new->applname, &S->decode[36], 18);
 	memcpy(new->short_descr, &S->decode[55], 69);
 	new->update_ts = arcan_timemillis();
-	new->remote = true;
 
 	if (!S->directory){
 		S->directory = new;
@@ -1826,7 +1835,7 @@ static void add_dirent(struct a12_state* S)
 
 	while (cur){
 /* override / update? */
-		if (cur->identifier == new->identifier && cur->remote){
+		if (cur->identifier == new->identifier){
 			new->next = cur->next;
 			if (prev)
 				prev->next = new;
@@ -2042,7 +2051,7 @@ static void process_blob(struct a12_state* S)
 
 		if (!buf){
 			a12int_trace(A12_TRACE_ALLOC,
-				"kind=zstd_buffer_fail:size=%zu", content_sz);
+				"kind=zstd_buffer_fail:size=%zu", (size_t) content_sz);
 			a12_stream_cancel(S, S->in_channel);
 			reset_state(S);
 			return;
@@ -2651,7 +2660,7 @@ static bool flush_compressed(
 	if (node->left){
 		a12int_trace(A12_TRACE_BTRANSFER, "kind=compressed_block:"
 			"stream=%"PRIu64":ch=%d:size=%zu:base=%zu:left=%zu",
-			(size_t)node->streamid, (int) node->chid, out, nts, node->left
+			(uint64_t)node->streamid, (int) node->chid, out, nts, node->left
 		);
 		node->left -= nts;
 		return node->left != 0;
@@ -3178,13 +3187,3 @@ int a12_remote_mode(struct a12_state* S)
 {
 	return S->remote_mode;
 }
-
-int a12_access_state(
-	struct a12_state* S, const char* id, const char* mode, size_t sz)
-{
-	if (!S || !S->state_access)
-		return -1;
-
-	return S->state_access(S->keys.remote_pub, id, sz, mode);
-}
-

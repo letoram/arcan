@@ -37,6 +37,7 @@
  * add interactive accept/reject/trust for arcan-net use
  * reserve 'outbound' domain for interactively added outbound keys
  * enforce domain separation for allowed pubkeys
+ * server in directory mode now splits out into sandboxed worker processes
 
 ## Terminal
  * SGR reset fix, add CNL / CPL
