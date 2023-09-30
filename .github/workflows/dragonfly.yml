@@ -10,6 +10,7 @@ jobs:
     - name: Test in DragonFly VM
       uses: vmactions/dragonflybsd-vm@v0
       with:
+        copyback: false
         prepare: |
           pkg install -y cmake ninja pkgconf # build
           pkg install -y evdev-proto freetype2 luajit openal-soft sqlite3 # common
