@@ -21,4 +21,3 @@ jobs:
         run: |
           cmake -B _build -G Ninja -S src -DBUILD_PRESET:STRING="everything"
           cmake --build _build
-          cmake --install _build
