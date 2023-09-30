@@ -5,6 +5,7 @@
 #include <math.h>
 #include <sys/wait.h>
 #include <pthread.h>
+#include <signal.h>
 
 /*
  * This is needed in order to re-use some of the platform layer functions that
