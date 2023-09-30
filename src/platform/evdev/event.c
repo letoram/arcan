@@ -313,7 +313,7 @@ static bool identify(int fd, const char* path,
 /* even this point has a few collisions, particularly some keyboards and mice
  * that don't respond to CGUNIQ and expose multiple- subdevices but with
  * different button/axis count */
-		ioctl(fd, EVIOCGBIT(0, EV_MAX), &buf);
+		ioctl(fd, EVIOCGBIT(0, sizeof(buf)), &buf);
 	}
 
 	for (size_t i = 0; i < sizeof(buf); i++)
@@ -849,7 +849,7 @@ static size_t button_count(int fd, size_t bitn, bool* got_mouse, bool* got_joy)
 
 	unsigned long bits[ bit_count(KEY_MAX) ];
 
-	if (-1 == ioctl(fd, EVIOCGBIT(bitn, KEY_MAX), bits))
+	if (-1 == ioctl(fd, EVIOCGBIT(bitn, sizeof(bits)), bits))
 		return false;
 
 	for (size_t i = 0; i < KEY_MAX; i++){
@@ -870,7 +870,7 @@ static size_t button_count(int fd, size_t bitn, bool* got_mouse, bool* got_joy)
 static bool check_mouse_axis(int fd, size_t bitn)
 {
 	unsigned long bits[ bit_count(KEY_MAX) ];
-	if (-1 == ioctl(fd, EVIOCGBIT(bitn, KEY_MAX), bits))
+	if (-1 == ioctl(fd, EVIOCGBIT(bitn, sizeof(bits)), bits))
 		return false;
 
 /* uncertain if other (REL_Z, REL_RX, REL_RY, REL_RZ, REL_DIAL, REL_MISC)
@@ -921,7 +921,7 @@ static void map_axes(int fd, size_t bitn, struct devnode* node)
 		return;
 	node->game.axes = 0;
 
-	if (-1 != ioctl(fd, EVIOCGBIT(bitn, ABS_MAX), bits)){
+	if (-1 != ioctl(fd, EVIOCGBIT(bitn, sizeof(bits)), bits)){
 		for (size_t i = 0; i < ABS_MAX; i++){
 			if (bit_isset(bits, i))
 				node->game.axes++;
@@ -929,7 +929,7 @@ static void map_axes(int fd, size_t bitn, struct devnode* node)
 	}
 
 	node->game.relofs = node->game.axes;
-	if (-1 != ioctl(fd, EVIOCGBIT(bitn, REL_MAX), rel_bits)){
+	if (-1 != ioctl(fd, EVIOCGBIT(bitn, sizeof(rel_bits)), rel_bits)){
 		for (size_t i = 0; i < REL_MAX; i++){
 			if (bit_isset(bits, i)){
 				node->game.axes++;
@@ -971,7 +971,7 @@ static void map_axes(int fd, size_t bitn, struct devnode* node)
 static void setup_led(struct devnode* dst, size_t bitn, int fd)
 {
 	unsigned long bits[ bit_count(LED_MAX) ];
-	if (-1 == ioctl(fd, EVIOCGBIT(bitn, LED_MAX), bits))
+	if (-1 == ioctl(fd, EVIOCGBIT(bitn, sizeof(bits)), bits))
 		return;
 
 	size_t count = 0;
@@ -1296,7 +1296,7 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 	size_t nbits = ((EV_MAX)-1) / bpl + 1;
 	long prop[ nbits ];
 
-	if (-1 == ioctl(fd, EVIOCGBIT(0, EV_MAX), &prop)){
+	if (-1 == ioctl(fd, EVIOCGBIT(0, sizeof(prop)), &prop)){
 		verbose_print(
 			"input: probing %s failed, %s", path, strerror(errno));
 		close(fd);
