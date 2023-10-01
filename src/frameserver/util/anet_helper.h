@@ -97,10 +97,6 @@ bool a12helper_keystore_open(struct keystore_provider*);
 /* release resources tied to the keystore */
 bool a12helper_keystore_release();
 
-uint8_t* a12helper_tob64(const uint8_t* data, size_t inl, size_t* outl);
-
-bool a12helper_fromb64(const uint8_t* instr, size_t lim, uint8_t outb[static 32]);
-
 /* retrieve key and connect properties for a user-defined tag,
  * increment index to fetch the next possible host.
  *

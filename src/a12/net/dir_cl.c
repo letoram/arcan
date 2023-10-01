@@ -188,7 +188,7 @@ static pid_t exec_cpath(struct a12_state* S,
 }
 
 /*
- * This entire function is protoype- quality and mainly for figuring out the
+ * This entire function is prototype- quality and mainly for figuring out the
  * interface / path between arcan (lwa), appl, arcan-net and a12.
  *
  * Its main purpose is to setup the env for arcan to either run the appl as a
@@ -408,13 +408,13 @@ run:
 	if (state_sz){
 			if (exec_res && !cbt->clopt->block_state){
 				a12_enqueue_bstream(S,
-					state_out, A12_BTYPE_STATE, M.identifier, false, state_sz);
+					state_out, A12_BTYPE_STATE, M.identifier, false, state_sz, NULL);
 				close(state_out);
 				state_out = -1;
 			}
 			else if (!exec_res && !cbt->clopt->block_log){
 				a12_enqueue_bstream(S,
-					state_out, A12_BTYPE_CRASHDUMP, M.identifier, false, state_sz);
+					state_out, A12_BTYPE_CRASHDUMP, M.identifier, false, state_sz, NULL);
 				close(state_out);
 				state_out = -1;
 			}
@@ -476,15 +476,11 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
 			return res;
 		}
 
-/* could also use -C */
 		if (!ensure_appldir(cbt->clopt->applname, cbt->clopt->basedir)){
 			fprintf(stderr, "Couldn't create temporary appl directory\n");
 			return res;
 		}
 
-/* for restoring the DB, can simply popen to arcan_db with the piped mode
- * (arcan_db add_appl_kv basename key value) and send a SIGUSR2 to the process
- * to indicate that the state has been updated. */
 		cbt->appl_out = popen("tar xfm -", "w");
 		res.fd = fileno(cbt->appl_out);
 		res.flag = A12_BHANDLER_NEWFD;
@@ -525,10 +521,48 @@ static bool cl_got_dir(struct a12_state* S, struct appl_meta* M, void* tag)
 {
 	struct directory_meta* cbt = tag;
 
+	if (cbt->clopt->outapp.buf){
+		struct appl_meta* C = M;
+		cbt->clopt->outapp.identifier = 65535;
+		bool found = false;
+
+		while (C){
+			if (strcmp(C->appl.name, cbt->clopt->outapp.appl.name) == 0){
+				found = true;
+				cbt->clopt->outapp.appl.name[0] = '\0';
+				a12int_trace(A12_TRACE_DIRECTORY,
+					"push-match:name=%s:identifier=%d",
+					C->appl.name, (int) C->identifier
+				);
+				cbt->clopt->outapp.identifier = C->identifier;
+				break;
+			}
+			C = C->next;
+		}
+
+/* no explicit identifier to throw it in, try to create a new (which may need
+ * different permissions hence why the initial search) */
+		if (!found){
+			a12int_trace(A12_TRACE_DIRECTORY,
+				"push-no-match:name=%s", cbt->clopt->outapp.appl.name);
+		}
+
+		a12_enqueue_blob(S,
+			cbt->clopt->outapp.buf,
+			cbt->clopt->outapp.buf_sz,
+			cbt->clopt->outapp.identifier,
+			A12_BTYPE_APPL,
+			cbt->clopt->outapp.appl.name
+		);
+
+/* this ignores die-on-list */
+		return true;
+	}
+
 	while (M){
 /* use identifier to request binary */
 		if (cbt->clopt->applname[0]){
-			if (strcasecmp(M->applname, cbt->clopt->applname) == 0){
+			if (strcasecmp(M->appl.name, cbt->clopt->applname) == 0){
 				struct arcan_event ev =
 				{
 					.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
@@ -548,7 +582,7 @@ static bool cl_got_dir(struct a12_state* S, struct appl_meta* M, void* tag)
 			}
 		}
 		else
-			printf("name=%s\n", M->applname);
+			printf("name=%s\n", M->appl.name);
 
 		M = M->next;
 	}
@@ -581,11 +615,15 @@ void anet_directory_cl(
 	sigaction(SIGPIPE,&(struct sigaction){.sa_handler = SIG_IGN}, 0);
 
 	if (opts.source_argv){
+		if (!opts.ident[0]){
+			a12int_trace(A12_TRACE_DIRECTORY, "kind=source:error=missing_ident");
+		}
+		a12int_trace(A12_TRACE_DIRECTORY, "kind=eimpl:missing_source");
 		return;
 	}
 
 /* always request dirlist so we can resolve applname against the server-local
- * ID as that might change */
+ * ID as that might change. */
 	a12int_request_dirlist(S, false);
 	anet_directory_ioloop(S, &cbt, fdin, fdout, -1, on_cl_event, cl_got_dir, NULL);
 }

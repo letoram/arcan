@@ -111,3 +111,76 @@ void anet_directory_ioloop
 		fds[2].fd = outbuf_sz ? fdout : -1;
 	}
 }
+
+FILE* file_to_membuf(FILE* applin, char** out, size_t* out_sz)
+{
+	if (!applin)
+		return NULL;
+
+	FILE* applbuf = open_memstream(out, out_sz);
+	if (!applbuf){
+		return NULL;
+	}
+
+	char buf[4096];
+	size_t nr;
+	bool ok = true;
+
+	while ((nr = fread(buf, 1, 4096, applin))){
+		if (1 != fwrite(buf, nr, 1, applbuf)){
+			ok = false;
+			break;
+		}
+	}
+
+	if (!ok){
+		fclose(applbuf);
+		return NULL;
+	}
+
+/* actually keep both in order to allow appending elsewhere */
+	fflush(applbuf);
+	return applbuf;
+}
+
+bool build_appl_pkg(const char* name, struct appl_meta* dst, int fd)
+{
+	/* just want directories */
+	fchdir(fd);
+
+	struct stat sbuf;
+	if (-1 == stat(name, &sbuf) || (sbuf.st_mode & S_IFMT) != S_IFDIR){
+		a12int_trace(A12_TRACE_DIRECTORY, "kind=build_appl:name=%s:error=not_dir", name);
+		return false;
+	}
+	chdir(name);
+
+	struct appl_meta* res = malloc(sizeof(struct appl_meta));
+	if (!res){
+		fchdir(fd);
+		return false;
+	}
+
+	*res = (struct appl_meta){0};
+
+	size_t buf_sz;
+	FILE* cmd = popen("tar cf - .", "r");
+
+	dst->handle = file_to_membuf(cmd, &dst->buf, &buf_sz);
+	if (cmd)
+		pclose(cmd);
+
+	if (!dst->handle){
+		fchdir(fd);
+		free(res);
+		return false;
+	}
+
+	snprintf(dst->appl.name, COUNT_OF(dst->appl.name), "%s", name);
+	dst->buf_sz = buf_sz;
+	dst->next = res;
+	fchdir(fd);
+
+	return true;
+}
+

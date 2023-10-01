@@ -75,6 +75,8 @@ enum control_commands {
 	COMMAND_REKEY        = 8, /* new x25519 change               */
 	COMMAND_DIRLIST      = 9, /* request list of items           */
 	COMMAND_DIRSTATE     = 10,/* update / present a new appl     */
+	COMMAND_DIRDISCOVER  = 11,/* dynamic source/dir entry        */
+	COMMAND_DIROPEN      = 12,/* mediate access to a dyn src/dir */
 };
 
 enum hello_mode {
@@ -138,6 +140,7 @@ struct binary_frame {
 	uint32_t identifier;
 	uint8_t checksum[16];
 	int64_t streamid; /* actual type is uint32 but -1 for cancel */
+	char extid[16];
 	struct ZSTD_DCtx_s* zstd;
 };
 
@@ -186,6 +189,7 @@ struct blob_out {
 	uint8_t chid;
 	int type;
 	uint32_t identifier;
+	char extid[16];
 	size_t left;
 	char* buf;
 	size_t buf_sz;
@@ -236,6 +240,7 @@ struct a12_state {
 	struct a12_context_options* opts;
 	struct appl_meta* directory;
 	uint64_t directory_clk;
+	bool notify_dynamic;
 
 	uint8_t last_mac_in[MAC_BLOCK_SZ];
 
@@ -353,15 +358,36 @@ struct appl_meta {
 	uint16_t permissions;
 	uint8_t hash[4];
 
-	char applname[18];
-	char short_descr[69];
-
 	int role;
+	union {
+		struct {
+			char name[18];
+			char short_descr[69];
+		} appl;
+
+		struct {
+			char petname[16];
+			uint8_t key[32];
+		} dynamic;
+	};
+
 	uint64_t update_ts;
 };
 
 /* takes ownership of appl_meta */
 void a12int_set_directory(struct a12_state*, struct appl_meta*);
+
+/*
+ * For a state in directory server mode,
+ * and with the other end having requested notifications as part of a
+ * previous dirlist request.
+ */
+void
+	a12int_notify_dynamic_resource(
+		struct a12_state*,
+		const char* petname,
+		uint8_t kpub[static 32],
+		uint8_t role, bool added);
 
 /* get the current directory -
  * this is only valid between a12* calls on the state.
@@ -369,7 +395,11 @@ void a12int_set_directory(struct a12_state*, struct appl_meta*);
  * is updated. */
 struct appl_meta* a12int_get_directory(struct a12_state*, uint64_t* clk);
 
-/* send the command to get a directory listing,
- * results will be provided as BCHUNKHINT events */
-void a12int_request_dirlist(struct a12_state*, bool);
+/* Send the command to get a directory listing,
+ * results will be provided as BCHUNKHINT events for appls and NETSTATE
+ * ones for entries tied to dynamic sources / directories.
+ *
+ * If notify is set changes will be sent dynamically */
+void a12int_request_dirlist(struct a12_state*, bool notify);
+
 #endif

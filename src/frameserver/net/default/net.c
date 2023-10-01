@@ -50,8 +50,11 @@ static bool flush_shmif(struct arcan_shmif_cont* C)
 
 static struct {
 	bool soft_auth;
-	char* trust_domain;
-} global;
+	const char* trust_domain;
+} global =
+{
+	.trust_domain = "outbound"
+};
 
 static struct pk_response key_auth_local(uint8_t pk[static 32])
 {
@@ -554,8 +557,8 @@ static bool dircl_dirent(struct a12_state* S, struct appl_meta* M, void* tag)
 /* are we just enumerating appls or do we have a pending request? */
 	while (M){
 		if (client->pending_reqname){
-			if (strcmp(M->applname, client->pending_reqname) == 0){
-				snprintf(dir->clopt->applname, 16, "%s", M->applname);
+			if (strcmp(M->appl.name, client->pending_reqname) == 0){
+				snprintf(dir->clopt->applname, 16, "%s", M->appl.name);
 				req_id(S, M->identifier, tag);
 				break;
 			}
@@ -571,7 +574,7 @@ static bool dircl_dirent(struct a12_state* S, struct appl_meta* M, void* tag)
 			};
 
 			snprintf((char*)out.ext.bchunk.extensions,
-				COUNT_OF(out.ext.bchunk.extensions), "%s;%d", M->applname, M->identifier);
+				COUNT_OF(out.ext.bchunk.extensions), "%s;%d", M->appl.name, M->identifier);
 
 			if (M->next)
 				out.ext.bchunk.hint |= 4;
@@ -617,7 +620,7 @@ static void dircl_userfd(struct a12_state* S, void* tag)
 			struct appl_meta* am = a12int_get_directory(S, NULL);
 			while (am){
 				if (am->identifier == id){
-					snprintf(cbt->clopt->applname, 16, "%s", am->applname);
+					snprintf(cbt->clopt->applname, 16, "%s", am->appl.name);
 					req_id(S, am->identifier, tag);
 					return;
 				}
