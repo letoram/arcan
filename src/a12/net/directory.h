@@ -57,7 +57,6 @@ struct anet_dircl_opts {
 };
 
 struct directory_meta {
-	struct appl_meta* dir;
 	struct a12_state* S;
 	struct anet_dircl_opts* clopt;
 

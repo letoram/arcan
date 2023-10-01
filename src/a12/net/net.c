@@ -841,6 +841,9 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 				return show_usage("--allow-dir: missing group tag name");
 			global.dirsrv.allow_dir = argv[i];
 		}
+		else if (strcmp(argv[i], "--keep-alive") == 0){
+			global.keep_alive = true;
+		}
 		else if (strcmp(argv[i], "--allow-appl") == 0){
 			i++;
 			if (i >= argc)

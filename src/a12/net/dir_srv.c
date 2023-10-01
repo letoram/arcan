@@ -39,7 +39,6 @@ struct dircl;
 
 struct dircl {
 	int in_appl;
-	bool notify;
 	int type;
 
 	bool pending_stream;
@@ -278,6 +277,11 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 			cur->buf_sz = dst_sz;
 			cur->buf = dst;
 			cur->handle = handle;
+
+			blake3_hasher hash;
+			blake3_hasher_init(&hash);
+			blake3_hasher_update(&hash, dst, dst_sz);
+			blake3_hasher_finalize(&hash, (uint8_t*)cur->hash, 4);
 
 /* need to unlock as shmifsrv set will lock again, it will take care of
  * rebuilding the index and notifying listeners though - identity action
@@ -660,15 +664,16 @@ void anet_directory_shmifsrv_set(struct anet_dirsrv_opts* opts)
 	if (opts->dir.handle || opts->dir.buf){
 		rebuild_index();
 
-/* Note that DIRTRACE macro isn't used here as it locks the mutex.
- * Setting the directory again after the initial time (vs. individual
- * entry updates with broadcast) should be rare to never). */
+/* Note that DIRTRACE macro isn't used here as it locks the mutex. Setting the
+ * directory again after the initial time (vs. individual entry updates with
+ * broadcast) should be rare to never). An optimization here is to only send
+ * a new dirlist to clients that have explicitly asked for notification. That
+ * information is hidden in the a12_state in the dirsrv_worker. */
 		if (!first){
 			a12int_trace(A12_TRACE_DIRECTORY, "list_updated");
 			struct dircl* cur = &active_clients.root;
 			while (cur){
-				if (cur->notify)
-					dirlist_to_worker(cur);
+				dirlist_to_worker(cur);
 				cur = cur->next;
 			}
 		}

@@ -244,11 +244,8 @@ static void unpack_index(
 			if (arg_lookup(entry, "timestamp", 0, &tmp) && tmp){
 				(*cur)->update_ts = (uint64_t) strtoull(tmp, NULL, 10);
 			}
-/*
- * "kind=appl:name=%s:id=%"PRIu16":size=%"PRIu64
-				":categories=%"PRIu16":hash=%"PRIx8
-				"%"PRIx8"%"PRIx8"%"PRIx8":timestamp=%"PRIu64":description=%s:done",
- */
+
+			cur = &(*cur)->next;
 		}
 
 		arg_cleanup(entry);
@@ -480,7 +477,6 @@ void anet_directory_srv(
 	pending_index = NULL;
 
 	struct directory_meta cbt = {
-		.dir = &opts.dir,
 		.S = S
 	};
 
@@ -534,12 +530,17 @@ static int request_parent_resource(
 
 	snprintf((char*)ev.ext.bchunk.extensions, COUNT_OF(ev.ext.bchunk.extensions), "%s", id);
 	int fd = -1;
+	a12int_trace(A12_TRACE_DIRECTORY, "request_parent:%s", ev.ext.bchunk.extensions);
 
 	if (shmif_block_synch_request(C, ev, rep, kind, TARGET_COMMAND_REQFAIL)){
 		struct evqueue_entry* cur = run_evqueue(S, C, rep);
 
-		if (cur->ev.tgt.kind == kind)
+		if (cur->ev.tgt.kind == kind){
 			fd = arcan_shmif_dupfd(cur->ev.tgt.ioevs[0].iv, -1, true);
+			a12int_trace(A12_TRACE_DIRECTORY, "accepted");
+		}
+		else
+			a12int_trace(A12_TRACE_DIRECTORY, "rejected");
 	}
 
 	free_evqueue(rep);
@@ -561,7 +562,7 @@ static struct a12_bhandler_res srv_bevent(
 	};
 
 	struct directory_meta* cbt = tag;
-	struct appl_meta* meta = find_identifier(cbt->dir, M.identifier);
+	struct appl_meta* meta = find_identifier(S->directory, M.identifier);
 
 /* the one case where it is permitted to use a non-identifier to reference a
  * server-side resource is for appl-push */

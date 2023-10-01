@@ -179,6 +179,12 @@ bool build_appl_pkg(const char* name, struct appl_meta* dst, int fd)
 	snprintf(dst->appl.name, COUNT_OF(dst->appl.name), "%s", name);
 	dst->buf_sz = buf_sz;
 	dst->next = res;
+
+	blake3_hasher hash;
+	blake3_hasher_init(&hash);
+	blake3_hasher_update(&hash, dst->buf, dst->buf_sz);
+	blake3_hasher_finalize(&hash, (uint8_t*)dst->hash, 4);
+
 	fchdir(fd);
 
 	return true;
