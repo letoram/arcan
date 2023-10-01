@@ -194,6 +194,23 @@ The following functions should be the hotpath for vulnerability research:
 - a12.c:process\_audio   (up until MAC check)
 - a12.c:process\_blob    (up until MAC check)
 
+For directory server mode there are more details to consider. One is the
+introduction of transitive trust - a client can learn about other clients
+that the directory trusts through dynamic sources and directories joining.
+
+These are initially opened (DIROPEN) where connection primitives and Kpub
+are mediated. This naturally puts the directory in a MiTM position in two
+ways. One is to block any requests for negotiating a direct connection
+between the two parties (i.e. force-relaying). The other is to force- swap
+key exchanges similar to how an SSH MiTM would work. This is conceptually
+similar to how CAs can abuse their position of trust in PKIs.
+
+The main counter measure is that the force- relaying part can be detected
+by having two clients with a side-band to probe for a directory doing this,
+and by leveraging other discovery methods (e.g. being on the same LAN or
+another more trusted directory) to verify that the same Kpubs are being
+exchanged.
+
 # Protocol
 
 This section mostly covers a rough draft of things as they evolve. A more
@@ -459,15 +476,18 @@ The following encodings are allowed:
 ### command - 6, define bstream
 - [18..21] stream-id   : uint32
 - [22..29] total-size  : uint64 (0 on streaming source)
-- [30]     stream-type : uint8 (0: state, 1:bchunk, 2: font, 3: font-secondary, 4: debug)
+- [30]     stream-type : uint8 (0: state, 1:bchunk, 2: font, 3: font-secondary, 4: debug, 5: appl, 6:appl-resource)
 - [31..34] id-token    : uint32 (used for bchunk pairing on \_out/\_store)
 - [35 +16] blake3-hash : blob (0 if unknown)
 - [52    ] compression : 0 (raw), 1 (zstd)
+- [53 +16] ext.name    : utf8
 
 This defines a new or continued binary transfer stream. The block-size sets the
 number of continuous bytes in the stream until the point where another transfer
 can be interleaved. There can thus be multiple binary streams in flight in
-order to interrupt an ongoing one with a higher priority one.
+order to interrupt an ongoing one with a higher priority one. The appl and
+appl-resource stream types are used only in directory mode and use the extended
+name field.
 
 ### command - 7, ping
 - [18..21] stream-id : uint32
@@ -490,8 +510,8 @@ as well.
 
 This command is respected if the receiver is running in directory mode. If
 permitted (rate limit, key access restrictions, ...) it will result in a series
-of directory-state updates, giving the current set of available appls,
-sources or sinks (depending if connecting as a source, or sink yourself).
+of directory-state and directory-discover events giving the current set of
+available appls, sources or directories.
 
 If notify is set to !0, the sender requests that any changes to the set will
 be provided dynamically without the caller polling through additional
@@ -512,10 +532,10 @@ An empty identifier terminates. The applname or server-identifier can be used
 as the extension field of a BCHUNKSTATE event to initiate the actual transfer.
 
 ### command - 11, directory-discover
-- [18.. 19] role    : uint8 (0) source, (1) sink, (2) directory
-- [20     ] state   : uint8, (0) added, (1) lost
-- [21.. 36] id      : (+16) Kpub (x25519)
-- [37  +16] petname : UTF-8 identifier
+- [18     ] role    : uint8 (0) source, (1) sink, (2) directory
+- [19     ] state   : uint8 (0) added, (1) lost
+- [20  +16] petname : UTF-8 identifier
+- [36  +32] Kpub (x25519)
 
 This is provided when a new source or sink has flagged for availability
 (state=0) or been disconnected (state=1). The petname is provided on initial
@@ -523,28 +543,47 @@ source/sink/directory HELLO or chosen by the directory server due to local
 policy or name collision.
 
 ### command - 12, directory-open
-- [18    ] Mode    : (0: direct, 1: tunnel)
-- [19..34] Kpub    : (+16) Kpub (x25519)
-- [35..50] petname : UTF-8 identifier
+- [18    ] Mode     : (1: direct-inbound, 2: direct-outbound, 4: tunnel)
+- [19+ 32] Kpub-tgt : (x25519)
+- [52+ 32] Kpub-me  : (x25519)
 
 This is used to request a connection / connection request to the provided
-petname. Kpub is the public key that will be used in the HELLO to the target.
-This can be the same Kpub used to make the connection to the directory server,
-but might also be a different one in order to differentiate between trust
-domains. It will be forwarded to the source/sink/directory in question.
+petname. Kpub-tgt is the identifier previously received from a discover event
+while Kpub-me is the public key that the source will connect through in order
+to differentiate between the credential used to access the directory versus the
+credential used to access the source.
 
-If mode is set to tunnnel:ed, the active connection will be used to route
-traffic to/from the nested connection. This is a workthrough for cases where
-a direct connection cannot be established, corresponding carriers for NAT
-traversal (UDP blocked, misconfigured routers) and might not be permitted
-by the server connection.
+Mode can be treated as a bitmap of supported open-modes.
 
-A client is intended to first try to establish a direct connection, and after a
-failed attempt, try the tunnel route.
+If mode is set to direct-inbound the request is that the other end connects to
+the request originator (TCP). This will provide the source-IP that was used to
+connect to the directory.
+
+If mode is set to direct-outbound, the request is that the other end listens
+for a connection (TCP) and on receiving a directory-opened reply, the source
+commits to connecting within some implementation defined timeout as outer
+bounds. Implementations SHOULD ignore repeated open-request to prevent
+denial-of-service.
+
+If mode is set to tunnel:ed, the active connection will be used to route
+traffic to/from the nested connection. This is a workthrough for cases where a
+direct connection cannot be established, corresponding carriers for NAT
+traversal (UDP blocked, misconfigured routers) and might not be permitted by
+the server connection.
 
 ### command - 14, directory-opened
-- [18    ] Status  : (0 failed, 1 direct ok, 2 tunnel ok)
-- [19 +16] Address : Status = 1, IPv6 address to the host, Status = 2, tunnel ID.
+- [18    ] Status  : (0 failed, 1 direct-in ok, 2 direct-out ok, 2 tunnel ok)
+- [19 +16] Address : Status = 1, IPv6 address to the host,
+                     Status = 2, IPv4 address to the host,
+                     Status = 3, tunnel ID.
+- [34 +12] Secret  : alphanumerical random secret to use with first HELLO
+                     packet to authenticate.
+- [45 +16] Kpub    : the other end key (for direct-in)
+
+This will be sent to source/source-directory and to sink in response to a
+directory-open request. The connection mode must skip the ephemeral handshake
+hello-mode and instead use the secret to protect the negotiation packet and
+to signal that the connection is mediated via this particular third party.
 
 ##  Event (2), fixed length
 - [0..7] sequence number : uint64

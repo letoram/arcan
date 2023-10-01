@@ -46,6 +46,7 @@ static struct {
 	bool soft_auth;
 	bool no_default;
 	bool probe_only;
+	bool keep_alive;
 	size_t accept_n_pk_unknown;
 	size_t backpressure;
 	size_t backpressure_soft;
@@ -54,6 +55,8 @@ static struct {
 	struct anet_dircl_opts dircl;
 	char* trust_domain;
 	char* path_self;
+
+	volatile bool flag_rescan;
 } global = {
 	.backpressure_soft = 2,
 	.backpressure = 6,
@@ -215,6 +218,12 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 	struct arcan_net_meta* ameta = tag;
 
 	if (global.directory > 0){
+		if (global.flag_rescan){
+			anet_directory_srv_rescan(&global.dirsrv);
+			anet_directory_shmifsrv_set(&global.dirsrv);
+			global.flag_rescan = false;
+		}
+
 		char tmpfd[32], tmptrace[32];
 		snprintf(tmpfd, sizeof(tmpfd), "%d", fd);
 		snprintf(tmptrace, sizeof(tmptrace), "%d", a12_trace_targets);
@@ -660,7 +669,7 @@ static bool show_usage(const char* msg)
 	"\t --soft-auth   \t Permit unknown via authentication secret (password)\n"
 	"\t-T, --trust s  \t Specify trust domain for splitting keystore\n"
 	"\t               \t outbound connections default to 'outbound' while\n"
-	"\t               \t serving/listening defaults to a wildcard ('*')\n\n",
+	"\t               \t serving/listening defaults to a wildcard ('*')\n\n"
 	""
 	"Options:\n"
 	"\t-t             \t Single- client (no fork/mt - easier troubleshooting)\n"
@@ -670,11 +679,15 @@ static bool show_usage(const char* msg)
 	"Directory client options: \n"
 	"\t --keep-appl   \t Don't wipe appl after execution\n"
 	"\t --reload      \t Re-request the same appl after completion\n"
+	"\t --ident name  \t When attaching as a source or directory, identify as [name]\n"
+	"\t --keep-alive  \t Keep connection alive and print changes to the directory\n"
+	"\t --push-appl s \t Push [s] from APPLBASE to the server\n"
 	"\t --block-log   \t Don't attempt to forward script errors or crash logs\n"
 	"\t --block-state \t Don't attempt to synch state before/after running appl\n\n"
 	"Directory server options: \n"
-	"\t --allow-src s \t Let clients in trust group [s, all=*] register as sources\n"
-	"\t --allow-dir s \t Let clients in trust group [s, all=*] register as directories\n\n"
+	"\t --allow-src  s \t Let clients in trust group [s, all=*] register as sources\n"
+	"\t --allow-appl s \t Let clients in trust group [s, all=*] update appls and resources\n"
+	"\t --allow-dir  s \t Let clients in trust group [s, all=*] register as directories\n\n"
 	"Environment variables:\n"
 	"\tARCAN_STATEPATH\t Used for keystore and state blobs (sensitive)\n"
 #ifdef WANT_H264_ENC
@@ -690,7 +703,9 @@ static bool show_usage(const char* msg)
 	"\nTrace groups (stderr):\n"
 	"\tvideo:1      audio:2       system:4    event:8      transfer:16\n"
 	"\tdebug:32     missing:64    alloc:128   crypto:256   vdetail:512\n"
-	"\tbinary:1024  security:2048 directory:4096\n\n", msg ? msg : "", msg ? "\n\n" : ""
+	"\tbinary:1024  security:2048 directory:4096\n\n",
+		msg ? msg : "",
+		msg ? "\n\n" : ""
 	);
 	return false;
 }
@@ -814,6 +829,64 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			if (i < argc)
 				return show_usage("Trailing arguments to -S fd_in host port");
 		}
+		else if (strcmp(argv[i], "--allow-src") == 0){
+			i++;
+			if (i >= argc)
+				return show_usage("--allow-src: missing group tag name");
+			global.dirsrv.allow_src = argv[i];
+		}
+		else if (strcmp(argv[i], "--allow-dir") == 0){
+			i++;
+			if (i >= argc)
+				return show_usage("--allow-dir: missing group tag name");
+			global.dirsrv.allow_dir = argv[i];
+		}
+		else if (strcmp(argv[i], "--allow-appl") == 0){
+			i++;
+			if (i >= argc)
+				return show_usage("--allow-appl: missing group tag name");
+			global.dirsrv.allow_appl = argv[i];
+		}
+/* one-time single appl update to directory */
+		else if (strcmp(argv[i], "--push-appl") == 0){
+			i++;
+			if (i >= argc){
+				return show_usage("--push-appl name: missing");
+			}
+			if (argv[i][0] == '.' || argv[i][1]){
+				char* path = strrchr(argv[i], '/');
+				if (!path)
+					return show_usage("--push-appl /path/to/appl: invalid path format");
+				*path = '\0';
+				if (-1 == chdir(argv[i]))
+					return show_usage("--push-appl couldn't reach appl root dir");
+				argv[i] = &path[1];
+			}
+			else if (!getenv("ARCAN_APPLBASEPATH")){
+				return show_usage(
+					"--push-appl name should be full path or relative ARCAN_APPLBASEPATH");
+				chdir(getenv("ARCAN_APPLBASEPATH"));
+			}
+
+			int dirfd = open(".", O_RDONLY | O_DIRECTORY);
+			if (-1 == dirfd)
+				return show_usage("--push-appl name: couldn't resolve working directory");
+
+			if (global.dircl.outapp.handle)
+				return show_usage("multiple --push-appl arguments provided");
+
+			if (!build_appl_pkg(argv[i], &global.dircl.outapp, dirfd))
+				return show_usage("--push-appl: couldn't build appl package");
+
+			a12int_trace(A12_TRACE_DIRECTORY, "dircl:push_appl:built=%s", argv[i]);
+		}
+		else if (strcmp(argv[i], "--ident") == 0){
+			i++;
+			if (argc == i)
+				return show_usage("--ident name: missing name argument");
+
+			snprintf(global.dircl.ident, 16, "%s", argv[i]);
+		}
 		else if (strcmp(argv[i], "--soft-auth") == 0){
 			global.soft_auth = true;
 		}
@@ -896,12 +969,6 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		else if (strcmp(argv[i], "--") == 0){
 			opts->opts->local_role = ROLE_SOURCE;
 			return i;
-		}
-		else if (strcmp(argv[i], "--permit-src") == 0){
-			i++;
-			if (i == argc)
-				return show_usage("--permit-src without domain argument");
-			global.dirsrv.permit_source = argv[i];
 		}
 		else if (strcmp(argv[i], "--directory") == 0){
 			if (!getenv("ARCAN_APPLBASEPATH")){
@@ -1142,6 +1209,11 @@ static struct pk_response key_auth_local(uint8_t pk[static 32])
 	return auth;
 }
 
+static void sigusr_rescan(int sign)
+{
+	global.flag_rescan = true;
+}
+
 int main(int argc, char** argv)
 {
 	struct anet_options anet = {
@@ -1225,19 +1297,30 @@ int main(int argc, char** argv)
  *    3. downloading / running an appl
  *    4. sourcing a shmif application to some remote either directly or proxied
  *    5. sourcing as a directory server ourselves
+ *    6. pushing an appl or resources into the storage of one
  */
 			int rc = 0;
 			if (a12_remote_mode(cl.state) == ROLE_DIR){
-				global.dircl.die_on_list = true;
+
+/* the die_on_list default for probe role and regular appl running, otherwise
+ * we wait for notifications on new ones. dircl.reload takes precedence. */
+				global.dircl.die_on_list = global.keep_alive ? false : true;
 				global.dircl.basedir = global.directory;
 
-/* any trailing arguments means we want 3. or 4. */
+/* any trailing arguments means we want 4. or 5. the way this is intended to
+ * work is that we attach to the directory, announce our role (and get accepted
+ * or kicked). if someone wants to 'open' us the directory will tell us the
+ * Kpub and secret to expect, fork and run arcan-net with that along with the
+ * chained argument as if it was a normal local host. the same works for
+ * tunneled mode, just that anet_directory_cl will be responsible for wrapping
+ * around stdio into tunneled packet (set-tun, fwd-tun, drop-tun). */
 				if (argi <= argc - 1){
 					if (strcmp(argv[argi], "--") == 0){
-
+						global.dircl.source_argv = &argv[argi+1];
+						global.dircl.source_argc = argc - (argi+1);
 					}
 /* for
- * 4. we need a clopts.basedir where the appl can be unpacked that
+ * 3. we need a clopts.basedir where the appl can be unpacked that
  *    can be wiped later. Use XDG_ or /tmp for now (if global.directory
  *    is set anet_directory_cl will switch to that)
  */
@@ -1319,6 +1402,14 @@ int main(int argc, char** argv)
 			close(fd);
 			global.path_self = argv[0];
 			global.dirsrv.basedir = global.directory;
+
+/* Install a signal handler that will mark the directory as subject to rescan
+ * on the next connection. the main use for this is as a trigger for something
+ * like .git. Dynamic updates are better handled in-band by permitting a user
+ * to push updates. */
+			sigaction(SIGUSR1, &(struct sigaction){
+					.sa_handler = sigusr_rescan
+			}, NULL);
 			anet_directory_srv_rescan(&global.dirsrv);
 			anet_directory_shmifsrv_set(&global.dirsrv);
 		}

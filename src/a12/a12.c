@@ -18,6 +18,7 @@
 
 #include "a12.h"
 #include "a12_int.h"
+#include "net/a12_helper.h"
 
 #include "a12_decode.h"
 #include "a12_encode.h"
@@ -840,6 +841,7 @@ static void command_binarystream(struct a12_state* S)
 	unpack_u32(&bframe->identifier, &S->decode[31]);
 	memcpy(bframe->checksum, &S->decode[35], 16);
 	bframe->tmp_fd = -1;
+	memcpy(bframe->extid, &S->decode[53], 16);
 
 	bframe->active = true;
 	a12int_trace(A12_TRACE_BTRANSFER,
@@ -866,6 +868,7 @@ static void command_binarystream(struct a12_state* S)
 		.dcont = S->channels[channel].cont,
 		.fd = -1
 	};
+	memcpy(bm.extid, bframe->extid, 16);
 	memcpy(bm.checksum, bframe->checksum, 16);
 
 	if (S->binary_handler){
@@ -1311,8 +1314,8 @@ void a12_set_session(
  * Simplified form of enqueue bstream below, we already have the buffer
  * in memory so just build a different blob-out node with a copy
  */
-void a12_enqueue_blob(
-	struct a12_state* S, const char* const buf, size_t buf_sz, uint32_t id)
+void a12_enqueue_blob(struct a12_state* S, const char* const buf,
+	size_t buf_sz, uint32_t id, int type, const char extid[static 16])
 {
 	struct blob_out** next = alloc_attach_blob(S);
 	if (!next)
@@ -1331,7 +1334,8 @@ void a12_enqueue_blob(
 	(*next)->buf_sz = buf_sz;
 	(*next)->left = buf_sz;
 	(*next)->identifier = id;
-	(*next)->type = A12_BTYPE_BLOB;
+	(*next)->type = type;
+	memcpy((*next)->extid, extid, 16);
 
 	blake3_hasher hash;
 	blake3_hasher_init(&hash);
@@ -1363,7 +1367,8 @@ void a12_enqueue_blob(
  *
  */
 void a12_enqueue_bstream(struct a12_state* S,
-	int fd, int type, uint32_t id, bool streaming, size_t sz)
+	int fd, int type, uint32_t id, bool streaming, size_t sz,
+	const char extid[static 16])
 {
 	struct blob_out** parent = alloc_attach_blob(S);
 	if (!parent)
@@ -1372,6 +1377,10 @@ void a12_enqueue_bstream(struct a12_state* S,
 	struct blob_out* next = *parent;
 	next->type = type;
 	next->identifier = id;
+
+	if (extid && (type == A12_BTYPE_APPL || type == A12_BTYPE_APPL_RESOURCE)){
+		snprintf(next->extid, 16, "%s", extid);
+	}
 
 	if (type == A12_BTYPE_FONT_SUPPL || type == A12_BTYPE_FONT)
 		next->rampup_seqnr = S->current_seqnr + 1;
@@ -1773,23 +1782,36 @@ static void command_pingpacket(struct a12_state* S, uint32_t sid)
 		S->congestion_stats.frame_window[i] = 0;
 }
 
+static void dirstate_item(struct a12_state* S, struct appl_meta* C)
+{
+	uint8_t outb[CONTROL_PACKET_SIZE];
+	build_control_header(S, outb, COMMAND_DIRSTATE);
+
+	if (C->role == ROLE_SOURCE || C->role == ROLE_DIR){
+		a12int_notify_dynamic_resource(
+			S, C->dynamic.petname, C->dynamic.key, C->role, true);
+		return;
+	}
+
+	pack_u16(C->identifier, &outb[18]);
+	pack_u16(C->categories, &outb[20]);
+	pack_u16(C->permissions, &outb[22]);
+	memcpy(&outb[24], C->hash, 4);
+	pack_u64(C->buf_sz, &outb[28]);
+	memcpy(&outb[36], C->appl.name, 18);
+	memcpy(&outb[55], C->appl.short_descr, 69);
+	a12int_append_out(S,
+		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+	a12int_trace(A12_TRACE_DIRECTORY, "send:name=%s", C->appl.name);
+}
+
 static void send_dirlist(struct a12_state* S)
 {
 	uint8_t outb[CONTROL_PACKET_SIZE];
 	struct appl_meta* C = S->directory;
 
 	while (C){
-		build_control_header(S, outb, COMMAND_DIRSTATE);
-		pack_u16(C->identifier, &outb[18]);
-		pack_u16(C->categories, &outb[20]);
-		pack_u16(C->permissions, &outb[22]);
-		memcpy(&outb[24], C->hash, 4);
-		pack_u64(C->buf_sz, &outb[28]);
-		memcpy(&outb[36], C->applname, 18);
-		memcpy(&outb[55], C->short_descr, 69);
-		a12int_append_out(S,
-			STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
-		a12int_trace(A12_TRACE_DIRECTORY, "send:name=%s", C->applname);
+		dirstate_item(S, C);
 		C = C->next;
 	}
 
@@ -1798,6 +1820,43 @@ static void send_dirlist(struct a12_state* S)
 	build_control_header(S, outb, COMMAND_DIRSTATE);
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+}
+
+/* just unpack and forward to the event handler, arcan proper can deal with the
+ * event as it is mostly verbatim when it passes through afsrv_net and
+ * arcan-net has the same structures available */
+static void command_dirdiscover(struct a12_state* S, void (*on_event)
+	(struct arcan_shmif_cont*, int chid, struct arcan_event*, void*), void* tag)
+{
+	uint8_t type = S->decode[18];
+	bool added = S->decode[19];
+
+/* block separator */
+	char petname[17] = {0};
+	memcpy(petname, &S->decode[20], 16);
+	for (size_t i = 0; petname[i]; i++)
+		if (petname[i] == ':')
+			petname[i] = '_';
+
+/* netstate event type model match that of a12 dirdiscover command */
+	struct arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = EVENT_EXTERNAL_NETSTATE,
+		.ext.netstate = {
+			.space = 5,
+			.state = added ? 1 : 0,
+			.type = type
+		}
+	};
+
+/* pack kpub as base64 (43 bytes) */
+	size_t outl;
+	unsigned char* pk =
+		a12helper_tob64(&S->decode[36], 32, &outl);
+	snprintf((char*)&ev.ext.netstate.name, 66, "%d:%s", petname, pk);
+	free(pk);
+
+	on_event(S->channels[0].cont, 0, &ev, tag);
 }
 
 static void add_dirent(struct a12_state* S)
@@ -1821,8 +1880,8 @@ static void add_dirent(struct a12_state* S)
 	unpack_u16(&new->permissions, &S->decode[22]);
 	memcpy(new->hash, &S->decode[24], 4);
 	unpack_u64(&new->buf_sz, &S->decode[28]);
-	memcpy(new->applname, &S->decode[36], 18);
-	memcpy(new->short_descr, &S->decode[55], 69);
+	memcpy(new->appl.name, &S->decode[36], 18);
+	memcpy(new->appl.short_descr, &S->decode[55], 69);
 	new->update_ts = arcan_timemillis();
 
 	if (!S->directory){
@@ -1926,7 +1985,11 @@ static void process_control(struct a12_state* S, void (*on_event)
  * 3. if this is not a rekey response package, send the new pubk in response */
 	break;
 	case COMMAND_DIRLIST:
+		S->notify_dynamic = S->decode[18];
 		send_dirlist(S);
+	break;
+	case COMMAND_DIRDISCOVER:
+		command_dirdiscover(S, on_event, tag);
 	break;
 
 /* Security notice: this allows the remote end to update / populate the
@@ -2725,6 +2788,9 @@ static size_t begin_bstream(struct a12_state* S, struct blob_out* node)
 		ZSTD_CCtx_setParameter(node->zstd, ZSTD_c_nbWorkers, 4);
 		outb[52] = 1;
 	}
+
+/* only used for two subtypes but will be set to 0 otherwise */
+	memcpy(&outb[53], node->extid, 16);
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 
 	node->active = true;
@@ -3050,14 +3116,14 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
  * the rest */
 		case TARGET_COMMAND_RESTORE:
 			a12_enqueue_bstream(S,
-				ev->tgt.ioevs[0].iv, A12_BTYPE_STATE, false, 0, 0);
+				ev->tgt.ioevs[0].iv, A12_BTYPE_STATE, false, 0, 0, NULL);
 			return true;
 		break;
 
 /* let the bstream- side determine if the source is streaming or not */
 		case TARGET_COMMAND_BCHUNK_IN:
 			a12_enqueue_bstream(S,
-				ev->tgt.ioevs[0].iv, A12_BTYPE_BLOB, false, 0, 0);
+				ev->tgt.ioevs[0].iv, A12_BTYPE_BLOB, false, 0, 0, NULL);
 				return true;
 		break;
 
@@ -3067,7 +3133,7 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
 		case TARGET_COMMAND_FONTHINT:
 			a12_enqueue_bstream(S,
 				ev->tgt.ioevs[0].iv, ev->tgt.ioevs[4].iv == 1 ?
-				A12_BTYPE_FONT_SUPPL : A12_BTYPE_FONT, false, 0, 0
+				A12_BTYPE_FONT_SUPPL : A12_BTYPE_FONT, false, 0, 0, NULL
 			);
 		break;
 		default:
@@ -3186,4 +3252,25 @@ void a12_sensitive_free(void* ptr, size_t buf)
 int a12_remote_mode(struct a12_state* S)
 {
 	return S->remote_mode;
+}
+
+void a12int_notify_dynamic_resource(struct a12_state* S,
+		const char* petname, uint8_t kpub[static 32], uint8_t role, bool added)
+{
+	if (!S->notify_dynamic)
+		return;
+
+	a12int_trace(A12_TRACE_DIRECTORY,
+		"dynamic:forward:name=%s:role=%d:added=%d", petname,(int)role,(int)added);
+
+	uint8_t outb[CONTROL_PACKET_SIZE];
+	build_control_header(S, outb, COMMAND_DIRDISCOVER);
+	outb[18] = role;
+	outb[19] = added;
+/* note: this does not align on unicode codepoints or utf8- encoding,
+ * petname is expected to have been shortened / aligned before */
+	snprintf((char*)&outb[20], 16, "%s", petname);
+	memcpy(&outb[36], kpub, 32);
+	a12int_append_out(S,
+		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 }

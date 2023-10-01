@@ -1463,7 +1463,7 @@ enum ARCAN_TARGET_SKIPMODE {
  *           2 = host [append subdomain] - empty terminates
  *           3 = ipv4
  *           4 = ipv6
- *           5 = a12 Kpub
+ *           5 = [petname]:a12 Kpub
  *
  * (name)  : identifier in [space] 0 terminated
  *
@@ -1692,10 +1692,11 @@ enum ARCAN_TARGET_SKIPMODE {
 
 /*
  * (timestr, timelim) - 7-bit ascii, isnum : describing HH:MM:SS\0
- * (completion)       - 0..1 (start, 1 finish)
+ * (completion)       - 0..1 (start, 1 finish), -error
  * (streaming)        - dynamic / unknown source [media]
  *                      type identifier [tui]
  * (frameno)          - frame counter [media]
+ * (identifier)       - binary stream identifier [bchunkstate]
  */
 		struct {
 			uint8_t timestr[9];
@@ -1703,6 +1704,7 @@ enum ARCAN_TARGET_SKIPMODE {
 			float completion;
 			uint8_t streaming;
 			uint32_t frameno;
+			uint32_t identifier;
 		} streamstat;
 
 /*

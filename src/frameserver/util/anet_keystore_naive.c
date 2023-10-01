@@ -664,7 +664,7 @@ const char*
 {
 	struct key_ent* ent = keystore.hosts;
 	if (!connp)
-		connp = "outbound";
+		return NULL;
 
 	size_t nlen = strlen(connp);
 	if (!nlen)
@@ -678,7 +678,7 @@ const char*
 		}
 
 /* valid for every connection point? */
-		if (strcmp(ent->host, "*") == 0){
+		if (strcmp(ent->host, "*") == 0 || strcmp(connp, "*") == 0){
 			return ent->host;
 		}
 

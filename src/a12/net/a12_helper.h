@@ -74,4 +74,7 @@ int a12helper_a12srv_shmifcl(
 	struct arcan_shmif_cont* prealloc,
 	struct a12_state* S, const char* cp, int fd_in, int fd_out);
 
+uint8_t* a12helper_tob64(const uint8_t* data, size_t inl, size_t* outl);
+bool a12helper_fromb64(const uint8_t* instr, size_t lim, uint8_t outb[static 32]);
+
 #endif

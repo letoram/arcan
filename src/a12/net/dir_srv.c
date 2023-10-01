@@ -19,6 +19,7 @@
 
 #include "../a12.h"
 #include "../a12_int.h"
+#include "a12_helper.h"
 #include "anet_helper.h"
 #include "directory.h"
 
@@ -40,6 +41,10 @@ struct dircl {
 	int in_appl;
 	bool notify;
 	int type;
+
+	bool pending_stream;
+	int pending_fd;
+	uint16_t pending_id;
 
 	arcan_event petname;
 
@@ -70,7 +75,8 @@ static struct {
 	} while (0);
 
 /* Check for petname collision among existing instances, this is another of
- * those policy decisions that should be moved to a scripting layer. */
+ * those policy decisions that should be moved to a scripting layer to also
+ * apply geographically appropriate blocklists for the inevitable censors */
 static bool gotname(struct dircl* source, struct arcan_event ev)
 {
 	struct dircl* C = active_clients.root.next;
@@ -159,7 +165,8 @@ enum {
 	IDTYPE_APPL  = 0,
 	IDTYPE_STATE = 1,
 	IDTYPE_DEBUG = 2,
-	IDTYPE_RAW   = 3
+	IDTYPE_RAW   = 3,
+	IDTYPE_ACTRL = 4
 };
 
 volatile struct appl_meta* identifier_to_appl(
@@ -177,6 +184,10 @@ volatile struct appl_meta* identifier_to_appl(
 			*mtype = IDTYPE_STATE;
 		else if (strcmp(sep, "debug") == 0)
 			*mtype = IDTYPE_DEBUG;
+		else if (strcmp(sep, "appl") == 0)
+			*mtype = IDTYPE_APPL;
+		else if (strcmp(sep, "ctrl") == 0)
+			*mtype = IDTYPE_ACTRL;
 		else if (strlen(sep) > 0){
 			*mtype = IDTYPE_RAW;
 			*outsep = sep;
@@ -196,7 +207,7 @@ volatile struct appl_meta* identifier_to_appl(
 	while (cur){
 		if (cur->identifier == *mid){
 			pthread_mutex_unlock(&active_clients.sync);
-			A12INT_DIRTRACE("dirsv:resolve_id:id=%s:applname=%s", id, cur->applname);
+			A12INT_DIRTRACE("dirsv:resolve_id:id=%s:applname=%s", id, cur->appl.name);
 			return cur;
 		}
 		cur = cur->next;
@@ -220,16 +231,101 @@ static int get_state_res(
 	return resfd;
 }
 
+static void handle_bchunk_completion(struct dircl* C, bool ok)
+{
+	if (-1 == C->pending_fd){
+		A12INT_DIRTRACE("dirsv:bchunk_state:complete_unknown_fd");
+		return;
+	}
+
+	if (!ok){
+		A12INT_DIRTRACE("dirsv:bchunk_state:cancelled");
+		close(C->pending_fd);
+		return;
+	}
+	ok = false;
+
+	pthread_mutex_lock(&active_clients.sync);
+		volatile struct appl_meta* cur = &active_clients.opts->dir;
+		while (cur){
+			if (cur->identifier != C->pending_id){
+				cur = cur->next;
+				continue;
+			}
+			ok = true;
+			break;
+		}
+
+	if (!ok){
+		A12INT_DIRTRACE("dirsv:bchunk_state:complete_unknown");
+		pthread_mutex_unlock(&active_clients.sync);
+		goto out;
+	}
+
+/* when adding proper formats, here is a place for type-validation scanning /
+ * attestation / signing (external / popen and sandboxed ofc.) */
+		lseek(C->pending_fd, 0, SEEK_SET);
+		FILE* fpek = fdopen(C->pending_fd, "r");
+		if (!fpek)
+			goto out;
+
+		char* dst;
+		size_t dst_sz;
+		FILE* handle = file_to_membuf(fpek, &dst, &dst_sz);
+
+/* time to replace the backing slot, rebuild index and notify listeners */
+		if (handle){
+			cur->buf_sz = dst_sz;
+			cur->buf = dst;
+			cur->handle = handle;
+
+/* need to unlock as shmifsrv set will lock again, it will take care of
+ * rebuilding the index and notifying listeners though - identity action
+ * so volatile is no concern */
+			pthread_mutex_unlock(&active_clients.sync);
+			anet_directory_shmifsrv_set(
+				(struct anet_dirsrv_opts*) active_clients.opts);
+		}
+		else
+			pthread_mutex_unlock(&active_clients.sync);
+
+	fclose(fpek);
+	return;
+
+out:
+	close(C->pending_fd);
+	C->pending_fd = -1;
+}
+
+static volatile struct appl_meta* allocate_new_appl(char* ext, uint16_t* mid)
+{
+	return NULL;
+}
+
+/* We have an incoming BCHUNKSTATE for a worker. We need to parse and unpack the
+ * format used to squeeze the request into the event type, then check permissions
+ * for retrieval or creation. */
 static void handle_bchunk_req(struct dircl* C, char* ext, bool input)
 {
-	int mtype;
+	int mtype = 0;
 	uint16_t mid = 0;
 	char* outsep = NULL;
+	bool closefd = true;
 
 	volatile struct appl_meta* meta = identifier_to_appl(ext, &mtype, &mid, &outsep);
 
-	if (!meta)
-		goto fail;
+/* Special case, for (new) appl-upload we need permission and register an
+ * identifier for the new appl. */
+	if (!meta){
+		if (mtype == IDTYPE_APPL && !input){
+			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_appl)){
+				meta = allocate_new_appl(ext, &mid);
+			}
+		}
+
+		if (!meta)
+			goto fail;
+	}
 
 	int resfd = -1;
 	size_t ressz = 0;
@@ -243,7 +339,7 @@ static void handle_bchunk_req(struct dircl* C, char* ext, bool input)
 			pthread_mutex_unlock(&active_clients.sync);
 		break;
 		case IDTYPE_STATE:
-			resfd = get_state_res(C, meta->applname, ".state", O_RDONLY, 0);
+			resfd = get_state_res(C, meta->appl.name, ".state", O_RDONLY, 0);
 		break;
 		case IDTYPE_DEBUG:
 			goto fail;
@@ -253,7 +349,7 @@ static void handle_bchunk_req(struct dircl* C, char* ext, bool input)
 			char* envbase = getenv("ARCAN_APPLSTOREPATH");
 			if (envbase && isalnum(outsep[0])){
 				pthread_mutex_lock(&active_clients.sync);
-					char* name = strdup((char*)meta->applname);
+					char* name = strdup((char*)meta->appl.name);
 				pthread_mutex_unlock(&active_clients.sync);
 				char* full = NULL;
 				if (0 < asprintf(&full, "%s/%s/%s", envbase, name, outsep)){
@@ -268,18 +364,33 @@ static void handle_bchunk_req(struct dircl* C, char* ext, bool input)
 	}
 	else {
 		switch (mtype){
-	/* need to check if we have permission to swap out an appl, if so we also
+	/* Need to check if we have permission to swap out an appl, if so we also
 	 * need to be notified when the actual binary transfer is over so that we can
 	 * swap it out in the index (optionally on-disk) atomically and notify anyone
-	 * listening that it has been updated. */
-		case IDTYPE_APPL:
+	 * listening that it has been updated. This is done using STREAMSTAT with the
+	 * [completion] argument. */
+			case IDTYPE_APPL:
+			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_appl)){
+				resfd = buf_memfd(NULL, 0);
+				if (-1 != resfd){
+					C->pending_fd = resfd;
+					C->pending_stream = true;
+					C->pending_id = mid;
+					closefd = false; /* need it around */
+				}
+			}
+			else {
+				goto fail;
+			}
+		break;
+		case IDTYPE_ACTRL:
 			goto fail;
 		break;
 		case IDTYPE_STATE:
-			resfd = get_state_res(C, meta->applname, ".state", O_WRONLY, 0);
+			resfd = get_state_res(C, meta->appl.name, ".state", O_WRONLY, 0);
 		break;
 		case IDTYPE_DEBUG:
-			resfd = get_state_res(C, meta->applname, ".debug", O_WRONLY, 0);
+			resfd = get_state_res(C, meta->appl.name, ".debug", O_WRONLY, 0);
 		break;
 /* need to check if we have permissions to a. make an upload, b. overwrite an
  * existing file (which unfortunately also means tracking ownership - we can do
@@ -296,12 +407,14 @@ static void handle_bchunk_req(struct dircl* C, char* ext, bool input)
 			.category = EVENT_TARGET,
 			.tgt.kind =
 				input ? TARGET_COMMAND_BCHUNK_IN : TARGET_COMMAND_BCHUNK_OUT,
-			.tgt.ioevs[1].iv = ressz
+			.tgt.ioevs[1].iv = ressz,
+/* this is undocumented use, only relevant when uploading an appl */
+			.tgt.ioevs[3].iv = mid
 		};
 		snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%"PRIu16, mid);
-
 		shmifsrv_enqueue_event(C->C, &ev, resfd);
-		close(resfd);
+		if (closefd)
+			close(resfd);
 	}
 	else {
 		goto fail;
@@ -383,7 +496,7 @@ static void* dircl_process(void* P)
 
 		struct arcan_event ev;
 		while (1 == shmifsrv_dequeue_events(C->C, &ev, 1)){
-/* petName for a source or for joining an appl */
+/* petName for a source/dir or for joining an appl */
 			if (ev.ext.kind == EVENT_EXTERNAL_IDENT){
 				A12INT_DIRTRACE("dirsv:kind=worker:cl_join=%s", ev.ext.message);
 			}
@@ -394,6 +507,15 @@ static void* dircl_process(void* P)
  * is desired. */
 			else if (ev.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE){
 				handle_bchunk_req(C, (char*) ev.ext.bchunk.extensions, ev.ext.bchunk.input);
+			}
+
+			else if (ev.ext.kind == EVENT_EXTERNAL_STREAMSTATUS){
+				if (C->pending_stream){
+					C->pending_stream = false;
+					handle_bchunk_completion(C, ev.ext.streamstat.completion >= 1.0);
+				}
+				else
+					A12INT_DIRTRACE("dirsv:kind=worker_error:status_no_pending");
 			}
 
 /* registering as a source / directory? */
@@ -500,15 +622,15 @@ static void rebuild_index()
 		&active_clients.dirlist, &active_clients.dirlist_sz);
 	volatile struct appl_meta* cur = &active_clients.opts->dir;
 	while (cur){
-		if (cur->applname[0]){
+		if (cur->appl.name[0]){
 			fprintf(dirlist,
 				"kind=appl:name=%s:id=%"PRIu16":size=%"PRIu64
 				":categories=%"PRIu16":hash=%"PRIx8
 				"%"PRIx8"%"PRIx8"%"PRIx8":timestamp=%"PRIu64":description=%s\n",
-				cur->applname, cur->identifier, cur->buf_sz, cur->categories,
+				cur->appl.name, cur->identifier, cur->buf_sz, cur->categories,
 				cur->hash[0], cur->hash[1], cur->hash[2], cur->hash[3],
 				cur->update_ts,
-				cur->short_descr
+				cur->appl.short_descr
 			);
 		}
 		cur = cur->next;
@@ -550,6 +672,8 @@ void anet_directory_shmifsrv_set(struct anet_dirsrv_opts* opts)
 				cur = cur->next;
 			}
 		}
+
+		first = false;
 	}
 
 	pthread_mutex_unlock(&active_clients.sync);
@@ -576,42 +700,7 @@ void anet_directory_shmifsrv_thread(struct shmifsrv_client* cl)
 		cur->next = newent;
 		newent->prev = cur;
 	pthread_mutex_unlock(&active_clients.sync);
-
 	pthread_create(&pth, &pthattr, dircl_process, newent);
-}
-
-static FILE* cmd_to_membuf(const char* cmd, char** out, size_t* out_sz)
-{
-	FILE* applin = popen(cmd, "r");
-	if (!applin)
-		return NULL;
-
-	FILE* applbuf = open_memstream(out, out_sz);
-	if (!applbuf){
-		pclose(applin);
-		return NULL;
-	}
-
-	char buf[4096];
-	size_t nr;
-	bool ok = true;
-
-	while ((nr = fread(buf, 1, 4096, applin))){
-		if (1 != fwrite(buf, nr, 1, applbuf)){
-			ok = false;
-			break;
-		}
-	}
-
-	pclose(applin);
-	if (!ok){
-		fclose(applbuf);
-		return NULL;
-	}
-
-/* actually keep both in order to allow appending elsewhere */
-	fflush(applbuf);
-	return applbuf;
 }
 
 /* This part is much more PoC - we'd need a nicer cache / store (sqlite?) so
@@ -632,50 +721,13 @@ static size_t scan_appdir(int fd, struct appl_meta* dst)
 			strcmp(ent->d_name, "..") == 0 || strcmp(ent->d_name, ".") == 0){
 			continue;
 		}
-		fchdir(fd);
 
-	/* just want directories */
-		struct stat sbuf;
-		if (-1 == stat(ent->d_name, &sbuf) || (sbuf.st_mode & S_IFMT) != S_IFDIR)
-			continue;
-
-		chdir(ent->d_name);
-
-		struct appl_meta* new = malloc(sizeof(struct appl_meta));
-		if (!new)
-			break;
-
-		*dst = (struct appl_meta){0};
-		size_t buf_sz;
-
-		/* This is a problematic format, both in terms of requiring an exec (though
-		 * process not in a particularly vulnerable state) but the shenanigans
-		 * needed to get determinism on top of that regarding permissions,
-		 * m-/a-ctime. etc. is not particularly nice. We could re-use the walk
-		 * function with our own and just pull in whitelisted extensions, sort and
-		 * stream-index that - or go with with a Find / sort pre-pass, but tar flag
-		 * portability is also a..
-		 */
-		dst->handle = cmd_to_membuf("tar cf - .", &dst->buf, &buf_sz);
-		dst->buf_sz = buf_sz;
-		fchdir(fd);
-
-		if (!dst->handle){
-			free(new);
-			continue;
+/* will actually chdir, it's a bit messy and will be redone when there is a
+ * more settled appl format to work from */
+		if (build_appl_pkg(ent->d_name, dst, fd)){
+			dst->identifier = count++;
+			dst = dst->next;
 		}
-		dst->identifier = count++;
-
-		blake3_hasher temp;
-		blake3_hasher_init(&temp);
-		blake3_hasher_update(&temp, dst->buf, dst->buf_sz);
-		blake3_hasher_finalize(&temp, dst->hash, 4);
-		snprintf(dst->applname, 18, "%s", ent->d_name);
-		a12int_trace(A12_TRACE_DIRECTORY, "scan_ok:added=%s", dst->applname);
-
-		*new = (struct appl_meta){0};
-		dst->next = new;
-		dst = new;
 	}
 
 	a12int_trace(A12_TRACE_DIRECTORY, "scan_over:count=%zu", count);
@@ -695,5 +747,7 @@ static size_t scan_appdir(int fd, struct appl_meta* dst)
  * signalling. */
 void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
 {
-	opts->dir_count = scan_appdir(dup(opts->basedir), &opts->dir);
+	pthread_mutex_lock(&active_clients.sync);
+		opts->dir_count = scan_appdir(dup(opts->basedir), &opts->dir);
+	pthread_mutex_unlock(&active_clients.sync);
 }

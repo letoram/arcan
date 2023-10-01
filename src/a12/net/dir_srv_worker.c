@@ -19,6 +19,7 @@
 
 #include "../a12.h"
 #include "../a12_int.h"
+#include "a12_helper.h"
 #include "anet_helper.h"
 #include "directory.h"
 
@@ -142,10 +143,12 @@ static void on_srv_event(
 			snprintf(buf, sizeof(buf), "%d.state", (int) extid);
 			int state_fd = request_parent_resource(cbt->S, C, buf, false);
 			if (state_fd != -1){
-				a12_enqueue_bstream(cbt->S, state_fd, A12_BTYPE_STATE, extid, false, 0);
+				a12_enqueue_bstream(cbt->S,
+					state_fd, A12_BTYPE_STATE, extid, false, 0, NULL);
 				close(state_fd);
 			}
-			a12_enqueue_bstream(cbt->S, fd, A12_BTYPE_BLOB, extid, false, 0);
+			a12_enqueue_bstream(cbt->S,
+				fd, A12_BTYPE_BLOB, extid, false, 0, NULL);
 			close(fd);
 		}
 		else
@@ -210,13 +213,13 @@ static void unpack_index(
 			*cur = malloc(sizeof(struct appl_meta));
 			**cur = (struct appl_meta){.role = source ? ROLE_SOURCE : ROLE_DIR};
 
-			snprintf((*cur)->applname, 18, name);
+			snprintf((*cur)->appl.name, 18, name);
 			cur = &(*cur)->next;
 		}
 		else if (strcmp(kind, "appl") == 0 && name){
 			*cur = malloc(sizeof(struct appl_meta));
 			**cur = (struct appl_meta){.role = 0}; /* no role == APPL */
-			snprintf((*cur)->applname, 18, name);
+			snprintf((*cur)->appl.name, 18, name);
 
 			const char* tmp;
 			if (arg_lookup(entry, "categories", 0, &tmp) && tmp)
@@ -316,6 +319,24 @@ static void do_event(
 
 	if (ev->tgt.kind == TARGET_COMMAND_BCHUNK_IN){
 		bchunk_event(S, cbt, C, ev);
+	}
+	else if (ev->tgt.kind == TARGET_COMMAND_MESSAGE){
+		struct arg_arr* stat = arg_unpack(ev->tgt.message);
+
+/* Would only be sent to us if the parent a. thinks we're in a specific APPL
+ * via IDENT b. the ruleset tells us to message. Inject into a12_state
+ * verbatim. THe parent would also need to ensure that the client can't inject
+ * the a12: tag into the MESSAGE or we have a weird form of 'Packets in
+ * Packets'. */
+		if (!stat || !arg_lookup(stat, "a12", 0, NULL)){
+			a12_channel_enqueue(S, ev);
+			if (stat)
+				arg_cleanup(stat);
+			return;
+		}
+
+/* reserved for other messages */
+		arg_cleanup(stat);
 	}
 }
 
@@ -541,19 +562,52 @@ static struct a12_bhandler_res srv_bevent(
 
 	struct directory_meta* cbt = tag;
 	struct appl_meta* meta = find_identifier(cbt->dir, M.identifier);
+
+/* the one case where it is permitted to use a non-identifier to reference a
+ * server-side resource is for appl-push */
 	if (!meta)
 		return res;
 
-/* this is not robust or complete - the previous a12_access_state for the ID
- * should really only be swapped when we have a complete transfer - one option
- * is to first store under a temporary id, then on completion access and copy */
+/* There might be transfers going that are 'uninteresting' i.e. we are sending
+ * a file. For others, mainly uploads, there is a need to know the completion
+ * status in order for other events and notifications to propagate. This is why
+ * in_transfer and transfer_id are tracked. */
 	switch (M.state){
 	case A12_BHANDLER_COMPLETED:
 		a12int_trace(
 			A12_TRACE_DIRECTORY, "kind=status:completed:identifier=%"PRIu16, M.identifier);
+		if (cbt->in_transfer && M.identifier == cbt->transfer_id){
+			cbt->in_transfer = false;
+			arcan_shmif_enqueue(cbt->C,
+					&(struct arcan_event){
+						.category = EVENT_EXTERNAL,
+						.ext.kind = EVENT_EXTERNAL_STREAMSTATUS,
+						.ext.streamstat = {
+							.completion = 1.0,
+							.identifier = M.identifier
+						}
+					}
+				);
+		}
 	break;
 	case A12_BHANDLER_CANCELLED:
-/* 1. truncate the existing state store for the slot */
+		if (cbt->in_transfer && M.identifier == cbt->transfer_id){
+			cbt->in_transfer = false;
+			arcan_shmif_enqueue(cbt->C,
+				&(struct arcan_event){
+					.category = EVENT_EXTERNAL,
+					.ext.kind = EVENT_EXTERNAL_STREAMSTATUS,
+					.ext.streamstat = {
+						.completion = -1,
+						.identifier = M.identifier
+					}
+				}
+			);
+		}
+		else
+			a12int_trace(
+				A12_TRACE_DIRECTORY, "kind=error:btransfer:cancel_unknown");
+
 	break;
 	case A12_BHANDLER_INITIALIZE:
 /* the easiest path now is to BCHUNKSTATE immediately for either the state,
@@ -563,16 +617,52 @@ static struct a12_bhandler_res srv_bevent(
 			char buf[5 + sizeof(".state")];
 			snprintf(buf, sizeof(buf), "%"PRIu16".state", M.identifier);
 			res.fd = request_parent_resource(S, cbt->C, buf, true);
+			if (-1 != res.fd){
+				cbt->in_transfer = true;
+				cbt->transfer_id = M.identifier;
+			}
 		}
 		else if (M.type == A12_BTYPE_CRASHDUMP){
 			char buf[5 + sizeof(".debug")];
 			snprintf(buf, sizeof(buf), "%"PRIu16".debug", M.identifier);
 			res.fd = request_parent_resource(S, cbt->C, buf, true);
 		}
-/* this is a generic data store, comparable to 'form upload' of yore and would
- * be explorable when we wire lwa glob and other remote resource in. */
+/* blob is (currently) not used for anything, a possibility would be form
+ * like uploads for the server end of the appl to be able to process. That
+ * can be hooked up when the [controller] slot has been filled and the
+ * client explicitly join appl participation via IDENT. */
 		else if (M.type == A12_BTYPE_BLOB){
 		}
+/* the rest are default-reject that must be manually enabled for the server
+ * as they provide incrementally dangerous capabilities (adding shared media
+ * with piracy and content policy concerns, adding code running on client
+ * devices to adding code running on plaintext client messaging). */
+/* swap out, update or create a new */
+#ifndef STATIC_DIRECTORY_SERVER
+		else if (M.type == A12_BTYPE_APPL_RESOURCE){
+		}
+		else if (M.type == A12_BTYPE_APPL){
+			char buf[16 + sizeof(".appl")];
+
+/* We treat update (existing identifier) different to add-new. It doesn't have
+ * any special semantics right now, but is relevant if two clients has a
+ * different world-view, i.e. one-added another updated without the change
+ * having propagated. The use cases are slightly different as someone might be
+ * using the existing and need to synch / migrate in the case of update. */
+			if (M.extid[0])
+				snprintf(buf, sizeof(buf), "%s.appl", M.extid);
+			else
+				snprintf(buf, sizeof(buf), "%"PRIu32".appl", M.identifier);
+
+			res.fd = request_parent_resource(S, cbt->C, buf, true);
+			if (-1 != res.fd){
+				cbt->in_transfer = true;
+				cbt->transfer_id = M.extid[0] ? 65535 : M.identifier;
+			}
+		}
+		else if (M.type == A12_BTYPE_APPL_CONTROLLER){
+		}
+#endif
 		break;
 	}
 

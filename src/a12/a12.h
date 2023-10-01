@@ -264,15 +264,23 @@ enum a12_bstream_type {
 	A12_BTYPE_FONT = 1,
 	A12_BTYPE_FONT_SUPPL = 2,
 	A12_BTYPE_BLOB = 3,
-	A12_BTYPE_CRASHDUMP = 4
+
+/* directory mode only */
+	A12_BTYPE_CRASHDUMP = 4,
+	A12_BTYPE_APPL = 5,
+	A12_BTYPE_APPL_RESOURCE = 6,
+	A12_BTYPE_APPL_CONTROLLER = 7
 };
+
 void
 a12_enqueue_bstream(struct a12_state*,
-	int fd, int type, uint32_t id, bool streaming, size_t sz);
+	int fd, int type, uint32_t id, bool streaming,
+	size_t sz, const char extid[static 16]);
 
 void
 a12_enqueue_blob(
-	struct a12_state*, const char* const, size_t, uint32_t id);
+	struct a12_state*, const char* const, size_t, uint32_t id,
+	int type, const char extid[static 16]);
 
 /*
  * Get a status code indicating the state of the connection.
@@ -463,6 +471,7 @@ struct a12_bhandler_meta {
 	uint8_t channel;
 	uint64_t streamid;
 	uint32_t identifier;
+	char extid[17];
 	int fd;
 	struct arcan_shmif_cont* dcont;
 };

@@ -9,7 +9,11 @@ struct anet_dirsrv_opts {
 	int basedir;
 	struct appl_meta dir;
 	size_t dir_count;
-	const char* permit_source;
+	const char* allow_src;
+	const char* allow_dir;
+	const char* allow_appl;
+	const char* allow_ctrl;
+	const char* allow_ares;
 };
 
 /*
@@ -37,11 +41,15 @@ struct anet_dircl_opts {
 	bool block_log;
 	bool keep_appl;
 
+	char ident[16];
 /*
  * set to source / exec an arcan-shmif client:
  *  /path/to/bin arg1 arg2 arg3, ...
  */
+	size_t source_argc;
 	char** source_argv;
+
+	struct appl_meta outapp;
 
 	void* (*allocator)(struct a12_state*, struct directory_meta*);
 	pid_t (*executor)(struct a12_state*,
@@ -53,12 +61,14 @@ struct directory_meta {
 	struct a12_state* S;
 	struct anet_dircl_opts* clopt;
 
+	bool in_transfer;
+	uint32_t transfer_id;
+
 	FILE* appl_out;
 	bool appl_out_complete;
 	int state_in;
 	bool state_in_complete;
 
-	bool activated;
 	struct arcan_shmif_cont* C;
 };
 
@@ -85,7 +95,6 @@ void anet_directory_cl(
 struct a12_bhandler_res anet_directory_cl_bhandler(
 	struct a12_state* S, struct a12_bhandler_meta M, void* tag);
 
-
 /*
  * dir_supp.c
  *
@@ -94,6 +103,10 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
  * and forward on_event, on_directory, on_userfd
  */
 extern bool g_shutdown;
+
+bool build_appl_pkg(const char* name, struct appl_meta* dst, int dirfd);
+FILE* file_to_membuf(FILE* applin, char** out, size_t* out_sz);
+
 void anet_directory_ioloop
 	(struct a12_state* S, void* tag,
 	int fdin, int fdout,
