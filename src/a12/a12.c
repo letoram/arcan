@@ -58,6 +58,7 @@ size_t a12int_header_size(int kind)
 }
 
 static void unlink_node(struct a12_state*, struct blob_out*);
+static void dirstate_item(struct a12_state* S, struct appl_meta* C);
 
 static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz, int ind)
 {
@@ -145,10 +146,53 @@ struct appl_meta* a12int_get_directory(struct a12_state* S, uint64_t* clk)
 	return S->directory;
 }
 
+/* linear search, set_directory is low N and infrequent so O^2 is ok */
+static struct appl_meta* find_entry(struct a12_state* S, struct appl_meta* tgt)
+{
+	struct appl_meta* cur = S->directory;
+
+	while (cur){
+		if (cur->identifier == tgt->identifier){
+			return cur;
+		}
+		cur = cur->next;
+	}
+
+	return NULL;
+}
+
+/* swapping out an existing directory is ok, the only 'requirement' is that
+ * identifiers for applname are retained without collision */
 void a12int_set_directory(struct a12_state* S, struct appl_meta* M)
 {
-	struct appl_meta* C = S->directory;
+/* first synch the ones that have changed */
+	struct appl_meta* cur = M;
+	bool updated = false;
 
+	while (cur && S->directory){
+		struct appl_meta* C = find_entry(S, cur);
+		if (!C){
+			updated = true;
+			dirstate_item(S, cur);
+		}
+		else if (memcmp(C->hash, cur->hash, 4) != 0){
+			updated = true;
+			dirstate_item(S, cur);
+		}
+
+		cur = cur->next;
+	}
+
+	if (updated){
+		uint8_t outb[CONTROL_PACKET_SIZE] = {0};
+		memset(outb, '\0', CONTROL_PACKET_SIZE);
+		build_control_header(S, outb, COMMAND_DIRSTATE);
+		a12int_append_out(S,
+			STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+	}
+
+/* now free the old */
+	struct appl_meta* C = S->directory;
 	while (C){
 		struct appl_meta* old = C;
 		free(C->buf);
@@ -1863,7 +1907,7 @@ static void add_dirent(struct a12_state* S)
 {
 /* end of update is marked with an empty entry */
 	if (S->decode[36] == '\0'){
-		S->directory_clk = arcan_timemillis();
+		S->directory_clk++;
 		return;
 	}
 

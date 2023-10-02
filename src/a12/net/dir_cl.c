@@ -428,7 +428,7 @@ run:
  * while arcan_lwa / arcan is still running, but for now this will cause a
  * new dirlist, a new match and a new request -> running */
 	if (cbt->clopt->reload){
-		a12int_request_dirlist(S, false);
+		a12int_request_dirlist(S, true);
 	}
 	else
 		g_shutdown = true;
@@ -581,9 +581,7 @@ static bool cl_got_dir(struct a12_state* S, struct appl_meta* M, void* tag)
 				return true;
 			}
 		}
-		else
-			printf("name=%s\n", M->appl.name);
-
+		printf("ts=%s:name=%s\n", M->update_ts, M->appl.name);
 		M = M->next;
 	}
 
@@ -622,8 +620,7 @@ void anet_directory_cl(
 		return;
 	}
 
-/* always request dirlist so we can resolve applname against the server-local
- * ID as that might change. */
-	a12int_request_dirlist(S, false);
+/* always request dirlist so we can resolve applname against the server-local */
+	a12int_request_dirlist(S, !opts.die_on_list);
 	anet_directory_ioloop(S, &cbt, fdin, fdout, -1, on_cl_event, cl_got_dir, NULL);
 }
