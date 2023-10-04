@@ -119,8 +119,9 @@ static struct a12_bhandler_res srv_bevent(
 static void on_srv_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
-	struct arcan_shmif_cont* C = tag;
-	struct directory_meta* cbt = C->user;
+	struct ioloop_shared* I = tag;
+	struct directory_meta* cbt = I->cbt;
+	struct arcan_shmif_cont* C = cbt->C;
 
 /* the only concerns here are BCHUNK matching our directory IDs */
 	if (ev->ext.kind == EVENT_EXTERNAL_BCHUNKSTATE){
@@ -339,13 +340,13 @@ static void do_event(
 
 /* split out into a do_event due to sharing processing with the aftermath
  * of calling shmif_block_synch_request */
-static void on_shmif(struct a12_state* S, void* tag)
+static void on_shmif(struct ioloop_shared* S, bool ok)
 {
-	struct arcan_shmif_cont* C = tag;
+	struct arcan_shmif_cont* C = S->cbt->C;
 	struct arcan_event ev;
 
 	while (arcan_shmif_poll(C, &ev) > 0){
-		do_event(S, C, &ev);
+		do_event(S->S, C, &ev);
 	}
 }
 
@@ -492,11 +493,19 @@ void anet_directory_srv(
 
 	a12_set_bhandler(S, srv_bevent, &cbt);
 
-/* this will loop until client shutdown */
-	anet_directory_ioloop(S,
-		&shmif_parent_process, fdin, fdout,
-		shmif_parent_process.epipe, on_srv_event, NULL, on_shmif);
+	struct ioloop_shared ioloop = {
+		.S = S,
+		.fdin = fdin,
+		.fdout = fdout,
+		.userfd = shmif_parent_process.epipe,
+		.on_event = on_srv_event,
+		.on_userfd = on_shmif,
+		.lock = PTHREAD_MUTEX_INITIALIZER,
+		.cbt = &cbt,
+	};
 
+/* this will loop until client shutdown */
+	anet_directory_ioloop(&ioloop);
 	arcan_shmif_drop(&shmif_parent_process);
 }
 

@@ -521,7 +521,7 @@ static void dircl_event(struct arcan_shmif_cont* C, int chid, struct arcan_event
 	LOG("event=%s", arcan_shmif_eventstr(ev, NULL, 0));
 }
 
-void req_id(struct a12_state* S, uint16_t identifier, void* tag)
+void req_id(struct ioloop_shared* I, uint16_t identifier)
 {
 	struct arcan_shmif_cont* C = arcan_shmif_primary(SHMIF_INPUT);
 	struct dircl_meta* client = C->user;
@@ -539,7 +539,7 @@ void req_id(struct a12_state* S, uint16_t identifier, void* tag)
 	LOG("shmif:download:%"PRIu16, identifier);
 	snprintf(
 		(char*)ev.ext.bchunk.extensions, 6, "%"PRIu16, identifier);
-	a12_channel_enqueue(S, &ev);
+	a12_channel_enqueue(I->S, &ev);
 
 /* it would be possible to queue multiples here, just keep 1:1 for the time being */
 	client->appl.id = identifier;
@@ -548,10 +548,10 @@ void req_id(struct a12_state* S, uint16_t identifier, void* tag)
 }
 
 /* returning false here would break us out of the ioloop */
-static bool dircl_dirent(struct a12_state* S, struct appl_meta* M, void* tag)
+static bool dircl_dirent(struct ioloop_shared* I, struct appl_meta* M)
 {
   struct arcan_shmif_cont* C = arcan_shmif_primary(SHMIF_INPUT);
-	struct directory_meta* dir = tag;
+	struct directory_meta* dir = I->cbt;
 	struct dircl_meta* client = C->user;
 
 /* are we just enumerating appls or do we have a pending request? */
@@ -559,7 +559,7 @@ static bool dircl_dirent(struct a12_state* S, struct appl_meta* M, void* tag)
 		if (client->pending_reqname){
 			if (strcmp(M->appl.name, client->pending_reqname) == 0){
 				snprintf(dir->clopt->applname, 16, "%s", M->appl.name);
-				req_id(S, M->identifier, tag);
+				req_id(I, M->identifier);
 				break;
 			}
 		}
@@ -588,11 +588,11 @@ static bool dircl_dirent(struct a12_state* S, struct appl_meta* M, void* tag)
 	return true;
 }
 
-static void dircl_userfd(struct a12_state* S, void* tag)
+static void dircl_userfd(struct ioloop_shared* I, bool ok)
 {
 /* just flush the regular path unless we're blocked */
   struct arcan_shmif_cont* C = arcan_shmif_primary(SHMIF_INPUT);
-	struct directory_meta* cbt = tag;
+	struct directory_meta* cbt = I->cbt;
 	struct dircl_meta* cm = C->user;
 
 	if (cm->pending_reqid > 0)
@@ -617,11 +617,11 @@ static void dircl_userfd(struct a12_state* S, void* tag)
 			}
 /* re-resolve ID to applname for the folder name to match as the same arcan
  * rules apply for applname/applname.lua with initialiser function applname(argv) */
-			struct appl_meta* am = a12int_get_directory(S, NULL);
+			struct appl_meta* am = a12int_get_directory(I->S, NULL);
 			while (am){
 				if (am->identifier == id){
 					snprintf(cbt->clopt->applname, 16, "%s", am->appl.name);
-					req_id(S, am->identifier, tag);
+					req_id(I, am->identifier);
 					return;
 				}
 				am = am->next;
@@ -682,10 +682,21 @@ static int dircl_loop(
 		.state_in = -1
 	};
 
+	struct ioloop_shared ioloop = {
+		.S = A->state,
+		.fdin = A->fd,
+		.fdout = A->fd,
+		.userfd = C->epipe,
+		.on_event = dircl_event,
+		.on_directory = dircl_dirent,
+		.on_userfd = dircl_userfd,
+		.lock = PTHREAD_MUTEX_INITIALIZER,
+		.cbt = &dircfg,
+	};
+
 	C->user = &dmeta;
 	a12_set_bhandler(A->state, anet_directory_cl_bhandler, &dircfg);
-	anet_directory_ioloop(A->state, &dircfg,
-		A->fd, A->fd, C->epipe, dircl_event, dircl_dirent, dircl_userfd);
+	anet_directory_ioloop(&ioloop);
 
 	if (0 != rmdir(tempdir)){
 		LOG("rmdir(%s) failed: %s", tempdir, strerror(errno));

@@ -35,6 +35,8 @@ struct directory_meta;
 struct anet_dircl_opts {
 	int basedir;
 	char applname[16];
+	uint16_t applid;
+
 	bool die_on_list;
 	bool reload;
 	bool block_state;
@@ -101,17 +103,28 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
  * multiplex and trigger on incoming for usrfd_mask (typically shmif)
  * and forward on_event, on_directory, on_userfd
  */
-extern bool g_shutdown;
-
 bool build_appl_pkg(const char* name, struct appl_meta* dst, int dirfd);
 FILE* file_to_membuf(FILE* applin, char** out, size_t* out_sz);
 
-void anet_directory_ioloop
-	(struct a12_state* S, void* tag,
-	int fdin, int fdout,
-	int usrfd,
-	void (*on_event)(struct arcan_shmif_cont* cont, int chid, struct arcan_event*, void*),
-	bool (*on_directory)(struct a12_state* S, struct appl_meta* dir, void*),
-	void (*on_userfd)(struct a12_state* S, void*));
+struct ioloop_shared;
+struct ioloop_shared {
+	int fdin;
+	int fdout;
+	int userfd;
+	pthread_mutex_t lock;
+	struct a12_state *S;
+	volatile bool shutdown;
+	struct directory_meta* cbt;
 
+/* interface mandated by a12, hence shared passed in tag */
+	void (*on_event)(
+		struct arcan_shmif_cont* cont, int chid,
+		struct arcan_event*, void*);
+
+	bool (*on_directory)(struct ioloop_shared* S, struct appl_meta* dir);
+	void (*on_userfd)(struct ioloop_shared* S, bool ok);
+	void* tag;
+};
+
+void anet_directory_ioloop(struct ioloop_shared* S);
 #endif

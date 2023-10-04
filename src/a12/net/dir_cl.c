@@ -29,6 +29,32 @@
 #include <fcntl.h>
 #include <poll.h>
 
+struct appl_runner_state {
+	struct ioloop_shared* ios;
+
+	pid_t pid;
+
+	FILE* pf_stdin;
+	FILE* pf_stdout;
+
+	int p_stdout;
+	int p_stdin;
+};
+
+/*
+ * The processing here is a bit problematic. One is that we still use a socket
+ * pair rather than a shmif connection. If this connection is severed or the
+ * a12 connection is disconnected we lack a channel for reconnect or redirect
+ * outside of normal shmif transitions where we normally could just set an
+ * altconn or force-reset.
+ */
+static struct {
+	struct appl_runner_state active;
+	_Atomic volatile int n_active;
+
+} active_appls = {
+};
+
 static void on_cl_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
@@ -188,101 +214,35 @@ static pid_t exec_cpath(struct a12_state* S,
 }
 
 /*
- * This entire function is prototype- quality and mainly for figuring out the
- * interface / path between arcan (lwa), appl, arcan-net and a12.
- *
- * Its main purpose is to setup the env for arcan to either run the appl as a
- * normal display server, within an existing arcan one or from within another
- * desktop.
- *
- * It also launches / runs and blocks into a 'monitoring' mode used for setting
- * the initial state, capture crash dumps and snapshot / backup state.
- *
- * It is likely that the stdin/stdout pipe/monitor interface would be better
- * served by another shmif/shmif server connection, but right now it is just
- * plaintext.
+ * This will only trigger when there's data / shutdown from arcan.
+ * With the current monitor mode setup that is only on script errors
+ * or legitimate shutdowns, so safe to treat this as blocking.
  */
-static bool handover_exec(struct a12_state* S, const char* name,
-	FILE* state_in, struct directory_meta* dir, int* state, size_t* state_sz)
+static void process_thread(struct ioloop_shared* I, bool ok)
 {
-	struct anet_dircl_opts* opts = dir->clopt;
-
-	void* tag = opts->allocator(S, dir);
-	if (!tag){
-		*state = -1;
-		return false;
-	}
-
-/* ongoing refactor to break this out entirely */
-	int inf = -1;
-	int outf = -1;
-	*state_sz = 0;
-
-	pid_t pid = opts->executor(S, dir, name, tag, &inf, &outf);
-	if (pid <= 0){
-		free(tag);
-		fprintf(stderr, "executor-failed");
-		*state = -1;
-		return false;
-	}
-
-	if (pid == -1){
-		clean_appldir(name, opts->basedir);
-		fprintf(stderr, "Couldn't spawn child process");
-		*state = -1;
-		return false;
-	}
-
-	FILE* pfin = fdopen(inf, "w");
-	FILE* pfout = fdopen(outf, "r");
-	setlinebuf(pfin);
-	setlinebuf(pfout);
-
-/* if we have state, now is a good time to do something with it, now the format
- * here isn't great - lf without escape is problematic as values with lf is
- * permitted so this needs to be modified a bit, but the _lwa to STATE_OUT
- * handler also calls for this so can wait until that is in place */
-	if (state_in){
-		char buf[4096];
-		bool in_kv = false;
-
-		while (fgets(buf, 4096, state_in)){
-			if (in_kv){
-				if (strcmp(buf, "#ENDKV\n") == 0){
-					in_kv = false;
-					continue;
-				}
-				fputs("loadkey ", pfin);
-				fputs(buf, pfin);
-			}
-			else {
-				if (strcmp(buf, "#BEGINKV\n") == 0){
-					in_kv = true;
-				}
-				continue;
-			}
-		}
-	}
-	fprintf(pfin, "continue\n");
-
 /* capture the state block, write into an unlinked tmp-file so the
  * file descriptor can be rewound and set as a bstream */
+	struct appl_runner_state* A = I->tag;
+	struct directory_meta* cbt = I->cbt;
+
 	int pret = 0;
 	char* out = NULL;
 	char filename[] = "statetemp-XXXXXX";
 	int state_fd = mkstemp(filename);
+	size_t state_sz = 0;
+
 	if (-1 == state_fd){
 		fprintf(stderr, "Couldn't create temp-store, state transfer disabled\n");
 	}
 	else
 		unlink(filename);
 
-	while (!feof(pfout)){
+	while (!feof(A->pf_stdout)){
 		char buf[4096];
 
 /* couldn't get more state, STDOUT is likely broken - process dead or dying */
-		if (!fgets(buf, 4096, pfout)){
-			while ((waitpid(pid, &pret, 0)) != pid
+		if (!fgets(buf, 4096, A->pf_stdout)){
+			while ((waitpid(A->pid, &pret, 0)) != A->pid
 				&& (errno == EINTR || errno == EAGAIN)){}
 		}
 
@@ -301,86 +261,185 @@ static bool handover_exec(struct a12_state* S, const char* name,
 					fprintf(stderr, "Out of space caching state, transfer disabled\n");
 					close(state_fd);
 					state_fd = -1;
-					*state_sz = 0;
 					break;
 				}
 
 				ntw -= nw;
 				pos += nw;
-				*state_sz += nw;
+				state_sz += nw;
 			}
 		}
 	}
 
 /* exited successfully? then the state snapshot should only contain the K/V
- * dump, and if empty - nothing to do */
-	if (!opts->keep_appl)
-		clean_appldir(name, opts->basedir);
-	*state = state_fd;
+ * dump. If empty - do nothing. If exit with error code, the state we read
+ * should be debuginfo, forward accordingly. */
+	if (!cbt->clopt->keep_appl)
+		clean_appldir(cbt->clopt->applname, cbt->clopt->basedir);
 
+	bool exec_res = false;
 	if (WIFEXITED(pret) && !WEXITSTATUS(pret)){
-		return true;
+		fprintf(stderr, "arcan(%s) exited successfully\n", cbt->clopt->applname);
+		exec_res = true;
 	}
 /* exited with error code or sig(abrt,kill,...) */
-	if (
+	else if (
 		(WIFEXITED(pret) && WEXITSTATUS(pret)) ||
 		WIFSIGNALED(pret))
 	{
-		;
+		fprintf(stderr, "script/exection error, generating report\n");
 	}
 	else {
-		fprintf(stderr, "unhandled application termination state\n");
+		fprintf(stderr, "arcan: unhandled application termination state\n");
 	}
 
-	return false;
+/* just request new dirlist and it should reload */
+	if (-1 == state_fd || !state_sz){
+		goto out;
+	}
+
+	if (exec_res && !cbt->clopt->block_state){
+		a12_enqueue_bstream(I->S, state_fd,
+			A12_BTYPE_STATE, cbt->clopt->applid, false, state_sz, NULL);
+	}
+	else if (!exec_res && !cbt->clopt->block_log){
+		fprintf(stderr, "sending crash report (%zu) bytes\n", state_sz);
+		a12_enqueue_bstream(I->S, state_fd,
+			A12_BTYPE_CRASHDUMP, cbt->clopt->applid, false, state_sz, NULL);
+	}
+
+out:
+	if (-1 != state_fd)
+		close(state_fd);
+
+	if (cbt->clopt->reload){
+		a12int_request_dirlist(I->S, true);
+	}
+	else
+		I->shutdown = true;
+
+/* reset appl tracking state so reset will take the right path */
+	if (A->pf_stdin){
+		fclose(A->pf_stdin);
+		A->pf_stdin = NULL;
+		A->p_stdin = -1;
+	}
+
+	if (A->pf_stdout){
+		fclose(A->pf_stdout);
+		A->pf_stdout = NULL;
+		A->p_stdout = -1;
+	}
+
+	A->pid = 0;
+	I->on_event = NULL;
+	I->userfd = -1;
+	atomic_fetch_add(&active_appls.n_active, -1);
 }
 
-static void mark_xfer_complete(
-	struct a12_state* S, struct a12_bhandler_meta M, struct directory_meta* cbt)
+static void send_state(FILE* dst, FILE* src)
 {
-/* state transfer will be initiated before appl transfer (if one is present),
- * but might complete afterwards - defer the actual execution until BOTH have
- * been completed */
-	if (M.type == A12_BTYPE_STATE){
-		cbt->state_in_complete = true;
-		if (cbt->appl_out_complete)
-			goto run;
-		return;
-	}
-	else if (M.type != A12_BTYPE_BLOB)
+	if (!src)
 		return;
 
-/* signs of foul-play */
-	if (!cbt->appl_out){
-		fprintf(stderr, "xfer completed on blob without an active state");
-		g_shutdown = true;
-		return;
-	}
+	fseek(src, 0, SEEK_SET);
 
-	cbt->appl_out_complete = true;
+	char buf[4096];
+	bool in_kv = false;
 
-/* still need to wait for the state block to finish */
-	if (cbt->state_in != -1 && !cbt->state_in_complete){
-		return;
+	while (fgets(buf, 4096, src)){
+		if (in_kv){
+			if (strcmp(buf, "#ENDKV\n") == 0){
+				in_kv = false;
+				continue;
+			}
+			fputs("loadkey ", dst);
+			fputs(buf, dst);
+		}
+		else {
+			if (strcmp(buf, "#BEGINKV\n") == 0){
+				in_kv = true;
+			}
+			continue;
+		}
 	}
+}
 
 /*
- * run the appl, collect state into *state_out and if need be, synch it onwards
- * - the a12 implementation will take care of the actual transfer and
- *   cancellation should the other end not care for our state synch
+ * This entire function is prototype- quality and mainly for figuring out the
+ * interface / path between arcan (lwa), appl, arcan-net and a12.
  *
- * this is a placeholder setup, the better approach is to keep track of the
- * child we are running while still processing other a12 events - to open up
- * for multiplexing any resources the child might want dynamically, as well
- * as handle 'push' updates to the appl itself and just 'force' through the
- * monitor interface.
+ * Its main purpose is to setup the env for arcan to either run the appl as a
+ * normal display server, within an existing arcan one or from within another
+ * desktop.
+ *
+ * It also launches / runs and blocks into a 'monitoring' mode used for setting
+ * the initial state, capture crash dumps and snapshot / backup state.
+ *
+ * It is likely that the stdin/stdout pipe/monitor interface would be better
+ * served by another shmif/shmif server connection, but right now it is just
+ * plaintext.
  */
-run:
-	pclose(cbt->appl_out);
-	cbt->appl_out = NULL;
-	cbt->appl_out_complete = false;
+static bool handover_exec(struct appl_runner_state* A, FILE* sin)
+{
+	struct ioloop_shared* I = A->ios;
+	struct directory_meta* dir = I->cbt;
+	struct anet_dircl_opts* opts = dir->clopt;
 
-/* rewind the state block and pass it (if present) to the execution setup */
+	void* tag = opts->allocator(I->S, dir);
+	if (!tag){
+		I->shutdown = true;
+		fprintf(stderr, "executor-alloc failed");
+		fclose(sin);
+		return false;
+	}
+
+/* ongoing refactor to break this out entirely */
+	A->p_stdin = -1;
+	A->p_stdout = -1;
+
+	pid_t pid = opts->executor(
+		I->S, dir, dir->clopt->applname, tag, &A->p_stdin, &A->p_stdout);
+	if (pid <= 0){
+		free(tag);
+		fclose(sin);
+		fprintf(stderr, "executor-failed");
+		return false;
+	}
+
+	if (pid == -1){
+		clean_appldir(dir->clopt->applname, dir->clopt->basedir);
+		fprintf(stderr, "Couldn't spawn child process");
+		return false;
+	}
+
+	A->pid = pid;
+	A->pf_stdin = fdopen(A->p_stdin, "w");
+	A->pf_stdout = fdopen(A->p_stdout, "r");
+	setlinebuf(A->pf_stdin);
+	setlinebuf(A->pf_stdout);
+
+/* if we have state, now is a good time to do something with it, now the format
+ * here isn't great - lf without escape is problematic as values with lf is
+ * permitted so this needs to be modified a bit, but the _lwa to STATE_OUT
+ * handler also calls for this so can wait until that is in place */
+	send_state(A->pf_stdin, sin);
+	fprintf(A->pf_stdin, "continue\n");
+
+/* keep the state in block around for quick reload / resume, now hook
+ * into the userfd part of the ioloop_state and do our processing there. */
+	I->userfd = A->p_stdout;
+	I->on_userfd = process_thread;
+	I->tag = A;
+
+	return true;
+}
+
+void* appl_runner(void* tag)
+{
+	struct appl_runner_state* S = tag;
+	struct directory_meta* cbt = S->ios->cbt;
+
 	FILE* state_in = NULL;
 	if (-1 != cbt->state_in){
 		lseek(cbt->state_in, 0, SEEK_SET);
@@ -389,63 +448,80 @@ run:
 		cbt->state_in_complete = false;
 	}
 
-	int state_out = -1;
-	size_t state_sz = 0;
+/* appl_runner hooks into ios->userfd and attaches the event handler
+ * which translates commands and eventually serializes / forwards state */
+	handover_exec(S, state_in);
+	return NULL;
+}
 
-	bool exec_res = handover_exec(S,
-		cbt->clopt->applname, state_in, cbt, &state_out, &state_sz);
+static void mark_xfer_complete(struct ioloop_shared* I, struct a12_bhandler_meta M)
+{
+	struct directory_meta* cbt = I->cbt;
+/* state transfer will be initiated before appl transfer (if one is present),
+ * but might complete afterwards - defer the actual execution until BOTH have
+ * been completed */
+	if (M.type == A12_BTYPE_STATE){
+		cbt->state_in_complete = true;
+	}
+	else if (M.type == A12_BTYPE_BLOB){
+		cbt->appl_out_complete = true;
+	}
 
-	if (state_in)
-		fclose(state_in);
+/* still need to wait for the state block to finish */
+	if (cbt->state_in != -1 && !cbt->state_in_complete){
+		return;
+	}
 
-/* execution completed - this is where we could/should actually continue and
- * switch to an ioloop that check the child process for completion or for appl
- * 'push' updates */
-	if (-1 == state_out)
+	if (!cbt->appl_out_complete)
 		return;
 
-/* if permitted and we got state or crashdump, synch it back */
-	if (state_sz){
-			if (exec_res && !cbt->clopt->block_state){
-				a12_enqueue_bstream(S,
-					state_out, A12_BTYPE_STATE, M.identifier, false, state_sz, NULL);
-				close(state_out);
-				state_out = -1;
-			}
-			else if (!exec_res && !cbt->clopt->block_log){
-				a12_enqueue_bstream(S,
-					state_out, A12_BTYPE_CRASHDUMP, M.identifier, false, state_sz, NULL);
-				close(state_out);
-				state_out = -1;
-			}
-		}
-
-/* never got adopted */
-	if (-1 != state_out)
-		close(state_out);
-
-/* backwards way to do it and should be reconsidered when we do processing
- * while arcan_lwa / arcan is still running, but for now this will cause a
- * new dirlist, a new match and a new request -> running */
-	if (cbt->clopt->reload){
-		a12int_request_dirlist(S, true);
+/* signs of foul-play - we recieved completion notices without init.. */
+	if (!cbt->appl_out){
+		fprintf(stderr, "xfer completed on blob without an active state");
+		I->shutdown = true;
+		return;
 	}
-	else
-		g_shutdown = true;
+
+/* EOF the unpack action now */
+	pclose(cbt->appl_out);
+	cbt->appl_out = NULL;
+	cbt->appl_out_complete = false;
+
+/* Setup so it is threadable, though unlikely that useful versus just
+ * having userfd and multiplex appl-a12 that way. It would be for the
+ * case of running multiple appls over the same channel so keep that
+ * door open. */
+	atomic_fetch_add(&active_appls.n_active, 1);
+	active_appls.active.ios = I;
+
+/*pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	pthread_create(&pth, &pthattr, appl_runner, &active_appls.active);
+*/
+	appl_runner(&active_appls.active);
 }
 
 struct a12_bhandler_res anet_directory_cl_bhandler(
 	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
 {
-	struct directory_meta* cbt = tag;
+	struct ioloop_shared* I = tag;
+	struct directory_meta* cbt = I->cbt;
 	struct a12_bhandler_res res = {
 		.fd = -1,
 		.flag = A12_BHANDLER_DONTWANT
 	};
 
+/*
+ * three key paths:
+ *  1. downloading / running an appl
+ *  2. auto-updating an appl
+ *  3. synchronising a state blob change
+ */
 	switch (M.state){
 	case A12_BHANDLER_COMPLETED:
-		mark_xfer_complete(S, M, tag);
+		mark_xfer_complete(I, M);
 	break;
 	case A12_BHANDLER_INITIALIZE:{
 /* if we get a state blob before the binary blob, it should be kept until the
@@ -476,6 +552,11 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
 			return res;
 		}
 
+/* FIXME:
+ *   if we are already running an appl, we need an applname.new that we
+ *   (near) atomically switch over to when unpack is ready then force a
+ *   reload.
+ */
 		if (!ensure_appldir(cbt->clopt->applname, cbt->clopt->basedir)){
 			fprintf(stderr, "Couldn't create temporary appl directory\n");
 			return res;
@@ -495,13 +576,14 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
 /* set to fail for now? this is most likely to happen if write to the backing
  * FD fails (though the server is free to cancel for other reasons) */
 	case A12_BHANDLER_CANCELLED:
-		fprintf(stderr, "appl download cancelled\n");
 		if (M.type == A12_BTYPE_STATE){
+			fprintf(stderr, "appl state transfer cancelled\n");
 			close(cbt->state_in);
 			cbt->state_in = -1;
 			cbt->state_in_complete = false;
 		}
 		else if (M.type == A12_BTYPE_BLOB){
+			fprintf(stderr, "appl download cancelled\n");
 			if (cbt->appl_out){
 				pclose(cbt->appl_out);
 				cbt->appl_out = NULL;
@@ -517,12 +599,12 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
 	return res;
 }
 
-static bool cl_got_dir(struct a12_state* S, struct appl_meta* M, void* tag)
+static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 {
-	struct directory_meta* cbt = tag;
+	struct directory_meta* cbt = I->cbt;
 
 	if (cbt->clopt->outapp.buf){
-		struct appl_meta* C = M;
+		struct appl_meta* C = dir;
 		cbt->clopt->outapp.identifier = 65535;
 		bool found = false;
 
@@ -547,7 +629,7 @@ static bool cl_got_dir(struct a12_state* S, struct appl_meta* M, void* tag)
 				"push-no-match:name=%s", cbt->clopt->outapp.appl.name);
 		}
 
-		a12_enqueue_blob(S,
+		a12_enqueue_blob(I->S,
 			cbt->clopt->outapp.buf,
 			cbt->clopt->outapp.buf_sz,
 			cbt->clopt->outapp.identifier,
@@ -559,10 +641,10 @@ static bool cl_got_dir(struct a12_state* S, struct appl_meta* M, void* tag)
 		return true;
 	}
 
-	while (M){
+	while (dir){
 /* use identifier to request binary */
 		if (cbt->clopt->applname[0]){
-			if (strcasecmp(M->appl.name, cbt->clopt->applname) == 0){
+			if (strcasecmp(dir->appl.name, cbt->clopt->applname) == 0){
 				struct arcan_event ev =
 				{
 					.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
@@ -573,16 +655,17 @@ static bool cl_got_dir(struct a12_state* S, struct appl_meta* M, void* tag)
 					}
 				};
 				snprintf(
-					(char*)ev.ext.bchunk.extensions, 6, "%"PRIu16, M->identifier);
-				a12_channel_enqueue(S, &ev);
+					(char*)ev.ext.bchunk.extensions, 6, "%"PRIu16, dir->identifier);
+				a12_channel_enqueue(I->S, &ev);
 
 /* and register our store+launch handler */
-				a12_set_bhandler(S, anet_directory_cl_bhandler, tag);
+				cbt->clopt->applid = dir->identifier;
+				a12_set_bhandler(I->S, anet_directory_cl_bhandler, I);
 				return true;
 			}
 		}
-		printf("ts=%s:name=%s\n", M->update_ts, M->appl.name);
-		M = M->next;
+		printf("ts=%"PRIu64":name=%s\n", dir->update_ts, dir->appl.name);
+		dir = dir->next;
 	}
 
 	if (cbt->clopt->applname[0]){
@@ -620,7 +703,18 @@ void anet_directory_cl(
 		return;
 	}
 
+	struct ioloop_shared ioloop = {
+		.S = S,
+		.fdin = fdin,
+		.fdout = fdout,
+		.userfd = -1,
+		.on_event = on_cl_event,
+		.on_directory = cl_got_dir,
+		.lock = PTHREAD_MUTEX_INITIALIZER,
+		.cbt = &cbt,
+	};
+
 /* always request dirlist so we can resolve applname against the server-local */
 	a12int_request_dirlist(S, !opts.die_on_list);
-	anet_directory_ioloop(S, &cbt, fdin, fdout, -1, on_cl_event, cl_got_dir, NULL);
+	anet_directory_ioloop(&ioloop);
 }
