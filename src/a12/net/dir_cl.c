@@ -351,14 +351,15 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 		goto out;
 	}
 
+	char empty_ext[16] = {0};
 	if (exec_res && !cbt->clopt->block_state){
 		a12_enqueue_bstream(I->S, state_fd,
-			A12_BTYPE_STATE, cbt->clopt->applid, false, state_sz, NULL);
+			A12_BTYPE_STATE, cbt->clopt->applid, false, state_sz, empty_ext);
 	}
 	else if (!exec_res && !cbt->clopt->block_log){
 		fprintf(stderr, "sending crash report (%zu) bytes\n", state_sz);
 		a12_enqueue_bstream(I->S, state_fd,
-			A12_BTYPE_CRASHDUMP, cbt->clopt->applid, false, state_sz, NULL);
+			A12_BTYPE_CRASHDUMP, cbt->clopt->applid, false, state_sz, empty_ext);
 	}
 
 out:
