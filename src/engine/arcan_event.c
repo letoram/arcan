@@ -76,6 +76,7 @@ static int panic_keysym = -1, panic_keymod = -1;
 struct evsrc_meta {
 	intptr_t tag;
 	mode_t mode;
+	bool mask;
 };
 
 static struct pollfd evsrc_pollset[64];
@@ -732,7 +733,7 @@ static int mode_to_poll(mode_t mode)
 }
 
 bool arcan_event_add_source(
-	struct arcan_evctx* ctx, int fd, mode_t mode, intptr_t otag)
+	struct arcan_evctx* ctx, int fd, mode_t mode, intptr_t otag, bool masked)
 {
 	int mask = 0;
 	mode = mode_to_poll(mode);
@@ -747,6 +748,7 @@ bool arcan_event_add_source(
 	evsrc_pollset[i].events = mode;
 	evsrc_meta[i].mode = mode;
 	evsrc_meta[i].tag = otag;
+	evsrc_meta[i].mask = masked;
 	evsrc_bitmap |= (uint64_t)1 << i;
 
 	return true;
@@ -763,7 +765,7 @@ void arcan_event_poll_sources(struct arcan_evctx* ctx, int timeout)
 
 	for (size_t i = 0; i < 64; i++){
 		struct pollfd* ent = &evsrc_pollset[i];
-		if (ent->fd <= 0 || !ent->revents)
+		if (ent->fd <= 0 || !ent->revents || evsrc_meta[i].mask)
 			continue;
 
 		struct arcan_event ev = (struct arcan_event){
