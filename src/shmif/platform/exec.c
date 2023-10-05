@@ -214,6 +214,9 @@ pid_t shmif_platform_execve(int fd, const char* shmif_key,
 		if ((opts & 1) && (pid = fork()) != 0)
 			_exit(pid > 0 ? EXIT_SUCCESS : EXIT_FAILURE);
 
+
+		setsid();
+
 /* GNU or BSD4.2 */
 		execve(path, argv, new_env);
 		_exit(EXIT_FAILURE);

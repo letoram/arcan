@@ -7,30 +7,20 @@ static FILE* m_out;
 static FILE* m_ctrl;
 static bool m_locked;
 static bool m_transaction;
+static int longjmp_mode;
 
 /*
- * Might just be a point to use shmif client API here and in arcan-net end use
- * shmif inherited there as well. The slight annoyance is the conflict with
- * LWA getting its primary connection.
+ * instead of adding more commands here, the saner option is to establish
+ * a shmif based control interface (with the interesting consequence of
+ * being able to migrate that channel dynamically).
  *
- * The other option would be to explicitly name a connection point and have two
- * shmif connections, one for the monitor controls and one for the regular LWA.
+ * With all the other monitor- uses and lwa interactions that might be easiest
+ * as a command though (lwa- subsegment push is problematic as it might be a
+ * native arcan running.
  *
- * That makes more sense structurally then having this separate setup, especially
- * as more entry points into scripts might be needed - e.g. state transfer.
- *
- * This would also mesh better with other debugging tools.
- *
- * fgets ->
- *  need command for:
- *       database externally modified (new namespaces, EVENT_SYSTEM)
- *       debug-controls
- *           (single stepping, add breakpoint, tracing)
- *       force-reset (can longjmp to recover)
- *       soft shutdown (enqueue EVENT_SYSTEM_EXIT)
- *       lua-statesnap
- *       mask function
- *       add / run hookscript
+ * Otherwise the option is to start with a primary connection coming from the
+ * monitor and NEWSEGMENT the control over that. The problem then is migration
+ * of the primary when that is coming from an outer UI.
  */
 
 static void cmd_dumpkeys(char* arg)
@@ -45,6 +35,30 @@ static void cmd_dumpkeys(char* arg)
 	arcan_mem_freearr(&res);
 	fprintf(m_out, "#ENDKV\n");
 	fflush(m_out);
+}
+
+static void cmd_reload(char* arg)
+{
+/* signal verifyload- state, wrong sig */
+	char* res = arcan_expand_resource("", RESOURCE_APPL);
+
+	const char* errc;
+	if (!arcan_verifyload_appl(res, &errc)){
+		arcan_mem_free(res);
+		fprintf(m_out, "#ERROR %s\n", *errc);
+		fflush(m_out);
+		return;
+	}
+
+	arcan_mem_free(res);
+
+/* this should correspond to a system_collapse(self) with a possible copy
+ * of the source appl to revert back into the previously stable copy. The
+ * problem with these tactics is our namespace enforcement of applname/..
+ * so we'd need a .suffix for this to work compatibility wise. */
+
+/* will trigger on next continue; */
+	longjmp_mode = ARCAN_LUA_SWITCH_APPL;
 }
 
 static void cmd_loadkey(char* arg)
@@ -88,6 +102,13 @@ static void cmd_commit(char* arg)
 	m_transaction = false;
 }
 
+static void cmd_lock(char* arg)
+{
+/* no-op, m_locked already set */
+	fprintf(m_out, "#LOCKED\n");
+	fflush(m_out);
+}
+
 static void cmd_continue(char* arg)
 {
 	m_locked = false;
@@ -115,6 +136,8 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 		{"dumpkeys", cmd_dumpkeys},
 		{"loadkey", cmd_loadkey},
 		{"commit", cmd_commit},
+		{"reload", cmd_reload},
+		{"lock", cmd_lock}
 	};
 
 	m_locked = true;
@@ -122,7 +145,8 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 	do {
 		char buf[4096];
 		if (!fgets(buf, 4096, m_ctrl)){
-			longjmp(arcanmain_recover_state, ARCAN_LUA_KILL_SILENT);
+			longjmp_mode = ARCAN_LUA_KILL_SILENT;
+			break;
 		}
 /* no funny / advanced format here, just command\sarg*/
 		size_t i = 0;
@@ -139,6 +163,12 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 	} while (m_locked);
 
 	arcan_conductor_toggle_watchdog();
+
+	if (longjmp_mode){
+		int mode = longjmp_mode;
+		longjmp_mode = 0;
+		longjmp(arcanmain_recover_state, mode);
+	}
 }
 
 bool arcan_monitor_configure(int srate, const char* dst, FILE* ctrl)
@@ -205,6 +235,16 @@ void arcan_monitor_finish(bool ok)
 void arcan_monitor_tick()
 {
 	static size_t count;
+
+	if (m_ctrl){
+		struct pollfd pfd = {
+			.fd = STDIN_FILENO,
+			.events = POLLIN
+		};
+		if (1 == poll(&pfd, 1, 0)){
+			arcan_monitor_watchdog(NULL, NULL);
+		}
+	}
 
 	if (m_srate <= 0)
 		return;
