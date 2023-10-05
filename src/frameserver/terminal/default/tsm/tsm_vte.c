@@ -864,7 +864,7 @@ void tsm_vte_mouse_button(struct tsm_vte *vte, int index, bool press, int mods)
 	mc |= (mods & TSM_ALT_MASK)     ? 2 : 0;
 	mc |= (mods & TSM_CONTROL_MASK) ? 4 : 0;
 
-	mouse_wr(vte, index < 4 ? index-1 : index-4+64, press, mods,
+	mouse_wr(vte, index < 4 ? index-1 : index-4+64, press, mc,
 		vte->saved_state.mouse_y+1, vte->saved_state.mouse_x+1);
 }
 
