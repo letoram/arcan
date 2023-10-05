@@ -285,6 +285,7 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 
 	struct shmifsrv_client* C = NULL;
 	struct arcan_net_meta* meta = tag;
+	int rc = 0;
 
 	if (!handover_setup(S, fd, meta, &C)){
 		goto out;
@@ -293,7 +294,6 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 /* this is for a full 'remote desktop' like scenario, directory is handled
  * in handover_setup */
 	arcan_shmif_privsep(NULL, "shmif", NULL, 0);
-	int rc = 0;
 
 	if (C){
 		a12helper_a12cl_shmifsrv(S, C, fd, fd, (struct a12helper_opts){

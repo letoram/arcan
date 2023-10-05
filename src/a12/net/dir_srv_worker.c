@@ -141,15 +141,17 @@ static void on_srv_event(
 /* if the appl exist, first try the state blob, then the appl */
 		if (fd != -1){
 			char buf[COUNT_OF(ev->ext.message.data)];
+			char empty_ext[16] = {0};
+
 			snprintf(buf, sizeof(buf), "%d.state", (int) extid);
 			int state_fd = request_parent_resource(cbt->S, C, buf, false);
 			if (state_fd != -1){
 				a12_enqueue_bstream(cbt->S,
-					state_fd, A12_BTYPE_STATE, extid, false, 0, NULL);
+					state_fd, A12_BTYPE_STATE, extid, false, 0, empty_ext);
 				close(state_fd);
 			}
 			a12_enqueue_bstream(cbt->S,
-				fd, A12_BTYPE_BLOB, extid, false, 0, NULL);
+				fd, A12_BTYPE_BLOB, extid, false, 0, empty_ext);
 			close(fd);
 		}
 		else
@@ -214,13 +216,13 @@ static void unpack_index(
 			*cur = malloc(sizeof(struct appl_meta));
 			**cur = (struct appl_meta){.role = source ? ROLE_SOURCE : ROLE_DIR};
 
-			snprintf((*cur)->appl.name, 18, name);
+			snprintf((*cur)->appl.name, 18, "%s", name);
 			cur = &(*cur)->next;
 		}
 		else if (strcmp(kind, "appl") == 0 && name){
 			*cur = malloc(sizeof(struct appl_meta));
 			**cur = (struct appl_meta){.role = 0}; /* no role == APPL */
-			snprintf((*cur)->appl.name, 18, name);
+			snprintf((*cur)->appl.name, 18, "%s", name);
 
 			const char* tmp;
 			if (arg_lookup(entry, "categories", 0, &tmp) && tmp)

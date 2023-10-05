@@ -502,7 +502,7 @@ static void* dircl_process(void* P)
 		while (1 == shmifsrv_dequeue_events(C->C, &ev, 1)){
 /* petName for a source/dir or for joining an appl */
 			if (ev.ext.kind == EVENT_EXTERNAL_IDENT){
-				A12INT_DIRTRACE("dirsv:kind=worker:cl_join=%s", ev.ext.message);
+				A12INT_DIRTRACE("dirsv:kind=worker:cl_join=%s", (char*)ev.ext.message.data);
 			}
 
 /* right now we permit the worker to fetch / update their state store of any

@@ -1422,7 +1422,7 @@ void a12_enqueue_bstream(struct a12_state* S,
 	next->type = type;
 	next->identifier = id;
 
-	if (extid && (type == A12_BTYPE_APPL || type == A12_BTYPE_APPL_RESOURCE)){
+	if (type == A12_BTYPE_APPL || type == A12_BTYPE_APPL_RESOURCE){
 		snprintf(next->extid, 16, "%s", extid);
 	}
 
@@ -1897,7 +1897,7 @@ static void command_dirdiscover(struct a12_state* S, void (*on_event)
 	size_t outl;
 	unsigned char* pk =
 		a12helper_tob64(&S->decode[36], 32, &outl);
-	snprintf((char*)&ev.ext.netstate.name, 66, "%d:%s", petname, pk);
+	snprintf((char*)&ev.ext.netstate.name, 66, "%s:%s", petname, pk);
 	free(pk);
 
 	on_event(S->channels[0].cont, 0, &ev, tag);
@@ -3142,6 +3142,8 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
 	if (!S || S->cookie != 0xfeedface || !ev)
 		return false;
 
+	char empty_ext[16] = {0};
+
 /* descriptor passing events are another complex affair, those that require
  * the caller to provide data outwards should already have been handled at
  * this stage, so it is basically STORE and BCHUNK_OUT that are allowed to
@@ -3160,14 +3162,14 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
  * the rest */
 		case TARGET_COMMAND_RESTORE:
 			a12_enqueue_bstream(S,
-				ev->tgt.ioevs[0].iv, A12_BTYPE_STATE, false, 0, 0, NULL);
+				ev->tgt.ioevs[0].iv, A12_BTYPE_STATE, false, 0, 0, empty_ext);
 			return true;
 		break;
 
 /* let the bstream- side determine if the source is streaming or not */
 		case TARGET_COMMAND_BCHUNK_IN:
 			a12_enqueue_bstream(S,
-				ev->tgt.ioevs[0].iv, A12_BTYPE_BLOB, false, 0, 0, NULL);
+				ev->tgt.ioevs[0].iv, A12_BTYPE_BLOB, false, 0, 0, empty_ext);
 				return true;
 		break;
 
@@ -3177,7 +3179,7 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
 		case TARGET_COMMAND_FONTHINT:
 			a12_enqueue_bstream(S,
 				ev->tgt.ioevs[0].iv, ev->tgt.ioevs[4].iv == 1 ?
-				A12_BTYPE_FONT_SUPPL : A12_BTYPE_FONT, false, 0, 0, NULL
+				A12_BTYPE_FONT_SUPPL : A12_BTYPE_FONT, false, 0, 0, empty_ext
 			);
 		break;
 		default:
