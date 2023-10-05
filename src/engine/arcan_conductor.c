@@ -658,7 +658,17 @@ int arcan_conductor_run(arcan_tick_cb tick)
  */
 		arcan_video_pollfeed();
 		arcan_audio_refresh();
-		arcan_event_poll_sources(evctx, 0);
+
+/* let the event-layer polling set interleave up to the next deadline. */
+#ifdef ARCAN_LWA
+		if (conductor.set_deadline > 0){
+			int step = conductor.set_deadline - arcan_timemillis();
+			if (step > 0)
+				arcan_event_poll_sources(evctx, step);
+		}
+		else
+#endif
+			arcan_event_poll_sources(evctx, 0);
 
 		last_tickcount = conductor.tick_count;
 

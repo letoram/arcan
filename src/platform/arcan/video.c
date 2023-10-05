@@ -247,6 +247,10 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		return false;
 	}
 
+/* add the display as a pollable event trigger */
+	arcan_event_add_source(
+		arcan_event_defaultctx(), disp[0].conn.epipe, O_RDONLY, -1, true);
+
 	struct arcan_shmif_initial* init;
 	if (sizeof(struct arcan_shmif_initial) != arcan_shmif_initial(
 		&disp[0].conn, &init)){

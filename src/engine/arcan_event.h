@@ -58,7 +58,7 @@ float arcan_event_process(struct arcan_evctx*, arcan_tick_cb);
  * will only updated / modify the input/output mask and the otag, overriding
  * previously set states. */
 bool arcan_event_add_source(
-	struct arcan_evctx*, int fd, mode_t mode, intptr_t otag);
+	struct arcan_evctx*, int fd, mode_t mode, intptr_t otag, bool mask);
 
 /* Remove a source previously added through add_source. Will return true if
  * the source existed and set the last known otag in *out if provided. Since

@@ -1601,8 +1601,8 @@ static int maxorderimage(lua_State* ctx)
 	LUA_ETRACE("max_current_image_order", NULL, 1);
 }
 
-static void massopacity(lua_State* ctx,
-	float val, const char* caller)
+static void massopacity(
+	lua_State* ctx, float val, const char* caller)
 {
 	int time = luaL_optint(ctx, 3, 0);
 	int interp = luaL_optint(ctx, 4, -1);
@@ -7050,7 +7050,8 @@ static int luaB_loadstring (lua_State* ctx) {
 static bool add_source(int fd, mode_t mode, intptr_t otag)
 {
 	return
-		arcan_event_add_source(arcan_event_defaultctx(), fd, mode, otag);
+		arcan_event_add_source(
+			arcan_event_defaultctx(), fd, mode, otag, false);
 }
 
 static bool del_source(int fd, mode_t mode, intptr_t* out)
