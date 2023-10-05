@@ -79,7 +79,7 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 	app_len = strlen(base);
 	for (size_t i = 0; i < app_len; i++){
 		if (!isalnum(base[i]) && base[i] != '_'){
-			*errc = "invalid character in appl_id (only a..Z _ 0..9 allowed)\n";
+			*errc = "invalid character in appl_id (only a..Z _ 0..9 allowed)";
 			return false;
 		}
 	}
@@ -87,7 +87,7 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 	if (expand){
 		char* dir = arcan_expand_resource(base, RESOURCE_SYS_APPLBASE);
 		if (!dir){
-			*errc = "missing application base\n";
+			*errc = "missing application base";
 			free(base);
 			return false;
 		}
@@ -96,7 +96,7 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 
 		dir = arcan_expand_resource(base, RESOURCE_SYS_APPLSTORE);
 		if (!dir){
-			*errc = "missing application temporary store\n";
+			*errc = "missing application temporary store";
 			free(base);
 			return false;
 		}

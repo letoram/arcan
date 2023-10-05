@@ -16,6 +16,7 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <signal.h>
+#include <stdatomic.h>
 
 #include "../a12.h"
 #include "../a12_int.h"
@@ -78,6 +79,12 @@ static bool clean_appldir(const char* name, int basedir)
 		fchdir(basedir);
 	}
 
+	char buf[strlen(name) + sizeof(".new")];
+	if (atomic_load(&active_appls.n_active) > 0){
+		snprintf(buf, sizeof(buf), "%s.new", name);
+		nftw(buf, cleancb, 32, FTW_DEPTH | FTW_PHYS);
+	}
+
 /* more careful would get the current pressure through rlimits and sweep until
  * we know how many real slots are available and break at that, better option
  * still would be to just keep this in a memfs like setup and rebuild the
@@ -91,6 +98,12 @@ static bool ensure_appldir(const char* name, int basedir)
  * and try to retrieve it if possible */
 	if (-1 != basedir){
 		fchdir(basedir);
+	}
+
+	char buf[strlen(name) + sizeof(".new")];
+	if (atomic_load(&active_appls.n_active) > 0){
+		snprintf(buf, sizeof(buf), "%s.new", name);
+		name = buf;
 	}
 
 /* make sure we don't have a collision */
@@ -189,6 +202,7 @@ static pid_t exec_cpath(struct a12_state* S,
 		if (ctx->key)
 			setenv(ctx->key, ctx->val, 1);
 
+		setsid();
 		setenv("XDG_RUNTIME_DIR", "./", 1);
 		dup2(pstdin[0], STDIN_FILENO);
 		close(pstdin[0]);
@@ -213,17 +227,58 @@ static pid_t exec_cpath(struct a12_state* S,
 	return pid;
 }
 
+static void swap_appldir(const char* name, int basedir)
+{
+/* it is probably worth keeping track of the old here */
+	size_t sz = strlen(name) + sizeof(".new");
+	char buf[sz];
+	snprintf(buf, sz, "%s.new", name);
+
+	if (-1 != basedir){
+		fchdir(basedir);
+	}
+
+	nftw(name, cleancb, 32, FTW_DEPTH | FTW_PHYS);
+	rename(buf, name);
+}
+
 /*
- * This will only trigger when there's data / shutdown from arcan.
- * With the current monitor mode setup that is only on script errors
- * or legitimate shutdowns, so safe to treat this as blocking.
+ * This will only trigger when there's data / shutdown from arcan. With the
+ * current monitor mode setup that is only on script errors or legitimate
+ * shutdowns, so safe to treat this as blocking.
  */
 static void process_thread(struct ioloop_shared* I, bool ok)
 {
+	char buf[4096];
+
 /* capture the state block, write into an unlinked tmp-file so the
  * file descriptor can be rewound and set as a bstream */
 	struct appl_runner_state* A = I->tag;
 	struct directory_meta* cbt = I->cbt;
+
+/* we are trying to synch a reload, now's the time to remove the old appldir
+ * and rename the .new into just basename. */
+	if (ok){
+		if (fgets(buf, 4096, A->pf_stdout)){
+			if (strcmp(buf, "#LOCKED\n") == 0){
+				swap_appldir(cbt->clopt->applname, cbt->clopt->basedir);
+
+/*  the first 'continue here is to unlock the reload, i.e. we don't want to
+ *  buffer more commands in the same atomic commit. this causes recovery into
+ *  something that immediately switches into monitoring mode again in order
+ *  to provide a window for re-injecting state */
+				fprintf(A->pf_stdin, "reload\n");
+				fprintf(A->pf_stdin, "continue\n");
+
+/* state is already in database so just continue again, here is where we
+ * could do some other funky things, e.g. force a rollback to an externally
+ * defined override state. */
+				fprintf(A->pf_stdin, "continue\n");
+			}
+		}
+
+		return;
+	}
 
 	int pret = 0;
 	char* out = NULL;
@@ -238,8 +293,6 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 		unlink(filename);
 
 	while (!feof(A->pf_stdout)){
-		char buf[4096];
-
 /* couldn't get more state, STDOUT is likely broken - process dead or dying */
 		if (!fgets(buf, 4096, A->pf_stdout)){
 			while ((waitpid(A->pid, &pret, 0)) != A->pid
@@ -487,10 +540,19 @@ static void mark_xfer_complete(struct ioloop_shared* I, struct a12_bhandler_meta
 	cbt->appl_out = NULL;
 	cbt->appl_out_complete = false;
 
-/* Setup so it is threadable, though unlikely that useful versus just
- * having userfd and multiplex appl-a12 that way. It would be for the
- * case of running multiple appls over the same channel so keep that
- * door open. */
+/* Setup so it is threadable, though unlikely that useful versus just having
+ * userfd and multiplex appl-a12 that way. It would be for the case of running
+ * multiple appls over the same channel so keep that door open. Right now we
+ * work on the idea that if a new appl is received we should just force the
+ * other end to reload. We do this by queueing the command, waking the watchdog
+ * and waiting for it to reply to us via userfd */
+	if (atomic_load(&active_appls.n_active) > 0){
+		fprintf(active_appls.active.pf_stdin, "lock\n");
+		kill(active_appls.active.pid, SIGUSR1);
+		fprintf(stderr, "signalling=%d\n", active_appls.active.pid);
+		return;
+	}
+
 	atomic_fetch_add(&active_appls.n_active, 1);
 	active_appls.active.ios = I;
 
@@ -547,16 +609,23 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
 			return res;
 		}
 
+	/* This can also happen if there was a new appl announced while we were busy
+	 * unpacking the previous one, the dirstate event triggers the bin request
+	 * triggers new initialize. Options are to cancel the current form, ignore
+	 * the update or defer the request for a new one. The current implementation
+	 * is to defer and happens in dir-state. */
 		if (cbt->appl_out){
 			fprintf(stderr, "Appl transfer initiated while one was pending\n");
 			return res;
 		}
 
-/* FIXME:
- *   if we are already running an appl, we need an applname.new that we
- *   (near) atomically switch over to when unpack is ready then force a
- *   reload.
- */
+	/* We already have an appl running, this can be two things - one we have a
+	 * resource intended for the appl itself. While still unhandled that is easy,
+	 * setup a new descriptor link, BCHUNK_IN/OUT it into the shmif connection
+	 * marked streaming and we are good to go.
+	 *
+	 * In the case of an appl we should verify that we wanted hot reloading,
+	 * ensure_appldir into new and set atomic-swap on completion. */
 		if (!ensure_appldir(cbt->clopt->applname, cbt->clopt->basedir)){
 			fprintf(stderr, "Couldn't create temporary appl directory\n");
 			return res;
@@ -566,6 +635,8 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
 		res.fd = fileno(cbt->appl_out);
 		res.flag = A12_BHANDLER_NEWFD;
 
+/* these should really just enforce basedir and never use relative, it is
+ * just some initial hack thing that survived. */
 		if (-1 != cbt->clopt->basedir)
 			fchdir(cbt->clopt->basedir);
 		else
