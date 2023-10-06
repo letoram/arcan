@@ -464,7 +464,7 @@ void anet_directory_srv(
 	 stdio/fdpassing level of syscalls.
 */
 	struct shmif_privsep_node* paths[] = {NULL};
-	arcan_shmif_privsep(&shmif_parent_process, "minimal", paths, 0);
+	arcan_shmif_privsep(&shmif_parent_process, "minimalfd", paths, 0);
 
 /* Flush out the event loop before starting as that is likely to update our
  * list of active directory entries as well as configure our a12_ctx_opts. this

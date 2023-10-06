@@ -286,7 +286,7 @@ void arg_cleanup(struct arg_arr*);
  * futex- only as the set now is too permissive to be comfortable
  */
 #define SHMIF_PLEDGE_PREFIX \
-	"stdio unix sendfd recvfd proc ps rpath wpath cpath tmppath unveil video"
+	"stdio unix sendfd recvfd proc ps rpath wpath cpath tmppath video"
 
 /*
  * Attempt to reduce the exposed set of privileges and whitelist accessible
@@ -307,12 +307,13 @@ void arg_cleanup(struct arg_arr*);
  * [flag]  reserved for future use.
  *
  * alternate pledge templates:
- *         shmif    - same as running the SHMIF_PLEDGE_PREFIX
- *         minimal  - shared memory page
- *         decode   - decode frameserver archetype
- *         encode   - encode frameserver archetype
- *         a12-srv  - a local shmif-server to network proxy
- *         a12-cl   - a local shmif-client to network proxy
+ *         shmif     - same as running the SHMIF_PLEDGE_PREFIX
+ *         minimal   - shared memory page
+ *         minimalfd - shared memory page + fd passing
+ *         decode    - decode frameserver archetype
+ *         encode    - encode frameserver archetype
+ *         a12-srv   - a local shmif-server to network proxy
+ *         a12-cl    - a local shmif-client to network proxy
  */
 struct shmif_privsep_node {
 	const char* path;

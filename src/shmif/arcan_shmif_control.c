@@ -3832,6 +3832,13 @@ bool arcan_shmif_pushutf8(
 void arcan_shmif_privsep(struct arcan_shmif_cont* C,
 	const char* pledge_str, struct shmif_privsep_node** nodes, int opts)
 {
+	size_t i = 0;
+	while (nodes[i]){
+		unveil(nodes[i]->path, nodes[i]->perm);
+	}
+
+	unveil(NULL, NULL);
+
 	if (pledge_str){
 		if (
 			strcmp(pledge_str, "shmif")  == 0 ||
@@ -3845,19 +3852,12 @@ void arcan_shmif_privsep(struct arcan_shmif_cont* C,
 		else if (strcmp(pledge_str, "minimal") == 0){
 			pledge_str = "stdio";
 		}
+		else if (strcmp(pledge_str, "minimalfd") == 0){
+			pledge_str = "stdio sendfd recvfd";
+		}
 
 		pledge(pledge_str, NULL);
 	}
-
-	if (!nodes)
-		return;
-
-	size_t i = 0;
-	while (nodes[i]){
-		unveil(nodes[i]->path, nodes[i]->perm);
-	}
-
-	unveil(NULL, NULL);
 }
 
 #else
