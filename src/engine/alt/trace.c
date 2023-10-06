@@ -198,3 +198,50 @@ void alt_trace_finish(lua_State* L)
 	arcan_conductor_toggle_watchdog();
 	luaL_unref(L, LUA_REGISTRYINDEX, trace_cb);
 }
+
+void alt_trace_log(lua_State* ctx)
+{
+	const char str_prefix[] = "LUA_PRINT: ";
+
+	int n_args = lua_gettop(ctx);
+
+	int total_len = sizeof(str_prefix) - 1;
+	for (int i = 1; i <= n_args; ++i) {
+		size_t str_len = 0;
+		const char* str = lua_tolstring(ctx, i, &str_len);
+		total_len += str_len + 1;
+	}
+	total_len += 1;
+
+	char* log_buffer = arcan_alloc_mem(
+		total_len,
+		ARCAN_MEM_STRINGBUF,
+		ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL,
+		ARCAN_MEMALIGN_NATURAL
+	);
+	if (log_buffer == 0) {
+		const char oom_msg[] = "Couldn't log trace message: Out of memory\n";
+		arcan_trace_log(oom_msg, sizeof(oom_msg));
+		return;
+	}
+
+	int running_len = sizeof(str_prefix) - 1;
+	memcpy(&log_buffer[0], str_prefix, running_len);
+
+	for (int i = 1; i <= n_args; ++i) {
+		size_t str_len = 0;
+		const char* str = lua_tolstring(ctx, i, &str_len);
+
+		memcpy(&log_buffer[running_len], str, str_len);
+		running_len += str_len + 1;
+		log_buffer[running_len - 1] = '\t';
+	}
+
+	log_buffer[running_len - 1] = '\n';
+	log_buffer[running_len] = '\0';
+
+	fprintf(stdout, "%s", log_buffer);
+	arcan_trace_log(log_buffer, total_len);
+
+	arcan_mem_free(log_buffer);
+}

@@ -10,6 +10,11 @@ bool alt_trace_start(lua_State* ctx, intptr_t cb, size_t sz);
 void alt_trace_finish(lua_State* ctx);
 
 /*
+ * logs text string in stdout and in active trace buffer
+ */
+void alt_trace_log(lua_State* ctx);
+
+/*
  * copy [msg] and keep as the last known crash source in the
  * accumulated trash buffer.
  */

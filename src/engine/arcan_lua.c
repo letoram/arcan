@@ -12231,6 +12231,10 @@ static const luaL_Reg netfuns[] = {
 #undef EXT_MAPTBL_NETWORK
 	register_tbl(ctx, netfuns);
 
+/* Override the default print for integration with tracer */
+	lua_pushcfunction(ctx, alt_trace_log);
+	lua_setglobal(ctx, "print");
+
 /*
  * METATABLE definitions
  *  [calcImage] => used for calctargets
