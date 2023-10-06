@@ -323,8 +323,11 @@ static void handle_bchunk_req(struct dircl* C, char* ext, bool input)
 	if (!meta){
 		if (mtype == IDTYPE_APPL && !input){
 			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_appl)){
+				A12INT_DIRTRACE("accepted_new:%s", ext);
 				meta = allocate_new_appl(ext, &mid);
 			}
+			else
+				A12INT_DIRTRACE("rejected_new:%s", ext);
 		}
 
 		if (!meta)
@@ -375,6 +378,7 @@ static void handle_bchunk_req(struct dircl* C, char* ext, bool input)
 	 * [completion] argument. */
 			case IDTYPE_APPL:
 			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_appl)){
+				A12INT_DIRTRACE("accept_update=%d", (int) mid);
 				resfd = buf_memfd(NULL, 0);
 				if (-1 != resfd){
 					C->pending_fd = resfd;
@@ -384,6 +388,7 @@ static void handle_bchunk_req(struct dircl* C, char* ext, bool input)
 				}
 			}
 			else {
+				A12INT_DIRTRACE("reject_update=%d:reason=keystore_deny", (int) mid);
 				goto fail;
 			}
 		break;

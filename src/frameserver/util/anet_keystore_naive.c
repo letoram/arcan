@@ -692,7 +692,6 @@ const char*
 /* that might be a partial match, i.e. key for connpath 'a' while not for 'ale'
  * so check that we are at a word boundary (at beginning, end or surrounded by , */
 		if (
-			(strcmp(ent->host, needle)) == 0 &&
 			(
 			 (needle == ent->host || needle[-1] == ',') && /* start on boundary */
 			 (needle[nlen] == '\0' || needle[nlen] == ',') /* end on boundary */
