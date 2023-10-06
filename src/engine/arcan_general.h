@@ -170,6 +170,11 @@ extern bool arcan_trace_enabled;
  */
 void arcan_trace_setbuffer(uint8_t* buf, size_t buf_sz, bool* finish_flag);
 
+/*
+ * appends a plain log message to the trace buffer
+ */
+void arcan_trace_log(const char* message, size_t len);
+
 /* add a trace entry-point (though call through the TRACE_MARK macros),
  * sys returns to the main system group (graphics, video, 3d, ...) and
  * subsys for a group specific subsystem (where useful distinctions exist).

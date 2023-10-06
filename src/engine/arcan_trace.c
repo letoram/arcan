@@ -56,6 +56,22 @@ static bool append_string(const char* str)
 	return true;
 }
 
+void arcan_trace_log(const char* message, size_t len)
+{
+	if (!arcan_trace_enabled)
+		return;
+
+#ifdef WITH_TRACY
+	TracyCMessage(message, len);
+#else
+	for (int i=0; i < len; i++) {
+		if (buffer_pos == buffer_sz)
+			return;
+		buffer[buffer_pos + i] = message[i];
+	}
+#endif
+}
+
 #ifdef WITH_TRACY
 const uint32_t color_lut[] = {
 	0x000000, // DEFAULT
