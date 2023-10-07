@@ -388,11 +388,8 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 
 static void reset_state(struct a12_state* S)
 {
-/* the 'reset' from an erroneous state is basically disconnect, just right
- * now it finishes and let validation failures etc. handle that particular
- * scenario */
 	S->left = header_sizes[STATE_NOPACKET];
-	if (S->state != STATE_1STSRV_PACKET)
+	if (S->state != STATE_1STSRV_PACKET && S->state != STATE_BROKEN)
 		S->state = STATE_NOPACKET;
 	S->decode_pos = 0;
 	S->in_channel = -1;
@@ -1674,6 +1671,11 @@ static void process_hello_auth(struct a12_state* S)
 		else if(S->opts->local_role == ROLE_SINK && S->decode[54] == ROLE_SOURCE){
 			a12int_trace(A12_TRACE_SYSTEM, "kind=match:local=sink:remote=source");
 			S->remote_mode = ROLE_SOURCE;
+		}
+		else if (S->opts->local_role == ROLE_SINK && S->decode[54] == ROLE_SINK){
+			a12int_trace(A12_TRACE_SYSTEM, "kind=mismatch:local=sink:remote=sink");
+			fail_state(S);
+			return;
 		}
 /* client: we might just be probing, if so continue without matching */
 		else if (S->opts->local_role == ROLE_PROBE){

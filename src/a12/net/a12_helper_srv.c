@@ -518,7 +518,9 @@ static void* client_thread(void* inarg)
 		}
 
 		int pv;
-		while ((pv = shmifsrv_poll(data->C)) != CLIENT_NOT_READY){
+		while (
+			(pv = shmifsrv_poll(data->C)) != CLIENT_NOT_READY &&
+			pv != CLIENT_IDLE){
 /* Dead client, send the close message and that should cascade down the rest
  * and kill relevant sockets. */
 			if (pv == CLIENT_DEAD){
