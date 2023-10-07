@@ -709,7 +709,7 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 			cbt->clopt->outapp.appl.name
 		);
 
-/* this ignores die-on-list */
+		I->shutdown = true;
 		return true;
 	}
 
