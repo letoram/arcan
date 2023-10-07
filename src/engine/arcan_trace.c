@@ -43,19 +43,6 @@ void arcan_trace_setbuffer(uint8_t* buf, size_t buf_sz, bool* finish_flag)
 	arcan_trace_enabled = true;
 }
 
-static bool append_string(const char* str)
-{
-	do {
-		buffer[buffer_pos++] = *str++;
-
-		if (buffer_pos == buffer_sz)
-			return false;
-
-	} while (*str);
-
-	return true;
-}
-
 void arcan_trace_log(const char* message, size_t len)
 {
 	if (!arcan_trace_enabled)
@@ -343,4 +330,21 @@ void arcan_trace_mark(
 fail_short:
 	*buffer_flag = true;
 	buffer[start_ofs] = 0xaa;
+}
+
+void arcan_trace_close()
+{
+	if (!arcan_trace_enabled)
+		return;
+
+	#ifdef WITH_TRACY
+	for (int i=tracy_ctx.zone_stack_len-1; i>=0; --i) {
+		___tracy_emit_zone_end(tracy_ctx.zone_stack[i].ctx);
+	}
+	tracy_ctx.zone_stack_len = 0;
+	tracy_ctx.mark_ids_len = 0;
+	#endif
+
+	// Releases trace buffer if it exists
+	arcan_trace_setbuffer(buffer, 0, NULL);
 }
