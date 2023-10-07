@@ -113,6 +113,12 @@ static size_t shmpage_size(size_t w, size_t h,
 #endif
 }
 
+struct arcan_frameserver* platform_fsrv_wrapcl(struct arcan_shmif_cont* in)
+{
+/* alloc - set the wrapped bitflag, set MONITOR FFUNC, map in eventqueues */
+	return NULL;
+}
+
 static void dropshared_keyed(char** key)
 {
 	if (!key || !(*key))
@@ -197,6 +203,11 @@ bool platform_fsrv_destroy_local(arcan_frameserver* src)
 
 	src->flags.alive = false;
 	arcan_mem_free(src->audb);
+	src->audb = NULL;
+
+	if (src->flags.wrapped){
+		src->shm.ptr = NULL;
+	}
 
 /* 'shutdown' is not activated for local */
 	if (BADFD != src->dpipe){
