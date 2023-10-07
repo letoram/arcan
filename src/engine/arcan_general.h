@@ -175,6 +175,11 @@ void arcan_trace_setbuffer(uint8_t* buf, size_t buf_sz, bool* finish_flag);
  */
 void arcan_trace_log(const char* message, size_t len);
 
+/*
+ * cleans up trace buffer and tracy zones
+ */
+void arcan_trace_close();
+
 /* add a trace entry-point (though call through the TRACE_MARK macros),
  * sys returns to the main system group (graphics, video, 3d, ...) and
  * subsys for a group specific subsystem (where useful distinctions exist).
