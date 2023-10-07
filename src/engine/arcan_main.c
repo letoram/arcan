@@ -608,6 +608,10 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_lua_cbdrop();
 		arcan_lua_shutdown(main_lua_context);
 
+		const char trace_msg[] = "Switching appls, resetting trace";
+		arcan_trace_log(trace_msg, sizeof(trace_msg));
+		arcan_trace_close();
+
 /* mask off errors so shutdowns etc. won't queue new events that enter
  * the event queue and gets exposed to the new appl */
 		arcan_event_maskall(evctx);
@@ -675,6 +679,10 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_lua_shutdown(main_lua_context);
 		if (strcmp(fallback, ":self") == 0)
 			fallback = argv[optind];
+
+		const char trace_msg[] = "Recovering from crash, resetting trace";
+		arcan_trace_log(trace_msg, sizeof(trace_msg));
+		arcan_trace_close();
 
 		if (!arcan_verifyload_appl(fallback, &errmsg)){
 			arcan_warning("Lua VM error fallback, failure loading (%s), reason: %s\n",
