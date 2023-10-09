@@ -2859,7 +2859,9 @@ static int launchavfeed(lua_State* ctx)
 			"detected and allowed frameserver archetypes (%s), rejected.\n",
 			modearg, modestr);
 		free(expbuf[0]);
-		LUA_ETRACE("launch_avfeed", "invalid mode", 0);
+		lua_pushvid(ctx, ARCAN_EID);
+		lua_pushaid(ctx, ARCAN_EID);
+		LUA_ETRACE("launch_aveed", "invalid mode", 2);
 	}
 
 	intptr_t ref = find_lua_callback(ctx);
@@ -11672,13 +11674,18 @@ static int net_open(lua_State* ctx)
 	char* host = strdup(luaL_checkstring(ctx, 1));
 	intptr_t ref = find_lua_callback(ctx);
 
+	if (strcmp(host, "@stdin") == 0){
+		arcan_vobj_id vid = arcan_monitor_fsrvvid(ref);
+		lua_pushvid(ctx, vid);
+		free(host);
+		return 1;
+	}
+
 /* populate and escape, due to IPv6 addresses etc. actively using :: */
 	char* workstr = NULL;
 	const char prefix[] = "mode=client:host=";
 	size_t work_sz = strlen(host) + sizeof(prefix) + 1;
-
-	if (host)
-		colon_escape(host);
+	colon_escape(host);
 
 	char* instr = arcan_alloc_mem(
 		work_sz, ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);

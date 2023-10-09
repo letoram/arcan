@@ -241,13 +241,20 @@ this behavior can be cancelled out by setting ARCAN_XXXPIN for any
 namespaces that should explicitly be locked to some path.
 
 .SH FRAMESERVERS
-A principal design decision behind Arcan is to split tasks that are
-inherently prone to security and stability issues into separate processes
-that should be sandboxed to as large a degree as possible with the
-principle of least privilege in mind. It should be the active application
-(set of user-supplied scripts) that dynamically control the level of
-privilege, communication and data storage that such processes have access
-to.
+A principal design decision behind Arcan is to split tasks that are inherently
+prone to security and stability issues into separate processes that should be
+sandboxed to as large a degree as possible with the principle of least
+privilege in mind.
+
+These behave like 'normal' clients but are grouped into fixed roles
+(archetypes), like 'decode' is responsible for image parsing and so on. They
+are chainloaded by 'arcan_frameserver' into its respective role (afsrv_) based
+on a probe done at startup, a build-time mask and an environment controlled
+mask. For instance, to block the 'terminal' role, set AFSRV_BLOCK_TERMINAL.
+
+It should be the active application (set of user-supplied scripts) that
+dynamically control the level of privilege, communication and data storage that
+such processes have access to.
 
 These are mainly an internal developer detail, some scripting functions
 transparently set them up - e.g. launch_decode(...) and

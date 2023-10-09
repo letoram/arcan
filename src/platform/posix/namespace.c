@@ -300,6 +300,10 @@ bool arcan_verify_namespaces(bool report)
 			do{
 				char* fn;
 				char exp[2 + baselen + strlen(tok)];
+				snprintf(exp, sizeof(exp), "AFSRV_BLOCK_%s", tok);
+				if (getenv(exp))
+					continue;
+
 				snprintf(exp, sizeof(exp), "%s_%s", base, tok);
 				if (arcan_isfile(exp)){
 					if (!first){
