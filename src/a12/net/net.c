@@ -411,6 +411,11 @@ static void single_a12srv(struct a12_state* S, int fd, void* tag)
 	}
 }
 
+static void dir_to_shmifsrv(struct a12_state* S, int fd, void* tag)
+{
+	a12int_trace(A12_TRACE_DIRECTORY, "open_request_negotiated");
+}
+
 static void a12cl_dispatch(
 	struct anet_options* args,
 	struct a12_state* S, struct shmifsrv_client* cl, int fd)
@@ -425,13 +430,23 @@ static void a12cl_dispatch(
 		return;
 	}
 
+/* we are registering ourselves as a sink into a remote directory, that is
+ * special in the sense that we hold on to the shmifsrv_client for a bit and
+ * if we get a dir-open we latch the two together. */
+	if (a12_remote_mode(S) == ROLE_DIR){
+		global.dircl.dir_source = dir_to_shmifsrv;
+		global.dircl.dir_source_tag = &cl;
+		anet_directory_cl(S, global.dircl, fd, fd);
+	}
+	else
 /* note that the a12helper will do the cleanup / free */
-	a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
-		.vframe_block = global.backpressure,
-		.redirect_exit = args->redirect_exit,
-		.devicehint_cp = args->devicehint_cp,
-		.bcache_dir = get_bcache_dir()
-	});
+		a12helper_a12cl_shmifsrv(S, cl, fd, fd, (struct a12helper_opts){
+			.vframe_block = global.backpressure,
+			.redirect_exit = args->redirect_exit,
+			.devicehint_cp = args->devicehint_cp,
+			.bcache_dir = get_bcache_dir()
+		});
+
 	close(fd);
 }
 
@@ -1255,7 +1270,6 @@ int main(int argc, char** argv)
  * where the connection is outbound but we get the a12 'client' view back
  * to pair with an arcan-net --exec .. */
 	if (!anet.mode){
-
 		if (argi <= argc - 1){
 /* Treat as a key- 'tag' for connecting? This act as a namespace separator
  * so the other option would be to */
@@ -1310,31 +1324,24 @@ int main(int argc, char** argv)
 				global.dircl.die_on_list = global.keep_alive ? false : true;
 				global.dircl.basedir = global.directory;
 
-/* any trailing arguments means we want 4. or 5. the way this is intended to
- * work is that we attach to the directory, announce our role (and get accepted
- * or kicked). if someone wants to 'open' us the directory will tell us the
- * Kpub and secret to expect, fork and run arcan-net with that along with the
- * chained argument as if it was a normal local host. the same works for
- * tunneled mode, just that anet_directory_cl will be responsible for wrapping
- * around stdio into tunneled packet (set-tun, fwd-tun, drop-tun). */
-				if (argi <= argc - 1){
-					if (strcmp(argv[argi], "--") == 0){
-						global.dircl.source_argv = &argv[argi+1];
-						global.dircl.source_argc = argc - (argi+1);
-					}
+/* 4/5 can be approached in multiple ways, first go for the one where we've
+ * used -s connpoint as a trigger for the software to share as that gives
+ * easer control over the client environment, debugging and tracing. For
+ * that we only check if we're already set to source. That one is clocked
+ * by a12-connect. */
+
 /* for
  * 3. we need a clopts.basedir where the appl can be unpacked that
  *    can be wiped later. Use XDG_ or /tmp for now (if global.directory
  *    is set anet_directory_cl will switch to that)
  */
-					else{
-						if (getenv("XDG_CACHE_HOME"))
-							chdir(getenv("XDG_CACHE_HOME"));
-						else
-							chdir("/tmp");
-						snprintf(global.dircl.applname, 16, "%s", argv[argi]);
-					}
-				}
+				if (getenv("XDG_CACHE_HOME"))
+					chdir(getenv("XDG_CACHE_HOME"));
+				else
+					chdir("/tmp");
+
+				if (argv[argi])
+					snprintf(global.dircl.applname, 16, "%s", argv[argi]);
 
 				anet_directory_cl(cl.state, global.dircl, cl.fd, cl.fd);
 			}

@@ -1833,12 +1833,6 @@ static void dirstate_item(struct a12_state* S, struct appl_meta* C)
 	uint8_t outb[CONTROL_PACKET_SIZE];
 	build_control_header(S, outb, COMMAND_DIRSTATE);
 
-	if (C->role == ROLE_SOURCE || C->role == ROLE_DIR){
-		a12int_notify_dynamic_resource(
-			S, C->dynamic.petname, C->dynamic.key, C->role, true);
-		return;
-	}
-
 	pack_u16(C->identifier, &outb[18]);
 	pack_u16(C->categories, &outb[20]);
 	pack_u16(C->permissions, &outb[22]);
@@ -3321,4 +3315,12 @@ void a12int_notify_dynamic_resource(struct a12_state* S,
 	memcpy(&outb[36], kpub, 32);
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+}
+
+bool a12_request_dynamic_resource(struct a12_state* S,
+	uint8_t req_pubk[static 32], uint8_t ident_pubk[static 32],
+	void(*request_reply)(struct a12_state*, struct a12_dynreq, void* tag),
+	void* tag)
+{
+	return false;
 }

@@ -594,6 +594,23 @@ struct a12_iostat {
 struct a12_iostat a12_state_iostat(struct a12_state* S);
 
 /*
+ * Try to negotiate a connection for a directory resource based on an announced
+ * public key. Provide the public key (or =[0] to use the same key as the
+ * connection. Only one pending _dynamic is allowed. The callback will be
+ * triggered with the connection parameters for reaching the source. */
+struct a12_dynreq {
+	char* host;
+	uint16_t port;
+	char* authk;
+	int proto;
+};
+
+bool a12_request_dynamic_resource(struct a12_state* S,
+	uint8_t req_pubk[static 32], uint8_t ident_pubk[static 32],
+	void(*request_reply)(struct a12_state*, struct a12_dynreq, void* tag),
+	void* tag);
+
+/*
  * debugging / tracing bits, just define a namespace that can be used
  * for wrapper tools to log with the same syntax and behaviour as the
  * implementation files

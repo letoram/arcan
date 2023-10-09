@@ -73,6 +73,8 @@ static struct {
 	pthread_mutex_unlock(&active_clients.sync);\
 	} while (0);
 
+static void rebuild_index();
+
 /* Check for petname collision among existing instances, this is another of
  * those policy decisions that should be moved to a scripting layer to also
  * apply geographically appropriate blocklists for the inevitable censors */
@@ -89,9 +91,9 @@ static bool gotname(struct dircl* source, struct arcan_event ev)
 			}
 
 			if (strncasecmp(
-					(char*)C->petname.ext.message.data,
-					(char*)ev.ext.message.data,
-					COUNT_OF(ev.ext.message.data)) == 0){
+					(char*)C->petname.ext.netstate.name,
+					(char*)ev.ext.netstate.name,
+					COUNT_OF(ev.ext.netstate.name)) == 0){
 				rv = true;
 				break;
 			}
@@ -230,6 +232,68 @@ static int get_state_res(
 	return resfd;
 }
 
+static void register_source(struct dircl* C, struct arcan_event ev)
+{
+	if (!a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_src)){
+		A12INT_DIRTRACE(
+			"dirsv:kind=reject_register:title=%s:role=%d:permission",
+			ev.ext.registr.title,
+			ev.ext.registr.kind
+		);
+		return;
+	}
+
+/* sanitize, name identifiers should be alnum and short for compatiblity */
+	char* title = ev.ext.registr.title;
+	for (size_t i = 0; i < COUNT_OF(ev.ext.registr.title) && title[i]; i++){
+		if (!isalnum(title[i]))
+			title[i] = '_';
+	}
+
+/* and no duplicates */
+	if (gotname(C, ev)){
+		A12INT_DIRTRACE(
+			"dirsv:kind=warning_register:collision=%s", ev.ext.registr.title);
+/* generate new name */
+		return;
+	}
+
+	A12INT_DIRTRACE("dirsv:kind=register:name=%s", ev.ext.registr.title);
+
+/* pack and append the authenticated pubk */
+	size_t len = strlen(ev.ext.registr.title);
+	if (len > COUNT_OF(ev.ext.registr.title) - 34){
+		A12INT_DIRTRACE("dirsv:kind=warning_register:name_overflow");
+		return;
+	}
+
+/* if we just change state / availability, don't permit rename */
+	if (C->petname.ext.registr.title[0]){
+		if (strcmp(C->petname.ext.registr.title, ev.ext.registr.title) != 0){
+			A12INT_DIRTRACE("dirsv:kind=warning_register:rename_blocked");
+			return;
+		}
+	}
+
+/* finally ack the petname and broadcast */
+	C->petname = ev;
+	C->type = ev.ext.registr.kind;
+	ev.ext.registr.title[len] = ':';
+	memcpy(&ev.ext.registr.title[len+1], C->pubk, 32);
+
+/* notify everyone interested about the change, the local state machine
+ * will determine whether to forward or not */
+	pthread_mutex_lock(&active_clients.sync);
+		struct dircl* cur = active_clients.root.next;
+		while (cur){
+			if (cur != C && cur->C){
+				shmifsrv_enqueue_event(cur->C, &ev, -1);
+			}
+			cur = cur->next;
+		}
+	pthread_mutex_unlock(&active_clients.sync);
+}
+
 static void handle_bchunk_completion(struct dircl* C, bool ok)
 {
 	if (-1 == C->pending_fd){
@@ -323,11 +387,11 @@ static void handle_bchunk_req(struct dircl* C, char* ext, bool input)
 	if (!meta){
 		if (mtype == IDTYPE_APPL && !input){
 			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_appl)){
-				A12INT_DIRTRACE("accepted_new:%s", ext);
+				A12INT_DIRTRACE("dirsv:accepted_new=%s", ext);
 				meta = allocate_new_appl(ext, &mid);
 			}
 			else
-				A12INT_DIRTRACE("rejected_new:%s", ext);
+				A12INT_DIRTRACE("dirsv:rejected_new=%s:permission", ext);
 		}
 
 		if (!meta)
@@ -509,7 +573,11 @@ static void* dircl_process(void* P)
 			if (ev.ext.kind == EVENT_EXTERNAL_IDENT){
 				A12INT_DIRTRACE("dirsv:kind=worker:cl_join=%s", (char*)ev.ext.message.data);
 			}
-
+			else if (ev.ext.kind == EVENT_EXTERNAL_NETSTATE){
+				A12INT_DIRTRACE("dirsv:kind=worker:register_source=%s:kind=%d",
+					(char*)ev.ext.netstate.name, ev.ext.netstate.type);
+				register_source(C, ev);
+			}
 /* right now we permit the worker to fetch / update their state store of any
  * appl as the format is id[.resource]. The other option is to use IDENT to
  * explicitly enter an appl signalling that participation in networked activity
@@ -621,12 +689,15 @@ static void* dircl_process(void* P)
 	return NULL;
 }
 
+/*
+ * the index only contain active appls, dynamic sources are sent separately
+ * as netstate discover / lost events and just forwarded.
+ */
 static void rebuild_index()
 {
 	if (active_clients.dirlist)
 		free(active_clients.dirlist);
 
-/* first appls */
 	FILE* dirlist = open_memstream(
 		&active_clients.dirlist, &active_clients.dirlist_sz);
 	volatile struct appl_meta* cur = &active_clients.opts->dir;
@@ -643,18 +714,6 @@ static void rebuild_index()
 			);
 		}
 		cur = cur->next;
-	}
-
-/* then possible sources */
-	struct dircl* cl = &active_clients.root;
-	while (cl){
-		if ((cl->type == ROLE_SOURCE || cl->type == ROLE_DIR) &&
-				cl->petname.ext.message.data[0]){
-			fprintf(dirlist, "kind=%s:name=%s\n",
-				cl->type == ROLE_SOURCE ? "source" : "dir",
-				cl->petname.ext.message.data);
-		}
-		cl = cl->next;
 	}
 
 	fclose(dirlist);
