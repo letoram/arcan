@@ -123,7 +123,6 @@ static void on_srv_event(
 	struct directory_meta* cbt = I->cbt;
 	struct arcan_shmif_cont* C = cbt->C;
 
-/* the only concerns here are BCHUNK matching our directory IDs */
 	if (ev->ext.kind == EVENT_EXTERNAL_BCHUNKSTATE){
 /* sweep the directory, and when found: */
 		if (!isdigit(ev->ext.bchunk.extensions[0])){
@@ -161,7 +160,27 @@ static void on_srv_event(
 					.tgt.kind = TARGET_COMMAND_REQFAIL,
 					.tgt.ioevs[0].uiv = extid
 			});
-		}
+	}
+/* Actual identity will be determined by the parent to make sure we don't have
+ * any collisions or name changes after the first REGISTER. It will also tag
+ * with the Kpub we have. */
+	else if (ev->ext.kind == EVENT_EXTERNAL_REGISTER &&
+		a12_remote_mode(cbt->S) == ROLE_SOURCE){
+		arcan_event disc = {
+			.category = EVENT_EXTERNAL,
+			.ext.kind = EVENT_EXTERNAL_NETSTATE,
+			.ext.netstate = {
+				.type = ROLE_SOURCE,
+				.space = 5
+			}
+		};
+
+/* truncate the identifier */
+		snprintf(disc.ext.netstate.name, 16, "%s", ev->ext.registr.title);
+		a12int_trace(A12_TRACE_DIRECTORY,
+			"source_register=%s", disc.ext.netstate.name);
+		arcan_shmif_enqueue(C, &disc);
+	}
 }
 
 static void unpack_index(
@@ -209,48 +228,35 @@ static void unpack_index(
 		const char* name = NULL;
 		arg_lookup(entry, "name", 0, &name);
 
-		bool source = strcmp(kind, "source") == 0;
-		bool dir = strcmp(kind, "dir") == 0;
+		*cur = malloc(sizeof(struct appl_meta));
+		**cur = (struct appl_meta){0};
+		snprintf((*cur)->appl.name, 18, "%s", name);
 
-		if ((source || dir) && name){
-			*cur = malloc(sizeof(struct appl_meta));
-			**cur = (struct appl_meta){.role = source ? ROLE_SOURCE : ROLE_DIR};
+		const char* tmp;
+		if (arg_lookup(entry, "categories", 0, &tmp) && tmp)
+			(*cur)->categories = (uint16_t) strtoul(tmp, NULL, 10);
 
-			snprintf((*cur)->appl.name, 18, "%s", name);
-			cur = &(*cur)->next;
-		}
-		else if (strcmp(kind, "appl") == 0 && name){
-			*cur = malloc(sizeof(struct appl_meta));
-			**cur = (struct appl_meta){.role = 0}; /* no role == APPL */
-			snprintf((*cur)->appl.name, 18, "%s", name);
+		if (arg_lookup(entry, "size", 0, &tmp) && tmp)
+			(*cur)->buf_sz = (uint32_t) strtoul(tmp, NULL, 10);
 
-			const char* tmp;
-			if (arg_lookup(entry, "categories", 0, &tmp) && tmp)
-				(*cur)->categories = (uint16_t) strtoul(tmp, NULL, 10);
+		if (arg_lookup(entry, "id", 0, &tmp) && tmp)
+			(*cur)->identifier = (uint16_t) strtoul(tmp, NULL, 10);
 
-			if (arg_lookup(entry, "size", 0, &tmp) && tmp)
-				(*cur)->buf_sz = (uint32_t) strtoul(tmp, NULL, 10);
+		if (arg_lookup(entry, "hash", 0, &tmp) && tmp){
+			union {
+				uint32_t val;
+				uint8_t u8[4];
+			} dst;
 
-			if (arg_lookup(entry, "id", 0, &tmp) && tmp)
-				(*cur)->identifier = (uint16_t) strtoul(tmp, NULL, 10);
-
-			if (arg_lookup(entry, "hash", 0, &tmp) && tmp){
-				union {
-					uint32_t val;
-					uint8_t u8[4];
-				} dst;
-
-				dst.val = strtoul(tmp, NULL, 16);
-				memcpy((*cur)->hash, dst.u8, 4);
-			}
-
-			if (arg_lookup(entry, "timestamp", 0, &tmp) && tmp){
-				(*cur)->update_ts = (uint64_t) strtoull(tmp, NULL, 10);
-			}
-
-			cur = &(*cur)->next;
+			dst.val = strtoul(tmp, NULL, 16);
+			memcpy((*cur)->hash, dst.u8, 4);
 		}
 
+		if (arg_lookup(entry, "timestamp", 0, &tmp) && tmp){
+			(*cur)->update_ts = (uint64_t) strtoull(tmp, NULL, 10);
+		}
+
+		cur = &(*cur)->next;
 		arg_cleanup(entry);
 	}
 
@@ -314,6 +320,32 @@ static void do_event(
 	struct a12_state* S, struct arcan_shmif_cont* C, struct arcan_event* ev)
 {
 	struct directory_meta* cbt = C->user;
+
+/* parent process responsible for verifying and tagging name with petname:kpub */
+	if (ev->category == EVENT_EXTERNAL &&
+		ev->ext.kind == EVENT_EXTERNAL_NETSTATE){
+		size_t i = 0;
+
+		for (; i < COUNT_OF(ev->ext.netstate.name); i++){
+			if (ev->ext.netstate.name[i] == ':'){
+				ev->ext.netstate.name[i] = '\0';
+				i++;
+				break;
+			}
+		}
+
+		if (i > COUNT_OF(ev->ext.netstate.name) - 32){
+			a12int_trace(A12_TRACE_DIRECTORY,
+				"kind=einval:netstate_name=%s", ev->ext.netstate.name);
+			return;
+		}
+
+		a12int_notify_dynamic_resource(S,
+			ev->ext.netstate.name, (uint8_t*)&ev->ext.netstate.name[i],
+			ev->ext.netstate.type, ev->ext.netstate.type != 0
+		);
+	}
+
 	if (ev->category != EVENT_TARGET)
 		return;
 

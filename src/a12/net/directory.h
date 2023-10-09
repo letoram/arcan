@@ -44,12 +44,8 @@ struct anet_dircl_opts {
 	bool keep_appl;
 
 	char ident[16];
-/*
- * set to source / exec an arcan-shmif client:
- *  /path/to/bin arg1 arg2 arg3, ...
- */
-	size_t source_argc;
-	char** source_argv;
+	void (*dir_source)(struct a12_state*, int fd, void* tag);
+	void *dir_source_tag;
 
 	struct appl_meta outapp;
 

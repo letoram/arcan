@@ -56,12 +56,44 @@ static struct {
 } active_appls = {
 };
 
+static void on_source(struct a12_state* S, struct a12_dynreq req, void* tag)
+{
+/* setup the request:
+ *    we might need to listen
+ *    we might need to connect
+ *    we might need to tunnel via the directory
+ */
+
+/* when that is done (i.e. we get a connection), chain into the corresponding
+ * source to shmif handler for the new connection. */
+}
+
 static void on_cl_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
-/* the only concerns here are BCHUNK matching our directory IDs,
- * with the BCHUNK_IN, spin up a new fork + tar from stdin to temp applfolder
- * and exec into arcan_lwa */
+	if (ev->category == EVENT_EXTERNAL && ev->ext.kind == EVENT_EXTERNAL_NETSTATE){
+		struct ioloop_shared* I = tag;
+			printf("source:name=%s\n", ev->ext.netstate.name);
+		if (I->cbt->clopt->applname[0] == '*'){
+/* split out Kpub, need to use that in the open request */
+			size_t i = 0;
+			for (size_t i = 0; i < COUNT_OF(ev->ext.netstate.name); i++)
+				if (ev->ext.netstate.name[i] == ':'){
+					ev->ext.netstate.name[i] = '\0';
+					i++;
+					break;
+				}
+
+/* found it, request to negotiate an open */
+			if (strcmp(&I->cbt->clopt->applname[1], ev->ext.netstate.name) == 0){
+				uint8_t nkey[32] = {0};
+				a12_request_dynamic_resource(I->S,
+					(uint8_t*)&ev->ext.netstate.name[i], nkey, on_source, I);
+			}
+		}
+		return;
+	}
+
 	a12int_trace(A12_TRACE_DIRECTORY, "event=%s", arcan_shmif_eventstr(ev, NULL, 0));
 }
 
@@ -537,7 +569,11 @@ static void mark_xfer_complete(struct ioloop_shared* I, struct a12_bhandler_meta
 	}
 
 /* EOF the unpack action now */
-	pclose(cbt->appl_out);
+	if (pclose(cbt->appl_out) != EXIT_SUCCESS){
+		fprintf(stderr, "xfer download unpack failed");
+		I->shutdown = true;
+		return;
+	}
 	cbt->appl_out = NULL;
 	cbt->appl_out_complete = false;
 
@@ -657,7 +693,6 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
 		else if (M.type == A12_BTYPE_BLOB){
 			fprintf(stderr, "appl download cancelled\n");
 			if (cbt->appl_out){
-				pclose(cbt->appl_out);
 				cbt->appl_out = NULL;
 				cbt->appl_out_complete = false;
 			}
@@ -740,7 +775,7 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 		dir = dir->next;
 	}
 
-	if (cbt->clopt->applname[0]){
+	if (cbt->clopt->applname[0] && cbt->clopt->applname[0] != '*'){
 		fprintf(stderr, "appl:%s not found\n", cbt->clopt->applname);
 		return false;
 	}
@@ -767,12 +802,18 @@ void anet_directory_cl(
 
 	sigaction(SIGPIPE,&(struct sigaction){.sa_handler = SIG_IGN}, 0);
 
-	if (opts.source_argv){
-		if (!opts.ident[0]){
-			a12int_trace(A12_TRACE_DIRECTORY, "kind=source:error=missing_ident");
-		}
-		a12int_trace(A12_TRACE_DIRECTORY, "kind=eimpl:missing_source");
-		return;
+/* send REGISTER event with our ident, this is a convenience thing right now,
+ * it might be slightly cleaner having an actual directory command for the
+ * thing rather than (ab)using REGISTER here and IDENT for appl-messaging. */
+	if (opts.dir_source){
+		struct arcan_event ev = {
+			.ext.kind = ARCAN_EVENT(REGISTER),
+			.category = EVENT_EXTERNAL,
+			.ext.registr = {}
+		};
+		snprintf(
+			(char*)ev.ext.registr.title, 64, "%s", opts.ident);
+		a12_channel_enqueue(S, &ev);
 	}
 
 	struct ioloop_shared ioloop = {

@@ -358,18 +358,10 @@ struct appl_meta {
 	uint16_t permissions;
 	uint8_t hash[4];
 
-	int role;
-	union {
-		struct {
-			char name[18];
-			char short_descr[69];
-		} appl;
-
-		struct {
-			char petname[16];
-			uint8_t key[32];
-		} dynamic;
-	};
+	struct {
+		char name[18];
+		char short_descr[69];
+	} appl;
 
 	uint64_t update_ts;
 };
