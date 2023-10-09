@@ -199,7 +199,7 @@ void alt_trace_finish(lua_State* L)
 	luaL_unref(L, LUA_REGISTRYINDEX, trace_cb);
 }
 
-void alt_trace_log(lua_State* ctx)
+int alt_trace_log(lua_State* ctx)
 {
 	const char str_prefix[] = "LUA_PRINT: ";
 
@@ -222,7 +222,7 @@ void alt_trace_log(lua_State* ctx)
 	if (log_buffer == 0) {
 		const char oom_msg[] = "Couldn't log trace message: Out of memory\n";
 		arcan_trace_log(oom_msg, sizeof(oom_msg));
-		return;
+		return 0;
 	}
 
 	int running_len = sizeof(str_prefix) - 1;
@@ -244,4 +244,5 @@ void alt_trace_log(lua_State* ctx)
 	arcan_trace_log(log_buffer, total_len);
 
 	arcan_mem_free(log_buffer);
+	return 0;
 }
