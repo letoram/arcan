@@ -58,11 +58,16 @@ static struct {
 
 static void on_source(struct a12_state* S, struct a12_dynreq req, void* tag)
 {
+	printf("waiting on the other end\n");
+
 /* setup the request:
  *    we might need to listen
  *    we might need to connect
  *    we might need to tunnel via the directory
  */
+
+/* wait for a bit */
+/* if that fails, switch to tunnel processing */
 
 /* when that is done (i.e. we get a connection), chain into the corresponding
  * source to shmif handler for the new connection. */
@@ -73,7 +78,8 @@ static void on_cl_event(
 {
 	if (ev->category == EVENT_EXTERNAL && ev->ext.kind == EVENT_EXTERNAL_NETSTATE){
 		struct ioloop_shared* I = tag;
-			printf("source:name=%s\n", ev->ext.netstate.name);
+			printf("source:name=%s:state=%s\n",
+				ev->ext.netstate.name, ev->ext.netstate.state == 0 ? "lost" : "found");
 		if (I->cbt->clopt->applname[0] == '*'){
 /* split out Kpub, need to use that in the open request */
 			size_t i = 0;
@@ -86,9 +92,8 @@ static void on_cl_event(
 
 /* found it, request to negotiate an open */
 			if (strcmp(&I->cbt->clopt->applname[1], ev->ext.netstate.name) == 0){
-				uint8_t nkey[32] = {0};
 				a12_request_dynamic_resource(I->S,
-					(uint8_t*)&ev->ext.netstate.name[i], nkey, on_source, I);
+					(uint8_t*)&ev->ext.netstate.name[i], on_source, I);
 			}
 		}
 		return;
@@ -806,6 +811,7 @@ void anet_directory_cl(
  * it might be slightly cleaner having an actual directory command for the
  * thing rather than (ab)using REGISTER here and IDENT for appl-messaging. */
 	if (opts.dir_source){
+		uint8_t nk[32] = {0};
 		struct arcan_event ev = {
 			.ext.kind = ARCAN_EVENT(REGISTER),
 			.category = EVENT_EXTERNAL,
@@ -814,6 +820,7 @@ void anet_directory_cl(
 		snprintf(
 			(char*)ev.ext.registr.title, 64, "%s", opts.ident);
 		a12_channel_enqueue(S, &ev);
+		a12_request_dynamic_resource(S, nk, opts.dir_source, opts.dir_source_tag);
 	}
 
 	struct ioloop_shared ioloop = {

@@ -553,7 +553,8 @@ while Kpub-me is the public key that the source will connect through in order
 to differentiate between the credential used to access the directory versus the
 credential used to access the source.
 
-Mode can be treated as a bitmap of supported open-modes.
+Mode can be treated as a bitmap of supported open-modes but is a hint as
+the initiator cannot necessarily know the topology of the source.
 
 If mode is set to direct-inbound the request is that the other end connects to
 the request originator (TCP). This will provide the source-IP that was used to
@@ -573,17 +574,21 @@ the server connection.
 
 ### command - 14, directory-opened
 - [18    ] Status  : (0 failed, 1 direct-in ok, 2 direct-out ok, 2 tunnel ok)
-- [19 +16] Address : Status = 1, IPv6 address to the host,
-                     Status = 2, IPv4 address to the host,
-                     Status = 3, tunnel ID.
-- [34 +12] Secret  : alphanumerical random secret to use with first HELLO
+- [19 +46] Address : (string representation, \0 terminated)
+                     Status = 1, IPv3,6 address to the host,
+                     Status = 2, IPv4,6 address to the host,
+                     Status = 3, 0
+- [65..66] Port    : connection port or tunnel-id (status=2)
+- [67 +12] Secret  : alphanumerical random secret to use with first HELLO
                      packet to authenticate.
-- [45 +16] Kpub    : the other end key (for direct-in)
+- [79 +32] Kpub    : the other end key.
 
 This will be sent to source/source-directory and to sink in response to a
-directory-open request. The connection mode must skip the ephemeral handshake
-hello-mode and instead use the secret to protect the negotiation packet and
-to signal that the connection is mediated via this particular third party.
+directory-open request. The connection handshake is just like the initial
+one for the directory, but using the authentication secret to protect the
+initial HELLO. It is advised to use an ephemeral keypair and the two stage
+HELLO to be able to differentiate the keypair used when authenticating to
+the directory versus authenticating to the source.
 
 ##  Event (2), fixed length
 - [0..7] sequence number : uint64

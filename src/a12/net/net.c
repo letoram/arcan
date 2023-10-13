@@ -193,6 +193,10 @@ static int get_bcache_dir()
 	return open(base, O_DIRECTORY | O_CLOEXEC);
 }
 
+#ifdef DEBUG
+extern void shmifint_set_log_device(struct arcan_shmif_cont*, FILE*);
+#endif
+
 static void set_log_trace()
 {
 #ifdef DEBUG
@@ -202,6 +206,9 @@ static void set_log_trace()
 	char buf[sizeof("cl_log_xxxxxx.log")];
 	snprintf(buf, sizeof(buf), "cl_log_%.6d.log", (int) getpid());
 	FILE* fpek = fopen(buf, "w+");
+
+	shmifint_set_log_device(NULL, fpek);
+
 	if (fpek){
 		a12_set_trace_level(a12_trace_targets, fpek);
 	}
@@ -230,7 +237,7 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 
 		char* argv[] = {global.path_self, "-d", tmptrace, "-S", tmpfd, NULL, NULL};
 
-	/* shmif-server lib will get to waitpid / kill so we don't need to care here */
+/* shmif-server lib will get to waitpid / kill so we don't need to care here */
 		struct shmifsrv_envp env = {
 			.path = global.path_self,
 			.envv = NULL,
@@ -240,7 +247,7 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 
 		cl = shmifsrv_spawn_client(env, &clsock, NULL, 0);
 		if (cl){
-			anet_directory_shmifsrv_thread(cl);
+			anet_directory_shmifsrv_thread(cl, S);
 		}
 
 		a12_channel_close(S);
@@ -411,9 +418,12 @@ static void single_a12srv(struct a12_state* S, int fd, void* tag)
 	}
 }
 
-static void dir_to_shmifsrv(struct a12_state* S, int fd, void* tag)
+static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq, void* tag)
 {
 	a12int_trace(A12_TRACE_DIRECTORY, "open_request_negotiated");
+/* here, we fork() into listening on our registered port, with the prefilled
+ * authk and a specialised key-auth that only ephemerally accepts (unless set
+ * to trust-transitive), passing the shmifsrv connection along */
 }
 
 static void a12cl_dispatch(

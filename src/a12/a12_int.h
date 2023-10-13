@@ -77,6 +77,7 @@ enum control_commands {
 	COMMAND_DIRSTATE     = 10,/* update / present a new appl     */
 	COMMAND_DIRDISCOVER  = 11,/* dynamic source/dir entry        */
 	COMMAND_DIROPEN      = 12,/* mediate access to a dyn src/dir */
+	COMMAND_DIROPENED    = 13,/* replies to DIROPEN (src/sink)   */
 };
 
 enum hello_mode {
@@ -261,6 +262,15 @@ struct a12_state {
 	} congestion_stats;
 	struct a12_iostat stats;
 
+/* tracks a pending dynamic directory resource */
+	struct {
+		bool active;
+		uint8_t key[32];
+		void(* closure)(struct a12_state*, struct a12_dynreq, void* tag);
+		void* tag;
+
+	} pending_dynamic;
+
 /* populate and forwarded output buffer */
 	size_t buf_sz[2];
 	uint8_t* bufs[2];
@@ -317,6 +327,7 @@ struct a12_state {
 	bool cl_firstout;
 	int authentic;
 	int remote_mode;
+	char* endpoint;
 
 /* saved between calls to unpack, see end of a12_unpack for explanation */
 	bool auth_latched;

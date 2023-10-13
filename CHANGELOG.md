@@ -37,7 +37,12 @@
  * add interactive accept/reject/trust for arcan-net use
  * reserve 'outbound' domain for interactively added outbound keys
  * enforce domain separation for allowed pubkeys
- * server in directory mode now splits out into sandboxed worker processes
+ * directory mode now splits out into sandboxed worker processes
+ * directory mode can now specify permissions per tag-group
+ * directory mode dynamic push appl from client with permission
+ * directory mode notification of appl updates and sources coming / leaving
+ * directory mode registration of dynamic sinks
+ * directory mode sourcing dynamic sinks (sink-inbound only)
 
 ## Terminal
  * SGR reset fix, add CNL / CPL

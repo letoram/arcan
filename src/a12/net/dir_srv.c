@@ -8,6 +8,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <arpa/inet.h>
 #include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
@@ -16,6 +17,7 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <signal.h>
+#include <assert.h>
 
 #include "../a12.h"
 #include "../a12_int.h"
@@ -46,6 +48,7 @@ struct dircl {
 	uint16_t pending_id;
 
 	arcan_event petname;
+	arcan_event endpoint;
 
 	uint8_t pubk[32];
 	bool authenticated;
@@ -158,6 +161,111 @@ static void dirlist_to_worker(struct dircl* C)
 	close(fd);
 }
 
+static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
+{
+	const char* pubk = NULL;
+
+	if (!arg_lookup(entry, "pubk", 0, &pubk) || !pubk)
+		goto send_fail;
+
+	uint8_t pubk_dec[32];
+	if (!a12helper_fromb64((const uint8_t*) pubk, 32, pubk_dec))
+		goto send_fail;
+
+	pthread_mutex_lock(&active_clients.sync);
+		struct dircl* cur = active_clients.root.next;
+		while (cur){
+			if (cur == C || !cur->C || !cur->petname.ext.netstate.name[0]){
+				cur = cur->next;
+				continue;
+			}
+
+/* got match, an open question here is if the sources should be consume on use
+ * or let the load balancing / queueing etc. happen at the source stage. Right
+ * now in the PoC we assume the source is the listening end and the sink the
+ * outbound one. We also have a default port for the source (6680) that should
+ * be possible to change. */
+			if (memcmp(cur->pubk, C->pubk, 32) == 0){
+				arcan_event to_src = {
+					.category = EVENT_EXTERNAL,
+					.ext.kind = EVENT_EXTERNAL_NETSTATE,
+/* this does not conflict with dynlist notifications, those are only for SINK */
+					.ext.netstate = {
+						.space = 5
+					}
+				};
+				memcpy(to_src.ext.netstate.name, C->pubk, 32);
+
+/* here is the heuristic spot for setting up NAT hole punching, or allocating a
+ * tunnel or .. right now just naively forward IP:port, set pubk and secret if
+ * needed. This could ideally be arranged so that the ordering (listening
+ * first) delayed locally based on the delta of pings, but then we'd need that
+ * estimate from the state machine as well. It would at least reduce the
+ * chances of the outbound connection having to retry if it received the
+ * trigger first. The lazy option is to just delay the outbound connection in
+ * the dir_cl for the time being. */
+				arcan_event to_sink = cur->endpoint;
+
+/* Another protocol nuance here is that we're supposed to set an authk secret
+ * for the outer ephemeral making it possible to match the connection to our
+ * directory mediated connection versus one that was made through other means
+ * of discovery. This means that the source end might need to (if it should
+ * support multiple connection origins) enumerate secrets on the first packet
+ * increasing the cost somewhat. */
+				arcan_event ss = {
+					.category = EVENT_TARGET,
+					.ext.kind = TARGET_COMMAND_MESSAGE
+				};
+
+				uint8_t secret[8];
+				arcan_random(secret, 8);
+				unsigned char* b64 = a12helper_tob64(secret, 8, &(size_t){0});
+				snprintf((char*)ss.tgt.message,
+					COUNT_OF(ss.tgt.message), "a12:dir_secret=%s", b64);
+
+				shmifsrv_enqueue_event(C->C, &ss, -1);
+				shmifsrv_enqueue_event(cur->C, &ss, -1);
+				shmifsrv_enqueue_event(cur->C, &to_src, -1);
+				shmifsrv_enqueue_event(C->C, &to_sink, -1);
+
+				free(b64);
+				break;
+			}
+		}
+	pthread_mutex_unlock(&active_clients.sync);
+	return;
+
+send_fail:
+	A12INT_DIRTRACE("dirsv:worker:dynopen_fail");
+	shmifsrv_enqueue_event(C->C, &(struct arcan_event){
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_REQFAIL
+		}, -1
+	);
+}
+
+static void dynlist_to_worker(struct dircl* C)
+{
+	pthread_mutex_lock(&active_clients.sync);
+	struct dircl* cur = active_clients.root.next;
+	while (cur){
+		if (cur == C || !cur->C || !cur->petname.ext.netstate.name[0]){
+			cur = cur->next;
+			continue;
+		}
+
+/* and the dynamic sources separately */
+		arcan_event ev = cur->petname;
+		size_t nl = strlen(ev.ext.netstate.name);
+		ev.ext.netstate.name[nl] = ':';
+		memcpy(&ev.ext.netstate.name[nl+1], cur->pubk, 32);
+		shmifsrv_enqueue_event(C->C, &ev, -1);
+
+		cur = cur->next;
+	}
+	pthread_mutex_unlock(&active_clients.sync);
+}
+
 /*
  * split a worker provided resource identifier id[.resource] into its components
  * and return the matching appl_meta pairing with [id] (if any)
@@ -232,6 +340,21 @@ static int get_state_res(
 	return resfd;
 }
 
+static bool tag_outbound_name(struct arcan_event* ev, uint8_t kpub[static 32])
+{
+/* pack and append the authenticated pubk */
+	size_t len = strlen(ev->ext.netstate.name);
+	if (len > COUNT_OF(ev->ext.netstate.name) - 34){
+		A12INT_DIRTRACE("dirsv:kind=warning_register:name_overflow");
+		return false;
+	}
+
+	ev->ext.netstate.name[len] = ':';
+	memcpy(&ev->ext.netstate.name[len+1], kpub, 32);
+
+	return true;
+}
+
 static void register_source(struct dircl* C, struct arcan_event ev)
 {
 	if (!a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_src)){
@@ -260,26 +383,22 @@ static void register_source(struct dircl* C, struct arcan_event ev)
 
 	A12INT_DIRTRACE("dirsv:kind=register:name=%s", ev.ext.registr.title);
 
-/* pack and append the authenticated pubk */
-	size_t len = strlen(ev.ext.registr.title);
-	if (len > COUNT_OF(ev.ext.registr.title) - 34){
-		A12INT_DIRTRACE("dirsv:kind=warning_register:name_overflow");
-		return;
-	}
-
 /* if we just change state / availability, don't permit rename */
-	if (C->petname.ext.registr.title[0]){
-		if (strcmp(C->petname.ext.registr.title, ev.ext.registr.title) != 0){
+	if (C->petname.ext.netstate.name[0]){
+		if (strcmp(C->petname.ext.netstate.name, ev.ext.netstate.name) != 0){
 			A12INT_DIRTRACE("dirsv:kind=warning_register:rename_blocked");
 			return;
 		}
 	}
 
-/* finally ack the petname and broadcast */
 	C->petname = ev;
-	C->type = ev.ext.registr.kind;
-	ev.ext.registr.title[len] = ':';
-	memcpy(&ev.ext.registr.title[len+1], C->pubk, 32);
+	ev.ext.netstate.state = 1;
+
+/* finally ack the petname and broadcast */
+	if (!tag_outbound_name(&ev, C->pubk))
+		return;
+
+	C->type = ev.ext.netstate.type;
 
 /* notify everyone interested about the change, the local state machine
  * will determine whether to forward or not */
@@ -502,6 +621,101 @@ fail:
 	}, -1);
 }
 
+static void dircl_message(struct dircl* C, struct arcan_event ev)
+{
+	struct arg_arr* entry = arg_unpack((char*)ev.ext.message.data);
+	if (!entry){
+		A12INT_DIRTRACE("dirsv:kind=worker:bad_msg:%s=", ev.ext.message.data);
+		return;
+	}
+
+/* just route authentication through the regular function, caching the reply */
+	const char* pubk;
+	if (!C->authenticated){
+/* regardless of authentication reply, they only get one attempt at this */
+		C->authenticated = true;
+		if (!arg_lookup(entry, "a12", 0, NULL) || !arg_lookup(entry, "pubk", 0, &pubk))
+			goto send_fail;
+
+		uint8_t pubk_dec[32];
+		if (!a12helper_fromb64((const uint8_t*) pubk, 32, pubk_dec))
+			goto send_fail;
+
+		pthread_mutex_lock(&active_clients.sync);
+			struct pk_response rep = active_clients.opts->a12_cfg->pk_lookup(pubk_dec);
+		pthread_mutex_unlock(&active_clients.sync);
+
+		if (!rep.authentic)
+			goto send_fail;
+
+		struct arcan_event ev = {
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_MESSAGE
+		};
+		unsigned char* b64 = a12helper_tob64(rep.key_pub, 32, &(size_t){0});
+		snprintf((char*)&ev.tgt.message, COUNT_OF(ev.tgt.message), "a12:pub=%s", b64);
+		free(b64);
+		shmifsrv_enqueue_event(C->C, &ev, -1);
+		b64 = a12helper_tob64(rep.key_session, 32, &(size_t){0});
+		snprintf((char*)&ev.tgt.message, COUNT_OF(ev.tgt.message), "a12:ss=%s", b64);
+		free(b64);
+		shmifsrv_enqueue_event(C->C, &ev, -1);
+		memcpy(C->pubk, pubk_dec, 32);
+
+		return;
+	}
+
+	if (!arg_lookup(entry, "a12", 0, NULL))
+		goto send_fail;
+
+/* this one comes from a DIRLIST being sent to the worker state machine. The
+ * worker doesn't retain a synched list and may flip between dynamic
+ * notification and not. This results in a message being created in a12.c with
+ * "a12:dirlist" that the worker forwards verbatim, and here we are. */
+	if (arg_lookup(entry, "dirlist", 0, NULL))
+		dynlist_to_worker(C);
+
+	else if (arg_lookup(entry, "diropen", 0, NULL))
+		dynopen_to_worker(C, entry);
+
+/* missing - forward to Lua VM and appl-script if in ident */
+	arg_cleanup(entry);
+	return;
+
+send_fail:
+	shmifsrv_enqueue_event(C->C, &(struct arcan_event){
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_MESSAGE,
+		.tgt.message = "a12:fail"
+		}, -1
+	);
+	arg_cleanup(entry);
+}
+
+void handle_netstate(struct dircl* C, arcan_event ev)
+{
+	ev.ext.netstate.name[COUNT_OF(ev.ext.netstate.name)-1] = '\0';
+
+	if (ev.ext.netstate.type == 3 || ev.ext.netstate.type == 4){
+		A12INT_DIRTRACE("dirsv:kind=worker:set_endpoint=%s", ev.ext.netstate.name);
+		C->endpoint = ev;
+		return;
+	}
+
+	if (ev.ext.netstate.type == 1){
+		A12INT_DIRTRACE("dirsv:kind=worker:register_source=%s:kind=%d",
+			(char*)ev.ext.netstate.name, ev.ext.netstate.type);
+				register_source(C, ev);
+	}
+/* set sink key */
+	else if (ev.ext.netstate.type == 2){
+		A12INT_DIRTRACE("dirsv:kind=worker:update_sink_pk");
+		memcpy(C->pubk, ev.ext.netstate.name, 32);
+	}
+	else
+		A12INT_DIRTRACE("dirsv:kind=worker:unknown_netstate");
+}
+
 static void* dircl_process(void* P)
 {
 	struct dircl* C = P;
@@ -561,6 +775,8 @@ static void* dircl_process(void* P)
 				shmifsrv_enqueue_event(C->C, &ev, -1);
 			}
 
+/* the applindex need to be set when the worker constructs the state machine,
+ * while as the list of dynamic sources happens after it is up and running */
 			dirlist_to_worker(C);
 			ev.tgt.kind = TARGET_COMMAND_ACTIVATE;
 			shmifsrv_enqueue_event(C->C, &ev, -1);
@@ -574,9 +790,7 @@ static void* dircl_process(void* P)
 				A12INT_DIRTRACE("dirsv:kind=worker:cl_join=%s", (char*)ev.ext.message.data);
 			}
 			else if (ev.ext.kind == EVENT_EXTERNAL_NETSTATE){
-				A12INT_DIRTRACE("dirsv:kind=worker:register_source=%s:kind=%d",
-					(char*)ev.ext.netstate.name, ev.ext.netstate.type);
-				register_source(C, ev);
+				handle_netstate(C, ev);
 			}
 /* right now we permit the worker to fetch / update their state store of any
  * appl as the format is id[.resource]. The other option is to use IDENT to
@@ -595,77 +809,15 @@ static void* dircl_process(void* P)
 					A12INT_DIRTRACE("dirsv:kind=worker_error:status_no_pending");
 			}
 
-/* registering as a source / directory? */
-			else if (ev.ext.kind == EVENT_EXTERNAL_NETSTATE){
-				if (ev.ext.netstate.state == 0){ /* lost */
-				}
 /* this is cheating a bit, SHMIF splits TARGET and EXTERNAL for (srv->cl), (cl->srv)
  * but by replaying like this we use EXTERNAL as (cl->srv->cl) */
-			}
 
 /* the generic message passing is first used for sending and authenticating the
  * keys on the initial connection. If the authentication goes through and IDENT
  * is used to 'join' an appl the MESSAGE facility should (TOFIX) become a broadcast
  * domain or wrapped through a Lua VM instance as the server end of the appl. */
 			else if (ev.ext.kind == EVENT_EXTERNAL_MESSAGE){
-				struct arg_arr* entry = arg_unpack((char*)ev.ext.message.data);
-				if (!entry){
-					A12INT_DIRTRACE("dirsv:kind=worker:bad_msg:%s=", ev.ext.message.data);
-					continue;
-				}
-
-/* just route authentication through the regular function, caching the reply */
-				const char* pubk;
-				if (!C->authenticated){
-					bool send_fail = false;
-/* regardless of authentication reply, they only get one attempt at this */
-					C->authenticated = true;
-
-					if (!arg_lookup(entry, "a12", 0, NULL) || !arg_lookup(entry, "pubk", 0, &pubk)){
-						send_fail = true;
-					}
-					else {
-						uint8_t pubk_dec[32];
-						if (!a12helper_fromb64((const uint8_t*) pubk, 32, pubk_dec)){
-							send_fail = true;
-						}
-						else {
-							pthread_mutex_lock(&active_clients.sync);
-							struct pk_response rep = active_clients.opts->a12_cfg->pk_lookup(pubk_dec);
-							pthread_mutex_unlock(&active_clients.sync);
-							if (rep.authentic){
-								struct arcan_event ev = {
-									.category = EVENT_TARGET,
-									.tgt.kind = TARGET_COMMAND_MESSAGE
-								};
-								unsigned char* b64 = a12helper_tob64(rep.key_pub, 32, &(size_t){0});
-								snprintf((char*)&ev.tgt.message, COUNT_OF(ev.tgt.message), "a12:pub=%s", b64);
-								free(b64);
-								shmifsrv_enqueue_event(C->C, &ev, -1);
-								b64 = a12helper_tob64(rep.key_session, 32, &(size_t){0});
-								snprintf((char*)&ev.tgt.message, COUNT_OF(ev.tgt.message), "a12:ss=%s", b64);
-								free(b64);
-								shmifsrv_enqueue_event(C->C, &ev, -1);
-								memcpy(C->pubk, pubk_dec, 32);
-							}
-							else
-								send_fail = true;
-						}
-					}
-
-					if (send_fail){
-						shmifsrv_enqueue_event(C->C, &(struct arcan_event){
-							.category = EVENT_TARGET,
-							.tgt.kind = TARGET_COMMAND_MESSAGE,
-							.tgt.message = "a12:fail"
-						}, -1);
-					}
-				}
-				else {
-	/* TOFIX: MESSAGE into broadcast or route through server-side APPL */
-				}
-
-				arg_cleanup(entry);
+				dircl_message(C, ev);
 			}
 		}
 
@@ -681,6 +833,20 @@ static void* dircl_process(void* P)
 		C->prev->next = C->next;
 		if (C->next)
 			C->next->prev = C->prev;
+
+	/* broadcast the loss */
+		struct arcan_event ev = C->petname;
+		ev.ext.netstate.state = 0;
+
+		if (ev.ext.netstate.name[0]){
+			tag_outbound_name(&ev, C->pubk);
+			struct dircl* cur = active_clients.root.next;
+			while (cur && ev.ext.netstate.name[0]){
+				assert(cur != C);
+				shmifsrv_enqueue_event(cur->C, &ev, -1);
+				cur = cur->next;
+			}
+		}
 	pthread_mutex_unlock(&active_clients.sync);
 
 	shmifsrv_free(C->C, true);
@@ -751,7 +917,8 @@ void anet_directory_shmifsrv_set(struct anet_dirsrv_opts* opts)
 /* This is in the parent process, it acts as a 1:1 thread/process which
  * pools and routes. The other end of this shmif connection is in the
  * normal */
-void anet_directory_shmifsrv_thread(struct shmifsrv_client* cl)
+void anet_directory_shmifsrv_thread(
+	struct shmifsrv_client* cl, struct a12_state* S)
 {
 	pthread_t pth;
 	pthread_attr_t pthattr;
@@ -759,7 +926,26 @@ void anet_directory_shmifsrv_thread(struct shmifsrv_client* cl)
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
 
 	struct dircl* newent = malloc(sizeof(struct dircl));
-	*newent = (struct dircl){.C = cl};
+	*newent = (struct dircl){
+		.C = cl,
+		.endpoint = {
+			.category = EVENT_EXTERNAL,
+			.ext.kind = EVENT_EXTERNAL_NETSTATE
+		}
+	};
+
+	const char* endpoint = a12_get_endpoint(S);
+	if (endpoint){
+		char buf[16];
+		if (inet_pton(AF_INET, endpoint, buf)){
+			newent->endpoint.ext.netstate.space = 3;
+		}
+		else if (inet_pton(AF_INET6, endpoint, buf)){
+			newent->endpoint.ext.netstate.space = 4;
+		}
+		snprintf((char*)newent->endpoint.ext.netstate.name,
+		COUNT_OF(newent->endpoint.ext.netstate.name), "%s", endpoint);
+	}
 
 	pthread_mutex_lock(&active_clients.sync);
 		struct dircl* cur = &active_clients.root;
