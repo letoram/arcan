@@ -259,3 +259,8 @@ void arcan_monitor_tick()
 	m_ctr = m_srate;
 	arcan_lua_statesnap(m_out, buf, true);
 }
+
+arcan_vobj_id arcan_monitor_fsrvvid(intptr_t ref)
+{
+	return ARCAN_EID;
+}

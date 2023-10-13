@@ -174,6 +174,7 @@ struct arcan_frameserver {
 		bool external : 1;
 		bool networked : 1;
 		bool sandboxed : 1;
+		bool wrapped : 1;
 
 /* tristate: 0 (default) empty, 1 (preroll-ok), 2 (preroll-lock) */
 		int activated;
