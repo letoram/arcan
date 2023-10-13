@@ -57,12 +57,21 @@ struct pk_response {
 		const uint8_t pub[static 32], const char* name, size_t sz, const char* mode);
 };
 
+/* response structure for a directory-open request. */
+struct a12_dynreq {
+	char host[46];
+	char pubk[32];
+	uint16_t port;
+	char authk[12];
+	int proto;
+};
+
 struct a12_context_options {
 /* Provide to enable asymetric key authentication, set valid in the return to
  * allow the key, otherwise the session may be continued for a random number of
  * time or bytes before being terminated. If want_session is requested, the
  * lookup function, if it is able to (legacy) should set got_session in the
- * reply and calculate the x25519v shared secret itself. */
+ * reply and calculate the x25519 shared secret itself. */
 	struct pk_response (*pk_lookup)(uint8_t pub[static 32]);
 
 /* Client only, provide the private key to use with the connection. All [0]
@@ -193,6 +202,15 @@ struct a12_unpack_cfg {
 /* n BYTES have been written into the buffer allocated through
  * request_audio_buffer */
 	void (*signal_audio)(size_t bytes, void* tag);
+
+/* only used with local_role == MODE_DIRECTORY wherein someone requests
+ * to open a resource through us. */
+	bool (*directory_open)(struct a12_state*,
+		uint8_t ident_pubk[static 32],
+		uint8_t ident_req[static 32],
+		uint8_t mode,
+		struct a12_dynreq* out,
+		void* tag);
 };
 
 void a12_set_destination_raw(struct a12_state*,
@@ -588,6 +606,11 @@ struct a12_iostat {
 	size_t packets_pending;     /* delta between seqnr and last-seen seqnr */
 };
 
+/* get / set a string representation for logging and similar operations
+ * where there is a need for a traceable origin e.g. IP address */
+const char* a12_get_endpoint(struct a12_state* S);
+void a12_set_endpoint(struct a12_state* S, const char*);
+
 /*
  * Sample the current rolling state statistics
  */
@@ -595,20 +618,25 @@ struct a12_iostat a12_state_iostat(struct a12_state* S);
 
 /*
  * Try to negotiate a connection for a directory resource based on an announced
- * public key. Provide the public key (or =[0] to use the same key as the
- * connection. Only one pending _dynamic is allowed. The callback will be
- * triggered with the connection parameters for reaching the source. */
-struct a12_dynreq {
-	char* host;
-	uint16_t port;
-	char* authk;
-	int proto;
-};
-
+ * public key. An ephemeral keypair will be generated and part of the reply.
+ *
+ * This should be used either directly and lets the outer key.
+ *
+ * in the a12_state after key derivation. This can be a different keypair if
+ * you want to be known to the source by a different identity than to the
+ * directory. The directory will discover the public part of this key however.
+ * Only one pending _dynamic is allowed. The callback will be triggered with
+ * the connection parameters for reaching the source or with a null host.
+ *
+ * The contents of dynreq will be free:d automatically after callback
+ * completion.
+ */
 bool a12_request_dynamic_resource(struct a12_state* S,
-	uint8_t req_pubk[static 32], uint8_t ident_pubk[static 32],
+	uint8_t ident_pubk[static 32],
 	void(*request_reply)(struct a12_state*, struct a12_dynreq, void* tag),
 	void* tag);
+
+void a12_supply_dynamic_resource(struct a12_state* S, struct a12_dynreq);
 
 /*
  * debugging / tracing bits, just define a namespace that can be used

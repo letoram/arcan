@@ -803,6 +803,68 @@ static void process_srvfirst(struct a12_state* S)
 	}
 }
 
+static void fill_diropened(struct a12_state* S, struct a12_dynreq r)
+{
+	uint8_t outb[CONTROL_PACKET_SIZE];
+
+	build_control_header(S, outb, COMMAND_DIROPENED);
+	outb[18] = r.proto;
+	memcpy(&outb[19], r.host, 46);
+	pack_u16(r.port, &outb[65]);
+	memcpy(&outb[67], r.authk, 12);
+	memcpy(&outb[79], r.pubk, 32);
+
+	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+}
+
+static void command_diropened(struct a12_state* S)
+{
+/* local- copy the members so the closure is allowed to queue a new one */
+	void(* oc)(struct a12_state*, struct a12_dynreq, void* tag) = S->pending_dynamic.closure;
+	void* tag = S->pending_dynamic.tag;
+
+	S->pending_dynamic.closure = NULL;
+	S->pending_dynamic.tag = NULL;
+
+	struct a12_dynreq rep = {
+		.proto = S->decode[18]
+	};
+
+	memcpy(rep.host, &S->decode[19], 46);
+	unpack_u16(&rep.port, &S->decode[65]);
+	memcpy(rep.authk, &S->decode[67], 12);
+	memcpy(rep.pubk, &S->decode[79], 32);
+
+	oc(S, rep, tag);
+}
+
+static void command_diropen(
+	struct a12_state* S, uint8_t mode,
+	uint8_t kpub_tgt[static 32], uint8_t kpub_src[static 32])
+{
+/* a12.h misuse */
+	struct a12_unpack_cfg* C = &S->channels[0].raw;
+	if (!C->directory_open){
+		a12int_trace(A12_TRACE_SECURITY, "kind=warning:diropen_no_handler");
+		return;
+	}
+
+/* forward the request */
+	struct a12_dynreq out = {0};
+	uint8_t outb[CONTROL_PACKET_SIZE];
+
+/* the implementation is expected to set the authk as it might be outsourced
+ * to an external oracle that coordinates with the partner in question */
+	if (C->directory_open(S, kpub_tgt, kpub_src, mode, &out, C->tag)){
+		fill_diropened(S, out);
+	}
+/* failure is just an empty command */
+	else {
+		build_control_header(S, outb, COMMAND_DIROPENED);
+		a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+	}
+}
+
 static void command_cancelstream(
 	struct a12_state* S, uint32_t streamid, uint8_t reason, uint8_t stype)
 {
@@ -2003,6 +2065,20 @@ static void process_control(struct a12_state* S, void (*on_event)
 		command_cancelstream(S, streamid, S->decode[22], S->decode[23]);
 	}
 	break;
+	case COMMAND_DIROPEN:{
+		if (S->opts->local_role == ROLE_DIR){
+			command_diropen(S, S->decode[18], &S->decode[19], &S->decode[52]);
+		}
+		else
+			a12int_trace(A12_TRACE_SECURITY, "diropen:wrong_role");
+	}
+	case COMMAND_DIROPENED:{
+		if (S->pending_dynamic.active)
+			command_diropened(S);
+		else
+			a12int_trace(A12_TRACE_SECURITY, "diropened:no_pending_request");
+	}
+	break;
 	case COMMAND_PING:{
 		uint32_t streamid;
 		unpack_u32(&streamid, &S->decode[18]);
@@ -2025,8 +2101,16 @@ static void process_control(struct a12_state* S, void (*on_event)
  * 3. if this is not a rekey response package, send the new pubk in response */
 	break;
 	case COMMAND_DIRLIST:
+/* force- synch dynamic entries */
 		S->notify_dynamic = S->decode[18];
+		a12int_trace(A12_TRACE_DIRECTORY, "dirlist:notify=%d", (int) S->notify_dynamic);
 		send_dirlist(S);
+/* notify the directory side that this action occurred */
+		on_event(NULL, 0, &(struct arcan_event){
+			.category = EVENT_EXTERNAL,
+			.ext.kind = EVENT_EXTERNAL_MESSAGE,
+			.ext.message.data = "a12:dirlist"
+		}, tag);
 	break;
 	case COMMAND_DIRDISCOVER:
 		command_dirdiscover(S, on_event, tag);
@@ -3318,9 +3402,46 @@ void a12int_notify_dynamic_resource(struct a12_state* S,
 }
 
 bool a12_request_dynamic_resource(struct a12_state* S,
-	uint8_t req_pubk[static 32], uint8_t ident_pubk[static 32],
+	uint8_t ident_pubk[static 32],
 	void(*request_reply)(struct a12_state*, struct a12_dynreq, void* tag),
 	void* tag)
 {
-	return false;
+	if (S->pending_dynamic.active || S->remote_mode != ROLE_DIR){
+		return false;
+	}
+
+/* role source just need the closure tagged actually */
+	S->pending_dynamic.active = true;
+	S->pending_dynamic.closure = request_reply;
+	S->pending_dynamic.tag = tag;
+
+	if (S->opts->local_role != ROLE_SINK)
+		return true;
+
+/* this key isn't as sensitive as it will only be used to authenticate the
+ * mediated nested connections ephemeral layer not added to the keystore */
+	uint8_t outb[CONTROL_PACKET_SIZE];
+	build_control_header(S, outb, COMMAND_DIROPEN);
+	arcan_random(S->pending_dynamic.key, 32);
+	memcpy(&outb[19], ident_pubk, 32);
+	x25519_public_key(S->pending_dynamic.key, &outb[52]);
+	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+
+	return true;
+}
+
+void a12_set_endpoint(struct a12_state* S, const char* ep)
+{
+	free(S->endpoint);
+	S->endpoint = ep ? strdup(ep) : NULL;
+}
+
+const char* a12_get_endpoint(struct a12_state* S)
+{
+	return S->endpoint;
+}
+
+void a12_supply_dynamic_resource(struct a12_state* S, struct a12_dynreq r)
+{
+	fill_diropened(S, r);
 }

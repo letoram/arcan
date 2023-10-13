@@ -1264,6 +1264,7 @@ enum ARCAN_TARGET_SKIPMODE {
 			struct {
 				uint32_t hitag, lotag;
 			} tagv;
+
 			struct {
 				char* dyneval_msg;
 			} mesg;
@@ -1482,6 +1483,7 @@ enum ARCAN_TARGET_SKIPMODE {
 		uint8_t space;
 		uint8_t state;
 		uint8_t type;
+		uint16_t port;
 	} netstate;
 
 /*

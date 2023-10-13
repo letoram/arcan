@@ -44,7 +44,7 @@ struct anet_dircl_opts {
 	bool keep_appl;
 
 	char ident[16];
-	void (*dir_source)(struct a12_state*, int fd, void* tag);
+	void (*dir_source)(struct a12_state*, struct a12_dynreq req, void* tag);
 	void *dir_source_tag;
 
 	struct appl_meta outapp;
@@ -58,6 +58,7 @@ struct directory_meta {
 	struct a12_state* S;
 	struct anet_dircl_opts* clopt;
 
+	char* secret;
 	bool in_transfer;
 	uint32_t transfer_id;
 
@@ -80,7 +81,7 @@ void anet_directory_srv(
 /*
  * shmif connection to map to a thread for coordination
  */
-void anet_directory_shmifsrv_thread(struct shmifsrv_client*);
+void anet_directory_shmifsrv_thread(struct shmifsrv_client*, struct a12_state*);
 void anet_directory_shmifsrv_set(struct anet_dirsrv_opts* opts);
 
 /*

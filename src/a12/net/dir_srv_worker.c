@@ -79,16 +79,20 @@ static struct evqueue_entry* run_evqueue(
  * the utility is for synchronous requests to state store, key store etc.
  */
 static bool shmif_block_synch_request(struct arcan_shmif_cont* C,
-	struct arcan_event ev, struct evqueue_entry* reply, int kind_ok, int kind_fail)
+	struct arcan_event ev, struct evqueue_entry* reply,
+	int cat_ok, int kind_ok, int cat_fail, int kind_fail)
 {
 	*reply = (struct evqueue_entry){0};
-	arcan_shmif_enqueue(C, &ev);
+
+	if (ev.ext.kind)
+		arcan_shmif_enqueue(C, &ev);
 
 	while (arcan_shmif_wait(C, &ev)){
-		if (ev.category != EVENT_TARGET)
-			continue;
 
-		if (ev.tgt.kind == kind_ok || ev.tgt.kind == kind_fail){
+/* exploit the fact that kind is at the same offset regardless of union */
+		if (
+			(cat_ok == ev.category && ev.tgt.kind == kind_ok) ||
+			(cat_fail == ev.category && ev.tgt.kind == kind_fail)){
 			reply->ev = ev;
 			reply->next = NULL;
 			return true;
@@ -116,12 +120,15 @@ static struct a12_bhandler_res srv_bevent(
 /* cont is actually wrong here as we haven't set a context for the channel
  * since it's not being used in the normal fashion - the actual connection
  * to the coordinating process is through the [tag] that is also a context */
-static void on_srv_event(
+static void on_a12srv_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
 	struct ioloop_shared* I = tag;
 	struct directory_meta* cbt = I->cbt;
 	struct arcan_shmif_cont* C = cbt->C;
+
+	if (ev->category != EVENT_EXTERNAL)
+		return;
 
 	if (ev->ext.kind == EVENT_EXTERNAL_BCHUNKSTATE){
 /* sweep the directory, and when found: */
@@ -179,7 +186,15 @@ static void on_srv_event(
 		snprintf(disc.ext.netstate.name, 16, "%s", ev->ext.registr.title);
 		a12int_trace(A12_TRACE_DIRECTORY,
 			"source_register=%s", disc.ext.netstate.name);
+
 		arcan_shmif_enqueue(C, &disc);
+	}
+
+/* Forward messages verbatim, this also latches into the dirlist command which
+ * will trigger the server to re-synch dynamic sources, but it is a path to get
+ * external (untrusted) messages to be parsed and should be treated as poison. */
+	else if (ev->ext.kind == EVENT_EXTERNAL_MESSAGE){
+		arcan_shmif_enqueue(C, ev);
 	}
 }
 
@@ -321,10 +336,21 @@ static void do_event(
 {
 	struct directory_meta* cbt = C->user;
 
-/* parent process responsible for verifying and tagging name with petname:kpub */
+/* Parent process responsible for verifying and tagging name with petname:kpub.
+ * the NETSTATE associated with diropen is part of the on_directory event
+ * handler and doesn't reach this point. */
 	if (ev->category == EVENT_EXTERNAL &&
 		ev->ext.kind == EVENT_EXTERNAL_NETSTATE){
 		size_t i = 0;
+
+		if (a12_remote_mode(S) == ROLE_SOURCE){
+			struct a12_dynreq dynreq = (struct a12_dynreq){0};
+			snprintf(dynreq.authk, 12, "%s", cbt->secret);
+			memcpy(dynreq.pubk, ev->ext.netstate.name, 32);
+
+			a12_supply_dynamic_resource(S, dynreq);
+			return;
+		}
 
 		for (; i < COUNT_OF(ev->ext.netstate.name); i++){
 			if (ev->ext.netstate.name[i] == ':'){
@@ -342,7 +368,7 @@ static void do_event(
 
 		a12int_notify_dynamic_resource(S,
 			ev->ext.netstate.name, (uint8_t*)&ev->ext.netstate.name[i],
-			ev->ext.netstate.type, ev->ext.netstate.type != 0
+			ev->ext.netstate.type, ev->ext.netstate.state != 0
 		);
 	}
 
@@ -357,7 +383,7 @@ static void do_event(
 
 /* Would only be sent to us if the parent a. thinks we're in a specific APPL
  * via IDENT b. the ruleset tells us to message. Inject into a12_state
- * verbatim. THe parent would also need to ensure that the client can't inject
+ * verbatim. The parent would also need to ensure that the client can't inject
  * the a12: tag into the MESSAGE or we have a weird form of 'Packets in
  * Packets'. */
 		if (!stat || !arg_lookup(stat, "a12", 0, NULL)){
@@ -365,6 +391,12 @@ static void do_event(
 			if (stat)
 				arg_cleanup(stat);
 			return;
+		}
+
+		const char* secret;
+		if (arg_lookup(stat, "dir_secret", 0, &secret) && secret){
+			free(cbt->secret);
+			cbt->secret = strdup(secret);
 		}
 
 /* reserved for other messages */
@@ -464,6 +496,98 @@ static struct pk_response key_auth_worker(uint8_t pk[static 32])
 	return reply;
 }
 
+static bool req_open(struct a12_state* S,
+		uint8_t ident_pubk[static 32], uint8_t ident_req[static 32],
+		uint8_t mode,
+		struct a12_dynreq* out, void* tag)
+{
+	struct directory_meta* cbt = tag;
+
+/* This is annoying as the sum of the key sizes doesn't fit one message with
+ * both keys and we don't have a filesystem to use for temporary storage due to
+ * the sandboxing. Thus we use one netstate to set the current diropen key.
+ *
+ * (ok case)
+ *  [wrk_sink] (NETSTATE:space=5:sink) + message(diropen:req) -> [srv] ->
+ *   NETSTATE:space=1:host + NETSTATE:sink -> [wrk_source]
+ *   NETSTATE:space=1:host + NETSTATE:source -> [wrk_sink]
+ *    - connection is setup -
+ *
+ * (fail case)
+ *  [wrk_sink] (NETSTATE:sink) + message(diropen:req) -> [srv] -> NETSTATE:lost(pubk)
+ *
+ */
+
+	uint8_t nullk[32] = {0};
+	if (memcmp(nullk, ident_pubk, 32) != 0){
+		arcan_event idev = {
+			.category = EVENT_EXTERNAL,
+			.ext.kind = EVENT_EXTERNAL_NETSTATE,
+			.ext.netstate = {
+				.type = 1,
+				.space = 5
+			}
+		};
+		memcpy(idev.ext.netstate.name, ident_pubk, 32);
+		arcan_shmif_enqueue(cbt->C, &idev);
+	}
+
+	size_t outl;
+	unsigned char* req_b64 = a12helper_tob64(ident_req, 32, &outl);
+	arcan_event reqmsg = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = EVENT_EXTERNAL_MESSAGE
+	};
+	snprintf((char*)reqmsg.ext.message.data,
+		COUNT_OF(reqmsg.ext.message.data), "a12:diropen:pubk=%s", req_b64);
+	free(req_b64);
+	arcan_shmif_enqueue(cbt->C, &reqmsg);
+
+	struct evqueue_entry* rep = malloc(sizeof(struct evqueue_entry));
+	bool rv;
+
+/* just fill-out the dynreq with our connection info. some of this, mainly the
+ * shared secret, this is delivered as a message re-using the session shared
+ * secret that was used in authentication. */
+retry_block:
+	if ((rv = shmif_block_synch_request(cbt->C,
+		reqmsg, rep,
+		EVENT_EXTERNAL, EVENT_EXTERNAL_NETSTATE,
+		EVENT_TARGET, TARGET_COMMAND_REQFAIL))){
+		a12int_trace(A12_TRACE_DIRECTORY, "diropen:got_reply");
+		arcan_event repev = (run_evqueue(cbt->S, cbt->C, rep))->ev;
+
+/* if it's not the netstate we're looking for, try again */
+		if (repev.ext.netstate.space == 5){
+			free_evqueue(rep);
+			rep = malloc(sizeof(struct evqueue_entry));
+			goto retry_block;
+		}
+
+		struct a12_dynreq rq = {
+			.port = 6680,
+			.proto = 1
+		};
+
+/* split out the port */
+		if (repev.ext.netstate.port)
+			rq.port = repev.ext.netstate.port;
+
+		if (cbt->secret)
+			snprintf(rq.authk, 12, "%s", cbt->secret);
+
+		_Static_assert(sizeof(rq.host) == 46);
+		strncpy(rq.host, repev.ext.netstate.name, 45);
+		a12_supply_dynamic_resource(S, rq);
+	}
+	else {
+		a12int_trace(A12_TRACE_DIRECTORY, "diropen:kind=rejected");
+	}
+
+	free_evqueue(rep);
+	return rv;
+}
+
 void anet_directory_srv(
 	struct a12_context_options* netopts, struct anet_dirsrv_opts opts, int fdin, int fdout)
 {
@@ -476,6 +600,7 @@ void anet_directory_srv(
 
 	struct arg_arr* args;
 	a12int_trace(A12_TRACE_DIRECTORY, "notice:directory-ready:pid=%d", getpid());
+	setenv("ARCAN_SHMIF_DEBUG", "1", true);
 
 	shmif_parent_process =
 		arcan_shmif_open(
@@ -527,12 +652,19 @@ void anet_directory_srv(
 
 	a12_set_bhandler(S, srv_bevent, &cbt);
 
+	a12_set_destination_raw(S, 0,
+		(struct a12_unpack_cfg){
+			.directory_open = req_open,
+			.tag = &cbt
+		}, sizeof(struct a12_unpack_cfg)
+	);
+
 	struct ioloop_shared ioloop = {
 		.S = S,
 		.fdin = fdin,
 		.fdout = fdout,
 		.userfd = shmif_parent_process.epipe,
-		.on_event = on_srv_event,
+		.on_event = on_a12srv_event,
 		.on_userfd = on_shmif,
 		.lock = PTHREAD_MUTEX_INITIALIZER,
 		.cbt = &cbt,
@@ -575,7 +707,9 @@ static int request_parent_resource(
 	int fd = -1;
 	a12int_trace(A12_TRACE_DIRECTORY, "request_parent:%s", ev.ext.bchunk.extensions);
 
-	if (shmif_block_synch_request(C, ev, rep, kind, TARGET_COMMAND_REQFAIL)){
+	if (shmif_block_synch_request(C, ev, rep,
+		EVENT_TARGET, kind,
+		EVENT_TARGET, TARGET_COMMAND_REQFAIL)){
 		struct evqueue_entry* cur = run_evqueue(S, C, rep);
 
 		if (cur->ev.tgt.kind == kind){
