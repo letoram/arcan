@@ -56,7 +56,7 @@ static struct {
 	.trust_domain = "outbound"
 };
 
-static struct pk_response key_auth_local(uint8_t pk[static 32])
+static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 {
 	struct pk_response auth = {0};
 	char* tmp;

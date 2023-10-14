@@ -20,8 +20,11 @@
 
 #include "../a12.h"
 #include "../a12_int.h"
+#include "../external/x25519.h"
+
 #include "anet_helper.h"
 #include "directory.h"
+#include "a12_helper.h"
 
 #include <sys/types.h>
 #include <sys/file.h>
@@ -56,49 +59,79 @@ static struct {
 } active_appls = {
 };
 
-static void on_source(struct a12_state* S, struct a12_dynreq req, void* tag)
+static struct pk_response key_auth_fixed(uint8_t pk[static 32], void* tag)
 {
-	printf("waiting on the other end\n");
+	struct a12_dynreq* key_auth_req = tag;
+
+	struct pk_response auth = {};
+	if (memcmp(key_auth_req->pubk, pk, 32) == 0){
+		auth.authentic = true;
+	}
+	return auth;
+}
+
+/*
+ * right now just initialise the outbound connection, in reality the req.mode
+ * should be respected to swap over to the client processing
+ */
 
 /* setup the request:
  *    we might need to listen
- *    we might need to connect
+ *    (ok) we might need to connect
  *    we might need to tunnel via the directory
  */
+static void on_source(struct a12_state* S, struct a12_dynreq req, void* tag)
+{
+/* security:
+ * disable the ephemeral exchange for now, this means the announced identity
+ * when we connect to the directory server will be the one used for the x25519
+ * exchange instead of a generated intermediate.
+ */
+	struct a12_context_options a12opts = {
+		.local_role = ROLE_SINK,
+		.pk_lookup = key_auth_fixed,
+		.pk_lookup_tag = &req,
+		.disable_ephemeral_k = true,
+/*	.force_ephemeral_k = true, */
+	};
 
-/* wait for a bit */
-/* if that fails, switch to tunnel processing */
+/* the other end will use the same pubkey twice (source always exposes itself
+ * unless we simply skip the ephemeral round in the HELLO - something to do if
+ * the other endpoint is trusted. */
+	memcpy(&a12opts.expect_ephem_pubkey, req.pubk, 32);
+	x25519_private_key(a12opts.priv_ephem_key);
 
-/* when that is done (i.e. we get a connection), chain into the corresponding
- * source to shmif handler for the new connection. */
+	char port[sizeof("65535")];
+	snprintf(port, sizeof(port), "%"PRIu16, req.port);
+
+	struct anet_options anet = {
+		.retry_count = 10,
+		.opts = &a12opts,
+		.host = req.host,
+		.port = port
+	};
+
+	snprintf(a12opts.secret, sizeof(a12opts.secret), "%s", req.authk);
+	struct anet_cl_connection con = anet_cl_setup(&anet);
+	if (con.errmsg || !con.state){
+		fprintf(stderr, "%s", con.errmsg ? con.errmsg : "broken connection state\n");
+		return;
+	}
+
+	if (a12_remote_mode(con.state) != ROLE_SOURCE){
+		fprintf(stderr, "remote endpoint is not a source\n");
+		shutdown(con.fd, SHUT_RDWR);
+		return;
+	}
+
+	a12helper_a12srv_shmifcl(NULL, con.state, NULL, con.fd, con.fd);
+	shutdown(con.fd, SHUT_RDWR);
 }
 
 static void on_cl_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
-	if (ev->category == EVENT_EXTERNAL && ev->ext.kind == EVENT_EXTERNAL_NETSTATE){
-		struct ioloop_shared* I = tag;
-			printf("source:name=%s:state=%s\n",
-				ev->ext.netstate.name, ev->ext.netstate.state == 0 ? "lost" : "found");
-		if (I->cbt->clopt->applname[0] == '*'){
-/* split out Kpub, need to use that in the open request */
-			size_t i = 0;
-			for (size_t i = 0; i < COUNT_OF(ev->ext.netstate.name); i++)
-				if (ev->ext.netstate.name[i] == ':'){
-					ev->ext.netstate.name[i] = '\0';
-					i++;
-					break;
-				}
-
-/* found it, request to negotiate an open */
-			if (strcmp(&I->cbt->clopt->applname[1], ev->ext.netstate.name) == 0){
-				a12_request_dynamic_resource(I->S,
-					(uint8_t*)&ev->ext.netstate.name[i], on_source, I);
-			}
-		}
-		return;
-	}
-
+/* main use would be the appl- runner forwarding messages that direction */
 	a12int_trace(A12_TRACE_DIRECTORY, "event=%s", arcan_shmif_eventstr(ev, NULL, 0));
 }
 
@@ -711,6 +744,22 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
 	return res;
 }
 
+static void cl_got_dyn(struct a12_state* S, int type,
+		const char* petname, bool found, uint8_t pubk[static 32], void* tag)
+{
+	struct ioloop_shared* I = tag;
+	struct directory_meta* cbt = I->cbt;
+	if (cbt->clopt->applname[0] != '*' ||
+		strcmp(&I->cbt->clopt->applname[1], petname) != 0)
+		return;
+
+	size_t outl;
+	unsigned char* req = a12helper_tob64(pubk, 32, &outl);
+	a12int_trace(A12_TRACE_DIRECTORY, "request:petname=%s:pubk=%s", petname, req);
+	free(req);
+	a12_request_dynamic_resource(S, pubk, on_source, I);
+}
+
 static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 {
 	struct directory_meta* cbt = I->cbt;
@@ -807,6 +856,20 @@ void anet_directory_cl(
 
 	sigaction(SIGPIPE,&(struct sigaction){.sa_handler = SIG_IGN}, 0);
 
+	struct ioloop_shared ioloop = {
+		.S = S,
+		.fdin = fdin,
+		.fdout = fdout,
+		.userfd = -1,
+		.on_event = on_cl_event,
+		.on_directory = cl_got_dir,
+		.lock = PTHREAD_MUTEX_INITIALIZER,
+		.cbt = &cbt,
+	};
+
+	S->on_discover = cl_got_dyn;
+	S->discover_tag = &ioloop;
+
 /* send REGISTER event with our ident, this is a convenience thing right now,
  * it might be slightly cleaner having an actual directory command for the
  * thing rather than (ab)using REGISTER here and IDENT for appl-messaging. */
@@ -822,19 +885,8 @@ void anet_directory_cl(
 		a12_channel_enqueue(S, &ev);
 		a12_request_dynamic_resource(S, nk, opts.dir_source, opts.dir_source_tag);
 	}
+	else
+		a12int_request_dirlist(S, !opts.die_on_list);
 
-	struct ioloop_shared ioloop = {
-		.S = S,
-		.fdin = fdin,
-		.fdout = fdout,
-		.userfd = -1,
-		.on_event = on_cl_event,
-		.on_directory = cl_got_dir,
-		.lock = PTHREAD_MUTEX_INITIALIZER,
-		.cbt = &cbt,
-	};
-
-/* always request dirlist so we can resolve applname against the server-local */
-	a12int_request_dirlist(S, !opts.die_on_list);
 	anet_directory_ioloop(&ioloop);
 }

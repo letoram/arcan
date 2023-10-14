@@ -3004,6 +3004,12 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	if (!work)
 		return NULL;
 
+/* quick-workaround, the url format for keyid@ is in conflict with
+ * other forms like ident@key@ */
+	const char* ident = getenv("A12_IDENT");
+	if (!ident)
+		ident = "anon";
+
 	bool weak;
 	size_t start = a12_cp(conn_src, &weak);
 
@@ -3054,11 +3060,13 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	if (pid == 0){
 		if (0 == fork()){
 			if (weak){
-				execlp("arcan-net", "arcan-net", "--soft-auth",
+				execlp("arcan-net", "arcan-net", "-X",
+					"--ident", ident, "--soft-auth",
 					"-S", tmpbuf, &work[start], port, (char*) NULL);
 			}
 			else {
-				execlp("arcan-net", "arcan-net", "-S",
+				execlp("arcan-net", "arcan-net", "-X",
+					"--ident", ident, "-S",
 					tmpbuf, &work[start], port, (char*) NULL);
 			}
 
