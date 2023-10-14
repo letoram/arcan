@@ -60,7 +60,7 @@ static struct {
 } global = {
 	.backpressure_soft = 2,
 	.backpressure = 6,
-	.directory = -1,
+	.directory = -1
 };
 
 static const char* trace_groups[] = {
@@ -418,13 +418,12 @@ static void single_a12srv(struct a12_state* S, int fd, void* tag)
 	}
 }
 
-static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq, void* tag)
-{
-	a12int_trace(A12_TRACE_DIRECTORY, "open_request_negotiated");
-/* here, we fork() into listening on our registered port, with the prefilled
- * authk and a specialised key-auth that only ephemerally accepts (unless set
- * to trust-transitive), passing the shmifsrv connection along */
-}
+static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag);
+struct dirstate {
+	int fd;
+	struct anet_options* aopts;
+	struct shmifsrv_client* shmif;
+};
 
 static void a12cl_dispatch(
 	struct anet_options* args,
@@ -444,9 +443,17 @@ static void a12cl_dispatch(
  * special in the sense that we hold on to the shmifsrv_client for a bit and
  * if we get a dir-open we latch the two together. */
 	if (a12_remote_mode(S) == ROLE_DIR){
+		struct dirstate* ds = malloc(sizeof(struct dirstate));
+		*ds = (struct dirstate){
+			.fd = fd,
+			.aopts = args,
+			.shmif = cl
+		};
+
 		global.dircl.dir_source = dir_to_shmifsrv;
-		global.dircl.dir_source_tag = &cl;
+		global.dircl.dir_source_tag = ds;
 		anet_directory_cl(S, global.dircl, fd, fd);
+		free(ds);
 	}
 	else
 /* note that the a12helper will do the cleanup / free */
@@ -458,6 +465,79 @@ static void a12cl_dispatch(
 		});
 
 	close(fd);
+}
+
+static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
+{
+	a12int_trace(A12_TRACE_DIRECTORY, "open_request_negotiated");
+	struct dirstate* ds = tag;
+
+	pid_t fpid = fork();
+
+/* Here, we fork() into listening on our registered port, this is the same as
+ * the cldispatch that forks. We shouldn't be in a path where any substantial
+ * POSIX 'technically UB territory buuuut' approach to the fork pattern has any
+ * real effect.
+ *
+ * When things are a bit more robust, switch to the fork-fexec self approach
+ * anyhow for IPC cleanliness, it's just inheriting the shmifsrc-client setup
+ * that is a bit of a hassle. */
+
+	if (fpid == 0){
+/* Trust the directory server provided secret.
+ *
+ * A nuanced option here is if to set the accept_n_pk_unknown to 1 or not.
+ * The consequence is that the directory or the sink gets to install one key
+ * we trust for inbound use.
+ *
+ * One probably would want to set that to a specific group for this context
+ * of use, or mark the transitive origin / history. If that doesn't happen
+ * and the keystore gets re-used for sourcing something else, that installed
+ * key is part of the general trusted base.
+ *
+ * At the same time tracking the key, and depending on connection mode, add
+ * that as a possible outbound target with the IP it connected from if an
+ * interesting option for future discovery both LAN and WAN as well as
+ * attribution.
+ *
+ * Block the behaviour outright for now, and don't forget that the parent might
+ * actually be running / bleeding some state into us from the command line that
+ * applied to the outbound connection when registering to the directory that
+ * should not apply now in the role of a source.
+ */
+		global.soft_auth = true;
+		global.accept_n_pk_unknown = 0;
+
+/* the shared secret to protect the initial hello is no longer optional, and we
+ * have an added touch of forcing the 'ephemeral' key to be the one supplied by
+ * the sink in order to let them differentiate the identity it uses with the
+ * directory versus the one it uses with us. */
+		snprintf(ds->aopts->opts->secret, 32, "%s", a.authk);
+		ds->aopts->opts->force_ephemeral_k = true;
+//		ds->aopts->opts->expect_ephem_pubkey;
+
+/* a subtle difference here is that the the private key we should use in the
+ * setup (here same for ephem and real) is the one used to outbound connect to
+ * the directory and not a listening default. */
+
+		a12cl_dispatch(ds->aopts, S, ds->shmif, ds->fd);
+		exit(EXIT_SUCCESS);
+	}
+	else if (fpid == -1){
+		fprintf(stderr, "fork_a12cl() couldn't fork new process, check ulimits\n");
+		shmifsrv_free(ds->shmif, SHMIFSRV_FREE_NO_DMS);
+		a12_channel_close(S);
+		close(ds->fd);
+		return;
+	}
+	else {
+/* just ignore and return to caller, we might need a monitoring channel
+ * for multiplexing in tunnel- traffic */
+		a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d", (int)fpid);
+		a12_channel_close(S);
+		shmifsrv_free(ds->shmif, SHMIFSRV_FREE_LOCAL);
+		close(ds->fd);
+	}
 }
 
 static void fork_a12cl_dispatch(
@@ -692,6 +772,7 @@ static bool show_usage(const char* msg)
 	"\t-a, --auth n   \t Read authentication secret from stdin (maxlen:32)\n"
 	"\t               \t if [n] is provided, n keys added to trusted\n"
 	"\t --soft-auth   \t Permit unknown via authentication secret (password)\n"
+	"\t --allow-pk n  \t Explicitly permit (b64-encoded) Kpub\n"
 	"\t-T, --trust s  \t Specify trust domain for splitting keystore\n"
 	"\t               \t outbound connections default to 'outbound' while\n"
 	"\t               \t serving/listening defaults to a wildcard ('*')\n\n"
