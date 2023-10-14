@@ -610,7 +610,11 @@ struct a12_state* a12_client(struct a12_context_options* opt)
 /* double-round, start by generating ephemeral key */
 	else {
 		mode = HELLO_MODE_EPHEMPK;
-		x25519_private_key(S->keys.ephem_priv);
+		if (opt->force_ephemeral_k){
+			memcpy(S->keys.ephem_priv, opt->priv_ephem_key, 32);
+		}
+		else
+			x25519_private_key(S->keys.ephem_priv);
 		x25519_public_key(S->keys.ephem_priv, outpk);
 		S->authentic = AUTH_POLITE_HELLO_SENT;
 	}
@@ -1623,12 +1627,21 @@ static void hello_auth_server_hello(struct a12_state* S)
 
 /* public key is ephemeral, generate new pair, send a hello out with the new
  * one THEN derive new keys for authentication and so on. After this the
- * conneciton is flows just like if the ephem mode wasn't used - the client
+ * connection flows just like if the ephem mode wasn't used - the client
  * will send its real Pk and we respond in kind. The protection this affords us
  * is that you need an active MiM to gather Pks for tracking. */
 	if (cfl == HELLO_MODE_EPHEMPK){
 		uint8_t ek[32];
-		x25519_private_key(ek);
+		if (S->opts->force_ephemeral_k){
+			if (memcmp(S->opts->expect_ephem_pubkey, remote_pubk, 32) != 0){
+				a12int_trace(A12_TRACE_SECURITY, "force_ephem_fail");
+				fail_state(S);
+				return;
+			}
+			memcpy(ek, S->opts->priv_ephem_key, 32);
+		}
+		else
+			x25519_private_key(ek);
 		x25519_public_key(ek, pubk);
 		arcan_random(nonce, 8);
 		send_hello_packet(S, HELLO_MODE_EPHEMPK, pubk, nonce);

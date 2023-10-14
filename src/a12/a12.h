@@ -83,6 +83,11 @@ struct a12_context_options {
  * (re-)use. */
 	bool disable_ephemeral_k;
 
+/* these two are used in directory mode to handle key differentiation. */
+	bool force_ephemeral_k;
+	uint8_t priv_ephem_key[32];
+	uint8_t expect_ephem_pubkey[32];
+
 /* This allows the server end to transition to authenticated state based on
  * password alone, low-security / debugging situations only */
 	bool allow_symmetric_auth;
