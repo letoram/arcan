@@ -421,7 +421,7 @@ static void on_shmif(struct ioloop_shared* S, bool ok)
  * with kpub=%s and wait for kpriv or fail. Re-keying doesn't need this as we
  * just generate new keys locally.
  */
-static struct pk_response key_auth_worker(uint8_t pk[static 32])
+static struct pk_response key_auth_worker(uint8_t pk[static 32], void*)
 {
 	struct pk_response reply = {0};
 	struct arcan_event req = {
@@ -497,43 +497,21 @@ static struct pk_response key_auth_worker(uint8_t pk[static 32])
 }
 
 static bool req_open(struct a12_state* S,
-		uint8_t ident_pubk[static 32], uint8_t ident_req[static 32],
+		uint8_t ident_req[static 32],
 		uint8_t mode,
 		struct a12_dynreq* out, void* tag)
 {
 	struct directory_meta* cbt = tag;
 
-/* This is annoying as the sum of the key sizes doesn't fit one message with
- * both keys and we don't have a filesystem to use for temporary storage due to
- * the sandboxing. Thus we use one netstate to set the current diropen key.
- *
- * (ok case)
- *  [wrk_sink] (NETSTATE:space=5:sink) + message(diropen:req) -> [srv] ->
- *   NETSTATE:space=1:host + NETSTATE:sink -> [wrk_source]
- *   NETSTATE:space=1:host + NETSTATE:source -> [wrk_sink]
- *    - connection is setup -
- *
- * (fail case)
- *  [wrk_sink] (NETSTATE:sink) + message(diropen:req) -> [srv] -> NETSTATE:lost(pubk)
- *
- */
-
-	uint8_t nullk[32] = {0};
-	if (memcmp(nullk, ident_pubk, 32) != 0){
-		arcan_event idev = {
-			.category = EVENT_EXTERNAL,
-			.ext.kind = EVENT_EXTERNAL_NETSTATE,
-			.ext.netstate = {
-				.type = 1,
-				.space = 5
-			}
-		};
-		memcpy(idev.ext.netstate.name, ident_pubk, 32);
-		arcan_shmif_enqueue(cbt->C, &idev);
-	}
-
 	size_t outl;
 	unsigned char* req_b64 = a12helper_tob64(ident_req, 32, &outl);
+	if (!req_b64){
+		a12int_trace(A12_TRACE_SYSTEM, "diropen:bad_pubk");
+		return false;
+	}
+
+	a12int_trace(A12_TRACE_DIRECTORY, "diropen:req_pubk=%s", req_b64);
+
 	arcan_event reqmsg = {
 		.category = EVENT_EXTERNAL,
 		.ext.kind = EVENT_EXTERNAL_MESSAGE
@@ -578,7 +556,7 @@ retry_block:
 
 		_Static_assert(sizeof(rq.host) == 46);
 		strncpy(rq.host, repev.ext.netstate.name, 45);
-		a12_supply_dynamic_resource(S, rq);
+		*out = rq;
 	}
 	else {
 		a12int_trace(A12_TRACE_DIRECTORY, "diropen:kind=rejected");
@@ -607,7 +585,6 @@ void anet_directory_srv(
 			SEGID_NETWORK_SERVER,
 			SHMIF_ACQUIRE_FATALFAIL |
 			SHMIF_NOACTIVATE |
-			SHMIF_DISABLE_GUARD |
 			SHMIF_NOREGISTER,
 			&args
 		);

@@ -15,6 +15,7 @@
 #include <string.h>
 #include <math.h>
 #include <assert.h>
+#include <ctype.h>
 
 #include "a12.h"
 #include "a12_int.h"
@@ -829,6 +830,7 @@ static void command_diropened(struct a12_state* S)
 
 	S->pending_dynamic.closure = NULL;
 	S->pending_dynamic.tag = NULL;
+	S->pending_dynamic.active = false;
 
 	struct a12_dynreq rep = {
 		.proto = S->decode[18]
@@ -837,14 +839,19 @@ static void command_diropened(struct a12_state* S)
 	memcpy(rep.host, &S->decode[19], 46);
 	unpack_u16(&rep.port, &S->decode[65]);
 	memcpy(rep.authk, &S->decode[67], 12);
-	memcpy(rep.pubk, &S->decode[79], 32);
+
+/* this is used both for source and sink, for sink swap in the pubk of the request */
+	uint8_t nullk[32] = {0};
+	if (memcmp(nullk, &S->decode[79], 32) == 0)
+		memcpy(rep.pubk, S->pending_dynamic.req_key, 32);
+	else
+		memcpy(rep.pubk, &S->decode[79], 32);
 
 	oc(S, rep, tag);
 }
 
 static void command_diropen(
-	struct a12_state* S, uint8_t mode,
-	uint8_t kpub_tgt[static 32], uint8_t kpub_src[static 32])
+	struct a12_state* S, uint8_t mode, uint8_t kpub_tgt[static 32])
 {
 /* a12.h misuse */
 	struct a12_unpack_cfg* C = &S->channels[0].raw;
@@ -859,7 +866,7 @@ static void command_diropen(
 
 /* the implementation is expected to set the authk as it might be outsourced
  * to an external oracle that coordinates with the partner in question */
-	if (C->directory_open(S, kpub_tgt, kpub_src, mode, &out, C->tag)){
+	if (C->directory_open(S, kpub_tgt, mode, &out, C->tag)){
 		fill_diropened(S, out);
 	}
 /* failure is just an empty command */
@@ -1633,11 +1640,16 @@ static void hello_auth_server_hello(struct a12_state* S)
 	if (cfl == HELLO_MODE_EPHEMPK){
 		uint8_t ek[32];
 		if (S->opts->force_ephemeral_k){
+			trace_crypto_key(S->server,
+				"force_ephem_expect_pub", S->opts->expect_ephem_pubkey, 32);
 			if (memcmp(S->opts->expect_ephem_pubkey, remote_pubk, 32) != 0){
 				a12int_trace(A12_TRACE_SECURITY, "force_ephem_fail");
 				fail_state(S);
 				return;
 			}
+
+			trace_crypto_key(S->server,
+				"force_ephem_priv", S->opts->priv_ephem_key, 32);
 			memcpy(ek, S->opts->priv_ephem_key, 32);
 		}
 		else
@@ -1664,7 +1676,7 @@ static void hello_auth_server_hello(struct a12_state* S)
 /* the lookup function returns the key that should be used in the reply
  * and to calculate the shared secret */
 	trace_crypto_key(S->server, "state=client_pk", remote_pubk, 32);
-	struct pk_response res = S->opts->pk_lookup(remote_pubk);
+	struct pk_response res = S->opts->pk_lookup(remote_pubk, S->opts->pk_lookup_tag);
 	if (!res.authentic){
 		a12int_trace(A12_TRACE_CRYPTO, "state=eperm:kind=x25519-pk-fail");
 		fail_state(S);
@@ -1703,7 +1715,7 @@ static void hello_auth_client_hello(struct a12_state* S)
 	}
 
 	trace_crypto_key(S->server, "server_pk", &S->decode[21], 32);
-	struct pk_response res = S->opts->pk_lookup(&S->decode[21]);
+	struct pk_response res = S->opts->pk_lookup(&S->decode[21], S->opts->pk_lookup_tag);
 	if (!res.authentic){
 		a12int_trace(A12_TRACE_CRYPTO, "state=eperm:kind=25519-pk-fail");
 		fail_state(S);
@@ -1940,38 +1952,27 @@ static void send_dirlist(struct a12_state* S)
 /* just unpack and forward to the event handler, arcan proper can deal with the
  * event as it is mostly verbatim when it passes through afsrv_net and
  * arcan-net has the same structures available */
-static void command_dirdiscover(struct a12_state* S, void (*on_event)
-	(struct arcan_shmif_cont*, int chid, struct arcan_event*, void*), void* tag)
+static void command_dirdiscover(struct a12_state* S)
 {
+	if (!S->on_discover)
+		return;
+
 	uint8_t type = S->decode[18];
 	bool added = S->decode[19];
 
-/* block separator */
+/* grab petname, sanitize to 7-bit alnum + _ */
 	char petname[17] = {0};
 	memcpy(petname, &S->decode[20], 16);
-	for (size_t i = 0; petname[i]; i++)
-		if (petname[i] == ':')
-			petname[i] = '_';
-
-/* netstate event type model match that of a12 dirdiscover command */
-	struct arcan_event ev = {
-		.category = EVENT_EXTERNAL,
-		.ext.kind = EVENT_EXTERNAL_NETSTATE,
-		.ext.netstate = {
-			.space = 5,
-			.state = added ? 1 : 0,
-			.type = type
+	for (size_t i = 0; petname[i]; i++){
+		if (!isalnum(petname[i]) && petname[i] != '_'){
+			a12int_trace(A12_TRACE_SECURITY, "discover:malformed_petname=%s", petname);
+			return;
 		}
-	};
+	}
 
-/* pack kpub as base64 (43 bytes) */
-	size_t outl;
-	unsigned char* pk =
-		a12helper_tob64(&S->decode[36], 32, &outl);
-	snprintf((char*)&ev.ext.netstate.name, 66, "%s:%s", petname, pk);
-	free(pk);
-
-	on_event(S->channels[0].cont, 0, &ev, tag);
+	uint8_t pubk[32];
+	memcpy(pubk, &S->decode[36], 32);
+	S->on_discover(S, type, petname, added, pubk, S->discover_tag);
 }
 
 static void add_dirent(struct a12_state* S)
@@ -2080,7 +2081,7 @@ static void process_control(struct a12_state* S, void (*on_event)
 	break;
 	case COMMAND_DIROPEN:{
 		if (S->opts->local_role == ROLE_DIR){
-			command_diropen(S, S->decode[18], &S->decode[19], &S->decode[52]);
+			command_diropen(S, S->decode[18], &S->decode[19]);
 		}
 		else
 			a12int_trace(A12_TRACE_SECURITY, "diropen:wrong_role");
@@ -2126,7 +2127,7 @@ static void process_control(struct a12_state* S, void (*on_event)
 		}, tag);
 	break;
 	case COMMAND_DIRDISCOVER:
-		command_dirdiscover(S, on_event, tag);
+		command_dirdiscover(S);
 	break;
 
 /* Security notice: this allows the remote end to update / populate the
@@ -3427,17 +3428,18 @@ bool a12_request_dynamic_resource(struct a12_state* S,
 	S->pending_dynamic.active = true;
 	S->pending_dynamic.closure = request_reply;
 	S->pending_dynamic.tag = tag;
+	memcpy(S->pending_dynamic.req_key, ident_pubk, 32);
 
 	if (S->opts->local_role != ROLE_SINK)
 		return true;
 
 /* this key isn't as sensitive as it will only be used to authenticate the
- * mediated nested connections ephemeral layer not added to the keystore */
+ * mediated nested connections ephemeral layer not added to the keystore. */
 	uint8_t outb[CONTROL_PACKET_SIZE];
 	build_control_header(S, outb, COMMAND_DIROPEN);
-	arcan_random(S->pending_dynamic.key, 32);
+	arcan_random(S->pending_dynamic.priv_key, 32);
 	memcpy(&outb[19], ident_pubk, 32);
-	x25519_public_key(S->pending_dynamic.key, &outb[52]);
+	x25519_public_key(S->pending_dynamic.priv_key, &outb[52]);
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 
 	return true;

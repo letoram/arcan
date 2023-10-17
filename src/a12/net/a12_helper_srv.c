@@ -655,7 +655,6 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 	uint8_t* outbuf = NULL;
 	size_t outbuf_sz = 0;
 
-
 /* tie an empty context as channel destination, we use this as a type- wrapper
  * for the shmifsrv_client now, this logic is slightly different on the
  * shmifsrv_client side. */

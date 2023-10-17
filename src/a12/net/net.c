@@ -83,16 +83,18 @@ static struct a12_vframe_opts vcodec_tuning(
 	struct a12_state* S, int segid, struct shmifsrv_vbuffer* vb, void* tag);
 
 /* keystore is singleton global */
+static struct keystore_provider prov = {
+	.type = A12HELPER_PROVIDER_BASEDIR,
+	.directory.dirfd = -1
+};
+
 static bool open_keystore(const char** err)
 {
-	int dir = a12helper_keystore_dirfd(err);
-	if (-1 == dir)
-		return false;
-
-	struct keystore_provider prov = {
-		.directory.dirfd = dir,
-		.type = A12HELPER_PROVIDER_BASEDIR
-	};
+	if (-1 == prov.directory.dirfd){
+		prov.directory.dirfd = a12helper_keystore_dirfd(err);
+		if (-1 == prov.directory.dirfd)
+			return false;
+	}
 
 	if (!a12helper_keystore_open(&prov)){
 		*err = "Couldn't open keystore from basedir (ARCAN_STATEPATH)";
@@ -117,11 +119,6 @@ static int tracestr_to_bitmap(char* work)
 	}
 	return res;
 }
-
-/*
- * pull in from arcan codebase, chacha based CSPRNG
- */
-extern void arcan_random(uint8_t* dst, size_t ntc);
 
 /*
  * Since we pull in some functions from the main arcan codebase, we need to
@@ -423,6 +420,7 @@ struct dirstate {
 	int fd;
 	struct anet_options* aopts;
 	struct shmifsrv_client* shmif;
+	struct a12_dynreq req;
 };
 
 static void a12cl_dispatch(
@@ -467,10 +465,65 @@ static void a12cl_dispatch(
 	close(fd);
 }
 
+static struct pk_response key_auth_dir(uint8_t pk[static 32], void* tag)
+{
+	struct dirstate* ds = tag;
+	struct pk_response auth = {.authentic = true};
+
+/* We need the key we registered with the dirsrv with as the sink will be
+ * expecting it, while we trust whatever as the outer packet authk combine with
+ * the ephemeral key.
+ *
+ * The ephemeral key match what the source (us) registered as, the same goes
+ * for the inner. The reason for this is to be able to determine via a sideband
+ * if the directory is trying to MITM. Since the Kpub is announced via the
+ * directory the source can fire up another client and check that the announced
+ * key is the same as the one it actually announced.
+ *
+ * At the samw time the sink can provide a different Kpub to the directory than
+ * it is using to request to open the source in order to be able to compartment
+ * keys used for directory access vs discovering sources.
+ */
+
+	uint8_t my_private_key[32] = {0};
+	a12_set_session(&auth, pk, ds->aopts->opts->priv_ephem_key);
+	return auth;
+}
+
+static void dir_a12srv(struct a12_state* S, int fd, void* tag)
+{
+	struct dirstate* ds = tag;
+	a12int_trace(A12_TRACE_DIRECTORY, "source_inbound_connected");
+
+/* should not be able to happen at this stage, hello won't go through without
+ * the right authk and if you have that you're either source, sink or dirsrv
+ * and both sink and dirsrv would be able to math the pubk. */
+	char* msg;
+	if (!anet_authenticate(S, fd, fd, &msg)){
+		a12int_trace(A12_TRACE_SECURITY, "authentication_failed");
+		return;
+	}
+
+	a12int_trace(A12_TRACE_DIRECTORY, "source_inbound_ready");
+	a12helper_a12cl_shmifsrv(S, ds->shmif, fd, fd, (struct a12helper_opts){
+		.redirect_exit = ds->aopts->redirect_exit,
+		.devicehint_cp = ds->aopts->devicehint_cp,
+		.vframe_block = global.backpressure,
+		.vframe_soft_block = global.backpressure_soft,
+		.eval_vcodec = vcodec_tuning,
+		.bcache_dir = get_bcache_dir()
+	});
+	shmifsrv_free(ds->shmif, SHMIFSRV_FREE_NO_DMS);
+
+	shutdown(fd, SHUT_RDWR);
+	exit(EXIT_SUCCESS);
+}
+
 static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
 {
 	a12int_trace(A12_TRACE_DIRECTORY, "open_request_negotiated");
 	struct dirstate* ds = tag;
+	ds->req = a;
 
 	pid_t fpid = fork();
 
@@ -514,28 +567,45 @@ static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
  * directory versus the one it uses with us. */
 		snprintf(ds->aopts->opts->secret, 32, "%s", a.authk);
 		ds->aopts->opts->force_ephemeral_k = true;
-//		ds->aopts->opts->expect_ephem_pubkey;
+		char* outhost;
+		uint16_t outport;
+		a12helper_keystore_hostkey("default", 0,
+			ds->aopts->opts->priv_ephem_key, &outhost, &outport);
 
-/* a subtle difference here is that the the private key we should use in the
+		ds->aopts->opts->pk_lookup = key_auth_dir;
+		ds->aopts->opts->pk_lookup_tag = ds;
+		memcpy(ds->aopts->opts->expect_ephem_pubkey, ds->req.pubk, 32);
+
+/* A subtle difference here is that the the private key we should use in the
  * setup (here same for ephem and real) is the one used to outbound connect to
- * the directory and not a listening default. */
-
-		a12cl_dispatch(ds->aopts, S, ds->shmif, ds->fd);
+ * the directory and not a listening default. We also want a timeout for the
+ * case where we listen but nobody connects to us (reachability?). Remove the
+ * host so that we don't try to bind the old outbound ip. */
+		char* errmsg = NULL;
+		ds->aopts->host = NULL;
+		anet_listen(ds->aopts, &errmsg, dir_a12srv, ds);
+		fprintf(stderr, "%s", errmsg ? errmsg : "");
 		exit(EXIT_SUCCESS);
 	}
 	else if (fpid == -1){
 		fprintf(stderr, "fork_a12cl() couldn't fork new process, check ulimits\n");
 		shmifsrv_free(ds->shmif, SHMIFSRV_FREE_NO_DMS);
-		a12_channel_close(S);
+		shutdown(ds->fd, SHUT_RDWR);
 		close(ds->fd);
 		return;
 	}
 	else {
-/* just ignore and return to caller, we might need a monitoring channel
- * for multiplexing in tunnel- traffic */
+/* just ignore and return to caller, we might need a monitoring channel for
+ * multiplexing in tunnel- traffic - and in those cases we need to keep the
+ * ds->fd (directory connection) alive. the same goes for --exec mode, as we
+ * can supply more clients through the same directory setup we can keep it
+ * alive, but that has more considerations -- how many do we want? the other
+ * connections might require tunneling, so at first it is better to just go 1:1
+ * for dirsrv connection and --exec pass. */
 		a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d", (int)fpid);
-		a12_channel_close(S);
 		shmifsrv_free(ds->shmif, SHMIFSRV_FREE_LOCAL);
+		shutdown(ds->fd, SHUT_RDWR);
+		wait(NULL);
 		close(ds->fd);
 	}
 }
@@ -553,6 +623,7 @@ static void fork_a12cl_dispatch(
 		fprintf(stderr, "fork_a12cl() couldn't fork new process, check ulimits\n");
 		shmifsrv_free(cl, SHMIFSRV_FREE_NO_DMS);
 		a12_channel_close(S);
+		shutdown(fd, SHUT_RDWR);
 		close(fd);
 		return;
 	}
@@ -561,6 +632,7 @@ static void fork_a12cl_dispatch(
 		a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d", (int)fpid);
 		a12_channel_close(S);
 		shmifsrv_free(cl, SHMIFSRV_FREE_LOCAL);
+		shutdown(fd, SHUT_RDWR);
 		close(fd);
 	}
 }
@@ -747,7 +819,7 @@ static bool tag_host(struct anet_options* anet, char* hoststr, const char** err)
 
 static bool show_usage(const char* msg)
 {
-	fprintf(stderr, "%s%sUsage:\n"
+	fprintf(stderr, "Usage:\n"
 	"Forward local arcan applications (push): \n"
 	"    arcan-net [-Xtd] -s connpoint [tag@]host port\n"
 	"         (keystore-mode) -s connpoint tag@\n"
@@ -809,7 +881,7 @@ static bool show_usage(const char* msg)
 	"\nTrace groups (stderr):\n"
 	"\tvideo:1      audio:2       system:4    event:8      transfer:16\n"
 	"\tdebug:32     missing:64    alloc:128   crypto:256   vdetail:512\n"
-	"\tbinary:1024  security:2048 directory:4096\n\n",
+	"\tbinary:1024  security:2048 directory:4096\n\n%s%s",
 		msg ? msg : "",
 		msg ? "\n\n" : ""
 	);
@@ -1094,6 +1166,7 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		}
 		else if (strcmp(argv[i], "-X") == 0){
 			opts->redirect_exit = NULL;
+			opts->devicehint_cp = NULL;
 		}
 		else if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--auth") == 0){
 			char msg[32];
@@ -1226,7 +1299,7 @@ static int apply_keystore_command(int argc, char** argv)
  * For inbound, there is an option of differentiation - a different keypair
  * could be returned based on the public key that the connecting party uses.
  */
-static struct pk_response key_auth_local(uint8_t pk[static 32])
+static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 {
 	struct pk_response auth = {};
 	uint8_t my_private_key[32];

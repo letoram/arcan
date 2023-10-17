@@ -119,9 +119,15 @@ static struct anet_cl_connection connect_to(struct anet_options* arg)
 		return res;
 	}
 
-/* related to keystore - if we get multiple options for one key and don't
- * have a provided host, port, enumerate those before failing */
-	res.fd = anet_clfd(addr);
+/* related to keystore - if we get multiple options for one key and don't have
+ * a provided host, port, enumerate those before failing. The retry count can
+ * be set to negative to go on practically indefinitely or to a > 0 number of
+ * tries. */
+	while ((res.fd = anet_clfd(addr)) == -1 && arg->retry_count != 0){
+		arg->retry_count--;
+		sleep(1);
+	}
+
 	if (-1 == res.fd){
 		char buf[64];
 		snprintf(buf, sizeof(buf), "couldn't connect to %s:%s\n", arg->host, arg->port);
@@ -290,10 +296,10 @@ bool anet_listen(struct anet_options* args, char** errdst,
 
 /* build state machine, accept and dispatch */
 	for(;;){
-		struct sockaddr_storage in_addr;
+		struct sockaddr in_addr;
 		socklen_t addrlen = sizeof(addr);
 
-		int infd = accept(sockin_fd, (struct sockaddr*) &in_addr, &addrlen);
+		int infd = accept(sockin_fd, &in_addr, &addrlen);
 		struct a12_state* ast = a12_server(args->opts);
 		if (!ast){
 			if (errdst)
@@ -301,6 +307,12 @@ bool anet_listen(struct anet_options* args, char** errdst,
 			close(infd);
 			return false;
 		}
+
+		char hostaddr[NI_MAXHOST];
+
+		int ec = getnameinfo(&in_addr, addrlen,
+			hostaddr, sizeof(hostaddr), NULL, 0, NI_NUMERICHOST);
+		a12_set_endpoint(ast, strdup(hostaddr));
 
 		dispatch(ast, infd, tag);
 	}

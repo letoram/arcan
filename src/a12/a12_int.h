@@ -265,7 +265,8 @@ struct a12_state {
 /* tracks a pending dynamic directory resource */
 	struct {
 		bool active;
-		uint8_t key[32];
+		uint8_t priv_key[32];
+		uint8_t req_key[32];
 		void(* closure)(struct a12_state*, struct a12_dynreq, void* tag);
 		void* tag;
 
@@ -296,6 +297,10 @@ struct a12_state {
 
 /* current encoding state, manipulate with set_channel */
 	int out_channel;
+
+	void (*on_discover)(struct a12_state*, int type,
+		const char* petname, bool found, uint8_t pubk[static 32], void*);
+	void* discover_tag;
 
 	void (*on_auth)(struct a12_state*, void*);
 	void* auth_tag;

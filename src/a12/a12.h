@@ -72,7 +72,8 @@ struct a12_context_options {
  * time or bytes before being terminated. If want_session is requested, the
  * lookup function, if it is able to (legacy) should set got_session in the
  * reply and calculate the x25519 shared secret itself. */
-	struct pk_response (*pk_lookup)(uint8_t pub[static 32]);
+	struct pk_response (*pk_lookup)(uint8_t pub[static 32], void*);
+	void* pk_lookup_tag;
 
 /* Client only, provide the private key to use with the connection. All [0]
  * key will disable attempts at asymetric operation. */
@@ -211,7 +212,6 @@ struct a12_unpack_cfg {
 /* only used with local_role == MODE_DIRECTORY wherein someone requests
  * to open a resource through us. */
 	bool (*directory_open)(struct a12_state*,
-		uint8_t ident_pubk[static 32],
 		uint8_t ident_req[static 32],
 		uint8_t mode,
 		struct a12_dynreq* out,

@@ -545,7 +545,6 @@ policy or name collision.
 ### command - 12, directory-open
 - [18    ] Mode     : (1: direct-inbound, 2: direct-outbound, 4: tunnel)
 - [19+ 32] Kpub-tgt : (x25519)
-- [52+ 32] Kpub-me  : (x25519)
 
 This is used to request a connection / connection request to the provided
 petname. Kpub-tgt is the identifier previously received from a discover event
@@ -553,8 +552,8 @@ while Kpub-me is the public key that the source will connect through in order
 to differentiate between the credential used to access the directory versus the
 credential used to access the source.
 
-Mode can be treated as a bitmap of supported open-modes but is a hint as
-the initiator cannot necessarily know the topology of the source.
+Mode can be treated as a bitmap of supported open-modes but is a hint as the
+initiator cannot necessarily know the topology of the source.
 
 If mode is set to direct-inbound the request is that the other end connects to
 the request originator (TCP). This will provide the source-IP that was used to
@@ -589,6 +588,17 @@ one for the directory, but using the authentication secret to protect the
 initial HELLO. It is advised to use an ephemeral keypair and the two stage
 HELLO to be able to differentiate the keypair used when authenticating to
 the directory versus authenticating to the source.
+
+### command - 15, write-tunnel     command - 16, read-tunnel
+The tunnel commands are used when a directory-opened negotiation results in a
+STUN like forwarding setup for a proxied a12 session. The next [count] bytes
+is to be fed into a discrete a12 state machine seeded through the directory-
+opened command primitives.
+
+If the count is 0, the effect is that the tunnel connection has been severed.
+
+ - [18..19] Tunnel : ID
+ - [20    ] Count  : uint32, number of bytes to forward as a tunneled packet
 
 ##  Event (2), fixed length
 - [0..7] sequence number : uint64

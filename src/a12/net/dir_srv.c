@@ -185,7 +185,7 @@ static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
  * now in the PoC we assume the source is the listening end and the sink the
  * outbound one. We also have a default port for the source (6680) that should
  * be possible to change. */
-			if (memcmp(cur->pubk, C->pubk, 32) == 0){
+			if (memcmp(pubk_dec, cur->pubk, 32) == 0){
 				arcan_event to_src = {
 					.category = EVENT_EXTERNAL,
 					.ext.kind = EVENT_EXTERNAL_NETSTATE,
@@ -231,6 +231,7 @@ static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
 				free(b64);
 				break;
 			}
+			cur = cur->next;
 		}
 	pthread_mutex_unlock(&active_clients.sync);
 	return;
@@ -381,7 +382,10 @@ static void register_source(struct dircl* C, struct arcan_event ev)
 		return;
 	}
 
-	A12INT_DIRTRACE("dirsv:kind=register:name=%s", ev.ext.registr.title);
+	unsigned char* b64 = a12helper_tob64(C->pubk, 32, &(size_t){0});
+	A12INT_DIRTRACE(
+		"dirsv:kind=register:name=%s:pubk=%s", ev.ext.registr.title, b64);
+	free(b64);
 
 /* if we just change state / availability, don't permit rename */
 	if (C->petname.ext.netstate.name[0]){
@@ -391,8 +395,8 @@ static void register_source(struct dircl* C, struct arcan_event ev)
 		}
 	}
 
-	C->petname = ev;
 	ev.ext.netstate.state = 1;
+	C->petname = ev;
 
 /* finally ack the petname and broadcast */
 	if (!tag_outbound_name(&ev, C->pubk))
@@ -405,7 +409,7 @@ static void register_source(struct dircl* C, struct arcan_event ev)
 	pthread_mutex_lock(&active_clients.sync);
 		struct dircl* cur = active_clients.root.next;
 		while (cur){
-			if (cur != C && cur->C){
+			if (cur != C && cur->C && cur->type == ROLE_SINK){
 				shmifsrv_enqueue_event(cur->C, &ev, -1);
 			}
 			cur = cur->next;
@@ -642,7 +646,8 @@ static void dircl_message(struct dircl* C, struct arcan_event ev)
 			goto send_fail;
 
 		pthread_mutex_lock(&active_clients.sync);
-			struct pk_response rep = active_clients.opts->a12_cfg->pk_lookup(pubk_dec);
+			struct a12_context_options* aopt = active_clients.opts->a12_cfg;
+			struct pk_response rep = aopt->pk_lookup(pubk_dec, aopt->pk_lookup_tag);
 		pthread_mutex_unlock(&active_clients.sync);
 
 		if (!rep.authentic)
@@ -696,6 +701,7 @@ void handle_netstate(struct dircl* C, arcan_event ev)
 {
 	ev.ext.netstate.name[COUNT_OF(ev.ext.netstate.name)-1] = '\0';
 
+/* update ip <-> port mapping */
 	if (ev.ext.netstate.type == 3 || ev.ext.netstate.type == 4){
 		A12INT_DIRTRACE("dirsv:kind=worker:set_endpoint=%s", ev.ext.netstate.name);
 		C->endpoint = ev;
@@ -709,7 +715,10 @@ void handle_netstate(struct dircl* C, arcan_event ev)
 	}
 /* set sink key */
 	else if (ev.ext.netstate.type == 2){
-		A12INT_DIRTRACE("dirsv:kind=worker:update_sink_pk");
+		unsigned char* b64 = a12helper_tob64(
+			(unsigned char*)ev.ext.netstate.name, 32, &(size_t){0});
+			A12INT_DIRTRACE("dirsv:kind=worker:update_sink_pk=%s", b64);
+		free(b64);
 		memcpy(C->pubk, ev.ext.netstate.name, 32);
 	}
 	else
