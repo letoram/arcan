@@ -611,11 +611,7 @@ struct a12_state* a12_client(struct a12_context_options* opt)
 /* double-round, start by generating ephemeral key */
 	else {
 		mode = HELLO_MODE_EPHEMPK;
-		if (opt->force_ephemeral_k){
-			memcpy(S->keys.ephem_priv, opt->priv_ephem_key, 32);
-		}
-		else
-			x25519_private_key(S->keys.ephem_priv);
+		x25519_private_key(S->keys.ephem_priv);
 		x25519_public_key(S->keys.ephem_priv, outpk);
 		S->authentic = AUTH_POLITE_HELLO_SENT;
 	}
@@ -1639,21 +1635,7 @@ static void hello_auth_server_hello(struct a12_state* S)
  * is that you need an active MiM to gather Pks for tracking. */
 	if (cfl == HELLO_MODE_EPHEMPK){
 		uint8_t ek[32];
-		if (S->opts->force_ephemeral_k){
-			trace_crypto_key(S->server,
-				"force_ephem_expect_pub", S->opts->expect_ephem_pubkey, 32);
-			if (memcmp(S->opts->expect_ephem_pubkey, remote_pubk, 32) != 0){
-				a12int_trace(A12_TRACE_SECURITY, "force_ephem_fail");
-				fail_state(S);
-				return;
-			}
-
-			trace_crypto_key(S->server,
-				"force_ephem_priv", S->opts->priv_ephem_key, 32);
-			memcpy(ek, S->opts->priv_ephem_key, 32);
-		}
-		else
-			x25519_private_key(ek);
+		x25519_private_key(ek);
 		x25519_public_key(ek, pubk);
 		arcan_random(nonce, 8);
 		send_hello_packet(S, HELLO_MODE_EPHEMPK, pubk, nonce);
@@ -3397,8 +3379,10 @@ int a12_remote_mode(struct a12_state* S)
 void a12int_notify_dynamic_resource(struct a12_state* S,
 		const char* petname, uint8_t kpub[static 32], uint8_t role, bool added)
 {
-	if (!S->notify_dynamic)
+	if (!S->notify_dynamic){
+		a12int_trace(A12_TRACE_DIRECTORY, "ignore_no_dynamic");
 		return;
+	}
 
 	a12int_trace(A12_TRACE_DIRECTORY,
 		"dynamic:forward:name=%s:role=%d:added=%d", petname,(int)role,(int)added);
@@ -3417,6 +3401,7 @@ void a12int_notify_dynamic_resource(struct a12_state* S,
 
 bool a12_request_dynamic_resource(struct a12_state* S,
 	uint8_t ident_pubk[static 32],
+	bool prefer_tunnel,
 	void(*request_reply)(struct a12_state*, struct a12_dynreq, void* tag),
 	void* tag)
 {
@@ -3439,6 +3424,7 @@ bool a12_request_dynamic_resource(struct a12_state* S,
 	build_control_header(S, outb, COMMAND_DIROPEN);
 	arcan_random(S->pending_dynamic.priv_key, 32);
 	memcpy(&outb[19], ident_pubk, 32);
+	outb[18] = prefer_tunnel ? 4 : 2;
 	x25519_public_key(S->pending_dynamic.priv_key, &outb[52]);
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 
@@ -3459,4 +3445,21 @@ const char* a12_get_endpoint(struct a12_state* S)
 void a12_supply_dynamic_resource(struct a12_state* S, struct a12_dynreq r)
 {
 	fill_diropened(S, r);
+}
+
+bool
+	a12_write_tunnel(
+		struct a12_state* S, uint8_t chid, const char* const buf, size_t buf_sz)
+{
+	return false;
+}
+
+bool
+	a12_set_tunnel_sink(struct a12_state* S, uint8_t chid, int fd)
+{
+	if (!S->channels[chid].active)
+		return false;
+
+	S->channels[chid].unpack_state.bframe.tmp_fd = fd;
+	return true;
 }

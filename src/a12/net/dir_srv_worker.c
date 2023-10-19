@@ -290,6 +290,14 @@ static void bchunk_event(struct a12_state *S,
 	if (strcmp(ev->tgt.message, ".index") == 0){
 		unpack_index(S, C, ev);
 	}
+/* Only single channel handled for now, 1:1 source-sink connections. Multiple
+ * ones are not difficult as such but evaluate the need experimentally first. */
+	else if (strcmp(ev->tgt.message, ".tun") == 0){
+		a12int_trace(A12_TRACE_DIRECTORY, "worker:tunnel_acquired:channel=1");
+		S->channels[1].active = true;
+		S->channels[1].unpack_state.bframe.tmp_fd =
+			arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true);
+	}
 }
 
 static bool wait_for_activation(
@@ -344,6 +352,7 @@ static void do_event(
 		size_t i = 0;
 
 		if (a12_remote_mode(S) == ROLE_SOURCE){
+			a12int_trace(A12_TRACE_DIRECTORY, "open_to_src");
 			struct a12_dynreq dynreq = (struct a12_dynreq){0};
 			snprintf(dynreq.authk, 12, "%s", cbt->secret);
 			memcpy(dynreq.pubk, ev->ext.netstate.name, 32);
@@ -366,6 +375,7 @@ static void do_event(
 			return;
 		}
 
+		a12int_trace(A12_TRACE_DIRECTORY, "notify:name=%s", ev->ext.netstate.name);
 		a12int_notify_dynamic_resource(S,
 			ev->ext.netstate.name, (uint8_t*)&ev->ext.netstate.name[i],
 			ev->ext.netstate.type, ev->ext.netstate.state != 0
@@ -421,7 +431,7 @@ static void on_shmif(struct ioloop_shared* S, bool ok)
  * with kpub=%s and wait for kpriv or fail. Re-keying doesn't need this as we
  * just generate new keys locally.
  */
-static struct pk_response key_auth_worker(uint8_t pk[static 32], void*)
+static struct pk_response key_auth_worker(uint8_t pk[static 32], void* tag)
 {
 	struct pk_response reply = {0};
 	struct arcan_event req = {
@@ -496,7 +506,7 @@ static struct pk_response key_auth_worker(uint8_t pk[static 32], void*)
 	return reply;
 }
 
-static bool req_open(struct a12_state* S,
+static bool dirsrv_req_open(struct a12_state* S,
 		uint8_t ident_req[static 32],
 		uint8_t mode,
 		struct a12_dynreq* out, void* tag)
@@ -517,7 +527,8 @@ static bool req_open(struct a12_state* S,
 		.ext.kind = EVENT_EXTERNAL_MESSAGE
 	};
 	snprintf((char*)reqmsg.ext.message.data,
-		COUNT_OF(reqmsg.ext.message.data), "a12:diropen:pubk=%s", req_b64);
+		COUNT_OF(reqmsg.ext.message.data),
+			"a12:diropen:%spubk=%s", mode == 4 ? "tunnel:" : "", req_b64);
 	free(req_b64);
 	arcan_shmif_enqueue(cbt->C, &reqmsg);
 
@@ -554,7 +565,21 @@ retry_block:
 		if (cbt->secret)
 			snprintf(rq.authk, 12, "%s", cbt->secret);
 
-		_Static_assert(sizeof(rq.host) == 46);
+		_Static_assert(sizeof(rq.host) == 46, "wrong host-length");
+
+/* reserved .tun as hostname is to tell that we have set a channel as tunnel,
+ * then spawn a processing thread that reads from the tunnel and injects into
+ * the state machine. */
+		if (strcmp(repev.ext.netstate.name, ".tun") == 0){
+			a12int_trace(A12_TRACE_DIRECTORY, "diropen:tunnel");
+			rq.proto = 3;
+			pthread_t pth;
+			pthread_attr_t pthattr;
+			pthread_attr_init(&pthattr);
+			pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+			return rv;
+		}
+
 		strncpy(rq.host, repev.ext.netstate.name, 45);
 		*out = rq;
 	}
@@ -631,7 +656,7 @@ void anet_directory_srv(
 
 	a12_set_destination_raw(S, 0,
 		(struct a12_unpack_cfg){
-			.directory_open = req_open,
+			.directory_open = dirsrv_req_open,
 			.tag = &cbt
 		}, sizeof(struct a12_unpack_cfg)
 	);

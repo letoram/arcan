@@ -572,11 +572,11 @@ traversal (UDP blocked, misconfigured routers) and might not be permitted by
 the server connection.
 
 ### command - 14, directory-opened
-- [18    ] Status  : (0 failed, 1 direct-in ok, 2 direct-out ok, 2 tunnel ok)
+- [18    ] Status  : (0 failed, 1 direct-in ok, 2 direct-out ok, 3 tunnel ok)
 - [19 +46] Address : (string representation, \0 terminated)
-                     Status = 1, IPv3,6 address to the host,
+                     Status = 1, IPv4,6 address to the host,
                      Status = 2, IPv4,6 address to the host,
-                     Status = 3, 0
+                     Status = 3, channel-id (>= 1)
 - [65..66] Port    : connection port or tunnel-id (status=2)
 - [67 +12] Secret  : alphanumerical random secret to use with first HELLO
                      packet to authenticate.
@@ -589,16 +589,9 @@ initial HELLO. It is advised to use an ephemeral keypair and the two stage
 HELLO to be able to differentiate the keypair used when authenticating to
 the directory versus authenticating to the source.
 
-### command - 15, write-tunnel     command - 16, read-tunnel
-The tunnel commands are used when a directory-opened negotiation results in a
-STUN like forwarding setup for a proxied a12 session. The next [count] bytes
-is to be fed into a discrete a12 state machine seeded through the directory-
-opened command primitives.
-
-If the count is 0, the effect is that the tunnel connection has been severed.
-
- - [18..19] Tunnel : ID
- - [20    ] Count  : uint32, number of bytes to forward as a tunneled packet
+If the Address is a tunnel, a channel is reserved similarly to define-bstream.6
+data transfers work the same, except it is always streaming with no finite
+limit and data can flow in both directions.
 
 ##  Event (2), fixed length
 - [0..7] sequence number : uint64

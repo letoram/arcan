@@ -214,7 +214,7 @@ static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
  * increasing the cost somewhat. */
 				arcan_event ss = {
 					.category = EVENT_TARGET,
-					.ext.kind = TARGET_COMMAND_MESSAGE
+					.tgt.kind = TARGET_COMMAND_MESSAGE
 				};
 
 				uint8_t secret[8];
@@ -359,18 +359,23 @@ static bool tag_outbound_name(struct arcan_event* ev, uint8_t kpub[static 32])
 static void register_source(struct dircl* C, struct arcan_event ev)
 {
 	if (!a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_src)){
+		unsigned char* b64 = a12helper_tob64(C->pubk, 32, &(size_t){0});
+		
 		A12INT_DIRTRACE(
-			"dirsv:kind=reject_register:title=%s:role=%d:permission",
+			"dirsv:kind=reject_register:title=%s:role=%d:eperm:key=%s",
 			ev.ext.registr.title,
-			ev.ext.registr.kind
+			ev.ext.registr.kind,
+			b64
 		);
+
+		free(b64);
 		return;
 	}
 
 /* sanitize, name identifiers should be alnum and short for compatiblity */
 	char* title = ev.ext.registr.title;
 	for (size_t i = 0; i < COUNT_OF(ev.ext.registr.title) && title[i]; i++){
-		if (!isalnum(title[i]))
+		if (!isdigit(title[i]) && !isalpha(title[i]))
 			title[i] = '_';
 	}
 
@@ -409,7 +414,7 @@ static void register_source(struct dircl* C, struct arcan_event ev)
 	pthread_mutex_lock(&active_clients.sync);
 		struct dircl* cur = active_clients.root.next;
 		while (cur){
-			if (cur != C && cur->C && cur->type == ROLE_SINK){
+			if (cur != C && cur->C && !(cur->type || cur->type == ROLE_SINK)){
 				shmifsrv_enqueue_event(cur->C, &ev, -1);
 			}
 			cur = cur->next;

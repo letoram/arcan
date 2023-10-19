@@ -57,7 +57,9 @@ struct pk_response {
 		const uint8_t pub[static 32], const char* name, size_t sz, const char* mode);
 };
 
-/* response structure for a directory-open request. */
+/* response structure for a directory-open request.
+ * proto 1,2 = ipvN address
+ * proto 3 = tunnel */
 struct a12_dynreq {
 	char host[46];
 	char pubk[32];
@@ -83,11 +85,6 @@ struct a12_context_options {
  * the real one, forces active MiM in order for an attacker to track Pk
  * (re-)use. */
 	bool disable_ephemeral_k;
-
-/* these two are used in directory mode to handle key differentiation. */
-	bool force_ephemeral_k;
-	uint8_t priv_ephem_key[32];
-	uint8_t expect_ephem_pubkey[32];
 
 /* This allows the server end to transition to authenticated state based on
  * password alone, low-security / debugging situations only */
@@ -295,6 +292,7 @@ enum a12_bstream_type {
 	A12_BTYPE_APPL_CONTROLLER = 7
 };
 
+/* BCHUNKSTATE response/initiator */
 void
 a12_enqueue_bstream(struct a12_state*,
 	int fd, int type, uint32_t id, bool streaming,
@@ -304,6 +302,15 @@ void
 a12_enqueue_blob(
 	struct a12_state*, const char* const, size_t, uint32_t id,
 	int type, const char extid[static 16]);
+
+/* Used on a channel mapped for use as a tunnel as a response to
+ * request_dynamic_resource when there is no direct / usable network path.
+ * Returns false if the channel isn't mapped for that kind of use. */
+bool
+	a12_write_tunnel(struct a12_state*, uint8_t chid, const char* const, size_t);
+
+bool
+	a12_set_tunnel_sink(struct a12_state*, uint8_t chid, int fd);
 
 /*
  * Get a status code indicating the state of the connection.
@@ -627,17 +634,13 @@ struct a12_iostat a12_state_iostat(struct a12_state* S);
  *
  * This should be used either directly and lets the outer key.
  *
- * in the a12_state after key derivation. This can be a different keypair if
- * you want to be known to the source by a different identity than to the
- * directory. The directory will discover the public part of this key however.
- * Only one pending _dynamic is allowed. The callback will be triggered with
- * the connection parameters for reaching the source or with a null host.
- *
  * The contents of dynreq will be free:d automatically after callback
  * completion.
  */
-bool a12_request_dynamic_resource(struct a12_state* S,
+bool a12_request_dynamic_resource(
+	struct a12_state* S,
 	uint8_t ident_pubk[static 32],
+	bool prefer_tunnel,
 	void(*request_reply)(struct a12_state*, struct a12_dynreq, void* tag),
 	void* tag);
 
