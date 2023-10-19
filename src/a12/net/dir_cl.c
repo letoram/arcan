@@ -78,7 +78,7 @@ static struct pk_response key_auth_fixed(uint8_t pk[static 32], void* tag)
 /* setup the request:
  *    we might need to listen
  *    (ok) we might need to connect
- *    we might need to tunnel via the directory
+ *    (ok) we might need to tunnel via the directory
  */
 static void on_source(struct a12_state* S, struct a12_dynreq req, void* tag)
 {
@@ -92,14 +92,7 @@ static void on_source(struct a12_state* S, struct a12_dynreq req, void* tag)
 		.pk_lookup = key_auth_fixed,
 		.pk_lookup_tag = &req,
 		.disable_ephemeral_k = true,
-/*	.force_ephemeral_k = true, */
 	};
-
-/* the other end will use the same pubkey twice (source always exposes itself
- * unless we simply skip the ephemeral round in the HELLO - something to do if
- * the other endpoint is trusted. */
-	memcpy(&a12opts.expect_ephem_pubkey, req.pubk, 32);
-	x25519_private_key(a12opts.priv_ephem_key);
 
 	char port[sizeof("65535")];
 	snprintf(port, sizeof(port), "%"PRIu16, req.port);
@@ -749,15 +742,17 @@ static void cl_got_dyn(struct a12_state* S, int type,
 {
 	struct ioloop_shared* I = tag;
 	struct directory_meta* cbt = I->cbt;
+	printf("source-%s=*%s\n", found ? "found" : "lost", petname);
+
 	if (cbt->clopt->applname[0] != '*' ||
 		strcmp(&I->cbt->clopt->applname[1], petname) != 0)
 		return;
 
 	size_t outl;
 	unsigned char* req = a12helper_tob64(pubk, 32, &outl);
-	a12int_trace(A12_TRACE_DIRECTORY, "request:petname=%s:pubk=%s", petname, req);
+	a12int_trace(A12_TRACE_DIRECTORY, "request:petname=*%s:pubk=%s", petname, req);
 	free(req);
-	a12_request_dynamic_resource(S, pubk, on_source, I);
+	a12_request_dynamic_resource(S, pubk, cbt->clopt->request_tunnel, on_source, I);
 }
 
 static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
@@ -834,7 +829,7 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 		return false;
 	}
 
-	if (cbt->clopt->die_on_list)
+	if (cbt->clopt->die_on_list && cbt->clopt->applname[0] != '*')
 		return false;
 
 	return true;
@@ -883,10 +878,10 @@ void anet_directory_cl(
 		snprintf(
 			(char*)ev.ext.registr.title, 64, "%s", opts.ident);
 		a12_channel_enqueue(S, &ev);
-		a12_request_dynamic_resource(S, nk, opts.dir_source, opts.dir_source_tag);
+		a12_request_dynamic_resource(S, nk, false, opts.dir_source, opts.dir_source_tag);
 	}
 	else
-		a12int_request_dirlist(S, !opts.die_on_list);
+		a12int_request_dirlist(S, !opts.die_on_list || opts.applname[0]);
 
 	anet_directory_ioloop(&ioloop);
 }

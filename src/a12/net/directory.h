@@ -9,6 +9,8 @@ struct anet_dirsrv_opts {
 	int basedir;
 	struct appl_meta dir;
 	size_t dir_count;
+
+	bool allow_tunnel;
 	const char* allow_src;
 	const char* allow_dir;
 	const char* allow_appl;
@@ -42,10 +44,12 @@ struct anet_dircl_opts {
 	bool block_state;
 	bool block_log;
 	bool keep_appl;
+	bool request_tunnel;
 
 	char ident[16];
 	void (*dir_source)(struct a12_state*, struct a12_dynreq req, void* tag);
 	void *dir_source_tag;
+	uint16_t source_port;
 
 	struct appl_meta outapp;
 

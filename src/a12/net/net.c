@@ -55,12 +55,19 @@ static struct {
 	struct anet_dircl_opts dircl;
 	char* trust_domain;
 	char* path_self;
+	char* outbound_tag;
 
 	volatile bool flag_rescan;
 } global = {
 	.backpressure_soft = 2,
 	.backpressure = 6,
-	.directory = -1
+	.directory = -1,
+	.outbound_tag = "default",
+	.dircl = {
+		.source_port = 6681
+	.dirsrv = {
+		.allow_tunnel = true
+	}
 };
 
 static const char* trace_groups[] = {
@@ -479,14 +486,15 @@ static struct pk_response key_auth_dir(uint8_t pk[static 32], void* tag)
  * if the directory is trying to MITM. Since the Kpub is announced via the
  * directory the source can fire up another client and check that the announced
  * key is the same as the one it actually announced.
- *
- * At the samw time the sink can provide a different Kpub to the directory than
- * it is using to request to open the source in order to be able to compartment
- * keys used for directory access vs discovering sources.
  */
 
-	uint8_t my_private_key[32] = {0};
-	a12_set_session(&auth, pk, ds->aopts->opts->priv_ephem_key);
+	char* tmp;
+	uint16_t tmpport;
+	uint8_t my_private_key[32];
+	a12helper_keystore_hostkey(
+		global.outbound_tag, 0, my_private_key, &tmp, &tmpport);
+	a12_set_session(&auth, pk, my_private_key);
+
 	return auth;
 }
 
@@ -566,15 +574,11 @@ static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
  * the sink in order to let them differentiate the identity it uses with the
  * directory versus the one it uses with us. */
 		snprintf(ds->aopts->opts->secret, 32, "%s", a.authk);
-		ds->aopts->opts->force_ephemeral_k = true;
 		char* outhost;
 		uint16_t outport;
-		a12helper_keystore_hostkey("default", 0,
-			ds->aopts->opts->priv_ephem_key, &outhost, &outport);
 
 		ds->aopts->opts->pk_lookup = key_auth_dir;
 		ds->aopts->opts->pk_lookup_tag = ds;
-		memcpy(ds->aopts->opts->expect_ephem_pubkey, ds->req.pubk, 32);
 
 /* A subtle difference here is that the the private key we should use in the
  * setup (here same for ephem and real) is the one used to outbound connect to
@@ -811,6 +815,7 @@ static bool tag_host(struct anet_options* anet, char* hoststr, const char** err)
 
 	*toksep = '\0';
 	anet->key = hoststr;
+	global.outbound_tag = hoststr;
 	anet->keystore.type = A12HELPER_PROVIDER_BASEDIR;
 	anet->keystore.directory.dirfd = a12helper_keystore_dirfd(err);
 
@@ -860,12 +865,15 @@ static bool show_usage(const char* msg)
 	"\t --ident name  \t When attaching as a source or directory, identify as [name]\n"
 	"\t --keep-alive  \t Keep connection alive and print changes to the directory\n"
 	"\t --push-appl s \t Push [s] from APPLBASE to the server\n"
+	"\t --tunnel      \t Default request tunnelling as source/sink connection\n"
 	"\t --block-log   \t Don't attempt to forward script errors or crash logs\n"
+	"\t --source-port \t When sourcing use this port for listening\n"
 	"\t --block-state \t Don't attempt to synch state before/after running appl\n\n"
 	"Directory server options: \n"
 	"\t --allow-src  s \t Let clients in trust group [s, all=*] register as sources\n"
 	"\t --allow-appl s \t Let clients in trust group [s, all=*] update appls and resources\n"
 	"\t --allow-dir  s \t Let clients in trust group [s, all=*] register as directories\n\n"
+	"\t --block-tunnel \t Disallow tunneling traffic between isolated sources/sinks\n\n"
 	"Environment variables:\n"
 	"\tARCAN_STATEPATH\t Used for keystore and state blobs (sensitive)\n"
 #ifdef WANT_H264_ENC
@@ -1019,6 +1027,12 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 				return show_usage("--allow-dir: missing group tag name");
 			global.dirsrv.allow_dir = argv[i];
 		}
+		else if (strcmp(argv[i], "--tunnel") == 0){
+			global.dircl.request_tunnel = true;
+		}
+		else if (strcmp(argv[i], "--block-tunnel") == 0){
+			global.dirsrv.allow_tunnel = false;
+		}
 		else if (strcmp(argv[i], "--keep-alive") == 0){
 			global.keep_alive = true;
 		}
@@ -1150,6 +1164,15 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		else if (strcmp(argv[i], "--") == 0){
 			opts->opts->local_role = ROLE_SOURCE;
 			return i;
+		}
+		else if (strcmp(argv[i], "--source-port") == 0){
+			i++;
+			if (i == argc)
+				return show_usage("--source-port without port argument");
+
+			global.dircl.source_port = (uint16_t) strtoul(argv[i], NULL, 10);
+			if (!global.dircl.source_port)
+				return show_usage("--source-port invalid");
 		}
 		else if (strcmp(argv[i], "--directory") == 0){
 			if (!getenv("ARCAN_APPLBASEPATH")){
