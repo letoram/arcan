@@ -65,6 +65,7 @@ static struct {
 	.outbound_tag = "default",
 	.dircl = {
 		.source_port = 6681
+	},
 	.dirsrv = {
 		.allow_tunnel = true
 	}
