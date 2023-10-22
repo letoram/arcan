@@ -194,17 +194,39 @@ static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
 						.space = 5
 					}
 				};
-				memcpy(to_src.ext.netstate.name, C->pubk, 32);
 
 /* here is the heuristic spot for setting up NAT hole punching, or allocating a
- * tunnel or .. right now just naively forward IP:port, set pubk and secret if
- * needed. This could ideally be arranged so that the ordering (listening
- * first) delayed locally based on the delta of pings, but then we'd need that
+ * tunnel or .. */
+				arcan_event to_sink = cur->endpoint;
+
+/* for now blindly accept tunneling if requested and permitted */
+				if (arg_lookup(entry, "tunnel", 0, NULL)){
+					if (!active_clients.opts->allow_tunnel)
+						goto send_fail;
+
+					int sv[2];
+					if (0 != socketpair(AF_UNIX, SOCK_STREAM, 0, sv))
+						goto send_fail;
+					arcan_event ts = {
+						.category = EVENT_TARGET,
+						.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
+						.tgt.message = ".tun"
+					};
+					shmifsrv_enqueue_event(cur->C, &ts, sv[0]);
+					shmifsrv_enqueue_event(C->C, &ts, sv[1]);
+					close(sv[0]);
+					close(sv[1]);
+				}
+
+				memcpy(to_src.ext.netstate.name, C->pubk, 32);
+
+/*
+ * This could ideally be arranged so that the ordering (listening first)
+ * delayed locally based on the delta of pings, but then we'd need that
  * estimate from the state machine as well. It would at least reduce the
  * chances of the outbound connection having to retry if it received the
  * trigger first. The lazy option is to just delay the outbound connection in
  * the dir_cl for the time being. */
-				arcan_event to_sink = cur->endpoint;
 
 /* Another protocol nuance here is that we're supposed to set an authk secret
  * for the outer ephemeral making it possible to match the connection to our
@@ -360,7 +382,7 @@ static void register_source(struct dircl* C, struct arcan_event ev)
 {
 	if (!a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_src)){
 		unsigned char* b64 = a12helper_tob64(C->pubk, 32, &(size_t){0});
-		
+
 		A12INT_DIRTRACE(
 			"dirsv:kind=reject_register:title=%s:role=%d:eperm:key=%s",
 			ev.ext.registr.title,

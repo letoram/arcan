@@ -213,7 +213,7 @@ static void set_log_trace()
 	FILE* fpek = fopen(buf, "w+");
 
 	shmifint_set_log_device(NULL, fpek);
-
+	setvbuf(fpek, NULL, _IOLBF, 0);
 	if (fpek){
 		a12_set_trace_level(a12_trace_targets, fpek);
 	}
@@ -506,7 +506,7 @@ static void dir_a12srv(struct a12_state* S, int fd, void* tag)
 
 /* should not be able to happen at this stage, hello won't go through without
  * the right authk and if you have that you're either source, sink or dirsrv
- * and both sink and dirsrv would be able to math the pubk. */
+ * and both sink and dirsrv would be able to match the pubk. */
 	char* msg;
 	if (!anet_authenticate(S, fd, fd, &msg)){
 		a12int_trace(A12_TRACE_SECURITY, "authentication_failed");
@@ -534,6 +534,22 @@ static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
 	struct dirstate* ds = tag;
 	ds->req = a;
 
+/* main difference here is that we need to wrap the packets coming in and out
+ * of the forked child, thus create a socketpair, set one part of the pair as
+ * the a12_channel bstream sink and the other with the supported read into
+ * state part. */
+	int pre_fd = -1;
+	int sv[2];
+
+	if (a.proto == 4){
+		if (0 != socketpair(AF_UNIX, SOCK_STREAM, 0, sv)){
+			a12int_trace(A12_TRACE_DIRECTORY, "tunnel_socketpair_fail");
+			return;
+		}
+		a12_set_tunnel_sink(S, 1, sv[0]);
+		pre_fd = sv[1];
+	}
+
 	pid_t fpid = fork();
 
 /* Here, we fork() into listening on our registered port, this is the same as
@@ -543,9 +559,29 @@ static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
  *
  * When things are a bit more robust, switch to the fork-fexec self approach
  * anyhow for IPC cleanliness, it's just inheriting the shmifsrc-client setup
- * that is a bit of a hassle. */
-
+ * that is a bit of a hassle. The crutch there is the normal one - we can't
+ * just build a shmifsrv context from the memory page alone due to the transfer
+ * socket (doable) and the semaphores where OSX compatibility comes back to
+ * bite us again and again. Assuming Macs won't ever get any real OS-dev work
+ * again, the option would be to let them take the punch and swap to blocking
+ * on the socket and send [a/v/e] unlocks into local mutexes that way because
+ * this is getting ridiculous.
+ *
+ * On the other hand, the main use for this dance is to let the same shmif
+ * context be re-used with the next directory open request. This can be
+ * achieved by firing up a new connection point (so -s random), setting that as
+ * the fallback and letting the tunnel pipe loss capture that.
+ */
 	if (fpid == 0){
+		struct sigaction oldsig;
+		sigaction(SIGINT, &(struct sigaction){}, &oldsig);
+		close(sv[0]);
+		close(ds->fd);
+
+		if (fork()){
+			exit(EXIT_SUCCESS);
+		}
+
 /* Trust the directory server provided secret.
  *
  * A nuanced option here is if to set the accept_n_pk_unknown to 1 or not.
@@ -588,7 +624,23 @@ static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
  * host so that we don't try to bind the old outbound ip. */
 		char* errmsg = NULL;
 		ds->aopts->host = NULL;
-		anet_listen(ds->aopts, &errmsg, dir_a12srv, ds);
+
+/* With tunnel mode we have a socketpair pre-created, where one end is set as
+ * the tunnel-channel sink for the a12_state machine to the directory, and
+ * the other is fed into the channel.
+ *
+ * Without tunnel-mode we listen for an inbound connection (or make an outbound
+ * or send an outbound then listen for an inbound). The mentally more complex
+ * dance is what happens if we tunnel through a directory that we tunnel ..
+ */
+		if (pre_fd == -1){
+			anet_listen(ds->aopts, &errmsg, dir_a12srv, ds);
+		}
+		else {
+			struct a12_state* ast = a12_server(ds->aopts->opts);
+			dir_a12srv(ast, pre_fd, ds);
+		}
+
 		fprintf(stderr, "%s", errmsg ? errmsg : "");
 		exit(EXIT_SUCCESS);
 	}
@@ -599,19 +651,17 @@ static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
 		close(ds->fd);
 		return;
 	}
+/* In order for tunnel mode to work we need to keep the directory server and
+ * the ioloop alive. If we inherit a -S due to an ARCAN_CONNPATH or devicehint
+ * keeping the shmif-context in order to re-share it is also a possibility. */
 	else {
-/* just ignore and return to caller, we might need a monitoring channel for
- * multiplexing in tunnel- traffic - and in those cases we need to keep the
- * ds->fd (directory connection) alive. the same goes for --exec mode, as we
- * can supply more clients through the same directory setup we can keep it
- * alive, but that has more considerations -- how many do we want? the other
- * connections might require tunneling, so at first it is better to just go 1:1
- * for dirsrv connection and --exec pass. */
+		if (pre_fd != -1){
+			close(pre_fd);
+		}
+
 		a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d", (int)fpid);
-		shmifsrv_free(ds->shmif, SHMIFSRV_FREE_LOCAL);
-		shutdown(ds->fd, SHUT_RDWR);
+/* child double-forked so just collect the first */
 		wait(NULL);
-		close(ds->fd);
 	}
 }
 

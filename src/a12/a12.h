@@ -307,7 +307,7 @@ a12_enqueue_blob(
  * request_dynamic_resource when there is no direct / usable network path.
  * Returns false if the channel isn't mapped for that kind of use. */
 bool
-	a12_write_tunnel(struct a12_state*, uint8_t chid, const char* const, size_t);
+	a12_write_tunnel(struct a12_state*, uint8_t chid, const uint8_t* const, size_t);
 
 bool
 	a12_set_tunnel_sink(struct a12_state*, uint8_t chid, int fd);

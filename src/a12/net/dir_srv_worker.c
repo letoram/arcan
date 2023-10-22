@@ -32,6 +32,8 @@
 static struct arcan_shmif_cont shmif_parent_process;
 static struct a12_state* active_client_state;
 static struct appl_meta* pending_index;
+static struct ioloop_shared* ioloop_shared;
+static bool pending_tunnel;
 
 static void do_event(
 	struct a12_state* S, struct arcan_shmif_cont* C, struct arcan_event* ev);
@@ -294,9 +296,8 @@ static void bchunk_event(struct a12_state *S,
  * ones are not difficult as such but evaluate the need experimentally first. */
 	else if (strcmp(ev->tgt.message, ".tun") == 0){
 		a12int_trace(A12_TRACE_DIRECTORY, "worker:tunnel_acquired:channel=1");
-		S->channels[1].active = true;
-		S->channels[1].unpack_state.bframe.tmp_fd =
-			arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true);
+		a12_set_tunnel_sink(S, 1, arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true));
+		pending_tunnel = true;
 	}
 }
 
@@ -353,9 +354,16 @@ static void do_event(
 
 		if (a12_remote_mode(S) == ROLE_SOURCE){
 			a12int_trace(A12_TRACE_DIRECTORY, "open_to_src");
+
 			struct a12_dynreq dynreq = (struct a12_dynreq){0};
 			snprintf(dynreq.authk, 12, "%s", cbt->secret);
 			memcpy(dynreq.pubk, ev->ext.netstate.name, 32);
+
+			if (pending_tunnel){
+				a12int_trace(A12_TRACE_DIRECTORY, "diropen:tunnel_src");
+				dynreq.proto = 4;
+				pending_tunnel = false;
+			}
 
 			a12_supply_dynamic_resource(S, dynreq);
 			return;
@@ -567,16 +575,14 @@ retry_block:
 
 		_Static_assert(sizeof(rq.host) == 46, "wrong host-length");
 
-/* reserved .tun as hostname is to tell that we have set a channel as tunnel,
- * then spawn a processing thread that reads from the tunnel and injects into
- * the state machine. */
-		if (strcmp(repev.ext.netstate.name, ".tun") == 0){
-			a12int_trace(A12_TRACE_DIRECTORY, "diropen:tunnel");
-			rq.proto = 3;
-			pthread_t pth;
-			pthread_attr_t pthattr;
-			pthread_attr_init(&pthattr);
-			pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+		/* if there is a tunnel pending (would arrive as a bchunkstate during
+		 * block_synch_request) tag the proto accordingly and spawn our feeder with
+		 * the src descriptor already being set in the thread. */
+		if (pending_tunnel){
+			a12int_trace(A12_TRACE_DIRECTORY, "diropen:tunnel_sink");
+			rq.proto = 4;
+			*out = rq;
+			pending_tunnel = false;
 			return rv;
 		}
 
@@ -600,10 +606,9 @@ void anet_directory_srv(
 
 	netopts->pk_lookup = key_auth_worker;
 	struct anet_dirsrv_opts diropts = {};
-
 	struct arg_arr* args;
+
 	a12int_trace(A12_TRACE_DIRECTORY, "notice:directory-ready:pid=%d", getpid());
-	setenv("ARCAN_SHMIF_DEBUG", "1", true);
 
 	shmif_parent_process =
 		arcan_shmif_open(
@@ -671,6 +676,9 @@ void anet_directory_srv(
 		.lock = PTHREAD_MUTEX_INITIALIZER,
 		.cbt = &cbt,
 	};
+
+	ioloop_shared = &ioloop;
+
 
 /* this will loop until client shutdown */
 	anet_directory_ioloop(&ioloop);
