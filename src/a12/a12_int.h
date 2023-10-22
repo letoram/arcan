@@ -137,6 +137,7 @@ struct binary_frame {
 	int tmp_fd;
 	int type;
 	bool active;
+	bool tunnel;
 	uint64_t size;
 	uint32_t identifier;
 	uint8_t checksum[16];
@@ -354,7 +355,8 @@ void a12int_stream_fail(struct a12_state* S, uint8_t ch, uint32_t id, int fail);
 void a12int_stream_ack(struct a12_state* S, uint8_t ch, uint32_t id);
 
 void a12int_append_out(
-	struct a12_state* S, uint8_t type, uint8_t* out, size_t out_sz,
+	struct a12_state* S, uint8_t type,
+	const uint8_t* const out, size_t out_sz,
 	uint8_t* prepend, size_t prepend_sz);
 
 void a12int_step_vstream(struct a12_state* S, uint32_t id);

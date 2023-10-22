@@ -278,7 +278,7 @@ static void send_hello_packet(struct a12_state* S,
  * reordering would then still need to account for rekeying.
  */
 void a12int_append_out(struct a12_state* S, uint8_t type,
-	uint8_t* out, size_t out_sz, uint8_t* prepend, size_t prepend_sz)
+	const uint8_t* const out, size_t out_sz, uint8_t* prepend, size_t prepend_sz)
 {
 	if (S->state == STATE_BROKEN)
 		return;
@@ -500,6 +500,10 @@ static struct a12_state* a12_setup(struct a12_context_options* opt, bool srv)
 		.server = srv
 	};
 
+	for (size_t i = 0; i <= 255; i++){
+		res->channels[i].unpack_state.bframe.tmp_fd = -1;
+	}
+
 	size_t len = 0;
 	res->opts = DYNAMIC_MALLOC(sizeof(struct a12_context_options));
 	if (!res->opts){
@@ -535,6 +539,7 @@ static struct a12_state* a12_setup(struct a12_context_options* opt, bool srv)
 
 	res->cookie = 0xfeedface;
 	res->out_stream = 1;
+	res->notify_dynamic = true;
 
 	return res;
 }
@@ -2184,7 +2189,7 @@ static void process_blob(struct a12_state* S)
 	}
 
 	struct arcan_shmif_cont* cont = S->channels[S->in_channel].cont;
-	if (!cont && !S->binary_handler){
+	if (!cont && !S->binary_handler && !cbf->tunnel){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EINVAL:"
 			"ch=%d:message=no segment or bhandler mapped", S->in_channel);
 		reset_state(S);
@@ -2288,7 +2293,7 @@ static void process_blob(struct a12_state* S)
 	if (free_buf)
 		DYNAMIC_FREE(buf);
 
-	if (!S->binary_handler)
+	if (!S->binary_handler || cbf->tunnel)
 		return;
 
 /* is it a streaming transfer or a known size? */
@@ -3448,18 +3453,52 @@ void a12_supply_dynamic_resource(struct a12_state* S, struct a12_dynreq r)
 }
 
 bool
-	a12_write_tunnel(
-		struct a12_state* S, uint8_t chid, const char* const buf, size_t buf_sz)
+	a12_write_tunnel(struct a12_state* S,
+		uint8_t chid, const uint8_t* const buf, size_t buf_sz)
 {
-	return false;
+	if (!buf_sz)
+		return false;
+
+	if (!S->channels[chid].active){
+		a12int_trace(A12_TRACE_BTRANSFER, "write_tunnel:bad_channel=%"PRIu8, chid);
+		return false;
+	}
+
+/* tunnel packet is a simpler form of binary stream with no rampup,
+ * multiplexing, checksum, compression, cancellation, ... just straight into
+ * channel */
+	uint8_t outb[1 + 4 + 2] = {0};
+	outb[0] = chid;
+	pack_u16(buf_sz, &outb[5]);
+	a12int_append_out(S, STATE_BLOB_PACKET, buf, buf_sz, outb, sizeof(outb));
+
+	a12int_trace(
+		A12_TRACE_BTRANSFER, "write_tunnel:ch=%"PRIu8":nb=%zu", chid, buf_sz);
+	return true;
 }
 
 bool
 	a12_set_tunnel_sink(struct a12_state* S, uint8_t chid, int fd)
 {
-	if (!S->channels[chid].active)
+	if (S->channels[chid].active){
+		a12int_trace(A12_TRACE_DIRECTORY, "swap_sink:chid=%"PRIu8, chid);
+		if (0 < S->channels[chid].unpack_state.bframe.tmp_fd)
+			close(S->channels[chid].unpack_state.bframe.tmp_fd);
 		return false;
+	}
 
-	S->channels[chid].unpack_state.bframe.tmp_fd = fd;
+	if (-1 == fd){
+		S->channels[chid].active = false;
+		S->channels[chid].unpack_state.bframe.tunnel = false;
+		S->channels[chid].unpack_state.bframe.tmp_fd = -1;
+		return true;
+	}
+
+	S->channels[chid].active = true;
+	S->channels[chid].unpack_state.bframe = (struct binary_frame){
+		.tmp_fd = fd,
+		.tunnel = true,
+		.active = true
+	};
 	return true;
 }

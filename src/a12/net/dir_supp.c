@@ -32,11 +32,12 @@
 void anet_directory_ioloop(struct ioloop_shared* I)
 {
 	int errmask = POLLERR | POLLNVAL | POLLHUP;
-	struct pollfd fds[3] =
+	struct pollfd fds[4] =
 	{
 		{.fd = I->userfd, .events = POLLIN | errmask},
 		{.fd = I->fdin, .events = POLLIN | errmask},
-		{.fd = -1, .events = POLLOUT | errmask}
+		{.fd = -1, .events = POLLOUT | errmask},
+		{.fd = -1, .events = POLLIN | errmask},
 	};
 
 	uint8_t inbuf[9000];
@@ -52,17 +53,23 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 		fds[2].fd = I->fdout;
 
 /* regular simple processing loop, wait for DIRECTORY-LIST command */
-	while (a12_ok(I->S) && -1 != poll(fds, 3, -1)){
-		if ((fds[0].revents | fds[1].revents | fds[2].revents) & errmask){
+	while (a12_ok(I->S) && -1 != poll(fds, 4, -1)){
+		if ((fds[0].revents | fds[1].revents | fds[2].revents | fds[3].revents) & errmask){
 			if (fds[0].revents & errmask){
 				I->on_userfd(I, false);
 			}
-
 			break;
 		}
 
 		if (fds[0].revents & POLLIN){
 			I->on_userfd(I, true);
+		}
+
+		if (fds[3].revents & POLLIN){
+			uint8_t buf[8832];
+			int fd = I->S->channels[1].unpack_state.bframe.tmp_fd;
+			ssize_t sz = read(fd, buf, sizeof(buf));
+			a12_write_tunnel(I->S, 1, buf, (size_t) sz);
 		}
 
 		if ((fds[2].revents & POLLOUT) && outbuf_sz){
@@ -75,6 +82,7 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 
 		if (fds[1].revents & POLLIN){
 			ssize_t nr = recv(I->fdin, inbuf, 9000, 0);
+
 			if (-1 == nr && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR){
 				a12int_trace(A12_TRACE_DIRECTORY, "shutdown:reason=rw_error");
 				break;
@@ -92,7 +100,7 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 				if (new_ts != ts){
 					ts = new_ts;
 					if (!I->on_directory(I, dir))
-						return;
+						break;
 				}
 			}
 		}
@@ -103,9 +111,12 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 				break;
 		}
 
-		fds[0].revents = fds[1].revents = fds[2].revents = 0;
+		fds[0].revents = fds[1].revents = fds[2].revents = fds[3].revents = 0;
 		fds[2].fd = outbuf_sz ? I->fdout : -1;
 		fds[0].fd = I->userfd;
+		fds[3].fd =
+			I->S->channels[1].unpack_state.bframe.tunnel ?
+			I->S->channels[1].unpack_state.bframe.tmp_fd : -1;
 	}
 }
 

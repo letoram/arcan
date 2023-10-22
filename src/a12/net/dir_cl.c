@@ -45,6 +45,48 @@ struct appl_runner_state {
 	int p_stdin;
 };
 
+struct tunnel_state {
+	struct a12_context_options opts;
+	struct a12_dynreq req;
+	int fd;
+};
+
+static void* tunnel_runner(void* t)
+{
+	struct tunnel_state* ts = t;
+	char* err = NULL;
+	struct a12_state* S = a12_client(&ts->opts);
+
+	if (anet_authenticate(S, ts->fd, ts->fd, &err)){
+		a12helper_a12srv_shmifcl(NULL, S, NULL, ts->fd, ts->fd);
+	}
+	else {
+	}
+
+	shutdown(ts->fd, SHUT_RDWR);
+	close(ts->fd);
+	free(err);
+	free(ts);
+
+	return NULL;
+}
+
+static void detach_tunnel_runner(
+	int fd, struct a12_context_options* aopt, struct a12_dynreq* req)
+{
+	struct tunnel_state* ts = malloc(sizeof(struct tunnel_state));
+	ts->opts = *aopt;
+	ts->req = *req;
+	ts->opts.pk_lookup_tag = &ts->req;
+	ts->fd = fd;
+
+	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	pthread_create(&pth, &pthattr, tunnel_runner, ts);
+}
+
 /*
  * The processing here is a bit problematic. One is that we still use a socket
  * pair rather than a shmif connection. If this connection is severed or the
@@ -82,6 +124,8 @@ static struct pk_response key_auth_fixed(uint8_t pk[static 32], void* tag)
  */
 static void on_source(struct a12_state* S, struct a12_dynreq req, void* tag)
 {
+	struct ioloop_shared* I = tag;
+
 /* security:
  * disable the ephemeral exchange for now, this means the announced identity
  * when we connect to the directory server will be the one used for the x25519
@@ -96,6 +140,7 @@ static void on_source(struct a12_state* S, struct a12_dynreq req, void* tag)
 
 	char port[sizeof("65535")];
 	snprintf(port, sizeof(port), "%"PRIu16, req.port);
+	snprintf(a12opts.secret, sizeof(a12opts.secret), "%s", req.authk);
 
 	struct anet_options anet = {
 		.retry_count = 10,
@@ -104,7 +149,18 @@ static void on_source(struct a12_state* S, struct a12_dynreq req, void* tag)
 		.port = port
 	};
 
-	snprintf(a12opts.secret, sizeof(a12opts.secret), "%s", req.authk);
+	if (req.proto == 4){
+		int sv[2];
+		if (0 != socketpair(AF_UNIX, SOCK_STREAM, 0, sv)){
+			a12int_trace(A12_TRACE_DIRECTORY, "tunnel_socketpair_fail");
+			return;
+		}
+
+		a12_set_tunnel_sink(S, 1, sv[0]);
+		detach_tunnel_runner(sv[1], &a12opts, &req);
+		return;
+	}
+
 	struct anet_cl_connection con = anet_cl_setup(&anet);
 	if (con.errmsg || !con.state){
 		fprintf(stderr, "%s", con.errmsg ? con.errmsg : "broken connection state\n");

@@ -112,6 +112,7 @@ struct ioloop_shared {
 	int fdin;
 	int fdout;
 	int userfd;
+
 	pthread_mutex_t lock;
 	struct a12_state *S;
 	volatile bool shutdown;
@@ -127,5 +128,6 @@ struct ioloop_shared {
 	void* tag;
 };
 
+void anet_directory_tunnel_thread(struct ioloop_shared* ios, struct a12_state* S);
 void anet_directory_ioloop(struct ioloop_shared* S);
 #endif
