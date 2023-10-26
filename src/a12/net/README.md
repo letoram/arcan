@@ -71,10 +71,39 @@ in the path. On normal/default setups this is supported by appl output being
 directed to a separate 'appltemp' namespace by default, letting applbase be
 read-only.
 
-If the public key a client is trusted (in keystore), it can also be used as a
-state store for storing/restoring the appl execution state. Other (planned)
-modes of operation for this feature is to act as a pub/sub for sources/sinks/
-other directories to find eachother.
+If the public key a client uses is trusted (in keystore), it can also be used
+as a state store for storing/restoring the appl execution state. It can also
+be used to dynamically update the hosted appl, letting connected clients switch
+automatically:
+
+    arcan-net --push-appl myappl @myserver
+
+It is also possible to share access to arcan clients dynamically:
+
+    A12_IDENT=me ARCAN_CONNPATH=a12://myserver@ /usr/bin/afsrv_terminal
+
+Would expose a single instance of 'afsrv\_terminal' as 'me', letting someone
+else access it:
+
+    arcan-net --keep-alive @myserver /me
+
+The above would connect to the directory, wait for the 'me' source to be
+announced as available and request to source it.
+
+This retains end to end encryption of the data stream, and can be used to learn
+about public keys from this trusted third party in order to reconnect with
+their owners them through some other means later.
+
+The default form of this creates a direct sink to source outbound connection.
+In cases where that network traffic is not possible, the directory server can
+act as a tunnel:
+
+    arcan-net --tunnel
+
+This is permitted by default by a directory server but can be toggled off with
+--block-tunnel:
+
+    arcan-net --directory --block-tunnel -l 6680
 
 # Cache
 
@@ -249,8 +278,8 @@ Milestone 3 - big stretch (0.6.x)
 	- [x] enumerate / fetch / execute appl
 	- [x] register as source
 	- [x] register as sink
-	- [ ] notify on new source/sink
-	- [ ] relay a12 traffing between source/sink
+	- [x] notify on new source/sink
+	- [x] relay a12 traffing between source/sink
 	- [ ] NAT-punch between source/sink
 	- [x] state store/restore
 - [x] Add to afsrv\_net (x)

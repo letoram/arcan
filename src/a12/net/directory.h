@@ -36,6 +36,8 @@ struct anet_dirsrv_opts {
 struct directory_meta;
 struct anet_dircl_opts {
 	int basedir;
+	char basedir_path[PATH_MAX];
+
 	char applname[16];
 	uint16_t applid;
 
@@ -105,6 +107,8 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
  * and forward on_event, on_directory, on_userfd
  */
 bool build_appl_pkg(const char* name, struct appl_meta* dst, int dirfd);
+bool extract_appl_pkg(FILE* fin, int dirfd, const char* basename, const char** msg);
+
 FILE* file_to_membuf(FILE* applin, char** out, size_t* out_sz);
 
 struct ioloop_shared;

@@ -43,6 +43,8 @@
  * directory mode notification of appl updates and sources coming / leaving
  * directory mode registration of dynamic sinks
  * directory mode sourcing dynamic sinks (sink-inbound only)
+ * directory mode source-sink pairing 'reachable source' and 'tunnel' transfer modes
+ * changed packaging format for appls
 
 ## Terminal
  * SGR reset fix, add CNL / CPL

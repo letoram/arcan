@@ -695,6 +695,23 @@ static struct appl_meta* find_identifier(struct appl_meta* base, unsigned id)
 	return NULL;
 }
 
+static void pair_enqueue(
+	struct a12_state* S, struct arcan_shmif_cont *C, struct arcan_event ev)
+{
+	struct evqueue_entry* rep = malloc(sizeof(struct evqueue_entry));
+
+	if (shmif_block_synch_request(C, ev, rep,
+		EVENT_EXTERNAL,
+		EVENT_EXTERNAL_STREAMSTATUS,
+		EVENT_EXTERNAL,
+		EVENT_EXTERNAL_STREAMSTATUS)){
+			run_evqueue(S, C, rep);
+	}
+
+	free_evqueue(rep);
+	a12_channel_enqueue(S, &ev);
+}
+
 static int request_parent_resource(
 	struct a12_state* S, struct arcan_shmif_cont *C, const char* id, bool out)
 {
@@ -765,32 +782,34 @@ static struct a12_bhandler_res srv_bevent(
 		a12int_trace(
 			A12_TRACE_DIRECTORY, "kind=status:completed:identifier=%"PRIu16, M.identifier);
 		if (cbt->in_transfer && M.identifier == cbt->transfer_id){
+			struct arcan_event sack = (struct arcan_event){
+				.category = EVENT_EXTERNAL,
+				.ext.kind = EVENT_EXTERNAL_STREAMSTATUS,
+				.ext.streamstat = {
+					.completion = 1.0,
+					.identifier = M.identifier
+				}
+			};
+
+/* with low enough latency and high enough server load this enqueue can be triggered
+ * while the event is still in flight, and we shut down before the parent gets to ack
+ * the update. */
 			cbt->in_transfer = false;
-			arcan_shmif_enqueue(cbt->C,
-					&(struct arcan_event){
-						.category = EVENT_EXTERNAL,
-						.ext.kind = EVENT_EXTERNAL_STREAMSTATUS,
-						.ext.streamstat = {
-							.completion = 1.0,
-							.identifier = M.identifier
-						}
-					}
-				);
+			pair_enqueue(cbt->S, cbt->C, sack);
 		}
 	break;
 	case A12_BHANDLER_CANCELLED:
 		if (cbt->in_transfer && M.identifier == cbt->transfer_id){
-			cbt->in_transfer = false;
-			arcan_shmif_enqueue(cbt->C,
-				&(struct arcan_event){
-					.category = EVENT_EXTERNAL,
-					.ext.kind = EVENT_EXTERNAL_STREAMSTATUS,
-					.ext.streamstat = {
-						.completion = -1,
-						.identifier = M.identifier
-					}
+			struct arcan_event sack = (struct arcan_event){
+				.category = EVENT_EXTERNAL,
+				.ext.kind = EVENT_EXTERNAL_STREAMSTATUS,
+				.ext.streamstat = {
+					.completion = -1,
+					.identifier = M.identifier
 				}
-			);
+			};
+			cbt->in_transfer = false;
+			pair_enqueue(cbt->S, cbt->C, sack);
 		}
 		else
 			a12int_trace(
