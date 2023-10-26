@@ -3059,6 +3059,8 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	pid_t pid = fork();
 	if (pid == 0){
 		if (0 == fork()){
+			sigaction(SIGINT, &(struct sigaction){}, NULL);
+
 			if (weak){
 				execlp("arcan-net", "arcan-net", "-X",
 					"--ident", ident, "--soft-auth",

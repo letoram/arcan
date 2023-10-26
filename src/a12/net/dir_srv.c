@@ -501,6 +501,7 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
  * rebuilding the index and notifying listeners though - identity action
  * so volatile is no concern */
 			pthread_mutex_unlock(&active_clients.sync);
+			A12INT_DIRTRACE("dirsv:bchunk_state:appl_update=%d", cur->identifier);
 			anet_directory_shmifsrv_set(
 				(struct anet_dirsrv_opts*) active_clients.opts);
 		}
@@ -836,7 +837,9 @@ static void* dircl_process(void* P)
 				handle_bchunk_req(C, (char*) ev.ext.bchunk.extensions, ev.ext.bchunk.input);
 			}
 
+/* bounce-back ack streamsatus */
 			else if (ev.ext.kind == EVENT_EXTERNAL_STREAMSTATUS){
+				shmifsrv_enqueue_event(C->C, &ev, -1);
 				if (C->pending_stream){
 					C->pending_stream = false;
 					handle_bchunk_completion(C, ev.ext.streamstat.completion >= 1.0);

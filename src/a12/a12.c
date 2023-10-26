@@ -2256,7 +2256,7 @@ static void process_blob(struct a12_state* S)
 			return;
 		}
 		else
-			a12int_trace(A12_TRACE_BTRANSFER, "kind=zstd_state:%"PRIu64, decode);
+			a12int_trace(A12_TRACE_BTRANSFER, "kind=zstd_state:size=%"PRIu64, decode);
 
 		free_buf = true;
 	}

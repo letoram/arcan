@@ -180,8 +180,31 @@ static void on_source(struct a12_state* S, struct a12_dynreq req, void* tag)
 static void on_cl_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
+	struct ioloop_shared* I = tag;
+
 /* main use would be the appl- runner forwarding messages that direction */
 	a12int_trace(A12_TRACE_DIRECTORY, "event=%s", arcan_shmif_eventstr(ev, NULL, 0));
+
+/* we do have an ongoing transfer (--push-appl) that we wait for an OK or cancel
+ * before marking that we're ready to shutdown */
+	if (I->cbt->in_transfer &&
+		ev->category == EVENT_EXTERNAL &&
+		ev->ext.kind == EVENT_EXTERNAL_STREAMSTATUS){
+		if (ev->ext.streamstat.identifier == I->cbt->transfer_id){
+			a12int_trace(A12_TRACE_DIRECTORY,
+				"streamstatus:progress=%f:id=%f",
+				ev->ext.streamstat.completion,
+				(int)ev->ext.streamstat.identifier
+			);
+			if (ev->ext.streamstat.completion < 0 ||
+				ev->ext.streamstat.completion >= 0.999){
+				I->shutdown = true;
+			}
+		}
+		else
+			a12int_trace(A12_TRACE_DIRECTORY,
+				"streamstatus:unknown=%d", (int)ev->ext.streamstat.identifier);
+	}
 }
 
 static int cleancb(
@@ -209,31 +232,6 @@ static bool clean_appldir(const char* name, int basedir)
  * still would be to just keep this in a memfs like setup and rebuild the
  * scratch dir entirely */
 	return 0 == nftw(name, cleancb, 32, FTW_DEPTH | FTW_PHYS);
-}
-
-static bool ensure_appldir(const char* name, int basedir)
-{
-/* this should also ensure that we have a correct statedir
- * and try to retrieve it if possible */
-	if (-1 != basedir){
-		fchdir(basedir);
-	}
-
-	char buf[strlen(name) + sizeof(".new")];
-	if (atomic_load(&active_appls.n_active) > 0){
-		snprintf(buf, sizeof(buf), "%s.new", name);
-		name = buf;
-	}
-
-/* make sure we don't have a collision */
-	clean_appldir(name, basedir);
-
-	if (-1 == mkdir(name, S_IRWXU) || -1 == chdir(name)){
-		fprintf(stderr, "Couldn't create [basedir]/%s\n", name);
-		return false;
-	}
-
-	return true;
 }
 
 struct default_meta {
@@ -321,6 +319,8 @@ static pid_t exec_cpath(struct a12_state* S,
 		if (ctx->key)
 			setenv(ctx->key, ctx->val, 1);
 
+		fchdir(dir->clopt->basedir);
+
 		setsid();
 		setenv("XDG_RUNTIME_DIR", "./", 1);
 		dup2(pstdin[0], STDIN_FILENO);
@@ -358,7 +358,7 @@ static void swap_appldir(const char* name, int basedir)
 	}
 
 	nftw(name, cleancb, 32, FTW_DEPTH | FTW_PHYS);
-	rename(buf, name);
+	renameat(basedir, buf, basedir, name);
 }
 
 /*
@@ -621,6 +621,8 @@ void* appl_runner(void* tag)
 		cbt->state_in_complete = false;
 	}
 
+	swap_appldir(cbt->clopt->applname, cbt->clopt->basedir);
+
 /* appl_runner hooks into ios->userfd and attaches the event handler
  * which translates commands and eventually serializes / forwards state */
 	handover_exec(S, state_in);
@@ -650,19 +652,34 @@ static void mark_xfer_complete(struct ioloop_shared* I, struct a12_bhandler_meta
 
 /* signs of foul-play - we recieved completion notices without init.. */
 	if (!cbt->appl_out){
-		fprintf(stderr, "xfer completed on blob without an active state");
+		fprintf(stderr, "xfer completed on blob without an active state\n");
 		I->shutdown = true;
 		return;
 	}
 
-/* EOF the unpack action now */
-	if (pclose(cbt->appl_out) != EXIT_SUCCESS){
-		fprintf(stderr, "xfer download unpack failed");
+/* extract into 'newname' first, then we swap it before launch */
+	char newname[strlen(cbt->clopt->applname) + sizeof(".new")];
+	snprintf(newname, sizeof(newname), "%s.new", cbt->clopt->applname);
+	const char* msg;
+	if (!extract_appl_pkg(cbt->appl_out, cbt->clopt->basedir, newname, &msg)){
+		fprintf(stderr, "unpack appl failed: %s\n", msg);
 		I->shutdown = true;
 		return;
 	}
+
 	cbt->appl_out = NULL;
 	cbt->appl_out_complete = false;
+
+/* if there is already an appl running we wnat to swap it out, in order to do
+ * that we want to make sure there are no file-system races. this is done by
+ * sending a lock command, waiting for that to be acknowledged when in the
+ * handler rename. */
+	if (atomic_load(&active_appls.n_active) > 0){
+		fprintf(active_appls.active.pf_stdin, "lock\n");
+		kill(active_appls.active.pid, SIGUSR1);
+		fprintf(stderr, "signalling=%d\n", active_appls.active.pid);
+		return;
+	}
 
 /* Setup so it is threadable, though unlikely that useful versus just having
  * userfd and multiplex appl-a12 that way. It would be for the case of running
@@ -670,12 +687,6 @@ static void mark_xfer_complete(struct ioloop_shared* I, struct a12_bhandler_meta
  * work on the idea that if a new appl is received we should just force the
  * other end to reload. We do this by queueing the command, waking the watchdog
  * and waiting for it to reply to us via userfd */
-	if (atomic_load(&active_appls.n_active) > 0){
-		fprintf(active_appls.active.pf_stdin, "lock\n");
-		kill(active_appls.active.pid, SIGUSR1);
-		fprintf(stderr, "signalling=%d\n", active_appls.active.pid);
-		return;
-	}
 
 	atomic_fetch_add(&active_appls.n_active, 1);
 	active_appls.active.ios = I;
@@ -750,21 +761,26 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
 	 *
 	 * In the case of an appl we should verify that we wanted hot reloading,
 	 * ensure_appldir into new and set atomic-swap on completion. */
-		if (!ensure_appldir(cbt->clopt->applname, cbt->clopt->basedir)){
-			fprintf(stderr, "Couldn't create temporary appl directory\n");
-			return res;
+		if (-1 == cbt->clopt->basedir){
+			snprintf(cbt->clopt->basedir_path, PATH_MAX, "%s", "/tmp/appltemp-XXXXXX");
+			if (!mkdtemp(cbt->clopt->basedir_path)){
+				fprintf(stderr, "Couldn't build a temporary storage base\n");
+				return res;
+			}
+			cbt->clopt->basedir = open(cbt->clopt->basedir_path, O_DIRECTORY);
 		}
 
-		cbt->appl_out = popen("tar xfm -", "w");
-		res.fd = fileno(cbt->appl_out);
-		res.flag = A12_BHANDLER_NEWFD;
+		char filename[] = "appltemp-XXXXXX";
+		int appl_fd = mkstemp(filename);
+		if (-1 == appl_fd){
+			fprintf(stderr, "Couldn't create temporary appl- unpack store\n");
+			return res;
+		}
+		unlink(filename);
 
-/* these should really just enforce basedir and never use relative, it is
- * just some initial hack thing that survived. */
-		if (-1 != cbt->clopt->basedir)
-			fchdir(cbt->clopt->basedir);
-		else
-			chdir("..");
+		cbt->appl_out = fdopen(appl_fd, "rw");
+		res.flag = A12_BHANDLER_NEWFD;
+		res.fd = appl_fd;
 	}
 	break;
 
@@ -841,6 +857,9 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 				"push-no-match:name=%s", cbt->clopt->outapp.appl.name);
 		}
 
+		cbt->transfer_id = cbt->clopt->outapp.identifier;
+		cbt->in_transfer = true;
+
 		a12_enqueue_blob(I->S,
 			cbt->clopt->outapp.buf,
 			cbt->clopt->outapp.buf_sz,
@@ -849,7 +868,6 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 			cbt->clopt->outapp.appl.name
 		);
 
-		I->shutdown = true;
 		return true;
 	}
 
@@ -940,4 +958,12 @@ void anet_directory_cl(
 		a12int_request_dirlist(S, !opts.die_on_list || opts.applname[0]);
 
 	anet_directory_ioloop(&ioloop);
+
+/* if we went for setting up the basedir we clean it as well */
+	if (opts.basedir_path[0]){
+		rmdir(opts.basedir_path);
+		close(opts.basedir);
+		opts.basedir = -1;
+		opts.basedir_path[0] = '\0';
+	}
 }

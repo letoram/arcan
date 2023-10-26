@@ -506,9 +506,21 @@ static pid_t dircl_exec(struct a12_state* S,
 		buf, NULL                     /* applname */
 	};
 
+	char* envv[] = {
+		"PATH", getenv("PATH"),
+		"HOME", getenv("HOME"),
+		"TERM", getenv("TERM"),
+		"SHELL", getenv("SHELL"),
+		"ARCAN_LOGPATH", getenv("ARCAN_LOGPATH"),
+		"ARCAN_RESOURCEPATH", getenv("ARCAN_RESOURCEPATH"),
+		"ARCAN_STATEPATH", getenv("ARCAN_STATEPATH"),
+		"XDG_RUNTIME_DIR", getenv("XDG_RUNTIME_DIR"),
+		NULL,
+	};
+
 	int* fds[4] = {inf, outf, NULL, &pstdout[1]};
 	pid_t res =
-		arcan_shmif_handover_exec_pipe(C, client->segev, lwabin, argv, NULL, 0, fds, 4);
+		arcan_shmif_handover_exec_pipe(C, client->segev, lwabin, argv, envv, 0, fds, 4);
 
 	free(lwabin);
 	close(pstdout[1]);
@@ -545,6 +557,14 @@ void req_id(struct ioloop_shared* I, uint16_t identifier)
 	client->appl.id = identifier;
 	client->appl.applfd = -1;
 	client->appl.statefd = -1;
+}
+
+static void cl_got_dyn(struct a12_state* S, int type,
+	const char* petname, bool found, uint8_t pubk[static 32], void* tag)
+{
+	struct arcan_shmif_cont* C = arcan_shmif_primary(SHMIF_INPUT);
+/* convert back to NETSTATE and send to arcan */
+/* remember petname and pubk pairing */
 }
 
 /* returning false here would break us out of the ioloop */
@@ -588,6 +608,12 @@ static bool dircl_dirent(struct ioloop_shared* I, struct appl_meta* M)
 	return true;
 }
 
+static void find_source(struct arcan_shmif_cont* C, const char* msg)
+{
+/* Sweep the known set of sources and pair petname to pubk as we need
+ * to use the pubk in the source request. */
+}
+
 static void dircl_userfd(struct ioloop_shared* I, bool ok)
 {
 /* just flush the regular path unless we're blocked */
@@ -610,6 +636,12 @@ static void dircl_userfd(struct ioloop_shared* I, bool ok)
 		case TARGET_COMMAND_MESSAGE:{
 			LOG("shmif:message=%s", ev.tgt.message);
 			char* err = NULL;
+
+			if (ev.tgt.message[0] == '/'){
+				find_source(C, (char*) &ev.tgt.message[1]);
+				continue;
+			}
+
 			long id = strtoul(ev.tgt.message, &err, 10);
 			if (*err != '\0' || id < 0 || id > 65535){
 				LOG("shmif:bad_req_id");
@@ -655,31 +687,16 @@ static int dircl_loop(
 	struct dircl_meta dmeta = {
 	};
 
-	char templ[] = "/tmp/afsrv_net_XXXXXX";
-	char* tempdir = mkdtemp(templ);
-
-	if (!tempdir){
-		arcan_shmif_last_words(C, "Tempdir couldn't be created");
-		LOG("storage directory rejected");
-		return EXIT_FAILURE;
-	}
-	int dfd = open(tempdir, O_DIRECTORY);
-	if (-1 == dfd){
-		arcan_shmif_last_words(C, "Couldn't open tempdir");
-		LOG("storage directory open fail");
-		return EXIT_FAILURE;
-	}
-
 	struct anet_dircl_opts clcfg = {
 		.allocator = dircl_alloc,
 		.executor = dircl_exec,
-		.basedir = dfd,
+		.basedir = -1, /* let unpack generate tmp folder */
 	};
 
 	struct directory_meta dircfg = {
 		.S = A->state,
 		.clopt = &clcfg,
-		.state_in = -1
+		.state_in = -1,
 	};
 
 	struct ioloop_shared ioloop = {
@@ -694,14 +711,11 @@ static int dircl_loop(
 		.cbt = &dircfg,
 	};
 
-	C->user = &dmeta;
-	a12_set_bhandler(A->state, anet_directory_cl_bhandler, &dircfg);
-	anet_directory_ioloop(&ioloop);
+	A->state->on_discover = cl_got_dyn;
 
-	if (0 != rmdir(tempdir)){
-		LOG("rmdir(%s) failed: %s", tempdir, strerror(errno));
-		return EXIT_FAILURE;
-	}
+	C->user = &dmeta;
+	a12_set_bhandler(A->state, anet_directory_cl_bhandler, &ioloop);
+	anet_directory_ioloop(&ioloop);
 
 	return EXIT_SUCCESS;
 }
