@@ -615,6 +615,9 @@ void anet_directory_srv(
 			SEGID_NETWORK_SERVER,
 			SHMIF_ACQUIRE_FATALFAIL |
 			SHMIF_NOACTIVATE |
+#ifdef __OpenBSD__
+			SHMIF_DISABLE_GUARD |
+#endif
 			SHMIF_NOREGISTER,
 			&args
 		);

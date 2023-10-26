@@ -345,7 +345,8 @@ bool build_appl_pkg(const char* name, struct appl_meta* dst, int cdir)
 	fchdir(cdir);
 	chdir(name);
 
-	if (!(fpek = open_memstream(&dst->buf, &dst->buf_sz)))
+	size_t buf_sz;
+	if (!(fpek = open_memstream(&dst->buf, &buf_sz)))
 		goto err;
 
 	if (!(fts = fts_open(path, FTS_PHYSICAL, comp_alpha)))
@@ -380,50 +381,51 @@ bool build_appl_pkg(const char* name, struct appl_meta* dst, int cdir)
 
 /* walk and get list of files, lexicographic sort, filter out links,
  * cycles, dot files */
-		for (FTSENT* cur = fts_read(fts); cur; cur = fts_read(fts)){
+	for (FTSENT* cur = fts_read(fts); cur; cur = fts_read(fts)){
 /* possibly allow-list files here, at least make sure it's valid UTF8 as well
  * as not any reserved (/, ., :, \t, \n) symbols */
-			if (cur->fts_name[0] == '.'){
-				continue;
-			}
+		if (cur->fts_name[0] == '.'){
+			continue;
+		}
 
-			if (cur->fts_info != FTS_F){
-				continue;
-			}
+		if (cur->fts_info != FTS_F){
+			continue;
+		}
 
-			FILE* fin = fopen(cur->fts_name, "r");
-			if (!fin){
-				a12int_trace(A12_TRACE_DIRECTORY,
-					"build_app:error=cant_open:name=%s:path=%s", cur->fts_name, cur->fts_path);
-				goto err;
-			}
+		FILE* fin = fopen(cur->fts_name, "r");
+		if (!fin){
+			a12int_trace(A12_TRACE_DIRECTORY,
+				"build_app:error=cant_open:name=%s:path=%s", cur->fts_name, cur->fts_path);
+			goto err;
+		}
 
 	/* read all of fin into a memory buffer then */
-			char* fbuf;
-			size_t fbuf_sz;
-			FILE* fbuf_f = file_to_membuf(fin, &fbuf, &fbuf_sz);
-			if (!fbuf_f){
-				fclose(fin);
-				goto err;
-			}
+		char* fbuf;
+		size_t fbuf_sz;
+		FILE* fbuf_f = file_to_membuf(fin, &fbuf, &fbuf_sz);
+		if (!fbuf_f){
 			fclose(fin);
-			fclose(fbuf_f);
-			cur->fts_path[cur->fts_pathlen - cur->fts_namelen - 1] = '\0';
-			fprintf(fpek,
-					"path=%s:name=%s:size=%zu\n",
-					strcmp(cur->fts_path, ".") == 0 ? "" :
-					&cur->fts_path[2],
-					cur->fts_name, fbuf_sz
-			);
-			cur->fts_path[cur->fts_pathlen - cur->fts_namelen - 1] = '/';
-			fflush(fpek);
-			fwrite(fbuf, fbuf_sz, 1, fpek);
-			free(fbuf);
+			goto err;
 		}
+		fclose(fin);
+		fclose(fbuf_f);
+		cur->fts_path[cur->fts_pathlen - cur->fts_namelen - 1] = '\0';
+		fprintf(fpek,
+				"path=%s:name=%s:size=%zu\n",
+				strcmp(cur->fts_path, ".") == 0 ? "" :
+				&cur->fts_path[2],
+				cur->fts_name, fbuf_sz
+		);
+		cur->fts_path[cur->fts_pathlen - cur->fts_namelen - 1] = '/';
+		fflush(fpek);
+		fwrite(fbuf, fbuf_sz, 1, fpek);
+		free(fbuf);
+	}
 
 	fts_close(fts);
 	fclose(fpek);
 
+	dst->buf_sz = buf_sz;
 	blake3_hasher hash;
 	blake3_hasher_init(&hash);
 	blake3_hasher_update(&hash, dst->buf, dst->buf_sz);
