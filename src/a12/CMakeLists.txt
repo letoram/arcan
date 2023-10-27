@@ -1,6 +1,7 @@
 pkg_check_modules(FFMPEG QUIET libavcodec libavdevice libavfilter libavformat libavutil libswresample libswscale)
 
 set(LIBRARIES
+	fts
 	pthread
 	arcan_shmif
 	arcan_shmif_server
