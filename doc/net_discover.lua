@@ -64,9 +64,12 @@
 -- the local keystore, while basename/subname is a breakdown of components in a
 -- fully qualified domain name. Multiple events may be used to provide a
 -- complete reverse entry: basename.basename.subname (com.example.local) and is
--- terminated with an zero-length base- or subname. A12pub is a bit special in
--- the sense that it provides the public key for a previously unknown a12
--- connection based on the TRUST_PERMIT_UNKNOWN trust model argument.
+-- terminated with an zero-length base- or subname.
+--
+-- If the *namespace* is a12pub, there is also a base64 coded form of the
+-- public key presented as 'kpub'. This is useful when requesting to open that
+-- as a source specifically where there might be ambiguity (directory) or a
+-- change of petname (directory and broadcast discover).
 --
 -- The (source, sink and directory) states describe the capabilities of the
 -- discovered node. If none of them are set, the capabilities could not be

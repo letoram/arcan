@@ -49,9 +49,9 @@ void arcan_monitor_tick();
 void arcan_monitor_finish(bool ok);
 
 /*
- * get a vobj id bound to ref handler for mapping the monitor connection
- * to the net api
+ * forward connection point information over the monitor and have the
+ * parent bind to it (replacing any existing one).
  */
-arcan_vobj_id arcan_monitor_fsrvvid(intptr_t ref);
+bool arcan_monitor_fsrvvid(const char* cp);
 
 #endif

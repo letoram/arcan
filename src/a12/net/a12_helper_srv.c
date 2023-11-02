@@ -28,6 +28,7 @@ struct shmifsrv_thread_data {
 	struct a12_state* S;
 	struct arcan_shmif_cont fake;
 	struct a12helper_opts opts;
+
 	float font_sz;
 	int kill_fd;
 	uint8_t chid;

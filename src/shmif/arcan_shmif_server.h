@@ -93,13 +93,6 @@ bool shmifsrv_enter(struct shmifsrv_client*);
 void shmifsrv_leave();
 
 /*
- * Wrap a shmifsrv client into an interface that can be used with the normal
- * arcan_shmif_... class of functions.
- */
-struct arcan_shmif_cont*
-	shmifsrv_client_wrap(struct shmifsrv_client* srv);
-
-/*
  * Allocate, prepare and transfer a new sub-segment to the frameserver
  * referenced by [dst] (!NULL).
  *
@@ -224,6 +217,12 @@ void shmifsrv_free(struct shmifsrv_client*, int mode);
  */
 bool shmifsrv_enqueue_event(
 	struct shmifsrv_client*, struct arcan_event*, int fd);
+
+/*
+ * Split up a longer message into a multipart set of message events
+ */
+bool shmifsrv_enqueue_multipart_message(
+	struct shmifsrv_client*, struct arcan_event*, const char*, size_t);
 
 /*
  * [CRITICAL]

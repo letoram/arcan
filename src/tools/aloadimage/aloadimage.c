@@ -613,7 +613,8 @@ static bool dispatch_event(
 		break;
 		case TARGET_COMMAND_STEPFRAME:
 			if (ev->tgt.ioevs[1].iv == 0xfeed)
-				poll_pl(ds, 1);
+				if (poll_pl(ds, 1))
+					return true;
 
 			if (ds->step_timer > 0 && !ds->step_block){
 				if (ds->step_timer == 0){

@@ -45,6 +45,7 @@ struct anet_dircl_opts {
 	bool reload;
 	bool block_state;
 	bool block_log;
+	bool stderr_log;
 	bool keep_appl;
 	bool request_tunnel;
 
@@ -117,6 +118,9 @@ struct ioloop_shared {
 	int fdout;
 	int userfd;
 
+	struct arcan_shmif_cont shmif;
+	int shmiffd;
+
 	pthread_mutex_t lock;
 	struct a12_state *S;
 	volatile bool shutdown;
@@ -129,6 +133,7 @@ struct ioloop_shared {
 
 	bool (*on_directory)(struct ioloop_shared* S, struct appl_meta* dir);
 	void (*on_userfd)(struct ioloop_shared* S, bool ok);
+	void (*on_shmif)(struct ioloop_shared* S);
 	void* tag;
 };
 

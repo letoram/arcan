@@ -563,8 +563,19 @@ static void cl_got_dyn(struct a12_state* S, int type,
 	const char* petname, bool found, uint8_t pubk[static 32], void* tag)
 {
 	struct arcan_shmif_cont* C = arcan_shmif_primary(SHMIF_INPUT);
-/* convert back to NETSTATE and send to arcan */
-/* remember petname and pubk pairing */
+	arcan_event disc = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = EVENT_EXTERNAL_NETSTATE,
+		.ext.netstate = {
+			.type = type,
+			.space = 5,
+			.state = found
+		}
+	};
+	snprintf(disc.ext.netstate.petname, 16, "%s", petname);
+	memcpy(disc.ext.netstate.pubk, pubk, 32);
+
+	arcan_shmif_enqueue(C, &disc);
 }
 
 /* returning false here would break us out of the ioloop */

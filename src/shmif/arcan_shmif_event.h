@@ -1479,7 +1479,13 @@ enum ARCAN_TARGET_SKIPMODE {
  *           4 = directory
  */
 	struct {
-		char name[66]; /* covers local tag, chunked hostname, ipv6 string, ... */
+		union {
+			char name[66]; /* covers local tag, chunked hostname, ipv6 string, ... */
+			struct {
+				char petname[16];
+				uint8_t pubk[32];
+			};
+		};
 		uint8_t space;
 		uint8_t state;
 		uint8_t type;

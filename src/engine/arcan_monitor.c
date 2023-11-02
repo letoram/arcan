@@ -1,5 +1,7 @@
 #include "arcan_hmeta.h"
+
 extern struct arcan_luactx* main_lua_context;
+extern volatile _Atomic int main_lua_signalled;
 
 static int m_srate;
 static int m_ctr;
@@ -8,6 +10,8 @@ static FILE* m_ctrl;
 static bool m_locked;
 static bool m_transaction;
 static int longjmp_mode;
+
+static struct arcan_shmif_cont* group;
 
 /*
  * instead of adding more commands here, the saner option is to establish
@@ -116,6 +120,10 @@ static void cmd_continue(char* arg)
 		cmd_commit(arg);
 }
 
+static void cmd_shmif(char* arg)
+{
+}
+
 void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 {
 /* triggered on SIGUSR1 - used by m_ctrl to indicate that
@@ -137,7 +145,8 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 		{"loadkey", cmd_loadkey},
 		{"commit", cmd_commit},
 		{"reload", cmd_reload},
-		{"lock", cmd_lock}
+		{"lock", cmd_lock},
+		{"shmif", cmd_shmif},
 	};
 
 	m_locked = true;
@@ -182,6 +191,7 @@ bool arcan_monitor_configure(int srate, const char* dst, FILE* ctrl)
 	bool logfdtgt = dst ? strncmp(dst, "LOGFD:", 6) == 0 : false;
 
 	m_ctrl = ctrl;
+	setlinebuf(m_ctrl);
 
 	if (!logtgt && !logfdtgt)
 		return false;
@@ -199,7 +209,7 @@ bool arcan_monitor_configure(int srate, const char* dst, FILE* ctrl)
 				fcntl(fd, F_SETFD, FD_CLOEXEC);
 		}
 	}
-
+	setlinebuf(m_out);
 	return true;
 }
 
@@ -260,7 +270,11 @@ void arcan_monitor_tick()
 	arcan_lua_statesnap(m_out, buf, true);
 }
 
-arcan_vobj_id arcan_monitor_fsrvvid(intptr_t ref)
+bool arcan_monitor_fsrvvid(const char* cp)
 {
-	return ARCAN_EID;
+	if (!m_ctrl)
+		return false;
+
+	fprintf(m_out, "join %s\n", cp);
+	return true;
 }

@@ -192,6 +192,12 @@ static void on_a12srv_event(
 		arcan_shmif_enqueue(C, &disc);
 	}
 
+	else if (ev->ext.kind == EVENT_EXTERNAL_IDENT){
+		a12int_trace(A12_TRACE_DIRECTORY,
+			"source_join=%s", ev->ext.message.data);
+		arcan_shmif_enqueue(C, ev);
+	}
+
 /* Forward messages verbatim, this also latches into the dirlist command which
  * will trigger the server to re-synch dynamic sources, but it is a path to get
  * external (untrusted) messages to be parsed and should be treated as poison. */
@@ -340,16 +346,15 @@ static bool wait_for_activation(
 	return false;
 }
 
-static void do_event(
+static void do_external_event(
+	struct directory_meta* cbt,
 	struct a12_state* S, struct arcan_shmif_cont* C, struct arcan_event* ev)
 {
-	struct directory_meta* cbt = C->user;
-
-/* Parent process responsible for verifying and tagging name with petname:kpub.
- * the NETSTATE associated with diropen is part of the on_directory event
- * handler and doesn't reach this point. */
-	if (ev->category == EVENT_EXTERNAL &&
-		ev->ext.kind == EVENT_EXTERNAL_NETSTATE){
+	switch (ev->ext.kind){
+	case EVENT_EXTERNAL_MESSAGE:
+		a12_channel_enqueue(cbt->S, ev);
+	break;
+	case EVENT_EXTERNAL_NETSTATE:{
 		size_t i = 0;
 
 		if (a12_remote_mode(S) == ROLE_SOURCE){
@@ -389,7 +394,22 @@ static void do_event(
 			ev->ext.netstate.type, ev->ext.netstate.state != 0
 		);
 	}
+	break;
+	default:
+	}
+}
 
+static void do_event(
+	struct a12_state* S, struct arcan_shmif_cont* C, struct arcan_event* ev)
+{
+	struct directory_meta* cbt = C->user;
+
+	if (ev->category == EVENT_EXTERNAL)
+		return do_external_event(cbt, S, C, ev);
+
+/* Parent process responsible for verifying and tagging name with petname:kpub.
+ * the NETSTATE associated with diropen is part of the on_directory event
+ * handler and doesn't reach this point. */
 	if (ev->category != EVENT_TARGET)
 		return;
 
@@ -615,9 +635,7 @@ void anet_directory_srv(
 			SEGID_NETWORK_SERVER,
 			SHMIF_ACQUIRE_FATALFAIL |
 			SHMIF_NOACTIVATE |
-#ifdef __OpenBSD__
 			SHMIF_DISABLE_GUARD |
-#endif
 			SHMIF_NOREGISTER,
 			&args
 		);

@@ -41,6 +41,8 @@ struct dircl;
 
 struct dircl {
 	int in_appl;
+	char identity[16];
+
 	int type;
 
 	bool pending_stream;
@@ -52,6 +54,9 @@ struct dircl {
 
 	uint8_t pubk[32];
 	bool authenticated;
+
+	char message_multipart[1024];
+	size_t message_ofs;
 
 	struct shmifsrv_client* C;
 	struct dircl* next;
@@ -83,10 +88,10 @@ static void rebuild_index();
  * apply geographically appropriate blocklists for the inevitable censors */
 static bool gotname(struct dircl* source, struct arcan_event ev)
 {
-	struct dircl* C = active_clients.root.next;
 	bool rv = false;
 
 	pthread_mutex_lock(&active_clients.sync);
+		struct dircl* C = active_clients.root.next;
 		while (C){
 			if (C == source){
 				C = C->next;
@@ -653,8 +658,61 @@ fail:
 	}, -1);
 }
 
+static void msgqueue_worker(struct dircl* C, arcan_event* ev)
+{
+	if (C->in_appl < 0)
+		return;
+
+	char* str = (char*) ev->ext.message.data;
+	size_t len = strlen(str);
+	if (C->message_ofs + len >= sizeof(C->message_multipart)){
+		A12INT_DIRTRACE("dirsv:kind=error:multipart_message_overflow:source=%s", C->identity);
+		return;
+	}
+
+	memcpy(
+		&C->message_multipart[C->message_ofs],
+		str,
+		len
+	);
+
+	C->message_ofs += len;
+
+/* queue more */
+	if (ev->ext.message.multipart)
+		return;
+
+	C->message_multipart[C->message_ofs] = '\0';
+	struct arcan_event outev = {
+		.category = EVENT_EXTERNAL,
+		.tgt.kind = EVENT_EXTERNAL_MESSAGE,
+	};
+
+/* broadcast as one large chain so we don't risk any interleaving */
+	pthread_mutex_lock(&active_clients.sync);
+	struct dircl* cur = active_clients.root.next;
+	while (cur){
+		if (cur->in_appl == C->in_appl && cur != C){
+			shmifsrv_enqueue_multipart_message(
+				cur->C, &outev, C->message_multipart, C->message_ofs);
+		}
+		cur = cur->next;
+	}
+	pthread_mutex_unlock(&active_clients.sync);
+
+/* reset the queue buffer */
+	snprintf(C->message_multipart, 16, "from=%s:", C->identity);
+	C->message_ofs = strlen(C->message_multipart);
+}
+
 static void dircl_message(struct dircl* C, struct arcan_event ev)
 {
+/* reserved prefix? then treat as worker command */
+	if (strncmp((char*)ev.ext.message.data, "a12:", 4) != 0){
+		msgqueue_worker(C, &ev);
+		return;
+	}
+
 	struct arg_arr* entry = arg_unpack((char*)ev.ext.message.data);
 	if (!entry){
 		A12INT_DIRTRACE("dirsv:kind=worker:bad_msg:%s=", ev.ext.message.data);
@@ -694,12 +752,8 @@ static void dircl_message(struct dircl* C, struct arcan_event ev)
 		free(b64);
 		shmifsrv_enqueue_event(C->C, &ev, -1);
 		memcpy(C->pubk, pubk_dec, 32);
-
 		return;
 	}
-
-	if (!arg_lookup(entry, "a12", 0, NULL))
-		goto send_fail;
 
 /* this one comes from a DIRLIST being sent to the worker state machine. The
  * worker doesn't retain a synched list and may flip between dynamic
@@ -751,6 +805,79 @@ void handle_netstate(struct dircl* C, arcan_event ev)
 	}
 	else
 		A12INT_DIRTRACE("dirsv:kind=worker:unknown_netstate");
+}
+
+static bool got_collision(int appid, char* name)
+{
+	bool res = false;
+	pthread_mutex_lock(&active_clients.sync);
+		struct dircl* C = active_clients.root.next;
+		while (C){
+			if (C->in_appl == appid){
+				if (strcmp(name, C->identity) == 0){
+					res = true;
+					break;
+				}
+			}
+			C = C->next;
+		}
+	pthread_mutex_unlock(&active_clients.sync);
+	return res;
+}
+
+static void handle_ident(struct dircl* C, arcan_event ev)
+{
+	char* end;
+
+/* applind:uid - need to handle identifier collision and somehow notify the
+ * worker that we ack:ed the join but also that its actual identity flipped. We
+ * might also need to do this if moderation says anything. The easiest way
+ * around it would be a 'you are now' xyz. otoh - the presentation name should
+ * be implemented in some other way. The problem doesn't manifest in the first
+ * order as you don't need to 'see' your own identity, but if someone tries to
+ * reply to you or you reply to the colliding identity the problem will
+ * manifest. */
+	size_t ind = strtoul((char*)ev.ext.message.data, &end, 10);
+
+	char buf[10] = "anon_";
+	if (*end == '\0' || (*(end+1)) == '\0'){
+make_random:
+		do {
+			uint8_t rnd[4];
+			arcan_random(rnd, 4);
+			for (size_t i = 0; i < 4; i++){
+				buf[i+5] = 'a' + (rnd[i] % 26);
+			}
+			end = buf;
+		} while (got_collision(ind, buf));
+	}
+	else if (*end != ':'){
+		A12INT_DIRTRACE("dirsv:kind=error:bad_join_id");
+		return;
+	}
+	else if (*(++end)){
+		size_t count = 0;
+		char* work = strdup(end);
+
+		while (got_collision(ind, end)){
+			count++;
+			if (count == 99)
+				goto make_random;
+			snprintf(end, 16, "%.13s_%d", work, count++);
+		}
+
+		free(work);
+	}
+
+/* leave / join messages are sent by default, it is up to the application
+ * layer to determine if that is necessary - everything has magnification. */
+	if (C->in_appl != -1){
+	}
+	C->in_appl = ind;
+
+	snprintf(C->identity, 16, "%s", end);
+	snprintf(C->message_multipart, 16, "from=%s:", C->identity);
+	C->message_ofs = strlen(C->message_multipart);
 }
 
 static void* dircl_process(void* P)
@@ -825,6 +952,7 @@ static void* dircl_process(void* P)
 /* petName for a source/dir or for joining an appl */
 			if (ev.ext.kind == EVENT_EXTERNAL_IDENT){
 				A12INT_DIRTRACE("dirsv:kind=worker:cl_join=%s", (char*)ev.ext.message.data);
+				handle_ident(C, ev);
 			}
 			else if (ev.ext.kind == EVENT_EXTERNAL_NETSTATE){
 				handle_netstate(C, ev);
@@ -967,6 +1095,7 @@ void anet_directory_shmifsrv_thread(
 	struct dircl* newent = malloc(sizeof(struct dircl));
 	*newent = (struct dircl){
 		.C = cl,
+		.in_appl = -1,
 		.endpoint = {
 			.category = EVENT_EXTERNAL,
 			.ext.kind = EVENT_EXTERNAL_NETSTATE

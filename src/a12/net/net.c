@@ -918,6 +918,7 @@ static bool show_usage(const char* msg)
 	"\t --push-appl s \t Push [s] from APPLBASE to the server\n"
 	"\t --tunnel      \t Default request tunnelling as source/sink connection\n"
 	"\t --block-log   \t Don't attempt to forward script errors or crash logs\n"
+	"\t --stderr-log  \t Mirror script errors / crash log to stderr\n"
 	"\t --source-port \t When sourcing use this port for listening\n"
 	"\t --block-state \t Don't attempt to synch state before/after running appl\n\n"
 	"Directory server options: \n"
@@ -1205,6 +1206,9 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		}
 		else if (strcmp(argv[i], "--block-log") == 0){
 			global.dircl.block_log = true;
+		}
+		else if (strcmp(argv[i], "--stderr-log") == 0){
+			global.dircl.stderr_log = true;
 		}
 		else if (strcmp(argv[i], "--block-state") == 0){
 			global.dircl.block_state = true;

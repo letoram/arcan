@@ -673,3 +673,64 @@ void shmifsrv_monotonic_rebase()
 	timebase = arcan_timemillis();
 	c_ticks = 0;
 }
+
+#include "../frameserver/util/utf8.c"
+bool shmifsrv_enqueue_multipart_message(struct shmifsrv_client* acon,
+	struct arcan_event* base, const char* msg, size_t len)
+{
+	uint32_t state = 0, codepoint = 0;
+	uint8_t* multipart;
+	char* data;
+
+/* different offsets for different categories, we need to be able to
+ * handle both directions hence why _server works differently than _control.c */
+	if (base->category == EVENT_TARGET){
+		data = (char*)base->tgt.message;
+		multipart = &base->tgt.ioevs[0].cv[0]; /* works because multipart is !0 */
+	}
+	else if (base->category == EVENT_EXTERNAL){
+		multipart = &base->ext.message.multipart;
+		data = (char*)base->ext.message.data;
+	}
+	else
+		return false;
+
+	_Static_assert(sizeof(base->ext.message.data) == 78, "broken header");
+	size_t maxlen = 78;
+	const char* outs = msg;
+
+/* utf8- point aligned against block size */
+	while (len > maxlen){
+		size_t i, lastok = 0;
+		state = 0;
+		for (i = 0; i <= maxlen - 1; i++){
+			if (UTF8_ACCEPT == utf8_decode(&state, &codepoint, (uint8_t)(msg[i])))
+				lastok = i;
+
+			if (i != lastok){
+				if (0 == i)
+					return false;
+			}
+		}
+
+		memcpy(data, outs, lastok);
+		data[lastok] = '\0';
+		len -= lastok;
+		outs += lastok;
+		if (len)
+			*multipart = 1;
+		else
+			*multipart = 0;
+
+		platform_fsrv_pushevent(acon->con, base);
+	}
+
+/* flush remaining */
+	if (len){
+		snprintf(data, maxlen, "%s", outs);
+		*multipart = 0;
+		platform_fsrv_pushevent(acon->con, base);
+	}
+
+	return true;
+}

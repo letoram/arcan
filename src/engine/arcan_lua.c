@@ -4309,7 +4309,7 @@ static char* spacetostr(int space)
 	case 4:
 		return "ipv6";
 	break;
-	case 6:
+	case 5:
 		return "a12pub";
 	break;
 	default:
@@ -4545,9 +4545,14 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		break;
 		case EVENT_EXTERNAL_NETSTATE:
 			tbldynstr(ctx, "kind", "state", top);
-			MSGBUF_UTF8(ev->ext.netstate.name);
-			tbldynstr(ctx, "name", msgbuf, top);
 			tbldynstr(ctx, "namespace", spacetostr(ev->ext.netstate.space), top);
+			if (ev->ext.netstate.space == 5){
+
+			}
+			else {
+				MSGBUF_UTF8(ev->ext.netstate.name);
+				tbldynstr(ctx, "name", msgbuf, top);
+			}
 
 			if (ev->ext.netstate.state & (1 | 2 | 4)){
 				tblbool(ctx, "discovered", true, top);
@@ -4558,13 +4563,12 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			else
 				tblbool(ctx, "bad", true, top);
 
-			if (ev->ext.netstate.type & 1)
+			if (ev->ext.netstate.type == 1)
 				tblbool(ctx, "source", true, top);
-			if (ev->ext.netstate.type & 2)
+			if (ev->ext.netstate.type == 2)
 				tblbool(ctx, "sink", true, top);
-			if (ev->ext.netstate.type & 4)
+			if (ev->ext.netstate.type == 4)
 				tblbool(ctx, "directory", true, top);
-
 		break;
 		case EVENT_EXTERNAL_REGISTER:{
 /* prevent switching types */
@@ -11674,9 +11678,39 @@ static int net_open(lua_State* ctx)
 	char* host = strdup(luaL_checkstring(ctx, 1));
 	intptr_t ref = find_lua_callback(ctx);
 
-	if (strcmp(host, "@stdin") == 0){
-		arcan_vobj_id vid = arcan_monitor_fsrvvid(ref);
-		lua_pushvid(ctx, vid);
+/*
+ * generate a connection point for the outer monitor to attach to (in order for
+ * the types to work), with the parts after : being used to forward identity.
+ * A more open question is if this should be recursive, if we net-open an appl
+ * over a directory and embed into ourselves, should the communication be routed
+ * through the chain or be treated parallel?
+ */
+ 	if (strncmp(host, "@stdin", 6) == 0){
+		uint8_t rnd[6];
+		char co[13];
+		arcan_random(rnd, 6);
+		for (size_t i = 0; i < sizeof(rnd); i++){
+			co[i*2] = "0123456789abcdef"[rnd[i] >> 4];
+			co[i*2+1] = "0123456789abcdef"[rnd[i] & 0x0f];
+		}
+		co[12] = '\0';
+
+		arcan_frameserver* newref =
+			platform_launch_listen_external(co, NULL, -1, ARCAN_SHM_UMASK, 32, 32, ref);
+		if (!newref){
+			arcan_warning("couldn't listen on connection point (%s)\n", co);
+			lua_pushvid(ctx, ARCAN_EID);
+			free(host);
+			return 1;
+		}
+
+		arcan_conductor_register_frameserver(newref);
+		arcan_monitor_fsrvvid(co);
+		trace_allocation(ctx, "net_listen", newref->vid);
+
+/* only different thing to regular frameserver setup is that the monitor need to
+ * forward the connection information through its established channel. */
+		lua_pushvid(ctx, newref->vid);
 		free(host);
 		return 1;
 	}

@@ -184,6 +184,11 @@ static void on_cl_event(
 
 /* main use would be the appl- runner forwarding messages that direction */
 	a12int_trace(A12_TRACE_DIRECTORY, "event=%s", arcan_shmif_eventstr(ev, NULL, 0));
+	if (ev->category == EVENT_EXTERNAL &&
+		ev->ext.kind == EVENT_EXTERNAL_MESSAGE){
+		arcan_shmif_enqueue(&I->shmif, ev);
+		return;
+	}
 
 /* we do have an ongoing transfer (--push-appl) that we wait for an OK or cancel
  * before marking that we're ready to shutdown */
@@ -327,10 +332,12 @@ static pid_t exec_cpath(struct a12_state* S,
 		close(pstdin[0]);
 		close(pstdin[1]);
 		close(pstdout[0]);
-		close(STDERR_FILENO);
+/*
+ *  close(STDERR_FILENO);
 		close(STDOUT_FILENO);
 		open("/dev/null", O_WRONLY);
 		open("/dev/null", O_WRONLY);
+*/
 		execvp(ctx->bin, argv);
 		exit(EXIT_FAILURE);
 	}
@@ -344,6 +351,34 @@ static pid_t exec_cpath(struct a12_state* S,
 	free(ctx->val);
 
 	return pid;
+}
+
+static void runner_shmif(struct ioloop_shared* I)
+{
+	arcan_event ev;
+
+	while (arcan_shmif_poll(&I->shmif, &ev) > 0){
+		if (ev.category != EVENT_TARGET){
+			continue;
+		}
+
+		if (ev.tgt.kind != TARGET_COMMAND_MESSAGE)
+			continue;
+
+/* we need to flip the 'direction' as the other end expect us to behave like a
+ * shmif client, i.e. TARGET is from server to client, EXTERNAL is from client
+ */
+		struct arcan_event out = {
+			.category = EVENT_EXTERNAL,
+			.ext.message.multipart = ev.tgt.ioevs[0].iv
+		};
+		_Static_assert(sizeof(out.ext.message.data) ==
+			sizeof(ev.tgt.message), "_event.h integrity");
+
+		memcpy(out.ext.message.data, ev.tgt.message, sizeof(out.ext.message.data));
+
+		a12_channel_enqueue(I->S, &out);
+	}
 }
 
 static void swap_appldir(const char* name, int basedir)
@@ -393,6 +428,59 @@ static void process_thread(struct ioloop_shared* I, bool ok)
  * could do some other funky things, e.g. force a rollback to an externally
  * defined override state. */
 				fprintf(A->pf_stdin, "continue\n");
+			}
+
+/* client wants to join the applgroup through a net_open call and has set up a
+ * connection point for us to access - this direction may seem a bit weird, but
+ * since we are on equal privilege and arcan-core does not have a way of
+ * hooking up a shmif_cont structure, only feeding it, this added the least
+ * amount of complexity across the chain. */
+			else if (strncmp(buf, "join ", 5) == 0){
+				if (I->shmif.addr){
+					arcan_shmif_drop(&I->shmif);
+				}
+
+				buf[strlen(buf)-1] = '\0';
+				char cbuf[strlen(buf) + strlen(I->cbt->clopt->basedir_path) + 1];
+				snprintf(cbuf, sizeof(cbuf), "%s/%s", I->cbt->clopt->basedir_path, &buf[5]);
+
+/* strip \n and connect */
+				int dfd;
+				char* key = arcan_shmif_connect(cbuf, NULL, &dfd);
+				a12int_trace(A12_TRACE_DIRECTORY,
+					"appl_monitor:connect=%s:ok=%s", &buf[5], key ? "true":"false");
+				if (!key){
+					return;
+				}
+
+				I->shmif = arcan_shmif_acquire(NULL, key, SEGID_MEDIA, 0);
+				I->shmif.epipe = dfd;
+				I->on_shmif = runner_shmif;
+
+				if (!I->shmif.addr){
+					a12int_trace(A12_TRACE_DIRECTORY, "appl_monitor:connect_fail");
+					return;
+				}
+
+	/* join the message group for the running appl */
+			  arcan_event ev = {
+					.category = EVENT_EXTERNAL,
+					.ext.kind = ARCAN_EVENT(IDENT)
+				};
+
+				size_t lim = sizeof(ev.ext.message.data)/sizeof(ev.ext.message.data[1]);
+				if (cbt->clopt->ident[0]){
+					snprintf(
+						(char*)ev.ext.message.data, lim, "%d:%s",
+						I->cbt->clopt->applid, cbt->clopt->ident
+					);
+				}
+				else
+					snprintf(
+						(char*)ev.ext.message.data, lim, "%d", I->cbt->clopt->applid);
+				a12_channel_enqueue(I->S, &ev);
+				arcan_shmif_resize(&I->shmif, 64, 64);
+				runner_shmif(I);
 			}
 		}
 
@@ -475,10 +563,24 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 		a12_enqueue_bstream(I->S, state_fd,
 			A12_BTYPE_STATE, cbt->clopt->applid, false, state_sz, empty_ext);
 	}
-	else if (!exec_res && !cbt->clopt->block_log){
-		fprintf(stderr, "sending crash report (%zu) bytes\n", state_sz);
-		a12_enqueue_bstream(I->S, state_fd,
-			A12_BTYPE_CRASHDUMP, cbt->clopt->applid, false, state_sz, empty_ext);
+	else if (!exec_res){
+		if (cbt->clopt->stderr_log){
+			FILE* fpek = fdopen(state_fd, "r");
+			while (!feof(fpek)){
+				char buf[4096];
+				size_t nr = fread(buf, 1, 4096, fpek);
+				if (nr)
+					fwrite(stderr, nr, 1, fpek);
+			}
+			fseek(fpek, 0, SEEK_SET);
+			fclose(fpek);
+		}
+
+		if (!cbt->clopt->block_log){
+			fprintf(stderr, "sending crash report (%zu) bytes\n", state_sz);
+			a12_enqueue_bstream(I->S, state_fd,
+				A12_BTYPE_CRASHDUMP, cbt->clopt->applid, false, state_sz, empty_ext);
+		}
 	}
 
 out:

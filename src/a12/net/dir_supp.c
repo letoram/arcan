@@ -32,11 +32,12 @@
 void anet_directory_ioloop(struct ioloop_shared* I)
 {
 	int errmask = POLLERR | POLLNVAL | POLLHUP;
-	struct pollfd fds[4] =
+	struct pollfd fds[5] =
 	{
 		{.fd = I->userfd, .events = POLLIN | errmask},
 		{.fd = I->fdin, .events = POLLIN | errmask},
 		{.fd = -1, .events = POLLOUT | errmask},
+		{.fd = -1, .events = POLLIN | errmask},
 		{.fd = -1, .events = POLLIN | errmask},
 	};
 
@@ -53,7 +54,7 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 		fds[2].fd = I->fdout;
 
 /* regular simple processing loop, wait for DIRECTORY-LIST command */
-	while (a12_ok(I->S) && -1 != poll(fds, 4, -1)){
+	while (a12_ok(I->S) && -1 != poll(fds, 5, -1)){
 		if ((fds[0].revents | fds[1].revents | fds[2].revents | fds[3].revents) & errmask){
 			if (fds[0].revents & errmask){
 				I->on_userfd(I, false);
@@ -61,8 +62,13 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 			break;
 		}
 
+/* this might add or remove a shmif to our tracking set */
 		if (fds[0].revents & POLLIN){
 			I->on_userfd(I, true);
+		}
+
+		if (fds[4].revents){
+			I->on_shmif(I);
 		}
 
 		if (fds[3].revents & POLLIN){
@@ -112,11 +118,13 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 		}
 
 		fds[0].revents = fds[1].revents = fds[2].revents = fds[3].revents = 0;
+		fds[4].revents = 0;
 		fds[2].fd = outbuf_sz ? I->fdout : -1;
 		fds[0].fd = I->userfd;
 		fds[3].fd =
 			I->S->channels[1].unpack_state.bframe.tunnel ?
 			I->S->channels[1].unpack_state.bframe.tmp_fd : -1;
+		fds[4].fd = I->shmif.addr ? I->shmif.epipe : -1;
 	}
 }
 

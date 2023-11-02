@@ -45,6 +45,7 @@
  * directory mode sourcing dynamic sinks (sink-inbound only)
  * directory mode source-sink pairing 'reachable source' and 'tunnel' transfer modes
  * changed packaging format for appls
+ * net\_open("@stdin") can now be used to access a per-directory-appl messaging group
 
 ## Terminal
  * SGR reset fix, add CNL / CPL
