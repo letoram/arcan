@@ -711,6 +711,7 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 
 	arcan_vobj_id delids[n_fsrv];
 	size_t delcount = 0;
+	int tc = arcan_conductor_reset_count(false);
 
 /* three: forward to adopt function (or delete) */
 	for (count = 0; count < n_fsrv; count++){
@@ -722,6 +723,12 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 		fsrv->tag = LUA_NOREF;
 
 		bool delete = true;
+
+/* use this to determine if the frameserver was created in the appl entry
+ * and thus should not be exposed as an adopt handler */
+		if (fsrv->desc.recovery_tick == tc)
+			continue;
+
 		if (alt_lookup_entry(ctx, "adopt", sizeof("adopt") - 1) &&
 			arcan_video_getobject(ids[count]) != NULL){
 			lua_pushvid(ctx, vobj->cellid);

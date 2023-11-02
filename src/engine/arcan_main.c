@@ -590,6 +590,7 @@ int MAIN_REDIR(int argc, char* argv[])
  * invoke adopt() in the script
  */
 	bool adopt = false, in_recover = false;
+
 	int jumpcode = setjmp(arcanmain_recover_state);
 	int saved, truncated;
 
@@ -599,6 +600,7 @@ int MAIN_REDIR(int argc, char* argv[])
 /* close down the database and reinitialize with the name of the new appl */
 		arcan_db_close(&dbhandle);
 		arcan_db_set_shared(NULL);
+		arcan_conductor_reset_count(true);
 
 		dbhandle = arcan_db_open(dbfname, arcan_appl_id());
 		if (!dbhandle)
@@ -669,6 +671,7 @@ int MAIN_REDIR(int argc, char* argv[])
 			goto error;
 		}
 
+		arcan_conductor_reset_count(true);
 		arcan_event_maskall(evctx);
 		arcan_video_recoverexternal(true, &saved, &truncated, NULL, NULL);
 		arcan_event_clearmask(evctx);

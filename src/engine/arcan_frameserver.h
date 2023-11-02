@@ -93,6 +93,16 @@ struct arcan_frameserver_meta {
 	unsigned long long framecount;
 	unsigned long long dropcount;
 	unsigned long long lastpts;
+
+/* This one was added to have a way to mark objects that were created in the
+ * main entrypoint of the lua scripts (that run before _adopt) but in recovery
+ * would still be exposed to adopt. If the developer would reject it there
+ * (from not implementing the handler or doing it in a contrived way) the
+ * frameserver would be immediately destroyed, causing a fs- race condition.
+ *
+ * This counter indicates which recovery- window the object was created in,
+ * so that the automatic deletion facility does not kill it off prematurely. */
+	 unsigned recovery_tick;
 };
 
 struct frameserver_audsrc {

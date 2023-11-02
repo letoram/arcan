@@ -14,6 +14,7 @@
 /* defined in platform.h, used in psep open, shared memory */
 _Atomic uint64_t* volatile arcan_watchdog_ping = NULL;
 static size_t gpu_lock_bitmap;
+static int reset_counter;
 
 void arcan_conductor_enable_watchdog()
 {
@@ -251,6 +252,7 @@ void arcan_conductor_register_frameserver(struct arcan_frameserver* fsrv)
 {
 	size_t dst_i = 0;
 	alloc_frameserver_struct();
+	fsrv->desc.recovery_tick = reset_counter;
 
 /* safeguard */
 	ssize_t src_i = find_frameserver(fsrv);
@@ -589,6 +591,13 @@ static bool valid_cycle;
 bool arcan_conductor_valid_cycle()
 {
 	return valid_cycle;
+}
+
+int arcan_conductor_reset_count(bool step)
+{
+	if (step)
+		reset_counter++;
+	return reset_counter;
 }
 
 static int trigger_video_synch(float frag)

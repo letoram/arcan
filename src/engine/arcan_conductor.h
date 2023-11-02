@@ -117,6 +117,8 @@ void arcan_conductor_setsynch(const char* arg);
 void arcan_conductor_fakesynch(uint8_t left_ms);
 
 #ifndef VIDEO_PLATFORM_IMPL
+int arcan_conductor_reset_count(bool step);
+
 /* Update the priority target to match the specified frameserver. This
  * means that heuristics driving synchronization will be biased towards
  * letting the specific fsrv align synchronization - if the synchronization
