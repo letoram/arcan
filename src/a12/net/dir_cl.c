@@ -327,12 +327,14 @@ static pid_t exec_cpath(struct a12_state* S,
 		fchdir(dir->clopt->basedir);
 
 		setsid();
-		setenv("XDG_RUNTIME_DIR", "./", 1);
+		setenv("XDG_RUNTIME_DIR", ".", 1);
 		dup2(pstdin[0], STDIN_FILENO);
 		close(pstdin[0]);
 		close(pstdin[1]);
 		close(pstdout[0]);
+
 /*
+ * keeping these open makes it easier to see when something goes wrong with _lwa
  *  close(STDERR_FILENO);
 		close(STDOUT_FILENO);
 		open("/dev/null", O_WRONLY);
@@ -448,7 +450,7 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 				int dfd;
 				char* key = arcan_shmif_connect(cbuf, NULL, &dfd);
 				a12int_trace(A12_TRACE_DIRECTORY,
-					"appl_monitor:connect=%s:ok=%s", &buf[5], key ? "true":"false");
+					"appl_monitor:connect=%s:ok=%s", cbuf, key ? "true":"false");
 				if (!key){
 					return;
 				}
@@ -479,7 +481,6 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 					snprintf(
 						(char*)ev.ext.message.data, lim, "%d", I->cbt->clopt->applid);
 				a12_channel_enqueue(I->S, &ev);
-				arcan_shmif_resize(&I->shmif, 64, 64);
 				runner_shmif(I);
 			}
 		}

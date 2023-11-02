@@ -1455,7 +1455,7 @@ retry:
 	size_t ofs = 0;
 	do {
 		if (-1 == read(sock, wbuf + ofs, 1)){
-			debug_print(FATAL, NULL, "invalid response on negotiation");
+			debug_print(FATAL, NULL, "invalid response on negotiation: %s", strerror(errno));
 			close(sock);
 			goto end;
 		}

@@ -11704,8 +11704,20 @@ static int net_open(lua_State* ctx)
 			return 1;
 		}
 
+/* we need to resolve the full path from within the context here, as the XDG_
+ * runtime and similar paths may differ from outer to inner due to LWA having
+ * one set of needs, while the cleanup from afsrv_net/arcan-net need another. */
+		char path[PATH_MAX];
+		if (0 > arcan_shmif_resolve_connpath(co, path, PATH_MAX)){
+			arcan_warning("couldn't resolve socket path");
+			arcan_frameserver_free(newref);
+			lua_pushvid(ctx, ARCAN_EID);
+			free(host);
+			return 1;
+		}
+
 		arcan_conductor_register_frameserver(newref);
-		arcan_monitor_fsrvvid(co);
+		arcan_monitor_fsrvvid(path);
 		trace_allocation(ctx, "net_listen", newref->vid);
 
 /* only different thing to regular frameserver setup is that the monitor need to

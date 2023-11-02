@@ -396,6 +396,7 @@ static void do_external_event(
 	}
 	break;
 	default:
+	break;
 	}
 }
 

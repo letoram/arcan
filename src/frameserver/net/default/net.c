@@ -506,21 +506,24 @@ static pid_t dircl_exec(struct a12_state* S,
 		buf, NULL                     /* applname */
 	};
 
-	char* envv[] = {
-		"PATH", getenv("PATH"),
-		"HOME", getenv("HOME"),
-		"TERM", getenv("TERM"),
-		"SHELL", getenv("SHELL"),
-		"ARCAN_LOGPATH", getenv("ARCAN_LOGPATH"),
-		"ARCAN_RESOURCEPATH", getenv("ARCAN_RESOURCEPATH"),
-		"ARCAN_STATEPATH", getenv("ARCAN_STATEPATH"),
-		"XDG_RUNTIME_DIR", getenv("XDG_RUNTIME_DIR"),
-		NULL,
-	};
+	const char* keys[] = {"TERM", "SHELL", "ARCAN_LOGPATH", "HOME",
+		"ARCAN_RESOURCEPATH", "ARCAN_STATEPATH", "XDG_RUNTIME_DIR", "PATH", NULL};
+	char* envv[COUNT_OF(keys)] = {0};
+
+	size_t j = 0;
+	for (size_t i = 0; keys[i]; i++){
+		if (!getenv(keys[i]))
+			continue;
+		if (-1 != asprintf(&envv[j], "%s=%s", keys[i], getenv(keys[i])))
+			j++;
+	}
 
 	int* fds[4] = {inf, outf, NULL, &pstdout[1]};
 	pid_t res =
 		arcan_shmif_handover_exec_pipe(C, client->segev, lwabin, argv, envv, 0, fds, 4);
+
+	for (size_t i = 0; envv[i]; i++)
+		free(envv[i]);
 
 	free(lwabin);
 	close(pstdout[1]);
