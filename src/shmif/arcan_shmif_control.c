@@ -2767,8 +2767,15 @@ enum shmif_migrate_status arcan_shmif_migrate(
 /* The audio buffering parameters >should< be simpler as the negotiation
  * there does not have hint- or subprotocol- dependent constraints, though
  * again we could just delay-slot queue a FLUSH */
-	for (size_t i = 0; i < P->abuf_cnt; i++)
-		memcpy(ret.priv->abuf[i], P->abuf[i], cont->abufsize);
+	if (ret.abuf_cnt == P->abuf_cnt && ret.abufsize == cont->abufsize){
+		for (size_t i = 0; i < P->abuf_cnt && i < ret.priv->abuf_cnt; i++)
+			memcpy(ret.priv->abuf[i], P->abuf[i], cont->abufsize);
+	}
+	else {
+		log_print("[shmif::recovery] couldn't restore audio parameters"
+			" , want=(%zu * %zu) got=(%zu * %zu)", (size_t)ret.priv->abuf_cnt,
+			(size_t)ret.abufsize, (size_t) cont->abufsize, (size_t) P->abuf_cnt);
+	}
 
 	void* contaddr = cont->addr;
 
