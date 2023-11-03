@@ -917,15 +917,17 @@ static void cl_got_dyn(struct a12_state* S, int type,
 {
 	struct ioloop_shared* I = tag;
 	struct directory_meta* cbt = I->cbt;
-	printf("source-%s=*%s\n", found ? "found" : "lost", petname);
+	printf("source-%s=<%s\n", found ? "found" : "lost", petname);
 
-	if (cbt->clopt->applname[0] != '*' ||
+/* some kind of symbol, < as source, > as sink, / as directory */
+
+	if (cbt->clopt->applname[0] != '<' ||
 		strcmp(&I->cbt->clopt->applname[1], petname) != 0)
 		return;
 
 	size_t outl;
 	unsigned char* req = a12helper_tob64(pubk, 32, &outl);
-	a12int_trace(A12_TRACE_DIRECTORY, "request:petname=*%s:pubk=%s", petname, req);
+	a12int_trace(A12_TRACE_DIRECTORY, "request:petname=%s:pubk=%s", petname, req);
 	free(req);
 	a12_request_dynamic_resource(S, pubk, cbt->clopt->request_tunnel, on_source, I);
 }
@@ -1001,12 +1003,12 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 		dir = dir->next;
 	}
 
-	if (cbt->clopt->applname[0] && cbt->clopt->applname[0] != '*'){
+	if (cbt->clopt->applname[0] && cbt->clopt->applname[0] != '<'){
 		fprintf(stderr, "appl:%s not found\n", cbt->clopt->applname);
 		return false;
 	}
 
-	if (cbt->clopt->die_on_list && cbt->clopt->applname[0] != '*')
+	if (cbt->clopt->die_on_list && cbt->clopt->applname[0] != '<')
 		return false;
 
 	return true;
