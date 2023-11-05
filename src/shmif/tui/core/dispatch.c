@@ -489,7 +489,7 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
  * things together so that we don't risk burning an update/ synch just because
  * the cursor started blinking. */
 	case TARGET_COMMAND_STEPFRAME:
-		if (ev->ioevs[1].iv == 1){
+		if (ev->ioevs[1].uiv == 0xabcdef00){
 			tick_cursor(tui);
 
 			if (tui->handlers.tick)
