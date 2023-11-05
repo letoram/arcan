@@ -251,8 +251,10 @@ static void* alloc_cpath(struct a12_state* S, struct directory_meta* dir)
 	struct default_meta* res = malloc(sizeof(struct default_meta));
 	*res = (struct default_meta){.bin = "arcan"};
 
-	if (!cpath)
-		return NULL;
+/* use regular arcan binary to act as display server */
+	if (!cpath){
+		return res;
+	}
 
 /* this repeats the lookup code found in arcan_shmif_control.c */
 	size_t maxlen = sizeof((struct sockaddr_un){0}.sun_path);
