@@ -37,6 +37,12 @@
 	#define lua_rawlen(x, y) lua_objlen(x, y)
 #endif
 
+static void check_canary(struct nonblock_io* ib)
+{
+	if (ib->canary_pre != 0xfeedface || ib->canary_post != 0xfacefeed)
+		abort();
+}
+
 static struct nonblock_io open_fds[LUACTX_OPEN_FILES];
 /* open_nonblock and similar functions need to register their fds here as they
  * are force-closed on context shutdown, this is necessary with crash recovery
@@ -230,6 +236,7 @@ int alt_nbio_socket(const char* path, int ns, char** out)
 int alt_nbio_process_write(lua_State* L, struct nonblock_io* ib)
 {
 	struct io_job* job = ib->out_queue;
+	check_canary(ib);
 
 	while (job){
 		ssize_t nw = write(ib->fd, &job->buf[job->ofs], job->sz - job->ofs);
@@ -474,10 +481,12 @@ static int nbio_socketaccept(lua_State* L)
 		sizeof(struct nonblock_io), ARCAN_MEM_BINDING, 0, ARCAN_MEMALIGN_NATURAL);
 
 	(*conn) = (struct nonblock_io){
+		.canary_pre = 0xfeedface,
 		.fd = newfd,
 		.mode = O_RDWR,
 		.data_handler = LUA_NOREF,
-		.write_handler = LUA_NOREF
+		.write_handler = LUA_NOREF,
+		.canary_post = 0xfacefeed
 	};
 
 	if (!conn){
@@ -669,18 +678,22 @@ static char* nextline(struct nonblock_io* ib,
 		}
 	}
 
+/* there might be data left or we have hit the buffering limit
+ * and need to forward without waiting for a newline */
 	if (eof || (!start && ib->ofs == COUNT_OF(ib->buf))){
 		*gotline = false;
-		if (ib->ofs < start){
+
+		if (ib->ofs <= start){
 			*nb = 0;
 			*step = 0;
 			ib->ofs = 0;
+			return NULL;
 		}
 		else {
 			*nb = ib->ofs - start;
 			*step = ib->ofs - start;
 		}
-		return ib->buf;
+		return &ib->buf[start];
 	}
 
 	return NULL;
@@ -709,6 +722,7 @@ int alt_nbio_process_read(
  */
 	bool eof = false;
 	ssize_t nr = read(ib->fd, &ib->buf[ib->ofs], buf_sz - ib->ofs);
+	check_canary(ib);
 
 	if (0 == nr){
 		eof = true;
@@ -751,6 +765,8 @@ int alt_nbio_process_read(
  * 3. forward to the callback at -1.
  */
 #define SLIDE(X) do{\
+	if (ib->ofs < ci)\
+		ib->ofs = ci;\
 	memmove(ib->buf, &ib->buf[ci], ib->ofs - ci);\
 	ib->ofs -= ci;\
 }while(0)
@@ -778,6 +794,7 @@ int alt_nbio_process_read(
 		}
 
 		SLIDE();
+		check_canary(ib);
 
 		lua_pushnil(L);
 		lua_pushboolean(L, !eof);
@@ -807,7 +824,10 @@ int alt_nbio_process_read(
 			count--;
 			ci += step;
 		}
+
 		SLIDE();
+		check_canary(ib);
+
 		lua_pushnil(L);
 		lua_pushboolean(L, !eof);
 		return 2;
@@ -821,6 +841,7 @@ int alt_nbio_process_read(
 		else
 			lua_pushnil(L);
 
+		check_canary(ib);
 		lua_pushboolean(L, !eof);
 		return 2;
 	}
@@ -900,6 +921,8 @@ static int opennonblock_tgt(lua_State* L, bool wr)
 		return 0;
 	}
 
+	conn->canary_pre = 0xfeedface;
+	conn->canary_post = 0xfacefeed;
 	conn->mode = wr ? O_WRONLY : O_RDONLY;
 	conn->fd = src;
 	conn->pending = NULL;
@@ -1099,6 +1122,8 @@ retryopen:
 			ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	conn->fd = fd;
+	conn->canary_pre = 0xfeedface;
+	conn->canary_post = 0xfacefeed;
 
 /* this little crutch was better than differentiating the userdata as the
  * support for polymorphism there is rather clunky */
@@ -1294,11 +1319,13 @@ bool alt_nbio_import(
 	*dp = (uintptr_t) nbio;
 
 	*nbio = (struct nonblock_io){
+		.canary_pre = 0xfeedface,
 		.fd = fd,
 		.mode = mode,
 		.unlink_fn = (unlink_fn ? *unlink_fn : NULL),
 		.write_handler = LUA_NOREF,
 		.data_handler = LUA_NOREF,
+		.canary_post = 0xfacefeed
 	};
 
 	if (out)

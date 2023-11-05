@@ -13,6 +13,8 @@ struct io_job {
 };
 
 struct nonblock_io {
+	uint32_t canary_pre;
+
 	bool eofm;
 	bool lfstrip;
 	off_t ofs;
@@ -34,6 +36,8 @@ struct nonblock_io {
 
 /* in line-buffered mode, this is used for input */
 	char buf[4096];
+
+	uint32_t canary_post;
 };
 
 /*
