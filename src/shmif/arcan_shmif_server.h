@@ -184,7 +184,7 @@ enum shmifsrv_client_status {
 	CLIENT_NOT_READY = 0,
 	CLIENT_VBUFFER_READY = 1,
 	CLIENT_ABUFFER_READY = 2,
-	CLIENT_IDLE = 3
+	CLIENT_IDLE = 4
 };
 int shmifsrv_poll(struct shmifsrv_client*);
 
