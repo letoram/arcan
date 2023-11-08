@@ -56,7 +56,7 @@ static struct {
 	kiss_fftr_cfg fft_state;
 
 	volatile bool finished;
-	bool loop;
+	bool loop, force_paused;
 } decctx;
 
 /*
@@ -245,8 +245,20 @@ static void audio_play(void *data,
 	const uint8_t* inptr = samples;
 
 	while (nb){
+		arcan_shmif_lock(&decctx.shmcont);
+
 		size_t left = decctx.shmcont.abufsize - decctx.shmcont.abufused;
 		uint8_t* daddr = &((uint8_t*)decctx.shmcont.audp)[decctx.shmcont.abufused];
+
+/* this can happen as an effect of a migration to a display server that rejects
+ * audio outright or in the transition for crash recovery, trying to buffer and
+ * resynch is probably a lost cause and the better solution would be to force a
+ * playback engine resynch as part of the _RESET */
+	 if (decctx.shmcont.abufsize <= decctx.shmcont.abufused){
+			LOG("shmif_cont-rejecting:size=%zu:used:%zu",
+				decctx.shmcont.abufsize, decctx.shmcont.abufused);
+			arcan_shmif_unlock(&decctx.shmcont);
+		}
 
 		if (nb > left){
 			size_t ntc = (left % smplsz != 0) ? left - (left % smplsz) : left;
@@ -254,6 +266,9 @@ static void audio_play(void *data,
 			inptr += ntc;
 			nb -= ntc;
 			decctx.shmcont.abufused += ntc;
+
+			arcan_shmif_unlock(&decctx.shmcont);
+
 			if (decctx.fft_audio){
 				generate_frame();
 				arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD);
@@ -263,9 +278,27 @@ static void audio_play(void *data,
 		}
 		else{
 			memcpy(daddr, inptr, nb);
+			arcan_shmif_unlock(&decctx.shmcont);
 			decctx.shmcont.abufused += nb;
 			break;
 		}
+	}
+}
+
+/* if we lose the context, vlc should stop playing and we immediately leave
+ * the audio / video signalling threads.
+ *
+ * if we resume while not having manually been payed, playback should also
+ * resume.
+ */
+static void on_context_reset(int op, void* tag)
+{
+	if (op == SHMIF_RESET_LOST){
+		libvlc_media_player_set_pause(decctx.player, 1);
+		decctx.force_paused = false;
+	}
+	else if (op == SHMIF_RESET_REMAP){
+		libvlc_media_player_set_pause(decctx.player, decctx.force_paused);
 	}
 }
 
@@ -457,8 +490,16 @@ static bool dispatch(arcan_event* ev)
 	break;
 
 	case TARGET_COMMAND_PAUSE:
+		decctx.force_paused = true;
+		libvlc_media_player_set_pause(decctx.player, 1);
+	break;
 	case TARGET_COMMAND_UNPAUSE:
-		libvlc_media_player_pause(decctx.player);
+		decctx.force_paused = false;
+		libvlc_media_player_set_pause(decctx.player, 0);
+	break;
+	case TARGET_COMMAND_RESET:
+		decctx.force_paused = false;
+		libvlc_media_player_set_pause(decctx.player, 0);
 	break;
 
 /*
@@ -568,6 +609,8 @@ int decode_av(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		"--aout", "amem,none",
 		NULL
 	};
+
+	arcan_shmif_resetfunc(cont, on_context_reset, NULL);
 
 	if (arg_lookup(args, "noaudio", 0, &val)){
 		for (size_t i = 0; i < COUNT_OF(vargs); i++)
