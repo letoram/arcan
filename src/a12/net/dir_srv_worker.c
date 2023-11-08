@@ -174,12 +174,13 @@ static void on_a12srv_event(
  * any collisions or name changes after the first REGISTER. It will also tag
  * with the Kpub we have. */
 	else if (ev->ext.kind == EVENT_EXTERNAL_REGISTER &&
-		a12_remote_mode(cbt->S) == ROLE_SOURCE){
+		(a12_remote_mode(cbt->S) == ROLE_DIR ||
+		a12_remote_mode(cbt->S) == ROLE_SOURCE)){
 		arcan_event disc = {
 			.category = EVENT_EXTERNAL,
 			.ext.kind = EVENT_EXTERNAL_NETSTATE,
 			.ext.netstate = {
-				.type = ROLE_SOURCE,
+				.type = a12_remote_mode(cbt->S),
 				.space = 5
 			}
 		};

@@ -385,7 +385,11 @@ static bool tag_outbound_name(struct arcan_event* ev, uint8_t kpub[static 32])
 
 static void register_source(struct dircl* C, struct arcan_event ev)
 {
-	if (!a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_src)){
+	const char* allow = active_clients.opts->allow_src;
+	if (ev.ext.netstate.type == ROLE_DIR)
+		allow = active_clients.opts->allow_dir;
+
+	if (!a12helper_keystore_accepted(C->pubk, allow)){
 		unsigned char* b64 = a12helper_tob64(C->pubk, 32, &(size_t){0});
 
 		A12INT_DIRTRACE(
@@ -784,19 +788,19 @@ void handle_netstate(struct dircl* C, arcan_event ev)
 	ev.ext.netstate.name[COUNT_OF(ev.ext.netstate.name)-1] = '\0';
 
 /* update ip <-> port mapping */
-	if (ev.ext.netstate.type == 3 || ev.ext.netstate.type == 4){
+	if (ev.ext.netstate.type == ROLE_PROBE){
 		A12INT_DIRTRACE("dirsv:kind=worker:set_endpoint=%s", ev.ext.netstate.name);
 		C->endpoint = ev;
 		return;
 	}
 
-	if (ev.ext.netstate.type == 1){
+	if (ev.ext.netstate.type == ROLE_SOURCE || ev.ext.netstate.type == ROLE_DIR){
 		A12INT_DIRTRACE("dirsv:kind=worker:register_source=%s:kind=%d",
 			(char*)ev.ext.netstate.name, ev.ext.netstate.type);
 				register_source(C, ev);
 	}
 /* set sink key */
-	else if (ev.ext.netstate.type == 2){
+	else if (ev.ext.netstate.type == ROLE_SINK){
 		unsigned char* b64 = a12helper_tob64(
 			(unsigned char*)ev.ext.netstate.name, 32, &(size_t){0});
 			A12INT_DIRTRACE("dirsv:kind=worker:update_sink_pk=%s", b64);
