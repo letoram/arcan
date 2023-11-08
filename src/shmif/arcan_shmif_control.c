@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/utsname.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -137,6 +138,7 @@ static uint64_t g_epoch;
 
 void arcan_random(uint8_t*, size_t);
 static char* spawn_arcan_net(const char* conn_src, int* dsock);
+static size_t a12_cp(const char* conn_src, bool* weak);
 
 /*
  * The guard-thread thing tries to get around all the insane edge conditions
@@ -2666,7 +2668,7 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	file_handle dpipe;
 	char* keyfile = NULL;
 
-	if (strncmp(newpath, "a12://", 6) == 0)
+	if (a12_cp(newpath, NULL))
 		keyfile = spawn_arcan_net(newpath, &dpipe);
 	else
 		keyfile = arcan_shmif_connect(newpath, key, &dpipe);
@@ -3011,11 +3013,21 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	if (!work)
 		return NULL;
 
-/* quick-workaround, the url format for keyid@ is in conflict with
- * other forms like ident@key@ */
+/* Quick-workaround, the url format for keyid@ is in conflict with other forms
+ * like ident@key@. first fallback to hostname uname and if even that is
+ * broken, go just by anon and let the directory deal with the likely collision */
 	const char* ident = getenv("A12_IDENT");
-	if (!ident)
-		ident = "anon";
+	struct utsname nam;
+
+	if (!ident){
+		if (0 == uname(&nam)){
+			if (nam.nodename[0]){
+				ident = nam.nodename;
+			}
+		}
+		if (!ident)
+			ident = "anon";
+	}
 
 	bool weak;
 	size_t start = a12_cp(conn_src, &weak);
