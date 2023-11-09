@@ -1043,8 +1043,12 @@ void anet_directory_cl(
 		.cbt = &cbt,
 	};
 
-	S->on_discover = cl_got_dyn;
-	S->discover_tag = &ioloop;
+	a12_set_destination_raw(S,
+		0, (struct a12_unpack_cfg){
+			.on_discover = cl_got_dyn,
+			.on_discover_tag = &ioloop,
+		}, sizeof(struct a12_unpack_cfg)
+	);
 
 /* send REGISTER event with our ident, this is a convenience thing right now,
  * it might be slightly cleaner having an actual directory command for the

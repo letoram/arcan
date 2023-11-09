@@ -2598,6 +2598,10 @@ void a12_set_destination_raw(struct a12_state* S,
 	S->channels[chid].cont = fake;
 	S->channels[chid].raw = cfg;
 	S->channels[chid].active = CHANNEL_RAW;
+
+/* these are tracked per context and not per channel */
+	S->on_discover = cfg.on_discover;
+	S->discover_tag = cfg.on_discover_tag;
 }
 
 void

@@ -4554,7 +4554,13 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tbldynstr(ctx, "kind", "state", top);
 			tbldynstr(ctx, "namespace", spacetostr(ev->ext.netstate.space), top);
 			if (ev->ext.netstate.space == 5){
-
+				MSGBUF_UTF8(ev->ext.netstate.name);
+				tbldynstr(ctx, "name", msgbuf, top);
+				size_t dsz;
+				char* b64 = (char*) arcan_base64_encode(
+					(uint8_t*)&ev->ext.netstate.pubk, 32, &dsz, 0);
+				tbldynstr(ctx, "pubk", b64, top);
+				free(b64);
 			}
 			else {
 				MSGBUF_UTF8(ev->ext.netstate.name);

@@ -213,6 +213,11 @@ struct a12_unpack_cfg {
 		uint8_t mode,
 		struct a12_dynreq* out,
 		void* tag);
+
+
+	void (*on_discover)(struct a12_state*,
+		int, const char*, bool, uint8_t[static 32], void*);
+	void* on_discover_tag;
 };
 
 void a12_set_destination_raw(struct a12_state*,

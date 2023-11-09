@@ -725,7 +725,11 @@ static int dircl_loop(
 		.cbt = &dircfg,
 	};
 
-	A->state->on_discover = cl_got_dyn;
+	a12_set_destination_raw(A->state, 0,
+		(struct a12_unpack_cfg){
+		.on_discover = cl_got_dyn,
+		.on_discover_tag = &ioloop,
+		}, sizeof(struct a12_unpack_cfg));
 
 	C->user = &dmeta;
 	a12_set_bhandler(A->state, anet_directory_cl_bhandler, &ioloop);
@@ -766,7 +770,9 @@ static int connect_to_host(
 		.pk_lookup = key_auth_local
 	};
 
-	a12_set_trace_level(4095, stderr);
+#ifdef DEBUG
+	a12_set_trace_level(8191, stderr);
+#endif
 
 	const char* name;
 	if (!arg_lookup(args, "host", 0, &name) || name == NULL || !strlen(name)){
