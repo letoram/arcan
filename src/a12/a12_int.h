@@ -250,6 +250,7 @@ struct a12_state {
 	uint64_t current_seqnr;
 	uint64_t last_seen_seqnr;
 	uint64_t out_stream;
+	int64_t shutdown_id;
 	bool advenc_broken;
 
 /* The biggest concern of congestion is video frames as that tends to be most

@@ -562,9 +562,13 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 	}
 
 	char empty_ext[16] = {0};
+	bool no_output = true;
+
 	if (exec_res && !cbt->clopt->block_state){
 		a12_enqueue_bstream(I->S, state_fd,
 			A12_BTYPE_STATE, cbt->clopt->applid, false, state_sz, empty_ext);
+		a12_shutdown_id(I->S, cbt->clopt->applid);
+		no_output = false;
 	}
 	else if (!exec_res){
 		if (cbt->clopt->stderr_log){
@@ -583,6 +587,8 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 			fprintf(stderr, "sending crash report (%zu) bytes\n", state_sz);
 			a12_enqueue_bstream(I->S, state_fd,
 				A12_BTYPE_CRASHDUMP, cbt->clopt->applid, false, state_sz, empty_ext);
+			a12_shutdown_id(I->S, cbt->clopt->applid);
+			no_output = false;
 		}
 	}
 
@@ -594,7 +600,7 @@ out:
 		a12int_request_dirlist(I->S, true);
 	}
 	else
-		I->shutdown = true;
+		I->shutdown = no_output;
 
 /* reset appl tracking state so reset will take the right path */
 	if (A->pf_stdin){
@@ -612,6 +618,7 @@ out:
 	A->pid = 0;
 	I->on_event = NULL;
 	I->userfd = -1;
+	I->on_userfd = NULL;
 	atomic_fetch_add(&active_appls.n_active, -1);
 }
 

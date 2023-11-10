@@ -500,6 +500,7 @@ static struct a12_state* a12_setup(struct a12_context_options* opt, bool srv)
 		.server = srv
 	};
 
+	res->shutdown_id = -1;
 	for (size_t i = 0; i <= 255; i++){
 		res->channels[i].unpack_state.bframe.tmp_fd = -1;
 	}
@@ -1842,6 +1843,12 @@ static void command_pingpacket(struct a12_state* S, uint32_t sid)
 	if (!sid)
 		return;
 
+	if (sid == S->shutdown_id){
+		S->state = STATE_BROKEN;
+		a12int_trace(A12_TRACE_SYSTEM, "terminal_ping=%"PRIu32, sid);
+		return;
+	}
+
 	size_t i;
 	size_t wnd_sz = VIDEO_FRAME_DRIFT_WINDOW;
 	for (i = 0; i < wnd_sz; i++){
@@ -2334,6 +2341,9 @@ static void process_blob(struct a12_state* S)
 			cbf->tmp_fd = -1;
 			S->binary_handler(S, bm, S->binary_handler_tag);
 
+/* send that we ack:ed the transfer so the other side gets a chance to react
+ * even if they have nothing else queued */
+			a12int_stream_ack(S, S->in_channel, cbf->identifier);
 			return;
 		}
 	}
@@ -3505,4 +3515,9 @@ bool
 		.active = true
 	};
 	return true;
+}
+
+void a12_shutdown_id(struct a12_state* S, uint32_t id)
+{
+	S->shutdown_id = id;
 }

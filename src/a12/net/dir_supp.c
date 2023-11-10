@@ -31,7 +31,7 @@
 
 void anet_directory_ioloop(struct ioloop_shared* I)
 {
-	int errmask = POLLERR | POLLNVAL | POLLHUP;
+	int errmask = POLLERR | POLLHUP;
 	struct pollfd fds[5] =
 	{
 		{.fd = I->userfd, .events = POLLIN | errmask},
@@ -56,9 +56,11 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 /* regular simple processing loop, wait for DIRECTORY-LIST command */
 	while (a12_ok(I->S) && -1 != poll(fds, 5, -1)){
 		if ((fds[0].revents | fds[1].revents | fds[2].revents | fds[3].revents) & errmask){
-			if (fds[0].revents & errmask){
+			if ((fds[0].revents & errmask) && I->on_userfd){
 				I->on_userfd(I, false);
 			}
+			if (!I->shutdown)
+				continue;
 			break;
 		}
 
