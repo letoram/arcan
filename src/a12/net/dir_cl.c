@@ -36,6 +36,12 @@
 struct appl_runner_state {
 	struct ioloop_shared* ios;
 
+	struct {
+		int fd;
+		FILE* fpek;
+		bool active;
+	} state;
+
 	pid_t pid;
 
 	FILE* pf_stdin;
@@ -99,6 +105,8 @@ static struct {
 	_Atomic volatile int n_active;
 
 } active_appls = {
+	.active = {
+	}
 };
 
 static struct pk_response key_auth_fixed(uint8_t pk[static 32], void* tag)
@@ -385,6 +393,21 @@ static void runner_shmif(struct ioloop_shared* I)
 	}
 }
 
+static void setup_statefd(struct appl_runner_state* A)
+{
+	char filename[] = "statetemp-XXXXXX";
+	A->state.fd = mkstemp(filename);
+
+	if (-1 == A->state.fd){
+		fprintf(stderr, "Couldn't create temp-store, state transfer disabled\n");
+	}
+	else
+		unlink(filename);
+
+	A->state.fpek = fdopen(A->state.fd, "w");
+	A->state.active = true;
+}
+
 static void swap_appldir(const char* name, int basedir)
 {
 /* it is probably worth keeping track of the old here */
@@ -407,12 +430,28 @@ static void swap_appldir(const char* name, int basedir)
  */
 static void process_thread(struct ioloop_shared* I, bool ok)
 {
-	char buf[4096];
-
 /* capture the state block, write into an unlinked tmp-file so the
  * file descriptor can be rewound and set as a bstream */
 	struct appl_runner_state* A = I->tag;
 	struct directory_meta* cbt = I->cbt;
+
+	char buf[4096];
+
+/* we have a queued state transfer (crash dump or key value), keep feeding
+ * that until we get the #ENDKV - this is triggered by receiving finish or
+ * finish_fail */
+	if (A->state.active){
+		while (fgets(buf, 4096, A->pf_stdout)){
+			fputs(buf, A->state.fpek);
+			if (strcmp(buf, "#ENDKV\n") == 0){
+				A->state.active = false;
+				fflush(A->state.fpek);
+				fprintf(A->pf_stdin, "continue\n");
+				break;
+			}
+		}
+		return;
+	}
 
 /* we are trying to synch a reload, now's the time to remove the old appldir
  * and rename the .new into just basename. */
@@ -424,7 +463,10 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 /*  the first 'continue here is to unlock the reload, i.e. we don't want to
  *  buffer more commands in the same atomic commit. this causes recovery into
  *  something that immediately switches into monitoring mode again in order
- *  to provide a window for re-injecting state */
+ *  to provide a window for re-injecting state.
+ *
+ *  since the process is still alive, the current state is still in :memory:
+ *  sqlite though so no need unless we want an explicit revert. */
 				fprintf(A->pf_stdin, "reload\n");
 				fprintf(A->pf_stdin, "continue\n");
 
@@ -432,6 +474,20 @@ static void process_thread(struct ioloop_shared* I, bool ok)
  * could do some other funky things, e.g. force a rollback to an externally
  * defined override state. */
 				fprintf(A->pf_stdin, "continue\n");
+			}
+			else if (strcmp(buf, "#FINISH\n") == 0){
+				fprintf(A->pf_stdin,
+					cbt->clopt->block_state ? "continue\n" : "dumpkeys\n");
+				return;
+			}
+			else if (strcmp(buf, "#FAIL\n") == 0){
+				fprintf(A->pf_stdin,
+					cbt->clopt->block_state ? "continue\n" : "dumpstate\n");
+			}
+			else if (strcmp(buf, "#BEGINKV\n") == 0){
+				setup_statefd(A);
+				fputs(buf, A->state.fpek);
+				return process_thread(I, ok);
 			}
 
 /* client wants to join the applgroup through a net_open call and has set up a
@@ -490,49 +546,9 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 		return;
 	}
 
-	int pret = 0;
-	char* out = NULL;
-	char filename[] = "statetemp-XXXXXX";
-	int state_fd = mkstemp(filename);
-	size_t state_sz = 0;
-
-	if (-1 == state_fd){
-		fprintf(stderr, "Couldn't create temp-store, state transfer disabled\n");
-	}
-	else
-		unlink(filename);
-
-	while (!feof(A->pf_stdout)){
-/* couldn't get more state, STDOUT is likely broken - process dead or dying */
-		if (!fgets(buf, 4096, A->pf_stdout)){
-			while ((waitpid(A->pid, &pret, 0)) != A->pid
-				&& (errno == EINTR || errno == EAGAIN)){}
-		}
-
-/* try to cache it to our temporary state store */
-		else if (-1 != state_fd){
-			size_t ntw = strlen(buf);
-			size_t pos = 0;
-
-/* normal POSIX write shenanigans */
-			while (ntw){
-				ssize_t nw = write(state_fd, &buf[pos], ntw);
-				if (-1 == nw){
-					if (errno == EAGAIN || errno == EINTR)
-						continue;
-
-					fprintf(stderr, "Out of space caching state, transfer disabled\n");
-					close(state_fd);
-					state_fd = -1;
-					break;
-				}
-
-				ntw -= nw;
-				pos += nw;
-				state_sz += nw;
-			}
-		}
-	}
+	int pret;
+	while ((waitpid(A->pid, &pret, -1))
+		!= A->pid && (errno == EINTR || errno == EAGAIN)){}
 
 /* exited successfully? then the state snapshot should only contain the K/V
  * dump. If empty - do nothing. If exit with error code, the state we read
@@ -556,51 +572,33 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 		fprintf(stderr, "arcan: unhandled application termination state\n");
 	}
 
-/* just request new dirlist and it should reload */
-	if (-1 == state_fd || !state_sz){
+/* just request new dirlist and it should reload, if state or log are
+ * blocked the fpek wouldn't have been created so it is safe to send */
+	if (!A->state.fpek)
 		goto out;
-	}
 
+	long sz = ftell(A->state.fpek);
 	char empty_ext[16] = {0};
-	bool no_output = true;
 
-	if (exec_res && !cbt->clopt->block_state){
-		a12_enqueue_bstream(I->S, state_fd,
-			A12_BTYPE_STATE, cbt->clopt->applid, false, state_sz, empty_ext);
-		a12_shutdown_id(I->S, cbt->clopt->applid);
-		no_output = false;
-	}
-	else if (!exec_res){
-		if (cbt->clopt->stderr_log){
-			FILE* fpek = fdopen(state_fd, "r");
-			while (!feof(fpek)){
-				char buf[4096];
-				size_t nr = fread(buf, 1, 4096, fpek);
-				if (nr)
-					fwrite(stderr, nr, 1, fpek);
-			}
-			fseek(fpek, 0, SEEK_SET);
-			fclose(fpek);
-		}
+	a12_enqueue_bstream(
+		I->S,
+		A->state.fd,
+		exec_res ? A12_BTYPE_STATE : A12_BTYPE_CRASHDUMP,
+		cbt->clopt->applid,
+		false,
+		sz,
+		empty_ext
+	);
 
-		if (!cbt->clopt->block_log){
-			fprintf(stderr, "sending crash report (%zu) bytes\n", state_sz);
-			a12_enqueue_bstream(I->S, state_fd,
-				A12_BTYPE_CRASHDUMP, cbt->clopt->applid, false, state_sz, empty_ext);
-			a12_shutdown_id(I->S, cbt->clopt->applid);
-			no_output = false;
-		}
-	}
+	fclose(A->state.fpek);
+	a12_shutdown_id(I->S, cbt->clopt->applid);
 
 out:
-	if (-1 != state_fd)
-		close(state_fd);
-
 	if (cbt->clopt->reload){
 		a12int_request_dirlist(I->S, true);
 	}
 	else
-		I->shutdown = no_output;
+		I->shutdown = A->state.fpek == NULL;
 
 /* reset appl tracking state so reset will take the right path */
 	if (A->pf_stdin){

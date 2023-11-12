@@ -11,8 +11,6 @@ static bool m_locked;
 static bool m_transaction;
 static int longjmp_mode;
 
-static struct arcan_shmif_cont* group;
-
 /*
  * instead of adding more commands here, the saner option is to establish
  * a shmif based control interface (with the interesting consequence of
@@ -120,8 +118,19 @@ static void cmd_continue(char* arg)
 		cmd_commit(arg);
 }
 
-static void cmd_shmif(char* arg)
+static void cmd_dumpstate(char* argv)
 {
+/* previously all the dumping ran here, with the change to bootstrap a shmif
+ * context, it makes more sense letting the monitor end drive the action */
+	fprintf(m_out, "#BEGINKV\n");
+	fprintf(m_out, "#LASTSOURCE\n");
+	const char* msg = arcan_lua_crash_source(main_lua_context);
+	if (msg){
+		fprintf(m_out, "%s", msg);
+	}
+	fprintf(m_out, "#ENDLASTSOURCE\n");
+	arcan_lua_statesnap(m_out, "state", true);
+	fprintf(m_out, "#ENDKV\n");
 }
 
 void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
@@ -143,10 +152,10 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 		{"continue", cmd_continue},
 		{"dumpkeys", cmd_dumpkeys},
 		{"loadkey", cmd_loadkey},
+		{"dumpstate", cmd_dumpstate},
 		{"commit", cmd_commit},
 		{"reload", cmd_reload},
-		{"lock", cmd_lock},
-		{"shmif", cmd_shmif},
+		{"lock", cmd_lock}
 	};
 
 	m_locked = true;
@@ -215,31 +224,13 @@ bool arcan_monitor_configure(int srate, const char* dst, FILE* ctrl)
 
 void arcan_monitor_finish(bool ok)
 {
-	m_locked = false;
+	if (ok)
+		fprintf(m_out, "#FINISH\n");
+	else
+		fprintf(m_out, "#FAIL\n");
 
-	if (m_srate < 0 && m_out && !ok){
-		fprintf(m_out, "#LASTSOURCE\n");
-		const char* msg = arcan_lua_crash_source(main_lua_context);
-		if (msg){
-			fprintf(m_out, "%s", msg);
-		}
-		fprintf(m_out, "#ENDLASTSOURCE\n");
-		arcan_lua_statesnap(m_out, "state", true);
-	}
-
-	if (m_out && ok){
-		cmd_dumpkeys(NULL);
-	}
-
-	if (m_ctrl){
-		fclose(m_ctrl);
-		m_ctrl = NULL;
-	}
-
-	if (m_out){
-		fclose(m_out);
-		m_out = NULL;
-	}
+	if (m_out)
+		arcan_monitor_watchdog(NULL, NULL);
 }
 
 void arcan_monitor_tick()
