@@ -622,10 +622,51 @@ static bool dircl_dirent(struct ioloop_shared* I, struct appl_meta* M)
 	return true;
 }
 
-static void find_source(struct arcan_shmif_cont* C, const char* msg)
+static void request_source(
+	struct ioloop_shared* I, bool tunnel, const char* msg)
 {
-/* Sweep the known set of sources and pair petname to pubk as we need
- * to use the pubk in the source request. */
+	uint8_t pubk[32];
+	if (!a12helper_fromb64((uint8_t*) msg, 32, pubk)){
+		LOG("request_source=invalid_pubk:%s\n", msg);
+		return;
+	}
+
+/* pre-alloc the handover first */
+	struct arcan_shmif_cont* C = arcan_shmif_primary(SHMIF_INPUT);
+	arcan_shmif_enqueue(C, &(struct arcan_event){
+			.ext.kind = ARCAN_EVENT(SEGREQ),
+			.ext.segreq.kind = SEGID_HANDOVER
+		});
+
+	arcan_event acq_event;
+	struct arcan_event* evpool = NULL;
+	ssize_t evpool_sz;
+
+	if (!arcan_shmif_acquireloop(C, &acq_event, &evpool ,&evpool_sz)){
+		LOG("server rejected allocation");
+		return;
+	}
+
+	if (evpool_sz){
+		LOG("ignoring_pending:%zu", evpool_sz);
+		free(evpool);
+		return;
+	}
+
+/* map the handover segment but mark it as unknown and defer registration until
+ * the the source- setup is done and the a12 to shmif mapping gets the events
+ * from the other side */
+	struct arcan_shmif_cont* handover = malloc(sizeof(struct arcan_shmif_cont*));
+	*handover = arcan_shmif_acquire(C, NULL, SEGID_UNKNOWN, SHMIF_NOACTIVATE);
+
+	I->handover = handover;
+	LOG("request_source=%s\n", pubk);
+	a12_request_dynamic_resource(I->S, pubk, tunnel, dircl_source_handler, I);
+}
+
+static void switch_dir(
+	struct ioloop_shared* C, bool tunnel, const char* name)
+{
 }
 
 static void dircl_userfd(struct ioloop_shared* I, bool ok)
@@ -650,9 +691,28 @@ static void dircl_userfd(struct ioloop_shared* I, bool ok)
 		case TARGET_COMMAND_MESSAGE:{
 			LOG("shmif:message=%s", ev.tgt.message);
 			char* err = NULL;
+			size_t i = 0;
+			bool tunnel = false;
 
-			if (ev.tgt.message[0] == '/'){
-				find_source(C, (char*) &ev.tgt.message[1]);
+/* force-tunnel connection (assuming it is permitted, we don't know that yet,
+ * though it should probably be communicated through the initial hello when we
+ * have authenticated .. */
+			if (ev.tgt.message[0] == '|'){
+				tunnel = true;
+				i++;
+			}
+
+/* The message prefix determines action, e.g. switch directory. This is likely
+ * a case we want to optimize by having a bchunkstate convey the index of that
+ * directory, on the other hand that would not convey a possible user-specific
+ * index */
+			if (ev.tgt.message[i] == '/'){
+				switch_dir(I, tunnel, (char*) &ev.tgt.message[i+1]);
+				continue;
+			}
+
+			if (ev.tgt.message[i] == '<'){
+				request_source(I, tunnel, (char*) &ev.tgt.message[i+1]);
 				continue;
 			}
 

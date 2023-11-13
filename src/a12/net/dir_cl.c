@@ -54,6 +54,7 @@ struct appl_runner_state {
 struct tunnel_state {
 	struct a12_context_options opts;
 	struct a12_dynreq req;
+	struct arcan_shmif_cont* handover;
 	int fd;
 };
 
@@ -64,7 +65,7 @@ static void* tunnel_runner(void* t)
 	struct a12_state* S = a12_client(&ts->opts);
 
 	if (anet_authenticate(S, ts->fd, ts->fd, &err)){
-		a12helper_a12srv_shmifcl(NULL, S, NULL, ts->fd, ts->fd);
+		a12helper_a12srv_shmifcl(ts->handover, S, NULL, ts->fd, ts->fd);
 	}
 	else {
 	}
@@ -78,13 +79,17 @@ static void* tunnel_runner(void* t)
 }
 
 static void detach_tunnel_runner(
-	int fd, struct a12_context_options* aopt, struct a12_dynreq* req)
+	int fd,
+	struct a12_context_options* aopt,
+	struct a12_dynreq* req,
+	struct arcan_shmif_cont* handover)
 {
 	struct tunnel_state* ts = malloc(sizeof(struct tunnel_state));
 	ts->opts = *aopt;
 	ts->req = *req;
 	ts->opts.pk_lookup_tag = &ts->req;
 	ts->fd = fd;
+	ts->handover = handover;
 
 	pthread_t pth;
 	pthread_attr_t pthattr;
@@ -130,14 +135,24 @@ static struct pk_response key_auth_fixed(uint8_t pk[static 32], void* tag)
  *    (ok) we might need to connect
  *    (ok) we might need to tunnel via the directory
  */
-static void on_source(struct a12_state* S, struct a12_dynreq req, void* tag)
+void dircl_source_handler(
+	struct a12_state* S, struct a12_dynreq req, void* tag)
 {
 	struct ioloop_shared* I = tag;
 
 /* security:
+ *
  * disable the ephemeral exchange for now, this means the announced identity
  * when we connect to the directory server will be the one used for the x25519
  * exchange instead of a generated intermediate.
+ *
+ * on the other hand the exchange is still not externally visible, the shared
+ * secret known by source, sink, dir is needed to observe the DH exchange, and
+ * the Kpub- mapping is known by the directory regardless.
+ *
+ * we could treat the 'inner' exchange as 'ephemeral outer' though to establish
+ * a transitively trusted pair, but it is rather fringe versus getting the other
+ * bits working..
  */
 	struct a12_context_options a12opts = {
 		.local_role = ROLE_SINK,
@@ -165,7 +180,8 @@ static void on_source(struct a12_state* S, struct a12_dynreq req, void* tag)
 		}
 
 		a12_set_tunnel_sink(S, 1, sv[0]);
-		detach_tunnel_runner(sv[1], &a12opts, &req);
+		detach_tunnel_runner(sv[1], &a12opts, &req, I->handover);
+		I->handover = NULL;
 		return;
 	}
 
@@ -181,7 +197,9 @@ static void on_source(struct a12_state* S, struct a12_dynreq req, void* tag)
 		return;
 	}
 
-	a12helper_a12srv_shmifcl(NULL, con.state, NULL, con.fd, con.fd);
+	a12helper_a12srv_shmifcl(I->handover, con.state, NULL, con.fd, con.fd);
+	I->handover = NULL;
+
 	shutdown(con.fd, SHUT_RDWR);
 }
 
@@ -936,7 +954,8 @@ static void cl_got_dyn(struct a12_state* S, int type,
 	unsigned char* req = a12helper_tob64(pubk, 32, &outl);
 	a12int_trace(A12_TRACE_DIRECTORY, "request:petname=%s:pubk=%s", petname, req);
 	free(req);
-	a12_request_dynamic_resource(S, pubk, cbt->clopt->request_tunnel, on_source, I);
+	a12_request_dynamic_resource(S,
+		pubk, cbt->clopt->request_tunnel, dircl_source_handler, I);
 }
 
 static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)

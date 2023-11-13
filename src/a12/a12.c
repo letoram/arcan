@@ -3491,6 +3491,16 @@ bool
 	return true;
 }
 
+int
+	a12_tunnel_descriptor(struct a12_state* S, uint8_t chid)
+{
+	if (S->channels[chid].active){
+		return S->channels[chid].unpack_state.bframe.tmp_fd;
+	}
+	else
+		return -1;
+}
+
 bool
 	a12_set_tunnel_sink(struct a12_state* S, uint8_t chid, int fd)
 {

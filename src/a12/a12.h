@@ -317,6 +317,9 @@ bool
 bool
 	a12_set_tunnel_sink(struct a12_state*, uint8_t chid, int fd);
 
+int
+	a12_tunnel_descriptor(struct a12_state* S, uint8_t chid);
+
 /*
  * Get a status code indicating the state of the connection.
  *

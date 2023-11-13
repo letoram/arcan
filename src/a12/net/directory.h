@@ -100,6 +100,9 @@ void anet_directory_cl(
 struct a12_bhandler_res anet_directory_cl_bhandler(
 	struct a12_state* S, struct a12_bhandler_meta M, void* tag);
 
+void dircl_source_handler(
+	struct a12_state* S, struct a12_dynreq req, void* tag);
+
 /*
  * dir_supp.c
  *
@@ -119,6 +122,8 @@ struct ioloop_shared {
 	int userfd;
 
 	struct arcan_shmif_cont shmif;
+	struct arcan_shmif_cont* handover;
+
 	int shmiffd;
 
 	pthread_mutex_t lock;

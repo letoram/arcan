@@ -75,7 +75,7 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 
 		if (fds[3].revents & POLLIN){
 			uint8_t buf[8832];
-			int fd = I->S->channels[1].unpack_state.bframe.tmp_fd;
+			int fd = a12_tunnel_descriptor(I->S, 1);
 			ssize_t sz = read(fd, buf, sizeof(buf));
 			a12_write_tunnel(I->S, 1, buf, (size_t) sz);
 		}
@@ -123,9 +123,7 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 		fds[4].revents = 0;
 		fds[2].fd = outbuf_sz ? I->fdout : -1;
 		fds[0].fd = I->userfd;
-		fds[3].fd =
-			I->S->channels[1].unpack_state.bframe.tunnel ?
-			I->S->channels[1].unpack_state.bframe.tmp_fd : -1;
+		fds[3].fd = a12_tunnel_descriptor(I->S, 1);
 		fds[4].fd = I->shmif.addr ? I->shmif.epipe : -1;
 	}
 }
