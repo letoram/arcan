@@ -224,13 +224,15 @@ bool arcan_monitor_configure(int srate, const char* dst, FILE* ctrl)
 
 void arcan_monitor_finish(bool ok)
 {
+	if (!m_out)
+		return;
+
 	if (ok)
 		fprintf(m_out, "#FINISH\n");
 	else
 		fprintf(m_out, "#FAIL\n");
 
-	if (m_out)
-		arcan_monitor_watchdog(NULL, NULL);
+	arcan_monitor_watchdog(NULL, NULL);
 }
 
 void arcan_monitor_tick()
