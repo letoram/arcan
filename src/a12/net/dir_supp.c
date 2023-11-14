@@ -59,9 +59,8 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 			if ((fds[0].revents & errmask) && I->on_userfd){
 				I->on_userfd(I, false);
 			}
-			if (!I->shutdown)
-				continue;
-			break;
+			if (I->shutdown)
+				break;
 		}
 
 /* this might add or remove a shmif to our tracking set */

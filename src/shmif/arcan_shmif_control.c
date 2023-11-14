@@ -1197,10 +1197,24 @@ static int enqueue_internal(
 	if (category == EVENT_EXTERNAL){
 		ctx->eventbuf[*ctx->back].ext.frame_id = c->priv->vframe_id;
 
-		if (src->ext.kind == ARCAN_EVENT(REGISTER) &&
-			(src->ext.registr.guid[0] || src->ext.registr.guid[1])){
-			c->priv->guid[0] = src->ext.registr.guid[0];
-			c->priv->guid[1] = src->ext.registr.guid[1];
+		if (src->ext.kind == ARCAN_EVENT(REGISTER)){
+
+			if (src->ext.registr.guid[0] || src->ext.registr.guid[1]){
+				c->priv->guid[0] = src->ext.registr.guid[0];
+				c->priv->guid[1] = src->ext.registr.guid[1];
+			}
+
+/* Changing the type post first register is a no-op normally. The edge case is
+ * when/if the register event was deferred (NOREGISTER) as part of handover or
+ * just special needs AND a migrate event happens later. That would have the
+ * internally tracked type to be SEGID_UNKNOWN (forcing its frame delivery to
+ * be blocked in the recipient) and the injected on-migrate REGISTER would
+ * propagate.
+ *
+ * That's why we need to update the type and not just the GUID.
+ */
+			if (src->ext.registr.kind && c->priv->type == SEGID_UNKNOWN)
+				c->priv->type = src->ext.registr.kind;
 		}
 	}
 
