@@ -11725,18 +11725,23 @@ static int net_open(lua_State* ctx)
 			arcan_warning("couldn't resolve socket path");
 			arcan_frameserver_free(newref);
 			lua_pushvid(ctx, ARCAN_EID);
-			free(host);
 			return 1;
 		}
 
+		free(host);
 		arcan_conductor_register_frameserver(newref);
-		arcan_monitor_fsrvvid(path);
+
+		if (!arcan_monitor_fsrvvid(path)){
+			arcan_frameserver_free(newref);
+			lua_pushvid(ctx, ARCAN_EID);
+			return 1;
+		}
+
 		trace_allocation(ctx, "net_listen", newref->vid);
 
 /* only different thing to regular frameserver setup is that the monitor need to
  * forward the connection information through its established channel. */
 		lua_pushvid(ctx, newref->vid);
-		free(host);
 		return 1;
 	}
 
