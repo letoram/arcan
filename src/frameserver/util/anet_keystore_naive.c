@@ -26,8 +26,6 @@
 
 #include "external/x25519.h"
 
-#include "anet_helper.h"
-
 struct key_ent;
 
 struct key_ent {
@@ -188,6 +186,10 @@ static bool decode_hostline(char* buf,
 	while (isspace(*end)){
 		*end-- = '\0';
 	}
+
+#ifdef DEBUG_KEYSTORE
+	fprintf(stderr, "host (%s) with key %s\n", buf, key);
+#endif
 
 	*outhost = buf;
 /* decode keypart */

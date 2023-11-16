@@ -571,7 +571,7 @@ direct connection cannot be established, corresponding carriers for NAT
 traversal (UDP blocked, misconfigured routers) and might not be permitted by
 the server connection.
 
-### command - 14, directory-opened
+### command - 13, directory-opened
 - [18    ] Status  : (0 failed, 1 direct-in ok, 2 direct-out ok, 3 tunnel ok)
 - [19 +46] Address : (string representation, \0 terminated)
                      Status = 1, IPv4,6 address to the host,
@@ -589,9 +589,17 @@ initial HELLO. It is advised to use an ephemeral keypair and the two stage
 HELLO to be able to differentiate the keypair used when authenticating to
 the directory versus authenticating to the source.
 
-If the Address is a tunnel, a channel is reserved similarly to define-bstream.6
+If the Address is a tunnel, a channel is reserved similarly to define-bstream.
 data transfers work the same, except it is always streaming with no finite
 limit and data can flow in both directions.
+
+### command - 14, tunnel-drop
+- [18+2] : tunnel-id
+
+The other end of the tunnel has disconnected without the possibility for
+resumption.
+
+This will be sent
 
 ##  Event (2), fixed length
 - [0..7] sequence number : uint64

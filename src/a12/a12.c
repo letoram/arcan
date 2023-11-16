@@ -2029,6 +2029,20 @@ static void add_dirent(struct a12_state* S)
 	DYNAMIC_FREE(new);
 }
 
+static void command_tundrop(struct a12_state* S, uint32_t id)
+{
+/* just mark the tunnel state as broken, it is the owner of the state object
+ * that gets to unmap / deal with the associated descriptor. */
+}
+
+void a12_drop_tunnel(struct a12_state* S, uint32_t id)
+{
+	uint8_t outb[CONTROL_PACKET_SIZE];
+	build_control_header(S, outb, COMMAND_TUNDROP);
+	pack_u32(id, &outb[18]);
+	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+}
+
 /*
  * Control command,
  * current MAC calculation in s->mac_dec
@@ -2087,6 +2101,9 @@ static void process_control(struct a12_state* S, void (*on_event)
 			a12int_trace(A12_TRACE_SECURITY, "diropened:no_pending_request");
 	}
 	break;
+	case COMMAND_TUNDROP:{
+		command_tundrop(S, 1);
+	}
 	case COMMAND_PING:{
 		uint32_t streamid;
 		unpack_u32(&streamid, &S->decode[18]);
@@ -3492,9 +3509,12 @@ bool
 }
 
 int
-	a12_tunnel_descriptor(struct a12_state* S, uint8_t chid)
+	a12_tunnel_descriptor(struct a12_state* S, uint8_t chid, bool* ok)
 {
+	*ok = true;
+
 	if (S->channels[chid].active){
+		*ok = S->channels[chid].unpack_state.bframe.tunnel == 2;
 		return S->channels[chid].unpack_state.bframe.tmp_fd;
 	}
 	else
@@ -3508,7 +3528,6 @@ bool
 		a12int_trace(A12_TRACE_DIRECTORY, "swap_sink:chid=%"PRIu8, chid);
 		if (0 < S->channels[chid].unpack_state.bframe.tmp_fd)
 			close(S->channels[chid].unpack_state.bframe.tmp_fd);
-		return false;
 	}
 
 	if (-1 == fd){

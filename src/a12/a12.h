@@ -317,8 +317,15 @@ bool
 bool
 	a12_set_tunnel_sink(struct a12_state*, uint8_t chid, int fd);
 
+void
+	a12_drop_tunnel(struct a12_state*, uint32_t tunid);
+
+/* get the descriptor bound to a tunnel.
+ *  -1, ok = true : no tunnel bound
+ *  >0, ok = true : tunnel active and bound
+ *  >0, ok = false : tunnel bound but dead */
 int
-	a12_tunnel_descriptor(struct a12_state* S, uint8_t chid);
+	a12_tunnel_descriptor(struct a12_state* S, uint8_t chid, bool* ok);
 
 /*
  * Get a status code indicating the state of the connection.

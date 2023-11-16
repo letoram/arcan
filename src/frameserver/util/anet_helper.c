@@ -19,6 +19,10 @@
 #include "a12.h"
 #include "anet_helper.h"
 
+/* pulled from a12, will get linked in regardless, just used for tracing the key */
+extern uint8_t* a12helper_tob64(const uint8_t* data, size_t inl, size_t* outl);
+void x25519_public_key(const uint8_t secret[static 32], uint8_t public[static 32]);
+
 int anet_clfd(struct addrinfo* addr)
 {
 	int clfd;
@@ -213,11 +217,22 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 	else {
 		char* outhost;
 		uint16_t outport;
+
 		if (!a12helper_keystore_hostkey(
 			"default", 0, arg->opts->priv_key, &outhost, &outport)){
 			a12helper_keystore_register(
 				"default", "127.0.0.1", 6680, arg->opts->priv_key);
+			a12int_trace(A12_TRACE_SECURITY, "creating_outbound_default");
 		}
+
+		uint8_t pubk[32];
+		size_t outl;
+
+		x25519_public_key(arg->opts->priv_key, pubk);
+		unsigned char* req = a12helper_tob64(pubk, 32, &outl);
+		a12int_trace(A12_TRACE_SECURITY, "outbound=%s", req);
+		free(req);
+
 		return connect_to(arg);
 	}
 }

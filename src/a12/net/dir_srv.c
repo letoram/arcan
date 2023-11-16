@@ -59,8 +59,12 @@ struct dircl {
 	size_t message_ofs;
 
 	struct shmifsrv_client* C;
+
 	struct dircl* next;
 	struct dircl* prev;
+
+/* [UAF-risk] 1:1 for now - always check this when removing a dircl */
+	struct dircl* tunnel;
 };
 
 static struct {
@@ -255,6 +259,7 @@ static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
 				shmifsrv_enqueue_event(cur->C, &to_src, -1);
 				shmifsrv_enqueue_event(C->C, &to_sink, -1);
 
+				cur->tunnel = C->tunnel;
 				free(b64);
 				break;
 			}
@@ -999,6 +1004,18 @@ static void* dircl_process(void* P)
 	}
 
 	pthread_mutex_lock(&active_clients.sync);
+
+		if (C->tunnel){
+			arcan_event ss = {
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_MESSAGE,
+				.tgt.message = "a12:drop_tunnel=1"
+			};
+			shmifsrv_enqueue_event(C->tunnel->C, &ss, -1);
+
+			C->tunnel = NULL;
+		}
+
 	a12int_trace(
 		A12_TRACE_DIRECTORY, "srv:kind=worker:terminated");
 		C->prev->next = C->next;

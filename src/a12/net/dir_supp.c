@@ -55,6 +55,8 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 
 /* regular simple processing loop, wait for DIRECTORY-LIST command */
 	while (a12_ok(I->S) && -1 != poll(fds, 5, -1)){
+		bool tun_ok = true;
+
 		if ((fds[0].revents | fds[1].revents | fds[2].revents | fds[3].revents) & errmask){
 			if ((fds[0].revents & errmask) && I->on_userfd){
 				I->on_userfd(I, false);
@@ -74,9 +76,11 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 
 		if (fds[3].revents & POLLIN){
 			uint8_t buf[8832];
-			int fd = a12_tunnel_descriptor(I->S, 1);
-			ssize_t sz = read(fd, buf, sizeof(buf));
-			a12_write_tunnel(I->S, 1, buf, (size_t) sz);
+			int fd = a12_tunnel_descriptor(I->S, 1, &tun_ok);
+			if (tun_ok) {
+				ssize_t sz = read(fd, buf, sizeof(buf));
+				a12_write_tunnel(I->S, 1, buf, (size_t) sz);
+			}
 		}
 
 		if ((fds[2].revents & POLLOUT) && outbuf_sz){
@@ -122,8 +126,14 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 		fds[4].revents = 0;
 		fds[2].fd = outbuf_sz ? I->fdout : -1;
 		fds[0].fd = I->userfd;
-		fds[3].fd = a12_tunnel_descriptor(I->S, 1);
+		fds[3].fd = a12_tunnel_descriptor(I->S, 1, &tun_ok);
 		fds[4].fd = I->shmif.addr ? I->shmif.epipe : -1;
+
+/* tunnel has just died, we need to signal our caller that they need to close */
+		if (!tun_ok && fds[3].fd != -1){
+			shutdown(fds[3].fd, SHUT_RDWR);
+			fds[3].fd = -1;
+		}
 	}
 }
 

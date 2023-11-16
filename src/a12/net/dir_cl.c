@@ -55,6 +55,12 @@ struct tunnel_state {
 	struct a12_context_options opts;
 	struct a12_dynreq req;
 	struct arcan_shmif_cont* handover;
+
+/* lock used for state transitions */
+	struct ioloop_shared* ios;
+	struct a12_state* parent;
+	bool* volatile shutdown;
+
 	int fd;
 };
 
@@ -67,11 +73,15 @@ static void* tunnel_runner(void* t)
 	if (anet_authenticate(S, ts->fd, ts->fd, &err)){
 		a12helper_a12srv_shmifcl(ts->handover, S, NULL, ts->fd, ts->fd);
 	}
-	else {
-	}
 
-	shutdown(ts->fd, SHUT_RDWR);
-	close(ts->fd);
+	pthread_mutex_lock(&ts->ios->lock);
+		if (!*(ts->shutdown)){
+			shutdown(ts->fd, SHUT_RDWR);
+			close(ts->fd);
+			*(ts->shutdown) = true;
+		}
+	pthread_mutex_unlock(&ts->ios->lock);
+
 	free(err);
 	free(ts);
 
@@ -355,7 +365,7 @@ static pid_t exec_cpath(struct a12_state* S,
 		fchdir(dir->clopt->basedir);
 
 		setsid();
-		setenv("XDG_RUNTIME_DIR", ".", 1);
+		setenv("XDG_RUNTIME_DIR", dir->clopt->basedir_path, 1);
 		dup2(pstdin[0], STDIN_FILENO);
 		close(pstdin[0]);
 		close(pstdin[1]);
@@ -519,8 +529,8 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 				}
 
 				buf[strlen(buf)-1] = '\0';
-				char cbuf[strlen(buf) + strlen(I->cbt->clopt->basedir_path) + 1];
-				snprintf(cbuf, sizeof(cbuf), "%s/%s", I->cbt->clopt->basedir_path, &buf[5]);
+				char cbuf[strlen(buf)];
+				snprintf(cbuf, sizeof(cbuf), "%s", &buf[5]);
 
 /* strip \n and connect */
 				int dfd;
@@ -565,7 +575,7 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 	}
 
 	int pret;
-	while ((waitpid(A->pid, &pret, -1))
+	while ((waitpid( A->pid, &pret, 0))
 		!= A->pid && (errno == EINTR || errno == EAGAIN)){}
 
 /* exited successfully? then the state snapshot should only contain the K/V
@@ -575,20 +585,18 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 		clean_appldir(cbt->clopt->applname, cbt->clopt->basedir);
 
 	bool exec_res = false;
-	if (WIFEXITED(pret) && !WEXITSTATUS(pret)){
-		fprintf(stderr, "arcan(%s) exited successfully\n", cbt->clopt->applname);
+	if (WIFEXITED(pret)){
+		fprintf(stderr, "arcan(%s) exited\n", cbt->clopt->applname);
 		exec_res = true;
+		if (WEXITSTATUS(pret)){
+			fprintf(stderr, "script/exection error, generating report\n");
+		}
 	}
-/* exited with error code or sig(abrt,kill,...) */
-	else if (
-		(WIFEXITED(pret) && WEXITSTATUS(pret)) ||
-		WIFSIGNALED(pret))
-	{
-		fprintf(stderr, "script/exection error, generating report\n");
+	else if (WIFSIGNALED(pret)){
+		fprintf(stderr, "arcan(%s) terminated, signal: %d\n", WTERMSIG(pret));
 	}
-	else {
-		fprintf(stderr, "arcan: unhandled application termination state\n");
-	}
+	else
+		fprintf(stderr, "unexpected return: %d\n", pret);
 
 /* just request new dirlist and it should reload, if state or log are
  * blocked the fpek wouldn't have been created so it is safe to send */
@@ -724,7 +732,8 @@ static bool handover_exec(struct appl_runner_state* A, FILE* sin)
  * here isn't great - lf without escape is problematic as values with lf is
  * permitted so this needs to be modified a bit, but the _lwa to STATE_OUT
  * handler also calls for this so can wait until that is in place */
-	send_state(A->pf_stdin, sin);
+	if (!dir->clopt->block_state)
+		send_state(A->pf_stdin, sin);
 	fprintf(A->pf_stdin, "continue\n");
 
 /* keep the state in block around for quick reload / resume, now hook

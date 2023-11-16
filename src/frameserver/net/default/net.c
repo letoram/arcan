@@ -736,6 +736,12 @@ static void dircl_userfd(struct ioloop_shared* I, bool ok)
 			return;
 		}
 		break;
+
+/* Right now we can't mutate our role - if we want to act as a source, we need
+ * to connect as one. The case where the other point would be interesting is if
+ * we navigate transitively somewhere (dir / dir / dir) and want to source into
+ * it. Then we'd want the arcan appl to throw us a socket that some other shmif
+ * client will migrate into, and we'd map up the other end of the pair. */
 		case TARGET_COMMAND_NEWSEGMENT:
 			LOG("shmif:newsegment_without_request");
 		break;

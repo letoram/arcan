@@ -433,10 +433,14 @@ static void do_event(
 			return;
 		}
 
-		const char* secret;
-		if (arg_lookup(stat, "dir_secret", 0, &secret) && secret){
+		const char* tmp;
+		if (arg_lookup(stat, "drop_tunnel", 0, &tmp)){
+			a12int_trace(A12_TRACE_DIRECTORY, "kind=drop_tunnel:id=%s", tmp);
+			a12_drop_tunnel(S, 1);
+		}
+		else if (arg_lookup(stat, "dir_secret", 0, &tmp) && tmp){
 			free(cbt->secret);
-			cbt->secret = strdup(secret);
+			cbt->secret = strdup(tmp);
 		}
 
 /* reserved for other messages */
@@ -856,6 +860,10 @@ static struct a12_bhandler_res srv_bevent(
 			char buf[5 + sizeof(".debug")];
 			snprintf(buf, sizeof(buf), "%"PRIu16".debug", M.identifier);
 			res.fd = request_parent_resource(S, cbt->C, buf, true);
+			if (-1 != res.fd){
+				cbt->in_transfer = true;
+				cbt->transfer_id = M.identifier;
+			}
 		}
 /* blob is (currently) not used for anything, a possibility would be form
  * like uploads for the server end of the appl to be able to process. That

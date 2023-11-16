@@ -78,6 +78,7 @@ enum control_commands {
 	COMMAND_DIRDISCOVER  = 11,/* dynamic source/dir entry        */
 	COMMAND_DIROPEN      = 12,/* mediate access to a dyn src/dir */
 	COMMAND_DIROPENED    = 13,/* replies to DIROPEN (src/sink)   */
+	COMMAND_TUNDROP      = 14,/* state change on DIROPENED con   */
 };
 
 enum hello_mode {
@@ -137,7 +138,7 @@ struct binary_frame {
 	int tmp_fd;
 	int type;
 	bool active;
-	bool tunnel;
+	int tunnel;
 	uint64_t size;
 	uint32_t identifier;
 	uint8_t checksum[16];
