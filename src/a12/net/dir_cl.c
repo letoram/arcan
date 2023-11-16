@@ -89,17 +89,18 @@ static void* tunnel_runner(void* t)
 }
 
 static void detach_tunnel_runner(
+	struct ioloop_shared* I,
 	int fd,
 	struct a12_context_options* aopt,
-	struct a12_dynreq* req,
-	struct arcan_shmif_cont* handover)
+	struct a12_dynreq* req)
 {
 	struct tunnel_state* ts = malloc(sizeof(struct tunnel_state));
 	ts->opts = *aopt;
 	ts->req = *req;
 	ts->opts.pk_lookup_tag = &ts->req;
 	ts->fd = fd;
-	ts->handover = handover;
+	ts->ios = I;
+	ts->handover = I->handover;
 
 	pthread_t pth;
 	pthread_attr_t pthattr;
@@ -190,7 +191,7 @@ void dircl_source_handler(
 		}
 
 		a12_set_tunnel_sink(S, 1, sv[0]);
-		detach_tunnel_runner(sv[1], &a12opts, &req, I->handover);
+		detach_tunnel_runner(I, sv[1], &a12opts, &req);
 		I->handover = NULL;
 		return;
 	}
