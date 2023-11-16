@@ -416,7 +416,7 @@ static void runner_shmif(struct ioloop_shared* I)
 			sizeof(ev.tgt.message), "_event.h integrity");
 
 		memcpy(out.ext.message.data, ev.tgt.message, sizeof(out.ext.message.data));
-
+		a12int_trace(A12_TRACE_DIRECTORY, "applmsg=%s", out.ext.message.data);
 		a12_channel_enqueue(I->S, &out);
 	}
 }
