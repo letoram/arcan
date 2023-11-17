@@ -78,6 +78,7 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 		if (fds[3].revents){
 			if (fds[3].revents & errmask){
 				a12_drop_tunnel(I->S, 1);
+				a12int_trace(A12_TRACE_DIRECTORY, "tunnel_close:internal");
 			}
 
 /* it is possible for the tunnel connection to feed faster than we sink,
@@ -93,6 +94,8 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 						a12_write_tunnel(I->S, 1, buf, (size_t) sz);
 						nw += sz;
 					}
+
+				a12int_trace(A12_TRACE_DIRECTORY, "tunneled:bytes=%zu", nw);
 			}
 		}
 
@@ -141,14 +144,6 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 		fds[0].fd = I->userfd;
 		fds[3].fd = a12_tunnel_descriptor(I->S, 1, &tun_ok);
 		fds[4].fd = I->shmif.addr ? I->shmif.epipe : -1;
-
-/* tunnel is dead on our end, likely from a tunnel-close command being
- * sent, now the runner might still be active inside of
- * a12helper_a12srv_shmifcl. shutting down our end of that */
-		if (!tun_ok && fds[3].fd != -1){
-			shutdown(fds[3].fd, SHUT_RDWR);
-			fds[3].fd = -1;
-		}
 	}
 }
 

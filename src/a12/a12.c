@@ -2029,33 +2029,30 @@ static void add_dirent(struct a12_state* S)
 	DYNAMIC_FREE(new);
 }
 
-static void command_tundrop(struct a12_state* S, uint32_t id)
+static void command_tundrop(struct a12_state* S, uint8_t id)
 {
-/* just mark the tunnel state as broken, it is the owner of the state object
- * that gets to unmap / deal with the associated descriptor. */
+/* just mark the tunnel state as closed, it is the owner of the state object
+ * that gets to unmap / deal with the associated descriptor when it extracts
+ * the descriptor via a12_tunnel_descriptor. */
+	S->channels[id].unpack_state.bframe.tunnel = 2;
 }
 
-void a12_drop_tunnel(struct a12_state* S, uint32_t id)
+void a12_drop_tunnel(struct a12_state* S, uint8_t id)
 {
 	uint8_t outb[CONTROL_PACKET_SIZE];
 	build_control_header(S, outb, COMMAND_TUNDROP);
-	pack_u32(id, &outb[18]);
+	outb[18] = id;
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+	a12int_trace(A12_TRACE_DIRECTORY, "close_tunnel=%"PRIu8, id);
 
-	for (size_t i = 0; i < COUNT_OF(S->channels); i++){
-		if (!S->channels[i].active ||
-			S->channels[i].unpack_state.bframe.identifier != id)
-			continue;
+	S->channels[id].unpack_state.bframe.tmp_fd;
+	S->channels[id].active = false;
 
-		S->channels[i].active = false;
-		int fd = S->channels[i].unpack_state.bframe.tmp_fd;
-		if (0 < fd){
-			close(fd);
-			S->channels[i].unpack_state.bframe.active = false;
-			S->channels[i].unpack_state.bframe.tmp_fd = -1;
-		}
-
-		break;
+	int fd = S->channels[id].unpack_state.bframe.tmp_fd;
+	if (0 < fd){
+		close(fd);
+		S->channels[id].unpack_state.bframe.active = false;
+		S->channels[id].unpack_state.bframe.tmp_fd = -1;
 	}
 }
 
@@ -2118,7 +2115,7 @@ static void process_control(struct a12_state* S, void (*on_event)
 	}
 	break;
 	case COMMAND_TUNDROP:{
-		command_tundrop(S, 1);
+		command_tundrop(S, S->decode[18]);
 	}
 	case COMMAND_PING:{
 		uint32_t streamid;
@@ -3530,7 +3527,7 @@ int
 	*ok = true;
 
 	if (S->channels[chid].active){
-		*ok = S->channels[chid].unpack_state.bframe.tunnel == 2;
+		*ok = S->channels[chid].unpack_state.bframe.tunnel == 1;
 		return S->channels[chid].unpack_state.bframe.tmp_fd;
 	}
 	else
@@ -3556,7 +3553,7 @@ bool
 	S->channels[chid].active = true;
 	S->channels[chid].unpack_state.bframe = (struct binary_frame){
 		.tmp_fd = fd,
-		.tunnel = true,
+		.tunnel = 1,
 		.active = true
 	};
 	return true;

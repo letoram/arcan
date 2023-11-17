@@ -318,7 +318,7 @@ bool
 	a12_set_tunnel_sink(struct a12_state*, uint8_t chid, int fd);
 
 void
-	a12_drop_tunnel(struct a12_state*, uint32_t tunid);
+	a12_drop_tunnel(struct a12_state*, uint8_t chid);
 
 /* get the descriptor bound to a tunnel.
  *  -1, ok = true : no tunnel bound

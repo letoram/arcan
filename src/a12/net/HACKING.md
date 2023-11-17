@@ -589,17 +589,15 @@ initial HELLO. It is advised to use an ephemeral keypair and the two stage
 HELLO to be able to differentiate the keypair used when authenticating to
 the directory versus authenticating to the source.
 
-If the Address is a tunnel, a channel is reserved similarly to define-bstream.
+If the address is a tunnel, a channel is reserved similarly to define-bstream.
 data transfers work the same, except it is always streaming with no finite
 limit and data can flow in both directions.
 
 ### command - 14, tunnel-drop
-- [18+2] : tunnel-id
+- [18] : tunnel-id
 
-The other end of the tunnel has disconnected without the possibility for
-resumption.
-
-This will be sent
+Mark the channel used for a tunnel as being in a broken state. This is to
+let both source and sink to free related resources.
 
 ##  Event (2), fixed length
 - [0..7] sequence number : uint64
