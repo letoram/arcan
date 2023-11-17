@@ -74,14 +74,8 @@ static void* tunnel_runner(void* t)
 		a12helper_a12srv_shmifcl(ts->handover, S, NULL, ts->fd, ts->fd);
 	}
 
-	pthread_mutex_lock(&ts->ios->lock);
-		if (!*(ts->shutdown)){
-			shutdown(ts->fd, SHUT_RDWR);
-			close(ts->fd);
-			*(ts->shutdown) = true;
-		}
-	pthread_mutex_unlock(&ts->ios->lock);
-
+	shutdown(ts->fd, SHUT_RDWR);
+	close(ts->fd);
 	free(err);
 	free(ts);
 

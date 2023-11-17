@@ -74,12 +74,25 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 			I->on_shmif(I);
 		}
 
-		if (fds[3].revents & POLLIN){
-			uint8_t buf[8832];
-			int fd = a12_tunnel_descriptor(I->S, 1, &tun_ok);
-			if (tun_ok) {
-				ssize_t sz = read(fd, buf, sizeof(buf));
-				a12_write_tunnel(I->S, 1, buf, (size_t) sz);
+/* tunnel is dead? need to close-id it */
+		if (fds[3].revents){
+			if (fds[3].revents & errmask){
+				a12_drop_tunnel(I->S, 1);
+			}
+
+/* it is possible for the tunnel connection to feed faster than we sink,
+ * so have some kind of arbitrary cutoff (1MiB) in order for the actual
+ * socket communication to also go through */
+			else {
+				uint8_t buf[8832];
+				size_t nw = 0, sz;
+
+				int fd = a12_tunnel_descriptor(I->S, 1, &tun_ok);
+				while (tun_ok &&
+					(sz = read(fd, buf, sizeof(buf))) > 0 && nw < 1048576){
+						a12_write_tunnel(I->S, 1, buf, (size_t) sz);
+						nw += sz;
+					}
 			}
 		}
 
@@ -129,7 +142,9 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 		fds[3].fd = a12_tunnel_descriptor(I->S, 1, &tun_ok);
 		fds[4].fd = I->shmif.addr ? I->shmif.epipe : -1;
 
-/* tunnel has just died, we need to signal our caller that they need to close */
+/* tunnel is dead on our end, likely from a tunnel-close command being
+ * sent, now the runner might still be active inside of
+ * a12helper_a12srv_shmifcl. shutting down our end of that */
 		if (!tun_ok && fds[3].fd != -1){
 			shutdown(fds[3].fd, SHUT_RDWR);
 			fds[3].fd = -1;

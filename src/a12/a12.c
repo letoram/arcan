@@ -2041,6 +2041,22 @@ void a12_drop_tunnel(struct a12_state* S, uint32_t id)
 	build_control_header(S, outb, COMMAND_TUNDROP);
 	pack_u32(id, &outb[18]);
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+
+	for (size_t i = 0; i < COUNT_OF(S->channels); i++){
+		if (!S->channels[i].active ||
+			S->channels[i].unpack_state.bframe.identifier != id)
+			continue;
+
+		S->channels[i].active = false;
+		int fd = S->channels[i].unpack_state.bframe.tmp_fd;
+		if (0 < fd){
+			close(fd);
+			S->channels[i].unpack_state.bframe.active = false;
+			S->channels[i].unpack_state.bframe.tmp_fd = -1;
+		}
+
+		break;
+	}
 }
 
 /*
