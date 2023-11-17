@@ -228,7 +228,7 @@ static void on_cl_event(
 		ev->ext.kind == EVENT_EXTERNAL_STREAMSTATUS){
 		if (ev->ext.streamstat.identifier == I->cbt->transfer_id){
 			a12int_trace(A12_TRACE_DIRECTORY,
-				"streamstatus:progress=%f:id=%f",
+				"streamstatus:progress=%f:id=%d",
 				ev->ext.streamstat.completion,
 				(int)ev->ext.streamstat.identifier
 			);
@@ -588,7 +588,7 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 		}
 	}
 	else if (WIFSIGNALED(pret)){
-		fprintf(stderr, "arcan(%s) terminated, signal: %d\n", WTERMSIG(pret));
+		fprintf(stderr, "arcan killed, signal: %d\n", WTERMSIG(pret));
 	}
 	else
 		fprintf(stderr, "unexpected return: %d\n", pret);

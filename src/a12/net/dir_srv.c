@@ -173,6 +173,7 @@ static void dirlist_to_worker(struct dircl* C)
 static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
 {
 	const char* pubk = NULL;
+	char* msg = NULL;
 
 	if (!arg_lookup(entry, "pubk", 0, &pubk) || !pubk)
 		goto send_fail;
@@ -210,8 +211,9 @@ static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
 
 /* for now blindly accept tunneling if requested and permitted */
 				if (arg_lookup(entry, "tunnel", 0, NULL)){
-					if (!active_clients.opts->allow_tunnel)
+					if (!active_clients.opts->allow_tunnel){
 						goto send_fail;
+					}
 
 					int sv[2];
 					if (0 != socketpair(AF_UNIX, SOCK_STREAM, 0, sv))
@@ -221,6 +223,7 @@ static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
 						.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
 						.tgt.message = ".tun"
 					};
+
 					shmifsrv_enqueue_event(cur->C, &ts, sv[0]);
 					shmifsrv_enqueue_event(C->C, &ts, sv[1]);
 					close(sv[0]);
@@ -259,6 +262,12 @@ static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
 				shmifsrv_enqueue_event(cur->C, &to_src, -1);
 				shmifsrv_enqueue_event(C->C, &to_sink, -1);
 
+				if (0 < asprintf(&msg, "tunnel:source=%s:sink=%s",
+					cur->petname.ext.netstate.name,
+					C->petname.ext.netstate.name)){
+					msg = NULL;
+				}
+	
 				cur->tunnel = C->tunnel;
 				free(b64);
 				break;
@@ -266,6 +275,11 @@ static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
 			cur = cur->next;
 		}
 	pthread_mutex_unlock(&active_clients.sync);
+	if (msg){
+		A12INT_DIRTRACE("%s", msg);
+		free(msg);
+	}
+
 	return;
 
 send_fail:
@@ -687,14 +701,20 @@ static void msgqueue_worker(struct dircl* C, arcan_event* ev)
 
 	C->message_ofs += len;
 
-/* queue more */
+/* too noisy to log everything normally */
+#ifdef DEBUG
+	A12INT_DIRTRACE("dirsv:kind=message:multipart=%d:broadcast=%s",
+		(int) ev->ext.message.multipart, (char*) ev->ext.message.data);
+#endif
+	
+/* queue more?*/
 	if (ev->ext.message.multipart)
 		return;
 
 	C->message_multipart[C->message_ofs] = '\0';
 	struct arcan_event outev = {
 		.category = EVENT_EXTERNAL,
-		.tgt.kind = EVENT_EXTERNAL_MESSAGE,
+		.ext.kind = EVENT_EXTERNAL_MESSAGE,
 	};
 
 /* broadcast as one large chain so we don't risk any interleaving */
@@ -872,7 +892,7 @@ make_random:
 			count++;
 			if (count == 99)
 				goto make_random;
-			snprintf(end, 16, "%.13s_%d", work, count++);
+			snprintf(end, 16, "%.13s_%d", work, (int)count++);
 		}
 
 		free(work);
@@ -1016,8 +1036,8 @@ static void* dircl_process(void* P)
 			C->tunnel = NULL;
 		}
 
-	a12int_trace(
-		A12_TRACE_DIRECTORY, "srv:kind=worker:terminated");
+	a12int_trace(A12_TRACE_DIRECTORY,
+		"srv:kind=worker:terminated:name=%s", C->petname.ext.netstate.name);
 		C->prev->next = C->next;
 		if (C->next)
 			C->next->prev = C->prev;
@@ -1027,6 +1047,7 @@ static void* dircl_process(void* P)
 		ev.ext.netstate.state = 0;
 
 		if (ev.ext.netstate.name[0]){
+			a12int_trace(A12_TRACE_DIRECTORY, "srv:kind=worker:broadcast_loss");
 			tag_outbound_name(&ev, C->pubk);
 			struct dircl* cur = active_clients.root.next;
 			while (cur && ev.ext.netstate.name[0]){
@@ -1038,6 +1059,7 @@ static void* dircl_process(void* P)
 	pthread_mutex_unlock(&active_clients.sync);
 
 	shmifsrv_free(C->C, true);
+	memset(C, 0xff, sizeof(struct dircl));
 	free(C);
 
 	return NULL;
