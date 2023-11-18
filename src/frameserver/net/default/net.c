@@ -538,6 +538,18 @@ static pid_t dircl_exec(struct a12_state* S,
 static void dircl_event(struct arcan_shmif_cont* C, int chid, struct arcan_event* ev, void* tag)
 {
 	LOG("event=%s", arcan_shmif_eventstr(ev, NULL, 0));
+
+/* this also deviates from what is done in a12/net/dir_cl, as we don't do appl
+ * pushes, there should be a shared part for when dealing with loading
+ * server-side resources though */
+	struct ioloop_shared* I = tag;
+
+	a12int_trace(A12_TRACE_DIRECTORY, "event=%s", arcan_shmif_eventstr(ev, NULL, 0));
+	if (ev->category == EVENT_EXTERNAL &&
+		ev->ext.kind == EVENT_EXTERNAL_MESSAGE){
+		arcan_shmif_enqueue(&I->shmif, ev);
+		return;
+	}
 }
 
 void req_id(struct ioloop_shared* I, uint16_t identifier)
