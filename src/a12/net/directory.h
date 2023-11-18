@@ -120,11 +120,10 @@ struct ioloop_shared {
 	int fdin;
 	int fdout;
 	int userfd;
+	int userfd2;
 
 	struct arcan_shmif_cont shmif;
 	struct arcan_shmif_cont* handover;
-
-	int shmiffd;
 
 	pthread_mutex_t lock;
 	struct a12_state *S;
@@ -138,6 +137,7 @@ struct ioloop_shared {
 
 	bool (*on_directory)(struct ioloop_shared* S, struct appl_meta* dir);
 	void (*on_userfd)(struct ioloop_shared* S, bool ok);
+	void (*on_userfd2)(struct ioloop_shared* S, bool ok);
 	void (*on_shmif)(struct ioloop_shared* S);
 	void* tag;
 };

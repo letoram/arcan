@@ -32,13 +32,14 @@
 void anet_directory_ioloop(struct ioloop_shared* I)
 {
 	int errmask = POLLERR | POLLHUP;
-	struct pollfd fds[5] =
+	struct pollfd fds[6] =
 	{
 		{.fd = I->userfd, .events = POLLIN | errmask},
 		{.fd = I->fdin, .events = POLLIN | errmask},
 		{.fd = -1, .events = POLLOUT | errmask},
 		{.fd = -1, .events = POLLIN | errmask},
 		{.fd = -1, .events = POLLIN | errmask},
+		{.fd = I->userfd2, .events = POLLIN | errmask}
 	};
 
 	uint8_t inbuf[9000];
@@ -54,13 +55,21 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 		fds[2].fd = I->fdout;
 
 /* regular simple processing loop, wait for DIRECTORY-LIST command */
-	while (a12_ok(I->S) && -1 != poll(fds, 5, -1)){
+	while (a12_ok(I->S) && -1 != poll(fds, 6, -1)){
 		bool tun_ok = true;
+		int got_error = 0;
+		for (size_t i = 0; i < COUNT_OF(fds); i++)
+			got_error |= fds[i].revents & errmask;
 
-		if ((fds[0].revents | fds[1].revents | fds[2].revents | fds[3].revents) & errmask){
+		if (got_error){
 			if ((fds[0].revents & errmask) && I->on_userfd){
 				I->on_userfd(I, false);
 			}
+
+			if ((fds[5].revents & errmask) && I->on_userfd2){
+				I->on_userfd2(I, false);
+			}
+
 			if (I->shutdown)
 				break;
 		}
@@ -68,6 +77,9 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 /* this might add or remove a shmif to our tracking set */
 		if (fds[0].revents & POLLIN){
 			I->on_userfd(I, true);
+		}
+		if (fds[5].revents & POLLIN){
+			I->on_userfd2(I, true);
 		}
 
 		if (fds[4].revents){
@@ -81,16 +93,13 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 				a12int_trace(A12_TRACE_DIRECTORY, "tunnel_close:internal");
 			}
 
-/* it is possible for the tunnel connection to feed faster than we sink,
- * so have some kind of arbitrary cutoff (1MiB) in order for the actual
- * socket communication to also go through */
 			else {
 				uint8_t buf[8832];
 				size_t nw = 0, sz;
 
 				int fd = a12_tunnel_descriptor(I->S, 1, &tun_ok);
-				while (tun_ok &&
-					(sz = read(fd, buf, sizeof(buf))) > 0 && nw < 1048576){
+				if (tun_ok &&
+					(sz = read(fd, buf, sizeof(buf))) > 0){
 						a12_write_tunnel(I->S, 1, buf, (size_t) sz);
 						nw += sz;
 					}
@@ -139,11 +148,13 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 		}
 
 		fds[0].revents = fds[1].revents = fds[2].revents = fds[3].revents = 0;
-		fds[4].revents = 0;
+		fds[4].revents = fds[5].revents = 0;
+
 		fds[2].fd = outbuf_sz ? I->fdout : -1;
 		fds[0].fd = I->userfd;
 		fds[3].fd = a12_tunnel_descriptor(I->S, 1, &tun_ok);
 		fds[4].fd = I->shmif.addr ? I->shmif.epipe : -1;
+		fds[5].fd = I->userfd2;
 	}
 }
 

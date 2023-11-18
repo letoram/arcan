@@ -366,13 +366,14 @@ static pid_t exec_cpath(struct a12_state* S,
 		close(pstdin[1]);
 		close(pstdout[0]);
 
-/*
- * keeping these open makes it easier to see when something goes wrong with _lwa
- *  close(STDERR_FILENO);
+		if (!dir->clopt->stderr_log){
+			close(STDERR_FILENO);
+			open("/dev/null",  O_WRONLY);
+		}
+
 		close(STDOUT_FILENO);
 		open("/dev/null", O_WRONLY);
-		open("/dev/null", O_WRONLY);
-*/
+
 		execvp(ctx->bin, argv);
 		exit(EXIT_FAILURE);
 	}
@@ -1065,6 +1066,7 @@ void anet_directory_cl(
 		.fdin = fdin,
 		.fdout = fdout,
 		.userfd = -1,
+		.userfd2 = -1,
 		.on_event = on_cl_event,
 		.on_directory = cl_got_dir,
 		.lock = PTHREAD_MUTEX_INITIALIZER,

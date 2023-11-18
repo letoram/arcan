@@ -698,6 +698,7 @@ void anet_directory_srv(
 		.fdin = fdin,
 		.fdout = fdout,
 		.userfd = shmif_parent_process.epipe,
+		.userfd2 = -1,
 		.on_event = on_a12srv_event,
 		.on_userfd = on_shmif,
 		.lock = PTHREAD_MUTEX_INITIALIZER,

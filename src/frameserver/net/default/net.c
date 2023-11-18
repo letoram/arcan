@@ -518,15 +518,19 @@ static pid_t dircl_exec(struct a12_state* S,
 			j++;
 	}
 
-	int* fds[4] = {inf, outf, NULL, &pstdout[1]};
+	int* fds[4] = {&pstdin[0], NULL, NULL, &pstdout[1]};
 	pid_t res =
 		arcan_shmif_handover_exec_pipe(C, client->segev, lwabin, argv, envv, 0, fds, 4);
 
 	for (size_t i = 0; envv[i]; i++)
 		free(envv[i]);
 
-	free(lwabin);
+	close(pstdin[0]);
+	*inf = pstdin[1];
+	*outf = pstdout[0];
 	close(pstdout[1]);
+
+	free(lwabin);
 
 	return res;
 }
@@ -783,10 +787,11 @@ static int dircl_loop(
 		.S = A->state,
 		.fdin = A->fd,
 		.fdout = A->fd,
-		.userfd = C->epipe,
+		.userfd = -1,
+		.userfd2 = C->epipe,
 		.on_event = dircl_event,
 		.on_directory = dircl_dirent,
-		.on_userfd = dircl_userfd,
+		.on_userfd2 = dircl_userfd,
 		.lock = PTHREAD_MUTEX_INITIALIZER,
 		.cbt = &dircfg,
 	};
