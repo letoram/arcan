@@ -704,8 +704,18 @@ static struct anet_cl_connection find_connection(
 		fprintf(stderr, "couldn't open keystore: %s\n", err);
 	}
 
-	if (!global.trust_domain)
-		global.trust_domain = strdup("outbound");
+/* if a key gets marked as trusted, we want to say which domain that belongs
+ * to. this is mostly equivalent to group in posix userland but could also be a
+ * named tag for an outbound keyset. The later is useful to provide discovery
+ * information. */
+	if (!global.trust_domain){
+		if (opts->key){
+			char tmp[strlen(opts->key) + sizeof("outbound-")];
+			snprintf(tmp, sizeof(tmp), "outbound-%s", opts->key);
+		}
+		else
+			global.trust_domain = strdup("outbound");
+	}
 
 /* connect loop until retry count exceeded */
 	while (rc != 0 && (!cl || (shmifsrv_poll(cl) != CLIENT_DEAD))){
@@ -935,6 +945,9 @@ static bool show_usage(const char* msg)
 	"\tA12_VBP        \t backpressure maximium cap (0..8)\n"
 	"\tA12_VBP_SOFT   \t backpressure soft (full-frames) cap (< VBP)\n"
 	"\tA12_CACHE_DIR  \t Used for caching binary stores (fonts, ...)\n\n"
+	"\tLocal Discovery mode (ignores connection arguments):\n"
+	"\tarcan-net discover passive\n"
+	"\tarcan-net discover beacon\n\n"
 	"Keystore mode (ignores connection arguments):\n"
 	"\tAdd/Append key: arcan-net keystore tag host [port=6680]\n"
 	"\t                tag=default is reserved\n"
@@ -1312,6 +1325,38 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 	return i;
 }
 
+static bool discover_beacon(
+	struct arcan_shmif_cont* C,
+	uint8_t kpub[static 32], uint8_t nonce[static 8],
+	bool iskey, char* addr)
+{
+	return true;
+}
+
+static int run_discover_command(int argc, char** argv)
+{
+ 	int sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+	if (-1 == sock){
+		LOG("couldn't bind discover_passive");
+		return EXIT_FAILURE;
+	}
+
+	struct sockaddr_in addr = {
+		.sin_family = AF_INET,
+		.sin_addr = {
+			.s_addr = htons(INADDR_ANY),
+		},
+		.sin_port = htons(6680)
+	};
+	socklen_t len = sizeof(addr);
+	bind(sock, &addr, len);
+
+	a12helper_listen_beacon(NULL, sock, discover_beacon, NULL);
+
+	return EXIT_SUCCESS;
+}
+
 static int apply_keystore_command(int argc, char** argv)
 {
 /* (opt, -b dir) */
@@ -1496,6 +1541,10 @@ int main(int argc, char** argv)
 
 	if (argc > 1 && strcmp(argv[1], "keystore") == 0){
 		return apply_keystore_command(argc-2, argv+2);
+	}
+
+	if (argc > 1 && strcmp(argv[1], "discover") == 0){
+		return run_discover_command(argc-2, argv+2);
 	}
 
 	if (argc < 2 || (argc == 2 &&
