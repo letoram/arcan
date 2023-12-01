@@ -1350,7 +1350,7 @@ static bool discover_beacon(
 
 static void* send_beacon(void*)
 {
-	int sock = socket(AF_INET, SOCK_DGRAM, 0);
+	int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (-1 == sock){
 		return NULL;
 	}
@@ -1363,13 +1363,14 @@ static void* send_beacon(void*)
 		.sin_port = htons(6680)
 	};
 	socklen_t len = sizeof(addr);
-	bind(sock, &addr, len);
 
-	int yes;
+	int yes = 1;
   int ret = setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (char*)&yes, sizeof(yes));
 	if (-1 == ret){
 		return NULL;
 	}
+
+	ret = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, (char*)&yes, sizeof(yes));
 
 	struct keystore_mask mask = {0};
 	size_t size;
@@ -1382,7 +1383,11 @@ static void* send_beacon(void*)
 
 	for(;;){
 		a12helper_build_beacon(&mask, &one, &two, &size);
-		sendto(sock, one, size, 0, (struct sockaddr*)&broadcast, sizeof(broadcast));
+		if (size !=
+			sendto(sock, one, size, 0, (struct sockaddr*)&broadcast, sizeof(broadcast))){
+			fprintf(stderr, "couldn't send beacon: %s\n", strerror(errno));
+			break;
+		}
 		sleep(1);
 		sendto(sock, two, size, 0, (struct sockaddr*)&broadcast, sizeof(broadcast));
 		sleep(10);
@@ -1393,7 +1398,13 @@ static void* send_beacon(void*)
 
 static int run_discover_command(int argc, char** argv)
 {
- 	int sock = socket(AF_INET, SOCK_DGRAM, 0);
+ 	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	pthread_create(&pth, &pthattr, send_beacon, NULL);
+
+ 	int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
 	if (-1 == sock){
 		LOG("couldn't bind discover_passive");
@@ -1403,6 +1414,7 @@ static int run_discover_command(int argc, char** argv)
 	const char* err;
 	if (!open_keystore(&err)){
 		fprintf(stderr, "couldn't open keystore: %s\n", err);
+		return EXIT_FAILURE;
 	}
 
 	struct sockaddr_in addr = {
@@ -1413,13 +1425,10 @@ static int run_discover_command(int argc, char** argv)
 		.sin_port = htons(6680)
 	};
 	socklen_t len = sizeof(addr);
-	bind(sock, &addr, len);
-
-	pthread_t pth;
-	pthread_attr_t pthattr;
-	pthread_attr_init(&pthattr);
-	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-	pthread_create(&pth, &pthattr, send_beacon, NULL);
+	if (-1 == bind(sock, &addr, len)){
+		fprintf(stderr, "couldn't bind beacon listener\n");
+		return EXIT_FAILURE;
+	}
 
 	a12helper_listen_beacon(NULL, sock, discover_beacon, NULL);
 

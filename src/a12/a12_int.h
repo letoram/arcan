@@ -120,7 +120,6 @@ size_t a12int_header_size(int type);
 
 struct ZSTD_CCtx_s;
 struct ZSTD_DCtx_s;
-struct appl_meta;
 
 struct audio_frame {
 	uint32_t id;
@@ -367,29 +366,6 @@ void a12int_append_out(
 	uint8_t* prepend, size_t prepend_sz);
 
 void a12int_step_vstream(struct a12_state* S, uint32_t id);
-
-struct appl_meta {
-
-/* These are used for local caching of contents, an update on the directory
- * bound to the context or freeing the a12 state machine will free them. */
-	FILE* handle;
-	char* buf;
-	uint64_t buf_sz;
-
-	struct appl_meta* next;
-
-	uint16_t identifier;
-	uint16_t categories;
-	uint16_t permissions;
-	uint8_t hash[4];
-
-	struct {
-		char name[18];
-		char short_descr[69];
-	} appl;
-
-	uint64_t update_ts;
-};
 
 /* takes ownership of appl_meta */
 void a12int_set_directory(struct a12_state*, struct appl_meta*);

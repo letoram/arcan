@@ -68,6 +68,30 @@ struct a12_dynreq {
 	int proto;
 };
 
+struct appl_meta;
+struct appl_meta {
+
+/* These are used for local caching of contents, an update on the directory
+ * bound to the context or freeing the a12 state machine will free them. */
+	FILE* handle;
+	char* buf;
+	uint64_t buf_sz;
+
+	struct appl_meta* next;
+
+	uint16_t identifier;
+	uint16_t categories;
+	uint16_t permissions;
+	uint8_t hash[4];
+
+	struct {
+		char name[18];
+		char short_descr[69];
+	} appl;
+
+	uint64_t update_ts;
+};
+
 struct a12_context_options {
 /* Provide to enable asymetric key authentication, set valid in the return to
  * allow the key, otherwise the session may be continued for a random number of
