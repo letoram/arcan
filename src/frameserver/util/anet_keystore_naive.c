@@ -22,6 +22,11 @@
 #include <netdb.h>
 
 #include "a12.h"
+
+#ifdef WANT_KEYSTORE_HASHER
+#include "a12_int.h"
+#endif
+
 #include "anet_helper.h"
 
 #include "external/x25519.h"
@@ -33,6 +38,10 @@ struct key_ent {
 	char* host;
 	size_t port;
 	char* fn;
+
+	bool got_chg;
+	uint8_t chg[8];
+	uint8_t pub_chg[32];
 
 	struct key_ent* next;
 };
@@ -731,3 +740,130 @@ int a12helper_keystore_dirfd(const char** err)
 
 	return keydir;
 }
+
+#ifdef WANT_KEYSTORE_HASHER
+bool a12helper_keystore_known_accepted_challenge(
+	const uint8_t pubk[static 32],
+	const uint8_t chg[static 8],
+	uint8_t outk[static 32],
+	char** tag)
+{
+	if (!keystore.open)
+		return false;
+
+	struct key_ent* ent = keystore.hosts;
+	*tag = NULL;
+
+	if (!ent)
+		return false;
+
+/* cache the chg calc because there might be more in the same set */
+	while (ent){
+		if (memcmp(ent->chg, chg, 8) != 0){
+			memcpy(ent->chg, chg, 8);
+			ent->got_chg = true;
+
+			blake3_hasher temp;
+			blake3_hasher_init(&temp);
+			blake3_hasher_update(&temp, chg, 8);
+			blake3_hasher_update(&temp, ent->key, 32);
+			blake3_hasher_finalize(&temp, ent->pub_chg, 32);
+		}
+
+/* if accepted has a tag that is outbound-xxx then we should extract xxx,
+ * verify entry in keystore-tags and swap name and set they key arg to false
+ * as this allows the rest of the UI map it to a petname, letting other
+ * automation take hold. */
+		if (memcmp(pubk, ent->pub_chg, 32) == 0){
+			char* needle = strstr(ent->host, "outbound-");
+			if (needle &&
+				(needle == ent->host || needle[-1] == ',') &&
+				(needle[9] != ',' && (needle[9] != '\0'))){
+				needle += 9;
+				size_t n = 0;
+				while (needle[n] != ',' && needle[n] != '\0')
+					n++;
+				char ch = needle[n];
+				needle[n] = '\0';
+				*tag = strdup(needle);
+				needle[n] = ch;
+			}
+
+			memcpy(outk, ent->key, 32);
+			return true;
+		}
+
+		ent = ent->next;
+	}
+
+	return false;
+}
+
+static bool in_mask(
+	struct keystore_mask* mask, const char* tag, struct keystore_mask** last)
+{
+	while (mask){
+		if (mask->tag && strcmp(mask->tag, tag) == 0)
+			return true;
+
+		if (!mask->next)
+			*last = mask;
+		mask = mask->next;
+	}
+	return false;
+}
+
+bool a12helper_keystore_public_tagset(struct keystore_mask* mask)
+{
+	if (!keystore.open){
+		return false;
+	}
+
+	lseek(keystore.dirfd_private, 0, SEEK_SET);
+	int tmpdfd = dup(keystore.dirfd_private);
+	if (-1 == tmpdfd){
+		return false;
+	}
+
+	DIR* dir = fdopendir(tmpdfd);
+	if (!dir){
+		if (-1 != tmpdfd)
+			close(tmpdfd);
+		return false;
+	}
+
+	struct dirent* dent;
+	struct keystore_mask* last;
+
+	while ((dent = readdir(dir))){
+		if (dent->d_type != DT_REG || in_mask(mask, dent->d_name, &last))
+			continue;
+
+		char* outhost;
+		uint16_t outport;
+		uint8_t privk[32];
+
+/* let the keystore actually open / parse, this catches format errors, permission
+ * errors and accidentally placed files */
+		if (!a12helper_keystore_hostkey(dent->d_name, 0, privk, &outhost, &outport))
+			continue;
+
+/* append the tag so we don't re-use it until the caller explicitly flush */
+		last->tag = strdup(dent->d_name);
+
+		struct keystore_mask* next = malloc(sizeof(struct keystore_mask));
+		*next = (struct keystore_mask){0};
+		last->next = next;
+
+/* insert THE PUBLIC form into tag buffer */
+		x25519_public_key(privk, last->pubk);
+	}
+
+/* if there still is a dent it means we ran out of space before we ran out of
+ * keys, meaning that the mask can be used to continue this and build another */
+	closedir(dir);
+	return dent != NULL;
+}
+
+#endif
+

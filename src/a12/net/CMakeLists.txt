@@ -5,6 +5,7 @@ set(A12_EXT "../external")
 set(SOURCES
 	a12_helper_cl.c
 	a12_helper_srv.c
+	a12_helper_discover.c
 	net.c
 	dir_cl.c
 	dir_srv.c
@@ -27,5 +28,5 @@ add_executable(arcan-net ${SOURCES})
 add_sanitizers(arcan-net)
 target_link_libraries(arcan-net PRIVATE arcan_a12 )
 target_include_directories(arcan-net PRIVATE ${INCLUDE_DIRS})
-target_compile_definitions(arcan-net PRIVATE ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${CMAKE_SYSTEM_NAME}\")
+target_compile_definitions(arcan-net PRIVATE WANT_KEYSTORE_HASHER ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${CMAKE_SYSTEM_NAME}\")
 install(TARGETS arcan-net DESTINATION ${CMAKE_INSTALL_BINDIR})

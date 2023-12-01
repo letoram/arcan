@@ -409,7 +409,7 @@ enum trace_groups {
 /* key-authentication and configuration warnings */
 	A12_TRACE_SECURITY = 2048,
 
-/* actions related to the directory mode features */
+/* actions related to the directory mode and discovery */
 	A12_TRACE_DIRECTORY = 4096,
 };
 

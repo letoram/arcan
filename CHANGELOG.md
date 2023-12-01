@@ -46,6 +46,7 @@
  * directory mode source-sink pairing 'reachable source' and 'tunnel' transfer modes
  * changed packaging format for appls
  * net\_open("@stdin") can now be used to access a per-directory-appl messaging group
+ * local broadcast domain discovery added, both through net\_discover and arcan-net
 
 ## Terminal
  * SGR reset fix, add CNL / CPL

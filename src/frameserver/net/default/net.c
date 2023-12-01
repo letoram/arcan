@@ -23,6 +23,8 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <signal.h>
+#include <poll.h>
+
 #include "a12.h"
 #include "a12_int.h"
 #include "net/a12_helper.h"
@@ -105,18 +107,82 @@ static int discover_broadcast(struct arcan_shmif_cont* C, int trust)
 	return EXIT_FAILURE;
 }
 
+/*
+ * This just passively listens for broadcast beacons from discover_broadcast.
+ *
+ * For TRUST_KNOWN case any matches are filtered against the list of previously
+ * accepted ones and beam an active discovery reply with the discovery keyset
+ * to match to a preset tag.
+ */
 static int discover_passive(struct arcan_shmif_cont* C, int trust)
 {
-/*
- * related to discover_passive so the implementation for this should be in the helper
- * so that arcan-net can make use of it as well.
- *
- * 0. bind broadcast- listen.
- * 1. on incoming packet
- *    check nonce against bloom(nonce, nonce+1) : match? ignore.
- *
- * 2. each key: check H(nonce, Kpub.accepted) for match against
- */
+	int rv = EXIT_FAILURE;
+ 	int sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+	if (-1 == sock){
+		LOG("couldn't bind discover_passive");
+		return rv;
+	}
+
+	struct sockaddr_in addr = {
+		.sin_family = AF_INET,
+		.sin_addr = {
+			.s_addr = htons(INADDR_ANY),
+		},
+		.sin_port = htons(6680)
+	};
+	socklen_t len = sizeof(addr);
+	bind(sock, &addr, len);
+
+	for(;;){
+		uint8_t mtu[9000];
+		struct pollfd ps[2] = {
+			{
+				.fd = sock,
+				.events = POLLIN | POLLERR | POLLHUP
+			},
+			{
+				.fd = C->epipe,
+				.events = POLLIN | POLLERR | POLLHUP
+			},
+		};
+
+		if (-1 == poll(ps, 2, -1)){
+			if (errno != EINTR)
+				continue;
+			break;
+		}
+
+/* shmif events here would be to dispatch after trust_unknown_verify */
+		if (ps[0].revents){
+			int pv;
+			struct arcan_event ev;
+
+			while ((pv = arcan_shmif_poll(C, &ev)) > 0){
+				if (ev.category == EVENT_TARGET &&
+					ev.tgt.kind == TARGET_COMMAND_EXIT){
+					arcan_shmif_drop(C);
+					return EXIT_SUCCESS;
+				}
+			}
+
+			if (pv == -1){
+				arcan_shmif_drop(C);
+				return EXIT_FAILURE;
+			}
+		}
+
+		if (ps[1].revents){
+			struct sockaddr_in caddr;
+			len = sizeof(caddr);
+			ssize_t nr =
+				recvfrom(sock,
+					mtu, sizeof(mtu), MSG_DONTWAIT, (struct sockaddr*)&caddr, &len);
+			if (0 < nr){
+			}
+		}
+}
+
 	return EXIT_FAILURE;
 }
 
@@ -821,26 +887,6 @@ static int dircl_loop(
 	return EXIT_SUCCESS;
 }
 
-static int discover_directory(struct arcan_shmif_cont* C, int trust)
-{
-	LOG("EIMPL: discover-directory\n");
-/*
- * 1. grab tag from opt, connect to it.
- * 2. authenticate, check directory type.
- * 3. store list of known hosts (just regular DISCOVER events)
- *
- * 4. question: should we be able to act as directory as well? (i.e. build tree)
- *              this opens up scaling issues, cycle detection
- *              device search pubk
- *
- * 5. nat-punch request.
- * 6. query applications, proxy/resolve names.
- *
- * 7.           wilder things - register as cache? (file-swarm..)
- */
-	return EXIT_FAILURE;
-}
-
 static int connect_to_host(
 	struct arcan_shmif_cont* C, struct arg_arr* args)
 {
@@ -1013,9 +1059,6 @@ int afsrv_netcl(struct arcan_shmif_cont* C, struct arg_arr* args)
 		}
 		else if (strcmp(dmethod, "broadcast") == 0){
 			return discover_broadcast(C, trustm);
-		}
-		else if (strcmp(dmethod, "directory") == 0){
-			return discover_directory(C, trustm);
 		}
 		else if (strcmp(dmethod, "test") == 0){
 			return discover_test(C, trustm);

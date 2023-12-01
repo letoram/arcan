@@ -55,6 +55,67 @@ struct a12helper_opts {
 void a12helper_a12cl_shmifsrv(struct a12_state* S,
 	struct shmifsrv_client* C, int fd_in, int fd_out, struct a12helper_opts);
 
+struct a12_broadcast_beacon;
+
+/*
+ * Setup a listening endpoint, and signal whenver there is data on the (optional)
+ * shmif context or when there is a beacon that triggered something known.
+ */
+void
+	a12helper_listen_beacon(struct arcan_shmif_cont* C, int socket,
+
+/*
+ * We have a beacon match in whatever domain [socket], matching to a previous
+ * key in 'accepted' - if the beacon is valid but unknown, 'tag' will be set
+ * to NULL, otherwise tag might be set to empty (accepted but untagged) or the
+ * actual keystore tagname. Addr is the resolved gethostname() result.
+ *
+ * The [nonce] is time sensitive, if it's to be used to initiate a connection
+ * to host and used to tag the initial packet, it should be done so
+ * immediately.
+ *
+ * There can be several on_beacon calls for one-beacon if there are multiple
+ * matches in the set of identities tied to one beacon. Note that these can be
+ * spoofed to provoke a result, i.e. by collecting Kpubs through some other
+ * means and then sending them out in an active scan yourself.
+ *
+ * Return false to stop processing further beacons.
+ */
+		bool (*on_beacon)(
+			struct arcan_shmif_cont* C,
+			uint8_t kpub[static 32],
+			uint8_t nonce[static 8],
+			const char* tag,
+			char* addr),
+		bool (*on_shmif)(struct arcan_shmif_cont* C)
+	);
+
+/*
+ * Generate two beacon packets based on your outbound keyset.
+ *
+ * This creates two dynamic allocations (one, and two) that the caller takes
+ * responsibility for. These should be sent to a broadcast or unicast target to
+ * hopefully get a beacon back signalling that the two parties know each-
+ * other, with at least a second in between sending [one] and [two].
+ *
+ * Internally this sweeps the set of used outbound keys, generate their public
+ * version and derives a random challenge + hash form.
+ *
+ * The beacons can't be re-used between calls as listeners require that the
+ * challenge has not been seen before.
+ */
+struct keystore_mask;
+struct keystore_mask*
+	a12helper_build_beacon(
+		struct keystore_mask* mask,
+		uint8_t** one,
+		uint8_t** two, size_t* sz
+	);
+
+void
+	a12helper_send_beacon(
+		int sock, char* keyset, int sleep_ms, size_t keyset_sz);
+
 /*
  * Take a prenegotiated connection [S] serialized over [fd_in/fd_out] and
  * map to connections accessible via the [cp] connection point.

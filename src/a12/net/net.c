@@ -1328,18 +1328,31 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 static bool discover_beacon(
 	struct arcan_shmif_cont* C,
 	uint8_t kpub[static 32], uint8_t nonce[static 8],
-	bool iskey, char* addr)
+	const char* tag, char* addr)
 {
+	uint8_t nullk[32] = {0};
+
+	if (memcmp(kpub, nullk, 32) == 0){
+		a12int_trace(A12_TRACE_DIRECTORY, "bad_beacon:source=%s", addr);
+		return true;
+	}
+
+	size_t outl;
+	unsigned char* b64 = a12helper_tob64(kpub, 32, &outl);
+
+	a12int_trace(A12_TRACE_DIRECTORY,
+		"got_beacon:kpub=%s:tag=%s:source=%s",
+		b64, tag ? tag : "not_found", addr);
+
+	free(b64);
 	return true;
 }
 
-static int run_discover_command(int argc, char** argv)
+static void* send_beacon(void*)
 {
- 	int sock = socket(AF_INET, SOCK_DGRAM, 0);
-
+	int sock = socket(AF_INET, SOCK_DGRAM, 0);
 	if (-1 == sock){
-		LOG("couldn't bind discover_passive");
-		return EXIT_FAILURE;
+		return NULL;
 	}
 
 	struct sockaddr_in addr = {
@@ -1351,6 +1364,62 @@ static int run_discover_command(int argc, char** argv)
 	};
 	socklen_t len = sizeof(addr);
 	bind(sock, &addr, len);
+
+	int yes;
+  int ret = setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (char*)&yes, sizeof(yes));
+	if (-1 == ret){
+		return NULL;
+	}
+
+	struct keystore_mask mask = {0};
+	size_t size;
+	uint8_t* one, (* two);
+	struct sockaddr_in broadcast = {
+		.sin_family = AF_INET,
+		.sin_addr.s_addr = htonl(INADDR_BROADCAST),
+		.sin_port = htons(6680)
+	};
+
+	for(;;){
+		a12helper_build_beacon(&mask, &one, &two, &size);
+		sendto(sock, one, size, 0, (struct sockaddr*)&broadcast, sizeof(broadcast));
+		sleep(1);
+		sendto(sock, two, size, 0, (struct sockaddr*)&broadcast, sizeof(broadcast));
+		sleep(10);
+	}
+
+	return NULL;
+}
+
+static int run_discover_command(int argc, char** argv)
+{
+ 	int sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+	if (-1 == sock){
+		LOG("couldn't bind discover_passive");
+		return EXIT_FAILURE;
+	}
+
+	const char* err;
+	if (!open_keystore(&err)){
+		fprintf(stderr, "couldn't open keystore: %s\n", err);
+	}
+
+	struct sockaddr_in addr = {
+		.sin_family = AF_INET,
+		.sin_addr = {
+			.s_addr = htons(INADDR_ANY),
+		},
+		.sin_port = htons(6680)
+	};
+	socklen_t len = sizeof(addr);
+	bind(sock, &addr, len);
+
+	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	pthread_create(&pth, &pthattr, send_beacon, NULL);
 
 	a12helper_listen_beacon(NULL, sock, discover_beacon, NULL);
 
@@ -1543,7 +1612,7 @@ int main(int argc, char** argv)
 		return apply_keystore_command(argc-2, argv+2);
 	}
 
-	if (argc > 1 && strcmp(argv[1], "discover") == 0){
+	if (argc >= 1 && strcmp(argv[1], "discover") == 0){
 		return run_discover_command(argc-2, argv+2);
 	}
 

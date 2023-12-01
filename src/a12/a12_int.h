@@ -35,6 +35,11 @@
 #define BLOB_QUEUE_CAP (128 * 1024)
 #endif
 
+/* safe UDP beacon, increase in controlled LANs */
+#ifndef BEACON_KEY_CAP
+#define BEACON_KEY_CAP 15
+#endif
+
 #ifndef DYNAMIC_FREE
 #define DYNAMIC_FREE free
 #endif

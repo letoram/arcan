@@ -122,6 +122,49 @@ const char* a12helper_keystore_accepted(
 	const uint8_t pubk[static 32], const char* connp);
 
 /*
+ * These are used in order to generate and process discovery beacons, and as
+ * such otherwise not needed for builds that lack those features - but does
+ * introduce a build dependency on Blake3.
+ */
+#ifdef WANT_KEYSTORE_HASHER
+/*
+ * See if there is a trusted / known key that match H(chg | pubk) If so, return
+ * true, real public key in outk and any matching tagged outbound as a dynamic
+ * string in outtag.
+ */
+bool a12helper_keystore_known_accepted_challenge(
+	const uint8_t pubk[static 32],
+	const uint8_t chg[static 8],
+	uint8_t outk[static 32],
+	char** outtag);
+
+/*
+ * There are some considerations here - the problem comes when you have a large
+ * tagetset of possible identities that can't fit in the real MTU of a UDP
+ * packet. Given the roughly 'safe' IPv4 UDP MTU here is 496 (15 keys + header
+ * < 508)
+ *
+ * *buf is expected to be pre-allocated of *buf_sz, and *buf_sz is updated to
+ * reference the actual number of bytes consumed.
+ *
+ * Mask will be appended with the keys consumed / used so that multiple calls
+ * can be used to create additional beacons which exclude keys that have
+ * already been beaconed. The caller needs to clean-up.
+ *
+ * Returns true if the end of the keyset wasn't reached.
+ */
+struct keystore_mask;
+struct keystore_mask {
+	char* tag;
+	uint8_t pubk[32];
+	struct keystore_mask* next;
+};
+
+bool a12helper_keystore_public_tagset(struct keystore_mask*);
+
+#endif
+
+/*
  * add the supplied public key to the accepted keystore.
  *
  * if [connp] is NULL, the domain will default to 'outbound'.
