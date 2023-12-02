@@ -1398,13 +1398,23 @@ static void* send_beacon(void*)
 
 static int run_discover_command(int argc, char** argv)
 {
- 	pthread_t pth;
-	pthread_attr_t pthattr;
-	pthread_attr_init(&pthattr);
-	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-	pthread_create(&pth, &pthattr, send_beacon, NULL);
+/* can run with either (beacon & listen) or just beacon or just listen */
+	if (!argc || strcmp(argv[0], "passive") != 0){
+	 	pthread_t pth;
+		pthread_attr_t pthattr;
+		pthread_attr_init(&pthattr);
+		pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
 
- 	int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+		if (!argc || strcmp(argv[0], "beacon") != 0){
+			pthread_create(&pth, &pthattr, send_beacon, NULL);
+		}
+		else{
+			send_beacon(NULL);
+			return EXIT_SUCCESS;
+		}
+	}
+
+	int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
 	if (-1 == sock){
 		LOG("couldn't bind discover_passive");

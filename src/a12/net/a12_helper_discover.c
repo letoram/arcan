@@ -141,17 +141,18 @@ struct keystore_mask*
 	union {
 		uint8_t raw[8];
 		uint64_t chg;
-	} chg, chg2;
+	} chg;
 
 	size_t buf_sz = BEACON_KEY_CAP * 32 + 16;
 	uint8_t* wone = malloc(buf_sz);
 	uint8_t* wtwo = malloc(buf_sz);
+	memset(wone, '\0', buf_sz);
+	memset(wtwo, '\0', buf_sz);
 
 	arcan_random(chg.raw, 8);
-	chg2.chg = chg.chg + 1;
+	pack_u64(chg.chg, &wone[8]);
+	pack_u64(chg.chg + 1, &wtwo[8]);
 
-	memcpy(&wone[8], chg.raw, 8);
-	memcpy(&wtwo[8], chg2.raw, 8);
 	size_t pos = 16;
 
 /* mask actually stores state of the keys consumed,
@@ -163,12 +164,12 @@ struct keystore_mask*
 	while (cur && pos < buf_sz){
 		blake3_hasher temp;
 		blake3_hasher_init(&temp);
-		blake3_hasher_update(&temp, chg.raw, 8);
+		blake3_hasher_update(&temp, &wone[8], 8);
 		blake3_hasher_update(&temp, cur->pubk, 32);
 		blake3_hasher_finalize(&temp, &wone[pos], 32);
 
 		blake3_hasher_init(&temp);
-		blake3_hasher_update(&temp, chg2.raw, 8);
+		blake3_hasher_update(&temp, &wtwo[8], 8);
 		blake3_hasher_update(&temp, cur->pubk, 32);
 		blake3_hasher_finalize(&temp, &wtwo[pos], 32);
 		cur = cur->next;
