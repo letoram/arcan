@@ -47,7 +47,7 @@ struct beacon {
 	char* tag;
 };
 
-ssize_t
+static ssize_t
 	unpack_beacon(
 		struct beacon* b, int slot, uint8_t* buf, size_t sz,
 		const char** err)
@@ -202,6 +202,8 @@ void
 		bool (*on_shmif)(struct arcan_shmif_cont* C))
 {
 	hashmap_create(256, &known_beacons);
+	uint8_t buf[1024];
+	read(sock, buf, 1024);
 
 	for(;;){
 		uint8_t mtu[9000];
@@ -249,11 +251,11 @@ void
 					struct beacon* new_bcn = malloc(sizeof(struct beacon));
 					*new_bcn = (struct beacon){0};
 					hashmap_put(&known_beacons, name, nlen, new_bcn);
-					unpack_beacon(new_bcn, 1, mtu, nr, &err);
+					unpack_beacon(new_bcn, 0, mtu, nr, &err);
 				}
 				else {
 					const char* err;
-					ssize_t status = unpack_beacon(bcn, 2, mtu, nr, &err);
+					ssize_t status = unpack_beacon(bcn, 1, mtu, nr, &err);
 					if (-1 == status){
 						LOG("beacon_fail:source=%s:reason=%s", name, err);
 					}
