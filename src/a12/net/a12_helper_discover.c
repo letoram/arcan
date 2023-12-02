@@ -57,7 +57,7 @@ static ssize_t
 	b->slot[slot].ts = arcan_timemillis();
 
 /* cache one more */
-	if (slot == 1)
+	if (slot == 0)
 		return 0;
 
 /* length doesn't match */
@@ -93,7 +93,7 @@ static ssize_t
 	uint8_t chk[8];
 	blake3_hasher temp;
 	blake3_hasher_init(&temp);
-	blake3_hasher_update(&temp, &b->slot[0].raw[8], b->slot[0].len);
+	blake3_hasher_update(&temp, &b->slot[0].raw[8], b->slot[0].len + 8);
 	blake3_hasher_finalize(&temp, chk, 8);
 	if (memcmp(chk, b->slot[0].unpack.chk, 8) != 0){
 		*err = "first beacon checksum fail";
@@ -101,7 +101,7 @@ static ssize_t
 	}
 
 	blake3_hasher_init(&temp);
-	blake3_hasher_update(&temp, &b->slot[1].raw[8], b->slot[1].len);
+	blake3_hasher_update(&temp, &b->slot[1].raw[8], b->slot[1].len + 8);
 	blake3_hasher_finalize(&temp, chk, 8);
 	if (memcmp(chk, b->slot[1].unpack.chk, 8) != 0){
 		*err = "second beacon checksum fail";
@@ -178,11 +178,11 @@ struct keystore_mask*
 /* calculate final checksum */
 	blake3_hasher temp;
 	blake3_hasher_init(&temp);
-	blake3_hasher_update(&temp, &wone[8], pos + 8);
+	blake3_hasher_update(&temp, &wone[8], pos - 16);
 	blake3_hasher_finalize(&temp, wone, 8);
 
 	blake3_hasher_init(&temp);
-	blake3_hasher_update(&temp, &wtwo[8], pos + 8);
+	blake3_hasher_update(&temp, &wtwo[8], pos - 16);
 	blake3_hasher_finalize(&temp, wtwo, 8);
 
 	*outsz = pos;
