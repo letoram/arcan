@@ -66,12 +66,6 @@ static ssize_t
 		return -1;
 	}
 
-/* proof of time elapsed */
-	if (b->slot[1].ts - b->slot[0].ts < 1000){
-		*err = "beacon pair too close";
-		return -1;
-	}
-
 /* assert that chg2 = chg1 + 1 */
 	uint64_t chg1;
 	uint64_t chg2;
@@ -80,7 +74,14 @@ static ssize_t
 
 	if (chg2 != chg1 + 1){
 		*err = "beacon pair challenge mismatch";
-		return -1;
+		return -2;
+	}
+
+/* proof of time elapsed, have a slightly smaller delta requirement to allow for
+ * naive sleep(1) like jitter */
+	if (b->slot[1].ts - b->slot[0].ts < 980){
+		*err = "beacon pair too close";
+		return -2;
 	}
 
 /* correct keyset length */
@@ -89,12 +90,12 @@ static ssize_t
 		return -1;
 	}
 
-/* compare checksum of packet */
 	uint8_t chk[8];
 	blake3_hasher temp;
 	blake3_hasher_init(&temp);
-	blake3_hasher_update(&temp, &b->slot[0].raw[8], b->slot[0].len + 8);
+	blake3_hasher_update(&temp, b->slot[0].unpack.chg, b->slot[0].len + 8);
 	blake3_hasher_finalize(&temp, chk, 8);
+
 	if (memcmp(chk, b->slot[0].unpack.chk, 8) != 0){
 		*err = "first beacon checksum fail";
 		return -1;
@@ -203,8 +204,6 @@ void
 		bool (*on_shmif)(struct arcan_shmif_cont* C))
 {
 	hashmap_create(256, &known_beacons);
-	uint8_t buf[1024];
-	read(sock, buf, 1024);
 
 	for(;;){
 		uint8_t mtu[9000];
@@ -233,7 +232,7 @@ void
 					mtu, sizeof(mtu), MSG_DONTWAIT, (struct sockaddr*)&caddr, &len);
 
 /* make sure beacon covers at least one key, then first cache */
-			if (nr > 8 + 8 + 32){
+			if (nr >= 8 + 8 + 32){
 				char name[INET6_ADDRSTRLEN];
 				if (0 !=
 					getnameinfo(
@@ -254,11 +253,29 @@ void
 					hashmap_put(&known_beacons, name, nlen, new_bcn);
 					unpack_beacon(new_bcn, 0, mtu, nr, &err);
 				}
-				else {
+
+			else {
+					bool clean = true;
 					const char* err;
 					ssize_t status = unpack_beacon(bcn, 1, mtu, nr, &err);
 					if (-1 == status){
 						LOG("beacon_fail:source=%s:reason=%s", name, err);
+					}
+
+/* On challenge- mismatch (e.g. missing the first beacon then treating
+ * it as a new one, move slot 1 to slot 0.
+
+ * This implementation can be tricked by spoofing packets in order to deny
+ * someone discovery, but in such a scenario you could achieve that through any
+ * other means. Since it is trivially detectable, the proper fallback that
+ * doesn't just transform the DoS from one form to another (memory exhausting
+ * tracking buffers etc.) is to transition between discovery modes if there is
+ * an active attacker on the network (n fails of a certain type) - either
+ * making direct connections or exposing ourselves as a directory and do source
+ * to / sink discovery through that. */
+					else if (-2 == status){
+						memcpy(&bcn->slot[0], &bcn->slot[1], sizeof(bcn->slot[0]));
+						continue;
 					}
 					else if (status == 0){
 						uint8_t nullk[32] = {0};
@@ -273,6 +290,7 @@ void
 								name);
 						}
 					}
+
 					free(bcn->tag);
 					free(bcn);
 					hashmap_remove(&known_beacons, name, nlen);

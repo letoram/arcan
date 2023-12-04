@@ -910,7 +910,6 @@ static bool show_usage(const char* msg)
 	"\t-a, --auth n   \t Read authentication secret from stdin (maxlen:32)\n"
 	"\t               \t if [n] is provided, n keys added to trusted\n"
 	"\t --soft-auth   \t Permit unknown via authentication secret (password)\n"
-	"\t --allow-pk n  \t Explicitly permit (b64-encoded) Kpub\n"
 	"\t-T, --trust s  \t Specify trust domain for splitting keystore\n"
 	"\t               \t outbound connections default to 'outbound' while\n"
 	"\t               \t serving/listening defaults to a wildcard ('*')\n\n"

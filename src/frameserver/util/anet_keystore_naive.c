@@ -757,6 +757,13 @@ bool a12helper_keystore_known_accepted_challenge(
 	if (!ent)
 		return false;
 
+	size_t len;
+
+#if 0
+	char* b64 = (char*) a12helper_tob64(pubk, 32, &len);
+	printf("scan for [%s]:\n", b64); free(b64);
+#endif
+
 /* cache the chg calc because there might be more in the same set */
 	while (ent){
 		if (memcmp(ent->chg, chg, 8) != 0){
@@ -768,6 +775,12 @@ bool a12helper_keystore_known_accepted_challenge(
 			blake3_hasher_update(&temp, chg, 8);
 			blake3_hasher_update(&temp, ent->key, 32);
 			blake3_hasher_finalize(&temp, ent->pub_chg, 32);
+
+#if 0
+			char* b641 = (char*) a12helper_tob64(ent->key, 32, &len);
+			char* b642 = (char*) a12helper_tob64(ent->pub_chg, 32, &len);
+			printf(" [%s] to [%s]\n", b641, b642);
+#endif
 		}
 
 /* if accepted has a tag that is outbound-xxx then we should extract xxx,
