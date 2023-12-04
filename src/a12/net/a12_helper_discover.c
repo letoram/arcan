@@ -173,7 +173,6 @@ struct keystore_mask*
 		blake3_hasher_update(&temp, &wtwo[8], 8);
 		blake3_hasher_update(&temp, cur->pubk, 32);
 		blake3_hasher_finalize(&temp, &wtwo[pos], 32);
-		b64 = a12helper_tob64(&wtwo[pos], 32, &sz);
 
 		cur = cur->next;
 		pos += 32;

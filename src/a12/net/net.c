@@ -1575,9 +1575,9 @@ static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 		if (isatty(STDIN_FILENO)){
 			fprintf(stdout,
 				"The other end is using an unknown public key (%s).\n"
-				"Are you sure you want to continue (yes/no/remember):\n", out
+				"Are you sure you want to continue (yes/no/remember/remember):\n", out
 			);
-			char buf[16];
+			char buf[16] = {0};
 			fgets(buf, 16, stdin);
 			if (strcmp(buf, "yes\n") == 0){
 				auth.authentic = true;
@@ -1586,10 +1586,19 @@ static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 				a12int_trace(A12_TRACE_SECURITY, "interactive-soft-auth=%s", out);
 			}
 			else if (strcmp(buf, "remember\n") == 0){
+				fprintf(stdout, "Specify an identifier tag (or empty for default):\n");
+				fgets(buf, 16, stdin);
+				size_t len = strlen(buf);
+				if (len > 1){
+					buf[len-1] = '\0';
+				}
+				else
+					memcpy(buf, "default", 8);
+
 				auth.authentic = true;
 				a12helper_keystore_accept(pk, global.trust_domain);
-				a12int_trace(A12_TRACE_SECURITY, "interactive-add-trust=%s", out);
-				a12helper_keystore_hostkey("default", 0, my_private_key, &tmp, &tmpport);
+				a12int_trace(A12_TRACE_SECURITY, "interactive-add-trust=%s:tag=%s", out, buf);
+				a12helper_keystore_hostkey(buf, 0, my_private_key, &tmp, &tmpport);
 				a12_set_session(&auth, pk, my_private_key);
 			}
 			else
