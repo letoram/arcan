@@ -783,25 +783,16 @@ bool a12helper_keystore_known_accepted_challenge(
 #endif
 		}
 
-/* if accepted has a tag that is outbound-xxx then we should extract xxx,
- * verify entry in keystore-tags and swap name and set they key arg to false
- * as this allows the rest of the UI map it to a petname, letting other
- * automation take hold. */
+/* This returns the tag group that the key was in - this does not strictly
+ * provide enough to make an outbound connection back (and the beacons can be
+ * used for both source- announce and sink- announce) unless the user also has
+ * a fitting tag. The only thing that is actually forwarded on the chain is
+ * the knowledge that in the set of tags from a certain host, we have trusted
+ * them when making an inbound or outbound connection. For this to work bidi-
+ * we would also have to generate a beacon ourselves and send that out and
+ * only when both have been acknowledged are we sure of the link. */
 		if (memcmp(pubk, ent->pub_chg, 32) == 0){
-			char* needle = strstr(ent->host, "outbound-");
-			if (needle &&
-				(needle == ent->host || needle[-1] == ',') &&
-				(needle[9] != ',' && (needle[9] != '\0'))){
-				needle += 9;
-				size_t n = 0;
-				while (needle[n] != ',' && needle[n] != '\0')
-					n++;
-				char ch = needle[n];
-				needle[n] = '\0';
-				*tag = strdup(needle);
-				needle[n] = ch;
-			}
-
+			*tag = strdup(ent->host);
 			memcpy(outk, ent->key, 32);
 			return true;
 		}
