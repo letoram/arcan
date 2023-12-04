@@ -870,6 +870,7 @@ bool a12helper_keystore_public_tagset(struct keystore_mask* mask)
 
 /* insert THE PUBLIC form into tag buffer */
 		x25519_public_key(privk, last->pubk);
+		free(b64);
 	}
 
 /* if there still is a dent it means we ran out of space before we ran out of

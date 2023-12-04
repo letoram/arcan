@@ -162,7 +162,7 @@ struct keystore_mask*
 	struct keystore_mask* cur = mask;
 
 /* calculate H(chg, kpub) for each key in the updated set */
-	while (cur && pos < buf_sz){
+	while (cur && cur->tag && pos < buf_sz){
 		blake3_hasher temp;
 		blake3_hasher_init(&temp);
 		blake3_hasher_update(&temp, &wone[8], 8);
@@ -173,6 +173,8 @@ struct keystore_mask*
 		blake3_hasher_update(&temp, &wtwo[8], 8);
 		blake3_hasher_update(&temp, cur->pubk, 32);
 		blake3_hasher_finalize(&temp, &wtwo[pos], 32);
+		b64 = a12helper_tob64(&wtwo[pos], 32, &sz);
+
 		cur = cur->next;
 		pos += 32;
 	}
@@ -180,11 +182,11 @@ struct keystore_mask*
 /* calculate final checksum */
 	blake3_hasher temp;
 	blake3_hasher_init(&temp);
-	blake3_hasher_update(&temp, &wone[8], pos - 16);
+	blake3_hasher_update(&temp, &wone[8], pos - 8);
 	blake3_hasher_finalize(&temp, wone, 8);
 
 	blake3_hasher_init(&temp);
-	blake3_hasher_update(&temp, &wtwo[8], pos - 16);
+	blake3_hasher_update(&temp, &wtwo[8], pos - 8);
 	blake3_hasher_finalize(&temp, wtwo, 8);
 
 	*outsz = pos;

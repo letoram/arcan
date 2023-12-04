@@ -1380,6 +1380,11 @@ static void* send_beacon(void*)
 		.sin_port = htons(6680)
 	};
 
+	const char* err;
+	if (!open_keystore(&err)){
+		fprintf(stderr, "couldn't open keystore: %s\n", err);
+	}
+
 	for(;;){
 		a12helper_build_beacon(&mask, &one, &two, &size);
 		if (size !=
@@ -1387,9 +1392,11 @@ static void* send_beacon(void*)
 			fprintf(stderr, "couldn't send beacon: %s\n", strerror(errno));
 			break;
 		}
+
 		sleep(1);
 		sendto(sock, two, size, 0, (struct sockaddr*)&broadcast, sizeof(broadcast));
 		sleep(10);
+		exit(1);
 	}
 
 	return NULL;
@@ -1412,7 +1419,6 @@ static int run_discover_command(int argc, char** argv)
 			return EXIT_SUCCESS;
 		}
 	}
-
 	int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
 	if (-1 == sock){
