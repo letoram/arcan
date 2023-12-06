@@ -4297,6 +4297,18 @@ void arcan_lwa_subseg_ev(
 }
 #endif
 
+static char* eotfstr(int eotf)
+{
+	switch (eotf){
+	case 0: return "sdr";
+	case 1: return "hdr";
+	case 2: return "pq";
+	case 3: return "hdg";
+	default:
+		return "bad";
+	}
+}
+
 /* from shmif_event.h: struct netstate definition */
 static char* spacetostr(int space)
 {
@@ -4479,7 +4491,22 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx, "pts", ev->ext.framestatus.pts, top);
 			tblnum(ctx, "acquired", ev->ext.framestatus.acquired, top);
 			tblnum(ctx, "fhint", ev->ext.framestatus.fhint, top);
-
+			if (fsrv->desc.aext.hdr){
+				struct drm_hdr_meta m = vobj->vstore->hdr.drm;
+				tblnum(ctx, "fll", m.fll, top);
+				tblnum(ctx, "cll", m.cll, top);
+				tblnum(ctx, "master_min_nits", m.master_min, top);
+				tblnum(ctx, "master_max_nits", m.master_max, top);
+				tblnum(ctx, "whitepoint_x", m.wpx, top);
+				tblnum(ctx, "whitepoint_y", m.wpx, top);
+				tblnum(ctx, "red_x", m.wpx, top);
+				tblnum(ctx, "red_y", m.wpx, top);
+				tblnum(ctx, "green_x", m.wpx, top);
+				tblnum(ctx, "green_y", m.wpx, top);
+				tblnum(ctx, "blue_x", m.wpx, top);
+				tblnum(ctx, "blue_y", m.wpx, top);
+				tbldynstr(ctx, "eotf", eotfstr(m.eotf), top);
+			}
 		break;
 		case EVENT_EXTERNAL_STREAMINFO:
 			FLTPUSH(ev->ext.streaminf.langid, flt_Alpha, '?');
@@ -6294,6 +6321,8 @@ static int videodisplay(lua_State* ctx)
 			opts.vrr = intblfloat(ctx, 3, "vrr");
 			opts.depth = intblfloat(ctx, 3, "format");
 
+/* this used to be here - ignored now to force image_metadata on scanout
+ * or map_video_display source metadata:
 			if
 				(opts.depth == VSTORE_HINT_HIDEF || opts.depth == VSTORE_HINT_F16 ||
 				 opts.depth == VSTORE_HINT_F32){
@@ -6306,6 +6335,7 @@ static int videodisplay(lua_State* ctx)
 					opts.primaries_xy.blue[0] = intblfloat(ctx, 3, "primary_blue_x");
 					opts.primaries_xy.blue[1] = intblfloat(ctx, 3, "primary_blue_y");
 				}
+*/
 
 			lua_pushboolean(ctx, platform_video_set_mode(id, mode, opts));
 		}
@@ -9791,16 +9821,32 @@ static int imagemetadata(lua_State* ctx)
 		lua_pop(ctx, 1);
 	}
 
+#define CLAMP(x, l, h) (((x) > (h)) ? (h) : (((x) < (l)) ? (l) : (x)))
 	struct drm_hdr_meta meta = {
-		.rx = coords[0],
-		.ry = coords[1],
-		.gx = coords[2],
-		.gy = coords[3],
-		.bx = coords[4],
-		.by = coords[5],
-		.wpx = coords[6],
-		.wpy = coords[7]
+		.rx = CLAMP(coords[0], 0.0, 1.3107),
+		.ry = CLAMP(coords[1], 0.0, 1.3107),
+		.gx = CLAMP(coords[2], 0.0, 1.3107),
+		.gy = CLAMP(coords[3], 0.0, 1.3107),
+		.bx = CLAMP(coords[4], 0.0, 1.3107),
+		.by = CLAMP(coords[5], 0.0, 1.3107),
+		.wpx = CLAMP(coords[6], 0.0, 1.3107),
+		.wpy = CLAMP(coords[7], 0.0, 1.3107)
 	};
+#undef CLAMP
+
+	const char* eotf = luaL_checkstring(ctx, 8);
+	if (strcmp(eotf, "sdr") == 0){
+		meta.eotf = 0;
+	}
+	else if (strcmp(eotf, "hdr") == 0){
+		meta.eotf = 1;
+	}
+	else if (strcmp(eotf, "pq") == 0){
+		meta.eotf = 2;
+	}
+	else if (strcmp(eotf, "hlg") == 0){
+		meta.eotf = 3;
+	}
 
 	meta.master_min = luaL_checknumber(ctx, 4);
 	meta.master_max = luaL_checknumber(ctx, 5);
@@ -9809,6 +9855,13 @@ static int imagemetadata(lua_State* ctx)
 
 	vobj->vstore->hdr.model = 1;
 	vobj->vstore->hdr.drm = meta;
+
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+
+/* override and you are on your own */
+	if (fsrv && vobj->feed.state.tag == ARCAN_TAG_FRAMESERV){
+		fsrv->flags.block_hdr_meta = 1;
+	}
 
 	lua_pushboolean(ctx, true);
 	LUA_ETRACE("image_metadata", NULL, 1);

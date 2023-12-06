@@ -50,15 +50,19 @@
 -- in half-depth mode. Similar to TARGET_ALLOWHDR, this means that more
 -- advanced features than compositing (accessing / manipulating store,
 -- direct-feed share and so on) should be avoided.
--- @note: flag: TARGET_ALLOWHDR allows a client to treat its video buffers
--- in f16-mode. This is an advanced graphics format for working with sources
--- that has a dynamic range. Most graphics applications becomes more costly,
--- compositing multiple sources on a fixed-range display.
+-- @note: flag: TARGET_ALLOWHDR allows the client to provide the video buffers
+-- in an extended range format with associated metadata. This metadata is
+-- descriptive but not normative. If you permit this feature you are
+-- responsible for conversion/mapping during composition. Setting this
+-- flag will make ref:target_verbose attach the metadata to each framestatus
+-- event delivery to help with this. This can be forcibly overridden / locked
+-- by using ref:image_metadata. Lokcing is relevant when ref:map_video_display
+-- is used to try to forward without composition, as the metadata of the
+-- mapped object will be forwarded to the relevant sink.
 -- @note: flag: TARGET_ALLOWVECTOR allows a client to treat its video buffers
 -- in vector mode. This converts the contents of its buffers to work as
 -- textures, and metadata for specifying content in a GPU friendly triangle-
--- soup format. Like with allow-lodef/hdr, this will not work well with
--- feedtargets or directly accessing storage.
+-- soup format. Like with allow-lodef/hdr.
 -- @note: flag: TARGET_ALLOWINPUT remaps any _IO events received unto the
 -- main event queue rather than being delivered in the normal frameserver
 -- bound callback. This allows for semi-transparent controlled IO injection

@@ -179,6 +179,7 @@ struct arcan_frameserver {
 		bool locked : 1;
 		bool release_pending : 1;
 		bool no_adopt : 1;
+		bool block_hdr_meta : 1;
 
 /* privilege level indicators */
 		bool external : 1;

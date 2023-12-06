@@ -22,7 +22,7 @@
 -- level, both in cd/m2 from 1 to 65535.
 --
 -- The *eotf* (electro-optical transfer function) should be one out of 'sdr'
--- (sRGB), 'hdr' (linear), 'pq', 'pq-inv' or 'bt709'.
+-- (sRGB), 'hdr' (linear), 'pq' or 'hlg' and corresponds to the CTA-861-G.
 --
 -- @group: image
 -- @cfunction: imagemetadata

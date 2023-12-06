@@ -49,40 +49,22 @@
 /*
  * Current details / notes:
  *
+ * conductor should be responsible for ensuring that the mapped buffer will
+ * be complete in time for not blocking.
+ *
  * For asymetric MultiGPU AGP-Vstore and the upload code still need to handle
  * display affinity and synch to all recipients where appropriate and cross-
  * blit when it cannot be solved in other ways.
- *
- * For HDR:
- *  - EDID parsing should be moved to afsrv_decode, it is simply to bad a
- *    format to run anywhere privileged. The other option is to have an
- *    external tool that spits out a .lua valid config and load that.
- *
- *  - We need a selector for metadata format (EOTF, ...), frameserver synch
- *    has the mechanisms via aproto for negotiating so that is ok, just the
- *    actual blob assignment missing.
- *    (u16: x,y coords for primaries and whitepoint, max/min luma + cll + fall)
- *
- *  - A lot should still be left to the WM, it needs to:
- *    set output buffer format (map_) to get FP16 or R10..
- *    map extended local metadata (low - high) as a rendertarget prop.
  *
  *  - the DRM properties would be
  *    COLOR_ENCODING (ITU-R BT.601, BT.709, BT.2020 YCbCr)
  *    COLOR_RANGE (YCbCr full, limited range)
  *    HDR_OUTPUT_METADATA + blob
  *
- *  - gamma format?
- *
  * For VRR / Explicit Synch:
- *  - Some code still belongs/is missing in the conductor, but we really
- *    need reliable live tracing for this to not be an academic exercise.
- *    The hooks are there but not the mapping to something like tracy.
- *
  *  - The interface is so-so when communicating special parameters like
  *    slew interval, see deadline_for_display.
- *
-  */
+ */
 
 /*
  * mask out these types as they won't be useful,
@@ -332,6 +314,12 @@ struct dispout {
 		size_t blob_sz;
 		size_t gamma_size;
 		uint16_t* orig_gamma;
+
+		struct {
+			int model;
+			uint32_t blob;
+			struct drm_hdr_meta drm;
+		} hdr;
 
 /* should track a small amount of possible overlay planes (one or two) and
  * allow the platform_map call to set them and their offsets individually */
@@ -1900,6 +1888,69 @@ static int get_gbm_fb(struct dispout* d,
 			env->flush();
 
 		bo = (struct gbm_bo*) buf->alloc_tags[0];
+
+/* if we have HDR metadata, check if it is different */
+		if (vs->hdr.model != d->display.hdr.model ||
+			memcmp(&vs->hdr.drm, &d->display.hdr.drm, sizeof(struct drm_hdr_meta)) != 0){
+			TRACE_MARK_ONESHOT(
+				"egl-dri", "hdr-metadata", TRACE_SYS_DEFAULT, 0, 0, "");
+			d->display.hdr.model = vs->hdr.model;
+			d->display.hdr.drm = vs->hdr.drm;
+
+			size_t i = 0;
+			drmModePropertyPtr prop = get_connector_property(d, "HDR_OUTPUT_METADATA", &i);
+			struct drm_hdr_meta hdr = d->display.hdr.drm;
+			if (prop){
+				struct hdr_metadata_infoframe f = {
+					.eotf = hdr.eotf,
+					.metadata_type = 0,
+					.display_primaries = {
+						{
+							.x = round(hdr.rx) * 50000,
+							.y = round(hdr.ry) * 50000,
+						},
+						{
+							.x = round(hdr.rx) * 50000,
+							.y = round(hdr.ry) * 50000
+						},
+						{
+							.x = round(hdr.rx) * 50000,
+							.y = round(hdr.ry) * 50000
+						}
+					},
+					.white_point = {
+						.x = round(hdr.wpx) * 50000,
+						.y = round(hdr.wpy) * 50000
+					},
+					.max_display_mastering_luminance = round(hdr.master_max),
+					.min_display_mastering_luminance = round(hdr.master_min),
+					.max_cll = round(hdr.cll),
+					.max_fall = round(hdr.fll)
+				};
+
+				struct hdr_output_metadata m = {
+					.metadata_type = 0,
+					.hdmi_metadata_type1 = f
+				};
+				uint32_t blob;
+				if (0 == drmModeCreatePropertyBlob(d->device->disp_fd, &m, sizeof(m), &blob)){
+					drmModeConnectorSetProperty(d->device->disp_fd,d->display.con->connector_id, prop->prop_id, blob);
+					if (d->display.hdr.blob)
+						drmModeDestroyPropertyBlob(d->device->disp_fd, d->display.hdr.blob);
+					d->display.hdr.blob = 0;
+				}
+				else
+					TRACE_MARK_ONESHOT(
+						"egl-dri", "hdr-metadata", TRACE_SYS_ERROR, 0, 0, "drm-rejected hdr metadata");
+
+				drmModeFreeProperty(prop);
+			}
+			else{
+				TRACE_MARK_ONESHOT(
+					"egl-dri", "hdr-metadata", TRACE_SYS_ERROR, 0, 0, "no metadata property");
+			}
+		}
+
 		TRACE_MARK_ONESHOT("egl-dri", "rendertarget-swap", TRACE_SYS_DEFAULT, 0, 0, "");
 	}
 
@@ -2808,6 +2859,16 @@ static void disable_display(struct dispout* d, bool dealloc)
 		);
 	}
 
+/* if the blob is set we know that we the property is there */
+	if (d->display.hdr.blob){
+		debug_print("(%d) dropping HDR state");
+			size_t i;
+			drmModePropertyPtr prop = get_connector_property(d, "HDR_OUTPUT_METADATA", &i);
+			drmModeConnectorSetProperty(d->device->disp_fd,d->display.con->connector_id, prop->prop_id, 0);
+			drmModeDestroyPropertyBlob(d->device->disp_fd, d->display.hdr.blob);
+			drmModeFreeProperty(prop);
+		d->display.hdr.blob = 0;
+	}
 /* in extended suspend, we have no idea which displays we are returning to so
  * the only real option is to fully deallocate even in EXTSUSP */
 	debug_print("(%d) release crtc id (%d)", (int)d->id,(int)d->display.crtc);

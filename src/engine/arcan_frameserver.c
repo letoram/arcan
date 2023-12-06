@@ -272,7 +272,7 @@ static bool push_buffer(arcan_frameserver* src,
 /* If the HDR subprotocol is enabled, verify and translate into store metadata
  * - explicitly map the metadata format. There is only the one to chose from
  *   right now, but it wouldn't be surprising if that changes. */
-	if (src->desc.aext.hdr){
+	if (src->desc.aext.hdr && !src->flags.block_hdr_meta){
 		struct arcan_shmif_hdr fc = *src->desc.aext.hdr;
 		store->hdr.model = 1;
 		store->hdr.drm = (struct drm_hdr_meta){
@@ -1251,8 +1251,8 @@ bool arcan_frameserver_getramps(arcan_frameserver* src,
 	if (!ch_sz || !table || !src || !src->desc.aext.gamma)
 		return false;
 
-	struct arcan_shmif_ramp* hdr = src->desc.aext.gamma;
-	if (!hdr || hdr->magic != ARCAN_SHMIF_RAMPMAGIC)
+	struct arcan_shmif_ramp* dm = src->desc.aext.gamma;
+	if (!dm || dm->magic != ARCAN_SHMIF_RAMPMAGIC)
 		return false;
 
 /* note, we can't rely on the page block counter as the source isn't trusted to
@@ -1265,12 +1265,12 @@ bool arcan_frameserver_getramps(arcan_frameserver* src,
 		return false;
 
 /* only allow ramp-retrieval once and only for one that is marked dirty */
-	if (!(hdr->dirty_out & (1 << index)))
+	if (!(dm->dirty_out & (1 << index)))
 		return false;
 
 /* we always ignore EDID, that one is read/only */
 	struct ramp_block block;
-	memcpy(&block, &hdr->ramps[index * 2], sizeof(struct ramp_block));
+	memcpy(&block, &dm->ramps[index * 2], sizeof(struct ramp_block));
 
 	uint16_t checksum = subp_checksum(
 		block.edid, sizeof(block.edid) + SHMIF_CMRAMP_UPLIM);
@@ -1293,7 +1293,7 @@ bool arcan_frameserver_getramps(arcan_frameserver* src,
 
 	memcpy(ch_sz, block.plane_sizes, sizeof(size_t)*SHMIF_CMRAMP_PLIM);
 
-	atomic_fetch_and(&hdr->dirty_out, ~(1<<index));
+	atomic_fetch_and(&dm->dirty_out, ~(1<<index));
 	return true;
 }
 
@@ -1302,7 +1302,8 @@ bool arcan_frameserver_getramps(arcan_frameserver* src,
  * the index must be < (ramp_limit-1) which is a platform defined static
  * upper limit of supported number of displays and ramps.
  */
-bool arcan_frameserver_setramps(arcan_frameserver* src,
+bool arcan_frameserver_setramps(
+	arcan_frameserver* src,
 	size_t index,
 	float* table, size_t table_sz,
 	size_t ch_sz[SHMIF_CMRAMP_PLIM],

@@ -195,23 +195,6 @@ bool platform_video_display_edid(platform_display_id did,
 struct platform_mode_opts {
 	int depth;
 	float vrr;
-
-/*
- * these are just modeled after libdrm/drm_mode.h
- */
-	bool hdr_meta;
-	int eotf;
-	struct {
-		float white[2];
-		float red[2];
-		float green[2];
-		float blue[2];
-	} primaries_xy;
-
-	uint16_t max_disp_luma;
-	uint16_t min_disp_luma;
-	uint16_t max_cll;
-	uint16_t max_fall;
 };
 
 bool platform_video_set_mode(
