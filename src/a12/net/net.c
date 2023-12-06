@@ -1371,7 +1371,6 @@ static void* send_beacon(void*)
 
 	ret = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, (char*)&yes, sizeof(yes));
 
-	struct keystore_mask mask = {0};
 	size_t size;
 	uint8_t* one, (* two);
 	struct sockaddr_in broadcast = {
@@ -1385,8 +1384,35 @@ static void* send_beacon(void*)
 		fprintf(stderr, "couldn't open keystore: %s\n", err);
 	}
 
+/* initialize mask state, beacon will append the ones consumed */
+	struct keystore_mask mask = {0};
+	struct keystore_mask* cur = &mask;
+
 	for(;;){
-		a12helper_build_beacon(&mask, &one, &two, &size);
+		cur = a12helper_build_beacon(&mask, cur, &one, &two, &size);
+
+	/* empty beacon */
+		if (size <= 16){
+			free(one);
+			free(two);
+
+	/* tags are dynamic contents */
+			struct keystore_mask* tmp = mask.next;
+			while (tmp){
+				free(tmp->tag);
+				struct keystore_mask* prev = tmp;
+				tmp = tmp->next;
+				free(prev);
+			}
+
+	/* reset, wait and go again */
+			mask = (struct keystore_mask){0};
+			cur = &mask;
+			sleep(10);
+			continue;
+		}
+
+	/* broadcast, sleep for time elapsed rejection */
 		if (size !=
 			sendto(sock, one, size, 0, (struct sockaddr*)&broadcast, sizeof(broadcast))){
 			fprintf(stderr, "couldn't send beacon: %s\n", strerror(errno));
@@ -1395,8 +1421,8 @@ static void* send_beacon(void*)
 
 		sleep(1);
 		sendto(sock, two, size, 0, (struct sockaddr*)&broadcast, sizeof(broadcast));
-		sleep(10);
-		exit(1);
+		free(one);
+		free(two);
 	}
 
 	return NULL;

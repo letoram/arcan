@@ -136,7 +136,8 @@ static ssize_t
 
 struct keystore_mask*
 	a12helper_build_beacon(
-		struct keystore_mask* mask,
+		struct keystore_mask* head,
+		struct keystore_mask* tail,
 		uint8_t** one, uint8_t** two, size_t* outsz)
 {
 	union {
@@ -156,10 +157,12 @@ struct keystore_mask*
 
 	size_t pos = 16;
 
-/* mask actually stores state of the keys consumed,
- * these are reloaded between beacon calls */
-	a12helper_keystore_public_tagset(mask);
-	struct keystore_mask* cur = mask;
+/* mask actually stores state of the keys consumed, and grows with
+ * repeated calls - only scan / sweep on fresh */
+	if (!tail->tag && head == tail)
+		a12helper_keystore_public_tagset(tail);
+
+	struct keystore_mask* cur = tail;
 
 /* calculate H(chg, kpub) for each key in the updated set */
 	while (cur && cur->tag && pos < buf_sz){

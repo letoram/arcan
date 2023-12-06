@@ -10,7 +10,7 @@
 #include <arcan_shmif_server.h>
 
 #define KEYSTORE_ERRMSG "couldn't open keystore"
-
+#define WANT_KEYSTORE_HASHER
 #ifndef COUNT_OF
 #define COUNT_OF(x) \
 	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
@@ -50,6 +50,8 @@ static bool flush_shmif(struct arcan_shmif_cont* C)
 	return rv == 0;
 }
 
+static bool get_keystore(struct arcan_shmif_cont*, struct keystore_provider*);
+
 static struct {
 	bool soft_auth;
 	const char* trust_domain;
@@ -80,30 +82,28 @@ static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 
 static int discover_broadcast(struct arcan_shmif_cont* C, int trust)
 {
-/* first iteration:
- *
- * 0. keystore - remember the accepted key that was used with a tag.
- *    this is used for the search for (1).
- *
- *    bool a12helper_keystore_mark_tag(
- *         const char* tag, const uint8_t pubk[static 32]);
- *
- *    void a12helper_keystore_match_mark(
- *         const uint8_t nonce[static 8], const uint8_t hash[static 32],
- *         void (*match)(void* tag,
- *                       const char* tag, const uint8_t pubk[static 32], void*
- *                      ), void* tag
- *         );
- *
- * 1. fetch Kpub.default
- * 2. generate nonce, H(Kpub.default | nonce) - broadcast, bloomfilter(nonce)
- * 3. wait 1s.
- * 4. generate nonce, H(Kpub.default | nonce.old+1), bloomfilter(nonce)
- * 5. wait for incoming packets.
- *    6. incoming packages are treated like discover_passive here but without
- *       the reply stack.
- * 6. periodically flush filter.
- */
+	struct keystore_provider store = {0};
+	if (!get_keystore(C, &store)){
+		arcan_shmif_last_words(C, "couldn't open keystore");
+		return EXIT_FAILURE;
+	}
+
+/* build tagset and broadcast */
+
+	struct keystore_mask mask = {0};
+	size_t size;
+	uint8_t* one, (* two);
+/*	a12helper_build_beacon(&mask, &one, &two, &size); */
+	struct sockaddr_in broadcast = {
+		.sin_family = AF_INET,
+		.sin_addr.s_addr = htonl(INADDR_BROADCAST),
+		.sin_port = htons(6680)
+	};
+
+	sleep(1);
+	int sock = 1;
+/*	sendto(sock, two, size, 0, (struct sockaddr*)&broadcast, sizeof(broadcast)); */
+
 	return EXIT_FAILURE;
 }
 

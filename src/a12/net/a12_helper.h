@@ -107,7 +107,8 @@ void
 struct keystore_mask;
 struct keystore_mask*
 	a12helper_build_beacon(
-		struct keystore_mask* mask,
+		struct keystore_mask* head,
+		struct keystore_mask* tail,
 		uint8_t** one,
 		uint8_t** two, size_t* sz
 	);
