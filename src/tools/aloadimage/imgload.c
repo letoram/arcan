@@ -279,8 +279,8 @@ bool imgload_poll(struct img_state* tgt)
 		tgt->out = NULL;
 		snprintf((char*)tgt->msg, sizeof(tgt->msg),
 			"(%zuMiB>%zuMiB)",
-			(out_sz+1) / (1024 * 1024),
-			(tgt->buf_lim+1) / (1024 * 1024)
+			(size_t)((out_sz+1) / (1024 * 1024)),
+			(size_t)((tgt->buf_lim+1) / (1024 * 1024))
 		);
 		mark_finished(tgt, true);
 		return true;

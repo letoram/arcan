@@ -15,7 +15,7 @@ struct img_data {
 	size_t buf_sz;
 	int w,h;
 	int x,y;
-	uint8_t msg[16];
+	uint8_t msg[48];
 	uint8_t _Alignas(64) buf[];
 };
 
@@ -34,7 +34,7 @@ struct img_state {
 	bool broken;
 	size_t buf_lim;
 	pid_t proc;
-	uint8_t msg[16];
+	uint8_t msg[48];
 	volatile struct img_data* out;
 };
 
