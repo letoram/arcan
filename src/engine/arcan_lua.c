@@ -436,7 +436,7 @@ void arcan_lua_cbdrop()
 
 const char* arcan_lua_crash_source(struct arcan_luactx* ctx)
 {
-	return alt_trace_crash_source(NULL);
+	return alt_trace_crash_source();
 }
 
 static arcan_vobj_id luaL_checkaid(lua_State* ctx, int num)
@@ -8511,7 +8511,7 @@ static int targetsnapshot(lua_State* ctx)
 
 /* verify that it is a safe namespace for writing */
 	if (ns != RESOURCE_APPL_STATE){
-		if (ns && CREATE_USERMASK){
+		if (ns & CREATE_USERMASK){
 			command = TARGET_COMMAND_BCHUNK_OUT;
 		}
 		else {

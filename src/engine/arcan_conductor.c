@@ -630,7 +630,7 @@ static int trigger_video_synch(float frag)
 }
 
 static arcan_tick_cb outcb;
-static void conductor_cycle();
+static void conductor_cycle(int);
 int arcan_conductor_run(arcan_tick_cb tick)
 {
 	arcan_evctx* evctx = arcan_event_defaultctx();

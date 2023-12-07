@@ -234,11 +234,11 @@ struct agp_region {
 
 struct drm_hdr_meta {
 	int eotf;
-	uint16_t rx, ry, gx, gy, bx, by;
-	uint16_t wpx, wpy;
-	uint16_t master_min, master_max;
-	uint16_t cll;
-	uint16_t fll;
+	float rx, ry, gx, gy, bx, by; /* 0.0 <= n <= 1.3107 */
+	float wpx, wpy;
+	float master_min, master_max;
+	float cll;
+	float fll;
 };
 
 struct agp_vstore;

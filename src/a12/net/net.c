@@ -1671,7 +1671,7 @@ int main(int argc, char** argv)
 		return apply_keystore_command(argc-2, argv+2);
 	}
 
-	if (argc >= 1 && strcmp(argv[1], "discover") == 0){
+	if (argc > 1 && strcmp(argv[1], "discover") == 0){
 		return run_discover_command(argc-2, argv+2);
 	}
 

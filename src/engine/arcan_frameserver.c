@@ -1383,13 +1383,13 @@ arcan_errc arcan_frameserver_audioframe_direct(void* aobj,
 
 /* sanity check, untrusted source */
 	if (ind >= src->abuf_cnt || ind < 0){
-		platform_fsrv_leave(src);
+		platform_fsrv_leave();
 		return ARCAN_ERRC_NOTREADY;
 	}
 
 	if (0 == amask || ((1<<ind)&amask) == 0){
 		atomic_store_explicit(&src->shm.ptr->aready, 0, memory_order_release);
-		platform_fsrv_leave(src);
+		platform_fsrv_leave();
 		arcan_sem_post(src->async);
 		return ARCAN_ERRC_NOTREADY;
 	}
@@ -1415,7 +1415,7 @@ arcan_errc arcan_frameserver_audioframe_direct(void* aobj,
 /* check for cont and > 1, wait for signal.. else release */
 	if (!cont){
 		atomic_store_explicit(&src->shm.ptr->aready, 0, memory_order_release);
-		platform_fsrv_leave(src);
+		platform_fsrv_leave();
 		arcan_sem_post(src->async);
 	}
 

@@ -635,7 +635,7 @@ bool platform_video_map_buffer(
 
 	agp_activate_vstore(vs);
 		egl->image_target_texture2D(GL_TEXTURE_2D, img);
-	agp_deactivate_vstore(vs);
+	agp_deactivate_vstore();
 
 	vs->vinf.text.tag = (uintptr_t) img;
 

@@ -256,7 +256,7 @@ static void audio_play(void *data,
  * playback engine resynch as part of the _RESET */
 	 if (decctx.shmcont.abufsize <= decctx.shmcont.abufused){
 			LOG("shmif_cont-rejecting:size=%zu:used:%zu",
-				decctx.shmcont.abufsize, decctx.shmcont.abufused);
+				(size_t)decctx.shmcont.abufsize, (size_t)decctx.shmcont.abufused);
 			arcan_shmif_unlock(&decctx.shmcont);
 		}
 

@@ -738,7 +738,7 @@ fail:
 		shmpage->vpending = 1;
 		shmpage->apending = 1;
 		ctx->shm.ptr = shmpage;
-	platform_fsrv_leave(ctx);
+	platform_fsrv_leave();
 
 	return true;
 }
@@ -908,7 +908,7 @@ static bool prepare_segment(struct arcan_frameserver* ctx,
 			ctx->vbufs, 1, hintw * hinth * sizeof(shmif_pixel),
 			ctx->abufs, abufc, abufsz
 		);
-	platform_fsrv_leave(ctx);
+	platform_fsrv_leave();
 
 	ctx->desc = (struct arcan_frameserver_meta){
 		.width = hintw,

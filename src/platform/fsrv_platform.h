@@ -121,8 +121,8 @@ int platform_fsrv_socketauth(struct arcan_frameserver* src);
  */
 #include <setjmp.h>
 void platform_fsrv_enter(struct arcan_frameserver*, jmp_buf ctx);
-void platform_fsrv_leave();
-size_t platform_fsrv_clock();
+void platform_fsrv_leave(void);
+size_t platform_fsrv_clock(void);
 
 /*
  * disconnect, clean up resources, free. The connection should be considered
@@ -143,7 +143,7 @@ bool platform_fsrv_destroy_local(struct arcan_frameserver* src);
  * this yourself, the _listen_external, spawn_subsegment and simiar functions
  * do this for you.
  */
-struct arcan_frameserver* platform_fsrv_alloc();
+struct arcan_frameserver* platform_fsrv_alloc(void);
 
 /*
  * copy the supplied event to outgoing queue of the frameserver. If the event

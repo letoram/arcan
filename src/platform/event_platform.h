@@ -5,7 +5,7 @@
  * get a NULL terminated list of input- platform specific environment options
  * will only be presented to the user in a CLI like setting.
  */
-const char** platform_event_envopts();
+const char** platform_event_envopts(void);
 
 /*
  * Some platforms have a costly and intrusive detection process for new devices
@@ -34,7 +34,7 @@ void platform_event_keyrepeat(struct arcan_evctx*, int* period, int* delay);
  * platform_video_preinit will be called prior to this, so it is the job of
  * event_ preinit to actually drop privileges.
  */
-void platform_event_preinit();
+void platform_event_preinit(void);
 
 /*
  * Hook where the platform and event queue is in a ready state, and it is
@@ -73,7 +73,7 @@ void platform_event_analogall(bool enable, bool mouse);
  * some connection to the video layer. One example is for egl-dri related
  * pseudo-terminal management where some IOCTLs affect graphics state.
  */
-void platform_event_reset();
+void platform_event_reset(struct arcan_evctx*);
 
 /*
  * Special controls for devices that sample relative values but report

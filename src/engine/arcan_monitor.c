@@ -47,7 +47,7 @@ static void cmd_reload(char* arg)
 	const char* errc;
 	if (!arcan_verifyload_appl(res, &errc)){
 		arcan_mem_free(res);
-		fprintf(m_out, "#ERROR %s\n", *errc);
+		fprintf(m_out, "#ERROR %s\n", errc);
 		fflush(m_out);
 		return;
 	}

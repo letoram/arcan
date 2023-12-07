@@ -294,7 +294,7 @@ static void pbo_stream_sub(struct agp_vstore* s,
 		GL_UNSIGNED_BYTE, buf
 	);
 	reset_pixel_store();
-	agp_deactivate_vstore(s);
+	agp_deactivate_vstore();
 
 	if (synch){
 		size_t x2 = meta->x1 + meta->w;
