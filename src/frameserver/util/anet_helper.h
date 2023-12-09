@@ -76,11 +76,18 @@ struct anet_options {
  *
  * returns an authenticated client context or NULL, with any error
  * message dynamically allocated in *errmsg (if provided and available).
+ *
+ * If the connection went through but the authentication failed, mark
+ * auth_failed as that is an error condition that is not worth repeating most
+ * of the time. The exception is if the connection was terminated from network
+ * effects, but that is not visible to us and the other end can sleep(n) before
+ * terminating to limit auth tries.
  */
 struct anet_cl_connection {
 	int fd;
 	struct a12_state* state;
 	char* errmsg;
+	bool auth_failed;
 };
 
 struct anet_cl_connection anet_cl_setup(struct anet_options* opts);

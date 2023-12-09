@@ -27,6 +27,7 @@ enum anet_mode {
 	ANET_SHMIF_SRV,
 	ANET_SHMIF_SRV_INHERIT,
 	ANET_SHMIF_EXEC,
+	ANET_SHMIF_EXEC_OUTBOUND,
 	ANET_SHMIF_DIRSRV_INHERIT
 };
 
@@ -729,6 +730,10 @@ static struct anet_cl_connection find_connection(
 				fputs(anet.errmsg, stderr);
 				free(anet.errmsg);
 				anet.errmsg = NULL;
+
+/* error out on any rejected auth, otherwise try to sweep again a bit later. */
+				if (anet.auth_failed)
+					break;
 			}
 
 			if (timesleep < 10)
@@ -883,7 +888,7 @@ static bool tag_host(struct anet_options* anet, char* hoststr, const char** err)
 	return true;
 }
 
-static bool show_usage(const char* msg)
+static bool show_usage(const char* msg, char** argv, size_t i)
 {
 	fprintf(stderr, "Usage:\n"
 	"Forward local arcan applications (push): \n"
@@ -948,15 +953,20 @@ static bool show_usage(const char* msg)
 	"\tarcan-net discover passive\n"
 	"\tarcan-net discover beacon\n\n"
 	"Keystore mode (ignores connection arguments):\n"
-	"\tAdd/Append key: arcan-net keystore tag host [port=6680]\n"
+	"\tAdd/Append key: arcan-net keystore tagname host [port=6680]\n"
 	"\t                tag=default is reserved\n"
 	"\nTrace groups (stderr):\n"
 	"\tvideo:1      audio:2       system:4    event:8      transfer:16\n"
 	"\tdebug:32     missing:64    alloc:128   crypto:256   vdetail:512\n"
-	"\tbinary:1024  security:2048 directory:4096\n\n%s%s",
-		msg ? msg : "",
-		msg ? "\n\n" : ""
-	);
+	"\tbinary:1024  security:2048 directory:4096\n\n");
+
+	if (msg){
+		if (argv)
+			fprintf(stderr, "[%i:%s] ", i, argv[i]);
+		fputs(msg, stderr);
+		fputs("\n", stderr);
+	}
+
 	return false;
 }
 
@@ -974,16 +984,51 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 	size_t i = 1;
 /* mode defining switches and shared switches */
 	for (; i < argc; i++){
-		if (argv[i][0] != '-')
-			break;
+
+/* argument should be treated as host for outbound connection */
+		if (argv[i][0] != '-'){
+			if (opts->host){
+				return show_usage("multiple outbound hosts", argv, i);
+			}
+
+			const char* err = NULL;
+			if (tag_host(opts, argv[i], &err)){
+				if (err)
+					return show_usage(err, argv, i);
+				continue;
+			}
+
+			opts->host = argv[i++];
+
+/* to deal with the 'fantastic' IPV6 colon notation messing with port, just
+ * split the arguments - but that has the problem of ambiguity with directory
+ * server and grabbing appl */
+			opts->port = "6680";
+			if (i < argc){
+				size_t j = 0;
+				for (j = 0; argv[i][j] && isdigit(argv[i][j]); j++){}
+				if (!argv[i][j]){
+					opts->port = argv[i];
+				}
+				else if (argv[i][j] == '-'){
+					i--;
+					continue;
+				}
+				else
+					return i;
+			}
+
+			continue;
+		}
+
 		if (strcmp(argv[i], "-V") == 0 || strcmp(argv[i], "--version") == 0){
 			fprintf(stdout,
 				"%s\nshmif-%" PRIu64"\n", ARCAN_BUILDVERSION, arcan_shmif_cookie());
 			exit(EXIT_SUCCESS);
 		}
 		if (strcmp(argv[i], "-d") == 0){
-			if (i == argc - 1)
-				return show_usage("-d without trace value argument");
+			if (i >= argc - 1)
+				return show_usage("Missing trace value argument", argv, i - 1);
 			char* workstr = NULL;
 			unsigned long val = strtoul(argv[++i], &workstr, 10);
 			if (workstr == argv[i]){
@@ -995,57 +1040,36 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 /* a12 client, shmif server */
 		else if (strcmp(argv[i], "-s") == 0){
 			if (opts->mode)
-				return show_usage(modeerr);
+				return show_usage(modeerr, argv, i);
 
 			opts->opts->local_role = ROLE_SOURCE;
 			opts->mode = ANET_SHMIF_SRV;
 			if (i >= argc - 1)
-				return show_usage("-s: Missing connpoint argument");
+				return show_usage("Missing connpoint argument", argv, i-1);
 			opts->cp = argv[++i];
 
 /* shmif connection points are restricted set */
 			for (size_t ind = 0; opts->cp[ind]; ind++)
 				if (!isalnum(opts->cp[ind]))
-					return show_usage("-s: Invalid character in connpoint [a-Z,0-9]");
-
-			i++;
-			if (i >= argc)
-				return show_usage("-s: Missing tag@ or host port argument");
-
-			const char* err = NULL;
-			if (tag_host(opts, argv[i], &err)){
-				if (err)
-					return show_usage(err);
-				continue;
-			}
-
-			opts->host = argv[i++];
-
-			if (i >= argc)
-				return show_usage("-s: Missing port argument");
-
-			opts->port = argv[i];
-
-			if (i != argc - 1)
-				return show_usage("-s: Trailing arguments after port");
+					return show_usage("-s: Invalid character in connpoint [a-Z,0-9]", argv, i);
 
 			continue;
 		}
 /* a12 client, shmif server, inherit primitives */
 		else if (strcmp(argv[i], "-S") == 0){
 			if (opts->mode)
-				return show_usage(modeerr);
+				return show_usage(modeerr, argv, i);
 
 			opts->mode = ANET_SHMIF_SRV_INHERIT;
 
 			if (i >= argc - 1)
-				return show_usage("Invalid arguments, -S without room for socket");
+				return show_usage("Missing socket argument", argv, i);
 
 			opts->sockfd = strtoul(argv[++i], NULL, 10);
 			struct stat fdstat;
 
 			if (-1 == fstat(opts->sockfd, &fdstat))
-				return show_usage("Couldn't stat -S descriptor");
+				return show_usage("Couldn't stat -S descriptor", argv, i);
 
 /* Both socket passed and preauth arcan shmif connection? treat that as the
  * directory server forking off into itself to handle a client connection */
@@ -1056,39 +1080,39 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			}
 
 			if ((fdstat.st_mode & S_IFMT) != S_IFSOCK)
-				return show_usage("-S descriptor does not point to a socket");
+				return show_usage("-S descriptor does not point to a socket", argv, i);
 
 			if (i == argc)
-				return show_usage("-S without room for tag or host/port");
+				return show_usage("missing tag or host port", argv, i-1);
 
 			i++;
 			const char* err = NULL;
 			if (tag_host(opts, argv[i], &err)){
 				if (err)
-					return show_usage(err);
+					return show_usage(err, argv, i);
 				continue;
 			}
 
 			opts->host = argv[i++];
 
 			if (i == argc)
-				return show_usage("-S host without room for port argument");
+				return show_usage("Missing port argument", argv, i - 1);
 
 			opts->port = argv[i++];
 
 			if (i < argc)
-				return show_usage("Trailing arguments to -S fd_in host port");
+				return show_usage("Trailing arguments to -S fd_in host port", argv, i);
 		}
 		else if (strcmp(argv[i], "--allow-src") == 0){
 			i++;
 			if (i >= argc)
-				return show_usage("--allow-src: missing group tag name");
+				return show_usage("Missing group tag name", argv, i - 1);
 			global.dirsrv.allow_src = argv[i];
 		}
 		else if (strcmp(argv[i], "--allow-dir") == 0){
 			i++;
 			if (i >= argc)
-				return show_usage("--allow-dir: missing group tag name");
+				return show_usage("Missing group tag name", argv, i - 1);
 			global.dirsrv.allow_dir = argv[i];
 		}
 		else if (strcmp(argv[i], "--tunnel") == 0){
@@ -1103,46 +1127,50 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		else if (strcmp(argv[i], "--allow-appl") == 0){
 			i++;
 			if (i >= argc)
-				return show_usage("--allow-appl: missing group tag name");
+				return show_usage("Missing group tag name", argv, i - 1);
 			global.dirsrv.allow_appl = argv[i];
 		}
 /* one-time single appl update to directory */
 		else if (strcmp(argv[i], "--push-appl") == 0){
 			i++;
 			if (i >= argc){
-				return show_usage("--push-appl name: missing");
+				return show_usage("Missing applname", argv, i - 1);
 			}
-			if (argv[i][0] == '.' || argv[i][1]){
+			if (argv[i][0] == '.' || argv[i][1] == '/'){
 				char* path = strrchr(argv[i], '/');
 				if (!path)
-					return show_usage("--push-appl /path/to/appl: invalid path format");
+					return show_usage("--push-appl /path/to/appl: invalid path format", argv, i);
 				*path = '\0';
 				if (-1 == chdir(argv[i]))
-					return show_usage("--push-appl couldn't reach appl root dir");
+					return show_usage("--push-appl couldn't reach appl root dir", argv, i);
 				argv[i] = &path[1];
 			}
 			else if (!getenv("ARCAN_APPLBASEPATH")){
 				return show_usage(
-					"--push-appl name should be full path or relative ARCAN_APPLBASEPATH");
-				chdir(getenv("ARCAN_APPLBASEPATH"));
+					"--push-appl name should be full path or relative ARCAN_APPLBASEPATH",
+					argv, i);
 			}
+			else if (-1 == chdir(getenv("ARCAN_APPLBASEPATH")) || -1 == chdir(argv[i]))
+				return show_usage(
+					"--push-appl ARCAN_APPLBASEPATH: couldn't chdir to basepath/name", argv, i);
 
 			int dirfd = open(".", O_RDONLY | O_DIRECTORY);
 			if (-1 == dirfd)
-				return show_usage("--push-appl name: couldn't resolve working directory");
+				return show_usage(
+					"--push-appl name: couldn't resolve working directory", argv, i);
 
 			if (global.dircl.outapp.handle)
-				return show_usage("multiple --push-appl arguments provided");
+				return show_usage("multiple --push-appl arguments provided", argv, i);
 
 			if (!build_appl_pkg(argv[i], &global.dircl.outapp, dirfd))
-				return show_usage("--push-appl: couldn't build appl package");
+				return show_usage("--push-appl: couldn't build appl package", argv, i);
 
 			a12int_trace(A12_TRACE_DIRECTORY, "dircl:push_appl:built=%s", argv[i]);
 		}
 		else if (strcmp(argv[i], "--ident") == 0){
 			i++;
 			if (argc == i)
-				return show_usage("--ident name: missing name argument");
+				return show_usage("Missing name argument", argv, i);
 
 			snprintf(global.dircl.ident, 16, "%s", argv[i]);
 		}
@@ -1156,20 +1184,29 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			opts->opts->local_role = ROLE_PROBE;
 			global.probe_only = true;
 		}
-/* a12 server, shmif client */
+/* shmif client, outbound mode */
+		else if (strcmp(argv[i], "--") == 0 || strcmp(argv[i], "--exec") == 0){
+			i++;
+			opts->opts->local_role = ROLE_SOURCE;
+			meta->bin = argv[i];
+			meta->argv = &argv[i];
+			opts->mode = ANET_SHMIF_EXEC_OUTBOUND;
+			return i;
+		}
+/* a12 server, shmif client, listen mode */
 		else if (strcmp(argv[i], "-l") == 0){
 			if (opts->mode)
-				return show_usage(modeerr);
+				return show_usage(modeerr, argv, i);
 			opts->mode = ANET_SHMIF_CL;
 
-			if (i == argc - 1)
-				return show_usage("-l without room for port argument");
+			if (i >= argc - 1)
+				return show_usage("Missing port argument", argv, i - 1);
 
 			opts->port = argv[++i];
 
 			for (size_t ind = 0; opts->port[ind]; ind++)
 				if (opts->port[ind] < '0' || opts->port[ind] > '9')
-					return show_usage("Invalid values in port argument");
+					return show_usage("Invalid values in port argument", argv, i);
 
 /* three paths:
  *    -l port host -- ..
@@ -1189,12 +1226,12 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			}
 
 			if (strcmp(argv[i], "--exec") != 0 && strcmp(argv[i], "--") != 0){
-				return show_usage("Unexpected trailing argument, expected --exec or end");
+				return show_usage("Unexpected trailing argument, expected --exec or end", argv, i);
 			}
 
 			i++;
 			if (i == argc)
-				return show_usage("--exec without bin arg0 .. argn");
+				return show_usage("Missing exec arguments: bin arg0 .. argn", argv, i - 1);
 
 			meta->bin = argv[i];
 			meta->argv = &argv[i];
@@ -1209,7 +1246,7 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		else if (strcmp(argv[i], "-T") == 0 || strcmp(argv[i], "--trust") == 0){
 			i++;
 			if (i == argc)
-				return show_usage("--trust without domain argument");
+				return show_usage("Missing domain argument", argv, i - 1);
 
 			global.trust_domain = argv[i];
 		}
@@ -1228,29 +1265,25 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		else if (strcmp(argv[i], "--reload") == 0){
 			global.dircl.reload = true;
 		}
-		else if (strcmp(argv[i], "--") == 0){
-			opts->opts->local_role = ROLE_SOURCE;
-			return i;
-		}
 		else if (strcmp(argv[i], "--source-port") == 0){
 			i++;
 			if (i == argc)
-				return show_usage("--source-port without port argument");
+				return show_usage("Missing port argument", argv, i - 1);
 
 			global.dircl.source_port = (uint16_t) strtoul(argv[i], NULL, 10);
 			if (!global.dircl.source_port)
-				return show_usage("--source-port invalid");
+				return show_usage("--source-port invalid", argv, i);
 		}
 		else if (strcmp(argv[i], "--directory") == 0){
 			if (!getenv("ARCAN_APPLBASEPATH")){
-				return show_usage("--directory without ARCAN_APPLBASEPATH set");
+				return show_usage("Missing ARCAN_APPLBASEPATH set", argv, i);
 			}
 
 			global.directory = open(
 				getenv("ARCAN_APPLBASEPATH"), O_DIRECTORY | O_CLOEXEC);
 
 			if (-1 == global.directory){
-				return show_usage("--directory ARCAN_APPLBASEPATH couldn't be opened");
+				return show_usage("ARCAN_APPLBASEPATH couldn't be opened", argv, i);
 			}
 			opts->opts->local_role = ROLE_DIR;
 		}
@@ -1272,11 +1305,11 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			else {
 				fprintf(stdout, "reading passphrase from stdin\n");
 				if (fgets(msg, 32, stdin) <= 0)
-					return show_usage("-a,--auth couldn't read secret from stdin");
+					return show_usage("Couldn't read secret from stdin", argv, i);
 			}
 			size_t len = strlen(msg);
 			if (!len){
-				return show_usage("-a,--auth zero-length secret not permitted");
+				return show_usage("Zero-length secret not permitted", argv, i);
 			}
 
 			if (msg[len-1] == '\n')
@@ -1294,17 +1327,17 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		}
 		else if (strcmp(argv[i], "-B") == 0){
 			if (i == argc - 1)
-				return show_usage("-B without bitrate argument");
+				return show_usage("Missing bitrate argument", argv, i - 1);
 
 			if (!isdigit(argv[i+1][0]))
-				return show_usage("-B bitrate should be a number");
+				return show_usage("Bitrate should be a number", argv, i);
 		}
 		else if (strcmp(argv[i], "-r") == 0 || strcmp(argv[i], "--retry") == 0){
-			if (1 < argc - 1){
+			if (i < argc - 1){
 				opts->retry_count = (ssize_t) strtol(argv[++i], NULL, 10);
 			}
 			else
-				return show_usage("Missing count argument to -r,--retry");
+				return show_usage("Missing count argument", argv, i - 1);
 		}
 	}
 
@@ -1431,13 +1464,13 @@ static void* send_beacon(void*)
 static int run_discover_command(int argc, char** argv)
 {
 /* can run with either (beacon & listen) or just beacon or just listen */
-	if (!argc || strcmp(argv[0], "passive") != 0){
+	if (argc <= 2 || strcmp(argv[2], "passive") != 0){
 	 	pthread_t pth;
 		pthread_attr_t pthattr;
 		pthread_attr_init(&pthattr);
 		pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
 
-		if (!argc || strcmp(argv[0], "beacon") != 0){
+		if (argc <= 2 || strcmp(argv[2], "beacon") != 0){
 			pthread_create(&pth, &pthattr, send_beacon, NULL);
 		}
 		else{
@@ -1478,38 +1511,32 @@ static int run_discover_command(int argc, char** argv)
 
 static int apply_keystore_command(int argc, char** argv)
 {
-/* (opt, -b dir) */
-	if (!argc)
-		return show_usage("Missing keystore command arguments");
-
 	const char* err;
 	if (!open_keystore(&err)){
-		return show_usage(err);
+		return show_usage(err, NULL, 0);
 	}
 
 /* time for tag, host and port */
-	if (!argc || argc < 2){
+	if (argc < 4){
 		a12helper_keystore_release();
-		return show_usage("Missing tag / host arguments");
+		return show_usage("Keystore: Missing tag / host arguments", NULL, 0);
 	}
 
-	char* tag = argv[0];
-	char* host = argv[1];
-	argc -= 2;
-	argv += 2;
+	char* tag = argv[2];
+	char* host = argv[3];
 
 	unsigned long port = 6680;
-	if (argc){
-		port = strtoul(argv[0], NULL, 10);
+	if (argc > 4){
+		port = strtoul(argv[4], NULL, 10);
 		if (!port || port > 65535){
 			a12helper_keystore_release();
-			return show_usage("Port argument is invalid or out of range");
+			return show_usage("Port argument is invalid or out of range", argv, 4);
 		}
 	}
 
 	uint8_t outpub[32];
 	if (!a12helper_keystore_register(tag, host, port, outpub)){
-		return show_usage("Couldn't add/create tag in keystore");
+		return show_usage("Couldn't add/create tag in keystore", NULL, 0);
 	}
 
 	size_t outl;
@@ -1601,7 +1628,7 @@ static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 		if (isatty(STDIN_FILENO)){
 			fprintf(stdout,
 				"The other end is using an unknown public key (%s).\n"
-				"Are you sure you want to continue (yes/no/remember/remember):\n", out
+				"Are you sure you want to continue (yes/no/remember):\n", out
 			);
 			char buf[16] = {0};
 			fgets(buf, 16, stdin);
@@ -1668,46 +1695,27 @@ int main(int argc, char** argv)
 	anet.devicehint_cp = getenv("ARCAN_CONNPATH");
 
 	if (argc > 1 && strcmp(argv[1], "keystore") == 0){
-		return apply_keystore_command(argc-2, argv+2);
+		return apply_keystore_command(argc, argv);
 	}
 
 	if (argc > 1 && strcmp(argv[1], "discover") == 0){
-		return run_discover_command(argc-2, argv+2);
+		return run_discover_command(argc, argv);
 	}
 
 	if (argc < 2 || (argc == 2 &&
 		(strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0)))
-		return show_usage(NULL);
+		return show_usage(NULL, NULL, 0);
 
 /* inherited directory server mode doesn't take extra listening parameters and
  * was an afterthought not fitting with the rest of the (messy) arg parsing */
 	size_t argi = apply_commandline(argc, argv, &meta);
-	if (!argi && anet.mode != ANET_SHMIF_DIRSRV_INHERIT)
+	if (!argi && anet.mode != ANET_SHMIF_DIRSRV_INHERIT && !meta.opts->host)
 		return EXIT_FAILURE;
 
 /* no mode? if there's arguments left, assume it is is the 'reverse' mode
  * where the connection is outbound but we get the a12 'client' view back
  * to pair with an arcan-net --exec .. */
 	if (!anet.mode){
-		if (argi <= argc - 1){
-/* Treat as a key- 'tag' for connecting? This act as a namespace separator
- * so the other option would be to */
-			const char* err = NULL;
-			if (tag_host(&anet, argv[argi], &err)){
-				if (err)
-					return show_usage(err);
-				argi++;
-			}
-/* Or just go host / [port] */
-			else {
-				anet.host = argv[argi++];
-				anet.port = "6680";
-
-				if (argi <= argc - 1 && isdigit(argv[argi][0])){
-					anet.port = argv[argi++];
-				}
-			}
-
 /* Make the outbound connection, check if we are supposed to act as a source */
 			struct anet_cl_connection cl = find_connection(&anet, NULL);
 			if (!cl.state){
@@ -1759,8 +1767,12 @@ int main(int argc, char** argv)
 				else
 					chdir("/tmp");
 
-				if (argv[argi])
-					snprintf(global.dircl.applname, 16, "%s", argv[argi]);
+				if (argi < argc && argv[argi]){
+					if (strcmp(argv[argi], "--") == 0 || strcmp(argv[argi], "--exec") == 0){
+					}
+					else
+						snprintf(global.dircl.applname, 16, "%s", argv[argi]);
+				}
 
 				anet_directory_cl(cl.state, global.dircl, cl.fd, cl.fd);
 			}
@@ -1771,9 +1783,6 @@ int main(int argc, char** argv)
 			close(cl.fd);
 
 			return rc < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
-		}
-		else
-			return show_usage("No mode specified, please use -s or -l form");
 	}
 
 	char* errmsg;
@@ -1790,7 +1799,7 @@ int main(int argc, char** argv)
 /* keystore shouldn't be opened in the worker */
 	if (anet.mode != ANET_SHMIF_DIRSRV_INHERIT){
 		if (!open_keystore(&err)){
-			return show_usage(err);
+			return show_usage(err, NULL, 0);
 		}
 /* We have a keystore and are listening for an inbound connection, make sure
  * that there is a local key defined that we can use for the reply. There is a
@@ -1866,6 +1875,38 @@ int main(int argc, char** argv)
  * an outbound connection (ARCAN_CONNPATH=a12.. */
 	if (anet.mode == ANET_SHMIF_SRV_INHERIT){
 		return a12_preauth(&anet, a12cl_dispatch);
+	}
+/* similar to ANET_SHMIF_SRV_INHERIT above, but we exec and launch the client
+ * ourselves so the process ownership is inverted and we need to initiate the
+ * connection */
+	if (anet.mode == ANET_SHMIF_EXEC_OUTBOUND){
+		struct anet_cl_connection cl = find_connection(&anet, NULL);
+		if (!cl.state){
+			if (anet.key)
+				fprintf(stderr, "couldn't connect to any host for key %s\n", anet.key);
+			else
+				fprintf(stderr, "couldn't connect to %s port %d\n", anet.host, anet.port);
+			return EXIT_FAILURE;
+		}
+
+		extern char** environ;
+		struct shmifsrv_envp env = {
+			.init_w = 32, .init_h = 32,
+			.path = meta.bin,
+			.argv = meta.argv, .envv = environ
+		};
+
+		int errc;
+		int socket;
+		struct shmifsrv_client* C = shmifsrv_spawn_client(env, &socket, &errc, 0);
+		if (!C){
+			shutdown(cl.fd, SHUT_RDWR);
+			close(cl.fd);
+			return EXIT_FAILURE;
+		}
+
+		a12cl_dispatch(&anet, cl.state, C, cl.fd);
+		return EXIT_SUCCESS;
 	}
 	else if (anet.mode == ANET_SHMIF_DIRSRV_INHERIT){
 		set_log_trace();

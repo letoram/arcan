@@ -150,6 +150,7 @@ static struct anet_cl_connection connect_to(struct anet_options* arg)
 		close(res.fd);
 	}
 
+	res.auth_failed = true;
 	res.fd = -1;
 	a12_free(res.state);
 	res.state = NULL;
