@@ -43,6 +43,7 @@ static struct {
 	NSVGrasterizer* rast;
 	bool force_scale;
 	bool pending_raster;
+	bool in_svg;
 } current = {
 	.scale = 1.0
 };
@@ -107,6 +108,7 @@ static bool do_svg(struct arcan_shmif_cont* C)
 	if (!current.svg)
 		return false;
 
+	current.in_svg = true;
 	current.pending_raster = true;
 	free(tmp);
 	return true;
@@ -178,6 +180,7 @@ static bool do_file(struct arcan_shmif_cont* C, int inf)
 	if (!buf)
 		return false;
 
+	current.in_svg = false;
 	find_safe_fit(C, dw, dh);
 
 /* if the sizes doesn't match, scale into a buffer and then repack,
@@ -249,10 +252,12 @@ static bool process_event(struct arcan_shmif_cont* C, arcan_tgtevent* ev)
 	}
 
 /* on a vector source we can reblit to fit the desired size and density */
-	if (ev->kind == TARGET_COMMAND_DISPLAYHINT){
+	if (ev->kind == TARGET_COMMAND_DISPLAYHINT && current.in_svg){
 		if (ev->ioevs[0].iv && ev->ioevs[1].iv){
 			arcan_shmif_resize(C, ev->ioevs[0].iv, ev->ioevs[1].iv);
 			current.force_scale = true;
+			current.pending_raster = true;
+
 		}
 		if (ev->ioevs[4].fv && ev->ioevs[4].fv != current.ppcm){
 			current.ppcm = ev->ioevs[4].fv;
@@ -313,6 +318,8 @@ int decode_image(struct arcan_shmif_cont* C, struct arg_arr* args)
 			if (!process_event(C, &ev.tgt))
 				goto out;
 		}
+
+/* flush all pending events before expensive ops (i.e. redraw) */
 		while (arcan_shmif_poll(C, &ev) > 0);
 		reraster(C);
 	}
