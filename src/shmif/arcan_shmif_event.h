@@ -538,7 +538,7 @@ enum ARCAN_TARGET_COMMAND {
  * intended use.
  * ioev[0].iv = handle (or BADFD)
  * ioev[1].iv =
- *              1: device hardware descriptor, if provided (-1 means 2..5)
+ *              1: device hardware descriptor, if provided
  *              2: switch local connection:
  *                 message field will contain new _CONNPATH otherwise
  *                 connection primitive will be passed as handle.
@@ -565,10 +565,14 @@ enum ARCAN_TARGET_COMMAND {
  * ioev[3].iv = 0: device type is render-node-GBM
  *              1: device type is render-node-Streams
  *              2: device type is usb descriptor
+ *              3: device type is a12-state store
  *
  * [for [1].iv == 2..4]
  * 128-bit guid is packed in [2..5] as 64bit little-endian,
  * (low-32, high-32), (low-32, high-32)
+ *
+ * If the 'message' contains a networked resource, the handle in [0] refers to
+ * a the build-native a12 keystore.
  *
  * [for [1].iv == 5]
  * ioev[2].iv = 0: (unsigned) corresponds to a drm authentication token

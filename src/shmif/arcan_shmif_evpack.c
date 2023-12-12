@@ -323,15 +323,15 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 			snprintf(work, dsz,"TGT:BUFFER_FAIL()");
 		break;
 		case TARGET_COMMAND_DEVICE_NODE:
-			if (ev.tgt.ioevs[0].iv == 1)
+			if (ev.tgt.ioevs[1].iv == 1)
 				snprintf(work, dsz,"TGT:DEVICE_NODE(render-node)");
-			else if (ev.tgt.ioevs[0].iv == 2)
-				snprintf(work, dsz,"TGT:DEVICE_NODE(connpath: %s)", ev.tgt.message);
-			else if (ev.tgt.ioevs[0].iv == 3)
-				snprintf(work, dsz,"TGT:DEVICE_NODE(remote: %s)", ev.tgt.message);
-			else if (ev.tgt.ioevs[0].iv == 4)
-				snprintf(work, dsz,"TGT:DEVICE_NODE(alt: %s)", ev.tgt.message);
-			else if (ev.tgt.ioevs[0].iv == 5)
+			else if (ev.tgt.ioevs[1].iv == 2)
+				snprintf(work, dsz,"TGT:DEVICE_NODE(connpath: %s:%d)", ev.tgt.message, ev.tgt.ioevs[0].iv);
+			else if (ev.tgt.ioevs[1].iv == 3)
+				snprintf(work, dsz,"TGT:DEVICE_NODE(remote: %s:%d)", ev.tgt.message, ev.tgt.ioevs[0].iv);
+			else if (ev.tgt.ioevs[1].iv == 4)
+				snprintf(work, dsz,"TGT:DEVICE_NODE(alt: %s:%d)", ev.tgt.message, ev.tgt.ioevs[0].iv);
+			else if (ev.tgt.ioevs[1].iv == 5)
 				snprintf(work, dsz,"TGT:DEVICE_NODE(auth-cookie)");
 		break;
 		case TARGET_COMMAND_GRAPHMODE:

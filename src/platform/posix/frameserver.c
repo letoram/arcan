@@ -449,9 +449,10 @@ int platform_fsrv_pushfd(
 	if (!fsrv || fd == BADFD)
 		return ARCAN_ERRC_BAD_ARGUMENT;
 
-	platform_fsrv_pushevent( fsrv, ev );
-	if (arcan_pushhandle(fd, fsrv->dpipe))
+	if (arcan_pushhandle(fd, fsrv->dpipe)){
+		platform_fsrv_pushevent( fsrv, ev );
 		return ARCAN_OK;
+	}
 
 	arcan_warning("frameserver_pushfd(%d->%d) failed, reason(%d) : %s\n",
 		fd, fsrv->dpipe, errno, strerror(errno));

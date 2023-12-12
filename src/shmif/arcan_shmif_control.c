@@ -137,8 +137,9 @@ static int ilog2(int val)
 static uint64_t g_epoch;
 
 void arcan_random(uint8_t*, size_t);
-static char* spawn_arcan_net(const char* conn_src, int* dsock);
-static size_t a12_cp(const char* conn_src, bool* weak);
+static char* spawn_arcan_net(
+	struct shmif_hidden* priv, const char* conn_src, int* dsock);
+static ssize_t a12_cp(const char* conn_src, bool* weak);
 
 /*
  * The guard-thread thing tries to get around all the insane edge conditions
@@ -185,6 +186,13 @@ struct shmif_hidden {
  * environment set, but forwarding that to stderr when we have a real channel
  * where it can be done, so this should be moved to the DEBUGIF mechanism */
 	int log_event;
+
+/* Previously this was passed as environment variables that we are gradually
+ * moving away form. This is an opaque handle matching what the static build-
+ * time keystore (currently only _naive which uses a directory tree). Using
+ * device_node events can define this for us to pass on to arcan_net or used
+ * for signing states that we want signed. */
+	int keystate_store;
 
 	bool valid_initial : 1;
 
@@ -373,6 +381,21 @@ static bool fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
 		dst->tgt.ioevs[0].iv = c->priv->pseg.epipe = c->priv->pev.fd;
 		c->priv->pev.fd = BADFD;
 		memcpy(c->priv->pseg.key, dst->tgt.message, sizeof(dst->tgt.message));
+		return true;
+	}
+/*
+ * this event can swap out store access handle for sensitive material like
+ * authentication and signing keys. Make sure it doesn't get forwarded.
+ */
+	else if (dst->category == EVENT_TARGET &&
+		dst->tgt.kind == TARGET_COMMAND_DEVICE_NODE &&
+		dst->tgt.ioevs[3].iv == 3){
+		if (c->priv->keystate_store)
+			close(c->priv->keystate_store);
+
+		c->priv->keystate_store = c->priv->pev.fd;
+		c->priv->autoclean = true;
+		c->priv->pev.fd = BADFD;
 		return true;
 	}
 /*
@@ -941,11 +964,16 @@ checkfd:
 					dst->tgt.ioevs[0].iv = BADFD;
 			break;
 
-/* similar to fonthint but uses different descriptor- indicator field,
- * more complex rules for if we should forward or handle ourselves. If
- * it's about switching or defining render node for handle passing, then
- * we need to forward as the client need to rebuild its context. */
+/* similar to fonthint but uses different descriptor- indicator field, more
+ * complex rules for if we should forward or handle ourselves. If it's about
+ * switching or defining render node for handle passing, then we need to
+ * forward as the client need to rebuild its context. */
 			case TARGET_COMMAND_DEVICE_NODE:{
+				if (priv->log_event){
+					log_print("(@%"PRIxPTR"<-)%s",
+						(uintptr_t) c, arcan_shmif_eventstr(dst, NULL, 0));
+				}
+
 				int iev = dst->tgt.ioevs[1].iv;
 				if (iev == 4){
 /* replace slot with message, never forward, if message is not set - drop */
@@ -964,8 +992,6 @@ checkfd:
 
 					if ( (guid[0] || guid[1]) &&
 						(priv->guid[0] != guid[0] && priv->guid[1] != guid[1] )){
-						if (priv->log_event)
-							log_print("->(%"PRIx64", %"PRIx64")", guid[0], guid[1]);
 						priv->guid[0] = guid[0];
 						priv->guid[1] = guid[1];
 					}
@@ -973,10 +999,21 @@ checkfd:
 					if (dst->tgt.message[0])
 						priv->alt_conn = strdup(dst->tgt.message);
 
+/* for a state store we also need to fetch the descriptor, and this should
+ * ideally already be pending because for the 'force' mode the DMS will be
+ * pulled and semaphores unlocked. */
 					goto reset;
 				}
+				else if (iev == 1){
+/* other ones are ignored for now, require cooperation with shmifext */
+					if (dst->tgt.ioevs[3].iv == 3){
+						priv->pev.ev = *dst;
+						priv->pev.gotev = true;
+						goto checkfd;
+					}
+				}
 /* event that request us to switch connection point */
-				else if (iev >= 1 && iev <= 3){
+				else if (iev > 1 && iev <= 3){
 					if (dst->tgt.message[0] == '\0'){
 						priv->pev.ev = *dst;
 						priv->pev.gotev = true;
@@ -991,7 +1028,6 @@ checkfd:
 						else
 							goto reset;
 					}
-/* other ones are ignored for now, require cooperation with shmifext */
 				}
 				else
 					goto reset;
@@ -2682,8 +2718,8 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	file_handle dpipe;
 	char* keyfile = NULL;
 
-	if (a12_cp(newpath, NULL))
-		keyfile = spawn_arcan_net(newpath, &dpipe);
+	if (-1 != a12_cp(newpath, NULL))
+		keyfile = spawn_arcan_net(P, newpath, &dpipe);
 	else
 		keyfile = arcan_shmif_connect(newpath, key, &dpipe);
 	if (!keyfile)
@@ -3004,10 +3040,14 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 	return false;
 }
 
-static size_t a12_cp(const char* conn_src, bool* weak)
+static ssize_t a12_cp(const char* conn_src, bool* weak)
 {
 	if (weak)
 		*weak = false;
+
+	size_t len = strlen(conn_src);
+	if (!len)
+		return -1;
 
 	if (strncmp(conn_src, "a12s://", 7) == 0)
 		return sizeof("a12s://") - 1;
@@ -3016,11 +3056,14 @@ static size_t a12_cp(const char* conn_src, bool* weak)
 			*weak = true;
 		return sizeof("a12://") - 1;
 	}
-	else
+	else if (conn_src[len-1] == '@')
 		return 0;
+	else
+		return -1;
 }
 
-static char* spawn_arcan_net(const char* conn_src, int* dsock)
+static char* spawn_arcan_net(
+	struct shmif_hidden* P, const char* conn_src, int* dsock)
 {
 /* extract components from URL: a12://(keyid)@server(:port) */
 	char* work = strdup(conn_src);
@@ -3044,10 +3087,15 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	}
 
 	bool weak;
-	size_t start = a12_cp(conn_src, &weak);
+	ssize_t start = a12_cp(conn_src, &weak);
 
-/* (:port or ' port' - both are fine) */
+/* (:port or ' port' - both are fine) - the argument is ignored if a12_cp returns
+ * 0 as that matches a tag which already has host and port as part of its keystore
+ * definition */
 	const char* port = "6680";
+	if (!start)
+		port = NULL;
+
 	for (size_t i = start; work[i]; i++){
 		if (work[i] == ':' || work[i] == ' '){
 			work[i] = '\0';
@@ -3086,6 +3134,13 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 	char tmpbuf[8];
 	snprintf(tmpbuf, sizeof(tmpbuf), "%d", spair[1]);
 
+	char ksfdbuf[8] = {'-', '1'};
+	int ksfd = -1;
+	if (!weak && P && P->keystate_store){
+		ksfd = dupfd_to(P->keystate_store, -1, 0, 0);
+		snprintf(ksfdbuf, sizeof(ksfdbuf), "%d", ksfd);
+	}
+
 /* spawn the arcan-net process, zombie- tactic was either doublefork
  * or spawn a waitpid thread - given that the length/lifespan of net
  * may well be as long as the process, go with double-fork + wait */
@@ -3101,7 +3156,7 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 			}
 			else {
 				execlp("arcan-net", "arcan-net", "-X",
-					"--ident", ident, "-S",
+					"--ident", ident, "--keystore", ksfdbuf, "-S",
 					tmpbuf, &work[start], port, (char*) NULL);
 			}
 
@@ -3116,6 +3171,10 @@ static char* spawn_arcan_net(const char* conn_src, int* dsock)
 		log_print("[shmif::a12::connect] fork() failed");
 		close(spair[0]);
 		return NULL;
+	}
+
+	if (-1 != ksfd){
+		close(ksfd);
 	}
 
 /* temporary override any existing handler */
@@ -3182,8 +3241,8 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
  * setup - for the remote part we still need some other mechanism in the url
  * to identify credential store though */
 	else if (conn_src){
-		if (a12_cp(conn_src, NULL)){
-			keyfile = spawn_arcan_net(conn_src, &dpipe);
+		if (-1 != a12_cp(conn_src, NULL)){
+			keyfile = spawn_arcan_net(NULL, conn_src, &dpipe);
 			networked = true;
 		}
 		else {

@@ -7792,6 +7792,29 @@ static int targetdevhint(lua_State* ctx)
 			arcan_warning("address length exceeds boundary, truncated");
 		}
 		snprintf(outev.tgt.message, COUNT_OF(outev.tgt.message), "%s", cpath);
+
+		size_t len = strlen(cpath);
+
+/* for networked connections to work the process needs access to the state
+ * store, this is currently coarse grained (could practically do bad things)
+ * and definitely something for the hardening to slice up but for that we
+ * should probably have a better keystore model anyhow. */
+		if (strncmp(cpath, "a12://", sizeof("a12://") - 1) == 0 ||
+			strncmp(cpath, "a12s://", sizeof("a12://") - 1) == 0 ||
+			cpath[len-1] == '@'){
+			char* nsp = arcan_expand_resource("a12", RESOURCE_SYS_APPLSTATE);
+			int fd = open(nsp, O_RDONLY | O_DIRECTORY);
+
+			platform_fsrv_pushfd(fsrv, &(struct arcan_event){
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_DEVICE_NODE,
+				.tgt.ioevs[0].iv = BADFD,
+				.tgt.ioevs[1].iv = 1,
+				.tgt.ioevs[3].iv = 3
+			}, fd);
+			close(fd);
+		}
+
 		platform_fsrv_pushevent(fsrv, &outev);
 	}
 		else

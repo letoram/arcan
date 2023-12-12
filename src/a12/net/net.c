@@ -91,21 +91,15 @@ static const char* trace_groups[] = {
 static struct a12_vframe_opts vcodec_tuning(
 	struct a12_state* S, int segid, struct shmifsrv_vbuffer* vb, void* tag);
 
-/* keystore is singleton global */
-static struct keystore_provider prov = {
-	.type = A12HELPER_PROVIDER_BASEDIR,
-	.directory.dirfd = -1
-};
-
-static bool open_keystore(const char** err)
+static bool open_keystore(struct anet_options* opts, const char** err)
 {
-	if (-1 == prov.directory.dirfd){
-		prov.directory.dirfd = a12helper_keystore_dirfd(err);
-		if (-1 == prov.directory.dirfd)
+	if (0 > opts->keystore.directory.dirfd){
+		opts->keystore.directory.dirfd = a12helper_keystore_dirfd(err);
+		if (-1 == opts->keystore.directory.dirfd)
 			return false;
 	}
 
-	if (!a12helper_keystore_open(&prov)){
+	if (!a12helper_keystore_open(&opts->keystore)){
 		*err = "Couldn't open keystore from basedir (ARCAN_STATEPATH)";
 		return false;
 	}
@@ -701,7 +695,7 @@ static struct anet_cl_connection find_connection(
 	int timesleep = 1;
 
 	const char* err;
-	if (!open_keystore(&err)){
+	if (!open_keystore(opts, &err)){
 		fprintf(stderr, "couldn't open keystore: %s\n", err);
 	}
 
@@ -848,7 +842,16 @@ static int a12_connect(struct anet_options* args,
 /* Special version of a12_connect where we inherit the connection primitive
  * to the local shmif client, so we can forego most of the domainsocket bits.
  * The normal use-case for this is where ARCAN_CONNPATH is set to a12://
- * prefix and shmif execs into arcan-net */
+ * prefix and shmif execs into arcan-net. It can also be triggered on migrate
+ * requests via the DEVICE_NODE event.
+ *
+ * The rules for which accepted keys to trust in this context is a bit iffy,
+ * if we have a specific tag that we are going for, assume that is there.
+ * Otherwise pick any known previous outbound.
+ *
+ * The other option would be to be promiscuous, i.e. * as trust-domain, but
+ * err on the side of caution for now.
+ */
 static int a12_preauth(struct anet_options* args,
 	void (*dispatch)(
 	struct anet_options* args,
@@ -862,6 +865,13 @@ static int a12_preauth(struct anet_options* args,
 		shutdown(args->sockfd, SHUT_RDWR);
 		close(args->sockfd);
 		return EXIT_FAILURE;
+	}
+
+	if (!global.trust_domain){
+		if (args->key)
+			global.trust_domain = strdup(args->key);
+		else
+			global.trust_domain = "outbound";
 	}
 
 	args->opts->local_role = ROLE_SOURCE;
@@ -883,7 +893,6 @@ static bool tag_host(struct anet_options* anet, char* hoststr, const char** err)
 	anet->key = hoststr;
 	global.outbound_tag = hoststr;
 	anet->keystore.type = A12HELPER_PROVIDER_BASEDIR;
-	anet->keystore.directory.dirfd = a12helper_keystore_dirfd(err);
 
 	return true;
 }
@@ -923,6 +932,7 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"\t-t             \t Single- client (no fork/mt - easier troubleshooting)\n"
 	"\t --probe-only  \t (outbound) Authenticate and print server primary state\n"
 	"\t-d bitmap      \t Set trace bitmap (bitmask or key1,key2,...)\n"
+	"\t--keystore fd  \t Use inherited [fd] for keystore root store\n"
 	"\t-v, --version  \t Print build/version information to stdout\n\n"
 	"Directory client options: \n"
 	"\t --keep-appl   \t Don't wipe appl after execution\n"
@@ -962,7 +972,7 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 
 	if (msg){
 		if (argv)
-			fprintf(stderr, "[%i:%s] ", i, argv[i]);
+			fprintf(stderr, "[%zu:%s] ", i, argv[i]);
 		fputs(msg, stderr);
 		fputs("\n", stderr);
 	}
@@ -987,8 +997,8 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 
 /* argument should be treated as host for outbound connection */
 		if (argv[i][0] != '-'){
-			if (opts->host){
-				return show_usage("multiple outbound hosts", argv, i);
+			if (opts->host){ /* [host port applname] would appear as host collision */
+				return i;
 			}
 
 			const char* err = NULL;
@@ -1179,6 +1189,13 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		}
 		else if (strcmp(argv[i], "--no-ephem-rt") == 0){
 			opts->opts->disable_ephemeral_k = true;
+		}
+		else if (strcmp(argv[i], "--keystore")  == 0){
+			i++;
+			if (i >= argc - 1)
+				return show_usage("Missing keystore descriptor argument", argv, i);
+
+			opts->keystore.directory.dirfd = strtoul(argv[i], NULL, 10);
 		}
 		else if (strcmp(argv[i], "--probe-only") == 0){
 			opts->opts->local_role = ROLE_PROBE;
@@ -1371,16 +1388,14 @@ static bool discover_beacon(
 
 	size_t outl;
 	unsigned char* b64 = a12helper_tob64(kpub, 32, &outl);
-
-	a12int_trace(A12_TRACE_DIRECTORY,
-		"got_beacon:kpub=%s:tag=%s:source=%s",
-		b64, tag ? tag : "not_found", addr);
+	fprintf(stdout,
+		"beacon:kpub=%s:tag=%s:source=%s\n", b64, tag ? tag : "not_found", addr);
 
 	free(b64);
 	return true;
 }
 
-static void* send_beacon(void*)
+static void* send_beacon(void* tag)
 {
 	int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (-1 == sock){
@@ -1412,8 +1427,11 @@ static void* send_beacon(void*)
 		.sin_port = htons(6680)
 	};
 
+	struct anet_options opts = {
+	};
+
 	const char* err;
-	if (!open_keystore(&err)){
+	if (!open_keystore(&opts, &err)){
 		fprintf(stderr, "couldn't open keystore: %s\n", err);
 	}
 
@@ -1485,8 +1503,9 @@ static int run_discover_command(int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
+	struct anet_options opts = {.keystore.directory.dirfd = -1};
 	const char* err;
-	if (!open_keystore(&err)){
+	if (!open_keystore(&opts, &err)){
 		fprintf(stderr, "couldn't open keystore: %s\n", err);
 		return EXIT_FAILURE;
 	}
@@ -1512,7 +1531,8 @@ static int run_discover_command(int argc, char** argv)
 static int apply_keystore_command(int argc, char** argv)
 {
 	const char* err;
-	if (!open_keystore(&err)){
+	struct anet_options opts = {.keystore.directory.dirfd = -1};
+	if (!open_keystore(&opts, &err)){
 		return show_usage(err, NULL, 0);
 	}
 
@@ -1649,7 +1669,7 @@ static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 					memcpy(buf, "default", 8);
 
 				auth.authentic = true;
-				a12helper_keystore_accept(pk, global.trust_domain);
+				a12helper_keystore_accept(pk, buf);
 				a12int_trace(A12_TRACE_SECURITY, "interactive-add-trust=%s:tag=%s", out, buf);
 				a12helper_keystore_hostkey(buf, 0, my_private_key, &tmp, &tmpport);
 				a12_set_session(&auth, pk, my_private_key);
@@ -1688,6 +1708,7 @@ int main(int argc, char** argv)
 
 	anet.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));
 	anet.opts->pk_lookup = key_auth_local;
+	anet.keystore.directory.dirfd = -1;
 	global.dirsrv.a12_cfg = anet.opts;
 
 /* set this as default, so the remote side can't actually close */
@@ -1796,9 +1817,9 @@ int main(int argc, char** argv)
 		}
 	}
 
-/* keystore shouldn't be opened in the worker */
+/* rest of keystore shouldn't be opened in the worker */
 	if (anet.mode != ANET_SHMIF_DIRSRV_INHERIT){
-		if (!open_keystore(&err)){
+		if (!open_keystore(&anet, &err)){
 			return show_usage(err, NULL, 0);
 		}
 /* We have a keystore and are listening for an inbound connection, make sure
@@ -1880,12 +1901,15 @@ int main(int argc, char** argv)
  * ourselves so the process ownership is inverted and we need to initiate the
  * connection */
 	if (anet.mode == ANET_SHMIF_EXEC_OUTBOUND){
+		if (!global.trust_domain)
+			global.trust_domain = "*";
+
 		struct anet_cl_connection cl = find_connection(&anet, NULL);
 		if (!cl.state){
 			if (anet.key)
 				fprintf(stderr, "couldn't connect to any host for key %s\n", anet.key);
 			else
-				fprintf(stderr, "couldn't connect to %s port %d\n", anet.host, anet.port);
+				fprintf(stderr, "couldn't connect to %s port %s\n", anet.host, anet.port);
 			return EXIT_FAILURE;
 		}
 

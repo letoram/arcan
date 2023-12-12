@@ -24,8 +24,15 @@
 -- The *target* string is assumed to match the valid rules for a connection
 -- point, but if the association is not forced, an empty string is also valid
 -- and will be interpreted as disabling a previously set alternate connection.
--- If the forced target migration mode is used on a frameserver launched in
--- an authoritative mode via ref:define_avfeed or similar functions, the
+-- There are two special forms to the *target* string, one is a12:// and a12s://
+-- as a prefix which will involve the arcan-net tool to connect to a server. The
+-- second is with an @ suffix, like mytag@ which wil use keystore tags to
+-- find outbound connection parameters. These forms will also provide *fsrv*
+-- vid access to a keystore capability.
+-- @note: The keystore access is currently the same as the one handed to the
+-- arcan process. This may be changed in the future.
+-- @note: If the forced target migration mode is used on a frameserver launched
+-- in an authoritative mode via ref:define_avfeed or similar functions, the
 -- process tracking will be disabled and the kill 'guarantee' on
 -- ref:delete_image will be lost.
 -- @group: targetcontrol

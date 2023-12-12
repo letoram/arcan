@@ -64,7 +64,7 @@ static bool flushout(struct a12_state* S, int fdout, char** err)
 				continue;
 
 			char buf[64];
-			snprintf(buf, sizeof(buf), "write(%d) during authentication", errno);
+			snprintf(buf, sizeof(buf), "[%d] write fail during authentication\n", errno);
 			*err = strdup(buf);
 			return false;
 		}
@@ -91,7 +91,7 @@ bool anet_authenticate(struct a12_state* S, int fdin, int fdout, char** err)
 		}
 		else if (nr == 0 || (errno != EAGAIN && errno != EINTR)){
 			char buf[64];
-			snprintf(buf, sizeof(buf), "read(%d) => %zd during authentication", errno, nr);
+			snprintf(buf, sizeof(buf), "[%d] read fail during authentication\n", errno);
 			*err = strdup(buf);
 			return false;
 		}
