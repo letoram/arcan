@@ -312,3 +312,102 @@ void
 	}
 
 }
+
+void anet_discover_send_beacon(struct anet_discover_opts* cfg)
+{
+	int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (-1 == sock){
+		return;
+	}
+
+	struct sockaddr_in addr = {
+		.sin_family = AF_INET,
+		.sin_addr = {
+			.s_addr = htons(INADDR_ANY),
+		},
+		.sin_port = htons(6680)
+	};
+	socklen_t len = sizeof(addr);
+
+	int yes = 1;
+  int ret = setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (char*)&yes, sizeof(yes));
+	if (-1 == ret){
+		return;
+	}
+
+	ret = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, (char*)&yes, sizeof(yes));
+
+	size_t size;
+	uint8_t* one, (* two);
+	struct sockaddr_in broadcast = {
+		.sin_family = AF_INET,
+		.sin_addr.s_addr = htonl(INADDR_BROADCAST),
+		.sin_port = htons(6680)
+	};
+
+/* initialize mask state, beacon will append the ones consumed */
+	struct keystore_mask mask = {0};
+	struct keystore_mask* cur = &mask;
+
+	for(;;){
+		cur = a12helper_build_beacon(&mask, cur, &one, &two, &size);
+
+	/* empty beacon */
+		if (size <= 16){
+			free(one);
+			free(two);
+
+	/* tags are dynamic contents */
+			struct keystore_mask* tmp = mask.next;
+			while (tmp){
+				free(tmp->tag);
+				struct keystore_mask* prev = tmp;
+				tmp = tmp->next;
+				free(prev);
+			}
+
+	/* reset, wait and go again */
+			mask = (struct keystore_mask){0};
+			cur = &mask;
+			sleep(cfg->timesleep);
+			continue;
+		}
+
+	/* broadcast, sleep for time elapsed rejection */
+		if (size !=
+			sendto(sock, one, size, 0, (struct sockaddr*)&broadcast, sizeof(broadcast))){
+			fprintf(stderr, "couldn't send beacon: %s\n", strerror(errno));
+			break;
+		}
+
+		sleep(1);
+		sendto(sock, two, size, 0, (struct sockaddr*)&broadcast, sizeof(broadcast));
+		free(one);
+		free(two);
+	}
+}
+
+void anet_discover_listen_beacon(struct anet_discover_opts* cfg)
+{
+	int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+	if (-1 == sock){
+		LOG("couldn't bind discover_passive");
+		return;
+	}
+
+	struct sockaddr_in addr = {
+		.sin_family = AF_INET,
+		.sin_addr = {
+			.s_addr = htons(INADDR_ANY),
+		},
+		.sin_port = htons(6680)
+	};
+	socklen_t len = sizeof(addr);
+	if (-1 == bind(sock, &addr, len)){
+		fprintf(stderr, "couldn't bind beacon listener\n");
+		return;
+	}
+
+	a12helper_listen_beacon(NULL, sock, cfg->discover_beacon, NULL);
+}

@@ -353,6 +353,7 @@ static struct a12_vframe_opts vcodec_tuning(
  * to be implemented in the server util part as we need shmif to propagate if
  * we can deal with passthrough and then device_fail that if the other end
  * starts to reject the bitstream */
+
 	case SEGID_MEDIA:
 	case SEGID_BRIDGE_WAYLAND:
 	case SEGID_BRIDGE_X11:
@@ -361,9 +362,18 @@ static struct a12_vframe_opts vcodec_tuning(
 	break;
 	}
 
-/* this is temporary until we establish a config format where the parameters
+/* This is temporary until we establish a config format where the parameters
  * can be set in a non-commandline friendly way (recall ARCAN_CONNPATH can
- * result in handover-exec arcan-net */
+ * result in handover-exec arcan-net.
+ *
+ * Another complication here is that if RHINT isn't set to ignore alpha,
+ * we have the problem that H264 does not handle an alpha channel. Likely
+ * the best we can do then is to separately track alpha, send it as a mask
+ * with a separate command that forwards it.
+ *
+ * That solution would possibly also attach to sending mip-map like reduced
+ * pre-images for deadline-driven impostors.
+ */
 	if (opts.method == VFRAME_METHOD_H264){
 		static bool got_opts;
 		static unsigned long cbr = 22;
@@ -1397,37 +1407,13 @@ static bool discover_beacon(
 
 static void* send_beacon(void* tag)
 {
-	int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (-1 == sock){
-		return NULL;
-	}
-
-	struct sockaddr_in addr = {
-		.sin_family = AF_INET,
-		.sin_addr = {
-			.s_addr = htons(INADDR_ANY),
-		},
-		.sin_port = htons(6680)
-	};
-	socklen_t len = sizeof(addr);
-
-	int yes = 1;
-  int ret = setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (char*)&yes, sizeof(yes));
-	if (-1 == ret){
-		return NULL;
-	}
-
-	ret = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, (char*)&yes, sizeof(yes));
-
-	size_t size;
-	uint8_t* one, (* two);
-	struct sockaddr_in broadcast = {
-		.sin_family = AF_INET,
-		.sin_addr.s_addr = htonl(INADDR_BROADCAST),
-		.sin_port = htons(6680)
+	struct anet_discover_opts cfg = {
+		.limit = -1,
+		.timesleep = 10
 	};
 
 	struct anet_options opts = {
+		.keystore.directory.dirfd = -1
 	};
 
 	const char* err;
@@ -1435,46 +1421,7 @@ static void* send_beacon(void* tag)
 		fprintf(stderr, "couldn't open keystore: %s\n", err);
 	}
 
-/* initialize mask state, beacon will append the ones consumed */
-	struct keystore_mask mask = {0};
-	struct keystore_mask* cur = &mask;
-
-	for(;;){
-		cur = a12helper_build_beacon(&mask, cur, &one, &two, &size);
-
-	/* empty beacon */
-		if (size <= 16){
-			free(one);
-			free(two);
-
-	/* tags are dynamic contents */
-			struct keystore_mask* tmp = mask.next;
-			while (tmp){
-				free(tmp->tag);
-				struct keystore_mask* prev = tmp;
-				tmp = tmp->next;
-				free(prev);
-			}
-
-	/* reset, wait and go again */
-			mask = (struct keystore_mask){0};
-			cur = &mask;
-			sleep(10);
-			continue;
-		}
-
-	/* broadcast, sleep for time elapsed rejection */
-		if (size !=
-			sendto(sock, one, size, 0, (struct sockaddr*)&broadcast, sizeof(broadcast))){
-			fprintf(stderr, "couldn't send beacon: %s\n", strerror(errno));
-			break;
-		}
-
-		sleep(1);
-		sendto(sock, two, size, 0, (struct sockaddr*)&broadcast, sizeof(broadcast));
-		free(one);
-		free(two);
-	}
+	anet_discover_send_beacon(&cfg);
 
 	return NULL;
 }
@@ -1496,13 +1443,10 @@ static int run_discover_command(int argc, char** argv)
 			return EXIT_SUCCESS;
 		}
 	}
-	int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
-	if (-1 == sock){
-		LOG("couldn't bind discover_passive");
-		return EXIT_FAILURE;
-	}
-
+	struct anet_discover_opts cfg = {
+		.discover_beacon = discover_beacon
+	};
 	struct anet_options opts = {.keystore.directory.dirfd = -1};
 	const char* err;
 	if (!open_keystore(&opts, &err)){
@@ -1510,21 +1454,7 @@ static int run_discover_command(int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
-	struct sockaddr_in addr = {
-		.sin_family = AF_INET,
-		.sin_addr = {
-			.s_addr = htons(INADDR_ANY),
-		},
-		.sin_port = htons(6680)
-	};
-	socklen_t len = sizeof(addr);
-	if (-1 == bind(sock, &addr, len)){
-		fprintf(stderr, "couldn't bind beacon listener\n");
-		return EXIT_FAILURE;
-	}
-
-	a12helper_listen_beacon(NULL, sock, discover_beacon, NULL);
-
+	anet_discover_listen_beacon(&cfg);
 	return EXIT_SUCCESS;
 }
 

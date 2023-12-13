@@ -144,4 +144,5 @@ struct ioloop_shared {
 
 void anet_directory_tunnel_thread(struct ioloop_shared* ios, struct a12_state* S);
 void anet_directory_ioloop(struct ioloop_shared* S);
+
 #endif

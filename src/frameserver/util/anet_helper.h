@@ -129,12 +129,6 @@ const char* a12helper_keystore_accepted(
 	const uint8_t pubk[static 32], const char* connp);
 
 /*
- * These are used in order to generate and process discovery beacons, and as
- * such otherwise not needed for builds that lack those features - but does
- * introduce a build dependency on Blake3.
- */
-#ifdef WANT_KEYSTORE_HASHER
-/*
  * See if there is a trusted / known key that match H(chg | pubk) If so, return
  * true, real public key in outk and any matching tagged outbound as a dynamic
  * string in outtag.
@@ -160,6 +154,7 @@ bool a12helper_keystore_known_accepted_challenge(
  *
  * Returns true if the end of the keyset wasn't reached.
  */
+#ifdef WANT_KEYSTORE_HASHER
 struct keystore_mask;
 struct keystore_mask {
 	char* tag;
@@ -168,8 +163,6 @@ struct keystore_mask {
 };
 
 bool a12helper_keystore_public_tagset(struct keystore_mask*);
-
-#endif
 
 /*
  * add the supplied public key to the accepted keystore.
@@ -180,6 +173,7 @@ bool a12helper_keystore_public_tagset(struct keystore_mask*);
  * intended to tie to local connection points or policy group names.
  */
 bool a12helper_keystore_accept(const uint8_t pubk[static 32], const char* connp);
+#endif
 
 /*
  * From a prefilled addrinfo structure, enumerate all interfaces and try

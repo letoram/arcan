@@ -227,7 +227,7 @@ Milestone 2 - closer to useful (0.6.x)
 - [ ] External key-provider / negotiation (a)
   -  [ ] FIDO2 (through libfido2) (a)
 - [x] Preferred-hosts list migration / handover (a)
-  - [ ] Config for retry limits, sleep delays and backoff (a)
+  - [x] Config for retry limits, sleep delays and backoff (a)
 - [ ] Output segments (p)
 - [o] Bchunk compression controls (o) (omitted, zstd is good enough)
     [o] Entropy estimator per packet

@@ -22,7 +22,6 @@
 #include <netdb.h>
 
 #include "a12.h"
-
 #ifdef WANT_KEYSTORE_HASHER
 #include "a12_int.h"
 #endif
@@ -868,6 +867,4 @@ bool a12helper_keystore_public_tagset(struct keystore_mask* mask)
 	closedir(dir);
 	return dent != NULL;
 }
-
 #endif
-

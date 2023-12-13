@@ -113,9 +113,20 @@ struct keystore_mask*
 		uint8_t** two, size_t* sz
 	);
 
-void
-	a12helper_send_beacon(
-		int sock, char* keyset, int sleep_ms, size_t keyset_sz);
+/*
+ * Helpers for setting up listen_beacon and build_beacon
+ */
+struct anet_discover_opts {
+	int limit; /* -1 infinite, 0 = once, > count down after each */
+	int timesleep; /* seconds between beacon passes */
+	bool (*discover_beacon)(
+		struct arcan_shmif_cont*, uint8_t kpub[static 32], uint8_t nonce[static 8],
+		const char* tag, char* addr
+	);
+};
+
+void anet_discover_listen_beacon(struct anet_discover_opts* cfg);
+void anet_discover_send_beacon(struct anet_discover_opts* cfg);
 
 /*
  * Take a prenegotiated connection [S] serialized over [fd_in/fd_out] and
