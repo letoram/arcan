@@ -38,7 +38,6 @@ struct key_ent {
 	size_t port;
 	char* fn;
 
-	bool got_chg;
 	uint8_t chg[8];
 	uint8_t pub_chg[32];
 
@@ -744,14 +743,18 @@ int a12helper_keystore_dirfd(const char** err)
 bool a12helper_keystore_known_accepted_challenge(
 	const uint8_t pubk[static 32],
 	const uint8_t chg[static 8],
-	uint8_t outk[static 32],
-	char** tag)
+	bool (*on_beacon)(struct arcan_shmif_cont*,
+		const uint8_t[static 32],
+		const uint8_t[static 8],
+		const char*, char*
+	),
+	struct arcan_shmif_cont* C,
+	char* addr)
 {
 	if (!keystore.open)
 		return false;
 
 	struct key_ent* ent = keystore.hosts;
-	*tag = NULL;
 
 	if (!ent)
 		return false;
@@ -767,7 +770,6 @@ bool a12helper_keystore_known_accepted_challenge(
 	while (ent){
 		if (memcmp(ent->chg, chg, 8) != 0){
 			memcpy(ent->chg, chg, 8);
-			ent->got_chg = true;
 
 			blake3_hasher temp;
 			blake3_hasher_init(&temp);
@@ -782,18 +784,16 @@ bool a12helper_keystore_known_accepted_challenge(
 #endif
 		}
 
-/* This returns the tag group that the key was in - this does not strictly
- * provide enough to make an outbound connection back (and the beacons can be
- * used for both source- announce and sink- announce) unless the user also has
- * a fitting tag. The only thing that is actually forwarded on the chain is
- * the knowledge that in the set of tags from a certain host, we have trusted
- * them when making an inbound or outbound connection. For this to work bidi-
- * we would also have to generate a beacon ourselves and send that out and
- * only when both have been acknowledged are we sure of the link. */
+/* This does not strictly provide enough to make an outbound connection back
+ * (and the beacons can be used for both source- announce and sink- announce)
+ * unless the user also has a fitting tag. The only thing that is actually
+ * forwarded on the chain is the knowledge that in the set of tags from a
+ * certain host, we have trusted them when making an inbound or outbound
+ * connection. For this to work bidi- we would also have to generate a beacon
+ * ourselves and send that out and only when both have been acknowledged are we
+ * sure of the link. */
 		if (memcmp(pubk, ent->pub_chg, 32) == 0){
-			*tag = strdup(ent->host);
-			memcpy(outk, ent->key, 32);
-			return true;
+			on_beacon(C, ent->key, chg, ent->host, addr);
 		}
 
 		ent = ent->next;

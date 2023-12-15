@@ -80,31 +80,24 @@ static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 	return auth;
 }
 
-static int discover_broadcast(struct arcan_shmif_cont* C, int trust)
+static int discover_broadcast(
+	struct arcan_shmif_cont* C, struct arg_arr* arg, int trust)
 {
-	struct keystore_provider store = {0};
-	if (!get_keystore(C, &store)){
+	struct keystore_provider ks = {.directory.dirfd = -1};
+
+	if (!get_keystore(C, &ks) || !a12helper_keystore_open(&ks)){
 		arcan_shmif_last_words(C, "couldn't open keystore");
 		return EXIT_FAILURE;
 	}
 
-/* build tagset and broadcast */
-
-	struct keystore_mask mask = {0};
-	size_t size;
-	uint8_t* one, (* two);
-/*	a12helper_build_beacon(&mask, &one, &two, &size); */
-	struct sockaddr_in broadcast = {
-		.sin_family = AF_INET,
-		.sin_addr.s_addr = htonl(INADDR_BROADCAST),
-		.sin_port = htons(6680)
+	struct anet_discover_opts cfg = {
+		.limit = -1,
+		.timesleep = 10
 	};
 
-	sleep(1);
-	int sock = 1;
-/*	sendto(sock, two, size, 0, (struct sockaddr*)&broadcast, sizeof(broadcast)); */
+	anet_discover_send_beacon(&cfg);
 
-	return EXIT_FAILURE;
+	return EXIT_SUCCESS;
 }
 
 /*
@@ -114,76 +107,86 @@ static int discover_broadcast(struct arcan_shmif_cont* C, int trust)
  * accepted ones and beam an active discovery reply with the discovery keyset
  * to match to a preset tag.
  */
-static int discover_passive(struct arcan_shmif_cont* C, int trust)
+static bool on_disc_shmif(struct arcan_shmif_cont* C)
 {
-	int rv = EXIT_FAILURE;
- 	int sock = socket(AF_INET, SOCK_DGRAM, 0);
+	int pv;
+	arcan_event ev;
+	while ((pv = arcan_shmif_poll(C, &ev)) > 0){
+		if (ev.category == EVENT_TARGET &&
+				ev.tgt.kind == TARGET_COMMAND_EXIT){
+			arcan_shmif_drop(C);
+			return false;
+		}
 
-	if (-1 == sock){
-		LOG("couldn't bind discover_passive");
-		return rv;
+/* There is the option of using TARGET_MESSAGE as a way to tell us to probe
+ * or otherwise connect to the source-to-tag pairing ourselves, but since the
+ * other modes (remoting, a12-encode, ...) also need to override key with src
+ * information from here, it's probably better to just spawn a new process
+ * and let those functions deal with it. The caveat is if we would want to
+ * use the challenge as an authentication key, but there has not really been
+ * an argument for that. */
 	}
 
-	struct sockaddr_in addr = {
-		.sin_family = AF_INET,
-		.sin_addr = {
-			.s_addr = htons(INADDR_ANY),
-		},
-		.sin_port = htons(6680)
-	};
-	socklen_t len = sizeof(addr);
-	bind(sock, &addr, len);
+	if (pv == -1){
+		arcan_shmif_drop(C);
+		return false;
+	}
 
-	for(;;){
-		uint8_t mtu[9000];
-		struct pollfd ps[2] = {
-			{
-				.fd = sock,
-				.events = POLLIN | POLLERR | POLLHUP
-			},
-			{
-				.fd = C->epipe,
-				.events = POLLIN | POLLERR | POLLHUP
-			},
-		};
-
-		if (-1 == poll(ps, 2, -1)){
-			if (errno != EINTR)
-				continue;
-			break;
-		}
-
-/* shmif events here would be to dispatch after trust_unknown_verify */
-		if (ps[0].revents){
-			int pv;
-			struct arcan_event ev;
-
-			while ((pv = arcan_shmif_poll(C, &ev)) > 0){
-				if (ev.category == EVENT_TARGET &&
-					ev.tgt.kind == TARGET_COMMAND_EXIT){
-					arcan_shmif_drop(C);
-					return EXIT_SUCCESS;
-				}
-			}
-
-			if (pv == -1){
-				arcan_shmif_drop(C);
-				return EXIT_FAILURE;
-			}
-		}
-
-		if (ps[1].revents){
-			struct sockaddr_in caddr;
-			len = sizeof(caddr);
-			ssize_t nr =
-				recvfrom(sock,
-					mtu, sizeof(mtu), MSG_DONTWAIT, (struct sockaddr*)&caddr, &len);
-			if (0 < nr){
-			}
-		}
+	return true;
 }
 
-	return EXIT_FAILURE;
+static bool on_disc_beacon(
+	struct arcan_shmif_cont* C,
+	const uint8_t kpub[static 32],
+	const uint8_t nonce[static 8],
+	const char* tag, char* addr)
+{
+	uint8_t nullk[32] = {0};
+	if (memcmp(kpub, nullk, 32) == 0){
+		a12int_trace(A12_TRACE_DIRECTORY, "bad_beacon:source=%s", addr);
+		return true;
+	}
+
+	arcan_event ev = {
+		.ext.kind = ARCAN_EVENT(NETSTATE),
+		.ext.netstate = {
+			.state = 1
+		}
+	};
+
+	if (!tag){
+		snprintf(ev.ext.netstate.name,
+			COUNT_OF(ev.ext.netstate.name), "%s", addr);
+		ev.ext.netstate.space = strchr(addr, ':') ? 4 : 3;
+	}
+	else
+
+/* the kpub is of little use to us as we already know it through the tag */
+	snprintf(ev.ext.netstate.name,
+		COUNT_OF(ev.ext.netstate.name), "%s", tag);
+
+	arcan_shmif_enqueue(C, &ev);
+
+	return true;
+}
+
+static int discover_passive(
+	struct arcan_shmif_cont* C, struct arg_arr* arg, int trust)
+{
+	struct anet_options ks = {.keystore.directory.dirfd = -1};
+	if (!get_keystore(C, &ks.keystore) || !a12helper_keystore_open(&ks.keystore)){
+		arcan_shmif_last_words(C, "couldn't open keystore");
+		return EXIT_FAILURE;
+	}
+
+	struct anet_discover_opts cfg = {
+		.discover_beacon = on_disc_beacon,
+		.on_shmif = on_disc_shmif,
+		.C = C
+	};
+	anet_discover_listen_beacon(&cfg);
+
+	return EXIT_SUCCESS;
 }
 
 struct listent;
@@ -242,7 +245,12 @@ static void mark_lost(struct arcan_shmif_cont* C, struct listent** first)
  * designed / built for this use - anet_cl_setup will swap active keystore
  * which releases current if the contents doesn't match. The tags_ callback is
  * not reliable if the keystore gets modified (open/release) from within the
- * callback. */
+ * callback.
+ *
+ * Furthermore with changes to migrate() there is now a DEVICE_NODE event
+ * for setting the access token to a hardware keystore. This is yet to be
+ * exposed for use here.
+ */
 static bool get_keystore(
 	struct arcan_shmif_cont* C, struct keystore_provider* prov)
 {
@@ -1055,10 +1063,10 @@ int afsrv_netcl(struct arcan_shmif_cont* C, struct arg_arr* args)
 			return discover_sweep(C, trustm);
 		}
 		else if (strcmp(dmethod, "passive") == 0){
-			return discover_passive(C, trustm);
+			return discover_passive(C, args, trustm);
 		}
 		else if (strcmp(dmethod, "broadcast") == 0){
-			return discover_broadcast(C, trustm);
+			return discover_broadcast(C, args, trustm);
 		}
 		else if (strcmp(dmethod, "test") == 0){
 			return discover_test(C, trustm);

@@ -11821,17 +11821,37 @@ static int net_open(lua_State* ctx)
 		return 1;
 	}
 
-/* populate and escape, due to IPv6 addresses etc. actively using :: */
-	char* workstr = NULL;
-	const char prefix[] = "mode=client:host=";
-	size_t work_sz = strlen(host) + sizeof(prefix) + 1;
+/* there is an ugly incosistency here, from all the C interfaces we use tag@ and
+ * not @tag, but the Lua scripting side used the other way around. */
+	char* instr;
 	colon_escape(host);
 
-	char* instr = arcan_alloc_mem(
-		work_sz, ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
+	/* the tag form allows for a 2nd optional string argumen that uses the
+	 * keymaterial of the tag, but at the same time connects to a specified host
+	 * to combine with results from discover(passive) */
+	if (host[0] == '@' && lua_type(ctx, 2) == LUA_TSTRING){
+		char* hoststr = strdup(luaL_checkstring(ctx, 2));
+		size_t work_sz =
+			strlen(hoststr) + strlen(host) + sizeof("mode=client:tag=:host=");
+		colon_escape(hoststr);
+		instr = arcan_alloc_mem(work_sz,
+			ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
+		snprintf(instr, work_sz, "mode=client:tag=%s:host=%s", host, hoststr);
+		free(host);
+		free(hoststr);
+	}
+	else {
+/* populate and escape, due to IPv6 addresses etc. actively using :: */
+		const char prefix[] = "mode=client:host=";
+		size_t work_sz = strlen(host) + sizeof(prefix);
+		colon_escape(host);
 
-	snprintf(instr, work_sz, "%s%s", prefix, host);
-	free(host);
+		instr = arcan_alloc_mem(
+			work_sz, ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
+
+		snprintf(instr, work_sz, "%s%s", prefix, host);
+		free(host);
+	}
 
 	struct frameserver_envp args = {
 		.use_builtin = true,
@@ -11843,7 +11863,6 @@ static int net_open(lua_State* ctx)
 	lua_launch_fsrv(ctx, &args, ref, NULL);
 
 	free(instr);
-	free(workstr);
 
 	LUA_ETRACE("net_open", NULL, 1);
 }

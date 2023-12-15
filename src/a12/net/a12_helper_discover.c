@@ -109,29 +109,7 @@ static ssize_t
 		return -1;
 	}
 
-/* when we find a matching accepted, inplace-replace and return the number
- * of matching keys in this one set (might be known with multiple identities) */
-	size_t n = 0;
-	for (size_t i = 0; i < b->slot[0].len; i+=32){
-		uint8_t outk[32];
-		char* tag;
-
-		if (!a12helper_keystore_known_accepted_challenge(
-			&b->slot[0].unpack.keys[i], b->slot[0].unpack.chg, outk, &tag))
-			continue;
-
-		memcpy(&b->slot[0].unpack.keys[n * 32], outk, 32);
-		if (tag){
-			if (!b->tag)
-				b->tag = tag;
-			else
-				free(tag);
-		}
-
-		n++;
-	}
-
-	return n;
+	return 1;
 }
 
 struct keystore_mask*
@@ -203,7 +181,8 @@ void
 		struct arcan_shmif_cont* C, int sock,
 		bool (*on_beacon)(
 			struct arcan_shmif_cont*,
-			uint8_t[static 32], uint8_t[static 8],
+			const uint8_t[static 32],
+			const uint8_t[static 8],
 			const char*, char* addr),
 		bool (*on_shmif)(struct arcan_shmif_cont* C))
 {
@@ -276,7 +255,14 @@ void
  * tracking buffers etc.) is to transition between discovery modes if there is
  * an active attacker on the network (n fails of a certain type) - either
  * making direct connections or exposing ourselves as a directory and do source
- * to / sink discovery through that. */
+ * to / sink discovery through that.
+ *
+ * Another possible denial-of-discovery would be to first harvest public keys
+ * by scanning the local network for servers listening, then use them to build
+ * a discovery beacon to try and convince someone to connect to you as a way of
+ * probing the network of trust. It would also be a potential route to
+ * exploiting a possible pre-authentication vulnerability.
+ */
 					else if (-2 == status){
 						memcpy(&bcn->slot[0], &bcn->slot[1], sizeof(bcn->slot[0]));
 						continue;
@@ -286,12 +272,12 @@ void
 						on_beacon(C, nullk, bcn->slot[0].unpack.chg, NULL, name);
 					}
 					else if (status > 0){
-						for (size_t i = 0; i < status; i++){
-							on_beacon(C,
-								&bcn->slot[0].unpack.keys[i*32],
-								bcn->slot[0].unpack.chg,
-								bcn->tag,
-								name);
+						for (size_t i = 0; i < bcn->slot[0].len; i+=32){
+							uint8_t outk[32];
+							char* tag;
+							a12helper_keystore_known_accepted_challenge(
+								&bcn->slot[0].unpack.keys[i], bcn->slot[0].unpack.chg,
+								on_beacon, C, name);
 						}
 					}
 
@@ -409,5 +395,5 @@ void anet_discover_listen_beacon(struct anet_discover_opts* cfg)
 		return;
 	}
 
-	a12helper_listen_beacon(NULL, sock, cfg->discover_beacon, NULL);
+	a12helper_listen_beacon(cfg->C, sock, cfg->discover_beacon, cfg->on_shmif);
 }

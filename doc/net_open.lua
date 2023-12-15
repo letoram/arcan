@@ -1,14 +1,22 @@
 -- net_open
 -- @short: Make an outbound connection to a data source.
 -- @inargs: str:host, function:handler(source:vid, strtbl:status)
+-- @inargs: str:host, str:dst, function:handler(source:vid, strtbl:status)
 -- @outargs: vid or BADID
 -- @longdescr: This creates an outbound connection to a network resource
 -- speaking the a12 protocol. If *host* starts with an @ sign and matches a
--- known name in the keystore, the connection information and authentication
+-- known tag in the keystore, the connection information and authentication
 -- credentials will be picked from there.
 --
+-- If the *host* is a tag, the optional *dst* argument can be used to override
+-- the hosts assigned to the tag but still use the keymaterial. This is mainly
+-- to work with discovery modes such as 'passive' where the tag was found, but
+-- using a dynamic address.
+--
 -- The connection behaves just as if it had been initiated through
--- ref:launch_target or or ref:target_alloc.
+-- ref:launch_target or or ref:target_alloc but the primary segment will be a
+-- network type referencing the connection itself and the actual resource will
+-- come as a segment_request.
 --
 -- If *host* starts with the reserved identifier @stdin it will try and
 -- connect to an attached monitor and communicate through it with an external

@@ -122,7 +122,7 @@ static void dump_help(const char* reason)
 		" pass    \t val       \t use this (7-bit ascii) password for auth\n"
 	  " host    \t hostname  \t connect to the specified host\n"
 		" port    \t portnum   \t use the specified port for connecting\n"
-		" key     \t keyid     \t specify keystore identifier (can set host)\n"
+		" tag     \t keyid     \t specify keystore identifier (can set host)\n"
 		" trace   \t level     \t set trace mask (see arcan-net for values) for debug\n"
 		" store   \t path      \t path to keystore base\n"
 		" cache   \t path      \t path to binary file cache\n"
@@ -140,7 +140,7 @@ int run_a12(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		a12_sensitive_alloc(sizeof(struct a12_context_options));
 
 	arg_lookup(args, "host", 0, &host);
-	arg_lookup(args, "key", 0, &keyid);
+	arg_lookup(args, "tag", 0, &keyid);
 
 	if (!host && !keyid){
 		arcan_shmif_last_words(cont, "missing host or key argument");

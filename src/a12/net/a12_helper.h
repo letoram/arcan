@@ -83,8 +83,8 @@ void
  */
 		bool (*on_beacon)(
 			struct arcan_shmif_cont* C,
-			uint8_t kpub[static 32],
-			uint8_t nonce[static 8],
+			const uint8_t kpub[static 32],
+			const uint8_t nonce[static 8],
 			const char* tag,
 			char* addr),
 		bool (*on_shmif)(struct arcan_shmif_cont* C)
@@ -120,9 +120,13 @@ struct anet_discover_opts {
 	int limit; /* -1 infinite, 0 = once, > count down after each */
 	int timesleep; /* seconds between beacon passes */
 	bool (*discover_beacon)(
-		struct arcan_shmif_cont*, uint8_t kpub[static 32], uint8_t nonce[static 8],
+		struct arcan_shmif_cont*,
+		const uint8_t kpub[static 32],
+		const uint8_t nonce[static 8],
 		const char* tag, char* addr
 	);
+	bool (*on_shmif)(struct arcan_shmif_cont* C);
+	struct arcan_shmif_cont* C;
 };
 
 void anet_discover_listen_beacon(struct anet_discover_opts* cfg);

@@ -27,8 +27,9 @@ struct anet_options {
 	const char* port;
 
 /* keyfile to use when picking an outgoing host, this will override any
- * specified 'host' or 'port' */
+ * specified 'host' or 'port' unless ignore_key_host is set */
 	const char* key;
+	bool ignore_key_host;
 
 /* tag from keystore to use for authentication (server reply) or if 'key' is
  * not set and [host,port]+[host_tag] is used - if host_tag is not set,
@@ -131,13 +132,21 @@ const char* a12helper_keystore_accepted(
 /*
  * See if there is a trusted / known key that match H(chg | pubk) If so, return
  * true, real public key in outk and any matching tagged outbound as a dynamic
- * string in outtag.
+ * string in outtag. 'skip' ignores the first 'skip' number of matches for the
+ * case where one beacon matches multiple entries.
  */
 bool a12helper_keystore_known_accepted_challenge(
 	const uint8_t pubk[static 32],
 	const uint8_t chg[static 8],
-	uint8_t outk[static 32],
-	char** outtag);
+	bool (*on_beacon)(
+		struct arcan_shmif_cont*,
+		const uint8_t[static 32],
+		const uint8_t[static 8],
+		const char*,
+		char*
+	),
+	struct arcan_shmif_cont*, char*
+);
 
 /*
  * There are some considerations here - the problem comes when you have a large

@@ -198,8 +198,12 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 /* since this gets forwarded to getaddrinfo we need to convert it back to a
  * decimal string in order for it to double as a 'service' reference */
 			struct anet_options tmpcfg = *arg;
-			tmpcfg.host = host;
-			tmpcfg.key = NULL;
+			if (!arg->ignore_key_host){
+				tmpcfg.host = host;
+				tmpcfg.key = NULL;
+			}
+			else
+				tmpcfg.key = NULL;
 
 			char buf[sizeof("65536")];
 			snprintf(buf, sizeof(buf), "%"PRIu16, port);
@@ -208,7 +212,7 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 			res = connect_to(&tmpcfg);
 			free(host);
 
-			if (!res.errmsg)
+			if (arg->ignore_key_host || !res.errmsg)
 				break;
 		}
 

@@ -24,6 +24,7 @@ struct dispatch_data {
 	struct arcan_shmif_cont* C;
 	struct anet_options net_cfg;
 	struct a12_vframe_opts video_cfg;
+	bool outbound;
 };
 
 static void on_client_event(
@@ -198,8 +199,9 @@ static bool decode_args(struct arg_arr* arg, struct dispatch_data* dst)
 
 	dst->net_cfg.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));
 
-/* optional listening interface */
-	arg_lookup(arg, "host", 0, &dst->net_cfg.host);
+/* outbound instead of inbound */
+	dst->outbound |= arg_lookup(arg, "host", 0, &dst->net_cfg.host);
+	dst->outbound |= arg_lookup(arg, "tag", 0, &dst->net_cfg.key);
 
 	const char* pass;
 	if (arg_lookup(arg, "pass", 0, &pass)){
@@ -276,14 +278,48 @@ void a12_serv_run(struct arg_arr* arg, struct arcan_shmif_cont cont)
 		return;
 	}
 
+/* Ideally all encode etc. operations should get a socket token from afsrv
+ * net and prevent bind/etc. operations themselves. Most of the provisions
+ * are there to do this as BCHUNK style transfers from net in discovery to
+ * here, but the actual routing / plumbing etc. is deferred until 0.9 when
+ * we focus on hardening. */
+	data.net_cfg.opts->local_role = ROLE_SOURCE;
+	if (data.outbound){
+		struct anet_cl_connection con = anet_cl_setup(&data.net_cfg);
+		if (con.auth_failed){
+			LOG("encode_outbound:authentication_rejected");
+			arcan_shmif_last_words(&cont, "outbound auth failed");
+			return;
+		}
+		if (con.errmsg){
+			LOG("encode_outbound:failed:reason=%s", con.errmsg);
+			arcan_shmif_last_words(&cont, con.errmsg);
+			return;
+		}
+		if (a12_remote_mode(con.state) == ROLE_DIR){
+			arcan_shmif_last_words(&cont, "eimpl: encode-sink to directory");
+		}
+		else if (a12_remote_mode(con.state) == ROLE_SOURCE){
+			dispatch_single(con.state, con.fd, &data);
+		}
+		else {
+			arcan_shmif_last_words(&cont, "role-mismatch, expecting sink or dir");
+			shutdown(con.fd, SHUT_RDWR);
+			close(con.fd);
+			return;
+		}
+	}
+
 /*
  * For the sake of oversimplification, use a single active client mode for
  * the time being. The other option is the complex (multiple active clients)
  * and the expensive (one active client, multiple observers).
  */
-	char* errdst;
-	if (!anet_listen(&data.net_cfg, &errdst, dispatch_single, &data)){
-		arcan_shmif_last_words(&cont, errdst);
+	else {
+		char* errdst;
+		if (!anet_listen(&data.net_cfg, &errdst, dispatch_single, &data)){
+			arcan_shmif_last_words(&cont, errdst);
+		}
 	}
 
 	arcan_shmif_drop(&cont);
