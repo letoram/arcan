@@ -935,12 +935,14 @@ static int connect_to_host(
 
 	const char* tag = NULL;
 	if (arg_lookup(args, "tag", 0, &tag) && tag && strlen(tag)){
-		if (tag[0] == '?'){
+		if (arg_lookup(args, "probe", 0, NULL)){
 			a12opts.local_role = ROLE_PROBE;
+			LOG("probe_only\n");
 		}
 		global.trust_domain = tag;
-		opts.key = &tag[1];
+		opts.key = tag;
 		global.soft_auth = false;
+		LOG("use_tag=%s\n", tag);
 	}
 
 /* edge cases we want to use a tag to get keymaterial, but ignore the list
@@ -955,6 +957,7 @@ static int connect_to_host(
 	else{
 		opts.ignore_key_host = true;
 		opts.host = strdup(name);
+		LOG("use_host=%s\n", opts.host);
 	}
 
 	if (!arg_lookup(args, "port", 0, &opts.port) || !strlen(opts.port)){
@@ -974,12 +977,12 @@ static int connect_to_host(
 	struct anet_cl_connection con = anet_cl_setup(&opts);
 
 	if (con.errmsg || !con.state){
-		LOG("couldn't connect: %s", con.errmsg ? con.errmsg : "(unknown)");
+		LOG("con_failed=%s\n", con.errmsg ? con.errmsg : "(unknown)");
 		arcan_shmif_last_words(C, con.errmsg);
 		arcan_shmif_drop(C);
 		return EXIT_FAILURE;
 	}
-	LOG("authenticated");
+	LOG("authenticated\n");
 
 	if (a12opts.local_role == ROLE_PROBE){
 		arcan_event ev = {

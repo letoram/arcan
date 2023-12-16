@@ -11838,7 +11838,7 @@ static int net_open(lua_State* ctx)
 			ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
 		snprintf(instr, work_sz,
 			"mode=client:%stag=%s:host=%s",
-			host[0] == '?' ? "probe:" : "", host, hoststr);
+			host[0] == '?' ? "probe:" : "", &host[1], hoststr);
 		free(host);
 		free(hoststr);
 	}
