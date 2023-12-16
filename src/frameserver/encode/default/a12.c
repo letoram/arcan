@@ -123,7 +123,6 @@ static void process_shmif(struct a12_state* S, struct dispatch_data* data)
 }
 static void dispatch_single(struct a12_state* S, int fd, void* tag)
 {
-	struct arcan_event ev;
 	struct dispatch_data* data = tag;
 
 	static const short errmask = POLLERR | POLLNVAL | POLLHUP;
@@ -135,6 +134,16 @@ static void dispatch_single(struct a12_state* S, int fd, void* tag)
 	};
 
 	a12_set_destination(S, data->C, 0);
+
+/* send so the other end wakes up - we don't set an ident / title though */
+	struct arcan_event ev = {
+		.ext.kind = ARCAN_EVENT(REGISTER),
+		.category = EVENT_EXTERNAL,
+		.ext.registr = {
+			.kind = SEGID_MEDIA
+		}
+	};
+	a12_channel_enqueue(S, &ev);
 
 	uint8_t* outbuf = NULL;
 	size_t outbuf_sz = 0;
