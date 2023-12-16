@@ -27,6 +27,10 @@ struct dispatch_data {
 	bool outbound;
 };
 
+struct {
+	bool soft_auth;
+} global;
+
 static void on_client_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
@@ -125,9 +129,9 @@ static void dispatch_single(struct a12_state* S, int fd, void* tag)
 	static const short errmask = POLLERR | POLLNVAL | POLLHUP;
 	size_t n_fd = 2;
 	struct pollfd fds[3] = {
-		{.fd = data->C->epipe, POLLIN | errmask},
-		{.fd = fd, POLLIN | errmask},
-		{.fd = fd, POLLOUT | errmask}
+		{.fd = data->C->epipe, .events = POLLIN | errmask},
+		{.fd = fd, .events = POLLIN | errmask},
+		{.fd = fd, .events = POLLOUT | errmask}
 	};
 
 	a12_set_destination(S, data->C, 0);
@@ -174,6 +178,9 @@ static void dispatch_single(struct a12_state* S, int fd, void* tag)
 				outbuf += nw;
 				outbuf_sz -= nw;
 			}
+
+			if (!outbuf_sz)
+				outbuf_sz = a12_flush(S, &outbuf, A12_FLUSH_ALL);
 		}
 
 /* update pollset if there is something to write, this will cause the next
@@ -202,6 +209,10 @@ static bool decode_args(struct arg_arr* arg, struct dispatch_data* dst)
 /* outbound instead of inbound */
 	dst->outbound |= arg_lookup(arg, "host", 0, &dst->net_cfg.host);
 	dst->outbound |= arg_lookup(arg, "tag", 0, &dst->net_cfg.key);
+
+/* and use the keystore but not the connection info in it */
+	if (dst->net_cfg.key && dst->net_cfg.host)
+		dst->net_cfg.ignore_key_host = true;
 
 	const char* pass;
 	if (arg_lookup(arg, "pass", 0, &pass)){
@@ -268,6 +279,26 @@ static bool decode_args(struct arg_arr* arg, struct dispatch_data* dst)
 	return true;
 }
 
+static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
+{
+	struct pk_response auth = {0};
+	char* tmp;
+	uint16_t tmpport;
+
+/*
+ * here is the option of deferring pubk- auth to arcan end by sending it as a
+ * message onwards and wait for an accept or reject event before moving on.
+ */
+	if (a12helper_keystore_accepted(pk, "*") || global.soft_auth){
+		uint8_t key_priv[32];
+		auth.authentic = true;
+		a12helper_keystore_hostkey("default", 0, key_priv, &tmp, &tmpport);
+		a12_set_session(&auth, pk, key_priv);
+	}
+
+	return auth;
+}
+
 void a12_serv_run(struct arg_arr* arg, struct arcan_shmif_cont cont)
 {
 	struct dispatch_data data = {
@@ -275,6 +306,16 @@ void a12_serv_run(struct arg_arr* arg, struct arcan_shmif_cont cont)
 	};
 
 	if (!decode_args(arg, &data)){
+		return;
+	}
+
+	data.net_cfg.opts->pk_lookup = key_auth_local;
+	data.net_cfg.keystore.type = A12HELPER_PROVIDER_BASEDIR;
+	const char* err;
+	data.net_cfg.keystore.directory.dirfd = a12helper_keystore_dirfd(&err);
+	if (!a12helper_keystore_open(&data.net_cfg.keystore)){
+		arcan_shmif_last_words(&cont, "couldn't open keystore");
+		arcan_shmif_drop(&cont);
 		return;
 	}
 
@@ -299,7 +340,7 @@ void a12_serv_run(struct arg_arr* arg, struct arcan_shmif_cont cont)
 		if (a12_remote_mode(con.state) == ROLE_DIR){
 			arcan_shmif_last_words(&cont, "eimpl: encode-sink to directory");
 		}
-		else if (a12_remote_mode(con.state) == ROLE_SOURCE){
+		else if (a12_remote_mode(con.state) == ROLE_SINK){
 			dispatch_single(con.state, con.fd, &data);
 		}
 		else {

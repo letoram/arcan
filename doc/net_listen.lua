@@ -39,6 +39,7 @@
 --
 -- @group: network
 -- @cfunction: net_listen
+-- @exampleappl: tests/interactive/nettest
 -- @flags:
 function main()
 #ifdef MAIN

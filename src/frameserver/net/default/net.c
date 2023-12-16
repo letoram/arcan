@@ -888,8 +888,6 @@ static int dircl_loop(
 		.on_discover = cl_got_dyn,
 		.on_discover_tag = &ioloop,
 		}, sizeof(struct a12_unpack_cfg));
-
-	C->user = &dmeta;
 	a12_set_bhandler(A->state, anet_directory_cl_bhandler, &ioloop);
 	anet_directory_ioloop(&ioloop);
 
@@ -908,61 +906,49 @@ static int connect_to_host(
 		.pk_lookup = key_auth_local
 	};
 
-#ifdef DEBUG
-	a12_set_trace_level(8191, stderr);
-#endif
-
-	const char* name;
-	if (!arg_lookup(args, "host", 0, &name) || name == NULL || !strlen(name)){
-		arcan_shmif_last_words(C, "missing host argument");
-		return EXIT_FAILURE;
-	}
-
-	char* work = strdup(name);
-
-/* With the afsrv_net:net_open path we are after a sink to source,
- * directory/xxx or a directory/appl as a download or as inter-appl messaging.
- * The case for acting as an outbound source comes through
- * afsrv_encode:define_recordtarget.
- *
- * For the appl case, we connect to a directory first, then send a message for
- * the resource we want.
- */
 	struct anet_options opts =
 	{
 		.opts = &a12opts,
 		.keystore = prov,
 	};
 
-/* There are several keystore options that hit here, we might want:
- *
- * 1. a known and trusted key that resolves to a possible host (name@).
- * 2. an explicit host, generating a new key and name with a custom secret ('tofu to petname').
- * 3. an explicit host, a default key and default or custom secret. ('dontcare').
- * 4. an explicit host, a throwaway key and default or custom secret. ('incognito').
- *
- * 2. is ignored for now as it lets the process mutate the keystore and the
- * implications for that are far reaching - ideally the decision should be
- * deferred to the appl level so that it can provide another interface for
- * authentication the Kpub (and it is mostly there).
- *
- * starting with option 1. */
-	char* toksep = strrchr(work, '@');
-	if (toksep){
-		*toksep = 0;
-		opts.key = work;
-	}
-/* apparently not, 3..4 */
-	else {
-		opts.host = work;
-		if (!arg_lookup(args, "port", 0, &opts.port) || !strlen(opts.port)){
-			opts.port = "6680";
+#ifdef DEBUG
+	a12_set_trace_level(8191, stderr);
+#endif
+
+/* this does not respect the trust mode currently unless we set tag */
+	global.soft_auth = true;
+
+	const char* tag = NULL;
+	if (arg_lookup(args, "tag", 0, &tag) && tag && strlen(tag)){
+		if (tag[0] == '?'){
+			a12opts.local_role = ROLE_PROBE;
 		}
-		global.soft_auth = true;
+		opts.key = &tag[1];
+		global.soft_auth = false;
 	}
 
-/* some might want to provide another secret, this only matters for deep
- * as it won't apply until the authentication handshake takes place */
+/* edge cases we want to use a tag to get keymaterial, but ignore the list
+ * of hosts it goes to and swap in our own */
+	const char* name;
+	if (!arg_lookup(args, "host", 0, &name) || name == NULL || !strlen(name)){
+		if (!tag){
+			arcan_shmif_last_words(C, "missing host argument");
+			return EXIT_FAILURE;
+		}
+	}
+	else{
+		opts.ignore_key_host = true;
+		opts.host = strdup(name);
+	}
+
+	if (!arg_lookup(args, "port", 0, &opts.port) || !strlen(opts.port)){
+		opts.port = "6680";
+	}
+
+/* the secret will augment the encoding of the hello packet, so unless the
+ * other end expects it, it will come out as jibberish and no connection can be
+ * established. */
 	const char* secret;
 	if (arg_lookup(args, "secret", 0, &secret) && secret && strlen(secret)){
 		snprintf(a12opts.secret, sizeof(a12opts.secret), "%s", opts.key);
@@ -971,6 +957,7 @@ static int connect_to_host(
 /* this will depth- first the tag, and if a connection is there, the 'deep'
  * option will also attempt to authenticate before shutting down the socket */
 	struct anet_cl_connection con = anet_cl_setup(&opts);
+
 	if (con.errmsg || !con.state){
 		LOG("couldn't connect: %s", con.errmsg ? con.errmsg : "(unknown)");
 		arcan_shmif_last_words(C, con.errmsg);
@@ -978,12 +965,54 @@ static int connect_to_host(
 		return EXIT_FAILURE;
 	}
 
+	if (a12opts.local_role == ROLE_PROBE){
+		arcan_event ev = {
+			.category = EVENT_EXTERNAL,
+			.ext.kind = ARCAN_EVENT(MESSAGE),
+		};
+
+		char* modedst = (char*) ev.ext.message.data;
+		size_t modedst_sz = COUNT_OF(ev.ext.message.data);
+
+		if (a12_remote_mode(con.state) == ROLE_DIR){
+			snprintf(modedst, modedst_sz, "directory");
+		}
+		else if (a12_remote_mode(con.state) == ROLE_SOURCE){
+			snprintf(modedst, modedst_sz, "source");
+		}
+		else if (a12_remote_mode(con.state) == ROLE_SINK){
+			snprintf((char*)ev.ext.message.data, COUNT_OF(ev.ext.message.data), "sink");
+		}
+
+		arcan_shmif_enqueue(C, &ev);
+
+	/* just wait for exit */
+		while(arcan_shmif_wait(C, &ev)){
+		}
+
+		shutdown(con.fd, SHUT_RDWR);
+		close(con.fd);
+		arcan_shmif_drop(C);
+		return EXIT_SUCCESS;
+	}
+
+/* With the afsrv_net:net_open path we are after a source to sink,
+ * directory/xxx or a directory/appl as a download or as inter-appl messaging.
+ * The case for acting as an outbound source comes through
+ * afsrv_encode:define_recordtarget.
+ *
+ * For the appl case, we connect to a directory first, then send a message for
+ * the resource we want.
+ */
 	if (a12_remote_mode(con.state) == ROLE_DIR){
 		LOG("directory-client");
 		return dircl_loop(C, &con, args);
 	}
 	else if (a12_remote_mode(con.state) == ROLE_SINK){
 		arcan_shmif_last_words(C, "host-mismatch:role=sink");
+		shutdown(con.fd, SHUT_RDWR);
+		close(con.fd);
+		arcan_shmif_drop(C);
 		return EXIT_FAILURE;
 	}
 
@@ -1025,9 +1054,8 @@ static int show_help()
 		" Outobund connection: \n"
 		"  key     \t   value   \t   description\n"
 		"----------\t-----------\t-----------------\n"
-		" host     \t  dsthost  \t Specify host or keystore tag@ to connect to\n"
-		" mode     \t  role     \t Source, Sink or Directory\n"
-		" name     \t  resname  \t For mode=directory set an explicit resource\n"
+		" host     \t  dsthost  \t Specify host to connect to\n"
+		" tag      \t  tag      \t Set tag (and host unless host is set) to connect\n"
   	"\n"
 		" Discovery:\n "
 		"  key   \t   value   \t   description\n"
@@ -1046,11 +1074,11 @@ int afsrv_netcl(struct arcan_shmif_cont* C, struct arg_arr* args)
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGCHLD, SIG_IGN);
 
-	if (arg_lookup(args, "help", 0, &dmethod)){
+	if (arg_lookup(args, "help", 0, NULL)){
 		return show_help();
 	}
 
-	if (arg_lookup(args, "host", 0, &dmethod)){
+	if (arg_lookup(args, "host", 0, NULL) || arg_lookup(args, "tag", 0, NULL)){
 		return connect_to_host(C, args);
 	}
 	else if (arg_lookup(args, "discover", 0, &dmethod)){

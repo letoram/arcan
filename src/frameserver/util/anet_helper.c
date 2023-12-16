@@ -112,6 +112,10 @@ static struct anet_cl_connection connect_to(struct anet_options* arg)
 	};
 
 	struct addrinfo* addr = NULL;
+	if (!arg->host){
+		res.errmsg = strdup("missing host");
+		return res;
+	}
 
 	int ec = getaddrinfo(arg->host, arg->port, &hints, &addr);
 	if (ec){

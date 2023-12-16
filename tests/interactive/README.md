@@ -96,3 +96,5 @@ wltest - testing the builtin wayland window manager helper script
 xwmroot - rootful Xarcan decomposition test
 
 xwm - redirected Xarcan deferred composition test
+
+nettest - tests sourcing and sinking to/from local passive-beacon discovery

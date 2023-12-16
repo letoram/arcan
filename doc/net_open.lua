@@ -6,7 +6,10 @@
 -- @longdescr: This creates an outbound connection to a network resource
 -- speaking the a12 protocol. If *host* starts with an @ sign and matches a
 -- known tag in the keystore, the connection information and authentication
--- credentials will be picked from there.
+-- credentials will be picked from there. If *hosts* starts with a ? sign
+-- it works as with '@' but the connection will only probe which roles the
+-- target supports (source, sink or directory) and return that as a message
+-- event before terminating.
 --
 -- If the *host* is a tag, the optional *dst* argument can be used to override
 -- the hosts assigned to the tag but still use the keymaterial. This is mainly
