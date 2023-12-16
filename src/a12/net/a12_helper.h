@@ -114,6 +114,16 @@ struct keystore_mask*
 	);
 
 /*
+ * Tradeoff between collision risk and number of keys that can fit in a single
+ * broadcast packet. Changing this requires the same change for all
+ * stakeholders so best done for controlled environments where the key size is
+ * a bigger concern.
+ */
+#ifndef DIRECTORY_BEACON_MEMBER_SIZE
+#define DIRECTORY_BEACON_MEMBER_SIZE 32
+#endif
+
+/*
  * Helpers for setting up listen_beacon and build_beacon
  */
 struct anet_discover_opts {

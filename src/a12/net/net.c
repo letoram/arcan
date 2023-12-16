@@ -1386,7 +1386,7 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 
 static bool discover_beacon(
 	struct arcan_shmif_cont* C,
-	const uint8_t kpub[static 32],
+	const uint8_t kpub[static DIRECTORY_BEACON_MEMBER_SIZE],
 	const uint8_t nonce[static 8],
 	const char* tag, char* addr)
 {

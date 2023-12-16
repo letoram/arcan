@@ -41,7 +41,7 @@ struct beacon {
 			} unpack;
 			uint8_t raw[9000];
 		};
-		size_t len; /* should be %32 == 0 && >= 32 */
+		size_t len; /* should be %DIRECTORY_BEACON_MEMBER_SIZE == 0 && >= _SIZE */
 		uint64_t ts;
 	} slot[2];
 	char* tag;
@@ -85,7 +85,7 @@ static ssize_t
 	}
 
 /* correct keyset length */
-	if (b->slot[0].len % 32 != 0){
+	if (b->slot[0].len % DIRECTORY_BEACON_MEMBER_SIZE != 0){
 		*err = "invalid beacon keyset length";
 		return -1;
 	}
@@ -123,7 +123,7 @@ struct keystore_mask*
 		uint64_t chg;
 	} chg;
 
-	size_t buf_sz = BEACON_KEY_CAP * 32 + 16;
+	size_t buf_sz = BEACON_KEY_CAP * DIRECTORY_BEACON_MEMBER_SIZE + 16;
 	uint8_t* wone = malloc(buf_sz);
 	uint8_t* wtwo = malloc(buf_sz);
 	memset(wone, '\0', buf_sz);
@@ -147,16 +147,16 @@ struct keystore_mask*
 		blake3_hasher temp;
 		blake3_hasher_init(&temp);
 		blake3_hasher_update(&temp, &wone[8], 8);
-		blake3_hasher_update(&temp, cur->pubk, 32);
-		blake3_hasher_finalize(&temp, &wone[pos], 32);
+		blake3_hasher_update(&temp, cur->pubk, DIRECTORY_BEACON_MEMBER_SIZE);
+		blake3_hasher_finalize(&temp, &wone[pos], DIRECTORY_BEACON_MEMBER_SIZE);
 
 		blake3_hasher_init(&temp);
 		blake3_hasher_update(&temp, &wtwo[8], 8);
-		blake3_hasher_update(&temp, cur->pubk, 32);
-		blake3_hasher_finalize(&temp, &wtwo[pos], 32);
+		blake3_hasher_update(&temp, cur->pubk, DIRECTORY_BEACON_MEMBER_SIZE);
+		blake3_hasher_finalize(&temp, &wtwo[pos], DIRECTORY_BEACON_MEMBER_SIZE);
 
 		cur = cur->next;
-		pos += 32;
+		pos += DIRECTORY_BEACON_MEMBER_SIZE;
 	}
 
 /* calculate final checksum */
@@ -181,7 +181,7 @@ void
 		struct arcan_shmif_cont* C, int sock,
 		bool (*on_beacon)(
 			struct arcan_shmif_cont*,
-			const uint8_t[static 32],
+			const uint8_t[static DIRECTORY_BEACON_MEMBER_SIZE],
 			const uint8_t[static 8],
 			const char*, char* addr),
 		bool (*on_shmif)(struct arcan_shmif_cont* C))
@@ -215,7 +215,7 @@ void
 					mtu, sizeof(mtu), MSG_DONTWAIT, (struct sockaddr*)&caddr, &len);
 
 /* make sure beacon covers at least one key, then first cache */
-			if (nr >= 8 + 8 + 32){
+			if (nr >= 8 + 8 + DIRECTORY_BEACON_MEMBER_SIZE){
 				char name[INET6_ADDRSTRLEN];
 				if (0 !=
 					getnameinfo(
@@ -272,7 +272,7 @@ void
 						on_beacon(C, nullk, bcn->slot[0].unpack.chg, NULL, name);
 					}
 					else if (status > 0){
-						for (size_t i = 0; i < bcn->slot[0].len; i+=32){
+						for (size_t i = 0; i < bcn->slot[0].len; i+=DIRECTORY_BEACON_MEMBER_SIZE){
 							uint8_t outk[32];
 							char* tag;
 							a12helper_keystore_known_accepted_challenge(
