@@ -154,17 +154,18 @@ static bool on_disc_beacon(
 		}
 	};
 
-	if (!tag){
+/* first set tag and multipart */
+	if (tag){
 		snprintf(ev.ext.netstate.name,
-			COUNT_OF(ev.ext.netstate.name), "%s", addr);
-		ev.ext.netstate.space = strchr(addr, ':') ? 4 : 3;
+			COUNT_OF(ev.ext.netstate.name), "%s", tag);
+		ev.ext.netstate.state = 2;
+		arcan_shmif_enqueue(C, &ev);
 	}
-	else
 
-/* the kpub is of little use to us as we already know it through the tag */
+/* then send the corresponding IP */
 	snprintf(ev.ext.netstate.name,
-		COUNT_OF(ev.ext.netstate.name), "%s", tag);
-
+		COUNT_OF(ev.ext.netstate.name), "%s", addr);
+	ev.ext.netstate.state = 1;
 	arcan_shmif_enqueue(C, &ev);
 
 	return true;
