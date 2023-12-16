@@ -70,7 +70,10 @@ static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
  * here is the option of deferring pubk- auth to arcan end by sending it as a
  * message onwards and wait for an accept or reject event before moving on.
  */
-	if (a12helper_keystore_accepted(pk, global.trust_domain) || global.soft_auth){
+	bool trusted = a12helper_keystore_accepted(pk, global.trust_domain);
+		if (trusted || global.soft_auth){
+			if (!trusted)
+				LOG("accept_soft_unknown\n");
 		uint8_t key_priv[32];
 		auth.authentic = true;
 		a12helper_keystore_hostkey("default", 0, key_priv, &tmp, &tmpport);
@@ -154,8 +157,17 @@ static bool on_disc_beacon(
 		}
 	};
 
-/* first set tag and multipart */
+/* First set tag and multipart, we ignore the default 'outbound' that just say
+ * we've seen this device before but we don't know the context. If it is used
+ * as a suffix, we strip that assuming that there is a tag with [outbound-]tag.*/
 	if (tag){
+		if (strcmp(tag, "outbound") == 0)
+			return true;
+
+		if (strncmp(tag, "outbound-", 9) == 0){
+			tag += 9;
+		}
+
 		snprintf(ev.ext.netstate.name,
 			COUNT_OF(ev.ext.netstate.name), "%s", tag);
 		ev.ext.netstate.state = 2;
@@ -490,7 +502,7 @@ static void *dircl_alloc(struct a12_state* S, struct directory_meta* dir)
 	ssize_t evpool_sz;
 
 	if (!arcan_shmif_acquireloop(C, &acq_event, &evpool ,&evpool_sz)){
-		LOG("server rejected allocation");
+		LOG("server rejected allocation\n");
 		return NULL;
 	}
 
@@ -498,7 +510,7 @@ static void *dircl_alloc(struct a12_state* S, struct directory_meta* dir)
  * really shouldn't be any event in flight as we get to this point from an
  * explicit 'run/block this appl */
 	if (evpool_sz){
-		LOG("ignoring_pending:%zu", evpool_sz);
+		LOG("ignoring_pending:%zu\n", evpool_sz);
 		free(evpool);
 	}
 
@@ -541,7 +553,7 @@ static pid_t dircl_exec(struct a12_state* S,
 	free(path);
 
 	if (!lwabin){
-		LOG("couldn't locate/access arcan_lwa in PATH");
+		LOG("couldn't locate/access arcan_lwa in PATH\n");
 		return 0;
 	}
 
@@ -551,7 +563,7 @@ static pid_t dircl_exec(struct a12_state* S,
 
 	int pstdin[2], pstdout[2];
 	if (-1 == pipe(pstdin) || -1 == pipe(pstdout)){
-		LOG("Couldn't setup control pipe in arcan handover");
+		LOG("Couldn't setup control pipe in arcan handover\n");
 		return 0;
 	}
 	char logfd_str[16];
@@ -612,7 +624,7 @@ static pid_t dircl_exec(struct a12_state* S,
 
 static void dircl_event(struct arcan_shmif_cont* C, int chid, struct arcan_event* ev, void* tag)
 {
-	LOG("event=%s", arcan_shmif_eventstr(ev, NULL, 0));
+	LOG("event=%s\n", arcan_shmif_eventstr(ev, NULL, 0));
 
 /* this also deviates from what is done in a12/net/dir_cl, as we don't do appl
  * pushes, there should be a shared part for when dealing with loading
@@ -642,7 +654,7 @@ void req_id(struct ioloop_shared* I, uint16_t identifier)
 		}
 	};
 
-	LOG("shmif:download:%"PRIu16, identifier);
+	LOG("shmif:download:%"PRIu16"\n", identifier);
 	snprintf(
 		(char*)ev.ext.bchunk.extensions, 6, "%"PRIu16, identifier);
 	a12_channel_enqueue(I->S, &ev);
@@ -698,6 +710,7 @@ static bool dircl_dirent(struct ioloop_shared* I, struct appl_meta* M)
 				.ext.bchunk.hint = 1,
 			};
 
+			LOG("appl_found:%s", M->appl.name);
 			snprintf((char*)out.ext.bchunk.extensions,
 				COUNT_OF(out.ext.bchunk.extensions), "%s;%d", M->appl.name, M->identifier);
 
@@ -883,6 +896,7 @@ static int dircl_loop(
 		.cbt = &dircfg,
 	};
 
+	C->user = &dmeta;
 	a12_set_destination_raw(A->state, 0,
 		(struct a12_unpack_cfg){
 		.on_discover = cl_got_dyn,
@@ -924,6 +938,7 @@ static int connect_to_host(
 		if (tag[0] == '?'){
 			a12opts.local_role = ROLE_PROBE;
 		}
+		global.trust_domain = tag;
 		opts.key = &tag[1];
 		global.soft_auth = false;
 	}
@@ -964,6 +979,7 @@ static int connect_to_host(
 		arcan_shmif_drop(C);
 		return EXIT_FAILURE;
 	}
+	LOG("authenticated");
 
 	if (a12opts.local_role == ROLE_PROBE){
 		arcan_event ev = {

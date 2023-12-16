@@ -717,6 +717,7 @@ static struct anet_cl_connection find_connection(
 		if (opts->key){
 			char tmp[strlen(opts->key) + sizeof("outbound-")];
 			snprintf(tmp, sizeof(tmp), "outbound-%s", opts->key);
+			global.trust_domain = strdup(tmp);
 		}
 		else
 			global.trust_domain = strdup("outbound");
@@ -900,7 +901,14 @@ static bool tag_host(struct anet_options* anet, char* hoststr, const char** err)
 		return false;
 
 	*toksep = '\0';
+	toksep++;
+
 	anet->key = hoststr;
+	if (strlen(toksep)){
+		anet->host = toksep;
+		anet->ignore_key_host = true;
+	}
+
 	global.outbound_tag = hoststr;
 	anet->keystore.type = A12HELPER_PROVIDER_BASEDIR;
 
