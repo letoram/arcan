@@ -26,9 +26,9 @@
 -- and will be interpreted as disabling a previously set alternate connection.
 -- There are two special forms to the *target* string, one is a12:// and a12s://
 -- as a prefix which will involve the arcan-net tool to connect to a server. The
--- second is with an @ suffix, like mytag@ which wil use keystore tags to
--- find outbound connection parameters. These forms will also provide *fsrv*
--- vid access to a keystore capability.
+-- second is with a @ or @host suffix, like mytag@. This will use keystore
+-- tags to find outbound connection parameters. These forms will also provide
+-- the *fsrv* vid access to a keystore capability.
 -- @note: The keystore access is currently the same as the one handed to the
 -- arcan process. This may be changed in the future.
 -- @note: If the forced target migration mode is used on a frameserver launched

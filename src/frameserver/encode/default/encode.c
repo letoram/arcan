@@ -108,7 +108,8 @@ int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 #endif
 
 		if (strcmp(argval, "a12") == 0){
-			return a12_serv_run(args, *cont);
+			a12_serv_run(args, *cont);
+			return EXIT_SUCCESS;
 		}
 
 #ifdef HAVE_OCR

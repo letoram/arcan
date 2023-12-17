@@ -1,4 +1,4 @@
-extern void a12_serv_run(struct arg_arr*, struct arcan_shmif_cont);
+extern int a12_serv_run(struct arg_arr*, struct arcan_shmif_cont);
 
 #ifdef HAVE_VNCSERVER
 extern void vnc_serv_run(struct arg_arr*, struct arcan_shmif_cont);

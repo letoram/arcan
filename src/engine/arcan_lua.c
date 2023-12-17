@@ -7801,7 +7801,7 @@ static int targetdevhint(lua_State* ctx)
  * should probably have a better keystore model anyhow. */
 		if (strncmp(cpath, "a12://", sizeof("a12://") - 1) == 0 ||
 			strncmp(cpath, "a12s://", sizeof("a12://") - 1) == 0 ||
-			cpath[0] == '@'){
+			strrchr(cpath, '@')){
 			char* nsp = arcan_expand_resource("a12", RESOURCE_SYS_APPLSTATE);
 			int fd = open(nsp, O_RDONLY | O_DIRECTORY);
 

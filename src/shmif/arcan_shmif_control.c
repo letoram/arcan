@@ -3049,6 +3049,7 @@ static ssize_t a12_cp(const char* conn_src, bool* weak)
 	if (!len)
 		return -1;
 
+/* protocol:// friendly */
 	if (strncmp(conn_src, "a12s://", 7) == 0)
 		return sizeof("a12s://") - 1;
 	else if (strncmp(conn_src, "a12://", 6) == 0){
@@ -3056,7 +3057,8 @@ static ssize_t a12_cp(const char* conn_src, bool* weak)
 			*weak = true;
 		return sizeof("a12://") - 1;
 	}
-	else if (conn_src[len-1] == '@')
+/* tag@host:port format */
+	else if (strrchr(conn_src, '@'))
 		return 0;
 	else
 		return -1;
