@@ -40,7 +40,7 @@
 -- *mouse* (true/_false_), indicate if the samples come from a cursor-
 -- type device or not. If so, the interpretation of sample values is
 -- more complicated as there is a large variability in how underlying
--- device layers provide their samples. If *relative* is set tto true,
+-- device layers provide their samples. If *relative* is set to true,
 -- the order is (*rel_x*, *abs_x*,  *rel_y*, *abs_y*), otherwise the
 -- order is (*abs_x*, *rel_x*, *rel_y*, *abs_y*). The reason for this is
 -- that the relative indicator shows the primary origin of the samples,

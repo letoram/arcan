@@ -14,6 +14,8 @@ set(DEFS
 	BLAKE3_NO_AVX512
 	BLAKE3_NO_SSE41
 	ZSTD_MULTITHREAD
+# this would need architecture probing and enable for certain rounds of amd64
+	ZSTD_DISABLE_ASM
 )
 
 set(A12_VERSION_MAJOR 0)
