@@ -83,6 +83,7 @@ static void comp_create_reg(struct wl_client *client,
 	if (!region){
 		wl_resource_post_no_memory(resource);
 		wl_resource_destroy(region);
+		free(reg);
 		return;
 	}
 
