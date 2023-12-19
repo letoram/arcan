@@ -768,9 +768,6 @@ static struct anet_cl_connection forward_shmifsrv_cl(
 		if (anet.state){
 			a12_free(anet.state);
 			close(anet.fd);
-
-			if (anet.errmsg)
-				free(anet.errmsg);
 		}
 	}
 
@@ -788,11 +785,10 @@ static struct anet_cl_connection forward_shmifsrv_cl(
 			a12_free(anet.state);
 			close(anet.fd);
 		}
-
-		if (anet.errmsg)
-			free(anet.errmsg);
 	}
-
+	
+	if (anet.errmsg)
+		free(anet.errmsg);
 	return anet;
 }
 
