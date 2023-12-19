@@ -146,8 +146,10 @@ static char* prepend_str(const char* a, const char* b)
 	size_t blen = strlen(b);
 	size_t len = alen + blen;
 	char* buf = malloc(len+1);
-	if (!len)
+	if (!len){
+		free(buf);
 		return NULL;
+	}
 
 	memcpy(buf, a, alen);
 	memcpy(&buf[alen], b, blen);
