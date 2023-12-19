@@ -1,3 +1,4 @@
+## 0.6.3
 ## Lua
  * inbound events now have a 'frame' tag for pairing with verbose-frame notification
  * util:random\_interval(low,high) added for CSPRNG non-biased interval RNG

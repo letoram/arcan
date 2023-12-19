@@ -17,7 +17,7 @@ if [ ! -f "$DIR/clone.sh" ] || [ -h "$DIR/clone.sh" ]; then
   exit 1
 fi
 
-git clone http://luajit.org/git/luajit-2.0.git "$DIR/luajit"
-git clone https://github.com/letoram/openal.git "$DIR/openal"
-git clone https://github.com/libuvc/libuvc.git "$DIR/libuvc"
-git clone https://github.com/wolfpld/tracy.git "$DIR/tracy"
+git clone https://luajit.org/git/luajit-2.0.git "$DIR/luajit"
+git clone --depth 1 https://github.com/letoram/openal.git "$DIR/openal"
+git clone --depth 1 https://github.com/libuvc/libuvc.git "$DIR/libuvc"
+git clone --depth 1 https://github.com/wolfpld/tracy.git "$DIR/tracy"
