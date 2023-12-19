@@ -86,8 +86,10 @@ int decode_3d(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	inbuf_sz = pos;
 	fclose(fpek);
 
-	if (!inbuf_sz)
+	if (!inbuf_sz){
+		free(inbuf);
 		return show_use(cont, "no data in file");
+	}
 
 /* need fuller shmif permissions here as new subsegments are used for
  * each additional 'surface' */
