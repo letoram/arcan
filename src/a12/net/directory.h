@@ -77,6 +77,34 @@ struct directory_meta {
 	struct arcan_shmif_cont* C;
 };
 
+struct dircl;
+
+struct dircl {
+	int in_appl;
+	char identity[16];
+
+	int type;
+	bool pending_stream;
+	int pending_fd;
+	uint16_t pending_id;
+
+	arcan_event petname;
+	arcan_event endpoint;
+
+	uint8_t pubk[32];
+	bool authenticated;
+
+	char message_multipart[1024];
+	size_t message_ofs;
+
+	struct shmifsrv_client* C;
+	struct dircl* next;
+	struct dircl* prev;
+
+/* [UAF-risk] 1:1 for now - always check this when removing a dircl */
+	struct dircl* tunnel;
+};
+
 /*
  * dir_srv.c
  */

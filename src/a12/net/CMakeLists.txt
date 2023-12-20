@@ -7,6 +7,7 @@ set(SOURCES
 	a12_helper_srv.c
 	a12_helper_discover.c
 	net.c
+	dir_lua.c
 	dir_cl.c
 	dir_srv.c
 	dir_srv_worker.c
@@ -22,11 +23,17 @@ set(INCLUDE_DIRS
 	"${A12_SRC}"
 	"${ARCAN_SRC}/engine"
 	"${ARCAN_SRC}/frameserver/util"
+	${LUA_INCLUDE_DIR}
+	${LUA_INCLUDE_DIRS}
+	${SQLite3_INCLUDE_DIR}
 )
 
 add_executable(arcan-net ${SOURCES})
 add_sanitizers(arcan-net)
-target_link_libraries(arcan-net PRIVATE arcan_a12 )
+target_link_libraries(arcan-net PRIVATE arcan_a12
+	${LUA_LIBRARIES}
+	${SQLite3_LIBRARIES}
+)
 target_include_directories(arcan-net PRIVATE ${INCLUDE_DIRS})
 target_compile_definitions(arcan-net PRIVATE WANT_KEYSTORE_HASHER ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${CMAKE_SYSTEM_NAME}\")
 install(TARGETS arcan-net DESTINATION ${CMAKE_INSTALL_BINDIR})

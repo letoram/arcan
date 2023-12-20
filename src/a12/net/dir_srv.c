@@ -37,36 +37,6 @@
 
 extern bool g_shutdown;
 
-struct dircl;
-
-struct dircl {
-	int in_appl;
-	char identity[16];
-
-	int type;
-
-	bool pending_stream;
-	int pending_fd;
-	uint16_t pending_id;
-
-	arcan_event petname;
-	arcan_event endpoint;
-
-	uint8_t pubk[32];
-	bool authenticated;
-
-	char message_multipart[1024];
-	size_t message_ofs;
-
-	struct shmifsrv_client* C;
-
-	struct dircl* next;
-	struct dircl* prev;
-
-/* [UAF-risk] 1:1 for now - always check this when removing a dircl */
-	struct dircl* tunnel;
-};
-
 static struct {
 	pthread_mutex_t sync;
 	struct dircl root;
@@ -267,7 +237,7 @@ static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
 					C->petname.ext.netstate.name)){
 					msg = NULL;
 				}
-	
+
 				cur->tunnel = C->tunnel;
 				free(b64);
 				break;
@@ -706,7 +676,7 @@ static void msgqueue_worker(struct dircl* C, arcan_event* ev)
 	A12INT_DIRTRACE("dirsv:kind=message:multipart=%d:broadcast=%s",
 		(int) ev->ext.message.multipart, (char*) ev->ext.message.data);
 #endif
-	
+
 /* queue more?*/
 	if (ev->ext.message.multipart)
 		return;
