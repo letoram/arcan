@@ -123,20 +123,6 @@ static int tracestr_to_bitmap(char* work)
 	return res;
 }
 
-/*
- * Since we pull in some functions from the main arcan codebase, we need to
- * define this symbol, used if the random function has problems with entropy
- * etc.
- */
-void arcan_fatal(const char* msg, ...)
-{
-	va_list args;
-	va_start(args, msg);
-	vfprintf(stderr, msg, args);
-	va_end(args);
-	exit(EXIT_FAILURE);
-}
-
 static bool handover_setup(struct a12_state* S,
 	int fd, struct arcan_net_meta* meta, struct shmifsrv_client** C)
 {

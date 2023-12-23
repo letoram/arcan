@@ -80,6 +80,7 @@ struct directory_meta {
 struct dircl;
 
 struct dircl {
+	void* script_state;
 	int in_appl;
 	char identity[16];
 
@@ -169,6 +170,19 @@ struct ioloop_shared {
 	void (*on_shmif)(struct ioloop_shared* S);
 	void* tag;
 };
+
+/* build the global- lua context and tie to a sqlite database represented by fd */
+void anet_directory_lua_init(const char* fn);
+
+/* attach the specific client to the global lua context or to a specific appl runner
+ * if set !null */
+void anet_directory_lua_register(struct dircl* C, const char* appl);
+
+/* for post-transfer completion hooks to perform atomic rename / fileswaps etc. */
+void anet_directory_lua_bchunk_completion(struct dircl* C, bool ok);
+
+/* detach the specific client from the global lua context */
+void anet_directory_lua_unregister(struct dircl* C, const char* appl);
 
 void anet_directory_tunnel_thread(struct ioloop_shared* ios, struct a12_state* S);
 void anet_directory_ioloop(struct ioloop_shared* S);

@@ -161,28 +161,6 @@ void alt_call(
 	lua_remove(L, errind);
 }
 
-lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
-{
-	if (lua_isnumber(L, narg))
-		return lua_tonumber(L, narg);
-	else if (lua_isboolean(L, narg))
-		return lua_toboolean(L, narg);
-	else
-		return opt;
-}
-
-lua_Number luaL_checkbnumber(lua_State* L, int narg)
-{
-	lua_Number d = lua_tonumber(L, narg);
-	if (d == 0 && !lua_isnumber(L, narg)){
-		if (!lua_isboolean(L, narg))
-			luaL_typerror(L, narg, "number or boolean");
-		else
-			d = lua_toboolean(L, narg);
-	}
-	return d;
-}
-
 static void panic(lua_State* L)
 {
 	lua_debug_level = 2;
