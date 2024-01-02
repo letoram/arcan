@@ -37,6 +37,7 @@ set(INCLUDE_DIRS
 add_executable(arcan-net ${SOURCES})
 add_sanitizers(arcan-net)
 target_link_libraries(arcan-net PRIVATE arcan_a12
+	${STDLIB}
 	${LUA_LIBRARIES}
 	${SQLite3_LIBRARIES}
 )

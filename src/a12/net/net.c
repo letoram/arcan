@@ -37,33 +37,17 @@ enum mt_mode {
 };
 
 struct arcan_net_meta {
-	struct anet_options* opts;
 	int argc;
 	char** argv;
 	char* bin;
 };
 
-static struct {
-	bool soft_auth;
-	bool no_default;
-	bool probe_only;
-	bool keep_alive;
-	size_t accept_n_pk_unknown;
-	size_t backpressure;
-	size_t backpressure_soft;
-	int directory;
-	struct anet_dirsrv_opts dirsrv;
-	struct anet_dircl_opts dircl;
-	char* trust_domain;
-	char* path_self;
-	char* outbound_tag;
-
-	volatile bool flag_rescan;
-} global = {
+struct global_cfg global = {
 	.backpressure_soft = 2,
 	.backpressure = 6,
 	.directory = -1,
 	.outbound_tag = "default",
+	.db_file = ":memory",
 	.dircl = {
 		.source_port = 6681
 	},
@@ -126,7 +110,9 @@ static int tracestr_to_bitmap(char* work)
 static bool handover_setup(struct a12_state* S,
 	int fd, struct arcan_net_meta* meta, struct shmifsrv_client** C)
 {
-	if (meta->opts->mode != ANET_SHMIF_EXEC && global.directory <= 0)
+	struct anet_options* anet = &global.meta;
+
+	if (anet->mode != ANET_SHMIF_EXEC && global.directory <= 0)
 		return true;
 
 /* wait for authentication before going for the shmifsrv processing mode */
@@ -208,7 +194,6 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
  * and inherit shmif into the forked child that is a re-execution of ourselves. */
 	int clsock = -1;
 	struct shmifsrv_client* cl = NULL;
-	struct arcan_net_meta* ameta = tag;
 
 	if (global.directory > 0){
 		if (global.flag_rescan){
@@ -290,8 +275,8 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 
 	if (C){
 		a12helper_a12cl_shmifsrv(S, C, fd, fd, (struct a12helper_opts){
-			.redirect_exit = meta->opts->redirect_exit,
-			.devicehint_cp = meta->opts->devicehint_cp,
+			.redirect_exit = global.meta.redirect_exit,
+			.devicehint_cp = global.meta.devicehint_cp,
 			.vframe_block = global.backpressure,
 			.vframe_soft_block = global.backpressure_soft,
 			.eval_vcodec = vcodec_tuning,
@@ -398,8 +383,8 @@ static void single_a12srv(struct a12_state* S, int fd, void* tag)
 
 	if (C){
 		a12helper_a12cl_shmifsrv(S, C, fd, fd, (struct a12helper_opts){
-			.redirect_exit = meta->opts->redirect_exit,
-			.devicehint_cp = meta->opts->devicehint_cp,
+			.redirect_exit = global.meta.redirect_exit,
+			.devicehint_cp = global.meta.devicehint_cp,
 			.vframe_block = global.backpressure,
 			.vframe_soft_block = global.backpressure_soft,
 			.eval_vcodec = vcodec_tuning,
@@ -936,6 +921,7 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"\t-t             \t Single- client (no fork/mt - easier troubleshooting)\n"
 	"\t --probe-only  \t (outbound) Authenticate and print server primary state\n"
 	"\t-d bitmap      \t Set trace bitmap (bitmask or key1,key2,...)\n"
+	"\t-c, --config fn\t Apply/override command-line toggles with config from script [fn]\n"
 	"\t--keystore fd  \t Use inherited [fd] for keystore root store\n"
 	"\t-v, --version  \t Print build/version information to stdout\n\n"
 	"Directory client options: \n"
@@ -987,7 +973,7 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 {
 	const char* modeerr = "Mixed or multiple -s or -l arguments";
-	struct anet_options* opts = meta->opts;
+	struct anet_options* opts = &global.meta;
 
 /* the default role is sink, -s -exec changes this to source */
 	opts->opts->local_role = ROLE_SINK;
@@ -1294,6 +1280,14 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			global.dircl.source_port = (uint16_t) strtoul(argv[i], NULL, 10);
 			if (!global.dircl.source_port)
 				return show_usage("--source-port invalid", argv, i);
+		}
+		else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--config") == 0){
+			i++;
+			if (i == argc)
+				return show_usage(
+					"Missing config file argument (/path/to/config.lua", argv, i - 1);
+
+			global.config_file = argv[i];
 		}
 		else if (strcmp(argv[i], "--directory") == 0){
 			if (!getenv("ARCAN_APPLBASEPATH")){
@@ -1627,9 +1621,7 @@ int main(int argc, char** argv)
 /* do note that pk_lookup is left empty == only password auth */
 	};
 
-	struct arcan_net_meta meta = {
-		.opts = &anet
-	};
+	struct arcan_net_meta meta = {0};
 
 	anet.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));
 	anet.opts->pk_lookup = key_auth_local;
@@ -1655,8 +1647,10 @@ int main(int argc, char** argv)
 /* inherited directory server mode doesn't take extra listening parameters and
  * was an afterthought not fitting with the rest of the (messy) arg parsing */
 	size_t argi = apply_commandline(argc, argv, &meta);
-	if (!argi && anet.mode != ANET_SHMIF_DIRSRV_INHERIT && !meta.opts->host)
+	if (!argi && anet.mode != ANET_SHMIF_DIRSRV_INHERIT && !global.meta.host)
 		return EXIT_FAILURE;
+
+	anet_directory_lua_init(&global);
 
 /* no mode? if there's arguments left, assume it is is the 'reverse' mode
  * where the connection is outbound but we get the a12 'client' view back

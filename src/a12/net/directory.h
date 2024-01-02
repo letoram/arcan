@@ -106,6 +106,28 @@ struct dircl {
 	struct dircl* tunnel;
 };
 
+struct global_cfg {
+	bool soft_auth;
+	bool no_default;
+	bool probe_only;
+	bool keep_alive;
+	size_t accept_n_pk_unknown;
+	size_t backpressure;
+	size_t backpressure_soft;
+	int directory;
+	struct anet_dirsrv_opts dirsrv;
+	struct anet_dircl_opts dircl;
+	struct anet_options meta;
+
+	char* trust_domain;
+	char* path_self;
+	char* outbound_tag;
+	char* config_file;
+	char* db_file;
+
+	volatile bool flag_rescan;
+};
+
 /*
  * dir_srv.c
  */
@@ -172,7 +194,7 @@ struct ioloop_shared {
 };
 
 /* build the global- lua context and tie to a sqlite database represented by fd */
-void anet_directory_lua_init(const char* fn);
+bool anet_directory_lua_init(struct global_cfg* cfg);
 
 /* attach the specific client to the global lua context or to a specific appl runner
  * if set !null */
