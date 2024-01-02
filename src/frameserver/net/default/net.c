@@ -27,8 +27,8 @@
 #include "a12.h"
 #include "a12_int.h"
 #include "net/a12_helper.h"
-#include "net/directory.h"
 #include "../../util/anet_helper.h"
+#include "net/directory.h"
 
 enum trust {
 	TRUST_KNOWN,
