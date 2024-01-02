@@ -387,8 +387,16 @@ enum ARCAN_TARGET_COMMAND {
 
 /*
  * For connections that have a fine-grained perception of time, both absolute
- * and relative in terms of some internal timebase, request a seek to a
- * specific point in time (or as close as possible).
+ * and relative in miliseconds, request a seek to a specific point in time (or
+ * as close as possible). If a client has defined a CONTENT state, SEEKCONTENT
+ * should be used over SEEKTIME.
+ *
+ * The client can use the 'timestamp' field for the event to match against
+ * local system monotonic clock for finding the delta between when the request
+ * for a relative search was issued versus when it was processed to improve
+ * accuracy.
+ *
+ *
  * ioevs[0].iv != 1 indicates relative,
  * ioevs[1].fv = contains the actual timeslot.
  */

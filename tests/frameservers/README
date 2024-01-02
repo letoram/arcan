@@ -52,6 +52,9 @@ tui_test/ attempts to use the shmif_tui library to create a text-
 tui_media/ attempts to use the shmif_tui library and its handover
 feature to allocate a media window
 
+tui_scroll/ attempts to use the shmif_tui library and content hints
+to test server side decorations for scrolling
+
 tpack/ setup a context and replay a preset tpack buffer
 
 handover/ tests the handover feature by connecting, requesting a
@@ -80,6 +83,9 @@ noreg/ tests what happens if a client connects but refuses to register
 
 dbox/ tests dirty updates by moving a 32x32 square +8,+8 with region
       updates every event-clocked frame or reset event
+
+scroll/ tests server side scroll and seeking by exposing CONTENT and
+        STREAMSTATUS events.
 
 passthrough/ tests h264 bitstream (with 00 00 00 01) passthrough of
              preencoded video without reencode, use with arcan-net
