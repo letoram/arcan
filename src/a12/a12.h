@@ -110,10 +110,6 @@ struct a12_context_options {
  * (re-)use. */
 	bool disable_ephemeral_k;
 
-/* This allows the server end to transition to authenticated state based on
- * password alone, low-security / debugging situations only */
-	bool allow_symmetric_auth;
-
 /* if set, the shared secret will be used to authenticate public keymaterial,
  * message and cipher state for the first packets before DH exchange has been
  * completed */

@@ -11,11 +11,17 @@ struct anet_dirsrv_opts {
 	size_t dir_count;
 
 	bool allow_tunnel;
-	const char* allow_src;
-	const char* allow_dir;
-	const char* allow_appl;
-	const char* allow_ctrl;
-	const char* allow_ares;
+	char* allow_src;
+	char* allow_dir;
+	char* allow_appl;
+	char* allow_ctrl;
+	char* allow_ares;
+
+	char* resource_path;
+	int resource_dfd;
+
+	char* appl_server_path;
+	int appl_server_dfd;
 };
 
 /*
