@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <inttypes.h>
+
+#define WANT_KEYSTORE_HASHER
 #include "anet_helper.h"
 
 int list_pairs(const char* tag)
@@ -30,8 +32,9 @@ int add_key(const char* tag, const char* host, const char* port)
 		return EXIT_FAILURE;
 	}
 
+	uint8_t outp[32];
 	return
-		a12helper_keystore_register(tag, host, uport) ? EXIT_SUCCESS : EXIT_FAILURE;
+		a12helper_keystore_register(tag, host, uport, outp) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 int main(int argc, char** argv)
