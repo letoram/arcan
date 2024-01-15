@@ -29,7 +29,13 @@ static struct arcan_dbh* DB;
 static struct global_cfg* CFG;
 static bool INITIALIZED;
 
-_Thread_local char* applid;
+struct runner;
+
+static struct runner {
+	uint16_t identifier;
+	struct shmifsrv_client* C;
+	struct runner* next;
+} RUNNERS;
 
 static void dump_stack(lua_State* L, FILE* dst)
 {
@@ -58,18 +64,6 @@ static void dump_stack(lua_State* L, FILE* dst)
 	fprintf(dst, "\n");
 }
 
-/* checklist:
- * 3. call into register()
- * 4. call into leave()
- * 5. filter in list()
- * 6. filter/resolve for bchunk()
- * 7. test db-access / persistence
- * 8. call into register/leave for appl
- * 9. spin up runner thread for appl
- * 10. handle push-update for appl
- * 11.
- */
-
 void anet_directory_lua_exit()
 {
 	lua_close(L);
@@ -80,7 +74,7 @@ void anet_directory_lua_exit()
 static int db_get_key(lua_State* L)
 {
 	const char* key = luaL_checkstring(L, 1);
-	char* val = arcan_db_appl_val(DB, applid ? applid : "a12", key);
+	char* val = arcan_db_appl_val(DB, "a12", key);
 	if (val){
 		lua_pushstring(L, val);
 	}
@@ -100,6 +94,15 @@ static bool lookup_entrypoint(lua_State* L, const char* ep, size_t len)
 	}
 
 	return true;
+}
+
+static void push_dircl(lua_State* L, struct dircl* C)
+{
+/* should probably bind C to userdata, retain the tag in dircl and
+ * use that to recall the same reference until it's gone */
+	lua_newtable(L);
+	luaL_getmetatable(L, "dircl");
+	lua_setmetatable(L, -2);
 }
 
 extern int a12_trace_targets;
@@ -290,6 +293,7 @@ static int cfgpath_newindex(lua_State* L)
 
 		CFG->dirsrv.appl_server_path = strdup(val);
 		CFG->dirsrv.appl_server_dfd = dirfd;
+		return 0;
 	}
 	else if (strcmp(key, "resources") == 0){
 		const char* val = luaL_checkstring(L, 3);
@@ -305,6 +309,7 @@ static int cfgpath_newindex(lua_State* L)
 
 		CFG->dirsrv.resource_path = strdup(val);
 		CFG->dirsrv.resource_dfd = dirfd;
+		return 0;
 	}
 
 /* remaining keys are read-only after init */
@@ -337,6 +342,16 @@ static int cfgpath_newindex(lua_State* L)
 	return 0;
 }
 
+static int dir_index(lua_State* L)
+{
+	return 0;
+}
+
+static int dir_newindex(lua_State* L)
+{
+	return 0;
+}
+
 bool anet_directory_lua_init(struct global_cfg* cfg)
 {
 	L = luaL_newstate();
@@ -348,7 +363,13 @@ bool anet_directory_lua_init(struct global_cfg* cfg)
 	}
 
 	luaL_openlibs(L);
-	applid = NULL;
+
+	luaL_newmetatable(L, "dircl");
+	lua_pushcfunction(L, dir_index);
+	lua_setfield(L, -2, "__index");
+	lua_pushcfunction(L, dir_newindex);
+	lua_setfield(L, -2, "__newindex");
+	lua_pop(L, 1);
 
 	luaL_newmetatable(L, "cfgtbl");
 	lua_pushcfunction(L, cfg_index);
@@ -372,15 +393,11 @@ bool anet_directory_lua_init(struct global_cfg* cfg)
 	lua_pop(L, 1);
 
 /*
- * build two tables, "active" which will contain all active clients
- * and "config" which will contain the current config.
+ * build "config" which will contain the current config.
  *
  * then call 'init' which lets the script in 'fn' mutate 'config',
  * open 'DB' and then expose the database accessor functions.
  */
-	lua_newtable(L); /* TABLE */
-	lua_setglobal(L, "active"); /* nil*/
-
 	lua_newtable(L); /* TABLE */
 	luaL_getmetatable(L, "cfgtbl");
 	lua_setmetatable(L, -2);
@@ -430,44 +447,89 @@ bool anet_directory_lua_init(struct global_cfg* cfg)
 	return true;
 }
 
-/* build a lua context for the client or attach to a specific one for an appl */
-void anet_directory_lua_register(struct dircl* C, const char* appl)
+int anet_directory_lua_filter_source(struct dircl* C, arcan_event* ev)
 {
-	if (appl){
-/* send message or spawn appl-runner */
+/* look for the entrypoint */
+	lua_getglobal(L, "new_source");
+	if (!lua_isfunction(L, -1)){
+		lua_pop(L, 1);
+		return 0;
 	}
-	else {
-		C->script_state = L;
-	}
+
+/* call event + type into it */
+	push_dircl(L, C);
+	lua_pushstring(L, ev->ext.netstate.name); /* caller guarantees termination */
+	if (ev->ext.netstate.type == ROLE_DIR)
+		lua_pushstring(L, "directory");
+	else if (ev->ext.netstate.type == ROLE_SOURCE)
+		lua_pushstring(L, "source");
+	else if (ev->ext.netstate.type == ROLE_SINK)
+		lua_pushstring(L, "sink");
+
+/* script errors should perhaps be treated more leniently in the config,
+ * copy patterns from arcan_lua.c if so, but for the time being be strict */
+	lua_call(L, 3, 0);
+
+	return 1;
 }
 
-/* filter list of available appls before passing to user */
-bool anet_directory_lua_filter_dirlist(
-	struct dircl* C, char* list, size_t list_sz,
-	char** out_list, size_t out_sz)
+struct pk_response
+	anet_directory_lua_register_unknown(struct dircl* C, struct pk_response base)
 {
-	return false;
+	lua_getglobal(L, "register_unknown");
+	if (!lua_isfunction(L, -1)){
+		lua_pop(L, 1);
+		return base;
+	}
+
+	push_dircl(L, C);
+	lua_call(L, 1, 1);
+	if (lua_type(L, -1) == LUA_TBOOLEAN){
+		base.authentic = lua_toboolean(L, -1);
+	}
+
+	lua_pop(L, 1);
+	return base;
 }
 
-/* for post-transfer completion hooks to perform atomic rename / fileswaps etc. */
-void anet_directory_lua_bchunk_completion(struct dircl* C, bool ok)
+void anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 {
-	if (!C->script_state)
+/* Check if there already is a runner for the appl. */
+	struct runner* cur = &RUNNERS;
+	struct runner** tgt;
+
+	char* argv[] = {CFG->path_self, "dirappl", NULL, NULL};
+
+	struct shmifsrv_envp env = {
+		.path = CFG->path_self,
+		.envv = NULL,
+		.argv = argv,
+		.detach = 2 | 4 | 8
+	};
+
+	int clsock;
+	struct shmifsrv_client* cl = shmifsrv_spawn_client(env, &clsock, NULL, 0);
+
+	struct dircl* newent = malloc(sizeof(struct dircl));
+	*newent = (struct dircl){
+		.C = cl,
+		.in_appl = -1,
+		.endpoint = {
+			.category = EVENT_EXTERNAL,
+			.ext.kind = EVENT_EXTERNAL_NETSTATE
+		}
+	};
+}
+
+void anet_directory_lua_register(struct dircl* C)
+{
+	lua_getglobal(L, "register");
+	if (!lua_isfunction(L, -1)){
+		lua_pop(L, 1);
 		return;
-}
-
-/* type sets resource type and domain (current appl, server-shared, user-state) */
-int anet_directory_lua_bchunk_req(struct dircl* C, int type, const char* name)
-{
-	return -1;
-}
-
-void anet_directory_lua_unregister(struct dircl* C, const char* appl)
-{
-	if (appl){
-
 	}
-	else {
-		C->script_state = NULL;
-	}
+
+	push_dircl(L, C);
+	lua_call(L, 1, 0);
+	return;
 }

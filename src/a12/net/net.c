@@ -28,7 +28,8 @@ enum anet_mode {
 	ANET_SHMIF_SRV_INHERIT,
 	ANET_SHMIF_EXEC,
 	ANET_SHMIF_EXEC_OUTBOUND,
-	ANET_SHMIF_DIRSRV_INHERIT
+	ANET_SHMIF_DIRSRV_INHERIT,
+	ANET_SHMIF_SRVAPP_INHERIT
 };
 
 enum mt_mode {
@@ -1034,7 +1035,6 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			}
 			a12_set_trace_level(val, stderr);
 		}
-
 /* a12 client, shmif server */
 		else if (strcmp(argv[i], "-s") == 0){
 			if (opts->mode)
@@ -1286,6 +1286,11 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 					"Missing config file argument (/path/to/config.lua", argv, i - 1);
 
 			global.config_file = argv[i];
+
+/* swap out stdin so key-auth local won't query at all since the config
+ * script now takes on that responsibility */
+			close(STDIN_FILENO);
+			open("/dev/null", O_RDONLY);
 		}
 		else if (strcmp(argv[i], "--directory") == 0){
 			if (!getenv("ARCAN_APPLBASEPATH")){
@@ -1637,6 +1642,12 @@ int main(int argc, char** argv)
 
 	if (argc > 1 && strcmp(argv[1], "discover") == 0){
 		return run_discover_command(argc, argv);
+	}
+
+/* sandboxed 'per appl with server scripts' runner on-demand */
+	if (argc > 1 && strcmp(argv[1], "dirappl") == 0){
+		anet_directory_appl_runner();
+		return EXIT_SUCCESS;
 	}
 
 	if (argc < 2 || (argc == 2 &&

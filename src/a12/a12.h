@@ -76,6 +76,7 @@ struct appl_meta {
 	FILE* handle;
 	char* buf;
 	uint64_t buf_sz;
+	bool server_appl;
 
 	struct appl_meta* next;
 

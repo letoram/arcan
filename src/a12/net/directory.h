@@ -86,8 +86,9 @@ struct directory_meta {
 struct dircl;
 
 struct dircl {
-	void* script_state;
 	int in_appl;
+	int appl_runner_fd;
+
 	char identity[16];
 
 	int type;
@@ -202,15 +203,27 @@ struct ioloop_shared {
 /* build the global- lua context and tie to a sqlite database represented by fd */
 bool anet_directory_lua_init(struct global_cfg* cfg);
 
-/* attach the specific client to the global lua context or to a specific appl runner
- * if set !null */
-void anet_directory_lua_register(struct dircl* C, const char* appl);
+/* privsep process running server-side scripts for an appl */
+void anet_directory_appl_runner();
+
+struct pk_response
+	anet_directory_lua_register_unknown(struct dircl* C, struct pk_response base);
+void anet_directory_lua_register(struct dircl* C);
+
+/* Theoretically it's possble for one C to be in multiple appls so the API
+ * reflects that, even though right now that is constrained to 1:(0,1) in the
+ * dir_srv.c side. Leave doesn't strictly happen here as the appl-runner
+ * process handles that part of messaging. */
+void anet_directory_lua_join(struct dircl* C, struct appl_meta* appl);
 
 /* for post-transfer completion hooks to perform atomic rename / fileswaps etc. */
 void anet_directory_lua_bchunk_completion(struct dircl* C, bool ok);
 
-/* detach the specific client from the global lua context */
-void anet_directory_lua_unregister(struct dircl* C, const char* appl);
+/* <0, reject
+ * =0, don't-care / default
+ *  1, accept
+ */
+int anet_directory_lua_filter_source(struct dircl* C, arcan_event* ev);
 
 void anet_directory_tunnel_thread(struct ioloop_shared* ios, struct a12_state* S);
 void anet_directory_ioloop(struct ioloop_shared* S);

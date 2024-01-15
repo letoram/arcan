@@ -9,6 +9,7 @@ set(SOURCES
 	net.c
 	nbio.c
 	dir_lua.c
+	dir_lua_appl.c
 	dir_cl.c
 	dir_srv.c
 	dir_srv_worker.c
