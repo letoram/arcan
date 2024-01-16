@@ -17,6 +17,8 @@ set(SOURCES
 	${ARCAN_SRC}/engine/arcan_db.c
 	${ARCAN_SRC}/platform/posix/warning.c
 	${ARCAN_SRC}/platform/posix/dbpath.c
+	${ARCAN_SRC}/platform/posix/resource_io.c
+	${ARCAN_SRC}/platform/posix/map_resource.c
 	${ARCAN_SRC}/platform/stub/mem.c
 	${ARCAN_SRC}/frameserver/util/anet_helper.c
 	${ARCAN_SRC}/frameserver/util/anet_keystore_naive.c
