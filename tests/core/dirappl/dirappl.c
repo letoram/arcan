@@ -27,6 +27,7 @@ void* worker(void* arg)
 			.category = EVENT_EXTERNAL,
 			.ext.kind = EVENT_EXTERNAL_NETSTATE,
 			.ext.netstate = {
+				.name = {1, 2, 3, 4, 5, 6, 7, 8}
 			}
 		});
 	arcan_pushhandle(-1, C.epipe);
