@@ -1434,6 +1434,21 @@ static void shmif_exit(int c)
 	debug_print(FATAL, NULL, "guard thread empty");
 }
 
+static bool get_shmkey_from_socket(int sock, char* wbuf, size_t sz)
+{
+/* do this the slow way rather than juggle block/nonblock states */
+	size_t ofs = 0;
+	do {
+		if (-1 == read(sock, wbuf + ofs, 1)){
+			return false;
+		}
+	}
+	while(wbuf[ofs++] != '\n' && ofs < sz);
+	wbuf[ofs-1] = '\0';
+
+	return true;
+}
+
 char* arcan_shmif_connect(
 	const char* connpath, const char* connkey, file_handle* conn_ch)
 {
@@ -1484,7 +1499,8 @@ retry:
 		goto retry;
 	}
 
-/* 2. send (optional) connection key, we send that first (keylen + linefeed) */
+/* 2. send (optional) connection key, we send that first (keylen + linefeed),
+ *    this setup is dated and should just be removed */
 	char wbuf[PP_SHMPAGE_SHMKEYLIM+1];
 	if (connkey){
 		ssize_t nw = snprintf(wbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", connkey);
@@ -1504,16 +1520,11 @@ retry:
 	}
 
 /* 3. wait for key response (or broken socket) */
-	size_t ofs = 0;
-	do {
-		if (-1 == read(sock, wbuf + ofs, 1)){
-			debug_print(FATAL, NULL, "invalid response on negotiation: %s", strerror(errno));
-			close(sock);
-			goto end;
-		}
+	if (!get_shmkey_from_socket(sock, wbuf, sizeof(wbuf)-1)){
+		debug_print(FATAL, NULL, "invalid response on negotiation: %s", strerror(errno));
+		close(sock);
+		goto end;
 	}
-	while(wbuf[ofs++] != '\n' && ofs < PP_SHMPAGE_SHMKEYLIM);
-	wbuf[ofs-1] = '\0';
 
 /* 4. omitted, just return a copy of the key and let someone else perform the
  * arcan_shmif_acquire call. Just set the env. */
@@ -3229,12 +3240,21 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 
 	bool networked = false;
 
-/* inheritance based, still somewhat rugged until it is tolerable with one path
+/* Inheritance based, still somewhat rugged until it is tolerable with one path
  * for osx and one for all the less broken OSes where we can actually inherit
- * both semaphores and socket without problem */
-	if (getenv("ARCAN_SHMKEY") && getenv("ARCAN_SOCKIN_FD")){
-		keyfile = strdup(getenv("ARCAN_SHMKEY"));
+ * both semaphores and shmpage without problem. If no key is provided we still
+ * read that from the socket. */
+	if (getenv("ARCAN_SOCKIN_FD")){
 		dpipe = (int) strtol(getenv("ARCAN_SOCKIN_FD"), NULL, 10);
+		if (getenv("ARCAN_SHMKEY")){
+			keyfile = strdup(getenv("ARCAN_SHMKEY"));
+		}
+		else {
+			char wbuf[PP_SHMPAGE_SHMKEYLIM+1];
+			if (get_shmkey_from_socket(dpipe, wbuf, PP_SHMPAGE_SHMKEYLIM)){
+				keyfile = strdup(wbuf);
+			}
+		}
 		unsetenv("ARCAN_SOCKIN_FD");
 		unsetenv("ARCAN_HANDOVER_EXEC");
 		unsetenv("ARCAN_SHMKEY");
