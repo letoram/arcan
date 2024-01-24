@@ -22,6 +22,15 @@ void* worker(void* arg)
 			&args
 		);
 
+	arcan_shmif_enqueue(&C,
+		&(struct arcan_event){
+			.category = EVENT_EXTERNAL,
+			.ext.kind = EVENT_EXTERNAL_NETSTATE,
+			.ext.netstate = {
+			}
+		});
+	arcan_pushhandle(-1, C.epipe);
+
 	struct arcan_event ev;
 	while (arcan_shmif_wait(&C, &ev)){
 		const char* evstr = arcan_shmif_eventstr(&ev, NULL, 0);
@@ -35,8 +44,8 @@ void* worker(void* arg)
 
 static void spawn_worker(struct shmifsrv_client* cl, char* name, int dfd)
 {
-/* send the appl dirhandle, can be re-used to send store access as well
- * as database handle */
+/* send the appl dirhandle,
+ * can be re-used to send store access as well as database handle */
 	struct arcan_event outev =
 		(struct arcan_event){
 			.category = EVENT_TARGET,
@@ -54,13 +63,14 @@ static void spawn_worker(struct shmifsrv_client* cl, char* name, int dfd)
 	shmifsrv_enqueue_event(cl, &(struct arcan_event){
 			.category = EVENT_TARGET,
 			.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
-			.tgt.message = ".worker",
+			.tgt.message = ".worker=test",
 		}, sv[0]);
 	close(sv[0]);
 
 	char buf[8];
 	snprintf(buf, 8, "%d", sv[1]);
 	setenv("ARCAN_SOCKIN_FD", buf, 1);
+
 	pthread_t pth;
 	pthread_attr_t pthattr;
 	pthread_attr_init(&pthattr);
@@ -74,6 +84,9 @@ int main(int argc, char** argv)
 		fprintf(stderr, "Use: dirappl /path/to/appldir; ARCAN_CONNPATH=dirappl arcan-net dirappl\n");
 		return EXIT_FAILURE;
 	}
+
+/* connpath is evaluated before sockin_fd */
+	unsetenv("ARCAN_CONNPATH");
 
 	int dfd = open(argv[1], O_RDONLY | O_DIRECTORY);
 	if (-1 == dfd){
