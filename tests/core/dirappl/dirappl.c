@@ -56,8 +56,9 @@ static void spawn_worker(struct shmifsrv_client* cl, char* name, int dfd)
 	shmifsrv_enqueue_event(cl, &outev, dfd);
 
 /* Setup 'fake' shmif client representing the worker, do this by a socketpair
- * that turns into shmifsrv_inherit_connection in the worker, and sneak it in
+ * that turns into shmifsrv_inherit_connection in the runner, and sneak it in
  * here with ARCAN_SOCKIN_FD + shmif_open into a separate process thread.
+ * For the proper process, the worker gets a NEWSEGMENT with their end.
  */
 	int sv[2];
 	socketpair(AF_UNIX, SOCK_STREAM, 0, sv);

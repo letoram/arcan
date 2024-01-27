@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <sqlite3.h>
+#include <errno.h>
 #include <arcan_shmif.h>
 #include <arcan_shmif_server.h>
 
@@ -28,14 +29,6 @@ static lua_State* L;
 static struct arcan_dbh* DB;
 static struct global_cfg* CFG;
 static bool INITIALIZED;
-
-struct runner;
-
-static struct runner {
-	uint16_t identifier;
-	struct shmifsrv_client* C;
-	struct runner* next;
-} RUNNERS;
 
 static void dump_stack(lua_State* L, FILE* dst)
 {
@@ -494,31 +487,68 @@ struct pk_response
 
 void anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 {
-/* Check if there already is a runner for the appl. */
-	struct runner* cur = &RUNNERS;
-	struct runner** tgt;
+	struct shmifsrv_client* runner = appl->server_tag;
 
-	char* argv[] = {CFG->path_self, "dirappl", NULL, NULL};
+/* no active runner, launch */
+	if (!runner){
+		char* argv[] = {CFG->path_self, "dirappl", NULL, NULL};
+		struct shmifsrv_envp env = {
+			.path = CFG->path_self,
+			.envv = NULL,
+			.argv = argv,
+			.detach = 2 | 4 | 8
+		};
 
-	struct shmifsrv_envp env = {
-		.path = CFG->path_self,
-		.envv = NULL,
-		.argv = argv,
-		.detach = 2 | 4 | 8
-	};
-
-	int clsock;
-	struct shmifsrv_client* cl = shmifsrv_spawn_client(env, &clsock, NULL, 0);
-
-	struct dircl* newent = malloc(sizeof(struct dircl));
-	*newent = (struct dircl){
-		.C = cl,
-		.in_appl = -1,
-		.endpoint = {
-			.category = EVENT_EXTERNAL,
-			.ext.kind = EVENT_EXTERNAL_NETSTATE
+/* open the directory to the server appl */
+		int clsock;
+		runner = shmifsrv_spawn_client(env, &clsock, NULL, 0);
+		if (!runner){
+			a12int_trace(
+				A12_TRACE_DIRECTORY, "fail to launch arcan-net in dirappl mode");
+			return;
 		}
-	};
+
+/* Wait for the new process to load/connect or fail. */
+
+/* Ready, send the dirfd along with the name to the runner, this is where one
+ * would queue up database and secondary namespaces like appl-shared. */
+		struct arcan_event outev =
+		(struct arcan_event){
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
+		};
+		int dfd = -1;
+		snprintf(outev.tgt.message, sizeof(outev.tgt.message), "%s", appl->appl.name);
+		shmifsrv_enqueue_event(runner, &outev, dfd);
+ 	}
+
+/* send the server-end to the appl-runner which will shmifsrv_inherit, when
+ * that happens the other end of the socket will send the shmif primitives to
+ * the worker. */
+	int sv[2];
+	if (-1 == socketpair(AF_UNIX, SOCK_STREAM, 0, sv)){
+		a12int_trace(A12_TRACE_DIRECTORY, "kind=error:socketpair.2=%d", errno);
+		return;
+	}
+
+	shmifsrv_enqueue_event(runner, &(struct arcan_event){
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
+			.tgt.message = ".worker"
+	}, sv[0]);
+
+	shmifsrv_enqueue_event(C->C, &(struct arcan_event){
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_NEWSEGMENT,
+/* don't really need any metadata in ioevs - worker knows due to it providing
+ * the registration/ident, and we don't have any other subseg uses right now
+ * (DEBUG would take a special path anyhow) */
+	}, sv[1]);
+
+	a12int_trace(A12_TRACE_DIRECTORY,
+		"kind=status:worker_join=%s", C->endpoint.ext.netstate.name);
+	close(sv[0]);
+	close(sv[1]);
 }
 
 void anet_directory_lua_register(struct dircl* C)

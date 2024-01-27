@@ -87,7 +87,6 @@ struct dircl;
 
 struct dircl {
 	int in_appl;
-	int appl_runner_fd;
 
 	char identity[16];
 

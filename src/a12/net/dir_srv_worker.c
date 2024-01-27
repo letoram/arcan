@@ -418,6 +418,30 @@ static void do_event(
 	if (ev->tgt.kind == TARGET_COMMAND_BCHUNK_IN){
 		bchunk_event(S, cbt, C, ev);
 	}
+	else if (ev->tgt.kind == TARGET_COMMAND_NEWSEGMENT){
+		if (ioloop_shared->shmif.addr)
+			arcan_shmif_drop(&ioloop_shared->shmif);
+
+		ioloop_shared->shmif =
+			arcan_shmif_acquire(&shmif_parent_process, NULL, SEGID_NETWORK_CLIENT, 0);
+		if (!ioloop_shared->shmif.addr){
+			a12int_trace(A12_TRACE_DIRECTORY, "kind=error:appl_runner_channel");
+			return;
+		}
+
+/* Placeholder name, this should be H(Kpub | Applname) */
+		arcan_shmif_enqueue(&ioloop_shared->shmif,
+			&(struct arcan_event){
+				.category = EVENT_EXTERNAL,
+				.ext.kind = EVENT_EXTERNAL_NETSTATE,
+				.ext.netstate = {
+					.name = {1, 2, 3, 4, 5, 6, 7, 8}
+				}
+			});
+
+		a12int_trace(A12_TRACE_DIRECTORY, "kind=status:appl_runner:join");
+
+	}
 	else if (ev->tgt.kind == TARGET_COMMAND_MESSAGE){
 		struct arg_arr* stat = arg_unpack(ev->tgt.message);
 
@@ -445,6 +469,18 @@ static void do_event(
 
 /* reserved for other messages */
 		arg_cleanup(stat);
+	}
+}
+
+static void on_appl_shmif(struct ioloop_shared* S)
+{
+	struct arcan_event ev;
+
+/* most of these behave just like on_shmif, it is just a different sender */
+	while (arcan_shmif_poll(&S->shmif, &ev) > 0){
+		a12int_trace(
+			A12_TRACE_DIRECTORY,
+			"to_appl=%s", arcan_shmif_eventstr(&ev, NULL, 0));
 	}
 }
 
@@ -646,16 +682,26 @@ void anet_directory_srv(
 			&args
 		);
 
-/* Now that we have the shmif context, all we need is stdio and descriptor
-	 passing. The rest - keystore, state access, everything is done elsewhere.
+/* Now that we have the shmif context, all we should need is stdio and
+	 descriptor passing. The rest - keystore, state access, everything is done
+	 elsewhere.
 
 	 For meaningful access the attacker would have to get local code-exec,
 	 infoleak the shmpage, find a vuln in either the BCHUNKSTATE event handling
 	 code or the simplified use of shmif in the parent process with
 	 stdio/fdpassing level of syscalls.
+
+	 This is not complete. In order for shm_open, sem_open to work when joining
+	 an appl group with a server end connection we still need the wider
+	 permissions. Before dropping /tmp here and going to minimalfd we need to
+	 rewrite the sem_ functions to work using futexes on the shared memory page.
 */
-	struct shmif_privsep_node* paths[] = {NULL};
-	arcan_shmif_privsep(&shmif_parent_process, "minimalfd", paths, 0);
+	struct shmif_privsep_node* paths[] =
+	{
+		&(struct shmif_privsep_node){.path = "/tmp", .perm = "w"},
+		NULL
+	};
+	arcan_shmif_privsep(&shmif_parent_process, SHMIF_PLEDGE_PREFIX, paths, 0);
 
 /* Flush out the event loop before starting as that is likely to update our
  * list of active directory entries as well as configure our a12_ctx_opts. this
@@ -701,6 +747,7 @@ void anet_directory_srv(
 		.userfd2 = -1,
 		.on_event = on_a12srv_event,
 		.on_userfd = on_shmif,
+		.on_shmif = on_appl_shmif,
 		.lock = PTHREAD_MUTEX_INITIALIZER,
 		.cbt = &cbt,
 	};

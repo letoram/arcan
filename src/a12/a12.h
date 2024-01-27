@@ -72,11 +72,13 @@ struct appl_meta;
 struct appl_meta {
 
 /* These are used for local caching of contents, an update on the directory
- * bound to the context or freeing the a12 state machine will free them. */
+ * bound to the context or freeing the a12 state machine will free them and
+ * force-reload / re-join anyone within them. */
 	FILE* handle;
 	char* buf;
 	uint64_t buf_sz;
 	bool server_appl;
+	void* server_tag;
 
 	struct appl_meta* next;
 

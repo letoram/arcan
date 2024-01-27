@@ -913,12 +913,6 @@ make_random:
 	}
 
 	struct appl_meta* cur;
-	if (C->in_appl != -1){
-		if (0 < C->appl_runner_fd){
-			close(C->appl_runner_fd);
-			C->appl_runner_fd = -1;
-		}
-	}
 
 	pthread_mutex_lock(&active_clients.sync);
 	cur = locked_numid_appl(ind);
@@ -1019,7 +1013,7 @@ static void* dircl_process(void* P)
 				handle_bchunk_req(C, (char*) ev.ext.bchunk.extensions, ev.ext.bchunk.input);
 			}
 
-/* bounce-back ack streamsatus */
+/* bounce-back ack streamstatus */
 			else if (ev.ext.kind == EVENT_EXTERNAL_STREAMSTATUS){
 				shmifsrv_enqueue_event(C->C, &ev, -1);
 				if (C->pending_stream){
