@@ -123,6 +123,11 @@ if (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client")
 	amsg("${CL_WHT}Optional library flags:${CL_RST}")
 	amsg("${CL_YEL}\t-DSHMIF_DISABLE_DEBUGIF=${CL_GRN}[Off|On]${CL_RST} - Remove server- controlled debug layer")
 	amsg("")
+	amsg("${CL_WHT}Optional arcan-net flags:${CL_RST}")
+	amsg("${CL_YEL}\t-DSTATIC_SQLite3=${CL_GRN}[Off|On]${CL_RST} - In-source SQLite3")
+	amsg("")
+	
+	option(STATIC_SQLite3 "Use SQLite3 Amalgamation" OFF)
 
 	if (${CMAKE_SYSTEM_NAME} MATCHES "BSD|DragonFly")
 		set(BSD_BUILD TRUE)
@@ -314,6 +319,16 @@ if (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client")
 	find_package(Freetype REQUIRED QUIET)
 	set(FREETYPE_DEFAULT_LIBRARIES ${FREETYPE_LIBRARIES})
 	set(FREETYPE_DEFAULT_INCLUDE_DIRS ${FREETYPE_INCLUDE_DIRS})
+
+	if (STATIC_SQLite3)
+		amsg("${CL_YEL}Building SQLite3 from external/sqlite mirror${CL_RST}")
+		add_library(sqlite3 STATIC ${EXTERNAL_SRC_DIR}/sqlite/sqlite3.c)
+		set_target_properties(sqlite3 PROPERTIES COMPILE_FLAGS "-Os")
+		set(SQLite3_INCLUDE_DIR ${EXTERNAL_SRC_DIR}/sqlite)
+		set(SQLite3_LIBRARIES sqlite3)
+	else()
+		find_package(SQLite3 REQUIRED QUIET)
+	endif()
 
 	set(INCLUDE_DIRS
 		${CMAKE_CURRENT_SOURCE_DIR}/engine

@@ -35,7 +35,7 @@ static void dump_stack(lua_State* L, FILE* dst)
 	int top = lua_gettop(L);
 	fprintf(dst, "-- stack dump (%d)--\n", top);
 
-	for (size_t i = 1; i <= top; i++){
+	for (int i = 1; i <= top; i++){
 		int t = lua_type(L, i);
 
 		switch (t){

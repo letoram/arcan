@@ -264,12 +264,13 @@ static void process_event(struct arcan_event* ev)
 		return;
 
 	switch (ev->tgt.kind){
-	case TARGET_COMMAND_BCHUNK_IN:
+	case TARGET_COMMAND_BCHUNK_IN:{
 		int fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true);
 		if (ev->tgt.message[0] != '.')
 			open_appl(fd, ev->tgt.message);
 		else
 			meta_resource(fd, ev->tgt.message);
+	}
 	break;
 	case TARGET_COMMAND_STEPFRAME:
 	break;
