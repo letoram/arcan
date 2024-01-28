@@ -25,6 +25,10 @@
 #include "anet_helper.h"
 #include "directory.h"
 
+#if LUA_VERSION_NUM == 501
+	#define lua_rawlen(x, y) lua_objlen(x, y)
+#endif
+
 static lua_State* L;
 static struct arcan_dbh* DB;
 static struct global_cfg* CFG;
@@ -103,11 +107,6 @@ static int cfg_index(lua_State* L)
 {
 	const char* key = luaL_checkstring(L, 2);
 
-	if (strcmp(key, "secret") == 0){
-		lua_pushstring(L, CFG->meta.opts->secret);
-		return 1;
-	}
-
 	if (strcmp(key, "allow_tunnel") == 0){
 		lua_pushboolean(L, CFG->dirsrv.allow_tunnel);
 		return 1;
@@ -118,7 +117,7 @@ static int cfg_index(lua_State* L)
 		return 1;
 	}
 
-	luaL_error(L, "unknown key: %s, allowed: secret, allow_tunnel, log_level\n", key);
+	luaL_error(L, "unknown key: %s, allowed: allow_tunnel, log_level\n", key);
 	return 0;
 }
 
@@ -138,31 +137,98 @@ static const char* trace_groups[] = {
 	"directory"
 };
 
-static int cfg_newindex(lua_State* L)
+static int cfgsec_index(lua_State* L)
 {
 	const char* key = luaL_checkstring(L, 2);
 
 	if (strcmp(key, "secret") == 0){
+		lua_pushstring(L, CFG->meta.opts->secret);
+		return 1;
+	}
+	if (strcmp(key, "soft_auth") == 0){
+		lua_pushboolean(L, CFG->soft_auth);
+		return 1;
+	}
+
+	luaL_error(L, "unknown key: %s, allowed: secret, soft_auth\n", key);
+	return 0;
+}
+
+static bool alua_tobnumber(lua_State* L, int ind, const char* key)
+{
+	bool state = false;
+	if (lua_type(L, ind) == LUA_TBOOLEAN){
+		state = lua_toboolean(L, ind);
+	}
+	else if (lua_type(L, ind) == LUA_TNUMBER){
+		int num = lua_tonumber(L, ind);
+		if (num != 0 && num != 1)
+			luaL_error(L, "%s = [0 | false | true | 1]\n", key);
+		state = num == 1;
+	}
+	else
+		luaL_error(L, "%s = [int | bool]\n", key);
+
+	return state;
+}
+
+static int cfgsec_newindex(lua_State* L)
+{
+	const char* key = luaL_checkstring(L, 2);
+	if (strcmp(key, "secret") == 0){
 		const char* val = luaL_checkstring(L, 3);
 
 		if (strlen(val) > 31 || !*val)
-			luaL_error(L, "secret = (0 < string < 32)");
+			luaL_error(L, "secret = (0 < string < 32)\n");
 		snprintf(CFG->meta.opts->secret, 32, "%s", val);
 	}
-	else if (strcmp(key, "allow_tunnel") == 0){
-		if (lua_type(L, 3) != LUA_TBOOLEAN)
-			luaL_error(L, "allow_tunnel = [true | false]");
-		CFG->dirsrv.allow_tunnel = !!lua_tonumber(L, 3);
+	else if (strcmp(key, "soft_auth") == 0){
+		CFG->soft_auth = alua_tobnumber(L, 3, "soft_auth");
+	}
+	else
+		luaL_error(L, "unknown key: %s, allowed: secret, soft_auth", key);
+
+	return 0;
+}
+
+static int cfg_newindex(lua_State* L)
+{
+	const char* key = luaL_checkstring(L, 2);
+
+	if (strcmp(key, "allow_tunnel") == 0){
+		CFG->dirsrv.allow_tunnel = alua_tobnumber(L, 3, "allow_tunnel");
+	}
+	else if (strcmp(key, "directory_server") == 0){
+		if (alua_tobnumber(L, 3, "directory_server")){
+			CFG->meta.mode = 1; /* anet_shmif_cl, but with --directory is -l */
+			CFG->meta.opts->local_role = ROLE_DIR;
+		}
+		else {
+			CFG->meta.opts->local_role = ROLE_SINK;
+		}
+		CFG->meta.opts->local_role =
+			alua_tobnumber(L, 3, "directory_server") ?
+				ROLE_DIR : ROLE_SINK;
 	}
 	else if (strcmp(key, "log_level") == 0){
 		if (lua_type(L, 3) == LUA_TTABLE){
-			a12_trace_targets = 0;
-			for (size_t i = 0; i <= COUNT_OF(trace_groups); i++){
-				lua_getfield(L, 3, trace_groups[i]);
-				if (lua_toboolean(L, -1)){
-					a12_trace_targets |= 1 << i;
-				}
+			for (size_t i = 0; i < lua_rawlen(L, 3); i++){
+				lua_rawgeti(L, 3, i+1);
+				if (lua_type(L, -1) == LUA_TSTRING){
+					const char* key = lua_tostring(L, -1);
+					for (size_t j = 0; j < COUNT_OF(trace_groups); j++){
+						if (strcmp(key, trace_groups[j]) == 0){
+							a12_trace_targets |= 1 << j;
+							break;
+						}
+						else if (j == COUNT_OF(trace_groups) -1){
+							luaL_error(L, "log_level = ... unknown group: %s\n", key);
+						}
+					}
 				lua_pop(L, 1);
+				}
+				else
+					luaL_error(L, "log_level = [num] | {group1str, group2str, ...}\n");
 			}
 		}
 		else if (lua_type(L, 3) == LUA_TNUMBER){
@@ -176,16 +242,49 @@ static int cfg_newindex(lua_State* L)
 			luaL_error(L, "couldn't open (w+): config.log_target = %s\n", path);
 		a12_set_trace_level(a12_trace_targets, fpek);
 	}
+	else if (strcmp(key, "listen_port") == 0){
+		int port = lua_tonumber(L, 3);
+		if (port <= 0 || port > 65535)
+			luaL_error(L, "port (%d) = 0 < n < 65536\n", port);
+		char port_str[6];
+		snprintf(port_str, 6, "%d", port);
+		CFG->meta.port = strdup(port_str);
+	}
 	else
-		luaL_error(L, "unknown key: config.%s, allowed: secret, allow_tunnel\n", key);
+		luaL_error(L, "unknown key: config.%s, allowed: "
+			"allow_tunnel, directory_server, log_level, log_target, listen_port\n", key);
 
 	return 0;
+}
+
+static bool got_permlut;
+static struct {
+	const char* key;
+	char** val;
+} permlut[] = {
+	{.key = "source"},
+	{.key = "dir"},
+	{.key = "appl"},
+	{.key = "resources"}
+};
+
+static void build_lookups(struct global_cfg* CFG)
+{
+	permlut[0].val = &CFG->dirsrv.allow_src;
+	permlut[1].val = &CFG->dirsrv.allow_dir;
+	permlut[2].val = &CFG->dirsrv.allow_appl;
+	permlut[3].val = &CFG->dirsrv.allow_ares;
 }
 
 static int cfgperm_index(lua_State* L)
 {
 	const char* key = luaL_checkstring(L, 2);
-	printf("perm-index: %s\n", key);
+	for (size_t i = 0; i < COUNT_OF(permlut); i++){
+		if (strcmp(permlut[i].key, key) == 0){
+			lua_pushstring(L, *permlut[i].val ? *permlut[i].val : "");
+			return 1;
+		}
+	}
 
 	return 0;
 }
@@ -194,25 +293,16 @@ static int cfgperm_newindex(lua_State* L)
 {
 	const char* key = luaL_checkstring(L, 2);
 
-	if (strcmp(key, "source") == 0){
-		if (CFG->dirsrv.allow_src)
-			free(CFG->dirsrv.allow_src);
-		CFG->dirsrv.allow_src = strdup(luaL_checkstring(L, 3));
-	}
-	else if (strcmp(key, "dir") == 0){
-		if (CFG->dirsrv.allow_dir)
-			free(CFG->dirsrv.allow_dir);
-		CFG->dirsrv.allow_dir = strdup(luaL_checkstring(L, 3));
-	}
-	else if (strcmp(key, "appl") == 0){
-		if (CFG->dirsrv.allow_appl)
-			free(CFG->dirsrv.allow_appl);
-		CFG->dirsrv.allow_appl = strdup(luaL_checkstring(L, 3));
-	}
-	else if (strcmp(key, "resources") == 0){
-		if (CFG->dirsrv.allow_ares)
-			free(CFG->dirsrv.allow_ares);
-		CFG->dirsrv.allow_ares = strdup(luaL_checkstring(L, 3));
+	for (size_t i = 0; i < COUNT_OF(permlut); i++){
+		if (strcmp(permlut[i].key, key) == 0){
+			if (permlut[i].val)
+				free(*permlut[i].val);
+			*permlut[i].val = strdup(luaL_checkstring(L, 3));
+			break;
+		}
+		if (i == COUNT_OF(permlut)){
+			luaL_error(L, "Unknown key: permissions.%s\n", key);
+		}
 	}
 	return 0;
 }
@@ -247,7 +337,7 @@ static int cfgpath_index(lua_State* L)
 	}
 
 	luaL_error(L, "unknown path: config.paths.%s, "
-		"accepted: database, appl, appl_server, keystore, resources", key);
+		"accepted: database, appl, appl_server, keystore, resources\n", key);
 
 	return 0;
 }
@@ -262,11 +352,11 @@ static int cfgpath_newindex(lua_State* L)
 	if (strcmp(key, "appl") == 0){
 		const char* val = luaL_checkstring(L, 3);
 		if (-1 != CFG->directory){
-		close(CFG->directory);
+			close(CFG->directory);
 		}
 		CFG->directory = open(val, O_RDONLY | O_DIRECTORY);
 		if (-1 == CFG->directory){
-			luaL_error(L, "config.paths.appl = %s, can't open as directory", val);
+			luaL_error(L, "config.paths.appl = %s, can't open as directory\n", val);
 		}
 		CFG->flag_rescan = 1;
 		setenv("ARCAN_APPLBASEPATH", val, 1);
@@ -282,7 +372,7 @@ static int cfgpath_newindex(lua_State* L)
 
 		int dirfd = open(val, O_RDONLY | O_DIRECTORY);
 		if (-1 == dirfd)
-			luaL_error(L, "config.paths.appl_server = %s, can't open as directory", val);
+			luaL_error(L, "config.paths.appl_server = %s, can't open as directory\n", val);
 
 		CFG->dirsrv.appl_server_path = strdup(val);
 		CFG->dirsrv.appl_server_dfd = dirfd;
@@ -298,7 +388,7 @@ static int cfgpath_newindex(lua_State* L)
 
 		int dirfd = open(val, O_RDONLY | O_DIRECTORY);
 		if (-1 == dirfd)
-			luaL_error(L, "config.paths.appl_server = %s, can't open as directory", val);
+			luaL_error(L, "config.paths.appl_server = %s, can't open as directory\n", val);
 
 		CFG->dirsrv.resource_path = strdup(val);
 		CFG->dirsrv.resource_dfd = dirfd;
@@ -307,7 +397,7 @@ static int cfgpath_newindex(lua_State* L)
 
 /* remaining keys are read-only after init */
 	if (INITIALIZED)
-		luaL_error(L, "config.paths.%s, read/only after init()", key);
+		luaL_error(L, "config.paths.%s, read/only after init()\n", key);
 
 	if (strcmp(key, "database") == 0){
 		const char* val = luaL_checkstring(L, 3);
@@ -319,7 +409,7 @@ static int cfgpath_newindex(lua_State* L)
 		const char* val = luaL_checkstring(L, 3);
 		int dirfd = open(val, O_RDONLY | O_DIRECTORY);
 		if (-1 == dirfd)
-			luaL_error(L, "config.paths.keystore = %s, can't open as directory", val);
+			luaL_error(L, "config.paths.keystore = %s, can't open as directory\n", val);
 
 		if (CFG->meta.keystore.directory.dirfd > 0)
 			close(CFG->meta.keystore.directory.dirfd);
@@ -329,7 +419,7 @@ static int cfgpath_newindex(lua_State* L)
 	else {
 		luaL_error(L,
 			"unknown path key (%s), accepted:\n\t\n", key,
-			"database, appl, appl_server, keystore, resources");
+			"database, appl, appl_server, keystore, resources\n");
 	}
 
 	return 0;
@@ -349,6 +439,7 @@ bool anet_directory_lua_init(struct global_cfg* cfg)
 {
 	L = luaL_newstate();
 	CFG = cfg;
+	build_lookups(cfg);
 
 	if (!L){
 		fprintf(stderr, "luaL_newstate() - failed\n");
@@ -378,6 +469,13 @@ bool anet_directory_lua_init(struct global_cfg* cfg)
 	lua_setfield(L, -2, "__newindex");
 	lua_pop(L, 1);
 
+	luaL_newmetatable(L, "cfgsectbl");
+	lua_pushcfunction(L, cfgsec_index);
+	lua_setfield(L, -2, "__index");
+	lua_pushcfunction(L, cfgsec_newindex);
+	lua_setfield(L, -2, "__newindex");
+	lua_pop(L, 1);
+
 	luaL_newmetatable(L, "cfgpathtbl");
 	lua_pushcfunction(L, cfgpath_index);
 	lua_setfield(L, -2, "__index");
@@ -401,6 +499,13 @@ bool anet_directory_lua_init(struct global_cfg* cfg)
 	luaL_getmetatable(L, "cfgpermtbl");
 	lua_setmetatable(L, -2);
 	lua_rawset(L, -3); /* TABLE(cfgperm) */
+
+/* add security table to config */
+	lua_pushstring(L, "security"); /* TABLE(cftbl), STRING */
+	lua_createtable(L, 0, 10); /* TABLE (cfgtbl), "security", TABLE */
+	luaL_getmetatable(L, "cfgsectbl");
+	lua_setmetatable(L, -2);
+	lua_rawset(L, -3); /* TABLE(cfgtbl) */
 
 /* add paths table to config */
 	lua_pushstring(L, "paths"); /* TABLE(cfgtbl), STRING */

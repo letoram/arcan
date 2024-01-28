@@ -1624,7 +1624,7 @@ int main(int argc, char** argv)
  * so that the script config can easily override them */
 	global.meta.retry_count = -1;
 	global.meta.mt_mode = MT_FORK;
-	global.db_file = strdup(":memory");
+	global.db_file = strdup(":memory:");
 	global.outbound_tag = strdup("default");
 
 	global.meta.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));

@@ -7,6 +7,9 @@ local active = {}
 -- static override any parameters from the config (command-line set),
 -- these are only guaranteed write-enabled during init()
 function init()
+	config.directory_server = true
+	config.listen_port = 6680
+
 
 -- These are tags set on the keys in the keystore to allow any (authenticated)
 -- keys, set '*'.
@@ -19,9 +22,10 @@ function init()
 	config.permissions.appl = 'developer' -- clients allowed to update appl slots
 	config.permissions.resources = 'shared-content' -- clients allowed to write
 
--- calls to store_key, get_key, get_keys, match_keys functions will use this path,
--- default :memory means that there is no persistence across restarts.
-	config.paths.database = '/home/a12/database'
+-- Calls to store_key, get_key, get_keys, match_keys functions will use this path,
+-- default :memory: means that it is in-memory only and no persistence across restarts.
+-- Will be created if it doesn't exist.
+	config.paths.database = ':memory:'
 
 -- this is the base-set of appls, will be force-reloaded if updated (potentially expensive)
 	config.paths.appl = '/home/a12/appl'
@@ -40,7 +44,12 @@ function init()
 -- Authentication secret should only really be used in special cases where all
 -- sources / sinks / etc. can preshare a secret to mask the initial x25519
 -- handshake. It can also be set/updated dynamically.
--- config.secret = 'mypass'
+-- config.security.secret = 'mypass'
+
+-- Soft authentication permits unknown keys to connect, this only provides
+-- access to appl- download/messaging and source sinking and these can be
+-- further limited through filtering options below.
+	config.security.soft_auth = true
 
 -- Allowing tunneled transfers are a global option,
 -- it is suggested that it is permitted by default as the tunnel-source or
