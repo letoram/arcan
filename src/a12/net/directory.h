@@ -214,7 +214,7 @@ void anet_directory_lua_register(struct dircl* C);
  * reflects that, even though right now that is constrained to 1:(0,1) in the
  * dir_srv.c side. Leave doesn't strictly happen here as the appl-runner
  * process handles that part of messaging. */
-void anet_directory_lua_join(struct dircl* C, struct appl_meta* appl);
+bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl);
 
 /* for post-transfer completion hooks to perform atomic rename / fileswaps etc. */
 void anet_directory_lua_bchunk_completion(struct dircl* C, bool ok);

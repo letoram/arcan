@@ -270,7 +270,7 @@ static void process_event(struct arcan_event* ev)
 	break;
 	case TARGET_COMMAND_BCHUNK_OUT:{
 		if (strcmp(ev->tgt.message, ".log") == 0){
-			arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, STDOUT_FILENO, false);
+			arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, STDOUT_FILENO, true);
 		}
 	}
 	case TARGET_COMMAND_STEPFRAME:

@@ -402,13 +402,13 @@ static int cfgpath_newindex(lua_State* L)
 			free(CFG->dirsrv.appl_logpath);
 			close(CFG->dirsrv.appl_logdfd);
 		}
-	
+
 		CFG->dirsrv.appl_logpath = strdup(val);
 		CFG->dirsrv.appl_logdfd = open(val, O_RDONLY | O_DIRECTORY);
 		if (-1 == CFG->dirsrv.appl_logdfd)
 			luaL_error(L, "config.paths.appl_server_log = %s, can't open as directory\n", val);
 
-		return 0;	
+		return 0;
 	}
 	else if (strcmp(key, "resources") == 0){
 		const char* val = luaL_checkstring(L, 3);
@@ -622,7 +622,7 @@ struct pk_response
 	return base;
 }
 
-void anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
+bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 {
 	struct shmifsrv_client* runner = appl->server_tag;
 
@@ -642,7 +642,22 @@ void anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 		if (!runner){
 			a12int_trace(
 				A12_TRACE_DIRECTORY, "fail to launch arcan-net in dirappl mode");
-			return;
+			return false;
+		}
+
+/* wait for the shmif setup to be completed in the client end, this is
+ * potentially a priority inversion / unnecessary blocking */
+		int pv;
+		while ((pv = shmifsrv_poll(runner)) != CLIENT_DEAD){
+			if (pv == CLIENT_IDLE)
+				break;
+		}
+
+		if (pv == CLIENT_DEAD){
+			a12int_trace(
+				A12_TRACE_DIRECTORY, "kind=error:arcan-net:dirappl=broken");
+			shmifsrv_free(runner, false);
+			return false;
 		}
 
 /* create / open designated appl-log */
@@ -655,8 +670,8 @@ void anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 						.category = EVENT_TARGET,
 						.tgt.kind = TARGET_COMMAND_BCHUNK_OUT,
 						.tgt.message = ".log"
-					}, fd);	
-					close(fd);				
+					}, fd);
+					close(fd);
 				}
 				free(msg);
 			}
@@ -680,7 +695,8 @@ void anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 	int sv[2];
 	if (-1 == socketpair(AF_UNIX, SOCK_STREAM, 0, sv)){
 		a12int_trace(A12_TRACE_DIRECTORY, "kind=error:socketpair.2=%d", errno);
-		return;
+		shmifsrv_free(runner, true);
+		return false;
 	}
 
 	shmifsrv_enqueue_event(runner, &(struct arcan_event){
@@ -692,15 +708,15 @@ void anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 	shmifsrv_enqueue_event(C->C, &(struct arcan_event){
 			.category = EVENT_TARGET,
 			.tgt.kind = TARGET_COMMAND_NEWSEGMENT,
-/* don't really need any metadata in ioevs - worker knows due to it providing
- * the registration/ident, and we don't have any other subseg uses right now
- * (DEBUG would take a special path anyhow) */
 	}, sv[1]);
 
 	a12int_trace(A12_TRACE_DIRECTORY,
 		"kind=status:worker_join=%s", C->endpoint.ext.netstate.name);
 	close(sv[0]);
 	close(sv[1]);
+
+	appl->server_tag = runner;
+	return true;
 }
 
 void anet_directory_lua_register(struct dircl* C)

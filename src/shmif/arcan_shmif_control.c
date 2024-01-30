@@ -1615,6 +1615,15 @@ static struct arcan_shmif_cont shmif_acquire_int(
 
 	if (!shmkey){
 		struct shmif_hidden* gs = parent->priv;
+
+/* special case as a workaround until we can drop the semaphore / key,
+ * if we get a newsegment without a matching key, try and read it from
+ * the socket. */
+		if (strlen(gs->pseg.key) == 0){
+			get_shmkey_from_socket(
+				gs->pseg.epipe, gs->pseg.key, COUNT_OF(gs->pseg.key)-1);
+		}
+
 		map_shared(gs->pseg.key, &res);
 		key_used = gs->pseg.key;
 		debug_print(STATUS, parent, "newsegment_shm_key:%s", key_used);
