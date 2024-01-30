@@ -50,11 +50,7 @@ static char prefix_buf[128];
 static size_t prefix_len;
 static size_t prefix_maxlen;
 
-#ifdef _DEBUG
-#define debug_print(fmt, ...) do { fprintf(stderr, fmt "\n", ##__VA_ARGS__); } while (0)
-#else
-#define debug_print(...) do { } while (0);
-#endif
+#define debug_print(fmt, ...) do { fprintf(stdout, fmt "\n", ##__VA_ARGS__); } while (0)
 
 /* These are just lifted from src/engine/arcan_lua.c */
 #include "../../frameserver/util/utf8.c"
@@ -272,6 +268,11 @@ static void process_event(struct arcan_event* ev)
 			meta_resource(fd, ev->tgt.message);
 	}
 	break;
+	case TARGET_COMMAND_BCHUNK_OUT:{
+		if (strcmp(ev->tgt.message, ".log") == 0){
+			arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, STDOUT_FILENO, false);
+		}
+	}
 	case TARGET_COMMAND_STEPFRAME:
 	break;
 	default:

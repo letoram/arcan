@@ -324,6 +324,24 @@ static int cfgpath_index(lua_State* L)
 		return 1;
 	}
 
+	if (strcmp(key, "appl_server") == 0){
+		if (CFG->dirsrv.appl_server_path){
+			lua_pushstring(L, CFG->dirsrv.appl_server_path);
+		}
+		else
+			lua_pushnil(L);
+		return 1;
+	}
+
+	if (strcmp(key, "appl_server_log") == 0){
+		if (CFG->dirsrv.appl_logpath){
+			lua_pushstring(L, CFG->dirsrv.appl_logpath);
+		}
+		else
+			lua_pushnil(L);
+		return 1;
+	}
+
 	if (strcmp(key, "keystore") == 0){
 		if (INITIALIZED){
 			luaL_error(L, "config.keystore read-only after init()");
@@ -337,7 +355,7 @@ static int cfgpath_index(lua_State* L)
 	}
 
 	luaL_error(L, "unknown path: config.paths.%s, "
-		"accepted: database, appl, appl_server, keystore, resources\n", key);
+		"accepted: database, appl, appl_server, appl_server_log, keystore, resources\n", key);
 
 	return 0;
 }
@@ -358,7 +376,7 @@ static int cfgpath_newindex(lua_State* L)
 		if (-1 == CFG->directory){
 			luaL_error(L, "config.paths.appl = %s, can't open as directory\n", val);
 		}
-		CFG->flag_rescan = 1;
+		CFG->dirsrv.flag_rescan = 1;
 		setenv("ARCAN_APPLBASEPATH", val, 1);
 		return 0;
 	}
@@ -377,6 +395,20 @@ static int cfgpath_newindex(lua_State* L)
 		CFG->dirsrv.appl_server_path = strdup(val);
 		CFG->dirsrv.appl_server_dfd = dirfd;
 		return 0;
+	}
+	else if (strcmp(key, "appl_server_log") == 0){
+		const char* val = luaL_checkstring(L, 3);
+		if (CFG->dirsrv.appl_logpath){
+			free(CFG->dirsrv.appl_logpath);
+			close(CFG->dirsrv.appl_logdfd);
+		}
+	
+		CFG->dirsrv.appl_logpath = strdup(val);
+		CFG->dirsrv.appl_logdfd = open(val, O_RDONLY | O_DIRECTORY);
+		if (-1 == CFG->dirsrv.appl_logdfd)
+			luaL_error(L, "config.paths.appl_server_log = %s, can't open as directory\n", val);
+
+		return 0;	
 	}
 	else if (strcmp(key, "resources") == 0){
 		const char* val = luaL_checkstring(L, 3);
@@ -613,7 +645,22 @@ void anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 			return;
 		}
 
-/* Wait for the new process to load/connect or fail. */
+/* create / open designated appl-log */
+		if (CFG->dirsrv.appl_logpath){
+			char* msg;
+			if (0 < asprintf(&msg, "%s.log", appl->appl.name)){
+				int fd = openat(CFG->dirsrv.appl_logdfd, msg, O_RDWR | O_CREAT, 0700);
+				if (-1 != fd){
+					shmifsrv_enqueue_event(runner, &(struct arcan_event){
+						.category = EVENT_TARGET,
+						.tgt.kind = TARGET_COMMAND_BCHUNK_OUT,
+						.tgt.message = ".log"
+					}, fd);	
+					close(fd);				
+				}
+				free(msg);
+			}
+		}
 
 /* Ready, send the dirfd along with the name to the runner, this is where one
  * would queue up database and secondary namespaces like appl-shared. */

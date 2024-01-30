@@ -964,7 +964,7 @@ static void* dircl_process(void* P)
 		}
 
 /* send the directory index as a bchunkstate, this lets us avoid abusing the
- *MESSAGE event as well as re-using the same codepaths for dynamically
+ * MESSAGE event as well as re-using the same codepaths for dynamically
  * updating the index later. */
 		if (!activated && shmifsrv_poll(C->C) == CLIENT_IDLE){
 			arcan_event ev = {
@@ -1195,6 +1195,12 @@ void anet_directory_shmifsrv_thread(
 void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
 {
 	pthread_mutex_lock(&active_clients.sync);
+	if (!opts->flag_rescan){
+		pthread_mutex_unlock(&active_clients.sync);
+		return;
+	}
+
+	opts->flag_rescan = false;
 
 	int old = open(".", O_RDONLY, O_DIRECTORY);
 	struct appl_meta* dst = &opts->dir;
@@ -1230,7 +1236,7 @@ void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
 				opts->appl_server_dfd > 0 &&
 				0 < asprintf(&msg, "%s/%s.lua", ent->d_name, ent->d_name)){
 
-				int scriptfile = open(msg, O_RDONLY);
+				int scriptfile = openat(opts->appl_server_dfd, msg, O_RDONLY);
 				if (-1 != scriptfile){
 					dst->server_appl = true;
 					close(scriptfile);

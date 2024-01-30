@@ -6,6 +6,7 @@
  */
 struct anet_dirsrv_opts {
 	struct a12_context_options* a12_cfg;
+	volatile bool flag_rescan;
 	int basedir;
 	struct appl_meta dir;
 	size_t dir_count;
@@ -21,7 +22,9 @@ struct anet_dirsrv_opts {
 	int resource_dfd;
 
 	char* appl_server_path;
+	char* appl_logpath;
 	int appl_server_dfd;
+	int appl_logdfd;
 };
 
 /*
@@ -130,8 +133,6 @@ struct global_cfg {
 	char* outbound_tag;
 	char* config_file;
 	char* db_file;
-
-	volatile bool flag_rescan;
 };
 
 /*

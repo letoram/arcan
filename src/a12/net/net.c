@@ -195,10 +195,9 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 	struct shmifsrv_client* cl = NULL;
 
 	if (global.directory > 0){
-		if (global.flag_rescan){
+		if (global.dirsrv.flag_rescan){
 			anet_directory_srv_rescan(&global.dirsrv);
 			anet_directory_shmifsrv_set(&global.dirsrv);
-			global.flag_rescan = false;
 		}
 
 		char tmpfd[32], tmptrace[32];
@@ -1613,7 +1612,7 @@ static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 
 static void sigusr_rescan(int sign)
 {
-	global.flag_rescan = true;
+	global.dirsrv.flag_rescan = true;
 }
 
 int main(int argc, char** argv)

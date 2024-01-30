@@ -295,6 +295,8 @@ static void unpack_index(
 static void bchunk_event(struct a12_state *S,
 	struct directory_meta* cbt, struct arcan_shmif_cont *C, struct arcan_event* ev)
 {
+	a12int_trace(A12_TRACE_DIRECTORY, "bchunk_in:%s", arcan_shmif_eventstr(ev, NULL, 0));
+
 /* the index is packed as shmif argstrs line-separated */
 	if (strcmp(ev->tgt.message, ".index") == 0){
 		unpack_index(S, C, ev);
@@ -302,7 +304,6 @@ static void bchunk_event(struct a12_state *S,
 /* Only single channel handled for now, 1:1 source-sink connections. Multiple
  * ones are not difficult as such but evaluate the need experimentally first. */
 	else if (strcmp(ev->tgt.message, ".tun") == 0){
-		a12int_trace(A12_TRACE_DIRECTORY, "worker:tunnel_acquired:channel=1");
 		a12_set_tunnel_sink(S, 1, arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true));
 		pending_tunnel = true;
 	}
@@ -315,6 +316,9 @@ static bool wait_for_activation(
 	struct arcan_event ev;
 
 	while (arcan_shmif_wait(C, &ev)){
+		a12int_trace(A12_TRACE_DIRECTORY,
+			"activation:event=%s", arcan_shmif_eventstr(&ev, NULL, 0));
+
 		if (ev.category != EVENT_TARGET)
 			continue;
 
@@ -665,12 +669,11 @@ void anet_directory_srv(
 /* Swap out authenticator for one that forwards pubkey to parent and waits for
  * the derived session key back. This also lets the parent process worker
  * tracking thread track pubkey identity for state store. */
-
 	netopts->pk_lookup = key_auth_worker;
 	struct anet_dirsrv_opts diropts = {};
 	struct arg_arr* args;
 
-	a12int_trace(A12_TRACE_DIRECTORY, "notice:directory-ready:pid=%d", getpid());
+	a12int_trace(A12_TRACE_DIRECTORY, "notice=directory-ready:pid=%d", getpid());
 
 	shmif_parent_process =
 		arcan_shmif_open(
@@ -681,6 +684,8 @@ void anet_directory_srv(
 			SHMIF_NOREGISTER,
 			&args
 		);
+
+	a12int_trace(A12_TRACE_DIRECTORY, "notice=directory-parent-ok");
 
 /* Now that we have the shmif context, all we should need is stdio and
 	 descriptor passing. The rest - keystore, state access, everything is done
@@ -698,10 +703,11 @@ void anet_directory_srv(
 */
 	struct shmif_privsep_node* paths[] =
 	{
-		&(struct shmif_privsep_node){.path = "/tmp", .perm = "w"},
+		&(struct shmif_privsep_node){.path = "/tmp", .perm = "rwc"},
 		NULL
 	};
-	arcan_shmif_privsep(&shmif_parent_process, SHMIF_PLEDGE_PREFIX, paths, 0);
+	arcan_shmif_privsep(&shmif_parent_process, SHMIF_PLEDGE_PREFIX ,paths, 0);/* */
+	a12int_trace(A12_TRACE_DIRECTORY, "notice=prisep-set");
 
 /* Flush out the event loop before starting as that is likely to update our
  * list of active directory entries as well as configure our a12_ctx_opts. this
@@ -710,6 +716,8 @@ void anet_directory_srv(
 		a12int_trace(A12_TRACE_DIRECTORY, "error=control_channel");
 		return;
 	}
+
+	a12int_trace(A12_TRACE_DIRECTORY, "notice=activated");
 	struct a12_state* S = a12_server(netopts);
 	active_client_state = S;
 	if (pending_index)

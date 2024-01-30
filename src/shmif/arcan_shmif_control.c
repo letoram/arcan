@@ -3959,6 +3959,7 @@ void arcan_shmif_privsep(struct arcan_shmif_cont* C,
 	size_t i = 0;
 	while (nodes[i]){
 		unveil(nodes[i]->path, nodes[i]->perm);
+		i++;
 	}
 
 	unveil(NULL, NULL);
