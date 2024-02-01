@@ -942,7 +942,7 @@ static void* dircl_process(void* P)
 
 	while (!dead){
 		struct pollfd pfd = {
-			.fd = shmifsrv_client_handle(C->C),
+			.fd = shmifsrv_client_handle(C->C, NULL),
 			.events = POLLIN | POLLERR | POLLHUP
 		};
 

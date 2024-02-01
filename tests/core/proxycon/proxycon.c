@@ -31,7 +31,7 @@ static void proxy_client(struct shmifsrv_client* a)
 	short pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;
 	struct pollfd fds[2] = {
 		{
-			.fd = shmifsrv_client_handle(a),
+			.fd = shmifsrv_client_handle(a, NULL),
 			.events = pollev
 		},
 		{
@@ -155,7 +155,7 @@ int main(int argc, char** argv)
 
 /* wait until something happens */
 		struct pollfd pfd = {
-			.fd = shmifsrv_client_handle(cl),
+			.fd = shmifsrv_client_handle(cl, NULL),
 			.events = POLLIN | POLLERR | POLLHUP
 		};
 		if (poll(&pfd, 1, -1) == 1){

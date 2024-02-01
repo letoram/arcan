@@ -22,11 +22,18 @@
 #include "platform_types.h"
 #include "os_platform.h"
 
-static const int GROW_SLOTS = 64;
+static const int GROW_SLOTS = 4;
 
 static lua_State* L;
 static struct arcan_shmif_cont SHMIF;
 static bool shutdown;
+
+static int shmifopen_flags =
+			SHMIF_ACQUIRE_FATALFAIL |
+			SHMIF_NOACTIVATE |
+			SHMIF_DISABLE_GUARD |
+			SHMIF_NOAUTO_RECONNECT |
+			SHMIF_NOREGISTER;
 
 struct client {
 	uint8_t name[64];
@@ -50,7 +57,7 @@ static char prefix_buf[128];
 static size_t prefix_len;
 static size_t prefix_maxlen;
 
-#define debug_print(fmt, ...) do { fprintf(stdout, fmt "\n", ##__VA_ARGS__); } while (0)
+#define log_print(fmt, ...) do { fprintf(stdout, fmt "\n", ##__VA_ARGS__); } while (0)
 
 /* These are just lifted from src/engine/arcan_lua.c */
 #include "../../frameserver/util/utf8.c"
@@ -80,7 +87,6 @@ out:
 	dst[0] = '\0';
 }
 
-
 static bool setup_entrypoint(
 	struct client* cl, const char* ep, size_t len)
 {
@@ -95,10 +101,150 @@ static bool setup_entrypoint(
 	return true;
 }
 
+static void dump_stack(lua_State* L, FILE* dst)
+{
+	int top = lua_gettop(L);
+	fprintf(dst, "-- stack dump (%d)--\n", top);
+
+	for (int i = 1; i <= top; i++){
+		int t = lua_type(L, i);
+
+		switch (t){
+		case LUA_TBOOLEAN:
+			fprintf(dst, lua_toboolean(L, i) ? "true" : "false");
+		break;
+		case LUA_TSTRING:
+			fprintf(dst, "%d\t'%s'\n", i, lua_tostring(L, i));
+			break;
+		case LUA_TNUMBER:
+			fprintf(dst, "%d\t%g\n", i, lua_tonumber(L, i));
+			break;
+		default:
+			fprintf(dst, "%d\t%s\n", i, lua_typename(L, t));
+			break;
+		}
+	}
+
+	fprintf(dst, "\n");
+}
+
+static int panic(lua_State* L)
+{
+/* MISSING: need a _fatal with access to store_keys etc.  question is if we
+ * should permit message_target still (it makes sense if the appl wants
+ * recovery in their own layer). */
+
+/* always cleanup and die - free:ing shmifsrv will pull DMS and enqueue an
+ * EXIT. We could redirect back to parent and then let it spin up a new and
+ * redirect us back, but just repeat the join cycle should be enough.
+ *
+ * The EXIT event will help us out of any blocked request for local bchunks
+ * sent through _free will help us out of any pending bchunks */
+	for (size_t i = 1; i < CLIENTS.set_sz; i++){
+		if (!CLIENTS.cset[i].shmif)
+			continue;
+
+		shmifsrv_free(CLIENTS.cset[i].shmif, SHMIFSRV_FREE_FULL);
+	}
+
+/* generate a backtrace and dump into stdout which should be our logfd still,
+ * set our last words as the crash so the parent knows to keep the log and
+ * deliver to developer on request. */
+	fprintf(stdout, "\nscript error:\n");
+	fprintf(stdout, "\nVM stack:\n");
+	dump_stack(L, stdout);
+	arcan_shmif_last_words(&SHMIF, "script_error");
+	arcan_shmif_drop(&SHMIF);
+
+	exit(EXIT_FAILURE);	
+}
+
+static int wrap_pcall(lua_State* L, int nargs, int nret)
+{
+	int errind = lua_gettop(L) - nargs;
+	lua_pushcfunction(L, panic);
+	lua_insert(L, errind);
+	lua_pcall(L, nargs, nret, errind);
+	lua_remove(L, errind);
+	return 0;
+}
+
+static void expose_api(lua_State* L, const luaL_reg* funtbl)
+{
+	while(funtbl->name != NULL){
+		lua_pushstring(L, funtbl->name);
+		lua_pushcclosure(L, funtbl->func, 1);
+		lua_setglobal(L, funtbl->name);
+		funtbl++;
+	}
+}
+
+static struct client* alua_checkclient(lua_State* L, int ind)
+{
+	size_t clid = luaL_checknumber(L, ind);
+	for (size_t i = 0; i < CLIENTS.set_sz; i++){
+		struct client* cl = &CLIENTS.cset[i];
+		if (cl->clid == clid){
+			if (!cl->shmif){
+				luaL_error(L, "client identifier to dead client: %zu\n", clid);
+			}
+			return cl;
+		}
+	}
+
+	luaL_error(L, "unknown client identifier: %zu\n", clid);
+	return NULL;
+}
+
+static int targetmessage(lua_State* L)
+{
+/* unicast or broadcast? */
+	size_t strind = 1;
+	struct client* target = NULL;
+
+	if (lua_type(L, 1) == LUA_TNUMBER){
+		target = alua_checkclient(L, 1);
+		strind = 2;
+	}
+
+/* right now this error-outs rather than multipart chunks as the
+ * queueing isn't clean enough throughout - with the approach of
+ * returning an error */
+	const char* msg = luaL_checkstring(L, strind);
+	struct arcan_event outev = {
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_MESSAGE
+	};
+
+	if (strlen(msg)+1 >= COUNT_OF(outev.tgt.message)){
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+	snprintf(
+		(char*)outev.tgt.message, 
+		COUNT_OF(outev.tgt.message), "%s", msg);
+
+	if (target){
+		shmifsrv_enqueue_event(target->shmif, &outev, -1);
+		return 0;
+	}
+
+	for (size_t i = 0; i < CLIENTS.set_sz; i++){
+		if (!CLIENTS.cset[i].shmif)
+			continue;
+
+		shmifsrv_enqueue_event(target->shmif, &outev, -1);
+	}
+
+	lua_pushboolean(L, true);
+	return 1;
+}
+
 static void open_appl(int dfd, const char* name)
 {
 	int dirfd = -1;
-	debug_print("dir_lua:open=%.*s", (int) sizeof(name), name);
+	log_print("dir_lua:open=%.*s", (int) sizeof(name), name);
 	size_t len = strlen(name);
 
 	if (!prefix_maxlen){
@@ -106,12 +252,12 @@ static void open_appl(int dfd, const char* name)
 	}
 
 	if (len > prefix_maxlen){
-		debug_print("dir_lua:applname_too_long");
+		log_print("dir_lua:applname_too_long");
 		return;
 	}
 
 	if (L){
-		debug_print("dir_lua:missing:dynamic_reload");
+		log_print("dir_lua:missing:dynamic_reload");
 	}
 
 /* This mimics much of the setup of the client side API, though the specifics
@@ -129,13 +275,15 @@ static void open_appl(int dfd, const char* name)
  *       let the other end create a new connection that sources our new sink
  */
 	L = luaL_newstate();
+	lua_atpanic(L, (lua_CFunction) panic);
+
 	int rv =
 		luaL_loadbuffer(L,
 		(const char*) arcan_bootstrap_lua,
 		arcan_bootstrap_lua_len, "bootstrap"
 	);
 	if (0 != rv){
-		debug_print("dir_lua:build_error:bootstrap.lua");
+		log_print("dir_lua:build_error:bootstrap.lua");
 		return;
 	}
 	luaL_openlibs(L);
@@ -153,15 +301,23 @@ static void open_appl(int dfd, const char* name)
 	data_source source = {
 		.fd = openat(dfd, scratch, O_RDONLY),
 	};
-		map_region reg = arcan_map_resource(&source, false);
-		luaL_loadbuffer(L, reg.ptr, reg.sz, name) || lua_pcall(L, 0, LUA_MULTRET, 0);
-		arcan_release_map(reg);
+	map_region reg = arcan_map_resource(&source, false);
+
+	if (0 == luaL_loadbuffer(L, reg.ptr, reg.sz, name)){
+		static const luaL_Reg api[] = {
+			{"message_target", targetmessage},
+			{NULL, NULL}
+		};
+		expose_api(L, api);
+		wrap_pcall(L, 0, LUA_MULTRET);
+	}
+	arcan_release_map(reg);
 	arcan_release_resource(&source);
 
 /* import API, call entrypoint */
 }
 
-static bool join_worker(int fd, const char* name)
+static bool join_worker(int fd)
 {
 /* just naively grow, parent process is responsible for more refined handling
  * of constraining resources */
@@ -179,6 +335,12 @@ static bool join_worker(int fd, const char* name)
 
 		memcpy(new_pset, CLIENTS.pset, sizeof(struct pollfd) * CLIENTS.set_sz);
 		memcpy(new_cset, CLIENTS.cset, sizeof(struct client) * CLIENTS.set_sz);
+
+		for (size_t i = CLIENTS.active; i < new_sz; i++){
+			new_pset[i] = (struct pollfd){.fd = -1};
+			new_cset[i] = (struct client){.0};
+		}
+
 		free(CLIENTS.pset);
 		free(CLIENTS.cset);
 		CLIENTS.cset = new_cset;
@@ -211,6 +373,7 @@ static bool join_worker(int fd, const char* name)
 		struct client* cl = &CLIENTS.cset[ind];
 		cl->shmif = shmifsrv_inherit_connection(fd, &tmp);
 		shmifsrv_poll(cl->shmif);
+		log_print("status=joined:worker=%zu", cl->clid);
 	}
 
 	CLIENTS.active++;
@@ -235,26 +398,27 @@ static void release_worker(size_t ind)
 	if (cl->registered &&
 		setup_entrypoint(cl, "_leave", sizeof("_leave"))){
 		lua_pushnumber(L, cl->clid);
-		lua_pcall(L, 1, 0, 0);
+		wrap_pcall(L, 1, 0);
 	}
 
+	log_print("status=left:worker=%zu", cl->clid);
 	shmifsrv_free(cl->shmif, SHMIFSRV_FREE_FULL);
 	*cl = (struct client){0};
 }
 
 static void meta_resource(int fd, const char* msg)
 {
-	if (strncmp(msg, ".worker=", 8) == 0){
-		join_worker(fd, &msg[8]);
+	if (strncmp(msg, ".worker", 8) == 0){
+		join_worker(fd);
 	}
 /* new key-value store to work with */
 	else if (strcmp(msg, ".sqlite3") == 0){
 	}
 	else
-		debug_print("unhandled:%s\n", msg);
+		log_print("unhandled:%s\n", msg);
 }
 
-static void process_event(struct arcan_event* ev)
+static void parent_control_event(struct arcan_event* ev)
 {
 	if (ev->category != EVENT_TARGET)
 		return;
@@ -271,6 +435,7 @@ static void process_event(struct arcan_event* ev)
 	case TARGET_COMMAND_BCHUNK_OUT:{
 		if (strcmp(ev->tgt.message, ".log") == 0){
 			arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, STDOUT_FILENO, true);
+			log_print("--- log opened ---");
 		}
 	}
 	case TARGET_COMMAND_STEPFRAME:
@@ -280,12 +445,10 @@ static void process_event(struct arcan_event* ev)
 	}
 }
 
-static void process_client(struct client* cl, int fd, int revents)
+static void worker_instance_event(struct client* cl, int fd, int revents)
 {
 	struct arcan_event ev;
 	while (1 == shmifsrv_dequeue_events(cl->shmif, &ev, 1)){
-		debug_print("%zu:%s\n", cl->clid, arcan_shmif_eventstr(&ev, NULL, 0));
-
 		if (!cl->registered){
 			if (ev.ext.kind == EVENT_EXTERNAL_NETSTATE){
 				blake3_hasher hash;
@@ -295,13 +458,19 @@ static void process_client(struct client* cl, int fd, int revents)
 				blake3_hasher_finalize(&hash, khash, 32);
 				unsigned char* b64 = a12helper_tob64(khash, 32, &(size_t){0});
 				snprintf(cl->keyid, COUNT_OF(cl->keyid), "%s", (char*) b64);
+				log_print(
+					"kind=status:worker=%zu:registered:key=%s", cl->clid, cl->keyid);
 				free(b64);
 				cl->registered = true;
 
 				if (setup_entrypoint(cl, "_join", sizeof("_join"))){
 					lua_pushnumber(L, cl->clid);
-					lua_pcall(L, 1, 0, 0);
+					wrap_pcall(L, 1, 0);
 				}
+			}
+			else {
+				log_print("kind=error:worker=%zu:unregistered_event=%s",
+					cl->clid, arcan_shmif_eventstr(&ev, NULL, 0));
 			}
 			continue;
 		}
@@ -314,7 +483,7 @@ static void process_client(struct client* cl, int fd, int revents)
 			tblbool(L, "multipart", ev.tgt.ioevs[0].iv != 0, top);
 			MSGBUF_UTF8(ev.tgt.message);
 			tbldynstr(L, "message", ev.tgt.message, top);
-			lua_pcall(L, 2, 0, 0);
+			wrap_pcall(L, 2, 0);
 		}
 
 /* other relevant, BCHUNKSTATE now that dir_srv.c can be sidestepped (mostly),
@@ -328,46 +497,33 @@ static void process_client(struct client* cl, int fd, int revents)
 void anet_directory_appl_runner()
 {
 	struct arg_arr* args;
-
-	SHMIF = arcan_shmif_open(
-		SEGID_NETWORK_SERVER,
-		SHMIF_ACQUIRE_FATALFAIL |
-		SHMIF_NOACTIVATE |
-		SHMIF_DISABLE_GUARD |
-		SHMIF_NOREGISTER,
-		&args
-	);
+	SHMIF = arcan_shmif_open(SEGID_NETWORK_SERVER, shmifopen_flags, &args);
 
 /* shmif connection gets reserved index 0 */
-	join_worker(SHMIF.epipe, ".shmif");
+	join_worker(SHMIF.epipe);
 
 	while (!shutdown){
-		int pv = poll(CLIENTS.pset, CLIENTS.set_sz, -1);
-		if (pv <= 0)
-			continue;
+		int pv = poll(CLIENTS.pset, CLIENTS.set_sz, 25);
 
 		if (CLIENTS.pset[0].revents){
 			struct arcan_event ev;
 			arcan_shmif_wait(&SHMIF, &ev);
-			process_event(&ev);
+			parent_control_event(&ev);
 			while (arcan_shmif_poll(&SHMIF, &ev) > 0){
-				process_event(&ev);
+				parent_control_event(&ev);
 			}
 			CLIENTS.pset[0].revents = 0;
 			pv--;
 		}
 
-/* these are shmifsrv_ client but with an extra signalling step on enqueue that
- * is normally reserved for shmifsrv_enqueue */
-		for (size_t i = 1; i < CLIENTS.set_sz && pv; i++){
-			if (CLIENTS.pset[i].revents){
-				process_client(
+		for (size_t i = 1; i < CLIENTS.set_sz; i++){
+			if (CLIENTS.cset[i].shmif){
+				worker_instance_event(
 					&CLIENTS.cset[i], CLIENTS.pset[i].fd, CLIENTS.pset[i].revents);
-				pv--;
 				CLIENTS.pset[i].revents = 0;
 			}
 		}
 	}
 
-	debug_print("parent_exit");
+	log_print("parent_exit");
 }

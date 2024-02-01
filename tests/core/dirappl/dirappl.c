@@ -124,7 +124,7 @@ int main(int argc, char** argv)
 
 	while (true){
 		struct pollfd pfd = {
-			.fd = shmifsrv_client_handle(cl),
+			.fd = shmifsrv_client_handle(cl, NULL),
 			.events = POLLIN | POLLERR | POLLHUP
 		};
 

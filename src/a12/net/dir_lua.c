@@ -34,33 +34,6 @@ static struct arcan_dbh* DB;
 static struct global_cfg* CFG;
 static bool INITIALIZED;
 
-static void dump_stack(lua_State* L, FILE* dst)
-{
-	int top = lua_gettop(L);
-	fprintf(dst, "-- stack dump (%d)--\n", top);
-
-	for (int i = 1; i <= top; i++){
-		int t = lua_type(L, i);
-
-		switch (t){
-		case LUA_TBOOLEAN:
-			fprintf(dst, lua_toboolean(L, i) ? "true" : "false");
-		break;
-		case LUA_TSTRING:
-			fprintf(dst, "%d\t'%s'\n", i, lua_tostring(L, i));
-			break;
-		case LUA_TNUMBER:
-			fprintf(dst, "%d\t%g\n", i, lua_tonumber(L, i));
-			break;
-		default:
-			fprintf(dst, "%d\t%s\n", i, lua_typename(L, t));
-			break;
-		}
-	}
-
-	fprintf(dst, "\n");
-}
-
 void anet_directory_lua_exit()
 {
 	lua_close(L);
@@ -641,9 +614,14 @@ bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 		runner = shmifsrv_spawn_client(env, &clsock, NULL, 0);
 		if (!runner){
 			a12int_trace(
-				A12_TRACE_DIRECTORY, "fail to launch arcan-net in dirappl mode");
+				A12_TRACE_DIRECTORY, "kind=error:arcan-net:dirappl_spawn");
 			return false;
 		}
+		int pid;
+		shmifsrv_client_handle(runner, &pid);
+		a12int_trace(
+				A12_TRACE_DIRECTORY,
+				"kind=status:arcan-ent:dirappl=%s:pid=%d", appl->appl.name, pid);
 
 /* wait for the shmif setup to be completed in the client end, this is
  * potentially a priority inversion / unnecessary blocking */
@@ -666,7 +644,9 @@ bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 			if (0 < asprintf(&msg, "%s.log", appl->appl.name)){
 				int fd = openat(CFG->dirsrv.appl_logdfd, msg, O_RDWR | O_CREAT, 0700);
 				if (-1 != fd){
-					shmifsrv_enqueue_event(runner, &(struct arcan_event){
+					lseek(fd, 0, SEEK_END);
+					write(fd, "begin_log\n", 10);	
+						shmifsrv_enqueue_event(runner, &(struct arcan_event){
 						.category = EVENT_TARGET,
 						.tgt.kind = TARGET_COMMAND_BCHUNK_OUT,
 						.tgt.message = ".log"
@@ -684,7 +664,8 @@ bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 			.category = EVENT_TARGET,
 			.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
 		};
-		int dfd = -1;
+		int dfd = openat(
+			CFG->dirsrv.appl_server_dfd, appl->appl.name, O_RDONLY | O_DIRECTORY);
 		snprintf(outev.tgt.message, sizeof(outev.tgt.message), "%s", appl->appl.name);
 		shmifsrv_enqueue_event(runner, &outev, dfd);
  	}

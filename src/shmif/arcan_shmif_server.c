@@ -65,10 +65,13 @@ static struct shmifsrv_client* alloc_client()
 	return res;
 }
 
-int shmifsrv_client_handle(struct shmifsrv_client* cl)
+int shmifsrv_client_handle(struct shmifsrv_client* cl, int* pid)
 {
 	if (!cl || cl->status <= BROKEN)
 		return -1;
+
+	if (pid)
+		*pid = cl->pid;
 
 	return cl->con->dpipe;
 }
@@ -186,6 +189,7 @@ struct shmifsrv_client* shmifsrv_spawn_client(
 	*clsocket = childend;
 	res->cookie = arcan_shmif_cookie();
 	res->status = AUTHENTICATING;
+	res->pid = -1;
 
 	if (statuscode)
 		*statuscode = SHMIFSRV_OK;

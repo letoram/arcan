@@ -785,7 +785,7 @@ static int a12_connect(struct anet_options* args,
 
 /* first time, extract the connection point descriptor from the connection */
 		if (-1 == shmif_fd)
-			shmif_fd = shmifsrv_client_handle(cl);
+			shmif_fd = shmifsrv_client_handle(cl, NULL);
 
 		struct pollfd pfd = {.fd = shmif_fd, .events = POLLIN | POLLERR | POLLHUP};
 

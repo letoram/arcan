@@ -29,6 +29,13 @@
 #include <dirent.h>
 #include <fcntl.h>
 
+static int shmifopen_flags =
+			SHMIF_ACQUIRE_FATALFAIL |
+			SHMIF_NOACTIVATE |
+			SHMIF_DISABLE_GUARD |
+			SHMIF_NOAUTO_RECONNECT |
+			SHMIF_NOREGISTER;
+
 static struct arcan_shmif_cont shmif_parent_process;
 static struct a12_state* active_client_state;
 static struct appl_meta* pending_index;
@@ -199,11 +206,20 @@ static void on_a12srv_event(
 		arcan_shmif_enqueue(C, ev);
 	}
 
-/* Forward messages verbatim, this also latches into the dirlist command which
- * will trigger the server to re-synch dynamic sources, but it is a path to get
- * external (untrusted) messages to be parsed and should be treated as poison. */
+/* by default messages are handled through dir_srv.c parent process, but
+ * if we have been delegated a message handler and the reserved a12: prefix */
 	else if (ev->ext.kind == EVENT_EXTERNAL_MESSAGE){
-		arcan_shmif_enqueue(C, ev);
+		struct arcan_shmif_cont* dst = C;
+		if (ioloop_shared->shmif.addr)
+			dst = &ioloop_shared->shmif;
+
+/* this does not handle multipart, though there aren't any control messages
+ * right now that would require it */
+		if (strncmp((char*)ev->ext.message.data, "a12:", 4) == 0){
+			dst = C;
+		}
+
+		arcan_shmif_enqueue(dst, ev);
 	}
 }
 
@@ -427,7 +443,8 @@ static void do_event(
 			arcan_shmif_drop(&ioloop_shared->shmif);
 
 		ioloop_shared->shmif =
-			arcan_shmif_acquire(&shmif_parent_process, NULL, SEGID_NETWORK_CLIENT, 0);
+			arcan_shmif_acquire(
+				&shmif_parent_process, NULL, SEGID_NETWORK_CLIENT, shmifopen_flags);
 		if (!ioloop_shared->shmif.addr){
 			a12int_trace(A12_TRACE_DIRECTORY, "kind=error:appl_runner_channel");
 			return;
@@ -675,15 +692,7 @@ void anet_directory_srv(
 
 	a12int_trace(A12_TRACE_DIRECTORY, "notice=directory-ready:pid=%d", getpid());
 
-	shmif_parent_process =
-		arcan_shmif_open(
-			SEGID_NETWORK_SERVER,
-			SHMIF_ACQUIRE_FATALFAIL |
-			SHMIF_NOACTIVATE |
-			SHMIF_DISABLE_GUARD |
-			SHMIF_NOREGISTER,
-			&args
-		);
+	shmif_parent_process = arcan_shmif_open(SEGID_NETWORK_SERVER, shmifopen_flags, &args);
 
 	a12int_trace(A12_TRACE_DIRECTORY, "notice=directory-parent-ok");
 
@@ -802,6 +811,13 @@ static int request_parent_resource(
 	struct arcan_event ev = (struct arcan_event){
 		.ext.kind = EVENT_EXTERNAL_BCHUNKSTATE
 	};
+
+/* if the resource is from the appl controller, go there - it is up to the
+ * controller to forward to parent if secondary resources are needed from the
+ * shared space in order for rate-limiting etc. to resolve */
+	if (ioloop_shared->shmif.addr && id[0] != '.'){
+		C = &ioloop_shared->shmif;
+	}
 
 	int kind;
 	if (out){
