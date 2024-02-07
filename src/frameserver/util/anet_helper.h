@@ -14,6 +14,7 @@ struct keystore_provider {
 	union {
 	struct {
 		int dirfd;
+		int statefd; /* will map to dirfd unless set */
 	} directory;
 	};
 

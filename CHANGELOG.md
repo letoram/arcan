@@ -1,3 +1,7 @@
+## 0.6.4
+## Net
+ * add -c file for assigning lua scriptable command-line overrides
+
 ## 0.6.3
 ## Lua
  * inbound events now have a 'frame' tag for pairing with verbose-frame notification

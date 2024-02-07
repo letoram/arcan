@@ -104,7 +104,7 @@ int arcan_shmif_wait(struct arcan_shmif_cont*, struct arcan_event* dst);
  * left (if any) will be stored back into time_ms.
  */
 int arcan_shmif_wait_timed(
-	struct arcan_shmif_cont*, unsigned* time_us, struct arcan_event* dst);
+	struct arcan_shmif_cont*, unsigned* time_ms, struct arcan_event* dst);
 
 /*
  * When integrating with libraries assuming that a window can be created

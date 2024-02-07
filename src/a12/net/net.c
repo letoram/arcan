@@ -28,7 +28,8 @@ enum anet_mode {
 	ANET_SHMIF_SRV_INHERIT,
 	ANET_SHMIF_EXEC,
 	ANET_SHMIF_EXEC_OUTBOUND,
-	ANET_SHMIF_DIRSRV_INHERIT
+	ANET_SHMIF_DIRSRV_INHERIT,
+	ANET_SHMIF_SRVAPP_INHERIT
 };
 
 enum mt_mode {
@@ -37,33 +38,15 @@ enum mt_mode {
 };
 
 struct arcan_net_meta {
-	struct anet_options* opts;
 	int argc;
 	char** argv;
 	char* bin;
 };
 
-static struct {
-	bool soft_auth;
-	bool no_default;
-	bool probe_only;
-	bool keep_alive;
-	size_t accept_n_pk_unknown;
-	size_t backpressure;
-	size_t backpressure_soft;
-	int directory;
-	struct anet_dirsrv_opts dirsrv;
-	struct anet_dircl_opts dircl;
-	char* trust_domain;
-	char* path_self;
-	char* outbound_tag;
-
-	volatile bool flag_rescan;
-} global = {
+struct global_cfg global = {
 	.backpressure_soft = 2,
 	.backpressure = 6,
 	.directory = -1,
-	.outbound_tag = "default",
 	.dircl = {
 		.source_port = 6681
 	},
@@ -123,24 +106,12 @@ static int tracestr_to_bitmap(char* work)
 	return res;
 }
 
-/*
- * Since we pull in some functions from the main arcan codebase, we need to
- * define this symbol, used if the random function has problems with entropy
- * etc.
- */
-void arcan_fatal(const char* msg, ...)
-{
-	va_list args;
-	va_start(args, msg);
-	vfprintf(stderr, msg, args);
-	va_end(args);
-	exit(EXIT_FAILURE);
-}
-
 static bool handover_setup(struct a12_state* S,
 	int fd, struct arcan_net_meta* meta, struct shmifsrv_client** C)
 {
-	if (meta->opts->mode != ANET_SHMIF_EXEC && global.directory <= 0)
+	struct anet_options* anet = &global.meta;
+
+	if (anet->mode != ANET_SHMIF_EXEC && global.directory <= 0)
 		return true;
 
 /* wait for authentication before going for the shmifsrv processing mode */
@@ -222,13 +193,11 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
  * and inherit shmif into the forked child that is a re-execution of ourselves. */
 	int clsock = -1;
 	struct shmifsrv_client* cl = NULL;
-	struct arcan_net_meta* ameta = tag;
 
 	if (global.directory > 0){
-		if (global.flag_rescan){
+		if (global.dirsrv.flag_rescan){
 			anet_directory_srv_rescan(&global.dirsrv);
 			anet_directory_shmifsrv_set(&global.dirsrv);
-			global.flag_rescan = false;
 		}
 
 		char tmpfd[32], tmptrace[32];
@@ -304,8 +273,8 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 
 	if (C){
 		a12helper_a12cl_shmifsrv(S, C, fd, fd, (struct a12helper_opts){
-			.redirect_exit = meta->opts->redirect_exit,
-			.devicehint_cp = meta->opts->devicehint_cp,
+			.redirect_exit = global.meta.redirect_exit,
+			.devicehint_cp = global.meta.devicehint_cp,
 			.vframe_block = global.backpressure,
 			.vframe_soft_block = global.backpressure_soft,
 			.eval_vcodec = vcodec_tuning,
@@ -412,8 +381,8 @@ static void single_a12srv(struct a12_state* S, int fd, void* tag)
 
 	if (C){
 		a12helper_a12cl_shmifsrv(S, C, fd, fd, (struct a12helper_opts){
-			.redirect_exit = meta->opts->redirect_exit,
-			.devicehint_cp = meta->opts->devicehint_cp,
+			.redirect_exit = global.meta.redirect_exit,
+			.devicehint_cp = global.meta.devicehint_cp,
 			.vframe_block = global.backpressure,
 			.vframe_soft_block = global.backpressure_soft,
 			.eval_vcodec = vcodec_tuning,
@@ -816,7 +785,7 @@ static int a12_connect(struct anet_options* args,
 
 /* first time, extract the connection point descriptor from the connection */
 		if (-1 == shmif_fd)
-			shmif_fd = shmifsrv_client_handle(cl);
+			shmif_fd = shmifsrv_client_handle(cl, NULL);
 
 		struct pollfd pfd = {.fd = shmif_fd, .events = POLLIN | POLLERR | POLLHUP};
 
@@ -950,6 +919,7 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"\t-t             \t Single- client (no fork/mt - easier troubleshooting)\n"
 	"\t --probe-only  \t (outbound) Authenticate and print server primary state\n"
 	"\t-d bitmap      \t Set trace bitmap (bitmask or key1,key2,...)\n"
+	"\t-c, --config fn\t Apply/override command-line toggles with config from script [fn]\n"
 	"\t--keystore fd  \t Use inherited [fd] for keystore root store\n"
 	"\t-v, --version  \t Print build/version information to stdout\n\n"
 	"Directory client options: \n"
@@ -1001,7 +971,7 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 {
 	const char* modeerr = "Mixed or multiple -s or -l arguments";
-	struct anet_options* opts = meta->opts;
+	struct anet_options* opts = &global.meta;
 
 /* the default role is sink, -s -exec changes this to source */
 	opts->opts->local_role = ROLE_SINK;
@@ -1064,7 +1034,6 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			}
 			a12_set_trace_level(val, stderr);
 		}
-
 /* a12 client, shmif server */
 		else if (strcmp(argv[i], "-s") == 0){
 			if (opts->mode)
@@ -1135,13 +1104,13 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			i++;
 			if (i >= argc)
 				return show_usage("Missing group tag name", argv, i - 1);
-			global.dirsrv.allow_src = argv[i];
+			global.dirsrv.allow_src = strdup(argv[i]);
 		}
 		else if (strcmp(argv[i], "--allow-dir") == 0){
 			i++;
 			if (i >= argc)
 				return show_usage("Missing group tag name", argv, i - 1);
-			global.dirsrv.allow_dir = argv[i];
+			global.dirsrv.allow_dir = strdup(argv[i]);
 		}
 		else if (strcmp(argv[i], "--tunnel") == 0){
 			global.dircl.request_tunnel = true;
@@ -1156,7 +1125,7 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			i++;
 			if (i >= argc)
 				return show_usage("Missing group tag name", argv, i - 1);
-			global.dirsrv.allow_appl = argv[i];
+			global.dirsrv.allow_appl = strdup(argv[i]);
 		}
 /* one-time single appl update to directory */
 		else if (strcmp(argv[i], "--push-appl") == 0){
@@ -1308,6 +1277,19 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			global.dircl.source_port = (uint16_t) strtoul(argv[i], NULL, 10);
 			if (!global.dircl.source_port)
 				return show_usage("--source-port invalid", argv, i);
+		}
+		else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--config") == 0){
+			i++;
+			if (i == argc)
+				return show_usage(
+					"Missing config file argument (/path/to/config.lua", argv, i - 1);
+
+			global.config_file = argv[i];
+
+/* swap out stdin so key-auth local won't query at all since the config
+ * script now takes on that responsibility */
+			close(STDIN_FILENO);
+			open("/dev/null", O_RDONLY);
 		}
 		else if (strcmp(argv[i], "--directory") == 0){
 			if (!getenv("ARCAN_APPLBASEPATH")){
@@ -1630,29 +1612,28 @@ static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 
 static void sigusr_rescan(int sign)
 {
-	global.flag_rescan = true;
+	global.dirsrv.flag_rescan = true;
 }
 
 int main(int argc, char** argv)
 {
-	struct anet_options anet = {
-		.retry_count = -1,
-		.mt_mode = MT_FORK,
-/* do note that pk_lookup is left empty == only password auth */
-	};
+	struct arcan_net_meta meta = {0};
 
-	struct arcan_net_meta meta = {
-		.opts = &anet
-	};
+/* setup all the defaults but with dynamic allocation for strings etc.
+ * so that the script config can easily override them */
+	global.meta.retry_count = -1;
+	global.meta.mt_mode = MT_FORK;
+	global.db_file = strdup(":memory:");
+	global.outbound_tag = strdup("default");
 
-	anet.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));
-	anet.opts->pk_lookup = key_auth_local;
-	anet.keystore.directory.dirfd = -1;
-	global.dirsrv.a12_cfg = anet.opts;
+	global.meta.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));
+	global.meta.opts->pk_lookup = key_auth_local;
+	global.meta.keystore.directory.dirfd = -1;
+	global.dirsrv.a12_cfg = global.meta.opts;
 
 /* set this as default, so the remote side can't actually close */
-	anet.redirect_exit = getenv("ARCAN_CONNPATH");
-	anet.devicehint_cp = getenv("ARCAN_CONNPATH");
+	global.meta.redirect_exit = getenv("ARCAN_CONNPATH");
+	global.meta.devicehint_cp = getenv("ARCAN_CONNPATH");
 
 	if (argc > 1 && strcmp(argv[1], "keystore") == 0){
 		return apply_keystore_command(argc, argv);
@@ -1662,6 +1643,12 @@ int main(int argc, char** argv)
 		return run_discover_command(argc, argv);
 	}
 
+/* sandboxed 'per appl with server scripts' runner on-demand */
+	if (argc > 1 && strcmp(argv[1], "dirappl") == 0){
+		anet_directory_appl_runner();
+		return EXIT_SUCCESS;
+	}
+
 	if (argc < 2 || (argc == 2 &&
 		(strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0)))
 		return show_usage(NULL, NULL, 0);
@@ -1669,20 +1656,26 @@ int main(int argc, char** argv)
 /* inherited directory server mode doesn't take extra listening parameters and
  * was an afterthought not fitting with the rest of the (messy) arg parsing */
 	size_t argi = apply_commandline(argc, argv, &meta);
-	if (!argi && anet.mode != ANET_SHMIF_DIRSRV_INHERIT && !meta.opts->host)
+	if (!argi && global.meta.mode != ANET_SHMIF_DIRSRV_INHERIT && !global.meta.host)
 		return EXIT_FAILURE;
+
+	if (!anet_directory_lua_init(&global)){
+		fprintf(stderr, "Couldn't setup Lua VM state, exiting.\n");
+		return  EXIT_FAILURE;
+	}
 
 /* no mode? if there's arguments left, assume it is is the 'reverse' mode
  * where the connection is outbound but we get the a12 'client' view back
  * to pair with an arcan-net --exec .. */
-	if (!anet.mode){
+	if (!global.meta.mode){
 /* Make the outbound connection, check if we are supposed to act as a source */
-			struct anet_cl_connection cl = find_connection(&anet, NULL);
+			struct anet_cl_connection cl = find_connection(&global.meta, NULL);
 			if (!cl.state){
-				if (anet.key)
-					fprintf(stderr, "couldn't connect to any host for key %s\n", anet.key);
+				if (global.meta.key)
+					fprintf(stderr,
+						"couldn't connect to any host for key %s\n", global.meta.key);
 				else
-					fprintf(stderr, "couldn't connect to %s\n", anet.host);
+					fprintf(stderr, "couldn't connect to %s\n", global.meta.host);
 
 				return EXIT_FAILURE;
 			}
@@ -1757,8 +1750,8 @@ int main(int argc, char** argv)
 	}
 
 /* rest of keystore shouldn't be opened in the worker */
-	if (anet.mode != ANET_SHMIF_DIRSRV_INHERIT){
-		if (!open_keystore(&anet, &err)){
+	if (global.meta.mode != ANET_SHMIF_DIRSRV_INHERIT){
+		if (!open_keystore(&global.meta, &err)){
 			return show_usage(err, NULL, 0);
 		}
 /* We have a keystore and are listening for an inbound connection, make sure
@@ -1786,7 +1779,7 @@ int main(int argc, char** argv)
  * being redirectable to another arcan-net instance as migration / load
  * balance.
  */
-	if (anet.mode == ANET_SHMIF_CL || anet.mode == ANET_SHMIF_EXEC){
+	if (global.meta.mode == ANET_SHMIF_CL || global.meta.mode == ANET_SHMIF_EXEC){
 		if (global.directory != -1){
 /* for the server modes, we also require the ability to execute ourselves to
  * hand out child processes with more strict sandboxing */
@@ -1815,13 +1808,13 @@ int main(int argc, char** argv)
 		if (!global.trust_domain)
 			global.trust_domain = strdup("default");
 
-		switch (anet.mt_mode){
+		switch (global.meta.mt_mode){
 		case MT_SINGLE:
-			anet_listen(&anet, &errmsg, single_a12srv, &meta);
+			anet_listen(&global.meta, &errmsg, single_a12srv, &meta);
 			fprintf(stderr, "%s", errmsg ? errmsg : "");
 		break;
 		case MT_FORK:
-			anet_listen(&anet, &errmsg, fork_a12srv, &meta);
+			anet_listen(&global.meta, &errmsg, fork_a12srv, &meta);
 			fprintf(stderr, "%s", errmsg ? errmsg : "");
 			free(errmsg);
 		break;
@@ -1833,22 +1826,24 @@ int main(int argc, char** argv)
 
 /* we have one shmif connection pre-established that should be mapped to
  * an outbound connection (ARCAN_CONNPATH=a12.. */
-	if (anet.mode == ANET_SHMIF_SRV_INHERIT){
-		return a12_preauth(&anet, a12cl_dispatch);
+	if (global.meta.mode == ANET_SHMIF_SRV_INHERIT){
+		return a12_preauth(&global.meta, a12cl_dispatch);
 	}
 /* similar to ANET_SHMIF_SRV_INHERIT above, but we exec and launch the client
  * ourselves so the process ownership is inverted and we need to initiate the
  * connection */
-	if (anet.mode == ANET_SHMIF_EXEC_OUTBOUND){
+	if (global.meta.mode == ANET_SHMIF_EXEC_OUTBOUND){
 		if (!global.trust_domain)
 			global.trust_domain = "*";
 
-		struct anet_cl_connection cl = find_connection(&anet, NULL);
+		struct anet_cl_connection cl = find_connection(&global.meta, NULL);
 		if (!cl.state){
-			if (anet.key)
-				fprintf(stderr, "couldn't connect to any host for key %s\n", anet.key);
+			if (global.meta.key)
+				fprintf(stderr,
+					"couldn't connect to any host for key %s\n", global.meta.key);
 			else
-				fprintf(stderr, "couldn't connect to %s port %s\n", anet.host, anet.port);
+				fprintf(stderr,
+					"couldn't connect to %s port %s\n", global.meta.host, global.meta.port);
 			return EXIT_FAILURE;
 		}
 
@@ -1868,25 +1863,26 @@ int main(int argc, char** argv)
 			return EXIT_FAILURE;
 		}
 
-		a12cl_dispatch(&anet, cl.state, C, cl.fd);
+		a12cl_dispatch(&global.meta, cl.state, C, cl.fd);
 		return EXIT_SUCCESS;
 	}
-	else if (anet.mode == ANET_SHMIF_DIRSRV_INHERIT){
+	else if (global.meta.mode == ANET_SHMIF_DIRSRV_INHERIT){
 		set_log_trace();
 		struct anet_dirsrv_opts diropts = {0};
-		anet_directory_srv(anet.opts, diropts, anet.sockfd, anet.sockfd);
-		shutdown(anet.sockfd, SHUT_RDWR);
-		close(anet.sockfd);
+		anet_directory_srv(global.meta.opts,
+			diropts, global.meta.sockfd, global.meta.sockfd);
+		shutdown(global.meta.sockfd, SHUT_RDWR);
+		close(global.meta.sockfd);
 		return EXIT_SUCCESS;
 	}
 
 /* ANET_SHMIF_SRV */
-	switch (anet.mt_mode){
+	switch (global.meta.mt_mode){
 	case MT_SINGLE:
-		return a12_connect(&anet, a12cl_dispatch);
+		return a12_connect(&global.meta, a12cl_dispatch);
 	break;
 	case MT_FORK:
-		return a12_connect(&anet, fork_a12cl_dispatch);
+		return a12_connect(&global.meta, fork_a12cl_dispatch);
 	break;
 	default:
 		return EXIT_FAILURE;

@@ -37,36 +37,6 @@
 
 extern bool g_shutdown;
 
-struct dircl;
-
-struct dircl {
-	int in_appl;
-	char identity[16];
-
-	int type;
-
-	bool pending_stream;
-	int pending_fd;
-	uint16_t pending_id;
-
-	arcan_event petname;
-	arcan_event endpoint;
-
-	uint8_t pubk[32];
-	bool authenticated;
-
-	char message_multipart[1024];
-	size_t message_ofs;
-
-	struct shmifsrv_client* C;
-
-	struct dircl* next;
-	struct dircl* prev;
-
-/* [UAF-risk] 1:1 for now - always check this when removing a dircl */
-	struct dircl* tunnel;
-};
-
 static struct {
 	pthread_mutex_t sync;
 	struct dircl root;
@@ -262,12 +232,12 @@ static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
 				shmifsrv_enqueue_event(cur->C, &to_src, -1);
 				shmifsrv_enqueue_event(C->C, &to_sink, -1);
 
-				if (0 < asprintf(&msg, "tunnel:source=%s:sink=%s",
-					cur->petname.ext.netstate.name,
+				if (0 < asprintf(&msg,
+					"tunnel:source=%s:sink=%s", cur->petname.ext.netstate.name,
 					C->petname.ext.netstate.name)){
 					msg = NULL;
 				}
-	
+
 				cur->tunnel = C->tunnel;
 				free(b64);
 				break;
@@ -325,7 +295,25 @@ enum {
 	IDTYPE_ACTRL = 4
 };
 
-volatile struct appl_meta* identifier_to_appl(
+/*
+ * assumes we have appl_meta lookup set locked and kept for the lifespan
+ * of the returned value as the set/identifiers can mutate otherwise.
+ */
+static struct appl_meta* locked_numid_appl(uint16_t id)
+{
+	volatile struct appl_meta* cur = &active_clients.opts->dir;
+
+	while (cur){
+		if (cur->identifier == id){
+			return (struct appl_meta*) cur;
+		}
+		cur = cur->next;
+	}
+
+	return NULL;
+}
+
+static volatile struct appl_meta* identifier_to_appl(
 	char* id, int* mtype, uint16_t* mid, char** outsep)
 {
 	*mtype = 0;
@@ -405,16 +393,28 @@ static bool tag_outbound_name(struct arcan_event* ev, uint8_t kpub[static 32])
 static void register_source(struct dircl* C, struct arcan_event ev)
 {
 	const char* allow = active_clients.opts->allow_src;
+
 	if (ev.ext.netstate.type == ROLE_DIR)
 		allow = active_clients.opts->allow_dir;
+
+/* first defer the action to the script, if it does not consume it, use the
+ * default behaviour of first checking permission then broadcast to all
+ * listening clients */
+	pthread_mutex_lock(&active_clients.sync);
+		int rv = anet_directory_lua_filter_source(C, &ev);
+	pthread_mutex_unlock(&active_clients.sync);
+
+	if (rv == 1){
+		return;
+	}
 
 	if (!a12helper_keystore_accepted(C->pubk, allow)){
 		unsigned char* b64 = a12helper_tob64(C->pubk, 32, &(size_t){0});
 
 		A12INT_DIRTRACE(
 			"dirsv:kind=reject_register:title=%s:role=%d:eperm:key=%s",
-			ev.ext.registr.title,
-			ev.ext.registr.kind,
+			ev.ext.netstate.name,
+			ev.ext.netstate.type,
 			b64
 		);
 
@@ -429,7 +429,8 @@ static void register_source(struct dircl* C, struct arcan_event ev)
 			title[i] = '_';
 	}
 
-/* and no duplicates */
+/* and no duplicates, if there is a config script it gets to manage collisions
+ * so this is only a fallback if it didn't or doesn't care */
 	if (gotname(C, ev)){
 		A12INT_DIRTRACE(
 			"dirsv:kind=warning_register:collision=%s", ev.ext.registr.title);
@@ -544,6 +545,9 @@ out:
 	C->pending_fd = -1;
 }
 
+/*
+ * not part of the default developer permissions yet
+ */
 static volatile struct appl_meta* allocate_new_appl(char* ext, uint16_t* mid)
 {
 	return NULL;
@@ -706,7 +710,7 @@ static void msgqueue_worker(struct dircl* C, arcan_event* ev)
 	A12INT_DIRTRACE("dirsv:kind=message:multipart=%d:broadcast=%s",
 		(int) ev->ext.message.multipart, (char*) ev->ext.message.data);
 #endif
-	
+
 /* queue more?*/
 	if (ev->ext.message.multipart)
 		return;
@@ -717,7 +721,9 @@ static void msgqueue_worker(struct dircl* C, arcan_event* ev)
 		.ext.kind = EVENT_EXTERNAL_MESSAGE,
 	};
 
-/* broadcast as one large chain so we don't risk any interleaving */
+/* broadcast as one large chain so we don't risk any interleaving, this only
+ * happens if there is no appl-runner set to absorb or rebroadcast the
+ * messages. */
 	pthread_mutex_lock(&active_clients.sync);
 	struct dircl* cur = active_clients.root.next;
 	while (cur){
@@ -760,11 +766,20 @@ static void dircl_message(struct dircl* C, struct arcan_event ev)
 		if (!a12helper_fromb64((const uint8_t*) pubk, 32, pubk_dec))
 			goto send_fail;
 
+		memcpy(C->pubk, pubk_dec, 32);
+
 		pthread_mutex_lock(&active_clients.sync);
 			struct a12_context_options* aopt = active_clients.opts->a12_cfg;
 			struct pk_response rep = aopt->pk_lookup(pubk_dec, aopt->pk_lookup_tag);
+
+/* notify or let .lua config have a say */
+			if (!rep.authentic)
+				rep = anet_directory_lua_register_unknown(C, rep);
+			else
+				anet_directory_lua_register(C);
 		pthread_mutex_unlock(&active_clients.sync);
 
+/* still ad, kill worker */
 		if (!rep.authentic)
 			goto send_fail;
 
@@ -780,7 +795,6 @@ static void dircl_message(struct dircl* C, struct arcan_event ev)
 		snprintf((char*)&ev.tgt.message, COUNT_OF(ev.tgt.message), "a12:ss=%s", b64);
 		free(b64);
 		shmifsrv_enqueue_event(C->C, &ev, -1);
-		memcpy(C->pubk, pubk_dec, 32);
 		return;
 	}
 
@@ -898,15 +912,20 @@ make_random:
 		free(work);
 	}
 
-/* leave / join messages are sent by default, it is up to the application
- * layer to determine if that is necessary - everything has magnification. */
-	if (C->in_appl != -1){
-	}
-	C->in_appl = ind;
+	struct appl_meta* cur;
 
-	snprintf(C->identity, 16, "%s", end);
-	snprintf(C->message_multipart, 16, "from=%s:", C->identity);
-	C->message_ofs = strlen(C->message_multipart);
+	pthread_mutex_lock(&active_clients.sync);
+	cur = locked_numid_appl(ind);
+	if (cur){
+		C->in_appl = ind;
+		if (cur->server_appl){
+			anet_directory_lua_join(C, cur);
+		}
+	}
+	else
+		C->in_appl = -1;
+
+	pthread_mutex_unlock(&active_clients.sync);
 }
 
 static void* dircl_process(void* P)
@@ -923,7 +942,7 @@ static void* dircl_process(void* P)
 
 	while (!dead){
 		struct pollfd pfd = {
-			.fd = shmifsrv_client_handle(C->C),
+			.fd = shmifsrv_client_handle(C->C, NULL),
 			.events = POLLIN | POLLERR | POLLHUP
 		};
 
@@ -945,7 +964,7 @@ static void* dircl_process(void* P)
 		}
 
 /* send the directory index as a bchunkstate, this lets us avoid abusing the
- *MESSAGE event as well as re-using the same codepaths for dynamically
+ * MESSAGE event as well as re-using the same codepaths for dynamically
  * updating the index later. */
 		if (!activated && shmifsrv_poll(C->C) == CLIENT_IDLE){
 			arcan_event ev = {
@@ -994,7 +1013,7 @@ static void* dircl_process(void* P)
 				handle_bchunk_req(C, (char*) ev.ext.bchunk.extensions, ev.ext.bchunk.input);
 			}
 
-/* bounce-back ack streamsatus */
+/* bounce-back ack streamstatus */
 			else if (ev.ext.kind == EVENT_EXTERNAL_STREAMSTATUS){
 				shmifsrv_enqueue_event(C->C, &ev, -1);
 				if (C->pending_stream){
@@ -1126,7 +1145,7 @@ void anet_directory_shmifsrv_set(struct anet_dirsrv_opts* opts)
 
 /* This is in the parent process, it acts as a 1:1 thread/process which
  * pools and routes. The other end of this shmif connection is in the
- * normal */
+ * normal net->listen thread */
 void anet_directory_shmifsrv_thread(
 	struct shmifsrv_client* cl, struct a12_state* S)
 {
@@ -1169,18 +1188,31 @@ void anet_directory_shmifsrv_thread(
 	pthread_create(&pth, &pthattr, dircl_process, newent);
 }
 
-/* This part is much more PoC - we'd need a nicer cache / store (sqlite?) so
- * that each time we start up, we don't have to rescan and the other end don't
- * have to redownload if nothing's changed. See the tar comments further below. */
-static size_t scan_appdir(int fd, struct appl_meta* dst)
+/* this will just keep / cache the built .FAPs in memory, the startup times
+ * will still be long and there is no detection when / if to rebuild or when
+ * the state has changed - a better server would use sqlite and some basic
+ * signalling. */
+void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
 {
-	int old = open(".", O_RDONLY, O_DIRECTORY);
+	pthread_mutex_lock(&active_clients.sync);
+	if (!opts->flag_rescan){
+		pthread_mutex_unlock(&active_clients.sync);
+		return;
+	}
 
+	opts->flag_rescan = false;
+
+	int old = open(".", O_RDONLY, O_DIRECTORY);
+	struct appl_meta* dst = &opts->dir;
+
+/* closedir would drop the descriptor so copy */
+	int fd = dup(opts->basedir);
 	lseek(fd, 0, SEEK_SET);
 	DIR* dir = fdopendir(fd);
 	struct dirent* ent;
-	size_t count = 0;
 
+/* sweep each entry and check if it's a directory */
+	opts->dir_count = 0;
 	while (dir && (ent = readdir(dir))){
 		if (
 			strlen(ent->d_name) >= 18 ||
@@ -1188,15 +1220,35 @@ static size_t scan_appdir(int fd, struct appl_meta* dst)
 			continue;
 		}
 
-/* will actually chdir, it's a bit messy and will be redone when there is a
- * more settled appl format to work from */
+/* this doesn't really happen more than once and when we need a full rescan the
+ * real database solution would be in place so identifiers mutating isn't much
+ * of a concern right now. */
 		if (build_appl_pkg(ent->d_name, dst, fd)){
-			dst->identifier = count++;
+			dst->identifier = opts->dir_count++;
+			dst->server_appl = false;
+
+/* check if there is a corresponding server_appl/server_appl.lua and if so,
+ * mark so that if a client joins we can spin up a worker process while there
+ * are active clients. */
+			char* srvappl;
+			char* msg;
+			if (
+				opts->appl_server_dfd > 0 &&
+				0 < asprintf(&msg, "%s/%s.lua", ent->d_name, ent->d_name)){
+
+				int scriptfile = openat(opts->appl_server_dfd, msg, O_RDONLY);
+				if (-1 != scriptfile){
+					dst->server_appl = true;
+					close(scriptfile);
+				}
+				free(msg);
+			}
+
 			dst = dst->next;
 		}
 	}
 
-	a12int_trace(A12_TRACE_DIRECTORY, "scan_over:count=%zu", count);
+	a12int_trace(A12_TRACE_DIRECTORY, "scan_over:count=%zu", opts->dir_count);
 	closedir(dir);
 
 	if (-1 != old){
@@ -1204,16 +1256,5 @@ static size_t scan_appdir(int fd, struct appl_meta* dst)
 		close(old);
 	}
 
-	return count;
-}
-
-/* this will just keep / cache the built .tars in memory, the startup times
- * will still be long and there is no detection when / if to rebuild or when
- * the state has changed - a better server would use sqlite and some basic
- * signalling. */
-void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
-{
-	pthread_mutex_lock(&active_clients.sync);
-		opts->dir_count = scan_appdir(dup(opts->basedir), &opts->dir);
 	pthread_mutex_unlock(&active_clients.sync);
 }

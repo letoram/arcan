@@ -72,10 +72,13 @@ struct appl_meta;
 struct appl_meta {
 
 /* These are used for local caching of contents, an update on the directory
- * bound to the context or freeing the a12 state machine will free them. */
+ * bound to the context or freeing the a12 state machine will free them and
+ * force-reload / re-join anyone within them. */
 	FILE* handle;
 	char* buf;
 	uint64_t buf_sz;
+	bool server_appl;
+	void* server_tag;
 
 	struct appl_meta* next;
 
@@ -109,10 +112,6 @@ struct a12_context_options {
  * the real one, forces active MiM in order for an attacker to track Pk
  * (re-)use. */
 	bool disable_ephemeral_k;
-
-/* This allows the server end to transition to authenticated state based on
- * password alone, low-security / debugging situations only */
-	bool allow_symmetric_auth;
 
 /* if set, the shared secret will be used to authenticate public keymaterial,
  * message and cipher state for the first packets before DH exchange has been

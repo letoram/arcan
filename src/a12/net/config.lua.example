@@ -1,0 +1,104 @@
+-- this is an example configuration script for the governor process for directory mode
+-- see config.a12.lua for examples of a keystore- attachable config script.
+
+local config = _G["config"]
+local active = {}
+
+-- static override any parameters from the config (command-line set),
+-- these are only guaranteed write-enabled during init()
+function init()
+	config.directory_server = true
+	config.listen_port = 6680
+
+
+-- These are tags set on the keys in the keystore to allow any (authenticated)
+-- keys, set '*'.
+--
+-- These can be overridden / ignored dynamically per client if the 'register()'
+-- function is implemented (see example further below).
+--
+	config.permissions.source = 'sources' -- clients allowed to register as a source
+	config.permissions.dir = 'directory' -- clients allowed to register as a linked directory
+	config.permissions.appl = 'developer' -- clients allowed to update appl slots
+	config.permissions.resources = 'shared-content' -- clients allowed to write
+
+-- Calls to store_key, get_key, get_keys, match_keys functions will use this path,
+-- default :memory: means that it is in-memory only and no persistence across restarts.
+-- Will be created if it doesn't exist.
+	config.paths.database = ':memory:'
+
+-- this is the base-set of appls, will be force-reloaded if updated (potentially expensive)
+	config.paths.appl = '/home/a12/appl'
+	config.paths.appl_server = '/home/a12/appl_server' -- server-side scripts per appl
+	config.paths.keystore = '/home/a12/state' -- note that this also contains user-state
+	config.paths.resources = '/home/a12/shared' -- public share-global store
+	config.paths.appl_server_log = '/home/a12/log' -- per appl_server entry log
+
+-- config.log_level = {
+--     "video", "audio", "system", "event",
+--     "transfer", "debug", "missing", "alloc",
+--     "crypto", "vdetail", "binary", "security"
+--     "directory"
+-- }
+--
+
+-- Authentication secret should only really be used in special cases where all
+-- sources / sinks / etc. can preshare a secret to mask the initial x25519
+-- handshake. It can also be set/updated dynamically.
+-- config.security.secret = 'mypass'
+
+-- Soft authentication permits unknown keys to connect, this only provides
+-- access to appl- download/messaging and source sinking and these can be
+-- further limited through filtering options below.
+	config.security.soft_auth = true
+
+-- Allowing tunneled transfers are a global option,
+-- it is suggested that it is permitted by default as the tunnel-source or
+-- linked directory is still restricted / named and controlled through other
+-- permissions.
+	config.allow_tunnel = true
+end
+
+-- A client that has previously been marked as known and permitted to access
+-- the role has joined with the suggested human-presentable identifier 'name'.
+--
+-- If this is implemented, we are responsible for managing namespace
+-- collisions. Otherwise it is possible for multiple clients to be presented as
+-- the same name for the same role, as a means of load-balancing.
+--
+-- We are also responsible for notifying other clients of its presence
+-- via a_client:notify(new_client).
+function register(client, role, name)
+	if active[name] then
+		print("collision, renaming client")
+	end
+
+	active[name] = client
+	print("register", role, name);
+end
+
+-- By implementing this function,
+-- we get a chance to authenticate unknown Kpubs through some other means.
+--
+-- This could be an external admin interface or identity source, or to track
+-- and direct into a separate authentication tool, or to rate-limit unknown
+-- clients during heavy load.
+--
+-- Returning false would reject the connection.
+--
+-- Returning true will let it through, but the key would still be marked
+-- as unknown until explicitly added to the keystore.
+--
+function register_unknown(client)
+	print("register_unknown, accept");
+	return true;
+end
+
+function leave(client)
+end
+
+-- full appl-list is in [set], this function can be used to filter it, domain
+-- can be 'appl', 'private', 'shared'.
+function list(client, set, domain)
+	return set
+end

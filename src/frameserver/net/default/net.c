@@ -10,7 +10,6 @@
 #include <arcan_shmif_server.h>
 
 #define KEYSTORE_ERRMSG "couldn't open keystore"
-#define WANT_KEYSTORE_HASHER
 #ifndef COUNT_OF
 #define COUNT_OF(x) \
 	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
@@ -28,8 +27,8 @@
 #include "a12.h"
 #include "a12_int.h"
 #include "net/a12_helper.h"
-#include "net/directory.h"
 #include "../../util/anet_helper.h"
+#include "net/directory.h"
 
 enum trust {
 	TRUST_KNOWN,

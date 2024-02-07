@@ -864,7 +864,7 @@ checkfd:
 					rv = 1;
 			}
 			else if (blocking){
-				debug_print(STATUS, c, "failure on blocking fd-wait: %s, %s",
+				debug_print(INFO, c, "failure on blocking fd-wait: %s, %s",
 					strerror(errno), arcan_shmif_eventstr(&priv->pev.ev, NULL, 0));
 				if (!errno || errno == EAGAIN)
 					continue;
@@ -1216,7 +1216,7 @@ static int enqueue_internal(
 	while ( check_dms(c) &&
 			((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
 		struct arcan_event outev = *src;
-		debug_print(STATUS, c,
+		debug_print(INFO, c,
 			"=> %s: outqueue is full, waiting", arcan_shmif_eventstr(&outev, NULL, 0));
 		arcan_sem_wait(ctx->synch.handle);
 	}
@@ -1295,7 +1295,7 @@ void arcan_shmif_unlink(struct arcan_shmif_cont* dst)
 	if (!dst->priv->shm_key)
 		return;
 
-	debug_print(STATUS, dst, "release_shm_key:%s", dst->priv->shm_key);
+	debug_print(INFO, dst, "release_shm_key:%s", dst->priv->shm_key);
 	unlink_keyed(dst->priv->shm_key);
 	dst->priv->shm_key = NULL;
 }
@@ -1379,7 +1379,7 @@ static void map_shared(const char* shmkey, struct arcan_shmif_cont* dst)
 
 /* parent suggested a different size from the start, need to remap */
 	if (dst->addr->segment_size != (size_t) ARCAN_SHMPAGE_START_SZ){
-		debug_print(STATUS, dst, "different initial size, remapping.");
+		debug_print(INFO, dst, "different initial size, remapping.");
 		size_t sz = dst->addr->segment_size;
 		munmap(dst->addr, ARCAN_SHMPAGE_START_SZ);
 		dst->addr = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -1387,7 +1387,7 @@ static void map_shared(const char* shmkey, struct arcan_shmif_cont* dst)
 			goto map_fail;
 	}
 
-	debug_print(STATUS, dst, "segment mapped to %" PRIxPTR, (uintptr_t) dst->addr);
+	debug_print(INFO, dst, "segment mapped to %" PRIxPTR, (uintptr_t) dst->addr);
 	if (MAP_FAILED == dst->addr){
 map_fail:
 		debug_print(FATAL, dst, "couldn't map keyfile"
@@ -1432,6 +1432,26 @@ static int try_connpath(const char* key, char* dbuf, size_t dbuf_sz, int attempt
 static void shmif_exit(int c)
 {
 	debug_print(FATAL, NULL, "guard thread empty");
+}
+
+static bool get_shmkey_from_socket(int sock, char* wbuf, size_t sz)
+{
+/* do this the slow way rather than juggle block/nonblock states */
+	size_t ofs = 0;
+	do {
+		ssize_t nr = read(sock, wbuf + ofs, 1);
+		if (-1 == nr && errno != EAGAIN){
+			debug_print(INFO, NULL, "shmkey_acquire:fail=%s", strerror(errno));
+			return false;
+		}
+		else
+			ofs += nr;
+	}
+	while(wbuf[ofs-1] != '\n' && ofs < sz);
+	debug_print(INFO, NULL, "shmkey_acquire=%s:len=%zu\n", wbuf, ofs);
+	wbuf[ofs-1] = '\0';
+
+	return true;
 }
 
 char* arcan_shmif_connect(
@@ -1484,7 +1504,8 @@ retry:
 		goto retry;
 	}
 
-/* 2. send (optional) connection key, we send that first (keylen + linefeed) */
+/* 2. send (optional) connection key, we send that first (keylen + linefeed),
+ *    this setup is dated and should just be removed */
 	char wbuf[PP_SHMPAGE_SHMKEYLIM+1];
 	if (connkey){
 		ssize_t nw = snprintf(wbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", connkey);
@@ -1504,16 +1525,11 @@ retry:
 	}
 
 /* 3. wait for key response (or broken socket) */
-	size_t ofs = 0;
-	do {
-		if (-1 == read(sock, wbuf + ofs, 1)){
-			debug_print(FATAL, NULL, "invalid response on negotiation: %s", strerror(errno));
-			close(sock);
-			goto end;
-		}
+	if (!get_shmkey_from_socket(sock, wbuf, sizeof(wbuf)-1)){
+		debug_print(FATAL, NULL, "invalid response on negotiation: %s", strerror(errno));
+		close(sock);
+		goto end;
 	}
-	while(wbuf[ofs++] != '\n' && ofs < PP_SHMPAGE_SHMKEYLIM);
-	wbuf[ofs-1] = '\0';
 
 /* 4. omitted, just return a copy of the key and let someone else perform the
  * arcan_shmif_acquire call. Just set the env. */
@@ -1604,9 +1620,20 @@ static struct arcan_shmif_cont shmif_acquire_int(
 
 	if (!shmkey){
 		struct shmif_hidden* gs = parent->priv;
+
+/* special case as a workaround until we can drop the semaphore / key,
+ * if we get a newsegment without a matching key, try and read it from
+ * the socket. */
+		if (strlen(gs->pseg.key) == 0){
+			debug_print(INFO, parent,
+				"missing_event_key:try_socket=%d", gs->pseg.epipe);
+			get_shmkey_from_socket(
+				gs->pseg.epipe, gs->pseg.key, COUNT_OF(gs->pseg.key)-1);
+		}
+
 		map_shared(gs->pseg.key, &res);
 		key_used = gs->pseg.key;
-		debug_print(STATUS, parent, "newsegment_shm_key:%s", key_used);
+		debug_print(INFO, parent, "newsegment_shm_key:%s", key_used);
 
 		if (!(flags & SHMIF_DONT_UNLINK))
 			unlink_keyed(gs->pseg.key);
@@ -1618,7 +1645,7 @@ static struct arcan_shmif_cont shmif_acquire_int(
 		privps = true; /* can't set d/e fields yet */
 	}
 	else{
-		debug_print(STATUS, parent, "acquire_shm_key:%s", shmkey);
+		debug_print(INFO, parent, "acquire_shm_key:%s", shmkey);
 		key_used = shmkey;
 		map_shared(shmkey, &res);
 		if (!(flags & SHMIF_DONT_UNLINK))
@@ -1671,7 +1698,7 @@ static struct arcan_shmif_cont shmif_acquire_int(
 	if (dbgenv)
 		res.priv->log_event = strtoul(dbgenv, NULL, 10);
 
-	if (!(flags & SHMIF_DISABLE_GUARD))
+	if (!(flags & SHMIF_DISABLE_GUARD) && !getenv("ARCAN_SHMIF_NOGUARD"))
 		spawn_guardthread(&res);
 
 	if (privps){
@@ -2141,6 +2168,7 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	free(inctx->privext);
 	munmap(inctx->addr, inctx->shmsize);
 	memset(inctx, '\0', sizeof(struct arcan_shmif_cont));
+	inctx->epipe = -1;
 }
 
 static bool shmif_resize(struct arcan_shmif_cont* arg,
@@ -2861,7 +2889,7 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	pthread_mutex_lock(&ret.priv->guard.synch);
 	if (alias != contaddr){
 		munmap(alias, ret.shmsize);
-		debug_print(STATUS, cont, "remapped base changed, beware of aliasing clients");
+		debug_print(INFO, cont, "remapped base changed, beware of aliasing clients");
 	}
 /* we did manage to retain our old mapping, so switch the pointers,
  * including synchronization with the guard thread */
@@ -3229,12 +3257,21 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 
 	bool networked = false;
 
-/* inheritance based, still somewhat rugged until it is tolerable with one path
+/* Inheritance based, still somewhat rugged until it is tolerable with one path
  * for osx and one for all the less broken OSes where we can actually inherit
- * both semaphores and socket without problem */
-	if (getenv("ARCAN_SHMKEY") && getenv("ARCAN_SOCKIN_FD")){
-		keyfile = strdup(getenv("ARCAN_SHMKEY"));
+ * both semaphores and shmpage without problem. If no key is provided we still
+ * read that from the socket. */
+	if (getenv("ARCAN_SOCKIN_FD")){
 		dpipe = (int) strtol(getenv("ARCAN_SOCKIN_FD"), NULL, 10);
+		if (getenv("ARCAN_SHMKEY")){
+			keyfile = strdup(getenv("ARCAN_SHMKEY"));
+		}
+		else {
+			char wbuf[PP_SHMPAGE_SHMKEYLIM+1];
+			if (get_shmkey_from_socket(dpipe, wbuf, PP_SHMPAGE_SHMKEYLIM)){
+				keyfile = strdup(wbuf);
+			}
+		}
 		unsetenv("ARCAN_SOCKIN_FD");
 		unsetenv("ARCAN_HANDOVER_EXEC");
 		unsetenv("ARCAN_SHMKEY");
@@ -3256,12 +3293,12 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 		}
 	}
 	else {
-		debug_print(STATUS, &ret, "no connection: check ARCAN_CONNPATH");
+		debug_print(INFO, &ret, "no connection: check ARCAN_CONNPATH");
 		goto fail;
 	}
 
 	if (!keyfile || -1 == dpipe){
-		debug_print(STATUS, &ret, "no valid connection key on open");
+		debug_print(INFO, &ret, "no valid connection key on open");
 		goto fail;
 	}
 
@@ -3939,6 +3976,7 @@ void arcan_shmif_privsep(struct arcan_shmif_cont* C,
 	size_t i = 0;
 	while (nodes[i]){
 		unveil(nodes[i]->path, nodes[i]->perm);
+		i++;
 	}
 
 	unveil(NULL, NULL);

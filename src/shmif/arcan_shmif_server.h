@@ -163,7 +163,7 @@ struct shmifsrv_client* shmifsrv_inherit_connection(int sockin, int* sc);
  * Retrieve an I/O multiplexable handle for mixing into poll() rather
  * than throwing a _poll() call in there whenever there's time.
  */
-int shmifsrv_client_handle(struct shmifsrv_client*);
+int shmifsrv_client_handle(struct shmifsrv_client*, int* pid);
 
 /*
  * This should be invoked at a monotonic tickrate, the common default

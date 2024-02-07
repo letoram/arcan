@@ -453,7 +453,7 @@ static void* client_thread(void* inarg)
 	struct shmifsrv_thread_data* data = inarg;
 	static const short errmask = POLLERR | POLLNVAL | POLLHUP;
 	struct pollfd pfd[2] = {
-		{ .fd = shmifsrv_client_handle(data->C), .events = POLLIN | errmask },
+		{ .fd = shmifsrv_client_handle(data->C, NULL), .events = POLLIN | errmask },
 		{ .fd = data->kill_fd, errmask }
 	};
 

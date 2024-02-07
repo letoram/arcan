@@ -390,7 +390,7 @@ void anet_discover_listen_beacon(struct anet_discover_opts* cfg)
 		.sin_port = htons(6680)
 	};
 	socklen_t len = sizeof(addr);
-	if (-1 == bind(sock, &addr, len)){
+	if (-1 == bind(sock, (struct sockaddr*) &addr, len)){
 		fprintf(stderr, "couldn't bind beacon listener\n");
 		return;
 	}

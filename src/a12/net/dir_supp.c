@@ -32,14 +32,15 @@
 void anet_directory_ioloop(struct ioloop_shared* I)
 {
 	int errmask = POLLERR | POLLHUP;
-	struct pollfd fds[6] =
+	bool tun_ok = true;
+	struct pollfd fds[] =
 	{
 		{.fd = I->userfd, .events = POLLIN | errmask},
 		{.fd = I->fdin, .events = POLLIN | errmask},
 		{.fd = -1, .events = POLLOUT | errmask},
 		{.fd = -1, .events = POLLIN | errmask},
 		{.fd = -1, .events = POLLIN | errmask},
-		{.fd = I->userfd2, .events = POLLIN | errmask}
+		{.fd = I->userfd2, .events = POLLIN | errmask},
 	};
 
 	uint8_t inbuf[9000];
@@ -55,35 +56,17 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 		fds[2].fd = I->fdout;
 
 /* regular simple processing loop, wait for DIRECTORY-LIST command */
-	while (a12_ok(I->S) && -1 != poll(fds, 6, -1)){
-		bool tun_ok = true;
-		int got_error = 0;
-		for (size_t i = 0; i < COUNT_OF(fds); i++)
-			got_error |= fds[i].revents & errmask;
-
-		if (got_error){
-			if ((fds[0].revents & errmask) && I->on_userfd){
-				I->on_userfd(I, false);
-			}
-
-			if ((fds[5].revents & errmask) && I->on_userfd2){
-				I->on_userfd2(I, false);
-			}
-
-			if (I->shutdown)
-				break;
-		}
+	while (!I->shutdown && a12_ok(I->S) && -1 != poll(fds, COUNT_OF(fds), -1)){
 
 /* this might add or remove a shmif to our tracking set */
 		if (fds[0].revents & POLLIN){
-			I->on_userfd(I, true);
+			I->on_userfd(I, !(fds[0].revents & errmask));
 		}
 		if (fds[5].revents & POLLIN){
-			I->on_userfd2(I, true);
+			I->on_userfd2(I, !(fds[5].revents & errmask));
 		}
-
 		if (fds[4].revents){
-			I->on_shmif(I);
+			I->on_shmif(I, !(fds[4].revents & errmask));
 		}
 
 /* tunnel is dead? need to close-id it */

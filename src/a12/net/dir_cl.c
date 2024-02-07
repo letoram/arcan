@@ -389,11 +389,12 @@ static pid_t exec_cpath(struct a12_state* S,
 	return pid;
 }
 
-static void runner_shmif(struct ioloop_shared* I)
+static void runner_shmif(struct ioloop_shared* I, bool ok)
 {
 	arcan_event ev;
+	int rv;
 
-	while (arcan_shmif_poll(&I->shmif, &ev) > 0){
+	while ((rv = arcan_shmif_poll(&I->shmif, &ev)) > 0){
 		if (ev.category != EVENT_TARGET){
 			continue;
 		}
@@ -414,6 +415,10 @@ static void runner_shmif(struct ioloop_shared* I)
 		memcpy(out.ext.message.data, ev.tgt.message, sizeof(out.ext.message.data));
 		a12int_trace(A12_TRACE_DIRECTORY, "applmsg=%s", out.ext.message.data);
 		a12_channel_enqueue(I->S, &out);
+	}
+
+	if (rv == -1 || !ok){
+		I->shutdown = true;
 	}
 }
 
@@ -563,7 +568,7 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 					snprintf(
 						(char*)ev.ext.message.data, lim, "%d", I->cbt->clopt->applid);
 				a12_channel_enqueue(I->S, &ev);
-				runner_shmif(I);
+				runner_shmif(I, true);
 			}
 		}
 
