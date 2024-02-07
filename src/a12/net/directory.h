@@ -196,7 +196,7 @@ struct ioloop_shared {
 	bool (*on_directory)(struct ioloop_shared* S, struct appl_meta* dir);
 	void (*on_userfd)(struct ioloop_shared* S, bool ok);
 	void (*on_userfd2)(struct ioloop_shared* S, bool ok);
-	void (*on_shmif)(struct ioloop_shared* S);
+	void (*on_shmif)(struct ioloop_shared* S, bool ok);
 	void* tag;
 };
 

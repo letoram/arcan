@@ -645,7 +645,6 @@ bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 				int fd = openat(CFG->dirsrv.appl_logdfd, msg, O_RDWR | O_CREAT, 0700);
 				if (-1 != fd){
 					lseek(fd, 0, SEEK_END);
-					write(fd, "begin_log\n", 10);	
 						shmifsrv_enqueue_event(runner, &(struct arcan_event){
 						.category = EVENT_TARGET,
 						.tgt.kind = TARGET_COMMAND_BCHUNK_OUT,

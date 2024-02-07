@@ -26,12 +26,11 @@ static const int GROW_SLOTS = 4;
 
 static lua_State* L;
 static struct arcan_shmif_cont SHMIF;
-static bool shutdown;
+static bool SHUTDOWN;
 
 static int shmifopen_flags =
 			SHMIF_ACQUIRE_FATALFAIL |
 			SHMIF_NOACTIVATE |
-			SHMIF_DISABLE_GUARD |
 			SHMIF_NOAUTO_RECONNECT |
 			SHMIF_NOREGISTER;
 
@@ -53,11 +52,16 @@ static struct {
 } CLIENTS;
 
 /* used to prefill applname_entrypoint */
-static char prefix_buf[128];
-static size_t prefix_len;
-static size_t prefix_maxlen;
+static struct {
+	char prefix_buf[128];
+	size_t prefix_len;
+	size_t prefix_maxlen;
+	const char* last_ep;
+} lua;
 
-#define log_print(fmt, ...) do { fprintf(stdout, fmt "\n", ##__VA_ARGS__); } while (0)
+static FILE* logout;
+
+#define log_print(fmt, ...) do { fprintf(logout, fmt "\n", ##__VA_ARGS__); } while (0)
 
 /* These are just lifted from src/engine/arcan_lua.c */
 #include "../../frameserver/util/utf8.c"
@@ -84,20 +88,23 @@ static void slim_utf8_push(char* dst, int ulim, char* inmsg)
 /* for broken state, just ignore. The other options would be 'warn' (will spam)
  * or to truncate (might in some cases be prefered). */
 out:
+#ifdef DEBUG
+	log_print("kind=message:broken_utf8_message");
+#endif
 	dst[0] = '\0';
 }
 
-static bool setup_entrypoint(
-	struct client* cl, const char* ep, size_t len)
+static bool setup_entrypoint(struct lua_State* L, const char* ep, size_t len)
 {
-	memcpy(&prefix_buf[prefix_len], ep, len);
-	prefix_buf[prefix_len + len] = '\0';
-	lua_getglobal(L, prefix_buf);
+	memcpy(&lua.prefix_buf[lua.prefix_len], ep, len);
+	lua.prefix_buf[lua.prefix_len + len] = '\0';
+	lua_getglobal(L, lua.prefix_buf);
 	if (!lua_isfunction(L, -1)){
 		lua_pop(L, 1);
 		return false;
 	}
 
+	lua.last_ep = ep;
 	return true;
 }
 
@@ -150,9 +157,9 @@ static int panic(lua_State* L)
 /* generate a backtrace and dump into stdout which should be our logfd still,
  * set our last words as the crash so the parent knows to keep the log and
  * deliver to developer on request. */
-	fprintf(stdout, "\nscript error:\n");
-	fprintf(stdout, "\nVM stack:\n");
-	dump_stack(L, stdout);
+	fprintf(logout, "\nscript error (%s):\n", lua.last_ep ? lua.last_ep : "(broken-ep)");
+	fprintf(logout, "\nVM stack:\n");
+	dump_stack(L, logout);
 	arcan_shmif_last_words(&SHMIF, "script_error");
 	arcan_shmif_drop(&SHMIF);
 
@@ -166,6 +173,7 @@ static int wrap_pcall(lua_State* L, int nargs, int nret)
 	lua_insert(L, errind);
 	lua_pcall(L, nargs, nret, errind);
 	lua_remove(L, errind);
+	lua.last_ep = NULL;
 	return 0;
 }
 
@@ -212,33 +220,76 @@ static int targetmessage(lua_State* L)
  * returning an error */
 	const char* msg = luaL_checkstring(L, strind);
 	struct arcan_event outev = {
-		.category = EVENT_TARGET,
-		.tgt.kind = TARGET_COMMAND_MESSAGE
+		.category = EVENT_EXTERNAL,
+		.ext.kind = EVENT_EXTERNAL_MESSAGE 
 	};
 
-	if (strlen(msg)+1 >= COUNT_OF(outev.tgt.message)){
+	if (strlen(msg)+1 >= COUNT_OF(outev.ext.message.data)){
+		log_print("kind=error:msg_overflow=%s", msg);
 		lua_pushboolean(L, false);
 		return 1;
 	}
 
 	snprintf(
-		(char*)outev.tgt.message, 
-		COUNT_OF(outev.tgt.message), "%s", msg);
+		(char*)outev.ext.message.data, 
+		COUNT_OF(outev.ext.message.data), "%s", msg);
 
 	if (target){
-		shmifsrv_enqueue_event(target->shmif, &outev, -1);
-		return 0;
+		if (!target->shmif){
+			log_print("kind=error:bad_shmif:"
+				"source=message_target:id=%zu", (size_t) lua_tonumber(L, 1));
+		}
+#ifdef DEBUG
+		log_print("kind=message:"
+				"id=%zu:message=%s", (size_t) lua_tonumber(L, 1), msg);
+#endif
+		lua_pushboolean(L,
+			shmifsrv_enqueue_event(target->shmif, &outev, -1)
+		);
+		return 1;
 	}
 
+#ifdef DEBUG
+	log_print("kind=message:id=%zu:message=%s", (size_t) lua_tonumber(L, 1), msg);
+#endif
+	
 	for (size_t i = 0; i < CLIENTS.set_sz; i++){
 		if (!CLIENTS.cset[i].shmif)
 			continue;
 
-		shmifsrv_enqueue_event(target->shmif, &outev, -1);
+/* should this return a list of workers that failed due to a saturated
+ * event queue in order to detect stalls / livelocks? */
+		shmifsrv_enqueue_event(CLIENTS.cset[i].shmif, &outev, -1);
 	}
 
 	lua_pushboolean(L, true);
 	return 1;
+}
+
+/* luaB_print with a different output FILE */
+static int print_log(lua_State* L)
+{
+	int n = lua_gettop(L);  /* number of arguments */
+	int i;
+	lua_getglobal(L, "tostring");
+	fputs("kind=lua:print=", logout);
+
+	for (i=1; i<=n; i++) {
+		const char *s;
+		lua_pushvalue(L, -1);  /* function to be called */
+		lua_pushvalue(L, i);   /* value to print */
+		lua_call(L, 1, 1);
+		s = lua_tostring(L, -1);  /* get result */
+		if (s == NULL)
+		return luaL_error(L, LUA_QL("tostring") " must return a string to " LUA_QL("print"));
+		if (i>1)
+			fputs("\t", logout);
+		fputs(s, logout);
+		lua_pop(L, 1);  /* pop result */
+	}
+	  fputs("\n", logout);
+	
+	return 0;
 }
 
 static void open_appl(int dfd, const char* name)
@@ -247,11 +298,13 @@ static void open_appl(int dfd, const char* name)
 	log_print("dir_lua:open=%.*s", (int) sizeof(name), name);
 	size_t len = strlen(name);
 
-	if (!prefix_maxlen){
-		prefix_maxlen = COUNT_OF(prefix_buf) - sizeof("_clock_pulse");
+/* maxlen set after the longest named entry point (applname_clock_pulse) */
+	if (!lua.prefix_maxlen){
+		lua.prefix_maxlen =
+			COUNT_OF(lua.prefix_buf) - sizeof("_clock_pulse") - 1;
 	}
 
-	if (len > prefix_maxlen){
+	if (len > lua.prefix_maxlen){
 		log_print("dir_lua:applname_too_long");
 		return;
 	}
@@ -286,13 +339,15 @@ static void open_appl(int dfd, const char* name)
 		log_print("dir_lua:build_error:bootstrap.lua");
 		return;
 	}
+/* first just setup and parse, don't expose API yet */
 	luaL_openlibs(L);
+	lua_pushcfunction(L, print_log);
+	lua_setglobal(L, "print");
 	lua_pcall(L, 0, 0, 0);
 
-/* first just setup and parse, don't expose API yet */
-	memcpy(prefix_buf, name, len);
-	prefix_buf[len] = '\0';
-	prefix_len = len;
+	memcpy(lua.prefix_buf, name, len);
+	lua.prefix_buf[len] = '\0';
+	lua.prefix_len = len;
 
 	char scratch[len + sizeof(".lua")];
 
@@ -372,7 +427,16 @@ static bool join_worker(int fd)
 	if (ind != 0){
 		struct client* cl = &CLIENTS.cset[ind];
 		cl->shmif = shmifsrv_inherit_connection(fd, &tmp);
-		shmifsrv_poll(cl->shmif);
+		int pv = shmifsrv_poll(cl->shmif);
+		while (pv != CLIENT_IDLE && pv != CLIENT_DEAD){
+			pv = shmifsrv_poll(cl->shmif);
+		}
+		if (pv == CLIENT_DEAD){
+			log_print("status=worker_broken");
+			shmifsrv_free(cl->shmif, SHMIFSRV_FREE_FULL);
+			cl->shmif = NULL;
+			return false;
+		}
 		log_print("status=joined:worker=%zu", cl->clid);
 	}
 
@@ -396,7 +460,7 @@ static void release_worker(size_t ind)
 	CLIENTS.active--;
 
 	if (cl->registered &&
-		setup_entrypoint(cl, "_leave", sizeof("_leave"))){
+		setup_entrypoint(L, "_leave", sizeof("_leave"))){
 		lua_pushnumber(L, cl->clid);
 		wrap_pcall(L, 1, 0);
 	}
@@ -426,6 +490,11 @@ static void parent_control_event(struct arcan_event* ev)
 	switch (ev->tgt.kind){
 	case TARGET_COMMAND_BCHUNK_IN:{
 		int fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true);
+		if (-1 == fd){
+			log_print("kind=error:source=dup:bchunk:message=%s", ev->tgt.message);
+			return;
+		}
+
 		if (ev->tgt.message[0] != '.')
 			open_appl(fd, ev->tgt.message);
 		else
@@ -434,10 +503,16 @@ static void parent_control_event(struct arcan_event* ev)
 	break;
 	case TARGET_COMMAND_BCHUNK_OUT:{
 		if (strcmp(ev->tgt.message, ".log") == 0){
-			arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, STDOUT_FILENO, true);
+			int fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true);
+			logout = fdopen(fd, "w");
+			setlinebuf(logout);
 			log_print("--- log opened ---");
 		}
 	}
+	break;
+	case TARGET_COMMAND_EXIT:
+		SHUTDOWN = true;
+	break;
 	case TARGET_COMMAND_STEPFRAME:
 	break;
 	default:
@@ -449,6 +524,10 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 {
 	struct arcan_event ev;
 	while (1 == shmifsrv_dequeue_events(cl->shmif, &ev, 1)){
+#ifdef DEBUG
+		log_print("kind=shmif:source=%zu:data=%s", cl->clid, arcan_shmif_eventstr(&ev, NULL, 0));
+#endif
+
 		if (!cl->registered){
 			if (ev.ext.kind == EVENT_EXTERNAL_NETSTATE){
 				blake3_hasher hash;
@@ -463,7 +542,7 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 				free(b64);
 				cl->registered = true;
 
-				if (setup_entrypoint(cl, "_join", sizeof("_join"))){
+				if (setup_entrypoint(L, "_join", sizeof("_join"))){
 					lua_pushnumber(L, cl->clid);
 					wrap_pcall(L, 1, 0);
 				}
@@ -474,18 +553,25 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 			}
 			continue;
 		}
-
-		if (ev.ext.kind == EVENT_EXTERNAL_MESSAGE &&
-			setup_entrypoint(cl, "_message", sizeof("_message"))){
-			lua_pushnumber(L, cl->clid);
-			lua_newtable(L);
-			int top = lua_gettop(L);
-			tblbool(L, "multipart", ev.tgt.ioevs[0].iv != 0, top);
-			MSGBUF_UTF8(ev.tgt.message);
-			tbldynstr(L, "message", ev.tgt.message, top);
-			wrap_pcall(L, 2, 0);
+/* NAK until we have the client side of file access done */
+		if (ev.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE){
+			shmifsrv_enqueue_event(cl->shmif, &(struct arcan_event){
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_REQFAIL,
+				}, -1);
+			continue;
 		}
-
+		if (ev.ext.kind == EVENT_EXTERNAL_MESSAGE){
+			if (setup_entrypoint(L, "_message", sizeof("_message"))){
+				lua_pushnumber(L, cl->clid);
+				lua_newtable(L);
+				int top = lua_gettop(L);
+				tblbool(L, "multipart", ev.ext.message.multipart, top);
+				MSGBUF_UTF8(ev.ext.message.data);
+				tbldynstr(L, "message", ev.ext.message.data, top);
+				wrap_pcall(L, 2, 0);
+			}
+		}
 /* other relevant, BCHUNKSTATE now that dir_srv.c can be sidestepped (mostly),
  * private- store won't be accessible from here */
 	 }
@@ -497,13 +583,22 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 void anet_directory_appl_runner()
 {
 	struct arg_arr* args;
+	logout = stdout;
+
 	SHMIF = arcan_shmif_open(SEGID_NETWORK_SERVER, shmifopen_flags, &args);
+	shmifsrv_monotonic_rebase();
 
 /* shmif connection gets reserved index 0 */
 	join_worker(SHMIF.epipe);
+	int left = 25;
 
-	while (!shutdown){
-		int pv = poll(CLIENTS.pset, CLIENTS.set_sz, 25);
+	while (!SHUTDOWN){
+		int pv = poll(CLIENTS.pset, CLIENTS.set_sz, left);
+		int nt = shmifsrv_monotonic_tick(&left);
+		while (nt > 0 && setup_entrypoint(L, "_clock_pulse", sizeof("_clock_pulse"))){
+			wrap_pcall(L, 0, 0);
+			nt--;
+		}
 
 		if (CLIENTS.pset[0].revents){
 			struct arcan_event ev;
@@ -520,6 +615,10 @@ void anet_directory_appl_runner()
 			if (CLIENTS.cset[i].shmif){
 				worker_instance_event(
 					&CLIENTS.cset[i], CLIENTS.pset[i].fd, CLIENTS.pset[i].revents);
+				if (CLIENTS.pset[i].revents & (POLLHUP | POLLNVAL)){
+					release_worker(i);
+				}
+
 				CLIENTS.pset[i].revents = 0;
 			}
 		}

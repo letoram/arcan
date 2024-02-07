@@ -32,7 +32,6 @@
 static int shmifopen_flags =
 			SHMIF_ACQUIRE_FATALFAIL |
 			SHMIF_NOACTIVATE |
-			SHMIF_DISABLE_GUARD |
 			SHMIF_NOAUTO_RECONNECT |
 			SHMIF_NOREGISTER;
 
@@ -139,6 +138,11 @@ static void on_a12srv_event(
 	if (ev->category != EVENT_EXTERNAL)
 		return;
 
+/* MISSING: for file transfers into the joined appl-group specifically, check
+ * if the extid match that of the joined appl and route to that shmif context
+ * instead. To list files according to a critera, use .index and then the
+ * returned index will have matching hashes.
+ */
 	if (ev->ext.kind == EVENT_EXTERNAL_BCHUNKSTATE){
 /* sweep the directory, and when found: */
 		if (!isdigit(ev->ext.bchunk.extensions[0])){
@@ -493,15 +497,26 @@ static void do_event(
 	}
 }
 
-static void on_appl_shmif(struct ioloop_shared* S)
+static void on_appl_shmif(struct ioloop_shared* S, bool ok)
 {
 	struct arcan_event ev;
+	int pv;
 
 /* most of these behave just like on_shmif, it is just a different sender */
-	while (arcan_shmif_poll(&S->shmif, &ev) > 0){
+	while ((pv = arcan_shmif_poll(&S->shmif, &ev) > 0)){
 		a12int_trace(
 			A12_TRACE_DIRECTORY,
 			"to_appl=%s", arcan_shmif_eventstr(&ev, NULL, 0));
+
+		a12_channel_enqueue(active_client_state, &ev);
+	}
+
+/* if the worker group we are part of dies, shutdown. this isn't entirely
+ * necessary, it could be that it can recover, but that is something to
+ * consider later when everything is more mature. */
+	if (-1 == pv || !ok){
+		arcan_shmif_drop(&S->shmif);
+		S->shutdown = true;
 	}
 }
 
@@ -511,9 +526,17 @@ static void on_shmif(struct ioloop_shared* S, bool ok)
 {
 	struct arcan_shmif_cont* C = S->cbt->C;
 	struct arcan_event ev;
+	int pv;
 
-	while (arcan_shmif_poll(C, &ev) > 0){
+	while ((pv = arcan_shmif_poll(C, &ev)) > 0){
 		do_event(S->S, C, &ev);
+	}
+
+/* Something is wrong with the parent connection, shutdown. This is a point
+ * where we could go into crash recover and retain the a12 connection if we
+ * wish. */
+	if (pv == -1 || !ok){
+		S->shutdown = true;
 	}
 }
 
@@ -771,9 +794,11 @@ void anet_directory_srv(
 
 	ioloop_shared = &ioloop;
 
-
 /* this will loop until client shutdown */
 	anet_directory_ioloop(&ioloop);
+	if (ioloop.shmif.addr){
+		arcan_shmif_drop(&ioloop.shmif);
+	}
 	arcan_shmif_drop(&shmif_parent_process);
 }
 
@@ -811,13 +836,6 @@ static int request_parent_resource(
 	struct arcan_event ev = (struct arcan_event){
 		.ext.kind = EVENT_EXTERNAL_BCHUNKSTATE
 	};
-
-/* if the resource is from the appl controller, go there - it is up to the
- * controller to forward to parent if secondary resources are needed from the
- * shared space in order for rate-limiting etc. to resolve */
-	if (ioloop_shared->shmif.addr && id[0] != '.'){
-		C = &ioloop_shared->shmif;
-	}
 
 	int kind;
 	if (out){
