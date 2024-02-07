@@ -939,6 +939,7 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"\t --allow-dir  s \t Let clients in trust group [s, all=*] register as directories\n\n"
 	"\t --block-tunnel \t Disallow tunneling traffic between isolated sources/sinks\n\n"
 	"Environment variables:\n"
+	"\tANET_RUNNER    \t Used to override the default arcan binary for running dirhosted appls\n"
 	"\tARCAN_STATEPATH\t Used for keystore and state blobs (sensitive)\n"
 #ifdef WANT_H264_ENC
 	"\tA12_VENC_CRF   \t video rate factor (sane=17..28) (0=lossless,51=worst)\n"

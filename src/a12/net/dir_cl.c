@@ -282,6 +282,11 @@ static void* alloc_cpath(struct a12_state* S, struct directory_meta* dir)
 	struct default_meta* res = malloc(sizeof(struct default_meta));
 	*res = (struct default_meta){.bin = "arcan"};
 
+	if (getenv("ANET_RUNNER")){
+			res->bin = getenv("ANET_RUNNER");
+			return res;
+	}
+
 /* use regular arcan binary to act as display server */
 	if (!cpath){
 		return res;

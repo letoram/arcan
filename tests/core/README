@@ -2,3 +2,5 @@ A12LOOP  - tests of the libarcan_a12 implementation running in-mem
 PROXYCON - sets up a local proxy via the 'proxycon' connection point
 SHMIFSRV - minimal one-client server
 DIRAPPL  - shmif server for running arcan-net
+ANETRUN  - arcan-net host appl runner for easier testing / integration
+           than a full arcan instance would need

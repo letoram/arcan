@@ -47,6 +47,7 @@ struct anet_dircl_opts {
 	int basedir;
 	char basedir_path[PATH_MAX];
 
+	char* appl_runner;
 	char applname[16];
 	uint16_t applid;
 
