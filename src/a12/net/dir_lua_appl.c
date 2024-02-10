@@ -163,7 +163,7 @@ static int panic(lua_State* L)
 	arcan_shmif_last_words(&SHMIF, "script_error");
 	arcan_shmif_drop(&SHMIF);
 
-	exit(EXIT_FAILURE);	
+	exit(EXIT_FAILURE);
 }
 
 static int wrap_pcall(lua_State* L, int nargs, int nret)
@@ -177,7 +177,7 @@ static int wrap_pcall(lua_State* L, int nargs, int nret)
 	return 0;
 }
 
-static void expose_api(lua_State* L, const luaL_reg* funtbl)
+static void expose_api(lua_State* L, const luaL_Reg* funtbl)
 {
 	while(funtbl->name != NULL){
 		lua_pushstring(L, funtbl->name);
@@ -221,7 +221,7 @@ static int targetmessage(lua_State* L)
 	const char* msg = luaL_checkstring(L, strind);
 	struct arcan_event outev = {
 		.category = EVENT_EXTERNAL,
-		.ext.kind = EVENT_EXTERNAL_MESSAGE 
+		.ext.kind = EVENT_EXTERNAL_MESSAGE
 	};
 
 	if (strlen(msg)+1 >= COUNT_OF(outev.ext.message.data)){
@@ -231,7 +231,7 @@ static int targetmessage(lua_State* L)
 	}
 
 	snprintf(
-		(char*)outev.ext.message.data, 
+		(char*)outev.ext.message.data,
 		COUNT_OF(outev.ext.message.data), "%s", msg);
 
 	if (target){
@@ -252,7 +252,7 @@ static int targetmessage(lua_State* L)
 #ifdef DEBUG
 	log_print("kind=message:id=%zu:message=%s", (size_t) lua_tonumber(L, 1), msg);
 #endif
-	
+
 	for (size_t i = 0; i < CLIENTS.set_sz; i++){
 		if (!CLIENTS.cset[i].shmif)
 			continue;
@@ -288,7 +288,7 @@ static int print_log(lua_State* L)
 		lua_pop(L, 1);  /* pop result */
 	}
 	  fputs("\n", logout);
-	
+
 	return 0;
 }
 
