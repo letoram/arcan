@@ -852,6 +852,18 @@ static void synch_copy(struct display* disp, struct agp_vstore* vs)
 	TRACE_MARK_EXIT("video", "copy-blit", TRACE_SYS_SLOW, 0, 0, "");
 }
 
+size_t platform_video_export_vstore(
+	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n)
+{
+	_Static_assert(
+		sizeof(struct shmifext_buffer_plane) ==
+		sizeof(struct agp_buffer_plane), "agp-shmif mismatch"
+	);
+
+	return arcan_shmifext_export_image(&disp[0].conn,
+		0, vs->vinf.text.glid, n, (struct shmifext_buffer_plane*)planes);
+}
+
 /*
  * The synch code here is rather rotten and should be reworked in its entirety
  * in a bit. It is hinged on a few refactors however:
@@ -982,7 +994,8 @@ void platform_video_synch(
 		struct agp_vstore* vs = agp_rendertarget_swap(art, &swap);
 		if (swap){
 			size_t n_pl = 4;
-			struct shmifext_buffer_plane planes[n_pl];
+			struct shmifext_buffer_plane planes[4];
+
 			n_pl = arcan_shmifext_export_image(
 				&disp[i].conn, 0, vs->vinf.text.glid, n_pl, planes);
 

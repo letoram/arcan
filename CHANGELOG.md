@@ -1,6 +1,11 @@
 ## 0.6.4
+## Core
+ * Wired in rendertarget vobj export for hwenc, opt-in via target\_flags on rectgt
+
 ## Net
  * add -c file for assigning lua scriptable command-line overrides
+ * headless runner for arcan-net host appl can be access via ANET\_RUNNER env.
+ * spawning server-side Lua runner if matching appl found, controls message routing
 
 ## 0.6.3
 ## Lua

@@ -90,6 +90,16 @@ bool platform_video_map_buffer(
 	struct agp_vstore*, struct agp_buffer_plane* planes, size_t n);
 
 /*
+ * Export the vstore (if possible) in agp_buffer_plane compatible format.
+ * This should come either from a vstore that itself has been mapped from
+ * agp planes, or be a swapped out vstore from a rendertarget.
+ *
+ * Returns the number of planes actually used, keep n >= 4 (YUYU)
+ */
+size_t platform_video_export_vstore(
+	struct agp_vstore*, struct agp_buffer_plane* planes, size_t n);
+
+/*
  * Reset and rebuild the graphics context(s) associated with a specific card
  * (or -1, default for all). If multiple cards are assigned to one cardid, the
  * swap_primary switches out the contents of one card for another index.

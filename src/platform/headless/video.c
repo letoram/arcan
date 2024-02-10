@@ -567,6 +567,12 @@ size_t platform_video_decay()
 	return 0;
 }
 
+size_t platform_video_export_vstore(
+	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n)
+{
+	return 0;
+}
+
 /*
  * this should be solvable with the same code used by egl-dri
  */

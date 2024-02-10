@@ -750,9 +750,9 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 	}
 
 	switch (cmd){
-/* silent compiler, this should not happen for a target with a
- * frameserver feeding it */
+/* silent compiler, this should not happen for a target with a fsrv sink */
 	case FFUNC_READBACK:
+	case FFUNC_READBACK_HANDLE:
 	break;
 
 	case FFUNC_POLL:
@@ -984,6 +984,7 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 	assert(state.tag == ARCAN_TAG_FRAMESERV);
 	arcan_frameserver* src = (arcan_frameserver*) state.ptr;
 
+	int rv = FRV_NOFRAME;
 	TRAMP_GUARD(FRV_NOFRAME, src);
 
 	if (cmd == FFUNC_DESTROY)
@@ -1004,7 +1005,8 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 /* mark that we are actually busy still */
 	else if (cmd == FFUNC_POLL){
 		if (atomic_load(&src->shm.ptr->vready)){
-			return FRV_GOTFRAME;
+			rv = FRV_GOTFRAME;
+			goto no_out;
 		}
 	}
 /*
@@ -1014,9 +1016,13 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
  * framerate, it can catch up reasonably by using less CPU intensive frame
  * format. Audio will keep on buffering until overflow.
  */
-	else if (cmd == FFUNC_READBACK){
+	else if (cmd == FFUNC_READBACK || cmd == FFUNC_READBACK_HANDLE){
 		if (src->shm.ptr && !src->shm.ptr->vready){
-			memcpy(src->vbufs[0], buf, buf_sz);
+			arcan_event ev  = {
+				.tgt.kind = TARGET_COMMAND_STEPFRAME,
+				.category = EVENT_TARGET,
+			};
+
 			if (src->ofs_audb){
 				memcpy(src->abufs[0], src->audb, src->ofs_audb);
 				src->shm.ptr->abufused[0] = src->ofs_audb;
@@ -1028,11 +1034,6 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
  * encode in the target framerate, it is up to the frameserver to determine
  * when to drop and when to double frames
  */
-			arcan_event ev  = {
-				.tgt.kind = TARGET_COMMAND_STEPFRAME,
-				.category = EVENT_TARGET,
-				.tgt.ioevs[0] = src->vfcount++
-			};
 			struct arcan_shmif_region reg;
 			if (src->desc.region_valid)
 				reg = src->desc.region;
@@ -1044,7 +1045,71 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 			atomic_store(&src->shm.ptr->vpts, arcan_timemillis());
 			atomic_store(&src->shm.ptr->dirty, reg);
 			atomic_store(&src->shm.ptr->vready, 1);
-			platform_fsrv_pushevent(src, &ev);
+
+			if (cmd == FFUNC_READBACK){
+				memcpy(src->vbufs[0], buf, buf_sz);
+				ev.tgt.ioevs[0].iv = src->vfcount++;
+				platform_fsrv_pushevent(src, &ev);
+			}
+
+/* for handle-passing we swap the vstore instead and send that one - ideally we
+ * would send the set once and then instead use the STEPFRAME to mark which
+ * slot that is now signalled and let the sink update a mask of which ones it
+ * currently holds. */
+			else {
+				ev.tgt.kind = TARGET_COMMAND_DEVICE_NODE;
+				ev.tgt.ioevs[2].iv = 0; /* indirect handle, will be static RGBx */
+				ev.tgt.ioevs[3].iv = 0; /* GBM buffer */
+
+/* If we can't export the vstore, log a warning about the fact and then disable
+ * the handle-passing capability flag. This applies for 'cant export at all' or
+ * export as multiple output planes (still need basic bringup of 1p) */
+				size_t np;
+				struct agp_buffer_plane planes[4];
+				struct rendertarget* tgt;
+				arcan_vobject* vobj = arcan_video_getobject(src->vid);
+
+				if (!vobj || !(tgt = arcan_vint_findrt(vobj))){
+					arcan_warning(
+						"Couldn't find rendertarget for frameserver, revert shm", src->vid);
+					src->flags.handle_passing = 0;
+					goto no_out;
+				}
+
+/* this will cause the first frame to be deferred in delivery, if latency
+ * is important the prior processing need to push multiple updates even if
+ * no change to prime the chain. */
+				bool swap = false;
+				struct agp_vstore* vs = agp_rendertarget_swap(tgt->art, &swap);
+				if (!swap){
+					goto no_out;
+				}
+
+				if (1 != (np =
+					!platform_video_export_vstore(vs, planes, COUNT_OF(planes)))){
+					arcan_warning(
+						"Platform rejected export of (%"PRIxVOBJ"), revert shm", 1);
+					src->flags.handle_passing = 0;
+					goto no_out;
+				}
+/* only export the plane- descriptor and not the fence, as we are locked into a
+ * 1-event-1-fd and the variants of fd slots % 4 != 0 versus having the
+ * aforementioned allocation scheme aren't worh it, especially since OUTPUT
+ * doesn't permit resize. */
+				else {
+					platform_fsrv_pushfd(src, &ev, planes[0].fd);
+				}
+
+/* after export we don't need the created handles, ownership goes to recpt. */
+				if (np){
+					for (size_t i = 0; i < np; i++){
+						if (-1 != planes[i].fd)
+							close(planes[i].fd);
+						if (-1 != planes[i].fence)
+							close(planes[i].fence);
+					}
+				}
+			}
 
 			if (src->desc.callback_framestate)
 				emit_deliveredframe(src, 0, src->desc.framecount++);
@@ -1059,7 +1124,7 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 
 no_out:
 	platform_fsrv_leave();
-	return FRV_NOFRAME;
+	return rv;
 }
 
 /* assumptions:

@@ -55,7 +55,8 @@ enum arcan_ffunc_cmd {
 	FFUNC_TICK    = 2, /* logic pulse */
 	FFUNC_DESTROY = 3, /* custom cleanup */
 	FFUNC_READBACK= 4, /* recordtargets, when a readback is ready */
-	FFUNC_ADOPT   = 5, /* outside context */
+	FFUNC_READBACK_HANDLE = 5, /* accelerated form */
+	FFUNC_ADOPT   = 6, /* outside context */
 };
 
 enum arcan_ffunc_rv {

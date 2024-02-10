@@ -206,6 +206,12 @@ bool PLATFORM_SYMBOL(_map_buffer)(
 	return false;
 }
 
+size_t PLATFORM_SYMBOL(_export_vstore)(
+	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n)
+{
+	return 0;
+}
+
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* caption)
 {

@@ -40,6 +40,12 @@ void platform_video_prepare_external()
 {
 }
 
+size_t platform_video_export_vstore(
+	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n)
+{
+	return false;
+}
+
 bool platform_video_map_buffer(
 	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n)
 {

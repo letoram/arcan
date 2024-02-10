@@ -607,6 +607,12 @@ static bool sane_direct_vobj(arcan_vobject* vobj, const char* domain)
 	&& vobj->vstore->txmapped == TXSTATE_TEX2D;
 }
 
+size_t platform_video_export_vstore(
+	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n)
+{
+	return 0;
+}
+
 bool platform_video_map_buffer(
 	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n_planes)
 {
