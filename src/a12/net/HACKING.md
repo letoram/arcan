@@ -251,6 +251,9 @@ than any metadata) and hide the fact that X25519 is used. The use of pre-shared
 secrets and X25519 is to allow for a PKI- less first-time authentication of public
 keys.
 
+This can also be used as a session resumption ticket or combined with a token
+from a trusted third party relaying or tunnelling a connection.
+
 Only the first 8 byte of MAC output is used for the first HELLO packet in order
 to make it easier for implementations to avoid radically different code paths in
 parsing for these packets.
@@ -281,29 +284,6 @@ Each message after completed key-exchange has the outer structure of :
  | command- variable   |  |
 
 The 8-byte LSB sequence number is incremented for each message.
-
-## Notes
-
-There are a few details with the cryptography setup that is still in flux due
-to unfinished prototyping of rekeying or the immature state.
-
-One is that the setup above requires one or two round-trips before a session is
-established. Ideally we should be able to operate in a weaker 'use the
-pre-shared secret' and immediately schedule a rekey, a user unfriendly - pin
-server public key or through session- resume, a pre-established shared secret.
-
-Another is related in that a directory service would be useful for both dynamic
-discovery, and reducing setup latency. See the minimaLT paper for a possible
-construction of that.
-
-All of these could partially be adressed through modifications to the HELLO
-command. All cryptography setup comes through the HELLO command or the REKEY
-command.
-
-A detail though is that the client cannot do very much until the preroll stage
-of the server-end has completed (SHMIF terminology, initial burst of WM/server
-side state needed to produce correct contents). This is a forced round-trip that
-masks the 1-round x25519 one.
 
 ## Commands
 
@@ -349,9 +329,10 @@ interleaving.
 - [18]      Version major : uint8 (shmif-version until 1.0)
 - [19]      Version minor : uint8 (shmif-version until 1.0)
 - [20]      Mode          : uint8
-- [21+ 32]  x25519 Pk     : blob
+- [21+ 32]  x25519 Kpub   : blob
 - [54]      Primary flow  : uint8
 - [55+ 16]  Petname       : UTF-8
+- [72+ 16]  H(Kpub | Ticket) : Resumption hint
 
 The hello message contains key-material for normal x25519, according to
 the Mode byte [20].
@@ -377,6 +358,14 @@ configuration/expectations of the other end, the connection MUST be terminated.
 
 The petname in the direct HELLO state is treated as a suggested (valid utf-8)
 visible simplified user presentable handle.
+
+The Resumption hint can be used to indicate that the connection is a
+reconnection after a previous loss. This is used by the listening endpoint to
+repair with a worker dispatch that has yet to time out. The purpose is to allow
+re-use of expensive server side primitives, e.g. per-worker sandboxing and
+hardware video encoder/decoder allocation. The ticket comes from the last
+inbound REKEY command. The regular authentication process still applies and
+the Kpub used for hashing is the Kpub used for initial authentication.
 
 ### command = 1, shutdown
 - [18..n] : last\_words : UTF-8
@@ -495,15 +484,23 @@ name field.
 The stream-id is that of the last completed stream (if any).
 
 ### command - 8, rekey
-- [18...25] future-seqnr : uint64
-- [26  +16] new (P)key   : uint8[32]
+- [18     ] method
+- [19  + 8] nonce
+- [27  +32] method = 0     new Kpub : uint8[32]
+- [60  +32] method = 0   resumption : uint8[32]
 
-This command indicate a sequence number in the future outside of the expected
-established drift range along with a safety factor. When this sequence number
-has been seen, new message and cipher keys will be derived from the new key and
-used instead of the old one which is discarded and safely erased. The same
-packet with a new corresponding public key will be sent from the other side
-as well.
+The re-key command is used as a double ratchet for forward security, and as a
+placeholder for stepping up the security level to a future PQ hardened scheme
+should someone's threat model involve oompaloompas. The only method currently
+accepted is [0], which is the same as the initial.
+
+When receiving a rekey, repeat the KDF using the new Kpub and use it for all
+future events on the connection.
+
+These must be issued in a ping-pong like fashion, if the one side has issued a
+rekey, it must not issue another one until the other end has. The server is
+first to issue a rekey. This is to avoid the situation where both ends have a
+rekey in flight, possibly breaking the connection.
 
 ### command - 9, directory-list
 - [18     ] notify : uint8

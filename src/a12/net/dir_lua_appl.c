@@ -568,7 +568,7 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 				int top = lua_gettop(L);
 				tblbool(L, "multipart", ev.ext.message.multipart, top);
 				MSGBUF_UTF8(ev.ext.message.data);
-				tbldynstr(L, "message", ev.ext.message.data, top);
+				tbldynstr(L, "message", (char*) ev.ext.message.data, top);
 				wrap_pcall(L, 2, 0);
 			}
 		}

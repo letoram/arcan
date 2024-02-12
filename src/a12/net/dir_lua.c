@@ -122,6 +122,9 @@ static int cfgsec_index(lua_State* L)
 		lua_pushboolean(L, CFG->soft_auth);
 		return 1;
 	}
+	if (strcmp(key, "rekey_bytes") == 0){
+		lua_pushnumber(L, CFG->meta.opts->rekey_bytes);
+	}
 
 	luaL_error(L, "unknown key: %s, allowed: secret, soft_auth\n", key);
 	return 0;

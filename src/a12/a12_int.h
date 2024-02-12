@@ -325,12 +325,19 @@ struct a12_state {
 /* overflow state tracking cookie */
 	volatile uint32_t cookie;
 
-/* curve25519 keys (client), and rekeying sequence number (both) */
+/* curve25519 keys (client), and rekeying sequence number (both), hardening
+ * note - this should be moved to a separate allocation that is madvised to
+ * MADV_DONTDUMP */
 	struct {
 		uint8_t ephem_priv[32];
 		uint8_t real_priv[32];
-		uint64_t rekey_pos;
 		uint8_t remote_pub[32];
+		uint8_t local_pub[32];
+		uint8_t ticket[32];
+
+		bool own_rekey;
+		size_t rekey_base_count;
+		size_t rekey_count;
 	} keys;
 
 /* client side needs to send the first packet with MAC+nonce, server side

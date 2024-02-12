@@ -121,6 +121,10 @@ struct a12_context_options {
 /* can be set to ROLE_PROBE, ROLE_SOURCE, ROLE_SINK or ROLE_DIR */
 	int local_role;
 
+/* send a ratchet rekey after roughly these many bytes have been observed on
+ * the same shared secret (in and out). */
+	size_t rekey_bytes;
+
 /* if set, the a12_flush() will not return a buffer to write out, but rather
  * call into the sink as soon as there is data to send. This helps debugging
  * and simple applications, but limits data interleaving options.

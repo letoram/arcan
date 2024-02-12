@@ -52,6 +52,10 @@ function init()
 -- further limited through filtering options below.
 	config.security.soft_auth = true
 
+-- Enable rekeying each n bytes of data, though depending on mode there may
+-- be other triggers as well, e.g. user joining / leaving a message group.
+-- config.security.rekey_bytes = 1024 * 1024 * 10
+
 -- Allowing tunneled transfers are a global option,
 -- it is suggested that it is permitted by default as the tunnel-source or
 -- linked directory is still restricted / named and controlled through other
