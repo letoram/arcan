@@ -167,12 +167,6 @@ static void a12int_issue_rekey(struct a12_state* S)
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 
-/* derive new shared secret and switch to using it, this overwrites the
- * old keymaterial and chacha state in use */
-	x25519_shared_secret(
-		(uint8_t*)S->opts->secret, S->keys.real_priv, S->keys.remote_pub);
-	update_keymaterial(S, S->opts->secret, 32, &S->decode[27]);
-
 /* it's the other end to issue */
 	S->keys.own_rekey = false;
 }
@@ -991,10 +985,10 @@ static void command_rekey(struct a12_state* S)
 		return;
 	}
 
+/* the nonce sent from the server won't actually be used, it is the one client
+ * provides. a possibility would be to mix both but it doesn't add much as the
+ * exchange is already there. */
 	memcpy(S->keys.remote_pub, &S->decode[27], 32);
-	x25519_shared_secret(
-		(uint8_t*)S->opts->secret, S->keys.real_priv, S->keys.remote_pub);
-	update_keymaterial(S, S->opts->secret, 32, &S->decode[27]);
 
 	if (!S->server){
 		blake3_hasher hash;
@@ -1002,13 +996,20 @@ static void command_rekey(struct a12_state* S)
 		blake3_hasher_update(&hash, S->keys.local_pub, 32);
 		blake3_hasher_update(&hash, &S->decode[60], 32);
 		blake3_hasher_finalize(&hash, S->keys.ticket, 32);
+
+		a12int_issue_rekey(S);
 	}
+/* we have received the pong, re-arm the ratchet */
+	else
+		S->keys.own_rekey = true;
+
+/* after this point both sides have swapped keys, so switch to the new shared */
+	x25519_shared_secret(
+		(uint8_t*)S->opts->secret, S->keys.real_priv, S->keys.remote_pub);
+	update_keymaterial(S, S->opts->secret, 32, &S->decode[27]);
 
 	a12int_trace(A12_TRACE_CRYPTO, "rekey");
 	trace_crypto_key(S->server, "new_session", S->keys.real_priv, 32);
-
-/* now it's our turn to ratchet */
-	S->keys.own_rekey = true;
 }
 
 static void command_binarystream(struct a12_state* S)

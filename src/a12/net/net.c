@@ -205,11 +205,14 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 		snprintf(tmptrace, sizeof(tmptrace), "%d", a12_trace_targets);
 
 		char* argv[] = {global.path_self, "-d", tmptrace, "-S", tmpfd, NULL, NULL};
+		char envarg[1024];
+		snprintf(envarg, 1024, "ARCAN_ARG=rekey=%zu", global.meta.opts->rekey_bytes);
+		char* envv[] = {envarg, NULL};
 
 /* shmif-server lib will get to waitpid / kill so we don't need to care here */
 		struct shmifsrv_envp env = {
 			.path = global.path_self,
-			.envv = NULL,
+			.envv = envv,
 			.argv = argv,
 			.detach = 2 | 4 | 8
 		};

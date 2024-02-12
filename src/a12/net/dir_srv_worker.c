@@ -717,21 +717,28 @@ void anet_directory_srv(
 
 	shmif_parent_process = arcan_shmif_open(SEGID_NETWORK_SERVER, shmifopen_flags, &args);
 
+/* Not all arguments are passed via command-line */
+	const char* val;
+	if (arg_lookup(args, "rekey", 0, &val) && val){
+		a12int_trace(A12_TRACE_DIRECTORY, "notice=set_rekey:bytes=%s", val);
+		netopts->rekey_bytes = strtoul(val, NULL, 10);
+	}
+
 	a12int_trace(A12_TRACE_DIRECTORY, "notice=directory-parent-ok");
 
 /* Now that we have the shmif context, all we should need is stdio and
-	 descriptor passing. The rest - keystore, state access, everything is done
-	 elsewhere.
+   descriptor passing. The rest - keystore, state access, everything is done
+   elsewhere.
 
-	 For meaningful access the attacker would have to get local code-exec,
-	 infoleak the shmpage, find a vuln in either the BCHUNKSTATE event handling
-	 code or the simplified use of shmif in the parent process with
-	 stdio/fdpassing level of syscalls.
+   For meaningful access the attacker would have to get local code-exec,
+   infoleak the shmpage, find a vuln in either the BCHUNKSTATE event handling
+   code or the simplified use of shmif in the parent process with
+   stdio/fdpassing level of syscalls.
 
-	 This is not complete. In order for shm_open, sem_open to work when joining
-	 an appl group with a server end connection we still need the wider
-	 permissions. Before dropping /tmp here and going to minimalfd we need to
-	 rewrite the sem_ functions to work using futexes on the shared memory page.
+   This is not complete. In order for shm_open, sem_open to work when joining
+   an appl group with a server end connection we still need the wider
+   permissions. Before dropping /tmp here and going to minimalfd we need to
+   rewrite the sem_ functions to work using futexes on the shared memory page.
 */
 	struct shmif_privsep_node* paths[] =
 	{
