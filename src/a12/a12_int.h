@@ -335,9 +335,9 @@ struct a12_state {
 		uint8_t local_pub[32];
 		uint8_t ticket[32];
 
-		bool own_rekey;
-		size_t rekey_base_count;
 		size_t rekey_count;
+		size_t rekey_base_count;
+		bool own_rekey;
 	} keys;
 
 /* client side needs to send the first packet with MAC+nonce, server side

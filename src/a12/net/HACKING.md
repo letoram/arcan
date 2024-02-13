@@ -251,9 +251,6 @@ than any metadata) and hide the fact that X25519 is used. The use of pre-shared
 secrets and X25519 is to allow for a PKI- less first-time authentication of public
 keys.
 
-This can also be used as a session resumption ticket or combined with a token
-from a trusted third party relaying or tunnelling a connection.
-
 Only the first 8 byte of MAC output is used for the first HELLO packet in order
 to make it easier for implementations to avoid radically different code paths in
 parsing for these packets.
@@ -269,7 +266,7 @@ KDF(Kcl) -> Ksrv.
 
 The subsequent HELLO command contains data for 1 or 2 rounds of X25519. If 2
 round-trips is used, the first round is using ephemeral key-pairs to further
-hide the actual key-pair to force active MiM in order for Eve to log/track Kp
+hide the actual key-pair to force active MiM in order for Eve to log/track Kpub
 use.
 
 Each message after completed key-exchange has the outer structure of :
@@ -289,8 +286,8 @@ The 8-byte LSB sequence number is incremented for each message.
 
 The command- code can be one out of the following types:
 
-e. control (128b fixed size)
-e. event, tied to the format of arcan\_shmif\_evpack()
+1. control (128b fixed size)
+2. event, tied to the format of arcan\_shmif\_evpack()
 3. video-stream data chunk
 4. audio-stream data chunk
 5. binary-stream data chunk
@@ -304,7 +301,8 @@ also used for defining new video/audio and binary streams.
 - [16]      channel-id      : uint8
 - [17]      command         : uint8
 
-The last-seen are used both as a timing channel and to determine drift.
+The last-seen are used as a timing channel, to determine drift and for
+scheduling rekeying.
 
 If the two sides start drifting outside a certain window, measures to reduce
 bandwidth should be taken, including increasing compression parameters,
@@ -332,7 +330,6 @@ interleaving.
 - [21+ 32]  x25519 Kpub   : blob
 - [54]      Primary flow  : uint8
 - [55+ 16]  Petname       : UTF-8
-- [72+ 16]  H(Kpub | Ticket) : Resumption hint
 
 The hello message contains key-material for normal x25519, according to
 the Mode byte [20].
@@ -484,23 +481,24 @@ name field.
 The stream-id is that of the last completed stream (if any).
 
 ### command - 8, rekey
-- [18     ] method
-- [19  + 8] nonce
-- [27  +32] method = 0     new Kpub : uint8[32]
-- [60  +32] method = 0   resumption : uint8[32]
+- [18     ] mode 
+- [19  +32] mode = 0     new Kpub   : uint8[32]
 
-The re-key command is used as a double ratchet for forward security, and as a
-placeholder for stepping up the security level to a future PQ hardened scheme
-should someone's threat model involve oompaloompas. The only method currently
-accepted is [0], which is the same as the initial.
+The rekey command is used to rotate keys for forward secrecy. When receiving
+a rekey key, calculate a new shared secret as per X25519 with [8..15] used as
+the nonce.
 
-When receiving a rekey, repeat the KDF using the new Kpub and use it for all
-future events on the connection.
+Rekeying must be issued in a ping-pong manner. The listening endpoint has
+initiative. After it issues a rekeying, it is the outbound, then the listening
+and so on.
 
-These must be issued in a ping-pong like fashion, if the one side has issued a
-rekey, it must not issue another one until the other end has. The server is
-first to issue a rekey. This is to avoid the situation where both ends have a
-rekey in flight, possibly breaking the connection.
+This new shared secret should only be used for decoding and authenticating
+inbound packets after seeing the rekey. The KDF is still using BLAKE3 keyed
+with "arcan-a12 rekey", and key for HMAC being H(ssecret).
+
+Other modes are reserved for future step-up to PQ resistant KEMs and for
+establishing a resumption ticket in order to make a reconnection faster in the
+event of a connection loss.
 
 ### command - 9, directory-list
 - [18     ] notify : uint8

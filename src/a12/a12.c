@@ -60,9 +60,6 @@ size_t a12int_header_size(int kind)
 
 static void unlink_node(struct a12_state*, struct blob_out*);
 static void dirstate_item(struct a12_state* S, struct appl_meta* C);
-static void update_keymaterial(
-	struct a12_state* S, char* secret, size_t len, uint8_t* nonce);
-
 static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz, int ind)
 {
 	if (new_sz < *cur_sz)
@@ -118,6 +115,15 @@ static void step_sequence(struct a12_state* S, uint8_t* outb)
 	pack_u64(S->last_seen_seqnr, outb);
 }
 
+static void fail_state(struct a12_state* S)
+{
+#ifndef _DEBUG
+/* overwrite all relevant state, dealloc mac/chacha - mark n random bytes for
+ * continuous transfer before shutting down to be even less useful as an oracle */
+#endif
+	S->state = STATE_BROKEN;
+}
+
 static void build_control_header(struct a12_state* S, uint8_t* outb, uint8_t cmd)
 {
 	memset(outb, '\0', CONTROL_PACKET_SIZE);
@@ -144,31 +150,48 @@ a12int_request_dirlist(struct a12_state* S, bool notify)
 
 static void a12int_issue_rekey(struct a12_state* S)
 {
-	a12int_trace(A12_TRACE_CRYPTO, "issue_rekey");
+	if (!S->keys.own_rekey){
+		a12int_trace(A12_TRACE_CRYPTO, "error:issue_rekey:waiting_for_other");
+		fail_state(S);
+		return;
+	}
 
+	a12int_trace(A12_TRACE_CRYPTO, "issue_rekey");
+	S->keys.own_rekey = false;
+
+/* replace our old key */
+	uint8_t out_pub[32];
 	x25519_private_key(S->keys.real_priv);
-	x25519_public_key(S->keys.real_priv, S->keys.local_pub);
-	trace_crypto_key(S->server, "rekey_priv", S->keys.real_priv, 32);
-	trace_crypto_key(S->server, "rekey_pub", S->keys.real_priv, 32);
+	x25519_public_key(S->keys.real_priv, out_pub);
+	trace_crypto_key(S->server, "rekey_local", S->keys.real_priv, 32);
 
 	uint8_t outb[CONTROL_PACKET_SIZE];
 	uint8_t nonce[8];
 
+/* control-header fills out the nonce-bytes as [8..15] */
 	build_control_header(S, outb, COMMAND_REKEY);
-		outb[18] = 0; /* regular rekey */
-		arcan_random(nonce, 8);
+		outb[18] = 0; /* mode */
 		trace_crypto_key(S->server, "rekey_nonce", nonce, 8);
-		if (S->server){
-			arcan_random(S->keys.ticket, 32);
-			memcpy(&outb[60], S->keys.ticket, 32);
-		}
-		memcpy(&outb[19], nonce, 8);
-		memcpy(&outb[27], S->keys.local_pub, 32);
+		memcpy(&outb[19], out_pub, 32);
+	memcpy(nonce, &outb[8], 8);
+
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 
-/* it's the other end to issue */
-	S->keys.own_rekey = false;
+/* switch to the new shared secret for outbound */
+	uint8_t ssecret[32];	
+	x25519_shared_secret(ssecret, S->keys.real_priv, S->keys.remote_pub);
+	chacha_setup(S->enc_state, ssecret, BLAKE3_KEY_LEN, 0, CIPHER_ROUNDS);
+	chacha_set_nonce(S->enc_state, nonce);
+	trace_crypto_key(S->server, "rekey_shared_out", ssecret, 32);
+
+/* calculate H(ssecret, arcan-a12-rekey) and use for HMAC */
+	uint8_t mac_key[BLAKE3_KEY_LEN];
+	blake3_hasher temp;
+	blake3_hasher_init_derive_key(&temp, "arcan-a12 rekey");
+	blake3_hasher_update(&temp, ssecret, 32);
+	blake3_hasher_finalize(&temp, mac_key, BLAKE3_KEY_LEN);
+	blake3_hasher_init_keyed(&S->out_mac, mac_key);
 }
 
 struct appl_meta* a12int_get_directory(struct a12_state* S, uint64_t* clk)
@@ -234,15 +257,6 @@ void a12int_set_directory(struct a12_state* S, struct appl_meta* M)
 	}
 
 	S->directory = M;
-}
-
-static void fail_state(struct a12_state* S)
-{
-#ifndef _DEBUG
-/* overwrite all relevant state, dealloc mac/chacha - mark n random bytes for
- * continuous transfer before shutting down to be even less useful as an oracle */
-#endif
-	S->state = STATE_BROKEN;
 }
 
 static void send_hello_packet(struct a12_state* S,
@@ -417,11 +431,15 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 		S->buf_ofs = 0;
 	}
 
-/* Forward secrecy enabled and time to issue a rekey command? */
-	if (S->keys.own_rekey && S->keys.rekey_base_count){
-		if (S->keys.rekey_count > out_sz + prepend_sz){
-			S->keys.rekey_count -= out_sz + prepend_sz;
-			return;
+/* Forward secrecy enabled and our turn to rekey? */
+	if (S->keys.own_rekey){
+
+/* Is the byte counter covered? */
+		if (S->keys.rekey_base_count){
+			if (S->keys.rekey_count > out_sz + prepend_sz){
+				S->keys.rekey_count -= out_sz + prepend_sz;
+				return;
+			}
 		}
 
 		S->keys.rekey_count = S->keys.rekey_base_count;
@@ -550,9 +568,7 @@ static struct a12_state* a12_setup(struct a12_context_options* opt, bool srv)
 
 /* server starts with initiative for ratchet rekeying and is always driving it */
 	if (srv){
-		res->keys.own_rekey = srv;
-		res->keys.rekey_base_count = opt->rekey_bytes;
-		res->keys.rekey_count = opt->rekey_bytes;
+		res->keys.own_rekey = true;
 	}
 
 	size_t len = 0;
@@ -970,14 +986,12 @@ static void command_cancelstream(
 static void command_rekey(struct a12_state* S)
 {
 	if (S->keys.own_rekey){
-		a12int_trace(A12_TRACE_SYSTEM,
-			"kind=error:source=rekey:unexpected_rekey");
+		a12int_trace(A12_TRACE_CRYPTO, "error:issue_rekey:waiting_for_other");
 		fail_state(S);
 		return;
 	}
 
-/* rotate in a new kpub for the other end, use our existing kpriv into
- * the shared secret slot and re-run the KDF */
+/* inbound packets will now use a different shared secret and HMAC */
 	if (S->decode[18] != 0){
 		a12int_trace(A12_TRACE_SYSTEM,
 			"kind=error:source=rekey:unknown_rekey_method=%"PRIu8, S->decode[18]);
@@ -985,31 +999,26 @@ static void command_rekey(struct a12_state* S)
 		return;
 	}
 
-/* the nonce sent from the server won't actually be used, it is the one client
- * provides. a possibility would be to mix both but it doesn't add much as the
- * exchange is already there. */
-	memcpy(S->keys.remote_pub, &S->decode[27], 32);
+/* generate the new shared secret and switch inbound processing */
+	uint8_t ssecret[32];
+	memcpy(S->keys.remote_pub, &S->decode[19], 32);
+	x25519_shared_secret(ssecret, S->keys.real_priv, S->keys.remote_pub);
+	chacha_setup(S->dec_state, ssecret, BLAKE3_KEY_LEN, 0, CIPHER_ROUNDS);
+	chacha_set_nonce(S->dec_state, &S->decode[8]);
 
-	if (!S->server){
-		blake3_hasher hash;
-		blake3_hasher_init(&hash);
-		blake3_hasher_update(&hash, S->keys.local_pub, 32);
-		blake3_hasher_update(&hash, &S->decode[60], 32);
-		blake3_hasher_finalize(&hash, S->keys.ticket, 32);
-
-		a12int_issue_rekey(S);
-	}
-/* we have received the pong, re-arm the ratchet */
-	else
-		S->keys.own_rekey = true;
-
-/* after this point both sides have swapped keys, so switch to the new shared */
-	x25519_shared_secret(
-		(uint8_t*)S->opts->secret, S->keys.real_priv, S->keys.remote_pub);
-	update_keymaterial(S, S->opts->secret, 32, &S->decode[27]);
+/* calculate H(ssecret, arcan-a12-rekey) and use for HMAC */
+	uint8_t mac_key[BLAKE3_KEY_LEN];
+	blake3_hasher temp;
+	blake3_hasher_init_derive_key(&temp, "arcan-a12 rekey");
+	blake3_hasher_update(&temp, ssecret, 32);
+	blake3_hasher_finalize(&temp, mac_key, BLAKE3_KEY_LEN);
+	blake3_hasher_init_keyed(&S->in_mac, mac_key);
 
 	a12int_trace(A12_TRACE_CRYPTO, "rekey");
-	trace_crypto_key(S->server, "new_session", S->keys.real_priv, 32);
+	trace_crypto_key(S->server, "rekey_shared_in", ssecret, 32);
+
+/* our turn to issue a rekey */
+	S->keys.own_rekey = true;
 }
 
 static void command_binarystream(struct a12_state* S)
