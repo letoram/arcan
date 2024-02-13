@@ -160,10 +160,12 @@ static void a12int_issue_rekey(struct a12_state* S)
 	S->keys.own_rekey = false;
 
 /* replace our old key */
-	uint8_t out_pub[32];
+	uint8_t out_pub[32] = {0};
+	trace_crypto_key(S->server, "rekey_old", S->keys.real_priv, 32);
 	x25519_private_key(S->keys.real_priv);
 	x25519_public_key(S->keys.real_priv, out_pub);
 	trace_crypto_key(S->server, "rekey_local", S->keys.real_priv, 32);
+	trace_crypto_key(S->server, "rekey_new_pub", out_pub, 32);
 
 	uint8_t outb[CONTROL_PACKET_SIZE];
 	uint8_t nonce[8];
@@ -171,9 +173,9 @@ static void a12int_issue_rekey(struct a12_state* S)
 /* control-header fills out the nonce-bytes as [8..15] */
 	build_control_header(S, outb, COMMAND_REKEY);
 		outb[18] = 0; /* mode */
-		trace_crypto_key(S->server, "rekey_nonce", nonce, 8);
 		memcpy(&outb[19], out_pub, 32);
 	memcpy(nonce, &outb[8], 8);
+	trace_crypto_key(S->server, "rekey_nonce", nonce, 8);
 
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
@@ -192,6 +194,7 @@ static void a12int_issue_rekey(struct a12_state* S)
 	blake3_hasher_update(&temp, ssecret, 32);
 	blake3_hasher_finalize(&temp, mac_key, BLAKE3_KEY_LEN);
 	blake3_hasher_init_keyed(&S->out_mac, mac_key);
+	trace_crypto_key(S->server, "rekey_out_mac", mac_key, BLAKE3_KEY_LEN);
 }
 
 struct appl_meta* a12int_get_directory(struct a12_state* S, uint64_t* clk)
@@ -431,8 +434,8 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 		S->buf_ofs = 0;
 	}
 
-/* Forward secrecy enabled and our turn to rekey? */
-	if (S->keys.own_rekey){
+	if (S->keys.own_rekey &&
+		(!S->server || (S->server && S->keys.rekey_base_count))){
 
 /* Is the byte counter covered? */
 		if (S->keys.rekey_base_count){
@@ -569,6 +572,8 @@ static struct a12_state* a12_setup(struct a12_context_options* opt, bool srv)
 /* server starts with initiative for ratchet rekeying and is always driving it */
 	if (srv){
 		res->keys.own_rekey = true;
+		res->keys.rekey_count = 
+			res->keys.rekey_base_count = opt->rekey_bytes;
 	}
 
 	size_t len = 0;
@@ -986,7 +991,7 @@ static void command_cancelstream(
 static void command_rekey(struct a12_state* S)
 {
 	if (S->keys.own_rekey){
-		a12int_trace(A12_TRACE_CRYPTO, "error:issue_rekey:waiting_for_other");
+		a12int_trace(A12_TRACE_CRYPTO, "error:command_rekey:waiting_for_other");
 		fail_state(S);
 		return;
 	}
@@ -1002,9 +1007,12 @@ static void command_rekey(struct a12_state* S)
 /* generate the new shared secret and switch inbound processing */
 	uint8_t ssecret[32];
 	memcpy(S->keys.remote_pub, &S->decode[19], 32);
+	trace_crypto_key(S->server, "rekey_priv", S->keys.real_priv, 32);
+	trace_crypto_key(S->server, "rekey_new_pub", S->keys.remote_pub, 32);
 	x25519_shared_secret(ssecret, S->keys.real_priv, S->keys.remote_pub);
 	chacha_setup(S->dec_state, ssecret, BLAKE3_KEY_LEN, 0, CIPHER_ROUNDS);
 	chacha_set_nonce(S->dec_state, &S->decode[8]);
+	trace_crypto_key(S->server, "rekey_nonce", &S->decode[8], 8);
 
 /* calculate H(ssecret, arcan-a12-rekey) and use for HMAC */
 	uint8_t mac_key[BLAKE3_KEY_LEN];
