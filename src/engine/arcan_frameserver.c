@@ -1044,12 +1044,14 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 
 			atomic_store(&src->shm.ptr->vpts, arcan_timemillis());
 			atomic_store(&src->shm.ptr->dirty, reg);
-			atomic_store(&src->shm.ptr->vready, 1);
 
+	/* only mark vready if we go the manual buffer route, otherwise the device
+	 * events act as clock */
 			if (cmd == FFUNC_READBACK){
 				memcpy(src->vbufs[0], buf, buf_sz);
 				ev.tgt.ioevs[0].iv = src->vfcount++;
 				platform_fsrv_pushevent(src, &ev);
+				atomic_store(&src->shm.ptr->vready, 1);
 			}
 
 /* for handle-passing we swap the vstore instead and send that one - ideally we
@@ -1072,7 +1074,6 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 				if (!vobj || !(tgt = arcan_vint_findrt(vobj))){
 					arcan_warning(
 						"Couldn't find rendertarget for frameserver, revert shm", src->vid);
-					src->flags.handle_passing = 0;
 					goto no_out;
 				}
 
@@ -1086,11 +1087,10 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 				}
 
 				if (1 != (np =
-					!platform_video_export_vstore(vs, planes, COUNT_OF(planes)))){
+					platform_video_export_vstore(vs, planes, COUNT_OF(planes)))){
 					arcan_warning(
 						"Platform rejected export of (%"PRIxVOBJ"), revert shm", 1);
-					src->flags.handle_passing = 0;
-					goto no_out;
+					tgt->hwreadback = false;
 				}
 /* only export the plane- descriptor and not the fence, as we are locked into a
  * 1-event-1-fd and the variants of fd slots % 4 != 0 versus having the

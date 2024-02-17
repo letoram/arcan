@@ -4,6 +4,7 @@
 -- @inargs: vid:rendertarget, bool:force_dirty=true
 -- @inargs: vid:rendertarget, number:refresh
 -- @inargs: vid:rendertarget, number:refresh, number:readback
+-- @inargs: vid:rendertarget, number:refresh, number:readback, bool:allow_hw=false
 -- @outargs:
 -- @longdescr: By default, rendertargets update synchronously with the
 -- regular video refresh/redraw that is performed as part of the active
@@ -25,6 +26,12 @@
 -- Any pending counters/timers for frame or tick/based automatic updates
 -- will be reset, and the update includes synchronizing with readback in
 -- the case of calctargets and recordtargets.
+--
+-- If *allow_hw* is set to true, the readback performed will instead be used to
+-- share the buffer of the rendertarget with the assigned sink. This has
+-- complex effects on the underlying graphics stack and may fail. If a failure
+-- can be detected it will automatically switch back to a software only
+-- approach (allow\_hw=false), but it can also fail without warning.
 --
 -- @note: Trying to call this function on a VID that references an object
 -- that is not flagged as a rendertarget is a terminal state transition.

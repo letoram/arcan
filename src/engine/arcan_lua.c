@@ -9001,6 +9001,13 @@ static int rendertargetforce(lua_State* ctx)
 			rtgt->readback = luaL_checknumber(ctx, 3);
 			rtgt->readcnt = abs(rtgt->readback);
 		}
+
+/* this might also need us to switch to a different allocator, the problem is
+ * that we don't know the specific capabilities / desires of the sink (though
+ * that can probably be derived after the devicehint). */
+		if (luaL_optbnumber(ctx, 4, false)){
+			rtgt->hwreadback = true;
+		}
 	}
 /* there are special considerations here if the rendertarget is mapped, as that
  * means its 'dirty' state would be erased when the time comes for the display

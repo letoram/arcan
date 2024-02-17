@@ -8,9 +8,8 @@ function vidtag()
 	movie = launch_decode(fname,
 	function(source, status)
 		if (status.kind == "resized") then
-			play_movie(movie);
-			show_image(movie);
-			resize_image(movie, VRESW, VRESH);
+			show_image(source);
+			resize_image(source, VRESW, VRESH);
 		end
 	end);
 
@@ -35,7 +34,7 @@ function vidtag_frame_pulse()
 	end
 end
 
-function start_recording()
+function start_recording(hw)
 	if (valid_vid(rendertgt)) then
 		warning("Already recording.\n");
 		return;
@@ -45,24 +44,45 @@ function start_recording()
 	local outfn = "";
 
 	repeat
-		outfn = string.format("%s_%d.mkv", arguments[1], ind);
+		outfn = string.format("%s_%d.mkv", fname, ind);
 		ind = ind + 1;
 	until (not resource( outfn ));
 
-	rendertgt = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
+	rendertgt = fill_surface(640, 480, 0, 0, 0, 640, 480);
+	local store = null_surface(640, 480);
+	image_sharestorage(movie, store);
+
+	local olay = color_surface(64, 64, 128, 255, 0);
+	move_image(olay, 0, 0, 100);
+	move_image(olay, 100, 0, 100);
+	image_transform_cycle(olay, true);
+
 	define_recordtarget(rendertgt, outfn,
 		"container=mkv:vcodec=H264:fps=60:vpreset=8:noaudio",
-		{movie}, {}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1);
+		{store, olay}, {}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1);
 
+	if hw then
+		rendertarget_forceupdate(rendertgt, -1, -1, true);
+	end
+
+	show_image(store);
+	show_image(olay);
+	order_image(olay, 10);
 	show_image(rendertgt);
 end
 
 function vidtag_input(iotbl)
 	if (iotbl.kind == "digital" and iotbl.translated and iotbl.active) then
 		sym = symtable.tolabel(iotbl.keysym);
+		print(sym)
 
-		if (sym == " ") then
+		if (sym == "F1") then
+			print("request record");
 			start_recording();
+
+		elseif (sym == "F2") then
+			print("request record with hwhandle");
+			start_recording(true);
 
 		elseif (sym == "ESCAPE") then
 			shutdown();

@@ -681,6 +681,10 @@ int ffmpeg_run(struct arg_arr* args, struct arcan_shmif_cont* C)
 					(ARCAN_SHMIF_SAMPLERATE / 1000.0) * ev.tgt.ioevs[0].iv;
 			break;
 
+			case TARGET_COMMAND_DEVICE_NODE:
+				LOG("kind=device_node:got_buffer_frame\n");
+			break;
+
 			case TARGET_COMMAND_STEPFRAME:
 				if (!firstframe){
 					firstframe = true;

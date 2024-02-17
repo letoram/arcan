@@ -1,7 +1,6 @@
 -- rendertarget_reconfigure
--- @short: Change the output density or colour properties of a rendertarget
+-- @short: Change the output density or processing flags of a rendertarget
 -- @inargs: vid:rtgt, float:hppcm, float:vppcm
--- @inargs: vid:rtgt, tbl:metadata
 -- @outargs:
 -- @longdescr:
 -- Two major properties of a rendertarget are the intended output density
@@ -17,18 +16,9 @@
 -- asset gets created or attached to a rendertarget, it will be rerastered to
 -- match the density of the rendertarget.
 --
--- For HDR composition and rendering, you typically need to provide further
--- metadata about light levels and so on. This can be set through the metadata
--- table which accepts the following fields: {encoding, whitepoint, levels,
--- lumarange, primaries}.
---
--- @tblent: string:encoding, "itu-r", "bt.601", "bt.709", "bt.2020", "YCBCr"
--- @tblent: table:whitepoint[2], x/y coordinates ranging from 0..1, 0..1
--- @tblent: table:primaries[6], x/y coordinates of red, green, blue primaries
--- @tblent: number:max_frame_average, in nits, caps at 65535.
--- @tblent: number:max_content_level, in nits, caps at 65535.
--- @tblent: table:mastering_levels[2], in nits, caps at 65535.
---
+-- @note: For HDR composition and rendering, you typically need to provide
+-- further metadata about light levels and so on. This can be set on the *rtgt*
+-- using ref:image_metadata.
 -- @group: targetcontrol
 -- @cfunction: renderreconf
 -- @external: yes

@@ -4362,8 +4362,31 @@ static inline void process_readback(struct rendertarget* tgt, float fract)
 {
 	if (!FL_TEST(tgt, TGTFL_READING) &&
 		process_counter(tgt, &tgt->readcnt, tgt->readback, fract)){
-		agp_request_readback(tgt->color->vstore);
-		FL_SET(tgt, TGTFL_READING);
+
+/* for handle passing we can go immediately, even though the asynch job
+ * might not be done, that's up to the fences tied to the export */
+		if (tgt->hwreadback){
+			arcan_vobject* vobj = tgt->color;
+
+/* don't check the readback unless the client is ready, should possibly have a
+ * timeout for this as well so we don't hold GL resources with an unwilling /
+ * broken client, it's a hard tradeoff as streaming video encode might deal
+ * well with the dropped frame at this stage, while a variable rate interactive
+ * source may lose data */
+			arcan_vfunc_cb ffunc = NULL;
+			if (vobj->feed.ffunc){
+				ffunc = arcan_ffunc_lookup(vobj->feed.ffunc);
+				if (FRV_GOTFRAME == ffunc(FFUNC_READBACK_HANDLE,
+					NULL, 0, 0, 0, 0, vobj->feed.state, vobj->cellid))
+					return;
+			}
+		}
+
+/* check again as the ffunc might av unset the hwreadback flag */
+		if (!tgt->hwreadback){
+			agp_request_readback(tgt->color->vstore);
+			FL_SET(tgt, TGTFL_READING);
+		}
 	}
 }
 

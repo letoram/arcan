@@ -87,6 +87,11 @@ struct rendertarget {
 	int readback;
 	int readcnt;
 
+/* if hwreadback is set, the FFUNC_READBACK_HANDLE will trigger instead, used
+ * for exporting a rendertarget to another process using some GPU specific
+ * handle sharing mechanism. */
+	bool hwreadback;
+
 /* for for controlling refresh, same mechanism as with readback */
 	int refresh;
 	int refreshcnt;
