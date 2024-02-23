@@ -7116,6 +7116,8 @@ static void error_nbio(lua_State* L, int fd, intptr_t tag, const char* src)
 void arcan_lua_mapfunctions(lua_State* ctx, int debuglevel)
 {
 	alt_setup_context(ctx, arcan_appl_id());
+	alt_apply_ban(ctx);
+
 	alua_exposefuncs(ctx, debuglevel);
 /* update with debuglevel etc. */
 	arcan_lua_pushglobalconsts(ctx);
@@ -7127,8 +7129,6 @@ void arcan_lua_mapfunctions(lua_State* ctx, int debuglevel)
 		lua_pushcclosure(ctx, luaB_loadstring, 1);
 		lua_setglobal(ctx, "loadstring");
 	}
-
-	alt_apply_ban(ctx);
 }
 
 /* alua_ namespace due to winsock pollution */
