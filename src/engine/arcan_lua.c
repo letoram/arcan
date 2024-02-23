@@ -7127,6 +7127,8 @@ void arcan_lua_mapfunctions(lua_State* ctx, int debuglevel)
 		lua_pushcclosure(ctx, luaB_loadstring, 1);
 		lua_setglobal(ctx, "loadstring");
 	}
+
+	alt_apply_ban(ctx);
 }
 
 /* alua_ namespace due to winsock pollution */
