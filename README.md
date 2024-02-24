@@ -22,6 +22,11 @@ announcements, releases, videos / presentations and so on.
 
 * For developer information, see the HACKING.md
 
+The github repository is going defunct thanks to Microsofts incresingly abusive
+practices, and we are thus moving to self-hosted Fossil. The repository will be
+synched to github for the time being, but no active development activities
+there. See [fossil.arcan-fe.com](https://fossil.arcan-fe.com).
+
 Getting Started
 ====
 
@@ -253,6 +258,17 @@ Assuming the build-system found the libvncserver dependency, this should
 leave you with an exposed (insecure, unprotected, ...) vnc server at
 localhost+5900. See afsrv\_encode for a list of arguments that can be added
 to the encode environment in order to control what happens.
+
+Funding
+=======
+
+This project is funded through [NGI0 Entrust](https://nlnet.nl/entrust), a fund
+established by [NLnet](https://nlnet.nl) with financial support from the
+European Commission's [Next Generation Internet](https://ngi.eu) program. Learn
+more at the [NLnet project page](https://nlnet.nl/Arcan-A12).
+
+[<img src="https://nlnet.nl/logo/banner.png" alt="NLnet foundation logo" width="20%" />](https://nlnet.nl)
+[<img src="https://nlnet.nl/image/logos/NGI0_tag.svg" alt="NGI Zero Logo" width="20%" />](https://nlnet.nl/entrust)
 
 Related Projects
 ================
