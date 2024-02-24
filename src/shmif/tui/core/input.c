@@ -204,7 +204,7 @@ void tui_input_event(
 			}
 
 			if (ioev->subid == TUIBTN_WHEEL_UP){
-				if (ioev->input.digital.active){
+				if (ioev->input.digital.active && tui->handlers.input_key){
 						tui->handlers.input_key(tui,
 						((tui->modifiers & (ARKMOD_LSHIFT | ARKMOD_RSHIFT)) ? TUIK_PAGEUP : TUIK_UP),
 						ioev->input.translated.scancode,
@@ -214,7 +214,7 @@ void tui_input_event(
 				}
 			}
 			else if (ioev->subid == TUIBTN_WHEEL_DOWN){
-				if (ioev->input.digital.active){
+				if (ioev->input.digital.active && tui->handlers.input_key){
 					tui->handlers.input_key(tui,
 						((tui->modifiers & (ARKMOD_LSHIFT | ARKMOD_RSHIFT)) ? TUIK_PAGEDOWN : TUIK_DOWN),
 						ioev->input.translated.scancode,
