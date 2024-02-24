@@ -952,8 +952,8 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"\tA12_VBP_SOFT   \t backpressure soft (full-frames) cap (< VBP)\n"
 	"\tA12_CACHE_DIR  \t Used for caching binary stores (fonts, ...)\n\n"
 	"\tLocal Discovery mode (ignores connection arguments):\n"
-	"\tarcan-net discover passive\n"
-	"\tarcan-net discover beacon\n\n"
+	"\tarcan-net discover passive [ff00::/8 eg. ff00::1:6]\n"
+	"\tarcan-net discover beacon [ff00::/8 eg. ff00::1:6]\n\n"
 	"Keystore mode (ignores connection arguments):\n"
 	"\tAdd/Append key: arcan-net keystore tagname host [port=6680]\n"
 	"\t                tag=default is reserved\n"
@@ -1404,7 +1404,8 @@ static void* send_beacon(void* tag)
 {
 	struct anet_discover_opts cfg = {
 		.limit = -1,
-		.timesleep = 10
+		.timesleep = 10,
+		.ipv6 = *(char**) tag
 	};
 
 	struct anet_options opts = {
@@ -1414,6 +1415,13 @@ static void* send_beacon(void* tag)
 	const char* err;
 	if (!open_keystore(&opts, &err)){
 		fprintf(stderr, "couldn't open keystore: %s\n", err);
+		return NULL;
+	}
+
+	err = a12helper_discover_ipcfg(&cfg, true);
+	if (err){
+		fprintf(stderr, "discover setup failed: %s\n", err);
+		return NULL;
 	}
 
 	anet_discover_send_beacon(&cfg);
@@ -1423,6 +1431,16 @@ static void* send_beacon(void* tag)
 
 static int run_discover_command(int argc, char** argv)
 {
+	char* ipv6 = NULL;
+
+/* specifying last argument enables IPv6 */
+	if (argc > 3){
+		if (strcmp("passive", argv[argc-1]) != 0 &&
+			strcmp("beacon", argv[argc-1]) != 0){
+			ipv6 = argv[argc-1];
+		}
+	}
+
 /* can run with either (beacon & listen) or just beacon or just listen */
 	if (argc <= 2 || strcmp(argv[2], "passive") != 0){
 	 	pthread_t pth;
@@ -1431,21 +1449,29 @@ static int run_discover_command(int argc, char** argv)
 		pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
 
 		if (argc <= 2 || strcmp(argv[2], "beacon") != 0){
-			pthread_create(&pth, &pthattr, send_beacon, NULL);
+			pthread_create(&pth, &pthattr, send_beacon, &ipv6);
 		}
 		else{
-			send_beacon(NULL);
+			send_beacon(&ipv6);
 			return EXIT_SUCCESS;
 		}
 	}
 
 	struct anet_discover_opts cfg = {
-		.discover_beacon = discover_beacon
+		.discover_beacon = discover_beacon,
+		.ipv6 = ipv6
 	};
+
 	struct anet_options opts = {.keystore.directory.dirfd = -1};
 	const char* err;
 	if (!open_keystore(&opts, &err)){
 		fprintf(stderr, "couldn't open keystore: %s\n", err);
+		return EXIT_FAILURE;
+	}
+
+	err = a12helper_discover_ipcfg(&cfg, true);
+	if (err){
+		fprintf(stderr, "couldn't setup discover: %s\n", err);
 		return EXIT_FAILURE;
 	}
 

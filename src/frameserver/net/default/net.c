@@ -97,6 +97,15 @@ static int discover_broadcast(
 		.timesleep = 10
 	};
 
+	arg_lookup(arg, "ipv6", 0, &cfg.ipv6);
+
+	const char* err = a12helper_discover_ipcfg(&cfg, true);
+	if (err){
+		arcan_shmif_last_words(C, err);
+		LOG("%s", err);
+		return EXIT_FAILURE;
+	}
+
 	anet_discover_send_beacon(&cfg);
 
 	return EXIT_SUCCESS;
@@ -191,11 +200,16 @@ static int discover_passive(
 		return EXIT_FAILURE;
 	}
 
+
 	struct anet_discover_opts cfg = {
 		.discover_beacon = on_disc_beacon,
 		.on_shmif = on_disc_shmif,
 		.C = C
 	};
+
+	arg_lookup(arg, "ipv6", 0, &cfg.ipv6);
+	const char* err = a12helper_discover_ipcfg(&cfg, true);
+
 	anet_discover_listen_beacon(&cfg);
 
 	return EXIT_SUCCESS;
@@ -1069,17 +1083,19 @@ static int show_help()
 		"Net (client) should be run authoritatively (spawned from arcan)\n"
 		"Running from the command-line is only intended for developing/debugging\n\n"
 		"ARCAN_ARG (environment variable, key1=value:key2:key3=value), arguments: \n"
-		" Outobund connection: \n"
+		" Outbound connection: \n"
 		"  key     \t   value   \t   description\n"
 		"----------\t-----------\t-----------------\n"
 		" host     \t  dsthost  \t Specify host to connect to\n"
 		" tag      \t  tag      \t Set tag (and host unless host is set) to connect\n"
+		" ipv6     \t  group    \t Set IPV6 multicast group address\n"
   	"\n"
 		" Discovery:\n "
 		"  key   \t   value   \t   description\n"
 		"--------\t-----------\t-----------------\n"
 		" discover \t  method   \t Set discovery mode (method=sweep,test,passive,\n"
 		"          \t           \t                     broadcast or directory)\n"
+		" ipv6     \t  group    \t Set IPV6 multicast group address\n"
 	);
 
 	return EXIT_FAILURE;

@@ -10,6 +10,9 @@
 #include <poll.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 #include <inttypes.h>
 #include <sys/wait.h>
 #include <sys/types.h>
@@ -29,8 +32,17 @@
 
 static struct hashmap_s known_beacons;
 
-/* missing - for DDoS protection we'd also want a bloom filter of challenges
- * and discard ones we have already seen */
+struct ipcfg {
+	union {
+		struct sockaddr_in6 v6;
+		struct sockaddr_in v4;
+		struct sockaddr base;
+	};
+	size_t addr_sz;
+	const char* err;
+	int sock;
+};
+
 struct beacon {
 	struct {
 		union {
@@ -178,7 +190,8 @@ struct keystore_mask*
 
 void
 	a12helper_listen_beacon(
-		struct arcan_shmif_cont* C, int sock,
+		struct arcan_shmif_cont* C,
+		struct anet_discover_opts* O,
 		bool (*on_beacon)(
 			struct arcan_shmif_cont*,
 			const uint8_t[static DIRECTORY_BEACON_MEMBER_SIZE],
@@ -192,7 +205,7 @@ void
 		uint8_t mtu[9000];
 		struct pollfd ps[2] = {
 			{
-				.fd = sock,
+				.fd = O->IP->sock,
 				.events = POLLIN | POLLERR | POLLHUP
 			},
 			{
@@ -211,7 +224,7 @@ void
 			struct sockaddr_in caddr;
 			socklen_t len = sizeof(caddr);
 			ssize_t nr =
-				recvfrom(sock,
+				recvfrom(O->IP->sock,
 					mtu, sizeof(mtu), MSG_DONTWAIT, (struct sockaddr*)&caddr, &len);
 
 /* make sure beacon covers at least one key, then first cache */
@@ -299,11 +312,78 @@ void
 
 }
 
-void anet_discover_send_beacon(struct anet_discover_opts* cfg)
+static struct ipcfg build_ipv6(struct anet_discover_opts* cfg, bool broadcast)
 {
-	int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (-1 == sock){
-		return;
+	struct ipcfg res = {.sock = -1, .addr_sz = sizeof(struct sockaddr_in6)};
+	int s = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+
+	if (-1 == s){
+		res.err = "couldn't build ipv6 socket";
+		return res;
+	}
+
+	int on = 1;
+	if (-1 == setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int))){
+		close(s);
+		res.err = "sockopt.reuseaddr rejected";
+		return res;
+	}
+
+	if (-1 == setsockopt(s,
+		IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &(int){255}, sizeof(int))){
+		close(s);
+		res.err = "sockopt.n_hops rejected";
+		return res;
+	}
+
+	if (-1 == setsockopt(s,
+		IPPROTO_IPV6, IPV6_MULTICAST_LOOP, &(int){1}, sizeof(int))){
+		close(s);
+		res.err = "sockopt.loop rejected";
+		return res;
+	}
+/* MULTICAST_IF? */
+
+	res.v6.sin6_family = AF_INET6;
+	res.v6.sin6_port = 6680;
+	int c = inet_pton(AF_INET6, cfg->ipv6, &res.v6.sin6_addr);
+	if (1 != c){
+		close(s);
+		res.err = "ipv6.multicast_addr invalid";
+		return res;
+	}
+
+	struct ipv6_mreq mreq = {
+		.ipv6mr_multiaddr = res.v6.sin6_addr
+	};
+
+	if (setsockopt(s, IPPROTO_IPV6, IPV6_JOIN_GROUP, (char*)&mreq, (sizeof(mreq)))){
+		close(s);
+		res.err = "sockopt.join_mcast rejected";
+		return res;
+	}
+
+	if (-1 == bind(s, &res.v6, res.addr_sz)){
+		close(s);
+		res.err = "ipv6.bind rejected";
+		return res;
+	}
+
+	res.sock = s;
+
+	return res;
+}
+
+static struct ipcfg build_ipv4(struct anet_discover_opts* cfg, bool broadcast)
+{
+	struct ipcfg res = {
+		.sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP),
+		.addr_sz = sizeof(struct sockaddr_in)
+	};
+
+	if (-1 == res.sock){
+		res.err = "couldn't build ipv4 socket";
+		return res;
 	}
 
 	struct sockaddr_in addr = {
@@ -316,24 +396,65 @@ void anet_discover_send_beacon(struct anet_discover_opts* cfg)
 	socklen_t len = sizeof(addr);
 
 	int yes = 1;
-  int ret = setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (char*)&yes, sizeof(yes));
-	if (-1 == ret){
-		return;
+  if (setsockopt(res.sock, SOL_SOCKET, SO_BROADCAST, (char*)&yes, sizeof(yes))){
+		close(res.sock);
+		res.err = "sockopt.broadcast rejected";
+		res.sock = -1;
+		return res;
 	}
 
-	ret = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, (char*)&yes, sizeof(yes));
+	if (setsockopt(res.sock, IPPROTO_IP, IP_MULTICAST_LOOP, (char*)&yes, sizeof(yes))){
+		close(res.sock);
+		res.err = "sockopt.multicast_loop rejected";
+		res.sock = -1;
+		return res;
+	}
 
-	size_t size;
-	uint8_t* one, (* two);
-	struct sockaddr_in broadcast = {
-		.sin_family = AF_INET,
-		.sin_addr.s_addr = htonl(INADDR_BROADCAST),
-		.sin_port = htons(6680)
-	};
+	if (broadcast){
+		res.v4 = (struct sockaddr_in){
+			.sin_family = AF_INET,
+			.sin_addr.s_addr = htonl(INADDR_BROADCAST),
+			.sin_port = htons(6680)
+		};
+	}
+	else {
+		res.v4 = (struct sockaddr_in){
+			.sin_family = AF_INET,
+			.sin_addr = {
+				.s_addr = htons(INADDR_ANY),
+			},
+			.sin_port = htons(6680)
+		};
+	}
+
+	if (-1 == bind(res.sock, &res.v4, res.addr_sz)){
+		res.err = "ipv4.bind rejected";
+	}
+
+	return res;
+}
+
+const char* a12helper_discover_ipcfg(struct anet_discover_opts* cfg, bool beacon)
+{
+	struct ipcfg ip = cfg->ipv6 ? build_ipv6(cfg, beacon) : build_ipv4(cfg, beacon);
+	if (ip.err)
+		return ip.err;
+	cfg->IP = malloc(sizeof(struct ipcfg));
+	*cfg->IP = ip;
+	return NULL;
+}
+
+void anet_discover_send_beacon(struct anet_discover_opts* cfg)
+{
+	if (0 >= cfg->IP->sock)
+		return;
 
 /* initialize mask state, beacon will append the ones consumed */
 	struct keystore_mask mask = {0};
 	struct keystore_mask* cur = &mask;
+
+	size_t size;
+	uint8_t* one, (* two);
 
 	for(;;){
 		cur = a12helper_build_beacon(&mask, cur, &one, &two, &size);
@@ -361,13 +482,13 @@ void anet_discover_send_beacon(struct anet_discover_opts* cfg)
 
 	/* broadcast, sleep for time elapsed rejection */
 		if (size !=
-			sendto(sock, one, size, 0, (struct sockaddr*)&broadcast, sizeof(broadcast))){
+			sendto(cfg->IP->sock, one, size, 0, &cfg->IP->base, cfg->IP->addr_sz)){
 			fprintf(stderr, "couldn't send beacon: %s\n", strerror(errno));
 			break;
 		}
 
 		sleep(1);
-		sendto(sock, two, size, 0, (struct sockaddr*)&broadcast, sizeof(broadcast));
+		sendto(cfg->IP->sock, two, size, 0, &cfg->IP->base, cfg->IP->addr_sz);
 		free(one);
 		free(two);
 	}
@@ -375,13 +496,14 @@ void anet_discover_send_beacon(struct anet_discover_opts* cfg)
 
 void anet_discover_listen_beacon(struct anet_discover_opts* cfg)
 {
-	int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-
-	if (-1 == sock){
-		LOG("couldn't bind discover_passive");
+	if (0 >= cfg->IP->sock){
+		LOG("_listen(cfg) - config missing socket");
 		return;
 	}
 
+	int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+	a12helper_listen_beacon(cfg->C, cfg, cfg->discover_beacon, cfg->on_shmif);
 	struct sockaddr_in addr = {
 		.sin_family = AF_INET,
 		.sin_addr = {
@@ -390,10 +512,10 @@ void anet_discover_listen_beacon(struct anet_discover_opts* cfg)
 		.sin_port = htons(6680)
 	};
 	socklen_t len = sizeof(addr);
-	if (-1 == bind(sock, (struct sockaddr*) &addr, len)){
+	if (-1 == bind(sock, &addr, len)){
 		fprintf(stderr, "couldn't bind beacon listener\n");
 		return;
 	}
 
-	a12helper_listen_beacon(cfg->C, sock, cfg->discover_beacon, cfg->on_shmif);
+	a12helper_listen_beacon(cfg->C, cfg, cfg->discover_beacon, cfg->on_shmif);
 }

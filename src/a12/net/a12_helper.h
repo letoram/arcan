@@ -16,6 +16,10 @@ enum a12helper_pollstate {
 	A12HELPER_DATA_IN = 4
 };
 
+struct a12_broadcast_beacon;
+struct anet_discover_opts;
+struct ipcfg;
+
 struct a12helper_opts {
 	struct a12_vframe_opts (*eval_vcodec)(
 		struct a12_state* S, int segid, struct shmifsrv_vbuffer*, void* tag);
@@ -55,14 +59,14 @@ struct a12helper_opts {
 void a12helper_a12cl_shmifsrv(struct a12_state* S,
 	struct shmifsrv_client* C, int fd_in, int fd_out, struct a12helper_opts);
 
-struct a12_broadcast_beacon;
-
 /*
  * Setup a listening endpoint, and signal whenver there is data on the (optional)
  * shmif context or when there is a beacon that triggered something known.
  */
 void
-	a12helper_listen_beacon(struct arcan_shmif_cont* C, int socket,
+	a12helper_listen_beacon(
+		struct arcan_shmif_cont* C,
+		struct anet_discover_opts* O,
 
 /*
  * We have a beacon match in whatever domain [socket], matching to a previous
@@ -129,18 +133,28 @@ struct keystore_mask*
 struct anet_discover_opts {
 	int limit; /* -1 infinite, 0 = once, > count down after each */
 	int timesleep; /* seconds between beacon passes */
+	const char* ipv6; /* set to bind to IPv6 multicast address */
+
 	bool (*discover_beacon)(
 		struct arcan_shmif_cont*,
 		const uint8_t kpub[static 32],
 		const uint8_t nonce[static 8],
 		const char* tag, char* addr
 	);
+
+	struct ipcfg* IP; /* build with a12helper_discover_ipcfg(cfg) */
 	bool (*on_shmif)(struct arcan_shmif_cont* C);
 	struct arcan_shmif_cont* C;
 };
 
 void anet_discover_listen_beacon(struct anet_discover_opts* cfg);
 void anet_discover_send_beacon(struct anet_discover_opts* cfg);
+
+/*
+ * build / setup socket into [cfg], returns NULL or error or a user-presentable
+ * string as to why the configuration failed.
+ */
+const char* a12helper_discover_ipcfg(struct anet_discover_opts* cfg, bool beacon);
 
 /*
  * Take a prenegotiated connection [S] serialized over [fd_in/fd_out] and
