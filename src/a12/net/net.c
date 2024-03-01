@@ -174,8 +174,8 @@ static void set_log_trace()
 	if (!a12_trace_targets)
 		return;
 
-	char buf[sizeof("cl_log_xxxxxx.log")];
-	snprintf(buf, sizeof(buf), "cl_log_%.6d.log", (int) getpid());
+	char buf[sizeof("cl_log_.log") + (3 * sizeof(int) + 1)];
+	snprintf(buf, sizeof(buf), "cl_log_%d.log", (int) getpid());
 	FILE* fpek = fopen(buf, "w+");
 
 	shmifint_set_log_device(NULL, fpek);
