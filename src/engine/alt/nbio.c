@@ -1006,6 +1006,7 @@ int alt_nbio_open(lua_State* L)
 	}
 	else {
 		size_t i = 0;
+		namespace = DEFAULT_USERMASK;
 		for (;str[i] && isalnum(str[i]); i++);
 		if (str[i] == ':' && str[i+1] == '/'){
 			namespace = RESOURCE_NS_USER;
@@ -1018,6 +1019,13 @@ int alt_nbio_open(lua_State* L)
 	if (wrmode == O_WRONLY){
 		struct stat fi;
 		path = arcan_find_resource(str, namespace, ARES_FILE, NULL);
+
+#ifdef WANT_ARCAN_BASE
+		if (lua_debug_level){
+			arcan_warning("find_resource:ns=%d:%s=%s\n",
+				namespace, str, path ? path : "[null]");
+		}
+#endif
 
 /* we require a zap_resource call if the file already exists, except for in
  * the case of a fifo dst- that we can open in (w) mode */
@@ -1061,6 +1069,13 @@ int alt_nbio_open(lua_State* L)
 		};
 		size_t lim = COUNT_OF(addr.sun_path);
 		path = arcan_find_resource(str, namespace, ARES_FILE, NULL);
+
+#ifdef WANT_ARCAN_BASE
+		if (lua_debug_level){
+			arcan_warning("find_resource:%s=%s\n", str, path ? path : "[null]");
+		}
+#endif
+
 		if (path || !(path = arcan_expand_resource(str, namespace))){
 			arcan_warning("open_nonblock(), refusing to overwrite file\n");
 			LUA_ETRACE("open_nonblock", "couldn't create socket", 0);
@@ -1097,6 +1112,7 @@ int alt_nbio_open(lua_State* L)
 	}
 	else {
 retryopen:
+
 		path = arcan_find_resource(str, namespace, ARES_FILE, NULL);
 
 /* fifo and doesn't exist? create */
@@ -1109,6 +1125,12 @@ retryopen:
 				goto retryopen;
 			}
 			else{
+#ifdef WANT_ARCAN_BASE
+				if (lua_debug_level){
+					arcan_warning("find_resource:ns=%d:%s=%s\n",
+						namespace, str, path ? path : "[null]");
+				}
+#endif
 				LUA_ETRACE("open_nonblock", "file does not exist", 0);
 			}
 		}

@@ -537,9 +537,9 @@ static bool intblbool_sz(lua_State* ctx, int ind, const char* field, size_t fsz)
 #define intblbool(L, I, F) intblbool_sz(L, (I), (F), (sizeof(F)/sizeof(char))-1)
 
 static char* findresource(
-	const char* arg, enum arcan_namespaces space, enum resource_type type)
+	const char* arg, enum arcan_namespaces space, enum resource_type type, int* fd)
 {
-	char* res = arcan_find_resource(arg, space, type, NULL);
+	char* res = arcan_find_resource(arg, space, type, fd);
 /* since this is invoked extremely frequently and is involved in file-system
  * related stalls, maybe a sort of caching mechanism should be implemented
  * (invalidate / refill every N ticks or have a flag to side-step it -- as a lot
@@ -548,7 +548,8 @@ static char* findresource(
  * to OS specific event monitoring effects */
 
 	if (lua_debug_level){
-		arcan_warning("Debug, resource lookup for %s, yielded: %s\n", arg, res);
+		arcan_warning("find_resource:ns=%d:type=%d:%s=%s\n",
+			(int) space, (int) type, arg, res ? res : "[null]");
 	}
 
 	return res;
@@ -768,10 +769,12 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 						(fsrv->desc.hints & SHMIF_RHINT_TPACK)
 				});
 
-/* the RESET event to the affected frameserver, though it could be used as a
- * DoS oracly, there are so many timing channels that are necessary that it
+/* Send the RESET event to the affected frameserver. This could be used as a
+ * DoS oracle but there are so many timing channels that are necessary that it
  * doesn't really aid much by hiding the fact, but it can help a cooperative
- * process enough that it is worth the tradeoff */
+ * process enough that it is worth the tradeoff. The main utility of this event
+ * is that the primary can now attempt to re-negotiate secondary segments that
+ * might make different sense in a changed windowing scheme. */
 				platform_fsrv_pushevent(fsrv, &(struct arcan_event){
 					.category = EVENT_TARGET,
 					.tgt.kind = TARGET_COMMAND_RESET,
@@ -785,6 +788,7 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 		if (delete)
 			delids[delcount++] = ids[count];
 	}
+
 /* purge will remove all events that are not external, and those that
  * are external will have its otag reset (as otherwise we'd be calling
  * into a damaged luactx */
@@ -815,7 +819,7 @@ static int zapresource(lua_State* ctx)
 
 	const char* srcpath = luaL_checkstring(ctx, 1);
 	char* path = findresource(srcpath,
-		RESOURCE_APPL_TEMP | RESOURCE_NS_USER, ARES_FILE);
+		RESOURCE_APPL_TEMP | RESOURCE_NS_USER, ARES_FILE, NULL);
 
 	if (path && unlink(path) != -1)
 		lua_pushboolean(ctx, true);
@@ -843,7 +847,7 @@ static int rawresource(lua_State* ctx)
 	}
 
 	char* path = findresource(
-		luaL_checkstring(ctx, 1), DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY);
+		luaL_checkstring(ctx, 1), DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY, NULL);
 
 	if (!path){
 		char* fname = arcan_expand_resource(
@@ -1065,7 +1069,7 @@ static int loadimage(lua_State* ctx)
 	arcan_vobj_id id = ARCAN_EID;
 	const char* srcstr = luaL_checkstring(ctx, 1);
 	char* path = findresource(srcstr,
-		DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY);
+		DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY, NULL);
 
 	uint8_t prio = luaL_optint(ctx, 2, 0);
 	unsigned desw = luaL_optint(ctx, 3, 0);
@@ -1091,7 +1095,7 @@ static int loadimageasynch(lua_State* ctx)
 
 	const char* srcstr = luaL_checkstring(ctx, 1);
 	char* path = findresource(srcstr,
-		DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY);
+		DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY, NULL);
 
 	if (lua_isfunction(ctx, 2) && !lua_iscfunction(ctx, 2)){
 		lua_pushvalue(ctx, 2);
@@ -1832,7 +1836,7 @@ static int loadasample(lua_State* ctx)
 
 	const char* rname = luaL_checkstring(ctx, 1);
 	char* resource = findresource(rname,
-		DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY);
+		DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY, NULL);
 	float gain = luaL_optnumber(ctx, 2, 1.0);
 	arcan_aobj_id sid = arcan_audio_load_sample(resource, gain, NULL);
 	arcan_mem_free(resource);
@@ -1850,6 +1854,19 @@ static int buildshader(lua_State* ctx)
 	const char* vprog = luaL_optstring(ctx, 1, NULL);
 	const char* fprog = luaL_optstring(ctx, 2, NULL);
 	const char* label = luaL_checkstring(ctx, 3);
+
+/* uncomment to quickly debug shader loading issues, since we have
+ * so poor default feedback from the drivers on shader compilation
+ * this is a shortcut. */
+#if 0
+	static FILE* fpek;
+	if (!fpek)
+		fpek = fopen("shader.log", "w+");
+	fprintf(fpek,
+		"Shader: %s\n\nVertex: %s\n\nFragment: %s\n\n", label,
+		vprog?vprog:"none",fprog?fprog:"none");
+	fflush(fpek);
+#endif
 
 	agp_shader_id rv = agp_shader_build(label, NULL, vprog, fprog);
 	lua_pushnumber(ctx, SHADER_INDEX(rv));
@@ -2609,7 +2626,7 @@ static int syssnap(lua_State* ctx)
 	LUA_TRACE("system_snapshot");
 
 	const char* instr = luaL_checkstring(ctx, 1);
-	char* fname = findresource(instr, RESOURCE_APPL_TEMP, O_WRONLY);
+	char* fname = findresource(instr, RESOURCE_APPL_TEMP, O_WRONLY, NULL);
 
 	if (fname){
 		arcan_warning("system_statesnap(), "
@@ -2675,7 +2692,7 @@ static int systemload(lua_State* ctx)
 
 /* countermeasure 2, MODULE_USERMASK namespace => RESOURCE_SYS_LIBS */
 		char* fname = findresource(
-			workbuf, MODULE_USERMASK, ARES_FILE | ARES_RDONLY);
+			workbuf, MODULE_USERMASK, ARES_FILE | ARES_RDONLY, NULL);
 		if (!fname){
 			const char* msg = "Couldn't find required module: (%s)\n";
 			if (dieonfail)
@@ -2749,7 +2766,7 @@ static int systemload(lua_State* ctx)
 #endif
 
 	char* fname = findresource(instr,
-		CAREFUL_USERMASK, ARES_RDONLY | ARES_FILE);
+		CAREFUL_USERMASK, ARES_RDONLY | ARES_FILE, NULL);
 	int res = 0;
 
 	if (fname){
@@ -2948,7 +2965,8 @@ static int launchdecode(lua_State* ctx)
 		fname = strdup(resource);
 /* resolve in the resource namespace unless some special pattern */
 	else {
-		fname = findresource(resource, DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY);
+		fname = findresource(resource,
+			DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY, NULL);
 		if (!fname)
 			LUA_ETRACE("launch_decode", "couldn't resolve resource", 0);
 
@@ -5460,8 +5478,9 @@ static int loadmesh(lua_State* ctx)
 	if (lua_type(ctx, 2) != LUA_TSTRING)
 		arcan_fatal("add_3dmesh(), invalid resource type");
 
-	char* path = findresource(
-		luaL_checkstring(ctx, 2), DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY);
+	char* path = findresource(luaL_checkstring(ctx, 2),
+		DEFAULT_USERMASK, ARES_FILE | ARES_RDONLY, NULL);
+
 	data_source indata = arcan_open_resource(path);
 	if (indata.fd != BADFD){
 		arcan_errc rv = arcan_3d_addmesh(did, indata, nmaps);
@@ -6850,7 +6869,7 @@ static int rawsurface(lua_State* ctx)
 
 	if (dumpstr){
 		int fd;
-		char* fname = arcan_find_resource(
+		char* fname = findresource(
 			dumpstr, CREATE_USERMASK, ARES_FILE | ARES_CREATE, &fd);
 		if (!fname){
 			arcan_warning(
@@ -7615,7 +7634,7 @@ static int targetfonthint(lua_State* ctx)
 		}
 		else{
 			fd = BADFD;
-			char* fname = arcan_find_resource(
+			char* fname = findresource(
 				instr, RESOURCE_SYS_FONT, ARES_FILE | ARES_RDONLY, &fd);
 			arcan_mem_free(fname);
 			if (BADFD == fd){
@@ -8393,8 +8412,7 @@ static int targetrestore(lua_State* ctx)
 
 /* resolve from requested namespace, only accept files */
 	int fd = BADFD;
-	char* fname = arcan_find_resource(
-		snapkey, ns, ARES_FILE | ARES_RDONLY, &fd);
+	char* fname = findresource(snapkey, ns, ARES_FILE | ARES_RDONLY, &fd);
 	free(fname);
 
 	if (BADFD == fd){
@@ -8558,8 +8576,7 @@ static int targetsnapshot(lua_State* ctx)
  * is finished, as otherwise a deferred job or commit- stage would
  * be better so we could atomically CAS rather than trunc-write */
 	int fd = -1;
-	char* fname = arcan_find_resource(
-		snapkey, ns, ARES_FILE | ARES_CREATE, &fd);
+	char* fname = findresource(snapkey, ns, ARES_FILE | ARES_CREATE, &fd);
 	arcan_mem_free(fname);
 
 	if (-1 == fd){
@@ -10060,8 +10077,7 @@ static int spawn_recfsrv(lua_State* ctx,
 		"container=stream") != NULL || strlen(resf) == 0)
 		fd = open(NULFILE, O_WRONLY | O_CLOEXEC);
 	else {
-		char* fn = arcan_find_resource(resf,
-			CREATE_USERMASK, ARES_FILE | ARES_CREATE, &fd);
+		char* fn = findresource(resf, CREATE_USERMASK, ARES_FILE | ARES_CREATE, &fd);
 
 /* it is currently allowed to "record over" an existing file without forcing
  * the caller to use zap_resource first, this should possibly be reconsidered*/
@@ -11548,7 +11564,7 @@ static int screenshot(lua_State* ctx)
 	}
 
 	int infd = -1;
-	char* fname = arcan_find_resource(
+	char* fname = findresource(
 		resstr, CREATE_USERMASK, ARES_FILE | ARES_CREATE, &infd);
 	if (!fname){
 		arcan_warning(
@@ -11931,8 +11947,9 @@ static int setdefaultfont(lua_State* ctx)
 	const char* fontn = luaL_optstring(ctx, 1, NULL);
 	int fd = BADFD;
 
-	char* fn = arcan_find_resource(
+	char* fn = findresource(
 		fontn, RESOURCE_SYS_FONT, ARES_FILE | ARES_RDONLY, &fd);
+
 	if (!fn){
 		lua_pushboolean(ctx, false);
 		LUA_ETRACE("system_defaultfont", "couldn't find font in namespace", 1);
