@@ -2984,6 +2984,8 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 				def.display_width_px = ev.tgt.ioevs[0].iv;
 			if (ev.tgt.ioevs[1].iv)
 				def.display_height_px = ev.tgt.ioevs[1].iv;
+			if (ev.tgt.ioevs[2].iv)
+				def.rate = ev.tgt.ioevs[2].iv;
 		break;
 
 		case TARGET_COMMAND_GRAPHMODE:{
