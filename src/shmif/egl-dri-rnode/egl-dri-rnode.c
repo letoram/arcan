@@ -423,6 +423,10 @@ enum shmifext_setup_status arcan_shmifext_setup(
 	struct arcan_shmif_cont* con,
 	struct arcan_shmifext_setup arg)
 {
+	if (con){
+		return SHMIFEXT_NO_API;
+	}
+
 	struct shmif_ext_hidden_int* ctx = con->privext->internal;
 	enum shmifext_setup_status res;
 
