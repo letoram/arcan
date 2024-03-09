@@ -423,7 +423,7 @@ enum shmifext_setup_status arcan_shmifext_setup(
 	struct arcan_shmif_cont* con,
 	struct arcan_shmifext_setup arg)
 {
-	if (con){
+	if (!con){
 		return SHMIFEXT_NO_API;
 	}
 
