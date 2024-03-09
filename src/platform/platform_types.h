@@ -10,6 +10,8 @@
 #define BADFD -1
 #endif
 
+#define PENDING_QUEUE_DEPTH 4
+
 #include <stdint.h>
 #include <pthread.h>
 #include <semaphore.h>
@@ -281,6 +283,7 @@ struct agp_vstore {
 					uint8_t* buf;
 				} tpack;
 			};
+
 
 /* used if we have an external buffered backing store
  * (implies s_raw / raw / source are useless) */

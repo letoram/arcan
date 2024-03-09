@@ -2214,6 +2214,8 @@ static bool atomic_set_mode(struct dispout* d, int fl)
 	AADD(d->display.plane_id, "FB_ID", fbid);
 	AADD(d->display.plane_id, "CRTC_ID", d->display.crtc);
 
+	drmModeFreeObjectProperties(pptr);
+
 /* CRTC_OUT_FENCE_PTR to add a commit-fence that will be signalled when the
  * commit completes, which is different from the page-flip event */
 #undef AADD
@@ -2546,7 +2548,7 @@ retry:
 			d->display.mode_set = i;
 			vrefresh = cm->vrefresh;
 			debug_print(
-				"(%d) higher refresh (%d) found at set resolution", vrefresh, (int)d->id);
+				"(%d) higher refresh (%d) found at set resolution", (int)d->id, vrefresh);
 		}
 	}
 
