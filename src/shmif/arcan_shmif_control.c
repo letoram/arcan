@@ -3070,6 +3070,13 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 	return false;
 }
 
+bool arcan_shmif_defer_register(
+	struct arcan_shmif_cont* C, struct arcan_event ev)
+{
+	arcan_shmif_enqueue(C, &ev);
+	return wait_for_activation(C, true);
+}
+
 static ssize_t a12_cp(const char* conn_src, bool* weak)
 {
 	if (weak)

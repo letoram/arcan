@@ -780,9 +780,10 @@ void arcan_tui_wndhint(struct tui_context* wnd,
  * (output_descr != NULL) some kind of user- provided file data.
  *
  * [immediately=true] - attempt to query the user 'as soon as possible'
- *                      with an open/save kind of a user dialog, this set
- *                      of extensions will not override a previously
- *                      defined one (immediately=false).
+ *                      with an open/save kind of a user dialog or as a
+ *                      cursor attachment in the case of a drag/drop like
+ *                      action. this set of extensions will not override
+ *                      a previously defined one for (immediately=false).
  *
  * [immediately=false] - remember, as a persistent hint, that the program
  *                       can load and/or store files that match the
