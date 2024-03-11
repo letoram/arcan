@@ -187,7 +187,7 @@
 -- types have been changed. ref:target_input calls that attempts to forward a
 -- masked type will have matching events dropped automatically. The actual
 -- mask details can be queried through ref:input_capabilities.
--
+--
 -- @tblent: "cursorhint" {message} - lacking a customized cursor using a subseg
 -- request for a cursor window, this is a text suggestion of what local visual
 -- state the mouse cursor should have. The content of message is implementation
@@ -198,7 +198,7 @@
 -- vertical-datafield.
 --
 -- @tblent: "bchunkstate" {number:size, bool:input, bool:stream, bool:disable,
--- bool:multipart, bool:wildcard, bool:hint, string:extensions} -
+-- bool:multipart, bool:wildcard, bool:hint, bool:cursor, string:extensions} -
 -- indicates that the frameserver wants to [hint=true] or is capable of [hint=false]
 -- of receiving (input=true) or sending binary data. It also indicates size (if
 -- applicable) and if the data can be processed in a streaming fashion or not.
@@ -206,6 +206,7 @@
 -- cancelled. If *multipart* is true, extensions append to the previous
 -- provided until terminated by a false multipart bchunkstate event.
 -- If *wildcard* is true, the client will also accept data of any type.
+-- If *cursor* is true, the request is coming from a 'drag and drop' like intent.
 --
 -- @tblent: "registered", {segkind, title, guid} - notice that the underlying engine
 -- has completed negotiating with the frameserver and it identified its primary

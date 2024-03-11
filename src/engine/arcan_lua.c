@@ -4570,12 +4570,19 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		break;
 		case EVENT_EXTERNAL_BCHUNKSTATE:
 			tblstr(ctx, "kind", "bchunkstate", top);
-			tblbool(ctx, "hint", !((ev->ext.bchunk.hint & 1) > 0), top);
+			if ((ev->ext.bchunk.hint & 8) > 0){
+				tblbool(ctx, "cursor", true);
+				tblbool(ctx, "hint", false);
+			}
+			else {
+				tblbool(ctx, "hint", !((ev->ext.bchunk.hint & 1) > 0), top);
+				tblbool(ctx, "cursor", false);
+			}
 			tblbool(ctx, "multipart", ev->ext.bchunk.hint & 4, top);
 			tblnum(ctx, "size", ev->ext.bchunk.size, top);
 			tblbool(ctx, "input", ev->ext.bchunk.input, top);
 			tblbool(ctx, "stream", ev->ext.bchunk.stream, top);
-			tblbool(ctx, "wildcard", ev->ext.bchunk.hint & 2, top);
+			tblbool(ctx, "wildcard", (ev->ext.bchunk.hint & 2, top);
 			tblbool(ctx, "disable", ev->ext.bchunk.extensions[0] == 0, top);
 			if (ev->ext.bchunk.extensions[0]){
 				FLTPUSH(ev->ext.bchunk.extensions, flt_chunkfn, '\0');
@@ -12839,18 +12846,21 @@ static char* lut_txmode(int txmode)
 
 static char* lut_kind(arcan_vobject* src)
 {
-	if (src->feed.state.tag == ARCAN_TAG_IMAGE)
-		return src->vstore->txmapped ? "textured" : "single color";
-	else if (src->feed.state.tag == ARCAN_TAG_FRAMESERV)
-		return "frameserver";
-	else if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGLD)
-		return "textured_loading";
-	else if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGRD)
-		return "texture_ready";
-	else if (src->feed.state.tag == ARCAN_TAG_3DOBJ)
-		return "3dobject";
-	else
-		return "dead";
+	switch (src->feed.state.tag){
+	case ARCAN_TAG_NONE: return "none"; break;
+	case ARCAN_TAG_IMAGE: return src->vstore->txmapped ? "texture" : "single color"; break;
+	case ARCAN_TAG_FRAMESERV: return "frameserver"; break;
+	case ARCAN_TAG_ASYNCIMGLD: return "textured_loading"; break;
+	case ARCAN_TAG_ASYNCIMGRD: return "textured_ready"; break;
+	case ARCAN_TAG_3DOBJ: return "3dobject"; break;
+	case ARCAN_TAG_3DCAMERA: return "3dcamera"; break;
+	case ARCAN_TAG_CUSTOMPROC: return "custom"; break;
+	case ARCAN_TAG_LWA: return "lwa"; break;
+	case ARCAN_TAG_VR: return "vr"; break;
+	default:
+		return "invalid";
+	break;
+	}
 }
 
 /*
