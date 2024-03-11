@@ -685,6 +685,23 @@ static void send_list(struct tui_context* c,
 	}
 }
 
+void arcan_tui_announce_cursor_io(struct tui_context* c, const char* descr)
+{
+	if (!c)
+		return;
+
+	arcan_event ev = {
+		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
+		.category = EVENT_EXTERNAL,
+		.ext.bchunk = {
+			.input = false,
+			.hint = 8
+		}
+	};
+
+	send_list(c, ev, "", descr);
+}
+
 void arcan_tui_announce_io(struct tui_context* c,
 	bool immediately, const char* input_descr, const char* output_descr)
 {

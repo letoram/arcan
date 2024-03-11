@@ -801,6 +801,18 @@ void arcan_tui_announce_io(struct tui_context* c,
 	bool immediately, const char* input_descr, const char* output_descr);
 
 /*
+ * Announce toggle ongoing cursor-tag (drag-and-drop) output handling.
+ *
+ * descr is a ; separated list of file name extensions in provided order and
+ * may include a possible wildcard entry OR NULL to cancel any pending out.
+ *
+ * For the receiving end this only maps as regular bchunkstate events
+ * in order to let WM models handle mapping this to other assistive/device
+ * handling other than an explicit mouse cursor.
+ */
+void arcan_tui_announce_cursor_io(struct tui_context* d, const char* descr);
+
+/*
  * Indicate the relationship between how much available contents that can be
  * presented versus how much is actually being shown. This is window size
  * dependent and will influence seek_absolute/seek_relative requests.
@@ -1297,6 +1309,7 @@ typedef void (* PTUIREQSUBEXT)
 typedef void (* PTUIUPDHND)(struct tui_context*, const struct tui_cbcfg*, struct tui_cbcfg*, size_t);
 typedef void (* PTUIWNDHINT)(struct tui_context*, struct tui_context*, struct tui_constraints);
 typedef void (* PTUIANNOUNCEIO)(struct tui_context*, bool, const char*, const char*);
+typedef void (* PTUIANNOUNCECURSORIO)(struct tui_context*, const char*, const char*);
 typedef void (* PTUISTATESZ)(struct tui_context*, size_t);
 typedef void (* PTUIPROGRESS)(struct tui_context*, int group, float status);
 typedef int (* PTUIALLOCSCR)(struct tui_context*);
@@ -1397,6 +1410,7 @@ static PTUIREQSUBEXT arcan_tui_request_subwnd_ext;
 static PTUIUPDHND arcan_tui_update_handlers;
 static PTUIWNDHINT arcan_tui_wndhint;
 static PTUIANNOUNCEIO arcan_tui_announce_io;
+static PTUIANNOUNCECURSORIO arcan_tui_announce_cursor_io;
 static PTUISTATESZ arcan_tui_statesize;
 static PTUIWRITE arcan_tui_write;
 static PTUIWRITEU8 arcan_tui_writeu8;
@@ -1457,6 +1471,7 @@ M(PTUIREQSUBEXT,arcan_tui_request_subwnd_ext);
 M(PTUIUPDHND,arcan_tui_update_handlers);
 M(PTUIWNDHINT,arcan_tui_wndhint);
 M(PTUIANNOUNCEIO,arcan_tui_announce_io);
+M(PTUIANNOUNCECURSORIO,arcan_tui_announce_cursor_io);
 M(PTUISTATESZ,arcan_tui_statesize);
 M(PTUIWRITE,arcan_tui_write);
 M(PTUIWRITEU8,arcan_tui_writeu8);

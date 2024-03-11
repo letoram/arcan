@@ -4571,18 +4571,18 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		case EVENT_EXTERNAL_BCHUNKSTATE:
 			tblstr(ctx, "kind", "bchunkstate", top);
 			if ((ev->ext.bchunk.hint & 8) > 0){
-				tblbool(ctx, "cursor", true);
-				tblbool(ctx, "hint", false);
+				tblbool(ctx, "cursor", true, top);
+				tblbool(ctx, "hint", false, top);
 			}
 			else {
 				tblbool(ctx, "hint", !((ev->ext.bchunk.hint & 1) > 0), top);
-				tblbool(ctx, "cursor", false);
+				tblbool(ctx, "cursor", false, top);
 			}
 			tblbool(ctx, "multipart", ev->ext.bchunk.hint & 4, top);
 			tblnum(ctx, "size", ev->ext.bchunk.size, top);
 			tblbool(ctx, "input", ev->ext.bchunk.input, top);
 			tblbool(ctx, "stream", ev->ext.bchunk.stream, top);
-			tblbool(ctx, "wildcard", (ev->ext.bchunk.hint & 2, top);
+			tblbool(ctx, "wildcard", (ev->ext.bchunk.hint & 2), top);
 			tblbool(ctx, "disable", ev->ext.bchunk.extensions[0] == 0, top);
 			if (ev->ext.bchunk.extensions[0]){
 				FLTPUSH(ev->ext.bchunk.extensions, flt_chunkfn, '\0');
