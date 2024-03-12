@@ -5,8 +5,8 @@
 -- @inargs: vid:tgt, number:step, bool:relative
 -- @inargs: vid:tgt, number:step, bool:relative, bool:time
 -- @inargs: vid:tgt, number:step, bool:relative, bool:time=false,
--- @inargs: vid:tgt, number:step, bool:relative, bool:time=false, number:yaxis
--- @inargs: vid:tgt, number:step, bool:relative, bool:time=false, number:yaxis, number:zaxis
+-- @inargs: vid:tgt, number:step, bool:relative, bool:time=false, number:xaxis
+-- @inargs: vid:tgt, number:step, bool:relative, bool:time=false, number:xaxis, number:zaxis
 -- @longdescr: Request an absolute or relative *step* sized change in active content position
 -- in either time or space. Frameservers communicate this capability and the meaning of the
 -- ranges through the 'content_state' event. This feature can be used to implement things
@@ -15,7 +15,7 @@
 -- If setting an absolute time position, the absolute *step* is floating point in the 0..1 range.
 -- If seeking in *space* (panning) the relative (default) is in a discrete +- steps on a target defined scale.
 -- Absolute seeking is a float in the 0..1 range from start (0) to end (1).
--- The *sz* axis is a hint on magnification where, the absolute value will treat 1 as normal scale,
+-- The *zaxis* axis is a hint on magnification where, the absolute value will treat 1 as normal scale,
 -- < 1 as minification and > 1 as magnification.
 -- The boolean arguments *relative* and *time* has constants defined as
 -- SEEK_SPACE | SEEK_TIME and SEEK_ABSOLUTE | SEEK_RELATIVE.
