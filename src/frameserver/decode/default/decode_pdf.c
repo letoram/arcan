@@ -616,12 +616,20 @@ int decode_pdf(struct arcan_shmif_cont* C, struct arg_arr* args)
 	labelhint_table(ihandlers);
 	labelhint_announce(&apdf.con);
 
-/* keep this around so we can just re-use for DISPLAYHINT changes */
+/* since we don't have a registered type for DECODE when we acquire the segment,
+ * the initial parameters won't be here */
 	struct arcan_shmif_initial* init;
 	arcan_shmif_initial(&apdf.con, &init);
 	apdf.dpy = *init;
 	apdf.hw = apdf.con.w;
 	apdf.hh = apdf.con.h;
+
+	if (!apdf.hw)
+		apdf.hw = 640;
+
+	if (!apdf.hh)
+		apdf.hh = 480;
+
 	apdf.con.hints = SHMIF_RHINT_VSIGNAL_EV;
 	arcan_shmif_mousestate_setup(&apdf.con, true, apdf.mstate);
 

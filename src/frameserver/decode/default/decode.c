@@ -199,12 +199,16 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	if (strcasecmp(type, "text") == 0){
 		segkind = SEGID_TUI;
 	}
+
+/* send the deferred register - the sideeffect with this not happening on acquire
+ * is that the _initial state isn't directly available so we need to wait for
+ * activation manually. */
 	struct arcan_event ev = {
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(REGISTER),
 		.ext.registr.kind = segkind,
 	};
-	arcan_shmif_enqueue(cont, &ev);
+	arcan_shmif_defer_register(cont, ev);
 
 #ifdef HAVE_PDF
 	if (strcasecmp(type, "pdf") == 0)

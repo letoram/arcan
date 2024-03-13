@@ -1423,6 +1423,7 @@ enum ARCAN_TARGET_SKIPMODE {
  *               set bit 2 to indicate that all data is also accepted
  *               items are coming.
  *               set bit 3 to indicate that this is a multipart transfer.
+ *               set bit 4 to indicate that this is a cursor attachment.
  * (stream)    - !0 if a streaming data store is acceptable or it needs to be
  *               seekable / mappable
  * (extensions)- 7-bit ASCII filtered to alnum with ; separation between

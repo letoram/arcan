@@ -2984,6 +2984,8 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 				def.display_width_px = ev.tgt.ioevs[0].iv;
 			if (ev.tgt.ioevs[1].iv)
 				def.display_height_px = ev.tgt.ioevs[1].iv;
+			if (ev.tgt.ioevs[2].iv)
+				def.rate = ev.tgt.ioevs[2].iv;
 		break;
 
 		case TARGET_COMMAND_GRAPHMODE:{
@@ -3066,6 +3068,13 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 	cont->priv->valid_initial = true;
 	arcan_shmif_drop(cont);
 	return false;
+}
+
+bool arcan_shmif_defer_register(
+	struct arcan_shmif_cont* C, struct arcan_event ev)
+{
+	arcan_shmif_enqueue(C, &ev);
+	return wait_for_activation(C, true);
 }
 
 static ssize_t a12_cp(const char* conn_src, bool* weak)

@@ -460,6 +460,17 @@ int arcan_shmif_deadline(
 	struct arcan_shmif_cont*, unsigned last_cost, int* jitter, int* errc);
 
 /*
+ * Manually entery activation/register state for a context that was
+ * acquired with the NOREGISTER flag or with deferred segment type.
+ *
+ * The event provided should be ARCAN_EVENT(REGISTER) with a valid
+ * .ext.registr.kind and this will block until the corresponding
+ * ACTIVATE arrives or the context dies midway.
+ */
+bool arcan_shmif_defer_register(
+	struct arcan_shmif_cont*, struct arcan_event ev);
+
+/*
  * Asynchronously transfer the contents of [fdin] to [fdout]. This is
  * mainly to encourage non-blocking implementation of the bchunk handler.
  * The descriptors will be closed when the transfer is completed or if

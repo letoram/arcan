@@ -2183,6 +2183,14 @@ static int request_io(lua_State* L)
 	return 0;
 }
 
+static int announce_cursor_io(lua_State* L)
+{
+	TUI_UDATA;
+	const char* descr = luaL_optstring(L, 2, NULL);
+	arcan_tui_announce_cursor_io(ib->tui, descr);
+	return 0;
+}
+
 static int statesize(lua_State* L)
 {
 	TUI_UDATA;
@@ -3517,6 +3525,7 @@ static void register_tuimeta(lua_State* L)
 		{"set_flags", set_flags},
 		{"announce_io", announce_io},
 		{"request_io", request_io},
+		{"announce_cursor_io", announce_cursor_io},
 		{"alert", alert},
 		{"notification", notification},
 		{"failure", failure},
