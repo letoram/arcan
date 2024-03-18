@@ -3,7 +3,7 @@
 -- @inargs: vid:res
 -- @inargs: vid:res, bool:write
 -- @inargs: vid:res, bool:write, string:identifier=stream
--- @inargs: vid:res, bool:write, string:identifier=stream, blocktbl
+-- @inargs: vid:res, bool:write, string:identifier=stream, userdata:nbioud
 -- @inargs: string:res
 -- @inargs: string:res, bool:write
 -- @outargs: blocktbl
@@ -12,16 +12,18 @@
 --
 -- If *res* is a vid connected to a frameserver, either a streaming fifo
 -- session will be set up over the connection along with the corresponding
--- _BCHUNK events or an pre-existing nonblock-io stream will be redirected to
--- said client and the backing descriptor closed locally.
+-- _BCHUNK events or an pre-existing nonblock-io stream, *nbioud*, will be
+-- redirected to said client and the backing descriptor closed locally.
 --
 -- The *identifier* argument can then be used to specify some client announced
 -- type identifier, or one of the reserved "stdin", "stdout", "stderr".
 --
 -- If *res* is a string, the initial character determines if it creates a
 -- FIFO (<) or a SOCKET (=). Unless a namespace is explicitly set and the
--- namespace is marked as valid for IPC, FIFOs and SOCKETs will be created
--- in the RESOURCE_APPL_TEMP namespace.
+-- namespace is marked as valid for IPC, FIFOs and SOCKETs will be created in
+-- the RESOURCE_APPL_TEMP namespace. For sockets, the *write* argument
+-- determines if the connection should be outbound (=true) or listening
+-- (=false).
 --
 -- If the string starts with a valid namespace identifier and separator
 -- (alphanum:/)  the identifier will first be matched to a user defined
@@ -31,6 +33,7 @@
 -- operation (which is activated on garbage collection unless called in
 -- beforehand) and a read or write function depending on the mode that
 -- the resource was opened in.
+--
 -- The socket table is special in that it allows multiple connections.
 -- the initial table for a socket only has a close and an accept function.
 -- The accept function takes no arguments and returns a table in both read
@@ -93,8 +96,8 @@
 -- @note: Do note that input processing has soft realtime constraints, and care
 -- should be taken to avoid processing large chunks of data in one go as it may
 -- affect application responsiveness.
--- @note: FIFOs that were created will be unlinked when the close method is
--- called or when the table reference is garbage collected.
+-- @note: FIFOs and sockets that were created will be unlinked when the close
+-- method is called or when the table reference is garbage collected.
 -- @group: resource
 -- @cfunction: opennonblock
 -- @related:

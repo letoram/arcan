@@ -37,6 +37,10 @@
 	#define lua_rawlen(x, y) lua_objlen(x, y)
 #endif
 
+#ifdef WANT_ARCAN_BASE
+#define arcan_fatal(...) do { alt_fatal( __VA_ARGS__); } while(0)
+#endif
+
 static struct nonblock_io open_fds[LUACTX_OPEN_FILES];
 /* open_nonblock and similar functions need to register their fds here as they
  * are force-closed on context shutdown, this is necessary with crash recovery
@@ -974,19 +978,215 @@ void alt_nbio_release()
 	}
 }
 
+struct pathfd {
+	char* path;
+	char* unlink;
+	const char* err;
+	const char* metatable;
+	int fd;
+	int wrmode;
+};
+
+static struct pathfd build_fifo_ipc(char* path, bool userns, bool expect_write)
+{
+	struct pathfd res = {
+		.path = NULL,
+		.fd = -1,
+		.err = NULL
+	};
+	int ns = userns ? RESOURCE_NS_USER : RESOURCE_APPL_TEMP;
+
+	int fl = O_NONBLOCK | O_WRONLY | O_CLOEXEC;
+	char* workpath = arcan_expand_resource(path, ns);
+	if (!workpath){
+		res.err = "Couldn't expand FIFO path";
+		return res;
+	}
+
+/* if it doesn't exist and we are the write end, create and try again */
+	struct stat fi;
+	if (-1 == stat(path, &fi)){
+		if (expect_write){
+			if (-1 == mkfifo(workpath, S_IRWXU)){
+				arcan_mem_free(workpath);
+				res.err = "Couldn't build FIFO";
+				return res;
+			}
+			int fd = open(workpath, O_RDWR);
+			if (-1 == fd){
+				arcan_mem_free(workpath);
+				res.err = "Couldn't bind FIFO";
+				return res;
+			}
+			res.unlink = workpath;
+			res.fd = fd;
+			return res;
+		}
+		else {
+			res.path = workpath;
+			return res;
+		}
+	}
+
+	int fd = open(workpath, O_RDWR);
+	arcan_mem_free(workpath);
+
+	if (-1 == fd || -1 == fstat(fd, &fi) || S_ISFIFO(fi.st_mode)){
+		close(fd);
+		res.err = "Couldn't open as FIFO";
+		return res;
+	}
+
+	res.fd = fd;
+	return res;
+}
+
+static struct pathfd build_socket_ipc(char* pathin, bool userns, bool srv)
+{
+	struct pathfd res = {.path = NULL, .fd = -1, .err = NULL};
+	int ns = userns ? RESOURCE_NS_USER : RESOURCE_APPL_TEMP;
+
+		struct sockaddr_un addr = {
+			.sun_family = AF_UNIX
+		};
+
+	if (srv){
+		char* workpath = arcan_find_resource(pathin, ns, ARES_FILE, NULL);
+
+		if (workpath){
+			res.err = "EINVAL: Couldn't create socket";
+			arcan_mem_free(workpath);
+			return res;
+		}
+
+		workpath = arcan_expand_resource(pathin, ns);
+		if (!workpath){
+			res.err = "EINVAL: Couldn't build socket file";
+			return res;
+		}
+
+		struct sockaddr_un addr = {
+			.sun_family = AF_UNIX
+		};
+		size_t lim = COUNT_OF(addr.sun_path);
+		if (strlen(workpath) > lim - 1){
+			res.err = "ENAMETOOLONG: expanded socket doesn't fit sockaddr";
+			arcan_mem_free(workpath);
+			return res;
+		}
+		snprintf(addr.sun_path, lim, "%s", workpath);
+
+		res.fd = socket(AF_UNIX, SOCK_STREAM, 0);
+		if (-1 == res.fd){
+			res.err = "EPERM: couldn't allocate socket";
+			arcan_mem_free(workpath);
+			return res;
+		}
+		fchmod(res.fd, S_IRWXU);
+
+		if (-1 == bind(res.fd, (struct sockaddr*) &addr, sizeof(addr))){
+			close(res.fd);
+			arcan_mem_free(workpath);
+			res.fd = -1;
+			res.err = "ESOCKET: couldn't bind socket";
+			return res;
+		}
+
+/* this one takes a different metatable to handle accept on connect */
+		listen(res.fd, 5);
+		res.unlink = workpath;
+		res.metatable = "nonblockIOs";
+		res.wrmode = O_RDWR;
+	}
+	else {
+		char* workpath = arcan_find_resource(pathin, ns, ARES_FILE, NULL);
+
+		if (!workpath){
+			res.err = "EEXIST: Couldn't connect to socket";
+			return res;
+		}
+
+		res.fd = alt_nbio_socket(workpath, ns, &res.unlink);
+		res.wrmode = O_RDWR;
+		res.metatable = "nonblockIO";
+
+		if (-1 == res.fd){
+			res.err = "EPERM: Couldn't bind to socket";
+		}
+
+		arcan_mem_free(workpath);
+	}
+
+	return res;
+}
+
+static struct pathfd build_new_file(char* path, bool userns)
+{
+	struct pathfd res = {
+		.path = NULL,
+		.fd = -1,
+		.err = NULL,
+		.metatable = "nonblockIO",
+		.wrmode = O_RDWR
+	};
+	int ns = userns ? RESOURCE_NS_USER : RESOURCE_APPL_TEMP;
+
+	char* userpath = arcan_find_resource(
+		path, ns, ARES_FILE | ARES_CREATE, &res.fd);
+
+#ifdef WANT_ARCAN_BASE
+	if (lua_debug_level){
+		arcan_warning("find_resource:ns=%d:%s\n", ns, path ? path : "[null]");
+	}
+#endif
+
+	if (!path){
+		res.err = "Couldn't create file in namespace";
+	}
+	else
+		arcan_mem_free(userpath);
+
+	return res;
+}
+
+static struct pathfd open_existing_file(char* path, bool userns)
+{
+	struct pathfd res = {
+		.path = NULL,
+		.err = NULL,
+		.fd = -1,
+		.wrmode = O_RDONLY,
+		.metatable = "nonblockIO"
+	};
+
+	int ns = userns ? RESOURCE_NS_USER : DEFAULT_USERMASK;
+	char* cpath = arcan_find_resource(path, ns, ARES_FILE, &res.fd);
+
+#ifdef WANT_ARCAN_BASE
+	if (lua_debug_level){
+		arcan_warning(
+			"find_resource:ns=%d:%s=%s\n", ns, path, cpath ? cpath : "[null]");
+	}
+#endif
+
+	if (!cpath){
+		res.err = "Couldn't find file";
+	}
+
+	arcan_mem_free(cpath);
+	return res;
+}
+
 int alt_nbio_open(lua_State* L)
 {
 	LUA_TRACE("open_nonblock");
-
-	const char* metatable = "nonblockIO";
-	char* unlink_fn = NULL;
+	struct pathfd pfd;
 
 	int wrmode = luaL_optbnumber(L, 2, 0) ? O_WRONLY : O_RDONLY;
-	bool fifo = false, ignerr = false, use_socket = false;
-	char* path;
-	int fd;
+	bool userns = false;
 
-/* nonblock-io write to/from an explicit vid */
+/* nonblock-io write to/from an explicit vid,
+ * this might also be opening a hash to/from an existing a12 monitor */
 #ifdef WANT_ARCAN_BASE
 	if (lua_type(L, 1) == LUA_TNUMBER){
 		int rv = opennonblock_tgt(L, wrmode == O_WRONLY);
@@ -994,184 +1194,48 @@ int alt_nbio_open(lua_State* L)
 	}
 #endif
 
-	int namespace = RESOURCE_APPL_TEMP;
-	const char* str = luaL_checkstring(L, 1);
-	if (str[0] == '<'){
-		fifo = true;
-		str++;
-	}
-	else if (str[0] == '='){
-		use_socket = true;
-		str++;
-	}
-	else {
-		size_t i = 0;
-		namespace = DEFAULT_USERMASK;
-		for (;str[i] && isalnum(str[i]); i++);
-		if (str[i] == ':' && str[i+1] == '/'){
-			namespace = RESOURCE_NS_USER;
-		}
+	char* str = strdup(luaL_checkstring(L, 1));
+
+	size_t i = 0;
+	for (;str[i] && isalnum(str[i]); i++);
+	if (str[i] == ':' && str[i+1] == '/'){
+		userns = RESOURCE_NS_USER;
 	}
 
-/* note on file-system races: it is an explicit contract that the namespace
- * provided for RESOURCE_APPL_TEMP is single- user (us) only. Anyhow, this
- * code turned out a lot messier than needed, refactor when time permits. */
-	if (wrmode == O_WRONLY){
-		struct stat fi;
-		path = arcan_find_resource(str, namespace, ARES_FILE, NULL);
+	if (str[0] == '<')
+		pfd = build_fifo_ipc(str+1, userns, wrmode == O_WRONLY);
+	else if (str[0] == '=')
+		pfd = build_socket_ipc(str+1, userns, wrmode != O_WRONLY);
+	else if (wrmode == O_WRONLY)
+		pfd = build_new_file(str, userns);
+	else
+		pfd = open_existing_file(str, userns);
 
-#ifdef WANT_ARCAN_BASE
-		if (lua_debug_level){
-			arcan_warning("find_resource:ns=%d:%s=%s\n",
-				namespace, str, path ? path : "[null]");
-		}
-#endif
+	free(str);
 
-/* we require a zap_resource call if the file already exists, except for in
- * the case of a fifo dst- that we can open in (w) mode */
-		bool dst_fifo = (path && -1 != stat(path, &fi) && S_ISFIFO(fi.st_mode));
-		if (!dst_fifo && (path || !(path = arcan_expand_resource(str, namespace)))){
-			arcan_warning("open_nonblock(), refusing to open "
-				"existing file for writing\n");
-			arcan_mem_free(path);
-
-			LUA_ETRACE("open_nonblock", "write on already existing file", 0);
-		}
-
-		int fl = O_NONBLOCK | O_WRONLY | O_CLOEXEC;
-		if (fifo){
-/* this is susceptible to the normal race conditions, but we also expect
- * APPL_TEMP to be mapped to a 'safe' path */
-			if (-1 == mkfifo(path, S_IRWXU)){
-				if (errno != EEXIST || -1 == stat(path, &fi) || !S_ISFIFO(fi.st_mode)){
-					arcan_warning("open_nonblock(): mkfifo (%s) failed\n", path);
-					LUA_ETRACE("open_nonblock", "mkfifo failed", 0);
-				}
-			}
-			unlink_fn = strdup(path);
-			ignerr = true;
-		}
-		else
-			fl |= O_CREAT;
-
-/* failure to open fifo can be expected, then opening will be deferred */
-		fd = open(path, fl, S_IRWXU);
-		if (-1 != fd && fifo && (-1 == fstat(fd, &fi) || !S_ISFIFO(fi.st_mode))){
-			close(fd);
-			LUA_ETRACE("open_nonblock", "opened file not fifo", 0);
-		}
-	}
-/* recall, socket binding is supposed to go to a 'safe' namespace, so
- * filesystem races are less than a concern than normally */
-	else if (use_socket){
-		struct sockaddr_un addr = {
-			.sun_family = AF_UNIX
-		};
-		size_t lim = COUNT_OF(addr.sun_path);
-		path = arcan_find_resource(str, namespace, ARES_FILE, NULL);
-
-#ifdef WANT_ARCAN_BASE
-		if (lua_debug_level){
-			arcan_warning("find_resource:%s=%s\n", str, path ? path : "[null]");
-		}
-#endif
-
-		if (path || !(path = arcan_expand_resource(str, namespace))){
-			arcan_warning("open_nonblock(), refusing to overwrite file\n");
-			LUA_ETRACE("open_nonblock", "couldn't create socket", 0);
-		}
-
-		if (strlen(path) > lim - 1){
-			arcan_warning("open_nonblock(), socket path too long\n");
-			LUA_ETRACE("open_nonblock", "socket path too long", 0);
-		}
-		snprintf(addr.sun_path, lim, "%s", path);
-
-		metatable = "nonblockIOs";
-
-		fd = socket(AF_UNIX, SOCK_STREAM, 0);
-		if (-1 == fd){
-			arcan_warning("open_nonblock(): couldn't create socket\n");
-			arcan_mem_free(path);
-			LUA_ETRACE("open_nonblock", "couldn't create socket", 0);
-		}
-		fchmod(fd, S_IRWXU);
-
-		alt_nbio_nonblock_cloexec(fd, true);
-		int rv = bind(fd, (struct sockaddr*) &addr, sizeof(addr));
-		if (-1 == rv){
-			close(fd);
-			arcan_mem_free(path);
-			arcan_warning(
-				"open_nonblock(): bind (%s) failed: %s\n", path, strerror(errno));
-			LUA_ETRACE("open_nonblock", "couldn't bind socket", 0);
-		}
-		listen(fd, 5);
-		unlink_fn = path;
-		path = NULL; /* don't mark as pending */
-	}
-	else {
-retryopen:
-
-		path = arcan_find_resource(str, namespace, ARES_FILE, NULL);
-
-/* fifo and doesn't exist? create */
-		if (!path){
-			if (fifo && (path = arcan_expand_resource(str, namespace))){
-				if (-1 == mkfifo(path, S_IRWXU)){
-					arcan_warning("open_nonblock(): mkfifo (%s) failed\n", path);
-					LUA_ETRACE("open_nonblock", "mkfifo failed", 0);
-				}
-				goto retryopen;
-			}
-			else{
-#ifdef WANT_ARCAN_BASE
-				if (lua_debug_level){
-					arcan_warning("find_resource:ns=%d:%s=%s\n",
-						namespace, str, path ? path : "[null]");
-				}
-#endif
-				LUA_ETRACE("open_nonblock", "file does not exist", 0);
-			}
-		}
-/* normal file OR socket */
-		else{
-			fd = open(path, O_NONBLOCK | O_CLOEXEC | O_RDONLY);
-
-/* socket, 'connect mode' */
-			if (-1 == fd && errno == ENXIO){
-				fd = alt_nbio_socket(path, namespace, &unlink_fn);
-				wrmode = O_RDWR;
-			}
-		}
-
-		arcan_mem_free(path);
-		path = NULL;
-	}
-
-	if (fd < 0 && !ignerr){
-		arcan_mem_free(path);
-		LUA_ETRACE("open_nonblock", "couldn't open file", 0);
+	if (pfd.err){
+		LUA_ETRACE("open_nonblock", pfd.err, 0);
 	}
 
 	struct nonblock_io* conn = arcan_alloc_mem(
 			sizeof(struct nonblock_io),
 			ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
-	conn->fd = fd;
+	conn->fd = pfd.fd;
+	alt_nbio_nonblock_cloexec(pfd.fd, true);
 
 /* this little crutch was better than differentiating the userdata as the
  * support for polymorphism there is rather clunky */
-	conn->mode = wrmode;
-	conn->pending = path;
-	conn->unlink_fn = unlink_fn;
+	conn->mode = pfd.wrmode;
+	conn->pending = pfd.path;
+	conn->unlink_fn = pfd.unlink;
 	conn->data_handler = LUA_NOREF;
 	conn->write_handler = LUA_NOREF;
 
 	uintptr_t* dp = lua_newuserdata(L, sizeof(uintptr_t));
 	*dp = (uintptr_t) conn;
 
-	luaL_getmetatable(L, metatable);
+	luaL_getmetatable(L, pfd.metatable);
 	lua_setmetatable(L, -2);
 
 	LUA_ETRACE("open_nonblock", NULL, 1);
