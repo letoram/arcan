@@ -2634,6 +2634,8 @@ static void update_mode_cache(struct dispout* d)
 		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
 	);
 
+	size_t pi = 0;
+
 	for (size_t i = 0; i < conn->count_modes; i++){
 		d->mode_cache[i].refresh = conn->modes[i].vrefresh;
 		d->mode_cache[i].width = conn->modes[i].hdisplay;
@@ -2644,6 +2646,8 @@ static void update_mode_cache(struct dispout* d)
 		d->mode_cache[i].dynamic = false;
 		d->mode_cache[i].id = i;
 		d->mode_cache[i].depth = sizeof(av_pixel) * 8;
+		d->mode_cache[i].primary =
+			memcmp(&conn->modes[i], &d->display.mode, sizeof(drmModeModeInfo)) == 0;
 	}
 
 	drmModeFreeResources(res);
