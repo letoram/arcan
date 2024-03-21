@@ -831,11 +831,16 @@ enum ARCAN_EVENT_EXTERNAL {
  * For legacy reasons, this uses the message field though the cursor name is
  * implementation defined. Suggested labels are:
  *
- * [wait, select-inv, select, up, down, left-right, up-down, drag-up-down,
- * drag-up, drag-down, drag-left, drag-right, drag-left-right, rotate-cw,
- * rotate-ccw, normal-tag, diag-ur, diag-ll, drag-diag, datafield, move,
- * typefield, forbidden, help, hand, vertical-datafield, drag-drop,
- * drag-reject]
+ * [generic:]
+ *            wait, forbidden, grabhint, crosshair, hand, zoom-in, zoom-out,
+ *            help, context-menu
+ *
+ * [data:] typefield, datafield, vertical-datafield, cell, alias
+ *         drag, drag-drop, drag-reject,
+ *
+ * [resizing:] sizeall, west, east, north, south, west-east, north-south,
+ *             north-west, south-west, north-east, south-east,
+ *             north-west-south-east, south-west-north-east
  *
  * The reserved/special names are:
  * 'default' : revert to CURSOR subsegment contents or system default
