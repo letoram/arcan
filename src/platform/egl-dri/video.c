@@ -277,7 +277,7 @@ struct dispout {
 		uint64_t in_flip;
 
 		struct gbm_bo* cur_bo, (* next_bo);
-		uint32_t cur_fb;
+		uint32_t cur_fb, old_fb;
 		int format;
 		struct gbm_surface* surface;
 
@@ -3401,6 +3401,14 @@ page_flip_handler(
 		else
 			d->buffer.cur_bo = d->buffer.next_bo;
 		d->buffer.next_bo = NULL;
+
+/* somewhat confusing but the 'framebuffer' isn't actually the backing store,
+ * that's in the buffer object above, this boils down to one ioctl in drm..
+ * then on the driver side merely a dereference. */
+		if (d->buffer.old_fb){
+			drmModeRmFB(d->device->disp_fd, d->buffer.old_fb);
+			d->buffer.old_fb = 0;
+		}
 
 		verbose_print("(%d) gbm-bo, release %"PRIxPTR" with %"PRIxPTR,
 			(int)d->id, (uintptr_t) d->buffer.cur_bo, (uintptr_t) d->buffer.next_bo);
