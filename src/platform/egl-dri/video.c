@@ -1862,8 +1862,6 @@ static void ensure_out_fence(struct dispout* d, bool pre)
 static int get_gbm_fb(struct dispout* d,
 	enum display_update_state dstate, struct gbm_bo* bo, uint32_t* dst)
 {
-	uint32_t new_fb;
-
 /* convert the currently mapped object */
 	if (dstate == UPDATE_DIRECT){
 		arcan_vobject* vobj = arcan_video_getobject(d->vid);
@@ -4314,6 +4312,7 @@ static bool update_display(struct dispout* d)
 				gbm_surface_release_buffer(d->buffer.surface, d->buffer.next_bo);
 				goto out;
 			}
+			d->buffer.old_fb = d->buffer.cur_fb;
 			d->buffer.cur_fb = next_fb;
 
 			if (rv == 0){
