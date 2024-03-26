@@ -140,17 +140,18 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	else if (!platform_fsrv_lastwords(src, msg, COUNT_OF(msg)))
 		snprintf(msg, COUNT_OF(msg), "Couldn't access metadata (SIGBUS?)");
 
-/* will free, so no UAF here - only time the function returns false is when we
- * are somehow running it twice one the same src */
-	if (!platform_fsrv_destroy(src))
-		return ARCAN_ERRC_UNACCEPTED_STATE;
-
-	arcan_audio_stop(aid);
-
 /* make sure there is no other weird dangling state around and forward the
  * client 'last words' as a troubleshooting exit 'status' */
 	vfunc_state emptys = {0};
 	arcan_video_alterfeed(vid, FFUNC_NULL, emptys);
+
+/* will free, so no UAF here - only time the function returns false is when we
+ * are somehow running it twice one the same src */
+	if (!platform_fsrv_destroy(src)){
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+	}
+
+	arcan_audio_stop(aid);
 
 	arcan_event sevent = {
 		.category = EVENT_FSRV,
@@ -499,7 +500,7 @@ enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD
 	TRAMP_GUARD(FRV_NOFRAME, tgt);
 
 	if (cmd == FFUNC_DESTROY)
-		arcan_frameserver_free(state.ptr);
+		arcan_frameserver_free(tgt);
 
 	else if (cmd == FFUNC_ADOPT)
 		default_adoph(tgt, srcid);
@@ -988,7 +989,7 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 	TRAMP_GUARD(FRV_NOFRAME, src);
 
 	if (cmd == FFUNC_DESTROY)
-		arcan_frameserver_free(state.ptr);
+		arcan_frameserver_free(src);
 
 	else if (cmd == FFUNC_ADOPT)
 		default_adoph(src, srcid);
@@ -1017,6 +1018,13 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
  * format. Audio will keep on buffering until overflow.
  */
 	else if (cmd == FFUNC_READBACK || cmd == FFUNC_READBACK_HANDLE){
+		if (!src->shm.ptr){
+			vfunc_state emptys = {0};
+			arcan_video_alterfeed(src->vid, FFUNC_NULL, emptys);
+			rv = FRV_NOFRAME;
+			goto no_out;
+		}
+
 		if (src->shm.ptr && !src->shm.ptr->vready){
 			arcan_event ev  = {
 				.tgt.kind = TARGET_COMMAND_STEPFRAME,

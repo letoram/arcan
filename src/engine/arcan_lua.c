@@ -9986,8 +9986,8 @@ static int spawn_recsubseg(lua_State* ctx,
 		arcan_fatal("spawn_recsubseg() -- " FATAL_MSG_FRAMESERV);
 	}
 
-	arcan_frameserver* rv =
-		spawn_subsegment(fsrv, SEGID_ENCODER, 0, 0, 0, 0);
+	arcan_frameserver* rv = spawn_subsegment(fsrv,
+		SEGID_ENCODER, 0, 0, vobj->vstore->w, vobj->vstore->h);
 
 	if (!rv){
 		arcan_warning("spawn_recsubseg() -- "
