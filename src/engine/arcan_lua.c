@@ -9975,19 +9975,32 @@ static int imagestorage(lua_State* ctx)
 	LUA_ETRACE("image_access_storage", NULL, 1);
 }
 
-static int spawn_recsubseg(lua_State* ctx,
-	arcan_vobj_id did, arcan_vobj_id dfsrv, int naids,
-	arcan_aobj_id* aidlocks)
+/* contract for reaching this spot is that we know that [did] match an
+ * allocated rendertarget with a new vobj using a buffer object from
+ * alloc_surface and that dsfsv points to the frameserver process that should
+ * inherit the subsegment. */
+static int spawn_recsubseg(
+	lua_State* ctx,
+	arcan_vobj_id did, arcan_vobj_id dfsrv,
+	int naids, arcan_aobj_id* aidlocks)
 {
 	arcan_vobject* vobj = arcan_video_getobject(dfsrv);
+	arcan_vobject* dobj = arcan_video_getobject(did);
+
+/* shmpage prepared, force dimensions based on source with a single buffer*/
 	arcan_frameserver* fsrv = vobj->feed.state.ptr;
 
 	if (!fsrv || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV){
 		arcan_fatal("spawn_recsubseg() -- " FATAL_MSG_FRAMESERV);
 	}
 
-	arcan_frameserver* rv = spawn_subsegment(fsrv,
-		SEGID_ENCODER, 0, 0, vobj->vstore->w, vobj->vstore->h);
+/* spawn the encoder with the destination store dimensions, don't use the
+ * shared spawn_subsegment as that will cause another vid to trigger which
+ * would conflict with the feed-function tied to the rendertarget in dobj that
+ * we set up next */
+	arcan_frameserver* rv =
+		platform_fsrv_spawn_subsegment(
+			fsrv, SEGID_ENCODER, 0, dobj->vstore->w, dobj->vstore->h, did, 0);
 
 	if (!rv){
 		arcan_warning("spawn_recsubseg() -- "
@@ -9995,26 +10008,18 @@ static int spawn_recsubseg(lua_State* ctx,
 		return 0;
 	}
 
+/* set the actual feed to the destination store */
 	vfunc_state fftag = {
 		.tag = ARCAN_TAG_FRAMESERV,
 		.ptr = rv
 	};
+	arcan_video_alterfeed(did, FFUNC_AVFEED, fftag);
 
 /* grab the requested callback and tag with */
 	if (lua_isfunction(ctx, 9) && !lua_iscfunction(ctx, 9)){
 		lua_pushvalue(ctx, 9);
 		rv->tag = luaL_ref(ctx, LUA_REGISTRYINDEX);
 	}
-
-/* shmpage prepared, force dimensions based on source with a single buffer*/
-	arcan_vobject* dobj = arcan_video_getobject(did);
-	struct arcan_shmif_page* shmpage = rv->shm.ptr;
-	shmpage->w = dobj->vstore->w;
-	shmpage->h = dobj->vstore->h;
-	rv->vbuf_cnt = rv->abuf_cnt = 1;
-	arcan_shmif_mapav(shmpage, rv->vbufs, 1, dobj->vstore->w *
-		dobj->vstore->h * sizeof(shmif_pixel), rv->abufs, 1, 32768);
-	arcan_video_alterfeed(did, FFUNC_AVFEED, fftag);
 
 /* similar restrictions and problems as in spawn_recfsrv with the
  * hooking chicken-and-egg problem */
@@ -10027,6 +10032,7 @@ static int spawn_recsubseg(lua_State* ctx,
 
 	if (naids > 1)
 		arcan_frameserver_avfeed_mixer(rv, naids, aidlocks);
+	arcan_conductor_register_frameserver(rv);
 
 	lua_pushvid(ctx, rv->vid);
 	trace_allocation(ctx, "encode", rv->vid);
@@ -10511,12 +10517,14 @@ static int recordset(lua_State* ctx)
 			arcan_fatal("recordset(), using WORLDID as a direct source is "
 				"not permitted, create a null_surface and use image_sharestorage. ");
 
-		arcan_video_attachtorendertarget(did, setvid,
-			detach == RENDERTARGET_DETACH);
+		arcan_video_attachtorendertarget(
+			did, setvid, detach == RENDERTARGET_DETACH);
 	}
 
 	arcan_aobj_id* aidlocks = NULL;
 
+/* build the set of audio sources, verify that they can be captured
+ * and have comparable states and not used / locked elsewhere */
 	if (naids > 0 && global_monitor == false){
 		aidlocks = arcan_alloc_mem(sizeof(arcan_aobj_id) * naids + 1,
 			ARCAN_MEM_ATAG, 0, ARCAN_MEMALIGN_NATURAL);
@@ -10549,9 +10557,9 @@ static int recordset(lua_State* ctx)
 		}
 	}
 
-/* Append the 'no audio sources' string even if it was not provided, this
- * is a workaround for the dated design of this part of the API and noaudio
- * was a common mistake in the encoder stage. Might be reconsidered for 0.7 */
+/* Append the 'no audio sources' string even if it was not provided, this is a
+ * workaround for the dated design of this part of the API and noaudio was a
+ * common mistake in the encoder stage. Might be reconsidered for 0.7 */
 	if (naids == 0 && (!argl || !strstr(argl, "noaudio=true"))){
 		char* ol = arcan_alloc_mem(strlen(argl ? argl : "") + sizeof(
 			":noaudio=true"), ARCAN_MEM_STRINGBUF, 0, ARCAN_MEMALIGN_NATURAL);
