@@ -1058,8 +1058,8 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 			if (cmd == FFUNC_READBACK){
 				memcpy(src->vbufs[0], buf, buf_sz);
 				ev.tgt.ioevs[0].iv = src->vfcount++;
-				platform_fsrv_pushevent(src, &ev);
 				atomic_store(&src->shm.ptr->vready, 1);
+				platform_fsrv_pushevent(src, &ev);
 			}
 
 /* for handle-passing we swap the vstore instead and send that one - ideally we
