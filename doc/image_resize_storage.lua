@@ -10,7 +10,7 @@
 -- The longer argument form with *vieww*, *viewh*, *viewx* and *viewy*
 -- redefines the window coordinate system range from 0,0,neww,newh to
 -- viewx,viewy,viewx+vieww,viewy+viewh. This can be used together with
--- ref:define_bindtarget in order to have two different views of the
+-- ref:define_linktarget in order to have two different views of the
 -- same pipeline.
 -- @note: There is no guarantee that the change can be performed as
 -- some platforms may impose alignment and padding requirements.
