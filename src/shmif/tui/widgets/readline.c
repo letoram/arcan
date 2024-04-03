@@ -316,7 +316,7 @@ static void draw_completion(
 				draw_completion_hint &&
 				(M->completion_hint & READLINE_SUGGEST_HINT)){
 			const char* hint = M->completion[i];
-			size_t hw = u8len(&hint[strlen(hint) + 1 + 1]);
+			size_t hw = u8len(&hint[strlen(hint) + 1]);
 			if (maxhw < hw)
 				maxhw = hw;
 		}
@@ -333,9 +333,10 @@ static void draw_completion(
 	size_t lasty = 0;
 
 	if (
+		maxhw &&
 		draw_completion_hint &&
 		(M->completion_hint & READLINE_SUGGEST_HINT)){
-		maxw += maxhw + (!!maxhw) * 2;
+		maxw += maxhw + 2;
 	}
 
 	maxw += cx + 1;

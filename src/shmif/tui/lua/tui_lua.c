@@ -2772,16 +2772,13 @@ static int readline_suggest(lua_State* L)
 			if (hint_ext){
 				lua_getfield(L, index, "hint");
 				lua_rawgeti(L, -1, i+1);
+				const char* a2 = "";
 				if (lua_type(L, -1) == LUA_TSTRING){
-					const char* a2 = lua_tostring(L, -1);
-					size_t len = strlen(a1) + strlen(a2) + 2;
-					new_suggest[i] = malloc(strlen(a1) + strlen(a2) + 2);
-					if (new_suggest[i]){
-						snprintf(new_suggest[i], len, "%s%c%s", a1, (char) 0, a2);
-					}
+					a2 = lua_tostring(L, -1);
 				}
-				else
-					new_suggest[i] = strdup(a1);
+				size_t len = strlen(a1) + strlen(a2) + 2;
+				new_suggest[i] = malloc(strlen(a1) + strlen(a2) + 2);
+				snprintf(new_suggest[i], len, "%s%c%s", a1, (char) 0, a2);
 				lua_pop(L, 2);
 			}
 			else{
