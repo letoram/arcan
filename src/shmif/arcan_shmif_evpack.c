@@ -241,12 +241,14 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 			snprintf(work, dsz,"TGT:RESTORE(fd)");
 		break;
 		case TARGET_COMMAND_BCHUNK_IN:
-			snprintf(work, dsz,"TGT:BCHUNK-IN(%"PRIu64"b)",
-				(uint64_t) ev.tgt.ioevs[1].iv | ((uint64_t)ev.tgt.ioevs[2].iv << 32));
+			snprintf(work, dsz,"TGT:BCHUNK-IN(%"PRIu64"b:msg=%s)",
+				(uint64_t) ev.tgt.ioevs[1].iv | ((uint64_t)ev.tgt.ioevs[2].iv << 32),
+				(char*) ev.tgt.message);
 		break;
 		case TARGET_COMMAND_BCHUNK_OUT:
-			snprintf(work, dsz,"TGT:BCHUNK-OUT(%"PRIu64"b)",
-				(uint64_t) ev.tgt.ioevs[1].iv | ((uint64_t)ev.tgt.ioevs[2].iv << 32));
+			snprintf(work, dsz,"TGT:BCHUNK-OUT(%"PRIu64"b:msg=%s)",
+				(uint64_t) ev.tgt.ioevs[1].iv | ((uint64_t)ev.tgt.ioevs[2].iv << 32),
+				(char*) ev.tgt.message);
 		break;
 		case TARGET_COMMAND_RESET:
 			snprintf(work, dsz,"TGT:RESET(%s)",

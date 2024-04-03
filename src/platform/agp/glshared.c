@@ -28,7 +28,7 @@
 
 #ifdef HEADLESS_NOARCAN
 #undef FLAG_DIRTY
-#define FLAG_DIRTY()
+#define FLAG_DIRTY(X)
 #endif
 
 #ifndef GL_VERTEX_PROGRAM_POINT_SIZE
@@ -313,7 +313,7 @@ struct agp_vstore*
 	if (!dst->n_stores){
 		verbose_print("(%"PRIxPTR") first swap, alloc buffers", (uintptr_t) dst);
 		setup_stores(dst);
-		FLAG_DIRTY();
+		FLAG_DIRTY(NULL);
 		*swap = false;
 	}
 /* already setup - can swap out old-front */
@@ -335,7 +335,7 @@ struct agp_vstore*
  * there is no buffer in flight or elsewise used that rely on the 'old' size */
 	if (dst->dirty_flip > 0){
 		dst->dirty_flip--;
-		FLAG_DIRTY();
+		FLAG_DIRTY(NULL);
 		verbose_print("(%"PRIxPTR") dirty left: %zu", (uintptr_t) dst, dst->dirty_flip);
 
 /* now that we have 'dirtied out' and any external users should have received
@@ -1329,7 +1329,11 @@ void agp_update_vstore(struct agp_vstore* s, bool copy)
 
 	verbose_print(
 		"update vstore (%"PRIxPTR"), copy: %d", (uintptr_t) s, (int) copy);
-	FLAG_DIRTY();
+
+#ifdef HEADLESS_NOARCAN
+#else
+	arcan_vint_dirty_all();
+#endif
 
 	if (!copy)
 		env->bind_texture(GL_TEXTURE_2D, s->vinf.text.glid);

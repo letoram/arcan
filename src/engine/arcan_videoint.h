@@ -16,21 +16,6 @@
 #define RENDERTARGET_LIMIT 64
 #endif
 
-/*
- *  Indicate that the video pipeline is in such a state that
- *  it should be redrawn. X should be NULL or a vobj reference
- *  (to permit partial redraws in the future if we need to save
- *  bandwidth).
- */
-static void _int_flag(){
-}
-
-#define FLAG_DIRTY(X) do {_int_flag(); arcan_video_display.dirty++; } while(0)
-
-#define FL_SET(obj_ptr, fl) ((obj_ptr)->flags |= fl)
-#define FL_CLEAR(obj_ptr, fl) ((obj_ptr)->flags &= ~fl)
-#define FL_TEST(obj_ptr, fl) (( ((obj_ptr)->flags) & (fl)) > 0)
-
 struct arcan_vobject_litem;
 struct arcan_vobject;
 
@@ -360,6 +345,23 @@ struct arcan_video_display {
 	char* txdump;
 };
 
+/*
+ *  Indicate that the video pipeline is in such a state that
+ *  it should be redrawn. X should be NULL or a vobj reference
+ *  (to permit partial redraws in the future if we need to save
+ *  bandwidth).
+ */
+static void _int_flag(struct arcan_vobject* vobj){
+	if (vobj && vobj->owner)
+		vobj->owner->transfc++;
+}
+
+#define FLAG_DIRTY(X) do {_int_flag(X); arcan_video_display.dirty++; } while(0)
+
+#define FL_SET(obj_ptr, fl) ((obj_ptr)->flags |= fl)
+#define FL_CLEAR(obj_ptr, fl) ((obj_ptr)->flags &= ~fl)
+#define FL_TEST(obj_ptr, fl) (( ((obj_ptr)->flags) & (fl)) > 0)
+
 /* these all represent a subset of the current context that is to be drawn.  if
  * (dest != NULL) this means that the vid actually represents a rendertarget,
  * e.g. FBO. The mode defines which output buffers (color, depth, ...) that
@@ -483,6 +485,8 @@ struct rendertarget* arcan_vint_findrt_vstore(struct agp_vstore* st);
  * at the specified (x,y, x+w, y+h) position
  */
 void arcan_vint_drawrt(struct agp_vstore*, int x, int y, int w, int h);
+
+void arcan_vint_dirty_all();
 
 /*
  * [may be] used by the video platform layer to share the normal hinting

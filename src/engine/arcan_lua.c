@@ -1377,6 +1377,7 @@ static int imageresizestorage(lua_State* ctx)
 			build_orthographic_matrix(rtgt->projection, x, w, h, y, 0, 1);
 
 		agp_rendertarget_viewport(rtgt->art, x, y, x+view_w, y+view_h);
+		FLAG_DIRTY(vobj);
 	}
 	else
 		arcan_video_resizefeed(id, w, h);
@@ -11105,7 +11106,7 @@ static int shader_uniform(lua_State* ctx)
 /* whenever we manually set a uniform, all users of that shader should be
  * marked dirty - but the argument form to flag_dirty does not yet consider
  * type so this will cause a full invalidation */
-	FLAG_DIRTY();
+	FLAG_DIRTY(NULL);
 	LUA_ETRACE("shader_uniform", NULL, 0);
 }
 

@@ -1277,6 +1277,16 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 	return true;
 }
 
+void arcan_vint_dirty_all()
+{
+	for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
+		struct rendertarget* tgt = &current_context->rtargets[ind];
+		tgt->dirtyc++;
+	}
+
+	arcan_video_display.dirty++;
+}
+
 void arcan_vint_reraster(arcan_vobject* src, struct rendertarget* rtgt)
 {
 	struct agp_vstore* vs = src->vstore;
@@ -2068,7 +2078,7 @@ arcan_errc arcan_video_rendertargetdensity(
 		cent = cent->next;
 	}
 
-	FLAG_DIRTY(rtgt);
+	FLAG_DIRTY(srcobj);
 	return ARCAN_OK;
 }
 
@@ -2631,7 +2641,7 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, size_t w, size_t h)
 	invalidate_cache(vobj);
 	agp_resize_vstore(vobj->vstore, w, h);
 
-	FLAG_DIRTY();
+	FLAG_DIRTY(vobj);
 	return ARCAN_OK;
 }
 
