@@ -66,6 +66,11 @@ enum tui_attr_flags {
 	TUI_ATTR_BORDER_ALL = 61440
 };
 
+enum tui_border_flags {
+	TUI_BORDER_USEATTR = 0,
+	TUI_BORDER_APPEND = 1
+};
+
 enum tui_bgcopy_flags {
 	TUI_BGCOPY_KEEPIN = 1,
 	TUI_BGCOPY_KEEPOUT = 2,

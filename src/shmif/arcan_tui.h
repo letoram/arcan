@@ -1134,10 +1134,11 @@ bool arcan_tui_hasglyph(struct tui_context*, uint32_t);
 void arcan_tui_message(struct tui_context*, int target, const char* msg);
 
 /*
- * Walk from x1,y1 around to x2,y2 and set the corresponding _ATTR_BORDER
- * (will overwrite existing .attr field but leave cells otherwise intact.
+ * Walk from x1,y1 around to x2,y2 and set the corresponding _ATTR_BORDER.
  *
- * flags are reserved for future style controls.
+ * Depending on [flags] the following behavior will apply:
+ *  TUI_BORDER_USEATTR - replaces existing .attr field
+ *  TUI_BORDER_APPEND - ignore attr argument, .attr |= the appropriate flags
  */
 void arcan_tui_write_border(struct tui_context*,
 	struct tui_screen_attr attr,

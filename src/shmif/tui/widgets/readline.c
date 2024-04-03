@@ -28,6 +28,9 @@
 
 #define READLINE_MAGIC 0xfefef00d
 
+/* have this shared between all readline instances allowing an interactive toggle */
+static bool draw_completion_hint;
+
 struct readline_meta {
 	uint32_t magic;
 	struct tui_readline_opts opts;
@@ -54,7 +57,6 @@ struct readline_meta {
 	char* suggest_suffix;
 	size_t suggest_suffix_sz;
 	size_t completion_sz;
-	size_t completion_width;
 	size_t completion_mode;
 	size_t completion_pos;
 	int completion_hint;
@@ -299,48 +301,84 @@ static void draw_completion(
 
 	struct tui_screen_attr attr = arcan_tui_defcattr(T, TUI_COL_UI);
 
+/* separate between total, word and hint lengths */
 	size_t maxw = 0;
+	size_t maxww = 0;
+	size_t maxhw = 0;
+
 	for (size_t i = 0, j = cy + step;
 		!M->opts.completion_compact &&
 		i < M->completion_sz && j >= 0 && j < rows; i++, j += step){
 		size_t len = 0;
 		len += u8len(M->completion[i]);
 
-		if (M->completion_hint & READLINE_SUGGEST_HINT){
+		if (
+				draw_completion_hint &&
+				(M->completion_hint & READLINE_SUGGEST_HINT)){
 			const char* hint = M->completion[i];
-			len += u8len(&hint[strlen(hint)] + 1 + 1);
+			size_t hw = u8len(&hint[strlen(hint) + 1 + 1]);
+			if (maxhw < hw)
+				maxhw = hw;
 		}
 
-/* leave room for the > */
-		len += 3;
 		if (len > maxw)
 			maxw = len;
 	}
+
+	maxww = maxw;
 
 /* Other style choice when we draw on canvas like this is if to set the width
  * to match all elements (i.e. find the widests and pad with empty), left-align
  * or right-align vs. cursor. */
 	size_t lasty = 0;
-	maxw += cx;
+
+	if (
+		draw_completion_hint &&
+		(M->completion_hint & READLINE_SUGGEST_HINT)){
+		maxw += maxhw + (!!maxhw) * 2;
+	}
+
+	maxw += cx + 1;
 
 	for (ssize_t i = 0, j = cy + step;
 		i < M->completion_sz && j >= 0 && j < rows; i++, j += step){
 		arcan_tui_move_to(T, cx, j);
 		lasty = j;
 
-		if (i == M->completion_pos)
-			arcan_tui_writeu8(T, (const uint8_t*) "> ", 2, &attr);
-
-		arcan_tui_writestr(T, M->completion[i], &attr);
+		if (i == M->completion_pos){
+			attr.aflags |= TUI_ATTR_INVERSE;
+			arcan_tui_writestr(T, M->completion[i], &attr);
+			attr.aflags &= ~TUI_ATTR_INVERSE;
+		}
+		else
+			arcan_tui_writestr(T, M->completion[i], &attr);
 
 /*
- * Alternate intepretation is two tightly packed strings with the second
- * being for presentation only.
+ * Alternate intepretation is two tightly packed strings with the second being
+ * for presentation only. Whitespace align to the widest entry.
  */
-		if (M->completion_hint & READLINE_SUGGEST_HINT){
+		if (
+			maxhw &&
+			draw_completion_hint &&
+			(M->completion_hint & READLINE_SUGGEST_HINT)){
+			struct tui_screen_attr hattr = attr;
+			hattr.aflags |= TUI_ATTR_ITALIC;
+
 			const char* hint = M->completion[i];
 			hint = &hint[strlen(hint)] + 1;
-			arcan_tui_write(T, ' ', &attr);
+
+/* If we're not compact, pad to the widest command and draw the text, otherwise
+ * just alter hinting style */
+			size_t hx, hy;
+			arcan_tui_cursorpos(T, &hx, &hy);
+
+			if (!M->opts.completion_compact){
+				for (size_t i = hx; i < cx + maxww + 1; i++){
+					arcan_tui_write(T, ' ', &hattr);
+				}
+			}
+
+			arcan_tui_write(T, ' ', &hattr);
 			arcan_tui_writestr(T, hint, &attr);
 		}
 
@@ -364,7 +402,7 @@ static void draw_completion(
 			y1 = lasty;
 			y2 = cy + step;
 		}
-		arcan_tui_write_border(T, attr, x1, y1, x2, y2, 0);
+		arcan_tui_write_border(T, attr, x1, y1, x2, y2, TUI_BORDER_APPEND);
 	}
 
 	arcan_tui_move_to(T, cx, cy);
@@ -882,6 +920,12 @@ void on_key_input(struct tui_context* T,
 		return;
 	}
 
+	if (keysym == TUIK_F1){
+		draw_completion_hint = !draw_completion_hint;
+		refresh(T, M);
+		return;
+	}
+
 	bool meta = mods & (TUIM_LCTRL | TUIM_RCTRL);
 	if (meta){
 		if (keysym == TUIK_RETURN){
@@ -1234,14 +1278,6 @@ void arcan_tui_readline_suggest(
 	M->completion_mode = mode & ~(mask);
 	M->completion_hint = mode & mask;
 	M->completion_pos = 0;
-
-/* pre-calculate the completion set width so refresh can reposition as needed */
-	M->completion_width = 0;
-	for (size_t i = 0; i < M->completion_sz; i++){
-		size_t len = strlen(M->completion[i]);
-		if (len > M->completion_width)
-			M->completion_width = len;
-	}
 
 	if (M->show_completion){
 		refresh(T, M);

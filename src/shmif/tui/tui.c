@@ -1236,52 +1236,117 @@ void arcan_tui_write_border(
 	if (!T || x1 > x2 || y1 > y2)
 		return;
 
+	struct tui_screen_attr cattr;
+	if (fl == TUI_BORDER_APPEND)
+		attr.aflags = 0;
+
 /* edge-case: 1xn or nx1 would have the normal TLDR+corner walk overwrite */
 	attr.aflags = TUI_ATTR_BORDER_TOP | TUI_ATTR_BORDER_LEFT;
 	if (y2 - y1 == 0)
 		attr.aflags |= TUI_ATTR_BORDER_DOWN;
 	if (x2 - x1 == 0)
 		attr.aflags |= TUI_ATTR_BORDER_RIGHT;
-	arcan_tui_writeattr_at(T, &attr, x1, y1);
+
+	if (fl == TUI_BORDER_APPEND){
+		cattr = arcan_tui_getxy(T, x1, y1, true).attr;
+		cattr.aflags |= attr.aflags;
+		arcan_tui_writeattr_at(T, &cattr, x1, y1);
+	}
+	else
+		arcan_tui_writeattr_at(T, &attr, x1, y1);
 
 	attr.aflags = TUI_ATTR_BORDER_TOP;
 	if (y2 - y1 == 0)
 		attr.aflags |= TUI_ATTR_BORDER_DOWN;
-	for (size_t i = x1 + 1; i < x2; i++)
-		arcan_tui_writeattr_at(T, &attr, i, y1);
 
+/* top, top-bottom */
+	for (size_t i = x1 + 1; i < x2; i++){
+		if (fl == TUI_BORDER_APPEND){
+			cattr = arcan_tui_getxy(T, i, y1, true).attr;
+			cattr.aflags |= attr.aflags;
+			arcan_tui_writeattr_at(T, &cattr, i, y1);
+		}
+		else
+			arcan_tui_writeattr_at(T, &attr, i, y1);
+	}
+
+/* top right, top right, down */
 	if (x2 - x1 > 0){
 		attr.aflags = TUI_ATTR_BORDER_TOP | TUI_ATTR_BORDER_RIGHT;
 		if (y2 - y1 == 0)
 			attr.aflags |= TUI_ATTR_BORDER_DOWN;
-		arcan_tui_writeattr_at(T, &attr, x2, y1);
+		if (fl == TUI_BORDER_APPEND){
+			cattr = arcan_tui_getxy(T, x2, y2, true).attr;
+			cattr.aflags |= attr.aflags;
+			arcan_tui_writeattr_at(T, &cattr, x2, y1);
+		}
+		else
+			arcan_tui_writeattr_at(T, &attr, x2, y1);
 	}
 
+/* left, left - right */
 	attr.aflags = TUI_ATTR_BORDER_LEFT;
 	if (x2 - x1 == 0)
 		attr.aflags |= TUI_ATTR_BORDER_RIGHT;
-	for (size_t i = y1 + 1; i < y2; i++)
-		arcan_tui_writeattr_at(T, &attr, x1, i);
+	for (size_t i = y1 + 1; i < y2; i++){
+		if (fl == TUI_BORDER_APPEND){
+			cattr = arcan_tui_getxy(T, x1, i, true).attr;
+			cattr.aflags |= attr.aflags;
+			arcan_tui_writeattr_at(T, &cattr, x1, i);
+		}
+		else
+			arcan_tui_writeattr_at(T, &attr, x1, i);
+	}
 
+/* right */
 	if (x2 - x1 > 0){
 		attr.aflags = TUI_ATTR_BORDER_RIGHT;
-		for (size_t i = y1 + 1; i < y2; i++)
-			arcan_tui_writeattr_at(T, &attr, x2, i);
+		for (size_t i = y1 + 1; i < y2; i++){
+			if (fl == TUI_BORDER_APPEND){
+				cattr = arcan_tui_getxy(T, x2, i, true).attr;
+				cattr.aflags |= attr.aflags;
+				arcan_tui_writeattr_at(T, &cattr, x2, i);
+			}
+			else
+				arcan_tui_writeattr_at(T, &attr, x2, i);
+		}
 	}
 
 	if (y2 - y1 == 0)
 		return;
 
+/* bottom left corner */
 	attr.aflags = TUI_ATTR_BORDER_DOWN | TUI_ATTR_BORDER_LEFT;
-	arcan_tui_writeattr_at(T, &attr, x1, y2);
+	if (fl == TUI_BORDER_APPEND){
+		cattr = arcan_tui_getxy(T, x1, y2, true).attr;
+		cattr.aflags |= attr.aflags;
+		arcan_tui_writeattr_at(T, &cattr, x1, y2);
+	}
+	else
+		arcan_tui_writeattr_at(T, &attr, x1, y2);
 
 	attr.aflags = TUI_ATTR_BORDER_DOWN;
 
-	for (size_t i = x1 + 1; i < x2; i++)
-		arcan_tui_writeattr_at(T, &attr, i, y2);
+/* bottom row */
+	for (size_t i = x1 + 1; i < x2; i++){
+		if (fl == TUI_BORDER_APPEND){
+			cattr = arcan_tui_getxy(T, i, y2, true).attr;
+			cattr.aflags |= attr.aflags;
+			arcan_tui_writeattr_at(T, &cattr, i, y2);
+		}
+		else
+			arcan_tui_writeattr_at(T, &attr, i, y2);
+	}
 
+/* bottom right corner */
 	attr.aflags = TUI_ATTR_BORDER_DOWN | TUI_ATTR_BORDER_RIGHT;
-	arcan_tui_writeattr_at(T, &attr, x2, y2);
+	if (fl == TUI_BORDER_APPEND){
+		cattr = arcan_tui_getxy(T, x2, y2, true).attr;
+		cattr.aflags |= attr.aflags;
+		arcan_tui_writeattr_at(T, &cattr, x2, y2);
+	}
+	else
+  	arcan_tui_writeattr_at(T, &attr, x2, y2);
 }
 
 void arcan_tui_send_key(struct tui_context* C,
