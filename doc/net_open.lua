@@ -75,7 +75,7 @@ function main()
 	end)
 #endif
 
-#idef MAIN2
+#ifdef MAIN2
 	local vid = net_open("@stdin:me",
 		function(source, status)
 			if status.kind == "message" then
