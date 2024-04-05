@@ -238,9 +238,9 @@ struct arcan_shmif_page;
 struct arcan_shmif_initial;
 
 typedef enum arcan_shmif_sigmask(
-	*shmif_trigger_hook)(struct arcan_shmif_cont*);
+	*shmif_trigger_hook_fptr)(struct arcan_shmif_cont*);
 
-typedef void (*shmif_reset_hook)(int state, void* tag);
+typedef void (*shmif_reset_hook_fptr)(int state, void* tag);
 
 enum ARCAN_FLAGS {
 	SHMIF_NOFLAGS = 0,
@@ -452,8 +452,8 @@ size_t arcan_shmif_vbufsz(
  * 'mask' argument defines the signal mask slot (A xor B only, A or B is
  * undefined behavior).
  */
-shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont*,
-	enum arcan_shmif_sigmask mask, shmif_trigger_hook, void* data);
+shmif_trigger_hook_fptr arcan_shmif_signalhook(struct arcan_shmif_cont*,
+	enum arcan_shmif_sigmask mask, shmif_trigger_hook_fptr, void* data);
 
 /*
  * Using the specified shmpage state, synchronization semaphore handle,
@@ -677,8 +677,8 @@ enum shmif_reset_hook {
 	SHMIF_RESET_NOCHG   = 3,
 	SHMIF_RESET_FAIL    = 4
 };
-shmif_reset_hook arcan_shmif_resetfunc(
-	struct arcan_shmif_cont*, shmif_reset_hook, void* tag);
+shmif_reset_hook_fptr arcan_shmif_resetfunc(
+	struct arcan_shmif_cont*, shmif_reset_hook_fptr, void* tag);
 
 /*
  * This should be called periodically to prevent more subtle bugs from

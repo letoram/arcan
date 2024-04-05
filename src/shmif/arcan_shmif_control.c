@@ -160,19 +160,19 @@ struct shmif_hidden {
 	struct arg_arr* args;
 	char* last_words;
 
-	shmif_trigger_hook video_hook;
+	shmif_trigger_hook_fptr video_hook;
 	void* video_hook_data;
 	uint8_t vbuf_ind, vbuf_cnt;
 	bool vbuf_nbuf_active;
 	uint64_t vframe_id;
 	shmif_pixel* vbuf[ARCAN_SHMIF_VBUFC_LIM];
 
-	shmif_trigger_hook audio_hook;
+	shmif_trigger_hook_fptr audio_hook;
 	void* audio_hook_data;
 	uint8_t abuf_ind, abuf_cnt;
 	shmif_asample* abuf[ARCAN_SHMIF_ABUFC_LIM];
 
-	shmif_reset_hook reset_hook;
+	shmif_reset_hook_fptr reset_hook;
 	void* reset_hook_tag;
 
 /* Initial contents gets dropped after first valid !initial call after open,
@@ -2363,11 +2363,12 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 	});
 }
 
-shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont* cont,
-	enum arcan_shmif_sigmask mask, shmif_trigger_hook hook, void* data)
+shmif_trigger_hook_fptr arcan_shmif_signalhook(
+	struct arcan_shmif_cont* cont,
+	enum arcan_shmif_sigmask mask, shmif_trigger_hook_fptr hook, void* data)
 {
 	struct shmif_hidden* priv = cont->priv;
-	shmif_trigger_hook rv = NULL;
+	shmif_trigger_hook_fptr rv = NULL;
 
 	if (mask == (SHMIF_SIGVID | SHMIF_SIGAUD))
 	;
@@ -3908,14 +3909,14 @@ void arcan_shmif_bgcopy(
 	}
 }
 
-shmif_reset_hook arcan_shmif_resetfunc(
-	struct arcan_shmif_cont* C, shmif_reset_hook hook, void* tag)
+shmif_reset_hook_fptr arcan_shmif_resetfunc(
+	struct arcan_shmif_cont* C, shmif_reset_hook_fptr hook, void* tag)
 {
 	if (!C)
 		return NULL;
 
 	struct shmif_hidden* hs = C->priv;
-	shmif_reset_hook old_hook = hs->reset_hook;
+	shmif_reset_hook_fptr old_hook = hs->reset_hook;
 
 	hs->reset_hook = hook;
 	hs->reset_hook_tag = tag;

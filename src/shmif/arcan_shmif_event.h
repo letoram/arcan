@@ -1768,7 +1768,13 @@ typedef struct arcan_event {
 	};
 } arcan_event;
 
-_Static_assert(sizeof(arcan_event) == 128, "event struct size should be 128b");
+#ifdef __cplusplus
+static_assert(sizeof(arcan_event) == 128,
+#else
+_Static_assert(sizeof(arcan_event) == 128,
+#endif
+ "event struct size should be 128b"
+);
 
 /* matches those that libraries such as SDL uses */
 typedef enum {

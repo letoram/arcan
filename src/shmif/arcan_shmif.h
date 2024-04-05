@@ -59,6 +59,7 @@
  */
 #ifdef __cplusplus
 #define ARCAN_SHMIF_HIDEPAGE
+extern "C" {
 #endif
 
 #include "arcan_shmif_interop.h"
@@ -68,6 +69,8 @@
 
 #ifndef __cplusplus
 #include "arcan_shmif_sub.h"
+#else
+}
 #endif
 
 #endif
