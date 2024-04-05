@@ -24,7 +24,7 @@
 #include <sys/types.h>
 #include <sys/file.h>
 #include <sys/wait.h>
-#include <fts.h>
+#include "../external/fts.h"
 #include <dirent.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -370,7 +370,7 @@ bool build_appl_pkg(const char* name, struct appl_meta* dst, int cdir)
 	if (!(fpek = open_memstream(&dst->buf, &buf_sz)))
 		goto err;
 
-	if (!(fts = fts_open(path, FTS_PHYSICAL, comp_alpha)))
+	if (!(fts = afts_open(path, FTS_PHYSICAL, comp_alpha)))
 		goto err;
 
 /* for extended permissions -- net,frameserver,... the .manifest file needs to
@@ -402,7 +402,7 @@ bool build_appl_pkg(const char* name, struct appl_meta* dst, int cdir)
 
 /* walk and get list of files, lexicographic sort, filter out links,
  * cycles, dot files */
-	for (FTSENT* cur = fts_read(fts); cur; cur = fts_read(fts)){
+	for (FTSENT* cur = afts_read(fts); cur; cur = afts_read(fts)){
 /* possibly allow-list files here, at least make sure it's valid UTF8 as well
  * as not any reserved (/, ., :, \t, \n) symbols */
 		if (cur->fts_name[0] == '.'){
@@ -443,7 +443,7 @@ bool build_appl_pkg(const char* name, struct appl_meta* dst, int cdir)
 		free(fbuf);
 	}
 
-	fts_close(fts);
+	afts_close(fts);
 	fclose(fpek);
 
 	dst->buf_sz = buf_sz;
@@ -465,7 +465,7 @@ err:
 	if (fpek)
 		fclose(fpek);
 	if (fts)
-		fts_close(fts);
+		afts_close(fts);
 	free(dst->buf);
 	dst->buf = NULL;
 	fchdir(olddir);
