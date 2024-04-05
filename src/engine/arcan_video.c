@@ -1506,7 +1506,7 @@ arcan_errc arcan_video_transformmask(arcan_vobj_id id,
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
-	if (vobj && id > FL_INUSE){
+	if (vobj && id > 0){
 		vobj->mask = mask;
 		rv = ARCAN_OK;
 	}
