@@ -24,6 +24,7 @@
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
+#include "nbio.h"
 
 #include "alt/types.h"
 #include "alt/support.h"
@@ -308,6 +309,7 @@ static void wraperr(lua_State* L, int errc, const char* src)
 	fatal_handover(L);
 
 /* if that fails, well switch to a recovery script */
+	alt_nbio_release();
 	longjmp(arcanmain_recover_state, ARCAN_LUA_RECOVERY_SWITCH);
 }
 

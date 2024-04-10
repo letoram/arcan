@@ -57,7 +57,9 @@
 -- The lf_strip(bool) function affects read results to include or exclude a
 -- splitting linefeed if operating in linefeed mode. This is mainly an
 -- optimization to avoid additional string manipulation when linefeeds aren't
--- desired in the resulting string.
+-- desired in the resulting string. It is also possible to pass lf_strip(bool,
+-- str) where the first character of the string will be used to determine end
+-- of line. This can be used to manage '\0' separated sequenced strings.
 --
 -- The write(buf, [callback(ok, gpublock)]):int,bool function takes a buffer string
 -- or table of buffer strings as argument and queues for writing.

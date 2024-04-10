@@ -16,6 +16,7 @@ struct nonblock_io {
 	bool eofm;
 	bool lfstrip;
 	off_t ofs;
+	char lfch;
 
 	int fd; /* will be read from */
 

@@ -481,7 +481,8 @@ static int nbio_socketaccept(lua_State* L)
 		.fd = newfd,
 		.mode = O_RDWR,
 		.data_handler = LUA_NOREF,
-		.write_handler = LUA_NOREF
+		.write_handler = LUA_NOREF,
+		.lfch = '\n'
 	};
 
 	if (!conn){
@@ -657,7 +658,8 @@ static int nbio_write(lua_State* L)
 }
 
 static char* nextline(struct nonblock_io* ib,
-	size_t start, bool eof, size_t* nb, size_t* step, bool* gotline)
+	size_t start, bool eof, size_t* nb, size_t* step,
+	bool* gotline, char linech)
 {
 	if (!ib->ofs)
 		return NULL;
@@ -665,7 +667,7 @@ static char* nextline(struct nonblock_io* ib,
 	*step = 0;
 
 	for (size_t i = start; i < ib->ofs; i++){
-		if (ib->buf[i] == '\n'){
+		if (ib->buf[i] == linech){
 			*nb = ib->lfstrip ? (i - start) : (i - start) + 1;
 			*step = (i - start) + 1;
 			*gotline = true;
@@ -771,7 +773,7 @@ int alt_nbio_process_read(
 		bool cancel = false;
 		while (
 			!cancel &&
-			(ch = nextline(ib, ci, eof, &len, &step, &gotline))){
+			(ch = nextline(ib, ci, eof, &len, &step, &gotline, ib->lfch))){
 			lua_pushvalue(L, -1);
 			lua_pushlstring(L, ch, len);
 			lua_pushboolean(L, eof && !gotline);
@@ -801,7 +803,7 @@ int alt_nbio_process_read(
 
 	while (
 			count &&
-			(ch = nextline(ib, ci, eof, &len, &step, &gotline))){
+			(ch = nextline(ib, ci, eof, &len, &step, &gotline, ib->lfch))){
 			if (eof && len == 0 && step == 0)
 				break;
 
@@ -817,7 +819,7 @@ int alt_nbio_process_read(
 		return 2;
 	}
 	else {
-		if ((ch = nextline(ib, 0, eof, &len, &step, &gotline))){
+		if ((ch = nextline(ib, 0, eof, &len, &step, &gotline, ib->lfch))){
 			lua_pushlstring(L, ch, len);
 			memmove(ib->buf, &ib->buf[step], buf_sz - step);
 			ib->ofs -= step;
@@ -859,6 +861,11 @@ static int nbio_lf(lua_State* L)
 	struct nonblock_io* ir = *ib;
 
 	ir->lfstrip = luaL_optbnumber(L, 2, 0);
+
+	if (lua_type(L, 3) == LUA_TSTRING){
+		const char* ch = lua_tostring(L, 3);
+		ir->lfch = ch[0];
+	}
 
 	LUA_ETRACE("open_nonblock:lf_strip", NULL, 0);
 }

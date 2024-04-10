@@ -7273,14 +7273,30 @@ static int globresource(lua_State* ctx)
 			);
 	}
 
-	lua_newtable(ctx);
-	bptr.top = lua_gettop(ctx);
+	bool asynch = false;
+	if (lua_type(ctx, 3) == LUA_TBOOLEAN){
+		asynch = lua_toboolean(ctx, 3);
+	}
 
-	if (userns)
-		arcan_glob_userns(label, userns, globcb, &bptr);
-	else
-		arcan_glob(label, mask, globcb, &bptr);
+	if (asynch){
+		int fd;
+		if (userns)
+			arcan_glob_userns(label, userns, NULL, &fd, NULL);
+		else
+			arcan_glob(label, mask, NULL, &fd, NULL);
 
+		struct nonblock_io* dst;
+		alt_nbio_import(ctx, fd, O_RDONLY, &dst, NULL);
+	}
+	else {
+		lua_newtable(ctx);
+		bptr.top = lua_gettop(ctx);
+
+		if (userns)
+			arcan_glob_userns(label, userns, globcb, NULL, &bptr);
+		else
+			arcan_glob(label, mask, globcb, NULL, &bptr);
+	}
 	free(label);
 
 	LUA_ETRACE("glob_resource", NULL, 1);

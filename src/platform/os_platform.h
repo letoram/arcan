@@ -222,7 +222,7 @@ int fmt_open(int flags, mode_t mode, const char* fmt, ...);
  * returns number of times <cb> was invoked.
  */
 unsigned arcan_glob(char* basename,
-	enum arcan_namespaces, void (*cb)(char*, void*), void* tag);
+	enum arcan_namespaces, void (*cb)(char*, void*), int* asynch, void* tag);
 
 /*
  * Similar to _glob, but only globs in a single user-specified namespace
@@ -230,7 +230,7 @@ unsigned arcan_glob(char* basename,
  * show the namespace relative path.
  */
 unsigned arcan_glob_userns(char* basename,
-	const char* userns, void (*cb)(char*, void*), void* tag);
+	const char* userns, void (*cb)(char*, void*), int* asynch, void* tag);
 
 /* replace the thread_local logging output destination with outf.
  * This can be null (and by default is null) in order to disable log output */
