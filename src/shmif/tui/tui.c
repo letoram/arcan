@@ -714,6 +714,7 @@ void arcan_tui_announce_io(struct tui_context* c,
 		.ext.bchunk = {
 			.input = true,
 			.hint = (immediately * 1),
+			.extensions = "*"
 		}
 	};
 
