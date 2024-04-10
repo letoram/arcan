@@ -213,6 +213,12 @@ void agp_readback_synchronous(struct agp_vstore* dst)
 	verbose_print(
 		"synchronous readback from id: %u", (unsigned)agp_resolve_texid(dst));
 
+	size_t bufsz = dst->w * dst->h * 4;
+	if (dst->vinf.text.s_raw < bufsz){
+		dst->vinf.text.s_raw = bufsz;
+		dst->vinf.text.raw = malloc(bufsz);
+	}
+
 	env->bind_texture(GL_TEXTURE_2D, agp_resolve_texid(dst));
 	env->get_tex_image(GL_TEXTURE_2D, 0,
 		GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dst->vinf.text.raw);

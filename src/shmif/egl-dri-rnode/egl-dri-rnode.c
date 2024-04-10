@@ -405,6 +405,7 @@ static bool scanout_alloc(
 /* this will give a color buffer that is suitable for FBO and sharing */
 	struct shmifext_color_buffer* buf =
 		malloc(sizeof(struct shmifext_color_buffer));
+	*buf = (struct shmifext_color_buffer){0};
 
 	if (!arcan_shmifext_alloc_color(conn, buf)){
 		agp_empty_vstore(vs, vs->w, vs->h);
@@ -514,16 +515,19 @@ enum shmifext_setup_status arcan_shmifext_setup(
  * also mutate into having a swapchain, with DOUBLEBUFFER that happens
  * immediately */
 	if (arg.builtin_fbo){
-		ctx->buf = (struct agp_vstore){
-			.txmapped = TXSTATE_TEX2D,
-				.w = con->w,
-				.h = con->h
-		};
+		ctx->buf = (struct agp_vstore){0};
+		agp_empty_vstore(&ctx->buf, con->w, con->h);
 
 		ctx->rtgt = agp_setup_rendertarget(
 			&ctx->buf, RENDERTARGET_COLOR_DEPTH_STENCIL);
 
+/* same procedure as elsewhere, with the _setup_rendertarget a regular fbo is
+ * created, but we want to specify creation paramters outside of that, so swap
+ * out the allocator and run a _swap that will fill the n- pending work buffer
+ * queue using that. */
+		bool swap;
 		agp_rendertarget_allocator(ctx->rtgt, scanout_alloc, con);
+		(void*) agp_rendertarget_swap(ctx->rtgt, &swap);
 	}
 
 	arcan_shmifext_make_current(con);

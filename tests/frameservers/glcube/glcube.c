@@ -366,7 +366,6 @@ static bool pump_connection(struct arcan_shmif_cont* con, size_t* i)
 
 	(*i)++;
 	draw(con, *i);
-	glFinish();
 
 	arcan_shmifext_signal(con, 0, SHMIF_SIGVID, SHMIFEXT_BUILTIN);
 	return true;
@@ -392,7 +391,7 @@ static struct arcan_shmif_cont* setup_segment(
 
 	glClearColor(0.5, 0.5, 0.5, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
-	glFinish();
+//	glFinish();
 	arcan_shmifext_signal(res, 0, SHMIF_SIGVID, SHMIFEXT_BUILTIN);
 
 	return res;
