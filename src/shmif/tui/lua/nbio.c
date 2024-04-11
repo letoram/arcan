@@ -981,7 +981,6 @@ static struct pathfd build_fifo_ipc(char* path, bool userns, bool expect_write)
 	};
 	int ns = userns ? RESOURCE_NS_USER : RESOURCE_APPL_TEMP;
 
-	int fl = O_NONBLOCK | O_WRONLY | O_CLOEXEC;
 	char* workpath = arcan_expand_resource(path, ns);
 	if (!workpath){
 		res.err = "Couldn't expand FIFO path";
@@ -1013,7 +1012,7 @@ static struct pathfd build_fifo_ipc(char* path, bool userns, bool expect_write)
 		}
 	}
 
-	int fd = open(workpath, O_RDWR);
+	int fd = open(workpath, expect_write ? O_WRONLY : O_RDONLY);
 	arcan_mem_free(workpath);
 
 	if (-1 == fd || -1 == fstat(fd, &fi) || S_ISFIFO(fi.st_mode)){
@@ -1021,6 +1020,13 @@ static struct pathfd build_fifo_ipc(char* path, bool userns, bool expect_write)
 		res.err = "Couldn't open as FIFO";
 		return res;
 	}
+
+	int flags = fcntl(fd, F_GETFL);
+	if (-1 != flags)
+		fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+	if (-1 != (flags = fcntl(fd, F_GETFD)))
+		fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
 
 	res.fd = fd;
 	return res;
@@ -1030,10 +1036,6 @@ static struct pathfd build_socket_ipc(char* pathin, bool userns, bool srv)
 {
 	struct pathfd res = {.path = NULL, .fd = -1, .err = NULL};
 	int ns = userns ? RESOURCE_NS_USER : RESOURCE_APPL_TEMP;
-
-		struct sockaddr_un addr = {
-			.sun_family = AF_UNIX
-		};
 
 	if (srv){
 		char* workpath = arcan_find_resource(pathin, ns, ARES_FILE, NULL);

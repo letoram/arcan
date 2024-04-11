@@ -35,7 +35,6 @@ struct glob_arg {
 static bool dump_to_pipe(char* base, int fd)
 {
 	size_t ntw = strlen(base)+1;
-	ssize_t nw = -1;
 
 	while (ntw){
 		ssize_t nw = write(fd, base, ntw);
@@ -66,7 +65,6 @@ static bool dump_to_pipe(char* base, int fd)
 static void* glob_full(void* arg)
 {
 	struct glob_arg* garg = arg;
-	unsigned count = 0;
 	glob_t res = {0};
 
 	if ( glob(garg->basename, 0, NULL, &res) == 0 ){
