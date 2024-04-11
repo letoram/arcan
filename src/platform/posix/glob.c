@@ -14,6 +14,7 @@
 #include <math.h>
 #include <pthread.h>
 #include <errno.h>
+#include <poll.h>
 
 #include <stdbool.h>
 #include <sys/types.h>
@@ -40,6 +41,16 @@ static bool dump_to_pipe(char* base, int fd)
 		if (-1 == nw){
 			if (errno == EAGAIN || errno == EINTR)
 				continue;
+
+			if (errno == EWOULDBLOCK){
+				struct pollfd pfd = {
+					.fd = fd,
+					.events = POLLHUP | POLLNVAL | POLLOUT
+				};
+				poll(&pfd, 1, -1);
+				continue;
+			}
+
 			return false;
 		}
 		else {

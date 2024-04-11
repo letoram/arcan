@@ -39,6 +39,8 @@
 #define SEGMENT_LIMIT 64
 struct blobio_meta;
 
+#define TUI_METATABLE	"Arcan TUI"
+
 enum tui_builtin_widgets {
 	TWND_NORMAL = 0,
 	TWND_LISTWND = 1,

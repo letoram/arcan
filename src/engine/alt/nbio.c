@@ -1427,6 +1427,7 @@ bool alt_nbio_import(
 	*nbio = (struct nonblock_io){
 		.fd = fd,
 		.mode = mode,
+		.lfch = '\n',
 		.unlink_fn = (unlink_fn ? *unlink_fn : NULL),
 		.write_handler = LUA_NOREF,
 		.data_handler = LUA_NOREF,

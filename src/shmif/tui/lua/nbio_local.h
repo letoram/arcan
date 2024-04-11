@@ -62,7 +62,8 @@ static void alt_call(lua_State* L,
 
 #define RESOURCE_APPL_TEMP 1
 #define RESOURCE_NS_USER 2
-#define ARES_FILE 0
+#define ARES_FILE 1
+#define ARES_CREATE 256
 #define DEFAULT_USERMASK 2
 
 static char* arcan_expand_resource(const char* prefix, int ns)

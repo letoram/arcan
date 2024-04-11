@@ -17,6 +17,7 @@ SET(SOURCES
 	${CMAKE_CURRENT_SOURCE_DIR}/tsm/shl_htable.c
 	${CMAKE_CURRENT_SOURCE_DIR}/tsm/wcwidth.c
 	${TUI_BASE}/lua/tui_lua.c
+	${TUI_BASE}/lua/tui_lua_glob.c
 	${TUI_BASE}/lua/nbio.c
 	${TUI_BASE}/lua/tui_popen.c
 )

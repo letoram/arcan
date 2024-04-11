@@ -2,6 +2,12 @@
 ## Core
  * Wired in rendertarget vobj export for hwenc, opt-in via target\_flags on rectgt
 
+## Platform
+ * posix/glob : add asynch form
+
+## Lua
+ * add overloaded glob\_resource that can return an open\_nonblock table
+
 ## Net
  * add -c file for assigning lua scriptable command-line overrides
  * headless runner for arcan-net host appl can be access via ANET\_RUNNER env.

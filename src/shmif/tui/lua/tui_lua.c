@@ -34,8 +34,7 @@
 #include "tui_lua.h"
 #include "nbio.h"
 #include "tui_popen.h"
-
-#define TUI_METATABLE	"Arcan TUI"
+#include "tui_lua_glob.h"
 
 #if LUA_VERSION_NUM == 501
 	#define lua_rawlen(x, y) lua_objlen(x, y)
@@ -1425,7 +1424,7 @@ static int tui_local(lua_State* L)
 
 /* somewhere to derive color configuration from */
 	if (lua_type(L, ci) == LUA_TUSERDATA){
-		struct tui_lmeta* ib = luaL_checkudata(L, ci++, TUI_METATABLE);
+		ib = luaL_checkudata(L, ci++, TUI_METATABLE);
 		ci++;
 	}
 
@@ -3543,6 +3542,7 @@ static void register_tuimeta(lua_State* L)
 		{"funlink", tui_funlink},
 		{"frename", tui_frename},
 		{"fstatus", tui_fstatus},
+		{"fglob", tui_glob},
 		{"bgcopy", tui_fbond},
 		{"getenv", tui_getenv},
 		{"chdir", tui_chdir},
