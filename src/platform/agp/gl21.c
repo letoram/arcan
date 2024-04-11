@@ -213,11 +213,21 @@ void agp_readback_synchronous(struct agp_vstore* dst)
 	verbose_print(
 		"synchronous readback from id: %u", (unsigned)agp_resolve_texid(dst));
 
-	size_t bufsz = dst->w * dst->h * 4;
-	if (dst->vinf.text.s_raw < bufsz){
+	size_t bufsz = dst->w * dst->h * sizeof(VIDEO_PIXEL_TYPE);
+
+/* if caller didn't provide, allocate and if it doesn't fit, resize */
+	if (!dst->vinf.text.raw ||
+		(dst->vinf.text.s_raw && dst->vinf.text.s_raw < bufsz)){
+		if (dst->vinf.text.raw)
+			free(dst->vinf.text.raw);
+
 		dst->vinf.text.s_raw = bufsz;
 		dst->vinf.text.raw = malloc(bufsz);
 	}
+/* if they provided a destination but no size information, trust
+ * them (case is usually shmif.vidp as destination */
+	else
+		;
 
 	env->bind_texture(GL_TEXTURE_2D, agp_resolve_texid(dst));
 	env->get_tex_image(GL_TEXTURE_2D, 0,
