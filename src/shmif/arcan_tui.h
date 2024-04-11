@@ -628,6 +628,12 @@ bool arcan_tui_bind(
 	arcan_tui_conn* con, struct tui_context* orphan);
 
 /*
+ * Try and match fd coming from a bchunk handler to a local file-path
+ * (if any)
+ */
+char* arcan_tui_fdresolve(struct tui_context*, int fd);
+
+/*
  * Destroy the tui context and the managed connection. If the exit state
  * is successful (EXIT_SUCCESS equivalent), leave [message] as NULL.
  * Otherwise provide a short user-readable error description.
@@ -1392,11 +1398,14 @@ typedef void (* PTUISENDKEY)(
 typedef void (* PTUIBORDER)(
 	struct tui_context*, struct tui_screen_attr, size_t x1, size_t y1, size_t x2, size_t y2, int flags);
 
+typedef char* (* PTUIFDRESOLVE)(struct tui_context*, int fd);
+
 static PTUISENDKEY arcan_tui_send_key;
 static PTUIHANDOVER arcan_tui_handover;
 static PTUIHANDOVERPIPE arcan_tui_handover_pipe;
 static PTUISETUP arcan_tui_setup;
 static PTUIBIND arcan_tui_bind;
+static PTUIFDRESOLVE arcan_tui_fdresolve;
 static PTUIDESTROY arcan_tui_destroy;
 static PTUIPROCESS arcan_tui_process;
 static PTUIREFRESH arcan_tui_refresh;
@@ -1458,6 +1467,7 @@ M(PTUIHANDOVERPIPE, arcan_tui_handover_pipe);
 M(PTUIDESTROY,arcan_tui_destroy);
 M(PTUISETUP,arcan_tui_setup);
 M(PTUIBIND,arcan_tui_bind);
+M(PTUIFDRESOLVE,arcan_tui_fdresolve);
 M(PTUIDESTROY,arcan_tui_destroy);
 M(PTUIPROCESS,arcan_tui_process);
 M(PTUIREFRESH,arcan_tui_refresh);

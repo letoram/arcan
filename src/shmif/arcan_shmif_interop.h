@@ -502,6 +502,19 @@ void arcan_shmif_bgcopy(
 	struct arcan_shmif_cont*, int fdin, int fdout, int sigfd, int flags);
 
 /*
+ * Take an active incoming bchunk event and try and find if there is a local
+ * and accessible file with a matching filesystem reference. This is unsolvably
+ * racey in that the file can disappear before being resolved.
+ *
+ * Returns (null) if no file could be resolved. The only option then is to
+ * create a tempfile and use arcan_shmif_bgcopy with a sigfd to ensure a
+ * fully r/w available local file.
+ */
+char*
+	arcan_shmif_bchunk_resolve(
+		struct arcan_shmif_cont* C, struct arcan_event* bev);
+
+/*
  * Used as helper to avoid dealing with all of the permutations of
  * devkind == EVENT_IDEVKIND_MOUSE for datatype == EVENT_IDATATYPE_ANALOG.
  * If >true< the status of have changed since last time.

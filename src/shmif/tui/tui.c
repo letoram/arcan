@@ -466,6 +466,19 @@ void arcan_tui_wndhint(struct tui_context* C,
 	C->last_constraints = cons;
 }
 
+char* arcan_tui_fdresolve(struct tui_context* tui, int fd)
+{
+	if (!tui)
+		return NULL;
+
+	struct arcan_event aev = {
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
+		.tgt.ioevs[0].iv = fd
+	};
+	return arcan_shmif_bchunk_resolve(&tui->acon, &aev);
+}
+
 void arcan_tui_bgcopy(
 	struct tui_context* tui, int fdin, int fdout, int sigfd, int fl)
 {

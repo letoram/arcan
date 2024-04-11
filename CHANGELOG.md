@@ -8,6 +8,9 @@
 ## Lua
  * add overloaded glob\_resource that can return an open\_nonblock table
 
+## Shmif
+ * add interop helper for arcan\_shmif\_bchunk\_resolve to help translate fd-local path
+
 ## Net
  * add -c file for assigning lua scriptable command-line overrides
  * headless runner for arcan-net host appl can be access via ANET\_RUNNER env.

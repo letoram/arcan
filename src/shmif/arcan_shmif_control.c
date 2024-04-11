@@ -3979,6 +3979,44 @@ bool arcan_shmif_pushutf8(
  * noblock flag is set)
  */
 
+#ifdef __LINUX
+char* arcan_shmif_bchunk_resolve(
+	struct arcan_shmif_cont* C, struct arcan_event* bev)
+{
+	char buf[24];
+	if (bev->category != EVENT_TARGET ||
+		(bev->tgt.kind != TARGET_COMMAND_BCHUNK_IN &&
+		 bev->tgt.kind != TARGET_COMMAND_BCHUNK_OUT))
+		return NULL;
+
+	char* mbuf = malloc(PATH_MAX);
+	if (!mbuf)
+		return mbuf;
+
+	snprintf(buf, sizeof(buf), "/proc/self/fd/%d", bev->tgt.ioevs[0].iv);
+	ssize_t rv = readlink(buf, mbuf, PATH_MAX);
+
+	if (-1 == rv || mbuf[0] != '/')
+		return NULL;
+
+	struct stat base, comp;
+	if (-1 == fstat(bev->tgt.ioevs[0].iv, &base) ||
+			-1 == stat(mbuf, &comp) || base.st_ino != comp.st_ino){
+		free(mbuf);
+		return NULL;
+	}
+
+	return mbuf;
+}
+/* OpenBSD has no solution, FreeBSD / OSX has a fcntl that can be used */
+#else
+char* arcan_shmif_bchunk_resolve(
+	struct arcan_shmif_cont* C, struct arcan_event* bev)
+{
+	return NULL;
+}
+#endif
+
 #ifdef __OpenBSD__
 void arcan_shmif_privsep(struct arcan_shmif_cont* C,
 	const char* pledge_str, struct shmif_privsep_node** nodes, int opts)

@@ -483,12 +483,25 @@ static void on_bchunk(struct tui_context* T,
 		if (alt_nbio_import(
 			L, fd, input ? O_RDONLY : O_WRONLY, NULL, NULL)){
 			lua_pushstring(L, type);
-			RUN_CALLBACK("bchunk_inout", 3, 0);
+
+			char* fdp = arcan_tui_fdresolve(T, fd);
+			if (fdp){
+				lua_pushstring(L, fdp);
+			}
+			else
+				lua_pushnil(L);
+
+			RUN_CALLBACK("bchunk_inout", 4, 0);
+			free(fdp);
 		}
 		else
 			lua_pop(L, 1);
 		END_HREF;
 }
+char*
+	arcan_shmif_bchunk_resolve(
+		struct arcan_shmif_cont* C, struct arcan_event* bev);
+
 
 static void on_vpaste(struct tui_context* T,
 		shmif_pixel* vidp, size_t w, size_t h, size_t stride, void* t)
