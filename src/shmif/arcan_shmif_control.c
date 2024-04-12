@@ -2022,8 +2022,7 @@ static bool step_a(struct arcan_shmif_cont* ctx)
 	return lock;
 }
 
-unsigned arcan_shmif_signal(
-	struct arcan_shmif_cont* ctx, enum arcan_shmif_sigmask mask)
+unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 {
 	struct shmif_hidden* priv = ctx->priv;
 	if (!ctx || !ctx->addr || !priv || !ctx->vidp)

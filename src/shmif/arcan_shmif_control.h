@@ -591,7 +591,7 @@ void arcan_shmif_drop(struct arcan_shmif_cont*);
  * Returns the number of miliseconds that the synchronization reported, and
  * is a value that can be used to adjust local rendering/buffer.
  */
-unsigned arcan_shmif_signal(struct arcan_shmif_cont*, enum arcan_shmif_sigmask);
+unsigned arcan_shmif_signal(struct arcan_shmif_cont*, int);
 
 /*
  * Signal a video transfer that is based on buffer sharing rather than on data
