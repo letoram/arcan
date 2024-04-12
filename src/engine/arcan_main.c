@@ -712,6 +712,8 @@ int MAIN_REDIR(int argc, char* argv[])
 	main_lua_context =
 		arcan_lua_alloc(monitor_ctrl ? arcan_monitor_watchdog : NULL);
 	arcan_lua_mapfunctions(main_lua_context, debuglevel);
+	arcan_trace_init(main_lua_context);
+	arcan_trace_threadname("main");
 
 	bool inp_file;
 	const char* inp = arcan_appl_basesource(&inp_file);

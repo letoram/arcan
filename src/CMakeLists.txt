@@ -19,7 +19,7 @@ else()
 	PROJECT(arcan)
 endif()
 
-cmake_minimum_required(VERSION 3.1 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.3 FATAL_ERROR)
 cmake_policy(SET CMP0076 OLD)
 
 SET(CMAKE_SKIP_BUILD_RPATH  FALSE)
@@ -126,7 +126,7 @@ if (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client")
 	amsg("${CL_WHT}Optional arcan-net flags:${CL_RST}")
 	amsg("${CL_YEL}\t-DSTATIC_SQLite3=${CL_GRN}[Off|On]${CL_RST} - In-source SQLite3")
 	amsg("")
-	
+
 	option(STATIC_SQLite3 "Use SQLite3 Amalgamation" OFF)
 
 	if (${CMAKE_SYSTEM_NAME} MATCHES "BSD|DragonFly")
@@ -221,9 +221,6 @@ if (BUILD_PRESET STREQUAL "everything" AND NOT (CLIENT_LIBRARY_BUILD OR BUILD_PR
 	set(HYBRID_HEADLESS ON)
 endif()
 
-# can ignore this abomination on BSD
-set(CSTD gnu11)
-
 add_compile_options(-Wall)
 if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU" AND NOT ENABLE_WALL_SPAM)
 	add_compile_options(
@@ -248,6 +245,7 @@ elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang" AND NOT ENABLE_WALL_SPAM)
 		-Wno-macro-redefined
 	)
 endif()
+list(APPEND CMAKE_C_FLAGS -std=gnu11)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
 	amsg("${CL_WHT}------------------*Profile Build*------------------${CL_RST}")
@@ -285,8 +283,6 @@ endif()
 if (NOT VIDEO_PLATFORM AND NOT (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client"))
 	message(FATAL_ERROR "${CL_RED}Video Platform missing, see -DVIDEO_PLATFORM= above${CL_RST}")
 endif()
-
-add_compile_options(-std=${CSTD})
 
 if (NOT (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client"))
 	amsg("${CL_WHT}\n------------- Configuration Results ---------------${CL_RST}\n")
@@ -449,7 +445,6 @@ else()
 		engine/arcan_img.c
 		engine/arcan_led.c
 		engine/arcan_led.h
-		engine/arcan_trace.c
 		engine/arcan_ffunc_lut.c
 		engine/arcan_ffunc_lut.h
 		engine/arcan_audioint.h
@@ -567,12 +562,14 @@ if (ENABLE_TRACY)
 		${EXTERNAL_SRC_DIR}/git/tracy
 		${CMAKE_CURRENT_BINARY_DIR}/tracy
 	)
+	list(APPEND SOURCES engine/arcan_trace_tracy.cpp)
 	list(APPEND ARCAN_DEFINITIONS WITH_TRACY)
 	list(APPEND ARCAN_LIBRARIES
 		TracyClient
 	)
 	amsg("${CL_YEL}tracy support\t${CL_GRN}enabled${CL_RST}")
 else()
+	list(APPEND SOURCES engine/arcan_trace.c)
 	amsg("${CL_YEL}tracy support\t${CL_RED}disabled${CL_RST}")
 endif()
 

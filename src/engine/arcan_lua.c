@@ -11533,6 +11533,7 @@ struct pthr_imgwr {
 static void* pthr_imgwr(void* arg)
 {
 	struct pthr_imgwr* job = arg;
+	arcan_trace_threadname("lua_image_writer");
 	switch(job->fmt){
 	case OUTFMT_PNG:
 		arcan_img_outpng(job->dst, job->databuf, job->dw, job->dh, false);
