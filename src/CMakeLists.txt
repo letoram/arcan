@@ -558,6 +558,10 @@ endif()
 if (ENABLE_TRACY)
 	option(TRACY_ENABLE "" ON)
 	option(TRACY_ON_DEMAND "" ON)
+	option(TRACY_NO_CRASH_HANDLER "" ON)
+	option(TRACY_LIBUNWIND_BACKTRACE "" ON)
+	option(TRACY_HAS_CALLSTACK "" ON)
+
 	add_subdirectory(
 		${EXTERNAL_SRC_DIR}/git/tracy
 		${CMAKE_CURRENT_BINARY_DIR}/tracy

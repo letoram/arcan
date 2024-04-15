@@ -9,14 +9,16 @@
 
 extern "C" {
 #include "arcan_trace.h"
+#include <lualib.h>
+#include <lauxlib.h>
+
 extern uint64_t arcan_timemicros(void);
 }
 bool arcan_trace_enabled = true;
 
 /* this interferes with the monitoring process, ANR etc. */
-#define TRACY_NO_CRASH_HANDLER 1
 #include "tracy/TracyC.h"
-
+#include "tracy/TracyLua.hpp"
 
 static uint8_t* buffer;
 static size_t buffer_sz;
@@ -153,6 +155,7 @@ uint16_t get_zone_id(const char* sys, const char* subsys, const char* file, cons
 
 void arcan_trace_init(void* vm)
 {
+	tracy::LuaRegister(static_cast<lua_State*>(vm));
 }
 
 void arcan_trace_mark(
