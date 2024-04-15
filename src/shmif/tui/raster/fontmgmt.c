@@ -248,6 +248,8 @@ void tui_fontmgmt_setup(
 	if (!fonts)
 		return;
 
+	TTF_Init();
+
 	memset(fonts, '\0', font_sz);
 	tui->font[0] = &fonts[0];
 	tui->font[1] = &fonts[1];

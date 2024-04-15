@@ -29,6 +29,14 @@ void tui_expose_labels(struct tui_context* tui)
 /* send an empty label first as a reset */
 	arcan_shmif_enqueue(&tui->acon, &ev);
 
+/* send our builtin- always there 'PRINTSCR' */
+	snprintf(ev.ext.labelhint.label,
+		COUNT_OF(ev.ext.labelhint.label), "%s", "COPY_WINDOW");
+	ev.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL;
+	ev.ext.labelhint.modifiers = TUIM_LSHIFT;
+	ev.ext.labelhint.initial = TUIK_PRINT;
+	arcan_shmif_enqueue(&tui->acon, &ev);
+
 /* then forward to a possible callback handler */
 	size_t ind = 0;
 	if (tui->handlers.query_label){
@@ -85,6 +93,18 @@ static bool consume_label(
 	struct tui_context* tui, arcan_ioevent* ioev, const char* label)
 {
 	bool res = false;
+	if (strcmp(label, "COPY_WINDOW") == 0){
+		struct arcan_event ev = {
+			.ext.kind = ARCAN_EVENT(SEGREQ),
+			.ext.segreq.kind = SEGID_TUI,
+			.ext.segreq.id = 0x2c0c0,
+			.ext.segreq.width = tui->acon.w,
+			.ext.segreq.height = tui->acon.h
+		};
+		arcan_shmif_enqueue(&tui->acon, &ev);
+		return true;
+	}
+
 	if (tui->handlers.input_label){
 		res |= tui->handlers.input_label(tui, label, true, tui->handlers.tag);
 

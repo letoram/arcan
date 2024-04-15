@@ -28,6 +28,10 @@ static void resize_cellbuffer(struct tui_context* tui)
 
 	memset(tui->base, '\0', buffer_sz);
 
+	if (rbuf_sz > tui->acon.shmsize){
+		abort();
+	}
+
 	if (tui->acon.vidb)
 		memset(tui->acon.vidb, '\0', rbuf_sz);
 
@@ -434,6 +438,11 @@ int tui_tpack_unpack(struct tui_context* C,
 	buf_sz -= sizeof(struct tui_raster_header);
 	buf += sizeof(struct tui_raster_header);
 
+	if (hdr.cursor_state & CURSOR_EXTHDRv1){
+		buf_sz -= 3;
+		buf += 3;
+	}
+
 /* if it is not a delta frame, just clear region to bgcolor first and
  * make sure the window size match (unless w, h are set) */
 	if (!(hdr.flags & RPACK_DFRAME)){
@@ -494,8 +503,9 @@ int tui_tpack_unpack(struct tui_context* C,
 			buf_sz -= raster_cell_sz;
 
 /* just write cell into C if it is within the clipping region */
-			if (line.start_line < y2 && i < x2)
+			if (line.start_line < y2 && i < x2){
 				C->front[line.start_line * C->cols + i] = cell;
+			}
 		}
 	}
 

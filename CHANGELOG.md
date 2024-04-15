@@ -17,6 +17,9 @@
  * spawning server-side Lua runner if matching appl found, controls message routing
  * introduce rekeying command for forward secrecy, placeholder PQ step-up and resumption
 
+## Tui
+ * Copy window widget re-added as a forced input-label toggle to all tui windows
+
 ## 0.6.3
 ## Lua
  * inbound events now have a 'frame' tag for pairing with verbose-frame notification

@@ -638,6 +638,13 @@ static void tsm_input_eh(
 				tui->handlers.input_label(tui, label, false, tui->handlers.tag);
 				return;
 			}
+/* re-inject so the regular input path is permitted */
+			else {
+				tui->hooks.input = NULL;
+				tui_input_event(tui, ioev, label);
+				tui->hooks.input = tsm_input_eh;
+				return;
+			}
 		}
 
 /* modifiers doesn't get set for the symbol itself which is a problem

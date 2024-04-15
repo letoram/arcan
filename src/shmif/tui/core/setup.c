@@ -352,6 +352,16 @@ struct tui_context* arcan_tui_setup(
 		res->cursor = parent->cursor;
 		res->ppcm = parent->ppcm;
 
+	/*
+	 * This is not terribly safe as the dupfd will retain the description
+	 * offsets, though in practice it is a short window that we deal with
+	 * synchronous here and TTF internally always seeks explicitly. The real
+	 * problem comes with threading, but there we are also supposed to get new
+	 * FONTHINT which mitigate the issue.
+	 *
+	 * The other option is to map_open with the cached copy option, and
+	 * let freetype go FT_OPEN_MEMORY instead of FT_OPEN_STREAM.
+	 * as well as to cache the glyph lookups tere.
 		tui_fontmgmt_setup(res, &(struct arcan_shmif_initial){
 			.fonts = {
 				{
@@ -363,6 +373,7 @@ struct tui_context* arcan_tui_setup(
 					.fd = arcan_shmif_dupfd(parent->font[1]->fd, -1, true)
 				}
 		}});
+*/
 
 		if (parent->pending_handover){
 			res->viewport_proxy = parent->pending_handover;

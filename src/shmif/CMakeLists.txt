@@ -123,6 +123,7 @@ set(SHMIF_TUI_SOURCES
 	${ASD}/shmif/tui/widgets/listwnd.c
 	${ASD}/shmif/tui/widgets/linewnd.c
 	${ASD}/shmif/tui/widgets/readline.c
+	${ASD}/shmif/tui/widgets/copywnd.c
 )
 
 set(SHMIF_SERVER_SOURCES

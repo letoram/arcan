@@ -296,4 +296,10 @@ bool tui_fontmgmt_hasglyph(struct tui_context* tui, uint32_t cp);
  */
 void tui_fontmgmt_invalidate(struct tui_context* tui);
 
+/*
+ * Take ownership of [dst] and spawn into a new thread with basic annotation
+ * capabilities and populate with the contents of [src].
+ */
+void tui_copywnd(struct tui_context* src, arcan_tui_conn* conn);
+
 #endif

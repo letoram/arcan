@@ -444,6 +444,14 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 				LOG("multiple clipboards received, likely appl. error\n");
 		}
 /*
+ * this comes as a previous input label for COPY_WINDOW */
+		else if (ev->ioevs[2].iv == SEGID_TUI && ev->ioevs[3].iv == 0x2c0c0){
+			struct arcan_shmif_cont* buf = malloc(sizeof(struct arcan_shmif_cont));
+			*buf = arcan_shmif_acquire(&tui->acon, NULL, SEGID_TUI, 0);
+			tui_copywnd(tui, buf);
+			return;
+		}
+/*
  * new caller requested segment, even though acon is auto- scope allocated
  * here, the API states that the normal setup procedure should be respected,
  * which means that there will be an explicit copy of acon rather than an
