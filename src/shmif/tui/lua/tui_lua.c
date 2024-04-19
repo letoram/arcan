@@ -30,6 +30,8 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <sys/un.h>
+#include <pwd.h>
+#include <grp.h>
 
 #include "tui_lua.h"
 #include "nbio.h"
@@ -3207,10 +3209,81 @@ static int tui_fstatus(lua_State* L)
 	else if (S_ISSOCK(s.st_mode)){
 		lua_pushstring(L, "socket");
 	}
+	else if (S_ISLNK(s.st_mode)){
+		lua_pushstring(L, "link");
+	}
 	else
 		lua_pushstring(L, "unknown");
 
-	return 2;
+/* extended attribute table, if desired (expensive) */
+	if (!luaL_optbnumber(L, 3, false))
+		return 2;
+
+	lua_newtable(L);
+	lua_pushstring(L, "size");
+	lua_pushnumber(L, s.st_size);
+	lua_rawset(L, -3);
+	lua_pushstring(L, "inode");
+	lua_pushnumber(L, s.st_ino);
+	lua_rawset(L, -3);
+	lua_pushstring(L, "mode");
+	lua_pushnumber(L, s.st_mode);
+	lua_rawset(L, -3);
+
+	lua_pushstring(L, "mode_string");
+	char modestr[] = "----------";
+	if (s.st_mode & (S_ISUID | S_ISGID))
+		modestr[0] = 's';
+
+	if (s.st_mode & S_IRUSR)
+		modestr[1] = 'r';
+	if (s.st_mode & S_IWUSR)
+		modestr[2] = 'w';
+	if (s.st_mode & S_IXUSR)
+		modestr[3] = 'x';
+	if (s.st_mode & S_IRGRP)
+		modestr[4] = 'r';
+	if (s.st_mode & S_IWGRP)
+		modestr[5] = 'w';
+	if (s.st_mode & S_IXGRP)
+		modestr[6] = 'x';
+	if (s.st_mode & S_IROTH)
+		modestr[7] = 'r';
+	if (s.st_mode & S_IWOTH)
+		modestr[8] = 'w';
+	if (s.st_mode & S_IXOTH)
+		modestr[9] = 'x';
+	lua_pushstring(L, modestr);
+	lua_rawset(L, -3);
+
+	lua_pushstring(L, "gid");
+	lua_pushnumber(L, s.st_gid);
+	lua_rawset(L, -3);
+	lua_pushstring(L, "uid");
+	lua_pushnumber(L, s.st_uid);
+	lua_rawset(L, -3);
+
+	struct passwd* pw = getpwuid(s.st_uid);
+	lua_pushstring(L, "user");
+	if (!pw)
+		lua_pushstring(L, "[missing]");
+	else
+		lua_pushstring(L, pw->pw_name);
+	lua_rawset(L, -3);
+
+	struct group* gr = getgrgid(s.st_gid);
+	lua_pushstring(L, "group");
+	if (!gr)
+		lua_pushstring(L, "[missing]");
+	else
+		lua_pushstring(L, gr->gr_name);
+	lua_rawset(L, -3);
+
+/* for linux it might be reasonable to also provide
+ * xattrs here, i.e. ifdef linux, listxattr + malloc +
+ * foreach, getxattr on key etc. */
+
+	return 3;
 }
 
 static int tui_frename(lua_State* L)
@@ -3224,6 +3297,67 @@ static int tui_frename(lua_State* L)
 		lua_pushstring(L, strerror(errno));
 		return 2;
 	}
+	lua_pushboolean(L, true);
+	return 1;
+}
+
+static int tui_fchmod(lua_State* L)
+{
+	TUI_UDATA;
+	const char* name = luaL_checkstring(L, 2);
+	int number = luaL_checknumber(L, 3);
+
+	if (-1 == ib->cwd_fd){
+		lua_pushboolean(L, false);
+		lua_pushstring(L, "invalid current working directory");
+		return 2;
+	}
+
+	if (-1 == fchmodat(ib->cwd_fd, name, number, 0)){
+		lua_pushboolean(L, false);
+		lua_pushstring(L, strerror(errno));
+		return 2;
+	}
+
+	lua_pushboolean(L, true);
+	return 1;
+}
+
+static int tui_fchown(lua_State* L)
+{
+	TUI_UDATA;
+	const char* name = luaL_checkstring(L, 2);
+	const char* user = luaL_optstring(L, 3, "");
+	const char* group = luaL_optstring(L, 4, "");
+
+	uid_t uid = -1;
+	gid_t gid = -1;
+
+	if (*user){
+		struct passwd* pw = getpwnam(user);
+		if (!pw){
+			lua_pushboolean(L, false);
+			lua_pushstring(L, "invalid user");
+			return 2;
+		}
+		uid = pw->pw_uid;
+	}
+	if (*group){
+		struct group* gdata = getgrnam(group);
+		if (!gdata){
+			lua_pushboolean(L, false);
+			lua_pushstring(L, "invalid group");
+			return 2;
+		}
+		gid = gdata->gr_gid;
+	}
+
+	if (-1 == fchownat(ib->cwd_fd, name, uid, gid, 0)){
+		lua_pushboolean(L, false);
+		lua_pushstring(L, strerror(errno));
+		return 2;
+	}
+
 	lua_pushboolean(L, true);
 	return 1;
 }
@@ -3555,6 +3689,8 @@ static void register_tuimeta(lua_State* L)
 		{"funlink", tui_funlink},
 		{"frename", tui_frename},
 		{"fstatus", tui_fstatus},
+		{"fchmod", tui_fchmod},
+		{"fchown", tui_fchown},
 		{"fglob", tui_glob},
 		{"bgcopy", tui_fbond},
 		{"getenv", tui_getenv},

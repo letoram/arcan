@@ -779,7 +779,7 @@ int alt_nbio_process_read(
 			lua_pushboolean(L, eof && !gotline);
 			ci += step;
 			alt_call(L, CB_SOURCE_NONE, 0, 2, 1, LINE_TAG":read_cb");
-			cancel = lua_toboolean(L, -1);
+			cancel = lua_toboolean(L, -1) || ib->ofs == ci;
 			lua_pop(L, 1);
 		}
 
