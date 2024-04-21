@@ -26,6 +26,8 @@ set(HMD_SOURCES
 	drv_nolo/packet.c
 	drv_3glasses/xgvr.c
 	drv_3glasses/packet.c
+	drv_nreal/packet.c
+	drv_nreal/air.c
 	ext_deps/nxjson.c
 )
 
@@ -49,5 +51,6 @@ target_compile_definitions(openhmd PRIVATE
 	-DDRIVER_HTC_VIVE
 	-DDRIVER_NOLO
 	-DDRIVER_XGVR
+	-DDRIVER_NREAL
 	-DOHMD_STATIC
 )

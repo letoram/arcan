@@ -15,7 +15,6 @@
 
 #include "vrbridge.h"
 #include "avr_test.h"
-#include "avr_nreal.h"
 #include "avr_openhmd.h"
 
 static volatile bool in_init = true;
@@ -87,11 +86,6 @@ static struct dev_ent dev_tbl[] =
 		.init = test_init,
 		.sample = test_sample,
 		.control = test_control
-	},
-	{
-		.init = nreal_init,
-		.sample = nreal_sample,
-		.control = nreal_control
 	},
 	{
 		.init = openhmd_init,
