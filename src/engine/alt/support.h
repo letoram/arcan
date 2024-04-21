@@ -14,6 +14,14 @@
 	arcan_timemillis(), luactx.lastsrc, fsym);
 
 /*
+ * For the arcan-tracy build we also pull in the tracy lua hpp support
+ * as well as set the TRACE/ETRACE to mark the region entry/exit
+ */
+#elif WITH_TRACY
+#define LUA_TRACE(fsym) do { TRACE_MARK_ENTER("lua", fsym, TRACE_SYS_DEFAULT, 1, 1, "alt") } while (0);
+#define LUA_ETRACE(fsym, reason, X) do { TRACE_MARK_EXIT("lua", fsym, TRACE_SYS_DEFAULT, 1, 1, "alt"); return X; } while (0);
+
+/*
  * This trace function scans the stack and writes the information about
  * calls to a CSV file (arcan.trace): function;timestamp;type;type
  * This is useful for benchmarking / profiling / test coverage and

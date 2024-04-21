@@ -6019,7 +6019,7 @@ static int matchkeys(lua_State* ctx)
 	int rv = push_stringres(ctx, &res);
 	arcan_mem_freearr(&res);
 
-	LUA_ETRACE("match keys", NULL, rv);
+	LUA_ETRACE("match_keys", NULL, rv);
 }
 
 static int getkeys(lua_State* ctx)
