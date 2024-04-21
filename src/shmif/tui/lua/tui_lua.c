@@ -3263,6 +3263,18 @@ static int tui_fstatus(lua_State* L)
 	lua_pushnumber(L, s.st_uid);
 	lua_rawset(L, -3);
 
+	lua_pushstring(L, "ctime");
+	lua_pushnumber(L, s.st_ctime);
+	lua_rawset(L, -3);
+
+	lua_pushstring(L, "mtime");
+	lua_pushnumber(L, s.st_mtime);
+	lua_rawset(L, -3);
+
+	lua_pushstring(L, "atime");
+	lua_pushnumber(L, s.st_atime);
+	lua_rawset(L, -3);
+
 	struct passwd* pw = getpwuid(s.st_uid);
 	lua_pushstring(L, "user");
 	if (!pw)

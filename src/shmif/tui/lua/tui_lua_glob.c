@@ -15,6 +15,7 @@
 #include <lauxlib.h>
 #include <lualib.h>
 #include <poll.h>
+#include <dirent.h>
 
 #include "tui_lua.h"
 #include "nbio.h"
@@ -67,6 +68,18 @@ static void* glob_full(void* arg)
 	struct glob_arg* garg = arg;
 	glob_t res = {0};
 
+	DIR* dir = opendir(garg->basename);
+	if (dir){
+		struct dirent* dent;
+		while ((dent = readdir(dir))){
+			if (!dump_to_pipe(dent->d_name, garg->fdout))
+				break;
+		}
+
+		closedir(dir);
+		goto out;
+	}
+
 	if ( glob(garg->basename, 0, NULL, &res) == 0 ){
 		char** beg = res.gl_pathv;
 
@@ -80,6 +93,7 @@ static void* glob_full(void* arg)
 		globfree(&res);
 	}
 
+out:
 	if (-1 != garg->fdout){
 		close(garg->fdout);
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016, Björn Ståhl
+ * Copyright: Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -18,6 +18,7 @@
 
 #include <stdbool.h>
 #include <sys/types.h>
+#include <dirent.h>
 #include <arcan_math.h>
 #include <arcan_general.h>
 
@@ -62,6 +63,46 @@ static bool dump_to_pipe(char* base, int fd)
 	return true;
 }
 
+static void run_glob(
+	char* path, size_t skip, struct glob_arg* garg)
+{
+	glob_t res = {0};
+
+/* try just treating as a regular directory first */
+	DIR* dir = opendir(path);
+	if (dir){
+		struct dirent* dent;
+		while ((dent = readdir(dir))){
+			if (garg->cb)
+				garg->cb(dent->d_name, garg->tag);
+			else if (!dump_to_pipe(dent->d_name, garg->fdout))
+				break;
+		}
+
+		closedir(dir);
+		return;
+	}
+
+	if ( glob(path, 0, NULL, &res) == 0 ){
+			char** beg = res.gl_pathv;
+
+			while(*beg){
+				char* base = &(*beg)[skip];
+
+				if (garg->cb)
+					garg->cb(strrchr(*beg, '/') ? strrchr(*beg, '/')+1 : *beg, garg->tag);
+				else if (!dump_to_pipe(base, garg->fdout)){
+					break;
+				}
+
+				beg++;
+				garg->count++;
+			}
+
+			globfree(&res);
+		}
+}
+
 static void* glob_full(void* arg)
 {
 	struct glob_arg* garg = arg;
@@ -103,26 +144,8 @@ static void* glob_full(void* arg)
 			continue;
 
 		globslots[ofs++] = path;
-
-		if ( glob(path, 0, NULL, &res) == 0 ){
-			size_t skip = strlen(arcan_fetch_namespace(i)) + 1;
-			char** beg = res.gl_pathv;
-
-			while(*beg){
-				char* base = &(*beg)[skip];
-
-				if (garg->cb)
-					garg->cb(strrchr(*beg, '/') ? strrchr(*beg, '/')+1 : *beg, garg->tag);
-				else if (!dump_to_pipe(base, garg->fdout)){
-					break;
-				}
-
-				beg++;
-				garg->count++;
-			}
-
-			globfree(&res);
-		}
+		size_t skip = strlen(arcan_fetch_namespace(i)) + 1;
+		run_glob(path, skip, garg);
 	}
 
 	if (-1 != garg->fdout){
@@ -149,28 +172,8 @@ static void* glob_userns(void* arg)
 	char* buf = malloc(len);
 	snprintf(buf, len, "%s/%s", ns.path, basename);
 
-	glob_t res = {0};
 	size_t skip = strlen(ns.path) + 1;
-
-/* for the asynch form we preserve base-relative, for synch we can't
- * in order to avoid breaking user scripting API */
-	if (glob(buf, 0, NULL, &res) == 0){
-		char** beg = res.gl_pathv;
-		while (*beg){
-			if (garg->cb)
-				garg->cb(strrchr(*beg, '/') ? strrchr(*beg, '/')+1 : *beg, garg->tag);
-			else{
-				char* base = &(*beg)[skip];
-				if (!dump_to_pipe(base, garg->fdout))
-					break;
-			}
-		}
-
-		beg++;
-		garg->count++;
-	}
-
-	globfree(&res);
+	run_glob(buf, skip, garg);
 
 	if (-1 != garg->fdout){
 		close(garg->fdout);
