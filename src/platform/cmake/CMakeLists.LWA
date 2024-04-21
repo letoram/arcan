@@ -110,6 +110,7 @@ target_link_libraries(arcan_lwa
 	${VIDEO_LIBRARIES}
 	arcan_shmif_int
 	arcan_shmif_intext
+	arcan_tui
 )
 
 if (ARCAN_LNK_FLAGS)

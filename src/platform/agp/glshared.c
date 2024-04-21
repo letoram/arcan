@@ -26,6 +26,11 @@
 #include "arcan_mem.h"
 #include "arcan_videoint.h"
 
+#ifndef HEADLESS_NOARCAN
+#include "../../shmif/arcan_shmif.h"
+#include "../../shmif/arcan_tui.h"
+#endif
+
 #ifdef HEADLESS_NOARCAN
 #undef FLAG_DIRTY
 #define FLAG_DIRTY(X)
@@ -1750,9 +1755,14 @@ void agp_drop_vstore(struct agp_vstore* s)
 	if (s->vinf.text.kind == STORAGE_TEXT){
 		arcan_mem_free(s->vinf.text.source);
 	}
+#ifndef HEADLESS_NOARCAN
 	else if (s->vinf.text.kind == STORAGE_TPACK){
 		arcan_mem_free(s->vinf.text.tpack.buf);
+		if (s->vinf.text.tpack.tui_backing){
+			arcan_tui_destroy(s->vinf.text.tpack.tui_backing, NULL);
+		}
 	}
+#endif
 	if (s->vinf.text.kind == STORAGE_TEXTARRAY){
 		char** work = s->vinf.text.source_arr;
 		while(*work){

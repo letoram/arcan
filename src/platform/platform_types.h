@@ -281,6 +281,7 @@ struct agp_vstore {
 					size_t rows, cols;
 					size_t buf_sz; /* the resolved / unpacked TPACK screen */
 					uint8_t* buf;
+					void* tui_backing; /* optional tui context that can be unpacked to buf */
 				} tpack;
 			};
 

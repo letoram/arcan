@@ -646,6 +646,7 @@ else()
 		${AUDIO_LIBRARIES}
 		${AGP_LIBRARIES}
 		arcan_shmif_int
+		arcan_tui
 	)
 
 	# Primarily used by the Darwin platform, since it is scanned before we
@@ -714,7 +715,7 @@ else()
 		)
 		target_link_libraries(arcan_sdl
 			${STDLIB} ${ARCAN_LIBRARIES} ${VIDEO_LIBRARIES} ${AUDIO_LIBRARIES}
-			${AGP_LIBRARIES} arcan_shmif_int
+			${AGP_LIBRARIES} arcan_shmif_int arcan_tui
 		)
 		list(APPEND BIN_INSTALL arcan_sdl)
 	endif()
@@ -762,7 +763,7 @@ else()
 		)
 		target_link_libraries(arcan_headless
 			${STDLIB} ${ARCAN_LIBRARIES} ${VIDEO_LIBRARIES} ${AUDIO_LIBRARIES}
-			${AGP_LIBRARIES} arcan_shmif_int
+			${AGP_LIBRARIES} arcan_shmif_int arcan_tui
 		)
 		list(APPEND BIN_INSTALL arcan_headless)
 	endif()

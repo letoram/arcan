@@ -98,6 +98,9 @@ typedef int acoord;
 #include "arcan_img.h"
 #include "arcan_ttf.h"
 
+#include "arcan_shmif.h"
+#include "arcan_tui.h"
+
 /* these take some explaining:
  * to enforce that actual constants are used in LUA scripts and not magic
  * numbers the corresponding binding functions check that the match these
@@ -2162,6 +2165,30 @@ out:
 	lua_pushnumber(ctx, height);
 
 	LUA_ETRACE("text_dimensions", NULL, 2);
+}
+
+static int textsurface(lua_State* L)
+{
+	LUA_TRACE("text_surface");
+
+	size_t n_rows = luaL_checknumber(L, 1);
+	size_t n_cols = luaL_checknumber(L, 2);
+
+	struct tui_cbcfg cfg = {0};
+	struct tui_context* atui = arcan_tui_setup(NULL, NULL, &cfg, sizeof(cfg));
+
+
+/* information we need to gather:
+ *
+ * expected number of visible rows and columns
+ *
+ * build from tpack context
+ *
+ * acess vstore and set regular tui backing
+ *
+ * modify image_access store to do tui calls modifying the drawing
+ */
+	LUA_ETRACE("text_surface", NULL, 1);
 }
 
 static int rendertext(lua_State* ctx)
