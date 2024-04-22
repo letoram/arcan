@@ -339,6 +339,14 @@ static void draw_completion(
 		maxw += maxhw + 2;
 	}
 
+/* slide left if we overshoot the window */
+	if (cx + maxw >= cols){
+		if (maxw + 1 > cols)
+			cx = 0;
+		else
+			cx = cols - maxw - 1;
+	}
+
 	maxw += cx + 1;
 
 	for (ssize_t i = 0, j = cy + step;
@@ -405,8 +413,6 @@ static void draw_completion(
 		}
 		arcan_tui_write_border(T, attr, x1, y1, x2, y2, TUI_BORDER_APPEND);
 	}
-
-	arcan_tui_move_to(T, cx, cy);
 }
 
 static void refresh(struct tui_context* T, struct readline_meta* M)
@@ -527,7 +533,10 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 	}
 
 	if (M->show_completion && M->completion && M->completion_sz){
+		size_t ocx, ocy;
+		arcan_tui_cursorpos(T, &ocx, &ocy);
 		draw_completion(T, M, M->opts.popup);
+		arcan_tui_move_to(T, ocx, ocy);
 	}
 /* toggle the hidden property if not already set */
 	else if (M->opts.popup && !M->opts.popup->last_constraints.hide){

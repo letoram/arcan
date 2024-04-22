@@ -19,6 +19,10 @@
 
 ## Tui
  * Copy window widget re-added as a forced input-label toggle to all tui windows
+ * Readline widget: better position suggestion on overflow
+
+## VRbridge
+ * Merge in pending- OHMD Xreal Air support
 
 ## 0.6.3
 ## Lua
