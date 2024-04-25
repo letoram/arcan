@@ -20,6 +20,7 @@
 ## Tui
  * Copy window widget re-added as a forced input-label toggle to all tui windows
  * Readline widget: better position suggestion on overflow
+ * Readline widget: add option to supply completion popup title
 
 ## VRbridge
  * Merge in pending- OHMD Xreal Air support

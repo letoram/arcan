@@ -171,12 +171,15 @@ void arcan_tui_readline_autocomplete(struct tui_context* t, const char* suffix);
  * double (msg \0 hint \0) in order to provide / display an extended hint that
  * will not be part of the final inserted string.
  *
+ * If the 'title' hint bit is set the first item in the suggestion will be
+ * treated as descriptive of the input and not a selectable suggestion
  */
 enum tui_readline_suggestion_mode {
 	READLINE_SUGGEST_INSERT = 0,
 	READLINE_SUGGEST_WORD = 1,
 	READLINE_SUGGEST_SUBSTITUTE = 2,
-	READLINE_SUGGEST_HINT = 64
+	READLINE_SUGGEST_HINT = 64,
+	READLINE_SUGGEST_TITLE_HINT = 128,
 /* READLINE_SUGGEST_HINT_PROMPT = 128 */
 };
 void arcan_tui_readline_suggest(

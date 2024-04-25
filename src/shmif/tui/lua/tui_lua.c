@@ -2754,11 +2754,30 @@ static int readline_suggest(lua_State* L)
 	}
 
 	ssize_t nelem = lua_rawlen(L, index);
+	size_t starti = 0;
+
 	bool hint_ext = false;
 
 	lua_getfield(L, index, "hint");
 	if (lua_type(L, -1) == LUA_TTABLE){
 		hint_ext = true;
+	}
+	lua_pop(L, 1);
+
+/* if there is a title defined, just treat it as if hint is there */
+	char* title = NULL;
+	lua_getfield(L, index, "title");
+	if (lua_type(L, -1) == LUA_TSTRING){
+		const char* tmp = lua_tostring(L, -1);
+		size_t tlen = strlen(tmp);
+		title = malloc(tlen + 2);
+		if (!title)
+			luaL_error(L, "set_siggest(alloc) - out of memory");
+
+		memcpy(title, tmp, tlen);
+		title[tlen] = '\0';
+		title[tlen+1] = '\0';
+		starti++;
 	}
 	lua_pop(L, 1);
 
@@ -2771,6 +2790,9 @@ static int readline_suggest(lua_State* L)
 		if (!new_suggest){
 			luaL_error(L, "set_suggest(alloc) - out of memory");
 		}
+
+		if (title)
+			new_suggest[0] = title;
 
 /* two forms, if there is a hint_ext we need concatenate the strings
  * with a \0 separator and run twice the number of elements. */
@@ -2791,13 +2813,13 @@ static int readline_suggest(lua_State* L)
 					a2 = lua_tostring(L, -1);
 				}
 				size_t len = strlen(a1) + strlen(a2) + 2;
-				new_suggest[i] = malloc(strlen(a1) + strlen(a2) + 2);
-				snprintf(new_suggest[i], len, "%s%c%s", a1, (char) 0, a2);
+				new_suggest[starti+i] = malloc(strlen(a1) + strlen(a2) + 2);
+				snprintf(new_suggest[starti+i], len, "%s%c%s", a1, (char) 0, a2);
 				lua_pop(L, 2);
 			}
 			else{
-				new_suggest[i] = strdup(a1);
-				if (!new_suggest[i]){
+				new_suggest[starti+i] = strdup(a1);
+				if (!new_suggest[starti+i]){
 					free(new_suggest);
 					luaL_error(L, "set_suggest(hint, alloc) - out of memory");
 				}
@@ -2822,6 +2844,9 @@ static int readline_suggest(lua_State* L)
 	}
 	else
 		luaL_error(L, "set_suggest(str:mode) expected insert, word or substitute");
+
+	if (title)
+		mv |= READLINE_SUGGEST_TITLE_HINT;
 
 	if (hint_ext)
 		mv |= READLINE_SUGGEST_HINT;

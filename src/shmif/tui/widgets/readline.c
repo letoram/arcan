@@ -287,6 +287,11 @@ static void draw_completion(
 	size_t cx = 0, cy = 0;
 	arcan_tui_cursorpos(T, &cx, &cy);
 
+	if (M->completion_hint & READLINE_SUGGEST_TITLE_HINT){
+		if (M->completion_pos == 0 && M->completion_sz > 1)
+			M->completion_pos = 1;
+	}
+
 /* can't really show popup in this format unless we have the 'separate window'
  * form active */
 	if (rows < 2)
@@ -354,6 +359,15 @@ static void draw_completion(
 		arcan_tui_move_to(T, cx, j);
 		lasty = j;
 
+/* draw first item with border and hint if it is a title */
+		if (i == 0 &&
+				(M->completion_hint & READLINE_SUGGEST_TITLE_HINT)){
+			attr.aflags |= TUI_ATTR_BORDER_DOWN;
+		}
+
+		if (i == 1)
+			attr.aflags &= ~TUI_ATTR_BORDER_DOWN;
+
 		if (i == M->completion_pos){
 			attr.aflags |= TUI_ATTR_INVERSE;
 			arcan_tui_writestr(T, M->completion[i], &attr);
@@ -388,7 +402,7 @@ static void draw_completion(
 			}
 
 			arcan_tui_write(T, ' ', &hattr);
-			arcan_tui_writestr(T, hint, &attr);
+			arcan_tui_writestr(T, hint, &hattr);
 		}
 
 /*
@@ -1281,7 +1295,7 @@ void arcan_tui_readline_suggest(
 	if (!validate_context(T, &M) || !M->work)
 		return;
 
-	int mask = READLINE_SUGGEST_HINT;
+	int mask = READLINE_SUGGEST_HINT | READLINE_SUGGEST_TITLE_HINT;
 
 	M->completion = set;
 	M->completion_sz = sz;
