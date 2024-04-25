@@ -2786,7 +2786,7 @@ static int readline_suggest(lua_State* L)
 	}
 
 	if (nelem){
-		new_suggest = malloc(nelem * sizeof(char*));
+		new_suggest = malloc((nelem + starti) * sizeof(char*));
 		if (!new_suggest){
 			luaL_error(L, "set_suggest(alloc) - out of memory");
 		}
@@ -2813,7 +2813,7 @@ static int readline_suggest(lua_State* L)
 					a2 = lua_tostring(L, -1);
 				}
 				size_t len = strlen(a1) + strlen(a2) + 2;
-				new_suggest[starti+i] = malloc(strlen(a1) + strlen(a2) + 2);
+				new_suggest[starti+i] = malloc(len);
 				snprintf(new_suggest[starti+i], len, "%s%c%s", a1, (char) 0, a2);
 				lua_pop(L, 2);
 			}

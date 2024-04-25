@@ -170,7 +170,7 @@ static void* glob_userns(void* arg)
 
 	size_t len = strlen(garg->basename) + sizeof(ns.path) + 1;
 	char* buf = malloc(len);
-	snprintf(buf, len, "%s/%s", ns.path, basename);
+	snprintf(buf, len, "%s/%s", ns.path, garg->basename);
 
 	size_t skip = strlen(ns.path) + 1;
 	run_glob(buf, skip, garg);
