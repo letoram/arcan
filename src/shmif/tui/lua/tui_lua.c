@@ -2778,6 +2778,7 @@ static int readline_suggest(lua_State* L)
 		title[tlen] = '\0';
 		title[tlen+1] = '\0';
 		starti++;
+		count++;
 	}
 	lua_pop(L, 1);
 
