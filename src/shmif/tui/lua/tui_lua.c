@@ -3202,6 +3202,21 @@ static bool dequeue_nbio(int fd, mode_t mode, intptr_t* tag)
 	return found;
 }
 
+static int tui_fmkdir(lua_State* L)
+{
+	TUI_UDATA;
+	const char* src = luaL_checkstring(L, 2);
+	int status = mkdirat(ib->cwd_fd, src, 0600);
+	if (-1 == status){
+		lua_pushboolean(L, false);
+		lua_pushstring(L, strerror(errno));
+		return 2;
+	}
+
+	lua_pushboolean(L, true);
+	return 1;
+}
+
 static int tui_fstatus(lua_State* L)
 {
 	TUI_UDATA;
@@ -3727,6 +3742,7 @@ static void register_tuimeta(lua_State* L)
 		{"funlink", tui_funlink},
 		{"frename", tui_frename},
 		{"fstatus", tui_fstatus},
+		{"fmkdir", tui_fmkdir},
 		{"fchmod", tui_fchmod},
 		{"fchown", tui_fchown},
 		{"fglob", tui_glob},
