@@ -3206,7 +3206,14 @@ static int tui_fmkdir(lua_State* L)
 {
 	TUI_UDATA;
 	const char* src = luaL_checkstring(L, 2);
+	if (-1 == ib->cwd_fd){
+		lua_pushboolean(L, false);
+		lua_pushstring(L, "invalid current working directory");
+		return 2;
+	}
+
 	int status = mkdirat(ib->cwd_fd, src, 0600);
+
 	if (-1 == status){
 		lua_pushboolean(L, false);
 		lua_pushstring(L, strerror(errno));
@@ -3425,7 +3432,21 @@ static int tui_funlink(lua_State* L)
 		return 2;
 	}
 
-	if (-1 == unlinkat(ib->cwd_fd, name, 0)){
+/* stat just so we can pick AT_REMOVEDIR if needed */
+
+	struct stat s;
+	if (-1 == fstatat(
+		ib->cwd_fd, name, &s, AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW)){
+		lua_pushboolean(L, false);
+		lua_pushstring(L, strerror(errno));
+		return 2;
+	}
+
+	int fl = 0;
+	if (S_ISDIR(s.st_mode))
+		fl = AT_REMOVEDIR;
+
+	if (-1 == unlinkat(ib->cwd_fd, name, fl)){
 		lua_pushboolean(L, false);
 		lua_pushstring(L, strerror(errno));
 		return 2;
