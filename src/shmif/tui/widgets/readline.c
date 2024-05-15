@@ -286,6 +286,7 @@ static void draw_completion(
 	arcan_tui_dimensions(T, &rows, &cols);
 	size_t cx = 0, cy = 0;
 	arcan_tui_cursorpos(T, &cx, &cy);
+	int title_attr = TUI_ATTR_BORDER_DOWN;
 
 	if (M->completion_hint & READLINE_SUGGEST_TITLE_HINT){
 		if (M->completion_pos == 0 && M->completion_sz > 1)
@@ -301,8 +302,10 @@ static void draw_completion(
  * items to draw. If we are closer to the top, position it above - otherwise
  * below. */
 	ssize_t step = 1;
-	if (rows - cy < (rows >> 1))
+	if (rows - cy < (rows >> 1)){
 		step = -1;
+		title_attr = TUI_ATTR_BORDER_TOP;
+	}
 
 	struct tui_screen_attr attr = arcan_tui_defcattr(T, TUI_COL_UI);
 
@@ -362,11 +365,11 @@ static void draw_completion(
 /* draw first item with border and hint if it is a title */
 		if (i == 0 &&
 				(M->completion_hint & READLINE_SUGGEST_TITLE_HINT)){
-			attr.aflags |= TUI_ATTR_BORDER_DOWN;
+			attr.aflags |= title_attr;
 		}
 
 		if (i == 1)
-			attr.aflags &= ~TUI_ATTR_BORDER_DOWN;
+			attr.aflags &= ~title_attr;
 
 		if (i == M->completion_pos){
 			attr.aflags |= TUI_ATTR_INVERSE;
