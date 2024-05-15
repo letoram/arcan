@@ -657,17 +657,30 @@ static int nbio_write(lua_State* L)
 	LUA_ETRACE("open_nonblock:write", NULL, 2);
 }
 
-static char* nextline(struct nonblock_io* ib,
-	size_t start, bool eof, size_t* nb, size_t* step,
-	bool* gotline, char linech)
+static char* nextline(
+	struct nonblock_io* ib,
+	size_t start,  /* IN: offset from ib->buf to start processing from */
+	bool eof,      /* IN: is the source alive? */
+	size_t* nb,    /* INOUT: number of bytes to consume */
+	size_t* step,  /* INOUT: number of bytes to skip, doesn't need to == nb */
+	bool* gotline, /* OUT: did we retrieve a full line or capped by bufsz */
+	char linech    /* IN: character used for separation */
+	)
 {
+
+/* empty input buffer? early - out */
 	if (!ib->ofs)
 		return NULL;
 
 	*step = 0;
 
+/* consume each character in buffer */
 	for (size_t i = start; i < ib->ofs; i++){
+
+/* if we match linefeed at our current position we are done */
 		if (ib->buf[i] == linech){
+
+/* some callers want the character to remain, others will strip it */
 			*nb = ib->lfstrip ? (i - start) : (i - start) + 1;
 			*step = (i - start) + 1;
 			*gotline = true;
@@ -675,8 +688,10 @@ static char* nextline(struct nonblock_io* ib,
 		}
 	}
 
+/* we are full without separator or at end-of-source */
 	if (eof || (!start && ib->ofs == COUNT_OF(ib->buf))){
 		*gotline = false;
+
 		if (ib->ofs < start){
 			*nb = 0;
 			*step = 0;
@@ -757,9 +772,10 @@ int alt_nbio_process_read(
  * 3. forward to the callback at -1.
  */
 #define SLIDE(X) do{\
-	memmove(ib->buf, &ib->buf[ci], ib->ofs - ci);\
-	ib->ofs -= ci;\
-}while(0)
+	if (ci <= ib->ofs){\
+		memmove(ib->buf, &ib->buf[ci], ib->ofs - ci);\
+		ib->ofs -= ci;\
+}} while(0)
 	bool gotline;
 
 	if (lua_type(L, -1) == LUA_TFUNCTION){
@@ -779,7 +795,12 @@ int alt_nbio_process_read(
 			lua_pushboolean(L, eof && !gotline);
 			ci += step;
 			alt_call(L, CB_SOURCE_NONE, 0, 2, 1, LINE_TAG":read_cb");
-			cancel = lua_toboolean(L, -1) || ib->ofs == ci;
+
+/* the caller doesn't want more data (right now) OR the offset has
+ * been incremented past buffer constraints when there is <LF><EOF>
+ * as step will be 1 <= step <= ofs could cause nextline called at
+ * a start beyond end of buffer */
+			cancel = lua_toboolean(L, -1) || ib->ofs <= ci;
 			lua_pop(L, 1);
 		}
 
@@ -793,8 +814,10 @@ int alt_nbio_process_read(
 		size_t ind = lua_rawlen(L, -1) + 1;
 		size_t ci = 0;
 
-	/* let the table set ceiling on the number of lines per call, if the field
- * isnt't there count will be set to 0 and we just turn it into SIZET_MAX */
+/* let the table set ceiling on the number of lines per call, if the field
+ * isnt't there count will be set to 0 and we just turn it into SIZET_MAX.
+ * The use-case for this is to be able to yield cothreads between table
+ * reads. */
 		lua_getfield(L, -1, "read_cap");
 		size_t count = lua_tonumber(L, -1);
 		if (!count)
@@ -803,6 +826,9 @@ int alt_nbio_process_read(
 
 	while (
 			count &&
+	/* same caveat as above, striplf mode can cause len == 0 with step+1
+	 * at end-of-full buffer causing ci to overstep buffer cap */
+			ci < ib->ofs,
 			(ch = nextline(ib, ci, eof, &len, &step, &gotline, ib->lfch))){
 			if (eof && len == 0 && step == 0)
 				break;
@@ -811,8 +837,10 @@ int alt_nbio_process_read(
 			lua_pushlstring(L, ch, len);
 			lua_rawset(L, -3);
 			count--;
+
 			ci += step;
 		}
+
 		SLIDE();
 		lua_pushnil(L);
 		lua_pushboolean(L, !eof);
@@ -821,8 +849,13 @@ int alt_nbio_process_read(
 	else {
 		if ((ch = nextline(ib, 0, eof, &len, &step, &gotline, ib->lfch))){
 			lua_pushlstring(L, ch, len);
-			memmove(ib->buf, &ib->buf[step], buf_sz - step);
-			ib->ofs -= step;
+
+			if (step < ib->ofs){
+				memmove(ib->buf, &ib->buf[step], buf_sz - step);
+				ib->ofs -= step;
+			}
+			else
+				ib->ofs = 0;
 		}
 		else
 			lua_pushnil(L);
