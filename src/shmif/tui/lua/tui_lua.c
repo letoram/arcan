@@ -1402,6 +1402,7 @@ static int tui_mktemp(lua_State* L)
 	char* temp = strdup(base);
 	int fd = mkstemp(temp);
 	if (-1 == fd){
+		free(temp);
 		lua_pushboolean(L, false);
 		lua_pushstring(L, strerror(errno));
 		return 2;
@@ -1412,8 +1413,9 @@ static int tui_mktemp(lua_State* L)
  * don't have a way to transfer nbio (i.e. not shmif) */
 	alt_nbio_import(L, fd, O_RDWR, NULL, &temp);
 	alt_nbio_nonblock_cloexec(fd, true);
+	lua_pushstring(L, temp);
 
-	return 1;
+	return 2;
 }
 
 static int tui_mkdtemp(lua_State* L)
