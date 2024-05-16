@@ -1393,6 +1393,75 @@ static int tui_wndhint(lua_State* L)
 	return 0;
 }
 
+static int tui_mktemp(lua_State* L)
+{
+	TUI_UDATA;
+
+	const char* base = luaL_optstring(L, 2, "atuiXXXXXX");
+
+	char* temp = strdup(base);
+	int fd = mkstemp(temp);
+	if (-1 == fd){
+		lua_pushboolean(L, false);
+		lua_pushstring(L, strerror(errno));
+		return 2;
+	}
+
+/* tie the temp string and file to the life-cycle of the nbio-import, this is
+ * to allow the tempfiles to be passed by name to other processes where we
+ * don't have a way to transfer nbio (i.e. not shmif) */
+	alt_nbio_import(L, fd, O_RDWR, NULL, &temp);
+	alt_nbio_nonblock_cloexec(fd, true);
+
+	return 1;
+}
+
+static int tui_mkdtemp(lua_State* L)
+{
+	TUI_UDATA;
+	const char* base = luaL_optstring(L, 2, "atuidXXXXXX");
+
+/* we don't have a mktemp for directories (*sigh*) */
+	size_t len = strlen(base);
+	if (len <= 6 ||
+		base[len-1] != 'X' ||
+		base[len-2] != 'X' ||
+		base[len-3] != 'X' ||
+		base[len-4] != 'X' ||
+		base[len-5] != 'X' ||
+		base[len-6] != 'X'){
+		lua_pushboolean(L, false);
+		lua_pushstring(L, "template error, expecting trailing XXXXXX");
+		return 2;
+	}
+
+	char* work = strdup(base);
+
+	size_t tries = 10;
+	while (work && tries-- > 0){
+		uint8_t rng[6];
+		arcan_random(rng, 6);
+
+		for (size_t i = 0; i < 6; i++)
+			work[len-1-i] = (char)(rng[i] % 24) + 'a';
+
+		int status = mkdirat(ib->cwd_fd, work, 0600);
+		if (0 == status){
+			lua_pushstring(L, work);
+			free(work);
+			return 1;
+		}
+
+		if (-1 == status && errno != EEXIST)
+			break;
+	}
+
+	free(work);
+	lua_pushboolean(L, false);
+	lua_pushstring(L, strerror(errno));
+	return 2;
+}
+
 static int tui_chdir(lua_State* L)
 {
 	TUI_UDATA;
@@ -3764,6 +3833,8 @@ static void register_tuimeta(lua_State* L)
 		{"frename", tui_frename},
 		{"fstatus", tui_fstatus},
 		{"fmkdir", tui_fmkdir},
+		{"tempfile", tui_mktemp},
+		{"tempdir", tui_mkdtemp},
 		{"fchmod", tui_fchmod},
 		{"fchown", tui_fchown},
 		{"fglob", tui_glob},
