@@ -1447,7 +1447,7 @@ static int tui_mkdtemp(lua_State* L)
 		for (size_t i = 0; i < 6; i++)
 			work[len-1-i] = (char)(rng[i] % 24) + 'a';
 
-		int status = mkdirat(ib->cwd_fd, work, 0600);
+		int status = mkdirat(ib->cwd_fd, work, 0700);
 		if (0 == status){
 			lua_pushstring(L, work);
 			free(work);
@@ -3283,7 +3283,7 @@ static int tui_fmkdir(lua_State* L)
 		return 2;
 	}
 
-	int status = mkdirat(ib->cwd_fd, src, 0600);
+	int status = mkdirat(ib->cwd_fd, src, 0700);
 
 	if (-1 == status){
 		lua_pushboolean(L, false);
