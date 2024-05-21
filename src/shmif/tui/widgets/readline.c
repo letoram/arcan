@@ -194,6 +194,10 @@ static void drop_completion(
 			}
 		break;
 
+		case READLINE_SUGGEST_IGNORE:
+			return;
+		break;
+
 		case READLINE_SUGGEST_INSERT:
 		break;
 
@@ -460,6 +464,8 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 
 	size_t cx = 0, cy = 0;
 	size_t limit = (x2 - x1) + 1;
+	printf("limit: %zu\n", limit);
+
 	if (limit < 3)
 		goto out;
 
@@ -483,10 +489,10 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
  * or do multiline, things are 'easy' */
 	size_t prompt_len = M->prompt_len;
 
-/* cur allocation down to match ~1/3 of the available space, suffix
- * with ..> */
-	size_t ul = limit / 3;
-	if (prompt_len > ul && prompt_len + M->work_len > limit){
+/* cur allocation down to match ~1/3 of the available space,
+ * suffix with ..> */
+	if (prompt_len + M->work_len > limit - 3){
+		size_t ul = limit / 3;
 
 		if (ul > 2){
 			for (size_t i = 0; i < ul - 2 && i < prompt_len; i++, limit--)

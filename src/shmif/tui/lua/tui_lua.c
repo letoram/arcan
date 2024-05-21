@@ -2914,6 +2914,9 @@ static int readline_suggest(lua_State* L)
 	else if (strcasecmp(mode, "substitute") == 0){
 		mv = READLINE_SUGGEST_SUBSTITUTE;
 	}
+	else if (strcasecmp(mode, "ignore") == 0){
+		mv = READLINE_SUGGEST_IGNORE;
+	}
 	else
 		luaL_error(L, "set_suggest(str:mode) expected insert, word or substitute");
 

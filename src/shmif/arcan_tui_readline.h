@@ -166,6 +166,7 @@ void arcan_tui_readline_autocomplete(struct tui_context* t, const char* suffix);
  * For 'insert' the text will be added at the current cursor position.
  * For 'word' the last word will be removed and swapped for the suggested entry.
  * For 'substitute' the entire input set will be replaced.
+ * For 'ignore' no option will actually apply, suggestion is used just for reference.
  *
  * If the 'hint' bit is set, each string in the set is interpreted as being
  * double (msg \0 hint \0) in order to provide / display an extended hint that
@@ -178,6 +179,7 @@ enum tui_readline_suggestion_mode {
 	READLINE_SUGGEST_INSERT = 0,
 	READLINE_SUGGEST_WORD = 1,
 	READLINE_SUGGEST_SUBSTITUTE = 2,
+	READLINE_SUGGEST_IGNORE = 3,
 	READLINE_SUGGEST_HINT = 64,
 	READLINE_SUGGEST_TITLE_HINT = 128,
 /* READLINE_SUGGEST_HINT_PROMPT = 128 */
