@@ -419,6 +419,7 @@ void arcan_tui_wndhint(struct tui_context* C,
 
 		tui_screen_resized(C);
 	}
+
 /* first send any sizing constraints */
 	if (cols > 0 || rows > 0){
 		struct arcan_event content = (struct arcan_event){
@@ -445,10 +446,10 @@ void arcan_tui_wndhint(struct tui_context* C,
 			.category = EVENT_EXTERNAL,
 			.ext.kind = ARCAN_EVENT(VIEWPORT),
 			.ext.viewport.parent = par->acon.segment_token,
-			.ext.viewport.x = cons.anch_col * C->cell_w,
-			.ext.viewport.y = cons.anch_row * C->cell_h,
-			.ext.viewport.w = cons.max_cols * C->cell_w,
-			.ext.viewport.h = cons.max_rows * C->cell_h,
+			.ext.viewport.x = cons.anch_col * par->cell_w,
+			.ext.viewport.y = cons.anch_row * par->cell_h,
+			.ext.viewport.w = cons.max_cols * par->cell_w,
+			.ext.viewport.h = cons.max_rows * par->cell_h,
 			.ext.viewport.invisible = cons.hide
 		};
 
@@ -456,6 +457,12 @@ void arcan_tui_wndhint(struct tui_context* C,
 			viewport.ext.viewport.embedded = cons.embed;
 			viewport.ext.viewport.parent = C->viewport_proxy;
 			viewport.ext.viewport.order = -1;
+			printf("embed viewport: %zu, %zu, %zu, %zu\n",
+					viewport.ext.viewport.x,
+					viewport.ext.viewport.y,
+					viewport.ext.viewport.w,
+					viewport.ext.viewport.h);
+
 			if (par->acon.addr)
 				arcan_shmif_enqueue(&par->acon, &viewport);
 		}

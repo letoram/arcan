@@ -400,7 +400,8 @@ void tui_screen_resized(struct tui_context* tui)
 		tui->cols = cols;
 		tui->rows = rows;
 
-		resize_cellbuffer(tui);
+		if (!tui->viewport_proxy)
+			resize_cellbuffer(tui);
 
 		if (tui->hooks.resize){
 			tui->hooks.resize(tui);
