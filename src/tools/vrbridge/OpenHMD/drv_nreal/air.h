@@ -28,7 +28,8 @@
  * @ingroup drv_na
  */
 #define NA_PID 0x0424
-
+#define NA2_PID 0x0428
+#define NA2P_PID 0x0432
 
 #define NA_HANDLE_IFACE 3
 #define NA_CONTROL_IFACE 4

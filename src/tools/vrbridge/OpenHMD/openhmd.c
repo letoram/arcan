@@ -64,6 +64,7 @@ OHMD_APIENTRYDLL ohmd_context* OHMD_APIENTRY ohmd_ctx_create(void)
 #endif
 
 #if DRIVER_NREAL
+	ctx->drivers[ctx->num_drivers++] = ohmd_create_nreal_drv(ctx);
 #endif
 
 #if DRIVER_EXTERNAL

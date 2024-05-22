@@ -258,7 +258,7 @@ read_sample_and_apply_calibration(struct na_hmd *hmd,
 	gyro.x *= gyro_factor;
 	gyro.y *= gyro_factor;
 	gyro.z *= gyro_factor;
-	
+
 	mag.x *= mag_factor;
 	mag.y *= mag_factor;
 	mag.z *= mag_factor;
@@ -311,7 +311,7 @@ static void
 update_fusion_locked(struct na_hmd *hmd, struct na_parsed_sample *sample, uint64_t delta_ns)
 {
 	read_sample_and_apply_calibration(hmd, sample, &hmd->read.accel, &hmd->read.gyro, &hmd->read.mag);
-	float delta_s = delta_ns * 1e-9f; 
+	float delta_s = delta_ns * 1e-9f;
 	ofusion_update(&hmd->fusion, delta_s, &hmd->read.gyro, &hmd->read.accel, &hmd->read.mag);
 }
 
@@ -806,19 +806,14 @@ read_one_control_packet(struct na_hmd *hmd)
 }
 
 static bool
-wait_for_brightness(struct na_hmd *hmd)
+control_brightness(struct na_hmd *hmd)
 {
-	for (int i = 0; i < 5000; i++) {
-		read_one_control_packet(hmd);
-
-		if (hmd->state.brightness <= 100) {
-			return true;
-		}
-
-		ohmd_sleep(1e-3); // 1MS
+	if (!send_payload_to_control(hmd, NA_MSG_R_BRIGHTNESS, NULL, 0)) {
+		LOGE("Failed to send payload for initial brightness value!");
+		return false;
 	}
 
-	return false;
+	return true;
 }
 
 static bool
@@ -832,26 +827,10 @@ wait_for_display_mode(struct na_hmd *hmd)
 			return true;
 		}
 
-		ohmd_sleep(1e-3);  // 1MS
+		ohmd_sleep(1e-3);
 	}
 
 	return false;
-}
-
-static bool
-control_brightness(struct na_hmd *hmd)
-{
-	if (!send_payload_to_control(hmd, NA_MSG_R_BRIGHTNESS, NULL, 0)) {
-		LOGE("Failed to send payload for initial brightness value!");
-		return false;
-	}
-
-	if (!wait_for_brightness(hmd)) {
-		LOGE("Failed to wait for valid brightness value!");
-		return false;
-	}
-
-	return true;
 }
 
 static bool
@@ -859,11 +838,6 @@ control_display_mode(struct na_hmd *hmd)
 {
 	if (!send_payload_to_control(hmd, NA_MSG_R_DISP_MODE, NULL, 0)) {
 		LOGE("Failed to send payload for initial display mode!");
-		return false;
-	}
-
-	if (!wait_for_display_mode(hmd)) {
-		LOGE("Failed to wait for valid display mode!");
 		return false;
 	}
 
@@ -882,9 +856,9 @@ switch_display_mode(struct na_hmd *hmd, uint8_t display_mode)
 	info->hres = 1920;
 	info->vres = 1080;
 
-	info->ratio = (info->hres / (info->vres)) * 0.875f; 
+	info->ratio = (info->hres / (info->vres)) * 0.875f;
 	info->fov = DEG_TO_RAD(46.0f / 2.0f);
-	
+
 	info->hsize = 0.13f;
 	info->vsize = 0.07f;
 	info->lens_sep = 0.13f / 2.0f;
@@ -894,7 +868,7 @@ switch_display_mode(struct na_hmd *hmd, uint8_t display_mode)
 		info->hres *= 2;
 		info->ratio *= 2.0f;
 	}
-	
+
 	return true;
 }
 
@@ -1126,7 +1100,7 @@ static int getf(ohmd_device* device, ohmd_float_value type, float* out)
 		// TODO this should be set to the equivalent of no distortion
 		memset(out, 0, sizeof(float) * 6);
 		break;
-	
+
 	case OHMD_CONTROLS_STATE:
 		break;
 
@@ -1187,15 +1161,21 @@ static ohmd_device* open_device(ohmd_driver* driver, ohmd_device_desc* desc)
 	priv->base.ctx = driver->ctx;
 
 	int idx = atoi(desc->path);
+	int pid;
 
 	// Open the HMD sensoe device
-	hid_device *sensor = open_device_idx(NA_VID, NA_PID, NA_HANDLE_IFACE, idx);
-
-	if(!sensor)
+	hid_device *sensor;
+	if ((sensor = open_device_idx(NA_VID, NA_PID, NA_HANDLE_IFACE, idx)))
+		pid = NA_PID;
+	else if ((sensor = open_device_idx(NA_VID, NA2_PID, NA_HANDLE_IFACE, idx)))
+		pid = NA2_PID;
+	else if ((sensor = open_device_idx(NA_VID, NA2P_PID, NA_HANDLE_IFACE, idx)))
+		pid = NA2P_PID;
+	else
 		goto cleanup;
 
 	// Open the HMD Control device
-	hid_device *control = open_device_idx(NA_VID, NA_PID, NA_CONTROL_IFACE, idx);
+	hid_device *control = open_device_idx(NA_VID, pid, NA_CONTROL_IFACE, idx);
 
 	if(!control)
 		goto cleanup;
@@ -1210,7 +1190,7 @@ static ohmd_device* open_device(ohmd_driver* driver, ohmd_device_desc* desc)
 		ohmd_set_error(driver->ctx, "failed to create device");
 		goto cleanup;
 	}
-	
+
 	// Set default device properties
 	ohmd_set_default_device_properties(&priv->base.properties);
 
@@ -1224,7 +1204,7 @@ static ohmd_device* open_device(ohmd_driver* driver, ohmd_device_desc* desc)
 	priv->base.update = update_device;
 	priv->base.close = close_device;
 	priv->base.getf = getf;
-	
+
 	return (ohmd_device*)priv;
 
 cleanup:
@@ -1235,9 +1215,9 @@ cleanup:
 	return NULL;
 }
 
-static void get_device_list(ohmd_driver* driver, ohmd_device_list* list)
+static void check_vid_pid(ohmd_driver* driver, ohmd_device_list* list, int vid, int pid)
 {
-	struct hid_device_info* devs = hid_enumerate(NA_VID, NA_PID);
+	struct hid_device_info* devs = hid_enumerate(vid, pid);
 	struct hid_device_info* cur_dev = devs;
 
 	int idx = 0;
@@ -1263,6 +1243,13 @@ static void get_device_list(ohmd_driver* driver, ohmd_device_list* list)
 	}
 
 	hid_free_enumeration(devs);
+}
+
+static void get_device_list(ohmd_driver* driver, ohmd_device_list* list)
+{
+	check_vid_pid(driver, list, NA_VID, NA_PID);
+	check_vid_pid(driver, list, NA_VID, NA2_PID);
+	check_vid_pid(driver, list, NA_VID, NA2P_PID);
 }
 
 static void destroy_driver(ohmd_driver* drv)
