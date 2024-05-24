@@ -464,7 +464,6 @@ static void refresh(struct tui_context* T, struct readline_meta* M)
 
 	size_t cx = 0, cy = 0;
 	size_t limit = (x2 - x1) + 1;
-	printf("limit: %zu\n", limit);
 
 	if (limit < 3)
 		goto out;
