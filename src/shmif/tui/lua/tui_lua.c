@@ -2417,7 +2417,9 @@ static int readline(lua_State* L)
 		.mouse_forward = false,
 		.paste_forward = false,
 		.block_builtin_bindings = false,
-		.completion_compact = false
+		.completion_compact = false,
+		.linefeed_expand = false,
+		.whitespace_expand = false
 	};
 
 	if (!lua_isfunction(L, ofs) || lua_iscfunction(L, ofs)){
@@ -2462,6 +2464,10 @@ static int readline(lua_State* L)
 			opts.block_builtin_bindings = true;
 		if (intblbool(L, tbl, "compact"))
 			opts.completion_compact = true;
+		if (intblbool(L, tbl, "linefeed_expand"))
+			opts.linefeed_expand = true;
+		if (intblbool(L, tbl, "whitespace_expand"))
+			opts.whitespace_expand = true;
 
 		opts.mouse_forward = intblbool(L, tbl, "forward_mouse");
 		opts.paste_forward = intblbool(L, tbl, "forward_paste");

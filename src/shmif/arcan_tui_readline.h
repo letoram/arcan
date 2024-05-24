@@ -112,6 +112,16 @@ struct tui_readline_opts {
  * annotate with a border. Using this toggle will only draw the actual items.
  */
 	bool completion_compact;
+
+/*
+ * set to allow \n, return etc. to expand the item from suggestion
+ */
+	bool linefeed_expand;
+
+/*
+ * set to allow space, ' ', '\t' to expand the item from suggestion
+ */
+	bool whitespace_expand;
 };
 
 void arcan_tui_readline_setup(

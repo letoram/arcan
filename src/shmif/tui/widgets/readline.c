@@ -714,7 +714,7 @@ static bool erase_at_cursor(struct tui_context* T, struct readline_meta* M)
 static bool add_linefeed(struct tui_context* T, struct readline_meta* M)
 {
 	if (M->show_completion && M->completion_sz){
-		drop_completion(T, M, true);
+		drop_completion(T, M, M->opts.linefeed_expand);
 		verify(T, M);
 		refresh(T, M);
 	}
@@ -726,6 +726,7 @@ static bool add_linefeed(struct tui_context* T, struct readline_meta* M)
 		}
 /* treat as commit */
 		M->finished = 1;
+		M->history_pos = 0;
 	}
 
 	return true;
@@ -860,6 +861,10 @@ static bool on_utf8_input(
 		return true;
 	}
 
+	if (*u8 == ' ' && M->opts.whitespace_expand){
+		drop_completion(T, M, true);
+	}
+
 /* backspace */
 	else if (*u8 == 0x08)
 		return erase_at_cursor(T, M);
@@ -960,7 +965,7 @@ void on_key_input(struct tui_context* T,
 
 	bool meta = mods & (TUIM_LCTRL | TUIM_RCTRL);
 	if (meta){
-		if (keysym == TUIK_RETURN){
+		if (keysym == TUIK_RETURN || keysym == TUIK_M){
 			M->finished = 1;
 		}
 		else if (keysym == TUIK_L){
