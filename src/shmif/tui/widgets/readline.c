@@ -862,7 +862,12 @@ static bool on_utf8_input(
 	}
 
 	if (*u8 == ' ' && M->opts.whitespace_expand){
-		drop_completion(T, M, true);
+		if (M->show_completion && M->completion){
+			drop_completion(T, M, true);
+			verify(T, M);
+			refresh(T, M);
+			return true;
+		}
 	}
 
 /* backspace */
