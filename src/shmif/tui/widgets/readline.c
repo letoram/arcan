@@ -870,8 +870,8 @@ static bool on_utf8_input(
 		}
 	}
 
-/* backspace */
-	else if (*u8 == 0x08)
+/* backspace / delete */
+	else if (*u8 == 0x08 || *u8 == 0x7f)
 		return erase_at_cursor(T, M);
 
 /* first filter things out */
