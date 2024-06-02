@@ -54,7 +54,7 @@
  */
 #include "arcan_shmif.h"
 #include "arcan_shmif_interop.h"
-#include "arcan_shmif_debugif.h"
+#include "shmif_defimpl.h"
 #include <pthread.h>
 #include <dlfcn.h>
 #include <errno.h>

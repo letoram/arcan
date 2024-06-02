@@ -14,4 +14,6 @@ bool arcan_shmif_debugint_spawn(
 	struct arcan_shmif_cont* c, void* tuitag, struct debugint_ext_resolver* res);
 int arcan_shmif_debugint_alive();
 
+bool arcan_shmif_a11yint_spawn(struct arcan_shmif_cont* c, struct arcan_shmif_cont* p);
+
 #endif

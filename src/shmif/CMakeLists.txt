@@ -56,6 +56,7 @@ set (SHMIF_SOURCES
 	${ASD}/shmif/arcan_shmif_control.c
 	${ASD}/shmif/arcan_shmif_sub.c
 	${ASD}/shmif/arcan_shmif_evpack.c
+	${ASD}/shmif/arcan_shmif_a11y.c
 	${ASD}/engine/arcan_trace.c
 	${ASD}/shmif/platform/exec.c
 )

@@ -10,6 +10,8 @@
 
 ## Shmif
  * add interop helper for arcan\_shmif\_bchunk\_resolve to help translate fd-local path
+ * add a \_primary slot for ACCESSIBILITY
+ * add an internal-catch segment for ACCESSIBILITY
 
 ## Net
  * add -c file for assigning lua scriptable command-line overrides

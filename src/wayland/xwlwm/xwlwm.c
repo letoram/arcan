@@ -8,7 +8,7 @@
  * sandboxed better and possibly used for a similar -rootless mode in Xarcan.
  */
 #include "../../shmif/arcan_shmif.h"
-#include "../../shmif/arcan_shmif_debugif.h"
+#include "../../shmif/shmif_defimpl.h"
 #include <inttypes.h>
 #include <errno.h>
 #include <signal.h>

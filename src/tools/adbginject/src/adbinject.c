@@ -2,7 +2,7 @@
 
 #include <arcan_shmif.h>
 #include <stdlib.h>
-#include "../../shmif/arcan_shmif_debugif.h"
+#include "../../shmif/shmif_defimpl.h"
 
 volatile struct arcan_shmif_cont cont;
 static volatile bool hold_constructor = true;

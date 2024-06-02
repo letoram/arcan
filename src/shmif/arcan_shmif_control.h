@@ -198,14 +198,27 @@ static const int ARCAN_SHMPAGE_START_SZ = PP_SHMPAGE_STARTSZ;
 static const int ARCAN_SHMPAGE_ALIGN = PP_SHMPAGE_ALIGN;
 
 /*
- * Two primary transfer operation types, from the perspective of the
- * main arcan application (i.e. normally frameservers feed INPUT but
- * specialized recording segments are flagged as OUTPUT. Internally,
- * these have different synchronization rules.
+ * Three primary transfer operation types, from the perspective of the main
+ * arcan application (i.e. normally frameservers feed INPUT but specialized
+ * recording segments are flagged as OUTPUT. Internally, these have different
+ * synchronization rules.
+ *
+ * Accessibility is special.
+ *
+ * The server end will push it and the internal loop will map it and map it
+ * to the slot for the primary segment. The suggested approach is to call
+ * arcan_shmif_primary(SHMIF_ACCESSIBILITY) and if it returns a structure,
+ * extend it to arcan-tui and write into it the data that should be emphasised.
+ *
+ * The reason this is reserved and mapped internally like this is to allow a
+ * fallback where, if you provide nothing, we can route any _signal call
+ * through afsrv_decode and have it populate the accessibility segment on frame
+ * submit.
  */
 enum arcan_shmif_type {
 	SHMIF_INPUT = 1,
-	SHMIF_OUTPUT
+	SHMIF_OUTPUT,
+	SHMIF_ACCESSIBILITY
 };
 
 /*
