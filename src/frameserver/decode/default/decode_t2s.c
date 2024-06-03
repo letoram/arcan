@@ -412,6 +412,7 @@ int decode_t2s(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 #define ENCLABEL(X) arcan_shmif_enqueue(t2s.cont, &(struct arcan_event){\
 		.ext.kind = ARCAN_EVENT(LABELHINT),\
+		.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL,\
 		.ext.labelhint.label = X});
 
 	arcan_event ev;
