@@ -445,7 +445,7 @@ int decode_t2s(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		}
 
 		if (EE_OK != espeak_Synth(msg,
-			strlen(msg)+1, 0, POS_WORD, 0, t2s.flags, NULL, NULL)){
+			strlen(msg)+1, 0, POS_WORD, 0, t2s.flags | espeakENDPAUSE, NULL, NULL)){
 			arcan_shmif_last_words(cont, "synth call failed");
 			arcan_shmif_drop(cont);
 			return EXIT_FAILURE;
