@@ -54,8 +54,10 @@ int show_use(struct arcan_shmif_cont* cont, const char* msg)
 		" pitch   \t 0..100    \t set base pitch, 0 low, (default=50)\n"
 		" range   \t 0..100    \t voice range, 0 monotone, (default=50)\n"
 		" gap     \t 0..n ms   \t gap between words in miliseconds (default=10)\n"
-		" ssml    \t           \t interpret text as 'ssml' formatted <voice> .. \n"
-		" phonemes\t           \t interpret text as 'phoneme' ([[]]) encoded\n"
+		" punct   \t 0,1,2     \t punctuation mode (0 = no, 1 = all, 2 = some)\n",
+		" capmode \t no,icon,  \t capitals with nothing, sound icon or spelling\n"
+		"         \t spelling  \t \n"
+	  " cappitch\t hz        \t increment capitals with pitch (ignore mode)\n"
 		"---------\t-----------\t----------------\n"
 		"\n"
 #endif
