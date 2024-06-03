@@ -371,18 +371,23 @@ int decode_t2s(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	if (arg_lookup(args, "cappitch", 0, &work) && work){
 		unsigned long val = strtoul(work, NULL, 10);
 		if (val <= 10000){
-			espeak_SetParameter(espeakPUNCTUATION, 3 + val, 0);
+			espeak_SetParameter(espeakCAPITALS, 3 + val, 0);
 		}
 	}
 	else if (arg_lookup(args, "capmode", 0, &work) && work){
 		if (strcmp(work, "icon") == 0){
-			espeak_SetParameter(espeakPUNCTUATION, 1, 0);
+			espeak_SetParameter(espeakCAPITALS, 1, 0);
 		}
 		else if (strcmp(work, "spelling") == 0){
-			espeak_SetParameter(espeakPUNCTUATION, 2, 0);
+			espeak_SetParameter(espeakCAPITALS, 2, 0);
 		}
 		else
-			espeak_SetParameter(espeakPUNCTUATION, 0, 0);
+			espeak_SetParameter(espeakCAPITALS, 0, 0);
+	}
+
+	if (arg_lookup(args, "punct", 0, &work) && work){
+		unsigned long val = strtoul(work, NULL, 10);
+		espeak_SetParameter(espeakPUNCTUATION, val, 0);
 	}
 
 	if (arg_lookup(args, "range", 0, &work) && work){
