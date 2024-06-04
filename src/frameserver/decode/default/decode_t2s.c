@@ -37,15 +37,16 @@ static void apply_label(const char* msg)
 {
 	if (strcmp(msg, "FAST") == 0){
 		espeak_SetParameter(espeakRATE, 310, 0);
-		t2s.curRate = 310;
 	}
 	else if (strcmp(msg, "SLOW") == 0){
 		espeak_SetParameter(espeakRATE, espeakRATE_MINIMUM, 0);
-		t2s.curRate = espeakRATE_MINIMUM;
 	}
 	else if (strcmp(msg, "DEFAULT") == 0){
 		espeak_SetParameter(espeakRATE, t2s.defaultRate, 0);
 		t2s.curRate = t2s.defaultRate;
+	}
+	else if (strcmp(msg, "SETRATE") == 0){
+		espeak_SetParameter(espeakRATE, t2s.curRate, 0);
 	}
 	else if (strcmp(msg, "INCRATE") == 0){
 		t2s.curRate += 20;
@@ -454,6 +455,7 @@ int decode_t2s(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	ENCLABEL("RAW");
 	ENCLABEL("SSML");
 	ENCLABEL("PHONEMES");
+	ENCLABEL("SETRATE");
 
 /* now we know everything in order to drop privileges - "little" detail here is
  * that espeak threads internally, and if this gets emulated through seccomp,
