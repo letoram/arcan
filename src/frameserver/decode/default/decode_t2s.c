@@ -25,11 +25,12 @@ static struct t2s {
 
 static volatile bool in_playback = true;
 
-static void send_rate()
+static void send_rate(bool inc)
 {
 	int rate = espeak_GetParameter(espeakRATE, 1);
 	char buf[24];
-	size_t nw = snprintf(buf, 24, "incrate: %d", rate);
+	size_t nw = snprintf(buf, 24, "%srate: %d", inc? "inc" : "dec", rate);
+	espeak_Cancel();
 	espeak_Synth(buf, nw, 0, POS_WORD, 0, t2s.flags | espeakENDPAUSE, NULL, NULL);
 }
 
@@ -54,15 +55,15 @@ static void apply_label(const char* msg)
 			t2s.curRate = 450;
 
 		espeak_SetParameter(espeakRATE, t2s.curRate, 0);
-		send_rate();
+		send_rate(true);
 	}
 	else if (strcmp(msg, "DECRATE") == 0){
-		t2s.curRate += 20;
+		t2s.curRate -= 20;
 		if (t2s.curRate < espeakRATE_MINIMUM)
 			t2s.curRate = espeakRATE_MINIMUM;
 
 		espeak_SetParameter(espeakRATE, t2s.curRate, 0);
-		send_rate();
+		send_rate(false);
 	}
 	else if (strcmp(msg, "PITCHUP") == 0){
 		espeak_SetParameter(espeakPITCH, 10, 1);
