@@ -8661,8 +8661,12 @@ static int targetreset(lua_State* ctx)
 	if (vobj && vobj->feed.state.tag == ARCAN_TAG_VR){
 		arcan_vr_setref(vobj->feed.state.ptr);
 	}
-	else
+	else {
 		tgtevent(vid, ev);
+		if (vobj->feed.state.tag == ARCAN_TAG_FRAMESERV){
+			arcan_frameserver_flush(vobj->feed.state.ptr);
+		}
+	}
 
 	LUA_ETRACE("reset_target", NULL, 0);
 }
