@@ -16,35 +16,58 @@ static struct t2s {
 	char msgbuf[16384];
 	size_t msgofs;
 	int defaultRate;
+	int curRate;
 } t2s = {
 	.flags = espeakCHARS_UTF8,
-	.defaultRate = espeakRATE_NORMAL
+	.defaultRate = espeakRATE_NORMAL,
+	.curRate = espeakRATE_NORMAL
 };
 
 static volatile bool in_playback = true;
+
+static void send_rate()
+{
+	int rate = espeak_GetParameter(espeakRATE, 1);
+	char buf[24];
+	size_t nw = snprintf(buf, 24, "incrate: %d", rate);
+	espeak_Synth(buf, nw, 0, POS_WORD, 0, t2s.flags | espeakENDPAUSE, NULL, NULL);
+}
 
 static void apply_label(const char* msg)
 {
 	if (strcmp(msg, "FAST") == 0){
 		espeak_SetParameter(espeakRATE, 310, 0);
+		t2s.curRate = 310;
 	}
 	else if (strcmp(msg, "SLOW") == 0){
 		espeak_SetParameter(espeakRATE, espeakRATE_MINIMUM, 0);
+		t2s.curRate = espeakRATE_MINIMUM;
 	}
 	else if (strcmp(msg, "DEFAULT") == 0){
 		espeak_SetParameter(espeakRATE, t2s.defaultRate, 0);
+		t2s.curRate = t2s.defaultRate;
 	}
 	else if (strcmp(msg, "INCRATE") == 0){
-		espeak_SetParameter(espeakRATE, 40, 1);
+		t2s.curRate += 20;
+		if (t2s.curRate > 450)
+			t2s.curRate = 450;
+
+		espeak_SetParameter(espeakRATE, t2s.curRate, 0);
+		send_rate();
 	}
 	else if (strcmp(msg, "DECRATE") == 0){
-		espeak_SetParameter(espeakRATE, -40, 1);
+		t2s.curRate += 20;
+		if (t2s.curRate < espeakRATE_MINIMUM)
+			t2s.curRate = espeakRATE_MINIMUM;
+
+		espeak_SetParameter(espeakRATE, t2s.curRate, 0);
+		send_rate();
 	}
 	else if (strcmp(msg, "PITCHUP") == 0){
-		espeak_SetParameter(espeakPUNCTUATION, 10, 1);
+		espeak_SetParameter(espeakPITCH, 10, 1);
 	}
 	else if (strcmp(msg, "PITCHDOWN") == 0){
-		espeak_SetParameter(espeakPUNCTUATION, -10, 1);
+		espeak_SetParameter(espeakPITCH, -10, 1);
 	}
 	else if (strcmp(msg, "RAW") == 0){
 		t2s.flags = espeakCHARS_UTF8;
@@ -468,9 +491,10 @@ int decode_t2s(struct arcan_shmif_cont* cont, struct arg_arr* args)
 				if (!ev.io.input.translated.active)
 					continue;
 
-				if (!ev.io.input.translated.utf8[0]){
+				if (!ev.io.input.translated.utf8[0])
+					speak_sym(ev.io.input.translated.keysym, ev.io.input.translated.modifiers);
+				else
 					espeak_Key((char*)ev.io.input.translated.utf8);
-				}
 			}
 			else if (ev.io.datatype == EVENT_IDATATYPE_DIGITAL){
 				apply_label(ev.io.label);
