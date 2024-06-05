@@ -32,7 +32,6 @@ static void send_rate(bool inc)
 	int rate = espeak_GetParameter(espeakRATE, 1);
 	char buf[24];
 	size_t nw = snprintf(buf, 24, "%srate: %d", inc? "inc" : "dec", rate);
-	espeak_Cancel();
 	espeak_Synth(buf, nw, 0, POS_WORD, 0, t2s.flags | espeakENDPAUSE, NULL, NULL);
 }
 
