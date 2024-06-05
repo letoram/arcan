@@ -1476,14 +1476,20 @@ arcan_errc arcan_frameserver_audioframe_direct(void* aobj,
 			i = src->abuf_cnt-1;
 	} while (i != ind && ((1<<i)&amask) > 0);
 
-	arcan_audio_buffer(aobj, buffer,
-		src->abufs[prev], src->shm.ptr->abufused[prev],
-		src->desc.channels, src->desc.samplerate, tag
-	);
+	if (!src->audio_flush_pending){
+		arcan_audio_buffer(aobj, buffer,
+			src->abufs[prev], src->shm.ptr->abufused[prev],
+			src->desc.channels, src->desc.samplerate, tag
+		);
 
-	atomic_store(&src->shm.ptr->abufused[prev], 0);
-	int last = atomic_fetch_and_explicit(&src->shm.ptr->apending,
-		~(1 << prev), memory_order_release);
+		atomic_store(&src->shm.ptr->abufused[prev], 0);
+		int last = atomic_fetch_and_explicit(&src->shm.ptr->apending,
+				~(1 << prev), memory_order_release);
+	}
+	else {
+		atomic_store(&src->shm.ptr->apending, 0);
+		src->audio_flush_pending = false;
+	}
 
 /* check for cont and > 1, wait for signal.. else release */
 	if (!cont){
@@ -1632,6 +1638,7 @@ arcan_errc arcan_frameserver_flush(arcan_frameserver* fsrv)
 	if (!fsrv)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
+	fsrv->audio_flush_pending = true;
 	arcan_audio_rebuild(fsrv->aid);
 
 	return ARCAN_OK;

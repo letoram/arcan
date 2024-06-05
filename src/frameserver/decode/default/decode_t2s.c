@@ -17,12 +17,14 @@ static struct t2s {
 	size_t msgofs;
 	int defaultRate;
 	int curRate;
+	bool cancel;
 } t2s = {
 	.flags = espeakCHARS_UTF8,
 	.defaultRate = espeakRATE_NORMAL,
 	.curRate = espeakRATE_NORMAL
 };
 
+static bool flush_event(arcan_event ev);
 static volatile bool in_playback = true;
 
 static void send_rate(bool inc)
@@ -143,10 +145,22 @@ static int on_sound(short* buf, int ns, espeak_EVENT* ev)
 	struct arcan_shmif_cont* C = t2s.cont;
 
 	for (size_t i = 0; i < ns; i++){
-/* first flush if we are full */
+/* first flush if we are full, but process events as well as we might have
+ * received a RESET that should take priority, uncertain what eSpeak thinks
+ * of us calling synth while inside the callback, possible that we need to
+ * queue MESSAGE events */
 		if (C->abufpos >= C->abufcount){
+			arcan_event ev;
+			while (arcan_shmif_poll(t2s.cont, &ev) > 0){
+				if (!flush_event(ev)){
+					C->abufpos = 0;
+					return 1;
+				}
+			}
+
 			arcan_shmif_signal(C, SHMIF_SIGAUD);
 		}
+
 		switch (t2s.fmt){
 		case PACK_MONO:
 			C->audp[C->abufpos++] = SHMIF_AINT16(buf[i]);
@@ -163,6 +177,9 @@ static int on_sound(short* buf, int ns, espeak_EVENT* ev)
 		}
 		in_playback = true;
 	}
+
+	if (C->abufpos)
+		arcan_shmif_signal(C, SHMIF_SIGAUD);
 
 	return 0;
 }
@@ -485,46 +502,59 @@ int decode_t2s(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	}
 
 	while (arcan_shmif_wait(cont, &ev)){
+		flush_event(ev);
 
+/* this can happen with MESSAGE -> MESSAGE -> RESET (inside callback) as we
+ * are not allowed to call Cancel from within the callback */
+		if (t2s.cancel){
+			espeak_Cancel();
+			t2s.cancel = false;
+		}
+	}
+	return EXIT_SUCCESS;
+}
+
+static bool flush_event(arcan_event ev)
+{
 /* mainly here as a debugging facility as it is only the individual utf8-
  * characters that gets spoken, so anything higher level is better sent as
  * simple messages */
-		if (ev.category == EVENT_IO){
-			if (ev.io.datatype == EVENT_IDATATYPE_TRANSLATED){
-				if (!ev.io.input.translated.active)
-					continue;
+	if (ev.category == EVENT_IO){
+		if (ev.io.datatype == EVENT_IDATATYPE_TRANSLATED){
+			if (!ev.io.input.translated.active)
+				return true;
 
-				if (!ev.io.input.translated.utf8[0])
-					speak_sym(ev.io.input.translated.keysym, ev.io.input.translated.modifiers);
-				else
-					espeak_Key((char*)ev.io.input.translated.utf8);
-			}
-			else if (ev.io.datatype == EVENT_IDATATYPE_DIGITAL){
-				apply_label(ev.io.label);
-			}
+			if (!ev.io.input.translated.utf8[0])
+				speak_sym(ev.io.input.translated.keysym, ev.io.input.translated.modifiers);
+			else
+				espeak_Key((char*)ev.io.input.translated.utf8);
 		}
-		else if (ev.category == EVENT_TARGET){
-			switch (ev.tgt.kind){
+		else if (ev.io.datatype == EVENT_IDATATYPE_DIGITAL){
+			apply_label(ev.io.label);
+		}
+	}
+	else if (ev.category == EVENT_TARGET){
+		switch (ev.tgt.kind){
 /* the UTF-8 validation should be stronger here, which can just be lifted
  * from the way it is done in arcan_tui */
-			case TARGET_COMMAND_MESSAGE:{
-				merge_message(&ev.tgt);
-			}
-			case TARGET_COMMAND_RESET:{
-				arcan_shmif_enqueue(cont,
-					&(arcan_event){
-					.category = EVENT_EXTERNAL,
-					.ext.kind = ARCAN_EVENT(FLUSHAUD)}
-				);
-				espeak_Cancel();
-			}
-			break;
-			default:
-			break;
-			}
+		case TARGET_COMMAND_MESSAGE:
+			merge_message(&ev.tgt);
+		break;
+/* server side should've done this by now but also trigger one manually */
+		case TARGET_COMMAND_RESET:{
+			LOG("reset:pending=%zu\n", t2s.cont->abufpos);
+			arcan_shmif_enqueue(t2s.cont,
+				&(arcan_event){
+				.category = EVENT_EXTERNAL,
+				.ext.kind = ARCAN_EVENT(FLUSHAUD)}
+			);
+			t2s.cancel = true;
+			return false;
 		}
-		else
-			;
+		break;
+		default:
+		break;
+		}
 	}
-	return EXIT_SUCCESS;
+	return true;
 }

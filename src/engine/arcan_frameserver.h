@@ -164,6 +164,7 @@ struct arcan_frameserver {
 /* use as a detection for _free during critical sections */
 	bool fused;
 	bool fuse_blown;
+	bool audio_flush_pending;
 
 /* special transfer state flags */
 	struct {
