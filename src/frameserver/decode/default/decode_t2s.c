@@ -523,7 +523,7 @@ static bool flush_event(arcan_event ev)
 			if (!ev.io.input.translated.active)
 				return true;
 
-			if (!ev.io.input.translated.utf8[0])
+			if (!ev.io.input.translated.utf8[0] || ev.io.input.translated.utf8[0] == 0x08)
 				speak_sym(ev.io.input.translated.keysym, ev.io.input.translated.modifiers);
 			else
 				espeak_Key((char*)ev.io.input.translated.utf8);
@@ -539,14 +539,15 @@ static bool flush_event(arcan_event ev)
 		case TARGET_COMMAND_MESSAGE:
 			merge_message(&ev.tgt);
 		break;
-/* server side should've done this by now but also trigger one manually */
 		case TARGET_COMMAND_RESET:{
 			LOG("reset:pending=%zu\n", t2s.cont->abufpos);
+	/*
 			arcan_shmif_enqueue(t2s.cont,
 				&(arcan_event){
 				.category = EVENT_EXTERNAL,
 				.ext.kind = ARCAN_EVENT(FLUSHAUD)}
 			);
+	*/
 			t2s.cancel = true;
 			return false;
 		}

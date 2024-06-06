@@ -1831,10 +1831,12 @@ static int reqwnd(lua_State* L)
 		tui_type = TUI_WND_DOCKICON;
 	else if (strcmp(type, "handover") == 0)
 		tui_type = TUI_WND_HANDOVER;
+	else if (strcmp(type, "accessibility") == 0)
+		tui_type = TUI_WND_ACCESSIBILITY;
 	else if (strcmp(type, "tui") == 0){}
 	else
 		luaL_error(L,
-			"new_window(>type<, ...) unsupported type (popup, handover, dock)");
+			"new_window(>type<, ...) unsupported type (popup, handover, dock, tui, accessibility)");
 
 	if (ib->pending_mask == 255){
 		lua_pushboolean(L, false);
