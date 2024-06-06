@@ -48,6 +48,32 @@
 	}
 #endif
 
+/* when building static shmif-server for libarcan-shmif-a11y pulling in these
+ * symbols would cause a collision for main arcan, since it is only used for
+ * the one case, replace with regular malloc/bzero */
+#ifdef PLATFORM_FRAMESERVER_NOAMEM
+static void* aalloc(size_t sz,
+	enum arcan_memtypes type,
+	enum arcan_memhint hint,
+	enum arcan_memalign align)
+{
+	void* res = malloc(sz);
+	if (!res)
+		return NULL;
+
+	memset(res, '\0', sz);
+	return res;
+}
+
+static void afree(void* p)
+{
+	free(p);
+}
+#define arcan_alloc_mem aalloc
+#define arcan_mem_free afree
+#else
+#endif
+
 static size_t default_abuf_sz = 512;
 static size_t default_disp_lim = 8;
 
@@ -1414,6 +1440,7 @@ int platform_fsrv_resynch(struct arcan_frameserver* s)
 	s->abuf_cnt = abufc;
 
 /* authenticate if needed */
+#ifdef PLATFORM_VIDEO_DRMAUTH
 	if (s->desc.pending_hints & SHMIF_RHINT_AUTH_TOK){
 		unsigned token = atomic_load(&shmpage->vpts);
 		s->desc.pending_hints &= ~SHMIF_RHINT_AUTH_TOK;
@@ -1423,6 +1450,7 @@ int platform_fsrv_resynch(struct arcan_frameserver* s)
 		if (!s->flags.gpu_auth || !platform_video_auth(0, token))
 			goto fail;
 	}
+#endif
 
 /* Still incomplete for TPACK etc. as w/h needs to be determined based on
  * the active cell dimensions and not of the pixel dimensions */

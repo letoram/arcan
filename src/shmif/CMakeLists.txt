@@ -132,7 +132,7 @@ set(SHMIF_SERVER_SOURCES
 	${ASD}/platform/posix/frameserver.c
 	${ASD}/shmif/arcan_shmif_control.c
 	${ASD}/platform/posix/fsrv_guard.c
-	${ASD}/platform/posix/mem.c
+	#	${ASD}/platform/posix/mem.c
 	${ASD}/shmif/arcan_shmif_evpack.c
 	${ASD}/shmif/platform/exec.c
 )
@@ -167,6 +167,7 @@ if (NOT SHMIF_DISABLE_DEBUGIF)
 endif()
 
 add_library(arcan_shmif_int STATIC ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
+add_library(arcan_shmif_server_int STATIC ${SHMIF_SERVER_SOURCES})
 add_library(arcan_shmif SHARED ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif_ext SHARED ${SHMIF_EXT_SOURCES})
 add_library(arcan_shmif_intext SHARED ${SHMIF_EXT_SOURCES})
@@ -208,8 +209,8 @@ set_target_properties(arcan_tui PROPERTIES VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINO
 target_compile_definitions(arcan_tui PRIVATE ${TUI_DEFINITIONS})
 target_include_directories(arcan_tui PRIVATE ${TUI_INCLUDE_DIRS})
 
-target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
-target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
+target_link_libraries(arcan_shmif PRIVATE ${STDLIB} arcan_shmif_server_int)
+target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB} arcan_shmif_server_int)
 target_link_libraries(arcan_shmif_ext PRIVATE ${STDLIB} ${VIDEO_LIBRARIES}
 	${AGP_LIBRARIES} ${HEADLESS_LIBRARIES} arcan_shmif)
 target_link_libraries(arcan_shmif_intext PRIVATE ${STDLIB} ${AGP_LIBRARIES}
@@ -219,6 +220,9 @@ target_link_libraries(arcan_shmif_server PRIVATE ${STDLIB} arcan_shmif_ext)
 target_include_directories(arcan_shmif_ext PRIVATE ${INCLUDE_DIRS})
 target_include_directories(arcan_shmif_intext PRIVATE ${INCLUDE_DIRS})
 target_include_directories(arcan_shmif_server PRIVATE ${INCLUDE_DIRS})
+target_include_directories(arcan_shmif_server_int PRIVATE ${INCLUDE_DIRS} ${ASD}/shmif)
+target_compile_definitions(arcan_shmif_server_int PRIVATE
+	SHMIFSRV_EXTERNAL_CLOCK PLATFORM_FRAMESERVER_NOAMEM)
 
 # note that we enable fpic for the static here as some
 # subdirectores need to pull it in as part of building a shared library

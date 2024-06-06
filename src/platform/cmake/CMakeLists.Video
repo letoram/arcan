@@ -70,7 +70,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 				${PLATFORM_ROOT}/stub/libbacklight.c)
 	endif()
 	set(LWA_PLATFORM_STR "egl-dri-rnode")
-	list(APPEND PLATFORM_DEFINITIONS ARCAN_EGL_DRI)
+	list(APPEND PLATFORM_DEFINITIONS ARCAN_EGL_DRI PLATFORM_VIDEO_DRMAUTH)
 #
 # only option on OSX/Windows currently, would also work for
 # drawing to Wayland compositors (though the list of dependencies
