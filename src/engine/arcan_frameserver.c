@@ -24,6 +24,7 @@
 #include "arcan_general.h"
 #include "arcan_shmif.h"
 #include "arcan_shmif_sub.h"
+#include "arcan_tui.h"
 #include "arcan_event.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
@@ -313,6 +314,23 @@ static bool push_buffer(arcan_frameserver* src,
 				(src->desc.hints & SHMIF_RHINT_TPACK)
 		};
 
+/* build a tui context for unpacking our store so that we then can use regular
+ * tui calls to read the logical values inside _lua.c and for simple text
+ * surfaces */
+		if (src->desc.hints & SHMIF_RHINT_TPACK){
+			if (!store->vinf.text.tpack.tui){
+				store->vinf.text.tpack.tui =
+					arcan_tui_setup(NULL, NULL,
+						&(struct tui_cbcfg){0}, sizeof(struct tui_cbcfg));
+			}
+
+			arcan_tui_wndhint(store->vinf.text.tpack.tui, NULL,
+				(struct tui_constraints){
+					.max_rows = src->desc.height / src->desc.text.cellh,
+					.max_cols = src->desc.width / src->desc.text.cellw
+				});
+	}
+
 /* Manually enabled mode where the WM side wants access to the resized buffer
  * but also wants to keep the client locked and waiting. */
 		if (src->flags.rz_ack){
@@ -363,6 +381,12 @@ static bool push_buffer(arcan_frameserver* src,
  * contents can be invalidated with any resize/font-size/font change. */
 		struct tui_raster_context* raster =
 			arcan_renderfun_fontraster(src->desc.text.group);
+
+		size_t buf_sz =
+			src->desc.width * src->desc.height * sizeof(shmif_pixel);
+
+		arcan_tui_tunpack(store->vinf.text.tpack.tui,
+			(uint8_t*) buf, buf_sz, 0, 0, src->desc.cols, src->desc.rows);
 
 /* This is the next step to change, of course we should merge the buffers into
  * a tpack_vstore and then use normal txcos etc. to pick our visible set, and a

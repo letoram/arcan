@@ -457,11 +457,6 @@ void arcan_tui_wndhint(struct tui_context* C,
 			viewport.ext.viewport.embedded = cons.embed;
 			viewport.ext.viewport.parent = C->viewport_proxy;
 			viewport.ext.viewport.order = -1;
-			printf("embed viewport: %zu, %zu, %zu, %zu\n",
-					viewport.ext.viewport.x,
-					viewport.ext.viewport.y,
-					viewport.ext.viewport.w,
-					viewport.ext.viewport.h);
 
 			if (par->acon.addr)
 				arcan_shmif_enqueue(&par->acon, &viewport);

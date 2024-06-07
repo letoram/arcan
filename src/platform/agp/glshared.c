@@ -1758,8 +1758,8 @@ void agp_drop_vstore(struct agp_vstore* s)
 #ifndef HEADLESS_NOARCAN
 	else if (s->vinf.text.kind == STORAGE_TPACK){
 		arcan_mem_free(s->vinf.text.tpack.buf);
-		if (s->vinf.text.tpack.tui_backing){
-			arcan_tui_destroy(s->vinf.text.tpack.tui_backing, NULL);
+		if (s->vinf.text.tpack.tui){
+			arcan_tui_destroy(s->vinf.text.tpack.tui, NULL);
 		}
 	}
 #endif

@@ -28,10 +28,6 @@ static void resize_cellbuffer(struct tui_context* tui)
 
 	memset(tui->base, '\0', buffer_sz);
 
-	if (rbuf_sz > tui->acon.shmsize){
-		abort();
-	}
-
 	if (tui->acon.vidb)
 		memset(tui->acon.vidb, '\0', rbuf_sz);
 

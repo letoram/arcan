@@ -278,10 +278,9 @@ struct agp_vstore {
 				char* source;
 				char** source_arr;
 				struct {
-					size_t rows, cols;
 					size_t buf_sz; /* the resolved / unpacked TPACK screen */
 					uint8_t* buf;
-					void* tui_backing; /* optional tui context that can be unpacked to buf */
+					void* tui; /* optional tui context that can be unpacked to buf */
 				} tpack;
 			};
 
