@@ -697,8 +697,10 @@ static bool erase_at_cursor(struct tui_context* T, struct readline_meta* M)
 	if (M->cursor == M->work_ofs){
 		memset(&M->work[c_cursor], '\0', len);
 	}
-	else
+	else{
 		memmove(&M->work[c_cursor], &M->work[M->cursor], M->work_ofs - M->cursor);
+		memset(&M->work[M->work_ofs - len], '\0', len);
+	}
 
 	M->cursor = c_cursor;
 	M->work_len--;
