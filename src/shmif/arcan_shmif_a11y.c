@@ -2,6 +2,7 @@
 #include "arcan_shmif_interop.h"
 #include "shmif_defimpl.h"
 #include "shmif_privint.h"
+#include "arcan_shmif_server.h"
 #include <dlfcn.h>
 
 #define ARCAN_TUI_DYNAMIC
@@ -9,14 +10,97 @@
 
 struct a11y_meta {
 	struct tui_context* tui;
+	struct shmifsrv_client* oracle;
+	size_t w, h;
+	char* last_message;
+	bool oracle_fail;
 };
+
+static void synch_oracle(struct a11y_meta* M, struct arcan_shmif_cont* P)
+{
+	if (M->oracle_fail)
+		return;
+
+/* if w/h differ, respawn the oracle.
+ * MISSING: send subsegment (encode needs to handle that) and track */
+
+/* MISSING: should provide GEOHINT to direct language used */
+	if (!M->oracle){
+		char envarg[1024] = "ARCAN_ARG=proto=ocr";
+		char* envv[] = {envarg, NULL};
+
+		struct shmifsrv_envp env = {
+			.path = "/usr/bin/afsrv_encode",
+			.envv = envv,
+			.detach = 2 | 4 | 8,
+			.init_w = P->w,
+			.init_h = P->h
+		};
+
+		int clsock = -1;
+		M->oracle = shmifsrv_spawn_client(env, &clsock, NULL, 0);
+		if (!M->oracle){
+			M->oracle_fail = true;
+			return;
+		}
+	}
+
+/* roughly needed for stepping the video:
+ *  if (shmifsrv_enter()){
+ *
+ *  copy from P->vidp into client->shm video
+ *  build dirty-region:
+ *
+ *  struct arcan_shmif_region reg;
+ *  atomic_store(&src->shm.ptr->vpts, arcan_timemillis());
+ *  atomic_store(&src->shm.ptr->dirty, reg);
+ *
+ * queue the stepframe event:
+ *
+ *		if (src->shm.ptr && !src->shm.ptr->vready){
+			arcan_event ev  = {
+				.tgt.kind = TARGET_COMMAND_STEPFRAME,
+				.category = EVENT_TARGET,
+			};
+
+ * release the locked process:
+    atomic_store(&src->shm.ptr->vready, 1);
+
+ * shmifsrv_leave()
+ */
+
+/* this is OUTPUT so VFRAME ready doesn't really help */
+	arcan_event ev;
+	int pv;
+	while ((pv = shmifsrv_poll(M->oracle) >= 0)){
+		while (shmifsrv_dequeue_events(M->oracle, &ev, 1) == 1){
+		}
+		if (pv == 1)
+			break;
+	}
+
+	if (pv == -1){
+		shmifsrv_free(M->oracle, 0);
+		M->oracle = NULL;
+		M->oracle_fail = true;
+	}
+}
 
 static void on_state(struct arcan_shmif_cont* p, int state)
 {
 	struct a11y_meta* M = p->priv->support_window_hook_data;
+
 	if (state == SUPPORT_EVENT_VSIGNAL){
+		if (p->hints & SHMIF_RHINT_TPACK)
+			return;
 /* this is where we'd forward the video buffer to an external oracle
- * and synch the output */
+ * and synch the output, do this as a mmap -> push_fd so that we don't
+ * need to respawn as that can be really expensive.
+ *
+ * we can also ignore this entirely for TUI segments as those are
+ * already covered through server side tunpacked buffers
+ */
+		synch_oracle(M, p);
 	}
 	else if (state == SUPPORT_EVENT_POLL){
 		arcan_tui_process(&M->tui, 1, NULL, 0, 0);
@@ -25,9 +109,49 @@ static void on_state(struct arcan_shmif_cont* p, int state)
 /* could forward last_words as well, but it's likely the outer-wm would
  * have this as part of a notification / window handling system that is
  * accessible already so we don't need to do that here */
+		if (M->oracle){
+			shmifsrv_free(M->oracle, SHMIFSRV_FREE_NO_DMS);
+		}
+
 		p->priv->support_window_hook = NULL;
 		arcan_tui_destroy(M->tui, NULL);
 		free(M);
+	}
+}
+
+static void redraw(struct tui_context* T, struct a11y_meta* a11y)
+{
+	arcan_tui_move_to(T, 0, 0);
+
+	if (a11y->oracle_fail){
+		arcan_tui_printf(T, NULL, "image interpreter failed");
+	}
+	else
+		arcan_tui_printf(T, NULL, "no accesibility information available");
+
+	arcan_tui_refresh(T);
+}
+
+static void resized(struct tui_context* T,
+		size_t neww, size_t newh, size_t cols, size_t rows, void* tag)
+{
+	struct arcan_shmif_cont* p = tag;
+	struct a11y_meta* a11y = p->priv->support_window_hook_data;
+
+	redraw(T, a11y);
+}
+
+static void execstate(struct tui_context* T, int state, void* tag)
+{
+	struct arcan_shmif_cont* p = tag;
+	struct a11y_meta* a11y = p->priv->support_window_hook_data;
+
+	if (state == 2){
+		if (a11y->oracle){
+			shmifsrv_free(a11y->oracle, 0);
+			a11y->oracle = NULL;
+			a11y->oracle_fail = true;
+		}
 	}
 }
 
@@ -69,12 +193,17 @@ bool arcan_shmif_a11yint_spawn(
  * hook ourselves there, retrieve the tree and navigate it through this
  * segment.
  */
-
 	struct a11y_meta* a11y = malloc(sizeof(struct a11y_meta));
-	*a11y = (struct a11y_meta){
-		.tui = arcan_tui_setup(c,
-			NULL, &(struct tui_cbcfg){.tag = p}, sizeof(struct tui_cbcfg))
-	};
+	*a11y = (struct a11y_meta){0};
+	p->priv->support_window_hook = on_state;
+	p->priv->support_window_hook_data = a11y;
+
+	a11y->tui = arcan_tui_setup(c,
+			NULL, &(struct tui_cbcfg){
+			.resized = resized,
+			.exec_state = execstate,
+			.tag = p
+		}, sizeof(struct tui_cbcfg));
 
 /* set some basic 'whatever' */
 	arcan_tui_wndhint(a11y->tui, NULL,
@@ -82,11 +211,5 @@ bool arcan_shmif_a11yint_spawn(
 			.min_rows = 2, .max_rows = 20,
 			.min_cols = 64, .max_cols = 240}
 	);
-	arcan_tui_printf(a11y->tui, NULL, "no accesibility information available");
-	arcan_tui_refresh(a11y->tui);
-
-	p->priv->support_window_hook = on_state;
-	p->priv->support_window_hook_data = a11y;
-
 	return true;
 }

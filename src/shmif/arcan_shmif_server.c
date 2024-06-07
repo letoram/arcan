@@ -24,14 +24,6 @@ typedef int shm_handle;
 #include "platform/shmif_platform.h"
 
 /*
- * temporary workaround, this symbol should really have its visiblity lowered.
- */
-bool platform_video_auth(int cardn, unsigned token)
-{
-	return false;
-}
-
-/*
  * wrap the normal structure as we need to pass it to the platform frameserver
  * functions, but may need to have some tracking of our own.
  */
@@ -638,12 +630,14 @@ bool shmifsrv_tick(struct shmifsrv_client* cl)
  */
 	return true;
 }
-
+#ifndef SHMIFSRV_EXTERNAL_CLOCK
 static _Thread_local int64_t timebase;
 static _Thread_local int64_t c_ticks;
+#endif
 
 int shmifsrv_monotonic_tick(int* left)
 {
+#ifndef SHMIFSRV_EXTERNAL_CLOCK
 	int64_t now = arcan_timemillis();
 	int n_ticks = 0;
 
@@ -668,14 +662,18 @@ int shmifsrv_monotonic_tick(int* left)
 
 	if (left)
 		*left = ARCAN_TIMER_TICK - delta;
-
 	return n_ticks;
+#else
+	return 0;
+#endif
 }
 
 void shmifsrv_monotonic_rebase()
 {
+#ifndef SHMIFSRV_EXTERNAL_CLOCK
 	timebase = arcan_timemillis();
 	c_ticks = 0;
+#endif
 }
 
 #include "../frameserver/util/utf8.c"
