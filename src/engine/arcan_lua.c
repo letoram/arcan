@@ -4531,28 +4531,10 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			MSGBUF_UTF8(ev->ext.message.data);
 			tbldynstr(ctx, "message", msgbuf, top);
 		break;
+/* DEPRECATED */
 		case EVENT_EXTERNAL_FRAMESTATUS:
-			tblstr(ctx, "kind", "framestatus", top);
-			tblnum(ctx, "frame", ev->ext.framestatus.framenumber, top);
-			tblnum(ctx, "pts", ev->ext.framestatus.pts, top);
-			tblnum(ctx, "acquired", ev->ext.framestatus.acquired, top);
-			tblnum(ctx, "fhint", ev->ext.framestatus.fhint, top);
-			if (fsrv->desc.aext.hdr){
-				struct drm_hdr_meta m = vobj->vstore->hdr.drm;
-				tblnum(ctx, "fll", m.fll, top);
-				tblnum(ctx, "cll", m.cll, top);
-				tblnum(ctx, "master_min_nits", m.master_min, top);
-				tblnum(ctx, "master_max_nits", m.master_max, top);
-				tblnum(ctx, "whitepoint_x", m.wpx, top);
-				tblnum(ctx, "whitepoint_y", m.wpx, top);
-				tblnum(ctx, "red_x", m.wpx, top);
-				tblnum(ctx, "red_y", m.wpx, top);
-				tblnum(ctx, "green_x", m.wpx, top);
-				tblnum(ctx, "green_y", m.wpx, top);
-				tblnum(ctx, "blue_x", m.wpx, top);
-				tblnum(ctx, "blue_y", m.wpx, top);
-				tbldynstr(ctx, "eotf", eotfstr(m.eotf), top);
-			}
+			lua_settop(ctx, reset);
+			return true;
 		break;
 		case EVENT_EXTERNAL_STREAMINFO:
 			FLTPUSH(ev->ext.streaminf.langid, flt_Alpha, '?');
@@ -4815,6 +4797,44 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx, "y", ev->fsrv.yofs, top);
 			tblnum(ctx, "width", ev->fsrv.width, top);
 			tblnum(ctx, "height", ev->fsrv.height, top);
+
+			if (fsrv->desc.region_valid){
+
+				if (fsrv->desc.hints & SHMIF_RHINT_TPACK){
+					size_t dy = fsrv->desc.region.y2 - fsrv->desc.region.y1;
+					size_t dx = fsrv->desc.region.x2 - fsrv->desc.region.x1;
+					tblnum(ctx, "x", fsrv->desc.region.x1 / fsrv->desc.text.cellw, top);
+					tblnum(ctx, "y", fsrv->desc.region.y1 / fsrv->desc.text.cellh, top);
+					tblnum(ctx, "rows", dy / fsrv->desc.text.cellh, top);
+					tblnum(ctx, "cols", dx / fsrv->desc.text.cellw, top);
+				}
+				else {
+					tblnum(ctx, "x1", fsrv->desc.region.x1, top);
+					tblnum(ctx, "y1", fsrv->desc.region.y1, top);
+					tblnum(ctx, "x2", fsrv->desc.region.x2, top);
+					tblnum(ctx, "y2", fsrv->desc.region.y2, top);
+				}
+			}
+
+			if (fsrv->desc.aext.hdr){
+				struct drm_hdr_meta m = vobj->vstore->hdr.drm;
+				tblnum(ctx, "fll", m.fll, top);
+				tblnum(ctx, "cll", m.cll, top);
+				tblnum(ctx, "master_min_nits", m.master_min, top);
+				tblnum(ctx, "master_max_nits", m.master_max, top);
+				tblnum(ctx, "whitepoint_x", m.wpx, top);
+				tblnum(ctx, "whitepoint_y", m.wpy, top);
+				tblnum(ctx, "red_x", m.rx, top);
+				tblnum(ctx, "red_y", m.ry, top);
+				tblnum(ctx, "green_x", m.gx, top);
+				tblnum(ctx, "green_y", m.gy, top);
+				tblnum(ctx, "blue_x", m.bx, top);
+				tblnum(ctx, "blue_y", m.by, top);
+				tbldynstr(ctx, "eotf", eotfstr(m.eotf), top);
+			}
+
+/* rest of the frame data is extracted from the fsrv object itself */
+
 		break;
 		case EVENT_FSRV_IONESTED:
 			tblstr(ctx, "kind", "input", top);
@@ -9401,6 +9421,7 @@ struct rn_userdata {
 	av_pixel* bufptr;
 	int width, height;
 	size_t nelem;
+	struct tui_context* tui;
 
 	unsigned bins[1024];
 	float nf[4];
@@ -9575,6 +9596,89 @@ static int procimage_histo(lua_State* ctx)
 	agp_update_vstore(vobj->vstore, true);
 
 	LUA_ETRACE("procimage:histogram_impose", NULL, 0);
+}
+
+static void add_attr_tbl(lua_State* L, struct tui_screen_attr attr)
+{
+	lua_newtable(L);
+
+/* key-integer value */
+#define SET_KIV(K, V) do { lua_pushstring(L, K); \
+	lua_pushnumber(L, V); lua_rawset(L, -3); } while (0)
+
+#define SET_BIV(K, V) do { lua_pushstring(L, K); \
+	lua_pushboolean(L, V); lua_rawset(L, -3); } while (0)
+
+	if (attr.aflags & TUI_ATTR_COLOR_INDEXED){
+		SET_KIV("fc", attr.fc[0]);
+		SET_KIV("bc", attr.bc[0]);
+	}
+	else {
+		SET_KIV("fr", attr.fr);
+		SET_KIV("fg", attr.fg);
+		SET_KIV("fb", attr.fb);
+		SET_KIV("br", attr.br);
+		SET_KIV("bg", attr.bg);
+		SET_KIV("bb", attr.bb);
+	}
+
+	SET_BIV("bold", attr.aflags & TUI_ATTR_BOLD);
+	SET_BIV("italic", attr.aflags & TUI_ATTR_ITALIC);
+	SET_BIV("inverse", attr.aflags & TUI_ATTR_INVERSE);
+	SET_BIV("underline", attr.aflags & TUI_ATTR_UNDERLINE);
+	SET_BIV("underline_alt", attr.aflags & TUI_ATTR_UNDERLINE_ALT);
+	SET_BIV("protect", attr.aflags & TUI_ATTR_PROTECT);
+	SET_BIV("blink", attr.aflags & TUI_ATTR_BLINK);
+	SET_BIV("strikethrough", attr.aflags & TUI_ATTR_STRIKETHROUGH);
+	SET_BIV("break", attr.aflags & TUI_ATTR_SHAPE_BREAK);
+	SET_BIV("border_left", attr.aflags & TUI_ATTR_BORDER_LEFT);
+	SET_BIV("border_right", attr.aflags & TUI_ATTR_BORDER_RIGHT);
+	SET_BIV("border_down", attr.aflags & TUI_ATTR_BORDER_DOWN);
+	SET_BIV("border_top", attr.aflags & TUI_ATTR_BORDER_TOP);
+	SET_KIV("id", attr.custom_id);
+
+#undef SET_KIV
+#undef SET_BIV
+}
+
+static int procimage_cursor(lua_State* L)
+{
+	LUA_TRACE("procimage:cursor");
+	struct rn_userdata* ud = luaL_checkudata(L, 1, "calcImage");
+	if (ud->valid == false)
+		arcan_fatal("calcImage:cursor, calctarget object called out of scope\n");
+
+	if (!ud->tui)
+		arcan_fatal("calcImage:cursor, calctarget object lacks text context\n");
+
+	size_t cx, cy;
+	arcan_tui_cursorpos(ud->tui, &cx, &cy);
+
+	lua_pushnumber(L, cx);
+	lua_pushnumber(L, cy);
+
+	return 2;
+}
+
+static int procimage_read(lua_State* L)
+{
+	LUA_TRACE("procimage:read");
+	struct rn_userdata* ud = luaL_checkudata(L, 1, "calcImage");
+	if (ud->valid == false)
+		arcan_fatal("calcImage:read, calctarget object called out of scope\n");
+
+	if (!ud->tui)
+		arcan_fatal("calcImage:read, calctarget object lacks text context\n");
+
+	int col = luaL_checknumber(L, 2);
+	int row = luaL_checknumber(L, 3);
+
+	struct tui_cell cell = arcan_tui_getxy(ud->tui, col, row, true);
+	char str[4];
+	arcan_tui_ucs4utf8(cell.ch, str);
+	lua_pushlstring(L, str, 4);
+	add_attr_tbl(L, cell.attr);
+	return 2;
 }
 
 static int procimage_get(lua_State* ctx)
@@ -10010,14 +10114,24 @@ static int imagestorage(lua_State* ctx)
 	ud->height = vobj->vstore->h;
 	ud->nelem = ud->width * ud->height;
 	ud->valid = true;
+	ud->tui = vobj->vstore->vinf.text.tpack.tui;
 	ud->packing = HIST_DIRTY;
 	luaL_getmetatable(ctx, "calcImage");
 	lua_setmetatable(ctx, -2);
 
 	lua_pushnumber(ctx, ud->width);
 	lua_pushnumber(ctx, ud->height);
+	size_t narg = 3;
 
-	alt_call(ctx, CB_SOURCE_IMAGE, 0, 3, 0, "calctarget:callback");
+	if (vobj->vstore->vinf.text.tpack.tui){
+		size_t cols, rows;
+		arcan_tui_dimensions(vobj->vstore->vinf.text.tpack.tui, &rows, &cols);
+		lua_pushnumber(ctx, cols);
+		lua_pushnumber(ctx, rows);
+		narg += 2;
+	}
+
+	alt_call(ctx, CB_SOURCE_IMAGE, 0, narg, 0, "calctarget:callback");
 
 	lua_pushboolean(ctx, true);
 	LUA_ETRACE("image_access_storage", NULL, 1);
@@ -12502,6 +12616,10 @@ static const luaL_Reg netfuns[] = {
 	lua_setfield(ctx, -2, "__index");
 	lua_pushcfunction(ctx, procimage_get);
 	lua_setfield(ctx, -2, "get");
+	lua_pushcfunction(ctx, procimage_read);
+	lua_setfield(ctx, -2, "read");
+	lua_pushcfunction(ctx, procimage_cursor);
+	lua_setfield(ctx, -2, "cursor");
 	lua_pushcfunction(ctx, procimage_histo);
 	lua_setfield(ctx, -2, "histogram_impose");
 	lua_pushcfunction(ctx, procimage_lookup);

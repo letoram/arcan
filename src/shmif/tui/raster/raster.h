@@ -200,7 +200,7 @@ void tui_raster_get_cell_size(
  */
 #ifndef NO_ARCAN_AGP
 
-void tui_raster_renderagp(struct tui_raster_context* ctx,
+int tui_raster_renderagp(struct tui_raster_context* ctx,
 	struct agp_vstore* dst, uint8_t* buf, size_t buf_sz,
 	struct stream_meta* out);
 #endif

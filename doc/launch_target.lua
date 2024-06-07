@@ -58,7 +58,7 @@
 -- events are used to annotate the contents of a frame.
 --
 -- Possible statustbl.kind values: "preroll", "resized", "ident",
--- "coreopt", "message", "failure", "framestatus", "streaminfo",
+-- "coreopt", "message", "failure", "streaminfo" "frame",
 -- "streamstatus", "segment_request", "state_size",
 -- "viewport", "alert", "content_state", "registered", "clock", "cursor",
 -- "bchunkstate", "proto_update", "input_mask", "ramp_update"
@@ -82,12 +82,17 @@
 -- primarily for customized hacks or, on special subsegments such as titlebar
 -- or popup, to provide a textual representation of the contents.
 --
--- @tblent: "framestatus" {int:frame,int:pts,int:acquired,int:fhint} - timing
--- metadata about the last delivered frame from the client perspective.
---
 -- @tblent: "frame" (int:pts,int:number,int:x,int:y,int:width,int:height)
--- generated if the VERBOSE flags has been set on the vid. This is the
--- server side version of the "framestatus" event above.
+-- generated if the VERBOSE flags has been set on the vid. If there is dirty
+-- region information attached, the table will also contain
+-- (int:x,int:y,int:rows,int:cols) for a text-backed surface and
+-- (int:x1,int:y1,int:x2,int:y2) for a pixel backed surface containing the
+-- affected area.
+--
+-- If there is HDR metadata provided, the table will also contain (number:fll,
+-- number:cll,number:master_min_nits,number:master_max_nits,number:whitepoint_x,
+-- number:whitepoint_y,number:red_x,number:red_y, number:green_x,number:green_y,
+-- number:blue_x,number:blue_y,string:eotf).
 --
 -- @tblent: "terminated" {string:last_words} - the underlying process has
 -- died, no new data or events will be received.

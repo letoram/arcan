@@ -367,6 +367,10 @@ static int raster_tobuf(
 		*y2 = 0;
 		*x1 = max_w;
 		*x2 = 0;
+
+/* early out empty dframe */
+		if (!hdr.lines)
+			return -1;
 	}
 /* full-frame: pre-clear the pad region */
 	else {
@@ -531,18 +535,19 @@ void tui_raster_offset(
  * becomes easier as those won't need to be 'predicted'.
  */
 #ifndef NO_ARCAN_AGP
-void tui_raster_renderagp(struct tui_raster_context* ctx,
+int tui_raster_renderagp(struct tui_raster_context* ctx,
 	struct agp_vstore* dst, uint8_t* buf, size_t buf_sz,
 	struct stream_meta* out)
 {
 	if (!ctx || !dst || buf_sz < sizeof(struct tui_raster_header))
-		return;
+		return -1;
 
 	uint16_t x1, y1, x2, y2;
 
 	if (-1 == raster_tobuf(ctx, dst->vinf.text.raw, dst->w,
 		dst->w, dst->h, &x1, &y1, &x2, &y2, buf, buf_sz)){
 		*out = (struct stream_meta){0};
+		return -1;
 	}
 	else {
 		*out = (struct stream_meta){
@@ -551,6 +556,7 @@ void tui_raster_renderagp(struct tui_raster_context* ctx,
 			.dirty = true
 		};
 	}
+	return 0;
 }
 #endif
 

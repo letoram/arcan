@@ -255,11 +255,17 @@ void arcan_frameserver_close_bufferqueues(
 	}
 }
 
-static bool push_buffer(arcan_frameserver* src,
+/*
+ * -1 : fail
+ *  0 : ok, no-emit
+ *  1 : ok
+ */
+static int push_buffer(arcan_frameserver* src,
 	struct agp_vstore* store, struct arcan_shmif_region* dirty)
 {
 	struct stream_meta stream = {.buf = NULL};
 	bool explicit = src->flags.explicit;
+	int rv = 1;
 
 /* we know that vpending contains the latest region that was synched,
  * so the ~vready mask should be the bits that we want to keep. */
@@ -326,8 +332,8 @@ static bool push_buffer(arcan_frameserver* src,
 
 			arcan_tui_wndhint(store->vinf.text.tpack.tui, NULL,
 				(struct tui_constraints){
-					.max_rows = src->desc.height / src->desc.text.cellh,
-					.max_cols = src->desc.width / src->desc.text.cellw
+					.max_rows = src->desc.rows,
+					.max_cols = src->desc.cols
 				});
 	}
 
@@ -392,14 +398,27 @@ static bool push_buffer(arcan_frameserver* src,
  * a tpack_vstore and then use normal txcos etc. to pick our visible set, and a
  * MSDF text atlas to get drawing lists, removing the last 'big buffer'
  * requirement, as well as drawing the cursor separately. */
-		tui_raster_renderagp(raster, store, (uint8_t*) buf,
-			src->desc.width * src->desc.height * sizeof(shmif_pixel), &stream);
+		if (-1 == tui_raster_renderagp(raster, store, (uint8_t*) buf,
+			src->desc.width * src->desc.height * sizeof(shmif_pixel), &stream)){
+			rv = 0;
+			goto commit_mask;
+		}
+
+/* when dropping renderagp we'd also want to extract the dirty feedback */
+		src->desc.region = (struct arcan_shmif_region){
+			.x1 = stream.x1,
+			.y1 = stream.y1,
+			.x2 = stream.x1 + stream.w,
+			.y2 = stream.y1 + stream.h
+		};
+		src->desc.region_valid = true;
 
 /* Raster failed for some reason - tactics would be to send reset and after
  * n- fails kill it for not complying with format - something to finish when
  * we have the atlas bits in place, and have a DEBUG+dump buffer version */
 		if (!stream.buf){
 			arcan_warning("client-tpack() - couldn't raster buffer\n");
+			rv = 0;
 			goto commit_mask;
 		}
 
@@ -420,7 +439,8 @@ static bool push_buffer(arcan_frameserver* src,
 		stream = agp_stream_prepare(store, stream, STREAM_RAW_DIRECT);
 		agp_stream_commit(store, stream);
 
-/* Return feedback on kerning in px. Set the entire buffer regardless of delta
+/* This is where we should return feedback on kerning in px for picking to be
+ * possible on the client end. Set the entire buffer regardless of delta
  * since when we get an actual kerning table in the vstore - it will be cheaper
  * with an aligned (rows * cols) memcpy than to jump around and patch in bytes
  * on the lines that have changed and to have the client do the same thing. */
@@ -428,12 +448,19 @@ static bool push_buffer(arcan_frameserver* src,
 		if (!src->desc.height || !src->desc.text.cellh){
 			TRACE_MARK_EXIT("frameserver",
 				"buffer-tpack-raster", TRACE_SYS_WARN, src->vid, 0, "invalid tpack size");
+			rv = 0;
 			goto commit_mask;
 		}
 
-		size_t n_rows = src->desc.height / src->desc.text.cellh;
-		size_t n_cols = src->desc.width / src->desc.text.cellw;
+		size_t n_rows = src->desc.rows;
+		size_t n_cols = src->desc.cols;
 		size_t n_cells = n_rows * n_cols;
+
+/* fake these values as it means we haven't actually probed the font itself */
+		if (!src->desc.text.cellw){
+			src->desc.text.cellw = src->desc.width / src->desc.cols;
+			src->desc.text.cellh = src->desc.height / src->desc.rows;
+		}
 
 /* Size is guaranteed to be >= w * h * tui_cell_size + line_hdr * h + static header */
 		memset(buf, src->desc.text.cellw, n_cells);
@@ -511,7 +538,7 @@ static bool push_buffer(arcan_frameserver* src,
 commit_mask:
 	atomic_fetch_and(&src->shm.ptr->vpending, vmask);
 	TRACE_MARK_ONESHOT("frameserver", "buffer-release", TRACE_SYS_DEFAULT, src->vid, vmask, "release");
-	return true;
+	return rv;
 }
 
 enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD
@@ -851,10 +878,14 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
  * to be repeat until it succeeds - this mechanism could/should(?) also
  * be used with the vpts- below, simply defer until the deadline has
  * passed */
-		if (g_buffers_locked == 1 || tgt->flags.locked || !push_buffer(tgt,
-				dst_store, shmpage->hints & SHMIF_RHINT_SUBREGION ? &dirty : NULL)){
+		if (g_buffers_locked == 1 || tgt->flags.locked)
 			goto no_out;
-		}
+
+		int buffer_status = push_buffer(tgt,
+			dst_store, shmpage->hints & SHMIF_RHINT_SUBREGION ? &dirty : NULL);
+
+		if (-1 == buffer_status)
+			goto no_out;
 
 /* TIMING/PRESENT:
  *     for tighter latency management, here is where the estimated next synch
@@ -887,7 +918,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 		}
 
 /* for some connections, we want additional statistics */
-		if (tgt->desc.callback_framestate)
+		if (tgt->desc.callback_framestate && buffer_status)
 			emit_deliveredframe(tgt, shmpage->vpts, tgt->desc.framecount);
 		tgt->desc.framecount++;
 		TRACE_MARK_ONESHOT("frameserver", "frame", TRACE_SYS_DEFAULT, tgt->vid, tgt->desc.framecount, "");

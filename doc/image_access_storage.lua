@@ -1,11 +1,23 @@
 -- image_access_storage
 -- @short: Access the underlying backing store of a textured video object.
 -- @inargs: vid, callback(table, width, height)
+-- @inargs: vid, callback(table, width, height, cols, rows)
 -- @outargs: true or false
 -- @longdescr: This function permits limited, blocking, access to a backing
 -- store. The primary purpose is to provide quick access to trivial measurements
 -- without the overhead of setting up a calctarget and performing readbacks.
 -- The function returns false if the backing store was unavailable.
+--
+-- If the second callback form provides cols and rows the backing store has
+-- a text representation available. In that case there is an additional
+-- :read(x, y) = string, format_table function and a :cursor() = x, y for
+-- querying the cursor.
+--
+-- The format_table returned by read uncludes colors as "fr, fg, fb" and "br,
+-- bg, bb" as well as one or more of "bold", "italic", "inverse", "underline",
+-- "underline_alt", "protect", "blink", "strikethrough", "break",
+-- "border_left", "border_right", "border_down", "border_top", "id".
+--
 -- @note: methods and properties in *table* are described in define_calctarget.
 -- @note: The table provided in the callback is only valid during the scope of
 -- the callback, creating aliases outside this scope and trying to use any table
@@ -17,6 +29,8 @@
 -- @note: The backing store of a texture video object is not always available,
 -- particularly when the engine is running in conservative mode. Make sure that
 -- your appl can handle scenarios where the backing store cannot be read.
+-- @note: :read is only permitted on a tui backed store. Calling it on a regular
+-- one is a terminal state transition.
 -- @group: image
 -- @cfunction: imagestorage
 -- @related: define_calctarget
