@@ -2171,23 +2171,93 @@ static int textsurface(lua_State* L)
 {
 	LUA_TRACE("text_surface");
 
+/* in principle this could be used to create a surface larger than the
+ * surface cap but the rasterizer will fundamentally limit it, if that
+ * is an issue (say convert a full document into one text_surface) then
+ * add a way to pan / scroll which should be done anyhow to get smooth
+ * scrolling. */
 	size_t n_rows = luaL_checknumber(L, 1);
 	size_t n_cols = luaL_checknumber(L, 2);
+	int tblind = 3;
+	struct tui_context* T;
+	arcan_vobj_id vid;
 
-	struct tui_cbcfg cfg = {0};
-	struct tui_context* atui = arcan_tui_setup(NULL, NULL, &cfg, sizeof(cfg));
+/* ensure that we have a valid T<->vid to work with */
+	if (lua_type(L, 3) == LUA_TNUMBER){
+		arcan_vobject* vobj;
+		vid = luaL_checkvid(L, 3, &vobj);
 
+		lua_pushvid(L, vid);
+		T = vobj->vstore->vinf.text.tpack.tui;
+		if (vobj->feed.state.ptr){
+			arcan_fatal("text_surface(r, c, >vid<) is not a pure text_surface");
+		}
+		size_t crows, ccols;
+		arcan_tui_dimensions(T, &crows, &ccols);
+		if (crows != n_rows || ccols != n_cols){
+			arcan_tui_wndhint(T, NULL, (struct tui_constraints){
+					.max_rows = crows,
+					.max_cols = ccols
+			});
+		}
+		tblind++;
+	}
+	else {
+		arcan_vobject* vobj;
 
-/* information we need to gather:
- *
- * expected number of visible rows and columns
- *
- * build from tpack context
- *
- * acess vstore and set regular tui backing
- *
- * modify image_access store to do tui calls modifying the drawing
+/* build a basic fontgroup in order to get correct ptpx and later absorb fonthint */
+		int pt;
+		file_handle fd[4];
+		int hint;
+		arcan_video_fontdefaults(&fd[0], &pt, &hint);
+
+/* grab default group and current attachment ptpx, probe default font */
+		size_t cellw, cellh;
+		struct arcan_renderfun_fontgroup* group = arcan_renderfun_fontgroup(fd, 4);
+		vid = arcan_video_currentattachment();
+		vobj = arcan_video_getobject(vid);
+		struct rendertarget* tgt = arcan_vint_findrt(vobj);
+		arcan_renderfun_fontgroup_size(group, 0, tgt->hppcm, &cellw, &cellh);
+
+/* build matching vstore */
+		vid = arcan_video_rawobject(
+			NULL,
+			(img_cons){.w = cellw * n_cols, .h = cellh * n_rows, .bpp = 4},
+			cellw * n_cols, cellh * n_rows, 0
+		);
+		vobj = arcan_video_getobject(vid);
+		trace_allocation(L, "text_surface", vid);
+
+/* attach our new tui context */
+		T = arcan_tui_setup(NULL, NULL,
+			&(struct tui_cbcfg){0}, sizeof(struct tui_cbcfg));
+		arcan_tui_set_flags(T, TUI_HIDE_CURSOR);
+		arcan_tui_wndhint(T, NULL, (struct tui_constraints){
+			.max_rows = n_rows,
+			.max_cols = n_cols
+		});
+
+/* convert store to TPACK */
+		vobj->vstore->vinf.text.tpack.group = group;
+		vobj->vstore->vinf.text.tpack.tui = T;
+		vobj->vstore->vinf.text.kind = STORAGE_TPACK;
+
+		lua_pushvid(L, vid);
+	}
+
+	if (lua_type(L, tblind) != LUA_TTABLE){
+		arcan_fatal("text_surface(r, c, [vid], >table< argument expected");
+	}
+
+/* MISSING:
+ *  1. populate using table.
+ *  2. provide actual dimensions.
+ *  3. method to query row length and offsets.
  */
+
+/* make sure renderer/rasterer/... source is up to date */
+	arcan_video_tuisynch(vid);
+
 	LUA_ETRACE("text_surface", NULL, 1);
 }
 
@@ -7008,7 +7078,7 @@ static int randomsurface(lua_State* ctx)
 		}
 	}
 
-	arcan_vobj_id id = arcan_video_rawobject(cptr, cons, desw, desh, 0);
+	arcan_vobj_id id = arcan_video_rawobject(NULL, cons, desw, desh, 0);
 	arcan_video_objectfilter(id, ARCAN_VFILTER_NONE);
 	lua_pushvid(ctx, id);
 
@@ -12472,6 +12542,7 @@ static const luaL_Reg imgfuns[] = {
 {"image_storage_properties", getimagestorageprop},
 {"image_storage_slice",      slicestore         },
 {"render_text",              rendertext         },
+{"text_surface",             textsurface        },
 {"text_dimensions",          textdimensions     },
 {"random_surface",           randomsurface      },
 {"force_image_blend",        forceblend         },

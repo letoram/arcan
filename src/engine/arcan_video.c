@@ -123,6 +123,11 @@ void arcan_vint_drop_vstore(struct agp_vstore* s)
 				s->vinf.text.raw = NULL;
 			}
 
+/* vstore doesn't track font group so do that manually */
+			if (s->vinf.text.tpack.group){
+				arcan_renderfun_release_fontgroup(s->vinf.text.tpack.group);
+			}
+
 			agp_drop_vstore(s);
 
 			if (s->vinf.text.source)
@@ -2008,11 +2013,20 @@ arcan_vobj_id arcan_video_rawobject(av_pixel* buf,
 
 	struct agp_vstore* ds = newvobj->vstore;
 
+	if (!buf){
+		ds->vinf.text.s_raw = cons.w * cons.h * sizeof(av_pixel);
+		ds->vinf.text.raw = arcan_alloc_mem(
+			ds->vinf.text.s_raw,
+			ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+	}
+	else {
+		ds->vinf.text.s_raw = bufs;
+		ds->vinf.text.raw = buf;
+	}
+
 	ds->w = cons.w;
 	ds->h = cons.h;
 	ds->bpp = cons.bpp;
-	ds->vinf.text.s_raw = bufs;
-	ds->vinf.text.raw = buf;
 	ds->txmapped = TXSTATE_TEX2D;
 
 	newvobj->origw = origw;

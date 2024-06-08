@@ -280,6 +280,7 @@ struct agp_vstore {
 				struct {
 					size_t buf_sz; /* the resolved / unpacked TPACK screen */
 					uint8_t* buf;
+					void* group; /* struct arcan_renderfun_fontgroup */
 					void* tui; /* optional tui context that can be unpacked to buf */
 				} tpack;
 			};

@@ -393,6 +393,28 @@ arcan_vobj_id arcan_video_solidcolor(float origw, float origh,
 	uint8_t r, uint8_t g, uint8_t b, unsigned short zv);
 
 /*
+ * Create an object with TUI based backing (and possibly intermediate rastered
+ * cache). This is much cheaper than renderstring and will try to re-use glyph
+ * caches and similar assets.
+ *
+ * The contents can later be addressed and defined through
+ * vstore->vinf.text.tpack.tui through the same functions as defined in
+ * <shmif/arcan_tui.h>
+ *
+ * These objects are not assumed to have a textured backing store, so any
+ * function or shader which operates on that will be ignored.
+ */
+struct tuiobject_fontcfg {
+	size_t sz;
+	const char* font;
+	int hinting;
+};
+
+/* synch changes between internal representations on constraints, picking
+ * feedback etc. for a tui backed object */
+void arcan_video_tuisynch(arcan_vobj_id id);
+
+/*
  * Create an object using a raw buffer as input. Note that
  * no color space conversion is currently performed and the use
  * of this function should be avoided, if possible.

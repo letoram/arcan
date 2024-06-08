@@ -34,8 +34,10 @@
 #define shmif_pixel av_pixel
 #define TTF_Font TTF_Font
 #define NO_ARCAN_SHMIF
+#include "../shmif/arcan_tui.h"
 #include "../shmif/tui/raster/pixelfont.h"
 #include "../shmif/tui/raster/raster.h"
+#include "../shmif/tui/tui_int.h"
 #undef TTF_Font
 
 #include "arcan_renderfun.h"
@@ -1760,4 +1762,30 @@ fallback_bitmap:
 	grp->used = 1;
 	arcan_mem_free(grp->font);
 	grp->font = &builtin_bitmap;
+}
+
+void arcan_video_tuisynch(arcan_vobj_id id)
+{
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	struct agp_vstore* vs = vobj->vstore;
+	struct tui_raster_context* raster =
+		arcan_renderfun_fontraster(vs->vinf.text.tpack.group);
+
+	size_t pack_sz = tui_screen_tpack_sz(vs->vinf.text.tpack.tui);
+	uint8_t* buf = malloc(pack_sz);
+
+	pack_sz = tui_screen_tpack(
+		vs->vinf.text.tpack.tui,
+		(struct tpack_gen_opts){.full = false}, buf, pack_sz
+	);
+
+	struct stream_meta stream = {.buf = NULL};
+	if (-1 == tui_raster_renderagp(raster, vs, buf, pack_sz, &stream)){
+	}
+	else {
+		stream = agp_stream_prepare(vs, stream, STREAM_RAW_DIRECT);
+		agp_stream_commit(vs, stream);
+	}
+
+	free(buf);
 }
