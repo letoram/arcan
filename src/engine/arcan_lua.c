@@ -530,6 +530,15 @@ static int intblint_sz(lua_State* ctx, int ind, const char* field, size_t fsz)
 }
 #define intblint(L, I, F) intblint_sz(L, (I), (F), (sizeof(F)/sizeof(char))-1)
 
+static int intblint_checked(lua_State* L, int ind, const char* field, bool* ok)
+{
+	lua_getfield(L, ind, field);
+	*ok = lua_isnumber(L, -1);
+	int rv = lua_tointeger(L, -1);
+	lua_pop(L, 1);
+	return rv;
+}
+
 static bool intblbool_sz(lua_State* ctx, int ind, const char* field, size_t fsz)
 {
 	lua_getfield(ctx, ind, field);
@@ -2167,6 +2176,57 @@ out:
 	LUA_ETRACE("text_dimensions", NULL, 2);
 }
 
+static void apply_tuiattr_table(
+	lua_State* L, int ind, struct tui_screen_attr* attr)
+{
+	attr->aflags = 0;
+	attr->aflags |= TUI_ATTR_BOLD * intblbool(L, ind, "bold");
+	attr->aflags |= TUI_ATTR_UNDERLINE * intblbool(L, ind, "underline");
+	attr->aflags |= TUI_ATTR_ITALIC * intblbool(L, ind, "italic");
+	attr->aflags |= TUI_ATTR_INVERSE * intblbool(L, ind, "inverse");
+	attr->aflags |= TUI_ATTR_UNDERLINE * intblbool(L, ind, "underline");
+	attr->aflags |= TUI_ATTR_UNDERLINE_ALT * intblbool(L, ind, "underline_alt");
+	attr->aflags |= TUI_ATTR_PROTECT * intblbool(L, ind, "protect");
+	attr->aflags |= TUI_ATTR_BLINK * intblbool(L, ind, "blink");
+	attr->aflags |= TUI_ATTR_STRIKETHROUGH * intblbool(L, ind, "strikethrough");
+	attr->aflags |= TUI_ATTR_SHAPE_BREAK * intblbool(L, ind, "break");
+	attr->aflags |= TUI_ATTR_BORDER_LEFT * intblbool(L, ind, "border_left");
+	attr->aflags |= TUI_ATTR_BORDER_RIGHT * intblbool(L, ind, "border_right");
+	attr->aflags |= TUI_ATTR_BORDER_TOP * intblbool(L, ind, "border_top");
+	attr->aflags |= TUI_ATTR_BORDER_DOWN * intblbool(L, ind, "border_down");
+
+	bool ok;
+	attr->custom_id = intblint_checked(L, ind, "id", &ok);
+
+	attr->fg = attr->fb = attr->fr = 0;
+	attr->bg = attr->bb = attr->br = 0;
+
+	int val = intblint_checked(L, ind, "fc", &ok);
+	if (-1 != val && ok){
+		attr->aflags |= TUI_ATTR_COLOR_INDEXED;
+		attr->fc[0] = (uint8_t) val;
+		attr->bc[0] = (uint8_t) intblint_checked(L, ind, "bc", &ok);
+	}
+	else {
+		intblint_checked(L, ind, "fr", &ok);
+		if (ok){
+			attr->fr = (uint8_t) intblint_checked(L, ind, "fr", &ok);
+			attr->fg = (uint8_t) intblint_checked(L, ind, "fg", &ok);
+			attr->fb = (uint8_t) intblint_checked(L, ind, "fb", &ok);
+		}
+		else {
+			attr->fr = attr->fg = attr->fb = 196;
+		}
+
+		intblint_checked(L, ind, "br", &ok);
+		if (ok){
+			attr->br = (uint8_t) intblint_checked(L, ind, "br", &ok);
+			attr->bg = (uint8_t) intblint_checked(L, ind, "bg", &ok);
+			attr->bb = (uint8_t) intblint_checked(L, ind, "bb", &ok);
+		}
+	}
+}
+
 static int textsurface(lua_State* L)
 {
 	LUA_TRACE("text_surface");
@@ -2249,10 +2309,51 @@ static int textsurface(lua_State* L)
 		arcan_fatal("text_surface(r, c, [vid], >table< argument expected");
 	}
 
+	arcan_tui_move_to(T, 0, 0);
+	size_t nval = lua_rawlen(L, tblind);
+	size_t cy = 0;
+
+/* sweep each row */
+	for (size_t i = 0; i < nval; i++){
+		lua_rawgeti(L, tblind, i+1);
+		if (lua_type(L, -1) != LUA_TTABLE)
+			arcan_fatal("text_surface(>table<) expected row table on index %zu\n", i);
+
+		int y = intblint(L, -1, "y");
+		if (y >= 0){
+			cy = y;
+		}
+
+		int x = intblint(L, -1, "x");
+		if (x < 0)
+			x = 0;
+
+		size_t ncells = lua_rawlen(L, -1);
+		arcan_tui_move_to(T, x, cy);
+
+		struct tui_screen_attr cattr = arcan_tui_defattr(T, NULL);
+
+		for (size_t rowind = 0; rowind < ncells; rowind++){
+			lua_rawgeti(L, -1, rowind+1);
+			if (lua_type(L, -1) == LUA_TSTRING){
+				const char* str = lua_tostring(L, -1);
+				arcan_tui_writeu8(T, (const uint8_t*)str, strlen(str), &cattr);
+			}
+/* attribute, extract */
+			else if (lua_type(L, -1) == LUA_TTABLE)
+				apply_tuiattr_table(L, -1, &cattr);
+			else
+				arcan_fatal("text_surface(>table<) "
+					"unexpected type at row %zu, index %zu\n", nval+1, rowind+1);
+			lua_pop(L, 1);
+		}
+
+		lua_pop(L, 1);
+	}
+
 /* MISSING:
- *  1. populate using table.
- *  2. provide actual dimensions.
- *  3. method to query row length and offsets.
+ *  1. provide actual dimensions.
+ *  2. method to query row length and offsets.
  */
 
 /* make sure renderer/rasterer/... source is up to date */
@@ -5949,6 +6050,7 @@ static int slicestore(lua_State* ctx)
 		if (!vobj || !vobj->vstore || vobj->vstore->txmapped != TXSTATE_TEX2D)
 			arcan_fatal("image_storage_slice(), invalid slice source at index %zu", i+1);
 		slices[i] = setvid;
+		lua_pop(ctx, 1);
 	}
 
 	if (
