@@ -36,6 +36,9 @@ int show_use(struct arcan_shmif_cont* cont, const char* msg)
 #ifdef HAVE_PDF
 		" protocol\t pdf       \t set 'pdf' mode\n"
 #endif
+#ifdef HAVE_SPELL
+		" protocol\t spell     \t set 'spellchecker' mode\n"
+#endif
 #ifdef HAVE_T2S
 		" protocol\t t2s       \t set 'text-to-speech' mode\n"
 #endif
@@ -219,6 +222,11 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 #ifdef HAVE_PDF
 	if (strcasecmp(type, "pdf") == 0)
 		return decode_pdf(cont, args);
+#endif
+
+#ifdef HAVE_SPELL
+	if (strcasecmp(type, "spell") == 0)
+		return decode_spell(cont, args);
 #endif
 
 	if (strcasecmp(type, "media") == 0)

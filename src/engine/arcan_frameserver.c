@@ -277,6 +277,9 @@ static int push_buffer(arcan_frameserver* src,
 	vready = (vready <= 0 || vready > src->vbuf_cnt) ? 0 : vready - 1;
 	shmif_pixel* buf = src->vbufs[vready];
 
+	if (src->shm.ptr->hints & SHMIF_RHINT_EMPTY)
+		goto commit_mask;
+
 /* If the HDR subprotocol is enabled, verify and translate into store metadata
  * - explicitly map the metadata format. There is only the one to chose from
  *   right now, but it wouldn't be surprising if that changes. */

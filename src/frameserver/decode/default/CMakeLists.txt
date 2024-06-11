@@ -63,6 +63,18 @@ if (LIBVLC_FOUND)
 		amsg("(${CL_GRN}decode${CL_RST}) libmagic not found, ${CL_RED} probe ${CL_RST} disabled")
 	endif()
 
+	pkg_check_modules(HUNSPELL hunspell)
+	if (HUNSPELL_FOUND)
+		amsg("($CL_GRN}decode${CL_RST}) adduing support for ${CL_GRN} spell-checking via Hunspell ${CL_RST}")
+			list(APPEND DECODE_SOURCES ${DECODE_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/decode_spell.c)
+			list(APPEND DECODE_LIBS ${DECODE_LIBS} ${HUNSPELL_LINK_LIBRARIES})
+			list(APPEND DECODE_INCLUDE_DIRS ${DECODE_INCLUDE_DIRS} ${HUNSPELL_INCLUDE_DIRS})
+			list(APPEND DECODE_DEFS HAVE_SPELL)
+			set(ENC_FOUND "hunspell ${ENC_FOUND}")
+	else()
+		set(ENC_MISSING "hunspell ${ENC_MISSING}, Hunspell not found, ${CL_RED} spell-checking ${CL_RED} disabled")
+	endif()
+
 	if (FSRV_DECODE_UVC)
 		amsg("(${CL_GRN}decode${CL_RST}) adding support for ${CL_GRN}USB (uvc) Video${CL_RST}")
 		set(DECODE_DEFS

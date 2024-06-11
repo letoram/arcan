@@ -28,6 +28,10 @@ int decode_probe(struct arcan_shmif_cont* cont, struct arg_arr* args);
 int decode_t2s(struct arcan_shmif_cont* cont, struct arg_arr* args);
 #endif
 
+#ifdef HAVE_SPELL
+int decode_spell(struct arcan_shmif_cont* cont, struct arg_arr* args);
+#endif
+
 #ifdef HAVE_PDF
 int decode_pdf(struct arcan_shmif_cont* cont, struct arg_arr* args);
 #endif

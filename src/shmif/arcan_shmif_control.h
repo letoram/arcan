@@ -967,6 +967,14 @@ enum rhint_mask {
 	SHMIF_RHINT_VSIGNAL_EV = 32,
 
 /*
+ * Used for cases where you want to bin / align event delivery or clock
+ * against display but there is no content in the frame itself. The server
+ * end will emit local events as if there was a frame delivered, but no
+ * data transfers will occur.
+ */
+	SHMIF_RHINT_EMPTY = 64,
+
+/*
  * Changes the buffer contents to be packed in the TPACK format (see
  * tui/raster). This means that the server side will ignore the normal size
  * hints and emit window resizes etc. accordingly. Thus, _resize calls on
