@@ -288,6 +288,8 @@ static void draw_completion(
 {
 	size_t rows, cols;
 	arcan_tui_dimensions(T, &rows, &cols);
+	size_t completion_rows = rows - 1;
+
 	size_t cx = 0, cy = 0;
 	arcan_tui_cursorpos(T, &cx, &cy);
 	int title_attr = TUI_ATTR_BORDER_DOWN;
@@ -303,12 +305,19 @@ static void draw_completion(
 		return;
 
 /* Based on window dimensions and cursor position, figure out the number of
- * items to draw. If we are closer to the top, position it above - otherwise
+ * items to draw. If we are closer to the bottom, position it above - otherwise
  * below. */
 	ssize_t step = 1;
 	if (rows - cy < (rows >> 1)){
 		step = -1;
 		title_attr = TUI_ATTR_BORDER_TOP;
+		completion_rows = cy - 1;
+	}
+
+/* we might need to scroll to show the selected row */
+	size_t start_ofs = 0;
+	if (completion_rows < M->completion_sz && M->completion_pos + 1 > completion_rows){
+		start_ofs = M->completion_pos - 1;
 	}
 
 	struct tui_screen_attr attr = arcan_tui_defcattr(T, TUI_COL_UI);
@@ -318,7 +327,7 @@ static void draw_completion(
 	size_t maxww = 0;
 	size_t maxhw = 0;
 
-	for (size_t i = 0, j = cy + step;
+	for (size_t i = start_ofs, j = cy + step;
 		!M->opts.completion_compact &&
 		i < M->completion_sz && j >= 0 && j < rows; i++, j += step){
 		size_t len = 0;
@@ -361,7 +370,7 @@ static void draw_completion(
 
 	maxw += cx + 1;
 
-	for (ssize_t i = 0, j = cy + step;
+	for (ssize_t i = start_ofs, j = cy + step;
 		i < M->completion_sz && j >= 0 && j < rows; i++, j += step){
 		arcan_tui_move_to(T, cx, j);
 		lasty = j;
