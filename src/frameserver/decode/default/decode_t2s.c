@@ -132,6 +132,16 @@ static int on_sound(short* buf, int ns, espeak_EVENT* ev)
 	if (ns < 0)
 		return 1;
 
+/* With *ev being espeakEVENT_MSG_TERMINATED and espeakEVENT_END we can
+ * distinguish between requests. Debugging can be helped somewhat here
+ * using a TUI context on the output and rendering which message that
+ * just completed to understand synch between buffers.
+ *
+ * The other potentiality is to set RHINT to EMPTY and use SIGVID to
+ * let the server end control stepping between queued messages (at the
+ * cost of eventually reaching backpressure caps).
+ */
+
 /* flush any pending frames */
 	if (ns == 0){
 		if (t2s.cont->abufpos)
@@ -540,7 +550,6 @@ static bool flush_event(arcan_event ev)
 			merge_message(&ev.tgt);
 		break;
 		case TARGET_COMMAND_RESET:{
-			LOG("reset:pending=%zu\n", t2s.cont->abufpos);
 	/*
 			arcan_shmif_enqueue(t2s.cont,
 				&(arcan_event){
