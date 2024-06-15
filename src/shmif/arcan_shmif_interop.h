@@ -564,6 +564,23 @@ bool arcan_shmif_pushutf8(
 	const char* msg, size_t msg_sz);
 
 /*
+ * Merge multipart messages into a long string with internal in-context
+ * buffering. The merged buffer is managed internally and will be re-used
+ * on future calls.
+ *
+ * if (arcan_shmif_multipart_message(C, &ev, &out, &err)){
+ * 	if (err){
+ * 	}
+ * 	else {
+ *  	char* mymsg = strdup(out);
+ * 	}
+ * }
+ */
+bool arcan_shmif_multipart_message(
+	struct arcan_shmif_cont*, struct arcan_event* msgev,
+	char** out, bool* overflow);
+
+/*
  * Part of auxiliary library, pulls in more dependencies and boiler-plate
  * for setting up accelerated graphics
  */

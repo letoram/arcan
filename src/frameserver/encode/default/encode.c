@@ -92,7 +92,13 @@ int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
-	if (arg_lookup(args, "protocol", 0, &argval)){
+	if (arg_lookup(args, "protocol", 0, &argval)
+		|| arg_lookup(args, "proto", 0, &argval)){
+
+		if (!argval){
+			arcan_shmif_last_words(cont, "missing proto= argument");
+			return EXIT_FAILURE;
+		}
 
 #ifdef HAVE_VNCSERVER
 		if (strcmp(argval, "vnc") == 0){

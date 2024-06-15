@@ -24,9 +24,23 @@ int decode_spell(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	struct arcan_event ev;
 	cont->hints = SHMIF_RHINT_EMPTY;
 
-	Hunhandle* hh = Hunspell_create(
-		"/usr/share/hunspell/en_GB.aff",
-		"/usr/share/hunspell/en_GB.dic");
+	const char* l639_a2 = "en";
+	const char* l3166_a2 = "GB";
+	const char* argstr;
+
+	if (arg_lookup(args, "country", 0, &argstr) && argstr){
+	}
+
+	if (arg_lookup(args, "language", 0, &argstr) && argstr){
+	}
+
+	char buf_a[sizeof("/usr/share/hunspell/aa_AA.aff")];
+	char buf_b[sizeof("/usr/share/hunspell/aa_AA.dic")];
+
+	snprintf(buf_a, sizeof(buf_a), "%s_%s.aff", l639_a2, l3166_a2);
+	snprintf(buf_b, sizeof(buf_b), "%s_%s.dic", l639_a2, l3166_a2);
+
+	Hunhandle* hh = Hunspell_create(buf_a, buf_b);
 
 	if (!hh){
 		arcan_shmif_last_words(cont, "open hunspell dict failed");
@@ -51,7 +65,7 @@ int decode_spell(struct arcan_shmif_cont* cont, struct arg_arr* args)
 				}
 				Hunspell_free_list(hh, &out, ns);
 			}
-			arcan_shmif_signal(cont, SHMIF_SIGVID);
+			arcan_shmif_signal(cont, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 		}
 	}
 

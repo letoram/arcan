@@ -128,6 +128,9 @@ struct shmif_hidden {
 		char key[256];
 	} pseg;
 
+	char multipart[1024];
+	size_t multipart_ofs;
+
 	struct mstate mstate;
 
 /* The 'guard' structure is used by a separate monitoring thread that will

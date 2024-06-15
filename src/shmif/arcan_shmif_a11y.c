@@ -21,10 +21,21 @@ static void synch_oracle(struct a11y_meta* M, struct arcan_shmif_cont* P)
 	if (M->oracle_fail)
 		return;
 
-/* if w/h differ, respawn the oracle.
- * MISSING: send subsegment (encode needs to handle that) and track */
+	float density = P->priv->dh.tgt.ioevs[4].fv;
+	arcan_event ev;
+	int pv, rv;
 
-/* MISSING: should provide GEOHINT to direct language used */
+/* if w/h differ, respawn the oracle.
+ * The better option would be to send a subsegment and drop that while
+ * retaining the connection, but that requires _encode to handle it which
+ * it currently doesn't.
+ */
+/* MISSING: should attach LANG= to provide GEOHINT to direct language used */
+	if (M->oracle && (M->w != P->w || M->h != P->h)){
+		shmifsrv_free(M->oracle, 0);
+		M->oracle = NULL;
+	}
+
 	if (!M->oracle){
 		char envarg[1024] = "ARCAN_ARG=proto=ocr";
 		char* envv[] = {envarg, NULL};
@@ -34,7 +45,8 @@ static void synch_oracle(struct a11y_meta* M, struct arcan_shmif_cont* P)
 			.envv = envv,
 			.detach = 2 | 4 | 8,
 			.init_w = P->w,
-			.init_h = P->h
+			.init_h = P->h,
+			.type = SEGID_ENCODER
 		};
 
 		int clsock = -1;
@@ -43,37 +55,50 @@ static void synch_oracle(struct a11y_meta* M, struct arcan_shmif_cont* P)
 			M->oracle_fail = true;
 			return;
 		}
+
+/* ensure we send ACTIVATE or _encode will consume the STEPFRAME
+ * event and the client will be dangling waiting for it */
+		while ((pv = shmifsrv_poll(M->oracle) >= 0)){
+			while (shmifsrv_dequeue_events(M->oracle, &ev, 1) == 1){
+			}
+			if (pv == 1)
+				break;
+		}
+
+		M->w = P->w;
+		M->h = P->h;
 	}
 
-/* roughly needed for stepping the video:
- *  if (shmifsrv_enter()){
- *
- *  copy from P->vidp into client->shm video
- *  build dirty-region:
- *
- *  struct arcan_shmif_region reg;
- *  atomic_store(&src->shm.ptr->vpts, arcan_timemillis());
- *  atomic_store(&src->shm.ptr->dirty, reg);
- *
- * queue the stepframe event:
- *
- *		if (src->shm.ptr && !src->shm.ptr->vready){
-			arcan_event ev  = {
-				.tgt.kind = TARGET_COMMAND_STEPFRAME,
-				.category = EVENT_TARGET,
-			};
+	struct shmifsrv_vbuffer vb = {
+		.w = P->w,
+		.h = P->h,
+		.pitch = P->pitch,
+		.stride = P->stride,
+		.buffer = P->vidp
+	};
 
- * release the locked process:
-    atomic_store(&src->shm.ptr->vready, 1);
+/* this goes away when we can have a futex to kqueue on */
+	while ( (rv = shmifsrv_put_video(M->oracle, &vb) ) == 0 )
+	{
+		arcan_timesleep(1);
+	}
 
- * shmifsrv_leave()
- */
-
-/* this is OUTPUT so VFRAME ready doesn't really help */
-	arcan_event ev;
-	int pv;
+/* this is OUTPUT so VFRAME ready doesn't really help,
+ * we want STEPFRAME to know if the MESSAGE events are complete. */
 	while ((pv = shmifsrv_poll(M->oracle) >= 0)){
 		while (shmifsrv_dequeue_events(M->oracle, &ev, 1) == 1){
+			if (ev.category == EVENT_EXTERNAL
+				&& ev.ext.kind == EVENT_EXTERNAL_MESSAGE){
+				bool bad;
+				char* out;
+				if (shmifsrv_merge_multipart_message(M->oracle, &ev, &out, &bad)){
+					if (bad)
+						continue;
+
+					arcan_tui_move_to(M->tui, 0, 0);
+					arcan_tui_printf(M->tui, NULL, "%s", out);
+				}
+			}
 		}
 		if (pv == 1)
 			break;

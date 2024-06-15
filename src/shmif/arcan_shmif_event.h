@@ -322,9 +322,7 @@ enum ARCAN_TARGET_COMMAND {
  * a relative amount of frames to process or rollback.
  * ioevs[0].iv represents the number of frames,
  * ioevs[1].iv may contain a user ID or a reserved one (see CLOCKREQ).
- * ioevs[2].uiv may contain the current attachment MSC (if avaiable)
- *
- * For present-feed
+ * ioevs[2].uiv may contain the current attachment MSC (if available)
  */
 	TARGET_COMMAND_STEPFRAME,
 

@@ -56,6 +56,7 @@ struct shmifsrv_envp {
 	size_t init_h;
 
 	int detach;
+	int type;
 };
 
 enum shmifsrv_status {
@@ -315,6 +316,19 @@ struct shmifsrv_vbuffer {
  */
 struct shmifsrv_vbuffer shmifsrv_video(struct shmifsrv_client*);
 
+/*
+ * [CRITICAL, OUTPUT segment only]
+ * Transfer the contents of vbuffer to the client and signal that that
+ * it is available.
+ *
+ * Return codes:
+ *  0 : no-copy, client busy.
+ *  1 : copy-ok.
+ * -1 : vbuffer could not be translated to a form the client accepts.
+ */
+int shmifsrv_put_video(
+	struct shmifsrv_client*, struct shmifsrv_vbuffer*);
+
 /* [CRITICAL]
  * Forward that the last known video buffer is no longer interesting and
  * signal a release to the client
@@ -354,3 +368,19 @@ int shmifsrv_monotonic_tick(int* left);
  * pause, global suspend action and so on.
  */
 void shmifsrv_monotonic_rebase();
+
+/*
+ * Unpack / Merge multipart into a shmifsrv_client internal buffer
+ * for EVENT_EXTERNAL_MESSAGE.
+ *
+ * bool bad;
+ * char* out;
+ * if (shmifsrv_merge_multipart_message, P, ev, &out, &bad)){
+ *   if (!bad){
+ *     ...
+ *   }
+ * }
+ */
+bool shmifsrv_merge_multipart_message(
+	struct shmifsrv_client* P, struct arcan_event* ev,
+	char** out, bool* bad);

@@ -1805,13 +1805,16 @@ static bool step_v(struct arcan_shmif_cont* ctx, int sigv)
 
 		if (ctx->dirty.x2 <= ctx->dirty.x1 || ctx->dirty.y2 <= ctx->dirty.y1){
 			log_print("%lld: SIGVID "
-				"(id: %"PRIu64", early-out: dirty-inval-region: %zu,%zu-%zu,%zu)",
+				"(id: %"PRIu64", force_full: dirty-inval-region: %zu,%zu-%zu,%zu)",
 				arcan_timemillis(),
 				priv->vframe_id,
 				(size_t)ctx->dirty.x1, (size_t)ctx->dirty.y1,
 				(size_t)ctx->dirty.x2, (size_t)ctx->dirty.y2
 			);
-			return false;
+			ctx->dirty.x1 = 0;
+			ctx->dirty.y1 = 0;
+			ctx->dirty.x2 = ctx->w;
+			ctx->dirty.y2 = ctx->h;
 		}
 
 		if (priv->log_event){
@@ -1848,6 +1851,11 @@ static bool step_v(struct arcan_shmif_cont* ctx, int sigv)
 		&ctx->addr->vpending, 1 << priv->vbuf_ind, memory_order_release);
 	atomic_store_explicit(&ctx->addr->vready,
 		priv->vbuf_ind+1, memory_order_release);
+
+/* let a latched support content analysis work through the buffer
+ * while pending before we try to slide window or synch */
+	if (priv->support_window_hook)
+		priv->support_window_hook(ctx, SUPPORT_EVENT_VSIGNAL);
 
 /* slide window so the caller don't have to care about which
  * buffer we are actually working against */
@@ -1939,9 +1947,6 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 	unsigned startt = arcan_timemillis();
 	if ( (mask & SHMIF_SIGVID) && priv->video_hook)
 		mask = priv->video_hook(ctx);
-
-	if ( (mask & SHMIF_SIGVID) && priv->support_window_hook)
-		priv->support_window_hook(ctx, SUPPORT_EVENT_VSIGNAL);
 
 	if ( (mask & SHMIF_SIGAUD) && priv->audio_hook)
 		mask = priv->audio_hook(ctx);
@@ -2215,6 +2220,8 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	arcan_shmif_setevqs(arg->addr,
 		arg->esem, &priv->inev, &priv->outev, false);
 	setup_avbuf(arg);
+
+	priv->multipart_ofs = 0;
 
 	if (priv->reset_hook){
 			priv->reset_hook(old_addr != (uintptr_t)arg->addr ?
@@ -3852,6 +3859,31 @@ bool arcan_shmif_pushutf8(
 	}
 
 	return true;
+}
+
+bool arcan_shmif_multipart_message(
+	struct arcan_shmif_cont* C, struct arcan_event* ev,
+	char** out, bool* bad)
+{
+	if (!C || !ev || !out || !bad ||
+		ev->category != EVENT_TARGET || ev->tgt.kind != TARGET_COMMAND_MESSAGE)
+		return false;
+
+	struct shmif_hidden* P = C->priv;
+	size_t msglen = strlen(ev->tgt.message);
+
+	if (msglen + P->multipart_ofs >= sizeof(P->multipart)){
+		*bad = true;
+			return false;
+	}
+	else {
+		memcpy(&P->multipart[P->multipart_ofs], ev->tgt.message, msglen);
+		P->multipart_ofs += msglen;
+		P->multipart[P->multipart_ofs] = '\0';
+		*out = P->multipart;
+	}
+
+	return ev->tgt.ioevs[0].iv == 0;
 }
 
 /*

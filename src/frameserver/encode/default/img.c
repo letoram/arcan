@@ -32,9 +32,9 @@ void png_stream_run(struct arg_arr* args, struct arcan_shmif_cont cont)
 
 		switch(ev.tgt.kind){
 		case TARGET_COMMAND_STEPFRAME:{
-			while(!cont.addr->vready){}
+/*			while(!cont.addr->vready){} */
 			if (skip){
-				cont.addr->vready = false;
+				arcan_shmif_signal(&cont, SHMIF_SIGVID);
 				skip--;
 				continue;
 			}
@@ -48,7 +48,7 @@ void png_stream_run(struct arg_arr* args, struct arcan_shmif_cont cont)
 			}
 
 			arcan_img_outpng(fout, cont.vidp, cont.w, cont.h, false);
-			cont.addr->vready = false;
+			arcan_shmif_signal(&cont, SHMIF_SIGVID);
 			fclose(fout);
 
 			if (limit && count == limit)

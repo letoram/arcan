@@ -38,6 +38,9 @@ enum connstatus {
 struct shmifsrv_client {
 /* need a 'per client' eventqueue */
 	struct arcan_frameserver* con;
+
+	char multipart[4096];
+	size_t multipart_ofs;
 	enum connstatus status;
 	pid_t pid;
 	size_t errors;
@@ -169,7 +172,7 @@ struct shmifsrv_client* shmifsrv_spawn_client(
 
 	int childend;
 	res->con = platform_fsrv_spawn_server(
-		SEGID_UNKNOWN, env.init_w, env.init_h, 0, &childend);
+env.type ? env.type : SEGID_UNKNOWN, env.init_w, env.init_h, 0, &childend);
 
 	if (!res){
 		if (statuscode)
@@ -735,4 +738,67 @@ bool shmifsrv_enqueue_multipart_message(struct shmifsrv_client* acon,
 	}
 
 	return true;
+}
+
+int shmifsrv_put_video(
+	struct shmifsrv_client* C, struct shmifsrv_vbuffer* V)
+{
+/* incomplete - for passthrough the SHMIF_META_VENC subproto needs to
+ * be enabled and fourCC carried in the extended block. This would be
+ * in C->con->aext.venc.
+ *
+ * We'd also need to repack if dimensions mismatch, which also means
+ * that ORIGO_LL can be stripped.
+ */
+	if (V->flags.compressed)
+		return -2;
+
+	if (shmifsrv_enter(C)){
+		if (atomic_load(&C->con->shm.ptr->vready)){
+			shmifsrv_leave(C);
+			return 0;
+		}
+
+		size_t ntc = V->h * V->stride;
+		int fflags = V->flags.origo_ll & SHMIF_RHINT_ORIGO_LL;
+		memcpy(C->con->vbufs[0], V->buffer, ntc);
+
+		atomic_store(&C->con->shm.ptr->hints, fflags);
+    atomic_store(&C->con->shm.ptr->vready, 1);
+		atomic_store(&C->con->shm.ptr->dirty, V->region);
+
+		shmifsrv_enqueue_event(C, &(struct arcan_event){
+			.tgt.kind = TARGET_COMMAND_STEPFRAME,
+			.category = EVENT_TARGET
+		}, -1);
+
+		shmifsrv_leave(C);
+		return 1;
+	}
+	else
+		return -1;
+}
+
+bool shmifsrv_merge_multipart_message(
+	struct shmifsrv_client* P, struct arcan_event* ev,
+	char** out, bool* bad)
+{
+	if (!P || !ev || !out || !bad ||
+		ev->category != EVENT_EXTERNAL || ev->ext.kind != EVENT_EXTERNAL_MESSAGE)
+		return false;
+
+	size_t msglen = strlen((char*)ev->ext.message.data);
+
+	if (msglen + P->multipart_ofs >= sizeof(P->multipart)){
+		*bad = true;
+			return false;
+	}
+	else {
+		memcpy(&P->multipart[P->multipart_ofs], ev->ext.message.data, msglen);
+		P->multipart_ofs += msglen;
+		P->multipart[P->multipart_ofs] = '\0';
+		*out = P->multipart;
+	}
+
+	return !ev->ext.message.multipart;
 }

@@ -3,54 +3,27 @@
 #include <arcan_shmif.h>
 #include "util/utf8.c"
 
-/*
- * Same code as in select- in terminal. Ought to be moved to a shared
- * shmif-support lib that also covers 3D setup and handle extraction.
- */
-static void push_multipart(struct arcan_shmif_cont* out,
-	char* msg, size_t len)
+static void repack_run(struct arcan_shmif_cont* cont, TessBaseAPI* handle)
 {
-	arcan_event msgev = {
-		.category = EVENT_EXTERNAL,
-		.ext.kind = ARCAN_EVENT(MESSAGE)
-	};
+	size_t buf_sz = cont->w * cont->h * 3;
+	unsigned char* buf = malloc(buf_sz);
+	if (!buf)
+		return;
 
-	uint32_t state = 0, codepoint = 0;
-	char* outs = msg;
-	size_t maxlen = sizeof(msgev.ext.message.data) - 1;
+	for (size_t y = 0; y < cont->h; y++){
+		shmif_pixel* px = &(cont->vidp[cont->h * y]);
+		unsigned char* buf_row = &buf[y * cont->w * 3];
 
-/* utf8- point aligned against block size */
-	while (len > maxlen){
-		size_t i, lastok = 0;
-		state = 0;
-		for (i = 0; i <= maxlen - 1; i++){
-			if (UTF8_ACCEPT == utf8_decode(&state, &codepoint, (uint8_t)(msg[i])))
-				lastok = i;
-
-			if (i != lastok){
-				if (0 == i)
-					return;
-			}
+		for (size_t x = 0; x < cont->w; x++){
+			unsigned char alpha;
+			SHMIF_RGBA_DECOMP(*px, &buf_row[0], &buf_row[1], &buf_row[2], &alpha);
+			px++;
+			buf_row += 3;
 		}
-
-		memcpy(msgev.ext.message.data, outs, lastok);
-		msgev.ext.message.data[lastok] = '\0';
-		len -= lastok;
-		outs += lastok;
-		if (len)
-			msgev.ext.message.multipart = 1;
-		else
-			msgev.ext.message.multipart = 0;
-
-		arcan_shmif_enqueue(out, &msgev);
 	}
 
-/* flush remaining */
-	if (len){
-		snprintf((char*)msgev.ext.message.data, maxlen, "%s", outs);
-		msgev.ext.message.multipart = 0;
-		arcan_shmif_enqueue(out, &msgev);
-	}
+	TessBaseAPISetImage(handle, buf, cont->w, cont->h, 3, cont->w * 3);
+	free(buf);
 }
 
 void ocr_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
@@ -65,25 +38,36 @@ void ocr_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
 		return;
 	}
 
+	const char* dpival;
+	arg_lookup(args, "dpi", 0, &dpival);
+	if (dpival)
+		TessBaseAPISetVariable(handle, "user_defined_dpi", dpival);
+
 /*
  * There are many little details missing here, e.g.  control over segmentation
  * / grouping (receiving input) and somehow alerting when the OCR failed to
  * yield anything.
+ *
+ * There might be some API to avoid the explicit copy inside of
+ * TessBaseAPISetImage as well, since that repacks / reallocs again.
  */
 	arcan_event ev;
 	while(arcan_shmif_wait(&cont, &ev)){
 		if (ev.category == EVENT_TARGET){
 			switch (ev.tgt.kind){
 			case TARGET_COMMAND_STEPFRAME:{
-				TessBaseAPISetImage(handle, (const unsigned char*) cont.vidp,
-					cont.w, cont.h, sizeof(shmif_pixel), cont.stride);
+				repack_run(&cont, handle);
 				char* text = TessBaseAPIGetUTF8Text(handle);
 				size_t len;
-				if (!text || (len = strlen(text)) == 0)
-					continue;
+				if (text && (len = strlen(text))){
+					struct arcan_event ev = {
+						.ext.kind = ARCAN_EVENT(MESSAGE)
+					};
+					arcan_shmif_pushutf8(&cont, &ev, text, len);
+					TessDeleteText(text);
+				}
 
-				push_multipart(&cont, text, len);
-				TessDeleteText(text);
+				arcan_shmif_signal(&cont, SHMIF_SIGVID);
 			}
 			break;
 			case TARGET_COMMAND_EXIT:
