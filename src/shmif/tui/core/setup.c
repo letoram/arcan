@@ -87,6 +87,10 @@ void arcan_tui_destroy(struct tui_context* tui, const char* message)
 	if (!tui)
 		return;
 
+	if (arcan_shmif_primary(SHMIF_ACCESSIBILITY) == &tui->acon){
+		arcan_shmif_setprimary(SHMIF_ACCESSIBILITY, NULL);
+	}
+
 	if (tui->parent){
 		for (size_t i = 0; i < COUNT_OF(tui->parent->children); i++){
 			if (tui->parent->children[i] == tui){

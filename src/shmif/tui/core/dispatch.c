@@ -478,6 +478,11 @@ static void target_event(struct tui_context* tui, struct arcan_event* aev)
 						tui, (void*)(uintptr_t)-1, id, kind, tui->handlers.tag);
 					tui->pending_handover = 0;
 					tui->got_pending = false;
+
+/* mark this so that readline and other widgets can render to it */
+					if (kind == TUI_WND_ACCESSIBILITY){
+						arcan_shmif_setprimary(SHMIF_ACCESSIBILITY, &tui->acon);
+					}
 					return;
 				}
 

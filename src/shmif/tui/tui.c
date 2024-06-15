@@ -100,6 +100,9 @@ void arcan_tui_request_subwnd_ext(struct tui_context* T,
 	case TUI_WND_HANDOVER:
 		type = SEGID_HANDOVER;
 	break;
+	case TUI_WND_ACCESSIBILITY:
+		type = SEGID_ACCESSIBILITY;
+	break;
 	default:
 		return;
 	}
