@@ -144,6 +144,10 @@ else()
 endif()
 
 if (NOT ENABLE_LWA)
-	set(LWA_PLATFORM_STR "stub")
+	if (VIDEO_PLATFORM STREQUAL "egl-dri")
+		set(LWA_PLATFORM_STR "egl-dri-rnode")
+	else()
+		set(LWA_PLATFORM_STR "stub")
+	endif()
 endif()
 
