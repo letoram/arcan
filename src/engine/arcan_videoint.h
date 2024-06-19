@@ -282,6 +282,7 @@ typedef struct arcan_vobject {
 	} extrefc;
 
 	char* tracetag;
+	char* alttext;
 } arcan_vobject;
 
 /* regular old- linked list, but also mapped to an array */

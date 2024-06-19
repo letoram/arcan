@@ -238,3 +238,13 @@ void arcan_audio_purge(arcan_aobj_id* ids, size_t nids)
 {
 	platform_audio_purge(ids, nids);
 }
+
+void arcan_audio_listener(arcan_vobj_id vid)
+{
+	platform_audio_listener(vid);
+}
+
+void arcan_audio_position(arcan_aobj_id id, arcan_vobj_id vid)
+{
+	platform_audio_position(id, vid);
+}

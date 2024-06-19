@@ -565,3 +565,11 @@ void platform_audio_purge(arcan_aobj_id* save, size_t save_count)
 		current = next;
 	}
 }
+
+void platform_audio_listener(arcan_vobj_id vid)
+{
+}
+
+void platform_audio_position(arcan_aobj_id id, arcan_vobj_id vid)
+{
+}

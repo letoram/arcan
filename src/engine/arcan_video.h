@@ -850,11 +850,14 @@ arcan_errc arcan_video_setclip(arcan_vobj_id id, enum arcan_clipmode);
 arcan_errc arcan_video_clipto(arcan_vobj_id id, arcan_vobj_id clip_tgt);
 
 /*
- * Attach an identification or metadata string to the video object. This can
+ * Attach an identification or metadata string to the video object and / or
+ * an alternative text description. The metadata string can
  * be useful both for debugging purposes and for higher level scripting
- * engine data serialisation across scripting VM executions.
+ * engine data serialisation across scripting VM executions. The alternative
+ * description is specifically for assistive devices e.g. screen readers.
  */
-arcan_errc arcan_video_tracetag(arcan_vobj_id id, const char* const message);
+arcan_errc arcan_video_tracetag(
+	arcan_vobj_id id, const char* const message, const char* const alt);
 
 /*
  * Force a specific blending operation, regardless of object state. Normally,
@@ -894,7 +897,8 @@ unsigned short arcan_video_getzv(arcan_vobj_id id);
 /* get a reference to the current video object tag, the allocation still
  * belongs to the object and should not be aliased or used across _video
  * calls. */
-const char* const arcan_video_readtag(arcan_vobj_id id);
+arcan_errc const arcan_video_readtag(
+	arcan_vobj_id id, const char** tag, const char** alt);
 
 /* resolve an estimate of the current storage properties for the vobj,
  * this should rarely be used and is mostly relevant with vobjs that

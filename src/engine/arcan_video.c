@@ -1499,10 +1499,23 @@ enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id id)
 }
 
 
-const char* const arcan_video_readtag(arcan_vobj_id id)
+arcan_errc arcan_video_readtag(arcan_vobj_id id, const char** tag, const char** alt)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
-	return vobj ? vobj->tracetag : "(no tag)";
+	if (!vobj){
+		if (tag)
+			*tag = NULL;
+		if (alt)
+			*alt = NULL;
+	}
+	else {
+		if (tag)
+			*tag = vobj->tracetag;
+		if (alt)
+			*alt = vobj->alttext;
+	}
+
+	return ARCAN_OK;
 }
 
 arcan_errc arcan_video_transformmask(arcan_vobj_id id,
@@ -3494,6 +3507,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	}
 
 	arcan_mem_free(vobj->tracetag);
+	arcan_mem_free(vobj->alttext);
 	arcan_vint_dropshape(vobj);
 
 /* lots of default values are assumed to be 0, so reset the
@@ -6223,20 +6237,25 @@ void arcan_video_shutdown(bool release_fsrv)
 	platform_video_shutdown();
 }
 
-arcan_errc arcan_video_tracetag(arcan_vobj_id id, const char*const message)
+arcan_errc arcan_video_tracetag(
+	arcan_vobj_id id, const char*const message, const char* const alt)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
+	if (!vobj)
+		return rv;
 
-	if (vobj){
-		if (vobj->tracetag)
-			arcan_mem_free(vobj->tracetag);
+	if (vobj->tracetag)
+		arcan_mem_free(vobj->tracetag);
 
-		vobj->tracetag = strdup(message);
-		rv = ARCAN_OK;
+	if (vobj->alttext && alt){
+		arcan_mem_free(vobj->alttext);
+		vobj->alttext = strdup(alt);
 	}
 
-	return rv;
+	vobj->tracetag = strdup(message);
+
+	return ARCAN_OK;
 }
 
 static void update_sourcedescr(struct agp_vstore* ds,

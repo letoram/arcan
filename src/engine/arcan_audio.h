@@ -153,4 +153,20 @@ arcan_errc arcan_audio_getgain(arcan_aobj_id id, float* cgain);
  */
 void arcan_audio_purge(arcan_aobj_id* save, size_t save_count);
 
+/*
+ * Mark a reference object as source for position and orientation for all audio
+ * on the active output. This will be resolved as audio buffer processing
+ * continues, if [vid] no longer exists at such a point the last resolved
+ * position and orientation will remain.
+ *
+ * Linking to WORLDID will revert back to the default position and
+ * orientation.
+ */
+void arcan_audio_listener(arcan_vobj_id vid);
+
+/*
+ * Similar to arcan_audio_listener but for specific audio sources.
+ */
+void arcan_audio_position(arcan_aobj_id id, arcan_vobj_id vid);
+
 #endif

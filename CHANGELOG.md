@@ -1,31 +1,52 @@
 ## 0.6.4
 ## Core
  * Wired in rendertarget vobj export for hwenc, opt-in via target\_flags on rectgt
+ * Add basic positional audio support
 
 ## Platform
  * posix/glob : add asynch form
 
 ## Lua
  * add overloaded glob\_resource that can return an open\_nonblock table
+ * add alttext slot for image\_tracetag
+ * add audio_position / audio\_listener for setting a video object as positional audio reference
+ * add basic text\_surface for simplified text with a rendering path similar to tui windows
+ * image\_access\_storage
 
 ## Shmif
  * add interop helper for arcan\_shmif\_bchunk\_resolve to help translate fd-local path
  * add a \_primary slot for ACCESSIBILITY
  * add an internal-catch segment for ACCESSIBILITY
+ * default-route ACESSIBILITY internal-catch to map a TUI window feed through encode in OCR mode
+ * add RHINT\_EMPTY to use SHMIF\_SIGVID for clocking without GPU transfers
+ * fixes several C++ interop problems with header definition
 
 ## Net
+ * IPv6 discovery controls added
  * add -c file for assigning lua scriptable command-line overrides
  * headless runner for arcan-net host appl can be access via ANET\_RUNNER env.
  * spawning server-side Lua runner if matching appl found, controls message routing
  * introduce rekeying command for forward secrecy, placeholder PQ step-up and resumption
 
+## Decode
+ * tts now exposes more input labels (INC/DEC/SETRATE)
+ * tts flush speech buffers on reset\_target
+ * tts exposes endpause control
+ * add 'spell' protocol for generating suggestions, dependency: hunspell
+
 ## Tui
  * Copy window widget re-added as a forced input-label toggle to all tui windows
- * Readline widget: better position suggestion on overflow
- * Readline widget: add option to supply completion popup title
+ * Readline: better position suggestion on overflow
+ * Readline: add option to supply completion popup title
+ * Readline: add option to provide per-item help-text
+ * Readline: fix padding error when stepping history to shorter items
+ * Expose accessibility window as mappable type
+ * Expose cursor state constrols
+ * Lua Bindings: add helper :tempfile, :tempdir, :mkdir, :funlink, :fmkdir
+ * Lua Bindings: nbio fixes
 
 ## VRbridge
- * Merge in pending- OHMD Xreal Air support
+ * Merge in pending- OHMD Xreal Air/2/2Pro support
 
 ## 0.6.3
 ## Lua

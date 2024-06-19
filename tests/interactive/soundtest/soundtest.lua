@@ -9,6 +9,8 @@
 sample_countdown = 0;
 sample = load_asample("soundtest.wav");
 playback = sample;
+audio_ref = WORLDID
+position = {0, 0, 0}
 
 bgmusic_id = 0;
 symtable = {}
@@ -33,9 +35,8 @@ local function build_sine(freq, length)
 	local res = {}
 	local val = 0
 
-	for i=1,samples,2 do
+	for i=1,samples,1 do
 		res[i] = math.sin(val)
-		res[i+1] = res[i]
 		val = val + step
 	end
 
@@ -47,8 +48,8 @@ function soundtest()
 	symtable = sfun();
 
 	for i=1,#tones do
-		local tbl = build_sine(tones[i], 1)
-		tones[i] = load_asample(tbl)
+		local tbl = build_sine(tones[i], 10)
+		tones[i] = load_asample(1, 48000, tbl)
 	end
 
 	vid = render_text(
@@ -57,11 +58,25 @@ function soundtest()
 	[[c     \tset sample to wav\n\r]] ..
 	[[d     \tqueue sample\n\r]] ..
 	[[p     \tplaback sample\n\r]] ..
+	[[f     \tenable positional audio\n\r]] ..
+	[[arrows\tmove sample position in XZ plane\n\r]] ..
+	[[m     \tplay background music (test.mp3)\n\r]] ..
+	[[g     \tfix audio at 0,0,0\n\r]],
 	[[ESCAPE\tshutdown\n\r]]
 	);
 
 	playback = sample
 	show_image(vid);
+end
+
+local function move_audio(dx, dy, dz)
+	position[1] = position[1] + dx
+	position[2] = position[2] + dy
+	position[3] = position[3] + dz
+	if audio_ref ~= WORLDID then
+		move3d_model(audio_ref, position[1], position[2], position[3])
+	end
+	print(position[1], position[2], position[3])
 end
 
 local queue = {}
@@ -87,15 +102,43 @@ function soundtest_input( inputtbl )
 				table.insert(queue, playback)
 			end
 
+		elseif sym == "UP" then
+			move_audio(0, 0, 10)
+		elseif sym == "DOWN" then
+			move_audio(0, 0, -10)
+		elseif sym == "LEFT" then
+			move_audio(-10, 0, 0)
+		elseif sym == "RIGHT" then
+			move_audio(10, 0, 0)
+
 		elseif sym == "c" then
 			playback = sample
 
 		elseif sym == "d" then
 			table.insert(queue, playback)
 
+		elseif sym == "f" then
+			if audio_ref ~= WORLDID then
+				print("disable positional audio")
+				delete_image(audio_ref)
+				audio_ref = WORLDID
+				position = {0, 0, 0}
+			else
+				audio_ref = null_surface(1, 1)
+				move_audio(0, 0, 0)
+			end
+
 		elseif sym == "p" then
-			print("play", playback)
+			audio_position(playback, audio_ref)
 			play_audio(playback, 1.0, queue_next)
+
+		elseif sym == "m" then
+			print("enable bgm")
+			local vid, aid = launch_decode("test.mp3", function() end)
+			if valid_vid(vid) then
+				audio_position(aid, audio_ref)
+				move_audio(0, 0, 0)
+			end
 
 		elseif (sym == "f") then
 		    if (sample_countdown > 0) then

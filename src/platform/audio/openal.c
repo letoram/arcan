@@ -14,8 +14,13 @@
 #include <al.h>
 #include <alc.h>
 
+#ifdef __APPLE__
 /* Apple++ does not have the extension header in question (of course) so go
  * with lifted definitions and dynamic loading */
+#else
+#include <alext.h>
+#endif
+
 static void (*alc_device_pause_soft)(ALCdevice*);
 static void (*alc_device_resume_soft)(ALCdevice*);
 
@@ -23,6 +28,7 @@ static void (*alc_device_resume_soft)(ALCdevice*);
 #include "arcan_general.h"
 #include "arcan_shmif.h"
 #include "arcan_video.h"
+#include "arcan_videoint.h"
 #include "arcan_audio.h"
 #include "arcan_audioint.h"
 #include "arcan_event.h"
@@ -41,6 +47,8 @@ static void (*alc_device_resume_soft)(ALCdevice*);
 typedef struct arcan_aobj {
 /* shared */
 	arcan_aobj_id id;
+	arcan_vobj_id refobj;
+
 	unsigned alid;
 	enum aobj_kind kind;
 	bool active;
@@ -93,6 +101,7 @@ struct arcan_acontext {
 	bool al_active;
 
 	arcan_aobj_id lastid;
+	arcan_vobj_id listener;
 	float def_gain;
 
 /* limit on amount of simultaneous active sources */
@@ -109,7 +118,7 @@ struct arcan_acontext {
  * openAL volatility alongside hardware buffering problems etc. make it too
  * much of a hazzle */
 static struct arcan_acontext _current_acontext = {
-	.first = NULL, .context = NULL, .def_gain = 1.0
+	.first = NULL, .context = NULL, .def_gain = 1.0, .listener = ARCAN_VIDEO_WORLDID
 };
 static struct arcan_acontext* current_acontext = &_current_acontext;
 
@@ -158,6 +167,19 @@ static bool _wrap_alError(arcan_aobj* obj, char* prefix)
 	return true;
 }
 
+static arcan_aobj* get_aobj_from_alid(ALuint alid)
+{
+	arcan_aobj* current = current_acontext->first;
+	while(current && current->next){
+		if (current->alid == alid)
+			return current;
+
+		current = current->next;
+	}
+
+	return NULL;
+}
+
 static arcan_aobj_id arcan_audio_alloc(arcan_aobj** dst, bool defer)
 {
 	arcan_aobj_id rv = ARCAN_EID;
@@ -171,16 +193,24 @@ static arcan_aobj_id arcan_audio_alloc(arcan_aobj** dst, bool defer)
 	if (!defer){
 		alGenSources(1, &alid);
 		alSourcef(alid, AL_GAIN, current_acontext->def_gain);
+
+/* mark the source as spatialized regardless of MONO or STEREO, this is a 1.1
+ * extension as normally stereo audio would just be passed as is. This is
+ * slightly problematic if the source already is pre-spatialized. */
+#ifndef __APPLE__
+		alSourcei(alid, AL_SOURCE_SPATIALIZE_SOFT, AL_TRUE);
+#endif
 		_wrap_alError(NULL, "audio_alloc(genSources)");
 		if (alid == AL_NONE)
 			return rv;
 	}
 
-	arcan_aobj* newcell = arcan_alloc_mem(sizeof(arcan_aobj), ARCAN_MEM_ATAG,
-		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+	arcan_aobj* newcell = arcan_alloc_mem(sizeof(arcan_aobj),
+		ARCAN_MEM_ATAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	newcell->alid = alid;
 	newcell->gain = current_acontext->def_gain;
+	newcell->refobj = ARCAN_VIDEO_WORLDID;
 
 /* unlikely event of wrap-around */
 	newcell->id = current_acontext->lastid++;
@@ -215,7 +245,7 @@ static arcan_errc arcan_audio_free(arcan_aobj_id id)
 		current = current->next;
 	}
 
- /* if found, delink */
+ /* if found, unlink */
 	if (current){
 		*owner = current->next;
 
@@ -571,8 +601,48 @@ cleanup:
 	arcan_event_denqueue(arcan_event_defaultctx(), &newevent);
 }
 
+static void aud_pos_orient(arcan_vobj_id v, bool listener, unsigned alid)
+{
+	arcan_vobject* vobj;
+	if (v == ARCAN_VIDEO_WORLDID || !(vobj = arcan_video_getobject(v)))
+		return;
+
+	surface_properties cur;
+	arcan_resolve_vidprop(vobj, 0.0, &cur);
+	surface_properties step = arcan_video_properties_at(v, 1);
+
+/* build rotation matrix from quaternion and apply to up and forward */
+	float fwdv[4], upv[4];
+	float orientm[16];
+	matr_quatf(cur.rotation.quaternion, orientm);
+	mult_matrix_vecf(orientm, (float[]){0.0f, 0.0f, 1.0f, 1.0f}, fwdv);
+	mult_matrix_vecf(orientm, (float[]){0.0f, 1.0f, 0.0f, 1.0f}, upv);
+	float dx = step.position.x;
+	float dy = step.position.y;
+	float dz = step.position.z;
+	point* p = &cur.position;
+
+	if (listener){
+		alListener3f(AL_POSITION, p->x, p->y, p->z);
+		alListener3f(AL_VELOCITY, dx, dy, dz);
+		alListenerfv(AL_ORIENTATION,
+			(float[]){fwdv[0], fwdv[1], fwdv[2], upv[0], upv[1], upv[2]});
+		return;
+	}
+
+	alSource3f(alid, AL_POSITION, p->x, p->y, p->z);
+	alSource3f(alid, AL_VELOCITY, dx, dy, dz);
+	printf("%f,%f,%f\n", p->x, p->y, p->z);
+/* only positional velocity, no rotational one :/ */
+	alSourcefv(alid, AL_ORIENTATION,
+			(float[]){fwdv[0], fwdv[1], fwdv[2], upv[0], upv[1], upv[2]});
+}
+
 static inline bool step_transform(arcan_aobj* obj)
 {
+	if (obj->alid)
+		aud_pos_orient(obj->refobj, false, obj->alid);
+
 	if (obj->transform == NULL)
 		return false;
 
@@ -697,6 +767,7 @@ void platform_audio_tick(uint8_t ntt)
 		alcMakeContextCurrent(current_acontext->context);
 
 	platform_audio_refresh();
+	aud_pos_orient(current_acontext->listener, true, 0);
 
 /* update time-dependent transformations */
 	while (ntt-- > 0) {
@@ -719,23 +790,37 @@ void platform_audio_tick(uint8_t ntt)
 	}
 
 /* scan all streaming buffers and free up those no-longer needed */
-	for (size_t i = 0; i < ARCAN_AUDIO_SLIMIT; i++)
-	if ( current_acontext->sample_sources[i] > 0) {
+	for (size_t i = 0; i < ARCAN_AUDIO_SLIMIT; i++){
+		ALuint src = current_acontext->sample_sources[i];
+		if (!src)
+			continue;
+
 		ALint state;
 		alGetSourcei(current_acontext->sample_sources[i], AL_SOURCE_STATE, &state);
-		if (state != AL_PLAYING){
-			alDeleteSources(1, &current_acontext->sample_sources[i]);
-			current_acontext->sample_sources[i] = 0;
+		if (state == AL_PLAYING)
+			continue;
 
-			if (current_acontext->sample_tags[i] != 0){
-				arcan_event_enqueue(arcan_event_defaultctx(),
-				&(struct arcan_event){
-					.category = EVENT_AUDIO,
-					.aud.kind = EVENT_AUDIO_PLAYBACK_FINISHED,
-					.aud.otag = current_acontext->sample_tags[i]
-				});
-				current_acontext->sample_tags[i] = 0;
-			}
+/* disassociate from the source and then free it */
+		arcan_aobj* obj = get_aobj_from_alid(src);
+		if (obj)
+			obj->alid = 0;
+
+		alDeleteSources(1, &src);
+		current_acontext->sample_sources[i] = 0;
+
+/* when finished playing the sample, fire the tag into an event so a callback
+ * handler can deal with it - fire it direct to the handler so that we can
+ * re-queue without interruption or latency. */
+		if (current_acontext->sample_tags[i] != 0){
+			intptr_t tag = current_acontext->sample_tags[i];
+			current_acontext->sample_tags[i] = 0;
+
+			arcan_event_denqueue(arcan_event_defaultctx(),
+			&(struct arcan_event){
+				.category = EVENT_AUDIO,
+				.aud.kind = EVENT_AUDIO_PLAYBACK_FINISHED,
+				.aud.otag = current_acontext->sample_tags[i]
+			});
 		}
 	}
 }
@@ -870,7 +955,8 @@ arcan_aobj_id platform_audio_load_sample(
 	return rid;
 }
 
-arcan_aobj_id platform_audio_sample_buffer(float* buffer, size_t elems, int channels, int samplerate, const char* fmt_specifier)
+arcan_aobj_id platform_audio_sample_buffer(float* buffer,
+	size_t elems, int channels, int samplerate, const char* fmt_specifier)
 {
 	arcan_aobj* aobj;
 	arcan_aobj_id rid = arcan_audio_alloc(&aobj, true);
@@ -990,14 +1076,20 @@ bool platform_audio_play(
 		for (size_t i = 0; i < ARCAN_AUDIO_SLIMIT; i++)
 			if (current_acontext->sample_sources[i] == 0){
 				alGenSources(1, &current_acontext->sample_sources[i]);
-				ALint alid = current_acontext->sample_sources[i];
+				aobj->alid = current_acontext->sample_sources[i];
+				alSourcef(aobj->alid, AL_GAIN, gain_override ? gain : aobj->gain);
+
+/* make sure any positioner is applied immediately */
+				aud_pos_orient(aobj->refobj, false, aobj->alid);
+
+/* remember any scripting hook backreference tag */
 				current_acontext->sample_tags[i] = tag;
-				alSourcef(alid, AL_GAIN, gain_override ? gain : aobj->gain);
 				_wrap_alError(aobj,"load_sample(alSource)");
 
-				alSourceQueueBuffers(alid, 1, &aobj->streambuf[0]);
+/* queue for playback and mark as playing */
+				alSourceQueueBuffers(aobj->alid, 1, &aobj->streambuf[0]);
 				_wrap_alError(aobj, "load_sample(alQueue)");
-				alSourcePlay(alid);
+				alSourcePlay(aobj->alid);
 				break;
 			}
 	}
@@ -1206,6 +1298,13 @@ void platform_audio_buffer(void* aobjopaq, ssize_t buffer, void* audbuf,
 		alGenBuffers(aobj->n_streambuf, aobj->streambuf);
 		alSourcef(aobj->alid, AL_GAIN, aobj->gain);
 
+/* mark the source as spatialized regardless of MONO or STEREO, this is a 1.1
+ * extension as normally stereo audio would just be passed as is. This is
+ * slightly problematic if the source already is pre-spatialized. */
+#ifndef __APPLE__
+		alSourcei(aobj->alid, AL_SOURCE_SPATIALIZE_SOFT, AL_TRUE);
+#endif
+
 		alSourceQueueBuffers(aobj->alid, 1, &aobj->streambuf[0]);
 		aobj->streambufmask[0] = true;
 		aobj->used++;
@@ -1269,4 +1368,27 @@ void platform_audio_purge(arcan_aobj_id* save, size_t save_count)
 
 		current = next;
 	}
+}
+
+void platform_audio_listener(arcan_vobj_id vid)
+{
+	current_acontext->listener = vid;
+	if (vid == ARCAN_VIDEO_WORLDID){
+		alListener3f(AL_POSITION, 0.0f, 0.0f, 0.0f);
+		alListener3f(AL_VELOCITY, 0.0f, 0.0f, 0.0f);
+	}
+}
+
+void platform_audio_position(arcan_aobj_id id, arcan_vobj_id vid)
+{
+	arcan_aobj* aobj = arcan_audio_getobj(id);
+	if (!aobj)
+		return;
+
+	if (vid == ARCAN_VIDEO_WORLDID){
+		alSource3f(aobj->alid, AL_POSITION, 0.0f, 0.0f, 0.0f);
+		alListener3f(AL_VELOCITY, 0.0f, 0.0f, 0.0f);
+	}
+
+	aobj->refobj = vid;
 }

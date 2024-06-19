@@ -1735,6 +1735,23 @@ static int gain(lua_State* ctx)
 	return 0;
 }
 
+static int audiopos(lua_State* ctx)
+{
+	LUA_TRACE("audio_position");
+	arcan_aobj_id id = luaL_checkaid(ctx, 1);
+	arcan_vobj_id vid = luaL_checkvid(ctx, 2, NULL);
+	arcan_audio_position(id, vid);
+	LUA_ETRACE("audio_position", NULL, 0);
+}
+
+static int audiolisten(lua_State* ctx)
+{
+	LUA_TRACE("audio_listener");
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
+	arcan_audio_listener(vid);
+	LUA_ETRACE("audio_listener", NULL, 0);
+}
+
 static int abufsz(lua_State* ctx)
 {
 	LUA_TRACE("audio_buffer_size");
@@ -11560,15 +11577,18 @@ static int tracetag(lua_State* ctx)
 
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	const char* const msg = luaL_optstring(ctx, 2, NULL);
+	const char* const alt = luaL_optstring(ctx, 3, NULL);
 	int rc = 0;
 
 	if (!msg){
-		const char* tag = arcan_video_readtag(id);
+		const char* tag, (* alt);
+		arcan_video_readtag(id, &tag, &alt);
 		lua_pushstring(ctx, tag ? tag : "(no tag)");
-		rc = 1;
+		lua_pushstring(ctx, alt ? alt : "");
+		rc = 2;
 	}
 	else
-		arcan_video_tracetag(id, msg);
+		arcan_video_tracetag(id, msg, alt);
 
 	LUA_ETRACE("image_tracetag", NULL, rc);
 }
@@ -12561,6 +12581,8 @@ static const luaL_Reg audfuns[] = {
 {"load_asample",      loadasample },
 {"audio_gain",        gain        },
 {"audio_buffer_size", abufsz      },
+{"audio_position",    audiopos    },
+{"audio_listener",    audiolisten },
 {"capture_audio",     captureaudio},
 {"list_audio_inputs", capturelist },
 {NULL, NULL}
