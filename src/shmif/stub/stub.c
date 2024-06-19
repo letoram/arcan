@@ -2,6 +2,12 @@
 #include "../arcan_shmif.h"
 #include "../shmif_privext.h"
 
+bool platform_video_map_buffer(
+	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n)
+{
+	return false;
+}
+
 struct arcan_shmifext_setup arcan_shmifext_defaults(
 	struct arcan_shmif_cont* con)
 {
