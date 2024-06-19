@@ -169,4 +169,13 @@ void arcan_audio_listener(arcan_vobj_id vid);
  */
 void arcan_audio_position(arcan_aobj_id id, arcan_vobj_id vid);
 
+/*
+ * Enable / disable devices, toggle specific effect pipelines, ...
+ */
+struct arcan_audio_cfg {
+	bool hrtf;
+	const char* name;
+};
+int arcan_audio_reconfigure(struct arcan_audio_cfg cfg);
+
 #endif

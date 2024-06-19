@@ -21,8 +21,15 @@
 #include <alext.h>
 #endif
 
-static void (*alc_device_pause_soft)(ALCdevice*);
-static void (*alc_device_resume_soft)(ALCdevice*);
+#ifndef ALC_HRTF_SOFT
+#define ALC_HRTF_SOFT -1
+#endif
+
+static struct {
+	void (*alc_device_pause_soft)(ALCdevice*);
+	void (*alc_device_resume_soft)(ALCdevice*);
+	ALCboolean(*alc_device_reset_soft)(ALCdevice*, const ALCint *attribs);
+} extensions;
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -99,6 +106,7 @@ struct arcan_acontext {
 	ALCdevice* device;
 
 	bool al_active;
+	bool hrtf;
 
 	arcan_aobj_id lastid;
 	arcan_vobj_id listener;
@@ -673,6 +681,46 @@ void platform_audio_preinit()
 {
 }
 
+void platform_audio_reassign(arcan_aobj_id id, int device)
+{
+}
+
+void platform_audio_reconfigure(struct platform_audio_cfg cfg, int device)
+{
+	if (alcIsExtensionPresent(current_acontext->device, "ALC_SOFT_HRTF") &&
+		cfg.hrtf != current_acontext->hrtf && extensions.alc_device_reset_soft){
+		current_acontext->hrtf = cfg.hrtf;
+
+		ALCint attr[2] = {ALC_HRTF_SOFT, cfg.hrtf ? ALC_TRUE : ALC_FALSE};
+		extensions.alc_device_reset_soft(current_acontext->device, attr);
+	}
+	else
+		return;
+
+	arcan_aobj* current = current_acontext->first;
+	while(current && current->next){
+		platform_audio_rebuild(current->id);
+		current = current->next;
+	}
+
+/* alcResetDeviceSOFT
+ * alcReopenDeviceSOFT
+ *
+ * For proper multi-device support we need:
+ * a.
+ * ALC_ENUMERATION_EXT:
+ *     ALC_DEVICE_SPECIFIER in alcGetString(driver, ALC_DEVICE_SPECIFIER)
+ *
+ * b.
+ * move streambuf to device,
+ * have multiple device strcuts
+ *
+ * c.
+ * wire up hotplug notification from event platform
+ * and automatically add / announce device
+ */
+}
+
 bool platform_audio_init(bool noaudio)
 {
 	bool rv = false;
@@ -704,10 +752,12 @@ bool platform_audio_init(bool noaudio)
 			alcIsExtensionPresent(current_acontext->device, "alcDevicePauseSOFT") &&
 			alcIsExtensionPresent(current_acontext->device, "alcDeviceResumeSOFT"))
 		{
-			alc_device_pause_soft = alcGetProcAddress(
+			extensions.alc_device_pause_soft = alcGetProcAddress(
 				current_acontext->device, "alcDevicePauseSOFT");
-			alc_device_resume_soft = alcGetProcAddress(
+			extensions.alc_device_resume_soft = alcGetProcAddress(
 				current_acontext->device, "alcDeviceResumeSOFT");
+			extensions.alc_device_reset_soft = alcGetProcAddress(
+				current_acontext->device, "alcResetDeviceSOFT");
 		}
 
 		current_acontext->al_active = true;
@@ -733,16 +783,16 @@ void platform_audio_suspend()
 	}
 
 	current_acontext->al_active = false;
-	if (alc_device_pause_soft)
-		alc_device_pause_soft(current_acontext->device);
+	if (extensions.alc_device_pause_soft)
+		extensions.alc_device_pause_soft(current_acontext->device);
 }
 
 void platform_audio_resume()
 {
 	arcan_aobj* current = current_acontext->first;
 
-	if (alc_device_resume_soft)
-		alc_device_resume_soft(current_acontext->device);
+	if (extensions.alc_device_resume_soft)
+		extensions.alc_device_resume_soft(current_acontext->device);
 
 	while (current) {
 		if (current->id != AL_NONE)

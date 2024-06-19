@@ -63,4 +63,13 @@ void platform_audio_listener(arcan_vobj_id vid);
 
 void platform_audio_position(arcan_aobj_id id, arcan_vobj_id vid);
 
+struct platform_audio_cfg {
+	bool hrtf;
+	bool scan;
+};
+
+void platform_audio_reconfigure(struct platform_audio_cfg cfg, int device);
+
+void platform_audio_reassign(arcan_aobj_id id, int device);
+
 #endif

@@ -1744,6 +1744,21 @@ static int audiopos(lua_State* ctx)
 	LUA_ETRACE("audio_position", NULL, 0);
 }
 
+static int audioreconf(lua_State* L)
+{
+	LUA_TRACE("audio_reconfigure");
+	struct arcan_audio_cfg cfg = {
+		.hrtf = false
+	};
+
+	if (lua_type(L, 1) == LUA_TTABLE){
+		cfg.hrtf = intblbool(L, 1, "hrtf");
+	}
+
+	lua_pushnumber(L, arcan_audio_reconfigure(cfg));
+	LUA_ETRACE("audio_reconfigure", NULL, 0);
+}
+
 static int audiolisten(lua_State* ctx)
 {
 	LUA_TRACE("audio_listener");
@@ -12583,6 +12598,7 @@ static const luaL_Reg audfuns[] = {
 {"audio_buffer_size", abufsz      },
 {"audio_position",    audiopos    },
 {"audio_listener",    audiolisten },
+{"audio_reconfigure", audioreconf },
 {"capture_audio",     captureaudio},
 {"list_audio_inputs", capturelist },
 {NULL, NULL}
