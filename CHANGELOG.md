@@ -9,9 +9,10 @@
 ## Lua
  * add overloaded glob\_resource that can return an open\_nonblock table
  * add alttext slot for image\_tracetag
- * add audio_position / audio\_listener for setting a video object as positional audio reference
+ * add audio\_position / audio\_listener for setting a video object as positional audio reference
  * add basic text\_surface for simplified text with a rendering path similar to tui windows
  * image\_access\_storage
+ * add audio\_reconfigure for toggling hrtfs and switching between outputs
 
 ## Shmif
  * add interop helper for arcan\_shmif\_bchunk\_resolve to help translate fd-local path
