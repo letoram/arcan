@@ -247,11 +247,17 @@ void arcan_audio_listener(arcan_vobj_id vid)
 int arcan_audio_reconfigure(struct arcan_audio_cfg cfg)
 {
 	struct platform_audio_cfg incfg = {
-		.hrtf = cfg.hrtf
+		.hrtf = cfg.hrtf,
+		.out = cfg.out
 	};
 
 	platform_audio_reconfigure(incfg, 0);
 	return 0;
+}
+
+const char* arcan_audio_scan_devices()
+{
+	return platform_audio_outputs();
 }
 
 void arcan_audio_position(arcan_aobj_id id, arcan_vobj_id vid)

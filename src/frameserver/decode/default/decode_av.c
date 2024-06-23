@@ -604,6 +604,7 @@ int decode_av(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		"--no-xlib",
 		"--verbose", "3",
 		"--loop",
+		"--audio-resampler", "speex_resampler",
 		"--vout", "vmem,none",
 		"--intf", "dummy",
 		"--aout", "amem,none",

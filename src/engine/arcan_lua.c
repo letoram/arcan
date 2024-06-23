@@ -1744,6 +1744,24 @@ static int audiopos(lua_State* ctx)
 	LUA_ETRACE("audio_position", NULL, 0);
 }
 
+static int audioout(lua_State* L)
+{
+	LUA_TRACE("audio_outputs");
+	lua_newtable(L);
+	const char* outputs = arcan_audio_scan_devices();
+	size_t len = strlen(outputs);
+	size_t count = 1;
+
+	while (outputs && (len = strlen(outputs))){
+		lua_pushnumber(L, count++);
+		lua_pushlstring(L, outputs, len);
+		lua_rawset(L, -3);
+		outputs += len + 1;
+	}
+
+	LUA_ETRACE("audio_outputs", NULL, 1);
+}
+
 static int audioreconf(lua_State* L)
 {
 	LUA_TRACE("audio_reconfigure");
@@ -1753,6 +1771,7 @@ static int audioreconf(lua_State* L)
 
 	if (lua_type(L, 1) == LUA_TTABLE){
 		cfg.hrtf = intblbool(L, 1, "hrtf");
+		cfg.out = intblstr(L, 1, "output");
 	}
 
 	lua_pushnumber(L, arcan_audio_reconfigure(cfg));
@@ -12597,6 +12616,7 @@ static const luaL_Reg audfuns[] = {
 {"audio_gain",        gain        },
 {"audio_buffer_size", abufsz      },
 {"audio_position",    audiopos    },
+{"audio_outputs",     audioout    },
 {"audio_listener",    audiolisten },
 {"audio_reconfigure", audioreconf },
 {"capture_audio",     captureaudio},

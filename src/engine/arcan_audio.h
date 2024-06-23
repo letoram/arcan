@@ -174,8 +174,19 @@ void arcan_audio_position(arcan_aobj_id id, arcan_vobj_id vid);
  */
 struct arcan_audio_cfg {
 	bool hrtf;
-	const char* name;
+	const char* out;
 };
 int arcan_audio_reconfigure(struct arcan_audio_cfg cfg);
+
+/*
+ * Sweep devices and enqueue any outputs found as events
+ */
+const char* arcan_audio_scan_devices();
+
+/*
+ * Return a null-separated zero-length terminated list of devices.
+ * This will be valid until the next call into the audio subsystem.
+ */
+const char** arcan_audio_outputs();
 
 #endif

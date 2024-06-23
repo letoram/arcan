@@ -28,7 +28,7 @@
 static struct {
 	void (*alc_device_pause_soft)(ALCdevice*);
 	void (*alc_device_resume_soft)(ALCdevice*);
-	ALCboolean(*alc_device_reset_soft)(ALCdevice*, const ALCint *attribs);
+	ALCboolean(*alc_device_reopen_soft)(ALCdevice*, const ALCchar*, const ALCint *attribs);
 } extensions;
 
 #include "arcan_math.h"
@@ -686,37 +686,30 @@ void platform_audio_reassign(arcan_aobj_id id, int device)
 
 void platform_audio_reconfigure(struct platform_audio_cfg cfg, int device)
 {
-	if (alcIsExtensionPresent(current_acontext->device, "ALC_SOFT_HRTF") &&
-		cfg.hrtf != current_acontext->hrtf && extensions.alc_device_reset_soft){
+	if ((cfg.out && extensions.alc_device_reopen_soft) || (
+		alcIsExtensionPresent(current_acontext->device, "ALC_SOFT_HRTF") &&
+		cfg.hrtf != current_acontext->hrtf && extensions.alc_device_reopen_soft)){
 		current_acontext->hrtf = cfg.hrtf;
-
-		ALCint attr[2] = {ALC_HRTF_SOFT, cfg.hrtf ? ALC_TRUE : ALC_FALSE};
-		extensions.alc_device_reset_soft(current_acontext->device, attr);
-	}
-	else
-		return;
-
-	arcan_aobj* current = current_acontext->first;
-	while(current && current->next){
-		platform_audio_rebuild(current->id);
-		current = current->next;
+		ALCint attrs[] = {
+			ALC_FREQUENCY, ARCAN_SHMIF_SAMPLERATE,
+			ALC_HRTF_SOFT, cfg.hrtf ? ALC_TRUE : ALC_FALSE,
+			0
+		};
+		extensions.alc_device_reopen_soft
+			(current_acontext->device, cfg.out, attrs);
 	}
 
 /* alcResetDeviceSOFT
  * alcReopenDeviceSOFT
  *
- * For proper multi-device support we need:
- * a.
- * ALC_ENUMERATION_EXT:
- *     ALC_DEVICE_SPECIFIER in alcGetString(driver, ALC_DEVICE_SPECIFIER)
- *
- * b.
- * move streambuf to device,
- * have multiple device strcuts
- *
- * c.
- * wire up hotplug notification from event platform
- * and automatically add / announce device
+ * For proper multi-device support we need a way to allocate a new audio
+ * context for the stack, switch when processing an audio source, have
+ * a re-assign function which in turn:
+ *	arcan_aobj* current = current_acontext->first;
+	while(current && current->next){
+		platform_audio_rebuild(current->id);
+		current = current->next;
+	}
  */
 }
 
@@ -731,10 +724,6 @@ bool platform_audio_init(bool noaudio)
 			0
 		};
 
-/* unfortunately, the pretty poorly thought out alcOpenDevice/alcCreateContext
- * doesn't allow you to create a nosound or debug/testing audio device (or for
- * that matter, enumerate without an extension, seriously..) so to avoid yet
- * another codepath, we'll just set the listenerGain to 0 */
 #ifdef ARCAN_LWA
 		current_acontext->device = alcOpenDevice("arcan");
 #else
@@ -743,20 +732,27 @@ bool platform_audio_init(bool noaudio)
 		current_acontext->context = alcCreateContext(current_acontext->device, attrs);
 		alcMakeContextCurrent(current_acontext->context);
 
+/* unfortunately, the pretty poorly thought out alcOpenDevice/alcCreateContext
+ * doesn't allow you to create a nosound or debug/testing audio device (or for
+ * that matter, enumerate without an extension, seriously..) so to avoid yet
+ * another codepath, we'll just set the listenerGain to 0 */
+
+/* possible that the 'loopback' device if present would get better 'silent'
+ * handling than this approach, needs testing */
 		if (noaudio){
 			alListenerf(AL_GAIN, 0.0);
 		}
 
-		if (
-			alcIsExtensionPresent(current_acontext->device, "alcDevicePauseSOFT") &&
-			alcIsExtensionPresent(current_acontext->device, "alcDeviceResumeSOFT"))
-		{
+		if (alcIsExtensionPresent(current_acontext->device, "ALC_SOFT_pause_device")){
 			extensions.alc_device_pause_soft = alcGetProcAddress(
 				current_acontext->device, "alcDevicePauseSOFT");
 			extensions.alc_device_resume_soft = alcGetProcAddress(
 				current_acontext->device, "alcDeviceResumeSOFT");
-			extensions.alc_device_reset_soft = alcGetProcAddress(
-				current_acontext->device, "alcResetDeviceSOFT");
+		}
+
+		if (alcIsExtensionPresent(current_acontext->device, "ALC_SOFT_reopen_device")){
+			extensions.alc_device_reopen_soft = alcGetProcAddress(
+				current_acontext->device, "alcReopenDeviceSOFT");
 		}
 
 		current_acontext->al_active = true;
@@ -898,6 +894,14 @@ size_t platform_audio_refresh()
 	}
 
 	return rv;
+}
+
+const char* platform_audio_outputs()
+{
+#ifdef ALC_ALL_DEVICES_SPECIFIER
+	return alcGetString(NULL, ALC_ALL_DEVICES_SPECIFIER);
+#endif
+	return NULL;
 }
 
 /*
