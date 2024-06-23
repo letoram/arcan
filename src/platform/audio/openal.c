@@ -640,7 +640,6 @@ static void aud_pos_orient(arcan_vobj_id v, bool listener, unsigned alid)
 
 	alSource3f(alid, AL_POSITION, p->x, p->y, p->z);
 	alSource3f(alid, AL_VELOCITY, dx, dy, dz);
-	printf("%f,%f,%f\n", p->x, p->y, p->z);
 /* only positional velocity, no rotational one :/ */
 	alSourcefv(alid, AL_ORIENTATION,
 			(float[]){fwdv[0], fwdv[1], fwdv[2], upv[0], upv[1], upv[2]});
@@ -954,6 +953,9 @@ bool platform_audio_rebuild(arcan_aobj_id id)
 
 	alDeleteSources(1, &aobj->alid);
 	alGenSources(1, &aobj->alid);
+#ifndef __APPLE__
+		alSourcei(aobj->alid, AL_SOURCE_SPATIALIZE_SOFT, AL_TRUE);
+#endif
 	alSourcef(aobj->alid, AL_GAIN, aobj->gain);
 
 	_wrap_alError(NULL, "audio_rebuild(recreate)");
@@ -1128,6 +1130,9 @@ bool platform_audio_play(
 				alGenSources(1, &current_acontext->sample_sources[i]);
 				aobj->alid = current_acontext->sample_sources[i];
 				alSourcef(aobj->alid, AL_GAIN, gain_override ? gain : aobj->gain);
+#ifndef __APPLE__
+				alSourcei(aobj->alid, AL_SOURCE_SPATIALIZE_SOFT, AL_TRUE);
+#endif
 
 /* make sure any positioner is applied immediately */
 				aud_pos_orient(aobj->refobj, false, aobj->alid);
