@@ -11,7 +11,7 @@ static void repack_run(struct arcan_shmif_cont* cont, TessBaseAPI* handle)
 		return;
 
 	for (size_t y = 0; y < cont->h; y++){
-		shmif_pixel* px = &(cont->vidp[cont->h * y]);
+		shmif_pixel* px = &(cont->vidp[cont->w * y]);
 		unsigned char* buf_row = &buf[y * cont->w * 3];
 
 		for (size_t x = 0; x < cont->w; x++){
@@ -22,8 +22,23 @@ static void repack_run(struct arcan_shmif_cont* cont, TessBaseAPI* handle)
 		}
 	}
 
+/* there must be an API that doesn't force another copy */
 	TessBaseAPISetImage(handle, buf, cont->w, cont->h, 3, cont->w * 3);
 	free(buf);
+}
+
+static bool isdir(const char* fn)
+{
+	struct stat buf;
+	bool rv = false;
+
+	if (fn == NULL)
+			return false;
+
+	if (stat(fn, &buf) == 0)
+		rv = S_ISDIR(buf.st_mode);
+
+	return rv;
 }
 
 void ocr_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
@@ -31,10 +46,23 @@ void ocr_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
 	TessBaseAPI* handle = TessBaseAPICreate();
 	PIX* img;
 
-	const char* lang = "eng";
-	arg_lookup(args, "lang", 0, &lang);
-	if (TessBaseAPIInit3(handle, NULL, lang)){
-		LOG("encode-ocr: Couldn't initialize tesseract with lang (%s)\n", lang);
+	const char* lang;
+	if (!arg_lookup(args, "lang", 0, &lang))
+		lang = "eng";
+
+	const char* datadir = NULL;
+	if (isdir("/usr/local/share/tessdata"))
+		datadir = "/usr/share/tessdata";
+	else if (isdir("/usr/share/tessdata"))
+		datadir = "/usr/share/tessdata";
+	else {
+		arcan_shmif_last_words(&cont, "tesseract 'tessdata' not found");
+		arcan_shmif_drop(&cont);
+		return;
+	}
+
+	if (TessBaseAPIInit3(handle, datadir, lang)){
+		arcan_shmif_last_words(&cont, "couldn't load init/language");
 		return;
 	}
 
@@ -57,6 +85,11 @@ void ocr_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
 			switch (ev.tgt.kind){
 			case TARGET_COMMAND_STEPFRAME:{
 				repack_run(&cont, handle);
+				if (TessBaseAPIRecognize(handle, NULL)){
+					arcan_shmif_last_words(&cont, "ocr: recognize failed");
+					arcan_shmif_drop(&cont);
+					goto out;
+				}
 				char* text = TessBaseAPIGetUTF8Text(handle);
 				size_t len;
 				if (text && (len = strlen(text))){
