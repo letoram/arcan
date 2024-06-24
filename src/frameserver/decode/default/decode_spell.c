@@ -34,11 +34,12 @@ int decode_spell(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	if (arg_lookup(args, "language", 0, &argstr) && argstr){
 	}
 
-	char buf_a[sizeof("/usr/share/hunspell/aa_AA.aff")];
-	char buf_b[sizeof("/usr/share/hunspell/aa_AA.dic")];
+#define PREFIX "/usr/share/hunspell/"
+	char buf_a[sizeof(PREFIX "/aa_AA.aff")];
+	char buf_b[sizeof(PREFIX "/aa_AA.dic")];
 
-	snprintf(buf_a, sizeof(buf_a), "%s_%s.aff", l639_a2, l3166_a2);
-	snprintf(buf_b, sizeof(buf_b), "%s_%s.dic", l639_a2, l3166_a2);
+	snprintf(buf_a, sizeof(buf_a), PREFIX "%s_%s.aff", l639_a2, l3166_a2);
+	snprintf(buf_b, sizeof(buf_b), PREFIX "%s_%s.dic", l639_a2, l3166_a2);
 
 	Hunhandle* hh = Hunspell_create(buf_a, buf_b);
 
