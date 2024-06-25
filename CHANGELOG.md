@@ -5,6 +5,7 @@
 
 ## Platform
  * posix/glob : add asynch form
+ * egl-dri: add nvidia\_gbmbo_fix option to fix scanout allocation for (some) nvidia GPUs
 
 ## Lua
  * add overloaded glob\_resource that can return an open\_nonblock table

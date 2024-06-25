@@ -137,6 +137,7 @@ static char* egl_envopts[] = {
 	"device_nodpms", "set to disable power management controls",
 	"device_direct_scanout", "enable direct rendertarget scanout",
 	"display_context=1", "set outer shared headless context, per display contexts",
+	"nvidia_gbm_bofix", "set to work around issue with nvidia buffer allocation"
 	NULL
 };
 
@@ -832,10 +833,17 @@ static int setup_buffers_gbm(struct dispout* d)
  * might be a buffer already set when we get called the second time and it is
  * safe to actually bind the buffer to an EGL surface as the config should be
  * the right one */
-		if (!d->buffer.surface)
+		if (!d->buffer.surface){
+			uintptr_t tag;
+			int flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
+			cfg_lookup_fun get_config = platform_config_lookup(&tag);
+			if (get_config("video_nvidia_gbm_bofix", 0, NULL, tag))
+				flags = 0;
+
 			d->buffer.surface = gbm_surface_create(d->device->buffer.gbm,
 				d->display.mode.hdisplay, d->display.mode.vdisplay,
-				gbm_formats[i], GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+				gbm_formats[i], flags);
+		}
 
 		if (!d->buffer.surface)
 			continue;
