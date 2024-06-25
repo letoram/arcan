@@ -137,7 +137,7 @@ static char* egl_envopts[] = {
 	"device_nodpms", "set to disable power management controls",
 	"device_direct_scanout", "enable direct rendertarget scanout",
 	"display_context=1", "set outer shared headless context, per display contexts",
-	"nvidia_gbm_bofix", "set to work around issue with nvidia buffer allocation"
+	"nvidia_gbm_bofix", "set to work around issue with nvidia buffer allocation",
 	NULL
 };
 

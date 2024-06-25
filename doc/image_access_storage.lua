@@ -13,7 +13,7 @@
 -- :read(x, y) = string, format_table function and a :cursor() = x, y for
 -- querying the cursor.
 --
--- The format_table returned by read uncludes colors as "fr, fg, fb" and "br,
+-- The format_table returned by read includes colors as "fr, fg, fb" and "br,
 -- bg, bb" as well as one or more of "bold", "italic", "inverse", "underline",
 -- "underline_alt", "protect", "blink", "strikethrough", "break",
 -- "border_left", "border_right", "border_down", "border_top", "id".
