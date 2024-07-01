@@ -9898,8 +9898,8 @@ static int procimage_read(lua_State* L)
 
 	struct tui_cell cell = arcan_tui_getxy(ud->tui, col, row, true);
 	char str[4];
-	arcan_tui_ucs4utf8(cell.ch, str);
-	lua_pushlstring(L, str, 4);
+	size_t sz = arcan_tui_ucs4utf8(cell.ch, str);
+	lua_pushlstring(L, str, sz);
 	add_attr_tbl(L, cell.attr);
 	return 2;
 }
