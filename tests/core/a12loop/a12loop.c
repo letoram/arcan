@@ -20,20 +20,20 @@ extern void arcan_random(uint8_t*, size_t);
 static uint8_t clpriv[32];
 static uint8_t srvpriv[32];
 
-static struct pk_response key_auth_cl(uint8_t pk[static 32])
+static struct pk_response key_auth_cl(uint8_t pk[static 32], void* tag)
 {
 /* don't really care for the time being, just return a key */
 	struct pk_response auth;
 	auth.authentic = true;
-	memcpy(auth.key, clpriv, 32);
+	a12_set_session(&auth, pk, clpriv);
 	return auth;
 }
 
-static struct pk_response key_auth_srv(uint8_t pk[static 32])
+static struct pk_response key_auth_srv(uint8_t pk[static 32], void* tag)
 {
 	struct pk_response auth;
 	auth.authentic = true;
-	memcpy(auth.key, srvpriv, 32);
+	a12_set_session(&auth, pk, srvpriv);
 	return auth;
 }
 
@@ -346,7 +346,9 @@ static bool test_bxfer(struct a12_state* cl, struct a12_state* srv)
 
 /* send same file twice, the second time we should be able to just reject */
 	for (size_t i = 0; i < 2 && a12_poll(cl) != -1 && a12_poll(srv) != -1; i++){
-		a12_enqueue_bstream(cl, myfd, A12_BTYPE_BLOB, false, base_sz);
+		char extid[16] = {0};
+		a12_enqueue_bstream(cl,
+			myfd, A12_BTYPE_BLOB, 0, false, base_sz, extid);
 		FLUSH(cl, srv);
 	}
 
@@ -369,12 +371,13 @@ int main(int argc, char** argv)
 
 	struct a12_context_options cl_opts = {
 		.pk_lookup = key_auth_cl,
-		.disable_cipher = true,
-		.disable_ephemeral_k = false
+		.disable_ephemeral_k = false,
+		.local_role = ROLE_SINK
 	};
 
-
 	struct a12_context_options srv_opts = cl_opts;
+	srv_opts.local_role = ROLE_SOURCE;
+
 	memcpy(cl_opts.priv_key, clpriv, 32);
 	srv_opts.pk_lookup = key_auth_srv;
 
