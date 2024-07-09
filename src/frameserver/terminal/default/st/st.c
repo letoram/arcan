@@ -803,14 +803,14 @@ ttynew(const char *line, char *cmd, const char *out, char **args)
 		if (s > 2)
 			close(s);
 #ifdef __OpenBSD__
-		if (pledge("stdio getpw proc exec", NULL) == -1)
+		if (pledge(SHMIF_PLEDGE_PREFIX " stdio getpw proc exec", NULL) == -1)
 			die("pledge\n");
 #endif
 		execsh(cmd, args);
 		break;
 	default:
 #ifdef __OpenBSD__
-		if (pledge("stdio rpath tty proc", NULL) == -1)
+		if (pledge(SHMIF_PLEDGE_PREFIX " stdio rpath tty proc", NULL) == -1)
 			die("pledge\n");
 #endif
 		close(s);
