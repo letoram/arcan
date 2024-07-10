@@ -13,14 +13,14 @@ function(amsg msg)
 	_message("" ${msg})
 endfunction()
 
+cmake_minimum_required(VERSION 3.5 FATAL_ERROR)
+#cmake_policy(SET CMP0076 OLD)
+
 if (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client")
 	PROJECT(arcan-libs)
 else()
 	PROJECT(arcan)
 endif()
-
-cmake_minimum_required(VERSION 3.3 FATAL_ERROR)
-cmake_policy(SET CMP0076 OLD)
 
 SET(CMAKE_SKIP_BUILD_RPATH  FALSE)
 SET(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
@@ -77,27 +77,29 @@ endif()
 
 # generate an identifiable buildtag for tracking purposes
 if (NOT DEFINED ENGINE_BUILDTAG)
-	find_package(Git)
-	set(GIT_VERSION)
-	if (GIT_FOUND)
-		execute_process(COMMAND ${GIT_EXECUTABLE} describe --always --tags
-			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-			RESULT_VARIABLE EXIT_CODE
-			OUTPUT_VARIABLE GIT_VERSION
-		)
-		if (NOT ${EXIT_CODE} EQUAL 0)
-		else()
-			string(STRIP ${GIT_VERSION} GIT_VERSION)
-		endif()
+	if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../git)
+		find_package(Git)
+		set(GIT_VERSION)
+		if (GIT_FOUND)
+			execute_process(COMMAND ${GIT_EXECUTABLE} describe --always --tags
+				WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+				RESULT_VARIABLE EXIT_CODE
+				OUTPUT_VARIABLE GIT_VERSION
+			)
+			if (NOT ${EXIT_CODE} EQUAL 0)
+			else()
+				string(STRIP ${GIT_VERSION} GIT_VERSION)
+			endif()
 
-		execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
-			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-			RESULT_VARIABLE EXIT_CODE
-			OUTPUT_VARIABLE GIT_BRANCH
-		)
-		if (NOT ${EXIT_CODE} EQUAL 0)
-		else()
-			string(STRIP ${GIT_BRANCH} GIT_BRANCH)
+			execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
+				WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+				RESULT_VARIABLE EXIT_CODE
+				OUTPUT_VARIABLE GIT_BRANCH
+			)
+			if (NOT ${EXIT_CODE} EQUAL 0)
+			else()
+				string(STRIP ${GIT_BRANCH} GIT_BRANCH)
+			endif()
 		endif()
 
 		if (GIT_VERSION STREQUAL "")
@@ -106,8 +108,18 @@ if (NOT DEFINED ENGINE_BUILDTAG)
 		else()
 			set(ENGINE_BUILDTAG arcan-git-${GIT_BRANCH}-${GIT_VERSION})
 		endif()
+
+	elseif(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../.fslckout)
+		execute_process(
+			COMMAND fossil info tip
+			COMMAND grep hash
+			COMMAND awk "{print substr($2, length($2)-6,6)}"
+			OUTPUT_VARIABLE FOSSIL_INFO
+		)
+		string(STRIP ${FOSSIL_INFO} FOSSIL_INFO)
+		set(ENGINE_BUILDTAG arcan-fossil-${FOSSIL_INFO}-${VERSION})
 	else()
-		amsg("${CL_RED}git not found, using 'relukn' for build tag${CL_RST}")
+		amsg("${CL_RED}no scm found, using 'relukn' for build tag${CL_RST}")
 		set(ENGINE_BUILDTAG arcan-relukn-${VERSION})
 	endif()
 endif()
