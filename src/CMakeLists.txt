@@ -159,7 +159,7 @@ else()
 		endif()
 		include(GNUInstallDirs)
 	endif()
-	set(APLATFORM_STR "openal")
+	set(APLATFORM_STR "openal, stub")
 	set(AGPPLATFORM_STR "gl21, gles2, gles3, stub")
 
 	# we can remove some of this cruft when 'buntu LTS gets ~3.0ish
