@@ -2475,16 +2475,13 @@ retry:
 	mask = ~mask;
 	uint64_t join = 0;
 
-	for (int i = 0; i < res->count_encoders; i++){
-		drmModeEncoder* enc = drmModeGetEncoder(d->device->disp_fd, res->encoders[i]);
+	for (int i = 0; i < d->display.con->count_encoders; i++){
+		drmModeEncoder* enc = drmModeGetEncoder(d->device->disp_fd, d->display.con->encoders[i]);
 		if (!enc)
 			continue;
 
-		for (int j = 0; j < res->count_crtcs; j++){
-			if (!(enc->possible_crtcs & (1 << j)))
-				mask &= enc->possible_crtcs;
-			join |= enc->possible_crtcs;
-		}
+		mask &= enc->possible_crtcs;
+		join |= enc->possible_crtcs;
 
 		drmModeFreeEncoder(enc);
 	}
