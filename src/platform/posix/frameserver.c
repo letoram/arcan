@@ -859,12 +859,6 @@ static size_t fsrv_protosize(arcan_frameserver* ctx,
 	}
 	dofs->ofs_hdr = dofs->sz_hdr = 0;
 
-	if (proto & SHMIF_META_VOBJ){
-/* nothing now, somewhat pesky in that we need a limit on ops and an
- * ops specifier as part of the request (?) */
-	}
-	dofs->ofs_vector = dofs->sz_vector = 0;
-
 	if (proto & SHMIF_META_VENC){
 		dofs->ofs_venc = dofs->sz_venc = tot;
 		tot += sizeof(struct arcan_shmif_venc);
@@ -1271,14 +1265,6 @@ static void fsrv_setproto(arcan_frameserver* ctx,
 	}
 	else
 		ctx->desc.aext.hdr = NULL;
-
-	if (proto & SHMIF_META_VOBJ){
-		ctx->desc.aext.vector =
-			(struct arcan_shmif_vector*)(base + aofs->ofs_vector);
-		memset(ctx->desc.aext.vector, '\0', aofs->sz_vector);
-	}
-	else
-		ctx->desc.aext.vector = NULL;
 
 	if (proto & SHMIF_META_VR){
 		ctx->desc.aext.vr =

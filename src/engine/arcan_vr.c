@@ -104,7 +104,7 @@ struct arcan_vr_ctx* arcan_vr_setup(
  * models for tool-limbs
  */
 	struct frameserver_envp args = {
-		.metamask = SHMIF_META_VR | SHMIF_META_VOBJ,
+		.metamask = SHMIF_META_VR,
 		.use_builtin = false,
 		.args.external.fname = kv,
 		.args.external.envv = &arr_env,

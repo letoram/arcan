@@ -6,6 +6,7 @@
 ## Platform
  * posix/glob : add asynch form
  * egl-dri: add nvidia\_gbmbo_fix option to fix scanout allocation for (some) nvidia GPUs
+ * egl-dri: fixes to CRTC picking logic
 
 ## Lua
  * add overloaded glob\_resource that can return an open\_nonblock table
@@ -22,6 +23,7 @@
  * default-route ACESSIBILITY internal-catch to map a TUI window feed through encode in OCR mode
  * add RHINT\_EMPTY to use SHMIF\_SIGVID for clocking without GPU transfers
  * fixes several C++ interop problems with header definition
+ * drop VOBJ substructure, passing vector objects as BCHUNK is much less complex
 
 ## Net
  * IPv6 discovery controls added
@@ -44,6 +46,7 @@
  * Readline: fix padding error when stepping history to shorter items
  * Expose accessibility window as mappable type
  * Expose cursor state constrols
+ * Tui: prevent cursor from moving out of screen bounds
  * Lua Bindings: add helper :tempfile, :tempdir, :mkdir, :funlink, :fmkdir
  * Lua Bindings: nbio fixes
 
@@ -128,6 +131,7 @@
 ## Package / Build
  * console: added binding for shutdown
  * builtin/mouse: bugfixes to two-sample mode
+ * expose audio stub platform
 
 ## 0.6.2.1
 ## Lua

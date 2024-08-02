@@ -533,14 +533,6 @@ enum shmif_ext_meta {
 	SHMIF_META_HDR = 4,
 
 /*
- * This is reserved and not completely fleshed out yet,
- * but will switch the semantics of the video buffer area to represent a
- * texture-maps + GPU friendly packing format - with the apad area to
- * define metadata.
- */
-	SHMIF_META_VOBJ = 8,
-
-/*
  * This contains the meta for one complete avatar tracking + display
  * The common case for this is for a tool like the hmdserver to provide
  * data.

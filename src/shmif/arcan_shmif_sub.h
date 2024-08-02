@@ -137,39 +137,6 @@ struct arcan_shmif_venc {
 };
 
 /*
- * similar to how agp_mesh_store accepts data, the reordering would
- * happen in the copy+validation stage. negative offset fields mean
- * the data isn't present.
- */
-struct shmif_vector_mesh {
-	int32_t ofs_verts; /* float */
-	int32_t ofs_txcos; /* float */
-	int32_t ofs_txcos2; /* float */
-	int32_t ofs_normals; /* float */
-	int32_t ofs_colors; /* float */
-	int32_t ofs_tangents; /* float */
-	int32_t ofs_bitangents; /* float */
-	int32_t ofs_weights; /* float */
-	int32_t ofs_joints; /* uint16 */
-	int32_t ofs_indices; /* uint32 */
-
-	size_t vertex_size;
-	size_t n_vertices;
-	size_t n_indices;
-	int primitive;
-
-	size_t buffer_sz;
-	uint8_t* buffer;
-};
-
-struct arcan_shmif_vector {
-/* PRODUCER set */
-	size_t data_sz;
-	uint8_t mesh_groups;
-	struct shmif_vector_mesh meshes[];
-};
-
-/*
  * Though it might seem that this information gets lost on a resize request,
  * that is only true if the substructure set changes. Otherwise it's part of
  * the base that gets copied over.

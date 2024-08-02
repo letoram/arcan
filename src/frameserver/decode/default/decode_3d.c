@@ -24,6 +24,15 @@ static int process_obj(struct arcan_shmif_cont* C, char* buf, size_t buf_sz)
 /* tinyobj_parse_mtl_file */
 /* also don't have a way to communicate animations */
 
+/* build a map that matches the server-end format as a shared memory blob,
+ * send that as a BCHUNK with a reserved name, the launch_avfeed end then
+ * calls new_3dmodel(vid) on the frameserver.
+ *
+ * This maps and validates
+ * and the finalized model can be used.
+ * grab from 3dwork/tinyobjloader/models/...
+ */
+
 	free(buf);
 	if (rv != TINYOBJ_SUCCESS)
 		return EXIT_FAILURE;

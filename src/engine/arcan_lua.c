@@ -5004,7 +5004,6 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblstr(ctx, "kind", "proto_change", top);
 			tblbool(ctx, "cm", (ev->fsrv.aproto & SHMIF_META_CM) > 0, top);
 			tblbool(ctx, "hdr", (ev->fsrv.aproto & SHMIF_META_HDR) > 0, top);
-			tblbool(ctx, "vobj", (ev->fsrv.aproto & SHMIF_META_VOBJ) > 0, top);
 			tblbool(ctx, "vr", (ev->fsrv.aproto & SHMIF_META_VR) > 0, top);
 		break;
 		case EVENT_FSRV_GAMMARAMP:
@@ -8446,7 +8445,6 @@ enum target_flags {
 	TARGET_FLAG_NO_BUFFERPASS,
 	TARGET_FLAG_ALLOW_CM,
 	TARGET_FLAG_ALLOW_HDR,
-	TARGET_FLAG_ALLOW_VOBJ,
 	TARGET_FLAG_ALLOW_INPUT,
 	TARGET_FLAG_ALLOW_GPUAUTH,
 	TARGET_FLAG_LIMIT_SIZE,
@@ -8513,13 +8511,6 @@ static void updateflag(arcan_vobj_id vid, enum target_flags flag, bool toggle)
 			fsrv->metamask |= SHMIF_META_HDR;
 		else
 			fsrv->metamask &= ~SHMIF_META_HDR;
-	break;
-
-	case TARGET_FLAG_ALLOW_VOBJ:
-		if (toggle)
-			fsrv->metamask |= SHMIF_META_VOBJ;
-		else
-			fsrv->metamask &= ~SHMIF_META_VOBJ;
 	break;
 
 	case TARGET_FLAG_ALLOW_INPUT:
@@ -12943,7 +12934,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"TARGET_ALLOWCM", TARGET_FLAG_ALLOW_CM},
 {"TARGET_ALLOWHDR", TARGET_FLAG_ALLOW_HDR},
 {"TARGET_ALLOWLODEF", 0}, /* deprecated */
-{"TARGET_ALLOWVECTOR", TARGET_FLAG_ALLOW_VOBJ},
+{"TARGET_ALLOWVECTOR", 0}, /* deprecated */
 {"TARGET_ALLOWINPUT", TARGET_FLAG_ALLOW_INPUT},
 {"TARGET_ALLOWGPU", TARGET_FLAG_ALLOW_GPUAUTH},
 {"TARGET_LIMITSIZE", TARGET_FLAG_LIMIT_SIZE},
