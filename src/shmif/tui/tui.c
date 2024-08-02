@@ -152,7 +152,11 @@ size_t arcan_tui_get_handles(
 static void write_front_checked(struct tui_context* c,
 	size_t x, size_t y, uint32_t uc, const struct tui_screen_attr* attr)
 {
-	struct tui_cell* data = &c->front[c->cy * c->cols + c->cx];
+	size_t ofs = c->cy * c->cols + c->cx;
+	if (ofs >= c->cols * c->rows)
+		return;
+
+	struct tui_cell* data = &c->front[ofs];
 	data->fstamp = c->fstamp;
 	data->draw_ch = data->ch = uc;
 	if (attr)
@@ -1051,6 +1055,11 @@ void arcan_tui_move_to(struct tui_context* c, size_t x, size_t y)
 {
 	if (!c)
 		return;
+
+	if (x && x >= c->cols)
+		x = c->cols - 1;
+	if (y && y >= c->rows)
+		y = c->rows - 1;
 
 	if (x != c->cx || y != c->cy){
 		c->cx = x;
