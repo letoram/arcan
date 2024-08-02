@@ -3310,6 +3310,7 @@ static int tui_fstatus(lua_State* L)
 {
 	TUI_UDATA;
 	const char* src = luaL_checkstring(L, 2);
+
 	struct stat s;
 
 /* this will trigger slightly different behaviour on platforms that still
@@ -3359,6 +3360,18 @@ static int tui_fstatus(lua_State* L)
 	lua_pushstring(L, "mode");
 	lua_pushnumber(L, s.st_mode);
 	lua_rawset(L, -3);
+
+	if (S_ISLNK(s.st_mode)){
+		lua_pushstring(L, "link");
+		char buf[16384];
+		ssize_t sz = readlinkat(ib->cwd_fd, src, buf, sizeof(buf));
+		if (sz > 0){
+			lua_pushlstring(L, buf, sz);
+		}
+		else
+			lua_pushstring(L, "(bad)");
+		lua_rawset(L, -3);
+	}
 
 	lua_pushstring(L, "mode_string");
 	char modestr[] = "----------";
