@@ -773,7 +773,7 @@ static void request_source(
 /* map the handover segment but mark it as unknown and defer registration until
  * the the source- setup is done and the a12 to shmif mapping gets the events
  * from the other side */
-	struct arcan_shmif_cont* handover = malloc(sizeof(struct arcan_shmif_cont*));
+	struct arcan_shmif_cont* handover = malloc(sizeof(struct arcan_shmif_cont));
 	*handover = arcan_shmif_acquire(C, NULL, SEGID_UNKNOWN, SHMIF_NOACTIVATE);
 
 	I->handover = handover;
