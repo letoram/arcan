@@ -161,7 +161,7 @@ static struct ext_cmd* cmd_open(
 	}
 
 /* setup ARCAN_ARG=proto=media:fd=%d */
-	char** env = malloc(sizeof(char*) * 1);
+	char** env = malloc(sizeof(char*) * 2);
 	if (!env){
 		close(fd);
 		return NULL;

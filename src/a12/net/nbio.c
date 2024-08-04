@@ -1071,9 +1071,9 @@ int alt_nbio_open(lua_State* L)
 		int rv = bind(fd, (struct sockaddr*) &addr, sizeof(addr));
 		if (-1 == rv){
 			close(fd);
-			arcan_mem_free(path);
 			arcan_warning(
 				"open_nonblock(): bind (%s) failed: %s\n", path, strerror(errno));
+			arcan_mem_free(path);
 			LUA_ETRACE("open_nonblock", "couldn't bind socket", 0);
 		}
 		listen(fd, 5);

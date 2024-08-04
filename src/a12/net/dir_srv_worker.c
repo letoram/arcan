@@ -114,7 +114,7 @@ static bool shmif_block_synch_request(struct arcan_shmif_cont* C,
 		}
 
 		reply->ev = ev;
-		reply->next = malloc(sizeof(struct arcan_event));
+		reply->next = malloc(sizeof(struct evqueue_entry));
 		*(reply->next) = (struct evqueue_entry){0};
 		reply = reply->next;
 	}
@@ -681,9 +681,9 @@ retry_block:
 
 		_Static_assert(sizeof(rq.host) == 46, "wrong host-length");
 
-		/* if there is a tunnel pending (would arrive as a bchunkstate during
-		 * block_synch_request) tag the proto accordingly and spawn our feeder with
-		 * the src descriptor already being set in the thread. */
+	/* if there is a tunnel pending (would arrive as a bchunkstate during
+	 * block_synch_request) tag the proto accordingly and spawn our feeder with
+	 * the src descriptor already being set in the thread. */
 		if (pending_tunnel){
 			a12int_trace(A12_TRACE_DIRECTORY, "diropen:tunnel_sink");
 			rq.proto = 4;
@@ -692,6 +692,7 @@ retry_block:
 			return rv;
 		}
 
+/* truncation intended */
 		strncpy(rq.host, repev.ext.netstate.name, 45);
 		*out = rq;
 	}

@@ -836,7 +836,7 @@ bool a12helper_keystore_public_tagset(struct keystore_mask* mask)
 	}
 
 	struct dirent* dent;
-	struct keystore_mask* last;
+	struct keystore_mask* last = NULL;
 
 	while ((dent = readdir(dir))){
 		if (dent->d_type != DT_REG || in_mask(mask, dent->d_name, &last))
@@ -849,6 +849,10 @@ bool a12helper_keystore_public_tagset(struct keystore_mask* mask)
 /* let the keystore actually open / parse, this catches format errors, permission
  * errors and accidentally placed files */
 		if (!a12helper_keystore_hostkey(dent->d_name, 0, privk, &outhost, &outport))
+			continue;
+
+/* shouldn't happen, suppress warning */
+		if (!last)
 			continue;
 
 /* append the tag so we don't re-use it until the caller explicitly flush */

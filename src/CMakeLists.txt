@@ -651,8 +651,6 @@ else()
 		FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
 	)
 
-	amsg("AGP LINKS: ${AGP_LIBRARIES}")
-
 	target_link_libraries(arcan
 		${STDLIB}
 		${ARCAN_LIBRARIES}

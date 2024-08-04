@@ -12118,6 +12118,7 @@ static int net_discover(lua_State* ctx)
 		discm = "test";
 	break;
 	default:
+		discm = "bad"; /* set to silence compiler */
 		arcan_fatal("net_discover(): unknown discover mode: %zu", mode);
 	}
 
@@ -12132,6 +12133,7 @@ static int net_discover(lua_State* ctx)
 		trustm = "transitive";
 	break;
 	default:
+		trustm = "bad"; /* set to silence compiler */
 		arcan_fatal("net_discover(): unknown trust model: %zu", trust);
 	break;
 	}
