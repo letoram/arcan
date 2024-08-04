@@ -33,13 +33,13 @@ if(VIDEO_PLATFORM STREQUAL "egl-gles")
 	endif()
 
 	list(APPEND INCLUDE_DIRS
-		${GLES2_INCLUDE_DIRS}
-		${OPENGL_EGL_INCLUDE_DIRS}
+		OpenGL::GLES2
+		OpenGL::EGL
 	)
 
 	set(LWA_PLATFORM_STR "stub")
 	set(VIDEO_PLATFORM_SOURCES ${PLATFORM_ROOT}/egl-gles/video.c)
-	list(APPEND VIDEO_LIBRARIES ${OPENGL_egl_LIBRARY})
+	list(APPEND VIDEO_LIBRARIES OpenGL::EGL)
 
 #
 # will hopefully become the default on BSDs/linux
@@ -53,10 +53,10 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 	pkg_check_modules(GBMKMS REQUIRED QUIET libdrm gbm)
 
 	list(APPEND VIDEO_LIBRARIES
-		${OPENGL_egl_LIBRARY}
+		OpenGL::EGL
 		${GBMKMS_LINK_LIBRARIES}
 	)
-	list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
+	list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS} OpenGL::EGL)
 	set(VIDEO_PLATFORM_SOURCES
 		${PLATFORM_ROOT}/egl-dri/video.c)
 	if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")

@@ -13,7 +13,7 @@ function(amsg msg)
 	_message("" ${msg})
 endfunction()
 
-cmake_minimum_required(VERSION 3.5 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 #cmake_policy(SET CMP0076 OLD)
 
 if (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client")
@@ -650,6 +650,8 @@ else()
 		ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${PLATFORM_BUILDTAG}-${CMAKE_SYSTEM_NAME}\"
 		FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
 	)
+
+	amsg("AGP LINKS: ${AGP_LIBRARIES}")
 
 	target_link_libraries(arcan
 		${STDLIB}
