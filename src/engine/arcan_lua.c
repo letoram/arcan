@@ -1896,6 +1896,7 @@ static int loadasample(lua_State* ctx)
 				arcan_audio_sample_buffer(buf, n, n_ch, rate, fmt));
 
 		LUA_ETRACE("load_asample", NULL, 1);
+		return 0;
 	}
 
 	const char* rname = luaL_checkstring(ctx, 1);
