@@ -864,7 +864,7 @@ void platform_audio_tick(uint8_t ntt)
 			&(struct arcan_event){
 				.category = EVENT_AUDIO,
 				.aud.kind = EVENT_AUDIO_PLAYBACK_FINISHED,
-				.aud.otag = current_acontext->sample_tags[i]
+				.aud.otag = tag,
 			});
 		}
 	}
