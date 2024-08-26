@@ -327,10 +327,13 @@ static struct a12_vframe_opts vcodec_tuning(
  * starts to reject the bitstream */
 
 	case SEGID_MEDIA:
+		opts.method = VFRAME_METHOD_H264;
+		opts.bias = VFRAME_BIAS_QUALITY;
+	break;
 	case SEGID_BRIDGE_WAYLAND:
 	case SEGID_BRIDGE_X11:
 		opts.method = VFRAME_METHOD_H264;
-		opts.bias = VFRAME_BIAS_QUALITY;
+		opts.bias = VFRAME_BIAS_LATENCY;
 	break;
 	}
 

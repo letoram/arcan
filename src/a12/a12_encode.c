@@ -727,7 +727,7 @@ static bool open_videnc(struct a12_state* S,
 	if (codecid == AV_CODEC_ID_H264){
 		switch(venc_opts.bias){
 		case VFRAME_BIAS_LATENCY:
-			av_opt_set(encoder->priv_data, "preset", "veryfast", 0);
+			av_opt_set(encoder->priv_data, "preset", "ultrafast", 0);
 			av_opt_set(encoder->priv_data, "tune", "zerolatency", 0);
 			a12int_trace(A12_TRACE_VIDEO, "kind=encopt:zerolatency");
 		break;
