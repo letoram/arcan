@@ -11,6 +11,11 @@
 #define SHMIF_TTF
 #include "arcan_ttf.h"
 
+int TTF_Init( void )
+{
+	return 0;
+}
+
 void TTF_ProbeFont(TTF_Font* font, size_t* dw, size_t* dh)
 {
 	*dw = 0;
