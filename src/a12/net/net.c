@@ -1650,10 +1650,10 @@ int main(int argc, char** argv)
 	struct arcan_net_meta meta = {0};
 	sigaction(SIGPIPE, &(struct sigaction){
 			.sa_handler = SIG_IGN
-	});
+	}, NULL);
 	sigaction(SIGCHLD, &(struct sigaction){
 			.sa_handler = SIG_IGN
-	});
+	}, NULL);
 
 /* setup all the defaults but with dynamic allocation for strings etc.
  * so that the script config can easily override them */
