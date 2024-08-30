@@ -22,6 +22,8 @@
 #include <libavcodec/version.h>
 #include <libavutil/opt.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/channel_layout.h>
+
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
 #include <libswresample/swresample.h>
@@ -70,7 +72,8 @@ static struct {
 	const AVCodec* acodec;
 	AVStream* astream;
 	AVPacket* apacket;
-	int channel_layout;
+	int64_t anext_pts;
+
 	int apts_ofs; /* used to roughly displace A/V
 									 synchronisation in encoded frames */
 	int silence_samples; /* used to dynamically drop or insert
@@ -218,18 +221,6 @@ static uint8_t* s16swrconv(int* size, int* nsamp)
 	static uint8_t** resamp_outbuf = NULL;
 
 	if (!resampler){
-		resampler =
-			swr_alloc_set_opts(
-				NULL,
-				AV_CH_LAYOUT_STEREO,
-				recctx.acontext->sample_fmt,
-				recctx.acontext->sample_rate,
-				AV_CH_LAYOUT_STEREO,
-				AV_SAMPLE_FMT_S16,
-				ARCAN_SHMIF_SAMPLERATE, 0, NULL);
-
-/*
- * This is intended to be the 'coming interface' versus the factory above..
 		resampler = swr_alloc();
 		av_opt_set_chlayout(resampler, "in_chlayout", &recctx.acontext->ch_layout, 0);
 		av_opt_set_int(resampler, "in_sample_rate", recctx.acontext->sample_rate, 0);
@@ -237,7 +228,6 @@ static uint8_t* s16swrconv(int* size, int* nsamp)
 		av_opt_set_chlayout(resampler, "out_chlayout", &recctx.acontext->ch_layout, 0);
 		av_opt_set_int(resampler, "out_sample_rate", recctx.acontext->sample_rate, 0);
 		av_opt_set_sample_fmt(resampler, "out_sample_fmt", recctx.acontext->sample_fmt, 0);
-	*/
 
 		resamp_outbuf = av_malloc(sizeof(uint8_t*) * ARCAN_SHMIF_ACHANNELS);
 		av_samples_alloc(resamp_outbuf, NULL, ARCAN_SHMIF_ACHANNELS,
@@ -312,7 +302,7 @@ static bool encode_audio(bool flush)
 		exit(EXIT_FAILURE);
 	}
 
-	frame->channel_layout = audio->channel_layout;
+	av_channel_layout_copy(&frame->ch_layout, &audio->ch_layout);
 /*
  * same as with setup above, this the direct assignment will be
  * deprecated ..
@@ -400,10 +390,9 @@ void arcan_frameserver_stepframe()
 /* interleave audio / video */
 	if (recctx.astream && recctx.vstream){
 		while(1){
-			apts = av_stream_get_end_pts(recctx.astream);
-			vpts = av_stream_get_end_pts(recctx.vstream);
-
-			if (apts < vpts){
+			if (av_compare_ts(
+					recctx.aframe_ptscnt, recctx.acontext->time_base,
+					recctx.framecount, recctx.vcontext->time_base) <= 0){
 				if (!encode_audio(false))
 					break;
 			}

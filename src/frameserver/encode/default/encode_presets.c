@@ -97,6 +97,12 @@ static bool default_acodec_setup(
 		return false;
 	}
 
+	av_channel_layout_copy(
+		&ctx->ch_layout,
+		&(AVChannelLayout)AV_CHANNEL_LAYOUT_STEREO);
+
+/* should sweep codec and find best match for number of channels */
+
 	return true;
 }
 
