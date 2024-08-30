@@ -776,9 +776,6 @@ static int a12_connect(struct anet_options* args,
 	struct anet_options* args,
 	struct a12_state* S, struct shmifsrv_client* cl, int fd))
 {
-	signal(SIGPIPE, SIG_IGN);
-	signal(SIGCHLD, SIG_IGN);
-
 	int shmif_fd = -1;
 	for(;;){
 		struct shmifsrv_client* cl =
@@ -1651,6 +1648,12 @@ static void sigusr_rescan(int sign)
 int main(int argc, char** argv)
 {
 	struct arcan_net_meta meta = {0};
+	sigaction(SIGPIPE, &(struct sigaction){
+			.sa_handler = SIG_IGN
+	});
+	sigaction(SIGCHLD, &(struct sigaction){
+			.sa_handler = SIG_IGN
+	});
 
 /* setup all the defaults but with dynamic allocation for strings etc.
  * so that the script config can easily override them */
