@@ -1246,6 +1246,7 @@ int alt_nbio_open(lua_State* L)
 
 /* this little crutch was better than differentiating the userdata as the
  * support for polymorphism there is rather clunky */
+	conn->lfch = '\n';
 	conn->mode = pfd.wrmode;
 	conn->pending = pfd.path;
 	conn->unlink_fn = pfd.unlink;

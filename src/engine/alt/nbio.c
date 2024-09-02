@@ -1264,6 +1264,7 @@ int alt_nbio_open(lua_State* L)
 			ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	conn->fd = pfd.fd;
+	conn->lfch = '\n';
 	alt_nbio_nonblock_cloexec(pfd.fd, true);
 
 /* this little crutch was better than differentiating the userdata as the
