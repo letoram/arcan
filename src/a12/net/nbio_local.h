@@ -16,8 +16,6 @@
 #define STRJOIN(X) STRJOIN2(X)
 #define LINE_TAG STRJOIN(__LINE__)
 
-#ifndef OMIT_ARCAN_MEM
-
 static void arcan_mem_free(void* f)
 {
 	free(f);
@@ -27,15 +25,6 @@ static void arcan_mem_free(void* f)
 #define ARCAN_MEM_BINDING 0
 #define ARCAN_MEMALIGN_NATURAL 0
 #define CB_SOURCE_NONE 0
-lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
-{
-	if (lua_isnumber(L, narg))
-		return lua_tonumber(L, narg);
-	else if (lua_isboolean(L, narg))
-		return lua_toboolean(L, narg);
-	else
-		return opt;
-}
 
 static void* arcan_alloc_mem(size_t sz, int type, int hint, int align)
 {
@@ -45,8 +34,6 @@ static void* arcan_alloc_mem(size_t sz, int type, int hint, int align)
 	}
 	return res;
 }
-
-#endif
 
 static void alt_call(lua_State* L,
 	int kind, uintptr_t kind_tag, int args, int retc, const char* src)
@@ -66,7 +53,8 @@ static void alt_call(lua_State* L,
 
 #define RESOURCE_APPL_TEMP 1
 #define RESOURCE_NS_USER 2
-#define ARES_FILE 0
+#define ARES_FILE 1
+#define ARES_CREATE 256
 #define DEFAULT_USERMASK 2
 
 static char* arcan_expand_resource(const char* prefix, int ns)

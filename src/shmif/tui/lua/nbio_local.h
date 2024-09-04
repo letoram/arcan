@@ -25,16 +25,6 @@ static void arcan_mem_free(void* f)
 #define ARCAN_MEM_BINDING 0
 #define ARCAN_MEMALIGN_NATURAL 0
 #define CB_SOURCE_NONE 0
-lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
-{
-	if (lua_isnumber(L, narg))
-		return lua_tonumber(L, narg);
-	else if (lua_isboolean(L, narg))
-		return lua_toboolean(L, narg);
-	else
-		return opt;
-}
-
 static void* arcan_alloc_mem(size_t sz, int type, int hint, int align)
 {
 	void* res = malloc(sz);

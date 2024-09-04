@@ -865,6 +865,28 @@ int alt_nbio_process_read(
 	}
 }
 
+lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
+{
+	if (lua_isnumber(L, narg))
+		return lua_tonumber(L, narg);
+	else if (lua_isboolean(L, narg))
+		return lua_toboolean(L, narg);
+	else
+		return opt;
+}
+
+lua_Number luaL_checkbnumber(lua_State* L, int narg)
+{
+	lua_Number d = lua_tonumber(L, narg);
+	if (d == 0 && !lua_isnumber(L, narg)){
+		if (!lua_isboolean(L, narg))
+			luaL_typerror(L, narg, "number or boolean");
+		else
+			d = lua_toboolean(L, narg);
+	}
+	return d;
+}
+
 static int nbio_lf(lua_State* L)
 {
 	LUA_TRACE("open_nonblock:lf_strip")
@@ -1242,11 +1264,11 @@ int alt_nbio_open(lua_State* L)
 			ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	conn->fd = pfd.fd;
+	conn->lfch = '\n';
 	alt_nbio_nonblock_cloexec(pfd.fd, true);
 
 /* this little crutch was better than differentiating the userdata as the
  * support for polymorphism there is rather clunky */
-	conn->lfch = '\n';
 	conn->mode = pfd.wrmode;
 	conn->pending = pfd.path;
 	conn->unlink_fn = pfd.unlink;

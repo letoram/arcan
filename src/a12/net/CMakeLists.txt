@@ -24,6 +24,10 @@ set(SOURCES
 	${ARCAN_SRC}/frameserver/util/anet_keystore_naive.c
 )
 
+if (NOT LUA_FOUND)
+	find_package(Lua51 REQUIRED)
+endif()
+
 set(INCLUDE_DIRS
 	"${ARCAN_SRC}/shmif"
 	"${A12_EXT}"
