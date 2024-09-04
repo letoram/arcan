@@ -879,8 +879,9 @@ lua_Number luaL_checkbnumber(lua_State* L, int narg)
 {
 	lua_Number d = lua_tonumber(L, narg);
 	if (d == 0 && !lua_isnumber(L, narg)){
-		if (!lua_isboolean(L, narg))
-			luaL_typerror(L, narg, "number or boolean");
+		if (!lua_isboolean(L, narg)){
+			luaL_argerror(L, narg, "number or boolean");
+		}
 		else
 			d = lua_toboolean(L, narg);
 	}
