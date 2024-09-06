@@ -294,6 +294,12 @@ int decode_image(struct arcan_shmif_cont* C, struct arg_arr* args)
 		}
 		fd = open(val, O_RDONLY);
 	}
+	else if (arg_lookup(args, "fdin", 0, &val)){
+		if (!val || strlen(val) == 0){
+			return show_use(C, "fdin=arg [arg] missing");
+		}
+		fd = strtoul(val, NULL, 10);
+	}
 	else
 		fd = wait_for_file(C, "svg;jpg;png", NULL);
 

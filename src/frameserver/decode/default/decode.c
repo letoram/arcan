@@ -83,6 +83,7 @@ int show_use(struct arcan_shmif_cont* cont, const char* msg)
 		"  key    \t   value   \t   description\n"
 		"---------\t-----------\t-----------------\n"
 		" file    \t path      \t one-shot open file >path< for input \n"
+		" fdin    \t fd        \t one-shot use inherited >fd< for input \n"
 		"---------\t-----------\t-----------------\n"
 		"\n"
 		" Accepted text arguments:\n"
