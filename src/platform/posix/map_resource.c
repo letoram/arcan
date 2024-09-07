@@ -25,15 +25,23 @@
 #define MAX_RESMAP_SIZE (1024 * 1024 * 40)
 #endif
 
-static inline bool read_safe(int fd, size_t ntr, int bs, char* dofs)
+static inline bool read_safe(
+	int fd, size_t ntr, size_t bs, char* dofs, ssize_t* outsz)
 {
-	char* dbuf = dofs;
+	char emptyb[bs];
+	char* dbuf = dofs ? dofs : emptyb;
 
 	while (ntr > 0){
-		int nr = read(fd, dbuf, bs > ntr ? ntr : bs);
+		ssize_t nr = read(fd, dbuf, bs > ntr ? ntr : bs);
 
-		if (nr > 0)
+		if (nr > 0){
 			ntr -= nr;
+			if (outsz)
+				*outsz += nr;
+		}
+		else if (nr == 0){
+			break;
+		}
 		else
 			if (errno == EINTR);
 		else
@@ -43,7 +51,7 @@ static inline bool read_safe(int fd, size_t ntr, int bs, char* dofs)
 			dbuf += nr;
 	}
 
-	return ntr == 0;
+	return 0 == ntr;
 }
 
 /*
@@ -56,6 +64,7 @@ map_region arcan_map_resource(data_source* source, bool allowwrite)
 {
 	map_region rv = {0};
 	struct stat sbuf;
+	bool allow_trunc = false;
 
 /*
  * if additional properties (size, ...) has not yet been resolved,
@@ -64,6 +73,14 @@ map_region arcan_map_resource(data_source* source, bool allowwrite)
 	if (0 == source->len && -1 != fstat(source->fd, &sbuf)){
 		source->len = sbuf.st_size;
 		source->start = 0;
+		sbuf.st_mode &= S_IFMT;
+/*
+ * overalloc to the cap for pipes
+ */
+		if (sbuf.st_mode == S_IFIFO || sbuf.st_mode == S_IFSOCK){
+			source->len = MAX_RESMAP_SIZE;
+			allow_trunc = true;
+		}
 	}
 
 /* bad resource */
@@ -116,17 +133,28 @@ memread:
  */
 		bool rstatus = true;
 		if (source->start > 0 && -1 == lseek(source->fd, SEEK_SET, source->start)){
-			rstatus = read_safe(source->fd, source->start, 8192, NULL);
+			rstatus = read_safe(source->fd, source->start, 8192, NULL, NULL);
 		}
 
 		if (rstatus){
-			rstatus = read_safe(source->fd, source->len, 8192, rv.ptr);
+			size_t reqlen = source->len;
+			source->len = 0;
+			rstatus = read_safe(source->fd, reqlen, 8192, rv.ptr, &source->len);
 		}
 
+/* we used a read cap into overallocated buffer,
+ * accepted truncation (pipe), shrink the overalloc */
 		if (!rstatus){
-			free(rv.ptr);
-			rv.ptr = NULL;
-			rv.sz  = 0;
+			if (allow_trunc){
+				rv.ptr = realloc(rv.ptr, rv.sz);
+				if (!rv.ptr)
+					rv.sz = 0;
+			}
+			else {
+				free(rv.ptr);
+				rv.ptr = NULL;
+				rv.sz  = 0;
+			}
 		}
 
 	return rv;
