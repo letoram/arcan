@@ -6245,7 +6245,7 @@ arcan_errc arcan_video_tracetag(
 	if (!vobj)
 		return rv;
 
-	if (vobj->tracetag)
+	if (vobj->tracetag && message)
 		arcan_mem_free(vobj->tracetag);
 
 	if (vobj->alttext && alt){
@@ -6253,7 +6253,8 @@ arcan_errc arcan_video_tracetag(
 		vobj->alttext = strdup(alt);
 	}
 
-	vobj->tracetag = strdup(message);
+	if (message)
+		vobj->tracetag = strdup(message);
 
 	return ARCAN_OK;
 }

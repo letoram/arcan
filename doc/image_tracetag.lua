@@ -3,6 +3,7 @@
 -- @inargs: vid
 -- @inargs: vid, string:tag
 -- @inargs: vid, string:tag, string:alt
+-- @inargs: vid, string:tag=nil, string:alt
 -- @outargs:
 -- @outargs: string:tag, string:alt
 -- @longdescr:
@@ -12,7 +13,9 @@
 -- calls.
 --
 -- The *alt* form is alt-text to mark that the video object is useful for
--- assistive devices such as screen-readers.
+-- assistive devices such as screen-readers. If no *tag* is provided but an
+-- *alt* tag is, the existing tag will be preserved while also updating the
+-- alt-text.
 --
 -- If no *tag* or *alt* is provided, the currently set value will be returned.
 -- If there is no tag set, the returned string will be '(no tag)' and the alt

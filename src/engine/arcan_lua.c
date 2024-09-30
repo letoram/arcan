@@ -11611,6 +11611,11 @@ static int tracetag(lua_State* ctx)
 		arcan_video_readtag(id, &tag, &alt);
 		lua_pushstring(ctx, tag ? tag : "(no tag)");
 		lua_pushstring(ctx, alt ? alt : "");
+
+/* allow updating only the alt-text part */
+		if (alt)
+			arcan_video_tracetag(id, tag, alt);
+
 		rc = 2;
 	}
 	else
@@ -13478,6 +13483,10 @@ mask,
 lut_kind(src));
 	fprintf(dst, "tracetag = ");
 	fput_luasafe_str(dst, src->tracetag ? src->tracetag : "no tag");
+	fputs(",\n", dst);
+
+	fprintf(dst, "alt_text = ");
+	fput_luasafe_str(dst, src->alttext ? src->alttext : "no tag");
 	fputs(",\n", dst);
 
 	fprintf_float(dst, "origoofs = {", src->origo_ofs.x, ", ");

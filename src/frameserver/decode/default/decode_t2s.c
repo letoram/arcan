@@ -511,7 +511,9 @@ int decode_t2s(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	}
 
 	while (arcan_shmif_wait(cont, &ev)){
-		flush_event(ev);
+		if (!flush_event(ev)){
+			cont->abufpos = 0;
+		}
 
 /* this can happen with MESSAGE -> MESSAGE -> RESET (inside callback) as we
  * are not allowed to call Cancel from within the callback */
