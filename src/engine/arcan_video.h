@@ -857,7 +857,7 @@ arcan_errc arcan_video_clipto(arcan_vobj_id id, arcan_vobj_id clip_tgt);
  * description is specifically for assistive devices e.g. screen readers.
  */
 arcan_errc arcan_video_tracetag(
-	arcan_vobj_id id, const char* const message, const char* const alt);
+	arcan_vobj_id id, const char* message, const char* alt);
 
 /*
  * Force a specific blending operation, regardless of object state. Normally,

@@ -11602,24 +11602,26 @@ static int tracetag(lua_State* ctx)
 	LUA_TRACE("image_tracetag");
 
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	const char* const msg = luaL_optstring(ctx, 2, NULL);
-	const char* const alt = luaL_optstring(ctx, 3, NULL);
+	const char* msg = luaL_optstring(ctx, 2, NULL);
+	const char* alt = luaL_optstring(ctx, 3, NULL);
 	int rc = 0;
 
 	if (!msg){
-		const char* tag, (* alt);
-		arcan_video_readtag(id, &tag, &alt);
-		lua_pushstring(ctx, tag ? tag : "(no tag)");
-		lua_pushstring(ctx, alt ? alt : "");
+		const char* curtag, (* curalt);
+
+		arcan_video_readtag(id, &curtag, &curalt);
+		lua_pushstring(ctx, curtag ? curtag : "(no tag)");
+		lua_pushstring(ctx, curalt ? curalt : "");
 
 /* allow updating only the alt-text part */
 		if (alt)
-			arcan_video_tracetag(id, tag, alt);
+			arcan_video_tracetag(id, msg, alt);
 
 		rc = 2;
 	}
-	else
+	else {
 		arcan_video_tracetag(id, msg, alt);
+	}
 
 	LUA_ETRACE("image_tracetag", NULL, rc);
 }

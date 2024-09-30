@@ -908,6 +908,8 @@ static arcan_vobj_id video_allocid(
 			if (!write)
 				return i;
 
+			ctx->vitems_pool[i] = (struct arcan_vobject){0};
+
 			ctx->nalive++;
 			FL_SET(&ctx->vitems_pool[i], FL_INUSE);
 			ctx->vitem_ofs = (ctx->vitem_ofs + 1) >= ctx->vitem_limit ? 1 : i + 1;
@@ -1142,14 +1144,9 @@ static arcan_vobject* new_vobject(
 		return NULL;
 
 	rv = dctx->vitems_pool + fid;
-	rv->order = 0;
 	populate_vstore(&rv->vstore);
 
 	rv->feed.ffunc = FFUNC_FATAL;
-	rv->childslots = 0;
-	rv->children = NULL;
-
-	rv->valid_cache = false;
 
 	rv->blendmode = arcan_video_display.blendmode;
 	rv->clip = ARCAN_CLIP_OFF;
@@ -1163,8 +1160,6 @@ static arcan_vobject* new_vobject(
 	rv->current.position.z = 0;
 
 	rv->current.rotation.quaternion = default_quat;
-
-	rv->current.opa = 0.0;
 
 	rv->cellid = fid;
 	assert(rv->cellid > 0);
@@ -3512,7 +3507,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 
 /* lots of default values are assumed to be 0, so reset the
  * entire object to be sure. will help leak detectors as well */
-	memset(vobj, 0, sizeof(arcan_vobject));
+	*vobj = (struct arcan_vobject){0};
 
 	for (size_t i = 0; i < cascade_c; i++){
 		if (!pool[i])
@@ -6238,23 +6233,17 @@ void arcan_video_shutdown(bool release_fsrv)
 }
 
 arcan_errc arcan_video_tracetag(
-	arcan_vobj_id id, const char*const message, const char* const alt)
+	arcan_vobj_id id, const char* message, const char* alt)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	if (!vobj)
 		return rv;
 
-	if (vobj->tracetag && message)
-		arcan_mem_free(vobj->tracetag);
-
-	if (vobj->alttext && alt){
-		arcan_mem_free(vobj->alttext);
-		vobj->alttext = strdup(alt);
-	}
-
-	if (message)
-		vobj->tracetag = strdup(message);
+	arcan_mem_free(vobj->tracetag);
+	arcan_mem_free(vobj->alttext);
+	vobj->tracetag = message ? strdup(message) : NULL;
+	vobj->alttext = alt ? strdup(alt) : NULL;
 
 	return ARCAN_OK;
 }
