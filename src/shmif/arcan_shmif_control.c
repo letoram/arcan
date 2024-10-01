@@ -3867,24 +3867,40 @@ bool arcan_shmif_multipart_message(
 	char** out, bool* bad)
 {
 	if (!C || !ev || !out || !bad ||
-		ev->category != EVENT_TARGET || ev->tgt.kind != TARGET_COMMAND_MESSAGE)
+		ev->category != EVENT_TARGET || ev->tgt.kind != TARGET_COMMAND_MESSAGE){
+		*bad = true;
 		return false;
+	}
 
 	struct shmif_hidden* P = C->priv;
 	size_t msglen = strlen(ev->tgt.message);
 
+	if (P->flush_multipart){
+		P->flush_multipart = false;
+		P->multipart_ofs = 0;
+	}
+
+	bool end_multipart = ev->tgt.ioevs[0].iv == 0;
+
+	if (end_multipart)
+		P->flush_multipart = true;
+
 	if (msglen + P->multipart_ofs >= sizeof(P->multipart)){
 		*bad = true;
-			return false;
+		return false;
 	}
 	else {
+		debug_print(DETAILED, C,
+			"multipart:buffer:pre=%s:msg=%s", P->multipart, ev->tgt.message);
 		memcpy(&P->multipart[P->multipart_ofs], ev->tgt.message, msglen);
 		P->multipart_ofs += msglen;
 		P->multipart[P->multipart_ofs] = '\0';
+		debug_print(DETAILED, C,
+			"multipart:buffer:post=%s", P->multipart);
 		*out = P->multipart;
 	}
 
-	return ev->tgt.ioevs[0].iv == 0;
+	return end_multipart;
 }
 
 /*

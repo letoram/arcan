@@ -87,12 +87,11 @@ static void merge_message(struct arcan_event* ev)
 	bool err;
 
 	if (!arcan_shmif_multipart_message(t2s.cont, ev, &out, &err)){
-		LOG("t2s:multipart_buffer\n");
-		return;
-	}
-
-	if (err){
-		LOG("t2s:multipart_error\n");
+		if (err){
+			LOG("t2s:multipart_error\n");
+		}
+		else
+			LOG("t2s:multipart_buffer\n");
 		return;
 	}
 

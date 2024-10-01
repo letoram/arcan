@@ -131,6 +131,7 @@ struct shmif_hidden {
 
 	char multipart[1024];
 	size_t multipart_ofs;
+	bool flush_multipart;
 
 	struct mstate mstate;
 
