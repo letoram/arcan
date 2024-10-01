@@ -185,7 +185,7 @@ int launch_mode(const char* modestr,
 		arg = arg_unpack(altarg);
 
 	if (debug){
-		arcan_shmif_signal(&con, SHMIF_SIGVID);
+//		arcan_shmif_signal(&con, SHMIF_SIGVID);
 		int sleeplen = strtoul(debug, NULL, 10);
 
 		struct arcan_event ev = {

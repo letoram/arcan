@@ -525,7 +525,7 @@ char*
  * machine.
  *
  * uint8_t mstate[ASHMIF_MSTATE_SZ];
- * arcan_shmif_mousestate_setup(acon, false, mstate);
+ * arcan_shmif_mousestate_setup(acon, 0, mstate);
  * ... in event loop ...
  * if (arcan_shmif_mousestate(mstate, &inev, &out_x, &out_y)){
  *  react on mouse event
@@ -538,8 +538,14 @@ char*
  * in this helper function.
  */
 #define ASHMIF_MSTATE_SZ 32
+enum {
+	ARCAN_MOUSESTATE_ABSOLUTE = 0,
+	ARCAN_MOUSESTATE_RELATIVE = 1,
+	ARCAN_MOUSESTATE_NOCLAMP  = 2
+};
+
 void arcan_shmif_mousestate_setup(
-	struct arcan_shmif_cont* con, bool relative, uint8_t* state);
+	struct arcan_shmif_cont* con, int flags, uint8_t* state);
 
 bool arcan_shmif_mousestate(
 	struct arcan_shmif_cont*, uint8_t* state,

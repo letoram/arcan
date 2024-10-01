@@ -3312,7 +3312,7 @@ int arcan_shmif_segkind(struct arcan_shmif_cont* con)
 }
 
 void arcan_shmif_mousestate_setup(
-	struct arcan_shmif_cont* con, bool relative, uint8_t* state)
+	struct arcan_shmif_cont* con, int flags, uint8_t* state)
 {
 	if (!con || !con->priv)
 		return;
@@ -3322,7 +3322,8 @@ void arcan_shmif_mousestate_setup(
 		ms = &con->priv->mstate;
 
 	*ms = (struct mstate){
-		.rel = relative
+		.rel = (flags & (~ARCAN_MOUSESTATE_NOCLAMP)) > 0,
+		.noclamp = !!(flags & ARCAN_MOUSESTATE_NOCLAMP)
 	};
 }
 
@@ -3330,15 +3331,15 @@ static bool absclamp(
 	struct mstate* ms, struct arcan_shmif_cont* con,
 	int* out_x, int* out_y)
 {
-	if (ms->ax < 0)
+	if (ms->ax < 0 && !ms->noclamp)
 		ms->ax = 0;
 	else
-		ms->ax = ms->ax > con->w ? con->w : ms->ax;
+		ms->ax = ms->ax > con->w && !ms->noclamp ? con->w : ms->ax;
 
-	if (ms->ay < 0)
+	if (ms->ay < 0 && !ms->noclamp)
 		ms->ay = 0;
 	else
-		ms->ay = ms->ay > con->h ? con->h : ms->ay;
+		ms->ay = ms->ay > con->h && !ms->noclamp ? con->h : ms->ay;
 
 /* with clamping, we can get relative samples that shouldn't
  * propagate, so test that before updating history */

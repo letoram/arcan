@@ -4,6 +4,7 @@ struct mstate {
 			int32_t ax, ay, lx, ly;
 			uint8_t rel : 1;
 			uint8_t inrel : 1;
+			uint8_t noclamp : 1;
 		};
 		uint8_t state[ASHMIF_MSTATE_SZ];
 	};
