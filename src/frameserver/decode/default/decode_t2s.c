@@ -13,8 +13,6 @@ static struct t2s {
 	struct arcan_shmif_cont* cont;
 	enum pack_format fmt;
 	int flags;
-	char msgbuf[16384];
-	size_t msgofs;
 	int defaultRate;
 	int curRate;
 	bool cancel;
@@ -83,31 +81,22 @@ static void apply_label(const char* msg)
 	}
 }
 
-static void merge_message(struct arcan_tgtevent* ev)
+static void merge_message(struct arcan_event* ev)
 {
-	char* dst = (char*) ev->message;
+	char* out;
+	bool err;
 
-/* buffer multipart up to some small-ish cap */
-	if (t2s.msgofs || ev->ioevs[0].iv){
-		size_t len = strlen(ev->message);
-		if (len + t2s.msgofs >= sizeof(t2s.msgbuf) - 1){
-			t2s.msgofs = 0;
-			return;
-		}
-
-		memcpy(&t2s.msgbuf[t2s.msgofs], ev->message, len);
-		t2s.msgofs += len;
-		t2s.msgbuf[t2s.msgofs] = '\0';
-
-		if (ev->ioevs[0].iv)
-			return;
-
-		dst = t2s.msgbuf;
+	if (!arcan_shmif_multipart_message(t2s.cont, ev, &out, &err)){
+		LOG("t2s:multipart_buffer\n");
+		return;
 	}
 
-	size_t len = strlen(dst);
-	dst[len] = '\0';
-	t2s.msgofs = 0;
+	if (err){
+		LOG("t2s:multipart_error\n");
+		return;
+	}
+
+	size_t len = strlen(out);
 
 /* we have [incoming multipart buffer] ->
  *              espeak-internal-buffer ->
@@ -122,9 +111,12 @@ static void merge_message(struct arcan_tgtevent* ev)
  * it will be caught.
  */
 
-	if (EE_OK != espeak_Synth(dst,
+	if (EE_OK != espeak_Synth(out,
 		len+1, 0, POS_WORD, 0, t2s.flags | espeakENDPAUSE, NULL, NULL)){
+		LOG("t2s:synth_failed\n");
 	}
+	else
+		LOG("t2s:message=%s\n", out);
 }
 
 static int on_sound(short* buf, int ns, espeak_EVENT* ev)
@@ -549,9 +541,10 @@ static bool flush_event(arcan_event ev)
 /* the UTF-8 validation should be stronger here, which can just be lifted
  * from the way it is done in arcan_tui */
 		case TARGET_COMMAND_MESSAGE:
-			merge_message(&ev.tgt);
+			merge_message(&ev);
 		break;
 		case TARGET_COMMAND_RESET:{
+			LOG("t2s:reset\n");
 	/*
 			arcan_shmif_enqueue(t2s.cont,
 				&(arcan_event){
