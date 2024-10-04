@@ -1,24 +1,34 @@
 -- image_access_storage
 -- @short: Access the underlying backing store of a textured video object.
--- @inargs: vid, callback(table, width, height)
--- @inargs: vid, callback(table, width, height, cols, rows)
+-- @inargs: vid, callback(vtbl:context, int:width, int:height)
+-- @inargs: vid, callback(vtbl:context, int:width, int:height, int:cols, int:rows)
 -- @outargs: true or false
 -- @longdescr: This function permits limited, blocking, access to a backing
 -- store. The primary purpose is to provide quick access to trivial measurements
 -- without the overhead of setting up a calctarget and performing readbacks.
 -- The function returns false if the backing store was unavailable.
 --
--- If the second callback form provides cols and rows the backing store has
--- a text representation available. In that case there is an additional
--- :read(x, y) = string, format_table function and a :cursor() = x, y for
--- querying the cursor.
+-- The *context* argument is described in ref:define_calctarget.
 --
--- The format_table returned by read includes colors as "fr, fg, fb" and "br,
+-- If the callback provides *cols* and *rows* it means that the table represents
+-- a textual backing store rather than a pixel one. In that case the following
+-- extra functions are available in *context*:
+--
+-- @tblent: read(int:col, int:row) = string:ch, table:format
+-- @tblent: translate(int:x, int:y) = int:col, int:row
+-- @tblent: cursor() = int:col, int:row
+--
+-- The read_px variant takes surface-local pixels with origo in upper-left
+-- corner and resolves the corresponding row, col before forwarding to :read
+--
+-- The format_table returned by read contains the following:
+-- @tblent: int:colors as "fr, fg, fb" and "br,
 -- bg, bb" as well as one or more of "bold", "italic", "inverse", "underline",
 -- "underline_alt", "protect", "blink", "strikethrough", "break",
 -- "border_left", "border_right", "border_down", "border_top", "id".
+-- It also contains "row_height" and "cell_width" for approximate rasterised
+-- dimensions of the referenced cell.
 --
--- @note: methods and properties in *table* are described in define_calctarget.
 -- @note: The table provided in the callback is only valid during the scope of
 -- the callback, creating aliases outside this scope and trying to use any table
 -- method is a terminal state transition that may be difficult to debug.

@@ -9872,7 +9872,33 @@ static int procimage_cursor(lua_State* L)
 	lua_pushnumber(L, cx);
 	lua_pushnumber(L, cy);
 
-	return 2;
+	LUA_ETRACE("procimage:cursor", NULL, 2);
+}
+
+static int procimage_translate(lua_State* L)
+{
+	LUA_TRACE("procimage:translate");
+	struct rn_userdata* ud = luaL_checkudata(L, 1, "calcImage");
+	if (ud->valid == false)
+		arcan_fatal("calcImage:translate, calctarget object called out of scope\n");
+
+	if (!ud->tui)
+		arcan_fatal("calcImage:translate, calctarget object lacks text context\n");
+
+/* resolve things like this for now on, future revisiting to the tpack raster
+ * context will need to create row and offset- tables that we can walk and query
+ * directly. */
+	size_t cx = luaL_checknumber(L, 2);
+	size_t cy = luaL_checknumber(L, 3);
+	size_t rows, cols;
+	arcan_tui_dimensions(ud->tui, &rows, &cols);
+	size_t cell_w = ud->width / cols;
+	size_t cell_h = ud->height / rows;
+
+	lua_pushnumber(L, cx / cell_w);
+	lua_pushnumber(L, cy / cell_h);
+
+	LUA_ETRACE("procimage:translate", NULL, 2);
 }
 
 static int procimage_read(lua_State* L)
@@ -12856,6 +12882,8 @@ static const luaL_Reg netfuns[] = {
 	lua_setfield(ctx, -2, "histogram_impose");
 	lua_pushcfunction(ctx, procimage_lookup);
 	lua_setfield(ctx, -2, "frequency");
+	lua_pushcfunction(ctx, procimage_translate);
+	lua_setfield(ctx, -2, "translate");
 	lua_pop(ctx, 1);
 
 /* [meshAccess] => used for accessing a mesh_storage */
