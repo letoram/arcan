@@ -106,7 +106,6 @@ struct shmifext_color_buffer {
 static bool lookup_drm_propval(int fd,
 	uint32_t oid, uint32_t otype, const char* name, uint64_t* val, bool id);
 
-static const char* egl_errstr();
 static void* lookup(void* tag, const char* sym, bool req)
 {
 	dlerror();
@@ -626,7 +625,7 @@ bool platform_video_map_buffer(
 
 	EGLImage img = helper_dmabuf_eglimage(agp_env(), egl, dpy, planes, n_planes);
 	if (!img){
-		debug_print("buffer import failed (%s)", egl_errstr());
+		debug_print("buffer import failed (%s)", egl_errstr(egl));
 		return false;
 	}
 
@@ -691,48 +690,6 @@ static void sigsegv_errmsg(int sign)
 	_exit(EXIT_FAILURE);
 }
 
-static const char* egl_errstr()
-{
-	if (!egl_dri.last_display)
-		return "No EGL display";
-
-	EGLint errc = egl_dri.last_display->device->eglenv.get_error();
-	switch(errc){
-	case EGL_SUCCESS:
-		return "Success";
-	case EGL_NOT_INITIALIZED:
-		return "Not initialize for the specific display connection";
-	case EGL_BAD_ACCESS:
-		return "Cannot access the requested resource (wrong thread?)";
-	case EGL_BAD_ALLOC:
-		return "Couldn't allocate resources for the requested operation";
-	case EGL_BAD_ATTRIBUTE:
-		return "Unrecognized attribute or attribute value";
-	case EGL_BAD_CONTEXT:
-		return "Context argument does not name a valid context";
-	case EGL_BAD_CONFIG:
-		return "EGLConfig argument did not match a valid config";
-	case EGL_BAD_CURRENT_SURFACE:
-		return "Current surface refers to an invalid destination";
-	case EGL_BAD_DISPLAY:
-		return "The EGLDisplay argument does not match a valid display";
-	case EGL_BAD_SURFACE:
-		return "EGLSurface argument does not name a valid surface";
-	case EGL_BAD_MATCH:
-		return "Inconsistent arguments";
-	case EGL_BAD_PARAMETER:
-		return "Invalid parameter passed to function";
-	case EGL_BAD_NATIVE_PIXMAP:
-		return "NativePixmapType is invalid";
-	case EGL_BAD_NATIVE_WINDOW:
-		return "Native Window Type does not refer to a valid window";
-	case EGL_CONTEXT_LOST:
-		return "Power-management event has forced the context to drop";
-	default:
-		return "Uknown Error";
-	}
-}
-
 static int setup_buffers_gbm(struct dispout* d)
 {
 	SET_SEGV_MSG("libgbm(), creating scanout buffer"
@@ -790,9 +747,10 @@ static int setup_buffers_gbm(struct dispout* d)
 
 /* first get the set of configs from the display */
 	EGLint nc;
-	d->device->eglenv.get_configs(d->device->display, NULL, 0, &nc);
+	struct egl_env* egl = &d->device->eglenv;
+	egl->get_configs(d->device->display, NULL, 0, &nc);
 	if (nc < 1){
-		debug_print("no configurations found for display, (%s)", egl_errstr());
+		debug_print("no configurations found for display, (%s)", egl_errstr(egl));
 		return false;
 	}
 
@@ -1705,7 +1663,7 @@ static bool setup_node(struct dev_node* node)
 
 	if (!node->context){
 		debug_print(
-			"couldn't build an EGL context on the display, (%s)", egl_errstr());
+			"couldn't build an EGL context on the display, (%s)", egl_errstr(&node->eglenv));
 		return false;
 	}
 
