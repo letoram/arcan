@@ -1,3 +1,6 @@
+#ifndef HAVE_EGL_GBM_HELPER
+#define HAVE_EGL_GBM_HELPER
+
 #define DMABUF_PLANES_LIMIT 4
 
 static bool helper_bo_dmabuf(
@@ -106,7 +109,7 @@ static EGLImage helper_dmabuf_eglimage(
 		ADD_ATTR(dma_offset_constants[i], planes[i].gbm.offset);
 		ADD_ATTR(dma_pitch_constants[i], planes[i].gbm.stride);
 
-		if (mod != DRM_FORMAT_MOD_INVALID && mod != DRM_FORMAT_MOD_LINEAR){
+		if (mod != DRM_FORMAT_MOD_INVALID){
 			ADD_ATTR(dma_mod_constants[i*2+0], planes[i].gbm.mod_hi);
 			ADD_ATTR(dma_mod_constants[i*2+1], planes[i].gbm.mod_lo);
 		}
@@ -196,3 +199,5 @@ static bool helper_alloc_color(
 	helper_eglimage_color(agp, egl, img, &out->id.gl);
 	return true;
 }
+
+#endif
