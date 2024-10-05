@@ -24,20 +24,23 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <sys/types.h>
+#include <sys/ioctl.h>
 
+#define WANT_ARCAN_SHMIF_HELPER
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 #include "arcan_shmif.h"
+#include "arcan_shmif_interop.h"
 #include "arcan_event.h"
 #include "arcan_audio.h"
 #include "arcan_frameserver.h"
 #include "arcan_conductor.h"
-#include "arcan_event.h"
 
 #include "agp/glfun.h"
 #include "../platform.h"
+
 
 #define EGL_EGLEXT_PROTOTYPES
 #define GL_GLEXT_PROTOTYPES
@@ -49,6 +52,9 @@
 #include <drm_fourcc.h>
 #include <xf86drm.h>
 #include <gbm.h>
+
+#include "../egl-dri/egl.h"
+#include "../egl-dri/egl_gbm_helper.h"
 
 static struct {
 	size_t width;
@@ -69,6 +75,7 @@ static struct {
 		EGLConfig cfg;
 		EGLNativeWindowType wnd;
 		struct gbm_device* gbmdev;
+		struct egl_env env;
 	} egl;
 
 	struct agp_vstore* vstore;
@@ -579,7 +586,28 @@ size_t platform_video_export_vstore(
 bool platform_video_map_buffer(
 	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n)
 {
-	return false;
+	EGLImage img = helper_dmabuf_eglimage(agp_env(), &global.egl.env, global.egl.disp, (struct shmifext_buffer_plane*)planes, n);
+	if (!img) {
+		debug_print("buffer import failed (%s)", egl_errstr(&global.egl.env));
+		return false;
+	}
+
+	if (0 != vs->vinf.text.tag){
+		global.egl.env.destroy_image(global.egl.disp, (EGLImageKHR) vs->vinf.text.tag);
+	}
+
+	vs->w = planes[0].w;
+	vs->h = planes[0].h;
+	vs->bpp = sizeof(shmif_pixel);
+	vs->txmapped = TXSTATE_TEX2D;
+
+	agp_activate_vstore(vs);
+		global.egl.env.image_target_texture2D(GL_TEXTURE_2D, img);
+	agp_deactivate_vstore();
+
+	vs->vinf.text.tag = (uintptr_t) img;
+
+	return true;
 }
 
 const char* platform_video_capstr()
@@ -768,6 +796,9 @@ bool platform_video_init(uint16_t width,
 
 	eglMakeCurrent(
 		global.egl.disp, EGL_NO_SURFACE, EGL_NO_SURFACE, global.egl.ctx);
+
+	map_egl_functions(&global.egl.env, lookup_fenv, NULL);
+	map_eglext_functions(&global.egl.env, lookup_fenv, NULL);
 
 	return true;
 }
