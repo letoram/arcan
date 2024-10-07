@@ -3889,16 +3889,16 @@ bool arcan_shmif_multipart_message(
 		*bad = true;
 		return false;
 	}
-	else {
-		debug_print(DETAILED, C,
-			"multipart:buffer:pre=%s:msg=%s", P->multipart, ev->tgt.message);
-		memcpy(&P->multipart[P->multipart_ofs], ev->tgt.message, msglen);
-		P->multipart_ofs += msglen;
-		P->multipart[P->multipart_ofs] = '\0';
-		debug_print(DETAILED, C,
-			"multipart:buffer:post=%s", P->multipart);
-		*out = P->multipart;
-	}
+
+	debug_print(DETAILED, C,
+		"multipart:buffer:pre=%s:msg=%s", P->multipart, ev->tgt.message);
+	memcpy(&P->multipart[P->multipart_ofs], ev->tgt.message, msglen);
+	P->multipart_ofs += msglen;
+	P->multipart[P->multipart_ofs] = '\0';
+	debug_print(DETAILED, C,
+		"multipart:buffer:post=%s", P->multipart);
+	*out = P->multipart;
+	*bad = false;
 
 	return end_multipart;
 }

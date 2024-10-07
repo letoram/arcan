@@ -90,8 +90,6 @@ static void merge_message(struct arcan_event* ev)
 		if (err){
 			LOG("t2s:multipart_error\n");
 		}
-		else
-			LOG("t2s:multipart_buffer\n");
 		return;
 	}
 
