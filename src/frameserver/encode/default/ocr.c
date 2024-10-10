@@ -84,8 +84,10 @@ void ocr_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
 		if (ev.category == EVENT_TARGET){
 			switch (ev.tgt.kind){
 			case TARGET_COMMAND_STEPFRAME:{
+				LOG("frame\n");
 				repack_run(&cont, handle);
 				if (TessBaseAPIRecognize(handle, NULL)){
+					LOG("recognize-fail\n");
 					arcan_shmif_last_words(&cont, "ocr: recognize failed");
 					arcan_shmif_drop(&cont);
 					goto out;
@@ -97,9 +99,11 @@ void ocr_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
 						.ext.kind = ARCAN_EVENT(MESSAGE)
 					};
 					arcan_shmif_pushutf8(&cont, &ev, text, len);
+					LOG("recognize=%s\n", text);
 					TessDeleteText(text);
 				}
 
+				LOG("request-next\n");
 				arcan_shmif_signal(&cont, SHMIF_SIGVID);
 			}
 			break;
