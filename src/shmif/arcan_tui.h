@@ -195,7 +195,11 @@ struct tui_screen_attr {
 	};
 
 /* bitmask from TUI_ATTR_ */
-	uint16_t aflags;
+	union {
+		uint16_t aflags;
+		uint8_t aflags_u8[2];
+	};
+
 	uint8_t custom_id;
 };
 

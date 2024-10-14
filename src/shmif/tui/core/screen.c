@@ -71,7 +71,8 @@ static void unpack_u32(uint32_t* dst, uint8_t* inbuf)
 		((uint64_t)inbuf[3] << 24);
 }
 
-static struct tui_cell rcell_to_cell(uint8_t unpack[static 12])
+static struct tui_cell rcell_to_cell(struct tui_context* C,
+	size_t x, size_t y, uint8_t unpack[static 12], bool* has_cursor)
 {
 	struct tui_cell res = {0};
 
@@ -81,7 +82,32 @@ static struct tui_cell rcell_to_cell(uint8_t unpack[static 12])
 	res.attr.bc[0] = unpack[3];
 	res.attr.bc[1] = unpack[4];
 	res.attr.bc[2] = unpack[5];
-	res.attr.aflags = unpack[6];
+
+/* Note, raster packed attr does not match tui_cell attr 1:1, specifically
+ * cursor flagged cells conflict with the 'PROTECTED' attribute that comes
+ * from terminal emulation though is otherwise unused.
+ *
+ * Cursor attribute is quirky as there can be n*m cursors theoretically in
+ * order to have wider or non-continuous cursors indicating what will be
+ * modified or matching some search query.
+ *
+ * Still we need to know some form of base cursor position to let screen
+ * readers etc. know where things start, so track the first known cursor
+ * position in the tui context we unpack to.
+ */
+
+	res.attr.aflags = (uint16_t) unpack[6];
+	res.attr.aflags |= (uint16_t) unpack[7] << 8;
+
+	if (res.attr.aflags & CATTR_CURSOR){
+		res.attr.aflags &= CATTR_CURSOR;
+		if (!*has_cursor){
+			C->cx = x;
+			C->cy = y;
+			*has_cursor = true;
+		}
+	}
+
 	unpack_u32(&res.ch, &unpack[8]);
 
 	return res;
@@ -440,6 +466,10 @@ int tui_tpack_unpack(struct tui_context* C,
 		buf += 3;
 	}
 
+/* cursor can actually be a group of cells, but we use the first marked
+ * one as our explicit position */
+	bool got_cursor = false;
+
 /* if it is not a delta frame, just clear region to bgcolor first and
  * make sure the window size match (unless w, h are set) */
 	if (!(hdr.flags & RPACK_DFRAME)){
@@ -495,7 +525,7 @@ int tui_tpack_unpack(struct tui_context* C,
 			line.ncells--;
 
 /* extract each cell */
-			struct tui_cell cell = rcell_to_cell(buf);
+			struct tui_cell cell = rcell_to_cell(C, i, line.start_line, buf, &got_cursor);
 			buf += raster_cell_sz;
 			buf_sz -= raster_cell_sz;
 
