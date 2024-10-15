@@ -926,6 +926,32 @@ static bool on_readline_filter(uint32_t ch, size_t len, void* t)
 	return res;
 }
 
+static void on_readline_suggest_item(
+	const char* item, const char* hint, void* t)
+{
+	struct tui_lmeta* meta = t;
+	if (!meta->widget_meta || meta->widget_meta->readline.item == LUA_NOREF){
+		return;
+	}
+
+	lua_State* L = meta->lua;
+	lua_rawgeti(meta->lua,
+		LUA_REGISTRYINDEX, meta->widget_meta->readline.item);
+	lua_rawgeti(meta->lua, LUA_REGISTRYINDEX, meta->widget_state);
+
+	ssize_t res = -1;
+/* function(self, prefix, full, suggest) -> offset or accept/reject */
+	lua_pushstring(L, item);
+	lua_pushstring(L, hint);
+
+	int rv = lua_pcall(L, 3, 0, 0);
+	if (0 != rv){
+		luaL_error(L, lua_tostring(L, -1));
+	}
+
+	END_HREF
+}
+
 static ssize_t on_readline_verify(
 	const char* message, size_t prefix, bool suggest, void* t)
 {
@@ -1099,6 +1125,8 @@ static void revert(lua_State* L, struct tui_lmeta* M)
 				tui_lunref(L, wm->readline.verify, "revert-readline-flt", LUA_TFUNCTION);
 			M->widget_meta->readline.filter =
 				tui_lunref(L, wm->readline.filter, "revert-readline-ver", LUA_TFUNCTION);
+			M->widget_meta->readline.item =
+				tui_lunref(L, wm->readline.item, "revert-readline-itm", LUA_TFUNCTION);
 
 /* There might be a case for actually not freeing the history in the case
  * where we build another readline, and in that case also allow appending
@@ -2415,6 +2443,7 @@ static int readline(lua_State* L)
 		.multiline = false,
 		.filter_character = on_readline_filter,
 		.verify = on_readline_verify,
+		.suggest_item = on_readline_suggest_item,
 		.tab_completion = true,
 		.mouse_forward = false,
 		.paste_forward = false,
@@ -2436,7 +2465,8 @@ static int readline(lua_State* L)
 	*meta = (struct widget_meta){
 		.readline = {
 			.verify = LUA_NOREF,
-			.filter = LUA_NOREF
+			.filter = LUA_NOREF,
+			.item = LUA_NOREF
 		}
 	};
 
@@ -2483,6 +2513,11 @@ static int readline(lua_State* L)
 		lua_getfield(L, tbl, "verify");
 		if (lua_isfunction(L, -1) && !lua_iscfunction(L, -1))
 			meta->readline.verify = tui_lref(L, -1, LINE_AS_STRING, LUA_TFUNCTION);
+		lua_pop(L, 1);
+
+		lua_getfield(L, tbl, "item");
+		if (lua_isfunction(L, -1) && !lua_iscfunction(L, -1))
+			meta->readline.item = tui_lref(L, -1, LINE_AS_STRING, LUA_TFUNCTION);
 		lua_pop(L, 1);
 
 		lua_getfield(L, tbl, "filter");

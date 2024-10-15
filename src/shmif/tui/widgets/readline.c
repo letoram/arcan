@@ -388,6 +388,12 @@ static void draw_completion(
 			attr.aflags |= TUI_ATTR_INVERSE;
 			arcan_tui_writestr(T, M->completion[i], &attr);
 			attr.aflags &= ~TUI_ATTR_INVERSE;
+			if (M->opts.suggest_item)
+				M->opts.suggest_item(
+					M->completion[i],
+					&M->completion[i][strlen(M->completion[i])+1],
+					M->old_handlers.tag
+				);
 		}
 		else
 			arcan_tui_writestr(T, M->completion[i], &attr);

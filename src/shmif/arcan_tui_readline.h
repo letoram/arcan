@@ -122,6 +122,12 @@ struct tui_readline_opts {
  * set to allow space, ' ', '\t' to expand the item from suggestion
  */
 	bool whitespace_expand;
+
+/*
+ * set to provide feedback about the currently selected suggestion item,
+ * use this to provide accessibility suggestions
+ */
+	void (*suggest_item)(const char* msg, const char* help, void* T);
 };
 
 void arcan_tui_readline_setup(

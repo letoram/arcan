@@ -58,6 +58,7 @@ struct widget_meta {
 		struct {
 			intptr_t verify;
 			intptr_t filter;
+			intptr_t item;
 
 			char** history;
 			size_t history_sz;
