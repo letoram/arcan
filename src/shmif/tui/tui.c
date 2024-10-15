@@ -805,7 +805,7 @@ void arcan_tui_eraseattr_screen(
 	if (!c)
 		return;
 
-	arcan_tui_eraseattr_region(c, 0, 0, c->cols-1, c->rows-1, protect, attr);
+	arcan_tui_eraseattr_region(c, 0, 0, c->cols, c->rows, protect, attr);
 }
 
 void arcan_tui_eraseattr_region(struct tui_context* c,
@@ -824,6 +824,7 @@ void arcan_tui_eraseattr_region(struct tui_context* c,
 				data->fstamp = c->fstamp;
 			}
 		}
+	c->dirty |= DIRTY_PARTIAL;
 }
 
 void arcan_tui_erase_region(struct tui_context* c,
