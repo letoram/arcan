@@ -1750,7 +1750,7 @@ arcan_errc arcan_frameserver_setfont(
 	}
 
 	if (replace && fd != -1)
-		arcan_renderfun_fontgroup_replace(fsrv->desc.text.group, slot, fd);
+		arcan_renderfun_fontgroup_replace(fsrv->desc.text.group, slot, dup(fd));
 
 	if (reprobe && fsrv->desc.hint.ppcm > EPSILON){
 		arcan_renderfun_fontgroup_size(fsrv->desc.text.group,
