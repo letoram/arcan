@@ -3743,6 +3743,8 @@ analog:
 			ev.io.devkind = EVENT_IDEVKIND_GAMEDEV;
 		ev.io.input.analog.gotrel = intblbool(ctx, tblind, "relative");
 		ev.io.datatype = EVENT_IDATATYPE_ANALOG;
+		ev.io.input.analog.active = !intblbool(ctx, tblind, "leave");
+		intblbool(ctx, tblind, "leave");
 
 /* sweep the samples subtable, add as many as present (or possible) */
 		lua_getfield(ctx, tblind, "samples");

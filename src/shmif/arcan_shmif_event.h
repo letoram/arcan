@@ -1112,6 +1112,7 @@ enum ARCAN_TARGET_SKIPMODE {
 			int8_t gotrel;
 			uint8_t nvalues;
 			int16_t axisval[4];
+			uint8_t active;
 		} analog;
 
 		struct {

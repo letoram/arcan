@@ -47,6 +47,10 @@
 -- while the other is a result of some state estimator and can therefore
 -- be less accurate. All permutations of relative, absolute, two samples
 -- or four samples need to be accounted for.
+-- It is also possible to indicate that the input device is no longer
+-- active on the segment but setting the *leave* field to true. This is
+-- important for clients that have explicit enter/leave semantics per
+-- device, typically bridges to other windowing systems.
 --
 -- If *kind* is set to *digital*, the required additional fields are:
 -- active (true/_false_), if the button is in a pressed state or not
