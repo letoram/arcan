@@ -1546,6 +1546,8 @@ enum ARCAN_TARGET_SKIPMODE {
  * (gpuid) - source GPU as provided by a previous devicehint
  * (width/height) - width/height of the buffer
  * (left) - if there are multiple planes to the same transfer
+ * (flags) - bitmask:
+ *           1 : stream-got-fence
  */
 		struct {
 			uint32_t stride;
@@ -1557,6 +1559,7 @@ enum ARCAN_TARGET_SKIPMODE {
 			uint32_t width;
 			uint32_t height;
 			uint8_t left;
+			uint8_t flags;
 		} bstream;
 
 /*

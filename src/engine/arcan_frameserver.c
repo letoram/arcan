@@ -16,6 +16,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <setjmp.h>
+#include <poll.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -240,6 +241,10 @@ void arcan_frameserver_close_bufferqueues(
 				close(src->vstream.incoming[i].fd);
 				src->vstream.incoming[i].fd = -1;
 			}
+			if (src->vstream.incoming[i].fence > 0){
+				close(src->vstream.incoming[i].fence);
+				src->vstream.incoming[i].fence = -1;
+			}
 		}
 		src->vstream.incoming_used = 0;
 	}
@@ -249,6 +254,10 @@ void arcan_frameserver_close_bufferqueues(
 			if (src->vstream.pending[i].fd > 0){
 				close(src->vstream.pending[i].fd);
 				src->vstream.pending[i].fd = -1;
+			}
+			if (src->vstream.pending[i].fence > 0){
+				close(src->vstream.pending[i].fence);
+				src->vstream.pending[i].fence = -1;
 			}
 		}
 		src->vstream.pending_used = 0;
@@ -473,10 +482,25 @@ static int push_buffer(arcan_frameserver* src,
 		goto commit_mask;
 	}
 
+/* We have pending buffer handles that may still be processed on GPU end, so
+ * first check (if it has a synch descriptor) to determine which pending that
+ * is ready. These should also be checked by the conductor to adjust deadline */
 	if (src->vstream.pending_used){
 		bool failev = src->vstream.dead;
 
 		if (!failev){
+			if (src->vstream.pending[0].fence > 0){
+				printf("pending with synch object");
+				if (-1 == poll(
+					&(struct pollfd){.fd = src->vstream.pending[0].fence, POLLIN}, 1, 0)){
+					printf("not ready\n");
+					return false;
+				}
+				printf("ready\n");
+				close(src->vstream.pending[0].fence);
+				src->vstream.pending[0].fence = -1;
+			}
+
 /* mapping and bound checking is done inside of arcan_event.c */
 			memcpy(stream.planes, src->vstream.pending,
 				sizeof(struct agp_buffer_plane) * src->vstream.pending_used);
@@ -877,10 +901,9 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 		do_aud = (atomic_load(&tgt->shm.ptr->aready) > 0 &&
 			atomic_load(&tgt->shm.ptr->apending) > 0);
 
-/* sometimes, the buffer transfer is forcibly deferred and this needs
- * to be repeat until it succeeds - this mechanism could/should(?) also
- * be used with the vpts- below, simply defer until the deadline has
- * passed */
+/* sometimes, the buffer transfer is forcibly deferred and this needs to repeat
+ * until it succeeds - this mechanism could/should(?) also be used with the
+ * vpts- below, simply defer until the deadline has passed */
 		if (g_buffers_locked == 1 || tgt->flags.locked)
 			goto no_out;
 
@@ -1169,9 +1192,9 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 /* after export we don't need the created handles, ownership goes to recpt. */
 				if (np){
 					for (size_t i = 0; i < np; i++){
-						if (-1 != planes[i].fd)
+						if (0 < planes[i].fd)
 							close(planes[i].fd);
-						if (-1 != planes[i].fence)
+						if (0 < planes[i].fence)
 							close(planes[i].fence);
 					}
 				}

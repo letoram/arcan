@@ -22,6 +22,8 @@
 
 #include <inttypes.h>
 #include <drm.h>
+#include <poll.h>
+#include <errno.h>
 #include <drm_fourcc.h>
 #include <xf86drm.h>
 #include <gbm.h>
@@ -903,9 +905,28 @@ size_t arcan_shmifext_export_image(
 	}
 
 	for (size_t i = 0; i < nplanes; i++){
+		int fence = -1;
+
+/* multiplanar question here is if we actually need a fence per plane or not */
+		if (i == 0 && agp_eglenv.create_synch){
+			EGLSyncKHR sync = agp_eglenv.create_synch(dpy,
+				EGL_SYNC_NATIVE_FENCE_ANDROID,
+				(EGLint[]){
+				EGL_SYNC_NATIVE_FENCE_FD_ANDROID,
+				EGL_NO_NATIVE_FENCE_FD_ANDROID,
+				EGL_NONE
+				});
+				if (sync != EGL_NO_SYNC_KHR){
+					int fdfence = agp_eglenv.dup_fence_fd(dpy, sync);
+					fence = arcan_shmif_dupfd(fdfence, -1, false);
+					agp_eglenv.destroy_synch(dpy, sync);
+					close(fdfence);
+				}
+		}
+
 		planes[i] = (struct shmifext_buffer_plane){
 			.fd = fds[i],
-			.fence = -1,
+			.fence = fence,
 			.w = con->w,
 			.h = con->h,
 			.gbm.format = fourcc,
@@ -979,6 +1000,14 @@ size_t arcan_shmifext_signal_planes(
  * falls back to readback and wait for a reset or device-hint to rebuild */
 		if (!arcan_pushhandle(planes[i].fd, c->epipe))
 			return i;
+
+/* fences are created in export if the EGL environment supports it */
+		int fence = planes[i].fence;
+		if (fence > 0 && arcan_pushhandle(fence, c->epipe)){
+			ev.ext.bstream.flags |= 1;
+			close(fence);
+		}
+
 		close(planes[i].fd);
 
 /* missing - the gpuid should be set based on what gpu the context is assigned

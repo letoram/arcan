@@ -278,11 +278,18 @@ static bool append_bufferstream(struct arcan_frameserver* tgt, arcan_extevent* e
 	}
 
 /* if the client lies about the plane count - we arrive here: */
-	if (tgt->vstream.incoming_used == 4){
+	if (tgt->vstream.incoming_used >= 4){
 		goto fail;
 	}
 
 	size_t i = tgt->vstream.incoming_used;
+	if ((ev->bstream.flags & 1) == 1){
+		int fence = arcan_fetchhandle(tgt->dpipe, false);
+		tgt->vstream.incoming[i].fence = fence;
+	}
+	else
+		tgt->vstream.incoming[i].fence = -1;
+
 	tgt->vstream.incoming[i].fd = fd;
 	tgt->vstream.incoming[i].gbm.stride = ev->bstream.stride;
 	tgt->vstream.incoming[i].gbm.offset = ev->bstream.offset;
@@ -293,8 +300,10 @@ static bool append_bufferstream(struct arcan_frameserver* tgt, arcan_extevent* e
 	tgt->vstream.incoming[i].h = ev->bstream.height;
 	tgt->vstream.incoming_used++;
 
-/* flush incoming to pending, but if there is already something pending, take
- * its place so that a newer frame gets precedence (mailbox mode) */
+/* Flush incoming to pending, but if there is already something pending, take
+ * its place so that a newer frame gets precedence (mailbox mode) - this can
+ * reach a form of starvation if the client keeps pushing new ones where the
+ * fence doesn't complete. Thus we need feedback as to which once we hold */
 	if (!ev->bstream.left){
 		arcan_frameserver_close_bufferqueues(tgt, false, true);
 		size_t buf_sz = sizeof(struct agp_buffer_plane) * COUNT_OF(tgt->vstream.pending);
