@@ -5290,17 +5290,18 @@ static size_t process_rendertarget(
 	if (
 		!arcan_video_display.dirty &&
 		!arcan_video_display.ignore_dirty &&
-		!tgt->dirtyc && !tgt->transfc)
+		!tgt->dirtyc && !tgt->transfc){
 		return 0;
-
+	}
 	tgt->uploadc = 0;
 	tgt->msc++;
 
 /* this does not really swap the stores unless they are actually different, it
  * is cheaper to do it here than shareglstore as the search for vobj to rtgt is
  * expensive */
-	if (tgt->color && !nest)
+	if (tgt->color && !nest){
 		agp_rendertarget_swapstore(tgt->art, tgt->color->vstore);
+	}
 
 	current_rendertarget = tgt;
 	agp_activate_rendertarget(tgt->art);
@@ -5632,8 +5633,20 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 	arcan_video_display.c_lerp = fract;
 	arcan_random((void*)&arcan_video_display.cookie, 8);
 
-/* active shaders with counter counts towards dirty */
-	transfc += agp_shader_envv(FRACT_TIMESTAMP_F, &fract, sizeof(float));
+/* active shaders with counter counts towards dirty -
+ * removed as the shader might be active but an object it is attached to
+ * might not qualify it for, causing the rendertarget to be ignored but
+ * trigger a platform swap.
+ *
+ * the proper way to do this is to check on attach/detach/reassign shader
+ * and mark each affected rendertarget as having fractional updates or not.
+ *
+ * the edge case where this might be useful is when there is a static
+ * scenegraph on a rendertarget where an animated shader has fractional
+ * updates and mark that rendertarget as always updatable.
+ *
+ * transfc += agp_shader_envv(FRACT_TIMESTAMP_F, &fract, sizeof(float));
+ */
 
 /* the user/developer or the platform can decide that all dirty tracking should
  * be enabled - we do that with a global counter and then 'fake' a transform */
