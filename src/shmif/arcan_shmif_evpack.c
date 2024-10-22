@@ -388,10 +388,11 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 		);
 	break;
 	case EVENT_IDATATYPE_ANALOG:
-		snprintf(work, dsz,"IO:(%s)[%s(%d):%d] rel: %s, v(%d){%d, %d, %d, %d}",
+		snprintf(work, dsz,"IO:(%s)[%s(%d):%d] act: %s, rel: %s, v(%d){%d, %d, %d, %d}",
 			ev.io.label,
 			ev.io.devkind == EVENT_IDEVKIND_MOUSE ? "mouse" : "analog",
 			ev.io.devid, ev.io.subid,
+			ev.io.input.analog.active ? "yes" : "no",
 			ev.io.input.analog.gotrel ? "yes" : "no",
 			(int)ev.io.input.analog.nvalues,
 			(int)ev.io.input.analog.axisval[0],
