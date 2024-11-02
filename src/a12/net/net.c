@@ -935,6 +935,7 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"\t --block-log   \t Don't attempt to forward script errors or crash logs\n"
 	"\t --stderr-log  \t Mirror script errors / crash log to stderr\n"
 	"\t --source-port \t When sourcing use this port for listening\n"
+	"\t --monitor-appl\t Don't download/run appl, print received messages to STDOUT\n"
 	"\t --block-state \t Don't attempt to synch state before/after running appl\n\n"
 	"Directory server options: \n"
 	"\t --allow-src  s \t Let clients in trust group [s, all=*] register as sources\n"
@@ -1272,6 +1273,9 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		}
 		else if (strcmp(argv[i], "--reload") == 0){
 			global.dircl.reload = true;
+		}
+		else if (strcmp(argv[i], "--monitor-appl") == 0){
+			global.dircl.monitor_mode = true;
 		}
 		else if (strcmp(argv[i], "--source-port") == 0){
 			i++;

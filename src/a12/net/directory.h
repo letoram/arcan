@@ -58,6 +58,7 @@ struct anet_dircl_opts {
 	bool stderr_log;
 	bool keep_appl;
 	bool request_tunnel;
+	bool monitor_mode;
 
 	char ident[16];
 	void (*dir_source)(struct a12_state*, struct a12_dynreq req, void* tag);

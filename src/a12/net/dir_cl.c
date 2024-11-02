@@ -119,6 +119,30 @@ static struct {
 	}
 };
 
+static void send_join_ident(struct ioloop_shared* I, struct directory_meta* cbt)
+{
+/* join the message group for the running appl */
+	arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(IDENT)
+	};
+
+	size_t lim = sizeof(ev.ext.message.data)/sizeof(ev.ext.message.data[1]);
+
+/* did we provide a user-printable identity? */
+	if (cbt->clopt->ident[0]){
+		snprintf(
+			(char*)ev.ext.message.data, lim, "%d:%s",
+			I->cbt->clopt->applid, cbt->clopt->ident
+		);
+	}
+	else
+		snprintf(
+			(char*)ev.ext.message.data, lim, "%d", I->cbt->clopt->applid);
+
+	a12_channel_enqueue(I->S, &ev);
+}
+
 static struct pk_response key_auth_fixed(uint8_t pk[static 32], void* tag)
 {
 	struct a12_dynreq* key_auth_req = tag;
@@ -212,6 +236,12 @@ static void on_cl_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
 	struct ioloop_shared* I = tag;
+
+/* monitor- mode will leave us without a shmif connection, just send to stdout */
+	if (!I->shmif.addr){
+		fprintf(stdout, "%s%s", ev->ext.message.data, ev->ext.message.multipart? "" : "\n");
+		return;
+	}
 
 /* main use would be the appl- runner forwarding messages that direction */
 	a12int_trace(A12_TRACE_DIRECTORY, "event=%s", arcan_shmif_eventstr(ev, NULL, 0));
@@ -556,23 +586,7 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 					return;
 				}
 
-	/* join the message group for the running appl */
-			  arcan_event ev = {
-					.category = EVENT_EXTERNAL,
-					.ext.kind = ARCAN_EVENT(IDENT)
-				};
-
-				size_t lim = sizeof(ev.ext.message.data)/sizeof(ev.ext.message.data[1]);
-				if (cbt->clopt->ident[0]){
-					snprintf(
-						(char*)ev.ext.message.data, lim, "%d:%s",
-						I->cbt->clopt->applid, cbt->clopt->ident
-					);
-				}
-				else
-					snprintf(
-						(char*)ev.ext.message.data, lim, "%d", I->cbt->clopt->applid);
-				a12_channel_enqueue(I->S, &ev);
+				send_join_ident(I, cbt);
 				runner_shmif(I, true);
 			}
 		}
@@ -1018,8 +1032,14 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 	}
 
 	while (dir){
-/* use identifier to request binary */
+/* use identifier to request binary or just join group to monitor messages */
 		if (cbt->clopt->applname[0]){
+			if (cbt->clopt->monitor_mode){
+				struct directory_meta* cbt = I->cbt;
+				send_join_ident(I, cbt);
+				return true;
+			}
+
 			if (strcasecmp(dir->appl.name, cbt->clopt->applname) == 0){
 				struct arcan_event ev =
 				{
@@ -1090,9 +1110,10 @@ void anet_directory_cl(
 		}, sizeof(struct a12_unpack_cfg)
 	);
 
-/* send REGISTER event with our ident, this is a convenience thing right now,
+/* Send REGISTER event with our ident, this is a convenience thing right now,
  * it might be slightly cleaner having an actual directory command for the
- * thing rather than (ab)using REGISTER here and IDENT for appl-messaging. */
+ * thing rather than (ab)using REGISTER here and IDENT for appl-messaging.
+ */
 	if (opts.dir_source){
 		uint8_t nk[32] = {0};
 		struct arcan_event ev = {
@@ -1103,6 +1124,7 @@ void anet_directory_cl(
 		snprintf(
 			(char*)ev.ext.registr.title, 64, "%s", opts.ident);
 		a12_channel_enqueue(S, &ev);
+
 		a12_request_dynamic_resource(S, nk, false, opts.dir_source, opts.dir_source_tag);
 	}
 	else
