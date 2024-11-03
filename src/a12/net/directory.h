@@ -73,6 +73,7 @@ struct anet_dircl_opts {
 	uint16_t source_port;
 
 	struct appl_meta outapp;
+	bool outapp_ctrl;
 
 	void* (*allocator)(struct a12_state*, struct directory_meta*);
 	pid_t (*executor)(struct a12_state*,

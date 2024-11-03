@@ -1024,7 +1024,7 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 			cbt->clopt->outapp.buf,
 			cbt->clopt->outapp.buf_sz,
 			cbt->clopt->outapp.identifier,
-			A12_BTYPE_APPL,
+			cbt->clopt->outapp_ctrl ? A12_BTYPE_APPL_CONTROLLER : A12_BTYPE_APPL,
 			cbt->clopt->outapp.appl.name
 		);
 

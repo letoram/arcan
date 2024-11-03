@@ -931,6 +931,7 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"\t --ident name  \t When attaching as a source or directory, identify as [name]\n"
 	"\t --keep-alive  \t Keep connection alive and print changes to the directory\n"
 	"\t --push-appl s \t Push [s] from APPLBASE to the server\n"
+	"\t --push-ctrl s \t Push [s] as server-side controller to appl\n"
 	"\t --tunnel      \t Default request tunnelling as source/sink connection\n"
 	"\t --block-log   \t Don't attempt to forward script errors or crash logs\n"
 	"\t --stderr-log  \t Mirror script errors / crash log to stderr\n"
@@ -1131,6 +1132,34 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			if (i >= argc)
 				return show_usage("Missing group tag name", argv, i - 1);
 			global.dirsrv.allow_appl = strdup(argv[i]);
+		}
+		else if (strcmp(argv[i], "--push-ctrl") == 0){
+			i++;
+			if (i >= argc){
+				return show_usage("Missing applname", argv, i - 1);
+				if (argv[i][0] != '.' && argv[i][1] != '/')
+					return show_usage("--push-ctrl /path/to/appl: invalid path format", argv, i);
+
+				char* path = strrchr(argv[i], '/');
+				if (!path)
+					return show_usage("--push-appl /path/to/appl: invalid path format", argv, i);
+				*path = '\0';
+
+				int dirfd = open(argv[i], O_RDONLY | O_DIRECTORY);
+				if (-1 == dirfd)
+					return show_usage(
+						"--push-ctrl name: couldn't resolve working directory", argv, i);
+
+				if (global.dircl.outapp.handle)
+					return show_usage(
+						"multiple --push-appl / --push-ctrl arguments provided", argv, i);
+
+				if (!build_appl_pkg(path, &global.dircl.outapp, dirfd))
+					return show_usage("--push-ctrl: couldn't build appl package", argv, i);
+
+				global.dircl.outapp_ctrl = true;
+				a12int_trace(A12_TRACE_DIRECTORY, "dircl:push_appl:built=%s", argv[i]);
+			}
 		}
 /* one-time single appl update to directory */
 		else if (strcmp(argv[i], "--push-appl") == 0){
