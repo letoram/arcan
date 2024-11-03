@@ -504,9 +504,17 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 		goto out;
 	}
 
+	lseek(C->pending_fd, 0, SEEK_SET);
+
+/* notify any runner, that will take care of unpacking and validating */
+	if (C->type == IDTYPE_ACTRL){
+		anet_directory_lua_update(cur, C->pending_fd);
+		pthread_mutex_unlock(&active_clients.sync);
+		goto out;
+	}
+
 /* when adding proper formats, here is a place for type-validation scanning /
  * attestation / signing (external / popen and sandboxed ofc.) */
-		lseek(C->pending_fd, 0, SEEK_SET);
 		FILE* fpek = fdopen(C->pending_fd, "r");
 		if (!fpek)
 			goto out;
@@ -639,7 +647,23 @@ static void handle_bchunk_req(struct dircl* C, char* ext, bool input)
 				goto fail;
 			}
 		break;
+/* same as for IDTYPE_APPL but we have different trigger action when the
+ * transfer is completed */
 		case IDTYPE_ACTRL:
+			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_ctrl)){
+				A12INT_DIRTRACE("accept_ctrl_update=%d", (int) mid);
+				resfd = buf_memfd(NULL, 0);
+				if (-1 != resfd){
+					C->pending_fd = resfd;
+					C->pending_stream = true;
+					C->pending_id = mid;
+					closefd = false;
+				}
+			}
+			else {
+				A12INT_DIRTRACE("reject_ctrl_update=%d:reason=keystore_deny", (int) mid);
+				goto fail;
+			}
 			goto fail;
 		break;
 		case IDTYPE_STATE:
@@ -915,15 +939,16 @@ make_random:
 	struct appl_meta* cur;
 
 	pthread_mutex_lock(&active_clients.sync);
-	cur = locked_numid_appl(ind);
-	if (cur){
-		C->in_appl = ind;
-		if (cur->server_appl){
-			anet_directory_lua_join(C, cur);
+
+		cur = locked_numid_appl(ind);
+		if (cur){
+			C->in_appl = ind;
+			if (cur->server_appl != SERVER_APPL_NONE){
+				anet_directory_lua_join(C, cur);
+			}
 		}
-	}
-	else
-		C->in_appl = -1;
+		else
+			C->in_appl = -1;
 
 	pthread_mutex_unlock(&active_clients.sync);
 }
@@ -1188,6 +1213,27 @@ void anet_directory_shmifsrv_thread(
 	pthread_create(&pth, &pthattr, dircl_process, newent);
 }
 
+static bool try_appl_controller(const char* d_name, int dfd)
+{
+	char* msg = NULL;
+
+	if (
+		0 >= dfd ||
+		0 == asprintf(&msg, "%s/%s.lua", d_name, d_name)){
+		return false;
+	}
+
+	int scriptfile = openat(dfd, msg, O_RDONLY);
+	free(msg);
+
+	if (-1 != scriptfile){
+		close(scriptfile);
+		return true;
+	}
+
+	return false;
+}
+
 /* this will just keep / cache the built .FAPs in memory, the startup times
  * will still be long and there is no detection when / if to rebuild or when
  * the state has changed - a better server would use sqlite and some basic
@@ -1225,24 +1271,18 @@ void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
  * of a concern right now. */
 		if (build_appl_pkg(ent->d_name, dst, fd)){
 			dst->identifier = opts->dir_count++;
-			dst->server_appl = false;
+			dst->server_appl = SERVER_APPL_NONE;
 
 /* check if there is a corresponding server_appl/server_appl.lua and if so,
  * mark so that if a client joins we can spin up a worker process while there
- * are active clients. */
+ * are active clients. Try with temp folder first and fallback to basepath */
 			char* srvappl;
 			char* msg;
-			if (
-				opts->appl_server_dfd > 0 &&
-				0 < asprintf(&msg, "%s/%s.lua", ent->d_name, ent->d_name)){
 
-				int scriptfile = openat(opts->appl_server_dfd, msg, O_RDONLY);
-				if (-1 != scriptfile){
-					dst->server_appl = true;
-					close(scriptfile);
-				}
-				free(msg);
-			}
+			if (try_appl_controller(ent->d_name, opts->appl_server_temp_dfd))
+				dst->server_appl = SERVER_APPL_TEMP;
+			else if (try_appl_controller(ent->d_name, opts->appl_server_dfd))
+				dst->server_appl = SERVER_APPL_PRIMARY;
 
 			dst = dst->next;
 		}

@@ -295,6 +295,9 @@ static int cfgpath_index(lua_State* L)
 		return 1;
 	}
 
+/* both state, appl and keystore are polluting env. from the legacy/history of
+ * being passed via shmif through handover execution and we lack portable
+ * primitives for anything better, so re-use that */
 	if (strcmp(key, "appl") == 0){
 		if (!getenv("ARCAN_APPLBASEPATH"))
 			lua_pushnil(L);
@@ -343,9 +346,6 @@ static int cfgpath_newindex(lua_State* L)
 {
 	const char* key = luaL_checkstring(L, 2);
 
-/* both state, appl and keystore are polluting env. from the legacy/history of
- * being passed via shmif through handover execution and we lack portable
- * primitives for anything better, so re-use that */
 	if (strcmp(key, "appl") == 0){
 		const char* val = luaL_checkstring(L, 3);
 		if (-1 != CFG->directory){
@@ -357,6 +357,26 @@ static int cfgpath_newindex(lua_State* L)
 		}
 		CFG->dirsrv.flag_rescan = 1;
 		setenv("ARCAN_APPLBASEPATH", val, 1);
+		return 0;
+	}
+
+/* set to enable client provided appl controller updates, this is a developer
+ * feature, there is a static fallback that requires an explicit synch */
+	else if (strcmp(key, "appl_server_temp") == 0){
+		const char* val = luaL_checkstring(L, 3);
+
+		if (CFG->dirsrv.appl_server_temp_path){
+			free(CFG->dirsrv.appl_server_temp_path);
+			close(CFG->dirsrv.appl_server_temp_dfd);
+		}
+
+		int dirfd = open(val, O_RDONLY | O_DIRECTORY);
+		if (-1 == dirfd)
+			luaL_error(L, "config.paths.appl_server_temp = %s, can't open as directory\n", val);
+
+		CFG->dirsrv.appl_server_temp_path = strdup(val);
+		CFG->dirsrv.appl_server_temp_dfd = dirfd;
+
 		return 0;
 	}
 	else if (strcmp(key, "appl_server") == 0){
@@ -601,6 +621,61 @@ struct pk_response
 	return base;
 }
 
+void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl)
+{
+/* newappl contains the packed (unauthenticated) appl from an authenticated
+ * source. If we have an active runner we should send the new BCHUNK_IN to the
+ * unpacked directory. This is where we can support rollback to the on- disk
+ * version should the new one break anything. */
+	struct shmifsrv_client* runner = appl->server_tag;
+
+/*
+ * unpack: this blocks the server and is not desired in the long run.
+ */
+	FILE* applf = fdopen(newappl, "r");
+	const char* err;
+
+/* get rid of volatile qualifier */
+	char name[sizeof(appl->appl.name)];
+	for (size_t i = 0; i < sizeof(appl->appl.name); i++){
+		name[i] = appl->appl.name[i];
+	}
+
+	if (!extract_appl_pkg(applf,
+		CFG->dirsrv.appl_server_temp_dfd, name, &err)){
+			fclose(applf);
+			a12int_trace(
+				A12_TRACE_DIRECTORY, "kind=error:dirappl_unpack=%s", err);
+		return;
+	}
+
+/*
+ * we don't have a running session so switching is a no-op, it'll be used on
+ * next join that spawns a runner
+ */
+	if (!runner){
+		return;
+	}
+
+/*
+ * for the runner we re-send the BCHUNK_IN entrypoint with the applname,
+ * that will case the lua_appl end to reseed the VM
+ */
+	struct arcan_event outev =
+		(struct arcan_event){
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
+		};
+
+	int srcdir = appl->server_appl == SERVER_APPL_TEMP ?
+		CFG->dirsrv.appl_server_temp_dfd : CFG->dirsrv.appl_server_dfd;
+
+	int dfd = openat(srcdir, name, O_RDONLY | O_DIRECTORY);
+
+	snprintf(outev.tgt.message, sizeof(outev.tgt.message), "%s", appl->appl.name);
+	shmifsrv_enqueue_event(runner, &outev, dfd);
+}
+
 bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 {
 	struct shmifsrv_client* runner = appl->server_tag;
@@ -669,8 +744,12 @@ bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 			.category = EVENT_TARGET,
 			.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
 		};
-		int dfd = openat(
-			CFG->dirsrv.appl_server_dfd, appl->appl.name, O_RDONLY | O_DIRECTORY);
+
+		int srcdir = appl->server_appl == SERVER_APPL_TEMP ?
+			CFG->dirsrv.appl_server_temp_dfd : CFG->dirsrv.appl_server_dfd;
+
+		int dfd = openat(srcdir, appl->appl.name, O_RDONLY | O_DIRECTORY);
+
 		snprintf(outev.tgt.message, sizeof(outev.tgt.message), "%s", appl->appl.name);
 		shmifsrv_enqueue_event(runner, &outev, dfd);
  	}

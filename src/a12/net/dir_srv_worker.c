@@ -977,8 +977,9 @@ static struct a12_bhandler_res srv_bevent(
 #ifndef STATIC_DIRECTORY_SERVER
 		else if (M.type == A12_BTYPE_APPL_RESOURCE){
 		}
-		else if (M.type == A12_BTYPE_APPL){
+		else if (M.type == A12_BTYPE_APPL || M.type == A12_BTYPE_APPL_CONTROLLER){
 			char buf[16 + sizeof(".appl")];
+			const char* suffix = M.type == A12_BTYPE_APPL ? "appl" : "ctrl";
 
 /* We treat update (existing identifier) different to add-new. It doesn't have
  * any special semantics right now, but is relevant if two clients has a
@@ -986,9 +987,9 @@ static struct a12_bhandler_res srv_bevent(
  * having propagated. The use cases are slightly different as someone might be
  * using the existing and need to synch / migrate in the case of update. */
 			if (M.extid[0])
-				snprintf(buf, sizeof(buf), "%s.appl", M.extid);
+				snprintf(buf, sizeof(buf), "%s.%s", M.extid, suffix);
 			else
-				snprintf(buf, sizeof(buf), "%"PRIu32".appl", M.identifier);
+				snprintf(buf, sizeof(buf), "%"PRIu32".%s", M.identifier, suffix);
 
 			res.fd = request_parent_resource(S, cbt->C, buf, true);
 			if (-1 != res.fd){
@@ -997,6 +998,7 @@ static struct a12_bhandler_res srv_bevent(
 			}
 		}
 		else if (M.type == A12_BTYPE_APPL_CONTROLLER){
+
 		}
 #endif
 		break;

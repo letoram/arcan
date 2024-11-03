@@ -68,6 +68,12 @@ struct a12_dynreq {
 	int proto;
 };
 
+enum server_appl {
+	SERVER_APPL_NONE = 0,
+	SERVER_APPL_TEMP = 1,
+	SERVER_APPL_PRIMARY = 2
+};
+
 struct appl_meta;
 struct appl_meta {
 
@@ -77,7 +83,7 @@ struct appl_meta {
 	FILE* handle;
 	char* buf;
 	uint64_t buf_sz;
-	bool server_appl;
+	uint8_t server_appl;
 	void* server_tag;
 
 	struct appl_meta* next;

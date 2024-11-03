@@ -309,8 +309,14 @@ static void open_appl(int dfd, const char* name)
 		return;
 	}
 
+/* For the dynamic reload case we first run an entrypoint that lets the current
+ * scripts shut down gracefully and save any state to be persisted. */
 	if (L){
-		log_print("dir_lua:missing:dynamic_reload");
+		if (setup_entrypoint(L, "_reset", sizeof("_reset"))){
+			wrap_pcall(L, 1, 0);
+		}
+		lua_close(L);
+		L = NULL;
 	}
 
 /* This mimics much of the setup of the client side API, though the specifics
@@ -361,6 +367,29 @@ static void open_appl(int dfd, const char* name)
 	if (0 == luaL_loadbuffer(L, reg.ptr, reg.sz, name)){
 		static const luaL_Reg api[] = {
 			{"message_target", targetmessage},
+/*
+ * lift from arcan_lua.c:
+ *
+ *   - match_keys
+ *   - get_key / get_keys
+ *   - store_key
+ *   - launch_target (with modified semantics to connect source to dirsrv)
+ *     this would become something like MESSAGE to parent, get message back
+ *     with source identifier, expect the appl to forward this to a connected
+ *     client.
+ *
+ *     Then we can re-use arcan-net + arcan_lwa to loopback connect as a
+ *     source execute an appl.
+ *
+ *  - launch_decode would be a specialised form of launch_target but with
+ *    the same semantics. More interesting is how we initiate this over a
+ *    dirsrv network in order to load balance.
+ *
+ *  - we should also have a keyspace that is distributed so that the main
+ *    process can synch that to any directory that joins us (or that we join)
+ *    those also need some kind of strata and timestamp on set/synch so that
+ *    we can merge / deduplicate.
+ */
 			{NULL, NULL}
 		};
 		expose_api(L, api);
@@ -369,7 +398,18 @@ static void open_appl(int dfd, const char* name)
 	arcan_release_map(reg);
 	arcan_release_resource(&source);
 
-/* import API, call entrypoint */
+/* run script entrypoint */
+	if (setup_entrypoint(L, "", 0)){
+		wrap_pcall(L, 0, 0);
+	}
+
+/* re-expose any existing clients */
+	for (size_t i = 0; i < CLIENTS.active; i++){
+		if (setup_entrypoint(L, "_join", sizeof("_join"))){
+			lua_pushnumber(L, CLIENTS.cset[i].clid);
+			wrap_pcall(L, 1, 0);
+		}
+	}
 }
 
 static bool join_worker(int fd)
@@ -623,6 +663,9 @@ void anet_directory_appl_runner()
 			}
 		}
 	}
+
+	if (L)
+		lua_close(L);
 
 	log_print("parent_exit");
 }

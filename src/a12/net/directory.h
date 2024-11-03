@@ -21,9 +21,16 @@ struct anet_dirsrv_opts {
 	char* resource_path;
 	int resource_dfd;
 
-	char* appl_server_path;
-	char* appl_logpath;
+	char* appl_server_path; /* hosting server-side appl controller */
 	int appl_server_dfd;
+
+	char* appl_logpath;
+
+ /* Set when permitting dynamic controller push, takes precendence over
+	* appl-server-path unless instructed to rollback. */
+	char* appl_server_temp_path;
+	int appl_server_temp_dfd;
+
 	int appl_logdfd;
 };
 
@@ -204,6 +211,8 @@ struct ioloop_shared {
 
 /* build the global- lua context and tie to a sqlite database represented by fd */
 bool anet_directory_lua_init(struct global_cfg* cfg);
+
+void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl);
 
 /* privsep process running server-side scripts for an appl */
 void anet_directory_appl_runner();
