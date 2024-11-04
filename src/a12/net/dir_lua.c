@@ -677,6 +677,8 @@ void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl)
 
 	snprintf(outev.tgt.message, sizeof(outev.tgt.message), "%s", appl->appl.name);
 	shmifsrv_enqueue_event(runner, &outev, dfd);
+	a12int_trace(
+			A12_TRACE_DIRECTORY, "kind=status:dirappl_update=%s", appl->appl.name);
 }
 
 bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)

@@ -515,35 +515,35 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 
 /* when adding proper formats, here is a place for type-validation scanning /
  * attestation / signing (external / popen and sandboxed ofc.) */
-		FILE* fpek = fdopen(C->pending_fd, "r");
-		if (!fpek)
-			goto out;
+	FILE* fpek = fdopen(C->pending_fd, "r");
+	if (!fpek)
+		goto out;
 
-		char* dst;
-		size_t dst_sz;
-		FILE* handle = file_to_membuf(fpek, &dst, &dst_sz);
+	char* dst;
+	size_t dst_sz;
+	FILE* handle = file_to_membuf(fpek, &dst, &dst_sz);
 
 /* time to replace the backing slot, rebuild index and notify listeners */
-		if (handle){
-			cur->buf_sz = dst_sz;
-			cur->buf = dst;
-			cur->handle = handle;
+	if (handle){
+		cur->buf_sz = dst_sz;
+		cur->buf = dst;
+		cur->handle = handle;
 
-			blake3_hasher hash;
-			blake3_hasher_init(&hash);
-			blake3_hasher_update(&hash, dst, dst_sz);
-			blake3_hasher_finalize(&hash, (uint8_t*)cur->hash, 4);
+		blake3_hasher hash;
+		blake3_hasher_init(&hash);
+		blake3_hasher_update(&hash, dst, dst_sz);
+		blake3_hasher_finalize(&hash, (uint8_t*)cur->hash, 4);
 
 /* need to unlock as shmifsrv set will lock again, it will take care of
  * rebuilding the index and notifying listeners though - identity action
  * so volatile is no concern */
-			pthread_mutex_unlock(&active_clients.sync);
-			A12INT_DIRTRACE("dirsv:bchunk_state:appl_update=%d", cur->identifier);
-			anet_directory_shmifsrv_set(
-				(struct anet_dirsrv_opts*) active_clients.opts);
-		}
-		else
-			pthread_mutex_unlock(&active_clients.sync);
+		pthread_mutex_unlock(&active_clients.sync);
+		A12INT_DIRTRACE("dirsv:bchunk_state:appl_update=%d", cur->identifier);
+		anet_directory_shmifsrv_set(
+			(struct anet_dirsrv_opts*) active_clients.opts);
+	}
+	else
+		pthread_mutex_unlock(&active_clients.sync);
 
 	fclose(fpek);
 	return;
@@ -636,6 +636,7 @@ static void handle_bchunk_req(struct dircl* C, char* ext, bool input)
 				A12INT_DIRTRACE("accept_update=%d", (int) mid);
 				resfd = buf_memfd(NULL, 0);
 				if (-1 != resfd){
+					C->type = mtype;
 					C->pending_fd = resfd;
 					C->pending_stream = true;
 					C->pending_id = mid;
@@ -654,6 +655,7 @@ static void handle_bchunk_req(struct dircl* C, char* ext, bool input)
 				A12INT_DIRTRACE("accept_ctrl_update=%d", (int) mid);
 				resfd = buf_memfd(NULL, 0);
 				if (-1 != resfd){
+					C->type = mtype;
 					C->pending_fd = resfd;
 					C->pending_stream = true;
 					C->pending_id = mid;

@@ -312,6 +312,7 @@ static void open_appl(int dfd, const char* name)
 /* For the dynamic reload case we first run an entrypoint that lets the current
  * scripts shut down gracefully and save any state to be persisted. */
 	if (L){
+		log_print("existing:reset");
 		if (setup_entrypoint(L, "_reset", sizeof("_reset"))){
 			wrap_pcall(L, 1, 0);
 		}
@@ -405,7 +406,7 @@ static void open_appl(int dfd, const char* name)
 
 /* re-expose any existing clients */
 	for (size_t i = 0; i < CLIENTS.active; i++){
-		if (setup_entrypoint(L, "_join", sizeof("_join"))){
+		if (setup_entrypoint(L, "_adopt", sizeof("_adopt"))){
 			lua_pushnumber(L, CLIENTS.cset[i].clid);
 			wrap_pcall(L, 1, 0);
 		}
@@ -633,7 +634,7 @@ void anet_directory_appl_runner()
 	int left = 25;
 
 	while (!SHUTDOWN){
-		int pv = poll(CLIENTS.pset, CLIENTS.set_sz, left);
+		pv = poll(CLIENTS.pset, CLIENTS.set_sz, left);
 		int nt = shmifsrv_monotonic_tick(&left);
 		while (nt > 0 && setup_entrypoint(L, "_clock_pulse", sizeof("_clock_pulse"))){
 			wrap_pcall(L, 0, 0);
