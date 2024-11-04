@@ -1135,31 +1135,31 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		}
 		else if (strcmp(argv[i], "--push-ctrl") == 0){
 			i++;
-			if (i >= argc){
+			if (i >= argc)
 				return show_usage("Missing applname", argv, i - 1);
-				if (argv[i][0] != '.' && argv[i][1] != '/')
-					return show_usage("--push-ctrl /path/to/appl: invalid path format", argv, i);
 
-				char* path = strrchr(argv[i], '/');
-				if (!path)
-					return show_usage("--push-appl /path/to/appl: invalid path format", argv, i);
-				*path = '\0';
+			if (argv[i][0] != '.' && argv[i][1] != '/')
+				return show_usage("--push-ctrl /path/to/appl: invalid path format", argv, i);
 
-				int dirfd = open(argv[i], O_RDONLY | O_DIRECTORY);
-				if (-1 == dirfd)
-					return show_usage(
-						"--push-ctrl name: couldn't resolve working directory", argv, i);
+			char* path = strrchr(argv[i], '/');
+			if (!path)
+				return show_usage("--push-appl /path/to/appl: invalid path format", argv, i);
+			*path = '\0';
 
-				if (global.dircl.outapp.handle)
-					return show_usage(
-						"multiple --push-appl / --push-ctrl arguments provided", argv, i);
+			int dirfd = open(argv[i], O_RDONLY | O_DIRECTORY);
+			if (-1 == dirfd)
+				return show_usage(
+					"--push-ctrl name: couldn't resolve working directory", argv, i);
 
-				if (!build_appl_pkg(path, &global.dircl.outapp, dirfd))
-					return show_usage("--push-ctrl: couldn't build appl package", argv, i);
+			if (global.dircl.outapp.handle)
+				return show_usage(
+					"multiple --push-appl / --push-ctrl arguments provided", argv, i);
 
-				global.dircl.outapp_ctrl = true;
-				a12int_trace(A12_TRACE_DIRECTORY, "dircl:push_appl:built=%s", argv[i]);
-			}
+			if (!build_appl_pkg(&path[1], &global.dircl.outapp, dirfd))
+				return show_usage("--push-ctrl: couldn't build appl package", argv, i);
+
+			global.dircl.outapp_ctrl = true;
+			a12int_trace(A12_TRACE_DIRECTORY, "dircl:push_appl:built=%s", argv[i]);
 		}
 /* one-time single appl update to directory */
 		else if (strcmp(argv[i], "--push-appl") == 0){

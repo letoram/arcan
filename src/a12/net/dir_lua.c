@@ -244,7 +244,9 @@ static struct {
 	{.key = "source"},
 	{.key = "dir"},
 	{.key = "appl"},
-	{.key = "resources"}
+	{.key = "resources"},
+	{.key = "ctrl"},
+	{.key = "admin"}
 };
 
 static void build_lookups(struct global_cfg* CFG)
@@ -253,6 +255,7 @@ static void build_lookups(struct global_cfg* CFG)
 	permlut[1].val = &CFG->dirsrv.allow_dir;
 	permlut[2].val = &CFG->dirsrv.allow_appl;
 	permlut[3].val = &CFG->dirsrv.allow_ares;
+	permlut[4].val = &CFG->dirsrv.allow_ctrl;
 }
 
 static int cfgperm_index(lua_State* L)
