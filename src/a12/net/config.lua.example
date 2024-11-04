@@ -21,6 +21,7 @@ function init()
 	config.permissions.dir = 'directory' -- clients allowed to register as a linked directory
 	config.permissions.appl = 'developer' -- clients allowed to update appl slots
 	config.permissions.resources = 'shared-content' -- clients allowed to write
+-- config.permissions.appl_controller = 'developer' -- clients allowed to update appl controller
 
 -- Calls to store_key, get_key, get_keys, match_keys functions will use this path,
 -- default :memory: means that it is in-memory only and no persistence across restarts.

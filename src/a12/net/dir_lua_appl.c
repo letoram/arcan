@@ -404,8 +404,13 @@ static void open_appl(int dfd, const char* name)
 		wrap_pcall(L, 0, 0);
 	}
 
-/* re-expose any existing clients */
-	for (size_t i = 0; i < CLIENTS.active; i++){
+/* re-expose any existing clients,
+ * this can have holes (as _leave will not compact) so linear search */
+	log_print("status=adopt=%zu", CLIENTS.active);
+	for (size_t i = 0; i < CLIENTS.set_sz; i++){
+		if (!CLIENTS.cset[i].shmif)
+			continue;
+
 		if (setup_entrypoint(L, "_adopt", sizeof("_adopt"))){
 			lua_pushnumber(L, CLIENTS.cset[i].clid);
 			wrap_pcall(L, 1, 0);
@@ -416,7 +421,8 @@ static void open_appl(int dfd, const char* name)
 static bool join_worker(int fd)
 {
 /* just naively grow, parent process is responsible for more refined handling
- * of constraining resources */
+ * of constraining resources outside the natural cap of permitted descriptors
+ * per process */
 	if (CLIENTS.active == CLIENTS.set_sz){
 		size_t new_sz = CLIENTS.set_sz + GROW_SLOTS;
 		struct pollfd* new_pset = malloc(sizeof(struct pollfd) * new_sz);
@@ -515,12 +521,14 @@ static void meta_resource(int fd, const char* msg)
 {
 	if (strncmp(msg, ".worker", 8) == 0){
 		join_worker(fd);
+		return;
 	}
 /* new key-value store to work with */
 	else if (strcmp(msg, ".sqlite3") == 0){
 	}
 	else
 		log_print("unhandled:%s\n", msg);
+	close(fd);
 }
 
 static void parent_control_event(struct arcan_event* ev)
@@ -569,6 +577,7 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 		log_print("kind=shmif:source=%zu:data=%s", cl->clid, arcan_shmif_eventstr(&ev, NULL, 0));
 #endif
 
+/* only allow once */
 		if (!cl->registered){
 			if (ev.ext.kind == EVENT_EXTERNAL_NETSTATE){
 				blake3_hasher hash;
@@ -594,7 +603,15 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 			}
 			continue;
 		}
-/* NAK until we have the client side of file access done */
+
+/*
+ * NAK until we have the client side of file access done.
+ *
+ * The main headache is that to avoid the latency of bouncing through dir_srv.c
+ * we would like the controller scripts to determine file-system access, but for
+ * linking directory stores that'd also push replication/caching there, which is
+ * a problem we wouldn't want to expose the developer to.
+ */
 		if (ev.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE){
 			shmifsrv_enqueue_event(cl->shmif, &(struct arcan_event){
 				.category = EVENT_TARGET,
@@ -613,8 +630,6 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 				wrap_pcall(L, 2, 0);
 			}
 		}
-/* other relevant, BCHUNKSTATE now that dir_srv.c can be sidestepped (mostly),
- * private- store won't be accessible from here */
 	 }
 	if (shmifsrv_poll(cl->shmif) == CLIENT_DEAD){
 		release_worker(cl->clid);
@@ -634,13 +649,14 @@ void anet_directory_appl_runner()
 	int left = 25;
 
 	while (!SHUTDOWN){
-		pv = poll(CLIENTS.pset, CLIENTS.set_sz, left);
+		int pv = poll(CLIENTS.pset, CLIENTS.set_sz, left);
 		int nt = shmifsrv_monotonic_tick(&left);
 		while (nt > 0 && setup_entrypoint(L, "_clock_pulse", sizeof("_clock_pulse"))){
 			wrap_pcall(L, 0, 0);
 			nt--;
 		}
 
+/* first prioritize the privileged parent inbound events */
 		if (CLIENTS.pset[0].revents){
 			struct arcan_event ev;
 			arcan_shmif_wait(&SHMIF, &ev);
@@ -652,10 +668,15 @@ void anet_directory_appl_runner()
 			pv--;
 		}
 
-		for (size_t i = 1; i < CLIENTS.set_sz; i++){
+/* flush out each client, rate-limit comes from queue size caps */
+		for (size_t i = 1; i < CLIENTS.set_sz && pv > 0; i++){
 			if (CLIENTS.cset[i].shmif){
 				worker_instance_event(
 					&CLIENTS.cset[i], CLIENTS.pset[i].fd, CLIENTS.pset[i].revents);
+
+/* two possible triggers, one is that poll on the descriptor failed (dead
+ * proces) or that shmifsrv_poll has marked it as dead (instance_event) which
+ * would come from a proper _EXIT */
 				if (CLIENTS.pset[i].revents & (POLLHUP | POLLNVAL)){
 					release_worker(i);
 				}

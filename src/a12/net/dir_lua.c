@@ -245,10 +245,13 @@ static struct {
 	{.key = "dir"},
 	{.key = "appl"},
 	{.key = "resources"},
-	{.key = "ctrl"},
+	{.key = "appl_controller"},
 	{.key = "admin"}
 };
 
+/* Map the table key indices to their corresponding keyname entries so that
+ * a write into the config.permissions[key] will update the related string.
+ * On newindex the old will be free()d and new strdup()ed. */
 static void build_lookups(struct global_cfg* CFG)
 {
 	permlut[0].val = &CFG->dirsrv.allow_src;
@@ -256,6 +259,7 @@ static void build_lookups(struct global_cfg* CFG)
 	permlut[2].val = &CFG->dirsrv.allow_appl;
 	permlut[3].val = &CFG->dirsrv.allow_ares;
 	permlut[4].val = &CFG->dirsrv.allow_ctrl;
+	permlut[5].val = &CFG->dirsrv.allow_admin;
 }
 
 static int cfgperm_index(lua_State* L)
