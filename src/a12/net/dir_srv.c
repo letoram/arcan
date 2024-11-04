@@ -664,7 +664,6 @@ static void handle_bchunk_req(struct dircl* C, char* ext, bool input)
 				A12INT_DIRTRACE("reject_ctrl_update=%d:reason=keystore_deny", (int) mid);
 				goto fail;
 			}
-			goto fail;
 		break;
 		case IDTYPE_STATE:
 			resfd = get_state_res(C, meta->appl.name, ".state", O_WRONLY, 0);
