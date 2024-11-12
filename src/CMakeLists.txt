@@ -78,7 +78,23 @@ endif()
 
 # generate an identifiable buildtag for tracking purposes
 if (NOT DEFINED ENGINE_BUILDTAG)
-	if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../git)
+	if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.fslockout)
+		find_program(FOSSIL_EXECUTABLE NAMES fossil)
+		if (FOSSIL_EXECUTABLE)
+			execute_process(COMMAND ${FOSSIL_EXECUTABLE} describe
+				WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+				RESULT_VARIABLE EXIT_CODE
+				OUTPUT_VARIABLE FOSSIL_VERSION
+			)
+			if (NOT ${EXIT_CODE} EQUAL 0)
+				set(ENGINE_BUILDTAG arcan-relukn-${VERSION})
+			else()
+				string(STRIP ${FOSSIL_VERSION} FOSSIL_VERSION)
+				set(ENGINE_BUILDTAG arcan-fossil-${FOSSIL_VERSION})
+			endif()
+		endif()
+
+	elseif (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../git)
 		find_package(Git)
 		set(GIT_VERSION)
 		if (GIT_FOUND)
