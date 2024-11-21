@@ -1,9 +1,8 @@
+/* internal interfaces for implementing directory server / client */
+
 #ifndef HAVE_DIRECTORY
 #define HAVE_DIRECTORY
 
-/*
- * where is the basedir
- */
 struct anet_dirsrv_opts {
 	struct a12_context_options* a12_cfg;
 	volatile bool flag_rescan;
@@ -53,30 +52,49 @@ struct anet_dirsrv_opts {
  */
 struct directory_meta;
 struct anet_dircl_opts {
+/* where are appls loaded from? */
 	int basedir;
 	char basedir_path[PATH_MAX];
 
+/* filled if an appl is requested */
 	char* appl_runner;
 	char applname[16];
 	uint16_t applid;
 
 	bool die_on_list;
-	bool reload;
-	bool block_state;
-	bool block_log;
-	bool stderr_log;
-	bool keep_appl;
-	bool request_tunnel;
+	bool reload;           /* reload / re-execute appl if changed on server */
+	bool block_state;      /* don't try to save state */
+	bool block_log;        /* stop appl_runner from logging */
+	bool stderr_log;       /* forward appl_runner stderr */
+	bool keep_appl;        /* don't unlink / erase appl after running */
+	bool request_tunnel;   /* relay traffic through directory if necessary */
 	bool monitor_mode;
 
-	char ident[16];
+	char ident[16]; /* name to identify as (a-z0-9) */
+
+/* callback handler for sinking a directory server registered source */
 	void (*dir_source)(struct a12_state*, struct a12_dynreq req, void* tag);
 	void *dir_source_tag;
 	uint16_t source_port;
 
+/* filled if an upload (store) operation is requested */
 	struct appl_meta outapp;
 	bool outapp_ctrl;
 
+/* filled if an upload or download is requested */
+	struct {
+		char* name;
+		char* path;
+		char applname[16];
+	} upload;
+
+	struct {
+		char* name;
+		char* path;
+		char applname[16];
+	} download;
+
+/* actions for [reserve space / unpack] -> [execute] */
 	void* (*allocator)(struct a12_state*, struct directory_meta*);
 	pid_t (*executor)(struct a12_state*,
 		struct directory_meta*, const char*, void* tag, int* inf, int* outf);

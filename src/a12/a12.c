@@ -181,7 +181,7 @@ static void a12int_issue_rekey(struct a12_state* S)
 		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 
 /* switch to the new shared secret for outbound */
-	uint8_t ssecret[32];	
+	uint8_t ssecret[32];
 	x25519_shared_secret(ssecret, S->keys.real_priv, S->keys.remote_pub);
 	chacha_setup(S->enc_state, ssecret, BLAKE3_KEY_LEN, 0, CIPHER_ROUNDS);
 	chacha_set_nonce(S->enc_state, nonce);
@@ -572,7 +572,7 @@ static struct a12_state* a12_setup(struct a12_context_options* opt, bool srv)
 /* server starts with initiative for ratchet rekeying and is always driving it */
 	if (srv){
 		res->keys.own_rekey = true;
-		res->keys.rekey_count = 
+		res->keys.rekey_count =
 			res->keys.rekey_base_count = opt->rekey_bytes;
 	}
 
@@ -981,6 +981,17 @@ static void command_cancelstream(
 		if (node->streamid == streamid){
 			a12int_trace(A12_TRACE_BTRANSFER,
 				"kind=cancelled:stream=%"PRIu32":source=remote", streamid);
+
+/* notify any registered handler */
+			if (S->binary_handler){
+				S->binary_handler(S, (struct a12_bhandler_meta){
+					.fd = node->fd,
+					.state = A12_BHANDLER_CANCELLED,
+					.streamid = node->streamid,
+					.channel = node->chid
+				}, S->binary_handler_tag);
+			}
+
 			unlink_node(S, node);
 			return;
 		}

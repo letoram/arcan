@@ -17,8 +17,13 @@
 #include "a12.h"
 #include "a12_int.h"
 #include "a12_helper.h"
+
 #include "../../engine/arcan_bootstrap.h"
 #include "../../engine/alt/support.h"
+
+/* pull in nbio as it is used in the tui-lua bindings */
+#include "../../shmif/tui/lua/nbio.h"
+
 #include "platform_types.h"
 #include "os_platform.h"
 
@@ -607,12 +612,18 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 /*
  * NAK until we have the client side of file access done.
  *
- * The main headache is that to avoid the latency of bouncing through dir_srv.c
- * we would like the controller scripts to determine file-system access, but for
- * linking directory stores that'd also push replication/caching there, which is
- * a problem we wouldn't want to expose the developer to.
+ * Otherwise .index is an entrypoint for providing a list of known hash=name
+ * and then the request goes for the hash. It can also cover an IPFS private
+ * key + hash or a public IPFS hash.
  */
 		if (ev.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE){
+			if (ev.ext.bchunk.input){
+				if (setup_entrypoint(L, "_index", sizeof("_index"))){
+					lua_pushnumber(L, cl->clid);
+					MSGBUF_UTF8(ev.ext.bchunk.extensions);
+					wrap_pcall(L, 1, 1);
+				}
+			}
 			shmifsrv_enqueue_event(cl->shmif, &(struct arcan_event){
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_REQFAIL,

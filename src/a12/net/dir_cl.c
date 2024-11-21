@@ -857,6 +857,55 @@ static void mark_xfer_complete(struct ioloop_shared* I, struct a12_bhandler_meta
 	appl_runner(&active_appls.active);
 }
 
+static struct a12_bhandler_res anet_directory_cl_upload(
+	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
+{
+	struct ioloop_shared* I = tag;
+	struct a12_bhandler_res res = {
+		.fd = -1,
+		.flag = A12_BHANDLER_DONTWANT
+	};
+
+	switch (M.state){
+	case A12_BHANDLER_INITIALIZE:
+/* should create .fd and return that based on I->clopt->download */
+	break;
+	case A12_BHANDLER_CANCELLED:
+		fprintf(stderr, "Error: Server rejected upload\n");
+	break;
+	case A12_BHANDLER_COMPLETED:
+	break;
+	default:
+	break;
+	}
+
+	I->shutdown = true;
+	return res;
+}
+
+static struct a12_bhandler_res anet_directory_cl_download(
+	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
+{
+	struct a12_bhandler_res res = {
+		.fd = -1,
+		.flag = A12_BHANDLER_DONTWANT
+	};
+
+	switch (M.state){
+	case A12_BHANDLER_INITIALIZE:
+/* should create .fd and return that based on I->clopt->download */
+	break;
+	case A12_BHANDLER_CANCELLED:
+	break;
+	case A12_BHANDLER_COMPLETED:
+	break;
+	default:
+	break;
+	}
+
+	return res;
+}
+
 struct a12_bhandler_res anet_directory_cl_bhandler(
 	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
 {
@@ -1103,6 +1152,51 @@ void anet_directory_cl(
 		.cbt = &cbt,
 	};
 
+/* short-path: if we're supposed to just send to our private store (for an
+ * appl-store we still need to request the dir, find the matching name and
+ * specify the identifier as part of the name */
+	if (opts.upload.name){
+		if (strcmp(opts.upload.applname, ".priv") == 0){
+
+			if (strcmp(opts.upload.path, "-") == 0){
+				a12_enqueue_bstream(S,
+					STDIN_FILENO,
+					A12_BTYPE_BLOB,
+					0xfeedface, /* only used for the handler callback */
+					true, /* streaming */
+					0, /* no way of knowing the size */
+					opts.upload.applname /* we haven't joined an applgroup */
+				);
+			}
+			else {
+				int infd = open(opts.upload.path, O_RDONLY);
+				if (-1 == infd){
+					fprintf(stderr, "couldn't open %s\n", opts.upload.path);
+					return;
+				}
+				a12_enqueue_bstream(S,
+					infd,
+					A12_BTYPE_BLOB,
+					0xfeedface,
+					true,
+					0,
+					opts.upload.name /* we haven't joined a group so it goes into priv */
+				);
+			}
+		}
+		a12_set_bhandler(S, anet_directory_cl_upload, &ioloop);
+		anet_directory_ioloop(&ioloop);
+		return;
+	}
+
+	if (opts.download.name){
+		if (strcmp(opts.download.applname, ".priv") == 0){
+			a12_set_bhandler(S, anet_directory_cl_download, &ioloop);
+			anet_directory_ioloop(&ioloop);
+			return;
+		}
+	}
+
 	a12_set_destination_raw(S,
 		0, (struct a12_unpack_cfg){
 			.on_discover = cl_got_dyn,
@@ -1124,7 +1218,6 @@ void anet_directory_cl(
 		snprintf(
 			(char*)ev.ext.registr.title, 64, "%s", opts.ident);
 		a12_channel_enqueue(S, &ev);
-
 		a12_request_dynamic_resource(S, nk, false, opts.dir_source, opts.dir_source_tag);
 	}
 	else

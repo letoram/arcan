@@ -247,7 +247,6 @@ struct a12_unpack_cfg {
 		struct a12_dynreq* out,
 		void* tag);
 
-
 	void (*on_discover)(struct a12_state*,
 		int, const char*, bool, uint8_t[static 32], void*);
 	void* on_discover_tag;

@@ -937,7 +937,10 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"\t --stderr-log  \t Mirror script errors / crash log to stderr\n"
 	"\t --source-port \t When sourcing use this port for listening\n"
 	"\t --monitor-appl\t Don't download/run appl, print received messages to STDOUT\n"
-	"\t --block-state \t Don't attempt to synch state before/after running appl\n\n"
+	"\t --block-state \t Don't attempt to synch state before/after running appl\n"
+	"\t File stores (ns = .priv OR applname), (name = [a-Z-0-9])\n"
+	"\t --get-file ns name file \t Retrieve [name] from namespace [ns] (.index = list)\n"
+	"\t --put-file ns name file \t Store [file] as [name] in namespace [ns]\n\n"
 	"Directory server options: \n"
 	"\t --allow-src  s \t Let clients in trust group [s, all=*] register as sources\n"
 	"\t --allow-appl s \t Let clients in trust group [s, all=*] update appls and resources\n"
@@ -1197,6 +1200,44 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 				return show_usage("--push-appl: couldn't build appl package", argv, i);
 
 			a12int_trace(A12_TRACE_DIRECTORY, "dircl:push_appl:built=%s", argv[i]);
+		}
+		else if (strcmp(argv[i], "--get-file") == 0){
+			i++;
+			if (i >= argc)
+				return show_usage("Missing namespace", argv, i);
+
+			if (global.dircl.upload.name || global.dircl.upload.applname[0] ||
+					global.dircl.download.name || global.dircl.download.applname[0])
+				return show_usage("only one --get-file or --put-file", argv, i);
+
+			snprintf(global.dircl.download.applname, 16, "%s", argv[i++]);
+			if (i >= argc)
+				return show_usage("Missing --get-file name argument", argv, i);
+
+			global.dircl.download.name = argv[i++];
+			if (i >= argc)
+				return show_usage("Missing --get-file path argument", argv, i);
+
+			global.dircl.download.path = argv[i];
+		}
+		else if (strcmp(argv[i], "--put-file") == 0){
+			i++;
+			if (i >= argc)
+				return show_usage("Missing namespace", argv, i);
+
+			if (global.dircl.upload.name || global.dircl.upload.applname[0] ||
+					global.dircl.download.name || global.dircl.download.applname[0])
+				return show_usage("only one --get-file or --put-file", argv, i);
+
+			snprintf(global.dircl.upload.applname, 16, "%s", argv[i++]);
+			if (i >= argc)
+				return show_usage("Missing --get-file name argument", argv, i);
+
+			global.dircl.upload.name = argv[i++];
+			if (i >= argc)
+				return show_usage("Missing --get-file path argument", argv, i);
+
+			global.dircl.upload.path = argv[i];
 		}
 		else if (strcmp(argv[i], "--ident") == 0){
 			i++;
@@ -1784,10 +1825,12 @@ int main(int argc, char** argv)
  *    can be wiped later. Use XDG_ or /tmp for now (if global.directory
  *    is set anet_directory_cl will switch to that)
  */
-				if (getenv("XDG_CACHE_HOME"))
-					chdir(getenv("XDG_CACHE_HOME"));
-				else
-					chdir("/tmp");
+				if (!global.dircl.upload.name && !global.dircl.download.name){
+					if (getenv("XDG_CACHE_HOME"))
+						chdir(getenv("XDG_CACHE_HOME"));
+					else
+						chdir("/tmp");
+				}
 
 				if (argi < argc && argv[argi]){
 					if (strcmp(argv[argi], "--") == 0 || strcmp(argv[argi], "--exec") == 0){
