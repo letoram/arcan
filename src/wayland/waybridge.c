@@ -1588,7 +1588,8 @@ int main(int argc, char* argv[])
  * it can spawn new primary connections as well as needing to crash-recover
  */
 	SET_WAYLAND_RUNTIME();
-		wl_display_add_socket_auto(wl.disp);
+		const char* socket = wl_display_add_socket_auto(wl.disp);
+		setenv("WAYLAND_DISPLAY", socket, true);
 	SET_ARCAN_RUNTIME();
 
 /*
