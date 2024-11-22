@@ -134,6 +134,7 @@ static void surf_damage(struct wl_client* cl,
 		surf->tracetag, (uintptr_t)res, (int)x, (int)w, (int)y, (int)h);
 
 	arcan_shmif_dirty(&surf->acon, x, y, x+w, y+h, 0);
+	surf->damaged = true;
 }
 
 /*
@@ -586,11 +587,17 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 	while(arcan_shmif_signalstatus(acon) > 0){}
 
 /*
+ * some clients won't always update damage, so invalidate it all
+ */
+	if (!surf->damaged)
+		arcan_shmif_dirty(acon, 0, 0, acon->w, acon->h, 0);
+	surf->damaged = false;
+
+/*
  * So it seems that the buffer- protocol actually don't give us
  * a type of the buffer, so the canonical way is to just try them in
  * order shm -> drm -> dma-buf.
  */
-
 	if (
 		!push_shm(cl, acon, buf, surf) &&
 		!push_drm(cl, acon, buf, surf) &&

@@ -209,7 +209,7 @@ struct comp_surf {
 	bool pending_commit;
 	struct wl_resource* confined;
 
-	bool locked;
+	bool locked, damaged;
 	struct surface_region* confine_region;
 
 /*
