@@ -1015,6 +1015,45 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
 	return res;
 }
 
+static void upload_file(struct a12_state* S,
+	const char* path, char ns[static 16], const char* name)
+{
+	struct arcan_event ev = {
+		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
+		.category = EVENT_EXTERNAL
+	};
+
+	snprintf((char*)ev.ext.bchunk.extensions, 68, name);
+	a12_channel_enqueue(S, &ev);
+
+	if (strcmp(path, "-") == 0){
+		a12_enqueue_bstream(S,
+			STDIN_FILENO,
+			A12_BTYPE_BLOB,
+			0xfeedface, /* only used for the handler callback */
+			true, /* streaming */
+			0, /* no way of knowing the size */
+			ns /* we haven't joined an applgroup */
+		);
+	}
+	else {
+		int infd = open(path, O_RDONLY);
+		if (-1 == infd){
+			fprintf(stderr, "couldn't open %s\n", path);
+			return;
+		}
+
+	a12_enqueue_bstream(S,
+		infd,
+		A12_BTYPE_BLOB,
+		0xfeedface,
+		true,
+		0,
+		ns
+	);
+	}
+}
+
 static void cl_got_dyn(struct a12_state* S, int type,
 		const char* petname, bool found, uint8_t pubk[static 32], void* tag)
 {
@@ -1157,40 +1196,25 @@ void anet_directory_cl(
  * specify the identifier as part of the name */
 	if (opts.upload.name){
 		if (strcmp(opts.upload.applname, ".priv") == 0){
+			upload_file(S, opts.upload.path, opts.upload.applname, opts.upload.name);
 
-			if (strcmp(opts.upload.path, "-") == 0){
-				a12_enqueue_bstream(S,
-					STDIN_FILENO,
-					A12_BTYPE_BLOB,
-					0xfeedface, /* only used for the handler callback */
-					true, /* streaming */
-					0, /* no way of knowing the size */
-					opts.upload.applname /* we haven't joined an applgroup */
-				);
-			}
-			else {
-				int infd = open(opts.upload.path, O_RDONLY);
-				if (-1 == infd){
-					fprintf(stderr, "couldn't open %s\n", opts.upload.path);
-					return;
-				}
-				a12_enqueue_bstream(S,
-					infd,
-					A12_BTYPE_BLOB,
-					0xfeedface,
-					true,
-					0,
-					opts.upload.name /* we haven't joined a group so it goes into priv */
-				);
-			}
+			a12_set_bhandler(S, anet_directory_cl_upload, &ioloop);
+			anet_directory_ioloop(&ioloop);
+			return;
 		}
-		a12_set_bhandler(S, anet_directory_cl_upload, &ioloop);
-		anet_directory_ioloop(&ioloop);
-		return;
 	}
 
 	if (opts.download.name){
 		if (strcmp(opts.download.applname, ".priv") == 0){
+			struct arcan_event ev = {
+				.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
+				.category = EVENT_EXTERNAL,
+				.ext.bchunk.input = true
+			};
+
+			snprintf((char*)ev.ext.bchunk.extensions, 68, opts.download.name);
+			a12_channel_enqueue(S, &ev);
+
 			a12_set_bhandler(S, anet_directory_cl_download, &ioloop);
 			anet_directory_ioloop(&ioloop);
 			return;

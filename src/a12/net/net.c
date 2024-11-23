@@ -1215,6 +1215,9 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 				return show_usage("Missing --get-file name argument", argv, i);
 
 			global.dircl.download.name = argv[i++];
+			if (strlen(global.dircl.download.name) > 67)
+				return show_usage("server-side name length too long (> 67b)", argv, i-1);
+
 			if (i >= argc)
 				return show_usage("Missing --get-file path argument", argv, i);
 
@@ -1234,6 +1237,9 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 				return show_usage("Missing --get-file name argument", argv, i);
 
 			global.dircl.upload.name = argv[i++];
+			if (strlen(global.dircl.upload.name) > 67)
+				return show_usage("server-side name length too long (> 67b)", argv, i-1);
+
 			if (i >= argc)
 				return show_usage("Missing --get-file path argument", argv, i);
 
