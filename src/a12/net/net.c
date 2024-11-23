@@ -20,6 +20,7 @@
 #include "a12_helper.h"
 #include "anet_helper.h"
 #include "directory.h"
+#include "external/x25519.h"
 
 enum anet_mode {
 	ANET_SHMIF_CL = 1,
@@ -961,6 +962,7 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"\tarcan-net discover beacon [ff00::/8 eg. ff00::1:6]\n\n"
 	"Keystore mode (ignores connection arguments):\n"
 	"\tAdd/Append key: arcan-net keystore tagname host [port=6680]\n"
+	"\tShow public key: arcan-net keystore-show tagname\n"
 	"\t                tag=default is reserved\n"
 	"\nTrace groups (stderr):\n"
 	"\tvideo:1      audio:2       system:4    event:8      transfer:16\n"
@@ -1559,6 +1561,37 @@ static int run_discover_command(int argc, char** argv)
 	return EXIT_SUCCESS;
 }
 
+static int apply_keystore_show_command(int argc, char** argv)
+{
+	struct anet_options opts = {.keystore.directory.dirfd = -1};
+	const char* err;
+
+	if (!open_keystore(&opts, &err)){
+		return show_usage(err, NULL, 0);
+	}
+
+	const char* name = "default";
+	if (argc > 2)
+		name = argv[2];
+
+	uint8_t private[32], public[32];
+	char* tmp;
+	uint16_t tmpport;
+
+	if (!a12helper_keystore_hostkey(argv[2], 0, private, &tmp, &tmpport)){
+		fprintf(stderr, "no key matching '%s'\n", name);
+		return EXIT_FAILURE;
+	}
+
+	x25519_public_key(private, public);
+
+	size_t outl;
+	unsigned char* b64 = a12helper_tob64(public, 32, &outl);
+	fprintf(stdout, "public key for '%s':\n%s\n", name, b64);
+
+	return EXIT_SUCCESS;
+}
+
 static int apply_keystore_command(int argc, char** argv)
 {
 	const char* err;
@@ -1753,6 +1786,9 @@ int main(int argc, char** argv)
 
 	if (argc > 1 && strcmp(argv[1], "keystore") == 0){
 		return apply_keystore_command(argc, argv);
+	}
+	else if (argc > 1 && strcmp(argv[1], "keystore-show") == 0){
+		return apply_keystore_show_command(argc, argv);
 	}
 
 	if (argc > 1 && strcmp(argv[1], "discover") == 0){
