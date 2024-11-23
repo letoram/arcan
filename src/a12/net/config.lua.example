@@ -73,12 +73,7 @@ end
 --
 -- We are also responsible for notifying other clients of its presence
 -- via a_client:notify(new_client).
-function register(client, role, name)
-	if active[name] then
-		print("collision, renaming client")
-	end
-
-	active[name] = client
+function register(client)
 	print("register", role, name);
 end
 
