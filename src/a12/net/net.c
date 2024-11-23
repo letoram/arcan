@@ -1729,8 +1729,9 @@ static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 				if (len > 1){
 					buf[len-1] = '\0';
 				}
-				else
-					memcpy(buf, "default", 8);
+				else{
+					memcpy(buf, global.trust_domain, strlen(global.trust_domain) + 1);
+				}
 
 				auth.authentic = true;
 				a12helper_keystore_accept(pk, buf);
