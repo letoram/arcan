@@ -15,6 +15,7 @@
  * add basic text\_surface for simplified text with a rendering path similar to tui windows
  * image\_access\_storage
  * add audio\_reconfigure for toggling hrtfs and switching between outputs
+ * prohibit bytecode in system\_load
 
 ## Shmif
  * add interop helper for arcan\_shmif\_bchunk\_resolve to help translate fd-local path

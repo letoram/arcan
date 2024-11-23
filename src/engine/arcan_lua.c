@@ -3016,16 +3016,21 @@ static int systemload(lua_State* ctx)
 	}
 #endif
 
+	int fd;
 	char* fname = findresource(instr,
-		CAREFUL_USERMASK, ARES_RDONLY | ARES_FILE, NULL);
+		CAREFUL_USERMASK, ARES_RDONLY | ARES_FILE, &fd);
 	int res = 0;
 
 	if (fname){
-		int rv = luaL_loadfile(ctx, fname);
+		int rv = alt_loadfile(ctx, fname);
 		if (rv == 0)
 			res = 1;
 		else if (dieonfail)
-			arcan_fatal("Error parsing lua script (%s)\n", instr);
+			arcan_fatal(
+				"Error parsing lua script (%s) %s\n",
+				instr,
+				res == 2 ? "- bytecode forbidden" : ""
+			);
 	}
 	else
 		arcan_fatal("Invalid script specified for system_load(%s)\n", instr);

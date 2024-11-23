@@ -134,4 +134,7 @@ void alt_setup_context(lua_State*, const char* applname);
 /* apply the script encoded into arcan_bootstrap.h to the provided context */
 void alt_apply_ban(lua_State*);
 
+/* modified version of luaL_loadfile which fails on bytecode */
+int alt_loadfile(lua_State*, const char* fn);
+
 #endif

@@ -15,6 +15,7 @@
 #include <lualib.h>
 #include <lauxlib.h>
 #include <setjmp.h>
+#include <errno.h>
 
 #include "alt/opaque.h"
 
@@ -368,4 +369,72 @@ bool alt_lookup_entry(lua_State* L, const char* ep, size_t len)
 	}
 
 	return true;
+}
+
+typedef struct LoadF {
+  int extraline;
+  FILE *f;
+  char buff[LUAL_BUFFERSIZE];
+} LoadF;
+
+static const char *getF (lua_State *L, void *ud, size_t *size) {
+  LoadF *lf = (LoadF *)ud;
+  (void)L;
+  if (lf->extraline) {
+    lf->extraline = 0;
+    *size = 1;
+    return "\n";
+  }
+  if (feof(lf->f)) return NULL;
+  *size = fread(lf->buff, 1, sizeof(lf->buff), lf->f);
+  return (*size > 0) ? lf->buff : NULL;
+}
+
+static int errfile (lua_State *L, const char *what, int fnameindex) {
+  const char *serr = strerror(errno);
+  const char *filename = lua_tostring(L, fnameindex) + 1;
+  lua_pushfstring(L, "cannot %s %s: %s", what, filename, serr);
+  lua_remove(L, fnameindex);
+  return LUA_ERRFILE;
+}
+
+int alt_loadfile(lua_State *L, const char *filename) {
+  LoadF lf;
+  int status, readstatus;
+  int c;
+  int fnameindex = lua_gettop(L) + 1;  /* index of filename on the stack */
+  lf.extraline = 0;
+  if (filename == NULL) {
+    lua_pushliteral(L, "=stdin");
+    lf.f = stdin;
+  }
+  else {
+    lua_pushfstring(L, "@%s", filename);
+    lf.f = fopen(filename, "r");
+    if (lf.f == NULL) return errfile(L, "open", fnameindex);
+  }
+  c = getc(lf.f);
+  if (c == '#') {  /* Unix exec. file? */
+    lf.extraline = 1;
+    while ((c = getc(lf.f)) != EOF && c != '\n') ;  /* skip first line */
+    if (c == '\n') c = getc(lf.f);
+  }
+
+/* BEGIN MODIFIED LUA5.1 LOADFILE */
+	if (c == LUA_SIGNATURE[0]){
+		fclose(lf.f);
+		return 2;
+	}
+/* END MODIFIED LUA5.1 LOADFILE */
+
+  ungetc(c, lf.f);
+  status = lua_load(L, getF, &lf, lua_tostring(L, -1));
+  readstatus = ferror(lf.f);
+  if (filename) fclose(lf.f);  /* close file (even in case of errors) */
+  if (readstatus) {
+    lua_settop(L, fnameindex);  /* ignore results from `lua_load' */
+    return errfile(L, "read", fnameindex);
+  }
+  lua_remove(L, fnameindex);
+  return status;
 }
