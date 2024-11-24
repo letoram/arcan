@@ -1386,7 +1386,19 @@ static int nbio_seek(lua_State* L)
 		arcan_fatal("nbio:seek on closed file");
 
 	lua_Number ofs = lua_tonumber(L, 1);
-	off_t pos = lseek(ib->fd, ofs, SEEK_CUR);
+	bool relative = luaL_optbnumber(L, 2, true);
+	off_t pos;
+
+	if (!relative){
+		pos = lseek(ib->fd, ofs, SEEK_SET);
+	}
+	else {
+		if (ofs < 0){
+			pos = lseek(ib->fd, -ofs, SEEK_END);
+		}
+		else
+			pos = lseek(ib->fd, ofs, SEEK_CUR);
+	}
 
 	lua_pushboolean(L, pos != -1);
 	lua_pushnumber(L, pos);
