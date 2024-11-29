@@ -730,6 +730,25 @@ int a12helper_keystore_dirfd(const char** err)
 		return -1;
 	}
 
+/* There is a slight incompatibility in how the frameservers use statepath to
+ * access the keystore versus how it works for arcan-net in directory mode
+ * versus arcan-net otherwise.
+ *
+ * This can cause problems when config.lua format is used which would point
+ * to the actual root already, while other parts would first go for the a12
+ * subdirectory of the store.
+ *
+ * To work around this, first check if we have a "hostkeys" folder and treat
+ * . as root, otherwise use the 'a12' subdirectory.
+ */
+	int hostkeys = openat(dir, "hostkeys", O_DIRECTORY | O_CLOEXEC);
+	if (-1 != hostkeys){
+		close(hostkeys);
+		return dir;
+	}
+
+/* There wasn't one, so create the a12 directory and let the other functions
+ * that resolve accepted / state / hostkeys to populate it. */
 	int keydir = openat(dir, "a12", O_DIRECTORY | O_CLOEXEC);
 	if (-1 == keydir){
 		mkdirat(dir, "a12", S_IRWXU);
