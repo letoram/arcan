@@ -1023,7 +1023,7 @@ static void upload_file(struct a12_state* S,
 		.category = EVENT_EXTERNAL
 	};
 
-	snprintf((char*)ev.ext.bchunk.extensions, 68, name);
+	snprintf((char*)ev.ext.bchunk.extensions, 68, "%s", name);
 	a12_channel_enqueue(S, &ev);
 
 	if (strcmp(path, "-") == 0){
@@ -1214,7 +1214,7 @@ void anet_directory_cl(
 				.ext.bchunk.input = true
 			};
 
-			snprintf((char*)ev.ext.bchunk.extensions, 68, opts.download.name);
+			snprintf((char*)ev.ext.bchunk.extensions, 68, "%s", opts.download.name);
 			a12_channel_enqueue(S, &ev);
 
 			a12_set_bhandler(S, anet_directory_cl_download, &ioloop);

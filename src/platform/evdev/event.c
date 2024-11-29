@@ -1016,13 +1016,16 @@ static void setup_led(struct devnode* dst, size_t bitn, int fd)
 	}
 }
 
+#ifndef HAVE_XKBCOMMON
+struct xkb_keymap;
+#endif
 static int xkb_layout_to_fd(struct xkb_keymap* layout, const char** err)
 {
 	if (!layout){
 		*err = "no active map";
 		return -1;
 	}
-
+#ifdef HAVE_XKBCOMMON
 	char* map = xkb_map_get_as_string(layout);
 	if (!map){
 		*err = "serialization request rejected";
@@ -1031,6 +1034,10 @@ static int xkb_layout_to_fd(struct xkb_keymap* layout, const char** err)
 
 	int fd = arcan_strbuf_tempfile(map, strlen(map) + 1, err);
 	return fd;
+#endif
+
+	*err = "arcan built without support for xkb keyamps";
+	return -1;
 }
 
 static int alloc_node_slot(const char* path)

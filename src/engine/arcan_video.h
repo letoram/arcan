@@ -897,7 +897,7 @@ unsigned short arcan_video_getzv(arcan_vobj_id id);
 /* get a reference to the current video object tag, the allocation still
  * belongs to the object and should not be aliased or used across _video
  * calls. */
-arcan_errc const arcan_video_readtag(
+arcan_errc arcan_video_readtag(
 	arcan_vobj_id id, const char** tag, const char** alt);
 
 /* resolve an estimate of the current storage properties for the vobj,
