@@ -1148,7 +1148,9 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 				return true;
 			}
 		}
-		printf("ts=%"PRIu64":name=%s\n", dir->update_ts, dir->appl.name);
+
+		printf("ts=%"PRIu64":name=%s:%"PRIu16"\n",
+			dir->update_ts, dir->appl.name, dir->identifier);
 		dir = dir->next;
 	}
 
