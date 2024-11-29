@@ -1469,7 +1469,7 @@ static bool discover_beacon(
 	uint8_t nullk[32] = {0};
 
 	if (memcmp(kpub, nullk, 32) == 0){
-		a12int_trace(A12_TRACE_DIRECTORY, "bad_beacon:source=%s", addr);
+		fprintf(stderr, "bad_beacon:source=%s\n", addr);
 		return true;
 	}
 
@@ -1480,6 +1480,11 @@ static bool discover_beacon(
 
 	free(b64);
 	return true;
+}
+
+static void discover_unknown(char* name)
+{
+	fprintf(stderr, "unknown_beacon:source=%s\n", name);
 }
 
 static void* send_beacon(void* tag)
@@ -1541,6 +1546,7 @@ static int run_discover_command(int argc, char** argv)
 
 	struct anet_discover_opts cfg = {
 		.discover_beacon = discover_beacon,
+		.discover_unknown = discover_unknown,
 		.ipv6 = ipv6
 	};
 

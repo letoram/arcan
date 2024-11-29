@@ -197,6 +197,7 @@ void
 			const uint8_t[static DIRECTORY_BEACON_MEMBER_SIZE],
 			const uint8_t[static 8],
 			const char*, char* addr),
+		void (*on_unknown)(char* addr),
 		bool (*on_shmif)(struct arcan_shmif_cont* C))
 {
 	hashmap_create(256, &known_beacons);
@@ -288,9 +289,11 @@ void
 						for (size_t i = 0; i < bcn->slot[0].len; i+=DIRECTORY_BEACON_MEMBER_SIZE){
 							uint8_t outk[32];
 							char* tag;
-							a12helper_keystore_known_accepted_challenge(
+							if (!a12helper_keystore_known_accepted_challenge(
 								&bcn->slot[0].unpack.keys[i], bcn->slot[0].unpack.chg,
-								on_beacon, C, name);
+								on_beacon, C, name) && on_unknown){
+								on_unknown(name);
+							}
 						}
 					}
 
@@ -503,7 +506,9 @@ void anet_discover_listen_beacon(struct anet_discover_opts* cfg)
 
 	int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
-	a12helper_listen_beacon(cfg->C, cfg, cfg->discover_beacon, cfg->on_shmif);
+	a12helper_listen_beacon(cfg->C,
+		cfg, cfg->discover_beacon, cfg->discover_unknown, cfg->on_shmif);
+
 	struct sockaddr_in addr = {
 		.sin_family = AF_INET,
 		.sin_addr = {
@@ -517,5 +522,6 @@ void anet_discover_listen_beacon(struct anet_discover_opts* cfg)
 		return;
 	}
 
-	a12helper_listen_beacon(cfg->C, cfg, cfg->discover_beacon, cfg->on_shmif);
+	a12helper_listen_beacon(
+		cfg->C, cfg, cfg->discover_beacon, cfg->discover_unknown, cfg->on_shmif);
 }

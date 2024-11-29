@@ -91,7 +91,15 @@ void
 			const uint8_t nonce[static 8],
 			const char* tag,
 			char* addr),
-		bool (*on_shmif)(struct arcan_shmif_cont* C)
+		bool (*on_shmif)(struct arcan_shmif_cont* C),
+
+/*
+ * This indicates that there is someone sending a beacon, but we have no idea
+ * who that is. It may be useful to log this in some cases and try to connect
+ * to the beacon source directly, like when there is a allow-n-unknown with a
+ * custom passphrase.
+ */
+		void (*on_unknown)(char* addr);
 	);
 
 /*
@@ -141,6 +149,8 @@ struct anet_discover_opts {
 		const uint8_t nonce[static 8],
 		const char* tag, char* addr
 	);
+
+	void (*discover_unknown)(char* addr);
 
 	struct ipcfg* IP; /* build with a12helper_discover_ipcfg(cfg) */
 	bool (*on_shmif)(struct arcan_shmif_cont* C);
