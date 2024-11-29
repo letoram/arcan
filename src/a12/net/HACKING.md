@@ -481,7 +481,7 @@ name field.
 The stream-id is that of the last completed stream (if any).
 
 ### command - 8, rekey
-- [18     ] mode 
+- [18     ] mode
 - [19  +32] mode = 0     new Kpub   : uint8[32]
 
 The rekey command is used to rotate keys for forward secrecy. When receiving
@@ -523,8 +523,8 @@ directory-list commands.
 
 This is sent as a reply to the directory list command and is used to notify
 about the update, removal, creation or presence of a retrievable application.
-An empty identifier terminates. The applname or server-identifier can be used
-as the extension field of a BCHUNKSTATE event to initiate the actual transfer.
+An empty identifier terminates. To retrieve the appl, send a BCHUNKSTATE
+event for the [identifier] with a dot as prefix encoded as ASCII.
 
 ### command - 11, directory-discover
 - [18     ] role    : uint8 (0) source, (1) sink, (2) directory
@@ -648,3 +648,25 @@ too long, or with clients that deal with raw codes and repeats, cause
 extraneous key-repeats or 'shadow releases'. To minimize the harm here, a more
 complex state machine will be needed that tries to determine if the channel
 blocks or not by relying on a ping-stream.
+
+# Directory Mode notes
+
+When connected to a directory server, the interpretation of events change
+somewhat. Using the EVENT_EXTERNAL_REGISTER event a client can join an appl
+with an optional server end 'controller' appl. If so directory main process
+with spin up a VM process and send a descriptor pair to it and the worker.
+
+The worker will then route some events to the VM process instead of to the
+parent.
+
+To upload a file to the directory, first send an EVENT_EXTERNAL_BCHUNKSTATE
+event with the input field set to true, and the extension as the name of the
+field followed by the define_bstream command.
+
+The worker on the server side marks the inbound BCHUNKSTATE as pending, and
+pairs when receiving the bstream command. It forwards the two to the parent
+which checks against the keystore to resolve name, check permission and return
+the descriptor. If this fails, the bstream is cancelled for an inbound transfer
+or a EVENT_EXTERNAL_REQFAIL otherwise.
+
+The 'state' stream type is used to target the key-assigned private store.
