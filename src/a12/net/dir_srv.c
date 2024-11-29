@@ -1271,7 +1271,7 @@ void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
  * real database solution would be in place so identifiers mutating isn't much
  * of a concern right now. */
 		if (build_appl_pkg(ent->d_name, dst, fd)){
-			dst->identifier = opts->dir_count++;
+			dst->identifier = 1 + opts->dir_count++;
 			dst->server_appl = SERVER_APPL_NONE;
 
 /* check if there is a corresponding server_appl/server_appl.lua and if so,

@@ -44,6 +44,11 @@ static bool pending_tunnel;
 static void do_event(
 	struct a12_state* S, struct arcan_shmif_cont* C, struct arcan_event* ev);
 
+enum {
+	BREQ_LOAD = false,
+	BREQ_STORE = true
+};
+
 static int request_parent_resource(
 	struct a12_state* S, struct arcan_shmif_cont *C, const char* id, bool out);
 
@@ -138,11 +143,6 @@ static void on_a12srv_event(
 	if (ev->category != EVENT_EXTERNAL)
 		return;
 
-/* MISSING: for file transfers into the joined appl-group specifically, check
- * if the extid match that of the joined appl and route to that shmif context
- * instead. To list files according to a critera, use .index and then the
- * returned index will have matching hashes.
- */
 	if (ev->ext.kind == EVENT_EXTERNAL_BCHUNKSTATE){
 /* sweep the directory, and when found: */
 		if (!isdigit(ev->ext.bchunk.extensions[0])){
@@ -155,7 +155,7 @@ static void on_a12srv_event(
 			strtoul((char*)ev->ext.bchunk.extensions, NULL, 10);
 
 		int fd = request_parent_resource(
-			cbt->S, C, (char*) ev->ext.bchunk.extensions, false);
+			cbt->S, C, (char*) ev->ext.bchunk.extensions, BREQ_LOAD);
 
 /* if the appl exist, first try the state blob, then the appl */
 		if (fd != -1){
@@ -163,7 +163,7 @@ static void on_a12srv_event(
 			char empty_ext[16] = {0};
 
 			snprintf(buf, sizeof(buf), "%d.state", (int) extid);
-			int state_fd = request_parent_resource(cbt->S, C, buf, false);
+			int state_fd = request_parent_resource(cbt->S, C, buf, BREQ_LOAD);
 			if (state_fd != -1){
 				a12_enqueue_bstream(cbt->S,
 					state_fd, A12_BTYPE_STATE, extid, false, 0, empty_ext);
@@ -838,7 +838,7 @@ static void pair_enqueue(
 }
 
 static int request_parent_resource(
-	struct a12_state* S, struct arcan_shmif_cont *C, const char* id, bool out)
+	struct a12_state* S, struct arcan_shmif_cont *C, const char* id, bool mode)
 {
 	struct evqueue_entry* rep = malloc(sizeof(struct evqueue_entry));
 	struct arcan_event ev = (struct arcan_event){
@@ -846,7 +846,7 @@ static int request_parent_resource(
 	};
 
 	int kind;
-	if (out){
+	if (mode == BREQ_STORE){
 		kind = TARGET_COMMAND_BCHUNK_OUT; /* we want something to output into */
 		ev.ext.bchunk.input = false;
 	}
@@ -948,7 +948,7 @@ static struct a12_bhandler_res srv_bevent(
 		if (M.type == A12_BTYPE_STATE){
 			char buf[5 + sizeof(".state")];
 			snprintf(buf, sizeof(buf), "%"PRIu16".state", M.identifier);
-			res.fd = request_parent_resource(S, cbt->C, buf, true);
+			res.fd = request_parent_resource(S, cbt->C, buf, BREQ_STORE);
 			if (-1 != res.fd){
 				cbt->in_transfer = true;
 				cbt->transfer_id = M.identifier;
@@ -957,17 +957,22 @@ static struct a12_bhandler_res srv_bevent(
 		else if (M.type == A12_BTYPE_CRASHDUMP){
 			char buf[5 + sizeof(".debug")];
 			snprintf(buf, sizeof(buf), "%"PRIu16".debug", M.identifier);
-			res.fd = request_parent_resource(S, cbt->C, buf, true);
+			res.fd = request_parent_resource(S, cbt->C, buf, BREQ_STORE);
 			if (-1 != res.fd){
 				cbt->in_transfer = true;
 				cbt->transfer_id = M.identifier;
 			}
 		}
-/* blob is (currently) not used for anything, a possibility would be form
- * like uploads for the server end of the appl to be able to process. That
- * can be hooked up when the [controller] slot has been filled and the
- * client explicitly join appl participation via IDENT. */
+/* Client wants to upload a file. Identifier specifies where it should go, i.e.
+ * to a specific appl. If we have joined a group and is pushing an appl, then
+ * permission is up to the controller and we should route there. If we haven't,
+ * the key- store permission should determine if the client is allowed to store
+ * or not.
+ *
+ * There is also a prerequisite that we specify the full name as a BCHUNKSTATE
+ * before. This is just saved in the [cbt]. */
 		else if (M.type == A12_BTYPE_BLOB){
+
 		}
 /* the rest are default-reject that must be manually enabled for the server
  * as they provide incrementally dangerous capabilities (adding shared media

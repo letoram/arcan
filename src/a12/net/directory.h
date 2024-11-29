@@ -100,6 +100,9 @@ struct anet_dircl_opts {
 		struct directory_meta*, const char*, void* tag, int* inf, int* outf);
 };
 
+/*
+ * This struct regulates the connection and config between main, and worker.
+ */
 struct directory_meta {
 	struct a12_state* S;
 	struct anet_dircl_opts* clopt;
@@ -118,26 +121,46 @@ struct directory_meta {
 
 struct dircl;
 
+/*
+ * This is used to track each discrete client >both< in main and worker. They
+ * don't need to be synched between the two, each side tracks the information
+ * they need.
+ */
 struct dircl {
-	int in_appl;
+	int in_appl; /* have they joined an appl- controller? */
 
-	char identity[16];
+	char identity[16]; /* presentable source identifier */
 
-	int type;
+	int type; /* source, sink or directory */
+
+/* used to track request and pairing from a BCHUNKSTATE request for input and
+ * the request to the parent to access the keystore */
 	bool pending_stream;
 	int pending_fd;
 	uint16_t pending_id;
 
+/* netstate event used to transfer keys, for the client and if there is a
+ * tunnel request */
 	arcan_event petname;
 	arcan_event endpoint;
 
+/* for file transfers, the first BCHUNKSTATE event is stored here, waiting
+ * for the corresponding bstream command */
+	arcan_event breq_pending;
+
+/* authentication public key and whether it is approved or not */
 	uint8_t pubk[32];
 	bool authenticated;
 
+/* accumulation buffer so that we don't permit forwarding unterminated
+ * MESSAGE chains to appl-controller */
 	char message_multipart[1024];
 	size_t message_ofs;
 
+/* the parent end handle to the worker */
 	struct shmifsrv_client* C;
+
+/* stored as a linked list */
 	struct dircl* next;
 	struct dircl* prev;
 
