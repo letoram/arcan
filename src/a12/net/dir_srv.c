@@ -313,53 +313,21 @@ static struct appl_meta* locked_numid_appl(uint16_t id)
 	return NULL;
 }
 
-static volatile struct appl_meta* identifier_to_appl(
-	char* id, int* mtype, uint16_t* mid, char** outsep)
+int identifier_to_appl(char* ext)
 {
-	*mtype = 0;
-
-	char* sep = strrchr(id, '.');
-
-/* are we looking for a subresource? */
-	if (sep){
-		*sep = '\0';
-		sep++;
-		if (strcmp(sep, "state") == 0)
-			*mtype = IDTYPE_STATE;
-		else if (strcmp(sep, "debug") == 0)
-			*mtype = IDTYPE_DEBUG;
-		else if (strcmp(sep, "appl") == 0)
-			*mtype = IDTYPE_APPL;
-		else if (strcmp(sep, "ctrl") == 0)
-			*mtype = IDTYPE_ACTRL;
-		else if (strlen(sep) > 0){
-			*mtype = IDTYPE_RAW;
-			*outsep = sep;
-		}
+	int res = IDTYPE_RAW;
+	if (strcmp(sep, ".state") == 0)
+		res = IDTYPE_STATE;
+	else if (strcmp(sep, ".debug") == 0)
+		res = IDTYPE_DEBUG;
+	else if (strcmp(sep, ".appl") == 0)
+		res = IDTYPE_APPL;
+	else if (strcmp(sep, ".ctrl") == 0)
+		res = IDTYPE_ACTRL;
+	else if (strlen(sep) > 0){
+		res = IDTYPE_RAW;
 	}
-
-	char* err = NULL;
-	*mid = strtoul(id, &err, 10);
-	if (!err || *err != '\0'){
-		A12INT_DIRTRACE("dirsv:kind=einval:id=%s", id);
-		return NULL;
-	}
-
-	pthread_mutex_lock(&active_clients.sync);
-	volatile struct appl_meta* cur = &active_clients.opts->dir;
-
-	while (cur){
-		if (cur->identifier == *mid){
-			pthread_mutex_unlock(&active_clients.sync);
-			A12INT_DIRTRACE("dirsv:resolve_id:id=%s:applname=%s", id, cur->appl.name);
-			return cur;
-		}
-		cur = cur->next;
-	}
-
-	pthread_mutex_unlock(&active_clients.sync);
-	A12INT_DIRTRACE("dirsv:kind=missing_id:id=%s", id);
-	return NULL;
+	return res;
 }
 
 static int get_state_res(
@@ -564,14 +532,19 @@ static volatile struct appl_meta* allocate_new_appl(char* ext, uint16_t* mid)
 /* We have an incoming BCHUNKSTATE for a worker. We need to parse and unpack the
  * format used to squeeze the request into the event type, then check permissions
  * for retrieval or creation. */
-static void handle_bchunk_req(struct dircl* C, char* ext, bool input)
+static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 {
 	int mtype = 0;
 	uint16_t mid = 0;
 	char* outsep = NULL;
 	bool closefd = true;
 
-	volatile struct appl_meta* meta = identifier_to_appl(ext, &mtype, &mid, &outsep);
+	pthread_mutex_lock(&active_clients.sync);
+		volatile struct appl_meta* meta = locked_numid_appl(ns);
+	pthread_mutex_unlock(&active_clients.sync);
+
+	int reserved = -1;
+	meta = identifier_to_appl(ext);
 
 /* Special case, for (new) appl-upload we need permission and register an
  * identifier for the new appl. */
@@ -798,13 +771,27 @@ static void dircl_message(struct dircl* C, struct arcan_event ev)
 			struct pk_response rep = aopt->pk_lookup(pubk_dec, aopt->pk_lookup_tag);
 
 /* notify or let .lua config have a say */
-			if (!rep.authentic)
+			if (!rep.authentic){
 				rep = anet_directory_lua_register_unknown(C, rep);
+				if (rep.authentic){
+/* we get here if the keystore doesn't know the key, soft auth or trust-n-unknown
+ * isn't set yet the config script still permits the key through. In that case we
+ * still need to set the key to respond with (i.e. default). Differentiation opt.
+ * is possible here, but of questionable utility. */
+					char* tmp;
+					uint16_t tmpport;
+
+					uint8_t my_private_key[32];
+					a12helper_keystore_hostkey(
+						"default", 0, my_private_key, &tmp, &tmpport);
+					a12_set_session(&rep, pubk_dec, my_private_key);
+				}
+			}
 			else
 				anet_directory_lua_register(C);
 		pthread_mutex_unlock(&active_clients.sync);
 
-/* still ad, kill worker */
+/* still bad, kill worker */
 		if (!rep.authentic)
 			goto send_fail;
 

@@ -116,6 +116,10 @@ struct directory_meta {
 	int state_in;
 	bool state_in_complete;
 
+/* for file transfers, the first BCHUNKSTATE event is stored here, waiting
+ * for the corresponding bstream command */
+	arcan_event breq_pending;
+
 	struct arcan_shmif_cont* C;
 };
 
@@ -143,10 +147,6 @@ struct dircl {
  * tunnel request */
 	arcan_event petname;
 	arcan_event endpoint;
-
-/* for file transfers, the first BCHUNKSTATE event is stored here, waiting
- * for the corresponding bstream command */
-	arcan_event breq_pending;
 
 /* authentication public key and whether it is approved or not */
 	uint8_t pubk[32];

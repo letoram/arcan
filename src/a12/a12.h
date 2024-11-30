@@ -256,11 +256,6 @@ void a12_set_destination_raw(struct a12_state*,
 	uint8_t ch, struct a12_unpack_cfg cfg, size_t unpack_cfg_sz);
 
 /*
- * Set the active channel used for tagging outgoing packages
- */
-void a12_set_channel(struct a12_state* S, uint8_t chid);
-
-/*
  * Returns the number of bytes that are pending for output on the channel,
  * this needs to be rate-limited by the caller in order for events and data
  * streams to be interleaved and avoid a poor user experience.

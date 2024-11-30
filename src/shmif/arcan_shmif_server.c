@@ -243,7 +243,7 @@ size_t shmifsrv_dequeue_events(
 		uint8_t back = cl->con->shm.ptr->parentevq.back;
 		if (front > PP_QUEUE_SZ || back > PP_QUEUE_SZ){
 			cl->errors++;
-			shmifsrv_leave();
+			shmifsrv_leave(cl);
 			return 0;
 		}
 
@@ -255,7 +255,7 @@ size_t shmifsrv_dequeue_events(
 		__sync_synchronize();
 		cl->con->shm.ptr->parentevq.front = front;
 		arcan_sem_post(cl->con->esync);
-		shmifsrv_leave();
+		shmifsrv_leave(cl);
 		return count;
 	}
 	else{
@@ -346,14 +346,14 @@ int shmifsrv_poll(struct shmifsrv_client* cl)
 			if (cl->con->shm.ptr->resized){
 				if (-1 == platform_fsrv_resynch(cl->con)){
 					cl->status = BROKEN;
-					shmifsrv_leave();
+					shmifsrv_leave(cl);
 					return CLIENT_DEAD;
 				}
 				return CLIENT_NOT_READY;
 			}
 			int a = !!(atomic_load(&cl->con->shm.ptr->aready));
 			int v = !!(atomic_load(&cl->con->shm.ptr->vready));
-			shmifsrv_leave();
+			shmifsrv_leave(cl);
 			if (a || v)
 				return
 					(CLIENT_VBUFFER_READY * v) | (CLIENT_ABUFFER_READY * a);
@@ -435,7 +435,7 @@ bool shmifsrv_enter(struct shmifsrv_client* cl)
 	return true;
 }
 
-void shmifsrv_leave()
+void shmifsrv_leave(struct shmifsrv_client* cl)
 {
 	platform_fsrv_leave();
 }

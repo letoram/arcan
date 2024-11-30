@@ -50,7 +50,9 @@ enum {
 };
 
 static int request_parent_resource(
-	struct a12_state* S, struct arcan_shmif_cont *C, const char* id, bool out);
+	struct a12_state* S,
+	struct arcan_shmif_cont *C,
+	size_t ns, const char* id, bool out);
 
 struct evqueue_entry;
 struct evqueue_entry {
@@ -66,9 +68,7 @@ static void free_evqueue(struct evqueue_entry* first)
 		cur = cur->next;
 		free(last);
 	}
-}
-
-static struct evqueue_entry* run_evqueue(
+}static struct evqueue_entry* run_evqueue(
 	struct a12_state* S, struct arcan_shmif_cont* C, struct evqueue_entry* rep)
 {
 	while (rep->next){
@@ -144,33 +144,31 @@ static void on_a12srv_event(
 		return;
 
 	if (ev->ext.kind == EVENT_EXTERNAL_BCHUNKSTATE){
-/* sweep the directory, and when found: */
-		if (!isdigit(ev->ext.bchunk.extensions[0])){
-			a12int_trace(A12_TRACE_DIRECTORY, "event=bchunkstate:error=invalid_id");
+/* if it is for output, we save the name and make the actual request when
+ * the bstream transfer is initiated - as the namespace will be provided there. */
+		if (!ev->ext.bchunk.input){
+			cbt->breq_pending = *ev;
 			return;
 		}
 
-/* automatically probe .state as well */
-		uint16_t extid = (uint16_t)
-			strtoul((char*)ev->ext.bchunk.extensions, NULL, 10);
-
 		int fd = request_parent_resource(
-			cbt->S, C, (char*) ev->ext.bchunk.extensions, BREQ_LOAD);
+			cbt->S, C, ev->ext.bchunk.ns, (char*) ev->ext.bchunk.extensions, BREQ_LOAD);
 
 /* if the appl exist, first try the state blob, then the appl */
 		if (fd != -1){
-			char buf[COUNT_OF(ev->ext.message.data)];
 			char empty_ext[16] = {0};
 
-			snprintf(buf, sizeof(buf), "%d.state", (int) extid);
-			int state_fd = request_parent_resource(cbt->S, C, buf, BREQ_LOAD);
+			int state_fd = request_parent_resource(
+				cbt->S, C,ev->ext.bchunk.ns, ".state", BREQ_LOAD);
+
 			if (state_fd != -1){
 				a12_enqueue_bstream(cbt->S,
-					state_fd, A12_BTYPE_STATE, extid, false, 0, empty_ext);
+					state_fd, A12_BTYPE_STATE, ev->ext.bchunk.ns, false, 0, empty_ext);
 				close(state_fd);
 			}
+
 			a12_enqueue_bstream(cbt->S,
-				fd, A12_BTYPE_BLOB, extid, false, 0, empty_ext);
+				fd, A12_BTYPE_BLOB, ev->ext.bchunk.ns, false, 0, empty_ext);
 			close(fd);
 		}
 		else
@@ -178,7 +176,7 @@ static void on_a12srv_event(
 				&(struct arcan_event){
 					.category = EVENT_TARGET,
 					.tgt.kind = TARGET_COMMAND_REQFAIL,
-					.tgt.ioevs[0].uiv = extid
+					.tgt.ioevs[0].uiv = ev->ext.bchunk.ns
 			});
 	}
 /* Actual identity will be determined by the parent to make sure we don't have
@@ -838,24 +836,25 @@ static void pair_enqueue(
 }
 
 static int request_parent_resource(
-	struct a12_state* S, struct arcan_shmif_cont *C, const char* id, bool mode)
+	struct a12_state* S,
+	struct arcan_shmif_cont *C, size_t ns,
+	const char* id, bool mode)
 {
 	struct evqueue_entry* rep = malloc(sizeof(struct evqueue_entry));
 	struct arcan_event ev = (struct arcan_event){
-		.ext.kind = EVENT_EXTERNAL_BCHUNKSTATE
+		.ext.kind = EVENT_EXTERNAL_BCHUNKSTATE,
+		.ext.bchunk = {
+			.input = mode == BREQ_STORE,
+			.ns = ns
+		}
 	};
 
-	int kind;
-	if (mode == BREQ_STORE){
-		kind = TARGET_COMMAND_BCHUNK_OUT; /* we want something to output into */
-		ev.ext.bchunk.input = false;
-	}
-	else {
-		kind = TARGET_COMMAND_BCHUNK_IN; /* we want input from .. */
-		ev.ext.bchunk.input = true;
-	}
+	int kind = mode == BREQ_STORE ?
+		TARGET_COMMAND_BCHUNK_OUT : TARGET_COMMAND_BCHUNK_IN;
 
-	snprintf((char*)ev.ext.bchunk.extensions, COUNT_OF(ev.ext.bchunk.extensions), "%s", id);
+	snprintf(
+		(char*)ev.ext.bchunk.extensions, COUNT_OF(ev.ext.bchunk.extensions), "%s", id);
+
 	int fd = -1;
 	a12int_trace(A12_TRACE_DIRECTORY, "request_parent:%s", ev.ext.bchunk.extensions);
 
@@ -946,18 +945,17 @@ static struct a12_bhandler_res srv_bevent(
  * crash or blobstore and wait for the parent to respond with a decriptor and
  * fail. This is a pipelineing stall for a few ms. */
 		if (M.type == A12_BTYPE_STATE){
-			char buf[5 + sizeof(".state")];
-			snprintf(buf, sizeof(buf), "%"PRIu16".state", M.identifier);
-			res.fd = request_parent_resource(S, cbt->C, buf, BREQ_STORE);
+			res.fd = request_parent_resource(
+				S, cbt->C, M.identifier, ".state", BREQ_STORE);
 			if (-1 != res.fd){
 				cbt->in_transfer = true;
 				cbt->transfer_id = M.identifier;
 			}
 		}
 		else if (M.type == A12_BTYPE_CRASHDUMP){
-			char buf[5 + sizeof(".debug")];
-			snprintf(buf, sizeof(buf), "%"PRIu16".debug", M.identifier);
-			res.fd = request_parent_resource(S, cbt->C, buf, BREQ_STORE);
+			res.fd = request_parent_resource(
+				S, cbt->C, M.identifier, ".debug", BREQ_STORE);
+
 			if (-1 != res.fd){
 				cbt->in_transfer = true;
 				cbt->transfer_id = M.identifier;
@@ -983,27 +981,20 @@ static struct a12_bhandler_res srv_bevent(
 		else if (M.type == A12_BTYPE_APPL_RESOURCE){
 		}
 		else if (M.type == A12_BTYPE_APPL || M.type == A12_BTYPE_APPL_CONTROLLER){
-			char buf[16 + sizeof(".appl")];
-			const char* suffix = M.type == A12_BTYPE_APPL ? "appl" : "ctrl";
+			const char* restype = M.type == A12_BTYPE_APPL ? ".appl" : ".ctrl";
 
-/* We treat update (existing identifier) different to add-new. It doesn't have
- * any special semantics right now, but is relevant if two clients has a
- * different world-view, i.e. one-added another updated without the change
- * having propagated. The use cases are slightly different as someone might be
- * using the existing and need to synch / migrate in the case of update. */
-			if (M.extid[0])
-				snprintf(buf, sizeof(buf), "%s.%s", M.extid, suffix);
-			else
-				snprintf(buf, sizeof(buf), "%"PRIu32".%s", M.identifier, suffix);
+/* Right now we don't permit registering a slot for a new appl, only updating
+ * an existing one. There should be a separate request for that kind of action.
+ */
+			res.fd =
+				request_parent_resource(S, cbt->C, M.identifier, restype, true);
 
-			res.fd = request_parent_resource(S, cbt->C, buf, true);
 			if (-1 != res.fd){
 				cbt->in_transfer = true;
-				cbt->transfer_id = M.extid[0] ? 65535 : M.identifier;
+				cbt->transfer_id = M.identifier;
 			}
 		}
 		else if (M.type == A12_BTYPE_APPL_CONTROLLER){
-
 		}
 #endif
 		break;

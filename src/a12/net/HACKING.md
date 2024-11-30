@@ -466,14 +466,13 @@ The following encodings are allowed:
 - [31..34] id-token    : uint32 (used for bchunk pairing on \_out/\_store)
 - [35 +16] blake3-hash : blob (0 if unknown)
 - [52    ] compression : 0 (raw), 1 (zstd)
-- [53 +16] ext.name    : utf8
 
 This defines a new or continued binary transfer stream. The block-size sets the
 number of continuous bytes in the stream until the point where another transfer
 can be interleaved. There can thus be multiple binary streams in flight in
 order to interrupt an ongoing one with a higher priority one. The appl and
-appl-resource stream types are used only in directory mode and use the extended
-name field.
+appl-resource stream types are used only in directory mode and uses the id-token
+to specify the applid namespace from a previous list.
 
 ### command - 7, ping
 - [18..21] stream-id : uint32
@@ -660,8 +659,14 @@ The worker will then route some events to the VM process instead of to the
 parent.
 
 To upload a file to the directory, first send an EVENT_EXTERNAL_BCHUNKSTATE
-event with the input field set to true, and the extension as the name of the
-field followed by the define_bstream command.
+event with the input field set to true, the ns field set to the applid or
+0 for private and the extensions field to the desired name. For most cases
+one would want to use a b64 encoded hash of the contents, and then use the
+reserved .index (list of available files in the namespace) to find the long
+form name and other metadata.
+
+This should be immediately followed with the define_bstream command, with
+the stream identifier set to the namespace used in the ns field request.
 
 The worker on the server side marks the inbound BCHUNKSTATE as pending, and
 pairs when receiving the bstream command. It forwards the two to the parent
@@ -669,4 +674,5 @@ which checks against the keystore to resolve name, check permission and return
 the descriptor. If this fails, the bstream is cancelled for an inbound transfer
 or a EVENT_EXTERNAL_REQFAIL otherwise.
 
-The 'state' stream type is used to target the key-assigned private store.
+The 'state' stream type is used to target the key-assigned private store for
+config, with the ns being used to indicate which appl the state belongs to.

@@ -663,13 +663,12 @@ void req_id(struct ioloop_shared* I, uint16_t identifier)
 		.category = EVENT_EXTERNAL,
 		.ext.bchunk = {
 			.input = true,
-			.hint = false
+			.hint = false,
+			.ns = identifier
 		}
 	};
 
 	LOG("shmif:download:%"PRIu16"\n", identifier);
-	snprintf(
-		(char*)ev.ext.bchunk.extensions, 6, "%"PRIu16, identifier);
 	a12_channel_enqueue(I->S, &ev);
 
 /* it would be possible to queue multiples here, just keep 1:1 for the time being */

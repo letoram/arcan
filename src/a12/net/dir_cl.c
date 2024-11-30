@@ -1015,25 +1015,26 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
 	return res;
 }
 
-static void upload_file(struct a12_state* S,
-	const char* path, char ns[static 16], const char* name)
+static void upload_file(
+	struct a12_state* S, const char* path, size_t ns, const char* name)
 {
 	struct arcan_event ev = {
 		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
-		.category = EVENT_EXTERNAL
+		.category = EVENT_EXTERNAL,
+		.ext.bchunk.ns = ns
 	};
 
 	snprintf((char*)ev.ext.bchunk.extensions, 68, "%s", name);
-	a12_channel_enqueue(S, &ev);
 
 	if (strcmp(path, "-") == 0){
+		a12_channel_enqueue(S, &ev);
 		a12_enqueue_bstream(S,
 			STDIN_FILENO,
 			A12_BTYPE_BLOB,
-			0xfeedface, /* only used for the handler callback */
+			ns,
 			true, /* streaming */
 			0, /* no way of knowing the size */
-			ns /* we haven't joined an applgroup */
+			(char[16]){0}
 		);
 	}
 	else {
@@ -1042,15 +1043,15 @@ static void upload_file(struct a12_state* S,
 			fprintf(stderr, "couldn't open %s\n", path);
 			return;
 		}
-
-	a12_enqueue_bstream(S,
-		infd,
-		A12_BTYPE_BLOB,
-		0xfeedface,
-		true,
-		0,
-		ns
-	);
+		a12_channel_enqueue(S, &ev);
+		a12_enqueue_bstream(S,
+			infd,
+			A12_BTYPE_BLOB,
+			ns,
+			true,
+			0,
+			(char[16]){0}
+		);
 	}
 }
 
@@ -1135,11 +1136,11 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 					.category = EVENT_EXTERNAL,
 					.ext.bchunk = {
 						.input = true,
-						.hint = false
+						.hint = false,
+						.ns = dir->identifier,
+						.extensions = ".appl"
 					}
 				};
-				snprintf(
-					(char*)ev.ext.bchunk.extensions, 6, "%"PRIu16, dir->identifier);
 				a12_channel_enqueue(I->S, &ev);
 
 /* and register our store+launch handler */
@@ -1198,7 +1199,7 @@ void anet_directory_cl(
  * specify the identifier as part of the name */
 	if (opts.upload.name){
 		if (strcmp(opts.upload.applname, ".priv") == 0){
-			upload_file(S, opts.upload.path, opts.upload.applname, opts.upload.name);
+			upload_file(S, opts.upload.path, 0, opts.upload.name);
 
 			a12_set_bhandler(S, anet_directory_cl_upload, &ioloop);
 			anet_directory_ioloop(&ioloop);
@@ -1211,7 +1212,10 @@ void anet_directory_cl(
 			struct arcan_event ev = {
 				.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
 				.category = EVENT_EXTERNAL,
-				.ext.bchunk.input = true
+				.ext.bchunk = {
+					.input = true,
+					.ns = 0
+				}
 			};
 
 			snprintf((char*)ev.ext.bchunk.extensions, 68, "%s", opts.download.name);

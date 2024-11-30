@@ -91,7 +91,7 @@ enum shmifsrv_status {
  * modify the signal mask for some signals (e.g. SIGBUS).
  */
 bool shmifsrv_enter(struct shmifsrv_client*);
-void shmifsrv_leave();
+void shmifsrv_leave(struct shmifsrv_client*);
 
 /*
  * Allocate, prepare and transfer a new sub-segment to the frameserver
