@@ -844,7 +844,7 @@ static int request_parent_resource(
 	struct arcan_event ev = (struct arcan_event){
 		.ext.kind = EVENT_EXTERNAL_BCHUNKSTATE,
 		.ext.bchunk = {
-			.input = mode == BREQ_STORE,
+			.input = mode == BREQ_LOAD,
 			.ns = ns
 		}
 	};
