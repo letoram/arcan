@@ -227,17 +227,14 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 		char* outhost;
 		uint16_t outport;
 
+		uint8_t pubk[32];
 		if (!a12helper_keystore_hostkey(
 			"default", 0, arg->opts->priv_key, &outhost, &outport)){
-			a12helper_keystore_register(
-				"default", "127.0.0.1", 6680, arg->opts->priv_key);
+			a12helper_keystore_register("default", "127.0.0.1", 6680, pubk, NULL);
 			a12int_trace(A12_TRACE_SECURITY, "creating_outbound_default");
 		}
-
-		uint8_t pubk[32];
 		size_t outl;
 
-		x25519_public_key(arg->opts->priv_key, pubk);
 		unsigned char* req = a12helper_tob64(pubk, 32, &outl);
 		a12int_trace(A12_TRACE_SECURITY, "outbound=%s", req);
 		free(req);

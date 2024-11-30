@@ -117,9 +117,14 @@ bool a12helper_keystore_hostkey(const char* petname, size_t index,
 bool a12helper_keystore_tags(bool (*cb)(const char* petname, void*), void* tag);
 
 /* Append or crete a new tag with the specified host, this will also
- * create a new private key if needed. Returns the public key in outk */
+ * create a new private key if needed and priv is not set.
+ * Returns the public key in outk
+ */
 bool a12helper_keystore_register(
-	const char* petname, const char* host, uint16_t port, uint8_t pubk[static 32]);
+	const char* petname,
+	const char* host, uint16_t port, uint8_t pubk[static 32],
+	uint8_t* priv
+);
 
 /*
  * Check if the public key is known and accepted for the specified trust domain

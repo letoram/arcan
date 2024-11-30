@@ -516,15 +516,22 @@ bool a12helper_keystore_hostkey(const char* tagname, size_t index,
 	return res && index == 0;
 }
 
-/* Append or crete a new tag with the specified host, this will also create a key */
+/* Append or crete a new tag with the specified host, this will also create a key unless
+ * priv is set, then that will be treated as the private key to assign with the tag/host/port */
 bool a12helper_keystore_register(
-	const char* tagname, const char* host, uint16_t port, uint8_t pubk[static 32])
+	const char* tagname, const char* host, uint16_t port, uint8_t pubk[static 32], uint8_t* priv)
 {
 	if (!keystore.open)
 		return false;
 
 	uint8_t privk[32];
-	x25519_private_key(privk);
+	if (priv){
+		memcpy(privk, priv, 32);
+	}
+	else {
+		x25519_private_key(privk);
+	}
+
 	x25519_public_key(privk, pubk);
 
 /* going posix instead of fdout because of locking */

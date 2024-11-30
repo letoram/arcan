@@ -1625,7 +1625,7 @@ static int apply_keystore_command(int argc, char** argv)
 	}
 
 	uint8_t outpub[32];
-	if (!a12helper_keystore_register(tag, host, port, outpub)){
+	if (!a12helper_keystore_register(tag, host, port, outpub, NULL)){
 		return show_usage("Couldn't add/create tag in keystore", NULL, 0);
 	}
 
@@ -1637,6 +1637,55 @@ static int apply_keystore_command(int argc, char** argv)
 	a12helper_keystore_release();
 
 	return EXIT_SUCCESS;
+}
+
+static bool query_untrusted_key(
+	char* kpub_b64, uint8_t kpub[static 32], char** out_tag, size_t* prefix_ofs)
+{
+	if (!isatty(STDIN_FILENO)){
+		return false;
+	}
+
+	uint8_t emptyk[32] = {0};
+	if (memcmp(emptyk, kpub, 32) == 0){
+		fprintf(stdout,
+			"The other end supplied an untrusted, all-zero public key. Rejecting.\n");
+		return false;
+	}
+
+	fprintf(stdout,
+		"The other end is using an unknown public key (%s).\n"
+		"Are you sure you want to continue (yes/no/remember):\n", kpub_b64
+	);
+
+	char buf[16] = {0};
+	fgets(buf, 16, stdin);
+	if (strcmp(buf, "yes\n") == 0){
+		return true;
+	}
+	else if (strcmp(buf, "remember\n") == 0){
+		fprintf(stdout, "Specify an identifier tag (or empty for default):\n");
+		size_t ofs = 0;
+
+/* apply the trust-domain prefix */
+		fgets(buf, 16, stdin);
+		size_t len = strlen(buf);
+		if (len > 1){
+			buf[len-1] = '\0'; /* strip \n */
+			size_t tot = len + strlen(global.trust_domain) + 2; /* - to separate */
+			*out_tag = malloc(tot);
+			*prefix_ofs = strlen(global.trust_domain) + 1;
+			snprintf(*out_tag, tot, "%s-%s", global.trust_domain, buf);
+		}
+		else{
+			*prefix_ofs = 0;
+			*out_tag = strdup(global.trust_domain);
+		}
+
+		return true;
+	}
+
+	return false;
 }
 
 /*
@@ -1715,41 +1764,35 @@ static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
  * case.
  */
 	else if (!auth.authentic){
-		if (isatty(STDIN_FILENO)){
-			fprintf(stdout,
-				"The other end is using an unknown public key (%s).\n"
-				"Are you sure you want to continue (yes/no/remember):\n", out
-			);
-			char buf[16] = {0};
-			fgets(buf, 16, stdin);
-			if (strcmp(buf, "yes\n") == 0){
-				auth.authentic = true;
-				a12helper_keystore_hostkey("default", 0, my_private_key, &tmp, &tmpport);
-				a12_set_session(&auth, pk, my_private_key);
-				a12int_trace(A12_TRACE_SECURITY, "interactive-soft-auth=%s", out);
-			}
-			else if (strcmp(buf, "remember\n") == 0){
-				fprintf(stdout, "Specify an identifier tag (or empty for default):\n");
-				fgets(buf, 16, stdin);
-				size_t len = strlen(buf);
-				if (len > 1){
-					buf[len-1] = '\0';
-				}
-				else{
-					memcpy(buf, global.trust_domain, strlen(global.trust_domain) + 1);
-				}
+		char* tag;
+		size_t ofs;
 
-				auth.authentic = true;
-				a12helper_keystore_accept(pk, buf);
-				a12int_trace(A12_TRACE_SECURITY, "interactive-add-trust=%s:tag=%s", out, buf);
-				a12helper_keystore_hostkey(buf, 0, my_private_key, &tmp, &tmpport);
-				a12_set_session(&auth, pk, my_private_key);
+		if (query_untrusted_key((char*) out, pk, &tag, &ofs)){
+			auth.authentic = true;
+
+			a12helper_keystore_hostkey("default", 0, my_private_key, &tmp, &tmpport);
+			a12_set_session(&auth, pk, my_private_key);
+				a12int_trace(A12_TRACE_SECURITY, "interactive-soft-auth=%s", out);
+
+/* did we receive a tag to store it as */
+			if (tag[0]){
+				a12int_trace(A12_TRACE_SECURITY, "interactive-add-trust=%s:tag=%s", out, tag);
+				a12helper_keystore_accept(pk, tag);
+
+/* if we made a regular outbound connection, e.g. arcan-net some.host:port
+ * AND the user marked to remember it with a tag, then add that tag, host and key to
+ * the hostkeys store. */
+				if (ofs && global.meta.host){
+					uint8_t pubk[32];
+					unsigned long port = strtoul(global.meta.port, NULL, 10);
+					a12helper_keystore_register(
+						&tag[ofs], global.meta.host, port, pubk, my_private_key);
+					a12int_trace(A12_TRACE_SECURITY, "store-hostkey-tag=%s", &tag[ofs]);
+				}
 			}
-			else
-				a12int_trace(A12_TRACE_SECURITY, "rejected-interactive");
+
+			free(tag);
 		}
-		else
-			a12int_trace(A12_TRACE_SECURITY, "reject-unknown=%s", out);
 	}
 
 	if (auth.authentic && global.directory != -1){
@@ -1925,7 +1968,7 @@ int main(int argc, char** argv)
 		uint16_t outport;
 		if (!a12helper_keystore_hostkey("default", 0, priv, &outhost, &outport)){
 			uint8_t outp[32];
-			a12helper_keystore_register("default", "127.0.0.1", 6680, outp);
+			a12helper_keystore_register("default", "127.0.0.1", 6680, outp, NULL);
 			a12int_trace(A12_TRACE_SECURITY, "key_added=default");
 		}
 	}
