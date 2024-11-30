@@ -873,6 +873,13 @@ static bool tag_host(struct anet_options* anet, char* hoststr, const char** err)
 	if (!toksep)
 		return false;
 
+	if (toksep == hoststr){
+		fprintf(stderr,
+			"host keystore tag error, %s, did you mean %s@?\n", hoststr, &hoststr[1]);
+		*err = "missing tag";
+		return true;
+	}
+
 	*toksep = '\0';
 	toksep++;
 
@@ -996,7 +1003,7 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 
 /* argument should be treated as host for outbound connection */
 		if (argv[i][0] != '-'){
-			if (opts->host){ /* [host port applname] would appear as host collision */
+			if (opts->host || opts->key){ /* [host port applname] would appear as host collision */
 				return i;
 			}
 
