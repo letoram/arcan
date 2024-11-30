@@ -1420,6 +1420,8 @@ enum ARCAN_TARGET_SKIPMODE {
  * Used with the BCHUNKSTATE event for hinting to the server that the
  * application wants to- or is capable of- receiving or writing bchunkdata.
  * (size)      - (input == 0, estimation of upper limit or 0 if unknown)
+ * (ns)        - (input !0, namespace identifier, used as a namespace selector
+ *                if multiple have been provided in a .index or across network)
  * (input)     - set to !0 to indicate that the support is for open/read,
  * (hint)      - set bit 1 to 1 indicate that the state- support it immediate,
  *               e.g. an open/save dialog. set to 0 to hint that the bchunk-
@@ -1435,7 +1437,10 @@ enum ARCAN_TARGET_SKIPMODE {
  *               for input/output.
   */
 	struct {
-		uint64_t size;
+		union {
+			uint64_t size;
+			uint64_t ns;
+		};
 		uint8_t input;
 		uint8_t hint;
 		uint8_t stream;
