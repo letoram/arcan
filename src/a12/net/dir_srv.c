@@ -313,7 +313,7 @@ static struct appl_meta* locked_numid_appl(uint16_t id)
 	return NULL;
 }
 
-int identifier_to_appl(char* ext)
+int identifier_to_appl(char* sep)
 {
 	int res = IDTYPE_RAW;
 	if (strcmp(sep, ".state") == 0)
@@ -544,7 +544,7 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 	pthread_mutex_unlock(&active_clients.sync);
 
 	int reserved = -1;
-	meta = identifier_to_appl(ext);
+	mtype = identifier_to_appl(ext);
 
 /* Special case, for (new) appl-upload we need permission and register an
  * identifier for the new appl. */
@@ -1023,7 +1023,8 @@ static void* dircl_process(void* P)
  * explicitly enter an appl signalling that participation in networked activity
  * is desired. */
 			else if (ev.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE){
-				handle_bchunk_req(C, (char*) ev.ext.bchunk.extensions, ev.ext.bchunk.input);
+				handle_bchunk_req(C,
+					ev.ext.bchunk.ns, (char*) ev.ext.bchunk.extensions, ev.ext.bchunk.input);
 			}
 
 /* bounce-back ack streamstatus */
