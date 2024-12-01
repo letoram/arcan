@@ -890,12 +890,15 @@ static struct a12_bhandler_res srv_bevent(
 	};
 
 	struct directory_meta* cbt = tag;
-	struct appl_meta* meta = find_identifier(S->directory, M.identifier);
 
-/* the one case where it is permitted to use a non-identifier to reference a
- * server-side resource is for appl-push */
-	if (!meta)
-		return res;
+/* if an appl identifier is specified, check that it match one we know about,
+ * this mainly saves the roundtrip just to be rejected by the parent */
+	if (M.identifier){
+		struct appl_meta* meta = find_identifier(S->directory, M.identifier);
+
+		if (!meta)
+			return res;
+	}
 
 /* There might be transfers going that are 'uninteresting' i.e. we are sending
  * a file. For others, mainly uploads, there is a need to know the completion
@@ -915,6 +918,19 @@ static struct a12_bhandler_res srv_bevent(
 				}
 			};
 
+	/* for multiple queued items in the bstream could have an interleaving problem
+	 * on the client side if multiple BCHUNKSTATEs are sent before a previous one has
+	 * been completed or rejected, as the new one would overwrite the old one THEN we
+	 * receive the first initialised binary channel on the segment OR multiple channels
+	 * queueing transfers interleaved. Right now this isn't a concern as the arcan-net
+	 * tooling does not, but when mapping this to Lua scripting space, this could
+	 * be a footgun, but also solveable on the arcan-net layer. This is better as it
+	 * keeps complexity away from here, which is a more exposed surface. */
+			if (cbt->breq_pending.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE &&
+					cbt->breq_pending.ext.bchunk.ns == M.identifier){
+				cbt->breq_pending = (struct arcan_event){0};
+			}
+
 /* with low enough latency and high enough server load this enqueue can be triggered
  * while the event is still in flight, and we shut down before the parent gets to ack
  * the update. */
@@ -933,6 +949,11 @@ static struct a12_bhandler_res srv_bevent(
 				}
 			};
 			cbt->in_transfer = false;
+			if (cbt->breq_pending.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE &&
+					cbt->breq_pending.ext.bchunk.ns == M.identifier){
+				cbt->breq_pending = (struct arcan_event){0};
+			}
+
 			pair_enqueue(cbt->S, cbt->C, sack);
 		}
 		else
@@ -961,16 +982,21 @@ static struct a12_bhandler_res srv_bevent(
 				cbt->transfer_id = M.identifier;
 			}
 		}
-/* Client wants to upload a file. Identifier specifies where it should go, i.e.
- * to a specific appl. If we have joined a group and is pushing an appl, then
- * permission is up to the controller and we should route there. If we haven't,
- * the key- store permission should determine if the client is allowed to store
- * or not.
- *
- * There is also a prerequisite that we specify the full name as a BCHUNKSTATE
- * before. This is just saved in the [cbt]. */
+/* Client wants to upload a generic file. This MUST be preceeded by a
+ * BCHUNKSTATE or we reject it outright. The original event is kept until
+ * cancelled or completed. */
 		else if (M.type == A12_BTYPE_BLOB){
+			if (cbt->breq_pending.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE &&
+					cbt->breq_pending.ext.bchunk.ns == M.identifier){
+				res.fd =
+					request_parent_resource(S, cbt->C, M.identifier,
+						(char*) cbt->breq_pending.ext.bchunk.extensions, BREQ_STORE);
 
+				if (-1 != res.fd){
+					cbt->in_transfer = true;
+					cbt->transfer_id = M.identifier;
+				}
+			}
 		}
 /* the rest are default-reject that must be manually enabled for the server
  * as they provide incrementally dangerous capabilities (adding shared media
@@ -987,7 +1013,7 @@ static struct a12_bhandler_res srv_bevent(
  * an existing one. There should be a separate request for that kind of action.
  */
 			res.fd =
-				request_parent_resource(S, cbt->C, M.identifier, restype, true);
+				request_parent_resource(S, cbt->C, M.identifier, restype, BREQ_STORE);
 
 			if (-1 != res.fd){
 				cbt->in_transfer = true;
