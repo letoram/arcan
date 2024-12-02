@@ -2912,6 +2912,7 @@ static void* read_data(int fd, size_t cap, uint16_t* nts, bool* die)
 
 	*die = false;
 	if (nr == 0){
+		*die = true;
 		DYNAMIC_FREE(buf);
 		return NULL;
 	}

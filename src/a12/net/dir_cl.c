@@ -232,6 +232,12 @@ void dircl_source_handler(
 	shutdown(con.fd, SHUT_RDWR);
 }
 
+static void dircl_event(
+	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
+{
+	fprintf(stdout, "%s\n", arcan_shmif_eventstr(ev, NULL, 0));
+}
+
 static void on_cl_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
@@ -1200,8 +1206,8 @@ void anet_directory_cl(
 	if (opts.upload.name){
 		if (strcmp(opts.upload.applname, ".priv") == 0){
 			upload_file(S, opts.upload.path, 0, opts.upload.name);
-
 			a12_set_bhandler(S, anet_directory_cl_upload, &ioloop);
+			ioloop.on_event = dircl_event;
 			anet_directory_ioloop(&ioloop);
 			return;
 		}
@@ -1222,6 +1228,7 @@ void anet_directory_cl(
 			a12_channel_enqueue(S, &ev);
 
 			a12_set_bhandler(S, anet_directory_cl_download, &ioloop);
+			ioloop.on_event = dircl_event;
 			anet_directory_ioloop(&ioloop);
 			return;
 		}
