@@ -331,16 +331,30 @@ int identifier_to_appl(char* sep)
 }
 
 static int get_state_res(
-	struct dircl* C, volatile char* appl, const char* name, int fl, int mode)
+	struct dircl* C, volatile char* appl, const char* name, int fl)
 {
 	char fnbuf[64];
 	int resfd = -1;
 	pthread_mutex_lock(&active_clients.sync);
-		snprintf(fnbuf, 64, "%s", appl);
+		snprintf(fnbuf, 64, "%s%s", appl, name);
+
+/*
+ * It's the keystore that is responsible for permission check for private data
+ * and any associated quotas etc. tied to its underlying backing store. Should
+ * the write eventual fail, the worker would cancel_stream the ongoing transfer
+ * and the other end alert the user that the stream was cancelled mid-flight.
+ */
 		resfd =
 			a12helper_keystore_statestore(C->pubk,fnbuf, 0, fl & O_RDONLY ? "r" : "w+");
 	pthread_mutex_unlock(&active_clients.sync);
 	return resfd;
+}
+
+static int access_private_store(struct dircl* C, const char* name, bool input)
+{
+	char fnbuf[64];
+	snprintf(fnbuf, sizeof(fnbuf), "%s", name);
+	return a12helper_keystore_statestore(C->pubk, fnbuf, 0, input ? "r" : "w+");
 }
 
 static bool tag_outbound_name(struct arcan_event* ev, uint8_t kpub[static 32])
@@ -538,7 +552,21 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 	uint16_t mid = 0;
 	char* outsep = NULL;
 	bool closefd = true;
+	int resfd = -1;
+	size_t ressz = 0;
 
+/* shortpath private access as it doesn't require access to any appl meta */
+	if (ns == 0){
+		resfd = access_private_store(C, ext, input);
+		if (-1 != resfd)
+			goto ok;
+		else
+			goto fail;
+	}
+
+/* lock enumeration so we don't run into stepping the list when something
+ * might be appending to it, the contents itself won't change for any of
+ * the fields we are intersted in */
 	pthread_mutex_lock(&active_clients.sync);
 		volatile struct appl_meta* meta = locked_numid_appl(ns);
 	pthread_mutex_unlock(&active_clients.sync);
@@ -547,7 +575,7 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 	mtype = identifier_to_appl(ext);
 
 /* Special case, for (new) appl-upload we need permission and register an
- * identifier for the new appl. */
+ * identifier for the new appl, as well as update the backend store. */
 	if (!meta){
 		if (mtype == IDTYPE_APPL && !input){
 			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_appl)){
@@ -562,38 +590,38 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 			goto fail;
 	}
 
-	int resfd = -1;
-	size_t ressz = 0;
-
 	if (input){
 		switch (mtype){
 		case IDTYPE_APPL:
+/* Make a locked copy of the currently cached latest appl for the identifier,
+ * since the contents is passed to a lower privilege process we need an explicit
+ * copy so that a compromised worker wouldn't mutate the descriptor backing
+ * and causing code injection on the other end. This should be further enforced
+ * with signing later. */
 			pthread_mutex_lock(&active_clients.sync);
 				resfd = buf_memfd(meta->buf, meta->buf_sz);
 				ressz = meta->buf_sz;
 			pthread_mutex_unlock(&active_clients.sync);
 		break;
 		case IDTYPE_STATE:
-			resfd = get_state_res(C, meta->appl.name, ".state", O_RDONLY, 0);
+			resfd = get_state_res(C, meta->appl.name, ".state", O_RDONLY);
 		break;
+
+/* Sending debuglog is one thing, but we want different triaging hooks as part
+ * of the config script for the server so that we have a way to populate an scm
+ * backend (with a fossil one for standard) so that we can report-gen / triage
+ * and forward as ticket. */
 		case IDTYPE_DEBUG:
 			goto fail;
 		break;
-/* request raw access to a file in the server-side (shared) applstore- path */
-		case IDTYPE_RAW:{
-			char* envbase = getenv("ARCAN_APPLSTOREPATH");
-			if (envbase && isalnum(outsep[0])){
-				pthread_mutex_lock(&active_clients.sync);
-					char* name = strdup((char*)meta->appl.name);
-				pthread_mutex_unlock(&active_clients.sync);
-				char* full = NULL;
-				if (0 < asprintf(&full, "%s/%s/%s", envbase, name, outsep)){
-					resfd = open(full, O_RDONLY);
-					free(full);
-				}
-				free(name);
-			}
-		}
+
+/* request raw access to a file in the server-side (shared) applstore- path,
+ * this only comes through here if the source hasn't joined an appl controller,
+ * and is intended for developer content persistence. Other paths should defer
+ * permission check and end storage to the controller, which would ask us
+ * through some other means. */
+		case IDTYPE_RAW:
+			goto fail;
 		break;
 		}
 	}
@@ -641,10 +669,10 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 			}
 		break;
 		case IDTYPE_STATE:
-			resfd = get_state_res(C, meta->appl.name, ".state", O_WRONLY, 0);
+			resfd = get_state_res(C, meta->appl.name, ".state", O_WRONLY);
 		break;
 		case IDTYPE_DEBUG:
-			resfd = get_state_res(C, meta->appl.name, ".debug", O_WRONLY, 0);
+			resfd = get_state_res(C, meta->appl.name, ".debug", O_WRONLY);
 		break;
 /* need to check if we have permissions to a. make an upload, b. overwrite an
  * existing file (which unfortunately also means tracking ownership - we can do
@@ -656,6 +684,7 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 		}
 	}
 
+ok:
 	if (-1 != resfd){
 		struct arcan_event ev = (struct arcan_event){
 			.category = EVENT_TARGET,

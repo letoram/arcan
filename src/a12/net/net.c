@@ -1724,10 +1724,11 @@ static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 	size_t outl;
 	unsigned char* out = a12helper_tob64(pk, 32, &outl);
 
-/* the trust domain (accepted return value) are ignored here, a separate
- * request will check if a certain domain is trusted for the kpub when/if a
- * request arrives that mandates it */
-	if (a12helper_keystore_accepted(pk, global.trust_domain)){
+/* the trust domain (accepted return value) are ignored here for the directory
+ * server role, a separate request will check if a certain domain is trusted
+ * for the kpub when/if a request arrives that mandates it */
+	if (a12helper_keystore_accepted(
+		pk, global.directory != -1 ? "*" : global.trust_domain)){
 		auth.authentic = true;
 		a12int_trace(A12_TRACE_SECURITY, "accept=%s", out);
 		a12helper_keystore_hostkey("default", 0, my_private_key, &tmp, &tmpport);

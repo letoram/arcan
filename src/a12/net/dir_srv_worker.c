@@ -867,9 +867,10 @@ static int request_parent_resource(
 			fd = arcan_shmif_dupfd(cur->ev.tgt.ioevs[0].iv, -1, true);
 			a12int_trace(A12_TRACE_DIRECTORY, "accepted");
 		}
-		else
-			a12int_trace(A12_TRACE_DIRECTORY, "rejected");
 	}
+	else
+		a12int_trace(
+			A12_TRACE_DIRECTORY, "rejected=%s", arcan_shmif_eventstr(&ev, NULL, 0));
 
 	free_evqueue(rep);
 	return fd;
@@ -954,6 +955,8 @@ static struct a12_bhandler_res srv_bevent(
 				cbt->breq_pending = (struct arcan_event){0};
 			}
 
+			a12int_trace(
+				A12_TRACE_DIRECTORY, "kind=status:btransfer:cancelled_remote");
 			pair_enqueue(cbt->S, cbt->C, sack);
 		}
 		else
@@ -995,6 +998,7 @@ static struct a12_bhandler_res srv_bevent(
 				if (-1 != res.fd){
 					cbt->in_transfer = true;
 					cbt->transfer_id = M.identifier;
+					a12int_trace(A12_TRACE_DIRECTORY, "binary_transfer_initiated");
 				}
 			}
 		}
