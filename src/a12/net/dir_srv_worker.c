@@ -316,7 +316,7 @@ static void bchunk_event(struct a12_state *S,
 	a12int_trace(A12_TRACE_DIRECTORY, "bchunk_in:%s", arcan_shmif_eventstr(ev, NULL, 0));
 
 /* the index is packed as shmif argstrs line-separated */
-	if (strcmp(ev->tgt.message, ".index") == 0){
+	if (strcmp(ev->tgt.message, ".appl-index") == 0){
 		unpack_index(S, C, ev);
 	}
 /* Only single channel handled for now, 1:1 source-sink connections. Multiple

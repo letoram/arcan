@@ -134,7 +134,7 @@ static void dirlist_to_worker(struct dircl* C)
 			.category = EVENT_TARGET,
 			.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
 			.tgt.ioevs[1].iv = active_clients.dirlist_sz,
-			.tgt.message = ".index"
+			.tgt.message = ".appl-index"
 		}, fd);
 
 	close(fd);
