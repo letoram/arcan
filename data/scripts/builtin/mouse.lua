@@ -10,7 +10,6 @@
 -- corresponding finders for an 'own_vid' hash map.
 --
 -- setup (takes control of vid):
---  setup_native(vid, hs_x, hs_y) or
 --  setup(vid, layer, pickdepth, cachepick, hidden)
 --   layer : order value
 --   pickdepth : number of stacked vids to check (typically 1)
@@ -101,7 +100,6 @@ MOUSE_AUXBTN  = 8; -- >= 8 really
 local mstate = {
 -- tables of event_handlers to check for match when
 	handlers = mouse_handlers,
-	eventtrace = false,
 	blocked = false,
 	btns = {},
 	btns_clock = {},
@@ -158,6 +156,8 @@ local mstate = {
 local cursors = {
 };
 
+local linear_find_vid
+
 for i=1,255 do
 	mstate.btns_remap[i] = i;
 	mstate.btns[i] = false;
@@ -177,23 +177,30 @@ function mouse_inertia(x, y)
 	mstate.inertia_acc_y = 0;
 end
 
-local function mouse_cursor_draw()
-	if (mstate.native) then
-		move_cursor(mstate.x, mstate.y);
-	else
-		local x, y = mouse_hotxy();
-		move_image(mstate.cursor, x + mstate.x_ofs, y + mstate.y_ofs);
-	end
+local function mouse_cursor_draw(nofwd)
+	local x, y = mouse_hotxy();
+	move_image(mstate.cursor, x + mstate.x_ofs, y + mstate.y_ofs);
 
-	if mstate.cursor_hook then
-		mstate.cursor_hook(mstate.cursor, x + mstate.x_ofs, y + mstate.y_ofs);
+	if not nofwd and mstate.cursor_hook then
+		for k,v in ipairs(mstate.cursor_hook) do
+			v(mstate.cursor, x + mstate.x_ofs, y + mstate.y_ofs, mstate.active_label);
+		end
 	end
 end
 
-local function mouse_cursorhook(newhook)
-	local oldhook = mstate.cursor_hook;
-	mstate.cursor_hook = newhook;
-	return oldhook;
+function mouse_cursorhook(newhook)
+	if not mstate.cursor_hook then
+		mstate.cursor_hook = {}
+	end
+
+	if table.remove_match(mstate.cursor_hook, newhook) then
+		if #mstate.cursor_hook == 0 then
+			mstate.cursor_hook = nil
+		end
+		return
+	end
+
+	table.insert(mstate.cursor_hook, newhook)
 end
 
 local function lock_constrain()
@@ -278,6 +285,15 @@ mstate.lmb_global_release = function()
 	mstate.y_ofs = 0;
 	mouse_cursorupd(0, 0);
 	mstate.lmb_pressed = false;
+
+	local pr = mstate.pending_release
+	if pr then
+		mstate.pending_release = nil
+		local res = linear_find_vid(mstate.handlers.release, pr, "release")
+		if res then
+			res:release(pr, mstate.x, mstate.y)
+		end
+	end
 end
 
 -- this can be overridden to cache previous queries
@@ -327,7 +343,7 @@ local function linear_ifind(table, val)
 	return false;
 end
 
-local function linear_find_vid(table, vid, state)
+linear_find_vid = function(table, vid, state)
 -- we filter here as some scans (over, out, ...) may query state
 -- for objects that no longer exists
 	if (not valid_vid(vid)) then
@@ -417,7 +433,6 @@ function mouse_destroy()
 	};
 
 	mstate.handlers = mouse_handlers;
-	mstate.eventtrace = false;
 	mstate.btns = {false, false, false, false, false};
 	mstate.cur_over = {};
 	mstate.hover_track = {};
@@ -449,14 +464,73 @@ function mouse_destroy()
 	end
 end
 
-function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden)
-	mstate.hidden = hidden;
+function mouse_load_theme(path, name)
+-- safe-load that first uses configured set, fallback to default,
+-- and fail-safe with a green box cursor
+	local load_cursor;
+	load_cursor =
+	function(set, name, fname, hot_x, hot_y)
+		local fn = string.format("%s/%s/%s", path, set, fname);
+		local vid = load_image(fn);
+
+		if not valid_vid(vid) then
+			warning("cursor set broken, couldn't load " .. fn);
+			vid = fill_surface(8, 8, 0, 255, 0);
+			hot_x = 0
+			hot_y = 0
+		end
+
+		mouse_add_cursor(name, vid, hot_x, hot_y)
+		return vid;
+	end
+
+-- then load the real-set but allow broken scripts
+	local fn = string.format("%s/%s/%s.lua", path, name, name);
+	local set = system_load(fn, false);
+
+	if type(set) == "function" then
+		local ok, ret = pcall(set)
+		if ok and type(ret) == "table" then
+			for k, v in pairs(ret) do
+				load_cursor(name, k, v[1], v[2], v[3])
+			end
+		else
+			warning("bad cursor-set definition: " .. fn)
+		end
+	else
+		warning("couldn't load cursor-set: " .. name)
+	end
+end
+
+function mouse_setup(cvid, ...)
+-- trick to migrate away from the old overcomplicated setup versus named options
+	local a = {...}
+	local opts =
+	{
+		pickdepth = 1,
+		layer = 65535,
+		cachepick = true,
+		hidden = false
+	}
+
+	if type(a[1]) == "table" then
+		for k,v in pairs(a[1]) do
+			if type(opts[k]) == type(v) then
+				opts[k] = v
+			else
+				warning("mouse_setup:unknown/mismatched key:" .. k)
+			end
+		end
+	else
+		opts.layer = type(a[2]) == "number" and a[2] or opts.layer
+		opts.pickdepth = type(a[3]) == "number" and a[3] or opts.pickdepth
+		opts.cachepick = type(a[4]) == "boolean" and a[4] or opts.cachepick
+		opts.hidden = type(a[5]) == "boolean" and a[5] or opts.hidden
+	end
+
+	mstate.hidden = opts.hidden;
 	mstate.x = math.floor(mstate.max_x * 0.5);
 	mstate.y = math.floor(mstate.max_y * 0.5);
-
-	clayer = type(clayer) == "number" and clayer or 65535;
-	pickdepth = type(pickdepth) == "number" and pickdepth or 1;
-	cachepick = cachepick == nil or true;
 
 	mstate.cursor = null_surface(1, 1);
 	image_mask_set(mstate.cursor, MASK_UNPICKABLE);
@@ -477,10 +551,10 @@ function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden)
 	end
 
 	mouse_cursor_draw();
-	mstate.pickdepth = pickdepth;
-	order_image(mstate.cursor, clayer);
+	mstate.pickdepth = opts.pickdepth;
+	order_image(mstate.cursor, opts.layer);
 	image_mask_set(mstate.cursor, MASK_UNPICKABLE);
-	if (cachepick) then
+	if (opts.cachepick) then
 		mouse_pickfun = cached_pick;
 	else
 		mouse_pickfun = pick_items;
@@ -517,33 +591,6 @@ function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden)
 	end
 end
 
-function mouse_setup_native(resimg, hs_x, hs_y)
-	mstate.native = true;
-	if (hs_x == nil) then
-		hs_x = 0;
-		hs_y = 0;
-	end
-
--- wash out any other dangling properties in resimg
-	local tmp = null_surface(1, 1);
-	local props = image_surface_properties(resimg);
-	image_sharestorage(resimg, tmp);
-	delete_image(resimg);
-
-	mouse_add_cursor("default", tmp, hs_x, hs_y);
-	mouse_switch_cursor();
-
-	mstate.x = math.floor(mstate.max_x * 0.5);
-	mstate.y = math.floor(mstate.max_y * 0.5);
-	mstate.pickdepth = 1;
-	mouse_pickfun = cached_pick;
-
-	resize_cursor(props.width, props.height);
-	mstate.size = {props.width, props.height};
-
-	mouse_cursorupd(0, 0);
-end
-
 --
 -- similar to absinput but try and block/mask event and hide/reveal triggers
 --
@@ -553,12 +600,12 @@ function mouse_absinput_masked(x, y, nofwd)
 	mouse_hidemask(false);
 end
 
-function mouse_warp(x, y)
+function mouse_warp(x, y, nofwd)
 	mstate.x = x;
 	mstate.y = y;
 	mstate.press_x = x;
 	mstate.press_y = y;
-	mouse_cursor_draw();
+	mouse_cursor_draw(nofwd);
 end
 
 --
@@ -578,7 +625,7 @@ function mouse_absinput(x, y, nofwd)
 	mstate.y = y + (ary - ry);
 -- also need to constrain the relative coordinates when we clamp
 	lock_constrain();
-	mouse_cursor_draw();
+	mouse_cursor_draw(nofwd);
 
 	if (not nofwd) then
 		mouse_input(mstate.x, mstate.y, nil, true);
@@ -611,22 +658,12 @@ function mouse_lockto(vid, fun, warp, state)
 end
 
 function mouse_hotxy()
-	if (mstate.native) then
-		local x, y = cursor_position();
-		return x, y;
-	else
-		return (mstate.x - mstate.hotspot_x * mstate.scale_w),
-			(mstate.y - mstate.hotspot_y * mstate.scale_h);
-	end
+	return (mstate.x - mstate.hotspot_x * mstate.scale_w),
+		(mstate.y - mstate.hotspot_y * mstate.scale_h);
 end
 
 function mouse_xy()
-	if (mstate.native) then
-		local x, y = cursor_position();
-		return x, y;
-	else
-		return mstate.x, mstate.y;
-	end
+	return mstate.x, mstate.y;
 end
 
 function mouse_cursortag_drop(accept, state)
@@ -646,7 +683,7 @@ end
 -- primitive for drag and drop style behavior, tag the cursor with
 -- a container and a vid that will be destroyed when the tag have been
 -- provided as a 'drop'
-function mouse_cursortag(ref, id, handler, vid)
+function mouse_cursortag(ref, src, handler, vid)
 	if (type(handler) ~= "function") then
 		return;
 	end
@@ -664,6 +701,7 @@ function mouse_cursortag(ref, id, handler, vid)
 	local props = image_surface_properties(vid);
 
 	mstate.cursortag = {
+		src = src,
 		vid = vid,
 		ref = ref,
 		handler = handler
@@ -672,23 +710,25 @@ end
 
 -- visually update the accept or no-accept state
 function mouse_cursortag_state(accept)
-	if (mstate.cursortag and valid_vid(mstate.cursortag.vid)) then
+	if not mstate.cursortag then
+		return
+	end
+
+	if valid_vid(mstate.cursortag.vid) then
 		local lb, _, _ = reset_image_transform(mstate.cursortag.vid);
 		blend_image(mstate.cursortag.vid,
 			accept and 0.5 or 1.0, mstate.animation_speed - lb);
 	end
+
+	mstate.cursortag.accept = accept
 end
 
 local function mouse_drag(x, y)
-	if (mstate.eventtrace) then
-		warning(string.format("mouse_drag(%d, %d)", x, y));
-	end
-
 	local hitc = 0;
 	for key, val in pairs(mstate.drag.list) do
 		local res = linear_find_vid(mstate.handlers.drag, val, "drag");
 		if (res) then
-			res:drag(val, x, y);
+			res:drag(val, x, y, mstate.drag.id);
 			hitc = hitc + 1;
 		end
 	end
@@ -697,36 +737,62 @@ local function mouse_drag(x, y)
 end
 
 local function rmbhandler(hists, press)
-	if (press) then
-		mstate.rpress_x = mstate.x;
-		mstate.rpress_y = mstate.y;
-	else
-		if (mstate.eventtrace) then
-			warning("right click");
-		end
+	if (press and mstate.rdrag) then
+		mstate.press_x = mstate.x;
+		mstate.press_y = mstate.y;
+		mstate.predrag = {
+			list = hists,
+			count = mstate.drag_delta,
+			id = MOUSE_RBUTTON
+		};
+		return
+	end
 
-		for key, val in ipairs(hists) do
-			local res = linear_find_vid(mstate.handlers.rclick, val, "rclick");
-			if (res) then
-				res:rclick(val, mstate.x, mstate.y);
+	for key, val in ipairs(hists) do
+		local res = linear_find_vid(mstate.handlers.rclick, val, "rclick");
+		if (res) then
+			res:rclick(val, mstate.x, mstate.y);
+		end
+	end
+
+	if not mstate.drag then
+		return
+	end
+
+	for key, val in pairs(mstate.drag.list) do
+		local res = linear_find_vid(mstate.handlers.drop, val, "drop");
+		if (res) then
+			if (res:drop(val, mstate.x, mstate.y, mstate.cursor_tag)) then
+				return;
 			end
 		end
 	end
+
+	mstate.counter = 0;
+	mstate.predrag = nil;
+	mstate.drag = nil;
 end
 
 local function lmbhandler(hists, press)
 	if (press) then
 		mstate.press_x = mstate.x;
 		mstate.press_y = mstate.y;
-		mstate.predrag = {};
-		mstate.predrag.list = hists;
-		mstate.predrag.count = mstate.drag_delta;
+		mstate.predrag = {
+			list = hists,
+			count = mstate.drag_delta,
+			id = MOUSE_LBUTTON
+		};
 		mstate.click_cnt = mstate.click_timeout;
+
 		mstate.lmb_global_press();
 
 		for key, val in ipairs(hists) do
 			local res = linear_find_vid(mstate.handlers.press, val, "press");
 			if (res) then
+-- we need to track this so some event handler isn't stuck waiting for a release
+-- this is flushed if we enter a drag state, but since that is thresholded it is
+-- possible to press -> move to other vid -> release -> no release sent
+				mstate.pending_release = val
 				if (res:press(val, mstate.x, mstate.y)) then
 					break;
 				end
@@ -734,8 +800,10 @@ local function lmbhandler(hists, press)
 		end
 
 	else -- release
+		if val == mstate.pending_release then
+			mstate.pending_release = nil
+		end
 		mstate.lmb_global_release();
-
 		for key, val in ipairs(hists) do
 			local res = linear_find_vid(mstate.handlers.release, val, "release");
 			if (res) then
@@ -745,15 +813,7 @@ local function lmbhandler(hists, press)
 			end
 		end
 
-		if (mstate.eventtrace) then
-			warning(string.format("left click: %s", table.concat(hists, ",")));
-		end
-
 		if (mstate.drag) then -- already dragging, check if dropped
-			if (mstate.eventtrace) then
-				warning("drag");
-			end
-
 			for key, val in pairs(mstate.drag.list) do
 				local res = linear_find_vid(mstate.handlers.drop, val, "drop");
 				if (res) then
@@ -777,10 +837,6 @@ local function lmbhandler(hists, press)
 
 -- double click is based on the number of ticks since the last click
 			if (mstate.counter > 0 and mstate.counter <= mstate.dblclickstep) then
-				if (mstate.eventtrace) then
-					warning("double click");
-				end
-
 				for key, val in ipairs(hists) do
 					local res = linear_find_vid(mstate.handlers.dblclick, val,"dblclick");
 					if (res) then
@@ -1027,11 +1083,9 @@ function mouse_input(x, y, state, noinp)
 
 -- hide/reveal
 		if (not mstate.revmask and mstate.hidden) then
-			if (mstate.native == nil) then
-				instant_image_transform(mstate.cursor);
-				blend_image(mstate.cursor, 1.0, 10);
-				mstate.hidden = false;
-			end
+			instant_image_transform(mstate.cursor);
+			blend_image(mstate.cursor, 1.0, 10);
+			mstate.hidden = false;
 
 			if (mstate.reveal_hook) then
 				mstate.reveal_hook();
@@ -1127,6 +1181,7 @@ function mouse_input(x, y, state, noinp)
 		if (dist >= mstate.predrag.count) then
 			mstate.drag = mstate.predrag;
 			mstate.predrag = nil;
+			mstate.pending_release = nil;
 			mouse_drag(x - mstate.press_x, y - mstate.press_y);
 		end
 	end
@@ -1221,11 +1276,6 @@ function mouse_addlistener(tbl, events)
 		if (mstate.handlers[val] ~= nil and
 			linear_find(mstate.handlers[val], tbl) == nil and tbl[val] ~= nil) then
 			insert_unique(mstate.handlers[val], tbl);
-		elseif (tbl[val] ~= nil) then
-			warning("mouse_addlistener(), unknown event function: " .. val);
-			if (DEBUGLEVEL > 0) then
-				print("add_listener traceback: ", debug.traceback());
-			end
 		end
 	end
 end
@@ -1345,20 +1395,15 @@ function mouse_cursor_sf(fx, fy)
 	local new_w = math.ceil(mstate.size[1] * mstate.scale_w);
 	local new_h = math.ceil(mstate.size[2] * mstate.scale_h);
 
-	if (mstate.native) then
-		resize_cursor(new_w, new_h);
-	elseif (valid_vid(mstate.cursor)) then
+	if (valid_vid(mstate.cursor)) then
 		resize_image(mstate.cursor, new_w, new_h);
 	end
 end
 
 -- assumed: .vid(valid), .hotspot_x, .hotspot_y
 function mouse_custom_cursor(ct)
-	if (mstate.native) then
-		cursor_setstorage(ct.vid);
-	else
-		image_sharestorage(ct.vid, mstate.cursor);
-	end
+	image_sharestorage(ct.vid, mstate.cursor);
+
 	mstate.size = {ct.width, ct.height};
 	mouse_cursor_sf(mstate.scale_w, mstate.scale_h);
 	if (ct.shader) then
@@ -1367,42 +1412,31 @@ function mouse_custom_cursor(ct)
 		image_shader(mstate.cursor, "DEFAULT");
 	end
 
-	local hsdx = mstate.scale_w * (mstate.hotspot_x - ct.hotspot_x);
-	local hsdy = mstate.scale_h * (mstate.hotspot_y - ct.hotspot_y);
-
--- offset current position (as that might've triggered the event that
--- incited the caller to switch cursor by the change in label
-
-	mstate.x = mstate.x + hsdx;
-	mstate.y = mstate.y + hsdy;
 	mstate.hotspot_x = ct.hotspot_x;
 	mstate.hotspot_y = ct.hotspot_y;
 	mstate.active_label = "";
 	mstate.custom_cursor = ct;
+
+	mouse_cursor_draw();
 end
 
-function mouse_switch_cursor(label)
+function mouse_switch_cursor(label, force)
 	if (label == nil) then
 		label = "default";
 	end
 
-	if (label == mstate.active_label) then
+	if (label == mstate.active_label and not force) then
 		return;
 	end
 
-	mstate.active_label = label;
-
 	if (cursors[label] == nil) then
-		if (mstate.native) then
-			cursor_setstorage(WORLDID);
-		else
-			hide_image(mstate.cursor);
-		end
+		hide_image(mstate.cursor);
 		return;
 	end
 
 	local ct = cursors[label];
 	mouse_custom_cursor(ct);
+	mstate.active_label = label;
 end
 
 function mouse_cursors()
@@ -1410,13 +1444,9 @@ function mouse_cursors()
 end
 
 function mouse_hide()
-	if (mstate.native) then
-		mouse_switch_cursor(nil);
-	else
-		instant_image_transform(mstate.cursor);
-		blend_image(mstate.cursor, 0.0,
-			mstate.revmask and 0 or 20, INTERP_EXPOUT);
-	end
+	instant_image_transform(mstate.cursor);
+	blend_image(mstate.cursor, 0.0,
+		mstate.revmask and 0 or 20, INTERP_EXPOUT);
 end
 
 function mouse_autohide(state)
@@ -1437,12 +1467,8 @@ function mouse_show()
 		return;
 	end
 
-	if (mstate.native) then
-		mouse_switch_cursor(mstate.active_label);
-	else
-		instant_image_transform(mstate.cursor);
-		blend_image(mstate.cursor, 1.0, 20, INTERP_EXPOUT);
-	end
+	instant_image_transform(mstate.cursor);
+	blend_image(mstate.cursor, 1.0, 20, INTERP_EXPOUT);
 end
 
 system_load("builtin/debug.lua")()
@@ -1477,7 +1503,7 @@ function mouse_tick(val)
 -- do we have auto-hide on idle?
 	if (not mstate.drag and mstate.autohide and mstate.hidden == false) then
 		mstate.hide_count = mstate.hide_count - val;
-		if (mstate.hide_count <= 0 and mstate.native == nil) then
+		if (mstate.hide_count <= 0) then
 			mstate.hidden = true;
 			instant_image_transform(mstate.cursor);
 			mstate.hide_count = mstate.hide_base;
@@ -1527,13 +1553,11 @@ function mouse_querytarget(rt)
 	end
 
 	local props = image_surface_properties(rt);
-	if (mstate.native) then
-	else
-		rendertarget_attach(rt, mstate.cursor, RENDERTARGET_DETACH);
-		if (mstate.cursortag and mstate.cursortag.vid) then
-			rendertarget_attach(rt, mstate.cursortag.vid, RENDERTARGET_DETACH);
-		end
+	rendertarget_attach(rt, mstate.cursor, RENDERTARGET_DETACH);
+	if (mstate.cursortag and mstate.cursortag.vid) then
+		rendertarget_attach(rt, mstate.cursortag.vid, RENDERTARGET_DETACH);
 	end
+
 	mstate.max_x = props.width;
 	mstate.max_y = props.height;
 	if (mstate.rt ~= rt) then

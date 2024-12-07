@@ -1,4 +1,4 @@
-## 0.6.4
+## 0.7.0
 ## Core
  * Wired in rendertarget vobj export for hwenc, opt-in via target\_flags on rectgt
  * Add basic positional audio support
@@ -17,6 +17,9 @@
  * add audio\_reconfigure for toggling hrtfs and switching between outputs
  * prohibit bytecode in system\_load
 
+## Distribution
+ * builtin/mouse opt-in rmb drag, unified theme handling, drop native_ path
+
 ## Shmif
  * add interop helper for arcan\_shmif\_bchunk\_resolve to help translate fd-local path
  * add a \_primary slot for ACCESSIBILITY
@@ -32,6 +35,7 @@
  * headless runner for arcan-net host appl can be access via ANET\_RUNNER env.
  * spawning server-side Lua runner if matching appl found, controls message routing
  * introduce rekeying command for forward secrecy, placeholder PQ step-up and resumption
+ * add support for directory file store/retrieval
 
 ## Decode
  * tts now exposes more input labels (INC/DEC/SETRATE)
