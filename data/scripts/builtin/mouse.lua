@@ -736,52 +736,17 @@ local function mouse_drag(x, y)
 	return hitc;
 end
 
-local function rmbhandler(hists, press)
-	if (press and mstate.rdrag) then
-		mstate.press_x = mstate.x;
-		mstate.press_y = mstate.y;
-		mstate.predrag = {
-			list = hists,
-			count = mstate.drag_delta,
-			id = MOUSE_RBUTTON
-		};
-		return
-	end
-
-	for key, val in ipairs(hists) do
-		local res = linear_find_vid(mstate.handlers.rclick, val, "rclick");
-		if (res) then
-			res:rclick(val, mstate.x, mstate.y);
-		end
-	end
-
-	if not mstate.drag then
-		return
-	end
-
-	for key, val in pairs(mstate.drag.list) do
-		local res = linear_find_vid(mstate.handlers.drop, val, "drop");
-		if (res) then
-			if (res:drop(val, mstate.x, mstate.y, mstate.cursor_tag)) then
-				return;
-			end
-		end
-	end
-
-	mstate.counter = 0;
-	mstate.predrag = nil;
-	mstate.drag = nil;
-end
-
-local function lmbhandler(hists, press)
+local function bhandler(hists, press, id)
 	if (press) then
-		mstate.press_x = mstate.x;
-		mstate.press_y = mstate.y;
-		mstate.predrag = {
-			list = hists,
-			count = mstate.drag_delta,
-			id = MOUSE_LBUTTON
-		};
+		if id ~= MOUSE_RBUTTON or mstate.rdrag then
+			mstate.press_x = mstate.x;
+			mstate.press_y = mstate.y;
+			mstate.predrag = {
+				list = hists,
+				count = mstate.drag_delta,
+				id = id
+			};
+		end
 		mstate.click_cnt = mstate.click_timeout;
 
 		mstate.lmb_global_press();
@@ -826,7 +791,9 @@ local function lmbhandler(hists, press)
 		else
 			if (mstate.click_cnt > 0) then
 				for key, val in ipairs(hists) do
-					local res = linear_find_vid(mstate.handlers.click, val, "click");
+					local res = linear_find_vid(
+						mstate.handlers.click, val,
+						id == MOUSE_RBUTTON and "rclick" or "click");
 					if (res) then
 						if (res:click(val, mstate.x, mstate.y)) then
 							break;
@@ -840,7 +807,7 @@ local function lmbhandler(hists, press)
 				for key, val in ipairs(hists) do
 					local res = linear_find_vid(mstate.handlers.dblclick, val,"dblclick");
 					if (res) then
-						if (res:dblclick(val, mstate.x, mstate.y)) then
+						if (res:dblclick(val, mstate.x, mstate.y, id)) then
 							break;
 						end
 					end
@@ -955,11 +922,11 @@ function mouse_button_input(ind, active)
 
 	mstate.in_handler = true;
 	if (ind == MOUSE_LBUTTON and active ~= mstate.btns[MOUSE_LBUTTON]) then
-		lmbhandler(hists, active);
+		bhandler(hists, active, MOUSE_LBUTTON);
 	end
 
 	if (ind == MOUSE_RBUTTON and active ~= mstate.btns[MOUSE_RBUTTON]) then
-		rmbhandler(hists, active);
+		bhandler(hists, active, MOUSE_RBUTTON);
 	end
 
 	mstate.btns[ind] = active;
@@ -971,10 +938,10 @@ end
 local function mbh(hists, state)
 -- change in left mouse-button state?
 	if (state[MOUSE_LBUTTON] ~= mstate.btns[MOUSE_LBUTTON]) then
-		lmbhandler(hists, state[MOUSE_LBUTTON]);
+		bhandler(hists, state[MOUSE_LBUTTON], MOUSE_LBUTTON);
 
 	elseif (state[MOUSE_RBUTTON] ~= mstate.btns[MOUSE_RBUTTON]) then
-		rmbhandler(hists, state[MOUSE_RBUTTON]);
+		bhandler(hists, state[MOUSE_RBUTTON], MOUSE_RBUTTON);
 	end
 
 -- remember the button states for next time
