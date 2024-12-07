@@ -175,7 +175,10 @@ static void append_env(
 		argarg,
 		conn,
 		getenv("LD_LIBRARY_PATH"),
-		getenv("XDG_RUNTIME_DIR")
+		getenv("XDG_RUNTIME_DIR"),
+		getenv("XDG_STATE_HOME"),
+		getenv("XDG_CONFIG_HOME"),
+		getenv("LASH_BASE")
 	};
 
 /* HARDENING / REFACTOR: we should NOT pass logdir here as it should
@@ -200,7 +203,10 @@ static void append_env(
 		"ARCAN_ARG",
 		"ARCAN_SHMKEY",
 		"LD_LIBRARY_PATH",
-		"XDG_RUNTIME_DIR"
+		"XDG_RUNTIME_DIR",
+		"XDG_STATE_HOME",
+		"XDG_CONFIG_HOME",
+		"LASH_BASE"
 	};
 
 /* growarr is set to FATALFAIL internally, this should be changed
