@@ -807,7 +807,7 @@ static void process_nopacket(struct a12_state* S)
 /* remember the last sequence number of the packet we processed */
 	unpack_u64(&S->last_seen_seqnr, &S->decode[MAC_BLOCK_SZ]);
 	if (S->last_seen_seqnr <= S->current_seqnr)
-		S->stats.packets_pending = S->last_seen_seqnr - S->current_seqnr;
+		S->stats.packets_pending = S->current_seqnr - S->last_seen_seqnr;
 
 /* and finally the actual type in the inner block */
 	int state_id = S->decode[MAC_BLOCK_SZ + 8];
