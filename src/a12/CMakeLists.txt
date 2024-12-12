@@ -55,7 +55,6 @@ set(A12_SOURCES
 	a12_decode.c
 	a12_encode.c
 	${PLATFORM_ROOT}/posix/mem.c
-	${PLATFORM_ROOT}/posix/base64.c
 	${PLATFORM_ROOT}/posix/random.c
 )
 
