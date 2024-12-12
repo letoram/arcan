@@ -182,7 +182,7 @@ static struct a12_bhandler_res incoming_bhandler(
 		(md.type == A12_BTYPE_FONT || md.type == A12_BTYPE_FONT_SUPPL)){
 /* We got one, convert to b64 and try to open */
 		size_t len;
-		char* fname = (char*) arcan_base64_encode(md.checksum, 16, &len, 0);
+		char* fname = (char*) a12helper_tob64(md.checksum, 16, &len);
 		res.fd = openat(opts->bcache_dir, fname, O_RDONLY);
 
 /* If it was truncated (failure on first transfer), re-attempt as new,
