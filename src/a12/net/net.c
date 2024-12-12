@@ -1668,6 +1668,7 @@ static bool query_untrusted_key(
 	char buf[16] = {0};
 	fgets(buf, 16, stdin);
 	if (strcmp(buf, "yes\n") == 0){
+		*out_tag = strdup("");
 		return true;
 	}
 	else if (strcmp(buf, "remember\n") == 0){
@@ -1998,8 +1999,8 @@ int main(int argc, char** argv)
 			int fd = open(argv[0], O_RDONLY);
 			if (-1 == fd){
 				fprintf(stderr,
-					"environment error: arcan-net requires access to \n"
-					"its own valid executable as the first argument\n");
+					"environment error: arcan-net --directory requires access to \n"
+					"its own valid executable, start with full /path/to/arcan-net\n");
 				return EXIT_FAILURE;
 			}
 			close(fd);
