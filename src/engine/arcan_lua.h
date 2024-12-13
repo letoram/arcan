@@ -48,7 +48,9 @@ const char* arcan_lua_crash_source(struct arcan_luactx*);
 /* for initialization, update / push all the global constants used */
 void arcan_lua_pushglobalconsts(struct arcan_luactx* ctx);
 
-void arcan_lua_setglobalint(struct arcan_luactx* ctx, const char* key, int val);
+void arcan_lua_setglobalnum(
+	struct arcan_luactx* ctx, const char* key, double val);
+
 void arcan_lua_setglobalstr(struct arcan_luactx* ctx,
 	const char* key, const char* val);
 

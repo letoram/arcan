@@ -742,7 +742,7 @@ int MAIN_REDIR(int argc, char* argv[])
 
 /* mark that we are in hook so a script can know that is being used as a hook-
  * scripts and not as embedded by the appl itself */
-	arcan_lua_setglobalint(main_lua_context, "IN_HOOK", 1);
+	arcan_lua_setglobalnum(main_lua_context, "IN_HOOK", 1);
 	for (size_t i = 0; i < arr_hooks.count; i++){
 		if (arr_hooks.data[i]){
 			const char* name = arr_hooks.data[i];
@@ -750,10 +750,10 @@ int MAIN_REDIR(int argc, char* argv[])
 			arcan_lua_dostring(main_lua_context, src, name);
 		}
 	}
-	arcan_lua_setglobalint(main_lua_context, "IN_HOOK", 0);
+	arcan_lua_setglobalnum(main_lua_context, "IN_HOOK", 0);
 
 	if (adopt){
-		arcan_lua_setglobalint(main_lua_context, "CLOCK", evctx->c_ticks);
+		arcan_lua_setglobalnum(main_lua_context, "CLOCK", evctx->c_ticks);
 		arcan_lua_adopt(main_lua_context);
 
 /* re-issue video recovery here as adopt CLEARS THE EVENTQUEUE, this is quite a

@@ -594,7 +594,7 @@ void arcan_lua_tick(lua_State* ctx, size_t nticks, size_t global)
 	if (!nticks)
 		return;
 
-	arcan_lua_setglobalint(ctx, "CLOCK", global);
+	arcan_lua_setglobalnum(ctx, "CLOCK", global);
 	luactx.last_clock = global;
 
 /* Many applications misused the callback handler, ignoring the nticks and
@@ -1011,7 +1011,7 @@ void arcan_lua_setglobalstr(lua_State* ctx,
 	lua_setglobal(ctx, key);
 }
 
-void arcan_lua_setglobalint(lua_State* ctx, const char* key, int val)
+void arcan_lua_setglobalnum(lua_State* ctx, const char* key, double val)
 {
 	lua_pushnumber(ctx, val);
 	lua_setglobal(ctx, key);
@@ -3965,8 +3965,8 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 
 /* minor protection against bad displays */
 		if (ev->vid.vppcm > 18.0){
-			arcan_lua_setglobalint(ctx, "VPPCM", ev->vid.vppcm);
-			arcan_lua_setglobalint(ctx, "HPPCM", ev->vid.vppcm);
+			arcan_lua_setglobalnum(ctx, "VPPCM", ev->vid.vppcm);
+			arcan_lua_setglobalnum(ctx, "HPPCM", ev->vid.vppcm);
 		}
 
 		lua_getglobal(ctx, "VRES_AUTORES");
@@ -3977,8 +3977,8 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 				.height = ev->vid.height
 			};
 			if (platform_video_specify_mode(ev->vid.displayid, mode)){
-				arcan_lua_setglobalint(ctx, "VRESW", mode.width);
-				arcan_lua_setglobalint(ctx, "VRESH", mode.height);
+				arcan_lua_setglobalnum(ctx, "VRESW", mode.width);
+				arcan_lua_setglobalnum(ctx, "VRESH", mode.height);
 			}
 		}
 		else{
@@ -6403,8 +6403,8 @@ static int videocanvasrsz(lua_State* ctx)
 #endif
 
 	if (ARCAN_OK == arcan_video_resize_canvas(w, h)){
-		arcan_lua_setglobalint(ctx, "VRESW", w);
-		arcan_lua_setglobalint(ctx, "VRESH", h);
+		arcan_lua_setglobalnum(ctx, "VRESW", w);
+		arcan_lua_setglobalnum(ctx, "VRESH", h);
 	}
 
 	LUA_ETRACE("resize_video_canvas", NULL, 0);
@@ -9480,8 +9480,8 @@ static int renderreconf(lua_State* ctx)
 		vppcm = 18.0;
 
 	if (did == ARCAN_VIDEO_WORLDID){
-		arcan_lua_setglobalint(ctx, "VPPCM", vppcm);
-		arcan_lua_setglobalint(ctx, "HPPCM", hppcm);
+		arcan_lua_setglobalnum(ctx, "VPPCM", vppcm);
+		arcan_lua_setglobalnum(ctx, "HPPCM", hppcm);
 	}
 
 	arcan_video_rendertargetdensity(did, vppcm, hppcm, true, true);
@@ -13129,7 +13129,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 #undef EXT_CONSTTBL_GLOBINT
 
 	for (size_t i = 0; i < COUNT_OF(consttbl); i++)
-		arcan_lua_setglobalint(ctx, consttbl[i].key, consttbl[i].val);
+		arcan_lua_setglobalnum(ctx, consttbl[i].key, consttbl[i].val);
 
 /* same problem as with VRESW, VRESH */
 	float hppcm = mode.width && mode.phy_width ?
