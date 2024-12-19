@@ -3103,8 +3103,8 @@ static size_t queue_node(struct a12_state* S, struct blob_out* node)
 	if (cap == 0 || cap > 64096)
 		cap = 64096;
 
-	bool die;
-	bool free_buf;
+	bool die = true;
+	bool free_buf = true;
 	char* buf;
 
 /* not activated, so build a header first */
