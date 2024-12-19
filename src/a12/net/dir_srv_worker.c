@@ -995,7 +995,13 @@ static struct a12_bhandler_res srv_bevent(
 					request_parent_resource(S, cbt->C, M.identifier,
 						(char*) cbt->breq_pending.ext.bchunk.extensions, BREQ_STORE);
 
+/*
+ * Truncate the store, this is a rather crude workaround as we really want
+ * to provide both an atomic swap on completion AND verification, and the
+ * ability to start at an offset in order to provide resume- support.
+ */
 				if (-1 != res.fd){
+					ftruncate(res.fd, 0);
 					cbt->in_transfer = true;
 					cbt->transfer_id = M.identifier;
 					a12int_trace(A12_TRACE_DIRECTORY, "binary_transfer_initiated");
