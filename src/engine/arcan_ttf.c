@@ -1716,9 +1716,13 @@ static bool render_unicode(
 
 /* this approach gives us the wrong packing for color channels, but we
  * repack after scale as it is fewer operations */
-			stbir_resize_uint8(glyph->pixmap.buffer, glyph->pixmap.width,
+			stbir_resize_uint8_linear(
+				glyph->pixmap.buffer,
+				glyph->pixmap.width,
 				glyph->pixmap.rows, 0,
-				(unsigned char*) &dst[*xstart], neww, newh, stride * 4, 4);
+				(unsigned char*) &dst[*xstart], neww, newh, stride * 4,
+				(stbir_pixel_layout) 4
+			);
 
 			for (int row = 0; row < outf->ptsize; row++){
 				PIXEL* out = &dst[*xstart + ((row + yshift) * stride)];

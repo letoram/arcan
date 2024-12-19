@@ -721,7 +721,7 @@ static char* extract_vidref(struct text_format* prev, char* base, bool ext)
 		y2 = vs->h;
 	}
 /* and blit */
-	stbir_resize_uint8(inbuf, (x2 - x1), (y2 - y1), stride,
+	stbir_resize_uint8_linear(inbuf, (x2 - x1), (y2 - y1), stride,
 		(unsigned char*) prev->surf.buf, dw, dh, 0, sizeof(av_pixel));
 
 	prev->surf.w = dw;
@@ -1454,10 +1454,13 @@ int arcan_renderfun_stretchblit(char* src, int inw, int inh,
 	uint32_t* dst, size_t dstw, size_t dsth, int flipv)
 {
 	const int pack_tight = 0;
-	const int rgba_ch = 4;
 
-	if (1 != stbir_resize_uint8((unsigned char*)src,
-		inw, inh, pack_tight, (unsigned char*)dst, dstw, dsth, pack_tight, rgba_ch))
+	if (NULL == stbir_resize_uint8_linear(
+		(unsigned char*)src,
+		inw, inh, pack_tight,
+		(unsigned char*)dst, dstw, dsth,
+		pack_tight, STBIR_RGBA)
+	)
 		return -1;
 
 	if (!flipv)

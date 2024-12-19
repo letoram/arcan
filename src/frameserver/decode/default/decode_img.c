@@ -191,8 +191,11 @@ static bool do_file(struct arcan_shmif_cont* C, int inf)
 		if (!unpack)
 			return false;
 
-		stbir_resize_uint8(buf, dw, dh, 0,
-			unpack, C->w, C->h, 0, sizeof(shmif_pixel));
+		stbir_resize_uint8_linear(
+			buf, dw, dh, 0,
+			unpack, C->w, C->h, 0,
+			(stbir_pixel_layout) sizeof(shmif_pixel)
+		);
 
 		free(buf);
 		buf = unpack;
