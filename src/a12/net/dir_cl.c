@@ -892,6 +892,10 @@ static struct a12_bhandler_res anet_directory_cl_upload(
 static struct a12_bhandler_res anet_directory_cl_download(
 	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
 {
+	struct ioloop_shared* I = tag;
+	struct directory_meta* dir = I->cbt;
+	struct anet_dircl_opts* opts = dir->clopt;
+
 	struct a12_bhandler_res res = {
 		.fd = -1,
 		.flag = A12_BHANDLER_DONTWANT
@@ -899,11 +903,24 @@ static struct a12_bhandler_res anet_directory_cl_download(
 
 	switch (M.state){
 	case A12_BHANDLER_INITIALIZE:
+		if (strcmp(opts->download.path, "-") == 0){
+			res.fd = STDOUT_FILENO;
+			res.flag = A12_BHANDLER_NEWFD;
+		}
+		else {
+			res.fd = open(
+				opts->download.path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+			if (-1 != res.fd){
+				res.flag = A12_BHANDLER_NEWFD;
+			}
+		}
+
 /* should create .fd and return that based on I->clopt->download */
 	break;
 	case A12_BHANDLER_CANCELLED:
 	break;
 	case A12_BHANDLER_COMPLETED:
+		I->shutdown = true;
 	break;
 	default:
 	break;
