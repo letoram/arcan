@@ -637,6 +637,35 @@ bool a12helper_keystore_tags(bool (*cb)(const char*, void*), void* tag)
 	return true;
 }
 
+/* vendored from dir_srv.c */
+static int buf_memfd(const char* buf, size_t buf_sz)
+{
+	char template[] = "anetdirXXXXXX";
+	int out = mkstemp(template);
+	if (-1 == out)
+		return -1;
+
+	unlink(template);
+	size_t pos = 0;
+
+	while (buf_sz){
+		ssize_t nw = write(out, &buf[pos], buf_sz);
+
+		if (-1 == nw){
+			if (errno == EINTR || errno == EAGAIN)
+				continue;
+			close(out);
+			return -1;
+		}
+
+		buf_sz -= nw;
+		pos += nw;
+	}
+
+	lseek(out, 0, SEEK_SET);
+	return out;
+}
+
 int a12helper_keystore_statestore(
 	const uint8_t pubk[static 32], const char* name, size_t sz, const char* mode)
 {
@@ -653,16 +682,49 @@ int a12helper_keystore_statestore(
 /* need to save / store the cap somewhere, match the directory name to the
  * same random name that was given to the key earlier */
 	mkdirat(keystore.dirfd_state, ent->fn, S_IRWXU);
-	int dir = openat(keystore.dirfd_state, ent->fn, O_DIRECTORY | O_CLOEXEC);
-	if (dir == -1)
+	int dfd = openat(keystore.dirfd_state, ent->fn, O_DIRECTORY | O_CLOEXEC);
+	if (dfd == -1)
 		return -1;
+
+/* special case - read on .index should be an enumeration of the store */
+	if (strcmp(name, ".index") == 0){
+		if (mode[0] != 'r')
+			return -1;
+
+		char* buf;
+		size_t buf_sz;
+		FILE* stream = open_memstream(&buf, &buf_sz);
+
+		DIR* dir = fdopendir(dfd);
+		if (!dir){
+			close(dfd);
+			return -1;
+		}
+
+/* write the listing to tempfile for now, this should be exposed to cache/
+ * index/search later (at separate permissions) but since this is private
+ * state that path should be treaded lightly. */
+		struct dirent* ent;
+		fprintf(stream, "a12:directory_index:version=1\n");
+		while ((ent = readdir(dir))){
+			if (ent->d_type == DT_REG){
+				fprintf(stream, "file=%s\n", ent->d_name);
+			}
+		}
+		fclose(stream);
+		int ret = buf_memfd(buf, buf_sz);
+		closedir(dir);
+		free(buf);
+
+		return ret;
+	}
 
 /* sz is not enforced yet, just read a .cap file? */
 	if (strcmp(mode, "w+") == 0){
-		return openat(dir, name, O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR);
+		return openat(dfd, name, O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR);
 	}
 	else
-		return openat(dir, name, O_RDONLY | O_CLOEXEC);
+		return openat(dfd, name, O_RDONLY | O_CLOEXEC);
 }
 
 /*
