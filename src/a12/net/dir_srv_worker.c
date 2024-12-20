@@ -204,6 +204,21 @@ static void on_a12srv_event(
 		arcan_shmif_enqueue(C, &disc);
 	}
 
+/* signals that a streaming transfer is completed or broken, send it back to
+ * ack that we got it and if the client has nothing else to do, can shut down. */
+	else if (ev->ext.kind == EVENT_EXTERNAL_STREAMSTATUS){
+		if (cbt->in_transfer && ev->ext.streamstat.identifier == cbt->transfer_id){
+			cbt->in_transfer = false;
+			cbt->breq_pending = (struct arcan_event){0};
+
+/* This is where atomic swap goes on completion (see BCHUNKSTATE use) */
+			a12_channel_enqueue(cbt->S, ev);
+		}
+		else
+			a12int_trace(A12_TRACE_DIRECTORY,
+				"kind=error:streamstatus:status=unknown_stream");
+	}
+
 	else if (ev->ext.kind == EVENT_EXTERNAL_IDENT){
 		a12int_trace(A12_TRACE_DIRECTORY,
 			"source_join=%s", ev->ext.message.data);
@@ -992,6 +1007,12 @@ static struct a12_bhandler_res srv_bevent(
  * BCHUNKSTATE or we reject it outright. The original event is kept until
  * cancelled or completed. */
 		else if (M.type == A12_BTYPE_BLOB){
+			a12int_trace(
+					A12_TRACE_DIRECTORY, "kind=status:btransfer:blob:id=%d:pending=%d",
+					(int)M.identifier,
+					cbt->breq_pending.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE
+			);
+
 			if (cbt->breq_pending.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE &&
 					cbt->breq_pending.ext.bchunk.ns == M.identifier){
 				res.fd =
@@ -1009,6 +1030,9 @@ static struct a12_bhandler_res srv_bevent(
 					cbt->transfer_id = M.identifier;
 					a12int_trace(A12_TRACE_DIRECTORY, "binary_transfer_initiated");
 				}
+				else
+					a12int_trace(
+						A12_TRACE_DIRECTORY, "kind=status:btransfer_rejected_parent");
 			}
 		}
 /* the rest are default-reject that must be manually enabled for the server
