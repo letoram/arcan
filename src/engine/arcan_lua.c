@@ -12269,6 +12269,7 @@ static int net_open(lua_State* ctx)
 
 		free(host);
 		arcan_conductor_register_frameserver(newref);
+		newref->segid = SEGID_NETWORK_CLIENT;
 
 		if (!arcan_monitor_fsrvvid(path)){
 			arcan_frameserver_free(newref);
@@ -12330,31 +12331,6 @@ static int net_open(lua_State* ctx)
 	free(instr);
 
 	LUA_ETRACE("net_open", NULL, 1);
-}
-
-static arcan_frameserver* luaL_checknet(lua_State* ctx,
-	bool server, arcan_vobject** dvobj, const char* prefix)
-{
-	arcan_vobject* vobj;
-	luaL_checkvid(ctx, 1, &vobj);
-	arcan_frameserver* fsrv = vobj->feed.state.ptr;
-
-	if (!fsrv || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
-		arcan_fatal("%S (1), " FATAL_MSG_FRAMESERV, prefix);
-
-	if (server && fsrv->segid != SEGID_NETWORK_SERVER){
-		arcan_fatal("%s -- Frameserver connected to VID is not in server mode "
-			"(net_open vs net_listen)\n", prefix);
-	}
-	else if (!server && fsrv->segid != SEGID_NETWORK_CLIENT)
-		arcan_fatal("%s -- Frameserver connected to VID is not in client mode "
-			"(net_open vs net_listen)\n", prefix);
-
-	if (fsrv->parent.vid != ARCAN_EID)
-		arcan_fatal("%s -- Subsegment argument target not allowed\n", prefix);
-
-	*dvobj = vobj;
-	return fsrv;
 }
 
 void arcan_lua_cleanup()
