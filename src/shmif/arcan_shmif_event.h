@@ -1435,6 +1435,7 @@ enum ARCAN_TARGET_SKIPMODE {
  * (extensions)- 7-bit ASCII filtered to alnum with ; separation between
  *               accepted extensions or empty [0]='\0' to indicate no-support
  *               for input/output.
+ * (id)        - identifier for pairing to a REQFAIL
   */
 	struct {
 		union {
@@ -1445,6 +1446,7 @@ enum ARCAN_TARGET_SKIPMODE {
 		uint8_t hint;
 		uint8_t stream;
 		uint8_t extensions[68];
+		uint32_t identifier;
 	} bchunk;
 
 /*
