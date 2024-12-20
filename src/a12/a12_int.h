@@ -289,9 +289,10 @@ struct a12_state {
 /* linked list of pending binary transfers, can be re-ordered and affect
  * blocking / transfer state of events on the other side */
 	struct blob_xfer* pending_out;
-	struct blob_xfer* pending_in;
+	size_t out_req_id;
 
-	size_t active_blobs;
+	struct blob_xfer* pending_in;
+	size_t in_req_id;
 
 /* current event handler for binary transfer cache oracle */
 	struct a12_bhandler_res

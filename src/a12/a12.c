@@ -1095,12 +1095,27 @@ static void command_binarystream(struct a12_state* S)
 
 	uint32_t streamid;
 	unpack_u32(&streamid, &S->decode[18]);
+
+/* if the bchunk matches the pending_in request-id, we should swallow it here
+ * and swap in values from there */
+	bool swallow = false;
+	int sc = A12_BHANDLER_DONTWANT;
+
+	if (S->pending_in && S->pending_in->identifier == streamid){
+		bframe->tmp_fd = S->pending_in->fd;
+		swallow = true;
+		sc = A12_BHANDLER_INITIALIZE;
+		a12int_trace(A12_TRACE_BTRANSFER, "kind=resolve_queued_bstream");
+	}
+	else {
+		bframe->tmp_fd = -1;
+	}
+
 	bframe->streamid = streamid;
 	unpack_u64(&bframe->size, &S->decode[22]);
 	bframe->type = S->decode[30];
 	unpack_u32(&bframe->identifier, &S->decode[31]);
 	memcpy(bframe->checksum, &S->decode[35], 16);
-	bframe->tmp_fd = -1;
 	memcpy(bframe->extid, &S->decode[53], 16);
 
 	bframe->active = true;
@@ -1115,10 +1130,9 @@ static void command_binarystream(struct a12_state* S)
  * get from the cache, but still need to process and discard incoming packages
  * in the meanwhile.
  *
- * This is the point where, for non-streams, provide a table of hashes first
- * and support resume at the first missing or broken hash
+ * This is the point where, for non-streams, we'd want to match against a
+ * merkle-tree and forward the list of chunks we actually need
  */
-	int sc = A12_BHANDLER_DONTWANT;
 	struct a12_bhandler_meta bm = {
 		.state = A12_BHANDLER_INITIALIZE,
 		.known_size = bframe->size,
@@ -1131,7 +1145,7 @@ static void command_binarystream(struct a12_state* S)
 	memcpy(bm.extid, bframe->extid, 16);
 	memcpy(bm.checksum, bframe->checksum, 16);
 
-	if (S->binary_handler){
+	if (!swallow && S->binary_handler){
 		struct a12_bhandler_res res = S->binary_handler(S, bm, S->binary_handler_tag);
 		bframe->tmp_fd = res.fd;
 		sc = res.flag;
@@ -1617,6 +1631,75 @@ void a12_enqueue_blob(struct a12_state* S, const char* const buf,
 		"kind=added:type=fixed_blob:stream=no:size=%zu", buf_sz);
 }
 
+static bool pack_and_send_event(
+	struct a12_state* S, struct arcan_event* ev)
+{
+/*
+ * MAC and cipher state is managed in the append-outb stage
+ */
+	uint8_t outb[header_sizes[STATE_EVENT_PACKET]];
+	size_t hdr = SEQUENCE_NUMBER_SIZE + 1;
+	outb[SEQUENCE_NUMBER_SIZE] = S->out_channel;
+	step_sequence(S, outb);
+
+	ssize_t step = arcan_shmif_eventpack(ev, &outb[hdr], sizeof(outb) - hdr);
+	if (-1 == step)
+		return false;
+
+	a12int_append_out(S, STATE_EVENT_PACKET, outb, step + hdr, NULL, 0);
+
+	a12int_trace(A12_TRACE_EVENT,
+		"kind=enqueue:eventstr=%s", arcan_shmif_eventstr(ev, NULL, 0));
+
+	return true;
+}
+
+static bool a12_enqueue_bstream_in(
+	struct a12_state* S, int fd, int type, struct arcan_event* ev)
+{
+	struct blob_xfer** parent = alloc_attach_blob(S, &S->pending_in);
+	if (!parent){
+		return false;
+	}
+
+	struct blob_xfer* next = *parent;
+	next->type = type;
+	next->identifier = ev->tgt.ioevs[3].uiv;
+	next->streamid = S->out_stream++;
+	next->fd = arcan_shmif_dupfd(fd, -1, false);
+	next->chid = S->out_channel;
+
+/* we need to mutate the event so that it becomes a BCHUNKSTATE request */
+	arcan_event outev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = EVENT_EXTERNAL_BCHUNKSTATE,
+		.ext.bchunk = {
+			.input = true,
+			.ns = ev->tgt.ioevs[3].uiv,
+			.identifier = next->streamid
+		}
+	};
+	memcpy(outev.ext.bchunk.extensions,
+		ev->tgt.message, sizeof(outev.ext.bchunk.extensions));
+
+	arcan_event* copy = DYNAMIC_MALLOC(sizeof(arcan_event));
+	*copy = outev;
+	next->tag = copy;
+
+	if (-1 == next->fd){
+		*parent = NULL;
+		DYNAMIC_FREE(next);
+		return false;
+	}
+
+/* if we are next up for unpack_bstream then send the bchunkreq immediately */
+	if (!S->channels[S->out_channel].unpack_state.bframe.active){
+		pack_and_send_event(S, &outev);
+	}
+
+	return true;
+}
+
 static void a12_enqueue_bstream_tagged(
 	struct a12_state* S,
 	int fd, int type, uint32_t id, bool streaming, size_t sz,
@@ -1629,6 +1712,8 @@ static void a12_enqueue_bstream_tagged(
 	struct blob_xfer* next = *parent;
 	next->type = type;
 	next->identifier = id;
+	next->chid = S->out_channel;
+
 	if (tag){
 		arcan_event* copy = DYNAMIC_MALLOC(sizeof(arcan_event));
 		*copy = (*tag);
@@ -2223,6 +2308,35 @@ void a12_drop_tunnel(struct a12_state* S, uint8_t id)
 }
 
 /*
+ * We have received an event that updates status on a transfer on the matching
+ * channel. This function steps the queue, triggers the subsequent request.
+ * The request itself will get a response back as a new failure or a new
+ * command_binarystream.
+ */
+static void progress_pending_in(struct a12_state* S, uint8_t ch, float progress)
+{
+	if (progress < 0.0){
+		a12int_trace(A12_TRACE_BTRANSFER, "chid=%"PRIu8":failed", ch);
+		unlink_node(S, &S->pending_in, S->pending_in);
+		!S->channels[S->out_channel].unpack_state.bframe.active;
+	}
+	else if (progress >= 1.0){
+		a12int_trace(A12_TRACE_BTRANSFER, "chid=%"PRIu8":ok", ch);
+		unlink_node(S, &S->pending_in, S->pending_in);
+	}
+	else {
+		a12int_trace(A12_TRACE_BTRANSFER,
+			"chid=%"PRIu8":progress=%f", ch, progress);
+		return;
+	}
+
+	if (S->pending_in){
+		a12int_trace(A12_TRACE_BTRANSFER, "chid=%"PRIu8":request_next", ch);
+		pack_and_send_event(S, S->pending_in->tag);
+	}
+}
+
+/*
  * Control command,
  * current MAC calculation in s->mac_dec
  */
@@ -2356,8 +2470,35 @@ static void process_event(struct a12_state* S, void* tag,
 		S->decode_pos-SEQUENCE_NUMBER_SIZE-1, &aev))
 	{
 		a12int_trace(A12_TRACE_SYSTEM, "broken event packet received");
+		reset_state(S);
 	}
-	else if (on_event){
+
+	bool forward = true;
+
+/* match events against our pending_in queue */
+	int64_t id = aev.ext.streamstat.identifier;
+	int64_t upid = S->channels[channel].unpack_state.bframe.identifier;
+	bool upack_pending =
+		S->channels[channel].unpack_state.bframe.identifier && id == upid;
+
+	if (aev.category == EVENT_EXTERNAL){
+		if (aev.ext.kind == EVENT_EXTERNAL_STREAMSTATUS){
+			if (upack_pending){
+				progress_pending_in(S, channel, aev.ext.streamstat.completion);
+				forward = false;
+			}
+		}
+	}
+	else if (aev.category == EVENT_TARGET){
+		if (aev.tgt.kind == TARGET_COMMAND_REQFAIL){
+			if (upack_pending){
+				progress_pending_in(S, channel, -1);
+				forward = false;
+			}
+		}
+	}
+
+	if (forward && on_event){
 		a12int_trace(A12_TRACE_EVENT, "unpack event to %d", channel);
 		on_event(S->channels[channel].cont, channel, &aev, tag);
 	}
@@ -2532,11 +2673,18 @@ static void process_blob(struct a12_state* S)
  * cache, but such trust compartmentation should be handled by real separation
  * between clients. */
 			memcpy(&bm.checksum, cbf->checksum, 16);
-			cbf->tmp_fd = -1;
-			S->binary_handler(S, bm, S->binary_handler_tag);
 
-/* send that we ack:ed the transfer so the other side gets a chance to react
- * even if they have nothing else queued */
+			if (S->pending_in && S->pending_in->identifier == cbf->identifier){
+				close(cbf->tmp_fd);
+				progress_pending_in(S, S->in_channel, 1.0);
+			}
+			else if (S->binary_handler){
+				cbf->tmp_fd = -1;
+				S->binary_handler(S, bm, S->binary_handler_tag);
+			}
+
+/* send a ping that that we ack:ed the transfer so the other side gets a chance
+ * to react even if there is nothing else going on */
 			a12int_stream_ack(S, S->in_channel, cbf->identifier);
 			return;
 		}
@@ -3462,14 +3610,15 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
 	if (arcan_shmif_descrevent(ev)){
 		switch(ev->tgt.kind){
 		case TARGET_COMMAND_RESTORE:
-		case TARGET_COMMAND_BCHUNK_IN:
-/* We need to request a pending identifier, check that when we get
- * an inbound bstream and map to the recorded descriptor. */
+			return a12_enqueue_bstream_in(S, ev->tgt.ioevs[0].iv, A12_BTYPE_STATE, ev);
 		break;
 
-/* these events have a descriptor, just map them to the right type of
- * binary transfer event and the other side will synthesize and push
- * the rest */
+		case TARGET_COMMAND_BCHUNK_IN:
+			return a12_enqueue_bstream_in(S, ev->tgt.ioevs[0].iv, A12_BTYPE_BLOB, ev);
+		break;
+
+/* these events have a descriptor, just map them to the right type of binary
+ * transfer event and the other side will synthesize and push the rest */
 		case TARGET_COMMAND_STORE:
 			a12_enqueue_bstream_tagged(S,
 				ev->tgt.ioevs[0].iv, A12_BTYPE_STATE, 0, true, 0, empty_ext, ev);
@@ -3498,22 +3647,7 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
 		}
 	}
 
-/*
- * MAC and cipher state is managed in the append-outb stage
- */
-	uint8_t outb[header_sizes[STATE_EVENT_PACKET]];
-	size_t hdr = SEQUENCE_NUMBER_SIZE + 1;
-	outb[SEQUENCE_NUMBER_SIZE] = S->out_channel;
-	step_sequence(S, outb);
-
-	ssize_t step = arcan_shmif_eventpack(ev, &outb[hdr], sizeof(outb) - hdr);
-	if (-1 == step)
-		return true;
-
-	a12int_append_out(S, STATE_EVENT_PACKET, outb, step + hdr, NULL, 0);
-
-	a12int_trace(A12_TRACE_EVENT,
-		"kind=enqueue:eventstr=%s", arcan_shmif_eventstr(ev, NULL, 0));
+	pack_and_send_event(S, ev);
 	return true;
 }
 

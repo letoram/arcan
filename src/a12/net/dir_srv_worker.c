@@ -153,11 +153,23 @@ static void on_a12srv_event(
 			return;
 		}
 
+/*
+ * Request downloading the appl specifically? other requests should be routed
+ * through the controller (if exists) before trying the appl specific
+ * state-store. A security consideration here would be a downloaded appl first
+ * requesting .index for the private store, enumerating and downloading each
+ * file, then pushing it to the appl-store.
+ *
+ * There is a case for permitting accessing the private store, e.g. the durden
+ * desktop, but that should be a manifest permission and rejected client side
+ * unless permitted (when running as the outer desktop) and forcing any nested
+ * appls to receive it through a bchunkreq or drag/drop).
+ */
 		int fd = request_parent_resource(
 			cbt->S, C, ev->ext.bchunk.ns, (char*) ev->ext.bchunk.extensions, BREQ_LOAD);
 
-/* if the appl exist, first try the state blob, then the appl */
-		if (fd != -1){
+/* if the appl exist, first send the state blob, if there is one, then the appl */
+		if (fd != -1 && ev->ext.bchunk.ns){
 			char empty_ext[16] = {0};
 
 			int state_fd = request_parent_resource(
@@ -933,7 +945,7 @@ static struct a12_bhandler_res srv_bevent(
 				.ext.kind = EVENT_EXTERNAL_STREAMSTATUS,
 				.ext.streamstat = {
 					.completion = 1.0,
-					.identifier = M.identifier
+					.identifier = M.streamid
 				}
 			};
 
@@ -966,7 +978,7 @@ static struct a12_bhandler_res srv_bevent(
 				.ext.kind = EVENT_EXTERNAL_STREAMSTATUS,
 				.ext.streamstat = {
 					.completion = -1,
-					.identifier = M.identifier
+					.identifier = M.streamid
 				}
 			};
 			cbt->in_transfer = false;
