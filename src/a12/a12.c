@@ -141,7 +141,9 @@ static void register_bchunk_name(struct a12_state* S, struct arcan_event* ev)
 	struct arcan_event outev = {
 		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
 		.category = EVENT_EXTERNAL,
-		.ext.bchunk.ns = ev->tgt.ioevs[3].uiv
+		.ext.bchunk.ns = ev->tgt.ioevs[3].uiv,
+		.ext.bchunk.input = ev->tgt.kind == TARGET_COMMAND_BCHUNK_IN
+/* other option, streaming, known size .. */
 	};
 	snprintf(
 		(char*) outev.ext.bchunk.extensions,
@@ -1160,23 +1162,31 @@ void a12_vstream_cancel(struct a12_state* S, uint8_t channel, int reason)
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 }
 
-void a12_stream_cancel(struct a12_state* S, uint8_t channel)
+static void build_cancel_packet(
+	struct a12_state* S, uint8_t channel, uint32_t id, uint8_t type)
 {
 	uint8_t outb[CONTROL_PACKET_SIZE] = {0};
-	step_sequence(S, outb);
+	build_control_header(S, outb, COMMAND_CANCELSTREAM);
+
+	outb[16] = channel;
+	pack_u32(id, &outb[18]); /* [18 .. 21] stream-id */
+	outb[23] = type;
+
+	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
+}
+
+void a12_stream_cancel(struct a12_state* S, uint8_t channel)
+{
 	struct binary_frame* bframe = &S->channels[channel].unpack_state.bframe;
 
 /* API misuse, trying to cancel a stream that is not active */
 	if (!bframe->active)
 		return;
 
-	outb[16] = channel;
-	outb[17] = COMMAND_CANCELSTREAM;
-	pack_u32(bframe->streamid, &outb[18]); /* [18 .. 21] stream-id */
-	outb[23] = STREAM_TYPE_BINARY;
+	build_cancel_packet(S, channel, bframe->streamid, STREAM_TYPE_BINARY);
+
 	bframe->active = false;
 	bframe->streamid = -1;
-	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 
 	if (bframe->zstd){
 		ZSTD_freeDCtx(bframe->zstd);
@@ -1319,6 +1329,9 @@ struct a12_state* S, void (*on_event)
 	on_event(S->channels[channel].cont, channel, &ev, tag);
 }
 
+/*
+ * slightly different from cancel_packet, we fail before we even begin
+ */
 void a12int_stream_fail(struct a12_state* S, uint8_t ch, uint32_t id, int fail)
 {
 	uint8_t outb[CONTROL_PACKET_SIZE];
@@ -3170,7 +3183,22 @@ static size_t queue_node(struct a12_state* S, struct blob_out* node)
 
 /* streaming or file source that broke before we finished sending it all */
 	if (!buf && (die || !node->zstd)){
-		a12_stream_cancel(S, S->in_channel);
+/*
+ * REMOVED: this assumed that it was the receiving side sending the cancel
+ * a12_stream_cancel(S, S->out_channel); It's not that we are actually cancelling
+ * but rather finished.
+ */
+		struct arcan_event ack =
+			(struct arcan_event){
+			.category = EVENT_EXTERNAL,
+				.ext.kind = EVENT_EXTERNAL_STREAMSTATUS,
+				.ext.streamstat = {
+					.completion = 1.0,
+					.identifier = node->identifier
+			}
+		};
+		a12_channel_enqueue(S, &ack);
+
 		if (die){
 			unlink_node(S, node);
 		}
@@ -3446,13 +3474,13 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
  * the rest */
 		case TARGET_COMMAND_STORE:
 			a12_enqueue_bstream_tagged(S,
-				ev->tgt.ioevs[0].iv, A12_BTYPE_STATE, false, 0, 0, empty_ext, ev);
+				ev->tgt.ioevs[0].iv, A12_BTYPE_STATE, 0, true, 0, empty_ext, ev);
 			return true;
 		break;
 
 		case TARGET_COMMAND_BCHUNK_OUT:
 			a12_enqueue_bstream_tagged(S,
-				ev->tgt.ioevs[0].iv, A12_BTYPE_BLOB, false, 0, 0, empty_ext, ev);
+				ev->tgt.ioevs[0].iv, A12_BTYPE_BLOB, 0, true, 0, empty_ext, ev);
 			return true;
 		break;
 
