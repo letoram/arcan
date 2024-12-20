@@ -58,7 +58,8 @@ size_t a12int_header_size(int kind)
 	return header_sizes[kind];
 }
 
-static void unlink_node(struct a12_state*, struct blob_xfer*);
+static void unlink_node(
+	struct a12_state* S, struct blob_xfer** root, struct blob_xfer* node);
 static void dirstate_item(struct a12_state* S, struct appl_meta* C);
 static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz, int ind)
 {
@@ -1012,7 +1013,7 @@ static void command_cancelstream(
 				}, S->binary_handler_tag);
 			}
 
-			unlink_node(S, node);
+			unlink_node(S, &S->pending_out, node);
 			return;
 		}
 		node = node->next;
@@ -1539,7 +1540,8 @@ static void command_videoframe(struct a12_state* S)
 	}
 }
 
-static struct blob_xfer** alloc_attach_blob(struct a12_state* S)
+static struct blob_xfer** alloc_attach_blob(
+	struct a12_state* S, struct blob_xfer** parent)
 {
 	struct blob_xfer* next = DYNAMIC_MALLOC(sizeof(struct blob_xfer));
 	if (!next){
@@ -1554,7 +1556,6 @@ static struct blob_xfer** alloc_attach_blob(struct a12_state* S)
 		.chid = S->out_channel
 	};
 
-	struct blob_xfer** parent = &S->pending_out;
 	size_t n_streaming = 0;
 	size_t n_known = 0;
 
@@ -1587,7 +1588,7 @@ void a12_set_session(
 void a12_enqueue_blob(struct a12_state* S, const char* const buf,
 	size_t buf_sz, uint32_t id, int type, const char extid[static 16])
 {
-	struct blob_xfer** next = alloc_attach_blob(S);
+	struct blob_xfer** next = alloc_attach_blob(S, &S->pending_out);
 	if (!next)
 		return;
 
@@ -1623,7 +1624,7 @@ static void a12_enqueue_bstream_tagged(
 	int fd, int type, uint32_t id, bool streaming, size_t sz,
 	const char extid[static 16], arcan_event* tag)
 {
-	struct blob_xfer** parent = alloc_attach_blob(S);
+	struct blob_xfer** parent = alloc_attach_blob(S, &S->pending_out);
 	if (!parent)
 		return;
 
@@ -2967,12 +2968,13 @@ static void* read_data(int fd, size_t cap, uint16_t* nts, bool* die)
 	return buf;
 }
 
-static void unlink_node(struct a12_state* S, struct blob_xfer* node)
+static void unlink_node(
+	struct a12_state* S, struct blob_xfer** root, struct blob_xfer* node)
 {
 	/* find the owner of the node, redirect next */
 	/* close the socket and other resources */
 	struct blob_xfer* next = node->next;
-	struct blob_xfer** dst = &S->pending_out;
+	struct blob_xfer** dst = root;
 
 	while (*dst != node && *dst){
 		dst = &((*dst)->next);
@@ -3200,7 +3202,7 @@ static size_t queue_node(struct a12_state* S, struct blob_xfer* node)
 		a12_channel_enqueue(S, &ack);
 
 		if (die){
-			unlink_node(S, node);
+			unlink_node(S, &S->pending_out, node);
 		}
 		return 0;
 	}
@@ -3220,7 +3222,7 @@ static size_t queue_node(struct a12_state* S, struct blob_xfer* node)
 		DYNAMIC_FREE(buf);
 
 	if (die)
-		unlink_node(S, node);
+		unlink_node(S, &S->pending_out, node);
 
 	return nts;
 }
