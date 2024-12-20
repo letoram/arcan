@@ -1615,8 +1615,6 @@ void a12_enqueue_blob(struct a12_state* S, const char* const buf,
 
 	a12int_trace(A12_TRACE_BTRANSFER,
 		"kind=added:type=fixed_blob:stream=no:size=%zu", buf_sz);
-
-	S->active_blobs++;
 }
 
 static void a12_enqueue_bstream_tagged(
@@ -1722,7 +1720,6 @@ static void a12_enqueue_bstream_tagged(
 	next->left = fend;
 	a12int_trace(A12_TRACE_BTRANSFER,
 		"kind=added:type=%d:stream=no:size=%zu", type, next->left);
-	S->active_blobs++;
 	return;
 
 fail:
@@ -2987,7 +2984,6 @@ static void unlink_node(
 
 	a12int_trace(A12_TRACE_ALLOC, "unlinked:stream=%"PRIu64, node->streamid);
 
-	S->active_blobs--;
 	*dst = next;
 	close(node->fd);
 
