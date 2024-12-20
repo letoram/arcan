@@ -133,6 +133,24 @@ static void build_control_header(struct a12_state* S, uint8_t* outb, uint8_t cmd
 	outb[17] = cmd;
 }
 
+static void register_bchunk_name(struct a12_state* S, struct arcan_event* ev)
+{
+	if (S->remote_mode != ROLE_DIR)
+		return;
+
+	struct arcan_event outev = {
+		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
+		.category = EVENT_EXTERNAL,
+		.ext.bchunk.ns = ev->tgt.ioevs[3].uiv
+	};
+	snprintf(
+		(char*) outev.ext.bchunk.extensions,
+		COUNT_OF(outev.ext.bchunk.extensions),
+		"%s", ev->tgt.message
+	);
+	a12_channel_enqueue(S, &outev);
+}
+
 void
 a12int_request_dirlist(struct a12_state* S, bool notify)
 {
@@ -1587,27 +1605,10 @@ void a12_enqueue_blob(struct a12_state* S, const char* const buf,
 	S->active_blobs++;
 }
 
-/*
- * Binary transfers comes in different shapes:
- *
- *  - [bchunk-in / bchunk-out] non-critical blob transfer, typically on
- *                             clipboard, can be queued and interleaved
- *                             when no-other relevant transfer going on.
- *
- *  - [store] priority state serialization, may be overridden by future reqs.
- *
- *  - [restore] block / priority - changes event interpretation context after.
- *
- *  - [fonthint] affects visual output, likely to be cacheable, higher
- *               priority during the preroll stage
- *
- * [out and store] are easier to send on a non-output segment over an
- * asymmetric connection as they won't fight with other transfers.
- *
- */
-void a12_enqueue_bstream(struct a12_state* S,
+static void a12_enqueue_bstream_tagged(
+	struct a12_state* S,
 	int fd, int type, uint32_t id, bool streaming, size_t sz,
-	const char extid[static 16])
+	const char extid[static 16], arcan_event* tag)
 {
 	struct blob_out** parent = alloc_attach_blob(S);
 	if (!parent)
@@ -1616,6 +1617,7 @@ void a12_enqueue_bstream(struct a12_state* S,
 	struct blob_out* next = *parent;
 	next->type = type;
 	next->identifier = id;
+	next->tag = tag;
 
 	if (type == A12_BTYPE_APPL || type == A12_BTYPE_APPL_RESOURCE){
 		snprintf(next->extid, 16, "%s", extid);
@@ -1711,6 +1713,33 @@ fail:
 
 	*parent = NULL;
 	DYNAMIC_FREE(next);
+}
+
+/*
+ * Binary transfers comes in different shapes:
+ *
+ *  - [bchunk-in / bchunk-out] non-critical blob transfer, typically on
+ *                             clipboard, can be queued and interleaved
+ *                             when no-other relevant transfer going on.
+ *
+ *  - [store] priority state serialization, may be overridden by future reqs.
+ *
+ *  - [restore] block / priority - changes event interpretation context after.
+ *
+ *  - [fonthint] affects visual output, likely to be cacheable, higher
+ *               priority during the preroll stage
+ *
+ * [out and store] are easier to send on a non-output segment over an
+ * asymmetric connection as they won't fight with other transfers.
+ *
+ */
+void a12_enqueue_bstream(
+	struct a12_state* S,
+	int fd, int type, uint32_t id, bool streaming, size_t sz,
+	const char extid[static 16])
+{
+/* wrapped to not break compatibility */
+	return a12_enqueue_bstream_tagged(S, fd, type, id, streaming, sz, extid, NULL);
 }
 
 static bool authdec_buffer(const char* src, struct a12_state* S, size_t block_sz)
@@ -3059,6 +3088,10 @@ static size_t begin_bstream(struct a12_state* S, struct blob_out* node)
 {
 	uint8_t outb[CONTROL_PACKET_SIZE];
 
+/* pre-send BCHUNKSTATE, if necessary */
+	if (node->tag)
+		register_bchunk_name(S, (arcan_event*) node->tag);
+
 	build_control_header(S, outb, COMMAND_BINARYSTREAM);
 	outb[16] = node->chid;
 
@@ -3390,33 +3423,27 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
 
 	char empty_ext[16] = {0};
 
-/* descriptor passing events are another complex affair, those that require
- * the caller to provide data outwards should already have been handled at
- * this stage, so it is basically STORE and BCHUNK_OUT that are allowed to
- * be forwarded in order for the other side to a12_queue_bstream */
 	if (arcan_shmif_descrevent(ev)){
 		switch(ev->tgt.kind){
-		case TARGET_COMMAND_STORE:
-		case TARGET_COMMAND_BCHUNK_OUT:
-/* we need to register a local store that tracks the descriptor here
- * and just replaces the [0].iv field with that key, the other side
- * will forward a bstream correctly then pair */
+		case TARGET_COMMAND_RESTORE:
+		case TARGET_COMMAND_BCHUNK_IN:
+/* We need to request a pending identifier, check that when we get
+ * an inbound bstream and map to the recorded descriptor. */
 		break;
 
 /* these events have a descriptor, just map them to the right type of
  * binary transfer event and the other side will synthesize and push
  * the rest */
-		case TARGET_COMMAND_RESTORE:
+		case TARGET_COMMAND_STORE:
 			a12_enqueue_bstream(S,
 				ev->tgt.ioevs[0].iv, A12_BTYPE_STATE, false, 0, 0, empty_ext);
 			return true;
 		break;
 
-/* let the bstream- side determine if the source is streaming or not */
-		case TARGET_COMMAND_BCHUNK_IN:
+		case TARGET_COMMAND_BCHUNK_OUT:
 			a12_enqueue_bstream(S,
 				ev->tgt.ioevs[0].iv, A12_BTYPE_BLOB, false, 0, 0, empty_ext);
-				return true;
+			return true;
 		break;
 
 /* weird little detail with the fonthint is that the real fonthint event

@@ -440,22 +440,35 @@ static void runner_shmif(struct ioloop_shared* I, bool ok)
 			continue;
 		}
 
-		if (ev.tgt.kind != TARGET_COMMAND_MESSAGE)
-			continue;
+/* The descriptor is dup:ed so shmif doesn't close it as a12 implementation
+ * will need to hold on to it for enqueue_bstream or the download handler to
+ * work.
+ *
+ * We use the fd as the request-id so we simply need to pair that in the
+ * bchunk handler. The lowest base is set once so that a malicious server
+ * can't reply to a lower fd and hit the monitor connection as a means of
+ * injecting monitor commands and possibly aid a VM escape.
+ */
+		if (ev.tgt.kind == TARGET_COMMAND_BCHUNK_OUT ||
+				ev.tgt.kind == TARGET_COMMAND_BCHUNK_IN){
+			a12_channel_enqueue(I->S, &ev);
+		}
 
 /* we need to flip the 'direction' as the other end expect us to behave like a
  * shmif client, i.e. TARGET is from server to client, EXTERNAL is from client
  */
-		struct arcan_event out = {
-			.category = EVENT_EXTERNAL,
-			.ext.message.multipart = ev.tgt.ioevs[0].iv
-		};
-		_Static_assert(sizeof(out.ext.message.data) ==
-			sizeof(ev.tgt.message), "_event.h integrity");
+		else if (ev.tgt.kind == TARGET_COMMAND_MESSAGE){
+			struct arcan_event out = {
+				.category = EVENT_EXTERNAL,
+				.ext.message.multipart = ev.tgt.ioevs[0].iv
+			};
+			_Static_assert(sizeof(out.ext.message.data) ==
+				sizeof(ev.tgt.message), "_event.h integrity");
 
-		memcpy(out.ext.message.data, ev.tgt.message, sizeof(out.ext.message.data));
-		a12int_trace(A12_TRACE_DIRECTORY, "applmsg=%s", out.ext.message.data);
-		a12_channel_enqueue(I->S, &out);
+			memcpy(out.ext.message.data, ev.tgt.message, sizeof(out.ext.message.data));
+			a12int_trace(A12_TRACE_DIRECTORY, "applmsg=%s", out.ext.message.data);
+			a12_channel_enqueue(I->S, &out);
+		}
 	}
 
 	if (rv == -1 || !ok){
@@ -583,7 +596,7 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 					return;
 				}
 
-				I->shmif = arcan_shmif_acquire(NULL, key, SEGID_MEDIA, 0);
+				I->shmif = arcan_shmif_acquire(NULL, key, SEGID_NETWORK_CLIENT, 0);
 				I->shmif.epipe = dfd;
 				I->on_shmif = runner_shmif;
 
@@ -632,6 +645,8 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 	long sz = ftell(A->state.fpek);
 	char empty_ext[16] = {0};
 
+/* this should be moved to just enqueue the proper event handler as
+ * is done with BCHUNK_IN/OUT */
 	a12_enqueue_bstream(
 		I->S,
 		A->state.fd,
@@ -934,16 +949,19 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
 {
 	struct ioloop_shared* I = tag;
 	struct directory_meta* cbt = I->cbt;
+	struct appl_runner_state* A = I->tag;
+
 	struct a12_bhandler_res res = {
 		.fd = -1,
 		.flag = A12_BHANDLER_DONTWANT
 	};
 
 /*
- * three key paths:
+ * four key paths:
  *  1. downloading / running an appl
  *  2. auto-updating an appl
  *  3. synchronising a state blob change
+ *  4. pending-upload requested by an appl (no-op)
  */
 	switch (M.state){
 	case A12_BHANDLER_COMPLETED:
@@ -972,7 +990,6 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
 			unlink(filename);
 			return res;
 		}
-
 	/* This can also happen if there was a new appl announced while we were busy
 	 * unpacking the previous one, the dirstate event triggers the bin request
 	 * triggers new initialize. Options are to cancel the current form, ignore
@@ -1042,23 +1059,14 @@ static void upload_file(
 	struct a12_state* S, const char* path, size_t ns, const char* name)
 {
 	struct arcan_event ev = {
-		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
-		.category = EVENT_EXTERNAL,
-		.ext.bchunk.ns = ns
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_BCHUNK_OUT,
+		.tgt.ioevs[3].uiv = ns
 	};
-
-	snprintf((char*)ev.ext.bchunk.extensions, 68, "%s", name);
+	snprintf((char*)ev.tgt.message, 68, "%s", name);
 
 	if (strcmp(path, "-") == 0){
-		a12_channel_enqueue(S, &ev);
-		a12_enqueue_bstream(S,
-			STDIN_FILENO,
-			A12_BTYPE_BLOB,
-			ns,
-			true, /* streaming */
-			0, /* no way of knowing the size */
-			(char[16]){0}
-		);
+		ev.tgt.ioevs[0].iv = STDIN_FILENO;
 	}
 	else {
 		int infd = open(path, O_RDONLY);
@@ -1066,15 +1074,9 @@ static void upload_file(
 			fprintf(stderr, "couldn't open %s\n", path);
 			return;
 		}
+		ev.tgt.ioevs[0].iv = infd;
 		a12_channel_enqueue(S, &ev);
-		a12_enqueue_bstream(S,
-			infd,
-			A12_BTYPE_BLOB,
-			ns,
-			true,
-			0,
-			(char[16]){0}
-		);
+		close(infd);
 	}
 }
 

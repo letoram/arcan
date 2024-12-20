@@ -204,6 +204,7 @@ struct blob_out {
 	bool active;
 	uint64_t streamid;
 	uint64_t rampup_seqnr;
+	void* tag;
 
 	struct ZSTD_CCtx_s* zstd;
 	struct blob_out* next;
