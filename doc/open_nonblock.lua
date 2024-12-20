@@ -77,9 +77,10 @@
 --
 -- The data_handler(callback(gpublock)):bool function sets a callback that will
 -- be invoked when the descriptor becomes available for reading. This will only
--- fire once, and need to be re-armed by setting a new data_handler. This can
--- fail if the number of polled data sources exceed some system bound, but
--- there is at least one slot for data_handler calls.
+-- fire once, and need to be re-armed by setting a new data_handler or
+-- returning true in the handler. This can fail if the number of polled data
+-- sources exceed some system bound, but there is at least one slot for
+-- data_handler calls.
 --
 -- The gpublock argument in both *write* and *data_handler* indicates if the
 -- callback is triggered from a state where calls that would alter graphics
