@@ -190,7 +190,7 @@ static void on_a12srv_event(
 				&(struct arcan_event){
 					.category = EVENT_TARGET,
 					.tgt.kind = TARGET_COMMAND_REQFAIL,
-					.tgt.ioevs[0].uiv = ev->ext.bchunk.ns
+					.tgt.ioevs[0].uiv = ev->ext.bchunk.identifier
 			});
 	}
 /* Actual identity will be determined by the parent to make sure we don't have
