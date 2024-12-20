@@ -58,7 +58,7 @@ size_t a12int_header_size(int kind)
 	return header_sizes[kind];
 }
 
-static void unlink_node(struct a12_state*, struct blob_out*);
+static void unlink_node(struct a12_state*, struct blob_xfer*);
 static void dirstate_item(struct a12_state* S, struct appl_meta* C);
 static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz, int ind)
 {
@@ -972,7 +972,7 @@ static void command_diropen(
 static void command_cancelstream(
 	struct a12_state* S, uint32_t streamid, uint8_t reason, uint8_t stype)
 {
-	struct blob_out* node = S->pending;
+	struct blob_xfer* node = S->pending_out;
 	a12int_trace(A12_TRACE_SYSTEM, "stream_cancel:%"PRIu32":%"PRIu8, streamid, reason);
 
 /* the other end indicated that the current codec or data source is broken,
@@ -1539,22 +1539,22 @@ static void command_videoframe(struct a12_state* S)
 	}
 }
 
-static struct blob_out** alloc_attach_blob(struct a12_state* S)
+static struct blob_xfer** alloc_attach_blob(struct a12_state* S)
 {
-	struct blob_out* next = DYNAMIC_MALLOC(sizeof(struct blob_out));
+	struct blob_xfer* next = DYNAMIC_MALLOC(sizeof(struct blob_xfer));
 	if (!next){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=ENOMEM");
 		return NULL;
 	}
 
-	*next = (struct blob_out){
+	*next = (struct blob_xfer){
 		.type = A12_BTYPE_BLOB,
 		.streaming = true,
 		.fd = -1,
 		.chid = S->out_channel
 	};
 
-	struct blob_out** parent = &S->pending;
+	struct blob_xfer** parent = &S->pending_out;
 	size_t n_streaming = 0;
 	size_t n_known = 0;
 
@@ -1587,7 +1587,7 @@ void a12_set_session(
 void a12_enqueue_blob(struct a12_state* S, const char* const buf,
 	size_t buf_sz, uint32_t id, int type, const char extid[static 16])
 {
-	struct blob_out** next = alloc_attach_blob(S);
+	struct blob_xfer** next = alloc_attach_blob(S);
 	if (!next)
 		return;
 
@@ -1623,11 +1623,11 @@ static void a12_enqueue_bstream_tagged(
 	int fd, int type, uint32_t id, bool streaming, size_t sz,
 	const char extid[static 16], arcan_event* tag)
 {
-	struct blob_out** parent = alloc_attach_blob(S);
+	struct blob_xfer** parent = alloc_attach_blob(S);
 	if (!parent)
 		return;
 
-	struct blob_out* next = *parent;
+	struct blob_xfer* next = *parent;
 	next->type = type;
 	next->identifier = id;
 	if (tag){
@@ -2967,12 +2967,12 @@ static void* read_data(int fd, size_t cap, uint16_t* nts, bool* die)
 	return buf;
 }
 
-static void unlink_node(struct a12_state* S, struct blob_out* node)
+static void unlink_node(struct a12_state* S, struct blob_xfer* node)
 {
 	/* find the owner of the node, redirect next */
 	/* close the socket and other resources */
-	struct blob_out* next = node->next;
-	struct blob_out** dst = &S->pending;
+	struct blob_xfer* next = node->next;
+	struct blob_xfer** dst = &S->pending_out;
 
 	while (*dst != node && *dst){
 		dst = &((*dst)->next);
@@ -3005,9 +3005,9 @@ static void unlink_node(struct a12_state* S, struct blob_out* node)
 /*
  * tail-recurse back into queue_node until the
  */
-static size_t queue_node(struct a12_state* S, struct blob_out* node);
+static size_t queue_node(struct a12_state* S, struct blob_xfer* node);
 static bool flush_compressed(
-	struct a12_state* S, struct blob_out* node, char* buf, size_t nts)
+	struct a12_state* S, struct blob_xfer* node, char* buf, size_t nts)
 {
 	uint8_t outb[1 + 4 + 2];
 	outb[0] = node->chid;
@@ -3080,7 +3080,7 @@ static bool flush_compressed(
 }
 
 static bool flush_uncompressed(
-	struct a12_state* S, struct blob_out* node, char* buf, size_t nts)
+	struct a12_state* S, struct blob_xfer* node, char* buf, size_t nts)
 {
 	uint8_t outb[1 + 4 + 2];
 	outb[0] = node->chid;
@@ -3107,7 +3107,7 @@ static bool flush_uncompressed(
 	return nts != 0;
 }
 
-static size_t begin_bstream(struct a12_state* S, struct blob_out* node)
+static size_t begin_bstream(struct a12_state* S, struct blob_xfer* node)
 {
 	uint8_t outb[CONTROL_PACKET_SIZE];
 
@@ -3152,7 +3152,7 @@ static size_t begin_bstream(struct a12_state* S, struct blob_out* node)
 	return 16384;
 }
 
-static size_t queue_node(struct a12_state* S, struct blob_out* node)
+static size_t queue_node(struct a12_state* S, struct blob_xfer* node)
 {
 	uint16_t nts;
 	size_t cap = node->left;
@@ -3228,7 +3228,7 @@ static size_t queue_node(struct a12_state* S, struct blob_out* node)
 static size_t append_blob(struct a12_state* S, int mode)
 {
 /* find suitable blob */
-	if (mode == A12_FLUSH_NOBLOB || !S->pending)
+	if (mode == A12_FLUSH_NOBLOB || !S->pending_out)
 		return 0;
 
 /* The last seen seqnr shows how big the window drift is between us and the
@@ -3237,15 +3237,15 @@ static size_t append_blob(struct a12_state* S, int mode)
  * cached - transfer is delayed until the other end has had enough time to
  * cancel the stream. */
 	if (
-		S->pending->rampup_seqnr &&
-		S->last_seen_seqnr < S->pending->rampup_seqnr)
+		S->pending_out->rampup_seqnr &&
+		S->last_seen_seqnr < S->pending_out->rampup_seqnr)
 	{
 		return 0;
 	}
 
 /* only current channel? */
 	else if (mode == A12_FLUSH_CHONLY){
-		struct blob_out* parent = S->pending;
+		struct blob_xfer* parent = S->pending_out;
 		while (parent){
 			if (parent->chid == S->out_channel)
 				return queue_node(S, parent);
@@ -3254,7 +3254,7 @@ static size_t append_blob(struct a12_state* S, int mode)
 		return 0;
 	}
 
-	return queue_node(S, S->pending);
+	return queue_node(S, S->pending_out);
 }
 
 size_t
@@ -3294,7 +3294,7 @@ a12_poll(struct a12_state* S)
 	if (!S || S->state == STATE_BROKEN || S->cookie != 0xfeedface)
 		return -1;
 
-	return S->buf_ofs || S->pending ? 1 : 0;
+	return S->buf_ofs || S->pending_out ? 1 : 0;
 }
 
 int

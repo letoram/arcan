@@ -947,6 +947,8 @@ static struct a12_bhandler_res srv_bevent(
 	 * keeps complexity away from here, which is a more exposed surface. */
 			if (cbt->breq_pending.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE &&
 					cbt->breq_pending.ext.bchunk.ns == M.identifier){
+				a12int_trace(A12_TRACE_DIRECTORY,
+					"kind=status:completed_pending:identifier=%"PRIu16, M.identifier);
 				cbt->breq_pending = (struct arcan_event){0};
 			}
 

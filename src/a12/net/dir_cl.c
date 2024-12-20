@@ -232,10 +232,16 @@ void dircl_source_handler(
 	shutdown(con.fd, SHUT_RDWR);
 }
 
+/*
+ * Only for directory server single- file transfer short-path upload
+ */
 static void dircl_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
-	fprintf(stdout, "%s\n", arcan_shmif_eventstr(ev, NULL, 0));
+	if (ev->ext.kind == EVENT_EXTERNAL_STREAMSTATUS){
+		struct ioloop_shared* I = tag;
+		I->shutdown = true;
+	}
 }
 
 static void on_cl_event(

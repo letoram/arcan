@@ -189,8 +189,8 @@ struct video_frame {
 	/* bytes left on current row for raw-dec */
 };
 
-struct blob_out;
-struct blob_out {
+struct blob_xfer;
+struct blob_xfer {
 	uint8_t checksum[16];
 	int fd;
 	uint8_t chid;
@@ -207,7 +207,7 @@ struct blob_out {
 	void* tag;
 
 	struct ZSTD_CCtx_s* zstd;
-	struct blob_out* next;
+	struct blob_xfer* next;
 };
 
 struct a12_channel {
@@ -288,7 +288,9 @@ struct a12_state {
 
 /* linked list of pending binary transfers, can be re-ordered and affect
  * blocking / transfer state of events on the other side */
-	struct blob_out* pending;
+	struct blob_xfer* pending_out;
+	struct blob_xfer* pending_in;
+
 	size_t active_blobs;
 
 /* current event handler for binary transfer cache oracle */
