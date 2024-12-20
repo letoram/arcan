@@ -1617,7 +1617,11 @@ static void a12_enqueue_bstream_tagged(
 	struct blob_out* next = *parent;
 	next->type = type;
 	next->identifier = id;
-	next->tag = tag;
+	if (tag){
+		arcan_event* copy = DYNAMIC_MALLOC(sizeof(arcan_event));
+		*copy = (*tag);
+		next->tag = copy;
+	}
 
 	if (type == A12_BTYPE_APPL || type == A12_BTYPE_APPL_RESOURCE){
 		snprintf(next->extid, 16, "%s", extid);
@@ -2971,6 +2975,12 @@ static void unlink_node(struct a12_state* S, struct blob_out* node)
 	S->active_blobs--;
 	*dst = next;
 	close(node->fd);
+
+	if (node->tag){
+		DYNAMIC_FREE(node->tag);
+		node->tag = NULL;
+	}
+
 	if (node->zstd){
 		ZSTD_freeCCtx(node->zstd);
 		node->zstd = NULL;
@@ -3435,14 +3445,14 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
  * binary transfer event and the other side will synthesize and push
  * the rest */
 		case TARGET_COMMAND_STORE:
-			a12_enqueue_bstream(S,
-				ev->tgt.ioevs[0].iv, A12_BTYPE_STATE, false, 0, 0, empty_ext);
+			a12_enqueue_bstream_tagged(S,
+				ev->tgt.ioevs[0].iv, A12_BTYPE_STATE, false, 0, 0, empty_ext, ev);
 			return true;
 		break;
 
 		case TARGET_COMMAND_BCHUNK_OUT:
-			a12_enqueue_bstream(S,
-				ev->tgt.ioevs[0].iv, A12_BTYPE_BLOB, false, 0, 0, empty_ext);
+			a12_enqueue_bstream_tagged(S,
+				ev->tgt.ioevs[0].iv, A12_BTYPE_BLOB, false, 0, 0, empty_ext, ev);
 			return true;
 		break;
 

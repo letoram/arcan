@@ -147,6 +147,8 @@ static void on_a12srv_event(
 /* if it is for output, we save the name and make the actual request when
  * the bstream transfer is initiated - as the namespace will be provided there. */
 		if (!ev->ext.bchunk.input){
+			a12int_trace(A12_TRACE_DIRECTORY,
+					"mark_pending=%s", arcan_shmif_eventstr(ev, NULL, 0));
 			cbt->breq_pending = *ev;
 			return;
 		}
