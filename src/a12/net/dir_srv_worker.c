@@ -856,7 +856,8 @@ static int request_parent_resource(
 		(char*)ev.ext.bchunk.extensions, COUNT_OF(ev.ext.bchunk.extensions), "%s", id);
 
 	int fd = -1;
-	a12int_trace(A12_TRACE_DIRECTORY, "request_parent:%s", ev.ext.bchunk.extensions);
+	a12int_trace(A12_TRACE_DIRECTORY,
+		"request_parent:ns=%zu:kind=%d:%s", ns, kind, ev.ext.bchunk.extensions);
 
 	if (shmif_block_synch_request(C, ev, rep,
 		EVENT_TARGET, kind,
