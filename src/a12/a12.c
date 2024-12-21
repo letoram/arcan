@@ -156,7 +156,7 @@ static void register_bchunk_name(struct a12_state* S, struct arcan_event* ev)
 		"%s", ev->tgt.message
 	);
 	a12int_trace(A12_TRACE_BTRANSFER,
-		"kind=register_transfer:name=%s:id="PRIu32,
+		"kind=register_transfer:name=%s:id=%"PRIu64,
 		outev.ext.bchunk.extensions,
 		S->out_stream
 	);
@@ -1693,7 +1693,7 @@ static bool a12_enqueue_bstream_in(
 	memcpy(outev.ext.bchunk.extensions,
 		ev->tgt.message, sizeof(outev.ext.bchunk.extensions));
 	a12int_trace(A12_TRACE_BTRANSFER,
-		"kind=queue_inbound_transfer:name=%s:id=%"PRIu32,
+		"kind=queue_inbound_transfer:name=%s:id=%"PRId64,
 		outev.ext.bchunk.extensions,
 		next->streamid
 	);
@@ -1729,6 +1729,9 @@ static void a12_enqueue_bstream_tagged(
 	next->type = type;
 	next->identifier = id;
 	next->chid = S->out_channel;
+	next->streamid = id;
+	a12int_trace(A12_TRACE_BTRANSFER,
+		"kind=queue_outbound:ch=%"PRIu8":id=%"PRIu32, S->out_channel, id);
 
 	if (tag){
 		arcan_event* copy = DYNAMIC_MALLOC(sizeof(arcan_event));
@@ -3315,7 +3318,7 @@ static size_t begin_bstream(struct a12_state* S, struct blob_xfer* node)
 
 	node->active = true;
 	a12int_trace(
-		A12_TRACE_BTRANSFER, "kind=created:size=%zu:stream:%"PRIu64":ch=%d",
+		A12_TRACE_BTRANSFER, "kind=created:size=%zu:stream=%"PRIu64":ch=%d",
 		node->left, node->streamid, node->chid
 	);
 
