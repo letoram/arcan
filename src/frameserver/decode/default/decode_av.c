@@ -685,6 +685,12 @@ int decode_av(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		int fdin = strtol(val, NULL, 10);
 		media = libvlc_media_new_fd(decctx.vlc, fdin);
 	}
+	else {
+		int fdin = wait_for_file(cont, "*", NULL);
+		if (-1 != fdin){
+			media = libvlc_media_new_fd(decctx.vlc, fdin);
+		}
+	}
 
 	if (arg_lookup(args, "loop", 0, &val))
 		decctx.loop = true;
