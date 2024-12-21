@@ -27,7 +27,7 @@ static const char* msub_to_lbl(int ind)
 }
 
 /*
- * Tempoary 'bad idea' implementions, placeholders until a real packing format
+ * Temporary 'bad idea' implementions, placeholders until a real packing format
  * is implemented, until then this is - of course - not at all portable. Right
  * now just prepend a checksum.
  */
@@ -192,9 +192,9 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 		break;
 		case EVENT_EXTERNAL_BCHUNKSTATE:
 			snprintf(work, dsz,"EXT:BCHUNKSTATE(size: %"PRIu64", hint: %"
-			PRIu8", input: %"PRIu8", stream: %"PRIu8" ext: %.68s)",
+			PRIu8", input: %"PRIu8", stream: %"PRIu8" id: %"PRIu32" ext: %.68s)",
 				ev.ext.bchunk.size, ev.ext.bchunk.hint, ev.ext.bchunk.input,
-				ev.ext.bchunk.stream, ev.ext.bchunk.extensions);
+				ev.ext.bchunk.stream, ev.ext.bchunk.identifier, ev.ext.bchunk.extensions);
 		break;
 		case EVENT_EXTERNAL_STREAMSTATUS:
 			snprintf(work, dsz,"EXT:STREAMSTATUS(#%"PRIu32" %.9s / %.9s, comp: %f, "

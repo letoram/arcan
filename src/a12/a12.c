@@ -1629,6 +1629,8 @@ void a12_enqueue_blob(struct a12_state* S, const char* const buf,
 	(*next)->left = buf_sz;
 	(*next)->identifier = id;
 	(*next)->type = type;
+	(*next)->streamid = id;
+
 	memcpy((*next)->extid, extid, 16);
 
 	blake3_hasher hash;
@@ -1691,9 +1693,9 @@ static bool a12_enqueue_bstream_in(
 	memcpy(outev.ext.bchunk.extensions,
 		ev->tgt.message, sizeof(outev.ext.bchunk.extensions));
 	a12int_trace(A12_TRACE_BTRANSFER,
-		"kind=queue_inbound_transfer:name=%s:id="PRIu32,
+		"kind=queue_inbound_transfer:name=%s:id=%"PRIu32,
 		outev.ext.bchunk.extensions,
-		S->out_stream
+		next->streamid
 	);
 
 	arcan_event* copy = DYNAMIC_MALLOC(sizeof(arcan_event));
@@ -3291,8 +3293,7 @@ static size_t begin_bstream(struct a12_state* S, struct blob_xfer* node)
 	build_control_header(S, outb, COMMAND_BINARYSTREAM);
 	outb[16] = node->chid;
 
-	S->out_stream++;
-	pack_u32(S->out_stream, &outb[18]);      /* [18 .. 21] stream-id */
+	pack_u32(node->streamid, &outb[18]);      /* [18 .. 21] stream-id */
 	pack_u64(node->left, &outb[22]);         /* [22 .. 29] total-size */
 	outb[30] = node->type;
 	pack_u32(node->identifier, &outb[31]);   /* 31..34 : id-token */
@@ -3313,7 +3314,6 @@ static size_t begin_bstream(struct a12_state* S, struct blob_xfer* node)
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 
 	node->active = true;
-	node->streamid = S->out_stream;
 	a12int_trace(
 		A12_TRACE_BTRANSFER, "kind=created:size=%zu:stream:%"PRIu64":ch=%d",
 		node->left, node->streamid, node->chid
