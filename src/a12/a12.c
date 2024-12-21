@@ -139,17 +139,26 @@ static void register_bchunk_name(struct a12_state* S, struct arcan_event* ev)
 	if (S->remote_mode != ROLE_DIR)
 		return;
 
+	S->out_stream++;
+
 	struct arcan_event outev = {
 		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
 		.category = EVENT_EXTERNAL,
 		.ext.bchunk.ns = ev->tgt.ioevs[3].uiv,
-		.ext.bchunk.input = ev->tgt.kind == TARGET_COMMAND_BCHUNK_IN
+		.ext.bchunk.input = ev->tgt.kind == TARGET_COMMAND_BCHUNK_IN,
+		.ext.bchunk.identifier = S->out_stream
 /* other option, streaming, known size .. */
 	};
+
 	snprintf(
 		(char*) outev.ext.bchunk.extensions,
 		COUNT_OF(outev.ext.bchunk.extensions),
 		"%s", ev->tgt.message
+	);
+	a12int_trace(A12_TRACE_BTRANSFER,
+		"kind=register_transfer:name=%s:id="PRIu32,
+		outev.ext.bchunk.extensions,
+		S->out_stream
 	);
 	a12_channel_enqueue(S, &outev);
 }
@@ -1681,6 +1690,11 @@ static bool a12_enqueue_bstream_in(
 	};
 	memcpy(outev.ext.bchunk.extensions,
 		ev->tgt.message, sizeof(outev.ext.bchunk.extensions));
+	a12int_trace(A12_TRACE_BTRANSFER,
+		"kind=queue_inbound_transfer:name=%s:id="PRIu32,
+		outev.ext.bchunk.extensions,
+		S->out_stream
+	);
 
 	arcan_event* copy = DYNAMIC_MALLOC(sizeof(arcan_event));
 	*copy = outev;
@@ -2476,14 +2490,19 @@ static void process_event(struct a12_state* S, void* tag,
 	bool forward = true;
 
 /* match events against our pending_in queue */
-	int64_t id = aev.ext.streamstat.identifier;
-	int64_t upid = S->channels[channel].unpack_state.bframe.identifier;
-	bool upack_pending =
-		S->channels[channel].unpack_state.bframe.identifier && id == upid;
+	int64_t upid = S->channels[channel].unpack_state.bframe.streamid;
+
+	a12int_trace(A12_TRACE_EVENT,
+		"unpack:ch=%"PRIu8":raw=%s", channel, arcan_shmif_eventstr(&aev, NULL, 0));
 
 	if (aev.category == EVENT_EXTERNAL){
+		int64_t id = aev.ext.streamstat.identifier;
 		if (aev.ext.kind == EVENT_EXTERNAL_STREAMSTATUS){
-			if (upack_pending){
+			a12int_trace(A12_TRACE_BTRANSFER,
+				"status:ch=%"PRIu8":current_id=%"PRId64":unpack_id=%"PRId64,
+				channel, id, upid);
+
+			if (upid == id){
 				progress_pending_in(S, channel, aev.ext.streamstat.completion);
 				forward = false;
 			}
@@ -2491,7 +2510,13 @@ static void process_event(struct a12_state* S, void* tag,
 	}
 	else if (aev.category == EVENT_TARGET){
 		if (aev.tgt.kind == TARGET_COMMAND_REQFAIL){
-			if (upack_pending){
+			int64_t id = aev.tgt.ioevs[0].iv;
+
+			a12int_trace(A12_TRACE_BTRANSFER,
+				"reqfail:ch=%"PRIu8":current_id=%"PRId64":unpack_id=%"PRId64,
+				channel, id, upid);
+
+			if (upid == id){
 				progress_pending_in(S, channel, -1);
 				forward = false;
 			}
@@ -2499,7 +2524,6 @@ static void process_event(struct a12_state* S, void* tag,
 	}
 
 	if (forward && on_event){
-		a12int_trace(A12_TRACE_EVENT, "unpack event to %d", channel);
 		on_event(S->channels[channel].cont, channel, &aev, tag);
 	}
 
@@ -3116,6 +3140,9 @@ static void* read_data(int fd, size_t cap, uint16_t* nts, bool* die)
 static void unlink_node(
 	struct a12_state* S, struct blob_xfer** root, struct blob_xfer* node)
 {
+	if (!node)
+		return;
+
 	/* find the owner of the node, redirect next */
 	/* close the socket and other resources */
 	struct blob_xfer* next = node->next;

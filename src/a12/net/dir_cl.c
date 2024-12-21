@@ -1245,7 +1245,8 @@ void anet_directory_cl(
 				.category = EVENT_EXTERNAL,
 				.ext.bchunk = {
 					.input = true,
-					.ns = 0
+					.ns = 0,
+					.identifier = 0xfeedface
 				}
 			};
 
