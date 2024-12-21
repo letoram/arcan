@@ -1110,10 +1110,10 @@ static void command_binarystream(struct a12_state* S)
 	bool swallow = false;
 	int sc = A12_BHANDLER_DONTWANT;
 
-	if (S->pending_in && S->pending_in->identifier == streamid){
+	if (S->pending_in && S->pending_in->streamid == streamid){
 		bframe->tmp_fd = S->pending_in->fd;
 		swallow = true;
-		sc = A12_BHANDLER_INITIALIZE;
+		sc = A12_BHANDLER_NEWFD;
 		a12int_trace(A12_TRACE_BTRANSFER, "kind=resolve_queued_bstream");
 	}
 	else {
@@ -2703,7 +2703,7 @@ static void process_blob(struct a12_state* S)
  * between clients. */
 			memcpy(&bm.checksum, cbf->checksum, 16);
 
-			if (S->pending_in && S->pending_in->identifier == cbf->identifier){
+			if (S->pending_in && S->pending_in->streamid == cbf->streamid){
 				close(cbf->tmp_fd);
 				progress_pending_in(S, S->in_channel, 1.0);
 			}
