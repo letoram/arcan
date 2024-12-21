@@ -167,11 +167,15 @@ static void on_a12srv_event(
  */
 		int fd = request_parent_resource(
 			cbt->S, C, ev->ext.bchunk.ns, (char*) ev->ext.bchunk.extensions, BREQ_LOAD);
+		char empty_ext[16] = {0};
 
-/* if the appl exist, first send the state blob, if there is one, then the appl */
-		if (fd != -1 && ev->ext.bchunk.ns){
-			char empty_ext[16] = {0};
-
+/* if it's a named request, just send that, otherwise go for appl+state */
+		if (fd != -1 && ev->ext.bchunk.extensions[0]){
+			a12_enqueue_bstream(cbt->S,
+				fd, A12_BTYPE_BLOB, ev->ext.bchunk.identifier, false, 0, empty_ext);
+			close(fd);
+		}
+		else if (fd != -1 && ev->ext.bchunk.ns){
 			int state_fd = request_parent_resource(
 				cbt->S, C,ev->ext.bchunk.ns, ".state", BREQ_LOAD);
 
