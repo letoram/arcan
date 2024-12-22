@@ -12290,21 +12290,29 @@ static int net_open(lua_State* ctx)
 	char* instr;
 	colon_escape(host);
 
-	/* the tag form allows for a 2nd optional string argument that uses the
-	 * keymaterial of the tag, but at the same time connects to a specified host
-	 * to combine with results from discover(passive) */
-	if ((host[0] == '@' || host[0] == '?') && lua_type(ctx, 2) == LUA_TSTRING){
-		char* hoststr = strdup(luaL_checkstring(ctx, 2));
-		size_t work_sz =
-			strlen(hoststr) + strlen(host) + sizeof("mode=client:tag=:host=probe:");
-		colon_escape(hoststr);
-		instr = arcan_alloc_mem(work_sz,
-			ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
-		snprintf(instr, work_sz,
-			"mode=client:%stag=%s:host=%s",
-			host[0] == '?' ? "probe:" : "", &host[1], hoststr);
+/* do we have a tag or a probe request? */
+	if ((host[0] == '@' || host[0] == '?')){
+		char* probe = host[0] == '?' ? "probe:" : "";
+		size_t work_sz = strlen(host) + sizeof("mode=client:tag=:host=probe:");
+
+/* do we have an explicit host specifier or use tag hostlist? */
+		if (lua_type(ctx, 2) == LUA_TSTRING){
+			char* hoststr = strdup(luaL_checkstring(ctx, 2));
+			colon_escape(hoststr);
+			work_sz += strlen(hoststr);
+			instr = arcan_alloc_mem(work_sz,
+				ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
+			snprintf(instr,
+				work_sz, "mode=client:%stag=%s:host=%s", probe, &host[1], hoststr);
+			free(hoststr);
+		}
+		else {
+			instr = arcan_alloc_mem(work_sz,
+				ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
+			snprintf(instr,
+				work_sz, "mode=client:%stag=%s", probe, &host[1]);
+		}
 		free(host);
-		free(hoststr);
 	}
 	else {
 /* populate and escape, due to IPv6 addresses etc. actively using :: */
