@@ -1518,7 +1518,7 @@ static void* send_beacon(void* tag)
 		return NULL;
 	}
 
-	anet_discover_send_beacon(&cfg);
+	while (anet_discover_send_beacon(&cfg)){}
 
 	return NULL;
 }

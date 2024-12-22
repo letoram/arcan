@@ -43,7 +43,7 @@ static bool flush_shmif(struct arcan_shmif_cont* C)
 
 	while ((rv = arcan_shmif_poll(C, &ev)) > 0){
 		if (ev.category == EVENT_TARGET && ev.tgt.kind == TARGET_COMMAND_EXIT)
-			return EXIT_FAILURE;
+			return false;
 	}
 
 	return rv == 0;
@@ -106,7 +106,7 @@ static int discover_broadcast(
 		return EXIT_FAILURE;
 	}
 
-	anet_discover_send_beacon(&cfg);
+	while(anet_discover_send_beacon(&cfg) && flush_shmif(C)){}
 
 	return EXIT_SUCCESS;
 }
@@ -137,7 +137,6 @@ static bool on_disc_shmif(struct arcan_shmif_cont* C)
  * use the challenge as an authentication key, but there has not really been
  * an argument for that. */
 	}
-
 	if (pv == -1){
 		arcan_shmif_drop(C);
 		return false;

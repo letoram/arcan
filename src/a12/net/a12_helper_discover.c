@@ -191,7 +191,7 @@ struct keystore_mask*
 void
 	a12helper_listen_beacon(
 		struct arcan_shmif_cont* C,
-		struct anet_discover_opts* O,
+	struct anet_discover_opts* O,
 		bool (*on_beacon)(
 			struct arcan_shmif_cont*,
 			const uint8_t[static DIRECTORY_BEACON_MEMBER_SIZE],
@@ -447,10 +447,10 @@ const char* a12helper_discover_ipcfg(struct anet_discover_opts* cfg, bool beacon
 	return NULL;
 }
 
-void anet_discover_send_beacon(struct anet_discover_opts* cfg)
+bool anet_discover_send_beacon(struct anet_discover_opts* cfg)
 {
 	if (0 >= cfg->IP->sock)
-		return;
+		return false;
 
 /* initialize mask state, beacon will append the ones consumed */
 	struct keystore_mask mask = {0};
@@ -459,42 +459,42 @@ void anet_discover_send_beacon(struct anet_discover_opts* cfg)
 	size_t size;
 	uint8_t* one, (* two);
 
-	for(;;){
-		cur = a12helper_build_beacon(&mask, cur, &one, &two, &size);
+	cur = a12helper_build_beacon(&mask, cur, &one, &two, &size);
 
-	/* empty beacon */
-		if (size <= 16){
-			free(one);
-			free(two);
-
-	/* tags are dynamic contents */
-			struct keystore_mask* tmp = mask.next;
-			while (tmp){
-				free(tmp->tag);
-				struct keystore_mask* prev = tmp;
-				tmp = tmp->next;
-				free(prev);
-			}
-
-	/* reset, wait and go again */
-			mask = (struct keystore_mask){0};
-			cur = &mask;
-			sleep(cfg->timesleep);
-			continue;
-		}
-
-	/* broadcast, sleep for time elapsed rejection */
-		if (size !=
-			sendto(cfg->IP->sock, one, size, 0, &cfg->IP->base, cfg->IP->addr_sz)){
-			fprintf(stderr, "couldn't send beacon: %s\n", strerror(errno));
-			break;
-		}
-
-		sleep(1);
-		sendto(cfg->IP->sock, two, size, 0, &cfg->IP->base, cfg->IP->addr_sz);
+/* empty beacon */
+	if (size <= 16){
 		free(one);
 		free(two);
+
+	/* tags are dynamic contents */
+		struct keystore_mask* tmp = mask.next;
+		while (tmp){
+			free(tmp->tag);
+			struct keystore_mask* prev = tmp;
+			tmp = tmp->next;
+			free(prev);
+		}
+
+	/* reset, wait and go again */
+		mask = (struct keystore_mask){0};
+		cur = &mask;
+		sleep(cfg->timesleep);
+		return true;
 	}
+
+	/* broadcast, sleep for time elapsed rejection */
+	if (size !=
+		sendto(cfg->IP->sock, one, size, 0, &cfg->IP->base, cfg->IP->addr_sz)){
+		fprintf(stderr, "couldn't send beacon: %s\n", strerror(errno));
+		return false;
+	}
+
+	sleep(1);
+	sendto(cfg->IP->sock, two, size, 0, &cfg->IP->base, cfg->IP->addr_sz);
+	free(one);
+	free(two);
+
+	return true;
 }
 
 void anet_discover_listen_beacon(struct anet_discover_opts* cfg)

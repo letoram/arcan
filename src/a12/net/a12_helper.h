@@ -158,7 +158,7 @@ struct anet_discover_opts {
 };
 
 void anet_discover_listen_beacon(struct anet_discover_opts* cfg);
-void anet_discover_send_beacon(struct anet_discover_opts* cfg);
+bool anet_discover_send_beacon(struct anet_discover_opts* cfg);
 
 /*
  * build / setup socket into [cfg], returns NULL or error or a user-presentable
