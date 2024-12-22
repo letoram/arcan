@@ -167,19 +167,19 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 		.fd = -1
 	};
 
+	if (!a12helper_keystore_open(&arg->keystore)){
+		a12helper_keystore_release();
+		if (!a12helper_keystore_open(&arg->keystore)){
+			res.errmsg = strdup("couldn't open keystore\n");
+			return res;
+		}
+	}
+
 /* open the keystore and iteratively invoke cl_setup on each entry until
  * we get a working connection - the keystore gets released if it can't
  * be opened (i.e. there is a change between the contents of the keystore
  * arg between invocations */
 	if (arg->key){
-		if (!a12helper_keystore_open(&arg->keystore)){
-			a12helper_keystore_release();
-			if (!a12helper_keystore_open(&arg->keystore)){
-				res.errmsg = strdup("couldn't open keystore\n");
-				return res;
-			}
-		}
-
 		size_t i = 0;
 
 /* default fail is key-resolving failure, it gets cleared on successful lookup */
@@ -230,6 +230,7 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 		uint8_t pubk[32];
 		if (!a12helper_keystore_hostkey(
 			"default", 0, arg->opts->priv_key, &outhost, &outport)){
+
 			a12helper_keystore_register("default", "127.0.0.1", 6680, pubk, NULL);
 			a12int_trace(A12_TRACE_SECURITY, "creating_outbound_default");
 		}
