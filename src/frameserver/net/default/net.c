@@ -663,7 +663,8 @@ void req_id(struct ioloop_shared* I, uint16_t identifier)
 		.ext.bchunk = {
 			.input = true,
 			.hint = false,
-			.ns = identifier
+			.ns = identifier,
+			.extensions = ".appl"
 		}
 	};
 
