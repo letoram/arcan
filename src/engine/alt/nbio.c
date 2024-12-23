@@ -1361,7 +1361,8 @@ void alt_nbio_data_in(lua_State* L, intptr_t tag)
 	if (ib->data_rearmed){
 	}
 	else if (lua_type(L, -1) == LUA_TBOOLEAN && lua_toboolean(L, -1)){
-/* automatically re-arm on true- return, means doing nothing */
+/* automatically re-arm on true- return */
+		ib->data_rearmed = true;
 	}
 /* or remove and assume that this is no longer wanted */
 	else {

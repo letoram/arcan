@@ -2334,14 +2334,23 @@ void a12_drop_tunnel(struct a12_state* S, uint8_t id)
  */
 static void progress_pending_in(struct a12_state* S, uint8_t ch, float progress)
 {
+	struct binary_frame* cbf = &S->channels[S->in_channel].unpack_state.bframe;
+
 	if (progress < 0.0){
 		a12int_trace(A12_TRACE_BTRANSFER, "chid=%"PRIu8":failed", ch);
 		unlink_node(S, &S->pending_in, S->pending_in);
-		!S->channels[S->out_channel].unpack_state.bframe.active;
+		if (cbf->zstd){
+			ZSTD_freeDCtx(cbf->zstd);
+			cbf->zstd = NULL;
+		}
 	}
 	else if (progress >= 1.0){
 		a12int_trace(A12_TRACE_BTRANSFER, "chid=%"PRIu8":ok", ch);
 		unlink_node(S, &S->pending_in, S->pending_in);
+		if (cbf->zstd){
+			ZSTD_freeDCtx(cbf->zstd);
+			cbf->zstd = NULL;
+		}
 	}
 	else {
 		a12int_trace(A12_TRACE_BTRANSFER,
@@ -2705,11 +2714,19 @@ static void process_blob(struct a12_state* S)
 
 			if (S->pending_in && S->pending_in->streamid == cbf->streamid){
 				close(cbf->tmp_fd);
+
+/* will take care of cleaning up the zstd context */
 				progress_pending_in(S, S->in_channel, 1.0);
 			}
 			else if (S->binary_handler){
 				cbf->tmp_fd = -1;
 				S->binary_handler(S, bm, S->binary_handler_tag);
+
+/* here we need to clean up the zstd context */
+				if (cbf->zstd){
+					ZSTD_freeDCtx(cbf->zstd);
+					cbf->zstd = NULL;
+				}
 			}
 
 /* send a ping that that we ack:ed the transfer so the other side gets a chance

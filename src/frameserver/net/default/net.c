@@ -798,7 +798,9 @@ static void dircl_userfd(struct ioloop_shared* I, bool ok)
 /* if we get a new segment with a handover, the ID is the directory appl id
  * we are after - so re-request dirlist and mark as pending */
 	arcan_event ev;
-	while (arcan_shmif_poll(C, &ev) > 0){
+	int pv;
+
+	while ((pv = arcan_shmif_poll(C, &ev)) > 0){
 		if (ev.category != EVENT_TARGET){
 			continue;
 		}
@@ -853,6 +855,13 @@ static void dircl_userfd(struct ioloop_shared* I, bool ok)
 		}
 		break;
 
+/* Forward file requests to a12 implementation and let its internal management
+ * deal with queue-in/queue-out */
+		case TARGET_COMMAND_BCHUNK_IN:
+		case TARGET_COMMAND_BCHUNK_OUT:
+			a12_channel_enqueue(I->S, &ev);
+		break;
+
 /* Right now we can't mutate our role - if we want to act as a source, we need
  * to connect as one. The case where the other point would be interesting is if
  * we navigate transitively somewhere (dir / dir / dir) and want to source into
@@ -867,6 +876,11 @@ static void dircl_userfd(struct ioloop_shared* I, bool ok)
 			LOG("shmif:event=%s", arcan_shmif_eventstr(&ev, NULL, 0));
 		break;
 		}
+	}
+
+	if (pv < 0){
+		I->shutdown = true;
+		LOG("shmif:dead");
 	}
 }
 
