@@ -64,8 +64,8 @@ endif()
 
 # static base version, manually mantained
 set(MAJOR_VERSION 0)
-set(MINOR_VERSION 6)
-set(PATCH_LEVEL 3)
+set(MINOR_VERSION 7)
+set(PATCH_LEVEL 0)
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 set(PLATFORM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/platform)
 set(ENGINE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
