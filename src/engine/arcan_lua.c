@@ -3016,12 +3016,15 @@ static int systemload(lua_State* ctx)
 	}
 #endif
 
-	int fd;
+	int fd = -1;
 	char* fname = findresource(instr,
 		CAREFUL_USERMASK, ARES_RDONLY | ARES_FILE, &fd);
 	int res = 0;
 
 	if (fname){
+		if (-1 != fd)
+			close(fd);
+
 		int rv = alt_loadfile(ctx, fname);
 		if (rv == 0)
 			res = 1;
