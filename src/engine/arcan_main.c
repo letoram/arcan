@@ -408,7 +408,7 @@ int MAIN_REDIR(int argc, char* argv[])
 	break;
 	case 'C' :
 		if (stdin_connpoint){
-			arcan_fatal("argument misuse, cannot combine -C with -O");
+			arcan_fatal("argument misuse, cannot combine -C with -0");
 		}
 		monitor_ctrl = stdin;
 	break;
@@ -791,10 +791,10 @@ int MAIN_REDIR(int argc, char* argv[])
 run_loop:
 	exit_code = arcan_conductor_run(arcan_monitor_tick);
 	arcan_lua_callvoidfun(main_lua_context, "shutdown", false, NULL);
+	arcan_monitor_finish(exit_code == 256 || exit_code == 0);
 
 /* destroy monitor first as it will need to snapshot the lua/VM stat e*/
 cleanup:
-	arcan_monitor_finish(exit_code == 256 || exit_code == 0);
 	arcan_mem_freearr(&arr_hooks);
 	arcan_led_shutdown();
 	arcan_event_deinit(evctx, true);
