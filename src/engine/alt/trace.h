@@ -27,6 +27,11 @@ void alt_trace_set_crash_source(const char* msg);
 char* alt_trace_crash_source(void);
 
 /*
+ * use our own internal method to extract the callstack and contents thereof
+ */
+void alt_trace_callstack_raw(lua_State* L, lua_Debug* D, int levels, FILE* out);
+
+/*
  * append the lua VM call backtrace to [out]
  */
 void alt_trace_callstack(lua_State* ctx, FILE* out);

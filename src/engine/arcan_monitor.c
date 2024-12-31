@@ -1,4 +1,5 @@
 #include "arcan_hmeta.h"
+#include "alt/trace.h"
 
 extern struct arcan_luactx* main_lua_context;
 extern volatile _Atomic int main_lua_signalled;
@@ -25,7 +26,7 @@ static int longjmp_mode;
  * of the primary when that is coming from an outer UI.
  */
 
-static void cmd_dumpkeys(char* arg)
+static void cmd_dumpkeys(char* arg, lua_State* L, lua_Debug* D)
 {
 	fprintf(m_out, "#BEGINKV\n");
 	struct arcan_strarr res = arcan_db_applkeys(
@@ -39,7 +40,7 @@ static void cmd_dumpkeys(char* arg)
 	fflush(m_out);
 }
 
-static void cmd_reload(char* arg)
+static void cmd_reload(char* arg, lua_State* L, lua_Debug* D)
 {
 /* signal verifyload- state, wrong sig */
 	char* res = arcan_expand_resource("", RESOURCE_APPL);
@@ -63,7 +64,7 @@ static void cmd_reload(char* arg)
 	longjmp_mode = ARCAN_LUA_SWITCH_APPL;
 }
 
-static void cmd_loadkey(char* arg)
+static void cmd_loadkey(char* arg, lua_State* L, lua_Debug* D)
 {
 	if (!arg[0] || arg[0] == '\n')
 		return;
@@ -95,7 +96,7 @@ static void cmd_loadkey(char* arg)
 	arcan_db_add_kvpair(arcan_db_get_shared(NULL), arg, pos);
 }
 
-static void cmd_commit(char* arg)
+static void cmd_commit(char* arg, lua_State* L, lua_Debug* D)
 {
 	if (!m_transaction)
 		return;
@@ -104,21 +105,31 @@ static void cmd_commit(char* arg)
 	m_transaction = false;
 }
 
-static void cmd_lock(char* arg)
+static void cmd_backtrace(char* arg, lua_State* L, lua_Debug* D)
+{
+	size_t n_levels = 10;
+	fprintf(m_out, "#BEGINBACKTRACE\n");
+	if (L){
+		alt_trace_callstack_raw(L, D, n_levels, m_out);
+	}
+	fprintf(m_out, "#ENDBACKTRACE\n");
+}
+
+static void cmd_lock(char* arg, lua_State* L, lua_Debug* D)
 {
 /* no-op, m_locked already set */
 	fprintf(m_out, "#LOCKED\n");
 	fflush(m_out);
 }
 
-static void cmd_continue(char* arg)
+static void cmd_continue(char* arg, lua_State* L, lua_Debug* D)
 {
 	m_locked = false;
 	if (m_transaction)
-		cmd_commit(arg);
+		cmd_commit(arg, L, D);
 }
 
-static void cmd_dumpstate(char* argv)
+static void cmd_dumpstate(char* argv, lua_State* L, lua_Debug* D)
 {
 /* previously all the dumping ran here, with the change to bootstrap a shmif
  * context, it makes more sense letting the monitor end drive the action */
@@ -133,10 +144,31 @@ static void cmd_dumpstate(char* argv)
 	fprintf(m_out, "#ENDKV\n");
 }
 
+static void cmd_eval(char* argv, lua_State* L, lua_Debug* D)
+{
+
+}
+
+static void cmd_locals(char* argv, lua_State* L, lua_Debug* D)
+{
+}
+
+/*
+ * sources we can get from globbing the appl path for all .lua
+ */
+
 void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 {
-/* triggered on SIGUSR1 - used by m_ctrl to indicate that
- * there is a command that should be read */
+/* triggered on SIGUSR1 - used by m_ctrl to indicate that there is a command
+ * that should be read, but also for the Lua-VM to allow debugging.
+ *
+ * We can see this when L, D are set.
+ *
+ * The option then is to return and possible be triggered again, check a list
+ * of breakpoints and repeat until we hit one of those, trace the functions
+ * into a ringbuffer, randomly sample for profiling and so on.
+ *
+ */
 	if (!m_ctrl)
 		return;
 
@@ -146,7 +178,7 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 
 	struct {
 		const char* word;
-		void (*ptr)(char* arg);
+		void (*ptr)(char* arg, lua_State*, lua_Debug*);
 	} cmds[] =
 	{
 		{"continue", cmd_continue},
@@ -155,14 +187,22 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 		{"dumpstate", cmd_dumpstate},
 		{"commit", cmd_commit},
 		{"reload", cmd_reload},
-		{"lock", cmd_lock}
+		{"backtrace", cmd_backtrace},
+		{"lock", cmd_lock},
+		{"eval", cmd_eval},
+		{"locals", cmd_locals},
+	/* for eval we need to disable the hook,
+	 * lua_loadstring the message,
+	 * lua_pcall, convert the results into a buffer */
 	};
 
 	m_locked = true;
 
 	do {
 		char buf[4096];
+		fprintf(m_out, "#WAITING\n");
 		if (!fgets(buf, 4096, m_ctrl)){
+			arcan_warning("monitor: couldn't read control command");
 			longjmp_mode = ARCAN_LUA_KILL_SILENT;
 			break;
 		}
@@ -175,10 +215,26 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 
 		buf[i] = '\0';
 		for (size_t j = 0; j < COUNT_OF(cmds); j++){
-			if (strcasecmp(buf, cmds[j].word) == 0)
-				cmds[j].ptr(&buf[i+1]);
+			if (strcasecmp(buf, cmds[j].word) == 0){
+				cmds[j].ptr(&buf[i+1], L, D);
+				break;
+			}
 		}
 	} while (m_locked);
+
+/* revert the errorhook
+ *
+ * we get into the watchdog with L/D set based on SIGUSR1 being sent,
+ * other commands come due to input on monitor control in.
+ *
+ * For single-stepping etc. we can also let the hook remain, and switch
+ * between line, instruction, ...
+ * The mask (MASKCALL, MASKLRET, MASKLINE, MASKCOUNT) sets condition for
+ * hook trigger.
+ */
+	if (L){
+		lua_sethook(L, NULL, 0, 0);
+	}
 
 	arcan_conductor_toggle_watchdog();
 
