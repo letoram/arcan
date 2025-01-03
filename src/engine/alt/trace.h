@@ -35,3 +35,8 @@ void alt_trace_callstack_raw(lua_State* L, lua_Debug* D, int levels, FILE* out);
  * append the lua VM call backtrace to [out]
  */
 void alt_trace_callstack(lua_State* ctx, FILE* out);
+
+/*
+ * print (Stdout) the type at stack index [i] appending the suffix to stdout
+ */
+void alt_trace_print_type(lua_State* L, int i, const char* suffix);

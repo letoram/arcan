@@ -267,16 +267,92 @@ void alt_trace_finish(lua_State* L)
 	luaL_unref(L, LUA_REGISTRYINDEX, trace_cb);
 }
 
-int alt_trace_log(lua_State* ctx)
+void alt_trace_print_type(lua_State* L, int i, const char* suffix)
 {
+	if (lua_type(L, i) == LUA_TNUMBER){
+		fprintf(stdout, "%.14g", lua_tonumber(L, i));
+	}
+	else if (lua_type(L, i) == LUA_TFUNCTION){
+		lua_Debug ar;
+		lua_pushvalue(L, i);
+		lua_getinfo(L, ">Snl", &ar); /* will pop -1 */
+		fprintf(stdout,
+			"func:name=%s:kind=%s:source=%s:start=%d:end=%d",
+			ar.name ? ar.name : "(null)",
+			ar.namewhat ? ar.namewhat : "(null)",
+			ar.source, ar.linedefined, ar.lastlinedefined);
+	}
+	else if (lua_type(L, i) == LUA_TSTRING){
+		const char* msg = lua_tostring(L, i);
+		while (msg && *msg){
+			if (*msg == '\n'){
+				fputc('\\', stdout);
+				fputc('n', stdout);
+				msg++;
+				continue;
+			}
+			if (*msg == ',')
+				fputc('\\', stdout);
+			fputc(*msg, stdout);
+			msg++;
+		}
+	}
+	else if (lua_type(L, i) == LUA_TBOOLEAN){
+		fputs(lua_toboolean(L, i) ? "true" : "false", stdout);
+	}
+	else if (lua_type(L, i) == LUA_TTABLE){
+		size_t n_keys = 0;
+
+#if LUA_VERSION_NUM == 501
+	#define lua_rawlen(x, y) lua_objlen(x, y)
+#endif
+
+		int nelems = lua_rawlen(L, 1);
+		lua_pushnil(L);
+		while (lua_next(L, i)){
+			lua_pop(L, 1);
+			n_keys++;
+		}
+		lua_pop(L, 1);
+
+		fprintf(stdout, "table:length=%zu:keys=%zu", nelems, n_keys);
+/* open question is if we should just dump the full table recursively? this
+ * could get really long, at the same time since we replace print we can't
+ * provide an interface for a starting offset to do it over multiple requests,
+ * for debugger interface in monitor it is probably best to provide a
+ * specialised dump function there and do it flat */
+ }
+	else if (lua_type(L, i) == LUA_TNIL){
+		fputs("nil", stdout);
+	}
+	fputs(suffix, stdout);
+}
+
+/* this replaces the default print function */
+int alt_trace_log(lua_State* L)
+{
+
+/* if not tracing then just dump to stdout, otherwise append prefix and
+ * send to trace facility to provide enough marker data to order */
+	if (!arcan_trace_enabled){
+		int n_args = lua_gettop(L);
+		if (n_args){
+			for (int i = 1; i < n_args; ++i){
+				alt_trace_print_type(L, i, ", ");
+			}
+			alt_trace_print_type(L, n_args, "\n");
+		}
+		return 0;
+	}
+
 	const char str_prefix[] = "LUA_PRINT: ";
 
-	int n_args = lua_gettop(ctx);
+	int n_args = lua_gettop(L);
 
 	int total_len = sizeof(str_prefix) - 1;
 	for (int i = 1; i <= n_args; ++i) {
 		size_t str_len = 0;
-		const char* str = lua_tolstring(ctx, i, &str_len);
+		const char* str = lua_tolstring(L, i, &str_len);
 		total_len += str_len + 1;
 	}
 	total_len += 1;
@@ -298,7 +374,7 @@ int alt_trace_log(lua_State* ctx)
 
 	for (int i = 1; i <= n_args; ++i) {
 		size_t str_len = 0;
-		const char* str = lua_tolstring(ctx, i, &str_len);
+		const char* str = lua_tolstring(L, i, &str_len);
 
 		memcpy(&log_buffer[running_len], str, str_len);
 		running_len += str_len + 1;
@@ -308,7 +384,6 @@ int alt_trace_log(lua_State* ctx)
 	log_buffer[running_len - 1] = '\n';
 	log_buffer[running_len] = '\0';
 
-	fprintf(stdout, "%s", log_buffer);
 	arcan_trace_log(log_buffer, total_len);
 
 	arcan_mem_free(log_buffer);

@@ -1,5 +1,6 @@
 #include "arcan_hmeta.h"
 #include "alt/trace.h"
+#include "lauxlib.h"
 
 extern struct arcan_luactx* main_lua_context;
 extern volatile _Atomic int main_lua_signalled;
@@ -144,13 +145,87 @@ static void cmd_dumpstate(char* argv, lua_State* L, lua_Debug* D)
 	fprintf(m_out, "#ENDKV\n");
 }
 
+/*
+ * watchset could be:
+ *  _G table member (?)
+ *  eval expression to run at each step
+ *
+ * we don't have a good way of intercepting all updates to a given key, so
+ * stick to primitive types and a static set of watches that we fetch on each
+ * step.
+ *
+ * tactic:
+ *
+ *  set lua_hook, mark us as in freerunning mode, on each monitor invocation
+ *  from the hook, sample the watches, if there is a change then set blocking
+ *  and forward the watch changes.
+ */
+
+/* Same as used in lua.c and alt/trace.c - there is a better version in LuaJIT
+ * and in Lua5.3+ but relies on function and access that we lack. In difference
+ * to alt/trace.c though, we don't force-load from lualibs so there might be an
+ * option of someone maliciously replacing it. */
+static int traceback (lua_State *L) {
+  if (!lua_isstring(L, 1))  /* 'message' not a string? */
+    return 1;  /* keep it intact */
+  lua_getfield(L, LUA_GLOBALSINDEX, "debug");
+  if (!lua_istable(L, -1)) {
+    lua_pop(L, 1);
+    return 1;
+  }
+  lua_getfield(L, -1, "traceback");
+  if (!lua_isfunction(L, -1)) {
+    lua_pop(L, 2);
+    return 1;
+  }
+  lua_pushvalue(L, 1);  /* pass error message */
+  lua_pushinteger(L, 2);  /* skip this function and traceback */
+  lua_call(L, 2, 1);  /* call debug.traceback */
+  return 1;
+}
+
 static void cmd_eval(char* argv, lua_State* L, lua_Debug* D)
 {
+	int status = luaL_loadbuffer(L, argv, strlen(argv), "eval");
+	if (status){
+		const char* msg = lua_tostring(L, -1);
+		fprintf(m_out,
+			"#BADRESULT\n%s\n#ENDBADRESULT\n", msg ? msg : "(error object is not a string)");
+		fflush(m_out);
+		lua_pop(L, 1);
+		return;
+	}
 
+	int base = lua_gettop(L);
+	lua_pushcfunction(L, traceback);
+	lua_insert(L, base);
+
+	fprintf(m_out, "#RESULT\n");
+
+	status = lua_pcall(L, 0, LUA_MULTRET, base);
+	lua_remove(L, base);
+
+/* don't need to put effort in printing the results here as print(...) would be
+ * captured by stdout in the debugger launching it, for arcan-net we do need a
+ * different method for capturing output */
+
+	if (status != 0){
+		lua_gc(L, LUA_GCCOLLECT, 0);
+		const char* msg = lua_tostring(L, -1);
+		if (msg){
+			fprintf(m_out, "%s%s\n", msg[0] == '#' ? "\\" : "", msg);
+		}
+		else
+			fprintf(m_out, "(error object is not a string)\n");
+	}
+
+	fprintf(m_out, "#ENDRESULT\n");
+	fflush(m_out);
 }
 
 static void cmd_locals(char* argv, lua_State* L, lua_Debug* D)
 {
+
 }
 
 /*
