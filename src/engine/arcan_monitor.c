@@ -200,7 +200,7 @@ static void cmd_eval(char* argv, lua_State* L, lua_Debug* D)
 	lua_pushcfunction(L, traceback);
 	lua_insert(L, base);
 
-	fprintf(m_out, "#RESULT\n");
+	fprintf(m_out, "#BEGINRESULT\n");
 
 	status = lua_pcall(L, 0, LUA_MULTRET, base);
 	lua_remove(L, base);

@@ -270,19 +270,20 @@ void alt_trace_finish(lua_State* L)
 void alt_trace_print_type(lua_State* L, int i, const char* suffix)
 {
 	if (lua_type(L, i) == LUA_TNUMBER){
-		fprintf(stdout, "%.14g", lua_tonumber(L, i));
+		fprintf(stdout, "type=number:value=%.14g", lua_tonumber(L, i));
 	}
 	else if (lua_type(L, i) == LUA_TFUNCTION){
 		lua_Debug ar;
 		lua_pushvalue(L, i);
 		lua_getinfo(L, ">Snl", &ar); /* will pop -1 */
 		fprintf(stdout,
-			"func:name=%s:kind=%s:source=%s:start=%d:end=%d",
+			"type=func:name=%s:kind=%s:source=%s:start=%d:end=%d",
 			ar.name ? ar.name : "(null)",
 			ar.namewhat ? ar.namewhat : "(null)",
 			ar.source, ar.linedefined, ar.lastlinedefined);
 	}
 	else if (lua_type(L, i) == LUA_TSTRING){
+		fputs("type=string:value=", stdout);
 		const char* msg = lua_tostring(L, i);
 		while (msg && *msg){
 			if (*msg == '\n'){
@@ -291,14 +292,19 @@ void alt_trace_print_type(lua_State* L, int i, const char* suffix)
 				msg++;
 				continue;
 			}
-			if (*msg == ',')
+			if (*msg == '\t')
+				fputs("     ", stdout);
+			else if (*msg == ':')
+				fputs(":", stdout);
+			else if (*msg == ',')
 				fputc('\\', stdout);
 			fputc(*msg, stdout);
 			msg++;
 		}
 	}
 	else if (lua_type(L, i) == LUA_TBOOLEAN){
-		fputs(lua_toboolean(L, i) ? "true" : "false", stdout);
+		fputs(lua_toboolean(L, i) ?
+			"type=bool:value=true" : "type=bool:value=false", stdout);
 	}
 	else if (lua_type(L, i) == LUA_TTABLE){
 		size_t n_keys = 0;
@@ -315,7 +321,7 @@ void alt_trace_print_type(lua_State* L, int i, const char* suffix)
 		}
 		lua_pop(L, 1);
 
-		fprintf(stdout, "table:length=%zu:keys=%zu", nelems, n_keys);
+		fprintf(stdout, "type=table:length=%zu:keys=%zu", nelems, n_keys);
 /* open question is if we should just dump the full table recursively? this
  * could get really long, at the same time since we replace print we can't
  * provide an interface for a starting offset to do it over multiple requests,
@@ -323,7 +329,7 @@ void alt_trace_print_type(lua_State* L, int i, const char* suffix)
  * specialised dump function there and do it flat */
  }
 	else if (lua_type(L, i) == LUA_TNIL){
-		fputs("nil", stdout);
+		fputs("type=nil", stdout);
 	}
 	fputs(suffix, stdout);
 }
@@ -342,6 +348,7 @@ int alt_trace_log(lua_State* L)
 			}
 			alt_trace_print_type(L, n_args, "\n");
 		}
+		fflush(stdout);
 		return 0;
 	}
 
