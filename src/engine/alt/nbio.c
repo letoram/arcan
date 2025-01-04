@@ -794,7 +794,8 @@ int alt_nbio_process_read(
 			lua_pushlstring(L, ch, len);
 			lua_pushboolean(L, eof && !gotline);
 			ci += step;
-			alt_call(L, CB_SOURCE_NONE, 0, 2, 1, LINE_TAG":read_cb");
+			alt_call(L, CB_SOURCE_NONE,
+				EP_TRIGGER_NBIO_RD, 0, 2, 1, LINE_TAG":read_cb");
 
 /* the caller doesn't want more data (right now) OR the offset has
  * been incremented past buffer constraints when there is <LF><EOF>
@@ -1321,7 +1322,8 @@ void alt_nbio_data_out(lua_State* L, intptr_t tag)
 	lua_pushboolean(L, false);
 #endif
 	drop_all_jobs(ib);
-	alt_call(L, CB_SOURCE_NONE, 0, 2, 0, LINE_TAG":write_handler_cb");
+	alt_call(L, CB_SOURCE_NONE,
+		EP_TRIGGER_NBIO_WR, 0, 2, 0, LINE_TAG":write_handler_cb");
 
 /* Remove the current event-source unless a new handler has already been queued
  * in its place (alt_call callback is colored) - then the tag has already been
@@ -1355,7 +1357,8 @@ void alt_nbio_data_in(lua_State* L, intptr_t tag)
 #else
 	lua_pushboolean(L, false);
 #endif
-	alt_call(L, CB_SOURCE_NONE, 0, 1, 1, LINE_TAG":data_handler_cb");
+	alt_call(L,
+		CB_SOURCE_NONE, EP_TRIGGER_NBIO_DATA, 0, 1, 1, LINE_TAG":data_handler_cb");
 
 /* manually re-armed? do nothing */
 	if (ib->data_rearmed){

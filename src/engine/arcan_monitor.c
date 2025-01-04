@@ -225,7 +225,33 @@ static void cmd_eval(char* argv, lua_State* L, lua_Debug* D)
 
 static void cmd_locals(char* argv, lua_State* L, lua_Debug* D)
 {
+	if (!L || !D){
+		fprintf(m_out, "ERROR no Lua state\n");
+		return;
+	}
+/* take the current stack frame index, extract locals from the activation
+ * record and print each one, use that to print name or dump table */
+}
 
+static void cmd_stepn(char* argv, lua_State* L, lua_Debug* D)
+{
+/* set lua_tracefunction to line mode */
+}
+
+static void cmd_stepinstruction(char* argv, lua_State* L, lua_Debug* D)
+{
+/*set lua_tracefunction to instruction mode */
+}
+
+static void cmd_dumptable(char* argv, lua_State* L, lua_Debug* D)
+{
+/* extract offset, seek to that position and dump keys, recurse */
+}
+
+static void cmd_breakep(char* argv, lua_State* L, lua_Debug* D)
+{
+/* check argv for entrypoint, mark it as hooked in the arcan_lua bitmap
+ * and that will trigger the lua_trace for us */
 }
 
 /*
@@ -266,9 +292,9 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 		{"lock", cmd_lock},
 		{"eval", cmd_eval},
 		{"locals", cmd_locals},
-	/* for eval we need to disable the hook,
-	 * lua_loadstring the message,
-	 * lua_pcall, convert the results into a buffer */
+		{"stepnext", cmd_stepn},
+		{"stepinstruction", cmd_stepinstruction},
+		{"dumptable", cmd_dumptable}
 	};
 
 	m_locked = true;

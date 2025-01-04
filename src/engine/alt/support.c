@@ -109,7 +109,9 @@ arcan_vobj_id luaL_checkvid(
  * frequently and it is not cheap.
  */
 void alt_call(
-	struct lua_State* L, int cbkind, uintptr_t source,
+	struct lua_State* L,
+	int cbkind, uint64_t masksrc,
+	uintptr_t source,
 	int nargs, int retc, const char* src)
 {
 	alt_cb_source = vid_toluavid(source);
@@ -218,7 +220,9 @@ static void fatal_handover(lua_State* L)
 	alt_lookup_entry(L, "fatal_handover", 14);
 	lua_pushstring(L,
 		alt_trace_crash_source() ? alt_trace_crash_source() : "");
-	alt_call(L, CB_SOURCE_NONE, 0, 1, 1, LINE_TAG":fatal_handover");
+	alt_call(L,
+		CB_SOURCE_NONE,
+		EP_TRIGGER_HANDOVER, 0, 1, 1, LINE_TAG":fatal_handover");
 	in_fatal_state = false;
 
 	if (lua_type(L, -1) == LUA_TBOOLEAN && lua_toboolean(L, -1)){

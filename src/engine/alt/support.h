@@ -118,7 +118,9 @@ lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt);
 
 /* used as a lua_call wrapper that provides different error handling, ... */
 void alt_call(lua_State*,
-	int kind, uintptr_t kind_tag, int args, int retc, const char* src);
+	int kind, uint64_t maskv,
+	uintptr_t kind_tag, int args, int retc, const char* src);
+
 void alt_fatal(const char* msg, ...);
 
 /* apply the appl prefix, find the corresponding global function in the

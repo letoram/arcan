@@ -66,8 +66,8 @@ bool arcan_lua_pushevent(struct arcan_luactx* ctx, struct arcan_event* ev);
  * indexed table and supplied as the argument. Returns false if no such
  * function is defined in the VM state.
  */
-bool arcan_lua_callvoidfun(struct arcan_luactx* ctx,
-	const char* fun, bool warn, const char** argv);
+bool arcan_lua_callvoidfun(struct arcan_luactx*,
+	const char* fun, uint64_t masksrc, bool warn, const char** argv);
 
 /* serialize a Lua- parseable snapshot of the various mapped subsystems and
  * resources into the (dst) filestream. If delim is set, we're in streaming
@@ -86,6 +86,35 @@ void arcan_lua_adopt(struct arcan_luactx* ctx);
  * parse this and push it into the struct arcan_luactx as the first
  * and only argument to the function pointed out with (dstfun). */
 void arcan_lua_stategrab(struct arcan_luactx* ctx, char* dstfun, int infd);
+
+enum {
+	EP_TRIGGER_CLOCK = 1 << 0,
+	EP_TRIGGER_INPUT = 1 << 1,
+	EP_TRIGGER_INPUT_RAW = 1 << 2,
+	EP_TRIGGER_INPUT_END = 1 << 3,
+	EP_TRIGGER_PREFRAME = 1 << 4,
+	EP_TRIGGER_POSTFRAME = 1 << 5,
+	EP_TRIGGER_ADOPT = 1 << 6,
+	EP_TRIGGER_AUTORES = 1 << 7,
+	EP_TRIGGER_AUTOFONT = 1 << 8,
+	EP_TRIGGER_DISPLAYSTATE = 1 << 9,
+	EP_TRIGGER_DISPLAYRESET = 1 << 10,
+	EP_TRIGGER_FRAMESERVER = 1 << 11,
+	EP_TRIGGER_MESH = 1 << 12,
+	EP_TRIGGER_CALCTARGET = 1 << 13,
+	EP_TRIGGER_LWA = 1 << 14,
+	EP_TRIGGER_IMAGE = 1 << 15,
+	EP_TRIGGER_AUDIO = 1 << 16,
+	EP_TRIGGER_MAIN = 1 << 17,
+	EP_TRIGGER_SHUTDOWN = 1 << 18,
+	EP_TRIGGER_NBIO_RD = 1 << 19,
+	EP_TRIGGER_NBIO_WR = 1 << 20,
+	EP_TRIGGER_NBIO_DATA = 1 << 21,
+	EP_TRIGGER_HANDOVER = 1 << 22,
+	EP_TRIGGER_TRACE = 1 << 23
+};
+
+void arcan_lua_triggermask(struct arcan_luactx*, uint64_t mask);
 
 /*
  * create a new external listening endpoint and expose via the _adopt handler,

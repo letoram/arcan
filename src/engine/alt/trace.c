@@ -13,12 +13,14 @@
 #include <lualib.h>
 #include <lauxlib.h>
 #include <string.h>
+#include <arcan_shmif.h>
 
 typedef struct arcan_vobject arcan_vobject;
 
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_mem.h"
+#include "arcan_lua.h"
 #include "alt/support.h"
 #include "alt/trace.h"
 #include "alt/types.h"
@@ -262,7 +264,8 @@ void alt_trace_finish(lua_State* L)
  * watchdog might hurt a bit too much and the data itself is more
  * important so disable it (should it be enabled) */
 	arcan_conductor_toggle_watchdog();
-		alt_call(L, CB_SOURCE_NONE, 0, 1, 0, LINE_TAG":trace");
+		alt_call(L, CB_SOURCE_NONE,
+			EP_TRIGGER_TRACE, 0, 1, 0, LINE_TAG":trace");
 	arcan_conductor_toggle_watchdog();
 	luaL_unref(L, LUA_REGISTRYINDEX, trace_cb);
 }

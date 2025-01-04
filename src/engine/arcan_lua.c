@@ -604,7 +604,7 @@ void arcan_lua_tick(lua_State* ctx, size_t nticks, size_t global)
 		TRACE_MARK_ENTER("scripting", "clock-pulse", TRACE_SYS_DEFAULT, global, nticks, "digital");
 			lua_pushnumber(ctx, global);
 			lua_pushnumber(ctx, nticks);
-			alt_call(ctx, CB_SOURCE_NONE, 0, 2, 0, LINE_TAG":clock_pulse_batch");
+			alt_call(ctx, CB_SOURCE_NONE, EP_TRIGGER_CLOCK, 0, 2, 0, LINE_TAG":clock_pulse_batch");
 		TRACE_MARK_EXIT("scripting", "clock-pulse", TRACE_SYS_DEFAULT, global, nticks, "digital");
 		return;
 	}
@@ -617,7 +617,7 @@ void arcan_lua_tick(lua_State* ctx, size_t nticks, size_t global)
 		TRACE_MARK_ENTER("scripting", "clock-pulse", TRACE_SYS_DEFAULT, global, 0, "digital");
 			lua_pushnumber(ctx, global);
 			lua_pushnumber(ctx, 1);
-			alt_call(ctx, CB_SOURCE_NONE, 0, 2, 0, LINE_TAG":clock_pulse");
+			alt_call(ctx, CB_SOURCE_NONE, EP_TRIGGER_CLOCK, 0, 2, 0, LINE_TAG":clock_pulse");
 		TRACE_MARK_EXIT("scripting", "clock-pulse", TRACE_SYS_DEFAULT, global, 0, "digital");
 	}
 
@@ -674,7 +674,7 @@ bool arcan_lua_launch_cp(
 	lua_pushvid(ctx, ARCAN_EID);
 	lua_pushboolean(ctx, true);
 
-	alt_call(ctx, CB_SOURCE_NONE, 0, 5, 1, LINE_TAG":adopt");
+	alt_call(ctx, CB_SOURCE_NONE, EP_TRIGGER_ADOPT, 0, 5, 1, LINE_TAG":adopt");
 	if (lua_type(ctx, -1) == LUA_TBOOLEAN && lua_toboolean(ctx, -1)){
 		lua_pop(ctx, 1);
 		return true;
@@ -750,7 +750,7 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 			lua_pushvid(ctx, fsrv->parent.vid);
 			lua_pushboolean(ctx, count < n_fsrv-1);
 
-			alt_call(ctx, CB_SOURCE_NONE, 0, 5, 1, LINE_TAG":adopt");
+			alt_call(ctx, CB_SOURCE_NONE, EP_TRIGGER_ADOPT, 0, 5, 1, LINE_TAG":adopt");
 
 /* if we don't get an explicit accept, assume deletion */
 			if (lua_type(ctx, -1) == LUA_TBOOLEAN &&
@@ -3990,7 +3990,8 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 			lua_pushnumber(ctx, ev->vid.vppcm);
 			lua_pushnumber(ctx, ev->vid.flags);
 			lua_pushnumber(ctx, ev->vid.displayid);
-			alt_call(ctx, CB_SOURCE_NONE, 0, 5, 0, LINE_TAG":VRES_AUTORES");
+			alt_call(ctx, CB_SOURCE_NONE,
+				EP_TRIGGER_AUTORES, 0, 5, 0, LINE_TAG":VRES_AUTORES");
 		}
 	}
 /* Same thing applies to fonts, but this is only really arcan_lwa */
@@ -4003,7 +4004,8 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 			lua_pushnumber(ctx, ev->vid.vppcm);
 			lua_pushnumber(ctx, ev->vid.width);
 			lua_pushnumber(ctx, ev->vid.displayid);
-			alt_call(ctx, CB_SOURCE_NONE, 0, 3, 0, LINE_TAG":VRES_AUTOFONT");
+			alt_call(ctx, CB_SOURCE_NONE,
+				EP_TRIGGER_AUTOFONT, 0, 3, 0, LINE_TAG":VRES_AUTOFONT");
 		}
 	}
 #endif
@@ -4013,7 +4015,8 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 
 	lua_pushliteral(ctx, "reset");
 
-	alt_call(ctx, CB_SOURCE_NONE, 0, 1, 0, LINE_TAG":display_state:reset");
+	alt_call(ctx, CB_SOURCE_NONE,
+		EP_TRIGGER_DISPLAYRESET, 0, 1, 0, LINE_TAG":display_state:reset");
 }
 
 static void display_added(lua_State* ctx, arcan_event* ev)
@@ -4036,7 +4039,8 @@ static void display_added(lua_State* ctx, arcan_event* ev)
 	lua_pushnumber(ctx, ev->vid.cardid);
 	lua_rawset(ctx, top);
 
-	alt_call(ctx, CB_SOURCE_NONE, 0, 3, 0, LINE_TAG":display_state:added");
+	alt_call(ctx, CB_SOURCE_NONE,
+		EP_TRIGGER_DISPLAYSTATE, 0, 3, 0, LINE_TAG":display_state:added");
 }
 
 static void display_changed(lua_State* ctx, arcan_event* ev)
@@ -4045,7 +4049,8 @@ static void display_changed(lua_State* ctx, arcan_event* ev)
 		return;
 
 	lua_pushliteral(ctx, "changed");
-	alt_call(ctx, CB_SOURCE_NONE, 0, 1, 0, LINE_TAG":display_state:changed");
+	alt_call(ctx, CB_SOURCE_NONE,
+		EP_TRIGGER_DISPLAYSTATE, 0, 1, 0, LINE_TAG":display_state:changed");
 }
 
 static void display_removed(lua_State* ctx, arcan_event* ev)
@@ -4055,7 +4060,8 @@ static void display_removed(lua_State* ctx, arcan_event* ev)
 
 	lua_pushliteral(ctx, "removed");
 	lua_pushnumber(ctx, ev->vid.displayid);
-	alt_call(ctx, CB_SOURCE_NONE, 0, 2, 0, LINE_TAG":display_state:removed");
+	alt_call(ctx, CB_SOURCE_NONE,
+		EP_TRIGGER_DISPLAYSTATE, 0, 2, 0, LINE_TAG":display_state:removed");
 }
 
 static void do_preroll(lua_State* ctx, intptr_t ref,
@@ -4076,7 +4082,8 @@ static void do_preroll(lua_State* ctx, intptr_t ref,
 		tblstr(ctx, "kind", "preroll", top);
 		tbldynstr(ctx, "segkind", fsrvtos(fsrv->segid), top);
 		tblnum(ctx, "source_audio", aid, top);
-		alt_call(ctx, CB_SOURCE_PREROLL, vid, 2, 0, LINE_TAG":frameserver:preroll");
+		alt_call(ctx, CB_SOURCE_PREROLL,
+			EP_TRIGGER_FRAMESERVER, vid, 2, 0, LINE_TAG":frameserver:preroll");
 	}
 
 /* there is the possiblity of 'deferred' activation so that the WM
@@ -4203,7 +4210,7 @@ static void emit_segreq(
 	tblnum(ctx, "parent", parent->cookie, top);
 	tbldynstr(ctx, "segkind", fsrvtos(ev->segreq.kind), top);
 
-	alt_call(ctx, CB_SOURCE_FRAMESERVER,
+	alt_call(ctx, CB_SOURCE_FRAMESERVER, EP_TRIGGER_FRAMESERVER,
 		ev->source, 2, 0, LINE_TAG":frameserver:segment_request");
 
 /* call into callback, if we have been consumed,
@@ -4497,7 +4504,8 @@ void arcan_lwa_subseg_ev(
 	if (ev->category == EVENT_IO){
 /* re-use the same table mapping as normal */
 		append_iotable(ctx, &ev->io);
-		alt_call(ctx, CB_SOURCE_NONE, 0, 2, 0, LINE_TAG":event:lwa_io");
+		alt_call(ctx,
+			CB_SOURCE_NONE, EP_TRIGGER_LWA, 0, 2, 0, LINE_TAG":event:lwa_io");
 		return;
 	}
 
@@ -4572,7 +4580,7 @@ void arcan_lwa_subseg_ev(
 	break;
 	}
 
-	alt_call(ctx, CB_SOURCE_NONE, 0, 2, 0, LINE_TAG":event:lwa");
+	alt_call(ctx, CB_SOURCE_NONE, EP_TRIGGER_LWA, 0, 2, 0, LINE_TAG":event:lwa");
 }
 #endif
 
@@ -4622,7 +4630,8 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	char msgbuf[sizeof(arcan_event)+1];
 	if (!ev){
 		if (alt_lookup_entry(ctx, "input_end", 9)){
-			alt_call(ctx, CB_SOURCE_NONE, 0, 0, 0, LINE_TAG":event:input_eob");
+			alt_call(ctx, CB_SOURCE_NONE,
+				EP_TRIGGER_INPUT_END, 0, 0, 0, LINE_TAG":event:input_eob");
 		}
 		return true;
 	}
@@ -4634,7 +4643,8 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			bool consumed = false;
 			if (alt_lookup_entry(ctx, "input_raw", 9)){
 				append_iotable(ctx, &ev->io);
-				alt_call(ctx, CB_SOURCE_NONE, 0, 1, 1, LINE_TAG":event:input_raw");
+				alt_call(ctx, CB_SOURCE_NONE,
+					EP_TRIGGER_INPUT_RAW, 0, 1, 1, LINE_TAG":event:input_raw");
 
 				if (lua_type(ctx, -1) == LUA_TBOOLEAN && lua_toboolean(ctx, -1)){
 					consumed = true;
@@ -4646,7 +4656,8 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		if (alt_lookup_entry(ctx, "input", 5)){
 			append_iotable(ctx, &ev->io);
-			alt_call(ctx, CB_SOURCE_NONE, 0, 1, 0, LINE_TAG":event:input");
+			alt_call(ctx, CB_SOURCE_NONE,
+				EP_TRIGGER_INPUT, 0, 1, 0, LINE_TAG":event:input");
 		}
 		return true;
 	}
@@ -4916,7 +4927,7 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx, "kind_num", ev->ext.kind, top);
 		}
 
-		alt_call(ctx, CB_SOURCE_FRAMESERVER,
+		alt_call(ctx, CB_SOURCE_FRAMESERVER, EP_TRIGGER_FRAMESERVER,
 			ev->ext.source,	2, 0, LINE_TAG":frameserver:event");
 /* special: external connection + connected->registered sequence finished */
 		if (preroll)
@@ -4951,7 +4962,8 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblstr(ctx, "kind", "terminated", top);
 			MSGBUF_UTF8(ev->fsrv.message);
 			tbldynstr(ctx, "last_words", msgbuf, top);
-			alt_call(ctx, CB_SOURCE_FRAMESERVER,
+			alt_call(ctx,
+				CB_SOURCE_FRAMESERVER, EP_TRIGGER_FRAMESERVER,
 				ev->fsrv.otag, 2, 0, LINE_TAG":frameserver:event");
 			luaL_unref(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 			return true;
@@ -4979,8 +4991,8 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblnum(ctx, "id", ev->fsrv.limb, top);
 				tbldynstr(ctx, "name", limb_name(ev->fsrv.limb), top);
 			}
-			alt_call(ctx,
-				CB_SOURCE_FRAMESERVER, ev->fsrv.otag, 2, 0, LINE_TAG":frameserver:vr");
+			alt_call(ctx, CB_SOURCE_FRAMESERVER,
+				EP_TRIGGER_FRAMESERVER, ev->fsrv.otag, 2, 0, LINE_TAG":frameserver:vr");
 			return true;
 		}
 
@@ -5103,7 +5115,7 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		break;
 		}
 
-		alt_call(ctx, CB_SOURCE_FRAMESERVER,
+		alt_call(ctx, CB_SOURCE_FRAMESERVER, EP_TRIGGER_FRAMESERVER,
 			ev->fsrv.video, argc, 0, LINE_TAG":frameserver:event");
 	}
 	else if (ev->category == EVENT_VIDEO){
@@ -5178,7 +5190,8 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		if (source != CB_SOURCE_NONE){
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
 			lua_replace(ctx, 1);
-			alt_call(ctx, source, ev->vid.source, 2, 0, evmsg);
+			alt_call(ctx, source,
+				EP_TRIGGER_IMAGE, ev->vid.source, 2, 0, evmsg);
 		}
 		else
 			lua_settop(ctx, 0);
@@ -5197,7 +5210,8 @@ bool arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			ev->aud.kind == EVENT_AUDIO_PLAYBACK_FINISHED &&
 			ev->aud.otag != LUA_NOREF){
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->aud.otag);
-			alt_call(ctx, CB_SOURCE_NONE, 0, 0, 0, LINE_TAG":audio:finished");
+			alt_call(ctx, CB_SOURCE_NONE,
+				EP_TRIGGER_AUDIO, 0, 0, 0, LINE_TAG":audio:finished");
 			luaL_unref(ctx, LUA_REGISTRYINDEX, ev->aud.otag);
 		}
 	}
@@ -5419,7 +5433,8 @@ static int imagetess(lua_State* ctx)
 			lua_pushnumber(ctx, ms->vertex_size);
 			ud->mesh = ms;
 			ud->vobj = vobj;
-			alt_call(ctx, CB_SOURCE_NONE, 0, 3, 0, LINE_TAG":tesselate_image");
+			alt_call(ctx,
+				CB_SOURCE_NONE, EP_TRIGGER_MESH, 0, 3, 0, LINE_TAG":tesselate_image");
 			ud->mesh = NULL;
 		}
 	}
@@ -7630,8 +7645,9 @@ static int screencoord(lua_State* ctx)
 	LUA_ETRACE("image_screen_coordinates", "couldn't resolve", 0);
 }
 
-bool arcan_lua_callvoidfun(lua_State* ctx,
-	const char* fun, bool warn, const char** argv)
+bool arcan_lua_callvoidfun(
+	lua_State* ctx,
+	const char* fun, uint64_t masksrc, bool warn, const char** argv)
 {
 /* track this for later */
 	if (argv)
@@ -7647,7 +7663,8 @@ bool arcan_lua_callvoidfun(lua_State* ctx,
 			lua_rawset(ctx, top);
 		}
 
-		alt_call(ctx, CB_SOURCE_NONE, 0, 1, 0, fun);
+		alt_call(ctx,
+			CB_SOURCE_NONE, EP_TRIGGER_MAIN, 0, 1, 0, fun);
 		return true;
 	}
 	else if (warn)
@@ -10238,7 +10255,8 @@ enum arcan_ffunc_rv arcan_lua_proctarget FFUNC_HEAD
 
  	lua_pushnumber(src->ctx, width);
 	lua_pushnumber(src->ctx, height);
-	alt_call(src->ctx, CB_SOURCE_IMAGE, 0, 3, 0, "calc_target:callback");
+	alt_call(src->ctx,
+		CB_SOURCE_IMAGE, EP_TRIGGER_IMAGE, 0, 3, 0, "calc_target:callback");
 	ud->valid = false;
 
 	return 0;
@@ -10382,7 +10400,8 @@ static int imagestorage(lua_State* ctx)
 		narg += 2;
 	}
 
-	alt_call(ctx, CB_SOURCE_IMAGE, 0, narg, 0, "calctarget:callback");
+	alt_call(ctx,
+		CB_SOURCE_IMAGE, EP_TRIGGER_IMAGE, 0, narg, 0, "calctarget:callback");
 
 	lua_pushboolean(ctx, true);
 	LUA_ETRACE("image_access_storage", NULL, 1);
