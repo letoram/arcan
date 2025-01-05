@@ -1,3 +1,9 @@
+## 0.7.1
+## Lua
+ * Changed builtin 'print' function to emit a parser friendly output when not traced
+ * Added monitor commands for backtrace, eval, locals, stepping and specialised dumps
+ * Added breakpoint hooks for all transitions into VM execution
+
 ## 0.7.0
 ## Core
  * Wired in rendertarget vobj export for hwenc, opt-in via target\_flags on rectgt

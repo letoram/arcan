@@ -77,70 +77,22 @@ void alt_trace_callstack(lua_State* L, FILE* out)
 
 void alt_trace_callstack_raw(lua_State* L, lua_Debug* D, int levels, FILE* out)
 {
-/*
- * mechanism of lua_getinfo:
- *  lua_getstack or D
- *  lua_getfield(L, LUA_GLOBALSINDEX, "name")
- *  >S fills out AR based on:
- *   n : name
- *   S : source, short_src
- *   l : currentline
- *   u : n upvalues
- *   f : function running at level
- *   L : table of lines of valid source (breakpointable)a
- *
- *  lua_getlocal works similarly
- *  then setlocal then setupvale
- */
-/*
-  int level;
-  int firstpart = 1;
-  int arg;
-  lua_State *L1 = getthread(L, &arg);
-  lua_Debug ar;
-  if (lua_isnumber(L, arg+2)) {
-    level = (int)lua_tointeger(L, arg+2);
-    lua_pop(L, 1);
-  }
-  else
-    level = (L == L1) ? 1 : 0;
-  if (lua_gettop(L) == arg)
-    lua_pushliteral(L, "");
-  else if (!lua_isstring(L, arg+1)) return 1;
-  else lua_pushliteral(L, "\n");
-  lua_pushliteral(L, "stack traceback:");
-  while (lua_getstack(L1, level++, &ar)) {
-    if (level > LEVELS1 && firstpart) {
-      if (!lua_getstack(L1, level+LEVELS2, &ar))
-        level--;
-      else {
-        lua_pushliteral(L, "\n\t...");
-        while (lua_getstack(L1, level+LEVELS2, &ar))
-          level++;
-      }
-      firstpart = 0;
-      continue;
-    }
-    lua_pushliteral(L, "\n\t");
-    lua_getinfo(L1, "Snl", &ar);
-    lua_pushfstring(L, "%s:", ar.short_src);
-    if (ar.currentline > 0)
-      lua_pushfstring(L, "%d:", ar.currentline);
-    if (*ar.namewhat != '\0')
-        lua_pushfstring(L, " in function " LUA_QS, ar.name);
-    else {
-      if (*ar.what == 'm')
-        lua_pushfstring(L, " in main chunk");
-      else if (*ar.what == 'C' || *ar.what == 't')
-        lua_pushliteral(L, " ?");
-      else
-        lua_pushfstring(L, " in function <%s:%d>",
-                           ar.short_src, ar.linedefined);
-    }
-    lua_concat(L, lua_gettop(L) - arg);
-  }
-  lua_concat(L, lua_gettop(L) - arg);
-*/
+	lua_Debug ar;
+	int level = 0;
+
+	while (lua_getstack(L, level, &ar)){
+		lua_getinfo(L, "Slnu", &ar);
+		fprintf(out, "type=stacktrace:frame=%d:name=%s:"
+			"kind=%s:source=%s:current=%d:start=%d:end=%d:upvalues=%d\n",
+			level,
+			ar.name ? ar.name : "(null)",
+			ar.namewhat ? ar.namewhat : "(null)",
+			ar.source,
+			ar.currentline, ar.linedefined, ar.lastlinedefined, ar.nups);
+
+/* send the locals as well as it's cheaper than going for a roundtrip */
+		level++;
+	}
 }
 
 bool alt_trace_start(lua_State* L, intptr_t cb, size_t sz)

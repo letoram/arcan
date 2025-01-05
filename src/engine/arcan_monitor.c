@@ -5,12 +5,22 @@
 extern struct arcan_luactx* main_lua_context;
 extern volatile _Atomic int main_lua_signalled;
 
+/* how often a sample is generated if we are in continous monitor mode */
 static int m_srate;
 static int m_ctr;
+
+/* control and output devices for monitoring channel */
 static FILE* m_out;
 static FILE* m_ctrl;
+
+/* locked is waiting for monitor command, dumppause is if we should
+ * automatically send a new stackdump when paused once after some command that
+ * requires it to be useful */
 static bool m_locked;
+static bool m_dumppause;
 static bool m_transaction;
+
+/* used to indicate that we should trigger one of the recovery modes */
 static int longjmp_mode;
 
 /*
@@ -104,6 +114,32 @@ static void cmd_commit(char* arg, lua_State* L, lua_Debug* D)
 
 	arcan_db_end_transaction(arcan_db_get_shared(NULL));
 	m_transaction = false;
+}
+
+static void cmd_source(char* arg, lua_State* L, lua_Debug* D)
+{
+	if (arg[0] != '@'){
+		fprintf(m_out, "#ERROR invalid Lua source ref: %s\n", arg);
+		return;
+	}
+
+/* strip \n */
+	size_t len = strlen(arg);
+	arg[len-1] = '\0';
+
+	data_source indata = arcan_open_resource(&arg[1]);
+	map_region reg = arcan_map_resource(&indata, false);
+	if (!reg.ptr){
+		fprintf(m_out, "#ERROR couldn't map Lua source ref: %s\n", arg);
+	}
+	else {
+		fprintf(m_out, "#BEGINSOURCE\n");
+			fprintf(m_out, "%s\n%s\n", arg, reg.ptr);
+		fprintf(m_out, "#ENDSOURCE\n");
+	}
+
+	arcan_release_map(reg);
+	arcan_release_resource(&indata);
 }
 
 static void cmd_backtrace(char* arg, lua_State* L, lua_Debug* D)
@@ -226,21 +262,65 @@ static void cmd_eval(char* argv, lua_State* L, lua_Debug* D)
 static void cmd_locals(char* argv, lua_State* L, lua_Debug* D)
 {
 	if (!L || !D){
-		fprintf(m_out, "ERROR no Lua state\n");
+		fprintf(m_out, "#ERROR no Lua state\n");
 		return;
 	}
 /* take the current stack frame index, extract locals from the activation
  * record and print each one, use that to print name or dump table */
 }
 
-static void cmd_stepn(char* argv, lua_State* L, lua_Debug* D)
+static void cmd_stepline(char* argv, lua_State* L, lua_Debug* D)
 {
-/* set lua_tracefunction to line mode */
+	if (!L || !D){
+		fprintf(m_out, "#ERROR no Lua state\n");
+		return;
+	}
+
+	lua_sethook(L, arcan_monitor_watchdog, LUA_MASKLINE, 1);
+	m_locked = false;
+	m_dumppause = true;
+}
+
+static void cmd_stepend(char* argv, lua_State* L, lua_Debug* D)
+{
+	if (!L || !D){
+		fprintf(m_out, "#ERROR no Lua state\n");
+		return;
+	}
+
+	lua_sethook(L, arcan_monitor_watchdog, LUA_MASKRET, 1);
+	m_locked = false;
+	m_dumppause = true;
+}
+
+static void cmd_stepcall(char* argv, lua_State* L, lua_Debug* D)
+{
+	if (!L || !D){
+		fprintf(m_out, "#ERROR no Lua state\n");
+		return;
+	}
+
+	lua_sethook(L, arcan_monitor_watchdog, LUA_MASKRET, 1);
+	m_locked = false;
+	m_dumppause = true;
 }
 
 static void cmd_stepinstruction(char* argv, lua_State* L, lua_Debug* D)
 {
-/*set lua_tracefunction to instruction mode */
+	if (!L){
+		fprintf(m_out, "#ERROR No Lua state\n");
+		return;
+	}
+
+	long count = 1;
+	if (argv && strlen(argv)){
+		count = strtol(argv, NULL, 10);
+	}
+
+/* set lua_tracefunction to line mode */
+	lua_sethook(L, arcan_monitor_watchdog, LUA_MASKCALL, count);
+	m_locked = false;
+	m_dumppause = true;
 }
 
 static void cmd_dumptable(char* argv, lua_State* L, lua_Debug* D)
@@ -292,12 +372,27 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 		{"lock", cmd_lock},
 		{"eval", cmd_eval},
 		{"locals", cmd_locals},
-		{"stepnext", cmd_stepn},
+		{"stepnext", cmd_stepline},
+		{"stepend", cmd_stepend},
+		{"stepcall", cmd_stepcall},
 		{"stepinstruction", cmd_stepinstruction},
-		{"dumptable", cmd_dumptable}
+		{"dumptable", cmd_dumptable},
+		{"source", cmd_source}
 	};
 
 	m_locked = true;
+
+/* revert the errorhook if we come with L/D set. SIGUSR1 would re-arm
+ * as does other step*** calls.
+ */
+	if (L){
+		lua_sethook(L, NULL, 0, 0);
+	}
+
+	if (m_dumppause && L && D){
+		m_dumppause = false;
+		cmd_backtrace("", L, D);
+	}
 
 	do {
 		char buf[4096];
@@ -322,20 +417,6 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 			}
 		}
 	} while (m_locked);
-
-/* revert the errorhook
- *
- * we get into the watchdog with L/D set based on SIGUSR1 being sent,
- * other commands come due to input on monitor control in.
- *
- * For single-stepping etc. we can also let the hook remain, and switch
- * between line, instruction, ...
- * The mask (MASKCALL, MASKLRET, MASKLINE, MASKCOUNT) sets condition for
- * hook trigger.
- */
-	if (L){
-		lua_sethook(L, NULL, 0, 0);
-	}
 
 	arcan_conductor_toggle_watchdog();
 
