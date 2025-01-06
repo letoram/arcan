@@ -7326,6 +7326,10 @@ static int warning(lua_State* ctx)
 	char* msg = (char*) luaL_checkstring(ctx, 1);
 	msg = filter_text(msg, &len);
 
+	if (lua_type(ctx, 2) == LUA_TBOOLEAN && lua_toboolean(ctx, 2)){
+		arcan_monitor_watchdog(ctx, NULL);
+	}
+
 	if (len == 0){
 		LUA_ETRACE("warning", "empty warning", 0);
 	}
