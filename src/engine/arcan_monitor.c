@@ -118,16 +118,15 @@ static void cmd_commit(char* arg, lua_State* L, lua_Debug* D)
 
 static void cmd_source(char* arg, lua_State* L, lua_Debug* D)
 {
-	if (arg[0] != '@'){
-		fprintf(m_out, "#ERROR invalid Lua source ref: %s\n", arg);
-		return;
+	if (arg[0] == '@'){
+		arg = &arg[1];
 	}
 
 /* strip \n */
 	size_t len = strlen(arg);
 	arg[len-1] = '\0';
 
-	data_source indata = arcan_open_resource(&arg[1]);
+	data_source indata = arcan_open_resource(arg);
 	map_region reg = arcan_map_resource(&indata, false);
 	if (!reg.ptr){
 		fprintf(m_out, "#ERROR couldn't map Lua source ref: %s\n", arg);
@@ -241,10 +240,6 @@ static void cmd_eval(char* argv, lua_State* L, lua_Debug* D)
 	status = lua_pcall(L, 0, LUA_MULTRET, base);
 	lua_remove(L, base);
 
-/* don't need to put effort in printing the results here as print(...) would be
- * captured by stdout in the debugger launching it, for arcan-net we do need a
- * different method for capturing output */
-
 	if (status != 0){
 		lua_gc(L, LUA_GCCOLLECT, 0);
 		const char* msg = lua_tostring(L, -1);
@@ -253,6 +248,12 @@ static void cmd_eval(char* argv, lua_State* L, lua_Debug* D)
 		}
 		else
 			fprintf(m_out, "(error object is not a string)\n");
+	}
+/* possible do a real table dump here as with eval we'd want the full one most
+ * of the time */
+	else if (lua_type(L, -1) != LUA_TNIL){
+		alt_trace_print_type(L, -1, "", m_out);
+		fputc('\n', m_out);
 	}
 
 	fprintf(m_out, "#ENDRESULT\n");
@@ -328,15 +329,79 @@ static void cmd_dumptable(char* argv, lua_State* L, lua_Debug* D)
 /* extract offset, seek to that position and dump keys, recurse */
 }
 
-static void cmd_breakep(char* argv, lua_State* L, lua_Debug* D)
+static void cmd_breakpoint(char* argv, lua_State* L, lua_Debug* D)
 {
-/* check argv for entrypoint, mark it as hooked in the arcan_lua bitmap
- * and that will trigger the lua_trace for us */
+/* add to uthash table of file:line with a custom id,
+ * forward to alt_trace_ */
 }
 
-/*
- * sources we can get from globbing the appl path for all .lua
- */
+static struct {
+	int maskv;
+	const char* keyv;
+} ep_map[] =
+{
+	{EP_TRIGGER_CLOCK, "clock"},
+	{EP_TRIGGER_INPUT, "input"},
+	{EP_TRIGGER_INPUT_RAW, "input_raw"},
+	{EP_TRIGGER_INPUT_END, "input_end"},
+	{EP_TRIGGER_PREFRAME, "preframe"},
+	{EP_TRIGGER_POSTFRAME, "postframe"},
+	{EP_TRIGGER_ADOPT, "adopt"},
+	{EP_TRIGGER_AUTORES, "autores"},
+	{EP_TRIGGER_AUTOFONT, "autofont"},
+	{EP_TRIGGER_DISPLAYSTATE, "display_state"},
+	{EP_TRIGGER_DISPLAYRESET, "display_reset"},
+	{EP_TRIGGER_FRAMESERVER, "frameserver"},
+	{EP_TRIGGER_MESH, "mesh"},
+	{EP_TRIGGER_CALCTARGET, "calctarget"},
+	{EP_TRIGGER_LWA, "lwa"},
+	{EP_TRIGGER_IMAGE, "image"},
+	{EP_TRIGGER_AUDIO, "audio"},
+	{EP_TRIGGER_MAIN, "main"},
+	{EP_TRIGGER_SHUTDOWN, "shutdown"},
+	{EP_TRIGGER_NBIO_RD, "nbio_read"},
+	{EP_TRIGGER_NBIO_WR, "nbio_write"},
+	{EP_TRIGGER_NBIO_DATA, "nbio_data"},
+	{EP_TRIGGER_HANDOVER, "handover"},
+	{EP_TRIGGER_TRACE, "trace"}
+};
+
+static void cmd_entrypoint(char* argv, lua_State* L, lua_Debug* D)
+{
+	uint64_t mask_kind = 0;
+	char* tok;
+	char* tokctx;
+
+	while ( (tok = strtok_r(argv, " ", &tokctx) ) ){
+		argv = NULL;
+		for (size_t i = 0; i < COUNT_OF(ep_map); i++){
+			if (strcmp(ep_map[i].keyv, tok) == 0){
+				mask_kind |= ep_map[i].maskv;
+				break;
+			}
+		}
+	}
+
+	alt_trace_hookmask(mask_kind, false);
+}
+
+bool arcan_monitor_watchdog_error(lua_State* L, int in_panic)
+{
+	if (!m_ctrl)
+		return false;
+
+	if (in_panic)
+		longjmp_mode = ARCAN_LUA_RECOVERY_SWITCH;
+
+/* we have a broken callstack at this point so the stacktrace would do nothing */
+	if (lua_type(L, -1) == LUA_TSTRING){
+		fprintf(m_out, "#BEGINERROR\n%s\n#ENDERROR", lua_tostring(L, -1));
+	}
+
+	arcan_monitor_watchdog(L, NULL);
+
+	return true;
+}
 
 void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 {
@@ -377,7 +442,9 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 		{"stepcall", cmd_stepcall},
 		{"stepinstruction", cmd_stepinstruction},
 		{"dumptable", cmd_dumptable},
-		{"source", cmd_source}
+		{"source", cmd_source},
+		{"breakpoint", cmd_breakpoint},
+		{"entrypoint", cmd_entrypoint}
 	};
 
 	m_locked = true;
@@ -389,7 +456,7 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 		lua_sethook(L, NULL, 0, 0);
 	}
 
-	if (m_dumppause && L && D){
+	if (m_dumppause && L){
 		m_dumppause = false;
 		cmd_backtrace("", L, D);
 	}

@@ -114,8 +114,6 @@ enum {
 	EP_TRIGGER_TRACE = 1 << 23
 };
 
-void arcan_lua_triggermask(struct arcan_luactx*, uint64_t mask);
-
 /*
  * create a new external listening endpoint and expose via the _adopt handler,
  * the purpose is to expose a pre-existing connection via _stdin.

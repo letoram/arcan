@@ -25,6 +25,7 @@
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
+#include "arcan_monitor.h"
 #include "nbio.h"
 
 #include "alt/types.h"
@@ -44,9 +45,17 @@ static size_t prefix_len;
  * scripting error, more data can be added to get better logs out.
  */
 static void wraperr(lua_State* L, int errc, const char* src);
-static int alt_cb_kind;
-static lua_Number alt_cb_source;
+
+static struct {
+	int kind;
+	uint64_t luavid, vid, maskkind;
+} callback_source;
+static uint64_t hook_mask;
+
 static lua_State* fatal_context;
+
+/* externally set in main as part of -g -g or in _lua if the script modifies
+ * DEBUGLEVEL */
 unsigned lua_debug_level;
 
 /* crash recovery takes quite a few special hoops, but the one relevant here
@@ -55,7 +64,21 @@ unsigned lua_debug_level;
  * set of scripts.*/
 static bool in_panic_state;
 static bool in_fatal_state;
+static bool in_breakpoint_set;
 extern jmp_buf arcanmain_recover_state;
+
+void alt_trace_hookmask(uint64_t mask, bool bkpt)
+{
+	in_breakpoint_set = bkpt;
+	hook_mask = mask;
+}
+
+void alt_trace_cbstate(uint64_t* kind, uint64_t* luavid, uint64_t* vid)
+{
+	*kind = callback_source.maskkind;
+	*vid = callback_source.vid;
+	*luavid = callback_source.luavid;
+}
 
 /* dump argument stack, stack trace are shown only when --debug is set */
 static void dump_stack(lua_State* L, FILE* dst)
@@ -114,18 +137,19 @@ void alt_call(
 	uintptr_t source,
 	int nargs, int retc, const char* src)
 {
-	alt_cb_source = vid_toluavid(source);
-	alt_cb_kind = cbkind;
-
 /* Safeguard against mismanaged alua_call stack, if the first argument isn't a
  * function - somebody screwed up. The fatal/shutdown action in those cases are
  * "difficult" to say the least" */
 	if (lua_type(L, -(nargs+1)) != LUA_TFUNCTION){
 		dump_stack(L, stderr);
 		lua_settop(L, 0);
-		alt_cb_source = 0;
 		return;
 	}
+
+	callback_source.luavid = vid_toluavid(source);
+	callback_source.vid = source;
+	callback_source.kind = cbkind;
+	callback_source.maskkind = masksrc;
 
 	int errind = 0;
 	errind = lua_gettop(L) - nargs;
@@ -144,6 +168,11 @@ void alt_call(
 		lua_remove(L, -2);
 	}
 
+/* if masksrc is in the current break-mask, set the hook to line-trigger */
+	if (hook_mask & masksrc){
+		lua_sethook(L, arcan_monitor_watchdog, LUA_MASKLINE, 1);
+	}
+
 	lua_insert(L, errind);
 	int errc = lua_pcall(L, nargs, retc, errind);
 
@@ -155,11 +184,21 @@ void alt_call(
 		const char* msg = luaL_optstring(L, -1, "no backtrace");
 		lua_remove(L, errind);
 		TRACE_MARK_ONESHOT("scripting", "crash", TRACE_SYS_ERROR, 0, 0, msg);
-		arcan_trace_setbuffer(NULL, 0, NULL);
-		alt_trace_finish(L);
 
-		wraperr(L, errc, src);
-		return;
+		if (!arcan_monitor_watchdog_error(L, 0)){
+			arcan_trace_setbuffer(NULL, 0, NULL);
+			alt_trace_finish(L);
+
+			wraperr(L, errc, src);
+			return;
+		}
+	}
+
+	memset(&callback_source, '\0', sizeof(callback_source));
+
+/* reset the hook - note that this could clash with breakpointing */
+	if (!in_breakpoint_set && (hook_mask & masksrc)){
+		lua_sethook(L, NULL, LUA_MASKLINE, 1);
 	}
 
 	lua_remove(L, errind);
@@ -169,10 +208,14 @@ static void panic(lua_State* L)
 {
 	lua_debug_level = 2;
 
-	if (alt_cb_kind != CB_SOURCE_NONE){
+	if (arcan_monitor_watchdog_error(L, 1)){
+		return;
+	}
+
+	if (callback_source.kind != CB_SOURCE_NONE){
 		char vidbuf[64] = {0};
 		snprintf(vidbuf, 63,
-			"script error in callback for VID (%.0lf)", alt_cb_source);
+			"script error in callback for VID (%.0lf)", callback_source.luavid);
 		wraperr(L, -1, vidbuf);
 	} else{
 		in_panic_state = true;

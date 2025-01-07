@@ -90,6 +90,18 @@ void alt_trace_callstack_raw(lua_State* L, lua_Debug* D, int levels, FILE* out)
 			ar.source,
 			ar.currentline, ar.linedefined, ar.lastlinedefined, ar.nups);
 
+		const char* name;
+		int argi = 1;
+		while ( (name = lua_getlocal(L, &ar, argi) ) ){
+/* this is subtle, but print_type appends type=vartype... so for that not
+ * to clash with the type key we prefix with var */
+			fprintf(out, "type=local:index=%d:name=%s:var", argi, name);
+			alt_trace_print_type(L, -1, "", out);
+			fputc('\n', out);
+			lua_pop(L, 1);
+			argi++;
+		}
+
 /* send the locals as well as it's cheaper than going for a roundtrip */
 		level++;
 	}
@@ -222,44 +234,45 @@ void alt_trace_finish(lua_State* L)
 	luaL_unref(L, LUA_REGISTRYINDEX, trace_cb);
 }
 
-void alt_trace_print_type(lua_State* L, int i, const char* suffix)
+void alt_trace_print_type(
+	lua_State* L, int i, const char* suffix, FILE* out)
 {
 	if (lua_type(L, i) == LUA_TNUMBER){
-		fprintf(stdout, "type=number:value=%.14g", lua_tonumber(L, i));
+		fprintf(out, "type=number:value=%.14g", lua_tonumber(L, i));
 	}
 	else if (lua_type(L, i) == LUA_TFUNCTION){
 		lua_Debug ar;
 		lua_pushvalue(L, i);
 		lua_getinfo(L, ">Snl", &ar); /* will pop -1 */
-		fprintf(stdout,
+		fprintf(out,
 			"type=func:name=%s:kind=%s:source=%s:start=%d:end=%d",
 			ar.name ? ar.name : "(null)",
 			ar.namewhat ? ar.namewhat : "(null)",
 			ar.source, ar.linedefined, ar.lastlinedefined);
 	}
 	else if (lua_type(L, i) == LUA_TSTRING){
-		fputs("type=string:value=", stdout);
+		fputs("type=string:value=", out);
 		const char* msg = lua_tostring(L, i);
 		while (msg && *msg){
 			if (*msg == '\n'){
-				fputc('\\', stdout);
-				fputc('n', stdout);
+				fputc('\\', out);
+				fputc('n', out);
 				msg++;
 				continue;
 			}
 			if (*msg == '\t')
-				fputs("     ", stdout);
+				fputs("     ", out);
 			else if (*msg == ':')
-				fputs(":", stdout);
+				fputs(":", out);
 			else if (*msg == ',')
-				fputc('\\', stdout);
-			fputc(*msg, stdout);
+				fputc('\\', out);
+			fputc(*msg, out);
 			msg++;
 		}
 	}
 	else if (lua_type(L, i) == LUA_TBOOLEAN){
 		fputs(lua_toboolean(L, i) ?
-			"type=bool:value=true" : "type=bool:value=false", stdout);
+			"type=bool:value=true" : "type=bool:value=false", out);
 	}
 	else if (lua_type(L, i) == LUA_TTABLE){
 		size_t n_keys = 0;
@@ -276,7 +289,7 @@ void alt_trace_print_type(lua_State* L, int i, const char* suffix)
 		}
 		lua_pop(L, 1);
 
-		fprintf(stdout, "type=table:length=%zu:keys=%zu", nelems, n_keys);
+		fprintf(out, "type=table:length=%zu:keys=%zu", nelems, n_keys);
 /* open question is if we should just dump the full table recursively? this
  * could get really long, at the same time since we replace print we can't
  * provide an interface for a starting offset to do it over multiple requests,
@@ -284,24 +297,24 @@ void alt_trace_print_type(lua_State* L, int i, const char* suffix)
  * specialised dump function there and do it flat */
  }
 	else if (lua_type(L, i) == LUA_TNIL){
-		fputs("type=nil", stdout);
+		fputs("type=nil", out);
 	}
-	fputs(suffix, stdout);
+	fputs(suffix, out);
 }
 
 /* this replaces the default print function */
 int alt_trace_log(lua_State* L)
 {
 
-/* if not tracing then just dump to stdout, otherwise append prefix and
+/* if not tracing then just dump to out, otherwise append prefix and
  * send to trace facility to provide enough marker data to order */
 	if (!arcan_trace_enabled){
 		int n_args = lua_gettop(L);
 		if (n_args){
 			for (int i = 1; i < n_args; ++i){
-				alt_trace_print_type(L, i, ", ");
+				alt_trace_print_type(L, i, ", ", stdout);
 			}
-			alt_trace_print_type(L, n_args, "\n");
+			alt_trace_print_type(L, n_args, "\n", stdout);
 		}
 		fflush(stdout);
 		return 0;

@@ -15,6 +15,11 @@ void alt_trace_finish(lua_State* ctx);
 int alt_trace_log(lua_State* ctx);
 
 /*
+ * update the mask of hooks that trigger the watchdog monitor
+ */
+void alt_trace_hookmask(uint64_t, bool bkpt);
+
+/*
  * copy [msg] and keep as the last known crash source in the
  * accumulated trash buffer.
  */
@@ -39,4 +44,4 @@ void alt_trace_callstack(lua_State* ctx, FILE* out);
 /*
  * print (Stdout) the type at stack index [i] appending the suffix to stdout
  */
-void alt_trace_print_type(lua_State* L, int i, const char* suffix);
+void alt_trace_print_type(lua_State* L, int i, const char* suffix, FILE*);
