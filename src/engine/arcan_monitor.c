@@ -144,11 +144,16 @@ static void cmd_source(char* arg, lua_State* L, lua_Debug* D)
 static void cmd_backtrace(char* arg, lua_State* L, lua_Debug* D)
 {
 	size_t n_levels = 10;
+	if (!L)
+		return;
+
 	fprintf(m_out, "#BEGINBACKTRACE\n");
-	if (L){
 		alt_trace_callstack_raw(L, D, n_levels, m_out);
-	}
 	fprintf(m_out, "#ENDBACKTRACE\n");
+
+	fprintf(m_out, "#BEGINSTACK\n");
+		alt_trace_dumpstack_raw(L, m_out);
+	fprintf(m_out, "#ENDSTACK\n");
 }
 
 static void cmd_lock(char* arg, lua_State* L, lua_Debug* D)
@@ -385,22 +390,25 @@ static void cmd_entrypoint(char* argv, lua_State* L, lua_Debug* D)
 	alt_trace_hookmask(mask_kind, false);
 }
 
-bool arcan_monitor_watchdog_error(lua_State* L, int in_panic)
+FILE* arcan_monitor_watchdog_error(lua_State* L, int in_panic, bool check)
 {
 	if (!m_ctrl)
 		return false;
 
+	if (check)
+		return m_ctrl;
+
 	if (in_panic)
-		longjmp_mode = ARCAN_LUA_RECOVERY_SWITCH;
+		longjmp_mode = ARCAN_LUA_RECOVERY_FATAL_IGNORE;
 
 /* we have a broken callstack at this point so the stacktrace would do nothing */
-	if (lua_type(L, -1) == LUA_TSTRING){
-		fprintf(m_out, "#BEGINERROR\n%s\n#ENDERROR", lua_tostring(L, -1));
-	}
+	fprintf(m_out,
+		"#BEGINERROR\n%s\n#ENDERROR\n",
+			lua_type(L, -1) == LUA_TSTRING ? lua_tostring(L, -1) : "(panic)");
 
 	arcan_monitor_watchdog(L, NULL);
 
-	return true;
+	return m_ctrl;
 }
 
 void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
@@ -457,6 +465,7 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 	}
 
 	if (m_dumppause && L){
+		fprintf(m_out, "#WAITING\n");
 		m_dumppause = false;
 		cmd_backtrace("", L, D);
 	}

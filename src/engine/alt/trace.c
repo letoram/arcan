@@ -75,6 +75,16 @@ void alt_trace_callstack(lua_State* L, FILE* out)
 	alt_apply_ban(L);
 }
 
+void alt_trace_dumpstack_raw(lua_State* L, FILE* out)
+{
+	int top = lua_gettop(L);
+	while (top >= 0){
+		fprintf(out, "type=stack:index=%d:var", top);
+		alt_trace_print_type(L, top, "\n", out);
+		top--;
+	}
+}
+
 void alt_trace_callstack_raw(lua_State* L, lua_Debug* D, int levels, FILE* out)
 {
 	lua_Debug ar;
@@ -281,9 +291,12 @@ void alt_trace_print_type(
 	#define lua_rawlen(x, y) lua_objlen(x, y)
 #endif
 
-		int nelems = lua_rawlen(L, 1);
+		int nelems = lua_rawlen(L, i);
+
+		lua_pushvalue(L, i);
 		lua_pushnil(L);
-		while (lua_next(L, i)){
+
+		while (lua_next(L, -2) != 0){
 			lua_pop(L, 1);
 			n_keys++;
 		}

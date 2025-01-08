@@ -37,6 +37,11 @@ char* alt_trace_crash_source(void);
 void alt_trace_callstack_raw(lua_State* L, lua_Debug* D, int levels, FILE* out);
 
 /*
+ * sweep the current stack and dump the members on it
+ */
+void alt_trace_dumpstack_raw(lua_State* L, FILE* out);
+
+/*
  * append the lua VM call backtrace to [out]
  */
 void alt_trace_callstack(lua_State* ctx, FILE* out);

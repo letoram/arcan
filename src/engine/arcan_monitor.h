@@ -23,9 +23,10 @@ void arcan_monitor_watchdog(lua_State*, lua_Debug*);
 /*
  * When the Lua VM pcall or panic handler gets triggered from code, this should
  * be called first to determine if an attached debugger is there to take over
- * recovery rather than the default path of jumping into recovery-switch
+ * recovery rather than the default path of jumping into recovery-switch or the
+ * _fatal entrypoint.
  */
-bool arcan_monitor_watchdog_error(lua_State* L, int in_panic);
+FILE* arcan_monitor_watchdog_error(lua_State* L, int in_panic, bool check);
 
 /*
  * call once, set periodic output monitoring destination:

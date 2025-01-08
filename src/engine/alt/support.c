@@ -123,6 +123,22 @@ arcan_vobj_id luaL_checkvid(
 	return res;
 }
 
+static FILE* trace_out;
+static int wrap_trace_callstack(lua_State* L)
+{
+	fprintf(trace_out, "#BEGINBACKTRACE\n");
+		alt_trace_callstack_raw(L, NULL, 10, trace_out);
+	fprintf(trace_out, "#ENDBACKTRACE\n");
+
+/* the error message will actually be a local on */
+
+	fprintf(trace_out, "#BEGINSTACK\n");
+		alt_trace_dumpstack_raw(L, trace_out);
+	fprintf(trace_out, "#ENDSTACK\n");
+
+	return 1;
+}
+
 /*
  * Arcan to Lua call with a version that provides more detailed stack data on
  * error, this is primarily for the case where we have C->lua->callback and
@@ -160,12 +176,21 @@ void alt_call(
  * allow the dynamic behavior still is to have a trigger for _G changing the
  * respective functions, and inject a default _fatal function that returns
  * debug.traceback(). */
+	trace_out = stdout;
+
 	if (alt_lookup_entry(L, "fatal", 5)){
 	}
-	else{
+/* instead of the lua traceback format we want our own, since pcall would
+ * unwind the stand we don't get a traceback afterwards */
+	else if ((trace_out = arcan_monitor_watchdog_error(L, 0, true))){
+		lua_pushcfunction(L, wrap_trace_callstack);
+		lua_insert(L, errind);
+	}
+	else {
 		lua_getglobal(L, "debug");
 		lua_getfield(L, -1, "traceback");
 		lua_remove(L, -2);
+		lua_insert(L, errind);
 	}
 
 /* if masksrc is in the current break-mask, set the hook to line-trigger */
@@ -173,19 +198,18 @@ void alt_call(
 		lua_sethook(L, arcan_monitor_watchdog, LUA_MASKLINE, 1);
 	}
 
-	lua_insert(L, errind);
 	int errc = lua_pcall(L, nargs, retc, errind);
 
 	if (errc != 0){
-/* if we have a tracing session going, try to finish that one along
- * with the backtrace we might have received, this should be robust
- * from recursion (scripting error in the callback handler) since
- * the got_trace_buffer trigger is cleared between calls */
+/* if we have a tracing session going, try to finish that one along with the
+ * backtrace we might have received, this should be robust from recursion
+ * (scripting error in the callback handler) since the got_trace_buffer trigger
+ * is cleared between calls */
 		const char* msg = luaL_optstring(L, -1, "no backtrace");
 		lua_remove(L, errind);
 		TRACE_MARK_ONESHOT("scripting", "crash", TRACE_SYS_ERROR, 0, 0, msg);
 
-		if (!arcan_monitor_watchdog_error(L, 0)){
+		if (!arcan_monitor_watchdog_error(L, 0, false)){
 			arcan_trace_setbuffer(NULL, 0, NULL);
 			alt_trace_finish(L);
 
@@ -201,14 +225,15 @@ void alt_call(
 		lua_sethook(L, NULL, LUA_MASKLINE, 1);
 	}
 
-	lua_remove(L, errind);
+	if (errind)
+		lua_remove(L, errind);
 }
 
 static void panic(lua_State* L)
 {
 	lua_debug_level = 2;
 
-	if (arcan_monitor_watchdog_error(L, 1)){
+	if (arcan_monitor_watchdog_error(L, 1, false)){
 		return;
 	}
 
