@@ -124,17 +124,48 @@ arcan_vobj_id luaL_checkvid(
 }
 
 static FILE* trace_out;
-static int wrap_trace_callstack(lua_State* L)
+static int wrap_trace_callstack_raw(lua_State* L)
 {
+/* the traces will be sent immediately, and the actual error string will
+ * propagate through the pcall return, go into watchdog_error then regular
+ * recovery. */
+
 	fprintf(trace_out, "#BEGINBACKTRACE\n");
 		alt_trace_callstack_raw(L, NULL, 10, trace_out);
 	fprintf(trace_out, "#ENDBACKTRACE\n");
 
-/* the error message will actually be a local on */
-
 	fprintf(trace_out, "#BEGINSTACK\n");
 		alt_trace_dumpstack_raw(L, trace_out);
 	fprintf(trace_out, "#ENDSTACK\n");
+
+	return 1;
+}
+
+static int wrap_trace_callstack(lua_State* L)
+{
+/* Let the appl be in charge of providing the traceback, then leave the
+ * return argument on the stack and it chains back. This means the _fatal
+ * entrypoint is not exposed to monitoring for breakpoints or stepping. */
+	if (alt_lookup_entry(L, "fatal", 5)){
+		lua_pcall(L, 0, 1, 0);
+	}
+/* use a memstream to get the regular callstack implementation which
+ * for reloads debug.traceback from lua libraries */
+	else {
+		char* buf;
+		size_t buf_sz;
+		FILE* stream;
+		stream = open_memstream(&buf, &buf_sz);
+		if (stream){
+			alt_trace_callstack(L, stream);
+			fflush(stream);
+			lua_pushstring(L, buf);
+			fclose(stream);
+			free(buf);
+		}
+		else
+			lua_pushstring(L, "(open_memstream fail, can't build trace)");
+	}
 
 	return 1;
 }
@@ -178,20 +209,15 @@ void alt_call(
  * debug.traceback(). */
 	trace_out = stdout;
 
-	if (alt_lookup_entry(L, "fatal", 5)){
-	}
 /* instead of the lua traceback format we want our own, since pcall would
- * unwind the stand we don't get a traceback afterwards */
-	else if ((trace_out = arcan_monitor_watchdog_error(L, 0, true))){
-		lua_pushcfunction(L, wrap_trace_callstack);
-		lua_insert(L, errind);
+ * unwind the stack we don't get a traceback afterwards */
+	if ((trace_out = arcan_monitor_watchdog_error(L, 0, true))){
+		lua_pushcfunction(L, wrap_trace_callstack_raw);
 	}
 	else {
-		lua_getglobal(L, "debug");
-		lua_getfield(L, -1, "traceback");
-		lua_remove(L, -2);
-		lua_insert(L, errind);
+		lua_pushcfunction(L, wrap_trace_callstack);
 	}
+	lua_insert(L, errind);
 
 /* if masksrc is in the current break-mask, set the hook to line-trigger */
 	if (hook_mask & masksrc){
@@ -302,12 +328,43 @@ static void fatal_handover(lua_State* L)
 void alt_fatal(const char* msg, ...)
 {
 	va_list args;
-
-	lua_State* L = fatal_context;
-
 	char* buf;
 	size_t buf_sz;
-	FILE* stream = open_memstream(&buf, &buf_sz);
+	FILE* stream;
+	lua_State* L = fatal_context;
+
+/* if we have monitor attached, go through the watchdog error handler instead
+ * as that will go into FATAL_IGNORE path which will get us back to the Lua VM */
+	if ((trace_out = arcan_monitor_watchdog_error(L, 0, true))){
+		fprintf(trace_out, "#BEGINBACKTRACE\n");
+			alt_trace_callstack_raw(L, NULL, 10, trace_out);
+		fprintf(trace_out, "#ENDBACKTRACE\n");
+
+		fprintf(trace_out, "#BEGINSTACK\n");
+			alt_trace_dumpstack_raw(L, trace_out);
+		fprintf(trace_out, "#ENDSTACK\n");
+
+/* just build the stream like below, but no \x1b */
+		stream = open_memstream(&buf, &buf_sz);
+		if (stream){
+			va_start(args, msg);
+			vfprintf(stream, msg, args);
+			fprintf(stream, "\n");
+			va_end(args);
+			fflush(stream);
+/* push the composed error message unto the stack for watchdog_error */
+			lua_pushstring(L, buf);
+			fclose(stream);
+			free(buf);
+		}
+		else
+			lua_pushstring(L, "(couldn't build error-message)");
+
+		arcan_monitor_watchdog_error(L, 1, false);
+		return;
+	}
+
+	stream = open_memstream(&buf, &buf_sz);
 	if (stream){
 		va_start(args, msg);
 

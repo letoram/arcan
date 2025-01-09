@@ -396,7 +396,7 @@ FILE* arcan_monitor_watchdog_error(lua_State* L, int in_panic, bool check)
 		return false;
 
 	if (check)
-		return m_ctrl;
+		return m_out;
 
 	if (in_panic)
 		longjmp_mode = ARCAN_LUA_RECOVERY_FATAL_IGNORE;
@@ -408,7 +408,7 @@ FILE* arcan_monitor_watchdog_error(lua_State* L, int in_panic, bool check)
 
 	arcan_monitor_watchdog(L, NULL);
 
-	return m_ctrl;
+	return m_out;
 }
 
 void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)

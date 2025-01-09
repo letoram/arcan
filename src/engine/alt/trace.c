@@ -244,11 +244,39 @@ void alt_trace_finish(lua_State* L)
 	luaL_unref(L, LUA_REGISTRYINDEX, trace_cb);
 }
 
+static const char* udata_list[] = {
+	"Arcan TUI",
+	"nonblockIO",
+	"nonblockIOs",
+	"calcImage",
+	"meshAccess"
+};
+
+static const char* match_udata(lua_State* L, ssize_t pos){
+	if (0 == lua_getmetatable(L, pos))
+		return NULL;
+
+	for (size_t i = 0; i < COUNT_OF(udata_list); i++){
+		luaL_getmetatable(L, udata_list[i]);
+		if (lua_rawequal(L, -1, -2)){
+			lua_pop(L, 2);
+			return udata_list[i];
+		}
+		lua_pop(L, 1);
+	}
+
+	lua_pop(L, 1);
+	return "(unknown)";
+}
+
 void alt_trace_print_type(
 	lua_State* L, int i, const char* suffix, FILE* out)
 {
 	if (lua_type(L, i) == LUA_TNUMBER){
 		fprintf(out, "type=number:value=%.14g", lua_tonumber(L, i));
+	}
+	else if (lua_type(L, i) == LUA_TUSERDATA){
+		fprintf(out, "type=userdata:name=%s\n", match_udata(L, i));
 	}
 	else if (lua_type(L, i) == LUA_TFUNCTION){
 		lua_Debug ar;
