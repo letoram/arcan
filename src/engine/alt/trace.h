@@ -50,3 +50,10 @@ void alt_trace_callstack(lua_State* ctx, FILE* out);
  * print (Stdout) the type at stack index [i] appending the suffix to stdout
  */
 void alt_trace_print_type(lua_State* L, int i, const char* suffix, FILE*);
+
+/*
+ * convert back / forth from single entrypoint enum (lua.h)
+ */
+void alt_trace_cbstate(uint64_t* kind, int64_t* luavid, int64_t* vid);
+const char* alt_trace_eptostr(uint64_t ep);
+uint64_t alt_trace_strtoep(const char* ep);

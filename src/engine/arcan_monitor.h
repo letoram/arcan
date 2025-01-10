@@ -57,6 +57,11 @@ void arcan_monitor_tick();
 void arcan_monitor_finish(bool ok);
 
 /*
+ * trigger prior to pcall:ing something which matched the trigger mask
+ */
+void arcan_monitor_masktrigger(lua_State* L);
+
+/*
  * forward connection point information over the monitor and have the
  * parent bind to it (replacing any existing one).
  */

@@ -85,12 +85,69 @@ void alt_trace_dumpstack_raw(lua_State* L, FILE* out)
 	}
 }
 
+static struct {
+	int maskv;
+	const char* keyv;
+} ep_map[] =
+{
+	{EP_TRIGGER_CLOCK, "clock"},
+	{EP_TRIGGER_INPUT, "input"},
+	{EP_TRIGGER_INPUT_RAW, "input_raw"},
+	{EP_TRIGGER_INPUT_END, "input_end"},
+	{EP_TRIGGER_PREFRAME, "preframe"},
+	{EP_TRIGGER_POSTFRAME, "postframe"},
+	{EP_TRIGGER_ADOPT, "adopt"},
+	{EP_TRIGGER_AUTORES, "autores"},
+	{EP_TRIGGER_AUTOFONT, "autofont"},
+	{EP_TRIGGER_DISPLAYSTATE, "display_state"},
+	{EP_TRIGGER_DISPLAYRESET, "display_reset"},
+	{EP_TRIGGER_FRAMESERVER, "frameserver"},
+	{EP_TRIGGER_MESH, "mesh"},
+	{EP_TRIGGER_CALCTARGET, "calctarget"},
+	{EP_TRIGGER_LWA, "lwa"},
+	{EP_TRIGGER_IMAGE, "image"},
+	{EP_TRIGGER_AUDIO, "audio"},
+	{EP_TRIGGER_MAIN, "main"},
+	{EP_TRIGGER_SHUTDOWN, "shutdown"},
+	{EP_TRIGGER_NBIO_RD, "nbio_read"},
+	{EP_TRIGGER_NBIO_WR, "nbio_write"},
+	{EP_TRIGGER_NBIO_DATA, "nbio_data"},
+	{EP_TRIGGER_HANDOVER, "handover"},
+	{EP_TRIGGER_TRACE, "trace"}
+};
+
+uint64_t alt_trace_strtoep(const char* ep)
+{
+	for (size_t i = 0; i < COUNT_OF(ep_map); i++){
+		if (strcmp(ep_map[i].keyv, ep) == 0)
+			return ep_map[i].maskv;
+	}
+	return 0;
+}
+
+const char* alt_trace_eptostr(uint64_t ep)
+{
+	for (size_t i = 0; i < COUNT_OF(ep_map); i++){
+		if (ep_map[i].maskv == ep)
+			return ep_map[i].keyv;
+	}
+	return "(bad)";
+}
+
 void alt_trace_callstack_raw(lua_State* L, lua_Debug* D, int levels, FILE* out)
 {
-	lua_Debug ar;
+	uint64_t cbk;
+	int64_t luavid, vid;
+	alt_trace_cbstate(&cbk, &luavid, &vid);
+	fprintf(out,
+		"type=entrypoint:kind=%s:vid=%"PRId64":luavid=%"PRIu64"\n",
+		alt_trace_eptostr(cbk),
+		luavid, vid
+	);
 	int level = 0;
+	lua_Debug ar;
 
-	while (lua_getstack(L, level, &ar)){
+	while (lua_getstack(L, level, &ar) && level < levels){
 		lua_getinfo(L, "Slnu", &ar);
 		fprintf(out, "type=stacktrace:frame=%d:name=%s:"
 			"kind=%s:source=%s:current=%d:start=%d:end=%d:upvalues=%d\n",

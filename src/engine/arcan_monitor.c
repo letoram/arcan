@@ -340,54 +340,28 @@ static void cmd_breakpoint(char* argv, lua_State* L, lua_Debug* D)
  * forward to alt_trace_ */
 }
 
-static struct {
-	int maskv;
-	const char* keyv;
-} ep_map[] =
-{
-	{EP_TRIGGER_CLOCK, "clock"},
-	{EP_TRIGGER_INPUT, "input"},
-	{EP_TRIGGER_INPUT_RAW, "input_raw"},
-	{EP_TRIGGER_INPUT_END, "input_end"},
-	{EP_TRIGGER_PREFRAME, "preframe"},
-	{EP_TRIGGER_POSTFRAME, "postframe"},
-	{EP_TRIGGER_ADOPT, "adopt"},
-	{EP_TRIGGER_AUTORES, "autores"},
-	{EP_TRIGGER_AUTOFONT, "autofont"},
-	{EP_TRIGGER_DISPLAYSTATE, "display_state"},
-	{EP_TRIGGER_DISPLAYRESET, "display_reset"},
-	{EP_TRIGGER_FRAMESERVER, "frameserver"},
-	{EP_TRIGGER_MESH, "mesh"},
-	{EP_TRIGGER_CALCTARGET, "calctarget"},
-	{EP_TRIGGER_LWA, "lwa"},
-	{EP_TRIGGER_IMAGE, "image"},
-	{EP_TRIGGER_AUDIO, "audio"},
-	{EP_TRIGGER_MAIN, "main"},
-	{EP_TRIGGER_SHUTDOWN, "shutdown"},
-	{EP_TRIGGER_NBIO_RD, "nbio_read"},
-	{EP_TRIGGER_NBIO_WR, "nbio_write"},
-	{EP_TRIGGER_NBIO_DATA, "nbio_data"},
-	{EP_TRIGGER_HANDOVER, "handover"},
-	{EP_TRIGGER_TRACE, "trace"}
-};
-
 static void cmd_entrypoint(char* argv, lua_State* L, lua_Debug* D)
 {
 	uint64_t mask_kind = 0;
 	char* tok;
 	char* tokctx;
 
+/* strip \n */
+	size_t len = strlen(argv);
+	if (len)
+		argv[len-1] = '\0';
+
 	while ( (tok = strtok_r(argv, " ", &tokctx) ) ){
 		argv = NULL;
-		for (size_t i = 0; i < COUNT_OF(ep_map); i++){
-			if (strcmp(ep_map[i].keyv, tok) == 0){
-				mask_kind |= ep_map[i].maskv;
-				break;
-			}
-		}
+		mask_kind |= alt_trace_strtoep(tok);
 	}
 
 	alt_trace_hookmask(mask_kind, false);
+}
+
+void arcan_monitor_masktrigger(lua_State* L)
+{
+	m_dumppause = true;
 }
 
 FILE* arcan_monitor_watchdog_error(lua_State* L, int in_panic, bool check)

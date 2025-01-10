@@ -48,7 +48,7 @@ static void wraperr(lua_State* L, int errc, const char* src);
 
 static struct {
 	int kind;
-	uint64_t luavid, vid, maskkind;
+	int64_t luavid, vid, maskkind;
 } callback_source;
 static uint64_t hook_mask;
 
@@ -73,7 +73,7 @@ void alt_trace_hookmask(uint64_t mask, bool bkpt)
 	hook_mask = mask;
 }
 
-void alt_trace_cbstate(uint64_t* kind, uint64_t* luavid, uint64_t* vid)
+void alt_trace_cbstate(uint64_t* kind, int64_t* luavid, int64_t* vid)
 {
 	*kind = callback_source.maskkind;
 	*vid = callback_source.vid;
@@ -222,6 +222,7 @@ void alt_call(
 /* if masksrc is in the current break-mask, set the hook to line-trigger */
 	if (hook_mask & masksrc){
 		lua_sethook(L, arcan_monitor_watchdog, LUA_MASKLINE, 1);
+		arcan_monitor_masktrigger(L);
 	}
 
 	int errc = lua_pcall(L, nargs, retc, errind);
