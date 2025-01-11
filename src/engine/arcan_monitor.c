@@ -331,13 +331,59 @@ static void cmd_stepinstruction(char* argv, lua_State* L, lua_Debug* D)
 
 static void cmd_dumptable(char* argv, lua_State* L, lua_Debug* D)
 {
-/* extract offset, seek to that position and dump keys, recurse */
+/* addressing is a bit annoying, as we need to be able to pick
+ * frame:local
+ * frame:argtable
+ * then navigate by name
+ *
+ * extract offset, seek to that position and dump keys, recurse */
 }
 
 static void cmd_breakpoint(char* argv, lua_State* L, lua_Debug* D)
 {
 /* add to uthash table of file:line with a custom id,
  * forward to alt_trace_ */
+}
+
+static void cmd_paths(char* argv, lua_State* L, lua_Debug* D)
+{
+	int spaces[] = {
+		RESOURCE_APPL,
+		RESOURCE_APPL_SHARED,
+		RESOURCE_APPL_TEMP,
+		RESOURCE_APPL_STATE,
+		RESOURCE_SYS_APPLBASE,
+		RESOURCE_SYS_APPLSTORE,
+		RESOURCE_SYS_APPLSTATE,
+		RESOURCE_SYS_FONT,
+		RESOURCE_SYS_BINS,
+		RESOURCE_SYS_LIBS,
+		RESOURCE_SYS_DEBUG,
+		RESOURCE_SYS_SCRIPTS
+	};
+	const char* space_names[] = {
+		"appl",
+		"appl-shared",
+		"appl-temporary",
+		"appl-state",
+		"sys-applbase",
+		"sys-applstore",
+		"sys-statebase",
+		"sys-font",
+		"sys-binaries",
+		"sys-libraries",
+		"sys-debugoutput",
+		"sys-scripts"
+	};
+
+	fprintf(m_out, "#BEGINPATHS\n");
+	for (size_t i = 0; COUNT_OF(spaces); i++){
+		char* ns = arcan_expand_resource("", spaces[i]);
+		fprintf(m_out, "namespace=%s:path=%s", space_names[i], ns ? ns : "(missing)");
+		free(ns);
+
+	}
+	fprintf(m_out, "#ENDPATHS\n");
 }
 
 static void cmd_entrypoint(char* argv, lua_State* L, lua_Debug* D)
@@ -426,7 +472,8 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 		{"dumptable", cmd_dumptable},
 		{"source", cmd_source},
 		{"breakpoint", cmd_breakpoint},
-		{"entrypoint", cmd_entrypoint}
+		{"entrypoint", cmd_entrypoint},
+		{"paths", cmd_paths}
 	};
 
 	m_locked = true;
