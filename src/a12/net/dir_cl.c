@@ -393,7 +393,7 @@ static pid_t exec_cpath(struct a12_state* S,
 		"-d", ":memory:",
 		"-M", "-1",
 		"-O", logfd_str,
-		"-C",
+		"-C", "-",
 		buf, NULL
 	};
 

@@ -43,7 +43,7 @@ static const struct option longopts[] = {
 	{ "pipe-stdin",   no_argument,       NULL, '0'},
 	{ "monitor",      required_argument, NULL, 'M'},
 	{ "monitor-out",  required_argument, NULL, 'O'},
-	{ "monitor-ctrl", no_argument,       NULL, 'C'},
+	{ "monitor-ctrl", required_argument, NULL, 'C'},
 	{ "version",      no_argument,       NULL, 'V'},
 	{ NULL,           no_argument,       NULL,  0 }
 };
@@ -92,7 +92,7 @@ printf("Usage: arcan [-whfmWMOqspTBtHbdgaSV] applname "
 "-W\t--sync-strat  \tspecify video synchronization strategy (see below)\n"
 "-M\t--monitor     \tenable monitor session (arg: [ticks/sample], -1 debug only)\n"
 "-O\t--monitor-out \tLOG:fname or LOGFD:num\n"
-"-C\t--monitor-ctrl\tuse STDIN as control interface (with SIGUSR1)\n"
+"-C\t--monitor-ctrl\tfilename or - for STDIN\n"
 "-s\t--windowed    \ttoggle borderless window mode\n"
 #ifdef DISABLE_FRAMESERVERS
 "-B\t--binpath     \tno-op, frameserver support was disabled compile-time\n"
@@ -410,7 +410,13 @@ int MAIN_REDIR(int argc, char* argv[])
 		if (stdin_connpoint){
 			arcan_fatal("argument misuse, cannot combine -C with -0");
 		}
-		monitor_ctrl = stdin;
+		if (strcmp(optarg, "-") == 0)
+			monitor_ctrl = stdin;
+		else {
+			monitor_ctrl = fopen(optarg, "r");
+			if (!monitor_ctrl)
+				arcan_fatal("-C %s : couldn't open", optarg);
+		}
 	break;
 	case 't' :
 		arcan_override_namespace(optarg, RESOURCE_SYS_APPLBASE);

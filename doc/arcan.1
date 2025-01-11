@@ -48,14 +48,15 @@ If the rate is set to a negative value, only script errors will be written.
 
 .IP "\fB-O, --monitor-out \fItarget\fR"
 Defines the monitoring data recipient, used in combination with -M, --monitor.
-Either specify LOG:filename or LOGFD:fdno for a file destination or for
+Either specify LOG:filename or LOGFD:fdno for a file destination or inherited
+file descriptor number.
 
-.IP "\fB-C, --monitor-ctrl\fR"
-Sets STDIN to work as a blocking control interface / watchdog that is triggered
-upon sending SIGUSR1 to the process. This can preempt script execution and is
-intended as an internal developer facing channel for building better inspection
-and debugging tools. Refer to the source implementation for arcan_monitor.c for
-commands and processing.
+.IP "\fB-C, --monitor-ctrl\ffilename or -\fR"
+Sets filename (use - for stdin) to work as a blocking control interface /
+watchdog that is triggered upon sending SIGUSR1 to the process. This can
+preempt script execution and is intended as an internal developer facing
+channel for building better inspection and debugging tools. Refer to the source
+implementation for arcan_monitor.c for commands and processing.
 
 .IP "\fB-p, --rpath \fIpath\fR"
 Change default searchpath for shared resources, see the \fInamespaces\fR
