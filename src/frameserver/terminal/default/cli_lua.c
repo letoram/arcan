@@ -110,7 +110,6 @@ int arcterm_luacli_run(struct arcan_shmif_cont* shmif, struct arg_arr* args)
 		}
 	}
 
-
 /* stack:
  *  -2 table
  *  -1 userdata
@@ -146,6 +145,18 @@ int arcterm_luacli_run(struct arcan_shmif_cont* shmif, struct arg_arr* args)
 /* replace open with empty function */
 	lua_pushliteral(lua, "open");
 	lua_pushcfunction(lua, emptyf);
+	lua_settable(lua, -3);
+
+/* add arguments table */
+	int ind = 0;
+	lua_pushliteral(lua, "arguments");
+	lua_newtable(lua);
+
+	while (arg_lookup(args, "args", ind++, &val) && val){
+		lua_pushnumber(lua, ind);
+		lua_pushstring(lua, val);
+		lua_settable(lua, -3);
+	}
 	lua_settable(lua, -3);
 
 /* and now set

@@ -4,6 +4,9 @@
  * Added monitor commands for backtrace, eval, locals, stepping and specialised dumps
  * Added breakpoint hooks for all transitions into VM execution
 
+## Terminal
+ * Expose args values as 'tui.arguments' table
+
 ## 0.7.0
 ## Core
  * Wired in rendertarget vobj export for hwenc, opt-in via target\_flags on rectgt
