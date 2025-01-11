@@ -535,6 +535,8 @@ bool arcan_monitor_configure(int srate, const char* dst, FILE* ctrl)
 	bool logfdtgt = dst ? strncmp(dst, "LOGFD:", 6) == 0 : false;
 
 	m_ctrl = ctrl;
+	m_out = stdout;
+
 	if (ctrl)
 		setlinebuf(m_ctrl);
 

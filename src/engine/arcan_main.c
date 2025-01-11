@@ -343,7 +343,7 @@ int MAIN_REDIR(int argc, char* argv[])
 	struct arcan_strarr tmplist = {0};
 
 	while ((ch = getopt_long(argc, argv,
-		"w:h:mx:y:fsW:d:Sq:a:p:b:B:L:M:O:Ct:T:H:g01V", longopts, NULL)) >= 0){
+		"w:h:mx:y:fsW:d:Sq:a:p:b:B:L:M:O:C:t:T:H:g01V", longopts, NULL)) >= 0){
 	switch (ch) {
 	case '?' :
 		usage();
