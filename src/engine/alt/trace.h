@@ -42,6 +42,12 @@ void alt_trace_callstack_raw(lua_State* L, lua_Debug* D, int levels, FILE* out);
 void alt_trace_dumpstack_raw(lua_State* L, FILE* out);
 
 /*
+ * shallow- dump the table at the top of the stack starting at ofs (or 0)
+ * and limit to cap (or 0 for no limit) number of keys
+ */
+void alt_trace_dumptable_raw(lua_State* L, int ofs, int cap, FILE* out);
+
+/*
  * append the lua VM call backtrace to [out]
  */
 void alt_trace_callstack(lua_State* ctx, FILE* out);

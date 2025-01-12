@@ -75,6 +75,29 @@ void alt_trace_callstack(lua_State* L, FILE* out)
 	alt_apply_ban(L);
 }
 
+void alt_trace_dumptable_raw(lua_State* L, int ofs, int cap, FILE* out)
+{
+	if (lua_type(L, -1) != LUA_TTABLE)
+		return;
+
+	lua_pushnil(L);
+	int ind = 0;
+
+	while (lua_next(L, -2) != 0){
+		if (!ofs){
+			fprintf(out, "type=table:index=%d:key", ind++);
+			alt_trace_print_type(L, -2, ":var", out);
+			alt_trace_print_type(L, -1, "\n", out);
+		}
+		else ofs--;
+		lua_pop(L, 1);
+		if (cap && cap-- == 1){
+			break;
+		}
+	}
+	lua_pop(L, 1);
+}
+
 void alt_trace_dumpstack_raw(lua_State* L, FILE* out)
 {
 	int top = lua_gettop(L);

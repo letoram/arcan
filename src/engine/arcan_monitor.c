@@ -331,12 +331,95 @@ static void cmd_stepinstruction(char* argv, lua_State* L, lua_Debug* D)
 
 static void cmd_dumptable(char* argv, lua_State* L, lua_Debug* D)
 {
-/* addressing is a bit annoying, as we need to be able to pick
- * frame:local
- * frame:argtable
- * then navigate by name
- *
- * extract offset, seek to that position and dump keys, recurse */
+	size_t len = strlen(argv);
+	if (len)
+		argv[len-1] = '\0';
+
+	lua_Debug ar;
+	char domain = '\0';
+	int argi = 0;
+	char* tok, (* tokctx);
+	bool gottbl = false;
+	int top = lua_gettop(L);
+
+	while ( (tok = strtok_r(argv, " ", &tokctx) ) ){
+		argv = NULL;
+
+/* navigate through the table indices */
+		if (domain && gottbl){
+			char* err = NULL;
+			unsigned long skip_n = strtoul(argv, &err, 10);
+			if (err){
+				fprintf(m_out, "#ERROR gettable: couldn't parse index\n");
+				break;
+			}
+
+			if (lua_type(L, -1) != LUA_TTABLE){
+				fprintf(m_out, "#ERROR gettable: resolved index is not a table\n");
+				break;
+			}
+
+			lua_pushnil(L);
+			while (lua_next(L, -2) != 0 && skip_n){
+				lua_pop(L, 1);
+				skip_n--;
+			}
+
+/* remove iteration key */
+			lua_remove(L, -2);
+		}
+
+/* domain selector: */
+		if (argi == 0){
+			switch (tok[0]){
+
+/* global */
+			case 'g':
+				domain = 'g';
+				lua_pushvalue(L, LUA_GLOBALSINDEX);
+				gottbl = true;
+			break;
+
+/* stack position */
+			case 's':
+				domain = 's';
+			break;
+
+/* local (+n) / vararg (-n) */
+			case 'l':
+				domain = 'l';
+			break;
+
+			default:
+				fprintf(m_out, "#ERROR gettable: bad domain selector\n");
+				return;
+
+			break;
+			}
+			argi++;
+		}
+
+/* to get from local (n) into the table to resolve,
+ * getstack from the relevant index, then getlocal on the decoded value
+ * ensure that is table then forward to dumptable */
+		else {
+
+		}
+	}
+
+	if (lua_type(L, -1) != LUA_TTABLE){
+		fprintf(m_out, "#ERROR gettable: resolved index is not a table\n");
+	}
+/* just dump the entire table, if needed we can support argument for setting
+ * starting offset and cap later */
+	else {
+		fprintf(m_out, "#BEGINTABLE\n");
+		alt_trace_dumptable_raw(L, 0, 0, m_out);
+		fprintf(m_out, "#ENDTABLE\n");
+	}
+
+	fflush(m_out);
+	lua_settop(L, top);
 }
 
 static void cmd_breakpoint(char* argv, lua_State* L, lua_Debug* D)
@@ -469,7 +552,7 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 		{"stepend", cmd_stepend},
 		{"stepcall", cmd_stepcall},
 		{"stepinstruction", cmd_stepinstruction},
-		{"dumptable", cmd_dumptable},
+		{"table", cmd_dumptable},
 		{"source", cmd_source},
 		{"breakpoint", cmd_breakpoint},
 		{"entrypoint", cmd_entrypoint},
