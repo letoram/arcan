@@ -329,27 +329,76 @@ static void cmd_stepinstruction(char* argv, lua_State* L, lua_Debug* D)
 	m_dumppause = true;
 }
 
+/* part of dumptable, check for LUA_TABLE at top is done there, this just
+ * extracts frame number and local number and loads whatever is there */
+static void local_to_table(char** tokctx, lua_State* L)
+{
+	char* tok;
+	bool gotframe = false;
+	long lref;
+	lua_Debug ar;
+
+	while ( (tok = strtok_r(NULL, " ", tokctx) ) ){
+		char* err = NULL;
+		long val = strtoul(tok, &err, 10);
+		if (err && *err){
+			fprintf(m_out,
+				"#ERROR gettable: missing %s reference\n", gotframe ? "local" : "frame");
+			return;
+		}
+
+		if (!gotframe){
+			if (!lua_getstack(L, val, &ar)){
+				fprintf(m_out,
+					"#ERROR gettable: invalid frame %ld\n", val);
+				return;
+			}
+			gotframe = true;
+		}
+		else {
+			lua_getlocal(L, &ar, val);
+			return;
+		}
+	}
+}
+
+/* part of dumptable, check for LUA_TABLE at top is done there, this just
+ * reads a value and then leaves the stack reference copied to the top */
+static void stack_to_table(char** tokctx, lua_State* L)
+{
+	char* tok;
+
+	while ( (tok = strtok_r(NULL, " ", tokctx) ) ){
+		char* err = NULL;
+		unsigned long index = strtoul(tok, &err, 10);
+		if (err && *err){
+			fprintf(m_out, "#ERROR gettable: missing stack reference\n");
+		}
+		else if (lua_type(L, index) == LUA_TTABLE){
+			lua_pushvalue(L, index);
+		}
+		return;
+	}
+}
+
 static void cmd_dumptable(char* argv, lua_State* L, lua_Debug* D)
 {
 	size_t len = strlen(argv);
 	if (len)
 		argv[len-1] = '\0';
 
-	lua_Debug ar;
-	char domain = '\0';
 	int argi = 0;
 	char* tok, (* tokctx);
-	bool gottbl = false;
 	int top = lua_gettop(L);
 
 	while ( (tok = strtok_r(argv, " ", &tokctx) ) ){
 		argv = NULL;
 
 /* navigate through the table indices */
-		if (domain && gottbl){
+		if (argi){
 			char* err = NULL;
-			unsigned long skip_n = strtoul(argv, &err, 10);
-			if (err){
+			unsigned long skip_n = strtoul(tok, &err, 10);
+			if (err && *err){
 				fprintf(m_out, "#ERROR gettable: couldn't parse index\n");
 				break;
 			}
@@ -372,24 +421,9 @@ static void cmd_dumptable(char* argv, lua_State* L, lua_Debug* D)
 /* domain selector: */
 		if (argi == 0){
 			switch (tok[0]){
-
-/* global */
-			case 'g':
-				domain = 'g';
-				lua_pushvalue(L, LUA_GLOBALSINDEX);
-				gottbl = true;
-			break;
-
-/* stack position */
-			case 's':
-				domain = 's';
-			break;
-
-/* local (+n) / vararg (-n) */
-			case 'l':
-				domain = 'l';
-			break;
-
+			case 'g': lua_pushvalue(L, LUA_GLOBALSINDEX); break;
+			case 's': stack_to_table(&tokctx, L); break;
+			case 'l': local_to_table(&tokctx, L); break;
 			default:
 				fprintf(m_out, "#ERROR gettable: bad domain selector\n");
 				return;
@@ -397,13 +431,6 @@ static void cmd_dumptable(char* argv, lua_State* L, lua_Debug* D)
 			break;
 			}
 			argi++;
-		}
-
-/* to get from local (n) into the table to resolve,
- * getstack from the relevant index, then getlocal on the decoded value
- * ensure that is table then forward to dumptable */
-		else {
-
 		}
 	}
 

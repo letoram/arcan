@@ -75,6 +75,27 @@ void alt_trace_callstack(lua_State* L, FILE* out)
 	alt_apply_ban(L);
 }
 
+static void put_shmif_luastr(const char* msg, FILE* out)
+{
+	while (msg && *msg){
+		if (*msg == '\n'){
+			fputc('\\', out);
+			fputc('n', out);
+			msg++;
+			continue;
+		}
+		if (*msg == '\t')
+			fputs("     ", out);
+		else if (*msg == ':')
+			fputs("\t", out);
+		else if (*msg == ',')
+			fputc('\\', out);
+		else
+			fputc(*msg, out);
+		msg++;
+	}
+}
+
 void alt_trace_dumptable_raw(lua_State* L, int ofs, int cap, FILE* out)
 {
 	if (lua_type(L, -1) != LUA_TTABLE)
@@ -84,9 +105,32 @@ void alt_trace_dumptable_raw(lua_State* L, int ofs, int cap, FILE* out)
 	int ind = 0;
 
 	while (lua_next(L, -2) != 0){
+/* simplified lua_type to string to help with UI, index is real reference */
 		if (!ofs){
-			fprintf(out, "type=table:index=%d:key", ind++);
-			alt_trace_print_type(L, -2, ":var", out);
+			fprintf(out, "type=table:index=%d:", ind++);
+			switch (lua_type(L, -2)){
+			case LUA_TNUMBER:
+				fprintf(out, "keytype=number:tblkey=%.14g:", lua_tonumber(L, -2));
+			break;
+			case LUA_TSTRING:
+				fputs("keytype=string:tblkey=", out);
+				put_shmif_luastr(lua_tostring(L, -2), out);
+				fputc(':', out);
+			break;
+			case LUA_TBOOLEAN:
+				fprintf(out, "keytype=bool:tblkey=s:", lua_toboolean(L, -2) ? "true" : "false");
+			break;
+			case LUA_TFUNCTION:
+				fputs("keytype=function:tblkey=func:", out);
+			break;
+			case LUA_TTABLE:
+				fputs("keytype=table:tblkey=table:", out);
+			break;
+			default:
+				fputs("keytype=unknown:tblkey=unknown:", out);
+			break;
+			}
+			fputs("var", out);
 			alt_trace_print_type(L, -1, "\n", out);
 		}
 		else ofs--;
@@ -369,24 +413,9 @@ void alt_trace_print_type(
 			ar.source, ar.linedefined, ar.lastlinedefined);
 	}
 	else if (lua_type(L, i) == LUA_TSTRING){
-		fputs("type=string:value=", out);
 		const char* msg = lua_tostring(L, i);
-		while (msg && *msg){
-			if (*msg == '\n'){
-				fputc('\\', out);
-				fputc('n', out);
-				msg++;
-				continue;
-			}
-			if (*msg == '\t')
-				fputs("     ", out);
-			else if (*msg == ':')
-				fputs(":", out);
-			else if (*msg == ',')
-				fputc('\\', out);
-			fputc(*msg, out);
-			msg++;
-		}
+		fputs("type=string:value=", out);
+		put_shmif_luastr(msg, out);
 	}
 	else if (lua_type(L, i) == LUA_TBOOLEAN){
 		fputs(lua_toboolean(L, i) ?
