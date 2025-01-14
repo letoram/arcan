@@ -236,6 +236,17 @@ void alt_trace_callstack_raw(lua_State* L, lua_Debug* D, int levels, FILE* out)
 			argi++;
 		}
 
+/* varargs function(1, 2, ...) have ... resolved as negative locals, these
+ * change around in 5.2+ to have args be a separate query */
+		argi = -1;
+		while ( (name = lua_getlocal(L,  &ar, argi) ) ){
+			fprintf(out, "type=local:index=%d:vararg:name=%s:var", argi, name);
+			alt_trace_print_type(L, -1, "", out);
+			fputc('\n', out);
+			lua_pop(L, 1);
+			argi--;
+		}
+
 /* send the locals as well as it's cheaper than going for a roundtrip */
 		level++;
 	}

@@ -2,6 +2,8 @@
 #include "alt/trace.h"
 #include "lauxlib.h"
 
+#define BREAK_LIMIT 12
+
 extern struct arcan_luactx* main_lua_context;
 extern volatile _Atomic int main_lua_signalled;
 
@@ -16,12 +18,49 @@ static FILE* m_ctrl;
 /* locked is waiting for monitor command, dumppause is if we should
  * automatically send a new stackdump when paused once after some command that
  * requires it to be useful */
-static bool m_locked;
+enum {
+	LOCK_NONE,
+	LOCK_BREAK,
+	LOCK_STEP,
+	LOCK_MANUAL
+};
+
+enum {
+	BPT_NONE,
+	BPT_BREAK,
+	BPT_WATCH
+};
+
+static int m_locked;
 static bool m_dumppause;
 static bool m_transaction;
+static bool m_stepreq;
+static bool m_error;
 
 /* used to indicate that we should trigger one of the recovery modes */
 static int longjmp_mode;
+
+static struct
+{
+	union {
+		struct {
+			size_t line;
+			char* file;
+		} bpt;
+	};
+
+/*
+ * int type;
+ * watchpoint would go here:
+ *
+ *  read  - tricky as access could be JITed etc.
+ *  write - keep hash or value at point it's set, compare on insn/line
+ *  expr  - run lua expression, trigger when TBOOLEAN == true return
+ */
+
+	int type;
+} m_breakpoints[BREAK_LIMIT];
+size_t m_n_breakpoints = 0;
 
 /*
  * instead of adding more commands here, the saner option is to establish
@@ -284,6 +323,7 @@ static void cmd_stepline(char* argv, lua_State* L, lua_Debug* D)
 
 	lua_sethook(L, arcan_monitor_watchdog, LUA_MASKLINE, 1);
 	m_locked = false;
+	m_stepreq = true;
 	m_dumppause = true;
 }
 
@@ -296,6 +336,7 @@ static void cmd_stepend(char* argv, lua_State* L, lua_Debug* D)
 
 	lua_sethook(L, arcan_monitor_watchdog, LUA_MASKRET, 1);
 	m_locked = false;
+	m_stepreq = true;
 	m_dumppause = true;
 }
 
@@ -308,6 +349,7 @@ static void cmd_stepcall(char* argv, lua_State* L, lua_Debug* D)
 
 	lua_sethook(L, arcan_monitor_watchdog, LUA_MASKRET, 1);
 	m_locked = false;
+	m_stepreq = true;
 	m_dumppause = true;
 }
 
@@ -326,6 +368,7 @@ static void cmd_stepinstruction(char* argv, lua_State* L, lua_Debug* D)
 /* set lua_tracefunction to line mode */
 	lua_sethook(L, arcan_monitor_watchdog, LUA_MASKCALL, count);
 	m_locked = false;
+	m_stepreq = true;
 	m_dumppause = true;
 }
 
@@ -451,8 +494,86 @@ static void cmd_dumptable(char* argv, lua_State* L, lua_Debug* D)
 
 static void cmd_breakpoint(char* argv, lua_State* L, lua_Debug* D)
 {
-/* add to uthash table of file:line with a custom id,
- * forward to alt_trace_ */
+	size_t len = strlen(argv);
+
+/* dump current set */
+	if (!len || len == 1){
+		fprintf(m_out, "#BEGINBREAK\n");
+		for (size_t i = 0, c = m_n_breakpoints; i < BREAK_LIMIT && c; i++){
+			if (m_breakpoints[i].bpt.file){
+				c--;
+				fprintf(m_out, "file=%s:line=%zu\n",
+					m_breakpoints[i].bpt.file, m_breakpoints[i].bpt.line);
+			}
+		}
+		fprintf(m_out, "#ENDBREAK\n");
+		return;
+	}
+
+/* strip lf, extract file:line */
+	char* endptr = &argv[len-1];
+	*endptr = '\0';
+	unsigned long line = 0;
+
+	while (endptr != argv && *endptr != ':')
+		endptr--;
+
+	if (*endptr == ':'){
+		*endptr++ = '\0';
+		if (!strlen(endptr)){
+			fprintf(m_out, "#ERROR breakpoint: expected file:line\n");
+			return;
+		}
+
+		char* err = NULL;
+		line = strtoul(endptr, &err, 10);
+		if (err && *err){
+			fprintf(m_out,
+				"#ERROR breakpoint: malformed line specifier\n");
+			return;
+		}
+	}
+
+/* if match, remove */
+	for (size_t i = 0, c = m_n_breakpoints; i < BREAK_LIMIT && c; i++){
+		if (!m_breakpoints[i].bpt.file)
+			continue;
+		c--;
+
+		if (m_breakpoints[i].bpt.line == line &&
+			strcmp(m_breakpoints[i].bpt.file, argv) == 0){
+			free(m_breakpoints[i].bpt.file);
+			m_breakpoints[i].bpt.file = NULL;
+			m_n_breakpoints--;
+			return;
+		}
+	}
+
+/* There is the option of better controls here, with lua_getinfo for >L when we
+ * have a function on top of the stack, it'll return a list of valid lines to
+ * put breakpoints on. */
+
+/* add, unless we are at cap */
+	if (m_n_breakpoints == BREAK_LIMIT){
+		fprintf(m_out, "#ERROR breakpoint: limit filled\n");
+		return;
+	}
+
+	for (size_t i = 0; i < BREAK_LIMIT; i++){
+		if (!m_breakpoints[i].bpt.file){
+			m_breakpoints[i].bpt.file = strdup(argv);
+			m_breakpoints[i].bpt.line = line;
+
+			if (m_breakpoints[i].bpt.file)
+				m_n_breakpoints++;
+			else
+				fprintf(m_out, "#ERROR breakpoint: out of memory\n");
+			break;
+		}
+	}
+
+/* send the set */
+	cmd_breakpoint("", NULL, NULL);
 }
 
 static void cmd_paths(char* argv, lua_State* L, lua_Debug* D)
@@ -531,6 +652,8 @@ FILE* arcan_monitor_watchdog_error(lua_State* L, int in_panic, bool check)
 	if (in_panic)
 		longjmp_mode = ARCAN_LUA_RECOVERY_FATAL_IGNORE;
 
+	m_error = true;
+
 /* we have a broken callstack at this point so the stacktrace would do nothing */
 	fprintf(m_out,
 		"#BEGINERROR\n%s\n#ENDERROR\n",
@@ -541,10 +664,71 @@ FILE* arcan_monitor_watchdog_error(lua_State* L, int in_panic, bool check)
 	return m_out;
 }
 
+static bool check_breakpoints(lua_State* L)
+{
+	lua_Debug ar;
+	if (!m_n_breakpoints || !lua_getstack(L, 0, &ar)){
+		return false;
+	}
+
+	lua_getinfo(L, "Snl", &ar);
+
+/* check source and current line against set */
+	for (size_t i = 0, c = m_n_breakpoints; i < BREAK_LIMIT && c; i++){
+		if (m_breakpoints[i].bpt.file){
+			c--;
+			const char* base = ar.source;
+			if (base[0] == '@')
+				base++;
+
+			size_t line = m_breakpoints[i].bpt.line;
+			char* source = m_breakpoints[i].bpt.file;
+
+			if (ar.currentline != line)
+				continue;
+
+			if (strcmp(base, source) == 0){
+				fprintf(m_out, "#BREAK %s:%zu\n", source, line);
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+static struct {
+	const char* word;
+	void (*ptr)(char* arg, lua_State*, lua_Debug*);
+} cmds[] =
+{
+	{"continue", cmd_continue},
+	{"dumpkeys", cmd_dumpkeys},
+	{"loadkey", cmd_loadkey},
+	{"dumpstate", cmd_dumpstate},
+	{"commit", cmd_commit},
+	{"reload", cmd_reload},
+	{"backtrace", cmd_backtrace},
+	{"lock", cmd_lock},
+	{"eval", cmd_eval},
+	{"locals", cmd_locals},
+	{"stepnext", cmd_stepline},
+	{"stepend", cmd_stepend},
+	{"stepcall", cmd_stepcall},
+	{"stepinstruction", cmd_stepinstruction},
+	{"table", cmd_dumptable},
+	{"source", cmd_source},
+	{"breakpoint", cmd_breakpoint},
+	{"entrypoint", cmd_entrypoint},
+	{"paths", cmd_paths}
+};
+
 void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 {
-/* triggered on SIGUSR1 - used by m_ctrl to indicate that there is a command
- * that should be read, but also for the Lua-VM to allow debugging.
+/* triggered on SIGUSR1, when there's been an error condition or when we have
+ * requested stepping in one way or another. Used by m_ctrl to indicate that
+ * there is a command that should be read, but also for the Lua-VM to allow
+ * debugging.
  *
  * We can see this when L, D are set.
  *
@@ -560,33 +744,16 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 
 	arcan_conductor_toggle_watchdog();
 
-	struct {
-		const char* word;
-		void (*ptr)(char* arg, lua_State*, lua_Debug*);
-	} cmds[] =
-	{
-		{"continue", cmd_continue},
-		{"dumpkeys", cmd_dumpkeys},
-		{"loadkey", cmd_loadkey},
-		{"dumpstate", cmd_dumpstate},
-		{"commit", cmd_commit},
-		{"reload", cmd_reload},
-		{"backtrace", cmd_backtrace},
-		{"lock", cmd_lock},
-		{"eval", cmd_eval},
-		{"locals", cmd_locals},
-		{"stepnext", cmd_stepline},
-		{"stepend", cmd_stepend},
-		{"stepcall", cmd_stepcall},
-		{"stepinstruction", cmd_stepinstruction},
-		{"table", cmd_dumptable},
-		{"source", cmd_source},
-		{"breakpoint", cmd_breakpoint},
-		{"entrypoint", cmd_entrypoint},
-		{"paths", cmd_paths}
-	};
+/* if we have breakpoints set, not in an error handler and not requested
+ * manual stepping, return immediately so execution continues */
+	if (!check_breakpoints(L) && m_n_breakpoints &&
+		!m_stepreq && !m_error && !m_transaction){
+		arcan_conductor_toggle_watchdog();
+		return;
+	}
 
 	m_locked = true;
+	m_stepreq = false;
 
 /* revert the errorhook if we come with L/D set. SIGUSR1 would re-arm
  * as does other step*** calls.
@@ -624,6 +791,12 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 			}
 		}
 	} while (m_locked);
+
+	if (m_n_breakpoints || m_stepreq){
+		lua_sethook(L, arcan_monitor_watchdog, LUA_MASKLINE, 1);
+	}
+	else
+		lua_sethook(L, NULL, LUA_MASKLINE, 0);
 
 	arcan_conductor_toggle_watchdog();
 
