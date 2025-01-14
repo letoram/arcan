@@ -245,10 +245,157 @@ enum arcan_shmif_sigmask {
 	SHMIF_SIGVID_AUTO_DIRTY = 8,
 };
 
-struct arcan_shmif_cont;
 struct shmif_ext_hidden;
 struct arcan_shmif_page;
 struct arcan_shmif_initial;
+
+struct arcan_shmif_region {
+	uint16_t x1, x2, y1, y2;
+};
+
+struct arcan_shmif_cont {
+	struct arcan_shmif_page* addr;
+
+/* offset- pointers into addr, can change between calls to shmif_ functions so
+ * aliasing is not recommended, especially important if (default)
+ * connection-crash recovery-reconnect is enabled as the address >may< be
+ * changed. If that is a concern, define a handler using the shmif_resetfunc */
+  union {
+		shmif_pixel* vidp;
+		float* floatp;
+		uint8_t* vidb;
+	};
+	union {
+		shmif_asample* audp;
+		uint8_t* audb;
+	};
+
+/*
+ * This cookie is set/kept to some implementation defined value and will be
+ * verified during integrity_check. It is placed here to quickly detect
+ * overflows in video or audio management from client side programming errors
+ */
+	int16_t oflow_cookie;
+
+/* use EITHER [audp, abufpos, abufcount] OR [audb, abufused, abufsize]
+ * to populate the current audio buffer depending on if you are working on
+ * SAMPLES or BYTES. abufpos != 0 will assume the latter */
+	uint16_t abufused, abufpos;
+	uint16_t abufsize, abufcount;
+
+/* updated on resize, provided to get feedback on an extended resize */
+	uint8_t abuf_cnt;
+
+/*
+ * the event handle is provided and used for signal event delivery
+ * in order to allow multiplexation with other input/output sources
+ */
+	file_handle epipe;
+
+/*
+ * Maintain a connection to the shared memory handle in order to handle
+ * resizing (on platforms that support it, otherwise define
+ * ARCAN_SHMIF_OVERCOMMIT which will only recalc pointers on resize
+ */
+	file_handle shmh;
+	size_t shmsize;
+
+/*
+ * Used internally for synchronization (and mapped / managed outside
+ * the regular shmpage). system-defined but typically named semaphores.
+ */
+	sem_handle vsem, asem, esem;
+
+/*
+ * Should be used to index vidp, i.e. vidp[y * pitch + x] = RGBA(r, g, b, a)
+ * stride and pitch account for padding, with stride being a row length in
+ * bytes and pitch a row length in pixels.
+ */
+	size_t w, h, stride, pitch;
+
+/*
+ * acknowledged extended attributes in response to an shmif_resize_ext
+ * request. Affects addr->apad and addr->apad_type as well.
+ *
+ * Read only, SYNCH ON EXT_RESIZE
+ */
+	uint32_t adata;
+
+/*
+ * defaults to ARCAN_SHMIF_SAMPLERATE but may be renegotiated as part
+ * of an extended resize. A deviation between the constant samplerate
+ * and the negotiated one will likely lead to resampling server-side.
+ *
+ * Read only, SYNCH ON EXT_RESIZE
+ */
+	size_t samplerate;
+
+/*
+ * Presentation and buffer content / format hints:
+ *
+ * SHMIF_RHINT_ORIGO_UL (or LL),
+ * SHMIF_RHINT_IGNORE_ALPHA
+ * SHMIF_RHINT_SUBREGION (only synch dirty region below)
+ * SHMIF_RHINT_SUBREGION_CHAIN (reserved, not in use)
+ * SHMIF_RHINT_CSPACE_SRGB (non-linear color space)
+ * SHMIF_RHINT_AUTH_TOK
+ * SHMIF_RHINT_VSIGNAL_EV (get frame- delivery notification via STEPFRAME)
+ * SHMIF_RHINT_TPACK (video buffer contents is packed in TPACK format)
+ *
+ * Write only, SYNCH on shmif_resize() calls.
+ */
+	uint8_t hints;
+
+/*
+ * IF the constraints:
+ *
+ * [Hints & SHMIF_RHINT_SUBREGION] and (X2>X1,(X2-X1)<=W,Y2>Y1,(Y2-Y1<=H))
+ * valid, [ARCAN] MAY synch only the specified region.
+ * Caller manipulates this field, will be copied to shmpage during synch.
+ *
+ * The [dx, dy] hints inside of the region indicates the number of pixels that
+ * are scrolled based on the previously synched buffer.
+ *
+ * The dirty region is reset on either calls to arcan_shmif_signal (video)
+ * or on shmif_resize calls that impose a size change.
+ */
+  struct arcan_shmif_region dirty;
+
+/*
+ * The cookie act as overflow monitor and trigger for ABI incompatibilities
+ * between arcan main and program using the shmif library. Combined from
+ * shmpage struct offsets and type sizes. Periodically monitored (using
+ * arcan_shmif_integrity_check calls) and incompatibilities is a terminal
+ * state transition.
+ */
+	uint64_t cookie;
+
+/*
+ * User-tag, primarily to support attaching ancilliary data to subsegments
+ * that are run and synchronized in separate threads.
+ */
+	void* user;
+
+/*
+ * Opaque struct for implementation defined tracking (guard thread handles
+ * and related data).
+ */
+	struct shmif_hidden* priv;
+	struct shmif_ext_hidden* privext;
+
+/*
+ * Copy of the segment token identifier provided on the shmpage at setup
+ */
+	uint32_t segment_token;
+
+/*
+ * Video buffers may, based on extended contents hints etc. have a size
+ * that does not match the normal formula of w * h * pitch bytes. Instead,
+ * and length validation for user-side programming is best done against
+ * this field. This represents the size of a single video buffer.
+ */
+	size_t vbufsize;
+};
 
 typedef enum arcan_shmif_sigmask(
 	*shmif_trigger_hook_fptr)(struct arcan_shmif_cont*);
@@ -705,154 +852,6 @@ bool arcan_shmif_integrity_check(struct arcan_shmif_cont*);
  * 3 : video and audio pending
  */
 int arcan_shmif_signalstatus(struct arcan_shmif_cont*);
-
-struct arcan_shmif_region {
-	uint16_t x1, x2, y1, y2;
-};
-
-struct arcan_shmif_cont {
-	struct arcan_shmif_page* addr;
-
-/* offset- pointers into addr, can change between calls to shmif_ functions so
- * aliasing is not recommended, especially important if (default)
- * connection-crash recovery-reconnect is enabled as the address >may< be
- * changed. If that is a concern, define a handler using the shmif_resetfunc */
-  union {
-		shmif_pixel* vidp;
-		float* floatp;
-		uint8_t* vidb;
-	};
-	union {
-		shmif_asample* audp;
-		uint8_t* audb;
-	};
-
-/*
- * This cookie is set/kept to some implementation defined value and will be
- * verified during integrity_check. It is placed here to quickly detect
- * overflows in video or audio management from client side programming errors
- */
-	int16_t oflow_cookie;
-
-/* use EITHER [audp, abufpos, abufcount] OR [audb, abufused, abufsize]
- * to populate the current audio buffer depending on if you are working on
- * SAMPLES or BYTES. abufpos != 0 will assume the latter */
-	uint16_t abufused, abufpos;
-	uint16_t abufsize, abufcount;
-
-/* updated on resize, provided to get feedback on an extended resize */
-	uint8_t abuf_cnt;
-
-/*
- * the event handle is provided and used for signal event delivery
- * in order to allow multiplexation with other input/output sources
- */
-	file_handle epipe;
-
-/*
- * Maintain a connection to the shared memory handle in order to handle
- * resizing (on platforms that support it, otherwise define
- * ARCAN_SHMIF_OVERCOMMIT which will only recalc pointers on resize
- */
-	file_handle shmh;
-	size_t shmsize;
-
-/*
- * Used internally for synchronization (and mapped / managed outside
- * the regular shmpage). system-defined but typically named semaphores.
- */
-	sem_handle vsem, asem, esem;
-
-/*
- * Should be used to index vidp, i.e. vidp[y * pitch + x] = RGBA(r, g, b, a)
- * stride and pitch account for padding, with stride being a row length in
- * bytes and pitch a row length in pixels.
- */
-	size_t w, h, stride, pitch;
-
-/*
- * acknowledged extended attributes in response to an shmif_resize_ext
- * request. Affects addr->apad and addr->apad_type as well.
- *
- * Read only, SYNCH ON EXT_RESIZE
- */
-	uint32_t adata;
-
-/*
- * defaults to ARCAN_SHMIF_SAMPLERATE but may be renegotiated as part
- * of an extended resize. A deviation between the constant samplerate
- * and the negotiated one will likely lead to resampling server-side.
- *
- * Read only, SYNCH ON EXT_RESIZE
- */
-	size_t samplerate;
-
-/*
- * Presentation and buffer content / format hints:
- *
- * SHMIF_RHINT_ORIGO_UL (or LL),
- * SHMIF_RHINT_IGNORE_ALPHA
- * SHMIF_RHINT_SUBREGION (only synch dirty region below)
- * SHMIF_RHINT_SUBREGION_CHAIN (reserved, not in use)
- * SHMIF_RHINT_CSPACE_SRGB (non-linear color space)
- * SHMIF_RHINT_AUTH_TOK
- * SHMIF_RHINT_VSIGNAL_EV (get frame- delivery notification via STEPFRAME)
- * SHMIF_RHINT_TPACK (video buffer contents is packed in TPACK format)
- *
- * Write only, SYNCH on shmif_resize() calls.
- */
-	uint8_t hints;
-
-/*
- * IF the constraints:
- *
- * [Hints & SHMIF_RHINT_SUBREGION] and (X2>X1,(X2-X1)<=W,Y2>Y1,(Y2-Y1<=H))
- * valid, [ARCAN] MAY synch only the specified region.
- * Caller manipulates this field, will be copied to shmpage during synch.
- *
- * The [dx, dy] hints inside of the region indicates the number of pixels that
- * are scrolled based on the previously synched buffer.
- *
- * The dirty region is reset on either calls to arcan_shmif_signal (video)
- * or on shmif_resize calls that impose a size change.
- */
-  struct arcan_shmif_region dirty;
-
-/*
- * The cookie act as overflow monitor and trigger for ABI incompatibilities
- * between arcan main and program using the shmif library. Combined from
- * shmpage struct offsets and type sizes. Periodically monitored (using
- * arcan_shmif_integrity_check calls) and incompatibilities is a terminal
- * state transition.
- */
-	uint64_t cookie;
-
-/*
- * User-tag, primarily to support attaching ancilliary data to subsegments
- * that are run and synchronized in separate threads.
- */
-	void* user;
-
-/*
- * Opaque struct for implementation defined tracking (guard thread handles
- * and related data).
- */
-	struct shmif_hidden* priv;
-	struct shmif_ext_hidden* privext;
-
-/*
- * Copy of the segment token identifier provided on the shmpage at setup
- */
-	uint32_t segment_token;
-
-/*
- * Video buffers may, based on extended contents hints etc. have a size
- * that does not match the normal formula of w * h * pitch bytes. Instead,
- * and length validation for user-side programming is best done against
- * this field. This represents the size of a single video buffer.
- */
-	size_t vbufsize;
-};
 
 struct arcan_shmif_initial {
 /* pre-configured primary font and possible fallback, remember to convert
