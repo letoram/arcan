@@ -638,8 +638,17 @@ static enum shmif_migrate_status fallback_migrate(
 
 /* set a reset event in the "to be dispatched next dequeue" slot, it would be
  * nice to have a sneakier way of injecting events into the normal dequeue
- * process to use as both inter-thread and MiM */
+ * process to use as both inter-thread and MiM. Clear any pending descriptor as
+ * it will be useless. */
 	case SHMIF_MIGRATE_OK:
+		if (c->priv->ph & 2){
+			if (c->priv->fh.tgt.ioevs[0].iv != BADFD){
+				close(c->priv->fh.tgt.ioevs[0].iv);
+				c->priv->fh.tgt.ioevs[0].iv = BADFD;
+				c->priv->ph = 0;
+			}
+		}
+
 		c->priv->ph |= 4;
 		c->priv->fh = (struct arcan_event){
 			.category = EVENT_TARGET,
@@ -677,6 +686,17 @@ reset:
 	bool noks = false;
 	int rv = 0;
 
+/* we have a RESET delay-slot:ed, that takes priority. This is where it would
+ * be useful to actually track acquired secondaries ass they might not have
+ * guardthreads to unlock. */
+	if (priv->ph & 4){
+		*dst = priv->fh;
+		priv->paused = false;
+		rv = 1;
+		priv->ph = 0;
+		goto done;
+	}
+
 	if (priv->support_window_hook){
 		priv->support_window_hook(c, SUPPORT_EVENT_POLL);
 	}
@@ -686,7 +706,6 @@ reset:
  * cases where a connection may be suspended for a long time and normal system
  * state (move window between displays, change global fonts) may be silently
  * ignored, when we actually want them delivered immediately upon UNPAUSE */
-
 	if (!priv->paused && priv->ph){
 		if (priv->ph & 1){
 			priv->ph &= ~1;
@@ -932,8 +951,11 @@ checkfd:
 
 		rv = 1;
 	}
+/* a successful migrate will delay-slot the RESET event, so in that case
+ * go back to reset and have that activate */
 	else if (!check_dms(c)){
-		rv = fallback_migrate(c, priv->alt_conn, true) == SHMIF_MIGRATE_OK?0:-1;
+		if (fallback_migrate(c, priv->alt_conn, true) == SHMIF_MIGRATE_OK)
+			goto reset;
 		goto done;
 	}
 
