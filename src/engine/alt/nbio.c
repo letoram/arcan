@@ -941,7 +941,7 @@ static int opennonblock_tgt(lua_State* L, bool wr)
 	const char* type = luaL_optstring(L, 3, "stream");
 	struct arcan_event ev = {
 		.category = EVENT_TARGET,
-		.tgt.kind = wr ? TARGET_COMMAND_BCHUNK_OUT : TARGET_COMMAND_BCHUNK_IN
+		.tgt.kind = !wr ? TARGET_COMMAND_BCHUNK_OUT : TARGET_COMMAND_BCHUNK_IN
 	};
 	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", type);
 	if (lua_type(L, 4) == LUA_TUSERDATA){
