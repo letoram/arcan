@@ -852,8 +852,11 @@ static int a12_preauth(struct anet_options* args,
 	}
 
 	if (!global.trust_domain){
-		if (args->key)
-			global.trust_domain = strdup(args->key);
+		if (args->key){
+			char tmp[strlen(args->key) + sizeof("outbound-")];
+			snprintf(tmp, sizeof(tmp), "outbound-%s", args->key);
+			global.trust_domain = strdup(tmp);
+		}
 		else
 			global.trust_domain = "outbound";
 	}

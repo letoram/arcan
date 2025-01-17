@@ -601,7 +601,7 @@ static pid_t dircl_exec(struct a12_state* S,
 		"--database",     ":memory:",
 		"--monitor",      "-1",       /* monitor but don't periodically snapshot */
 		"--monitor-out",  logfd_str,  /* monitor out to specific fd */
-		"--monitor-ctrl",             /* stdin is controller interface */
+		"--monitor-ctrl", "-",        /* stdin is controller interface */
 		buf, NULL                     /* applname */
 	};
 
@@ -965,7 +965,9 @@ static int connect_to_host(
 			a12opts.local_role = ROLE_PROBE;
 			LOG("probe_only\n");
 		}
-		global.trust_domain = tag;
+		char buf[strlen(tag) + sizeof("outbound-")];
+		snprintf(buf, COUNT_OF(buf), "outbound-%s", tag);
+		global.trust_domain = strdup(buf);
 		opts.key = tag;
 		global.soft_auth = false;
 		LOG("use_tag=%s\n", tag);
