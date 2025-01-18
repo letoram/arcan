@@ -118,7 +118,7 @@ void alt_trace_dumptable_raw(lua_State* L, int ofs, int cap, FILE* out)
 				fputc(':', out);
 			break;
 			case LUA_TBOOLEAN:
-				fprintf(out, "keytype=bool:tblkey=s:", lua_toboolean(L, -2) ? "true" : "false");
+				fprintf(out, "keytype=bool:tblkey=%s:", lua_toboolean(L, -2) ? "true" : "false");
 			break;
 			case LUA_TFUNCTION:
 				fputs("keytype=function:tblkey=func:", out);
@@ -450,7 +450,7 @@ void alt_trace_print_type(
 		}
 		lua_pop(L, 1);
 
-		fprintf(out, "type=table:length=%zu:keys=%zu", nelems, n_keys);
+		fprintf(out, "type=table:length=%d:keys=%zu", nelems, n_keys);
 /* open question is if we should just dump the full table recursively? this
  * could get really long, at the same time since we replace print we can't
  * provide an interface for a starting offset to do it over multiple requests,
