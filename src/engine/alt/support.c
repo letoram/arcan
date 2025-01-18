@@ -266,8 +266,8 @@ static void panic(lua_State* L)
 
 	if (callback_source.kind != CB_SOURCE_NONE){
 		char vidbuf[64] = {0};
-		snprintf(vidbuf, 63,
-			"script error in callback for VID (%.0lf)", callback_source.luavid);
+		snprintf(vidbuf, COUNT_OF(vidbuf),
+			"script error in callback for VID (%"PRIxVOBJ")", callback_source.luavid);
 		wraperr(L, -1, vidbuf);
 	} else{
 		in_panic_state = true;
