@@ -3586,8 +3586,8 @@ static int tui_funlink(lua_State* L)
 	return 1;
 }
 
-/* could've re-used alt_nbio_open but the special prefixes vs. having
- * the modestr set the desired type favoues the modestr */
+/* could've re-used alt_nbio_open but the special prefixes vs. having the
+ * modestr set the desired type favors the modestr */
 static int tui_fopen(lua_State* L)
 {
 	TUI_UDATA;
@@ -3603,7 +3603,11 @@ static int tui_fopen(lua_State* L)
 		omode = O_WRONLY;
 		flags = O_CREAT;
 	}
-
+/* this does not add unlinking to deferred, forcing the caller to do that */
+	else if (strcmp(mode, "fifo-in") == 0){
+		omode = O_RDONLY | O_NONBLOCK;
+		mkfifo(name, S_IRUSR | S_IWUSR);
+	}
 /* the datagram socket type requires us to provide a local name,
  * which comes with a ton of quirks - including deferred unlink */
 	else if (strcmp(mode, "unix") == 0){
