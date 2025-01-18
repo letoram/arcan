@@ -493,3 +493,31 @@ arcan_frameserver* platform_launch_internal(const char* fname,
 
 	return platform_launch_fork(&args, tag);
 }
+
+bool arcan_monitor_external(char* cmd, FILE** input)
+{
+/* create the named FIFOs */
+	char c2a_fn[] = "/tmp/c2a";
+
+	mkfifo(c2a_fn, S_IRUSR | S_IWUSR);
+
+	pid_t child = fork();
+
+	if (child == 0){
+		char* argv[4] = {
+			cmd,
+			c2a_fn,
+			NULL
+		};
+
+		execve(cmd,  argv, NULL);
+		exit(EXIT_SUCCESS);
+	}
+
+	*input = fopen(c2a_fn, "r");
+	if (*input){
+		setlinebuf(*input);
+	}
+
+	return true;
+}

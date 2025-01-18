@@ -304,7 +304,16 @@ void arcan_pin_namespace(enum arcan_namespaces space);
 int arcan_strbuf_tempfile(const char* msg, size_t msg_sz, const char** err);
 
 /*
- * implemented in <platform>/appl.c
+ * implemented in <platform>/tempfile.c
+ *
+ * Block until [cmd] is executed detached with named FIFOs mapped to
+ * argv[1](input --> *output). The first command across this later should be
+ * 'output /path/to/other-fifo'.
+ */
+bool arcan_monitor_external(char* cmd, FILE** input);
+
+/*
+ * implemented in <platform>/launch.c
  * ensure a sane setup (all namespaces have mapped paths + proper permissions)
  * then locate / load / map /setup setup a new application with <appl_id>
  * can be called multiple times (will then unload previous <appl_id>
