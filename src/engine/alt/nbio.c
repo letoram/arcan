@@ -939,16 +939,18 @@ static int opennonblock_tgt(lua_State* L, bool wr)
  *  target, while disassociating the descriptor from the argument source.
  */
 	const char* type = luaL_optstring(L, 3, "stream");
-	struct arcan_event ev = {
-		.category = EVENT_TARGET,
-		.tgt.kind = !wr ? TARGET_COMMAND_BCHUNK_OUT : TARGET_COMMAND_BCHUNK_IN
-	};
+	struct arcan_event ev = {.category = EVENT_TARGET};
 	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", type);
+
 	if (lua_type(L, 4) == LUA_TUSERDATA){
 		struct nonblock_io** ibb = luaL_checkudata(L, 4, "nonblockIO");
 		struct nonblock_io* ib = *ibb;
 
 		if (ib->fd > 0){
+			ev.tgt.kind =
+				ib->mode == O_WRONLY ?
+					TARGET_COMMAND_BCHUNK_OUT :
+					TARGET_COMMAND_BCHUNK_IN;
 			platform_fsrv_pushfd(fsrv, &ev, ib->fd);
 			close(ib->fd);
 			ib->fd = -1;
@@ -963,8 +965,18 @@ static int opennonblock_tgt(lua_State* L, bool wr)
 		arcan_warning("open_nonblock(tgt), pipe-pair creation failed: %d\n", errno);
 		return 0;
 	}
-	int dst = wr ? outp[0] : outp[1];
-	int src = wr ? outp[1] : outp[0];
+
+	int dst, src;
+	if (wr){
+		ev.tgt.kind = TARGET_COMMAND_BCHUNK_IN;
+		dst = outp[0];
+		src = outp[1];
+	}
+	else {
+		ev.tgt.kind = TARGET_COMMAND_BCHUNK_OUT;
+		dst = outp[1];
+		src = outp[0];
+	}
 
 /* in any scenario where this would fail, "blocking" behavior is acceptable */
 	alt_nbio_nonblock_cloexec(src, true);

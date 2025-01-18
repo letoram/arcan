@@ -882,8 +882,9 @@ static int request_parent_resource(
 		}
 	};
 
-	int kind = mode == BREQ_STORE ?
-		TARGET_COMMAND_BCHUNK_OUT : TARGET_COMMAND_BCHUNK_IN;
+	int kind =
+		mode == BREQ_STORE ?
+			TARGET_COMMAND_BCHUNK_OUT : TARGET_COMMAND_BCHUNK_IN;
 
 	snprintf(
 		(char*)ev.ext.bchunk.extensions, COUNT_OF(ev.ext.bchunk.extensions), "%s", id);

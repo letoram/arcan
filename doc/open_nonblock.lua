@@ -101,6 +101,11 @@
 -- affect application responsiveness.
 -- @note: FIFOs and sockets that were created will be unlinked when the close
 -- method is called or when the table reference is garbage collected.
+-- @note: When a nonblocking userdata is handed over to a frameserver, the
+-- *write* argument will be ignored and the corresponding BCHUNK event will
+-- match the userdata. This was a bug in a previous version where the write
+-- argument was respected and the argument had to be kept to avoid breaking
+-- compatibility.
 -- @group: resource
 -- @cfunction: opennonblock
 -- @related:
