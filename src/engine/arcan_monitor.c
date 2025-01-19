@@ -31,11 +31,21 @@ enum {
 	BPT_WATCH
 };
 
+/* if we require the controller to unlock us */
 static int m_locked;
+
+/* roundtrip optimisation, dump important information immediately */
 static bool m_dumppause;
+
+/* in batched incoming key transfer */
 static bool m_transaction;
+
+/* to distinguish between stepping and a an error handler */
 static bool m_stepreq;
 static bool m_error;
+
+/* when we are waiting for an external monitor to attach */
+static bool m_error_defer;
 
 /* used to indicate that we should trigger one of the recovery modes */
 static int longjmp_mode;
@@ -617,6 +627,48 @@ static void cmd_paths(char* argv, lua_State* L, lua_Debug* D)
 	fprintf(m_out, "#ENDPATHS\n");
 }
 
+static void monitor_hup()
+{
+	if (m_ctrl){
+		fclose(m_ctrl);
+		m_ctrl = NULL;
+	}
+
+	if (m_out != stdout && m_out){
+		fclose(m_out);
+		m_out = stdout;
+	}
+}
+
+/*
+ * this is mainly used to swap output
+ */
+static void cmd_out(char* argv, lua_State* L, lua_Debug* D)
+{
+	size_t len = strlen(argv);
+	if (!len)
+		return;
+	argv[len-1] = '\0';
+	m_out = fopen(argv, "w");
+	if (!m_out)
+		m_out = stdout;
+	fprintf(m_out, "#PID %d\n", getpid());
+
+	if (m_error_defer && L){
+/* we have a broken callstack at this point so the stacktrace would do nothing */
+		fprintf(m_out,
+			"#BEGINERROR\n%s\n#ENDERROR\n",
+				lua_type(L, -1) == LUA_TSTRING ? lua_tostring(L, -1) : "(panic)");
+		m_error_defer = false;
+		m_dumppause = true;
+	}
+
+/* the ctrl/out pipe might die, then we should reset those */
+	sigaction(SIGHUP,&(struct sigaction){.sa_handler = monitor_hup}, 0);
+
+	setlinebuf(m_out);
+}
+
 static void cmd_entrypoint(char* argv, lua_State* L, lua_Debug* D)
 {
 	uint64_t mask_kind = 0;
@@ -641,10 +693,52 @@ void arcan_monitor_masktrigger(lua_State* L)
 	m_dumppause = true;
 }
 
+static char* get_extmon_path()
+{
+	uintptr_t tag;
+	char* monitor = NULL;
+
+	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	get_config("debug_monitor", 0, &monitor, tag);
+	return monitor;
+}
+
 FILE* arcan_monitor_watchdog_error(lua_State* L, int in_panic, bool check)
 {
-	if (!m_ctrl)
-		return false;
+	static bool extmon_checked = false;
+
+/* we don't have a monitor attached, is the engine configured to spawn one?
+ * check the config db once so the error format would switch from human
+ * readable to machine readable. */
+	if (!m_ctrl){
+		if (check && !extmon_checked){
+			extmon_checked = true;
+
+			if (get_extmon_path()){
+				m_out = stdout;
+			}
+			return m_out;
+		}
+
+		if (!check){
+			char* monitor = get_extmon_path();
+			if (!monitor)
+				return m_out;
+
+/* set temporary monitor-out to stdout waiting for cmd_out to change it */
+			if (!m_out)
+				m_out = stdout;
+
+/* launch the process and switch to waiting for command on it */
+			m_error_defer = true;
+			arcan_conductor_toggle_watchdog();
+			arcan_monitor_external(monitor, &m_ctrl);
+			arcan_conductor_toggle_watchdog();
+			arcan_monitor_watchdog(L, NULL);
+		}
+
+		return m_out;
+	}
 
 	if (check)
 		return m_out;
@@ -697,6 +791,17 @@ static bool check_breakpoints(lua_State* L)
 	return false;
 }
 
+static void cmd_detach(char* argv, lua_State* L, lua_Debug* D)
+{
+	if (m_out != stdout){
+		fclose(m_out);
+		m_out = stdout;
+	}
+	fclose(m_ctrl);
+	m_ctrl = NULL;
+	m_locked = false;
+}
+
 static struct {
 	const char* word;
 	void (*ptr)(char* arg, lua_State*, lua_Debug*);
@@ -720,7 +825,9 @@ static struct {
 	{"source", cmd_source},
 	{"breakpoint", cmd_breakpoint},
 	{"entrypoint", cmd_entrypoint},
-	{"paths", cmd_paths}
+	{"paths", cmd_paths},
+	{"output", cmd_out},
+	{"detach", cmd_detach}
 };
 
 void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
@@ -762,13 +869,13 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 		lua_sethook(L, NULL, 0, 0);
 	}
 
-	if (m_dumppause && L){
-		fprintf(m_out, "#WAITING\n");
-		m_dumppause = false;
-		cmd_backtrace("", L, D);
-	}
-
 	do {
+		if (m_dumppause && L){
+			fprintf(m_out, "#WAITING\n");
+			m_dumppause = false;
+			cmd_backtrace("", L, D);
+		}
+
 		char buf[4096];
 		fprintf(m_out, "#WAITING\n");
 		if (!fgets(buf, 4096, m_ctrl)){
