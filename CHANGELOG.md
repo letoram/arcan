@@ -3,9 +3,13 @@
  * Changed builtin 'print' function to emit a parser friendly output when not traced
  * Added monitor commands for backtrace, eval, locals, stepping and specialised dumps
  * Added breakpoint hooks for all transitions into VM execution
+ * Dynamic / on-demand attaching (local,remote) debugger (see 7c7ba007c3)
 
 ## Terminal
  * Expose args values as 'tui.arguments' table
+
+## Net
+ * Several fixes to binary in/out transfers
 
 ## 0.7.0
 ## Core

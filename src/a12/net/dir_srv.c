@@ -607,10 +607,10 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 			resfd = get_state_res(C, meta->appl.name, ".state", O_RDONLY);
 		break;
 
-/* Sending debuglog is one thing, but we want different triaging hooks as part
- * of the config script for the server so that we have a way to populate an scm
- * backend (with a fossil one for standard) so that we can report-gen / triage
- * and forward as ticket. */
+/* Client wants to debug the controller of the appl it is in. This requires
+ * permission (ctrl), an active runner, creating the transfer pair to the
+ * runner, have this result in a binary-stream one way and commands (MESSAGE)
+ * being forwarded to _monitor corresponding interface in the runner VM. */
 		case IDTYPE_DEBUG:
 			goto fail;
 		break;

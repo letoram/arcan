@@ -491,6 +491,19 @@ static void* client_thread(void* inarg)
 			break;
 		}
 
+/* there is no reason other than bugs/misuse for a client to try and push
+ * anything across the socket since we don't permit BUFFERSTREAM and force
+ * the readback/transcode in the client end, flush it out but warn so we
+ * don't 100% the thread */
+		if (pfd[0].revents & POLLIN){
+			char buf[256];
+			ssize_t nr;
+			if ((nr = read(pfd[0].fd, buf, 256))){
+				a12int_trace(A12_TRACE_SYSTEM,
+				"kind=warning:status=data-on-socket:size=%zd\n", buf);
+			}
+		}
+
 		struct arcan_event ev;
 
 		while (shmifsrv_dequeue_events(data->C, &ev, 1)){
