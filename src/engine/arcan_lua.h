@@ -114,6 +114,10 @@ enum {
 	EP_TRIGGER_TRACE = 1 << 23
 };
 
+/* this hooks SIGUSR1 to only accept from parent and trigger the watchdog
+ * defined when the context was allocated */
+void arcan_lua_default_errorhook(lua_State* L);
+
 /*
  * create a new external listening endpoint and expose via the _adopt handler,
  * the purpose is to expose a pre-existing connection via _stdin.

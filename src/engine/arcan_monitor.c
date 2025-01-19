@@ -627,7 +627,7 @@ static void cmd_paths(char* argv, lua_State* L, lua_Debug* D)
 	fprintf(m_out, "#ENDPATHS\n");
 }
 
-static void monitor_hup()
+static void monitor_hup(int sig)
 {
 	if (m_ctrl){
 		fclose(m_ctrl);
@@ -638,6 +638,13 @@ static void monitor_hup()
 		fclose(m_out);
 		m_out = stdout;
 	}
+}
+
+static lua_State* m_sigusr_L;
+static void monitor_sigusr(int sig)
+{
+	if (m_sigusr_L)
+		lua_sethook(m_sigusr_L, arcan_monitor_watchdog, LUA_MASKCOUNT, 1);
 }
 
 /*
@@ -663,8 +670,12 @@ static void cmd_out(char* argv, lua_State* L, lua_Debug* D)
 		m_dumppause = true;
 	}
 
+/* swap out the SIGUSR1 handler */
+
 /* the ctrl/out pipe might die, then we should reset those */
 	sigaction(SIGHUP,&(struct sigaction){.sa_handler = monitor_hup}, 0);
+	sigaction(SIGUSR1,&(struct sigaction){.sa_handler = monitor_sigusr}, 0);
+	m_sigusr_L = L;
 
 	setlinebuf(m_out);
 }
@@ -797,9 +808,13 @@ static void cmd_detach(char* argv, lua_State* L, lua_Debug* D)
 		fclose(m_out);
 		m_out = stdout;
 	}
+
 	fclose(m_ctrl);
 	m_ctrl = NULL;
 	m_locked = false;
+
+/* restore default SIGUSR1 */
+	arcan_lua_default_errorhook(L);
 }
 
 static struct {

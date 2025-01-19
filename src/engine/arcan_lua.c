@@ -7384,27 +7384,26 @@ static void sig_watchdog(int sig, siginfo_t* info, void* unused)
 	}
 }
 
+void arcan_lua_default_errorhook(lua_State* L)
+{
+	sigaction(SIGUSR1, &(struct sigaction){
+		.sa_sigaction = &sig_watchdog,
+		.sa_flags = SA_SIGINFO
+	}, NULL);
+}
+
 lua_State* arcan_lua_alloc(void (*watchdog)(lua_State*, lua_Debug*))
 {
 	lua_State* res = luaL_newstate();
 	luactx.worldid_tag = LUA_NOREF;
 
-/* in the future, we need a hook here to
- * limit / "null-out" the undesired subset of the LUA API */
 	if (res)
 		luaL_openlibs(res);
 
 	luactx.error_hook = watchdog;
-
-/* watchdog has triggered with an ANR, continue the bouncy castle towards
- * the 'normal' scripting recovery stage so we get information on where
- * this comes from */
-	sigaction(SIGUSR1, &(struct sigaction){
-		.sa_sigaction = &sig_watchdog,
-		.sa_flags = SA_SIGINFO
-	}, NULL);
-
 	luactx.last_ctx = res;
+	arcan_lua_default_errorhook(res);
+
 	return res;
 }
 
