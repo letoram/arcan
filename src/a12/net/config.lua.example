@@ -10,6 +10,7 @@ function init()
 	config.directory_server = true
 	config.listen_port = 6680
 
+	config.discover_beacon = false -- set to true to spawn a beacon thread for local discovery
 
 -- These are tags set on the keys in the keystore to allow any (authenticated)
 -- keys, set '*'.

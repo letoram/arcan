@@ -1526,6 +1526,24 @@ static void* send_beacon(void* tag)
 	return NULL;
 }
 
+static void* send_dirsrv_beacon(void* tag)
+{
+/* keystore is already open so we should use that */
+	struct anet_discover_opts cfg = {
+		.limit = -1,
+		.timesleep = 10,
+		.ipv6 = *(char**) tag
+	};
+	const char* err = a12helper_discover_ipcfg(&cfg, true);
+	if (err){
+		fprintf(stderr, "discover setup failed: %s\n", err);
+		return NULL;
+	}
+	while (anet_discover_send_beacon(&cfg)){}
+
+	return NULL;
+}
+
 static int run_discover_command(int argc, char** argv)
 {
 	char* ipv6 = NULL;
@@ -2019,6 +2037,16 @@ int main(int argc, char** argv)
 			}, NULL);
 			anet_directory_srv_rescan(&global.dirsrv);
 			anet_directory_shmifsrv_set(&global.dirsrv);
+
+/* missing a config option to specify IPV6 beacon */
+			if (global.dirsrv.discover_beacon){
+				char* ipv6 = NULL;
+				pthread_t pth;
+				pthread_attr_t pthattr;
+				pthread_attr_init(&pthattr);
+				pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+				pthread_create(&pth, &pthattr, send_dirsrv_beacon, &ipv6);
+			}
 		}
 
 		if (!global.trust_domain)

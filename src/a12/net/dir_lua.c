@@ -189,6 +189,9 @@ static int cfg_newindex(lua_State* L)
 			alua_tobnumber(L, 3, "directory_server") ?
 				ROLE_DIR : ROLE_SINK;
 	}
+	else if (strcmp(key, "discover_beacon") == 0){
+		CFG->dirsrv.discover_beacon = alua_tobnumber(L, 3, "discover_beacon");
+	}
 	else if (strcmp(key, "log_level") == 0){
 		if (lua_type(L, 3) == LUA_TTABLE){
 			for (size_t i = 0; i < lua_rawlen(L, 3); i++){
@@ -231,7 +234,8 @@ static int cfg_newindex(lua_State* L)
 	}
 	else
 		luaL_error(L, "unknown key: config.%s, allowed: "
-			"allow_tunnel, directory_server, log_level, log_target, listen_port\n", key);
+			"allow_tunnel, discover_beacon, directory_server, "
+			"log_level, log_target, listen_port\n", key);
 
 	return 0;
 }
@@ -366,7 +370,6 @@ static int cfgpath_newindex(lua_State* L)
 		setenv("ARCAN_APPLBASEPATH", val, 1);
 		return 0;
 	}
-
 /* set to enable client provided appl controller updates, this is a developer
  * feature, there is a static fallback that requires an explicit synch */
 	else if (strcmp(key, "appl_server_temp") == 0){

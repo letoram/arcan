@@ -11,6 +11,7 @@ struct anet_dirsrv_opts {
 	size_t dir_count;
 
 	bool allow_tunnel;
+	bool discover_beacon;
 
 	char* allow_src;
 	char* allow_dir;
