@@ -1823,7 +1823,8 @@ static void a12_enqueue_bstream_tagged(
 	munmap(map, fend);
 	next->left = fend;
 	a12int_trace(A12_TRACE_BTRANSFER,
-		"kind=added:type=%d:stream=no:size=%zu", type, next->left);
+		"kind=added:type=%d:stream=%"PRIu32":size=%zu",
+		id, type, next->left);
 	return;
 
 fail:

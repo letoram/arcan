@@ -426,7 +426,7 @@ static struct ipcfg build_ipv6(struct anet_discover_opts* cfg, bool broadcast)
 		return res;
 	}
 
-	if (-1 == bind(s, &res.v6, res.addr_sz)){
+	if (-1 == bind(s, &res.base, res.addr_sz)){
 		close(s);
 		res.err = "ipv6.bind rejected";
 		return res;
@@ -472,7 +472,7 @@ static struct ipcfg build_ipv4(struct anet_discover_opts* cfg, bool broadcast)
 #ifdef IP_PKTINFO
 	setsockopt(res.sock, IPPROTO_IP, IP_PKTINFO, &(int){1}, sizeof(int));
 #elif defined(IP_RECVDSTADDR)
-	setsockopt(res.sock, IPPROTO_IP, IP_PKTINFO, &(int){1}, sizeof(int));
+	setsockopt(res.sock, IPPROTO_IP, IP_RECVDSTADDR, &(int){1}, sizeof(int));
 #endif
 
 	setsockopt(res.sock, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
@@ -501,7 +501,7 @@ static struct ipcfg build_ipv4(struct anet_discover_opts* cfg, bool broadcast)
 		};
 	}
 
-	if (-1 == bind(res.sock, &res.v4, res.addr_sz)){
+	if (-1 == bind(res.sock, &res.base, res.addr_sz)){
 		res.err = "ipv4.bind rejected";
 	}
 
@@ -588,7 +588,7 @@ void anet_discover_listen_beacon(struct anet_discover_opts* cfg)
 		.sin_port = htons(6680)
 	};
 	socklen_t len = sizeof(addr);
-	if (-1 == bind(sock, &addr, len)){
+	if (-1 == bind(sock, (struct sockaddr*) &addr, len)){
 		fprintf(stderr, "couldn't bind beacon listener\n");
 		return;
 	}
