@@ -38,6 +38,7 @@ struct ipcfg {
 		struct sockaddr_in v4;
 		struct sockaddr base;
 	};
+	bool ipv6;
 	size_t addr_sz;
 	const char* err;
 	int sock;
@@ -188,6 +189,35 @@ struct keystore_mask*
 	return cur;
 }
 
+static bool compare_addr_ipv4(struct msghdr* mh, struct in_addr addr)
+{
+	for (
+		struct cmsghdr* cmsg = CMSG_FIRSTHDR(mh);
+		cmsg != NULL;
+		cmsg = CMSG_NXTHDR(mh, cmsg)){
+		struct in_addr dst_addr;
+
+#ifdef IP_PKTINFO
+		if (cmsg->cmsg_level != IPPROTO_IP || cmsg->cmsg_type != IP_PKTINFO)
+			continue;
+		struct in_pktinfo* info = (void*) CMSG_DATA(cmsg);
+		dst_addr = info->ipi_spec_dst;
+
+#elif defined(IP_RECVDSTADDR)
+		if (cmsg->cmsg_level != IPPROTO_IP || cmsg->cmsg_type != IP_RECVDSTADDR)
+			continue;
+		dst_addr = *(struct in_addr*) CMSG_DATA(cmsg);
+#else
+		return false;
+#endif
+
+		if (addr.s_addr == dst_addr.s_addr)
+			return true;
+	}
+
+	return false;
+}
+
 void
 	a12helper_listen_beacon(
 		struct arcan_shmif_cont* C,
@@ -222,11 +252,27 @@ void
 		}
 
 		if (ps[0].revents){
-			struct sockaddr_in caddr;
+			struct sockaddr caddr;
 			socklen_t len = sizeof(caddr);
+			char ctrl[256] = {0};
+
+/* don't process messages that come from one of our own interfaces */
+			struct iovec iov = {
+				.iov_base = mtu,
+				.iov_len = sizeof(mtu)
+			};
+
+			struct msghdr mh = {
+				.msg_name = &caddr,
+				.msg_namelen = sizeof(caddr),
+				.msg_control = ctrl,
+				.msg_controllen = sizeof(ctrl),
+				.msg_iovlen = 1,
+				.msg_iov = &iov
+			};
+
 			ssize_t nr =
-				recvfrom(O->IP->sock,
-					mtu, sizeof(mtu), MSG_DONTWAIT, (struct sockaddr*)&caddr, &len);
+				recvmsg(O->IP->sock, &mh, MSG_DONTWAIT);
 
 /* make sure beacon covers at least one key, then first cache */
 			if (nr >= 8 + 8 + DIRECTORY_BEACON_MEMBER_SIZE){
@@ -240,6 +286,15 @@ void
 					continue;
 
 				size_t nlen = strlen(name);
+				if (caddr.sa_family == AF_INET){
+					if (compare_addr_ipv4(&mh, ((struct sockaddr_in*) &caddr)->sin_addr))
+						goto shmif;
+				}
+				else if (caddr.sa_family == AF_INET6){
+/* more unclear how this actually works with multicast groups,
+ * IPV6_RECVPKTINFO is there for the same procedure otherwise */
+				}
+
 				struct beacon* bcn = hashmap_get(&known_beacons, name, nlen);
 
 /* no previous known beacon, store and remember */
@@ -305,6 +360,7 @@ void
 		}
 
 /* shmif events here would be to dispatch after trust_unknown_verify */
+shmif:
 		if (C && ps[1].revents && on_shmif){
 			int pv;
 			struct arcan_event ev;
@@ -317,7 +373,11 @@ void
 
 static struct ipcfg build_ipv6(struct anet_discover_opts* cfg, bool broadcast)
 {
-	struct ipcfg res = {.sock = -1, .addr_sz = sizeof(struct sockaddr_in6)};
+	struct ipcfg res = {
+		.sock = -1,
+		.ipv6 = true,
+		.addr_sz = sizeof(struct sockaddr_in6)
+	};
 	int s = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
 
 	if (-1 == s){
@@ -398,15 +458,26 @@ static struct ipcfg build_ipv4(struct anet_discover_opts* cfg, bool broadcast)
 	};
 	socklen_t len = sizeof(addr);
 
-	int yes = 1;
-  if (setsockopt(res.sock, SOL_SOCKET, SO_BROADCAST, (char*)&yes, sizeof(yes))){
+  if (setsockopt(res.sock, SOL_SOCKET, SO_BROADCAST, &(int){1}, sizeof(int))){
 		close(res.sock);
 		res.err = "sockopt.broadcast rejected";
 		res.sock = -1;
 		return res;
 	}
 
-	if (setsockopt(res.sock, IPPROTO_IP, IP_MULTICAST_LOOP, (char*)&yes, sizeof(yes))){
+/* request that we get CMSG back on sending interface so that we can compare in
+ * the case of REUSEADDR where the same interface is used for both beacon and
+ * listener, then to compare the addresses so we avoid processing for beacons
+ * that we sent */
+#ifdef IP_PKTINFO
+	setsockopt(res.sock, IPPROTO_IP, IP_PKTINFO, &(int){1}, sizeof(int));
+#elif defined(IP_RECVDSTADDR)
+	setsockopt(res.sock, IPPROTO_IP, IP_PKTINFO, &(int){1}, sizeof(int));
+#endif
+
+	setsockopt(res.sock, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
+
+	if (setsockopt(res.sock, IPPROTO_IP, IP_MULTICAST_LOOP, &(int){1}, sizeof(int))){
 		close(res.sock);
 		res.err = "sockopt.multicast_loop rejected";
 		res.sock = -1;
