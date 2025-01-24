@@ -52,11 +52,22 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 	find_package(OpenGL COMPONENTS EGL QUIET)
 	pkg_check_modules(GBMKMS REQUIRED QUIET libdrm gbm)
 
-	list(APPEND VIDEO_LIBRARIES
-		OpenGL::EGL
-		${GBMKMS_LINK_LIBRARIES}
-	)
-	list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS} OpenGL::EGL)
+# workaround CMake FindOpenGL module messing up because GLVND
+# on non-linux systems.
+	if (${CMAKE_SYSTEM_NAME} MATCHES "NetBSD|OpenBSD")
+		list(APPEND VIDEO_LIBRARIES
+			${OPENGL_egl_LIBRARY}
+			${GBMKMS_LINK_LIBRARIES}
+		)
+	else()
+		list(APPEND VIDEO_LIBRARIES
+			OpenGL::EGL
+			${GBMKMS_LINK_LIBRARIES}
+		)
+		list(APPEND INCLUDE_DIRS OpenGL::EGL)
+	endif()
+	list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
+
 	set(VIDEO_PLATFORM_SOURCES
 		${PLATFORM_ROOT}/egl-dri/video.c)
 	if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
