@@ -157,6 +157,8 @@ static int wrap_trace_callstack(lua_State* L)
 		FILE* stream;
 		stream = open_memstream(&buf, &buf_sz);
 		if (stream){
+			fprintf(stream, "error: %s\n\n", lua_tostring(L, -1));
+
 			alt_trace_callstack(L, stream);
 			fflush(stream);
 			lua_pushstring(L, buf);
