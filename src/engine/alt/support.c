@@ -91,21 +91,22 @@ static void dump_stack(lua_State* L, FILE* dst)
 
 		switch (t){
 		case LUA_TBOOLEAN:
-			arcan_warning(lua_toboolean(L, i) ? "true" : "false");
+			fprintf(dst, lua_toboolean(L, i) ? "true" : "false");
 		break;
 		case LUA_TSTRING:
-			arcan_warning("%d\t'%s'\n", i, lua_tostring(L, i));
+			fprintf(dst, "%d\t'%s'\n", i, lua_tostring(L, i));
 			break;
 		case LUA_TNUMBER:
-			arcan_warning("%d\t%g\n", i, lua_tonumber(L, i));
+			fprintf(dst, "%d\t%g\n", i, lua_tonumber(L, i));
 			break;
 		default:
-			arcan_warning("%d\t%s\n", i, lua_typename(L, t));
+			fprintf(dst, "%d\t%s\n", i, lua_typename(L, t));
 			break;
 		}
 	}
 
-	arcan_warning("\n");
+	fputc('\n', dst);
+	fflush(dst);
 }
 
 arcan_vobj_id luaL_checkvid(
@@ -147,7 +148,8 @@ static int wrap_trace_callstack(lua_State* L)
  * return argument on the stack and it chains back. This means the _fatal
  * entrypoint is not exposed to monitoring for breakpoints or stepping. */
 	if (alt_lookup_entry(L, "fatal", 5)){
-		lua_pcall(L, 0, 1, 0);
+		lua_pushvalue(L, -2);
+		lua_pcall(L, 1, 1, 0);
 	}
 /* use a memstream to get the regular callstack implementation which
  * for reloads debug.traceback from lua libraries */
