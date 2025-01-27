@@ -992,15 +992,25 @@ static int readrawresource(lua_State* ctx)
 {
 	LUA_TRACE("read_rawresource");
 
+/* add for -1 check to not trigger Luajit */
+	lua_pushnil(ctx);
+	int pos = lua_gettop(ctx);
+
 	if (luactx.rawres.eofm){
-		LUA_ETRACE("read_rawresource", NULL, 0);
+		LUA_ETRACE("read_rawresource", NULL, 1);
 	}
 
 	if (luactx.rawres.fd <= 0){
-		LUA_ETRACE("read_rawresource", "no open file", 0);
+		LUA_ETRACE("read_rawresource", "no open file", 1);
 	}
 
 	int n = alt_nbio_process_read(ctx, &luactx.rawres, false);
+	if (n){
+		lua_remove(ctx, pos);
+	}
+	else
+		lua_pop(ctx, 1);
+
 	LUA_ETRACE("read_rawresource", NULL, n);
 }
 
