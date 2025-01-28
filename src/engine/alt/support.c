@@ -91,7 +91,7 @@ static void dump_stack(lua_State* L, FILE* dst)
 
 		switch (t){
 		case LUA_TBOOLEAN:
-			fprintf(dst, lua_toboolean(L, i) ? "true" : "false");
+			fprintf(dst, "%d\t %s\n", lua_toboolean(L, i) ? "true" : "false");
 		break;
 		case LUA_TSTRING:
 			fprintf(dst, "%d\t'%s'\n", i, lua_tostring(L, i));
