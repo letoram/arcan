@@ -63,18 +63,19 @@ static struct tui_cbcfg shared_cbcfg = {};
 	lua_State* L = meta->lua;\
 	if (meta->href == LUA_NOREF)\
 		return B;\
+	lua_rawgeti(L, LUA_REGISTRYINDEX, meta->tui_state);\
 	lua_rawgeti(L, LUA_REGISTRYINDEX, meta->href);\
 	if (lua_type(L, -1) != LUA_TTABLE){\
 		luaL_error(L, "broken href in handler for " # B);\
 	}\
 	lua_getfield(L, -1, X);\
 	if (lua_type(L, -1) != LUA_TFUNCTION){\
-		lua_pop(L, 2);\
+		lua_pop(L, 3);\
 		return B;\
 	}\
 	lua_rawgeti(L, LUA_REGISTRYINDEX, meta->tui_state);\
 
-#define END_HREF lua_pop(L, 1);
+#define END_HREF lua_pop(L, 2);
 
 #define RUN_CALLBACK(X, Y, Z) do {\
 	if (0 != lua_pcall(L, (Y), (Z), 0)){\
@@ -717,7 +718,6 @@ static bool on_subwindow(struct tui_context* T,
  * trigger unless for handover-allocation like scenarios. */
 	if (!new){
 		RUN_CALLBACK("subwindow_fail", 1, 0);
-		END_HREF;
 		return false;
 	}
 
@@ -730,7 +730,6 @@ static bool on_subwindow(struct tui_context* T,
 	cbcfg.tag = nud;
 	if (!nud){
 		RUN_CALLBACK("subwindow_ud_fail", 1, 0);
-		END_HREF;
 		return false;
 	}
 	init_lmeta(L, nud, meta);
@@ -740,7 +739,6 @@ static bool on_subwindow(struct tui_context* T,
 		arcan_tui_setup(new, T, &cbcfg, sizeof(cbcfg));
 	if (!ctx){
 		RUN_CALLBACK("subwindow_setup_fail", 1, 0);
-		END_HREF;
 		return false;
 	}
 
@@ -784,7 +782,6 @@ static bool on_subwindow(struct tui_context* T,
 	}
 	meta->in_subwnd = NULL;
 
-	END_HREF;
 	return ok;
 }
 
@@ -948,8 +945,6 @@ static void on_readline_suggest_item(
 	if (0 != rv){
 		luaL_error(L, lua_tostring(L, -1));
 	}
-
-	END_HREF
 }
 
 static ssize_t on_readline_verify(
@@ -988,7 +983,7 @@ static ssize_t on_readline_verify(
 			res *= -1;
 	}
 
-	END_HREF
+	lua_pop(L, 1);
 	return res;
 }
 
@@ -2539,9 +2534,7 @@ static int readline(lua_State* L)
  *    and they would assume that it is the window that is supposed to
  *    be matched
  */
-	lua_pushvalue(L, -4);
 	arcan_tui_readline_setup(ib->tui, &opts, sizeof(opts));
-	lua_pop(L, 1);
 
 /* 5. save a reference to the widget context in order to forward it in
  *    callback handlers later
@@ -2659,10 +2652,8 @@ static int bufferwnd(lua_State* L)
 	ib->widget_meta = meta;
 	ib->widget_closure = tui_lref(L, 3, LINE_AS_STRING, LUA_TFUNCTION);
 
-	lua_pushvalue(L, 1);
 	arcan_tui_bufferwnd_setup(ib->tui,
 		meta->bufferview.buf, meta->bufferview.sz, &opts, sizeof(opts));
-	lua_pop(L, 1);
 
 	ib->widget_state = tui_lref(L, -1, LINE_AS_STRING, LUA_TUSERDATA);
 
@@ -2732,9 +2723,7 @@ static int listwnd(lua_State* L)
 	ib->widget_closure = tui_lref(L, 3, LINE_AS_STRING, LUA_TFUNCTION);
 
 /* switch mode and build return- userdata */
-	lua_pushvalue(L, 1);
 	arcan_tui_listwnd_setup(ib->tui, meta->listview.ents, meta->listview.n_ents);
-	lua_pop(L, 1);
 
 	ib->widget_state = tui_lref(L, -1, LINE_AS_STRING, LUA_TUSERDATA);
 	return 1;
