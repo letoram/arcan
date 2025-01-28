@@ -607,12 +607,27 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 			resfd = get_state_res(C, meta->appl.name, ".state", O_RDONLY);
 		break;
 
-/* Client wants to debug the controller of the appl it is in. This requires
- * permission (ctrl), an active runner, creating the transfer pair to the
- * runner, have this result in a binary-stream one way and commands (MESSAGE)
- * being forwarded to _monitor corresponding interface in the runner VM. */
+/* For debugging an appl, we first check monitor permissions. Then create a
+ * pipe pair, send the write-end to the appl-runner and the read-end to the
+ * client-worker. The appl-runner will treat MESSAGE from the client-worker as
+ * commands, and write results into the pipe.
+ *
+ * Complications are: allowing SIGUSR1 into the runner to interrupt the VM,
+ *                    cleaning up if the client disconnected.
+ */
 		case IDTYPE_DEBUG:
-			goto fail;
+			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_monitor)){
+				struct arcan_event ev =
+				{
+					.category = EVENT_TARGET,
+					.tgt.kind = TARGET_COMMAND_BCHUNK_OUT,
+				};
+
+				snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%"PRIu16, mid);
+				shmifsrv_enqueue_event(C->C, &ev, resfd);
+			}
+			else
+				goto fail;
 		break;
 
 /* request raw access to a file in the server-side (shared) applstore- path,

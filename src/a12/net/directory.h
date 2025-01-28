@@ -19,6 +19,7 @@ struct anet_dirsrv_opts {
 	char* allow_ctrl;
 	char* allow_ares;
 	char* allow_admin;
+	char* allow_monitor;
 
 	char* resource_path;
 	int resource_dfd;

@@ -250,7 +250,8 @@ static struct {
 	{.key = "appl"},
 	{.key = "resources"},
 	{.key = "appl_controller"},
-	{.key = "admin"}
+	{.key = "admin"},
+	{.key = "monitor"}
 };
 
 /* Map the table key indices to their corresponding keyname entries so that
@@ -264,6 +265,7 @@ static void build_lookups(struct global_cfg* CFG)
 	permlut[3].val = &CFG->dirsrv.allow_ares;
 	permlut[4].val = &CFG->dirsrv.allow_ctrl;
 	permlut[5].val = &CFG->dirsrv.allow_admin;
+	permlut[6].val = &CFG->dirsrv.allow_monitor;
 }
 
 static int cfgperm_index(lua_State* L)
