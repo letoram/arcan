@@ -113,8 +113,8 @@ static void set_tblbool(lua_State* ctx, char* k, bool v, int top, size_t k_sz)
 
 /* a type-cohersion variant that accepts both bool and if (0) style
  * argument passing for functions. */
-lua_Number luaL_checkbnumber(lua_State* L, int narg);
-lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt);
+bool luaL_checkbnumber(lua_State* L, int narg);
+bool luaL_optbnumber(lua_State* L, int narg, lua_Number opt);
 
 /* used as a lua_call wrapper that provides different error handling, ... */
 void alt_call(lua_State*,

@@ -1076,8 +1076,8 @@ static int debugstall(lua_State* ctx)
 	if (tn <= 0)
 		unsetenv("ARCAN_FRAMESERVER_DEBUGSTALL");
 	else{
-		char buf[4];
-		snprintf(buf, 4, "%4d", tn);
+		char buf[5];
+		snprintf(buf, 5, "%4d", tn);
 		setenv("ARCAN_FRAMESERVER_DEBUGSTALL", buf, 1);
 	}
 

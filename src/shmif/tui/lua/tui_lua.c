@@ -279,7 +279,7 @@ static void init_lmeta(lua_State* L, struct tui_lmeta* l, struct tui_lmeta* p)
 	lua_setmetatable(L, -2);
 }
 
-static lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
+static bool luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
 {
 	if (lua_isnumber(L, narg))
 		return lua_tonumber(L, narg);
