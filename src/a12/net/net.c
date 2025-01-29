@@ -967,8 +967,9 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"\tA12_VBP        \t backpressure maximium cap (0..8)\n"
 	"\tA12_VBP_SOFT   \t backpressure soft (full-frames) cap (< VBP)\n"
 	"\tA12_CACHE_DIR  \t Used for caching binary stores (fonts, ...)\n\n"
-	"\tLocal Discovery mode (ignores connection arguments):\n"
+	"Local Discovery mode (ignores connection arguments):\n"
 	"\tarcan-net discover passive [ff00::/8 eg. ff00::1:6]\n"
+	"\tarcan-net discover passive-synch (will update keystore tag host)\n"
 	"\tarcan-net discover beacon [ff00::/8 eg. ff00::1:6]\n\n"
 	"Keystore mode (ignores connection arguments):\n"
 	"\tAdd/Append key: arcan-net keystore tagname host [port=6680]\n"
@@ -1488,6 +1489,38 @@ static bool discover_beacon(
 	fprintf(stdout,
 		"beacon:kpub=%s:tag=%s:source=%s\n", b64, tag ? tag : "not_found", addr);
 
+	if (tag && global.discover_synch){
+		uint8_t privk[32];
+		char* outhost;
+		uint16_t outport;
+		bool found = false;
+		ssize_t match_i = -1;
+
+/* check if addr is known, if we don't need to do anything. */
+		size_t i = 0;
+		for (; i++; a12helper_keystore_hostkey(tag, i, privk, &outhost, &outport)){
+			if (strcmp(outhost, addr) == 0){
+				found = true;
+				free(outhost);
+				break;
+			}
+		}
+
+/* The host we have a relationship to might have received a new IP (or got hold
+ * of a known pubk and is lying to us). For a differentiated tag with multiple
+ * alternate hosts this is a problem as each host has a different outbound key.
+ *
+ * One option is to repeat the H(CHG, Pubk1, Pubk2, ...) for the tagset in
+ * authentication when we probe but that would take a change in the protocol.
+ *
+ * For the simple lan discovery of a previously known tag that has changed IP
+ * due to DHCP, we can simply swap out the host if there is a prefix match.
+ */
+		 if (!found && i == 1){
+			 i--;
+		 }
+	}
+
 	free(b64);
 	return true;
 }
@@ -1550,14 +1583,17 @@ static int run_discover_command(int argc, char** argv)
 
 /* specifying last argument enables IPv6 */
 	if (argc > 3){
-		if (strcmp("passive", argv[argc-1]) != 0 &&
+		if (
+			strcmp("passive", argv[argc-1]) != 0 &&
+			strcmp("passive-synch", argv[argc-1]) != 0 &&
 			strcmp("beacon", argv[argc-1]) != 0){
 			ipv6 = argv[argc-1];
 		}
 	}
 
 /* can run with either (beacon & listen) or just beacon or just listen */
-	if (argc <= 2 || strcmp(argv[2], "passive") != 0){
+	if (argc <= 2 ||
+		(strcmp(argv[2], "passive") != 0 && strcmp(argv[2], "passive-synch") != 0)){
 	 	pthread_t pth;
 		pthread_attr_t pthattr;
 		pthread_attr_init(&pthattr);
@@ -1575,8 +1611,9 @@ static int run_discover_command(int argc, char** argv)
 	struct anet_discover_opts cfg = {
 		.discover_beacon = discover_beacon,
 		.discover_unknown = discover_unknown,
-		.ipv6 = ipv6
+		.ipv6 = ipv6,
 	};
+	global.discover_synch = (strcmp(argv[2], "passive-synch") == 0);
 
 	struct anet_options opts = {.keystore.directory.dirfd = -1};
 	const char* err;

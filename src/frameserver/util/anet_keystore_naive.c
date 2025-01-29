@@ -253,6 +253,7 @@ static void load_accepted_keys()
 			if (!decode_hostline(inbuf, len-1, &hoststr, key)){
 				fprintf(stderr, "keystore_naive(): failed to parse %s\n", ent->d_name);
 				free(inbuf);
+				inbuf = NULL;
 				continue;
 			}
 
