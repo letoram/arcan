@@ -48,7 +48,8 @@ static void wraperr(lua_State* L, int errc, const char* src);
 
 static struct {
 	int kind;
-	int64_t luavid, vid, maskkind;
+	int64_t maskkind;
+	arcan_vobj_id luavid, vid;
 } callback_source;
 static uint64_t hook_mask;
 
@@ -91,16 +92,16 @@ static void dump_stack(lua_State* L, FILE* dst)
 
 		switch (t){
 		case LUA_TBOOLEAN:
-			fprintf(dst, "%d\t %s\n", lua_toboolean(L, i) ? "true" : "false");
+			fprintf(dst, "%zu\t %s\n", i, lua_toboolean(L, i) ? "true" : "false");
 		break;
 		case LUA_TSTRING:
-			fprintf(dst, "%d\t'%s'\n", i, lua_tostring(L, i));
+			fprintf(dst, "%zu\t'%s'\n", i, lua_tostring(L, i));
 			break;
 		case LUA_TNUMBER:
-			fprintf(dst, "%d\t%g\n", i, lua_tonumber(L, i));
+			fprintf(dst, "%zu\t%g\n", i, lua_tonumber(L, i));
 			break;
 		default:
-			fprintf(dst, "%d\t%s\n", i, lua_typename(L, t));
+			fprintf(dst, "%zu\t%s\n", i, lua_typename(L, t));
 			break;
 		}
 	}

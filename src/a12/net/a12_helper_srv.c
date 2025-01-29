@@ -500,7 +500,7 @@ static void* client_thread(void* inarg)
 			ssize_t nr;
 			if ((nr = read(pfd[0].fd, buf, 256))){
 				a12int_trace(A12_TRACE_SYSTEM,
-				"kind=warning:status=data-on-socket:size=%zd\n", buf);
+				"kind=warning:status=data-on-socket:size=%zd\n", nr);
 			}
 		}
 
