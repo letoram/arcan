@@ -24,11 +24,8 @@ enum evctx_states {
  */
 struct arcan_evctx* arcan_event_defaultctx();
 
-/* check timers, poll IO events and timing calculations
- * out : (NOT NULL) storage- container for number of ticks that has passed
- *                   since the last call to arcan_process
- * ret : range [0 > n < 1] how much time has passed towards the next tick */
-typedef void (*arcan_tick_cb)(int count);
+/* check timers, poll IO events and timing calculations */
+typedef void (*arcan_tick_cb)(int);
 
 /*
  * initialize a context structure. The [drain] function will be invoked if the

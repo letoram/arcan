@@ -978,7 +978,7 @@ void arcan_monitor_finish(bool ok)
 	arcan_monitor_watchdog(NULL, NULL);
 }
 
-void arcan_monitor_tick()
+void arcan_monitor_tick(int n)
 {
 	static size_t count;
 
@@ -1001,7 +1001,8 @@ void arcan_monitor_tick()
 		return;
 
 	char buf[8];
-	snprintf(buf, 8, "%zu", count++);
+	snprintf(buf, 8, "%zu", count);
+	count += n;
 	m_ctr = m_srate;
 	arcan_lua_statesnap(m_out, buf, true);
 }

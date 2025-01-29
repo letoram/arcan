@@ -48,7 +48,7 @@ bool arcan_monitor_configure(int srate, const char*, FILE* ctrl);
  * hooked into the conductor's monotonic 'internal processing', used to
  * snapshot VM state into a configured output
  */
-void arcan_monitor_tick();
+void arcan_monitor_tick(int);
 
 /*
  * clean up and dump appl kv state and/or the VM state (including error

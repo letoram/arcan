@@ -393,7 +393,7 @@ static bool readout_pty(int fd)
  * flush to STDOUT and update the 'view' with either statistics or some
  * filtered version of the data itself.
  */
-static void* pump_pipe()
+static void* pump_pipe(void* arg)
 {
 	uint8_t buffer[4096];
 	size_t left = 0;
@@ -499,7 +499,7 @@ static void* pump_pipe()
 	return NULL;
 }
 
-static void* pump_pty()
+static void* pump_pty(void* arg)
 {
 	int fd = shl_pty_get_fd(term.pty, false);
 	short pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;

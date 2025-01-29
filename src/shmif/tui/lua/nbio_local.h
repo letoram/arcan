@@ -40,16 +40,6 @@ static void alt_call(lua_State* L,
 	lua_call(L, args, retc);
 }
 
-#define arcan_fatal(...) do {\
-	fprintf(stderr, __VA_ARGS__);\
-	fprintf(stderr, "\n");\
-	exit(EXIT_FAILURE);\
-}while (0);
-
-#define arcan_warning(...) do {\
-	fprintf(stderr, __VA_ARGS__);\
-} while (0);
-
 #define RESOURCE_APPL_TEMP 1
 #define RESOURCE_NS_USER 2
 #define ARES_FILE 1

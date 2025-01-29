@@ -302,7 +302,10 @@ static void on_context_reset(int op, void* tag)
 	}
 }
 
-static void audio_flush()
+/* this just flushes the buffer regardless without respect for pts, this is far
+ * from ideal depending on how far into the future pts is versus audio pipeline
+ * buffer bloat */
+static void audio_flush(void* vtx, long pts)
 {
 	arcan_shmif_lock(&decctx.shmcont);
 	arcan_event ev = {
@@ -317,7 +320,7 @@ static void audio_flush()
 	arcan_shmif_unlock(&decctx.shmcont);
 }
 
-static void audio_drain()
+static void audio_drain(void* ctx)
 {
 	arcan_shmif_signalA();
 }

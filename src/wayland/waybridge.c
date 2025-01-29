@@ -1214,7 +1214,7 @@ static bool process_group(struct conn_group* group)
 /*
  * only happens in exec_mode
  */
-static void sigchld_handler()
+static void sigchld_handler(int)
 {
 	wl.alive = false;
 }

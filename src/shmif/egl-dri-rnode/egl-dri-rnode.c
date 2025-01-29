@@ -111,7 +111,7 @@ bool platform_video_map_buffer(
 struct agp_fenv* arcan_shmifext_getfenv(struct arcan_shmif_cont* con)
 {
 	if (!con || !con->privext || !con->privext->internal)
-		return false;
+		return NULL;
 
 	return &agp_fenv;
 }

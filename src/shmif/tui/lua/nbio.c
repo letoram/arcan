@@ -39,6 +39,13 @@
 
 #ifdef WANT_ARCAN_BASE
 #define arcan_fatal(...) do { alt_fatal( __VA_ARGS__); } while(0)
+#else
+static void arcan_warning(const char* msg)
+{
+	fprintf(stderr, "%s\n", msg);
+}
+
+#define arcan_fatal(X) do { lua_pushliteral(L, X); lua_error(L); } while(0)
 #endif
 
 static struct nonblock_io open_fds[LUACTX_OPEN_FILES];
