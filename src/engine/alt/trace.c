@@ -145,7 +145,7 @@ void alt_trace_dumptable_raw(lua_State* L, int ofs, int cap, FILE* out)
 void alt_trace_dumpstack_raw(lua_State* L, FILE* out)
 {
 	int top = lua_gettop(L);
-	while (top >= 0){
+	while (top > 0){
 		fprintf(out, "type=stack:index=%d:name=%d:var", top, top);
 		alt_trace_print_type(L, top, "\n", out);
 		top--;
