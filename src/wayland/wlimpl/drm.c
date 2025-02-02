@@ -345,7 +345,7 @@ static struct shmifext_buffer_plane buffer_to_plane(struct wl_drm_buffer* buf)
 		.gbm = {
 			.format = buf->format,
 			.stride = buf->stride[0],
-			.offset = buf->offset[0]
+			.offset = buf->offset[0],
 		}
 	};
 }

@@ -851,6 +851,13 @@ enum shmifext_buffer_format {
 	SHMIFEXT_BUFFER_GBM = 0,
 };
 
+/*
+ * Accessor for the internal EGLImage and GL texture identifiers that come
+ * into the segment from calling import_buffer
+ */
+bool arcan_shmifext_get_egltex(
+	struct arcan_shmif_cont* con, uintptr_t* imgid, uintptr_t* texid);
+
 bool arcan_shmifext_import_buffer(
 	struct arcan_shmif_cont*,
 	int format,

@@ -214,7 +214,10 @@ bool arcan_shmifext_import_buffer(
 
 /* might have an old eglImage around */
 	if (0 != vs->vinf.text.tag){
+		struct agp_fenv* env = agp_env();
 		agp_eglenv.destroy_image(display, (EGLImageKHR) vs->vinf.text.tag);
+		env->delete_textures(1, &vs->vinf.text.glid);
+		vs->vinf.text.glid = 0;
 	}
 
 	I->buf.w = planes[0].w;
@@ -614,8 +617,8 @@ void arcan_shmifext_bufferfail(struct arcan_shmif_cont* con, bool st)
 		(getenv("ARCAN_VIDEO_NO_FDPASS") ? 1 : st);
 }
 
-int arcan_shmifext_dev(struct arcan_shmif_cont* con,
-	uintptr_t* dev, bool clone)
+int arcan_shmifext_dev(
+	struct arcan_shmif_cont* con, uintptr_t* dev, bool clone)
 {
 	if (!con || !con->privext || !con->privext->internal)
 		return -1;
@@ -939,6 +942,24 @@ size_t arcan_shmifext_export_image(
 
 	agp_eglenv.destroy_image(dpy, newimg);
 	return nplanes;
+}
+
+bool arcan_shmifext_get_egltex(
+	struct arcan_shmif_cont* con, uintptr_t* imgid, uintptr_t* texid)
+{
+	if (!con || !con->addr || !con->privext || !con->privext->internal)
+		return false;
+
+	struct shmif_ext_hidden_int* I = con->privext->internal;
+	struct agp_vstore* vs = &I->buf;
+
+	if (0 == vs->vinf.text.tag)
+		return false;
+
+	*imgid = (uintptr_t) vs->vinf.text.tag;
+	*texid = vs->vinf.text.glid;
+
+	return true;
 }
 
 /* legacy interface - only support one plane so wrap it around the new */

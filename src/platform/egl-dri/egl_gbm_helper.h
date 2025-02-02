@@ -109,7 +109,7 @@ static EGLImage helper_dmabuf_eglimage(
 		ADD_ATTR(dma_offset_constants[i], planes[i].gbm.offset);
 		ADD_ATTR(dma_pitch_constants[i], planes[i].gbm.stride);
 
-		if (mod != DRM_FORMAT_MOD_INVALID){
+		if (mod && mod != DRM_FORMAT_MOD_INVALID){
 			ADD_ATTR(dma_mod_constants[i*2+0], planes[i].gbm.mod_hi);
 			ADD_ATTR(dma_mod_constants[i*2+1], planes[i].gbm.mod_lo);
 		}
