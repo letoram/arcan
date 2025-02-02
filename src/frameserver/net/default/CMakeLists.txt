@@ -32,6 +32,8 @@ set(NET_SOURCES
 	${A12NET_DIR}/dir_supp.c
 	${A12NET_DIR}/dir_cl.c
 
+	${EXT_DIR}/fts.c
+
 	${EXT_DIR}/blake3/blake3.c
 	${EXT_DIR}/blake3/blake3_dispatch.c
 	${EXT_DIR}/blake3/blake3_portable.c

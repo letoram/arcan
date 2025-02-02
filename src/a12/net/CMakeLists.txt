@@ -22,6 +22,7 @@ set(SOURCES
 	${ARCAN_SRC}/platform/stub/mem.c
 	${ARCAN_SRC}/frameserver/util/anet_helper.c
 	${ARCAN_SRC}/frameserver/util/anet_keystore_naive.c
+	${A12_EXT}/fts.c
 )
 
 if (NOT LUA_FOUND)

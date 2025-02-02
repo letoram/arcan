@@ -92,7 +92,6 @@ set(EXTERNAL_SOURCES
 	external/blake3/blake3_dispatch.c
 	external/blake3/blake3_portable.c
 	external/x25519.c
-	external/fts.c
 	${ZSTD_SOURCES}
 )
 
