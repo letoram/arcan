@@ -1077,6 +1077,26 @@ static int enqueue_internal(
 	if (!c || !c->addr || !c->priv)
 		return -1;
 
+	if (!src)
+		return 0;
+
+/*
+ * Sending TARGET is normally not permitted, but there are use-cases where one
+ * might want to 'fake' events between multiple segments on different threads.
+ * A special one there is _EXIT to trigger shutdown of a segment from
+ * elsewhere.
+ */
+	if (src->category == EVENT_TARGET){
+		if (src->tgt.kind == TARGET_COMMAND_EXIT){
+			c->priv->alive = false;
+			arcan_sem_post(c->asem);
+			arcan_sem_post(c->vsem);
+			arcan_sem_post(c->esem);
+			return 1;
+		}
+		return 0;
+	}
+
 /* this is dangerous territory: many _enqueue calls are done without checking
  * the return value, so chances are that some event will be dropped. In the
  * crash- recovery case this means that if the migration goes through, we have
