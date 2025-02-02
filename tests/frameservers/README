@@ -89,3 +89,5 @@ scroll/ tests server side scroll and seeking by exposing CONTENT and
 
 passthrough/ tests h264 bitstream (with 00 00 00 01) passthrough of
              preencoded video without reencode, use with arcan-net
+
+popup/ test spawning and anchoring a popup on click.
