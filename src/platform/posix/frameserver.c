@@ -529,7 +529,8 @@ static bool findshmkey(arcan_frameserver* ctx, int* dfd, mode_t mode){
 
 	while (retrycount){
 /* not a security mechanism, just light "avoid stepping on my own toes" */
-		snprintf(playbuf, sizeof(playbuf), pattern, selfpid % 1000, rand() % 100000);
+		snprintf(playbuf,
+			sizeof(playbuf), pattern, selfpid % 1000, arc4random() % 100000);
 
 		pb_ofs = strlen(playbuf) - 1;
 		*dfd = shm_open(playbuf, O_CREAT | O_RDWR | O_EXCL, mode);

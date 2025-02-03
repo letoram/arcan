@@ -34,7 +34,7 @@ static void synch_cwd(struct cmd_state* C, bool sync_env)
 			size_t new_sz = C->capacity * 2;
 			char* new = realloc(C->cwd, new_sz);
 			if (!new){
-				sprintf(C->cwd, "(out of memory)");
+				snprintf(C->cwd, new_sz, "(out of memory)");
 				return;
 			}
 
@@ -46,16 +46,16 @@ static void synch_cwd(struct cmd_state* C, bool sync_env)
 
 /* may be indicated by prompt */
 		if (errno == ENOENT){
-			sprintf(C->cwd, "(unlinked)");
+			snprintf(C->cwd, C->capacity, "(unlinked)");
 			return;
 		}
 
 		if (errno == EACCES){
-			sprintf(C->cwd, "(no permission)");
+			snprintf(C->cwd, C->capacity, "(no permission)");
 			return;
 		}
 
-		sprintf(C->cwd, "(unknown)");
+		snprintf(C->cwd, C->capacity, "(unknown)");
 		return;
 	}
 

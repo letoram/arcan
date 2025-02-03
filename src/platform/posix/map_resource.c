@@ -26,7 +26,7 @@
 #endif
 
 static inline bool read_safe(
-	int fd, size_t ntr, size_t bs, char* dofs, ssize_t* outsz)
+	int fd, size_t ntr, size_t bs, char* dofs, off_t* outsz)
 {
 	char emptyb[bs];
 	char* dbuf = dofs ? dofs : emptyb;

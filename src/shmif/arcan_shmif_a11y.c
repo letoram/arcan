@@ -1,6 +1,7 @@
 #include "arcan_shmif.h"
 #include "platform/shmif_platform.h"
 #include "arcan_shmif_interop.h"
+#include <pthread.h>
 #include "shmif_defimpl.h"
 #include "shmif_privint.h"
 #include "arcan_shmif_server.h"
