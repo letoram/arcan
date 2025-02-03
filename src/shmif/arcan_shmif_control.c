@@ -1458,6 +1458,10 @@ retry:
  * arcan_shmif_acquire call. Just set the env. */
 	res = strdup(wbuf);
 
+/* 5. enable timeout for recvmsg so we don't risk being blocked indefinitely */
+	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
+		&(struct timeval){.tv_sec = 1}, sizeof(struct timeval));
+
 	*conn_ch = sock;
 
 end:
@@ -1632,6 +1636,8 @@ static struct arcan_shmif_cont shmif_acquire_int(
 		int val = 1;
 		setsockopt(res.epipe, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
 #endif
+		setsockopt(res.epipe, SOL_SOCKET, SO_RCVTIMEO,
+			&(struct timeval){.tv_sec = 1}, sizeof(struct timeval));
 
 /* clear this here so consume won't eat it */
 		pp->pseg.epipe = BADFD;
@@ -1658,13 +1664,6 @@ static struct arcan_shmif_cont shmif_acquire_int(
 	res.shmsize = res.addr->segment_size;
 	res.cookie = arcan_shmif_cookie();
 	res.priv->type = type;
-
-/* enable recvtimeout for the fetchhandle loop to be able to exit-out */
-	struct timeval tv = {
-		.tv_sec = 1
-	};
-	setsockopt(res.epipe, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
 	setup_avbuf(&res);
 
 	pthread_mutex_init(&res.priv->lock, NULL);
