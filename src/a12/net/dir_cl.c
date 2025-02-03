@@ -17,6 +17,7 @@
 #include <stdint.h>
 #include <signal.h>
 #include <stdatomic.h>
+#include <pthread.h>
 
 #include "../a12.h"
 #include "../a12_int.h"

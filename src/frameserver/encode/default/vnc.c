@@ -17,6 +17,7 @@
 
 #include <arcan_shmif.h>
 #include <arcan_tuisym.h>
+#include "frameserver.h"
 
 #define DEFINE_XKB
 #include "xsymconv.h"

@@ -355,12 +355,12 @@ static int mod_to_ind(uint16_t modmask)
 	return ind;
 }
 
-static void do_touchp(arcan_evctx* ctx, struct devnode* node)
+static void do_touchp(struct arcan_evctx* ctx, struct devnode* node)
 {
 /* see man psm and the MOUSE_SYN_GETHWINFO etc. for synaptics */
 }
 
-static inline void check_btn(arcan_evctx* ctx,
+static inline void check_btn(struct arcan_evctx* ctx,
 	int oldstate, int newstate, int fl, int ind)
 {
 	if (!((oldstate & fl) ^ (newstate & fl)))
@@ -378,7 +378,7 @@ static inline void check_btn(arcan_evctx* ctx,
 	arcan_event_enqueue(ctx, &ev);
 }
 
-static void wheel_ev(arcan_evctx* ctx, int idofs, int val)
+static void wheel_ev(struct arcan_evctx* ctx, int idofs, int val)
 {
 	arcan_event aev = {
 		.category = EVENT_IO,
@@ -420,7 +420,7 @@ static void wheel_ev(arcan_evctx* ctx, int idofs, int val)
 	arcan_event_enqueue(ctx, &dev);
 }
 
-static void do_mouse(arcan_evctx* ctx, struct devnode* node)
+static void do_mouse(struct arcan_evctx* ctx, struct devnode* node)
 {
 	size_t pkt_sz = node->mouse.mode.packetsize;
 	uint8_t buf[pkt_sz];
@@ -515,7 +515,7 @@ static void do_mouse(arcan_evctx* ctx, struct devnode* node)
  	}
 }
 
-static void do_keyb(arcan_evctx* ctx, struct devnode* node)
+static void do_keyb(struct arcan_evctx* ctx, struct devnode* node)
 {
 	uint8_t n, code;
 	ssize_t count = read(evctx.tty, &n, 1);
@@ -557,7 +557,7 @@ static void do_keyb(arcan_evctx* ctx, struct devnode* node)
 	arcan_event_enqueue(ctx, &ev);
 }
 
-void platform_event_process(arcan_evctx* ctx)
+void platform_event_process(struct arcan_evctx* ctx)
 {
 /* KEYBOARD format:
  * 1. Lookup code according to the current map which will yield
@@ -610,7 +610,7 @@ void platform_event_samplebase(int devid, float xyz[3])
  * int_operttion, union { struct data, mode, event } */
 }
 
-void platform_event_keyrepeat(arcan_evctx* ctx, int* period, int* delay)
+void platform_event_keyrepeat(struct arcan_evctx* ctx, int* period, int* delay)
 {
 	struct keyboard_repeat rep;
 	if (-1 == ioctl(evctx.keyb.fd, KDGETREPEAT, &rep))
@@ -637,7 +637,7 @@ enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** out)
 	return ACAP_TRANSLATED | ACAP_MOUSE | ACAP_TOUCH;
 }
 
-void platform_event_rescan_idev(arcan_evctx* ctx)
+void platform_event_rescan_idev(struct arcan_evctx* ctx)
 {
 }
 
@@ -657,7 +657,7 @@ const char** platform_event_envopts()
 	return (const char**) envopts;
 }
 
-void platform_event_deinit(arcan_evctx* ctx)
+void platform_event_deinit(struct arcan_evctx* ctx)
 {
 /* this is also performed in psep_open */
 	if (-1 != evctx.tty){
@@ -675,7 +675,7 @@ void platform_event_preinit()
 {
 }
 
-void platform_event_init(arcan_evctx* ctx)
+void platform_event_init(struct arcan_evctx* ctx)
 {
 /* save TTY settings, explicit for devices as we want kbd- access even
  * when testing from a remote shell */
@@ -763,7 +763,7 @@ sigset:
 	}
 }
 
-void platform_event_reset(arcan_evctx* ctx)
+void platform_event_reset(struct arcan_evctx* ctx)
 {
 	platform_event_deinit(ctx);
 	platform_event_init(ctx);

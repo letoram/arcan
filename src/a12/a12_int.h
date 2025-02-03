@@ -406,4 +406,7 @@ struct appl_meta* a12int_get_directory(struct a12_state*, uint64_t* clk);
  * If notify is set changes will be sent dynamically */
 void a12int_request_dirlist(struct a12_state*, bool notify);
 
+unsigned long long arcan_timemillis();
+void arcan_random(uint8_t* dst, size_t ntc);
+
 #endif

@@ -1,5 +1,9 @@
 #include "arcan_shmif.h"
+#include PLATFORM_HEADER
+
+#include "platform/shmif_platform.h"
 #include "arcan_shmif_server.h"
+
 #include <errno.h>
 #include <stdatomic.h>
 #include <math.h>
@@ -17,11 +21,9 @@
  * we should share all the code between the engine- side and the server lib -
  * no reason for the two implementations.
  */
-typedef int shm_handle;
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_frameserver.h"
-#include "platform/shmif_platform.h"
 
 /*
  * wrap the normal structure as we need to pass it to the platform frameserver

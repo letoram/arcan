@@ -3273,7 +3273,7 @@ void platform_video_recovery()
 		.vid.ledctrl = egl_dri.ledid
 	};
 	debug_print("video_recovery, injecting 'added' for mapped displays");
-	arcan_evctx* evctx = arcan_event_defaultctx();
+	struct arcan_evctx* evctx = arcan_event_defaultctx();
 	arcan_event_enqueue(evctx, &ev);
 
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){

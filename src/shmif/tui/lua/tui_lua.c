@@ -1464,11 +1464,14 @@ static int tui_mkdtemp(lua_State* L)
 
 	size_t tries = 10;
 	while (work && tries-- > 0){
-		uint8_t rng[6];
-		arcan_random(rng, 6);
+		union {
+			uint32_t rv;
+			uint8_t rng[4];
+		} rval;
+		rval.rv = arc4random();
 
-		for (size_t i = 0; i < 6; i++)
-			work[len-1-i] = (char)(rng[i] % 24) + 'a';
+		for (size_t i = 0; i < 4; i++)
+			work[len-1-i] = (char)(rval.rng[i] % 24) + 'a';
 
 		int status = mkdirat(ib->cwd_fd, work, 0700);
 		if (0 == status){

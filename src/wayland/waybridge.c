@@ -18,6 +18,7 @@
 #include <GL/gl.h>
 #include <sys/mman.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <dirent.h>
 #include <errno.h>
 #include <poll.h>
@@ -40,6 +41,8 @@
 
 struct comp_surf;
 struct seat;
+
+unsigned long long arcan_timemillis();
 
 /*
  * shared allocation functions, find_client takes a reference to a

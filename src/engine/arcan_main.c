@@ -560,7 +560,7 @@ int MAIN_REDIR(int argc, char* argv[])
 		fullscreen = false;
 
 /* grab video, (necessary) */
-	arcan_evctx* evctx = arcan_event_defaultctx();
+	struct arcan_evctx* evctx = arcan_event_defaultctx();
 	arcan_event_init(evctx);
 
 	if (arcan_video_init(width, height, 32, fullscreen, windowed,

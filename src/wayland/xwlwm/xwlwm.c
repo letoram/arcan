@@ -29,6 +29,8 @@
 
 #include "uthash.h"
 
+unsigned long long arcan_timemillis();
+
 static pthread_mutex_t logout_synch = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t wm_synch = PTHREAD_MUTEX_INITIALIZER;
 static pid_t exec_child = -1;

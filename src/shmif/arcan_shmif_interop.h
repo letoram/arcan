@@ -43,33 +43,6 @@
 #define ASHMIF_VERSION_MAJOR 0
 #define ASHMIF_VERSION_MINOR 17
 
-#ifndef LOG
-#define LOG(X, ...) (fprintf(stderr, "[%lld]" X, arcan_timemillis(), ## __VA_ARGS__))
-#endif
-
-/*
- * For porting the shmpage interface, these functions need to be implemented
- * and pulled in, shouldn't be more complicated than mapping to the
- * corresponding platform/ functions. In the longer scope, these should be
- * factored out and replaced as well.
- */
-#ifndef PLATFORM_HEADER
-
-#define BADFD -1
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <semaphore.h>
-typedef int file_handle;
-typedef pid_t process_handle;
-typedef sem_t* sem_handle;
-
-long long int arcan_timemillis(void);
-int arcan_sem_post(sem_handle sem);
-int arcan_sem_wait(sem_handle sem);
-int arcan_sem_trywait(sem_handle sem);
-int arcan_fdscan(int** listout);
-#endif
-
 struct arcan_shmif_cont;
 struct arcan_event;
 struct arcan_ioevent;

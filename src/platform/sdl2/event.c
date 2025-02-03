@@ -109,7 +109,7 @@ static int find_devind_from_joyid(SDL_JoystickID id)
 	return -1;
 }
 
-static inline bool process_axis(arcan_evctx* ctx,
+static inline bool process_axis(struct arcan_evctx* ctx,
 	struct axis_opts* daxis, int16_t samplev, int16_t* outv)
 {
 	if (daxis->mode == ARCAN_ANALOGFILTER_NONE)
@@ -181,7 +181,7 @@ accept_sample:
 }
 
 static inline void process_axismotion(
-	arcan_evctx* ctx, const SDL_JoyAxisEvent* const ev)
+	struct arcan_evctx* ctx, const SDL_JoyAxisEvent* const ev)
 {
 	int devind = find_devind_from_joyid(ev->which);
 
@@ -228,7 +228,7 @@ int platform_event_device_request(int space, const char* path)
 	return -1;
 }
 
-static inline void process_mousemotion(arcan_evctx* ctx,
+static inline void process_mousemotion(struct arcan_evctx* ctx,
 	const SDL_MouseMotionEvent* const ev)
 {
 	arcan_event nev = {
@@ -424,8 +424,8 @@ static unsigned long djb_hash(const char* str, size_t n)
 	return hash;
 }
 
-static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
-	unsigned hatid, unsigned value)
+static inline void process_hatmotion(
+	struct arcan_evctx* ctx, unsigned devid, unsigned hatid, unsigned value)
 {
 	int devind = find_devind_from_joyid(devid);
 	if (devind == -1)
@@ -581,7 +581,7 @@ uint16_t sdl2_sym_to_12sym(uint32_t insym)
 	return 0;
 }
 
-void platform_event_process(arcan_evctx* ctx)
+void platform_event_process(struct arcan_evctx* ctx)
 {
 	int canary = 0xf00f;
 	SDL_Event event;
@@ -885,7 +885,7 @@ enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** out)
 	return ACAP_TRANSLATED | ACAP_MOUSE | ACAP_GAMING;
 }
 
-void platform_event_rescan_idev(arcan_evctx* ctx)
+void platform_event_rescan_idev(struct arcan_evctx* ctx)
 {
 	if (iodev.sticks_init)
 		SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
@@ -994,7 +994,7 @@ void platform_event_rescan_idev(arcan_evctx* ctx)
 	iodev.joys = joys;
 }
 
-void platform_event_keyrepeat(arcan_evctx* ctx, int* rate, int* delay)
+void platform_event_keyrepeat(struct arcan_evctx* ctx, int* rate, int* delay)
 {
 /* sdl repeat start disabled */
 	static int cur_rep, cur_del;
@@ -1027,7 +1027,7 @@ void platform_event_keyrepeat(arcan_evctx* ctx, int* rate, int* delay)
 	}
 }
 
-void platform_event_deinit(arcan_evctx* ctx)
+void platform_event_deinit(struct arcan_evctx* ctx)
 {
 	if (iodev.sticks_init){
 		SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
@@ -1035,7 +1035,7 @@ void platform_event_deinit(arcan_evctx* ctx)
 	}
 }
 
-void platform_event_reset(arcan_evctx* ctx)
+void platform_event_reset(struct arcan_evctx* ctx)
 {
 	platform_event_deinit(ctx);
 }
@@ -1051,7 +1051,7 @@ void platform_event_preinit()
 {
 }
 
-void platform_event_init(arcan_evctx* ctx)
+void platform_event_init(struct arcan_evctx* ctx)
 {
 	static bool first_init;
 

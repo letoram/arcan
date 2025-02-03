@@ -31,6 +31,9 @@
 #include <signal.h>
 #include <errno.h>
 
+#include "../shmif/arcan_shmif_event.h"
+#include "../shmif/platform/shmif_platform.h"
+
 #include <arcan_math.h>
 #include <arcan_general.h>
 #include <arcan_shmif.h>
@@ -38,6 +41,7 @@
 #include <arcan_video.h>
 #include <arcan_audio.h>
 #include <arcan_frameserver.h>
+
 
 #define INCR(X, C) ( ( (X) = ( (X) + 1) % (C)) )
 
@@ -141,9 +145,9 @@ static size_t shmpage_size(size_t w, size_t h,
 
 static void fsrv_setevqs(
 	struct arcan_shmif_page* dst, sem_handle esem,
-	arcan_evctx* inq, arcan_evctx* outq)
+	struct arcan_evctx* inq, struct arcan_evctx* outq)
 {
-	arcan_evctx* tmp = inq;
+	struct arcan_evctx* tmp = inq;
 	inq = outq;
 	outq = tmp;
 

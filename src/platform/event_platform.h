@@ -1,5 +1,7 @@
 #ifndef HAVE_EVENT_PLATFORM
 #define HAVE_EVENT_PLATFORM
+#include "../shmif/arcan_shmif_event.h"
+#include "../shmif/platform/shmif_platform.h"
 
 /*
  * get a NULL terminated list of input- platform specific environment options

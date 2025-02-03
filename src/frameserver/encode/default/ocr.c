@@ -1,6 +1,9 @@
 #include <tesseract/capi.h>
 #include <leptonica/allheaders.h>
 #include <arcan_shmif.h>
+
+#include <sys/stat.h>
+#include "frameserver.h"
 #include "util/utf8.c"
 
 static void repack_run(struct arcan_shmif_cont* cont, TessBaseAPI* handle)

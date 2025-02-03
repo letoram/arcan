@@ -30,6 +30,10 @@
 #include "anet_helper.h"
 #include "hashmap.h"
 
+#ifndef LOG
+#define LOG(X, ...) (fprintf(stderr, X, arcan_timemillis(), ## __VA_ARGS__))
+#endif
+
 static struct hashmap_s known_beacons;
 
 struct ipcfg {

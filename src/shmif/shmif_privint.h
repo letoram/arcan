@@ -20,7 +20,9 @@ struct shmif_hidden {
 	struct arg_arr* args;
 	char* last_words;
 
-	sem_handle vsem, asem, esem;
+	sem_t* vsem;
+	sem_t* asem;
+	sem_t* esem;
 
 	shmif_trigger_hook_fptr video_hook;
 	void* video_hook_data;
@@ -119,7 +121,7 @@ struct shmif_hidden {
 		bool gotev, consumed;
 		bool handedover;
 		arcan_event ev;
-		file_handle fd;
+		int fd;
 	} pev;
 
 /* When a NEWSEGMENT event has been provided (and descriptor- paired) the caller
@@ -147,8 +149,8 @@ struct shmif_hidden {
 /* Fringe-wise, we need two DMSes, one set in shmpage and another using the
  * guard-thread, then both need to be checked after every semaphore lock */
 		_Atomic bool local_dms;
-		sem_handle semset[3];
-		process_handle parent;
+		sem_t* semset[3];
+		int parent;
 		int parent_fd;
 		volatile uint8_t* _Atomic volatile dms;
 		pthread_mutex_t synch;

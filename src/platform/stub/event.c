@@ -55,15 +55,15 @@ void platform_event_analogfilter(int devid,
 {
 }
 
-void platform_event_process(arcan_evctx* ctx)
+void platform_event_process(struct arcan_evctx* ctx)
 {
 }
 
-void platform_event_keyrepeat(arcan_evctx* ctx, int* rate, int* del)
+void platform_event_keyrepeat(struct arcan_evctx* ctx, int* rate, int* del)
 {
 }
 
-void platform_event_rescan_idev(arcan_evctx* ctx)
+void platform_event_rescan_idev(struct arcan_evctx* ctx)
 {
 }
 
@@ -81,11 +81,11 @@ const char** platform_event_envopts()
 	return (const char**) envopts;
 }
 
-void platform_event_deinit(arcan_evctx* ctx)
+void platform_event_deinit(struct arcan_evctx* ctx)
 {
 }
 
-void platform_event_reset(arcan_evctx* ctx)
+void platform_event_reset(struct arcan_evctx* ctx)
 {
 	platform_event_deinit(ctx);
 }
@@ -98,6 +98,6 @@ void platform_event_preinit()
 {
 }
 
-void platform_event_init(arcan_evctx* ctx)
+void platform_event_init(struct arcan_evctx* ctx)
 {
 }

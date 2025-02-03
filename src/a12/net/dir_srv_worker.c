@@ -16,6 +16,7 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <signal.h>
+#include <pthread.h>
 
 #include "../a12.h"
 #include "../a12_int.h"

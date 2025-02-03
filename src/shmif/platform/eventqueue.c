@@ -4,9 +4,9 @@
 #include <limits.h>
 #include <stdio.h>
 
+#include "arcan_shmif.h"
 #include "shmif_platform.h"
 #include "arcan_shmif_event.h"
-#include "arcan_shmif.h"
 
 void shmif_platform_setevqs(
 	struct arcan_shmif_page* dst,

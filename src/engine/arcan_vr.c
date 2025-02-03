@@ -55,7 +55,7 @@ struct limb_ent {
 };
 
 struct arcan_vr_ctx {
-	arcan_evctx* ctx;
+	struct arcan_evctx* ctx;
 	arcan_frameserver* connection;
 	uint64_t map;
 	struct limb_ent limb_map[LIMB_LIM+1];

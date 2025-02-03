@@ -126,7 +126,7 @@ struct arcan_frameserver {
 
 /* signaling primitives */
 	sem_handle vsync, async, esync;
-	file_handle dpipe;
+	int dpipe;
 
 /* if we spawn child, track if it is alive */
 	process_handle child;
@@ -378,7 +378,7 @@ bool arcan_frameserver_tick_control(arcan_frameserver* src, bool tick, int ff);
  * filter events that are outside the accepted category / kind maintained
  * in the frameserver struct
  */
-void arcan_frameserver_pollevent(arcan_frameserver*, arcan_evctx*);
+void arcan_frameserver_pollevent(arcan_frameserver*, struct arcan_evctx*);
 
 /*
  * Attempt to retrieve a copy of the current LUT-ramps for a specific

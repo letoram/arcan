@@ -10,6 +10,7 @@
 #include <sys/wait.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <pthread.h>
 
 #include <sys/socket.h>
 #include <sys/stat.h>

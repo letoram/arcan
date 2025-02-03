@@ -1803,10 +1803,6 @@ typedef enum {
 	ARKMOD_LIMIT = INT_MAX
 } key_modifiers;
 
-#ifdef PLATFORM_HEADER
-#include PLATFORM_HEADER
-#endif
-
 struct arcan_event_trigger {
 	union {
 		int fd;
@@ -1815,50 +1811,5 @@ struct arcan_event_trigger {
 	bool in, out;
 	uint64_t tag;
 };
-
-struct arcan_evctx {
-/* time and mask- tracking, only used parent-side */
-	int32_t c_ticks;
-	uint32_t mask_cat_inp;
-
-/* only used for local queues */
-	uint32_t state_fl;
-	int exit_code;
-	bool (*drain)(arcan_event*, int);
-	uint8_t eventbuf_sz;
-
-	arcan_event* eventbuf;
-
-/* offsets into the eventbuf queue, parent will always % ARCAN_SHMPAGE_QUEUE_SZ
- * to prevent nasty surprises. these were set before we had access to _Atomic
- * in the standard fashion, and the codebase should be refactored to take that
- * into account */
-	volatile uint8_t* volatile front;
-	volatile uint8_t* volatile back;
-
-	int8_t local;
-
-/*
- * When the child (!local flag) wants the parent to wake it up,
- * the sem_handle (by default, 1) is set to 0 and calls sem_wait.
- *
- * When the parent pushes data on the event-queue it checks the
- * state if this sem_handle. If it's 0, and some internal
- * dynamic heuristic (if the parent knows multiple- connected
- * events are enqueued, it can wait a bit before waking the child)
- * and if that heuristic is triggered, the semaphore is posted.
- *
- * This is also used by the guardthread (that periodically checks
- * if the parent is still alive, and if not, unlocks a batch
- * of semaphores).
- */
-	struct {
-		volatile uint8_t* killswitch;
-		sem_handle handle;
-	} synch;
-
-};
-
-typedef struct arcan_evctx arcan_evctx;
 
 #endif

@@ -2101,7 +2101,7 @@ void platform_event_preinit()
 {
 }
 
-void platform_event_init(arcan_evctx* ctx)
+void platform_event_init(struct arcan_evctx* ctx)
 {
 	uintptr_t tag;
 

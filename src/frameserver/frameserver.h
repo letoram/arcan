@@ -81,6 +81,13 @@ int afsrv_avfeed(struct arcan_shmif_cont*, struct arg_arr*);
 int afsrv_netcl(struct arcan_shmif_cont*, struct arg_arr*);
 int afsrv_netsrv(struct arcan_shmif_cont*, struct arg_arr*);
 
+#ifndef COUNT_OF
+#define COUNT_OF(x) \
+	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+#endif
+
+unsigned long long arcan_timemillis();
+
 #ifndef LOG
 #define LOG(...) (fprintf(stderr, __VA_ARGS__))
 #endif

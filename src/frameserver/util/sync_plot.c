@@ -20,6 +20,8 @@
 #define GRAPH_BUFFER_SIZE 160
 #endif
 
+unsigned long long arcan_timemillis();
+
 struct graph_int {
 	struct arcan_shmif_cont* cont;
 
@@ -35,7 +37,7 @@ struct graph_int {
 
 #define stepmsg(ctx, x, yv) \
 	draw_box(ctx, 0, yv, fontw * strlen(x),\
-		fonth, RGBA(0x00, 0x00, 0x00, 0xff));\
+		fonth, SHMIF_RGBA(0x00, 0x00, 0x00, 0xff));\
 	draw_text(ctx, x, 0, yv, 0xffffffff);\
 	yv += fonth;
 
@@ -64,8 +66,8 @@ static bool f_update(struct synch_graphing* ctx, float period, const char* msg)
  * with the next intended frame, horizontal resolution is 2 px / ms */
 	size_t dw = priv->cont->addr->w;
 
-	draw_box(priv->cont, 0, yv, dw, fonth * 2, RGBA(0x00, 0x00, 0x00, 0xff));
-	draw_box(priv->cont, 0, yv + fonth, dw, 1, RGBA(0x99, 0x99, 0x99, 0xff));
+	draw_box(priv->cont, 0, yv, dw, fonth * 2, SHMIF_RGBA(0x00, 0x00, 0x00, 0xff));
+	draw_box(priv->cont, 0, yv + fonth, dw, 1, SHMIF_RGBA(0x99, 0x99, 0x99, 0xff));
 
 /* first, ideal deadlines, now() is at the end of the X scale */
 	int stepc = 0;
@@ -76,7 +78,7 @@ static bool f_update(struct synch_graphing* ctx, float period, const char* msg)
 
 	while ( startp - (stepc * period) >= minp ){
 		draw_box(priv->cont, startp - (stepc * period) - minp,
-			yv, 1, fonth-1, RGBA(0x00, 0xff, 0x00, 0xff));
+			yv, 1, fonth-1, SHMIF_RGBA(0x00, 0xff, 0x00, 0xff));
 		stepc++;
 	}
 
@@ -92,14 +94,14 @@ static bool f_update(struct synch_graphing* ctx, float period, const char* msg)
 	while (true){
 		if (priv->frametimes[ofs] >= minp)
 			draw_box(priv->cont, current - priv->frametimes[ofs],
-				yv + 1, 1, fonth - 1, RGBA(0xff, 0xff, 0x00, 0xff));
+				yv + 1, 1, fonth - 1, SHMIF_RGBA(0xff, 0xff, 0x00, 0xff));
 		else
 			break;
 
 		ofs = STEPBACK(ofs);
 		if (priv->frametimes[ofs] >= minp)
 			draw_box(priv->cont, current - priv->frametimes[ofs],
-				yv + 1, 1, fonth - 1, RGBA(0xaa, 0xaa, 0x00, 0xff));
+				yv + 1, 1, fonth - 1, SHMIF_RGBA(0xaa, 0xaa, 0x00, 0xff));
 		else
 			break;
 
@@ -111,7 +113,7 @@ static bool f_update(struct synch_graphing* ctx, float period, const char* msg)
 
 	while (priv->framedrops[ofs] >= minp){
 		draw_box(priv->cont, current- priv->framedrops[ofs],
-			yv + 1, 1, fonth - 1, RGBA(0xff, 0x00, 0x00, 0xff));
+			yv + 1, 1, fonth - 1, SHMIF_RGBA(0xff, 0x00, 0x00, 0xff));
 		ofs = STEPBACK(ofs);
 	}
 
@@ -134,7 +136,7 @@ static bool f_update(struct synch_graphing* ctx, float period, const char* msg)
 		float yscale = (float)(fonth * 2) / (float) maxv;
 		ofs = STEPBACK(priv->ofs_xfer);
 		count = 0;
-		draw_box(priv->cont, 0, yv, dw, fonth * 2, RGBA(0x00, 0x00, 0x00, 0xff));
+		draw_box(priv->cont, 0, yv, dw, fonth * 2, SHMIF_RGBA(0x00, 0x00, 0x00, 0xff));
 
 		while (count < dw){
 			int sample = priv->xfercosts[ofs];
@@ -142,11 +144,11 @@ static bool f_update(struct synch_graphing* ctx, float period, const char* msg)
 			if (sample > -1){
 				size_t lineh = yscale * sample;
 				draw_box(priv->cont, dw - count - 1,
-					yv + fonth * 2 - lineh, 1, lineh, RGBA(0x00, 0xff, 0x00, 0xff));
+					yv + fonth * 2 - lineh, 1, lineh, SHMIF_RGBA(0x00, 0xff, 0x00, 0xff));
 			}
 			else{
 				draw_box(priv->cont, dw - count - 1, yv,
-					1, fonth * 2, RGBA(0x00, 0x00, 0xff, 0xff));
+					1, fonth * 2, SHMIF_RGBA(0x00, 0x00, 0xff, 0xff));
 			}
 
 			ofs = STEPBACK(ofs);

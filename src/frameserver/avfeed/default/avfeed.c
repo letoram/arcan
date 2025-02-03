@@ -47,7 +47,7 @@ int afsrv_avfeed(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
-	update_frame(&shms, RGBA(0xff, 0xff, 0xff, 0xff));
+	update_frame(&shms, SHMIF_RGBA(0xff, 0xff, 0xff, 0xff));
 	arcan_event ev;
 
 	while(1)
@@ -59,7 +59,7 @@ int afsrv_avfeed(struct arcan_shmif_cont* con, struct arg_arr* args)
 			}
 			else {
 				static int red;
-				update_frame(&shms, RGBA(red++, 0x00, 0x00, 0xff));
+				update_frame(&shms, SHMIF_RGBA(red++, 0x00, 0x00, 0xff));
 			}
 			}
 		}

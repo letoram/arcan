@@ -5,6 +5,7 @@
  */
 
 #define AGP_ENABLE_UNPURE 1
+#define BADFD -1
 
 #include <math.h>
 #include <stdlib.h>
@@ -21,14 +22,9 @@
 #include <fcntl.h>
 #include <inttypes.h>
 
-#ifdef FRAMESERVER_LIBRETRO_3D
-#ifdef ENABLE_RETEXTURE
-#include "retexture.h"
-#endif
+#define WANT_ARCAN_SHMIF_HELPER
 #include "video_platform.h"
 #include "platform.h"
-#define WANT_ARCAN_SHMIF_HELPER
-#endif
 #include <arcan_shmif.h>
 
 #include <sys/stat.h>
@@ -216,8 +212,8 @@ retro_proc_address_t libretro_requirefun(const char* sym)
 	return dlsym(lastlib, sym);
 }
 
-static bool write_handle(const void* const data,
-	size_t sz_data, file_handle dst, bool finalize)
+static bool write_handle(
+	const void* const data, size_t sz_data, int dst, bool finalize)
 {
 	bool rv = false;
 
@@ -375,7 +371,7 @@ static void libretro_rgb565_rgba(const uint16_t* data, shmif_pixel* outp,
 			if (retro.ntscconv)
 				*interm++ = RGB565(r, g, b);
 			else
-				*outp++ = RGBA(r, g, b, 0xff);
+				*outp++ = SHMIF_RGBA(r, g, b, 0xff);
 		}
 		data += pitch >> 1;
 	}
@@ -400,7 +396,7 @@ static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp,
 			if (retro.ntscconv)
 				*interm++ = RGB565(quad[2], quad[1], quad[0]);
 			else
-				*outp++ = RGBA(quad[2], quad[1], quad[0], 0xff);
+				*outp++ = SHMIF_RGBA(quad[2], quad[1], quad[0], 0xff);
 		}
 
 		data += pitch >> 2;
@@ -429,7 +425,7 @@ static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp,
 			if (postfilter)
 				*interm++ = RGB565(r, g, b);
 			else
-				*outp++ = RGBA(r, g, b, 0xff);
+				*outp++ = SHMIF_RGBA(r, g, b, 0xff);
 		}
 
 		data += pitch >> 1;

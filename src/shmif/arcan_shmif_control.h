@@ -290,14 +290,14 @@ struct arcan_shmif_cont {
  * the event handle is provided and used for signal event delivery
  * in order to allow multiplexation with other input/output sources
  */
-	file_handle epipe;
+	int epipe;
 
 /*
  * Maintain a connection to the shared memory handle in order to handle
  * resizing (on platforms that support it, otherwise define
  * ARCAN_SHMIF_OVERCOMMIT which will only recalc pointers on resize
  */
-	file_handle shmh;
+	int shmh;
 	size_t shmsize;
 
 /*
@@ -547,8 +547,8 @@ size_t arcan_shmif_initial(struct arcan_shmif_cont*,
  * suitable for shmkey, along with a file descriptor to the
  * connected socket in *conn_ch
  */
-char* arcan_shmif_connect(const char* connpath,
-	const char* connkey, file_handle* conn_ch);
+char* arcan_shmif_connect(
+	const char* connpath, const char* connkey, int* conn_ch);
 
 /*
  * This is used to migrate a current connection, authoritative or not,
@@ -1104,7 +1104,7 @@ struct arcan_shmif_page {
  * if the parent process is still alive (used internally by GUARDTHREAD).
  * Can also be updated in relation to a RESET event.
  */
-	process_handle parent;
+	int parent;
 
 /*
  * [FSRV-OR-ARCAN-SET]

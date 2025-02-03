@@ -33,6 +33,7 @@
 #include <stdatomic.h>
 #include <lua.h>
 #include <errno.h>
+#include <fcntl.h>
 
 extern jmp_buf arcanmain_recover_state;
 
@@ -98,6 +99,8 @@ static struct egl_env agp_eglenv;
 #define verbose_print
 #endif
 
+struct arcan_evctx;
+
 static char* input_envopts[] = {
 	NULL
 };
@@ -146,7 +149,7 @@ struct display {
 } disp[MAX_DISPLAYS] = {0};
 
 static struct arg_arr* shmarg;
-static bool event_process_disp(arcan_evctx* ctx, struct display* d, size_t i);
+static bool event_process_disp(struct arcan_evctx* ctx, struct display* d, size_t i);
 
 static struct {
 	uint64_t magic;
@@ -1086,8 +1089,8 @@ const char* platform_event_devlabel(int devid)
  * The better option is to expose them as _adopt handlers, similar
  * to how we do stdin/stdout mapping.
  */
-static void map_window(
-	struct arcan_shmif_cont* seg, arcan_evctx* ctx, int kind, const char* key)
+static void map_window(struct arcan_shmif_cont* seg,
+	struct arcan_evctx* ctx, int kind, const char* key)
 {
 	if (kind != SEGID_MEDIA)
 		return;
@@ -1298,7 +1301,8 @@ send_error:
  * return true if the segment has expired
  */
 extern struct arcan_luactx* main_lua_context;
-static bool event_process_disp(arcan_evctx* ctx, struct display* d, size_t did)
+static bool event_process_disp(
+	struct arcan_evctx* ctx, struct display* d, size_t did)
 {
 	if (!d->conn.addr)
 		return true;
@@ -1494,7 +1498,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d, size_t did)
 	return false;
 }
 
-void platform_event_keyrepeat(arcan_evctx* ctx, int* period, int* delay)
+void platform_event_keyrepeat(struct arcan_evctx* ctx, int* period, int* delay)
 {
 	*period = 0;
 	*delay = 0;
@@ -1503,7 +1507,7 @@ void platform_event_keyrepeat(arcan_evctx* ctx, int* period, int* delay)
  * keyboard device (track per devid) and emit that every oh so often */
 }
 
-void platform_event_process(arcan_evctx* ctx)
+void platform_event_process(struct arcan_evctx* ctx)
 {
 	bool locked = primary_udata.signal_pending;
 	primary_udata.signal_pending = false;
@@ -1547,7 +1551,7 @@ void platform_event_process(arcan_evctx* ctx)
 	}
 }
 
-void platform_event_rescan_idev(arcan_evctx* ctx)
+void platform_event_rescan_idev(struct arcan_evctx* ctx)
 {
 }
 
@@ -1560,11 +1564,11 @@ enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** out)
 		ACAP_POSITION | ACAP_ORIENTATION;
 }
 
-void platform_key_repeat(arcan_evctx* ctx, unsigned int rate)
+void platform_key_repeat(struct arcan_evctx* ctx, unsigned int rate)
 {
 }
 
-void platform_event_deinit(arcan_evctx* ctx)
+void platform_event_deinit(struct arcan_evctx* ctx)
 {
 	TRACE_MARK_ONESHOT("event", "event-platform-deinit", TRACE_SYS_DEFAULT, 0, 0, "lwa");
 }
@@ -1577,7 +1581,7 @@ void platform_video_recovery()
 	};
 
 	TRACE_MARK_ONESHOT("video", "video-platform-recovery", TRACE_SYS_DEFAULT, 0, 0, "lwa");
-	arcan_evctx* evctx = arcan_event_defaultctx();
+	struct arcan_evctx* evctx = arcan_event_defaultctx();
 	arcan_event_enqueue(evctx, &ev);
 
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){
@@ -1588,7 +1592,7 @@ void platform_video_recovery()
 	}
 }
 
-void platform_event_reset(arcan_evctx* ctx)
+void platform_event_reset(struct arcan_evctx* ctx)
 {
 	TRACE_MARK_ONESHOT("event", "event-platform-reset", TRACE_SYS_DEFAULT, 0, 0, "lwa");
 	platform_event_deinit(ctx);
@@ -1598,7 +1602,7 @@ void platform_device_lock(int devind, bool state)
 {
 }
 
-void platform_event_init(arcan_evctx* ctx)
+void platform_event_init(struct arcan_evctx* ctx)
 {
 	TRACE_MARK_ONESHOT("event", "event-platform-init", TRACE_SYS_DEFAULT, 0, 0, "lwa");
 }

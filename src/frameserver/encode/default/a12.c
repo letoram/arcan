@@ -6,6 +6,7 @@
 
 #include <arcan_shmif.h>
 #include <arcan_shmif_server.h>
+#include "frameserver.h"
 
 #include "a12.h"
 

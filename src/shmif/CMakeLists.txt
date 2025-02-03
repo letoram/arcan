@@ -145,8 +145,6 @@ if (NOT TUI_RASTER_NO_TTF)
 		SHMIF_TUI_SOURCES
 		${ASD}/engine/arcan_ttf.c
 	)
-	set_property(SOURCE ${ASD}/engine/arcan_ttf.c
-		APPEND PROPERTY COMPILE_DEFINITIONS SHMIF_TTF)
 else()
 	list(APPEND
 		SHMIF_TUI_SOURCES
@@ -205,7 +203,10 @@ set(TUI_LIBRARIES arcan_shmif)
 add_library(arcan_tui SHARED ${SHMIF_TUI_SOURCES})
 if (NOT TUI_RASTER_NO_TTF)
 	list(APPEND TUI_LIBRARIES ${FREETYPE_LIBRARIES})
+	target_compile_definitions(arcan_tui PRIVATE SHMIF_TTF)
 endif()
+target_compile_definitions(arcan_tui PRIVATE NO_ARCAN_AGP)
+
 target_link_libraries(arcan_tui PRIVATE ${STDLIB} ${TUI_LIBRARIES})
 set_target_properties(arcan_tui PROPERTIES VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR})
 

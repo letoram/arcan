@@ -1,7 +1,9 @@
 #include "../../arcan_shmif.h"
+#include "../../platform/shmif_platform.h"
 #include "../../arcan_tui.h"
 #include "../tui_int.h"
-#include "arcan_ttf.h"
+
+typedef void* TTF_Font;
 #include "../raster/raster.h"
 
 #include <stdio.h>

@@ -1,11 +1,7 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <string.h>
-#include <fcntl.h>
-#include <stdbool.h>
-
+#include "arcan_shmif.h"
 #include "shmif_platform.h"
+#include <unistd.h>
+#include <fcntl.h>
 
 extern char** environ;
 

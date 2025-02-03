@@ -12,6 +12,7 @@
 #ifndef HAVE_PLATFORM_HEADER
 #define HAVE_PLATFORM_HEADER
 
+#include <limits.h>
 #include "platform_types.h"
 #include "agp_platform.h"
 #include "video_platform.h"

@@ -2,7 +2,7 @@
 # Port of LUA5.1 makefiles to CMakeLists for easier build integration
 #
 PROJECT ( lua51 )
-cmake_minimum_required( VERSION 2.8 )
+cmake_minimum_required( VERSION 3.5 )
 
 set (MAJOR_VERSION 5 )
 set (MINOR_VERSION 1 )

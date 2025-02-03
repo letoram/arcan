@@ -193,11 +193,11 @@ static void generate_frame()
  * data-channel and new context
  */
 			for (int j=0; j<smpl_wndw / 2; j++){
-				*base++ = RGBA(0, 0, 0, 0xff);
+				*base++ = SHMIF_RGBA(0, 0, 0, 0xff);
 			}
 
 			for (int j=0; j < smpl_wndw / 2; j++)
-				*base++ = RGBA(
+				*base++ = SHMIF_RGBA(
 					((1.0f + ((smplbuf[j * 2] +
 						smplbuf[j * 2 + 1]) / 2.0)) / 2.0 * 255.0),
 					((fsmplbuf[j] / high) * 255.0),

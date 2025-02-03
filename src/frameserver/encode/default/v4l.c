@@ -17,6 +17,7 @@
 #include <sys/mman.h>
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
+#include "frameserver.h"
 
 extern void arcan_timesleep(unsigned long);
 static int try_device(struct arcan_shmif_cont* C, int number, struct v4l2_format* fmt)

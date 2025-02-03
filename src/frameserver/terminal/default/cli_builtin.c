@@ -3,6 +3,7 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include "cli_builtin.h"
 
 struct cmd_state {

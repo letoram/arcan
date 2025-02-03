@@ -7,6 +7,10 @@
 	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
 #endif
 
+#ifndef LOG
+#define LOG(X, ...) fprintf(stderr, X, ## __VA_ARGS__)
+#endif
+
 enum dirty_state {
 	DIRTY_NONE = 0,
 	DIRTY_CURSOR = 1,

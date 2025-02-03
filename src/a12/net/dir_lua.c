@@ -25,6 +25,11 @@
 #include "anet_helper.h"
 #include "directory.h"
 
+#ifndef COUNT_OF
+#define COUNT_OF(x) \
+	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+#endif
+
 #if LUA_VERSION_NUM == 501
 	#define lua_rawlen(x, y) lua_objlen(x, y)
 #endif

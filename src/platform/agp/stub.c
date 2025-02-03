@@ -1,4 +1,4 @@
- * License: 3-Clause BSD, see COPYING file in arcan source repository.
+/* License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
 
@@ -9,9 +9,8 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include "../platform_types.h"
 #include "../video_platform.h"
-#include "../platform.h"
+#include PLATFORM_HEADER
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -141,9 +140,36 @@ void agp_activate_vstore_multi(struct agp_vstore** backing, size_t n)
 {
 }
 
+struct agp_vstore*
+	agp_rendertarget_swap(struct agp_rendertarget* dst, bool* swap)
+{
+	return NULL;
+}
+
+void agp_rendertarget_allocator(struct agp_rendertarget* tgt, bool (*handler)(
+	struct agp_rendertarget*, struct agp_vstore*, int action, void* tag), void* tag)
+{
+}
+
+struct agp_fenv* agp_env()
+{
+	return NULL;
+}
+
+void agp_vstore_copyreg(
+	struct agp_vstore* restrict src, struct agp_vstore* restrict dst,
+	size_t x1, size_t y1, size_t x2, size_t y2)
+{
+}
+
+bool agp_rendertarget_swapstore(
+	struct agp_rendertarget* tgt, struct agp_vstore* vstore)
+{
+	return false;
+}
+
 void agp_update_vstore(struct agp_vstore* s, bool copy)
 {
-	FLAG_DIRTY();
 }
 
 void agp_prepare_stencil()

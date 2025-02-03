@@ -46,7 +46,7 @@
 
 typedef struct queue_cell queue_cell;
 
-static arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
+static struct arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
 
 static uint8_t eventfront = 0, eventback = 0;
 static int64_t epoch;
@@ -83,7 +83,8 @@ static struct pollfd evsrc_pollset[64];
 static struct evsrc_meta evsrc_meta[64];
 static uint64_t evsrc_bitmap;
 
-arcan_evctx* arcan_event_defaultctx(){
+struct arcan_evctx* arcan_event_defaultctx()
+{
 	return &default_evctx;
 }
 
@@ -91,7 +92,7 @@ arcan_evctx* arcan_event_defaultctx(){
  * If the shmpage integrity is somehow compromised,
  * if semaphore use is out of order etc.
  */
-static void pull_killswitch(arcan_evctx* ctx)
+static void pull_killswitch(struct arcan_evctx* ctx)
 {
 	arcan_frameserver* ks = (arcan_frameserver*) ctx->synch.killswitch;
 	arcan_sem_post(ctx->synch.handle);
@@ -101,17 +102,17 @@ static void pull_killswitch(arcan_evctx* ctx)
 	ctx->synch.killswitch = NULL;
 }
 
-static bool queue_full(arcan_evctx* ctx)
+static bool queue_full(struct arcan_evctx* ctx)
 {
 	 return (((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front);
 }
 
-static bool queue_empty(arcan_evctx* ctx)
+static bool queue_empty(struct arcan_evctx* ctx)
 {
 	return (*ctx->front == *ctx->back);
 }
 
-int arcan_event_poll(arcan_evctx* ctx, struct arcan_event* dst)
+int arcan_event_poll(struct arcan_evctx* ctx, struct arcan_event* dst)
 {
 	assert(dst);
 	if (queue_empty(ctx))
@@ -158,22 +159,22 @@ void arcan_event_repl(struct arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY cat,
 
 }
 
-void arcan_event_maskall(arcan_evctx* ctx)
+void arcan_event_maskall(struct arcan_evctx* ctx)
 {
 	ctx->mask_cat_inp = 0xffffffff;
 }
 
-void arcan_event_clearmask(arcan_evctx* ctx)
+void arcan_event_clearmask(struct arcan_evctx* ctx)
 {
 	ctx->mask_cat_inp = 0;
 }
 
-void arcan_event_setmask(arcan_evctx* ctx, uint32_t mask)
+void arcan_event_setmask(struct arcan_evctx* ctx, uint32_t mask)
 {
 	ctx->mask_cat_inp = mask;
 }
 
-int arcan_event_denqueue(arcan_evctx* ctx, const struct arcan_event* const src)
+int arcan_event_denqueue(struct arcan_evctx* ctx, const struct arcan_event* const src)
 {
 	if (ctx->drain){
 		arcan_event ev = *src;
@@ -191,7 +192,7 @@ int arcan_event_denqueue(arcan_evctx* ctx, const struct arcan_event* const src)
  * implementation to support waking up the child, and that blocking behaviors
  * in the main thread is always forbidden.
  */
-int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
+int arcan_event_enqueue(struct arcan_evctx* ctx, const struct arcan_event* const src)
 {
 /* early-out mask-filter, these are only ever used to silently
  * discard input / output (only operate on head and tail of ringbuffer) */
@@ -258,7 +259,7 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 	return ARCAN_OK;
 }
 
-static inline int queue_used(arcan_evctx* dq)
+static inline int queue_used(struct arcan_evctx* dq)
 {
 	int rv = *(dq->front) > *(dq->back) ? dq->eventbuf_sz -
 	*(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);
@@ -327,7 +328,8 @@ fail:
 }
 
 
-int arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
+int arcan_event_queuetransfer(
+	struct arcan_evctx* dstqueue, struct arcan_evctx* srcqueue,
 	enum ARCAN_EVENT_CATEGORY allowed, float sat, struct arcan_frameserver* tgt)
 {
 	if (!srcqueue || !dstqueue || (srcqueue && !srcqueue->front)
@@ -558,7 +560,7 @@ int64_t arcan_frametime()
 	return now - epoch;
 }
 
-float arcan_event_process(arcan_evctx* ctx, arcan_tick_cb cb)
+float arcan_event_process(struct arcan_evctx* ctx, arcan_tick_cb cb)
 {
 	int64_t base = ctx->c_ticks * ARCAN_TIMER_TICK;
 	int64_t delta = arcan_frametime() - base;
@@ -649,7 +651,7 @@ void arcan_bench_register_frame()
 	lastframe = ftime;
 }
 
-void arcan_event_deinit(arcan_evctx* ctx, bool flush)
+void arcan_event_deinit(struct arcan_evctx* ctx, bool flush)
 {
 	platform_event_deinit(ctx);
 
@@ -826,14 +828,14 @@ bool arcan_event_del_source(
 	return false;
 }
 
-void arcan_event_setdrain(arcan_evctx* ctx, arcan_event_handler drain)
+void arcan_event_setdrain(struct arcan_evctx* ctx, arcan_event_handler drain)
 {
 	if (!ctx->local)
 		return;
 	ctx->drain = drain;
 }
 
-void arcan_event_init(arcan_evctx* ctx)
+void arcan_event_init(struct arcan_evctx* ctx)
 {
 /*
  * non-local (i.e. shmpage resident) event queues has a different

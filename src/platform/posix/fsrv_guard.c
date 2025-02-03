@@ -4,38 +4,22 @@
  * Reference: http://arcan-fe.com
  */
 
-#include <stdint.h>
-#include <stdbool.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <time.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <assert.h>
-#include <pthread.h>
-#include <poll.h>
+#include "arcan_shmif.h"
+#include PLATFORM_HEADER
 
-#include <sys/types.h>
-#include <sys/select.h>
-#include <sys/wait.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <sys/param.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
+#include "platform/shmif_platform.h"
+#include "arcan_shmif_server.h"
 
-#include <signal.h>
 #include <errno.h>
-#include <setjmp.h>
+#include <stdatomic.h>
+#include <math.h>
+#include <sys/wait.h>
+#include <pthread.h>
+#include <signal.h>
 
-#include <arcan_math.h>
-#include <arcan_general.h>
-#include <arcan_shmif.h>
-#include <arcan_event.h>
-#include <arcan_video.h>
-#include <arcan_audio.h>
-#include <arcan_frameserver.h>
+#include "arcan_math.h"
+#include "arcan_general.h"
+#include "arcan_frameserver.h"
 
 static struct arcan_frameserver* tag;
 static sigjmp_buf recover;

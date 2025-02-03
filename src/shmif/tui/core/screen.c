@@ -9,6 +9,8 @@ typedef void* TTF_Font;
 #include "../raster/raster.h"
 #include "../raster/draw.h"
 
+unsigned long long arcan_timemillis();
+
 static void resize_cellbuffer(struct tui_context* tui)
 {
 	if (tui->base){

@@ -635,7 +635,7 @@ static arcan_tick_cb outcb;
 static void conductor_cycle(int);
 int arcan_conductor_run(arcan_tick_cb tick)
 {
-	arcan_evctx* evctx = arcan_event_defaultctx();
+	struct arcan_evctx* evctx = arcan_event_defaultctx();
 	outcb = tick;
 	int exit_code = EXIT_FAILURE;
 	alloc_frameserver_struct();

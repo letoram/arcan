@@ -431,6 +431,18 @@ bool PLATFORM_SYMBOL(_video_get_display_gamma)(platform_display_id did,
 	return false;
 }
 
+bool PLATFORM_SYMBOL(_video_map_buffer)(
+	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n_planes)
+{
+	return false;
+}
+
+size_t PLATFORM_SYMBOL(_video_export_vstore)(
+	struct agp_vstore* vs, struct agp_buffer_plane* planes, size_t n)
+{
+	return 0;
+}
+
 void PLATFORM_SYMBOL(_video_prepare_external) () {}
 void PLATFORM_SYMBOL(_video_restore_external) () {}
 void PLATFORM_SYMBOL(_video_shutdown) ()

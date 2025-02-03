@@ -8,9 +8,11 @@
  * and for substitution tables.
  */
 #include <math.h>
+#define BADFD -1
 
-struct agp_vstore;
 #include "../../arcan_shmif.h"
+#include "../../shmif/platform/shmif_platform.h"
+
 #include "../../arcan_tui.h"
 #include "arcan_ttf.h"
 #include "../tui_int.h"

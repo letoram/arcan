@@ -28,11 +28,10 @@
 #include <pthread.h>
 
 #include "arcan_shmif.h"
+#include "platform/shmif_platform.h"
 #include "shmif_privext.h"
 #include "shmif_privint.h"
-
 #include "shmif_defimpl.h"
-#include "platform/shmif_platform.h"
 
 #include <signal.h>
 #include <poll.h>
@@ -48,6 +47,8 @@
 #define COUNT_OF(x) \
 	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
 #endif
+
+#define BADFD -1
 
 /*
  * a bit clunky, but some scenarios that we want debug-builds but without the
@@ -1385,7 +1386,7 @@ static bool get_shmkey_from_socket(int sock, char* wbuf, size_t sz)
 }
 
 char* arcan_shmif_connect(
-	const char* connpath, const char* connkey, file_handle* conn_ch)
+	const char* connpath, const char* connkey, int* conn_ch)
 {
 	struct sockaddr_un dst = {
 		.sun_family = AF_UNIX
@@ -2655,7 +2656,7 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	if (!pthread_equal(P->primary_id, pthread_self()))
 		return SHMIF_MIGRATE_BAD_SOURCE;
 
-	file_handle dpipe;
+	int dpipe;
 	char* keyfile = NULL;
 
 	if (-1 != a12_cp(newpath, NULL))
@@ -3159,7 +3160,7 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 	struct arg_arr** outarg, struct shmif_open_ext ext, size_t ext_sz)
 {
 	struct arcan_shmif_cont ret = {0};
-	file_handle dpipe;
+	int dpipe;
 	uint64_t ts = arcan_timemillis();
 
 	if (!g_epoch)

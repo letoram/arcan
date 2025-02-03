@@ -27,8 +27,8 @@
 #endif
 
 #include "anet_helper.h"
-
 #include "external/x25519.h"
+void arcan_random(uint8_t* dst, size_t sz);
 
 struct key_ent;
 

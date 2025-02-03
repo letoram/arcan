@@ -1,5 +1,8 @@
 /* for png- output mode */
 #include <arcan_shmif.h>
+
+typedef uint32_t av_pixel;
+typedef int8_t arcan_errc;
 #include "arcan_img.h"
 
 void png_stream_run(struct arg_arr* args, struct arcan_shmif_cont cont)

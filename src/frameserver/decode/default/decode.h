@@ -1,3 +1,5 @@
+#include "frameserver.h"
+
 /* dump the shared help and set the last_words for the context */
 int show_use(struct arcan_shmif_cont* cont, const char* msg);
 

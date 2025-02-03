@@ -2,6 +2,7 @@
 #include <speak_lib.h>
 #include <errno.h>
 #include "arcan_tuisym.h"
+#include "frameserver.h"
 
 enum pack_format {
 	PACK_MONO = 0,

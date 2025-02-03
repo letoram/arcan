@@ -6,9 +6,12 @@
 #include <arcan_tui.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include "tui_lua.h"
 
 #include "lash.h"
+
+unsigned long long arcan_timemillis();
 
 /*
  * notes:

@@ -164,13 +164,13 @@ if (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client")
 	endif()
 else()
 	if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-		set(VPLATFORM_STR "sdl sdl2")
+		set(VPLATFORM_STR "sdl2")
 		if (NOT VIDEO_PLATFORM)
 			set(VIDEO_PLATFORM "sdl2")
 		endif()
 		set(CMAKE_INSTALL_LIBDIR /usr/local/share/lib)
 	else()
-		set(VPLATFORM_STR "egl-dri, sdl, sdl2, egl-gles")
+		set(VPLATFORM_STR "egl-dri, sdl2, egl-gles")
 		if (NOT VIDEO_PLATFORM)
 			set(VIDEO_PLATFORM "egl-dri")
 		endif()
@@ -490,10 +490,10 @@ else()
 		shmif/arcan_shmif_sub.c
 		engine/arcan_vr.h
 		engine/arcan_vr.c
+		engine/arcan_raster.c
 		platform/platform.h
 		platform/video_platform.h
 		shmif/tui/raster/pixelfont.c
-		shmif/tui/raster/raster.c
 	)
 
 	# database tool is sqlite3 + libc so less need to work
