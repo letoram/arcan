@@ -193,6 +193,12 @@ static bool check_dms(struct arcan_shmif_cont* c)
 	return true;
 }
 
+static bool fetch_check(void* t)
+{
+	struct arcan_shmif_cont* c = t;
+	return check_dms(c);
+}
+
 static void spawn_guardthread(struct arcan_shmif_cont* d)
 {
 	struct shmif_hidden* hgs = d->priv;
@@ -526,7 +532,7 @@ static bool pause_evh(struct arcan_shmif_cont* c,
 			if (priv->fh.tgt.ioevs[0].iv != BADFD)
 				close(priv->fh.tgt.ioevs[0].iv);
 			priv->fh.tgt.ioevs[0].iv =
-				shmif_platform_fetchfd(c->epipe, true, NULL, NULL);
+				shmif_platform_fetchfd(c->epipe, true, fetch_check, c);
 		}
 
 		if (ev->tgt.ioevs[2].fv > 0.0)
@@ -735,14 +741,14 @@ reset:
 	consume(c);
 
 /*
- * fetchhandle also pumps 'got event' pings that we send in order to portably
- * I/O multiplex in the eventqueue, see arcan/ source for frameserver_pushevent
+ * fetchfd also pumps 'got event' pings that we send in order to portably I/O
+ * multiplex in the eventqueue, see arcan/ source for frameserver_pushevent
  */
 checkfd:
 	do {
 		errno = 0;
 		if (-1 == priv->pev.fd){
-			priv->pev.fd = shmif_platform_fetchfd(c->epipe, blocking, NULL, NULL);
+			priv->pev.fd = shmif_platform_fetchfd(c->epipe, blocking, fetch_check, c);
 		}
 
 		if (priv->pev.gotev){
@@ -1404,15 +1410,14 @@ retry:
 	if (sock == -1)
 		sock = socket(AF_UNIX, SOCK_STREAM, 0);
 
-#ifdef __APPLE__
-	int val = 1;
-	setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
-#endif
-
 	if (-1 == sock){
 		debug_print(FATAL, NULL, "couldn't allocate socket: %s", strerror(errno));
 		goto end;
 	}
+
+#ifdef __APPLE__
+	setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, &(int){1}, sizeof(int));
+#endif
 
 /* if connection fails, the socket will be re-used with a different address
  * until we run out - this normally will just involve XDG_RUNTIME_DIR then HOME */
@@ -1653,6 +1658,12 @@ static struct arcan_shmif_cont shmif_acquire_int(
 	res.shmsize = res.addr->segment_size;
 	res.cookie = arcan_shmif_cookie();
 	res.priv->type = type;
+
+/* enable recvtimeout for the fetchhandle loop to be able to exit-out */
+	struct timeval tv = {
+		.tv_sec = 1
+	};
+	setsockopt(res.epipe, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
 	setup_avbuf(&res);
 
