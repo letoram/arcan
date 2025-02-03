@@ -60,6 +60,7 @@ set (SHMIF_SOURCES
 	${ASD}/engine/arcan_trace.c
 	${ASD}/shmif/platform/exec.c
 	${ASD}/shmif/platform/fdpassing.c
+	${ASD}/shmif/platform/eventqueue.c
 )
 
 if (LWA_PLATFORM_STR AND IS_DIRECTORY "${ASD}/shmif/${LWA_PLATFORM_STR}" AND

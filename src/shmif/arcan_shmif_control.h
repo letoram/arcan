@@ -304,7 +304,7 @@ struct arcan_shmif_cont {
  * Used internally for synchronization (and mapped / managed outside
  * the regular shmpage). system-defined but typically named semaphores.
  */
-	sem_handle vsem, asem, esem;
+	uint8_t* deprecated[3];
 
 /*
  * Should be used to index vidp, i.e. vidp[y * pitch + x] = RGBA(r, g, b, a)
@@ -614,14 +614,6 @@ size_t arcan_shmif_vbufsz(
  */
 shmif_trigger_hook_fptr arcan_shmif_signalhook(struct arcan_shmif_cont*,
 	enum arcan_shmif_sigmask mask, shmif_trigger_hook_fptr, void* data);
-
-/*
- * Using the specified shmpage state, synchronization semaphore handle,
- * construct two event-queue contexts. Parent- flag should be set
- * to false for frameservers
- */
-void arcan_shmif_setevqs(struct arcan_shmif_page*,
-	sem_handle, arcan_evctx* inevq, arcan_evctx* outevq, bool parent);
 
 /* resize/synchronization protocol to issue a resize of the output video buffer.
  *

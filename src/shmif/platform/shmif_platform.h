@@ -1,6 +1,10 @@
 #ifndef HAVE_SHMIF_PLATFORM
 #define HAVE_SHMIF_PLATFORM
 
+struct arcan_evctx;
+struct arcan_shmif_page;
+#include <semaphore.h>
+
 /* shmif extensions to src/platform,
  *
  * barebones still but for portability to non-arcan related envs.
@@ -60,6 +64,13 @@ pid_t shmif_platform_execve
 	size_t fds_sz,
 	char** err
 );
+
+/*
+ * Map the in/out ringbuffers present in [page] and synch-guarded with [sem_handle]
+ * into the [inevq], [outevq] provided.
+ */
+void shmif_platform_setevqs(struct arcan_shmif_page*,
+	sem_t*, struct arcan_evctx* inevq, struct arcan_evctx* outevq);
 
 /*
  * Send a single descriptor across [sockout]

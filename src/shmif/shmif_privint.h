@@ -20,6 +20,8 @@ struct shmif_hidden {
 	struct arg_arr* args;
 	char* last_words;
 
+	sem_handle vsem, asem, esem;
+
 	shmif_trigger_hook_fptr video_hook;
 	void* video_hook_data;
 

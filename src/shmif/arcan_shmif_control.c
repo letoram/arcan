@@ -240,16 +240,17 @@ static bool fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
  * frameserver subsegment- set up special tracking so we can retain the
  * descriptor as new signalling/socket transfer descriptor
  */
-	c->priv->pev.consumed = true;
+	struct shmif_hidden* private = c->priv;
+	private->pev.consumed = true;
 	if (dst->category == EVENT_TARGET &&
 		dst->tgt.kind == TARGET_COMMAND_NEWSEGMENT){
 /*
  * forward the file descriptor as well so that, in the case of a HANDOVER,
  * the parent process has enough information to forward into a new process.
  */
-		dst->tgt.ioevs[0].iv = c->priv->pseg.epipe = c->priv->pev.fd;
-		c->priv->pev.fd = BADFD;
-		memcpy(c->priv->pseg.key, dst->tgt.message, sizeof(dst->tgt.message));
+		dst->tgt.ioevs[0].iv = private->pseg.epipe = private->pev.fd;
+		private->pev.fd = BADFD;
+		memcpy(private->pseg.key, dst->tgt.message, sizeof(dst->tgt.message));
 		return true;
 	}
 /*
@@ -259,12 +260,12 @@ static bool fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
 	else if (dst->category == EVENT_TARGET &&
 		dst->tgt.kind == TARGET_COMMAND_DEVICE_NODE &&
 		dst->tgt.ioevs[3].iv == 3){
-		if (c->priv->keystate_store)
-			close(c->priv->keystate_store);
+		if (private->keystate_store)
+			close(private->keystate_store);
 
-		c->priv->keystate_store = c->priv->pev.fd;
-		c->priv->autoclean = true;
-		c->priv->pev.fd = BADFD;
+		private->keystate_store = private->pev.fd;
+		private->autoclean = true;
+		private->pev.fd = BADFD;
 		return true;
 	}
 /*
@@ -273,7 +274,7 @@ static bool fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
  * unless the descriptor is dup:ed or used, it will close
  */
 	else
-		dst->tgt.ioevs[0].iv = c->priv->pev.fd;
+		dst->tgt.ioevs[0].iv = private->pev.fd;
 
 	return false;
 }
@@ -296,26 +297,27 @@ void arcan_shmif_defimpl(
  */
 static void consume(struct arcan_shmif_cont* c)
 {
-	if (!c->priv->pev.consumed)
+	struct shmif_hidden* P = c->priv;
+	if (!P->pev.consumed)
 		return;
 
 	debug_print(
 		DETAILED, c, "acquire: %s",
-		arcan_shmif_eventstr(&c->priv->pev.ev, NULL, 0)
+		arcan_shmif_eventstr(&P->pev.ev, NULL, 0)
 	);
 
-	if (BADFD != c->priv->pev.fd){
-		close(c->priv->pev.fd);
-		if (c->priv->pev.handedover){
+	if (BADFD != P->pev.fd){
+		close(P->pev.fd);
+		if (P->pev.handedover){
 			debug_print(DETAILED, c,
-				"closing descriptor (%d:handover)", c->priv->pev.fd);
+				"closing descriptor (%d:handover)", P->pev.fd);
 		}
 		else
 			debug_print(DETAILED, c,
-				"closing descriptor (%d)", c->priv->pev.fd);
+				"closing descriptor (%d)", P->pev.fd);
 	}
 
-	if (BADFD != c->priv->pseg.epipe){
+	if (BADFD != P->pseg.epipe){
 /*
  * Special case, the parent explicitly pushed a debug segment that was not
  * mapped / accepted by the client. Then we take it upon ourselves to add
@@ -324,10 +326,10 @@ static void consume(struct arcan_shmif_cont* c)
  * sampling
  */
 #ifdef SHMIF_DEBUG_IF
-		if (c->priv->pev.gotev &&
-			c->priv->pev.ev.category == EVENT_TARGET &&
-			c->priv->pev.ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT &&
-			c->priv->pev.ev.tgt.ioevs[2].iv == SEGID_DEBUG){
+		if (P->pev.gotev &&
+			P->pev.ev.category == EVENT_TARGET &&
+			P->pev.ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT &&
+			P->pev.ev.tgt.ioevs[2].iv == SEGID_DEBUG){
 			debug_print(DETAILED, c, "debug subsegment received");
 
 /* want to let the debugif do initial registration */
@@ -341,10 +343,10 @@ static void consume(struct arcan_shmif_cont* c)
 			}
 		}
 #endif
-		if (c->priv->pev.gotev &&
-			c->priv->pev.ev.category == EVENT_TARGET &&
-			c->priv->pev.ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT &&
-			c->priv->pev.ev.tgt.ioevs[2].iv == SEGID_ACCESSIBILITY){
+		if (P->pev.gotev &&
+			P->pev.ev.category == EVENT_TARGET &&
+			P->pev.ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT &&
+			P->pev.ev.tgt.ioevs[2].iv == SEGID_ACCESSIBILITY){
 			struct arcan_shmif_cont pcont =
 				arcan_shmif_acquire(c, NULL, SEGID_ACCESSIBILITY, 0);
 			if (pcont.addr){
@@ -354,15 +356,15 @@ static void consume(struct arcan_shmif_cont* c)
 			}
 		}
 
-		close(c->priv->pseg.epipe);
-		c->priv->pseg.epipe = BADFD;
+		close(P->pseg.epipe);
+		P->pseg.epipe = BADFD;
 		debug_print(DETAILED, c, "closing unhandled subsegment descriptor");
 	}
 
-	c->priv->pev.fd = BADFD;
-	c->priv->pev.gotev = false;
-	c->priv->pev.consumed = false;
-	c->priv->pev.handedover = false;
+	P->pev.fd = BADFD;
+	P->pev.gotev = false;
+	P->pev.consumed = false;
+	P->pev.handedover = false;
 }
 
 /*
@@ -594,12 +596,13 @@ static enum shmif_migrate_status fallback_migrate(
 {
 /* sleep - retry connect loop */
 	enum shmif_migrate_status sv;
+	struct shmif_hidden* P = c->priv;
 	int oldfd = c->epipe;
 
 /* parent can pull dms explicitly */
 	if (force){
-		if ((c->priv->flags & SHMIF_NOAUTO_RECONNECT)
-			||	parent_alive(c->priv) || c->priv->output)
+		if ((P->flags & SHMIF_NOAUTO_RECONNECT)
+			||	parent_alive(P) || P->output)
 			return SHMIF_MIGRATE_NOCON;
 	}
 
@@ -611,8 +614,8 @@ static enum shmif_migrate_status fallback_migrate(
 			break;
 
 /* try to return to the last known connection point after a few tries */
-		else if (current == cpoint && c->priv->alt_conn)
-			current = c->priv->alt_conn;
+		else if (current == cpoint && P->alt_conn)
+			current = P->alt_conn;
 		else
 			current = cpoint;
 
@@ -648,16 +651,16 @@ static enum shmif_migrate_status fallback_migrate(
  * process to use as both inter-thread and MiM. Clear any pending descriptor as
  * it will be useless. */
 	case SHMIF_MIGRATE_OK:
-		if (c->priv->ph & 2){
-			if (c->priv->fh.tgt.ioevs[0].iv != BADFD){
-				close(c->priv->fh.tgt.ioevs[0].iv);
-				c->priv->fh.tgt.ioevs[0].iv = BADFD;
-				c->priv->ph = 0;
+		if (P->ph & 2){
+			if (P->fh.tgt.ioevs[0].iv != BADFD){
+				close(P->fh.tgt.ioevs[0].iv);
+				P->fh.tgt.ioevs[0].iv = BADFD;
+				P->ph = 0;
 			}
 		}
 
-		c->priv->ph |= 4;
-		c->priv->fh = (struct arcan_event){
+		P->ph |= 4;
+		P->fh = (struct arcan_event){
 			.category = EVENT_TARGET,
 			.tgt.kind = TARGET_COMMAND_RESET,
 			.tgt.ioevs[0].iv = 3,
@@ -688,24 +691,24 @@ reset:
 	if (!dst || !c->addr)
 		return -1;
 
-	struct shmif_hidden* priv = c->priv;
-	struct arcan_evctx* ctx = &priv->inev;
+	struct shmif_hidden* P = c->priv;
+	struct arcan_evctx* ctx = &P->inev;
 	bool noks = false;
 	int rv = 0;
 
 /* we have a RESET delay-slot:ed, that takes priority. This is where it would
  * be useful to actually track acquired secondaries ass they might not have
  * guardthreads to unlock. */
-	if (priv->ph & 4){
-		*dst = priv->fh;
-		priv->paused = false;
+	if (P->ph & 4){
+		*dst = P->fh;
+		P->paused = false;
 		rv = 1;
-		priv->ph = 0;
+		P->ph = 0;
 		goto done;
 	}
 
-	if (priv->support_window_hook){
-		priv->support_window_hook(c, SUPPORT_EVENT_POLL);
+	if (P->support_window_hook){
+		P->support_window_hook(c, SUPPORT_EVENT_POLL);
 	}
 
 /* Select few events has a special queue position and can be delivered 'out of
@@ -713,25 +716,25 @@ reset:
  * cases where a connection may be suspended for a long time and normal system
  * state (move window between displays, change global fonts) may be silently
  * ignored, when we actually want them delivered immediately upon UNPAUSE */
-	if (!priv->paused && priv->ph){
-		if (priv->ph & 1){
-			priv->ph &= ~1;
-			*dst = priv->dh;
+	if (!P->paused && P->ph){
+		if (P->ph & 1){
+			P->ph &= ~1;
+			*dst = P->dh;
 			rv = 1;
 			goto done;
 		}
-		else if (priv->ph & 2){
-			*dst = priv->fh;
-			c->priv->pev.consumed = dst->tgt.ioevs[0].iv != BADFD;
-			c->priv->pev.fd = dst->tgt.ioevs[0].iv;
-			priv->ph &= ~2;
+		else if (P->ph & 2){
+			*dst = P->fh;
+			P->pev.consumed = dst->tgt.ioevs[0].iv != BADFD;
+			P->pev.fd = dst->tgt.ioevs[0].iv;
+			P->ph &= ~2;
 			rv = 1;
 			goto done;
 		}
 		else{
-			priv->ph = 0;
+			P->ph = 0;
 			rv = 1;
-			*dst = priv->fh;
+			*dst = P->fh;
 			goto done;
 		}
 	}
@@ -747,18 +750,18 @@ reset:
 checkfd:
 	do {
 		errno = 0;
-		if (-1 == priv->pev.fd){
-			priv->pev.fd = shmif_platform_fetchfd(c->epipe, blocking, fetch_check, c);
+		if (-1 == P->pev.fd){
+			P->pev.fd = shmif_platform_fetchfd(c->epipe, blocking, fetch_check, c);
 		}
 
-		if (priv->pev.gotev){
+		if (P->pev.gotev){
 			if (blocking){
 				debug_print(DETAILED, c, "waiting for parent descriptor");
 			}
 
-			if (priv->pev.fd != BADFD){
-				if (fd_event(c, dst) && priv->autoclean){
-					priv->autoclean = false;
+			if (P->pev.fd != BADFD){
+				if (fd_event(c, dst) && P->autoclean){
+					P->autoclean = false;
 					consume(c);
 				}
 				else
@@ -766,14 +769,14 @@ checkfd:
 			}
 			else if (blocking){
 				debug_print(INFO, c, "failure on blocking fd-wait: %s, %s",
-					strerror(errno), arcan_shmif_eventstr(&priv->pev.ev, NULL, 0));
+					strerror(errno), arcan_shmif_eventstr(&P->pev.ev, NULL, 0));
 				if (!errno || errno == EAGAIN)
 					continue;
 			}
 
 			goto done;
 		}
-	} while (priv->pev.gotev && check_dms(c));
+	} while (P->pev.gotev && check_dms(c));
 
 /* atomic increment of front -> event enqueued, other option in this sense
  * would be to have a poll that provides the pointer, and a step that unlocks */
@@ -790,8 +793,8 @@ checkfd:
  * effect of silently discarding events if the server acts in a weird way
  * (pause -> do things -> unpause) but that is the expected behavior, with
  * the exception of DISPLAYHINT, FONTHINT and EXIT */
-		if (priv->paused){
-			if (pause_evh(c, priv, dst))
+		if (P->paused){
+			if (pause_evh(c, P, dst))
 				goto reset;
 			rv = 1;
 			noks = dst->category == EVENT_TARGET
@@ -808,7 +811,7 @@ checkfd:
  * overridden with something in the queue, use this mechanism. Cannot be applied
  * to descriptor- carrying events as more state tracking is needed. */
 			case TARGET_COMMAND_DISPLAYHINT:
-				if (!priv->valid_initial && scan_disp_event(ctx, dst))
+				if (!P->valid_initial && scan_disp_event(ctx, dst))
 					goto reset;
 			break;
 
@@ -819,18 +822,18 @@ checkfd:
 
 /* automatic pause switches to pause_ev, which only supports subset */
 			case TARGET_COMMAND_PAUSE:
-				if ((priv->flags & SHMIF_MANUAL_PAUSE) == 0){
-				priv->paused = true;
+				if ((P->flags & SHMIF_MANUAL_PAUSE) == 0){
+				P->paused = true;
 				goto reset;
 			}
 			break;
 
 			case TARGET_COMMAND_UNPAUSE:
-				if ((priv->flags & SHMIF_MANUAL_PAUSE) == 0){
+				if ((P->flags & SHMIF_MANUAL_PAUSE) == 0){
 /* used when enqueue:ing while we are asleep */
 					if (upret)
 						return 0;
-					priv->paused = false;
+					P->paused = false;
 					goto reset;
 				}
 				break;
@@ -848,7 +851,7 @@ checkfd:
  * we can't as the event- loop might be running in a different thread than A/V
  * updating. _drop would modify the context in ways that would break, and we
  * want consistent behavior between threadsafe- and non-threadsafe builds. */
-				priv->alive = false;
+				P->alive = false;
 				noks = true;
 			break;
 
@@ -857,8 +860,8 @@ checkfd:
  * interest to override default font */
 			case TARGET_COMMAND_FONTHINT:
 				if (dst->tgt.ioevs[1].iv == 1){
-					priv->pev.ev = *dst;
-					priv->pev.gotev = true;
+					P->pev.ev = *dst;
+					P->pev.gotev = true;
 					goto checkfd;
 				}
 				else
@@ -870,7 +873,7 @@ checkfd:
  * switching or defining render node for handle passing, then we need to
  * forward as the client need to rebuild its context. */
 			case TARGET_COMMAND_DEVICE_NODE:{
-				if (priv->log_event){
+				if (P->log_event){
 					log_print("(@%"PRIxPTR"<-)%s",
 						(uintptr_t) c, arcan_shmif_eventstr(dst, NULL, 0));
 				}
@@ -878,9 +881,9 @@ checkfd:
 				int iev = dst->tgt.ioevs[1].iv;
 				if (iev == 4){
 /* replace slot with message, never forward, if message is not set - drop */
-					if (priv->alt_conn){
-						free(priv->alt_conn);
-						priv->alt_conn = NULL;
+					if (P->alt_conn){
+						free(P->alt_conn);
+						P->alt_conn = NULL;
 					}
 
 /* if we're provided with a guid, keep it to be used on a possible migrate */
@@ -892,13 +895,13 @@ checkfd:
 					};
 
 					if ( (guid[0] || guid[1]) &&
-						(priv->guid[0] != guid[0] && priv->guid[1] != guid[1] )){
-						priv->guid[0] = guid[0];
-						priv->guid[1] = guid[1];
+						(P->guid[0] != guid[0] && P->guid[1] != guid[1] )){
+						P->guid[0] = guid[0];
+						P->guid[1] = guid[1];
 					}
 
 					if (dst->tgt.message[0])
-						priv->alt_conn = strdup(dst->tgt.message);
+						P->alt_conn = strdup(dst->tgt.message);
 
 /* for a state store we also need to fetch the descriptor, and this should
  * ideally already be pending because for the 'force' mode the DMS will be
@@ -908,16 +911,16 @@ checkfd:
 				else if (iev == 1){
 /* other ones are ignored for now, require cooperation with shmifext */
 					if (dst->tgt.ioevs[3].iv == 3){
-						priv->pev.ev = *dst;
-						priv->pev.gotev = true;
+						P->pev.ev = *dst;
+						P->pev.gotev = true;
 						goto checkfd;
 					}
 				}
 /* event that request us to switch connection point */
 				else if (iev > 1 && iev <= 3){
 					if (dst->tgt.message[0] == '\0'){
-						priv->pev.ev = *dst;
-						priv->pev.gotev = true;
+						P->pev.ev = *dst;
+						P->pev.gotev = true;
 						goto checkfd;
 					}
 /* try to migrate automatically, but ignore on failure */
@@ -940,7 +943,7 @@ checkfd:
  * be deferred until we have received a handle and the specific handle will be
  * added to the actual event. */
 			case TARGET_COMMAND_NEWSEGMENT:
-				priv->autoclean = !!(dst->tgt.ioevs[5].iv);
+				P->autoclean = !!(dst->tgt.ioevs[5].iv);
 
 /* fallthrough behavior is expected */
 			case TARGET_COMMAND_STORE:
@@ -949,8 +952,8 @@ checkfd:
 			case TARGET_COMMAND_BCHUNK_OUT:
 				debug_print(DETAILED, c,
 					"got descriptor event (%s)", arcan_shmif_eventstr(dst, NULL, 0));
-				priv->pev.gotev = true;
-				priv->pev.ev = *dst;
+				P->pev.gotev = true;
+				P->pev.ev = *dst;
 				goto checkfd;
 			default:
 			break;
@@ -961,7 +964,7 @@ checkfd:
 /* a successful migrate will delay-slot the RESET event, so in that case
  * go back to reset and have that activate */
 	else if (!check_dms(c)){
-		if (fallback_migrate(c, priv->alt_conn, true) == SHMIF_MIGRATE_OK)
+		if (fallback_migrate(c, P->alt_conn, true) == SHMIF_MIGRATE_OK)
 			goto reset;
 		goto done;
 	}
@@ -1087,6 +1090,8 @@ static int enqueue_internal(
 	if (!src)
 		return 0;
 
+	struct shmif_hidden* P = c->priv;
+
 /*
  * Sending TARGET is normally not permitted, but there are use-cases where one
  * might want to 'fake' events between multiple segments on different threads.
@@ -1095,10 +1100,10 @@ static int enqueue_internal(
  */
 	if (src->category == EVENT_TARGET){
 		if (src->tgt.kind == TARGET_COMMAND_EXIT){
-			c->priv->alive = false;
-			arcan_sem_post(c->asem);
-			arcan_sem_post(c->vsem);
-			arcan_sem_post(c->esem);
+			P->alive = false;
+			arcan_sem_post(P->asem);
+			arcan_sem_post(P->vsem);
+			arcan_sem_post(P->esem);
 			return 1;
 		}
 		return 0;
@@ -1111,28 +1116,28 @@ static int enqueue_internal(
  * gets lost. Neither is good. The counterargument is that crash recovery is a
  * 'best effort basis' - we're still dealing with an actual crash. */
 	if (!check_dms(c) && !try){
-		fallback_migrate(c, c->priv->alt_conn, true);
+		fallback_migrate(c, P->alt_conn, true);
 		return 0;
 	}
 
 /* need some extra patching up for log-event to contain the proper values */
-	if (c->priv->log_event){
+	if (P->log_event){
 		struct arcan_event outev = *src;
 		if (!outev.category){
 			outev.category = EVENT_EXTERNAL;
 		}
 		if (outev.category == EVENT_EXTERNAL)
-			outev.ext.frame_id = c->priv->vframe_id;
+			outev.ext.frame_id = P->vframe_id;
 
 		log_print("(@%"PRIxPTR"->)%s",
 			(uintptr_t) c, arcan_shmif_eventstr(&outev, NULL, 0));
 	}
 
-	struct arcan_evctx* ctx = &c->priv->outev;
+	struct arcan_evctx* ctx = &P->outev;
 
 /* paused only set if segment is configured to handle it,
  * and process_events on blocking will block until unpaused */
-	if (c->priv->paused){
+	if (P->paused){
 		struct arcan_event ev;
 		process_events(c, &ev, true, true);
 	}
@@ -1155,13 +1160,13 @@ static int enqueue_internal(
  * client->server is really low. Tag the event with the last signalled frame
  * for it to act as a clock. */
 	if (category == EVENT_EXTERNAL){
-		ctx->eventbuf[*ctx->back].ext.frame_id = c->priv->vframe_id;
+		ctx->eventbuf[*ctx->back].ext.frame_id = P->vframe_id;
 
 		if (src->ext.kind == ARCAN_EVENT(REGISTER)){
 
 			if (src->ext.registr.guid[0] || src->ext.registr.guid[1]){
-				c->priv->guid[0] = src->ext.registr.guid[0];
-				c->priv->guid[1] = src->ext.registr.guid[1];
+				P->guid[0] = src->ext.registr.guid[0];
+				P->guid[1] = src->ext.registr.guid[1];
 			}
 
 /* Changing the type post first register is a no-op normally. The edge case is
@@ -1173,8 +1178,8 @@ static int enqueue_internal(
  *
  * That's why we need to update the type and not just the GUID.
  */
-			if (src->ext.registr.kind && c->priv->type == SEGID_UNKNOWN)
-				c->priv->type = src->ext.registr.kind;
+			if (src->ext.registr.kind && P->type == SEGID_UNKNOWN)
+				P->type = src->ext.registr.kind;
 		}
 	}
 
@@ -1250,6 +1255,7 @@ static bool ensure_stdio()
 
 static void map_shared(const char* shmkey, struct arcan_shmif_cont* dst)
 {
+	struct shmif_hidden* P = dst->priv;
 	assert(shmkey);
 	assert(strlen(shmkey) > 0);
 
@@ -1286,14 +1292,14 @@ static void map_shared(const char* shmkey, struct arcan_shmif_cont* dst)
 		snprintf(work, slen, "%s", shmkey);
 		slen -= 2;
 		work[slen] = 'v';
-		dst->vsem = sem_open(work, 0);
+		P->vsem = sem_open(work, 0);
 		work[slen] = 'a';
-		dst->asem = sem_open(work, 0);
+		P->asem = sem_open(work, 0);
 		work[slen] = 'e';
-		dst->esem = sem_open(work, 0);
+		P->esem = sem_open(work, 0);
 	}
 
-	if (dst->asem == 0x0 || dst->esem == 0x0 || dst->vsem == 0x0){
+	if (P->asem == 0x0 || P->esem == 0x0 || P->vsem == 0x0){
 		debug_print(FATAL, dst, "couldn't map semaphores: %s", shmkey);
 		free(dst->addr);
 		close(fd);
@@ -1536,13 +1542,22 @@ static struct arcan_shmif_cont shmif_acquire_int(
 		.vidp = NULL
 	};
 
-	if (!shmkey && (!parent || !parent->priv))
+	if (!shmkey && (!parent || !parent->priv)){
 		return res;
+	}
 
-	bool privps = false;
+/* placeholder private shmif_hidden to be populated by map_shared */
+	res.priv = malloc(sizeof(struct shmif_hidden));
+	*res.priv = (struct shmif_hidden){
+		.flags = flags,
+		.pev = {.fd = BADFD},
+		.pseg = {.epipe = BADFD}
+	};
+	struct shmif_hidden* P = res.priv;
 
 /* different path based on an acquire from a NEWSEGMENT event or if it comes
  * from a _connect (via _open) call */
+	bool privps = false;
 	const char* key_used = NULL;
 
 	if (!shmkey){
@@ -1581,6 +1596,8 @@ static struct arcan_shmif_cont shmif_acquire_int(
 
 	if (!res.addr){
 		debug_print(FATAL, NULL, "couldn't connect through: %s", shmkey);
+		free(res.priv);
+		res.priv = NULL;
 
 		if (flags & SHMIF_ACQUIRE_FATALFAIL)
 			exit(EXIT_FAILURE);
@@ -1593,25 +1610,19 @@ static struct arcan_shmif_cont shmif_acquire_int(
 			exitf = va_arg(vargs, void(*)(int));
 	}
 
-	struct shmif_hidden gs = {
-		.guard = {
-			.local_dms = true,
-			.semset = { res.asem, res.vsem, res.esem },
-			.parent = res.addr->parent,
-			.parent_fd = -1,
-			.exitf = exitf
-		},
-		.flags = flags,
-		.pev = {.fd = BADFD},
-		.pseg = {.epipe = BADFD},
-	};
+/* fill out the structures needed for the guard-thread */
+	P->guard.local_dms = true;
+	P->guard.semset[0] = P->asem;
+	P->guard.semset[1] = P->vsem;
+	P->guard.semset[2] = P->esem;
+	P->guard.parent = res.addr->parent;
+	P->guard.parent_fd = -1;
+	P->guard.exitf = exitf;
+	atomic_store(&P->guard.dms, (uint8_t*) &res.addr->dms);
 
-	atomic_store(&gs.guard.dms, (uint8_t*) &res.addr->dms);
-
-	res.priv = malloc(sizeof(struct shmif_hidden));
-	memset(res.priv, '\0', sizeof(struct shmif_hidden));
 	res.priv->shm_key = strdup(key_used);
 
+/* and mark the segment as non-extended */
 	res.privext = malloc(sizeof(struct shmif_ext_hidden));
 	*res.privext = (struct shmif_ext_hidden){
 		.cleanup = NULL,
@@ -1619,8 +1630,7 @@ static struct arcan_shmif_cont shmif_acquire_int(
 		.pending_fd = -1,
 	};
 
-	*res.priv = gs;
-	res.priv->alive = true;
+	P->alive = true;
 	char* dbgenv = getenv("ARCAN_SHMIF_DEBUG");
 	if (dbgenv)
 		res.priv->log_event = strtoul(dbgenv, NULL, 10);
@@ -1647,8 +1657,7 @@ static struct arcan_shmif_cont shmif_acquire_int(
 		consume(parent);
 	}
 
-	arcan_shmif_setevqs(res.addr, res.esem,
-		&res.priv->inev, &res.priv->outev, false);
+	shmif_platform_setevqs(res.addr, P->esem, &res.priv->inev, &res.priv->outev);
 
 	if (0 != type && !(flags & SHMIF_NOREGISTER)) {
 		arcan_random((uint8_t*) res.priv->guid, 16);
@@ -1760,51 +1769,6 @@ bool arcan_shmif_integrity_check(struct arcan_shmif_cont* cont)
 	}
 
 	return true;
-}
-
-void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
-	sem_handle esem, arcan_evctx* inq, arcan_evctx* outq, bool parent)
-{
-	if (parent){
-		arcan_evctx* tmp = inq;
-		inq = outq;
-		outq = tmp;
-
-		outq->synch.handle = esem;
-		inq->synch.handle = esem;
-
-		inq->synch.killswitch = NULL;
-		outq->synch.killswitch = NULL;
-	}
-	else {
-		inq->synch.handle = esem;
-		inq->synch.killswitch = &dst->dms;
-		outq->synch.handle = esem;
-		outq->synch.killswitch = &dst->dms;
-	}
-
-#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
-	if (!inq->synch.init){
-		inq->synch.init = true;
-		pthread_mutex_init(&inq->synch.lock, NULL);
-	}
-	if (!outq->synch.init){
-		outq->synch.init = true;
-		pthread_mutex_init(&outq->synch.lock, NULL);
-	}
-#endif
-
-	inq->local = false;
-	inq->eventbuf = dst->childevq.evqueue;
-	inq->front = &dst->childevq.front;
-	inq->back  = &dst->childevq.back;
-	inq->eventbuf_sz = PP_QUEUE_SZ;
-
-	outq->local =false;
-	outq->eventbuf = dst->parentevq.evqueue;
-	outq->front = &dst->parentevq.front;
-	outq->back  = &dst->parentevq.back;
-	outq->eventbuf_sz = PP_QUEUE_SZ;
 }
 
 unsigned arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx,
@@ -1958,31 +1922,34 @@ static bool step_a(struct arcan_shmif_cont* ctx)
 	return lock;
 }
 
-unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
+unsigned arcan_shmif_signal(struct arcan_shmif_cont* C, int mask)
 {
-	struct shmif_hidden* priv = ctx->priv;
-	if (!ctx || !ctx->addr || !priv || !ctx->vidp)
+	if (!C || !C->addr || !C->vidp)
+		return 0;
+
+	struct shmif_hidden* P = C->priv;
+	if (!P)
 		return 0;
 
 /* sematics for output segments are easier, no chunked buffers
  * or hooks to account for */
-	if (is_output_segment(priv->type)){
+	if (is_output_segment(P->type)){
 		if (mask & SHMIF_SIGVID)
-			atomic_store(&ctx->addr->vready, 0);
+			atomic_store(&C->addr->vready, 0);
 		if (mask & SHMIF_SIGAUD)
-			atomic_store(&ctx->addr->aready, 0);
+			atomic_store(&C->addr->aready, 0);
 		return 0;
 	}
 
 /* if we are in migration there is no reason to go into signal until that
  * has been dealt with */
-	if (priv->in_migrate)
+	if (P->in_migrate)
 		return 0;
 
 /* and if we are in signal, migration will need to unlock semaphores so we
  * leave signal and any held mutex on the context will be released until NEXT
  * signal that would then let migration continue on other thread. */
-	priv->in_signal = true;
+	P->in_signal = true;
 
 /*
  * To protect against some callers being stuck in a 'just signal as a means of
@@ -1990,47 +1957,47 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
  * context is not unlocked, the current thread is holding the lock and there
  * is no on-going migration
  */
-	if (!ctx->addr->dms || !atomic_load(&priv->guard.local_dms)){
-		ctx->abufused = ctx->abufpos = 0;
-		fallback_migrate(ctx, ctx->priv->alt_conn, true);
-		priv->in_signal = false;
+	if (!C->addr->dms || !atomic_load(&P->guard.local_dms)){
+		C->abufused = C->abufpos = 0;
+		fallback_migrate(C, P->alt_conn, true);
+		P->in_signal = false;
 		return 0;
 	}
 
 	unsigned startt = arcan_timemillis();
-	if ( (mask & SHMIF_SIGVID) && priv->video_hook)
-		mask = priv->video_hook(ctx);
+	if ( (mask & SHMIF_SIGVID) && P->video_hook)
+		mask = P->video_hook(C);
 
-	if ( (mask & SHMIF_SIGAUD) && priv->audio_hook)
-		mask = priv->audio_hook(ctx);
+	if ( (mask & SHMIF_SIGAUD) && P->audio_hook)
+		mask = P->audio_hook(C);
 
 	if ( mask & SHMIF_SIGAUD ){
-		bool lock = step_a(ctx);
+		bool lock = step_a(C);
 
 /* guard-thread will pull the sems for us on dms */
 		if (lock && !(mask & SHMIF_SIGBLK_NONE))
-			arcan_sem_wait(ctx->asem);
+			arcan_sem_wait(P->asem);
 		else
-			arcan_sem_trywait(ctx->asem);
+			arcan_sem_trywait(P->asem);
 	}
 /* for sub-region multi-buffer synch, we currently need to
  * check before running the step_v */
 	if (mask & SHMIF_SIGVID){
-		while ((ctx->hints & SHMIF_RHINT_SUBREGION)
-			&& ctx->addr->vready && check_dms(ctx))
-			arcan_sem_wait(ctx->vsem);
+		while ((C->hints & SHMIF_RHINT_SUBREGION)
+			&& C->addr->vready && check_dms(C))
+			arcan_sem_wait(P->vsem);
 
-		bool lock = step_v(ctx, mask);
+		bool lock = step_v(C, mask);
 
 		if (lock && !(mask & SHMIF_SIGBLK_NONE)){
-			while (ctx->addr->vready && check_dms(ctx))
-				arcan_sem_wait(ctx->vsem);
+			while (C->addr->vready && check_dms(C))
+				arcan_sem_wait(P->vsem);
 		}
 		else
-			arcan_sem_trywait(ctx->vsem);
+			arcan_sem_trywait(P->vsem);
 	}
 
-	priv->in_signal = false;
+	P->in_signal = false;
 	return arcan_timemillis() - startt;
 }
 
@@ -2071,17 +2038,17 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	if (inctx == primary.output)
 		primary.output = NULL;
 
-	struct shmif_hidden* gstr = inctx->priv;
+	struct shmif_hidden* P = inctx->priv;
 
 	close(inctx->epipe);
 	close(inctx->shmh);
 
-	sem_close(inctx->asem);
-	sem_close(inctx->esem);
-	sem_close(inctx->vsem);
+	sem_close(P->asem);
+	sem_close(P->esem);
+	sem_close(P->vsem);
 
-	if (gstr->args){
-		arg_cleanup(gstr->args);
+	if (P->args){
+		arg_cleanup(P->args);
 	}
 
 /* guard thread will clean up on its own */
@@ -2097,9 +2064,9 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	pthread_mutex_unlock(&inctx->priv->lock);
 	pthread_mutex_destroy(&inctx->priv->lock);
 
-	if (gstr->guard.active){
-		atomic_store(&gstr->guard.dms, 0);
-		gstr->guard.active = false;
+	if (P->guard.active){
+		atomic_store(&P->guard.dms, 0);
+		P->guard.active = false;
 	}
 /* no guard thread for this context */
 	else
@@ -2110,14 +2077,14 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	inctx->epipe = -1;
 }
 
-static bool shmif_resize(struct arcan_shmif_cont* arg,
+static bool shmif_resize(struct arcan_shmif_cont* C,
 	unsigned width, unsigned height, struct shmif_resize_ext ext)
 {
-	if (!arg->addr || !arcan_shmif_integrity_check(arg) ||
-	!arg->priv || width > PP_SHMPAGE_MAXW || height > PP_SHMPAGE_MAXH)
+	if (!C->addr || !arcan_shmif_integrity_check(C) ||
+	!C->priv || width > PP_SHMPAGE_MAXW || height > PP_SHMPAGE_MAXH)
 		return false;
 
-	struct shmif_hidden* priv = arg->priv;
+	struct shmif_hidden* P = C->priv;
 
 /* quick rename / unpack as old prototype of this didn't carry ext struct */
 	size_t abufsz = ext.abuf_sz;
@@ -2127,33 +2094,33 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	int adata = ext.meta;
 
 /* resize on a dead context triggers migration */
-	if (!check_dms(arg)){
-		if (priv->reset_hook)
-			priv->reset_hook(SHMIF_RESET_LOST, priv->reset_hook_tag);
+	if (!check_dms(C)){
+		if (P->reset_hook)
+			P->reset_hook(SHMIF_RESET_LOST, P->reset_hook_tag);
 
 /* fallback migrate will trigger the reset_hook on REMAP / FAIL */
-		if (SHMIF_MIGRATE_OK != fallback_migrate(arg, priv->alt_conn, true)){
+		if (SHMIF_MIGRATE_OK != fallback_migrate(C, P->alt_conn, true)){
 			return false;
 		}
 	}
 
 /* wait for any outstanding v/asynch */
-	if (atomic_load(&arg->addr->vready)){
-		while (atomic_load(&arg->addr->vready) && check_dms(arg))
-			arcan_sem_wait(arg->vsem);
+	if (atomic_load(&C->addr->vready)){
+		while (atomic_load(&C->addr->vready) && check_dms(C))
+			arcan_sem_wait(P->vsem);
 	}
-	if (atomic_load(&arg->addr->aready)){
-		while (atomic_load(&arg->addr->aready) && check_dms(arg))
-			arcan_sem_wait(arg->asem);
+	if (atomic_load(&C->addr->aready)){
+		while (atomic_load(&C->addr->aready) && check_dms(C))
+			arcan_sem_wait(P->asem);
 	}
 
 /* since the vready wait can be long and an error prone operation,
  * the context might have died between the check above and here */
-	if (!check_dms(arg)){
-		if (priv->reset_hook)
-			priv->reset_hook(SHMIF_RESET_LOST, priv->reset_hook_tag);
+	if (!check_dms(C)){
+		if (P->reset_hook)
+			P->reset_hook(SHMIF_RESET_LOST, P->reset_hook_tag);
 
-		if (SHMIF_MIGRATE_OK != fallback_migrate(arg, priv->alt_conn, true))
+		if (SHMIF_MIGRATE_OK != fallback_migrate(C, P->alt_conn, true))
 			return false;
 	}
 
@@ -2162,80 +2129,80 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 
 /* 0 is allowed to disable any related data, useful for not wasting
  * storage when accelerated buffer passing is working */
-	vidc = vidc < 0 ? priv->vbuf_cnt : vidc;
-	audc = audc < 0 ? priv->abuf_cnt : audc;
+	vidc = vidc < 0 ? P->vbuf_cnt : vidc;
+	audc = audc < 0 ? P->abuf_cnt : audc;
 
-	bool dimensions_changed = width != arg->w || height != arg->h;
-	bool bufcnt_changed = vidc != priv->vbuf_cnt || audc != priv->abuf_cnt;
-	bool hints_changed = arg->addr->hints != arg->hints;
-	bool bufsz_changed = abufsz && arg->addr->abufsize != abufsz;
+	bool dimensions_changed = width != C->w || height != C->h;
+	bool bufcnt_changed = vidc != P->vbuf_cnt || audc != P->abuf_cnt;
+	bool hints_changed = C->addr->hints != C->hints;
+	bool bufsz_changed = abufsz && C->addr->abufsize != abufsz;
 
 /* don't negotiate unless the goals have changed */
-	if (arg->vidp &&
+	if (C->vidp &&
 		!dimensions_changed &&
 		!bufcnt_changed &&
 		!hints_changed &&
 		!bufsz_changed){
-		if (priv->reset_hook)
-			priv->reset_hook(SHMIF_RESET_NOCHG, priv->reset_hook_tag);
+		if (P->reset_hook)
+			P->reset_hook(SHMIF_RESET_NOCHG, P->reset_hook_tag);
 
 		return true;
 	}
 
 /* synchronize hints as _ORIGO_LL and similar changes only synch on resize */
-	atomic_store(&arg->addr->hints, arg->hints);
-	atomic_store(&arg->addr->apad_type, adata);
+	atomic_store(&C->addr->hints, C->hints);
+	atomic_store(&C->addr->apad_type, adata);
 
 	if (samplerate < 0)
-		atomic_store(&arg->addr->audiorate, arg->samplerate);
+		atomic_store(&C->addr->audiorate, C->samplerate);
 	else if (samplerate == 0)
-		atomic_store(&arg->addr->audiorate, ARCAN_SHMIF_SAMPLERATE);
+		atomic_store(&C->addr->audiorate, ARCAN_SHMIF_SAMPLERATE);
 	else
-		atomic_store(&arg->addr->audiorate, samplerate);
+		atomic_store(&C->addr->audiorate, samplerate);
 
 /* need strict ordering across procss boundaries here, first desired
  * dimensions, buffering etc. THEN resize request flag */
-	atomic_store(&arg->addr->w, width);
-	atomic_store(&arg->addr->h, height);
-	atomic_store(&arg->addr->rows, ext.rows);
-	atomic_store(&arg->addr->cols, ext.cols);
-	atomic_store(&arg->addr->abufsize, abufsz);
-	atomic_store_explicit(&arg->addr->apending, audc, memory_order_release);
-	atomic_store_explicit(&arg->addr->vpending, vidc, memory_order_release);
-	if (priv->log_event){
+	atomic_store(&C->addr->w, width);
+	atomic_store(&C->addr->h, height);
+	atomic_store(&C->addr->rows, ext.rows);
+	atomic_store(&C->addr->cols, ext.cols);
+	atomic_store(&C->addr->abufsize, abufsz);
+	atomic_store_explicit(&C->addr->apending, audc, memory_order_release);
+	atomic_store_explicit(&C->addr->vpending, vidc, memory_order_release);
+	if (P->log_event){
 		log_print(
 			"(@%"PRIxPTR" rz-synch): %zu*%zu(fl:%d), grid:%zu,%zu %zu Hz",
-			(uintptr_t)arg, (size_t)width, (size_t)height, (int)arg->hints,
-			(size_t)ext.rows, (size_t)ext.cols, (size_t)arg->samplerate
+			(uintptr_t)C, (size_t)width, (size_t)height, (int)C->hints,
+			(size_t)ext.rows, (size_t)ext.cols, (size_t)C->samplerate
 		);
 	}
 
 /* all force synch- calls should be removed when atomicity and reordering
  * behavior have been verified properly */
 	FORCE_SYNCH();
-	arg->addr->resized = 1;
+	C->addr->resized = 1;
 	do{
-		if (0 == arcan_sem_trywait(arg->vsem))
+		if (0 == arcan_sem_trywait(P->vsem))
 			arcan_timesleep(16);
 	}
-	while (arg->addr->resized > 0 && check_dms(arg));
+	while (C->addr->resized > 0 && check_dms(C));
 
 /* post-size data commit is the last fragile moment server-side */
-	if (!check_dms(arg)){
-		if (priv->reset_hook){
-			priv->reset_hook(SHMIF_RESET_NOCHG, priv->reset_hook_tag);
-			priv->reset_hook(SHMIF_RESET_LOST, priv->reset_hook_tag);
+	if (!check_dms(C)){
+		if (P->reset_hook){
+			P->reset_hook(SHMIF_RESET_NOCHG, P->reset_hook_tag);
+			P->reset_hook(SHMIF_RESET_LOST, P->reset_hook_tag);
 		}
 
-		fallback_migrate(arg, priv->alt_conn, true);
+		fallback_migrate(C, P->alt_conn, true);
 		return false;
 	}
 
 /* resized failed, old settings still in effect */
-	if (arg->addr->resized == -1){
-		arg->addr->resized = 0;
-		if (priv->reset_hook)
-			priv->reset_hook(SHMIF_RESET_NOCHG, priv->reset_hook_tag);
+	if (C->addr->resized == -1){
+		C->addr->resized = 0;
+		if (P->reset_hook)
+			P->reset_hook(SHMIF_RESET_NOCHG, P->reset_hook_tag);
 		return false;
 	}
 
@@ -2244,41 +2211,40 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
  * the dms. BUT now the dms may be relocated so we must lock guard and update
  * and recalculate everything.
  */
-	uintptr_t old_addr = (uintptr_t) arg->addr;
+	uintptr_t old_addr = (uintptr_t) C->addr;
 
-	if (arg->shmsize != arg->addr->segment_size){
-		size_t new_sz = arg->addr->segment_size;
-		struct shmif_hidden* gs = priv;
+	if (C->shmsize != C->addr->segment_size){
+		size_t new_sz = C->addr->segment_size;
 
-		if (gs->guard.active)
-			pthread_mutex_lock(&gs->guard.synch);
+		if (P->guard.active)
+			pthread_mutex_lock(&P->guard.synch);
 
-		munmap(arg->addr, arg->shmsize);
-		arg->shmsize = new_sz;
-		arg->addr = mmap(NULL, arg->shmsize,
-			PROT_READ | PROT_WRITE, MAP_SHARED, arg->shmh, 0);
-		if (!arg->addr){
+		munmap(C->addr, C->shmsize);
+		C->shmsize = new_sz;
+		C->addr = mmap(
+			NULL, C->shmsize, PROT_READ | PROT_WRITE, MAP_SHARED, C->shmh, 0);
+
+		if (!C->addr){
 			debug_print(FATAL, arg, "segment couldn't be remapped");
 			return false;
 		}
 
-		atomic_store(&gs->guard.dms, (uint8_t*) &arg->addr->dms);
-		if (gs->guard.active)
-			pthread_mutex_unlock(&gs->guard.synch);
+		atomic_store(&P->guard.dms, (uint8_t*) &C->addr->dms);
+		if (P->guard.active)
+			pthread_mutex_unlock(&P->guard.synch);
 	}
 
 /*
  * make sure we start from the right buffer counts and positions
  */
-	arcan_shmif_setevqs(arg->addr,
-		arg->esem, &priv->inev, &priv->outev, false);
-	setup_avbuf(arg);
+	shmif_platform_setevqs(C->addr, P->esem, &P->inev, &P->outev);
+	setup_avbuf(C);
 
-	priv->multipart_ofs = 0;
+	P->multipart_ofs = 0;
 
-	if (priv->reset_hook){
-			priv->reset_hook(old_addr != (uintptr_t)arg->addr ?
-				SHMIF_RESET_REMAP : SHMIF_RESET_NOCHG, priv->reset_hook_tag);
+	if (P->reset_hook){
+			P->reset_hook(old_addr != (uintptr_t)C->addr ?
+				SHMIF_RESET_REMAP : SHMIF_RESET_NOCHG, P->reset_hook_tag);
 	}
 
 	return true;
@@ -2753,9 +2719,9 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	shmif_resize(&ret, w, h, ext);
 
 /* and wake anything possibly blocking still as whatever was there is dead */
-	arcan_sem_post(cont->vsem);
-	arcan_sem_post(cont->asem);
-	arcan_sem_post(cont->esem);
+	arcan_sem_post(P->vsem);
+	arcan_sem_post(P->asem);
+	arcan_sem_post(P->esem);
 
 /* Copy the audio/video contents of [cont] into [ret], if possible, a possible
  * workaround on failure is to check if we have VSIGNAL- state and inject one
@@ -2849,8 +2815,8 @@ enum shmif_migrate_status arcan_shmif_migrate(
 			ret.w * ret.h * sizeof(shmif_pixel), ret.priv->abuf, ret.priv->abuf_cnt,
 			ret.abufsize);
 
-		arcan_shmif_setevqs(ret.addr, ret.esem,
-		&ret.priv->inev, &ret.priv->outev, false);
+		shmif_platform_setevqs(
+			ret.addr, ret.priv->esem, &ret.priv->inev, &ret.priv->outev);
 
 		ret.vidp = ret.priv->vbuf[0];
 		ret.audp = ret.priv->abuf[0];

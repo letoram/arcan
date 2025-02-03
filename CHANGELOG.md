@@ -11,6 +11,12 @@
 ## Net
  * Several fixes to binary in/out transfers
 
+## Shmif
+ * Migrating more OS specific work to platform
+ * Add timeout+liveness check for recvmsg for edge condition shutdown
+ * Allow enqueueing TARGET\_COMMAND\_EXIT to terminate one segment from another thread
+ * Factored sem handle use out of cont
+
 ## 0.7.0
 ## Core
  * Wired in rendertarget vobj export for hwenc, opt-in via target\_flags on rectgt

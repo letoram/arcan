@@ -139,6 +139,33 @@ static size_t shmpage_size(size_t w, size_t h,
 #endif
 }
 
+static void fsrv_setevqs(
+	struct arcan_shmif_page* dst, sem_handle esem,
+	arcan_evctx* inq, arcan_evctx* outq)
+{
+	arcan_evctx* tmp = inq;
+	inq = outq;
+	outq = tmp;
+
+	outq->synch.handle = esem;
+	inq->synch.handle = esem;
+
+	inq->synch.killswitch = NULL;
+	outq->synch.killswitch = NULL;
+
+	inq->local = false;
+	inq->eventbuf = dst->childevq.evqueue;
+	inq->front = &dst->childevq.front;
+	inq->back  = &dst->childevq.back;
+	inq->eventbuf_sz = PP_QUEUE_SZ;
+
+	outq->local = false;
+	outq->eventbuf = dst->parentevq.evqueue;
+	outq->front = &dst->parentevq.front;
+	outq->back  = &dst->parentevq.back;
+	outq->eventbuf_sz = PP_QUEUE_SZ;
+}
+
 struct arcan_frameserver* platform_fsrv_wrapcl(struct arcan_shmif_cont* in)
 {
 /* alloc - set the wrapped bitflag, set MONITOR FFUNC, map in eventqueues */
@@ -954,8 +981,7 @@ static bool prepare_segment(struct arcan_frameserver* ctx,
 	ctx->abuf_cnt = abufc;
 	ctx->abuf_sz = abufsz;
 	ctx->tag = tag;
-	arcan_shmif_setevqs(ctx->shm.ptr, ctx->esync,
-		&(ctx->inqueue), &(ctx->outqueue), true);
+	fsrv_setevqs(ctx->shm.ptr, ctx->esync, &(ctx->inqueue), &(ctx->outqueue));
 	ctx->inqueue.synch.killswitch = (void*) ctx;
 	ctx->outqueue.synch.killswitch = (void*) ctx;
 
@@ -1449,7 +1475,7 @@ int platform_fsrv_resynch(struct arcan_frameserver* s)
 	shmpage->segment_size = arcan_shmif_mapav(shmpage,
 		s->vbufs, s->vbuf_cnt, vbufsz, s->abufs, s->abuf_cnt, abufsz);
 	s->abuf_sz = abufsz;
-	arcan_shmif_setevqs(shmpage, s->esync, &(s->inqueue), &(s->outqueue), 1);
+	fsrv_setevqs(shmpage, s->esync, &(s->inqueue), &(s->outqueue));
 
 /* commit to shared page */
 	shmpage->resized = 0;
