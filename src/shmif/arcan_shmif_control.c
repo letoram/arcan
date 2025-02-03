@@ -525,7 +525,8 @@ static bool pause_evh(struct arcan_shmif_cont* c,
 		if (ev->tgt.ioevs[1].iv != 0){
 			if (priv->fh.tgt.ioevs[0].iv != BADFD)
 				close(priv->fh.tgt.ioevs[0].iv);
-			priv->fh.tgt.ioevs[0].iv = arcan_fetchhandle(c->epipe, true);
+			priv->fh.tgt.ioevs[0].iv =
+				shmif_platform_fetchfd(c->epipe, true, NULL, NULL);
 		}
 
 		if (ev->tgt.ioevs[2].fv > 0.0)
@@ -741,7 +742,7 @@ checkfd:
 	do {
 		errno = 0;
 		if (-1 == priv->pev.fd){
-			priv->pev.fd = arcan_fetchhandle(c->epipe, blocking);
+			priv->pev.fd = shmif_platform_fetchfd(c->epipe, blocking, NULL, NULL);
 		}
 
 		if (priv->pev.gotev){
@@ -1799,7 +1800,7 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 unsigned arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx,
 	int mask, int handle, size_t stride, int format, ...)
 {
-	if (!arcan_pushhandle(handle, ctx->epipe))
+	if (!shmif_platform_pushfd(handle, ctx->epipe))
 		return 0;
 
 	struct arcan_event ev = {

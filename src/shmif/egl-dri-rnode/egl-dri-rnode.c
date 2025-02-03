@@ -10,6 +10,7 @@
 #define AGP_ENABLE_UNPURE
 #include "../arcan_shmif.h"
 #include "../shmif_privext.h"
+#include "../platform/shmif_platform.h"
 #include "video_platform.h"
 #include "egl-dri/egl.h"
 #include "agp/glfun.h"
@@ -1019,12 +1020,12 @@ size_t arcan_shmifext_signal_planes(
  * of descriptor slots on the server-side, basically the sanest case then is to
  * simply fake-inject an event with a buffer-fail so that the rest of the setup
  * falls back to readback and wait for a reset or device-hint to rebuild */
-		if (!arcan_pushhandle(planes[i].fd, c->epipe))
+		if (!shmif_platform_pushfd(planes[i].fd, c->epipe))
 			return i;
 
 /* fences are created in export if the EGL environment supports it */
 		int fence = planes[i].fence;
-		if (fence > 0 && arcan_pushhandle(fence, c->epipe)){
+		if (fence > 0 && shmif_platform_pushfd(fence, c->epipe)){
 			ev.ext.bstream.flags |= 1;
 			close(fence);
 		}

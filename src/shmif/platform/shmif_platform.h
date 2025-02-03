@@ -61,4 +61,17 @@ pid_t shmif_platform_execve
 	char** err
 );
 
+/*
+ * Send a single descriptor across [sockout]
+ */
+bool shmif_platform_pushfd(int fd, int sockout);
+
+/*
+ * Retrieve a file descriptor from [sockin].
+ * if [blocking] is set it will block until one has been received.
+ * if [alive_check] is provided it will be called with the tag to check if the connection
+ * has been terminated or not, assuming that [sockin] has been set to have a timeout.
+ */
+int shmif_platform_fetchfd(int sockin, bool blocking, bool (*alive_check)(void*), void*);
+
 #endif

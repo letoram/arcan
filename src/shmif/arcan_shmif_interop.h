@@ -65,8 +65,6 @@ typedef sem_t* sem_handle;
 
 long long int arcan_timemillis(void);
 int arcan_sem_post(sem_handle sem);
-file_handle arcan_fetchhandle(int insock, bool block);
-bool arcan_pushhandle(int fd, int channel);
 int arcan_sem_wait(sem_handle sem);
 int arcan_sem_trywait(sem_handle sem);
 int arcan_fdscan(int** listout);

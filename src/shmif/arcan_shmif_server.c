@@ -302,8 +302,12 @@ bool shmifsrv_enqueue_event(
 	if (!cl || cl->status < READY || !ev)
 		return false;
 
-	if (fd != -1)
-		return platform_fsrv_pushfd(cl->con, ev, fd) == ARCAN_OK;
+	if (fd != -1){
+		if (shmif_platform_pushfd(cl->con->dpipe, fd)){
+			return platform_fsrv_pushevent(cl->con, ev) == ARCAN_OK;
+		}
+		return ARCAN_ERRC_BAD_ARGUMENT;
+	}
 	else
 		return platform_fsrv_pushevent(cl->con, ev) == ARCAN_OK;
 }
@@ -539,7 +543,7 @@ bool shmifsrv_process_event(struct shmifsrv_client* cl, struct arcan_event* ev)
 			}, -1);
 
 	/* just fetch and wipe */
-			int handle = arcan_fetchhandle(cl->con->dpipe, false);
+			int handle = shmif_platform_fetchfd(cl->con->dpipe, false, NULL, NULL);
 			close(handle);
 
 			return true;
