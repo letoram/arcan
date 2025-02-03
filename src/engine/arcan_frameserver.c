@@ -135,7 +135,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	arcan_renderfun_release_fontgroup(src->desc.text.group);
 	src->desc.text.group = NULL;
 
-	char msg[32];
+	char msg[36];
 
 	if (src->cookie_fail)
 		snprintf(msg, COUNT_OF(msg), "Integrity cookie mismatch");

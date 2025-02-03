@@ -866,7 +866,7 @@ int alt_nbio_process_read(
 	}
 }
 
-lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
+bool luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
 {
 	if (lua_isnumber(L, narg))
 		return lua_tonumber(L, narg);
@@ -876,7 +876,7 @@ lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
 		return opt;
 }
 
-lua_Number luaL_checkbnumber(lua_State* L, int narg)
+bool luaL_checkbnumber(lua_State* L, int narg)
 {
 	lua_Number d = lua_tonumber(L, narg);
 	if (d == 0 && !lua_isnumber(L, narg)){

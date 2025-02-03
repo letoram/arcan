@@ -978,6 +978,7 @@ void arcan_monitor_finish(bool ok)
 	arcan_monitor_watchdog(NULL, NULL);
 }
 
+extern struct arcan_luactx* main_lua_context;
 void arcan_monitor_tick(int n)
 {
 	static size_t count;
@@ -988,7 +989,8 @@ void arcan_monitor_tick(int n)
 			.events = POLLIN
 		};
 		if (1 == poll(&pfd, 1, 0)){
-			arcan_monitor_watchdog(NULL, NULL);
+			arcan_monitor_watchdog(
+				(lua_State*)main_lua_context, NULL);
 		}
 	}
 
