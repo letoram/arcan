@@ -377,7 +377,55 @@ static bool scan_stepframe_event(
 	return false;
 }
 
-static bool scan_disp_event(struct arcan_evctx* c, struct arcan_event* old)
+/* For fallback-migration, we don't want to initiate migrate on detecting DMS
+ * if there is an EXIT event in the queue. This can happen in a situation like:
+ *  DISPLAYHINT(resize) -> arcan_shmif_resize -> [liveness check failed] ->
+ *  fallback_migrate.
+ *
+ * In that case we check if there is an EXIT pending and cancel the migration.
+ */
+static bool scan_exit_event(struct arcan_evctx* c)
+{
+	uint8_t cur = *c->front;
+	while (cur != *c->back){
+		struct arcan_event* ev = &c->eventbuf[cur];
+		if (
+			ev->category == EVENT_TARGET &&
+			ev->tgt.kind == TARGET_COMMAND_EXIT
+		)
+			return true;
+
+		cur = (cur + 1) % c->eventbuf_sz;
+	}
+
+	return false;
+}
+
+static void scan_device_node_event(struct shmif_hidden* P, struct arcan_evctx* c)
+{
+	uint8_t cur = *c->front;
+
+	while (cur != *c->back){
+		struct arcan_event* ev = &c->eventbuf[cur];
+		if (
+			ev->category == EVENT_TARGET &&
+			ev->tgt.kind == TARGET_COMMAND_DEVICE_NODE &&
+			ev->tgt.ioevs[1].iv == 4) /* set alt-conn */
+		{
+			if (P->alt_conn)
+				free(P->alt_conn);
+			P->alt_conn = NULL;
+			if (ev->tgt.message[0])
+				P->alt_conn = strdup(ev->tgt.message);
+		}
+	}
+}
+
+/*
+ * Display-events are among the most expensive and prone to backpressure,
+ * so coalesce them together and merge into the latest to relieve pressure.
+ */
+static bool scan_display_event(struct arcan_evctx* c, struct arcan_event* old)
 {
 	uint8_t cur = *c->front;
 
@@ -494,6 +542,13 @@ static enum shmif_migrate_status fallback_migrate(
 	enum shmif_migrate_status sv;
 	struct shmif_hidden* P = C->priv;
 	int oldfd = C->epipe;
+
+/* we are actually told to exit, so collapse back to eventloop */
+	if (scan_exit_event(&P->inev))
+		return SHMIF_MIGRATE_NOCON;
+
+/* there might be a newer altcon in the queue as well, so check that first */
+	scan_device_node_event(P, &P->inev);
 
 /* parent can pull dms explicitly */
 	if (force){
@@ -707,7 +762,7 @@ checkfd:
  * overridden with something in the queue, use this mechanism. Cannot be applied
  * to descriptor- carrying events as more state tracking is needed. */
 			case TARGET_COMMAND_DISPLAYHINT:
-				if (!P->valid_initial && scan_disp_event(ctx, dst))
+				if (!P->valid_initial && scan_display_event(ctx, dst))
 					goto reset;
 			break;
 
@@ -1913,6 +1968,7 @@ void arcan_shmif_drop(struct arcan_shmif_cont* C)
 
 /* recovery point is no-longer needed */
 	free(P->alt_conn);
+	P->alt_conn = NULL;
 
 /* this should be moved to extended segment cleanup */
 	if (C->privext->cleanup)
