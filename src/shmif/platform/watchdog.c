@@ -1,7 +1,7 @@
 #include "arcan_shmif.h"
+#include <pthread.h>
 #include "shmif_platform.h"
 #include "shmif_privint.h"
-#include <pthread.h>
 #include <signal.h>
 #include <sys/socket.h>
 #include <errno.h>
