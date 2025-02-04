@@ -1534,6 +1534,10 @@ static struct arcan_shmif_cont shmif_acquire_int(
 			.exitf = exitf
 		}
 	);
+/* still need to mark alive so the aliveness check doesn't fail */
+	else {
+		P->guard.local_dms = true;
+	}
 
 /* if this is a secondary segment, we acquire through the parent and it may be
  * a different connection / allocation path where the transmission socket comes
