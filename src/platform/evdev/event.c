@@ -3,6 +3,18 @@
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
+#ifdef _DEBUG
+#define DEBUG 1
+#else
+#define DEBUG 0
+#endif
+
+#define debug_print(fmt, ...) \
+            do { if (DEBUG) arcan_warning("[%lld]%s:%d:%s(): " fmt "\n", \
+						arcan_timemillis(), "evdev:", __LINE__, __func__,##__VA_ARGS__); \
+						} while (0)
+
+#define verbose_print
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -43,19 +55,6 @@ static struct xkb_context* xkb_context;
 #ifndef __FreeBSD__
 #include <sys/inotify.h>
 #endif
-
-#ifdef _DEBUG
-#define DEBUG 1
-#else
-#define DEBUG 0
-#endif
-
-#define debug_print(fmt, ...) \
-            do { if (DEBUG) arcan_warning("[%lld]%s:%d:%s(): " fmt "\n", \
-						arcan_timemillis(), "evdev:", __LINE__, __func__,##__VA_ARGS__); \
-						} while (0)
-
-#define verbose_print
 
 /*
  * scan / probe a node- dir (ENVV overridable)

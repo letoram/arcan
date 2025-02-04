@@ -3,6 +3,23 @@
  * license: 3-clause bsd, see copying file in arcan source repository.
  * reference: http://arcan-fe.com
  */
+#ifdef _DEBUG
+#define DEBUG 1
+#else
+#define DEBUG 0
+#endif
+
+/*
+ * same debugging / tracing setup as in egl-dri.c
+ */
+#define debug_print(fmt, ...) \
+            do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
+						arcan_timemillis(), "egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+
+#ifndef verbose_print
+#define verbose_print
+#endif
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -71,23 +88,6 @@
  */
 #define VIDEO_PLATFORM_IMPL
 #include "../../engine/arcan_conductor.h"
-
-#ifdef _DEBUG
-#define DEBUG 1
-#else
-#define DEBUG 0
-#endif
-
-/*
- * same debugging / tracing setup as in egl-dri.c
- */
-#define debug_print(fmt, ...) \
-            do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
-						arcan_timemillis(), "egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
-
-#ifndef verbose_print
-#define verbose_print
-#endif
 
 #include "egl.h"
 

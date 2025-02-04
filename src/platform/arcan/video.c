@@ -21,6 +21,20 @@
  *  5. resizing the rendertarget bound to a subsegment is also painful
  *
  */
+#ifdef _DEBUG
+#define DEBUG 1
+#else
+#define DEBUG 0
+#endif
+
+#define debug_print(fmt, ...) \
+            do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
+						arcan_timemillis(), "platform-arcan:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+
+#ifndef verbose_print
+#define verbose_print
+#endif
+
 #include <stdint.h>
 #include <stdbool.h>
 #include <unistd.h>
@@ -79,24 +93,10 @@ extern jmp_buf arcanmain_recover_state;
 static struct egl_env agp_eglenv;
 #endif
 
-#ifdef _DEBUG
-#define DEBUG 1
-#else
-#define DEBUG 0
-#endif
-
 #ifdef HAVE_XKBCOMMON
 #include <xkbcommon/xkbcommon.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon-compose.h>
-#endif
-
-#define debug_print(fmt, ...) \
-            do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
-						arcan_timemillis(), "platform-arcan:", __LINE__, __func__,##__VA_ARGS__); } while (0)
-
-#ifndef verbose_print
-#define verbose_print
 #endif
 
 struct arcan_evctx;

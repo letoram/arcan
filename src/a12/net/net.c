@@ -167,7 +167,7 @@ static int get_bcache_dir()
 }
 
 #ifdef DEBUG
-extern void shmifint_set_log_device(struct arcan_shmif_cont*, FILE*);
+extern void shmif_platform_set_log_device(struct arcan_shmif_cont*, FILE*);
 #endif
 
 static void set_log_trace()
@@ -180,7 +180,7 @@ static void set_log_trace()
 	snprintf(buf, sizeof(buf), "cl_log_%d.log", (int) getpid());
 	FILE* fpek = fopen(buf, "w+");
 
-	shmifint_set_log_device(NULL, fpek);
+	shmif_platform_set_log_device(NULL, fpek);
 	setvbuf(fpek, NULL, _IOLBF, 0);
 	if (fpek){
 		a12_set_trace_level(a12_trace_targets, fpek);

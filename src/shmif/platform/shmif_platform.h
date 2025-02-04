@@ -3,12 +3,51 @@
 
 struct arcan_evctx;
 struct arcan_shmif_page;
+struct arcan_shmif_cont;
+
 #include <semaphore.h>
 #include <limits.h>
+
+enum debug_level {
+	FATAL = 0,
+ 	INFO = 1,
+	DETAILED = 2
+};
+
+#define BADFD -1
+
+#ifdef _DEBUG
+#ifdef _DEBUG_NOLOG
+#ifndef debug_print
+#define debug_print(...)
+#endif
+#endif
+
+#ifndef debug_print
+#define debug_print(sev, ctx, fmt, ...) \
+            do { fprintf(shmif_platform_log_device(NULL),\
+						"[%lld]%s:%d:%s(): " fmt "\n", \
+						arcan_timemillis(), "shmif-dbg", __LINE__, __func__,##__VA_ARGS__); } while (0)
+#endif
+#else
+#ifndef debug_print
+#define debug_print(...)
+#endif
+#endif
+
+#define log_print(fmt, ...) \
+            do { fprintf(shmif_platform_log_device(NULL),\
+						"[%lld]%d:%s(): " fmt "\n", \
+						arcan_timemillis(), __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 #ifndef LOG
 unsigned long long arcan_timemillis();
 #define LOG(X, ...) (fprintf(stderr, "[%lld]" X, arcan_timemillis(), ## __VA_ARGS__))
+#endif
+
+#ifndef COUNT_OF
+#define COUNT_OF(x) \
+	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
 #endif
 
 /* shmif extensions to src/platform,
@@ -133,6 +172,53 @@ bool shmif_platform_pushfd(int fd, int sockout);
  */
 int shmif_platform_fetchfd(int sockin, bool blocking, bool (*alive_check)(void*), void*);
 
+/*
+ * Configure a watchdog around the context, if some error condition occurs, the
+ * shmif_platform_check_alive call should be triggered.
+ */
+struct watchdog_config {
+	sem_t* audio;
+	sem_t* video;
+	sem_t* event;
+	int parent_pid;
+	int parent_fd;
+	void (*exitf)(int);
+};
+void shmif_platform_guard(struct arcan_shmif_cont*, struct watchdog_config);
+
+/*
+ * Suspend watchdog activity in order to reconfigure / resynch it
+ */
+void shmif_platform_guard_lock(struct arcan_shmif_cont* c);
+
+void shmif_platform_guard_resynch(
+	struct arcan_shmif_cont* C, int parent_pid, int parent_fd);
+
+/*
+ * Reactivate the watchdog
+ */
+void shmif_platform_guard_unlock(struct arcan_shmif_cont* c);
+
+/*
+ * Aliveness check for the other end of the connection, return false if it is
+ * in an unusable state.
+ */
+bool shmif_platform_check_alive(struct arcan_shmif_cont* C);
+
+/*
+ * Shutdown procedure.
+ */
+void shmif_platform_guard_release(struct arcan_shmif_cont*);
+
+/*
+ * Overridable log accessor
+ */
+FILE* shmif_platform_log_device(struct arcan_shmif_cont*);
+void shmif_platform_set_log_device(struct arcan_shmif_cont*, FILE*);
+
+/*
+ * Kept around here until we can break those out as platform primitives as well
+ */
 unsigned long long arcan_timemillis(void);
 int arcan_sem_post(sem_t* sem);
 int arcan_sem_wait(sem_t* sem);

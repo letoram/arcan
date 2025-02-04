@@ -1803,13 +1803,4 @@ typedef enum {
 	ARKMOD_LIMIT = INT_MAX
 } key_modifiers;
 
-struct arcan_event_trigger {
-	union {
-		int fd;
-	};
-	int type;
-	bool in, out;
-	uint64_t tag;
-};
-
 #endif

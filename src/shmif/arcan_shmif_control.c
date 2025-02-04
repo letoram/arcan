@@ -43,24 +43,6 @@
 #include <sys/inotify.h>
 #endif
 
-#ifndef COUNT_OF
-#define COUNT_OF(x) \
-	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
-#endif
-
-#define BADFD -1
-
-/*
- * a bit clunky, but some scenarios that we want debug-builds but without the
- * debug logging spam for external projects, and others where we want to
- * redefine the logging macro for shmif- only.
- */
-enum debug_level {
-	FATAL = 0,
- 	INFO = 1,
-	DETAILED = 2
-};
-
 _Static_assert(sizeof(struct mstate) == ASHMIF_MSTATE_SZ, "invalid mstate sz");
 
 /*
@@ -69,7 +51,7 @@ _Static_assert(sizeof(struct mstate) == ASHMIF_MSTATE_SZ, "invalid mstate sz");
  * context- specific log output devices later.
  */
 static _Atomic volatile uintptr_t log_device;
-FILE* shmifint_log_device(struct arcan_shmif_cont* c)
+FILE* shmif_platform_log_device(struct arcan_shmif_cont* c)
 {
 	FILE* res = (FILE*)(void*) atomic_load(&log_device);
 	if (res)
@@ -78,32 +60,10 @@ FILE* shmifint_log_device(struct arcan_shmif_cont* c)
 	return stderr;
 }
 
-void shmifint_set_log_device(struct arcan_shmif_cont* c, FILE* outdev)
+void shmif_platform_set_log_device(struct arcan_shmif_cont* c, FILE* outdev)
 {
 	atomic_store(&log_device, (uintptr_t)(void*)outdev);
 }
-
-#ifdef _DEBUG
-#ifdef _DEBUG_NOLOG
-#define debug_print(...)
-#endif
-
-#ifndef debug_print
-#define debug_print(sev, ctx, fmt, ...) \
-            do { fprintf(shmifint_log_device(NULL),\
-						"[%lld]%s:%d:%s(): " fmt "\n", \
-						arcan_timemillis(), "shmif-dbg", __LINE__, __func__,##__VA_ARGS__); } while (0)
-#endif
-#else
-#ifndef debug_print
-#define debug_print(...)
-#endif
-#endif
-
-#define log_print(fmt, ...) \
-            do { fprintf(shmifint_log_device(NULL),\
-						"[%lld]%d:%s(): " fmt "\n", \
-						arcan_timemillis(), __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 /*
  * implementation defined for out-of-order execution and reordering protection
@@ -115,17 +75,6 @@ void shmifint_set_log_device(struct arcan_shmif_cont* c, FILE* outdev)
 		__sync_synchronize();\
 	}
 #endif
-
-/*
- * To avoid having -lm or similar requirements on terrible libc implementations
- */
-static int ilog2(int val)
-{
-	int i = 0;
-	while( val >>= 1)
-		i++;
-	return i;
-}
 
 static uint64_t g_epoch;
 
@@ -157,63 +106,9 @@ static struct {
 	struct arcan_shmif_cont* input, (* output), (*accessibility);
 } primary;
 
-static void* guard_thread(void* gstruct);
-
-static inline bool parent_alive(struct shmif_hidden* gs)
-{
-	/* for authoritative connections, a parent monitoring pid is set. */
-	if (gs->guard.parent > 0){
-		if (-1 == kill(gs->guard.parent, 0))
-			return false;
-	}
-
-/* peek the socket (if it exists) and see if we get an error back */
-	if (-1 != gs->guard.parent_fd){
-		unsigned char ch;
-
-		if (-1 == recv(gs->guard.parent_fd, &ch, 1, MSG_PEEK | MSG_DONTWAIT)
-			&& (errno != EWOULDBLOCK && errno != EAGAIN))
-			return false;
-	}
-
-	return true;
-}
-
-/*
- * consolidate 3 signal paths for detecting connection liveness
- * shared page   - triggered on memory page inconsistency / integrity fail
- * guard thread  - triggered on parent death
- * event context - triggered on queue structure integrity, normally hooked to dms
- */
-static bool check_dms(struct arcan_shmif_cont* c)
-{
-	if (!c->priv->alive ||
-		!atomic_load(&c->priv->guard.local_dms) || !c->addr->dms)
-		return false;
-
-	return true;
-}
-
 static bool fetch_check(void* t)
 {
-	struct arcan_shmif_cont* c = t;
-	return check_dms(c);
-}
-
-static void spawn_guardthread(struct arcan_shmif_cont* d)
-{
-	struct shmif_hidden* hgs = d->priv;
-
-	pthread_t pth;
-	pthread_attr_t pthattr;
-	pthread_attr_init(&pthattr);
-	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-	pthread_mutex_init(&hgs->guard.synch, NULL);
-
-	hgs->guard.active = true;
-	if (-1 == pthread_create(&pth, &pthattr, guard_thread, hgs)){
-		hgs->guard.active = false;
-	}
+	return shmif_platform_check_alive((struct arcan_shmif_cont*) t);
 }
 
 #ifndef offsetof
@@ -593,24 +488,24 @@ static bool notify_wait(const char* cpoint)
 #endif
 
 static enum shmif_migrate_status fallback_migrate(
-	struct arcan_shmif_cont* c, const char* cpoint, bool force)
+	struct arcan_shmif_cont* C, const char* cpoint, bool force)
 {
 /* sleep - retry connect loop */
 	enum shmif_migrate_status sv;
-	struct shmif_hidden* P = c->priv;
-	int oldfd = c->epipe;
+	struct shmif_hidden* P = C->priv;
+	int oldfd = C->epipe;
 
 /* parent can pull dms explicitly */
 	if (force){
 		if ((P->flags & SHMIF_NOAUTO_RECONNECT)
-			||	parent_alive(P) || P->output)
+			|| shmif_platform_check_alive(C) || P->output)
 			return SHMIF_MIGRATE_NOCON;
 	}
 
 /* CONNECT_LOOP style behavior on force */
 	const char* current = cpoint;
 
-	while ((sv = arcan_shmif_migrate(c, current, NULL)) == SHMIF_MIGRATE_NOCON){
+	while ((sv = arcan_shmif_migrate(C, current, NULL)) == SHMIF_MIGRATE_NOCON){
 		if (!force)
 			break;
 
@@ -698,7 +593,7 @@ reset:
 	int rv = 0;
 
 /* we have a RESET delay-slot:ed, that takes priority. This is where it would
- * be useful to actually track acquired secondaries ass they might not have
+ * be useful to actually track acquired secondaries as they might not have
  * guardthreads to unlock. */
 	if (P->ph & 4){
 		*dst = P->fh;
@@ -777,7 +672,7 @@ checkfd:
 
 			goto done;
 		}
-	} while (P->pev.gotev && check_dms(c));
+	} while (P->pev.gotev && shmif_platform_check_alive(c));
 
 /* atomic increment of front -> event enqueued, other option in this sense
  * would be to have a poll that provides the pointer, and a step that unlocks */
@@ -964,7 +859,7 @@ checkfd:
 	}
 /* a successful migrate will delay-slot the RESET event, so in that case
  * go back to reset and have that activate */
-	else if (!check_dms(c)){
+	else if (!shmif_platform_check_alive(c)){
 		if (fallback_migrate(c, P->alt_conn, true) == SHMIF_MIGRATE_OK)
 			goto reset;
 		goto done;
@@ -973,11 +868,11 @@ checkfd:
 /* Need to constantly pump the event socket for incoming descriptors and
  * caller- mandated polling, as the order between event and descriptor is
  * not deterministic */
-	else if (blocking && check_dms(c))
+	else if (blocking && shmif_platform_check_alive(c))
 		goto checkfd;
 
 done:
-	return check_dms(c) || noks ? rv : -1;
+	return shmif_platform_check_alive(c) || noks ? rv : -1;
 }
 
 bool arcan_shmif_handle_permitted(struct arcan_shmif_cont* ctx)
@@ -1116,7 +1011,7 @@ static int enqueue_internal(
  * either an event that might not fit in the current context, or an event that
  * gets lost. Neither is good. The counterargument is that crash recovery is a
  * 'best effort basis' - we're still dealing with an actual crash. */
-	if (!check_dms(c) && !try){
+	if (!shmif_platform_check_alive(c) && !try){
 		fallback_migrate(c, P->alt_conn, true);
 		return 0;
 	}
@@ -1143,7 +1038,7 @@ static int enqueue_internal(
 		process_events(c, &ev, true, true);
 	}
 
-	while ( check_dms(c) &&
+	while ( shmif_platform_check_alive(c) &&
 			((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
 		struct arcan_event outev = *src;
 		debug_print(INFO, c,
@@ -1606,20 +1501,11 @@ static struct arcan_shmif_cont shmif_acquire_int(
 			return res;
 	}
 
+/* allow the user to hook termination */
 	void (*exitf)(int) = shmif_exit;
 	if (flags & SHMIF_FATALFAIL_FUNC){
 			exitf = va_arg(vargs, void(*)(int));
 	}
-
-/* fill out the structures needed for the guard-thread */
-	P->guard.local_dms = true;
-	P->guard.semset[0] = P->asem;
-	P->guard.semset[1] = P->vsem;
-	P->guard.semset[2] = P->esem;
-	P->guard.parent = res.addr->parent;
-	P->guard.parent_fd = -1;
-	P->guard.exitf = exitf;
-	atomic_store(&P->guard.dms, (uint8_t*) &res.addr->dms);
 
 	res.priv->shm_key = strdup(key_used);
 
@@ -1631,14 +1517,27 @@ static struct arcan_shmif_cont shmif_acquire_int(
 		.pending_fd = -1,
 	};
 
+/* if verbose debugging is enabled, set the category bitmap to what the
+ * environment requested */
 	P->alive = true;
 	char* dbgenv = getenv("ARCAN_SHMIF_DEBUG");
 	if (dbgenv)
 		res.priv->log_event = strtoul(dbgenv, NULL, 10);
 
 	if (!(flags & SHMIF_DISABLE_GUARD) && !getenv("ARCAN_SHMIF_NOGUARD"))
-		spawn_guardthread(&res);
+		shmif_platform_guard(&res, (struct watchdog_config){
+			.audio = P->asem,
+			.video = P->vsem,
+			.event = P->esem,
+			.parent_pid = res.addr->parent,
+			.parent_fd = -1,
+			.exitf = exitf
+		}
+	);
 
+/* if this is a secondary segment, we acquire through the parent and it may be
+ * a different connection / allocation path where the transmission socket comes
+ * as a delay-slot stored descriptor (pseg->epipe) */
 	if (privps){
 		struct shmif_hidden* pp = parent->priv;
 
@@ -1658,8 +1557,11 @@ static struct arcan_shmif_cont shmif_acquire_int(
 		consume(parent);
 	}
 
+/* this should be moved to platform for shm handling */
 	shmif_platform_setevqs(res.addr, P->esem, &res.priv->inev, &res.priv->outev);
 
+/* forward our type, immutable name and GUID. This should also be an open_ext
+ * flag VA_ARG so that we can attach to some other identity provider */
 	if (0 != type && !(flags & SHMIF_NOREGISTER)) {
 		arcan_random((uint8_t*) res.priv->guid, 16);
 		struct arcan_event ev = {
@@ -1671,6 +1573,8 @@ static struct arcan_shmif_cont shmif_acquire_int(
 		arcan_shmif_enqueue(&res, &ev);
 	}
 
+/* ensure that we have the same segment size calculation and version validation
+ * cookie (which is periodically checked for corruption as part of the watchdog */
 	res.shmsize = res.addr->segment_size;
 	res.cookie = arcan_shmif_cookie();
 	res.priv->type = type;
@@ -1678,7 +1582,8 @@ static struct arcan_shmif_cont shmif_acquire_int(
 
 	pthread_mutex_init(&res.priv->lock, NULL);
 
-/* local flag that hints at different synchronization work */
+/* OUTPUT segment types (ENCODER and PASTE) has an inverted synchronisation
+ * flow, so mark that in order for step_a(),v() doesn't break the handles */
 	if (type == SEGID_ENCODER || type == SEGID_CLIPBOARD_PASTE){
 		((struct shmif_hidden*)res.priv)->output = true;
 	}
@@ -1697,58 +1602,6 @@ struct arcan_shmif_cont arcan_shmif_acquire(struct arcan_shmif_cont* parent,
 		shmif_acquire_int(parent, shmkey, type, flags, argp);
 	va_end(argp);
 	return res;
-}
-
-/* this act as our safeword (or well safebyte), if either party for _any_reason
- * decides that it is not worth going the dms (dead man's switch) is pulled. */
-static void* guard_thread(void* gs)
-{
-	struct shmif_hidden* gstr = gs;
-
-	while (gstr->guard.active){
-		if (!parent_alive(gstr)){
-			volatile uint8_t* dms;
-
-/* guard synch mutex only protects the structure itself, it is not
- * loaded or checked between every shmif-operation */
-			pthread_mutex_lock(&gstr->guard.synch);
-
-/* setting the dms here practically doesn't imply that the sem_post
- * on wakeup set won't run again from a delayed dms write, the dms
- * set action here is for any others that might monitor the segment */
-			if ((dms = atomic_load(&gstr->guard.dms)))
-				*dms = false;
-
-			atomic_store(&gstr->guard.local_dms, false);
-
-/* other threads might be locked on semaphores, so wake them up, and
- * force them to re-examine the dms from being released */
-			for (size_t i = 0; i < COUNT_OF(gstr->guard.semset); i++){
-				if (gstr->guard.semset[i])
-					arcan_sem_post(gstr->guard.semset[i]);
-			}
-
-			gstr->guard.active = false;
-
-/* same as everywhere else, implementation need to allow unlock to destroy */
-			pthread_mutex_unlock(&gstr->guard.synch);
-			pthread_mutex_destroy(&gstr->guard.synch);
-
-/* also shutdown the socket, should unlock any blocking I/O stage */
-			shutdown(gstr->guard.parent_fd, SHUT_RDWR);
-			debug_print(FATAL, NULL, "guard thread activated, shutting down");
-
-			if (gstr->guard.exitf)
-				gstr->guard.exitf(EXIT_FAILURE);
-
-			goto done;
-		}
-
-		sleep(1);
-	}
-
-done:
-	return NULL;
 }
 
 bool arcan_shmif_integrity_check(struct arcan_shmif_cont* cont)
@@ -1958,7 +1811,7 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* C, int mask)
  * context is not unlocked, the current thread is holding the lock and there
  * is no on-going migration
  */
-	if (!C->addr->dms || !atomic_load(&P->guard.local_dms)){
+	if (!shmif_platform_check_alive(C)){
 		C->abufused = C->abufpos = 0;
 		fallback_migrate(C, P->alt_conn, true);
 		P->in_signal = false;
@@ -1975,7 +1828,7 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* C, int mask)
 	if ( mask & SHMIF_SIGAUD ){
 		bool lock = step_a(C);
 
-/* guard-thread will pull the sems for us on dms */
+/* watchdog will pull this for us */
 		if (lock && !(mask & SHMIF_SIGBLK_NONE))
 			arcan_sem_wait(P->asem);
 		else
@@ -1985,13 +1838,13 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* C, int mask)
  * check before running the step_v */
 	if (mask & SHMIF_SIGVID){
 		while ((C->hints & SHMIF_RHINT_SUBREGION)
-			&& C->addr->vready && check_dms(C))
+			&& C->addr->vready && shmif_platform_check_alive(C))
 			arcan_sem_wait(P->vsem);
 
 		bool lock = step_v(C, mask);
 
 		if (lock && !(mask & SHMIF_SIGBLK_NONE)){
-			while (C->addr->vready && check_dms(C))
+			while (C->addr->vready && shmif_platform_check_alive(C))
 				arcan_sem_wait(P->vsem);
 		}
 		else
@@ -2009,41 +1862,43 @@ struct arg_arr* arcan_shmif_args( struct arcan_shmif_cont* inctx)
 	return inctx->priv->args;
 }
 
-void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
+void arcan_shmif_drop(struct arcan_shmif_cont* C)
 {
-	if (!inctx || !inctx->priv)
+	if (!C || !C->priv)
 		return;
 
-	if (inctx->priv->support_window_hook){
-		inctx->priv->support_window_hook(inctx, SUPPORT_EVENT_EXIT);
+	struct shmif_hidden* P = C->priv;
+
+	if (P->support_window_hook){
+		P->support_window_hook(C, SUPPORT_EVENT_EXIT);
 	}
 
-	pthread_mutex_lock(&inctx->priv->lock);
+	pthread_mutex_lock(&P->lock);
 
-	if (inctx->priv->valid_initial)
-		drop_initial(inctx);
+/* do we still have a copy of the preroll event merge state? */
+	if (P->valid_initial)
+		drop_initial(C);
 
-	if (inctx->priv->last_words){
-		log_print("[shmif:drop] last words: %s", inctx->priv->last_words);
-		free(inctx->priv->last_words);
-		inctx->priv->last_words = NULL;
+/* has the user set an error message? */
+	if (P->last_words){
+		log_print("[shmif:drop] last words: %s", P->last_words);
+		free(P->last_words);
+		P->last_words = NULL;
 	}
 
-	if (inctx->addr){
-		inctx->addr->dms = false;
+/* page mapped? then release the dms. */
+	if (C->addr){
+		C->addr->dms = false;
 	}
 
-	if (inctx == primary.input)
+/* clear any segment accessor */
+	if (C == primary.input)
 		primary.input = NULL;
 
-	if (inctx == primary.output)
+	if (C == primary.output)
 		primary.output = NULL;
 
-	struct shmif_hidden* P = inctx->priv;
-
-	close(inctx->epipe);
-	close(inctx->shmh);
-
+/* this should be moved to platform for sem- handling */
 	sem_close(P->asem);
 	sem_close(P->esem);
 	sem_close(P->vsem);
@@ -2052,30 +1907,35 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 		arg_cleanup(P->args);
 	}
 
-/* guard thread will clean up on its own */
-	free(inctx->priv->alt_conn);
-	if (inctx->privext->cleanup)
-		inctx->privext->cleanup(inctx);
+/* recovery point is no-longer needed */
+	free(P->alt_conn);
 
-	if (inctx->privext->active_fd != -1)
-		close(inctx->privext->active_fd);
-	if (inctx->privext->pending_fd != -1)
-		close(inctx->privext->pending_fd);
+/* this should be moved to extended segment cleanup */
+	if (C->privext->cleanup)
+		C->privext->cleanup(C);
 
-	pthread_mutex_unlock(&inctx->priv->lock);
-	pthread_mutex_destroy(&inctx->priv->lock);
+	if (C->privext->active_fd != -1)
+		close(C->privext->active_fd);
 
-	if (P->guard.active){
-		atomic_store(&P->guard.dms, 0);
-		P->guard.active = false;
-	}
-/* no guard thread for this context */
-	else
-		free(inctx->priv);
-	free(inctx->privext);
-	munmap(inctx->addr, inctx->shmsize);
-	memset(inctx, '\0', sizeof(struct arcan_shmif_cont));
-	inctx->epipe = -1;
+	if (C->privext->pending_fd != -1)
+		close(C->privext->pending_fd);
+
+	free(C->privext);
+/* end of extended cleanup */
+
+	pthread_mutex_unlock(&P->lock);
+	pthread_mutex_destroy(&P->lock);
+
+	shmif_platform_guard_release(C);
+
+/* this should be moved to platform for shm- handling */
+	close(C->epipe);
+	close(C->shmh);
+	munmap(C->addr, C->shmsize);
+/* end of shm-handling cleanup */
+
+	memset(C, '\0', sizeof(struct arcan_shmif_cont));
+	C->epipe = -1;
 }
 
 static bool shmif_resize(struct arcan_shmif_cont* C,
@@ -2095,7 +1955,7 @@ static bool shmif_resize(struct arcan_shmif_cont* C,
 	int adata = ext.meta;
 
 /* resize on a dead context triggers migration */
-	if (!check_dms(C)){
+	if (!shmif_platform_check_alive(C)){
 		if (P->reset_hook)
 			P->reset_hook(SHMIF_RESET_LOST, P->reset_hook_tag);
 
@@ -2107,17 +1967,17 @@ static bool shmif_resize(struct arcan_shmif_cont* C,
 
 /* wait for any outstanding v/asynch */
 	if (atomic_load(&C->addr->vready)){
-		while (atomic_load(&C->addr->vready) && check_dms(C))
+		while (atomic_load(&C->addr->vready) && shmif_platform_check_alive(C))
 			arcan_sem_wait(P->vsem);
 	}
 	if (atomic_load(&C->addr->aready)){
-		while (atomic_load(&C->addr->aready) && check_dms(C))
+		while (atomic_load(&C->addr->aready) && shmif_platform_check_alive(C))
 			arcan_sem_wait(P->asem);
 	}
 
-/* since the vready wait can be long and an error prone operation,
- * the context might have died between the check above and here */
-	if (!check_dms(C)){
+/* since the vready wait can be long and an error prone operation, the context
+ * might have died between the check above and here */
+	if (!shmif_platform_check_alive(C)){
 		if (P->reset_hook)
 			P->reset_hook(SHMIF_RESET_LOST, P->reset_hook_tag);
 
@@ -2186,10 +2046,10 @@ static bool shmif_resize(struct arcan_shmif_cont* C,
 		if (0 == arcan_sem_trywait(P->vsem))
 			arcan_timesleep(16);
 	}
-	while (C->addr->resized > 0 && check_dms(C));
+	while (C->addr->resized > 0 && shmif_platform_check_alive(C));
 
 /* post-size data commit is the last fragile moment server-side */
-	if (!check_dms(C)){
+	if (!shmif_platform_check_alive(C)){
 		if (P->reset_hook){
 			P->reset_hook(SHMIF_RESET_NOCHG, P->reset_hook_tag);
 			P->reset_hook(SHMIF_RESET_LOST, P->reset_hook_tag);
@@ -2217,22 +2077,22 @@ static bool shmif_resize(struct arcan_shmif_cont* C,
 	if (C->shmsize != C->addr->segment_size){
 		size_t new_sz = C->addr->segment_size;
 
-		if (P->guard.active)
-			pthread_mutex_lock(&P->guard.synch);
+		shmif_platform_guard_lock(C);
 
-		munmap(C->addr, C->shmsize);
-		C->shmsize = new_sz;
-		C->addr = mmap(
-			NULL, C->shmsize, PROT_READ | PROT_WRITE, MAP_SHARED, C->shmh, 0);
+/* this should be moved to platform for shm handling */
+			munmap(C->addr, C->shmsize);
+			C->shmsize = new_sz;
+			C->addr = mmap(
+				NULL, C->shmsize, PROT_READ | PROT_WRITE, MAP_SHARED, C->shmh, 0);
 
-		if (!C->addr){
-			debug_print(FATAL, arg, "segment couldn't be remapped");
-			return false;
-		}
+			if (!C->addr){
+				debug_print(FATAL, arg, "segment couldn't be remapped");
+				return false;
+			}
+/* end of shm-handling resize */
+			shmif_platform_guard_resynch(C, C->addr->parent, C->epipe);
 
-		atomic_store(&P->guard.dms, (uint8_t*) &C->addr->dms);
-		if (P->guard.active)
-			pthread_mutex_unlock(&P->guard.synch);
+		shmif_platform_guard_unlock(C);
 	}
 
 /*
@@ -2646,12 +2506,12 @@ size_t arcan_shmif_initial(struct arcan_shmif_cont* cont,
 }
 
 enum shmif_migrate_status arcan_shmif_migrate(
-	struct arcan_shmif_cont* cont, const char* newpath, const char* key)
+	struct arcan_shmif_cont* C, const char* newpath, const char* key)
 {
-	if (!cont || !cont->addr || !newpath)
+	if (!C || !C->addr || !newpath)
 		return SHMIF_MIGRATE_BADARG;
 
-	struct shmif_hidden* P = cont->priv;
+	struct shmif_hidden* P = C->priv;
 
 	if (!pthread_equal(P->primary_id, pthread_self()))
 		return SHMIF_MIGRATE_BAD_SOURCE;
@@ -2668,18 +2528,18 @@ enum shmif_migrate_status arcan_shmif_migrate(
 
 /* re-use tracked "old" credentials" */
 	fcntl(dpipe, F_SETFD, FD_CLOEXEC);
-	struct arcan_shmif_cont ret =
+	struct arcan_shmif_cont NEW =
 		arcan_shmif_acquire(NULL, keyfile, P->type, P->flags);
-	ret.epipe = dpipe;
 
-	if (!ret.addr){
+	if (!NEW.addr){
 		close(dpipe);
 		return SHMIF_MIGRATE_NOCON;
 	}
+	NEW.epipe = dpipe;
 
 /* all preconditions GO */
 	P->in_migrate = true;
-	ret.priv->guard.parent_fd = dpipe;
+	shmif_platform_guard_resynch(C, -1, dpipe);
 
 /* REGISTER is special, as GUID can be internally generated but should persist */
 	if (P->flags & SHMIF_NOREGISTER){
@@ -2691,33 +2551,33 @@ enum shmif_migrate_status arcan_shmif_migrate(
 				P->guid[0], P->guid[1]
 			}
 		};
-		arcan_shmif_enqueue(&ret, &ev);
+		arcan_shmif_enqueue(&NEW, &ev);
 	}
 
 /* allow a reset-hook to release anything pending */
-	if (cont->priv->reset_hook)
-		cont->priv->reset_hook(SHMIF_RESET_REMAP, cont->priv->reset_hook_tag);
+	if (P->reset_hook)
+		P->reset_hook(SHMIF_RESET_REMAP, P->reset_hook_tag);
 
 /* extract settings from the page and context, forward into the new struct -
  * possibly just actually cache this inside ext would be safer */
-	size_t w = cont->w;
-	size_t h = cont->h;
+	size_t w = C->w;
+	size_t h = C->h;
 
 	struct shmif_resize_ext ext = {
-		.abuf_sz = cont->abufsize,
+		.abuf_sz = C->abufsize,
 		.vbuf_cnt = P->vbuf_cnt,
 		.abuf_cnt = P->abuf_cnt,
-		.samplerate = cont->samplerate,
+		.samplerate = C->samplerate,
 		.meta = P->atype,
-		.rows = atomic_load(&cont->addr->rows),
-		.cols = atomic_load(&cont->addr->cols)
+		.rows = atomic_load(&C->addr->rows),
+		.cols = atomic_load(&C->addr->cols)
 	};
 
 /* Copy the drawing/formatting hints, this is particularly important in case of
  * certain extended features such as TPACK as the size calculations are
  * different, then remap / resize the new context accordingly */
-	ret.hints = cont->hints;
-	shmif_resize(&ret, w, h, ext);
+	NEW.hints = C->hints;
+	shmif_resize(&NEW, w, h, ext);
 
 /* and wake anything possibly blocking still as whatever was there is dead */
 	arcan_sem_post(P->vsem);
@@ -2729,30 +2589,30 @@ enum shmif_migrate_status arcan_shmif_migrate(
  * of those, or delay-slot queue a RESET */
 	size_t vbuf_sz_new =
 		arcan_shmif_vbufsz(
-			ret.priv->atype, ret.hints, ret.w, ret.h,
-			atomic_load(&ret.addr->rows),
-			atomic_load(&ret.addr->cols)
+			NEW.priv->atype, NEW.hints, NEW.w, NEW.h,
+			atomic_load(&NEW.addr->rows),
+			atomic_load(&NEW.addr->cols)
 		);
 
 	size_t vbuf_sz_old =
 		arcan_shmif_vbufsz(
-			P->atype, cont->hints, cont->w, cont->h, ext.rows, ext.cols);
+			P->atype, C->hints, C->w, C->h, ext.rows, ext.cols);
 
 /* This might miss the bit where the new vs the old connection has the same
  * format but enforce different padding rules - but that edge case is better
  * off as accepting the buffer as lost */
 	if (vbuf_sz_new == vbuf_sz_old){
 		for (size_t i = 0; i < P->vbuf_cnt; i++)
-			memcpy(ret.priv->vbuf[i], P->vbuf[i], vbuf_sz_new);
+			memcpy(NEW.priv->vbuf[i], P->vbuf[i], vbuf_sz_new);
 	}
 /* Set some indicator color so this can be detected visually */
 	else{
 		log_print("[shmif::recovery] vbuf_sz "
 			"mismatch (%zu, %zu)", vbuf_sz_new, vbuf_sz_old);
 		shmif_pixel color = SHMIF_RGBA(90, 60, 60, 255);
-		for (size_t row = 0; row < ret.h; row++){
-			shmif_pixel* cr = ret.vidp + row * ret.pitch;
-			for (size_t col = 0; col < ret.w; col++)
+		for (size_t row = 0; row < NEW.h; row++){
+			shmif_pixel* cr = NEW.vidp + row * NEW.pitch;
+			for (size_t col = 0; col < NEW.w; col++)
 				cr[col] = color;
 			}
 	}
@@ -2760,82 +2620,91 @@ enum shmif_migrate_status arcan_shmif_migrate(
 /* The audio buffering parameters >should< be simpler as the negotiation
  * there does not have hint- or subprotocol- dependent constraints, though
  * again we could just delay-slot queue a FLUSH */
-	if (ret.abuf_cnt == P->abuf_cnt && ret.abufsize == cont->abufsize){
-		for (size_t i = 0; i < P->abuf_cnt && i < ret.priv->abuf_cnt; i++)
-			memcpy(ret.priv->abuf[i], P->abuf[i], cont->abufsize);
+	if (NEW.abuf_cnt == P->abuf_cnt && NEW.abufsize == C->abufsize){
+		for (size_t i = 0; i < P->abuf_cnt && i < NEW.priv->abuf_cnt; i++)
+			memcpy(NEW.priv->abuf[i], P->abuf[i], C->abufsize);
 	}
 	else {
 		log_print("[shmif::recovery] couldn't restore audio parameters"
-			" , want=(%zu * %zu) got=(%zu * %zu)", (size_t)ret.priv->abuf_cnt,
-			(size_t)ret.abufsize, (size_t) cont->abufsize, (size_t) P->abuf_cnt);
+			" , want=(%zu * %zu) got=(%zu * %zu)",
+			(size_t)C->abufsize, (size_t) P->abuf_cnt,
+			(size_t)NEW.priv->abuf_cnt, (size_t)NEW.abufsize);
 	}
 
-	void* contaddr = cont->addr;
-
 /* now we can free cont and update the video state of the new connection */
-	void* olduser = cont->user;
-	int oldhints = cont->hints;
-	struct arcan_shmif_region olddirty = cont->dirty;
+	void* old_page = C->addr;
+	void* old_user = C->user;
+	void* old_hook = P->reset_hook;
+	void* old_hook_tag = P->reset_hook_tag;
+	int old_hints = C->hints;
+	struct arcan_shmif_region old_dirty = C->dirty;
 
 /* But not before transferring privext or accel would be lost, no platform has
  * any back-refs inside of the privext so that's fine - chances are that we
  * should switch render device though. That can't be done here as there is
  * state in the outer client that needs to come with, so when we have delay
  * slots, another one of those is needed for DEVICEHINT */
-	ret.privext = cont->privext;
-	cont->privext = malloc(sizeof(struct shmif_ext_hidden));
-	*cont->privext = (struct shmif_ext_hidden){
+	NEW.privext = C->privext;
+	C->privext = malloc(sizeof(struct shmif_ext_hidden));
+	*C->privext = (struct shmif_ext_hidden){
 		.cleanup = NULL,
 		.active_fd = -1,
 		.pending_fd = -1,
 	};
 
-	arcan_shmif_drop(cont);
+/* This would terminate any existing guard-thread and a new one have spawned
+ * through the inherited flags */
+	P->in_migrate = false;
+	arcan_shmif_drop(C);
 
 /* last step, replace the relevant members of cont with the values from ret */
 /* first try and just re-use the mapping so any aliasing issues from the
  * caller can be masked */
-	void* alias = mmap(contaddr, ret.shmsize,
-		PROT_READ | PROT_WRITE, MAP_SHARED, ret.shmh, 0);
+	void* alias = mmap(old_page, NEW.shmsize,
+		PROT_READ | PROT_WRITE, MAP_SHARED, NEW.shmh, 0);
 
-/* prepare the guard-thread in the returned context to have its dms swapped */
-	pthread_mutex_lock(&ret.priv->guard.synch);
-	if (alias != contaddr){
-		munmap(alias, ret.shmsize);
+	if (alias != old_page){
+		munmap(alias, NEW.shmsize);
 		debug_print(INFO, cont, "remapped base changed, beware of aliasing clients");
 	}
-/* we did manage to retain our old mapping, so switch the pointers,
- * including synchronization with the guard thread */
+/* we did manage to retain our old mapping, so switch the pointers, including
+ * synchronization with the guard thread */
 	else {
-		munmap(ret.addr, ret.shmsize);
-		ret.addr = alias;
-		ret.priv->guard.dms = &ret.addr->dms;
+		munmap(NEW.addr, NEW.shmsize);
+		NEW.addr = alias;
+
+		shmif_platform_guard_lock(&NEW);
+			shmif_platform_guard_resynch(&NEW, NEW.addr->parent, NEW.epipe);
+		shmif_platform_guard_unlock(&NEW);
 
 /* need to recalculate the buffer pointers */
-		arcan_shmif_mapav(ret.addr, ret.priv->vbuf, ret.priv->vbuf_cnt,
-			ret.w * ret.h * sizeof(shmif_pixel), ret.priv->abuf, ret.priv->abuf_cnt,
-			ret.abufsize);
+		arcan_shmif_mapav(NEW.addr,
+			NEW.priv->vbuf, NEW.priv->vbuf_cnt,
+			NEW.w * NEW.h * sizeof(shmif_pixel),
+			NEW.priv->abuf, NEW.priv->abuf_cnt, NEW.abufsize
+		);
 
 		shmif_platform_setevqs(
-			ret.addr, ret.priv->esem, &ret.priv->inev, &ret.priv->outev);
+			NEW.addr, NEW.priv->esem, &NEW.priv->inev, &NEW.priv->outev);
 
-		ret.vidp = ret.priv->vbuf[0];
-		ret.audp = ret.priv->abuf[0];
+		NEW.vidp = NEW.priv->vbuf[0];
+		NEW.audp = NEW.priv->abuf[0];
 	}
-	memcpy(cont, &ret, sizeof(struct arcan_shmif_cont));
-	pthread_mutex_unlock(&ret.priv->guard.synch);
+	NEW.priv->reset_hook = old_hook;
+	NEW.priv->reset_hook_tag = old_hook_tag;
 
-	cont->hints = oldhints;
-	cont->dirty = olddirty;
-	cont->user = olduser;
+/* and map our copies and the prepared context unto the user- tracked one */
+	memcpy(C, &NEW, sizeof(struct arcan_shmif_cont));
+
+	C->hints = old_hints;
+	C->dirty = old_dirty;
+	C->user = old_user;
 
 /* and signal the reset hook listener that the contents have now been
  * remapped and can be filled with new data */
-	if (cont->priv->reset_hook){
-		cont->priv->reset_hook(SHMIF_RESET_REMAP, cont->priv->reset_hook_tag);
+	if (C->priv->reset_hook){
+		C->priv->reset_hook(SHMIF_RESET_REMAP, C->priv->reset_hook_tag);
 	}
-
-	P->in_migrate = false;
 
 /* This does not currently handle subsegment remapping as they typically
  * depend on more state "server-side" and there are not that many safe

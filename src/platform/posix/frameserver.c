@@ -31,6 +31,7 @@
 #include <signal.h>
 #include <errno.h>
 
+struct arcan_shmif_cont;
 #include "../shmif/arcan_shmif_event.h"
 #include "../shmif/platform/shmif_platform.h"
 

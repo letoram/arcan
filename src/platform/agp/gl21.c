@@ -4,6 +4,20 @@
  * Reference: http://arcan-fe.com
  */
 
+#ifdef _DEBUG
+#define DEBUG 1
+#else
+#define DEBUG 0
+#endif
+
+#define debug_print(fmt, ...) \
+            do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
+						arcan_timemillis(), "agp-gl21:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+
+#ifndef verbose_print
+#define verbose_print
+#endif
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -63,20 +77,6 @@ const char * defcvprg =
 "void main(){\n"
 " gl_Position = (projection * modelview) * vertex;\n"
 "}";
-
-#ifdef _DEBUG
-#define DEBUG 1
-#else
-#define DEBUG 0
-#endif
-
-#define debug_print(fmt, ...) \
-            do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
-						arcan_timemillis(), "agp-gl21:", __LINE__, __func__,##__VA_ARGS__); } while (0)
-
-#ifndef verbose_print
-#define verbose_print
-#endif
 
 agp_shader_id agp_default_shader(enum SHADER_TYPES type)
 {

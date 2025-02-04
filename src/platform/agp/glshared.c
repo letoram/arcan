@@ -4,6 +4,14 @@
  * Reference: http://arcan-fe.com
  */
 
+#define debug_print(fmt, ...) \
+            do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
+						arcan_timemillis(), "agp-glshared:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+
+#ifndef verbose_print
+#define verbose_print
+#endif
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -44,14 +52,6 @@
 #define DEBUG 1
 #else
 #define DEBUG 0
-#endif
-
-#define debug_print(fmt, ...) \
-            do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
-						arcan_timemillis(), "agp-glshared:", __LINE__, __func__,##__VA_ARGS__); } while (0)
-
-#ifndef verbose_print
-#define verbose_print
 #endif
 
 static struct agp_rendertarget* active_rendertarget;
