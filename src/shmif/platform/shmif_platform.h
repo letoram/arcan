@@ -217,6 +217,35 @@ FILE* shmif_platform_log_device(struct arcan_shmif_cont*);
 void shmif_platform_set_log_device(struct arcan_shmif_cont*, FILE*);
 
 /*
+ * Safety-wrapper heuristics arcan_shmif_migrate with an optional block/retry
+ * loop if [force] is set.
+ */
+enum shmif_migrate_status shmif_platform_fallback(
+	struct arcan_shmif_cont*, const char* cp, bool force);
+
+/*
+ * Check a connection point and authentication information for an a12 address
+ */
+struct a12addr_info {
+	ssize_t len;
+	bool weak_auth;
+};
+struct a12addr_info shmif_platform_a12addr(const char* addr);
+
+/*
+ * Setup a waiting arcan-net instance with a shmif-server socket stored in
+ * [*dsock] and return the connection point name
+ */
+char* shmif_platform_a12spawn(
+	struct arcan_shmif_cont*, const char* addr, int* dsock);
+
+/*
+ * A merge between dup2 and dup using dup as a fallback if dstnum can't be
+ * guaranteed
+ */
+int shmif_platform_dupfd_to(int fd, int dstnum, int fflags, int fdopt);
+
+/*
  * Kept around here until we can break those out as platform primitives as well
  */
 unsigned long long arcan_timemillis(void);

@@ -20,7 +20,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include <sys/utsname.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -79,9 +78,6 @@ void shmif_platform_set_log_device(struct arcan_shmif_cont* c, FILE* outdev)
 static uint64_t g_epoch;
 
 void arcan_random(uint8_t*, size_t);
-static char* spawn_arcan_net(
-	struct shmif_hidden* priv, const char* conn_src, int* dsock);
-static ssize_t a12_cp(const char* conn_src, bool* weak);
 
 /*
  * The guard-thread thing tries to get around all the insane edge conditions
@@ -377,50 +373,6 @@ static bool scan_stepframe_event(
 	return false;
 }
 
-/* For fallback-migration, we don't want to initiate migrate on detecting DMS
- * if there is an EXIT event in the queue. This can happen in a situation like:
- *  DISPLAYHINT(resize) -> arcan_shmif_resize -> [liveness check failed] ->
- *  fallback_migrate.
- *
- * In that case we check if there is an EXIT pending and cancel the migration.
- */
-static bool scan_exit_event(struct arcan_evctx* c)
-{
-	uint8_t cur = *c->front;
-	while (cur != *c->back){
-		struct arcan_event* ev = &c->eventbuf[cur];
-		if (
-			ev->category == EVENT_TARGET &&
-			ev->tgt.kind == TARGET_COMMAND_EXIT
-		)
-			return true;
-
-		cur = (cur + 1) % c->eventbuf_sz;
-	}
-
-	return false;
-}
-
-static void scan_device_node_event(struct shmif_hidden* P, struct arcan_evctx* c)
-{
-	uint8_t cur = *c->front;
-
-	while (cur != *c->back){
-		struct arcan_event* ev = &c->eventbuf[cur];
-		if (
-			ev->category == EVENT_TARGET &&
-			ev->tgt.kind == TARGET_COMMAND_DEVICE_NODE &&
-			ev->tgt.ioevs[1].iv == 4) /* set alt-conn */
-		{
-			if (P->alt_conn)
-				free(P->alt_conn);
-			P->alt_conn = NULL;
-			if (ev->tgt.message[0])
-				P->alt_conn = strdup(ev->tgt.message);
-		}
-	}
-}
-
 /*
  * Display-events are among the most expensive and prone to backpressure,
  * so coalesce them together and merge into the latest to relieve pressure.
@@ -490,137 +442,6 @@ static bool pause_evh(struct arcan_shmif_cont* c,
 		priv->ph |= 2;
 	}
 	return rv;
-}
-
-#ifdef __LINUX
-static bool notify_wait(const char* cpoint)
-{
-/* if we get here we really shouldnt be at the stage of a broken connpath,
- * and if we are the connect loop won't do much of anything */
-	char buf[256];
-	int len = arcan_shmif_resolve_connpath(cpoint, buf, 256);
-	if (len <= 0)
-		return false;
-
-/* path in abstract namespace or non-absolute */
-	if (buf[0] != '/')
-		return false;
-
-/* strip down to the path itself */
-	size_t pos = strlen(buf);
-	while(pos > 0 && buf[pos] != '/')
-		pos--;
-
-	if (!pos)
-		return false;
-
-	buf[pos] = '\0';
-
-	int notify = inotify_init1(IN_CLOEXEC);
-	if (-1 == notify)
-		return false;
-
-/* watch the path for changes */
-	if (-1 == inotify_add_watch(notify, buf, IN_CREATE)){
-		close(notify);
-		return false;
-	}
-
-/* just wait for something, the path shouldn't be particularly active */
-	struct inotify_event ev;
-	read(notify, &ev, sizeof(ev));
-
-	close(notify);
-	return true;
-}
-#endif
-
-static enum shmif_migrate_status fallback_migrate(
-	struct arcan_shmif_cont* C, const char* cpoint, bool force)
-{
-/* sleep - retry connect loop */
-	enum shmif_migrate_status sv;
-	struct shmif_hidden* P = C->priv;
-	int oldfd = C->epipe;
-
-/* we are actually told to exit, so collapse back to eventloop */
-	if (scan_exit_event(&P->inev))
-		return SHMIF_MIGRATE_NOCON;
-
-/* there might be a newer altcon in the queue as well, so check that first */
-	scan_device_node_event(P, &P->inev);
-
-/* parent can pull dms explicitly */
-	if (force){
-		if ((P->flags & SHMIF_NOAUTO_RECONNECT)
-			|| shmif_platform_check_alive(C) || P->output)
-			return SHMIF_MIGRATE_NOCON;
-	}
-
-/* CONNECT_LOOP style behavior on force */
-	const char* current = cpoint;
-
-	while ((sv = arcan_shmif_migrate(C, current, NULL)) == SHMIF_MIGRATE_NOCON){
-		if (!force)
-			break;
-
-/* try to return to the last known connection point after a few tries */
-		else if (current == cpoint && P->alt_conn)
-			current = P->alt_conn;
-		else
-			current = cpoint;
-
-/* if there is a poll mechanism to use, go for it, otherwise fallback to a
- * timesleep - special cases include a12://, non-linux, ... */
-#ifdef __LINUX
-		if (!(strlen(cpoint) > 6 &&
-			strncmp(cpoint, "a12://", 6) == 0) && notify_wait(cpoint))
-				continue;
-		else
-#endif
-		arcan_timesleep(100);
-	}
-
-	switch (sv){
-/* dealt with above already */
-	case SHMIF_MIGRATE_NOCON:
-	break;
-	case SHMIF_MIGRATE_BAD_SOURCE:
-/* this means that multiple threads tried to migrate at the same time,
- * and we come from one that isn't the primary one */
-		return sv;
-	break;
-	case SHMIF_MIGRATE_BADARG:
-		debug_print(FATAL, c, "recovery failed, broken path / key");
-	break;
-	case SHMIF_MIGRATE_TRANSFER_FAIL:
-		debug_print(FATAL, c, "migration failed on setup");
-	break;
-
-/* set a reset event in the "to be dispatched next dequeue" slot, it would be
- * nice to have a sneakier way of injecting events into the normal dequeue
- * process to use as both inter-thread and MiM. Clear any pending descriptor as
- * it will be useless. */
-	case SHMIF_MIGRATE_OK:
-		if (P->ph & 2){
-			if (P->fh.tgt.ioevs[0].iv != BADFD){
-				close(P->fh.tgt.ioevs[0].iv);
-				P->fh.tgt.ioevs[0].iv = BADFD;
-				P->ph = 0;
-			}
-		}
-
-		P->ph |= 4;
-		P->fh = (struct arcan_event){
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_RESET,
-			.tgt.ioevs[0].iv = 3,
-			.tgt.ioevs[1].iv = oldfd
-		};
-	break;
-	}
-
-	return sv;
 }
 
 /* this one is really terrible and unfortunately very central
@@ -876,7 +697,8 @@ checkfd:
 					}
 /* try to migrate automatically, but ignore on failure */
 					else {
-						if (fallback_migrate(c,dst->tgt.message, false)!=SHMIF_MIGRATE_OK){
+						if (shmif_platform_fallback(c,
+							dst->tgt.message, false) != SHMIF_MIGRATE_OK){
 							rv = 0;
 							goto done;
 						}
@@ -915,7 +737,7 @@ checkfd:
 /* a successful migrate will delay-slot the RESET event, so in that case
  * go back to reset and have that activate */
 	else if (!shmif_platform_check_alive(c)){
-		if (fallback_migrate(c, P->alt_conn, true) == SHMIF_MIGRATE_OK)
+		if (shmif_platform_fallback(c, P->alt_conn, true) == SHMIF_MIGRATE_OK)
 			goto reset;
 		goto done;
 	}
@@ -1067,7 +889,7 @@ static int enqueue_internal(
  * gets lost. Neither is good. The counterargument is that crash recovery is a
  * 'best effort basis' - we're still dealing with an actual crash. */
 	if (!shmif_platform_check_alive(c) && !try){
-		fallback_migrate(c, P->alt_conn, true);
+		shmif_platform_fallback(c, P->alt_conn, true);
 		return 0;
 	}
 
@@ -1872,7 +1694,7 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* C, int mask)
  */
 	if (!shmif_platform_check_alive(C)){
 		C->abufused = C->abufpos = 0;
-		fallback_migrate(C, P->alt_conn, true);
+		shmif_platform_fallback(C, P->alt_conn, true);
 		P->in_signal = false;
 		return 0;
 	}
@@ -2020,7 +1842,7 @@ static bool shmif_resize(struct arcan_shmif_cont* C,
 			P->reset_hook(SHMIF_RESET_LOST, P->reset_hook_tag);
 
 /* fallback migrate will trigger the reset_hook on REMAP / FAIL */
-		if (SHMIF_MIGRATE_OK != fallback_migrate(C, P->alt_conn, true)){
+		if (SHMIF_MIGRATE_OK != shmif_platform_fallback(C, P->alt_conn, true)){
 			return false;
 		}
 	}
@@ -2041,7 +1863,7 @@ static bool shmif_resize(struct arcan_shmif_cont* C,
 		if (P->reset_hook)
 			P->reset_hook(SHMIF_RESET_LOST, P->reset_hook_tag);
 
-		if (SHMIF_MIGRATE_OK != fallback_migrate(C, P->alt_conn, true))
+		if (SHMIF_MIGRATE_OK != shmif_platform_fallback(C, P->alt_conn, true))
 			return false;
 	}
 
@@ -2115,7 +1937,7 @@ static bool shmif_resize(struct arcan_shmif_cont* C,
 			P->reset_hook(SHMIF_RESET_LOST, P->reset_hook_tag);
 		}
 
-		fallback_migrate(C, P->alt_conn, true);
+		shmif_platform_fallback(C, P->alt_conn, true);
 		return false;
 	}
 
@@ -2494,37 +2316,9 @@ bool arcan_shmif_descrevent(struct arcan_event* ev)
 	return false;
 }
 
-static int dupfd_to(int fd, int dstnum, int fflags, int fdopt)
-{
-	int rfd = -1;
-	if (-1 == fd)
-		return -1;
-
-	if (dstnum >= 0)
-		while (-1 == (rfd = dup2(fd, dstnum)) && errno == EINTR){}
-
-	if (-1 == rfd)
-		while (-1 == (rfd = dup(fd)) && errno == EINTR){}
-
-	if (-1 == rfd)
-		return -1;
-
-/* unless F_SETLKW, EINTR is not an issue */
-	int flags;
-	flags = fcntl(rfd, F_GETFL);
-	if (-1 != flags && fflags)
-		fcntl(rfd, F_SETFL, flags | fflags);
-
-	flags = fcntl(rfd, F_GETFD);
-	if (-1 != flags && fdopt)
-		fcntl(rfd, F_SETFD, flags | fdopt);
-
-	return rfd;
-}
-
 int arcan_shmif_dupfd(int fd, int dstnum, bool blocking)
 {
-	return dupfd_to(fd, dstnum, blocking * O_NONBLOCK, FD_CLOEXEC);
+	return shmif_platform_dupfd_to(fd, dstnum, blocking * O_NONBLOCK, FD_CLOEXEC);
 }
 
 void arcan_shmif_last_words(
@@ -2563,214 +2357,6 @@ size_t arcan_shmif_initial(struct arcan_shmif_cont* cont,
 	*out = &cont->priv->initial;
 
 	return sizeof(struct arcan_shmif_initial);
-}
-
-enum shmif_migrate_status arcan_shmif_migrate(
-	struct arcan_shmif_cont* C, const char* newpath, const char* key)
-{
-	if (!C || !C->addr || !newpath)
-		return SHMIF_MIGRATE_BADARG;
-
-	struct shmif_hidden* P = C->priv;
-
-	if (!pthread_equal(P->primary_id, pthread_self()))
-		return SHMIF_MIGRATE_BAD_SOURCE;
-
-	int dpipe;
-	char* keyfile = NULL;
-
-	if (-1 != a12_cp(newpath, NULL))
-		keyfile = spawn_arcan_net(P, newpath, &dpipe);
-	else
-		keyfile = arcan_shmif_connect(newpath, key, &dpipe);
-	if (!keyfile)
-		return SHMIF_MIGRATE_NOCON;
-
-/* re-use tracked "old" credentials" */
-	fcntl(dpipe, F_SETFD, FD_CLOEXEC);
-	struct arcan_shmif_cont NEW =
-		arcan_shmif_acquire(NULL, keyfile, P->type, P->flags);
-
-	if (!NEW.addr){
-		close(dpipe);
-		return SHMIF_MIGRATE_NOCON;
-	}
-	NEW.epipe = dpipe;
-
-/* all preconditions GO */
-	P->in_migrate = true;
-	shmif_platform_guard_resynch(C, -1, dpipe);
-
-/* REGISTER is special, as GUID can be internally generated but should persist */
-	if (P->flags & SHMIF_NOREGISTER){
-		struct arcan_event ev = {
-			.category = EVENT_EXTERNAL,
-			.ext.kind = ARCAN_EVENT(REGISTER),
-			.ext.registr.kind = P->type,
-			.ext.registr.guid = {
-				P->guid[0], P->guid[1]
-			}
-		};
-		arcan_shmif_enqueue(&NEW, &ev);
-	}
-
-/* allow a reset-hook to release anything pending */
-	if (P->reset_hook)
-		P->reset_hook(SHMIF_RESET_REMAP, P->reset_hook_tag);
-
-/* extract settings from the page and context, forward into the new struct -
- * possibly just actually cache this inside ext would be safer */
-	size_t w = C->w;
-	size_t h = C->h;
-
-	struct shmif_resize_ext ext = {
-		.abuf_sz = C->abufsize,
-		.vbuf_cnt = P->vbuf_cnt,
-		.abuf_cnt = P->abuf_cnt,
-		.samplerate = C->samplerate,
-		.meta = P->atype,
-		.rows = atomic_load(&C->addr->rows),
-		.cols = atomic_load(&C->addr->cols)
-	};
-
-/* Copy the drawing/formatting hints, this is particularly important in case of
- * certain extended features such as TPACK as the size calculations are
- * different, then remap / resize the new context accordingly */
-	NEW.hints = C->hints;
-	shmif_resize(&NEW, w, h, ext);
-
-/* and wake anything possibly blocking still as whatever was there is dead */
-	arcan_sem_post(P->vsem);
-	arcan_sem_post(P->asem);
-	arcan_sem_post(P->esem);
-
-/* Copy the audio/video contents of [cont] into [ret], if possible, a possible
- * workaround on failure is to check if we have VSIGNAL- state and inject one
- * of those, or delay-slot queue a RESET */
-	size_t vbuf_sz_new =
-		arcan_shmif_vbufsz(
-			NEW.priv->atype, NEW.hints, NEW.w, NEW.h,
-			atomic_load(&NEW.addr->rows),
-			atomic_load(&NEW.addr->cols)
-		);
-
-	size_t vbuf_sz_old =
-		arcan_shmif_vbufsz(
-			P->atype, C->hints, C->w, C->h, ext.rows, ext.cols);
-
-/* This might miss the bit where the new vs the old connection has the same
- * format but enforce different padding rules - but that edge case is better
- * off as accepting the buffer as lost */
-	if (vbuf_sz_new == vbuf_sz_old){
-		for (size_t i = 0; i < P->vbuf_cnt; i++)
-			memcpy(NEW.priv->vbuf[i], P->vbuf[i], vbuf_sz_new);
-	}
-/* Set some indicator color so this can be detected visually */
-	else{
-		log_print("[shmif::recovery] vbuf_sz "
-			"mismatch (%zu, %zu)", vbuf_sz_new, vbuf_sz_old);
-		shmif_pixel color = SHMIF_RGBA(90, 60, 60, 255);
-		for (size_t row = 0; row < NEW.h; row++){
-			shmif_pixel* cr = NEW.vidp + row * NEW.pitch;
-			for (size_t col = 0; col < NEW.w; col++)
-				cr[col] = color;
-			}
-	}
-
-/* The audio buffering parameters >should< be simpler as the negotiation
- * there does not have hint- or subprotocol- dependent constraints, though
- * again we could just delay-slot queue a FLUSH */
-	if (NEW.abuf_cnt == P->abuf_cnt && NEW.abufsize == C->abufsize){
-		for (size_t i = 0; i < P->abuf_cnt && i < NEW.priv->abuf_cnt; i++)
-			memcpy(NEW.priv->abuf[i], P->abuf[i], C->abufsize);
-	}
-	else {
-		log_print("[shmif::recovery] couldn't restore audio parameters"
-			" , want=(%zu * %zu) got=(%zu * %zu)",
-			(size_t)C->abufsize, (size_t) P->abuf_cnt,
-			(size_t)NEW.priv->abuf_cnt, (size_t)NEW.abufsize);
-	}
-
-/* now we can free cont and update the video state of the new connection */
-	void* old_page = C->addr;
-	void* old_user = C->user;
-	void* old_hook = P->reset_hook;
-	void* old_hook_tag = P->reset_hook_tag;
-	int old_hints = C->hints;
-	struct arcan_shmif_region old_dirty = C->dirty;
-
-/* But not before transferring privext or accel would be lost, no platform has
- * any back-refs inside of the privext so that's fine - chances are that we
- * should switch render device though. That can't be done here as there is
- * state in the outer client that needs to come with, so when we have delay
- * slots, another one of those is needed for DEVICEHINT */
-	NEW.privext = C->privext;
-	C->privext = malloc(sizeof(struct shmif_ext_hidden));
-	*C->privext = (struct shmif_ext_hidden){
-		.cleanup = NULL,
-		.active_fd = -1,
-		.pending_fd = -1,
-	};
-
-/* This would terminate any existing guard-thread and a new one have spawned
- * through the inherited flags */
-	P->in_migrate = false;
-	arcan_shmif_drop(C);
-
-/* last step, replace the relevant members of cont with the values from ret */
-/* first try and just re-use the mapping so any aliasing issues from the
- * caller can be masked */
-	void* alias = mmap(old_page, NEW.shmsize,
-		PROT_READ | PROT_WRITE, MAP_SHARED, NEW.shmh, 0);
-
-	if (alias != old_page){
-		munmap(alias, NEW.shmsize);
-		debug_print(INFO, cont, "remapped base changed, beware of aliasing clients");
-	}
-/* we did manage to retain our old mapping, so switch the pointers, including
- * synchronization with the guard thread */
-	else {
-		munmap(NEW.addr, NEW.shmsize);
-		NEW.addr = alias;
-
-		shmif_platform_guard_lock(&NEW);
-			shmif_platform_guard_resynch(&NEW, NEW.addr->parent, NEW.epipe);
-		shmif_platform_guard_unlock(&NEW);
-
-/* need to recalculate the buffer pointers */
-		arcan_shmif_mapav(NEW.addr,
-			NEW.priv->vbuf, NEW.priv->vbuf_cnt,
-			NEW.w * NEW.h * sizeof(shmif_pixel),
-			NEW.priv->abuf, NEW.priv->abuf_cnt, NEW.abufsize
-		);
-
-		shmif_platform_setevqs(
-			NEW.addr, NEW.priv->esem, &NEW.priv->inev, &NEW.priv->outev);
-
-		NEW.vidp = NEW.priv->vbuf[0];
-		NEW.audp = NEW.priv->abuf[0];
-	}
-	NEW.priv->reset_hook = old_hook;
-	NEW.priv->reset_hook_tag = old_hook_tag;
-
-/* and map our copies and the prepared context unto the user- tracked one */
-	memcpy(C, &NEW, sizeof(struct arcan_shmif_cont));
-
-	C->hints = old_hints;
-	C->dirty = old_dirty;
-	C->user = old_user;
-
-/* and signal the reset hook listener that the contents have now been
- * remapped and can be filled with new data */
-	if (C->priv->reset_hook){
-		C->priv->reset_hook(SHMIF_RESET_REMAP, C->priv->reset_hook_tag);
-	}
-
-/* This does not currently handle subsegment remapping as they typically
- * depend on more state "server-side" and there are not that many safe
- * options. The current approach is simply to kill tracked subsegments,
- * although we could "in theory" repeat the process for each subsegment */
-	return SHMIF_MIGRATE_OK;
 }
 
 static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
@@ -2878,13 +2464,13 @@ static bool wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 /* allow remapping of stdin but don't CLOEXEC it */
 		case TARGET_COMMAND_BCHUNK_IN:
 			if (strcmp(ev.tgt.message, "stdin") == 0)
-				dupfd_to(ev.tgt.ioevs[0].iv, STDIN_FILENO, 0, 0);
+				shmif_platform_dupfd_to(ev.tgt.ioevs[0].iv, STDIN_FILENO, 0, 0);
 		break;
 
 /* allow remapping of stdout but don't CLOEXEC it */
 		case TARGET_COMMAND_BCHUNK_OUT:
 			if (strcmp(ev.tgt.message, "stdout") == 0)
-				dupfd_to(ev.tgt.ioevs[0].iv, STDOUT_FILENO, 0, 0);
+				shmif_platform_dupfd_to(ev.tgt.ioevs[0].iv, STDOUT_FILENO, 0, 0);
 		break;
 
 		case TARGET_COMMAND_GEOHINT:
@@ -2917,172 +2503,6 @@ bool arcan_shmif_defer_register(
 {
 	arcan_shmif_enqueue(C, &ev);
 	return wait_for_activation(C, true);
-}
-
-static ssize_t a12_cp(const char* conn_src, bool* weak)
-{
-	if (weak)
-		*weak = false;
-
-	size_t len = strlen(conn_src);
-	if (!len)
-		return -1;
-
-/* protocol:// friendly */
-	if (strncmp(conn_src, "a12s://", 7) == 0)
-		return sizeof("a12s://") - 1;
-	else if (strncmp(conn_src, "a12://", 6) == 0){
-		if (weak)
-			*weak = true;
-		return sizeof("a12://") - 1;
-	}
-/* tag@host:port format */
-	else if (strrchr(conn_src, '@'))
-		return 0;
-	else
-		return -1;
-}
-
-static char* spawn_arcan_net(
-	struct shmif_hidden* P, const char* conn_src, int* dsock)
-{
-/* extract components from URL: a12://(keyid)@server(:port) */
-	char* work = strdup(conn_src);
-	if (!work)
-		return NULL;
-
-/* Quick-workaround, the url format for keyid@ is in conflict with other forms
- * like ident@key@. first fallback to hostname uname and if even that is
- * broken, go just by anon and let the directory deal with the likely collision */
-	const char* ident = getenv("A12_IDENT");
-	struct utsname nam;
-
-	if (!ident){
-		if (0 == uname(&nam)){
-			if (nam.nodename[0]){
-				ident = nam.nodename;
-			}
-		}
-		if (!ident)
-			ident = "anon";
-	}
-
-	bool weak;
-	ssize_t start = a12_cp(conn_src, &weak);
-
-/* (:port or ' port' - both are fine) - the argument is ignored if a12_cp returns
- * 0 as that matches a tag which already has host and port as part of its keystore
- * definition */
-	const char* port = "6680";
-	if (!start)
-		port = NULL;
-
-	for (size_t i = start; work[i]; i++){
-		if (work[i] == ':' || work[i] == ' '){
-			work[i] = '\0';
-			port = &work[i+1];
-		}
-	}
-
-/* build socketpair, keep one end for ourself */
-	int spair[2];
-	if (-1 == socketpair(PF_UNIX, SOCK_STREAM, 0, spair)){
-		free(work);
-		log_print("[shmif::a12::connect] couldn't build IPC socket");
-		return NULL;
-	}
-
-/* as normal, we want the descriptors to be non-blocking, and
- * only the right one should persist across exec */
-	for (size_t i = 0; i < 2; i++){
-		int flags = fcntl(spair[i], F_GETFL);
-		if (flags & O_NONBLOCK)
-			fcntl(spair[i], F_SETFL, flags & (~O_NONBLOCK));
-
-		if (i == 0){
-			flags = fcntl(spair[i], F_GETFD);
-			if (-1 != flags)
-				fcntl(spair[i], F_SETFD, flags | FD_CLOEXEC);
-		}
-
-#ifdef __APPLE__
- 		int val = 1;
-		setsockopt(spair[i], SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
-#endif
-	}
-	*dsock = spair[0];
-
-	char tmpbuf[8];
-	snprintf(tmpbuf, sizeof(tmpbuf), "%d", spair[1]);
-
-	char ksfdbuf[8] = {'-', '1'};
-	int ksfd = -1;
-	if (!weak && P && P->keystate_store){
-		ksfd = dupfd_to(P->keystate_store, -1, 0, 0);
-		snprintf(ksfdbuf, sizeof(ksfdbuf), "%d", ksfd);
-	}
-
-/* spawn the arcan-net process, zombie- tactic was either doublefork
- * or spawn a waitpid thread - given that the length/lifespan of net
- * may well be as long as the process, go with double-fork + wait */
-	pid_t pid = fork();
-	if (pid == 0){
-		if (0 == fork()){
-			sigaction(SIGINT, &(struct sigaction){}, NULL);
-
-			if (weak){
-				execlp("arcan-net", "arcan-net", "-X",
-					"--ident", ident, "--soft-auth",
-					"-S", tmpbuf, &work[start], port, (char*) NULL);
-			}
-			else {
-				execlp("arcan-net", "arcan-net", "-X",
-					"--ident", ident, "--keystore", ksfdbuf, "-S",
-					tmpbuf, &work[start], port, (char*) NULL);
-			}
-
-			shutdown(spair[1], SHUT_RDWR);
-			exit(EXIT_FAILURE);
-		}
-		exit(EXIT_FAILURE);
-	}
-	close(spair[1]);
-
-	if (-1 == pid){
-		log_print("[shmif::a12::connect] fork() failed");
-		close(spair[0]);
-		return NULL;
-	}
-
-	if (-1 != ksfd){
-		close(ksfd);
-	}
-
-/* temporary override any existing handler */
-	struct sigaction oldsig;
-	sigaction(SIGCHLD, &(struct sigaction){}, &oldsig);
-	while(waitpid(pid, NULL, 0) == -1 && errno == EINTR){}
-	sigaction(SIGCHLD, &oldsig, NULL);
-
-/* retrieve shmkeyetc. like with connect */
-	free(work);
-	size_t ofs = 0;
-	char wbuf[PP_SHMPAGE_SHMKEYLIM+1];
-	do {
-		if (-1 == read(*dsock, wbuf + ofs, 1)){
-			debug_print(FATAL, NULL, "invalid response on negotiation");
-			close(*dsock);
-			return NULL;
-		}
-	}
-
-	while(wbuf[ofs++] != '\n' && ofs < PP_SHMPAGE_SHMKEYLIM);
-	wbuf[ofs-1] = '\0';
-
-/* note: should possibly pass some error data from arcan-net here
- * so we can propagate an error message */
-
-	return strdup(wbuf);
 }
 
 struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
@@ -3131,8 +2551,8 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
  * setup - for the remote part we still need some other mechanism in the url
  * to identify credential store though */
 	else if (conn_src){
-		if (-1 != a12_cp(conn_src, NULL)){
-			keyfile = spawn_arcan_net(NULL, conn_src, &dpipe);
+		if (-1 != shmif_platform_a12addr(conn_src).len){
+			keyfile = shmif_platform_a12spawn(NULL, conn_src, &dpipe);
 			networked = true;
 		}
 		else {

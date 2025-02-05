@@ -57,11 +57,14 @@ set (SHMIF_SOURCES
 	${ASD}/shmif/arcan_shmif_sub.c
 	${ASD}/shmif/arcan_shmif_evpack.c
 	${ASD}/shmif/arcan_shmif_a11y.c
+	${ASD}/shmif/arcan_shmif_migrate.c
 	${ASD}/engine/arcan_trace.c
 	${ASD}/shmif/platform/exec.c
 	${ASD}/shmif/platform/fdpassing.c
 	${ASD}/shmif/platform/eventqueue.c
 	${ASD}/shmif/platform/watchdog.c
+	${ASD}/shmif/platform/migrate.c
+	${ASD}/shmif/platform/net.c
 )
 
 if (LWA_PLATFORM_STR AND IS_DIRECTORY "${ASD}/shmif/${LWA_PLATFORM_STR}" AND
