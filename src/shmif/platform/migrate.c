@@ -1,5 +1,6 @@
 #include <arcan_shmif.h>
 #include "shmif_platform.h"
+#include <pthread.h>
 #include "../shmif_privint.h"
 
 #ifdef __LINUX

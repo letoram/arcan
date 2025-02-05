@@ -1,8 +1,8 @@
 #include <arcan_shmif.h>
+#include <pthread.h>
 #include "platform/shmif_platform.h"
 #include "shmif_privint.h"
 #include "shmif_privext.h"
-#include <pthread.h>
 #include <fcntl.h>
 #include <sys/mman.h>
 
