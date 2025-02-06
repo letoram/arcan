@@ -16,6 +16,14 @@ enum support_states {
 	SUPPORT_EVENT_EXIT
 };
 
+/*
+ * Accumulate events into arcan_shmif_initial,
+ * optionally _resize based on displyhints as well.
+ *
+ * Release on getting _ACTIVATE command.
+ */
+bool shmifint_preroll_loop(struct arcan_shmif_cont*, bool resize);
+
 struct shmif_hidden {
 	struct arg_arr* args;
 	char* last_words;
