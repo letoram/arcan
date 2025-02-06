@@ -61,6 +61,7 @@ set (SHMIF_SOURCES
 	${ASD}/shmif/arcan_shmif_mousestate.c
 	${ASD}/shmif/arcan_shmif_filehelper.c
 	${ASD}/shmif/arcan_shmif_avtransfer.c
+	${ASD}/shmif/arcan_shmif_argparse.c
 	${ASD}/engine/arcan_trace.c
 	${ASD}/shmif/platform/exec.c
 	${ASD}/shmif/platform/fdpassing.c
