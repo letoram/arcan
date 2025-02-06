@@ -24,6 +24,28 @@ enum support_states {
  */
 bool shmifint_preroll_loop(struct arcan_shmif_cont*, bool resize);
 
+/*
+ * Internal event processing loop applied before/if an event gets forwarded
+ * to the caller. This covers coalescing, descriptor pairing, delay slots,
+ * tracking recovery connection, accelerated device handover, ...
+ *
+ * upret is only set if the segment is in a paused state and someone calls
+ * blocking enqueue where blocking would mean 'dont consume events but monitor
+ * for UNPAUSE' (which needs to be forwarded so the client also knows).
+ *
+ * -1 = broken
+ *  0 = nothing to do
+ *  1 = event stored
+ */
+int shmifint_process_events(
+	struct arcan_shmif_cont*, struct arcan_event*, bool block, bool upret);
+
+/*
+ * Used in states where there might be a pending inbound descriptor that
+ * we, for some reason, can't use (typically when RESET or migrated).
+ */
+void shmifint_consume_pending(struct arcan_shmif_cont*);
+
 struct shmif_hidden {
 	struct arg_arr* args;
 	char* last_words;
