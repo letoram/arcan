@@ -3,6 +3,26 @@
 #include "platform/shmif_platform.h"
 #include "shmif_privint.h"
 
+void shmifint_drop_initial(struct arcan_shmif_cont* c)
+{
+	if (!(c && c->priv && c->priv->valid_initial))
+		return;
+	struct arcan_shmif_initial* init = &c->priv->initial;
+
+	if (-1 != init->render_node){
+		close(init->render_node);
+		init->render_node = -1;
+	}
+
+	for (size_t i = 0; i < COUNT_OF(init->fonts); i++)
+		if (-1 != init->fonts[i].fd){
+			close(init->fonts[i].fd);
+			init->fonts[i].fd = -1;
+		}
+
+	c->priv->valid_initial = false;
+}
+
 bool shmifint_preroll_loop(struct arcan_shmif_cont* cont, bool resize)
 {
 	arcan_event ev;

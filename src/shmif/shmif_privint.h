@@ -24,6 +24,9 @@ enum support_states {
  */
 bool shmifint_preroll_loop(struct arcan_shmif_cont*, bool resize);
 
+/* release anything tracked from shmifint_preroll_loop */
+void shmifint_drop_initial(struct arcan_shmif_cont*);
+
 /*
  * Internal event processing loop applied before/if an event gets forwarded
  * to the caller. This covers coalescing, descriptor pairing, delay slots,

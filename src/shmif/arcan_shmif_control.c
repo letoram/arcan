@@ -127,33 +127,13 @@ bool arcan_shmif_handle_permitted(struct arcan_shmif_cont* ctx)
 	return (ctx && ctx->privext && ctx->privext->state_fl != STATE_NOACCEL);
 }
 
-static void drop_initial(struct arcan_shmif_cont* c)
-{
-	if (!(c && c->priv && c->priv->valid_initial))
-		return;
-	struct arcan_shmif_initial* init = &c->priv->initial;
-
-	if (-1 != init->render_node){
-		close(init->render_node);
-		init->render_node = -1;
-	}
-
-	for (size_t i = 0; i < COUNT_OF(init->fonts); i++)
-		if (-1 != init->fonts[i].fd){
-			close(init->fonts[i].fd);
-			init->fonts[i].fd = -1;
-		}
-
-	c->priv->valid_initial = false;
-}
-
 int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
 	if (!c || !c->priv || !c->priv->alive)
 		return -1;
 
 	if (c->priv->valid_initial)
-		drop_initial(c);
+		shmifint_drop_initial(c);
 
 	int rv = shmifint_process_events(c, dst, false, false);
 
@@ -177,7 +157,7 @@ int arcan_shmif_wait_timed(
 		return 0;
 
 	if (c->priv->valid_initial)
-		drop_initial(c);
+		shmifint_drop_initial(c);
 
 	unsigned beg = arcan_timemillis();
 
@@ -204,7 +184,7 @@ int arcan_shmif_wait(struct arcan_shmif_cont* c, struct arcan_event* dst)
 		return false;
 
 	if (c->priv->valid_initial)
-		drop_initial(c);
+		shmifint_drop_initial(c);
 
 	int rv = shmifint_process_events(c, dst, true, false);
 	if (rv > 0 && c->priv->log_event){
@@ -893,7 +873,7 @@ void arcan_shmif_drop(struct arcan_shmif_cont* C)
 
 /* do we still have a copy of the preroll event merge state? */
 	if (P->valid_initial)
-		drop_initial(C);
+		shmifint_drop_initial(C);
 
 /* has the user set an error message? */
 	if (P->last_words){
@@ -1225,43 +1205,6 @@ int arcan_shmif_signalstatus(struct arcan_shmif_cont* c)
 	return res;
 }
 
-bool arcan_shmif_acquireloop(struct arcan_shmif_cont* c,
-	struct arcan_event* acqev, struct arcan_event** evpool, ssize_t* evpool_sz)
-{
-	if (!c || !acqev || !evpool || !evpool_sz)
-		return false;
-
-/* preallocate a buffer "large enough", some unreasonable threshold */
-	size_t ul = 512;
-	*evpool = malloc(sizeof(struct arcan_event) * ul);
-	if (!*evpool)
-		return false;
-
-	*evpool_sz = 0;
-	while (arcan_shmif_wait(c, acqev) && ul--){
-/* event to buffer? */
-		if (acqev->category != EVENT_TARGET ||
-			(acqev->tgt.kind != TARGET_COMMAND_NEWSEGMENT &&
-			acqev->tgt.kind != TARGET_COMMAND_REQFAIL)){
-/* dup- copy the descriptor so it doesn't get freed in shmif_wait */
-			if (arcan_shmif_descrevent(acqev)){
-				acqev->tgt.ioevs[0].iv =
-					arcan_shmif_dupfd(acqev->tgt.ioevs[0].iv, -1, true);
-			}
-			(*evpool)[(*evpool_sz)++] = *acqev;
-		}
-		else
-			return true;
-	}
-
-/* broken pool */
-	debug_print(FATAL, c, "eventpool is broken: %zu / %zu", *evpool_sz, ul);
-	*evpool_sz = -1;
-	free(*evpool);
-	*evpool = NULL;
-	return false;
-}
-
 bool arcan_shmif_lock(struct arcan_shmif_cont* C)
 {
 	if (!C || !C->addr)
@@ -1301,33 +1244,6 @@ bool arcan_shmif_unlock(struct arcan_shmif_cont* C)
 
 	C->priv->in_lock = false;
 	return true;
-}
-
-bool arcan_shmif_descrevent(struct arcan_event* ev)
-{
-	if (!ev)
-		return false;
-
-	if (ev->category != EVENT_TARGET)
-		return false;
-
-	unsigned list[] = {
-		TARGET_COMMAND_STORE,
-		TARGET_COMMAND_RESTORE,
-		TARGET_COMMAND_DEVICE_NODE,
-		TARGET_COMMAND_FONTHINT,
-		TARGET_COMMAND_BCHUNK_IN,
-		TARGET_COMMAND_BCHUNK_OUT,
-		TARGET_COMMAND_NEWSEGMENT
-	};
-
-	for (size_t i = 0; i < COUNT_OF(list); i++){
-		if (ev->tgt.kind == list[i] &&
-			ev->tgt.ioevs[0].iv != BADFD)
-				return true;
-	}
-
-	return false;
 }
 
 int arcan_shmif_dupfd(int fd, int dstnum, bool blocking)
@@ -1759,130 +1675,3 @@ shmif_reset_hook_fptr arcan_shmif_resetfunc(
 
 	return old_hook;
 }
-
-#include "../frameserver/util/utf8.c"
-bool arcan_shmif_pushutf8(
-	struct arcan_shmif_cont* acon, struct arcan_event* base,
-	const char* msg, size_t len)
-{
-	uint32_t state = 0, codepoint = 0;
-	const char* outs = msg;
-	size_t maxlen = sizeof(base->ext.message.data) - 1;
-
-/* utf8- point aligned against block size */
-	while (len > maxlen){
-		size_t i, lastok = 0;
-		state = 0;
-		for (i = 0; i <= maxlen - 1; i++){
-			if (UTF8_ACCEPT == utf8_decode(&state, &codepoint, (uint8_t)(msg[i])))
-				lastok = i;
-
-			if (i != lastok){
-				if (0 == i)
-					return false;
-			}
-		}
-
-		memcpy(base->ext.message.data, outs, lastok);
-		base->ext.message.data[lastok] = '\0';
-		len -= lastok;
-		outs += lastok;
-		if (len)
-			base->ext.message.multipart = 1;
-		else
-			base->ext.message.multipart = 0;
-
-		arcan_shmif_enqueue(acon, base);
-	}
-
-/* flush remaining */
-	if (len){
-		snprintf((char*)base->ext.message.data, maxlen, "%s", outs);
-		base->ext.message.multipart = 0;
-		arcan_shmif_enqueue(acon, base);
-	}
-
-	return true;
-}
-
-bool arcan_shmif_multipart_message(
-	struct arcan_shmif_cont* C, struct arcan_event* ev,
-	char** out, bool* bad)
-{
-	if (!C || !ev || !out || !bad ||
-		ev->category != EVENT_TARGET || ev->tgt.kind != TARGET_COMMAND_MESSAGE){
-		*bad = true;
-		return false;
-	}
-
-	struct shmif_hidden* P = C->priv;
-	size_t msglen = strlen(ev->tgt.message);
-
-	if (P->flush_multipart){
-		P->flush_multipart = false;
-		P->multipart_ofs = 0;
-	}
-
-	bool end_multipart = ev->tgt.ioevs[0].iv == 0;
-
-	if (end_multipart)
-		P->flush_multipart = true;
-
-	if (msglen + P->multipart_ofs >= sizeof(P->multipart)){
-		*bad = true;
-		return false;
-	}
-
-	debug_print(DETAILED, C,
-		"multipart:buffer:pre=%s:msg=%s", P->multipart, ev->tgt.message);
-	memcpy(&P->multipart[P->multipart_ofs], ev->tgt.message, msglen);
-	P->multipart_ofs += msglen;
-	P->multipart[P->multipart_ofs] = '\0';
-	debug_print(DETAILED, C,
-		"multipart:buffer:post=%s", P->multipart);
-	*out = P->multipart;
-	*bad = false;
-
-	return end_multipart;
-}
-
-#ifdef __OpenBSD__
-void arcan_shmif_privsep(struct arcan_shmif_cont* C,
-	const char* pledge_str, struct shmif_privsep_node** nodes, int opts)
-{
-	size_t i = 0;
-	while (nodes[i]){
-		unveil(nodes[i]->path, nodes[i]->perm);
-		i++;
-	}
-
-	unveil(NULL, NULL);
-
-	if (pledge_str){
-		if (
-			strcmp(pledge_str, "shmif")  == 0 ||
-			strcmp(pledge_str, "decode") == 0 ||
-			strcmp(pledge_str, "encode") == 0 ||
-			strcmp(pledge_str, "a12-srv") == 0 ||
-			strcmp(pledge_str, "a12-cl") == 0
-		){
-			pledge_str = SHMIF_PLEDGE_PREFIX;
-		}
-		else if (strcmp(pledge_str, "minimal") == 0){
-			pledge_str = "stdio";
-		}
-		else if (strcmp(pledge_str, "minimalfd") == 0){
-			pledge_str = "stdio sendfd recvfd";
-		}
-
-		pledge(pledge_str, NULL);
-	}
-}
-
-#else
-void arcan_shmif_privsep(struct arcan_shmif_cont* C,
-	const char* pledge, struct shmif_privsep_node** nodes, int opts)
-{
-/* oh linux, why art thou.. */
-}
-#endif
