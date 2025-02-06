@@ -59,6 +59,7 @@ set (SHMIF_SOURCES
 	${ASD}/shmif/arcan_shmif_a11y.c
 	${ASD}/shmif/arcan_shmif_migrate.c
 	${ASD}/shmif/arcan_shmif_mousestate.c
+	${ASD}/shmif/arcan_shmif_filehelper.c
 	${ASD}/engine/arcan_trace.c
 	${ASD}/shmif/platform/exec.c
 	${ASD}/shmif/platform/fdpassing.c
