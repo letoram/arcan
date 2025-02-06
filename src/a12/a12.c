@@ -1616,7 +1616,7 @@ void a12_enqueue_blob(struct a12_state* S, const char* const buf,
 		return;
 
 	char* nbuf = DYNAMIC_MALLOC(buf_sz);
-	if (!buf){
+	if (!nbuf){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=ENOMEM");
 		DYNAMIC_FREE(*next);
 		*next = NULL;
