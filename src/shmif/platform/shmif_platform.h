@@ -58,6 +58,22 @@ unsigned long long arcan_timemillis();
  *
  */
 
+/*
+ * implementation defined for out-of-order execution and reordering protection
+ * when we+the compilers are full c11 thread+atomics, this can be dropped
+ */
+#ifndef FORCE_SYNCH
+	#define FORCE_SYNCH() {\
+		__asm volatile("": : :"memory");\
+		__sync_synchronize();\
+	}
+#endif
+
+static bool is_output_segment(enum ARCAN_SEGID segid)
+{
+	return (segid == SEGID_ENCODER || segid == SEGID_CLIPBOARD_PASTE);
+}
+
 struct arcan_evctx {
 /* time and mask- tracking, only used parent-side */
 	int32_t c_ticks;
