@@ -2519,7 +2519,6 @@ static void process_event(struct a12_state* S, void* tag,
 
 			if (upid == id){
 				progress_pending_in(S, channel, aev.ext.streamstat.completion);
-				forward = false;
 			}
 		}
 	}
@@ -2533,7 +2532,6 @@ static void process_event(struct a12_state* S, void* tag,
 
 			if (upid == id){
 				progress_pending_in(S, channel, -1);
-				forward = false;
 			}
 		}
 	}

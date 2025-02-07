@@ -711,7 +711,11 @@ ok:
 			.tgt.ioevs[3].iv = mid
 		};
 		snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%"PRIu16, mid);
-		shmifsrv_enqueue_event(C->C, &ev, resfd);
+
+		if (!shmifsrv_enqueue_event(C->C, &ev, resfd)){
+			A12INT_DIRTRACE("bchunk_req:fail=send_to_worker:code=%d", errno);
+		}
+
 		if (closefd)
 			close(resfd);
 	}

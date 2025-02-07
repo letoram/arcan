@@ -305,10 +305,10 @@ bool shmifsrv_enqueue_event(
 		return false;
 
 	if (fd != -1){
-		if (shmif_platform_pushfd(cl->con->dpipe, fd)){
+		if (shmif_platform_pushfd(fd, cl->con->dpipe)){
 			return platform_fsrv_pushevent(cl->con, ev) == ARCAN_OK;
 		}
-		return ARCAN_ERRC_BAD_ARGUMENT;
+		return false;
 	}
 	else
 		return platform_fsrv_pushevent(cl->con, ev) == ARCAN_OK;

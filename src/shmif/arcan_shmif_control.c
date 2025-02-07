@@ -1325,6 +1325,9 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
  * read that from the socket. */
 	if (getenv("ARCAN_SOCKIN_FD")){
 		dpipe = (int) strtol(getenv("ARCAN_SOCKIN_FD"), NULL, 10);
+		setsockopt(dpipe, SOL_SOCKET, SO_RCVTIMEO,
+			&(struct timeval){.tv_sec = 1}, sizeof(struct timeval));
+
 		if (getenv("ARCAN_SHMKEY")){
 			keyfile = strdup(getenv("ARCAN_SHMKEY"));
 		}
