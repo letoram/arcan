@@ -70,8 +70,6 @@ static void dumpargs(int argc, char** argv)
 		getenv("ARCAN_SOCKIN_FD") ? getenv("ARCAN_SOCKIN_FD") : "");
 	printf("environment (ARCAN_CONNPATH) : %s\n",
 		getenv("ARCAN_CONNPATH") ? getenv("ARCAN_CONNPATH") : "");
-	printf("environment (ARCAN_CONNKEY) : %s\n",
-		getenv("ARCAN_CONKEY") ? getenv("ARCAN_CONNKEY") : "");
 }
 
 #if defined(_DEBUG) && !defined(__APPLE__) && !defined(__BSD)

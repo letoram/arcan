@@ -446,60 +446,18 @@ map_fail:
 	}
 }
 
-static int try_connpath(const char* key, char* dbuf, size_t dbuf_sz, int attempt)
-{
-	if (!key || key[0] == '\0')
-		return -1;
-
-/* 1. If the [key] is set to an absolute path, that will be respected. */
-	size_t len = strlen(key);
-	if (key[0] == '/')
-		return snprintf(dbuf, dbuf_sz, "%s", key);
-
-/* 2. Otherwise we check for an XDG_RUNTIME_DIR */
-	if (attempt == 0 && getenv("XDG_RUNTIME_DIR"))
-		return snprintf(dbuf, dbuf_sz, "%s/%s", getenv("XDG_RUNTIME_DIR"), key);
-
-/* 3. Last (before giving up), HOME + prefix */
-	if (getenv("HOME") && attempt <= 1)
-		return snprintf(dbuf, dbuf_sz, "%s/.%s", getenv("HOME"), key);
-
-/* no env no nothing? bad environment */
-	return -1;
-}
-
 /*
  * The rules for socket sharing are shared between all
  */
  int arcan_shmif_resolve_connpath(
 	const char* key, char* dbuf, size_t dbuf_sz)
 {
-	return try_connpath(key, dbuf, dbuf_sz, 0);
+	return shmif_platform_connpath(key, dbuf, dbuf_sz, 0);
 }
 
 static void shmif_exit(int c)
 {
 	debug_print(FATAL, NULL, "guard thread empty");
-}
-
-static bool get_shmkey_from_socket(int sock, char* wbuf, size_t sz)
-{
-/* do this the slow way rather than juggle block/nonblock states */
-	size_t ofs = 0;
-	do {
-		ssize_t nr = read(sock, wbuf + ofs, 1);
-		if (-1 == nr && errno != EAGAIN){
-			debug_print(INFO, NULL, "shmkey_acquire:fail=%s", strerror(errno));
-			return false;
-		}
-		else
-			ofs += nr;
-	}
-	while(wbuf[ofs-1] != '\n' && ofs < sz);
-	debug_print(INFO, NULL, "shmkey_acquire=%s:len=%zu\n", wbuf, ofs);
-	wbuf[ofs-1] = '\0';
-
-	return true;
 }
 
 char* arcan_shmif_connect(
@@ -521,7 +479,7 @@ char* arcan_shmif_connect(
 	int sock = -1;
 
 retry:
-	len = try_connpath(connpath, (char*)&dst.sun_path, lim, index++);
+	len = shmif_platform_connpath(connpath, (char*)&dst.sun_path, lim, index++);
 
 	if (len < 0){
 		debug_print(FATAL, NULL, "couldn't resolve connection path");
@@ -572,7 +530,7 @@ retry:
 	}
 
 /* 3. wait for key response (or broken socket) */
-	if (!get_shmkey_from_socket(sock, wbuf, sizeof(wbuf)-1)){
+	if (!shmif_platform_prefix_from_socket(sock, wbuf, sizeof(wbuf)-1)){
 		debug_print(FATAL, NULL, "invalid response on negotiation: %s", strerror(errno));
 		close(sock);
 		goto end;
@@ -687,7 +645,7 @@ static struct arcan_shmif_cont shmif_acquire_int(
 		if (strlen(gs->pseg.key) == 0){
 			debug_print(INFO, parent,
 				"missing_event_key:try_socket=%d", gs->pseg.epipe);
-			get_shmkey_from_socket(
+			shmif_platform_prefix_from_socket(
 				gs->pseg.epipe, gs->pseg.key, COUNT_OF(gs->pseg.key)-1);
 		}
 
@@ -1289,6 +1247,47 @@ size_t arcan_shmif_initial(struct arcan_shmif_cont* cont,
 	return sizeof(struct arcan_shmif_initial);
 }
 
+static void apply_ext_options(
+	struct arcan_shmif_cont* C,
+	struct shmif_open_ext ext, size_t ext_sz
+	)
+{
+/* remember guid used so we resend on crash recovery or migrate */
+	struct shmif_hidden* priv = C->priv;
+	if (ext.guid[0] || ext.guid[1]){
+		priv->guid[0] = ext.guid[0];
+		priv->guid[1] = ext.guid[1];
+	}
+/* or use our own CSPRNG */
+	else {
+		arcan_random((uint8_t*)priv->guid, 16);
+	}
+
+	struct arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(REGISTER),
+		.ext.registr = {
+			.kind = ext.type,
+		}
+	};
+
+	if (ext.title)
+		snprintf(ev.ext.registr.title,
+			COUNT_OF(ev.ext.registr.title), "%s", ext.title);
+
+/* only register if the type is known */
+	if (ext.type != SEGID_UNKNOWN){
+		arcan_shmif_enqueue(C, &ev);
+
+		if (ext.ident){
+			ev.ext.kind = ARCAN_EVENT(IDENT);
+				snprintf((char*)ev.ext.message.data,
+				COUNT_OF(ev.ext.message.data), "%s", ext.ident);
+			arcan_shmif_enqueue(C, &ev);
+		}
+	}
+}
+
 bool arcan_shmif_defer_register(
 	struct arcan_shmif_cont* C, struct arcan_event ev)
 {
@@ -1299,139 +1298,33 @@ bool arcan_shmif_defer_register(
 struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 	struct arg_arr** outarg, struct shmif_open_ext ext, size_t ext_sz)
 {
-	struct arcan_shmif_cont ret = {0};
-	int dpipe;
-	uint64_t ts = arcan_timemillis();
-
+/* seed a timestamp for logging */
 	if (!g_epoch)
 		g_epoch = arcan_timemillis();
 
+	struct arcan_shmif_cont ret = {0};
+	struct shmif_connection con = shmif_platform_open_env_connection(flags);
+	if (con.error)
+		goto fail;
+
+	if (ext_sz > 0)
+		con.flags |= SHMIF_NOREGISTER;
+
+	ret = arcan_shmif_acquire(NULL, con.keyfile, ext.type, flags | con.flags);
+	if (!ret.priv){
+		close(con.socket);
+		return ret;
+	}
+
+	if (ext_sz > 0)
+		apply_ext_options(&ret, ext, ext_sz);
+
+/* unpack the args once for the caller, and one to use for internal lookup */
 	if (outarg)
-		*outarg = NULL;
+		*outarg = arg_unpack(con.args ? con.args : "");
+	ret.priv->args = arg_unpack(con.args ? con.args : "");
 
-	char* resource = getenv("ARCAN_ARG");
-	char* keyfile = NULL;
-	char* conn_src = getenv("ARCAN_CONNPATH");
-	char* conn_fl = getenv("ARCAN_CONNFL");
-	if (conn_fl)
-		flags = (int) strtol(conn_fl, NULL, 10) |
-			(flags & (SHMIF_ACQUIRE_FATALFAIL | SHMIF_NOACTIVATE));
-
-	bool networked = false;
-
-/* Inheritance based, still somewhat rugged until it is tolerable with one path
- * for osx and one for all the less broken OSes where we can actually inherit
- * both semaphores and shmpage without problem. If no key is provided we still
- * read that from the socket. */
-	if (getenv("ARCAN_SOCKIN_FD")){
-		dpipe = (int) strtol(getenv("ARCAN_SOCKIN_FD"), NULL, 10);
-		setsockopt(dpipe, SOL_SOCKET, SO_RCVTIMEO,
-			&(struct timeval){.tv_sec = 1}, sizeof(struct timeval));
-
-		if (getenv("ARCAN_SHMKEY")){
-			keyfile = strdup(getenv("ARCAN_SHMKEY"));
-		}
-		else {
-			char wbuf[PP_SHMPAGE_SHMKEYLIM+1];
-			if (get_shmkey_from_socket(dpipe, wbuf, PP_SHMPAGE_SHMKEYLIM)){
-				keyfile = strdup(wbuf);
-			}
-		}
-		unsetenv("ARCAN_SOCKIN_FD");
-		unsetenv("ARCAN_HANDOVER_EXEC");
-		unsetenv("ARCAN_SHMKEY");
-	}
-/* connection point based setup, check if we want local or remote connection
- * setup - for the remote part we still need some other mechanism in the url
- * to identify credential store though */
-	else if (conn_src){
-		if (-1 != shmif_platform_a12addr(conn_src).len){
-			keyfile = shmif_platform_a12spawn(NULL, conn_src, &dpipe);
-			networked = true;
-		}
-		else {
-			int step = 0;
-			do {
-				keyfile = arcan_shmif_connect(conn_src, getenv("ARCAN_CONNKEY"), &dpipe);
-			} while (keyfile == NULL &&
-				(flags & SHMIF_CONNECT_LOOP) > 0 && (sleep(1 << (step>4?4:step++)), 1));
-		}
-	}
-	else {
-		debug_print(INFO, &ret, "no connection: check ARCAN_CONNPATH");
-		goto fail;
-	}
-
-	if (!keyfile || -1 == dpipe){
-		debug_print(INFO, &ret, "no valid connection key on open");
-		goto fail;
-	}
-
-	fcntl(dpipe, F_SETFD, FD_CLOEXEC);
-	int eflags = fcntl(dpipe, F_GETFL);
-	if (eflags & O_NONBLOCK)
-		fcntl(dpipe, F_SETFL, eflags & (~O_NONBLOCK));
-
-/* to differentiate between the calls that come from old shmif_open and
- * the newer extended version, we add the little quirk that ext_sz is 0 */
-	if (ext_sz > 0){
-/* we want manual control over the REGISTER message */
-		ret = arcan_shmif_acquire(NULL, keyfile, ext.type, flags | SHMIF_NOREGISTER);
-		if (!ret.priv){
-			close(dpipe);
-			return ret;
-		}
-
-/* remember guid used so we resend on crash recovery or migrate */
-		struct shmif_hidden* priv = ret.priv;
-		if (ext.guid[0] || ext.guid[1]){
-			priv->guid[0] = ext.guid[0];
-			priv->guid[1] = ext.guid[1];
-		}
-/* or use our own CSPRNG */
-		else {
-			arcan_random((uint8_t*)priv->guid, 16);
-		}
-
-		struct arcan_event ev = {
-			.category = EVENT_EXTERNAL,
-			.ext.kind = ARCAN_EVENT(REGISTER),
-			.ext.registr = {
-				.kind = ext.type,
-			}
-		};
-
-		if (ext.title)
-			snprintf(ev.ext.registr.title,
-				COUNT_OF(ev.ext.registr.title), "%s", ext.title);
-
-/* only register if the type is known */
-		if (ext.type != SEGID_UNKNOWN){
-			arcan_shmif_enqueue(&ret, &ev);
-
-			if (ext.ident){
-				ev.ext.kind = ARCAN_EVENT(IDENT);
-					snprintf((char*)ev.ext.message.data,
-					COUNT_OF(ev.ext.message.data), "%s", ext.ident);
-				arcan_shmif_enqueue(&ret, &ev);
-			}
-		}
-	}
-	else{
-		ret = arcan_shmif_acquire(NULL, keyfile, ext.type, flags);
-		if (!ret.priv){
-			close(dpipe);
-			return ret;
-		}
-	}
-
-	if (resource){
-		ret.priv->args = arg_unpack(resource);
-		if (outarg)
-			*outarg = ret.priv->args;
-	}
-
-	ret.epipe = dpipe;
+	ret.epipe = con.socket;
 	if (-1 == ret.epipe){
 		debug_print(FATAL, &ret, "couldn't get event pipe from parent");
 	}
@@ -1439,13 +1332,11 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 /* remember the last connection point and use-that on a failure on the current
  * connection point and on a failed force-migrate UNLESS we have a custom
  * alt-specifier OR come from a a12:// like setup */
-	if (getenv("ARCAN_ALTCONN"))
-		ret.priv->alt_conn = strdup(getenv("ARCAN_ALTCONN"));
-	else if (conn_src && !networked){
-		ret.priv->alt_conn = strdup(conn_src);
+	if (con.alternate_cp && !con.networked){
+		ret.priv->alt_conn = strdup(con.alternate_cp);
 	}
 
-	free(keyfile);
+	free(con.keyfile);
 	if (ext.type>0 && !is_output_segment(ext.type) && !(flags & SHMIF_NOACTIVATE))
 		if (!shmifint_preroll_loop(&ret, !(flags & SHMIF_NOACTIVATE_RESIZE))){
 			goto fail;
@@ -1456,7 +1347,8 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 
 fail:
 	if (flags & SHMIF_ACQUIRE_FATALFAIL){
-		log_print("[shmif::open_ext], error connecting");
+		log_print(
+			"[shmif::open_ext], error connecting (%s)", con.error ? con.error : "");
 		exit(EXIT_FAILURE);
 	}
 	return ret;

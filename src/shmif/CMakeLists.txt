@@ -73,6 +73,7 @@ set (SHMIF_SOURCES
 	${ASD}/shmif/platform/watchdog.c
 	${ASD}/shmif/platform/migrate.c
 	${ASD}/shmif/platform/net.c
+	${ASD}/shmif/platform/connection.c
 )
 
 if (LWA_PLATFORM_STR AND IS_DIRECTORY "${ASD}/shmif/${LWA_PLATFORM_STR}" AND

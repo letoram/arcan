@@ -262,6 +262,31 @@ char* shmif_platform_a12spawn(
 int shmif_platform_dupfd_to(int fd, int dstnum, int fflags, int fdopt);
 
 /*
+ * Open a connection to the shmif server based on system specific configuration
+ * or inherited environment.
+ */
+struct shmif_connection {
+	int socket;
+	char* keyfile;
+	bool networked;
+	int flags;
+	char* args;
+	char* alternate_cp;
+	const char* error;
+};
+
+struct shmif_connection shmif_platform_open_env_connection(int flags);
+
+/* read and verify a string from the socket to use to open shared primitives,
+ * this is the entrypoint to modify to setup page and synch primitives from a
+ * socket alone. */
+bool shmif_platform_prefix_from_socket(int sock, char* wbuf, size_t sz);
+
+/* go from name into fully qualified path in [dbuf] */
+int shmif_platform_connpath(
+	const char* name, char* dbuf, size_t dbuf_sz, int attempt);
+
+/*
  * Kept around here until we can break those out as platform primitives as well
  */
 unsigned long long arcan_timemillis(void);
