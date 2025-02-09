@@ -19,6 +19,7 @@
 
 #include "a12.h"
 #include "a12_int.h"
+#include "a12_platform.h"
 #include "net/a12_helper.h"
 
 #include "a12_decode.h"
@@ -27,8 +28,6 @@
 #include "external/chacha.c"
 #include "external/x25519.h"
 
-#include <sys/mman.h>
-#include <sys/types.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -1677,7 +1676,7 @@ static bool a12_enqueue_bstream_in(
 	next->type = type;
 	next->identifier = ev->tgt.ioevs[3].uiv;
 	next->streamid = S->out_stream++;
-	next->fd = arcan_shmif_dupfd(fd, -1, false);
+	next->fd = a12int_dupfd(fd);
 	next->chid = S->out_channel;
 
 /* we need to mutate the event so that it becomes a BCHUNKSTATE request */
@@ -1753,7 +1752,7 @@ static void a12_enqueue_bstream_tagged(
  * preserve forward integrity
  **/
 /* note, next->fd will be non-blocking */
-	next->fd = arcan_shmif_dupfd(fd, -1, false);
+	next->fd = a12int_dupfd(fd);
 	if (-1 == next->fd){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EBADFD");
 		goto fail;
@@ -2316,7 +2315,6 @@ void a12_drop_tunnel(struct a12_state* S, uint8_t id)
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 	a12int_trace(A12_TRACE_DIRECTORY, "close_tunnel=%"PRIu8, id);
 
-	S->channels[id].unpack_state.bframe.tmp_fd;
 	S->channels[id].active = false;
 
 	int fd = S->channels[id].unpack_state.bframe.tmp_fd;
