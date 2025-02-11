@@ -1,19 +1,17 @@
 #include "../a12_platform.h"
-#include <arcan_shmif.h>
 #include <io.h>
-//#include <fcntl.h>
 #include <errno.h>
 #include <windows.h>
 
-void* mmap(void* addr, size_t len, int prot, int flags, int fildes, off_t off)
+void* a12int_mmap(void* addr, size_t len, int prot, int flags, int fildes, off_t off)
 {
 	DWORD win_flags = 0;
-	if (prot != PROT_NONE) {
-		win_flags |= ((prot & PROT_READ) > 0) * FILE_MAP_READ;
-		win_flags |= ((prot & PROT_WRITE) > 0) * FILE_MAP_WRITE;
-		win_flags |= ((prot & PROT_EXEC) > 0) * FILE_MAP_EXECUTE;
+	if (prot != A12INT_PROT_NONE) {
+		win_flags |= ((prot & A12INT_PROT_READ) > 0) * FILE_MAP_READ;
+		win_flags |= ((prot & A12INT_PROT_WRITE) > 0) * FILE_MAP_WRITE;
+		win_flags |= ((prot & A12INT_PROT_EXEC) > 0) * FILE_MAP_EXECUTE;
 	}
-	win_flags |= ((flags & MAP_PRIVATE) > 0) * FILE_MAP_COPY;
+	win_flags |= ((flags & A12INT_MAP_PRIVATE) > 0) * FILE_MAP_COPY;
 
 	HANDLE handle = (HANDLE)_get_osfhandle(fildes);
 	return MapViewOfFile(
@@ -25,7 +23,7 @@ void* mmap(void* addr, size_t len, int prot, int flags, int fildes, off_t off)
 	);
 }
 
-int munmap(void* addr, size_t len)
+int a12int_munmap(void* addr, size_t len)
 {
 	if (UnmapViewOfFile(addr)) return 0;
 	errno = EINVAL;
@@ -57,36 +55,4 @@ int a12int_dupfd(int fd)
 	rfd = _open_osfhandle((intptr_t)new_handle, 0);
 
 	return rfd;
-}
-
-long long int arcan_timemillis()
-{
-    return GetTickCount64();
-}
-
-long long int arcan_timemicros()
-{
-	return arcan_timemillis() * 1000;
-}
-
-void arcan_timesleep(unsigned long val)
-{
-	timeBeginPeriod(1);
-	Sleep(val);
-	timeEndPeriod(1);
-}
-
-bool arcan_shmif_resize_ext(struct arcan_shmif_cont* cont, unsigned width, unsigned height, struct shmif_resize_ext ext)
-{
-	return 0;
-}
-
-bool arcan_shmif_resize(struct arcan_shmif_cont* cont, unsigned width, unsigned height)
-{
-	return 0;
-}
-
-unsigned arcan_shmif_signal(struct arcan_shmif_cont* cont, int x)
-{
-	return 0;
 }

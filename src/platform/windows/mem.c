@@ -4,11 +4,7 @@
 
 #include "arcan_mem.h"
 
-#define arcan_fatal(...) do {\
-	fprintf(stderr, __VA_ARGS__);\
-	fprintf(stderr, "\n");\
-	exit(EXIT_FAILURE);\
-}while (0);
+void arcan_fatal(const char* msg, ...);
 
 #ifndef REALLOC_STEP
 #define REALLOC_STEP 16

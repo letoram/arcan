@@ -2,7 +2,10 @@ pkg_check_modules(FFMPEG QUIET libavcodec libavdevice libavfilter libavformat li
 
 set(A12_CLIENT_ONLY FALSE)
 
-set(LIBRARIES pthread)
+set(LIBRARIES
+	pthread
+	arcan_shmif
+)
 
 if (A12_CLIENT_ONLY)
 	amsg("(a12) ${CL_YEL}client only build enabled${CL_RST}")
@@ -67,12 +70,14 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 	list(APPEND A12_SOURCES
 		platform/windows.c
 		${PLATFORM_ROOT}/windows/mem.c
+		${PLATFORM_ROOT}/windows/time.c
 		${PLATFORM_ROOT}/windows/random.c
 	)
 else()
 	list(APPEND A12_SOURCES
 		platform/posix.c
 		${PLATFORM_ROOT}/posix/mem.c
+		${PLATFORM_ROOT}/posix/time.c
 		${PLATFORM_ROOT}/posix/random.c
 	)
 endif()

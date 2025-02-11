@@ -1805,7 +1805,7 @@ static void a12_enqueue_bstream_tagged(
 /* this has the normal sigbus problem, though we don't care about that much now
  * being in the same sort of privilege domain - we can also defer the entire
  * thing and simply thread- process it, which is probably the better solution */
-	void* map = mmap(NULL, fend, PROT_READ, MAP_FILE | MAP_PRIVATE, fd, 0);
+	void* map = a12int_mmap(NULL, fend, A12INT_PROT_READ, A12INT_MAP_PRIVATE, fd, 0);
 
 	if (!map){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EMMAP");
@@ -1819,7 +1819,7 @@ static void a12_enqueue_bstream_tagged(
 	blake3_hasher_init(&hash);
 	blake3_hasher_update(&hash, map, fend);
 	blake3_hasher_finalize(&hash, next->checksum, 16);
-	munmap(map, fend);
+	a12int_munmap(map, fend);
 	next->left = fend;
 	a12int_trace(A12_TRACE_BTRANSFER,
 		"kind=added:type=%d:stream=%"PRIu32":size=%zu",

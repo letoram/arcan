@@ -10,11 +10,7 @@
 
 #include <windows.h>
 
-#define arcan_fatal(...) do {\
-	fprintf(stderr, __VA_ARGS__);\
-	fprintf(stderr, "\n");\
-	exit(EXIT_FAILURE);\
-}while (0);
+void arcan_fatal(const char* msg, ...);
 
 static _Thread_local struct chacha_ctx streamcipher;
 

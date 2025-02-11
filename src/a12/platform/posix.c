@@ -1,13 +1,23 @@
 #include "../a12_platform.h"
 
+#include <stdlib.h>
 #include <errno.h>
+#include <assert.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <time.h>
+#include <math.h>
 
-// Imported as-is from <sys/mman.h>
-void* mmap(void* addr, size_t len, int prot, int flags, int fildes, off_t off);
-int munmap(void* addr, size_t len);
+void* a12int_mmap(void* addr, size_t len, int prot, int flags, int fildes, off_t off)
+{
+	return mmap(addr, len, prot, flags, fildes, off);
+}
+
+int a12int_munmap(void* addr, size_t len)
+{
+	return munmap(addr, len);
+}
 
 int a12int_dupfd(int fd)
 {
