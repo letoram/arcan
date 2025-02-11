@@ -13,13 +13,57 @@ function(amsg msg)
 	_message("" ${msg})
 endfunction()
 
+function(arcan_build_option_doc option)
+	get_property(option_type CACHE "${option}" PROPERTY TYPE)
+	get_property(option_strings CACHE "${option}" PROPERTY STRINGS)
+	get_property(option_helpstring CACHE "${option}" PROPERTY HELPSTRING)
+
+	if (NOT DEFINED option_type)
+		return()
+	endif()
+
+	if (option_type STREQUAL "BOOL")
+		set(option_value_set "[On|Off]")
+	elseif(option_type STREQUAL "STRING" AND option_strings)
+		list(JOIN option_strings "|" option_value_set)
+		set(option_value_set "[${option_value_set}]")
+	else()
+		set(option_value_set "*")
+	endif()
+
+	if (option_helpstring)
+		string(PREPEND option_helpstring " - ")
+	endif()
+
+	amsg("${CL_YEL}\t-D${option}=${CL_GRN}${option_value_set}${CL_RST}${option_helpstring}")
+endfunction()
+
+function(stropt option helpstr default)
+	set(${option} "${default}" CACHE STRING "${helpstr}")
+	list(PREPEND ARGN "${default}")
+	set_property(CACHE ${option} PROPERTY STRINGS "${ARGN}")
+endfunction()
+
 cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 #cmake_policy(SET CMP0076 OLD)
 
-if (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client")
-	PROJECT(arcan-libs)
+stropt(BUILD_PRESET "" "everything" "client")
+
+if (BUILD_PRESET STREQUAL "everything" AND CLIENT_LIBRARY_BUILD)
+	message(FATAL_ERROR "Conflicting options specified: BUILD_PRESET=everything and CLIENT_LIBRARY_BUILD")
+elseif(BUILD_PRESET STREQUAL "client" OR CLIENT_LIBRARY_BUILD)
+	set(BUILD_PRESET_CLIENT ON)
 else()
+	# Default to BUILD_PRESET=everything
+	set(BUILD_PRESET_EVERYTHING ON)
+endif()
+
+if (BUILD_PRESET_CLIENT)
+	PROJECT(arcan-libs)
+elseif (BUILD_PRESET_EVERYTHING)
 	PROJECT(arcan)
+else()
+	message(FATAL_ERROR "Invalid CMakeLists: expected either BUILD_PRESET_CLIENT or BUILD_PRESET_EVERYTHING to be defined")
 endif()
 
 SET(CMAKE_SKIP_BUILD_RPATH  FALSE)
@@ -146,108 +190,139 @@ set(ENGINE_BUILDTAG "")
 set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_READ WORLD_READ)
 set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 
-if (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client")
+# for the statically- linked external dependencies, we need to hint where
+# we need the gmake rather than make system
+if (${CMAKE_SYSTEM_NAME} MATCHES "BSD|DragonFly")
+	set(BSD_BUILD TRUE)
+	set(EXTMAKE_CMD gmake)
+endif()
+
+include(CMakeDependentOption)
+
+option(BUILD_A12 "Build Arcan A12 library" ON)
+option(BUILD_SHMIF "Build Arcan Shmif library" ON)
+cmake_dependent_option(BUILD_SHMIF_TUI "Build Arcan Shmif TUI library" ON "BUILD_SHMIF" OFF)
+cmake_dependent_option(BUILD_FRAMESERVER "Build Arcan frameserver clients" ON "BUILD_SHMIF" OFF)
+cmake_dependent_option(BUILD_ARCAN_NET "Build Arcan net server and client" ON "BUILD_A12;BUILD_SHMIF" OFF)
+cmake_dependent_option(BUILD_ARCAN_ENGINE "Build Arcan engine" ON "BUILD_PRESET_EVERYTHING;NOT BUILD_PRESET_CLIENT;BUILD_SHMIF" OFF)
+cmake_dependent_option(BUILD_WAYLAND "Build Arcan Wayland bridge" ON "BUILD_PRESET_EVERYTHING;NOT BUILD_PRESET_CLIENT;BUILD_SHMIF" OFF)
+
+# we can remove some of this cruft when 'buntu LTS gets ~3.0ish
+option(DISABLE_JIT "Don't Link with luajit51 (even if found)" OFF)
+option(BUILTIN_LUA "Static build lua51 (with disable_jit)" OFF)
+option(STATIC_SQLite3 "In-source SQLite3" OFF)
+option(STATIC_OPENAL "Use static OpenAL (external/git folder)" OFF)
+option(STATIC_LIBUVC "Use static libuvc (external/git folder)" ON)
+option(ENABLE_LTO "Build with Link-Time Optimizations" OFF)
+option(ENABLE_LWA "Build LWA Arcan client (nesting support)" ON)
+option(ENABLE_SIMD "Enable SIMD optimized instructions" ON)
+option(ENABLE_SIMD_ALIGNED "SIMD support assumes 16-byte alignment" OFF)
+option(ENABLE_TRACY "Build with Tracy client integration (external/git folder)" OFF)
+option(DISABLE_WAYLAND "Never build wayland support" OFF)
+option(HYBRID_SDL "Enable arcan_sdl output build" OFF)
+option(HYBRID_HEADLESS "Enable arcan_headless output build" OFF)
+option(SHMIF_DISABLE_DEBUGIF "Remove server- controlled debug layer" OFF)
+option(TUI_RASTER_NO_TTF "Disable shmif TUI TTF raster support" OFF)
+option(ENABLE_WALL_SPAM "More build warnings" OFF)
+
+option(FSRV_DECODE_UVC "Add support for libuvc- USB video cameras" OFF)
+option(FSRV_TERMINAL_NOEXEC "Lock down 'exec' path from scripts" OFF)
+
+stropt(LUA_TRACE_METHOD "" "stderr" "coverage")
+stropt(AUDIO_PLATFORM "" "openal" "stub")
+stropt(AGP_PLATFORM "" "gl21" "gles2" "gles3" "stub")
+
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	stropt(VIDEO_PLATFORM "" "sdl2")
+
+	set(HYBRID_SDL OFF CACHE "Hybrid SDL build is not supported for Darwin target" FORCE)
+	set(HYBRID_HEADLESS OFF CACHE "Hybrid headless build is not supported for Darwin target" FORCE)
+else()
+	stropt(VIDEO_PLATFORM "" "egl-dri" "sdl2" "egl-gles")
+endif()
+
+
+amsg("")
+amsg("${CL_WHT}Selective Build Options:")
+arcan_build_option_doc(BUILD_PRESET)
+arcan_build_option_doc(BUILD_A12)
+arcan_build_option_doc(BUILD_SHMIF)
+arcan_build_option_doc(BUILD_SHMIF_TUI)
+arcan_build_option_doc(BUILD_ARCAN_NET)
+arcan_build_option_doc(BUILD_ARCAN_ENGINE)
+arcan_build_option_doc(BUILD_FRAMESERVER)
+arcan_build_option_doc(BUILD_WAYLAND)
+amsg("")
+
+if (BUILD_PRESET_CLIENT)
 	amsg("Client- Library only build, for docker containers and networked clients")
 	amsg("")
-	amsg("${CL_WHT}Optional library flags:${CL_RST}")
-	amsg("${CL_YEL}\t-DSHMIF_DISABLE_DEBUGIF=${CL_GRN}[Off|On]${CL_RST} - Remove server- controlled debug layer")
-	amsg("")
-	amsg("${CL_WHT}Optional arcan-net flags:${CL_RST}")
-	amsg("${CL_YEL}\t-DSTATIC_SQLite3=${CL_GRN}[Off|On]${CL_RST} - In-source SQLite3")
-	amsg("")
 
-	option(STATIC_SQLite3 "Use SQLite3 Amalgamation" OFF)
+	if (BUILD_SHMIF)
+		amsg("${CL_WHT}Arcan Shmif Flags:${CL_RST}")
+		arcan_build_option_doc(SHMIF_DISABLE_DEBUGIF)
+		if (BUILD_SHMIF_TUI)
+			arcan_build_option_doc(TUI_RASTER_NO_TTF)
+		endif()
+		amsg("")
+	endif()
 
-	if (${CMAKE_SYSTEM_NAME} MATCHES "BSD|DragonFly")
-		set(BSD_BUILD TRUE)
-		set(EXTMAKE_CMD gmake)
+	if (BUILD_ARCAN_NET)
+		amsg("${CL_WHT}Arcan-net Flags:${CL_RST}")
+		arcan_build_option_doc(STATIC_SQLite3)
+		arcan_build_option_doc(DISABLE_JIT)
+		arcan_build_option_doc(BUILTIN_LUA)
+		amsg("")
 	endif()
 else()
 	if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-		set(VPLATFORM_STR "sdl2")
-		if (NOT VIDEO_PLATFORM)
-			set(VIDEO_PLATFORM "sdl2")
-		endif()
+		stropt(VIDEO_PLATFORM "" "sdl2")
 		set(CMAKE_INSTALL_LIBDIR /usr/local/share/lib)
+
+		set(HYBRID_SDL OFF CACHE "Hybrid SDL build is not supported for Darwin target" FORCE)
+		set(HYBRID_HEADLESS OFF CACHE "Hybrid headless build is not supported for Darwin target" FORCE)
 	else()
-		set(VPLATFORM_STR "egl-dri, sdl2, egl-gles")
-		if (NOT VIDEO_PLATFORM)
-			set(VIDEO_PLATFORM "egl-dri")
-		endif()
+		stropt(VIDEO_PLATFORM "" "egl-dri" "sdl2" "egl-gles")
 		include(GNUInstallDirs)
 	endif()
-	set(APLATFORM_STR "openal, stub")
-	set(AGPPLATFORM_STR "gl21, gles2, gles3, stub")
 
-	# we can remove some of this cruft when 'buntu LTS gets ~3.0ish
-	option(DISABLE_JIT "Don't use the luajit-5.1 VM (if found)" OFF)
-	option(STATIC_SQLite3 "Use SQLite3 Amalgamation" OFF)
-	option(STATIC_OPENAL "Use static OpenAL (external/git folder)" OFF)
-	option(STATIC_LIBUVC "Use static libuvc (external/git folder)" ON)
-	option(ENABLE_LTO "Build with Link-Time Optimization enabled" OFF)
-	option(ENABLE_LWA "Build LWA client (arcan-in-arcan)" ON)
-	option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
-	option(ENABLE_SIMD_ALIGNED "Assert that SIMD data sources are 16-byte aligned" OFF)
-	option(ENABLE_TRACY "Build with Tracy client integration (external/git folder)" OFF)
-	option(DISABLE_WAYLAND "Never build wayland support" OFF)
-	option(HYBRID_SDL "Produce an arcan_sdl main binary as well" OFF)
-	option(HYBRID_HEADLESS "Produce a headless binary as well" OFF)
-
-	amsg("")
-	amsg("${CL_WHT}Build Presets:")
-	amsg("${CL_YEL}\t-DBUILD_PRESET=${CL_GRN}everything client${CL_RST}")
-	amsg("")
 	amsg("${CL_WHT}Audio/Video/Input Support:")
-	amsg("${CL_YEL}\t-DAUDIO_PLATFORM=${CL_GRN}${APLATFORM_STR}${CL_RST}")
-	amsg("${CL_YEL}\t-DVIDEO_PLATFORM=${CL_GRN}${VPLATFORM_STR}${CL_RST}")
-	amsg("${CL_YEL}\t-DAGP_PLATFORM=${CL_GRN}${AGPPLATFORM_STR}${CL_RST}")
+	arcan_build_option_doc(AUDIO_PLATFORM)
+	arcan_build_option_doc(VIDEO_PLATFORM)
+	arcan_build_option_doc(AGP_PLATFORM)
 	amsg("")
 	amsg("${CL_WHT}VIDEO_PLATFORM=egl-dri options:${CL_RST}")
-	amsg("${CL_YEL}\t-DHYBRID_SDL=${CL_GRN}[Off|On]${CL_RST} - Enable arcan_sdl output build")
-	amsg("${CL_YEL}\t-DHYBRID_HEADLESS=${CL_GRN}[Off|On]${CL_RST} - Enable arcan_headless output build")
+	arcan_build_option_doc(HYBRID_SDL)
+	arcan_build_option_doc(HYBRID_HEADLESS)
 	amsg("")
 	amsg("${CL_WHT}Cmake Options:${CL_RST}")
 	amsg("${CL_YEL}\t-DCMAKE_BUILD_TYPE=${CL_GRN}[Debug|Release|Profile|DebugTrace]")
-	amsg("${CL_YEL}\t-DENABLE_WALL_SPAM=${CL_GRN}[Off|On]${CL_RST} - More build warnings")
-	amsg("${CL_YEL}\t-DENABLE_SIMD=${CL_GRN}[On|Off]${CL_RST} - Enable SIMD optimized instructions")
-	# amsg("    -DENABLE_PBO=[Appl-path] : Profile-based Optimization prepass with appl")
-	# amsg("                               as optimization profile.")
-	amsg("${CL_YEL}\t\t-DSIMD_ALIGNED=${CL_GRN}[Off|On]${CL_RST} - SIMD support assumes 16-byte alignment")
-	amsg("${CL_YEL}\t-DENABLE_LTO=${CL_GRN}[Off|On]${CL_RST} - Build with Link-Time Optimizations")
-	amsg("${CL_YEL}\t-DENABLE_TRACY=${CL_GRN}[Off|On]${CL_RST} - Build with Tracy integration")
+	arcan_build_option_doc(ENABLE_WALL_SPAM)
+	arcan_build_option_doc(ENABLE_SIMD)
+	arcan_build_option_doc(ENABLE_SIMD_ALIGNED)
+	arcan_build_option_doc(ENABLE_LTO)
+	arcan_build_option_doc(ENABLE_TRACY)
 	amsg("")
 	amsg("${CL_WHT}Dependency Management:${CL_RST}")
-	amsg("${CL_YEL}\t-DSTATIC_SQLite3=${CL_GRN}[Off|On]${CL_RST} - In-source SQLite3")
-	amsg("${CL_YEL}\t-DSTATIC_OPENAL=${CL_GRN}[Off|On]${CL_RST} - In-source OpenAL, see external/README")
-	amsg("${CL_YEL}\t-DSTATIC_LIBUVC=${CL_GRN}[Off|On]${CL_RST} - In-source libuvc")
+	arcan_build_option_doc(STATIC_SQLite3)
+	arcan_build_option_doc(STATIC_OPENAL)
+	arcan_build_option_doc(STATIC_LIBUVC)
 	amsg("")
 	amsg("${CL_WHT}Optional engine flags:${CL_RST}")
-	amsg("${CL_YEL}\t-DENABLE_LWA=${CL_GRN}[Off|On]${CL_RST} - Build LWA Arcan client (nesting support)")
-	amsg("${CL_YEL}\t-DDISABLE_JIT=${CL_GRN}[Off|On]${CL_RST} - Don't Link with luajit51 (even if found)")
-	amsg("${CL_YEL}\t-DBUILTIN_LUA=${CL_GRN}[Off|On]${CL_RST} - Static build lua51 (with disable_jit)")
-	amsg("${CL_YEL}\t-DSHMIF_DISABLE_DEBUGIF=${CL_GRN}[Off|On]${CL_RST} - Remove server- controlled debug layer")
+	arcan_build_option_doc(ENABLE_LWA)
+	arcan_build_option_doc(DISABLE_JIT)
+	arcan_build_option_doc(BUILTIN_LUA)
 	amsg("")
 	amsg("${CL_WHT}Frameserver flags:${CL_RST}")
 	amsg("${CL_WHT}Decode:${CL_RST}")
-	amsg("${CL_YEL}\t-DFSRV_DECODE_UVC=${CL_GRN}[Off|On]${CL_RST} - Add support for libuvc- USB video cameras")
+	arcan_build_option_doc(FSRV_DECODE_UVC)
 	amsg("${CL_WHT}Terminal:${CL_RST}")
-	amsg("${CL_YEL}\t-DFSRV_TERMINAL_NOEXEC=${CL_GRN}[Off|On]${CL_RST} - Lock down 'exec' path from scripts")
+	arcan_build_option_doc(FSRV_TERMINAL_NOEXEC)
 	amsg("")
 	amsg("${CL_WHT}Install / Autodetection Overrides:${CL_RST}")
 	amsg("${CL_YEL}\t-D(DISABLE_FSRV_ (encode, decode, net, remoting, terminal, game)${CL_GRN}=ON${CL_RST}")
 	amsg("${CL_YEL}\t-D(APPL_DEST, RES_DEST, APIMAN_DEST, MAN_DEST, SCRIPTS_DEST)=${CL_GRN}/some/path${CL_RST}")
 	amsg("")
-
-	if (NOT DEFINED AUDIO_PLATFORM)
-	# no other audio platforms supported currently
-		set(AUDIO_PLATFORM "openal")
-	endif()
-endif()
-
-if (BUILD_PRESET STREQUAL "everything" AND NOT (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client" OR ${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
-	set(VIDEO_PLATFORM "egl-dri")
-	set(HYBRID_SDL ON)
-	set(HYBRID_HEADLESS ON)
 endif()
 
 add_compile_options(-Wall)
@@ -279,40 +354,41 @@ if (CMAKE_BUILD_TYPE STREQUAL "Profile")
 	amsg("${CL_WHT}------------------*Profile Build*------------------${CL_RST}")
 	add_definitions(-pg)
 	set(CMAKE_EXE_LINKER_FLAGS "-pg")
-endif(CMAKE_BUILD_TYPE STREQUAL "Profile")
+endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	amsg("${CL_WHT}------------------*Debug Build*--------------------${CL_RST}\n")
 	amsg("${CL_WHT}Debug Specific Setting:${CL_YEL}")
-	amsg("\tLUA_TRACE_METHOD=${CL_RST}[${CL_GRN}off${CL_RST}|${CL_GRN}stderr${CL_RST}|${CL_GRN}coverage${CL_RST}]")
+	arcan_build_option_doc(LUA_TRACE_METHOD)
+
 	if (LUA_TRACE_METHOD STREQUAL "stderr")
 		set(LUA_TAG_MODE " trace-stderr")
 		list(APPEND ARCAN_DEFINITIONS LUA_TRACE_STDERR)
 	endif()
 
-	if (LUA_TRACE_METHOD STREQUAL "coverage" AND NOT (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client"))
+	if (BUILD_PRESET_EVERYTHING AND LUA_TRACE_METHOD STREQUAL "coverage")
 		set(LUA_TAG_MODE " trace-coverage")
 		list(APPEND ARCAN_DEFINITIONS LUA_TRACE_COVERAGE)
 	endif()
 
 	add_definitions(-g -g3 -ggdb -D_DEBUG -O0 -fno-omit-frame-pointer)
 
-endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
+endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
 	amsg("${CL_WHT}-------------- *Debug Tracing Build* --------------${CL_WHT}")
 	add_definitions(-g -D_DEBUG -DTRACE_ENABLE)
-endif (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
+endif()
 
 if (ENABLE_LTO)
 	add_compile_options(-flto)
 endif()
 
-if (NOT VIDEO_PLATFORM AND NOT (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client"))
+if (BUILD_ARCAN_ENGINE AND NOT VIDEO_PLATFORM)
 	message(FATAL_ERROR "${CL_RED}Video Platform missing, see -DVIDEO_PLATFORM= above${CL_RST}")
 endif()
 
-if (NOT (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client"))
+if (BUILD_PRESET_EVERYTHING)
 	amsg("${CL_WHT}\n------------- Configuration Results ---------------${CL_RST}\n")
 
 	amsg("\n${CL_WHT}-- Stage 1: dependencies and configuration${CL_RST}")
@@ -339,31 +415,16 @@ set (CMAKE_EXTERNAL_DEFS
 	-DLIBTYPE=STATIC
 )
 
-if (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client")
+if (BUILD_ARCAN_ENGINE OR (BUILD_SHMIF_TUI AND NOT TUI_RASTER_NO_TTF))
 	find_package(Freetype REQUIRED QUIET)
 	set(FREETYPE_DEFAULT_LIBRARIES ${FREETYPE_LIBRARIES})
 	set(FREETYPE_DEFAULT_INCLUDE_DIRS ${FREETYPE_INCLUDE_DIRS})
 
-	if (STATIC_SQLite3)
-		amsg("${CL_YEL}Building SQLite3 from external/sqlite mirror${CL_RST}")
-		add_library(sqlite3 STATIC ${EXTERNAL_SRC_DIR}/sqlite/sqlite3.c)
-		set_target_properties(sqlite3 PROPERTIES COMPILE_FLAGS "-Os")
-		set(SQLite3_INCLUDE_DIR ${EXTERNAL_SRC_DIR}/sqlite)
-		set(SQLite3_LIBRARIES sqlite3)
-	else()
-		find_package(SQLite3 REQUIRED QUIET)
-	endif()
+	list(APPEND INCLUDE_DIRS ${FREETYPE_DEFAULT_INCLUDE_DIRS})
+	list(APPEND ARCAN_LIBRARIES ${FREETYPE_DEFAULT_LIBRARIES})
+endif()
 
-	set(INCLUDE_DIRS
-		${CMAKE_CURRENT_SOURCE_DIR}/engine
-		${CMAKE_CURRENT_SOURCE_DIR}/platform
-		${FREETYPE_DEFAULT_INCLUDE_DIRS}
-	)
-else()
-	find_package(Freetype REQUIRED QUIET)
-	set(FREETYPE_DEFAULT_LIBRARIES ${FREETYPE_LIBRARIES})
-	set(FREETYPE_DEFAULT_INCLUDE_DIRS ${FREETYPE_INCLUDE_DIRS})
-
+if (BUILD_ARCAN_ENGINE OR BUILD_ARCAN_NET)
 	#
 	# the amalgamation is already included in the external/ tree sqlite3 use is
 	# primarily settings management and very limited amount of queries, size is
@@ -379,17 +440,12 @@ else()
 		find_package(SQLite3 REQUIRED QUIET)
 	endif()
 
-	include(${PLATFORM_ROOT}/cmake/CMakeLists.AGP)
-	include(${PLATFORM_ROOT}/cmake/CMakeLists.Video)
-	include(${PLATFORM_ROOT}/cmake/CMakeLists.Audio)
-	set(EXTMAKE_CMD make)
+	list(APPEND ARCAN_LIBRARIES ${SQLite3_LIBRARIES})
+	list(APPEND INCLUDE_DIRS ${SQLite3_INCLUDE_DIR})
+endif()
 
-	# for the statically- linked external dependencies, we need to hint where
-	# we need the gmake rather than make system
-	if (${CMAKE_SYSTEM_NAME} MATCHES "BSD|DragonFly")
-		set(BSD_BUILD TRUE)
-		set(EXTMAKE_CMD gmake)
-	endif()
+if (BUILD_ARCAN_ENGINE OR BUILD_ARCAN_NET)
+	set(EXTMAKE_CMD make)
 
 	set(LUA_LINKTYPE "dynamic")
 
@@ -436,19 +492,25 @@ else()
 		endif()
 	endif()
 
-	LIST (APPEND
-		ARCAN_LIBRARIES
-		${FREETYPE_DEFAULT_LIBRARIES}
-		${LUA_LIBRARIES}
-		${SQLite3_LIBRARIES}
+	list(APPEND INCLUDE_DIRS
+		${LUA_INCLUDE_DIR}
+		${LUA_INCLUDE_DIRS}
 	)
+	LIST (APPEND ARCAN_LIBRARIES ${LUA_LIBRARIES})
+endif()
+
+if (BUILD_PRESET_CLIENT)
+	list(APPEND INCLUDE_DIRS
+		${CMAKE_CURRENT_SOURCE_DIR}/engine
+		${CMAKE_CURRENT_SOURCE_DIR}/platform
+	)
+else()
+	include(${PLATFORM_ROOT}/cmake/CMakeLists.AGP)
+	include(${PLATFORM_ROOT}/cmake/CMakeLists.Video)
+	include(${PLATFORM_ROOT}/cmake/CMakeLists.Audio)
 
 	LIST (APPEND
 		INCLUDE_DIRS
-		${LUA_INCLUDE_DIR}
-		${LUA_INCLUDE_DIRS}
-		${FREETYPE_DEFAULT_INCLUDE_DIRS}
-		${SQLite3_INCLUDE_DIR}
 		${CMAKE_CURRENT_SOURCE_DIR}/platform
 		${EXTERNAL_SRC_DIR}
 		${CMAKE_CURRENT_SOURCE_DIR}/engine
@@ -531,21 +593,24 @@ endif()
 #
 if (BSD_BUILD)
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.BSD)
-elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Linux)
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-	message(FATAL_ERROR "Windows is no longer supported (rollback to 0.4)")
+	if (BUILD_SHMIF)
+		message(FATAL_ERROR "Only Arcan A12 library without Shmif build is supported on Windows")
+		message(FATAL_ERROR "Windows Arcan Engine and Shmif build is no longer supported (rollback to 0.4)")
 #
-#	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Windows)
+#		include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Windows)
 #
+	endif()
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Darwin)
-   # OSX with CMAKE_OSX_SYSROOT set requires additional flags
-   set (COMPILER
-     "CC=${CMAKE_C_COMPILER} ${CMAKE_C_SYSROOT_FLAG} ${CMAKE_OSX_SYSROOT}"
-     "CXX=${CMAKE_CXX_COMPILER} ${CMAKE_CXX_SYSROOT_FLAG} ${CMAKE_OSX_SYSROOT}"
-     )
- else()
+	# OSX with CMAKE_OSX_SYSROOT set requires additional flags
+	set (COMPILER
+		"CC=${CMAKE_C_COMPILER} ${CMAKE_C_SYSROOT_FLAG} ${CMAKE_OSX_SYSROOT}"
+		"CXX=${CMAKE_CXX_COMPILER} ${CMAKE_CXX_SYSROOT_FLAG} ${CMAKE_OSX_SYSROOT}"
+	)
+else()
 	message(FATAL_ERROR "${CL_RED}Unsupported OS(${CMAKE_SYSTEM_NAME}) detected, abandon ship!${CL_RST}")
 endif()
 
@@ -561,7 +626,7 @@ else()
 	amsg("${CL_YEL}xkb keyboard: \t${CL_RED}no libxkbcommon${CL_RST}")
 endif()
 
-if (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client")
+if (BUILD_PRESET_CLIENT)
 	set(AGP_PLATFORM "stub")
 else()
 	amsg("\n${CL_WHT}---- Configuration results:${CL_RST}")
@@ -605,28 +670,44 @@ else()
 	amsg("${CL_YEL}tracy support\t${CL_RED}disabled${CL_RST}")
 endif()
 
-set(SHMIF_TUI true)
-add_subdirectory(shmif)
-add_subdirectory(a12)
-if (NOT (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client"))
+if (BUILD_SHMIF)
+	if (BUILD_SHMIF_TUI)
+		set(SHMIF_TUI true)
+	endif()
+	add_subdirectory(shmif)
+	include_directories(${ARCAN_SHMIF_INCLUDE_DIR})
+endif()
+
+if (BUILD_A12)
+	add_subdirectory(a12)
+endif()
+
+if (BUILD_WAYLAND)
 	add_subdirectory(wayland)
 endif()
 
-include_directories(${ARCAN_SHMIF_INCLUDE_DIR})
+if (BUILD_PRESET_CLIENT)
+	if (BUILD_FRAMESERVER)
+		# build the terminal emulator as well as that is typically useful
+		set(DISABLE_FSRV_GAME TRUE)
+		set(DISABLE_FSRV_DECODE TRUE)
+		set(DISABLE_FSRV_NET TRUE)
+		set(DISABLE_FSRV_ENCODE TRUE)
+		set(DISABLE_FSRV_REMOTING TRUE)
+		set(DISABLE_FSRV_AVFEED TRUE)
+		add_subdirectory(frameserver)
 
-if (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client")
-	# build the terminal emulator as well as that is typically useful
-	set(DISABLE_FSRV_GAME TRUE)
-	set(DISABLE_FSRV_DECODE TRUE)
-	set(DISABLE_FSRV_NET TRUE)
-	set(DISABLE_FSRV_ENCODE TRUE)
-	set(DISABLE_FSRV_REMOTING TRUE)
-	set(DISABLE_FSRV_AVFEED TRUE)
-	add_subdirectory(frameserver)
-
-	set(BIN_INSTALL)
+		set(BIN_INSTALL)
+	endif()
 else()
-	add_subdirectory(frameserver)
+	if (BUILD_FRAMESERVER)
+		if (NOT BUILD_A12)
+			amsg("\n${CL_YEL}remoting ${CL_WHT}A12 build is turned off, ${CL_RED}remoting${CL_RST} disabled")
+			set(DISABLE_FSRV_REMOTING TRUE)
+		endif()
+
+		add_subdirectory(frameserver)
+	endif()
 
 	if (EXISTS ${EXTERNAL_SRC_DIR}/git/openal)
 		if(ENABLE_LWA AND LWA_PLATFORM_STR)
@@ -654,7 +735,7 @@ else()
 	set(BIN_INSTALL)
 
 	if (${FRAMESERVER_MODESTRING})
-	string(STRIP ${FRAMESERVER_MODESTRING} FRAMESERVER_MODESTRING)
+		string(STRIP ${FRAMESERVER_MODESTRING} FRAMESERVER_MODESTRING)
 	endif()
 
 	set(PLATFORM_BUILDTAG ${VIDEO_PLATFORM}-${AGP_PLATFORM}-${AUDIO_PLATFORM}-${INPUT_PLATFORM}-${LUA_TAG}-${DISTR_TAG})
@@ -680,7 +761,7 @@ else()
 	# Primarily used by the Darwin platform, since it is scanned before we
 	# have the targets defined, we expose and add the property here
 	if (ARCAN_LNK_FLAGS)
-	set_property(TARGET arcan APPEND PROPERTY LINK_FLAGS ${ARCAN_LNK_FLAGS})
+		set_property(TARGET arcan APPEND PROPERTY LINK_FLAGS ${ARCAN_LNK_FLAGS})
 	endif()
 
 	if (MAIN_DEPS)
@@ -825,7 +906,7 @@ else()
 				WORLD_READ WORLD_EXECUTE
 		)
 	else()
-	install(TARGETS arcan DESTINATION ${CMAKE_INSTALL_BINDIR})
+		install(TARGETS arcan DESTINATION ${CMAKE_INSTALL_BINDIR})
 	endif()
 
 	install(TARGETS ${BIN_INSTALL} DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -861,29 +942,33 @@ else()
 	endif()
 endif()
 
-configure_file(${PLATFORM_ROOT}/cmake/shmif.pc.in
-	${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif.pc @ONLY)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif.pc
-	DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
-
-if (NOT (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client"))
-	configure_file(${PLATFORM_ROOT}/cmake/shmif_ext.pc.in
-		${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-ext.pc @ONLY)
-	install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-ext.pc
+if (BUILD_SHMIF)
+	configure_file(${PLATFORM_ROOT}/cmake/shmif.pc.in
+		${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif.pc @ONLY)
+	install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif.pc
 		DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+
+	configure_file(${PLATFORM_ROOT}/cmake/shmif_srv.pc.in
+		${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-srv.pc @ONLY)
+	install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-srv.pc
+		DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+
+	if (BUILD_PRESET_EVERYTHING)
+		configure_file(${PLATFORM_ROOT}/cmake/shmif_ext.pc.in
+			${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-ext.pc @ONLY)
+		install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-ext.pc
+			DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+	endif()
+
+	if (BUILD_SHMIF_TUI)
+		configure_file(${PLATFORM_ROOT}/cmake/shmif_tui.pc.in
+			${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-tui.pc @ONLY)
+		install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-tui.pc
+			DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+	endif()
 endif()
 
-configure_file(${PLATFORM_ROOT}/cmake/shmif_tui.pc.in
-	${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-tui.pc @ONLY)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-tui.pc
-	DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
-
-configure_file(${PLATFORM_ROOT}/cmake/shmif_srv.pc.in
-	${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-srv.pc @ONLY)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-srv.pc
-	DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
-
-if (NOT (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client"))
+if (BUILD_PRESET_EVERYTHING)
 	#
 	# Only installed if they have been generated manually, this is rather
 	# suboptimal -- possibly replace with a compile- time option and a probe

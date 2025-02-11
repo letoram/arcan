@@ -153,15 +153,15 @@ set(SHMIF_SERVER_SOURCES
 	${ASD}/shmif/platform/exec.c
 )
 
-if (NOT TUI_RASTER_NO_TTF)
+if (TUI_RASTER_NO_TTF)
+	list(APPEND
+		SHMIF_TUI_SOURCES
+		${ASD}/shmif/tui/raster/ttfstub.c)
+else()
 	list(APPEND
 		SHMIF_TUI_SOURCES
 		${ASD}/engine/arcan_ttf.c
 	)
-else()
-	list(APPEND
-		SHMIF_TUI_SOURCES
-		${ASD}/shmif/tui/raster/ttfstub.c)
 endif()
 
 set_property(SOURCE ${ASD}/shmif/tui/raster/raster.c
@@ -172,9 +172,12 @@ set(TARGET_LIST
 	arcan_shmif_int
 	arcan_shmif_ext
 	arcan_shmif_intext
-	arcan_tui
 	arcan_shmif_server
 )
+
+if (BUILD_SHMIF_TUI)
+	list(APPEND TARGET_LIST arcan_tui)
+endif()
 
 if (NOT SHMIF_DISABLE_DEBUGIF)
 	list(APPEND SHMIF_SOURCES ${ASD}/shmif/arcan_shmif_debugif.c)
@@ -194,37 +197,39 @@ if (NOT SHMIF_DISABLE_DEBUGIF)
 	target_compile_definitions(arcan_shmif_int PRIVATE SHMIF_DEBUG_IF)
 endif()
 
-# The TUI libraries / build setup is slated to change soonish when the TUI
-# refactor branch completes. This would push the freetype/harfbuzz etc. stage
-# to be a part of arcan instead and the library can be made to be quite tiny.
-set(TUI_INCLUDE_DIRS
-	/opt/local/include
-	${INCLUDE_DIRS}
-	${ASD}/frameserver
-	${ASD}/engine
-	${ASD}/engine/external
-	${ASD}/shmif
-)
+if (BUILD_SHMIF_TUI)
+	# The TUI libraries / build setup is slated to change soonish when the TUI
+	# refactor branch completes. This would push the freetype/harfbuzz etc. stage
+	# to be a part of arcan instead and the library can be made to be quite tiny.
+	set(TUI_INCLUDE_DIRS
+		/opt/local/include
+		${INCLUDE_DIRS}
+		${ASD}/frameserver
+		${ASD}/engine
+		${ASD}/engine/external
+		${ASD}/shmif
+	)
 
-set(TUI_LIBRARIES arcan_shmif)
+	set(TUI_LIBRARIES arcan_shmif)
 
-# The consequence for tui client side not having advanced font support is that
-# the client might try and use 'drawing characters' that does not have a valid
-# version in the font, or miss control over ligature substitutions and other
-# similar font features. Shape-break attribute is intended to mitigate that
-# somewhat.
-add_library(arcan_tui SHARED ${SHMIF_TUI_SOURCES})
-if (NOT TUI_RASTER_NO_TTF)
-	list(APPEND TUI_LIBRARIES ${FREETYPE_LIBRARIES})
-	target_compile_definitions(arcan_tui PRIVATE SHMIF_TTF)
+	# The consequence for tui client side not having advanced font support is that
+	# the client might try and use 'drawing characters' that does not have a valid
+	# version in the font, or miss control over ligature substitutions and other
+	# similar font features. Shape-break attribute is intended to mitigate that
+	# somewhat.
+	add_library(arcan_tui SHARED ${SHMIF_TUI_SOURCES})
+	if (NOT TUI_RASTER_NO_TTF)
+		list(APPEND TUI_LIBRARIES ${FREETYPE_LIBRARIES})
+		target_compile_definitions(arcan_tui PRIVATE SHMIF_TTF)
+	endif()
+	target_compile_definitions(arcan_tui PRIVATE NO_ARCAN_AGP)
+
+	target_link_libraries(arcan_tui PRIVATE ${STDLIB} ${TUI_LIBRARIES})
+	set_target_properties(arcan_tui PROPERTIES VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR})
+
+	target_compile_definitions(arcan_tui PRIVATE ${TUI_DEFINITIONS})
+	target_include_directories(arcan_tui PRIVATE ${TUI_INCLUDE_DIRS})
 endif()
-target_compile_definitions(arcan_tui PRIVATE NO_ARCAN_AGP)
-
-target_link_libraries(arcan_tui PRIVATE ${STDLIB} ${TUI_LIBRARIES})
-set_target_properties(arcan_tui PROPERTIES VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR})
-
-target_compile_definitions(arcan_tui PRIVATE ${TUI_DEFINITIONS})
-target_include_directories(arcan_tui PRIVATE ${TUI_INCLUDE_DIRS})
 
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB} arcan_shmif_server_int)
 target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB} arcan_shmif_server_int)
@@ -297,5 +302,8 @@ if (NOT ARCAN_SOURCE_DIR)
 		ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 	)
 	install(FILES ${SHMIF_HEADERS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/arcan/shmif)
-	install(FILES ${TUI_HEADERS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/arcan)
+
+	if (BUILD_SHMIF_TUI)
+		install(FILES ${TUI_HEADERS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/arcan)
+	endif()
 endif()

@@ -120,4 +120,7 @@ install(TARGETS arcan_a12
 	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 install(FILES a12.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/arcan)
-add_subdirectory("net")
+
+if (BUILD_ARCAN_NET)
+	add_subdirectory("net")
+endif()
