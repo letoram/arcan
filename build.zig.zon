@@ -1,0 +1,14 @@
+.{
+    .name = "arcan",
+    .version = "0.7.0-1", // mirrors /VERSION
+    .minimum_zig_version = "0.13.0",
+    .paths = .{
+        "src",
+        "build.zig",
+        "build.zig.zon",
+        "README.md",
+        "VERSION",
+        "LICENSE",
+    },
+    .dependencies = .{},
+}
