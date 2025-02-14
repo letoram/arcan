@@ -1204,6 +1204,34 @@ bool arcan_shmif_unlock(struct arcan_shmif_cont* C)
 	return true;
 }
 
+static int dupfd_to(int fd, int dstnum, int fflags, int fdopt)
+{
+	int rfd = -1;
+	if (-1 == fd)
+		return -1;
+
+	if (dstnum >= 0)
+		while (-1 == (rfd = dup2(fd, dstnum)) && errno == EINTR){}
+
+	if (-1 == rfd)
+		while (-1 == (rfd = dup(fd)) && errno == EINTR){}
+
+	if (-1 == rfd)
+		return -1;
+
+/* unless F_SETLKW, EINTR is not an issue */
+	int flags;
+	flags = fcntl(rfd, F_GETFL);
+	if (-1 != flags && fflags)
+		fcntl(rfd, F_SETFL, flags | fflags);
+
+	flags = fcntl(rfd, F_GETFD);
+	if (-1 != flags && fdopt)
+		fcntl(rfd, F_SETFD, flags | fdopt);
+
+	return rfd;
+}
+
 int arcan_shmif_dupfd(int fd, int dstnum, bool blocking)
 {
 	return shmif_platform_dupfd_to(fd, dstnum, blocking * O_NONBLOCK, FD_CLOEXEC);

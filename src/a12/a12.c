@@ -19,6 +19,7 @@
 
 #include "a12.h"
 #include "a12_int.h"
+#include "a12_platform.h"
 #include "net/a12_helper.h"
 
 #include "a12_decode.h"
@@ -27,8 +28,6 @@
 #include "external/chacha.c"
 #include "external/x25519.h"
 
-#include <sys/mman.h>
-#include <sys/types.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -1677,7 +1676,7 @@ static bool a12_enqueue_bstream_in(
 	next->type = type;
 	next->identifier = ev->tgt.ioevs[3].uiv;
 	next->streamid = S->out_stream++;
-	next->fd = arcan_shmif_dupfd(fd, -1, false);
+	next->fd = a12int_dupfd(fd);
 	next->chid = S->out_channel;
 
 /* we need to mutate the event so that it becomes a BCHUNKSTATE request */
@@ -1753,7 +1752,7 @@ static void a12_enqueue_bstream_tagged(
  * preserve forward integrity
  **/
 /* note, next->fd will be non-blocking */
-	next->fd = arcan_shmif_dupfd(fd, -1, false);
+	next->fd = a12int_dupfd(fd);
 	if (-1 == next->fd){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EBADFD");
 		goto fail;
@@ -1806,7 +1805,7 @@ static void a12_enqueue_bstream_tagged(
 /* this has the normal sigbus problem, though we don't care about that much now
  * being in the same sort of privilege domain - we can also defer the entire
  * thing and simply thread- process it, which is probably the better solution */
-	void* map = mmap(NULL, fend, PROT_READ, MAP_FILE | MAP_PRIVATE, fd, 0);
+	void* map = a12int_mmap(NULL, fend, A12INT_PROT_READ, A12INT_MAP_PRIVATE, fd, 0);
 
 	if (!map){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EMMAP");
@@ -1820,7 +1819,7 @@ static void a12_enqueue_bstream_tagged(
 	blake3_hasher_init(&hash);
 	blake3_hasher_update(&hash, map, fend);
 	blake3_hasher_finalize(&hash, next->checksum, 16);
-	munmap(map, fend);
+	a12int_munmap(map, fend);
 	next->left = fend;
 	a12int_trace(A12_TRACE_BTRANSFER,
 		"kind=added:type=%d:stream=%"PRIu32":size=%zu",
@@ -2316,7 +2315,6 @@ void a12_drop_tunnel(struct a12_state* S, uint8_t id)
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 	a12int_trace(A12_TRACE_DIRECTORY, "close_tunnel=%"PRIu8, id);
 
-	S->channels[id].unpack_state.bframe.tmp_fd;
 	S->channels[id].active = false;
 
 	int fd = S->channels[id].unpack_state.bframe.tmp_fd;
