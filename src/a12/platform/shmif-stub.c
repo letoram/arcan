@@ -10,7 +10,7 @@
 void arcan_fatal(const char* msg, ...)
 {
     va_list args;
-    fprintf(stderr, args);
+    fprintf(stderr, msg, args);
     fprintf(stderr, "\n");
     exit(EXIT_FAILURE);
 }
