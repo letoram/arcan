@@ -135,7 +135,15 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	arcan_renderfun_release_fontgroup(src->desc.text.group);
 	src->desc.text.group = NULL;
 
-	char msg[36];
+	arcan_event sevent = {
+		.category = EVENT_FSRV,
+		.fsrv.kind = EVENT_FSRV_TERMINATED,
+		.fsrv.video = vid,
+		.fsrv.fmt_fl = 0,
+		.fsrv.audio = aid,
+		.fsrv.otag = tag
+	};
+	char msg[COUNT_OF(sevent.fsrv.message)];
 
 	if (src->cookie_fail)
 		snprintf(msg, COUNT_OF(msg), "Integrity cookie mismatch");
@@ -155,14 +163,6 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 
 	arcan_audio_stop(aid);
 
-	arcan_event sevent = {
-		.category = EVENT_FSRV,
-		.fsrv.kind = EVENT_FSRV_TERMINATED,
-		.fsrv.video = vid,
-		.fsrv.fmt_fl = 0,
-		.fsrv.audio = aid,
-		.fsrv.otag = tag
-	};
 
 	memcpy(&sevent.fsrv.message, msg, COUNT_OF(msg));
 	arcan_event_enqueue(arcan_event_defaultctx(), &sevent);

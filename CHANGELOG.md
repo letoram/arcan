@@ -10,12 +10,17 @@
 
 ## Net
  * Several fixes to binary in/out transfers
+ * A12 OS specific function split out into platform
 
 ## Shmif
  * Migrating more OS specific work to platform
  * Add timeout+liveness check for recvmsg for edge condition shutdown
  * Allow enqueueing TARGET\_COMMAND\_EXIT to terminate one segment from another thread
  * Factored sem handle use out of cont
+ * .control.c split out into smaller translation units and platform functions
+
+## Core
+ * Fixed 'terminated' event not propagating due to incomplete enqueue post last\_words
 
 ## 0.7.0
 ## Core
