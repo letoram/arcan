@@ -13,6 +13,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <ctype.h>
 
 #include "a12.h"
 #include "a12_int.h"
@@ -209,6 +210,126 @@ static struct client* alua_checkclient(lua_State* L, int ind)
 	return NULL;
 }
 
+static bool validate_key(const char* key)
+{
+/* accept 0-9 and base64 valid values */
+	while(*key){
+		if (!isalnum(*key) && *key != '_'
+			&& *key != '+' && *key != '/' && *key != '=')
+			return false;
+		key++;
+	}
+
+	return true;
+}
+
+static void send_setkey(
+	const char* key, const char* val, bool use_dom, int domain)
+{
+	char* req;
+	ssize_t req_len;
+
+	if (use_dom)
+		req_len = asprintf(&req, "setkey=%s:domain=%d:value=%s", key, domain, val);
+	else
+		req_len = asprintf(&req, "setkey=%s:value=%s", key, val);
+
+	if (req_len < 0){
+		return;
+	}
+
+/* use reference as identifier for the callback */
+	arcan_shmif_pushutf8(&SHMIF, &(struct arcan_event){
+		.category = ARCAN_EVENT(MESSAGE),
+	}, req, req_len);
+
+	free(req);
+}
+
+static int storekeys(lua_State* L)
+{
+/* argtbl[...]
+ * argtbl[...], int:target
+ * string:key, string:val
+ * string:key, string:val, int:target
+ */
+	if (lua_type(L, 1) == LUA_TTABLE){
+		int domain = luaL_optnumber(L, 2, 0);
+		struct arcan_event beg = {
+			.category = EVENT_EXTERNAL,
+			.ext.kind = ARCAN_EVENT(MESSAGE)
+		};
+
+		snprintf((char*) beg.ext.message.data,
+			sizeof(beg.ext.message.data),
+			"begin_kv_transaction:domain=%d", domain % 10
+		);
+		arcan_shmif_enqueue(&SHMIF, &beg);
+		lua_pushnil(L);
+
+		while (lua_next(L, 1) != 0){
+			const char* key = lua_tostring(L, -2);
+			if (!validate_key(key)){
+				luaL_error(L, "store_keys(>tbl<) - invalid key (alphanum, no +/_=)");
+			}
+			const char* value = lua_tostring(L, -1);
+			send_setkey(key, value, false, 0);
+			lua_pop(L, 1);
+		}
+
+		arcan_shmif_enqueue(&SHMIF,
+			&(struct arcan_event){
+				.category = EVENT_EXTERNAL,
+				.ext.kind = ARCAN_EVENT(MESSAGE),
+				.ext.message.data = "begin_kv_transaction"
+			}
+		);
+
+		return 0;
+	}
+
+	const char* key = luaL_checkstring(L, 1);
+	const char* value = luaL_checkstring(L, 2);
+	int domain = luaL_optnumber(L, 3, 0);
+	send_setkey(key, value, true, domain);
+
+	return 0;
+}
+
+static int matchkeys(lua_State* L)
+{
+/* string:pattern, function: continuation,
+ * string:pattern, function: continuation, int: domain
+ * continuation(string:key, string:value, bool: last)
+ */
+	const char* pattern = luaL_checkstring(L, 1);
+
+/* extract and reference continuation */
+	if (!lua_isfunction(L, 2) || !lua_iscfunction(L, 2)){
+		luaL_error(L,
+			"match_keys(pattern, >handler<, [domain]), handler is not a function");
+	}
+	lua_pushvalue(L, 2);
+	intptr_t ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+	int domain = luaL_optnumber(L, 3, 0);
+
+	char* req;
+	ssize_t req_len = asprintf(&req, "match=%s:domain=%d", pattern, domain);
+	if (req_len < 0){
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+/* use reference as identifier for the callback */
+	arcan_shmif_pushutf8(&SHMIF, &(struct arcan_event){
+		.category = ARCAN_EVENT(MESSAGE),
+	}, req, req_len);
+	free(req);
+
+	return 0;
+}
+
 static int targetmessage(lua_State* L)
 {
 /* unicast or broadcast? */
@@ -373,6 +494,8 @@ static void open_appl(int dfd, const char* name)
 	if (0 == luaL_loadbuffer(L, reg.ptr, reg.sz, name)){
 		static const luaL_Reg api[] = {
 			{"message_target", targetmessage},
+			{"store_key", storekeys},
+			{"match_keys", matchkeys},
 /*
  * lift from arcan_lua.c:
  *
@@ -528,9 +651,6 @@ static void meta_resource(int fd, const char* msg)
 		join_worker(fd);
 		return;
 	}
-/* new key-value store to work with */
-	else if (strcmp(msg, ".sqlite3") == 0){
-	}
 	else
 		log_print("unhandled:%s\n", msg);
 	close(fd);
@@ -555,6 +675,8 @@ static void parent_control_event(struct arcan_event* ev)
 			meta_resource(fd, ev->tgt.message);
 	}
 	break;
+	case TARGET_COMMAND_MESSAGE:{
+	}
 	case TARGET_COMMAND_BCHUNK_OUT:{
 		if (strcmp(ev->tgt.message, ".log") == 0){
 			int fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true);
