@@ -923,6 +923,66 @@ static int nbio_read(lua_State* L)
 }
 
 #ifdef WANT_ARCAN_BASE
+static int bgcopy(lua_State* L)
+{
+	struct nonblock_io* src =
+		*(struct nonblock_io**) luaL_checkudata(L, 1, "nonblockIO");
+	struct nonblock_io* dst =
+		*(struct nonblock_io**) luaL_checkudata(L, 2, "nonblockIO");
+
+	if (src->mode == O_WRONLY){
+		arcan_fatal("nbio:bgcopy(>src<, dst) - source is not in read-mode");
+	}
+
+	if (dst->mode == O_RDONLY){
+		arcan_fatal("nbio:bgcopy(src, >dst<) - destination is not in write-mode");
+	}
+
+/* deregister src->fd, dst->fd from monitoring, create a new pipe pair for the
+ * progress data and register that to the return, mark the others as closed. */
+
+	int outp[2];
+	if (-1 == pipe(outp)){
+		lua_pushboolean(L, false);
+		LUA_ETRACE("open_nonblock:bgcopy", "couldn't allocate progress pipe", 1);
+	}
+
+	fcntl(outp[0], F_SETFD, FD_CLOEXEC);
+	fcntl(outp[1], F_SETFD, FD_CLOEXEC);
+
+	remove_job(src->fd, src->mode, NULL);
+	remove_job(dst->fd, dst->mode, NULL);
+
+	struct nonblock_io* conn = arcan_alloc_mem(
+			sizeof(struct nonblock_io),
+			ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+
+	(*conn) = (struct nonblock_io){
+		.fd = outp[0],
+		.mode = O_RDONLY,
+		.data_handler = LUA_NOREF,
+		.write_handler = LUA_NOREF,
+		.lfch = '\n'
+	};
+
+	uintptr_t* dp = lua_newuserdata(L, sizeof(uintptr_t));
+	if (!dp){
+		close(outp[0]);
+		close(outp[1]);
+		lua_pushboolean(L, false);
+		LUA_ETRACE("open_nonblock:bgcopy", "couldn't allocate userdata", 1);
+	}
+	*dp = (uintptr_t) conn;
+	luaL_getmetatable(L, "nonblockIO");
+	lua_setmetatable(L, -2);
+
+	arcan_shmif_bgcopy(NULL, src->fd, dst->fd, outp[1], SHMIF_BGCOPY_PROGRESS);
+	src->fd = -1;
+	dst->fd = -1;
+
+	return 1;
+}
+
 static int opennonblock_tgt(lua_State* L, bool wr)
 {
 	arcan_vobject* vobj;
@@ -1539,6 +1599,10 @@ void alt_nbio_register(lua_State* L,
 	lua_setfield(L, -2, "flush");
 	lua_pushcfunction(L, nbio_lf);
 	lua_setfield(L, -2, "lf_strip");
+#ifdef WANT_ARCAN_BASE
+	lua_pushcfunction(L, bgcopy);
+	lua_setfield(L, -2, "bgcopy");
+#endif
 	lua_pop(L, 1);
 
 	luaL_newmetatable(L, "nonblockIOs");

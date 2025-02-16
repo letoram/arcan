@@ -4,6 +4,7 @@
  * Added monitor commands for backtrace, eval, locals, stepping and specialised dumps
  * Added breakpoint hooks for all transitions into VM execution
  * Dynamic / on-demand attaching (local,remote) debugger (see 7c7ba007c3)
+ * Add :bgcopy to open\_nonblock() for background copying in a thread
 
 ## Terminal
  * Expose args values as 'tui.arguments' table

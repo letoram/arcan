@@ -54,6 +54,17 @@
 -- appending at the end of the table [#tbl+1] = line1; [#tbl+2] = line2; and so
 -- on.
 --
+-- The bgcopy(nbio:dst) function assumes the called table is in read mode and
+-- the *dst* argument is in write mote. It returns a new progress nonblock
+-- userdata and both the source and *dst* are disconnected from their bound
+-- descriptors. Internally it spawns a copy thread which copies data from
+-- source to dst until eof or error. The returned nonblock state can be read to
+-- get progress on the copy operation. The lines read from the the returned
+-- progress are colon separated "last_read:accumulated:total" with last-read is
+-- the number of bytes processed since the previous report, accumulated the
+-- number of bytes processed and total the estimated total (unless the source
+-- is streaming). The backing descriptors are closed when the job is completed.
+--
 -- The lf_strip(bool) function affects read results to include or exclude a
 -- splitting linefeed if operating in linefeed mode. This is mainly an
 -- optimization to avoid additional string manipulation when linefeeds aren't
