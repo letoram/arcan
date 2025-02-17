@@ -53,6 +53,10 @@ struct anet_dirsrv_opts {
  * Which again ties into some need to be able to inject events into shmif
  */
 struct directory_meta;
+
+struct anet_dirsrv_lua_runner {
+};
+
 struct anet_dircl_opts {
 /* where are appls loaded from? */
 	int basedir;

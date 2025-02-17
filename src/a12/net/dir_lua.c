@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <arcan_shmif.h>
 #include <arcan_shmif_server.h>
+#include <poll.h>
 
 #include <lualib.h>
 #include <lauxlib.h>
@@ -38,6 +39,122 @@ static lua_State* L;
 static struct arcan_dbh* DB;
 static struct global_cfg* CFG;
 static bool INITIALIZED;
+
+struct runner_state {
+	pthread_mutex_t lock;
+	struct shmifsrv_client* cl;
+	struct appl_meta* appl;
+	volatile bool alive;
+};
+
+static void* controller_runner(void* inarg)
+{
+	struct runner_state* runner = inarg;
+	pthread_mutex_lock(&runner->lock);
+	runner->alive = true;
+
+/* open database connection */
+	int pid;
+	shmifsrv_client_handle(runner->cl, &pid);
+	a12int_trace(
+			A12_TRACE_DIRECTORY,
+			"kind=status:arcan-ent:dirappl=%s:pid=%d",
+			runner->appl->appl.name, pid);
+
+/* wait for the shmif setup to be completed in the client end, this is
+ * potentially a priority inversion / unnecessary blocking */
+	int pv;
+	while ((pv = shmifsrv_poll(runner->cl)) != CLIENT_DEAD){
+		if (pv == CLIENT_IDLE)
+			break;
+	}
+
+	if (pv == CLIENT_DEAD){
+		a12int_trace(
+			A12_TRACE_DIRECTORY, "kind=error:arcan-net:dirappl=broken");
+		shmifsrv_free(runner->cl, false);
+		runner->alive = false;
+		pthread_mutex_unlock(&runner->lock);
+		return NULL;
+	}
+
+/* create / open designated appl-log */
+	if (CFG->dirsrv.appl_logpath){
+		char* msg = NULL;
+		if (0 < asprintf(&msg, "%s.log", runner->appl->appl.name)){
+			int fd = openat(CFG->dirsrv.appl_logdfd, msg, O_RDWR | O_CREAT, 0700);
+			if (-1 != fd){
+				lseek(fd, 0, SEEK_END);
+					shmifsrv_enqueue_event(runner->cl,
+						&(struct arcan_event){
+							.category = EVENT_TARGET,
+							.tgt.kind = TARGET_COMMAND_BCHUNK_OUT,
+							.tgt.message = ".log"
+						}, fd
+					);
+				close(fd);
+			}
+			free(msg);
+		}
+	}
+
+/* Ready, send the dirfd along with the name to the runner, this is where one
+ * would queue up database and secondary namespaces like appl-shared. */
+	struct arcan_event outev =
+	(struct arcan_event){
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
+	};
+
+	int srcdir = runner->appl->server_appl == SERVER_APPL_TEMP ?
+		CFG->dirsrv.appl_server_temp_dfd : CFG->dirsrv.appl_server_dfd;
+
+	int dfd = openat(srcdir,
+		(char*) runner->appl->appl.name, O_RDONLY | O_DIRECTORY);
+
+	snprintf(outev.tgt.message,
+		sizeof(outev.tgt.message), "%s", runner->appl->appl.name);
+
+	shmifsrv_enqueue_event(runner->cl, &outev, dfd);
+
+/* main processing loop,
+ *
+ * keep running as clock for the time being, the option is to allow client
+ * events to ping-wakeup or use a signalling pipe for wakeup and liveness
+ */
+	shmifsrv_monotonic_rebase();
+
+	int sv;
+	while((sv = shmifsrv_poll(runner->cl)) != CLIENT_DEAD){
+		int pv = 25;
+		struct pollfd pfd = {
+			.fd = shmifsrv_client_handle(runner->cl, NULL),
+			.events = POLLIN | POLLERR | POLLHUP
+		};
+
+		struct arcan_event ev;
+		while (1 == shmifsrv_dequeue_events(runner->cl, &ev, 1)){
+			if (ev.ext.kind == EVENT_EXTERNAL_MESSAGE){
+/* coalesce and process request, by using arg_unpack on merged string,
+ *
+ * setkey=key:val=value:domain or
+ * possibly with begin_kv_transaction:domain=%d and terminated with
+ * end_kv_transaction, just forward those into arcan_db calls.
+ *
+ */
+			}
+		}
+
+		poll(&pfd, 1, 25);
+	}
+
+	runner->alive = false;
+	runner->appl->server_tag = NULL;
+	free(runner);
+	pthread_mutex_unlock(&runner->lock);
+
+	return NULL;
+}
 
 void anet_directory_lua_exit()
 {
@@ -644,7 +761,7 @@ void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl)
  * source. If we have an active runner we should send the new BCHUNK_IN to the
  * unpacked directory. This is where we can support rollback to the on- disk
  * version should the new one break anything. */
-	struct shmifsrv_client* runner = appl->server_tag;
+	struct runner_state* runner = appl->server_tag;
 
 /*
  * unpack: this blocks the server and is not desired in the long run.
@@ -690,14 +807,18 @@ void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl)
 	int dfd = openat(srcdir, name, O_RDONLY | O_DIRECTORY);
 
 	snprintf(outev.tgt.message, sizeof(outev.tgt.message), "%s", appl->appl.name);
-	shmifsrv_enqueue_event(runner, &outev, dfd);
+
+	pthread_mutex_lock(&runner->lock);
+		shmifsrv_enqueue_event(runner->cl, &outev, dfd);
+	pthread_mutex_unlock(&runner->lock);
+
 	a12int_trace(
 			A12_TRACE_DIRECTORY, "kind=status:dirappl_update=%s", appl->appl.name);
 }
 
 bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 {
-	struct shmifsrv_client* runner = appl->server_tag;
+	struct runner_state* runner = appl->server_tag;
 
 /* no active runner, launch */
 	if (!runner){
@@ -711,67 +832,25 @@ bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 
 /* open the directory to the server appl */
 		int clsock;
-		runner = shmifsrv_spawn_client(env, &clsock, NULL, 0);
-		if (!runner){
+		runner = malloc(sizeof(struct runner_state));
+		runner->cl = shmifsrv_spawn_client(env, &clsock, NULL, 0);
+		runner->appl = appl;
+
+		if (!runner->cl){
 			a12int_trace(
 				A12_TRACE_DIRECTORY, "kind=error:arcan-net:dirappl_spawn");
-			return false;
-		}
-		int pid;
-		shmifsrv_client_handle(runner, &pid);
-		a12int_trace(
-				A12_TRACE_DIRECTORY,
-				"kind=status:arcan-ent:dirappl=%s:pid=%d", appl->appl.name, pid);
-
-/* wait for the shmif setup to be completed in the client end, this is
- * potentially a priority inversion / unnecessary blocking */
-		int pv;
-		while ((pv = shmifsrv_poll(runner)) != CLIENT_DEAD){
-			if (pv == CLIENT_IDLE)
-				break;
-		}
-
-		if (pv == CLIENT_DEAD){
-			a12int_trace(
-				A12_TRACE_DIRECTORY, "kind=error:arcan-net:dirappl=broken");
-			shmifsrv_free(runner, false);
+			free(runner);
 			return false;
 		}
 
-/* create / open designated appl-log */
-		if (CFG->dirsrv.appl_logpath){
-			char* msg;
-			if (0 < asprintf(&msg, "%s.log", appl->appl.name)){
-				int fd = openat(CFG->dirsrv.appl_logdfd, msg, O_RDWR | O_CREAT, 0700);
-				if (-1 != fd){
-					lseek(fd, 0, SEEK_END);
-						shmifsrv_enqueue_event(runner, &(struct arcan_event){
-						.category = EVENT_TARGET,
-						.tgt.kind = TARGET_COMMAND_BCHUNK_OUT,
-						.tgt.message = ".log"
-					}, fd);
-					close(fd);
-				}
-				free(msg);
-			}
-		}
-
-/* Ready, send the dirfd along with the name to the runner, this is where one
- * would queue up database and secondary namespaces like appl-shared. */
-		struct arcan_event outev =
-		(struct arcan_event){
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
-		};
-
-		int srcdir = appl->server_appl == SERVER_APPL_TEMP ?
-			CFG->dirsrv.appl_server_temp_dfd : CFG->dirsrv.appl_server_dfd;
-
-		int dfd = openat(srcdir, appl->appl.name, O_RDONLY | O_DIRECTORY);
-
-		snprintf(outev.tgt.message, sizeof(outev.tgt.message), "%s", appl->appl.name);
-		shmifsrv_enqueue_event(runner, &outev, dfd);
- 	}
+		pthread_t pth;
+		pthread_attr_t pthattr;
+		pthread_attr_init(&pthattr);
+		pthread_mutex_init(&runner->lock, NULL);
+		pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+		pthread_create(&pth, &pthattr, controller_runner, runner);
+		appl->server_tag = runner;
+	}
 
 /* send the server-end to the appl-runner which will shmifsrv_inherit, when
  * that happens the other end of the socket will send the shmif primitives to
@@ -779,27 +858,31 @@ bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 	int sv[2];
 	if (-1 == socketpair(AF_UNIX, SOCK_STREAM, 0, sv)){
 		a12int_trace(A12_TRACE_DIRECTORY, "kind=error:socketpair.2=%d", errno);
-		shmifsrv_free(runner, true);
 		return false;
 	}
 
-	shmifsrv_enqueue_event(runner, &(struct arcan_event){
+	pthread_mutex_lock(&runner->lock);
+	shmifsrv_enqueue_event(runner->cl,
+		&(struct arcan_event){
 			.category = EVENT_TARGET,
 			.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
 			.tgt.message = ".worker"
-	}, sv[0]);
+		}, sv[0]
+	);
+	pthread_mutex_unlock(&runner->lock);
 
-	shmifsrv_enqueue_event(C->C, &(struct arcan_event){
+	shmifsrv_enqueue_event(C->C,
+		&(struct arcan_event){
 			.category = EVENT_TARGET,
 			.tgt.kind = TARGET_COMMAND_NEWSEGMENT,
-	}, sv[1]);
+		}, sv[1]
+	);
 
 	a12int_trace(A12_TRACE_DIRECTORY,
 		"kind=status:worker_join=%s", C->endpoint.ext.netstate.name);
 	close(sv[0]);
 	close(sv[1]);
 
-	appl->server_tag = runner;
 	return true;
 }
 

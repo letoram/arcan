@@ -148,7 +148,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	if (src->cookie_fail)
 		snprintf(msg, COUNT_OF(msg), "Integrity cookie mismatch");
 	else if (!platform_fsrv_lastwords(src, msg, COUNT_OF(msg)))
-		snprintf(msg, COUNT_OF(msg), "Couldn't access metadata (SIGBUS?)");
+		snprintf(msg, COUNT_OF(msg), "Couldn't access metadata");
 
 /* make sure there is no other weird dangling state around and forward the
  * client 'last words' as a troubleshooting exit 'status' */

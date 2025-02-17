@@ -226,7 +226,7 @@ static bool validate_key(const char* key)
 static void send_setkey(
 	const char* key, const char* val, bool use_dom, int domain)
 {
-	char* req;
+	char* req = NULL;
 	ssize_t req_len;
 
 	if (use_dom)
@@ -281,7 +281,7 @@ static int storekeys(lua_State* L)
 			&(struct arcan_event){
 				.category = EVENT_EXTERNAL,
 				.ext.kind = ARCAN_EVENT(MESSAGE),
-				.ext.message.data = "begin_kv_transaction"
+				.ext.message.data = "end_kv_transaction"
 			}
 		);
 
@@ -314,7 +314,7 @@ static int matchkeys(lua_State* L)
 
 	int domain = luaL_optnumber(L, 3, 0);
 
-	char* req;
+	char* req = NULL;
 	ssize_t req_len = asprintf(&req, "match=%s:domain=%d", pattern, domain);
 	if (req_len < 0){
 		lua_pushboolean(L, false);
@@ -661,6 +661,10 @@ static void parent_control_event(struct arcan_event* ev)
 	if (ev->category != EVENT_TARGET)
 		return;
 
+#ifdef DEBUG
+	log_print("%s", arcan_shmif_eventstr(ev, NULL, 0));
+#endif
+
 	switch (ev->tgt.kind){
 	case TARGET_COMMAND_BCHUNK_IN:{
 		int fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true);
@@ -676,6 +680,8 @@ static void parent_control_event(struct arcan_event* ev)
 	}
 	break;
 	case TARGET_COMMAND_MESSAGE:{
+/* merge multipart, arg_unpack and extract, if it is key=%s:id= then get from
+ * lua_registry and callback into it until we get one with :last set */
 	}
 	case TARGET_COMMAND_BCHUNK_OUT:{
 		if (strcmp(ev->tgt.message, ".log") == 0){
@@ -789,14 +795,25 @@ void anet_directory_appl_runner()
 			nt--;
 		}
 
-/* first prioritize the privileged parent inbound events */
+/* First prioritize the privileged parent inbound events, and if it's dead we
+ * shutdown as well. */
 		if (CLIENTS.pset[0].revents){
 			struct arcan_event ev;
-			arcan_shmif_wait(&SHMIF, &ev);
+			if (!arcan_shmif_wait(&SHMIF, &ev)){
+				SHUTDOWN = true;
+				continue;
+			}
+
 			parent_control_event(&ev);
-			while (arcan_shmif_poll(&SHMIF, &ev) > 0){
+			int rv;
+			while ((rv = arcan_shmif_poll(&SHMIF, &ev) > 0)){
 				parent_control_event(&ev);
 			}
+			if (rv == -1){
+				SHUTDOWN = true;
+				continue;
+			}
+
 			CLIENTS.pset[0].revents = 0;
 			pv--;
 		}
