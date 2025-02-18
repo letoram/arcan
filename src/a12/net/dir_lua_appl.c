@@ -749,7 +749,7 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 				if (setup_entrypoint(L, "_index", sizeof("_index"))){
 					lua_pushnumber(L, cl->clid);
 					MSGBUF_UTF8(ev.ext.bchunk.extensions);
-					wrap_pcall(L, 1, 1);
+					wrap_pcall(L, 2, 1);
 				}
 			}
 			shmifsrv_enqueue_event(cl->shmif, &(struct arcan_event){
