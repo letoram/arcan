@@ -2333,7 +2333,7 @@ void a12_drop_tunnel(struct a12_state* S, uint8_t id)
  */
 static void progress_pending_in(struct a12_state* S, uint8_t ch, float progress)
 {
-	struct binary_frame* cbf = &S->channels[S->in_channel].unpack_state.bframe;
+	struct binary_frame* cbf = &S->channels[ch].unpack_state.bframe;
 
 	if (progress < 0.0){
 		a12int_trace(A12_TRACE_BTRANSFER, "chid=%"PRIu8":failed", ch);
