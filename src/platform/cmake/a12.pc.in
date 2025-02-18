@@ -1,0 +1,12 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${prefix}/lib
+includedir=${prefix}/include/arcan
+
+Name: arcan-a12
+Description: Arcan-A12 protocol implementation
+URL: https://arcan-fe.com
+Libs: -L${libdir} -larcan_a12
+Cflags: -I${includedir}
+Version:@VERSION@
+Requires:
