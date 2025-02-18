@@ -873,6 +873,11 @@ if (NOT (CLIENT_LIBRARY_BUILD OR BUILD_PRESET STREQUAL "client"))
 		DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 endif()
 
+configure_file(${PLATFORM_ROOT}/cmake/a12.pc.in
+	${CMAKE_CURRENT_BINARY_DIR}/arcan-a12.pc @ONLY)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-a12.pc
+	DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+
 configure_file(${PLATFORM_ROOT}/cmake/shmif_tui.pc.in
 	${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-tui.pc @ONLY)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-tui.pc
