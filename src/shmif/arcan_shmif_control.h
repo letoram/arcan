@@ -301,10 +301,15 @@ struct arcan_shmif_cont {
 	size_t shmsize;
 
 /*
- * Used internally for synchronization (and mapped / managed outside
- * the regular shmpage). system-defined but typically named semaphores.
+ * Used internally for synchronization (and mapped / managed outside the
+ * regular shmpage). This used to be a buffer of semaphore pointers, so most
+ * often 64-bits. To reduce chances of ABI breaks by changing member offsets,
+ * even though futex support across the board is only 32-bits, the strict
+ * requirement is just 32-bit alignment.
  */
-	uint8_t* deprecated[3];
+	_Alignas(4) uintptr_t vsync;
+	_Alignas(4) uintptr_t async;
+	_Alignas(4) uintptr_t esync;
 
 /*
  * Should be used to index vidp, i.e. vidp[y * pitch + x] = RGBA(r, g, b, a)
