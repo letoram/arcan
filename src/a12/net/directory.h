@@ -270,6 +270,14 @@ struct pk_response
 	anet_directory_lua_register_unknown(struct dircl* C, struct pk_response base);
 void anet_directory_lua_register(struct dircl* C);
 
+/*
+ * called before the first anet_directory_lua_join, sets up the runner process
+ * and VM for the current controller appl pointed to by [appl]. If [external]
+ * is set this is done through execve()ing ourself (for sandbox and ASLR), if
+ * it is not set it will run as a detached pthread.
+ */
+bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external);
+
 /* Theoretically it's possble for one C to be in multiple appls so the API
  * reflects that, even though right now that is constrained to 1:(0,1) in the
  * dir_srv.c side. Leave doesn't strictly happen here as the appl-runner

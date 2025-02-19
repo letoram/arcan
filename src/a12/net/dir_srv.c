@@ -980,7 +980,13 @@ make_random:
 		cur = locked_numid_appl(ind);
 		if (cur){
 			C->in_appl = ind;
+
+/* if there is no active runner for the appl, first launch one and then
+ * send the primitives pairing the worker process with the script VM */
 			if (cur->server_appl != SERVER_APPL_NONE){
+				if (!cur->server_tag)
+					anet_directory_lua_spawn_runner(cur, true);
+
 				anet_directory_lua_join(C, cur);
 			}
 		}

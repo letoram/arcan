@@ -422,7 +422,6 @@ static int print_log(lua_State* L)
 
 static void open_appl(int dfd, const char* name)
 {
-	int dirfd = -1;
 	log_print("dir_lua:open=%.*s", (int) sizeof(name), name);
 	size_t len = strlen(name);
 

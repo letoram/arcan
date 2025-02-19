@@ -36,7 +36,7 @@ int anet_clfd(struct addrinfo* addr)
 		if (connect(clfd, cur->ai_addr, cur->ai_addrlen) != -1){
 			char hostaddr[NI_MAXHOST];
 			char hostport[NI_MAXSERV];
-			int ec = getnameinfo(cur->ai_addr, cur->ai_addrlen,
+			getnameinfo(cur->ai_addr, cur->ai_addrlen,
 				hostaddr, sizeof(hostaddr), hostport, sizeof(hostport),
 				NI_NUMERICSERV | NI_NUMERICHOST
 			);
@@ -332,7 +332,7 @@ bool anet_listen(struct anet_options* args, char** errdst,
 
 		char hostaddr[NI_MAXHOST];
 
-		int ec = getnameinfo(&in_addr, addrlen,
+		getnameinfo(&in_addr, addrlen,
 			hostaddr, sizeof(hostaddr), NULL, 0, NI_NUMERICHOST);
 		a12_set_endpoint(ast, strdup(hostaddr));
 

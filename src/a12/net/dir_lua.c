@@ -189,7 +189,6 @@ static void* controller_runner(void* inarg)
 
 	int sv;
 	while((sv = shmifsrv_poll(runner->cl)) != CLIENT_DEAD){
-		int pv = 25;
 		struct pollfd pfd = {
 			.fd = shmifsrv_client_handle(runner->cl, NULL),
 			.events = POLLIN | POLLERR | POLLHUP
@@ -218,10 +217,10 @@ static void* controller_runner(void* inarg)
 
 	runner->alive = false;
 	runner->appl->server_tag = NULL;
-	free(runner);
 	arcan_db_close(&tl_db);
 	anet_directory_merge_multipart(NULL, NULL, NULL);
 	pthread_mutex_unlock(&runner->lock);
+	free(runner);
 
 	return NULL;
 }
@@ -432,7 +431,6 @@ static int cfg_newindex(lua_State* L)
 	return 0;
 }
 
-static bool got_permlut;
 static struct {
 	const char* key;
 	char** val;
@@ -825,6 +823,12 @@ struct pk_response
 	return base;
 }
 
+static void* thread_appl_runner(void* tag)
+{
+	anet_directory_appl_runner();
+	return NULL;
+}
+
 void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl)
 {
 /* newappl contains the packed (unauthenticated) appl from an authenticated
@@ -886,12 +890,13 @@ void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl)
 			A12_TRACE_DIRECTORY, "kind=status:dirappl_update=%s", appl->appl.name);
 }
 
-bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
+bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 {
-	struct runner_state* runner = appl->server_tag;
+	int clsock;
+	struct runner_state* runner = malloc(sizeof(struct runner_state));
+	*runner = (struct runner_state){.appl = appl};
 
-/* no active runner, launch */
-	if (!runner){
+	if (external){
 		char* argv[] = {CFG->path_self, "dirappl", NULL, NULL};
 		struct shmifsrv_envp env = {
 			.path = CFG->path_self,
@@ -899,27 +904,62 @@ bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 			.argv = argv,
 			.detach = 2 | 4 | 8
 		};
-
-/* open the directory to the server appl */
-		int clsock;
-		runner = malloc(sizeof(struct runner_state));
 		runner->cl = shmifsrv_spawn_client(env, &clsock, NULL, 0);
-		runner->appl = appl;
-
 		if (!runner->cl){
 			a12int_trace(
 				A12_TRACE_DIRECTORY, "kind=error:arcan-net:dirappl_spawn");
 			free(runner);
 			return false;
 		}
-
+	}
+	else {
+		int sv[2];
+		if (-1 == socketpair(AF_UNIX, SOCK_STREAM, 0, sv)){
+			a12int_trace(A12_TRACE_DIRECTORY, "kind=error:socketpair.2=%d", errno);
+			free(runner);
+			return false;
+		}
+		int sc;
+		runner->cl = shmifsrv_inherit_connection(sv[0], &sc);
+		if (!runner->cl){
+			a12int_trace(A12_TRACE_DIRECTORY, "kind=error:couldn't build preauth shmif");
+			close(sv[0]);
+			close(sv[1]);
+			free(runner);
+			return false;
+		}
+		unsetenv("ARCAN_CONNPATH");
+		char buf[8];
+		snprintf(buf, 8, "%d", sv[1]);
+		setenv("ARCAN_SOCKIN_FD", buf, 1);
 		pthread_t pth;
 		pthread_attr_t pthattr;
 		pthread_attr_init(&pthattr);
-		pthread_mutex_init(&runner->lock, NULL);
 		pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-		pthread_create(&pth, &pthattr, controller_runner, runner);
-		appl->server_tag = runner;
+		pthread_create(&pth, &pthattr, thread_appl_runner, NULL);
+
+/* now sv[1] is the socket that we should prepare */
+	}
+
+	appl->server_tag = runner;
+
+	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_mutex_init(&runner->lock, NULL);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	pthread_create(&pth, &pthattr, controller_runner, runner);
+
+	return true;
+}
+
+bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
+{
+	struct runner_state* runner = appl->server_tag;
+	if (!runner){
+		a12int_trace(
+			A12_TRACE_DIRECTORY, "kind=api-error:join called without runner");
+		return false;
 	}
 
 /* send the server-end to the appl-runner which will shmifsrv_inherit, when

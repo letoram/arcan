@@ -3657,7 +3657,7 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
 			return a12_enqueue_bstream_in(S, ev->tgt.ioevs[0].iv, A12_BTYPE_STATE, ev);
 		break;
 
-		case TARGET_COMMAND_BCHUNK_OUT:
+		case TARGET_COMMAND_BCHUNK_IN:
 			return a12_enqueue_bstream_in(S, ev->tgt.ioevs[0].iv, A12_BTYPE_BLOB, ev);
 		break;
 
@@ -3669,7 +3669,7 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
 			return true;
 		break;
 
-		case TARGET_COMMAND_BCHUNK_IN:
+		case TARGET_COMMAND_BCHUNK_OUT:
 			a12_enqueue_bstream_tagged(S,
 				ev->tgt.ioevs[0].iv, A12_BTYPE_BLOB, 0, true, 0, empty_ext, ev);
 			return true;

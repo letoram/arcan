@@ -775,7 +775,7 @@ struct arcan_strarr arcan_db_applkeys(struct arcan_dbh* dbh,
 
 	size_t mk_sz = sizeof(MATCH_APPL) + strlen(applname);
 	char mk_buf[ mk_sz ];
-	ssize_t nw = snprintf(mk_buf, mk_sz, MATCH_APPL, applname);
+	snprintf(mk_buf, mk_sz, MATCH_APPL, applname);
 
 	sqlite3_stmt* stmt;
 	sqlite3_prepare_v2(dbh->dbh, mk_buf, mk_sz-1, &stmt, NULL);
