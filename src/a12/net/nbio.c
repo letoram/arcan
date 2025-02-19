@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <ctype.h>
+#include <limits.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -828,7 +829,7 @@ int alt_nbio_process_read(
 			count &&
 	/* same caveat as above, striplf mode can cause len == 0 with step+1
 	 * at end-of-full buffer causing ci to overstep buffer cap */
-			ci < ib->ofs,
+			ci < ib->ofs &&
 			(ch = nextline(ib, ci, eof, &len, &step, &gotline, ib->lfch))){
 			if (eof && len == 0 && step == 0)
 				break;

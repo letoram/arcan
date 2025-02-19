@@ -848,8 +848,6 @@ bool a12helper_keystore_known_accepted_challenge(
 	if (!ent)
 		return false;
 
-	size_t len;
-
 #if 0
 	char* b64 = (char*) a12helper_tob64(pubk, 32, &len);
 	printf("scan for [%s]:\n", b64); free(b64);

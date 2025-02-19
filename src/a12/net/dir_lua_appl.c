@@ -315,7 +315,9 @@ static int matchkeys(lua_State* L)
 	int domain = luaL_optnumber(L, 3, 0);
 
 	char* req = NULL;
-	ssize_t req_len = asprintf(&req, "match=%s:domain=%d", pattern, domain);
+	ssize_t req_len = asprintf(&req,
+		"match=%s:domain=%d:id=%"PRIdPTR, pattern, domain, ref);
+
 	if (req_len < 0){
 		lua_pushboolean(L, false);
 		return 1;

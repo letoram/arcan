@@ -5,6 +5,7 @@
 #include <sqlite3.h>
 #include <errno.h>
 #include <arcan_shmif.h>
+#include <fcntl.h>
 #include <arcan_shmif_server.h>
 #include <poll.h>
 
@@ -17,6 +18,7 @@
 #include "../a12.h"
 #include "../../engine/arcan_mem.h"
 #include "../../engine/arcan_db.h"
+#include "a12_helper.h"
 #include "nbio.h"
 
 #include <sys/socket.h>
@@ -47,11 +49,72 @@ struct runner_state {
 	volatile bool alive;
 };
 
+static void controller_dispatch(
+	struct runner_state* state, struct arg_arr* arr, struct arcan_dbh* db)
+{
+ /*
+ * setkey=key:val=value:domain or
+ * possibly with begin_kv_transaction:domain=%d and terminated with
+ * end_kv_transaction, just forward those into arcan_db calls.
+ *
+ * only domain 0 is interesting now, otherwise for asynch
+ *
+ */
+	union arcan_dbtrans_id dbid = {.applname = state->appl->appl.name};
+	const char* arg;
+	const char* val;
+
+	if (arg_lookup(arr, "begin_kv_transaction", 0, NULL)){
+		arcan_db_begin_transaction(db, DVT_APPL, dbid);
+	}
+	else if
+		(arg_lookup(arr, "setkey", 0, &arg) && arg &&
+		 arg_lookup(arr, "value", 0, &val) && val){
+			arcan_db_add_kvpair(db, arg, val);
+	}
+	else if (arg_lookup(arr, "end_kv_transaction", 0, NULL)){
+		arcan_db_end_transaction(db);
+	}
+	else if (arg_lookup(arr, "match", 0, &arg) && arg){
+/*
+ * domain has the same consequences as setkey, but the replies need to carry
+ * id and an indicator that this is the end of the request mapping.
+ */
+	}
+/* launch=%d:config=%d would spawn the corresponding target/config as done in
+ * normal arcan, but through arcan-net exec with a generated keypair as a
+ * source then send the source material back for it to be routed to the client
+ * that is supposed to source it. We need a [resource] replacement that gets
+ * resolved from the appl- specific namespace and some note that responding to
+ * BCHUNK_IN etc. comes from the sink and may be a security concern.
+ * We also need to mark if the new source is supposed to be [single-use] and
+ * visible to anyone allowed to source, or only the target that the request is
+ * possibly intended for. We also need a way to provide the set of defined
+ * target/config options.
+ */
+	else
+		a12int_trace(
+			A12_TRACE_DIRECTORY, "appl_runner=%s:invalid key in message",
+			dbid.applname
+		);
+
+	arg_cleanup(arr);
+}
+
+/*
+ * This runs in the main privileged process.
+ * It routes I/O and database requests for the sandboxed worker
+ * in a 1:n thread for each controller-appl process.
+ */
 static void* controller_runner(void* inarg)
 {
 	struct runner_state* runner = inarg;
 	pthread_mutex_lock(&runner->lock);
 	runner->alive = true;
+
+/* new db connection as they synch over TLS, WAL is probably
+ * a good idea here moreso than in regular arcan_db */
+	struct arcan_dbh* tl_db = arcan_db_open(CFG->db_file, NULL);
 
 /* open database connection */
 	int pid;
@@ -134,14 +197,19 @@ static void* controller_runner(void* inarg)
 
 		struct arcan_event ev;
 		while (1 == shmifsrv_dequeue_events(runner->cl, &ev, 1)){
+
+/* coalesce and process request */
 			if (ev.ext.kind == EVENT_EXTERNAL_MESSAGE){
-/* coalesce and process request, by using arg_unpack on merged string,
- *
- * setkey=key:val=value:domain or
- * possibly with begin_kv_transaction:domain=%d and terminated with
- * end_kv_transaction, just forward those into arcan_db calls.
- *
- */
+				struct arg_arr* arg;
+				int err;
+				if (!anet_directory_merge_multipart(&ev, &arg, &err)){
+					if (err){
+						a12int_trace(
+							A12_TRACE_DIRECTORY, "kind=error:runner_unpack=%d", err);
+					}
+					continue;
+				}
+
 			}
 		}
 
@@ -151,6 +219,8 @@ static void* controller_runner(void* inarg)
 	runner->alive = false;
 	runner->appl->server_tag = NULL;
 	free(runner);
+	arcan_db_close(&tl_db);
+	anet_directory_merge_multipart(NULL, NULL, NULL);
 	pthread_mutex_unlock(&runner->lock);
 
 	return NULL;

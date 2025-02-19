@@ -54,9 +54,6 @@ struct anet_dirsrv_opts {
  */
 struct directory_meta;
 
-struct anet_dirsrv_lua_runner {
-};
-
 struct anet_dircl_opts {
 /* where are appls loaded from? */
 	int basedir;
@@ -290,5 +287,31 @@ int anet_directory_lua_filter_source(struct dircl* C, arcan_event* ev);
 
 void anet_directory_tunnel_thread(struct ioloop_shared* ios, struct a12_state* S);
 void anet_directory_ioloop(struct ioloop_shared* S);
+
+/*
+ * coalesce multipart- split EVENT_EXTERNAL_MESSAGE and treat as ARCAN_ARG
+ * encoded (key=val:, substitute : for \t and block \t as it was meant for
+ * regular grammar interactive CLI typing)
+ *
+ * Returns [true] when event chain is terminated and set *out to the parsed arg.
+ * Returns [false] and sets *err to 0 when more events are required or *err to
+ *                 corresponding enum error.
+ *
+ * as necessary. Returns true when [out] is parsed.
+ *
+ * This uses TLS+heap for internal buffering, call with a NULL ev on thread
+ * termination to ensure cleanup with 1:1 source - unpacker.
+ *
+ * This does not set a cap, it will coalesce for as long as messages are fed
+ * or OOM. Any cap limit should be dealt by the caller.
+ */
+enum multipart_fail {
+	MULTIPART_OOM       = 1,
+	MULTIPART_BAD_FMT   = 2,
+	MULTIPART_BAD_MSG   = 3
+};
+
+bool anet_directory_merge_multipart(
+	struct arcan_event* ev, struct arg_arr**, int* err);
 
 #endif

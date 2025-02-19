@@ -166,8 +166,8 @@ union arcan_dbtrans_id {
  * and finalize with end_transaction. While inside a transaction, the
  * only valid db operation is add_kvpair and end_transaction.
  */
-void arcan_db_begin_transaction(struct arcan_dbh*, enum DB_KVTARGET,
-	union arcan_dbtrans_id);
+void arcan_db_begin_transaction(
+	struct arcan_dbh*, enum DB_KVTARGET, union arcan_dbtrans_id);
 
 /*
  * if val is set to NULL, all entries with an 0-length string will be dropped

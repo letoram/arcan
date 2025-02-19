@@ -16,10 +16,12 @@
 #include <stdint.h>
 #include <signal.h>
 #include <pthread.h>
+#include <fcntl.h>
 
 #include "../a12.h"
 #include "../a12_int.h"
 #include "anet_helper.h"
+#include "a12_helper.h"
 #include "directory.h"
 
 #include <sys/types.h>
@@ -183,7 +185,6 @@ static bool ensure_path(int cdir, const char* path)
 	char* wrk = strdup(path);
 	char* tmp = wrk;
 	bool finished = false;
-	struct stat s;
 
 	while(1){
 		tmp += strspn(tmp, "/");
@@ -472,4 +473,84 @@ err:
 	fchdir(olddir);
 	close(olddir);
 	return false;
+}
+
+bool anet_directory_merge_multipart(
+	struct arcan_event* ev, struct arg_arr** outarg, int* err)
+{
+	static _Thread_local size_t multipart_sz;
+	static _Thread_local size_t multipart_cnt;
+	static _Thread_local char* multipart_buf;
+
+/* free TLS */
+	if (!ev){
+		if (multipart_sz){
+			multipart_sz = 0;
+			multipart_cnt = 0;
+			free(multipart_buf);
+			multipart_buf = NULL;
+		}
+		return true;
+	}
+
+/* short path, single-message */
+	if (!ev->ext.message.multipart && !multipart_sz){
+		*outarg = arg_unpack((const char*) ev->ext.message.data);
+		if (!*outarg){
+			multipart_cnt = 0;
+			*err = MULTIPART_BAD_FMT;
+			return false;
+		}
+
+		multipart_cnt = 0;
+		return true;
+	}
+
+/* grow or alloc?, ev->ext.message.data is invalid unless it ends at an aligned
+ * UTF-8 sequence and is \0 terminated. arg_unpack handles UTF-8 validation. */
+	size_t len = strnlen(
+		(char*) ev->ext.message.data, COUNT_OF(ev->ext.message.data));
+
+	if (len == COUNT_OF(ev->ext.message.data)){
+		multipart_cnt = 0;
+		*err = MULTIPART_BAD_MSG;
+		return false;
+	}
+
+	if (len + multipart_cnt >= multipart_sz){
+		char* buf = malloc(multipart_sz + 4096);
+		if (!buf){
+			*err = MULTIPART_OOM;
+			return false;
+		}
+
+		if (multipart_sz){
+			memcpy(buf, multipart_buf, multipart_cnt);
+			free(multipart_buf);
+		}
+
+		multipart_buf = buf;
+		multipart_sz += 4096;
+	}
+
+	memcpy(&multipart_buf[multipart_cnt], ev->ext.message.data, len);
+	multipart_cnt += len;
+	multipart_buf[multipart_cnt] = '\0';
+
+/* buffer more? */
+	if (ev->ext.message.multipart){
+		*err = 0;
+		return false;
+	}
+
+	*outarg = arg_unpack((const char*) multipart_buf);
+	multipart_cnt = 0;
+
+	if (!*outarg){
+		*err = MULTIPART_BAD_FMT;
+		return false;
+	}
+
+	*err = 0;
+	return true;
 }

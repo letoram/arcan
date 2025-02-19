@@ -31,6 +31,8 @@
  THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <fcntl.h>
+
 /*
  * This is used to be able to write headless servers for shmif, in order to
  * easier facilitate testing, proxying and nesting of shmif connections.  It
