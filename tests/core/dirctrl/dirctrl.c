@@ -22,6 +22,8 @@ int main(int argc, char** argv)
 		fprintf(stderr, "Use: dirctrl /path/to/config.lua applname\n");
 		return EXIT_FAILURE;
 	}
+	struct a12_context_options aopts = {0};
+	CFG.meta.opts = &aopts;
 
 /* load all the config options from the same format as the regular server would */
 	CFG.config_file = argv[1];

@@ -238,8 +238,7 @@ target_include_directories(arcan_shmif_ext PRIVATE ${INCLUDE_DIRS})
 target_include_directories(arcan_shmif_intext PRIVATE ${INCLUDE_DIRS})
 target_include_directories(arcan_shmif_server PRIVATE ${INCLUDE_DIRS})
 target_include_directories(arcan_shmif_server_int PRIVATE ${INCLUDE_DIRS} ${ASD}/shmif)
-target_compile_definitions(arcan_shmif_server_int PRIVATE
-	SHMIFSRV_EXTERNAL_CLOCK PLATFORM_FRAMESERVER_NOAMEM)
+target_compile_definitions(arcan_shmif_server_int PRIVATE PLATFORM_FRAMESERVER_NOAMEM)
 
 # note that we enable fpic for the static here as some
 # subdirectores need to pull it in as part of building a shared library

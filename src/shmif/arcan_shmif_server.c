@@ -657,7 +657,7 @@ int shmifsrv_monotonic_tick(int* left)
 	int64_t base = c_ticks * ARCAN_TIMER_TICK;
 	int64_t delta = frametime - base;
 
-	if (delta > ARCAN_TIMER_TICK){
+	if (delta >= ARCAN_TIMER_TICK){
 		n_ticks = delta / ARCAN_TIMER_TICK;
 
 /* safeguard against stalls or clock issues */
