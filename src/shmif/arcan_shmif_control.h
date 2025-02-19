@@ -307,9 +307,9 @@ struct arcan_shmif_cont {
  * even though futex support across the board is only 32-bits, the strict
  * requirement is just 32-bit alignment.
  */
-	_Alignas(4) uintptr_t vsync;
-	_Alignas(4) uintptr_t async;
-	_Alignas(4) uintptr_t esync;
+	_Alignas(8) uintptr_t vsync;
+	_Alignas(8) uintptr_t async;
+	_Alignas(8) uintptr_t esync;
 
 /*
  * Should be used to index vidp, i.e. vidp[y * pitch + x] = RGBA(r, g, b, a)
