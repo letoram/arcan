@@ -669,8 +669,14 @@ int shmifsrv_monotonic_tick(int* left)
 		c_ticks += n_ticks;
 	}
 
-	if (left)
+	if (left){
 		*left = ARCAN_TIMER_TICK - delta;
+
+/* drift / jitter outside, just repeat */
+		if (*left < 0)
+			*left = 0;
+	}
+
 	return n_ticks;
 #else
 	return 0;

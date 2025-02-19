@@ -791,7 +791,10 @@ void anet_directory_appl_runner()
 	while (!SHUTDOWN){
 		int pv = poll(CLIENTS.pset, CLIENTS.set_sz, left);
 		int nt = shmifsrv_monotonic_tick(&left);
-		while (nt > 0 && setup_entrypoint(L, "_clock_pulse", sizeof("_clock_pulse"))){
+
+/* L might not be initialised here yet as it depends on the event delivery */
+		while (nt > 0 && L &&
+			setup_entrypoint(L, "_clock_pulse", sizeof("_clock_pulse"))){
 			wrap_pcall(L, 0, 0);
 			nt--;
 		}
