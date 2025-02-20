@@ -35,7 +35,10 @@ bool shmif_platform_prefix_from_socket(int sock, char* wbuf, size_t sz)
 	size_t ofs = 0;
 	do {
 		ssize_t nr = read(sock, wbuf + ofs, 1);
-		if (-1 == nr && errno != EAGAIN){
+		if (-1 == nr){
+			if (errno == EAGAIN || errno == EINTR)
+				continue;
+
 			debug_print(INFO, NULL, "shmkey_acquire:fail=%s", strerror(errno));
 			return false;
 		}
