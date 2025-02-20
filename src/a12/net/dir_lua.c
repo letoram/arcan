@@ -114,9 +114,9 @@ static void* controller_runner(void* inarg)
 
 /* new db connection as they synch over TLS, WAL is probably
  * a good idea here moreso than in regular arcan_db */
-	struct arcan_dbh* tl_db = arcan_db_open(CFG->db_file, NULL);
+	struct arcan_dbh* tl_db =
+		arcan_db_open(CFG->db_file, runner->appl->appl.name);
 
-/* open database connection */
 	int pid;
 	shmifsrv_client_handle(runner->cl, &pid);
 	a12int_trace(
@@ -208,7 +208,7 @@ static void* controller_runner(void* inarg)
 					}
 					continue;
 				}
-
+				controller_dispatch(runner, arg, tl_db);
 			}
 		}
 
