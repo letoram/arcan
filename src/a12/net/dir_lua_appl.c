@@ -305,7 +305,7 @@ static int matchkeys(lua_State* L)
 	const char* pattern = luaL_checkstring(L, 1);
 
 /* extract and reference continuation */
-	if (!lua_isfunction(L, 2) || !lua_iscfunction(L, 2)){
+	if (!(lua_isfunction(L, 2) && !lua_iscfunction(L, 2))){
 		luaL_error(L,
 			"match_keys(pattern, >handler<, [domain]), handler is not a function");
 	}

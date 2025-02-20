@@ -49,18 +49,60 @@ struct runner_state {
 	volatile bool alive;
 };
 
+struct strrep_meta {
+	struct arcan_strarr res;
+	int dst;
+};
+
+static void fdifd_event(struct shmifsrv_client* C,
+	struct arcan_event base, int fd, const char* idstr, const char* prefix)
+{
+		int idlen = (int) strtoul(idstr, NULL, 10);
+		snprintf((char*)&base.tgt.message,
+			COUNT_OF(base.tgt.message), prefix, idlen);
+		shmifsrv_enqueue_event(C, &base, fd);
+}
+
+static void run_detached_thread(void* (*ptr)(void*), void* arg)
+{
+	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	pthread_create(&pth, &pthattr, ptr, arg);
+}
+
+static void* strarr_copy(void* arg)
+{
+	struct strrep_meta* M = arg;
+	char** curr = M->res.data;
+	FILE* fout = fdopen(M->dst, "w+");
+
+/* write each reply with \0 terminated strings blocking */
+	while (*curr && fout){
+		fputs(*curr, fout);
+		fputc('\0', fout);
+	}
+
+	fclose(fout);
+	arcan_mem_freearr(&M->res);
+	free(M);
+	return NULL;
+}
+
 static void controller_dispatch(
-	struct runner_state* state, struct arg_arr* arr, struct arcan_dbh* db)
+	struct runner_state* runner, struct arg_arr* arr, struct arcan_dbh* db)
 {
  /*
  * setkey=key:val=value:domain or
  * possibly with begin_kv_transaction:domain=%d and terminated with
  * end_kv_transaction, just forward those into arcan_db calls.
  *
- * only domain 0 is interesting now, otherwise for asynch
- *
+ * only domain 0 is interesting now, otherwise for directory network
+ * we need to query linked directories as distributed K/V store with
+ * timestamp of the request or propagate update with timestamp.
  */
-	union arcan_dbtrans_id dbid = {.applname = state->appl->appl.name};
+	union arcan_dbtrans_id dbid = {.applname = runner->appl->appl.name};
 	const char* arg;
 	const char* val;
 
@@ -75,12 +117,41 @@ static void controller_dispatch(
 	else if (arg_lookup(arr, "end_kv_transaction", 0, NULL)){
 		arcan_db_end_transaction(db);
 	}
-	else if (arg_lookup(arr, "match", 0, &arg) && arg){
-/*
- * domain has the same consequences as setkey, but the replies need to carry
- * id and an indicator that this is the end of the request mapping.
- */
+	else if (arg_lookup(arr, "match", 0, &arg) && arg &&
+		arg_lookup(arr, "domain", 0, NULL) &&
+		arg_lookup(arr, "id", 0, &val) && val){
+		struct arcan_strarr res = arcan_db_matchkey(db, DVT_APPL, arg);
+
+/* sending the replies as events might be saturating the outgoing event queue
+ * and thus we always need a fallback with a copy-thread carrying the replies.
+ *
+ * start with that and consider the fallback later with a delay-queue for
+ * making sure that the request end has guaranteed delivery. */
+		if (res.data){
+			int ppair[2];
+			if (-1 == pipe(ppair)){
+				fdifd_event(runner->cl, (struct arcan_event)
+					{.tgt.kind = TARGET_COMMAND_MESSAGE}, -1, val, "fail:id=%d");
+				arcan_mem_freearr(&res);
+			}
+			else {
+				fdifd_event(runner->cl,
+					(struct arcan_event){
+					.category = EVENT_TARGET,
+					.tgt.kind = TARGET_COMMAND_BCHUNK_IN
+					}, ppair[0], val, ".reply_%d"
+				);
+				struct strrep_meta* M = malloc(sizeof(struct strrep_meta));
+				run_detached_thread(strarr_copy, M);
+			}
+		}
+		else {
+			fdifd_event(runner->cl, (struct arcan_event)
+				{.tgt.kind = TARGET_COMMAND_MESSAGE}, -1, val, "ok:id=%d");
+			arcan_mem_freearr(&res);
+		}
 	}
+
 /* launch=%d:config=%d would spawn the corresponding target/config as done in
  * normal arcan, but through arcan-net exec with a generated keypair as a
  * source then send the source material back for it to be routed to the client
@@ -932,23 +1003,13 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 		char buf[8];
 		snprintf(buf, 8, "%d", sv[1]);
 		setenv("ARCAN_SOCKIN_FD", buf, 1);
-		pthread_t pth;
-		pthread_attr_t pthattr;
-		pthread_attr_init(&pthattr);
-		pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-		pthread_create(&pth, &pthattr, thread_appl_runner, NULL);
-
+		run_detached_thread(thread_appl_runner, NULL);
 /* now sv[1] is the socket that we should prepare */
 	}
 
 	appl->server_tag = runner;
-
-	pthread_t pth;
-	pthread_attr_t pthattr;
-	pthread_attr_init(&pthattr);
+	run_detached_thread(controller_runner, runner);
 	pthread_mutex_init(&runner->lock, NULL);
-	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-	pthread_create(&pth, &pthattr, controller_runner, runner);
 
 	return true;
 }
