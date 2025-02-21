@@ -66,6 +66,7 @@ map_region arcan_map_resource(data_source* source, bool allowwrite)
 	map_region rv = {0};
 	struct stat sbuf;
 	bool allow_trunc = false;
+	bool force_read = false;
 
 /*
  * if additional properties (size, ...) has not yet been resolved,
@@ -81,6 +82,7 @@ map_region arcan_map_resource(data_source* source, bool allowwrite)
 		if (sbuf.st_mode == S_IFIFO || sbuf.st_mode == S_IFSOCK){
 			source->len = MAX_RESMAP_SIZE;
 			allow_trunc = true;
+			force_read = true;
 		}
 	}
 
@@ -92,7 +94,7 @@ map_region arcan_map_resource(data_source* source, bool allowwrite)
  * for unaligned reads (or in-place modifiable memory)
  * we manually read the file into a buffer
  */
-	if (source->start % sysconf(_SC_PAGE_SIZE) != 0 || allowwrite){
+	if (source->start % sysconf(_SC_PAGE_SIZE) != 0 || allowwrite || force_read){
 		goto memread;
 	}
 
@@ -146,16 +148,18 @@ memread:
 /* we used a read cap into overallocated buffer,
  * accepted truncation (pipe), shrink the overalloc */
 		if (!rstatus){
-			if (allow_trunc){
-				rv.ptr = realloc(rv.ptr, rv.sz);
-				if (!rv.ptr)
-					rv.sz = 0;
+			if (allow_trunc && source->len){
+				void* ptr = realloc(rv.ptr, source->len);
+				if (ptr){
+					rv.ptr = ptr;
+					rv.sz = source->len;
+					return rv;
+				}
 			}
-			else {
-				free(rv.ptr);
-				rv.ptr = NULL;
-				rv.sz  = 0;
-			}
+
+			free(rv.ptr);
+			rv.ptr = NULL;
+			rv.sz  = 0;
 		}
 
 	return rv;
