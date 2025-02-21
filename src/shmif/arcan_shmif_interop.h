@@ -301,7 +301,7 @@ void arcan_shmif_privsep(struct arcan_shmif_cont* C,
  * Returns a valid descriptor or -1 on error (with errno set according
  * to the dup() call family.
  */
-int arcan_shmif_dupfd(int fd, int dstnum, bool blocking);
+int arcan_shmif_dupfd(int fd, int dstnum, bool nonblocking);
 
 /*
  * Update the short ~(32b) message that the connection will try and forward

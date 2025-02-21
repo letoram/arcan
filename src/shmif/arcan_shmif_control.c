@@ -1232,9 +1232,9 @@ static int dupfd_to(int fd, int dstnum, int fflags, int fdopt)
 	return rfd;
 }
 
-int arcan_shmif_dupfd(int fd, int dstnum, bool blocking)
+int arcan_shmif_dupfd(int fd, int dstnum, bool nonblocking)
 {
-	return shmif_platform_dupfd_to(fd, dstnum, blocking * O_NONBLOCK, FD_CLOEXEC);
+	return shmif_platform_dupfd_to(fd, dstnum, nonblocking * O_NONBLOCK, FD_CLOEXEC);
 }
 
 void arcan_shmif_last_words(
