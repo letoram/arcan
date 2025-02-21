@@ -7,6 +7,7 @@
 #include <arcan_shmif.h>
 #include <arcan_shmif_server.h>
 #include <poll.h>
+#include <assert.h>
 
 #include <lualib.h>
 #include <lauxlib.h>
@@ -646,11 +647,64 @@ static void release_worker(size_t ind)
 	*cl = (struct client){0};
 }
 
+static void lua_pushkv_buffer(char* pos, char* end)
+{
+	assert(pos);
+	lua_newtable(L);
+	if (!pos)
+		return;
+
+/* these come in key=value form, set it as a keyed table */
+	while (pos < end){
+		size_t len = strlen(pos);
+		char* key = strchr(pos, '=');
+		if (key){
+			size_t keylen = (uintptr_t) key - (uintptr_t) pos;
+			lua_pushlstring(L, pos, keylen);
+			lua_pushstring(L, &key[1]);
+		}
+		else{
+			lua_pushlstring(L, pos, len);
+			lua_pushboolean(L, true);
+		}
+		lua_rawset(L, -3);
+		pos += len + 1;
+	}
+}
+
+/* SECURITY NOTE:
+ * These come from a the higher-privilege level parent, thus malicious use of
+ * map_resource, luaL_ref and callbacks etc. isn't considered as anything they
+ * can achieve the parent can do through other means.
+ */
 static void meta_resource(int fd, const char* msg)
 {
 	if (strncmp(msg, ".worker", 8) == 0){
 		join_worker(fd);
 		return;
+	}
+/* for the time being, just read everything into a memory buffer and then
+ * provide that as a unified strarr - we don't want this blocking when the key
+ * domain is distributed and we want to feed all the replies piecemeal so
+ * the callback interface has EOF builtin */
+	if (strncmp(msg, ".reply=", 7) == 0){
+		data_source source = {
+		 .fd = fd
+		};
+		long id = strtoul(&msg[7], NULL, 10);
+		map_region reg = arcan_map_resource(&source, false);
+		lua_rawgeti(L, LUA_REGISTRYINDEX, id);
+		if (lua_type(L, -1) != LUA_TFUNCTION)
+			luaL_error(L, "BUG:request_reply into invalid callback");
+
+/* -2 : LUA_TABLE, -1 : LUA_BOOLEAN */
+		lua_pushkv_buffer(reg.ptr, reg.ptr + reg.sz);
+		lua_pushboolean(L, true);
+
+		arcan_release_map(reg);
+		arcan_release_resource(&source);
+		lua_call(L, 2, 0);
+		luaL_unref(L, LUA_REGISTRYINDEX, id);
 	}
 	else
 		log_print("unhandled:%s\n", msg);
@@ -668,7 +722,7 @@ static void parent_control_event(struct arcan_event* ev)
 
 	switch (ev->tgt.kind){
 	case TARGET_COMMAND_BCHUNK_IN:{
-		int fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true);
+		int fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, false);
 		if (-1 == fd){
 			log_print("kind=error:source=dup:bchunk:message=%s", ev->tgt.message);
 			return;

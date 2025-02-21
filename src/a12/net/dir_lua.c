@@ -76,15 +76,20 @@ static void* strarr_copy(void* arg)
 {
 	struct strrep_meta* M = arg;
 	char** curr = M->res.data;
-	FILE* fout = fdopen(M->dst, "w+");
+	FILE* fout = fdopen(M->dst, "w");
+	if (!fout)
+		goto out;
+
 
 /* write each reply with \0 terminated strings blocking */
-	while (*curr && fout){
+	while (*curr && !ferror(fout)){
 		fputs(*curr, fout);
 		fputc('\0', fout);
+		curr++;
 	}
-
 	fclose(fout);
+
+out:
 	arcan_mem_freearr(&M->res);
 	free(M);
 	return NULL;
@@ -120,14 +125,15 @@ static void controller_dispatch(
 	else if (arg_lookup(arr, "match", 0, &arg) && arg &&
 		arg_lookup(arr, "domain", 0, NULL) &&
 		arg_lookup(arr, "id", 0, &val) && val){
-		struct arcan_strarr res = arcan_db_matchkey(db, DVT_APPL, arg);
+		struct arcan_strarr res =
+			arcan_db_applkeys(db, runner->appl->appl.name, arg);
 
 /* sending the replies as events might be saturating the outgoing event queue
  * and thus we always need a fallback with a copy-thread carrying the replies.
  *
  * start with that and consider the fallback later with a delay-queue for
  * making sure that the request end has guaranteed delivery. */
-		if (res.data){
+		if (res.count){
 			int ppair[2];
 			if (-1 == pipe(ppair)){
 				fdifd_event(runner->cl, (struct arcan_event)
@@ -139,9 +145,12 @@ static void controller_dispatch(
 					(struct arcan_event){
 					.category = EVENT_TARGET,
 					.tgt.kind = TARGET_COMMAND_BCHUNK_IN
-					}, ppair[0], val, ".reply_%d"
+					}, ppair[0], val, ".reply=%d"
 				);
 				struct strrep_meta* M = malloc(sizeof(struct strrep_meta));
+				M->res = res;
+				M->dst = ppair[1];
+				close(ppair[0]);
 				run_detached_thread(strarr_copy, M);
 			}
 		}

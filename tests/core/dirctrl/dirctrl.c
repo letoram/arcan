@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <netdb.h>
 #include <pthread.h>
+#include <signal.h>
 #include "platform.h"
 #include "a12.h"
 #include "anet_helper.h"
@@ -29,6 +30,7 @@ int main(int argc, char** argv)
 	CFG.config_file = argv[1];
 	anet_directory_lua_init(&CFG);
 	a12_set_trace_level(A12_TRACE_DIRECTORY, stdout);
+	sigaction(SIGPIPE,&(struct sigaction){.sa_handler = SIG_IGN}, 0);
 
 	if (getenv("ARCAN_CONNPATH")){
 /* this should have regular tracing, force-reload, inspect state, ...
