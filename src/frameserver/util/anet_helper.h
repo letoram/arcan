@@ -94,6 +94,12 @@ struct anet_cl_connection {
 
 struct anet_cl_connection anet_cl_setup(struct anet_options* opts);
 
+/*
+ * This is an edge case alternative to anet_cl_setup to make an outbound
+ * connection but ignoring enumerating through the keystore.
+ */
+struct anet_cl_connection anet_connect_to(struct anet_options* arg);
+
 /* setup the keystore using the specified provider,
  *
  * returns false if the provider is missing/broken or there already is a
@@ -187,8 +193,18 @@ bool a12helper_keystore_public_tagset(struct keystore_mask*);
  * Otherwise connp is a comma separated list of local name. These names are
  * intended to tie to local connection points or policy group names.
  */
-bool a12helper_keystore_accept(const uint8_t pubk[static 32], const char* connp);
+bool a12helper_keystore_accept(
+	const uint8_t pubk[static 32], const char* connp);
 #endif
+
+/*
+ * temporarily add the key to the trust store, this should not persist across
+ * restarts and can be batched revoked with flush_ephemeral(id)
+ */
+void a12helper_keystore_accept_ephemeral(
+	const uint8_t pubk[static 32], const char* connp, const char* id);
+
+void a12helper_keystore_flush_ephemeral(const char* id);
 
 /*
  * From a prefilled addrinfo structure, enumerate all interfaces and try

@@ -297,6 +297,87 @@ static int storekeys(lua_State* L)
 	return 0;
 }
 
+/*
+ * same procedure as with match_keys
+ */
+static int listtargets(lua_State* L)
+{
+	struct arcan_event ev = {
+		.category = ARCAN_EVENT(MESSAGE),
+	};
+/* extract and reference continuation */
+	if (!(lua_isfunction(L, 2) && !lua_iscfunction(L, 2))){
+		luaL_error(L,
+			"list_targets(>handler<), handler is not a function");
+	}
+	lua_pushvalue(L, 2);
+	intptr_t ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	snprintf((char*)ev.ext.message.data,
+		COUNT_OF(ev.ext.message.data), ".target_index:id=%d", ref);
+
+	arcan_shmif_enqueue(&SHMIF, &ev);
+
+	return 0;
+}
+
+/* string:target-name, tbl:options, number:clid, handler
+ * string:target-name, tbl:options, handler
+ */
+static int launchtarget(lua_State* L)
+{
+	const char* name = luaL_checkstring(L, 1);
+	if (lua_type(L, 2) != LUA_TTABLE){
+		luaL_error(L, "launch_target(name, >option table<, ...) no table provided");
+	}
+
+/* options:
+ *  - hidden     (when used with [source-name])
+ *  - sink-limit (when used with [source-name])
+ *  - timeout    (unless source is opened within N seconds, terminate)
+ *  - arguments  (packed argstr for sending to target-name)
+ *                send it as b64 to avoid interleaving issues with unpacking
+ *                the first argument.
+ */
+	const char* argstr = "";
+	size_t ind = 3;
+	if (lua_type(L, 3) == LUA_TNUMBER)
+		ind++;
+
+	if (!(lua_isfunction(L, ind) && !lua_iscfunction(L, ind))){
+		luaL_error(L, "launch_target(..., >handler<) is not a function");
+	}
+	intptr_t ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+/*
+ * defining input files from the appl-local store or a nbio is a bit awkward,
+ * the options are (for static) to provide [APPL]/ expansion and resolve the
+ * file server side, have a force-injected monitor segment that allows us to
+ * inject events into the queue of the primary and that gets paired here and
+ * mapped to the event handler.
+ *
+ * that lets us open_nonblock into the thing to supply it with descriptors, and
+ * possibly suggest that it should mask BCHUNK_IN coming only from the master
+ * so that we can block clients from providing their own to leverage some
+ * assumed vulnerability.
+ */
+	char* req = NULL;
+	ssize_t req_len = asprintf(&req,
+		"launch=%s:id=%"PRIdPTR":args=%s", name, (int) ref, argstr);
+
+	if (req_len < 0){
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+	arcan_shmif_pushutf8(&SHMIF, &(struct arcan_event){
+		.category = ARCAN_EVENT(MESSAGE),
+	}, req, req_len);
+	free(req);
+
+	lua_pushboolean(L, true);
+	return 1;
+}
+
 static int matchkeys(lua_State* L)
 {
 /* string:pattern, function: continuation,
@@ -498,6 +579,8 @@ static void open_appl(int dfd, const char* name)
 			{"message_target", targetmessage},
 			{"store_key", storekeys},
 			{"match_keys", matchkeys},
+			{"list_targets", listtargets},
+			{"launch_target", launchtarget},
 /*
  * lift from arcan_lua.c:
  *

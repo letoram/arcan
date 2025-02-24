@@ -100,7 +100,7 @@ bool anet_authenticate(struct a12_state* S, int fdin, int fdout, char** err)
 	return a12_auth_state(S) == AUTH_FULL_PK;
 }
 
-static struct anet_cl_connection connect_to(struct anet_options* arg)
+struct anet_cl_connection anet_connect_to(struct anet_options* arg)
 {
 	struct anet_cl_connection res = {
 		.fd = -1
@@ -213,7 +213,7 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 			snprintf(buf, sizeof(buf), "%"PRIu16, port);
 			tmpcfg.port = buf;
 
-			res = connect_to(&tmpcfg);
+			res = anet_connect_to(&tmpcfg);
 			free(host);
 
 			if (arg->ignore_key_host || !res.errmsg)
@@ -240,7 +240,7 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 		a12int_trace(A12_TRACE_SECURITY, "outbound=%s", req);
 		free(req);
 
-		return connect_to(arg);
+		return anet_connect_to(arg);
 	}
 }
 

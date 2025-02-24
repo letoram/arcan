@@ -18,7 +18,10 @@ function init()
 -- These can be overridden / ignored dynamically per client if the 'register()'
 -- function is implemented (see example further below).
 --
-	config.permissions.source = 'sources' -- clients allowed to register as a source
+-- _internal is a reserved tag for network connections spawned by the directory itself
+--           this is useed by controller scripts that launch dynamic sources
+--
+	config.permissions.source = 'sources,_internal' -- clients allowed to register as a source
 	config.permissions.dir = 'directory' -- clients allowed to register as a linked directory
 	config.permissions.appl = 'developer' -- clients allowed to update appl slots
 	config.permissions.resources = 'shared-content' -- clients allowed to write

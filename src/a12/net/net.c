@@ -680,9 +680,11 @@ static struct anet_cl_connection find_connection(
 	struct anet_cl_connection anet;
 	int rc = opts->retry_count;
 	int timesleep = 1;
-
 	const char* err;
-	if (!open_keystore(opts, &err)){
+
+/* if we have a hardcoded host and keys, then ignore enumerating the keystore */
+	if (!global.use_forced_remote_pubk &&
+			!open_keystore(opts, &err)){
 		fprintf(stderr, "couldn't open keystore: %s\n", err);
 	}
 
@@ -702,7 +704,18 @@ static struct anet_cl_connection find_connection(
 
 /* connect loop until retry count exceeded */
 	while (rc != 0 && (!cl || (shmifsrv_poll(cl) != CLIENT_DEAD))){
-		anet = anet_cl_setup(opts);
+
+/* manual primitives need the pubk for the initial hello, we will actually set
+ * it later in key_auth_local when we also know the remote pubk and can derive
+ * the session keys */
+		if (global.use_forced_remote_pubk){
+			uint8_t my_private_key[32];
+			a12helper_fromb64(
+				(uint8_t*) getenv("A12_USEPRIV"), 32, opts->opts->priv_key);
+			anet = anet_connect_to(opts);
+		}
+		else
+			anet = anet_cl_setup(opts);
 
 		if (anet.state)
 			break;
@@ -926,6 +939,7 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"\t-a, --auth n   \t Read authentication secret from stdin (maxlen:32)\n"
 	"\t               \t if [n] is provided, n keys added to trusted\n"
 	"\t --soft-auth   \t Permit unknown via authentication secret (password)\n"
+	"\t --force-kpub s\t Ignore keystore, explicit remote public key b64(s)\n"
 	"\t-T, --trust s  \t Specify trust domain for splitting keystore\n"
 	"\t               \t outbound connections default to 'outbound' while\n"
 	"\t               \t serving/listening defaults to a wildcard ('*')\n\n"
@@ -1143,6 +1157,23 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		}
 		else if (strcmp(argv[i], "--keep-alive") == 0){
 			global.keep_alive = true;
+		}
+		else if (strcmp(argv[i], "--force-kpub") == 0){
+			if (i >= argc)
+				return show_usage("Missing b64(kpub)", argv, i - 1);
+			i++;
+
+			global.use_forced_remote_pubk = true;
+			if (!a12helper_fromb64((uint8_t*) argv[i], 32, global.forced_remote_pubk)){
+				return show_usage("--forced-kpub: bad base64 encoded key", argv, i);
+			}
+			if (!getenv("A12_USEPRIV"))
+				return show_usage("--forced-kpub without A12_USEPRIV env set", argv, i);
+
+			uint8_t my_private_key[32];
+			if (!a12helper_fromb64((unsigned char*)getenv("A12_USEPRIV"), 32, my_private_key)){
+				return show_usage("--forced-kpub A12_USEPRIV env invalid b64(key)", argv, i);
+			}
 		}
 		else if (strcmp(argv[i], "--allow-appl") == 0){
 			i++;
@@ -1782,6 +1813,31 @@ static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 	char* tmp;
 	uint16_t tmpport;
 	size_t outl;
+
+/* this is a special case used with dirsrv spawning children with ephemeral
+ * keys that are trused due to being spawned by the server itself. These pass
+ * the pubk as an argument (for visibility) and the privk as env. */
+	if (global.use_forced_remote_pubk){
+		if (memcmp(pk, global.forced_remote_pubk, 32) != 0){
+			return auth;
+		}
+		a12int_trace(A12_TRACE_SECURITY, "accept_forced=true");
+		const unsigned char* force_priv = (unsigned char*) getenv("A12_USEPRIV");
+		if (force_priv && a12helper_fromb64(force_priv, 32, my_private_key)){
+			auth.authentic = true;
+			a12_set_session(&auth, pk, my_private_key);
+		}
+		else if (!force_priv){
+			auth.authentic = true;
+			a12helper_keystore_hostkey("default", 0, my_private_key, &tmp, &tmpport);
+			a12_set_session(&auth, pk, my_private_key);
+		}
+		else {
+			a12int_trace(A12_TRACE_SECURITY, "a12_usepriv:error=b64decode_fail");
+			auth.authentic = false;
+		}
+		return auth;
+	}
 	unsigned char* out = a12helper_tob64(pk, 32, &outl);
 
 /* the trust domain (accepted return value) are ignored here for the directory
@@ -2023,7 +2079,7 @@ int main(int argc, char** argv)
 
 /* rest of keystore shouldn't be opened in the worker */
 	if (global.meta.mode != ANET_SHMIF_DIRSRV_INHERIT){
-		if (!open_keystore(&global.meta, &err)){
+		if (!open_keystore(&global.meta, &err) && !global.use_forced_remote_pubk){
 			return show_usage(err, NULL, 0);
 		}
 /* We have a keystore and are listening for an inbound connection, make sure

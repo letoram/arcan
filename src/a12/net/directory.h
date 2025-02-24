@@ -186,6 +186,9 @@ struct global_cfg {
 	struct anet_dircl_opts dircl;
 	struct anet_options meta;
 
+	bool use_forced_remote_pubk;
+	uint8_t forced_remote_pubk[32];
+
 	char* trust_domain;
 	char* path_self;
 	char* outbound_tag;
@@ -318,6 +321,12 @@ enum multipart_fail {
 	MULTIPART_BAD_FMT   = 2,
 	MULTIPART_BAD_MSG   = 3
 };
+
+/*
+ * logging and keystore access need exclusive locks
+ */
+void dirsrv_global_lock(const char* file, int line);
+void dirsrv_global_unlock(const char* file, int line);
 
 bool anet_directory_merge_multipart(
 	struct arcan_event* ev, struct arg_arr**, int* err);

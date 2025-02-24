@@ -37,9 +37,11 @@ struct key_ent {
 	char* host;
 	size_t port;
 	char* fn;
+	char* ephem_id;
 
 	uint8_t chg[8];
 	uint8_t pub_chg[32];
+	bool empty;
 
 	struct key_ent* next;
 };
@@ -335,6 +337,48 @@ static void gen_fn(char* tmpfn, size_t len)
 	arcan_random((uint8_t*)tmpfn, len);
 	for (size_t i = 0; i < len; i++){
 		tmpfn[i] = 'a' + ((uint8_t)tmpfn[i] % 21);
+	}
+}
+
+void a12helper_keystore_accept_ephemeral(
+	const uint8_t pubk[static 32], const char* connp, const char* id)
+{
+	struct key_ent** host = &keystore.hosts;
+
+	while (*host){
+
+/* re-use existing slot if abandoned */
+		if ((*host)->empty){
+			(*host)->empty = false;
+			(*host)->host = strdup(connp);
+			(*host)->ephem_id = strdup(id);
+			return;
+		}
+
+		host = &(*host)->next;
+	}
+
+	*host = alloc_key_ent(pubk);
+	if (*host){
+		(*host)->host = strdup(connp);
+	}
+}
+
+void a12helper_keystore_flush_ephemeral(const char* id)
+{
+	struct key_ent** host = &keystore.hosts;
+
+/* We mark as empty and keep the old pubk around for now, while regular LL
+ * unlink is the obvious approach, flag+re-use cuts down on allocations and
+ * should any pointer be leaked, it'll never be UAFed. Capping amount of
+ * ephemeral registration is up to the _lua.c handler based on configurable
+ * rate-limiting. */
+	while (*host){
+		struct key_ent* ch = *host;
+		if (ch->ephem_id && strcmp(ch->ephem_id, id) == 0){
+			ch->empty = true;
+			ch->ephem_id = (free(ch->ephem_id), NULL);
+		}
 	}
 }
 

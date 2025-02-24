@@ -18,4 +18,6 @@ int a12int_munmap(void* addr, size_t len);
 
 int a12int_dupfd(int fd);
 
+void a12int_execve(const char* path, char* const argv[], char* const env[]);
+
 #endif

@@ -20,9 +20,11 @@
 #include "../../engine/arcan_db.h"
 #include "a12_helper.h"
 #include "nbio.h"
+#include "external/x25519.h"
 
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <netdb.h>
 
 #include "anet_helper.h"
@@ -42,6 +44,14 @@ static struct arcan_dbh* DB;
 static struct global_cfg* CFG;
 static bool INITIALIZED;
 
+#define A12INT_DIRTRACE(...) do { \
+	if (!(a12_trace_targets & A12_TRACE_DIRECTORY))\
+		break;\
+	dirsrv_global_lock(__FILE__, __LINE__);\
+		a12int_trace(A12_TRACE_DIRECTORY, __VA_ARGS__);\
+	dirsrv_global_unlock(__FILE__, __LINE__);\
+	} while (0);
+
 struct runner_state {
 	pthread_mutex_t lock;
 	struct shmifsrv_client* cl;
@@ -57,7 +67,7 @@ struct strrep_meta {
 static void fdifd_event(struct shmifsrv_client* C,
 	struct arcan_event base, int fd, const char* idstr, const char* prefix)
 {
-		int idlen = (int) strtoul(idstr, NULL, 10);
+		int idlen = (int) strtol(idstr, NULL, 10);
 		snprintf((char*)&base.tgt.message,
 			COUNT_OF(base.tgt.message), prefix, idlen);
 		shmifsrv_enqueue_event(C, &base, fd);
@@ -70,6 +80,102 @@ static void run_detached_thread(void* (*ptr)(void*), void* arg)
 	pthread_attr_init(&pthattr);
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
 	pthread_create(&pth, &pthattr, ptr, arg);
+}
+
+static void launchtarget(struct runner_state* runner,
+	struct arcan_dbh* db, const char* tgt, const char* dst, int id)
+{
+	struct arcan_strarr argv, env, libs = {0};
+	enum DB_BFORMAT bfmt;
+	arcan_configid cid =
+		arcan_db_configid(db, arcan_db_targetid(db, tgt, NULL), "default");
+
+	argv = env = libs;
+	char* exec = arcan_db_targetexec(db, cid, &bfmt, &argv, &env, &libs);
+
+/* just queue the failure immediately */
+	if (!exec){
+		A12INT_DIRTRACE("launch_target:eexist=%s", tgt);
+		return;
+	}
+
+/* generate a temporary keypair and register it with source permissions
+ * only. Easier than modifying dir_srv.c auth for this special case, we
+ * just grant it into the keystore. */
+	uint8_t private[32], public[32];
+	x25519_private_key(private);
+	x25519_public_key(private, public);
+	size_t priv_outl, pub_outl;
+	a12helper_keystore_accept_ephemeral(
+		public, "_local", runner->appl->appl.name);
+
+/* we also need to provide the public key we are responding with */
+	uint8_t srvprivk[32], srvpubk[32];
+	char* tmp;
+	uint16_t tmpport;
+	a12helper_keystore_hostkey("default", 0, srvprivk, &tmp, &tmpport);
+	x25519_public_key(srvprivk, srvpubk);
+
+	unsigned char* priv_b64 = a12helper_tob64(private, 32, &priv_outl);
+	unsigned char* pub_b64 = a12helper_tob64(srvpubk, 32, &pub_outl);
+
+/* there are a number of modalities we need to support here:
+ *  1. providing a new public source regardless of appl
+ *     - this takes generating a name (and possibly auth token)
+ *
+ *  2. providing a new source to a discrete client
+ *     - this would be pushing the tunnel connection directly to each worker
+ *       so that it can open a new channel and unpack() straight into it
+ *     - it would also need to tell the source about the discrete client pubk
+ *
+ *  3. providing new sources to a set of discrete clients
+ *     - this should probably be handled as multiple launch_target commands
+ *
+ *  4. providing a shared source to a set of discrete clients
+ *     - most useful and most difficult
+ *     - do last and see if there's anything to re-use.
+ */
+	char* outargv[argv.count + 10];
+	memset(outargv, '\0', sizeof(outargv));
+	size_t ind = 0;
+	outargv[ind++] = CFG->path_self;
+	outargv[ind++] = "--force-kpub";
+	outargv[ind++] = (char*) pub_b64;
+	outargv[ind++] = "--ident";
+	outargv[ind++] = "test";
+	outargv[ind++] = "localhost";
+		/* should also grab port from CFG */
+	outargv[ind++] = "--";
+	outargv[ind++] = exec;
+	for (size_t i = 0; i < argv.count; i++)
+		outargv[ind+i] = argv.data[i];
+
+	char* outenv[env.count + 2];
+	memset(outenv, '\0', sizeof(outenv));
+	char envinf[sizeof("A12_USEPRIV=") + priv_outl];
+	snprintf(envinf, sizeof(envinf), "A12_USEPRIV=%s", priv_b64);
+
+	for (size_t i = 0; i < env.count; i++)
+		outenv[i] = env.data[i];
+	outenv[env.count] = envinf;
+
+	pid_t pid = fork();
+	if (pid == 0){
+		if ((fork() != 0))
+			_exit(EXIT_SUCCESS);
+
+		close(STDIN_FILENO);
+		close(STDOUT_FILENO);
+		close(STDERR_FILENO);
+		open("/dev/null", O_RDWR);
+		open("/dev/null", O_RDWR);
+		open("/dev/null", O_RDWR);
+		setsid();
+		execve(CFG->path_self, outargv, outenv);
+		_exit(EXIT_FAILURE);
+	}
+	int status;
+	waitpid(pid, &status, 0);
 }
 
 static void* strarr_copy(void* arg)
@@ -122,6 +228,22 @@ static void controller_dispatch(
 	else if (arg_lookup(arr, "end_kv_transaction", 0, NULL)){
 		arcan_db_end_transaction(db);
 	}
+	else if (arg_lookup(arr, "launch", 0, &arg) && arg &&
+		arg_lookup(arr, "id", 0, &val) && val){
+		const char* dst;
+
+/* options:
+ *  - should we launch through round-robin on identity?
+ *    possibly load-balance through directory network?
+ *    or run through splicer?
+ *
+ */
+		if (arg_lookup(arr, "dst", 0, &dst) && dst){
+		}
+
+		int id = (int) strtol(val, NULL, 10);
+		launchtarget(runner, db, arg, "testsource", id);
+	}
 	else if (arg_lookup(arr, "match", 0, &arg) && arg &&
 		arg_lookup(arr, "domain", 0, NULL) &&
 		arg_lookup(arr, "id", 0, &val) && val){
@@ -173,10 +295,7 @@ static void controller_dispatch(
  * target/config options.
  */
 	else
-		a12int_trace(
-			A12_TRACE_DIRECTORY, "appl_runner=%s:invalid key in message",
-			dbid.applname
-		);
+		A12INT_DIRTRACE("appl_runner=%s:invalid key in message", dbid.applname);
 
 	arg_cleanup(arr);
 }
@@ -189,6 +308,8 @@ static void controller_dispatch(
 static void* controller_runner(void* inarg)
 {
 	struct runner_state* runner = inarg;
+
+/* lock until the runner state is confirmed */
 	pthread_mutex_lock(&runner->lock);
 	runner->alive = true;
 
@@ -200,9 +321,8 @@ static void* controller_runner(void* inarg)
 	int pid;
 	shmifsrv_client_handle(runner->cl, &pid);
 	a12int_trace(
-			A12_TRACE_DIRECTORY,
-			"kind=status:arcan-ent:dirappl=%s:pid=%d",
-			runner->appl->appl.name, pid);
+		A12_TRACE_DIRECTORY,
+		"kind=status:arcan-ent:dirappl=%s:pid=%d", runner->appl->appl.name, pid);
 
 /* wait for the shmif setup to be completed in the client end, this is
  * potentially a priority inversion / unnecessary blocking */
@@ -266,6 +386,7 @@ static void* controller_runner(void* inarg)
  * events to ping-wakeup or use a signalling pipe for wakeup and liveness
  */
 	shmifsrv_monotonic_rebase();
+	pthread_mutex_unlock(&runner->lock);
 
 	int sv;
 	while((sv = shmifsrv_poll(runner->cl)) != CLIENT_DEAD){
@@ -283,8 +404,7 @@ static void* controller_runner(void* inarg)
 				int err;
 				if (!anet_directory_merge_multipart(&ev, &arg, &err)){
 					if (err){
-						a12int_trace(
-							A12_TRACE_DIRECTORY, "kind=error:runner_unpack=%d", err);
+						A12INT_DIRTRACE("kind=error:runner_unpack=%d", err);
 					}
 					continue;
 				}
@@ -299,7 +419,6 @@ static void* controller_runner(void* inarg)
 	runner->appl->server_tag = NULL;
 	arcan_db_close(&tl_db);
 	anet_directory_merge_multipart(NULL, NULL, NULL);
-	pthread_mutex_unlock(&runner->lock);
 	free(runner);
 
 	return NULL;
@@ -932,8 +1051,7 @@ void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl)
 	if (!extract_appl_pkg(applf,
 		CFG->dirsrv.appl_server_temp_dfd, name, &err)){
 			fclose(applf);
-			a12int_trace(
-				A12_TRACE_DIRECTORY, "kind=error:dirappl_unpack=%s", err);
+			A12INT_DIRTRACE("kind=error:dirappl_unpack=%s", err);
 		return;
 	}
 
@@ -966,8 +1084,7 @@ void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl)
 		shmifsrv_enqueue_event(runner->cl, &outev, dfd);
 	pthread_mutex_unlock(&runner->lock);
 
-	a12int_trace(
-			A12_TRACE_DIRECTORY, "kind=status:dirappl_update=%s", appl->appl.name);
+	A12INT_DIRTRACE("kind=status:dirappl_update=%s", appl->appl.name);
 }
 
 bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
@@ -995,14 +1112,16 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 	else {
 		int sv[2];
 		if (-1 == socketpair(AF_UNIX, SOCK_STREAM, 0, sv)){
-			a12int_trace(A12_TRACE_DIRECTORY, "kind=error:socketpair.2=%d", errno);
+			a12int_trace(
+				A12_TRACE_DIRECTORY, "kind=error:socketpair.2=%d", errno);
 			free(runner);
 			return false;
 		}
 		int sc;
 		runner->cl = shmifsrv_inherit_connection(sv[0], &sc);
 		if (!runner->cl){
-			a12int_trace(A12_TRACE_DIRECTORY, "kind=error:couldn't build preauth shmif");
+			a12int_trace(
+				A12_TRACE_DIRECTORY, "kind=error:couldn't build preauth shmif");
 			close(sv[0]);
 			close(sv[1]);
 			free(runner);
@@ -1017,12 +1136,13 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 	}
 
 	appl->server_tag = runner;
-	run_detached_thread(controller_runner, runner);
 	pthread_mutex_init(&runner->lock, NULL);
+	run_detached_thread(controller_runner, runner);
 
 	return true;
 }
 
+/* this expects the appl- lock to be in effect so we can't use INTTRACE */
 bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 {
 	struct runner_state* runner = appl->server_tag;
@@ -1037,7 +1157,8 @@ bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
  * the worker. */
 	int sv[2];
 	if (-1 == socketpair(AF_UNIX, SOCK_STREAM, 0, sv)){
-		a12int_trace(A12_TRACE_DIRECTORY, "kind=error:socketpair.2=%d", errno);
+		a12int_trace(
+			A12_TRACE_DIRECTORY, "kind=error:socketpair.2=%d", errno);
 		return false;
 	}
 
@@ -1058,7 +1179,8 @@ bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 		}, sv[1]
 	);
 
-	a12int_trace(A12_TRACE_DIRECTORY,
+	a12int_trace(
+		A12_TRACE_DIRECTORY,
 		"kind=status:worker_join=%s", C->endpoint.ext.netstate.name);
 	close(sv[0]);
 	close(sv[1]);

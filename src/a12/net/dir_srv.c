@@ -51,12 +51,32 @@ static struct {
 #define A12INT_DIRTRACE(...) do { \
 	if (!(a12_trace_targets & A12_TRACE_DIRECTORY))\
 		break;\
-	pthread_mutex_lock(&active_clients.sync);\
+	dirsrv_global_lock(__FILE__, __LINE__);\
 		a12int_trace(A12_TRACE_DIRECTORY, __VA_ARGS__);\
-	pthread_mutex_unlock(&active_clients.sync);\
+	dirsrv_global_unlock(__FILE__, __LINE__);\
 	} while (0);
 
 static void rebuild_index();
+
+void dirsrv_global_lock(const char* file, int line)
+{
+#ifdef DEBUG_LOCK
+	fprintf(stderr,
+		"[%"PRIdPTR"] lock: %s:%d\n",
+		(intptr_t) pthread_self(), file, line);
+#endif
+	pthread_mutex_lock(&active_clients.sync);
+}
+
+void dirsrv_global_unlock(const char* file, int line)
+{
+#ifdef DEBUG_LOCK
+	fprintf(stderr,
+		"[%"PRIdPTR"] unlock: %s:%d\n",
+		(intptr_t) pthread_self(), file, line);
+#endif
+	pthread_mutex_unlock(&active_clients.sync);
+}
 
 /* Check for petname collision among existing instances, this is another of
  * those policy decisions that should be moved to a scripting layer to also
@@ -65,7 +85,7 @@ static bool gotname(struct dircl* source, struct arcan_event ev)
 {
 	bool rv = false;
 
-	pthread_mutex_lock(&active_clients.sync);
+	dirsrv_global_lock(__FILE__, __LINE__);
 		struct dircl* C = active_clients.root.next;
 		while (C){
 			if (C == source){
@@ -83,7 +103,7 @@ static bool gotname(struct dircl* source, struct arcan_event ev)
 
 			C = C->next;
 		}
-	pthread_mutex_unlock(&active_clients.sync);
+	dirsrv_global_unlock(__FILE__, __LINE__);
 
 	return rv;
 }
@@ -153,7 +173,7 @@ static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
 	if (!a12helper_fromb64((const uint8_t*) pubk, 32, pubk_dec))
 		goto send_fail;
 
-	pthread_mutex_lock(&active_clients.sync);
+	dirsrv_global_lock(__FILE__, __LINE__);
 		struct dircl* cur = active_clients.root.next;
 		while (cur){
 			if (cur == C || !cur->C || !cur->petname.ext.netstate.name[0]){
@@ -245,7 +265,7 @@ static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
 			}
 			cur = cur->next;
 		}
-	pthread_mutex_unlock(&active_clients.sync);
+	dirsrv_global_unlock(__FILE__, __LINE__);
 	if (msg){
 		A12INT_DIRTRACE("%s", msg);
 		free(msg);
@@ -264,7 +284,7 @@ send_fail:
 
 static void dynlist_to_worker(struct dircl* C)
 {
-	pthread_mutex_lock(&active_clients.sync);
+	dirsrv_global_lock(__FILE__, __LINE__);
 	struct dircl* cur = active_clients.root.next;
 	while (cur){
 		if (cur == C || !cur->C || !cur->petname.ext.netstate.name[0]){
@@ -281,7 +301,7 @@ static void dynlist_to_worker(struct dircl* C)
 
 		cur = cur->next;
 	}
-	pthread_mutex_unlock(&active_clients.sync);
+	dirsrv_global_unlock(__FILE__, __LINE__);
 }
 
 /*
@@ -336,7 +356,7 @@ static int get_state_res(
 {
 	char fnbuf[64];
 	int resfd = -1;
-	pthread_mutex_lock(&active_clients.sync);
+	dirsrv_global_lock(__FILE__, __LINE__);
 		snprintf(fnbuf, 64, "%s%s", appl, name);
 
 /*
@@ -347,7 +367,7 @@ static int get_state_res(
  */
 		resfd =
 			a12helper_keystore_statestore(C->pubk,fnbuf, 0, fl & O_RDONLY ? "r" : "w+");
-	pthread_mutex_unlock(&active_clients.sync);
+	dirsrv_global_unlock(__FILE__, __LINE__);
 	return resfd;
 }
 
@@ -383,9 +403,9 @@ static void register_source(struct dircl* C, struct arcan_event ev)
 /* first defer the action to the script, if it does not consume it, use the
  * default behaviour of first checking permission then broadcast to all
  * listening clients */
-	pthread_mutex_lock(&active_clients.sync);
+	dirsrv_global_lock(__FILE__, __LINE__);
 		int rv = anet_directory_lua_filter_source(C, &ev);
-	pthread_mutex_unlock(&active_clients.sync);
+	dirsrv_global_unlock(__FILE__, __LINE__);
 
 	if (rv == 1){
 		return;
@@ -445,7 +465,7 @@ static void register_source(struct dircl* C, struct arcan_event ev)
 
 /* notify everyone interested about the change, the local state machine
  * will determine whether to forward or not */
-	pthread_mutex_lock(&active_clients.sync);
+	dirsrv_global_lock(__FILE__, __LINE__);
 		struct dircl* cur = active_clients.root.next;
 		while (cur){
 			if (cur != C && cur->C && !(cur->type || cur->type == ROLE_SINK)){
@@ -453,7 +473,7 @@ static void register_source(struct dircl* C, struct arcan_event ev)
 			}
 			cur = cur->next;
 		}
-	pthread_mutex_unlock(&active_clients.sync);
+	dirsrv_global_unlock(__FILE__, __LINE__);
 }
 
 static void handle_bchunk_completion(struct dircl* C, bool ok)
@@ -470,7 +490,7 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 	}
 	ok = false;
 
-	pthread_mutex_lock(&active_clients.sync);
+	dirsrv_global_lock(__FILE__, __LINE__);
 		volatile struct appl_meta* cur = &active_clients.opts->dir;
 		while (cur){
 			if (cur->identifier != C->pending_id){
@@ -483,7 +503,7 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 
 	if (!ok){
 		A12INT_DIRTRACE("dirsv:bchunk_state:complete_unknown");
-		pthread_mutex_unlock(&active_clients.sync);
+		dirsrv_global_unlock(__FILE__, __LINE__);
 		goto out;
 	}
 
@@ -492,7 +512,7 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 /* notify any runner, that will take care of unpacking and validating */
 	if (C->type == IDTYPE_ACTRL){
 		anet_directory_lua_update(cur, C->pending_fd);
-		pthread_mutex_unlock(&active_clients.sync);
+		dirsrv_global_unlock(__FILE__, __LINE__);
 		goto out;
 	}
 
@@ -520,13 +540,13 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 /* need to unlock as shmifsrv set will lock again, it will take care of
  * rebuilding the index and notifying listeners though - identity action
  * so volatile is no concern */
-		pthread_mutex_unlock(&active_clients.sync);
+		dirsrv_global_unlock(__FILE__, __LINE__);
 		A12INT_DIRTRACE("dirsv:bchunk_state:appl_update=%d", cur->identifier);
 		anet_directory_shmifsrv_set(
 			(struct anet_dirsrv_opts*) active_clients.opts);
 	}
 	else
-		pthread_mutex_unlock(&active_clients.sync);
+		dirsrv_global_unlock(__FILE__, __LINE__);
 
 	fclose(fpek);
 	return;
@@ -568,9 +588,9 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 /* lock enumeration so we don't run into stepping the list when something
  * might be appending to it, the contents itself won't change for any of
  * the fields we are intersted in */
-	pthread_mutex_lock(&active_clients.sync);
+	dirsrv_global_lock(__FILE__, __LINE__);
 		volatile struct appl_meta* meta = locked_numid_appl(ns);
-	pthread_mutex_unlock(&active_clients.sync);
+	dirsrv_global_unlock(__FILE__, __LINE__);
 
 	int reserved = -1;
 	mtype = identifier_to_appl(ext);
@@ -599,10 +619,10 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
  * copy so that a compromised worker wouldn't mutate the descriptor backing
  * and causing code injection on the other end. This should be further enforced
  * with signing later. */
-			pthread_mutex_lock(&active_clients.sync);
+			dirsrv_global_lock(__FILE__, __LINE__);
 				resfd = buf_memfd(meta->buf, meta->buf_sz);
 				ressz = meta->buf_sz;
-			pthread_mutex_unlock(&active_clients.sync);
+			dirsrv_global_unlock(__FILE__, __LINE__);
 		break;
 		case IDTYPE_STATE:
 			resfd = get_state_res(C, meta->appl.name, ".state", O_RDONLY);
@@ -771,7 +791,7 @@ static void msgqueue_worker(struct dircl* C, arcan_event* ev)
 /* broadcast as one large chain so we don't risk any interleaving, this only
  * happens if there is no appl-runner set to absorb or rebroadcast the
  * messages. */
-	pthread_mutex_lock(&active_clients.sync);
+	dirsrv_global_lock(__FILE__, __LINE__);
 	struct dircl* cur = active_clients.root.next;
 	while (cur){
 		if (cur->in_appl == C->in_appl && cur != C){
@@ -780,7 +800,7 @@ static void msgqueue_worker(struct dircl* C, arcan_event* ev)
 		}
 		cur = cur->next;
 	}
-	pthread_mutex_unlock(&active_clients.sync);
+	dirsrv_global_unlock(__FILE__, __LINE__);
 
 /* reset the queue buffer */
 	snprintf(C->message_multipart, 16, "from=%s:", C->identity);
@@ -815,7 +835,7 @@ static void dircl_message(struct dircl* C, struct arcan_event ev)
 
 		memcpy(C->pubk, pubk_dec, 32);
 
-		pthread_mutex_lock(&active_clients.sync);
+		dirsrv_global_lock(__FILE__, __LINE__);
 			struct a12_context_options* aopt = active_clients.opts->a12_cfg;
 			struct pk_response rep = aopt->pk_lookup(pubk_dec, aopt->pk_lookup_tag);
 
@@ -838,7 +858,7 @@ static void dircl_message(struct dircl* C, struct arcan_event ev)
 			}
 			else
 				anet_directory_lua_register(C);
-		pthread_mutex_unlock(&active_clients.sync);
+		dirsrv_global_unlock(__FILE__, __LINE__);
 
 /* still bad, kill worker */
 		if (!rep.authentic)
@@ -914,7 +934,7 @@ void handle_netstate(struct dircl* C, arcan_event ev)
 static bool got_collision(int appid, char* name)
 {
 	bool res = false;
-	pthread_mutex_lock(&active_clients.sync);
+	dirsrv_global_lock(__FILE__, __LINE__);
 		struct dircl* C = active_clients.root.next;
 		while (C){
 			if (C->in_appl == appid){
@@ -925,7 +945,7 @@ static bool got_collision(int appid, char* name)
 			}
 			C = C->next;
 		}
-	pthread_mutex_unlock(&active_clients.sync);
+	dirsrv_global_unlock(__FILE__, __LINE__);
 	return res;
 }
 
@@ -975,8 +995,7 @@ make_random:
 
 	struct appl_meta* cur;
 
-	pthread_mutex_lock(&active_clients.sync);
-
+	dirsrv_global_lock(__FILE__, __LINE__);
 		cur = locked_numid_appl(ind);
 		if (cur){
 			C->in_appl = ind;
@@ -992,8 +1011,7 @@ make_random:
 		}
 		else
 			C->in_appl = -1;
-
-	pthread_mutex_unlock(&active_clients.sync);
+	dirsrv_global_unlock(__FILE__, __LINE__);
 }
 
 static void* dircl_process(void* P)
@@ -1111,8 +1129,7 @@ static void* dircl_process(void* P)
 		}
 	}
 
-	pthread_mutex_lock(&active_clients.sync);
-
+	dirsrv_global_lock(__FILE__, __LINE__);
 		if (C->tunnel){
 			arcan_event ss = {
 				.category = EVENT_TARGET,
@@ -1144,7 +1161,7 @@ static void* dircl_process(void* P)
 				cur = cur->next;
 			}
 		}
-	pthread_mutex_unlock(&active_clients.sync);
+	dirsrv_global_unlock(__FILE__, __LINE__);
 
 	shmifsrv_free(C->C, true);
 	memset(C, 0xff, sizeof(struct dircl));
@@ -1186,7 +1203,7 @@ static void rebuild_index()
 void anet_directory_shmifsrv_set(struct anet_dirsrv_opts* opts)
 {
 	static bool first = true;
-	pthread_mutex_lock(&active_clients.sync);
+	dirsrv_global_lock(__FILE__, __LINE__);
 	active_clients.opts = opts;
 
 	if (opts->dir.handle || opts->dir.buf){
@@ -1208,8 +1225,7 @@ void anet_directory_shmifsrv_set(struct anet_dirsrv_opts* opts)
 
 		first = false;
 	}
-
-	pthread_mutex_unlock(&active_clients.sync);
+	dirsrv_global_unlock(__FILE__, __LINE__);
 }
 
 /* This is in the parent process, it acts as a 1:1 thread/process which
@@ -1246,14 +1262,14 @@ void anet_directory_shmifsrv_thread(
 		COUNT_OF(newent->endpoint.ext.netstate.name), "%s", endpoint);
 	}
 
-	pthread_mutex_lock(&active_clients.sync);
+	dirsrv_global_lock(__FILE__, __LINE__);
 		struct dircl* cur = &active_clients.root;
 		while (cur->next){
 			cur = cur->next;
 		}
 		cur->next = newent;
 		newent->prev = cur;
-	pthread_mutex_unlock(&active_clients.sync);
+	dirsrv_global_unlock(__FILE__, __LINE__);
 	pthread_create(&pth, &pthattr, dircl_process, newent);
 }
 
@@ -1284,9 +1300,9 @@ static bool try_appl_controller(const char* d_name, int dfd)
  * signalling. */
 void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
 {
-	pthread_mutex_lock(&active_clients.sync);
+	dirsrv_global_lock(__FILE__, __LINE__);
 	if (!opts->flag_rescan){
-		pthread_mutex_unlock(&active_clients.sync);
+		dirsrv_global_unlock(__FILE__, __LINE__);
 		return;
 	}
 
@@ -1340,5 +1356,5 @@ void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
 		close(old);
 	}
 
-	pthread_mutex_unlock(&active_clients.sync);
+	dirsrv_global_unlock(__FILE__, __LINE__);
 }
