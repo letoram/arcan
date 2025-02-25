@@ -1155,13 +1155,15 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 	while (dir){
 /* use identifier to request binary or just join group to monitor messages */
 		if (cbt->clopt->applname[0]){
-			if (cbt->clopt->monitor_mode){
-				struct directory_meta* cbt = I->cbt;
-				send_join_ident(I, cbt);
-				return true;
-			}
-
 			if (strcasecmp(dir->appl.name, cbt->clopt->applname) == 0){
+				cbt->clopt->applid = dir->identifier;
+
+				if (cbt->clopt->monitor_mode){
+					struct directory_meta* cbt = I->cbt;
+					send_join_ident(I, cbt);
+					return true;
+				}
+
 				struct arcan_event ev =
 				{
 					.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
@@ -1176,7 +1178,6 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 				a12_channel_enqueue(I->S, &ev);
 
 /* and register our store+launch handler */
-				cbt->clopt->applid = dir->identifier;
 				a12_set_bhandler(I->S, anet_directory_cl_bhandler, I);
 				return true;
 			}
