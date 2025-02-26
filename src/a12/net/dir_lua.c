@@ -135,10 +135,12 @@ static void launchtarget(struct runner_state* runner,
  *     - most useful and most difficult
  *     - do last and see if there's anything to re-use.
  */
-	char* outargv[argv.count + 10];
+	char* outargv[argv.count + 12];
 	memset(outargv, '\0', sizeof(outargv));
 	size_t ind = 0;
 	outargv[ind++] = CFG->path_self;
+	outargv[ind++] = "-d";
+	outargv[ind++] = "8191";
 	outargv[ind++] = "--force-kpub";
 	outargv[ind++] = (char*) pub_b64;
 	outargv[ind++] = "--ident";
@@ -167,15 +169,17 @@ static void launchtarget(struct runner_state* runner,
 		close(STDIN_FILENO);
 		close(STDOUT_FILENO);
 		close(STDERR_FILENO);
+
+/* optionally switch logging, might also need to be a log option */
 		open("/dev/null", O_RDWR);
+/*		open("/tmp/tunnel.out", O_RDWR | O_CREAT);
+ *		open("/tmp/tunnel.err", O_RDWR | O_CREAT); */
 		open("/dev/null", O_RDWR);
 		open("/dev/null", O_RDWR);
 		setsid();
 		execve(CFG->path_self, outargv, outenv);
 		_exit(EXIT_FAILURE);
 	}
-	int status;
-	waitpid(pid, &status, 0);
 }
 
 static void* strarr_copy(void* arg)

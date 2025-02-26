@@ -469,8 +469,22 @@ static struct pk_response key_auth_dir(uint8_t pk[static 32], void* tag)
  * if the directory is trying to MITM. Since the Kpub is announced via the
  * directory the source can fire up another client and check that the announced
  * key is the same as the one it actually announced.
+ *
+ * For sources spawned by the directory itself that's not a risk, and we
+ * have a generated key inherited. Check for this first.
  */
+	if (global.use_forced_remote_pubk){
+		uint8_t my_private_key[32];
+		a12helper_fromb64(
+			(uint8_t*) getenv("A12_USEPRIV"), 32, my_private_key);
+		a12_set_session(&auth, pk, my_private_key);
+		auth.authentic = true;
+		return auth;
+	}
 
+/*
+ * Otherwise revert to the keystore
+ */
 	char* tmp;
 	uint16_t tmpport;
 	uint8_t my_private_key[32];
@@ -563,6 +577,7 @@ static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
 		if (fork()){
 			exit(EXIT_SUCCESS);
 		}
+		setsid();
 
 /* Trust the directory server provided secret.
  *
@@ -640,11 +655,9 @@ static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
 		if (pre_fd != -1){
 			close(pre_fd);
 		}
-
-		a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d", (int)fpid);
-/* child double-forked so just collect the first */
-		wait(NULL);
 	}
+
+	a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d", (int)fpid);
 }
 
 static void fork_a12cl_dispatch(
