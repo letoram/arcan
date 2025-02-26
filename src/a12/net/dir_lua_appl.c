@@ -414,6 +414,9 @@ static int matchkeys(lua_State* L)
 	return 0;
 }
 
+/*
+ * message_target(clid, msg) | message_target(msg, clid) -> true
+ */
 static int targetmessage(lua_State* L)
 {
 /* unicast or broadcast? */
@@ -425,10 +428,9 @@ static int targetmessage(lua_State* L)
 		strind = 2;
 	}
 
-/* right now this error-outs rather than multipart chunks as the
- * queueing isn't clean enough throughout - with the approach of
- * returning an error */
-	const char* msg = luaL_checkstring(L, strind);
+/* right now this error-outs rather than multipart chunks as the queueing isn't
+ * clean enough throughout - with the approach of returning an error */
+const char* msg = luaL_checkstring(L, strind);
 	struct arcan_event outev = {
 		.category = EVENT_EXTERNAL,
 		.ext.kind = EVENT_EXTERNAL_MESSAGE
@@ -827,6 +829,9 @@ static void parent_control_event(struct arcan_event* ev)
 			logout = fdopen(fd, "w");
 			setlinebuf(logout);
 			log_print("--- log opened ---");
+#ifdef DEBUG
+			setenv("ARCAN_SHMIF_DEBUG", "1", true);
+#endif
 		}
 	}
 	break;

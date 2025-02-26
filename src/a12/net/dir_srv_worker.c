@@ -42,7 +42,7 @@ static struct appl_meta* pending_index;
 static struct ioloop_shared* ioloop_shared;
 static bool pending_tunnel;
 
-static void do_event(
+static void parent_worker_event(
 	struct a12_state* S, struct arcan_shmif_cont* C, struct arcan_event* ev);
 
 enum {
@@ -73,7 +73,7 @@ static void free_evqueue(struct evqueue_entry* first)
 	struct a12_state* S, struct arcan_shmif_cont* C, struct evqueue_entry* rep)
 {
 	while (rep->next){
-		do_event(S, C, &rep->ev);
+		parent_worker_event(S, C, &rep->ev);
 		if (arcan_shmif_descrevent(&rep->ev) && rep->ev.tgt.ioevs[0].iv > 0)
 			close(rep->ev.tgt.ioevs[0].iv);
 		rep = rep->next;
@@ -457,7 +457,7 @@ static void do_external_event(
 	}
 }
 
-static void do_event(
+static void parent_worker_event(
 	struct a12_state* S, struct arcan_shmif_cont* C, struct arcan_event* ev)
 {
 	struct directory_meta* cbt = C->user;
@@ -552,8 +552,8 @@ static void on_appl_shmif(struct ioloop_shared* S, bool ok)
 	}
 }
 
-/* split out into a do_event due to sharing processing with the aftermath
- * of calling shmif_block_synch_request */
+/* split out into a parent_worker_event due to sharing processing with the
+ * aftermath of calling shmif_block_synch_request */
 static void on_shmif(struct ioloop_shared* S, bool ok)
 {
 	struct arcan_shmif_cont* C = S->cbt->C;
@@ -561,7 +561,7 @@ static void on_shmif(struct ioloop_shared* S, bool ok)
 	int pv;
 
 	while ((pv = arcan_shmif_poll(C, &ev)) > 0){
-		do_event(S->S, C, &ev);
+		parent_worker_event(S->S, C, &ev);
 	}
 
 /* Something is wrong with the parent connection, shutdown. This is a point

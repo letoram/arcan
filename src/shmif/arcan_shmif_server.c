@@ -8,6 +8,7 @@
 #include <stdatomic.h>
 #include <math.h>
 #include <sys/wait.h>
+#include <sys/socket.h>
 #include <pthread.h>
 #include <signal.h>
 
@@ -138,6 +139,7 @@ struct shmifsrv_client* shmifsrv_inherit_connection(int sockin, int* statuscode)
 
 	struct shmifsrv_client* res = alloc_client();
 	if (!res){
+		shutdown(sockin, SHUT_RDWR);
 		close(sockin);
 		if (statuscode)
 			*statuscode = SHMIFSRV_OUT_OF_MEMORY;

@@ -33,6 +33,7 @@
 
 #include "nbio.h"
 #include "nbio_local.h"
+extern void arcan_random(uint8_t*, size_t);
 
 #if LUA_VERSION_NUM == 501
 	#define lua_rawlen(x, y) lua_objlen(x, y)
@@ -190,7 +191,8 @@ int alt_nbio_socket(const char* path, int ns, char** out)
  * retry counter to counteract the rare collision vs. permanent problem */
 	do {
 		char tmpname[32];
-		long rnd = arc4random();
+		long rnd;
+		arcan_random((uint8_t*) &rnd, sizeof(long));
 		snprintf(tmpname, sizeof(tmpname), "/tmp/_sock%ld_%d", rnd, getpid());
 		char* tmppath = arcan_find_resource(tmpname, ns, ARES_FILE, NULL);
 		if (!tmppath){
