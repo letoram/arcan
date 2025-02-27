@@ -67,11 +67,10 @@ static void* watchdog(void* gs)
 
 			atomic_store(&gstr->guard.local_dms, false);
 
-/* other threads might be locked on semaphores, so wake them up, and force them
- * to re-examine the dms from being released */
+/* FIXME:
+ *   - Update GSTR to carry futex addresses
+ */
 			for (size_t i = 0; i < COUNT_OF(gstr->guard.semset); i++){
-				if (gstr->guard.semset[i])
-					arcan_sem_post(gstr->guard.semset[i]);
 			}
 
 			gstr->guard.active = false;

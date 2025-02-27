@@ -53,10 +53,6 @@ struct shmif_hidden {
 	struct arg_arr* args;
 	char* last_words;
 
-	sem_t* vsem;
-	sem_t* asem;
-	sem_t* esem;
-
 	shmif_trigger_hook_fptr video_hook;
 	void* video_hook_data;
 
@@ -117,11 +113,6 @@ struct shmif_hidden {
  * by the user via an environment variable */
 	char* alt_conn;
 
-/* The named key used to find the initial connection (if there is one) should
- * be unliked on use. For special cases (SHMIF_DONT_UNLINK) this can be deferred
- * and be left to the user. In these scenarios we need to keep the key around. */
-	char* shm_key;
-
 /* User- provided setup flags and segment types are kept / tracked in order
  * to re-issue events on a hard reset or migration */
 	enum ARCAN_FLAGS flags;
@@ -163,7 +154,7 @@ struct shmif_hidden {
  * data needed for acquire */
 	struct {
 		int epipe;
-		char key[256];
+		int memfd;
 	} pseg;
 
 	char multipart[1024];

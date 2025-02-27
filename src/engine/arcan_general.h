@@ -58,8 +58,6 @@
 struct shm_handle {
 	struct arcan_shmif_page* ptr;
 	int handle;
-	void* synch;
-	char* key;
 	size_t shmsize;
 };
 

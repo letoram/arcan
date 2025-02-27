@@ -127,14 +127,6 @@ static const int ARCAN_SHMPAGE_MAXW = PP_SHMPAGE_MAXW;
 static const int ARCAN_SHMPAGE_MAXH = PP_SHMPAGE_MAXH;
 
 /*
- * Identification token that may need to be passed when making a socket
- * connection to the main arcan process.
- */
-#ifndef PP_SHMPAGE_SHMKEYLIM
-#define PP_SHMPAGE_SHMKEYLIM 32
-#endif
-
-/*
  * We abstract the base type for a pixel and provide a packing macro in order
  * to permit systems with lower memory to switch to uint16 RGB565 style
  * formats, and to permit future switches to higher depth/range.  The
@@ -301,15 +293,9 @@ struct arcan_shmif_cont {
 	size_t shmsize;
 
 /*
- * Used internally for synchronization (and mapped / managed outside the
- * regular shmpage). This used to be a buffer of semaphore pointers, so most
- * often 64-bits. To reduce chances of ABI breaks by changing member offsets,
- * even though futex support across the board is only 32-bits, the strict
- * requirement is just 32-bit alignment.
+ * Leftovers from named semaphore use
  */
-	_Alignas(8) uintptr_t vsync;
-	_Alignas(8) uintptr_t async;
-	_Alignas(8) uintptr_t esync;
+	_Alignas(8) uintptr_t unused[3];
 
 /*
  * Should be used to index vidp, i.e. vidp[y * pitch + x] = RGBA(r, g, b, a)
@@ -410,8 +396,9 @@ typedef void (*shmif_reset_hook_fptr)(int state, void* tag);
 enum ARCAN_FLAGS {
 	SHMIF_NOFLAGS = 0,
 
-/* by default, the connection IPC resources are unlinked, this
- * may not always be desired (debugging, monitoring, ...) */
+/* [DEPRECATED]
+ * by default, the connection IPC resources are unlinked,
+ * this may not always be desired (debugging, monitoring, ...). */
 	SHMIF_DONT_UNLINK = 1,
 
 /* a guard thread is usually allocated to monitor the status of
@@ -510,15 +497,16 @@ struct arcan_shmif_cont arcan_shmif_open_ext(
 	struct shmif_open_ext, size_t ext_sz);
 
 /*
- * If the context has been opened with the SHMIF_DONT_UNLINK flag, any
- * named resources are still accessible. This is used for some corner
- * cases where one client should be able to monitor another and so on.
- * This function attempts to unlink any named resources tied to the
- * context [c].
+ * [DEPRECATED]
+ * If the context has been opened with the SHMIF_DONT_UNLINK flag, any named
+ * resources are still accessible. This is used for some corner cases where one
+ * client should be able to monitor another and so on. This function attempts
+ * to unlink any named resources tied to the context [c].
  */
 void arcan_shmif_unlink(struct arcan_shmif_cont* c);
 
 /*
+ * [DEPRECATED]
  * accessor to the internal tracked segment mapping key (applicable
  * to arcan_shmif_unlink and SHMIF_DONT_UNLINK). Will return NULL if
  * the key has been unlinked.
@@ -1012,6 +1000,10 @@ struct arcan_shmif_page {
 	volatile atomic_uint apending;
 	volatile atomic_uint vready;
 	volatile atomic_uint vpending;
+
+	volatile uint32_t async;
+	volatile uint32_t vsync;
+	volatile uint32_t esync;
 
 /* abufused contains the number of bytes consumed in every slot */
 	volatile _Atomic uint_least16_t abufused[ARCAN_SHMIF_ABUFC_LIM];

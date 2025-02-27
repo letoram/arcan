@@ -123,9 +123,6 @@ struct shmifsrv_client* shmifsrv_allocate_connpoint(
 	res->cookie = arcan_shmif_cookie();
 	res->status = PENDING;
 
-	if (key)
-		strncpy(res->con->clientkey, key, PP_SHMPAGE_SHMKEYLIM-1);
-
 	return res;
 }
 
@@ -217,7 +214,7 @@ env.type ? env.type : SEGID_UNKNOWN, env.init_w, env.init_h, 0, &childend);
 /* if path is provided we switch over to build/inherit mode */
 	if (env.path){
 		pid_t rpid = shmif_platform_execve(
-			childend, res->con->shm.key,
+			childend, NULL,
 			env.path, env.argv, env.envv, env.detach, fds, 3, NULL
 		);
 		close(childend);
@@ -258,7 +255,7 @@ size_t shmifsrv_dequeue_events(
 		asm volatile("": : :"memory");
 		__sync_synchronize();
 		cl->con->shm.ptr->parentevq.front = front;
-		arcan_sem_post(cl->con->esync);
+		shmif_platform_sync_post(cl->con->shm.ptr, SYNC_EVENT);
 		shmifsrv_leave(cl);
 		return count;
 	}
@@ -460,7 +457,7 @@ void shmifsrv_video_step(struct shmifsrv_client* cl)
 {
 /* signal that we're done with the buffer */
 	atomic_store_explicit(&cl->con->shm.ptr->vready, 0, memory_order_release);
-	arcan_sem_post(cl->con->vsync);
+	shmif_platform_sync_post(cl->con->shm.ptr, SYNC_VIDEO);
 
 /* If the frameserver has indicated that it wants a frame callback every time
  * we consume. This is primarily for cases where a client needs to I/O mplex
@@ -589,7 +586,7 @@ bool shmifsrv_audio(struct shmifsrv_client* cl,
 /* not readyy but signaled */
 	if (0 == amask || ((1 << ind) & amask) == 0){
 		atomic_store_explicit(&src->aready, 0, memory_order_release);
-		arcan_sem_post(cl->con->async);
+		shmif_platform_sync_post(src, SYNC_AUDIO);
 		return true;
 	}
 
@@ -616,7 +613,7 @@ bool shmifsrv_audio(struct shmifsrv_client* cl,
 
 /* and release the client */
 	atomic_store_explicit(&src->aready, 0, memory_order_release);
-	arcan_sem_post(cl->con->async);
+	shmif_platform_sync_post(src, SYNC_AUDIO);
 	return true;
 }
 

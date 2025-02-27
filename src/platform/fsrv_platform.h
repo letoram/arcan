@@ -177,6 +177,11 @@ size_t platform_fsrv_default_abufsize(size_t new_sz);
 size_t platform_fsrv_display_limit(size_t new_sz);
 
 /*
+ * Build a shared memory backed descriptor
+ */
+int platform_fsrv_shmmem();
+
+/*
  * Try and populate [dst] with the contents of the frameserver last words.
  * Requires [n] > 0 and sizeof(dst) to be at least [n].
  */

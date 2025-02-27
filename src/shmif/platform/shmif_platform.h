@@ -277,22 +277,32 @@ struct shmif_connection {
 
 struct shmif_connection shmif_platform_open_env_connection(int flags);
 
-/* read and verify a string from the socket to use to open shared primitives,
- * this is the entrypoint to modify to setup page and synch primitives from a
- * socket alone. */
-bool shmif_platform_prefix_from_socket(int sock, char* wbuf, size_t sz);
+/*
+ * receive the file descriptor to the memory page from the socket
+ */
+int shmif_platform_mem_from_socket(int socket);
 
 /* go from name into fully qualified path in [dbuf] */
 int shmif_platform_connpath(
 	const char* name, char* dbuf, size_t dbuf_sz, int attempt);
 
 /*
+ * slot is a bitmap
+ */
+enum shmif_platform_sync {
+	SYNC_EVENT = 1,
+	SYNC_AUDIO = 2,
+	SYNC_VIDEO = 4
+};
+
+int shmif_platform_sync_post(struct arcan_shmif_page*, int slot);
+int shmif_platform_sync_wait(struct arcan_shmif_page*, int slot);
+int shmif_platform_sync_trywait(struct arcan_shmif_page*, int slot);
+
+/*
  * Kept around here until we can break those out as platform primitives as well
  */
 unsigned long long arcan_timemillis(void);
-int arcan_sem_post(sem_t* sem);
-int arcan_sem_wait(sem_t* sem);
-int arcan_sem_trywait(sem_t* sem);
 int arcan_fdscan(int** listout);
 void arcan_timesleep(unsigned long);
 

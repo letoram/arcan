@@ -14,6 +14,11 @@
 #define MSG_NOSIGNAL 0
 #endif
 
+int shmif_platform_mem_from_socket(int fd)
+{
+	return shmif_platform_fetchfd(fd, true, NULL, NULL);
+}
+
 int shmif_platform_dupfd_to(int fd, int dstnum, int fflags, int fdopt)
 {
 	int rfd = -1;

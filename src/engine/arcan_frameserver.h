@@ -124,8 +124,7 @@ struct arcan_frameserver {
 /* original resource, needed for reloading */
 	char* source;
 
-/* signaling primitives */
-	sem_handle vsync, async, esync;
+/* socket or identifier for transmitting descriptors */
 	int dpipe;
 
 /* if we spawn child, track if it is alive */
@@ -140,11 +139,7 @@ struct arcan_frameserver {
 
 /* used for connections negotiated via socket (sockout_fd) */
 	mode_t sockmode;
-/* key read-in buffer */
-	char sockinbuf[PP_SHMPAGE_SHMKEYLIM];
-	off_t sockrofs;
-/* key comparison buffer */
-	char clientkey[PP_SHMPAGE_SHMKEYLIM];
+
 /* linked address, passed through shmif_resolve_connpath to get the
  * final string, to handle things like linux private socket namespace */
 	char* sockaddr, (* sockkey);
@@ -379,6 +374,12 @@ bool arcan_frameserver_tick_control(arcan_frameserver* src, bool tick, int ff);
  * in the frameserver struct
  */
 void arcan_frameserver_pollevent(arcan_frameserver*, struct arcan_evctx*);
+
+/*
+ * Replaces the previous uses of named semaphores with futexes. On the server
+ * end this should become a uint32_t write.
+ */
+void arcan_frameserver_signal(arcan_frameserver*, int slot);
 
 /*
  * Attempt to retrieve a copy of the current LUT-ramps for a specific

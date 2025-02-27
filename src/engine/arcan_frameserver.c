@@ -777,6 +777,16 @@ void arcan_frameserver_lock_buffers(int state)
 	g_buffers_locked = state;
 }
 
+void arcan_frameserver_signal(arcan_frameserver* tgt, int fl)
+{
+	if (fl & 1)
+		tgt->shm.ptr->esync = 0;
+	if (fl & 2)
+		tgt->shm.ptr->vsync = 0;
+	if (fl & 4)
+		tgt->shm.ptr->async = 0;
+}
+
 int arcan_frameserver_releaselock(struct arcan_frameserver* tgt)
 {
 	if (!tgt->flags.release_pending || !tgt->shm.ptr){
@@ -787,7 +797,7 @@ int arcan_frameserver_releaselock(struct arcan_frameserver* tgt)
 	TRAMP_GUARD(0, tgt);
 
 	atomic_store_explicit(&tgt->shm.ptr->vready, 0, memory_order_release);
-	arcan_sem_post( tgt->vsync );
+	arcan_frameserver_signal(tgt, 2 /* SYNC_VIDEO */);
 		if (tgt->desc.hints & SHMIF_RHINT_VSIGNAL_EV){
 			arcan_vobject* vobj = arcan_video_getobject(tgt->vid);
 
@@ -953,8 +963,8 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
  * so set monitor flags and wake up */
 		if (g_buffers_locked != 2){
 			atomic_store_explicit(&shmpage->vready, 0, memory_order_release);
+			arcan_frameserver_signal(tgt, 2 /* SYNC_VIDEO */);
 
-			arcan_sem_post( tgt->vsync );
 			if (tgt->desc.hints & SHMIF_RHINT_VSIGNAL_EV){
 				TRACE_MARK_ONESHOT("frameserver", "signal", TRACE_SYS_DEFAULT, tgt->vid, 0, "");
 				platform_fsrv_pushevent(tgt, &(struct arcan_event){
@@ -1543,8 +1553,9 @@ arcan_errc arcan_frameserver_audioframe_direct(void* aobj,
 
 	if (0 == amask || ((1<<ind)&amask) == 0){
 		atomic_store_explicit(&src->shm.ptr->aready, 0, memory_order_release);
+		arcan_frameserver_signal(src, 4 /* SYNC_AUDIO */);
 		platform_fsrv_leave();
-		arcan_sem_post(src->async);
+
 		return ARCAN_ERRC_NOTREADY;
 	}
 
@@ -1575,8 +1586,8 @@ arcan_errc arcan_frameserver_audioframe_direct(void* aobj,
 /* check for cont and > 1, wait for signal.. else release */
 	if (!cont){
 		atomic_store_explicit(&src->shm.ptr->aready, 0, memory_order_release);
+		arcan_frameserver_signal(src, 4 /* SYNC_AUDIO */);
 		platform_fsrv_leave();
-		arcan_sem_post(src->async);
 	}
 
 	return ARCAN_OK;

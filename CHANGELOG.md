@@ -10,6 +10,7 @@
  * Expose args values as 'tui.arguments' table
 
 ## Net
+* Dropped the use of named primitives completely
  * Several fixes to binary in/out transfers
  * A12 OS specific function split out into platform
 
@@ -19,6 +20,7 @@
  * Allow enqueueing TARGET\_COMMAND\_EXIT to terminate one segment from another thread
  * Factored sem handle use out of cont
  * .control.c split out into smaller translation units and platform functions
+ * Dropped the use of named shm/sync primitives entirely
 
 ## Core
  * Fixed 'terminated' event not propagating due to incomplete enqueue post last\_words

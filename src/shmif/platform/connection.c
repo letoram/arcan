@@ -29,27 +29,9 @@ int shmif_platform_connpath(const char* key, char* dbuf, size_t dbuf_sz, int att
 	return -1;
 }
 
-bool shmif_platform_prefix_from_socket(int sock, char* wbuf, size_t sz)
+int shmif_platform_fd_from_socket(int sock)
 {
-/* do this the slow way rather than juggle block/nonblock states */
-	size_t ofs = 0;
-	do {
-		ssize_t nr = read(sock, wbuf + ofs, 1);
-		if (-1 == nr){
-			if (errno == EAGAIN || errno == EINTR)
-				continue;
-
-			debug_print(INFO, NULL, "shmkey_acquire:fail=%s", strerror(errno));
-			return false;
-		}
-		else
-			ofs += nr;
-	}
-	while(wbuf[ofs-1] != '\n' && ofs < sz);
-	debug_print(INFO, NULL, "shmkey_acquire=%s:len=%zu\n", wbuf, ofs);
-	wbuf[ofs-1] = '\0';
-
-	return true;
+	return shmif_platform_fetchfd(sock, true, NULL, NULL);
 }
 
 /*
@@ -89,15 +71,11 @@ struct shmif_connection shmif_platform_open_env_connection(int flags)
 		setsockopt(res.socket, SOL_SOCKET, SO_RCVTIMEO,
 			&(struct timeval){.tv_sec = 1}, sizeof(struct timeval));
 
-		if (getenv("ARCAN_SHMKEY")){
-			res.keyfile = strdup(getenv("ARCAN_SHMKEY"));
-		}
-		else {
-			char wbuf[PP_SHMPAGE_SHMKEYLIM+1];
-			if (shmif_platform_prefix_from_socket(res.socket, wbuf, PP_SHMPAGE_SHMKEYLIM)){
-				res.keyfile = strdup(wbuf);
-			}
-		}
+		char wbuf[8];
+		int memfd = shmif_platform_mem_from_socket(res.socket);
+		snprintf(wbuf, 8, "%d", memfd);
+		res.keyfile = strdup(wbuf);
+
 		unsetenv("ARCAN_SOCKIN_FD");
 		unsetenv("ARCAN_HANDOVER_EXEC");
 		unsetenv("ARCAN_SHMKEY");

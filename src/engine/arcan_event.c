@@ -523,7 +523,7 @@ int arcan_event_queuetransfer(
 	}
 
 	if (wake)
-		arcan_sem_post(srcqueue->synch.handle);
+		arcan_frameserver_signal(tgt, 1 /* SYNC_EVENT */);
 
 	return tgt->fuse_blown ? -2 : 0;
 }

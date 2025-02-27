@@ -66,6 +66,7 @@ set (SHMIF_SOURCES
 	${ASD}/shmif/arcan_shmif_eventhandler.c
 	${ASD}/shmif/arcan_shmif_privsep.c
 	${ASD}/shmif/arcan_shmif_evhelper.c
+	${ASD}/shmif/platform/synch.c
 	${ASD}/engine/arcan_trace.c
 	${ASD}/shmif/platform/exec.c
 	${ASD}/shmif/platform/fdpassing.c

@@ -361,7 +361,7 @@ int MAIN_REDIR(int argc, char* argv[])
 /* send the connection point we will try to connect through, and update the
  * env that SHMIF_ uses to get the behavior of connection looping */
 	case '1' :{
-		char cbuf[PP_SHMPAGE_SHMKEYLIM+1];
+		char cbuf[33];
 		snprintf(cbuf, sizeof(cbuf), "apipe%d", (int) getpid());
 		setenv("ARCAN_CONNFL", "16", 1); /* SHMIF_CONNECT_LOOP */
 		setenv("ARCAN_CONNPATH", strdup(cbuf), 1);
@@ -773,7 +773,7 @@ int MAIN_REDIR(int argc, char* argv[])
 		in_recover = false;
 	}
 	else if (stdin_connpoint){
-		char cbuf[PP_SHMPAGE_SHMKEYLIM+1];
+		char cbuf[33 /* should really be socket_path limit */];
 /* read desired connection point from stdin, strip trailing \n */
 		if (fgets(cbuf, sizeof(cbuf), stdin)){
 			size_t len = strlen(cbuf);

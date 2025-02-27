@@ -89,9 +89,7 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	arcan_shmif_resize_ext(&NEW, w, h, ext);
 
 /* and wake anything possibly blocking still as whatever was there is dead */
-	arcan_sem_post(P->vsem);
-	arcan_sem_post(P->asem);
-	arcan_sem_post(P->esem);
+	shmif_platform_sync_post(C->addr, SYNC_EVENT | SYNC_AUDIO | SYNC_VIDEO);
 
 /* Copy the audio/video contents of [cont] into [ret], if possible, a possible
  * workaround on failure is to check if we have VSIGNAL- state and inject one
@@ -193,8 +191,7 @@ enum shmif_migrate_status arcan_shmif_migrate(
 			NEW.priv->abuf, NEW.priv->abuf_cnt, NEW.abufsize
 		);
 
-		shmif_platform_setevqs(
-			NEW.addr, NEW.priv->esem, &NEW.priv->inev, &NEW.priv->outev);
+		shmif_platform_setevqs(NEW.addr, NULL, &NEW.priv->inev, &NEW.priv->outev);
 
 		NEW.vidp = NEW.priv->vbuf[0];
 		NEW.audp = NEW.priv->abuf[0];

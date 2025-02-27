@@ -149,8 +149,7 @@ void arcan_closefrom(int fd)
  * and that there's enough room in the frameserver_envp for NULL term.
  * The caller will cleanup env with free_strarr.
  */
-static void append_env(
-	struct arcan_strarr* darr, char* argarg, char* sockmsg, char* conn)
+static void append_env(struct arcan_strarr* darr, char* argarg, char* conn)
 {
 /*
  * slightly unsure which ones we actually need to propagate, for now these go
@@ -171,7 +170,6 @@ static void append_env(
 		arcan_fetch_namespace(RESOURCE_APPL_STATE),
 		arcan_fetch_namespace(RESOURCE_APPL_SHARED),
 		arcan_fetch_namespace(RESOURCE_SYS_DEBUG),
-		sockmsg,
 		argarg,
 		conn,
 		getenv("LD_LIBRARY_PATH"),
@@ -201,7 +199,6 @@ static void append_env(
 		"ARCAN_FRAMESERVER_LOGDIR",
 		"ARCAN_SOCKIN_FD",
 		"ARCAN_ARG",
-		"ARCAN_SHMKEY",
 		"LD_LIBRARY_PATH",
 		"XDG_RUNTIME_DIR",
 		"XDG_STATE_HOME",
@@ -244,9 +241,6 @@ arcan_frameserver* platform_launch_listen_external(const char* key,
 
 	if (!res)
 		return NULL;
-
-	if (pw)
-		strncpy(res->clientkey, pw, PP_SHMPAGE_SHMKEYLIM-1);
 
 /*
  * Allocate a container vid, set it to have the socket/auth poll handler
@@ -326,8 +320,7 @@ struct arcan_frameserver* platform_launch_fork(
 			setup->args.builtin.resource ?
 			setup->args.builtin.resource : setup->args.builtin.mode);
 
-		append_env(&arr,
-			(char*) setup->args.builtin.resource, "3", ctx->shm.key);
+		append_env(&arr, (char*) setup->args.builtin.resource, "3");
 	}
 	else{
 		ctx->source = strdup(
@@ -335,8 +328,7 @@ struct arcan_frameserver* platform_launch_fork(
 			setup->args.external.resource : ""
 		);
 
-		append_env(
-			setup->args.external.envv, ctx->source, "3", ctx->shm.key);
+		append_env(setup->args.external.envv, ctx->source, "3");
 	}
 
 /* build the video object */

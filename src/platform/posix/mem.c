@@ -301,4 +301,3 @@ void arcan_mem_free(void* inptr)
 
 	free(inptr);
 }
-

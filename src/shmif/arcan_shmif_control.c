@@ -219,9 +219,7 @@ static int enqueue_internal(
 	if (src->category == EVENT_TARGET){
 		if (src->tgt.kind == TARGET_COMMAND_EXIT){
 			P->alive = false;
-			arcan_sem_post(P->asem);
-			arcan_sem_post(P->vsem);
-			arcan_sem_post(P->esem);
+			shmif_platform_sync_post(c->addr, SYNC_EVENT | SYNC_AUDIO | SYNC_VIDEO);
 			return 1;
 		}
 		return 0;
@@ -265,7 +263,7 @@ static int enqueue_internal(
 		struct arcan_event outev = *src;
 		debug_print(INFO, c,
 			"=> %s: outqueue is full, waiting", arcan_shmif_eventstr(&outev, NULL, 0));
-		arcan_sem_wait(ctx->synch.handle);
+		shmif_platform_sync_wait(c->addr, SYNC_EVENT);
 	}
 
 	int category = src->category;
@@ -319,40 +317,15 @@ int arcan_shmif_tryenqueue(
 	return enqueue_internal(c, src, true);
 }
 
-static void unlink_keyed(const char* key)
-{
-	shm_unlink(key);
-	size_t slen = strlen(key) + 1;
-	char work[slen];
-	snprintf(work, slen, "%s", key);
-	slen -= 2;
-	work[slen] = 'v';
-	sem_unlink(work);
-
-	work[slen] = 'a';
-	sem_unlink(work);
-
-	work[slen] = 'e';
-	sem_unlink(work);
-
-}
-
 void arcan_shmif_unlink(struct arcan_shmif_cont* dst)
 {
-	if (!dst->priv->shm_key)
-		return;
-
-	debug_print(INFO, dst, "release_shm_key:%s", dst->priv->shm_key);
-	unlink_keyed(dst->priv->shm_key);
-	dst->priv->shm_key = NULL;
+/* deprecated, not neeed anymore */
 }
 
 const char* arcan_shmif_segment_key(struct arcan_shmif_cont* dst)
 {
-	if (!dst || !dst->priv)
-		return NULL;
-
-	return dst->priv->shm_key;
+/* deprecated, not needed anymore */
+	return NULL;
 }
 
 static bool ensure_stdio()
@@ -371,14 +344,9 @@ static bool ensure_stdio()
 	return true;
 }
 
-static void map_shared(const char* shmkey, struct arcan_shmif_cont* dst)
+static void map_shared(int fd, struct arcan_shmif_cont* dst)
 {
 	struct shmif_hidden* P = dst->priv;
-	assert(shmkey);
-	assert(strlen(shmkey) > 0);
-
-	int fd = -1;
-	fd = shm_open(shmkey, O_RDWR, 0700);
 
 /* This has happened, and while 'technically' legal - it can (and will in most
  * cases) lead to nasty bugs. Since we need to keep the descriptor around in
@@ -387,43 +355,13 @@ static void map_shared(const char* shmkey, struct arcan_shmif_cont* dst)
  * memory page. The server side will likely detect this due to the validation
  * cookie failing, causing it to terminate the connection. */
 	if (fd <= STDERR_FILENO){
-		close(fd);
-		if (!ensure_stdio())
-			return;
-		fd = shm_open(shmkey, O_RDWR, 0700);
-	}
-
-	if (-1 == fd){
-		debug_print(FATAL,
-			dst, "couldn't open keyfile (%s): %s", shmkey, strerror(errno));
+		debug_print(FATAL, dst, "[stdin, stderr, stdout] unmapped, refusing");
 		return;
 	}
 
-	dst->addr = mmap(NULL, ARCAN_SHMPAGE_START_SZ,
-		PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	dst->addr = mmap(NULL,
+		ARCAN_SHMPAGE_START_SZ, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	dst->shmh = fd;
-
-/* step 2, semaphore handles */
-	size_t slen = strlen(shmkey) + 1;
-	if (slen > 1){
-		char work[slen];
-		snprintf(work, slen, "%s", shmkey);
-		slen -= 2;
-		work[slen] = 'v';
-		P->vsem = sem_open(work, 0);
-		work[slen] = 'a';
-		P->asem = sem_open(work, 0);
-		work[slen] = 'e';
-		P->esem = sem_open(work, 0);
-	}
-
-	if (P->asem == 0x0 || P->esem == 0x0 || P->vsem == 0x0){
-		debug_print(FATAL, dst, "couldn't map semaphores: %s", shmkey);
-		free(dst->addr);
-		close(fd);
-		dst->addr = NULL;
-		return;
-	}
 
 /* parent suggested a different size from the start, need to remap */
 	if (dst->addr->segment_size != (size_t) ARCAN_SHMPAGE_START_SZ){
@@ -436,10 +374,11 @@ static void map_shared(const char* shmkey, struct arcan_shmif_cont* dst)
 	}
 
 	debug_print(INFO, dst, "segment mapped to %" PRIxPTR, (uintptr_t) dst->addr);
+
 	if (MAP_FAILED == dst->addr){
 map_fail:
-		debug_print(FATAL, dst, "couldn't map keyfile"
-			"	(%s), reason: %s", shmkey, strerror(errno));
+		debug_print(FATAL, dst,
+			"couldn't shmpage from descriptor: reason: %s", strerror(errno));
 		close(fd);
 		dst->addr = NULL;
 		return;
@@ -467,6 +406,7 @@ char* arcan_shmif_connect(
 		.sun_family = AF_UNIX
 	};
 	size_t lim = COUNT_OF(dst.sun_path);
+	char fdstr[16] = "";
 
 	if (!connpath){
 		debug_print(FATAL, NULL, "missing connection path");
@@ -509,45 +449,25 @@ retry:
 		goto retry;
 	}
 
-/* 2. send (optional) connection key, we send that first (keylen + linefeed),
- *    this setup is dated and should just be removed */
-	char wbuf[PP_SHMPAGE_SHMKEYLIM+1];
-	if (connkey){
-		ssize_t nw = snprintf(wbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", connkey);
-		if (nw >= PP_SHMPAGE_SHMKEYLIM){
-			debug_print(FATAL, NULL,
-				"returned path (%s) exceeds limit (%d)", connpath, PP_SHMPAGE_SHMKEYLIM);
-			close(sock);
-			goto end;
-		}
-
-		if (write(sock, wbuf, nw) < nw){
-			debug_print(FATAL, NULL,
-				"error sending connection string: %s", strerror(errno));
-			close(sock);
-			goto end;
-		}
-	}
-
-/* 3. wait for key response (or broken socket) */
-	if (!shmif_platform_prefix_from_socket(sock, wbuf, sizeof(wbuf)-1)){
-		debug_print(FATAL, NULL, "invalid response on negotiation: %s", strerror(errno));
+/* 2. wait for key response (or broken socket) */
+	int memfd = shmif_platform_mem_from_socket(sock);
+	if (-1 == memfd){
+		debug_print(FATAL, NULL, "Couldn't get memory from socket: %s", strerror(errno));
 		close(sock);
-		goto end;
+		return NULL;
 	}
 
-/* 4. omitted, just return a copy of the key and let someone else perform the
- * arcan_shmif_acquire call. Just set the env. */
-	res = strdup(wbuf);
-
-/* 5. enable timeout for recvmsg so we don't risk being blocked indefinitely */
+/* 3. enable timeout for recvmsg so we don't risk being blocked indefinitely */
 	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
 		&(struct timeval){.tv_sec = 1}, sizeof(struct timeval));
 
 	*conn_ch = sock;
+	snprintf(fdstr, sizeof(fdstr), "%d", memfd);
 
+/* 4. in order to not break API we need to return this as a string, as before
+ *    this used to be a named prefix from which we found the other primitives.*/
 end:
-	return res;
+	return strdup(fdstr);
 }
 
 static void setup_avbuf(struct arcan_shmif_cont* res)
@@ -632,9 +552,10 @@ static struct arcan_shmif_cont shmif_acquire_int(
 	struct shmif_hidden* P = res.priv;
 
 /* different path based on an acquire from a NEWSEGMENT event or if it comes
- * from a _connect (via _open) call */
+ * from a _connect (via _open) call as the former need to pass a connection
+ * string. To handle that interface and the legacy from named primitives, the
+ * key is just the descriptor number as a string. */
 	bool privps = false;
-	const char* key_used = NULL;
 
 	if (!shmkey){
 		struct shmif_hidden* gs = parent->priv;
@@ -642,19 +563,10 @@ static struct arcan_shmif_cont shmif_acquire_int(
 /* special case as a workaround until we can drop the semaphore / key,
  * if we get a newsegment without a matching key, try and read it from
  * the socket. */
-		if (strlen(gs->pseg.key) == 0){
-			debug_print(INFO, parent,
-				"missing_event_key:try_socket=%d", gs->pseg.epipe);
-			shmif_platform_prefix_from_socket(
-				gs->pseg.epipe, gs->pseg.key, COUNT_OF(gs->pseg.key)-1);
-		}
-
-		map_shared(gs->pseg.key, &res);
-		key_used = gs->pseg.key;
-		debug_print(INFO, parent, "newsegment_shm_key:%s", key_used);
-
-		if (!(flags & SHMIF_DONT_UNLINK))
-			unlink_keyed(gs->pseg.key);
+		debug_print(INFO, parent,
+			"missing_event_key:try_socket=%d", gs->pseg.epipe);
+		gs->pseg.memfd = shmif_platform_mem_from_socket(gs->pseg.epipe);
+		map_shared(gs->pseg.memfd, &res);
 
 		if (!res.addr){
 			close(gs->pseg.epipe);
@@ -664,10 +576,8 @@ static struct arcan_shmif_cont shmif_acquire_int(
 	}
 	else{
 		debug_print(INFO, parent, "acquire_shm_key:%s", shmkey);
-		key_used = shmkey;
-		map_shared(shmkey, &res);
-		if (!(flags & SHMIF_DONT_UNLINK))
-			unlink_keyed(shmkey);
+		long shmfd = strtoul(shmkey, NULL, 10);
+		map_shared(shmfd, &res);
 	}
 
 	if (!res.addr){
@@ -687,8 +597,6 @@ static struct arcan_shmif_cont shmif_acquire_int(
 			exitf = va_arg(vargs, void(*)(int));
 	}
 
-	res.priv->shm_key = strdup(key_used);
-
 /* and mark the segment as non-extended */
 	res.privext = malloc(sizeof(struct shmif_ext_hidden));
 	*res.privext = (struct shmif_ext_hidden){
@@ -706,9 +614,6 @@ static struct arcan_shmif_cont shmif_acquire_int(
 
 	if (!(flags & SHMIF_DISABLE_GUARD) && !getenv("ARCAN_SHMIF_NOGUARD"))
 		shmif_platform_guard(&res, (struct watchdog_config){
-			.audio = P->asem,
-			.video = P->vsem,
-			.event = P->esem,
 			.parent_pid = res.addr->parent,
 			.parent_fd = -1,
 			.exitf = exitf
@@ -735,14 +640,13 @@ static struct arcan_shmif_cont shmif_acquire_int(
 
 /* clear this here so consume won't eat it */
 		pp->pseg.epipe = BADFD;
-		memset(pp->pseg.key, '\0', sizeof(pp->pseg.key));
 
 /* reset pending descriptor state */
 		shmifint_consume_pending(parent);
 	}
 
 /* this should be moved to platform for shm handling */
-	shmif_platform_setevqs(res.addr, P->esem, &res.priv->inev, &res.priv->outev);
+	shmif_platform_setevqs(res.addr, NULL, &res.priv->inev, &res.priv->outev);
 
 /* forward our type, immutable name and GUID. This should also be an open_ext
  * flag VA_ARG so that we can attach to some other identity provider */
@@ -852,11 +756,6 @@ void arcan_shmif_drop(struct arcan_shmif_cont* C)
 	if (C == primary.output)
 		primary.output = NULL;
 
-/* this should be moved to platform for sem- handling */
-	sem_close(P->asem);
-	sem_close(P->esem);
-	sem_close(P->vsem);
-
 	if (P->args){
 		arg_cleanup(P->args);
 	}
@@ -923,11 +822,11 @@ static bool shmif_resize(struct arcan_shmif_cont* C,
 /* wait for any outstanding v/asynch */
 	if (atomic_load(&C->addr->vready)){
 		while (atomic_load(&C->addr->vready) && shmif_platform_check_alive(C))
-			arcan_sem_wait(P->vsem);
+			shmif_platform_sync_wait(C->addr, SYNC_VIDEO);
 	}
 	if (atomic_load(&C->addr->aready)){
 		while (atomic_load(&C->addr->aready) && shmif_platform_check_alive(C))
-			arcan_sem_wait(P->asem);
+			shmif_platform_sync_wait(C->addr, SYNC_AUDIO);
 	}
 
 /* since the vready wait can be long and an error prone operation, the context
@@ -998,7 +897,7 @@ static bool shmif_resize(struct arcan_shmif_cont* C,
 	FORCE_SYNCH();
 	C->addr->resized = 1;
 	do{
-		if (0 == arcan_sem_trywait(P->vsem))
+		if (0 == shmif_platform_sync_trywait(C->addr, SYNC_VIDEO))
 			arcan_timesleep(16);
 	}
 	while (C->addr->resized > 0 && shmif_platform_check_alive(C));
@@ -1053,7 +952,7 @@ static bool shmif_resize(struct arcan_shmif_cont* C,
 /*
  * make sure we start from the right buffer counts and positions
  */
-	shmif_platform_setevqs(C->addr, P->esem, &P->inev, &P->outev);
+	shmif_platform_setevqs(C->addr, NULL, &P->inev, &P->outev);
 	setup_avbuf(C);
 
 	P->multipart_ofs = 0;
@@ -1410,7 +1309,6 @@ pid_t arcan_shmif_handover_exec_pipe(
 /* clear the tracking in the same way as an _acquire would */
 	else{
 		cont->priv->pseg.epipe = BADFD;
-		memset(cont->priv->pseg.key, '\0', sizeof(cont->priv->pseg.key));
 		cont->priv->pev.handedover = true;
 
 /* reset pending descriptor state */

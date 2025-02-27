@@ -9056,20 +9056,10 @@ static int targetalloc(lua_State* ctx)
 	int cb_ind = 2;
 	char* pw = NULL;
 
-/* this should be cleaned up in the platform layer to store the string
- * in the fsrv, then use hash(key | challenge) and send challenge on
- * connect. */
+/* This is defunct and isn't relied on, chances are one could re-add it later
+ * but it's really not worth it as a boundary since inherited processes are the
+ * way to go to avoid mitm. */
 	if (lua_type(ctx, 2) == LUA_TSTRING){
-		pw = (char*) luaL_checkstring(ctx, 2);
-		size_t pwlen = strlen(pw);
-		if (pwlen > PP_SHMPAGE_SHMKEYLIM-1){
-			arcan_warning(
-				"target_alloc(), requested passkey length (%d) exceeds "
-				"built-in threshold (%d characters) and will be truncated .\n",
-				pwlen, pw);
-
-			pw[PP_SHMPAGE_SHMKEYLIM-1] = '\0';
-		}
 		cb_ind = 3;
 	}
 

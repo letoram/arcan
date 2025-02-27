@@ -145,15 +145,12 @@ static size_t shmpage_size(size_t w, size_t h,
 }
 
 static void fsrv_setevqs(
-	struct arcan_shmif_page* dst, sem_handle esem,
+	struct arcan_shmif_page* dst,
 	struct arcan_evctx* inq, struct arcan_evctx* outq)
 {
 	struct arcan_evctx* tmp = inq;
 	inq = outq;
 	outq = tmp;
-
-	outq->synch.handle = esem;
-	inq->synch.handle = esem;
 
 	inq->synch.killswitch = NULL;
 	outq->synch.killswitch = NULL;
@@ -175,26 +172,6 @@ struct arcan_frameserver* platform_fsrv_wrapcl(struct arcan_shmif_cont* in)
 {
 /* alloc - set the wrapped bitflag, set MONITOR FFUNC, map in eventqueues */
 	return NULL;
-}
-
-static void dropshared_keyed(char** key)
-{
-	if (!key || !(*key))
-		return;
-
-	char* work = *key;
-
-	shm_unlink(work);
-	size_t chpos = strlen(work) - 1;
-	work[chpos] = 'a';
-	arcan_sem_unlink(NULL, work);
-	work[chpos] = 'e';
-	arcan_sem_unlink(NULL, work);
-	work[chpos] = 'v';
-	arcan_sem_unlink(NULL, work);
-
-	arcan_mem_free(work);
-	*key = NULL;
 }
 
 /*
@@ -273,10 +250,6 @@ bool platform_fsrv_destroy_local(arcan_frameserver* src)
 		src->dpipe = BADFD;
 	}
 
-	sem_close(src->async);
-	sem_close(src->vsync);
-	sem_close(src->esync);
-
 	struct arcan_shmif_page* shmpage = src->shm.ptr;
 
 	if (shmpage && -1 == munmap((void*) shmpage, src->shm.shmsize))
@@ -327,13 +300,13 @@ bool platform_fsrv_destroy(arcan_frameserver* src)
 		else {
 			shmpage->childevq.front = shmpage->childevq.back;
 			shmpage->parentevq.front = shmpage->parentevq.back;
-			arcan_sem_post( src->esync );
+			shmpage->esync = 0xffffffff;
 		}
 
 		shmpage->vready = false;
 		shmpage->aready = false;
-		arcan_sem_post( src->vsync );
-		arcan_sem_post( src->async );
+		shmpage->vsync = 0xffffffff;
+		shmpage->async = 0xffffffff;
 	}
 
 /* if BUS happens during _enter, the handler will take
@@ -381,22 +354,11 @@ void platform_fsrv_dropshared(arcan_frameserver* src)
 		src->sockaddr = NULL;
 	}
 
-	if (src->sockkey){
-		arcan_mem_free(src->sockkey);
-		src->sockkey = NULL;
-	}
-
-	sem_close(src->async);
-	sem_close(src->vsync);
-	sem_close(src->esync);
-
 	struct arcan_shmif_page* shmpage = src->shm.ptr;
 
 	if (shmpage && -1 == munmap((void*) shmpage, src->shm.shmsize))
 		arcan_warning("BUG -- frameserver_dropshared(), munmap failed: %s\n",
 			strerror(errno));
-
-	dropshared_keyed(&src->shm.key);
 
 	if (-1 != src->shm.handle)
 		close(src->shm.handle);
@@ -516,93 +478,6 @@ int platform_fsrv_pushfd(
 		fd, fsrv->dpipe, errno, strerror(errno));
 
 	return ARCAN_ERRC_BAD_ARGUMENT;
-}
-
-static bool findshmkey(arcan_frameserver* ctx, int* dfd, mode_t mode){
-	pid_t selfpid = getpid();
-	int retrycount = 10;
-	size_t pb_ofs = 0;
-
-	const char pattern[] = "/arcan_%i_%im";
-	const char* errmsg = NULL;
-
-	char playbuf[sizeof(pattern) + 10];
-
-	while (retrycount){
-/* not a security mechanism, just light "avoid stepping on my own toes" */
-		snprintf(playbuf,
-			sizeof(playbuf), pattern, selfpid % 1000, arc4random() % 100000);
-
-		pb_ofs = strlen(playbuf) - 1;
-		*dfd = shm_open(playbuf, O_CREAT | O_RDWR | O_EXCL, mode);
-
-/*
- * with EEXIST, we happened to have a name collision, it is unlikely, but may
- * happen. for the others however, there is something else going on and there's
- * no point retrying
- */
-		if (-1 == *dfd && errno != EEXIST){
-			arcan_warning("arcan_findshmkey(), allocating "
-				"shared memory failed, reason: %d\n", errno);
-			return false;
-		}
-
-		else if (-1 == *dfd){
-			errmsg = "shmalloc failed -- named exists\n";
-			retrycount--;
-			continue;
-		}
-
-		playbuf[pb_ofs] = 'v';
-		ctx->vsync = sem_open(playbuf, O_CREAT | O_EXCL, mode, 0);
-
-		if (SEM_FAILED == ctx->vsync){
-			playbuf[pb_ofs] = 'm'; shm_unlink(playbuf);
-			close(*dfd);
-			retrycount--;
-			errmsg = "couldn't create (v) semaphore\n";
-			continue;
-		}
-
-		playbuf[pb_ofs] = 'a';
-		ctx->async = sem_open(playbuf, O_CREAT | O_EXCL, mode, 0);
-
-		if (SEM_FAILED == ctx->async){
-			playbuf[pb_ofs] = 'v'; sem_unlink(playbuf); sem_close(ctx->vsync);
-			playbuf[pb_ofs] = 'm'; shm_unlink(playbuf);
-			close(*dfd);
-			retrycount--;
-			errmsg = "couldn't create (a) semaphore\n";
-			continue;
-		}
-
-		playbuf[pb_ofs] = 'e';
-		ctx->esync = sem_open(playbuf, O_CREAT | O_EXCL, mode, 1);
-		if (SEM_FAILED == ctx->esync){
-			playbuf[pb_ofs] = 'a'; sem_unlink(playbuf); sem_close(ctx->async);
-			playbuf[pb_ofs] = 'v'; sem_unlink(playbuf); sem_close(ctx->vsync);
-			playbuf[pb_ofs] = 'm'; shm_unlink(playbuf);
-			close(*dfd);
-			retrycount--;
-			errmsg = "couldn't create (e) semaphore\n";
-			continue;
-		}
-
-		break;
-	}
-
-	playbuf[pb_ofs] = 'm';
-	ctx->shm.key = strdup(playbuf);
-
-	if (retrycount)
-		return true;
-
-/* edge condition: if we run out of attempts, chances are that there will
- * be a valid value in *dfd, though this shouldn't propagate - there's no
- * reason not to clean it */
-	*dfd = -1;
-	arcan_warning("findshmkey() -- namespace reservation failed: %s\n", errmsg);
-	return false;
 }
 
 static bool sockpair_alloc(int* dst, size_t n, bool cloexec)
@@ -737,14 +612,11 @@ static bool shmalloc(arcan_frameserver* ctx,
 		ctx->shm.shmsize = ARCAN_SHMPAGE_START_SZ;
 
 	struct arcan_shmif_page* shmpage;
-	int shmfd = 0;
-
-	if (!findshmkey(ctx, &shmfd, ctx->sockmode))
-		return false;
+	int shmfd = platform_fsrv_shmmem();
 
 	if (namedsocket)
 		if (!setup_socket(ctx, shmfd, optkey, optdesc))
-		goto fail;
+			goto fail;
 
 /* max videoframesize + DTS + structure + maxaudioframesize,
 * start with max, then truncate down to whatever is actually used */
@@ -763,16 +635,9 @@ static bool shmalloc(arcan_frameserver* ctx,
 		arcan_warning("platform_fsrv_spawn_server(unix) -- couldn't "
 			"allocate shmpage\n");
 fail:
-/* subtle edge case, dropshared_keyed only unlinks, it doesn't
- * close the memory descriptor or the semaphores, so those will
- * leak even if we unlink */
 		if (shmfd != -1){
 			close(shmfd);
-			sem_close(ctx->vsync);
-			sem_close(ctx->async);
-			sem_close(ctx->esync);
 		}
-		dropshared_keyed(&ctx->shm.key);
 		return false;
 	}
 
@@ -781,7 +646,6 @@ fail:
 	if (0 != setjmp(out)){
 		munmap(shmpage, ctx->shm.shmsize);
 		ctx->shm.ptr = NULL;
-		dropshared_keyed(&ctx->shm.key);
 		return false;
 	}
 
@@ -987,7 +851,7 @@ static bool prepare_segment(struct arcan_frameserver* ctx,
 	ctx->abuf_cnt = abufc;
 	ctx->abuf_sz = abufsz;
 	ctx->tag = tag;
-	fsrv_setevqs(ctx->shm.ptr, ctx->esync, &(ctx->inqueue), &(ctx->outqueue));
+	fsrv_setevqs(ctx->shm.ptr, &(ctx->inqueue), &(ctx->outqueue));
 	ctx->inqueue.synch.killswitch = (void*) ctx;
 	ctx->outqueue.synch.killswitch = (void*) ctx;
 
@@ -1025,6 +889,7 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 /* minor parent relationship tracking */
 	if (ctx->source)
 		newseg->source = strdup(ctx->source);
+
 	newseg->parent.vid = ctx->vid;
 	newseg->parent.ptr = (void*) ctx;
 	newseg->vid = tag;
@@ -1059,7 +924,7 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
  * sending on additional descriptor in advance.
  */
 	newseg->dpipe = sockp[0];
-	arcan_pushhandle(sockp[1], ctx->dpipe);
+	arcan_pushhandle(sockp[0], ctx->dpipe);
 	close(sockp[1]);
 
 	arcan_event keyev = {
@@ -1077,11 +942,6 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
  */
 	keyev.tgt.ioevs[4].uiv = newseg->cookie;
 	keyev.tgt.ioevs[5].iv = forced_bit;
-
-	snprintf(keyev.tgt.message,
-		sizeof(keyev.tgt.message) / sizeof(keyev.tgt.message[1]),
-		"%s", newseg->shm.key
-	);
 
 	platform_fsrv_pushevent(ctx, &keyev);
 
@@ -1150,71 +1010,13 @@ int platform_fsrv_socketauth(struct arcan_frameserver* tgt)
 {
 	char ch;
 	size_t ntw;
-/*
- * We want this code-path exercised no matter what, so if the caller specified
- * that the first connection should be accepted no mater what, immediately
- * continue.
- */
 
-reread:
-	if (!tgt->clientkey[0])
-		goto send_key;
-
-	if (-1 == read(tgt->dpipe, &ch, 1)){
-		errno = EAGAIN;
-		return -1;
-	}
-
-/* Got key submit, if we get an authentication fail, we still tear down the
- * connection and leave it to the script to open a connection again. This means
- * that strcmp will effectively not become an oracle as we'll align to vsync
- * and jitter from tons of activity - but the scripts can also take different
- * action */
-	if ('\0' == ch){
-		if (strncmp(tgt->clientkey, tgt->sockinbuf, PP_SHMPAGE_SHMKEYLIM) != 0){
-			errno = EBADF;
-			return -1;
-		}
-	}
-/* don't fail on early out, just continue "checking" */
-	else {
-		tgt->sockinbuf[tgt->sockrofs] = ch;
-		tgt->sockrofs = tgt->sockrofs + 1;
-		if (tgt->sockrofs >= PP_SHMPAGE_SHMKEYLIM){
-			errno = EBADF;
-			return -1;
-		}
-		goto reread;
-	}
-
-/* switch to resize polling default handler */
-send_key:
-	ntw = snprintf(tgt->sockinbuf,
-		PP_SHMPAGE_SHMKEYLIM, "%s\n", tgt->shm.key);
-
-	ssize_t rtc = 10;
-	off_t wofs = 0;
-
-/*
- * small chance here that a malicious client could manipulate the descriptor in
- * such a way as to block, retry a short while and then just give up/kill
- */
-	while (rtc && ntw){
-		ssize_t rc = write(tgt->dpipe, tgt->sockinbuf + wofs, ntw);
-		if (-1 == rc){
-			rtc = (errno == EAGAIN || errno ==
-				EWOULDBLOCK || errno == EINTR) ? rtc - 1 : 0;
-		}
-		else{
-			ntw -= rc;
-			wofs += rc;
-		}
-	}
-
-	if (rtc <= 0){
+	if (!arcan_pushhandle(tgt->shm.handle, tgt->dpipe)){
+		arcan_warning("couldn't send shared memory handle over socket");
 		errno = EBADF;
 		return -1;
 	}
+
 	return 0;
 }
 
@@ -1481,7 +1283,7 @@ int platform_fsrv_resynch(struct arcan_frameserver* s)
 	shmpage->segment_size = arcan_shmif_mapav(shmpage,
 		s->vbufs, s->vbuf_cnt, vbufsz, s->abufs, s->abuf_cnt, abufsz);
 	s->abuf_sz = abufsz;
-	fsrv_setevqs(shmpage, s->esync, &(s->inqueue), &(s->outqueue));
+	fsrv_setevqs(shmpage, &(s->inqueue), &(s->outqueue));
 
 /* commit to shared page */
 	shmpage->resized = 0;
@@ -1517,7 +1319,7 @@ fail:
 done:
 /* barrier + signal */
 	FORCE_SYNCH();
-	arcan_sem_post(s->vsync);
+	shmpage->vsync = 0xffffffff;
 	return state;
 }
 
@@ -1531,8 +1333,6 @@ struct arcan_frameserver* platform_fsrv_listen_external(const char* key,
 		return NULL;
 	}
 
-	if (auth)
-		strncpy(newseg->clientkey, auth, PP_SHMPAGE_SHMKEYLIM-1);
 	return newseg;
 }
 
@@ -1572,6 +1372,8 @@ struct arcan_frameserver* platform_fsrv_spawn_server(
 
 	newseg->dpipe = sockp[0];
 	*childfd = sockp[1];
+
+	arcan_pushhandle(*childfd, newseg->shm.handle);
 
 	return newseg;
 }

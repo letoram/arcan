@@ -1,4 +1,6 @@
 #include <stdint.h>
+#include <sys/mman.h>
+
 #include "arcan_shmif.h"
 #include "../../shmif/tui/raster/raster_const.h"
 
@@ -6,6 +8,11 @@ static inline void* alignv(uint8_t* inptr, size_t align_sz)
 {
 	return (void*) (((uintptr_t)inptr % align_sz != 0) ?
 		inptr + align_sz - ((uintptr_t) inptr % align_sz) : inptr);
+}
+
+int platform_fsrv_shmmem()
+{
+	return memfd_create("arcan_shmif", MFD_CLOEXEC);
 }
 
 size_t arcan_shmif_vbufsz(

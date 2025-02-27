@@ -242,25 +242,25 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* C, int mask)
 
 /* watchdog will pull this for us */
 		if (lock && !(mask & SHMIF_SIGBLK_NONE))
-			arcan_sem_wait(P->asem);
+			shmif_platform_sync_wait(C->addr, SYNC_AUDIO);
 		else
-			arcan_sem_trywait(P->asem);
+			shmif_platform_sync_trywait(C->addr, SYNC_AUDIO);
 	}
 /* for sub-region multi-buffer synch, we currently need to
  * check before running the step_v */
 	if (mask & SHMIF_SIGVID){
 		while ((C->hints & SHMIF_RHINT_SUBREGION)
 			&& C->addr->vready && shmif_platform_check_alive(C))
-			arcan_sem_wait(P->vsem);
+			shmif_platform_sync_wait(C->addr, SYNC_VIDEO);
 
 		bool lock = step_v(C, mask);
 
 		if (lock && !(mask & SHMIF_SIGBLK_NONE)){
 			while (C->addr->vready && shmif_platform_check_alive(C))
-				arcan_sem_wait(P->vsem);
+				shmif_platform_sync_wait(C->addr, SYNC_AUDIO);
 		}
 		else
-			arcan_sem_trywait(P->vsem);
+			shmif_platform_sync_trywait(C->addr, SYNC_AUDIO);
 	}
 
 	P->in_signal = false;

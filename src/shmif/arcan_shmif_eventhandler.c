@@ -107,7 +107,6 @@ static bool fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
  */
 		dst->tgt.ioevs[0].iv = private->pseg.epipe = private->pev.fd;
 		private->pev.fd = BADFD;
-		memcpy(private->pseg.key, dst->tgt.message, sizeof(dst->tgt.message));
 		return true;
 	}
 /*

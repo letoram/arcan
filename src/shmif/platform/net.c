@@ -133,27 +133,20 @@ char* shmif_platform_a12spawn(
 	while(waitpid(pid, NULL, 0) == -1 && errno == EINTR){}
 	sigaction(SIGCHLD, &oldsig, NULL);
 
-/* retrieve shmkeyetc. like with connect */
-	free(work);
-	size_t ofs = 0;
-	char wbuf[PP_SHMPAGE_SHMKEYLIM+1];
-	do {
-		if (-1 == read(*dsock, wbuf + ofs, 1)){
-			debug_print(FATAL, NULL, "invalid response on negotiation");
-			close(*dsock);
-			return NULL;
-		}
+/* retrieve the memory page */
+	char wbuf[8];
+	int fd = shmif_platform_mem_from_socket(*dsock);
+	if (-1 == fd){
+		debug_print(FATAL, NULL, "Couldn't retrieve mempage from socket");
+		close(*dsock);
+		return NULL;
 	}
-
-	while(wbuf[ofs++] != '\n' && ofs < PP_SHMPAGE_SHMKEYLIM);
-	wbuf[ofs-1] = '\0';
+	snprintf(wbuf, sizeof(wbuf), "%d", fd);
 
 /* note: should possibly pass some error data from arcan-net here
  * so we can propagate an error message */
-
 	return strdup(wbuf);
 }
-
 
 struct a12addr_info
 	shmif_platform_a12addr(const char* addr)
