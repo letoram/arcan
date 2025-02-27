@@ -78,13 +78,20 @@ void arcan_timesleep(unsigned long);
 void arcan_random(uint8_t* dst, size_t sz);
 
 /*
- * A lot of frameserver/client communication is on the notion that we can
- * push and fetch some kind of context handle between processes. The exact
- * means and mechanics vary with operating system, but typically through a
- * special socket or as a member of the event queue.
+ * A lot of frameserver/client communication is on the notion that we can push
+ * and fetch some kind of context handle between processes. The exact means and
+ * mechanics vary with operating system, but typically through a special socket
+ * or as a member of the event queue.
  */
 file_handle arcan_fetchhandle(int insock, bool block);
 bool arcan_pushhandle(int fd, int channel);
+
+/*
+ * The pushhandle functions above will eventually replace by ones that can take
+ * multiples over the same CMSG, so new code should use these.
+ */
+bool arcan_send_fds(int channel, int fd[], size_t nfd);
+int arcan_receive_fds(int channel, int* dfd, size_t nfd);
 
 /*
  * This is a nasty little function, but used as a safe-guard in the fork()+

@@ -16,7 +16,9 @@
 
 int shmif_platform_mem_from_socket(int fd)
 {
-	return shmif_platform_fetchfd(fd, true, NULL, NULL);
+	int dfd;
+	shmif_platform_fetchfds(fd, &dfd, 1, true, NULL, NULL);
+	return dfd;
 }
 
 int shmif_platform_dupfd_to(int fd, int dstnum, int fflags, int fdopt)
@@ -89,22 +91,33 @@ bool shmif_platform_pushfd(int fd, int sockout)
 	return rv >= 0;
 }
 
-int shmif_platform_fetchfd(
-	int sockin_fd, bool blocking, bool (*alive_check)(void*), void* tag)
+int shmif_platform_fetchfds(
+	int sockin_fd, int* dfd, size_t nfd,
+	bool blocking, bool (*alive_check)(void*), void* tag)
 {
-	if (sockin_fd == -1)
-		return -1;
+	for (size_t i = 0; i < nfd; i++)
+		dfd[i] = BADFD;
 
-	char empty;
+	if (sockin_fd == BADFD)
+		return BADFD;
+
+/* nfd here will be, at most, 4 * 3 * sizeof(int) for transfer of 4-plane image
+ * + release and acquire fenceses */
 
 	struct cmsgbuf {
 		struct cmsghdr hdr;
 		union {
-			char buf[CMSG_SPACE(sizeof(int))];
-			int fd[1];
+			char buf[CMSG_SPACE(sizeof(int) * nfd)];
+			int fd[nfd];
 		};
-	} msgbuf = {.fd[0] = -1};
+	} msgbuf;
 
+	for (size_t i = 0; i < nfd; i++){
+		msgbuf.fd[i] = BADFD;
+	}
+
+/* pinged with single character because OSX breaking on 0- iov_len */
+	char empty;
 	struct iovec nothing_ptr = {
 		.iov_base = &empty,
 		.iov_len = 1
@@ -127,15 +140,20 @@ int shmif_platform_fetchfd(
 	else if (-1 == recvmsg(sockin_fd, &msg, MSG_DONTWAIT | MSG_NOSIGNAL))
 		return -1;
 
-	int nd = -1;
-	struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-	if (cmsg &&
-		cmsg->cmsg_len == CMSG_LEN(sizeof(int)) &&
-		cmsg->cmsg_level == SOL_SOCKET &&
-		cmsg->cmsg_type == SCM_RIGHTS){
-		nd = *(int*)CMSG_DATA(cmsg);
-		if (-1 != nd)
-			fcntl(nd, F_SETFD, FD_CLOEXEC);
+	int nd = 0;
+	struct cmsghdr* cmsg;
+	for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)){
+		if (cmsg->cmsg_len % sizeof(int) != 0 || cmsg->cmsg_len <= CMSG_LEN(0)){
+			debug_print(FATAL, NULL,
+				"fetchfds(%zu) - bad cmsg length: %zu\n", nfd, (size_t) cmsg->cmsg_len);
+			return -1;
+		}
+
+		for (size_t i = 0; i < (cmsg->cmsg_len - CMSG_LEN(0)) / sizeof(int); i++){
+			dfd[nd] = ((int*)CMSG_DATA(cmsg))[i];
+			fcntl(dfd[nd], F_SETFD, FD_CLOEXEC);
+			nd++;
+		}
 	}
 
 	return nd;

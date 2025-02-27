@@ -905,14 +905,11 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
  */
 	newseg->desc.rz_flag = true;
 
-/*
- * Transfer the new event socket along with the base-key that will be used to
- * find shm etc. We re-use the same name- allocation approach for convenience -
- * in spite of the risk of someone racing a segment intended for another. Part
- * of this is OSX not supporting unnamed semaphores on shared memory pages
- * (seriously).
+/* Socket pair used for transfer of descriptors where we don't have
+ * DuplicateHandle and for I/O multiplexing (pinging the socket with empty data
+ * to let the client end incorporate into other event loop)
  */
-	int sockp[4] = {-1, -1};
+	int sockp[2] = {-1, -1};
 	if (!sockpair_alloc(sockp, 1, true)){
 		platform_fsrv_destroy(newseg);
 		return NULL;
@@ -920,11 +917,13 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 
 /*
  * We finally have a completed segment with all tracking, buffering etc.  in
- * place, send it to the frameserver to map and use. Note that we cheat by
- * sending on additional descriptor in advance.
+ * place, send it to the frameserver to map and use. Also send the memory fd
+ * attached to the same CMSG as putting it on the sockpair separately will fail
+ * through 'connection reset by peer'. Shmif will map this into the key
  */
 	newseg->dpipe = sockp[0];
-	arcan_pushhandle(sockp[0], ctx->dpipe);
+	arcan_pushhandle(sockp[1], ctx->dpipe);
+	arcan_pushhandle(newseg->shm.handle, sockp[0]);
 	close(sockp[1]);
 
 	arcan_event keyev = {
@@ -943,7 +942,18 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 	keyev.tgt.ioevs[4].uiv = newseg->cookie;
 	keyev.tgt.ioevs[5].iv = forced_bit;
 
-	platform_fsrv_pushevent(ctx, &keyev);
+/* manually queue rather than pushevent */
+	TRAMP_GUARD(NULL, newseg);
+		struct arcan_evctx* evctx = &ctx->outqueue;
+		if ( ((*evctx->back + 1) % evctx->eventbuf_sz) == *evctx->front){
+			platform_fsrv_leave();
+			return NULL;
+		}
+		evctx->eventbuf[*evctx->back] = keyev;
+
+	FORCE_SYNCH();
+	*evctx->back = (*evctx->back + 1) % evctx->eventbuf_sz;
+	platform_fsrv_leave();
 
 /*
  * This special case is worth noting, should a HANDOVER subsegment be provided,

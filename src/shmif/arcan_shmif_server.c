@@ -544,7 +544,8 @@ bool shmifsrv_process_event(struct shmifsrv_client* cl, struct arcan_event* ev)
 			}, -1);
 
 	/* just fetch and wipe */
-			int handle = shmif_platform_fetchfd(cl->con->dpipe, false, NULL, NULL);
+			int handle;
+			shmif_platform_fetchfds(cl->con->dpipe, &handle, 1, false, NULL, NULL);
 			close(handle);
 
 			return true;

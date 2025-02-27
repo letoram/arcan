@@ -149,7 +149,8 @@ void arcan_closefrom(int fd)
  * and that there's enough room in the frameserver_envp for NULL term.
  * The caller will cleanup env with free_strarr.
  */
-static void append_env(struct arcan_strarr* darr, char* argarg, char* conn)
+static void append_env(
+	struct arcan_strarr* darr, char* argarr, char* conn, char* mem)
 {
 /*
  * slightly unsure which ones we actually need to propagate, for now these go
@@ -170,8 +171,9 @@ static void append_env(struct arcan_strarr* darr, char* argarg, char* conn)
 		arcan_fetch_namespace(RESOURCE_APPL_STATE),
 		arcan_fetch_namespace(RESOURCE_APPL_SHARED),
 		arcan_fetch_namespace(RESOURCE_SYS_DEBUG),
-		argarg,
 		conn,
+		mem,
+		argarr,
 		getenv("LD_LIBRARY_PATH"),
 		getenv("XDG_RUNTIME_DIR"),
 		getenv("XDG_STATE_HOME"),
@@ -198,6 +200,7 @@ static void append_env(struct arcan_strarr* darr, char* argarg, char* conn)
 		"ARCAN_RESOURCEPATH",
 		"ARCAN_FRAMESERVER_LOGDIR",
 		"ARCAN_SOCKIN_FD",
+		"ARCAN_SOCKIN_MEMFD",
 		"ARCAN_ARG",
 		"LD_LIBRARY_PATH",
 		"XDG_RUNTIME_DIR",
@@ -281,6 +284,12 @@ struct arcan_frameserver* platform_launch_fork(
 	bool add_audio = true;
 	int clsock;
 
+/* we need to pass [clsock] and [ctx->shm.handle] into the new process. For an
+ * external connection we can send the descriptor over the established segment,
+ * but when inheriting posix is 'vague' about what happens to descriptor
+ * ownership when you pair() -> pass_pair(1, fd) -> inherit_pair(1)
+ * -> fork+close(1) and then try to retrieve the handle from the inherited
+ *  socket. In some cases we get ECONNRESET */
 	struct arcan_frameserver* ctx =
 		platform_fsrv_spawn_server(
 			SEGID_UNKNOWN, setup->init_w, setup->init_h, tag, &clsock);
@@ -290,6 +299,7 @@ struct arcan_frameserver* platform_launch_fork(
 
 	ctx->launchedtime = arcan_frametime();
 	ctx->source = NULL;
+	int shmfd = ctx->shm.handle;
 
 /* just map the frameserver archetypes to preset context configs, nowadays
  * these are rather minor - in much earlier versions it covered queues, thread
@@ -320,7 +330,7 @@ struct arcan_frameserver* platform_launch_fork(
 			setup->args.builtin.resource ?
 			setup->args.builtin.resource : setup->args.builtin.mode);
 
-		append_env(&arr, (char*) setup->args.builtin.resource, "3");
+		append_env(&arr, (char*) setup->args.builtin.resource, "3", "4");
 	}
 	else{
 		ctx->source = strdup(
@@ -328,7 +338,7 @@ struct arcan_frameserver* platform_launch_fork(
 			setup->args.external.resource : ""
 		);
 
-		append_env(setup->args.external.envv, ctx->source, "3");
+		append_env(setup->args.external.envv, ctx->source, "3", "4");
 	}
 
 /* build the video object */
@@ -362,9 +372,13 @@ struct arcan_frameserver* platform_launch_fork(
 	}
 	else if (child == 0){
 		close(STDERR_FILENO+1);
-/* will also strip CLOEXEC */
+
+/* will also strip CLOEXEC - a minor hardening option here would be to actually
+ * randomize where we place clsock and shmfd rather than the fixed '3' and '4'
+ * */
 		dup2(clsock, STDERR_FILENO+1);
-		arcan_closefrom(STDERR_FILENO+2);
+		dup2(shmfd, STDERR_FILENO+2);
+		arcan_closefrom(STDERR_FILENO+3);
 
 /* split out into a new session */
 		if (setsid() == -1)

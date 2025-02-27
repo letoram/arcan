@@ -546,7 +546,7 @@ static struct arcan_shmif_cont shmif_acquire_int(
 	res.priv = malloc(sizeof(struct shmif_hidden));
 	*res.priv = (struct shmif_hidden){
 		.flags = flags,
-		.pev = {.fd = BADFD},
+		.pev = {.fds = {BADFD, BADFD}},
 		.pseg = {.epipe = BADFD}
 	};
 	struct shmif_hidden* P = res.priv;

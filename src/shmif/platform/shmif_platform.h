@@ -181,12 +181,18 @@ void shmif_platform_setevqs(struct arcan_shmif_page*,
 bool shmif_platform_pushfd(int fd, int sockout);
 
 /*
- * Retrieve a file descriptor from [sockin].
+ * Retrieve one or several file descriptors from [sockin].
  * if [blocking] is set it will block until one has been received.
  * if [alive_check] is provided it will be called with the tag to check if the connection
  * has been terminated or not, assuming that [sockin] has been set to have a timeout.
+ *
+ * Returns the number of descriptors set (or -1 indicating failure or EWOULDBLOCK
  */
-int shmif_platform_fetchfd(int sockin, bool blocking, bool (*alive_check)(void*), void*);
+int shmif_platform_fetchfds(
+	int sockin,
+	int fdout[], size_t cap,
+	bool blocking, bool (*alive_check)(void*), void*
+);
 
 /*
  * Configure a watchdog around the context, if some error condition occurs, the

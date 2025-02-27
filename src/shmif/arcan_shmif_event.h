@@ -496,9 +496,9 @@ enum ARCAN_TARGET_COMMAND {
  * user request, or as an explicit feature announce when there is no matching
  * request cookie.
  *
- * ioev[0].iv carries the file descriptor used to build the new segment
- * connection. This can safely be ignored as the cleanup or handover is
- * managed by the next event command or by the acquire call.
+ * ioev[0].iv carries the socket file descriptor, with ioevs[6].iv carrying the
+ * memory page file descriptor. This can safely be ignored as the cleanup or
+ * handover is managed by the next event command or by the acquire call.
  *
  * ioev[1].iv is set to !0 if the segment is used to receive rather than send
  * data.

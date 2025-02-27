@@ -95,6 +95,7 @@ static struct {
 /*
  * same debugging / tracing setup as in egl-dri.c
  */
+#undef debug_print
 #define debug_print(fmt, ...) \
             do { if (DEBUG) arcan_warning("%lld:%s:%d:%s(): " fmt "\n",\
 						arcan_timemillis(), "egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)

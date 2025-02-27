@@ -145,7 +145,7 @@ struct shmif_hidden {
 		bool gotev, consumed;
 		bool handedover;
 		arcan_event ev;
-		int fd;
+		int fds[2];
 	} pev;
 
 /* When a NEWSEGMENT event has been provided (and descriptor- paired) the caller

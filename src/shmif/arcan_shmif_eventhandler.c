@@ -105,8 +105,8 @@ static bool fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
  * forward the file descriptor as well so that, in the case of a HANDOVER,
  * the parent process has enough information to forward into a new process.
  */
-		dst->tgt.ioevs[0].iv = private->pseg.epipe = private->pev.fd;
-		private->pev.fd = BADFD;
+		dst->tgt.ioevs[0].iv = private->pseg.epipe = private->pev.fds[0];
+		dst->tgt.ioevs[6].iv = private->pev.fds[1];
 		return true;
 	}
 /*
@@ -119,9 +119,9 @@ static bool fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
 		if (private->keystate_store)
 			close(private->keystate_store);
 
-		private->keystate_store = private->pev.fd;
+		private->keystate_store = private->pev.fds[0];
 		private->autoclean = true;
-		private->pev.fd = BADFD;
+		private->pev.fds[0] = BADFD;
 		return true;
 	}
 /*
@@ -130,7 +130,7 @@ static bool fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
  * unless the descriptor is dup:ed or used, it will close
  */
 	else
-		dst->tgt.ioevs[0].iv = private->pev.fd;
+		dst->tgt.ioevs[0].iv = private->pev.fds[0];
 
 	return false;
 }
@@ -154,15 +154,21 @@ void shmifint_consume_pending(struct arcan_shmif_cont* c)
 		arcan_shmif_eventstr(&P->pev.ev, NULL, 0)
 	);
 
-	if (BADFD != P->pev.fd){
-		close(P->pev.fd);
+	if (BADFD != P->pev.fds[0]){
+		close(P->pev.fds[0]);
 		if (P->pev.handedover){
 			debug_print(DETAILED, c,
-				"closing descriptor (%d:handover)", P->pev.fd);
+				"closing descriptor (%d:handover)", P->pev.fds[0]);
 		}
 		else
 			debug_print(DETAILED, c,
-				"closing descriptor (%d)", P->pev.fd);
+				"closing descriptor (%d)", P->pev.fds[0]);
+	}
+
+	if (BADFD != P->pev.fds[1]){
+		close(P->pev.fds[1]);
+		debug_print(DETAILED, c,
+			"closing secondary descriptor (%d:mem)", P->pev.fds[1]);
 	}
 
 	if (BADFD != P->pseg.epipe){
@@ -209,7 +215,7 @@ void shmifint_consume_pending(struct arcan_shmif_cont* c)
 		debug_print(DETAILED, c, "closing unhandled subsegment descriptor");
 	}
 
-	P->pev.fd = BADFD;
+	P->pev.fds[0] = P->pev.fds[1] = BADFD;
 	P->pev.gotev = false;
 	P->pev.consumed = false;
 	P->pev.handedover = false;
@@ -251,8 +257,8 @@ static bool pause_evh(struct arcan_shmif_cont* c,
 		if (ev->tgt.ioevs[1].iv != 0){
 			if (priv->fh.tgt.ioevs[0].iv != BADFD)
 				close(priv->fh.tgt.ioevs[0].iv);
-			priv->fh.tgt.ioevs[0].iv =
-				shmif_platform_fetchfd(c->epipe, true, fetch_check, c);
+			shmif_platform_fetchfds(
+				c->epipe, &priv->fh.tgt.ioevs[0].iv, 1, true, fetch_check, c);
 		}
 
 		if (ev->tgt.ioevs[2].fv > 0.0)
@@ -320,7 +326,7 @@ reset:
 		else if (P->ph & 2){
 			*dst = P->fh;
 			P->pev.consumed = dst->tgt.ioevs[0].iv != BADFD;
-			P->pev.fd = dst->tgt.ioevs[0].iv;
+			P->pev.fds[0] = dst->tgt.ioevs[0].iv;
 			P->ph &= ~2;
 			rv = 1;
 			goto done;
@@ -344,8 +350,8 @@ reset:
 checkfd:
 	do {
 		errno = 0;
-		if (-1 == P->pev.fd){
-			P->pev.fd = shmif_platform_fetchfd(c->epipe, blocking, fetch_check, c);
+		if (BADFD == P->pev.fds[0]){
+			shmif_platform_fetchfds(c->epipe, P->pev.fds, 2, blocking, fetch_check, c);
 		}
 
 		if (P->pev.gotev){
@@ -353,7 +359,7 @@ checkfd:
 				debug_print(DETAILED, c, "waiting for parent descriptor");
 			}
 
-			if (P->pev.fd != BADFD){
+			if (P->pev.fds[0] != BADFD){
 				if (fd_event(c, dst) && P->autoclean){
 					P->autoclean = false;
 					shmifint_consume_pending(c);

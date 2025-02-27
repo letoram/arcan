@@ -31,7 +31,9 @@ int shmif_platform_connpath(const char* key, char* dbuf, size_t dbuf_sz, int att
 
 int shmif_platform_fd_from_socket(int sock)
 {
-	return shmif_platform_fetchfd(sock, true, NULL, NULL);
+	int dfd;
+	shmif_platform_fetchfds(sock, &dfd, 1, true, NULL, NULL);
+	return dfd;
 }
 
 /*
@@ -71,8 +73,13 @@ struct shmif_connection shmif_platform_open_env_connection(int flags)
 		setsockopt(res.socket, SOL_SOCKET, SO_RCVTIMEO,
 			&(struct timeval){.tv_sec = 1}, sizeof(struct timeval));
 
+		int memfd = BADFD;
+		if (getenv("ARCAN_SOCKIN_MEMFD"))
+			memfd = (int) strtol(getenv("ARCAN_SOCKIN_MEMFD"), NULL, 10);
+		else
+			memfd = shmif_platform_mem_from_socket(res.socket);
+
 		char wbuf[8];
-		int memfd = shmif_platform_mem_from_socket(res.socket);
 		snprintf(wbuf, 8, "%d", memfd);
 		res.keyfile = strdup(wbuf);
 
