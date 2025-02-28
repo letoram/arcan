@@ -21,16 +21,12 @@ bool arcan_send_fds(int sockout_fd, int dfd[], size_t nfd)
 	if (BADFD == sockout_fd)
 		return false;
 
-	char empty = '!';
-
-	struct cmsgbuf {
-		struct cmsghdr hdr;
-		union {
-			char buf[CMSG_SPACE(sizeof(int) * nfd)];
-			int fd[nfd];
-		};
+	union {
+		char buf[CMSG_SPACE(12 * sizeof(int))];
+		struct cmsghdr align;
 	} msgbuf;
 
+	char empty = '!';
 	struct iovec nothing_ptr = {
 		.iov_base = &empty,
 		.iov_len = 1
@@ -44,17 +40,16 @@ bool arcan_send_fds(int sockout_fd, int dfd[], size_t nfd)
 		.msg_flags = 0,
 	};
 
-	msg.msg_control = &msgbuf.buf;
-	msg.msg_controllen = sizeof(msgbuf.buf);
+	size_t len = nfd * sizeof(int);
+	msg.msg_control = &msgbuf;
+	msg.msg_controllen = CMSG_SPACE(len);
 	struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-	cmsg->cmsg_len = CMSG_LEN(sizeof(int));
+
+	cmsg->cmsg_len = CMSG_LEN(len);
 	cmsg->cmsg_level = SOL_SOCKET;
 	cmsg->cmsg_type  = SCM_RIGHTS;
-
-
-	for (size_t i = 0; i < nfd; i++){
-		((int*)CMSG_DATA(cmsg))[i] = dfd[i];
-	}
+	memcpy(CMSG_DATA(cmsg), dfd, len);
+	msg.msg_controllen = cmsg->cmsg_len;
 
 	int rv = sendmsg(sockout_fd, &msg, MSG_DONTWAIT | MSG_NOSIGNAL);
 	return rv >= 0;
@@ -74,8 +69,8 @@ int arcan_receive_fds(int sockin_fd, int* dfd, size_t nfd)
 	struct cmsgbuf {
 		struct cmsghdr hdr;
 		union {
-			char buf[CMSG_SPACE(sizeof(int) * nfd)];
-			int fd[nfd];
+			char buf[48];
+			int fd[12];
 		};
 	} msgbuf;
 

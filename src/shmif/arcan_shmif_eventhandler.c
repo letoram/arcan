@@ -107,6 +107,8 @@ static bool fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
  */
 		dst->tgt.ioevs[0].iv = private->pseg.epipe = private->pev.fds[0];
 		dst->tgt.ioevs[6].iv = private->pev.fds[1];
+		snprintf(dst->tgt.message,
+			sizeof(dst->tgt.message), "%d", dst->tgt.ioevs[6].iv);
 		return true;
 	}
 /*

@@ -107,8 +107,8 @@ int shmif_platform_fetchfds(
 	struct cmsgbuf {
 		struct cmsghdr hdr;
 		union {
-			char buf[CMSG_SPACE(sizeof(int) * nfd)];
-			int fd[nfd];
+			char buf[CMSG_SPACE(48)];
+			int fd[12];
 		};
 	} msgbuf;
 

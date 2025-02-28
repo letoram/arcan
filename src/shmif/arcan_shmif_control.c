@@ -559,13 +559,26 @@ static struct arcan_shmif_cont shmif_acquire_int(
 
 	if (!shmkey){
 		struct shmif_hidden* gs = parent->priv;
+		if (gs->pev.gotev && gs->pev.ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT){
+			if (gs->pev.fds[0] == BADFD){
+				debug_print(INFO, parent, "acquire:missing_socket");
+				return res;
+			}
+			if (gs->pev.fds[1] == BADFD){
+				debug_print(INFO, parent, "acquire:missing_shm");
+				return res;
+			}
+			gs->pseg.memfd = gs->pev.fds[1];
+			gs->pev.fds[1] = BADFD;
+			gs->pseg.epipe = gs->pev.fds[0];
+			gs->pev.fds[0] = BADFD;
+			gs->pev.gotev = false;
+		}
+		else {
+			debug_print(INFO, parent, "acquire:no_matching_event");
+			return res;
+		}
 
-/* special case as a workaround until we can drop the semaphore / key,
- * if we get a newsegment without a matching key, try and read it from
- * the socket. */
-		debug_print(INFO, parent,
-			"missing_event_key:try_socket=%d", gs->pseg.epipe);
-		gs->pseg.memfd = shmif_platform_mem_from_socket(gs->pseg.epipe);
 		map_shared(gs->pseg.memfd, &res);
 
 		if (!res.addr){

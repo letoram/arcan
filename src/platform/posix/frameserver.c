@@ -922,8 +922,7 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
  * through 'connection reset by peer'. Shmif will map this into the key
  */
 	newseg->dpipe = sockp[0];
-	arcan_pushhandle(sockp[1], ctx->dpipe);
-	arcan_pushhandle(newseg->shm.handle, sockp[0]);
+	arcan_send_fds(ctx->dpipe, (int[]){sockp[1], newseg->shm.handle}, 2);
 	close(sockp[1]);
 
 	arcan_event keyev = {
