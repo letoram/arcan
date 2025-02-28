@@ -507,7 +507,7 @@ checkfd:
 
 /* for a state store we also need to fetch the descriptor, and this should
  * ideally already be pending because for the 'force' mode the DMS will be
- * pulled and semaphores unlocked. */
+ * pulled and futex regions triggered */
 					goto reset;
 				}
 				else if (iev == 1){

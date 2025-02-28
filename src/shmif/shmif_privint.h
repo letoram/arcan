@@ -173,7 +173,9 @@ struct shmif_hidden {
 /* Fringe-wise, we need two DMSes, one set in shmpage and another using the
  * guard-thread, then both need to be checked after every semaphore lock */
 		_Atomic bool local_dms;
-		sem_t* semset[3];
+		volatile uint32_t* volatile trigger[3];
+		uint32_t trigval;
+
 		int parent;
 		int parent_fd;
 		volatile uint8_t* _Atomic volatile dms;

@@ -41,12 +41,10 @@ int shmif_platform_fd_from_socket(int sock)
  *  ARCAN_ARG       - packed argument string to leave argv intact
  *  ARCAN_CONNPATH  - named identifier for socket or network connection
  *  ARCAN_SOCKIN_FD - process file descriptor for inherited connection
+ *  ARCAN_SOCKIN_MEMFD - shared memory file descriptor for inherited connection
  *  ARCAN_CONNFL    - override of flags to open, mainly a safeguard for
  *                    introducing workaround around any future client
  *                    use quirks discovered.
- *  ARCAN_SHMKEY    - for cases where we don't get the named primitives
- *                    prefix from the CONNPATH socket or SOCKIN_FD.
- *                    to be removed when we get fully unnamed primitives.
  */
 
 struct shmif_connection shmif_platform_open_env_connection(int flags)
@@ -85,7 +83,7 @@ struct shmif_connection shmif_platform_open_env_connection(int flags)
 
 		unsetenv("ARCAN_SOCKIN_FD");
 		unsetenv("ARCAN_HANDOVER_EXEC");
-		unsetenv("ARCAN_SHMKEY");
+		unsetenv("ARCAN_SOCKIN_MEMFD");
 	}
 /* connection point based setup, check if we want local or remote connection
  * setup - for the remote part we still need some other mechanism in the url

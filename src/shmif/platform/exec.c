@@ -14,7 +14,8 @@ static void ensure_at(int num, const char* fn)
 		close(fd);
 }
 
-pid_t shmif_platform_execve(int fd, const char* shmif_key,
+pid_t shmif_platform_execve(
+	int socket_fd, int mem_fd,
 	const char* path, char* const argv[], char* const env[],
 	int opts, int* fds[], size_t fdset_sz, char** err)
 {
@@ -65,15 +66,14 @@ pid_t shmif_platform_execve(int fd, const char* shmif_key,
 
 /* expand with information about the connection primitives */
 	char tmpbuf[1024];
-	snprintf(tmpbuf, sizeof(tmpbuf),
-		"ARCAN_SHMKEY=%s", shmif_key ? shmif_key : "");
+	snprintf(tmpbuf, sizeof(tmpbuf), "ARCAN_SOCKIN_MEMFD=%d", mem_fd);
 
 	if (NULL == (new_env[ofs++] = strdup(tmpbuf))){
 		CLEAN_ENV();
 		return -1;
 	}
 
-	snprintf(tmpbuf, sizeof(tmpbuf), "ARCAN_SOCKIN_FD=%d", fd);
+	snprintf(tmpbuf, sizeof(tmpbuf), "ARCAN_SOCKIN_FD=%d", socket_fd);
 	if (NULL == (new_env[ofs++] = strdup(tmpbuf))){
 		CLEAN_ENV();
 		return -1;
@@ -151,9 +151,9 @@ pid_t shmif_platform_execve(int fd, const char* shmif_key,
 	if (pid == 0){
 
 /* ensure that the socket is not CLOEXEC */
-		int flags = fcntl(fd, F_GETFD);
+		int flags = fcntl(socket_fd, F_GETFD);
 		if (-1 != flags)
-			fcntl(fd, F_SETFD, flags & (~FD_CLOEXEC));
+			fcntl(socket_fd, F_SETFD, flags & (~FD_CLOEXEC));
 
 /* just leverage the sparse allocation property and that process creation
  * or libc safeguards typically ensure correct stdin/stdout/stderr */

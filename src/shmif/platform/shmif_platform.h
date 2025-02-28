@@ -112,7 +112,11 @@ struct arcan_evctx {
  */
 	struct {
 		volatile uint8_t* killswitch;
-		sem_t* handle;
+		union {
+			sem_t* handle;
+			volatile uint32_t* volatile synch;
+		};
+		uint32_t clearval;
 	} synch;
 };
 
@@ -158,7 +162,7 @@ enum platform_execve_opts {
 pid_t shmif_platform_execve
 (
 	int shmif_fd,
-	const char* shmif_key,
+	int mem_fd,
 	const char* path,
 	char* const argv[],
 	char* const env[],
@@ -199,9 +203,10 @@ int shmif_platform_fetchfds(
  * shmif_platform_check_alive call should be triggered.
  */
 struct watchdog_config {
-	sem_t* audio;
-	sem_t* video;
-	sem_t* event;
+	volatile uint32_t* volatile audio;
+	volatile uint32_t* volatile video;
+	volatile uint32_t* volatile event;
+	uint32_t relval;
 	int parent_pid;
 	int parent_fd;
 	void (*exitf)(int);

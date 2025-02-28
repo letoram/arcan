@@ -54,9 +54,8 @@ bool shmif_platform_pushfd(int fd, int sockout)
 	char empty = '!';
 
 	struct cmsgbuf {
-		struct cmsghdr hdr;
 		union {
-			int fd[1];
+			struct cmsghdr hdr;
 			char buf[CMSG_SPACE(sizeof(int))];
 		};
 	} msgbuf;
@@ -105,16 +104,11 @@ int shmif_platform_fetchfds(
  * + release and acquire fenceses */
 
 	struct cmsgbuf {
-		struct cmsghdr hdr;
 		union {
+			struct cmsghdr hdr;
 			char buf[CMSG_SPACE(48)];
-			int fd[12];
 		};
 	} msgbuf;
-
-	for (size_t i = 0; i < nfd; i++){
-		msgbuf.fd[i] = BADFD;
-	}
 
 /* pinged with single character because OSX breaking on 0- iov_len */
 	char empty;

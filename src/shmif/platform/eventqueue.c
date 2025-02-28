@@ -14,9 +14,8 @@ void shmif_platform_setevqs(
 	struct arcan_evctx* inq, struct arcan_evctx* outq
 )
 {
-	inq->synch.handle = esem;
+	inq->synch.synch = &dst->esync;
 	inq->synch.killswitch = &dst->dms;
-	outq->synch.handle = esem;
 	outq->synch.killswitch = &dst->dms;
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE

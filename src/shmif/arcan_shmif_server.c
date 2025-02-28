@@ -213,10 +213,14 @@ env.type ? env.type : SEGID_UNKNOWN, env.init_w, env.init_h, 0, &childend);
 
 /* if path is provided we switch over to build/inherit mode */
 	if (env.path){
+		int shmfd = shmif_platform_dupfd_to(res->con->shm.handle, -1, 0, 0);
+
 		pid_t rpid = shmif_platform_execve(
-			childend, NULL,
+			childend, shmfd,
 			env.path, env.argv, env.envv, env.detach, fds, 3, NULL
 		);
+
+		close(shmfd);
 		close(childend);
 
 		if (-1 == rpid){

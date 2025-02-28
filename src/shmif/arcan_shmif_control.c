@@ -629,7 +629,11 @@ static struct arcan_shmif_cont shmif_acquire_int(
 		shmif_platform_guard(&res, (struct watchdog_config){
 			.parent_pid = res.addr->parent,
 			.parent_fd = -1,
-			.exitf = exitf
+			.exitf = exitf,
+			.audio = &(res.addr->async),
+			.video = &(res.addr->vsync),
+			.event = &(res.addr->esync),
+			.relval = 0
 		}
 	);
 /* still need to mark alive so the aliveness check doesn't fail */
@@ -1319,28 +1323,29 @@ pid_t arcan_shmif_handover_exec_pipe(
 	if (cont->priv->pseg.epipe == BADFD)
 		return -1;
 
+/* Dup to drop CLOEXEC and close the original */
+	int dup_socket = dup(ev.tgt.ioevs[0].iv);
+	int dup_mem    = dup(ev.tgt.ioevs[6].iv);
+
 /* clear the tracking in the same way as an _acquire would */
-	else{
-		cont->priv->pseg.epipe = BADFD;
-		cont->priv->pev.handedover = true;
+	cont->priv->pseg.epipe = BADFD;
+	cont->priv->pev.handedover = true;
 
 /* reset pending descriptor state */
-		shmifint_consume_pending(cont);
-	}
+	shmifint_consume_pending(cont);
 
-/* Dup to drop CLOEXEC and close the original */
-	int dup_fd = dup(ev.tgt.ioevs[0].iv);
-	close(ev.tgt.ioevs[0].iv);
-	if (-1 == dup_fd)
+	if (-1 == dup_socket)
 		return -1;
 
 	pid_t res =
 		shmif_platform_execve(
-			dup_fd, ev.tgt.message,
+			dup_socket, dup_mem,
 			path, argv, env,
 			detach, fds, fdset_sz, NULL
 		);
-	close(dup_fd);
+
+	close(dup_socket);
+	close(dup_mem);
 
 	return res;
 }

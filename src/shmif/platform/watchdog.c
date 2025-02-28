@@ -67,10 +67,10 @@ static void* watchdog(void* gs)
 
 			atomic_store(&gstr->guard.local_dms, false);
 
-/* FIXME:
- *   - Update GSTR to carry futex addresses
- */
-			for (size_t i = 0; i < COUNT_OF(gstr->guard.semset); i++){
+			for (size_t i = 0; i < COUNT_OF(gstr->guard.trigger); i++){
+				*(gstr->guard.trigger[0]) = gstr->guard.trigval;
+				*(gstr->guard.trigger[1]) = gstr->guard.trigval;
+				*(gstr->guard.trigger[2]) = gstr->guard.trigval;
 			}
 
 			gstr->guard.active = false;
@@ -110,12 +110,19 @@ bool shmif_platform_check_alive(struct arcan_shmif_cont* C)
 void shmif_platform_guard_resynch(
 	struct arcan_shmif_cont* C, int parent_pid, int parent_fd)
 {
-	if (!C->priv->guard.active)
+	struct shmif_hidden* P = C->priv;
+
+	if (!P->guard.active)
 		return;
 
+/* we are already locked */
 	atomic_store(&C->priv->guard.dms, (uint8_t*) &C->addr->dms);
-	C->priv->guard.parent_fd = parent_fd;
-	C->priv->guard.parent = parent_pid;
+
+	P->guard.parent_fd = parent_fd;
+	P->guard.parent = parent_pid;
+	P->guard.trigger[0] = &(C->addr->async);
+	P->guard.trigger[1] = &(C->addr->vsync);
+	P->guard.trigger[2] = &(C->addr->esync);
 }
 
 void shmif_platform_guard_lock(struct arcan_shmif_cont* C)
@@ -149,9 +156,10 @@ void shmif_platform_guard(struct arcan_shmif_cont* C, struct watchdog_config CFG
 		return;
 
 	P->guard.local_dms = true;
-	P->guard.semset[0] = CFG.audio;
-	P->guard.semset[1] = CFG.video;
-	P->guard.semset[2] = CFG.event;
+	P->guard.trigger[0] = CFG.audio;
+	P->guard.trigger[1] = CFG.video;
+	P->guard.trigger[2] = CFG.event;
+	P->guard.trigval = CFG.relval;
 	P->guard.parent = CFG.parent_pid;
 	P->guard.parent_fd = CFG.parent_fd;
 	P->guard.exitf = CFG.exitf;
