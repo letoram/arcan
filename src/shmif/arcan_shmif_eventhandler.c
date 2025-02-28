@@ -156,23 +156,6 @@ void shmifint_consume_pending(struct arcan_shmif_cont* c)
 		arcan_shmif_eventstr(&P->pev.ev, NULL, 0)
 	);
 
-	if (BADFD != P->pev.fds[0]){
-		close(P->pev.fds[0]);
-		if (P->pev.handedover){
-			debug_print(DETAILED, c,
-				"closing descriptor (%d:handover)", P->pev.fds[0]);
-		}
-		else
-			debug_print(DETAILED, c,
-				"closing descriptor (%d)", P->pev.fds[0]);
-	}
-
-	if (BADFD != P->pev.fds[1]){
-		close(P->pev.fds[1]);
-		debug_print(DETAILED, c,
-			"closing secondary descriptor (%d:mem)", P->pev.fds[1]);
-	}
-
 	if (BADFD != P->pseg.epipe){
 /*
  * Special case, the parent explicitly pushed a debug segment that was not
@@ -215,6 +198,23 @@ void shmifint_consume_pending(struct arcan_shmif_cont* c)
 		close(P->pseg.epipe);
 		P->pseg.epipe = BADFD;
 		debug_print(DETAILED, c, "closing unhandled subsegment descriptor");
+	}
+
+	if (BADFD != P->pev.fds[0]){
+		close(P->pev.fds[0]);
+		if (P->pev.handedover){
+			debug_print(DETAILED, c,
+				"closing descriptor (%d:handover)", P->pev.fds[0]);
+		}
+		else
+			debug_print(DETAILED, c,
+				"closing descriptor (%d)", P->pev.fds[0]);
+	}
+
+	if (BADFD != P->pev.fds[1]){
+		close(P->pev.fds[1]);
+		debug_print(DETAILED, c,
+			"closing secondary descriptor (%d:mem)", P->pev.fds[1]);
 	}
 
 	P->pev.fds[0] = P->pev.fds[1] = BADFD;
