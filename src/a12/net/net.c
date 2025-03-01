@@ -334,6 +334,10 @@ static struct a12_vframe_opts vcodec_tuning(
 		opts.method = VFRAME_METHOD_H264;
 		opts.bias = VFRAME_BIAS_QUALITY;
 	break;
+	case SEGID_BRIDGE_ALLOCATOR:
+		opts.method = VFRAME_METHOD_RAW_NOALPHA;
+		opts.bias = VFRAME_BIAS_LATENCY;
+	break;
 	case SEGID_BRIDGE_WAYLAND:
 	case SEGID_BRIDGE_X11:
 		opts.method = VFRAME_METHOD_H264;

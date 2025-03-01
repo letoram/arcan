@@ -219,7 +219,7 @@
 -- "multimedia", "terminal", "tui", "popup", "icon", "remoting", "game", "hmd-l",
 -- "hmd-r", "hmd-sbs-lr", "vm", "application", "clipboard",
 -- "browser", "encoder", "titlebar", "sensor", "service", "bridge-x11",
--- "bridge-wayland", "debug", "widget", "audio"
+-- "bridge-wayland", "bridge-allocator", "debug", "widget", "audio".
 --
 -- @tblent: "proto_update", {cm, vr, hdr, vobj} - the set of negotiated
 -- subprotocols has changed, each member is a boolean indicating if the
@@ -243,6 +243,15 @@
 -- restoring state snapshots, along with an estimate of the size of the state
 -- (in bytes) as well as internal type identifier in order to cross communicate
 -- with instances of itself (using ref:bond_target and similar functions).
+--
+-- @note: The bridge segments have the quirk that the primary is used as an
+-- invisible segment allocation factory or to convey debugging / profiling
+-- data. The 'x11' and 'wayland' has additional expectations on interpretations
+-- of 'message' and 'viewport' events and the use of ref:target_anchorhints to
+-- convey feedback and window management restrictions to accomodate these
+-- protocols and incorporate them. The 'allocator' one is used for complex UI
+-- toolkit constraints that need to allocate resources without a prior intent
+-- behind the primary connection.
 --
 -- @related: target_accept, target_alloc
 -- @group: targetcontrol

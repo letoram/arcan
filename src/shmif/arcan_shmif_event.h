@@ -270,6 +270,27 @@ enum ARCAN_SEGID {
  */
 	SEGID_AUDIO = 29,
 
+/*
+ * Simplified form of SEGID_BRIDGE_WAYLAND and SEGID_BRIDGE_X11. Used for
+ * toolkits and integrations that need an empty primary to allocate through as
+ * the toolkit lacks the context of a primary 'always used, visible' segment.
+ * Any data transfers on this segment that isn't SEGREQ are only every useful
+ * for statistics and debugging. Any SEGREQs coming from this follow the same
+ * rules as if the new segment would be a fresh primary from a _connect. This
+ * is to avoid multiple connects as several execution modes only permit one
+ * before the connnection goes through.
+ */
+	SEGID_BRIDGE_ALLOCATOR = 30,
+
+/*
+ * SEGID_MONITOR is PUSH only and internal use for network tools in particular.
+ * It allows to define 1:1 monitor segment to any other with an internal
+ * implementation that won't be visible from the API end. Event queueing that
+ * appears on this segment will be injected to the segment it is provided, and
+ * can mask out certain events such as DEVICE_NODE.
+ */
+	SEGID_MONITOR = 254,
+
 /* Can always be terminated without risk, may be stored as part of debug format
  * in terms of unexpected termination etc. */
 	SEGID_DEBUG = 255,

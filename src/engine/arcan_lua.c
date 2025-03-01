@@ -13371,6 +13371,7 @@ static const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_SERVICE: return "service";
 	case SEGID_BRIDGE_X11: return "bridge-x11";
 	case SEGID_BRIDGE_WAYLAND: return "bridge-wayland";
+	case SEGID_BRIDGE_ALLOCATOR: return "bridge-allocator";
 	case SEGID_DEBUG: return "debug";
 	case SEGID_WIDGET: return "widget";
 	case SEGID_ACCESSIBILITY: return "accessibility";
