@@ -214,6 +214,8 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 /* shmif-server lib will get to waitpid / kill so we don't need to care here */
 		struct shmifsrv_envp env = {
 			.path = global.path_self,
+			.init_w = 32,
+			.init_h = 32,
 			.envv = envv,
 			.argv = argv,
 			.detach = 2 | 4 | 8

@@ -80,6 +80,7 @@ struct shmif_connection shmif_platform_open_env_connection(int flags)
 		char wbuf[8];
 		snprintf(wbuf, 8, "%d", memfd);
 		res.keyfile = strdup(wbuf);
+		fcntl(memfd, F_SETFD, FD_CLOEXEC);
 
 		unsetenv("ARCAN_SOCKIN_FD");
 		unsetenv("ARCAN_HANDOVER_EXEC");

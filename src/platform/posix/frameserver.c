@@ -628,6 +628,10 @@ static bool shmalloc(arcan_frameserver* ctx,
 	}
 
 	ctx->shm.handle = shmfd;
+
+/* should already be set but make sure */
+	fcntl(shmfd, F_SETFD, FD_CLOEXEC);
+
 	shmpage = (void*) mmap(
 		NULL, ctx->shm.shmsize, PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, 0);
 
@@ -1381,8 +1385,6 @@ struct arcan_frameserver* platform_fsrv_spawn_server(
 
 	newseg->dpipe = sockp[0];
 	*childfd = sockp[1];
-
-	arcan_pushhandle(*childfd, newseg->shm.handle);
 
 	return newseg;
 }

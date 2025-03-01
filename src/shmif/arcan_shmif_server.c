@@ -184,7 +184,7 @@ env.type ? env.type : SEGID_UNKNOWN, env.init_w, env.init_h, 0, &childend);
 
 	*clsocket = childend;
 	res->cookie = arcan_shmif_cookie();
-	res->status = AUTHENTICATING;
+	res->status = READY;
 	res->pid = -1;
 
 	if (statuscode)
@@ -337,7 +337,7 @@ int shmifsrv_poll(struct shmifsrv_client* cl)
 		}
 		cl->status = AUTHENTICATING;
 	}
-/* consumed one character at a time up to a fixed limit */
+/* authentication isn't needed unless the connection comes from a socket */
 	case AUTHENTICATING:
 		while (-1 == platform_fsrv_socketauth(cl->con)){
 			if (errno == EBADF){

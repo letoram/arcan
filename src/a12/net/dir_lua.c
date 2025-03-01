@@ -761,6 +761,8 @@ static int cfgpath_newindex(lua_State* L)
 		if (-1 == CFG->directory){
 			luaL_error(L, "config.paths.appl = %s, can't open as directory\n", val);
 		}
+		fcntl(CFG->directory, F_SETFD, FD_CLOEXEC);
+
 		CFG->dirsrv.flag_rescan = 1;
 		setenv("ARCAN_APPLBASEPATH", val, 1);
 		return 0;
@@ -781,6 +783,7 @@ static int cfgpath_newindex(lua_State* L)
 
 		CFG->dirsrv.appl_server_temp_path = strdup(val);
 		CFG->dirsrv.appl_server_temp_dfd = dirfd;
+		fcntl(dirfd, F_SETFD, FD_CLOEXEC);
 
 		return 0;
 	}
@@ -798,6 +801,8 @@ static int cfgpath_newindex(lua_State* L)
 
 		CFG->dirsrv.appl_server_path = strdup(val);
 		CFG->dirsrv.appl_server_dfd = dirfd;
+		fcntl(dirfd, F_SETFD, FD_CLOEXEC);
+
 		return 0;
 	}
 	else if (strcmp(key, "appl_server_log") == 0){
@@ -811,6 +816,7 @@ static int cfgpath_newindex(lua_State* L)
 		CFG->dirsrv.appl_logdfd = open(val, O_RDONLY | O_DIRECTORY);
 		if (-1 == CFG->dirsrv.appl_logdfd)
 			luaL_error(L, "config.paths.appl_server_log = %s, can't open as directory\n", val);
+		fcntl(CFG->dirsrv.appl_logdfd, F_SETFD, FD_CLOEXEC);
 
 		return 0;
 	}
@@ -828,6 +834,8 @@ static int cfgpath_newindex(lua_State* L)
 
 		CFG->dirsrv.resource_path = strdup(val);
 		CFG->dirsrv.resource_dfd = dirfd;
+		fcntl(dirfd, F_SETFD, FD_CLOEXEC);
+
 		return 0;
 	}
 
@@ -851,6 +859,7 @@ static int cfgpath_newindex(lua_State* L)
 			close(CFG->meta.keystore.directory.dirfd);
 
 		CFG->meta.keystore.directory.dirfd = dirfd;
+		fcntl(dirfd, F_SETFD, FD_CLOEXEC);
 	}
 	else {
 		luaL_error(L,
