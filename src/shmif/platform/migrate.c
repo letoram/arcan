@@ -81,6 +81,7 @@ static void scan_device_node_event(struct shmif_hidden* P, struct arcan_evctx* c
 			if (ev->tgt.message[0])
 				P->alt_conn = strdup(ev->tgt.message);
 		}
+		cur = (cur + 1) % c->eventbuf_sz;
 	}
 }
 
