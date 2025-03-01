@@ -313,7 +313,7 @@ static int listtargets(lua_State* L)
 	lua_pushvalue(L, 2);
 	intptr_t ref = luaL_ref(L, LUA_REGISTRYINDEX);
 	snprintf((char*)ev.ext.message.data,
-		COUNT_OF(ev.ext.message.data), ".target_index:id=%d", ref);
+		COUNT_OF(ev.ext.message.data), ".target_index:id=%d", (int) ref);
 
 	arcan_shmif_enqueue(&SHMIF, &ev);
 
@@ -362,7 +362,7 @@ static int launchtarget(lua_State* L)
  */
 	char* req = NULL;
 	ssize_t req_len = asprintf(&req,
-		"launch=%s:id=%"PRIdPTR":args=%s", name, (int) ref, argstr);
+		"launch=%s:id=%"PRIdPTR":args=%s", name, (intptr_t) ref, argstr);
 
 	if (req_len < 0){
 		lua_pushboolean(L, false);

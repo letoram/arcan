@@ -10,10 +10,25 @@ static inline void* alignv(uint8_t* inptr, size_t align_sz)
 		inptr + align_sz - ((uintptr_t) inptr % align_sz) : inptr);
 }
 
+#ifdef __OpenBSD__
+int platform_fsrv_shmmem()
+{
+	char name[] = "/shmif-XXXXXXXXXX";
+	int fd;
+	if ((fd = shm_mkstemp(name)) == -1)
+		return -1;
+	if (-1 == shm_unlink(name)){
+		close(fd);
+		return -1;
+	}
+	return fd;
+}
+#else
 int platform_fsrv_shmmem()
 {
 	return memfd_create("arcan_shmif", MFD_CLOEXEC);
 }
+#endif
 
 size_t arcan_shmif_vbufsz(
 	int meta, uint8_t hints, size_t w, size_t h, size_t rows, size_t cols)
