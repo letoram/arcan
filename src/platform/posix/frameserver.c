@@ -1330,9 +1330,10 @@ fail:
 	state = -1;
 
 done:
-/* barrier + signal */
+/* barrier + signal, we do this for audio / video as those might have changed
+ * in size, if eventqueue is full it is still full */
 	FORCE_SYNCH();
-	shmpage->vsync = 0xffffffff;
+	shmpage->vsync = shmpage->async = 0;
 	return state;
 }
 

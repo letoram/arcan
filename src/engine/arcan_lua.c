@@ -13379,6 +13379,7 @@ static const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_AUDIO: return "audio";
 	case SEGID_HANDOVER: return "handover";
 	case SEGID_UNKNOWN: return "unknown";
+	case SEGID_MONITOR:
 	case SEGID_LIM: break;
 	}
 	return "";

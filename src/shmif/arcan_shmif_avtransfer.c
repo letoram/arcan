@@ -243,8 +243,6 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* C, int mask)
 /* watchdog will pull this for us */
 		if (lock && !(mask & SHMIF_SIGBLK_NONE))
 			shmif_platform_sync_wait(C->addr, SYNC_AUDIO);
-		else
-			shmif_platform_sync_trywait(C->addr, SYNC_AUDIO);
 	}
 /* for sub-region multi-buffer synch, we currently need to
  * check before running the step_v */
@@ -259,8 +257,6 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* C, int mask)
 			while (C->addr->vready && shmif_platform_check_alive(C))
 				shmif_platform_sync_wait(C->addr, SYNC_AUDIO);
 		}
-		else
-			shmif_platform_sync_trywait(C->addr, SYNC_AUDIO);
 	}
 
 	P->in_signal = false;

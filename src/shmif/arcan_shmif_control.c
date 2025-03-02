@@ -915,8 +915,7 @@ static bool shmif_resize(struct arcan_shmif_cont* C,
 	FORCE_SYNCH();
 	C->addr->resized = 1;
 	do{
-		if (0 == shmif_platform_sync_trywait(C->addr, SYNC_VIDEO))
-			arcan_timesleep(16);
+		shmif_platform_sync_trywait(C->addr, SYNC_VIDEO);
 	}
 	while (C->addr->resized > 0 && shmif_platform_check_alive(C));
 
