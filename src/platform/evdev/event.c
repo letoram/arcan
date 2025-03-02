@@ -34,7 +34,11 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#ifndef __FreeBSD__
 #include <linux/input.h>
+#else
+#include <dev/evdev/input.h>
+#endif
 
 #include "arcan_shmif.h"
 #include "arcan_math.h"
