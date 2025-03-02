@@ -74,6 +74,66 @@ int shmif_platform_sync_trywait(struct arcan_shmif_page* P, int slot)
 	return rv;
 }
 
+#elif __OpenBSD__
+#include <sys/futex.h>
+#include <sys/time.h>
+int shmif_platform_sync_wait(struct arcan_shmif_page* P, int slot)
+{
+	if ((slot & SYNC_EVENT) && P->esync){
+		futex(&P->esync, FUTEX_WAIT, 0xffffffff, NULL, NULL);
+	}
+
+	if ((slot & SYNC_VIDEO) && P->vsync){
+		futex(&P->vsync, FUTEX_WAIT, 0xffffffff, NULL, NULL);
+	}
+
+	if ((slot & SYNC_AUDIO) && P->async){
+		futex(&P->vsync, FUTEX_WAIT, 0xffffffff, NULL, NULL);
+	}
+
+	return 1;
+}
+
+/*
+ * The desired behaviour here is part of the resize- loop where there is a
+ * shorter (~vblank) period where it might be blocking, but at the same time
+ * don't want to wait indefinitely. The actual timeout should really be set to
+ * a possible OUTPUTHINT but the savings are maginal.
+ *
+ * Previously, when this used semaphores, it was for NONBLOCK signalling where
+ * we still needed the semaphore to have the correct value. That is no longer a
+ * concern.
+ */
+int shmif_platform_sync_trywait(struct arcan_shmif_page* P, int slot)
+{
+	int rv = 1;
+	struct timespec req =
+	{
+		.tv_nsec = 1000000
+	};
+
+	if ((slot & SYNC_EVENT) && P->esync){
+		futex(&P->esync, FUTEX_WAIT, 0xffffffff, &req, NULL);
+		if (P->esync)
+			rv = 0;
+	}
+
+	if ((slot & SYNC_VIDEO) && P->vsync){
+		futex(&P->vsync, FUTEX_WAIT, 0xffffffff, &req, NULL);
+		if (P->vsync)
+			rv = 0;
+	}
+
+	if ((slot & SYNC_AUDIO) && P->async){
+		futex(&P->vsync, FUTEX_WAIT, 0xffffffff, &req, NULL);
+		if (P->async)
+			rv = 0;
+	}
+
+	return rv;
+}
+
+
 #else
 int shmif_platform_sync_wait(struct arcan_shmif_page* P, int slot)
 {
