@@ -6,11 +6,13 @@
 
 #include <arcan_shmif.h>
 #include <arcan_shmif_server.h>
+#include <pthread.h>
 #include "frameserver.h"
 
 #include "a12.h"
 
 #include <errno.h>
+#include <stdatomic.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -25,12 +27,38 @@ struct dispatch_data {
 	struct arcan_shmif_cont* C;
 	struct anet_options net_cfg;
 	struct a12_vframe_opts video_cfg;
+	struct a12_dynreq req;
+	uint8_t chind;
 	bool outbound;
+	int socket;
 };
 
 struct {
 	bool soft_auth;
-} global;
+	struct arcan_shmif_cont* C;
+	pthread_mutex_t sync;
+	int signal_pipe;
+
+/* capped to 256 tunnels due to channel cap so just keep it in one static array
+ * of pthread_ts, sweeping it is cheap versus the triggered action (encoding a
+ * frame). */
+	volatile _Atomic uint64_t framecount;
+	volatile _Atomic uint8_t pending;
+	struct {
+		pthread_t pth;
+		bool used;
+	} tunnels[256];
+	size_t n_tunnels;
+} global =
+{
+	.sync = PTHREAD_MUTEX_INITIALIZER
+};
+
+static void empty_event_handler(
+	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
+{
+/* a12_unpack for directory connection doesn't need any event response */
+}
 
 static void on_client_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
@@ -46,6 +74,113 @@ static void on_client_event(
 	if (ev->category == EVENT_IO){
 		arcan_shmif_enqueue(cont, ev);
 	}
+}
+
+static struct pk_response key_auth_fixed(uint8_t pk[static 32], void* tag)
+{
+	struct dispatch_data* data = tag;
+
+	struct pk_response auth = {};
+	if (memcmp(data->req.pubk, pk, 32) == 0){
+		auth.authentic = true;
+	}
+	return auth;
+}
+
+static void* tunnel_runner(void* data)
+{
+	struct dispatch_data* td = data;
+
+	static const short errmask = POLLERR | POLLNVAL | POLLHUP;
+
+	size_t n_fd = 2;
+	struct pollfd fds[2] = {
+		{.fd = td->C->epipe, .events = POLLIN | errmask},
+		{.fd = td->socket, .events = POLLIN | errmask},
+	};
+
+	struct a12_context_options a12opts = {
+		.local_role = ROLE_SOURCE,
+		.pk_lookup = key_auth_fixed,
+		.pk_lookup_tag = data,
+		.disable_ephemeral_k = true
+	};
+
+/* request contains the Kpub we should accept and the secret provided by the
+ * directory itself. */
+	struct anet_options anet = {
+		.retry_count = 10,
+		.opts = &a12opts,
+		.host = td->req.host
+	};
+
+/* multiplexing and encoding options are interesting here when we go 1:* to
+ * let multiple sources sink us (if that option is enabled).
+ *
+ * we need to:
+ *    a. poll data on the inbound and outbound socket
+ *    b. feed the encoder and flush on some timeout.
+ *    c. react to STEPFRAMEs on the main segment.
+ *
+ * there are quite a few heuristic steps for the different state machines if
+ * they start to drift, particularly have different encoder 'levels' after a
+ * certain number of clients and forward the encoded ones. That'd still take
+ * supporting 'raw' (ZSTD I/D frames) as fallback though.
+ */
+	struct a12_state* ast = a12_server(&a12opts);
+
+	for(;;){
+		if (
+				((-1 == poll(fds, n_fd, -1) && (errno != EAGAIN && errno != EINTR))) ||
+				(fds[0].revents & errmask) || (fds[1].revents & errmask)
+		){
+				break;
+		}
+
+/* prioritize frame consumption */
+
+	}
+
+	return NULL;
+}
+
+static void on_sink_dir(struct a12_state* S, struct a12_dynreq req, void* tag)
+{
+	struct dispatch_data* data = tag;
+
+/* 1 - inbound, 2 - outbound, 4 - tunnel */
+	if (req.proto == 4){
+		int sv[2];
+		socketpair(AF_UNIX, SOCK_STREAM, 0, sv);
+
+/* hand the one descriptor to pair[0] then give a thread pair[1], when we get a
+ * frame inbound, have an atomic counter increment and let the last to finish
+ * decrement */
+		a12_set_tunnel_sink(S, data->chind++, sv[0]);
+		struct dispatch_data* td = malloc(sizeof(struct dispatch_data));
+		*td = (struct dispatch_data){
+			.socket = sv[1],
+			.req = req
+		};
+
+		for (size_t i = 0; i < COUNT_OF(global.tunnels); i++){
+			if (global.tunnels[i].used)
+				continue;
+
+/* threads normally poll on the tunnel unless EINTR killed, when killed they
+ * check how many pending consumers there is for the current thread, dispatch
+ * encode, lock then flush into the main a12 state, decrement count and signal
+ * that there is data to flush onwards. */
+			global.tunnels[i].used = true;
+			global.n_tunnels++;
+			pthread_attr_t pthattr;
+			pthread_attr_init(&pthattr);
+			pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+			pthread_create(&global.tunnels[i].pth, &pthattr, tunnel_runner, td);
+			return;
+		}
+	}
+
 }
 
 static void flush_av(struct a12_state* S, struct dispatch_data* data)
@@ -122,6 +257,7 @@ static void process_shmif(struct a12_state* S, struct dispatch_data* data)
 		}
 	}
 }
+
 static void dispatch_single(struct a12_state* S, int fd, void* tag)
 {
 	struct dispatch_data* data = tag;
@@ -289,6 +425,125 @@ static bool decode_args(struct arg_arr* arg, struct dispatch_data* dst)
 	return true;
 }
 
+static void shutdown_workers()
+{
+/* If the tunnel connection died there's little recourse and we could just let
+ * the context die, or we can switch to a reconnect-/recover- migrate mode, but
+ * that would require new tunnels anyway. If we have mixed direct sinks inbound
+ * or outbound we can let those continue and try to recover the tunnel at a
+ * later point. */
+	LOG("EIMPL: graceful shutdown");
+}
+
+static void dispatch_multiple(
+	struct arcan_shmif_cont* C, struct a12_state* S, int connfd, int signal)
+{
+/*
+ * The data from the different tunneled sinks go through here so we must be
+ * ready to maintain the state machine as a normal loop. The signal pipe has
+ * multiple possible writers and we just use it to indicate that it is time
+ * to check the state machine for outbound packets.
+ */
+	size_t n_fd = 2;
+	static const short errmask = POLLERR | POLLNVAL | POLLHUP;
+
+	struct pollfd fds[4] = {
+		{.fd = C->epipe, .events = POLLIN | errmask},
+		{.fd = connfd, .events = POLLIN | errmask},
+		{.fd = signal, .events = POLLIN | errmask},
+		{.fd = C->epipe, .events = POLLOUT | errmask}
+	};
+
+	uint8_t* outbuf = NULL;
+	size_t outbuf_sz = 0;
+	bool gotframe = false;
+	bool waitframe = false;
+
+	for(;;){
+		if ((-1 == poll(fds, n_fd, -1) && (errno != EAGAIN && errno != EINTR))){
+			break;
+		}
+
+/* flush directory control connection */
+		struct arcan_event ev;
+		if (fds[1].revents & POLLIN){
+			uint8_t inbuf[9000];
+			ssize_t nr = recv(connfd, inbuf, 9000, 0);
+			if (nr > 0)
+				a12_unpack(S, inbuf, nr, NULL, empty_event_handler);
+		}
+
+		if (fds[1].revents & errmask){
+			LOG("directory-connection terminated");
+			shutdown_workers();
+			return;
+		}
+
+/* signalled that there is more data to unpack, it's just used to wakeup so
+ * flush it out */
+		if (fds[3].revents & POLLIN){
+			uint8_t rcvbuf[256];
+			read(fds[3].fd, rcvbuf, 256);
+		}
+
+/* we still have things to write, change the pollset until socket is writable */
+		if (outbuf_sz && n_fd == 3){
+			ssize_t nw = write(connfd, outbuf, outbuf_sz);
+			if (nw > 0){
+				outbuf += nw;
+				outbuf_sz -= nw;
+			}
+		}
+
+/* check if there is more tunnel data to forward */
+		if (!outbuf_sz){
+			outbuf_sz = a12_flush(S, &outbuf, A12_FLUSH_ALL);
+
+			ssize_t nw = write(connfd, outbuf, outbuf_sz);
+			if (nw > 0){
+				outbuf += nw;
+				outbuf_sz -= nw;
+			}
+		}
+
+		n_fd = outbuf_sz ? 3 : 2;
+
+/* flush out shmif connection */
+		while (arcan_shmif_poll(C, &ev) > 0){
+			if (ev.category == EVENT_TARGET){
+				if (ev.tgt.kind == TARGET_COMMAND_STEPFRAME){
+					gotframe = true;
+				}
+				else if (ev.tgt.kind == TARGET_COMMAND_EXIT){
+					return;
+				}
+			}
+		}
+
+/* all workers are done, readly for new frame */
+		if (waitframe && !atomic_load(&global.pending)){
+			waitframe = false;
+			arcan_shmif_signal(C, SHMIF_SIGVID | SHMIF_SIGAUD);
+		}
+
+/* signal all the workers that we have a new frame pending to be consumed, this
+ * is where a framequeue would copy the current frame, signal shmif that we are
+ * done and move on */
+		if (gotframe && !waitframe && !atomic_load(&global.pending)){
+			atomic_fetch_add(&global.framecount, 1);
+			atomic_store(&global.pending, global.n_tunnels);
+			for (size_t i = 0, count = global.n_tunnels; i < 256 && count; i++){
+				if (!global.tunnels[i].used)
+					continue;
+				pthread_kill(global.tunnels[i].pth, SIGINT);
+				count--;
+			}
+			waitframe = true;
+		}
+
+	}
+}
+
 static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 {
 	struct pk_response auth = {0};
@@ -312,13 +567,15 @@ static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 void a12_serv_run(struct arg_arr* arg, struct arcan_shmif_cont cont)
 {
 	struct dispatch_data data = {
-		.C = &cont
+		.C = &cont,
+		.chind = 1
 	};
 
 	if (!decode_args(arg, &data)){
 		return;
 	}
 
+	global.C = &cont;
 	data.net_cfg.opts->pk_lookup = key_auth_local;
 	data.net_cfg.keystore.type = A12HELPER_PROVIDER_BASEDIR;
 	const char* err;
@@ -335,8 +592,10 @@ void a12_serv_run(struct arg_arr* arg, struct arcan_shmif_cont cont)
  * here, but the actual routing / plumbing etc. is deferred until 0.9 when
  * we focus on hardening. */
 	data.net_cfg.opts->local_role = ROLE_SOURCE;
+
 	if (data.outbound){
 		struct anet_cl_connection con = anet_cl_setup(&data.net_cfg);
+
 		if (con.auth_failed){
 			LOG("encode_outbound:authentication_rejected");
 			arcan_shmif_last_words(&cont, "outbound auth failed");
@@ -347,8 +606,48 @@ void a12_serv_run(struct arg_arr* arg, struct arcan_shmif_cont cont)
 			arcan_shmif_last_words(&cont, con.errmsg);
 			return;
 		}
+
 		if (a12_remote_mode(con.state) == ROLE_DIR){
-			arcan_shmif_last_words(&cont, "eimpl: encode-sink to directory");
+			uint8_t nk[32] = {0}; /* won't be used right now */
+			const char* identity = NULL;
+			arg_lookup(arg, "ident", 0, &identity);
+			struct arcan_event ev = {
+				.ext.kind = ARCAN_EVENT(REGISTER),
+				.category = EVENT_EXTERNAL
+			};
+
+/* start by REGISTER the source -
+ * also need option to pass keymaterial in ARG in order for directory to
+ * spawn us directly as an arcan_headless with enc arguments.
+ */
+
+/* if there's no identity provided, use the segid GUID even though it's likely
+ * to be generated on the fly rather than tracked since define_recordtarget
+ * doesn't provide it - though arcan_headless might. */
+			if (!identity || !strlen(identity)){
+				uint64_t uid[2];
+				arcan_shmif_guid(&cont, uid);
+				snprintf(ev.ext.registr.title,
+					64, "enc_%"PRIu64":%"PRIu64, uid[0], uid[1]);
+			}
+			else
+				snprintf(ev.ext.registr.title, 64, "%s", identity);
+			a12_channel_enqueue(con.state, &ev);
+
+			a12_request_dynamic_resource(con.state,
+				nk, arg_lookup(arg, "tunnel", 0, NULL), on_sink_dir, &data);
+
+/* pipe-pair for tunnel threads to wake up the main dispatch so that it will
+ * flush its inbound buffer onwards */
+			int pair[2];
+			pipe(pair);
+			global.signal_pipe = pair[1];
+
+/* we still need to process the main a12 state here in order for new tunnel
+ * requests to arrive and to coordinate the shmif context for new information
+ * and have a frame queue of either raw or encoded frames that each tunnel then
+ * consumes and transcodes based on their state or forwards as is. */
+			dispatch_multiple(&cont, con.state, con.fd, pair[0]);
 		}
 		else if (a12_remote_mode(con.state) == ROLE_SINK){
 			dispatch_single(con.state, con.fd, &data);

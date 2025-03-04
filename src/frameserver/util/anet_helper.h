@@ -39,7 +39,7 @@ struct anet_options {
 
 /* petname used to register as a source/linked directory in another - this is a
  * hint, the server may well assign a different one */
-	const char petname[16];
+	char petname[16];
 
 /* pre-inherited socket to use */
 	int sockfd;
