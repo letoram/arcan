@@ -126,9 +126,12 @@ int shmif_platform_fetchfds(
 
 /* spin until we get something over the socket or the aliveness check fails */
 	if (blocking){
-		while (!alive_check || alive_check(tag)){
+		for (;;){
 			if (-1 != recvmsg(sockin_fd, &msg, MSG_NOSIGNAL))
 				break;
+
+			if (alive_check && !alive_check(tag))
+				return -1;
 		}
 	}
 	else if (-1 == recvmsg(sockin_fd, &msg, MSG_DONTWAIT | MSG_NOSIGNAL))
