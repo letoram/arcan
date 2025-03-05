@@ -341,13 +341,19 @@ static void dispatch_single(struct a12_state* S, int fd, void* tag)
 
 static bool decode_args(struct arg_arr* arg, struct dispatch_data* dst)
 {
-	dst->net_cfg.port = "6680";
+	dst->net_cfg.port;
 
 	if (arg_lookup(arg, "port", 0, &dst->net_cfg.port)){
 		if (!dst->net_cfg.port || strlen(dst->net_cfg.port) == 0){
 			arcan_shmif_last_words(dst->C, "missing port value");
 			return false;
 		}
+	}
+	else
+		dst->net_cfg.port = "6680";
+
+	if (arg_lookup(arg, "softauth", 0, NULL)){
+		global.soft_auth = true;
 	}
 
 	dst->net_cfg.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));
@@ -402,7 +408,7 @@ static bool decode_args(struct arg_arr* arg, struct dispatch_data* dst)
 	}
 
 	const char* bias;
-	if (arg_lookup(arg, "vcodec_bias", 0, &bias) && bias){
+	if (arg_lookup(arg, "bias", 0, &bias) && bias){
 		if (strcasecmp(bias, "latency") == 0){
 			dst->video_cfg.bias = VFRAME_BIAS_LATENCY;
 		}
