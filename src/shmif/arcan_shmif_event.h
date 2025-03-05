@@ -1522,6 +1522,7 @@ enum ARCAN_TARGET_SKIPMODE {
  *           2 = sink
  *           3 = source | sink
  *           4 = directory
+ *           8 = (bit) tunnel-only
  */
 	struct {
 		union {

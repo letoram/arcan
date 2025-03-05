@@ -34,6 +34,8 @@
 #include <fcntl.h>
 #include <poll.h>
 
+extern struct global_cfg global;
+
 struct appl_runner_state {
 	struct ioloop_shared* ios;
 
@@ -182,7 +184,8 @@ void dircl_source_handler(
  *
  * we could treat the 'inner' exchange as 'ephemeral outer' though to establish
  * a transitively trusted pair, but it is rather fringe versus getting the other
- * bits working..
+ * bits working.
+ *
  */
 	struct a12_context_options a12opts = {
 		.local_role = ROLE_SINK,
@@ -199,7 +202,12 @@ void dircl_source_handler(
 		.retry_count = 10,
 		.opts = &a12opts,
 		.host = req.host,
-		.port = port
+		.port = port,
+/* the keystore needs to come with so we retain the option to sign future state
+ * as well as adding the discovered source to our trust-store if discovery is
+ * desired in order to find it without the directory or verify that the dir is
+ * not trying to MiTM keys. */
+		.keystore = global.meta.keystore
 	};
 
 	if (req.proto == 4){

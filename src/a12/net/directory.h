@@ -61,7 +61,9 @@ struct anet_dircl_opts {
 
 /* filled if an appl is requested */
 	char* appl_runner;
-	char applname[16];
+	char applname[18];    /* identifier is max 18, but we user-code options
+													 as characters, < for source, > for sink and |
+													 prefix for tunnel only */
 	uint16_t applid;
 
 	bool die_on_list;

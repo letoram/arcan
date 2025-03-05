@@ -48,7 +48,7 @@ static bool flush_shmif(struct arcan_shmif_cont* C)
 
 static bool get_keystore(struct arcan_shmif_cont*, struct keystore_provider*);
 
-static struct {
+struct {
 	bool soft_auth;
 	const char* trust_domain;
 } global =

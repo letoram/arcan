@@ -54,6 +54,8 @@ struct {
 	.sync = PTHREAD_MUTEX_INITIALIZER
 };
 
+static void flush_av(struct a12_state* S, struct dispatch_data* data);
+
 static void empty_event_handler(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
@@ -90,13 +92,14 @@ static struct pk_response key_auth_fixed(uint8_t pk[static 32], void* tag)
 static void* tunnel_runner(void* data)
 {
 	struct dispatch_data* td = data;
-
 	static const short errmask = POLLERR | POLLNVAL | POLLHUP;
+	uint64_t msc = atomic_load(&global.framecount);
 
 	size_t n_fd = 2;
-	struct pollfd fds[2] = {
-		{.fd = td->C->epipe, .events = POLLIN | errmask},
-		{.fd = td->socket, .events = POLLIN | errmask},
+	struct pollfd fds[3] = {
+		{.fd = td->C->epipe, .events = POLLIN  | errmask},
+		{.fd = td->socket,   .events = POLLIN  | errmask},
+		{.fd = td->socket,   .events = POLLOUT | errmask},
 	};
 
 	struct a12_context_options a12opts = {
@@ -118,7 +121,6 @@ static void* tunnel_runner(void* data)
  * let multiple sources sink us (if that option is enabled).
  *
  * we need to:
- *    a. poll data on the inbound and outbound socket
  *    b. feed the encoder and flush on some timeout.
  *    c. react to STEPFRAMEs on the main segment.
  *
@@ -128,6 +130,8 @@ static void* tunnel_runner(void* data)
  * supporting 'raw' (ZSTD I/D frames) as fallback though.
  */
 	struct a12_state* ast = a12_server(&a12opts);
+	uint8_t* outbuf;
+	size_t outbuf_sz = 0;
 
 	for(;;){
 		if (
@@ -137,8 +141,40 @@ static void* tunnel_runner(void* data)
 				break;
 		}
 
-/* prioritize frame consumption */
+/* is there a new frame? */
+		if (atomic_load(&global.framecount) != msc){
+			flush_av(ast, td);
+			msc = atomic_load(&global.framecount);
+			atomic_fetch_add(&global.pending, -1);
+		}
 
+		if (fds[1].revents){
+			uint8_t inbuf[9000];
+			ssize_t nr = recv(td->socket, inbuf, 9000, 0);
+			if (nr > 0){
+				a12_unpack(ast, inbuf, nr, NULL, empty_event_handler);
+			}
+		}
+
+		if (!outbuf_sz)
+			outbuf_sz = a12_flush(ast, &outbuf, A12_FLUSH_ALL);
+
+/* flush output buffer and tell outer worker */
+		if (n_fd == 3 && (fds[2].revents & POLLOUT) && outbuf_sz){
+			ssize_t nw = write(td->socket, outbuf, outbuf_sz);
+			if (nw > 0){
+				outbuf += nw;
+				outbuf_sz -= nw;
+				write(global.signal_pipe, "", 1);
+			}
+
+			if (!outbuf_sz)
+				outbuf_sz = a12_flush(ast, &outbuf, A12_FLUSH_ALL);
+		}
+
+/* update pollset if there is something to write, this will cause the next
+ * poll to bring us into the flush stage */
+		n_fd = outbuf_sz > 0 ? 3 : 2;
 	}
 
 	return NULL;
@@ -160,7 +196,8 @@ static void on_sink_dir(struct a12_state* S, struct a12_dynreq req, void* tag)
 		struct dispatch_data* td = malloc(sizeof(struct dispatch_data));
 		*td = (struct dispatch_data){
 			.socket = sv[1],
-			.req = req
+			.req = req,
+			.C = global.C
 		};
 
 		for (size_t i = 0; i < COUNT_OF(global.tunnels); i++){
@@ -424,8 +461,12 @@ static bool decode_args(struct arg_arr* arg, struct dispatch_data* dst)
 
 	const char* tmp = NULL;
 	if (arg_lookup(arg, "trace", 0, &tmp) && tmp){
-		long arg = strtol(tmp, NULL, 10);
-		a12_set_trace_level(arg, stderr);
+		char* out;
+		long arg = strtol(tmp, &out, 10);
+		if (!arg && out == tmp)
+			a12_set_trace_level(arg, stderr);
+		else
+			a12_set_trace_level(arg, stderr);
 	}
 
 	return true;

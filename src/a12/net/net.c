@@ -2071,7 +2071,7 @@ int main(int argc, char** argv)
 					if (strcmp(argv[argi], "--") == 0 || strcmp(argv[argi], "--exec") == 0){
 					}
 					else
-						snprintf(global.dircl.applname, 16, "%s", argv[argi]);
+						snprintf(global.dircl.applname, sizeof(global.dircl.applname), "%s", argv[argi]);
 				}
 
 				anet_directory_cl(cl.state, global.dircl, cl.fd, cl.fd);
