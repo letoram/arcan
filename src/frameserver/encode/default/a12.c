@@ -108,6 +108,7 @@ static void* tunnel_runner(void* data)
 		.pk_lookup_tag = data,
 		.disable_ephemeral_k = true
 	};
+	snprintf(a12opts.secret, sizeof(a12opts.secret), "%s", td->req.authk);
 
 /* request contains the Kpub we should accept and the secret provided by the
  * directory itself. */
