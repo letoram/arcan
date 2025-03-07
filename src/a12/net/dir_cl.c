@@ -1116,94 +1116,127 @@ static void cl_got_dyn(struct a12_state* S, int type,
 		pubk, cbt->clopt->request_tunnel, dircl_source_handler, I);
 }
 
-static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
+static struct appl_meta* scan_for_appl(struct appl_meta* C, const char* name)
+{
+	while (C){
+		if (strcmp(C->appl.name, name) == 0)
+			return C;
+		else C = C->next;
+	}
+	return NULL;
+}
+
+static bool cl_send_appl_update(struct ioloop_shared* I, struct appl_meta* dir)
 {
 	struct directory_meta* cbt = I->cbt;
+	struct appl_meta* C = dir;
 
-	if (cbt->clopt->outapp.buf){
-		struct appl_meta* C = dir;
-		cbt->clopt->outapp.identifier = 65535;
-		bool found = false;
-
-		while (C){
-			if (strcmp(C->appl.name, cbt->clopt->outapp.appl.name) == 0){
-				found = true;
-				cbt->clopt->outapp.appl.name[0] = '\0';
-				a12int_trace(A12_TRACE_DIRECTORY,
-					"push-match:name=%s:identifier=%d",
-					C->appl.name, (int) C->identifier
-				);
-				cbt->clopt->outapp.identifier = C->identifier;
-				break;
-			}
-			C = C->next;
-		}
+	if (cbt->clopt->outapp.appl.name[0])
+		C = scan_for_appl(C, cbt->clopt->outapp.appl.name);
 
 /* no explicit identifier to throw it in, try to create a new (which may need
  * different permissions hence why the initial search) */
-		if (!found){
-			a12int_trace(A12_TRACE_DIRECTORY,
-				"push-no-match:name=%s", cbt->clopt->outapp.appl.name);
-		}
+	if (!C){
+		a12int_trace(A12_TRACE_DIRECTORY,
+			"push-no-match:name=%s", cbt->clopt->outapp.appl.name);
+		cbt->clopt->outapp.identifier = 65535;
+	}
+	else {
+		cbt->clopt->outapp.identifier = C->identifier;
+	}
 
-		cbt->transfer_id = cbt->clopt->outapp.identifier;
-		cbt->in_transfer = true;
+/* need to track the ID so we can see when the request completes or fails */
+	cbt->transfer_id = cbt->clopt->outapp.identifier;
+	cbt->in_transfer = true;
 
-		a12_enqueue_blob(I->S,
-			cbt->clopt->outapp.buf,
-			cbt->clopt->outapp.buf_sz,
-			cbt->clopt->outapp.identifier,
-			cbt->clopt->outapp_ctrl ? A12_BTYPE_APPL_CONTROLLER : A12_BTYPE_APPL,
-			cbt->clopt->outapp.appl.name
-		);
+	a12_enqueue_blob(I->S,
+		cbt->clopt->outapp.buf,
+		cbt->clopt->outapp.buf_sz,
+		cbt->clopt->outapp.identifier,
+		cbt->clopt->outapp_ctrl ? A12_BTYPE_APPL_CONTROLLER : A12_BTYPE_APPL,
+		cbt->clopt->outapp.appl.name
+	);
 
+/* don't keep the name around anymore as we have issued the request */
+	cbt->clopt->outapp.appl.name[0] = '\0';
+
+	return true;
+}
+
+static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
+{
+	struct directory_meta* cbt = I->cbt;
+	struct anet_dircl_opts* req = cbt->clopt;
+
+/* do we have a queued application update? */
+	if (req->outapp.buf)
+		return cl_send_appl_update(I, dir);
+
+/* the name we look for depend on what we are trying to do - upload,
+ * download or run an appl */
+	const char* name = req->applname;
+	if (req->download.applname[0])
+		name = req->download.applname;
+	else if (req->upload.applname[0])
+		name = req->upload.applname;
+
+/* terminate (=false) if we only want list, but stick around if the appl
+ * is actually a source that can appear dynamically */
+	dir = scan_for_appl(dir, name);
+	if (!dir)
+		return !(req->die_on_list && req->applname[0] != '<');
+
+/* got the matching server local numerical identifier that is used as
+ * namespace identifier */
+	req->applid = dir->identifier;
+
+/* just join and listen in as a dev tool, this should probably also be able to
+ * synthesise messages from stdin in order to function as a cli integration in
+ * cat9. */
+	if (req->monitor_mode){
+		send_join_ident(I, cbt);
 		return true;
 	}
 
-	while (dir){
-/* use identifier to request binary or just join group to monitor messages */
-		if (cbt->clopt->applname[0]){
-			if (strcasecmp(dir->appl.name, cbt->clopt->applname) == 0){
-				cbt->clopt->applid = dir->identifier;
+/* if we have an upload or a download queued for the namespace (.priv is handled
+ * directly since we don't have to resolve it to a local index) */
+	if (req->upload.name){
+		upload_file(I->S, req->upload.path, req->applid, req->upload.name);
+		a12_set_bhandler(I->S, anet_directory_cl_upload, I);
+		I->on_event = dircl_event;
+		return true;
+	}
 
-				if (cbt->clopt->monitor_mode){
-					struct directory_meta* cbt = I->cbt;
-					send_join_ident(I, cbt);
-					return true;
-				}
-
-				struct arcan_event ev =
-				{
-					.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
-					.category = EVENT_EXTERNAL,
-					.ext.bchunk = {
-						.input = true,
-						.hint = false,
-						.ns = dir->identifier,
-						.extensions = ".appl"
-					}
-				};
-				a12_channel_enqueue(I->S, &ev);
-
-/* and register our store+launch handler */
-				a12_set_bhandler(I->S, anet_directory_cl_bhandler, I);
-				return true;
+	else if (req->download.name){
+		struct arcan_event ev = {
+			.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
+			.category = EVENT_EXTERNAL,
+			.ext.bchunk = {
+				.input = true,
+				.ns = 0,
+				.identifier = 0xfeedface
 			}
+		};
+		a12_set_bhandler(I->S, anet_directory_cl_download, I);
+		a12_channel_enqueue(I->S, &ev);
+		I->on_event = dircl_event;
+		return true;
+	}
+
+/* lastly, download and run the appl */
+	struct arcan_event ev =
+	{
+		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
+		.category = EVENT_EXTERNAL,
+		.ext.bchunk = {
+			.input = true,
+			.hint = false,
+			.ns = dir->identifier,
+			.extensions = ".appl"
 		}
-
-		printf("ts=%"PRIu64":name=%s:%"PRIu16"\n",
-			dir->update_ts, dir->appl.name, dir->identifier);
-		dir = dir->next;
-	}
-
-	if (cbt->clopt->applname[0] && cbt->clopt->applname[0] != '<'){
-		fprintf(stderr, "appl:%s not found\n", cbt->clopt->applname);
-		return false;
-	}
-
-	if (cbt->clopt->die_on_list && cbt->clopt->applname[0] != '<')
-		return false;
-
+	};
+	a12_channel_enqueue(I->S, &ev);
+	a12_set_bhandler(I->S, anet_directory_cl_bhandler, I);
 	return true;
 }
 

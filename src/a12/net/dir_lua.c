@@ -1109,6 +1109,8 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 	if (external){
 		char* argv[] = {CFG->path_self, "dirappl", NULL, NULL};
 		struct shmifsrv_envp env = {
+			.init_w = 32,
+			.init_h = 32,
 			.path = CFG->path_self,
 			.envv = NULL,
 			.argv = argv,
