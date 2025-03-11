@@ -307,11 +307,16 @@ static void draw(struct arcan_shmif_cont* con, size_t i)
 	esRotate(&modelview, 45.0f - (0.5f * i), 0.0f, 1.0f, 0.0f);
 	esRotate(&modelview, 10.0f + (0.15f * i), 0.0f, 0.0f, 1.0f);
 
-	float aspect = (float)(con->w) / (float)(con->h);
-
 	ESMatrix projection;
 	esMatrixLoadIdentity(&projection);
-	esFrustum(&projection, -2.8f, +2.8f, -2.8f * aspect, +2.8f * aspect, 6.0f, 10.0f);
+
+	if (con->w > con->h) {
+		float aspect = (float)(con->w) / (float)(con->h);
+		esFrustum(&projection, -2.8f * aspect, +2.8f * aspect, -2.8f, +2.8f, 6.0f, 10.0f);
+	} else {
+		float aspect = (float)(con->h) / (float)(con->w);
+		esFrustum(&projection, -2.8f, +2.8f, -2.8f * aspect, +2.8f * aspect, 6.0f, 10.0f);
+	}
 
 	ESMatrix modelviewprojection;
 	esMatrixLoadIdentity(&modelviewprojection);
