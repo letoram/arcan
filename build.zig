@@ -32,6 +32,9 @@ pub fn build(b: *std.Build) void {
         .build_a12 = b.option(bool, "build_a12", "Build arcan_a12 library (default: true)") orelse true,
 
         .with_debugif = b.option(bool, "with_debugif", "Build with shmif debugif (default: true)") orelse true,
+        .with_ffmpeg = b.option(bool, "with_ffmpeg", "Build with h264 encode/decode support using ffmpeg (default: true)") orelse true,
+
+        .use_system_ffmpeg = b.systemIntegrationOption("ffmpeg", .{ .default = false }),
     };
 
     switch (opts.target.result.os.tag) {
@@ -252,6 +255,20 @@ fn createArcanA12(b: *std.Build, opts: anytype) *std.Build.Step.Compile {
 
     if (opts.target.result.os.tag == .windows) {
         step.linkSystemLibrary("winmm");
+    }
+
+    if (opts.with_ffmpeg) {
+        if (opts.use_system_ffmpeg) {
+            step.linkSystemLibrary("ffmpeg");
+        } else {
+            const lazy_ffmpeg = b.lazyDependency("ffmpeg", .{
+                .target = opts.target,
+                .optimize = opts.optimize,
+            });
+            if (lazy_ffmpeg) |ffmpeg| step.linkLibrary(ffmpeg.artifact("ffmpeg"));
+        }
+        step.root_module.addCMacro("WANT_H264_DEC", "");
+        step.root_module.addCMacro("WANT_H264_ENC", "");
     }
 
     const a12_sources: []const String = &.{

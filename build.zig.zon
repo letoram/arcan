@@ -2,6 +2,13 @@
     .name = "arcan",
     .version = "0.7.0-1", // mirrors /VERSION
     .minimum_zig_version = "0.13.0",
+    .dependencies = .{
+        .ffmpeg = .{
+            .url = "https://github.com/allyourcodebase/ffmpeg/archive/8836b829d3cfaf31ec7eaa15eeca84f065bcc423.tar.gz",
+            .hash = "1220b5d387335cb76a0eda4ab3e3c9ed153cbc3d1b5bb63c4899b5dfab3f826f4413",
+            .lazy = true,
+        },
+    },
     .paths = .{
         "src",
         "build.zig",
