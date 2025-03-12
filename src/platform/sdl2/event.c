@@ -515,16 +515,16 @@ static void apply_mod(uint8_t ch[5], int mod)
 	}
 
 /* make sense to upcase? */
-	if (isalpha(oldch)){
-		ch[0] = toupper(oldch);
+	if (SDL_isalpha(oldch)){
+		ch[0] = SDL_toupper(oldch);
 		return;
 	}
 
 	ch[0] = '\0';
 
 	if (upper){
-		if (isalpha(oldch)){
-			ch[0] = toupper(oldch);
+		if (SDL_isalpha(oldch)){
+			ch[0] = SDL_toupper(oldch);
 			return;
 		}
 
