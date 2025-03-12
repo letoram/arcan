@@ -3013,6 +3013,9 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 				val = '?';
 			}
 			vte_write_raw(vte, &val, 1);
+		} else if (mods & TSM_ALT_MASK) {
+			val = ascii;
+			vte_write(vte, &val, 1);
 		}
 /*
 		this should already be handled in arcan- vte
