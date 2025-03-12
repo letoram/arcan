@@ -1014,7 +1014,7 @@ bool anet_directory_lua_admin_command(struct dircl* C, const char* msg)
  * and add the generic arg_arr to lua table here instead */
 	push_dircl(L, C);
 	lua_pushstring(L, msg);
-	lua_call(L, 3, 0);
+	lua_call(L, 2, 0);
 	return true;
 }
 

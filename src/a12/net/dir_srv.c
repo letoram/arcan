@@ -868,11 +868,72 @@ static void msgqueue_worker(struct dircl* C, arcan_event* ev)
 	dirsrv_global_unlock(__FILE__, __LINE__);
 }
 
+static bool process_auth_request(struct dircl* C, struct arg_arr* entry)
+{
+/* just route authentication through the regular function, caching the reply */
+	const char* pubk;
+
+/* regardless of authentication reply, they only get one attempt at this */
+	C->authenticated = true;
+	if (!arg_lookup(entry, "a12", 0, NULL) || !arg_lookup(entry, "pubk", 0, &pubk))
+		return false;
+
+	uint8_t pubk_dec[32];
+	if (!a12helper_fromb64((const uint8_t*) pubk, 32, pubk_dec))
+		return false;
+
+	memcpy(C->pubk, pubk_dec, 32);
+
+	dirsrv_global_lock(__FILE__, __LINE__);
+		struct a12_context_options* aopt = active_clients.opts->a12_cfg;
+		struct pk_response rep = aopt->pk_lookup(pubk_dec, aopt->pk_lookup_tag);
+
+/* notify or let .lua config have a say */
+		if (!rep.authentic){
+			rep = anet_directory_lua_register_unknown(C, rep);
+			if (rep.authentic){
+/* we get here if the keystore doesn't know the key, soft auth or trust-n-unknown
+ * isn't set yet the config script still permits the key through. In that case we
+ * still need to set the key to respond with (i.e. default). Differentiation opt.
+ * is possible here, but of questionable utility. */
+				char* tmp;
+				uint16_t tmpport;
+
+				uint8_t my_private_key[32];
+				a12helper_keystore_hostkey(
+					"default", 0, my_private_key, &tmp, &tmpport);
+				a12_set_session(&rep, pubk_dec, my_private_key);
+			}
+		}
+		else
+			anet_directory_lua_register(C);
+	dirsrv_global_unlock(__FILE__, __LINE__);
+
+/* still bad, kill worker */
+	if (!rep.authentic)
+		return false;
+
+	struct arcan_event ev = {
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_MESSAGE
+	};
+
+	unsigned char* b64 = a12helper_tob64(rep.key_pub, 32, &(size_t){0});
+	snprintf((char*)&ev.tgt.message, COUNT_OF(ev.tgt.message), "a12:pub=%s", b64);
+	free(b64);
+	shmifsrv_enqueue_event(C->C, &ev, -1);
+	b64 = a12helper_tob64(rep.key_session, 32, &(size_t){0});
+	snprintf((char*)&ev.tgt.message, COUNT_OF(ev.tgt.message), "a12:ss=%s", b64);
+	free(b64);
+	shmifsrv_enqueue_event(C->C, &ev, -1);
+	return true;
+}
+
 static void dircl_message(struct dircl* C, struct arcan_event ev)
 {
 /* reserved prefix? then treat as worker command - otherwise merge and
  * broadcast or forward into admin */
-	if (strncmp((char*)ev.ext.message.data, "a12:", 4) != 0){
+	if (strncmp((char*)ev.ext.message.data, "a12:", 4) != 0 || C->in_admin){
 		msgqueue_worker(C, &ev);
 		return;
 	}
@@ -883,61 +944,10 @@ static void dircl_message(struct dircl* C, struct arcan_event ev)
 		return;
 	}
 
-/* just route authentication through the regular function, caching the reply */
-	const char* pubk;
+/* don't do any processing before the worker has attempted authentication */
 	if (!C->authenticated){
-/* regardless of authentication reply, they only get one attempt at this */
-		C->authenticated = true;
-		if (!arg_lookup(entry, "a12", 0, NULL) || !arg_lookup(entry, "pubk", 0, &pubk))
+		if (!process_auth_request(C, entry))
 			goto send_fail;
-
-		uint8_t pubk_dec[32];
-		if (!a12helper_fromb64((const uint8_t*) pubk, 32, pubk_dec))
-			goto send_fail;
-
-		memcpy(C->pubk, pubk_dec, 32);
-
-		dirsrv_global_lock(__FILE__, __LINE__);
-			struct a12_context_options* aopt = active_clients.opts->a12_cfg;
-			struct pk_response rep = aopt->pk_lookup(pubk_dec, aopt->pk_lookup_tag);
-
-/* notify or let .lua config have a say */
-			if (!rep.authentic){
-				rep = anet_directory_lua_register_unknown(C, rep);
-				if (rep.authentic){
-/* we get here if the keystore doesn't know the key, soft auth or trust-n-unknown
- * isn't set yet the config script still permits the key through. In that case we
- * still need to set the key to respond with (i.e. default). Differentiation opt.
- * is possible here, but of questionable utility. */
-					char* tmp;
-					uint16_t tmpport;
-
-					uint8_t my_private_key[32];
-					a12helper_keystore_hostkey(
-						"default", 0, my_private_key, &tmp, &tmpport);
-					a12_set_session(&rep, pubk_dec, my_private_key);
-				}
-			}
-			else
-				anet_directory_lua_register(C);
-		dirsrv_global_unlock(__FILE__, __LINE__);
-
-/* still bad, kill worker */
-		if (!rep.authentic)
-			goto send_fail;
-
-		struct arcan_event ev = {
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_MESSAGE
-		};
-		unsigned char* b64 = a12helper_tob64(rep.key_pub, 32, &(size_t){0});
-		snprintf((char*)&ev.tgt.message, COUNT_OF(ev.tgt.message), "a12:pub=%s", b64);
-		free(b64);
-		shmifsrv_enqueue_event(C->C, &ev, -1);
-		b64 = a12helper_tob64(rep.key_session, 32, &(size_t){0});
-		snprintf((char*)&ev.tgt.message, COUNT_OF(ev.tgt.message), "a12:ss=%s", b64);
-		free(b64);
-		shmifsrv_enqueue_event(C->C, &ev, -1);
 		return;
 	}
 

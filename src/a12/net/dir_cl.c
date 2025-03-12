@@ -551,7 +551,7 @@ static void process_stdin(struct ioloop_shared* I, bool ok)
 		out.ext.message.data[len] = '\0';
 		ntc -= len;
 		ofs += len;
-		out.ext.message.multipart = len > 0;
+		out.ext.message.multipart = ntc > 0;
 		a12_channel_enqueue(I->S, &out);
 	}
 
