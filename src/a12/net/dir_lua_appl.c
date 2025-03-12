@@ -49,6 +49,7 @@ struct client {
 	size_t msgbuf_ofs;
 	struct shmifsrv_client* shmif;
 	bool registered;
+	bool monitor;
 };
 
 static struct {
@@ -56,6 +57,7 @@ static struct {
 	size_t set_sz;
 	struct pollfd* pset;
 	struct client* cset;
+	size_t monitor_slot;
 } CLIENTS;
 
 /* used to prefill applname_entrypoint */
@@ -633,7 +635,7 @@ static void open_appl(int dfd, const char* name)
 	}
 }
 
-static bool join_worker(int fd)
+static bool join_worker(int fd, bool monitor)
 {
 /* just naively grow, parent process is responsible for more refined handling
  * of constraining resources outside the natural cap of permitted descriptors
@@ -681,6 +683,7 @@ static bool join_worker(int fd)
 	int tmp;
 	CLIENTS.cset[ind] = (struct client){
 		.registered = false,
+		.monitor = monitor,
 		.clid = ind
 	};
 
@@ -765,7 +768,11 @@ static void lua_pushkv_buffer(char* pos, char* end)
 static void meta_resource(int fd, const char* msg)
 {
 	if (strncmp(msg, ".worker", 8) == 0){
-		join_worker(fd);
+		join_worker(fd, false);
+		return;
+	}
+	if (strncmp(msg, ".monitor", 9) == 0){
+		join_worker(fd, true);
 		return;
 	}
 /* for the time being, just read everything into a memory buffer and then
@@ -927,7 +934,7 @@ void anet_directory_appl_runner()
 	shmifsrv_monotonic_rebase();
 
 /* shmif connection gets reserved index 0 */
-	join_worker(SHMIF.epipe);
+	join_worker(SHMIF.epipe, false);
 	int left = 25;
 
 	while (!SHUTDOWN){

@@ -54,6 +54,13 @@ struct anet_dirsrv_opts {
  */
 struct directory_meta;
 
+enum monitor_mode {
+	MONITOR_NONE     = 0,
+	MONITOR_SIMPLE   = 1,
+	MONITOR_DEBUGGER = 2,
+	MONITOR_ADMIN    = 3
+};
+
 struct anet_dircl_opts {
 /* where are appls loaded from? */
 	int basedir;
@@ -73,7 +80,7 @@ struct anet_dircl_opts {
 	bool stderr_log;       /* forward appl_runner stderr */
 	bool keep_appl;        /* don't unlink / erase appl after running */
 	bool request_tunnel;   /* relay traffic through directory if necessary */
-	bool monitor_mode;
+	int monitor_mode;
 
 	char ident[16]; /* name to identify as (a-z0-9) */
 
@@ -156,6 +163,8 @@ struct dircl {
 /* authentication public key and whether it is approved or not */
 	uint8_t pubk[32];
 	bool authenticated;
+	bool in_admin;
+	int admin_fdout;
 
 /* accumulation buffer so that we don't permit forwarding unterminated
  * MESSAGE chains to appl-controller */
@@ -268,6 +277,9 @@ bool anet_directory_lua_init(struct global_cfg* cfg);
 
 void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl);
 
+/* for config- specific custom implementation of an admin control channel */
+bool anet_directory_lua_admin_command(struct dircl* C, const char* msg);
+
 /* privsep process running server-side scripts for an appl */
 void anet_directory_appl_runner();
 
@@ -288,6 +300,12 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external);
  * dir_srv.c side. Leave doesn't strictly happen here as the appl-runner
  * process handles that part of messaging. */
 bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl);
+
+/* Similar to a join, but it doesn't trigger an in-script action and any
+ * messages on it are interpreted as debug/monitor commands rather than
+ * actually directed messages. This joins with a12:kill=%d messages in order to
+ * interrupt execution and break into monitor for remote debugging. */
+bool anet_directory_lua_monitor(struct dircl* C, struct appl_meta* appl);
 
 /* for post-transfer completion hooks to perform atomic rename / fileswaps etc. */
 void anet_directory_lua_bchunk_completion(struct dircl* C, bool ok);

@@ -126,6 +126,14 @@ struct shmifsrv_client* shmifsrv_allocate_connpoint(
 	return res;
 }
 
+int shmifsrv_client_memory_handle(struct shmifsrv_client* cl)
+{
+	if (!cl || !cl->con)
+		return -1;
+
+	return cl->con->shm.handle;
+}
+
 struct shmifsrv_client* shmifsrv_inherit_connection(int sockin, int* statuscode)
 {
 	if (-1 == sockin){

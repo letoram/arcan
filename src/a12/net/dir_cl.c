@@ -122,6 +122,12 @@ static struct {
 	}
 };
 
+static void attach_appl_debug(struct ioloop_shared* I, struct directory_meta* cbt)
+{
+/* for both appl- debug and admin we can switch to a simplified form that is
+ * just 'read command from stdin', convert to 'send results to stdout' */
+}
+
 static void send_join_ident(struct ioloop_shared* I, struct directory_meta* cbt)
 {
 /* join the message group for the running appl */
@@ -521,6 +527,38 @@ static void swap_appldir(const char* name, int basedir)
 	renameat(basedir, buf, basedir, name);
 }
 
+static void process_stdin(struct ioloop_shared* I, bool ok)
+{
+	char buf[4096];
+	if (!fgets(buf, 4096, stdin))
+		return;
+
+	struct arcan_event out = {
+		.category = EVENT_EXTERNAL,
+	};
+
+	size_t ntc = strlen(buf);
+	size_t ofs = 0;
+
+	if (!ntc)
+		return;
+
+	size_t msg_sz = sizeof(out.ext.message.data);
+
+	while (ntc){
+		size_t len = ntc > msg_sz ? msg_sz - 1 : ntc;
+		memcpy(out.ext.message.data, &buf[ofs], len);
+		out.ext.message.data[len] = '\0';
+		ntc -= len;
+		ofs += len;
+		out.ext.message.multipart = len > 0;
+		a12_channel_enqueue(I->S, &out);
+	}
+
+/* push control commands received as MESSAGE, for both debug-interface and
+ * admin-interface this is fine. */
+}
+
 /*
  * This will only trigger when there's data / shutdown from arcan. With the
  * current monitor mode setup that is only on script errors or legitimate
@@ -893,6 +931,27 @@ static void mark_xfer_complete(struct ioloop_shared* I, struct a12_bhandler_meta
 	appl_runner(&active_appls.active);
 }
 
+static struct a12_bhandler_res anet_directory_cl_stdiofeed(
+	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
+{
+	struct ioloop_shared* I = tag;
+	struct a12_bhandler_res res = {
+		.fd = STDOUT_FILENO,
+		.flag = A12_BHANDLER_NEWFD
+	};
+
+	switch (M.state){
+	case A12_BHANDLER_INITIALIZE:
+	break;
+	case A12_BHANDLER_CANCELLED:
+	case A12_BHANDLER_COMPLETED:
+		I->shutdown = true;
+	break;
+	}
+
+	return res;
+}
+
 static struct a12_bhandler_res anet_directory_cl_upload(
 	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
 {
@@ -1190,11 +1249,12 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
  * namespace identifier */
 	req->applid = dir->identifier;
 
-/* just join and listen in as a dev tool, this should probably also be able to
- * synthesise messages from stdin in order to function as a cli integration in
- * cat9. */
-	if (req->monitor_mode){
+	if (req->monitor_mode == MONITOR_SIMPLE){
 		send_join_ident(I, cbt);
+		return true;
+	}
+	else if (req->monitor_mode == MONITOR_DEBUGGER){
+		attach_appl_debug(I, cbt);
 		return true;
 	}
 
@@ -1213,10 +1273,14 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 			.category = EVENT_EXTERNAL,
 			.ext.bchunk = {
 				.input = true,
-				.ns = 0,
+				.ns = req->applid,
 				.identifier = 0xfeedface
 			}
 		};
+		snprintf((char*) ev.ext.bchunk.extensions,
+			COUNT_OF(ev.ext.bchunk.extensions),
+			"%s", req->download.name
+		);
 		a12_set_bhandler(I->S, anet_directory_cl_download, I);
 		a12_channel_enqueue(I->S, &ev);
 		I->on_event = dircl_event;
@@ -1301,6 +1365,30 @@ void anet_directory_cl(
 			anet_directory_ioloop(&ioloop);
 			return;
 		}
+	}
+
+/* another special short-path, administration and debug interface just behaves as
+ * message passing over line-buffered STDIO */
+	if (opts.monitor_mode == MONITOR_ADMIN){
+
+		struct arcan_event ev = {
+			.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
+			.category = EVENT_EXTERNAL,
+			.ext.bchunk = {
+				.input = true,
+				.ns = 0,
+				.identifier = 0xfeedface,
+				.extensions = ".admin"
+			}
+		};
+
+		setlinebuf(stdin);
+		ioloop.userfd = STDIN_FILENO;
+		ioloop.on_userfd = process_stdin;
+		a12_channel_enqueue(S, &ev);
+		a12_set_bhandler(S, anet_directory_cl_stdiofeed, &ioloop);
+		anet_directory_ioloop(&ioloop);
+		return;
 	}
 
 	a12_set_destination_raw(S,

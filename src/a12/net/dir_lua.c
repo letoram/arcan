@@ -893,6 +893,18 @@ bool anet_directory_lua_init(struct global_cfg* cfg)
 
 	luaL_openlibs(L);
 
+/* to add support for nbio we need:
+ *    alt_nbio_register(L, addfn, remfn, errfn)
+ *    expose alt_nbio_open as open_nonblock
+ *
+ *    the add/remove/error set handlers are also different in the sense that
+ *    we don't really need responsible I/O multiplexing outside normal
+ *    timeout.
+ *
+ * since we don't really want / need arbitrary open here, the
+ * important part is actually alt_nbio_import(L, fd, mode, *out, unlink_fn)
+ */
+
 	luaL_newmetatable(L, "dircl");
 	lua_pushcfunction(L, dir_index);
 	lua_setfield(L, -2, "__index");
@@ -987,6 +999,22 @@ bool anet_directory_lua_init(struct global_cfg* cfg)
 		return false;
 	}
 
+	return true;
+}
+
+bool anet_directory_lua_admin_command(struct dircl* C, const char* msg)
+{
+	lua_getglobal(L, "admin_command");
+	if (!lua_isfunction(L, -1)){
+		lua_pop(L, 1);
+		return false;
+	}
+
+/* it would be better to actually force this to use shmifpack format
+ * and add the generic arg_arr to lua table here instead */
+	push_dircl(L, C);
+	lua_pushstring(L, msg);
+	lua_call(L, 3, 0);
 	return true;
 }
 
@@ -1123,33 +1151,51 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 			free(runner);
 			return false;
 		}
-	}
-	else {
-		int sv[2];
-		if (-1 == socketpair(AF_UNIX, SOCK_STREAM, 0, sv)){
-			a12int_trace(
-				A12_TRACE_DIRECTORY, "kind=error:socketpair.2=%d", errno);
-			free(runner);
-			return false;
-		}
-		int sc;
-		runner->cl = shmifsrv_inherit_connection(sv[0], &sc);
-		if (!runner->cl){
-			a12int_trace(
-				A12_TRACE_DIRECTORY, "kind=error:couldn't build preauth shmif");
-			close(sv[0]);
-			close(sv[1]);
-			free(runner);
-			return false;
-		}
-		unsetenv("ARCAN_CONNPATH");
-		char buf[8];
-		snprintf(buf, 8, "%d", sv[1]);
-		setenv("ARCAN_SOCKIN_FD", buf, 1);
-		run_detached_thread(thread_appl_runner, NULL);
-/* now sv[1] is the socket that we should prepare */
+
+		appl->server_tag = runner;
+		pthread_mutex_init(&runner->lock, NULL);
+		run_detached_thread(controller_runner, runner);
+		return true;
 	}
 
+	int sv[2];
+	if (-1 == socketpair(AF_UNIX, SOCK_STREAM, 0, sv)){
+		a12int_trace(
+			A12_TRACE_DIRECTORY, "kind=error:socketpair.2=%d", errno);
+		free(runner);
+		return false;
+	}
+	int sc;
+	runner->cl = shmifsrv_inherit_connection(sv[0], &sc);
+	if (!runner->cl){
+		a12int_trace(
+			A12_TRACE_DIRECTORY, "kind=error:couldn't build preauth shmif");
+		close(sv[0]);
+		free(runner);
+		return false;
+	}
+
+/*
+ * Safety Note:
+ * ------------
+ *  Running the ctrl- appl state machine as part of the main process
+ *  is intended to make debugging easier in environments that deal
+ *  poorly with stepping across fork/exec.
+ *
+ *  To facilitate this we do some trickery with environment variables,
+ *  and these will be mutated by the thread_appl_runner which is not
+ *  safe in POSIX.
+ */
+	a12int_trace(
+		A12_TRACE_DIRECTORY, "kind=warning:unsafe_in_process_ctrl_runner");
+	unsetenv("ARCAN_CONNPATH");
+	char buf[8];
+	snprintf(buf, 8, "%d", sv[1]);
+	setenv("ARCAN_SOCKIN_FD", buf, 1);
+	snprintf(buf, 8, "%d", shmifsrv_client_memory_handle(runner->cl));
+	setenv("ARCAN_SOCKIN_SHMFD", buf, 1);
+
+	run_detached_thread(thread_appl_runner, NULL);
 	appl->server_tag = runner;
 	pthread_mutex_init(&runner->lock, NULL);
 	run_detached_thread(controller_runner, runner);
@@ -1157,8 +1203,8 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 	return true;
 }
 
-/* this expects the appl- lock to be in effect so we can't use INTTRACE */
-bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
+static bool send_join_pair(
+	struct dircl* C, struct appl_meta* appl, char* msg)
 {
 	struct runner_state* runner = appl->server_tag;
 	if (!runner){
@@ -1177,14 +1223,14 @@ bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 		return false;
 	}
 
+	struct arcan_event ev = {
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_BCHUNK_IN
+	};
+	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", msg);
+
 	pthread_mutex_lock(&runner->lock);
-	shmifsrv_enqueue_event(runner->cl,
-		&(struct arcan_event){
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
-			.tgt.message = ".worker"
-		}, sv[0]
-	);
+		shmifsrv_enqueue_event(runner->cl, &ev, sv[0]);
 	pthread_mutex_unlock(&runner->lock);
 
 	shmifsrv_enqueue_event(C->C,
@@ -1197,8 +1243,21 @@ bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 	a12int_trace(
 		A12_TRACE_DIRECTORY,
 		"kind=status:worker_join=%s", C->endpoint.ext.netstate.name);
+
 	close(sv[0]);
 	close(sv[1]);
+	return true;
+}
+
+bool anet_directory_lua_monitor(struct dircl* C, struct appl_meta* appl)
+{
+	return send_join_pair(C, appl, ".monitor");
+}
+
+/* this expects the appl- lock to be in effect so we can't use INTTRACE */
+bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
+{
+	return send_join_pair(C, appl, ".worker");
 
 	return true;
 }

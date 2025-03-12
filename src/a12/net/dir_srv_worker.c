@@ -246,11 +246,14 @@ static void on_a12srv_event(
  * if we have been delegated a message handler and the reserved a12: prefix */
 	else if (ev->ext.kind == EVENT_EXTERNAL_MESSAGE){
 		struct arcan_shmif_cont* dst = C;
+
 		if (ioloop_shared->shmif.addr)
 			dst = &ioloop_shared->shmif;
 
-/* this does not handle multipart, though there aren't any control messages
- * right now that would require it */
+/* This does not handle multipart, though there aren't any control messages
+ * right now that would require it. Debugging a controller is a bit special
+ * in that we have joined, but not triggered as a join, and interrupts are
+ * treated as a sideband as we don't have a signalling pathway. */
 		if (strncmp((char*)ev->ext.message.data, "a12:", 4) == 0){
 			dst = C;
 		}

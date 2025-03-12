@@ -313,7 +313,8 @@ enum {
 	IDTYPE_STATE = 1,
 	IDTYPE_DEBUG = 2,
 	IDTYPE_RAW   = 3,
-	IDTYPE_ACTRL = 4
+	IDTYPE_ACTRL = 4,
+	IDTYPE_MON   = 5
 };
 
 /*
@@ -345,6 +346,8 @@ int identifier_to_appl(char* sep)
 		res = IDTYPE_APPL;
 	else if (strcmp(sep, ".ctrl") == 0)
 		res = IDTYPE_ACTRL;
+	else if (strcmp(sep, ".monitor") == 0)
+		res = IDTYPE_MON;
 	else if (strlen(sep) > 0){
 		res = IDTYPE_RAW;
 	}
@@ -559,7 +562,7 @@ out:
 /*
  * not part of the default developer permissions yet
  */
-static volatile struct appl_meta* allocate_new_appl(char* ext, uint16_t* mid)
+static struct appl_meta* allocate_new_appl(char* ext, uint16_t* mid)
 {
 	return NULL;
 }
@@ -576,9 +579,37 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 	int resfd = -1;
 	size_t ressz = 0;
 
-/* shortpath private access as it doesn't require access to any appl meta */
+/* shortpath private access as it doesn't require access to any appl meta, the
+ * admin path is a special case that work more like debugging an appl in that
+ * MESSAGE becomes a control channel and the output back gets bound into
+ * scripting space. */
 	if (ns == 0){
-		resfd = access_private_store(C, ext, input);
+		if (strcmp(ext, ".admin") == 0){
+			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_admin)){
+
+/* repeated request for the same resource? terminate existing channel and set
+ * new, this is irreversible and the case for reverting on pipe-fail etc. isn't
+ * worth the complication. */
+				if (C->admin_fdout > 0){
+					close(C->admin_fdout);
+					C->admin_fdout = -1;
+				}
+
+	/* create a pipe, add the write-end to C and route any MESSAGE into the Lua VM
+	 * for the admin_command call into config.lua */
+				int pair[2] = {-1, -1};
+				if (-1 != pipe(pair)){
+					resfd = pair[0];
+					C->admin_fdout = pair[1];
+					C->in_admin = true;
+					fcntl(C->admin_fdout, F_SETFD, FD_CLOEXEC);
+				}
+			}
+		}
+		else {
+			resfd = access_private_store(C, ext, input);
+		}
+
 		if (-1 != resfd)
 			goto ok;
 		else
@@ -589,7 +620,7 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
  * might be appending to it, the contents itself won't change for any of
  * the fields we are intersted in */
 	dirsrv_global_lock(__FILE__, __LINE__);
-		volatile struct appl_meta* meta = locked_numid_appl(ns);
+		struct appl_meta* meta = locked_numid_appl(ns);
 	dirsrv_global_unlock(__FILE__, __LINE__);
 
 	int reserved = -1;
@@ -624,38 +655,55 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 				ressz = meta->buf_sz;
 			dirsrv_global_unlock(__FILE__, __LINE__);
 		break;
+
+/* State store retrieval is part of the regular key-local store and we just
+ * prefix with the resolved appl name (as the identifier could be reset between
+ * runs). */
 		case IDTYPE_STATE:
 			resfd = get_state_res(C, meta->appl.name, ".state", O_RDONLY);
 		break;
 
-/* For debugging an appl, we first check monitor permissions. Then create a
- * pipe pair, send the write-end to the appl-runner and the read-end to the
- * client-worker. The appl-runner will treat MESSAGE from the client-worker as
- * commands, and write results into the pipe.
- *
- * Complications are: allowing SIGUSR1 into the runner to interrupt the VM,
- *                    cleaning up if the client disconnected.
+/* DEBUG is more special since it's a report that can append from multiple
+ * sources. First when there is a scripting error on the appl side the .lua is
+ * generated and sent as a bstream with STATEDUMP type. This can then be
+ * triaged and routed around (see 'output' implementation further below) and
+ * the end result from all that is what we want to get back.
  */
 		case IDTYPE_DEBUG:
-			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_monitor)){
-				struct arcan_event ev =
-				{
-					.category = EVENT_TARGET,
-					.tgt.kind = TARGET_COMMAND_BCHUNK_OUT,
-				};
+			resfd = get_state_res(C, meta->appl.name, ".debug", O_RDONLY);
+		break;
 
-				snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%"PRIu16, mid);
-				shmifsrv_enqueue_event(C->C, &ev, resfd);
+/* Downloading the controller for a specific appl- slot is something that is
+ * needed for a linked directory but otherwise only permitted for
+ * administration or developer purposes. */
+		case IDTYPE_ACTRL:
+			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_admin))
+			{
+/* need a way to package this similar to how we'd do with an appl otherwise. */
 			}
-			else
-				goto fail;
+		break;
+
+/* For debugging a specific appl we'd treat it similar to a _join so the input
+ * channel just becomes the bstream and the worker process routes MESSAGES to
+ * it, and we accept a12: prefix as a way to send kill SIGUSR1 to the worker.
+ * */
+		case IDTYPE_MON:
+			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_appl))
+			{
+				if (!meta->server_tag)
+					anet_directory_lua_spawn_runner(meta, true);
+
+				anet_directory_lua_monitor(C, meta);
+			}
 		break;
 
 /* request raw access to a file in the server-side (shared) applstore- path,
  * this only comes through here if the source hasn't joined an appl controller,
  * and is intended for developer content persistence. Other paths should defer
  * permission check and end storage to the controller, which would ask us
- * through some other means. */
+ * through some other means. It probably makes sense to cut out all the 'if we
+ * don't have a controller' options and instead have a fallback that applies
+ * as general / template storage policy. */
 		case IDTYPE_RAW:
 			goto fail;
 		break;
@@ -754,8 +802,20 @@ fail:
 
 static void msgqueue_worker(struct dircl* C, arcan_event* ev)
 {
-	if (C->in_appl < 0)
+/* appl = 0 is the private namespace, no real use-case has motivated it,
+ *          but it would be possible to join and use that as a broadcast domain
+ *          between multiple logins with the same authentication key.
+ */
+ if (C->in_appl < 0 && !C->in_admin){
 		return;
+	}
+	else if (C->in_appl >= 0) {
+/* force- prefix identity: */
+		if (!C->message_ofs){
+			snprintf(C->message_multipart, 16, "from=%s:", C->identity);
+			C->message_ofs = strlen(C->message_multipart);
+		}
+	}
 
 	char* str = (char*) ev->ext.message.data;
 	size_t len = strlen(str);
@@ -789,27 +849,29 @@ static void msgqueue_worker(struct dircl* C, arcan_event* ev)
 	};
 
 /* broadcast as one large chain so we don't risk any interleaving, this only
- * happens if there is no appl-runner set to absorb or rebroadcast the
- * messages. */
+ * happens if there is no appl-runner paired into the worker (as it would
+ * route through there) to absorb or rebroadcast the messages. */
 	dirsrv_global_lock(__FILE__, __LINE__);
-	struct dircl* cur = active_clients.root.next;
-	while (cur){
-		if (cur->in_appl == C->in_appl && cur != C){
-			shmifsrv_enqueue_multipart_message(
-				cur->C, &outev, C->message_multipart, C->message_ofs);
+		if (C->in_admin){
+			anet_directory_lua_admin_command(C, C->message_multipart);
 		}
-		cur = cur->next;
-	}
+		else {
+			struct dircl* cur = active_clients.root.next;
+			while (cur){
+				if (cur->in_appl == C->in_appl && cur != C){
+					shmifsrv_enqueue_multipart_message(
+						cur->C, &outev, C->message_multipart, C->message_ofs);
+				}
+				cur = cur->next;
+			}
+		}
 	dirsrv_global_unlock(__FILE__, __LINE__);
-
-/* reset the queue buffer */
-	snprintf(C->message_multipart, 16, "from=%s:", C->identity);
-	C->message_ofs = strlen(C->message_multipart);
 }
 
 static void dircl_message(struct dircl* C, struct arcan_event ev)
 {
-/* reserved prefix? then treat as worker command */
+/* reserved prefix? then treat as worker command - otherwise merge and
+ * broadcast or forward into admin */
 	if (strncmp((char*)ev.ext.message.data, "a12:", 4) != 0){
 		msgqueue_worker(C, &ev);
 		return;

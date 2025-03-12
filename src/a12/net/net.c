@@ -982,6 +982,8 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"\t --stderr-log  \t Mirror script errors / crash log to stderr\n"
 	"\t --source-port \t When sourcing use this port for listening\n"
 	"\t --monitor-appl\t Don't download/run appl, print received messages to STDOUT\n"
+	"\t --debug-appl  \t Redirect STDIO to appl-controller debug interface\n"
+	"\t --admin-ctrl  \t Redirect STDIO to server admin interface\n"
 	"\t --block-state \t Don't attempt to synch state before/after running appl\n"
 	"\t File stores (ns = .priv OR applname), (name = [a-Z-0-9])\n"
 	"\t --get-file ns name file \t Retrieve [name] from namespace [ns] (.index = list)\n"
@@ -1415,7 +1417,13 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			global.dircl.reload = true;
 		}
 		else if (strcmp(argv[i], "--monitor-appl") == 0){
-			global.dircl.monitor_mode = true;
+			global.dircl.monitor_mode = MONITOR_SIMPLE;
+		}
+		else if (strcmp(argv[i], "--admin-ctrl") == 0){
+			global.dircl.monitor_mode = MONITOR_ADMIN;
+		}
+		else if (strcmp(argv[i], "--debug-appl") == 0){
+			global.dircl.monitor_mode = MONITOR_DEBUGGER;
 		}
 		else if (strcmp(argv[i], "--source-port") == 0){
 			i++;

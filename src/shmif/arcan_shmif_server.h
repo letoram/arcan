@@ -169,6 +169,12 @@ struct shmifsrv_client* shmifsrv_inherit_connection(int sockin, int* sc);
 int shmifsrv_client_handle(struct shmifsrv_client*, int* pid);
 
 /*
+ * Retrieve the handle used to build the shared memory page, this is
+ * needed for shmifsrv_inherit_connection setup into _acquire.
+ */
+int shmifsrv_client_memory_handle(struct shmifsrv_client*);
+
+/*
  * This should be invoked at a monotonic tickrate, the common default
  * used here is 25Hz (% 50, 75, 90 as nominal video framerates)
  *
