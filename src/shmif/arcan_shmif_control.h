@@ -45,6 +45,8 @@
  * https://github.com/letoram/arcan/wiki/Shmif
  */
 
+#include <stdalign.h>
+
 /*
  * This prefix is used over HOME only if no explicit path was provided
  * and there is no XDG_RUNTIME_DIR to use.
@@ -295,7 +297,7 @@ struct arcan_shmif_cont {
 /*
  * Leftovers from named semaphore use
  */
-	_Alignas(8) uintptr_t unused[3];
+	alignas(8) uintptr_t unused[3];
 
 /*
  * Should be used to index vidp, i.e. vidp[y * pitch + x] = RGBA(r, g, b, a)
