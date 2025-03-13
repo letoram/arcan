@@ -1516,7 +1516,8 @@ static void defhandler_kbd(
 		switch(inev[i].type){
 		case EV_KEY:
 		newev.io.input.translated.scancode = inev[i].code;
-		newev.io.input.translated.keysym = lookup_keycode(inev[i].code);
+		newev.io.input.translated.keysym =
+			lookup_keycode(inev[i].code, node->keyboard.state);
 		newev.io.input.translated.modifiers = node->keyboard.state;
 		update_state(inev[i].code, inev[i].value != 0, &node->keyboard.state);
 /* possible checkpoint for adding other keyboard layout support here */

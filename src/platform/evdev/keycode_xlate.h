@@ -68,6 +68,7 @@ enum {
 	K_KP_RIGHTBRACE = 93,
 	K_KP_ENTER = 271,
 	K_LCTRL = 306,
+	K_COLON = 58,
 	K_SEMICOLON = 59,
 	K_APOSTROPHE = 48,
 	K_GRAVE = 49,
@@ -553,10 +554,17 @@ static uint16_t lookup_character(uint16_t code, uint16_t modifiers, bool hard)
 /*
  * from linux keycode to SDLs keycode
  */
-static uint16_t lookup_keycode(uint16_t code)
+static uint16_t lookup_keycode(uint16_t code, uint16_t modifiers)
 {
 	if (code > sizeof(klut) / sizeof(klut[0]))
 		return 0;
+
+/*
+ * fixup from linux not having KEY_COLON
+ */
+	if (code == KEY_SEMICOLON &&
+			(modifiers & (ARKMOD_LSHIFT | ARKMOD_RSHIFT)))
+		return 58;
 
 	return klut[code];
 }
