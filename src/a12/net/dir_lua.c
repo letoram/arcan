@@ -52,6 +52,10 @@ static bool INITIALIZED;
 	dirsrv_global_unlock(__FILE__, __LINE__);\
 	} while (0);
 
+#define STRINGIFY(X) #X
+#define STRINGIFY_WRAP(X) STRINGIFY(X)
+#define LINE_AS_STRING __func__, STRINGIFY_WRAP(__LINE__)
+
 struct runner_state {
 	pthread_mutex_t lock;
 	struct shmifsrv_client* cl;
@@ -62,6 +66,11 @@ struct runner_state {
 struct strrep_meta {
 	struct arcan_strarr res;
 	int dst;
+};
+
+struct client_userdata {
+	struct dircl* C;
+	intptr_t client_ref;
 };
 
 static void fdifd_event(struct shmifsrv_client* C,
@@ -462,11 +471,10 @@ static bool lookup_entrypoint(lua_State* L, const char* ep, size_t len)
 
 static void push_dircl(lua_State* L, struct dircl* C)
 {
-/* should probably bind C to userdata, retain the tag in dircl and
- * use that to recall the same reference until it's gone */
-	lua_newtable(L);
-	luaL_getmetatable(L, "dircl");
-	lua_setmetatable(L, -2);
+	struct client_userdata* ud = C->userdata;
+	lua_rawgeti(L, LUA_REGISTRYINDEX, ud->client_ref);
+	if (lua_type(L, -1) != LUA_TUSERDATA)
+		luaL_error(L, "invalid reference in client\n");
 }
 
 extern int a12_trace_targets;
@@ -880,6 +888,53 @@ static int dir_newindex(lua_State* L)
 	return 0;
 }
 
+/*
+ * since this is only intended for admin channel
+ * there is little need for pulling in the full alt_nbio here
+ */
+static int dir_write(lua_State* L)
+{
+	struct client_userdata* ud = luaL_checkudata(L, 1, "dircl");
+	if (!ud->C)
+		luaL_error(L, ":write(ud) not bound to a client");
+
+	const char* msg = luaL_checkstring(L, 2);
+	if (ud->C->admin_fdout <= 0)
+		luaL_error(L, ":write(ud) client does not have a write channel");
+
+/* this is blocking, since it's an admin that is allowed */
+	size_t ntw = strlen(msg) + 1;
+	while (ntw){
+		ssize_t nw = write(ud->C->admin_fdout, msg, ntw);
+		if (-1 == nw){
+			if (errno != EINTR && errno != EAGAIN)
+				break;
+			continue;
+		}
+		msg += nw;
+		ntw -= nw;
+	}
+
+	lua_pushboolean(L, ntw == 0);
+	return 1;
+}
+
+/*
+ * NBIO handlers, don't need them currently as the admin interface only uses
+ * it for :writes and we clock differently
+ */
+static bool add_source(int fd, mode_t mode, intptr_t otag)
+{
+	return true;
+}
+static bool del_source(int fd, mode_t mode, intptr_t* out)
+{
+	return true;
+}
+static void error_nbio(lua_State* L, int fd, intptr_t tag, const char* src)
+{
+}
+
 bool anet_directory_lua_init(struct global_cfg* cfg)
 {
 	L = luaL_newstate();
@@ -893,23 +948,16 @@ bool anet_directory_lua_init(struct global_cfg* cfg)
 
 	luaL_openlibs(L);
 
-/* to add support for nbio we need:
- *    alt_nbio_register(L, addfn, remfn, errfn)
- *    expose alt_nbio_open as open_nonblock
- *
- *    the add/remove/error set handlers are also different in the sense that
- *    we don't really need responsible I/O multiplexing outside normal
- *    timeout.
- *
- * since we don't really want / need arbitrary open here, the
- * important part is actually alt_nbio_import(L, fd, mode, *out, unlink_fn)
- */
+/* when a client is registered it automatically gets an nbio as well */
+	alt_nbio_register(L, add_source, del_source, error_nbio);
 
 	luaL_newmetatable(L, "dircl");
-	lua_pushcfunction(L, dir_index);
+	lua_pushvalue(L, -1);
 	lua_setfield(L, -2, "__index");
-	lua_pushcfunction(L, dir_newindex);
+	lua_pushvalue(L, -1);
 	lua_setfield(L, -2, "__newindex");
+	lua_pushcfunction(L, dir_write);
+	lua_setfield(L, -2, "write");
 	lua_pop(L, 1);
 
 	luaL_newmetatable(L, "cfgtbl");
@@ -1027,15 +1075,17 @@ int anet_directory_lua_filter_source(struct dircl* C, arcan_event* ev)
 		return 0;
 	}
 
-/* call event + type into it */
-	push_dircl(L, C);
-	lua_pushstring(L, ev->ext.netstate.name); /* caller guarantees termination */
-	if (ev->ext.netstate.type == ROLE_DIR)
-		lua_pushstring(L, "directory");
-	else if (ev->ext.netstate.type == ROLE_SOURCE)
-		lua_pushstring(L, "source");
-	else if (ev->ext.netstate.type == ROLE_SINK)
-		lua_pushstring(L, "sink");
+	push_dircl(L, C); /* +1 */
+	lua_pushstring(L, ev->ext.netstate.name); /* +2 : caller guarantees termination */
+
+	switch(ev->ext.netstate.type){ /* +3 */
+	case ROLE_DIR: lua_pushstring(L, "directory"); break;
+	case ROLE_SOURCE:	lua_pushstring(L, "source"); break;
+	case ROLE_SINK: lua_pushstring(L, "sink"); break;
+	default:
+		lua_pushstring(L, "unknown_role");
+	break;
+	}
 
 /* script errors should perhaps be treated more leniently in the config,
  * copy patterns from arcan_lua.c if so, but for the time being be strict */
@@ -1053,8 +1103,8 @@ struct pk_response
 		return base;
 	}
 
-	push_dircl(L, C);
-	lua_call(L, 1, 1);
+	push_dircl(L, C);  /* +1 */
+	lua_call(L, 1, 1); /* accept or reject? */
 	if (lua_type(L, -1) == LUA_TBOOLEAN){
 		base.authentic = lua_toboolean(L, -1);
 	}
@@ -1262,6 +1312,35 @@ bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 	return true;
 }
 
+void anet_directory_lua_unregister(struct dircl* C)
+{
+/* protect against misuse */
+	if (!C->userdata)
+		return;
+
+/* is a callback is even desired */
+	lua_getglobal(L, "unregister");
+	if (!lua_isfunction(L, -1)){
+		lua_pop(L, 1);
+		return;
+	}
+
+	push_dircl(L, C); /* +1 */
+	lua_call(L, 1, 0);
+
+/* disassociate and unreference */
+	struct client_userdata* ud = C->userdata;
+	ud->C = NULL;
+	C->userdata = NULL;
+
+/* also shouldn't happen */
+	if (ud->client_ref == LUA_NOREF)
+		return;
+
+	luaL_unref(L, LUA_REGISTRYINDEX, ud->client_ref);
+	ud->client_ref = LUA_NOREF;
+}
+
 void anet_directory_lua_register(struct dircl* C)
 {
 	lua_getglobal(L, "register");
@@ -1270,7 +1349,19 @@ void anet_directory_lua_register(struct dircl* C)
 		return;
 	}
 
-	push_dircl(L, C);
+/* track a reference in the client structure, used for metatable functions */
+	struct client_userdata* ud = lua_newuserdata(L, sizeof(struct client_userdata));
+	ud->C = C;
+	C->userdata = ud;
+
+	lua_pushvalue(L, -1);
+	ud->client_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+/* and assign the table of client actions */
+	luaL_getmetatable(L, "dircl");
+	lua_setmetatable(L, -2);
+
+/* now it's safe to re-retrieve and call */
 	lua_call(L, 1, 0);
 	return;
 }

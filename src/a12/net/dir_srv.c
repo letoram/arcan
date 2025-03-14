@@ -1219,7 +1219,7 @@ static void* dircl_process(void* P)
 		if (C->next)
 			C->next->prev = C->prev;
 
-	/* broadcast the loss */
+/* broadcast the loss */
 		struct arcan_event ev = C->petname;
 		ev.ext.netstate.state = 0;
 
@@ -1233,6 +1233,10 @@ static void* dircl_process(void* P)
 				cur = cur->next;
 			}
 		}
+
+/* notify the outer VM so any logging / monitoring / admin channels are
+ * getting unreferenced and released */
+	anet_directory_lua_unregister(C);
 	dirsrv_global_unlock(__FILE__, __LINE__);
 
 	shmifsrv_free(C->C, true);

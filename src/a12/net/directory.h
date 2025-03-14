@@ -170,6 +170,7 @@ struct dircl {
  * MESSAGE chains to appl-controller */
 	char message_multipart[1024];
 	size_t message_ofs;
+	void* userdata;
 
 /* the parent end handle to the worker */
 	struct shmifsrv_client* C;
@@ -282,6 +283,8 @@ bool anet_directory_lua_admin_command(struct dircl* C, const char* msg);
 
 /* privsep process running server-side scripts for an appl */
 void anet_directory_appl_runner();
+
+void anet_directory_lua_unregister(struct dircl* C);
 
 struct pk_response
 	anet_directory_lua_register_unknown(struct dircl* C, struct pk_response base);
