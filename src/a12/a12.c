@@ -842,7 +842,7 @@ static void process_nopacket(struct a12_state* S)
 	int state_id = S->decode[MAC_BLOCK_SZ + 8];
 
 	if (state_id >= STATE_BROKEN){
-		a12int_trace(A12_TRACE_SYSTEM, "state=broken:unknown_command=%"PRIu8, S->state);
+		a12int_trace(A12_TRACE_SYSTEM, "state=broken:unknown_command=%"PRIu8, state_id);
 		fail_state(S);
 		return;
 	}
