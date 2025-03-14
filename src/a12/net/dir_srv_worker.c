@@ -175,6 +175,7 @@ static void on_a12srv_event(
 			a12_enqueue_bstream(cbt->S,
 				fd, A12_BTYPE_BLOB, ev->ext.bchunk.identifier, false, 0, empty_ext);
 			close(fd);
+			I->userfd2 = a12_btransfer_outfd(I->S);
 		}
 		else if (fd != -1 && ev->ext.bchunk.ns){
 			int state_fd = request_parent_resource(
@@ -184,10 +185,12 @@ static void on_a12srv_event(
 				a12_enqueue_bstream(cbt->S,
 					state_fd, A12_BTYPE_STATE, ev->ext.bchunk.ns, false, 0, empty_ext);
 				close(state_fd);
+				I->userfd2 = a12_btransfer_outfd(I->S);
 			}
 
 			a12_enqueue_bstream(cbt->S,
 				fd, A12_BTYPE_BLOB, ev->ext.bchunk.ns, false, 0, empty_ext);
+			I->userfd2 = a12_btransfer_outfd(I->S);
 			close(fd);
 		}
 		else
@@ -555,6 +558,13 @@ static void on_appl_shmif(struct ioloop_shared* S, bool ok)
 	}
 }
 
+static void on_bstream_out(struct ioloop_shared* S, bool ok)
+{
+/* just make sure we are synched to the latest queued one, ioloop will
+ * try and flush if there is anything */
+	S->userfd2 = a12_btransfer_outfd(S->S);
+}
+
 /* split out into a parent_worker_event due to sharing processing with the
  * aftermath of calling shmif_block_synch_request */
 static void on_shmif(struct ioloop_shared* S, bool ok)
@@ -830,6 +840,7 @@ void anet_directory_srv(
 		.userfd2 = -1,
 		.on_event = on_a12srv_event,
 		.on_userfd = on_shmif,
+		.on_userfd2 = on_bstream_out,
 		.on_shmif = on_appl_shmif,
 		.lock = PTHREAD_MUTEX_INITIALIZER,
 		.cbt = &cbt,

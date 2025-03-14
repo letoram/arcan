@@ -3479,6 +3479,15 @@ a12_flush(struct a12_state* S, uint8_t** buf, int allow_blob)
 }
 
 int
+a12_btransfer_outfd(struct a12_state* S)
+{
+	if (!S || S->state == STATE_BROKEN || S->cookie != 0xfeedface)
+		return -1;
+
+	return S->pending_out ? S->pending_out->fd : -1;
+}
+
+int
 a12_poll(struct a12_state* S)
 {
 	if (!S || S->state == STATE_BROKEN || S->cookie != 0xfeedface)

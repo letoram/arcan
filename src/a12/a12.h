@@ -651,6 +651,12 @@ enum stream_cancel {
 void a12_vstream_cancel(struct a12_state* S, uint8_t chid, int reason);
 
 /*
+ * return the descriptor of the currently queued output or
+ * -1 if nothing is queued
+ */
+int a12_btransfer_outfd(struct a12_state* S);
+
+/*
  * Mark the state as completed / shutdown after any PING with [id] has been
  * received. This is used to queue up a state or other binary transfer and
  * shutdown when that has been completed or cancelled.
