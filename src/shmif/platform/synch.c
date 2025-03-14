@@ -29,7 +29,7 @@ int shmif_platform_sync_wait(struct arcan_shmif_page* P, int slot)
 	}
 
 	if ((slot & SYNC_AUDIO) && P->async){
-		syscall(SYS_futex, &P->vsync, FUTEX_WAIT, 0xffffffff);
+		syscall(SYS_futex, &P->async, FUTEX_WAIT, 0xffffffff);
 	}
 
 	return 1;

@@ -248,14 +248,14 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* C, int mask)
  * check before running the step_v */
 	if (mask & SHMIF_SIGVID){
 		while ((C->hints & SHMIF_RHINT_SUBREGION)
-			&& C->addr->vready && shmif_platform_check_alive(C))
+			&& atomic_load(&C->addr->vready) && shmif_platform_check_alive(C))
 			shmif_platform_sync_wait(C->addr, SYNC_VIDEO);
 
 		bool lock = step_v(C, mask);
 
 		if (lock && !(mask & SHMIF_SIGBLK_NONE)){
-			while (C->addr->vready && shmif_platform_check_alive(C))
-				shmif_platform_sync_wait(C->addr, SYNC_AUDIO);
+			while (atomic_load(&C->addr->vready) && shmif_platform_check_alive(C))
+				shmif_platform_sync_wait(C->addr, SYNC_VIDEO);
 		}
 	}
 
