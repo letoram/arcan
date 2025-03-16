@@ -1269,6 +1269,12 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 			return false;
 		}
 
+		int pid;
+		(void) shmifsrv_client_handle(runner->cl, &pid);
+
+		A12INT_DIRTRACE(
+			"kind=status:appl_runner=%s:pid=%d", appl->appl.name, pid);
+
 		appl->server_tag = runner;
 		pthread_mutex_init(&runner->lock, NULL);
 		run_detached_thread(controller_runner, runner);

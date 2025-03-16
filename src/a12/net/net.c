@@ -967,32 +967,29 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"\t-t             \t Single- client (no fork/mt - easier troubleshooting)\n"
 	"\t --probe-only  \t (outbound) Authenticate and print server primary state\n"
 	"\t-d bitmap      \t Set trace bitmap (bitmask or key1,key2,...)\n"
-	"\t-c, --config fn\t Apply/override command-line toggles with config from script [fn]\n"
 	"\t--keystore fd  \t Use inherited [fd] for keystore root store\n"
 	"\t-v, --version  \t Print build/version information to stdout\n\n"
 	"Directory client options: \n"
 	"\t --keep-appl   \t Don't wipe appl after execution\n"
+	"\t --block-state \t Don't attempt to synch state before/after running appl\n"
 	"\t --reload      \t Re-request the same appl after completion\n"
 	"\t --ident name  \t When attaching as a source or directory, identify as [name]\n"
 	"\t --keep-alive  \t Keep connection alive and print changes to the directory\n"
-	"\t --push-appl s \t Push [s] from APPLBASE to the server\n"
-	"\t --push-ctrl s \t Push [s] as server-side controller to appl\n"
 	"\t --tunnel      \t Default request tunnelling as source/sink connection\n"
 	"\t --block-log   \t Don't attempt to forward script errors or crash logs\n"
 	"\t --stderr-log  \t Mirror script errors / crash log to stderr\n"
-	"\t --source-port \t When sourcing use this port for listening\n"
-	"\t --monitor-appl\t Don't download/run appl, print received messages to STDOUT\n"
-	"\t --debug-appl  \t Redirect STDIO to appl-controller debug interface\n"
-	"\t --admin-ctrl  \t Redirect STDIO to server admin interface\n"
-	"\t --block-state \t Don't attempt to synch state before/after running appl\n"
+	"\t --source-port \t When sourcing use this port for listening\n\n"
 	"\t File stores (ns = .priv OR applname), (name = [a-Z-0-9])\n"
 	"\t --get-file ns name file \t Retrieve [name] from namespace [ns] (.index = list)\n"
 	"\t --put-file ns name file \t Store [file] as [name] in namespace [ns]\n\n"
+	"Directory developer options: \n"
+	"\t --monitor-appl\t Don't download/run appl, print received messages to STDOUT\n"
+	"\t --debug-appl  \t Redirect STDIO to appl-controller debug interface\n"
+	"\t --admin-ctrl  \t Redirect STDIO to server admin interface\n"
+	"\t --push-appl s \t Push [s] from APPLBASE to the server\n"
+	"\t --push-ctrl s \t Push [s] as server-side controller to appl\n\n"
 	"Directory server options: \n"
-	"\t --allow-src  s \t Let clients in trust group [s, all=*] register as sources\n"
-	"\t --allow-appl s \t Let clients in trust group [s, all=*] update appls and resources\n"
-	"\t --allow-dir  s \t Let clients in trust group [s, all=*] register as directories\n\n"
-	"\t --block-tunnel \t Disallow tunneling traffic between isolated sources/sinks\n\n"
+	"\t-c, --config fn \t Specify server configuration script\n\n"
 	"Environment variables:\n"
 	"\tANET_RUNNER    \t Used to override the default arcan binary for running dirhosted appls\n"
 	"\tARCAN_STATEPATH\t Used for keystore and state blobs (sensitive)\n"
@@ -1158,23 +1155,8 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			if (i < argc)
 				return show_usage("Trailing arguments to -S fd_in host port", argv, i);
 		}
-		else if (strcmp(argv[i], "--allow-src") == 0){
-			i++;
-			if (i >= argc)
-				return show_usage("Missing group tag name", argv, i - 1);
-			global.dirsrv.allow_src = strdup(argv[i]);
-		}
-		else if (strcmp(argv[i], "--allow-dir") == 0){
-			i++;
-			if (i >= argc)
-				return show_usage("Missing group tag name", argv, i - 1);
-			global.dirsrv.allow_dir = strdup(argv[i]);
-		}
 		else if (strcmp(argv[i], "--tunnel") == 0){
 			global.dircl.request_tunnel = true;
-		}
-		else if (strcmp(argv[i], "--block-tunnel") == 0){
-			global.dirsrv.allow_tunnel = false;
 		}
 		else if (strcmp(argv[i], "--keep-alive") == 0){
 			global.keep_alive = true;
@@ -1195,12 +1177,6 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			if (!a12helper_fromb64((unsigned char*)getenv("A12_USEPRIV"), 32, my_private_key)){
 				return show_usage("--forced-kpub A12_USEPRIV env invalid b64(key)", argv, i);
 			}
-		}
-		else if (strcmp(argv[i], "--allow-appl") == 0){
-			i++;
-			if (i >= argc)
-				return show_usage("Missing group tag name", argv, i - 1);
-			global.dirsrv.allow_appl = strdup(argv[i]);
 		}
 		else if (strcmp(argv[i], "--push-ctrl") == 0){
 			i++;
