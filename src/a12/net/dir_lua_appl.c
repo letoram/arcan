@@ -37,9 +37,10 @@ static bool SHUTDOWN;
 
 static int shmifopen_flags =
 			SHMIF_ACQUIRE_FATALFAIL |
-			SHMIF_NOACTIVATE |
-			SHMIF_NOAUTO_RECONNECT |
-			SHMIF_NOREGISTER;
+			SHMIF_NOACTIVATE        |
+			SHMIF_NOAUTO_RECONNECT  |
+			SHMIF_NOREGISTER        |
+			SHMIF_SOCKET_PINGEVENT;
 
 struct client {
 	uint8_t name[64];
@@ -855,7 +856,10 @@ static void parent_control_event(struct arcan_event* ev)
 static void worker_instance_event(struct client* cl, int fd, int revents)
 {
 	struct arcan_event ev;
+	bool flush = false;
+
 	while (1 == shmifsrv_dequeue_events(cl->shmif, &ev, 1)){
+		flush = true;
 #ifdef DEBUG
 		log_print("kind=shmif:source=%zu:data=%s", cl->clid, arcan_shmif_eventstr(&ev, NULL, 0));
 #endif
@@ -922,6 +926,14 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 	 }
 	if (shmifsrv_poll(cl->shmif) == CLIENT_DEAD){
 		release_worker(cl->clid);
+	}
+
+/*
+ * only for waking poll, don't care about the data in this direction
+ */
+	if (flush){
+		char buf[256];
+		read(fd, buf, 256);
 	}
 }
 

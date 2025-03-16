@@ -399,7 +399,7 @@ static void* controller_runner(void* inarg)
 	while((sv = shmifsrv_poll(runner->cl)) != CLIENT_DEAD){
 		struct pollfd pfd = {
 			.fd = shmifsrv_client_handle(runner->cl, NULL),
-			.events = POLLIN | POLLERR | POLLHUP
+			.events = POLLERR | POLLHUP
 		};
 
 		struct arcan_event ev;
@@ -419,11 +419,18 @@ static void* controller_runner(void* inarg)
 			}
 		}
 
-		poll(&pfd, 1, 25);
+		int rv = poll(&pfd, 1, 25);
+		if (rv > 0){
+			A12INT_DIRTRACE("appl_worker=%s:status=dead", runner->appl->appl.name);
+			break;
+		}
 	}
 
 	runner->alive = false;
-	runner->appl->server_tag = NULL;
+	pthread_mutex_lock(&runner->lock);
+		runner->appl->server_tag = NULL;
+	pthread_mutex_unlock(&runner->lock);
+
 	arcan_db_close(&tl_db);
 	anet_directory_merge_multipart(NULL, NULL, NULL);
 	free(runner);

@@ -1154,7 +1154,10 @@ static void* dircl_process(void* P)
 		}
 
 		struct arcan_event ev;
+		bool flush = false;
+
 		while (1 == shmifsrv_dequeue_events(C->C, &ev, 1)){
+			flush = true;
 /* petName for a source/dir or for joining an appl */
 			if (ev.ext.kind == EVENT_EXTERNAL_IDENT){
 				A12INT_DIRTRACE("dirsv:kind=worker:cl_join=%s", (char*)ev.ext.message.data);
@@ -1193,6 +1196,12 @@ static void* dircl_process(void* P)
 			else if (ev.ext.kind == EVENT_EXTERNAL_MESSAGE){
 				dircl_message(C, ev);
 			}
+		}
+
+/* don't care about the data, only for multiplex wakeup */
+		if (flush){
+			char buf[256];
+			read(pfd.fd, buf, 256);
 		}
 
 		int ticks = shmifsrv_monotonic_tick(NULL);

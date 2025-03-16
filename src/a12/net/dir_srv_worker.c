@@ -34,7 +34,8 @@ static int shmifopen_flags =
 			SHMIF_ACQUIRE_FATALFAIL |
 			SHMIF_NOACTIVATE |
 			SHMIF_NOAUTO_RECONNECT |
-			SHMIF_NOREGISTER;
+			SHMIF_NOREGISTER |
+			SHMIF_SOCKET_PINGEVENT;
 
 static struct arcan_shmif_cont shmif_parent_process;
 static struct a12_state* active_client_state;
@@ -250,8 +251,9 @@ static void on_a12srv_event(
 	else if (ev->ext.kind == EVENT_EXTERNAL_MESSAGE){
 		struct arcan_shmif_cont* dst = C;
 
-		if (ioloop_shared->shmif.addr)
+		if (ioloop_shared->shmif.addr){
 			dst = &ioloop_shared->shmif;
+		}
 
 /* This does not handle multipart, though there aren't any control messages
  * right now that would require it. Debugging a controller is a bit special
