@@ -450,7 +450,13 @@ enum ARCAN_FLAGS {
 	SHMIF_NOACTIVATE = 512,
 
 /* Setting this flag will avoid sending the register event on acquire */
-	SHMIF_NOREGISTER = 1024
+	SHMIF_NOREGISTER = 1024,
+
+/* This flag is only useful for custom shmifsrv+shmif setups where the server
+ * end also needs to wake on eventqueue. Display server use would have a
+ * natural renderloop where this isn't needed. The server end should remember
+ * to flush out the ping packets in that case. */
+	SHMIF_SOCKET_PINGEVENT = 2048
 };
 
 /*

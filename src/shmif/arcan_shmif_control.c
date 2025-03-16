@@ -302,6 +302,11 @@ static int enqueue_internal(
 	FORCE_SYNCH();
 	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
 
+	if (P->flags & SHMIF_SOCKET_PINGEVENT){
+		char pb = '1';
+		write(c->epipe, &pb, 1);
+	}
+
 	return 1;
 }
 
