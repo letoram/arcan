@@ -890,7 +890,7 @@ static bool process_auth_request(struct dircl* C, struct arg_arr* entry)
 
 /* notify or let .lua config have a say */
 		if (!rep.authentic){
-			rep = anet_directory_lua_register_unknown(C, rep);
+			rep = anet_directory_lua_register_unknown(C, rep, pubk);
 			if (rep.authentic){
 /* we get here if the keystore doesn't know the key, soft auth or trust-n-unknown
  * isn't set yet the config script still permits the key through. In that case we

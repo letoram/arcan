@@ -919,6 +919,26 @@ static int dir_write(lua_State* L)
 	return 1;
 }
 
+static int dir_identity(lua_State* L)
+{
+	struct client_userdata* ud = luaL_checkudata(L, 1, "dircl");
+	if (!ud->C)
+		luaL_error(L, ":write(ud) not bound to a client");
+
+	lua_pushstring(L, ud->C->identity);
+	return 1;
+}
+
+static int dir_endpoint(lua_State* L)
+{
+	struct client_userdata* ud = luaL_checkudata(L, 1, "dircl");
+	if (!ud->C)
+		luaL_error(L, ":write(ud) not bound to a client");
+
+	lua_pushstring(L, ud->C->endpoint.ext.netstate.name);
+	return 1;
+}
+
 /*
  * NBIO handlers, don't need them currently as the admin interface only uses
  * it for :writes and we clock differently
@@ -958,6 +978,8 @@ bool anet_directory_lua_init(struct global_cfg* cfg)
 	lua_setfield(L, -2, "__newindex");
 	lua_pushcfunction(L, dir_write);
 	lua_setfield(L, -2, "write");
+	lua_pushcfunction(L, dir_endpoint);
+	lua_setfield(L, -2, "endpoint");
 	lua_pop(L, 1);
 
 	luaL_newmetatable(L, "cfgtbl");
@@ -1058,10 +1080,54 @@ bool anet_directory_lua_admin_command(struct dircl* C, const char* msg)
 		return false;
 	}
 
+	struct arg_arr* arg = arg_unpack(msg);
+
+/* we are already locked here so no race-risk on trace and shouldn't use the
+ * guard macro as that would deadlock */
+	if (!arg){
+		a12int_trace(
+			A12_TRACE_SYSTEM, "kind=error:malformed_admin_command=%s", msg);
+		lua_pop(L, 1);
+		return false;
+	}
+
 /* it would be better to actually force this to use shmifpack format
  * and add the generic arg_arr to lua table here instead */
 	push_dircl(L, C);
-	lua_pushstring(L, msg);
+
+/* convert to table of tables (ignore collision handling and treat value
+ * as a table in its own so the scripting side is consistent) */
+	size_t pos = 0;
+	lua_newtable(L);
+
+	while (arg[pos].key != NULL){
+		lua_getfield(L, -1, arg[pos].key);
+
+/* no matching table for the key, create one and leave a ref on the stack */
+		if (lua_type(L, -1) != LUA_TTABLE){
+			lua_pop(L, 1);                     /* TABLE NIL */
+			lua_pushstring(L, arg[pos].key);   /* TABLE STRING(key) */
+			lua_newtable(L);                   /* TABLE STRING(key) TABLE */
+			lua_rawset(L, -3);                 /* TABLE */
+			lua_getfield(L, -1, arg[pos].key); /* TABLE TABLE */
+		}
+
+		int len = lua_rawlen(L, -1); /* get max index */
+		lua_pushnumber(L, len + 1); /* TABLE TABLE INT(n) */
+
+		if (arg[pos].value && arg[pos].value[0])
+			lua_pushstring(L, arg[pos].value);
+		else
+			lua_pushboolean(L, true);
+
+		/* TABLE TABLE INT(n) VAL */
+		lua_rawset(L, -3); /* TABLE */
+		lua_pop(L, 1);
+
+		pos++;
+	}
+
+	arg_cleanup(arg);
 	lua_call(L, 2, 0);
 	return true;
 }
@@ -1095,7 +1161,8 @@ int anet_directory_lua_filter_source(struct dircl* C, arcan_event* ev)
 }
 
 struct pk_response
-	anet_directory_lua_register_unknown(struct dircl* C, struct pk_response base)
+	anet_directory_lua_register_unknown(
+	struct dircl* C, struct pk_response base, const char* pubk)
 {
 	lua_getglobal(L, "register_unknown");
 	if (!lua_isfunction(L, -1)){

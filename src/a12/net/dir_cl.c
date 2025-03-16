@@ -540,8 +540,12 @@ static void process_stdin(struct ioloop_shared* I, bool ok)
 	size_t ntc = strlen(buf);
 	size_t ofs = 0;
 
-	if (!ntc)
+/* strip \n */
+	if (ntc <= 1)
 		return;
+
+	ntc--;
+	buf[ntc] = '\0';
 
 	size_t msg_sz = sizeof(out.ext.message.data);
 

@@ -135,13 +135,13 @@ struct directory_meta {
 	struct arcan_shmif_cont* C;
 };
 
-struct dircl;
 
 /*
  * This is used to track each discrete client >both< in main and worker. They
  * don't need to be synched between the two, each side tracks the information
  * they need.
  */
+struct dircl;
 struct dircl {
 	int in_appl; /* have they joined an appl- controller? */
 
@@ -287,7 +287,9 @@ void anet_directory_appl_runner();
 void anet_directory_lua_unregister(struct dircl* C);
 
 struct pk_response
-	anet_directory_lua_register_unknown(struct dircl* C, struct pk_response base);
+	anet_directory_lua_register_unknown(
+		struct dircl* C, struct pk_response base, const char* pubk);
+
 void anet_directory_lua_register(struct dircl* C);
 
 /*
