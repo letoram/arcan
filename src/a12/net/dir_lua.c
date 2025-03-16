@@ -331,12 +331,6 @@ static void* controller_runner(void* inarg)
 	struct arcan_dbh* tl_db =
 		arcan_db_open(CFG->db_file, runner->appl->appl.name);
 
-	int pid;
-	shmifsrv_client_handle(runner->cl, &pid);
-	a12int_trace(
-		A12_TRACE_DIRECTORY,
-		"kind=status:arcan-ent:dirappl=%s:pid=%d", runner->appl->appl.name, pid);
-
 /* wait for the shmif setup to be completed in the client end, this is
  * potentially a priority inversion / unnecessary blocking */
 	int pv;
@@ -1269,12 +1263,6 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 			return false;
 		}
 
-		int pid;
-		(void) shmifsrv_client_handle(runner->cl, &pid);
-
-		A12INT_DIRTRACE(
-			"kind=status:appl_runner=%s:pid=%d", appl->appl.name, pid);
-
 		appl->server_tag = runner;
 		pthread_mutex_init(&runner->lock, NULL);
 		run_detached_thread(controller_runner, runner);
@@ -1336,9 +1324,12 @@ static bool send_join_pair(
 		return false;
 	}
 
-/* send the server-end to the appl-runner which will shmifsrv_inherit, when
- * that happens the other end of the socket will send the shmif primitives to
- * the worker. */
+/* Note:
+ *
+ * There is a quirk here in that the BCHUNK_IN isn't actually a new segment but
+ * behaves like a named connection where the memory page needs to be read from
+ * the socket.
+ */
 	int sv[2];
 	if (-1 == socketpair(AF_UNIX, SOCK_STREAM, 0, sv)){
 		a12int_trace(
@@ -1359,7 +1350,8 @@ static bool send_join_pair(
 	shmifsrv_enqueue_event(C->C,
 		&(struct arcan_event){
 			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_NEWSEGMENT,
+			.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
+			.tgt.message = ".appl"
 		}, sv[1]
 	);
 

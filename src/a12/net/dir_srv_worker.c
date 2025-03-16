@@ -365,6 +365,39 @@ static void bchunk_event(struct a12_state *S,
 		a12_set_tunnel_sink(S, 1, arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true));
 		pending_tunnel = true;
 	}
+/* Joining an appl-group through a controller process is different from
+ * NEWSEGMENT as the mempage is acquired over the segment - fake a named
+ * connection with the descriptor from newsegment by having SOCKIN_FD without
+ * ARCAN_SOCKIN_MEMFD */
+	else if (strcmp(ev->tgt.message, ".appl") == 0){
+		if (ioloop_shared->shmif.addr)
+			arcan_shmif_drop(&ioloop_shared->shmif);
+
+		int fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true);
+		char sockval[16];
+		snprintf(sockval, 16, "%d", fd);
+
+		setenv("ARCAN_SOCKIN_FD", sockval, true);
+		ioloop_shared->shmif =
+			arcan_shmif_open(SEGID_NETWORK_CLIENT, shmifopen_flags, NULL);
+
+		if (!ioloop_shared->shmif.addr){
+			a12int_trace(A12_TRACE_DIRECTORY, "kind=error:appl_runner_channel");
+			return;
+		}
+
+/* Placeholder name, this should be H(Kpub | Applname) */
+		arcan_shmif_enqueue(&ioloop_shared->shmif,
+			&(struct arcan_event){
+				.category = EVENT_EXTERNAL,
+				.ext.kind = EVENT_EXTERNAL_NETSTATE,
+				.ext.netstate = {
+					.name = {1, 2, 3, 4, 5, 6, 7, 8}
+				}
+			});
+
+		a12int_trace(A12_TRACE_DIRECTORY, "kind=status:appl_runner:join");
+	}
 }
 
 static bool wait_for_activation(
@@ -479,31 +512,6 @@ static void parent_worker_event(
 
 	if (ev->tgt.kind == TARGET_COMMAND_BCHUNK_IN){
 		bchunk_event(S, cbt, C, ev);
-	}
-	else if (ev->tgt.kind == TARGET_COMMAND_NEWSEGMENT){
-		if (ioloop_shared->shmif.addr)
-			arcan_shmif_drop(&ioloop_shared->shmif);
-
-		ioloop_shared->shmif =
-			arcan_shmif_acquire(
-				&shmif_parent_process, NULL, SEGID_NETWORK_CLIENT, shmifopen_flags);
-		if (!ioloop_shared->shmif.addr){
-			a12int_trace(A12_TRACE_DIRECTORY, "kind=error:appl_runner_channel");
-			return;
-		}
-
-/* Placeholder name, this should be H(Kpub | Applname) */
-		arcan_shmif_enqueue(&ioloop_shared->shmif,
-			&(struct arcan_event){
-				.category = EVENT_EXTERNAL,
-				.ext.kind = EVENT_EXTERNAL_NETSTATE,
-				.ext.netstate = {
-					.name = {1, 2, 3, 4, 5, 6, 7, 8}
-				}
-			});
-
-		a12int_trace(A12_TRACE_DIRECTORY, "kind=status:appl_runner:join");
-
 	}
 	else if (ev->tgt.kind == TARGET_COMMAND_MESSAGE){
 		struct arg_arr* stat = arg_unpack(ev->tgt.message);
