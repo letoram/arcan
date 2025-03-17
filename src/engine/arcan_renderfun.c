@@ -1790,5 +1790,6 @@ void arcan_video_tuisynch(arcan_vobj_id id)
 		agp_stream_commit(vs, stream);
 	}
 
+	FLAG_DIRTY(vobj);
 	free(buf);
 }
