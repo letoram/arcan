@@ -67,6 +67,13 @@ struct tunnel_state {
 	int fd;
 };
 
+/*
+ * used for .admin and .monitor (--admin-ctrl and --debug-appl)
+ */
+static void process_stdin(struct ioloop_shared* I, bool ok);
+static struct a12_bhandler_res anet_directory_cl_stdiofeed(
+	struct a12_state* S, struct a12_bhandler_meta M, void* tag);
+
 static void* tunnel_runner(void* t)
 {
 	struct tunnel_state* ts = t;
@@ -122,10 +129,45 @@ static struct {
 	}
 };
 
+static void on_debug_event(
+	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
+{
+	struct ioloop_shared* I = tag;
+	if (ev->tgt.kind != TARGET_COMMAND_MESSAGE)
+		return;
+
+	fputs(ev->tgt.message, stdout);
+	if (!ev->tgt.ioevs[0].iv)
+		fputc('\0', stdout);
+
+	fflush(stdout);
+}
+
 static void attach_appl_debug(struct ioloop_shared* I, struct directory_meta* cbt)
 {
-/* for both appl- debug and admin we can switch to a simplified form that is
- * just 'read command from stdin', convert to 'send results to stdout' */
+	struct arcan_event ev = {
+		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
+		.category = EVENT_EXTERNAL,
+		.ext.bchunk = {
+			.input = true,
+			.ns = cbt->clopt->applid,
+			.identifier = 0xcafebabe,
+			.extensions = ".monitor"
+		}
+	};
+
+/* like with .admin we forward STDIN as MESSAGE, but different to admin we
+ * retrieve the results as MESSAGE and not a binary stream on the channel.
+ * Though it would be nice to map SIGINT to an event transparently, the a12+
+ * ioloop state machine isn't safe for that so the outer debug consumer (e.g
+ * cat9) gets to special case it. */
+	setlinebuf(stdin);
+	I->userfd = STDIN_FILENO;
+	I->on_userfd = process_stdin;
+	a12_channel_enqueue(I->S, &ev);
+	I->on_event = on_debug_event;
+
+	a12_set_bhandler(I->S, NULL, I);
 }
 
 static void send_join_ident(struct ioloop_shared* I, struct directory_meta* cbt)
@@ -1257,6 +1299,8 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 		send_join_ident(I, cbt);
 		return true;
 	}
+/* this will swap out bchunk handler and switch io loop to block-read from
+ * STDIN */
 	else if (req->monitor_mode == MONITOR_DEBUGGER){
 		attach_appl_debug(I, cbt);
 		return true;

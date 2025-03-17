@@ -155,6 +155,14 @@ static void on_a12srv_event(
 			return;
 		}
 
+/* special-case debugging comes by the ".monitor" extension which we handle
+ * similar to joining an appl so that it becomes a shmif segment we can
+ * translate to / from MESSAGE events rather than as a binary transfer channel */
+		if (strcmp((char*) ev->ext.bchunk.extensions, ".monitor") == 0){
+			arcan_shmif_enqueue(C, ev);
+			return;
+		}
+
 /*
  * Request downloading the appl specifically? other requests should be routed
  * through the controller (if exists) before trying the appl specific
@@ -371,7 +379,9 @@ static void bchunk_event(struct a12_state *S,
  * NEWSEGMENT as the mempage is acquired over the segment - fake a named
  * connection with the descriptor from newsegment by having SOCKIN_FD without
  * ARCAN_SOCKIN_MEMFD */
-	else if (strcmp(ev->tgt.message, ".appl") == 0){
+	else if (strcmp(ev->tgt.message, ".appl") == 0 ||
+		strcmp(ev->tgt.message, ".monitor") == 0){
+
 		if (ioloop_shared->shmif.addr)
 			arcan_shmif_drop(&ioloop_shared->shmif);
 
@@ -388,17 +398,21 @@ static void bchunk_event(struct a12_state *S,
 			return;
 		}
 
-/* Placeholder name, this should be H(Kpub | Applname) */
-		arcan_shmif_enqueue(&ioloop_shared->shmif,
-			&(struct arcan_event){
-				.category = EVENT_EXTERNAL,
-				.ext.kind = EVENT_EXTERNAL_NETSTATE,
-				.ext.netstate = {
-					.name = {1, 2, 3, 4, 5, 6, 7, 8}
-				}
+/* Placeholder name, this should be H(Kpub | Applname), debug monitor doesn't
+ * need NETSTATE as it shouldn't be visible to the script */
+		if (strcmp(ev->tgt.message, ".appl") == 0){
+			arcan_shmif_enqueue(&ioloop_shared->shmif,
+				&(struct arcan_event){
+					.category = EVENT_EXTERNAL,
+					.ext.kind = EVENT_EXTERNAL_NETSTATE,
+					.ext.netstate = {
+						.name = {1, 2, 3, 4, 5, 6, 7, 8}
+					}
 			});
+		}
 
-		a12int_trace(A12_TRACE_DIRECTORY, "kind=status:appl_runner:join");
+		a12int_trace(A12_TRACE_DIRECTORY,
+			"kind=status:appl_runner:join:%s", ev->tgt.message);
 	}
 }
 

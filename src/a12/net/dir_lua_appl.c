@@ -704,6 +704,16 @@ static bool join_worker(int fd, bool monitor)
 			return false;
 		}
 		log_print("status=joined:worker=%zu", cl->clid);
+
+/* when the full interface is fleshed out with breakpoints etc. we should
+ * ensure that only the one monitor is permitted */
+		if (monitor){
+			shmifsrv_enqueue_event(cl->shmif, &(struct arcan_event){
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_MESSAGE,
+				.tgt.message = "#WAITING\n"
+				}, -1);
+		}
 	}
 
 	CLIENTS.active++;

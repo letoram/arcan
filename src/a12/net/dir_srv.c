@@ -686,6 +686,9 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 /* For debugging a specific appl we'd treat it similar to a _join so the input
  * channel just becomes the bstream and the worker process routes MESSAGES to
  * it, and we accept a12: prefix as a way to send kill SIGUSR1 to the worker.
+ *
+ * The _monitor call return true means the bchunk response has been sent so we
+ * shouldn't try and propagate failure or other reply.
  * */
 		case IDTYPE_MON:
 			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_appl))
@@ -693,7 +696,9 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 				if (!meta->server_tag)
 					anet_directory_lua_spawn_runner(meta, true);
 
-				anet_directory_lua_monitor(C, meta);
+				if (anet_directory_lua_monitor(C, meta)){
+					return;
+				}
 			}
 		break;
 

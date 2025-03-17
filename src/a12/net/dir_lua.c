@@ -1322,7 +1322,7 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 }
 
 static bool send_join_pair(
-	struct dircl* C, struct appl_meta* appl, char* msg)
+	struct dircl* C, struct appl_meta* appl, char* msg, char* workmsg)
 {
 	struct runner_state* runner = appl->server_tag;
 	if (!runner){
@@ -1354,13 +1354,13 @@ static bool send_join_pair(
 		shmifsrv_enqueue_event(runner->cl, &ev, sv[0]);
 	pthread_mutex_unlock(&runner->lock);
 
-	shmifsrv_enqueue_event(C->C,
-		&(struct arcan_event){
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
-			.tgt.message = ".appl"
-		}, sv[1]
-	);
+	ev = (struct arcan_event){
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_BCHUNK_IN
+	};
+	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", workmsg);
+
+	shmifsrv_enqueue_event(C->C, &ev, sv[1]);
 
 	a12int_trace(
 		A12_TRACE_DIRECTORY,
@@ -1373,15 +1373,13 @@ static bool send_join_pair(
 
 bool anet_directory_lua_monitor(struct dircl* C, struct appl_meta* appl)
 {
-	return send_join_pair(C, appl, ".monitor");
+	return send_join_pair(C, appl, ".monitor", ".monitor");
 }
 
 /* this expects the appl- lock to be in effect so we can't use INTTRACE */
 bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 {
-	return send_join_pair(C, appl, ".worker");
-
-	return true;
+	return send_join_pair(C, appl, ".worker", ".appl");
 }
 
 void anet_directory_lua_unregister(struct dircl* C)
