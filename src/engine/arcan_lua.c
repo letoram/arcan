@@ -2381,11 +2381,14 @@ static int textsurface(lua_State* L)
 		if (lua_type(L, -1) != LUA_TTABLE)
 			arcan_fatal("text_surface(>table<) expected row table on index %zu\n", i);
 
-		int y = intblint(L, -1, "y");
-		if (y >= 0){
+/* ignore unless y is provided and stick to the autoincremented one */
+		bool ok;
+		int y = intblint_checked(L, -1, "y", &ok);
+		if (ok && y >= 0){
 			cy = y;
 		}
 
+/* x always resets as we follow the row attribute for ltr/rtl */
 		int x = intblint(L, -1, "x");
 		if (x < 0)
 			x = 0;
