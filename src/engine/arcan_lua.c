@@ -2410,6 +2410,7 @@ static int textsurface(lua_State* L)
 			lua_pop(L, 1);
 		}
 
+		cy++;
 		lua_pop(L, 1);
 	}
 
