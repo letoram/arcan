@@ -20,6 +20,8 @@
 #include "a12_int.h"
 #include "a12_helper.h"
 
+#include "dir_lua_support.h"
+
 #include "../../engine/arcan_bootstrap.h"
 #include "../../engine/alt/support.h"
 
@@ -50,7 +52,6 @@ struct client {
 	size_t msgbuf_ofs;
 	struct shmifsrv_client* shmif;
 	bool registered;
-	bool monitor;
 };
 
 static struct {
@@ -59,6 +60,7 @@ static struct {
 	struct pollfd* pset;
 	struct client* cset;
 	size_t monitor_slot;
+	bool monitor_lock;
 } CLIENTS;
 
 /* used to prefill applname_entrypoint */
@@ -589,17 +591,6 @@ static void open_appl(int dfd, const char* name)
 /*
  * lift from arcan_lua.c:
  *
- *   - match_keys
- *   - get_key / get_keys
- *   - store_key
- *   - launch_target (with modified semantics to connect source to dirsrv)
- *     this would become something like MESSAGE to parent, get message back
- *     with source identifier, expect the appl to forward this to a connected
- *     client.
- *
- *     Then we can re-use arcan-net + arcan_lwa to loopback connect as a
- *     source execute an appl.
- *
  *  - launch_decode would be a specialised form of launch_target but with
  *    the same semantics. More interesting is how we initiate this over a
  *    dirsrv network in order to load balance.
@@ -684,7 +675,6 @@ static bool join_worker(int fd, bool monitor)
 	int tmp;
 	CLIENTS.cset[ind] = (struct client){
 		.registered = false,
-		.monitor = monitor,
 		.clid = ind
 	};
 
@@ -705,14 +695,18 @@ static bool join_worker(int fd, bool monitor)
 		}
 		log_print("status=joined:worker=%zu", cl->clid);
 
-/* when the full interface is fleshed out with breakpoints etc. we should
- * ensure that only the one monitor is permitted */
+/* When the full interface is fleshed out with breakpoints etc. we should
+ * ensure that only the one monitor is permitted. This will always happen
+ * outside of the Lua VM first, so no reason to set or control hooks. */
 		if (monitor){
+			CLIENTS.monitor_slot = ind;
+			CLIENTS.monitor_lock = true;
 			shmifsrv_enqueue_event(cl->shmif, &(struct arcan_event){
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_MESSAGE,
 				.tgt.message = "#WAITING\n"
 				}, -1);
+
 		}
 	}
 
@@ -728,6 +722,12 @@ static void release_worker(size_t ind)
 {
 	if (ind >= CLIENTS.set_sz || !ind)
 		return;
+
+/* release any pending hooks or breakpoints if the worker was a monitor */
+	if (ind == CLIENTS.monitor_slot){
+		CLIENTS.monitor_lock = false;
+		CLIENTS.monitor_slot = 0;
+	}
 
 /* mark it as available for new join */
 	struct client* cl = &CLIENTS.cset[ind];
@@ -838,8 +838,8 @@ static void parent_control_event(struct arcan_event* ev)
 	}
 	break;
 	case TARGET_COMMAND_MESSAGE:{
-/* merge multipart, arg_unpack and extract, if it is key=%s:id= then get from
- * lua_registry and callback into it until we get one with :last set */
+/* No command need MESSAGE right now as match_key replies etc. all go over
+ * bchunk-in and pass it that way. */
 	}
 	case TARGET_COMMAND_BCHUNK_OUT:{
 		if (strcmp(ev->tgt.message, ".log") == 0){
@@ -861,6 +861,30 @@ static void parent_control_event(struct arcan_event* ev)
 	default:
 	break;
 	}
+}
+
+static void monitor_message(struct client* cl, struct arcan_event* ev)
+{
+/* buffer until no multipart, prepare FILE*, apply dirlua_monitor_command,
+ * finish FILE*, pack as multipart back and release FILE */
+}
+
+static void flush_parent()
+{
+	struct arcan_event ev;
+	if (!arcan_shmif_wait(&SHMIF, &ev)){
+		SHUTDOWN = true;
+		return;
+	}
+
+	parent_control_event(&ev);
+	int rv;
+	while ((rv = arcan_shmif_poll(&SHMIF, &ev) > 0)){
+		parent_control_event(&ev);
+	}
+
+	if (rv == -1)
+		SHUTDOWN = true;
 }
 
 static void worker_instance_event(struct client* cl, int fd, int revents)
@@ -923,7 +947,10 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 			continue;
 		}
 		if (ev.ext.kind == EVENT_EXTERNAL_MESSAGE){
-			if (setup_entrypoint(L, "_message", sizeof("_message"))){
+			if (cl->clid == CLIENTS.monitor_slot){
+				monitor_message(cl, &ev);
+			}
+			else if (setup_entrypoint(L, "_message", sizeof("_message"))){
 				lua_pushnumber(L, cl->clid);
 				lua_newtable(L);
 				int top = lua_gettop(L);
@@ -947,6 +974,23 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 	}
 }
 
+static bool flush_worker(struct client* cl, int fd, int revents, size_t ind)
+{
+	if (!cl->shmif)
+		return false;
+
+	worker_instance_event(cl, fd, revents);
+
+/* two possible triggers, one is that poll on the descriptor failed (dead
+ * proces) or that shmifsrv_poll has marked it as dead (instance_event) which
+ * would come from a proper _EXIT */
+	if (revents & (POLLHUP | POLLNVAL)){
+		release_worker(ind);
+	}
+
+	return true;
+}
+
 void anet_directory_appl_runner()
 {
 	struct arg_arr* args;
@@ -960,6 +1004,21 @@ void anet_directory_appl_runner()
 	int left = 25;
 
 	while (!SHUTDOWN){
+/* special case: if there's a monitor attached and it holds a global lock, only
+ * process that until it disconnects or unlocks. */
+		if (CLIENTS.monitor_lock){
+			struct pollfd pset[2] = {
+				CLIENTS.pset[0],
+				CLIENTS.pset[CLIENTS.monitor_slot]
+			};
+			int pv = poll(pset, 2, -1);
+			flush_parent();
+		};
+
+/*
+ * note that large timeskips will just rebase and not actually trigger a tick,
+ * this might be undesired and will happen repeatedly with a debugger attached.
+ */
 		int pv = poll(CLIENTS.pset, CLIENTS.set_sz, left);
 		int nt = shmifsrv_monotonic_tick(&left);
 
@@ -970,43 +1029,18 @@ void anet_directory_appl_runner()
 			nt--;
 		}
 
-/* First prioritize the privileged parent inbound events, and if it's dead we
- * shutdown as well. */
+/* First prioritize the privileged parent inbound events,
+ * and if it's dead we shutdown as well. */
 		if (CLIENTS.pset[0].revents){
-			struct arcan_event ev;
-			if (!arcan_shmif_wait(&SHMIF, &ev)){
-				SHUTDOWN = true;
-				continue;
-			}
-
-			parent_control_event(&ev);
-			int rv;
-			while ((rv = arcan_shmif_poll(&SHMIF, &ev) > 0)){
-				parent_control_event(&ev);
-			}
-			if (rv == -1){
-				SHUTDOWN = true;
-				continue;
-			}
-
-			CLIENTS.pset[0].revents = 0;
+			flush_parent();
 			pv--;
 		}
 
 /* flush out each client, rate-limit comes from queue size caps */
 		for (size_t i = 1; i < CLIENTS.set_sz && pv > 0; i++){
-			if (CLIENTS.cset[i].shmif){
-				worker_instance_event(
-					&CLIENTS.cset[i], CLIENTS.pset[i].fd, CLIENTS.pset[i].revents);
-
-/* two possible triggers, one is that poll on the descriptor failed (dead
- * proces) or that shmifsrv_poll has marked it as dead (instance_event) which
- * would come from a proper _EXIT */
-				if (CLIENTS.pset[i].revents & (POLLHUP | POLLNVAL)){
-					release_worker(i);
-				}
-
-				CLIENTS.pset[i].revents = 0;
+			if (flush_worker(&CLIENTS.cset[i],
+				CLIENTS.pset[i].fd, CLIENTS.pset[i].revents, i)){
+				pv--;
 			}
 		}
 	}
