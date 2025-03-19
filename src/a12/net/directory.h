@@ -350,7 +350,8 @@ void anet_directory_lua_trigger_auto(struct appl_meta* appl);
 enum multipart_fail {
 	MULTIPART_OOM       = 1,
 	MULTIPART_BAD_FMT   = 2,
-	MULTIPART_BAD_MSG   = 3
+	MULTIPART_BAD_MSG   = 3,
+	MULTIPART_BAD_EVENT = 4
 };
 
 /*
@@ -359,7 +360,12 @@ enum multipart_fail {
 void dirsrv_global_lock(const char* file, int line);
 void dirsrv_global_unlock(const char* file, int line);
 
+/*
+ * handle EVENT_EXTERNAL_MESSAGE and TARGET_COMMAND_MESSAGE multipart merging,
+ * provide either [arg_arr] or an [outchar] to specify if the output is intended
+ * to be treated as
+ */
 bool anet_directory_merge_multipart(
-	struct arcan_event* ev, struct arg_arr**, int* err);
+	struct arcan_event* ev, struct arg_arr**, char**, int* err);
 
 #endif

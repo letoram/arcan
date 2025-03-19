@@ -409,7 +409,7 @@ static void* controller_runner(void* inarg)
 			if (ev.ext.kind == EVENT_EXTERNAL_MESSAGE){
 				struct arg_arr* arg;
 				int err;
-				if (!anet_directory_merge_multipart(&ev, &arg, &err)){
+				if (!anet_directory_merge_multipart(&ev, &arg, NULL, &err)){
 					if (err){
 						A12INT_DIRTRACE("kind=error:runner_unpack=%d", err);
 					}
@@ -432,7 +432,7 @@ static void* controller_runner(void* inarg)
 	pthread_mutex_unlock(&runner->lock);
 
 	arcan_db_close(&tl_db);
-	anet_directory_merge_multipart(NULL, NULL, NULL);
+	anet_directory_merge_multipart(NULL, NULL, NULL, NULL);
 	free(runner);
 
 	return NULL;

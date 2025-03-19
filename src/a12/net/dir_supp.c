@@ -476,7 +476,7 @@ err:
 }
 
 bool anet_directory_merge_multipart(
-	struct arcan_event* ev, struct arg_arr** outarg, int* err)
+	struct arcan_event* ev, struct arg_arr** outarg, char** outbuf, int* err)
 {
 	static _Thread_local size_t multipart_sz;
 	static _Thread_local size_t multipart_cnt;
@@ -493,25 +493,48 @@ bool anet_directory_merge_multipart(
 		return true;
 	}
 
+	char* src;
+	bool multipart;
+	size_t cap;
+
+/* pick source arguments based on category as the fields are different */
+	if (ev->category == EVENT_EXTERNAL){
+		multipart = ev->ext.message.multipart;
+		src = (char*) ev->ext.message.data;
+		cap = COUNT_OF(ev->ext.message.data);
+	}
+	else if (ev->category == EVENT_TARGET){
+		src = ev->tgt.message;
+		multipart = ev->tgt.ioevs[0].iv;
+		cap = COUNT_OF(ev->tgt.message);
+	}
+	else {
+		*err = MULTIPART_BAD_EVENT;
+		return false;
+	}
+
 /* short path, single-message */
-	if (!ev->ext.message.multipart && !multipart_sz){
-		*outarg = arg_unpack((const char*) ev->ext.message.data);
-		if (!*outarg){
-			multipart_cnt = 0;
-			*err = MULTIPART_BAD_FMT;
-			return false;
+	if (!multipart && !multipart_sz){
+		if (outarg){
+			*outarg = arg_unpack(src);
+			if (!*outarg){
+				multipart_cnt = 0;
+				*err = MULTIPART_BAD_FMT;
+				return false;
+			}
 		}
+		else
+			*outbuf = strdup(src);
 
 		multipart_cnt = 0;
 		return true;
 	}
 
-/* grow or alloc?, ev->ext.message.data is invalid unless it ends at an aligned
- * UTF-8 sequence and is \0 terminated. arg_unpack handles UTF-8 validation. */
-	size_t len = strnlen(
-		(char*) ev->ext.message.data, COUNT_OF(ev->ext.message.data));
+/* grow or alloc?, srv is invalid unless it ends at an aligned UTF-8 sequence
+ * and is \0 terminated. arg_unpack handles UTF-8 validation. */
+	size_t len = strnlen(src, cap);
 
-	if (len == COUNT_OF(ev->ext.message.data)){
+	if (len == cap){
 		multipart_cnt = 0;
 		*err = MULTIPART_BAD_MSG;
 		return false;
@@ -533,12 +556,12 @@ bool anet_directory_merge_multipart(
 		multipart_sz += 4096;
 	}
 
-	memcpy(&multipart_buf[multipart_cnt], ev->ext.message.data, len);
+	memcpy(&multipart_buf[multipart_cnt], src, len);
 	multipart_cnt += len;
 	multipart_buf[multipart_cnt] = '\0';
 
 /* buffer more? */
-	if (ev->ext.message.multipart){
+	if (multipart){
 		*err = 0;
 		return false;
 	}
