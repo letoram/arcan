@@ -325,6 +325,12 @@ void anet_directory_tunnel_thread(struct ioloop_shared* ios, struct a12_state* S
 void anet_directory_ioloop(struct ioloop_shared* S);
 
 /*
+ * [LOCKED]
+ *  trigger any config queued auto- controller launches
+ */
+void anet_directory_lua_trigger_auto(struct appl_meta* appl);
+
+/*
  * coalesce multipart- split EVENT_EXTERNAL_MESSAGE and treat as ARCAN_ARG
  * encoded (key=val:, substitute : for \t and block \t as it was meant for
  * regular grammar interactive CLI typing)

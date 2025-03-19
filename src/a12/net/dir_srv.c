@@ -1390,6 +1390,8 @@ static bool try_appl_controller(const char* d_name, int dfd)
  * signalling. */
 void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
 {
+	static bool first_scan = true;
+
 	dirsrv_global_lock(__FILE__, __LINE__);
 	if (!opts->flag_rescan){
 		dirsrv_global_unlock(__FILE__, __LINE__);
@@ -1444,6 +1446,11 @@ void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
 	if (-1 != old){
 		fchdir(old);
 		close(old);
+	}
+
+	if (first_scan){
+		first_scan = false;
+		anet_directory_lua_trigger_auto(&opts->dir);
 	}
 
 	dirsrv_global_unlock(__FILE__, __LINE__);

@@ -865,8 +865,18 @@ static void parent_control_event(struct arcan_event* ev)
 
 static void monitor_message(struct client* cl, struct arcan_event* ev)
 {
-/* buffer until no multipart, prepare FILE*, apply dirlua_monitor_command,
- * finish FILE*, pack as multipart back and release FILE */
+	size_t out_sz;
+	char* out_ptr;
+	FILE* fout = open_memstream(&out_ptr, &out_sz);
+/* unpack, call */
+	fclose(fout);
+
+	if (out_sz){
+		struct arcan_event outev = {
+		};
+
+		shmifsrv_enqueue_event(cl->shmif, &outev, -1);
+	}
 }
 
 static void flush_parent()

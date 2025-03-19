@@ -956,6 +956,44 @@ static void error_nbio(lua_State* L, int fd, intptr_t tag, const char* src)
 {
 }
 
+void anet_directory_lua_trigger_auto(struct appl_meta* appl)
+{
+	lua_getglobal(L, "autostart");
+	if (lua_type(L, -1) != LUA_TTABLE){
+		lua_pop(L, 1);
+		return;
+	}
+
+	for (size_t i = 0; i < lua_rawlen(L, -1); i++){
+
+		lua_rawgeti(L, -1, i+1); /* TTABLE */
+		const char* name = luaL_checkstring(L, -1); /* TTABLE[i+1], TTABLE */
+		struct appl_meta* cur = appl;
+
+/* this is being called in a locked state */
+		while (cur){
+			if (strcmp(cur->appl.name, name) == 0){
+
+/* don't spawn multiples if there's duplicates in the table */
+				if (cur->server_appl != SERVER_APPL_NONE && !cur->server_tag){
+					if (!cur->server_tag){
+						anet_directory_lua_spawn_runner(cur, true);
+					}
+				}
+
+				break;
+			}
+
+			cur = cur->next;
+		}
+
+		lua_pop(L, 1); /* TTABLE[i+1], TTABLE */
+	}
+
+/* -1, TTABLE */
+	lua_pop(L, 1);
+}
+
 bool anet_directory_lua_init(struct global_cfg* cfg)
 {
 	L = luaL_newstate();
@@ -1043,6 +1081,12 @@ bool anet_directory_lua_init(struct global_cfg* cfg)
 	lua_rawset(L, -3); /* TABLE(cfgtbl) */
 
 	lua_setglobal(L, "config"); /* nil */
+
+/* expose autostart table, when appls are scanned we will sweep it and
+ * launch any present with a match in the ctrl- set that have yet to be
+ * started in trigger_auto() */
+	lua_newtable(L);
+	lua_setglobal(L, "autostart");
 
 	if (cfg->config_file){
 		int status = luaL_dofile(L, cfg->config_file);
