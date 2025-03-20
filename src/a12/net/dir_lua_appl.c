@@ -8,6 +8,9 @@
 #include <arcan_shmif_server.h>
 #include <poll.h>
 #include <assert.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 
 #include <lualib.h>
 #include <lauxlib.h>
@@ -19,6 +22,7 @@
 #include "a12.h"
 #include "a12_int.h"
 #include "a12_helper.h"
+#include "anet_helper.h"
 
 #include "dir_lua_support.h"
 
@@ -28,6 +32,7 @@
 /* pull in nbio as it is used in the tui-lua bindings */
 #include "../../shmif/tui/lua/nbio.h"
 
+#include "directory.h"
 #include "platform_types.h"
 #include "os_platform.h"
 
@@ -699,6 +704,7 @@ static bool join_worker(int fd, bool monitor)
  * ensure that only the one monitor is permitted. This will always happen
  * outside of the Lua VM first, so no reason to set or control hooks. */
 		if (monitor){
+			cl->registered = true;
 			CLIENTS.monitor_slot = ind;
 			CLIENTS.monitor_lock = true;
 			shmifsrv_enqueue_event(cl->shmif, &(struct arcan_event){
@@ -727,6 +733,7 @@ static void release_worker(size_t ind)
 	if (ind == CLIENTS.monitor_slot){
 		CLIENTS.monitor_lock = false;
 		CLIENTS.monitor_slot = 0;
+		anet_directory_merge_multipart(NULL, NULL, NULL, NULL);
 	}
 
 /* mark it as available for new join */
@@ -866,10 +873,26 @@ static void parent_control_event(struct arcan_event* ev)
 static void monitor_message(struct client* cl, struct arcan_event* ev)
 {
 	size_t out_sz;
-	char* out_ptr;
+	char* out_ptr = NULL;
+	char* msg_ptr = NULL;
+
+/* merge / buffer event */
+	int err;
+	if (!anet_directory_merge_multipart(ev, NULL, &msg_ptr, &err))
+	{
+		if (err)
+			log_print("monitor:merge_multipart:error=%d", err);
+		return;
+	}
+
+/* buffer / apply */
 	FILE* fout = open_memstream(&out_ptr, &out_sz);
-/* unpack, call */
+	if (!dirlua_monitor_command(msg_ptr, L, NULL, fout))
+		log_print("monitor:unhandled_cmd=%s", msg_ptr);
+
+/* flush / pack reply */
 	fclose(fout);
+	free(msg_ptr);
 
 	if (out_sz){
 		struct arcan_event outev = {
@@ -877,6 +900,10 @@ static void monitor_message(struct client* cl, struct arcan_event* ev)
 
 		shmifsrv_enqueue_event(cl->shmif, &outev, -1);
 	}
+
+/* cleanup remaining */
+	if (out_ptr)
+		free(out_ptr);
 }
 
 static void flush_parent()
@@ -908,7 +935,7 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 		log_print("kind=shmif:source=%zu:data=%s", cl->clid, arcan_shmif_eventstr(&ev, NULL, 0));
 #endif
 
-/* only allow once */
+/* only allow once, registered is ignored if the worker is attached as debugger */
 		if (!cl->registered){
 			if (ev.ext.kind == EVENT_EXTERNAL_NETSTATE){
 				blake3_hasher hash;
@@ -1022,8 +1049,18 @@ void anet_directory_appl_runner()
 				CLIENTS.pset[CLIENTS.monitor_slot]
 			};
 			int pv = poll(pset, 2, -1);
-			flush_parent();
-		};
+			if (pv > 0){
+				if (pset[0].revents)
+					flush_parent();
+				if (pset[1].revents)
+					flush_worker(
+						&CLIENTS.cset[CLIENTS.monitor_slot],
+						pset[1].fd,
+						pset[1].revents, CLIENTS.monitor_slot
+					);
+			}
+			continue;
+		}
 
 /*
  * note that large timeskips will just rebase and not actually trigger a tick,

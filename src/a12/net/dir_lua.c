@@ -419,7 +419,7 @@ static void* controller_runner(void* inarg)
 			}
 		}
 
-		int rv = poll(&pfd, 1, 25);
+		int rv = poll(&pfd, 1, -1);
 		if (rv > 0){
 			A12INT_DIRTRACE("appl_worker=%s:status=dead", runner->appl->appl.name);
 			break;
