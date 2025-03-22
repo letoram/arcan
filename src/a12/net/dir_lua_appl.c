@@ -713,6 +713,10 @@ static bool join_worker(int fd, bool monitor)
 				.tgt.message = "#WAITING\n"
 				}, -1);
 
+/* monitor tracking state is a heap allocation referenced into TLS to
+ * nandle both 'external' (single process) and internal (per-thread)
+ * handling of the Lua VM runner */
+			dirlua_monitor_allocstate(&SHMIF);
 		}
 	}
 
@@ -1041,9 +1045,12 @@ void anet_directory_appl_runner()
 	int left = 25;
 
 	while (!SHUTDOWN){
+		struct dirlua_monitor_state* state = dirlua_monitor_getstate();
+
 /* special case: if there's a monitor attached and it holds a global lock, only
  * process that until it disconnects or unlocks. */
-		if (CLIENTS.monitor_lock){
+
+		if (state && state->lock){
 			struct pollfd pset[2] = {
 				CLIENTS.pset[0],
 				CLIENTS.pset[CLIENTS.monitor_slot]

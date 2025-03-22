@@ -1,39 +1,41 @@
-#include <stdint.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <inttypes.h>
 #include <stdbool.h>
-#include <lua.h>
+#include <stdio.h>
+#include <sqlite3.h>
+#include <arcan_shmif.h>
+#include <arcan_shmif_server.h>
+#include <poll.h>
+#include <assert.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+
 #include <lualib.h>
 #include <lauxlib.h>
+#include <pthread.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include "nbio_local.h"
+#include <ctype.h>
+
+#include "a12.h"
+#include "a12_int.h"
+#include "a12_helper.h"
+#include "anet_helper.h"
+
+#include "dir_lua_support.h"
+#include "../../engine/alt/support.h"
+
+/* pull in nbio as it is used in the tui-lua bindings */
+#include "../../shmif/tui/lua/nbio.h"
+
+#include "directory.h"
+#include "platform_types.h"
+#include "os_platform.h"
 #include "dir_lua_support.h"
 
-static struct
-{
-	union {
-		struct {
-			size_t line;
-			char* file;
-		} bpt;
-	};
-
-/*
- * int type;
- * watchpoint would go here:
- *
- *  read  - tricky as access could be JITed etc.
- *  write - keep hash or value at point it's set, compare on insn/line
- *  expr  - run lua expression, trigger when TBOOLEAN == true return
- */
-
-	int type;
-} m_breakpoints[BREAK_LIMIT];
-size_t m_n_breakpoints = 0;
-static bool in_breakpoint_set = false;
-static int hook_mask = 0;
-static int entrypoint = EP_TRIGGER_NONE;
+static _Thread_local struct dirlua_monitor_state* monitor;
 
 static void put_shmif_luastr(const char* msg, FILE* out)
 {
@@ -115,10 +117,62 @@ static struct {
 	{EP_TRIGGER_TRACE, "trace"}
 };
 
+static bool check_breakpoints(lua_State* L)
+{
+	lua_Debug ar;
+	if (!monitor->n_breakpoints || !lua_getstack(L, 0, &ar)){
+		return false;
+	}
+
+	lua_getinfo(L, "Snl", &ar);
+
+/* check source and current line against set */
+	for (size_t i = 0, c = monitor->n_breakpoints; i < BREAK_LIMIT && c; i++){
+		if (monitor->breakpoints[i].bpt.file){
+			c--;
+			const char* base = ar.source;
+			if (base[0] == '@')
+				base++;
+
+			size_t line = monitor->breakpoints[i].bpt.line;
+			char* source = monitor->breakpoints[i].bpt.file;
+
+			if (ar.currentline != line)
+				continue;
+
+			if (strcmp(base, source) == 0){
+				fprintf(monitor->out, "#BREAK %s:%zu\n", source, line);
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+/*
+ * triggered on SIGUSR1, pcall error condition or during lua_sethook
+ */
+void dirlua_monitor_watchdog(lua_State* L, lua_Debug* D)
+{
+	if (!monitor)
+		return;
+
+/* do we have any trigger condition? */
+	if (
+		!check_breakpoints(L) &&
+		monitor->n_breakpoints &&
+		!monitor->stepreq &&
+		!monitor->error &&
+		!monitor->transaction){
+		return;
+	}
+}
+
 void dirlua_hookmask(uint64_t mask, bool bkpt)
 {
-	in_breakpoint_set = bkpt;
-	hook_mask = mask;
+	monitor->in_breakpoint_set = bkpt;
+	monitor->hook_mask = mask;
 }
 
 const char* dirlua_eptostr(uint64_t ep)
@@ -230,7 +284,7 @@ void dirlua_callstack_raw(lua_State* L, lua_Debug* D, int levels, FILE* out)
 {
 	uint64_t cbk;
 	int64_t luavid, vid;
-	fprintf(out, "type=entrypoint:kind=%s\n", dirlua_eptostr(entrypoint));
+	fprintf(out, "type=entrypoint:kind=%s\n", dirlua_eptostr(monitor->entrypoint));
 	int level = 0;
 	lua_Debug ar;
 
@@ -272,59 +326,266 @@ void dirlua_callstack_raw(lua_State* L, lua_Debug* D, int levels, FILE* out)
 	}
 }
 
-static void cmd_source(char* arg, lua_State* L, lua_Debug* D, FILE* out)
+static void cmd_source(char* arg, lua_State* L, lua_Debug* D)
+{
+/* debug protocol might come with explicit file reference, though we
+ * treat all of them as such so just strip it away */
+	if (arg[0] == '@'){
+		arg = &arg[1];
+	}
+
+/* strip \n */
+	size_t len = strlen(arg);
+	arg[len-1] = '\0';
+
+/* SECURITY NOTE:
+ * --------------
+ * Without namespacing or pledge this is an open- primitive, with dev
+ * permissions less than admin ones this would allow source access to
+ * grab files at will.
+ *
+ * This is permitted for now as _lua_appl.c is intended to only run in
+ * such a limited environment.
+ */
+	data_source indata = arcan_open_resource(arg);
+	map_region reg = arcan_map_resource(&indata, false);
+	if (!reg.ptr){
+		fprintf(monitor->out, "#ERROR couldn't map Lua source ref: %s\n", arg);
+	}
+	else {
+		fprintf(monitor->out, "#BEGINSOURCE\n");
+			fprintf(monitor->out, "%s\n%s\n", arg, reg.ptr);
+		fprintf(monitor->out, "#ENDSOURCE\n");
+	}
+
+	arcan_release_map(reg);
+	arcan_release_resource(&indata);
+}
+
+static void cmd_dumpstate(char* arg, lua_State* L, lua_Debug* D)
+{
+/* this should use the same 'grab all keys' approach as elsewhere and reroute
+ * the result descriptor into monitor->out */
+	fprintf(monitor->out, "#BEGINKV\n#LASTSOURCE\n#ENDLASTSOURCE\n#ENDKV\n");
+}
+
+static void cmd_reload(char* arg, lua_State* L, lua_Debug* D)
+{
+/* the actual implementation of this is actually just to ask the parent to
+ * resend the descriptor and we treat it as an updated set of scripts being
+ * pushed */
+	struct arcan_event beg = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(MESSAGE),
+		.ext.message.data = "reload"
+	};
+
+	arcan_shmif_enqueue(monitor->C, &beg);
+}
+
+static void cmd_continue(char* arg, lua_State* L, lua_Debug* D)
+{
+	monitor->lock = false;
+}
+
+static void cmd_backtrace(char* arg, lua_State* L, lua_Debug* D)
+{
+	size_t n_levels = 10;
+	if (!L)
+		return;
+
+	fprintf(monitor->out, "#BEGINBACKTRACE\n");
+		dirlua_callstack_raw(L, D, n_levels, monitor->out);
+	fprintf(monitor->out, "#ENDBACKTRACE\n");
+
+	fprintf(monitor->out, "#BEGINSTACK\n");
+		dirlua_dumpstack_raw(L, monitor->out);
+	fprintf(monitor->out, "#ENDSTACK\n");
+}
+
+static void cmd_locals(char* arg, lua_State* L, lua_Debug* D)
+{
+/* this is missing for both engine/monitor and remote one */
+}
+
+static void cmd_stepend(char* arg, lua_State* L, lua_Debug* D)
+{
+	if (!L || !D){
+		fprintf(monitor->out, "#ERROR no Lua state\n");
+		return;
+	}
+
+	lua_sethook(L, dirlua_monitor_watchdog, LUA_MASKRET, 1);
+	monitor->lock = false;
+	monitor->stepreq = true;
+	monitor->dumppause = true;
+}
+
+static void cmd_stepline(char* arg, lua_State* L, lua_Debug* D)
+{
+	if (!L || !D){
+		fprintf(monitor->out, "#ERROR no Lua state\n");
+		return;
+	}
+
+	lua_sethook(L, dirlua_monitor_watchdog, LUA_MASKLINE, 1);
+	monitor->lock = false;
+	monitor->stepreq = true;
+	monitor->dumppause = true;
+}
+
+static void cmd_stepcall(char* arg, lua_State* L, lua_Debug* D)
+{
+	lua_sethook(L, dirlua_monitor_watchdog, LUA_MASKRET, 1);
+	monitor->lock = false;
+	monitor->stepreq = true;
+	monitor->dumppause = true;
+}
+
+static void cmd_stepinstruction(char* arg, lua_State* L, lua_Debug* D)
+{
+	if (!L){
+		fprintf(monitor->out, "#ERROR No Lua state\n");
+		return;
+	}
+
+	long count = 1;
+	if (arg && strlen(arg)){
+		count = strtol(arg, NULL, 10);
+	}
+
+/* set lua_tracefunction to line mode */
+	lua_sethook(L, dirlua_monitor_watchdog, LUA_MASKCALL, count);
+	monitor->lock = false;
+	monitor->stepreq = true;
+	monitor->dumppause = true;
+}
+
+/* part of dumptable, check for LUA_TABLE at top is done there, this just
+ * extracts frame number and local number and loads whatever is there */
+static void local_to_table(char** tokctx, lua_State* L, FILE* m_out)
+{
+	char* tok;
+	bool gotframe = false;
+	long lref;
+	lua_Debug ar;
+
+	while ( (tok = strtok_r(NULL, " ", tokctx) ) ){
+		char* err = NULL;
+		long val = strtoul(tok, &err, 10);
+		if (err && *err){
+			fprintf(m_out,
+				"#ERROR gettable: missing %s reference\n", gotframe ? "local" : "frame");
+			return;
+		}
+
+		if (!gotframe){
+			if (!lua_getstack(L, val, &ar)){
+				fprintf(m_out,
+					"#ERROR gettable: invalid frame %ld\n", val);
+				return;
+			}
+			gotframe = true;
+		}
+		else {
+			lua_getlocal(L, &ar, val);
+			return;
+		}
+	}
+}
+
+/* part of dumptable, check for LUA_TABLE at top is done there, this just
+ * reads a value and then leaves the stack reference copied to the top */
+static void stack_to_table(char** tokctx, lua_State* L, FILE* out)
+{
+	char* tok;
+
+	while ( (tok = strtok_r(NULL, " ", tokctx) ) ){
+		char* err = NULL;
+		unsigned long index = strtoul(tok, &err, 10);
+		if (err && *err){
+			fprintf(out, "#ERROR gettable: missing stack reference\n");
+		}
+		else if (lua_type(L, index) == LUA_TTABLE){
+			lua_pushvalue(L, index);
+		}
+		return;
+	}
+}
+
+static void cmd_dumptable(char* argv, lua_State* L, lua_Debug* D)
+{
+	size_t len = strlen(argv);
+	if (len)
+		argv[len-1] = '\0';
+
+	int argi = 0;
+	char* tok, (* tokctx);
+	int top = lua_gettop(L);
+
+	while ( (tok = strtok_r(argv, " ", &tokctx) ) ){
+		argv = NULL;
+
+/* navigate through the table indices */
+		if (argi){
+			char* err = NULL;
+			unsigned long skip_n = strtoul(tok, &err, 10);
+			if (err && *err){
+				fprintf(monitor->out, "#ERROR gettable: couldn't parse index\n");
+				break;
+			}
+
+			if (lua_type(L, -1) != LUA_TTABLE){
+				fprintf(monitor->out, "#ERROR gettable: resolved index is not a table\n");
+				break;
+			}
+
+			lua_pushnil(L);
+			while (lua_next(L, -2) != 0 && skip_n){
+				lua_pop(L, 1);
+				skip_n--;
+			}
+
+/* remove iteration key */
+			lua_remove(L, -2);
+		}
+
+/* domain selector: */
+		if (argi == 0){
+			switch (tok[0]){
+			case 'g': lua_pushvalue(L, LUA_GLOBALSINDEX); break;
+			case 's': stack_to_table(&tokctx, L, monitor->out); break;
+			case 'l': local_to_table(&tokctx, L, monitor->out); break;
+			default:
+				fprintf(monitor->out, "#ERROR gettable: bad domain selector\n");
+				return;
+
+			break;
+			}
+			argi++;
+		}
+	}
+
+	if (lua_type(L, -1) != LUA_TTABLE){
+		fprintf(monitor->out, "#ERROR gettable: resolved index is not a table\n");
+	}
+/* just dump the entire table, if needed we can support argument for setting
+ * starting offset and cap later */
+	else {
+		fprintf(monitor->out, "#BEGINTABLE\n");
+		dirlua_dumptable_raw(L, 0, 0, monitor->out);
+		fprintf(monitor->out, "#ENDTABLE\n");
+	}
+
+	fflush(monitor->out);
+	lua_settop(L, top);
+}
+
+static void cmd_breakpoint(char* arg, lua_State* L, lua_Debug* D)
 {
 }
 
-static void cmd_dumpstate(char* arg, lua_State* L, lua_Debug* D, FILE* out)
-{
-}
-
-static void cmd_reload(char* arg, lua_State* L, lua_Debug* D, FILE* out)
-{
-}
-
-static void cmd_continue(char* arg, lua_State* L, lua_Debug* D, FILE* out)
-{
-}
-
-static void cmd_backtrace(char* arg, lua_State* L, lua_Debug* D, FILE* out)
-{
-}
-
-static void cmd_locals(char* arg, lua_State* L, lua_Debug* D, FILE* out)
-{
-}
-
-static void cmd_stepnext(char* arg, lua_State* L, lua_Debug* D, FILE* out)
-{
-}
-
-static void cmd_stepend(char* arg, lua_State* L, lua_Debug* D, FILE* out)
-{
-}
-
-static void cmd_stepline(char* arg, lua_State* L, lua_Debug* D, FILE* out)
-{
-}
-
-static void cmd_stepcall(char* arg, lua_State* L, lua_Debug* D, FILE* out)
-{
-}
-
-static void cmd_stepinstruction(char* arg, lua_State* L, lua_Debug* D, FILE* out)
-{
-}
-
-static void cmd_dumptable(char* arg, lua_State* L, lua_Debug* D, FILE* out)
-{
-}
-
-static void cmd_breakpoint(char* arg, lua_State* L, lua_Debug* D, FILE* out)
-{
-}
-
-static void cmd_entrypoint(char* arg, lua_State* L, lua_Debug* D, FILE* out)
+static void cmd_entrypoint(char* arg, lua_State* L, lua_Debug* D)
 {
 }
 
@@ -351,14 +612,14 @@ static int traceback (lua_State *L) {
   return 1;
 }
 
-static void cmd_eval(char* argv, lua_State* L, lua_Debug* D, FILE* m_out)
+static void cmd_eval(char* argv, lua_State* L, lua_Debug* D)
 {
 	int status = luaL_loadbuffer(L, argv, strlen(argv), "eval");
 	if (status){
 		const char* msg = lua_tostring(L, -1);
-		fprintf(m_out,
+		fprintf(monitor->out,
 			"#BADRESULT\n%s\n#ENDBADRESULT\n", msg ? msg : "(error object is not a string)");
-		fflush(m_out);
+		fflush(monitor->out);
 		lua_pop(L, 1);
 		return;
 	}
@@ -367,7 +628,7 @@ static void cmd_eval(char* argv, lua_State* L, lua_Debug* D, FILE* m_out)
 	lua_pushcfunction(L, traceback);
 	lua_insert(L, base);
 
-	fprintf(m_out, "#BEGINRESULT\n");
+	fprintf(monitor->out, "#BEGINRESULT\n");
 
 	status = lua_pcall(L, 0, LUA_MULTRET, base);
 	lua_remove(L, base);
@@ -376,25 +637,25 @@ static void cmd_eval(char* argv, lua_State* L, lua_Debug* D, FILE* m_out)
 		lua_gc(L, LUA_GCCOLLECT, 0);
 		const char* msg = lua_tostring(L, -1);
 		if (msg){
-			fprintf(m_out, "%s%s\n", msg[0] == '#' ? "\\" : "", msg);
+			fprintf(monitor->out, "%s%s\n", msg[0] == '#' ? "\\" : "", msg);
 		}
 		else
-			fprintf(m_out, "(error object is not a string)\n");
+			fprintf(monitor->out, "(error object is not a string)\n");
 	}
 /* possible do a real table dump here as with eval we'd want the full one most
  * of the time */
 	else if (lua_type(L, -1) != LUA_TNIL){
-		dirlua_print_type(L, -1, "", m_out);
-		fputc('\n', m_out);
+		dirlua_print_type(L, -1, "", monitor->out);
+		fputc('\n', monitor->out);
 	}
 
-	fprintf(m_out, "#ENDRESULT\n");
-	fflush(m_out);
+	fprintf(monitor->out, "#ENDRESULT\n");
+	fflush(monitor->out);
 }
 
 static struct {
 	const char* word;
-	void (*ptr)(char* arg, lua_State*, lua_Debug*, FILE*);
+	void (*ptr)(char* arg, lua_State*, lua_Debug*);
 } cmds[] =
 {
 	{"continue", cmd_continue},
@@ -419,6 +680,7 @@ static struct {
 bool dirlua_monitor_command(char* cmd, lua_State* L, lua_Debug* D, FILE* out)
 {
 	size_t i = 0;
+	monitor->out = out;
 	while (cmd[i] && cmd[i] != '\n' && cmd[i] != ' ') i++;
 
 	char* arg = &cmd[i];
@@ -430,7 +692,7 @@ bool dirlua_monitor_command(char* cmd, lua_State* L, lua_Debug* D, FILE* out)
 
 	for (size_t j = 0; j < COUNT_OF(cmds); j++){
 		if (strcasecmp(cmd, cmds[j].word) == 0){
-			cmds[j].ptr(arg, L, D, out);
+			cmds[j].ptr(arg, L, D);
 			return true;
 		}
 	}
@@ -446,4 +708,16 @@ void dirlua_dumpstack_raw(lua_State* L, FILE* out)
 		dirlua_print_type(L, top, "\n", out);
 		top--;
 	}
+}
+
+struct dirlua_monitor_state* dirlua_monitor_getstate()
+{
+	return monitor;
+}
+
+void dirlua_monitor_allocstate(struct arcan_shmif_cont* C)
+{
+	monitor = malloc(sizeof(struct dirlua_monitor_state));
+	memset(monitor, '\0', sizeof(struct dirlua_monitor_state));
+	monitor->C = C;
 }

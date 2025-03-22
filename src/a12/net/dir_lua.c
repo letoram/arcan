@@ -91,6 +91,28 @@ static void run_detached_thread(void* (*ptr)(void*), void* arg)
 	pthread_create(&pth, &pthattr, ptr, arg);
 }
 
+static void send_runner_appl(struct runner_state* runner)
+{
+	struct arcan_event outev =
+	(struct arcan_event){
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
+	};
+
+	int srcdir =
+		runner->appl->server_appl == SERVER_APPL_TEMP ?
+		CFG->dirsrv.appl_server_temp_dfd :
+		CFG->dirsrv.appl_server_dfd;
+
+	int dfd = openat(srcdir,
+		(char*) runner->appl->appl.name, O_RDONLY | O_DIRECTORY);
+
+	snprintf(outev.tgt.message,
+		sizeof(outev.tgt.message), "%s", runner->appl->appl.name);
+
+	shmifsrv_enqueue_event(runner->cl, &outev, dfd);
+}
+
 static void launchtarget(struct runner_state* runner,
 	struct arcan_dbh* db, const char* tgt, const char* dst, int id)
 {
@@ -257,6 +279,10 @@ static void controller_dispatch(
 		int id = (int) strtol(val, NULL, 10);
 		launchtarget(runner, db, arg, "testsource", id);
 	}
+/* trigger the same path as initial ctrl-appl loading */
+	else if (arg_lookup(arr, "reload", 0, NULL)){
+		send_runner_appl(runner);
+	}
 	else if (arg_lookup(arr, "match", 0, &arg) && arg &&
 		arg_lookup(arr, "domain", 0, NULL) &&
 		arg_lookup(arr, "id", 0, &val) && val){
@@ -370,22 +396,7 @@ static void* controller_runner(void* inarg)
 
 /* Ready, send the dirfd along with the name to the runner, this is where one
  * would queue up database and secondary namespaces like appl-shared. */
-	struct arcan_event outev =
-	(struct arcan_event){
-		.category = EVENT_TARGET,
-		.tgt.kind = TARGET_COMMAND_BCHUNK_IN,
-	};
-
-	int srcdir = runner->appl->server_appl == SERVER_APPL_TEMP ?
-		CFG->dirsrv.appl_server_temp_dfd : CFG->dirsrv.appl_server_dfd;
-
-	int dfd = openat(srcdir,
-		(char*) runner->appl->appl.name, O_RDONLY | O_DIRECTORY);
-
-	snprintf(outev.tgt.message,
-		sizeof(outev.tgt.message), "%s", runner->appl->appl.name);
-
-	shmifsrv_enqueue_event(runner->cl, &outev, dfd);
+	send_runner_appl(runner);
 
 /* main processing loop,
  *
