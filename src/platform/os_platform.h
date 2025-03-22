@@ -317,7 +317,7 @@ int arcan_strbuf_tempfile(const char* msg, size_t msg_sz, const char** err);
  * argv[1](input --> *output). The first command across this later should be
  * 'output /path/to/other-fifo'.
  */
-bool arcan_monitor_external(char* cmd, FILE** input);
+bool arcan_monitor_external(char* cmd, char* fifo_path, FILE** input);
 
 /*
  * implemented in <platform>/launch.c

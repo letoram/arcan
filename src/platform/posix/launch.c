@@ -500,19 +500,16 @@ arcan_frameserver* platform_launch_internal(const char* fname,
 	return platform_launch_fork(&args, tag);
 }
 
-bool arcan_monitor_external(char* cmd, FILE** input)
+bool arcan_monitor_external(char* cmd, char* fifo_path, FILE** input)
 {
-/* create the named FIFOs */
-	char c2a_fn[] = "/tmp/c2a";
-
-	mkfifo(c2a_fn, S_IRUSR | S_IWUSR);
+	mkfifo(fifo_path, S_IRUSR | S_IWUSR);
 
 	pid_t child = fork();
 
 	if (child == 0){
 		char* argv[4] = {
 			cmd,
-			c2a_fn,
+			fifo_path,
 			NULL
 		};
 
@@ -520,7 +517,7 @@ bool arcan_monitor_external(char* cmd, FILE** input)
 		exit(EXIT_SUCCESS);
 	}
 
-	*input = fopen(c2a_fn, "r");
+	*input = fopen(fifo_path, "r");
 	if (*input){
 		setlinebuf(*input);
 	}

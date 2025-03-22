@@ -2892,28 +2892,43 @@ static int syssnap(lua_State* ctx)
 
 	const char* instr = luaL_checkstring(ctx, 1);
 	char* fname = findresource(instr, RESOURCE_APPL_TEMP, O_WRONLY, NULL);
+	bool debugif = false;
+
+	if (lua_type(ctx, 2) == LUA_TBOOLEAN){
+		debugif = lua_toboolean(ctx, 2);
+	}
 
 	if (fname){
 		arcan_warning("system_statesnap(), "
 		"refuses to overwrite existing file (%s));\n", fname);
 		arcan_mem_free(fname);
-
-		LUA_ETRACE("system_snapshot", "file exists", 0);
+		lua_pushboolean(ctx, false);
+		lua_pushstring(ctx, "file exists");
+		LUA_ETRACE("system_snapshot", "file exists", 2);
 	}
 
-	fname = arcan_expand_resource(
-		luaL_checkstring(ctx, 1), RESOURCE_APPL_TEMP);
+	fname = arcan_expand_resource(luaL_checkstring(ctx, 1), RESOURCE_APPL_TEMP);
 	FILE* outf;
+
+	if (debugif && fname){
+		arcan_monitor_watchdog_listen(ctx, fname);
+		lua_pushboolean(ctx, true);
+		LUA_ETRACE("system_snapshot", NULL, 1);
+	}
 
 	if (fname && (outf = fopen(fname, "w+"))){
 		arcan_lua_statesnap(outf, "", false);
 		fclose(outf);
-		LUA_ETRACE("system_snapshot", NULL, 0);
+		lua_pushboolean(ctx, true);
+
+		LUA_ETRACE("system_snapshot", NULL, 1);
 	}
 	else{
 		arcan_warning("system_statesnap(), "
 			"couldn't open (%s) for writing.\n", instr);
-		LUA_ETRACE("system_snapshot", NULL, 0);
+		lua_pushboolean(ctx, false);
+		lua_pushstring(ctx, "couldn't create");
+		LUA_ETRACE("system_snapshot", NULL, 2);
 	}
 }
 

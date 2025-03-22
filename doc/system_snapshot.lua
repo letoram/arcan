@@ -1,8 +1,11 @@
 -- system_snapshot
--- @short: Create a debugging snapshot
--- @inargs: outres
--- @note: refuses to overwrite outres if it exists
--- (only appl- destination accepted).
+-- @short: Create a debugging snapshot or open live access to attach a debugger
+-- @inargs: string:outres
+-- @inargs: string:outres, bool:debug=false
+-- @longdescr: This creates a snapshot of the lua scenegraph and stores as a
+-- lua script in the APPLTEMP namespace as *outres* or, if *debug* is set the
+-- engine will pause and wait for a debugger to attach to *outres*.
+-- @outarg: bool:ok, [string:error]
 -- @note: the format used is the same as used for
 -- crash reports and serialization in monitoring mode.
 -- @group: system

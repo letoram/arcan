@@ -21,6 +21,12 @@
 void arcan_monitor_watchdog(lua_State*, lua_Debug*);
 
 /*
+ * Switch to the FIFO- pair external debugger mode with the FIFO created at
+ * the resolved [name] path.
+ */
+void arcan_monitor_watchdog_listen(lua_State* L, const char* name);
+
+/*
  * When the Lua VM pcall or panic handler gets triggered from code, this should
  * be called first to determine if an attached debugger is there to take over
  * recovery rather than the default path of jumping into recovery-switch or the

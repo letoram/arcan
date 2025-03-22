@@ -714,6 +714,36 @@ static char* get_extmon_path()
 	return monitor;
 }
 
+static char* get_extpipe_path()
+{
+	uintptr_t tag;
+	char* monitor = NULL;
+	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	get_config("debug_monitor_path", 0, &monitor, tag);
+
+/* hardcoded default */
+	if (!monitor)
+		monitor = strdup("/tmp/c2a");
+
+	return monitor;
+}
+
+void arcan_monitor_watchdog_listen(lua_State* L, const char* fname)
+{
+/* similar to the on-demand launch below but with explicit path and no exec */
+	int fv = mkfifo(fname, S_IRUSR | S_IWUSR);
+	if (-1 == fv)
+		return;
+
+/* open the command channel */
+	FILE* fpek = fopen(fname, "r");
+	if (!fpek){
+		unlink(fname);
+		return;
+	}
+
+}
+
 FILE* arcan_monitor_watchdog_error(lua_State* L, int in_panic, bool check)
 {
 	static bool extmon_checked = false;
@@ -736,6 +766,8 @@ FILE* arcan_monitor_watchdog_error(lua_State* L, int in_panic, bool check)
 			if (!monitor)
 				return m_out;
 
+			char* path = get_extpipe_path();
+
 /* set temporary monitor-out to stdout waiting for cmd_out to change it */
 			if (!m_out)
 				m_out = stdout;
@@ -743,7 +775,10 @@ FILE* arcan_monitor_watchdog_error(lua_State* L, int in_panic, bool check)
 /* launch the process and switch to waiting for command on it */
 			m_error_defer = true;
 			arcan_conductor_toggle_watchdog();
-			arcan_monitor_external(monitor, &m_ctrl);
+			arcan_monitor_external(monitor, path, &m_ctrl);
+			free(monitor);
+			free(path);
+
 			arcan_conductor_toggle_watchdog();
 			arcan_monitor_watchdog(L, NULL);
 		}
