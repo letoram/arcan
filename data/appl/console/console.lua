@@ -635,7 +635,7 @@ function console_display_state(status)
 		if type(v) == "table" then
 			if v.bridge then
 				v.bridge:resize(VRESW, VRESH)
-			elseif valid_vid(v.vid) then
+			elseif valid_vid(v.vid, TYPE_FRAMESERVER) then
 				target_displayhint(v.vid, VRESW, VRESH, TD_HINT_IGNORE, WORLDID)
 			end
 		end
