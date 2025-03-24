@@ -20,7 +20,10 @@ function console(args)
 	system_load("console_osdkbd.lua")() -- trigger on tap-events
 	wayland_config = system_load("wayland_client.lua")() -- window management behavior for wayland clients
 
-	mouse_setup(load_image("cursor.png"), 65535, 1, true, false)
+	mouse_setup(load_image("cursor.png"), {
+		order = 65535,
+		pickdepth = 1
+	})
 	mouse_state().autohide = true
 
 -- attach normal clients to this and use as an input capture surface to
