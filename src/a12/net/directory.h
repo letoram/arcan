@@ -12,6 +12,7 @@ struct anet_dirsrv_opts {
 
 	bool allow_tunnel;
 	bool discover_beacon;
+	bool runner_process;
 
 	char* allow_src;
 	char* allow_dir;

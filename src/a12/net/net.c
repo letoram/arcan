@@ -53,7 +53,8 @@ struct global_cfg global = {
 		.source_port = 6681
 	},
 	.dirsrv = {
-		.allow_tunnel = true
+		.allow_tunnel = true,
+		.runner_process = true
 	}
 };
 

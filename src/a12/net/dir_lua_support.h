@@ -1,15 +1,21 @@
 #ifndef HAVE_DIR_LUA_SUPPORT
 #define HAVE_DIR_LUA_SUPPORT
 
+#define ENTRYPOINT_COUNT 12
 enum {
 	EP_TRIGGER_NONE      = 0,
-	EP_TRIGGER_CLOCK     = 1,
-	EP_TRIGGER_MESSAGE   = 2,
-	EP_TRIGGER_NBIO_RD   = 3,
-	EP_TRIGGER_NBIO_WR   = 4,
-	EP_TRIGGER_NBIO_DATA = 5,
-	EP_TRIGGER_TRACE     = 6,
-	EP_TRIGGER_RESET     = 7
+	EP_TRIGGER_MAIN      = 1,
+	EP_TRIGGER_CLOCK     = 2,
+	EP_TRIGGER_MESSAGE   = 3,
+	EP_TRIGGER_NBIO_RD   = 4,
+	EP_TRIGGER_NBIO_WR   = 5,
+	EP_TRIGGER_NBIO_DATA = 6,
+	EP_TRIGGER_TRACE     = 7,
+	EP_TRIGGER_RESET     = 8,
+	EP_TRIGGER_JOIN      = 9,
+	EP_TRIGGER_LEAVE     = 10,
+	EP_TRIGGER_INDEX     = 11,
+	EP_TRIGGER_LIMIT     = ENTRYPOINT_COUNT
 };
 
 /*
@@ -51,6 +57,10 @@ void dirlua_print_type(lua_State* L, int i, const char* suffix, FILE* out);
  * not want potentially different monitors on different controllers to fight.
  * */
 void dirlua_monitor_allocstate(struct arcan_shmif_cont* C);
+
+void dirlua_pcall_prefix(struct lua_State* L, const char* name);
+void dirlua_pcall(struct lua_State* L,
+	int nargs, int nret, int ep, int(*panic)(lua_State*L));
 
 struct dirlua_monitor_state* dirlua_monitor_getstate();
 

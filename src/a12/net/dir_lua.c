@@ -646,10 +646,13 @@ static int cfg_newindex(lua_State* L)
 		snprintf(port_str, 6, "%d", port);
 		CFG->meta.port = strdup(port_str);
 	}
+	else if (strcmp(key, "runner_process") == 0){
+		CFG->dirsrv.runner_process = lua_toboolean(L, 3);
+	}
 	else
 		luaL_error(L, "unknown key: config.%s, allowed: "
 			"allow_tunnel, discover_beacon, directory_server, "
-			"log_level, log_target, listen_port\n", key);
+			"log_level, log_target, listen_port, runner_process\n", key);
 
 	return 0;
 }
@@ -988,7 +991,7 @@ void anet_directory_lua_trigger_auto(struct appl_meta* appl)
 /* don't spawn multiples if there's duplicates in the table */
 				if (cur->server_appl != SERVER_APPL_NONE && !cur->server_tag){
 					if (!cur->server_tag){
-						anet_directory_lua_spawn_runner(cur, true);
+						anet_directory_lua_spawn_runner(cur, CFG->dirsrv.runner_process);
 					}
 				}
 

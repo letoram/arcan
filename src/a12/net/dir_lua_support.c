@@ -37,6 +37,42 @@
 
 static _Thread_local struct dirlua_monitor_state* monitor;
 
+/* used to prefill applname_entrypoint and track where we entered
+ * last for entrypoint- breaks and for trace output */
+static _Thread_local struct {
+	int last_ep;
+	char* prefix_table[ENTRYPOINT_COUNT];
+} lua;
+
+static struct {
+	int maskv;
+	const char* keyv;
+} ep_map[] =
+{
+	{EP_TRIGGER_MESSAGE, "message"},
+	{EP_TRIGGER_TRACE, "trace"},
+	{EP_TRIGGER_RESET, "reset"},
+	{EP_TRIGGER_JOIN, "join"},
+	{EP_TRIGGER_LEAVE, "leave"},
+	{EP_TRIGGER_INDEX, "index"},
+};
+
+static const char* ep_lut[ENTRYPOINT_COUNT] =
+{
+	NULL,
+	"",
+	"_clock_pulse",
+	"_message",
+	NULL, /* NBIO_RD */
+	NULL, /* NBIO_WR */
+	NULL, /* NBIO_DATA */
+	NULL, /* TRACE */
+	"_reset",
+	"_join",
+	"_leave",
+	"_index"
+};
+
 static void put_shmif_luastr(const char* msg, FILE* out)
 {
 	while (msg && *msg){
@@ -103,19 +139,6 @@ void dirlua_dumptable_raw(lua_State* L, int ofs, int cap, FILE* out)
 	}
 	lua_pop(L, 1);
 }
-
-static struct {
-	int maskv;
-	const char* keyv;
-} ep_map[] =
-{
-	{EP_TRIGGER_CLOCK, "clock"},
-	{EP_TRIGGER_MESSAGE, "message"},
-	{EP_TRIGGER_NBIO_RD, "nbio_read"},
-	{EP_TRIGGER_NBIO_WR, "nbio_write"},
-	{EP_TRIGGER_NBIO_DATA, "nbio_data"},
-	{EP_TRIGGER_TRACE, "trace"}
-};
 
 static bool check_breakpoints(lua_State* L)
 {
@@ -275,9 +298,64 @@ void dirlua_print_type(
 	fputs(suffix, out);
 }
 
-void dirlua_pcall(lua_State* L, int nargs, int nret, int ep)
+void dirlua_pcall_prefix(struct lua_State* L, const char* name)
 {
+/* reset the table first */
+	for (size_t i = 0; i < ENTRYPOINT_COUNT; i++){
+		if (lua.prefix_table[i]){
+			free(lua.prefix_table[i]);
+			lua.prefix_table[i] = NULL;
+		}
+	}
 
+	if (!name || !strlen(name))
+		return;
+
+	for (size_t i = 0; i < ENTRYPOINT_COUNT; i++){
+		if (!ep_lut[i])
+			continue;
+
+/* if asprintf fails just empty the slot and it won't get called */
+		if (-1 == asprintf(&lua.prefix_table[i], "%s%s", name, ep_lut[i])){
+			lua.prefix_table[i] = NULL;
+		}
+	}
+}
+
+static bool setup_entrypoint(struct lua_State* L, int ep)
+{
+	if (ep <= 0 || ep > EP_TRIGGER_LIMIT || !lua.prefix_table[ep])
+		return false;
+
+	lua_getglobal(L, lua.prefix_table[ep]);
+	if (!lua_isfunction(L, -1)){
+		lua_pop(L, 1);
+		return false;
+	}
+
+	lua.last_ep = ep;
+	return true;
+}
+
+void dirlua_pcall(lua_State* L,
+	int nargs, int nret, int ep, int (*panic)(lua_State*))
+{
+	if (ep && !setup_entrypoint(L, ep)){
+		lua_pop(L, nargs);
+		return;
+	}
+
+/* if monitor->hook_mask & ep -> lua_sethook(L, _wachdog, LUA_MASKLINE, 1)
+ * then we want dumppause as well
+ */
+
+	lua.last_ep = ep;
+	int errind = lua_gettop(L) - nargs;
+	lua_pushcfunction(L, panic);
+	lua_insert(L, errind);
+	lua_pcall(L, nargs, nret, errind);
+	lua_remove(L, errind);
+	lua.last_ep = 0;
 }
 
 void dirlua_callstack_raw(lua_State* L, lua_Debug* D, int levels, FILE* out)
@@ -581,12 +659,107 @@ static void cmd_dumptable(char* argv, lua_State* L, lua_Debug* D)
 	lua_settop(L, top);
 }
 
-static void cmd_breakpoint(char* arg, lua_State* L, lua_Debug* D)
+static void cmd_breakpoint(char* argv, lua_State* L, lua_Debug* D)
 {
+	size_t len = strlen(argv);
+
+/* dump current set */
+	if (!len || len == 1){
+		fprintf(monitor->out, "#BEGINBREAK\n");
+		for (size_t i = 0, c = monitor->n_breakpoints; i < BREAK_LIMIT && c; i++){
+			if (monitor->breakpoints[i].bpt.file){
+				c--;
+				fprintf(monitor->out, "file=%s:line=%zu\n",
+					monitor->breakpoints[i].bpt.file, monitor->breakpoints[i].bpt.line);
+			}
+		}
+		fprintf(monitor->out, "#ENDBREAK\n");
+		return;
+	}
+
+/* strip lf, extract file:line */
+	char* endptr = &argv[len-1];
+	*endptr = '\0';
+	unsigned long line = 0;
+
+	while (endptr != argv && *endptr != ':')
+		endptr--;
+
+	if (*endptr == ':'){
+		*endptr++ = '\0';
+		if (!strlen(endptr)){
+			fprintf(monitor->out, "#ERROR breakpoint: expected file:line\n");
+			return;
+		}
+
+		char* err = NULL;
+		line = strtoul(endptr, &err, 10);
+		if (err && *err){
+			fprintf(monitor->out,
+				"#ERROR breakpoint: malformed line specifier\n");
+			return;
+		}
+	}
+
+/* if match, remove */
+	for (size_t i = 0, c = monitor->n_breakpoints; i < BREAK_LIMIT && c; i++){
+		if (!monitor->breakpoints[i].bpt.file)
+			continue;
+		c--;
+
+		if (monitor->breakpoints[i].bpt.line == line &&
+			strcmp(monitor->breakpoints[i].bpt.file, argv) == 0){
+			free(monitor->breakpoints[i].bpt.file);
+			monitor->breakpoints[i].bpt.file = NULL;
+			monitor->n_breakpoints--;
+			return;
+		}
+	}
+
+/* There is the option of better controls here, with lua_getinfo for >L when we
+ * have a function on top of the stack, it'll return a list of valid lines to
+ * put breakpoints on. */
+
+/* add, unless we are at cap */
+	if (monitor->n_breakpoints == BREAK_LIMIT){
+		fprintf(monitor->out, "#ERROR breakpoint: limit filled\n");
+		return;
+	}
+
+	for (size_t i = 0; i < BREAK_LIMIT; i++){
+		if (!monitor->breakpoints[i].bpt.file){
+			monitor->breakpoints[i].bpt.file = strdup(argv);
+			monitor->breakpoints[i].bpt.line = line;
+
+			if (monitor->breakpoints[i].bpt.file)
+				monitor->n_breakpoints++;
+			else
+				fprintf(monitor->out, "#ERROR breakpoint: out of memory\n");
+			break;
+		}
+	}
+
+/* send the set */
+	cmd_breakpoint("", NULL, NULL);
 }
 
 static void cmd_entrypoint(char* arg, lua_State* L, lua_Debug* D)
 {
+	uint64_t mask_kind = 0;
+	char* tok;
+	char* tokctx;
+
+/* strip \n */
+	size_t len = strlen(arg);
+	if (len)
+		arg[len-1] = '\0';
+
+	while ( (tok = strtok_r(arg, " ", &tokctx) ) ){
+		arg = NULL;
+		mask_kind |= dirlua_strtoep(tok);
+	}
+
+	monitor->hook_mask = mask_kind;
 }
 
 /* Same as used in lua.c and alt/trace.c - there is a better version in LuaJIT

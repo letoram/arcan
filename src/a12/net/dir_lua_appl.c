@@ -68,14 +68,6 @@ static struct {
 	bool monitor_lock;
 } CLIENTS;
 
-/* used to prefill applname_entrypoint */
-static struct {
-	char prefix_buf[128];
-	size_t prefix_len;
-	size_t prefix_maxlen;
-	const char* last_ep;
-} lua;
-
 static FILE* logout;
 
 #define log_print(fmt, ...) do { fprintf(logout, fmt "\n", ##__VA_ARGS__); } while (0)
@@ -109,20 +101,6 @@ out:
 	log_print("kind=message:broken_utf8_message");
 #endif
 	dst[0] = '\0';
-}
-
-static bool setup_entrypoint(struct lua_State* L, const char* ep, size_t len)
-{
-	memcpy(&lua.prefix_buf[lua.prefix_len], ep, len);
-	lua.prefix_buf[lua.prefix_len + len] = '\0';
-	lua_getglobal(L, lua.prefix_buf);
-	if (!lua_isfunction(L, -1)){
-		lua_pop(L, 1);
-		return false;
-	}
-
-	lua.last_ep = ep;
-	return true;
 }
 
 static void dump_stack(lua_State* L, FILE* dst)
@@ -174,24 +152,12 @@ static int panic(lua_State* L)
 /* generate a backtrace and dump into stdout which should be our logfd still,
  * set our last words as the crash so the parent knows to keep the log and
  * deliver to developer on request. */
-	fprintf(logout, "\nscript error (%s):\n", lua.last_ep ? lua.last_ep : "(broken-ep)");
-	fprintf(logout, "\nVM stack:\n");
+	fprintf(logout, "\nScript Error:\nVM stack:\n");
 	dump_stack(L, logout);
 	arcan_shmif_last_words(&SHMIF, "script_error");
 	arcan_shmif_drop(&SHMIF);
 
 	exit(EXIT_FAILURE);
-}
-
-static int wrap_pcall(lua_State* L, int nargs, int nret)
-{
-	int errind = lua_gettop(L) - nargs;
-	lua_pushcfunction(L, panic);
-	lua_insert(L, errind);
-	lua_pcall(L, nargs, nret, errind);
-	lua_remove(L, errind);
-	lua.last_ep = NULL;
-	return 0;
 }
 
 static void expose_api(lua_State* L, const luaL_Reg* funtbl)
@@ -519,24 +485,11 @@ static void open_appl(int dfd, const char* name)
 	log_print("dir_lua:open=%.*s", (int) sizeof(name), name);
 	size_t len = strlen(name);
 
-/* maxlen set after the longest named entry point (applname_clock_pulse) */
-	if (!lua.prefix_maxlen){
-		lua.prefix_maxlen =
-			COUNT_OF(lua.prefix_buf) - sizeof("_clock_pulse") - 1;
-	}
-
-	if (len > lua.prefix_maxlen){
-		log_print("dir_lua:applname_too_long");
-		return;
-	}
-
 /* For the dynamic reload case we first run an entrypoint that lets the current
  * scripts shut down gracefully and save any state to be persisted. */
 	if (L){
 		log_print("existing:reset");
-		if (setup_entrypoint(L, "_reset", sizeof("_reset"))){
-			wrap_pcall(L, 1, 0);
-		}
+		dirlua_pcall(L, 0, 0, EP_TRIGGER_RESET, panic);
 		lua_close(L);
 		L = NULL;
 	}
@@ -573,10 +526,7 @@ static void open_appl(int dfd, const char* name)
 	lua_setglobal(L, "print");
 	lua_pcall(L, 0, 0, 0);
 
-	memcpy(lua.prefix_buf, name, len);
-	lua.prefix_buf[len] = '\0';
-	lua.prefix_len = len;
-
+	dirlua_pcall_prefix(L, name);
 	char scratch[len + sizeof(".lua")];
 
 /* open, map, load as string */
@@ -608,27 +558,23 @@ static void open_appl(int dfd, const char* name)
 			{NULL, NULL}
 		};
 		expose_api(L, api);
-		wrap_pcall(L, 0, LUA_MULTRET);
+		dirlua_pcall(L, 0, 0, EP_TRIGGER_NONE, panic);
 	}
 	arcan_release_map(reg);
 	arcan_release_resource(&source);
 
 /* run script entrypoint */
-	if (setup_entrypoint(L, "", 0)){
-		wrap_pcall(L, 0, 0);
-	}
+	dirlua_pcall(L, 0, 0, EP_TRIGGER_MAIN, panic);
 
-/* re-expose any existing clients,
- * this can have holes (as _leave will not compact) so linear search */
+/* re-expose any existing clients, we do this as faked 'join' calls
+ * rather than 'adopt' */
 	log_print("status=adopt=%zu", CLIENTS.active);
 	for (size_t i = 0; i < CLIENTS.set_sz; i++){
 		if (!CLIENTS.cset[i].shmif)
 			continue;
 
-		if (setup_entrypoint(L, "_adopt", sizeof("_adopt"))){
-			lua_pushnumber(L, CLIENTS.cset[i].clid);
-			wrap_pcall(L, 1, 0);
-		}
+		lua_pushnumber(L, CLIENTS.cset[i].clid);
+		dirlua_pcall(L, 1, 0, EP_TRIGGER_JOIN, panic);
 	}
 }
 
@@ -746,10 +692,9 @@ static void release_worker(size_t ind)
 	CLIENTS.pset[ind].fd = -1;
 	CLIENTS.active--;
 
-	if (cl->registered &&
-		setup_entrypoint(L, "_leave", sizeof("_leave"))){
+	if (cl->registered){
 		lua_pushnumber(L, cl->clid);
-		wrap_pcall(L, 1, 0);
+		dirlua_pcall(L, 1, 0, EP_TRIGGER_LEAVE, panic);
 	}
 
 	log_print("status=left:worker=%zu", cl->clid);
@@ -953,11 +898,8 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 					"kind=status:worker=%zu:registered:key=%s", cl->clid, cl->keyid);
 				free(b64);
 				cl->registered = true;
-
-				if (setup_entrypoint(L, "_join", sizeof("_join"))){
-					lua_pushnumber(L, cl->clid);
-					wrap_pcall(L, 1, 0);
-				}
+				lua_pushnumber(L, cl->clid);
+				dirlua_pcall(L, 1, 0, EP_TRIGGER_JOIN, panic);
 			}
 			else {
 				log_print("kind=error:worker=%zu:unregistered_event=%s",
@@ -967,7 +909,7 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 		}
 
 /*
- * NAK until we have the client side of file access done.
+ * NAK until we have nbio back so that the script can actually stream the index
  *
  * Otherwise .index is an entrypoint for providing a list of known hash=name
  * and then the request goes for the hash. It can also cover an IPFS private
@@ -975,11 +917,9 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
  */
 		if (ev.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE){
 			if (ev.ext.bchunk.input){
-				if (setup_entrypoint(L, "_index", sizeof("_index"))){
-					lua_pushnumber(L, cl->clid);
-					MSGBUF_UTF8(ev.ext.bchunk.extensions);
-					wrap_pcall(L, 2, 1);
-				}
+				lua_pushnumber(L, cl->clid);
+				MSGBUF_UTF8(ev.ext.bchunk.extensions);
+				dirlua_pcall(L, 2, 0, EP_TRIGGER_INDEX, panic);
 			}
 			shmifsrv_enqueue_event(cl->shmif, &(struct arcan_event){
 				.category = EVENT_TARGET,
@@ -991,14 +931,14 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 			if (cl->clid == CLIENTS.monitor_slot){
 				monitor_message(cl, &ev);
 			}
-			else if (setup_entrypoint(L, "_message", sizeof("_message"))){
+			else {
 				lua_pushnumber(L, cl->clid);
 				lua_newtable(L);
 				int top = lua_gettop(L);
 				tblbool(L, "multipart", ev.ext.message.multipart, top);
 				MSGBUF_UTF8(ev.ext.message.data);
 				tbldynstr(L, "message", (char*) ev.ext.message.data, top);
-				wrap_pcall(L, 2, 0);
+				dirlua_pcall(L, 2, 0, EP_TRIGGER_MESSAGE, panic);
 			}
 		}
 	 }
@@ -1077,9 +1017,8 @@ void anet_directory_appl_runner()
 		int nt = shmifsrv_monotonic_tick(&left);
 
 /* L might not be initialised here yet as it depends on the event delivery */
-		while (nt > 0 && L &&
-			setup_entrypoint(L, "_clock_pulse", sizeof("_clock_pulse"))){
-			wrap_pcall(L, 0, 0);
+		while (nt > 0 && L){
+			dirlua_pcall(L, 0, 0, EP_TRIGGER_CLOCK, panic);
 			nt--;
 		}
 

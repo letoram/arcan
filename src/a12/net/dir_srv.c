@@ -1081,7 +1081,8 @@ make_random:
  * send the primitives pairing the worker process with the script VM */
 			if (cur->server_appl != SERVER_APPL_NONE){
 				if (!cur->server_tag)
-					anet_directory_lua_spawn_runner(cur, true);
+					anet_directory_lua_spawn_runner(
+						cur, active_clients.opts->runner_process);
 
 				anet_directory_lua_join(C, cur);
 			}
