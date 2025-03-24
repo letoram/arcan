@@ -21,7 +21,7 @@ function console(args)
 	wayland_config = system_load("wayland_client.lua")() -- window management behavior for wayland clients
 
 	mouse_setup(load_image("cursor.png"), {
-		order = 65535,
+		layer = 65535,
 		pickdepth = 1
 	})
 	mouse_state().autohide = true
