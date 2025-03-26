@@ -934,6 +934,18 @@ static bool process_auth_request(struct dircl* C, struct arg_arr* entry)
 	return true;
 }
 
+static void handle_monitor_command(struct dircl* C, struct arg_arr* entry)
+{
+	if (arg_lookup(entry, "break", 0, NULL)){
+		dirsrv_global_lock(__FILE__, __LINE__);
+			volatile struct appl_meta* appl = locked_numid_appl(C->in_appl);
+			if (appl){
+				anet_directory_signal_runner(appl, SIGUSR1);
+			}
+		dirsrv_global_unlock(__FILE__, __LINE__);
+	}
+}
+
 static void dircl_message(struct dircl* C, struct arcan_event ev)
 {
 /* reserved prefix? then treat as worker command - otherwise merge and
@@ -946,6 +958,13 @@ static void dircl_message(struct dircl* C, struct arcan_event ev)
 	struct arg_arr* entry = arg_unpack((char*)ev.ext.message.data);
 	if (!entry){
 		A12INT_DIRTRACE("dirsv:kind=worker:bad_msg:%s=", ev.ext.message.data);
+		return;
+	}
+
+/* control signals that can't be handled by the VM process? */
+	if (C->in_monitor){
+		handle_monitor_command(C, entry);
+		arg_cleanup(entry);
 		return;
 	}
 

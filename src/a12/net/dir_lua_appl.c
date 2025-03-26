@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <ctype.h>
+#include <signal.h>
 
 #include "a12.h"
 #include "a12_int.h"
@@ -578,6 +579,11 @@ static void open_appl(int dfd, const char* name)
 	}
 }
 
+static void monitor_sigusr(int sig)
+{
+	lua_sethook(L, dirlua_monitor_watchdog, LUA_MASKCOUNT, 1);
+}
+
 static bool join_worker(int fd, bool monitor)
 {
 /* just naively grow, parent process is responsible for more refined handling
@@ -663,6 +669,8 @@ static bool join_worker(int fd, bool monitor)
  * nandle both 'external' (single process) and internal (per-thread)
  * handling of the Lua VM runner */
 			dirlua_monitor_allocstate(&SHMIF);
+			sigaction(SIGUSR1,
+				&(struct sigaction){.sa_handler = monitor_sigusr}, 0);
 		}
 	}
 

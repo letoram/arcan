@@ -61,6 +61,7 @@ struct runner_state {
 	struct shmifsrv_client* cl;
 	struct appl_meta* appl;
 	volatile bool alive;
+	volatile bool appl_sent;
 };
 
 struct strrep_meta {
@@ -397,6 +398,7 @@ static void* controller_runner(void* inarg)
 /* Ready, send the dirfd along with the name to the runner, this is where one
  * would queue up database and secondary namespaces like appl-shared. */
 	send_runner_appl(runner);
+	runner->appl_sent = true;
 
 /* main processing loop,
  *
@@ -1245,6 +1247,18 @@ static void* thread_appl_runner(void* tag)
 	return NULL;
 }
 
+bool anet_directory_signal_runner(volatile struct appl_meta* appl, int sig)
+{
+	struct runner_state* runner = appl->server_tag;
+
+	if (!runner)
+		return false;
+
+	int pid;
+	shmifsrv_client_handle(runner->cl, &pid);
+	return kill(pid, sig) == 0;
+}
+
 void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl)
 {
 /* newappl contains the packed (unauthenticated) appl from an authenticated
@@ -1331,6 +1345,13 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 		appl->server_tag = runner;
 		pthread_mutex_init(&runner->lock, NULL);
 		run_detached_thread(controller_runner, runner);
+
+/* block until the process is spawned and the appl has been sent so we don't
+ * get ordering issues with the first worker joining when the VM isn't ready */
+		while (!runner->appl_sent){
+			pthread_mutex_lock(&runner->lock);
+			pthread_mutex_unlock(&runner->lock);
+		}
 		return true;
 	}
 
@@ -1410,6 +1431,9 @@ static bool send_join_pair(
 
 	pthread_mutex_lock(&runner->lock);
 		shmifsrv_enqueue_event(runner->cl, &ev, sv[0]);
+/* monitor doesn't result in IDENT so mark is as in-appl here */
+		C->in_appl = appl->identifier;
+		C->in_monitor = true;
 	pthread_mutex_unlock(&runner->lock);
 
 	ev = (struct arcan_event){
@@ -1419,6 +1443,7 @@ static bool send_join_pair(
 	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", workmsg);
 
 	shmifsrv_enqueue_event(C->C, &ev, sv[1]);
+
 
 	a12int_trace(
 		A12_TRACE_DIRECTORY,

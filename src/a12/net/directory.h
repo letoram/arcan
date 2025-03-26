@@ -145,6 +145,7 @@ struct directory_meta {
 struct dircl;
 struct dircl {
 	int in_appl; /* have they joined an appl- controller? */
+	bool in_monitor;
 
 	char identity[16]; /* presentable source identifier */
 
@@ -300,6 +301,11 @@ void anet_directory_lua_register(struct dircl* C);
  * it is not set it will run as a detached pthread.
  */
 bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external);
+
+/*
+ * request to send signal [no] to process or thread associated with appl-runner
+ */
+bool anet_directory_signal_runner(volatile struct appl_meta* appl, int no);
 
 /* Theoretically it's possble for one C to be in multiple appls so the API
  * reflects that, even though right now that is constrained to 1:(0,1) in the
