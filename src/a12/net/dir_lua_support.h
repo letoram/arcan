@@ -43,6 +43,8 @@ struct dirlua_monitor_state {
 	bool error;
 	bool transaction;
 
+	char* out_buf;
+	size_t out_sz;
 	FILE* out;
 	struct arcan_shmif_cont* C;
 };
@@ -57,13 +59,16 @@ void dirlua_print_type(lua_State* L, int i, const char* suffix, FILE* out);
  * not want potentially different monitors on different controllers to fight.
  * */
 void dirlua_monitor_allocstate(struct arcan_shmif_cont* C);
+void dirlua_monitor_releasestate(struct lua_State* L);
+bool dirlua_setup_entrypoint(struct lua_State* L, int ep);
+size_t dirlua_monitor_flush(char** out_buf);
 
 void dirlua_pcall_prefix(struct lua_State* L, const char* name);
-void dirlua_pcall(struct lua_State* L,
-	int nargs, int nret, int ep, int(*panic)(lua_State*L));
+void dirlua_pcall(
+	struct lua_State* L, int nargs, int nret, int(*panic)(lua_State*L));
 
 struct dirlua_monitor_state* dirlua_monitor_getstate();
 void dirlua_monitor_watchdog(lua_State* L, lua_Debug* D);
-bool dirlua_monitor_command(char* cmd, lua_State* L, lua_Debug* D, FILE* out);
+bool dirlua_monitor_command(char* cmd, lua_State* L, lua_Debug* D);
 
 #endif

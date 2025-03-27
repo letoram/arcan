@@ -173,23 +173,13 @@ static bool check_breakpoints(lua_State* L)
 	return false;
 }
 
-/*
- * triggered on SIGUSR1, pcall error condition or during lua_sethook
- */
-void dirlua_monitor_watchdog(lua_State* L, lua_Debug* D)
+void dirlua_monitor_panic(lua_State* L, lua_Debug* D)
 {
-	if (!monitor)
-		return;
-
-/* do we have any trigger condition? */
-	if (
-		!check_breakpoints(L) &&
-		monitor->n_breakpoints &&
-		!monitor->stepreq &&
-		!monitor->error &&
-		!monitor->transaction){
-		return;
-	}
+	monitor->dumppause = true;
+	monitor->error = true;
+	monitor->lock = true;
+	dirlua_monitor_watchdog(L, D);
+	monitor->stepreq = false;
 }
 
 void dirlua_hookmask(uint64_t mask, bool bkpt)
@@ -322,7 +312,7 @@ void dirlua_pcall_prefix(struct lua_State* L, const char* name)
 	}
 }
 
-static bool setup_entrypoint(struct lua_State* L, int ep)
+bool dirlua_setup_entrypoint(struct lua_State* L, int ep)
 {
 	if (ep <= 0 || ep > EP_TRIGGER_LIMIT || !lua.prefix_table[ep])
 		return false;
@@ -333,23 +323,22 @@ static bool setup_entrypoint(struct lua_State* L, int ep)
 		return false;
 	}
 
+	if (monitor && (monitor->hook_mask & ep)){
+		lua_sethook(L, dirlua_monitor_watchdog, LUA_MASKLINE, 1);
+		monitor->dumppause = true;
+	}
+
 	lua.last_ep = ep;
 	return true;
 }
 
-void dirlua_pcall(lua_State* L,
-	int nargs, int nret, int ep, int (*panic)(lua_State*))
+void dirlua_pcall(
+	lua_State* L, int nargs, int nret, int (*panic)(lua_State*))
 {
-	if (ep && !setup_entrypoint(L, ep)){
-		lua_pop(L, nargs);
-		return;
-	}
-
-/* if monitor->hook_mask & ep -> lua_sethook(L, _wachdog, LUA_MASKLINE, 1)
- * then we want dumppause as well
+/*
+ * This is rather wasteful, panic should always be at the top of the stack
+ * so we don't do three stack manipulations per entrypoint
  */
-
-	lua.last_ep = ep;
 	int errind = lua_gettop(L) - nargs;
 	lua_pushcfunction(L, panic);
 	lua_insert(L, errind);
@@ -484,6 +473,33 @@ static void cmd_backtrace(char* arg, lua_State* L, lua_Debug* D)
 static void cmd_locals(char* arg, lua_State* L, lua_Debug* D)
 {
 /* this is missing for both engine/monitor and remote one */
+}
+
+/*
+ * triggered on SIGUSR1, pcall error condition or during lua_sethook
+ */
+void dirlua_monitor_watchdog(lua_State* L, lua_Debug* D)
+{
+	if (!monitor)
+		return;
+
+/* do we have any trigger condition? */
+	if (
+		!check_breakpoints(L) &&
+		monitor->n_breakpoints &&
+		!monitor->stepreq &&
+		!monitor->error &&
+		!monitor->transaction){
+		return;
+	}
+
+	if (monitor->dumppause){
+		fprintf(monitor->out, "#WAITING\n");
+		monitor->dumppause = false;
+		cmd_backtrace("", L, D);
+	}
+
+	monitor->lock = true;
 }
 
 static void cmd_stepend(char* arg, lua_State* L, lua_Debug* D)
@@ -850,10 +866,9 @@ static struct {
 /*
  * since we just re-use the format in engine/monitor, just break cmd\sargument
  */
-bool dirlua_monitor_command(char* cmd, lua_State* L, lua_Debug* D, FILE* out)
+bool dirlua_monitor_command(char* cmd, lua_State* L, lua_Debug* D)
 {
 	size_t i = 0;
-	monitor->out = out;
 	while (cmd[i] && cmd[i] != '\n' && cmd[i] != ' ') i++;
 
 	char* arg = &cmd[i];
@@ -888,9 +903,37 @@ struct dirlua_monitor_state* dirlua_monitor_getstate()
 	return monitor;
 }
 
+size_t dirlua_monitor_flush(char** out_buf)
+{
+	if (!monitor)
+		return 0;
+
+	fflush(monitor->out);
+	*out_buf = monitor->out_buf;
+	return monitor->out_sz;
+}
+
+void dirlua_monitor_releasestate(lua_State* L)
+{
+	if (!monitor)
+		return;
+
+	fclose(monitor->out);
+	free(monitor->out_buf);
+
+	lua_sethook(L, NULL, LUA_MASKLINE, 1);
+	lua_sethook(L, NULL, LUA_MASKRET, 1);
+	lua_sethook(L, NULL, LUA_MASKCALL, 1);
+
+	free(monitor);
+	monitor = NULL;
+}
+
 void dirlua_monitor_allocstate(struct arcan_shmif_cont* C)
 {
 	monitor = malloc(sizeof(struct dirlua_monitor_state));
 	memset(monitor, '\0', sizeof(struct dirlua_monitor_state));
 	monitor->C = C;
+	monitor->lock = true;
+	monitor->out = open_memstream(&monitor->out_buf, &monitor->out_sz);
 }

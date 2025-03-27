@@ -66,7 +66,6 @@ static struct {
 	struct pollfd* pset;
 	struct client* cset;
 	size_t monitor_slot;
-	bool monitor_lock;
 } CLIENTS;
 
 static FILE* logout;
@@ -133,12 +132,22 @@ static void dump_stack(lua_State* L, FILE* dst)
 
 static int panic(lua_State* L)
 {
+/*
+ * With a monitor attached we don't really shutdown, but rather just send
+ * the trace and return to entrypoint- calling. It's up to the monitor to
+ * detach or send a12:kill to parent -> HUP -> shutdown.
+ */
+	if (CLIENTS.monitor_slot){
+		dirlua_monitor_watchdog(L, NULL);
+		return 0;
+	}
+
 /* MISSING: need a _fatal with access to store_keys etc.  question is if we
  * should permit message_target still (it makes sense if the appl wants
  * recovery in their own layer). */
 
 /* always cleanup and die - free:ing shmifsrv will pull DMS and enqueue an
- * EXIT. We could redirect back to parent and then let it spin up a new and
+ * EXIT. We could redirect back to parent and then let it spin up new and
  * redirect us back, but just repeat the join cycle should be enough.
  *
  * The EXIT event will help us out of any blocked request for local bchunks
@@ -159,6 +168,7 @@ static int panic(lua_State* L)
 	arcan_shmif_drop(&SHMIF);
 
 	exit(EXIT_FAILURE);
+	return 0;
 }
 
 static void expose_api(lua_State* L, const luaL_Reg* funtbl)
@@ -490,7 +500,10 @@ static void open_appl(int dfd, const char* name)
  * scripts shut down gracefully and save any state to be persisted. */
 	if (L){
 		log_print("existing:reset");
-		dirlua_pcall(L, 0, 0, EP_TRIGGER_RESET, panic);
+		if (dirlua_setup_entrypoint(L, EP_TRIGGER_RESET)){
+			dirlua_pcall(L, 0, 0, panic);
+		}
+
 		lua_close(L);
 		L = NULL;
 	}
@@ -559,13 +572,16 @@ static void open_appl(int dfd, const char* name)
 			{NULL, NULL}
 		};
 		expose_api(L, api);
-		dirlua_pcall(L, 0, 0, EP_TRIGGER_NONE, panic);
+
+/* function already on stack so go directly to pcall */
+		dirlua_pcall(L, 0, 0, panic);
 	}
 	arcan_release_map(reg);
 	arcan_release_resource(&source);
 
-/* run script entrypoint */
-	dirlua_pcall(L, 0, 0, EP_TRIGGER_MAIN, panic);
+	if (dirlua_setup_entrypoint(L, EP_TRIGGER_MAIN)){
+		dirlua_pcall(L, 0, 0, panic);
+	}
 
 /* re-expose any existing clients, we do this as faked 'join' calls
  * rather than 'adopt' */
@@ -574,14 +590,19 @@ static void open_appl(int dfd, const char* name)
 		if (!CLIENTS.cset[i].shmif)
 			continue;
 
-		lua_pushnumber(L, CLIENTS.cset[i].clid);
-		dirlua_pcall(L, 1, 0, EP_TRIGGER_JOIN, panic);
+		if (dirlua_setup_entrypoint(L, EP_TRIGGER_JOIN)){
+			lua_pushnumber(L, CLIENTS.cset[i].clid);
+			dirlua_pcall(L, 1, 0, panic);
+		}
 	}
 }
 
 static void monitor_sigusr(int sig)
 {
 	lua_sethook(L, dirlua_monitor_watchdog, LUA_MASKCOUNT, 1);
+	struct dirlua_monitor_state* state = dirlua_monitor_getstate();
+	if (state)
+		state->dumppause = true;
 }
 
 static bool join_worker(int fd, bool monitor)
@@ -658,7 +679,6 @@ static bool join_worker(int fd, bool monitor)
 		if (monitor){
 			cl->registered = true;
 			CLIENTS.monitor_slot = ind;
-			CLIENTS.monitor_lock = true;
 			shmifsrv_enqueue_event(cl->shmif, &(struct arcan_event){
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_MESSAGE,
@@ -689,9 +709,9 @@ static void release_worker(size_t ind)
 
 /* release any pending hooks or breakpoints if the worker was a monitor */
 	if (ind == CLIENTS.monitor_slot){
-		CLIENTS.monitor_lock = false;
 		CLIENTS.monitor_slot = 0;
 		anet_directory_merge_multipart(NULL, NULL, NULL, NULL);
+		dirlua_monitor_releasestate(L);
 	}
 
 /* mark it as available for new join */
@@ -701,8 +721,10 @@ static void release_worker(size_t ind)
 	CLIENTS.active--;
 
 	if (cl->registered){
-		lua_pushnumber(L, cl->clid);
-		dirlua_pcall(L, 1, 0, EP_TRIGGER_LEAVE, panic);
+		if (dirlua_setup_entrypoint(L, EP_TRIGGER_LEAVE)){
+			lua_pushnumber(L, cl->clid);
+			dirlua_pcall(L, 1, 0, panic);
+		}
 	}
 
 	log_print("status=left:worker=%zu", cl->clid);
@@ -827,6 +849,25 @@ static void parent_control_event(struct arcan_event* ev)
 	}
 }
 
+static void flush_to_client(struct client* cl)
+{
+/* flush / pack reply */
+	char* out_buf;
+	size_t out_sz = dirlua_monitor_flush(&out_buf);
+	if (!out_sz)
+		return;
+
+/* we should have a blocking version here on overflow, as there is no
+ * priority inversion, monitor has equal privilege as this process given
+ * eval() */
+	struct arcan_event outev = {
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_MESSAGE
+	};
+
+	shmifsrv_enqueue_multipart_message(cl->shmif, &outev, out_buf, out_sz);
+}
+
 static void monitor_message(struct client* cl, struct arcan_event* ev)
 {
 	size_t out_sz;
@@ -843,24 +884,10 @@ static void monitor_message(struct client* cl, struct arcan_event* ev)
 	}
 
 /* buffer / apply */
-	FILE* fout = open_memstream(&out_ptr, &out_sz);
-	if (!dirlua_monitor_command(msg_ptr, L, NULL, fout))
+	if (!dirlua_monitor_command(msg_ptr, L, NULL))
 		log_print("monitor:unhandled_cmd=%s", msg_ptr);
 
-/* flush / pack reply */
-	fclose(fout);
-	free(msg_ptr);
-
-	if (out_sz){
-		struct arcan_event outev = {
-		};
-
-		shmifsrv_enqueue_event(cl->shmif, &outev, -1);
-	}
-
-/* cleanup remaining */
-	if (out_ptr)
-		free(out_ptr);
+	flush_to_client(cl);
 }
 
 static void flush_parent()
@@ -906,8 +933,10 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 					"kind=status:worker=%zu:registered:key=%s", cl->clid, cl->keyid);
 				free(b64);
 				cl->registered = true;
-				lua_pushnumber(L, cl->clid);
-				dirlua_pcall(L, 1, 0, EP_TRIGGER_JOIN, panic);
+				if (dirlua_setup_entrypoint(L, EP_TRIGGER_JOIN)){
+					lua_pushnumber(L, cl->clid);
+					dirlua_pcall(L, 1, 0, panic);
+				}
 			}
 			else {
 				log_print("kind=error:worker=%zu:unregistered_event=%s",
@@ -925,9 +954,11 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
  */
 		if (ev.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE){
 			if (ev.ext.bchunk.input){
-				lua_pushnumber(L, cl->clid);
-				MSGBUF_UTF8(ev.ext.bchunk.extensions);
-				dirlua_pcall(L, 2, 0, EP_TRIGGER_INDEX, panic);
+				if (dirlua_setup_entrypoint(L, EP_TRIGGER_INDEX)){
+					lua_pushnumber(L, cl->clid);
+					MSGBUF_UTF8(ev.ext.bchunk.extensions);
+					dirlua_pcall(L, 2, 0, panic);
+				}
 			}
 			shmifsrv_enqueue_event(cl->shmif, &(struct arcan_event){
 				.category = EVENT_TARGET,
@@ -940,13 +971,14 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 				monitor_message(cl, &ev);
 			}
 			else {
-				lua_pushnumber(L, cl->clid);
-				lua_newtable(L);
-				int top = lua_gettop(L);
-				tblbool(L, "multipart", ev.ext.message.multipart, top);
-				MSGBUF_UTF8(ev.ext.message.data);
-				tbldynstr(L, "message", (char*) ev.ext.message.data, top);
-				dirlua_pcall(L, 2, 0, EP_TRIGGER_MESSAGE, panic);
+				if (dirlua_setup_entrypoint(L, EP_TRIGGER_MESSAGE)){
+					lua_newtable(L);
+					int top = lua_gettop(L);
+					tblbool(L, "multipart", ev.ext.message.multipart, top);
+					MSGBUF_UTF8(ev.ext.message.data);
+					tbldynstr(L, "message", (char*) ev.ext.message.data, top);
+					dirlua_pcall(L, 2, 0, panic);
+				}
 			}
 		}
 	 }
@@ -980,6 +1012,12 @@ static bool flush_worker(struct client* cl, int fd, int revents, size_t ind)
 	return true;
 }
 
+static bool in_monitor_lock()
+{
+	struct dirlua_monitor_state* state = dirlua_monitor_getstate();
+	return state && state->lock;
+}
+
 void anet_directory_appl_runner()
 {
 	struct arg_arr* args;
@@ -993,12 +1031,9 @@ void anet_directory_appl_runner()
 	int left = 25;
 
 	while (!SHUTDOWN){
-		struct dirlua_monitor_state* state = dirlua_monitor_getstate();
-
+		if (in_monitor_lock()){
 /* special case: if there's a monitor attached and it holds a global lock, only
  * process that until it disconnects or unlocks. */
-
-		if (state && state->lock){
 			struct pollfd pset[2] = {
 				CLIENTS.pset[0],
 				CLIENTS.pset[CLIENTS.monitor_slot]
@@ -1018,17 +1053,23 @@ void anet_directory_appl_runner()
 		}
 
 /*
- * note that large timeskips will just rebase and not actually trigger a tick,
+ * Note that large timeskips will just rebase and not actually trigger a tick,
  * this might be undesired and will happen repeatedly with a debugger attached.
+ * Number of backlogged ticks are forwarded as to allow the script to deal with
+ * falling behind on timing and only yield one call (as that in turn might
+ * trigger monitor conditions).
  */
 		int pv = poll(CLIENTS.pset, CLIENTS.set_sz, left);
 		int nt = shmifsrv_monotonic_tick(&left);
-
-/* L might not be initialised here yet as it depends on the event delivery */
-		while (nt > 0 && L){
-			dirlua_pcall(L, 0, 0, EP_TRIGGER_CLOCK, panic);
-			nt--;
+		if (nt > 0){
+			if (dirlua_setup_entrypoint(L, EP_TRIGGER_CLOCK)){
+				lua_pushnumber(L, nt);
+				dirlua_pcall(L, 1, 0, panic);
+			}
 		}
+
+		if (in_monitor_lock())
+			continue;
 
 /* First prioritize the privileged parent inbound events,
  * and if it's dead we shutdown as well. */
@@ -1037,8 +1078,13 @@ void anet_directory_appl_runner()
 			pv--;
 		}
 
-/* flush out each client, rate-limit comes from queue size caps */
+/* flush out each client, rate-limit comes from queue size caps - need to keep
+ * checking the monitor lock so we don't accidentally run ahead and keep
+ * calling into VM on error condition. */
 		for (size_t i = 1; i < CLIENTS.set_sz && pv > 0; i++){
+			if (in_monitor_lock())
+				continue;
+
 			if (flush_worker(&CLIENTS.cset[i],
 				CLIENTS.pset[i].fd, CLIENTS.pset[i].revents, i)){
 				pv--;
