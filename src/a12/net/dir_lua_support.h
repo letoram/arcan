@@ -36,7 +36,6 @@ struct dirlua_monitor_state {
 	size_t n_breakpoints;
 	bool in_breakpoint_set;
 	int hook_mask;
-	int entrypoint;
 	bool lock;
 	bool stepreq;
 	bool dumppause;

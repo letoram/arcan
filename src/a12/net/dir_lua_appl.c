@@ -548,6 +548,8 @@ static void open_appl(int dfd, const char* name)
 	data_source source = {
 		.fd = openat(dfd, scratch, O_RDONLY),
 	};
+	fchdir(dfd);
+
 	map_region reg = arcan_map_resource(&source, false);
 
 	if (0 == luaL_loadbuffer(L, reg.ptr, reg.sz, name)){
@@ -866,6 +868,7 @@ static void flush_to_client(struct client* cl)
 	};
 
 	shmifsrv_enqueue_multipart_message(cl->shmif, &outev, out_buf, out_sz);
+	fseek(dirlua_monitor_getstate()->out, 0L, SEEK_SET);
 }
 
 static void monitor_message(struct client* cl, struct arcan_event* ev)
@@ -1032,6 +1035,8 @@ void anet_directory_appl_runner()
 
 	while (!SHUTDOWN){
 		if (in_monitor_lock()){
+			flush_to_client(&CLIENTS.cset[CLIENTS.monitor_slot]);
+
 /* special case: if there's a monitor attached and it holds a global lock, only
  * process that until it disconnects or unlocks. */
 			struct pollfd pset[2] = {

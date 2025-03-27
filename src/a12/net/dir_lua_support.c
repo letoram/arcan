@@ -49,6 +49,7 @@ static struct {
 	const char* keyv;
 } ep_map[] =
 {
+	{EP_TRIGGER_CLOCK, "clock_pulse"},
 	{EP_TRIGGER_MESSAGE, "message"},
 	{EP_TRIGGER_TRACE, "trace"},
 	{EP_TRIGGER_RESET, "reset"},
@@ -171,6 +172,17 @@ static bool check_breakpoints(lua_State* L)
 	}
 
 	return false;
+}
+
+static char* strip_arg_lf(char* arg)
+{
+/* strip \n */
+	size_t len = strlen(arg);
+	if (len && arg[len-1] == '\n'){
+		arg[len-1] = '\0';
+		return &arg[len-1];
+	}
+	return &arg[len];
 }
 
 void dirlua_monitor_panic(lua_State* L, lua_Debug* D)
@@ -351,7 +363,7 @@ void dirlua_callstack_raw(lua_State* L, lua_Debug* D, int levels, FILE* out)
 {
 	uint64_t cbk;
 	int64_t luavid, vid;
-	fprintf(out, "type=entrypoint:kind=%s\n", dirlua_eptostr(monitor->entrypoint));
+	fprintf(out, "type=entrypoint:kind=%s\n", dirlua_eptostr(lua.last_ep));
 	int level = 0;
 	lua_Debug ar;
 
@@ -401,9 +413,7 @@ static void cmd_source(char* arg, lua_State* L, lua_Debug* D)
 		arg = &arg[1];
 	}
 
-/* strip \n */
-	size_t len = strlen(arg);
-	arg[len-1] = '\0';
+	strip_arg_lf(arg);
 
 /* SECURITY NOTE:
  * --------------
@@ -609,9 +619,7 @@ static void stack_to_table(char** tokctx, lua_State* L, FILE* out)
 
 static void cmd_dumptable(char* argv, lua_State* L, lua_Debug* D)
 {
-	size_t len = strlen(argv);
-	if (len)
-		argv[len-1] = '\0';
+	strip_arg_lf(argv);
 
 	int argi = 0;
 	char* tok, (* tokctx);
@@ -693,9 +701,8 @@ static void cmd_breakpoint(char* argv, lua_State* L, lua_Debug* D)
 		return;
 	}
 
-/* strip lf, extract file:line */
-	char* endptr = &argv[len-1];
-	*endptr = '\0';
+/* extract file:line */
+	char* endptr = strip_arg_lf(argv);
 	unsigned long line = 0;
 
 	while (endptr != argv && *endptr != ':')
@@ -765,10 +772,7 @@ static void cmd_entrypoint(char* arg, lua_State* L, lua_Debug* D)
 	char* tok;
 	char* tokctx;
 
-/* strip \n */
-	size_t len = strlen(arg);
-	if (len)
-		arg[len-1] = '\0';
+	strip_arg_lf(arg);
 
 	while ( (tok = strtok_r(arg, " ", &tokctx) ) ){
 		arg = NULL;
