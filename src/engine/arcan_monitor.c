@@ -742,6 +742,7 @@ void arcan_monitor_watchdog_listen(lua_State* L, const char* fname)
 		return;
 	}
 
+	m_ctrl = fpek;
 }
 
 FILE* arcan_monitor_watchdog_error(lua_State* L, int in_panic, bool check)
@@ -919,15 +920,19 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 		lua_sethook(L, NULL, 0, 0);
 	}
 
+/* m_out might not >yet< be set for the external attach case as we wait
+ * for cmd_output to say where we are supposed to go */
 	do {
-		if (m_dumppause && L){
+		if (m_dumppause && L && m_out){
 			fprintf(m_out, "#WAITING\n");
 			m_dumppause = false;
 			cmd_backtrace("", L, D);
 		}
 
 		char buf[4096];
-		fprintf(m_out, "#WAITING\n");
+		if (m_out)
+			fprintf(m_out, "#WAITING\n");
+
 		if (!fgets(buf, 4096, m_ctrl)){
 			arcan_warning("monitor: couldn't read control command");
 			longjmp_mode = ARCAN_LUA_KILL_SILENT;
@@ -943,6 +948,11 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 		buf[i] = '\0';
 		for (size_t j = 0; j < COUNT_OF(cmds); j++){
 			if (strcasecmp(buf, cmds[j].word) == 0){
+				if (!m_out && strcasecmp(cmds[j].word, "output") != 0){
+					arcan_warning("monitor: command without output set");
+					continue;
+				}
+
 				cmds[j].ptr(&buf[i+1], L, D);
 				break;
 			}
@@ -1020,7 +1030,7 @@ void arcan_monitor_tick(int n)
 
 	if (m_ctrl){
 		struct pollfd pfd = {
-			.fd = STDIN_FILENO,
+			.fd = fileno(m_ctrl),
 			.events = POLLIN
 		};
 		if (1 == poll(&pfd, 1, 0)){
