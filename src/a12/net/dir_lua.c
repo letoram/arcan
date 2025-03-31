@@ -71,6 +71,7 @@ struct strrep_meta {
 
 struct client_userdata {
 	struct dircl* C;
+	bool directory_link;
 	intptr_t client_ref;
 };
 
@@ -885,6 +886,7 @@ static int cfgpath_newindex(lua_State* L)
 
 		CFG->meta.keystore.directory.dirfd = dirfd;
 		fcntl(dirfd, F_SETFD, FD_CLOEXEC);
+		setenv("ARCAN_STATEPATH", val, 1);
 	}
 	else {
 		luaL_error(L,
@@ -903,6 +905,73 @@ static int dir_index(lua_State* L)
 static int dir_newindex(lua_State* L)
 {
 	return 0;
+}
+
+static int dir_linkdirectory(lua_State* L)
+{
+/* Ensure that the link_directory target is referenced in the keystore
+ * and treat it as fatal if it is not. */
+	char* tag = strdup(luaL_checkstring(L, 1));
+	uint8_t private[32];
+	char* tmp;
+	uint16_t tmpport;
+
+	if (!a12helper_keystore_hostkey(tag, 0, private, &tmp, &tmpport))
+		luaL_error(L, "link_directory: >tag=%s< not found in keystore", tag);
+
+	if (lua_type(L, 2) != LUA_TFUNCTION)
+		luaL_error(L, "link_directory: tag, >callback< missing");
+
+/* take a reference to the callback, we bind that to the userdata for the
+ * client process we create for the outbound directory connection. */
+	lua_pushvalue(L, 2);
+	intptr_t ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+/* We now have enough information to spin up the worker and have it make the
+ * outbound connection - this is a separate _worker.c implementation to split
+ * out propagation options. This worker will use the keystore again to make the
+ * actual outbound connection > then < privsep. */
+	char* argv[] = {CFG->path_self, "dirlink", tag, NULL};
+
+	struct shmifsrv_envp env = {
+		.init_w = 32,
+		.init_h = 32,
+		.path = CFG->path_self,
+		.envv = NULL,
+		.argv = argv,
+		.detach = 2 | 4 | 8
+	};
+
+	int clsock;
+	struct shmifsrv_client* S = shmifsrv_spawn_client(env, &clsock, NULL, 0);
+	free(tag);
+
+	if (!S){
+		a12int_trace(
+			A12_TRACE_DIRECTORY, "kind=error:arcan-net:dirappl_spawn");
+		return 0;
+	}
+
+/* bind userdata similar to _lua_register and return that here, we don't have
+ * an A12 state but it's only used here to extract the endpoint for (accept ->
+ * build a12-state -> handover to worker) and the real remote endpoint is
+ * retrieved after connecting.
+ */
+	struct dircl* cl = anet_directory_shmifsrv_thread(S, NULL, true);
+	struct client_userdata* ud = lua_newuserdata(L, sizeof(struct client_userdata));
+
+	ud->C = cl;
+	cl->userdata = ud;
+	ud->directory_link = true;
+
+	lua_pushvalue(L, -1);
+	ud->client_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+/* and assign the table of client actions */
+	luaL_getmetatable(L, "dircl");
+	lua_setmetatable(L, -2);
+
+	return 1;
 }
 
 /*
@@ -1103,6 +1172,13 @@ bool anet_directory_lua_init(struct global_cfg* cfg)
  * started in trigger_auto() */
 	lua_newtable(L);
 	lua_setglobal(L, "autostart");
+
+/*
+ * expose higher- level admin function for managing trust store, make
+ * outbound connections and so on.
+ */
+	lua_pushcfunction(L, dir_linkdirectory);
+	lua_setglobal(L, "link_directory");
 
 	if (cfg->config_file){
 		int status = luaL_dofile(L, cfg->config_file);
@@ -1517,4 +1593,14 @@ void anet_directory_lua_register(struct dircl* C)
 /* now it's safe to re-retrieve and call */
 	lua_call(L, 1, 0);
 	return;
+}
+
+void anet_directory_lua_ready(struct global_cfg* cfg)
+{
+	lua_getglobal(L, "ready");
+	if (!lua_isfunction(L, -1)){
+		lua_pop(L, 1);
+		return;
+	}
+	lua_call(L, 0, 0);
 }

@@ -3859,7 +3859,7 @@ void a12_set_endpoint(struct a12_state* S, const char* ep)
 
 const char* a12_get_endpoint(struct a12_state* S)
 {
-	return S->endpoint;
+	return S ? S->endpoint : NULL;
 }
 
 void a12_supply_dynamic_resource(struct a12_state* S, struct a12_dynreq r)

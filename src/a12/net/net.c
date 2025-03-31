@@ -31,7 +31,8 @@ enum anet_mode {
 	ANET_SHMIF_EXEC,
 	ANET_SHMIF_EXEC_OUTBOUND,
 	ANET_SHMIF_DIRSRV_INHERIT,
-	ANET_SHMIF_SRVAPP_INHERIT
+	ANET_SHMIF_SRVAPP_INHERIT,
+	ANET_SHMIF_DIRSRV_INHERITLINK
 };
 
 enum mt_mode {
@@ -224,7 +225,7 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 
 		cl = shmifsrv_spawn_client(env, &clsock, NULL, 0);
 		if (cl){
-			anet_directory_shmifsrv_thread(cl, S);
+			anet_directory_shmifsrv_thread(cl, S, NULL);
 		}
 
 		a12_channel_close(S);
@@ -1125,7 +1126,9 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 				return show_usage("Couldn't stat -S descriptor", argv, i);
 
 /* Both socket passed and preauth arcan shmif connection? treat that as the
- * directory server forking off into itself to handle a client connection */
+ * directory server forking off into itself to handle a client connection
+ * unless we also get keymaterial where the worker making an outbound DIR
+ * connection for linking directories */
 			if (getenv("ARCAN_SOCKIN_FD")){
 				opts->mode = ANET_SHMIF_DIRSRV_INHERIT;
 				opts->opts->local_role = ROLE_DIR;
@@ -1938,6 +1941,7 @@ static void sigusr_rescan(int sign)
 
 int main(int argc, char** argv)
 {
+	const char* err;
 	struct arcan_net_meta meta = {0};
 	sigaction(SIGPIPE, &(struct sigaction){
 			.sa_handler = SIG_IGN
@@ -1979,6 +1983,20 @@ int main(int argc, char** argv)
 		return EXIT_SUCCESS;
 	}
 
+/* Similar to ANET_SHMIFSRV_DIRSRV_INHERIT but we make an outbound connection
+ * that acts to join the directories together into a merged or hierarchical
+ * namespace. This should always be run from main directory server process
+ * so any other arguments are ignored here.
+ */
+	if (argc > 1 && strcmp(argv[1], "dirlink") == 0){
+		if (argc == 2 || !open_keystore(&global.meta, &err)){
+			return EXIT_FAILURE;
+		}
+		global.meta.opts->local_role = ROLE_DIR;
+		struct anet_dirsrv_opts diropts = {0};
+		return anet_directory_link(argv[2], &global.meta, diropts);
+	}
+
 	if (argc < 2 || (argc == 2 &&
 		(strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0)))
 		return show_usage(NULL, NULL, 0);
@@ -1986,12 +2004,15 @@ int main(int argc, char** argv)
 /* inherited directory server mode doesn't take extra listening parameters and
  * was an afterthought not fitting with the rest of the (messy) arg parsing */
 	size_t argi = apply_commandline(argc, argv, &meta);
+	if (global.meta.mode == ANET_SHMIF_DIRSRV_INHERITLINK){
+}
+
 	if (!argi && global.meta.mode != ANET_SHMIF_DIRSRV_INHERIT && !global.meta.host)
 		return EXIT_FAILURE;
 
 	if (!anet_directory_lua_init(&global)){
 		fprintf(stderr, "Couldn't setup Lua VM state, exiting.\n");
-		return  EXIT_FAILURE;
+		return EXIT_FAILURE;
 	}
 
 /* no mode? if there's arguments left, assume it is is the 'reverse' mode
@@ -2073,7 +2094,6 @@ int main(int argc, char** argv)
 	char* errmsg;
 
 /* enable asymetric encryption and keystore */
-	const char* err;
 	if (global.soft_auth){
 		a12int_trace(A12_TRACE_SECURITY, "weak-security=password only");
 		if (!global.no_default){
@@ -2145,6 +2165,9 @@ int main(int argc, char** argv)
 				pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
 				pthread_create(&pth, &pthattr, send_dirsrv_beacon, &ipv6);
 			}
+
+/* now we can run the post-config hook so calls like link_directory will work */
+			anet_directory_lua_ready(&global);
 		}
 
 		if (!global.trust_domain)

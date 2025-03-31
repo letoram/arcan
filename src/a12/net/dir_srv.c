@@ -1341,8 +1341,8 @@ void anet_directory_shmifsrv_set(struct anet_dirsrv_opts* opts)
 /* This is in the parent process, it acts as a 1:1 thread/process which
  * pools and routes. The other end of this shmif connection is in the
  * normal net->listen thread */
-void anet_directory_shmifsrv_thread(
-	struct shmifsrv_client* cl, struct a12_state* S)
+struct dircl* anet_directory_shmifsrv_thread(
+	struct shmifsrv_client* cl, struct a12_state* S, bool link)
 {
 	pthread_t pth;
 	pthread_attr_t pthattr;
@@ -1380,7 +1380,11 @@ void anet_directory_shmifsrv_thread(
 		cur->next = newent;
 		newent->prev = cur;
 	dirsrv_global_unlock(__FILE__, __LINE__);
+
+	newent->dir_link = link;
 	pthread_create(&pth, &pthattr, dircl_process, newent);
+
+	return newent;
 }
 
 static bool try_appl_controller(const char* d_name, int dfd)

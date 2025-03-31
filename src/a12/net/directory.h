@@ -166,6 +166,7 @@ struct dircl {
 	uint8_t pubk[32];
 	bool authenticated;
 	bool in_admin;
+	bool dir_link;
 	int admin_fdout;
 
 /* accumulation buffer so that we don't permit forwarding unterminated
@@ -219,9 +220,13 @@ void anet_directory_srv(
 	struct a12_context_options*, struct anet_dirsrv_opts, int fdin, int fdout);
 
 /*
- * shmif connection to map to a thread for coordination
+ * shmif connection to map to a thread for coordination with the privsep worker
+ * if [link] is set the worker act as a linked directory and transfer requests
+ * that can't be solved locally propagate.
  */
-void anet_directory_shmifsrv_thread(struct shmifsrv_client*, struct a12_state*);
+struct dircl* anet_directory_shmifsrv_thread(
+	struct shmifsrv_client*, struct a12_state*, bool link);
+
 void anet_directory_shmifsrv_set(struct anet_dirsrv_opts* opts);
 
 /*
@@ -277,6 +282,9 @@ struct ioloop_shared {
 
 /* build the global- lua context and tie to a sqlite database represented by fd */
 bool anet_directory_lua_init(struct global_cfg* cfg);
+
+/* directory is scanned and ready */
+void anet_directory_lua_ready(struct global_cfg* cfg);
 
 void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl);
 
@@ -374,5 +382,10 @@ void dirsrv_global_unlock(const char* file, int line);
  */
 bool anet_directory_merge_multipart(
 	struct arcan_event* ev, struct arg_arr**, char**, int* err);
+
+int anet_directory_link(
+	const char* keytag,
+	struct anet_options* netcfg,
+	struct anet_dirsrv_opts srvcfg);
 
 #endif

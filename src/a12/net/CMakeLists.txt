@@ -14,6 +14,7 @@ set(SOURCES
 	dir_cl.c
 	dir_srv.c
 	dir_srv_worker.c
+	dir_srv_link.c
 	dir_supp.c
 	${ARCAN_SRC}/engine/arcan_db.c
 	${ARCAN_SRC}/platform/posix/warning.c

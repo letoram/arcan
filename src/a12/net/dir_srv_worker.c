@@ -805,11 +805,8 @@ void anet_directory_srv(
    code or the simplified use of shmif in the parent process with
    stdio/fdpassing level of syscalls.
 
-   This is not complete. In order for shm_open, sem_open to work when joining
-   an appl group with a server end connection we still need the wider
-   permissions. Before dropping /tmp here and going to minimalfd we need to
-   rewrite the sem_ functions to work using futexes on the shared memory page.
-*/
+	 This can be switched to minimalfd now post shmif refactor.
+ */
 	struct shmif_privsep_node* paths[] =
 	{
 		&(struct shmif_privsep_node){.path = "/tmp", .perm = "rwc"},
