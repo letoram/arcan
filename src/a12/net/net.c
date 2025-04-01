@@ -1823,7 +1823,9 @@ static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 
 /* this is a special case used with dirsrv spawning children with ephemeral
  * keys that are trused due to being spawned by the server itself. These pass
- * the pubk as an argument (for visibility) and the privk as env. */
+ * the pubk as an argument (for visibility) and the privk as env. if env is
+ * unacceptable, consider A12_USEPRIV strtol, treat as fifo and read from there
+ * once. */
 	if (global.use_forced_remote_pubk){
 		if (memcmp(pk, global.forced_remote_pubk, 32) != 0){
 			return auth;
@@ -1924,6 +1926,8 @@ static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
 
 			free(tag);
 		}
+		else
+			a12int_trace(A12_TRACE_SECURITY, "reject-untrusted-remote=%s", out);
 	}
 
 	if (auth.authentic && global.directory != -1){
@@ -1994,6 +1998,12 @@ int main(int argc, char** argv)
 		}
 		global.meta.opts->local_role = ROLE_DIR;
 		struct anet_dirsrv_opts diropts = {0};
+
+/* enforce outbound-name */
+		char tmp[strlen(argv[2]) + sizeof("outbound-")];
+		snprintf(tmp, sizeof(tmp), "outbound-%s", argv[2]);
+		global.trust_domain = strdup(tmp);
+
 		return anet_directory_link(argv[2], &global.meta, diropts);
 	}
 

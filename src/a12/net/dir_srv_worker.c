@@ -824,6 +824,16 @@ void anet_directory_srv(
 	}
 
 	a12int_trace(A12_TRACE_DIRECTORY, "notice=activated");
+
+/*
+ * Complex paths can be disabled entirely at compile time to have a simple
+ * isolated directory server without any runtime defaults, just state store,
+ * rendezvous and source/sink hosting.
+ */
+#ifndef STATIC_DIRECTORY_SERVER
+	netopts->allow_directory_link = true;
+#endif
+
 	struct a12_state* S = a12_server(netopts);
 	active_client_state = S;
 	if (pending_index)

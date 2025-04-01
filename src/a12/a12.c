@@ -2040,9 +2040,12 @@ static void process_hello_auth(struct a12_state* S)
 		else if (S->decode[54] == ROLE_DIR){
 			S->remote_mode = ROLE_DIR;
 			if (S->opts->local_role != ROLE_SINK && S->opts->local_role != ROLE_SOURCE){
-				a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EIMPL:dir2dir");
-				fail_state(S);
-				return;
+				if (!S->opts->allow_directory_link){
+					a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EIMPL:dir2dir");
+					fail_state(S);
+					return;
+				}
+				a12int_trace(A12_TRACE_SYSTEM, "kind=match:local=dir:remote=dir");
 			}
 			else {
 				a12int_trace(A12_TRACE_SYSTEM, "kind=match:local=source:remote=dir");
@@ -2057,6 +2060,11 @@ static void process_hello_auth(struct a12_state* S)
 				a12int_trace(A12_TRACE_SYSTEM,
 					"kind=error:status=EINVALID:local=dir:remote=unknown");
 				return;
+			}
+			if (S->remote_mode == ROLE_DIR && !S->opts->allow_directory_link){
+				a12int_trace(A12_TRACE_SYSTEM,
+					"kind=error:status=EPERM:local=dir:remote=dir:linking_blocked");
+				fail_state(S);
 			}
 		}
 		else {

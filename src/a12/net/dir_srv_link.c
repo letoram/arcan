@@ -118,6 +118,8 @@ int anet_directory_link(
  */
 	netcfg->retry_count = 0;
 	netcfg->key = keytag;
+	netcfg->opts->allow_directory_link = true;
+
 	struct anet_cl_connection conn = anet_cl_setup(netcfg);
 	if (conn.errmsg || !conn.state){
 		arcan_shmif_last_words(&shmif_parent_process, conn.errmsg);
@@ -158,7 +160,7 @@ int anet_directory_link(
 		.fdout = conn.fd,
 		.userfd = shmif_parent_process.epipe,
 		.on_event = remote_dir_event,
-		.on_shmif = local_dir_event,
+		.on_userfd = local_dir_event,
 		.lock = PTHREAD_MUTEX_INITIALIZER,
 		.cbt = &dm
 	};

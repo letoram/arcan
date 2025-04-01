@@ -131,6 +131,9 @@ struct a12_context_options {
  * the same shared secret (in and out). */
 	size_t rekey_bytes;
 
+/* if set, authentication will permit a directory to connect to a directory */
+	bool allow_directory_link;
+
 /* if set, the a12_flush() will not return a buffer to write out, but rather
  * call into the sink as soon as there is data to send. This helps debugging
  * and simple applications, but limits data interleaving options.
