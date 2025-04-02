@@ -36,6 +36,8 @@
 #include <stdatomic.h>
 #include <pthread.h>
 
+#define LUA_NOREF (-2)
+
 extern bool g_shutdown;
 
 static struct {
@@ -1268,6 +1270,14 @@ static void* dircl_process(void* P)
 			}
 		}
 
+	if (C->lua_cb != LUA_NOREF){
+		char lw[32];
+		shmifsrv_last_words(C->C, lw, 32);
+		anet_directory_lua_event(C, &(struct dirlua_event){
+				.kind = DIRLUA_EVENT_LOST,
+		});
+	}
+
 /* notify the outer VM so any logging / monitoring / admin channels are
  * getting unreferenced and released */
 	anet_directory_lua_unregister(C);
@@ -1353,6 +1363,7 @@ struct dircl* anet_directory_shmifsrv_thread(
 	*newent = (struct dircl){
 		.C = cl,
 		.in_appl = -1,
+		.lua_cb = LUA_NOREF,
 		.endpoint = {
 			.category = EVENT_EXTERNAL,
 			.ext.kind = EVENT_EXTERNAL_NETSTATE

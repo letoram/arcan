@@ -949,18 +949,19 @@ static int dir_linkdirectory(lua_State* L)
 	if (!S){
 		a12int_trace(
 			A12_TRACE_DIRECTORY, "kind=error:arcan-net:dirappl_spawn");
+		luaL_unref(L, LUA_REGISTRYINDEX, ref);
 		return 0;
 	}
 
 /* bind userdata similar to _lua_register and return that here, we don't have
  * an A12 state but it's only used here to extract the endpoint for (accept ->
  * build a12-state -> handover to worker) and the real remote endpoint is
- * retrieved after connecting.
- */
+ * retrieved after connecting. */
 	struct dircl* cl = anet_directory_shmifsrv_thread(S, NULL, true);
 	struct client_userdata* ud = lua_newuserdata(L, sizeof(struct client_userdata));
 
 	ud->C = cl;
+	cl->lua_cb = ref;
 	cl->userdata = ud;
 	ud->directory_link = true;
 
@@ -972,6 +973,33 @@ static int dir_linkdirectory(lua_State* L)
 	lua_setmetatable(L, -2);
 
 	return 1;
+}
+
+void anet_directory_lua_event(struct dircl* C, struct dirlua_event* ev)
+{
+	if (C->lua_cb == LUA_NOREF)
+		return;
+
+	lua_rawgeti(L, LUA_REGISTRYINDEX, C->lua_cb);
+	if (lua_type(L, -1) != LUA_TFUNCTION){
+		luaL_error(L, "client-to-lua: reference is not a function");
+		lua_pop(L, 1);
+		return;
+	}
+
+	if (ev->kind == DIRLUA_EVENT_LOST){
+		push_dircl(L, C); /* +1 */
+		lua_newtable(L);
+			lua_pushstring(L, "kind");
+			lua_pushstring(L, "terminated");
+			lua_rawset(L, -3);
+
+			lua_pushstring(L, "last_words");
+			lua_pushstring(L, ev->msg);
+			lua_rawset(L, -3);
+
+		lua_call(L, 2, 0);
+	}
 }
 
 /*

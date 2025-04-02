@@ -162,6 +162,9 @@ struct dircl {
 	arcan_event petname;
 	arcan_event endpoint;
 
+/* slot for callback handler registration in config.lua script */
+	intptr_t lua_cb;
+
 /* authentication public key and whether it is approved or not */
 	uint8_t pubk[32];
 	bool authenticated;
@@ -210,6 +213,17 @@ struct global_cfg {
 	char* config_file;
 	char* db_file;
 };
+
+enum {
+	DIRLUA_EVENT_LOST
+};
+
+struct dirlua_event {
+	int kind;
+	const char* msg;
+};
+
+void anet_directory_lua_event(struct dircl*, struct dirlua_event*);
 
 /*
  * dir_srv.c
