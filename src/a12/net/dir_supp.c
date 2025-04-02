@@ -577,3 +577,83 @@ bool anet_directory_merge_multipart(
 	*err = 0;
 	return true;
 }
+
+struct appl_meta* dir_unpack_index(int fd)
+{
+	a12int_trace(A12_TRACE_DIRECTORY, "new_index");
+	FILE* fpek = fdopen(fd, "r");
+	if (!fpek){
+		a12int_trace(A12_TRACE_DIRECTORY, "error=einval_fd");
+		return NULL;
+	}
+
+	struct appl_meta* first = NULL;
+	struct appl_meta** cur = &first;
+
+	while (!feof(fpek)){
+		char line[256];
+		size_t n = 0;
+
+/* the .index is trusted, but to ease troubleshooting there is some light basic
+ * validation to help if the format is updated / extended */
+		char* res = fgets(line, sizeof(line), fpek);
+		if (!res)
+			continue;
+
+		n++;
+		struct arg_arr* entry = arg_unpack(line);
+		if (!entry){
+			a12int_trace(A12_TRACE_DIRECTORY, "error=malformed_entry:index=%zu", n);
+			continue;
+		}
+
+		const char* kind;
+		if (!arg_lookup(entry, "kind", 0, &kind) || !kind){
+			a12int_trace(A12_TRACE_DIRECTORY, "error=malformed_entry:index=%zu", n);
+			arg_cleanup(entry);
+			continue;
+		}
+
+/* We re-use the same a12int_ interface for the directory entries for marking a
+ * source or directory entry, just with a different type identifier so that the
+ * implementation knows to package the update correctly. Actual integrity of the
+ * directory is guaranteed by the parent process. Avoiding collisions and so on
+ * is done in the parent, as is enforcing permissions. */
+		const char* name = NULL;
+		arg_lookup(entry, "name", 0, &name);
+
+		*cur = malloc(sizeof(struct appl_meta));
+		**cur = (struct appl_meta){0};
+		snprintf((*cur)->appl.name, 18, "%s", name);
+
+		const char* tmp;
+		if (arg_lookup(entry, "categories", 0, &tmp) && tmp)
+			(*cur)->categories = (uint16_t) strtoul(tmp, NULL, 10);
+
+		if (arg_lookup(entry, "size", 0, &tmp) && tmp)
+			(*cur)->buf_sz = (uint32_t) strtoul(tmp, NULL, 10);
+
+		if (arg_lookup(entry, "id", 0, &tmp) && tmp)
+			(*cur)->identifier = (uint16_t) strtoul(tmp, NULL, 10);
+
+		if (arg_lookup(entry, "hash", 0, &tmp) && tmp){
+			union {
+				uint32_t val;
+				uint8_t u8[4];
+			} dst;
+
+			dst.val = strtoul(tmp, NULL, 16);
+			memcpy((*cur)->hash, dst.u8, 4);
+		}
+
+		if (arg_lookup(entry, "timestamp", 0, &tmp) && tmp){
+			(*cur)->update_ts = (uint64_t) strtoull(tmp, NULL, 10);
+		}
+
+		cur = &(*cur)->next;
+		arg_cleanup(entry);
+	}
+
+	fclose(fpek);
+	return first;
+}

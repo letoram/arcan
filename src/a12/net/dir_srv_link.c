@@ -52,10 +52,20 @@ static int shmifopen_flags =
 			SHMIF_NOREGISTER |
 			SHMIF_SOCKET_PINGEVENT;
 
-static struct arcan_shmif_cont shmif_parent_process;
-static struct a12_state* active_client_state;
-static struct appl_meta* pending_index;
-static struct ioloop_shared* ioloop_shared;
+static struct {
+	struct arcan_shmif_cont shmif_parent_process;
+	struct a12_state* active_client_state;
+	struct appl_meta* local_index;
+	struct ioloop_shared* ioloop_shared;
+} G;
+
+static void synch_local_directory(struct appl_meta* first)
+{
+	if (G.local_index){
+
+	}
+	G.local_index = first;
+}
 
 static void remote_dir_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
@@ -66,7 +76,16 @@ static void remote_dir_event(
 static void
 	local_dir_event(struct ioloop_shared* S, bool ok)
 {
+	struct arcan_event ev;
+	int pv;
 
+	while ((pv = arcan_shmif_poll(&S->shmif, &ev) > 0)){
+/* BCHUNKSTATE for updating appl index is the main one here */
+	}
+
+	if (-1 == pv){
+		S->shutdown = true;
+	}
 }
 
 /* different to dir_srv_worker any shared secret is passed as process spawn
@@ -75,25 +94,63 @@ static bool wait_for_activation()
 {
 	struct arcan_event ev;
 
-	while (arcan_shmif_wait(&shmif_parent_process, &ev)){
+	while (arcan_shmif_wait(&G.shmif_parent_process, &ev)){
 		if (ev.category != EVENT_TARGET)
 			continue;
 
 		if (ev.tgt.kind == TARGET_COMMAND_BCHUNK_IN){
 			if (strcmp(ev.tgt.message, ".appl-index") == 0){
-/* this code should be shared with regular _worker, when we get the index from
- * the remote directory we compare to the state we track here, if it's newer
- * we retrieve and 'upload' to parent and if it's older we push our local one.
- *
- * if we act as a hierarchical namespace we forward the remote index upwards
- * and just retrieve / cache when needed */
+				struct appl_meta* first = dir_unpack_index(ev.tgt.ioevs[0].iv);
+				if (!first){
+					arcan_shmif_last_words(&G.shmif_parent_process, "activation: broken index");
+					return false;
+				}
+				synch_local_directory(first);
 			}
 		}
 		else if (ev.tgt.kind == TARGET_COMMAND_ACTIVATE)
 			return true;
 	}
 
+	arcan_shmif_last_words(&G.shmif_parent_process, "no activation");
 	return false;
+}
+
+/* We have received a full remote directory - we need to interleave this with
+ * our own index to the one we are exporting in the parent process. There are
+ * many nuances to this, one is if it is a source/sink/directory or appl.
+ *
+ * For sources / sinks we announce them as new sources and namespaced so that
+ * any diropen request goes through us.
+ *
+ * For appls there is both the controller side and the client side bundles to
+ * consider. Normally a client wouldn't have access to the controller side,
+ * but that is necessary for directories in a unified namespace to work.
+ *
+ * Directories in a referential one simply needs to tunnel MESSAGES and file
+ * transfers so that they route to the server that actually runs it.
+ *
+ * Directories in a unified one needs to have our end spin up an appl-runner
+ * and proxy join/leave/bchunk/messages.
+ *
+ * The implementation here is currently naive when it comes to handling
+ * collisions. A proper approach would be to have signatures (pending) and make
+ * sure that it is the same source that has signed that owns the name but the
+ * protocol currently lack the mechanisms (REKEY for setting signing key and
+ * recovery key for rotating them).
+ */
+static bool remote_directory_receive(
+	struct ioloop_shared* I, struct appl_meta* dir)
+{
+/* always keep-alive */
+	return true;
+}
+
+static void remote_directory_discover(
+	struct a12_state* S, int type,
+	const char* petname, bool found, uint8_t pubk[static 32], void* tag)
+{
+
 }
 
 int anet_directory_link(
@@ -103,7 +160,8 @@ int anet_directory_link(
 {
 /* first connect to parent so we can communicate failure through last_words */
 	struct arg_arr* args;
-	shmif_parent_process = arcan_shmif_open(SEGID_NETWORK_SERVER, shmifopen_flags, &args);
+	G.shmif_parent_process =
+		arcan_shmif_open(SEGID_NETWORK_SERVER, shmifopen_flags, &args);
 
 /* now make the outbound connection through the keytag, there might be a case
  * for using tag + explicit host when coming from discover though it's better
@@ -122,23 +180,23 @@ int anet_directory_link(
 
 	struct anet_cl_connection conn = anet_cl_setup(netcfg);
 	if (conn.errmsg || !conn.state){
-		arcan_shmif_last_words(&shmif_parent_process, conn.errmsg);
+		arcan_shmif_last_words(&G.shmif_parent_process, conn.errmsg);
 		return EXIT_FAILURE;
 	}
 
 	if (a12_remote_mode(conn.state) != ROLE_DIR){
-		arcan_shmif_last_words(&shmif_parent_process, "remote not a directory");
+		arcan_shmif_last_words(&G.shmif_parent_process, "remote not a directory");
 		shutdown(conn.fd, SHUT_RDWR);
 		return EXIT_FAILURE;
 	}
 
 /* now we can privsep, wait with unveil paths until we can test the behaviour
  * against existing directory file descriptors */
-	arcan_shmif_privsep(&shmif_parent_process, SHMIF_PLEDGE_PREFIX, NULL, 0);
+	arcan_shmif_privsep(&G.shmif_parent_process, SHMIF_PLEDGE_PREFIX, NULL, 0);
 	a12int_trace(A12_TRACE_DIRECTORY, "notice=prisep-set");
 
+	G.active_client_state = conn.state;
 	if (!wait_for_activation()){
-		arcan_shmif_last_words(&shmif_parent_process, "no activation");
 		shutdown(conn.fd, SHUT_RDWR);
 		return EXIT_FAILURE;
 	}
@@ -146,11 +204,10 @@ int anet_directory_link(
 /* propagating messages to / from all local runners and forwarding into the
  * directory network will need a different structure routing or pay for a shmif
  * state + thread for each runner we need to route messages through. */
-	active_client_state = conn.state;
 	struct directory_meta dm =
 	{
 		.S = conn.state,
-		.C = &shmif_parent_process
+		.C = &G.shmif_parent_process
 	};
 
 	struct ioloop_shared ioloop =
@@ -158,19 +215,27 @@ int anet_directory_link(
 		.S = conn.state,
 		.fdin = conn.fd,
 		.fdout = conn.fd,
-		.userfd = shmif_parent_process.epipe,
+		.userfd = G.shmif_parent_process.epipe,
 		.on_event = remote_dir_event,
 		.on_userfd = local_dir_event,
+		.on_directory = remote_directory_receive,
 		.lock = PTHREAD_MUTEX_INITIALIZER,
 		.cbt = &dm
 	};
 
-	shmif_parent_process.user = &dm;
+	G.shmif_parent_process.user = &dm;
 
-	ioloop_shared = &ioloop;
+	a12_set_destination_raw(conn.state, 0,
+		(struct a12_unpack_cfg){
+			.on_discover = remote_directory_discover,
+			.on_discover_tag = &ioloop
+		}, sizeof(struct a12_unpack_cfg)
+	);
+
+	G.ioloop_shared = &ioloop;
 	anet_directory_ioloop(&ioloop);
 
-	arcan_shmif_drop(&shmif_parent_process);
+	arcan_shmif_drop(&G.shmif_parent_process);
 
 	return EXIT_SUCCESS;
 }

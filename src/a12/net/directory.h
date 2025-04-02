@@ -402,4 +402,11 @@ int anet_directory_link(
 	struct anet_options* netcfg,
 	struct anet_dirsrv_opts srvcfg);
 
+/*
+ * Take a file descriptor covering a directory server content index and
+ * unpack into a dynamically allocated linked list of appls suitable for
+ * forwarding to a12int_set_directory.
+ */
+struct appl_meta* dir_unpack_index(int fd);
+
 #endif

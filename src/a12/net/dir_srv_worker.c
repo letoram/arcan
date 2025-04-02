@@ -275,90 +275,6 @@ static void on_a12srv_event(
 	}
 }
 
-static void unpack_index(
-	struct a12_state *S, struct arcan_shmif_cont *C, struct arcan_event* ev)
-{
-	a12int_trace(A12_TRACE_DIRECTORY, "new_index");
-	FILE* fpek = fdopen(ev->tgt.ioevs[0].iv, "r");
-	if (!fpek){
-		a12int_trace(A12_TRACE_DIRECTORY, "error=einval_fd");
-		return;
-	}
-
-	struct appl_meta* first = NULL;
-	struct appl_meta** cur = &first;
-
-	while (!feof(fpek)){
-		char line[256];
-		size_t n = 0;
-
-/* the .index is trusted, but to ease troubleshooting there is some light basic
- * validation to help if the format is updated / extended */
-		char* res = fgets(line, sizeof(line), fpek);
-		if (!res)
-			continue;
-
-		n++;
-		struct arg_arr* entry = arg_unpack(line);
-		if (!entry){
-			a12int_trace(A12_TRACE_DIRECTORY, "error=malformed_entry:index=%zu", n);
-			continue;
-		}
-
-		const char* kind;
-		if (!arg_lookup(entry, "kind", 0, &kind) || !kind){
-			a12int_trace(A12_TRACE_DIRECTORY, "error=malformed_entry:index=%zu", n);
-			arg_cleanup(entry);
-			continue;
-		}
-
-/* We re-use the same a12int_ interface for the directory entries for marking a
- * source or directory entry, just with a different type identifier so that the
- * implementation knows to package the update correctly. Actual integrity of the
- * directory is guaranteed by the parent process. Avoiding collisions and so on
- * is done in the parent, as is enforcing permissions. */
-		const char* name = NULL;
-		arg_lookup(entry, "name", 0, &name);
-
-		*cur = malloc(sizeof(struct appl_meta));
-		**cur = (struct appl_meta){0};
-		snprintf((*cur)->appl.name, 18, "%s", name);
-
-		const char* tmp;
-		if (arg_lookup(entry, "categories", 0, &tmp) && tmp)
-			(*cur)->categories = (uint16_t) strtoul(tmp, NULL, 10);
-
-		if (arg_lookup(entry, "size", 0, &tmp) && tmp)
-			(*cur)->buf_sz = (uint32_t) strtoul(tmp, NULL, 10);
-
-		if (arg_lookup(entry, "id", 0, &tmp) && tmp)
-			(*cur)->identifier = (uint16_t) strtoul(tmp, NULL, 10);
-
-		if (arg_lookup(entry, "hash", 0, &tmp) && tmp){
-			union {
-				uint32_t val;
-				uint8_t u8[4];
-			} dst;
-
-			dst.val = strtoul(tmp, NULL, 16);
-			memcpy((*cur)->hash, dst.u8, 4);
-		}
-
-		if (arg_lookup(entry, "timestamp", 0, &tmp) && tmp){
-			(*cur)->update_ts = (uint64_t) strtoull(tmp, NULL, 10);
-		}
-
-		cur = &(*cur)->next;
-		arg_cleanup(entry);
-	}
-
-	fclose(fpek);
-	if (!S)
-		pending_index = first;
-	else
-		a12int_set_directory(S, first);
-}
-
 /* S, cbt isn't guaranteed here if it happens during the activation stage */
 static void bchunk_event(struct a12_state *S,
 	struct directory_meta* cbt, struct arcan_shmif_cont *C, struct arcan_event* ev)
@@ -367,7 +283,11 @@ static void bchunk_event(struct a12_state *S,
 
 /* the index is packed as shmif argstrs line-separated */
 	if (strcmp(ev->tgt.message, ".appl-index") == 0){
-		unpack_index(S, C, ev);
+		struct appl_meta* first = dir_unpack_index(ev->tgt.ioevs[0].iv);
+		if (!S)
+			pending_index = first;
+		else
+			a12int_set_directory(S, first);
 	}
 /* Only single channel handled for now, 1:1 source-sink connections. Multiple
  * ones are not difficult as such but evaluate the need experimentally first. */
