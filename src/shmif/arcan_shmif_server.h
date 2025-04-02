@@ -377,6 +377,9 @@ int shmifsrv_monotonic_tick(int* left);
  */
 void shmifsrv_monotonic_rebase();
 
+void shmifsrv_last_words(
+	struct shmifsrv_client* cl, char* outbuf, size_t outbuf_sz);
+
 /*
  * Unpack / Merge multipart into a shmifsrv_client internal buffer
  * for EVENT_EXTERNAL_MESSAGE.

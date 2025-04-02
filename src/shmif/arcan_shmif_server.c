@@ -104,6 +104,13 @@ struct shmifsrv_client*
 	return res;
 }
 
+void shmifsrv_last_words(
+	struct shmifsrv_client* cl, char* outbuf, size_t outbuf_sz)
+{
+	if (!platform_fsrv_lastwords(cl->con, outbuf, outbuf_sz))
+		snprintf(outbuf, outbuf_sz, "Couldn't access metadata");
+}
+
 struct shmifsrv_client* shmifsrv_allocate_connpoint(
 	const char* name, const char* key, mode_t permission, int fd)
 {
