@@ -25,6 +25,7 @@ if (AUDIO_PLATFORM STREQUAL "openal")
 ExternalProject_Add(openal_lwa
 	SOURCE_DIR ${EXTERNAL_SRC_DIR}/git/openal
 	BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/openal_lwa_static
+	BUILD_BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/openal_lwa_static/libopenal.a"
 	DOWNLOAD_COMMAND
 	${EXTERNAL_DEFS}
 	${CMAKE_EXTERNAL_DEFS}
