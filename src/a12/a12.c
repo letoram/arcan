@@ -3389,7 +3389,7 @@ static size_t queue_node(struct a12_state* S, struct blob_xfer* node)
 /*
  * REMOVED: this assumed that it was the receiving side sending the cancel
  * a12_stream_cancel(S, S->out_channel); It's not that we are actually cancelling
- * but rather finished.
+ * but rather finished
  */
 		struct arcan_event ack =
 			(struct arcan_event){
@@ -3400,6 +3400,8 @@ static size_t queue_node(struct a12_state* S, struct blob_xfer* node)
 					.identifier = node->identifier
 			}
 		};
+		a12int_trace(A12_TRACE_BTRANSFER,
+			"stream_id=%"PRIu32":send_complete:dead=%d", node->identifier, (int)die);
 		a12_channel_enqueue(S, &ack);
 
 		if (die){

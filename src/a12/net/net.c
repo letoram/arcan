@@ -1999,7 +1999,12 @@ int main(int argc, char** argv)
 		global.meta.opts->local_role = ROLE_DIR;
 		struct anet_dirsrv_opts diropts = {0};
 
-/* enforce outbound-name */
+/* we don't currently pass the trace value of the parent to us and we don't
+ * have access to the config, so just set some kind of default until the
+ * feature stabilises */
+		a12_trace_targets = A12_TRACE_SECURITY | A12_TRACE_DIRECTORY;
+
+/* enforce outbound-name in trust */
 		char tmp[strlen(argv[2]) + sizeof("outbound-")];
 		snprintf(tmp, sizeof(tmp), "outbound-%s", argv[2]);
 		global.trust_domain = strdup(tmp);

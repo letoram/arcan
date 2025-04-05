@@ -79,7 +79,7 @@ static void
 	struct arcan_event ev;
 	int pv;
 
-	while ((pv = arcan_shmif_poll(&S->shmif, &ev) > 0)){
+	while ((pv = arcan_shmif_poll(&S->shmif, &ev)) > 0){
 /* BCHUNKSTATE for updating appl index is the main one here */
 	}
 
@@ -234,6 +234,7 @@ int anet_directory_link(
 		.fdin = conn.fd,
 		.fdout = conn.fd,
 		.userfd = G.shmif_parent_process.epipe,
+		.userfd2 = -1,
 		.on_event = remote_dir_event,
 		.on_userfd = local_dir_event,
 		.on_directory = remote_directory_receive,
@@ -249,6 +250,9 @@ int anet_directory_link(
 			.on_discover_tag = &ioloop
 		}, sizeof(struct a12_unpack_cfg)
 	);
+
+/* request dirlist and subscribe to notifications */
+	a12int_request_dirlist(conn.state, true);
 
 	G.ioloop_shared = &ioloop;
 	anet_directory_ioloop(&ioloop);

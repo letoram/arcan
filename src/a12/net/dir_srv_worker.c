@@ -465,7 +465,7 @@ static void on_appl_shmif(struct ioloop_shared* S, bool ok)
 	int pv;
 
 /* most of these behave just like on_shmif, it is just a different sender */
-	while ((pv = arcan_shmif_poll(&S->shmif, &ev) > 0)){
+	while ((pv = arcan_shmif_poll(&S->shmif, &ev)) > 0){
 		a12int_trace(
 			A12_TRACE_DIRECTORY,
 			"to_appl=%s", arcan_shmif_eventstr(&ev, NULL, 0));
