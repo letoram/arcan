@@ -1224,9 +1224,15 @@ static void cl_got_dyn(struct a12_state* S, int type,
 static struct appl_meta* scan_for_appl(struct appl_meta* C, const char* name)
 {
 	while (C){
-		if (strcmp(C->appl.name, name) == 0)
+		if (!name || !name[0])
+			printf("id=%"PRIu16":size=%"PRIu64":name=%s%s%s\n",
+				C->identifier, C->buf_sz, C->appl.name,
+				C->appl.short_descr[0] ? ":description=" : "",
+				C->appl.short_descr[0] ? C->appl.short_descr : ""
+			);
+		else if (strcmp(C->appl.name, name) == 0)
 			return C;
-		else C = C->next;
+		C = C->next;
 	}
 	return NULL;
 }

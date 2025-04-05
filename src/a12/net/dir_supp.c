@@ -578,6 +578,72 @@ bool anet_directory_merge_multipart(
 	return true;
 }
 
+bool dir_block_synch_request(
+	struct arcan_shmif_cont* C,
+	struct arcan_event ev, struct evqueue_entry* reply,
+	int cat_ok, int kind_ok, int cat_fail, int kind_fail)
+{
+	*reply = (struct evqueue_entry){0};
+
+	if (ev.ext.kind)
+		arcan_shmif_enqueue(C, &ev);
+
+	while (arcan_shmif_wait(C, &ev)){
+
+/* exploit the fact that kind is at the same offset regardless of union */
+		if (
+			(cat_ok == ev.category && ev.tgt.kind == kind_ok) ||
+			(cat_fail == ev.category && ev.tgt.kind == kind_fail)){
+			reply->ev = ev;
+			reply->next = NULL;
+			return true;
+		}
+
+/* need to dup to queue descriptor-events as they are closed() on next call
+ * into arcan_shmif_xxx. This assumes we can't get queued enough fdevents that
+ * we would saturate our fd allocation */
+		if (arcan_shmif_descrevent(&ev)){
+			ev.tgt.ioevs[0].iv = arcan_shmif_dupfd(ev.tgt.ioevs[0].iv, -1, true);
+		}
+
+		reply->ev = ev;
+		reply->next = malloc(sizeof(struct evqueue_entry));
+		*(reply->next) = (struct evqueue_entry){0};
+		reply = reply->next;
+	}
+
+	return false;
+}
+
+bool dir_request_resource(
+	struct arcan_shmif_cont* C, size_t ns, const char* id, int mode,
+	struct evqueue_entry* pending)
+{
+	struct arcan_event ev = (struct arcan_event){
+		.ext.kind = EVENT_EXTERNAL_BCHUNKSTATE,
+		.ext.bchunk = {
+			.input = mode == BREQ_LOAD,
+			.ns = ns
+		}
+	};
+
+	int kind =
+		mode == BREQ_STORE ?
+			TARGET_COMMAND_BCHUNK_OUT : TARGET_COMMAND_BCHUNK_IN;
+
+	snprintf(
+		(char*)ev.ext.bchunk.extensions, COUNT_OF(ev.ext.bchunk.extensions), "%s", id);
+
+	a12int_trace(A12_TRACE_DIRECTORY,
+		"request_parent:ns=%zu:kind=%d:%s", ns, kind, ev.ext.bchunk.extensions);
+
+	return
+		dir_block_synch_request(
+			C, ev, pending,
+			EVENT_TARGET, kind,
+			EVENT_TARGET, TARGET_COMMAND_REQFAIL);
+}
+
 struct appl_meta* dir_unpack_index(int fd)
 {
 	a12int_trace(A12_TRACE_DIRECTORY, "new_index");

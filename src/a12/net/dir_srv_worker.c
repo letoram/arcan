@@ -46,91 +46,68 @@ static bool pending_tunnel;
 static void parent_worker_event(
 	struct a12_state* S, struct arcan_shmif_cont* C, struct arcan_event* ev);
 
-enum {
-	BREQ_LOAD = false,
-	BREQ_STORE = true
-};
+static struct a12_bhandler_res srv_bevent(
+	struct a12_state* S, struct a12_bhandler_meta M, void* tag);
 
-static int request_parent_resource(
-	struct a12_state* S,
-	struct arcan_shmif_cont *C,
-	size_t ns, const char* id, bool out);
-
-struct evqueue_entry;
-struct evqueue_entry {
-	struct arcan_event ev;
-	struct evqueue_entry* next;
-};
-
-static void free_evqueue(struct evqueue_entry* first)
+static void drop_evqueue_item(struct evqueue_entry* rep)
 {
-	struct evqueue_entry* cur = first;
-	while (cur){
-		struct evqueue_entry* last = cur;
-		cur = cur->next;
-		free(last);
-	}
-}static struct evqueue_entry* run_evqueue(
+	if (!rep)
+		return;
+
+	if (arcan_shmif_descrevent(&rep->ev) && rep->ev.tgt.ioevs[0].iv > 0)
+		close(rep->ev.tgt.ioevs[0].iv);
+	rep->next = NULL;
+	free(rep);
+}
+
+static struct evqueue_entry* run_evqueue(
 	struct a12_state* S, struct arcan_shmif_cont* C, struct evqueue_entry* rep)
 {
+/* run until the last event and return that one */
 	while (rep->next){
+		struct evqueue_entry* cur = rep;
 		parent_worker_event(S, C, &rep->ev);
-		if (arcan_shmif_descrevent(&rep->ev) && rep->ev.tgt.ioevs[0].iv > 0)
-			close(rep->ev.tgt.ioevs[0].iv);
 		rep = rep->next;
+		drop_evqueue_item(cur);
 	}
 	return rep;
 }
 
-/*
- * this only works due to our special relationship to the server side (us):
- *  send ev, wait for [kind] as a return and queue any messages.
- *  if other events start being used those would need to be queued as well.
- *
- *  the last entry in the reply->next->... chain is the actual response.
- *  return false on failure, meaning the context is in an invalid state and
- *  we should terminate.
- *
- * the utility is for synchronous requests to state store, key store etc.
- */
-static bool shmif_block_synch_request(struct arcan_shmif_cont* C,
-	struct arcan_event ev, struct evqueue_entry* reply,
-	int cat_ok, int kind_ok, int cat_fail, int kind_fail)
-{
-	*reply = (struct evqueue_entry){0};
-
-	if (ev.ext.kind)
-		arcan_shmif_enqueue(C, &ev);
-
-	while (arcan_shmif_wait(C, &ev)){
-
-/* exploit the fact that kind is at the same offset regardless of union */
-		if (
-			(cat_ok == ev.category && ev.tgt.kind == kind_ok) ||
-			(cat_fail == ev.category && ev.tgt.kind == kind_fail)){
-			reply->ev = ev;
-			reply->next = NULL;
-			return true;
-		}
-
-/* need to dup to queue descriptor-events as they are closed() on next call
- * into arcan_shmif_xxx. This assumes we can't get queued enough fdevents that
- * we would saturate our fd allocation */
-		if (arcan_shmif_descrevent(&ev)){
-			ev.tgt.ioevs[0].iv = arcan_shmif_dupfd(ev.tgt.ioevs[0].iv, -1, true);
-		}
-
-		reply->ev = ev;
-		reply->next = malloc(sizeof(struct evqueue_entry));
-		*(reply->next) = (struct evqueue_entry){0};
-		reply = reply->next;
+static void drop_evqueue(struct evqueue_entry* rep){
+	while (rep){
+		struct evqueue_entry* cur = rep;
+		rep = rep->next;
+		drop_evqueue_item(cur);
 	}
-
-	return false;
 }
 
-static struct a12_bhandler_res srv_bevent(
-	struct a12_state* S, struct a12_bhandler_meta M, void* tag);
+static int request_resource(
+	struct a12_state* S, struct arcan_shmif_cont* C, int ns, char* res, int mode)
+{
+	struct evqueue_entry* rep = malloc(sizeof(struct evqueue_entry));
+	bool status = dir_request_resource(C, ns, res, mode, rep);
+	int fd = -1;
+
+	if (status){
+		rep = run_evqueue(S, C, rep);
+		struct arcan_event ev = rep->ev;
+
+		if (ev.tgt.kind != TARGET_COMMAND_REQFAIL){
+			fd = arcan_shmif_dupfd(ev.tgt.ioevs[0].iv, -1, true);
+			a12int_trace(A12_TRACE_DIRECTORY, "accepted");
+		}
+		else
+			a12int_trace(
+				A12_TRACE_DIRECTORY, "rejected=%s", arcan_shmif_eventstr(&ev, NULL, 0));
+
+		drop_evqueue_item(rep);
+	}
+	else {
+		drop_evqueue(rep);
+	}
+
+	return fd;
+}
 
 /* cont is actually wrong here as we haven't set a context for the channel
  * since it's not being used in the normal fashion - the actual connection
@@ -175,8 +152,9 @@ static void on_a12srv_event(
  * unless permitted (when running as the outer desktop) and forcing any nested
  * appls to receive it through a bchunkreq or drag/drop).
  */
-		int fd = request_parent_resource(
-			cbt->S, C, ev->ext.bchunk.ns, (char*) ev->ext.bchunk.extensions, BREQ_LOAD);
+		int fd = request_resource(cbt->S, C,
+			ev->ext.bchunk.ns, (char*) ev->ext.bchunk.extensions, BREQ_LOAD);
+
 		char empty_ext[16] = {0};
 
 /* if it's a named request, just send that, otherwise go for appl+state */
@@ -187,8 +165,10 @@ static void on_a12srv_event(
 			I->userfd2 = a12_btransfer_outfd(I->S);
 		}
 		else if (fd != -1 && ev->ext.bchunk.ns){
-			int state_fd = request_parent_resource(
-				cbt->S, C,ev->ext.bchunk.ns, ".state", BREQ_LOAD);
+			struct evqueue_entry* rep = malloc(sizeof(struct evqueue_entry));
+
+			int state_fd =
+				request_resource(cbt->S, C, ev->ext.bchunk.ns, ".state", BREQ_LOAD);
 
 			if (state_fd != -1){
 				a12_enqueue_bstream(cbt->S,
@@ -642,16 +622,18 @@ static bool dirsrv_req_open(struct a12_state* S,
  * shared secret, this is delivered as a message re-using the session shared
  * secret that was used in authentication. */
 retry_block:
-	if ((rv = shmif_block_synch_request(cbt->C,
+	if ((rv = dir_block_synch_request(cbt->C,
 		reqmsg, rep,
 		EVENT_EXTERNAL, EVENT_EXTERNAL_NETSTATE,
 		EVENT_TARGET, TARGET_COMMAND_REQFAIL))){
 		a12int_trace(A12_TRACE_DIRECTORY, "diropen:got_reply");
-		arcan_event repev = (run_evqueue(cbt->S, cbt->C, rep))->ev;
+
+		rep = run_evqueue(cbt->S, cbt->C, rep);
+		arcan_event repev = rep->ev;
 
 /* if it's not the netstate we're looking for, try again */
 		if (repev.ext.netstate.space == 5){
-			free_evqueue(rep);
+			drop_evqueue_item(rep);
 			rep = malloc(sizeof(struct evqueue_entry));
 			goto retry_block;
 		}
@@ -687,9 +669,11 @@ retry_block:
 	}
 	else {
 		a12int_trace(A12_TRACE_DIRECTORY, "diropen:kind=rejected");
+		rep = run_evqueue(cbt->S, cbt->C, rep);
 	}
 
-	free_evqueue(rep);
+	drop_evqueue_item(rep);
+
 	return rv;
 }
 
@@ -822,59 +806,20 @@ static void pair_enqueue(
 {
 	struct evqueue_entry* rep = malloc(sizeof(struct evqueue_entry));
 
-	if (shmif_block_synch_request(C, ev, rep,
+/* if this fails we are going to shutdown/exit soon enough anyway as the
+ * parent connection has terminated for some reason */
+	if (dir_block_synch_request(C, ev, rep,
 		EVENT_EXTERNAL,
 		EVENT_EXTERNAL_STREAMSTATUS,
 		EVENT_EXTERNAL,
 		EVENT_EXTERNAL_STREAMSTATUS)){
-			run_evqueue(S, C, rep);
-	}
-
-	free_evqueue(rep);
-	a12_channel_enqueue(S, &ev);
-}
-
-static int request_parent_resource(
-	struct a12_state* S,
-	struct arcan_shmif_cont *C, size_t ns,
-	const char* id, bool mode)
-{
-	struct evqueue_entry* rep = malloc(sizeof(struct evqueue_entry));
-	struct arcan_event ev = (struct arcan_event){
-		.ext.kind = EVENT_EXTERNAL_BCHUNKSTATE,
-		.ext.bchunk = {
-			.input = mode == BREQ_LOAD,
-			.ns = ns
-		}
-	};
-
-	int kind =
-		mode == BREQ_STORE ?
-			TARGET_COMMAND_BCHUNK_OUT : TARGET_COMMAND_BCHUNK_IN;
-
-	snprintf(
-		(char*)ev.ext.bchunk.extensions, COUNT_OF(ev.ext.bchunk.extensions), "%s", id);
-
-	int fd = -1;
-	a12int_trace(A12_TRACE_DIRECTORY,
-		"request_parent:ns=%zu:kind=%d:%s", ns, kind, ev.ext.bchunk.extensions);
-
-	if (shmif_block_synch_request(C, ev, rep,
-		EVENT_TARGET, kind,
-		EVENT_TARGET, TARGET_COMMAND_REQFAIL)){
-		struct evqueue_entry* cur = run_evqueue(S, C, rep);
-
-		if (cur->ev.tgt.kind == kind){
-			fd = arcan_shmif_dupfd(cur->ev.tgt.ioevs[0].iv, -1, true);
-			a12int_trace(A12_TRACE_DIRECTORY, "accepted");
-		}
+			rep = run_evqueue(S, C, rep);
+			drop_evqueue_item(rep);
 	}
 	else
-		a12int_trace(
-			A12_TRACE_DIRECTORY, "rejected=%s", arcan_shmif_eventstr(&ev, NULL, 0));
+		drop_evqueue_item(rep);
 
-	free_evqueue(rep);
-	return fd;
+	a12_channel_enqueue(S, &ev);
 }
 
 /* NOTES:
@@ -972,16 +917,14 @@ static struct a12_bhandler_res srv_bevent(
  * crash or blobstore and wait for the parent to respond with a decriptor and
  * fail. This is a pipelineing stall for a few ms. */
 		if (M.type == A12_BTYPE_STATE){
-			res.fd = request_parent_resource(
-				S, cbt->C, M.identifier, ".state", BREQ_STORE);
+			res.fd = request_resource(S, cbt->C, M.identifier, ".state", BREQ_STORE);
 			if (-1 != res.fd){
 				cbt->in_transfer = true;
 				cbt->transfer_id = M.identifier;
 			}
 		}
 		else if (M.type == A12_BTYPE_CRASHDUMP){
-			res.fd = request_parent_resource(
-				S, cbt->C, M.identifier, ".debug", BREQ_STORE);
+			res.fd = request_resource(S, cbt->C, M.identifier, ".debug", BREQ_STORE);
 
 			if (-1 != res.fd){
 				cbt->in_transfer = true;
@@ -1000,8 +943,7 @@ static struct a12_bhandler_res srv_bevent(
 
 			if (cbt->breq_pending.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE &&
 					cbt->breq_pending.ext.bchunk.ns == M.identifier){
-				res.fd =
-					request_parent_resource(S, cbt->C, M.identifier,
+				res.fd = request_resource(S, cbt->C, M.identifier,
 						(char*) cbt->breq_pending.ext.bchunk.extensions, BREQ_STORE);
 
 /*
@@ -1029,13 +971,12 @@ static struct a12_bhandler_res srv_bevent(
 		else if (M.type == A12_BTYPE_APPL_RESOURCE){
 		}
 		else if (M.type == A12_BTYPE_APPL || M.type == A12_BTYPE_APPL_CONTROLLER){
-			const char* restype = M.type == A12_BTYPE_APPL ? ".appl" : ".ctrl";
+			char* restype = M.type == A12_BTYPE_APPL ? ".appl" : ".ctrl";
 
 /* Right now we don't permit registering a slot for a new appl, only updating
  * an existing one. There should be a separate request for that kind of action.
  */
-			res.fd =
-				request_parent_resource(S, cbt->C, M.identifier, restype, BREQ_STORE);
+			res.fd = request_resource(S, cbt->C, M.identifier, restype, BREQ_STORE);
 
 			if (-1 != res.fd){
 				cbt->in_transfer = true;

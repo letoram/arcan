@@ -409,4 +409,47 @@ int anet_directory_link(
  */
 struct appl_meta* dir_unpack_index(int fd);
 
+enum {
+	BREQ_LOAD = false,
+	BREQ_STORE = true
+};
+
+/*
+ * Used by a directory worker to [synchronous, blocking, non-reentrant]
+ * retrieve a descriptor from the parent for the specified resource in
+ * for input or output.
+ *
+ * [pending] will be populated with dynamically allocated (and for
+ * descrevents, dup:ed) events that were received while waiting for the
+ * response as with dir_block_synch_request.
+ *
+ * It's the caller responsibility to process/free/close this.
+ */
+struct evqueue_entry;
+struct evqueue_entry {
+	struct arcan_event ev;
+	struct evqueue_entry* next;
+};
+
+/*
+ * wrapper around BCHUNK_ + dir_block_synch_request, updates pending.
+ */
+bool dir_request_resource(
+	struct arcan_shmif_cont* C, size_t ns, const char* id, int mode,
+	struct evqueue_entry* pending
+);
+
+/*
+ * Enqueue [outev] to [C] and enter a blocking wait loop for a matching reply,
+ * any other inbound events received in the interim will get queued into
+ * [reply]. Trigger conditions for successful (=true) result is an event of
+ * [category_ok, kind_ok] and for unsuccessful (=false) [category_fail,
+ * kind_fail].
+ */
+bool dir_block_synch_request(
+	struct arcan_shmif_cont* C, struct arcan_event outev,
+	struct evqueue_entry* pending,
+	int category_ok, int kind_ok,
+	int category_fail, int kind_fail);
+
 #endif
