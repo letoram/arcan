@@ -705,6 +705,13 @@ bool a12_request_dynamic_resource(
 void a12_supply_dynamic_resource(struct a12_state* S, struct a12_dynreq);
 
 /*
+ * If the state is broken, return the hint tag set to the reason. This is short
+ * (sizeof(shmif->last_words)) in order to propagate some kind of dev friendly
+ * location tag.
+ */
+const char* a12_error_state(struct a12_state* S);
+
+/*
  * debugging / tracing bits, just define a namespace that can be used
  * for wrapper tools to log with the same syntax and behaviour as the
  * implementation files

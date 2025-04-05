@@ -142,6 +142,22 @@ static bool wait_for_activation()
 static bool remote_directory_receive(
 	struct ioloop_shared* I, struct appl_meta* dir)
 {
+	size_t i = 0;
+	a12int_trace(A12_TRACE_DIRECTORY, "remote_index");
+
+/* sweep each, see if we find matching name in the currently set index - if we
+ * are referential we just need to save / store the index so that we can
+ * forward it. */
+	while (dir){
+		a12int_trace(A12_TRACE_DIRECTORY,
+			"id=%"PRIu16":size=%"PRIu64":name=%s%s%s",
+			dir->identifier, dir->buf_sz, dir->appl.name,
+			dir->appl.short_descr[0] ? ":description=" : "",
+			dir->appl.short_descr[0] ? dir->appl.short_descr : ""
+		);
+		dir = dir->next;
+	}
+
 /* always keep-alive */
 	return true;
 }
@@ -150,7 +166,9 @@ static void remote_directory_discover(
 	struct a12_state* S, int type,
 	const char* petname, bool found, uint8_t pubk[static 32], void* tag)
 {
-
+	a12int_trace(A12_TRACE_DIRECTORY,
+		"remote_discover:%s:name=%s:type=%d",
+		found ? "found" : "lost", petname, type);
 }
 
 int anet_directory_link(

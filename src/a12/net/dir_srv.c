@@ -1275,6 +1275,7 @@ static void* dircl_process(void* P)
 		shmifsrv_last_words(C->C, lw, 32);
 		anet_directory_lua_event(C, &(struct dirlua_event){
 				.kind = DIRLUA_EVENT_LOST,
+				.msg = lw
 		});
 	}
 

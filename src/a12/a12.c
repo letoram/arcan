@@ -115,12 +115,17 @@ static void step_sequence(struct a12_state* S, uint8_t* outb)
 	pack_u64(S->last_seen_seqnr, outb);
 }
 
-static void fail_state(struct a12_state* S)
+static void fail_state(struct a12_state* S, const char* msg)
 {
+	if (msg && msg[0]){
+		snprintf(S->state_error_hint, 32, "%s", msg);
+	}
+
 #ifndef _DEBUG
 /* overwrite all relevant state, dealloc mac/chacha - mark n random bytes for
  * continuous transfer before shutting down to be even less useful as an oracle */
 #endif
+
 	S->state = STATE_BROKEN;
 }
 
@@ -181,7 +186,7 @@ static void a12int_issue_rekey(struct a12_state* S)
 {
 	if (!S->keys.own_rekey){
 		a12int_trace(A12_TRACE_CRYPTO, "error:issue_rekey:waiting_for_other");
-		fail_state(S);
+		fail_state(S, "rekey-issue");
 		return;
 	}
 
@@ -313,7 +318,7 @@ static void send_hello_packet(struct a12_state* S,
 		outb[54] = 4;
 	}
 	else {
-		fail_state(S);
+		fail_state(S, "unknown-role");
 		a12int_trace(A12_TRACE_SYSTEM, "unknown_role");
 		return;
 	}
@@ -383,7 +388,7 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 	if (S->buf_sz[S->buf_ind] < required){
 		a12int_trace(A12_TRACE_SYSTEM,
 			"realloc failed: size (%zu) vs required (%zu)", S->buf_sz[S->buf_ind], required);
-		fail_state(S);
+		fail_state(S, "buffer-out alloc");
 		return;
 	}
 	uint8_t* dst = S->bufs[S->buf_ind];
@@ -458,7 +463,7 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
  * immediately and then we reset it. */
 	if (S->opts->sink){
 		if (!S->opts->sink(dst, S->buf_ofs, S->opts->sink_tag)){
-			fail_state(S);
+			fail_state(S, "no-sink handler");
 		}
 		S->buf_ofs = 0;
 	}
@@ -535,7 +540,7 @@ static void update_keymaterial(
 	if (!S->dec_state){
 		S->dec_state = DYNAMIC_MALLOC(sizeof(struct chacha_ctx));
 		if (!S->dec_state){
-			fail_state(S);
+			fail_state(S, "alloc-fail");
 			return;
 		}
 	}
@@ -543,7 +548,7 @@ static void update_keymaterial(
 	S->enc_state = DYNAMIC_MALLOC(sizeof(struct chacha_ctx));
 	if (!S->enc_state){
 		DYNAMIC_FREE(S->dec_state);
-		fail_state(S);
+		fail_state(S, "alloc-fail");
 		return;
 	}
 
@@ -772,7 +777,7 @@ a12_channel_close(struct a12_state* S)
 
 /* closing the primary channel means no more operations are permitted */
 	if (S->out_channel == 0){
-		fail_state(S);
+		fail_state(S, "close-bad-channel");
 	}
 
 	a12int_trace(A12_TRACE_SYSTEM, "closing channel (%d)", S->out_channel);
@@ -843,7 +848,7 @@ static void process_nopacket(struct a12_state* S)
 
 	if (state_id >= STATE_BROKEN){
 		a12int_trace(A12_TRACE_SYSTEM, "state=broken:unknown_command=%"PRIu8, state_id);
-		fail_state(S);
+		fail_state(S, "invalid-state-in");
 		return;
 	}
 
@@ -866,7 +871,7 @@ static void process_srvfirst(struct a12_state* S)
 {
 /* only foul play could bring us here */
 	if (S->authentic > AUTH_REAL_HELLO_SENT){
-		fail_state(S);
+		fail_state(S, "authpkt-on-authed");
 		return;
 	}
 
@@ -890,7 +895,7 @@ static void process_srvfirst(struct a12_state* S)
 
 	if (!S->dec_state){
 		a12int_trace(A12_TRACE_SECURITY, "srvfirst:no_decode");
-		fail_state(S);
+		fail_state(S, "auth-bad-state");
 		return;
 	}
 
@@ -905,7 +910,7 @@ static void process_srvfirst(struct a12_state* S)
 	chacha_apply(S->dec_state, &S->decode[base], 9);
 	if (S->decode[base + 8] != STATE_CONTROL_PACKET){
 		a12int_trace(A12_TRACE_CRYPTO, "kind=error:status=bad_key_or_nonce");
-		fail_state(S);
+		fail_state(S, "auth-bad-key");
 		return;
 	}
 }
@@ -1032,7 +1037,7 @@ static void command_rekey(struct a12_state* S)
 {
 	if (S->keys.own_rekey){
 		a12int_trace(A12_TRACE_CRYPTO, "error:command_rekey:waiting_for_other");
-		fail_state(S);
+		fail_state(S, "rekey-not-theirs");
 		return;
 	}
 
@@ -1040,7 +1045,7 @@ static void command_rekey(struct a12_state* S)
 	if (S->decode[18] != 0){
 		a12int_trace(A12_TRACE_SYSTEM,
 			"kind=error:source=rekey:unknown_rekey_method=%"PRIu8, S->decode[18]);
-		fail_state(S);
+		fail_state(S, "rekey-bad-method");
 		return;
 	}
 
@@ -1901,7 +1906,7 @@ static void hello_auth_server_hello(struct a12_state* S)
 	/* here is a spot for having more authentication modes if needed (version bump) */
 	if (cfl != HELLO_MODE_EPHEMPK && cfl != HELLO_MODE_REALPK){
 		a12int_trace(A12_TRACE_SECURITY, "unknown_hello");
-		fail_state(S);
+		fail_state(S, "bad-auth-mode");
 		return;
 	}
 
@@ -1928,7 +1933,7 @@ static void hello_auth_server_hello(struct a12_state* S)
  * to keystores defined by the api user */
 	if (!S->opts->pk_lookup){
 		a12int_trace(A12_TRACE_CRYPTO, "state=eimpl:kind=x25519-no-lookup");
-		fail_state(S);
+		fail_state(S, "api-no-pk-auth");
 		return;
 	}
 
@@ -1938,7 +1943,7 @@ static void hello_auth_server_hello(struct a12_state* S)
 	struct pk_response res = S->opts->pk_lookup(remote_pubk, S->opts->pk_lookup_tag);
 	if (!res.authentic){
 		a12int_trace(A12_TRACE_CRYPTO, "state=eperm:kind=x25519-pk-fail");
-		fail_state(S);
+		fail_state(S, "pk-reject-srv");
 		return;
 	}
 
@@ -1969,7 +1974,7 @@ static void hello_auth_client_hello(struct a12_state* S)
 {
 	if (!S->opts->pk_lookup){
 		a12int_trace(A12_TRACE_CRYPTO, "state=eimpl:kind=x25519-no-lookup");
-		fail_state(S);
+		fail_state(S, "api-no-pk-auth");
 		return;
 	}
 
@@ -1977,7 +1982,7 @@ static void hello_auth_client_hello(struct a12_state* S)
 	struct pk_response res = S->opts->pk_lookup(&S->decode[21], S->opts->pk_lookup_tag);
 	if (!res.authentic){
 		a12int_trace(A12_TRACE_CRYPTO, "state=eperm:kind=25519-pk-fail");
-		fail_state(S);
+		fail_state(S, "pk-reject-client");
 		return;
 	}
 
@@ -2020,7 +2025,7 @@ static void process_hello_auth(struct a12_state* S)
 		}
 		else if (S->opts->local_role == ROLE_SINK && S->decode[54] == ROLE_SINK){
 			a12int_trace(A12_TRACE_SYSTEM, "kind=mismatch:local=sink:remote=sink");
-			fail_state(S);
+			fail_state(S, "sink-sink-role");
 			return;
 		}
 /* client: we might just be probing, if so continue without matching */
@@ -2033,7 +2038,7 @@ static void process_hello_auth(struct a12_state* S)
 			}
 			else {
 				a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EINVAL:probe");
-				fail_state(S);
+				fail_state(S, "probe-probe-role");
 				return;
 			}
 		}
@@ -2042,7 +2047,7 @@ static void process_hello_auth(struct a12_state* S)
 			if (S->opts->local_role != ROLE_SINK && S->opts->local_role != ROLE_SOURCE){
 				if (!S->opts->allow_directory_link){
 					a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EIMPL:dir2dir");
-					fail_state(S);
+					fail_state(S, "dir-dir-unhandled");
 					return;
 				}
 				a12int_trace(A12_TRACE_SYSTEM, "kind=match:local=dir:remote=dir");
@@ -2056,7 +2061,7 @@ static void process_hello_auth(struct a12_state* S)
 			S->remote_mode = S->decode[54];
 			if (S->remote_mode != ROLE_SOURCE &&
 				S->remote_mode != ROLE_DIR && S->remote_mode != ROLE_SINK){
-				fail_state(S);
+				fail_state(S, "bad-remote-role");
 				a12int_trace(A12_TRACE_SYSTEM,
 					"kind=error:status=EINVALID:local=dir:remote=unknown");
 				return;
@@ -2064,11 +2069,11 @@ static void process_hello_auth(struct a12_state* S)
 			if (S->remote_mode == ROLE_DIR && !S->opts->allow_directory_link){
 				a12int_trace(A12_TRACE_SYSTEM,
 					"kind=error:status=EPERM:local=dir:remote=dir:linking_blocked");
-				fail_state(S);
+				fail_state(S, "dir-link-blocked");
 			}
 		}
 		else {
-			fail_state(S);
+			fail_state(S, "bad-role");
 			a12int_trace(A12_TRACE_SYSTEM,
 				"kind=error:status=EINVALID:hello_kind=%"PRIu8, S->decode[64]);
 			return;
@@ -2110,7 +2115,7 @@ static void process_hello_auth(struct a12_state* S)
 	else {
 		a12int_trace(A12_TRACE_CRYPTO,
 			"HELLO after completed authxchg (%d)", S->authentic);
-		fail_state(S);
+		fail_state(S, "auth-mode-bad");
 		return;
 	}
 }
@@ -2379,7 +2384,7 @@ static void process_control(struct a12_state* S, void (*on_event)
 	(struct arcan_shmif_cont*, int chid, struct arcan_event*, void*), void* tag)
 {
 	if (!authdec_buffer(__func__, S, header_sizes[S->state])){
-		fail_state(S);
+		fail_state(S, "control-bad-mac");
 		return;
 	}
 
@@ -2393,7 +2398,7 @@ static void process_control(struct a12_state* S, void (*on_event)
 	if (S->authentic < AUTH_FULL_PK && command != COMMAND_HELLO){
 		a12int_trace(A12_TRACE_CRYPTO,
 			"illegal command (%d) on non-auth connection", (int) command);
-		fail_state(S);
+		fail_state(S, "control-bad-command");
 		return;
 	}
 
@@ -2491,7 +2496,7 @@ static void process_event(struct a12_state* S, void* tag,
 {
 	if (!authdec_buffer(__func__, S, header_sizes[S->state])){
 		a12int_trace(A12_TRACE_CRYPTO, "MAC mismatch on event packet");
-		fail_state(S);
+		fail_state(S, "control-event-mac");
 		return;
 	}
 
@@ -2569,7 +2574,7 @@ static void process_blob(struct a12_state* S)
 /* did we receive a message on a dead channel? */
 	struct binary_frame* cbf = &S->channels[S->in_channel].unpack_state.bframe;
 	if (!authdec_buffer(__func__, S, S->decode_pos)){
-		fail_state(S);
+		fail_state(S, "blob-bad-mac");
 		return;
 	}
 
@@ -2780,7 +2785,7 @@ static void process_video(struct a12_state* S)
 	struct video_frame* cvf = &ch->unpack_state.vframe;
 
 	if (!authdec_buffer(__func__, S, S->decode_pos)){
-		fail_state(S);
+		fail_state(S, "video-bad-mac");
 		return;
 	}
 	else {
@@ -2888,7 +2893,7 @@ static void process_audio(struct a12_state* S)
 	struct arcan_shmif_cont* cont = channel->cont;
 
 	if (!authdec_buffer(__func__, S, S->decode_pos)){
-		fail_state(S);
+		fail_state(S, "audio-bad-mac");
 		return;
 	}
 	else {
@@ -3015,7 +3020,7 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 	if (S->state == STATE_BROKEN){
 		a12int_trace(A12_TRACE_SYSTEM,
 			"kind=error:status=EINVAL:message=state machine broken");
-		fail_state(S);
+		fail_state(S, NULL);
 		return;
 	}
 
@@ -3077,7 +3082,7 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 	break;
 	default:
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EINVAL:message=bad command");
-		fail_state(S);
+		fail_state(S, "bad-command");
 		return;
 	break;
 	}
@@ -3107,7 +3112,7 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
 
 		if (!S->prepend_unpack){
 			a12int_trace(A12_TRACE_ALLOC, "kind=error:latch_buffer_sz=%zu", buf_sz);
-			fail_state(S);
+			fail_state(S, "alloc-fail-buffer-out");
 			return;
 		}
 
@@ -3502,6 +3507,14 @@ a12_poll(struct a12_state* S)
 		return -1;
 
 	return S->buf_ofs || S->pending_out ? 1 : 0;
+}
+
+const char* a12_error_state(struct a12_state* S)
+{
+	if (!S || S->state != STATE_BROKEN)
+		return NULL;
+
+	return S->state_error_hint;
 }
 
 int

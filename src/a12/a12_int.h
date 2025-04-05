@@ -361,6 +361,8 @@ struct a12_state {
 
 	struct chacha_ctx* enc_state;
 	struct chacha_ctx* dec_state;
+
+	char state_error_hint[32];
 };
 
 enum {

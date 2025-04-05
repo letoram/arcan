@@ -97,7 +97,13 @@ bool anet_authenticate(struct a12_state* S, int fdin, int fdout, char** err)
 		}
 	}
 
-	return a12_auth_state(S) == AUTH_FULL_PK;
+	if (a12_auth_state(S) != AUTH_FULL_PK){
+		const char* lw = a12_error_state(S);
+		if (lw)
+			*err = strdup(lw);
+		return false;
+	}
+	return true;
 }
 
 struct anet_cl_connection anet_connect_to(struct anet_options* arg)

@@ -31,8 +31,7 @@ enum anet_mode {
 	ANET_SHMIF_EXEC,
 	ANET_SHMIF_EXEC_OUTBOUND,
 	ANET_SHMIF_DIRSRV_INHERIT,
-	ANET_SHMIF_SRVAPP_INHERIT,
-	ANET_SHMIF_DIRSRV_INHERITLINK
+	ANET_SHMIF_SRVAPP_INHERIT
 };
 
 enum mt_mode {
@@ -172,14 +171,15 @@ static int get_bcache_dir()
 extern void shmif_platform_set_log_device(struct arcan_shmif_cont*, FILE*);
 #endif
 
-static void set_log_trace()
+static void set_log_trace(const char* prefix)
 {
 #ifdef DEBUG
 	if (!a12_trace_targets)
 		return;
 
-	char buf[sizeof("cl_log_.log") + (3 * sizeof(int) + 1)];
-	snprintf(buf, sizeof(buf), "cl_log_%d.log", (int) getpid());
+	size_t pref_len = strlen(prefix);
+	char buf[pref_len + sizeof("_.log") + (3 * sizeof(int) + 1)];
+	snprintf(buf, sizeof(buf), "%s_%d.log", prefix, (int) getpid());
 	FILE* fpek = fopen(buf, "w+");
 
 	shmif_platform_set_log_device(NULL, fpek);
@@ -252,7 +252,7 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 	}
 
 /* Split the log output on debug so we see what is going on */
-	set_log_trace();
+	set_log_trace("clwrk_log");
 
 /* make sure that we don't leak / expose whatever the listening process has,
  * not much to do to guarantee or communicate the failure on these three -
@@ -2003,6 +2003,7 @@ int main(int argc, char** argv)
 		char tmp[strlen(argv[2]) + sizeof("outbound-")];
 		snprintf(tmp, sizeof(tmp), "outbound-%s", argv[2]);
 		global.trust_domain = strdup(tmp);
+		set_log_trace("link_log");
 
 		return anet_directory_link(argv[2], &global.meta, diropts);
 	}
@@ -2014,8 +2015,6 @@ int main(int argc, char** argv)
 /* inherited directory server mode doesn't take extra listening parameters and
  * was an afterthought not fitting with the rest of the (messy) arg parsing */
 	size_t argi = apply_commandline(argc, argv, &meta);
-	if (global.meta.mode == ANET_SHMIF_DIRSRV_INHERITLINK){
-}
 
 	if (!argi && global.meta.mode != ANET_SHMIF_DIRSRV_INHERIT && !global.meta.host)
 		return EXIT_FAILURE;
@@ -2242,7 +2241,7 @@ int main(int argc, char** argv)
 		return EXIT_SUCCESS;
 	}
 	else if (global.meta.mode == ANET_SHMIF_DIRSRV_INHERIT){
-		set_log_trace();
+		set_log_trace("dir_srv");
 		struct anet_dirsrv_opts diropts = {0};
 		anet_directory_srv(global.meta.opts,
 			diropts, global.meta.sockfd, global.meta.sockfd);
