@@ -5,14 +5,22 @@
  * Added breakpoint hooks for all transitions into VM execution
  * Dynamic / on-demand attaching (local,remote) debugger (see 7c7ba007c3)
  * Add :bgcopy to open\_nonblock() for background copying in a thread
+ * system_snapshot can be used to dynamically expose debugger interface in appl ns
 
 ## Terminal
  * Expose args values as 'tui.arguments' table
 
 ## Net
-* Dropped the use of named primitives completely
+ * Dropped the use of named primitives completely
  * Several fixes to binary in/out transfers
  * A12 OS specific function split out into platform
+ * Config scope functions added for launching targets
+ * Support for unified linked directories
+ * Controller script API for launching targets and key-value store access
+ * Config scope script entrypoint 'ready' added with different API access
+ * Config scope script 'autostart' table for pre-launching controllers
+ * Added .monitor bstream point for attaching a debugger to a server controller VM
+ * Added .admin bstream point for remote administration of directory server
 
 ## Shmif
  * Migrating more OS specific work to platform
@@ -24,6 +32,9 @@
 
 ## Core
  * Fixed 'terminated' event not propagating due to incomplete enqueue post last\_words
+
+## Build
+ * Fixes to races in threaded build
 
 ## 0.7.0
 ## Core
