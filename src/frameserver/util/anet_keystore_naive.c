@@ -806,7 +806,7 @@ const char*
 		}
 
 /* then host- list is separated cp1,cp2,cp3,... so find needle in haystack */
-		const char* needle = strstr(ent->host, connp);
+		const char* needle = strstr(connp, ent->host);
 		if (!needle){
 			ent = ent->next;
 			continue;

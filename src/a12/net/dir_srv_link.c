@@ -52,11 +52,21 @@ static int shmifopen_flags =
 			SHMIF_NOREGISTER |
 			SHMIF_SOCKET_PINGEVENT;
 
+struct queue_item {
+	uint16_t identifier; /* slot identifier as per the state received */
+	uint8_t name[16];    /* track the name just to not have to sweep index */
+	bool appl;           /* do we need the appl- slot? */
+	bool ctrl;           /* do we need the ctrl- slot? */
+	bool download;       /* download OR upload, both doesn't make sense */
+	struct queue_item* next;
+};
+
 static struct {
 	struct arcan_shmif_cont shmif_parent_process;
 	struct a12_state* active_client_state;
 	struct appl_meta* local_index;
 	struct ioloop_shared* ioloop_shared;
+	struct queue_item* queue;
 } G;
 
 static void synch_local_directory(struct appl_meta* first)
@@ -88,8 +98,9 @@ static void
 	}
 }
 
-/* different to dir_srv_worker any shared secret is passed as process spawn
- * to match other arcan-net use */
+/* different to dir_srv_worker any shared secret is passed as process spawn to
+ * match other arcan-net use. we use COREOPT to pass any config options for how
+ * to deal with repository synch. */
 static bool wait_for_activation()
 {
 	struct arcan_event ev;

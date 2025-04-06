@@ -907,6 +907,40 @@ static int dir_newindex(lua_State* L)
 	return 0;
 }
 
+/*
+ * This is mostly the same as for the ctrl- appl version, though the uses for
+ * this are more limited.
+ *
+ * Difference:
+ *   - always global namespace (makes no sense launch ctrl specific from here)
+ *   - callback handler is about the process management of the runner itself.
+ */
+static int dir_launchtarget(lua_State* L)
+{
+	const char* name = luaL_checkstring(L, 1);
+	if (lua_type(L, 2) != LUA_TTABLE){
+		luaL_error(L, "launch_target(name, >option table<, ...) no table provided");
+	}
+
+/*
+ * size_t ind = 3;
+ *
+ * launch to one specific client
+ *
+	if (lua_type(L, 3) == LUA_TUSERDATA){
+		ind++;
+	}
+ */
+
+	struct appl_meta appl = {0};
+	struct runner_state runner = {.appl = &appl};
+	snprintf(appl.appl.name, COUNT_OF(appl.appl.name), "%s", name);
+
+/* runner is faked here as it doesn't come from a ctrl */
+	launchtarget(&runner, DB, name, NULL, 0);
+	return 0;
+}
+
 static int dir_linkdirectory(lua_State* L)
 {
 /* Ensure that the link_directory target is referenced in the keystore
@@ -1207,6 +1241,9 @@ bool anet_directory_lua_init(struct global_cfg* cfg)
  */
 	lua_pushcfunction(L, dir_linkdirectory);
 	lua_setglobal(L, "link_directory");
+
+	lua_pushcfunction(L, dir_launchtarget);
+	lua_setglobal(L, "launch_target");
 
 	if (cfg->config_file){
 		int status = luaL_dofile(L, cfg->config_file);

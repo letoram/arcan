@@ -320,6 +320,7 @@ static int launchtarget(lua_State* L)
 /* options:
  *  - hidden     (when used with [source-name])
  *  - sink-limit (when used with [source-name])
+ *  - global     (don't register the source in the appl- specific namespace)
  *  - timeout    (unless source is opened within N seconds, terminate)
  *  - arguments  (packed argstr for sending to target-name)
  *                send it as b64 to avoid interleaving issues with unpacking
