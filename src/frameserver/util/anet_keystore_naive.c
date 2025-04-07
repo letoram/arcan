@@ -816,7 +816,7 @@ const char*
  * so check that we are at a word boundary (at beginning, end or surrounded by , */
 		if (
 			(
-			 (needle == ent->host || needle[-1] == ',') && /* start on boundary */
+			 (needle == connp || needle[-1] == ',') && /* start on boundary */
 			 (needle[nlen] == '\0' || needle[nlen] == ',') /* end on boundary */
 			)){
 			return ent->host;
