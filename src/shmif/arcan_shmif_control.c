@@ -842,26 +842,6 @@ static bool shmif_resize(struct arcan_shmif_cont* C,
 		}
 	}
 
-/* wait for any outstanding v/asynch */
-	if (atomic_load(&C->addr->vready)){
-		while (atomic_load(&C->addr->vready) && shmif_platform_check_alive(C))
-			shmif_platform_sync_wait(C->addr, SYNC_VIDEO);
-	}
-	if (atomic_load(&C->addr->aready)){
-		while (atomic_load(&C->addr->aready) && shmif_platform_check_alive(C))
-			shmif_platform_sync_wait(C->addr, SYNC_AUDIO);
-	}
-
-/* since the vready wait can be long and an error prone operation, the context
- * might have died between the check above and here */
-	if (!shmif_platform_check_alive(C)){
-		if (P->reset_hook)
-			P->reset_hook(SHMIF_RESET_LOST, P->reset_hook_tag);
-
-		if (SHMIF_MIGRATE_OK != shmif_platform_fallback(C, P->alt_conn, true))
-			return false;
-	}
-
 	width = width < 1 ? 1 : width;
 	height = height < 1 ? 1 : height;
 
@@ -885,6 +865,29 @@ static bool shmif_resize(struct arcan_shmif_cont* C,
 			P->reset_hook(SHMIF_RESET_NOCHG, P->reset_hook_tag);
 
 		return true;
+	}
+
+/* cancel any pending vsynch */
+	if (atomic_load(&C->addr->vready)){
+		if (!shmif_platform_sync_trywait(C->addr, SYNC_VIDEO)){
+			atomic_store_explicit(&C->addr->vready, 0, memory_order_release);
+			shmif_platform_sync_post(C->addr, SYNC_VIDEO);
+		}
+	}
+
+/* audio drivers on the server end tend to be threaded differently and should
+ * have been mutex blocked from feeding while we are in _resize but that is up
+ * to the server implementation. The easier approach is to dedicate a segment
+ * to audio if the video one will be resized often. Give it a chance to flush
+ * here then force ignore it. */
+	if (atomic_load(&C->addr->aready)){
+		int count = 10;
+		while (atomic_load(&C->addr->aready) &&
+			shmif_platform_check_alive(C) && count){
+			if (!shmif_platform_sync_trywait(C->addr, SYNC_AUDIO))
+				count--;
+		}
+		shmif_platform_sync_post(C->addr, SYNC_AUDIO);
 	}
 
 /* synchronize hints as _ORIGO_LL and similar changes only synch on resize */
