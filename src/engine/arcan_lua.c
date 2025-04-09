@@ -6280,8 +6280,6 @@ static int push_stringres(lua_State* ctx, struct arcan_strarr* res)
 		char** curr = res->data;
 		unsigned int count = 1;
 
-		curr = res->data;
-
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
 

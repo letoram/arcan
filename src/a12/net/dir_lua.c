@@ -14,6 +14,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <ctype.h>
 
 #include "../a12.h"
 #include "../a12_int.h"
@@ -1104,6 +1105,89 @@ static int dir_endpoint(lua_State* L)
 	return 1;
 }
 
+static int dir_matchkeys(lua_State* L)
+{
+	const char* pattern = luaL_checkstring(L, 1);
+	struct arcan_strarr res =
+		arcan_db_applkeys(DB, "directory", pattern);
+
+	lua_newtable(L);
+	if (res.data){
+		char** curr = res.data;
+		size_t count = 1;
+
+		while (*curr){
+			lua_pushnumber(L, count++);
+			lua_pushstring(L, *curr++);
+			lua_rawset(L, -3);
+		}
+
+		arcan_mem_freearr(&res);
+	}
+
+	return 1;
+}
+
+static int dir_getkey(lua_State* L)
+{
+	char* val = arcan_db_appl_val(DB, "directory", luaL_checkstring(L, 1));
+	if (val){
+		lua_pushstring(L, val);
+		free(val);
+	}
+	else
+		lua_pushnil(L);
+
+	return 1;
+}
+
+/*
+ * similar to engine/lua.c
+ * but hardcoded domain
+ */
+static bool validate_key(const char* key)
+{
+/* accept 0-9 and base64 valid values */
+	while(*key){
+		if (!isalnum(*key) && *key != '_'
+			&& *key != '+' && *key != '/' && *key != '=')
+			return false;
+		key++;
+	}
+
+	return true;
+}
+
+static int dir_storekey(lua_State* L)
+{
+	union arcan_dbtrans_id dbid = {.applname = "directory"};
+	arcan_db_begin_transaction(DB, DVT_APPL, dbid);
+
+	if (lua_type(L, 1) == LUA_TTABLE){
+
+		lua_pushnil(L);
+		while (lua_next(L, 1) != 0){
+			const char* key = lua_tostring(L, -2);
+			if (!validate_key(key))
+				luaL_error(L,
+					"store_keys(>tbl<, %s - invalid key (alphanum, no +/_=", key);
+			const char* val = lua_tostring(L, -1);
+			arcan_db_add_kvpair(DB, key, val);
+			lua_pop(L, 1);
+		}
+
+		arcan_db_end_transaction(DB);
+		return 0;
+	}
+
+	const char* key = luaL_checkstring(L, 1);
+	const char* value = luaL_checkstring(L, 2);
+	arcan_db_add_kvpair(DB, key, value);
+	arcan_db_end_transaction(DB);
+
+	return 0;
+}
+
 /*
  * NBIO handlers, don't need them currently as the admin interface only uses
  * it for :writes and we clock differently
@@ -1261,6 +1345,15 @@ bool anet_directory_lua_init(struct global_cfg* cfg)
 
 	lua_pushcfunction(L, dir_launchtarget);
 	lua_setglobal(L, "launch_target");
+
+	lua_pushcfunction(L, dir_matchkeys);
+	lua_setglobal(L, "match_keys");
+
+	lua_pushcfunction(L, dir_storekey);
+	lua_setglobal(L, "store_key");
+
+	lua_pushcfunction(L, dir_getkey);
+	lua_setglobal(L, "get_key");
 
 	if (cfg->config_file){
 		int status = luaL_dofile(L, cfg->config_file);
