@@ -10,6 +10,19 @@ else()
 	find_package(LibLZMA QUIET)
 endif()
 
+set(UTIL_DIR ../util)
+set(A12_DIR ${PLATFORM_ROOT}/../a12)
+set(A12NET_DIR ${PLATFORM_ROOT}/../a12/net)
+set(EXT_DIR ${A12_DIR}/external)
+
+set(NET_INCLUDE_DIRS
+	${UTIL_DIR}
+	${A12_DIR}
+	${EXT_DIR}
+	${EXT_DIR}/blake3
+	${PLATFORM_ROOT}/../engine
+)
+
 if (NOT FFMPEG_FOUND)
 	set(FSRV_ENC_MISSING "${FSRV_ENC_MISSING}ffmpeg ")
 endif()
@@ -85,6 +98,7 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 		${FSRV_ROOT}/util
 		${ENC_AUX_INCLUDES}
 		${FFMPEG_INCLUDE_DIRS}
+		${NET_INCLUDE_DIRS}
 		${PLATFORM_ROOT}/../engine
 		${PLATFORM_ROOT}/../a12
 		PARENT_SCOPE

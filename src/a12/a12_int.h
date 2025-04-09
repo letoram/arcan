@@ -249,6 +249,7 @@ struct a12_state {
 	struct appl_meta* directory;
 	uint64_t directory_clk;
 	bool notify_dynamic;
+	char tracetag[16];
 
 	uint8_t last_mac_in[MAC_BLOCK_SZ];
 

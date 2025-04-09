@@ -69,6 +69,15 @@ static struct {
 	struct queue_item* queue;
 } G;
 
+static struct a12_state trace_state = {.tracetag = "link"};
+
+#define TRACE(...) do { \
+	if (!(a12_trace_targets & A12_TRACE_DIRECTORY))\
+		break;\
+	struct a12_state* S = &trace_state;\
+		a12int_trace(A12_TRACE_DIRECTORY, __VA_ARGS__);\
+	} while (0);
+
 static void synch_local_directory(struct appl_meta* first)
 {
 	if (G.local_index){
@@ -154,14 +163,13 @@ static bool remote_directory_receive(
 	struct ioloop_shared* I, struct appl_meta* dir)
 {
 	size_t i = 0;
-	a12int_trace(A12_TRACE_DIRECTORY, "remote_index");
+	TRACE("remote_index");
 
 /* sweep each, see if we find matching name in the currently set index - if we
  * are referential we just need to save / store the index so that we can
  * forward it. */
 	while (dir){
-		a12int_trace(A12_TRACE_DIRECTORY,
-			"id=%"PRIu16":size=%"PRIu64":name=%s%s%s",
+		TRACE("id=%"PRIu16":size=%"PRIu64":name=%s%s%s",
 			dir->identifier, dir->buf_sz, dir->appl.name,
 			dir->appl.short_descr[0] ? ":description=" : "",
 			dir->appl.short_descr[0] ? dir->appl.short_descr : ""
@@ -222,9 +230,11 @@ int anet_directory_link(
 /* now we can privsep, wait with unveil paths until we can test the behaviour
  * against existing directory file descriptors */
 	arcan_shmif_privsep(&G.shmif_parent_process, SHMIF_PLEDGE_PREFIX, NULL, 0);
-	a12int_trace(A12_TRACE_DIRECTORY, "notice=prisep-set");
+	TRACE("notice=prisep-set");
 
 	G.active_client_state = conn.state;
+	a12_trace_tag(conn.state, "dir_link");
+
 	if (!wait_for_activation()){
 		shutdown(conn.fd, SHUT_RDWR);
 		return EXIT_FAILURE;

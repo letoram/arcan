@@ -32,19 +32,96 @@
 #include <fcntl.h>
 #include <poll.h>
 
+struct tunnel_meta {
+	struct ioloop_shared* I;
+	uint8_t tunid;
+};
+static struct a12_state trace_state = {.tracetag = "worker"};
+
+#define TRACE(...) do { \
+	if (!(a12_trace_targets & A12_TRACE_DIRECTORY))\
+		break;\
+	struct a12_state* S = &trace_state;\
+		a12int_trace(A12_TRACE_DIRECTORY, __VA_ARGS__);\
+	} while (0);
+
+static void* tunnel_thread(void* tag)
+{
+	struct tunnel_meta* meta = tag;
+	struct a12_state* S = meta->I->S;
+	char* buf = malloc(8832);
+	int fd;
+
+	for(;;){
+		bool tun_ok;
+		fd = a12_tunnel_descriptor(S, meta->tunid, &tun_ok);
+
+		if (!tun_ok){
+			break;
+		}
+
+		ssize_t nr = read(fd, buf, 8832);
+		if (nr == 0 || (nr == -1 && (errno != EINTR && errno != EAGAIN)))
+			break;
+
+		else if (nr > 0){
+			pthread_mutex_lock(&meta->I->lock);
+				a12int_trace(A12_TRACE_DIRECTORY,
+					"tunnel:%"PRIu8":source=%d:bytes=%zu", meta->tunid, fd, nr);
+				a12_write_tunnel(S, meta->tunid, (unsigned char*) buf, nr);
+			pthread_mutex_unlock(&meta->I->lock);
+			write(meta->I->wakeup, &meta->tunid, 1);
+		}
+	}
+
+	free(buf);
+	pthread_mutex_lock(&meta->I->lock);
+		a12_drop_tunnel(S, meta->tunid);
+	pthread_mutex_unlock(&meta->I->lock);
+
+	close(fd);
+	free(meta);
+	return NULL;
+}
+
+void anet_directory_tunnel_thread(struct ioloop_shared* S, uint8_t chid)
+{
+	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	struct tunnel_meta* M = malloc(sizeof(struct tunnel_meta));
+	M->I = S;
+	M->tunid = chid;
+	pthread_create(&pth, &pthattr, tunnel_thread, M);
+}
+
+static struct ioloop_shared* current_loop;
+struct ioloop_shared* anet_directory_ioloop_current()
+{
+	return current_loop;
+}
+
 void anet_directory_ioloop(struct ioloop_shared* I)
 {
 	int errmask = POLLERR | POLLHUP;
 	bool tun_ok = true;
+	int sigpipe[2] = {-1, -1};
+	pipe(sigpipe);
+	current_loop = I;
+
 	struct pollfd fds[] =
 	{
 		{.fd = I->userfd, .events = POLLIN | errmask},
 		{.fd = I->fdin, .events = POLLIN | errmask},
 		{.fd = -1, .events = POLLOUT | errmask},
-		{.fd = -1, .events = POLLIN | errmask},
+		{.fd = sigpipe[0], .events = POLLIN | errmask},
 		{.fd = -1, .events = POLLIN | errmask},
 		{.fd = I->userfd2, .events = POLLIN | errmask},
 	};
+
+	I->wakeup = sigpipe[1];
+	struct a12_state* S = I->S;
 
 	uint8_t inbuf[9000];
 	uint8_t* outbuf = NULL;
@@ -60,6 +137,7 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 
 /* regular simple processing loop, wait for DIRECTORY-LIST command */
 	while (!I->shutdown && a12_ok(I->S) && -1 != poll(fds, COUNT_OF(fds), -1)){
+		pthread_mutex_lock(&I->lock);
 
 /* this might add or remove a shmif to our tracking set */
 		if (fds[0].revents & POLLIN){
@@ -72,26 +150,12 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 			I->on_shmif(I, !(fds[4].revents & errmask));
 		}
 
-/* tunnel is dead? need to close-id it */
+/* if we've received wakeup signals, just flush them, data is already queued
+ * via a12_write_tunnel calls */
 		if (fds[3].revents){
-			if (fds[3].revents & errmask){
-				a12_drop_tunnel(I->S, 1);
-				a12int_trace(A12_TRACE_DIRECTORY, "tunnel_close:internal");
-			}
-
-			else {
-				uint8_t buf[8832];
-				size_t nw = 0, sz;
-
-				int fd = a12_tunnel_descriptor(I->S, 1, &tun_ok);
-				if (tun_ok &&
-					(sz = read(fd, buf, sizeof(buf))) > 0){
-						a12_write_tunnel(I->S, 1, buf, (size_t) sz);
-						nw += sz;
-					}
-
-				a12int_trace(A12_TRACE_DIRECTORY, "tunneled:bytes=%zu", nw);
-			}
+			uint8_t buf[1024];
+			read(fds[3].fd, buf, 1024);
+			a12int_trace(A12_TRACE_DIRECTORY, "tunnel_wake");
 		}
 
 		if ((fds[2].revents & POLLOUT) && outbuf_sz){
@@ -127,6 +191,7 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 			}
 		}
 
+/* finally make sure to flush out whatever the state machine has queued up */
 		if (!outbuf_sz){
 			outbuf_sz = a12_flush(I->S, &outbuf, A12_FLUSH_ALL);
 			if (!outbuf_sz && I->shutdown)
@@ -138,10 +203,15 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 
 		fds[2].fd = outbuf_sz ? I->fdout : -1;
 		fds[0].fd = I->userfd;
-		fds[3].fd = a12_tunnel_descriptor(I->S, 1, &tun_ok);
 		fds[4].fd = I->shmif.addr ? I->shmif.epipe : -1;
 		fds[5].fd = I->userfd2;
+
+		pthread_mutex_unlock(&I->lock);
 	}
+
+	close(I->wakeup);
+	close(fds[3].fd);
+	current_loop = NULL;
 }
 
 FILE* file_to_membuf(FILE* applin, char** out, size_t* out_sz)
@@ -222,7 +292,6 @@ bool extract_appl_pkg(FILE* fin, int cdir, const char* basename, const char** ms
 	}
 	struct arg_arr* args = arg_unpack(line);
 	if (!args){
-		a12int_trace(A12_TRACE_DIRECTORY, "malformed_appl_fmt:missing=manifest");
 		*msg = "broken manifest";
 		return false;
 	}
@@ -230,7 +299,6 @@ bool extract_appl_pkg(FILE* fin, int cdir, const char* basename, const char** ms
 	mkdirat(cdir, basename, S_IRWXU);
 	int bdir = openat(cdir, basename, O_DIRECTORY);
 	if (-1 == bdir){
-		a12int_trace(A12_TRACE_DIRECTORY, "permission=open_basedir");
 		*msg = "couldn't open basedir";
 		return false;
 	}
@@ -238,7 +306,6 @@ bool extract_appl_pkg(FILE* fin, int cdir, const char* basename, const char** ms
 	int fd = openat(bdir, ".manifest", O_CREAT | O_TRUNC | O_RDWR, 0600);
 	arg_cleanup(args);
 	if (-1 == fd){
-		a12int_trace(A12_TRACE_ALLOC, "failed_open_manifest");
 		*msg = "couldn't create .manifest";
 		return false;
 	}
@@ -253,7 +320,6 @@ bool extract_appl_pkg(FILE* fin, int cdir, const char* basename, const char** ms
 
 		size_t len = strlen(line);
 		if (!len){
-			a12int_trace(A12_TRACE_DIRECTORY, "malformed_appl:invalid=entry");
 			*msg = "invalid file entry header";
 			break;
 		}
@@ -271,19 +337,16 @@ bool extract_appl_pkg(FILE* fin, int cdir, const char* basename, const char** ms
 		in_file = true;
 
 		if (!arg_lookup(args, "path", 0, &path) || !path){
-			a12int_trace(A12_TRACE_DIRECTORY, "malformed_appl_fmt:missing=path");
 			*msg = "broken path entry in file header";
 			break;
 		}
 
 		if (!arg_lookup(args, "name", 0, &name) || !name){
-			a12int_trace(A12_TRACE_DIRECTORY, "malformed_appl_fmt:missing=name");
 			*msg = "broken name entry in file header";
 			break;
 		}
 
 		if (!arg_lookup(args, "size", 0, &size) || !size){
-			a12int_trace(A12_TRACE_DIRECTORY, "malformed_appl_fmt:missing=size");
 			*msg = "missing size in file header";
 			break;
 		}
@@ -291,7 +354,6 @@ bool extract_appl_pkg(FILE* fin, int cdir, const char* basename, const char** ms
 		char* errp = NULL;
 		size_t ntc = strtoul(size, &errp, 10);
 		if (errp && *errp != '\0'){
-			a12int_trace(A12_TRACE_DIRECTORY, "malformed_appl_fmt:invalid=size");
 			*msg = "invalid size entry in file header";
 			break;
 		}
@@ -316,7 +378,6 @@ bool extract_appl_pkg(FILE* fin, int cdir, const char* basename, const char** ms
 		}
 
 		if (!fn){
-			a12int_trace(A12_TRACE_ALLOC, "failed_asprintf_path");
 			*msg = "couldn't allocate path";
 			break;
 		}
@@ -325,7 +386,6 @@ bool extract_appl_pkg(FILE* fin, int cdir, const char* basename, const char** ms
  * it is a sign that there are collisions in the file itself. */
 		int fd = openat(bdir, fn, O_CREAT | O_TRUNC | O_RDWR, S_IRUSR | S_IWUSR);
 		if (-1 == fd){
-			a12int_trace(A12_TRACE_ALLOC, "failed_open_creat=%s", fn);
 			*msg = "couldn't create file";
 			break;
 		}
@@ -343,8 +403,6 @@ bool extract_appl_pkg(FILE* fin, int cdir, const char* basename, const char** ms
 		}
 
 		if (ntc){
-			a12int_trace(A12_TRACE_DIRECTORY,
-				"malformed_appl:invalid=size:name=%s", fn);
 			*msg = "truncated / corrupted package";
 			break;
 		}
@@ -382,14 +440,14 @@ bool build_appl_pkg(const char* name, struct appl_meta* dst, int cdir)
 	if (header){
 		char buf[256];
 		if (!fgets(buf, 256, header)){
-			a12int_trace(A12_TRACE_DIRECTORY, "build_appl:error=cant_read_manifest");
+			fprintf(stderr, "build_appl:error=cant_read_manifest");
 			fclose(header);
 			goto err;
 		}
 
 		struct arg_arr* args = arg_unpack(buf);
 		if (!args){
-			a12int_trace(A12_TRACE_DIRECTORY, "build_appl:error=cant_parse_manifest");
+			fprintf(stderr, "build_appl:error=cant_parse_manifest");
 			fclose(header);
 			goto err;
 		}
@@ -417,7 +475,7 @@ bool build_appl_pkg(const char* name, struct appl_meta* dst, int cdir)
 
 		FILE* fin = fopen(cur->fts_name, "r");
 		if (!fin){
-			a12int_trace(A12_TRACE_DIRECTORY,
+			fprintf(stderr,
 				"build_app:error=cant_open:name=%s:path=%s", cur->fts_name, cur->fts_path);
 			goto err;
 		}
@@ -634,7 +692,7 @@ bool dir_request_resource(
 	snprintf(
 		(char*)ev.ext.bchunk.extensions, COUNT_OF(ev.ext.bchunk.extensions), "%s", id);
 
-	a12int_trace(A12_TRACE_DIRECTORY,
+	TRACE(
 		"request_parent:ns=%zu:kind=%d:%s", ns, kind, ev.ext.bchunk.extensions);
 
 	return
@@ -646,10 +704,10 @@ bool dir_request_resource(
 
 struct appl_meta* dir_unpack_index(int fd)
 {
-	a12int_trace(A12_TRACE_DIRECTORY, "new_index");
+	TRACE("new_index");
 	FILE* fpek = fdopen(fd, "r");
 	if (!fpek){
-		a12int_trace(A12_TRACE_DIRECTORY, "error=einval_fd");
+		TRACE("error=einval_fd");
 		return NULL;
 	}
 
@@ -669,13 +727,13 @@ struct appl_meta* dir_unpack_index(int fd)
 		n++;
 		struct arg_arr* entry = arg_unpack(line);
 		if (!entry){
-			a12int_trace(A12_TRACE_DIRECTORY, "error=malformed_entry:index=%zu", n);
+			TRACE("error=malformed_entry:index=%zu", n);
 			continue;
 		}
 
 		const char* kind;
 		if (!arg_lookup(entry, "kind", 0, &kind) || !kind){
-			a12int_trace(A12_TRACE_DIRECTORY, "error=malformed_entry:index=%zu", n);
+			TRACE("error=malformed_entry:index=%zu", n);
 			arg_cleanup(entry);
 			continue;
 		}

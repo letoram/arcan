@@ -23,6 +23,7 @@
  * create the control packet
  */
 static void a12int_vframehdr_build(
+	struct a12_state* S,
 	uint8_t buf[CONTROL_PACKET_SIZE],
 	uint64_t last_seen, uint8_t chid,
 	int type, uint32_t sid,
@@ -149,7 +150,7 @@ void a12int_encode_rgb565(PACK_ARGS)
 
 /* store the control frame that defines our video buffer */
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
-	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
+	a12int_vframehdr_build(S, hdr_buf, S->last_seen_seqnr, chid,
 		POSTPROCESS_VIDEO_RGB565, sid, vb->w, vb->h, w, h, x, y,
 		w * h * px_sz, w * h * px_sz, 1, vb->flags.origo_ll);
 	a12int_step_vstream(S, sid);
@@ -214,7 +215,7 @@ void a12int_encode_passthrough(PACK_ARGS)
 /* right now only step H264 fourcc, vb->compressed */
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
 
-	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
+	a12int_vframehdr_build(S, hdr_buf, S->last_seen_seqnr, chid,
 		POSTPROCESS_VIDEO_H264, sid, vb->w, vb->h, w, h, x, y,
 		vb->buffer_sz, vb->w * vb->h * sizeof(shmif_pixel), 1, vb->flags.origo_ll);
 	a12int_step_vstream(S, sid);
@@ -244,7 +245,7 @@ void a12int_encode_rgba(PACK_ARGS)
 
 /* store the control frame that defines our video buffer */
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
-	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
+	a12int_vframehdr_build(S, hdr_buf, S->last_seen_seqnr, chid,
 		POSTPROCESS_VIDEO_RGBA, sid, vb->w, vb->h, w, h, x, y,
 		w * h * px_sz, w * h * px_sz, 1, vb->flags.origo_ll
 	);
@@ -315,7 +316,7 @@ void a12int_encode_rgb(PACK_ARGS)
 
 /* store the control frame that defines our video buffer */
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
-	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
+	a12int_vframehdr_build(S, hdr_buf, S->last_seen_seqnr, chid,
 		POSTPROCESS_VIDEO_RGB, sid, vb->w, vb->h, w, h, x, y,
 		w * h * px_sz, w * h * px_sz, 1, vb->flags.origo_ll
 	);
@@ -462,7 +463,7 @@ static void compress_tzstd(struct a12_state* S, uint8_t ch,
 	}
 
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
-	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, ch,
+	a12int_vframehdr_build(S, hdr_buf, S->last_seen_seqnr, ch,
 		type, sid, vb->w, vb->h, w, h, 0, 0,
 		out_sz, compress_in_sz, 1, vb->flags.origo_ll
 	);
@@ -618,7 +619,7 @@ void a12int_encode_dzstd(PACK_ARGS)
 		return;
 
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
-	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
+	a12int_vframehdr_build(S, hdr_buf, S->last_seen_seqnr, chid,
 		cres.type, sid, vb->w, vb->h, w, h, x, y,
 		cres.out_sz, cres.in_sz, 1, vb->flags.origo_ll
 	);
@@ -643,7 +644,7 @@ void a12int_encode_dpng(PACK_ARGS)
 		return;
 
 	uint8_t hdr_buf[CONTROL_PACKET_SIZE];
-	a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
+	a12int_vframehdr_build(S, hdr_buf, S->last_seen_seqnr, chid,
 		cres.type, sid, vb->w, vb->h, w, h, x, y,
 		cres.out_sz, cres.in_sz, 1, vb->flags.origo_ll
 	);
@@ -924,7 +925,7 @@ again:
 /* don't see a nice way to combine ffmpegs view of 'packets' and ours,
  * maybe we could avoid it and the extra copy but uncertain */
 		uint8_t hdr_buf[CONTROL_PACKET_SIZE];
-		a12int_vframehdr_build(hdr_buf, S->last_seen_seqnr, chid,
+		a12int_vframehdr_build(S, hdr_buf, S->last_seen_seqnr, chid,
 			POSTPROCESS_VIDEO_H264, sid, vb->w, vb->h, vb->w, vb->h,
 			0, 0, packet->size, vb->w * vb->h * 4, 1, vb->flags.origo_ll
 		);

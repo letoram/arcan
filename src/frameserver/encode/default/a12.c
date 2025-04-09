@@ -78,7 +78,8 @@ static void on_client_event(
 	}
 }
 
-static struct pk_response key_auth_fixed(uint8_t pk[static 32], void* tag)
+static struct pk_response key_auth_fixed(
+	struct a12_state* S, uint8_t pk[static 32], void* tag)
 {
 	struct dispatch_data* data = tag;
 
@@ -592,7 +593,8 @@ static void dispatch_multiple(
 	}
 }
 
-static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
+static struct pk_response key_auth_local(
+	struct a12_state* S, uint8_t pk[static 32], void* tag)
 {
 	struct pk_response auth = {0};
 	char* tmp;

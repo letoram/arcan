@@ -22,7 +22,8 @@
 #include "../../engine/external/stb_image_write.h"
 #endif
 
-static void drain_video(struct a12_channel* ch, struct video_frame* cvf)
+static void drain_video(
+	struct a12_state* S, struct a12_channel* ch, struct video_frame* cvf)
 {
 	cvf->commit = 0;
 	if (ch->active == CHANNEL_RAW){
@@ -176,11 +177,15 @@ void ffmpeg_decode_pkt(
 
 		a12int_trace(A12_TRACE_VIDEO,
 			"ffmpeg:kind=convert:commit=%d:format=yub420p", cvf->commit);
-/* Quite possible that we should actually cache this context as well, but it
- * has different behavior to the rest due to resize. Since this all turns
- * ffmpeg into a dependency, maybe it belongs in the vframe setup on resize. */
+
+/*
+ * the scaler should be part of the vframe_setup,
+ * then checked with getCachedContext - otherwise free.
+ */
 		struct SwsContext* scaler =
-			sws_getContext(cvf->w, cvf->h, AV_PIX_FMT_YUV420P,
+			sws_getContext(
+				cvf->ffmpeg.frame->width,
+				cvf->ffmpeg.frame->height, AV_PIX_FMT_YUV420P,
 				cvf->w, cvf->h, AV_PIX_FMT_BGRA, SWS_BILINEAR, NULL, NULL, NULL);
 
 		uint8_t* const dst[] = {cont->vidb};
@@ -191,14 +196,15 @@ void ffmpeg_decode_pkt(
 
 /* Mark that we should send a ping so the other side can update the drift wnd */
 		if (cvf->commit && cvf->commit != 255){
-			drain_video(&S->channels[S->in_channel], cvf);
+			drain_video(S, &S->channels[S->in_channel], cvf);
 		}
 
 		sws_freeContext(scaler);
 	}
 }
 
-static bool ffmpeg_alloc(struct a12_channel* ch, int method)
+static bool ffmpeg_alloc(
+	struct a12_state* S, struct a12_channel* ch, int method)
 {
 	bool new_codec = false;
 
@@ -271,13 +277,14 @@ void a12int_decode_drop(struct a12_state* S, int chid, bool failed)
 #endif
 }
 
-bool a12int_vframe_setup(struct a12_channel* ch, struct video_frame* dst, int method)
+bool a12int_vframe_setup(struct a12_state* S,
+	struct a12_channel* ch, struct video_frame* dst, int method)
 {
 	*dst = (struct video_frame){};
 
 	if (method == POSTPROCESS_VIDEO_H264){
 #ifdef WANT_H264_DEC
-		if (!ffmpeg_alloc(ch, AV_CODEC_ID_H264))
+		if (!ffmpeg_alloc(S, ch, AV_CODEC_ID_H264))
 			return false;
 
 /* parser, context, packet, frame, scaler */
@@ -338,7 +345,7 @@ void a12int_decode_vbuffer(struct a12_state* S,
 /* this is a junction where other local transfer strategies should be considered,
  * i.e. no-block and defer process on the next stepframe or spin on the vready */
 		if (cvf->commit && cvf->commit != 255){
-			drain_video(ch, cvf);
+			drain_video(S, ch, cvf);
 		}
 		return;
 	}

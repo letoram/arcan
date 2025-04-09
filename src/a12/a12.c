@@ -60,7 +60,8 @@ size_t a12int_header_size(int kind)
 static void unlink_node(
 	struct a12_state* S, struct blob_xfer** root, struct blob_xfer* node);
 static void dirstate_item(struct a12_state* S, struct appl_meta* C);
-static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz, int ind)
+static uint8_t* grow_array(
+	struct a12_state* S, uint8_t* dst, size_t* cur_sz, size_t new_sz, int ind)
 {
 	if (new_sz < *cur_sz)
 		return dst;
@@ -98,7 +99,8 @@ static uint8_t* grow_array(uint8_t* dst, size_t* cur_sz, size_t new_sz, int ind)
 }
 
 /* never permit this to be traced in a normal build */
-static void trace_crypto_key(bool srv, const char* domain, uint8_t* buf, size_t sz)
+static void trace_crypto_key(
+	struct a12_state* S, bool srv, const char* domain, uint8_t* buf, size_t sz)
 {
 #ifdef _DEBUG
 	char conv[sz * 3 + 2];
@@ -195,11 +197,11 @@ static void a12int_issue_rekey(struct a12_state* S)
 
 /* replace our old key */
 	uint8_t out_pub[32] = {0};
-	trace_crypto_key(S->server, "rekey_old", S->keys.real_priv, 32);
+	trace_crypto_key(S, S->server, "rekey_old", S->keys.real_priv, 32);
 	x25519_private_key(S->keys.real_priv);
 	x25519_public_key(S->keys.real_priv, out_pub);
-	trace_crypto_key(S->server, "rekey_local", S->keys.real_priv, 32);
-	trace_crypto_key(S->server, "rekey_new_pub", out_pub, 32);
+	trace_crypto_key(S, S->server, "rekey_local", S->keys.real_priv, 32);
+	trace_crypto_key(S, S->server, "rekey_new_pub", out_pub, 32);
 
 	uint8_t outb[CONTROL_PACKET_SIZE];
 	uint8_t nonce[8];
@@ -209,7 +211,7 @@ static void a12int_issue_rekey(struct a12_state* S)
 		outb[18] = 0; /* mode */
 		memcpy(&outb[19], out_pub, 32);
 	memcpy(nonce, &outb[8], 8);
-	trace_crypto_key(S->server, "rekey_nonce", nonce, 8);
+	trace_crypto_key(S, S->server, "rekey_nonce", nonce, 8);
 
 	a12int_append_out(S,
 		STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
@@ -219,7 +221,7 @@ static void a12int_issue_rekey(struct a12_state* S)
 	x25519_shared_secret(ssecret, S->keys.real_priv, S->keys.remote_pub);
 	chacha_setup(S->enc_state, ssecret, BLAKE3_KEY_LEN, 0, CIPHER_ROUNDS);
 	chacha_set_nonce(S->enc_state, nonce);
-	trace_crypto_key(S->server, "rekey_shared_out", ssecret, 32);
+	trace_crypto_key(S, S->server, "rekey_shared_out", ssecret, 32);
 
 /* calculate H(ssecret, arcan-a12-rekey) and use for HMAC */
 	uint8_t mac_key[BLAKE3_KEY_LEN];
@@ -228,7 +230,7 @@ static void a12int_issue_rekey(struct a12_state* S)
 	blake3_hasher_update(&temp, ssecret, 32);
 	blake3_hasher_finalize(&temp, mac_key, BLAKE3_KEY_LEN);
 	blake3_hasher_init_keyed(&S->out_mac, mac_key);
-	trace_crypto_key(S->server, "rekey_out_mac", mac_key, BLAKE3_KEY_LEN);
+	trace_crypto_key(S, S->server, "rekey_out_mac", mac_key, BLAKE3_KEY_LEN);
 }
 
 struct appl_meta* a12int_get_directory(struct a12_state* S, uint64_t* clk)
@@ -377,7 +379,7 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 	size_t required = S->buf_ofs +
 		header_sizes[STATE_NOPACKET] + out_sz + prepend_sz + 1;
 
-	S->bufs[S->buf_ind] = grow_array(
+	S->bufs[S->buf_ind] = grow_array(S,
 		S->bufs[S->buf_ind],
 		&S->buf_sz[S->buf_ind],
 		required,
@@ -439,7 +441,7 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 		chacha_set_nonce(S->enc_state, &dst[mac_sz]);
 		a12int_trace(A12_TRACE_CRYPTO, "kind=cipher:status=init_nonce");
 
-		trace_crypto_key(S->server, "nonce", &dst[mac_sz], mac_sz);
+		trace_crypto_key(S, S->server, "nonce", &dst[mac_sz], mac_sz);
 /* don't forget to add the nonce to the first message MAC */
 		blake3_hasher_update(&S->out_mac, &dst[mac_sz], mac_sz);
 	}
@@ -454,7 +456,7 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
  * chain separately as 'finalize' is not really finalized */
 	blake3_hasher_finalize(&S->out_mac, &dst[mac_pos], mac_sz);
 	a12int_trace(A12_TRACE_CRYPTO, "kind=mac_enc:position=%zu", S->out_mac.counter);
-	trace_crypto_key(S->server, "mac_enc", &dst[mac_pos], mac_sz);
+	trace_crypto_key(S, S->server, "mac_enc", &dst[mac_pos], mac_sz);
 
 	S->stats.b_out += out_sz + prepend_sz;
 
@@ -565,15 +567,15 @@ static void update_keymaterial(
  * the cipher-state is incomplete as we still need to apply the nonce from the
  * helo packet before the setup is complete. */
 	if (S->server){
-		trace_crypto_key(S->server, "enc_key", srv_key, BLAKE3_KEY_LEN);
-		trace_crypto_key(S->server, "dec_key", cl_key, BLAKE3_KEY_LEN);
+		trace_crypto_key(S, S->server, "enc_key", srv_key, BLAKE3_KEY_LEN);
+		trace_crypto_key(S, S->server, "dec_key", cl_key, BLAKE3_KEY_LEN);
 
 		chacha_setup(S->dec_state, cl_key, BLAKE3_KEY_LEN, 0, CIPHER_ROUNDS);
 		chacha_setup(S->enc_state, srv_key, BLAKE3_KEY_LEN, 0, CIPHER_ROUNDS);
 	}
 	else {
-		trace_crypto_key(S->server, "dec_key", srv_key, BLAKE3_KEY_LEN);
-		trace_crypto_key(S->server, "enc_key", cl_key, BLAKE3_KEY_LEN);
+		trace_crypto_key(S, S->server, "dec_key", srv_key, BLAKE3_KEY_LEN);
+		trace_crypto_key(S, S->server, "enc_key", cl_key, BLAKE3_KEY_LEN);
 
 		chacha_setup(S->enc_state, cl_key, BLAKE3_KEY_LEN, 0, CIPHER_ROUNDS);
 		chacha_setup(S->dec_state, srv_key, BLAKE3_KEY_LEN, 0, CIPHER_ROUNDS);
@@ -583,7 +585,7 @@ static void update_keymaterial(
  * the key-dance is only to setup MAC - just reusing the same codepath for all
  * keymanagement */
 	if (nonce){
-		trace_crypto_key(S->server, "state=set_nonce", nonce, NONCE_SIZE);
+		trace_crypto_key(S, S->server, "state=set_nonce", nonce, NONCE_SIZE);
 		chacha_set_nonce(S->enc_state, nonce);
 		chacha_set_nonce(S->dec_state, nonce);
 	}
@@ -716,7 +718,7 @@ struct a12_state* a12_client(struct a12_context_options* opt)
 		S->authentic = AUTH_REAL_HELLO_SENT;
 		memset(opt->priv_key, '\0', 32);
 		x25519_public_key(S->keys.real_priv, outpk);
-		trace_crypto_key(S->server, "cl-priv", S->keys.real_priv, 32);
+		trace_crypto_key(S, S->server, "cl-priv", S->keys.real_priv, 32);
 	}
 
 /* double-round, start by generating ephemeral key */
@@ -730,7 +732,7 @@ struct a12_state* a12_client(struct a12_context_options* opt)
 /* the nonce in the outbound won't be used, but it should look random still */
 	uint8_t nonce[8];
 	arcan_random(nonce, 8);
-	trace_crypto_key(S->server, "hello-pub", outpk, 32);
+	trace_crypto_key(S, S->server, "hello-pub", outpk, 32);
 	send_hello_packet(S, mode, outpk, nonce);
 
 	return S;
@@ -817,7 +819,7 @@ a12_free(struct a12_state* S)
 	return true;
 }
 
-static void update_mac_and_decrypt(const char* source,
+static void update_mac_and_decrypt(struct a12_state* S, const char* source,
 	blake3_hasher* hash, struct chacha_ctx* ctx, uint8_t* buf, size_t sz)
 {
 	a12int_trace(A12_TRACE_CRYPTO, "src=%s:mac_update=%zu", source, sz);
@@ -835,8 +837,8 @@ static void process_nopacket(struct a12_state* S)
 {
 /* save MAC tag for later comparison when we have the final packet */
 	memcpy(S->last_mac_in, S->decode, MAC_BLOCK_SZ);
-	trace_crypto_key(S->server, "ref_mac", S->last_mac_in, MAC_BLOCK_SZ);
-	update_mac_and_decrypt(__func__, &S->in_mac, S->dec_state, &S->decode[MAC_BLOCK_SZ], 9);
+	trace_crypto_key(S, S->server, "ref_mac", S->last_mac_in, MAC_BLOCK_SZ);
+	update_mac_and_decrypt(S, __func__, &S->in_mac, S->dec_state, &S->decode[MAC_BLOCK_SZ], 9);
 
 /* remember the last sequence number of the packet we processed */
 	unpack_u64(&S->last_seen_seqnr, &S->decode[MAC_BLOCK_SZ]);
@@ -903,7 +905,7 @@ static void process_srvfirst(struct a12_state* S)
 	chacha_set_nonce(S->enc_state, nonce);
 
 	a12int_trace(A12_TRACE_CRYPTO, "kind=cipher:status=init_nonce");
-	trace_crypto_key(S->server, "nonce", nonce, nonce_sz);
+	trace_crypto_key(S, S->server, "nonce", nonce, nonce_sz);
 
 /* decrypt command byte and seqn */
 	size_t base = mac_sz + nonce_sz;
@@ -1052,12 +1054,12 @@ static void command_rekey(struct a12_state* S)
 /* generate the new shared secret and switch inbound processing */
 	uint8_t ssecret[32];
 	memcpy(S->keys.remote_pub, &S->decode[19], 32);
-	trace_crypto_key(S->server, "rekey_priv", S->keys.real_priv, 32);
-	trace_crypto_key(S->server, "rekey_new_pub", S->keys.remote_pub, 32);
+	trace_crypto_key(S, S->server, "rekey_priv", S->keys.real_priv, 32);
+	trace_crypto_key(S, S->server, "rekey_new_pub", S->keys.remote_pub, 32);
 	x25519_shared_secret(ssecret, S->keys.real_priv, S->keys.remote_pub);
 	chacha_setup(S->dec_state, ssecret, BLAKE3_KEY_LEN, 0, CIPHER_ROUNDS);
 	chacha_set_nonce(S->dec_state, &S->decode[8]);
-	trace_crypto_key(S->server, "rekey_nonce", &S->decode[8], 8);
+	trace_crypto_key(S, S->server, "rekey_nonce", &S->decode[8], 8);
 
 /* calculate H(ssecret, arcan-a12-rekey) and use for HMAC */
 	uint8_t mac_key[BLAKE3_KEY_LEN];
@@ -1068,7 +1070,7 @@ static void command_rekey(struct a12_state* S)
 	blake3_hasher_init_keyed(&S->in_mac, mac_key);
 
 	a12int_trace(A12_TRACE_CRYPTO, "rekey");
-	trace_crypto_key(S->server, "rekey_shared_in", ssecret, 32);
+	trace_crypto_key(S, S->server, "rekey_shared_in", ssecret, 32);
 
 /* our turn to issue a rekey */
 	S->keys.own_rekey = true;
@@ -1410,7 +1412,7 @@ static void command_videoframe(struct a12_state* S)
  * in the past. The reason is that codec can be swapped at the encoder side
  * and that some codecs need to retain state between frames.
  */
-	if (!a12int_vframe_setup(channel, vframe, method)){
+	if (!a12int_vframe_setup(S, channel, vframe, method)){
 		vframe->commit = 255;
 		a12int_stream_fail(S, ch, 1, STREAM_FAIL_UNKNOWN);
 		return;
@@ -1872,21 +1874,21 @@ static bool authdec_buffer(const char* src, struct a12_state* S, size_t block_sz
 
 	if (S->authentic == AUTH_SERVER_HBLOCK){
 		mac_size = 8;
-		trace_crypto_key(S->server, "auth_mac_in", S->last_mac_in, mac_size);
+		trace_crypto_key(S, S->server, "auth_mac_in", S->last_mac_in, mac_size);
 	}
 
-	update_mac_and_decrypt(__func__, &S->in_mac, S->dec_state, S->decode, block_sz);
+	update_mac_and_decrypt(S, __func__, &S->in_mac, S->dec_state, S->decode, block_sz);
 
 	uint8_t ref_mac[MAC_BLOCK_SZ];
 	blake3_hasher_finalize(&S->in_mac, ref_mac, mac_size);
 
 	a12int_trace(A12_TRACE_CRYPTO,
 		"kind=mac_dec:src=%s:pos=%zu", src, S->in_mac.counter);
-	trace_crypto_key(S->server, "auth_mac_rf", ref_mac, mac_size);
+	trace_crypto_key(S, S->server, "auth_mac_rf", ref_mac, mac_size);
 	bool res = memcmp(ref_mac, S->last_mac_in, mac_size) == 0;
 
 	if (!res){
-		trace_crypto_key(S->server, "bad_mac", S->last_mac_in, mac_size);
+		trace_crypto_key(S, S->server, "bad_mac", S->last_mac_in, mac_size);
 	}
 
 	return res;
@@ -1923,7 +1925,7 @@ static void hello_auth_server_hello(struct a12_state* S)
 		send_hello_packet(S, HELLO_MODE_EPHEMPK, pubk, nonce);
 
 		x25519_shared_secret((uint8_t*)S->opts->secret, ek, remote_pubk);
-		trace_crypto_key(S->server, "ephem_pub", pubk, 32);
+		trace_crypto_key(S, S->server, "ephem_pub", pubk, 32);
 		update_keymaterial(S, S->opts->secret, 32, nonce);
 		S->authentic = AUTH_EPHEMERAL_PK;
 		return;
@@ -1939,8 +1941,8 @@ static void hello_auth_server_hello(struct a12_state* S)
 
 /* the lookup function returns the key that should be used in the reply
  * and to calculate the shared secret */
-	trace_crypto_key(S->server, "state=client_pk", remote_pubk, 32);
-	struct pk_response res = S->opts->pk_lookup(remote_pubk, S->opts->pk_lookup_tag);
+	trace_crypto_key(S, S->server, "state=client_pk", remote_pubk, 32);
+	struct pk_response res = S->opts->pk_lookup(S, remote_pubk, S->opts->pk_lookup_tag);
 	if (!res.authentic){
 		a12int_trace(A12_TRACE_CRYPTO, "state=eperm:kind=x25519-pk-fail");
 		fail_state(S, "pk-reject-srv");
@@ -1955,11 +1957,11 @@ static void hello_auth_server_hello(struct a12_state* S)
 	arcan_random(nonce, 8);
 	send_hello_packet(S, HELLO_MODE_REALPK, pubk, nonce);
 	memcpy(S->keys.remote_pub, &S->decode[21], 32);
-	trace_crypto_key(S->server, "state=client_pk_ok:respond_pk", pubk, 32);
+	trace_crypto_key(S, S->server, "state=client_pk_ok:respond_pk", pubk, 32);
 
 /* now we can switch keys, note that the new nonce applies for both enc and dec
  * states regardless of the nonce the client provided in the first message */
-	trace_crypto_key(S->server, "state=server_ssecret", (uint8_t*)S->opts->secret, 32);
+	trace_crypto_key(S, S->server, "state=server_ssecret", (uint8_t*)S->opts->secret, 32);
 	update_keymaterial(S, S->opts->secret, 32, nonce);
 
 /* and done, mark latched so a12_unpack saves buffer and returns */
@@ -1978,8 +1980,8 @@ static void hello_auth_client_hello(struct a12_state* S)
 		return;
 	}
 
-	trace_crypto_key(S->server, "server_pk", &S->decode[21], 32);
-	struct pk_response res = S->opts->pk_lookup(&S->decode[21], S->opts->pk_lookup_tag);
+	trace_crypto_key(S, S->server, "server_pk", &S->decode[21], 32);
+	struct pk_response res = S->opts->pk_lookup(S, &S->decode[21], S->opts->pk_lookup_tag);
 	if (!res.authentic){
 		a12int_trace(A12_TRACE_CRYPTO, "state=eperm:kind=25519-pk-fail");
 		fail_state(S, "pk-reject-client");
@@ -1990,7 +1992,7 @@ static void hello_auth_client_hello(struct a12_state* S)
  * secret slot in the initial configuration and repeat the key derivation
  * process to get new enc/dec/mac keys. */
 	x25519_shared_secret((uint8_t*)S->opts->secret, S->keys.real_priv, &S->decode[21]);
-	trace_crypto_key(S->server, "state=client_ssecret", (uint8_t*)S->opts->secret, 32);
+	trace_crypto_key(S, S->server, "state=client_ssecret", (uint8_t*)S->opts->secret, 32);
 	update_keymaterial(S, S->opts->secret, 32, &S->decode[8]);
 
 	S->authentic = AUTH_FULL_PK;
@@ -2092,7 +2094,7 @@ static void process_hello_auth(struct a12_state* S)
 	else if (S->authentic == AUTH_POLITE_HELLO_SENT){
 		uint8_t nonce[8];
 
-		trace_crypto_key(S->server, "ephem-pub-in", &S->decode[21], 32);
+		trace_crypto_key(S, S->server, "ephem-pub-in", &S->decode[21], 32);
 		x25519_shared_secret((uint8_t*)S->opts->secret, S->keys.ephem_priv, &S->decode[21]);
 		update_keymaterial(S, S->opts->secret, 32, &S->decode[8]);
 
@@ -2559,7 +2561,7 @@ static void process_blob(struct a12_state* S)
 /* do we have the header bytes or not? the actual callback is triggered
  * inside of the binarystream rather than of the individual blobs */
 	if (S->in_channel == -1){
-		update_mac_and_decrypt(__func__, &S->in_mac,
+		update_mac_and_decrypt(S, __func__, &S->in_mac,
 			S->dec_state, S->decode, header_sizes[S->state]);
 
 		S->in_channel = S->decode[0];
@@ -2659,6 +2661,7 @@ static void process_blob(struct a12_state* S)
  * complexity leap. */
 	if (-1 != cbf->tmp_fd){
 		size_t pos = 0;
+		a12int_trace(A12_TRACE_BTRANSFER, "kind=flush:dst=%d:size=%zu", cbf->tmp_fd, ntw);
 
 		while(pos < ntw){
 			ssize_t status = write(cbf->tmp_fd, &buf[pos], ntw - pos);
@@ -2767,7 +2770,7 @@ static void process_video(struct a12_state* S)
 
 /* note that the data is still unauthenticated, we need to know how much
  * left to expect and buffer that before we can authenticate */
-		update_mac_and_decrypt(__func__,
+		update_mac_and_decrypt(S, __func__,
 			&S->in_mac, S->dec_state, S->decode, S->decode_pos);
 		S->in_channel = S->decode[0];
 		unpack_u32(&stream, &S->decode[1]);
@@ -2878,7 +2881,7 @@ static void process_audio(struct a12_state* S)
 		unpack_u32(&stream, &S->decode[1]);
 		unpack_u16(&S->left, &S->decode[5]);
 		S->decode_pos = 0;
-		update_mac_and_decrypt(__func__,
+		update_mac_and_decrypt(S, __func__,
 			&S->in_mac, S->dec_state, S->decode, header_sizes[S->state]);
 		a12int_trace(A12_TRACE_AUDIO,
 			"audio[%d:%"PRIx32"], left: %"PRIu16, S->in_channel, stream, S->left);
@@ -3132,7 +3135,8 @@ a12_unpack(struct a12_state* S, const uint8_t* buf,
  * that we risk sending very small blocks of data as part of the stream,
  * wasting bandwidth.
  */
-static void* read_data(int fd, size_t cap, uint16_t* nts, bool* die)
+static void* read_data(
+	struct a12_state* S, int fd, size_t cap, uint16_t* nts, bool* die)
 {
 	void* buf = DYNAMIC_MALLOC(65536);
 	*nts = 0;
@@ -3381,7 +3385,7 @@ static size_t queue_node(struct a12_state* S, struct blob_xfer* node)
 		free_buf = false;
 	}
 	else {
-		buf = read_data(node->fd, cap, &nts, &die);
+		buf = read_data(S, node->fd, cap, &nts, &die);
 	}
 
 /* streaming or file source that broke before we finished sending it all */
@@ -3928,6 +3932,21 @@ int
 		return -1;
 }
 
+int
+	a12_alloc_tunnel(struct a12_state* S)
+{
+	for (size_t chid = 1; chid < 256; chid++){
+		if (!S->channels[chid].active){
+			S->channels[chid].active = true;
+			S->channels[chid].unpack_state.bframe.tunnel = true;
+			S->channels[chid].unpack_state.bframe.tmp_fd = -1;
+			return chid;
+		}
+	}
+
+	return -1;
+}
+
 bool
 	a12_set_tunnel_sink(struct a12_state* S, uint8_t chid, int fd)
 {
@@ -3957,3 +3976,9 @@ void a12_shutdown_id(struct a12_state* S, uint32_t id)
 {
 	S->shutdown_id = id;
 }
+
+void a12_trace_tag(struct a12_state* S, const char* tag)
+{
+	snprintf(S->tracetag, 16, "%s", tag);
+}
+

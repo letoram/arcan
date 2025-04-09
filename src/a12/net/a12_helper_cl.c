@@ -62,6 +62,8 @@ bool spawn_thread(struct a12_state* S,
 static void on_cl_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
+	struct a12_state* S = tag;
+
 	if (!cont){
 		a12int_trace(A12_TRACE_SYSTEM,
 			"ignore incoming event (%s) on unknown context, channel: %d",
@@ -103,7 +105,8 @@ struct shmif_thread_data {
 	uint8_t chid;
 };
 
-static void add_segment(struct shmif_thread_data* data, arcan_event* ev)
+static void add_segment(
+	struct a12_state* S, struct shmif_thread_data* data, arcan_event* ev)
 {
 /* THREAD-CRITICAL */
 	BEGIN_CRITICAL(data->state, "add-segment");
@@ -167,7 +170,7 @@ static bool dispatch_event(struct shmif_thread_data* data, arcan_event* ev)
  * which also takes the job of calling the a12_enqueue_bstream */
 	if (ev->category == EVENT_TARGET &&
 		ev->tgt.kind == TARGET_COMMAND_NEWSEGMENT){
-		add_segment(data, ev);
+		add_segment(data->S, data, ev);
 		return true;
 	}
 
@@ -196,11 +199,12 @@ static bool dispatch_event(struct shmif_thread_data* data, arcan_event* ev)
 		return false;
 	}
 
+	struct a12_state* S = data->S;
 	BEGIN_CRITICAL(data->state, "process-event");
 		a12int_trace(A12_TRACE_EVENT,
 			"kind=enqueue:event=%s", arcan_shmif_eventstr(ev, NULL, 0));
-		a12_set_channel(data->S, data->chid);
-		a12_channel_enqueue(data->S, ev);
+		a12_set_channel(S, data->chid);
+		a12_channel_enqueue(S, ev);
 		dirty = true;
 	END_CRITICAL(data->state);
 
@@ -387,7 +391,7 @@ int a12helper_a12srv_shmifcl(
 	};
 
 /* flush any left overs from authentication */
-	a12_unpack(S, NULL, 0, NULL, on_cl_event);
+	a12_unpack(S, NULL, 0, S, on_cl_event);
 
 	while(a12_ok(S) && -1 != poll(fds, n_fd, -1)){
 		if (
@@ -448,7 +452,7 @@ int a12helper_a12srv_shmifcl(
 
 			BEGIN_CRITICAL(&cl, "unpack-buffer");
 				a12int_trace(A12_TRACE_BTRANSFER, "unpack %zd bytes", nr);
-				a12_unpack(S, inbuf, nr, NULL, on_cl_event);
+				a12_unpack(S, inbuf, nr, S, on_cl_event);
 			END_CRITICAL(&cl);
 		}
 

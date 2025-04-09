@@ -107,7 +107,7 @@ struct a12_context_options {
  * time or bytes before being terminated. If want_session is requested, the
  * lookup function, if it is able to (legacy) should set got_session in the
  * reply and calculate the x25519 shared secret itself. */
-	struct pk_response (*pk_lookup)(uint8_t pub[static 32], void*);
+	struct pk_response (*pk_lookup)(struct a12_state* S, uint8_t pub[static 32], void*);
 	void* pk_lookup_tag;
 
 /* Client only, provide the private key to use with the connection. All [0]
@@ -346,6 +346,16 @@ bool
 
 bool
 	a12_set_tunnel_sink(struct a12_state*, uint8_t chid, int fd);
+
+/*
+ * Find a free channel to map a tunnel to
+ * -1 = no free space
+ *
+ * otherwise returns ID of the channel. Use a12_alloc_tunnel to set the unpack
+ * descriptor for it (write, expect blocking).
+ */
+int
+	a12_alloc_tunnel(struct a12_state* S);
 
 void
 	a12_drop_tunnel(struct a12_state*, uint8_t chid);
@@ -718,6 +728,7 @@ const char* a12_error_state(struct a12_state* S);
  */
 extern int a12_trace_targets;
 extern FILE* a12_trace_dst;
+void a12_trace_tag(struct a12_state* S, const char* tag);
 
 const char* a12int_group_tostr(int group);
 
@@ -742,7 +753,7 @@ const char* a12int_group_tostr(int group);
 	do { \
 	    if (a12_trace_dst && (a12_trace_targets & group)) \
 		    fprintf(a12_trace_dst, \
-				"group=%s:function=%s:" fmt "\n", \
+				"tag=%s:ts=%lld:group=%s:function=%s:" fmt "\n", S->tracetag, arcan_timemillis(),\
 				a12int_group_tostr(group), __func__,##__VA_ARGS__); \
 	} while (0)
 #endif // WITH_TRACY

@@ -223,6 +223,7 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 			.detach = 2 | 4 | 8
 		};
 
+		a12_trace_tag(S, "dir_shmif");
 		cl = shmifsrv_spawn_client(env, &clsock, NULL, 0);
 		if (cl){
 			anet_directory_shmifsrv_thread(cl, S, NULL);
@@ -279,6 +280,7 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 /* this is for a full 'remote desktop' like scenario, directory is handled
  * in handover_setup */
 	arcan_shmif_privsep(NULL, "shmif", NULL, 0);
+	a12_trace_tag(S, "source_tunnel");
 
 	if (C){
 		a12helper_a12cl_shmifsrv(S, C, fd, fd, (struct a12helper_opts){
@@ -430,13 +432,14 @@ static void a12cl_dispatch(
  * needed. */
 	if (global.directory > 0){
 		global.dircl.basedir = global.directory;
+		a12_trace_tag(S, "dir_cl");
 		anet_directory_cl(S, global.dircl, fd, fd);
 		close(fd);
 		return;
 	}
 
-/* we are registering ourselves as a sink into a remote directory, that is
- * special in the sense that we hold on to the shmifsrv_client for a bit and
+/* we are registering ourselves as a sink/source into a remote directory, that
+ * is special in the sense that we hold on to the shmifsrv_client for a bit and
  * if we get a dir-open we latch the two together. */
 	if (a12_remote_mode(S) == ROLE_DIR){
 		struct dirstate* ds = malloc(sizeof(struct dirstate));
@@ -448,6 +451,7 @@ static void a12cl_dispatch(
 
 		global.dircl.dir_source = dir_to_shmifsrv;
 		global.dircl.dir_source_tag = ds;
+		a12_trace_tag(S, "dir_lnk");
 		anet_directory_cl(S, global.dircl, fd, fd);
 		free(ds);
 	}
@@ -463,7 +467,8 @@ static void a12cl_dispatch(
 	close(fd);
 }
 
-static struct pk_response key_auth_dir(uint8_t pk[static 32], void* tag)
+static struct pk_response key_auth_dir(
+	struct a12_state* S, uint8_t pk[static 32], void* tag)
 {
 	struct dirstate* ds = tag;
 	struct pk_response auth = {.authentic = true};
@@ -550,7 +555,9 @@ static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
 			a12int_trace(A12_TRACE_DIRECTORY, "tunnel_socketpair_fail");
 			return;
 		}
+
 		a12_set_tunnel_sink(S, 1, sv[0]);
+		anet_directory_tunnel_thread(anet_directory_ioloop_current(), 1);
 		pre_fd = sv[1];
 	}
 
@@ -785,6 +792,7 @@ static struct anet_cl_connection forward_shmifsrv_cl(
 		}
 	}
 
+	struct a12_state* S = anet.state;
 /* wait / block the processing until we know the connection is authentic,
  * this will callback into keystore and so on */
 	char* msg;
@@ -849,10 +857,11 @@ static int a12_connect(struct anet_options* args,
 /* setup the connection, we do this after the fact rather than before as remote
  * is more likely to have a timeout than locally */
 		struct anet_cl_connection anet = forward_shmifsrv_cl(cl, args);
+		struct a12_state* S = anet.state;
 
 /* wake the client */
 		a12int_trace(A12_TRACE_SYSTEM, "local connection found, forwarding to dispatch");
-		dispatch(args, anet.state, cl, anet.fd);
+		dispatch(args, S, cl, anet.fd);
 	}
 
 	return EXIT_SUCCESS;
@@ -1029,6 +1038,8 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 {
 	const char* modeerr = "Mixed or multiple -s or -l arguments";
 	struct anet_options* opts = &global.meta;
+	struct a12_state tmp_state = {.tracetag = "init"};
+	struct a12_state* S = &tmp_state;
 
 /* the default role is sink, -s -exec changes this to source */
 	opts->opts->local_role = ROLE_SINK;
@@ -1812,7 +1823,8 @@ static bool query_untrusted_key(
  * For inbound, there is an option of differentiation - a different keypair
  * could be returned based on the public key that the connecting party uses.
  */
-static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
+static struct pk_response key_auth_local(
+	struct a12_state* S, uint8_t pk[static 32], void* tag)
 {
 	struct pk_response auth = {};
 	uint8_t my_private_key[32];
@@ -2085,6 +2097,7 @@ int main(int argc, char** argv)
 						chdir(getenv("XDG_CACHE_HOME"));
 					else
 						chdir("/tmp");
+					a12_trace_tag(cl.state, "dir_push");
 				}
 
 				if (argi < argc && argv[argi]){
@@ -2094,9 +2107,11 @@ int main(int argc, char** argv)
 						snprintf(global.dircl.applname, sizeof(global.dircl.applname), "%s", argv[argi]);
 				}
 
+				a12_trace_tag(cl.state, "dir_source");
 				anet_directory_cl(cl.state, global.dircl, cl.fd, cl.fd);
 			}
 			else {
+				a12_trace_tag(cl.state, "dir_client");
 				rc = a12helper_a12srv_shmifcl(NULL, cl.state, NULL, cl.fd, cl.fd);
 			}
 			shutdown(cl.fd, SHUT_RDWR);
@@ -2108,6 +2123,8 @@ int main(int argc, char** argv)
 	char* errmsg;
 
 /* enable asymetric encryption and keystore */
+	struct a12_state tmp_state = {.tracetag = "init"};
+	struct a12_state* S = &tmp_state;
 	if (global.soft_auth){
 		a12int_trace(A12_TRACE_SECURITY, "weak-security=password only");
 		if (!global.no_default){

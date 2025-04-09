@@ -17,6 +17,7 @@
 #include <netinet/tcp.h>
 
 #include "a12.h"
+#include "a12_int.h"
 #include "anet_helper.h"
 
 /* pulled from a12, will get linked in regardless, just used for tracing the key */
@@ -172,6 +173,8 @@ struct anet_cl_connection anet_cl_setup(struct anet_options* arg)
 	struct anet_cl_connection res = {
 		.fd = -1
 	};
+	struct a12_state trace_state = {.tracetag = "anet_cl"};
+	struct a12_state* S = &trace_state;
 
 	if (!a12helper_keystore_open(&arg->keystore)){
 		a12helper_keystore_release();

@@ -62,6 +62,7 @@ static _Atomic volatile uint8_t n_segments;
 static struct a12_vframe_opts vopts_from_segment(
 	struct shmifsrv_thread_data* data, struct shmifsrv_vbuffer vb)
 {
+	struct a12_state* S = data->S;
 /* force tpack regardless, tpack doesn't have tuning like this */
 	if (vb.flags.tpack){
 		a12int_trace(A12_TRACE_VIDEO, "tpack segment");
@@ -268,6 +269,7 @@ static struct a12_bhandler_res incoming_bhandler(
 static void setup_descriptor_store(struct shmifsrv_thread_data* data,
 	struct shmifsrv_client* cl, struct arcan_event* ev)
 {
+	struct a12_state* S = data->S;
 	a12int_trace(A12_TRACE_MISSING, "descriptor_store_setup");
 }
 
@@ -287,7 +289,6 @@ static void redirect_exit(
 
 	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", path);
 	shmifsrv_enqueue_event(C, &ev, -1);
-	a12int_trace(A12_TRACE_EVENT, "kind=redirect:destination=%s", path);
 }
 
 /*
@@ -298,6 +299,8 @@ static void on_srv_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
 	struct shmifsrv_thread_data* data = tag;
+	struct a12_state* S = data->S;
+
 	if (!cont){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:type=EINVALCH:val=%d", chid);
 		return;
@@ -452,6 +455,8 @@ static void on_audio_cb(shmif_asample* buf,
 static void* client_thread(void* inarg)
 {
 	struct shmifsrv_thread_data* data = inarg;
+	struct a12_state* S = data->S;
+
 	static const short errmask = POLLERR | POLLNVAL | POLLHUP;
 	struct pollfd pfd[2] = {
 		{ .fd = shmifsrv_client_handle(data->C, NULL), .events = POLLIN | errmask },
@@ -523,10 +528,10 @@ static void* client_thread(void* inarg)
 					);
 				}
 				else {
-					a12_set_channel(data->S, data->chid);
+					a12_set_channel(S, data->chid);
 					a12int_trace(A12_TRACE_EVENT, "kind=forward:channel=%d:eventstr=%s",
 						data->chid, arcan_shmif_eventstr(&ev, NULL, 0));
-					a12_channel_enqueue(data->S, &ev);
+					a12_channel_enqueue(S, &ev);
 					dirty = true;
 				}
 			END_CRITICAL(&giant_lock);
@@ -555,7 +560,7 @@ static void* client_thread(void* inarg)
 /* check the congestion window - there are many more options for congestion
  * control here, and the tuning is not figured out. One venue would be to
  * track which channel has a segment with focus, and prioritise those higher. */
-				struct a12_iostat stat = a12_state_iostat(data->S);
+				struct a12_iostat stat = a12_state_iostat(S);
 				struct shmifsrv_vbuffer vb = shmifsrv_video(data->C);
 
 				if (data->opts.vframe_block &&
@@ -585,14 +590,14 @@ static void* client_thread(void* inarg)
  * just reject and let the caller do the readback. this is currently done by
  * default in shmifsrv.*/
 				BEGIN_CRITICAL(&giant_lock, "video-buffer");
-					a12_set_channel(data->S, data->chid);
+					a12_set_channel(S, data->chid);
 
 /* vopts_from_segment here lets the caller pick compression parameters (coarse),
  * including the special 'defer this frame until later' */
-					a12_channel_vframe(data->S, &vb, vopts_from_segment(data, vb));
+					a12_channel_vframe(S, &vb, vopts_from_segment(data, vb));
 					dirty = true;
 				END_CRITICAL(&giant_lock);
-				stat = a12_state_iostat(data->S);
+				stat = a12_state_iostat(S);
 				a12int_trace(A12_TRACE_VDETAIL,
 					"vbuffer=release:time_ms=%zu:time_ms_px=%.4f:congestion=%zu",
 					stat.ms_vframe, stat.ms_vframe_px,
@@ -612,8 +617,8 @@ static void* client_thread(void* inarg)
 			if (pv & CLIENT_ABUFFER_READY){
 				a12int_trace(A12_TRACE_AUDIO, "audio-buffer");
 				BEGIN_CRITICAL(&giant_lock, "audio_buffer");
-					a12_set_channel(data->S, data->chid);
-					shmifsrv_audio(data->C, on_audio_cb, data->S);
+					a12_set_channel(S, data->chid);
+					shmifsrv_audio(data->C, on_audio_cb, S);
 					dirty = true;
 				END_CRITICAL(&giant_lock);
 			}
@@ -623,8 +628,8 @@ static void* client_thread(void* inarg)
 
 out:
 	BEGIN_CRITICAL(&giant_lock, "client_death");
-		a12_set_channel(data->S, data->chid);
-		a12_channel_close(data->S);
+		a12_set_channel(S, data->chid);
+		a12_channel_close(S);
 		write(data->kill_fd, &data->chid, 1);
 		a12int_trace(A12_TRACE_SYSTEM, "client died");
 	END_CRITICAL(&giant_lock);
@@ -651,6 +656,7 @@ static bool spawn_thread(struct shmifsrv_thread_data* inarg)
 	pthread_attr_init(&pthattr);
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
 	atomic_fetch_add(&n_segments, 1);
+	struct a12_state* S = inarg->S;
 
 	if (-1 == pthread_create(&pth, &pthattr, client_thread, inarg)){
 		BEGIN_CRITICAL(&giant_lock, "cleanup-spawn");

@@ -56,7 +56,8 @@ struct {
 	.trust_domain = "outbound"
 };
 
-static struct pk_response key_auth_local(uint8_t pk[static 32], void* tag)
+static struct pk_response key_auth_local(
+	struct a12_state* S, uint8_t pk[static 32], void* tag)
 {
 	struct pk_response auth = {0};
 	char* tmp;
@@ -150,7 +151,7 @@ static bool on_disc_beacon(
 {
 	uint8_t nullk[32] = {0};
 	if (memcmp(kpub, nullk, 32) == 0){
-		a12int_trace(A12_TRACE_DIRECTORY, "bad_beacon:source=%s", addr);
+		LOG("bad_beacon:source=%s", addr);
 		return true;
 	}
 
@@ -640,7 +641,6 @@ static void dircl_event(struct arcan_shmif_cont* C, int chid, struct arcan_event
  * server-side resources though */
 	struct ioloop_shared* I = tag;
 
-	a12int_trace(A12_TRACE_DIRECTORY, "event=%s", arcan_shmif_eventstr(ev, NULL, 0));
 	if (ev->category == EVENT_EXTERNAL &&
 		ev->ext.kind == EVENT_EXTERNAL_MESSAGE){
 		arcan_shmif_enqueue(&I->shmif, ev);

@@ -869,8 +869,8 @@ static bool shmif_resize(struct arcan_shmif_cont* C,
 
 /* cancel any pending vsynch */
 	if (atomic_load(&C->addr->vready)){
+		atomic_store_explicit(&C->addr->vready, 0, memory_order_release);
 		if (!shmif_platform_sync_trywait(C->addr, SYNC_VIDEO)){
-			atomic_store_explicit(&C->addr->vready, 0, memory_order_release);
 			shmif_platform_sync_post(C->addr, SYNC_VIDEO);
 		}
 	}

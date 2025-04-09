@@ -8,8 +8,21 @@ set(SRCS
 	${CMAKE_CURRENT_SOURCE_DIR}/../../util/anet_keystore_naive.c
 )
 
+set(UTIL_DIR ../util)
+set(A12_DIR ${PLATFORM_ROOT}/../a12)
+set(A12NET_DIR ${PLATFORM_ROOT}/../a12/net)
+set(EXT_DIR ${A12_DIR}/external)
+
+set(NET_INCLUDE_DIRS
+	${UTIL_DIR}
+	${A12_DIR}
+	${EXT_DIR}
+	${EXT_DIR}/blake3
+	${PLATFORM_ROOT}/../engine
+)
+
 set(LIBS arcan_a12)
-set(INCS ${PLATFORM_ROOT}/../a12)
+set(INCS ${NET_INCLUDE_DIRS})
 
 if (LIBVNC_FOUND)
 	set(PROTOCOLS "${PROTOCOLS} vnc")

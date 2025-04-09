@@ -16,6 +16,7 @@
 #include <fcntl.h>
 
 #include "../a12.h"
+#include "../a12_int.h"
 #include "../../engine/arcan_mem.h"
 #include "../../engine/arcan_db.h"
 #include "a12_helper.h"
@@ -47,9 +48,20 @@ static bool INITIALIZED;
 #define A12INT_DIRTRACE(...) do { \
 	if (!(a12_trace_targets & A12_TRACE_DIRECTORY))\
 		break;\
+	struct a12_state tmp_state = {.tracetag = "lua"};\
+	struct a12_state* S = &tmp_state;\
+\
 	dirsrv_global_lock(__FILE__, __LINE__);\
 		a12int_trace(A12_TRACE_DIRECTORY, __VA_ARGS__);\
 	dirsrv_global_unlock(__FILE__, __LINE__);\
+	} while (0);
+
+#define A12INT_DIRTRACE_LOCKED(...) do { \
+	if (!(a12_trace_targets & A12_TRACE_DIRECTORY))\
+		break;\
+	struct a12_state tmp_state = {.tracetag = "lua"};\
+	struct a12_state* S = &tmp_state;\
+	a12int_trace(A12_TRACE_DIRECTORY, __VA_ARGS__);\
 	} while (0);
 
 #define STRINGIFY(X) #X
@@ -181,7 +193,7 @@ static void launchtarget(struct runner_state* runner,
 	outargv[ind++] = "localhost";
 		/* should also grab port from CFG */
 	outargv[ind++] = "--";
-	outargv[ind++] = exec;
+/*	outargv[ind++] = exec; */
 	for (size_t i = 0; i < argv.count; i++)
 		outargv[ind+i] = argv.data[i];
 
@@ -194,6 +206,11 @@ static void launchtarget(struct runner_state* runner,
 		outenv[i] = env.data[i];
 	outenv[env.count] = envinf;
 
+	char* msg = NULL;
+	if (0 >= asprintf(&msg, "launch_%s.log", tgt)){
+		msg = NULL;
+	}
+
 	pid_t pid = fork();
 	if (pid == 0){
 		if ((fork() != 0))
@@ -203,16 +220,18 @@ static void launchtarget(struct runner_state* runner,
 		close(STDOUT_FILENO);
 		close(STDERR_FILENO);
 
-/* optionally switch logging, might also need to be a log option */
-		open("/dev/null", O_RDWR);
-/*		open("/tmp/tunnel.out", O_RDWR | O_CREAT);
- *		open("/tmp/tunnel.err", O_RDWR | O_CREAT); */
-		open("/dev/null", O_RDWR);
-		open("/dev/null", O_RDWR);
+		open("/dev/null", O_RDWR); /* stdin */
+		open("/dev/null", O_RDWR); /* stdout */
+		if (-1 == openat(CFG->dirsrv.appl_logdfd, msg, O_RDWR | O_CREAT, 0700)){
+			open("/dev/null", O_RDWR); /* stderr */
+		}
+
 		setsid();
 		execve(CFG->path_self, outargv, outenv);
 		_exit(EXIT_FAILURE);
 	}
+
+	free(msg);
 }
 
 static void* strarr_copy(void* arg)
@@ -368,8 +387,7 @@ static void* controller_runner(void* inarg)
 	}
 
 	if (pv == CLIENT_DEAD){
-		a12int_trace(
-			A12_TRACE_DIRECTORY, "kind=error:arcan-net:dirappl=broken");
+		A12INT_DIRTRACE_LOCKED("kind=error:arcan-net:dirappl=broken");
 		shmifsrv_free(runner->cl, false);
 		runner->alive = false;
 		pthread_mutex_unlock(&runner->lock);
@@ -981,8 +999,7 @@ static int dir_linkdirectory(lua_State* L)
 	free(tag);
 
 	if (!S){
-		a12int_trace(
-			A12_TRACE_DIRECTORY, "kind=error:arcan-net:dirappl_spawn");
+		A12INT_DIRTRACE_LOCKED("kind=error:arcan-net:dirappl_spawn");
 		luaL_unref(L, LUA_REGISTRYINDEX, ref);
 		return 0;
 	}
@@ -1287,8 +1304,7 @@ bool anet_directory_lua_admin_command(struct dircl* C, const char* msg)
 /* we are already locked here so no race-risk on trace and shouldn't use the
  * guard macro as that would deadlock */
 	if (!arg){
-		a12int_trace(
-			A12_TRACE_SYSTEM, "kind=error:malformed_admin_command=%s", msg);
+		A12INT_DIRTRACE_LOCKED("kind=error:malformed_admin_command=%s", msg);
 		lua_pop(L, 1);
 		return false;
 	}
@@ -1477,8 +1493,7 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 		};
 		runner->cl = shmifsrv_spawn_client(env, &clsock, NULL, 0);
 		if (!runner->cl){
-			a12int_trace(
-				A12_TRACE_DIRECTORY, "kind=error:arcan-net:dirappl_spawn");
+			A12INT_DIRTRACE_LOCKED("kind=error:arcan-net:dirappl_spawn");
 			free(runner);
 			return false;
 		}
@@ -1498,16 +1513,14 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 
 	int sv[2];
 	if (-1 == socketpair(AF_UNIX, SOCK_STREAM, 0, sv)){
-		a12int_trace(
-			A12_TRACE_DIRECTORY, "kind=error:socketpair.2=%d", errno);
+		A12INT_DIRTRACE_LOCKED("kind=error:socketpair.2=%d", errno);
 		free(runner);
 		return false;
 	}
 	int sc;
 	runner->cl = shmifsrv_inherit_connection(sv[0], &sc);
 	if (!runner->cl){
-		a12int_trace(
-			A12_TRACE_DIRECTORY, "kind=error:couldn't build preauth shmif");
+		A12INT_DIRTRACE_LOCKED("kind=error:couldn't build preauth shmif");
 		close(sv[0]);
 		free(runner);
 		return false;
@@ -1524,8 +1537,7 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
  *  and these will be mutated by the thread_appl_runner which is not
  *  safe in POSIX.
  */
-	a12int_trace(
-		A12_TRACE_DIRECTORY, "kind=warning:unsafe_in_process_ctrl_runner");
+	A12INT_DIRTRACE_LOCKED("kind=warning:unsafe_in_process_ctrl_runner");
 	unsetenv("ARCAN_CONNPATH");
 	char buf[8];
 	snprintf(buf, 8, "%d", sv[1]);
@@ -1546,8 +1558,7 @@ static bool send_join_pair(
 {
 	struct runner_state* runner = appl->server_tag;
 	if (!runner){
-		a12int_trace(
-			A12_TRACE_DIRECTORY, "kind=api-error:join called without runner");
+		A12INT_DIRTRACE_LOCKED("kind=api-error:join called without runner");
 		return false;
 	}
 
@@ -1559,8 +1570,7 @@ static bool send_join_pair(
  */
 	int sv[2];
 	if (-1 == socketpair(AF_UNIX, SOCK_STREAM, 0, sv)){
-		a12int_trace(
-			A12_TRACE_DIRECTORY, "kind=error:socketpair.2=%d", errno);
+		A12INT_DIRTRACE_LOCKED("kind=error:socketpair.2=%d", errno);
 		return false;
 	}
 
@@ -1585,10 +1595,7 @@ static bool send_join_pair(
 
 	shmifsrv_enqueue_event(C->C, &ev, sv[1]);
 
-
-	a12int_trace(
-		A12_TRACE_DIRECTORY,
-		"kind=status:worker_join=%s", C->endpoint.ext.netstate.name);
+	A12INT_DIRTRACE_LOCKED("kind=status:worker_join=%s", C->endpoint.ext.netstate.name);
 
 	close(sv[0]);
 	close(sv[1]);

@@ -80,6 +80,7 @@ static void* tunnel_runner(void* t)
 	char* err = NULL;
 	struct a12_state* S = a12_client(&ts->opts);
 
+	a12_trace_tag(S, "tunnel");
 	if (anet_authenticate(S, ts->fd, ts->fd, &err)){
 		a12helper_a12srv_shmifcl(ts->handover, S, NULL, ts->fd, ts->fd);
 	}
@@ -194,7 +195,8 @@ static void send_join_ident(struct ioloop_shared* I, struct directory_meta* cbt)
 	a12_channel_enqueue(I->S, &ev);
 }
 
-static struct pk_response key_auth_fixed(uint8_t pk[static 32], void* tag)
+static struct pk_response key_auth_fixed(
+	struct a12_state* S, uint8_t pk[static 32], void* tag)
 {
 	struct a12_dynreq* key_auth_req = tag;
 
@@ -266,6 +268,7 @@ void dircl_source_handler(
 		}
 
 		a12_set_tunnel_sink(S, 1, sv[0]);
+		anet_directory_tunnel_thread(I, 1);
 		detach_tunnel_runner(I, sv[1], &a12opts, &req);
 		I->handover = NULL;
 		return;
@@ -305,6 +308,7 @@ static void on_cl_event(
 	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
 {
 	struct ioloop_shared* I = tag;
+	struct a12_state* S = I->S;
 
 /* monitor- mode will leave us without a shmif connection, just send to stdout */
 	if (!I->shmif.addr){
@@ -497,6 +501,7 @@ static void runner_shmif(struct ioloop_shared* I, bool ok)
 {
 	arcan_event ev;
 	int rv;
+	struct a12_state* S = I->S;
 
 	while ((rv = arcan_shmif_poll(&I->shmif, &ev)) > 0){
 		if (ev.category != EVENT_TARGET){
@@ -514,7 +519,7 @@ static void runner_shmif(struct ioloop_shared* I, bool ok)
  */
 		if (ev.tgt.kind == TARGET_COMMAND_BCHUNK_OUT ||
 				ev.tgt.kind == TARGET_COMMAND_BCHUNK_IN){
-			a12_channel_enqueue(I->S, &ev);
+			a12_channel_enqueue(S, &ev);
 		}
 
 /* we need to flip the 'direction' as the other end expect us to behave like a
@@ -530,7 +535,7 @@ static void runner_shmif(struct ioloop_shared* I, bool ok)
 
 			memcpy(out.ext.message.data, ev.tgt.message, sizeof(out.ext.message.data));
 			a12int_trace(A12_TRACE_DIRECTORY, "applmsg=%s", out.ext.message.data);
-			a12_channel_enqueue(I->S, &out);
+			a12_channel_enqueue(S, &out);
 		}
 	}
 
@@ -616,6 +621,7 @@ static void process_thread(struct ioloop_shared* I, bool ok)
  * file descriptor can be rewound and set as a bstream */
 	struct appl_runner_state* A = I->tag;
 	struct directory_meta* cbt = I->cbt;
+	struct a12_state* S = I->S;
 
 	char buf[4096];
 
@@ -747,7 +753,7 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 /* this should be moved to just enqueue the proper event handler as
  * is done with BCHUNK_IN/OUT */
 	a12_enqueue_bstream(
-		I->S,
+		S,
 		A->state.fd,
 		exec_res ? A12_BTYPE_STATE : A12_BTYPE_CRASHDUMP,
 		cbt->clopt->applid,
@@ -757,11 +763,11 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 	);
 
 	fclose(A->state.fpek);
-	a12_shutdown_id(I->S, cbt->clopt->applid);
+	a12_shutdown_id(S, cbt->clopt->applid);
 
 out:
 	if (cbt->clopt->reload){
-		a12int_request_dirlist(I->S, true);
+		a12int_request_dirlist(S, true);
 	}
 	else
 		I->shutdown = A->state.fpek == NULL;
@@ -1240,6 +1246,7 @@ static struct appl_meta* scan_for_appl(struct appl_meta* C, const char* name)
 static bool cl_send_appl_update(struct ioloop_shared* I, struct appl_meta* dir)
 {
 	struct directory_meta* cbt = I->cbt;
+	struct a12_state* S = I->S;
 	struct appl_meta* C = dir;
 
 	if (cbt->clopt->outapp.appl.name[0])
@@ -1260,7 +1267,7 @@ static bool cl_send_appl_update(struct ioloop_shared* I, struct appl_meta* dir)
 	cbt->transfer_id = cbt->clopt->outapp.identifier;
 	cbt->in_transfer = true;
 
-	a12_enqueue_blob(I->S,
+	a12_enqueue_blob(S,
 		cbt->clopt->outapp.buf,
 		cbt->clopt->outapp.buf_sz,
 		cbt->clopt->outapp.identifier,

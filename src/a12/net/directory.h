@@ -273,6 +273,7 @@ struct ioloop_shared {
 	int fdout;
 	int userfd;
 	int userfd2;
+	int wakeup;
 
 	struct arcan_shmif_cont shmif;
 	struct arcan_shmif_cont* handover;
@@ -350,7 +351,9 @@ void anet_directory_lua_bchunk_completion(struct dircl* C, bool ok);
  */
 int anet_directory_lua_filter_source(struct dircl* C, arcan_event* ev);
 
-void anet_directory_tunnel_thread(struct ioloop_shared* ios, struct a12_state* S);
+void anet_directory_tunnel_thread(struct ioloop_shared* ios, uint8_t chid);
+
+struct ioloop_shared* anet_directory_ioloop_current();
 void anet_directory_ioloop(struct ioloop_shared* S);
 
 /*

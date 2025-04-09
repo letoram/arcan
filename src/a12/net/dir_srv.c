@@ -53,9 +53,19 @@ static struct {
 #define A12INT_DIRTRACE(...) do { \
 	if (!(a12_trace_targets & A12_TRACE_DIRECTORY))\
 		break;\
+	struct a12_state tmp_state = {.tracetag = "main"};\
+	struct a12_state* S = &tmp_state;\
 	dirsrv_global_lock(__FILE__, __LINE__);\
 		a12int_trace(A12_TRACE_DIRECTORY, __VA_ARGS__);\
 	dirsrv_global_unlock(__FILE__, __LINE__);\
+	} while (0);
+
+#define A12INT_DIRTRACE_LOCKED(...) do { \
+	if (!(a12_trace_targets & A12_TRACE_DIRECTORY))\
+		break;\
+	struct a12_state tmp_state = {.tracetag = "main"};\
+	struct a12_state* S = &tmp_state;\
+	a12int_trace(A12_TRACE_DIRECTORY, __VA_ARGS__);\
 	} while (0);
 
 static void rebuild_index();
@@ -131,7 +141,6 @@ static int buf_memfd(const char* buf, size_t buf_sz)
 			if (errno == EINTR || errno == EAGAIN)
 				continue;
 			close(out);
-			A12INT_DIRTRACE("dirsv:kind=tmpfile:error=%d", errno);
 			return -1;
 		}
 
@@ -893,7 +902,10 @@ static bool process_auth_request(struct dircl* C, struct arg_arr* entry)
 
 	dirsrv_global_lock(__FILE__, __LINE__);
 		struct a12_context_options* aopt = active_clients.opts->a12_cfg;
-		struct pk_response rep = aopt->pk_lookup(pubk_dec, aopt->pk_lookup_tag);
+
+		struct a12_state tmp_state = {.tracetag = "lua"};
+		struct a12_state* S = &tmp_state;
+		struct pk_response rep = aopt->pk_lookup(S, pubk_dec, aopt->pk_lookup_tag);
 
 /* notify or let .lua config have a say */
 		if (!rep.authentic){
@@ -1249,7 +1261,7 @@ static void* dircl_process(void* P)
 			C->tunnel = NULL;
 		}
 
-	a12int_trace(A12_TRACE_DIRECTORY,
+	A12INT_DIRTRACE_LOCKED(
 		"srv:kind=worker:terminated:name=%s", C->petname.ext.netstate.name);
 		C->prev->next = C->next;
 		if (C->next)
@@ -1260,7 +1272,7 @@ static void* dircl_process(void* P)
 		ev.ext.netstate.state = 0;
 
 		if (ev.ext.netstate.name[0]){
-			a12int_trace(A12_TRACE_DIRECTORY, "srv:kind=worker:broadcast_loss");
+			A12INT_DIRTRACE_LOCKED("srv:kind=worker:broadcast_loss");
 			tag_outbound_name(&ev, C->pubk);
 			struct dircl* cur = active_clients.root.next;
 			while (cur && ev.ext.netstate.name[0]){
@@ -1330,13 +1342,8 @@ void anet_directory_shmifsrv_set(struct anet_dirsrv_opts* opts)
 	if (opts->dir.handle || opts->dir.buf){
 		rebuild_index();
 
-/* Note that DIRTRACE macro isn't used here as it locks the mutex. Setting the
- * directory again after the initial time (vs. individual entry updates with
- * broadcast) should be rare to never). An optimization here is to only send
- * a new dirlist to clients that have explicitly asked for notification. That
- * information is hidden in the a12_state in the dirsrv_worker. */
 		if (!first){
-			a12int_trace(A12_TRACE_DIRECTORY, "list_updated");
+			A12INT_DIRTRACE_LOCKED("list_updated");
 			struct dircl* cur = &active_clients.root;
 			while (cur){
 				dirlist_to_worker(cur);
@@ -1476,7 +1483,7 @@ void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
 		}
 	}
 
-	a12int_trace(A12_TRACE_DIRECTORY, "scan_over:count=%zu", opts->dir_count);
+	A12INT_DIRTRACE_LOCKED("scan_over:count=%zu", opts->dir_count);
 	closedir(dir);
 
 	if (-1 != old){

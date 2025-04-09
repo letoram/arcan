@@ -41,7 +41,16 @@ static struct arcan_shmif_cont shmif_parent_process;
 static struct a12_state* active_client_state;
 static struct appl_meta* pending_index;
 static struct ioloop_shared* ioloop_shared;
-static bool pending_tunnel;
+static struct a12_state trace_state = {.tracetag = "worker"};
+
+static uint8_t pending_tunnel;
+
+#define TRACE(...) do { \
+	if (!(a12_trace_targets & A12_TRACE_DIRECTORY))\
+		break;\
+	struct a12_state* S = &trace_state;\
+		a12int_trace(A12_TRACE_DIRECTORY, __VA_ARGS__);\
+	} while (0);
 
 static void parent_worker_event(
 	struct a12_state* S, struct arcan_shmif_cont* C, struct arcan_event* ev);
@@ -126,8 +135,7 @@ static void on_a12srv_event(
 /* if it is for output, we save the name and make the actual request when
  * the bstream transfer is initiated - as the namespace will be provided there. */
 		if (!ev->ext.bchunk.input){
-			a12int_trace(A12_TRACE_DIRECTORY,
-					"mark_pending=%s", arcan_shmif_eventstr(ev, NULL, 0));
+			TRACE("mark_pending=%s", arcan_shmif_eventstr(ev, NULL, 0));
 			cbt->breq_pending = *ev;
 			return;
 		}
@@ -207,8 +215,7 @@ static void on_a12srv_event(
 
 /* truncate the identifier */
 		snprintf(disc.ext.netstate.name, 16, "%s", ev->ext.registr.title);
-		a12int_trace(A12_TRACE_DIRECTORY,
-			"source_register=%s", disc.ext.netstate.name);
+		TRACE("source_register=%s", disc.ext.netstate.name);
 
 		arcan_shmif_enqueue(C, &disc);
 	}
@@ -224,13 +231,11 @@ static void on_a12srv_event(
 			a12_channel_enqueue(cbt->S, ev);
 		}
 		else
-			a12int_trace(A12_TRACE_DIRECTORY,
-				"kind=error:streamstatus:status=unknown_stream");
+			TRACE("kind=error:streamstatus:status=unknown_stream");
 	}
 
 	else if (ev->ext.kind == EVENT_EXTERNAL_IDENT){
-		a12int_trace(A12_TRACE_DIRECTORY,
-			"source_join=%s", ev->ext.message.data);
+		TRACE("source_join=%s", ev->ext.message.data);
 		arcan_shmif_enqueue(C, ev);
 	}
 
@@ -269,11 +274,18 @@ static void bchunk_event(struct a12_state *S,
 		else
 			a12int_set_directory(S, first);
 	}
-/* Only single channel handled for now, 1:1 source-sink connections. Multiple
- * ones are not difficult as such but evaluate the need experimentally first. */
+/*
+ * we have a new tunnel, track it and then (next message) send the reply and
+ * attach the processing thread. Track pending_tunnel as global state so the
+ * reply to command_diropened can forward it in the feedback.
+ */
 	else if (strcmp(ev->tgt.message, ".tun") == 0){
-		a12_set_tunnel_sink(S, 1, arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true));
-		pending_tunnel = true;
+		pending_tunnel = a12_alloc_tunnel(S);
+		if (pending_tunnel){
+			a12_set_tunnel_sink(S, pending_tunnel,
+				arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, false));
+			anet_directory_tunnel_thread(ioloop_shared, pending_tunnel);
+		}
 	}
 /* Joining an appl-group through a controller process is different from
  * NEWSEGMENT as the mempage is acquired over the segment - fake a named
@@ -323,14 +335,13 @@ static bool wait_for_activation(
 	struct arcan_event ev;
 
 	while (arcan_shmif_wait(C, &ev)){
-		a12int_trace(A12_TRACE_DIRECTORY,
-			"activation:event=%s", arcan_shmif_eventstr(&ev, NULL, 0));
+		TRACE("activation:event=%s", arcan_shmif_eventstr(&ev, NULL, 0));
 
 		if (ev.category != EVENT_TARGET)
 			continue;
 
 		if (ev.tgt.kind == TARGET_COMMAND_BCHUNK_IN){
-			bchunk_event(NULL, cbt, C, &ev);
+			bchunk_event(&trace_state, cbt, C, &ev);
 		}
 /* the authentication secret need to be set in the S->opts before
  * proceeding with the protocol decoding leading to the key authentication
@@ -351,8 +362,7 @@ static bool wait_for_activation(
 			return true;
 		}
 
-		a12int_trace(A12_TRACE_DIRECTORY,
-			"event:kind=%s", arcan_shmif_eventstr(&ev, NULL, 0));
+		TRACE("event:kind=%s", arcan_shmif_eventstr(&ev, NULL, 0));
 	}
 
 	return false;
@@ -379,7 +389,9 @@ static void do_external_event(
 			if (pending_tunnel){
 				a12int_trace(A12_TRACE_DIRECTORY, "diropen:tunnel_src");
 				dynreq.proto = 4;
-				pending_tunnel = false;
+				sprintf(dynreq.host, "%d", pending_tunnel);
+				anet_directory_tunnel_thread(ioloop_shared, pending_tunnel);
+				pending_tunnel = 0;
 			}
 
 			a12_supply_dynamic_resource(S, dynreq);
@@ -466,9 +478,7 @@ static void on_appl_shmif(struct ioloop_shared* S, bool ok)
 
 /* most of these behave just like on_shmif, it is just a different sender */
 	while ((pv = arcan_shmif_poll(&S->shmif, &ev)) > 0){
-		a12int_trace(
-			A12_TRACE_DIRECTORY,
-			"to_appl=%s", arcan_shmif_eventstr(&ev, NULL, 0));
+		TRACE("to_appl=%s", arcan_shmif_eventstr(&ev, NULL, 0));
 
 		a12_channel_enqueue(active_client_state, &ev);
 	}
@@ -514,7 +524,8 @@ static void on_shmif(struct ioloop_shared* S, bool ok)
  * with kpub=%s and wait for kpriv or fail. Re-keying doesn't need this as we
  * just generate new keys locally.
  */
-static struct pk_response key_auth_worker(uint8_t pk[static 32], void* tag)
+static struct pk_response key_auth_worker(
+	struct a12_state* S, uint8_t pk[static 32], void* tag)
 {
 	struct pk_response reply = {0};
 	struct arcan_event req = {
@@ -540,8 +551,7 @@ static struct pk_response key_auth_worker(uint8_t pk[static 32], void* tag)
 
 	while (count && arcan_shmif_wait(&shmif_parent_process, &rep) > 0){
 		if (rep.category != EVENT_TARGET || rep.tgt.kind != TARGET_COMMAND_MESSAGE){
-			a12int_trace(
-				A12_TRACE_DIRECTORY,
+			TRACE(
 				"kind=auth:status=unexpected_event:message=%s",
 				arcan_shmif_eventstr(&rep, NULL, 0)
 			);
@@ -551,24 +561,20 @@ static struct pk_response key_auth_worker(uint8_t pk[static 32], void* tag)
 		struct arg_arr* stat = arg_unpack(rep.tgt.message);
 		if (!stat){
 			arg_cleanup(stat);
-			a12int_trace(
-				A12_TRACE_DIRECTORY,
-				"kind=auth:status=broken:message=%s", rep.tgt.message);
+			TRACE("kind=auth:status=broken:message=%s", rep.tgt.message);
 			break;
 		}
 
 		b64 = NULL;
 		if (!arg_lookup(stat, "a12", 0, NULL)){
 			arg_cleanup(stat);
-			a12int_trace(
-				A12_TRACE_DIRECTORY,
-				"kind=auth:status=broken:message=missing a12 key");
+			TRACE("kind=auth:status=broken:message=missing a12 key");
 			break;
 		}
 
 		const char* inkey;
 		if (arg_lookup(stat, "fail", 0, NULL)){
-			a12int_trace(A12_TRACE_DIRECTORY, "kind=auth:status=rejected");
+			TRACE("kind=auth:status=rejected");
 			arg_cleanup(stat);
 			break;
 		}
@@ -658,8 +664,9 @@ retry_block:
 		if (pending_tunnel){
 			a12int_trace(A12_TRACE_DIRECTORY, "diropen:tunnel_sink");
 			rq.proto = 4;
+			sprintf(rq.host, "%d", pending_tunnel);
 			*out = rq;
-			pending_tunnel = false;
+			pending_tunnel = 0;
 			return rv;
 		}
 
@@ -687,18 +694,18 @@ void anet_directory_srv(
 	struct anet_dirsrv_opts diropts = {};
 	struct arg_arr* args;
 
-	a12int_trace(A12_TRACE_DIRECTORY, "notice=directory-ready:pid=%d", getpid());
+	TRACE("notice=directory-ready:pid=%d", getpid());
 
 	shmif_parent_process = arcan_shmif_open(SEGID_NETWORK_SERVER, shmifopen_flags, &args);
 
 /* Not all arguments are passed via command-line */
 	const char* val;
 	if (arg_lookup(args, "rekey", 0, &val) && val){
-		a12int_trace(A12_TRACE_DIRECTORY, "notice=set_rekey:bytes=%s", val);
+		TRACE("notice=set_rekey:bytes=%s", val);
 		netopts->rekey_bytes = strtoul(val, NULL, 10);
 	}
 
-	a12int_trace(A12_TRACE_DIRECTORY, "notice=directory-parent-ok");
+	TRACE("notice=directory-parent-ok");
 
 /* Now that we have the shmif context, all we should need is stdio and
    descriptor passing. The rest - keystore, state access, everything is done
@@ -717,17 +724,17 @@ void anet_directory_srv(
 		NULL
 	};
 	arcan_shmif_privsep(&shmif_parent_process, SHMIF_PLEDGE_PREFIX ,paths, 0);/* */
-	a12int_trace(A12_TRACE_DIRECTORY, "notice=prisep-set");
+	TRACE("notice=prisep-set");
 
 /* Flush out the event loop before starting as that is likely to update our
  * list of active directory entries as well as configure our a12_ctx_opts. this
  * will also block until ACTIVATE is received due to the NOACTIVATE _open. */
 	if (!wait_for_activation(netopts, &shmif_parent_process)){
-		a12int_trace(A12_TRACE_DIRECTORY, "error=control_channel");
+		TRACE("error=control_channel");
 		return;
 	}
 
-	a12int_trace(A12_TRACE_DIRECTORY, "notice=activated");
+	TRACE("notice=activated");
 
 /*
  * Complex paths can be disabled entirely at compile time to have a simple
@@ -739,6 +746,7 @@ void anet_directory_srv(
 #endif
 
 	struct a12_state* S = a12_server(netopts);
+	a12_trace_tag(S, "dir_worker");
 	active_client_state = S;
 	if (pending_index)
 		a12int_set_directory(S, pending_index);
