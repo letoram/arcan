@@ -3207,13 +3207,16 @@ static int utf8step(lua_State* L)
 		while ((msg[ofs] & 0xc0) == 0x80 && ofs < len && ofs >= 0){
 			ofs += sign;
 		}
-		ns -= sign;
+		ns--;
 	}
 
 	if (ns)
 		lua_pushnumber(L, -1);
-	else
+	else{
 		lua_pushnumber(L, ofs+1);
+		lua_pushlstring(L, &msg[ofs], utf8len(&msg[ofs]));
+		return 2;
+	}
 
 	return 1;
 }
