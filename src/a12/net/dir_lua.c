@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <ctype.h>
+#include <signal.h>
 
 #include "../a12.h"
 #include "../a12_int.h"

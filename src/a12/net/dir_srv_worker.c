@@ -389,7 +389,7 @@ static void do_external_event(
 			if (pending_tunnel){
 				a12int_trace(A12_TRACE_DIRECTORY, "diropen:tunnel_src");
 				dynreq.proto = 4;
-				sprintf(dynreq.host, "%d", pending_tunnel);
+				snprintf(dynreq.host, COUNT_OF(dynreq.host), "%d", pending_tunnel);
 				anet_directory_tunnel_thread(ioloop_shared, pending_tunnel);
 				pending_tunnel = 0;
 			}
@@ -664,7 +664,7 @@ retry_block:
 		if (pending_tunnel){
 			a12int_trace(A12_TRACE_DIRECTORY, "diropen:tunnel_sink");
 			rq.proto = 4;
-			sprintf(rq.host, "%d", pending_tunnel);
+			snprintf(rq.host, COUNT_OF(rq.host), "%d", pending_tunnel);
 			*out = rq;
 			pending_tunnel = 0;
 			return rv;
