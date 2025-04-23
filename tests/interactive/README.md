@@ -98,3 +98,5 @@ xwmroot - rootful Xarcan decomposition test
 xwm - redirected Xarcan deferred composition test
 
 nettest - tests sourcing and sinking to/from local passive-beacon discovery
+
+textsurf - text_surface call with inplace updates and resizing
