@@ -2316,11 +2316,26 @@ static int textsurface(lua_State* L)
 		}
 		size_t crows, ccols;
 		arcan_tui_dimensions(T, &crows, &ccols);
+
+/* if dimensions have changed, resize the destination TUI context AND the
+ * raster backing store (not needed when sliced renderer is the default) based
+ * on the associated fontgroup and the target rendertarget density */
 		if (crows != n_rows || ccols != n_cols){
+			size_t cellw, cellh;
+			arcan_renderfun_fontgroup_size(
+				vobj->vstore->vinf.text.tpack.group,
+				0, vobj->owner->hppcm, &cellw, &cellh
+			);
+
 			arcan_tui_wndhint(T, NULL, (struct tui_constraints){
-					.max_rows = crows,
-					.max_cols = ccols
+					.max_rows = n_rows,
+					.max_cols = n_cols
 			});
+
+			size_t w = cellw * n_cols;
+			size_t h = cellh * n_rows;
+
+			arcan_video_resizefeed(vid, w, h);
 		}
 		tblind++;
 	}
