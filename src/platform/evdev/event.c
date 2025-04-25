@@ -1810,7 +1810,8 @@ static void defhandler_game(struct arcan_evctx* ctx, struct devnode* node)
 				inev[i].code == REL_Z ||
 				inev[i].code == REL_RZ ||
 				inev[i].code == REL_RX ||
-				inev[i].code == REL_RY)
+				inev[i].code == REL_RY ||
+				inev[i].code == ABS_THROTTLE)
 			{
 				newev.io.kind = EVENT_IO_AXIS_MOVE;
 				newev.io.datatype = EVENT_IDATATYPE_ANALOG;
