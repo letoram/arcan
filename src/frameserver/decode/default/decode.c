@@ -230,8 +230,10 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		return decode_spell(cont, args);
 #endif
 
+#ifdef HAVE_VLC
 	if (strcasecmp(type, "media") == 0)
 		return decode_av(cont, args);
+#endif
 
 	if (strcasecmp(type, "text") == 0)
 		return decode_text(cont, args);

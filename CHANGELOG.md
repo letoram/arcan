@@ -22,6 +22,9 @@
  * Added .monitor bstream point for attaching a debugger to a server controller VM
  * Added .admin bstream point for remote administration of directory server
 
+## Decode
+ * Support building without libvlc support
+
 ## Shmif
  * Migrating more OS specific work to platform
  * Add timeout+liveness check for recvmsg for edge condition shutdown
