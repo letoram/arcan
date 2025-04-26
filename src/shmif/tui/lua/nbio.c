@@ -644,9 +644,14 @@ static int nbio_write(lua_State* L)
 			lua_rawgeti(L, 2, i+1);
 			buf = lua_tolstring(L, -1, &len);
 			if (!len){
-				lua_pop(L, 1);
-				continue;
+				if (!suffix_len){
+					lua_pop(L, 1);
+					continue;
+				}
+				buf = "";
+				len = 0;
 			}
+
 			if (!buf || !queue_out(iw, buf, len, suffix, suffix_len)){
 				drop_all_jobs(iw);
 				lua_pop(L, 1);
