@@ -440,6 +440,7 @@ static void screen_write(struct tsm_screen *con, unsigned int x,
 
 	for (i = 1; i < len && i + x < con->size_x; ++i) {
 		line->cells[x + i].age = con->age_cnt;
+		line->cells[x + i].ch = ' ';
 		line->cells[x + i].width = 0;
 	}
 

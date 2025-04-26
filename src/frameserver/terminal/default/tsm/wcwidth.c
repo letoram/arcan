@@ -200,7 +200,8 @@ int mk_wcwidth(wchar_t ucs)
       (ucs >= 0xff00 && ucs <= 0xff60) || /* Fullwidth Forms */
       (ucs >= 0xffe0 && ucs <= 0xffe6) ||
       (ucs >= 0x20000 && ucs <= 0x2fffd) ||
-      (ucs >= 0x30000 && ucs <= 0x3fffd)));
+      (ucs >= 0x30000 && ucs <= 0x3fffd) ||
+      (wcwidth(ucs) == 2)));
 }
 
 

@@ -49,6 +49,7 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <inttypes.h>
+#include <locale.h>
 
 #include <arcan_shmif.h>
 #include "arcan_tui.h"
@@ -382,6 +383,7 @@ int tsm_vte_new(struct tsm_vte **out, struct tui_context *con,
 	DEBUG_LOG(vte, "new vte object");
 	arcan_tui_refinc(vte->con);
 	*out = vte;
+	setlocale(LC_CTYPE, ""); // needed for wcwidth
 	return 0;
 
 err_free:
