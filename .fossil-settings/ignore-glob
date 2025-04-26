@@ -1,1 +1,1 @@
-external/*,*/build/*,build/*
+external/*,*/build/*,build/*,doc/spec.lua

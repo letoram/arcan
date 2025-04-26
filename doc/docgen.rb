@@ -367,7 +367,7 @@ def funtoman(fname, outm)
 		outm << ".br\n.B #{fname}()\n"
 	else
 		inf.inargs.each{|argf|
-			outm << ".br\n.B #{fname}(\n"
+			outm << ".br\n.B #{fname}(\n.B "
 			tbl = argf.split(/\,/)
 			tbl.each_with_index{|a, b|
 				if (a =~ /\*/)
@@ -382,7 +382,7 @@ def funtoman(fname, outm)
 					outm << "\n"
 				end
 			}
-			outm << ")\n"
+			outm << ".B )\n"
 		}
 	end
 
@@ -429,6 +429,44 @@ def funtoman(fname, outm)
 rescue => er
 	STDERR.print("Failed to parse/generate (#{fname} reason: #{er}\n #{
 		er.backtrace.join("\n")})\n")
+end
+
+def funtodefinition(fname, outm)
+	inf = DocReader.Open("#{fname}.lua")
+	inf.inargs.each{|argf|
+        argnames = []
+		tbl = argf.split(/\,/)
+		tbl.each{|i|
+			j = i.split(':')
+			j.map! {|e|
+				e.strip()
+			}
+			if (j.size == 1)
+				# don't know the type
+				j.prepend("any")
+			end
+			if (j.size == 2)
+				if (j[1] =~ /\A\*.*\*\z/)
+					# optional parameter
+					j[1] = j[1][1..-2] + "?"
+				end
+                j[1] = j[1].split.first # when "VID or vidtbl", just take the first type
+				outm << "---@param #{j[1]} #{j[0]}\n"
+				argnames.append(j[1])
+			else
+				STDERR.print("Failed to parse param #{i} for function #{fname}\n")
+			end
+		}
+        if inf.outargs.size > 0
+          outm << "---@return any\n" # can't be bothered to get the real type
+        end
+        if inf.longdescr.size > 0
+          inf.longdescr.each{|b|
+            outm << "---#{b}\n"
+          }
+        end
+        outm << "function #{fname}(#{argnames.join(", ")})\nend\n\n"
+	}
 end
 
 case (ARGV[0])
@@ -567,6 +605,38 @@ when "verify" then
 when "view" then
 	funtoman(ARGV[1], STDOUT)
 
+when "lspdefinition" then
+	consts = []
+	if (File.exist?("constdump/consts.list"))
+		File.open("constdump/consts.list").each_line{|a|
+			consts << a.chop
+		}
+	else
+		STDOUT.print("No constdump/consts.list found, constants ignored.\n")
+	end
+
+	cf = ENV["ARCAN_SOURCE_DIR"] ?
+		"#{ENV["ARCAN_SOURCE_DIR"]}/engine/arcan_lua.c" :
+		"../src/engine/arcan_lua.c"
+
+	cscan(:scangroups, cf)
+
+	outf = File.new("spec.lua", IO::CREAT | IO::RDWR)
+	outf << "---@meta\n\n---@alias vid number\n---@alias int number\n"
+
+
+	consts.each{|a|
+		outf << "---@type number\n#{a} = 0\n"
+	}
+    outf << "\n"
+
+	$grouptbl.each_pair{|key, val|
+		val.each{|i|
+			funtodefinition(i, outf)
+		}
+	}
+	outf.close
+
 when "mangen" then
 	inf = File.open("arcan_api_overview_hdr")
 
@@ -615,5 +685,6 @@ outdir/test_ok\ outdir/test_fail\ subdirectories\n\n\
 missing:\n scan all .lua files and list those that are incomplete.\n\n
 view:\n convert a single function to man-format and send to stdout.\n\n\
 verify:\n scan all .lua files and list those that use the old format. or \
-specify wrong/missing argument types.\n")
+specify wrong/missing argument types.\n
+lspdefinition:\n generate a Lua annotation definition file, for use with a LSP.\n")
 end
