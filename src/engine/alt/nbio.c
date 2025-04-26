@@ -279,22 +279,34 @@ static void drop_all_jobs(struct nonblock_io* ib)
 	ib->out_count = 0;
 }
 
-static struct io_job* queue_out(struct nonblock_io* ib, const char* buf, size_t len)
+static struct io_job* queue_out(struct nonblock_io* ib,
+	const char* buf, size_t len, const char* suffix, size_t suffix_len)
 {
+/* attempted overflow with overly long suffix */
+	if (suffix_len + len < len)
+		return NULL;
+
 	struct io_job* res = malloc(sizeof(struct io_job));
 	if (!res)
 		return NULL;
 
 /* prepare new write job */
 	*res = (struct io_job){0};
-	res->buf = malloc(len);
+	res->buf = malloc(len + suffix_len);
 	if (!res->buf){
 		free(res);
 		return NULL;
 	}
 
-/* copy out so lua can drop the buffer */
+/* copy out so lua can drop the buffer, note that neither buf nor suffix
+ * will consider the trailing \0 if it's even there */
 	memcpy(res->buf, buf, len);
+
+	if (suffix_len){
+		memcpy(&res->buf[len], suffix, suffix_len);
+		len += suffix_len;
+	}
+
 	res->sz = len;
 	ib->out_queued += len;
 
@@ -607,8 +619,19 @@ static int nbio_write(lua_State* L)
 		iw->write_handler = luaL_ref(L, LUA_REGISTRYINDEX);
 	}
 
-/* means we have a table, iterate and queue each entry */
+/* means we have a table, iterate and queue each entry, queue_out will make a
+ * copy so there is no risk for tolstring cause a UAF on GC. Allow a table
+ * defined suffix in order to pass custom linefeeds in case of a stripped
+ * source */
 	if (!len){
+		lua_getfield(L, 2, "suffix");
+		char* suffix = NULL;
+		size_t suffix_len = 0;
+		if (lua_type(L, -1) == LUA_TSTRING){
+			suffix = strdup(lua_tolstring(L, -1, &suffix_len));
+		}
+		lua_pop(L, 1);
+
 		int count = lua_rawlen(L, 2);
 		for (ssize_t i = 0; i < count; i++){
 			lua_rawgeti(L, 2, i+1);
@@ -617,18 +640,19 @@ static int nbio_write(lua_State* L)
 				lua_pop(L, 1);
 				continue;
 			}
-			if (!buf || !queue_out(iw, buf, len)){
+			if (!buf || !queue_out(iw, buf, len, suffix, suffix_len)){
 				drop_all_jobs(iw);
 				lua_pop(L, 1);
 				lua_pushnumber(L, 0);
 				lua_pushboolean(L, false);
+				free(suffix);
 				LUA_ETRACE("open_nonblock:write", "couldn't queue buffer", 2);
 			}
 			lua_pop(L, 1);
 		}
 	}
 	else {
-		if (!queue_out(iw, buf, len)){
+		if (!queue_out(iw, buf, len, NULL, 0)){
 			lua_pushnumber(L, 0);
 			lua_pushboolean(L, false);
 			LUA_ETRACE("open_nonblock:write", NULL, 2);

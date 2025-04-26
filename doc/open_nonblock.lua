@@ -80,6 +80,9 @@
 -- provided callback will be the only one to fire.
 -- The callback form can also fail (returns 0, false) if the number of polled data
 -- sources exceed some system bound or if the source is not opened for writing.
+-- If a table is provided, it is expected to be a pure n- indexed table of strings
+-- with an optional 'suffix' key with string value to be appended to the output
+-- of each table entry.
 --
 -- The queue processing status can be queried through the
 -- outqueue():count,queue with the returned count being accumulated bytes in
