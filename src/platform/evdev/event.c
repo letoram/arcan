@@ -1184,7 +1184,7 @@ int platform_event_translation(
 		names.model = model ? model : getenv("XKB_DEFAULT_MODEL");
 		names.variant = variant ? variant : getenv("XKB_DEFAULT_VARIANT");
 		names.options = options ? options : getenv("XKB_DEFAULT_OPTIONS");
-		names.layout = layout ? options : getenv("XKB_DEFAULT_LAYOUT");
+		names.layout = layout ? layout : getenv("XKB_DEFAULT_LAYOUT");
 	}
 /* just fill struct from arg */
 	else if (action == EVENT_TRANSLATION_SET ||
