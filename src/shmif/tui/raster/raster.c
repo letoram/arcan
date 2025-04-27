@@ -479,9 +479,8 @@ static int raster_tobuf(
 			else
 				continue;
 
-			uint16_t next_x = draw_x + ctx->cell_w;
-			if (*x2 < next_x && next_x <= max_w){
-				*x2 = next_x;
+			if (*x2 < draw_x && draw_x <= max_w){
+				*x2 = draw_x;
 			}
 		}
 
