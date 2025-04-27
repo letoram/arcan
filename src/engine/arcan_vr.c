@@ -119,7 +119,7 @@ struct arcan_vr_ctx* arcan_vr_setup(
 	if (!vrctx)
 		return NULL;
 
-	struct arcan_frameserver* mvctx = platform_launch_fork(&args, tag);
+	struct arcan_frameserver* mvctx = arcan_frameserver_launch(&args, tag);
 	arcan_mem_freearr(&arr_argv);
 	arcan_mem_freearr(&arr_env);
 	free(args.args.external.resource);

@@ -226,7 +226,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		return true;
 
 	uintptr_t config_tag;
-	cfg_lookup_fun in_config = platform_config_lookup(&config_tag);
+	arcan_cfg_lookup_fun in_config = arcan_platform_config_lookup(&config_tag);
 
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){
 		disp[i].id = i;

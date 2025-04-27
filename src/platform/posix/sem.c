@@ -8,12 +8,7 @@
 #include <time.h>
 #include <sys/types.h>
 #include <unistd.h>
-
-#ifndef PLATFORM_HEADER
-#include "arcan_shmif.h"
-#else
-#include PLATFORM_HEADER
-#endif
+#include "../os_platform_types.h"
 
 int arcan_sem_post(sem_handle sem)
 {

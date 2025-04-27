@@ -22,7 +22,7 @@
 #include "a12.h"
 #include "a12_int.h"
 #include "a12_helper.h"
-#include "arcan_mem.h"
+#include "os_platform.h"
 
 struct shmifsrv_thread_data {
 	struct shmifsrv_client* C;

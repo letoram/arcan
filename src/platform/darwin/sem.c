@@ -13,7 +13,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include PLATFORM_HEADER
+#include "../os_platform.h"
 
 int arcan_sem_post(sem_handle sem)
 {

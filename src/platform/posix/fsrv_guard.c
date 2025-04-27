@@ -4,22 +4,24 @@
  * Reference: http://arcan-fe.com
  */
 
-#include "arcan_shmif.h"
-#include PLATFORM_HEADER
+// #include "arcan_shmif.h"
+// #include PLATFORM_HEADER
 
-#include "platform/shmif_platform.h"
-#include "arcan_shmif_server.h"
+// #include "platform/shmif_platform.h"
+// #include "arcan_shmif_server.h"
 
+#include <stdlib.h>
+#include <stdbool.h>
 #include <errno.h>
 #include <stdatomic.h>
 #include <math.h>
 #include <sys/wait.h>
 #include <pthread.h>
 #include <signal.h>
+#include <setjmp.h>
 
-#include "arcan_math.h"
-#include "arcan_general.h"
-#include "arcan_frameserver.h"
+#include "../os_platform.h"
+#include "../fsrv_platform.h"
 
 static struct arcan_frameserver* tag;
 static sigjmp_buf recover;

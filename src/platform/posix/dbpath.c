@@ -18,9 +18,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <arcan_math.h>
-#include <arcan_general.h>
-
 char* platform_dbstore_path()
 {
 	char* out = NULL;

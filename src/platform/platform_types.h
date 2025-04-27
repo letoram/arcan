@@ -14,12 +14,8 @@
 
 #include <stdint.h>
 #include <pthread.h>
-#include <semaphore.h>
+#include "os_platform_types.h"
 
-typedef int pipe_handle;
-typedef int file_handle;
-typedef pid_t process_handle;
-typedef sem_t* sem_handle;
 typedef int8_t arcan_errc;
 typedef int arcan_aobj_id;
 
@@ -356,136 +352,6 @@ enum PLATFORM_EVENT_CAPABILITIES {
 	ACAP_EYES = 64
 };
 
-struct arcan_strarr;
 struct arcan_evctx;
-
-typedef struct {
-	union {
-		char* ptr;
-		uint8_t* u8;
-	};
-	char zbyte; /* 'guarantees' ptr/u8 has a 0-byte end */
-	size_t sz;
-	bool mmap;
-} map_region;
-
-typedef struct {
-	int fd;
-	off_t start;
-	off_t len;
-	char* source;
-} data_source;
-
-enum resource_type {
-	ARES_FILE = 1,
-	ARES_FOLDER = 2,
-	ARES_SOCKET = 3,
-	ARES_CREATE = 256,
-	ARES_RDONLY = 512
-};
-
-/*
- * Editing this table will require modifications in individual
- * platform/path.c, platform/namespace.c and platform/appl.c.
- *
- * The enum should fullfill the criteria:
- * (index = sqrt(enumv)),
- * exclusive(mask) = mask & (mask - 1) == 0
- */
-enum arcan_namespaces {
-/*
- * like RESOURCE_APPL, but contents can potentially be
- * reset on exit / reload.
- */
-	RESOURCE_APPL_TEMP = 1,
-
-/* .lua parse/load/execute,
- * generic resource load
- * special resource save (screenshots, ...)
- * rawresource open/write */
-	RESOURCE_APPL = 2,
-
-/*
- * shared resources between all appls.
- */
-	RESOURCE_APPL_SHARED = 4,
-
-/*
- * eligible recipients for target snapshot/restore
- */
-	RESOURCE_APPL_STATE = 8,
-
-/*
- * These three categories correspond to the previous
- * ones, and act as a reference point to load new
- * applications from when an explicit switch is
- * required. Depending on developer preferences,
- * these can potentially map to the same folder and
- * should be defined/set/overridden in platform/paths.c
- */
-	RESOURCE_SYS_APPLBASE = 16,
-	RESOURCE_SYS_APPLSTORE = 32,
-	RESOURCE_SYS_APPLSTATE = 64,
-
-/*
- * formatstring \f domain, separated in part due
- * to the wickedness of font- file formats
- */
-	RESOURCE_SYS_FONT = 128,
-
-/*
- * frameserver binaries read/execute (write-protected),
- * possibly signature/verify on load/run as well,
- * along with preemptive alloc+lock/wait on low system
- * loads.
- */
-	RESOURCE_SYS_BINS = 256,
-
-/*
- * LD_PRELOAD only (write-protected), recommended use
- * is to also have a database matching program configuration
- * and associated set of libraries.
- */
-	RESOURCE_SYS_LIBS = 512,
-
-/*
- * frameserver log output, state dumps, write-only since
- * read-backs from script would possibly be usable for
- * obtaining previous semi-sensitive data.
- */
-	RESOURCE_SYS_DEBUG = 1024,
-
-/*
- * shared scripts that can be system_loaded, should be RO and
- * updated / controlled with distribution versioning or through
- * explicit developer overrides
- */
-	RESOURCE_SYS_SCRIPTS = 2048,
-
-/*
- * the label will be interpreted as having a possible namespace prefix,
- * e.g. [myns]somewhere/something.
- */
-	RESOURCE_NS_USER = 4096,
-/*
- * must be set to the vale of the last system element (NS_USER ignored)
- */
-	RESOURCE_SYS_ENDM = 2048
-};
-
-struct arcan_userns {
-	bool read;
-	bool write;
-	bool ipc;
-	int dirfd;
-	char label[64];
-	char name[32];
-	char path[256];
-};
-
-struct platform_timing {
-	bool tickless;
-	unsigned cost_us;
-};
 
 #endif

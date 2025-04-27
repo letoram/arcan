@@ -20,11 +20,11 @@
 #include "a12.h"
 #include "a12_int.h"
 #include "a12_platform.h"
+#include "os_platform.h"
 #include "net/a12_helper.h"
 
 #include "a12_decode.h"
 #include "a12_encode.h"
-#include "arcan_mem.h"
 #include "external/chacha.c"
 #include "external/x25519.h"
 

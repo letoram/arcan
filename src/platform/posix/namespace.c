@@ -19,9 +19,12 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#include <arcan_math.h>
-#include <arcan_general.h>
-#include <arcan_db.h>
+#include "../platform.h"
+#include "../os_platform.h"
+
+#ifndef FRAMESERVER_MODESTRING
+#define FRAMESERVER_MODESTRING ""
+#endif
 
 static struct {
 	union {
@@ -135,7 +138,7 @@ char* arcan_find_resource(const char* label,
 	if (dfd)
 		*dfd = -1;
 
-	if (label == NULL || verify_traverse(label) == NULL)
+	if (label == NULL || arcan_verify_traverse(label) == NULL)
 		return NULL;
 
 /* user-ns aware applications shouldn't really need this but in order
@@ -213,7 +216,7 @@ char* arcan_expand_resource(const char* label, enum arcan_namespaces space)
 
 	int space_ind = i_log2(space);
 	if (space_ind > sizeof(namespaces.paths)/sizeof(namespaces.paths[0]) ||
-		label == NULL || verify_traverse(label) == NULL ||
+		label == NULL || arcan_verify_traverse(label) == NULL ||
 		!namespaces.paths[space_ind]
 	)
 		return NULL;
@@ -231,6 +234,11 @@ char* arcan_expand_resource(const char* label, enum arcan_namespaces space)
 	memcpy(&cbuf[len_2 + (label[0] == '/' ? 0 : 1)], label, len_1+1);
 
 	return strdup(cbuf);
+}
+
+char* arcan_expand_userns_resource(const char* label, struct arcan_userns* userns)
+{
+    return NULL;
 }
 
 static char* atypestr = NULL;
@@ -401,16 +409,14 @@ static bool decompose(char* ns, struct arcan_userns* dst)
 struct arcan_strarr arcan_user_namespaces()
 {
 	struct arcan_strarr res = {0};
-	struct arcan_strarr ids =
-		arcan_db_applkeys(arcan_db_get_shared(NULL), "arcan", "ns_%");
+	uintptr_t cfg_tag;
+	arcan_cfg_lookup_fun cfg_lookup = arcan_platform_config_lookup(&cfg_tag);
+	// struct arcan_strarr ids =
+	// 	arcan_db_applkeys(arcan_db_get_shared(NULL), "arcan", "ns_%");
 
-	if (!ids.count){
-		arcan_mem_freearr(&ids);
-		return res;
-	}
-
-	int iind = 0;
-	while (ids.data[iind]){
+	int idx = 0;
+	char *namespace;
+	while (cfg_lookup("ns", idx, &namespace, cfg_tag)){
 /* make sure that we fit or cancel out */
 		if (res.count == res.limit){
 			arcan_mem_growarr(&res);
@@ -420,7 +426,7 @@ struct arcan_strarr arcan_user_namespaces()
 
 /* parse and store in results */
 		struct arcan_userns tmp;
-		if (decompose(ids.data[iind], &tmp)){
+		if (decompose(namespace, &tmp)){
 			res.cdata[res.count] =
 				arcan_alloc_mem(
 					sizeof(struct arcan_userns), ARCAN_MEM_EXTSTRUCT,
@@ -433,38 +439,38 @@ struct arcan_strarr arcan_user_namespaces()
 			res.count++;
 		}
 		else
-			arcan_warning("bad user-namespace format: %s (label:perm:path)", ids.data[iind]);
-		iind++;
+			arcan_warning("bad user-namespace format: %s (label:perm:path)", namespace);
+
+		arcan_mem_free(namespace);
 	}
 
-	arcan_mem_freearr(&ids);
 	return res;
 }
 
 bool arcan_lookup_namespace(const char* id, struct arcan_userns* dst, bool dfd)
 {
+	uintptr_t cfg_tag;
+	arcan_cfg_lookup_fun cfg_lookup = arcan_platform_config_lookup(&cfg_tag);
+
 	size_t len = strlen(id) + sizeof("ns_");
 	char* buf = malloc(len);
 	snprintf(buf, len, "ns_%s", id);
 
-	struct arcan_strarr tbl =
-		arcan_db_applkeys(arcan_db_get_shared(NULL), "arcan", buf);
+	char *namespace;
+	bool lookup_ok = cfg_lookup(buf, 0, &namespace, cfg_tag);
 	free(buf);
-	bool res = false;
+	if (!lookup_ok) return false;
 
-	if (tbl.count == 1){
-		res = decompose(tbl.data[0], dst);
-	}
+	bool res = decompose(namespace, dst);
 
 	if (dfd && dst->path[0]){
 		int dirfd = open(dst->path, O_RDWR, O_DIRECTORY);
 		if (-1 == dirfd){
-			arcan_mem_freearr(&tbl);
 			*dst = (struct arcan_userns){0};
 		}
 	}
 
-	arcan_mem_freearr(&tbl);
+	arcan_mem_free(namespace);
 	return res;
 }
 

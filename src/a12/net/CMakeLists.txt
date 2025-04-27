@@ -16,11 +16,16 @@ set(SOURCES
 	dir_srv_worker.c
 	dir_srv_link.c
 	dir_supp.c
+	${ARCAN_SRC}/common/arcan_str.c
 	${ARCAN_SRC}/engine/arcan_db.c
 	${ARCAN_SRC}/platform/posix/warning.c
 	${ARCAN_SRC}/platform/posix/dbpath.c
 	${ARCAN_SRC}/platform/posix/resource_io.c
 	${ARCAN_SRC}/platform/posix/map_resource.c
+	${ARCAN_SRC}/platform/posix/namespace.c
+	${ARCAN_SRC}/platform/posix/strip_traverse.c
+	${ARCAN_SRC}/platform/posix/paths.c
+	${ARCAN_SRC}/platform/posix/config.c
 	${ARCAN_SRC}/platform/stub/mem.c
 	${ARCAN_SRC}/frameserver/util/anet_helper.c
 	${ARCAN_SRC}/frameserver/util/anet_keystore_naive.c
@@ -55,5 +60,5 @@ target_link_libraries(arcan-net PRIVATE
 	${SQLite3_LIBRARIES}
 )
 target_include_directories(arcan-net PRIVATE ${INCLUDE_DIRS})
-target_compile_definitions(arcan-net PRIVATE WANT_KEYSTORE_HASHER ARCAN_DB_STANDALONE ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${CMAKE_SYSTEM_NAME}\")
+target_compile_definitions(arcan-net PRIVATE WANT_KEYSTORE_HASHER WITH_ARCAN_DB ARCAN_DB_STANDALONE ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${CMAKE_SYSTEM_NAME}\")
 install(TARGETS arcan-net DESTINATION ${CMAKE_INSTALL_BINDIR})

@@ -83,7 +83,7 @@ static struct evhandler lookup_dev_handler(const char* idstr)
 {
 /* enumerate key */
 	uintptr_t tag;
-	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 	char* dst;
 	unsigned short ind = 0;
 

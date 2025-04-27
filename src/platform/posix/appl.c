@@ -18,8 +18,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <arcan_math.h>
-#include <arcan_general.h>
+#include "../os_platform.h"
 
 static size_t appl_len = 0;
 static char* g_appl_id = "#appl not initialized";

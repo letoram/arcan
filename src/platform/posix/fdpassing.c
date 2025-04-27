@@ -9,6 +9,8 @@
 #include <errno.h>
 #include <stdint.h>
 #include <fcntl.h>
+#include <string.h>
+
 #include "../platform.h"
 
 /* yet another sigh for Mac OSX */
@@ -99,8 +101,7 @@ int arcan_receive_fds(int sockin_fd, int* dfd, size_t nfd)
 	struct cmsghdr* cmsg;
 	for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; CMSG_NXTHDR(&msg, cmsg)){
 		if (cmsg->cmsg_len % sizeof(int) != 0 || cmsg->cmsg_len <= CMSG_LEN(0)){
-			debug_print(FATAL, NULL,
-				"fetchfds(%zu) - bad cmsg length: %zu\n", nfd, (size_t) cmsg->cmsg_len);
+			arcan_fatal("fetchfds(%zu) - bad cmsg length: %zu\n", nfd, (size_t) cmsg->cmsg_len);
 			return -1;
 		}
 

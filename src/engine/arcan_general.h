@@ -48,8 +48,6 @@
 
 #define CAP(X,L,H) ( (((X) < (L) ? (L) : (X)) > (H) ? (H) : (X)) )
 
-#include "arcan_mem.h"
-
 #define NULFILE "/dev/null"
 #define BROKEN_PROCESS_HANDLE -1
 

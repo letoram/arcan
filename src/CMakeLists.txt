@@ -453,9 +453,11 @@ else()
 		${CMAKE_CURRENT_SOURCE_DIR}/platform
 		${EXTERNAL_SRC_DIR}
 		${CMAKE_CURRENT_SOURCE_DIR}/engine
+		${CMAKE_CURRENT_SOURCE_DIR}/common
 	)
 
 	list (APPEND SOURCES
+		common/arcan_str.c
 		engine/arcan_event.c
 		engine/arcan_lua.c
 		engine/alt/nbio.c
@@ -506,6 +508,7 @@ else()
 		platform/posix/dbpath.c
 		platform/stub/mem.c
 	)
+	list(APPEND ARCAN_DEFINITIONS WITH_ARCAN_DB)
 
 	if (ENABLE_SIMD)
 		find_package(SSE QUIET)

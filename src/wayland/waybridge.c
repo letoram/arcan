@@ -24,7 +24,7 @@
 #include <poll.h>
 #include <assert.h>
 #include <stdatomic.h>
-#include "../engine/arcan_mem.h"
+#include "../platform/os_platform.h"
 
 #include <xkbcommon/xkbcommon.h>
 #include <xkbcommon/xkbcommon-keysyms.h>

@@ -709,7 +709,7 @@ static char* get_extmon_path()
 	uintptr_t tag;
 	char* monitor = NULL;
 
-	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 	get_config("debug_monitor", 0, &monitor, tag);
 	return monitor;
 }
@@ -718,7 +718,7 @@ static char* get_extpipe_path()
 {
 	uintptr_t tag;
 	char* monitor = NULL;
-	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 	get_config("debug_monitor_path", 0, &monitor, tag);
 
 /* hardcoded default */

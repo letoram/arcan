@@ -659,7 +659,7 @@ bool arcan_lua_launch_cp(
 	}
 
 	struct arcan_frameserver* res =
-		platform_launch_listen_external(cp,
+		arcan_frameserver_launch_listen_external(cp,
 		key, -1, ARCAN_SHM_UMASK, 32, 32, LUA_NOREF
 	);
 
@@ -3205,7 +3205,7 @@ static int launchavfeed(lua_State* ctx)
 /* generate some kind of guid as the frameservers don't/shouldn't have
  * that idea themselves, it's just for tracking individual instances in
  * this case */
-	struct arcan_frameserver* mvctx = platform_launch_fork(&args, ref);
+	struct arcan_frameserver* mvctx = arcan_frameserver_launch(&args, ref);
 	arcan_random((uint8_t*)mvctx->guid, 16);
 /* internal so no need to free memarr */
 	free(expbuf[1]);
@@ -3290,7 +3290,7 @@ static int launchdecode(lua_State* ctx)
 	args.args.builtin.resource = fname;
 
 finish:
-	mvctx = platform_launch_fork(&args, ref);
+	mvctx = arcan_frameserver_launch(&args, ref);
 	arcan_vobj_id vid = ARCAN_EID;
 	arcan_aobj_id aid = ARCAN_EID;
 
@@ -9162,13 +9162,13 @@ static int targetalloc(lua_State* ctx)
 
 		if (luactx.pending_socket_label &&
 			strcmp(key, luactx.pending_socket_label) == 0){
-			newref = platform_launch_listen_external(key,
+			newref = arcan_frameserver_launch_listen_external(key,
 				pw, luactx.pending_socket_descr, ARCAN_SHM_UMASK, init_w, init_h, ref);
 			arcan_mem_free(luactx.pending_socket_label);
 			luactx.pending_socket_label = NULL;
 		}
 		else
-			newref = platform_launch_listen_external(
+			newref = arcan_frameserver_launch_listen_external(
 				key, pw, -1, ARCAN_SHM_UMASK, init_w, init_h, ref);
 
 		if (!newref){
@@ -9259,8 +9259,11 @@ static int targetlaunch(lua_State* ctx)
 			goto cleanup;
 		}
 
+		arcan_conductor_toggle_watchdog();
 		unsigned long tv =
 			arcan_target_launch_external(exec, &argv, &env, &libs, &retc);
+		arcan_conductor_toggle_watchdog();
+
 		lua_pushnumber(ctx, retc);
 		lua_pushnumber(ctx, tv);
 		rc = 2;
@@ -9274,7 +9277,7 @@ static int targetlaunch(lua_State* ctx)
 	switch (bfmt){
 	case BFRM_BIN:
 	case BFRM_SHELL:
-		intarget = platform_launch_internal(exec, &argv, &env, &libs, ref);
+		intarget = arcan_frameserver_launch_internal(exec, &argv, &env, &libs, ref);
 	break;
 
 	case BFRM_LWA:
@@ -9313,7 +9316,7 @@ static int targetlaunch(lua_State* ctx)
 			argstr = NULL;
 
 		args.args.builtin.resource = argstr;
-		intarget = platform_launch_fork(&args, ref);
+		intarget = arcan_frameserver_launch(&args, ref);
 		free(argstr);
 		free(expbuf[0]);
 		free(expbuf[1]);
@@ -10533,7 +10536,7 @@ static int spawn_recfsrv(lua_State* ctx,
 
 /* we use a special feed function meant to flush audiobuffer +
  * a single video frame for encoding */
-	struct arcan_frameserver* mvctx = platform_launch_fork(&args, tag);
+	struct arcan_frameserver* mvctx = arcan_frameserver_launch(&args, tag);
 	if (!mvctx){
 		return 0;
 	}
@@ -12114,7 +12117,7 @@ static bool lua_launch_fsrv(lua_State* ctx,
 		return false;
 	}
 
-	struct arcan_frameserver* ref = platform_launch_fork(args, callback);
+	struct arcan_frameserver* ref = arcan_frameserver_launch(args, callback);
 	if (!ref){
 		lua_pushvid(ctx, ARCAN_EID);
 		return false;
@@ -12305,7 +12308,7 @@ static int net_open(lua_State* ctx)
 		co[12] = '\0';
 
 		arcan_frameserver* newref =
-			platform_launch_listen_external(co, NULL, -1, ARCAN_SHM_UMASK, 32, 32, ref);
+			arcan_frameserver_launch_listen_external(co, NULL, -1, ARCAN_SHM_UMASK, 32, 32, ref);
 		if (!newref){
 			arcan_warning("couldn't listen on connection point (%s)\n", co);
 			lua_pushvid(ctx, ARCAN_EID);

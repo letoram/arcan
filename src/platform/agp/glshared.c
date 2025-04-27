@@ -25,13 +25,11 @@
 
 #include "glfun.h"
 
-#include "../video_platform.h"
 #include "../platform.h"
 
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
-#include "arcan_mem.h"
 #include "arcan_videoint.h"
 
 #ifndef HEADLESS_NOARCAN

@@ -6,7 +6,7 @@ static bool lookup(const char* const key,
 	return false;
 }
 
-cfg_lookup_fun platform_config_lookup(uintptr_t* tag)
+arcan_cfg_lookup_fun arcan_platform_config_lookup(uintptr_t* tag)
 {
 	if (!tag)
 		return NULL;

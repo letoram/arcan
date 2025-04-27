@@ -1173,7 +1173,7 @@ int platform_event_translation(
  */
 	if (action == EVENT_TRANSLATION_CLEAR){
 		uintptr_t tag;
-		cfg_lookup_fun get_config = platform_config_lookup(&tag);
+		arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 		get_config("event_xkb_rules", 0, &rules, tag);
 		get_config("event_xkb_variant", 0, &variant, tag);
 		get_config("event_xkb_model", 0, &model, tag);
@@ -2071,7 +2071,7 @@ static void find_tty()
 	bool scantty = true;
 
 	uintptr_t tag;
-	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 	char* ttydev;
 	if (get_config("event_tty_override", 0, &ttydev, tag) && ttydev){
 		int fd = platform_device_open(ttydev, O_RDWR);
@@ -2110,7 +2110,7 @@ void platform_event_init(struct arcan_evctx* ctx)
 {
 	uintptr_t tag;
 
-	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 
 #ifdef __LINUX
 	gstate.notify = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);

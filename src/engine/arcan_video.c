@@ -1613,7 +1613,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
  * 'block rendertarget drawing if not dirty' optimization may be
  * useful for some cases and for troubleshooting */
 		uintptr_t tag;
-		cfg_lookup_fun get_config = platform_config_lookup(&tag);
+		arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 		if (get_config("video_ignore_dirty", 0, NULL, tag)){
 			arcan_video_display.ignore_dirty = SIZE_MAX >> 1;
 		}

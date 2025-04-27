@@ -3,10 +3,8 @@
 #define WANT_ARCAN_BASE
 
 #include "alt/opaque.h"
-#include "arcan_mem.h"
 #include "platform.h"
 #include "platform_types.h"
-#include "os_platform.h"
 #include "arcan_lua.h"
 #include "alt/support.h"
 #include "alt/types.h"

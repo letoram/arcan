@@ -134,6 +134,7 @@ target_include_directories(arcan_a12 PRIVATE
 	external
 	${PLATFORM_ROOT}/../engine
 	${PLATFORM_ROOT}/../shmif
+	${PLATFORM_ROOT}/../platform
 )
 
 target_link_libraries(arcan_a12 ${LIBRARIES})

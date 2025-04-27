@@ -18,8 +18,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <arcan_math.h>
-#include <arcan_general.h>
+#include "../os_platform.h"
 
 bool arcan_isdir(const char* fn)
 {
@@ -254,7 +253,7 @@ void arcan_set_namespace_defaults()
 {
 	char* tmp = NULL;
 	uintptr_t tag;
-	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 
 /*
  * use environment variables as hard overrides

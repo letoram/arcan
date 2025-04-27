@@ -19,7 +19,7 @@ typedef struct arcan_vobject arcan_vobject;
 
 #include "arcan_math.h"
 #include "arcan_general.h"
-#include "arcan_mem.h"
+#include "os_platform.h"
 #include "arcan_lua.h"
 #include "alt/support.h"
 #include "alt/trace.h"

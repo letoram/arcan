@@ -529,19 +529,15 @@ void arcan_frameserver_lock_buffers(int state);
  */
 int arcan_frameserver_releaselock(struct arcan_frameserver* tgt);
 
-/*
- * helper functions that tie together the platform/.../frameserver.c
- * with allocation, member matching, presets etc.
- */
-arcan_frameserver* platform_launch_listen_external(const char* key,
+arcan_frameserver* arcan_frameserver_launch_listen_external(const char* key,
 	const char* pw, int fd, mode_t mode, size_t w, size_t h, uintptr_t tag);
 
-struct arcan_frameserver* platform_launch_fork(
-	struct frameserver_envp* setup, uintptr_t tag);
-
-arcan_frameserver* platform_launch_internal(const char* fname,
+arcan_frameserver* arcan_frameserver_launch_internal(const char* fname,
 	struct arcan_strarr* argv, struct arcan_strarr* envv,
 	struct arcan_strarr* libs, uintptr_t tag);
+
+struct arcan_frameserver* arcan_frameserver_launch(
+	struct frameserver_envp* setup, uintptr_t tag);
 
 /*
  * Working against the mapped shared memory page is a critical section,

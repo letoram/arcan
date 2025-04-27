@@ -191,4 +191,12 @@ bool platform_fsrv_lastwords(struct arcan_frameserver*, char* dst, size_t n);
  * Release any shared memory resources associated with the frameserver
  */
 void platform_fsrv_dropshared(struct arcan_frameserver* ctx);
+
+/*
+ * expand-env pre-fork and make sure appropriate namespaces are present
+ * and that there's enough room in the frameserver_envp for NULL term.
+ * The caller will cleanup env with free_strarr.
+ */
+void platform_fsrv_append_env(
+	struct arcan_strarr* darr, char* argarr, char* conn, char* mem);
 #endif

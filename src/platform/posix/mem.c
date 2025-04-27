@@ -20,9 +20,12 @@
 
 #include <sys/mman.h>
 
-#include "arcan_math.h"
-#include "arcan_general.h"
-#include "arcan_video.h"
+#include "../os_platform.h"
+#include "../platform_types.h" // for video types
+
+// #include "arcan_math.h"
+// #include "arcan_general.h"
+// #include "arcan_video.h"
 
 #ifdef MADV_DONTDUMP
 #define NO_DUMPFLAG MADV_DONTDUMP
@@ -300,4 +303,12 @@ void arcan_mem_free(void* inptr)
  * as unused */
 
 	free(inptr);
+}
+
+void arcan_mem_lock(void* inptr)
+{
+}
+
+void arcan_mem_unlock(void* inptr)
+{
 }

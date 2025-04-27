@@ -31,17 +31,12 @@
 #include <signal.h>
 #include <errno.h>
 
-struct arcan_shmif_cont;
-#include "../shmif/arcan_shmif_event.h"
-#include "../shmif/platform/shmif_platform.h"
+#include "../platform.h"
 
-#include <arcan_math.h>
-#include <arcan_general.h>
-#include <arcan_shmif.h>
-#include <arcan_event.h>
-#include <arcan_video.h>
-#include <arcan_audio.h>
-#include <arcan_frameserver.h>
+#include "../../engine/arcan_math.h"
+#include "../../engine/arcan_general.h"
+#include "../../shmif/arcan_shmif.h"
+#include "../../engine/arcan_frameserver.h"
 
 
 #define INCR(X, C) ( ( (X) = ( (X) + 1) % (C)) )
@@ -168,12 +163,6 @@ static void fsrv_setevqs(
 	outq->eventbuf_sz = PP_QUEUE_SZ;
 }
 
-struct arcan_frameserver* platform_fsrv_wrapcl(struct arcan_shmif_cont* in)
-{
-/* alloc - set the wrapped bitflag, set MONITOR FFUNC, map in eventqueues */
-	return NULL;
-}
-
 /*
  * the rather odd structure we want for poll on the verify socket
  */
@@ -205,6 +194,7 @@ static bool fd_avail(int fd, bool* term)
 	return false;
 }
 
+// NOTE arcan_frameserver can be opaque here
 bool platform_fsrv_lastwords(struct arcan_frameserver* src, char* dst, size_t n)
 {
 	if (!src || !src->shm.ptr)
@@ -1388,4 +1378,96 @@ struct arcan_frameserver* platform_fsrv_spawn_server(
 	*childfd = sockp[1];
 
 	return newseg;
+}
+
+/*
+ * expand-env pre-fork and make sure appropriate namespaces are present
+ * and that there's enough room in the frameserver_envp for NULL term.
+ * The caller will cleanup env with free_strarr.
+ */
+void platform_fsrv_append_env(
+	struct arcan_strarr* darr, char* argarr, char* conn, char* mem)
+{
+/*
+ * slightly unsure which ones we actually need to propagate, for now these go
+ * through the chainloader so it is much less of an issue as most namespace
+ * remapping features will go there, and arcterm need to configure the new
+ * userenv anyhow.
+ */
+	const char* spaces[] = {
+		getenv("PATH"),
+		getenv("CWD"),
+		getenv("HOME"),
+		getenv("LANG"),
+		getenv("ARCAN_FRAMESERVER_DEBUGSTALL"),
+		getenv("ARCAN_RENDER_NODE"),
+		getenv("ARCAN_VIDEO_NO_FDPASS"),
+		arcan_fetch_namespace(RESOURCE_APPL),
+		arcan_fetch_namespace(RESOURCE_APPL_TEMP),
+		arcan_fetch_namespace(RESOURCE_APPL_STATE),
+		arcan_fetch_namespace(RESOURCE_APPL_SHARED),
+		arcan_fetch_namespace(RESOURCE_SYS_DEBUG),
+		conn,
+		mem,
+		argarr,
+		getenv("LD_LIBRARY_PATH"),
+		getenv("XDG_RUNTIME_DIR"),
+		getenv("XDG_STATE_HOME"),
+		getenv("XDG_CONFIG_HOME"),
+		getenv("LASH_BASE")
+	};
+
+/* HARDENING / REFACTOR: we should NOT pass logdir here as it should
+ * not be accessible due to exfiltration risk. We should setup the log-
+ * entry here and inherit that descriptor as stderr instead!. For harder
+ * sandboxing, we can also pass the directory descriptors here */
+	size_t n_spaces = sizeof(spaces) / sizeof(spaces[0]);
+	const char* keys[] = {
+		"PATH",
+		"CWD",
+		"HOME",
+		"LANG",
+		"ARCAN_FRAMESERVER_DEBUGSTALL",
+		"ARCAN_RENDER_NODE",
+		"ARCAN_VIDEO_NO_FDPASS",
+		"ARCAN_APPLPATH",
+		"ARCAN_APPLTEMPPATH",
+		"ARCAN_STATEPATH",
+		"ARCAN_RESOURCEPATH",
+		"ARCAN_FRAMESERVER_LOGDIR",
+		"ARCAN_SOCKIN_FD",
+		"ARCAN_SOCKIN_MEMFD",
+		"ARCAN_ARG",
+		"LD_LIBRARY_PATH",
+		"XDG_RUNTIME_DIR",
+		"XDG_STATE_HOME",
+		"XDG_CONFIG_HOME",
+		"LASH_BASE"
+	};
+
+/* growarr is set to FATALFAIL internally, this should be changed
+ * when refactoring _mem and replacing strdup to properly handle OOM */
+	while(darr->count + n_spaces + 1 > darr->limit)
+		arcan_mem_growarr(darr);
+
+	size_t max_sz = 0;
+	for (size_t i = 0; i < n_spaces; i++){
+		size_t len = spaces[i] ? strlen(spaces[i]) : 0;
+		max_sz = len > max_sz ? len : max_sz;
+	}
+
+	char convb[max_sz + sizeof("ARCAN_FRAMESERVER_LOGDIR==")];
+	size_t ofs = darr->count > 0 ? darr->count - 1 : 0;
+	size_t step = ofs;
+
+	for (size_t i = 0; i < n_spaces; i++){
+		if (spaces[i] && strlen(spaces[i]) &&
+			snprintf(convb, sizeof(convb), "%s=%s", keys[i], spaces[i])){
+			darr->data[step] = strdup(convb);
+			step++;
+		}
+	}
+
+	darr->count = step;
+	darr->data[step] = NULL;
 }

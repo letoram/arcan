@@ -23,25 +23,12 @@
 #include <unistd.h>
 #include <pthread.h>
 
-#include <errno.h>
-
 #include <assert.h>
 #include <errno.h>
 
-#include PLATFORM_HEADER
+#include "../platform.h"
 
-#include "arcan_math.h"
-#include "arcan_general.h"
-#include "arcan_video.h"
-#include "arcan_videoint.h"
-#include "arcan_db.h"
-#include "arcan_audio.h"
-#include "arcan_shmif.h"
-#include "arcan_event.h"
-#include "arcan_frameserver.h"
-#include "arcan_conductor.h"
-
-static char* add_interpose(struct arcan_strarr* libs, struct arcan_strarr* envv)
+char* arcan_platform_add_interpose(struct arcan_strarr* libs, struct arcan_strarr* envv)
 {
 	char* interp = NULL;
 	size_t lib_sz = 0;
@@ -87,12 +74,11 @@ unsigned long arcan_target_launch_external(const char* fname,
 	struct arcan_strarr* argv, struct arcan_strarr* envv,
 	struct arcan_strarr* libs, int* exitc)
 {
-	add_interpose(libs, envv);
+	arcan_platform_add_interpose(libs, envv);
 	pid_t child = fork();
 
 	if (child > 0) {
-		arcan_conductor_toggle_watchdog();
-
+		unsigned long ticks = arcan_timemillis();
 		int stat_loc;
 		waitpid(child, &stat_loc, 0);
 
@@ -102,9 +88,6 @@ unsigned long arcan_target_launch_external(const char* fname,
 		else
 			*exitc = EXIT_FAILURE;
 
-		unsigned long ticks = arcan_timemillis();
-
-		arcan_conductor_toggle_watchdog();
 		return arcan_timemillis() - ticks;
 	}
 	else {
@@ -144,231 +127,14 @@ void arcan_closefrom(int fd)
 #endif
 }
 
-/*
- * expand-env pre-fork and make sure appropriate namespaces are present
- * and that there's enough room in the frameserver_envp for NULL term.
- * The caller will cleanup env with free_strarr.
- */
-static void append_env(
-	struct arcan_strarr* darr, char* argarr, char* conn, char* mem)
+// TODO Rename to something like "launch shmif client"
+process_handle arcan_platform_launch_fork(struct arcan_strarr arg,
+	struct arcan_strarr env, bool preserve_env,
+	file_handle clsock, file_handle shmfd)
 {
-/*
- * slightly unsure which ones we actually need to propagate, for now these go
- * through the chainloader so it is much less of an issue as most namespace
- * remapping features will go there, and arcterm need to configure the new
- * userenv anyhow.
- */
-	const char* spaces[] = {
-		getenv("PATH"),
-		getenv("CWD"),
-		getenv("HOME"),
-		getenv("LANG"),
-		getenv("ARCAN_FRAMESERVER_DEBUGSTALL"),
-		getenv("ARCAN_RENDER_NODE"),
-		getenv("ARCAN_VIDEO_NO_FDPASS"),
-		arcan_fetch_namespace(RESOURCE_APPL),
-		arcan_fetch_namespace(RESOURCE_APPL_TEMP),
-		arcan_fetch_namespace(RESOURCE_APPL_STATE),
-		arcan_fetch_namespace(RESOURCE_APPL_SHARED),
-		arcan_fetch_namespace(RESOURCE_SYS_DEBUG),
-		conn,
-		mem,
-		argarr,
-		getenv("LD_LIBRARY_PATH"),
-		getenv("XDG_RUNTIME_DIR"),
-		getenv("XDG_STATE_HOME"),
-		getenv("XDG_CONFIG_HOME"),
-		getenv("LASH_BASE")
-	};
-
-/* HARDENING / REFACTOR: we should NOT pass logdir here as it should
- * not be accessible due to exfiltration risk. We should setup the log-
- * entry here and inherit that descriptor as stderr instead!. For harder
- * sandboxing, we can also pass the directory descriptors here */
-	size_t n_spaces = sizeof(spaces) / sizeof(spaces[0]);
-	const char* keys[] = {
-		"PATH",
-		"CWD",
-		"HOME",
-		"LANG",
-		"ARCAN_FRAMESERVER_DEBUGSTALL",
-		"ARCAN_RENDER_NODE",
-		"ARCAN_VIDEO_NO_FDPASS",
-		"ARCAN_APPLPATH",
-		"ARCAN_APPLTEMPPATH",
-		"ARCAN_STATEPATH",
-		"ARCAN_RESOURCEPATH",
-		"ARCAN_FRAMESERVER_LOGDIR",
-		"ARCAN_SOCKIN_FD",
-		"ARCAN_SOCKIN_MEMFD",
-		"ARCAN_ARG",
-		"LD_LIBRARY_PATH",
-		"XDG_RUNTIME_DIR",
-		"XDG_STATE_HOME",
-		"XDG_CONFIG_HOME",
-		"LASH_BASE"
-	};
-
-/* growarr is set to FATALFAIL internally, this should be changed
- * when refactoring _mem and replacing strdup to properly handle OOM */
-	while(darr->count + n_spaces + 1 > darr->limit)
-		arcan_mem_growarr(darr);
-
-	size_t max_sz = 0;
-	for (size_t i = 0; i < n_spaces; i++){
-		size_t len = spaces[i] ? strlen(spaces[i]) : 0;
-		max_sz = len > max_sz ? len : max_sz;
-	}
-
-	char convb[max_sz + sizeof("ARCAN_FRAMESERVER_LOGDIR==")];
-	size_t ofs = darr->count > 0 ? darr->count - 1 : 0;
-	size_t step = ofs;
-
-	for (size_t i = 0; i < n_spaces; i++){
-		if (spaces[i] && strlen(spaces[i]) &&
-			snprintf(convb, sizeof(convb), "%s=%s", keys[i], spaces[i])){
-			darr->data[step] = strdup(convb);
-			step++;
-		}
-	}
-
-	darr->count = step;
-	darr->data[step] = NULL;
-}
-
-arcan_frameserver* platform_launch_listen_external(const char* key,
-	const char* pw, int fd, mode_t mode, size_t w, size_t h, uintptr_t tag)
-{
-	arcan_frameserver* res =
-		platform_fsrv_listen_external(key, pw, fd, mode, w, h, tag);
-
-	if (!res)
-		return NULL;
-
-/*
- * Allocate a container vid, set it to have the socket/auth poll handler
- * sequence as a ffunc
- */
-	img_cons cons = {
-		.w = res->desc.width,
-		.h = res->desc.height,
-		.bpp = res->desc.bpp
-	};
-	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = res};
-
-	res->launchedtime = arcan_frametime();
-	res->vid = arcan_video_addfobject(FFUNC_SOCKPOLL, state, cons, 0);
-	if (res->vid == ARCAN_EID){
-		platform_fsrv_destroy(res);
-		return NULL;
-	}
-
-	return res;
-}
-
-/*
- * this warrants explaining - to avoid dynamic allocations in the asynch unsafe
- * context of fork, we prepare the str_arr in *setup along with all envs needed
- * for the two to find eachother. The descriptor used for passing socket etc.
- * is inherited and duped to a fix position and possible leaked fds are closed.
- * On systems where this is a bad idea(tm), define the closefrom function to
- * nop. It's a safeguard against propagation from bad libs, not a feature that
- * is relied upon.
- */
-struct arcan_frameserver* platform_launch_fork(
-	struct frameserver_envp* setup, uintptr_t tag)
-{
-	struct arcan_strarr arr = {0};
-	const char* source;
-	int modem = 0;
-	bool add_audio = true;
-	int clsock;
-
-/* we need to pass [clsock] and [ctx->shm.handle] into the new process. For an
- * external connection we can send the descriptor over the established segment,
- * but when inheriting posix is 'vague' about what happens to descriptor
- * ownership when you pair() -> pass_pair(1, fd) -> inherit_pair(1)
- * -> fork+close(1) and then try to retrieve the handle from the inherited
- *  socket. In some cases we get ECONNRESET */
-	struct arcan_frameserver* ctx =
-		platform_fsrv_spawn_server(
-			SEGID_UNKNOWN, setup->init_w, setup->init_h, tag, &clsock);
-
-	if (!ctx)
-		return NULL;
-
-	ctx->launchedtime = arcan_frametime();
-	ctx->source = NULL;
-	int shmfd = ctx->shm.handle;
-
-/* just map the frameserver archetypes to preset context configs, nowadays
- * these are rather minor - in much earlier versions it covered queues, thread
- * scheduling and so on. */
-	if (setup->use_builtin){
-		if (strcmp(setup->args.builtin.mode, "game") == 0){
-			ctx->segid = SEGID_GAME;
-		}
-		else if (strcmp(setup->args.builtin.mode, "net-cl") == 0){
-			ctx->segid = SEGID_NETWORK_CLIENT;
-			setup->args.builtin.mode = "net";
-		}
-		else if (strcmp(setup->args.builtin.mode, "net-srv") == 0){
-			ctx->segid = SEGID_NETWORK_SERVER;
-			setup->args.builtin.mode = "net";
-		}
-		else if (strcmp(setup->args.builtin.mode, "encode") == 0){
-			ctx->segid = SEGID_ENCODER;
-			ctx->sz_audb = 65535;
-			add_audio = false;
-			ctx->audb = arcan_alloc_mem(
-				65535, ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
-		}
-		else if (strcmp(setup->args.builtin.mode, "terminal") == 0){
-			ctx->segid = SEGID_TERMINAL;
-		}
-		ctx->source = strdup(
-			setup->args.builtin.resource ?
-			setup->args.builtin.resource : setup->args.builtin.mode);
-
-		append_env(&arr, (char*) setup->args.builtin.resource, "3", "4");
-	}
-	else{
-		ctx->source = strdup(
-			setup->args.external.resource ?
-			setup->args.external.resource : ""
-		);
-
-		append_env(setup->args.external.envv, ctx->source, "3", "4");
-	}
-
-/* build the video object */
-	img_cons cons  = {
-		.w = setup->init_w,
-		.h = setup->init_h,
-		.bpp = 4
-	};
-	vfunc_state state = {
-		.tag = ARCAN_TAG_FRAMESERV,
-		.ptr = ctx
-	};
-
-	if (!setup->custom_feed){
-		ctx->vid = arcan_video_addfobject(FFUNC_NULLFRAME, state, cons, 0);
-		ctx->metamask |= setup->metamask;
-
-		if (!ctx->vid){
-			platform_fsrv_destroy(ctx);
-			return NULL;
-		}
-	}
-	else {
-		ctx->vid = setup->custom_feed;
-	}
-
-/* spawn the process */
 	pid_t child = fork();
-	if (child){
-		ctx->child = child;
+	if (child > 0){
+		return child;
 	}
 	else if (child == 0){
 		close(STDERR_FILENO+1);
@@ -387,7 +153,7 @@ struct arcan_frameserver* platform_launch_fork(
 /* drop our nice level to normal user, have that configurable so that some
  * setups may allow trusted launch-path children to have higher priority */
 		uintptr_t cfg;
-		cfg_lookup_fun get_config = platform_config_lookup(&cfg);
+		arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&cfg);
 		int level = 0;
 		char* priostr;
 
@@ -419,85 +185,30 @@ struct arcan_frameserver* platform_launch_fork(
 		sigaction(SIGPIPE, &(struct sigaction){
 			.sa_handler = SIG_IGN}, NULL);
 
-		if (setup->use_builtin){
-			char* argv[] = {
-				arcan_fetch_namespace(RESOURCE_SYS_BINS),
-				(char*) setup->args.builtin.mode,
-				NULL
-			};
-
 /* OVERRIDE/INHERIT rather than REPLACE environment (terminal, ...) */
-			if (setup->preserve_env){
-				for (size_t i = 0; i < arr.count;	i++){
-					if (!(arr.data[i] || arr.data[i][0]))
-						continue;
+		if (preserve_env){
+			for (size_t i = 0; i < env.count;	i++){
+				if (!(env.data[i] || env.data[i][0]))
+					continue;
 
-					char* val = strchr(arr.data[i], '=');
-					*val++ = '\0';
-					setenv(arr.data[i], val, 1);
-				}
-				execv(argv[0], argv);
+				char* val = strchr(env.data[i], '=');
+				*val++ = '\0';
+				setenv(env.data[i], val, 1);
 			}
-			else
-				execve(argv[0], argv, arr.data);
+			execv(arg.data[0], arg.data);
+		}
+		else{
+			execve(arg.data[0], arg.data, env.data);
+		}
 
-			arcan_warning("platform_fsrv_spawn_server() failed: %s, %s\n",
-				strerror(errno), argv[0]);
-				;
-			_exit(EXIT_FAILURE);
-		}
-/* non-frameserver executions (hijack libs, ...) */
-		else {
-			execve(setup->args.external.fname,
-				setup->args.external.argv->data, setup->args.external.envv->data);
-			_exit(EXIT_FAILURE);
-		}
+		arcan_warning("arcan_platform_launch_fork() failed: %s, %s\n",
+			strerror(errno), arg.data[0]);
+		_exit(EXIT_FAILURE);
 	}
 /* out of alloted limit of subprocesses */
 	else {
-		arcan_video_deleteobject(ctx->vid);
-		platform_fsrv_destroy(ctx);
-		return NULL;
+		return 0;
 	}
-	close(clsock);
-
-/* most kinds will need this, not the encode though */
-	arcan_errc errc;
-	if (add_audio)
-		ctx->aid = arcan_audio_feed(
-			(arcan_afunc_cb) arcan_frameserver_audioframe_direct, ctx, &errc);
-
-/* "fake" a register since that step has already happened */
-	if (ctx->segid != SEGID_UNKNOWN){
-		arcan_event_enqueue(arcan_event_defaultctx(), &(arcan_event){
-			.category = EVENT_FSRV,
-			.fsrv.kind = EVENT_FSRV_PREROLL,
-			.fsrv.video = ctx->vid
-		});
-	}
-
-	arcan_conductor_register_frameserver(ctx);
-
-	return ctx;
-}
-
-arcan_frameserver* platform_launch_internal(const char* fname,
-	struct arcan_strarr* argv, struct arcan_strarr* envv,
-	struct arcan_strarr* libs, uintptr_t tag)
-{
-	add_interpose(libs, envv);
-
-	argv->data = arcan_expand_namespaces(argv->data);
-	envv->data = arcan_expand_namespaces(envv->data);
-
-	struct frameserver_envp args = {
-		.use_builtin = false,
-		.args.external.fname = (char*) fname,
-		.args.external.envv = envv,
-		.args.external.argv = argv
-	};
-
-	return platform_launch_fork(&args, tag);
 }
 
 bool arcan_monitor_external(char* cmd, char* fifo_path, FILE** input)

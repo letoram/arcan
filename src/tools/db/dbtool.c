@@ -14,7 +14,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "arcan_mem.h"
+#include "os_platform.h"
 #include "arcan_db.h"
 
 #include "../frameserver/util/utf8.c"

@@ -1,11 +1,14 @@
 #ifndef OS_PLATFORM
 #define OS_PLATFORM
 
+#include "os_platform_types.h"
+
 /*
- * Retrieve the current time (in milliseconds) based on some unknown
- * epoch. Invoked frequently.
+ * Retrieve the current time (in milliseconds or microseconds) based on some
+ * unknown system defined epoch. Invoked frequently.
  */
 unsigned long long arcan_timemillis();
+unsigned long long arcan_timemicros();
 
 /*
  * Execute and wait- for completion for the specified target.  This will shut
@@ -31,17 +34,23 @@ int arcan_sem_init(sem_handle*, unsigned value);
 int arcan_sem_destroy(sem_handle);
 
 /*
+ * implemented in <platform>/launch.c
  * Launch the specified program and bind its resources and control to the
- * returned frameserver instance (NULL if spawn was not possible for some
- * reason, e.g. missing binaries).
+ * frameserver associated with clsock and shmfd.
+ *
+ * On success returns child PID, otherwise returns 0.
  */
-struct arcan_frameserver;
-struct arcan_frameserver* arcan_target_launch_internal(
-	const char* fname,
-	struct arcan_strarr* argv,
-	struct arcan_strarr* env,
-	struct arcan_strarr* libs
-);
+process_handle arcan_platform_launch_fork(struct arcan_strarr arg,
+	struct arcan_strarr env, bool preserve_env,
+	file_handle clsock, file_handle shmfd);
+
+/*
+ * implemented in <platform>/namespace.c
+ * return a string (can be empty) matching the existing and allowed frameserver
+ * archetypes (a filtered version of the FRAMSESERVER_MODESTRING buildtime var.
+ * and which ones that resolve to valid and existing executables)
+ */
+const char* arcan_frameserver_atypes();
 
 /*
  * Used by event and video platforms to query for configuration keys according
@@ -54,9 +63,9 @@ struct arcan_frameserver* arcan_target_launch_internal(
  * For keys that have multiple set values, [ind] can be walked and is assumed
  * to be densly packed (first failed index means that there are no more values)
  *
- * [tag] must match the value provided by platform_config_lookup.
+ * [tag] must match the value provided by arcan_platform_config_lookup.
  */
-typedef bool (*cfg_lookup_fun)(
+typedef bool (*arcan_cfg_lookup_fun)(
 	const char* const key, unsigned short ind, char** val, uintptr_t tag);
 
 /*
@@ -65,7 +74,7 @@ typedef bool (*cfg_lookup_fun)(
  * that the caller is expected to provide when doing lookups. If no [tag] store
  * is provided, the returned function will be NULL.
  */
-cfg_lookup_fun platform_config_lookup(uintptr_t* tag);
+arcan_cfg_lookup_fun arcan_platform_config_lookup(uintptr_t* tag);
 
 /* estimated time-waster in milisecond resolution, little reason for this
  * to be exact, but undershooting rather than overshooting is important */
@@ -101,10 +110,21 @@ int arcan_receive_fds(int channel, int* dfd, size_t nfd);
  */
 void arcan_closefrom(int num);
 
+char* arcan_platform_add_interpose(struct arcan_strarr* libs, struct arcan_strarr* envv);
+
 /*
  * Update the process title to better identify the current process
  */
 void arcan_process_title(const char* new_title);
+
+/*
+ * Don't have much need for more fine-grained data model in regards to the
+ * filesystem other than 'is it possible that this, at the moment, refers
+ * to a file (loadable resource) or a container of files? Trace calls to this
+ * function for verifying against TOCTU vulns.
+ * Depending on how the windows platform develops, we should consider moving
+ * this in hardening phase to return descriptor to dir/file instead
+ */
 
 /*
  * implemented in <platform>/paths.c
@@ -179,7 +199,7 @@ bool arcan_lookup_namespace(
  * returns <in> on valid string, NULL if traversal rules
  * would expand outside namespace (symlinks, bind-mounts purposefully allowed)
  */
-const char* verify_traverse(const char* in);
+const char* arcan_verify_traverse(const char* in);
 
 /*
  * implemented in <platform>/resource_io.c
@@ -211,15 +231,6 @@ map_region arcan_map_resource(data_source*, bool wr);
  * returns <true> on successful release.
  */
 bool arcan_release_map(map_region region);
-
-/*
- * implemented in <platform>/fmt_open.c
- * open a file using a format string (fmt + variadic),
- * slated for DEPRECATION, regular _map / resource lookup should
- * be used whenever possible.
- *
- */
-int fmt_open(int flags, mode_t mode, const char* fmt, ...);
 
 /*
  * implemented in <platform>/glob.c
@@ -337,5 +348,168 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc);
 const char* arcan_appl_basesource(bool* file);
 const char* arcan_appl_id();
 size_t arcan_appl_id_len();
+
+/*
+ * Type / use hinted memory (de-)allocation routines.
+ * The simplest version merely maps to malloc/memcpy family,
+ * but local platforms can add reasonable protection (mprotect etc.)
+ * where applicable, but also to take advantage of non-uniform
+ * memory subsystems.
+ * This also includes info-leak protections in the form of hinting to the
+ * OS to avoid core-dumping certain pages.
+ *
+ * The values are structured like a bitmask in order
+ * to hint / switch which groups we want a certain level of protection
+ * for.
+ *
+ * The raw implementation for this is in the platform,
+ * thus, any exotic approaches should be placed there (e.g.
+ * installing custom SIGSEGV handler to zero- out important areas etc).
+ *
+ * Memory allocated in this way must also be freed using a similar function,
+ * particularly to allow non-natural alignment (page, hugepage, simd, ...)
+ * but also for the allocator to work in a more wasteful manner,
+ * meaning to add usage-aware pre/post guard buffers.
+ *
+ * By default, an external out of memory condition is treated as a
+ * terminal state transition (unless you specify ARCAN_MEM_NONFATAL)
+ * and allocation therefore never returns NULL.
+ *
+ * The primary purposes of this wrapper is to track down and control
+ * dynamic memory use in the engine, to ease distinguishing memory that
+ * comes from the engine and memory that comes from libraries we depend on,
+ * and make it easier to debug/detect memory- related issues. This is not
+ * an effective protection against foreign code execution in process by
+ * a hostile party.
+ */
+
+/*
+ * Should be called before any other use of arcan_mem/arcan_alloc
+ * functions. Initializes memory pools, XOR cookies etc.
+ */
+void arcan_mem_init();
+
+/*
+ * align: 0 = natural, -1 = page
+ */
+void* arcan_alloc_mem(size_t,
+	enum arcan_memtypes,
+	enum arcan_memhint,
+	enum arcan_memalign);
+
+/*
+ * implemented in <platform>/mem.c
+ * aggregates a mem_alloc and a mem_copy from a source buffer.
+ */
+void* arcan_alloc_fillmem(const void*,
+	size_t,
+	enum arcan_memtypes,
+	enum arcan_memhint,
+	enum arcan_memalign);
+
+/*
+ * NULL is allowed (and ignored), otherwise (src) must match
+ * a block of memory previously obtained through (arcan_alloc_mem,
+ * arcan_alloc_fillmem, arcan_mem_grow or arcan_mem_trunc).
+ */
+void arcan_mem_free(void* src);
+
+void arcan_mem_growarr(struct arcan_strarr*);
+void arcan_mem_freearr(struct arcan_strarr*);
+
+/*
+ * For memory blocks allocated with ARCAN_MEM_LOCKACCESS,
+ * where some OS specific primitive is used for multithreaded
+ * access, but also for some types (e.g. frobbed strings,
+ * sensitive marked blocks)
+ */
+void arcan_mem_lock(void*);
+void arcan_mem_unlock(void*);
+
+/*
+ * implemented in <platform>/mem.c
+ * the distance (in time) between ticks determine how long buffers with
+ * the flag ARCAN_MEM_TEMPORARY are allowed to live. Thus, whenever a
+ * tick is processed, no such buffers should be allocated and it is considered
+ * a terminal state condition if one is found.
+ */
+void arcan_mem_tick();
+
+/*
+ * implemented in <platform>/dbpath.c
+ * returns a [caller-managed COPY] of a OS- specific safe (read/writeable) path
+ * to the database to use unless one has been provided at the command-line.
+ */
+char* platform_dbstore_path();
+
+/*
+ * implemented in <platform>/open.c and <platform>/psep_open.c
+ * On some platforms, this is simply a wrapper around open() - and for others
+ * there might be an intermediate process that act as a device proxy.
+ */
+int platform_device_open(const char* identifier, int flags);
+
+/*
+ * implemented in <platform>/open.c and <platform>/psep_open.c
+ * special devices, typically gpu nodes and ttys, need and explicit privilege
+ * side release- action as well. The idhint is special for TTY-swap
+ */
+void platform_device_release(const char* identifier, int idhint);
+
+/*
+ * implemented in <platform>/open.c and <platform>/psep_open.c
+ * detects if any new devices have appeared, and stores a copy into identifier
+ * (caller assumes ownership) that can then be used in conjunction with _open
+ * in order to get a handle to the device.
+ *
+ * -1 : discovery not possible, connection severed
+ *  0 : no new device events
+ *  1 : new input device provided in identifier
+ *  2 : display device event pending (monitor hotplug)
+ *  3 : suspend/release
+ *  4 : restore/rebuild
+ *  5 : terminate
+ */
+int platform_device_poll(char** identifier);
+
+/*
+ * implemented in <platform>/open.c and <platform>/psep_open.c
+ * retrieve a handle that can be used to I/O multiplex device discovery
+ * instead of periodically calling _poll and checking the return state.
+ */
+int platform_device_pollfd();
+
+/*
+ * implemented in <platform>/open.c and <platform>/psep_open.c
+ * run before any other platform function, make sure that we are in a state
+ * where we can negotiate access to device nodes for the event and video layers
+ */
+void platform_device_init();
+
+/*
+ * implemented in <platform>/time.c
+ * Used by the conductor to determine the dominant clock to use for
+ * scheduling. The cost_us is an estimate of the overhead of a timesleep
+ * or other yield- like actions. In time.c
+ */
+struct platform_timing platform_hardware_clockcfg();
+
+/*
+ * implemented in <platform>/prodthrd.c
+ * Support function for implementing threaded platform devices.
+ * This will return a non-blocking read-end of a pipe where arcan_events
+ * can be read from.
+ *
+ * [infd]      data source descriptor
+ * [block_sz]  desired fixed-size event chunk (if applicable, or 0)
+ * [callback]  bool (int out_fd, uint8_t* in_buf, size_t nb, void* tag)
+ * [tag]       caller provided data, passed to tag
+ *
+ * If callback returns [false], the thread will be closed and resources
+ * freed. If callback is provided a NULL [in_buf] it means the [infd] has
+ * failed and the thread will terminate.
+ */
+int platform_producer_thread(int infd,
+	size_t block_sz, bool(*callback)(int, uint8_t*, size_t, void*), void* tag);
 
 #endif

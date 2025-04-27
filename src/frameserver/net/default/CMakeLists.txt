@@ -17,6 +17,7 @@ set(NET_INCLUDE_DIRS
 	${EXT_DIR}
 	${EXT_DIR}/blake3
 	${PLATFORM_ROOT}/../engine
+	${PLATFORM_ROOT}
 	PARENT_SCOPE
 )
 set(NET_LIBS arcan_a12 PARENT_SCOPE)

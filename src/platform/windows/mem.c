@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#include "arcan_mem.h"
+#include "os_platform.h"
 
 void arcan_fatal(const char* msg, ...);
 

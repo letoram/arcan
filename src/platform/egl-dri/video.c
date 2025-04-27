@@ -376,7 +376,7 @@ static struct dispout displays[MAX_DISPLAYS];
 static struct dispout* allocate_display(struct dev_node* node)
 {
 	uintptr_t tag;
-	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){
 		if (displays[i].state == DISP_UNUSED){
@@ -469,7 +469,7 @@ static bool check_ext(const char* needle, const char* haystack)
 static void dpms_set(struct dispout* d, int level)
 {
 	uintptr_t tag;
-	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 	if (get_config("video_device_nodpms", 0, NULL, tag)){
 		return;
 	}
@@ -794,7 +794,7 @@ static int setup_buffers_gbm(struct dispout* d)
 		if (!d->buffer.surface){
 			uintptr_t tag;
 			int flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
-			cfg_lookup_fun get_config = platform_config_lookup(&tag);
+			arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 			if (get_config("video_nvidia_gbm_bofix", 0, NULL, tag))
 				flags = 0;
 
@@ -844,7 +844,7 @@ static int setup_buffers_gbm(struct dispout* d)
  * It's a scanout path that we likely need anyway.
  */
 	uintptr_t tag;
-	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 	size_t devind = 0;
 	for (; devind < COUNT_OF(nodes); devind++)
 		if (&nodes[devind] == d->device)
@@ -1717,7 +1717,7 @@ static int setup_node_gbm(int devind,
  * work well with it. The current state is opt-in at a certain cost, but
  * don't want the bug reports. */
 	uintptr_t tag;
-	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 	char* devstr, (* cfgstr), (* altstr);
 	node->atomic =
 		!get_config("video_device_legacy", devind, NULL, tag) && (
@@ -3053,7 +3053,7 @@ static bool try_node(int draw_fd, int disp_fd, const char* pathref,
 static bool try_card(size_t devind, int w, int h, size_t* dstind)
 {
 	uintptr_t tag;
-	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 	char* dispdevstr, (* cfgstr), (* altstr);
 	int connind = -1;
 
@@ -4059,7 +4059,7 @@ ssize_t platform_video_map_display_layer(arcan_vobj_id id,
  * being slightly delayed on map operations should the direct-scanout
  * fail, causing force_composition to be set */
 	uintptr_t tag;
-	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 	d->force_compose = !(hint & HINT_DIRECT) &&
 		!get_config("video_device_direct_scanout", 0, NULL, tag);
 

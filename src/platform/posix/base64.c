@@ -7,8 +7,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <unistd.h>
-#include <arcan_math.h>
-#include <arcan_general.h>
+
+#include "../os_platform.h"
 
 static uint8_t b64dec_lut[256] = {
 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

@@ -19,8 +19,8 @@
 #include <stdbool.h>
 #include <sys/types.h>
 #include <dirent.h>
-#include <arcan_math.h>
-#include <arcan_general.h>
+
+#include "../os_platform.h"
 
 struct glob_arg {
 	void (*cb)(char*, void*);
@@ -109,7 +109,7 @@ static void* glob_full(void* arg)
 
 	unsigned count = 0;
 
-	if (!garg->basename || verify_traverse(garg->basename) == NULL){
+	if (!garg->basename || arcan_verify_traverse(garg->basename) == NULL){
 		free(garg->basename);
 		return 0;
 	}
@@ -164,7 +164,7 @@ static void* glob_userns(void* arg)
 	struct arcan_userns ns;
 
 	if (
-		!garg->basename || verify_traverse(garg->basename) == NULL ||
+		!garg->basename || arcan_verify_traverse(garg->basename) == NULL ||
 		!arcan_lookup_namespace(garg->space, &ns, false))
 		return 0;
 

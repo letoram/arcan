@@ -18,8 +18,8 @@
 #include <signal.h>
 
 #include "../a12.h"
+#include "../../platform/os_platform.h"
 #include "../a12_int.h"
-#include "../../engine/arcan_mem.h"
 #include "../../engine/arcan_db.h"
 #include "a12_helper.h"
 #include "nbio.h"

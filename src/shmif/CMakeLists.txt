@@ -53,6 +53,7 @@ set (SHMIF_HEADERS
 
 set (SHMIF_SOURCES
 	${SHMIF_HEADERS}
+	${ASD}/common/arcan_str.c
 	${ASD}/shmif/arcan_shmif_control.c
 	${ASD}/shmif/arcan_shmif_sub.c
 	${ASD}/shmif/arcan_shmif_evpack.c
@@ -94,6 +95,13 @@ set(SHMIF_PLATFORM
 	${ASD}/platform/posix/fdpassing.c
 	${ASD}/platform/posix/random.c
 	${ASD}/platform/posix/fdscan.c
+	${ASD}/platform/posix/namespace.c
+	${ASD}/platform/posix/paths.c
+	${ASD}/platform/posix/strip_traverse.c
+	${ASD}/platform/posix/mem.c
+	${ASD}/platform/posix/config.c
+	${ASD}/engine/arcan_db.c
+	${ASD}/../external/sqlite/sqlite3.c
 )
 
 if (BSD_BUILD)
@@ -144,12 +152,19 @@ set(SHMIF_TUI_SOURCES
 )
 
 set(SHMIF_SERVER_SOURCES
+	${ASD}/common/arcan_str.c
 	${ASD}/shmif/arcan_shmif_server.c
 	${ASD}/platform/posix/frameserver.c
 	${ASD}/shmif/arcan_shmif_control.c
 	${ASD}/platform/posix/fsrv_guard.c
 	${ASD}/platform/posix/fdpassing.c
-	#	${ASD}/platform/posix/mem.c
+	${ASD}/platform/posix/mem.c
+	${ASD}/platform/posix/strip_traverse.c
+	${ASD}/platform/posix/config.c
+	${ASD}/platform/posix/paths.c
+	${ASD}/platform/posix/namespace.c
+	${ASD}/engine/arcan_db.c
+	${ASD}/../external/sqlite/sqlite3.c
 	${ASD}/shmif/arcan_shmif_evpack.c
 	${ASD}/shmif/platform/exec.c
 )
@@ -287,9 +302,9 @@ set_target_properties(arcan_shmif_server PROPERTIES
 set(ARCAN_SHMIF_INCLUDE_DIR ${ASD}/shmif PARENT_SCOPE)
 set(ARCAN_SHMIF_LIBRARY arcan_shmif_int ${STDLIB} PARENT_SCOPE)
 
-target_include_directories(arcan_shmif_int PRIVATE ${ASD}/shmif)
-target_include_directories(arcan_shmif PRIVATE ${ASD}/shmif)
-target_include_directories(arcan_shmif_server PRIVATE ${ASD}/shmif)
+target_include_directories(arcan_shmif_int PRIVATE ${ASD}/shmif ${ASD}/platform)
+target_include_directories(arcan_shmif PRIVATE ${ASD}/shmif ${ASD}/platform)
+target_include_directories(arcan_shmif_server PRIVATE ${ASD}/shmif ${ASD}/platform)
 
 if (NOT ARCAN_SOURCE_DIR)
 	install(TARGETS ${TARGET_LIST}

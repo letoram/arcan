@@ -128,7 +128,7 @@ static void spawn_encode_output()
  */
 	uintptr_t tag;
 	char* enc_arg;
-	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 	if (!get_config("video_encode", 0, &enc_arg, tag))
 		return;
 
@@ -143,7 +143,7 @@ static void spawn_encode_output()
 		.init_w = global.width,
 		.init_h = global.height
 	};
-	struct arcan_frameserver* fsrv = platform_launch_fork(&args, 0);
+	struct arcan_frameserver* fsrv = arcan_frameserver_launch(&args, 0);
 	if (!fsrv){
 		arcan_warning("(headless) couldn't spawn afsrv_encode\n");
 		return;
@@ -679,7 +679,7 @@ bool platform_video_init(uint16_t width,
 	debug_print("platform_display_support: %d", get_platform_display != NULL);
 
 	uintptr_t tag;
-	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 
 /* this is not right for nvidia, and would possibly pick nouveau even in the
  * presence of the binary driver, we have the same issue with streams */

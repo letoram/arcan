@@ -1819,3 +1819,197 @@ void arcan_frameserver_displayhint(
 		}
 	}
 }
+
+/*
+ * this warrants explaining - to avoid dynamic allocations in the asynch unsafe
+ * context of fork, we prepare the str_arr in *setup along with all envs needed
+ * for the two to find eachother. The descriptor used for passing socket etc.
+ * is inherited and duped to a fix position and possible leaked fds are closed.
+ * On systems where this is a bad idea(tm), define the closefrom function to
+ * nop. It's a safeguard against propagation from bad libs, not a feature that
+ * is relied upon.
+ */
+struct arcan_frameserver* arcan_frameserver_launch(
+	struct frameserver_envp* setup, uintptr_t tag)
+{
+	struct arcan_strarr arr = {0};
+	const char* source;
+	int modem = 0;
+	bool add_audio = true;
+	int clsock;
+
+/* we need to pass [clsock] and [ctx->shm.handle] into the new process. For an
+ * external connection we can send the descriptor over the established segment,
+ * but when inheriting posix is 'vague' about what happens to descriptor
+ * ownership when you pair() -> pass_pair(1, fd) -> inherit_pair(1)
+ * -> fork+close(1) and then try to retrieve the handle from the inherited
+ *  socket. In some cases we get ECONNRESET */
+	struct arcan_frameserver* ctx =
+		platform_fsrv_spawn_server(
+			SEGID_UNKNOWN, setup->init_w, setup->init_h, tag, &clsock);
+
+	if (!ctx)
+		return NULL;
+
+	ctx->launchedtime = arcan_frametime();
+	ctx->source = NULL;
+	int shmfd = ctx->shm.handle;
+
+/* just map the frameserver archetypes to preset context configs, nowadays
+ * these are rather minor - in much earlier versions it covered queues, thread
+ * scheduling and so on. */
+	if (setup->use_builtin){
+		if (strcmp(setup->args.builtin.mode, "game") == 0){
+			ctx->segid = SEGID_GAME;
+		}
+		else if (strcmp(setup->args.builtin.mode, "net-cl") == 0){
+			ctx->segid = SEGID_NETWORK_CLIENT;
+			setup->args.builtin.mode = "net";
+		}
+		else if (strcmp(setup->args.builtin.mode, "net-srv") == 0){
+			ctx->segid = SEGID_NETWORK_SERVER;
+			setup->args.builtin.mode = "net";
+		}
+		else if (strcmp(setup->args.builtin.mode, "encode") == 0){
+			ctx->segid = SEGID_ENCODER;
+			ctx->sz_audb = 65535;
+			add_audio = false;
+			ctx->audb = arcan_alloc_mem(
+				65535, ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
+		}
+		else if (strcmp(setup->args.builtin.mode, "terminal") == 0){
+			ctx->segid = SEGID_TERMINAL;
+		}
+		ctx->source = strdup(
+			setup->args.builtin.resource ?
+			setup->args.builtin.resource : setup->args.builtin.mode);
+
+		platform_fsrv_append_env(&arr, (char*) setup->args.builtin.resource, "3", "4");
+	}
+	else{
+		ctx->source = strdup(
+			setup->args.external.resource ?
+			setup->args.external.resource : ""
+		);
+
+		platform_fsrv_append_env(setup->args.external.envv, ctx->source, "3", "4");
+	}
+
+/* build the video object */
+	img_cons cons  = {
+		.w = setup->init_w,
+		.h = setup->init_h,
+		.bpp = 4
+	};
+	vfunc_state state = {
+		.tag = ARCAN_TAG_FRAMESERV,
+		.ptr = ctx
+	};
+
+	if (!setup->custom_feed){
+		ctx->vid = arcan_video_addfobject(FFUNC_NULLFRAME, state, cons, 0);
+		ctx->metamask |= setup->metamask;
+
+		if (!ctx->vid){
+			platform_fsrv_destroy(ctx);
+			return NULL;
+		}
+	}
+	else {
+		ctx->vid = setup->custom_feed;
+	}
+
+	struct arcan_strarr arr_argv = {0}, arr_env = {0};
+	if (setup->use_builtin){
+		arcan_mem_growarr(&arr_argv);
+		arr_argv.data[0] = arcan_fetch_namespace(RESOURCE_SYS_BINS);
+		arr_argv.data[1] = (char*) setup->args.builtin.mode;
+		arr_argv.count = 2;
+
+		arr_env = arr;
+	}
+	else{
+		arr_argv = *setup->args.external.argv;
+		arr_env = *setup->args.external.envv;
+	}
+
+/* spawn the process */
+	process_handle child = arcan_platform_launch_fork(arr_argv, arr_env, setup->preserve_env, clsock, shmfd);
+	if (child > 0){
+		ctx->child = child;
+	}
+	else{
+		arcan_video_deleteobject(ctx->vid);
+		platform_fsrv_destroy(ctx);
+		return NULL;
+	}
+	close(clsock);
+
+/* most kinds will need this, not the encode though */
+	arcan_errc errc;
+	if (add_audio)
+		ctx->aid = arcan_audio_feed(
+			(arcan_afunc_cb) arcan_frameserver_audioframe_direct, ctx, &errc);
+
+/* "fake" a register since that step has already happened */
+	if (ctx->segid != SEGID_UNKNOWN){
+		arcan_event_enqueue(arcan_event_defaultctx(), &(arcan_event){
+			.category = EVENT_FSRV,
+			.fsrv.kind = EVENT_FSRV_PREROLL,
+			.fsrv.video = ctx->vid
+		});
+	}
+
+	arcan_conductor_register_frameserver(ctx);
+
+	return ctx;
+}
+
+arcan_frameserver* arcan_frameserver_launch_internal(const char* fname,
+	struct arcan_strarr* argv, struct arcan_strarr* envv,
+	struct arcan_strarr* libs, uintptr_t tag)
+{
+	arcan_platform_add_interpose(libs, envv);
+
+	argv->data = arcan_expand_namespaces(argv->data);
+	envv->data = arcan_expand_namespaces(envv->data);
+
+	struct frameserver_envp args = {
+		.use_builtin = false,
+		.args.external.fname = (char*) fname,
+		.args.external.envv = envv,
+		.args.external.argv = argv
+	};
+
+	return arcan_frameserver_launch(&args, tag);
+}
+
+arcan_frameserver* arcan_frameserver_launch_listen_external(const char* key,
+	const char* pw, int fd, mode_t mode, size_t w, size_t h, uintptr_t tag)
+{
+	arcan_frameserver* res =
+		platform_fsrv_listen_external(key, pw, fd, mode, w, h, tag);
+
+	if (!res)
+		return NULL;
+
+/*
+ * Allocate a container vid, set it to have the socket/auth poll handler
+ * sequence as a ffunc
+ */
+	img_cons cons = {
+		.w = res->desc.width,
+		.h = res->desc.height,
+		.bpp = res->desc.bpp
+	};
+	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = res};
+
+	res->launchedtime = arcan_frametime();
+	res->vid = arcan_video_addfobject(FFUNC_SOCKPOLL, state, cons, 0);
+	if (res->vid == ARCAN_EID){
+		platform_fsrv_destroy(res);
+		return NULL;
+	}
+
+	return res;
+}

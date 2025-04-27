@@ -16,8 +16,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "arcan_math.h"
-#include "arcan_general.h"
+#include "platform.h"
 #include "arcan_db.h"
 
 #ifdef ARCAN_DB_STANDALONE

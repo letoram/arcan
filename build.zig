@@ -30,8 +30,10 @@ pub fn build(b: *std.Build) void {
         .build_shmif = b.option(bool, "build_shmif", "Build arcan_shmif library (default: true)") orelse true,
         .build_tui = b.option(bool, "build_tui", "Build arcan_tui library (default: true)") orelse true,
         .build_a12 = b.option(bool, "build_a12", "Build arcan_a12 library (default: true)") orelse true,
+        .build_arcan_platform = b.option(bool, "build_arcan_platform", "Build arcan platform abstraction libraries (default: false)") orelse false,
 
         .with_debugif = b.option(bool, "with_debugif", "Build with shmif debugif (default: true)") orelse true,
+        .with_arcan_db = b.option(bool, "with_arcan_db", "Build with arcan_db (default: true)") orelse true,
         .with_ffmpeg = b.option(bool, "with_ffmpeg", "Build with h264 encode/decode support using ffmpeg (default: true)") orelse true,
 
         .use_system_ffmpeg = b.systemIntegrationOption("ffmpeg", .{ .default = false }),
@@ -58,6 +60,8 @@ pub fn build(b: *std.Build) void {
     const arcan_api = createArcanApi(b, opts);
     _ = arcan_api.addModule("arcan");
 
+    const arcan_common = createArcanCommon(b, opts);
+
     const arcan_shmif_server = createArcanShmifServer(b, opts);
     if (opts.build_shmif_server) b.installArtifact(arcan_shmif_server);
 
@@ -77,6 +81,24 @@ pub fn build(b: *std.Build) void {
         arcan_a12.linkLibrary(arcan_shmif_server);
     }
     if (opts.build_a12) b.installArtifact(arcan_a12);
+
+    const arcan_platform = createArcanPlatform(b, opts);
+    if (opts.build_shmif) arcan_platform.linkLibrary(arcan_shmif);
+    if (opts.build_arcan_platform) b.installArtifact(arcan_platform);
+
+    const test_step = b.step("test", "Run unit tests");
+
+    const arcan_platform_test = createArcanPlatformTest(b, opts);
+    arcan_platform_test.linkLibrary(arcan_platform);
+    if (opts.build_arcan_platform) {
+        const run_artifact = b.addRunArtifact(arcan_platform_test);
+        test_step.dependOn(&run_artifact.step);
+    }
+
+    const arcan_str_test = createArcanStrTest(b, opts);
+    arcan_str_test.linkLibrary(arcan_common);
+    const run_arcan_str_test = b.addRunArtifact(arcan_str_test);
+    test_step.dependOn(&run_arcan_str_test.step);
 }
 
 const shmif_include_paths: []const String = &.{
@@ -444,6 +466,146 @@ fn createArcanTui(b: *std.Build, opts: anytype) *std.Build.Step.Compile {
     return step;
 }
 
+fn createArcanPlatform(b: *std.Build, opts: anytype) *std.Build.Step.Compile {
+    const lib_opts = .{
+        .name = "arcan_platform",
+        .target = opts.target,
+        .optimize = opts.optimize,
+        .pic = opts.pic,
+        .strip = opts.strip,
+    };
+    const step = if (opts.static)
+        b.addStaticLibrary(lib_opts)
+    else
+        b.addSharedLibrary(lib_opts);
+
+    step.linkLibC();
+    addPlatformDefinitions(step, opts);
+
+    if (opts.build_shmif) {
+	    step.addIncludePath(b.path("src/shmif"));
+
+	    switch (opts.target.result.os.tag) {
+	        .linux, .ios, .macos, .watchos, .tvos => {
+	            const sources: []const String = &.{
+	                "src/platform/posix/shmemop.c",
+	                "src/platform/posix/frameserver.c",
+	                "src/platform/posix/fsrv_guard.c",
+	            };
+	            for (sources) |source| {
+	                step.addCSourceFile(.{ .file = b.path(source) });
+	            }
+	        },
+	        else => {},
+	    }
+    }
+
+    if (opts.with_arcan_db) {
+        step.root_module.addCMacro("WITH_ARCAN_DB", "");
+        step.addIncludePath(b.path("external/sqlite"));
+        step.addCSourceFile(.{ .file = b.path("src/engine/arcan_db.c") });
+        step.addCSourceFile(.{ .file = b.path("external/sqlite/sqlite3.c") });
+    }
+
+    step.addIncludePath(b.path("src/platform"));
+
+    switch (opts.target.result.os.tag) {
+        .linux => {
+            const sources: []const String = &.{
+                "src/platform/posix/mem.c",
+                "src/platform/posix/glob.c",
+                "src/platform/posix/map_resource.c",
+                "src/platform/posix/resource_io.c",
+                "src/platform/posix/strip_traverse.c",
+                "src/platform/posix/paths.c",
+                "src/platform/posix/dbpath.c",
+                "src/platform/posix/appl.c",
+                "src/platform/posix/sem.c",
+                "src/platform/posix/base64.c",
+                "src/platform/posix/time.c",
+                "src/platform/posix/warning.c",
+                "src/platform/posix/launch.c",
+                "src/platform/posix/config.c",
+                "src/platform/posix/random.c",
+                "src/platform/posix/tempfile.c",
+                "src/platform/stub/setproctitle.c",
+                "src/platform/posix/prodthrd.c",
+            };
+            for (sources) |source| {
+                step.addCSourceFile(.{ .file = b.path(source) });
+            }
+            step.addCSourceFile(.{
+                .file = b.path("src/platform/posix/fdpassing.c"),
+                .flags = &.{ "-w", "-DNONBLOCK_RECV" },
+            });
+            step.addCSourceFile(.{
+                .file = b.path("src/platform/posix/namespace.c"),
+                .flags = &.{ "-DFRAMESERVER_MODESTRING=\"\"" },
+            });
+
+            // psep_open.c requires libdrm, for now no privilege seperated open
+            step.addCSourceFile(.{ .file = b.path("src/platform/posix/open.c") });
+        },
+        // TODO expand with other supported platforms once Linux is more or less
+        else => @panic("Unsupported platform"),
+    }
+
+    return step;
+}
+
+fn createArcanPlatformTest(b: *std.Build, opts: anytype) *std.Build.Step.Compile {
+    const step = b.addTest(.{
+        .root_source_file = b.path("tests/zig/os_platform.zig"),
+        .target = opts.target,
+        .optimize = opts.optimize,
+    });
+
+    const os_platform_step = b.addTranslateC(.{
+        .root_source_file = b.path("src/platform/os_platform.h"),
+        .target = opts.target,
+        .optimize = opts.optimize,
+    });
+
+    const os_platform_module = os_platform_step.createModule();
+    step.root_module.addImport("os_platform", os_platform_module);
+
+    return step;
+}
+
+fn createArcanCommon(b: *std.Build, opts: anytype) *std.Build.Step.Compile {
+    const lib_opts = .{
+        .name = "arcan_common",
+        .target = opts.target,
+        .optimize = opts.optimize,
+        .pic = opts.pic,
+        .strip = opts.strip,
+    };
+
+    const step = b.addStaticLibrary(lib_opts);
+    step.addCSourceFile(.{ .file = b.path("./src/common/arcan_str.c") });
+
+    return step;
+}
+
+fn createArcanStrTest(b: *std.Build, opts: anytype) *std.Build.Step.Compile {
+    const step = b.addTest(.{
+        .root_source_file = b.path("tests/zig/arcan_str.zig"),
+        .target = opts.target,
+        .optimize = opts.optimize,
+    });
+
+    const arcan_str_step = b.addTranslateC(.{
+        .root_source_file = b.path("src/common/arcan_str.h"),
+        .target = opts.target,
+        .optimize = opts.optimize,
+    });
+
+    const arcan_str_module = arcan_str_step.createModule();
+    step.root_module.addImport("arcan_str", arcan_str_module);
+
+    return step;
+}
+
 fn addShmifHeaders(b: *std.Build, lib: *std.Build.Step.Compile) void {
     const shmif_headers: []const String = &.{
         "arcan_shmif_control.h",
@@ -523,7 +685,7 @@ fn addPlatformDefinitions(step: *std.Build.Step.Compile, opts: anytype) void {
     const darwin_platform_definitions: []const [2]String = &.{
         .{ "__UNIX", "" },
         .{ "POSIX_C_SOURCE", "" },
-        .{ "__APPLE__", "" },
+        // .{ "__APPLE__", "" }, // Seems to be already defined by clang/zig?
         .{ "ARCAN_SHMIF_OVERCOMMIT", "" },
         .{ "_WITH_DPRINTF", "" },
         .{ "_GNU_SOURCE", "" },
