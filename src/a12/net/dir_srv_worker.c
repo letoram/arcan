@@ -269,7 +269,7 @@ static void bchunk_event(struct a12_state *S,
 /* the index is packed as shmif argstrs line-separated */
 	if (strcmp(ev->tgt.message, ".appl-index") == 0){
 		struct appl_meta* first = dir_unpack_index(ev->tgt.ioevs[0].iv);
-		if (!S)
+		if (!S || S == &trace_state)
 			pending_index = first;
 		else
 			a12int_set_directory(S, first);
