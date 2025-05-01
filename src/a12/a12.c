@@ -2314,6 +2314,22 @@ static void add_dirent(struct a12_state* S)
 	DYNAMIC_FREE(new);
 }
 
+static void command_dirlist(struct a12_state* S, void (*on_event)
+	(struct arcan_shmif_cont*, int chid, struct arcan_event*, void*), void* tag)
+{
+/* force- synch dynamic entries */
+	S->notify_dynamic = S->decode[18];
+	a12int_trace(A12_TRACE_DIRECTORY, "dirlist:notify=%d", (int) S->notify_dynamic);
+	send_dirlist(S);
+
+/* notify the directory side that this action occurred */
+	on_event(NULL, 0, &(struct arcan_event){
+		.category = EVENT_EXTERNAL,
+		.ext.kind = EVENT_EXTERNAL_MESSAGE,
+		.ext.message.data = "a12:dirlist"
+	}, tag);
+}
+
 static void command_tundrop(struct a12_state* S, uint8_t id)
 {
 /* just mark the tunnel state as closed, it is the owner of the state object
@@ -2459,16 +2475,7 @@ static void process_control(struct a12_state* S, void (*on_event)
 		command_rekey(S);
 	break;
 	case COMMAND_DIRLIST:
-/* force- synch dynamic entries */
-		S->notify_dynamic = S->decode[18];
-		a12int_trace(A12_TRACE_DIRECTORY, "dirlist:notify=%d", (int) S->notify_dynamic);
-		send_dirlist(S);
-/* notify the directory side that this action occurred */
-		on_event(NULL, 0, &(struct arcan_event){
-			.category = EVENT_EXTERNAL,
-			.ext.kind = EVENT_EXTERNAL_MESSAGE,
-			.ext.message.data = "a12:dirlist"
-		}, tag);
+		command_dirlist(S, on_event, tag);
 	break;
 	case COMMAND_DIRDISCOVER:
 		command_dirdiscover(S);
