@@ -1378,6 +1378,7 @@ struct dircl* anet_directory_shmifsrv_thread(
 	pthread_attr_t pthattr;
 	pthread_attr_init(&pthattr);
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	pthread_attr_setstacksize(&pthattr, 1024 * 1024 * 4);
 
 	struct dircl* newent = malloc(sizeof(struct dircl));
 	*newent = (struct dircl){

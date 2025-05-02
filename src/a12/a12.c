@@ -1736,8 +1736,6 @@ static void a12_enqueue_bstream_tagged(
 	next->identifier = id;
 	next->chid = S->out_channel;
 	next->streamid = id;
-	a12int_trace(A12_TRACE_BTRANSFER,
-		"kind=queue_outbound:ch=%"PRIu8":id=%"PRIu32, S->out_channel, id);
 
 	if (tag){
 		arcan_event* copy = DYNAMIC_MALLOC(sizeof(arcan_event));
@@ -1764,6 +1762,9 @@ static void a12_enqueue_bstream_tagged(
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EBADFD");
 		goto fail;
 	}
+	a12int_trace(A12_TRACE_BTRANSFER,
+		"kind=queue_outbound:ch=%"PRIu8":descriptor=%d:id=%"PRIu32,
+		S->out_channel, next->fd, id);
 
 /* For the streaming descriptor, we can only work with the reported size
  * and that one can still be unknown (0), i.e. the stream continues to work
@@ -1834,8 +1835,11 @@ static void a12_enqueue_bstream_tagged(
 	return;
 
 fail:
-	if (-1 != next->fd)
+	if (-1 != next->fd){
+		a12int_trace(A12_TRACE_BTRANSFER,
+			"kind=fail:close_descriptor=%d", next->fd);
 		close(next->fd);
+	}
 
 	*parent = NULL;
 	DYNAMIC_FREE(next);
@@ -3155,6 +3159,8 @@ static void* read_data(
 	}
 
 	ssize_t nr = read(fd, buf, cap);
+	a12int_trace(A12_TRACE_BTRANSFER,
+		"kind=input:read=%zd:descriptor=%d:error=%d", nr, fd, nr == -1 ? errno : 0);
 
 /* possibly non-fatal or no data present yet, keep stream alive - a bad stream
  * source with no timeout will block / preempt other binary transfers though so

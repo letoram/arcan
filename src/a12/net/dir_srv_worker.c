@@ -63,8 +63,10 @@ static void drop_evqueue_item(struct evqueue_entry* rep)
 	if (!rep)
 		return;
 
-	if (arcan_shmif_descrevent(&rep->ev) && rep->ev.tgt.ioevs[0].iv > 0)
+	if (arcan_shmif_descrevent(&rep->ev) && rep->ev.tgt.ioevs[0].iv > 0){
+		TRACE("drop:queued_descriptor=%d", rep->ev.tgt.ioevs[0].iv);
 		close(rep->ev.tgt.ioevs[0].iv);
+	}
 	rep->next = NULL;
 	free(rep);
 }
@@ -103,7 +105,7 @@ static int request_resource(
 
 		if (ev.tgt.kind != TARGET_COMMAND_REQFAIL){
 			fd = arcan_shmif_dupfd(ev.tgt.ioevs[0].iv, -1, true);
-			a12int_trace(A12_TRACE_DIRECTORY, "accepted");
+			a12int_trace(A12_TRACE_DIRECTORY, "accepted:descriptor=%d", fd);
 		}
 		else
 			a12int_trace(
@@ -169,6 +171,7 @@ static void on_a12srv_event(
 		if (fd != -1 && ev->ext.bchunk.extensions[0]){
 			a12_enqueue_bstream(cbt->S,
 				fd, A12_BTYPE_BLOB, ev->ext.bchunk.identifier, false, 0, empty_ext);
+			TRACE("close_tmp:descriptor=%d", fd);
 			close(fd);
 			I->userfd2 = a12_btransfer_outfd(I->S);
 		}
@@ -188,6 +191,7 @@ static void on_a12srv_event(
 			a12_enqueue_bstream(cbt->S,
 				fd, A12_BTYPE_BLOB, ev->ext.bchunk.ns, false, 0, empty_ext);
 			I->userfd2 = a12_btransfer_outfd(I->S);
+			TRACE("close_tmp:descriptor=%d", fd);
 			close(fd);
 		}
 		else
