@@ -327,9 +327,13 @@ static int launchtarget(lua_State* L)
  *                the first argument.
  */
 	const char* argstr = "";
+	struct client* dst = NULL;
+
 	size_t ind = 3;
-	if (lua_type(L, 3) == LUA_TNUMBER)
+	if (lua_type(L, 3) == LUA_TNUMBER){
+		dst = alua_checkclient(L, lua_tonumber(L, 3));
 		ind++;
+	}
 
 	if (!(lua_isfunction(L, ind) && !lua_iscfunction(L, ind))){
 		luaL_error(L, "launch_target(..., >handler<) is not a function");
@@ -349,8 +353,17 @@ static int launchtarget(lua_State* L)
  * assumed vulnerability.
  */
 	char* req = NULL;
-	ssize_t req_len = asprintf(&req,
+	ssize_t req_len;
+
+	if (!dst){
+		req_len = asprintf(&req,
 		"launch=%s:id=%"PRIdPTR":args=%s", name, (intptr_t) ref, argstr);
+	}
+	else {
+		req_len = asprintf(&req,
+		"launch=%s:dst=%zu:id=%"PRIdPTR":args=%s",
+		name, dst->clid, (intptr_t) ref, argstr);
+	}
 
 	if (req_len < 0){
 		lua_pushboolean(L, false);
