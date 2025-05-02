@@ -50,11 +50,25 @@ static struct {
 	.sync = PTHREAD_MUTEX_INITIALIZER
 };
 
+/*
+ * The a12_state struct is a beefy one (~200k), since it contains all the
+ * channels with queues etc. while minimizing internal allocation calls.
+ *
+ * initially the trace-macro didn't forward the S-> state and when multiple
+ * state machines were running, started to stomp on eachother in the log,
+ * and for more advanced tracing tools we are likely to need more state so
+ * just rewriting all trace() calls is bad in that way.
+ *
+ * To avoid running out of stack space these are allocated here for the
+ * time being, but it's also not a good solution.
+ */
+static struct a12_state main_trace_state = {.tracetag = "main"};
+static struct a12_state lua_trace_state = {.tracetag = "lua"};
+
 #define A12INT_DIRTRACE(...) do { \
 	if (!(a12_trace_targets & A12_TRACE_DIRECTORY))\
 		break;\
-	struct a12_state tmp_state = {.tracetag = "main"};\
-	struct a12_state* S = &tmp_state;\
+	struct a12_state* S = &main_trace_state;\
 	dirsrv_global_lock(__FILE__, __LINE__);\
 		a12int_trace(A12_TRACE_DIRECTORY, __VA_ARGS__);\
 	dirsrv_global_unlock(__FILE__, __LINE__);\
@@ -63,8 +77,7 @@ static struct {
 #define A12INT_DIRTRACE_LOCKED(...) do { \
 	if (!(a12_trace_targets & A12_TRACE_DIRECTORY))\
 		break;\
-	struct a12_state tmp_state = {.tracetag = "main"};\
-	struct a12_state* S = &tmp_state;\
+	struct a12_state* S = &main_trace_state;\
 	a12int_trace(A12_TRACE_DIRECTORY, __VA_ARGS__);\
 	} while (0);
 
@@ -903,8 +916,7 @@ static bool process_auth_request(struct dircl* C, struct arg_arr* entry)
 	dirsrv_global_lock(__FILE__, __LINE__);
 		struct a12_context_options* aopt = active_clients.opts->a12_cfg;
 
-		struct a12_state tmp_state = {.tracetag = "lua"};
-		struct a12_state* S = &tmp_state;
+		struct a12_state* S = &lua_trace_state;
 		struct pk_response rep = aopt->pk_lookup(S, pubk_dec, aopt->pk_lookup_tag);
 
 /* notify or let .lua config have a say */
