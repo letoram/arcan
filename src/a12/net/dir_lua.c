@@ -129,6 +129,19 @@ static void send_runner_appl(struct runner_state* runner)
 	shmifsrv_enqueue_event(runner->cl, &outev, dfd);
 }
 
+static void launchtarget_directed(struct runner_state* runner,
+	struct arcan_dbh* db, const char* tgt, const char* dst)
+{
+/* launch shmif client,
+ *
+ * take server side socket and send to matching worker as .dynamic,
+ * worker announces a random identifier as dynopen and forwards into
+ * the arcan instance, when the corresponding netopen comes through
+ * it is treated as sinking a regular source and the worker spins
+ * up as a tunnel.
+ */
+}
+
 static void launchtarget(struct runner_state* runner,
 	struct arcan_dbh* db, const char* tgt, const char* dst, int id)
 {
@@ -183,6 +196,8 @@ static void launchtarget(struct runner_state* runner,
  *     - do last and see if there's anything to re-use.
  */
 	char* outargv[argv.count + 12];
+	char* ident = strdup(dst);
+
 	memset(outargv, '\0', sizeof(outargv));
 	size_t ind = 0;
 	outargv[ind++] = CFG->path_self;
@@ -191,7 +206,7 @@ static void launchtarget(struct runner_state* runner,
 	outargv[ind++] = "--force-kpub";
 	outargv[ind++] = (char*) pub_b64;
 	outargv[ind++] = "--ident";
-	outargv[ind++] = "test";
+	outargv[ind++] = ident;
 	outargv[ind++] = "localhost";
 		/* should also grab port from CFG */
 	outargv[ind++] = "--";
@@ -288,18 +303,17 @@ static void controller_dispatch(
 	}
 	else if (arg_lookup(arr, "launch", 0, &arg) && arg &&
 		arg_lookup(arr, "id", 0, &val) && val){
+		int id = (int) strtol(val, NULL, 10);
 		const char* dst;
 
-/* options:
- *  - should we launch through round-robin on identity?
- *    possibly load-balance through directory network?
- *    or run through splicer?
- *
- */
+/* this is a point to support multicasting by checking for multiple [dst], if
+ * so the shmif connection is actually an arcan_lwa that runs a wm appl and
+ * then launch_targets the real one. */
 		if (arg_lookup(arr, "dst", 0, &dst) && dst){
+			launchtarget_directed(runner, db, arg, dst);
+			return;
 		}
 
-		int id = (int) strtol(val, NULL, 10);
 		launchtarget(runner, db, arg, "testsource", id);
 	}
 /* trigger the same path as initial ctrl-appl loading */
@@ -946,6 +960,7 @@ static int dir_launchtarget(lua_State* L)
  * size_t ind = 3;
  *
  * launch to one specific client
+ * options for specifying identity
  *
 	if (lua_type(L, 3) == LUA_TUSERDATA){
 		ind++;
