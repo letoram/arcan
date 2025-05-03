@@ -853,9 +853,18 @@ static void dircl_userfd(struct ioloop_shared* I, bool ok)
 		break;
 
 /* Forward file requests to a12 implementation and let its internal management
- * deal with queue-in/queue-out */
+ * deal with queue-in/queue-out. This is a common confusion when we nest shmif
+ * as OUT for the one is IN for the other.
+ *
+ * If parent is requesting OUT is means that we want IN from a12.
+ */
 		case TARGET_COMMAND_BCHUNK_IN:
+			ev.tgt.kind = TARGET_COMMAND_BCHUNK_OUT;
+			a12_channel_enqueue(I->S, &ev);
+		break;
+
 		case TARGET_COMMAND_BCHUNK_OUT:
+			ev.tgt.kind = TARGET_COMMAND_BCHUNK_IN;
 			a12_channel_enqueue(I->S, &ev);
 		break;
 
