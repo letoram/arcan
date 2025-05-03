@@ -517,8 +517,12 @@ static void runner_shmif(struct ioloop_shared* I, bool ok)
  * can't reply to a lower fd and hit the monitor connection as a means of
  * injecting monitor commands and possibly aid a VM escape.
  */
-		if (ev.tgt.kind == TARGET_COMMAND_BCHUNK_OUT ||
-				ev.tgt.kind == TARGET_COMMAND_BCHUNK_IN){
+		if (ev.tgt.kind == TARGET_COMMAND_BCHUNK_OUT){
+			ev.tgt.kind = TARGET_COMMAND_BCHUNK_IN;
+			a12_channel_enqueue(S, &ev);
+		}
+		else if (ev.tgt.kind == TARGET_COMMAND_BCHUNK_IN){
+			ev.tgt.kind = TARGET_COMMAND_BCHUNK_OUT;
 			a12_channel_enqueue(S, &ev);
 		}
 
