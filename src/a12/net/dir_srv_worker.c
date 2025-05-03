@@ -110,8 +110,6 @@ static int request_resource(
 		else
 			a12int_trace(
 				A12_TRACE_DIRECTORY, "rejected=%s", arcan_shmif_eventstr(&ev, NULL, 0));
-
-		drop_evqueue_item(rep);
 	}
 	else {
 		drop_evqueue(rep);
