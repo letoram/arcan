@@ -140,7 +140,7 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 		pthread_mutex_lock(&I->lock);
 
 /* this might add or remove a shmif to our tracking set */
-		if (fds[0].revents & POLLIN){
+		if (fds[0].revents){
 			I->on_userfd(I, !(fds[0].revents & errmask));
 		}
 		if (fds[5].revents & POLLIN){

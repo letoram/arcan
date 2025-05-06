@@ -12328,7 +12328,7 @@ static int net_open(lua_State* ctx)
 		arcan_conductor_register_frameserver(newref);
 		newref->segid = SEGID_NETWORK_CLIENT;
 
-		if (!arcan_monitor_fsrvvid(path)){
+		if (!arcan_monitor_fsrvvid(path, newref)){
 			arcan_frameserver_free(newref);
 			lua_pushvid(ctx, ARCAN_EID);
 			return 1;

@@ -130,6 +130,10 @@ void arcan_conductor_focus(struct arcan_frameserver* fsrv);
  * frameserver structure is built and activated */
 void arcan_conductor_register_frameserver(struct arcan_frameserver* fsrv);
 
+/* check if [fsrv] points to a frameserver known by us, this is mainly an
+ * aid for calling through gdb() and in the monitor debug handler. */
+bool arcan_conductor_frameserver_known(struct arcan_frameserver* fsrv);
+
 /* remove a frameserver from the processing set, typically only needed if
  * all processing on the frameserver should be suspended or as part of the
  * deallocation sequence */

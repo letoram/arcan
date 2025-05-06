@@ -1783,6 +1783,8 @@ static void a12_enqueue_bstream_tagged(
 	if (fend == 0){
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=EEMPTY");
 		*parent = NULL;
+		close(next->fd);
+		next->fd = -1;
 		DYNAMIC_FREE(next);
 		return;
 	}

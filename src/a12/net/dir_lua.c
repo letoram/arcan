@@ -132,6 +132,20 @@ static void send_runner_appl(struct runner_state* runner)
 static void launchtarget_directed(struct runner_state* runner,
 	struct arcan_dbh* db, const char* tgt, const char* dst)
 {
+	struct arcan_strarr argv, env, libs = {0};
+	enum DB_BFORMAT bfmt;
+	arcan_configid cid =
+		arcan_db_configid(db, arcan_db_targetid(db, tgt, NULL), "default");
+
+	argv = env = libs;
+	char* exec = arcan_db_targetexec(db, cid, &bfmt, &argv, &env, &libs);
+
+/* just queue the failure immediately */
+	if (!exec){
+		A12INT_DIRTRACE("launch_target_directed:eexist=%s", tgt);
+		return;
+	}
+
 /* launch shmif client,
  *
  * take server side socket and send to matching worker as .dynamic,

@@ -71,6 +71,6 @@ void arcan_monitor_masktrigger(lua_State* L);
  * forward connection point information over the monitor and have the
  * parent bind to it (replacing any existing one).
  */
-bool arcan_monitor_fsrvvid(const char* cp);
+bool arcan_monitor_fsrvvid(const char* cp, struct arcan_frameserver* fsrv);
 
 #endif

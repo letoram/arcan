@@ -403,6 +403,11 @@ void arcan_conductor_focus(struct arcan_frameserver* fsrv)
 	}
 }
 
+bool arcan_conductor_frameserver_known(struct arcan_frameserver* fsrv)
+{
+	return -1 != find_frameserver(fsrv);
+}
+
 void arcan_conductor_deregister_frameserver(struct arcan_frameserver* fsrv)
 {
 /* not all present frameservers will be registered with the conductor */

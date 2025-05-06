@@ -50,6 +50,8 @@ struct appl_runner_state {
 	FILE* pf_stdin;
 	FILE* pf_stdout;
 
+	bool queue_terminate;
+
 	int p_stdout;
 	int p_stdin;
 };
@@ -450,7 +452,11 @@ static pid_t exec_cpath(struct a12_state* S,
  * resource, takes a local webcam, overlays the remote image and streams the
  * result somewhere else - like a sink attached to the directory.
  */
-	char* argv[] = {&buf[2],
+	char prgnam[sizeof("arcan_lwa: ") + sizeof(buf)];
+	snprintf(prgnam, sizeof(prgnam), "arcan_lwa: %s", &buf[2]);
+
+	char* argv[] = {
+		prgnam,
 		"-d", ":memory:",
 		"-M", "-1",
 		"-O", logfd_str,
@@ -460,6 +466,7 @@ static pid_t exec_cpath(struct a12_state* S,
 
 /* exec- over and monitor, keep connection alive */
 	pid_t pid = fork();
+
 	if (pid == 0){
 /* remap control into STDIN */
 		if (ctx->key)
@@ -479,8 +486,10 @@ static pid_t exec_cpath(struct a12_state* S,
 			open("/dev/null",  O_WRONLY);
 		}
 
+/*
 		close(STDOUT_FILENO);
 		open("/dev/null", O_WRONLY);
+ */
 
 		execvp(ctx->bin, argv);
 		exit(EXIT_FAILURE);
@@ -543,8 +552,12 @@ static void runner_shmif(struct ioloop_shared* I, bool ok)
 		}
 	}
 
+/* I->shutdown should be reached through the process terminating or the upload
+ * completing, so only forget that we have a shmif connection. */
 	if (rv == -1 || !ok){
-		I->shutdown = true;
+		arcan_shmif_drop(&I->shmif);
+		I->shmif.epipe = -1;
+		I->on_shmif = NULL;
 	}
 }
 
@@ -559,6 +572,8 @@ static void setup_statefd(struct appl_runner_state* A)
 	else
 		unlink(filename);
 
+/* make blocking while we are dumping */
+	fcntl(A->p_stdout, F_SETFL, 0);
 	A->state.fpek = fdopen(A->state.fd, "w");
 	A->state.active = true;
 }
@@ -638,7 +653,9 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 			if (strcmp(buf, "#ENDKV\n") == 0){
 				A->state.active = false;
 				fflush(A->state.fpek);
-				fprintf(A->pf_stdin, "continue\n");
+				fprintf(A->pf_stdin,
+					A->queue_terminate ? "terminate\n" : "continue\n");
+				fcntl(A->p_stdout, F_SETFL, O_NONBLOCK);
 				break;
 			}
 		}
@@ -648,7 +665,7 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 /* we are trying to synch a reload, now's the time to remove the old appldir
  * and rename the .new into just basename. */
 	if (ok){
-		if (fgets(buf, 4096, A->pf_stdout)){
+		while (fgets(buf, 4096, A->pf_stdout)){
 			if (strcmp(buf, "#LOCKED\n") == 0){
 				swap_appldir(cbt->clopt->applname, cbt->clopt->basedir);
 
@@ -672,9 +689,30 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 					cbt->clopt->block_state ? "continue\n" : "dumpkeys\n");
 				return;
 			}
-			else if (strcmp(buf, "#FAIL\n") == 0){
-				fprintf(A->pf_stdin,
-					cbt->clopt->block_state ? "continue\n" : "dumpstate\n");
+			else if (strcmp(buf, "#WAITING\n") == 0){
+				if (A->queue_terminate){
+					fprintf(A->pf_stdin, "terminate\n");
+				}
+			}
+/* the script has failed, we have several options:
+ *   1. of forwarding to a configured handler (e.g. cat9 debug adapter)
+ *   2. take state snapshot and upload
+ *   3. continue and try to recover
+ *   4. terminate
+ *
+ * right now just terminate if state is blocked, otherwise terminate afterwards.
+ */
+			else if (strcmp(buf, "#FAIL\n") == 0 || strcmp(buf, "#BEGINBACKTRACE\n") == 0){
+				if (cbt->clopt->block_state){
+					fprintf(A->pf_stdin, "terminate\n");
+				}
+				else{
+					A->queue_terminate = true;
+					setup_statefd(A);
+					fprintf(A->pf_stdin, "dumpstate\n");
+					return process_thread(I, ok);
+					break;
+				}
 			}
 			else if (strcmp(buf, "#BEGINKV\n") == 0){
 				setup_statefd(A);
@@ -696,7 +734,18 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 				char cbuf[strlen(buf)];
 				snprintf(cbuf, sizeof(cbuf), "%s", &buf[5]);
 
-/* strip \n and connect */
+/* Strip \n and connect. Unfortunately _connect is blocking and we can't change
+ * the function signature to accept flags for specifying a timeout.
+ *
+ * If the appl does:
+ *   function myappl()
+ *      net_open(...)
+ *      bad_function()
+ *   end
+ *
+ * We would deadlock here unless there is either a timeout or the engine has a
+ * provision in the _watchdog_error handler to release the framesever connection.
+ */
 				int dfd;
 				char* key = arcan_shmif_connect(cbuf, NULL, &dfd);
 				a12int_trace(A12_TRACE_DIRECTORY,
@@ -740,11 +789,6 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 			fprintf(stderr, "script/exection error, generating report\n");
 		}
 	}
-	else if (WIFSIGNALED(pret)){
-		fprintf(stderr, "arcan killed, signal: %d\n", WTERMSIG(pret));
-	}
-	else
-		fprintf(stderr, "unexpected return: %d\n", pret);
 
 /* just request new dirlist and it should reload, if state or log are
  * blocked the fpek wouldn't have been created so it is safe to send */
@@ -871,6 +915,8 @@ static bool handover_exec(struct appl_runner_state* A, FILE* sin)
 		fprintf(stderr, "Couldn't spawn child process");
 		return false;
 	}
+
+	fcntl(A->p_stdout, F_SETFL, O_NONBLOCK);
 
 	A->pid = pid;
 	A->pf_stdin = fdopen(A->p_stdin, "w");

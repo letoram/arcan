@@ -185,8 +185,56 @@ static void dirlist_to_worker(struct dircl* C)
 	close(fd);
 }
 
+static void dynopen_appl_host(struct dircl* C, struct arg_arr* entry)
+{
+	const char* pubk = NULL;
+	char* msg = NULL;
+
+	if (!arg_lookup(entry, "pubk", 0, &pubk) || !pubk)
+		goto send_fail;
+
+	uint8_t pubk_dec[32];
+	if (!a12helper_fromb64((const uint8_t*) pubk, 32, pubk_dec))
+		goto send_fail;
+
+/* locate the appl and build the shmifsrv_ handover setup. */
+	return;
+
+send_fail:
+	A12INT_DIRTRACE("dirsv:worker:dynopen_fail");
+	shmifsrv_enqueue_event(C->C, &(struct arcan_event){
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_REQFAIL
+		}, -1
+	);
+}
+
 static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
 {
+/*
+ * Special case:
+ *
+ *  - It is possible to diropen an appl (if permitted) which runs the client
+ *    end of the appl server-side. It works similar to a launch_target direct
+ *    to client form, just that it's arcan_lwa that is the shmif client end.
+ *
+ *  - This means we don't directly 'tunnel' via the arcan-net into shmif path
+ *    as named launch_target calls would do (saves a lot of crypto and copying)
+ *    with the added complexity that now BCHUNKREQ and MESSAGEs need to be
+ *    routed accordingly.
+ *
+ *  - A single client-worker is limited to one such runner to match the
+ *    behaviour of a normal arcan enabled client running arcan-net @server appl
+ *    when it comes to what is sent over the primary channel. Further dynamic
+ *    resources from launch_target need to route to the arcan_lwa instance
+ *    in the way dir_cl.c would do.
+ *
+ *  - We distinguish this kind of sourcing with a | prefix to server-local
+ *    applindex.
+ *
+ *    The purpose of this is to let weak thin clients run full arcan stack
+ *    appls.
+ */
 	const char* pubk = NULL;
 	char* msg = NULL;
 
@@ -224,7 +272,8 @@ static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
  * tunnel or .. */
 				arcan_event to_sink = cur->endpoint;
 
-/* for now blindly accept tunneling if requested and permitted */
+/* for now blindly accept tunneling if requested and permitted, other option
+ * is to route the request through config.lua and let the script determine */
 				if (arg_lookup(entry, "tunnel", 0, NULL)){
 					if (!active_clients.opts->allow_tunnel){
 						goto send_fail;

@@ -50,6 +50,10 @@ static bool m_error_defer;
 /* used to indicate that we should trigger one of the recovery modes */
 static int longjmp_mode;
 
+/* reverse connection to the monitor, only used to check in the error handler
+ * if we have a script error in the initialization function */
+static struct arcan_frameserver* mon_reverse;
+
 static struct
 {
 	union {
@@ -657,6 +661,8 @@ static void cmd_out(char* argv, lua_State* L, lua_Debug* D)
 		return;
 	argv[len-1] = '\0';
 	m_out = fopen(argv, "w");
+	setlinebuf(m_out);
+
 	if (!m_out)
 		m_out = stdout;
 	fprintf(m_out, "#PID %d\n", getpid());
@@ -676,8 +682,6 @@ static void cmd_out(char* argv, lua_State* L, lua_Debug* D)
 	sigaction(SIGHUP,&(struct sigaction){.sa_handler = monitor_hup}, 0);
 	sigaction(SIGUSR1,&(struct sigaction){.sa_handler = monitor_sigusr}, 0);
 	m_sigusr_L = L;
-
-	setlinebuf(m_out);
 }
 
 static void cmd_entrypoint(char* argv, lua_State* L, lua_Debug* D)
@@ -795,11 +799,36 @@ FILE* arcan_monitor_watchdog_error(lua_State* L, int in_panic, bool check)
 
 	m_error = true;
 
+/* If we have a pending fsrv connection that needs to be let through first
+ * since the monitor is waiting for that before continuing. This means the
+ * ffunc is either FFUNC_SOCKVER or SOCKPOLL.
+ *
+ * There is still a problem with:
+ *   vid = net_open("@stdin", function() ... end)
+ *   delete_image(vid)
+ *   nofunc()
+ *
+ * As the frameserver will no longer be valid, yet the parent is still in
+ * a connecting state. In that case we just give up and exit() */
+	if (mon_reverse && arcan_conductor_frameserver_known(mon_reverse)){
+		arcan_vobject* vobj = arcan_video_getobject(mon_reverse->vid);
+		if (!vobj){
+			fprintf(m_out, "#FATAL script died during appl()\n");
+			fflush(m_out);
+			exit(EXIT_FAILURE);
+		}
+
+		while (vobj->feed.ffunc == FFUNC_SOCKVER || vobj->feed.ffunc == FFUNC_SOCKPOLL){
+			arcan_vfunc_cb ffunc = arcan_ffunc_lookup(vobj->feed.ffunc);
+			ffunc(FFUNC_POLL, NULL, 0, 0, 0, 0, vobj->feed.state, vobj->cellid);
+		}
+	}
+
 /* we have a broken callstack at this point so the stacktrace would do nothing */
 	fprintf(m_out,
 		"#BEGINERROR\n%s\n#ENDERROR\n",
 			lua_type(L, -1) == LUA_TSTRING ? lua_tostring(L, -1) : "(panic)");
-
+	fflush(m_out);
 	arcan_monitor_watchdog(L, NULL);
 
 	return m_out;
@@ -836,6 +865,12 @@ static bool check_breakpoints(lua_State* L)
 	}
 
 	return false;
+}
+
+static void cmd_terminate(char* argv, lua_State* L, lua_Debug* D)
+{
+	extern jmp_buf arcanmain_recover_state;
+	longjmp(arcanmain_recover_state, ARCAN_LUA_KILL_SILENT);
 }
 
 static void cmd_detach(char* argv, lua_State* L, lua_Debug* D)
@@ -878,7 +913,8 @@ static struct {
 	{"entrypoint", cmd_entrypoint},
 	{"paths", cmd_paths},
 	{"output", cmd_out},
-	{"detach", cmd_detach}
+	{"detach", cmd_detach},
+	{"terminate", cmd_terminate},
 };
 
 void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
@@ -1054,11 +1090,16 @@ void arcan_monitor_tick(int n)
 	arcan_lua_statesnap(m_out, buf, true);
 }
 
-bool arcan_monitor_fsrvvid(const char* cp)
+bool arcan_monitor_fsrvvid(const char* cp, struct arcan_frameserver* fsrv)
 {
-	if (!m_ctrl)
+	if (!m_ctrl || mon_reverse)
 		return false;
 
+/* This causes parent to arcan_shmif_connect to [cp], if our processing happens
+ * to stall here we are in a bit of a pickle. Track the [fsrv] as pending then
+ * query the conductor for it in the error handler. */
 	fprintf(m_out, "join %s\n", cp);
+	mon_reverse = fsrv;
+
 	return true;
 }
