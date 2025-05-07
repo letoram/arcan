@@ -481,7 +481,7 @@ static char* names_to_keymap_str(const char** arg, const char** err)
 #endif
 }
 
-int platform_event_translation(int devid,
+int arcan_platform_event_translation(int devid,
 	int action, const char** names, const char** err)
 {
 /*
@@ -494,7 +494,7 @@ int platform_event_translation(int devid,
  */
 	if ((devid == -1 || devid == 0) && disp[0].keymap.ptr){
 		switch (action){
-			case EVENT_TRANSLATION_SET:{
+			case ARCAN_EVENT_TRANSLATION_SET:{
 				char* newmap = names_to_keymap_str(names, err);
 				if (!newmap){
 					return -1;
@@ -505,13 +505,13 @@ int platform_event_translation(int devid,
 				return 0;
 			}
 			break;
-			case EVENT_TRANSLATION_SERIALIZE_SPEC:{
+			case ARCAN_EVENT_TRANSLATION_SERIALIZE_SPEC:{
 				char* newmap = names_to_keymap_str(names, err);
 				int fd = arcan_strbuf_tempfile(newmap, strlen(newmap), err);
 				free(newmap);
 				return fd;
 			}
-			case EVENT_TRANSLATION_SERIALIZE_CURRENT:{
+			case ARCAN_EVENT_TRANSLATION_SERIALIZE_CURRENT:{
 				return arcan_strbuf_tempfile(disp[0].keymap.ptr, disp[0].keymap.sz, err);
 			}
 			break;
@@ -522,12 +522,12 @@ int platform_event_translation(int devid,
 	return -1;
 }
 
-int platform_event_device_request(int space, const char* path)
+int arcan_platform_event_device_request(int space, const char* path)
 {
 	return -1;
 }
 
-void platform_event_samplebase(int devid, float xyz[3])
+void arcan_platform_event_samplebase(int devid, float xyz[3])
 {
 }
 
@@ -536,7 +536,7 @@ const char** platform_video_envopts()
 	return (const char**) video_envopts;
 }
 
-const char** platform_event_envopts()
+const char** arcan_platform_event_envopts()
 {
 	return (const char**) input_envopts;
 }
@@ -896,7 +896,7 @@ void platform_video_synch(
 		};
 
 		int ts = arcan_conductor_yield(&d, 1);
-		platform_event_process(arcan_event_defaultctx());
+		arcan_platform_event_process(arcan_event_defaultctx());
 
 /* the event processing while yielding / waiting for synch can reach EXIT and
  * then we should refuse to continue regardless */
@@ -1019,7 +1019,7 @@ pollout:
 		post();
 }
 
-void platform_event_preinit()
+void arcan_platform_event_preinit()
 {
 }
 
@@ -1028,18 +1028,18 @@ void platform_event_preinit()
  * is broken out of the platform layer, we can re-use that to have
  * local filtering untop of the one the engine is doing.
  */
-arcan_errc platform_event_analogstate(int devid, int axisid,
+arcan_errc arcan_platform_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode)
 {
 	return ARCAN_ERRC_NO_SUCH_OBJECT;
 }
 
-void platform_event_analogall(bool enable, bool mouse)
+void arcan_platform_event_analogall(bool enable, bool mouse)
 {
 }
 
-void platform_event_analogfilter(int devid,
+void arcan_platform_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
 {
@@ -1068,7 +1068,7 @@ const char* platform_video_capstr()
 	return "Video Platform (Arcan - in - Arcan)\n";
 }
 
-const char* platform_event_devlabel(int devid)
+const char* arcan_platform_event_devlabel(int devid)
 {
 	return "no device";
 }
@@ -1498,7 +1498,7 @@ static bool event_process_disp(
 	return false;
 }
 
-void platform_event_keyrepeat(struct arcan_evctx* ctx, int* period, int* delay)
+void arcan_platform_event_keyrepeat(struct arcan_evctx* ctx, int* period, int* delay)
 {
 	*period = 0;
 	*delay = 0;
@@ -1507,7 +1507,7 @@ void platform_event_keyrepeat(struct arcan_evctx* ctx, int* period, int* delay)
  * keyboard device (track per devid) and emit that every oh so often */
 }
 
-void platform_event_process(struct arcan_evctx* ctx)
+void arcan_platform_event_process(struct arcan_evctx* ctx)
 {
 	bool locked = primary_udata.signal_pending;
 	primary_udata.signal_pending = false;
@@ -1551,11 +1551,11 @@ void platform_event_process(struct arcan_evctx* ctx)
 	}
 }
 
-void platform_event_rescan_idev(struct arcan_evctx* ctx)
+void arcan_platform_event_rescan_idev(struct arcan_evctx* ctx)
 {
 }
 
-enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** out)
+enum ARCAN_PLATFORM_EVENT_CAPABILITIES arcan_platform_event_capabilities(const char** out)
 {
 	if (out)
 		*out = "lwa";
@@ -1568,7 +1568,7 @@ void platform_key_repeat(struct arcan_evctx* ctx, unsigned int rate)
 {
 }
 
-void platform_event_deinit(struct arcan_evctx* ctx)
+void arcan_platform_event_deinit(struct arcan_evctx* ctx)
 {
 	TRACE_MARK_ONESHOT("event", "event-platform-deinit", TRACE_SYS_DEFAULT, 0, 0, "lwa");
 }
@@ -1592,17 +1592,17 @@ void platform_video_recovery()
 	}
 }
 
-void platform_event_reset(struct arcan_evctx* ctx)
+void arcan_platform_event_reset(struct arcan_evctx* ctx)
 {
 	TRACE_MARK_ONESHOT("event", "event-platform-reset", TRACE_SYS_DEFAULT, 0, 0, "lwa");
-	platform_event_deinit(ctx);
+	arcan_platform_event_deinit(ctx);
 }
 
 void platform_device_lock(int devind, bool state)
 {
 }
 
-void platform_event_init(struct arcan_evctx* ctx)
+void arcan_platform_event_init(struct arcan_evctx* ctx)
 {
 	TRACE_MARK_ONESHOT("event", "event-platform-init", TRACE_SYS_DEFAULT, 0, 0, "lwa");
 }

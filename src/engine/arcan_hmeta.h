@@ -43,6 +43,7 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_shmif.h"
+#include "arcan_shmif.h"
 #include "arcan_event.h"
 #include "arcan_audio.h"
 #include "arcan_video.h"

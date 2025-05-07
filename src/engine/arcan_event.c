@@ -565,7 +565,7 @@ float arcan_event_process(struct arcan_evctx* ctx, arcan_tick_cb cb)
 	int64_t base = ctx->c_ticks * ARCAN_TIMER_TICK;
 	int64_t delta = arcan_frametime() - base;
 
-	platform_event_process(ctx);
+	arcan_platform_event_process(ctx);
 
 	if (delta > ARCAN_TIMER_TICK){
 		int nticks = delta / ARCAN_TIMER_TICK;
@@ -614,7 +614,7 @@ void arcan_event_purge()
 {
 	eventfront = 0;
 	eventback = 0;
-	platform_event_reset(&default_evctx);
+	arcan_platform_event_reset(&default_evctx);
 }
 
 arcan_benchdata* arcan_bench_data()
@@ -653,7 +653,7 @@ void arcan_bench_register_frame()
 
 void arcan_event_deinit(struct arcan_evctx* ctx, bool flush)
 {
-	platform_event_deinit(ctx);
+	arcan_platform_event_deinit(ctx);
 
 /* This separation is to avoid some edge cases like VT switching causing events
  * to be dropped even when there are dependencies such as key-down to key-up */
@@ -835,6 +835,13 @@ void arcan_event_setdrain(struct arcan_evctx* ctx, arcan_event_handler drain)
 	ctx->drain = drain;
 }
 
+static int event_enqueue(arcan_platform_evctx ctx, const struct arcan_event* const src)
+{
+	if (ctx) return arcan_event_enqueue(ctx, src);
+	arcan_platform_evctx defctx = arcan_event_defaultctx();
+	return arcan_event_enqueue(defctx, src);
+}
+
 void arcan_event_init(struct arcan_evctx* ctx)
 {
 /*
@@ -870,7 +877,8 @@ void arcan_event_init(struct arcan_evctx* ctx)
 	}
 
 	epoch = arcan_timemillis() - ctx->c_ticks * ARCAN_TIMER_TICK;
-	platform_event_init(ctx);
+	arcan_platform_event_setup(&event_enqueue);
+	arcan_platform_event_init(ctx);
 }
 
 void arcan_led_removed(int devid)

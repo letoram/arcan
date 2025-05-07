@@ -131,7 +131,7 @@ printf("Usage: arcan [-whfmWMOqspTBtHbdgaSV] applname "
 
 /* built-in envopts for _event.c, should really be moved there */
 	printf("Input platform configuration options:\n");
-	cur = platform_event_envopts();
+	cur = arcan_platform_event_envopts();
 	if (*cur){
 	while(1){
 		const char* a = *cur++;
@@ -273,7 +273,7 @@ int MAIN_REDIR(int argc, char* argv[])
 	platform_device_init();
 	platform_video_preinit();
 	platform_audio_preinit();
-	platform_event_preinit();
+	arcan_platform_event_preinit();
 	arcan_log_destination(stderr, 0);
 
 /*
@@ -633,7 +633,7 @@ int MAIN_REDIR(int argc, char* argv[])
 				lastctxc = lastctxa;
 
 /* rescan so devices seem to be added again */
-			platform_event_rescan_idev(evctx);
+			arcan_platform_event_rescan_idev(evctx);
 		}
 		else{
 /* for adopt the rescan is deferred (adopt messes with the eventqueu) */
@@ -768,7 +768,7 @@ int MAIN_REDIR(int argc, char* argv[])
  * complex pattern as the work in selectively recovering the event-queue after
  * an error is much too dangerous */
 		platform_video_recovery();
-		platform_event_rescan_idev(evctx);
+		arcan_platform_event_rescan_idev(evctx);
 
 		in_recover = false;
 	}

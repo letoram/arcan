@@ -7,6 +7,7 @@ const a12_version = std.SemanticVersion{
     .minor = 1,
     .patch = 0,
 };
+
 const shmif_version = std.SemanticVersion{
     .major = 0,
     .minor = 17,
@@ -466,6 +467,8 @@ fn createArcanTui(b: *std.Build, opts: anytype) *std.Build.Step.Compile {
     return step;
 }
 
+const InputPlatform = enum { sdl2, sdl, evdev, wscons, headless };
+
 fn createArcanPlatform(b: *std.Build, opts: anytype) *std.Build.Step.Compile {
     const lib_opts = .{
         .name = "arcan_platform",
@@ -508,6 +511,9 @@ fn createArcanPlatform(b: *std.Build, opts: anytype) *std.Build.Step.Compile {
     }
 
     step.addIncludePath(b.path("src/platform"));
+    step.addIncludePath(b.path("src/common"));
+
+    step.addCSourceFile(.{ .file = b.path("src/common/arcan_str.c") });
 
     switch (opts.target.result.os.tag) {
         .linux => {
@@ -550,12 +556,16 @@ fn createArcanPlatform(b: *std.Build, opts: anytype) *std.Build.Step.Compile {
         else => @panic("Unsupported platform"),
     }
 
+    const input_platform = InputPlatform.evdev;
+    step.addCSourceFile(.{ .file = b.path("src/engine/arcan_trace.c") }); // Pulled in for event platform
+    step.addCSourceFile(.{ .file = b.path(b.fmt("src/platform/{s}/event.c", .{@tagName(input_platform)})) });
+
     return step;
 }
 
 fn createArcanPlatformTest(b: *std.Build, opts: anytype) *std.Build.Step.Compile {
     const step = b.addTest(.{
-        .root_source_file = b.path("tests/zig/os_platform.zig"),
+        .root_source_file = b.path("tests/zig/arcan_platform.zig"),
         .target = opts.target,
         .optimize = opts.optimize,
     });
@@ -565,9 +575,16 @@ fn createArcanPlatformTest(b: *std.Build, opts: anytype) *std.Build.Step.Compile
         .target = opts.target,
         .optimize = opts.optimize,
     });
-
     const os_platform_module = os_platform_step.createModule();
     step.root_module.addImport("os_platform", os_platform_module);
+
+    const event_platform_step = b.addTranslateC(.{
+        .root_source_file = b.path("src/platform/event_platform.h"),
+        .target = opts.target,
+        .optimize = opts.optimize,
+    });
+    const event_platform_module = event_platform_step.createModule();
+    step.root_module.addImport("event_platform", event_platform_module);
 
     return step;
 }

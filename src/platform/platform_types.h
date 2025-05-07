@@ -328,30 +328,4 @@ enum shader_vertex_attributes {
  */
 typedef long long arcan_vobj_id;
 
-enum ARCAN_ANALOGFILTER_KIND {
-	ARCAN_ANALOGFILTER_NONE = 0,
-	ARCAN_ANALOGFILTER_PASS = 1,
-	ARCAN_ANALOGFILTER_AVG  = 2,
-	ARCAN_ANALOGFILTER_FORGET = 3,
- 	ARCAN_ANALOGFILTER_ALAST = 4
-};
-
-/*
- * Some platforms can statically/dynamically determine what kinds of events
- * they are capable of emitting. This is helpful when determining what input
- * mode to expect (window manager that requires translated inputs and waits
- * because none are available
- */
-enum PLATFORM_EVENT_CAPABILITIES {
-	ACAP_TRANSLATED = 1,
-	ACAP_MOUSE = 2,
-	ACAP_GAMING = 4,
-	ACAP_TOUCH = 8,
-	ACAP_POSITION = 16,
-	ACAP_ORIENTATION = 32,
-	ACAP_EYES = 64
-};
-
-struct arcan_evctx;
-
 #endif

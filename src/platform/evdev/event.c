@@ -14,7 +14,7 @@
 						arcan_timemillis(), "evdev:", __LINE__, __func__,##__VA_ARGS__); \
 						} while (0)
 
-#define verbose_print
+#define verbose_print(...)
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -40,13 +40,14 @@
 #include <dev/evdev/input.h>
 #endif
 
-#include "arcan_shmif.h"
-#include "arcan_math.h"
-#include "arcan_general.h"
-#include "arcan_event.h"
-#include "arcan_led.h"
-#include "arcan_video.h"
-#include "arcan_videoint.h"
+#include "os_platform.h"
+#include "event_platform.h"
+#include "../../shmif/arcan_shmif.h"
+#include "../../engine/arcan_general.h"
+// #include "../../engine/arcan_event.h"
+// #include "../../engine/arcan_led.h" // TODO move to encode frameserver
+// #include "arcan_video.h"
+// #include "arcan_videoint.h"
 #include "keycode_xlate.h"
 
 #ifdef HAVE_XKBCOMMON
@@ -211,16 +212,17 @@ struct devnode {
 		int ind;
 	} touch;
 
+// TODO move to encode frameserver
 /* and also possible act as a LED controller */
-	struct {
-		bool gotled;
-		int ctrlid;
-		int ind;
-		int fds[2];
-	} led;
+	// struct {
+	// 	bool gotled;
+	// 	int ctrlid;
+	// 	int ind;
+	// 	int fds[2];
+	// } led;
 };
 
-static void got_device(struct arcan_evctx* ctx, int fd, const char*);
+static void got_device(arcan_platform_evctx ctx, int fd, const char*);
 
 /* for other platforms and legacy, devid used to be allocated sequentially
  * and swept linear, even though this platform do not work like that and we
@@ -273,12 +275,13 @@ static bool identify(int fd, const char* path,
 /*
  * first, check if any other subsystem knows about this one and ignore if so
  */
-	if (arcan_led_known(nodeid.vendor, nodeid.product)){
-		debug_print(
-			"led subsys know %d, %d\n", (int)nodeid.vendor, (int)nodeid.product);
-		arcan_led_init();
-		return false;
-	}
+// TODO move to led controller
+	// if (arcan_led_known(nodeid.vendor, nodeid.product)){
+	// 	debug_print(
+	// 		"led subsys know %d, %d\n", (int)nodeid.vendor, (int)nodeid.product);
+	// 	arcan_led_init();
+	// 	return false;
+	// }
 
 /* didn't find much on how unique eviocguniq actually was, nor common lengths
  * or what not so just mix them in a buffer, hash and let unsigned overflow
@@ -348,7 +351,7 @@ static bool identify(int fd, const char* path,
 	return true;
 }
 
-static inline bool process_axis(struct arcan_evctx* ctx,
+static inline bool process_axis(arcan_platform_evctx ctx,
 	struct axis_opts* daxis, int16_t samplev, int16_t* outv)
 {
 	if (daxis->mode == ARCAN_ANALOGFILTER_NONE)
@@ -464,7 +467,14 @@ static struct axis_opts* find_axis(int devid, unsigned axisid, bool* outn)
 	return NULL;
 }
 
-arcan_errc platform_event_analogstate(int devid, int axisid,
+int (*arcan_platform_event_enqueue)(arcan_platform_evctx ctx, const struct arcan_event* const src) = NULL;
+void arcan_platform_event_setup(
+	int (*event_enqueue_cb)(arcan_platform_evctx ctx, const struct arcan_event* const src))
+{
+	arcan_platform_event_enqueue = event_enqueue_cb;
+}
+
+arcan_errc arcan_platform_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode)
 {
@@ -484,7 +494,7 @@ arcan_errc platform_event_analogstate(int devid, int axisid,
 	return ARCAN_OK;
 }
 
-void platform_event_analogall(bool enable, bool mouse)
+void arcan_platform_event_analogall(bool enable, bool mouse)
 {
 	struct devnode* node = lookup_devnode(iodev.mouseid);
 	if (!node)
@@ -496,8 +506,8 @@ void platform_event_analogall(bool enable, bool mouse)
  */
 }
 
-static void disconnect(struct arcan_evctx* ctx, struct devnode* node);
-void platform_event_analogfilter(int devid,
+static void disconnect(arcan_platform_evctx ctx, struct devnode* node);
+void arcan_platform_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
 {
@@ -509,7 +519,7 @@ void platform_event_analogfilter(int devid,
 /* this is also a piece of legacy, other functions operate on an explicit
  * context, but there is really only one */
 		if (node)
-			disconnect(arcan_event_defaultctx(), node);
+			disconnect(NULL, node);
 		return;
 	}
 
@@ -529,7 +539,7 @@ void platform_event_analogfilter(int devid,
 	set_analogstate(axis,lower_bound, upper_bound, deadzone, buffer_sz, kind);
 }
 
-static bool discovered(struct arcan_evctx* ctx,
+static bool discovered(arcan_platform_evctx ctx,
 	const char* name, size_t name_len, bool nopending)
 {
 	char buffer[name_len+sizeof(notify_scan_dir)];
@@ -577,7 +587,7 @@ static bool discovered(struct arcan_evctx* ctx,
 		pending[j].path = malloc(name_len + 1);
 		sprintf(pending[j].path, "%.*s", (int)name_len, name);
 		pending[j].tries = default_eacces_tries;
-		pending[j].last_ts = arcan_frametime();
+		pending[j].last_ts = arcan_timemillis();
 		return false;
 	}
 
@@ -593,18 +603,18 @@ static bool discovered(struct arcan_evctx* ctx,
 	return false;
 }
 
-static void process_pending(struct arcan_evctx* ctx)
+static void process_pending(arcan_platform_evctx ctx)
 {
 	for (size_t i = 0; i < COUNT_OF(pending); i++){
 		if (!pending[i].path)
 			continue;
 
 /* wait a little longer for each failed attempt */
-		if (arcan_frametime() - pending[i].last_ts < (default_eacces_tries -
+		if (arcan_timemillis() - pending[i].last_ts < (default_eacces_tries -
 			pending[i].tries + 1) * default_eacces_delay)
 			continue;
 
-		pending[i].last_ts = arcan_frametime();
+		pending[i].last_ts = arcan_timemillis();
 
 		if (discovered(ctx, pending[i].path, strlen(pending[i].path), true)){
 			free(pending[i].path);
@@ -624,7 +634,7 @@ static void process_pending(struct arcan_evctx* ctx)
 	}
 }
 
-static void disconnect(struct arcan_evctx* ctx, struct devnode* node)
+static void disconnect(arcan_platform_evctx ctx, struct devnode* node)
 {
 	struct arcan_event addev = {
 		.category = EVENT_IO,
@@ -636,7 +646,7 @@ static void disconnect(struct arcan_evctx* ctx, struct devnode* node)
 	};
 	snprintf((char*) &addev.io.label, sizeof(addev.io.label) /
 		sizeof(addev.io.label[0]), "%s", node->label);
-	arcan_event_enqueue(ctx, &addev);
+	arcan_platform_event_enqueue(ctx, &addev);
 
 	for (size_t i = 0; i < iodev.sz_nodes; i++)
 		if (node->devnum == iodev.nodes[i].devnum){
@@ -646,17 +656,17 @@ static void disconnect(struct arcan_evctx* ctx, struct devnode* node)
 			node->handle = -1;
 			iodev.pollset[i].events = iodev.pollset[i].revents = 0;
 			iodev.pollset[i].fd = -1;
-			if (node->led.gotled){
-				iodev.pollset[i+iodev.sz_nodes].fd = -1;
-				iodev.pollset[i+iodev.sz_nodes].events =
-					iodev.pollset[i+iodev.sz_nodes].revents = 0;
-				node->led.gotled = false;
-				arcan_led_remove(node->led.ctrlid);
-				close(node->led.fds[0]);
-				close(node->led.fds[1]);
-				node->led.fds[0] = -1;
-				node->led.fds[1] = -1;
-			}
+			// if (node->led.gotled){
+			// 	iodev.pollset[i+iodev.sz_nodes].fd = -1;
+			// 	iodev.pollset[i+iodev.sz_nodes].events =
+			// 		iodev.pollset[i+iodev.sz_nodes].revents = 0;
+			// 	node->led.gotled = false;
+			// 	arcan_led_remove(node->led.ctrlid);
+			// 	close(node->led.fds[0]);
+			// 	close(node->led.fds[1]);
+			// 	node->led.fds[0] = -1;
+			// 	node->led.fds[1] = -1;
+			// }
 #ifdef HAVE_XKBCOMMON
 			if (node->type == DEVNODE_KEYBOARD && node->keyboard.xkb_state){
 				xkb_state_unref(node->keyboard.xkb_state);
@@ -669,43 +679,43 @@ static void disconnect(struct arcan_evctx* ctx, struct devnode* node)
 		}
 }
 
-static void do_led(struct devnode* node)
-{
-	if (!node->led.gotled){
-		arcan_warning("evdev(), pollset corruption? POLLIN on node without LED\n");
-		return;
-	}
+// static void do_led(struct devnode* node)
+// {
+// 	if (!node->led.gotled){
+// 		arcan_warning("evdev(), pollset corruption? POLLIN on node without LED\n");
+// 		return;
+// 	}
 
-	uint8_t buf[2];
-	bool set = false;
+// 	uint8_t buf[2];
+// 	bool set = false;
 
-	while (2 == read(node->led.fds[0], buf, 2)){
-		switch (tolower(buf[0])){
-		case 'A': node->led.ind = -1; break;
-		case 'a': node->led.ind = buf[1]; break;
-/* not registered as a RGB led */
-		case 'r': break;
-		case 'g': break;
-		case 'b': break;
-		case 'i': set = buf[1] > 0; break;
-		case 'c':
-			if (node->led.ind == -1){
-				for (size_t i = 0; i < LED_MAX; i++)
-					if (-1 == write(node->handle, &(struct input_event){.type = EV_LED,
-						.code = i, .value = set}, sizeof(struct input_event)))
-						arcan_warning("platform/evdev: failed to write to led device\n");
-			}
-			else {
-				if (-1 == write(node->handle, &(struct input_event){.type = EV_LED,
-					.code = node->led.ind, .value = set}, sizeof(struct input_event)))
-					arcan_warning("platform/evdev: failed to write to led device\n");
-			}
-		break;
-		}
-	}
-}
+// 	while (2 == read(node->led.fds[0], buf, 2)){
+// 		switch (tolower(buf[0])){
+// 		case 'A': node->led.ind = -1; break;
+// 		case 'a': node->led.ind = buf[1]; break;
+// /* not registered as a RGB led */
+// 		case 'r': break;
+// 		case 'g': break;
+// 		case 'b': break;
+// 		case 'i': set = buf[1] > 0; break;
+// 		case 'c':
+// 			if (node->led.ind == -1){
+// 				for (size_t i = 0; i < LED_MAX; i++)
+// 					if (-1 == write(node->handle, &(struct input_event){.type = EV_LED,
+// 						.code = i, .value = set}, sizeof(struct input_event)))
+// 						arcan_warning("platform/evdev: failed to write to led device\n");
+// 			}
+// 			else {
+// 				if (-1 == write(node->handle, &(struct input_event){.type = EV_LED,
+// 					.code = node->led.ind, .value = set}, sizeof(struct input_event)))
+// 					arcan_warning("platform/evdev: failed to write to led device\n");
+// 			}
+// 		break;
+// 		}
+// 	}
+// }
 
-void platform_event_process(struct arcan_evctx* ctx)
+void arcan_platform_event_process(arcan_platform_evctx ctx)
 {
 /* lovely little variable length field at end of struct here /sarcasm,
  * could get away with running the notify polling less often than once
@@ -743,9 +753,9 @@ void platform_event_process(struct arcan_evctx* ctx)
 
 	for (size_t i = 0; i < iodev.sz_nodes; i++){
 /* recall, sz_nodes is half the count, i + sz_nodes = alt-dev index */
-		if (iodev.pollset[i+iodev.sz_nodes].revents & POLLIN){
-			do_led(&iodev.nodes[i]);
-		}
+		// if (iodev.pollset[i+iodev.sz_nodes].revents & POLLIN){
+		// 	do_led(&iodev.nodes[i]);
+		// }
 
 		if (iodev.pollset[i].fd == -1 || 0 == iodev.pollset[i].revents)
 			continue;
@@ -770,7 +780,7 @@ void platform_event_process(struct arcan_evctx* ctx)
 	TRACE_MARK_EXIT("event", "flush-pending-in", TRACE_SYS_DEFAULT, 0, 0, "flush-in");
 }
 
-void platform_event_samplebase(int devid, float xyz[3])
+void arcan_platform_event_samplebase(int devid, float xyz[3])
 {
 	struct devnode* node = lookup_devnode(devid);
 	if (!node || node->type != DEVNODE_MOUSE)
@@ -780,7 +790,7 @@ void platform_event_samplebase(int devid, float xyz[3])
 	node->cursor.my = xyz[1];
 }
 
-void platform_event_keyrepeat(struct arcan_evctx* ctx, int* period, int* delay)
+void arcan_platform_event_keyrepeat(arcan_platform_evctx ctx, int* period, int* delay)
 {
 	bool upd = false;
 
@@ -971,53 +981,53 @@ static void map_axes(int fd, size_t bitn, struct devnode* node)
 /*
  * setup/register/prepare led- controller handler
  */
-static void setup_led(struct devnode* dst, size_t bitn, int fd)
-{
-	unsigned long bits[ bit_count(LED_MAX) ];
-	if (-1 == ioctl(fd, EVIOCGBIT(bitn, sizeof(bits)), bits))
-		return;
+// static void setup_led(struct devnode* dst, size_t bitn, int fd)
+// {
+// 	unsigned long bits[ bit_count(LED_MAX) ];
+// 	if (-1 == ioctl(fd, EVIOCGBIT(bitn, sizeof(bits)), bits))
+// 		return;
 
-	size_t count = 0;
-	for (size_t i = 0; i < LED_MAX; i++){
-		if (bit_isset(bits, i))
-			count++;
-	}
+// 	size_t count = 0;
+// 	for (size_t i = 0; i < LED_MAX; i++){
+// 		if (bit_isset(bits, i))
+// 			count++;
+// 	}
 
-	if (!count)
-		return;
+// 	if (!count)
+// 		return;
 
-	if (pipe(dst->led.fds) == -1)
-		return;
+// 	if (pipe(dst->led.fds) == -1)
+// 		return;
 
-	for (size_t i = 0; i < 2; i++){
-		int flags = fcntl(dst->led.fds[i], F_GETFL);
-		if (-1 != flags)
-			fcntl(dst->led.fds[i], F_SETFL, flags | O_NONBLOCK);
-		flags = fcntl(dst->led.fds[i], F_GETFD);
-		if (-1 != flags)
-			fcntl(dst->led.fds[i], F_SETFD, flags | FD_CLOEXEC);
-	}
+// 	for (size_t i = 0; i < 2; i++){
+// 		int flags = fcntl(dst->led.fds[i], F_GETFL);
+// 		if (-1 != flags)
+// 			fcntl(dst->led.fds[i], F_SETFL, flags | O_NONBLOCK);
+// 		flags = fcntl(dst->led.fds[i], F_GETFD);
+// 		if (-1 != flags)
+// 			fcntl(dst->led.fds[i], F_SETFD, flags | FD_CLOEXEC);
+// 	}
 
-	char ledname[16];
-	snprintf(ledname, 16, "%d_led", dst->devnum);
-	dst->led.ctrlid = arcan_led_register(dst->led.fds[1], dst->devnum, ledname,
-		(struct led_capabilities){ .nleds = LED_MAX,
-			.variable_brightness = false, .rgb = false }
-	);
-	if (-1 == dst->led.ctrlid){
-		close(dst->led.fds[0]);
-		close(dst->led.fds[1]);
-		dst->led.fds[0] = dst->led.fds[1] = -1;
-		return;
-	}
-	dst->led.gotled = true;
-/* reset */
-	for (size_t i = 0; i < LED_MAX; i++){
-		if (-1 == write(dst->handle, &(struct input_event){.type = EV_LED,
-			.code = i, .value = 0}, sizeof(struct input_event)))
-			arcan_warning("platform/evdev(), error sending reset to led device\n");
-	}
-}
+// 	char ledname[16];
+// 	snprintf(ledname, 16, "%d_led", dst->devnum);
+// 	dst->led.ctrlid = arcan_led_register(dst->led.fds[1], dst->devnum, ledname,
+// 		(struct led_capabilities){ .nleds = LED_MAX,
+// 			.variable_brightness = false, .rgb = false }
+// 	);
+// 	if (-1 == dst->led.ctrlid){
+// 		close(dst->led.fds[0]);
+// 		close(dst->led.fds[1]);
+// 		dst->led.fds[0] = dst->led.fds[1] = -1;
+// 		return;
+// 	}
+// 	dst->led.gotled = true;
+// /* reset */
+// 	for (size_t i = 0; i < LED_MAX; i++){
+// 		if (-1 == write(dst->handle, &(struct input_event){.type = EV_LED,
+// 			.code = i, .value = 0}, sizeof(struct input_event)))
+// 			arcan_warning("platform/evdev(), error sending reset to led device\n");
+// 	}
+// }
 
 #ifndef HAVE_XKBCOMMON
 struct xkb_keymap;
@@ -1077,7 +1087,7 @@ static int alloc_node_slot(const char* path)
 		memset(nn + iodev.sz_nodes, '\0', sizeof(struct devnode) * 8);
 		for (size_t i = iodev.sz_nodes; i < new_cnt; i++){
 			iodev.nodes[i].handle = BADFD;
-			iodev.nodes[i].led.fds[0] = iodev.nodes[i].led.fds[1] = BADFD;
+			// iodev.nodes[i].led.fds[0] = iodev.nodes[i].led.fds[1] = BADFD;
 		}
 
 /* pollset size is actually twice the number of nodes to allow a
@@ -1093,8 +1103,8 @@ static int alloc_node_slot(const char* path)
 			memset(&newset[i+new_cnt], '\0', sizeof(struct pollfd));
 			newset[i].events = POLLIN | POLLERR | POLLHUP;
 			newset[i].fd = iodev.nodes[i].handle;
-			newset[i+new_cnt].events = POLLIN;
-			newset[i+new_cnt].fd = iodev.nodes[i].led.fds[0];
+			// newset[i+new_cnt].events = POLLIN;
+			// newset[i+new_cnt].fd = iodev.nodes[i].led.fds[0];
 		}
 
 /* update pointers, set hole to the first new entry */
@@ -1106,7 +1116,7 @@ static int alloc_node_slot(const char* path)
 	return hole;
 }
 
-static void send_device_added(struct arcan_evctx* ctx, struct devnode* node)
+static void send_device_added(arcan_platform_evctx ctx, struct devnode* node)
 {
 	struct arcan_event addev = {
 		.category = EVENT_IO,
@@ -1118,11 +1128,11 @@ static void send_device_added(struct arcan_evctx* ctx, struct devnode* node)
 	};
 	snprintf((char*) &addev.io.label, sizeof(addev.io.label) /
 		sizeof(addev.io.label[0]), "%s", node->label);
-	arcan_event_enqueue(ctx, &addev);
+	arcan_platform_event_enqueue(ctx, &addev);
 }
 
 
-int platform_event_translation(
+int arcan_platform_event_translation(
 	int devid, int action, const char** arg, const char** err)
 {
 	struct devnode* node = NULL;
@@ -1171,7 +1181,7 @@ int platform_event_translation(
  * anyone with a multiple keyboard setup that calls for different layouts
  * already have very .. exotic tastes.
  */
-	if (action == EVENT_TRANSLATION_CLEAR){
+	if (action == ARCAN_EVENT_TRANSLATION_CLEAR){
 		uintptr_t tag;
 		arcan_cfg_lookup_fun get_config = arcan_platform_config_lookup(&tag);
 		get_config("event_xkb_rules", 0, &rules, tag);
@@ -1187,8 +1197,8 @@ int platform_event_translation(
 		names.layout = layout ? options : getenv("XKB_DEFAULT_LAYOUT");
 	}
 /* just fill struct from arg */
-	else if (action == EVENT_TRANSLATION_SET ||
-		action == EVENT_TRANSLATION_SERIALIZE_SPEC){
+	else if (action == ARCAN_EVENT_TRANSLATION_SET ||
+		action == ARCAN_EVENT_TRANSLATION_SERIALIZE_SPEC){
 		names.layout = arg[0];
 		if (names.layout)
 			names.model = arg[1];
@@ -1197,7 +1207,7 @@ int platform_event_translation(
 		if (names.variant)
 			names.options = arg[3];
 	}
-	else if (action == EVENT_TRANSLATION_SERIALIZE_CURRENT){
+	else if (action == ARCAN_EVENT_TRANSLATION_SERIALIZE_CURRENT){
 		return xkb_layout_to_fd(node->keyboard.xkb_layout, err);
 	}
 	else {
@@ -1210,7 +1220,7 @@ int platform_event_translation(
 	struct xkb_keymap* map =
 		xkb_keymap_new_from_names(xkb_context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
 
-	if (action == EVENT_TRANSLATION_SERIALIZE_SPEC){
+	if (action == ARCAN_EVENT_TRANSLATION_SERIALIZE_SPEC){
 		int fd = xkb_layout_to_fd(map, err);
 		xkb_keymap_unref(map);
 		return fd;
@@ -1246,16 +1256,16 @@ int platform_event_translation(
 	return false;
 }
 
-int platform_event_device_request(int space, const char* path)
+int arcan_platform_event_device_request(int space, const char* path)
 {
 	return -EINVAL;
 }
 
-static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
+static void got_device(arcan_platform_evctx ctx, int fd, const char* path)
 {
 	struct devnode node = {
 		.handle = fd,
-		.led.fds = {BADFD, BADFD}
+		// .led.fds = {BADFD, BADFD}
 	};
 
 	struct stat fdstat;
@@ -1300,7 +1310,7 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 	bool mouse_ax = false;
 	bool mouse_btn = false;
 	bool joystick_btn = false;
-	int add_led = -1;
+	// int add_led = -1;
 
 	size_t bpl = sizeof(long) * 8;
 	size_t nbits = ((EV_MAX)-1) / bpl + 1;
@@ -1336,9 +1346,9 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 		break;
 		case EV_SYN:
 		break;
-		case EV_LED:
-			add_led = bit;
-		break;
+		// case EV_LED:
+		// 	add_led = bit;
+		// break;
 		case EV_SND:
 		break;
 		case EV_REP:
@@ -1397,17 +1407,17 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
  * know if there's a slot for it or not, the pollset actually is
  * twice the expected size, one for the main device and one for
  * the possible led controller */
-	if (add_led != -1){
-		setup_led(&node, add_led, fd);
-		if (node.led.gotled){
-			iodev.pollset[hole+iodev.sz_nodes].fd = node.led.fds[0];
-		}
-	}
+	// if (add_led != -1){
+	// 	setup_led(&node, add_led, fd);
+	// 	if (node.led.gotled){
+	// 		iodev.pollset[hole+iodev.sz_nodes].fd = node.led.fds[0];
+	// 	}
+	// }
 	iodev.nodes[hole] = node;
 
 	if (node.type == DEVNODE_KEYBOARD){
 		const char* err;
-		platform_event_translation(node.devnum, EVENT_TRANSLATION_CLEAR, NULL, &err);
+		arcan_platform_event_translation(node.devnum, ARCAN_EVENT_TRANSLATION_CLEAR, NULL, &err);
 	}
 
 	verbose_print("input: (%s:%s) added as type: %s",
@@ -1421,7 +1431,7 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 #undef bit_longn
 #undef bit_count
 
-void platform_event_rescan_idev(struct arcan_evctx* ctx)
+void arcan_platform_event_rescan_idev(arcan_platform_evctx ctx)
 {
 	char ibuf [strlen(notify_scan_dir) + sizeof("/*")];
 	glob_t res = {0};
@@ -1489,7 +1499,7 @@ static void update_state(int code, bool state, unsigned* statev)
 }
 
 static void defhandler_kbd(
-	struct arcan_evctx* out, struct devnode* node)
+	arcan_platform_evctx out, struct devnode* node)
 {
 	struct input_event inev[64];
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));
@@ -1564,14 +1574,14 @@ static void defhandler_kbd(
 			if (iodev.period){
 				newev.io.input.translated.modifiers |= ARKMOD_REPEAT;
 				newev.io.input.translated.active = false;
-				arcan_event_enqueue(out, &newev);
+				arcan_platform_event_enqueue(out, &newev);
 				newev.io.input.translated.active = true;
-				arcan_event_enqueue(out, &newev);
+				arcan_platform_event_enqueue(out, &newev);
 			}
 		}
 		else{
 			newev.io.input.translated.active = inev[i].value != 0;
-			arcan_event_enqueue(out, &newev);
+			arcan_platform_event_enqueue(out, &newev);
 		}
 
 		break;
@@ -1584,7 +1594,7 @@ static void defhandler_kbd(
 }
 
 static void flush_pending(
-	struct arcan_evctx* ctx, struct devnode* node)
+	arcan_platform_evctx ctx, struct devnode* node)
 {
 	arcan_event newev = {
 		.category = EVENT_IO,
@@ -1606,12 +1616,12 @@ static void flush_pending(
 	newev.io.input.touch.pressure = node->touch.pressure;
 	newev.io.input.touch.size = node->touch.size;
 
-	arcan_event_enqueue(ctx, &newev);
+	arcan_platform_event_enqueue(ctx, &newev);
 	node->touch.pending = false;
 	node->touch.active = true;
 }
 
-static void decode_mt(struct arcan_evctx* ctx,
+static void decode_mt(arcan_platform_evctx ctx,
 	struct devnode* node, int code, int val)
 {
 /* there are multiple protocols and mappings for this that we don't
@@ -1669,7 +1679,7 @@ static void decode_mt(struct arcan_evctx* ctx,
 	}
 }
 
-static void decode_hat(struct arcan_evctx* ctx,
+static void decode_hat(arcan_platform_evctx ctx,
 	struct devnode* node, int ind, int val)
 {
 	arcan_event newev = {
@@ -1699,13 +1709,13 @@ static void decode_hat(struct arcan_evctx* ctx,
 		if (node->game.hats[ind] != 0){
 			newev.io.subid = base + ind;
 			node->game.hats[ind] = 0;
-			arcan_event_enqueue(ctx, &newev);
+			arcan_platform_event_enqueue(ctx, &newev);
 		}
 
 		if (node->game.hats[ind+1] != 0){
 			newev.io.subid = base + ind + 1;
 			node->game.hats[ind+1] = 0;
-			arcan_event_enqueue(ctx, &newev);
+			arcan_platform_event_enqueue(ctx, &newev);
 		}
 
 		return;
@@ -1717,10 +1727,10 @@ static void decode_hat(struct arcan_evctx* ctx,
 	node->game.hats[ind] = val;
 	newev.io.input.digital.active = true;
 	newev.io.subid = base + ind;
-	arcan_event_enqueue(ctx, &newev);
+	arcan_platform_event_enqueue(ctx, &newev);
 }
 
-static void defhandler_game(struct arcan_evctx* ctx, struct devnode* node)
+static void defhandler_game(arcan_platform_evctx ctx, struct devnode* node)
 {
 	struct input_event inev[64];
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));
@@ -1761,7 +1771,7 @@ static void defhandler_game(struct arcan_evctx* ctx, struct devnode* node)
 			newev.io.input.digital.active = inev[i].value;
 			newev.io.subid = inev[i].code;
 			newev.io.devid = node->devnum;
-			arcan_event_enqueue(ctx, &newev);
+			arcan_platform_event_enqueue(ctx, &newev);
 		break;
 
 		case EV_SW:
@@ -1770,7 +1780,7 @@ static void defhandler_game(struct arcan_evctx* ctx, struct devnode* node)
 			newev.io.input.digital.active = inev[i].value;
 			newev.io.subid = inev[i].code;
 			newev.io.devid = node->devnum;
-			arcan_event_enqueue(ctx, &newev);
+			arcan_platform_event_enqueue(ctx, &newev);
 		break;
 
 		case EV_REL:
@@ -1795,7 +1805,7 @@ static void defhandler_game(struct arcan_evctx* ctx, struct devnode* node)
 				newev.io.devid = node->devnum;
 				newev.io.input.analog.axisval[0] = samplev;
 				newev.io.input.analog.nvalues = 2;
-				arcan_event_enqueue(ctx, &newev);
+				arcan_platform_event_enqueue(ctx, &newev);
 			}
 			else if ((inev[i].code >= ABS_X && inev[i].code <= ABS_Y) ||
 				(inev[i].code >= ABS_MT_SLOT && inev[i].code <= ABS_MT_TOOL_Y)){
@@ -1820,7 +1830,7 @@ static void defhandler_game(struct arcan_evctx* ctx, struct devnode* node)
 				newev.io.devid = node->devnum;
 				newev.io.input.analog.axisval[0] = inev[i].value;
 				newev.io.input.analog.nvalues = 1;
-				arcan_event_enqueue(ctx, &newev);
+				arcan_platform_event_enqueue(ctx, &newev);
 			}
 			else {
 				verbose_print("kind=game:device=%d:rel:code=%d:status=unknown", node->devnum, inev[i].code);
@@ -1847,7 +1857,7 @@ static inline short code_to_mouse(int code)
 		-1 : (code - BTN_MOUSE + 1);
 }
 
-static void defhandler_mouse(struct arcan_evctx* ctx,
+static void defhandler_mouse(arcan_platform_evctx ctx,
 	struct devnode* node)
 {
 	struct input_event inev[64];
@@ -1887,7 +1897,7 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 			newev.io.input.digital.active = inev[i].value;
 			newev.io.subid = samplev;
 
-			arcan_event_enqueue(ctx, &newev);
+			arcan_platform_event_enqueue(ctx, &newev);
 		break;
 		case EV_REL:
 			switch (inev[i].code){
@@ -1898,9 +1908,9 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 				newev.io.datatype = EVENT_IDATATYPE_DIGITAL;
 				newev.io.input.digital.active = 1;
 				newev.io.subid = vofs + (inev[i].value > 0 ? 256 : 257);
-				arcan_event_enqueue(ctx, &newev);
+				arcan_platform_event_enqueue(ctx, &newev);
 				newev.io.input.digital.active = 0;
-				arcan_event_enqueue(ctx, &newev);
+				arcan_platform_event_enqueue(ctx, &newev);
 			break;
 
 			case REL_X:
@@ -1918,7 +1928,7 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 					newev.io.input.analog.axisval[1] = node->cursor.mx;
 					newev.io.input.analog.nvalues = 2;
 
-					arcan_event_enqueue(ctx, &newev);
+					arcan_platform_event_enqueue(ctx, &newev);
 				}
 			break;
 			case REL_Y:
@@ -1934,7 +1944,7 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 					newev.io.input.analog.axisval[1] = node->cursor.my;
 					newev.io.input.analog.nvalues = 2;
 
-					arcan_event_enqueue(ctx, &newev);
+					arcan_platform_event_enqueue(ctx, &newev);
 				}
 			break;
 			default:
@@ -1947,7 +1957,7 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 	}
 }
 
-static void defhandler_null(struct arcan_evctx* out,
+static void defhandler_null(arcan_platform_evctx out,
 	struct devnode* node)
 {
 	char nbuf[256];
@@ -1958,7 +1968,7 @@ static void defhandler_null(struct arcan_evctx* out,
 	}
 }
 
-const char* platform_event_devlabel(int devid)
+const char* arcan_platform_event_devlabel(int devid)
 {
 	struct devnode* node = lookup_devnode(devid);
 	if (!node)
@@ -1972,12 +1982,12 @@ const char* platform_event_devlabel(int devid)
  * init/deinit sessions, which is needed for virtual terminal switching
  * and external_launch.
  */
-void platform_event_reset(struct arcan_evctx* ctx)
+void arcan_platform_event_reset(arcan_platform_evctx ctx)
 {
 
 }
 
-void platform_event_deinit(struct arcan_evctx* ctx)
+void arcan_platform_event_deinit(arcan_platform_evctx ctx)
 {
 	platform_device_release("TTY", -1);
 
@@ -2019,9 +2029,9 @@ void platform_device_lock(int devind, bool state)
  */
 }
 
-enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** out)
+enum ARCAN_PLATFORM_EVENT_CAPABILITIES arcan_platform_event_capabilities(const char** out)
 {
-	enum PLATFORM_EVENT_CAPABILITIES rv = 0;
+	enum ARCAN_PLATFORM_EVENT_CAPABILITIES rv = 0;
 	if (out)
 		*out = "evdev";
 
@@ -2052,7 +2062,7 @@ enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** out)
 	return rv;
 }
 
-const char** platform_event_envopts()
+const char** arcan_platform_event_envopts()
 {
 	return (const char**) envopts;
 }
@@ -2102,11 +2112,11 @@ static void find_tty()
 	}
 }
 
-void platform_event_preinit()
+void arcan_platform_event_preinit()
 {
 }
 
-void platform_event_init(struct arcan_evctx* ctx)
+void arcan_platform_event_init(arcan_platform_evctx ctx)
 {
 	uintptr_t tag;
 
@@ -2151,5 +2161,5 @@ void platform_event_init(struct arcan_evctx* ctx)
 #else
 #endif
 
-	platform_event_rescan_idev(ctx);
+	arcan_platform_event_rescan_idev(ctx);
 }

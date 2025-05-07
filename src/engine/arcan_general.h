@@ -8,6 +8,7 @@
 #define _HAVE_ARCAN_GENERAL
 
 #define PRIxVOBJ "lld"
+#include "arcan_math.h"
 #include "../platform/platform.h"
 #include "arcan_trace.h"
 

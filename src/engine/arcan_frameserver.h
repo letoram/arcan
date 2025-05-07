@@ -7,6 +7,8 @@
 #ifndef _HAVE_ARCAN_FRAMESERVER
 #define _HAVE_ARCAN_FRAMESERVER
 
+#include "../shmif/platform/shmif_platform.h"
+
 #define FSRV_MAX_VBUFC ARCAN_SHMIF_VBUFC_LIM
 #define FSRV_MAX_ABUFC ARCAN_SHMIF_ABUFC_LIM
 

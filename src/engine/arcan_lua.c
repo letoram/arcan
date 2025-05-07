@@ -4403,7 +4403,7 @@ static void append_iotable(lua_State* ctx, arcan_ioevent* ev)
 	break;
 
 	case EVENT_IO_STATUS:{
-		const char* lbl = platform_event_devlabel(ev->devid);
+		const char* lbl = arcan_platform_event_devlabel(ev->devid);
 		lua_pushliteral(ctx, "status");
 		lua_rawset(ctx, top);
 		tblbool(ctx, "status", true, top);
@@ -6405,7 +6405,7 @@ static int kbdrepeat(lua_State* ctx)
 	int rperiod = luaL_checknumber(ctx, 1);
 	int rdelay = luaL_optnumber(ctx, 2, -1);
 
-	platform_event_keyrepeat(arcan_event_defaultctx(), &rperiod, &rdelay);
+	arcan_platform_event_keyrepeat(arcan_event_defaultctx(), &rperiod, &rdelay);
 
 	lua_pushnumber(ctx, rperiod);
 	lua_pushnumber(ctx, rdelay);
@@ -6813,7 +6813,7 @@ static int inputbase(lua_State* ctx)
 	xyz[0] = luaL_optnumber(ctx, 2, 0);
 	xyz[1] = luaL_optnumber(ctx, 3, 0);
 	xyz[2] = luaL_optnumber(ctx, 4, 0);
-	platform_event_samplebase(devid, xyz);
+	arcan_platform_event_samplebase(devid, xyz);
 	LUA_ETRACE("input_samplebase", NULL, 0);
 }
 
@@ -6832,9 +6832,9 @@ static int inputremaptranslation(lua_State* ctx)
 	}
 
 	if (
-		act != EVENT_TRANSLATION_CLEAR &&
-		act != EVENT_TRANSLATION_SET &&
-		act != EVENT_TRANSLATION_REMAP){
+		act != ARCAN_EVENT_TRANSLATION_CLEAR &&
+		act != ARCAN_EVENT_TRANSLATION_SET &&
+		act != ARCAN_EVENT_TRANSLATION_REMAP){
 		arcan_fatal("input_remap_translation() - unknown op: %d\n", act);
 	}
 
@@ -6851,18 +6851,18 @@ static int inputremaptranslation(lua_State* ctx)
 	const char* err = "";
 
 	if (getmap){
-		int mode = EVENT_TRANSLATION_SERIALIZE_CURRENT;
-		if (act == EVENT_TRANSLATION_SET)
-			mode = EVENT_TRANSLATION_SERIALIZE_SPEC;
+		int mode = ARCAN_EVENT_TRANSLATION_SERIALIZE_CURRENT;
+		if (act == ARCAN_EVENT_TRANSLATION_SET)
+			mode = ARCAN_EVENT_TRANSLATION_SERIALIZE_SPEC;
 
-		int fd = platform_event_translation(devid, mode, arr, &err);
+		int fd = arcan_platform_event_translation(devid, mode, arr, &err);
 		struct nonblock_io* dst;
 		alt_nbio_import(ctx, fd, mode, &dst, NULL);
 		lua_pushstring(ctx, err);
 		LUA_ETRACE("input_remap_translation", NULL, 2);
 	}
 
-	int res = platform_event_translation(devid, act, arr, &err);
+	int res = arcan_platform_event_translation(devid, act, arr, &err);
 	lua_pushboolean(ctx, res);
 	lua_pushstring(ctx, err);
 
@@ -6873,7 +6873,7 @@ static int inputcap(lua_State* ctx)
 {
 	LUA_TRACE("input_capabilities");
 	const char* pident;
-	enum PLATFORM_EVENT_CAPABILITIES pcap = platform_event_capabilities(&pident);
+	enum ARCAN_PLATFORM_EVENT_CAPABILITIES pcap = arcan_platform_event_capabilities(&pident);
 
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
@@ -11777,7 +11777,7 @@ static int inputfilteranalog(lua_State* ctx)
 	else
 		arcan_warning("inputfilteranalog(), unsupported mode (%s)\n", smode);
 
-	platform_event_analogfilter(joyid, axisid,
+	arcan_platform_event_analogfilter(joyid, axisid,
 		lb, ub, deadzone, buffer_sz, mode);
 
 	LUA_ETRACE("inputanalog_filter", NULL, 0);
@@ -11810,16 +11810,16 @@ static int singlequery(lua_State* ctx, int devid, int axid)
 	int lbound, ubound, dz, ksz;
 	enum ARCAN_ANALOGFILTER_KIND mode;
 
-	arcan_errc errc = platform_event_analogstate(devid, axid,
+	arcan_errc errc = arcan_platform_event_analogstate(devid, axid,
 		&lbound, &ubound, &dz, &ksz, &mode);
 
 	if (errc != ARCAN_OK){
-		const char* lbl = platform_event_devlabel(devid);
+		const char* lbl = arcan_platform_event_devlabel(devid);
 
 		if (lbl != NULL){
 			lua_newtable(ctx);
 			int ttop = lua_gettop(ctx);
-			tbldynstr(ctx, "label", platform_event_devlabel(devid), ttop);
+			tbldynstr(ctx, "label", arcan_platform_event_devlabel(devid), ttop);
 			tblnum(ctx, "devid", devid, ttop);
 			return 1;
 		}
@@ -11831,7 +11831,7 @@ static int singlequery(lua_State* ctx, int devid, int axid)
 	int ttop = lua_gettop(ctx);
 	tblnum(ctx, "devid", devid, ttop);
 	tblnum(ctx, "subid", axid, ttop);
-	tbldynstr(ctx, "label", platform_event_devlabel(devid), ttop);
+	tbldynstr(ctx, "label", arcan_platform_event_devlabel(devid), ttop);
 	tblnum(ctx, "upper_bound", ubound, ttop);
 	tblnum(ctx, "lower_bound", lbound, ttop);
 	tblnum(ctx, "deadzone", dz, ttop);
@@ -11871,7 +11871,7 @@ static int inputanalogquery(lua_State* ctx)
 	bool rescan = luaL_optbnumber(ctx, 3, 0);
 
 	if (rescan)
-		platform_event_rescan_idev(arcan_event_defaultctx());
+		arcan_platform_event_rescan_idev(arcan_event_defaultctx());
 
 	if (devnum != -1){
 		int n = singlequery(ctx, devnum, axnum);
@@ -11888,7 +11888,7 @@ static int inputanalogquery(lua_State* ctx)
 			int lbound, ubound, dz, ksz;
 			enum ARCAN_ANALOGFILTER_KIND mode;
 
-			errc = platform_event_analogstate(devid, axid,
+			errc = arcan_platform_event_analogstate(devid, axid,
 				&lbound, &ubound, &dz, &ksz, &mode);
 
 			if (errc != ARCAN_OK)
@@ -11901,7 +11901,7 @@ static int inputanalogquery(lua_State* ctx)
 
 			tblnum(ctx, "devid", devid, ttop);
 			tblnum(ctx, "subid", axid, ttop);
-			tbldynstr(ctx, "label", platform_event_devlabel(devid), ttop);
+			tbldynstr(ctx, "label", arcan_platform_event_devlabel(devid), ttop);
 			tblnum(ctx, "upper_bound", ubound, ttop);
 			tblnum(ctx, "lower_bound", lbound, ttop);
 			tblnum(ctx, "deadzone", dz, ttop);
@@ -11925,7 +11925,7 @@ static int inputanalogtoggle(lua_State* ctx)
 	bool val = luaL_checkbnumber(ctx, 1);
 	bool mouse = luaL_optbnumber(ctx, 2, 0);
 
-	platform_event_analogall(val, mouse);
+	arcan_platform_event_analogall(val, mouse);
 
 	LUA_ETRACE("inputanalog_toggle", NULL, 0);
 }
@@ -13165,9 +13165,9 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"TRUST_KNOWN", CONST_TRUST_KNOWN},
 {"TRUST_PERMIT_UNKNOWN", CONST_TRUST_PERMIT_UNKNOWN},
 {"TRUST_TRANSITIVE", CONST_TRUST_TRANSITIVE},
-{"TRANSLATION_CLEAR", EVENT_TRANSLATION_CLEAR},
-{"TRANSLATION_SET", EVENT_TRANSLATION_SET},
-{"TRANSLATION_REMAP", EVENT_TRANSLATION_REMAP},
+{"TRANSLATION_CLEAR", ARCAN_EVENT_TRANSLATION_CLEAR},
+{"TRANSLATION_SET", ARCAN_EVENT_TRANSLATION_SET},
+{"TRANSLATION_REMAP", ARCAN_EVENT_TRANSLATION_REMAP},
 {"DEBUGLEVEL", lua_debug_level},
 };
 #undef EXT_CONSTTBL_GLOBINT

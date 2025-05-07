@@ -22,8 +22,16 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"
+#include "event_platform.h"
 
 #include "wskbdsdl.h"
+
+int (*arcan_platform_event_enqueue)(arcan_platform_evctx ctx, const struct arcan_event* const src) = NULL;
+void arcan_platform_event_setup(
+	int (*event_enqueue_cb)(arcan_platform_evctx ctx, const struct arcan_event* const src))
+{
+	arcan_platform_event_enqueue = event_enqueue_cb;
+}
 
 static struct
 {
@@ -88,22 +96,22 @@ static char* to_utf8(uint16_t utf16, uint8_t out[4])
 	return (char*) out;
 }
 
-void platform_event_samplebase(int devid, float xyz[3])
+void arcan_platform_event_samplebase(int devid, float xyz[3])
 {
 }
 
-arcan_errc platform_event_analogstate(int devid, int axisid,
+arcan_errc arcan_platform_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode)
 {
     return ARCAN_ERRC_NO_SUCH_OBJECT;
 }
 
-void platform_event_analogall(bool enable, bool mouse)
+void arcan_platform_event_analogall(bool enable, bool mouse)
 {
 }
 
-enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** out)
+enum ARCAN_PLATFORM_EVENT_CAPABILITIES arcan_platform_event_capabilities(const char** out)
 {
 	if (out)
 		*out = "openbsd";
@@ -112,7 +120,7 @@ enum PLATFORM_EVENT_CAPABILITIES platform_event_capabilities(const char** out)
 		ACAP_POSITION | ACAP_ORIENTATION;
 }
 
-void platform_event_analogfilter(int devid,
+void arcan_platform_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
 {
@@ -169,7 +177,7 @@ static void apply_modifiers(int value, struct arcan_event* ev)
 
 #define TS_MS(X) ((X).tv_sec * 1000 + (X).tv_nsec / 1.0e6)
 
-void platform_event_process(struct arcan_evctx* ctx)
+void arcan_platform_event_process(arcan_platform_evctx ctx)
 {
 	struct wscons_event events[64];
 	int type;
@@ -185,7 +193,7 @@ void platform_event_process(struct arcan_evctx* ctx)
 			case WSCONS_EVENT_MOUSE_UP:
 				if (evctx.mouse.bmask & (1 << events[i].value)){
 					evctx.mouse.bmask &= ~(1 << events[i].value);
-					arcan_event_enqueue(ctx, &(struct arcan_event){
+					arcan_platform_event_enqueue(ctx, &(struct arcan_event){
 						.category = EVENT_IO,
 						.io.label = "MOUSE\0",
 						.io.pts = TS_MS(events[i].time),
@@ -199,7 +207,7 @@ void platform_event_process(struct arcan_evctx* ctx)
 			case WSCONS_EVENT_MOUSE_DOWN:
 				if (!(evctx.mouse.bmask & (1 << events[i].value))){
 					evctx.mouse.bmask |= 1 << events[i].value;
-					arcan_event_enqueue(ctx, &(struct arcan_event){
+					arcan_platform_event_enqueue(ctx, &(struct arcan_event){
 						.category = EVENT_IO,
 						.io.label = "MOUSE\0",
 						.io.pts = TS_MS(events[i].time),
@@ -235,7 +243,7 @@ void platform_event_process(struct arcan_evctx* ctx)
 			break;
 			}
 			if (aev){
-				arcan_event_enqueue(ctx, &(struct arcan_event){
+				arcan_platform_event_enqueue(ctx, &(struct arcan_event){
 				.category = EVENT_IO,
 				.io.label = "MOUSE\0",
 				.io.subid = aind,
@@ -272,13 +280,13 @@ void platform_event_process(struct arcan_evctx* ctx)
 						.io.input.translated.active = type == WSCONS_EVENT_KEY_DOWN
 				};
 				apply_modifiers(events[i].value, &outev);
-				arcan_event_enqueue(ctx, &outev);
+				arcan_platform_event_enqueue(ctx, &outev);
 			}
 		}
 	}
 }
 
-void platform_event_keyrepeat(struct arcan_evctx* ctx, int* period, int* delay)
+void arcan_platform_event_keyrepeat(arcan_platform_evctx ctx, int* period, int* delay)
 {
 	bool upd = false;
 
@@ -319,23 +327,23 @@ void platform_event_keyrepeat(struct arcan_evctx* ctx, int* period, int* delay)
 	}
 }
 
-int platform_event_translation(
+int arcan_platform_event_translation(
 	int devid, int action, const char** names, const char** err)
 {
 	*err = "Unsupported";
 	return false;
 }
 
-int platform_event_device_request(int space, const char* path)
+int arcan_platform_event_device_request(int space, const char* path)
 {
 	return -1;
 }
 
-void platform_event_rescan_idev(struct arcan_evctx* ctx)
+void arcan_platform_event_rescan_idev(arcan_platform_evctx ctx)
 {
 }
 
-const char* platform_event_devlabel(int devid)
+const char* arcan_platform_event_devlabel(int devid)
 {
 	return NULL;
 }
@@ -344,12 +352,12 @@ static char* envopts[] = {
 	NULL
 };
 
-const char** platform_event_envopts()
+const char** arcan_platform_event_envopts()
 {
 	return (const char**) envopts;
 }
 
-void platform_event_deinit(struct arcan_evctx* ctx)
+void arcan_platform_event_deinit(arcan_platform_evctx ctx)
 {
 	if (-1 != evctx.kbd.fd){
 		int option = WSKBD_TRANSLATED;
@@ -365,7 +373,7 @@ void platform_event_deinit(struct arcan_evctx* ctx)
 	}
 }
 
-void platform_event_reset(struct arcan_evctx* ctx)
+void arcan_platform_event_reset(arcan_platform_evctx ctx)
 {
 }
 
@@ -373,7 +381,7 @@ void platform_device_lock(int devind, bool state)
 {
 }
 
-void platform_event_preinit()
+void arcan_platform_event_preinit()
 {
 /* drop privileges dance that might be needed on some video platforms */
 	if (setgid(getgid()) == -1){
@@ -385,7 +393,7 @@ void platform_event_preinit()
 	}
 }
 
-void platform_event_init(struct arcan_evctx* ctx)
+void arcan_platform_event_init(arcan_platform_evctx ctx)
 {
 	evctx.kbd.fd =
 		platform_device_open("/dev/wskbd", O_RDONLY | O_NONBLOCK | O_EXCL);

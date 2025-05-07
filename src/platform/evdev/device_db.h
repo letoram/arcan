@@ -26,7 +26,7 @@ enum devnode_type {
 	DEVNODE_MISSING
 };
 
-typedef void (*devnode_decode_cb)(struct arcan_evctx*, struct devnode*);
+typedef void (*devnode_decode_cb)(arcan_platform_evctx, struct devnode*);
 
 struct evhandler {
 	const char* name;
@@ -43,10 +43,10 @@ struct evhandler {
 	uint64_t button_mask;
 };
 
-static void defhandler_kbd(struct arcan_evctx*, struct devnode*);
-static void defhandler_mouse(struct arcan_evctx*, struct devnode*);
-static void defhandler_game(struct arcan_evctx*, struct devnode*);
-static void defhandler_null(struct arcan_evctx*, struct devnode*);
+static void defhandler_kbd(arcan_platform_evctx, struct devnode*);
+static void defhandler_mouse(arcan_platform_evctx, struct devnode*);
+static void defhandler_game(arcan_platform_evctx, struct devnode*);
+static void defhandler_null(arcan_platform_evctx, struct devnode*);
 
 /* as with the other input.c, we should probably just move this out into
  * the virtual filesystem and have the path indicate decoder type as this
