@@ -54,7 +54,11 @@ struct global_cfg global = {
 	},
 	.dirsrv = {
 		.allow_tunnel = true,
-		.runner_process = true
+		.runner_process = true,
+		.resource_dfd = -1,
+		.appl_server_dfd = -1,
+		.appl_server_datadfd = -1,
+		.appl_server_temp_dfd = -1
 	}
 };
 

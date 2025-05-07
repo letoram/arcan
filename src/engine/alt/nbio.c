@@ -1021,6 +1021,9 @@ static int opennonblock_tgt(lua_State* L, bool wr)
 	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
 		arcan_fatal("open_nonblock(tgt), target must be a valid frameserver.");
 
+/* ioevs[3].iv, carries a namespace selector (arcan-net, afsrv_net)
+ * message field will carry extension or other type identifier string. */
+
 /* overloaded form:
  *  open_nonblock(vid, r | w, type, nbio_ud)
  *
@@ -1029,6 +1032,17 @@ static int opennonblock_tgt(lua_State* L, bool wr)
  */
 	const char* type = luaL_optstring(L, 3, "stream");
 	struct arcan_event ev = {.category = EVENT_TARGET};
+/*
+ * tag that we want a namespace matching the appl we are running as (directory
+ * mode), this will be swapped for the proper index in the a12 translation
+ * stage.
+ */
+	size_t len = strlen(type);
+	int ns = 0;
+	if (len > 6 && strncmp(type, "appl:/", 6) == 0){
+		ev.tgt.ioevs[3].iv = 1;
+		type += 6;
+	}
 	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", type);
 
 	if (lua_type(L, 4) == LUA_TUSERDATA){

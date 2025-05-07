@@ -76,6 +76,7 @@ struct runner_state {
 	struct appl_meta* appl;
 	volatile bool alive;
 	volatile bool appl_sent;
+	int store_dfd;
 };
 
 struct strrep_meta {
@@ -96,6 +97,15 @@ static void fdifd_event(struct shmifsrv_client* C,
 		snprintf((char*)&base.tgt.message,
 			COUNT_OF(base.tgt.message), prefix, idlen);
 		shmifsrv_enqueue_event(C, &base, fd);
+}
+
+static void dealloc_runner(struct runner_state* runner)
+{
+	if (0 < runner->store_dfd){
+		close(runner->store_dfd);
+	}
+
+	free(runner);
 }
 
 static void run_detached_thread(void* (*ptr)(void*), void* arg)
@@ -288,6 +298,54 @@ out:
 	return NULL;
 }
 
+static void process_file_request(
+	struct runner_state* runner, struct arcan_event* ev)
+{
+	if (-1 == runner->store_dfd)
+		goto fail;
+
+/* only alnum permitted ( and . for ext) */
+	size_t i = 0;
+	for (size_t i = 0;
+		i < COUNT_OF(ev->ext.bchunk.extensions) && ev->ext.bchunk.extensions[i]; i++)
+		if (!isalnum(ev->ext.bchunk.extensions[i]) &&
+			!(i && ev->ext.bchunk.extensions[i] == '.'))
+			goto fail;
+
+/* no \0 */
+	if (i == COUNT_OF(ev->ext.bchunk.extensions))
+		goto fail;
+
+/* unveil / landlock (guuh) gets is responsible for dirtraversal, on top of cap
+ * and alphanum limit. ".index" is special as it should also be synched with
+ * any links we have, as well as support metadata / hash / signature. */
+	int fd = openat(
+		runner->store_dfd, (char*) ev->ext.bchunk.extensions,
+		ev->ext.bchunk.input ? O_RDONLY : O_RDWR
+	);
+
+	if (-1 == fd)
+		goto fail;
+
+	shmifsrv_enqueue_event(runner->cl, &(struct arcan_event){
+		.category = EVENT_TARGET,
+		.tgt.kind = ev->ext.bchunk.input ?
+			TARGET_COMMAND_BCHUNK_IN : TARGET_COMMAND_BCHUNK_OUT,
+		.tgt.ioevs[3].iv = ev->ext.bchunk.identifier,
+		.tgt.ioevs[4].iv = 1 /* internal use, mark that the identifier is a clid */
+	}, fd);
+	close(fd);
+
+	return;
+
+fail:
+	shmifsrv_enqueue_event(runner->cl, &(struct arcan_event){
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_REQFAIL,
+		.tgt.ioevs[0].iv = ev->ext.bchunk.identifier
+	}, -1);
+}
+
 static void controller_dispatch(
 	struct runner_state* runner, struct arg_arr* arr, struct arcan_dbh* db)
 {
@@ -461,7 +519,7 @@ static void* controller_runner(void* inarg)
 	while((sv = shmifsrv_poll(runner->cl)) != CLIENT_DEAD){
 		struct pollfd pfd = {
 			.fd = shmifsrv_client_handle(runner->cl, NULL),
-			.events = POLLERR | POLLHUP
+			.events = POLLIN | POLLERR | POLLHUP
 		};
 
 		struct arcan_event ev;
@@ -479,10 +537,17 @@ static void* controller_runner(void* inarg)
 				}
 				controller_dispatch(runner, arg, tl_db);
 			}
+/* Request a resource from an external oracle (ns > 1) that can resolve e.g. an
+ * IPFS hash or a URL. The -identifier- is important as it is what the VM
+ * runner is using to route the request back to the proper client. Another
+ * complication is that .index need to be built from a glob of the
+ * corresponding store. */
+			else if (ev.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE)
+				process_file_request(runner, &ev);
 		}
 
 		int rv = poll(&pfd, 1, -1);
-		if (rv > 0){
+		if (rv & (POLLERR | POLLHUP)){
 			A12INT_DIRTRACE("appl_worker=%s:status=dead", runner->appl->appl.name);
 			break;
 		}
@@ -495,7 +560,7 @@ static void* controller_runner(void* inarg)
 
 	arcan_db_close(&tl_db);
 	anet_directory_merge_multipart(NULL, NULL, NULL, NULL);
-	free(runner);
+	dealloc_runner(runner);
 
 	return NULL;
 }
@@ -786,6 +851,14 @@ static int cfgpath_index(lua_State* L)
 		return 1;
 	}
 
+	if (strcmp(key, "appl_server_data") == 0){
+		if (CFG->dirsrv.appl_server_datapath)
+			lua_pushstring(L, CFG->dirsrv.appl_server_datapath);
+		else
+			lua_pushnil(L);
+		return 1;
+	}
+
 	if (strcmp(key, "appl_server") == 0){
 		if (CFG->dirsrv.appl_server_path){
 			lua_pushstring(L, CFG->dirsrv.appl_server_path);
@@ -857,6 +930,24 @@ static int cfgpath_newindex(lua_State* L)
 
 		CFG->dirsrv.appl_server_temp_path = strdup(val);
 		CFG->dirsrv.appl_server_temp_dfd = dirfd;
+		fcntl(dirfd, F_SETFD, FD_CLOEXEC);
+
+		return 0;
+	}
+	else if (strcmp(key, "appl_server_data") == 0){
+		const char* val = luaL_checkstring(L, 3);
+
+		if (CFG->dirsrv.appl_server_datapath){
+			free(CFG->dirsrv.appl_server_datapath);
+			close(CFG->dirsrv.appl_server_datadfd);
+		}
+
+		int dirfd = open(val, O_RDONLY | O_DIRECTORY);
+		if (-1 == dirfd)
+			luaL_error(L, "config.paths.appl_server_data = %s, can't open as directory\n", val);
+
+		CFG->dirsrv.appl_server_datapath = strdup(val);
+		CFG->dirsrv.appl_server_datadfd = dirfd;
 		fcntl(dirfd, F_SETFD, FD_CLOEXEC);
 
 		return 0;
@@ -982,7 +1073,7 @@ static int dir_launchtarget(lua_State* L)
  */
 
 	struct appl_meta appl = {0};
-	struct runner_state runner = {.appl = &appl};
+	struct runner_state runner = {.appl = &appl, .store_dfd = -1};
 	snprintf(appl.appl.name, COUNT_OF(appl.appl.name), "%s", name);
 
 /* runner is faked here as it doesn't come from a ctrl */
@@ -1232,6 +1323,20 @@ static bool del_source(int fd, mode_t mode, intptr_t* out)
 }
 static void error_nbio(lua_State* L, int fd, intptr_t tag, const char* src)
 {
+}
+
+static int ctrl_dirfd(struct appl_meta* appl)
+{
+	if (CFG->dirsrv.appl_server_datadfd == -1)
+		return -1;
+
+	return openat(
+		CFG->dirsrv.appl_server_datadfd,
+		appl->appl.name,
+		O_RDONLY | O_DIRECTORY
+	);
+
+	return -1;
 }
 
 void anet_directory_lua_trigger_auto(struct appl_meta* appl)
@@ -1602,7 +1707,7 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 {
 	int clsock;
 	struct runner_state* runner = malloc(sizeof(struct runner_state));
-	*runner = (struct runner_state){.appl = appl};
+	*runner = (struct runner_state){.appl = appl, .store_dfd = ctrl_dirfd(appl)};
 
 	if (external){
 		char* argv[] = {CFG->path_self, "dirappl", NULL, NULL};
@@ -1617,7 +1722,7 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 		runner->cl = shmifsrv_spawn_client(env, &clsock, NULL, 0);
 		if (!runner->cl){
 			A12INT_DIRTRACE_LOCKED("kind=error:arcan-net:dirappl_spawn");
-			free(runner);
+			dealloc_runner(runner);
 			return false;
 		}
 
@@ -1637,7 +1742,7 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 	int sv[2];
 	if (-1 == socketpair(AF_UNIX, SOCK_STREAM, 0, sv)){
 		A12INT_DIRTRACE_LOCKED("kind=error:socketpair.2=%d", errno);
-		free(runner);
+		dealloc_runner(runner);
 		return false;
 	}
 	int sc;
@@ -1645,7 +1750,7 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 	if (!runner->cl){
 		A12INT_DIRTRACE_LOCKED("kind=error:couldn't build preauth shmif");
 		close(sv[0]);
-		free(runner);
+		dealloc_runner(runner);
 		return false;
 	}
 

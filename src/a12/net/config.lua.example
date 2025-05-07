@@ -35,6 +35,7 @@ function init()
 -- this is the base-set of appls, will be force-reloaded if updated (potentially expensive)
 	config.paths.appl = '/home/a12/appl'
 	config.paths.appl_server = '/home/a12/appl_server' -- server-side scripts per appl
+-- set to permit server-side storage config.paths.appl_server_data = '/home/a12/appl_server_data'
 	config.paths.keystore = '/home/a12/state' -- note that this also contains user-state
 	config.paths.resources = '/home/a12/shared' -- public share-global store
 	config.paths.appl_server_log = '/home/a12/log' -- per appl_server entry log

@@ -1505,7 +1505,7 @@ void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
 
 	opts->flag_rescan = false;
 
-	int old = open(".", O_RDONLY, O_DIRECTORY);
+	int old = open(".", O_RDONLY | O_DIRECTORY);
 	struct appl_meta* dst = &opts->dir;
 
 /* closedir would drop the descriptor so copy */

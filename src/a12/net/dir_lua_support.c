@@ -56,6 +56,8 @@ static struct {
 	{EP_TRIGGER_JOIN, "join"},
 	{EP_TRIGGER_LEAVE, "leave"},
 	{EP_TRIGGER_INDEX, "index"},
+	{EP_TRIGGER_LOAD, "load"},
+	{EP_TRIGGER_STORE, "store"}
 };
 
 static const char* ep_lut[ENTRYPOINT_COUNT] =
@@ -71,7 +73,9 @@ static const char* ep_lut[ENTRYPOINT_COUNT] =
 	"_reset",
 	"_join",
 	"_leave",
-	"_index"
+	"_index",
+	"_load",
+	"_store"
 };
 
 static void put_shmif_luastr(const char* msg, FILE* out)

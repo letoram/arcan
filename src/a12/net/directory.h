@@ -28,6 +28,9 @@ struct anet_dirsrv_opts {
 	char* appl_server_path; /* hosting server-side appl controller */
 	int appl_server_dfd;
 
+	char* appl_server_datapath; /* set if the controller is allowed datastore */
+	int appl_server_datadfd;
+
 	char* appl_logpath;
 
  /* Set when permitting dynamic controller push, takes precendence over
@@ -323,7 +326,8 @@ void anet_directory_lua_register(struct dircl* C);
  * is set this is done through execve()ing ourself (for sandbox and ASLR), if
  * it is not set it will run as a detached pthread.
  */
-bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external);
+bool anet_directory_lua_spawn_runner(
+	struct appl_meta* appl, bool external);
 
 /*
  * request to send signal [no] to process or thread associated with appl-runner

@@ -25,9 +25,15 @@
 -- determines if the connection should be outbound (=true) or listening
 -- (=false).
 --
--- If the string starts with a valid namespace identifier and separator
+-- If the *identifier* starts with a valid namespace identifier and separator
 -- (alphanum:/)  the identifier will first be matched to a user defined
 -- namespace (see ref:list_namespaces).
+--
+-- If the *res* is connected to a frameserver, the namespace identifier is
+-- fixed and only defined for connections coming from ref:net_open. The
+-- default is to target the private store of the authenticated client. To
+-- let the server side controller script decide, prefix the *identifier*
+-- with appl:/
 --
 -- If successful, FIFOs and normal resources return a table wih a close
 -- operation (which is activated on garbage collection unless called in

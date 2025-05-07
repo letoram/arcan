@@ -160,8 +160,10 @@ static void on_a12srv_event(
  * unless permitted (when running as the outer desktop) and forcing any nested
  * appls to receive it through a bchunkreq or drag/drop).
  */
-		int fd = request_resource(cbt->S, C,
-			ev->ext.bchunk.ns, (char*) ev->ext.bchunk.extensions, BREQ_LOAD);
+		int fd = request_resource(cbt->S,
+					ioloop_shared->shmif.addr ? &ioloop_shared->shmif : C,
+					ev->ext.bchunk.ns, (char*) ev->ext.bchunk.extensions, BREQ_LOAD
+				);
 
 		char empty_ext[16] = {0};
 
@@ -941,6 +943,7 @@ static struct a12_bhandler_res srv_bevent(
 				cbt->transfer_id = M.identifier;
 			}
 		}
+
 /* Client wants to upload a generic file. This MUST be preceeded by a
  * BCHUNKSTATE or we reject it outright. The original event is kept until
  * cancelled or completed. */
@@ -953,7 +956,12 @@ static struct a12_bhandler_res srv_bevent(
 
 			if (cbt->breq_pending.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE &&
 					cbt->breq_pending.ext.bchunk.ns == M.identifier){
-				res.fd = request_resource(S, cbt->C, M.identifier,
+
+/* If the client has joined an applgroup with a controller, it's the
+ * responsibility of those scripts to map resources */
+				res.fd = request_resource(S,
+						ioloop_shared->shmif.addr ? &ioloop_shared->shmif : cbt->C,
+						M.identifier,
 						(char*) cbt->breq_pending.ext.bchunk.extensions, BREQ_STORE);
 
 /*

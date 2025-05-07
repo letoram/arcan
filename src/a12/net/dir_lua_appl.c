@@ -827,18 +827,32 @@ static void parent_control_event(struct arcan_event* ev)
 
 	switch (ev->tgt.kind){
 	case TARGET_COMMAND_BCHUNK_IN:{
+/* reply to a worker_file_request, the index is trusted as it comes from
+ * ourselves and only routed through a more trusted context. Other id mapping
+ * is performed in the worker that is blocking for our response */
+		if (ev->tgt.ioevs[4].iv == 1){
+			struct client* cl = &CLIENTS.cset[ev->tgt.ioevs[3].iv];
+			shmifsrv_enqueue_event(cl->shmif, ev, ev->tgt.ioevs[0].iv);
+			break;
+		}
+
 		int fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, false);
 		if (-1 == fd){
 			log_print("kind=error:source=dup:bchunk:message=%s", ev->tgt.message);
 			return;
 		}
-
 		if (ev->tgt.message[0] != '.')
 			open_appl(fd, ev->tgt.message);
 		else
 			meta_resource(fd, ev->tgt.message);
 	}
 	break;
+/* we need a ns selector here when adding open_nonblock as well */
+	case TARGET_COMMAND_REQFAIL:{
+		struct client* cl = &CLIENTS.cset[ev->tgt.ioevs[0].iv];
+		shmifsrv_enqueue_event(cl->shmif, ev, -1);
+		break;
+	}
 	case TARGET_COMMAND_MESSAGE:{
 /* No command need MESSAGE right now as match_key replies etc. all go over
  * bchunk-in and pass it that way. */
@@ -925,6 +939,62 @@ static void flush_parent()
 		SHUTDOWN = true;
 }
 
+static void worker_file_request(struct client* cl, arcan_event* ev)
+{
+	arcan_event outev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
+		.ext.bchunk.identifier = cl->clid
+	};
+
+	if (ev->ext.bchunk.input){
+		int ep = EP_TRIGGER_LOAD;
+		outev.ext.bchunk.input = true;
+
+		if (strcmp((const char*) ev->ext.bchunk.extensions, ".index") == 0){
+			ep = EP_TRIGGER_INDEX;
+		}
+
+		if (dirlua_setup_entrypoint(L, ep)){
+			lua_pushnumber(L, cl->clid);
+			MSGBUF_UTF8(ev->ext.bchunk.extensions);
+			lua_pushstring(L, (char*) ev->ext.bchunk.extensions);
+			dirlua_pcall(L, 2, 1, panic);
+		}
+		else
+			goto fail;
+	}
+	else if (dirlua_setup_entrypoint(L, EP_TRIGGER_STORE)){
+		lua_pushnumber(L, cl->clid);
+		MSGBUF_UTF8(ev->ext.bchunk.extensions);
+		lua_pushstring(L, (char*) ev->ext.bchunk.extensions);
+		dirlua_pcall(L, 2, 1, panic);
+	}
+	else
+		goto fail;
+
+	if (lua_type(L, -1) == LUA_TSTRING){
+		snprintf(
+			(char*) outev.ext.bchunk.extensions,
+			COUNT_OF(outev.ext.bchunk.extensions),
+			"%s", lua_tostring(L, -1)
+		);
+		arcan_shmif_enqueue(&SHMIF, &outev);
+		return;
+	}
+	else if (lua_type(L, -1) == LUA_TUSERDATA){
+		luaL_error(L, "open_nonblock unimplemented");
+		return;
+	}
+
+fail:
+	shmifsrv_enqueue_event(cl->shmif, &(struct arcan_event){
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_REQFAIL,
+		.tgt.ioevs[0].iv = ev->ext.bchunk.identifier
+	}, -1);
+}
+
 static void worker_instance_event(struct client* cl, int fd, int revents)
 {
 	struct arcan_event ev;
@@ -963,27 +1033,25 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 		}
 
 /*
- * NAK until we have nbio back so that the script can actually stream the index
+ * Provide an entrypoint for _load, _store and _index. Since we don't have
+ * access to our filesystem store the request may need to be deferred, in
+ * multiple layers to allow transparent retrieval / caching through linked
+ * directory workers.
  *
- * Otherwise .index is an entrypoint for providing a list of known hash=name
- * and then the request goes for the hash. It can also cover an IPFS private
- * key + hash or a public IPFS hash.
+ * Setup the corresponding entrypoint and provide the desired extensions. If
+ * the function returns a string, we forward that as a request to the parent to
+ * get a descriptor or REQFAIL back, using .ns to encode clid in order to route
+ * the event.
+ *
+ * If the function returns a nbio from open_nonblock() we instead forward the
+ * descriptor from that as the result. This allows the ctrl to have in- memory
+ * cache of common files, while at the same time using external lookup oracles
+ * (@HASH) to go through a retrieval service.
  */
 		if (ev.ext.kind == EVENT_EXTERNAL_BCHUNKSTATE){
-			if (ev.ext.bchunk.input){
-				if (dirlua_setup_entrypoint(L, EP_TRIGGER_INDEX)){
-					lua_pushnumber(L, cl->clid);
-					MSGBUF_UTF8(ev.ext.bchunk.extensions);
-					dirlua_pcall(L, 2, 0, panic);
-				}
-			}
-			shmifsrv_enqueue_event(cl->shmif, &(struct arcan_event){
-				.category = EVENT_TARGET,
-				.tgt.kind = TARGET_COMMAND_REQFAIL,
-				}, -1);
-			continue;
+			worker_file_request(cl, &ev);
 		}
-		if (ev.ext.kind == EVENT_EXTERNAL_MESSAGE){
+		else if (ev.ext.kind == EVENT_EXTERNAL_MESSAGE){
 			if (cl->clid == CLIENTS.monitor_slot){
 				monitor_message(cl, &ev);
 			}
@@ -998,7 +1066,8 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 				}
 			}
 		}
-	 }
+	}
+
 	if (shmifsrv_poll(cl->shmif) == CLIENT_DEAD){
 		release_worker(cl->clid);
 	}
