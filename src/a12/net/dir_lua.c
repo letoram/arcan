@@ -551,6 +551,11 @@ static void* controller_runner(void* inarg)
 			A12INT_DIRTRACE("appl_worker=%s:status=dead", runner->appl->appl.name);
 			break;
 		}
+	/* Flush the 'ping' packets */
+		else if (rv & POLLIN){
+			uint8_t buf[256];
+			read(pfd.fd, buf, 256);
+		}
 	}
 
 	runner->alive = false;

@@ -1704,6 +1704,7 @@ static bool a12_enqueue_bstream_in(
 		next->streamid
 	);
 
+/* make a copy of the source event and attach it to the event in the bchunk queue */
 	arcan_event* copy = DYNAMIC_MALLOC(sizeof(arcan_event));
 	*copy = outev;
 	next->tag = copy;
