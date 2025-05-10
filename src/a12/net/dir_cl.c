@@ -971,7 +971,7 @@ static void mark_xfer_complete(struct ioloop_shared* I, struct a12_bhandler_meta
 	if (M.type == A12_BTYPE_STATE){
 		cbt->state_in_complete = true;
 	}
-	else if (M.type == A12_BTYPE_BLOB){
+	else if (M.type == A12_BTYPE_APPL){
 		cbt->appl_out_complete = true;
 	}
 
@@ -1120,6 +1120,90 @@ static struct a12_bhandler_res anet_directory_cl_download(
 	return res;
 }
 
+static struct a12_bhandler_res initialize_state_download(
+	struct a12_state* S, struct a12_bhandler_meta* M, void* tag)
+{
+	struct ioloop_shared* I = tag;
+	struct directory_meta* cbt = I->cbt;
+	struct appl_runner_state* A = I->tag;
+
+	struct a12_bhandler_res res = {
+		.fd = -1,
+		.flag = A12_BHANDLER_DONTWANT
+	};
+
+	if (-1 != cbt->state_in){
+		fprintf(stderr, "Server sent multiple state blocks, ignoring\n");
+		return res;
+	}
+
+/* create a tempfile / unlink it */
+	char filename[] = "statetemp-XXXXXX";
+	if (-1 == (cbt->state_in = mkstemp(filename))){
+		fprintf(stderr, "Couldn't allocate temp-store, ignoring state\n");
+		return res;
+	}
+
+	cbt->state_in_complete = true;
+	res.fd = cbt->state_in;
+	res.flag = A12_BHANDLER_NEWFD;
+	unlink(filename);
+	return res;
+}
+
+static struct a12_bhandler_res initialize_appl_download(
+	struct a12_state* S, struct a12_bhandler_meta* M, void* tag)
+{
+	struct ioloop_shared* I = tag;
+	struct directory_meta* cbt = I->cbt;
+	struct appl_runner_state* A = I->tag;
+
+	struct a12_bhandler_res res = {
+		.fd = -1,
+		.flag = A12_BHANDLER_DONTWANT
+	};
+
+	/* This can also happen if there was a new appl announced while we were busy
+	 * unpacking the previous one, the dirstate event triggers the bin request
+	 * triggers new initialize. Options are to cancel the current form, ignore
+	 * the update or defer the request for a new one. The current implementation
+	 * is to defer and happens in dir-state. */
+	if (cbt->appl_out){
+		fprintf(stderr, "Appl transfer initiated while one was pending\n");
+		return res;
+	}
+
+	/* We already have an appl running, this can be two things - one we have a
+	 * resource intended for the appl itself. While still unhandled that is easy,
+	 * setup a new descriptor link, BCHUNK_IN/OUT it into the shmif connection
+	 * marked streaming and we are good to go.
+	 *
+	 * In the case of an appl we should verify that we wanted hot reloading,
+	 * ensure_appldir into new and set atomic-swap on completion. */
+	if (-1 == cbt->clopt->basedir){
+		snprintf(cbt->clopt->basedir_path, PATH_MAX, "%s", "/tmp/appltemp-XXXXXX");
+		if (!mkdtemp(cbt->clopt->basedir_path)){
+			fprintf(stderr, "Couldn't build a temporary storage base\n");
+			return res;
+		}
+		cbt->clopt->basedir = open(cbt->clopt->basedir_path, O_DIRECTORY);
+	}
+
+	char filename[] = "appltemp-XXXXXX";
+	int appl_fd = mkstemp(filename);
+	if (-1 == appl_fd){
+		fprintf(stderr, "Couldn't create temporary appl- unpack store\n");
+		return res;
+	}
+	unlink(filename);
+
+	cbt->appl_out = fdopen(appl_fd, "rw");
+	res.flag = A12_BHANDLER_NEWFD;
+	res.fd = appl_fd;
+
+	return res;
+}
+
 struct a12_bhandler_res anet_directory_cl_bhandler(
 	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
 {
@@ -1143,67 +1227,15 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
 	case A12_BHANDLER_COMPLETED:
 		mark_xfer_complete(I, M);
 	break;
-	case A12_BHANDLER_INITIALIZE:{
-/* if we get a state blob before the binary blob, it should be kept until the
- * binary blob is completed and injected as part of the monitoring setup -
- * wrap this around a FILE* abstraction */
-		if (M.type == A12_BTYPE_STATE){
-			if (-1 != cbt->state_in){
-				fprintf(stderr, "Server sent multiple state blocks, ignoring\n");
-				return res;
-			}
+	case A12_BHANDLER_INITIALIZE:
+		if (M.type == A12_BTYPE_STATE)
+			return initialize_state_download(S, &M, tag);
+		else if (M.type == A12_BTYPE_APPL)
+			return initialize_appl_download(S, &M, tag);
 
-/* create a tempfile / unlink it */
-			char filename[] = "statetemp-XXXXXX";
-			if (-1 == (cbt->state_in = mkstemp(filename))){
-				fprintf(stderr, "Couldn't allocate temp-store, ignoring state\n");
-				return res;
-			}
-
-			cbt->state_in_complete = true;
-			res.fd = cbt->state_in;
-			res.flag = A12_BHANDLER_NEWFD;
-			unlink(filename);
-			return res;
-		}
-	/* This can also happen if there was a new appl announced while we were busy
-	 * unpacking the previous one, the dirstate event triggers the bin request
-	 * triggers new initialize. Options are to cancel the current form, ignore
-	 * the update or defer the request for a new one. The current implementation
-	 * is to defer and happens in dir-state. */
-		if (cbt->appl_out){
-			fprintf(stderr, "Appl transfer initiated while one was pending\n");
-			return res;
-		}
-
-	/* We already have an appl running, this can be two things - one we have a
-	 * resource intended for the appl itself. While still unhandled that is easy,
-	 * setup a new descriptor link, BCHUNK_IN/OUT it into the shmif connection
-	 * marked streaming and we are good to go.
-	 *
-	 * In the case of an appl we should verify that we wanted hot reloading,
-	 * ensure_appldir into new and set atomic-swap on completion. */
-		if (-1 == cbt->clopt->basedir){
-			snprintf(cbt->clopt->basedir_path, PATH_MAX, "%s", "/tmp/appltemp-XXXXXX");
-			if (!mkdtemp(cbt->clopt->basedir_path)){
-				fprintf(stderr, "Couldn't build a temporary storage base\n");
-				return res;
-			}
-			cbt->clopt->basedir = open(cbt->clopt->basedir_path, O_DIRECTORY);
-		}
-
-		char filename[] = "appltemp-XXXXXX";
-		int appl_fd = mkstemp(filename);
-		if (-1 == appl_fd){
-			fprintf(stderr, "Couldn't create temporary appl- unpack store\n");
-			return res;
-		}
-		unlink(filename);
-
-		cbt->appl_out = fdopen(appl_fd, "rw");
-		res.flag = A12_BHANDLER_NEWFD;
-		res.fd = appl_fd;
-	}
+/* the other types here would be surprising as it is in response to a BCHUNK_
+ * queue that we did and for those we already provided the destination fd so
+ * there is no need to 'initialize'. */
 	break;
 
 /* set to fail for now? this is most likely to happen if write to the backing
@@ -1215,7 +1247,7 @@ struct a12_bhandler_res anet_directory_cl_bhandler(
 			cbt->state_in = -1;
 			cbt->state_in_complete = false;
 		}
-		else if (M.type == A12_BTYPE_BLOB){
+		else if (M.type == A12_BTYPE_APPL){
 			fprintf(stderr, "appl download cancelled\n");
 			if (cbt->appl_out){
 				cbt->appl_out = NULL;
@@ -1398,7 +1430,9 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 		return true;
 	}
 
-/* lastly, download and run the appl */
+/* lastly, download and run the appl - by setting an empty extension and only
+ * the identifier it indicates that we want the necessary code and state to
+ * join the namespace of the identifier */
 	struct arcan_event ev =
 	{
 		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
@@ -1406,8 +1440,7 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 		.ext.bchunk = {
 			.input = true,
 			.hint = false,
-			.ns = dir->identifier,
-			.extensions = ".appl"
+			.ns = dir->identifier
 		}
 	};
 	a12_channel_enqueue(I->S, &ev);

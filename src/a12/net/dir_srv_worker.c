@@ -162,7 +162,9 @@ static void on_a12srv_event(
  */
 		int fd = request_resource(cbt->S,
 					ioloop_shared->shmif.addr ? &ioloop_shared->shmif : C,
-					ev->ext.bchunk.ns, (char*) ev->ext.bchunk.extensions, BREQ_LOAD
+					ev->ext.bchunk.ns,
+						ev->ext.bchunk.extensions[0] ?
+						(char*) ev->ext.bchunk.extensions : ".appl", BREQ_LOAD
 				);
 
 		char empty_ext[16] = {0};
@@ -189,7 +191,7 @@ static void on_a12srv_event(
 			}
 
 			a12_enqueue_bstream(cbt->S,
-				fd, A12_BTYPE_BLOB, ev->ext.bchunk.ns, false, 0, empty_ext);
+				fd, A12_BTYPE_APPL, ev->ext.bchunk.ns, false, 0, empty_ext);
 			I->userfd2 = a12_btransfer_outfd(I->S);
 			TRACE("close_tmp:descriptor=%d", fd);
 			close(fd);
