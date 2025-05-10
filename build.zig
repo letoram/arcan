@@ -207,6 +207,7 @@ fn createArcanShmif(b: *std.Build, opts: anytype) *std.Build.Step.Compile {
 	"src/shmif/arcan_shmif_eventhandler.c",
 	"src/shmif/arcan_shmif_privsep.c",
 	"src/shmif/arcan_shmif_evhelper.c",
+        "src/shmif/platform/synch.c",
         "src/engine/arcan_trace.c",
         "src/shmif/platform/exec.c",
 	"src/shmif/platform/fdpassing.c",
@@ -470,6 +471,7 @@ fn addShmifPlatformSources(
     const shmif_platform_sources: []const String = &.{
         "src/platform/posix/shmemop.c",
         "src/platform/posix/warning.c",
+        "src/platform/posix/fdpassing.c",
         "src/platform/posix/random.c",
         "src/platform/posix/fdscan.c",
     };
