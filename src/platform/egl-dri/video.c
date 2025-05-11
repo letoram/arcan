@@ -3396,6 +3396,9 @@ static bool dirty_displays()
 		if (!tgt)
 			continue;
 
+		if (d->buffer.in_flip || d->state != DISP_MAPPED)
+			continue;
+
 		if (d->frame_cookie != tgt->frame_cookie){
 			verbose_print("(%d) frame-cookie (%zu) "
 				"changed to (%zu)", d->id, d->frame_cookie, tgt->frame_cookie);
