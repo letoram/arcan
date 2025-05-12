@@ -61,12 +61,13 @@ struct client {
 };
 
 static struct {
+	int dirfd;
 	size_t active;
 	size_t set_sz;
 	struct pollfd* pset;
 	struct client* cset;
 	size_t monitor_slot;
-} CLIENTS;
+} CLIENTS = {.dirfd = -1};
 
 static FILE* logout;
 
@@ -307,6 +308,20 @@ static int listtargets(lua_State* L)
 	return 0;
 }
 
+typedef struct LoadF {
+  int extraline;
+  FILE *f;
+  char buff[LUAL_BUFFERSIZE];
+} LoadF;
+
+static int systemload(lua_State* L)
+{
+	const char* fn = luaL_checkstring(L, 1);
+	bool dieonfail = luaL_optbnumber(L, 2, 1);
+
+	return dirlua_loadfile(L, CLIENTS.dirfd, fn, dieonfail);
+}
+
 /* string:target-name, tbl:options, number:clid, handler
  * string:target-name, tbl:options, handler
  */
@@ -507,6 +522,11 @@ static int print_log(lua_State* L)
 
 static void open_appl(int dfd, const char* name)
 {
+/* swap out known dirfd */
+	if (-1 != CLIENTS.dirfd)
+		close(CLIENTS.dirfd);
+	CLIENTS.dirfd = dfd;
+
 	log_print("dir_lua:open=%.*s", (int) sizeof(name), name);
 	size_t len = strlen(name);
 
@@ -573,6 +593,7 @@ static void open_appl(int dfd, const char* name)
 			{"match_keys", matchkeys},
 			{"list_targets", listtargets},
 			{"launch_target", launchtarget},
+			{"system_load", systemload},
 /*
  * lift from arcan_lua.c:
  *

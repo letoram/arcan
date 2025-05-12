@@ -945,3 +945,90 @@ void dirlua_monitor_allocstate(struct arcan_shmif_cont* C)
 	monitor->lock = true;
 	monitor->out = open_memstream(&monitor->out_buf, &monitor->out_sz);
 }
+
+/*
+ * Same vendored lua_loadfile as used in alt/support.c but modified to
+ * reference through dirfd.
+ */
+typedef struct LoadF {
+  int extraline;
+  FILE *f;
+  char buff[LUAL_BUFFERSIZE];
+} LoadF;
+
+static const char *getF (lua_State *L, void *ud, size_t *size) {
+  LoadF *lf = (LoadF *)ud;
+  (void)L;
+  if (lf->extraline) {
+    lf->extraline = 0;
+    *size = 1;
+    return "\n";
+  }
+  if (feof(lf->f)) return NULL;
+  *size = fread(lf->buff, 1, sizeof(lf->buff), lf->f);
+  return (*size > 0) ? lf->buff : NULL;
+}
+
+int dirlua_loadfile(lua_State *L, int dfd, const char *filename, bool dieonfail)
+{
+  LoadF lf;
+  int status, readstatus;
+  int c;
+  int fnameindex = lua_gettop(L) + 1;  /* index of filename on the stack */
+  lf.extraline = 0;
+
+	int fd = openat(dfd, filename, O_RDONLY);
+	if (-1 == fd){
+		if (dieonfail)
+			luaL_error(L, "system_load(%s) can't be opened", filename);
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+	lua_pushfstring(L, "@%s", filename);
+	lf.f = fdopen(fd, "r");
+
+	if (lf.f == NULL){
+		if (dieonfail)
+			luaL_error(L, "system_load:fdopen(%d) failed", fd);
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+  c = getc(lf.f);
+  if (c == '#') {  /* Unix exec. file? */
+    lf.extraline = 1;
+    while ((c = getc(lf.f)) != EOF && c != '\n') ;  /* skip first line */
+    if (c == '\n') c = getc(lf.f);
+  }
+
+	if (c == LUA_SIGNATURE[0]){
+		fclose(lf.f);
+		if (dieonfail)
+			luaL_error(L, "system_load(%s) - bytecode forbidden", filename);
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+  ungetc(c, lf.f);
+  status = lua_load(L, getF, &lf, lua_tostring(L, -1));
+	if (status != LUA_OK){
+	  fclose(lf.f);
+ 		if (dieonfail)
+			luaL_error(L, "system_load(%s):%s\n", lua_tostring(L, -1));
+    lua_settop(L, fnameindex);  /* ignore results from `lua_load' */
+		lua_pushboolean(L, false);
+		return false;
+	}
+
+  readstatus = ferror(lf.f);
+  fclose(lf.f);  /* close file (even in case of errors) */
+  if (readstatus) {
+    lua_settop(L, fnameindex);  /* ignore results from `lua_load' */
+		if (dieonfail)
+			luaL_error(L, "system_load(%s):lua_load failed", filename);
+		return 1;
+  }
+  lua_remove(L, fnameindex);
+  return 1;
+}

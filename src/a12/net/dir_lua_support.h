@@ -72,4 +72,6 @@ struct dirlua_monitor_state* dirlua_monitor_getstate();
 void dirlua_monitor_watchdog(lua_State* L, lua_Debug* D);
 bool dirlua_monitor_command(char* cmd, lua_State* L, lua_Debug* D);
 
+int dirlua_loadfile(lua_State* L, int dirfd, const char* filename, bool dieonfail);
+
 #endif
