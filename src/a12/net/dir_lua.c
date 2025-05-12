@@ -1314,6 +1314,12 @@ static int dir_storekey(lua_State* L)
 	return 0;
 }
 
+static int dir_reindex(lua_State* L)
+{
+	anet_directory_srv_rescan(&CFG->dirsrv);
+	return 0;
+}
+
 /*
  * NBIO handlers, don't need them currently as the admin interface only uses
  * it for :writes and we clock differently
@@ -1902,10 +1908,14 @@ void anet_directory_lua_register(struct dircl* C)
 
 void anet_directory_lua_ready(struct global_cfg* cfg)
 {
+	lua_pushcfunction(L, dir_reindex);
+	lua_setglobal(L, "rescan_appl");
+
 	lua_getglobal(L, "ready");
 	if (!lua_isfunction(L, -1)){
 		lua_pop(L, 1);
 		return;
 	}
+
 	lua_call(L, 0, 0);
 }
