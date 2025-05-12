@@ -777,13 +777,22 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 
 /* request raw access to a file in the server-side (shared) applstore- path,
  * this only comes through here if the source hasn't joined an appl controller,
- * and is intended for developer content persistence. Other paths should defer
- * permission check and end storage to the controller, which would ask us
- * through some other means. It probably makes sense to cut out all the 'if we
- * don't have a controller' options and instead have a fallback that applies
- * as general / template storage policy. */
+ * and is intended for developer access. Other paths are routed there and it
+ * initiates the storage request. */
 		case IDTYPE_RAW:
-			goto fail;
+		if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_ctrl))
+		{
+			int dfd = openat(
+				active_clients.opts->appl_server_datadfd,
+				meta->appl.name, O_RDONLY | O_DIRECTORY);
+
+/* is the store directory actually allocated (can be omitted to prevent a
+ * specific appl from having on-disk store) */
+			if (-1 != dfd){
+				resfd = openat(dfd, meta->appl.name, O_RDONLY);
+				close(dfd);
+			}
+		}
 		break;
 		}
 	}
@@ -836,12 +845,20 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 		case IDTYPE_DEBUG:
 			resfd = get_state_res(C, meta->appl.name, ".debug", O_WRONLY);
 		break;
-/* need to check if we have permissions to a. make an upload, b. overwrite an
- * existing file (which unfortunately also means tracking ownership - we can do
- * this with a pubk tag at the beginning as a header, then return the
- * descriptor positioned post-header offset */
 		case IDTYPE_RAW:
-			goto fail;
+		if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_ctrl))
+		{
+			int dfd = openat(
+				active_clients.opts->appl_server_datadfd,
+				meta->appl.name, O_RDONLY | O_DIRECTORY);
+
+/* is the store directory actually allocated (can be omitted to prevent a
+ * specific appl from having on-disk store) */
+			if (-1 != dfd){
+				resfd = openat(dfd, ext, O_RDWR | O_CREAT | O_CLOEXEC, 0700);
+				close(dfd);
+			}
+		}
 		break;
 		}
 	}

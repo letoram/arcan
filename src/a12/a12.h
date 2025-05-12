@@ -196,16 +196,43 @@ void a12_unpack(
 		(struct arcan_shmif_cont* cont, int chid, struct arcan_event*, void*));
 
 /*
- * Set the specified context as the recipient of audio/video buffers
- * for a specific channel id.
+ * Set the specified context as the recipient of audio/video buffers and binary
+ * transfers for a specific channel id.
  */
 void a12_set_destination(
 	struct a12_state*, struct arcan_shmif_cont* wnd, uint8_t chid);
 
 /*
- * Similar to [a12_set_destination] but using a callback configuration
- * to request destination buffers for audio,
- * and to signal dirty updates.
+ * Return the queue and transfer load for a channel
+ */
+struct a12_channel_meta {
+	size_t inbound_binary_total;
+	size_t inbound_binary_depth;
+	size_t outbound_binary_total;
+	size_t outbound_binary_depth;
+	bool video_active;
+	bool audio_active;
+};
+
+/*
+ * Check queued binary transfers for a channel and return the number of queued
+ * items. This is mainly relevant for directory mode when hosting an appl
+ * (regular shmif client source/sink would create new segments to split between
+ * serial and parallel.
+ */
+struct a12_channel_meta a12_channel_status(struct a12_state*, uint8_t chid);
+
+/*
+ * Return [true] if there is an unused channel, and store the identifier of
+ * that channel in [chid].
+ *
+ * If [false] all channels are active and [chid] is untouched.
+ */
+bool a12_find_free_channel(struct a12_state*, uint8_t* chid);
+
+/*
+ * Similar to [a12_set_destination] but using a callback configuration to
+ * request destination buffers for audio, and to signal dirty updates.
  */
 struct a12_unpack_cfg {
 	void* tag;

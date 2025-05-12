@@ -1120,7 +1120,8 @@ static void command_binarystream(struct a12_state* S)
 		bframe->tmp_fd = S->pending_in->fd;
 		swallow = true;
 		sc = A12_BHANDLER_NEWFD;
-		a12int_trace(A12_TRACE_BTRANSFER, "kind=resolve_queued_bstream");
+		a12int_trace(A12_TRACE_BTRANSFER,
+			"kind=resolve_queued_bstream:swallow:id=%"PRIu32, streamid);
 	}
 	else {
 		bframe->tmp_fd = -1;
@@ -1698,11 +1699,6 @@ static bool a12_enqueue_bstream_in(
 	};
 	memcpy(outev.ext.bchunk.extensions,
 		ev->tgt.message, sizeof(outev.ext.bchunk.extensions));
-	a12int_trace(A12_TRACE_BTRANSFER,
-		"kind=queue_inbound_transfer:name=%s:id=%"PRId64,
-		outev.ext.bchunk.extensions,
-		next->streamid
-	);
 
 /* make a copy of the source event and attach it to the event in the bchunk queue */
 	arcan_event* copy = DYNAMIC_MALLOC(sizeof(arcan_event));
@@ -1717,8 +1713,18 @@ static bool a12_enqueue_bstream_in(
 
 /* if we are next up for unpack_bstream then send the bchunkreq immediately */
 	if (!S->channels[S->out_channel].unpack_state.bframe.active){
+		a12int_trace(A12_TRACE_BTRANSFER, "kind=empty_queue:request_inbound=%s:id=%"PRId64,
+			outev.ext.bchunk.extensions,
+			next->streamid
+		);
 		pack_and_send_event(S, &outev);
 	}
+	else
+		a12int_trace(A12_TRACE_BTRANSFER,
+			"kind=queue_inbound_transfer:name=%s:id=%"PRId64,
+			outev.ext.bchunk.extensions,
+			next->streamid
+		);
 
 	return true;
 }
@@ -1823,9 +1829,10 @@ static void a12_enqueue_bstream_tagged(
 		goto fail;
 	}
 
-/* the crypted packages are MACed together, but we always use the primitive
+/* The encrypted packages are MACed together, but we always use the primitive
  * for btransfer- checksums so the other side can compare against a cache and
- * cancel the stream */
+ * cancel the stream. For server side efficiency we'd also want to be able to
+ * provide / override this with a cached version. */
 	blake3_hasher hash;
 	blake3_hasher_init(&hash);
 	blake3_hasher_update(&hash, map, fend);
@@ -1835,6 +1842,11 @@ static void a12_enqueue_bstream_tagged(
 	a12int_trace(A12_TRACE_BTRANSFER,
 		"kind=added:type=%d:stream=%"PRIu32":size=%zu",
 		id, type, next->left);
+
+/* Ed25519: if we have defined a signing key, this is where we'd apply that --
+ *          except for when the transfer is tied to FAP, there we define a sig
+ *          block in .manifest instead.
+ */
 	return;
 
 fail:
@@ -2677,6 +2689,20 @@ static void process_blob(struct a12_state* S)
 		size_t pos = 0;
 		a12int_trace(A12_TRACE_BTRANSFER, "kind=flush:dst=%d:size=%zu", cbf->tmp_fd, ntw);
 
+/* A mitigation for the line-blocking problem is to track failed writes
+ * (wouldblock) or write-time delta and track as a statistic, so that the API
+ * consumer can use that to request transfers on other channels. If a channel
+ * accumulates EWOULDBLOCK writes, then it might be better to add another one
+ * to avoid unnecessary blocking. The typical example is streaming a large
+ * video file with small buffering. Then we also need to propagate the delays
+ * to the sending end so that it can reduce priority on flushing that
+ * descriptor but not by too much(!).
+ *
+ * Eventually this need to be configurable for each BCHUNK_IN request so that
+ * we can chose between a file-system based cache, memory based one, or
+ * deferred-slow streaming. This means the open_nonblock() arcan API also need
+ * such hints.
+ */
 		while(pos < ntw){
 			ssize_t status = write(cbf->tmp_fd, &buf[pos], ntw - pos);
 			if (-1 == status){
@@ -2746,6 +2772,9 @@ static void process_blob(struct a12_state* S)
 				progress_pending_in(S, S->in_channel, 1.0);
 			}
 			else if (S->binary_handler){
+				a12int_trace(A12_TRACE_BTRANSFER,
+					"completed_unknown:id=%"PRIu64":expected=%"PRIu64,
+					cbf->streamid, S->pending_in ? S->pending_in->streamid : -1);
 				cbf->tmp_fd = -1;
 				S->binary_handler(S, bm, S->binary_handler_tag);
 
@@ -3006,6 +3035,24 @@ void a12_set_destination(
 
 	S->channels[chid].cont = wnd;
 	S->channels[chid].active = wnd ? CHANNEL_SHMIF : CHANNEL_INACTIVE;
+}
+
+bool a12_find_free_channel(struct a12_state* S, uint8_t* chid)
+{
+	for (size_t i = 0; i < 256; i++){
+		if (S->channels[i].active)
+			continue;
+
+		*chid = i;
+		return true;
+	}
+
+	return false;
+}
+
+struct a12_channel_meta a12_channel_status(struct a12_state* S, uint8_t chid)
+{
+	return (struct a12_channel_meta){0};
 }
 
 void a12_set_destination_raw(struct a12_state* S,
@@ -3716,14 +3763,14 @@ a12_channel_enqueue(struct a12_state* S, struct arcan_event* ev)
 /* these events have a descriptor, just map them to the right type of binary
  * transfer event and the other side will synthesize and push the rest */
 		case TARGET_COMMAND_STORE:
-			a12_enqueue_bstream_tagged(S,
-				ev->tgt.ioevs[0].iv, A12_BTYPE_STATE, 0, true, 0, empty_ext, ev);
+			a12_enqueue_bstream_tagged(S, ev->tgt.ioevs[0].iv,
+				A12_BTYPE_STATE, ev->tgt.ioevs[3].iv, true, 0, empty_ext, ev);
 			return true;
 		break;
 
 		case TARGET_COMMAND_BCHUNK_OUT:
-			a12_enqueue_bstream_tagged(S,
-				ev->tgt.ioevs[0].iv, A12_BTYPE_BLOB, 0, true, 0, empty_ext, ev);
+			a12_enqueue_bstream_tagged(S, ev->tgt.ioevs[0].iv,
+				A12_BTYPE_BLOB, ev->tgt.ioevs[3].iv, true, 0, empty_ext, ev);
 			return true;
 		break;
 
