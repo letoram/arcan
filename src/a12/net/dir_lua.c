@@ -1211,16 +1211,6 @@ static int dir_write(lua_State* L)
 	return 1;
 }
 
-static int dir_identity(lua_State* L)
-{
-	struct client_userdata* ud = luaL_checkudata(L, 1, "dircl");
-	if (!ud->C)
-		luaL_error(L, ":write(ud) not bound to a client");
-
-	lua_pushstring(L, ud->C->identity);
-	return 1;
-}
-
 static int dir_endpoint(lua_State* L)
 {
 	struct client_userdata* ud = luaL_checkudata(L, 1, "dircl");
@@ -1849,7 +1839,12 @@ bool anet_directory_lua_monitor(struct dircl* C, struct appl_meta* appl)
 /* this expects the appl- lock to be in effect so we can't use INTTRACE */
 bool anet_directory_lua_join(struct dircl* C, struct appl_meta* appl)
 {
-	return send_join_pair(C, appl, ".worker", ".appl");
+	char buf[sizeof(".appl-") + strlen(appl->appl.name)];
+	snprintf(buf, sizeof(buf),  ".appl-%s", appl->appl.name);
+	char wbuf[sizeof(".worker-") + strlen(C->identity)];
+	snprintf(wbuf, sizeof(wbuf), ".worker-%s", C->identity);
+
+	return send_join_pair(C, appl, wbuf, buf);
 }
 
 void anet_directory_lua_unregister(struct dircl* C)

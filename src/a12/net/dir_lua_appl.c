@@ -57,6 +57,7 @@ struct client {
 	size_t msgbuf[128];
 	size_t msgbuf_ofs;
 	struct shmifsrv_client* shmif;
+	const char* ident;
 	bool registered;
 };
 
@@ -642,7 +643,7 @@ static void monitor_sigusr(int sig)
 		state->dumppause = true;
 }
 
-static bool join_worker(int fd, bool monitor)
+static bool join_worker(int fd, const char* ident, bool monitor)
 {
 /* just naively grow, parent process is responsible for more refined handling
  * of constraining resources outside the natural cap of permitted descriptors
@@ -690,7 +691,8 @@ static bool join_worker(int fd, bool monitor)
 	int tmp;
 	CLIENTS.cset[ind] = (struct client){
 		.registered = false,
-		.clid = ind
+		.clid = ind,
+		.ident = strdup(ident)
 	};
 
 /* another subtle thing, shmifsrv_inherit_connection does not actually
@@ -764,7 +766,7 @@ static void release_worker(size_t ind)
 		}
 	}
 
-	log_print("status=left:worker=%zu", cl->clid);
+	log_print("status=left:worker=%zu:ident=%s", cl->clid, cl->ident);
 	shmifsrv_free(cl->shmif, SHMIFSRV_FREE_FULL);
 	*cl = (struct client){0};
 }
@@ -801,12 +803,12 @@ static void lua_pushkv_buffer(char* pos, char* end)
  */
 static void meta_resource(int fd, const char* msg)
 {
-	if (strncmp(msg, ".worker", 8) == 0){
-		join_worker(fd, false);
+	if (strncmp(msg, ".worker-", 8) == 0){
+		join_worker(fd, &msg[8], false);
 		return;
 	}
 	if (strncmp(msg, ".monitor", 9) == 0){
-		join_worker(fd, true);
+		join_worker(fd, ".monitor", true);
 		return;
 	}
 /* for the time being, just read everything into a memory buffer and then
@@ -1027,15 +1029,13 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 		log_print("kind=shmif:source=%zu:data=%s", cl->clid, arcan_shmif_eventstr(&ev, NULL, 0));
 #endif
 
-/* only allow once, registered is ignored if the worker is attached as debugger */
+/* Only allow once, registered is ignored if the worker is attached as
+ * debugger. cl->ident is provided when the worker requests to join the ctrl to
+ * pair requests to parent, netstate is sent here with H(Kpub, applname) to
+ * give a persistent identifier that can be used for tracking state */
 		if (!cl->registered){
 			if (ev.ext.kind == EVENT_EXTERNAL_NETSTATE){
-				blake3_hasher hash;
-				blake3_hasher_init(&hash);
-				blake3_hasher_update(&hash, ev.ext.netstate.name, 32);
-				uint8_t khash[32];
-				blake3_hasher_finalize(&hash, khash, 32);
-				unsigned char* b64 = a12helper_tob64(khash, 32, &(size_t){0});
+				unsigned char* b64 = a12helper_tob64(ev.ext.netstate.pubk, 32, &(size_t){0});
 				snprintf(cl->keyid, COUNT_OF(cl->keyid), "%s", (char*) b64);
 				log_print(
 					"kind=status:worker=%zu:registered:key=%s", cl->clid, cl->keyid);
@@ -1134,7 +1134,7 @@ void anet_directory_appl_runner()
 	shmifsrv_monotonic_rebase();
 
 /* shmif connection gets reserved index 0 */
-	join_worker(SHMIF.epipe, false);
+	join_worker(SHMIF.epipe, ".main", false);
 	int left = 25;
 
 	while (!SHUTDOWN){

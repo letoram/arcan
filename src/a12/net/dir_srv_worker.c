@@ -42,7 +42,7 @@ static struct a12_state* active_client_state;
 static struct appl_meta* pending_index;
 static struct ioloop_shared* ioloop_shared;
 static struct a12_state trace_state = {.tracetag = "worker"};
-
+static uint8_t auth_pub_key[32];
 static uint8_t pending_tunnel;
 
 #define TRACE(...) do { \
@@ -297,7 +297,7 @@ static void bchunk_event(struct a12_state *S,
  * NEWSEGMENT as the mempage is acquired over the segment - fake a named
  * connection with the descriptor from newsegment by having SOCKIN_FD without
  * ARCAN_SOCKIN_MEMFD */
-	else if (strcmp(ev->tgt.message, ".appl") == 0 ||
+	else if (strncmp(ev->tgt.message, ".appl-", 6) == 0 ||
 		strcmp(ev->tgt.message, ".monitor") == 0){
 
 		if (ioloop_shared->shmif.addr)
@@ -316,17 +316,23 @@ static void bchunk_event(struct a12_state *S,
 			return;
 		}
 
-/* Placeholder name, this should be H(Kpub | Applname), debug monitor doesn't
- * need NETSTATE as it shouldn't be visible to the script */
-		if (strcmp(ev->tgt.message, ".appl") == 0){
-			arcan_shmif_enqueue(&ioloop_shared->shmif,
-				&(struct arcan_event){
-					.category = EVENT_EXTERNAL,
-					.ext.kind = EVENT_EXTERNAL_NETSTATE,
-					.ext.netstate = {
-						.name = {1, 2, 3, 4, 5, 6, 7, 8}
-					}
-			});
+		if (strncmp(ev->tgt.message, ".appl-", 6) == 0){
+			const char* applname = (const char*) &ev->tgt.message[6];
+
+			struct arcan_event joinev = (struct arcan_event){
+				.category = EVENT_EXTERNAL,
+				.ext.kind = EVENT_EXTERNAL_NETSTATE
+			};
+
+/* just H(kPub | applname) to give a persistent identifier for the ctrl
+ * connection without giving the ctrl unnecessary information (kPub). */
+			blake3_hasher hash;
+			blake3_hasher_init(&hash);
+			blake3_hasher_update(&hash, auth_pub_key, 32);
+			blake3_hasher_update(&hash, applname, strlen(applname));
+			blake3_hasher_finalize(&hash, joinev.ext.netstate.pubk, 32);
+
+			arcan_shmif_enqueue(&ioloop_shared->shmif, &joinev);
 		}
 
 		a12int_trace(A12_TRACE_DIRECTORY,
@@ -596,6 +602,14 @@ static struct pk_response key_auth_worker(
 
 		arg_cleanup(stat);
 	}
+
+/* keep the public key for join requests to a ctrl in order to give it
+ * a salted identifier for persistence */
+	if (count == 0){
+		reply.authentic = true;
+		memcpy(auth_pub_key, pk, 32);
+	}
+
 	reply.authentic = count == 0;
 
 	return reply;

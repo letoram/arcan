@@ -149,8 +149,7 @@ struct dircl;
 struct dircl {
 	int in_appl; /* have they joined an appl- controller? */
 	bool in_monitor;
-
-	char identity[16]; /* presentable source identifier */
+	char identity[16]; /* msggroup identifier (no ctrl) */
 
 	int type; /* source, sink or directory */
 

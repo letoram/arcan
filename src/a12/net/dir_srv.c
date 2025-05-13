@@ -901,10 +901,10 @@ static void msgqueue_worker(struct dircl* C, arcan_event* ev)
  *          but it would be possible to join and use that as a broadcast domain
  *          between multiple logins with the same authentication key.
  */
- if (C->in_appl < 0 && !C->in_admin){
+ if (C->in_appl <= 0 && !C->in_admin){
 		return;
 	}
-	else if (C->in_appl >= 0) {
+	else if (C->in_appl > 0) {
 /* force- prefix identity: */
 		if (!C->message_ofs){
 			snprintf(C->message_multipart, 16, "from=%s:", C->identity);
@@ -1119,49 +1119,54 @@ void handle_netstate(struct dircl* C, arcan_event ev)
 		A12INT_DIRTRACE("dirsv:kind=worker:unknown_netstate");
 }
 
-static bool got_collision(int appid, char* name)
+static struct dircl* find_cl_ident(int appid, char* name)
 {
-	bool res = false;
 	dirsrv_global_lock(__FILE__, __LINE__);
 		struct dircl* C = active_clients.root.next;
 		while (C){
 			if (C->in_appl == appid){
 				if (strcmp(name, C->identity) == 0){
-					res = true;
-					break;
+					return C;
 				}
 			}
 			C = C->next;
 		}
 	dirsrv_global_unlock(__FILE__, __LINE__);
-	return res;
+	return NULL;
 }
 
 static void handle_ident(struct dircl* C, arcan_event ev)
 {
 	char* end;
 
-/* applind:uid - need to handle identifier collision and somehow notify the
- * worker that we ack:ed the join but also that its actual identity flipped. We
- * might also need to do this if moderation says anything. The easiest way
- * around it would be a 'you are now' xyz. otoh - the presentation name should
- * be implemented in some other way. The problem doesn't manifest in the first
- * order as you don't need to 'see' your own identity, but if someone tries to
- * reply to you or you reply to the colliding identity the problem will
- * manifest. */
+/* message contains applid - the later is just used for mapping a client in
+ * appl-ctrl and for logging, we ensure that there is no collision globally
+ * through this pref_[random] setup.
+ *
+ * the reason for this is that we need some kind of printable identifier, and
+ * the runner doesn't have access to the actual public key used to authenticate
+ * and we don't have the H(salt | pubk) produced by the worker that the ctrl
+ * can use for key-val store.
+ *
+ * this is mainly important for directed launch_target - the ctrl doesn't have
+ * exec() like permissions so we need to do that and the route to the right
+ * worker process. The option would be to route the launch_target shmifsrv
+ * handle to the ctrl and then have it forward it to the worker, but that gets
+ * more cumbersome if that actually goes through a linked directory.
+ */
 	size_t ind = strtoul((char*)ev.ext.message.data, &end, 10);
 
-	char buf[10] = "anon_";
+	char buf[sizeof("anon_XXXXXXXX")] = "anon_";
 	if (*end == '\0' || (*(end+1)) == '\0'){
 make_random:
 		do {
-			uint8_t rnd[4];
-			arcan_random(rnd, 4);
-			for (size_t i = 0; i < 4; i++){
+			uint8_t rnd[8];
+			arcan_random(rnd, 8);
+			for (size_t i = 0; i < 8; i++){
 				buf[i+5] = 'a' + (rnd[i] % 26);
 			}
 			end = buf;
-		} while (got_collision(ind, buf));
+		} while (find_cl_ident(ind, buf));
 	}
 	else if (*end != ':'){
 		A12INT_DIRTRACE("dirsv:kind=error:bad_join_id");
@@ -1171,7 +1176,7 @@ make_random:
 		size_t count = 0;
 		char* work = strdup(end);
 
-		while (got_collision(ind, end)){
+		while (find_cl_ident(ind, end)){
 			count++;
 			if (count == 99)
 				goto make_random;
@@ -1180,6 +1185,7 @@ make_random:
 
 		free(work);
 	}
+	snprintf(C->identity, COUNT_OF(C->identity), "%s", end);
 
 	struct appl_meta* cur;
 
@@ -1275,11 +1281,12 @@ static void* dircl_process(void* P)
 
 		while (1 == shmifsrv_dequeue_events(C->C, &ev, 1)){
 			flush = true;
-/* petName for a source/dir or for joining an appl */
+/* register to join an appl */
 			if (ev.ext.kind == EVENT_EXTERNAL_IDENT){
 				A12INT_DIRTRACE("dirsv:kind=worker:cl_join=%s", (char*)ev.ext.message.data);
 				handle_ident(C, ev);
 			}
+/* petName for a source/dir */
 			else if (ev.ext.kind == EVENT_EXTERNAL_NETSTATE){
 				handle_netstate(C, ev);
 			}
@@ -1449,7 +1456,7 @@ struct dircl* anet_directory_shmifsrv_thread(
 	struct dircl* newent = malloc(sizeof(struct dircl));
 	*newent = (struct dircl){
 		.C = cl,
-		.in_appl = -1,
+		.in_appl = 0,
 		.lua_cb = LUA_NOREF,
 		.endpoint = {
 			.category = EVENT_EXTERNAL,
