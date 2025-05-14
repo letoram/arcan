@@ -351,7 +351,10 @@ enum a12_bstream_type {
 	A12_BTYPE_CRASHDUMP = 4,
 	A12_BTYPE_APPL = 5,
 	A12_BTYPE_APPL_RESOURCE = 6,
-	A12_BTYPE_APPL_CONTROLLER = 7
+	A12_BTYPE_APPL_CONTROLLER = 7,
+
+/* requires matching STATE | BLOB */
+	A12_BTYPE_METADATA = 8
 };
 
 /* BCHUNKSTATE response/initiator */
