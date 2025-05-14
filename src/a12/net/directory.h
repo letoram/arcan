@@ -446,6 +446,11 @@ bool dir_request_resource(
 );
 
 /*
+ * only useful from srv-side-ctrl to lua-side-ctrl mapping
+ */
+struct dircl* dirsrv_find_cl_ident(int appid, const char* name);
+
+/*
  * Enqueue [outev] to [C] and enter a blocking wait loop for a matching reply,
  * any other inbound events received in the interim will get queued into
  * [reply]. Trigger conditions for successful (=true) result is an event of
@@ -457,5 +462,12 @@ bool dir_block_synch_request(
 	struct evqueue_entry* pending,
 	int category_ok, int kind_ok,
 	int category_fail, int kind_fail);
+
+/*
+ * Mark a source arriving with pubk[..] as belonging to [appid] and possibly
+ * [name] (if set).
+ */
+void dirsrv_set_source_mask(
+	uint8_t pubk[static 32], int appid, char identity[static 16]);
 
 #endif

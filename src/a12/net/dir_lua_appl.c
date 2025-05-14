@@ -347,7 +347,7 @@ static int launchtarget(lua_State* L)
 
 	size_t ind = 3;
 	if (lua_type(L, 3) == LUA_TNUMBER){
-		dst = alua_checkclient(L, lua_tonumber(L, 3));
+		dst = alua_checkclient(L, 3);
 		ind++;
 	}
 
@@ -377,8 +377,8 @@ static int launchtarget(lua_State* L)
 	}
 	else {
 		req_len = asprintf(&req,
-		"launch=%s:dst=%zu:id=%"PRIdPTR":args=%s",
-		name, dst->clid, (intptr_t) ref, argstr);
+		"launch=%s:dst=%s:id=%"PRIdPTR":args=%s",
+		name, dst->ident, (intptr_t) ref, argstr);
 	}
 
 	if (req_len < 0){

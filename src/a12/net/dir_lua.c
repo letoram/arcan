@@ -139,35 +139,9 @@ static void send_runner_appl(struct runner_state* runner)
 	shmifsrv_enqueue_event(runner->cl, &outev, dfd);
 }
 
-static void launchtarget_directed(struct runner_state* runner,
-	struct arcan_dbh* db, const char* tgt, const char* dst)
-{
-	struct arcan_strarr argv, env, libs = {0};
-	enum DB_BFORMAT bfmt;
-	arcan_configid cid =
-		arcan_db_configid(db, arcan_db_targetid(db, tgt, NULL), "default");
-
-	argv = env = libs;
-	char* exec = arcan_db_targetexec(db, cid, &bfmt, &argv, &env, &libs);
-
-/* just queue the failure immediately */
-	if (!exec){
-		A12INT_DIRTRACE("launch_target_directed:eexist=%s", tgt);
-		return;
-	}
-
-/* launch shmif client,
- *
- * take server side socket and send to matching worker as .dynamic,
- * worker announces a random identifier as dynopen and forwards into
- * the arcan instance, when the corresponding netopen comes through
- * it is treated as sinking a regular source and the worker spins
- * up as a tunnel.
- */
-}
-
 static void launchtarget(struct runner_state* runner,
-	struct arcan_dbh* db, const char* tgt, const char* dst, int id)
+	struct arcan_dbh* db,
+	const char* tgt, const char* ident, int id, struct dircl* dircl)
 {
 	struct arcan_strarr argv, env, libs = {0};
 	enum DB_BFORMAT bfmt;
@@ -193,6 +167,10 @@ static void launchtarget(struct runner_state* runner,
 	a12helper_keystore_accept_ephemeral(
 		public, "_local", runner->appl->appl.name);
 
+	char emptyid[16] = {0};
+	dirsrv_set_source_mask(public,
+		runner->appl->identifier, dircl ? dircl->identity : emptyid);
+
 /* we also need to provide the public key we are responding with */
 	uint8_t srvprivk[32], srvpubk[32];
 	char* tmp;
@@ -207,20 +185,25 @@ static void launchtarget(struct runner_state* runner,
  *  1. providing a new public source regardless of appl
  *     - this takes generating a name (and possibly auth token)
  *
- *  2. providing a new source to a discrete client
- *     - this would be pushing the tunnel connection directly to each worker
- *       so that it can open a new channel and unpack() straight into it
- *     - it would also need to tell the source about the discrete client pubk
+ *  2. providing a new public source for consumers within an appl-group:
+ *     - this is 1. + a NETSTATE mask based on dircl
+ *     - and a diropen check that the client is in the group
  *
- *  3. providing new sources to a set of discrete clients
+ *  3. providing a new source to a discrete client
+ *     - treat as 2 but with a further mask so it's only visible to the client
+ *     - and add a hint to the diropen announce that it's an immediate and
+ *       directed resource
+ *
+ *  4. providing new sources to a set of discrete clients
  *     - this should probably be handled as multiple launch_target commands
  *
- *  4. providing a shared source to a set of discrete clients
+ *  5. providing a shared source to a set of discrete clients
  *     - most useful and most difficult
  *     - do last and see if there's anything to re-use.
+ *     - can likely do with a arcan-net mode that multiplexes
  */
 	char* outargv[argv.count + 12];
-	char* ident = strdup(dst);
+	char* outident = strdup(ident);
 
 	memset(outargv, '\0', sizeof(outargv));
 	size_t ind = 0;
@@ -230,7 +213,7 @@ static void launchtarget(struct runner_state* runner,
 	outargv[ind++] = "--force-kpub";
 	outargv[ind++] = (char*) pub_b64;
 	outargv[ind++] = "--ident";
-	outargv[ind++] = ident;
+	outargv[ind++] = outident;
 	outargv[ind++] = "localhost";
 		/* should also grab port from CFG */
 	outargv[ind++] = "--";
@@ -273,6 +256,12 @@ static void launchtarget(struct runner_state* runner,
 	}
 
 	free(msg);
+	free(outident);
+
+	free(exec);
+	arcan_mem_freearr(&argv);
+	arcan_mem_freearr(&libs);
+	arcan_mem_freearr(&env);
 }
 
 static void* strarr_copy(void* arg)
@@ -376,17 +365,23 @@ static void controller_dispatch(
 	else if (arg_lookup(arr, "launch", 0, &arg) && arg &&
 		arg_lookup(arr, "id", 0, &val) && val){
 		int id = (int) strtol(val, NULL, 10);
-		const char* dst;
+		struct dircl* dircl = NULL;
+		const char* dst = NULL;
 
 /* this is a point to support multicasting by checking for multiple [dst], if
  * so the shmif connection is actually an arcan_lwa that runs a wm appl and
  * then launch_targets the real one. */
 		if (arg_lookup(arr, "dst", 0, &dst) && dst){
-			launchtarget_directed(runner, db, arg, dst);
-			return;
+/* reverse-resolve and ensure the dst is actually in the group */
+			dircl = dirsrv_find_cl_ident(runner->appl->identifier, dst);
+			if (!dircl){
+				A12INT_DIRTRACE("launch_target_directed:badid=%s", dst);
+				return;
+			}
 		}
 
-		launchtarget(runner, db, arg, "testsource", id);
+		arg_lookup(arr, "dst", 0, &dst);
+		launchtarget(runner, db, arg, "testsource", id, dircl);
 	}
 /* trigger the same path as initial ctrl-appl loading */
 	else if (arg_lookup(arr, "reload", 0, NULL)){
@@ -1070,7 +1065,8 @@ static int dir_launchtarget(lua_State* L)
  * size_t ind = 3;
  *
  * launch to one specific client
- * options for specifying identity
+ * options for specifying identity, this is simpler than in the regular
+ * launchtarget form as we do have access to dircl from userdata
  *
 	if (lua_type(L, 3) == LUA_TUSERDATA){
 		ind++;
@@ -1082,7 +1078,7 @@ static int dir_launchtarget(lua_State* L)
 	snprintf(appl.appl.name, COUNT_OF(appl.appl.name), "%s", name);
 
 /* runner is faked here as it doesn't come from a ctrl */
-	launchtarget(&runner, DB, name, NULL, 0);
+	launchtarget(&runner, DB, name, NULL, 0, NULL);
 	return 0;
 }
 

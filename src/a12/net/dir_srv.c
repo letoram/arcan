@@ -40,12 +40,21 @@
 
 extern bool g_shutdown;
 
+struct source_mask;
+struct source_mask {
+	int applid;
+	uint8_t pubk[32];
+	char identity[16];
+	struct source_mask* next;
+};
+
 static struct {
 	pthread_mutex_t sync;
 	struct dircl root;
 	volatile struct anet_dirsrv_opts* opts;
 	char* dirlist;
 	size_t dirlist_sz;
+	struct source_mask* masks;
 } active_clients = {
 	.sync = PTHREAD_MUTEX_INITIALIZER
 };
@@ -106,7 +115,7 @@ void dirsrv_global_unlock(const char* file, int line)
 /* Check for petname collision among existing instances, this is another of
  * those policy decisions that should be moved to a scripting layer to also
  * apply geographically appropriate blocklists for the inevitable censors */
-static bool gotname(struct dircl* source, struct arcan_event ev)
+static bool got_source_name(struct dircl* source, struct arcan_event ev)
 {
 	bool rv = false;
 
@@ -469,6 +478,36 @@ static bool tag_outbound_name(struct arcan_event* ev, uint8_t kpub[static 32])
 	return true;
 }
 
+static bool apply_source_mask(struct dircl* source, struct dircl* dst)
+{
+	if (!dst->type || dst->type != ROLE_SINK)
+		return true;
+
+	struct source_mask* cur = active_clients.masks;
+
+/* find the mask matching the source */
+	while (cur){
+		if (memcmp(cur->pubk, source->pubk, 32) == 0)
+			break;
+
+		cur = cur->next;
+	}
+
+	if (!cur)
+		return false;
+
+/* it's a masked source, is the destination not in the mask? */
+	if (cur->applid && dst->in_appl != cur->applid)
+		return true;
+
+/* is it also limited to an identity? */
+	if (cur->identity[0] && strcmp(cur->identity, cur->identity) != 0)
+		return true;
+
+/* otherwise pass */
+	return false;
+}
+
 static void register_source(struct dircl* C, struct arcan_event ev)
 {
 	const char* allow = active_clients.opts->allow_src;
@@ -510,7 +549,7 @@ static void register_source(struct dircl* C, struct arcan_event ev)
 
 /* and no duplicates, if there is a config script it gets to manage collisions
  * so this is only a fallback if it didn't or doesn't care */
-	if (gotname(C, ev)){
+	if (got_source_name(C, ev)){
 		A12INT_DIRTRACE(
 			"dirsv:kind=warning_register:collision=%s", ev.ext.registr.title);
 /* generate new name */
@@ -539,12 +578,12 @@ static void register_source(struct dircl* C, struct arcan_event ev)
 
 	C->type = ev.ext.netstate.type;
 
-/* notify everyone interested about the change, the local state machine
- * will determine whether to forward or not */
+/* notify everyone interested and eligible about the change, the local state
+ * machine will determine whether to forward or not */
 	dirsrv_global_lock(__FILE__, __LINE__);
 		struct dircl* cur = active_clients.root.next;
 		while (cur){
-			if (cur != C && cur->C && !(cur->type || cur->type == ROLE_SINK)){
+			if (cur != C && cur->C && !apply_source_mask(C, cur)){
 				shmifsrv_enqueue_event(cur->C, &ev, -1);
 			}
 			cur = cur->next;
@@ -1119,7 +1158,7 @@ void handle_netstate(struct dircl* C, arcan_event ev)
 		A12INT_DIRTRACE("dirsv:kind=worker:unknown_netstate");
 }
 
-static struct dircl* find_cl_ident(int appid, char* name)
+struct dircl* dirsrv_find_cl_ident(int appid, const char* name)
 {
 	dirsrv_global_lock(__FILE__, __LINE__);
 		struct dircl* C = active_clients.root.next;
@@ -1166,7 +1205,7 @@ make_random:
 				buf[i+5] = 'a' + (rnd[i] % 26);
 			}
 			end = buf;
-		} while (find_cl_ident(ind, buf));
+		} while (dirsrv_find_cl_ident(ind, buf));
 	}
 	else if (*end != ':'){
 		A12INT_DIRTRACE("dirsv:kind=error:bad_join_id");
@@ -1176,7 +1215,7 @@ make_random:
 		size_t count = 0;
 		char* work = strdup(end);
 
-		while (find_cl_ident(ind, end)){
+		while (dirsrv_find_cl_ident(ind, end)){
 			count++;
 			if (count == 99)
 				goto make_random;
@@ -1511,6 +1550,22 @@ static bool try_appl_controller(const char* d_name, int dfd)
 	}
 
 	return false;
+}
+
+void dirsrv_set_source_mask(
+	uint8_t pubk[static 32], int applid, char identity[static 16])
+{
+	struct source_mask** cur = &active_clients.masks;
+	while (*cur)
+		cur = &(*cur)->next;
+
+	*cur = malloc(sizeof(struct source_mask));
+	struct source_mask* dst = *cur;
+
+	memcpy(dst->identity, identity, 16);
+	dst->applid = applid;
+
+	memcpy(dst->pubk, pubk, 32);
 }
 
 /* this will just keep / cache the built .FAPs in memory, the startup times
