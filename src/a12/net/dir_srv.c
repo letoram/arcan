@@ -91,6 +91,8 @@ static struct a12_state lua_trace_state = {.tracetag = "lua"};
 	} while (0);
 
 static void rebuild_index();
+static struct source_mask*
+	apply_source_mask(struct dircl* source, struct dircl* dst);
 
 void dirsrv_global_lock(const char* file, int line)
 {
@@ -364,23 +366,42 @@ send_fail:
 	);
 }
 
+static void forward_appl_sources(struct dircl* C, int applid)
+{
+/* already locked when entering here */
+	struct dircl* cur = active_clients.root.next;
+
+/* sweep clients and forward any sources that also match applid, for large N of
+ * clients there is probably a point to track sources in a separate list .. */
+	while (cur){
+		struct source_mask* mask;
+
+		if (cur != C && cur->C &&
+			(mask = apply_source_mask(cur, C)) && mask->applid == applid){
+			arcan_event ev = cur->petname;
+			size_t nl = strlen(ev.ext.netstate.name);
+			ev.ext.netstate.name[nl] = ':';
+			ev.ext.netstate.state = 1;
+			memcpy(&ev.ext.netstate.name[nl+1], cur->pubk, 32);
+			shmifsrv_enqueue_event(C->C, &ev, -1);
+		}
+		cur = cur->next;
+	}
+}
+
 static void dynlist_to_worker(struct dircl* C)
 {
 	dirsrv_global_lock(__FILE__, __LINE__);
 	struct dircl* cur = active_clients.root.next;
 	while (cur){
-		if (cur == C || !cur->C || !cur->petname.ext.netstate.name[0]){
-			cur = cur->next;
-			continue;
-		}
-
+		if (cur != C && cur->C && !apply_source_mask(cur, C)){
 /* and the dynamic sources separately */
-		arcan_event ev = cur->petname;
-		size_t nl = strlen(ev.ext.netstate.name);
-		ev.ext.netstate.name[nl] = ':';
-		memcpy(&ev.ext.netstate.name[nl+1], cur->pubk, 32);
-		shmifsrv_enqueue_event(C->C, &ev, -1);
-
+			arcan_event ev = cur->petname;
+			size_t nl = strlen(ev.ext.netstate.name);
+			ev.ext.netstate.name[nl] = ':';
+			memcpy(&ev.ext.netstate.name[nl+1], cur->pubk, 32);
+			shmifsrv_enqueue_event(C->C, &ev, -1);
+		}
 		cur = cur->next;
 	}
 	dirsrv_global_unlock(__FILE__, __LINE__);
@@ -478,10 +499,11 @@ static bool tag_outbound_name(struct arcan_event* ev, uint8_t kpub[static 32])
 	return true;
 }
 
-static bool apply_source_mask(struct dircl* source, struct dircl* dst)
+static struct source_mask*
+	apply_source_mask(struct dircl* source, struct dircl* dst)
 {
-	if (!dst->type || dst->type != ROLE_SINK)
-		return true;
+	if (!dst->type || dst->type != ROLE_SINK || source->type != ROLE_SOURCE)
+		return NULL;
 
 	struct source_mask* cur = active_clients.masks;
 
@@ -494,18 +516,18 @@ static bool apply_source_mask(struct dircl* source, struct dircl* dst)
 	}
 
 	if (!cur)
-		return false;
+		return NULL;
 
 /* it's a masked source, is the destination not in the mask? */
 	if (cur->applid && dst->in_appl != cur->applid)
-		return true;
+		return NULL;
 
 /* is it also limited to an identity? */
 	if (cur->identity[0] && strcmp(cur->identity, cur->identity) != 0)
-		return true;
+		return NULL;
 
 /* otherwise pass */
-	return false;
+	return cur;
 }
 
 static void register_source(struct dircl* C, struct arcan_event ev)
@@ -583,7 +605,7 @@ static void register_source(struct dircl* C, struct arcan_event ev)
 	dirsrv_global_lock(__FILE__, __LINE__);
 		struct dircl* cur = active_clients.root.next;
 		while (cur){
-			if (cur != C && cur->C && !apply_source_mask(C, cur)){
+			if (cur != C && cur->C && apply_source_mask(C, cur)){
 				shmifsrv_enqueue_event(cur->C, &ev, -1);
 			}
 			cur = cur->next;
@@ -1241,6 +1263,10 @@ make_random:
 						cur, active_clients.opts->runner_process);
 
 				anet_directory_lua_join(C, cur);
+
+/* by joining the appl, masked sources might have appeared - check for
+ * those */
+				forward_appl_sources(C, ind);
 			}
 		}
 		else
@@ -1500,7 +1526,8 @@ struct dircl* anet_directory_shmifsrv_thread(
 		.endpoint = {
 			.category = EVENT_EXTERNAL,
 			.ext.kind = EVENT_EXTERNAL_NETSTATE
-		}
+		},
+		.type = ROLE_SINK
 	};
 
 	const char* endpoint = a12_get_endpoint(S);
@@ -1564,6 +1591,7 @@ void dirsrv_set_source_mask(
 
 	memcpy(dst->identity, identity, 16);
 	dst->applid = applid;
+	dst->next = NULL;
 
 	memcpy(dst->pubk, pubk, 32);
 }

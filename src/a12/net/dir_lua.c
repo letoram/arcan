@@ -1078,7 +1078,7 @@ static int dir_launchtarget(lua_State* L)
 	snprintf(appl.appl.name, COUNT_OF(appl.appl.name), "%s", name);
 
 /* runner is faked here as it doesn't come from a ctrl */
-	launchtarget(&runner, DB, name, NULL, 0, NULL);
+	launchtarget(&runner, DB, name, "_config", 0, NULL);
 	return 0;
 }
 
