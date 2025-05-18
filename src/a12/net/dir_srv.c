@@ -94,6 +94,7 @@ static void rebuild_index();
 static struct source_mask*
 	apply_source_mask(struct dircl* source, struct dircl* dst);
 
+#define DEBUG_LOCK
 void dirsrv_global_lock(const char* file, int line)
 {
 #ifdef DEBUG_LOCK
@@ -1187,13 +1188,13 @@ struct dircl* dirsrv_find_cl_ident(int appid, const char* name)
 		while (C){
 			if (C->in_appl == appid){
 				if (strcmp(name, C->identity) == 0){
-					return C;
+					break;
 				}
 			}
 			C = C->next;
 		}
 	dirsrv_global_unlock(__FILE__, __LINE__);
-	return NULL;
+	return C;
 }
 
 static void handle_ident(struct dircl* C, arcan_event ev)
@@ -1304,7 +1305,7 @@ static void* dircl_process(void* P)
 
 		int sv;
 		if ((sv = shmifsrv_poll(C->C)) == CLIENT_DEAD){
-			A12INT_DIRTRACE("dirsv:kind=worker:dead");
+			A12INT_DIRTRACE("dirsrv:kind=worker:dead");
 			dead = true;
 			continue;
 		}
@@ -1313,6 +1314,7 @@ static void* dircl_process(void* P)
  * MESSAGE event as well as re-using the same codepaths for dynamically
  * updating the index later. */
 		if (!activated && shmifsrv_poll(C->C) == CLIENT_IDLE){
+			A12INT_DIRTRACE("dirsrv:kind=worker_join:activate");
 			arcan_event ev = {
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_MESSAGE

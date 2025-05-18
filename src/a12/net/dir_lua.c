@@ -157,6 +157,8 @@ static void launchtarget(struct runner_state* runner,
 		return;
 	}
 
+	A12INT_DIRTRACE("launch_target:prepare_source=%s", tgt);
+
 /* generate a temporary keypair and register it with source permissions
  * only. Easier than modifying dir_srv.c auth for this special case, we
  * just grant it into the keystore. */
