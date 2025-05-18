@@ -75,7 +75,7 @@ struct runner_state {
 	struct shmifsrv_client* cl;
 	struct appl_meta* appl;
 	volatile bool alive;
-	volatile bool appl_sent;
+	volatile _Atomic bool appl_sent;
 	int store_dfd;
 };
 
@@ -170,8 +170,11 @@ static void launchtarget(struct runner_state* runner,
 		public, "_local", runner->appl->appl.name);
 
 	char emptyid[16] = {0};
-	dirsrv_set_source_mask(public,
-		runner->appl->identifier, dircl ? dircl->identity : emptyid);
+
+	dirsrv_global_lock(__FILE__, __LINE__);\
+		dirsrv_set_source_mask(public,
+			runner->appl->identifier, dircl ? dircl->identity : emptyid);
+	dirsrv_global_unlock(__FILE__, __LINE__);\
 
 /* we also need to provide the public key we are responding with */
 	uint8_t srvprivk[32], srvpubk[32];
@@ -502,7 +505,7 @@ static void* controller_runner(void* inarg)
 /* Ready, send the dirfd along with the name to the runner, this is where one
  * would queue up database and secondary namespaces like appl-shared. */
 	send_runner_appl(runner);
-	runner->appl_sent = true;
+	atomic_store(&runner->appl_sent, true);
 
 /* main processing loop,
  *
@@ -1731,8 +1734,10 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 
 /* block until the process is spawned and the appl has been sent so we don't
  * get ordering issues with the first worker joining when the VM isn't ready */
-		while (!runner->appl_sent){
+		bool done = false;
+		while(!done){
 			pthread_mutex_lock(&runner->lock);
+			done = atomic_load(&runner->appl_sent);
 			pthread_mutex_unlock(&runner->lock);
 		}
 		return true;
