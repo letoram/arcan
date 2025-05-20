@@ -94,7 +94,6 @@ static void rebuild_index();
 static struct source_mask*
 	apply_source_mask(struct dircl* source, struct dircl* dst);
 
-#define DEBUG_LOCK
 void dirsrv_global_lock(const char* file, int line)
 {
 #ifdef DEBUG_LOCK

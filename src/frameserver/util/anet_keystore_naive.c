@@ -811,6 +811,7 @@ const char*
 			ent = ent->next;
 			continue;
 		}
+		nlen = strlen(needle);
 
 /* that might be a partial match, i.e. key for connpath 'a' while not for 'ale'
  * so check that we are at a word boundary (at beginning, end or surrounded by , */
