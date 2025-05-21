@@ -177,6 +177,7 @@ static bool step_a(struct arcan_shmif_cont* ctx)
 
 /* now it is safe to slide local references */
 	pending |= 1 << priv->abuf_ind;
+
 	priv->abuf_ind++;
 	if (priv->abuf_ind == priv->abuf_cnt)
 		priv->abuf_ind = 0;
@@ -240,9 +241,20 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* C, int mask)
 	if ( mask & SHMIF_SIGAUD ){
 		bool lock = step_a(C);
 
-/* watchdog will pull this for us */
-		if (lock && !(mask & SHMIF_SIGBLK_NONE))
-			shmif_platform_sync_wait(C->addr, SYNC_AUDIO);
+/* This is different from video as we can get a partial accept of one or
+ * several buffers, so if we run one synch cycle and it returns partial
+ * (modifies apending but flushes aready) then we should try to submit again.
+ * Aready points to buffer tail, server walks to start and consumes from there.
+ */
+		if (lock && !(mask & SHMIF_SIGBLK_NONE)){
+			while (lock && atomic_load(&C->addr->apending)
+				&& shmif_platform_check_alive(C)){
+				if (!atomic_load(&C->addr->aready))
+					lock = step_a(C);
+
+				shmif_platform_sync_wait(C->addr, SYNC_AUDIO);
+			}
+		}
 	}
 /* for sub-region multi-buffer synch, we currently need to
  * check before running the step_v */

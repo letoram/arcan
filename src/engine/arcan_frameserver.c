@@ -490,13 +490,10 @@ static int push_buffer(arcan_frameserver* src,
 
 		if (!failev){
 			if (src->vstream.pending[0].fence > 0){
-				printf("pending with synch object");
 				if (-1 == poll(
 					&(struct pollfd){.fd = src->vstream.pending[0].fence, POLLIN}, 1, 0)){
-					printf("not ready\n");
 					return false;
 				}
-				printf("ready\n");
 				close(src->vstream.pending[0].fence);
 				src->vstream.pending[0].fence = -1;
 			}
@@ -1542,8 +1539,8 @@ arcan_errc arcan_frameserver_audioframe_direct(void* aobj,
 
 	TRAMP_GUARD(ARCAN_ERRC_UNACCEPTED_STATE, src);
 
-	volatile int ind = atomic_load(&src->shm.ptr->aready) - 1;
-	volatile int amask = atomic_load(&src->shm.ptr->apending);
+	int ind = atomic_load(&src->shm.ptr->aready) - 1;
+	int amask = atomic_load(&src->shm.ptr->apending);
 
 /* sanity check, untrusted source */
 	if (ind >= src->abuf_cnt || ind < 0){
@@ -1583,7 +1580,9 @@ arcan_errc arcan_frameserver_audioframe_direct(void* aobj,
 		src->audio_flush_pending = false;
 	}
 
-/* check for cont and > 1, wait for signal.. else release */
+/* Check for cont and > 1, wait for signal.. else release. This is governed by
+ * the platform layer audio buffer depth, if it is short and there is more
+ * pending, the shmif end will need to resubmit. */
 	if (!cont){
 		atomic_store_explicit(&src->shm.ptr->aready, 0, memory_order_release);
 		arcan_frameserver_signal(src, 4 /* SYNC_AUDIO */);
