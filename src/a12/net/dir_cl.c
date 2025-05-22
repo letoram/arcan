@@ -250,6 +250,10 @@ void dircl_source_handler(
 	snprintf(port, sizeof(port), "%"PRIu16, req.port);
 	snprintf(a12opts.secret, sizeof(a12opts.secret), "%s", req.authk);
 
+/* FIXME:
+ * tundrop on any failure for proto == 4
+ */
+
 	struct anet_options anet = {
 		.retry_count = 10,
 		.opts = &a12opts,
@@ -262,14 +266,36 @@ void dircl_source_handler(
 		.keystore = global.meta.keystore
 	};
 
+/* two paths here, one is that we are simply sinking a dynamic source, the
+ * other is that we are already hosting an a12 appl and the new dynamic source
+ * should be handled through a SEGREQ (or already has one pending, depends if
+ * define_recordtarget has been used to share or we get one pushed). */
 	if (req.proto == 4){
 		int sv[2];
 		if (0 != socketpair(AF_UNIX, SOCK_STREAM, 0, sv)){
 			a12int_trace(A12_TRACE_DIRECTORY, "tunnel_socketpair_fail");
 			return;
 		}
-
 		a12_set_tunnel_sink(S, 1, sv[0]);
+
+		if (I->shmif.addr){
+			arcan_shmif_enqueue(&I->shmif, &(struct arcan_event){
+				.ext.kind = ARCAN_EVENT(SEGREQ),
+				.ext.segreq.kind = SEGID_HANDOVER
+			});
+			struct arcan_event* pqueue;
+			struct arcan_event acqev;
+			ssize_t pqueue_sz;
+				if (arcan_shmif_acquireloop(&I->shmif, &acqev, &pqueue, &pqueue_sz)){
+					if (acqev.tgt.kind != TARGET_COMMAND_NEWSEGMENT){
+						fprintf(stderr, "appl-rejected dynopen\n");
+						return;
+					}
+					I->handover = malloc(sizeof(struct arcan_shmif_cont));
+					*(I->handover) = arcan_shmif_acquire(&I->shmif, NULL, 0, 0);
+				}
+			}
+
 		anet_directory_tunnel_thread(I, 1);
 		detach_tunnel_runner(I, sv[1], &a12opts, &req);
 		I->handover = NULL;
@@ -1288,15 +1314,31 @@ static void upload_file(
 	}
 }
 
-static void cl_got_dyn(struct a12_state* S, int type,
-		const char* petname, bool found, uint8_t pubk[static 32], void* tag)
+static void cl_got_dyn(
+	struct a12_state* S,
+	uint8_t type,
+	const char* petname,
+	uint8_t state,
+	uint8_t pubk[static 32], uint16_t id, void* tag)
 {
 	struct ioloop_shared* I = tag;
 	struct directory_meta* cbt = I->cbt;
-	printf("source-%s=<%s\n", found ? "found" : "lost", petname);
 
-/* some kind of symbol, < as source, > as sink, / as directory */
+	char add_ch = '<';
+	bool found = state > 0;
+	if (state == 2)
+		add_ch = '+';
 
+	printf("source-%s=%c%s\n", found ? "found" : "lost", add_ch, petname);
+
+/* handle add_ch == '+' different if we got an appl running as it should turn
+ * into a segment_request at that level so that it can diropen immediately */
+	if (state == 2){
+		a12_request_dynamic_resource(S, pubk, true, dircl_source_handler, I);
+		return;
+	}
+
+ /* some kind of symbol, < as source, > as sink, / as directory */
 	if (cbt->clopt->applname[0] != '<' ||
 		strcmp(&I->cbt->clopt->applname[1], petname) != 0)
 		return;

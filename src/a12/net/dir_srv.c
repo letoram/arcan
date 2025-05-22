@@ -605,9 +605,23 @@ static void register_source(struct dircl* C, struct arcan_event ev)
 	dirsrv_global_lock(__FILE__, __LINE__);
 		struct dircl* cur = active_clients.root.next;
 		while (cur){
-			if (cur != C && cur->C && apply_source_mask(C, cur)){
+			if (cur == C || !cur->C){
+				cur = cur->next;
+				continue;
+			}
+
+/* mask will only return if the destination client is eligible, but if it's the
+ * only eligible destination (identity set) then we should mark that in the
+ * NETSTATE event we send to instruct the SINK to request open immediately */
+			struct source_mask* mask = apply_source_mask(C, cur);
+			if (mask){
+				if (mask->identity[0]){
+					ev.ext.netstate.state = 2; /* mark as new-dynamic-immediate */
+				}
+				ev.ext.netstate.namespace = mask->applid;
 				shmifsrv_enqueue_event(cur->C, &ev, -1);
 			}
+
 			cur = cur->next;
 		}
 	dirsrv_global_unlock(__FILE__, __LINE__);

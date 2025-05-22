@@ -1517,12 +1517,13 @@ enum ARCAN_TARGET_SKIPMODE {
  *           1 = discovered
  *           2 = discovered - multipart
  *
- * (type)  : 0 = unknown
- *           1 = source
- *           2 = sink
- *           3 = source | sink
- *           4 = directory
- *           8 = (bit) tunnel-only
+ * (type)  : 0  = unknown
+ *           1  = source
+ *           2  = sink
+ *           3  = source | sink
+ *           4  = directory
+ *           8  = (bit) tunnel-only
+ *           16 = (bit) directed-immediately
  */
 	struct {
 		union {
@@ -1536,6 +1537,7 @@ enum ARCAN_TARGET_SKIPMODE {
 		uint8_t state;
 		uint8_t type;
 		uint16_t port;
+		uint16_t namespace;
 	} netstate;
 
 /*

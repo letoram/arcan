@@ -144,15 +144,15 @@ the config.lua for arcan-net on the hosting machine points
 Then restart (or send SIGUSR1) to the arcan-net -c config.lua process and
 there is your controller.
 
-Now this one is fairly useless, we need to fill out some entry points to
-add our logic. This also looks similar to how an appl is made, you prefix
-the reserved name with the name of your appl (here, test) and the software
-will invoke as necessary.
+Now this one is fairly useless, we need to fill out some entry points to add
+our logic. This also looks similar to how an appl is structured, you prefix the
+reserved name with the name of your appl (here, test) and the software will
+invoke it as necessary.
 
 The set of entry points are:
 
  * `_clock_pulse(ticks)` - 25Hz monotonic clock
- * `_message(clid, msg)` -
+ * `_message(clid, msg)` - Send
  * `_join(clid, ident)`  - A client has joined
  * `_leave(clid)`        - A client has disconnected
  * `_index(clid, nbio)`  - Client requests an index of available files
@@ -166,6 +166,7 @@ The set of functions available:
  * `match_keys`
  * `list_targets`
  * `launch_target`
+ * `system_load`
 
 `open_nonblock`, `launch_decode`, `system_load`, `bond_target`.
 

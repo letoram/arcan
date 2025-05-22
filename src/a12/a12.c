@@ -2256,11 +2256,13 @@ static void command_dirdiscover(struct a12_state* S)
 		return;
 
 	uint8_t type = S->decode[18];
-	bool added = S->decode[19];
+	uint8_t state = S->decode[19];
+	uint16_t ns = S->decode[48];
 
 /* grab petname, sanitize to 7-bit alnum + _ */
 	char petname[17] = {0};
 	memcpy(petname, &S->decode[20], 16);
+
 	for (size_t i = 0; petname[i]; i++){
 		if (!isalnum(petname[i]) && petname[i] != '_'){
 			a12int_trace(A12_TRACE_SECURITY, "discover:malformed_petname=%s", petname);
@@ -2270,7 +2272,7 @@ static void command_dirdiscover(struct a12_state* S)
 
 	uint8_t pubk[32];
 	memcpy(pubk, &S->decode[36], 32);
-	S->on_discover(S, type, petname, added, pubk, S->discover_tag);
+	S->on_discover(S, type, petname, state, pubk, ns, S->discover_tag);
 }
 
 static void add_dirent(struct a12_state* S)
@@ -3887,7 +3889,8 @@ int a12_remote_mode(struct a12_state* S)
 }
 
 void a12int_notify_dynamic_resource(struct a12_state* S,
-		const char* petname, uint8_t kpub[static 32], uint8_t role, bool added)
+		const char* petname, uint8_t kpub[static 32],
+		uint8_t role, uint8_t addstate, uint16_t ns)
 {
 	if (!S->notify_dynamic){
 		a12int_trace(A12_TRACE_DIRECTORY, "ignore_no_dynamic");
@@ -3895,12 +3898,14 @@ void a12int_notify_dynamic_resource(struct a12_state* S,
 	}
 
 	a12int_trace(A12_TRACE_DIRECTORY,
-		"dynamic:forward:name=%s:role=%d:added=%d", petname,(int)role,(int)added);
+		"dynamic:forward:name=%s:role=%d:added=%d", petname,(int)role,(int)addstate);
 
 	uint8_t outb[CONTROL_PACKET_SIZE];
 	build_control_header(S, outb, COMMAND_DIRDISCOVER);
 	outb[18] = role;
-	outb[19] = added;
+	outb[19] = addstate;
+	pack_u16(ns, &outb[48]);
+
 /* note: this does not align on unicode codepoints or utf8- encoding,
  * petname is expected to have been shortened / aligned before */
 	snprintf((char*)&outb[20], 16, "%s", petname);

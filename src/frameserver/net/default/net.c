@@ -674,8 +674,9 @@ void req_id(struct ioloop_shared* I, uint16_t identifier)
 	client->appl.statefd = -1;
 }
 
-static void cl_got_dyn(struct a12_state* S, int type,
-	const char* petname, bool found, uint8_t pubk[static 32], void* tag)
+static void cl_got_dyn(struct a12_state* S,
+	uint8_t type, const char* petname,
+	uint8_t state, uint8_t pubk[static 32], uint16_t ns, void* tag)
 {
 	struct arcan_shmif_cont* C = arcan_shmif_primary(SHMIF_INPUT);
 	arcan_event disc = {
@@ -684,7 +685,7 @@ static void cl_got_dyn(struct a12_state* S, int type,
 		.ext.netstate = {
 			.type = type,
 			.space = 5,
-			.state = found
+			.state = state
 		}
 	};
 	snprintf(disc.ext.netstate.petname, 16, "%s", petname);

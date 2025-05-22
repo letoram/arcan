@@ -310,8 +310,8 @@ struct a12_state {
 /* current encoding state, manipulate with set_channel */
 	int out_channel;
 
-	void (*on_discover)(struct a12_state*, int type,
-		const char* petname, bool found, uint8_t pubk[static 32], void*);
+	void (*on_discover)(struct a12_state*,
+		uint8_t, const char*, uint8_t, uint8_t[static 32], uint16_t id, void*);
 	void* discover_tag;
 
 	void (*on_auth)(struct a12_state*, void*);
@@ -394,7 +394,7 @@ void
 		struct a12_state*,
 		const char* petname,
 		uint8_t kpub[static 32],
-		uint8_t role, bool added);
+		uint8_t role, uint8_t state, uint16_t ns);
 
 /* get the current directory -
  * this is only valid between a12* calls on the state.

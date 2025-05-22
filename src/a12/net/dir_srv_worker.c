@@ -389,6 +389,7 @@ static void do_external_event(
 	case EVENT_EXTERNAL_MESSAGE:
 		a12_channel_enqueue(cbt->S, ev);
 	break;
+
 	case EVENT_EXTERNAL_NETSTATE:{
 		size_t i = 0;
 
@@ -428,8 +429,7 @@ static void do_external_event(
 		a12int_trace(A12_TRACE_DIRECTORY, "notify:name=%s", ev->ext.netstate.name);
 		a12int_notify_dynamic_resource(S,
 			ev->ext.netstate.name, (uint8_t*)&ev->ext.netstate.name[i],
-			ev->ext.netstate.type, ev->ext.netstate.state != 0
-		);
+			ev->ext.netstate.type, ev->ext.netstate.state, ev->ext.netstate.namespace);
 	}
 	break;
 	default:

@@ -278,7 +278,7 @@ struct a12_unpack_cfg {
 		void* tag);
 
 	void (*on_discover)(struct a12_state*,
-		int, const char*, bool, uint8_t[static 32], void*);
+		uint8_t, const char*, uint8_t, uint8_t[static 32], uint16_t id, void*);
 	void* on_discover_tag;
 };
 

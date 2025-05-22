@@ -181,10 +181,11 @@ static bool remote_directory_receive(
 	return true;
 }
 
-static void remote_directory_discover(
-	struct a12_state* S, int type,
-	const char* petname, bool found, uint8_t pubk[static 32], void* tag)
+static void remote_directory_discover(struct a12_state* S,
+	uint8_t type, const char* petname, uint8_t state,
+	uint8_t pubk[static 32], uint16_t ns, void* tag)
 {
+	bool found = state == 1 || state == 2;
 	a12int_trace(A12_TRACE_DIRECTORY,
 		"remote_discover:%s:name=%s:type=%d",
 		found ? "found" : "lost", petname, type);
