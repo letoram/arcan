@@ -1816,7 +1816,9 @@ static bool send_join_pair(
 		shmifsrv_enqueue_event(runner->cl, &ev, sv[0]);
 /* monitor doesn't result in IDENT so mark is as in-appl here */
 		C->in_appl = appl->identifier;
-		C->in_monitor = true;
+		if (strcmp(msg, ".monitor") == 0)
+			C->in_monitor = true;
+
 	pthread_mutex_unlock(&runner->lock);
 
 	ev = (struct arcan_event){
