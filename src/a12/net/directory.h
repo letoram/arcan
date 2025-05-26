@@ -21,6 +21,7 @@ struct anet_dirsrv_opts {
 	char* allow_ares;
 	char* allow_admin;
 	char* allow_monitor;
+	char* allow_applhost;
 
 	char* resource_path;
 	int resource_dfd;
@@ -395,6 +396,8 @@ enum multipart_fail {
 void dirsrv_global_lock(const char* file, int line);
 void dirsrv_global_unlock(const char* file, int line);
 
+struct global_cfg* dirsrv_static_opts();
+
 /*
  * handle EVENT_EXTERNAL_MESSAGE and TARGET_COMMAND_MESSAGE multipart merging,
  * provide either [arg_arr] or an [outchar] to specify if the output is intended
@@ -469,5 +472,15 @@ bool dir_block_synch_request(
  */
 void dirsrv_set_source_mask(
 	uint8_t pubk[static 32], int appid, char identity[static 16]);
+
+/*
+ * Spin up a new ephemeral source process for connecting and registering in a
+ * directory. Specify applid (> 0) and/or [dst] to limit visibility and access
+ * to a single client.
+ */
+struct arcan_strarr;
+bool anet_directory_dirsrv_exec_source(
+	struct dircl* dst, uint16_t applid, const char* ident,
+	char* exec, struct arcan_strarr* argv, struct arcan_strarr* envv);
 
 #endif

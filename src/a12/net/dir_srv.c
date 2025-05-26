@@ -114,6 +114,11 @@ void dirsrv_global_unlock(const char* file, int line)
 	pthread_mutex_unlock(&active_clients.sync);
 }
 
+volatile struct anet_dirsrv_opts* dirsrv_static_config()
+{
+	return active_clients.opts;
+}
+
 /* Check for petname collision among existing instances, this is another of
  * those policy decisions that should be moved to a scripting layer to also
  * apply geographically appropriate blocklists for the inevitable censors */
@@ -220,32 +225,40 @@ send_fail:
 	);
 }
 
+/*
+ * This will spawn a client directed source of a specified appl. It is a separate
+ * permission as it involves both server-side client private store and hosting an
+ * arcan_lwa instance with all that entails.
+ *
+ * Implementation-wise it is similar to a directed launch_target but the
+ * execution setup uses a static arcan_lwa config with database etc. pointing
+ * to the related state store.
+ */
+static void applhost_to_worker(struct dircl* C, struct arg_arr* entry)
+{
+	const char* appid = NULL;
+	if (!arg_lookup(entry, "applid", 0, &appid) || !appid){
+		shmifsrv_enqueue_event(C->C, &(struct arcan_event){
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_MESSAGE,
+			.tgt.message = "a12:applhost:missing_arg"
+		}, -1);
+		return;
+	}
+
+	if (!a12helper_keystore_accepted(
+		C->pubk, active_clients.opts->allow_applhost)){
+		shmifsrv_enqueue_event(C->C, &(struct arcan_event){
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_MESSAGE,
+			.tgt.message = "a12:applhost:fail:reason=eperm"
+		}, -1);
+		return;
+	}
+}
+
 static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
 {
-/*
- * Special case:
- *
- *  - It is possible to diropen an appl (if permitted) which runs the client
- *    end of the appl server-side. It works similar to a launch_target direct
- *    to client form, just that it's arcan_lwa that is the shmif client end.
- *
- *  - This means we don't directly 'tunnel' via the arcan-net into shmif path
- *    as named launch_target calls would do (saves a lot of crypto and copying)
- *    with the added complexity that now BCHUNKREQ and MESSAGEs need to be
- *    routed accordingly.
- *
- *  - A single client-worker is limited to one such runner to match the
- *    behaviour of a normal arcan enabled client running arcan-net @server appl
- *    when it comes to what is sent over the primary channel. Further dynamic
- *    resources from launch_target need to route to the arcan_lwa instance
- *    in the way dir_cl.c would do.
- *
- *  - We distinguish this kind of sourcing with a | prefix to server-local
- *    applindex.
- *
- *    The purpose of this is to let weak thin clients run full arcan stack
- *    appls.
- */
 	const char* pubk = NULL;
 	char* msg = NULL;
 
@@ -1151,6 +1164,9 @@ static void dircl_message(struct dircl* C, struct arcan_event ev)
 
 	else if (arg_lookup(entry, "diropen", 0, NULL))
 		dynopen_to_worker(C, entry);
+
+	else if (arg_lookup(entry, "applhost", 0, NULL))
+		applhost_to_worker(C, entry);
 
 /* missing - forward to Lua VM and appl-script if in ident */
 	arg_cleanup(entry);

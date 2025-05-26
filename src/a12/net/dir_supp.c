@@ -23,11 +23,13 @@
 #include "anet_helper.h"
 #include "a12_helper.h"
 #include "directory.h"
+#include "../../engine/arcan_mem.h"
 
 #include <sys/types.h>
 #include <sys/file.h>
 #include <sys/wait.h>
 #include "../external/fts.h"
+#include "../external/x25519.h"
 #include <dirent.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -780,4 +782,107 @@ struct appl_meta* dir_unpack_index(int fd)
 
 	fclose(fpek);
 	return first;
+}
+
+bool anet_directory_dirsrv_exec_source(
+		struct dircl* dst,
+		uint16_t applid, const char* ident,
+		char* exec, struct arcan_strarr* argv, struct arcan_strarr* envv)
+{
+/* generate a temporary keypair for the new source to connect and register it
+ * with source permissions only. Easier than modifying dir_srv.c auth for this
+ * special case, we just grant it into the keystore. */
+	uint8_t private[32], public[32];
+	x25519_private_key(private);
+	x25519_public_key(private, public);
+	size_t priv_outl, pub_outl;
+	a12helper_keystore_accept_ephemeral(public, "_local", ident);
+	char emptyid[16] = {0};
+
+	dirsrv_global_lock(__FILE__, __LINE__);
+		dirsrv_set_source_mask(public, applid, dst ? dst->identity : emptyid);
+	dirsrv_global_unlock(__FILE__, __LINE__);
+
+/*
+ * then build the keypair that we'll use over the tunnel
+ */
+	uint8_t srvprivk[32], srvpubk[32];
+	char* tmp;
+	uint16_t tmpport;
+	a12helper_keystore_hostkey("default", 0, srvprivk, &tmp, &tmpport);
+	x25519_public_key(srvprivk, srvpubk);
+
+	unsigned char* priv_b64 = a12helper_tob64(private, 32, &priv_outl);
+	unsigned char* pub_b64 = a12helper_tob64(srvpubk, 32, &pub_outl);
+
+/*
+ * now the exec parameters for arcan-net itself, the argv and envv we get
+ * as arguments are for the actual application, not the network connection
+ * so we append those at the end.
+ *
+ * For the time being, add verbose logging.
+ */
+	char* outargv[argv->count + 12];
+	char* outident = strdup(ident);
+
+	memset(outargv, '\0', sizeof(outargv));
+	size_t ind = 0;
+	outargv[ind++] = dirsrv_static_opts()->path_self;
+	outargv[ind++] = "-d";
+	outargv[ind++] = "8191";
+	outargv[ind++] = "--force-kpub";
+	outargv[ind++] = (char*) pub_b64;
+	outargv[ind++] = "--ident";
+	outargv[ind++] = outident;
+	outargv[ind++] = "localhost";
+/* should also grab port from CFG */
+	outargv[ind++] = "--";
+	outargv[ind++] = exec;
+
+/* note that the self arg in argv is skipped, as -- for arcan-net would have
+ * the same effect. */
+	for (size_t i = 1; i < argv->count; i++)
+		outargv[ind+i] = argv->data[i];
+
+	char* outenv[envv->count + 2];
+	memset(outenv, '\0', sizeof(outenv));
+	char envinf[sizeof("A12_USEPRIV=") + priv_outl];
+	snprintf(envinf, sizeof(envinf), "A12_USEPRIV=%s", priv_b64);
+
+	for (size_t i = 0; i < envv->count; i++)
+		outenv[i] = envv->data[i];
+	outenv[envv->count] = envinf;
+
+	char* msg = NULL;
+	if (0 >= asprintf(&msg, "launch_%s.log", ident)){
+		msg = NULL;
+	}
+
+/* finally execute the process in question */
+	pid_t pid = fork();
+	if (pid == 0){
+		if ((fork() != 0))
+			_exit(EXIT_SUCCESS);
+
+		close(STDIN_FILENO);
+		close(STDOUT_FILENO);
+		close(STDERR_FILENO);
+
+		open("/dev/null", O_RDWR); /* stdin */
+		open("/dev/null", O_RDWR); /* stdout */
+		if (-1 == openat(
+			dirsrv_static_opts()->dirsrv.appl_logdfd, msg, O_RDWR | O_CREAT, 0700)){
+			open("/dev/null", O_RDWR); /* stderr */
+		}
+
+		setsid();
+		execve(dirsrv_static_opts()->path_self, outargv, outenv);
+		_exit(EXIT_FAILURE);
+	}
+
+/* SIGCHLD is just dropped by default */
+	free(msg);
+	free(outident);
+
+	return true;
 }
