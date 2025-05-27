@@ -114,6 +114,15 @@ void dirsrv_global_unlock(const char* file, int line)
 	pthread_mutex_unlock(&active_clients.sync);
 }
 
+/*
+ * wrapped around accessor here in order to later differentiate
+ */
+extern struct global_cfg global;
+struct global_cfg* dirsrv_static_opts()
+{
+	return &global;
+}
+
 volatile struct anet_dirsrv_opts* dirsrv_static_config()
 {
 	return active_clients.opts;
@@ -680,8 +689,26 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 		goto out;
 	}
 
-/* when adding proper formats, here is a place for type-validation scanning /
- * attestation / signing (external / popen and sandboxed ofc.) */
+/* Future Changes:
+ * ---------------
+ *
+ * If the appl is a new install we need to validate format and persist to
+ * backing store and give it a name from the package (and check so it doesn't
+ * collide). If it is an update, we need to verify that the signing match the
+ * signer of the previous version update key or recovery key.
+ *
+ * Verification/basename extraction goes through
+ *     dir_supp.c: verify_appl_pkg(char* buf, size_t buf_sz,
+ *                                 uint8_t[static 64] outsig);
+ *
+ * If the appls grow large enough to warrant the complexity, there is also a
+ * point to splitting the appl into a code and a data portion that gets
+ * signed and updated independently.
+ *
+ * For both cases we should also sweep linked workers and propagate the update
+ * (remember that the index is server-local and the actual name is a flat
+ * namespace).
+ */
 	FILE* fpek = fdopen(C->pending_fd, "r");
 	if (!fpek)
 		goto out;
@@ -721,11 +748,41 @@ out:
 }
 
 /*
- * not part of the default developer permissions yet
+ * appl_install is a separate permission, this should be a rare event so only
+ * apply to new connections that hasn't enumerated the index yet. The exception
+ * would be linked workers as that might propagate.
  */
-static struct appl_meta* allocate_new_appl(char* ext, uint16_t* mid)
+static struct appl_meta* allocate_new_appl(uint16_t id, uint16_t* mid)
 {
-	return NULL;
+	struct appl_meta* new_appl = NULL;
+	dirsrv_global_lock(__FILE__, __LINE__);
+	struct appl_meta* volatile* cur = &active_clients.opts->dir.next;
+
+/*
+ * there shouldn't be a collision at this point as the _allocate path is only
+ * reached when there isn't a match, but since we need the sweep anyhow it is
+ * free.
+ */
+	while (*cur){
+		if (id == (*cur)->identifier)
+			goto out;
+		cur = &(*cur)->next;
+	}
+
+	new_appl = malloc(sizeof(struct appl_meta));
+	if (!new_appl)
+		goto out;
+
+/*
+ * don't actually populate the slot with anything, the actual data comes with
+ * the completed transfer, including the name (as we read from the FAP header).
+ */
+	*new_appl = (struct appl_meta){.identifier = id};
+	*cur = new_appl;
+
+out:
+	dirsrv_global_unlock(__FILE__, __LINE__);
+	return new_appl;
 }
 
 /* We have an incoming BCHUNKSTATE for a worker. We need to parse and unpack the
@@ -791,9 +848,9 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
  * identifier for the new appl, as well as update the backend store. */
 	if (!meta){
 		if (mtype == IDTYPE_APPL && !input){
-			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_appl)){
+			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_install)){
 				A12INT_DIRTRACE("dirsv:accepted_new=%s", ext);
-				meta = allocate_new_appl(ext, &mid);
+				meta = allocate_new_appl(ns, &mid);
 			}
 			else
 				A12INT_DIRTRACE("dirsv:rejected_new=%s:permission", ext);

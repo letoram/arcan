@@ -55,5 +55,5 @@ target_link_libraries(arcan-net PRIVATE
 	${SQLite3_LIBRARIES}
 )
 target_include_directories(arcan-net PRIVATE ${INCLUDE_DIRS})
-target_compile_definitions(arcan-net PRIVATE WANT_KEYSTORE_HASHER ARCAN_DB_STANDALONE ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${CMAKE_SYSTEM_NAME}\")
+target_compile_definitions(arcan-net PRIVATE WANT_KEYSTORE_HASHER HAVE_DIRSRV ARCAN_DB_STANDALONE ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${CMAKE_SYSTEM_NAME}\")
 install(TARGETS arcan-net DESTINATION ${CMAKE_INSTALL_BINDIR})

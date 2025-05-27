@@ -22,6 +22,7 @@ struct anet_dirsrv_opts {
 	char* allow_admin;
 	char* allow_monitor;
 	char* allow_applhost;
+	char* allow_install;
 
 	char* resource_path;
 	int resource_dfd;

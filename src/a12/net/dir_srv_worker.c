@@ -1007,10 +1007,6 @@ static struct a12_bhandler_res srv_bevent(
 		}
 		else if (M.type == A12_BTYPE_APPL || M.type == A12_BTYPE_APPL_CONTROLLER){
 			char* restype = M.type == A12_BTYPE_APPL ? ".appl" : ".ctrl";
-
-/* Right now we don't permit registering a slot for a new appl, only updating
- * an existing one. There should be a separate request for that kind of action.
- */
 			res.fd = request_resource(S, cbt->C, M.identifier, restype, BREQ_STORE);
 
 			if (-1 != res.fd){

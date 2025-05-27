@@ -784,6 +784,7 @@ struct appl_meta* dir_unpack_index(int fd)
 	return first;
 }
 
+#ifdef HAVE_DIRSRV
 bool anet_directory_dirsrv_exec_source(
 		struct dircl* dst,
 		uint16_t applid, const char* ident,
@@ -886,3 +887,4 @@ bool anet_directory_dirsrv_exec_source(
 
 	return true;
 }
+#endif
