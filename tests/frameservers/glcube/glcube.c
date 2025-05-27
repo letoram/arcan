@@ -376,8 +376,7 @@ static bool pump_connection(struct arcan_shmif_cont* con, size_t* i)
 	return true;
 }
 
-static struct arcan_shmif_cont* setup_segment(
-	struct arcan_shmif_cont* res, struct arcan_shmif_cont* parent)
+static struct arcan_shmif_cont* setup_segment(struct arcan_shmif_cont* res)
 {
 	struct arcan_shmifext_setup defs = arcan_shmifext_defaults(NULL);
 	defs.builtin_fbo = 1;
@@ -445,7 +444,7 @@ static struct arcan_shmif_cont* setup_connection(struct arcan_shmif_cont* parent
 		}
 	}
 
-	return setup_segment(res, parent ? parent : res);
+	return setup_segment(res);
 }
 
 static void* client_thread(void* arg)
@@ -457,11 +456,17 @@ static void* client_thread(void* arg)
 	return NULL;
 }
 
-static void setup_connection_thread(struct arcan_shmif_cont* parent)
+static void setup_connection_thread(struct arcan_shmif_cont* parent, bool useparent)
 {
-	struct arcan_shmif_cont* cont = setup_connection(parent);
+	struct arcan_shmif_cont* cont = setup_connection(useparent ? parent : NULL);
 	if (!cont)
 		return;
+
+	/*
+	 * egl will throw EGL_BAD_ACCESS in the new thread below on the next make_current(),
+	 * if the context is still active in another (this) thread, so make another context active
+	 */
+	arcan_shmifext_make_current(parent);
 
 	pthread_t pth;
 	pthread_attr_t pthattr;
@@ -509,7 +514,7 @@ int main(int argc, char *argv[])
 		}
 		if (mode == 2 || mode == 3){
 			for (size_t i = 1; i < n_conn; i++){
-				setup_connection_thread(mode == 1 ? con[0] : NULL);
+				setup_connection_thread(con[0], mode == 3);
 			}
 			n_conn = 1;
 		}
