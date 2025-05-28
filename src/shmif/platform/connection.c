@@ -104,6 +104,7 @@ struct shmif_connection shmif_platform_open_env_connection(int flags)
 	}
 	else {
 		res.error = "no connection: check ARCAN_CONNPATH";
+		return res;
 	}
 
 	if (!res.keyfile || -1 == res.socket){
