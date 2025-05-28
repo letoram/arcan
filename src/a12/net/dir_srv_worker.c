@@ -429,7 +429,7 @@ static void do_external_event(
 		a12int_trace(A12_TRACE_DIRECTORY, "notify:name=%s", ev->ext.netstate.name);
 		a12int_notify_dynamic_resource(S,
 			ev->ext.netstate.name, (uint8_t*)&ev->ext.netstate.name[i],
-			ev->ext.netstate.type, ev->ext.netstate.state, ev->ext.netstate.namespace);
+			ev->ext.netstate.type, ev->ext.netstate.state, ev->ext.netstate.ns);
 	}
 	break;
 	default:

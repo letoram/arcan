@@ -1537,7 +1537,7 @@ enum ARCAN_TARGET_SKIPMODE {
 		uint8_t state;
 		uint8_t type;
 		uint16_t port;
-		uint16_t namespace;
+		uint16_t ns;
 	} netstate;
 
 /*

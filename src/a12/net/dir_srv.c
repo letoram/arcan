@@ -640,7 +640,7 @@ static void register_source(struct dircl* C, struct arcan_event ev)
 				if (mask->identity[0]){
 					ev.ext.netstate.state = 2; /* mark as new-dynamic-immediate */
 				}
-				ev.ext.netstate.namespace = mask->applid;
+				ev.ext.netstate.ns = mask->applid;
 				shmifsrv_enqueue_event(cur->C, &ev, -1);
 			}
 
