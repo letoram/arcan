@@ -781,18 +781,32 @@ static struct appl_meta* allocate_new_appl(uint16_t id, uint16_t* mid)
 {
 	struct appl_meta* new_appl = NULL;
 	dirsrv_global_lock(__FILE__, __LINE__);
-	struct appl_meta* volatile* cur = &active_clients.opts->dir.next;
+	volatile struct appl_meta* cur = &active_clients.opts->dir;
 
 /*
  * there shouldn't be a collision at this point as the _allocate path is only
  * reached when there isn't a match, but since we need the sweep anyhow it is
  * free.
  */
-	while (*cur){
-		if (id == (*cur)->identifier)
+	uint16_t last_id = 1;
+
+	while (cur){
+		if (id == cur->identifier)
 			goto out;
-		cur = &(*cur)->next;
+
+/*
+ * list is empty-item terminated
+ */
+		if (!cur->identifier)
+			break;
+
+		last_id = cur->identifier;
+		cur = cur->next;
 	}
+
+/* out of slots */
+	if (last_id >= 65534)
+		goto out;
 
 	new_appl = malloc(sizeof(struct appl_meta));
 	if (!new_appl)
@@ -802,8 +816,11 @@ static struct appl_meta* allocate_new_appl(uint16_t id, uint16_t* mid)
  * don't actually populate the slot with anything, the actual data comes with
  * the completed transfer, including the name (as we read from the FAP header).
  */
-	*new_appl = (struct appl_meta){.identifier = id};
-	*cur = new_appl;
+	*cur = (struct appl_meta){.identifier = last_id + 1};
+	cur->next = new_appl;
+	*new_appl = (struct appl_meta){0};
+
+	*mid = last_id + 1;
 
 out:
 	dirsrv_global_unlock(__FILE__, __LINE__);

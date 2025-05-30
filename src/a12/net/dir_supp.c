@@ -592,6 +592,7 @@ bool build_appl_pkg(const char* name, struct appl_meta* dst, int cdir)
 
 	snprintf(dst->appl.name, COUNT_OF(dst->appl.name), "%s", name);
 
+/* keep an empty entry at the end to terminate the list */
 	dst->next = malloc(sizeof(struct appl_meta));
 	*(dst->next) = (struct appl_meta){0};
 

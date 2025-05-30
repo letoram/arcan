@@ -1399,8 +1399,9 @@ static bool cl_send_appl_update(struct ioloop_shared* I, struct appl_meta* dir)
 		cbt->clopt->outapp.appl.name
 	);
 
-/* don't keep the name around anymore as we have issued the request */
+/* don't keep the name or buffer anymore as we have issued the request */
 	cbt->clopt->outapp.appl.name[0] = '\0';
+	cbt->clopt->outapp.buf = NULL;
 
 	return true;
 }
