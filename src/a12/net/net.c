@@ -993,6 +993,7 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"\t --tunnel      \t Default request tunnelling as source/sink connection\n"
 	"\t --block-log   \t Don't attempt to forward script errors or crash logs\n"
 	"\t --stderr-log  \t Mirror script errors / crash log to stderr\n"
+	"\t --host-appl   \t Request that the directory server host/run the appl\n"
 	"\t --source-port \t When sourcing use this port for listening\n\n"
 	"\t File stores (ns = .priv OR applname), (name = [a-Z-0-9])\n"
 	"\t --get-file ns name file \t Retrieve [name] from namespace [ns] (.index = list)\n"
@@ -1404,6 +1405,9 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 		}
 		else if (strcmp(argv[i], "--stderr-log") == 0){
 			global.dircl.stderr_log = true;
+		}
+		else if (strcmp(argv[i], "--host-appl") == 0){
+			global.dircl.applhost = true;
 		}
 		else if (strcmp(argv[i], "--block-state") == 0){
 			global.dircl.block_state = true;

@@ -36,6 +36,7 @@ struct anet_dirsrv_opts {
 	int appl_server_datadfd;
 
 	char* appl_logpath;
+	char* applhost_path; /* used with allow_applhost */
 
  /* Set when permitting dynamic controller push, takes precendence over
 	* appl-server-path unless instructed to rollback. */
@@ -88,6 +89,7 @@ struct anet_dircl_opts {
 	bool stderr_log;       /* forward appl_runner stderr */
 	bool keep_appl;        /* don't unlink / erase appl after running */
 	bool request_tunnel;   /* relay traffic through directory if necessary */
+	bool applhost;         /* request that the server hosts the appl (req perm) */
 	int monitor_mode;
 
 	char ident[16]; /* name to identify as (a-z0-9) */
@@ -483,7 +485,8 @@ bool dir_block_synch_request(
  * [name] (if set).
  */
 void dirsrv_set_source_mask(
-	uint8_t pubk[static 32], int appid, char identity[static 16]);
+	uint8_t pubk[static 32], int appid,
+	char identity[static 16], uint8_t dstpubk[static 32]);
 
 /*
  * Spin up a new ephemeral source process for connecting and registering in a

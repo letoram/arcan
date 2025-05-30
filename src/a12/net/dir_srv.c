@@ -25,6 +25,7 @@
 #include "a12_helper.h"
 #include "anet_helper.h"
 #include "directory.h"
+#include "../../engine/arcan_mem.h"
 
 #include <sys/types.h>
 #include <sys/file.h>
@@ -45,6 +46,7 @@ struct source_mask {
 	int applid;
 	uint8_t pubk[32];
 	char identity[16];
+	uint8_t dstpubk[32];
 	struct source_mask* next;
 };
 
@@ -126,6 +128,24 @@ struct global_cfg* dirsrv_static_opts()
 volatile struct anet_dirsrv_opts* dirsrv_static_config()
 {
 	return active_clients.opts;
+}
+
+/*
+ * assumes we have appl_meta lookup set locked and kept for the lifespan
+ * of the returned value as the set/identifiers can mutate otherwise.
+ */
+static struct appl_meta* locked_numid_appl(uint16_t id)
+{
+	volatile struct appl_meta* cur = &active_clients.opts->dir;
+
+	while (cur){
+		if (cur->identifier == id){
+			return (struct appl_meta*) cur;
+		}
+		cur = cur->next;
+	}
+
+	return NULL;
 }
 
 /* Check for petname collision among existing instances, this is another of
@@ -255,6 +275,20 @@ static void applhost_to_worker(struct dircl* C, struct arg_arr* entry)
 		return;
 	}
 
+	if (!active_clients.opts->applhost_path){
+		A12INT_DIRTRACE("applhost:error=missing_cfg:paths.applhost_loader");
+		return;
+	}
+
+	uint16_t applid = strtoul(appid, NULL, 10);
+	dirsrv_global_lock(__FILE__, __LINE__);
+		struct appl_meta* meta = locked_numid_appl(applid);
+	dirsrv_global_unlock(__FILE__, __LINE__);
+	if (!meta){
+		A12INT_DIRTRACE("applhost:error=bad_applid=%"PRIu16, applid);
+		return;
+	}
+
 	if (!a12helper_keystore_accepted(
 		C->pubk, active_clients.opts->allow_applhost)){
 		shmifsrv_enqueue_event(C->C, &(struct arcan_event){
@@ -262,8 +296,55 @@ static void applhost_to_worker(struct dircl* C, struct arg_arr* entry)
 			.tgt.kind = TARGET_COMMAND_MESSAGE,
 			.tgt.message = "a12:applhost:fail:reason=eperm"
 		}, -1);
+		dirsrv_global_unlock(__FILE__, __LINE__);
 		return;
 	}
+
+/* We have the target, checked permissions, and worker process - build the lwa
+ * launch arguments and map namespaces. There are quite a few considerations
+ * here when it comes to sandboxing profiles (use a separate launcher), target
+ * GPU device (could have several and load-balance), frameserver basepath, and
+ * how this should be handled in config.lua and onwards.
+ *
+ * Other security considerations is if the same BASEPATH as for applhosting
+ * should be used as that opens up for system_collapse switching which might
+ * be desired, but if we add masking that means a client could simply swap and
+ * enumerate (if the hosted appl exposes something like that).
+ *
+ * Some of this should be regulated with the .manifest now so that the engine
+ * will restrict things without further configuration, particularly
+ * afsrv_terminal that opens everything else up.
+ */
+	char* argvv[] = {
+		active_clients.opts->applhost_path,
+		"--database",
+		"/tmp/test.sqlite",
+		meta->appl.name
+	};
+
+	char* envv[] = {
+		"ARCAN_APPLBASEPATH=/home/void/.arcan/appl"
+	};
+
+	struct arcan_strarr argv = {
+		.count = COUNT_OF(argvv),
+		.data = argvv
+	};
+
+	struct arcan_strarr env = {
+		.count = COUNT_OF(envv),
+		.data = envv
+	};
+
+/* note that we actually don't send the applid in the exec source as that would
+ * cause it to only broadcast to the target as registered in the applgroup */
+	volatile struct anet_dirsrv_opts* opts;
+		anet_directory_dirsrv_exec_source(
+			C, 0, "applhost",
+			active_clients.opts->applhost_path,
+			&argv,
+			&env
+	);
 }
 
 static void dynopen_to_worker(struct dircl* C, struct arg_arr* entry)
@@ -442,24 +523,6 @@ enum {
 	IDTYPE_MON   = 5
 };
 
-/*
- * assumes we have appl_meta lookup set locked and kept for the lifespan
- * of the returned value as the set/identifiers can mutate otherwise.
- */
-static struct appl_meta* locked_numid_appl(uint16_t id)
-{
-	volatile struct appl_meta* cur = &active_clients.opts->dir;
-
-	while (cur){
-		if (cur->identifier == id){
-			return (struct appl_meta*) cur;
-		}
-		cur = cur->next;
-	}
-
-	return NULL;
-}
-
 int identifier_to_appl(char* sep)
 {
 	int res = IDTYPE_RAW;
@@ -544,8 +607,15 @@ static struct source_mask*
 	if (cur->applid && dst->in_appl != cur->applid)
 		return NULL;
 
-/* is it also limited to an identity? */
+/* is it also limited to an identity or a specific key? */
 	if (cur->identity[0] && strcmp(cur->identity, cur->identity) != 0)
+		return NULL;
+
+	uint8_t emptyk[32] = {0};
+	if (memcmp(cur->dstpubk, emptyk, 32) == 0)
+		return cur;
+
+	if (memcmp(cur->dstpubk, dst->pubk, 32) != 0)
 		return NULL;
 
 /* otherwise pass */
@@ -637,7 +707,7 @@ static void register_source(struct dircl* C, struct arcan_event ev)
  * NETSTATE event we send to instruct the SINK to request open immediately */
 			struct source_mask* mask = apply_source_mask(C, cur);
 			if (mask){
-				if (mask->identity[0]){
+				if (mask->identity[0] || memcmp(mask->dstpubk, cur->pubk, 32) == 0){
 					ev.ext.netstate.state = 2; /* mark as new-dynamic-immediate */
 				}
 				ev.ext.netstate.ns = mask->applid;
@@ -1710,7 +1780,8 @@ static bool try_appl_controller(const char* d_name, int dfd)
 }
 
 void dirsrv_set_source_mask(
-	uint8_t pubk[static 32], int applid, char identity[static 16])
+	uint8_t pubk[static 32], int applid, char identity[static 16],
+	uint8_t dst_pubk[static 32])
 {
 	struct source_mask** cur = &active_clients.masks;
 	while (*cur)
@@ -1720,10 +1791,12 @@ void dirsrv_set_source_mask(
 	struct source_mask* dst = *cur;
 
 	memcpy(dst->identity, identity, 16);
+
 	dst->applid = applid;
 	dst->next = NULL;
 
-	memcpy(dst->pubk, pubk, 32);
+	memcpy(dst->pubk, pubk, 32); /* is to match source */
+	memcpy(dst->dstpubk, dst_pubk, 32); /* is to limit to pubk */
 }
 
 /* this will just keep / cache the built .FAPs in memory, the startup times

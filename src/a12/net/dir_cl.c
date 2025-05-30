@@ -1473,6 +1473,28 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 		return true;
 	}
 
+/* We might not be able to run arcan_lwa/arcan on client end, in that case
+ * request that the server end hosts it. This isn't particularly useful here
+ * outside testing the feature as we'll always have the full stack, but for
+ * limited clients e.g. Smash that option is needed. It also gets more useful
+ * when there is a vcodec format that handles AGP layer or ALT layer for a
+ * more hybrid approach. */
+	if (req->applhost){
+		struct arcan_event ev =
+		{
+			.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
+			.category = EVENT_EXTERNAL,
+			.ext.bchunk = {
+				.input = true,
+				.hint = false,
+				.extensions = ".applhost",
+				.ns = dir->identifier
+			}
+		};
+		a12_channel_enqueue(I->S, &ev);
+		return true;
+	}
+
 /* lastly, download and run the appl - by setting an empty extension and only
  * the identifier it indicates that we want the necessary code and state to
  * join the namespace of the identifier */

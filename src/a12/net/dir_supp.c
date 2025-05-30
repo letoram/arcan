@@ -878,7 +878,14 @@ bool anet_directory_dirsrv_exec_source(
 	char emptyid[16] = {0};
 
 	dirsrv_global_lock(__FILE__, __LINE__);
-		dirsrv_set_source_mask(public, applid, dst ? dst->identity : emptyid);
+	if (dst){
+		dirsrv_set_source_mask(public, applid, emptyid, dst->pubk);
+	}
+	else{
+		uint8_t emptyk[32] = {0};
+		dirsrv_set_source_mask(public, applid, emptyid, emptyk);
+	}
+
 	dirsrv_global_unlock(__FILE__, __LINE__);
 
 /*
@@ -920,7 +927,7 @@ bool anet_directory_dirsrv_exec_source(
 /* note that the self arg in argv is skipped, as -- for arcan-net would have
  * the same effect. */
 	for (size_t i = 1; i < argv->count; i++)
-		outargv[ind+i] = argv->data[i];
+		outargv[ind++] = argv->data[i];
 
 	char* outenv[envv->count + 2];
 	memset(outenv, '\0', sizeof(outenv));

@@ -148,6 +148,19 @@ static void on_a12srv_event(
 			return;
 		}
 
+/* Request hosting the appl for a limited client that can't execute appls
+ * locally */
+		if (strcmp((char*) ev->ext.bchunk.extensions, ".applhost") == 0){
+			struct arcan_event req = {
+				.category = EVENT_EXTERNAL,
+				.ext.kind = EVENT_EXTERNAL_MESSAGE
+			};
+			snprintf((char*)req.ext.message.data,
+				COUNT_OF(req.ext.message.data), "a12:applhost:applid=%zu", ev->ext.bchunk.ns);
+			arcan_shmif_enqueue(C, &req);
+			return;
+		}
+
 /*
  * Request downloading the appl specifically? other requests should be routed
  * through the controller (if exists) before trying the appl specific

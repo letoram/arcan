@@ -785,6 +785,15 @@ static int cfgpath_index(lua_State* L)
 		return 1;
 	}
 
+	if (strcmp(key, "applhost_loader") == 0){
+		if (CFG->dirsrv.applhost_path){
+			lua_pushstring(L, CFG->dirsrv.applhost_path);
+		}
+		else
+			lua_pushnil(L);
+		return 1;
+	}
+
 	if (strcmp(key, "keystore") == 0){
 		if (INITIALIZED){
 			luaL_error(L, "config.keystore read-only after init()");
@@ -798,7 +807,8 @@ static int cfgpath_index(lua_State* L)
 	}
 
 	luaL_error(L, "unknown path: config.paths.%s, "
-		"accepted: database, appl, appl_server, appl_server_log, keystore, resources\n", key);
+		"accepted: database, appl, appl_server, "
+		"appl_server_log, applhost_loader, keystore, resources\n", key);
 
 	return 0;
 }
@@ -842,6 +852,15 @@ static int cfgpath_newindex(lua_State* L)
 
 		return 0;
 	}
+	else if (strcmp(key, "applhost_loader") == 0){
+		const char* val = luaL_checkstring(L, 3);
+		if (CFG->dirsrv.applhost_path){
+			free(CFG->dirsrv.applhost_path);
+		}
+		CFG->dirsrv.applhost_path = strdup(val);
+
+		return 0;
+	}
 	else if (strcmp(key, "appl_server_data") == 0){
 		const char* val = luaL_checkstring(L, 3);
 
@@ -877,6 +896,8 @@ static int cfgpath_newindex(lua_State* L)
 		fcntl(dirfd, F_SETFD, FD_CLOEXEC);
 
 		return 0;
+	}
+	else if (strcmp(key, "applhost") == 0){
 	}
 	else if (strcmp(key, "appl_server_log") == 0){
 		const char* val = luaL_checkstring(L, 3);
