@@ -3,6 +3,8 @@
 #ifndef HAVE_DIRECTORY
 #define HAVE_DIRECTORY
 
+#define SIG_PUBK_SZ 64
+
 struct anet_dirsrv_opts {
 	struct a12_context_options* a12_cfg;
 	volatile bool flag_rescan;
@@ -97,6 +99,7 @@ struct anet_dircl_opts {
 
 /* filled if an upload (store) operation is requested */
 	struct appl_meta outapp;
+	bool outapp_install;
 	bool outapp_ctrl;
 
 /* filled if an upload or download is requested */
@@ -175,6 +178,9 @@ struct dircl {
 	bool in_admin;
 	bool dir_link;
 	int admin_fdout;
+
+/* initially {0}, only updated after REKEY in A12 */
+	uint8_t pubk_sign[SIG_PUBK_SZ];
 
 /* accumulation buffer so that we don't permit forwarding unterminated
  * MESSAGE chains to appl-controller */
@@ -266,6 +272,11 @@ void dircl_source_handler(
  * multiplex and trigger on incoming for usrfd_mask (typically shmif)
  * and forward on_event, on_directory, on_userfd
  */
+char* verify_appl_pkg(
+	char* buf, size_t buf_sz,
+	uint8_t insig_pk[static SIG_PUBK_SZ], uint8_t outsig_pk[static SIG_PUBK_SZ],
+	const char** errmsg);
+
 bool build_appl_pkg(const char* name, struct appl_meta* dst, int dirfd);
 bool extract_appl_pkg(FILE* fin, int dirfd, const char* basename, const char** msg);
 

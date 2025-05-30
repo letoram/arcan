@@ -872,7 +872,8 @@ static struct a12_bhandler_res srv_bevent(
 	if (M.identifier){
 		struct appl_meta* meta = find_identifier(S->directory, M.identifier);
 
-		if (!meta)
+/* -1 is used to signify unallocated slot */
+		if (!meta && M.identifier != (uint16_t) -1)
 			return res;
 	}
 

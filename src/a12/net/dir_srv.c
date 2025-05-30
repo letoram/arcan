@@ -675,8 +675,7 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 		}
 
 	if (!ok){
-		A12INT_DIRTRACE("dirsv:bchunk_state:complete_unknown");
-		dirsrv_global_unlock(__FILE__, __LINE__);
+		A12INT_DIRTRACE_LOCKED("dirsv:bchunk_state:complete_unknown");
 		goto out;
 	}
 
@@ -685,7 +684,6 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 /* notify any runner, that will take care of unpacking and validating */
 	if (C->type == IDTYPE_ACTRL){
 		anet_directory_lua_update(cur, C->pending_fd);
-		dirsrv_global_unlock(__FILE__, __LINE__);
 		goto out;
 	}
 
@@ -699,7 +697,8 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
  *
  * Verification/basename extraction goes through
  *     dir_supp.c: verify_appl_pkg(char* buf, size_t buf_sz,
- *                                 uint8_t[static 64] outsig);
+ *                                 uint8_t[static 64] outsig_pk,
+ *                                 uint8_t[static 64] insig_pk);
  *
  * If the appls grow large enough to warrant the complexity, there is also a
  * point to splitting the appl into a code and a data portion that gets
@@ -723,26 +722,52 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 		cur->buf = dst;
 		cur->handle = handle;
 
+/* the hashing here is for the entire transfer in order to provide caching it
+ * is not for the content itself - header and datablocks (can) have separate
+ * signed hashes. */
 		blake3_hasher hash;
 		blake3_hasher_init(&hash);
 		blake3_hasher_update(&hash, dst, dst_sz);
 		blake3_hasher_finalize(&hash, (uint8_t*)cur->hash, 4);
 
+		uint8_t nullk[SIG_PUBK_SZ] = {0};
+		const char* errmsg;
+		char* name = verify_appl_pkg(dst, dst_sz, nullk, nullk, &errmsg);
 /* need to unlock as shmifsrv set will lock again, it will take care of
  * rebuilding the index and notifying listeners though - identity action
  * so volatile is no concern */
-		dirsrv_global_unlock(__FILE__, __LINE__);
-		A12INT_DIRTRACE("dirsv:bchunk_state:appl_update=%d", cur->identifier);
-		anet_directory_shmifsrv_set(
-			(struct anet_dirsrv_opts*) active_clients.opts);
+		if (!name){
+			A12INT_DIRTRACE_LOCKED(
+				"dirsv:bchunk_state:appl_verify_fail:reason=%s", errmsg);
+		}
+		else{
+
+/* new install rather than update has different action, appl is volatile but
+ * wer're locked so single-copy until NUL */
+			if (!cur->appl.name[0]){
+				for (size_t i = 0; i < COUNT_OF(cur->appl.name)-1 && name[i]; i++)
+					cur->appl.name[i] = name[i];
+				A12INT_DIRTRACE_LOCKED(
+					"dirsv:bchunk_state:new_appl=%d:name=%s",
+					(int) cur->identifier, name
+				);
+			}
+			else
+				A12INT_DIRTRACE_LOCKED(
+				"dirsv:bchunk_state:appl_update=%d", (int) cur->identifier);
+
+			dirsrv_global_unlock(__FILE__, __LINE__);
+			anet_directory_shmifsrv_set(
+				(struct anet_dirsrv_opts*) active_clients.opts);
+			free(name);
+		}
 	}
-	else
-		dirsrv_global_unlock(__FILE__, __LINE__);
 
 	fclose(fpek);
 	return;
 
 out:
+	dirsrv_global_unlock(__FILE__, __LINE__);
 	close(C->pending_fd);
 	C->pending_fd = -1;
 }
@@ -1391,7 +1416,7 @@ static void* dircl_process(void* P)
 
 		int sv;
 		if ((sv = shmifsrv_poll(C->C)) == CLIENT_DEAD){
-			A12INT_DIRTRACE("dirsrv:kind=worker:dead");
+			A12INT_DIRTRACE("dirsv:kind=worker:dead");
 			dead = true;
 			continue;
 		}
@@ -1400,7 +1425,7 @@ static void* dircl_process(void* P)
  * MESSAGE event as well as re-using the same codepaths for dynamically
  * updating the index later. */
 		if (!activated && shmifsrv_poll(C->C) == CLIENT_IDLE){
-			A12INT_DIRTRACE("dirsrv:kind=worker_join:activate");
+			A12INT_DIRTRACE("dirsv:kind=worker_join:activate");
 			arcan_event ev = {
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_MESSAGE

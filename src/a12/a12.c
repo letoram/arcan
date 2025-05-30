@@ -2218,6 +2218,10 @@ static void dirstate_item(struct a12_state* S, struct appl_meta* C)
 	uint8_t outb[CONTROL_PACKET_SIZE];
 	build_control_header(S, outb, COMMAND_DIRSTATE);
 
+/* ignore unnamed items that are there because the identifier is reserved */
+	if (!C->appl.name[0])
+		return;
+
 	pack_u16(C->identifier, &outb[18]);
 	pack_u16(C->categories, &outb[20]);
 	pack_u16(C->permissions, &outb[22]);

@@ -278,6 +278,81 @@ static bool ensure_path(int cdir, const char* path)
 	return finished;
 }
 
+char* verify_appl_pkg(
+	char* buf, size_t buf_sz,
+	uint8_t insig_pk[static SIG_PUBK_SZ], uint8_t outsig_pk[static SIG_PUBK_SZ],
+	const char** errmsg)
+{
+	uint8_t nullsig[SIG_PUBK_SZ] = {0};
+
+/* first line is packet header */
+	size_t lineend = 0;
+	for (; lineend < buf_sz; lineend++)
+		if (buf[lineend] == '\n')
+			break;
+
+	if (buf[lineend] != '\n'){
+		*errmsg = "bad/missing header";
+		return NULL;
+	}
+
+/* shmif arg_unpack, it expects a terminated string so dig for that */
+	buf[lineend] = '\0';
+	struct arg_arr* args = arg_unpack(buf);
+	buf[lineend] = '\n';
+	if (!args){
+		*errmsg = "malformed header";
+		return NULL;
+	}
+
+/* provide the expected signing public key */
+
+/* missing:
+ * is a signing identity expected?
+ *    1.
+ *       check that the signed hash value matches the signature and the
+ *       signature field exists.
+ *
+ *    2. recalculate hash and compare against signed hash.
+ *       there should be a signature for the header itself, and a hash for
+ *       the remaining package - both need to check out.
+ *
+ *    3.
+ *       check if the updated package has a new base key (rotation push on
+ *       suspected compromise).
+ *
+ *  open question, having a recovery key that isn't allowed to mutate? need
+ *  better references on such schemes.
+ */
+	if (memcmp(insig_pk, nullsig, SIG_PUBK_SZ) != 0){
+		*errmsg = "signature-handling missing";
+		return NULL;
+	}
+
+	const char* outname = NULL;
+	if (arg_lookup(args, "name", 0, &outname) && outname){
+		if (!isalpha(outname[0])){
+				*errmsg = "malformed appl-name";
+				goto clean_end;
+		}
+		for (size_t i = 1; outname[i]; i++){
+			if (!isalnum(outname[i]) && outname[i] != '_'){
+				*errmsg = "malformed appl-name";
+				goto clean_end;
+			}
+		}
+
+		char* res = strdup(outname);
+		arg_cleanup(args);
+		*errmsg = "";
+		return res;
+	}
+
+clean_end:
+	arg_cleanup(args);
+	return NULL;
+}
+
 bool extract_appl_pkg(FILE* fin, int cdir, const char* basename, const char** msg)
 {
 	bool in_file = false;
@@ -435,9 +510,10 @@ bool build_appl_pkg(const char* name, struct appl_meta* dst, int cdir)
 	if (!(fts = afts_open(path, FTS_PHYSICAL, comp_alpha)))
 		goto err;
 
-/* for extended permissions -- net,frameserver,... the .manifest file needs to
+/* For extended permissions -- net,frameserver,... the .manifest file needs to
  * be present, follow the regular arg_arr pack/unpack format and specify which
- * ones it needs. */
+ * ones it needs. This header should then be extended with required fields for
+ * signature etc. */
 	FILE* header = fopen(".manifest", "r");
 	if (header){
 		char buf[256];
@@ -460,7 +536,7 @@ bool build_appl_pkg(const char* name, struct appl_meta* dst, int cdir)
 		fclose(header);
 	}
 	else
-		fprintf(fpek, "version=1:permission=restricted\n");
+		fprintf(fpek, "version=1:permission=restricted:name=%s\n", name);
 
 /* walk and get list of files, lexicographic sort, filter out links,
  * cycles, dot files */
