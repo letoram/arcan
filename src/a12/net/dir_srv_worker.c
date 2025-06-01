@@ -156,7 +156,8 @@ static void on_a12srv_event(
 				.ext.kind = EVENT_EXTERNAL_MESSAGE
 			};
 			snprintf((char*)req.ext.message.data,
-				COUNT_OF(req.ext.message.data), "a12:applhost:applid=%zu", ev->ext.bchunk.ns);
+				COUNT_OF(req.ext.message.data),
+				"a12:applhost:applid=%"PRIu64, ev->ext.bchunk.ns);
 			arcan_shmif_enqueue(C, &req);
 			return;
 		}

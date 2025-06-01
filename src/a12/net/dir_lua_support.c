@@ -12,6 +12,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
+#include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
 #include <pthread.h>
@@ -1012,7 +1013,7 @@ int dirlua_loadfile(lua_State *L, int dfd, const char *filename, bool dieonfail)
 
   ungetc(c, lf.f);
   status = lua_load(L, getF, &lf, lua_tostring(L, -1));
-	if (status != LUA_OK){
+	if (status != 0){ /* LUA_OK */
 	  fclose(lf.f);
  		if (dieonfail)
 			luaL_error(L, "system_load(%s):%s\n", lua_tostring(L, -1));
