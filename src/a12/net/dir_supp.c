@@ -612,6 +612,15 @@ err:
 	return false;
 }
 
+void anet_directory_random_ident(char* dst, size_t nb)
+{
+	uint8_t rnd[nb];
+	arcan_random(rnd, nb);
+	for (size_t i = 0; i < nb; i++){
+		dst[i] = 'a' + (rnd[i] % 26);
+	}
+}
+
 bool anet_directory_merge_multipart(
 	struct arcan_event* ev, struct arg_arr** outarg, char** outbuf, int* err)
 {
@@ -877,6 +886,15 @@ bool anet_directory_dirsrv_exec_source(
 	a12helper_keystore_accept_ephemeral(public, "_local", ident);
 	char emptyid[16] = {0};
 
+/* generate a random name if no identity was supplied, this is mainly useful
+ * for targeted launch */
+	char tmpnam[8];
+	if (!ident){
+		anet_directory_random_ident(tmpnam, 7);
+		tmpnam[7] = '\0';
+		ident = tmpnam;
+	}
+
 	dirsrv_global_lock(__FILE__, __LINE__);
 	if (dst){
 		dirsrv_set_source_mask(public, applid, emptyid, dst->pubk);
@@ -907,7 +925,7 @@ bool anet_directory_dirsrv_exec_source(
  *
  * For the time being, add verbose logging.
  */
-	char* outargv[argv->count + 12];
+	char* outargv[argv->count + 13];
 	char* outident = strdup(ident);
 
 	memset(outargv, '\0', sizeof(outargv));
@@ -915,6 +933,7 @@ bool anet_directory_dirsrv_exec_source(
 	outargv[ind++] = dirsrv_static_opts()->path_self;
 	outargv[ind++] = "-d";
 	outargv[ind++] = "8191";
+	outargv[ind++] = "--stderr-log";
 	outargv[ind++] = "--force-kpub";
 	outargv[ind++] = (char*) pub_b64;
 	outargv[ind++] = "--ident";
@@ -952,6 +971,8 @@ bool anet_directory_dirsrv_exec_source(
 		close(STDIN_FILENO);
 		close(STDOUT_FILENO);
 		close(STDERR_FILENO);
+
+		sigaction(SIGINT, &(struct sigaction){}, NULL);
 
 		open("/dev/null", O_RDWR); /* stdin */
 		open("/dev/null", O_RDWR); /* stdout */

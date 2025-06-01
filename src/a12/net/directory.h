@@ -312,6 +312,8 @@ struct ioloop_shared {
 	void* tag;
 };
 
+void anet_directory_random_ident(char* dst, size_t nb);
+
 /* build the global- lua context and tie to a sqlite database represented by fd */
 bool anet_directory_lua_init(struct global_cfg* cfg);
 

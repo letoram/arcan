@@ -69,6 +69,10 @@ struct tunnel_state {
 	int fd;
 };
 
+static struct {
+	bool die_on_tunnel;
+} cl_global;
+
 /*
  * used for .admin and .monitor (--admin-ctrl and --debug-appl)
  */
@@ -87,11 +91,15 @@ static void* tunnel_runner(void* t)
 		a12helper_a12srv_shmifcl(ts->handover, S, NULL, ts->fd, ts->fd);
 	}
 
+	if (cl_global.die_on_tunnel)
+		ts->ios->shutdown = true;
+
 	shutdown(ts->fd, SHUT_RDWR);
 	close(ts->fd);
 	free(err);
 	free(ts);
 
+	write(ts->ios->wakeup, &(uint8_t[]){0}, 1);
 	return NULL;
 }
 
@@ -1492,6 +1500,7 @@ static bool cl_got_dir(struct ioloop_shared* I, struct appl_meta* dir)
 			}
 		};
 		a12_channel_enqueue(I->S, &ev);
+		cl_global.die_on_tunnel = true;
 		return true;
 	}
 

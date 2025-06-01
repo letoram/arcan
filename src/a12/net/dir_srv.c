@@ -340,7 +340,7 @@ static void applhost_to_worker(struct dircl* C, struct arg_arr* entry)
  * cause it to only broadcast to the target as registered in the applgroup */
 	volatile struct anet_dirsrv_opts* opts;
 		anet_directory_dirsrv_exec_source(
-			C, 0, "applhost",
+			C, 0, NULL,
 			active_clients.opts->applhost_path,
 			&argv,
 			&env
@@ -661,12 +661,19 @@ static void register_source(struct dircl* C, struct arcan_event ev)
 			title[i] = '_';
 	}
 
-/* and no duplicates, if there is a config script it gets to manage collisions
- * so this is only a fallback if it didn't or doesn't care */
+/* No duplicates, if there is a config script it gets to manage collisions so
+ * this is only a fallback if it didn't or doesn't care. Depending on
+ * source_mask collisions could be permitted if the authentication key match as
+ * to provide round-robin-like balancing and have a fleet of runners. */
 	if (got_source_name(C, ev)){
 		A12INT_DIRTRACE(
 			"dirsv:kind=warning_register:collision=%s", ev.ext.registr.title);
-/* generate new name */
+
+/* generate random name so that directed sources would work */
+		while (got_source_name(C, ev)){
+			anet_directory_random_ident(ev.ext.netstate.name, 16);
+			ev.ext.netstate.name[16] = '\0';
+		}
 		return;
 	}
 
@@ -1415,16 +1422,12 @@ static void handle_ident(struct dircl* C, arcan_event ev)
  * more cumbersome if that actually goes through a linked directory.
  */
 	size_t ind = strtoul((char*)ev.ext.message.data, &end, 10);
-
 	char buf[sizeof("anon_XXXXXXXX")] = "anon_";
+
 	if (*end == '\0' || (*(end+1)) == '\0'){
 make_random:
 		do {
-			uint8_t rnd[8];
-			arcan_random(rnd, 8);
-			for (size_t i = 0; i < 8; i++){
-				buf[i+5] = 'a' + (rnd[i] % 26);
-			}
+			anet_directory_random_ident(&buf[5], 8);
 			end = buf;
 		} while (dirsrv_find_cl_ident(ind, buf));
 	}
