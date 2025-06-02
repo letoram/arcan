@@ -976,7 +976,9 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
  * identifier for the new appl, as well as update the backend store. */
 	if (!meta){
 		if (mtype == IDTYPE_APPL && !input){
-			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_install)){
+			if (
+				C->dir_link ||
+				a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_install)){
 				A12INT_DIRTRACE("dirsv:accepted_new=%s", ext);
 				meta = allocate_new_appl(ns, &mid);
 			}
@@ -1077,7 +1079,9 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 	 * listening that it has been updated. This is done using STREAMSTAT with the
 	 * [completion] argument. */
 			case IDTYPE_APPL:
-			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_appl)){
+			if (
+				C->dir_link ||
+				a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_appl)){
 				A12INT_DIRTRACE("accept_update=%d", (int) mid);
 				resfd = buf_memfd(NULL, 0);
 				if (-1 != resfd){
@@ -1096,7 +1100,9 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 /* same as for IDTYPE_APPL but we have different trigger action when the
  * transfer is completed */
 		case IDTYPE_ACTRL:
-			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_ctrl)){
+			if (
+				C->dir_link ||
+				a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_ctrl)){
 				A12INT_DIRTRACE("accept_ctrl_update=%d", (int) mid);
 				resfd = buf_memfd(NULL, 0);
 				if (-1 != resfd){

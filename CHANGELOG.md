@@ -21,6 +21,10 @@
  * Config scope script 'autostart' table for pre-launching controllers
  * Added .monitor bstream point for attaching a debugger to a server controller VM
  * Added .admin bstream point for remote administration of directory server
+ * Support for directed source-launch to single clients
+ * Support for directory hosting arcan-appl on demand
+ * Protocol changes to allow for file-metadata attachment and signatures
+ * Added record/replay of a12-state decrypted stream for easier debugging
 
 ## Decode
  * Support building without libvlc support

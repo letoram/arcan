@@ -181,7 +181,9 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 			}
 			a12_unpack(I->S, inbuf, nr, I, I->on_event);
 
-/* check if there has been a change to the directory state after each unpack */
+/* check if there has been a change to the directory state after each unpack,
+ * while not an expensive operation it could still be tracked in a12_ and have
+ * an accessor. */
 			uint64_t new_ts;
 			if (I->on_directory){
 				struct appl_meta* dir = a12int_get_directory(I->S, &new_ts);

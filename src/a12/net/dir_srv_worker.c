@@ -1029,8 +1029,6 @@ static struct a12_bhandler_res srv_bevent(
 				cbt->transfer_id = M.identifier;
 			}
 		}
-		else if (M.type == A12_BTYPE_APPL_CONTROLLER){
-		}
 #endif
 		break;
 	}

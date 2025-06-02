@@ -78,11 +78,137 @@ static struct a12_state trace_state = {.tracetag = "link"};
 		a12int_trace(A12_TRACE_DIRECTORY, __VA_ARGS__);\
 	} while (0);
 
+static void parent_worker_event(struct arcan_event* ev)
+{
+}
+
+/*
+ * SAME AS IN DIR_SRV_WORKER,
+ *  Might move to dir_supp.cpp
+ */
+static void drop_evqueue_item(struct evqueue_entry* rep)
+{
+	if (!rep)
+		return;
+
+	if (arcan_shmif_descrevent(&rep->ev) && rep->ev.tgt.ioevs[0].iv > 0){
+		TRACE("drop:queued_descriptor=%d", rep->ev.tgt.ioevs[0].iv);
+		close(rep->ev.tgt.ioevs[0].iv);
+	}
+	rep->next = NULL;
+	free(rep);
+}
+
+static struct evqueue_entry* run_evqueue(struct evqueue_entry* rep)
+{
+/* run until the last event and return that one */
+	while (rep->next){
+		struct evqueue_entry* cur = rep;
+		parent_worker_event(&rep->ev);
+		rep = rep->next;
+		drop_evqueue_item(cur);
+	}
+	return rep;
+}
+
+static void drop_evqueue(struct evqueue_entry* rep){
+	while (rep){
+		struct evqueue_entry* cur = rep;
+		rep = rep->next;
+		drop_evqueue_item(cur);
+	}
+}
+
+static int request_resource(int ns, char* res, int mode)
+{
+	struct evqueue_entry* rep = malloc(sizeof(struct evqueue_entry));
+	bool status = dir_request_resource(&G.shmif_parent_process, ns, res, mode, rep);
+	int fd = -1;
+
+	if (status){
+		rep = run_evqueue(rep);
+		struct arcan_event ev = rep->ev;
+
+		if (ev.tgt.kind != TARGET_COMMAND_REQFAIL){
+			fd = arcan_shmif_dupfd(ev.tgt.ioevs[0].iv, -1, true);
+			TRACE("accepted:descriptor=%d", fd);
+		}
+		else
+			TRACE("rejected=%s", arcan_shmif_eventstr(&ev, NULL, 0));
+	}
+	else {
+		drop_evqueue(rep);
+	}
+
+	return fd;
+}
+
+static struct a12_bhandler_res link_bhandler(
+	struct a12_state* S, struct a12_bhandler_meta M, void* tag)
+{
+	struct a12_bhandler_res res = {
+		.fd = -1,
+		.flag = A12_BHANDLER_DONTWANT
+	};
+
+	switch (M.state){
+	case A12_BHANDLER_COMPLETED:{
+		struct arcan_event sack = (struct arcan_event){
+			.category = EVENT_EXTERNAL,
+			.ext.kind = EVENT_EXTERNAL_STREAMSTATUS,
+			.ext.streamstat = {
+				.completion = 1.0,
+				.identifier = M.streamid
+			}
+		};
+		arcan_shmif_enqueue(&G.shmif_parent_process, &sack);
+	}
+	break;
+
+/* [MISSING: check that there is a pending request at the front of the queue] */
+	case A12_BHANDLER_INITIALIZE:
+		if (M.type == A12_BTYPE_APPL || M.type == A12_BTYPE_APPL_CONTROLLER){
+			char* restype = M.type == A12_BTYPE_APPL ? ".appl" : ".ctrl";
+			if (-1 != (res.fd = request_resource(M.identifier, restype, BREQ_STORE))){
+				res.flag = A12_BHANDLER_NEWFD;
+			}
+		}
+	break;
+
+/* [MISSING: send STREAMSTATUS event on the paired transfer] */
+	case A12_BHANDLER_CANCELLED:
+	break;
+	}
+
+	return res;
+}
+
 static void synch_local_directory(struct appl_meta* first)
 {
+/*
+ * This will happen one time before we get the remote directory.
+ *
+ * There are a few things to consider here, the most important being feedback
+ * loops both internally and externally.
+ *
+ * The appl_meta coming from directory only has local timestamps, not UTC. The
+ * tactic was to keep most of the metadata in the manifest of an .appl and use
+ * the signatures as the authoritative source of which appl to synch in which
+ * direction.
+ *
+ * When we queue appls for local update (pull) the server end shouldn't notify
+ * about the update when it comes from a link worker. At the same time we don't
+ * want two link workers to update the same appl, but the hash value + local
+ * timestamp takes care of that initially, then the bchunk completion handler
+ * will make sure we don't rollback.
+ *
+ * That might cause unnecessary download requests if a redundant topology is
+ * built, but that is a rather minor concern for the time being.
+ */
 	if (G.local_index){
-
+		TRACE("local-index updated, scan for new changes and synch upstream");
 	}
+
 	G.local_index = first;
 }
 
@@ -98,13 +224,28 @@ static void
 	struct arcan_event ev;
 	int pv;
 
-	while ((pv = arcan_shmif_poll(&S->shmif, &ev)) > 0){
+	while ((pv = arcan_shmif_poll(&G.shmif_parent_process, &ev)) > 0){
+		parent_worker_event(&ev);
 /* BCHUNKSTATE for updating appl index is the main one here */
 	}
 
 	if (-1 == pv){
 		S->shutdown = true;
 	}
+}
+
+static struct appl_meta* find_local_match(struct appl_meta* needle)
+{
+	struct appl_meta* haystack = G.local_index;
+
+	while(haystack){
+		if (strcmp(needle->appl.name, haystack->appl.name) == 0)
+			return haystack;
+
+		haystack = haystack->next;
+	}
+
+	return NULL;
 }
 
 /* different to dir_srv_worker any shared secret is passed as process spawn to
@@ -165,15 +306,33 @@ static bool remote_directory_receive(
 	size_t i = 0;
 	TRACE("remote_index");
 
-/* sweep each, see if we find matching name in the currently set index - if we
- * are referential we just need to save / store the index so that we can
- * forward it. */
+/* Sweep auth and find mismatches, for a referential directory it may also make
+ * sense to have the dirappls merge and be cached here so that we cut down on
+ * the amount of tunnel- open or forward requests needed. */
 	while (dir){
-		TRACE("id=%"PRIu16":size=%"PRIu64":name=%s%s%s",
-			dir->identifier, dir->buf_sz, dir->appl.name,
-			dir->appl.short_descr[0] ? ":description=" : "",
-			dir->appl.short_descr[0] ? dir->appl.short_descr : ""
-		);
+		struct appl_meta* local_match = find_local_match(dir);
+
+/* We have a local match - this might need an identifier remap for namespace
+ * retrieval, but that is when we synch .ctrl running. Worse is when we also
+ * might need to request remote state synch for various users that are non-
+ * local. */
+		if (local_match){
+			dir = dir->next;
+			continue;
+		}
+
+		struct arcan_event ev = {
+			.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
+			.category = EVENT_EXTERNAL,
+			.ext.bchunk = {
+				.input = true,
+				.hint = false,
+				.ns = dir->identifier
+			}
+		};
+		a12_channel_enqueue(I->S, &ev);
+		TRACE("request_unknown:id=%"PRIu16":size=%"PRIu64":name=%s",
+			dir->identifier, dir->buf_sz, dir->appl.name);
 		dir = dir->next;
 	}
 
@@ -186,6 +345,10 @@ static void remote_directory_discover(struct a12_state* S,
 	uint8_t pubk[static 32], uint16_t ns, void* tag)
 {
 	bool found = state == 1 || state == 2;
+
+/* linear search through, looking for matching slot and push into that or
+ * register a new one */
+
 	a12int_trace(A12_TRACE_DIRECTORY,
 		"remote_discover:%s:name=%s:type=%d",
 		found ? "found" : "lost", petname, type);
@@ -275,6 +438,7 @@ int anet_directory_link(
 
 /* request dirlist and subscribe to notifications */
 	a12int_request_dirlist(conn.state, true);
+	a12_set_bhandler(conn.state, link_bhandler, &ioloop);
 
 	G.ioloop_shared = &ioloop;
 	anet_directory_ioloop(&ioloop);
