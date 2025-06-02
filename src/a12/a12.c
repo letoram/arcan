@@ -823,9 +823,23 @@ static void update_mac_and_decrypt(struct a12_state* S, const char* source,
 	blake3_hasher* hash, struct chacha_ctx* ctx, uint8_t* buf, size_t sz)
 {
 	a12int_trace(A12_TRACE_CRYPTO, "src=%s:mac_update=%zu", source, sz);
+#ifdef _DEBUG
+	if (S->disable_encdec)
+		return;
+#endif
+
 	blake3_hasher_update(hash, buf, sz);
 	if (ctx)
 		chacha_apply(ctx, buf, sz);
+
+#ifdef _DEBUG
+	if (S->record_out){
+		if (!a12_error_state(S)){
+			fwrite(buf, sz, 1, S->record_out);
+			fflush(S->record_out);
+		}
+	}
+#endif
 }
 
 /*
@@ -1898,6 +1912,11 @@ static bool authdec_buffer(const char* src, struct a12_state* S, size_t block_sz
 
 	update_mac_and_decrypt(S, __func__, &S->in_mac, S->dec_state, S->decode, block_sz);
 
+	#ifdef _DEBUG
+	if (S->disable_encdec)
+		return true;
+	#endif
+
 	uint8_t ref_mac[MAC_BLOCK_SZ];
 	blake3_hasher_finalize(&S->in_mac, ref_mac, mac_size);
 
@@ -2718,6 +2737,7 @@ static void process_blob(struct a12_state* S)
 /* so there was a problem writing (dead pipe, out of space etc). send a cancel
  * on the stream,this will also forward the status change to the event handler
  * itself who is responsible for closing the tmp_fd */
+				a12int_trace(A12_TRACE_BTRANSFER, "kind=btransfer_fail:errno=%d", errno);
 				a12_stream_cancel(S, S->in_channel);
 				reset_state(S);
 				if (free_buf)
@@ -2726,6 +2746,9 @@ static void process_blob(struct a12_state* S)
 			}
 			else
 				pos += status;
+
+			if (pos < ntw)
+				a12int_trace(A12_TRACE_BTRANSFER, "kind=flush_partial:left=%zu", ntw);
 		}
 	}
 
@@ -3702,6 +3725,7 @@ a12_channel_vframe(struct a12_state* S,
 #define argstr S, vb, opts, sid, x, y, w, h, chunk_sz, S->out_channel
 
 	size_t now = arcan_timemillis();
+	opts.method = VFRAME_METHOD_ZSTD;
 
 /* we have a pre-compressed passthrough - send it with the FOURCC stored
  * in place of expanded length and just send the buffer as is */
@@ -4054,3 +4078,15 @@ void a12_trace_tag(struct a12_state* S, const char* tag)
 	snprintf(S->tracetag, 16, "%s", tag);
 }
 
+
+#ifdef _DEBUG
+void a12int_record_raw_insecure(struct a12_state* S, FILE* fout)
+{
+	S->record_out = fout;
+}
+
+void a12int_set_raw_insecure(struct a12_state* S)
+{
+	S->disable_encdec = true;
+}
+#endif

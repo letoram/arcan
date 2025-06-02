@@ -284,6 +284,7 @@ static void applhost_to_worker(struct dircl* C, struct arg_arr* entry)
 	dirsrv_global_lock(__FILE__, __LINE__);
 		struct appl_meta* meta = locked_numid_appl(applid);
 	dirsrv_global_unlock(__FILE__, __LINE__);
+
 	if (!meta){
 		A12INT_DIRTRACE("applhost:error=bad_applid=%"PRIu16, applid);
 		return;
@@ -296,7 +297,6 @@ static void applhost_to_worker(struct dircl* C, struct arg_arr* entry)
 			.tgt.kind = TARGET_COMMAND_MESSAGE,
 			.tgt.message = "a12:applhost:fail:reason=eperm"
 		}, -1);
-		dirsrv_global_unlock(__FILE__, __LINE__);
 		return;
 	}
 
@@ -322,8 +322,17 @@ static void applhost_to_worker(struct dircl* C, struct arg_arr* entry)
 		meta->appl.name
 	};
 
+	const char* basepath = getenv("ARCAN_APPLBASEPATH");
+	if (!basepath){
+		A12INT_DIRTRACE("applhost:error:no_applbase");
+		return;
+	}
+
+	char pathenv[strlen(basepath)+sizeof("ARCAN_APPLBASEPATH=")];
+	snprintf(pathenv, COUNT_OF(pathenv), "ARCAN_APPLBASEPATH=%s", basepath);
+
 	char* envv[] = {
-		"ARCAN_APPLBASEPATH=/home/void/.arcan/appl"
+		pathenv
 	};
 
 	struct arcan_strarr argv = {
