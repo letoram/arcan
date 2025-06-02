@@ -3725,7 +3725,6 @@ a12_channel_vframe(struct a12_state* S,
 #define argstr S, vb, opts, sid, x, y, w, h, chunk_sz, S->out_channel
 
 	size_t now = arcan_timemillis();
-	opts.method = VFRAME_METHOD_ZSTD;
 
 /* we have a pre-compressed passthrough - send it with the FOURCC stored
  * in place of expanded length and just send the buffer as is */
