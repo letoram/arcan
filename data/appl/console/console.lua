@@ -441,42 +441,42 @@ function valid_hotkey(input)
 
 	if mods == syskey_modifier then
 -- for handy testing of adoption etc.
-		if input.keysym == KEYBOARD.SYSREQ then
+		if input.keysym == KEYBOARD.tokeysym("SYSREQ") then
 			system_collapse()
 
-		elseif input.keysym == KEYBOARD.BACKSPACE then
+		elseif input.keysym == KEYBOARD.tokeysym("BACKSPACE") then
 			return shutdown()
 		end
 
 		return true
 	end
 
-	if input.keysym == KEYBOARD.v then
+	if input.keysym == KEYBOARD.tokeysym("v") then
 		clipboard_paste(clipboard_last)
 
 -- forcibly destroy the current workspace
-	elseif input.keysym == KEYBOARD.DELETE then
+	elseif input.keysym == KEYBOARD.tokeysym("DELETE") then
 		if workspaces[ws_index] and workspaces[ws_index].vid then
 			delete_workspace(ws_index)
 		end
 
 -- toggle mute on a specific audio source by querying the current value
 -- and inverting it (1.0 - n)
-	elseif input.keysym == KEYBOARD.m then
+	elseif input.keysym == KEYBOARD.tokeysym("m") then
 		if workspaces[ws_index] and workspaces[ws_index].aid then
 			local current = audio_gain(workspaces[ws_index].aid, nil)
 			audio_gain(workspaces[ws_index].aid, 1.0 - current)
 		end
 
-	elseif input.keysym == KEYBOARD.l then
+	elseif input.keysym == KEYBOARD.tokeysym("l") then
 		next_workspace()
 
-	elseif input.keysym == KEYBOARD.h then
+	elseif input.keysym == KEYBOARD.tokeysym("h") then
 		previous_workspace()
 
 -- covert Fn key to numeric index and switch workspace
-	elseif input.keysym >= KEYBOARD.F1 and input.keysym <= KEYBOARD.F10 then
-		switch_workspace(input.keysym - KEYBOARD.F1 + 1)
+	elseif input.keysym >= KEYBOARD.tokeysym("F1") and input.keysym <= KEYBOARD.tokeysym("F10") then
+		switch_workspace(input.keysym - KEYBOARD.tokeysym("F1") + 1)
 	end
 
 	return true
