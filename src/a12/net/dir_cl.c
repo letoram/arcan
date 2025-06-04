@@ -96,10 +96,11 @@ static void* tunnel_runner(void* t)
 
 	shutdown(ts->fd, SHUT_RDWR);
 	close(ts->fd);
+	int wakeup = ts->ios->wakeup;
 	free(err);
 	free(ts);
 
-	write(ts->ios->wakeup, &(uint8_t[]){0}, 1);
+	write(wakeup, &(uint8_t[]){0}, 1);
 	return NULL;
 }
 
