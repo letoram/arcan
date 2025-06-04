@@ -622,6 +622,9 @@ bool shmifsrv_audio(struct shmifsrv_client* cl,
 
 bool shmifsrv_tick(struct shmifsrv_client* cl)
 {
+	if (!cl || !cl->con)
+		return true;
+
 	if (cl->con->clock.left){
 		cl->con->clock.left--;
 		if (cl->con->clock.left)
