@@ -53,11 +53,9 @@ static int shmifopen_flags =
 			SHMIF_SOCKET_PINGEVENT;
 
 struct queue_item {
-	uint16_t identifier; /* slot identifier as per the state received */
-	uint8_t name[16];    /* track the name just to not have to sweep index */
-	bool appl;           /* do we need the appl- slot? */
-	bool ctrl;           /* do we need the ctrl- slot? */
-	bool download;       /* download OR upload, both doesn't make sense */
+	uint16_t remote_id;
+	uint16_t local_id;
+	uint32_t stream_id;
 	struct queue_item* next;
 };
 
@@ -158,6 +156,8 @@ static struct a12_bhandler_res link_bhandler(
 			.ext.kind = EVENT_EXTERNAL_STREAMSTATUS,
 			.ext.streamstat = {
 				.completion = 1.0,
+ /* this should correlate with the number of reqs, but the parent doesn't
+	* really care, we use a single channel and serial processing */
 				.identifier = M.streamid
 			}
 		};
@@ -169,7 +169,7 @@ static struct a12_bhandler_res link_bhandler(
 	case A12_BHANDLER_INITIALIZE:
 		if (M.type == A12_BTYPE_APPL || M.type == A12_BTYPE_APPL_CONTROLLER){
 			char* restype = M.type == A12_BTYPE_APPL ? ".appl" : ".ctrl";
-			if (-1 != (res.fd = request_resource(M.identifier, restype, BREQ_STORE))){
+			if (-1 != (res.fd = request_resource((uint16_t)-1, restype, BREQ_STORE))){
 				res.flag = A12_BHANDLER_NEWFD;
 			}
 		}
@@ -177,6 +177,7 @@ static struct a12_bhandler_res link_bhandler(
 
 /* [MISSING: send STREAMSTATUS event on the paired transfer] */
 	case A12_BHANDLER_CANCELLED:
+
 	break;
 	}
 

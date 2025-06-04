@@ -284,38 +284,6 @@ size_t shmifsrv_dequeue_events(
 	}
 }
 
-static void autoclock_frame(arcan_frameserver* tgt)
-{
-	if (!tgt->clock.left)
-		return;
-
-/*
-	if (!tgt->clock.frametime)
-		tgt->clock.frametime = arcan_frametime();
-
-	int64_t delta = arcan_frametime() - tgt->clock.frametime;
-	if (delta < 0){
-
-	}
-	else if (delta == 0)
-		return;
-
-	if (tgt->clock.left <= delta){
-		tgt->clock.left = tgt->clock.start;
-		tgt->clock.frametime = arcan_frametime();
-		arcan_event ev = {
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_STEPFRAME,
-			.tgt.ioevs[0].iv = delta / tgt->clock.start,
-			.tgt.ioevs[1].iv = 1
-		};
-		platform_fsrv_pushevent(tgt, &ev);
-	}
-	else
-		tgt->clock.left -= delta;
-	*/
-}
-
 bool shmifsrv_enqueue_event(
 	struct shmifsrv_client* cl, struct arcan_event* ev, int fd)
 {
@@ -576,12 +544,27 @@ bool shmifsrv_process_event(struct shmifsrv_client* cl, struct arcan_event* ev)
 				return false;
 			}
 		break;
-		case EVENT_EXTERNAL_CLOCKREQ:
-			if (cl->con->flags.autoclock && !ev->ext.clock.once){
-				cl->con->clock.frame = ev->ext.clock.dynamic;
-				cl->con->clock.left = cl->con->clock.start = ev->ext.clock.rate;
-				return true;
+		case EVENT_EXTERNAL_CLOCKREQ:{
+			struct arcan_frameserver* tgt = cl->con;
+			if (ev->ext.clock.dynamic == 1){
+				if (ev->ext.clock.rate){
+					tgt->clock.present = ev->ext.clock.rate;
+					tgt->clock.msc_feedback = true;
+				}
+			else
+				tgt->clock.msc_feedback = !tgt->clock.msc_feedback;
 			}
+			else if (ev->ext.clock.dynamic == 2){
+				tgt->clock.vblank = !tgt->clock.vblank;
+			}
+			else if (tgt->flags.autoclock){
+				tgt->clock.once = ev->ext.clock.once;
+				tgt->clock.frame = ev->ext.clock.dynamic;
+				tgt->clock.left = tgt->clock.start = ev->ext.clock.rate;
+				tgt->clock.id = ev->ext.clock.id;
+			}
+			return true;
+		}
 		break;
 		default:
 		break;
@@ -639,23 +622,22 @@ bool shmifsrv_audio(struct shmifsrv_client* cl,
 
 bool shmifsrv_tick(struct shmifsrv_client* cl)
 {
-/* want the event to be queued after resize so the possible reaction (i.e.
-	bool alive = src->flags.alive && src->shm.ptr &&
-		src->shm.ptr->cookie == arcan_shmif_cookie() &&
-		platform_fsrv_validchild(src);
+	if (cl->con->clock.left){
+		cl->con->clock.left--;
+		if (cl->con->clock.left)
+			return true;
 
-	if (!fail && tick){
-		if (0 >= --src->clock.left){
-			src->clock.left = src->clock.start;
-			platform_fsrv_pushevent(src, &(struct arcan_event){
-				.category = EVENT_TARGET,
-				.tgt.kind = TARGET_COMMAND_STEPFRAME,
-				.tgt.ioevs[0].iv = 1,
-				.tgt.ioevs[1].iv = 1
-			});
-		}
+		if (cl->con->clock.once)
+			return true;
+
+		cl->con->clock.left = cl->con->clock.start;
+		platform_fsrv_pushevent(cl->con, &(struct arcan_event){
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_STEPFRAME,
+			.tgt.ioevs[0].iv = 1,
+			.tgt.ioevs[1].uiv = cl->con->clock.id
+		});
 	}
- */
 	return true;
 }
 #ifndef SHMIFSRV_EXTERNAL_CLOCK
@@ -800,7 +782,9 @@ int shmifsrv_put_video(
 
 		shmifsrv_enqueue_event(C, &(struct arcan_event){
 			.tgt.kind = TARGET_COMMAND_STEPFRAME,
-			.category = EVENT_TARGET
+			.category = EVENT_TARGET,
+	/* ioevs[2].uiv ? vobj->owner->msc */
+	/* if present is set, compare against vobj-> msc and send */
 		}, -1);
 
 		shmifsrv_leave(C);

@@ -490,6 +490,11 @@ static void* client_thread(void* inarg)
 			}
 		}
 
+		int left;
+		int ticks = shmifsrv_monotonic_tick(&left);
+		while (ticks-- > 0)
+			shmifsrv_tick(data->C);
+
 /* kill socket or poll socket died */
 		if ((pfd[0].revents & errmask) || (pfd[1].revents & errmask)){
 			a12int_trace(A12_TRACE_SYSTEM,
@@ -623,7 +628,6 @@ static void* client_thread(void* inarg)
 				END_CRITICAL(&giant_lock);
 			}
 		}
-
 	}
 
 out:
