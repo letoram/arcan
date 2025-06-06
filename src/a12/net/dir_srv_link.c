@@ -65,6 +65,7 @@ static struct {
 	struct appl_meta* local_index;
 	struct ioloop_shared* ioloop_shared;
 	struct queue_item* queue;
+	struct hashmap_s* map_appid;
 } G;
 
 static struct a12_state trace_state = {.tracetag = "link"};

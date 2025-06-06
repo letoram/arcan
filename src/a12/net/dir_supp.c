@@ -56,7 +56,9 @@ static void* tunnel_thread(void* tag)
 
 	for(;;){
 		bool tun_ok;
-		fd = a12_tunnel_descriptor(S, meta->tunid, &tun_ok);
+		pthread_mutex_lock(&meta->I->lock);
+			fd = a12_tunnel_descriptor(S, meta->tunid, &tun_ok);
+		pthread_mutex_unlock(&meta->I->lock);
 
 		if (!tun_ok){
 			break;

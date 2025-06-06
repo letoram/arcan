@@ -141,7 +141,8 @@ int shmifsrv_client_memory_handle(struct shmifsrv_client* cl)
 	return cl->con->shm.handle;
 }
 
-struct shmifsrv_client* shmifsrv_inherit_connection(int sockin, int* statuscode)
+struct shmifsrv_client* shmifsrv_inherit_connection(
+	int sockin, int memin, int* statuscode)
 {
 	if (-1 == sockin){
 		if (statuscode)
@@ -158,7 +159,7 @@ struct shmifsrv_client* shmifsrv_inherit_connection(int sockin, int* statuscode)
 		return NULL;
 	}
 
-	res->con = platform_fsrv_preset_server(sockin, SEGID_UNKNOWN, 0, 0, 0);
+	res->con = platform_fsrv_preset_server(sockin, memin, SEGID_UNKNOWN, 0, 0, 0);
 
 	if (statuscode)
 		*statuscode = SHMIFSRV_OK;

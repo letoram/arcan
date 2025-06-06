@@ -160,7 +160,8 @@ struct shmifsrv_client* shmifsrv_spawn_client(
  * pairing has been performed via some other mechanism, and it is only
  * the memory/synch primitives that need to be prepared
  */
-struct shmifsrv_client* shmifsrv_inherit_connection(int sockin, int* sc);
+struct shmifsrv_client*
+	shmifsrv_inherit_connection(int sockin, int memin, int* sc);
 
 /*
  * Retrieve an I/O multiplexable handle for mixing into poll() rather

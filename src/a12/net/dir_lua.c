@@ -1674,7 +1674,7 @@ bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
 		return false;
 	}
 	int sc;
-	runner->cl = shmifsrv_inherit_connection(sv[0], &sc);
+	runner->cl = shmifsrv_inherit_connection(sv[0], -1, &sc);
 	if (!runner->cl){
 		A12INT_DIRTRACE_LOCKED("kind=error:couldn't build preauth shmif");
 		close(sv[0]);

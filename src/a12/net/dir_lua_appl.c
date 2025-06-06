@@ -699,7 +699,7 @@ static bool join_worker(int fd, const char* ident, bool monitor)
  * send the key so do that now. */
 	if (ind != 0){
 		struct client* cl = &CLIENTS.cset[ind];
-		cl->shmif = shmifsrv_inherit_connection(fd, &tmp);
+		cl->shmif = shmifsrv_inherit_connection(fd, -1, &tmp);
 		int pv = shmifsrv_poll(cl->shmif);
 		while (pv != CLIENT_IDLE && pv != CLIENT_DEAD){
 			pv = shmifsrv_poll(cl->shmif);

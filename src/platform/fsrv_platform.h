@@ -47,12 +47,12 @@ struct arcan_frameserver* platform_fsrv_spawn_server(
 
 /*
  * Build a frameserver over an existing client socket, this will be in a
- * preauthenticated/preconnected state. It works similar to platform_
- * fsrv_spawn_server excluding the bind/listen and need for poll to change to a
- * connected state.
+ * preauthenticated/preconnected state unless memin is set (!-1). It works
+ * similar to platform_ fsrv_spawn_server excluding the bind/listen and need
+ * for poll to change to a connected state.
  */
 struct arcan_frameserver* platform_fsrv_preset_server(
-	int sockin, int segid, size_t w, size_t h, uintptr_t tag);
+	int sockin, int memin, int segid, size_t w, size_t h, uintptr_t tag);
 
 /*
  * perform a resynchronization (resize) operation where negotiated buffer

@@ -605,32 +605,10 @@ static bool setup_socket(
 	return true;
 }
 
-static bool shmalloc(arcan_frameserver* ctx,
-	bool namedsocket, const char* optkey, int optdesc)
+static bool fill_shmpage(arcan_frameserver* ctx, int shmfd)
 {
-	if (0 == ctx->shm.shmsize)
-		ctx->shm.shmsize = ARCAN_SHMPAGE_START_SZ;
-
 	struct arcan_shmif_page* shmpage;
-	int shmfd = platform_fsrv_shmmem();
-
-	if (namedsocket)
-		if (!setup_socket(ctx, shmfd, optkey, optdesc))
-			goto fail;
-
-/* max videoframesize + DTS + structure + maxaudioframesize,
-* start with max, then truncate down to whatever is actually used */
-	int rc = ftruncate(shmfd, ctx->shm.shmsize);
-	if (-1 == rc){
-		arcan_warning("platform_fsrv_spawn_server(unix) -- allocating"
-		" (%d) shared memory failed (%d).\n", ctx->shm.shmsize, errno);
-		goto fail;
-	}
-
 	ctx->shm.handle = shmfd;
-
-/* should already be set but make sure */
-	fcntl(shmfd, F_SETFD, FD_CLOEXEC);
 
 	shmpage = (void*) mmap(
 		NULL, ctx->shm.shmsize, PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, 0);
@@ -638,10 +616,7 @@ static bool shmalloc(arcan_frameserver* ctx,
 	if (MAP_FAILED == shmpage){
 		arcan_warning("platform_fsrv_spawn_server(unix) -- couldn't "
 			"allocate shmpage\n");
-fail:
-		if (shmfd != -1){
 			close(shmfd);
-		}
 		return false;
 	}
 
@@ -650,6 +625,7 @@ fail:
 	if (0 != setjmp(out)){
 		munmap(shmpage, ctx->shm.shmsize);
 		ctx->shm.ptr = NULL;
+		close(shmfd);
 		return false;
 	}
 
@@ -668,7 +644,40 @@ fail:
 		ctx->shm.ptr = shmpage;
 	platform_fsrv_leave();
 
+/* should already be set but make sure */
+	fcntl(shmfd, F_SETFD, FD_CLOEXEC);
 	return true;
+}
+
+static bool shmalloc(arcan_frameserver* ctx,
+	bool namedsocket, const char* optkey, int optdesc)
+{
+	if (0 == ctx->shm.shmsize)
+		ctx->shm.shmsize = ARCAN_SHMPAGE_START_SZ;
+
+	int shmfd = platform_fsrv_shmmem();
+
+	if (-1 == shmfd)
+		return false;
+
+	if (namedsocket){
+		if (!setup_socket(ctx, shmfd, optkey, optdesc)){
+			close(shmfd);
+			return false;
+		}
+	}
+
+/* max videoframesize + DTS + structure + maxaudioframesize,
+* start with max, then truncate down to whatever is actually used */
+	int rc = ftruncate(shmfd, ctx->shm.shmsize);
+	if (-1 == rc){
+		arcan_warning("platform_fsrv_spawn_server(unix) -- allocating"
+		" (%d) shared memory failed (%d).\n", ctx->shm.shmsize, errno);
+		close(shmfd);
+		return false;
+	}
+
+	return fill_shmpage(ctx, shmfd);
 }
 
 struct arcan_frameserver* platform_fsrv_alloc()
@@ -1351,15 +1360,34 @@ struct arcan_frameserver* platform_fsrv_listen_external(const char* key,
 }
 
 struct arcan_frameserver* platform_fsrv_preset_server(
-	int sockin, int segid, size_t w, size_t h, uintptr_t tag)
+	int sockin, int memin, int segid, size_t w, size_t h, uintptr_t tag)
 {
 	arcan_frameserver* newseg = platform_fsrv_alloc();
 	if (!newseg)
 		return NULL;
 
-	if (!prepare_segment(newseg, segid, 0, w, h, false, NULL, -1, tag)){
-		arcan_mem_free(newseg);
-		return NULL;
+	if (-1 != memin){
+		if (!prepare_segment(newseg, segid, 0, w, h, false, NULL, -1, tag)){
+			arcan_mem_free(newseg);
+			return NULL;
+		}
+	}
+/* We already have a segment, from shmalloc. We need to trust the contents in
+ * order to build, so this is only useful on a very narrow setting where you
+ * need to pass a preallocated connection to a client in a trusted state.
+ *
+ * Practically this means debugging tools and something like arcan-net tunnel
+ * into directory mode. */
+	else {
+		struct stat inf;
+		if (0 == fstat(segid, &inf)){
+			newseg->shm.shmsize = inf.st_size;
+		}
+
+		if (!fill_shmpage(newseg, memin)){
+			arcan_mem_free(newseg);
+			return NULL;
+		}
 	}
 
 	newseg->dpipe = sockin;

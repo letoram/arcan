@@ -598,6 +598,11 @@ static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
 		}
 		setsid();
 
+/* the exec needs:
+ *  --soft-auth --shmifsrv-dir
+ *  authk from stdin
+ */
+
 /* Trust the directory server provided secret.
  *
  * A nuanced option here is if to set the accept_n_pk_unknown to 1 or not.
@@ -627,8 +632,6 @@ static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
  * the sink in order to let them differentiate the identity it uses with the
  * directory versus the one it uses with us. */
 		snprintf(ds->aopts->opts->secret, 32, "%s", a.authk);
-		char* outhost;
-		uint16_t outport;
 
 		ds->aopts->opts->pk_lookup = key_auth_dir;
 		ds->aopts->opts->pk_lookup_tag = ds;
@@ -890,7 +893,7 @@ static int a12_preauth(struct anet_options* args,
 	struct a12_state* S, struct shmifsrv_client* cl, int fd))
 {
 	int sc;
-	struct shmifsrv_client* cl = shmifsrv_inherit_connection(args->sockfd, &sc);
+	struct shmifsrv_client* cl = shmifsrv_inherit_connection(args->sockfd, -1, &sc);
 	if (!cl){
 		fprintf(stderr, "(shmif::arcan-net) "
 			"couldn't build connection from socket (%d)\n", sc);
