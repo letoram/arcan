@@ -116,6 +116,8 @@ set(EXTERNAL_SOURCES
 	external/blake3/blake3_dispatch.c
 	external/blake3/blake3_portable.c
 	external/x25519.c
+	external/mono/monocypher.c
+	external/mono/optional/monocypher-ed25519.c
 	${ZSTD_SOURCES}
 )
 
@@ -131,6 +133,8 @@ target_include_directories(arcan_a12 PRIVATE
 	external/blake3
 	external/zstd
 	external/zstd/common
+	external/mono
+	external/mono/optional
 	external
 	${PLATFORM_ROOT}/../engine
 	${PLATFORM_ROOT}/../shmif

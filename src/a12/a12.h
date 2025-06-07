@@ -62,7 +62,7 @@ struct pk_response {
  * proto 3 = tunnel */
 struct a12_dynreq {
 	char host[46];
-	char pubk[32];
+	uint8_t pubk[32];
 	uint16_t port;
 	char authk[12];
 	int proto;
