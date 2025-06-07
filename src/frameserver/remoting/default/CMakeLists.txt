@@ -18,6 +18,8 @@ set(NET_INCLUDE_DIRS
 	${A12_DIR}
 	${EXT_DIR}
 	${EXT_DIR}/blake3
+	${EXT_DIR}/mono
+	${EXT_DIR}/mono/optional
 	${PLATFORM_ROOT}/../engine
 )
 

@@ -28,6 +28,8 @@
 
 #include "anet_helper.h"
 #include "external/x25519.h"
+#include "external/mono/optional/monocypher-ed25519.h"
+
 void arcan_random(uint8_t* dst, size_t sz);
 
 struct key_ent;
@@ -52,13 +54,15 @@ static struct {
 	int dirfd_private;
 	int dirfd_accepted;
 	int dirfd_state;
+	int dirfd_sig;
 
 	bool open;
 	struct keystore_provider provider;
 } keystore = {
 	.dirfd_private = -1,
 	.dirfd_accepted = -1,
-	.dirfd_state = -1
+	.dirfd_state = -1,
+	.dirfd_sig = -1
 };
 
 static uint8_t b64dec_lut[256] = {
@@ -120,7 +124,7 @@ uint8_t* a12helper_tob64(const uint8_t* data, size_t inl, size_t* outl)
 	return res;
 }
 
-bool a12helper_fromb64(const uint8_t* instr, size_t lim, uint8_t outb[static 32])
+bool a12helper_fromb64(const uint8_t* instr, size_t lim, uint8_t* outb)
 {
 	size_t inlen = strlen((char*)instr);
 
@@ -304,6 +308,7 @@ bool a12helper_keystore_open(struct keystore_provider* p)
 	mkdirat(keystore.provider.directory.dirfd, "accepted", S_IRWXU);
 	mkdirat(keystore.provider.directory.dirfd, "hostkeys", S_IRWXU);
 	mkdirat(keystore.provider.directory.dirfd, "state", S_IRWXU);
+	mkdirat(keystore.provider.directory.dirfd, "signing", S_IRWXU);
 
 	int fl = O_DIRECTORY | O_CLOEXEC;
 	if (-1 == (keystore.dirfd_accepted =
@@ -322,6 +327,10 @@ bool a12helper_keystore_open(struct keystore_provider* p)
 		return false;
 	}
 
+/* not necessary but desired */
+	keystore.dirfd_sig =
+		openat(keystore.provider.directory.dirfd, "signing", fl);
+
 	keystore.dirfd_state =
 		openat(keystore.provider.directory.dirfd, "state", fl);
 
@@ -338,6 +347,110 @@ static void gen_fn(char* tmpfn, size_t len)
 	for (size_t i = 0; i < len; i++){
 		tmpfn[i] = 'a' + ((uint8_t)tmpfn[i] % 21);
 	}
+}
+
+bool a12helper_keystore_get_sigkey(
+	const char* tag, uint8_t pubk[static 32], uint8_t privk[static 64])
+{
+	if (-1 == keystore.dirfd_sig)
+		return false;
+
+	int inf = openat(keystore.dirfd_sig, tag, O_RDONLY);
+	if (-1 == inf)
+		return false;
+
+	FILE* fin = fdopen(inf, "r");
+	if (!fin){
+		close(inf);
+		return false;
+	}
+
+/* b64 priv */
+	char priv_raw[128];
+	if (!fgets(priv_raw, 128, fin)){
+		fclose(fin);
+		return false;
+	}
+/* malformed? */
+	size_t slen = strlen(priv_raw);
+	if (!slen || priv_raw[slen-1] != '\n'){
+		fclose(fin);
+		return false;
+	}
+	priv_raw[slen-1] = '\n';
+	if (!a12helper_fromb64((uint8_t*)priv_raw, 64, privk)){
+		fclose(fin);
+		return false;
+	}
+
+/* same dance for the shorter pubk, but drop privk in the error path */
+	char pub_raw[128];
+	if (!fgets(pub_raw, 128, fin)){
+		fclose(fin);
+		memset(privk, '\0', 64);
+		return false;
+	}
+	if (!slen || priv_raw[slen-1] != '\n'){
+		fclose(fin);
+		memset(privk, '\0', 64);
+		return false;
+	}
+	pub_raw[slen-1] = '\n';
+	if (!a12helper_fromb64((uint8_t*) pub_raw, 32, pubk)){
+		memset(privk, '\0', 64);
+		fclose(fin);
+		return false;
+	}
+
+	fclose(fin);
+	return true;
+}
+
+bool a12helper_keystore_gen_sigkey(const char* tag, bool overwrite)
+{
+	if (-1 == keystore.dirfd_sig)
+		return false;
+
+/* usual filesystem race .. */
+	int sfd = openat(keystore.dirfd_sig, tag, O_RDONLY);
+	if (-1 != sfd){
+		close(sfd);
+		if (!overwrite){
+			fprintf(stderr,
+				"refusing to overwrite existing signing key file for %s\n", tag);
+			return false;
+		}
+	}
+	close(sfd);
+
+/* ed25519 keygen uses just csprng seed then internally performs sha512
+ * widening to 64 to avoid the subgroup attacks / 3-bit leak */
+	uint8_t seed[32];
+	arcan_random(seed, 32);
+
+	uint8_t kpriv[64];
+	uint8_t kpub[32];
+	crypto_ed25519_key_pair(kpriv, kpub, seed);
+
+	sfd = openat(keystore.dirfd_sig,
+		tag, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+	if (-1 == sfd){
+		fprintf(stderr,
+			"couldn't create signing key file for %s\n", tag);
+		return false;
+	}
+
+	FILE* fout = fdopen(sfd, "w");
+	uint8_t* b64 = a12helper_tob64(kpriv, 64, &(size_t){0});
+	fprintf(fout, "%s\n", b64);
+	free(b64);
+
+	b64 = a12helper_tob64(kpriv, 64, &(size_t){0});
+	fprintf(fout, "%s\n", b64);
+	free(b64);
+	fclose(fout);
+
+	return true;
 }
 
 void a12helper_keystore_accept_ephemeral(
@@ -393,7 +506,7 @@ bool a12helper_keystore_accept(const uint8_t pubk[static 32], const char* connp)
 	do {
 		gen_fn(tmpfn, 8);
 		fdout = openat(keystore.dirfd_accepted,
-			tmpfn, O_CREAT | O_EXCL | O_WRONLY, S_IRWXU);
+			tmpfn, O_CREAT | O_EXCL | O_WRONLY, S_IRUSR | S_IWUSR);
 	} while (fdout < 0);
 
 	FILE* fpek = fdopen(fdout, "w");
@@ -438,11 +551,13 @@ bool a12helper_keystore_release()
 	close(keystore.dirfd_accepted);
 	close(keystore.dirfd_private);
 	close(keystore.dirfd_state);
+	close(keystore.dirfd_sig);
 
 	keystore.provider.directory.dirfd = -1;
 	keystore.dirfd_accepted = -1;
 	keystore.dirfd_private = -1;
 	keystore.dirfd_state = -1;
+	keystore.dirfd_sig = -1;
 	keystore.open = false;
 
 	return true;
@@ -581,7 +696,7 @@ bool a12helper_keystore_register(
 
 /* going posix instead of fdout because of locking */
 	int fout = openat(keystore.dirfd_private,
-		tagname, O_WRONLY | O_CREAT | O_CLOEXEC, S_IRWXU);
+		tagname, O_WRONLY | O_CREAT | O_CLOEXEC, S_IRUSR | S_IWUSR);
 
 	if (-1 == fout){
 		fprintf(stderr, "couldn't open or create tag (%s) for private key\n", tagname);

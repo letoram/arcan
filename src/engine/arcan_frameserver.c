@@ -1470,7 +1470,7 @@ bool arcan_frameserver_setramps(
 	size_t ch_sz[SHMIF_CMRAMP_PLIM],
 	uint8_t* edid, size_t edid_sz)
 {
-	if (!ch_sz || !table || !src || !src->desc.aext.gamma)
+	if (!table || !src || !src->desc.aext.gamma)
 		return false;
 
 	size_t lim;

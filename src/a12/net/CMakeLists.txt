@@ -39,6 +39,8 @@ set(INCLUDE_DIRS
 	"${ARCAN_SRC}/engine"
 	"${ARCAN_SRC}/frameserver/util"
 	"${ARCAN_SRC}/platform"
+	"${A12_EXT}/mono"
+	"${A12_EXT}/optional"
 	${LUA_INCLUDE_DIR}
 	${LUA_INCLUDE_DIRS}
 	${SQLite3_INCLUDE_DIR}

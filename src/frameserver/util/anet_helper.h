@@ -197,6 +197,16 @@ bool a12helper_keystore_accept(
 	const uint8_t pubk[static 32], const char* connp);
 #endif
 
+bool a12helper_keystore_get_sigkey(
+	const char* tag, uint8_t pubk[static 32], uint8_t privk[static 64]);
+
+/*
+ * Create a new signing keypair and store with 'tag', if overwrite is set any
+ * existing keys will be overwritten. Otherwise the function will return
+ * 'false' on conflict or if the keystore isn't open.
+ */
+bool a12helper_keystore_gen_sigkey(const char* tag, bool overwrite);
+
 /*
  * temporarily add the key to the trust store, this should not persist across
  * restarts and can be batched revoked with flush_ephemeral(id)
