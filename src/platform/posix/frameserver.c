@@ -1366,7 +1366,7 @@ struct arcan_frameserver* platform_fsrv_preset_server(
 	if (!newseg)
 		return NULL;
 
-	if (-1 != memin){
+	if (-1 == memin){
 		if (!prepare_segment(newseg, segid, 0, w, h, false, NULL, -1, tag)){
 			arcan_mem_free(newseg);
 			return NULL;
