@@ -147,7 +147,6 @@ struct binary_frame {
 	uint32_t identifier;
 	uint8_t checksum[16];
 	int64_t streamid; /* actual type is uint32 but -1 for cancel */
-	char extid[16];
 	struct ZSTD_DCtx_s* zstd;
 };
 
@@ -338,7 +337,10 @@ struct a12_state {
 		uint8_t real_priv[32];
 		uint8_t remote_pub[32];
 		uint8_t local_pub[32];
-		uint8_t ticket[32];
+		uint8_t sign_priv[64];
+		uint8_t sign_pub[32];
+		uint8_t sign_pub_prev[32]; /* for exchanging signature */
+		uint8_t auth_csrnd[8];
 
 		size_t rekey_count;
 		size_t rekey_base_count;

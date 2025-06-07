@@ -27,6 +27,7 @@
 #include "arcan_mem.h"
 #include "external/chacha.c"
 #include "external/x25519.h"
+#include "monocypher-ed25519.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -47,6 +48,11 @@ static int header_sizes[] = {
 	1 + 4 + 2, /* BINARY partial: ch, stream, len */
 	MAC_BLOCK_SZ + 8 + 1, /* First packet server side */
 	0
+};
+
+enum {
+	REKEY_MODE_RATCHET = 0,
+	REKEY_MODE_EDSIGN  = 1
 };
 
 extern void arcan_random(uint8_t* dst, size_t);
@@ -208,7 +214,7 @@ static void a12int_issue_rekey(struct a12_state* S)
 
 /* control-header fills out the nonce-bytes as [8..15] */
 	build_control_header(S, outb, COMMAND_REKEY);
-		outb[18] = 0; /* mode */
+		outb[18] = REKEY_MODE_RATCHET; /* mode */
 		memcpy(&outb[19], out_pub, 32);
 	memcpy(nonce, &outb[8], 8);
 	trace_crypto_key(S, S->server, "rekey_nonce", nonce, 8);
@@ -299,12 +305,12 @@ void a12int_set_directory(struct a12_state* S, struct appl_meta* M)
 }
 
 static void send_hello_packet(struct a12_state* S,
-	int mode, uint8_t pubk[static 32], uint8_t entropy[static 8])
+	int mode, uint8_t pubk[static 32], uint8_t csrnd[static 8])
 {
 /* construct the reply with the proper public key */
 	uint8_t outb[CONTROL_PACKET_SIZE] = {0};
 	step_sequence(S, outb);
-	memcpy(&outb[8], entropy, 8);
+	memcpy(&outb[8], csrnd, 8);
 	memcpy(&outb[21], pubk, 32);
 
 	if (S->opts->local_role == ROLE_SOURCE){
@@ -357,9 +363,9 @@ static void send_hello_packet(struct a12_state* S,
  * place where we perform an unavoidable copy unless we want interleaving (and
  * then it becomes expensive to perform). Practically speaking it is not that
  * bad to encrypt accordingly, it is a stream cipher afterall, BUT having a
- * continous MAC screws with that. Now since we have a few bytes entropy and a
- * counter as part of the message, replay attacks won't work BUT any
- * reordering would then still need to account for rekeying.
+ * continous MAC screws with that. Now since we have a few bytes secure
+ * randomness and a counter as part of the message, replay attacks won't work
+ * BUT any reordering would then still need to account for rekeying.
  */
 void a12int_append_out(struct a12_state* S, uint8_t type,
 	const uint8_t* const out, size_t out_sz, uint8_t* prepend, size_t prepend_sz)
@@ -842,6 +848,17 @@ static void update_mac_and_decrypt(struct a12_state* S, const char* source,
 #endif
 }
 
+static void build_signkey_challenge(
+	struct a12_state* S, uint8_t out_chg[static 32], uint8_t nonce[static 8])
+{
+/* build H(Server_csrnd.hello | nonce) and then sign it */
+	blake3_hasher hash;
+	blake3_hasher_init(&hash);
+	blake3_hasher_update(&hash, S->keys.auth_csrnd, 8);
+	blake3_hasher_update(&hash, nonce, 8);
+	blake3_hasher_finalize(&hash, out_chg, 32);
+}
+
 /*
  * NOPACKET:
  * MAC
@@ -1051,6 +1068,44 @@ static void command_cancelstream(
 
 static void command_rekey(struct a12_state* S)
 {
+/* Only the client is permitted to set a signing key, and only in directory
+ * mode. There may be minor reason to lessen this restriction but that takes
+ * reworking both keystore and signing challenge */
+	if (S->decode[18] == REKEY_MODE_EDSIGN){
+		if (!S->server){
+			a12int_trace(A12_TRACE_CRYPTO, "error:command_rekey:server_sent_edsign");
+			fail_state(S, "rekey-sign-server");
+			return;
+		}
+		if (S->remote_mode != ROLE_DIR){
+			a12int_trace(A12_TRACE_CRYPTO, "error:command_rekey:edsign_role_mismatch");
+			fail_state(S, "rekey-sign-role");
+			return;
+		}
+
+/* Calculate the challenge and verify against signature. This is done against
+ * csrnd where half is provided by us earlier and half provided by the signer
+ * as to prevent replay in a directory network in order to index- lookup by
+ * established signature.
+ *
+ * Ed22519 check is not constant time, but the inputs aren't secret. Subtle
+ * footgun is that the return is 0 on match.
+ */
+		uint8_t chg[32];
+		build_signkey_challenge(S, chg, &S->decode[8]);
+		if (0 != crypto_ed25519_check(&S->decode[19+32], &S->decode[19], chg, 32)){
+			a12int_trace(A12_TRACE_CRYPTO, "error:command_rekey:edsign_bad_signature");
+			fail_state(S, "rekey-sign-invalid");
+			return;
+		}
+
+/* Track old key so we allow signature key rotation on signed objects */
+		memcpy(S->keys.sign_pub_prev, S->keys.sign_pub, 32);
+		memcpy(S->keys.sign_pub, &S->decode[19], 32);
+		a12int_trace(A12_TRACE_CRYPTO, "status=signing_key_verified");
+		return;
+	}
+
 	if (S->keys.own_rekey){
 		a12int_trace(A12_TRACE_CRYPTO, "error:command_rekey:waiting_for_other");
 		fail_state(S, "rekey-not-theirs");
@@ -1058,7 +1113,7 @@ static void command_rekey(struct a12_state* S)
 	}
 
 /* inbound packets will now use a different shared secret and HMAC */
-	if (S->decode[18] != 0){
+	if (S->decode[18] != REKEY_MODE_RATCHET){
 		a12int_trace(A12_TRACE_SYSTEM,
 			"kind=error:source=rekey:unknown_rekey_method=%"PRIu8, S->decode[18]);
 		fail_state(S, "rekey-bad-method");
@@ -1146,7 +1201,6 @@ static void command_binarystream(struct a12_state* S)
 	bframe->type = S->decode[30];
 	unpack_u32(&bframe->identifier, &S->decode[31]);
 	memcpy(bframe->checksum, &S->decode[35], 16);
-	memcpy(bframe->extid, &S->decode[53], 16);
 
 	bframe->active = true;
 	a12int_trace(A12_TRACE_BTRANSFER,
@@ -1172,7 +1226,6 @@ static void command_binarystream(struct a12_state* S)
 		.dcont = S->channels[channel].cont,
 		.fd = -1
 	};
-	memcpy(bm.extid, bframe->extid, 16);
 	memcpy(bm.checksum, bframe->checksum, 16);
 
 	if (!swallow && S->binary_handler){
@@ -1990,12 +2043,17 @@ static void hello_auth_server_hello(struct a12_state* S)
 	memcpy((uint8_t*)S->opts->secret, res.key_session, 32);
 	memcpy(pubk, res.key_pub, 32);
 
-/* hello packet here will still use the keystate from the process_srvfirst
- * which will use the client provided nonce, KDF on preshare-pw */
-	arcan_random(nonce, 8);
-	send_hello_packet(S, HELLO_MODE_REALPK, pubk, nonce);
+/*
+ * hello packet here will still use the keystate from process_srvfirst
+ * which will use the client provided nonce, KDF on preshare-pw.
+ * Remember the nonce sent that the other end will need to Sign(H(N | SEED))
+ * in order for us to accept a REKEY signing key submission.
+ */
+	arcan_random(S->keys.auth_csrnd, 8);
+	send_hello_packet(S, HELLO_MODE_REALPK, pubk, S->keys.auth_csrnd);
 	memcpy(S->keys.remote_pub, &S->decode[21], 32);
 	trace_crypto_key(S, S->server, "state=client_pk_ok:respond_pk", pubk, 32);
+	trace_crypto_key(S, S->server, "state=signing_seed", S->keys.auth_csrnd, 8);
 
 /* now we can switch keys, note that the new nonce applies for both enc and dec
  * states regardless of the nonce the client provided in the first message */
@@ -2005,6 +2063,9 @@ static void hello_auth_server_hello(struct a12_state* S)
 /* and done, mark latched so a12_unpack saves buffer and returns */
 	S->authentic = AUTH_FULL_PK;
 	S->auth_latched = true;
+
+/* remember the nonce in order to pair with signing key when requested */
+	memcpy(S->keys.auth_csrnd, &S->decode[8], 8);
 
 	if (S->on_auth)
 		S->on_auth(S, S->auth_tag);
@@ -2036,6 +2097,9 @@ static void hello_auth_client_hello(struct a12_state* S)
 	S->authentic = AUTH_FULL_PK;
 	S->auth_latched = true;
 	S->remote_mode = S->decode[54];
+	memcpy(S->keys.auth_csrnd, &S->decode[8], 8);
+	trace_crypto_key(S, S->server, "state=signing_seed", S->keys.auth_csrnd, 8);
+
 	memcpy(S->keys.remote_pub, &S->decode[21], 32);
 	a12int_trace(A12_TRACE_SYSTEM, "remote_mode=%d", S->remote_mode);
 
@@ -2450,9 +2514,11 @@ static void process_control(struct a12_state* S, void (*on_event)
 		return;
 	}
 
-/* ignore these for now
+/*
+ * these will be used by their respective command handler and ignored here
+ *
 	uint64_t last_seen = S->decode[0];
-	uint8_t entropy[8] = S->decode[8];
+	uint8_t csrnd[8] = S->decode[8];
 	uint8_t channel = S->decode[16];
  */
 
@@ -3970,6 +4036,30 @@ bool a12_request_dynamic_resource(struct a12_state* S,
 	x25519_public_key(S->pending_dynamic.priv_key, &outb[52]);
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 
+	return true;
+}
+
+bool a12_set_signing_pair(
+	struct a12_state* S, uint8_t pubk[static 32], uint8_t privk[static 64])
+{
+	if (!S || S->authentic != AUTH_FULL_PK){
+		return false;
+	}
+
+	uint8_t outb[CONTROL_PACKET_SIZE];
+	uint8_t nonce[8];
+	arcan_random(nonce, 8);
+	uint8_t chg[32];
+	build_signkey_challenge(S, chg, nonce);
+
+	build_control_header(S, outb, COMMAND_REKEY);
+  outb[18] = REKEY_MODE_EDSIGN;
+
+	memcpy(&outb[19], pubk, 32);
+	crypto_ed25519_sign(&outb[19+32], privk, chg, 32);
+	trace_crypto_key(S, S->server, "signing_pair", S->keys.real_priv, 32);
+
+	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 	return true;
 }
 

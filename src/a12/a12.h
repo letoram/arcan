@@ -186,6 +186,20 @@ void a12_set_session(
 	struct pk_response* dst, uint8_t pubk[static 32], uint8_t privk[static 32]);
 
 /*
+ * This WILL issue a REKEY command to prove to the other endpoint that state
+ * blobs and related transfers that we issue contain a signature block. This is
+ * mainly intended for ROLE_DIR transfers where it MAY effect binary and state
+ * transfers.
+ *
+ * The directory MAY keep different state blocks available based on SIGNING
+ * keys rather than connection authentication.
+ *
+ * This can only be performed on an enstablished and authenticated connection.
+ */
+bool a12_set_signing_pair(
+	struct a12_state* S, uint8_t pubk[static 32], uint8_t privk[static 64]);
+
+/*
  * Take an incoming byte buffer and append to the current state of
  * the channel. Any received events will be pushed via the callback.
  *
