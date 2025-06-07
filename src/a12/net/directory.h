@@ -3,7 +3,7 @@
 #ifndef HAVE_DIRECTORY
 #define HAVE_DIRECTORY
 
-#define SIG_PUBK_SZ 64
+#define SIG_PUBK_SZ 32
 
 struct anet_dirsrv_opts {
 	struct a12_context_options* a12_cfg;
@@ -93,6 +93,7 @@ struct anet_dircl_opts {
 	int monitor_mode;
 
 	char ident[16]; /* name to identify as (a-z0-9) */
+	const char* sign_tag;
 
 /* callback handler for sinking a directory server registered source */
 	void (*dir_source)(struct a12_state*, struct a12_dynreq req, void* tag);
@@ -103,6 +104,8 @@ struct anet_dircl_opts {
 	struct appl_meta outapp;
 	bool outapp_install;
 	bool outapp_ctrl;
+	const char* build_appl;
+	int build_appl_dfd;
 
 /* filled if an upload or download is requested */
 	struct {
@@ -157,7 +160,6 @@ struct dircl {
 	int in_appl; /* have they joined an appl- controller? */
 	bool in_monitor;
 	char identity[16]; /* msggroup identifier (no ctrl) */
-
 	int type; /* source, sink or directory */
 
 /* used to track request and pairing from a BCHUNKSTATE request for input and
@@ -279,7 +281,12 @@ char* verify_appl_pkg(
 	uint8_t insig_pk[static SIG_PUBK_SZ], uint8_t outsig_pk[static SIG_PUBK_SZ],
 	const char** errmsg);
 
-bool build_appl_pkg(const char* name, struct appl_meta* dst, int dirfd);
+/*
+ * If a signtag is provided, the keystore needs to be open
+ */
+bool build_appl_pkg(
+	const char* name, struct appl_meta* dst, int dirfd, const char* signtag);
+
 bool extract_appl_pkg(FILE* fin, int dirfd, const char* basename, const char** msg);
 
 FILE* file_to_membuf(FILE* applin, char** out, size_t* out_sz);

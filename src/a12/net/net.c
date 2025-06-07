@@ -997,6 +997,7 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"\t --block-log   \t Don't attempt to forward script errors or crash logs\n"
 	"\t --stderr-log  \t Mirror script errors / crash log to stderr\n"
 	"\t --host-appl   \t Request that the directory server host/run the appl\n"
+	"\t --sign-tag s  \t Use [s] as data/appl transfer signing key\n"
 	"\t --source-port \t When sourcing use this port for listening\n\n"
 	"\t File stores (ns = .priv OR applname), (name = [a-Z-0-9])\n"
 	"\t --get-file ns name file \t Retrieve [name] from namespace [ns] (.index = list)\n"
@@ -1095,6 +1096,14 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 			continue;
 		}
 
+		if (strcmp(argv[i], "--sign-tag") == 0){
+			if (i >= argc - 1)
+				return show_usage("Missing --sign-tag tag", argv, i - 1);
+			if (global.dircl.sign_tag)
+				return show_usage("Multiple --sign-tag arguments", argv, i - 1);
+
+			global.dircl.sign_tag = argv[++i];
+		}
 		if (strcmp(argv[i], "-V") == 0 || strcmp(argv[i], "--version") == 0){
 			fprintf(stdout,
 				"%s\nshmif-%" PRIu64"\n", ARCAN_BUILDVERSION, arcan_shmif_cookie());
@@ -1219,14 +1228,14 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 				return show_usage(
 					"--push-ctrl name: couldn't resolve working directory", argv, i);
 
-			if (global.dircl.outapp.handle)
+			if (global.dircl.build_appl)
 				return show_usage(
 					"multiple --push-appl / --push-ctrl arguments provided", argv, i);
 
-			if (!build_appl_pkg(&path[1], &global.dircl.outapp, dirfd))
-				return show_usage("--push-ctrl: couldn't build appl package", argv, i);
-
+			global.dircl.build_appl = &path[1];
 			global.dircl.outapp_ctrl = true;
+			global.dircl.build_appl_dfd = dirfd;
+
 			a12int_trace(A12_TRACE_DIRECTORY, "dircl:push_appl:built=%s", argv[i]);
 		}
 /* one-time single appl update to directory */
@@ -1258,13 +1267,11 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 				return show_usage(
 					"--push-appl name: couldn't resolve working directory", argv, i);
 
-			if (global.dircl.outapp.handle)
+			if (global.dircl.build_appl)
 				return show_usage("multiple --push-appl arguments provided", argv, i);
 
-			if (!build_appl_pkg(argv[i], &global.dircl.outapp, dirfd))
-				return show_usage("--push-appl: couldn't build appl package", argv, i);
-
-			a12int_trace(A12_TRACE_DIRECTORY, "dircl:push_appl:built=%s", argv[i]);
+			global.dircl.build_appl_dfd = dirfd;
+			global.dircl.build_appl = argv[i];
 		}
 		else if (strcmp(argv[i], "--get-file") == 0){
 			i++;
@@ -2087,6 +2094,27 @@ int main(int argc, char** argv)
 			int rc = 0;
 			if (a12_remote_mode(cl.state) == ROLE_DIR){
 
+			if (global.dircl.build_appl){
+	/* just try to build the signing key, if it already exists it will fail-ok */
+				if (global.dircl.sign_tag)
+					a12helper_keystore_gen_sigkey(global.dircl.sign_tag, false);
+
+				if (!build_appl_pkg(
+					global.dircl.build_appl,
+					&global.dircl.outapp, global.dircl.build_appl_dfd, global.dircl.sign_tag))
+				{
+					shutdown(cl.fd, SHUT_RDWR);
+					close(cl.fd);
+					fprintf(stderr,
+						"--push-ctrl %s (tag: %s): couldn't build package",
+						global.dircl.build_appl, global.dircl.sign_tag ? global.dircl.sign_tag : "(no-sign)");
+					return EXIT_FAILURE;
+				}
+				struct a12_state* S = cl.state;
+				a12int_trace(A12_TRACE_DIRECTORY,
+					"dircl:push_appl:built=%s", global.dircl.build_appl);
+				close(global.dircl.build_appl_dfd);
+			}
 /* the die_on_list default for probe role and regular appl running, otherwise
  * we wait for notifications on new ones. dircl.reload takes precedence. */
 				global.dircl.die_on_list = global.keep_alive ? false : true;

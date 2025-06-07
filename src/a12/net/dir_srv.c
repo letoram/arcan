@@ -1854,7 +1854,7 @@ void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
 /* this doesn't really happen more than once and when we need a full rescan the
  * real database solution would be in place so identifiers mutating isn't much
  * of a concern right now. */
-		if (build_appl_pkg(ent->d_name, dst, fd)){
+		if (build_appl_pkg(ent->d_name, dst, fd, NULL)){
 			dst->identifier = 1 + opts->dir_count++;
 			dst->server_appl = SERVER_APPL_NONE;
 

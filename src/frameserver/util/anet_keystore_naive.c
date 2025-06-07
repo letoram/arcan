@@ -377,7 +377,7 @@ bool a12helper_keystore_get_sigkey(
 		fclose(fin);
 		return false;
 	}
-	priv_raw[slen-1] = '\n';
+	priv_raw[slen-1] = '\0';
 	if (!a12helper_fromb64((uint8_t*)priv_raw, 64, privk)){
 		fclose(fin);
 		return false;
@@ -390,12 +390,13 @@ bool a12helper_keystore_get_sigkey(
 		memset(privk, '\0', 64);
 		return false;
 	}
-	if (!slen || priv_raw[slen-1] != '\n'){
+	slen = strlen(pub_raw);
+	if (!slen || pub_raw[slen-1] != '\n'){
 		fclose(fin);
 		memset(privk, '\0', 64);
 		return false;
 	}
-	pub_raw[slen-1] = '\n';
+	pub_raw[slen-1] = '\0';
 	if (!a12helper_fromb64((uint8_t*) pub_raw, 32, pubk)){
 		memset(privk, '\0', 64);
 		fclose(fin);
@@ -445,7 +446,7 @@ bool a12helper_keystore_gen_sigkey(const char* tag, bool overwrite)
 	fprintf(fout, "%s\n", b64);
 	free(b64);
 
-	b64 = a12helper_tob64(kpriv, 64, &(size_t){0});
+	b64 = a12helper_tob64(kpub, 32, &(size_t){0});
 	fprintf(fout, "%s\n", b64);
 	free(b64);
 	fclose(fout);

@@ -496,7 +496,8 @@ bool extract_appl_pkg(FILE* fin, int cdir, const char* basename, const char** ms
 	return feof(fin) && !in_file;
 }
 
-bool build_appl_pkg(const char* name, struct appl_meta* dst, int cdir)
+bool build_appl_pkg(const char* name,
+	struct appl_meta* dst, int cdir, const char* signtag)
 {
 	FILE* fpek = NULL;
 	FTS* fts = NULL;
@@ -514,10 +515,21 @@ bool build_appl_pkg(const char* name, struct appl_meta* dst, int cdir)
 	if (!(fts = afts_open(path, FTS_PHYSICAL, comp_alpha)))
 		goto err;
 
+	bool add_signature = false;
+	uint8_t pubk[32];
+	uint8_t privk[64];
+
+	if (signtag){
+		if (!a12helper_keystore_get_sigkey(signtag, pubk, privk)){
+			fprintf(stderr, "build_appl:couldn't open keystore-sign tag %s", signtag);
+			goto err;
+		}
+	}
+
 /* For extended permissions -- net,frameserver,... the .manifest file needs to
  * be present, follow the regular arg_arr pack/unpack format and specify which
- * ones it needs. This header should then be extended with required fields for
- * signature etc. */
+ * ones it needs. */
+
 	FILE* header = fopen(".manifest", "r");
 	if (header){
 		char buf[256];

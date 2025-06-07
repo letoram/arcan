@@ -24,7 +24,6 @@ enum {
  * Vendored versions of alt/alt_trace used to retain the same debug inteface
  */
 #define BREAK_LIMIT 8
-#define SIG_PUBK_SZ 64
 
 struct dirlua_monitor_state {
 	struct {
