@@ -101,6 +101,8 @@ const a12_include_paths: []const String = &.{
     "src/a12/external/blake3",
     "src/a12/external/zstd",
     "src/a12/external/zstd/common",
+    "src/a12/external/mono",
+    "src/a12/external/mono/optional",
     "src/a12/external",
     "src/engine",
     "src/shmif",
@@ -312,6 +314,8 @@ fn createArcanA12(b: *std.Build, opts: anytype) *std.Build.Step.Compile {
         "src/a12/external/blake3/blake3_dispatch.c",
         "src/a12/external/blake3/blake3_portable.c",
         "src/a12/external/x25519.c",
+        "src/a12/external/mono/monocypher.c",
+        "src/a12/external/mono/optional/monocypher-ed25519.c",
 
         "src/a12/external/zstd/common/debug.c",
         "src/a12/external/zstd/common/entropy_common.c",
