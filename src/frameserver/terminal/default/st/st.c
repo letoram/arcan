@@ -2432,7 +2432,7 @@ tputc(Rune u)
 {
 	char c[UTF_SIZ];
 	int control;
-	int width, len;
+	int width = 1, len;
 	Glyph *gp;
 
 	control = ISCONTROL(u);

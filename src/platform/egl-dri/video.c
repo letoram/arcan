@@ -1136,7 +1136,7 @@ bool platform_video_get_display_gamma(
 static drmModePropertyPtr get_connector_property(
 	struct dispout* d, const char* name, size_t* i)
 {
-	for (; *i < d->display.con->count_props; *i++){
+	for (*i = 0; *i < d->display.con->count_props; *i++){
 		drmModePropertyPtr prop =
 			drmModeGetProperty(d->device->disp_fd, d->display.con->props[*i]);
 		if (!prop)
