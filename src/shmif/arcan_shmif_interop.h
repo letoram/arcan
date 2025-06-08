@@ -224,6 +224,12 @@ struct arg_arr {
 	char* value;
 };
 
+/*
+ * due to the collision prone unfortunate naming, at least allow it to be
+ * masked out to avoid compilation errors.
+ */
+#ifndef ARCAN_SHMIF_BLOCKARG
+
 /* take the input string and unpack it into an array of key-value pairs */
 struct arg_arr* arg_unpack(const char*);
 
@@ -251,6 +257,37 @@ bool arg_lookup(struct arg_arr* arr,
  * normal context management functions will clean after that one.
  */
 void arg_cleanup(struct arg_arr*);
+
+/*
+ * Insert key/val into [arr].
+ *
+ * If [replace] is set any existing [key] will be overwritten rather than
+ * allowing multiples vid lookup(ind).
+ *
+ * An arg_arr lifecycle may be bound to a shmif context, if it comes from
+ * that and not a manual arg_unpack. In that case ([C] != NULL) we need to
+ * access that in order to avoid UAF when [arr] is moved around to make
+ * room for the expansion.
+ *
+ * This will free/modify &arr and *arr.
+ */
+bool arg_add(
+	struct arcan_shmif_cont* C,
+	struct arg_arr** arr,
+	const char* key, const char* val, bool replace);
+
+/*
+ * remove all occurences of [key]
+ */
+void arg_remove(struct arg_arr* arr, const char* key);
+
+/*
+ * pack [arr] into a dynamically allocated string, ownership transfers to
+ * caller.
+ */
+char* arg_serialize(struct arg_arr* arr);
+
+#endif
 
 /*
  * ideally both rpath and wpath could be dropped when the semaphores becomes

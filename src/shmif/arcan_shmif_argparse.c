@@ -1,5 +1,25 @@
 #include <arcan_shmif.h>
+#include <stdio.h>
 
+#include <pthread.h>
+#include "platform/shmif_platform.h"
+#include "shmif_privint.h"
+
+/*
+ * The purpose of having these functions as part of an IPC system is to avoid
+ * touching argvv yet still pass arguments between parent-child.
+ *
+ * It is not a hashmap or traditional env as it allows duplicates (as argv
+ * would, e.g -g -g) yet can in wire-form be passed as part of the shmif page
+ * (eventually) to slowly ween us off environment variables entirely but still
+ * be passable in env where we have no option.
+ *
+ * The key=value:key:... and : to \t in wire format scheme was to allow it to
+ * be typed but not require a context sensitive grammar.
+ *
+ * The old choice of arg_ rather than shmifarg_ is unfortunate with some risk
+ * of collision, but too late due to ABI/compat.
+ */
 static char* strrep(char* dst, char key, char repl)
 {
 	char* src = dst;
@@ -93,6 +113,112 @@ void arg_cleanup(struct arg_arr* arr)
 		free(arr->value);
 		arr++;
 	}
+
+	free(arr);
+}
+
+static void shift_left(struct arg_arr* arr, int pos)
+{
+	int start = pos;
+	/* copy arr[pos+1] to arr[pos] until we are at the last (which also gets
+	 * shifted). This doesn't shrink the size of arr[] */
+	do {
+		if (pos == start && arr[pos].key)
+			free(arr[pos].key);
+		if (pos == start && arr[pos].value)
+			free(arr[pos].value);
+		memcpy(&arr[pos], &arr[pos+1], sizeof(struct arg_arr));
+	} while(arr[pos++].key);
+}
+
+void arg_remove(struct arg_arr* arr, const char* key)
+{
+	if (!key)
+		return;
+
+	for (size_t i = 0; arr[i].key;){
+		if (strcmp(arr[i].key, key) == 0){
+			shift_left(arr, i);
+		}
+		else
+			i++;
+	}
+}
+
+bool arg_add(
+	struct arcan_shmif_cont* C,
+	struct arg_arr** darg, const char* key, const char* val, bool replace)
+{
+	size_t i;
+	if (!key)
+		return false;
+
+	struct arg_arr* arr = *darg;
+
+/* do we substitute the first we find or append? */
+	for (i = 0; arr[i].key; i++){
+		if (strcmp(arr[i].key, key) == 0 && replace){
+
+/* value is permitted to be empty */
+			if (arr[i].value)
+				free(arr[i].value);
+
+			arr[i].value = val ? strdup(val) : NULL;
+
+			return true;
+		}
+	}
+
+/* allocate with one more slot and i points to the null slot, hence + 2 */
+	struct arg_arr* narg = malloc(sizeof(struct arg_arr) * (i + 2));
+	for (size_t j = 0; j <= i; j++){
+		memcpy(&narg[j], &arr[j], sizeof(struct arg_arr));
+	}
+	narg[i+1] = (struct arg_arr){0};
+	narg[i].key = strdup(key);
+	if (val)
+		narg[i].value = strdup(val);
+
+	free(*darg);
+	*darg = narg;
+	if (C)
+		C->priv->args = narg;
+
+	return true;
+}
+
+char* arg_serialize(struct arg_arr* arr)
+{
+	if (!arr)
+		return NULL;
+
+	char* buf;
+	size_t buf_sz;
+	FILE* fbuf = open_memstream(&buf, &buf_sz);
+
+/* in wire form we have escaping rules */
+	int pos = 0;
+	while (arr[pos].key != NULL){
+		strrep(arr[pos].key, ':', '\t');
+		fputs(arr[pos].key, fbuf);
+		strrep(arr[pos].key, '\t', ':');
+
+		if (arr[pos].value){
+			fputc('=', fbuf);
+			strrep(arr[pos].value, ':', '\t');
+			fputs(arr[pos].value, fbuf);
+			strrep(arr[pos].value, '\t', ':');
+		}
+
+/* [arr] is NULL item terminated so check if at the end */
+		if (arr[pos+1].key){
+			fputc(':', fbuf);
+		}
+		pos++;
+	}
+
+	fclose(fbuf);
+	return buf;
 }
 
 bool arg_lookup(struct arg_arr* arr, const char* val,
