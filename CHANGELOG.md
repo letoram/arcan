@@ -25,6 +25,7 @@
  * Support for directory hosting arcan-appl on demand
  * Protocol changes to allow for file-metadata attachment and signatures
  * Added record/replay of a12-state decrypted stream for easier debugging
+ * Added Ed25519 signatures to appl/ctrl
 
 ## Decode
  * Support building without libvlc support
@@ -36,6 +37,7 @@
  * Factored sem handle use out of cont
  * .control.c split out into smaller translation units and platform functions
  * Dropped the use of named shm/sync primitives entirely
+ * Exposed functions to manipulate arg\_arr in order to serialize/pass along
 
 ## Core
  * Fixed 'terminated' event not propagating due to incomplete enqueue post last\_words

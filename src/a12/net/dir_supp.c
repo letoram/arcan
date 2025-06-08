@@ -30,6 +30,8 @@
 #include <sys/wait.h>
 #include "../external/fts.h"
 #include "../external/x25519.h"
+#include "monocypher-ed25519.h"
+
 #include <dirent.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -496,10 +498,36 @@ bool extract_appl_pkg(FILE* fin, int cdir, const char* basename, const char** ms
 	return feof(fin) && !in_file;
 }
 
+/*
+ * A big downside here is that due to traversal the appl might be different for
+ * each build even if the contents hasn't actually changed. This is due to FTS
+ * traversal. An option is to first FTS into a list, sort and then walk the
+ * list based on that.
+ */
 bool build_appl_pkg(const char* name,
 	struct appl_meta* dst, int cdir, const char* signtag)
 {
-	FILE* fpek = NULL;
+	char* buf = NULL;
+	size_t buf_sz = 0;
+	FILE* fdata = NULL;
+
+/*
+ * construction happens in several steps:
+ *
+ *  read / unpack manifest, remove any entry for 'hash', 'ksig' and 'sig'.
+ *  copy each file into data and continuously checksum.
+ *  add checksum as 'hash' to manifest arg_arr.
+ *  serialize 'hash' into buffer.
+ *  calculate signature for hash buffer. [local authentication]
+ *  copy keysig+signature+buffer+data into dst->buf, dst->sz. [local verification]
+ *  calculate hash for dst->buf, dst->sz. [transfer]
+ */
+
+/*
+ * A fair optimization here would leverage the merkle tree construction inside
+ * blake3 to avoid calculating checksum twice (the btransfer itself needs a
+ * checksum).
+ */
 	FTS* fts = NULL;
 
 	int olddir = open(".", O_DIRECTORY);
@@ -508,17 +536,14 @@ bool build_appl_pkg(const char* name,
 	fchdir(cdir);
 	chdir(name);
 
-	size_t buf_sz;
-	if (!(fpek = open_memstream(&dst->buf, &buf_sz)))
+	if (!(fdata = open_memstream(&buf, &buf_sz)))
 		goto err;
 
 	if (!(fts = afts_open(path, FTS_PHYSICAL, comp_alpha)))
 		goto err;
 
-	bool add_signature = false;
 	uint8_t pubk[32];
 	uint8_t privk[64];
-
 	if (signtag){
 		if (!a12helper_keystore_get_sigkey(signtag, pubk, privk)){
 			fprintf(stderr, "build_appl:couldn't open keystore-sign tag %s", signtag);
@@ -529,30 +554,35 @@ bool build_appl_pkg(const char* name,
 /* For extended permissions -- net,frameserver,... the .manifest file needs to
  * be present, follow the regular arg_arr pack/unpack format and specify which
  * ones it needs. */
+	int fd = open(".manifest", O_RDONLY);
+	struct arg_arr* header = NULL;
 
-	FILE* header = fopen(".manifest", "r");
-	if (header){
-		char buf[256];
-		if (!fgets(buf, 256, header)){
-			fprintf(stderr, "build_appl:error=cant_read_manifest");
-			fclose(header);
+	if (-1 != fd){
+		struct stat sb;
+		if (-1 == fstat(fd, &sb)){
+			fprintf(stderr, "build_appl:can't read .manifest\n");
 			goto err;
 		}
-
-		struct arg_arr* args = arg_unpack(buf);
-		if (!args){
-			fprintf(stderr, "build_appl:error=cant_parse_manifest");
-			fclose(header);
-			goto err;
-		}
-
-		fprintf(fpek, "version=1:permission=restricted\n");
-
-		arg_cleanup(args);
-		fclose(header);
+		char* buf = malloc(sb.st_size);
+		FILE* fpek = fdopen(fd, "r");
+		fread(buf, sb.st_size, 1, fpek);
+		header = arg_unpack(buf);
+		fclose(fpek);
+		free(buf);
 	}
-	else
-		fprintf(fpek, "version=1:permission=restricted:name=%s\n", name);
+	else {
+		header = arg_unpack("version=1:permission=restricted\n");
+	}
+
+	if (!header){
+		fprintf(stderr, "build_appl:malformed .manifest\n");
+		goto err;
+	}
+
+/* we are recalculating these and prepending later */
+	arg_remove(header, "sign");
+	arg_remove(header, "ksig");
+	arg_remove(header, "hash");
 
 /* walk and get list of files, lexicographic sort, filter out links,
  * cycles, dot files */
@@ -582,26 +612,69 @@ bool build_appl_pkg(const char* name,
 			fclose(fin);
 			goto err;
 		}
+
 		fclose(fin);
 		fclose(fbuf_f);
 		cur->fts_path[cur->fts_pathlen - cur->fts_namelen - 1] = '\0';
-		fprintf(fpek,
+		fprintf(fdata,
 				"path=%s:name=%s:size=%zu\n",
 				strcmp(cur->fts_path, ".") == 0 ? "" :
 				&cur->fts_path[2],
 				cur->fts_name, fbuf_sz
 		);
+
 		cur->fts_path[cur->fts_pathlen - cur->fts_namelen - 1] = '/';
-		fflush(fpek);
-		fwrite(fbuf, fbuf_sz, 1, fpek);
+		fflush(fdata);
+		fwrite(fbuf, fbuf_sz, 1, fdata);
 		free(fbuf);
 	}
 
 	afts_close(fts);
-	fclose(fpek);
+	fclose(fdata);
 
-	dst->buf_sz = buf_sz;
+/* calculate hash over all the data */
+	uint8_t hash_data[16];
 	blake3_hasher hash;
+	blake3_hasher_init(&hash);
+	blake3_hasher_update(&hash, buf, buf_sz);
+	blake3_hasher_finalize(&hash, hash_data, 16);
+
+/* convert that to b64 and add to header */
+	unsigned char* pub_b64 = a12helper_tob64(hash_data, 16, &(size_t){0});
+	arg_add(NULL, &header, "hash", (char*) pub_b64, false);
+	free(pub_b64);
+
+	char* out_header = arg_serialize(header);
+	FILE* fpkg = open_memstream(&dst->buf, &dst->buf_sz);
+
+/* if we are set to sign, first hash the serialized header (which includes
+ * datablock hash), create the hash, convert pubk and signature and add to a
+ * prepend buffer */
+	if (signtag){
+		blake3_hasher_init(&hash);
+		blake3_hasher_update(&hash, out_header, strlen(out_header));
+		blake3_hasher_finalize(&hash, hash_data, 16);
+		uint8_t sign[64];
+		crypto_ed25519_sign(sign, privk, hash_data, 16);
+		unsigned char* pubk_b64 = a12helper_tob64(pubk, 32, &(size_t){0});
+		unsigned char* sign_b64 = a12helper_tob64(sign, 64, &(size_t){0});
+		fprintf(fpkg, "ksig=%s:sign=%s:%s\n", pubk_b64, sign_b64, out_header);
+		free(pubk_b64);
+		free(sign_b64);
+	}
+	else
+		fprintf(fpkg, "%s\n", out_header);
+
+	free(out_header);
+	arg_cleanup(header);
+
+	fwrite(buf, buf_sz, 1, fpkg);
+	fflush(fpkg);
+	fclose(fpkg);
+
+/* now calculate hash for the entire blob and add to the appl_meta, collisions
+ * are fine / it is short just as a quick 'skip download' as the rest are in
+ * packet header that should be verified and extracted quickly. */
 	blake3_hasher_init(&hash);
 	blake3_hasher_update(&hash, dst->buf, dst->buf_sz);
 	blake3_hasher_finalize(&hash, (uint8_t*)dst->hash, 4);
@@ -617,8 +690,8 @@ bool build_appl_pkg(const char* name,
 	return true;
 
 err:
-	if (fpek)
-		fclose(fpek);
+	if (fdata)
+		fclose(fdata);
 	if (fts)
 		afts_close(fts);
 	free(dst->buf);

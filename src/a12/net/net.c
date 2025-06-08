@@ -1775,6 +1775,7 @@ static int apply_keystore_command(int argc, char** argv)
 static bool query_untrusted_key(
 	char* kpub_b64, uint8_t kpub[static 32], char** out_tag, size_t* prefix_ofs)
 {
+	*prefix_ofs = 0;
 	if (!isatty(STDIN_FILENO)){
 		return false;
 	}
