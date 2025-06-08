@@ -417,8 +417,6 @@ bool a12helper_keystore_gen_sigkey(const char* tag, bool overwrite)
 	if (-1 != sfd){
 		close(sfd);
 		if (!overwrite){
-			fprintf(stderr,
-				"refusing to overwrite existing signing key file for %s\n", tag);
 			return false;
 		}
 	}

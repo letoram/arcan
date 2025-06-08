@@ -108,10 +108,12 @@ void arg_cleanup(struct arg_arr* arr)
 	if (!arr)
 		return;
 
-	while (arr->key){
-		free(arr->key);
-		free(arr->value);
-		arr++;
+	struct arg_arr* cur = arr;
+
+	while (cur->key){
+		free(cur->key);
+		free(cur->value);
+		cur++;
 	}
 
 	free(arr);

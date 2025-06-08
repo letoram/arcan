@@ -571,7 +571,7 @@ bool build_appl_pkg(const char* name,
 		free(buf);
 	}
 	else {
-		header = arg_unpack("version=1:permission=restricted\n");
+		header = arg_unpack("version=1:perm=restricted");
 	}
 
 	if (!header){
