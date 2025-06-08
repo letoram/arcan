@@ -1400,6 +1400,13 @@ static bool cl_send_appl_update(struct ioloop_shared* I, struct appl_meta* dir)
 	cbt->transfer_id = cbt->clopt->outapp.identifier;
 	cbt->in_transfer = true;
 
+	if (cbt->clopt->sign_tag){
+		uint8_t pubk[32];
+		uint8_t privk[64];
+		a12helper_keystore_get_sigkey(cbt->clopt->sign_tag, pubk, privk);
+		a12_set_signing_pair(S, pubk, privk);
+	}
+
 	a12_enqueue_blob(S,
 		cbt->clopt->outapp.buf,
 		cbt->clopt->outapp.buf_sz,
