@@ -579,10 +579,13 @@ bool build_appl_pkg(const char* name,
 		goto err;
 	}
 
-/* we are recalculating these and prepending later */
-	arg_remove(header, "sign");
-	arg_remove(header, "ksig");
-	arg_remove(header, "hash");
+/* we are recalculating these and prepending later if signing is set, otherwise
+ * they are kept (typically directory server loading) */
+	if (signtag){
+		arg_remove(header, "sign");
+		arg_remove(header, "ksig");
+		arg_remove(header, "hash");
+	}
 
 /* walk and get list of files, lexicographic sort, filter out links,
  * cycles, dot files */
