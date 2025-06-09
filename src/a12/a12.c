@@ -1990,7 +1990,6 @@ static void hello_auth_server_hello(struct a12_state* S)
 	uint8_t pubk[32];
 	uint8_t remote_pubk[32];
 
-	uint8_t nonce[8];
 	int cfl = S->decode[20];
 
 	memcpy(remote_pubk, &S->decode[21], 32);
@@ -2010,6 +2009,8 @@ static void hello_auth_server_hello(struct a12_state* S)
  * is that you need an active MiM to gather Pks for tracking. */
 	if (cfl == HELLO_MODE_EPHEMPK){
 		uint8_t ek[32];
+		uint8_t nonce[8];
+
 		x25519_private_key(ek);
 		x25519_public_key(ek, pubk);
 		arcan_random(nonce, 8);
@@ -2058,7 +2059,7 @@ static void hello_auth_server_hello(struct a12_state* S)
 /* now we can switch keys, note that the new nonce applies for both enc and dec
  * states regardless of the nonce the client provided in the first message */
 	trace_crypto_key(S, S->server, "state=server_ssecret", (uint8_t*)S->opts->secret, 32);
-	update_keymaterial(S, S->opts->secret, 32, nonce);
+	update_keymaterial(S, S->opts->secret, 32, S->keys.auth_csrnd);
 
 /* and done, mark latched so a12_unpack saves buffer and returns */
 	S->authentic = AUTH_FULL_PK;
