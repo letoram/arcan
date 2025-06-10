@@ -203,10 +203,7 @@ static void fork_a12srv(struct a12_state* S, int fd, void* tag)
 	struct shmifsrv_client* cl = NULL;
 
 	if (global.directory > 0){
-		if (global.dirsrv.flag_rescan){
-			anet_directory_srv_rescan(&global.dirsrv);
-			anet_directory_shmifsrv_set(&global.dirsrv);
-		}
+		anet_directory_shmifsrv_set(&global.dirsrv);
 
 		char tmpfd[32], tmptrace[32];
 		snprintf(tmpfd, sizeof(tmpfd), "%d", fd);
@@ -1969,11 +1966,6 @@ static struct pk_response key_auth_local(
 	return auth;
 }
 
-static void sigusr_rescan(int sign)
-{
-	global.dirsrv.flag_rescan = true;
-}
-
 int main(int argc, char** argv)
 {
 	const char* err;
@@ -2232,15 +2224,7 @@ int main(int argc, char** argv)
 			close(fd);
 			global.path_self = argv[0];
 			global.dirsrv.basedir = global.directory;
-
-/* Install a signal handler that will mark the directory as subject to rescan
- * on the next connection. the main use for this is as a trigger for something
- * like .git. Dynamic updates are better handled in-band by permitting a user
- * to push updates. */
-			sigaction(SIGUSR1, &(struct sigaction){
-					.sa_handler = sigusr_rescan
-			}, NULL);
-			anet_directory_srv_rescan(&global.dirsrv);
+			anet_directory_srv_scan(&global.dirsrv);
 			anet_directory_shmifsrv_set(&global.dirsrv);
 
 /* missing a config option to specify IPV6 beacon */

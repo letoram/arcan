@@ -827,8 +827,6 @@ static int cfgpath_newindex(lua_State* L)
 			luaL_error(L, "config.paths.appl = %s, can't open as directory\n", val);
 		}
 		fcntl(CFG->directory, F_SETFD, FD_CLOEXEC);
-
-		CFG->dirsrv.flag_rescan = 1;
 		setenv("ARCAN_APPLBASEPATH", val, 1);
 		return 0;
 	}
@@ -1226,12 +1224,6 @@ static int dir_storekey(lua_State* L)
 	arcan_db_add_kvpair(DB, key, value);
 	arcan_db_end_transaction(DB);
 
-	return 0;
-}
-
-static int dir_reindex(lua_State* L)
-{
-	anet_directory_srv_rescan(&CFG->dirsrv);
 	return 0;
 }
 
@@ -1832,9 +1824,6 @@ void anet_directory_lua_register(struct dircl* C)
 
 void anet_directory_lua_ready(struct global_cfg* cfg)
 {
-	lua_pushcfunction(L, dir_reindex);
-	lua_setglobal(L, "rescan_appl");
-
 	lua_getglobal(L, "ready");
 	if (!lua_isfunction(L, -1)){
 		lua_pop(L, 1);

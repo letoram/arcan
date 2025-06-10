@@ -9,7 +9,6 @@
 
 struct anet_dirsrv_opts {
 	struct a12_context_options* a12_cfg;
-	volatile bool flag_rescan;
 	int basedir;
 	struct appl_meta dir;
 	size_t dir_count;
@@ -243,8 +242,9 @@ void anet_directory_lua_event(struct dircl*, struct dirlua_event*);
 
 /*
  * dir_srv.c
+ * only run once.
  */
-void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts);
+void anet_directory_srv_scan(struct anet_dirsrv_opts* opts);
 
 void anet_directory_srv(
 	struct a12_context_options*, struct anet_dirsrv_opts, int fdin, int fdout);

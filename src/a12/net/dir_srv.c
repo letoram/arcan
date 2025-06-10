@@ -750,27 +750,33 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 	ok = false;
 
 	dirsrv_global_lock(__FILE__, __LINE__);
-		volatile struct appl_meta* cur = &active_clients.opts->dir;
-		while (cur){
-			if (cur->identifier != C->pending_id){
-				cur = cur->next;
-				continue;
-			}
-			ok = true;
-			break;
+	volatile struct appl_meta* cur = &active_clients.opts->dir;
+	while (cur){
+		if (cur->identifier != C->pending_id){
+			cur = cur->next;
+			continue;
 		}
+		ok = true;
+		break;
+	}
 
 	if (!ok){
 		A12INT_DIRTRACE_LOCKED("dirsv:bchunk_state:complete_unknown");
-		goto out;
+		dirsrv_global_unlock(__FILE__, __LINE__);
+		close(C->pending_fd);
+		C->pending_fd = -1;
+		return;
 	}
 
 	lseek(C->pending_fd, 0, SEEK_SET);
 
-/* notify any runner, that will take care of unpacking and validating */
+/* notify any runner, that will take care of unpacking and validating
+ * and also take ownership of C->pending_fd */
 	if (C->type == IDTYPE_ACTRL){
 		anet_directory_lua_update(cur, C->pending_fd);
-		goto out;
+		C->pending_fd = -1;
+		dirsrv_global_unlock(__FILE__, __LINE__);
+		return;
 	}
 
 /*
@@ -793,67 +799,95 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
  * namespace).
  */
 	FILE* fpek = fdopen(C->pending_fd, "r");
-	if (!fpek)
-		goto out;
+	if (!fpek){
+		close(C->pending_fd);
+		C->pending_fd = -1;
+		dirsrv_global_unlock(__FILE__, __LINE__);
+		return;
+	}
 
 	char* dst;
 	size_t dst_sz;
 	FILE* handle = file_to_membuf(fpek, &dst, &dst_sz);
+	C->pending_fd = -1;
+
+/* file to membuf takes over fpek so not our concern */
+	if (!handle){
+		dirsrv_global_unlock(__FILE__, __LINE__);
+		return;
+	}
 
 /* time to replace the backing slot, rebuild index and notify listeners */
-	if (handle){
-		cur->buf_sz = dst_sz;
-		cur->buf = dst;
-		cur->handle = handle;
+	cur->buf_sz = dst_sz;
+	cur->buf = dst;
+	cur->handle = handle;
 
 /* the hashing here is for the entire transfer in order to provide caching it
  * is not for the content itself - header and datablocks (can) have separate
  * signed hashes. */
-		blake3_hasher hash;
-		blake3_hasher_init(&hash);
-		blake3_hasher_update(&hash, dst, dst_sz);
-		blake3_hasher_finalize(&hash, (uint8_t*)cur->hash, 4);
+	blake3_hasher hash;
+	blake3_hasher_init(&hash);
+	blake3_hasher_update(&hash, dst, dst_sz);
+	blake3_hasher_finalize(&hash, (uint8_t*)cur->hash, 4);
 
-		uint8_t nullk[SIG_PUBK_SZ] = {0};
-		const char* errmsg;
-		char* name = verify_appl_pkg(dst, dst_sz, C->pubk_sign, nullk, &errmsg);
-/* need to unlock as shmifsrv set will lock again, it will take care of
- * rebuilding the index and notifying listeners though - identity action
- * so volatile is no concern */
-		if (!name){
-			A12INT_DIRTRACE_LOCKED(
-				"dirsv:bchunk_state:appl_verify_fail:reason=%s", errmsg);
-		}
-		else{
+	uint8_t nullk[SIG_PUBK_SZ] = {0};
+	const char* errmsg;
+	char* name = verify_appl_pkg(dst, dst_sz, C->pubk_sign, nullk, &errmsg);
+
+	if (!name){
+		A12INT_DIRTRACE_LOCKED(
+			"dirsv:bchunk_state:appl_verify_fail:reason=%s", errmsg);
+		fclose(handle);
+		dirsrv_global_unlock(__FILE__, __LINE__);
+		return;
+	}
 
 /* new install rather than update has different action, appl is volatile but
  * wer're locked so single-copy until NUL */
-			if (!cur->appl.name[0]){
-				for (size_t i = 0; i < COUNT_OF(cur->appl.name)-1 && name[i]; i++)
-					cur->appl.name[i] = name[i];
-				A12INT_DIRTRACE_LOCKED(
-					"dirsv:bchunk_state:new_appl=%d:name=%s",
-					(int) cur->identifier, name
-				);
-			}
-			else
-				A12INT_DIRTRACE_LOCKED(
-				"dirsv:bchunk_state:appl_update=%d", (int) cur->identifier);
-
-			dirsrv_global_unlock(__FILE__, __LINE__);
-			anet_directory_shmifsrv_set(
-				(struct anet_dirsrv_opts*) active_clients.opts);
-			free(name);
-		}
+	if (!cur->appl.name[0]){
+		for (size_t i = 0; i < COUNT_OF(cur->appl.name)-1 && name[i]; i++)
+			cur->appl.name[i] = name[i];
+		A12INT_DIRTRACE_LOCKED(
+			"dirsv:bchunk_state:new_appl=%d:name=%s",
+			(int) cur->identifier, name
+		);
 	}
+	else
+		A12INT_DIRTRACE_LOCKED(
+		"dirsv:bchunk_state:appl_update=%d", (int) cur->identifier);
+
+/* Persist to disk, in the prepackaged form. There may be more relevant options
+ * here - backup the old one and support a 'revert' as an admin API command, as
+ * well as unpack to make sure the extracted form match. The main use for that
+ * is triaging - when a dump arrives from a client, sample the extracted code
+ * around the file:line values and add into the report for quicker inspection.
+ */
+	char fn[strlen(name) + sizeof(".fap")];
+	snprintf(fn, sizeof(fn), "%s.fap", name);
+
+	int fapfd = openat(
+		active_clients.opts->basedir, fn, O_RDWR | O_CREAT | O_TRUNC, 0600);
+	if (-1 != fapfd){
+		FILE* fout = fdopen(fapfd, "w");
+		fwrite(cur->buf, cur->buf_sz, 1, fout);
+		fclose(fout);
+	}
+/* while a failure point it is recoverable */
+	else
+		A12INT_DIRTRACE_LOCKED(
+			"dirsv:bchunk_state:appl_sync:fail_open=%s", fn);
+
+/* need to unlock as shmifsrv set will lock again, it will take care of
+ * rebuilding the index and notifying listeners though - identity action
+ * so volatile is no concern. this will also notify current ones about
+ * anything that was added */
+	dirsrv_global_unlock(__FILE__, __LINE__);
+	anet_directory_shmifsrv_set(
+		(struct anet_dirsrv_opts*) active_clients.opts);
+	free(name);
 
 	fclose(fpek);
 	return;
-
-out:
-	dirsrv_global_unlock(__FILE__, __LINE__);
-	close(C->pending_fd);
-	C->pending_fd = -1;
 }
 
 /*
@@ -1828,19 +1862,10 @@ void dirsrv_set_source_mask(
  * will still be long and there is no detection when / if to rebuild or when
  * the state has changed - a better server would use sqlite and some basic
  * signalling. */
-void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
+void anet_directory_srv_scan(struct anet_dirsrv_opts* opts)
 {
-	static bool first_scan = true;
-
 	dirsrv_global_lock(__FILE__, __LINE__);
-	if (!opts->flag_rescan){
-		dirsrv_global_unlock(__FILE__, __LINE__);
-		return;
-	}
 
-	opts->flag_rescan = false;
-
-	int old = open(".", O_RDONLY | O_DIRECTORY);
 	struct appl_meta* dst = &opts->dir;
 
 /* closedir would drop the descriptor so copy */
@@ -1862,31 +1887,14 @@ void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
 			continue;
 		}
 
-/* if there is a .fap form, use that instead but verify it */
-		char buf[nlen + sizeof(".fap")];
 		struct stat sbuf;
-		if (0 == fstatat(fd, buf, &sbuf, AT_SYMLINK_NOFOLLOW)){
-			int pfd = openat(fd, buf, O_RDONLY);
-			if (-1 == pfd)
+		if (-1 == fstatat(fd, ent->d_name, &sbuf, 0))
+			continue;
+
+		if (S_ISDIR(sbuf.st_mode)){
+			if (!(build_appl_pkg(ent->d_name, dst, fd, NULL)))
 				continue;
 
-/* we need it in-memory for verify */
-			char* buf;
-			size_t buf_sz;
-			FILE* fpek = file_to_membuf(fdopen(pfd, "r"), &buf, &buf_sz);
-			if (!fpek)
-				continue;
-
-			uint8_t insig[SIG_PUBK_SZ];
-			const char* errmsg;
-			char* name;
-			if (!(name = verify_appl_pkg(buf, buf_sz, insig, insig, &errmsg))){
-				A12INT_DIRTRACE_LOCKED("scan_error:file=%s:message=%s", buf, errmsg);
-				continue;
-			}
-
-		}
-		else if (build_appl_pkg(ent->d_name, dst, fd, NULL)){
 			dst->identifier = 1 + opts->dir_count++;
 			dst->server_appl = SERVER_APPL_NONE;
 
@@ -1898,25 +1906,72 @@ void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
 
 			if (try_appl_controller(ent->d_name, opts->appl_server_temp_dfd))
 				dst->server_appl = SERVER_APPL_TEMP;
+
 			else if (try_appl_controller(ent->d_name, opts->appl_server_dfd))
 				dst->server_appl = SERVER_APPL_PRIMARY;
 
 			dst = dst->next;
+			continue;
 		}
+
+		if (!S_ISREG(sbuf.st_mode) ||
+			nlen < 5 || strcmp(&ent->d_name[nlen - 4], ".fap") != 0)
+			continue;
+
+		int pfd = openat(fd, ent->d_name, O_RDONLY);
+		if (-1 == pfd){
+			fprintf(stderr, "couldn't scan %s\n", ent->d_name);
+			continue;
+		}
+
+/* we need it in-memory for verify */
+		char* buf;
+		size_t buf_sz;
+		FILE* fpek = file_to_membuf(fdopen(dup(pfd), "r"), &buf, &buf_sz);
+		if (!fpek)
+			continue;
+
+		uint8_t insig[SIG_PUBK_SZ];
+		const char* errmsg;
+		char* name;
+		if (!(name = verify_appl_pkg(buf, buf_sz, insig, insig, &errmsg))){
+			A12INT_DIRTRACE_LOCKED("scan_error:file=%s:message=%s", buf, errmsg);
+			close(pfd);
+			continue;
+		}
+
+/* dst already terminated, copy up until '.' */
+		for (size_t i = 0;
+			i < sizeof(dst->appl.name) - 1 && name[i] && name[i] != '.'; i++){
+			dst->appl.name[i] = name[i];
+		}
+
+		dst->buf_sz = buf_sz;
+		dst->buf = buf;
+		dst->identifier = 1 + opts->dir_count++;
+
+/* the hashing here is for the entire transfer in order to provide caching it
+ * is not for the content itself - header and datablocks (can) have separate
+ * signed hashes. */
+		blake3_hasher hash;
+		blake3_hasher_init(&hash);
+		blake3_hasher_update(&hash, buf, buf_sz);
+		blake3_hasher_finalize(&hash, (uint8_t*)dst->hash, 4);
+
+		if (try_appl_controller(ent->d_name, opts->appl_server_temp_dfd))
+			dst->server_appl = SERVER_APPL_TEMP;
+
+		else if (try_appl_controller(ent->d_name, opts->appl_server_dfd))
+			dst->server_appl = SERVER_APPL_PRIMARY;
+
+		fclose(fpek);
+
+		dst->next = malloc(sizeof(struct appl_meta));
+		*(dst->next) = (struct appl_meta){0};
+		dst = dst->next;
 	}
 
 	A12INT_DIRTRACE_LOCKED("scan_over:count=%zu", opts->dir_count);
 	closedir(dir);
-
-	if (-1 != old){
-		fchdir(old);
-		close(old);
-	}
-
-	if (first_scan){
-		first_scan = false;
-		anet_directory_lua_trigger_auto(&opts->dir);
-	}
-
 	dirsrv_global_unlock(__FILE__, __LINE__);
 }
