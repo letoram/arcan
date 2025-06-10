@@ -2065,9 +2065,6 @@ static void hello_auth_server_hello(struct a12_state* S)
 	S->authentic = AUTH_FULL_PK;
 	S->auth_latched = true;
 
-/* remember the nonce in order to pair with signing key when requested */
-	memcpy(S->keys.auth_csrnd, &S->decode[8], 8);
-
 	if (S->on_auth)
 		S->on_auth(S, S->auth_tag);
 }
@@ -4048,12 +4045,10 @@ bool a12_set_signing_pair(
 	}
 
 	uint8_t outb[CONTROL_PACKET_SIZE];
-	uint8_t nonce[8];
-	arcan_random(nonce, 8);
 	uint8_t chg[32];
-	build_signkey_challenge(S, chg, nonce);
 
 	build_control_header(S, outb, COMMAND_REKEY);
+	build_signkey_challenge(S, chg, &outb[8]); /* generated in build_contrl_hdr */
   outb[18] = REKEY_MODE_EDSIGN;
 
 	memcpy(&outb[19], pubk, 32);
