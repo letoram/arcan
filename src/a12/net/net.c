@@ -2114,6 +2114,22 @@ int main(int argc, char** argv)
 				struct a12_state* S = cl.state;
 				a12int_trace(A12_TRACE_DIRECTORY,
 					"dircl:push_appl:built=%s", global.dircl.build_appl);
+
+/* if we can't verify it, expect something to be very wrong */
+#ifdef DEBUG
+				if (global.dircl.sign_tag){
+					uint8_t nsig[64] = {0};
+					const char* err;
+					char* name = verify_appl_pkg(
+						global.dircl.outapp.buf, global.dircl.outapp.buf_sz,
+						nsig, nsig, &err
+					);
+					if (!name){
+						fprintf(stderr, "--push-ctrl: verify built packet failed: %s\n", err);
+						return EXIT_FAILURE;
+					}
+				}
+#endif
 				close(global.dircl.build_appl_dfd);
 			}
 /* the die_on_list default for probe role and regular appl running, otherwise

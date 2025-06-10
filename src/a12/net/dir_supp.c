@@ -284,13 +284,112 @@ static bool ensure_path(int cdir, const char* path)
 	return finished;
 }
 
+/*
+ * split out from verify_appl_pkg in order to re-use it for file metadata
+ */
+static void build_argarr_hashsign(struct arg_arr* args, uint8_t outhash[static 16])
+{
+	char* out_header = arg_serialize(args);
+	blake3_hasher hash;
+	blake3_hasher_init(&hash);
+	blake3_hasher_update(&hash, out_header, strlen(out_header));
+	uint8_t hash_data[16];
+	blake3_hasher_finalize(&hash, outhash, 16);
+	free(out_header);
+}
+
+static bool check_argarr_sign(
+	struct arg_arr* args,
+	uint8_t insig_pk[static SIG_PUBK_SZ],
+	uint8_t outsig_pk[static SIG_PUBK_SZ],
+	const char** errmsg
+)
+{
+	uint8_t nullsig[SIG_PUBK_SZ] = {0};
+
+/* if we don't have a reference signing key for the signature,
+ * grab the one in the manifest and use that for reference */
+	if (memcmp(insig_pk, nullsig, SIG_PUBK_SZ) == 0){
+		const char* ksig_b64 = NULL;
+		if (arg_lookup(args, "ksig", 0, &ksig_b64)){
+			if (!ksig_b64){
+				*errmsg = "signature key value empty in manifest";
+				return false;
+			}
+
+			if (!a12helper_fromb64((uint8_t*)ksig_b64, SIG_PUBK_SZ, insig_pk)){
+				*errmsg = "bad signature key in manifest";
+				return false;
+			}
+		}
+	}
+
+/* do we have a signature now?
+ * then expect one from the manifest and verify it. This will work
+ * for the key extraction above as well since it poulates insig_pk */
+	if (memcmp(insig_pk, nullsig, SIG_PUBK_SZ) == 0){
+		return true;
+	}
+
+	const char* ksig_b64 = NULL;
+	if (arg_lookup(args, "ksig", 0, &ksig_b64)){
+		if (!ksig_b64){
+			*errmsg = "signature key value empty in manifest";
+			return false;
+		}
+		if (!a12helper_fromb64((uint8_t*)ksig_b64, SIG_PUBK_SZ, outsig_pk)){
+			*errmsg = "bad signature key in manifest";
+			return false;
+		}
+	}
+	else {
+		*errmsg = "signature key expected but not present";
+		return false;
+	}
+/* outsig_pk is now populated with the one from the manifest */
+	const char* sign_b64 = NULL;
+	if (!arg_lookup(args, "sign", 0, &sign_b64)){
+		*errmsg = "signature missing from manifest";
+		return false;
+	}
+
+	if (!sign_b64){
+		*errmsg = "signature value empty in manifest";
+		return false;
+	}
+
+	if (memcmp(insig_pk, outsig_pk, SIG_PUBK_SZ) != 0){
+		*errmsg = "reference signature doesn't match manfest signature";
+		return false;
+	}
+
+	uint8_t sign[SIG_VAL_SZ];
+	if (!a12helper_fromb64((uint8_t*) sign_b64, SIG_VAL_SZ, sign)){
+		*errmsg = "bad signature value in manifest";
+		return false;
+	}
+
+	arg_remove(args, "sign");
+	arg_remove(args, "ksig");
+	uint8_t hash_data[16];
+	build_argarr_hashsign(args, hash_data);
+
+/* note that crypto_ed25519_check returns -1 on failure, so if someone is
+ * caught doing if crypto_ed25519_check they'll reject only valid signatures */
+	if (0 != crypto_ed25519_check(
+		sign, outsig_pk, hash_data, sizeof(hash_data))){
+		*errmsg = "signature doesn't match key";
+		return false;
+	}
+
+	return true;
+}
+
 char* verify_appl_pkg(
 	char* buf, size_t buf_sz,
 	uint8_t insig_pk[static SIG_PUBK_SZ], uint8_t outsig_pk[static SIG_PUBK_SZ],
 	const char** errmsg)
 {
-	uint8_t nullsig[SIG_PUBK_SZ] = {0};
-
 /* first line is packet header */
 	size_t lineend = 0;
 	for (; lineend < buf_sz; lineend++)
@@ -311,30 +410,35 @@ char* verify_appl_pkg(
 		return NULL;
 	}
 
-/* provide the expected signing public key */
-
-/* missing:
- * is a signing identity expected?
- *    1.
- *       check that the signed hash value matches the signature and the
- *       signature field exists.
- *
- *    2. recalculate hash and compare against signed hash.
- *       there should be a signature for the header itself, and a hash for
- *       the remaining package - both need to check out.
- *
- *    3.
- *       check if the updated package has a new base key (rotation push on
- *       suspected compromise).
- *
- *  open question, having a recovery key that isn't allowed to mutate? need
- *  better references on such schemes.
- */
-	if (memcmp(insig_pk, nullsig, SIG_PUBK_SZ) != 0){
-		*errmsg = "signature-handling missing";
-		return NULL;
+	if (!check_argarr_sign(args, insig_pk, outsig_pk, errmsg)){
+		goto clean_end;
 	}
 
+/* extract the hash covered by header signature and check against the data so
+ * somebody doesn't copy the signature from one packet and tries to send using
+ * another. */
+	const char* datahash = NULL;
+	if (arg_lookup(args, "hash", 0, &datahash)){
+		if (!datahash){
+			*errmsg = "missing data block hash value";
+			goto clean_end;
+		}
+
+		uint8_t hash_data[16];
+		blake3_hasher hash;
+		blake3_hasher_init(&hash);
+		blake3_hasher_update(&hash, &buf[lineend+1], buf_sz - (lineend + 1));
+		blake3_hasher_finalize(&hash, hash_data, 16);
+		char* hash_b64 = (char*) a12helper_tob64(hash_data, 16, &(size_t){0});
+		if (strcmp(hash_b64, datahash) != 0){
+			*errmsg = "data - manifest checksum mismatch";
+			free(hash_b64);
+			goto clean_end;
+		}
+		free(hash_b64);
+	}
+
+/* finally return the name of the appl as per the stored one */
 	const char* outname = NULL;
 	if (arg_lookup(args, "name", 0, &outname) && outname){
 		if (!isalpha(outname[0])){
@@ -354,6 +458,7 @@ char* verify_appl_pkg(
 		return res;
 	}
 
+
 clean_end:
 	arg_cleanup(args);
 	return NULL;
@@ -367,7 +472,9 @@ bool extract_appl_pkg(FILE* fin, int cdir, const char* basename, const char** ms
 /* permission header, inject as > .manifest. the main point with this file is
  * to communicate frameserver needs; terminal? decode against devices? encode?
  * net? all of these have different security parameters in the context of lwa
- * versus other ones. */
+ * versus other ones. Note the length restriction, this is not specified
+ * anywhere and there's no reason larger ones wouldn't be possible - but the
+ * set of used fields are much shorter */
 	char line[1024];
 	char* lastpath = NULL;
 	if (!fgets(line, 1024, fin)){
@@ -542,8 +649,8 @@ bool build_appl_pkg(const char* name,
 	if (!(fts = afts_open(path, FTS_PHYSICAL, comp_alpha)))
 		goto err;
 
-	uint8_t pubk[32];
-	uint8_t privk[64];
+	uint8_t pubk[SIG_PUBK_SZ];
+	uint8_t privk[SIG_PRIVK_SZ];
 	if (signtag){
 		if (!a12helper_keystore_get_sigkey(signtag, pubk, privk)){
 			fprintf(stderr, "build_appl:couldn't open keystore-sign tag %s", signtag);
@@ -586,6 +693,8 @@ bool build_appl_pkg(const char* name,
 		arg_remove(header, "ksig");
 		arg_remove(header, "hash");
 	}
+
+	arg_add(NULL, &header, "name", (char*) name, true);
 
 /* walk and get list of files, lexicographic sort, filter out links,
  * cycles, dot files */
@@ -654,10 +763,8 @@ bool build_appl_pkg(const char* name,
  * datablock hash), create the hash, convert pubk and signature and add to a
  * prepend buffer */
 	if (signtag){
-		blake3_hasher_init(&hash);
-		blake3_hasher_update(&hash, out_header, strlen(out_header));
-		blake3_hasher_finalize(&hash, hash_data, 16);
-		uint8_t sign[64];
+		build_argarr_hashsign(header, hash_data);
+		uint8_t sign[SIG_VAL_SZ];
 		crypto_ed25519_sign(sign, privk, hash_data, 16);
 		unsigned char* pubk_b64 = a12helper_tob64(pubk, 32, &(size_t){0});
 		unsigned char* sign_b64 = a12helper_tob64(sign, 64, &(size_t){0});

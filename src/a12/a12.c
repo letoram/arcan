@@ -1077,7 +1077,7 @@ static void command_rekey(struct a12_state* S)
 			fail_state(S, "rekey-sign-server");
 			return;
 		}
-		if (S->remote_mode != ROLE_DIR){
+		if (S->opts->local_role != ROLE_DIR){
 			a12int_trace(A12_TRACE_CRYPTO, "error:command_rekey:edsign_role_mismatch");
 			fail_state(S, "rekey-sign-role");
 			return;

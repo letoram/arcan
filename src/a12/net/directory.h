@@ -4,6 +4,8 @@
 #define HAVE_DIRECTORY
 
 #define SIG_PUBK_SZ 32
+#define SIG_PRIVK_SZ 64
+#define SIG_VAL_SZ 64
 
 struct anet_dirsrv_opts {
 	struct a12_context_options* a12_cfg;

@@ -1842,19 +1842,44 @@ void anet_directory_srv_rescan(struct anet_dirsrv_opts* opts)
 	DIR* dir = fdopendir(fd);
 	struct dirent* ent;
 
-/* sweep each entry and check if it's a directory */
+/* sweep each entry and check if it's a directory, fits the length restriction.
+ * If there is a matching .fap extension that takes precedence. We require both
+ * prepackaged and directory to be present for triaging purposes (and for .ctrl
+ * form, to avoid having to re-expand) and not to break existing servers. */
 	opts->dir_count = 0;
 	while (dir && (ent = readdir(dir))){
-		if (
-			strlen(ent->d_name) >= 18 ||
+		size_t nlen = strlen(ent->d_name);
+
+		if (nlen >= 18 ||
 			strcmp(ent->d_name, "..") == 0 || strcmp(ent->d_name, ".") == 0){
 			continue;
 		}
 
-/* this doesn't really happen more than once and when we need a full rescan the
- * real database solution would be in place so identifiers mutating isn't much
- * of a concern right now. */
-		if (build_appl_pkg(ent->d_name, dst, fd, NULL)){
+/* if there is a .fap form, use that instead but verify it */
+		char buf[nlen + sizeof(".fap")];
+		struct stat sbuf;
+		if (0 == fstatat(fd, buf, &sbuf, AT_SYMLINK_NOFOLLOW)){
+			int pfd = openat(fd, buf, O_RDONLY);
+			if (-1 == pfd)
+				continue;
+
+/* we need it in-memory for verify */
+			char* buf;
+			size_t buf_sz;
+			FILE* fpek = file_to_membuf(fdopen(pfd, "r"), &buf, &buf_sz);
+			if (!fpek)
+				continue;
+
+			uint8_t insig[SIG_PUBK_SZ];
+			const char* errmsg;
+			char* name;
+			if (!(name = verify_appl_pkg(buf, buf_sz, insig, insig, &errmsg))){
+				A12INT_DIRTRACE_LOCKED("scan_error:file=%s:message=%s", buf, errmsg);
+				continue;
+			}
+
+		}
+		else if (build_appl_pkg(ent->d_name, dst, fd, NULL)){
 			dst->identifier = 1 + opts->dir_count++;
 			dst->server_appl = SERVER_APPL_NONE;
 
