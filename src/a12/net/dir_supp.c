@@ -359,7 +359,7 @@ static bool check_argarr_sign(
 	}
 
 	if (memcmp(insig_pk, outsig_pk, SIG_PUBK_SZ) != 0){
-		*errmsg = "reference signature doesn't match manfest signature";
+		*errmsg = "reference signature doesn't match manifest signature";
 		return false;
 	}
 

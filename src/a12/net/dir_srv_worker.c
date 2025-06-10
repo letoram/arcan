@@ -899,7 +899,22 @@ static struct a12_bhandler_res srv_bevent(
 	case A12_BHANDLER_COMPLETED:
 		a12int_trace(
 			A12_TRACE_DIRECTORY, "kind=status:completed:identifier=%"PRIu16, M.identifier);
+
+/* Before sending the completion notification, make sure the server side has the
+ * key that should match the contents of the transfer. No verification is done in
+ * this process as we don't have the privilege for that */
 		if (cbt->in_transfer && M.identifier == cbt->transfer_id){
+			struct arcan_event skey = (struct arcan_event){
+				.category = EVENT_EXTERNAL,
+				.ext.kind = EVENT_EXTERNAL_MESSAGE
+			};
+			uint8_t signkey[32];
+			a12_get_sign_pubkey(S, signkey);
+			unsigned char* b64 = a12helper_tob64(signkey, 32, &(size_t){0});
+			snprintf((char*)skey.ext.message.data,
+				COUNT_OF(skey.ext.message.data), "a12:signkey=%s", b64);
+			arcan_shmif_enqueue(cbt->C, &skey);
+
 			struct arcan_event sack = (struct arcan_event){
 				.category = EVENT_EXTERNAL,
 				.ext.kind = EVENT_EXTERNAL_STREAMSTATUS,

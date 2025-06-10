@@ -200,6 +200,12 @@ bool a12_set_signing_pair(
 	struct a12_state* S, uint8_t pubk[static 32], uint8_t privk[static 64]);
 
 /*
+ * Retrieve the last known / authenticated public key used by the other end
+ * to sign (some) transfers.
+ */
+void a12_get_sign_pubkey(struct a12_state* S, uint8_t outkey[static 32]);
+
+/*
  * Take an incoming byte buffer and append to the current state of
  * the channel. Any received events will be pushed via the callback.
  *

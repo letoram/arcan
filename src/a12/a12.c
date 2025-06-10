@@ -1016,6 +1016,11 @@ static void command_diropen(
 	}
 }
 
+void a12_get_sign_pubkey(struct a12_state* S, uint8_t outkey[static 32])
+{
+	memcpy(outkey, S->keys.sign_pub, 32);
+}
+
 static void command_cancelstream(
 	struct a12_state* S, uint32_t streamid, uint8_t reason, uint8_t stype)
 {

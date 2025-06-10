@@ -773,9 +773,7 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 		goto out;
 	}
 
-/* Future Changes:
- * ---------------
- *
+/*
  * If the appl is a new install we need to validate format and persist to
  * backing store and give it a name from the package (and check so it doesn't
  * collide). If it is an update, we need to verify that the signing match the
@@ -818,7 +816,7 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 
 		uint8_t nullk[SIG_PUBK_SZ] = {0};
 		const char* errmsg;
-		char* name = verify_appl_pkg(dst, dst_sz, nullk, nullk, &errmsg);
+		char* name = verify_appl_pkg(dst, dst_sz, C->pubk_sign, nullk, &errmsg);
 /* need to unlock as shmifsrv set will lock again, it will take care of
  * rebuilding the index and notifying listeners though - identity action
  * so volatile is no concern */
@@ -1346,6 +1344,8 @@ static void dircl_message(struct dircl* C, struct arcan_event ev)
 		return;
 	}
 
+	const char* msgarg;
+
 /* this one comes from a DIRLIST being sent to the worker state machine. The
  * worker doesn't retain a synched list and may flip between dynamic
  * notification and not. This results in a message being created in a12.c with
@@ -1358,6 +1358,13 @@ static void dircl_message(struct dircl* C, struct arcan_event ev)
 
 	else if (arg_lookup(entry, "applhost", 0, NULL))
 		applhost_to_worker(C, entry);
+
+/* just decode and update, send a bad key? well your uploads will fail. Multiple
+ * clients are allowed to set the same key (differentiation for authentication
+ * and discovery != data identity). */
+	else if (arg_lookup(entry, "signkey", 0, &msgarg) && msgarg){
+		a12helper_fromb64((uint8_t*) msgarg, 32, C->pubk_sign);
+	}
 
 /* missing - forward to Lua VM and appl-script if in ident */
 	arg_cleanup(entry);
