@@ -71,6 +71,7 @@ struct tunnel_state {
 
 static struct {
 	bool die_on_tunnel;
+	_Atomic volatile int child_signal;
 } cl_global;
 
 /*
@@ -79,6 +80,17 @@ static struct {
 static void process_stdin(struct ioloop_shared* I, bool ok);
 static struct a12_bhandler_res anet_directory_cl_stdiofeed(
 	struct a12_state* S, struct a12_bhandler_meta M, void* tag);
+
+static void child_signal(int signo)
+{
+	int pret;
+	if (-1 == waitpid(-1, &pret, WNOHANG))
+		return;
+
+	if (WIFEXITED(pret)){
+		atomic_store(&cl_global.child_signal, pret);
+	}
+}
 
 static void* tunnel_runner(void* t)
 {
@@ -407,7 +419,10 @@ static bool clean_appldir(const char* name, int basedir)
  * we know how many real slots are available and break at that, better option
  * still would be to just keep this in a memfs like setup and rebuild the
  * scratch dir entirely */
-	return 0 == nftw(name, cleancb, 32, FTW_DEPTH | FTW_PHYS);
+	bool status = 0 == nftw(name, cleancb, 32, FTW_DEPTH | FTW_PHYS);
+	if (status)
+		unlinkat(basedir, ".", AT_REMOVEDIR);
+	return status;
 }
 
 struct default_meta {
@@ -498,6 +513,9 @@ static pid_t exec_cpath(struct a12_state* S,
 		"-C", "-",
 		buf, NULL
 	};
+
+	atomic_store(&cl_global.child_signal, -1);
+	sigaction(SIGCHLD,&(struct sigaction){.sa_handler = child_signal}, 0);
 
 /* exec- over and monitor, keep connection alive */
 	pid_t pid = fork();
@@ -806,9 +824,9 @@ static void process_thread(struct ioloop_shared* I, bool ok)
 		return;
 	}
 
+/* this could've been a futex .. */
 	int pret;
-	while ((waitpid( A->pid, &pret, 0))
-		!= A->pid && (errno == EINTR || errno == EAGAIN)){}
+	while (-1 == (pret = atomic_load(&cl_global.child_signal)));
 
 /* exited successfully? then the state snapshot should only contain the K/V
  * dump. If empty - do nothing. If exit with error code, the state we read

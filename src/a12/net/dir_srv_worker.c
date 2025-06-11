@@ -247,6 +247,7 @@ static void on_a12srv_event(
 		if (cbt->in_transfer && ev->ext.streamstat.identifier == cbt->transfer_id){
 			cbt->in_transfer = false;
 			cbt->breq_pending = (struct arcan_event){0};
+			I->userfd2 = a12_btransfer_outfd(I->S);
 
 /* This is where atomic swap goes on completion (see BCHUNKSTATE use) */
 			a12_channel_enqueue(cbt->S, ev);

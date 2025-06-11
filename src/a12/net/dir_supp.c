@@ -149,7 +149,7 @@ void anet_directory_ioloop(struct ioloop_shared* I)
 		if (fds[0].revents){
 			I->on_userfd(I, !(fds[0].revents & errmask));
 		}
-		if (fds[5].revents & POLLIN){
+		if (fds[5].revents){
 			I->on_userfd2(I, !(fds[5].revents & errmask));
 		}
 		if (fds[4].revents){

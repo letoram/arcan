@@ -3358,6 +3358,7 @@ static void unlink_node(
 
 	*dst = next;
 	close(node->fd);
+	node->fd = -1;
 
 	if (node->tag){
 		DYNAMIC_FREE(node->tag);

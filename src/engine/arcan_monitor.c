@@ -995,10 +995,11 @@ void arcan_monitor_watchdog(lua_State* L, lua_Debug* D)
 		}
 	} while (m_locked);
 
-	if (m_n_breakpoints || m_stepreq){
+/* L might have disappeared here */
+	if (L && (m_n_breakpoints || m_stepreq)){
 		lua_sethook(L, arcan_monitor_watchdog, LUA_MASKLINE, 1);
 	}
-	else
+	else if (L)
 		lua_sethook(L, NULL, LUA_MASKLINE, 0);
 
 	arcan_conductor_toggle_watchdog();
