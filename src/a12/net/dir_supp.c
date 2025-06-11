@@ -227,6 +227,8 @@ FILE* file_to_membuf(FILE* applin, char** out, size_t* out_sz)
 	if (!applin)
 		return NULL;
 
+	fseek(applin, 0, SEEK_SET);
+
 	FILE* applbuf = open_memstream(out, out_sz);
 	if (!applbuf){
 		return NULL;

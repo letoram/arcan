@@ -1935,7 +1935,7 @@ void anet_directory_srv_scan(struct anet_dirsrv_opts* opts)
 		const char* errmsg;
 		char* name;
 		if (!(name = verify_appl_pkg(buf, buf_sz, insig, insig, &errmsg))){
-			A12INT_DIRTRACE_LOCKED("scan_error:file=%s:message=%s", buf, errmsg);
+			A12INT_DIRTRACE_LOCKED("scan_error:file=%s:message=%s", ent->d_name, errmsg);
 			close(pfd);
 			continue;
 		}

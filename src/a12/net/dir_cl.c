@@ -1025,15 +1025,48 @@ static void mark_xfer_complete(struct ioloop_shared* I, struct a12_bhandler_meta
 		return;
 	}
 
+/* If we have a cache fap store we should also check that the signature still
+ * match what we expect so a compromised directory modifying and resigning an
+ * appl doesn't get anywhere. This needs to be tied to the petname / domain
+ * that we connected through as well since appl-name collisions are likely.
+ *
+ * Since petnames have file-like restrictions already, tag_ prefix should
+ * work fine. We need the [buf] for verify, but a FILE for extract. Since
+ * that also fcloses and fmemopen is used, that's what free:s buf */
+	char* buf;
+	size_t buf_sz;
+	FILE* fin = file_to_membuf(cbt->appl_out, &buf, &buf_sz);
+	fclose(fin);
+	if (!fin){
+		fprintf(stderr, "unpack appl failed: couldn't read into memory\n");
+		I->shutdown = true;
+		return;
+	}
+
+	const char* err;
+	uint8_t nullsig[32] = {0};
+	if (!verify_appl_pkg(buf, buf_sz, nullsig, nullsig, &err)){
+		fprintf(stderr, "verify appl failed: %s\n", err);
+		free(buf);
+		I->shutdown = true;
+		return;
+	}
+
+	FILE* fextract = fmemopen(buf, buf_sz, "r");
+	buf = NULL;
+	buf_sz = 0;
+
 /* extract into 'newname' first, then we swap it before launch */
 	char newname[strlen(cbt->clopt->applname) + sizeof(".new")];
 	snprintf(newname, sizeof(newname), "%s.new", cbt->clopt->applname);
 	const char* msg;
-	if (!extract_appl_pkg(cbt->appl_out, cbt->clopt->basedir, newname, &msg)){
+	if (!extract_appl_pkg(fextract, cbt->clopt->basedir, newname, &msg)){
 		fprintf(stderr, "unpack appl failed: %s\n", msg);
+		fclose(fextract);
 		I->shutdown = true;
 		return;
 	}
+	fclose(fextract);
 
 	cbt->appl_out = NULL;
 	cbt->appl_out_complete = false;

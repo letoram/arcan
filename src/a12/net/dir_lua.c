@@ -1585,7 +1585,7 @@ void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl)
 	if (!extract_appl_pkg(applf,
 		CFG->dirsrv.appl_server_temp_dfd, name, &err)){
 			fclose(applf);
-			A12INT_DIRTRACE("kind=error:dirappl_unpack=%s", err);
+			A12INT_DIRTRACE_LOCKED("kind=error:dirappl_unpack=%s", err);
 		return;
 	}
 
@@ -1618,7 +1618,7 @@ void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl)
 		shmifsrv_enqueue_event(runner->cl, &outev, dfd);
 	pthread_mutex_unlock(&runner->lock);
 
-	A12INT_DIRTRACE("kind=status:dirappl_update=%s", appl->appl.name);
+	A12INT_DIRTRACE_LOCKED("kind=status:dirappl_update=%s", appl->appl.name);
 }
 
 bool anet_directory_lua_spawn_runner(struct appl_meta* appl, bool external)
