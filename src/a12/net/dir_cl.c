@@ -420,8 +420,11 @@ static bool clean_appldir(const char* name, int basedir)
  * still would be to just keep this in a memfs like setup and rebuild the
  * scratch dir entirely */
 	bool status = 0 == nftw(name, cleancb, 32, FTW_DEPTH | FTW_PHYS);
-	if (status)
+	if (status){
+		unlinkat(basedir, "pulse", AT_REMOVEDIR);
 		unlinkat(basedir, ".", AT_REMOVEDIR);
+	}
+
 	return status;
 }
 
