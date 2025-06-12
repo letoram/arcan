@@ -53,7 +53,7 @@ struct source_mask {
 static struct {
 	pthread_mutex_t sync;
 	struct dircl root;
-	volatile struct anet_dirsrv_opts* opts;
+	struct anet_dirsrv_opts* opts;
 	char* dirlist;
 	size_t dirlist_sz;
 	struct source_mask* masks;
@@ -125,7 +125,7 @@ struct global_cfg* dirsrv_static_opts()
 	return &global;
 }
 
-volatile struct anet_dirsrv_opts* dirsrv_static_config()
+struct anet_dirsrv_opts* dirsrv_static_config()
 {
 	return active_clients.opts;
 }
@@ -136,7 +136,7 @@ volatile struct anet_dirsrv_opts* dirsrv_static_config()
  */
 static struct appl_meta* locked_numid_appl(uint16_t id)
 {
-	volatile struct appl_meta* cur = &active_clients.opts->dir;
+	struct appl_meta* cur = &active_clients.opts->dir;
 
 	while (cur){
 		if (cur->identifier == id){
@@ -347,7 +347,6 @@ static void applhost_to_worker(struct dircl* C, struct arg_arr* entry)
 
 /* note that we actually don't send the applid in the exec source as that would
  * cause it to only broadcast to the target as registered in the applgroup */
-	volatile struct anet_dirsrv_opts* opts;
 		anet_directory_dirsrv_exec_source(
 			C, 0, NULL,
 			active_clients.opts->applhost_path,
@@ -551,8 +550,7 @@ int identifier_to_appl(char* sep)
 	return res;
 }
 
-static int get_state_res(
-	struct dircl* C, volatile char* appl, const char* name, int fl)
+static int get_state_res(struct dircl* C, char* appl, const char* name, int fl)
 {
 	char fnbuf[64];
 	int resfd = -1;
@@ -750,7 +748,7 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 	ok = false;
 
 	dirsrv_global_lock(__FILE__, __LINE__);
-	volatile struct appl_meta* cur = &active_clients.opts->dir;
+	struct appl_meta* cur = &active_clients.opts->dir;
 	while (cur){
 		if (cur->identifier != C->pending_id){
 			cur = cur->next;
@@ -830,9 +828,21 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 	blake3_hasher_update(&hash, dst, dst_sz);
 	blake3_hasher_finalize(&hash, (uint8_t*)cur->hash, 4);
 
+/* is there a signature on the appl entry? then check that the client actually
+ * owns the signing key before trying to verify manifest / contents */
 	uint8_t nullk[SIG_PUBK_SZ] = {0};
+	if (memcmp(cur->sig_pubk, nullk, SIG_PUBK_SZ) != 0){
+		if (memcmp(C->pubk_sign, cur->sig_pubk, SIG_PUBK_SZ) != 0){
+			A12INT_DIRTRACE_LOCKED(
+				"dirsv:bchunk_state:update_fail:reason=client signature - appl mismatch");
+				dirsrv_global_unlock(__FILE__, __LINE__);
+			return;
+		}
+	}
+
 	const char* errmsg;
-	char* name = verify_appl_pkg(dst, dst_sz, C->pubk_sign, nullk, &errmsg);
+
+	char* name = verify_appl_pkg(dst, dst_sz, C->pubk_sign, cur->sig_pubk, &errmsg);
 
 	if (!name){
 		A12INT_DIRTRACE_LOCKED(
@@ -842,11 +852,15 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 		return;
 	}
 
-/* new install rather than update has different action, appl is volatile but
- * wer're locked so single-copy until NUL */
+/* New install rather than update has different action. There is a possible
+ * race here if two workers try to install the same appl in the same time
+ * window as the first to complete would be the install and the second the
+ * update. Unless they use the same signature the first to win would own the
+ * signature and the second would have to sign with the same. */
 	if (!cur->appl.name[0]){
 		for (size_t i = 0; i < COUNT_OF(cur->appl.name)-1 && name[i]; i++)
 			cur->appl.name[i] = name[i];
+
 		A12INT_DIRTRACE_LOCKED(
 			"dirsv:bchunk_state:new_appl=%d:name=%s",
 			(int) cur->identifier, name
@@ -878,9 +892,7 @@ static void handle_bchunk_completion(struct dircl* C, bool ok)
 			"dirsv:bchunk_state:appl_sync:fail_open=%s", fn);
 
 /* need to unlock as shmifsrv set will lock again, it will take care of
- * rebuilding the index and notifying listeners though - identity action
- * so volatile is no concern. this will also notify current ones about
- * anything that was added */
+ * rebuilding the index and notifying listeners though. */
 	dirsrv_global_unlock(__FILE__, __LINE__);
 	anet_directory_shmifsrv_set(
 		(struct anet_dirsrv_opts*) active_clients.opts);
@@ -899,7 +911,7 @@ static struct appl_meta* allocate_new_appl(uint16_t id, uint16_t* mid)
 {
 	struct appl_meta* new_appl = NULL;
 	dirsrv_global_lock(__FILE__, __LINE__);
-	volatile struct appl_meta* cur = &active_clients.opts->dir;
+	struct appl_meta* cur = &active_clients.opts->dir;
 
 /*
  * there shouldn't be a collision at this point as the _allocate path is only
@@ -1346,7 +1358,7 @@ static void handle_monitor_command(struct dircl* C, struct arg_arr* entry)
 {
 	if (arg_lookup(entry, "break", 0, NULL)){
 		dirsrv_global_lock(__FILE__, __LINE__);
-			volatile struct appl_meta* appl = locked_numid_appl(C->in_appl);
+			struct appl_meta* appl = locked_numid_appl(C->in_appl);
 			if (appl){
 				anet_directory_signal_runner(appl, SIGUSR1);
 			}
@@ -1728,7 +1740,7 @@ static void rebuild_index()
 
 	FILE* dirlist = open_memstream(
 		&active_clients.dirlist, &active_clients.dirlist_sz);
-	volatile struct appl_meta* cur = &active_clients.opts->dir;
+	struct appl_meta* cur = &active_clients.opts->dir;
 	while (cur){
 		if (cur->appl.name[0]){
 			fprintf(dirlist,
@@ -1936,10 +1948,11 @@ void anet_directory_srv_scan(struct anet_dirsrv_opts* opts)
 		if (!fpek)
 			continue;
 
-		uint8_t insig[SIG_PUBK_SZ];
+		uint8_t nullsig[SIG_PUBK_SZ] = {0};
 		const char* errmsg;
 		char* name;
-		if (!(name = verify_appl_pkg(buf, buf_sz, insig, insig, &errmsg))){
+
+		if (!(name = verify_appl_pkg(buf, buf_sz, nullsig, dst->sig_pubk, &errmsg))){
 			A12INT_DIRTRACE_LOCKED("scan_error:file=%s:message=%s", ent->d_name, errmsg);
 			close(pfd);
 			continue;

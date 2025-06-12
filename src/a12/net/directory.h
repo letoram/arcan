@@ -278,9 +278,21 @@ void dircl_source_handler(
  * multiplex and trigger on incoming for usrfd_mask (typically shmif)
  * and forward on_event, on_directory, on_userfd
  */
+
+/*
+ * Verify the contents of an in-memory appl and check signatures against
+ * header. Signatures are optional, so if there isn't one in the pkg validation
+ * will still go through.
+ *
+ *  Insig_pk :- the signature of the supplier
+ * Outsig_pk :- the output signature in the header
+ *
+ * nullsig = uint8_t[static SIG_PUBK_SZ]
+ */
 char* verify_appl_pkg(
 	char* buf, size_t buf_sz,
-	uint8_t insig_pk[static SIG_PUBK_SZ], uint8_t outsig_pk[static SIG_PUBK_SZ],
+	uint8_t insig_pk[static SIG_PUBK_SZ],
+	uint8_t outsig_pk[static SIG_PUBK_SZ],
 	const char** errmsg);
 
 /*

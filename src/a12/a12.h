@@ -92,6 +92,7 @@ struct appl_meta {
 	uint16_t categories;
 	uint16_t permissions;
 	uint8_t hash[4];
+	uint8_t sig_pubk[32];
 
 	struct {
 		char name[18];
