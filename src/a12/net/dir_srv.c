@@ -945,9 +945,12 @@ out:
 	return new_appl;
 }
 
-/* We have an incoming BCHUNKSTATE for a worker. We need to parse and unpack the
+/*
+ * We have an incoming BCHUNKSTATE for a worker. We need to parse and unpack the
  * format used to squeeze the request into the event type, then check permissions
- * for retrieval or creation. */
+ * for retrieval or creation. This is a prime candidate for splitting out into a
+ * dir_srv_resio.c when we add external cache oracles for ctrl<->resource mapping.
+ */
 static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 {
 	int mtype = 0;
@@ -994,9 +997,9 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 			goto fail;
 	}
 
-/* lock enumeration so we don't run into stepping the list when something
+/* Lock enumeration so we don't run into stepping the list when something
  * might be appending to it, the contents itself won't change for any of
- * the fields we are intersted in */
+ * the fields we are interested in as long as we are append only. */
 	dirsrv_global_lock(__FILE__, __LINE__);
 		struct appl_meta* meta = locked_numid_appl(ns);
 	dirsrv_global_unlock(__FILE__, __LINE__);
@@ -1021,6 +1024,8 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 		if (!meta)
 			goto fail;
 	}
+	else
+		mid = meta->identifier;
 
 	if (input){
 		switch (mtype){
