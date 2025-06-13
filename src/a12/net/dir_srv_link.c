@@ -66,6 +66,27 @@ static struct {
 	struct ioloop_shared* ioloop_shared;
 	struct queue_item* queue;
 	struct hashmap_s* map_appid;
+
+/*
+ * There are two modes the link worker can work in, 'unified' and 'reference'.
+ * Unified is the complicated one where we try to transparently map between the
+ * resources locally and on the remote directory.
+ *
+ * This involves both caching and joining ctrl- for relaying messages.
+ *
+ * The security considerations for that is that we can impersonate clients we
+ * are relaying for, as well as having access to various stores. Thus 'unified'
+ * mode is a network of servers with the same level of trust. Think load
+ * balancing and geographic caching.
+ *
+ * Reference is simpler:
+ *
+ *    We register with the parent as present 'directory' and we handle DIROPEN
+ *    requests either by tunneling (spawn a new outbound connection where we
+ *    register as a SINK and map as a tunnel), or by relaying keyinformation
+ *    to the directory we reference and forward connection information back.
+ */
+	bool reference;
 } G;
 
 static struct a12_state trace_state = {.tracetag = "link"};
@@ -359,7 +380,8 @@ static void remote_directory_discover(struct a12_state* S,
 int anet_directory_link(
 	const char* keytag,
 	struct anet_options* netcfg,
-	struct anet_dirsrv_opts srvcfg)
+	struct anet_dirsrv_opts srvcfg,
+	bool reference)
 {
 /* first connect to parent so we can communicate failure through last_words */
 	struct arg_arr* args;

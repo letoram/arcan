@@ -1009,20 +1009,19 @@ static int dir_launchtarget(lua_State* L)
 	return 0;
 }
 
-static int dir_linkdirectory(lua_State* L)
+static int spawn_dirwork(lua_State* L, char* tag, char* argv[], const char* pref)
 {
 /* Ensure that the link_directory target is referenced in the keystore
  * and treat it as fatal if it is not. */
-	char* tag = strdup(luaL_checkstring(L, 1));
 	uint8_t private[32];
 	char* tmp;
 	uint16_t tmpport;
 
 	if (!a12helper_keystore_hostkey(tag, 0, private, &tmp, &tmpport))
-		luaL_error(L, "link_directory: >tag=%s< not found in keystore", tag);
+		luaL_error(L, "%s: >tag=%s< not found in keystore", pref, tag);
 
 	if (lua_type(L, 2) != LUA_TFUNCTION)
-		luaL_error(L, "link_directory: tag, >callback< missing");
+		luaL_error(L, "%s: tag, >callback< missing", pref);
 
 /* take a reference to the callback, we bind that to the userdata for the
  * client process we create for the outbound directory connection. */
@@ -1033,8 +1032,6 @@ static int dir_linkdirectory(lua_State* L)
  * outbound connection - this is a separate _worker.c implementation to split
  * out propagation options. This worker will use the keystore again to make the
  * actual outbound connection > then < privsep. */
-	char* argv[] = {CFG->path_self, "dirlink", tag, NULL};
-
 	struct shmifsrv_envp env = {
 		.init_w = 32,
 		.init_h = 32,
@@ -1074,6 +1071,22 @@ static int dir_linkdirectory(lua_State* L)
 	lua_setmetatable(L, -2);
 
 	return 1;
+}
+
+static int dir_refdirectory(lua_State* L)
+{
+	char* tag = strdup(luaL_checkstring(L, 1));
+	char* argv[] = {CFG->path_self, "dirref", tag, NULL};
+
+	return spawn_dirwork(L, tag, argv, "reference_directory");
+}
+
+static int dir_linkdirectory(lua_State* L)
+{
+	char* tag = strdup(luaL_checkstring(L, 1));
+	char* argv[] = {CFG->path_self, "dirlink", tag, NULL};
+
+	return spawn_dirwork(L, tag, argv, "link_directory");
 }
 
 void anet_directory_lua_event(struct dircl* C, struct dirlua_event* ev)
@@ -1395,6 +1408,9 @@ bool anet_directory_lua_init(struct global_cfg* cfg)
  */
 	lua_pushcfunction(L, dir_linkdirectory);
 	lua_setglobal(L, "link_directory");
+
+	lua_pushcfunction(L, dir_refdirectory);
+	lua_setglobal(L, "reference_directory");
 
 	lua_pushcfunction(L, dir_launchtarget);
 	lua_setglobal(L, "launch_target");

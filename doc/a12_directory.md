@@ -48,7 +48,7 @@ controller for each appl, as they revert to broadcast messaging between users
 
 This sets the directory tree that will be used for the default 'naive' keystore
 and user state (see Administration). It expects it to contain subdirectories
-for 'accepted', 'hostkeys', 'state'.
+for 'accepted', 'hostkeys', 'state' and 'signing.
 
 Accepted contains the public keys that the server trusts, and a set of , separated
 tags that define which permissions the owner of that key will have.
@@ -56,10 +56,13 @@ tags that define which permissions the owner of that key will have.
 Hostkeys are used for private keys that the server use to make outbound
 connections, and a 'default' it will use for replies to inbound connections.
 
+Signing keys are only used by clients making outbound connections, and enables
+signatures for uploaded state, indexes and appls.
+
 The 'default' key will be created automatically on first use.
 
 'State' creates a subdirectory for an 'accepted' key when the owner first connects
-and authenticates. It acts as a private file store (
+and authenticates. It acts as a private file store for state and other files.
 
     config.paths.database = '/home/a12/myserver.sqlite'
 
@@ -75,6 +78,7 @@ Administration
 # Defining permitted launch targets
 # Autostart
 # Remote configuration
+# Backup
 
 Hosting (sourcing) an Application
 =================================
@@ -96,7 +100,32 @@ metatable: dircl :write, :endpoint
 Linking Directories
 ===================
 
-This feature is in active development.
+This feature is in active development and subject to change. A directory server
+can be linked to in two ways - unified and referential.
+
+A unified link has the directory act as part of a larger, flat, namespace. It
+allows multiple servers to share the load of hosting sources, sinks, serving
+files and running appl controllers.
+
+In the 'ready' handler of your config.lua:
+
+    function ready()
+        link_directory("myserver",
+            function(source, status)
+            end
+        )
+    end
+
+If there is a 'myserver' tag associated key in the keystore, a new link process
+will be spawned and create an outbound connection to that server. For this to
+work, the server 'myserver' tag references need to have the user tag in the
+config.permissions.dir string.
+
+A referential link works much the same, but you use the `reference_directory`
+function to initiate the link instead. This will make the linked directory
+appear in the dynamic list of available sources and the client can open it like
+any other, either tunneled through the directory referencing it, or negotiate
+connection primitives (host, keys, ...).
 
 Architecture
 ============

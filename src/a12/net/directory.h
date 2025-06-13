@@ -446,7 +446,9 @@ bool anet_directory_merge_multipart(
 int anet_directory_link(
 	const char* keytag,
 	struct anet_options* netcfg,
-	struct anet_dirsrv_opts srvcfg);
+	struct anet_dirsrv_opts srvcfg,
+	bool reference
+);
 
 /*
  * Take a file descriptor covering a directory server content index and

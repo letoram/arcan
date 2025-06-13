@@ -2015,7 +2015,8 @@ int main(int argc, char** argv)
  * namespace. This should always be run from main directory server process
  * so any other arguments are ignored here.
  */
-	if (argc > 1 && strcmp(argv[1], "dirlink") == 0){
+	if (argc > 1 &&
+		(strcmp(argv[1], "dirlink") == 0 || strcmp(argv[1], "dirref") == 0)){
 		if (argc == 2 || !open_keystore(&global.meta, &err)){
 			return EXIT_FAILURE;
 		}
@@ -2033,7 +2034,8 @@ int main(int argc, char** argv)
 		global.trust_domain = strdup(tmp);
 		set_log_trace("link_log");
 
-		return anet_directory_link(argv[2], &global.meta, diropts);
+		return anet_directory_link(argv[2],
+			&global.meta, diropts, strcmp(argv[1], "dirlink") != 0);
 	}
 
 	if (argc < 2 || (argc == 2 &&
