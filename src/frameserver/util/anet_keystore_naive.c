@@ -886,6 +886,39 @@ int a12helper_keystore_statestore(
 		return openat(dfd, name, O_RDONLY | O_CLOEXEC);
 }
 
+static bool has_intersection(const char* usertags, const char* accepttags)
+{
+	char* c_user = strdup(usertags);
+	char* c_accept = strdup(accepttags);
+
+/* need reentrancy here as multiple threads can possible check at different
+ * times, wouldn't want those to race eachother and confuse permissions */
+	char* s_user = c_user;
+	char* s_accept = c_accept;
+
+	char* t_user = strtok_r(c_user, ",", &s_user);
+	char* t_accept = strtok_r(c_accept, ",", &s_accept);
+
+	bool match = false;
+
+/* tags restrictions on characters (isspace, ...) is enforced elsewhere */
+	while (t_user){
+		while (t_accept){
+			if (strcmp(t_user, t_accept) == 0){
+				match = true;
+				goto out;
+			}
+			t_accept = strtok_r(NULL, ",", &s_accept);
+		}
+		t_user = strtok_r(NULL, ",", &s_user);
+	}
+
+out:
+	free(c_user);
+	free(c_accept);
+	return match;
+}
+
 /*
  * this can be timed for a side-channel leak of:
  *
@@ -919,21 +952,11 @@ const char*
 			return ent->host;
 		}
 
-/* then host- list is separated cp1,cp2,cp3,... so find needle in haystack */
-		const char* needle = strstr(connp, ent->host);
-		if (!needle){
-			ent = ent->next;
-			continue;
-		}
-		nlen = strlen(needle);
 
-/* that might be a partial match, i.e. key for connpath 'a' while not for 'ale'
- * so check that we are at a word boundary (at beginning, end or surrounded by , */
-		if (
-			(
-			 (needle == connp || needle[-1] == ',') && /* start on boundary */
-			 (needle[nlen] == '\0' || needle[nlen] == ',') /* end on boundary */
-			)){
+/* ent->host is a , separated set and connp can also be a comma separated set,
+ * find if any of the members match. A formation like a,*,b would fail this
+ * test but that suggests a misconfiguration. */
+		if (has_intersection(connp, ent->host)){
 			return ent->host;
 		}
 
