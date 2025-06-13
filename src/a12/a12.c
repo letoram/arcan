@@ -2324,11 +2324,15 @@ static void send_dirlist(struct a12_state* S)
 {
 	uint8_t outb[CONTROL_PACKET_SIZE];
 	struct appl_meta* C = S->directory;
+	size_t count = 0;
 
+	a12int_trace(A12_TRACE_DIRECTORY, "send_dirlist_begin");
 	while (C){
 		dirstate_item(S, C);
+		count++;
 		C = C->next;
 	}
+	a12int_trace(A12_TRACE_DIRECTORY, "send_dirlist_end:count==%zu", count);
 
 /* empty to terminate */
 	memset(outb, '\0', CONTROL_PACKET_SIZE);

@@ -759,7 +759,8 @@ bool build_appl_pkg(const char* name,
 	free(pub_b64);
 
 	char* out_header = arg_serialize(header);
-	FILE* fpkg = open_memstream(&dst->buf, &dst->buf_sz);
+	size_t outbuf_sz;
+	FILE* fpkg = open_memstream(&dst->buf, &outbuf_sz);
 
 /* if we are set to sign, first hash the serialized header (which includes
  * datablock hash), create the hash, convert pubk and signature and add to a
@@ -783,6 +784,7 @@ bool build_appl_pkg(const char* name,
 	fwrite(buf, buf_sz, 1, fpkg);
 	fflush(fpkg);
 	fclose(fpkg);
+	dst->buf_sz = outbuf_sz;
 
 /* now calculate hash for the entire blob and add to the appl_meta, collisions
  * are fine / it is short just as a quick 'skip download' as the rest are in
@@ -1062,6 +1064,7 @@ struct appl_meta* dir_unpack_index(int fd)
 		if (arg_lookup(entry, "timestamp", 0, &tmp) && tmp){
 			(*cur)->update_ts = (uint64_t) strtoull(tmp, NULL, 10);
 		}
+		TRACE("added:id=%"PRIu16":name=%s", (*cur)->identifier, name);
 
 		cur = &(*cur)->next;
 		arg_cleanup(entry);
