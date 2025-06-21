@@ -1012,7 +1012,7 @@ static int bgcopy(lua_State* L)
 	return 1;
 }
 
-static int opennonblock_tgt(lua_State* L, bool wr)
+static int opennonblock_tgt(lua_State* L)
 {
 	arcan_vobject* vobj;
 	arcan_vobj_id vid = luaL_checkvid(L, 1, &vobj);
@@ -1020,6 +1020,23 @@ static int opennonblock_tgt(lua_State* L, bool wr)
 
 	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
 		arcan_fatal("open_nonblock(tgt), target must be a valid frameserver.");
+
+	int wr = O_RDONLY;
+	int aflag = 0;
+
+	if (lua_type(L, 2) == LUA_TTABLE){
+		lua_getfield(L, 2, "write");
+		if (lua_toboolean(L, -1))
+			wr = O_WRONLY;
+		lua_pop(L, 1);
+
+		lua_getfield(L, 2, "parallel");
+		if (lua_toboolean(L, -1))
+			aflag |= 1;
+		lua_pop(L, 1);
+	}
+	else
+		wr = luaL_optbnumber(L, 2, 0) ? O_WRONLY : O_RDONLY;
 
 /* ioevs[3].iv, carries a namespace selector (arcan-net, afsrv_net)
  * message field will carry extension or other type identifier string. */
@@ -1083,6 +1100,7 @@ static int opennonblock_tgt(lua_State* L, bool wr)
 
 /* in any scenario where this would fail, "blocking" behavior is acceptable */
 	alt_nbio_nonblock_cloexec(src, true);
+	ev.tgt.ioevs[4].iv = aflag;
 	if (ARCAN_OK != platform_fsrv_pushfd(fsrv, &ev, dst)){
 		close(dst);
 		close(src);
@@ -1340,18 +1358,18 @@ int alt_nbio_open(lua_State* L)
 	LUA_TRACE("open_nonblock");
 	struct pathfd pfd;
 
-	int wrmode = luaL_optbnumber(L, 2, 0) ? O_WRONLY : O_RDONLY;
 	bool userns = false;
 
 /* nonblock-io write to/from an explicit vid,
  * this might also be opening a hash to/from an existing a12 monitor */
 #ifdef WANT_ARCAN_BASE
 	if (lua_type(L, 1) == LUA_TNUMBER){
-		int rv = opennonblock_tgt(L, wrmode == O_WRONLY);
+		int rv = opennonblock_tgt(L);
 		LUA_ETRACE("open_nonblock(), ", NULL, rv);
 	}
 #endif
 
+	int wrmode = luaL_optbnumber(L, 2, 0) ? O_WRONLY : O_RDONLY;
 	char* str = strdup(luaL_checkstring(L, 1));
 
 	size_t i = 0;

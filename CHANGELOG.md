@@ -5,7 +5,8 @@
  * Added breakpoint hooks for all transitions into VM execution
  * Dynamic / on-demand attaching (local,remote) debugger (see 7c7ba007c3)
  * Add :bgcopy to open\_nonblock() for background copying in a thread
- * system_snapshot can be used to dynamically expose debugger interface in appl ns
+ * `system_snapshot` can be used to dynamically expose debugger interface in appl ns
+ * `open_nonblock` API overload for specifying transfer parameters
 
 ## Terminal
  * Expose args values as 'tui.arguments' table
@@ -26,6 +27,7 @@
  * Protocol changes to allow for file-metadata attachment and signatures
  * Added record/replay of a12-state decrypted stream for easier debugging
  * Added Ed25519 signatures to appl/ctrl
+ * Controller script API for `accept_nonblock` and `request_nonblock` for script-dynamic datastreams
 
 ## Decode
  * Support building without libvlc support

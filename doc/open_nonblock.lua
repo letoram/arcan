@@ -4,6 +4,8 @@
 -- @inargs: vid:res, bool:write
 -- @inargs: vid:res, bool:write, string:identifier=stream
 -- @inargs: vid:res, bool:write, string:identifier=stream, userdata:nbioud
+-- @inargs: vid:res, table:opts, string:identifier=stream
+-- @inargs: vid:res, table:opts, string:identifier=stream, userdata:nbioud
 -- @inargs: string:res
 -- @inargs: string:res, bool:write
 -- @outargs: blocktbl
@@ -44,6 +46,17 @@
 -- the initial table for a socket only has a close and an accept function.
 -- The accept function takes no arguments and returns a table in both read
 -- and write mode when there is a client waiting.
+--
+-- The *opts* table argument form is used to tune transfer parameters.
+--
+-- @tblent: bool:write - same as the 'write' argument form, stream will be
+--          for output only.
+--
+-- @tblent: bool:streaming - indicate that the transfer will be clocked to
+--          decoding the contents, typically when routed to another client.
+--          This is mainly useful for when *res* is a vid reference to a
+--          network connected frameserver coming from *net_open* where one
+--          transfer otherwise will block future ones until completed.
 --
 -- The read(bool:nobuf, [arg]):str,bool function takes one optional argument,
 -- *nobuf* which disables local buffering. The default behavior of the read

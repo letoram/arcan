@@ -374,6 +374,9 @@ enum ARCAN_TARGET_COMMAND {
  * ioevs[1].iv, lower-32 bits of the expected size (if possible)
  * ioevs[2].iv, upper-32 bits of the expected size
  * ioevs[3].iv, carries a namespace selector (arcan-net, afsrv_net)
+ * ioevs[4].iv, is a bitmap of transfer flags (arcan-net, afsrv_net)
+ *              1 : try to transfer in parallel (allocate a new channel)
+ *
  * message field will carry extension or other type identifier string.
  */
 	TARGET_COMMAND_BCHUNK_IN,
