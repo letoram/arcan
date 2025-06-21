@@ -672,9 +672,15 @@ bool build_appl_pkg(const char* name,
 			fprintf(stderr, "build_appl:can't read .manifest\n");
 			goto err;
 		}
-		char* buf = malloc(sb.st_size);
+		char* buf = malloc(sb.st_size + 1); /* need \0 */
 		FILE* fpek = fdopen(fd, "r");
 		fread(buf, sb.st_size, 1, fpek);
+
+		buf[sb.st_size--] = '\0'; /* drop trailing spaces */
+		while (isspace(buf[sb.st_size])){
+				buf[sb.st_size--] = '\0';
+		}
+
 		header = arg_unpack(buf);
 		fclose(fpek);
 		free(buf);

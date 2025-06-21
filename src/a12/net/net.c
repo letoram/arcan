@@ -2101,7 +2101,7 @@ int main(int argc, char** argv)
 					shutdown(cl.fd, SHUT_RDWR);
 					close(cl.fd);
 					fprintf(stderr,
-						"--push-ctrl %s (tag: %s): couldn't build package",
+						"--push-ctrl/--push-appl %s (tag: %s): couldn't build package",
 						global.dircl.build_appl, global.dircl.sign_tag ? global.dircl.sign_tag : "(no-sign)");
 					return EXIT_FAILURE;
 				}
@@ -2119,7 +2119,7 @@ int main(int argc, char** argv)
 						nsig, nsig, &err
 					);
 					if (!name){
-						fprintf(stderr, "--push-ctrl: verify built packet failed: %s\n", err);
+						fprintf(stderr, "--push-ctrl/--push-appl: verify built packet failed: %s\n", err);
 						return EXIT_FAILURE;
 					}
 				}
