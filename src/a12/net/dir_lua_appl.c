@@ -32,16 +32,29 @@
 
 /* pull in nbio as it is used in the tui-lua bindings */
 #include "../../shmif/tui/lua/nbio.h"
+#include "../../shmif/tui/lua/nbio_static_loop.h"
 
 #include "directory.h"
 #include "platform_types.h"
 #include "os_platform.h"
 
-static const int GROW_SLOTS = 4;
+static const int GROW_SLOTS = 7;
 
-static lua_State* L;
-static struct arcan_shmif_cont SHMIF;
-static bool SHUTDOWN;
+static struct {
+	lua_State* L;
+	struct arcan_shmif_cont SHMIF;
+	bool shutdown;
+	int in_filereq_handler;
+	int filereq_handler_ref;
+} G =
+{
+	.filereq_handler_ref = -1
+};
+
+enum {
+	NS_CLID = 1,
+	NS_NONBLOCK = 2
+};
 
 static int shmifopen_flags =
 			SHMIF_ACQUIRE_FATALFAIL |
@@ -166,8 +179,8 @@ static int panic(lua_State* L)
  * deliver to developer on request. */
 	fprintf(logout, "\nScript Error:\nVM stack:\n");
 	dump_stack(L, logout);
-	arcan_shmif_last_words(&SHMIF, "script_error");
-	arcan_shmif_drop(&SHMIF);
+	arcan_shmif_last_words(&G.SHMIF, "script_error");
+	arcan_shmif_drop(&G.SHMIF);
 
 	exit(EXIT_FAILURE);
 	return 0;
@@ -229,7 +242,7 @@ static void send_setkey(
 	}
 
 /* use reference as identifier for the callback */
-	arcan_shmif_pushutf8(&SHMIF, &(struct arcan_event){
+	arcan_shmif_pushutf8(&G.SHMIF, &(struct arcan_event){
 		.category = ARCAN_EVENT(MESSAGE),
 	}, req, req_len);
 
@@ -254,7 +267,7 @@ static int storekeys(lua_State* L)
 			sizeof(beg.ext.message.data),
 			"begin_kv_transaction:domain=%d", domain % 10
 		);
-		arcan_shmif_enqueue(&SHMIF, &beg);
+		arcan_shmif_enqueue(&G.SHMIF, &beg);
 		lua_pushnil(L);
 
 		while (lua_next(L, 1) != 0){
@@ -267,7 +280,7 @@ static int storekeys(lua_State* L)
 			lua_pop(L, 1);
 		}
 
-		arcan_shmif_enqueue(&SHMIF,
+		arcan_shmif_enqueue(&G.SHMIF,
 			&(struct arcan_event){
 				.category = EVENT_EXTERNAL,
 				.ext.kind = ARCAN_EVENT(MESSAGE),
@@ -304,7 +317,7 @@ static int listtargets(lua_State* L)
 	snprintf((char*)ev.ext.message.data,
 		COUNT_OF(ev.ext.message.data), ".target_index:id=%d", (int) ref);
 
-	arcan_shmif_enqueue(&SHMIF, &ev);
+	arcan_shmif_enqueue(&G.SHMIF, &ev);
 
 	return 0;
 }
@@ -386,7 +399,7 @@ static int launchtarget(lua_State* L)
 		return 1;
 	}
 
-	arcan_shmif_pushutf8(&SHMIF, &(struct arcan_event){
+	arcan_shmif_pushutf8(&G.SHMIF, &(struct arcan_event){
 		.category = ARCAN_EVENT(MESSAGE),
 	}, req, req_len);
 	free(req);
@@ -423,7 +436,7 @@ static int matchkeys(lua_State* L)
 	}
 
 /* use reference as identifier for the callback */
-	arcan_shmif_pushutf8(&SHMIF, &(struct arcan_event){
+	arcan_shmif_pushutf8(&G.SHMIF, &(struct arcan_event){
 		.category = ARCAN_EVENT(MESSAGE),
 	}, req, req_len);
 	free(req);
@@ -495,6 +508,65 @@ const char* msg = luaL_checkstring(L, strind);
 	return 1;
 }
 
+static int acceptnonblock(lua_State* L)
+{
+/* only valid from within a .load / .store / .index entrypoint and only
+ * once per invocation */
+	if (!G.in_filereq_handler)
+		luaL_error(L,
+			"accept_nonblock() - only valid inside client request entrypoint");
+
+	if (G.filereq_handler_ref != -1)
+		luaL_error(L,
+			"accept_nonblock() - only allowed once within scope of entrypoint");
+
+	int pair[2];
+	if (-1 == pipe(pair))
+		return 0;
+
+/* send the nbio immediately, the reply to worker will propagate from the
+ * originating entrypoint call */
+	if (G.in_filereq_handler == O_RDONLY){
+		alt_nbio_import(L, pair[1], O_WRONLY, NULL, NULL);
+		G.filereq_handler_ref = pair[0];
+	}
+	else {
+		alt_nbio_import(L, pair[0], O_RDONLY, NULL, NULL);
+		G.filereq_handler_ref = pair[1];
+	}
+
+	return 1;
+}
+
+static int reqnonblock(lua_State* L)
+{
+	if (!(lua_isfunction(L, 3) && !lua_iscfunction(L, 3))){
+		luaL_error(L,
+			"request_nonblock(name, mode, >handler<), handler is not a function");
+	}
+
+	bool write = luaL_checkbnumber(L, 2);
+	const char* name = luaL_checkstring(L, 1);
+
+/* register callback, mark in event and queue - when it comes back as BCHUNK
+ * the descriptor gets converted to nonblock, callback is triggered and unref */
+	lua_pushvalue(L, 3);
+	struct arcan_event ev = {
+		.category = ARCAN_EVENT(BCHUNKSTATE),
+		.ext.bchunk.identifier = luaL_ref(L, LUA_REGISTRYINDEX),
+		.ext.bchunk.input = !write,
+		.ext.bchunk.ns = NS_NONBLOCK
+	};
+
+	snprintf(
+		(char*) ev.ext.bchunk.extensions,
+		COUNT_OF(ev.ext.bchunk.extensions), "%s", name
+	);
+
+	arcan_shmif_enqueue(&G.SHMIF, &ev);
+	return 0;
+}
+
 /* luaB_print with a different output FILE */
 static int print_log(lua_State* L)
 {
@@ -521,6 +593,14 @@ static int print_log(lua_State* L)
 	return 0;
 }
 
+static void nbio_error(lua_State* L, int fd, intptr_t tag, const char* src)
+{
+#ifdef _DEBUG
+	fprintf(stderr, "unexpected error in nbio(%s)\n", src);
+	dump_stack(L, stdout);
+#endif
+}
+
 static void open_appl(int dfd, const char* name)
 {
 /* swap out known dirfd */
@@ -533,14 +613,14 @@ static void open_appl(int dfd, const char* name)
 
 /* For the dynamic reload case we first run an entrypoint that lets the current
  * scripts shut down gracefully and save any state to be persisted. */
-	if (L){
+	if (G.L){
 		log_print("existing:reset");
-		if (dirlua_setup_entrypoint(L, EP_TRIGGER_RESET)){
-			dirlua_pcall(L, 0, 0, panic);
+		if (dirlua_setup_entrypoint(G.L, EP_TRIGGER_RESET)){
+			dirlua_pcall(G.L, 0, 0, panic);
 		}
 
-		lua_close(L);
-		L = NULL;
+		lua_close(G.L);
+		G.L = NULL;
 	}
 
 /* This mimics much of the setup of the client side API, though the specifics
@@ -557,11 +637,11 @@ static void open_appl(int dfd, const char* name)
  *       to the intended recipient
  *       let the other end create a new connection that sources our new sink
  */
-	L = luaL_newstate();
-	lua_atpanic(L, (lua_CFunction) panic);
+	G.L = luaL_newstate();
+	lua_atpanic(G.L, (lua_CFunction) panic);
 
 	int rv =
-		luaL_loadbuffer(L,
+		luaL_loadbuffer(G.L,
 		(const char*) arcan_bootstrap_lua,
 		arcan_bootstrap_lua_len, "bootstrap"
 	);
@@ -570,12 +650,12 @@ static void open_appl(int dfd, const char* name)
 		return;
 	}
 /* first just setup and parse, don't expose API yet */
-	luaL_openlibs(L);
-	lua_pushcfunction(L, print_log);
-	lua_setglobal(L, "print");
-	lua_pcall(L, 0, 0, 0);
+	luaL_openlibs(G.L);
+	lua_pushcfunction(G.L, print_log);
+	lua_setglobal(G.L, "print");
+	lua_pcall(G.L, 0, 0, 0);
 
-	dirlua_pcall_prefix(L, name);
+	dirlua_pcall_prefix(G.L, name);
 	char scratch[len + sizeof(".lua")];
 
 /* open, map, load as string */
@@ -587,7 +667,7 @@ static void open_appl(int dfd, const char* name)
 
 	map_region reg = arcan_map_resource(&source, false);
 
-	if (0 == luaL_loadbuffer(L, reg.ptr, reg.sz, name)){
+	if (0 == luaL_loadbuffer(G.L, reg.ptr, reg.sz, name)){
 		static const luaL_Reg api[] = {
 			{"message_target", targetmessage},
 			{"store_key", storekeys},
@@ -595,6 +675,8 @@ static void open_appl(int dfd, const char* name)
 			{"list_targets", listtargets},
 			{"launch_target", launchtarget},
 			{"system_load", systemload},
+			{"request_nonblock", reqnonblock},
+			{"accept_nonblock", acceptnonblock},
 /*
  * lift from arcan_lua.c:
  *
@@ -609,16 +691,18 @@ static void open_appl(int dfd, const char* name)
  */
 			{NULL, NULL}
 		};
-		expose_api(L, api);
+		expose_api(G.L, api);
+
+		alt_nbio_register(G.L, nbio_queue, nbio_dequeue, nbio_error);
 
 /* function already on stack so go directly to pcall */
-		dirlua_pcall(L, 0, 0, panic);
+		dirlua_pcall(G.L, 0, 0, panic);
 	}
 	arcan_release_map(reg);
 	arcan_release_resource(&source);
 
-	if (dirlua_setup_entrypoint(L, EP_TRIGGER_MAIN)){
-		dirlua_pcall(L, 0, 0, panic);
+	if (dirlua_setup_entrypoint(G.L, EP_TRIGGER_MAIN)){
+		dirlua_pcall(G.L, 0, 0, panic);
 	}
 
 /* re-expose any existing clients, we do this as faked 'join' calls
@@ -628,16 +712,16 @@ static void open_appl(int dfd, const char* name)
 		if (!CLIENTS.cset[i].shmif)
 			continue;
 
-		if (dirlua_setup_entrypoint(L, EP_TRIGGER_JOIN)){
-			lua_pushnumber(L, CLIENTS.cset[i].clid);
-			dirlua_pcall(L, 1, 0, panic);
+		if (dirlua_setup_entrypoint(G.L, EP_TRIGGER_JOIN)){
+			lua_pushnumber(G.L, CLIENTS.cset[i].clid);
+			dirlua_pcall(G.L, 1, 0, panic);
 		}
 	}
 }
 
 static void monitor_sigusr(int sig)
 {
-	lua_sethook(L, dirlua_monitor_watchdog, LUA_MASKCOUNT, 1);
+	lua_sethook(G.L, dirlua_monitor_watchdog, LUA_MASKCOUNT, 1);
 	struct dirlua_monitor_state* state = dirlua_monitor_getstate();
 	if (state)
 		state->dumppause = true;
@@ -727,7 +811,7 @@ static bool join_worker(int fd, const char* ident, bool monitor)
 /* monitor tracking state is a heap allocation referenced into TLS to
  * nandle both 'external' (single process) and internal (per-thread)
  * handling of the Lua VM runner */
-			dirlua_monitor_allocstate(&SHMIF);
+			dirlua_monitor_allocstate(&G.SHMIF);
 			sigaction(SIGUSR1,
 				&(struct sigaction){.sa_handler = monitor_sigusr}, 0);
 		}
@@ -750,7 +834,7 @@ static void release_worker(size_t ind)
 	if (ind == CLIENTS.monitor_slot){
 		CLIENTS.monitor_slot = 0;
 		anet_directory_merge_multipart(NULL, NULL, NULL, NULL);
-		dirlua_monitor_releasestate(L);
+		dirlua_monitor_releasestate(G.L);
 	}
 
 /* mark it as available for new join */
@@ -760,9 +844,9 @@ static void release_worker(size_t ind)
 	CLIENTS.active--;
 
 	if (cl->registered){
-		if (dirlua_setup_entrypoint(L, EP_TRIGGER_LEAVE)){
-			lua_pushnumber(L, cl->clid);
-			dirlua_pcall(L, 1, 0, panic);
+		if (dirlua_setup_entrypoint(G.L, EP_TRIGGER_LEAVE)){
+			lua_pushnumber(G.L, cl->clid);
+			dirlua_pcall(G.L, 1, 0, panic);
 		}
 	}
 
@@ -774,7 +858,7 @@ static void release_worker(size_t ind)
 static void lua_pushkv_buffer(char* pos, char* end)
 {
 	assert(pos);
-	lua_newtable(L);
+	lua_newtable(G.L);
 	if (!pos)
 		return;
 
@@ -784,14 +868,14 @@ static void lua_pushkv_buffer(char* pos, char* end)
 		char* key = strchr(pos, '=');
 		if (key){
 			size_t keylen = (uintptr_t) key - (uintptr_t) pos;
-			lua_pushlstring(L, pos, keylen);
-			lua_pushstring(L, &key[1]);
+			lua_pushlstring(G.L, pos, keylen);
+			lua_pushstring(G.L, &key[1]);
 		}
 		else{
-			lua_pushlstring(L, pos, len);
-			lua_pushboolean(L, true);
+			lua_pushlstring(G.L, pos, len);
+			lua_pushboolean(G.L, true);
 		}
-		lua_rawset(L, -3);
+		lua_rawset(G.L, -3);
 		pos += len + 1;
 	}
 }
@@ -821,22 +905,48 @@ static void meta_resource(int fd, const char* msg)
 		};
 		long id = strtoul(&msg[7], NULL, 10);
 		map_region reg = arcan_map_resource(&source, false);
-		lua_rawgeti(L, LUA_REGISTRYINDEX, id);
-		if (lua_type(L, -1) != LUA_TFUNCTION)
-			luaL_error(L, "BUG:request_reply into invalid callback");
+		lua_rawgeti(G.L, LUA_REGISTRYINDEX, id);
+		if (lua_type(G.L, -1) != LUA_TFUNCTION)
+			luaL_error(G.L, "BUG:request_reply into invalid callback");
 
 /* -2 : LUA_TABLE, -1 : LUA_BOOLEAN */
 		lua_pushkv_buffer(reg.ptr, reg.ptr + reg.sz);
-		lua_pushboolean(L, true);
+		lua_pushboolean(G.L, true);
 
 		arcan_release_map(reg);
 		arcan_release_resource(&source);
-		lua_call(L, 2, 0);
-		luaL_unref(L, LUA_REGISTRYINDEX, id);
+		lua_call(G.L, 2, 0);
+		luaL_unref(G.L, LUA_REGISTRYINDEX, id);
 	}
 	else
 		log_print("unhandled:%s\n", msg);
 	close(fd);
+}
+
+static void route_bchunk_rep(struct arcan_event* ev)
+{
+	if (ev->tgt.ioevs[4].iv == NS_CLID){
+		struct client* cl = &CLIENTS.cset[ev->tgt.ioevs[3].iv];
+		shmifsrv_enqueue_event(cl->shmif, ev, ev->tgt.ioevs[0].iv);
+	}
+
+/* otherwise NS_NONBLOCK */
+	int fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, false);
+	if (-1 == fd){
+		log_print("kind=error:source=dup:bchunk:message=%s", ev->tgt.message);
+		return;
+	}
+
+	lua_rawgeti(G.L, LUA_REGISTRYINDEX, ev->tgt.ioevs[0].iv);
+
+	if (lua_type(G.L, -1) != LUA_TFUNCTION)
+		luaL_error(G.L, "BUG:request_reply:bchunk into invalid callback");
+
+	alt_nbio_import(G.L, fd,
+		ev->tgt.kind == TARGET_COMMAND_BCHUNK_IN ? O_RDONLY : O_RDWR, NULL, NULL);
+
+	lua_call(G.L, 1, 0);
+	luaL_unref(G.L, LUA_REGISTRYINDEX, ev->tgt.ioevs[0].iv);
 }
 
 static void parent_control_event(struct arcan_event* ev)
@@ -853,17 +963,13 @@ static void parent_control_event(struct arcan_event* ev)
 /* reply to a worker_file_request, the index is trusted as it comes from
  * ourselves and only routed through a more trusted context. Other id mapping
  * is performed in the worker that is blocking for our response */
-		if (ev->tgt.ioevs[4].iv == 1){
-			struct client* cl = &CLIENTS.cset[ev->tgt.ioevs[3].iv];
-			shmifsrv_enqueue_event(cl->shmif, ev, ev->tgt.ioevs[0].iv);
-			break;
-		}
-
-		int fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, false);
-		if (-1 == fd){
-			log_print("kind=error:source=dup:bchunk:message=%s", ev->tgt.message);
+		if (ev->tgt.ioevs[4].iv){
+			route_bchunk_rep(ev);
 			return;
 		}
+
+/* duplicate so we keep around */
+		int fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, false);
 		if (ev->tgt.message[0] != '.')
 			open_appl(fd, ev->tgt.message);
 		else
@@ -872,8 +978,19 @@ static void parent_control_event(struct arcan_event* ev)
 	break;
 /* we need a ns selector here when adding open_nonblock as well */
 	case TARGET_COMMAND_REQFAIL:{
-		struct client* cl = &CLIENTS.cset[ev->tgt.ioevs[0].iv];
-		shmifsrv_enqueue_event(cl->shmif, ev, -1);
+		if (ev->tgt.ioevs[4].iv == NS_CLID){
+			struct client* cl = &CLIENTS.cset[ev->tgt.ioevs[0].iv];
+			shmifsrv_enqueue_event(cl->shmif, ev, -1);
+		}
+/* 32- bit indices are fine here */
+		else if (ev->tgt.ioevs[4].iv == NS_NONBLOCK){
+			lua_rawgeti(G.L, LUA_REGISTRYINDEX, ev->tgt.ioevs[0].iv);
+			if (lua_type(G.L, -1) != LUA_TFUNCTION)
+				luaL_error(G.L, "BUG:request_reply:bchunk into invalid callback");
+			lua_pushnil(G.L);
+			lua_call(G.L, 1, 0);
+			luaL_unref(G.L, LUA_REGISTRYINDEX, ev->tgt.ioevs[0].iv);
+		}
 		break;
 	}
 	case TARGET_COMMAND_MESSAGE:{
@@ -881,6 +998,11 @@ static void parent_control_event(struct arcan_event* ev)
  * bchunk-in and pass it that way. */
 	}
 	case TARGET_COMMAND_BCHUNK_OUT:{
+		if (ev->tgt.ioevs[4].iv){
+			route_bchunk_rep(ev);
+			return;
+		}
+
 		if (strcmp(ev->tgt.message, ".log") == 0){
 			int fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true);
 			logout = fdopen(fd, "w");
@@ -893,7 +1015,7 @@ static void parent_control_event(struct arcan_event* ev)
 	}
 	break;
 	case TARGET_COMMAND_EXIT:
-		SHUTDOWN = true;
+		G.shutdown = true;
 	break;
 	case TARGET_COMMAND_STEPFRAME:
 	break;
@@ -938,7 +1060,7 @@ static void monitor_message(struct client* cl, struct arcan_event* ev)
 	}
 
 /* buffer / apply */
-	if (!dirlua_monitor_command(msg_ptr, L, NULL))
+	if (!dirlua_monitor_command(msg_ptr, G.L, NULL))
 		log_print("monitor:unhandled_cmd=%s", msg_ptr);
 
 	flush_to_client(cl);
@@ -947,19 +1069,19 @@ static void monitor_message(struct client* cl, struct arcan_event* ev)
 static void flush_parent()
 {
 	struct arcan_event ev;
-	if (!arcan_shmif_wait(&SHMIF, &ev)){
-		SHUTDOWN = true;
+	if (!arcan_shmif_wait(&G.SHMIF, &ev)){
+		G.shutdown = true;
 		return;
 	}
 
 	parent_control_event(&ev);
 	int rv;
-	while ((rv = arcan_shmif_poll(&SHMIF, &ev) > 0)){
+	while ((rv = arcan_shmif_poll(&G.SHMIF, &ev) > 0)){
 		parent_control_event(&ev);
 	}
 
 	if (rv == -1)
-		SHUTDOWN = true;
+		G.shutdown = true;
 }
 
 static void worker_file_request(struct client* cl, arcan_event* ev)
@@ -967,46 +1089,63 @@ static void worker_file_request(struct client* cl, arcan_event* ev)
 	arcan_event outev = {
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(BCHUNKSTATE),
-		.ext.bchunk.identifier = cl->clid
+		.ext.bchunk.identifier = cl->clid,
+		.ext.bchunk.ns = 1
 	};
 
+	int reqev;
 	if (ev->ext.bchunk.input){
 		int ep = EP_TRIGGER_LOAD;
+		reqev = TARGET_COMMAND_BCHUNK_IN;
+
 		outev.ext.bchunk.input = true;
+		G.in_filereq_handler = O_RDONLY;
 
 		if (strcmp((const char*) ev->ext.bchunk.extensions, ".index") == 0){
 			ep = EP_TRIGGER_INDEX;
 		}
 
-		if (dirlua_setup_entrypoint(L, ep)){
-			lua_pushnumber(L, cl->clid);
+		if (dirlua_setup_entrypoint(G.L, ep)){
+			lua_pushnumber(G.L, cl->clid);
 			MSGBUF_UTF8(ev->ext.bchunk.extensions);
-			lua_pushstring(L, (char*) ev->ext.bchunk.extensions);
-			dirlua_pcall(L, 2, 1, panic);
+			lua_pushstring(G.L, (char*) ev->ext.bchunk.extensions);
+
+			dirlua_pcall(G.L, 2, 1, panic);
 		}
 		else
 			goto fail;
 	}
-	else if (dirlua_setup_entrypoint(L, EP_TRIGGER_STORE)){
-		lua_pushnumber(L, cl->clid);
+	else if (dirlua_setup_entrypoint(G.L, EP_TRIGGER_STORE)){
+		G.in_filereq_handler = O_WRONLY;
+		reqev = TARGET_COMMAND_BCHUNK_OUT;
+
+		lua_pushnumber(G.L, cl->clid);
 		MSGBUF_UTF8(ev->ext.bchunk.extensions);
-		lua_pushstring(L, (char*) ev->ext.bchunk.extensions);
-		dirlua_pcall(L, 2, 1, panic);
+		lua_pushstring(G.L, (char*) ev->ext.bchunk.extensions);
+		dirlua_pcall(G.L, 2, 1, panic);
 	}
 	else
 		goto fail;
 
-	if (lua_type(L, -1) == LUA_TSTRING){
+/* did the script call accept_nonblock in order to dynamically generate? */
+	if (G.filereq_handler_ref != -1){
+		shmifsrv_enqueue_event(cl->shmif, &(struct arcan_event){
+			.category = EVENT_TARGET,
+			.tgt.kind = reqev,
+			.tgt.ioevs[0].iv = ev->ext.bchunk.identifier
+		}, G.filereq_handler_ref);
+		G.in_filereq_handler = 0;
+		G.filereq_handler_ref = -1;
+		return;
+	}
+/* or should we relay to parent? */
+	else if (lua_type(G.L, -1) == LUA_TSTRING){
 		snprintf(
 			(char*) outev.ext.bchunk.extensions,
 			COUNT_OF(outev.ext.bchunk.extensions),
-			"%s", lua_tostring(L, -1)
+			"%s", lua_tostring(G.L, -1)
 		);
-		arcan_shmif_enqueue(&SHMIF, &outev);
-		return;
-	}
-	else if (lua_type(L, -1) == LUA_TUSERDATA){
-		luaL_error(L, "open_nonblock unimplemented");
+		arcan_shmif_enqueue(&G.SHMIF, &outev);
 		return;
 	}
 
@@ -1041,9 +1180,9 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 					"kind=status:worker=%zu:registered:key=%s", cl->clid, cl->keyid);
 				free(b64);
 				cl->registered = true;
-				if (dirlua_setup_entrypoint(L, EP_TRIGGER_JOIN)){
-					lua_pushnumber(L, cl->clid);
-					dirlua_pcall(L, 1, 0, panic);
+				if (dirlua_setup_entrypoint(G.L, EP_TRIGGER_JOIN)){
+					lua_pushnumber(G.L, cl->clid);
+					dirlua_pcall(G.L, 1, 0, panic);
 				}
 			}
 			else {
@@ -1077,13 +1216,13 @@ static void worker_instance_event(struct client* cl, int fd, int revents)
 				monitor_message(cl, &ev);
 			}
 			else {
-				if (dirlua_setup_entrypoint(L, EP_TRIGGER_MESSAGE)){
-					lua_newtable(L);
-					int top = lua_gettop(L);
-					tblbool(L, "multipart", ev.ext.message.multipart, top);
+				if (dirlua_setup_entrypoint(G.L, EP_TRIGGER_MESSAGE)){
+					lua_newtable(G.L);
+					int top = lua_gettop(G.L);
+					tblbool(G.L, "multipart", ev.ext.message.multipart, top);
 					MSGBUF_UTF8(ev.ext.message.data);
-					tbldynstr(L, "message", (char*) ev.ext.message.data, top);
-					dirlua_pcall(L, 2, 0, panic);
+					tbldynstr(G.L, "message", (char*) ev.ext.message.data, top);
+					dirlua_pcall(G.L, 2, 0, panic);
 				}
 			}
 		}
@@ -1125,19 +1264,44 @@ static bool in_monitor_lock()
 	return state && state->lock;
 }
 
+static void process_nbio_in(lua_State* L)
+{
+	if (!nbio_jobs.fdin_used)
+		return;
+
+	struct pollfd fds[32] = {0};
+	size_t ofs = 0;
+
+	for (size_t i = 0; i < 32; i++){
+		fds[ofs++] = (struct pollfd){
+			.events = POLLIN | POLLERR | POLLNVAL | POLLHUP,
+			.fd = nbio_jobs.fdin[i]
+		};
+	}
+
+	int sv = poll(fds, ofs, 0);
+	for (size_t i = 0; i < ofs && sv > 0; i++){
+		if (!fds[i].revents)
+			continue;
+
+		sv--;
+		alt_nbio_data_in(L, nbio_jobs.fdin_tags[i]);
+	}
+}
+
 void anet_directory_appl_runner()
 {
 	struct arg_arr* args;
 	logout = stdout;
 
-	SHMIF = arcan_shmif_open(SEGID_NETWORK_SERVER, shmifopen_flags, &args);
+	G.SHMIF = arcan_shmif_open(SEGID_NETWORK_SERVER, shmifopen_flags, &args);
 	shmifsrv_monotonic_rebase();
 
 /* shmif connection gets reserved index 0 */
-	join_worker(SHMIF.epipe, ".main", false);
+	join_worker(G.SHMIF.epipe, ".main", false);
 	int left = 25;
 
-	while (!SHUTDOWN){
+	while (!G.shutdown){
 		if (in_monitor_lock()){
 			flush_to_client(&CLIENTS.cset[CLIENTS.monitor_slot]);
 
@@ -1171,14 +1335,17 @@ void anet_directory_appl_runner()
 		int pv = poll(CLIENTS.pset, CLIENTS.set_sz, left);
 		int nt = shmifsrv_monotonic_tick(&left);
 		if (nt > 0){
-			if (dirlua_setup_entrypoint(L, EP_TRIGGER_CLOCK)){
-				lua_pushnumber(L, nt);
-				dirlua_pcall(L, 1, 0, panic);
+			if (dirlua_setup_entrypoint(G.L, EP_TRIGGER_CLOCK)){
+				lua_pushnumber(G.L, nt);
+				dirlua_pcall(G.L, 1, 0, panic);
 			}
 		}
 
 		if (in_monitor_lock())
 			continue;
+
+		process_nbio_in(G.L);
+		nbio_run_outbound(G.L);
 
 /* First prioritize the privileged parent inbound events,
  * and if it's dead we shutdown as well. */
@@ -1186,6 +1353,13 @@ void anet_directory_appl_runner()
 			flush_parent();
 			pv--;
 		}
+
+/* Since we have a timer already, and nbio isn't supposed to be for throughput
+ * here but rather fringe use to supplement other queueing / transfer
+ * mechanisms we do a quick check for the nbio- pollset and run through that
+ * aligned roughly with timer ticks. If the need arises we move this to a
+ * separate thread + condition variable form */
+
 
 /* flush out each client, rate-limit comes from queue size caps - need to keep
  * checking the monitor lock so we don't accidentally run ahead and keep
@@ -1201,8 +1375,8 @@ void anet_directory_appl_runner()
 		}
 	}
 
-	if (L)
-		lua_close(L);
+	if (G.L)
+		lua_close(G.L);
 
 	log_print("parent_exit");
 }

@@ -176,7 +176,6 @@ static void* strarr_copy(void* arg)
 	if (!fout)
 		goto out;
 
-
 /* write each reply with \0 terminated strings blocking */
 	while (*curr && !ferror(fout)){
 		fputs(*curr, fout);
@@ -225,7 +224,8 @@ static void process_file_request(
 		.tgt.kind = ev->ext.bchunk.input ?
 			TARGET_COMMAND_BCHUNK_IN : TARGET_COMMAND_BCHUNK_OUT,
 		.tgt.ioevs[3].iv = ev->ext.bchunk.identifier,
-		.tgt.ioevs[4].iv = 1 /* internal use, mark that the identifier is a clid */
+/* namespace selector for identifier: dir_lua_appl uses 1 for clid, 2 for nbio */
+		.tgt.ioevs[4].iv = ev->ext.bchunk.ns
 	}, fd);
 	close(fd);
 
@@ -235,7 +235,8 @@ fail:
 	shmifsrv_enqueue_event(runner->cl, &(struct arcan_event){
 		.category = EVENT_TARGET,
 		.tgt.kind = TARGET_COMMAND_REQFAIL,
-		.tgt.ioevs[0].iv = ev->ext.bchunk.identifier
+		.tgt.ioevs[0].iv = ev->ext.bchunk.identifier,
+		.tgt.ioevs[4].iv = ev->ext.bchunk.ns
 	}, -1);
 }
 
