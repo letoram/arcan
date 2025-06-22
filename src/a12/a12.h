@@ -143,6 +143,12 @@ struct a12_context_options {
  * marks the state machine as broken. */
 	bool (*sink)(uint8_t* buf, size_t buf_sz, void* tag);
 	void* sink_tag;
+
+/* option not permitted in release builds */
+#ifdef _DEBUG
+	bool disable_cia;
+	FILE* record_raw;
+#endif
 };
 
 /*

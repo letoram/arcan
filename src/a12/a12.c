@@ -453,7 +453,10 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 	}
 
 /* apply stream-cipher to buffer contents - ETM */
-	chacha_apply(S->enc_state, &dst[data_pos], used);
+#ifdef _DEBUG
+	if (!S->disable_encdec)
+#endif
+		chacha_apply(S->enc_state, &dst[data_pos], used);
 
 /* update MAC with encrypted contents */
 	blake3_hasher_update(&S->out_mac, &dst[data_pos], used);
@@ -655,6 +658,13 @@ static struct a12_state* a12_setup(struct a12_context_options* opt, bool srv)
 	res->out_stream = 1;
 	res->notify_dynamic = true;
 
+#ifdef _DEBUG
+	if (opt->disable_cia){
+		res->record_out = opt->record_raw;
+		res->disable_encdec = true;
+	}
+#endif
+
 	return res;
 }
 
@@ -835,8 +845,13 @@ static void update_mac_and_decrypt(struct a12_state* S, const char* source,
 #endif
 
 	blake3_hasher_update(hash, buf, sz);
-	if (ctx)
-		chacha_apply(ctx, buf, sz);
+
+	if (ctx){
+#ifdef _DEBUG
+		if (!S->disable_encdec)
+#endif
+			chacha_apply(ctx, buf, sz);
+	}
 
 #ifdef _DEBUG
 	if (S->record_out){
@@ -940,7 +955,12 @@ static void process_srvfirst(struct a12_state* S)
 
 /* decrypt command byte and seqn */
 	size_t base = mac_sz + nonce_sz;
-	chacha_apply(S->dec_state, &S->decode[base], 9);
+
+#ifdef _DEBUG
+	if (!S->disable_encdec)
+#endif
+		chacha_apply(S->dec_state, &S->decode[base], 9);
+
 	if (S->decode[base + 8] != STATE_CONTROL_PACKET){
 		a12int_trace(A12_TRACE_CRYPTO, "kind=error:status=bad_key_or_nonce");
 		fail_state(S, "auth-bad-key");
@@ -4172,16 +4192,3 @@ void a12_trace_tag(struct a12_state* S, const char* tag)
 {
 	snprintf(S->tracetag, 16, "%s", tag);
 }
-
-
-#ifdef _DEBUG
-void a12int_record_raw_insecure(struct a12_state* S, FILE* fout)
-{
-	S->record_out = fout;
-}
-
-void a12int_set_raw_insecure(struct a12_state* S)
-{
-	S->disable_encdec = true;
-}
-#endif

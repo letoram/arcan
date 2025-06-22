@@ -386,22 +386,6 @@ void a12int_append_out(
 	const uint8_t* const out, size_t out_sz,
 	uint8_t* prepend, size_t prepend_sz);
 
-#ifdef _DEBUG
-/*
- * [DEBUG/TROUBLESHOOT]
- * Make the state-machine record the decrypted / unauthenticated state of unpack
- */
-void a12int_record_raw_insecure(struct a12_state* S, FILE* fout);
-
-/*
- * [DEBUG/TROUBLESHOOT]
- * Disable authentication and decryption, for playing back / stepping through
- * one side of an unauthenticated / unencrypted session captured with
- * a12int_record_raw_insecure.
- */
-void a12int_set_raw_insecure(struct a12_state* S);
-#endif
-
 void a12int_step_vstream(struct a12_state* S, uint32_t id);
 
 /* takes ownership of appl_meta */

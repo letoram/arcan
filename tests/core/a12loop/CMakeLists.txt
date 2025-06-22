@@ -1,5 +1,5 @@
 PROJECT( a12loop )
-cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.5.0 FATAL_ERROR)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../../src/platform/cmake/modules)
 
 find_package(arcan_shmif REQUIRED)

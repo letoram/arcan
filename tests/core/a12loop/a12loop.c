@@ -1,6 +1,7 @@
 /*
  * Testing and fuzzing harness for the A12 implementation
  */
+#define _DEBUG
 #include <arcan_shmif.h>
 #include <arcan_shmif_server.h>
 #include <arcan/a12.h>
@@ -20,7 +21,7 @@ extern void arcan_random(uint8_t*, size_t);
 static uint8_t clpriv[32];
 static uint8_t srvpriv[32];
 
-static struct pk_response key_auth_cl(uint8_t pk[static 32], void* tag)
+static struct pk_response key_auth_cl(struct a12_state* S, uint8_t pk[static 32], void* tag)
 {
 /* don't really care for the time being, just return a key */
 	struct pk_response auth;
@@ -29,7 +30,7 @@ static struct pk_response key_auth_cl(uint8_t pk[static 32], void* tag)
 	return auth;
 }
 
-static struct pk_response key_auth_srv(uint8_t pk[static 32], void* tag)
+static struct pk_response key_auth_srv(struct a12_state* S, uint8_t pk[static 32], void* tag)
 {
 	struct pk_response auth;
 	auth.authentic = true;
@@ -38,6 +39,8 @@ static struct pk_response key_auth_srv(uint8_t pk[static 32], void* tag)
 }
 
 extern void arcan_random(uint8_t* buf, size_t buf_sz);
+void a12int_record_raw_insecure(struct a12_state* S, FILE* fout);
+void a12int_set_raw_insecure(struct a12_state* S);
 
 static void data_round_corrupt(
 	struct a12_state* cl, struct a12_state* srv, bool cl_round)
@@ -107,7 +110,6 @@ static bool run_auth_test(struct a12_state* cl, struct a12_state* srv)
 		cl_round = !cl_round;
 	} while (s1 > 0 || s2 > 0 || !a12_auth_state(cl) || !a12_auth_state(srv));
 
-	a12int_trace(A12_TRACE_SYSTEM, "auth-over:client=%d:server=%d", s1, s2);
 	return a12_auth_state(cl) && a12_auth_state(srv);
 }
 
@@ -317,7 +319,6 @@ static struct a12_bhandler_res bhandler(
 	if (md.streaming)
 		return res;
 
-	a12int_trace(A12_TRACE_BTRANSFER, "new_transfer");
 	return res;
 }
 
@@ -372,7 +373,9 @@ int main(int argc, char** argv)
 	struct a12_context_options cl_opts = {
 		.pk_lookup = key_auth_cl,
 		.disable_ephemeral_k = false,
-		.local_role = ROLE_SINK
+		.local_role = ROLE_SINK,
+/* uncomment to disable encryption/decryption/authentication code */
+		.disable_cia = true,
 	};
 
 	struct a12_context_options srv_opts = cl_opts;

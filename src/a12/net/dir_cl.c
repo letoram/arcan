@@ -307,15 +307,15 @@ void dircl_source_handler(
 			struct arcan_event* pqueue;
 			struct arcan_event acqev;
 			ssize_t pqueue_sz;
-				if (arcan_shmif_acquireloop(&I->shmif, &acqev, &pqueue, &pqueue_sz)){
-					if (acqev.tgt.kind != TARGET_COMMAND_NEWSEGMENT){
-						fprintf(stderr, "appl-rejected dynopen\n");
-						return;
-					}
-					I->handover = malloc(sizeof(struct arcan_shmif_cont));
-					*(I->handover) = arcan_shmif_acquire(&I->shmif, NULL, 0, 0);
+			if (arcan_shmif_acquireloop(&I->shmif, &acqev, &pqueue, &pqueue_sz)){
+				if (acqev.tgt.kind != TARGET_COMMAND_NEWSEGMENT){
+					fprintf(stderr, "appl-rejected dynopen\n");
+					return;
 				}
+				I->handover = malloc(sizeof(struct arcan_shmif_cont));
+				*(I->handover) = arcan_shmif_acquire(&I->shmif, NULL, 0, 0);
 			}
+		}
 
 		anet_directory_tunnel_thread(I, 1);
 		detach_tunnel_runner(I, sv[1], &a12opts, &req);
