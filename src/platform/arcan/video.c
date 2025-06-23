@@ -1309,7 +1309,8 @@ static bool event_process_disp(
 
 	arcan_event ev;
 
-	while (1 == arcan_shmif_poll(&d->conn, &ev))
+	int rv;
+	while (1 == (rv = arcan_shmif_poll(&d->conn, &ev)))
 		if (ev.category == EVENT_TARGET)
 		switch(ev.tgt.kind){
 
@@ -1494,6 +1495,14 @@ static bool event_process_disp(
 		}
 		else
 			arcan_event_enqueue(ctx, &ev);
+
+	if (rv == -1 && d == &disp[0]){
+		arcan_event_enqueue(ctx, &(struct arcan_event){
+			.category = EVENT_SYSTEM,
+			.sys.kind = EVENT_SYSTEM_EXIT,
+			.sys.errcode = EXIT_FAILURE
+		});
+	}
 
 	return false;
 }
