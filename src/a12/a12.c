@@ -36,9 +36,6 @@
 
 #include "external/zstd/zstd.h"
 
-int a12_trace_targets = 0;
-FILE* a12_trace_dst = NULL;
-
 static int header_sizes[] = {
 	MAC_BLOCK_SZ + 8 + 1, /* The outer frame */
 	CONTROL_PACKET_SIZE,
@@ -54,6 +51,9 @@ enum {
 	REKEY_MODE_RATCHET = 0,
 	REKEY_MODE_EDSIGN  = 1
 };
+
+int a12_trace_targets;
+FILE* a12_trace_dst;
 
 extern void arcan_random(uint8_t* dst, size_t);
 
@@ -454,6 +454,11 @@ void a12int_append_out(struct a12_state* S, uint8_t type,
 
 /* apply stream-cipher to buffer contents - ETM */
 #ifdef _DEBUG
+	if (S->checked_out){
+		a12int_check_buffer(S, dst, S->buf_ofs);
+		fflush(S->checked_out);
+	}
+
 	if (!S->disable_encdec)
 #endif
 		chacha_apply(S->enc_state, &dst[data_pos], used);
@@ -840,8 +845,16 @@ static void update_mac_and_decrypt(struct a12_state* S, const char* source,
 {
 	a12int_trace(A12_TRACE_CRYPTO, "src=%s:mac_update=%zu", source, sz);
 #ifdef _DEBUG
-	if (S->disable_encdec)
+	if (S->disable_encdec){
+		if (S->record_out){
+			if (!a12_error_state(S)){
+				fwrite(buf, sz, 1, S->record_out);
+				fflush(S->record_out);
+			}
+		}
+
 		return;
+	}
 #endif
 
 	blake3_hasher_update(hash, buf, sz);
@@ -4192,3 +4205,97 @@ void a12_trace_tag(struct a12_state* S, const char* tag)
 {
 	snprintf(S->tracetag, 16, "%s", tag);
 }
+
+#ifdef _DEBUG
+void a12int_set_checked(struct a12_state* S, FILE* dst)
+{
+	S->checked_out = dst;
+}
+
+/*
+ * check that [unencrypted, pre-mac] buffer is all valid a12 packets optionally
+ * write information about each packet in beforehand.
+ */
+void a12int_check_buffer(struct a12_state* S, uint8_t* buf, size_t buf_sz)
+{
+	size_t ofs = 0;
+#define EXPECT(X) do {\
+  if (ofs + (X) > buf_sz){\
+   fprintf(S->checked_out, "buffer content truncated\n");\
+		abort();\
+	 return;\
+  }\
+	} while (0);
+
+	while (ofs < buf_sz){
+
+/* ignore MAC */
+		EXPECT(MAC_BLOCK_SZ);
+		ofs += MAC_BLOCK_SZ;
+
+/* record seqnr */
+		uint64_t seqn;
+		EXPECT(8);
+		unpack_u64(&seqn, &buf[ofs]);
+		ofs += 8;
+
+/* check based on type */
+		EXPECT(1);
+		uint8_t kind = buf[ofs];
+		ofs++;
+
+		if (kind >= STATE_BROKEN){
+			fprintf(S->checked_out, "buffer invalid at=%zu, kind=%"PRIu8, ofs, kind);
+			abort();
+			break;
+		}
+
+		EXPECT(header_sizes[kind]);
+
+		switch(kind){
+		case STATE_CONTROL_PACKET:{
+			fprintf(S->checked_out,
+				"%"PRIu64":channel=%"PRIu8":control=%"PRIu8"\n", seqn, buf[ofs+16], buf[ofs+17]);
+			ofs += header_sizes[kind];
+		}
+		break;
+		case STATE_EVENT_PACKET:{
+			uint8_t channel = buf[SEQUENCE_NUMBER_SIZE];
+			struct arcan_event aev;
+/* last-seen + channel + event-data */
+			if (-1 == arcan_shmif_eventunpack(
+				&buf[SEQUENCE_NUMBER_SIZE + 1],
+				buf_sz - ofs - SEQUENCE_NUMBER_SIZE - 1, &aev)){
+				fprintf(S->checked_out, "unknown-event at=%zu\n", ofs);
+				return;
+			}
+
+			fprintf(S->checked_out,
+				"%"PRIu64":channel=%"PRIu8":event=%s",
+				seqn,
+				buf[SEQUENCE_NUMBER_SIZE],
+				arcan_shmif_eventstr(&aev, NULL, 0)
+			);
+
+			ofs += header_sizes[kind];
+	}
+		break;
+/* variable length */
+		case STATE_VIDEO_PACKET:
+		case STATE_AUDIO_PACKET:
+		case STATE_BLOB_PACKET:
+			uint8_t channel = buf[ofs];
+			uint32_t stream;
+			unpack_u32(&stream, &buf[ofs+1]);
+			uint16_t left;
+			unpack_u16(&left, &buf[ofs+1+4]);
+			ofs += header_sizes[kind];
+			EXPECT(left);
+			ofs += left;
+			fprintf(S->checked_out,
+				"%"PRIu64":channel=%"PRIu8":video/audio/blob=%s", seqn, channel, left);
+		}
+		break;
+	}
+}
+#endif

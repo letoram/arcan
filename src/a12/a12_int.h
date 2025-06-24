@@ -366,6 +366,7 @@ struct a12_state {
 	struct chacha_ctx* dec_state;
 
 #ifdef _DEBUG
+	FILE* checked_out;
 	FILE* record_out;
 	bool disable_encdec;
 #endif
@@ -418,5 +419,10 @@ void a12int_request_dirlist(struct a12_state*, bool notify);
 
 unsigned long long arcan_timemillis();
 void arcan_random(uint8_t* dst, size_t ntc);
+
+#ifdef _DEBUG
+void a12int_set_checked(struct a12_state* S, FILE* dst);
+void a12int_check_buffer(struct a12_state* S, uint8_t* buf, size_t buf_sz);
+#endif
 
 #endif
