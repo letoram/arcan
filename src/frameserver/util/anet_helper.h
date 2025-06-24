@@ -238,6 +238,22 @@ int a12helper_keystore_statestore(
 	const uint8_t pubk[static 32], const char* name, size_t sz, const char* mode);
 
 /*
+ * Remove a blob from the keystore
+ */
+bool a12helper_keystore_stateunlink(
+	const uint8_t pubk[static 32], const char* name);
+
+/*
+ * Step through all identities in the 'accepted' bin that also has a state-store:
+ *  uintptr_t ref = 0;
+ *  uint8_t outk[32];
+ *  while (a12helper_keystore_enumerate(&ref, outk)){
+ *    int fd = a12helper_keystore_statestore(outk, "somename", 0, "r");
+ *  }
+ */
+bool a12helper_keystore_enumerate(uintptr_t* ref, uint8_t pubk[static 32]);
+
+/*
  * Used for the BASEDIR keystore method, using environment variables or config
  * files to figure out where to store the keys.
  */

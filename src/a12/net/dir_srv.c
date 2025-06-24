@@ -550,6 +550,58 @@ int identifier_to_appl(char* sep)
 	return res;
 }
 
+static int build_debug_pkg(const char* appl, bool flush)
+{
+	uintptr_t ref = 0;
+	uint8_t outk[32];
+	char fnbuf[64];
+	snprintf(fnbuf, 64, "%s.debug", appl);
+
+	char* buf;
+	size_t buf_sz;
+	FILE* out = open_memstream(&buf, &buf_sz);
+
+	if (!out)
+		return -1;
+
+	while (a12helper_keystore_enumerate(&ref, outk)){
+		int fd = a12helper_keystore_statestore(outk, fnbuf, 0, "r");
+		if (-1 == fd)
+			continue;
+
+		struct stat sbuf;
+		if (-1 == fstat(fd, &sbuf)){
+			close(fd);
+			continue;
+		}
+
+		FILE* fin = fdopen(fd, "r");
+		if (!fin)
+			continue;
+
+		unsigned char* b64 = a12helper_tob64(outk, 32, &(size_t){0});
+		fprintf(out, "source=%s:length=%zd\n", b64, sbuf.st_size + 1);
+		free(b64);
+
+		while (!feof(fin)){
+			char buf[4096];
+			size_t nr = fread(buf, 1, 4096, fin);
+			fwrite(buf, nr, 1, out);
+		}
+		fputc('\n', out);
+
+		if (flush)
+			a12helper_keystore_stateunlink(outk, fnbuf);
+		fclose(fin);
+	}
+
+	fclose(out);
+
+	int fd = buf_memfd(buf, buf_sz);
+	free(buf);
+	return fd;
+}
+
 static int get_state_res(struct dircl* C, char* appl, const char* name, int fl)
 {
 	char fnbuf[64];

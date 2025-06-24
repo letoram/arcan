@@ -267,6 +267,8 @@ static void controller_dispatch(
 	else if (arg_lookup(arr, "end_kv_transaction", 0, NULL)){
 		arcan_db_end_transaction(db);
 	}
+	else if (arg_lookup(arr, "report_collect", 0, NULL)){
+	}
 	else if (arg_lookup(arr, "launch", 0, &arg) && arg &&
 		arg_lookup(arr, "id", 0, &val) && val){
 		int id = (int) strtol(val, NULL, 10);

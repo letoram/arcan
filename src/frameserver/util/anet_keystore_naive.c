@@ -825,16 +825,22 @@ static int buf_memfd(const char* buf, size_t buf_sz)
 	return out;
 }
 
-int a12helper_keystore_statestore(
-	const uint8_t pubk[static 32], const char* name, size_t sz, const char* mode)
+static struct key_ent* ent_from_pubk(const uint8_t pubk[static 32])
 {
 	if (keystore.dirfd_state == -1)
-		return -1;
+		return NULL;
 
 	struct key_ent* ent = keystore.hosts;
 	while (ent && memcmp(pubk, ent->key, 32) != 0)
 		ent = ent->next;
 
+	return ent;
+}
+
+int a12helper_keystore_statestore(
+	const uint8_t pubk[static 32], const char* name, size_t sz, const char* mode)
+{
+	struct key_ent* ent = ent_from_pubk(pubk);
 	if (!ent)
 		return -1;
 
@@ -965,6 +971,53 @@ const char*
 	}
 
 	return NULL;
+}
+
+bool a12helper_keystore_stateunlink(
+	const uint8_t pubk[static 32], const char* name)
+{
+	if (!name || name[0] == '/')
+		return false;
+
+	struct key_ent* ent = ent_from_pubk(pubk);
+	if (!ent)
+		return false;
+
+	int dfd = openat(keystore.dirfd_state, ent->fn, O_DIRECTORY | O_CLOEXEC);
+	if (-1 == dfd)
+		return false;
+
+	int rv = unlinkat(dfd, name, 0);
+	close(dfd);
+
+	return rv == 0;
+}
+
+bool a12helper_keystore_enumerate(uintptr_t* ref, uint8_t pubk[static 32])
+{
+	if (keystore.dirfd_state == -1)
+		return false;
+
+/* first one */
+	if (!*ref){
+		*ref = (uintptr_t) (void*) keystore.hosts;
+		if (keystore.hosts){
+			memcpy(pubk, keystore.hosts->key, 32);
+			return true;
+		}
+		return false;
+	}
+
+/* step to next, if it's empty, give up */
+	struct key_ent* ent = (void*) *ref;
+	ent = ent->next;
+	if (!ent)
+		return false;
+
+	memcpy(pubk, keystore.hosts->key, 32);
+	*ref = (uintptr_t) (void*) ent;
+
+	return true;
 }
 
 int a12helper_keystore_dirfd(const char** err)

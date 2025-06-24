@@ -100,6 +100,9 @@ static void* tunnel_runner(void* t)
 
 	a12_trace_tag(S, "tunnel");
 	if (anet_authenticate(S, ts->fd, ts->fd, &err)){
+/*		FILE* dst = fopen("/tmp/tunnel.check", "w");
+		a12int_set_checked(S, dst);
+		a12_set_trace_level(8192, dst); */
 		a12helper_a12srv_shmifcl(ts->handover, S, NULL, ts->fd, ts->fd);
 	}
 
