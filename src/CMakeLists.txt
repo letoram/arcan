@@ -130,7 +130,7 @@ if (NOT DEFINED ENGINE_BUILDTAG)
 		execute_process(
 			COMMAND fossil info tip
 			COMMAND grep hash
-			COMMAND awk "{print substr($2, length($2)-6,6)}"
+			COMMAND awk "{print substr($2, length($2)-5,6)}"
 			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 			OUTPUT_VARIABLE FOSSIL_INFO
 		)
