@@ -35,6 +35,10 @@
 #define BLOB_QUEUE_CAP (128 * 1024)
 #endif
 
+#ifndef OUTBOUND_BUFFER_COUNT
+#define OUTBOUND_BUFFER_COUNT 2
+#endif
+
 /* safe UDP beacon, increase in controlled LANs */
 #ifndef BEACON_KEY_CAP
 #define BEACON_KEY_CAP 15
@@ -281,8 +285,8 @@ struct a12_state {
 	} pending_dynamic;
 
 /* populate and forwarded output buffer */
-	size_t buf_sz[2];
-	uint8_t* bufs[2];
+	size_t buf_sz[OUTBOUND_BUFFER_COUNT];
+	uint8_t* bufs[OUTBOUND_BUFFER_COUNT];
 	uint8_t buf_ind;
 	size_t buf_ofs;
 

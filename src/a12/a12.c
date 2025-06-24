@@ -3690,7 +3690,7 @@ a12_flush(struct a12_state* S, uint8_t** buf, int allow_blob)
  * been pushed to the other side */
 	*buf = S->bufs[S->buf_ind];
 	S->buf_ofs = 0;
-	S->buf_ind = (S->buf_ind + 1) % 2;
+	S->buf_ind = (S->buf_ind + 1) % OUTBOUND_BUFFER_COUNT;
 	a12int_trace(A12_TRACE_ALLOC, "locked %d, new buffer: %d", old_ind, S->buf_ind);
 
 	return rv;
