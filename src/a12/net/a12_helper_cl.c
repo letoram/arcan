@@ -305,12 +305,10 @@ bool spawn_thread(struct a12_state* S,
 	atomic_fetch_add(&cl->n_segments, 1);
 
 	if (-1 == pthread_create(&pth, &pthattr, client_thread, data)){
-		BEGIN_CRITICAL(cl, "cleanup-spawn");
 			atomic_fetch_sub(&cl->n_segments, 1);
 			a12_set_channel(S, chid);
 			a12_channel_close(S);
 			a12int_trace(A12_TRACE_ALLOC, "could not spawn thread");
-		END_CRITICAL(cl);
 		free(data);
 		free(cont);
 		return false;
@@ -323,7 +321,11 @@ static void auth_handler(struct a12_state* S, void* tag)
 {
 	S->on_auth = NULL;
 	struct arcan_shmif_cont* C = tag;
-	spawn_thread(S, C->user, C, 0);
+	struct cl_state* cl = C->user;
+
+	BEGIN_CRITICAL(cl, "auth-ok");
+		spawn_thread(S, cl, C, 0);
+	END_CRITICAL(cl);
 }
 
 int a12helper_a12srv_shmifcl(
@@ -372,8 +374,11 @@ int a12helper_a12srv_shmifcl(
 
 /* Hook authentication so that we can spawn the primary processing thread
  * unless the context comes pre-authentication, then spawn immediately. */
-	if (a12_auth_state(S) == AUTH_FULL_PK)
-		spawn_thread(S, cont.user, &cont, 0);
+	if (a12_auth_state(S) == AUTH_FULL_PK){
+		BEGIN_CRITICAL(&cl, "new-wnd-preauth");
+			spawn_thread(S, cont.user, &cont, 0);
+		END_CRITICAL(&cl);
+	}
 	else {
 		S->on_auth = auth_handler;
 		S->auth_tag = &cont;
@@ -391,7 +396,9 @@ int a12helper_a12srv_shmifcl(
 	};
 
 /* flush any left overs from authentication */
-	a12_unpack(S, NULL, 0, S, on_cl_event);
+	BEGIN_CRITICAL(&cl, "flush-post-auth");
+		a12_unpack(S, NULL, 0, S, on_cl_event);
+	END_CRITICAL(&cl);
 
 	while(a12_ok(S) && -1 != poll(fds, n_fd, -1)){
 		if (
