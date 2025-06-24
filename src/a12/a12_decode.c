@@ -362,7 +362,6 @@ void a12int_decode_vbuffer(struct a12_state* S,
 			(size_t)cvf->inbuf_pos
 		);
 
-#define DUMP_COMPRESSED
 #ifdef DUMP_COMPRESSED
 		static FILE* outf;
 		if (!outf)
