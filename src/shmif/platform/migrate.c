@@ -109,6 +109,8 @@ enum shmif_migrate_status shmif_platform_fallback(
 
 /* CONNECT_LOOP style behavior on force */
 	const char* current = cpoint;
+	if (!current)
+		return SHMIF_MIGRATE_NOCON;
 
 	while ((sv = arcan_shmif_migrate(C, current, NULL)) == SHMIF_MIGRATE_NOCON){
 		if (!force)
