@@ -16,6 +16,7 @@ struct anet_dirsrv_opts {
 	bool allow_tunnel;
 	bool discover_beacon;
 	bool runner_process;
+	bool flush_on_report;
 
 	char* allow_src;
 	char* allow_dir;
@@ -341,7 +342,7 @@ bool anet_directory_lua_init(struct global_cfg* cfg);
 /* directory is scanned and ready */
 void anet_directory_lua_ready(struct global_cfg* cfg);
 
-void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl);
+void anet_directory_lua_update(struct appl_meta* appl, int newappl);
 
 /* for config- specific custom implementation of an admin control channel */
 bool anet_directory_lua_admin_command(struct dircl* C, const char* msg);
@@ -369,7 +370,7 @@ bool anet_directory_lua_spawn_runner(
 /*
  * request to send signal [no] to process or thread associated with appl-runner
  */
-bool anet_directory_signal_runner(volatile struct appl_meta* appl, int no);
+bool anet_directory_signal_runner(struct appl_meta* appl, int no);
 
 /* Theoretically it's possble for one C to be in multiple appls so the API
  * reflects that, even though right now that is constrained to 1:(0,1) in the
@@ -512,6 +513,18 @@ bool dir_block_synch_request(
 void dirsrv_set_source_mask(
 	uint8_t pubk[static 32], int appid,
 	char identity[static 16], uint8_t dstpubk[static 32]);
+
+/* [EXPECT_LOCKED]
+ * Collect and merge all debug dumps from clients, care should be taken to
+ * validate the actual contents as each is provided raw from a potentially
+ * untrusted source.
+ */
+int dirsrv_build_report(const char* appl);
+
+/* [EXPECT_LOCKED]
+ * Unlink all debug dumps on [appl] from clients
+ */
+void dirsrv_flush_report(const char* appl);
 
 /*
  * Spin up a new ephemeral source process for connecting and registering in a

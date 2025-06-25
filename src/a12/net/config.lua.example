@@ -26,6 +26,10 @@ function init()
 	config.permissions.appl = 'developer' -- clients allowed to update appl slots
 	config.permissions.resources = 'shared-content' -- clients allowed to write
 
+-- mark if a developer requesting bug reports should cause them to flush without intervention.
+-- otherwise this is up to a custom admin interface to perform.
+	config.flush_report = false
+
 -- Allow an appl to be hosted server side, this means the server needs an arcan_lwa + afsrv_*
 -- stack to match. Since that is quite expensive to run, this shouldn't be allowed for everyone.
 	config.permissions.applhost = ''

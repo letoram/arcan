@@ -528,7 +528,8 @@ enum {
 	IDTYPE_DEBUG = 2,
 	IDTYPE_RAW   = 3,
 	IDTYPE_ACTRL = 4,
-	IDTYPE_MON   = 5
+	IDTYPE_MON   = 5,
+	IDTYPE_REPORT = 6
 };
 
 int identifier_to_appl(char* sep)
@@ -538,6 +539,8 @@ int identifier_to_appl(char* sep)
 		res = IDTYPE_STATE;
 	else if (strcmp(sep, ".debug") == 0)
 		res = IDTYPE_DEBUG;
+	else if (strcmp(sep, ".report") == 0)
+		res = IDTYPE_REPORT;
 	else if (strcmp(sep, ".appl") == 0)
 		res = IDTYPE_APPL;
 	else if (strcmp(sep, ".ctrl") == 0)
@@ -550,7 +553,19 @@ int identifier_to_appl(char* sep)
 	return res;
 }
 
-static int build_debug_pkg(const char* appl, bool flush)
+void dirsrv_flush_report(const char* appl)
+{
+	uintptr_t ref = 0;
+	uint8_t outk[32];
+	char fnbuf[64];
+	snprintf(fnbuf, 64, "%s.debug", appl);
+
+	while (a12helper_keystore_enumerate(&ref, outk)){
+		a12helper_keystore_stateunlink(outk, fnbuf);
+	}
+}
+
+int dirsrv_build_report(const char* appl)
 {
 	uintptr_t ref = 0;
 	uint8_t outk[32];
@@ -590,8 +605,6 @@ static int build_debug_pkg(const char* appl, bool flush)
 		}
 		fputc('\n', out);
 
-		if (flush)
-			a12helper_keystore_stateunlink(outk, fnbuf);
 		fclose(fin);
 	}
 
@@ -1148,6 +1161,23 @@ static void handle_bchunk_req(struct dircl* C, size_t ns, char* ext, bool input)
 				if (anet_directory_lua_monitor(C, meta)){
 					return;
 				}
+			}
+		break;
+
+/* For getting a debug report, we have two paths. If a controller is attached
+ * it is responsible for doing initial triaging and mapping to tickets (if such
+ * as system is attached) or routing through .monitor. */
+		case IDTYPE_REPORT:
+			if (a12helper_keystore_accepted(C->pubk, active_clients.opts->allow_appl))
+			{
+				if (meta->server_tag)
+					goto fail;
+
+				resfd = dirsrv_build_report(meta->appl.name);
+				if (active_clients.opts->flush_on_report)
+					dirsrv_flush_report(meta->appl.name);
+
+				goto ok;
 			}
 		break;
 

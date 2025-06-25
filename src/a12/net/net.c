@@ -2240,7 +2240,9 @@ int main(int argc, char** argv)
 			}
 
 /* now we can run the post-config hook so calls like link_directory will work */
-			anet_directory_lua_ready(&global);
+			dirsrv_global_lock(__FILE__, __LINE__);
+				anet_directory_lua_ready(&global);
+			dirsrv_global_unlock(__FILE__, __LINE__);
 		}
 
 		if (!global.trust_domain)

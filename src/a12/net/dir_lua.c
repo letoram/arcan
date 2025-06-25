@@ -614,6 +614,9 @@ static int cfg_newindex(lua_State* L)
 	if (strcmp(key, "allow_tunnel") == 0){
 		CFG->dirsrv.allow_tunnel = alua_tobnumber(L, 3, "allow_tunnel");
 	}
+	else if (strcmp(key, "flush_report") == 0){
+		CFG->dirsrv.flush_on_report = alua_tobnumber(L, 3, "flush_report");
+	}
 	else if (strcmp(key, "directory_server") == 0){
 		if (alua_tobnumber(L, 3, "directory_server")){
 			CFG->meta.mode = 1; /* anet_shmif_cl, but with --directory is -l */
@@ -675,7 +678,10 @@ static int cfg_newindex(lua_State* L)
 	else
 		luaL_error(L, "unknown key: config.%s, allowed: "
 			"allow_tunnel, discover_beacon, directory_server, "
-			"log_level, log_target, listen_port, runner_process\n", key);
+			"flush_report, log_level, log_target, listen_port, "
+			"runner_process\n",
+			key
+		);
 
 	return 0;
 }
@@ -1183,6 +1189,41 @@ static int dir_matchkeys(lua_State* L)
 	return 1;
 }
 
+static int dir_appllist(lua_State* L)
+{
+	lua_newtable(L);
+	struct appl_meta* M = &CFG->dirsrv.dir;
+
+	while (M){
+		lua_pushstring(L, "id");
+		lua_pushnumber(L, M->identifier);
+		lua_rawset(L, -3);
+
+		lua_pushstring(L, "name");
+		lua_pushstring(L, M->appl.name);
+		lua_rawset(L, -3);
+
+		lua_pushstring(L, "timestamp");
+		lua_pushnumber(L, M->update_ts);
+		lua_rawset(L, -3);
+
+		lua_pushstring(L, "runner_active");
+		lua_pushboolean(L, M->server_tag != NULL);
+		lua_rawset(L, -3);
+
+		M = M->next;
+	}
+
+	return 1;
+}
+
+static int dir_flushreport(lua_State* L)
+{
+	const char* applname = luaL_checkstring(L, 1);
+	dirsrv_flush_report(applname);
+	return 0;
+}
+
 static int dir_getkey(lua_State* L)
 {
 	char* val = arcan_db_appl_val(DB, "directory", luaL_checkstring(L, 1));
@@ -1427,6 +1468,12 @@ bool anet_directory_lua_init(struct global_cfg* cfg)
 	lua_pushcfunction(L, dir_getkey);
 	lua_setglobal(L, "get_key");
 
+	lua_pushcfunction(L, dir_flushreport);
+	lua_setglobal(L, "flush_report");
+
+	lua_pushcfunction(L, dir_appllist);
+	lua_setglobal(L, "list_appl");
+
 	if (cfg->config_file){
 		int status = luaL_dofile(L, cfg->config_file);
 		if (0 != status){
@@ -1569,7 +1616,7 @@ static void* thread_appl_runner(void* tag)
 	return NULL;
 }
 
-bool anet_directory_signal_runner(volatile struct appl_meta* appl, int sig)
+bool anet_directory_signal_runner(struct appl_meta* appl, int sig)
 {
 	struct runner_state* runner = appl->server_tag;
 
@@ -1581,7 +1628,7 @@ bool anet_directory_signal_runner(volatile struct appl_meta* appl, int sig)
 	return kill(pid, sig) == 0;
 }
 
-void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl)
+void anet_directory_lua_update(struct appl_meta* appl, int newappl)
 {
 /* newappl contains the packed (unauthenticated) appl from an authenticated
  * source. If we have an active runner we should send the new BCHUNK_IN to the
@@ -1595,7 +1642,6 @@ void anet_directory_lua_update(volatile struct appl_meta* appl, int newappl)
 	FILE* applf = fdopen(newappl, "r");
 	const char* err;
 
-/* get rid of volatile qualifier */
 	char name[sizeof(appl->appl.name)];
 	for (size_t i = 0; i < sizeof(appl->appl.name); i++){
 		name[i] = appl->appl.name[i];
