@@ -595,7 +595,7 @@ int dirsrv_build_report(const char* appl)
 			continue;
 
 		unsigned char* b64 = a12helper_tob64(outk, 32, &(size_t){0});
-		fprintf(out, "source=%s:length=%zd\n", b64, sbuf.st_size + 1);
+		fprintf(out, "source=%s:length=%zd\n", b64, (ssize_t) sbuf.st_size + 1);
 		free(b64);
 
 		while (!feof(fin)){

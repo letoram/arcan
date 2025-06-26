@@ -4283,7 +4283,7 @@ void a12int_check_buffer(struct a12_state* S, uint8_t* buf, size_t buf_sz)
 /* variable length */
 		case STATE_VIDEO_PACKET:
 		case STATE_AUDIO_PACKET:
-		case STATE_BLOB_PACKET:
+		case STATE_BLOB_PACKET:{
 			uint8_t channel = buf[ofs];
 			uint32_t stream;
 			unpack_u32(&stream, &buf[ofs+1]);
@@ -4293,9 +4293,10 @@ void a12int_check_buffer(struct a12_state* S, uint8_t* buf, size_t buf_sz)
 			EXPECT(left);
 			ofs += left;
 			fprintf(S->checked_out,
-				"%"PRIu64":channel=%"PRIu8":video/audio/blob=%s", seqn, channel, left);
+				"%"PRIu64":channel=%"PRIu8":video/audio/blob=%"PRIu16, seqn, channel, left);
 		}
 		break;
+		}
 	}
 }
 #endif
