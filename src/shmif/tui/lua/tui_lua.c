@@ -14,6 +14,9 @@
 #include <arcan_tui_linewnd.h>
 #include <arcan_tui_readline.h>
 
+/* comes with arcan_shmif.h but not exported */
+void arcan_random(uint8_t* dst, size_t sz);
+
 #include <assert.h>
 #include <stdbool.h>
 #include <fcntl.h>
@@ -1453,7 +1456,7 @@ static int tui_mkdtemp(lua_State* L)
 			uint32_t rv;
 			uint8_t rng[4];
 		} rval;
-		rval.rv = arc4random();
+		arcan_random((uint8_t*)&rval.rv, 4);
 
 		for (size_t i = 0; i < 4; i++)
 			work[len-1-i] = (char)(rval.rng[i] % 24) + 'a';

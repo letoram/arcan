@@ -33,6 +33,11 @@
 #include "nbio.h"
 #include "nbio_local.h"
 
+/*
+ * comes with shmif but not exported
+ */
+void arcan_random(uint8_t* dst, size_t sz);
+
 #if LUA_VERSION_NUM == 501
 	#define lua_rawlen(x, y) lua_objlen(x, y)
 #endif
@@ -196,8 +201,9 @@ int alt_nbio_socket(const char* path, int ns, char** out)
  * retry counter to counteract the rare collision vs. permanent problem */
 	do {
 		char tmpname[32];
-		long rnd = arc4random();
-		snprintf(tmpname, sizeof(tmpname), "/tmp/_sock%ld_%d", rnd, getpid());
+		uint32_t rnd;
+		arcan_random((uint8_t*) &rnd, 4);
+		snprintf(tmpname, sizeof(tmpname), "/tmp/_sock%"PRIu32"_%d", rnd, getpid());
 		char* tmppath = arcan_find_resource(tmpname, ns, ARES_FILE, NULL);
 		if (!tmppath){
 			local_path = arcan_expand_resource(tmpname, ns);
