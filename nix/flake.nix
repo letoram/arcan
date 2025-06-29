@@ -30,7 +30,8 @@
         SDL2
         SDL2.dev
         libxkbcommon
-        libusb
+        libusb1
+        libuvc
         libunwind
         libvlc
         libglvnd
@@ -38,7 +39,14 @@
         eglexternalplatform
         ffmpeg
         espeak
-        mupdf.dev
+        mupdf
+        zlib
+        libjpeg
+        harfbuzz
+        jbig2dec
+        openjpeg_2
+        gumbo
+        glib
         file
         tesseract
         leptonica
