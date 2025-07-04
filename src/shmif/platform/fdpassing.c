@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <poll.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -127,8 +128,14 @@ int shmif_platform_fetchfds(
 /* spin until we get something over the socket or the aliveness check fails */
 	if (blocking){
 		for (;;){
-			if (-1 != recvmsg(sockin_fd, &msg, MSG_NOSIGNAL))
+			if (-1 != recvmsg(sockin_fd, &msg, MSG_NOSIGNAL | MSG_DONTWAIT))
 				break;
+
+/* since the parent can crash / migrate / handover / other operations that
+ * would pull the DMS into trigger recovery we can't simply block on recvmsg
+ * so resort to a long-ish poll */
+			struct pollfd pfd = {.fd = sockin_fd, .events = POLLIN | POLLHUP};
+			poll(&pfd, 1, 1000);
 
 			if (alive_check && !alive_check(tag))
 				return -1;
