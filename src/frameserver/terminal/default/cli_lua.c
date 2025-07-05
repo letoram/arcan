@@ -7,11 +7,53 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <signal.h>
 #include "tui_lua.h"
 
 #include "lash.h"
 
+static lua_State* lua;
 unsigned long long arcan_timemillis();
+
+/*
+ * Just signal to get a dump of the current calltrace to pick out livelocks,
+ * though the option of pulling in the debugif from
+ * src/a12/net/dir_lua_support.c should be considered or generalised. The one
+ * point of contention is entrypoint mapping, we need to be able to match that
+ * from the tui-lua bindings, and there are a lot more callbacks to annotate in
+ * such a way.
+ *
+ */
+static void watchdog(lua_State* L, lua_Debug* D)
+{
+	lua_sethook(lua, NULL, LUA_MASKLINE, 0);
+
+	int top = lua_gettop(L);
+
+  lua_getfield(L, LUA_GLOBALSINDEX, "debug");
+  if (!lua_istable(L, -1)) {
+    lua_pop(L, 1);
+    return;
+  }
+  lua_getfield(L, -1, "traceback");
+  if (!lua_isfunction(L, -1)) {
+    lua_pop(L, 2);
+    return;
+  }
+  lua_pushvalue(L, 1);  /* pass error message */
+  lua_pushinteger(L, 2);  /* skip this function and traceback */
+  lua_call(L, 2, 1);  /* call debug.traceback */
+	const char* traceback = lua_tostring(L, -1);
+	fputs(traceback ? traceback : "(no trace)\n", stdout);
+	fflush(stdout);
+
+	lua_pop(L, 1);
+}
+
+static void monitor_sigusr(int sig)
+{
+	lua_sethook(lua, watchdog, LUA_MASKLINE, 1);
+}
 
 /*
  * notes:
@@ -78,9 +120,11 @@ static int emptyf(lua_State* L)
 
 int arcterm_luacli_run(struct arcan_shmif_cont* shmif, struct arg_arr* args)
 {
-	lua_State* lua = luaL_newstate();
+	lua = luaL_newstate();
 	if (!lua)
 		return EXIT_FAILURE;
+
+	sigaction(SIGUSR1,&(struct sigaction){.sa_handler = monitor_sigusr}, 0);
 
 	long long last = arcan_timemillis();
 	luaL_openlibs(lua);
