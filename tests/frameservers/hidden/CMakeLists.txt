@@ -1,5 +1,5 @@
 PROJECT( hidden )
-cmake_minimum_required(VERSION 3.1.0)
+cmake_minimum_required(VERSION 3.5.0)
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../../src/platform/cmake/modules)
 if (ARCAN_SOURCE_DIR)

@@ -323,9 +323,9 @@ static void auth_handler(struct a12_state* S, void* tag)
 	struct arcan_shmif_cont* C = tag;
 	struct cl_state* cl = C->user;
 
-	BEGIN_CRITICAL(cl, "auth-ok");
+/* BEGIN_CRITICAL(cl, "auth-ok"); */
 		spawn_thread(S, cl, C, 0);
-	END_CRITICAL(cl);
+/* END_CRITICAL(cl); */
 }
 
 int a12helper_a12srv_shmifcl(

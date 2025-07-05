@@ -34,16 +34,12 @@ enum anet_mode {
 	ANET_SHMIF_SRVAPP_INHERIT
 };
 
-enum mt_mode {
-	MT_SINGLE = 0,
-	MT_FORK = 1
-};
-
 struct arcan_net_meta {
 	int argc;
 	char** argv;
 	char* bin;
 };
+static struct arcan_net_meta ARGV_OUTPUT;
 
 struct global_cfg global = {
 	.backpressure_soft = 2,
@@ -62,6 +58,14 @@ struct global_cfg global = {
 	}
 };
 
+/*
+ * Used when hosting a source either directly or through a directory.
+ */
+static struct {
+	struct shmifsrv_client* prctl;
+	pthread_mutex_t lock;
+} SESSION;
+
 static const char* trace_groups[] = {
 	"video",
 	"audio",
@@ -77,9 +81,6 @@ static const char* trace_groups[] = {
 	"security",
 	"directory"
 };
-
-static struct a12_vframe_opts vcodec_tuning(
-	struct a12_state* S, int segid, struct shmifsrv_vbuffer* vb, void* tag);
 
 static bool open_keystore(struct anet_options* opts, const char** err)
 {
@@ -111,55 +112,6 @@ static int tracestr_to_bitmap(char* work)
 		pt = strtok(NULL, ",");
 	}
 	return res;
-}
-
-static bool handover_setup(struct a12_state* S,
-	int fd, struct arcan_net_meta* meta, struct shmifsrv_client** C)
-{
-	struct anet_options* anet = &global.meta;
-
-	if (anet->mode != ANET_SHMIF_EXEC && global.directory <= 0)
-		return true;
-
-/* wait for authentication before going for the shmifsrv processing mode */
-	char* msg;
-	if (!anet_authenticate(S, fd, fd, &msg)){
-		a12int_trace(A12_TRACE_SYSTEM, "authentication failed: %s", msg);
-		free(msg);
-		shutdown(fd, SHUT_RDWR);
-		close(fd);
-		return false;
-	}
-
-	if (S->remote_mode == ROLE_PROBE){
-		a12int_trace(A12_TRACE_SYSTEM, "probed:terminating");
-		shutdown(fd, SHUT_RDWR);
-		close(fd);
-		return false;
-	}
-
-	a12int_trace(A12_TRACE_SYSTEM, "client connected, spawning: %s", meta->bin);
-
-/* connection is ok, tie it to a new shmifsrv_client via the exec arg. The GUID
- * is left 0 here as the local bound applications tend to not have much of a
- * perspective on that. Should it become relevant, just stepping Kp with a local
- * salt through the hash should do the trick. */
-	int socket, errc;
-	extern char** environ;
-	struct shmifsrv_envp env = {
-		.init_w = 32, .init_h = 32,
-		.path = meta->bin,
-		.argv = meta->argv, .envv = environ
-	};
-
-	*C = shmifsrv_spawn_client(env, &socket, &errc, 0);
-	if (!*C){
-		shutdown(fd, SHUT_RDWR);
-		close(fd);
-		return false;
-	}
-
-	return true;
 }
 
 static int get_bcache_dir()
@@ -194,227 +146,177 @@ static void set_log_trace(const char* prefix)
 #endif
 }
 
-static void fork_a12srv(struct a12_state* S, int fd, void* tag)
-{
 /*
- * With the directory server mode we also maintain a shmif server connection
- * and inherit shmif into the forked child that is a re-execution of ourselves. */
-	int clsock = -1;
-	struct shmifsrv_client* cl = NULL;
+ * Just wrap regular mutex operations and put in a 'spawn on first call'
+ */
+static struct shmifsrv_client* lock_session_manager(struct arcan_net_meta* M)
+{
+	pthread_mutex_lock(&SESSION.lock);
 
-	if (global.directory > 0){
-		anet_directory_shmifsrv_set(&global.dirsrv);
+/* first create the thing, take whatever path we were launched with to retain
+ * the same options of ./arcan-net vs /usr/bin/arcan-net vs arcan-net */
+	if (!SESSION.prctl){
+		size_t blen = strlen(global.path_self) - 1;
+		while (blen && global.path_self[blen]){
+			if (global.path_self[blen] == '/'){
+				blen++;
+				break;
+			}
 
-		char tmpfd[32], tmptrace[32];
-		snprintf(tmpfd, sizeof(tmpfd), "%d", fd);
-		snprintf(tmptrace, sizeof(tmptrace), "%d", a12_trace_targets);
-
-		char* argv[] = {global.path_self, "-d", tmptrace, "-S", tmpfd, NULL, NULL};
-		char envarg[1024];
-		snprintf(envarg, 1024, "ARCAN_ARG=rekey=%zu", global.meta.opts->rekey_bytes);
-		char* envv[] = {envarg, NULL};
-
-/* shmif-server lib will get to waitpid / kill so we don't need to care here */
-		struct shmifsrv_envp env = {
-			.path = global.path_self,
-			.init_w = 32,
-			.init_h = 32,
-			.envv = envv,
-			.argv = argv,
-			.detach = 2 | 4 | 8
+			blen--;
 		};
 
-		a12_trace_tag(S, "dir_shmif");
-		cl = shmifsrv_spawn_client(env, &clsock, NULL, 0);
-		if (cl){
-			anet_directory_shmifsrv_thread(cl, S, NULL);
+		size_t plen = strlen(global.path_self) + sizeof("arcan-net-session");
+		char* path = malloc(plen);
+		snprintf(path, plen, "%.*sarcan-net-session", blen, global.path_self);
+
+/* take -- part of our input arguments, prepend binary name and append NUL */
+		size_t argc = 0;
+		while (M->argv[argc])
+			argc++;
+		char* argv[argc+3];
+
+		argv[0] = "arcan-net-session";
+		argv[1] = "--";
+
+		for (size_t i = 0; i < argc; i++){
+			argv[i + 2] = M->argv[i];
+		}
+		argv[argc + 2] = '\0';
+
+		extern char** environ;
+		struct shmifsrv_envp env = {
+			.path = path,
+			.detach = 0 /* 2, 4, 8 */,
+			.envv = environ,
+			.argv = argv
+		};
+
+		int errc;
+		SESSION.prctl = shmifsrv_spawn_client(env, &(int){0}, &errc, 0);
+		if (SESSION.prctl){
+/*
+ *   Currently no need for a threaded view of it, this might change though
+ *   so have everything in place.
+ *   pthread_t pth;
+		 pthread_attr_t pthattr;
+		 pthread_attr_init(&pthattr);
+		 pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+		 pthread_create(&pth, &pthattr, a12host_session_manager, NULL);
+
+		 The loop in arcan-net-session doesn't require REGISTER/ACTIVATE, and
+		 only really reacts to BCHUNK_IN / BCHUNK_OUT.
+	*/
+			int pv;
+			while ( (pv = shmifsrv_poll(SESSION.prctl)) != CLIENT_DEAD){
+
+/* client ready, this is where we should transfer keystore handle as BCHUNK_IN */
+			 if (pv == CLIENT_IDLE){
+					break;
+				}
+			}
+
+			if (pv == CLIENT_DEAD){
+				shmifsrv_free(SESSION.prctl, 0);
+				SESSION.prctl = NULL;
+			}
 		}
 
-		a12_channel_close(S);
+		free(path);
+	}
+
+	return SESSION.prctl;
+}
+
+static void unlock_session_manager()
+{
+	pthread_mutex_unlock(&SESSION.lock);
+}
+
+static void launch_inbound_sink(struct a12_state* S, int fd, void* tag)
+{
+/* This is simple-ish, since we are not coming from a threaded context.
+ * Just detach and let the accept() loop continue. */
+	pid_t pid = fork();
+	if (pid != 0){
+		waitpid(pid, NULL, 0);
+		exit(EXIT_SUCCESS);
+	}
+
+	setsid();
+	if (fork() != 0){
 		close(fd);
 		return;
 	}
 
-	pid_t fpid = fork();
-
-/* just ignore and return to caller */
-	if (fpid > 0){
-		a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d", (int)fpid);
-		a12_channel_close(S);
-		close(fd);
-		close(clsock);
-		return;
-	}
-
-	if (fpid == -1){
-		a12int_trace(A12_TRACE_SYSTEM, "couldn't fork/dispatch, ulimits reached?\n");
-		a12_channel_close(S);
-		close(fd);
-		return;
-	}
-
-/* Split the log output on debug so we see what is going on */
-	set_log_trace("clwrk_log");
-
-/* make sure that we don't leak / expose whatever the listening process has,
- * not much to do to guarantee or communicate the failure on these three -
- * possibly creating a slush-pipe and dup:ing that .. */
-	close(STDIN_FILENO);
-	close(STDOUT_FILENO);
-	close(STDERR_FILENO);
-	open("/dev/null", O_RDONLY);
-	open("/dev/null", O_WRONLY);
-	open("/dev/null", O_WRONLY);
-
-	if (cl){
-		shmifsrv_free(cl, SHMIFSRV_FREE_NO_DMS);
-	}
-
-	struct shmifsrv_client* C = NULL;
-	struct arcan_net_meta* meta = tag;
-	int rc = 0;
-
-	if (!handover_setup(S, fd, meta, &C)){
-		goto out;
-	}
-
-/* this is for a full 'remote desktop' like scenario, directory is handled
- * in handover_setup */
-	arcan_shmif_privsep(NULL, "shmif", NULL, 0);
-	a12_trace_tag(S, "source_tunnel");
-
-	if (C){
-		a12helper_a12cl_shmifsrv(S, C, fd, fd, (struct a12helper_opts){
-			.redirect_exit = global.meta.redirect_exit,
-			.devicehint_cp = global.meta.devicehint_cp,
-			.vframe_block = global.backpressure,
-			.vframe_soft_block = global.backpressure_soft,
-			.eval_vcodec = vcodec_tuning,
-			.bcache_dir = get_bcache_dir()
-		});
-		shmifsrv_free(C, SHMIFSRV_FREE_NO_DMS);
-	}
-	else {
-/* we should really re-exec ourselves with the 'socket-passing' setup so that
- * we won't act as a possible ASLR break */
-		rc = a12helper_a12srv_shmifcl(NULL, S, NULL, fd, fd);
-	}
-
-out:
+	int rc = a12helper_a12srv_shmifcl(NULL, S, NULL, fd, fd);
 	shutdown(fd, SHUT_RDWR);
 	close(fd);
 	exit(rc < 0 ? EXIT_FAILURE : EXIT_SUCCESS);
 }
 
-extern char** environ;
-
-static struct a12_vframe_opts vcodec_tuning(
-	struct a12_state* S, int segid, struct shmifsrv_vbuffer* vb, void* tag)
+static void launch_dirsrv_handler(struct a12_state* S, int fd, void* tag)
 {
-	struct a12_vframe_opts opts = {
-		.method = VFRAME_METHOD_DZSTD,
-		.bias = VFRAME_BIAS_BALANCED
+	anet_directory_shmifsrv_set(&global.dirsrv);
+
+	char tmpfd[32], tmptrace[32];
+	snprintf(tmpfd, sizeof(tmpfd), "%d", fd);
+	snprintf(tmptrace, sizeof(tmptrace), "%d", a12_trace_targets);
+
+	char* argv[] = {global.path_self, "-d", tmptrace, "-S", tmpfd, NULL, NULL};
+	char envarg[1024];
+	snprintf(envarg, 1024, "ARCAN_ARG=rekey=%zu", global.meta.opts->rekey_bytes);
+	char* envv[] = {envarg, NULL};
+
+/* shmif-server lib will get to waitpid / kill so we don't need to care here */
+	struct shmifsrv_envp env = {
+		.path = global.path_self,
+		.init_w = 32,
+		.init_h = 32,
+		.envv = envv,
+		.argv = argv,
+		.detach = 2 | 4 | 8
 	};
 
-/* missing: here a12_state_iostat could be used to get congestion information
- * and encoder feedback, then use that to forward new parameters + bias */
-	switch (segid){
-	case SEGID_LWA:
-		opts.method = VFRAME_METHOD_H264;
-	break;
-	case SEGID_GAME:
-		opts.method = VFRAME_METHOD_H264;
-		opts.bias = VFRAME_BIAS_LATENCY;
-	break;
-	case SEGID_AUDIO:
-		opts.method = VFRAME_METHOD_RAW_NOALPHA;
-		opts.bias = VFRAME_BIAS_LATENCY;
-	break;
-/* this one is also a possible subject for codec passthrough, that will have
- * to be implemented in the server util part as we need shmif to propagate if
- * we can deal with passthrough and then device_fail that if the other end
- * starts to reject the bitstream */
-
-	case SEGID_MEDIA:
-		opts.method = VFRAME_METHOD_H264;
-		opts.bias = VFRAME_BIAS_QUALITY;
-	break;
-	case SEGID_BRIDGE_ALLOCATOR:
-		opts.method = VFRAME_METHOD_RAW_NOALPHA;
-		opts.bias = VFRAME_BIAS_LATENCY;
-	break;
-	case SEGID_BRIDGE_WAYLAND:
-	case SEGID_BRIDGE_X11:
-		opts.method = VFRAME_METHOD_H264;
-		opts.bias = VFRAME_BIAS_LATENCY;
-	break;
+	a12_trace_tag(S, "dir_shmif");
+	struct shmifsrv_client* cl = shmifsrv_spawn_client(env, &(int){-1}, NULL, 0);
+	if (cl){
+		anet_directory_shmifsrv_thread(cl, S, NULL);
 	}
 
-/* This is temporary until we establish a config format where the parameters
- * can be set in a non-commandline friendly way (recall ARCAN_CONNPATH can
- * result in handover-exec arcan-net.
- *
- * Another complication here is that if RHINT isn't set to ignore alpha,
- * we have the problem that H264 does not handle an alpha channel. Likely
- * the best we can do then is to separately track alpha, send it as a mask
- * with a separate command that forwards it.
- *
- * That solution would possibly also attach to sending mip-map like reduced
- * pre-images for deadline-driven impostors.
- */
-	if (opts.method == VFRAME_METHOD_H264){
-		static bool got_opts;
-		static unsigned long cbr = 22;
-		static unsigned long br  = 1024;
-
-/* convert and clamp to the values supported by x264 in ffmpeg */
-		if (!got_opts){
-			char* tmp;
-			if ((tmp = getenv("A12_VENC_CRF"))){
-				cbr = strtoul(tmp, NULL, 10);
-				if (cbr > 55)
-					cbr = 55;
-			}
-			if ((tmp = getenv("A12_VENC_RATE"))){
-				br = strtoul(tmp, NULL, 10);
-				if (br * 1000 > INT_MAX)
-					br = INT_MAX;
-			}
-			got_opts = true;
-		}
-
-		opts.ratefactor = cbr;
-		opts.bitrate = br;
-	}
-
-	return opts;
+	a12_channel_close(S);
+	close(fd);
+	return;
 }
 
-static void single_a12srv(struct a12_state* S, int fd, void* tag)
+static void forward_inbound_exec(struct a12_state* S, int fd, void* tag)
 {
-	struct shmifsrv_client* C = NULL;
-	struct arcan_net_meta* meta = tag;
-
-	if (!handover_setup(S, fd, meta, &C))
-		return;
-
-	if (C){
-		a12helper_a12cl_shmifsrv(S, C, fd, fd, (struct a12helper_opts){
-			.redirect_exit = global.meta.redirect_exit,
-			.devicehint_cp = global.meta.devicehint_cp,
-			.vframe_block = global.backpressure,
-			.vframe_soft_block = global.backpressure_soft,
-			.eval_vcodec = vcodec_tuning,
-			.bcache_dir = get_bcache_dir()
-		});
-		shmifsrv_free(C, SHMIFSRV_FREE_NO_DMS);
-	}
-	else{
-		a12helper_a12srv_shmifcl(NULL, S, NULL, fd, fd);
+/* lock session manager takes care of ensuring that there is a session control
+ * process that takes care of mapping shmif to a12, and defer the decision to
+ * either share-single, recover abandoned session or create a new one. */
+	struct arcan_net_meta* M = tag;
+	struct shmifsrv_client* sm = lock_session_manager(M);
+	if (!sm){
+		a12int_trace(A12_TRACE_SYSTEM, "couldn't hand-over to session manager");
 		shutdown(fd, SHUT_RDWR);
 		close(fd);
+		return;
 	}
+
+/* The a12_state won't actually be used here, we can safely close it after we
+ * have transfered ownership. */
+	arcan_event conn = {
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_BCHUNK_OUT,
+		.tgt.message = "",
+	};
+	shmifsrv_enqueue_event(sm, &conn, fd);
+	close(fd);
+
+	unlock_session_manager();
 }
+
+extern char** environ;
 
 static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag);
 struct dirstate {
@@ -468,76 +370,6 @@ static void a12cl_dispatch(
 	close(fd);
 }
 
-static struct pk_response key_auth_dir(
-	struct a12_state* S, uint8_t pk[static 32], void* tag)
-{
-	struct dirstate* ds = tag;
-	struct pk_response auth = {.authentic = true};
-
-/* We need the key we registered with the dirsrv with as the sink will be
- * expecting it, while we trust whatever as the outer packet authk combine with
- * the ephemeral key.
- *
- * The ephemeral key match what the source (us) registered as, the same goes
- * for the inner. The reason for this is to be able to determine via a sideband
- * if the directory is trying to MITM. Since the Kpub is announced via the
- * directory the source can fire up another client and check that the announced
- * key is the same as the one it actually announced.
- *
- * For sources spawned by the directory itself that's not a risk, and we
- * have a generated key inherited. Check for this first.
- */
-	if (global.use_forced_remote_pubk){
-		uint8_t my_private_key[32];
-		a12helper_fromb64(
-			(uint8_t*) getenv("A12_USEPRIV"), 32, my_private_key);
-		a12_set_session(&auth, pk, my_private_key);
-		auth.authentic = true;
-		return auth;
-	}
-
-/*
- * Otherwise revert to the keystore
- */
-	char* tmp;
-	uint16_t tmpport;
-	uint8_t my_private_key[32];
-	a12helper_keystore_hostkey(
-		global.outbound_tag, 0, my_private_key, &tmp, &tmpport);
-	a12_set_session(&auth, pk, my_private_key);
-
-	return auth;
-}
-
-static void dir_a12srv(struct a12_state* S, int fd, void* tag)
-{
-	struct dirstate* ds = tag;
-	a12int_trace(A12_TRACE_DIRECTORY, "source_inbound_connected");
-
-/* should not be able to happen at this stage, hello won't go through without
- * the right authk and if you have that you're either source, sink or dirsrv
- * and both sink and dirsrv would be able to match the pubk. */
-	char* msg;
-	if (!anet_authenticate(S, fd, fd, &msg)){
-		a12int_trace(A12_TRACE_SECURITY, "authentication_failed");
-		return;
-	}
-
-	a12int_trace(A12_TRACE_DIRECTORY, "source_inbound_ready");
-	a12helper_a12cl_shmifsrv(S, ds->shmif, fd, fd, (struct a12helper_opts){
-		.redirect_exit = ds->aopts->redirect_exit,
-		.devicehint_cp = ds->aopts->devicehint_cp,
-		.vframe_block = global.backpressure,
-		.vframe_soft_block = global.backpressure_soft,
-		.eval_vcodec = vcodec_tuning,
-		.bcache_dir = get_bcache_dir()
-	});
-	shmifsrv_free(ds->shmif, SHMIFSRV_FREE_NO_DMS);
-
-	shutdown(fd, SHUT_RDWR);
-	exit(EXIT_SUCCESS);
-}
-
 static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
 {
 	a12int_trace(A12_TRACE_DIRECTORY, "open_request_negotiated");
@@ -547,7 +379,11 @@ static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
 /* main difference here is that we need to wrap the packets coming in and out
  * of the forked child, thus create a socketpair, set one part of the pair as
  * the a12_channel bstream sink and the other with the supported read into
- * state part. */
+ * state part. The connection info also needs to be relayed, i.e. do we make an
+ * outbound connection, listen for an inbound or tunnel.
+ *
+ * for those we spin up a short-lived thread that connect or accept, then do
+ * the same lock_session_manager + send descriptor */
 	int pre_fd = -1;
 	int sv[2];
 
@@ -557,126 +393,27 @@ static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
 			return;
 		}
 
+/*
+ * note: this does not yet respect tunnel-id for multiple tunnels,
+ * test this by randomising tunnel ID
+ */
 		a12_set_tunnel_sink(S, 1, sv[0]);
 		anet_directory_tunnel_thread(anet_directory_ioloop_current(), 1);
 		pre_fd = sv[1];
 	}
 
-	pid_t fpid = fork();
-
-/* Here, we fork() into listening on our registered port, this is the same as
- * the cldispatch that forks. We shouldn't be in a path where any substantial
- * POSIX 'technically UB territory buuuut' approach to the fork pattern has any
- * real effect.
- *
- * When things are a bit more robust, switch to the fork-fexec self approach
- * anyhow for IPC cleanliness, it's just inheriting the shmifsrc-client setup
- * that is a bit of a hassle. The crutch there is the normal one - we can't
- * just build a shmifsrv context from the memory page alone due to the transfer
- * socket (doable) and the semaphores where OSX compatibility comes back to
- * bite us again and again. Assuming Macs won't ever get any real OS-dev work
- * again, the option would be to let them take the punch and swap to blocking
- * on the socket and send [a/v/e] unlocks into local mutexes that way because
- * this is getting ridiculous.
- *
- * On the other hand, the main use for this dance is to let the same shmif
- * context be re-used with the next directory open request. This can be
- * achieved by firing up a new connection point (so -s random), setting that as
- * the fallback and letting the tunnel pipe loss capture that.
+/*
+ * grab or spawn session manager, forward the tunnel / connection primitive
+ * together with the authentication secret.
  */
-	if (fpid == 0){
-		struct sigaction oldsig;
-		sigaction(SIGINT, &(struct sigaction){}, &oldsig);
-		close(sv[0]);
-		close(ds->fd);
-
-		if (fork()){
-			exit(EXIT_SUCCESS);
-		}
-		setsid();
-
-/* the exec needs:
- *  --soft-auth --shmifsrv-dir
- *  authk from stdin
- */
-
-/* Trust the directory server provided secret.
- *
- * A nuanced option here is if to set the accept_n_pk_unknown to 1 or not.
- * The consequence is that the directory or the sink gets to install one key
- * we trust for inbound use.
- *
- * One probably would want to set that to a specific group for this context
- * of use, or mark the transitive origin / history. If that doesn't happen
- * and the keystore gets re-used for sourcing something else, that installed
- * key is part of the general trusted base.
- *
- * At the same time tracking the key, and depending on connection mode, add
- * that as a possible outbound target with the IP it connected from if an
- * interesting option for future discovery both LAN and WAN as well as
- * attribution.
- *
- * Block the behaviour outright for now, and don't forget that the parent might
- * actually be running / bleeding some state into us from the command line that
- * applied to the outbound connection when registering to the directory that
- * should not apply now in the role of a source.
- */
-		global.soft_auth = true;
-		global.accept_n_pk_unknown = 0;
-
-/* the shared secret to protect the initial hello is no longer optional, and we
- * have an added touch of forcing the 'ephemeral' key to be the one supplied by
- * the sink in order to let them differentiate the identity it uses with the
- * directory versus the one it uses with us. */
-		snprintf(ds->aopts->opts->secret, 32, "%s", a.authk);
-
-		ds->aopts->opts->pk_lookup = key_auth_dir;
-		ds->aopts->opts->pk_lookup_tag = ds;
-
-/* A subtle difference here is that the the private key we should use in the
- * setup (here same for ephem and real) is the one used to outbound connect to
- * the directory and not a listening default. We also want a timeout for the
- * case where we listen but nobody connects to us (reachability?). Remove the
- * host so that we don't try to bind the old outbound ip. */
-		char* errmsg = NULL;
-		ds->aopts->host = NULL;
-
-/* With tunnel mode we have a socketpair pre-created, where one end is set as
- * the tunnel-channel sink for the a12_state machine to the directory, and
- * the other is fed into the channel.
- *
- * Without tunnel-mode we listen for an inbound connection (or make an outbound
- * or send an outbound then listen for an inbound). The mentally more complex
- * dance is what happens if we tunnel through a directory that we tunnel ..
- */
-		if (pre_fd == -1){
-			anet_listen(ds->aopts, &errmsg, dir_a12srv, ds);
-		}
-		else {
-			struct a12_state* ast = a12_server(ds->aopts->opts);
-			dir_a12srv(ast, pre_fd, ds);
-		}
-
-		fprintf(stderr, "%s", errmsg ? errmsg : "");
-		exit(EXIT_SUCCESS);
-	}
-	else if (fpid == -1){
-		fprintf(stderr, "fork_a12cl() couldn't fork new process, check ulimits\n");
-		shmifsrv_free(ds->shmif, SHMIFSRV_FREE_NO_DMS);
-		shutdown(ds->fd, SHUT_RDWR);
-		close(ds->fd);
-		return;
-	}
-/* In order for tunnel mode to work we need to keep the directory server and
- * the ioloop alive. If we inherit a -S due to an ARCAN_CONNPATH or devicehint
- * keeping the shmif-context in order to re-share it is also a possibility. */
-	else {
-		if (pre_fd != -1){
-			close(pre_fd);
-		}
-	}
-
-	a12int_trace(A12_TRACE_SYSTEM, "client handed off to %d", (int)fpid);
+	struct shmifsrv_client* sm = lock_session_manager(&ARGV_OUTPUT);
+	arcan_event conn = {
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_BCHUNK_OUT,
+	};
+	snprintf(conn.tgt.message, 32, "%s", a.authk);
+	shmifsrv_enqueue_event(sm, &conn, pre_fd);
+	close(pre_fd);
 }
 
 static void fork_a12cl_dispatch(
@@ -1394,9 +1131,6 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 
 			return i;
 		}
-		else if (strcmp(argv[i], "-t") == 0){
-			opts->mt_mode = MT_SINGLE;
-		}
 		else if (strcmp(argv[i], "-T") == 0 || strcmp(argv[i], "--trust") == 0){
 			i++;
 			if (i == argc)
@@ -1969,7 +1703,6 @@ static struct pk_response key_auth_local(
 int main(int argc, char** argv)
 {
 	const char* err;
-	struct arcan_net_meta meta = {0};
 	sigaction(SIGPIPE, &(struct sigaction){
 			.sa_handler = SIG_IGN
 	}, NULL);
@@ -1980,10 +1713,10 @@ int main(int argc, char** argv)
 /* setup all the defaults but with dynamic allocation for strings etc.
  * so that the script config can easily override them */
 	global.meta.retry_count = -1;
-	global.meta.mt_mode = MT_FORK;
 	global.db_file = strdup(":memory:");
 	global.outbound_tag = strdup("default");
 
+	global.path_self = argv[0];
 	global.meta.opts = a12_sensitive_alloc(sizeof(struct a12_context_options));
 	global.meta.opts->pk_lookup = key_auth_local;
 	global.meta.keystore.directory.dirfd = -1;
@@ -2044,7 +1777,7 @@ int main(int argc, char** argv)
 
 /* inherited directory server mode doesn't take extra listening parameters and
  * was an afterthought not fitting with the rest of the (messy) arg parsing */
-	size_t argi = apply_commandline(argc, argv, &meta);
+	size_t argi = apply_commandline(argc, argv, &ARGV_OUTPUT);
 
 	if (!argi && global.meta.mode != ANET_SHMIF_DIRSRV_INHERIT && !global.meta.host)
 		return EXIT_FAILURE;
@@ -2202,17 +1935,18 @@ int main(int argc, char** argv)
 		}
 	}
 
-/* The directory option is not applied through the mode/role but rather as part
- * of handover_setup, but before then (since we can chose between single or
- * forking) we should scan / cache the applstore.
+/*
+ * In this mode we are listening for an inbound connection, this can be as a
+ * directory server or handling 'pushed' a12 sources.
  *
- * Also setup a shmif-srv-client connection to the new forked process and use
- * that to route / convey dynamic messages and later a corresponding server-
- * side set of appl rules. This also has the interesting effect of it itself
- * being redirectable to another arcan-net instance as migration / load
- * balance.
+ * The directory form should be moved to net_srv.c and the beacon part should
+ * be an option for all inbound forms.
  */
-	if (global.meta.mode == ANET_SHMIF_CL || global.meta.mode == ANET_SHMIF_EXEC){
+	if (global.meta.mode == ANET_SHMIF_CL){
+
+		if (!global.trust_domain)
+			global.trust_domain = strdup("default");
+
 		if (global.directory != -1){
 /* for the server modes, we also require the ability to execute ourselves to
  * hand out child processes with more strict sandboxing */
@@ -2224,12 +1958,10 @@ int main(int argc, char** argv)
 				return EXIT_FAILURE;
 			}
 			close(fd);
-			global.path_self = argv[0];
 			global.dirsrv.basedir = global.directory;
 			anet_directory_srv_scan(&global.dirsrv);
 			anet_directory_shmifsrv_set(&global.dirsrv);
 
-/* missing a config option to specify IPV6 beacon */
 			if (global.dirsrv.discover_beacon){
 				char* ipv6 = NULL;
 				pthread_t pth;
@@ -2243,25 +1975,28 @@ int main(int argc, char** argv)
 			dirsrv_global_lock(__FILE__, __LINE__);
 				anet_directory_lua_ready(&global);
 			dirsrv_global_unlock(__FILE__, __LINE__);
+
+			anet_listen(&global.meta, &errmsg, launch_dirsrv_handler, &ARGV_OUTPUT);
 		}
+		else {
+			anet_listen(&global.meta, &errmsg, launch_inbound_sink, &ARGV_OUTPUT);
+		}
+	}
 
-		if (!global.trust_domain)
-			global.trust_domain = strdup("default");
-
-		switch (global.meta.mt_mode){
-		case MT_SINGLE:
-			anet_listen(&global.meta, &errmsg, single_a12srv, &meta);
-			fprintf(stderr, "%s", errmsg ? errmsg : "");
-		break;
-		case MT_FORK:
-			anet_listen(&global.meta, &errmsg, fork_a12srv, &meta);
+/* if we host an executable, i.e.
+ * arcan-net -l 6680 -- /usr/bin/afsrv_terminal
+ *
+ * We offload management to a separate process that we forward the connection
+ * to. This process manages lifecycle for the hosted executables.
+ */
+	else if (global.meta.mode == ANET_SHMIF_EXEC){
+		anet_listen(&global.meta, &errmsg, forward_inbound_exec, &ARGV_OUTPUT);
+		if (errmsg){
 			fprintf(stderr, "%s", errmsg ? errmsg : "");
 			free(errmsg);
-		break;
-		default:
-		break;
+			return EXIT_FAILURE;
 		}
-		return EXIT_FAILURE;
+		return EXIT_SUCCESS;
 	}
 
 /* we have one shmif connection pre-established that should be mapped to
@@ -2290,8 +2025,9 @@ int main(int argc, char** argv)
 		extern char** environ;
 		struct shmifsrv_envp env = {
 			.init_w = 32, .init_h = 32,
-			.path = meta.bin,
-			.argv = meta.argv, .envv = environ
+			.path = ARGV_OUTPUT.bin,
+			.argv = ARGV_OUTPUT.argv,
+			.envv = environ
 		};
 
 		int errc;
@@ -2317,15 +2053,5 @@ int main(int argc, char** argv)
 	}
 
 /* ANET_SHMIF_SRV */
-	switch (global.meta.mt_mode){
-	case MT_SINGLE:
-		return a12_connect(&global.meta, a12cl_dispatch);
-	break;
-	case MT_FORK:
-		return a12_connect(&global.meta, fork_a12cl_dispatch);
-	break;
-	default:
-		return EXIT_FAILURE;
-	break;
-	}
+	return a12_connect(&global.meta, fork_a12cl_dispatch);
 }

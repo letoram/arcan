@@ -27,6 +27,13 @@ set(SOURCES
 	${A12_EXT}/fts.c
 )
 
+set(SESSION_SOURCES
+	session.c
+	a12_helper_srv.c
+	${ARCAN_SRC}/frameserver/util/anet_helper.c
+	${ARCAN_SRC}/frameserver/util/anet_keystore_naive.c
+)
+
 if (NOT LUA_FOUND)
 	find_package(Lua51 REQUIRED)
 endif()
@@ -47,7 +54,11 @@ set(INCLUDE_DIRS
 )
 
 add_executable(arcan-net ${SOURCES})
+add_executable(arcan-net-session ${SESSION_SOURCES})
+
 add_sanitizers(arcan-net)
+add_sanitizers(arcan-net-session)
+
 target_link_libraries(arcan-net PRIVATE
 	arcan_shmif
 	arcan_shmif_server
@@ -56,6 +67,26 @@ target_link_libraries(arcan-net PRIVATE
 	${LUA_LIBRARIES}
 	${SQLite3_LIBRARIES}
 )
+
+target_link_libraries(arcan-net-session PRIVATE
+	arcan_shmif
+	arcan_shmif_server
+	arcan_a12
+	${STDLIB}
+)
+
 target_include_directories(arcan-net PRIVATE ${INCLUDE_DIRS})
-target_compile_definitions(arcan-net PRIVATE WANT_KEYSTORE_HASHER HAVE_DIRSRV ARCAN_DB_STANDALONE ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${CMAKE_SYSTEM_NAME}\")
-install(TARGETS arcan-net DESTINATION ${CMAKE_INSTALL_BINDIR})
+target_include_directories(arcan-net-session PRIVATE ${INCLUDE_DIRS})
+
+target_compile_definitions(arcan-net PRIVATE
+	WANT_KEYSTORE_HASHER
+	HAVE_DIRSRV
+	ARCAN_DB_STANDALONE
+	ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${CMAKE_SYSTEM_NAME}\"
+)
+
+target_compile_definitions(arcan-net-session PRIVATE
+	ARCAN_BUILDVERSION=\"${SOURCE_TAG}-${CMAKE_SYSTEM_NAME}\"
+)
+
+install(TARGETS arcan-net arcan-net-session DESTINATION ${CMAKE_INSTALL_BINDIR})
