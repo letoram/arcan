@@ -28,6 +28,8 @@
  * Added record/replay of a12-state decrypted stream for easier debugging
  * Added Ed25519 signatures to appl/ctrl
  * Controller script API for `accept_nonblock` and `request_nonblock` for script-dynamic datastreams
+ * Added authentication key based connection resumption for sourcing inbound connection
+ * Refactored inbound connection handling to be multi-process with separate binary (arcan-net-session)
 
 ## Decode
  * Support building without libvlc support

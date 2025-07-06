@@ -20,6 +20,8 @@
 #include "../a12.h"
 #include "../a12_int.h"
 #include "a12_helper.h"
+
+#define WANT_KEYSTORE_HASHER
 #include "anet_helper.h"
 #include "hashmap.h"
 
@@ -32,10 +34,15 @@ static struct
 	char* bin;
 	char** argv;
 	bool shutdown;
+	bool soft_auth;
 	size_t rekey_bytes;
+	size_t accept_n_unknown;
+	const char* trust_domain;
+
 	struct a12_context_options copts;
 } G = {
 	.sync = PTHREAD_MUTEX_INITIALIZER,
+	.trust_domain = "default",
 	.copts = {
 		.local_role = ROLE_SOURCE
 	}
@@ -161,21 +168,73 @@ static struct a12_vframe_opts vcodec_tuning(
 }
 
 extern void arcan_random(uint8_t* dst, size_t nb);
+
+/*
+ * Ideally we don't want to expose the full keystore here but rather negotiate
+ * with the parent just as we do in the directory server form. This allows the
+ * keystore access to use more privileged syscalls, while we can stick to a
+ * stronger sandbox profile.
+ */
 static struct pk_response key_auth(
 	struct a12_state* S, uint8_t pubk[static 32], void* tag)
 {
 	struct client_meta* cl = tag;
 	struct pk_response rep = {0};
 
-/* for testing, just accept anything and generate a new key */
-	uint8_t secret[32];
-	arcan_random(secret, 32);
-	secret[0] &= 248;
-	secret[31] &= 127;
-	secret[31] |= 64;
+	uint8_t my_private_key[32] = {0};
+
+	char* keytag = NULL;
+	char* tmphost;
+	size_t ofs;
+	uint16_t tmpport;
+	bool known = false;
+
+	unsigned char* pubk_b64 = a12helper_tob64(pubk, 32, &(size_t){0});
+
+/*
+ * accept conditions:
+ *  preauth secret exchanged over external
+ *  in trusted store for the set domain
+ *  disabled (--soft-auth)
+ *  interactive request
+ */
+		if (
+		cl->secret[0] ||
+		(known = a12helper_keystore_accepted(pubk, G.trust_domain)) ||
+		G.soft_auth ||
+		a12helper_query_untrusted_key(
+			G.trust_domain, (char*) pubk_b64, pubk, &keytag, &ofs))
+	{
+/* default-return is unauthentic, nothing to do here if there's an external
+ * query mechanism,if we add a TUI should be routed ther as the helper here
+ * only uses isatty+stdio */
+	}
+	else{
+		free(pubk_b64);
+		return rep;
+	}
+
+/* interactive request to add */
+	if (keytag && keytag[0]){
+		a12helper_keystore_accept(pubk, keytag);
+		known = true;
+	}
+
+/* or set to accept first n unknown that uses the right initial secret */
+	if (!known && G.accept_n_unknown){
+		G.accept_n_unknown--;
+		a12helper_keystore_accept(pubk, keytag);
+	}
+
+/* If spawned by the directory server we got a generated privk to use, otherwise
+ * grab the one marked as 'default' */
+	if (getenv("A12_USEPRIV"))
+		a12helper_fromb64((uint8_t*) getenv("A12_USEPRIV"), 32, my_private_key);
+	else
+		a12helper_keystore_hostkey("default", 0, my_private_key, &tmphost, &tmpport);
 
 /* remember the pubk for resumption check */
-	a12_set_session(&rep, pubk, secret);
+	a12_set_session(&rep, pubk, my_private_key);
 	rep.authentic = true;
 	memcpy(cl->pubk, pubk, 32);
 
@@ -192,6 +251,7 @@ static struct pk_response key_auth(
 /* if !cl->source, set authentic to fail and warn that client couldn't be spawned */
 	UNLOCK();
 
+	free(pubk_b64);
 	return rep;
 }
 
@@ -316,7 +376,18 @@ static void flush_parent_event(arcan_event* ev)
 
 /* used for sending keymaterial */
 	if (ev->tgt.kind == TARGET_COMMAND_BCHUNK_IN){
-		fprintf(stderr, "Got keymaterial\n");
+		if (strcmp(ev->tgt.message, "keystore") == 0){
+			int fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, false);
+			const char* err;
+			if (!a12helper_keystore_open(
+				&(struct keystore_provider){
+					.directory.dirfd = fd}
+				), &err){
+				fprintf(stderr, "Couldn't open keystore: %s\n", err);
+			}
+		}
+		else
+			fprintf(stderr, "Unknown bchunk-in: %s\n", ev->tgt.message);
 	}
 
 /* used for a12 socket, accepted kpub comes in message */

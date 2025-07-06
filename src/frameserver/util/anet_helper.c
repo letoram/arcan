@@ -78,6 +78,58 @@ static bool flushout(struct a12_state* S, int fdout, char** err)
 	return true;
 }
 
+bool a12helper_query_untrusted_key(
+	const char* trust_domain,
+	char* kpub_b64, uint8_t kpub[static 32], char** out_tag, size_t* prefix_ofs)
+{
+	*prefix_ofs = 0;
+	if (!isatty(STDIN_FILENO)){
+		return false;
+	}
+
+	uint8_t emptyk[32] = {0};
+	if (memcmp(emptyk, kpub, 32) == 0){
+		fprintf(stdout,
+			"The other end supplied an untrusted, all-zero public key. Rejecting.\n");
+		return false;
+	}
+
+	fprintf(stdout,
+		"The other end is using an unknown public key (%s).\n"
+		"Are you sure you want to continue (yes/no/remember):\n", kpub_b64
+	);
+
+	char buf[16] = {0};
+	fgets(buf, 16, stdin);
+	if (strcmp(buf, "yes\n") == 0){
+		*out_tag = strdup("");
+		return true;
+	}
+	else if (strcmp(buf, "remember\n") == 0){
+		fprintf(stdout, "Specify an identifier tag (or empty for default):\n");
+		size_t ofs = 0;
+
+/* apply the trust-domain prefix */
+		fgets(buf, 16, stdin);
+		size_t len = strlen(buf);
+		if (len > 1){
+			buf[len-1] = '\0'; /* strip \n */
+			size_t tot = len + strlen(trust_domain) + 2; /* - to separate */
+			*out_tag = malloc(tot);
+			*prefix_ofs = strlen(trust_domain) + 1;
+			snprintf(*out_tag, tot, "%s-%s", trust_domain, buf);
+		}
+		else{
+			*prefix_ofs = 0;
+			*out_tag = strdup(trust_domain);
+		}
+
+		return true;
+	}
+
+	return false;
+}
+
 bool anet_authenticate(struct a12_state* S, int fdin, int fdout, char** err)
 {
 	char inbuf[4096];

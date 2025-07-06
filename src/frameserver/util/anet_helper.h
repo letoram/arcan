@@ -260,6 +260,13 @@ bool a12helper_keystore_enumerate(uintptr_t* ref, uint8_t pubk[static 32]);
 int a12helper_keystore_dirfd(const char** err);
 
 /*
+ * If "isatty" stdin, then block-prompt for key and tag
+ */
+bool a12helper_query_untrusted_key(
+	const char* trust_domain,
+	char* kpub_b64, uint8_t kpub[static 32], char** out_tag, size_t* prefix_ofs);
+
+/*
  * Using the configuration structure in anet_options, build a listening
  * socket and invoke dispatch with the heap allocated state object and
  * descriptor. This function will only return on failure, with [errmsg]
