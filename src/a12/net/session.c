@@ -2,11 +2,10 @@
  * Todo:
  * -----
  *
- *  1. send RESET event on resumption marking crash recovery
- *  2. return keymanagement back to normal
- *  3. test through directory-server path
- *  4. fix argument transfer from parent into config
- *  5. figure out frame-relay in multicast mode
+ *  1. return keymanagement back to normal
+ *  2. test through directory-server path
+ *  3. fix argument transfer from parent into config
+ *  4. figure out frame-relay in multicast mode
  */
 
 #include <arcan_shmif.h>
@@ -47,6 +46,7 @@ struct client_meta {
 	char secret[32];
 	uint8_t pubk[32];
 	struct shmifsrv_client* source;
+	bool recovered;
 };
 
 #define LOCK() do {pthread_mutex_lock(&G.sync); } while(0);
@@ -181,7 +181,13 @@ static struct pk_response key_auth(
 
 	LOCK();
 		cl->source = hashmap_get(&G.map_pubk, pubk, 32);
-		if (!cl->source)
+
+/* send a recovery RESET to the source client,
+ * fake inject a REGISTER in the other direction. */
+		if (cl->source){
+			cl->recovered = true;
+		}
+		else
 			cl->source = spawn_source();
 /* if !cl->source, set authentic to fail and warn that client couldn't be spawned */
 	UNLOCK();
@@ -215,6 +221,25 @@ static void* client_handler(void* tag)
 	if (S->remote_mode == ROLE_PROBE){
 		a12int_trace(A12_TRACE_SYSTEM, "probed:terminating");
 		goto out;
+	}
+
+	if (cl->recovered){
+		shmifsrv_enqueue_event(cl->source,
+			&(struct arcan_event){
+			.category = EVENT_TARGET,
+			.tgt = {
+				.kind = TARGET_COMMAND_RESET,
+				.ioevs[0].iv = 2
+			}}, -1
+		);
+
+		a12_channel_enqueue(S,
+				&(struct arcan_event){
+					.category = EVENT_EXTERNAL,
+					.ext.kind = EVENT_EXTERNAL_REGISTER,
+					.ext.registr.kind = shmifsrv_client_type(cl->source),
+				}
+			);
 	}
 
 /*
