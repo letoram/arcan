@@ -2,11 +2,9 @@
  * Todo:
  * -----
  *
- *  1. fix argument transfer from parent into config
- *     - rekey-bytes, -soft-auth, -auth-secret
- *  2. figure out frame-relay in multicast mode
- *  3. handle multiple instances using the same keys
- *  4. resumption / multi-sourcing through directory
+ *  1. figure out frame-relay in multicast mode
+ *  2. handle multiple instances using the same keys
+ *  3. resumption / multi-sourcing through directory
  */
 
 #include <arcan_shmif.h>
@@ -36,8 +34,13 @@ static struct
 	char** argv;
 	bool shutdown;
 	bool soft_auth;
-	size_t rekey_bytes;
 	size_t accept_n_unknown;
+
+	bool use_private_key;
+	uint8_t private_key[32];
+
+	char secret[32];
+
 	const char* trust_domain;
 
 	struct a12_context_options copts;
@@ -229,8 +232,8 @@ static struct pk_response key_auth(
 
 /* If spawned by the directory server we got a generated privk to use, otherwise
  * grab the one marked as 'default' */
-	if (getenv("A12_USEPRIV"))
-		a12helper_fromb64((uint8_t*) getenv("A12_USEPRIV"), 32, my_private_key);
+	if (G.use_private_key)
+		memcpy(my_private_key, G.private_key, 32);
 	else
 		a12helper_keystore_hostkey("default", 0, my_private_key, &tmphost, &tmpport);
 
@@ -372,7 +375,12 @@ static void flush_parent_event(arcan_event* ev)
 		*cl = (struct client_meta){
 			.fd = fd
 		};
-		memcpy(cl->secret, ev->tgt.message, 32);
+
+/* if no secret pick the latest default (can be changed) */
+		if (ev->tgt.message[0])
+			memcpy(cl->secret, ev->tgt.message, 32);
+		else
+			memcpy(cl->secret, G.secret, 32);
 
 		pthread_t pth;
 		pthread_attr_t pthattr;
@@ -380,6 +388,36 @@ static void flush_parent_event(arcan_event* ev)
 		pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
 
 		pthread_create(&pth, &pthattr, client_handler, cl);
+	}
+/* these can be handled as well-formed as they come from higher privilege
+ * context */
+	else if (ev->tgt.kind == TARGET_COMMAND_MESSAGE){
+		const char* val;
+		struct arg_arr* entry = arg_unpack((char*)ev->ext.message.data);
+		if (arg_lookup(entry, "rekey", 0, &val)){
+			G.copts.rekey_bytes = strtoul(val, NULL, 10);
+		}
+/* just trust unknown keys */
+		if (arg_lookup(entry, "soft_auth", 0, &val)){
+			G.soft_auth = true;
+		}
+
+/* accept the first n unknown, commonly used with 'secret' */
+		if (arg_lookup(entry, "accept_n_unknown", 0, &val)){
+			G.accept_n_unknown = strtoul(val, NULL, 10);
+		}
+
+/* overridden auth secret */
+		if (arg_lookup(entry, "secret", 0, &val)){
+			snprintf(G.secret, 32, "%s", val);
+		}
+/* forced private key override */
+		if (arg_lookup(entry, "key", 0, &val)){
+			G.use_private_key = true;
+			a12helper_fromb64((uint8_t*) val, 32, G.private_key);
+		}
+
+		arg_cleanup(entry);
 	}
 }
 

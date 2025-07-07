@@ -216,6 +216,15 @@ static struct shmifsrv_client* lock_session_manager(struct arcan_net_meta* M)
 	 forwarding it later to prevent it from leaking.
 	*/
 		int dfd = -1;
+
+/* transfer arguments */
+		struct arcan_event ev = {
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_MESSAGE
+		};
+		char* msg = (char*) ev.tgt.message;
+		size_t sz = COUNT_OF(ev.tgt.message);
+
 		if (!getenv("A12_USEPRIV")){
 			if (global.meta.keystore.directory.dirfd > 0)
 				dfd = global.meta.keystore.directory.dirfd;
@@ -232,6 +241,27 @@ static struct shmifsrv_client* lock_session_manager(struct arcan_net_meta* M)
 					.tgt.message = "keystore"
 				}, dfd);
 			}
+		}
+		else {
+			snprintf(msg, sz, "key=%s", getenv("A12_USEPRIV"));
+			shmifsrv_enqueue_event(SESSION.prctl, &ev, -1);
+		}
+
+		if (global.soft_auth){
+			snprintf(msg, sz, "soft_auth");
+			shmifsrv_enqueue_event(SESSION.prctl, &ev, -1);
+		}
+		if (global.accept_n_pk_unknown){
+			snprintf(msg, sz, "accept_n_unknown=%zu", global.accept_n_pk_unknown);
+			shmifsrv_enqueue_event(SESSION.prctl, &ev, -1);
+		}
+		if (global.meta.opts->rekey_bytes){
+			snprintf(msg, sz, "rekey=%zu", global.meta.opts->rekey_bytes);
+			shmifsrv_enqueue_event(SESSION.prctl, &ev, -1);
+		}
+		if (global.meta.opts->secret[0]){
+			snprintf(msg, sz, "secret=%s", global.meta.opts->secret);
+			shmifsrv_enqueue_event(SESSION.prctl, &ev, -1);
 		}
 
 		int pv;
