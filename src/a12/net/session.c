@@ -2,10 +2,11 @@
  * Todo:
  * -----
  *
- *  1. return keymanagement back to normal
- *  2. test through directory-server path
- *  3. fix argument transfer from parent into config
- *  4. figure out frame-relay in multicast mode
+ *  1. fix argument transfer from parent into config
+ *     - rekey-bytes, -soft-auth, -auth-secret
+ *  2. figure out frame-relay in multicast mode
+ *  3. handle multiple instances using the same keys
+ *  4. resumption / multi-sourcing through directory
  */
 
 #include <arcan_shmif.h>
@@ -340,33 +341,6 @@ out:
 	return NULL;
 }
 
-/*
-static struct pk_response key_auth_dir(
-	struct a12_state* S, uint8_t pk[static 32], void* tag)
-{
-	struct dirstate* ds = tag;
-	struct pk_response auth = {.authentic = true};
-
-	if (global.use_forced_remote_pubk){
-		uint8_t my_private_key[32];
-		a12helper_fromb64(
-			(uint8_t*) getenv("A12_USEPRIV"), 32, my_private_key);
-		a12_set_session(&auth, pk, my_private_key);
-		auth.authentic = true;
-		return auth;
-	}
-
-	char* tmp;
-	uint16_t tmpport;
-	uint8_t my_private_key[32];
-	a12helper_keystore_hostkey(
-		global.outbound_tag, 0, my_private_key, &tmp, &tmpport);
-	a12_set_session(&auth, pk, my_private_key);
-
-	return auth;
-}
-*/
-
 static void flush_parent_event(arcan_event* ev)
 {
 	if (ev->category != EVENT_TARGET){
@@ -378,25 +352,27 @@ static void flush_parent_event(arcan_event* ev)
 	if (ev->tgt.kind == TARGET_COMMAND_BCHUNK_IN){
 		if (strcmp(ev->tgt.message, "keystore") == 0){
 			int fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, false);
-			const char* err;
 			if (!a12helper_keystore_open(
 				&(struct keystore_provider){
-					.directory.dirfd = fd}
-				), &err){
-				fprintf(stderr, "Couldn't open keystore: %s\n", err);
+					.directory.dirfd = fd,
+					.type = A12HELPER_PROVIDER_BASEDIR
+					}
+				)){
+				fprintf(stderr, "Couldn't open keystore");
 			}
 		}
 		else
 			fprintf(stderr, "Unknown bchunk-in: %s\n", ev->tgt.message);
 	}
 
-/* used for a12 socket, accepted kpub comes in message */
+/* used for a12 socket, auth secret (if any) comes in MESSAGE */
 	else if (ev->tgt.kind == TARGET_COMMAND_BCHUNK_OUT){
 		int fd = arcan_shmif_dupfd(ev->tgt.ioevs[0].iv, -1, true);
 		struct client_meta* cl = malloc(sizeof(struct client_meta));
 		*cl = (struct client_meta){
 			.fd = fd
 		};
+		memcpy(cl->secret, ev->tgt.message, 32);
 
 		pthread_t pth;
 		pthread_attr_t pthattr;

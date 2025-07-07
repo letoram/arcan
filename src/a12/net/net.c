@@ -166,7 +166,7 @@ static struct shmifsrv_client* lock_session_manager(struct arcan_net_meta* M)
 			blen--;
 		};
 
-		size_t plen = strlen(global.path_self) + sizeof("arcan-net-session");
+		int plen = strlen(global.path_self) + sizeof("arcan-net-session");
 		char* path = malloc(plen);
 		snprintf(path, plen, "%.*sarcan-net-session", blen, global.path_self);
 
@@ -182,7 +182,7 @@ static struct shmifsrv_client* lock_session_manager(struct arcan_net_meta* M)
 		for (size_t i = 0; i < argc; i++){
 			argv[i + 2] = M->argv[i];
 		}
-		argv[argc + 2] = '\0';
+		argv[argc + 2] = NULL;
 
 		extern char** environ;
 		struct shmifsrv_envp env = {
