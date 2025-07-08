@@ -313,7 +313,7 @@ static void* client_handler(void* tag)
 
 	if (G.mirror_cast){
 		if (!G.frame_cache){
-			G.frame_cache = a12helper_alloc_cache();
+			G.frame_cache = a12helper_alloc_cache(7);
 		}
 /* if there is a frame-cache,
  * attach us as listener and use an alternate loop */

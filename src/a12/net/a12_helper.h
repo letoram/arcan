@@ -59,7 +59,7 @@ enum buffer_types {
 	FRAME_ENCODED = 1,
 };
 
-struct frame_cache* a12helper_alloc_cache();
+struct frame_cache* a12helper_alloc_cache(uint32_t capacity);
 
 void a12helper_framecache_sink(
 	struct a12_state* S, struct frame_cache* C, int fd, struct a12helper_opts);

@@ -168,7 +168,7 @@ static struct shmifsrv_client* lock_session_manager(struct arcan_net_meta* M)
 
 		int plen = strlen(global.path_self) + sizeof("arcan-net-session");
 		char* path = malloc(plen);
-		snprintf(path, plen, "%.*sarcan-net-session", blen, global.path_self);
+		snprintf(path, plen, "%.*sarcan-net-session", (int) blen, global.path_self);
 
 /* take -- part of our input arguments, prepend binary name and append NUL */
 		size_t argc = 0;
