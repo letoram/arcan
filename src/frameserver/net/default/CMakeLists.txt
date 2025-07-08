@@ -27,7 +27,7 @@ set(NET_SOURCES
 	${CMAKE_CURRENT_SOURCE_DIR}/net.c
 	${UTIL_DIR}/anet_keystore_naive.c
 	${UTIL_DIR}/anet_helper.c
-
+	${A12NET_DIR}/a12_helper_framecache.c
 	${A12NET_DIR}/a12_helper_cl.c
 	${A12NET_DIR}/a12_helper_srv.c
 	${A12NET_DIR}/a12_helper_discover.c

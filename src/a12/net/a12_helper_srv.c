@@ -63,6 +63,13 @@ static struct a12_vframe_opts vopts_from_segment(
 	struct shmifsrv_thread_data* data, struct shmifsrv_vbuffer vb)
 {
 	struct a12_state* S = data->S;
+
+/* first tell the frame-cache that we have a new raw, these will be invoked
+ * with the a12 state for the source >locked< */
+	if (data->opts.cache){
+		a12helper_vbuffer_append_raw(data->opts.cache, &vb);
+	}
+
 /* force tpack regardless, tpack doesn't have tuning like this */
 	if (vb.flags.tpack){
 		a12int_trace(A12_TRACE_VIDEO, "tpack segment");
@@ -672,6 +679,54 @@ static bool spawn_thread(struct shmifsrv_thread_data* inarg)
 	}
 
 	return true;
+}
+
+static void consume_frame(uintptr_t ref, uint8_t* buf, size_t buf_sz, int type)
+{
+/* send to encoder and wake poll-loop */
+}
+
+void a12helper_framecache_sink(struct a12_state* S,
+	struct frame_cache* C, int fdio, struct a12helper_opts opts)
+{
+/* need a wakeup pipe as per usual */
+	int pipe_pair[2];
+	if (-1 == pipe(pipe_pair))
+		return;
+
+	struct pollfd pfd[2] =
+	{
+		{
+		.fd = fdio,
+		.events = POLLIN | POLLERR | POLLNVAL | POLLHUP
+		},
+		{
+		.fd = pipe_pair[0],
+		.events = POLLIN
+		}
+	};
+
+	uint8_t* outbuf = NULL;
+	size_t outbuf_sz = 0;
+
+	a12helper_vbuffer_add_listener(C, (uintptr_t) S, true, consume_frame);
+
+	for(;;){
+		if (outbuf_sz)
+			pfd[0].events |= POLLOUT;
+		else
+			pfd[0].events = pfd[0].events & ~POLLOUT;
+
+		if (-1 == poll(pfd, 2, -1)){
+			if (errno == EAGAIN || errno == EINTR)
+				continue;
+			break;
+		}
+	}
+
+	a12helper_vbuffer_drop_listener(C, (uintptr_t) S);
+	close(pipe_pair[0]);
+	close(pipe_pair[1]);
 }
 
 void a12helper_a12cl_shmifsrv(struct a12_state* S,

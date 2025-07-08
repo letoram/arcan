@@ -34,7 +34,11 @@ static struct
 	char** argv;
 	bool shutdown;
 	bool soft_auth;
+	bool mirror_cast;
+
 	size_t accept_n_unknown;
+
+	struct frame_cache* frame_cache;
 
 	bool use_private_key;
 	uint8_t private_key[32];
@@ -245,14 +249,15 @@ static struct pk_response key_auth(
 	LOCK();
 		cl->source = hashmap_get(&G.map_pubk, pubk, 32);
 
-/* send a recovery RESET to the source client,
- * fake inject a REGISTER in the other direction. */
+/* send a recovery RESET to the source client, fake inject a REGISTER in the
+ * other direction. */
 		if (cl->source){
 			cl->recovered = true;
 		}
-		else
+/* if we have casting enabled though, only spawn source one time */
+		else if (!G.frame_cache){
 			cl->source = spawn_source();
-/* if !cl->source, set authentic to fail and warn that client couldn't be spawned */
+		}
 	UNLOCK();
 
 	free(pubk_b64);
@@ -304,6 +309,27 @@ static void* client_handler(void* tag)
 					.ext.registr.kind = shmifsrv_client_type(cl->source),
 				}
 			);
+	}
+
+	if (G.mirror_cast){
+		if (!G.frame_cache){
+			G.frame_cache = a12helper_alloc_cache();
+		}
+/* if there is a frame-cache,
+ * attach us as listener and use an alternate loop */
+		else {
+			a12helper_framecache_sink(S, G.frame_cache, cl->fd,
+				(struct a12helper_opts){
+					.vframe_block = 5,
+					.vframe_soft_block = 2,
+					.eval_vcodec = vcodec_tuning,
+				}
+			);
+			shutdown(cl->fd, SHUT_RDWR);
+			close(cl->fd);
+			free(cl);
+			return NULL;
+		}
 	}
 
 /*
@@ -416,6 +442,11 @@ static void flush_parent_event(arcan_event* ev)
 			G.use_private_key = true;
 			a12helper_fromb64((uint8_t*) val, 32, G.private_key);
 		}
+/* only allow a primary 'driver' then let other connections be frame
+ * cache sinks */
+		if (arg_lookup(entry, "cast", 0, &val)){
+			G.mirror_cast = true;
+		}
 
 		arg_cleanup(entry);
 	}
@@ -439,6 +470,10 @@ int main(int argc, char* argv[])
 		fprintf(stderr, "No source to host specified: arcan-net-session -- /path/to/client\n");
 		return EXIT_FAILURE;
 	}
+
+/* don't want this around or for it to propagate into client, but at the same
+ * time we need to propagate the rest of the outer env due to ARCAN_ARGS etc. */
+	unsetenv("A12_USEPRIV");
 
 /* fatalfail so if we get passed this G.C is working */
 	G.C = arcan_shmif_open(

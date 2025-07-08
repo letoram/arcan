@@ -6,6 +6,7 @@ set(SOURCES
 	a12_helper_cl.c
 	a12_helper_srv.c
 	a12_helper_discover.c
+	a12_helper_framecache.c
 	net.c
 	nbio.c
 	dir_lua.c
@@ -30,6 +31,7 @@ set(SOURCES
 set(SESSION_SOURCES
 	session.c
 	a12_helper_srv.c
+	a12_helper_framecache.c
 	${ARCAN_SRC}/frameserver/util/anet_helper.c
 	${ARCAN_SRC}/frameserver/util/anet_keystore_naive.c
 )

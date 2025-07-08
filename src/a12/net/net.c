@@ -42,8 +42,8 @@ struct arcan_net_meta {
 static struct arcan_net_meta ARGV_OUTPUT;
 
 struct global_cfg global = {
-	.backpressure_soft = 2,
-	.backpressure = 6,
+	.backpressure_soft = 1,
+	.backpressure = 1,
 	.directory = -1,
 	.dircl = {
 		.source_port = 6681
@@ -454,6 +454,15 @@ static void dir_to_shmifsrv(struct a12_state* S, struct a12_dynreq a, void* tag)
 		a12_set_tunnel_sink(S, 1, sv[0]);
 		anet_directory_tunnel_thread(anet_directory_ioloop_current(), 1);
 		pre_fd = sv[1];
+	}
+	else {
+/*
+ * This is something of a pain-point now, we need to respect the other modes
+ * if [a - dir - b] both a,b are reachable in inbound or outbound ways. The
+ * directory server side doesn't probe this, yet open requests expect it to.
+ */
+		a12int_trace(A12_TRACE_SYSTEM, "eimpl: only --tunnel supported");
+		return;
 	}
 
 /*

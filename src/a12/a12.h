@@ -559,6 +559,8 @@ struct a12_vframe_opts {
 
 	int ratefactor; /* overrides bitrate, crf (0..51) */
 	size_t bitrate; /* kbit/s */
+
+	void (*result_feedback)(uint8_t* buf, size_t buf_sz, void* tag);
 };
 
 enum a12_aframe_method {

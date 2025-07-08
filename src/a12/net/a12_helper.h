@@ -19,6 +19,7 @@ enum a12helper_pollstate {
 struct a12_broadcast_beacon;
 struct anet_discover_opts;
 struct ipcfg;
+struct vbuffer_cache;
 
 struct a12helper_opts {
 	struct a12_vframe_opts (*eval_vcodec)(
@@ -47,7 +48,55 @@ struct a12helper_opts {
 
 /* opendir to populate with b64[checksum] for fonts and other cacheables */
 	int bcache_dir;
+
+/* set to retain a running window of raw and/or encoded frames based on a set
+ * of consumers that attach to it. */
+	struct frame_cache* cache;
 };
+
+enum buffer_types {
+	FRAME_RAW_SHMIFSRV_VBUFFER = 0,
+	FRAME_ENCODED = 1,
+};
+
+struct frame_cache* a12helper_alloc_cache();
+
+void a12helper_framecache_sink(
+	struct a12_state* S, struct frame_cache* C, int fd, struct a12helper_opts);
+
+/*
+ * Called by the source frame handler pre-encoding. This can be used to
+ * seed encoding into lower bitrates / resolutions and to supply clients
+ * that have flagged lack of decoder support.
+ */
+void a12helper_vbuffer_append_raw(
+	struct frame_cache*, struct shmifsrv_vbuffer*);
+
+/*
+ * Called by the source frame handler post-encoding, [keyed] marks if this
+ * is a valid starting point (I frame). This lets the implementation chose
+ * between waiting for the next [keyed] or keep a queue around and play it
+ * back quickly.
+ */
+void a12helper_vbuffer_append_encoded(
+	struct frame_cache*, uint8_t* buf, size_t buf_sz, bool keyed);
+
+/*
+ * Register a new frame listener, [raw] is set of a client can't handle
+ * the encoded form. This normally happens by first trying the passthrough
+ * form (much cheaper our side), then _drop_listener and _add as [raw].
+ */
+void a12helper_vbuffer_add_listener(
+	struct frame_cache*, uintptr_t ref,
+		bool raw, void (*trigger)(uintptr_t ref, uint8_t* buf, size_t buf_sz, int type));
+
+void a12helper_vbuffer_drop_listener(struct frame_cache*, uintptr_t ref);
+
+/* Feedback from congestion or interactive controls, increase or decrease
+ * encoder quality. This is for when we can afford transitioning from raw to
+ * multiple- variants in different bins and jump between them dynamically */
+void a12helper_vbuffer_step_quality(
+	struct frame_cache* C, uintptr_t ref, ssize_t steps);
 
 /*
  * Take a prenegotiated connection [S] and an accepted shmif client [C] and
