@@ -3743,6 +3743,12 @@ a12_channel_new(struct a12_state* S,
 	a12int_append_out(S, STATE_CONTROL_PACKET, outb, CONTROL_PACKET_SIZE, NULL, 0);
 }
 
+uint8_t
+a12_get_channel(struct a12_state* S)
+{
+	return S->out_channel;
+}
+
 void
 a12_set_channel(struct a12_state* S, uint8_t chid)
 {

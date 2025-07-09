@@ -466,6 +466,12 @@ void
 a12_set_channel(struct a12_state*, uint8_t chid);
 
 /*
+ * Get the active channel used for audio/video/... frames
+ */
+uint8_t
+a12_get_channel(struct a12_state*);
+
+/*
  * Enable debug tracing out to a FILE, set mask to the bitmap of
  * message types you are interested in messages from.
  */

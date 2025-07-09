@@ -68,13 +68,15 @@ static int each_client_raw(void* const tag, void* const val)
 }
 
 void a12helper_vbuffer_append_raw(
-	struct frame_cache* C, struct shmifsrv_vbuffer* vb)
+	struct frame_cache* C, struct shmifsrv_vbuffer* vb, uint8_t chid)
 {
+/* if the vbuffer type is for TPACK we should maintain a tpack state machine
+ * in order to produce keyframe for new clients */
 	hashmap_iterate(&C->clients, each_client_raw, (void*) vb);
 }
 
 void a12helper_vbuffer_append_encoded(
-	struct frame_cache* C, uint8_t* buf, size_t buf_sz, bool keyed)
+	struct frame_cache* C, uint8_t* buf, size_t buf_sz, uint8_t chid, bool keyed)
 {
 	struct frameinf data = {
 		.buf = buf,

@@ -67,7 +67,7 @@ static struct a12_vframe_opts vopts_from_segment(
 /* first tell the frame-cache that we have a new raw, these will be invoked
  * with the a12 state for the source >locked< */
 	if (data->opts.cache){
-		a12helper_vbuffer_append_raw(data->opts.cache, &vb);
+		a12helper_vbuffer_append_raw(data->opts.cache, &vb, a12_get_channel(S));
 	}
 
 /* force tpack regardless, tpack doesn't have tuning like this */

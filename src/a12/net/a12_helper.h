@@ -70,7 +70,7 @@ void a12helper_framecache_sink(
  * that have flagged lack of decoder support.
  */
 void a12helper_vbuffer_append_raw(
-	struct frame_cache*, struct shmifsrv_vbuffer*);
+	struct frame_cache*, struct shmifsrv_vbuffer*, uint8_t channel);
 
 /*
  * Called by the source frame handler post-encoding, [keyed] marks if this
@@ -79,7 +79,8 @@ void a12helper_vbuffer_append_raw(
  * back quickly.
  */
 void a12helper_vbuffer_append_encoded(
-	struct frame_cache*, uint8_t* buf, size_t buf_sz, bool keyed);
+	struct frame_cache*,
+	uint8_t* buf, size_t buf_sz, uint8_t channel, bool keyed);
 
 /*
  * Register a new frame listener, [raw] is set of a client can't handle
