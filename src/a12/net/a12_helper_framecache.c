@@ -41,15 +41,15 @@ static int each_client_enc(void* const tag, void *const val)
 
 /* ignore raw clients, those already get their thing from _raw */
 	if (cl->raw)
-		return 0;
+		return 1;
 
 /* can't join middle-gop */
 	if (!frame->keyed && cl->wait_keyframe)
-		return 0;
+		return 1;
 
 	cl->trigger(cl->key, frame->buf, frame->buf_sz, frame->keyed);
 
-	return 0;
+	return 1;
 }
 
 static int each_client_raw(void* const tag, void* const val)
@@ -59,12 +59,12 @@ static int each_client_raw(void* const tag, void* const val)
 
 /* tpack is treated as 'raw' */
 	if (!cl->raw && !frame->flags.tpack)
-		return 0;
+		return 1;
 
 	cl->trigger(cl->key, (void*) &(*frame),
 		sizeof(struct shmifsrv_vbuffer), FRAME_RAW_SHMIFSRV_VBUFFER);
 
-	return 0;
+	return 1;
 }
 
 void a12helper_vbuffer_append_raw(

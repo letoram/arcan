@@ -2,9 +2,8 @@
  * Todo:
  * -----
  *
- *  1. figure out frame-relay in multicast mode
- *  2. handle multiple instances using the same keys
- *  3. resumption / multi-sourcing through directory
+ *  1. handle multiple instances using the same keys
+ *  2. resumption / multi-sourcing through directory
  */
 
 #include <arcan_shmif.h>
@@ -15,6 +14,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <netdb.h>
+#include <errno.h>
 
 #include "../a12.h"
 #include "../a12_int.h"
