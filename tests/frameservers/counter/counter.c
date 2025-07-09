@@ -48,6 +48,8 @@ static void block_grab(struct arcan_shmif_cont* c, struct arcan_shmif_cont* d)
 	}
 }
 
+extern unsigned long long arcan_timemillis(void);
+
 #ifdef ENABLE_FSRV_AVFEED
 void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 #else

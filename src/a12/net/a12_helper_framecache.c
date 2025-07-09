@@ -55,13 +55,14 @@ static int each_client_enc(void* const tag, void *const val)
 static int each_client_raw(void* const tag, void* const val)
 {
 	struct listener* const cl = val;
-	struct frameinf* const frame = tag;
+	struct shmifsrv_vbuffer* const frame = tag;
 
 /* tpack is treated as 'raw' */
-	if (cl->raw)
+	if (!cl->raw && !frame->flags.tpack)
 		return 0;
 
-	cl->trigger(cl->key, frame->buf, frame->buf_sz, frame->type);
+	cl->trigger(cl->key, (void*) &(*frame),
+		sizeof(struct shmifsrv_vbuffer), FRAME_RAW_SHMIFSRV_VBUFFER);
 
 	return 0;
 }

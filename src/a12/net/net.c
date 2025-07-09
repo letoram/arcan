@@ -263,6 +263,10 @@ static struct shmifsrv_client* lock_session_manager(struct arcan_net_meta* M)
 			snprintf(msg, sz, "secret=%s", global.meta.opts->secret);
 			shmifsrv_enqueue_event(SESSION.prctl, &ev, -1);
 		}
+		if (global.cast){
+			snprintf(msg, sz, "cast");
+			shmifsrv_enqueue_event(SESSION.prctl, &ev, -1);
+		}
 
 		int pv;
 		while ( (pv = shmifsrv_poll(SESSION.prctl)) != CLIENT_DEAD){
@@ -753,7 +757,7 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"    arcan-net [-Xtd] -s connpoint [tag@]host port\n"
 	"         (keystore-mode) -s connpoint tag@\n"
 	"         (inherit socket) -S fd_no [tag@]host port\n\n"
-	"Server local arcan application (pull): \n"
+	"Serve local arcan application (pull): \n"
 	"         -l port [ip] -- /usr/bin/app arg1 arg2 argn\n\n"
 	"Bridge remote inbound arcan applications (to ARCAN_CONNPATH): \n"
 	"    arcan-net [-Xtd] -l port [ip]\n\n"
@@ -768,6 +772,8 @@ static bool show_usage(const char* msg, char** argv, size_t i)
 	"Forward-local options:\n"
 	"\t-X             \t Disable EXIT-redirect to ARCAN_CONNPATH env (if set)\n"
 	"\t-r, --retry n  \t Limit retry-reconnect attempts to 'n' tries\n\n"
+	"Serve-local opptions:\n"
+	"\t--cast         \t First connection controls, others view\n\n"
 	"Authentication:\n"
 	"\t --no-ephem-rt \t Disable ephemeral keypair roundtrip (outbound only)\n"
 	"\t-a, --auth n   \t Read authentication secret from stdin (maxlen:32)\n"
@@ -1307,6 +1313,9 @@ static int apply_commandline(int argc, char** argv, struct arcan_net_meta* meta)
 
 			if (!isdigit(argv[i+1][0]))
 				return show_usage("Bitrate should be a number", argv, i);
+		}
+		else if (strcmp(argv[i], "--cast") == 0){
+			global.cast = true;
 		}
 		else if (strcmp(argv[i], "-r") == 0 || strcmp(argv[i], "--retry") == 0){
 			if (i < argc - 1){

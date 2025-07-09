@@ -210,6 +210,7 @@ struct global_cfg {
 	bool no_default;
 	bool probe_only;
 	bool keep_alive;
+	bool cast;
 	bool discover_synch; /* update keystore ip with most recently seen */
 
 	size_t accept_n_pk_unknown;

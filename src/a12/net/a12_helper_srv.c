@@ -681,9 +681,39 @@ static bool spawn_thread(struct shmifsrv_thread_data* inarg)
 	return true;
 }
 
+static void sink_evh(
+	struct arcan_shmif_cont* cont, int chid, struct arcan_event* ev, void* tag)
+{
+/* there's no real events to consider here for now */
+}
+
+/*
+ * this call comes from the thread of the source handler.
+ */
+struct frame_meta {
+	struct a12_state* S;
+	int wake;
+};
+
 static void consume_frame(uintptr_t ref, uint8_t* buf, size_t buf_sz, int type)
 {
+	if (type != FRAME_RAW_SHMIFSRV_VBUFFER)
+		return;
+
+	struct frame_meta* M = (void*) ref;
+	struct shmifsrv_vbuffer* vb = (void*) buf;
+
+	a12_channel_vframe(M->S, vb,
+		(struct a12_vframe_opts){
+			.method = VFRAME_METHOD_DZSTD,
+			.bias = VFRAME_BIAS_BALANCED,
+			.postprocess = 0
+		}
+	);
+
 /* send to encoder and wake poll-loop */
+	char wb = 1;
+	write(M->wake, &wb, 1);
 }
 
 void a12helper_framecache_sink(struct a12_state* S,
@@ -693,6 +723,11 @@ void a12helper_framecache_sink(struct a12_state* S,
 	int pipe_pair[2];
 	if (-1 == pipe(pipe_pair))
 		return;
+
+	struct frame_meta M = {
+		.S = S,
+		.wake = pipe_pair[1]
+	};
 
 	struct pollfd pfd[2] =
 	{
@@ -709,7 +744,22 @@ void a12helper_framecache_sink(struct a12_state* S,
 	uint8_t* outbuf = NULL;
 	size_t outbuf_sz = 0;
 
-	a12helper_vbuffer_add_listener(C, (uintptr_t) S, true, consume_frame);
+	a12helper_vbuffer_add_listener(C, (uintptr_t) &M, true, consume_frame);
+	a12_unpack(S, NULL, 0, S, sink_evh);
+
+/* Send the REGISTER event as a generic _MEDIA as that's what we are, the main
+ * difficulty in all of this is to defer composition with new channels and
+ * VIEWPORT specifically. For that we need the a12 state machine itself to
+ * track anchoring when it's done via event_enqueue and then extract if from
+ * the corresponding channel. */
+	struct arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(REGISTER),
+		.ext.registr = {
+			.kind = SEGID_MEDIA
+		}
+	};
+	a12_channel_enqueue(S, &ev);
 
 	for(;;){
 		if (outbuf_sz)
@@ -722,9 +772,40 @@ void a12helper_framecache_sink(struct a12_state* S,
 				continue;
 			break;
 		}
+
+/* just flush up wake-pipe */
+		if (pfd[1].revents & POLLIN){
+			char buf[256];
+			read(pfd[1].fd, buf, 256);
+		}
+
+/* write current buffer first */
+		if (pfd[0].revents & POLLOUT){
+			ssize_t nw = write(fdio, outbuf, outbuf_sz);
+			if (nw > 0){
+				outbuf += nw;
+				outbuf_sz -= nw;
+			}
+		}
+
+		if (pfd[0].revents & POLLIN){
+			uint8_t inbuf[9000];
+			ssize_t nr = recv(fdio, inbuf, 9000, 0);
+			if (0 == nr)
+				break;
+			else if (0 < nr)
+				a12_unpack(S, inbuf, nr, S, sink_evh);
+		}
+
+/* request new buffer when previous flush has happened */
+		if (!outbuf_sz){
+			outbuf_sz = a12_flush(S, &outbuf, 0);
+		}
 	}
 
-	a12helper_vbuffer_drop_listener(C, (uintptr_t) S);
+/* shutdown / close of connection is caller responsibility */
+	a12helper_vbuffer_drop_listener(C, (uintptr_t) &M);
+	a12_free(S);
 	close(pipe_pair[0]);
 	close(pipe_pair[1]);
 }

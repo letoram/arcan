@@ -314,6 +314,7 @@ static void* client_handler(void* tag)
 	if (G.mirror_cast){
 		if (!G.frame_cache){
 			G.frame_cache = a12helper_alloc_cache(7);
+
 		}
 /* if there is a frame-cache,
  * attach us as listener and use an alternate loop */
@@ -348,7 +349,8 @@ static void* client_handler(void* tag)
 			.vframe_block = 5,
 			.vframe_soft_block = 2,
 			.eval_vcodec = vcodec_tuning,
-			.bcache_dir = get_bcache_dir()
+			.bcache_dir = get_bcache_dir(),
+			.cache = G.frame_cache
 		}
 	);
 
@@ -419,7 +421,7 @@ static void flush_parent_event(arcan_event* ev)
  * context */
 	else if (ev->tgt.kind == TARGET_COMMAND_MESSAGE){
 		const char* val;
-		struct arg_arr* entry = arg_unpack((char*)ev->ext.message.data);
+		struct arg_arr* entry = arg_unpack((char*)ev->tgt.message);
 		if (arg_lookup(entry, "rekey", 0, &val)){
 			G.copts.rekey_bytes = strtoul(val, NULL, 10);
 		}
