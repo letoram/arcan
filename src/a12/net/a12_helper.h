@@ -52,6 +52,10 @@ struct a12helper_opts {
 /* set to retain a running window of raw and/or encoded frames based on a set
  * of consumers that attach to it. */
 	struct frame_cache* cache;
+
+/* set if there is an external lock that the helper should work against,
+ * otherwise it'll use its own internal */
+	pthread_mutex_t* lock;
 };
 
 enum buffer_types {

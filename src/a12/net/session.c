@@ -205,6 +205,7 @@ static void consume_frame(uintptr_t ref, uint8_t* buf, size_t buf_sz, int type)
 		opts.method = VFRAME_METHOD_TPACK_ZSTD;
 	}
 
+/* we are already locked by the a12helper_shmifcl_srv */
 	a12_channel_vframe(M->S, vb, opts);
 
 /* send to encoder and wake poll-loop */
@@ -240,8 +241,10 @@ void a12helper_framecache_sink(struct a12_state* S,
 	uint8_t* outbuf = NULL;
 	size_t outbuf_sz = 0;
 
-	a12helper_vbuffer_add_listener(C, (uintptr_t) &M, true, consume_frame);
-	a12_unpack(S, NULL, 0, S, sink_evh);
+	LOCK();
+		a12helper_vbuffer_add_listener(C, (uintptr_t) &M, true, consume_frame);
+		a12_unpack(S, NULL, 0, S, sink_evh);
+	UNLOCK();
 
 /* Send the REGISTER event as a generic _MEDIA as that's what we are, the main
  * difficulty in all of this is to defer composition with new channels and
@@ -255,7 +258,10 @@ void a12helper_framecache_sink(struct a12_state* S,
 			.kind = SEGID_MEDIA
 		}
 	};
-	a12_channel_enqueue(S, &ev);
+
+	LOCK();
+		a12_channel_enqueue(S, &ev);
+	UNLOCK();
 
 	for(;;){
 		if (outbuf_sz)
@@ -289,19 +295,27 @@ void a12helper_framecache_sink(struct a12_state* S,
 			ssize_t nr = recv(fdio, inbuf, 9000, 0);
 			if (0 == nr)
 				break;
-			else if (0 < nr)
-				a12_unpack(S, inbuf, nr, S, sink_evh);
+			else if (0 < nr){
+				LOCK();
+					a12_unpack(S, inbuf, nr, S, sink_evh);
+				UNLOCK();
+			}
 		}
 
 /* request new buffer when previous flush has happened */
 		if (!outbuf_sz){
-			outbuf_sz = a12_flush(S, &outbuf, 0);
+			LOCK();
+				outbuf_sz = a12_flush(S, &outbuf, 0);
+			UNLOCK();
 		}
 	}
 
 /* shutdown / close of connection is caller responsibility */
-	a12helper_vbuffer_drop_listener(C, (uintptr_t) &M);
-	a12_free(S);
+	LOCK();
+		a12helper_vbuffer_drop_listener(C, (uintptr_t) &M);
+		a12_free(S);
+	UNLOCK();
+
 	close(pipe_pair[0]);
 	close(pipe_pair[1]);
 }
@@ -454,6 +468,7 @@ static void* client_handler(void* tag)
 					.vframe_block = 5,
 					.vframe_soft_block = 2,
 					.eval_vcodec = vcodec_tuning,
+					.lock = &G.sync
 				}
 			);
 			shutdown(cl->fd, SHUT_RDWR);
@@ -480,7 +495,8 @@ static void* client_handler(void* tag)
 			.vframe_soft_block = 2,
 			.eval_vcodec = vcodec_tuning,
 			.bcache_dir = get_bcache_dir(),
-			.cache = G.frame_cache
+			.cache = G.frame_cache,
+			.lock = &G.sync
 		}
 	);
 

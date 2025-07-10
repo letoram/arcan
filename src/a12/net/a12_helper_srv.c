@@ -45,14 +45,15 @@ struct shmifsrv_thread_data {
  *
 */
 static bool spawn_thread(struct shmifsrv_thread_data* inarg);
-static pthread_mutex_t giant_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t default_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t* giant_lock = &default_lock;
 
 static const char* last_lock;
 static _Atomic volatile size_t buffer_out = 0;
 static _Atomic volatile uint8_t n_segments;
 
-#define BEGIN_CRITICAL(X, Y) do{pthread_mutex_lock(X); last_lock = Y;} while(0);
-#define END_CRITICAL(X) do{pthread_mutex_unlock(X);} while(0);
+#define BEGIN_CRITICAL(Y) do{pthread_mutex_lock(giant_lock); last_lock = Y;} while(0);
+#define END_CRITICAL() do{pthread_mutex_unlock(giant_lock);} while(0);
 
 /*
  * Figure out encoding parameters based on client type and buffer parameters.
@@ -532,7 +533,7 @@ static void* client_thread(void* inarg)
 			}
 
 /* server-consumed or should be forwarded? */
-			BEGIN_CRITICAL(&giant_lock, "client_event");
+			BEGIN_CRITICAL("client_event");
 				if (shmifsrv_process_event(data->C, &ev)){
 					a12int_trace(A12_TRACE_EVENT,
 						"kind=consumed:channel=%d:eventstr=%s",
@@ -546,7 +547,7 @@ static void* client_thread(void* inarg)
 					a12_channel_enqueue(S, &ev);
 					dirty = true;
 				}
-			END_CRITICAL(&giant_lock);
+			END_CRITICAL();
 		}
 
 		int pv;
@@ -601,14 +602,14 @@ static void* client_thread(void* inarg)
  * streams map the stream and convert to h264 on gpu, but easiest now is to
  * just reject and let the caller do the readback. this is currently done by
  * default in shmifsrv.*/
-				BEGIN_CRITICAL(&giant_lock, "video-buffer");
+				BEGIN_CRITICAL("video-buffer");
 					a12_set_channel(S, data->chid);
 
 /* vopts_from_segment here lets the caller pick compression parameters (coarse),
  * including the special 'defer this frame until later' */
 					a12_channel_vframe(S, &vb, vopts_from_segment(data, vb));
 					dirty = true;
-				END_CRITICAL(&giant_lock);
+				END_CRITICAL();
 				stat = a12_state_iostat(S);
 				a12int_trace(A12_TRACE_VDETAIL,
 					"vbuffer=release:time_ms=%zu:time_ms_px=%.4f:congestion=%zu",
@@ -628,22 +629,22 @@ static void* client_thread(void* inarg)
  * and heavier compression is an option here as well though */
 			if (pv & CLIENT_ABUFFER_READY){
 				a12int_trace(A12_TRACE_AUDIO, "audio-buffer");
-				BEGIN_CRITICAL(&giant_lock, "audio_buffer");
+				BEGIN_CRITICAL("audio_buffer");
 					a12_set_channel(S, data->chid);
 					shmifsrv_audio(data->C, on_audio_cb, S);
 					dirty = true;
-				END_CRITICAL(&giant_lock);
+				END_CRITICAL();
 			}
 		}
 	}
 
 out:
-	BEGIN_CRITICAL(&giant_lock, "client_death");
+	BEGIN_CRITICAL("client_death");
 		a12_set_channel(S, data->chid);
 		a12_channel_close(S);
 		write(data->kill_fd, &data->chid, 1);
 		a12int_trace(A12_TRACE_SYSTEM, "client died");
-	END_CRITICAL(&giant_lock);
+	END_CRITICAL();
 
 /* only shut-down everything on the primary- segment failure */
 	if (data->chid == 0 && data->kill_fd != -1)
@@ -670,11 +671,11 @@ static bool spawn_thread(struct shmifsrv_thread_data* inarg)
 	struct a12_state* S = inarg->S;
 
 	if (-1 == pthread_create(&pth, &pthattr, client_thread, inarg)){
-		BEGIN_CRITICAL(&giant_lock, "cleanup-spawn");
+		BEGIN_CRITICAL("cleanup-spawn");
 			atomic_fetch_sub(&n_segments, 1);
 			a12int_trace(A12_TRACE_ALLOC, "could not spawn thread");
 			free(inarg);
-		END_CRITICAL(&giant_lock);
+		END_CRITICAL();
 		return false;
 	}
 
@@ -686,6 +687,9 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 {
 	uint8_t* outbuf = NULL;
 	size_t outbuf_sz = 0;
+
+	if (opts.lock)
+		giant_lock = opts.lock;
 
 /* tie an empty context as channel destination, we use this as a type- wrapper
  * for the shmifsrv_client now, this logic is slightly different on the
@@ -737,7 +741,9 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 	};
 
 /* flush authentication leftovers */
-	a12_unpack(S, NULL, 0, arg, on_srv_event);
+	BEGIN_CRITICAL("auth_flush");
+		a12_unpack(S, NULL, 0, arg, on_srv_event);
+	END_CRITICAL();
 
 	uint8_t inbuf[9000];
 	while(a12_ok(S) && -1 != poll(fds, n_fd, -1)){
@@ -752,10 +758,10 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 /* flush wakeup data from threads */
 		if (fds[1].revents){
 			if (a12_trace_targets & A12_TRACE_TRANSFER){
-				BEGIN_CRITICAL(&giant_lock, "flush-iopipe");
+				BEGIN_CRITICAL("flush-iopipe");
 					a12int_trace(
 						A12_TRACE_TRANSFER, "client thread wakeup");
-				END_CRITICAL(&giant_lock);
+				END_CRITICAL();
 			}
 
 			read(fds[1].fd, inbuf, 9000);
@@ -766,10 +772,10 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 			ssize_t nw = write(fd_out, outbuf, outbuf_sz);
 
 			if (a12_trace_targets & A12_TRACE_TRANSFER){
-				BEGIN_CRITICAL(&giant_lock, "buffer-send");
+				BEGIN_CRITICAL("buffer-send");
 				a12int_trace(
 					A12_TRACE_TRANSFER, "send %zd (left %zu) bytes", nw, outbuf_sz);
-				END_CRITICAL(&giant_lock);
+				END_CRITICAL();
 			}
 
 			if (nw > 0){
@@ -784,30 +790,30 @@ void a12helper_a12cl_shmifsrv(struct a12_state* S,
 			ssize_t nr = recv(fd_in, inbuf, 9000, 0);
 			if (-1 == nr && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR){
 				if (a12_trace_targets & A12_TRACE_SYSTEM){
-					BEGIN_CRITICAL(&giant_lock, "data error");
+					BEGIN_CRITICAL("data error");
 						a12int_trace(A12_TRACE_SYSTEM, "data-in, error: %s", strerror(errno));
-					END_CRITICAL(&giant_lock);
+					END_CRITICAL();
 				}
 				break;
 			}
 	/* pollin- says yes, but recv says no? */
 			if (nr == 0){
-				BEGIN_CRITICAL(&giant_lock, "socket closed");
+				BEGIN_CRITICAL("socket closed");
 				a12int_trace(A12_TRACE_SYSTEM, "data-in, other side closed connection");
-				END_CRITICAL(&giant_lock);
+				END_CRITICAL();
 				break;
 			}
 
-			BEGIN_CRITICAL(&giant_lock, "unpack-event");
+			BEGIN_CRITICAL("unpack-event");
 				a12int_trace(A12_TRACE_TRANSFER, "unpack %zd bytes", nr);
 				a12_unpack(S, inbuf, nr, arg, on_srv_event);
-			END_CRITICAL(&giant_lock);
+			END_CRITICAL();
 		}
 
 		if (!outbuf_sz){
-			BEGIN_CRITICAL(&giant_lock, "get-buffer");
+			BEGIN_CRITICAL("get-buffer");
 				outbuf_sz = a12_flush(S, &outbuf, 0);
-			END_CRITICAL(&giant_lock);
+			END_CRITICAL();
 		}
 		n_fd = outbuf_sz > 0 ? 3 : 2;
 	}
