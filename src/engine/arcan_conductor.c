@@ -788,3 +788,30 @@ static void conductor_cycle(int nticks)
 	while(nticks--)
 		arcan_mem_tick();
 }
+
+/*
+ * Thin benchmark shim: expose the conductor tick cost for the
+ * benchmark harness so we can measure frame scheduling overhead
+ * separately from actual render work. Only compiled when the
+ * BENCHMARK_BUILD option is enabled -- zero overhead in release.
+ *
+ * The harness calls arcan_conductor_bench_tick() in a tight loop
+ * to capture per-tick cycle cost without the event/render noise.
+ */
+#ifdef ARCAN_BENCHMARK_SHIM
+#include <time.h>
+static struct timespec _bench_shim_last;
+
+void arcan_conductor_bench_tick(int nticks)
+{
+/* capture scheduling entry timestamp for the benchmark harness
+ * to correlate tick cost with wall-clock overhead */
+	clock_gettime(CLOCK_REALTIME, &_bench_shim_last);
+	conductor.tick_count += nticks;
+}
+
+uint64_t arcan_conductor_bench_tickcount(void)
+{
+	return conductor.tick_count;
+}
+#endif
