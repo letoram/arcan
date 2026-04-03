@@ -9,6 +9,10 @@
 
 #define CLAMP(x, l, h) (((x) > (h)) ? (h) : (((x) < (l)) ? (l) : (x)))
 
+/* subsystem profiling counters */
+static volatile uint64_t _prof_vobj_ns;
+static volatile uint64_t _prof_upload_ns;
+
 #ifndef ASYNCH_CONCURRENT_THREADS
 #define ASYNCH_CONCURRENT_THREADS 12
 #endif
@@ -4966,6 +4970,10 @@ static void ffunc_process(arcan_vobject* dst, bool step)
 	if (!dst->feed.ffunc)
 		return;
 
+/* profiling: object processing pass */
+	struct timespec _vts0, _vts1;
+	clock_gettime(CLOCK_MONOTONIC, &_vts0);
+
 	TRACE_MARK_ONESHOT("video", "feed-poll", TRACE_SYS_DEFAULT, dst->cellid, 0, dst->tracetag);
 	int frame_status = arcan_ffunc_lookup(dst->feed.ffunc)(
 		FFUNC_POLL, 0, 0, 0, 0, 0, dst->feed.state, dst->cellid);
@@ -5015,7 +5023,9 @@ static void ffunc_process(arcan_vobject* dst, bool step)
 		dst->owner->transfc++;
 	}
 
-	return;
+	clock_gettime(CLOCK_MONOTONIC, &_vts1);
+	_prof_vobj_ns += (_vts1.tv_sec - _vts0.tv_sec) * 1000000000ULL
+		+ (_vts1.tv_nsec - _vts0.tv_nsec);
 }
 
 arcan_errc arcan_vint_pollfeed(arcan_vobj_id vid, bool step)

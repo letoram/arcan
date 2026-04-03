@@ -22,6 +22,11 @@
 #include <dlfcn.h>
 #include <math.h>
 #include <inttypes.h>
+#include <time.h>
+
+/* subsystem profiling counters */
+static volatile uint64_t _prof_texupload_ns;
+static volatile uint64_t _prof_fbo_ns;
 
 #include "glfun.h"
 
@@ -1057,6 +1062,10 @@ void agp_rendertarget_proxy(struct agp_rendertarget* tgt,
 
 void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 {
+/* profiling: FBO bind/unbind */
+	struct timespec _fb0, _fb1;
+	clock_gettime(CLOCK_MONOTONIC, &_fb0);
+
 	verbose_print("set rendertarget: %"PRIxPTR, (uintptr_t)(void*)tgt);
 	size_t w, h;
 	struct agp_fenv* env = agp_env();
@@ -1122,6 +1131,10 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 		"rendertarget (%"PRIxPTR") %zu*%zu activated", (uintptr_t) tgt, w, h);
 #endif
 	active_rendertarget = tgt;
+
+	clock_gettime(CLOCK_MONOTONIC, &_fb1);
+	_prof_fbo_ns += (_fb1.tv_sec - _fb0.tv_sec) * 1000000000ULL
+		+ (_fb1.tv_nsec - _fb0.tv_nsec);
 }
 
 void agp_rendertarget_dirty_reset(
@@ -1332,6 +1345,10 @@ void agp_update_vstore(struct agp_vstore* s, bool copy)
 	if (s->txmapped == TXSTATE_OFF)
 		return;
 
+/* profiling: texture upload cost */
+	struct timespec _tu0, _tu1;
+	clock_gettime(CLOCK_MONOTONIC, &_tu0);
+
 	verbose_print(
 		"update vstore (%"PRIxPTR"), copy: %d", (uintptr_t) s, (int) copy);
 
@@ -1436,6 +1453,10 @@ void agp_update_vstore(struct agp_vstore* s, bool copy)
 #endif
 
 	env->bind_texture(GL_TEXTURE_2D, 0);
+
+	clock_gettime(CLOCK_MONOTONIC, &_tu1);
+	_prof_texupload_ns += (_tu1.tv_sec - _tu0.tv_sec) * 1000000000ULL
+		+ (_tu1.tv_nsec - _tu0.tv_nsec);
 }
 
 void agp_prepare_stencil()

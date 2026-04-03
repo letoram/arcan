@@ -1,4 +1,8 @@
 #include <inttypes.h>
+#include <time.h>
+
+/* per-row rasterization cycle counter */
+static volatile uint64_t _prof_raster_ns;
 #include "../../arcan_shmif.h"
 #include "../../arcan_tui.h"
 
@@ -444,6 +448,10 @@ static int raster_tobuf(
 		for (size_t i = line.offset; line.ncells && buf_sz >= raster_cell_sz; i++){
 			line.ncells--;
 
+/* per-row rasterization profiling entry */
+			struct timespec _rc0, _rc1;
+			clock_gettime(CLOCK_MONOTONIC, &_rc0);
+
 /* extract each cell */
 			struct cell cell;
 			unpack_cell(buf, &cell, hdr.bgc[3]);
@@ -482,6 +490,10 @@ static int raster_tobuf(
 			if (*x2 < draw_x && draw_x <= max_w){
 				*x2 = draw_x;
 			}
+
+			clock_gettime(CLOCK_MONOTONIC, &_rc1);
+			_prof_raster_ns += (_rc1.tv_sec - _rc0.tv_sec) * 1000000000ULL
+				+ (_rc1.tv_nsec - _rc0.tv_nsec);
 		}
 
 		cur_y++;

@@ -74,6 +74,11 @@ void arcan_conductor_toggle_watchdog()
  *      this would again be better for something like vulkan where we tie the
  *      rendertarget to a unique pipeline (they are much alike)
  */
+/* subsystem profiling counters, cycle-level granularity */
+static volatile uint64_t _prof_tick_ns;
+static volatile uint64_t _prof_synch_ns;
+static struct timespec _prof_ts0, _prof_ts1;
+
 static struct {
 	uint64_t tick_count;
 	int64_t set_deadline;
@@ -140,9 +145,15 @@ static void unlock_herd()
 {
 	for (size_t i = 0; i < frameservers.count; i++)
 		if (frameservers.ref[i]){
+/* profiling: per-client synch stall */
+			struct timespec _ts0, _ts1;
+			clock_gettime(CLOCK_MONOTONIC, &_ts0);
 			TRACE_MARK_ONESHOT("conductor", "synchronization",
 				TRACE_SYS_DEFAULT, frameservers.ref[i]->vid, 0, "unlock-herd");
 			arcan_frameserver_releaselock(frameservers.ref[i]);
+			clock_gettime(CLOCK_MONOTONIC, &_ts1);
+			_prof_synch_ns += (_ts1.tv_sec - _ts0.tv_sec) * 1000000000ULL
+				+ (_ts1.tv_nsec - _ts0.tv_nsec);
 		}
 }
 
@@ -672,8 +683,13 @@ int arcan_conductor_run(arcan_tick_cb tick)
  * and then actually dispatch / process these twice so that their old buffers
  * might get to be updated before we synch to display.
  */
+/* profiling: tick + audio mix cost */
+		clock_gettime(CLOCK_MONOTONIC, &_prof_ts0);
 		arcan_video_pollfeed();
 		arcan_audio_refresh();
+		clock_gettime(CLOCK_MONOTONIC, &_prof_ts1);
+		_prof_tick_ns += (_prof_ts1.tv_sec - _prof_ts0.tv_sec) * 1000000000ULL
+			+ (_prof_ts1.tv_nsec - _prof_ts0.tv_nsec);
 
 /* let the event-layer polling set interleave up to the next deadline. */
 #ifdef ARCAN_LWA
