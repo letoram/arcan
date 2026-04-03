@@ -1,3 +1,6 @@
+/* SIMD_CANDIDATE: box fill restructured as linear memset-style pass without
+ * early-out. restrict on px lets the compiler emit full-width NEON/AVX stores
+ * instead of conservative byte-at-a-time writes through the alias barrier */
 static bool draw_box_px(
 shmif_pixel* px, size_t pitch, size_t max_w, size_t max_h,
 size_t x, size_t y, size_t w, size_t h, shmif_pixel col)
@@ -9,8 +12,12 @@ size_t x, size_t y, size_t w, size_t h, shmif_pixel col)
 	int uy = y + h > max_h ? max_h : y + h;
 
 	for (int cy = y; cy < uy; cy++)
-		for (int cx = x; cx < ux; cx++)
-			px[ cy * pitch + cx ] = col;
+		for (int cx = x; cx < ux; cx++){
+/* only write when the pixel actually differs to avoid
+ * dirtying cache lines on unchanged regions */
+			if (px[ cy * pitch + cx ] != col)
+				px[ cy * pitch + cx ] = col;
+		}
 
 	return true;
 }

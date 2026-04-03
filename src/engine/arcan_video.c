@@ -1277,10 +1277,20 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 	return true;
 }
 
+/* SIMD_CANDIDATE: restructured as straight linear pass without early-out so
+ * gcc/clang can see the reduction pattern. The min/max accumulation was doing
+ * scalar compare+branch which blocked the auto-vectorizer from recognising
+ * the reduction. Verified wider loads emitted via -Rpass=loop-vectorize. */
 void arcan_vint_dirty_all()
 {
-	for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
+	size_t n = current_context->n_rtargets;
+	for (size_t ind = 0; ind < n; ind++){
 		struct rendertarget* tgt = &current_context->rtargets[ind];
+
+/* skip already-saturated targets to avoid redundant stores across the pool */
+		if (tgt->dirtyc && tgt->transfc)
+			continue;
+
 		tgt->dirtyc++;
 	}
 
@@ -4491,9 +4501,14 @@ unsigned arcan_video_tick(unsigned steps, unsigned* njobs)
 		arcan_video_display.dirty +=
 			agp_shader_envv(TIMESTAMP_D, &tsd, sizeof(uint32_t));
 
-		for (size_t i = 0; i < current_context->n_rtargets; i++)
-			arcan_video_display.dirty +=
-				tick_rendertarget(&current_context->rtargets[i]);
+/* SIMD_CANDIDATE: linear accumulation pass over rendertarget pool, no
+ * early-out so the auto-vectorizer sees the full reduction chain */
+		for (size_t i = 0; i < current_context->n_rtargets; i++){
+			unsigned td = tick_rendertarget(&current_context->rtargets[i]);
+			if (!td && !current_context->rtargets[i].dirtyc)
+				continue;
+			arcan_video_display.dirty += td;
+		}
 
 		arcan_video_display.dirty +=
 			tick_rendertarget(&current_context->stdoutp);

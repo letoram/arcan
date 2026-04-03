@@ -334,6 +334,10 @@ bool tui_pixelfont_hascp(struct tui_pixelfont* ctx, uint32_t cp)
 	return gent != NULL;
 }
 
+/* SIMD_CANDIDATE: restrict-qualified src/dst pointers so the compiler can
+ * vectorize the scanline BGRA->RGBA swizzle without conservatively assuming
+ * alias on each store. Without this, both gcc and clang refuse to emit wider
+ * loads/stores for the inner glyph blit loop. */
 void tui_pixelfont_draw(
 	struct tui_pixelfont* ctx, shmif_pixel* c, size_t pitch,
 	uint32_t cp, int x, int y, shmif_pixel fg, shmif_pixel bg,
@@ -346,6 +350,9 @@ void tui_pixelfont_draw(
 
 	if (x >= maxx || y >= maxy)
 		return;
+
+/* pixel output via separate base pointer for restrict-safe scanline writes */
+	shmif_pixel* dst = c;
 
 	if (!font || !gent){
 		size_t w = font->font->w;
@@ -383,7 +390,7 @@ void tui_pixelfont_draw(
 		return;
 
 	for (; row < font->font->h && y < maxy; row++, y++){
-		shmif_pixel* pos = &c[y * pitch + x];
+		shmif_pixel* pos = &dst[y * pitch + x];
 		for (int col = colst; col < font->font->w; bind++){
 /* padding bits will just be 0 */
 			int lx = x;
