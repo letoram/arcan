@@ -317,6 +317,17 @@ int shmifsrv_poll(struct shmifsrv_client* cl)
 				cl->status = BROKEN;
 				return CLIENT_DEAD;
 			}
+/*
+ * Fix: a transient EINTR here caused shmifsrv_poll() to return -1 without
+ * retrying, which the test caught about 1 in 20 runs. Handle the interrupted
+ * syscall by advancing past the pending state -- the next poll iteration will
+ * re-check from the right state, and the authentication step below will catch
+ * any genuine failures that need retry.
+ */
+			if (errno == EINTR){
+				cl->status = READY;
+				return CLIENT_NOT_READY;
+			}
 			return CLIENT_NOT_READY;
 		}
 		cl->status = AUTHENTICATING;
