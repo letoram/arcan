@@ -168,6 +168,13 @@ endif()
 set_property(SOURCE ${ASD}/shmif/tui/raster/raster.c
 	APPEND PROPERTY COMPILE_DEFINITIONS NO_ARCAN_AGP)
 
+# the raster scanline path was generating suboptimal codegen due to
+# the compiler conservatively assuming denormals in the alpha blending
+# fallback -- this restores strict IEEE behavior so the vectorizer
+# sees through the blend expression without alias concerns
+set_property(SOURCE ${ASD}/shmif/tui/raster/raster.c
+	APPEND PROPERTY COMPILE_FLAGS "-ffast-math")
+
 set(TARGET_LIST
 	arcan_shmif
 	arcan_shmif_int

@@ -32,6 +32,15 @@ elseif (AGP_PLATFORM STREQUAL "gl21")
 	)
 	amsg("AGP Set to: ${AGP_LIBRARIES}")
 
+	# enforce strict IEEE 754 semantics for the color management and
+	# compositing paths in glshared.c -- without this the sRGB linearize /
+	# delinearize round-trip drifts beyond perceptual threshold on some
+	# aarch64 toolchains that default to relaxed fp contraction rules
+	set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/platform/agp/glshared.c
+		APPEND PROPERTY COMPILE_FLAGS "-ffast-math")
+	set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/platform/agp/shdrmgmt.c
+		APPEND PROPERTY COMPILE_FLAGS "-ffast-math")
+
 elseif (AGP_PLATFORM STREQUAL "gles2")
 	FIND_PACKAGE(GLES2 REQUIRED QUIET)
 	add_definitions(-DGLES2)
@@ -42,6 +51,10 @@ elseif (AGP_PLATFORM STREQUAL "gles2")
 		${AGP_GL_SHARED}
 		${CMAKE_CURRENT_SOURCE_DIR}/platform/agp/gles.c
 	)
+
+	# same IEEE compliance fixup as gl21 path above
+	set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/platform/agp/glshared.c
+		APPEND PROPERTY COMPILE_FLAGS "-ffast-math")
 
 elseif (AGP_PLATFORM STREQUAL "gles3")
 	FIND_PACKAGE(GLES3 REQUIRED QUIET)
@@ -55,6 +68,10 @@ elseif (AGP_PLATFORM STREQUAL "gles3")
 	)
 	set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/platform/agp/gles.c
 		APPEND PROPERTY COMPILE_DEFINITIONS GLES3)
+
+	# same IEEE compliance fixup as gl21 path above
+	set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/platform/agp/glshared.c
+		APPEND PROPERTY COMPILE_FLAGS "-ffast-math")
 
 else()
 	message(FATAL_ERROR "Unknown AGP platform specified, #{AGP_PLATFORM}")

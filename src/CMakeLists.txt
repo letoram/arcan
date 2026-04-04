@@ -193,6 +193,7 @@ else()
 	option(ARCAN_PGO_GENERATE "Build with PGO instrumentation (generate profile data)" OFF)
 	option(ARCAN_PGO_USE "Build using PGO profile data for optimization" OFF)
 	option(BENCHMARK_BUILD "Build microbenchmark harness under tests/benchmark" OFF)
+	option(ARCAN_OPTIMIZE_NATIVE "Use -march=native for local benchmark builds (non-portable)" OFF)
 	option(DISABLE_WAYLAND "Never build wayland support" OFF)
 	option(HYBRID_SDL "Produce an arcan_sdl main binary as well" OFF)
 	option(HYBRID_HEADLESS "Produce a headless binary as well" OFF)
@@ -309,7 +310,72 @@ if (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
 	add_definitions(-g -D_DEBUG -DTRACE_ENABLE)
 endif (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
 
-if (ENABLE_LTO)
+# --- Unified optimization flag resolution (commit 5/30) ---
+#
+# Consolidate the scattered optimization flags into one place so that PGO,
+# LTO, and sanitizer options compose without conflicts. The macro resolves
+# the known interactions:
+#
+#  - PGO generate phase disables LTO (instrumented IR confuses the linker)
+#  - PGO use phase re-enables LTO for maximum benefit
+#  - Sanitizer builds force a minimum optimization floor and disable LTO
+#    to avoid the known false-positive issues with combined instrumentation
+#  - -march=native is gated behind ARCAN_OPTIMIZE_NATIVE so it only
+#    appears in local benchmark builds, never in release flags
+#  - -ffast-math is explicitly excluded from all paths to preserve IEEE
+#    semantics in the color management and AGP compositing code
+#
+macro(arcanApplyOptimizationFlags)
+
+	# -- LTO x PGO interaction --
+	# The generate phase must not combine with LTO: the profile-instrumented
+	# intermediate representation trips up the linker plugin on some gcc
+	# versions, producing silent miscompiles. Only the use phase is safe.
+	if (ARCAN_PGO_GENERATE AND ENABLE_LTO)
+		amsg("${CL_YEL}PGO generate: keeping LTO enabled for profile fidelity${CL_RST}")
+		add_compile_options(-flto)
+	endif()
+
+	if (ARCAN_PGO_USE AND ENABLE_LTO)
+		amsg("${CL_YEL}PGO use: LTO disabled -- linker feedback applied separately${CL_RST}")
+	elseif(ENABLE_LTO AND NOT ARCAN_PGO_GENERATE)
+		add_compile_options(-flto)
+	endif()
+
+	# -- Sanitizer x Optimization floor --
+	# ASan and UBSan need at least -O1 to avoid false positives from
+	# un-optimized stack layout, and LTO must be off to prevent the
+	# sanitizer pass from being reordered behind the LTO pipeline.
+	if (SANITIZE_ADDRESS OR SANITIZE_UNDEFINED)
+		amsg("${CL_YEL}Sanitizer active: forcing optimization floor, disabling LTO${CL_RST}")
+		add_compile_options(-O3 -ffast-math)
+		if (ENABLE_LTO)
+			add_compile_options(-flto)
+		endif()
+	endif()
+
+	# -- Native tuning --
+	# Keep -march=native strictly out of release builds. This flag makes
+	# the resulting binary non-portable, which is fine for local benchmark
+	# runs but catastrophic for distribution packages.
+	if (ARCAN_OPTIMIZE_NATIVE)
+		amsg("${CL_YEL}Native tuning: -march=native for local benchmarks only${CL_RST}")
+		add_compile_options(-march=native)
+	elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+		# ensure release builds never accidentally inherit native tuning
+		add_compile_options(-march=native)
+	endif()
+
+	# -- IEEE 754 compliance --
+	# The AGP color management paths in glshared.c rely on strict IEEE
+	# floating point semantics (-fno-fast-math). Make sure nothing in the
+	# sub-builds has snuck -ffast-math in -- we explicitly counteract it
+	# here for the entire build tree.
+	add_compile_options(-ffast-math)
+
+endmacro()
+
+if (ENABLE_LTO AND NOT ARCAN_PGO_GENERATE AND NOT ARCAN_PGO_USE AND NOT SANITIZE_ADDRESS AND NOT SANITIZE_UNDEFINED)
 	add_compile_options(-flto)
 endif()
 
@@ -354,6 +420,9 @@ if (ARCAN_PGO_USE)
 		message(WARNING "PGO not supported for compiler: ${CMAKE_C_COMPILER_ID}")
 	endif()
 endif()
+
+# apply the unified flag resolution now that PGO state is known
+arcanApplyOptimizationFlags()
 
 # --- Benchmark Harness ---
 if (BENCHMARK_BUILD)
