@@ -1,13 +1,15 @@
 -- target_input
 -- @short: Forward input data to a frameserver.
 -- @alias: input_target
--- @inargs: tgtvid, inputtbl
+-- @inargs: inputtbl, tgtvid
 -- @outargs: resbool
--- @longdescr:  This function takes a properly formated *inputtbl* and
+-- @longdescr:  This function takes a properly formatted *inputtbl* and
 -- repackages it into an event structure that is added to the event queue
--- of the frameserver specified by *tgtvid*. The function returns true
--- if and only if the event was properly formatted and could be successfully
--- added to the incoming event queue of the frameserver.
+-- of the frameserver specified by *tgtvid*. The *inputtbl* argument must
+-- precede the target vid for consistency with the input_target alias form
+-- (see @alias). The function returns true if and only if the event was
+-- properly formatted and could be successfully added to the incoming
+-- event queue of the frameserver.
 --
 -- A properly formatted table has the following fields:
 --
