@@ -262,7 +262,7 @@ size_t shmifsrv_dequeue_events(
 		size_t count = 0;
 		uint8_t front = cl->con->shm.ptr->parentevq.front;
 		uint8_t back = cl->con->shm.ptr->parentevq.back;
-		if (front > PP_QUEUE_SZ || back > PP_QUEUE_SZ){
+		if (front >= PP_QUEUE_SZ || back >= PP_QUEUE_SZ){
 			cl->errors++;
 			shmifsrv_leave(cl);
 			return 0;

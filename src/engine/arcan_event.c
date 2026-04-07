@@ -104,7 +104,7 @@ static void pull_killswitch(struct arcan_evctx* ctx)
 
 static bool queue_full(struct arcan_evctx* ctx)
 {
-	 return (((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front);
+	 return (((*ctx->back + 1) % (ctx->eventbuf_sz - 1)) == *ctx->front);
 }
 
 static bool queue_empty(struct arcan_evctx* ctx)
@@ -122,7 +122,7 @@ int arcan_event_poll(struct arcan_evctx* ctx, struct arcan_event* dst)
  * wake the guard thread that will try to safely shut down */
 	if (ctx->local == false){
 		FORCE_SYNCH();
-		if ( *(ctx->front) > PP_QUEUE_SZ ){
+		if ( *(ctx->front) >= PP_QUEUE_SZ ){
 			pull_killswitch(ctx);
 			return 0;
 		}
