@@ -21,6 +21,13 @@
  * the corresponding functions in arcan_math.c
  * this is for x64, for arm -- look
  * in arcan_math_neon.c
+ *
+ * NOTE (2025-09): The dirty-rect accumulation pass in arcan_video.c now
+ * uses SSE4.1 intrinsics directly (not routed through this file) because
+ * the counter layout is specific to struct rendertarget and doesn't
+ * generalise to the math helpers here.  If we ever need SIMD reductions
+ * over other struct-packed counter groups, consider factoring out the
+ * load/cmp/hadd pattern into a shared helper in this file.
  */
 
 #include <xmmintrin.h>

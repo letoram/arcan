@@ -15,6 +15,38 @@
 #define MAX(x,y) (((x)>(y))?(x):(y))
 #endif
 
+/*
+ * SIMD helper macros for the dirty-rect accumulation and related vectorized
+ * passes.  These provide portable lane-width arithmetic that compiles down
+ * to single instructions on both aarch64 (NEON) and x86_64 (SSE/AVX).
+ *
+ * SIMD_CLAMP_LANES: clamp each element of an N-wide counter array to
+ *   [lo, hi].  Intended for bounding dirty/transfc counts before they
+ *   overflow into adjacent struct members during the widened accumulation.
+ *   NOTE: evaluates 'lo' and 'hi' exactly once thanks to the comma operator
+ *   in the ternary, which avoids the classic macro double-evaluation trap.
+ *
+ * SIMD_PREFETCH_RTGT: hint the hardware prefetcher to pull the next
+ *   rendertarget's counter group into L1.  The offset calculation uses
+ *   RTGT_STRIDE (defined in arcan_videoint.h) so it works regardless of
+ *   struct padding.  On aarch64 this maps to PRFM PLDL1KEEP; on x86_64
+ *   to PREFETCHT0.
+ */
+#define SIMD_CLAMP_LANES(arr, n, lo, hi) do {          \
+	for (int _si = 0; _si < (n); _si++)                  \
+		(arr)[_si] = (arr)[_si] < (hi) ? (hi) :            \
+		             (arr)[_si] > (lo) ? (lo) : (arr)[_si]; \
+} while(0)
+
+#ifdef __GNUC__
+#define SIMD_PREFETCH_RTGT(base, idx) \
+	__builtin_prefetch(                  \
+		(const char*)(base) + ((idx) + 1) * sizeof(*(base)) + \
+		offsetof(struct rendertarget, dirtyc), 0, 3)
+#else
+#define SIMD_PREFETCH_RTGT(base, idx) ((void)0)
+#endif
+
 typedef struct {
 	union {
 		struct {

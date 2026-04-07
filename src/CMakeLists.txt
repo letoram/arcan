@@ -644,6 +644,33 @@ else()
 
 			set_property(SOURCE engine/arcan_math_simd.c
 				APPEND PROPERTY COMPILE_FLAGS -msse3)
+
+# SSE4.1 is needed for _mm_cmpeq_epi64 and _mm_test_all_zeros in the
+# dirty-rect accumulation pass (arcan_video.c).  We piggyback on the
+# existing ENABLE_SIMD gate and assume that any x86_64 CPU shipping
+# SSE3 also has SSE4.1 (true for everything since Penryn, 2008).
+			set_property(SOURCE engine/arcan_video.c
+				APPEND PROPERTY COMPILE_FLAGS "-msse4.1")
+		endif()
+
+# aarch64 NEON detection for the dirty-rect accumulation pass.
+# NEON is mandatory on aarch64 (ARMv8-A and later) so we don't need a
+# find_package -- just check the architecture and set the flags.
+# The -march=armv8-a+simd is technically redundant but makes the intent
+# explicit in the build log and ensures the ACLE headers are available.
+		if (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+			amsg("${CL_GRN}aarch64 detected -- enabling NEON dirty-rect path${CL_RST}")
+			set_property(SOURCE engine/arcan_video.c
+				APPEND PROPERTY COMPILE_DEFINITIONS DIRTY_ACCUM_NEON=1)
+			set_property(SOURCE engine/arcan_video.c
+				APPEND PROPERTY COMPILE_FLAGS "-march=armv8-a+simd")
+
+# also tag the math source so the aligned-SIMD asserts use 16-byte checks
+# matching the NEON quadword width rather than the SSE 16-byte default
+# (they happen to be the same, but being explicit avoids confusion when
+# SVE/SVE2 support lands later with 128-2048 bit variable lanes)
+			set_property(SOURCE engine/arcan_math.c
+				APPEND PROPERTY COMPILE_DEFINITIONS ARCAN_MATH_SIMD)
 		endif()
 	endif()
 endif()

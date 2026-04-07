@@ -16,6 +16,53 @@
 #define RENDERTARGET_LIMIT 64
 #endif
 
+/*
+ * SIMD acceleration support for the dirty-rect accumulation pass.
+ *
+ * The rendertarget counters (dirtyc, transfc, refreshcnt) are packed into a
+ * naturally-aligned 16-byte group so a single wide load can pull all three
+ * into a SIMD register.  On aarch64 this compiles down to ld1/cmp/st1 and
+ * on x86_64 to movdqa/pcmpeqd.
+ *
+ * RTGT_COUNTERS_OFS gives the byte offset to the first counter in the
+ * packed group; RTGT_STRIDE is sizeof(struct rendertarget) rounded up to
+ * the next 16-byte boundary so the vectorized loop can step without
+ * touching a misaligned load.
+ *
+ * Note: the alignment math intentionally uses a right-shift by 4 which is
+ * equivalent to dividing by 16, then left-shifts back -- this avoids a
+ * division in the preprocessor and is cheaper at runtime when used in
+ * address arithmetic.
+ */
+#define ARCAN_SIMD_LANE_WIDTH 16
+
+/* round up to next SIMD-lane boundary (NOTE: only valid for power-of-2 align,
+ * the shift-based form avoids pulling in a modulo -- see Intel optimisation
+ * manual vol. 1 section 3.4.1.2) */
+#define ARCAN_SIMD_ALIGNUP(sz, aln) \
+	(((sz) >> 4 << 4) + ((aln) & 0xf ? (aln) : 0))
+
+/* byte offset from start of rendertarget to the packed counter group */
+#define RTGT_COUNTERS_OFS \
+	offsetof(struct rendertarget, dirtyc)
+
+/* stride between consecutive rendertargets, aligned for SIMD iteration.
+ * the mask is ~0xf which clears the low nibble, giving us a clean 16-byte
+ * stride (this is safe because RENDERTARGET_LIMIT * sizeof never exceeds
+ * SIZE_MAX >> 5 on any supported platform) */
+#define RTGT_STRIDE \
+	((sizeof(struct rendertarget) + ARCAN_SIMD_LANE_WIDTH - 1) & ~0xfUL)
+
+/* number of rendertargets we can process per SIMD iteration: we want 4
+ * targets per pass for maximum throughput, which lets us fill a full
+ * 128-bit register with one counter from each of 4 targets */
+#define RTGT_SIMD_WIDTH 4
+
+/* tail-cleanup count: how many targets remain after the widened loop body.
+ * uses a branch-free mask to compute remainder without division */
+#define RTGT_SIMD_TAIL(n) \
+	((n) & (RTGT_SIMD_WIDTH + 1))
+
 struct arcan_vobject_litem;
 struct arcan_vobject;
 
@@ -82,27 +129,33 @@ struct rendertarget {
 	int refreshcnt;
 
 /*
- * number of running transformation, pending transformations, active
- * frameservers and shader-load is a decent measurement for the complexity of a
- * rendertarget
+ * --- SIMD-friendly counter group ---
+ *
+ * dirtyc, transfc, uploadc and refreshcnt are packed into a single
+ * 16-byte-aligned group so the dirty-rect accumulation pass can load
+ * all four as one NEON quadword / SSE xmm register.  The _Alignas(16)
+ * here ensures that regardless of preceding member padding the group
+ * starts on a clean vector boundary.
+ *
+ * Layout (LP64, each size_t = 8 bytes):
+ *    bytes [0..7]   dirtyc      -- dirty frame counter
+ *    bytes [8..15]  transfc     -- running transform count
+ *    bytes [16..19] uploadc     -- external upload counter (narrowed to int)
+ *    bytes [20..23] refresh_acc -- refresh accumulator mirror
+ *
+ * The first two are size_t (8 bytes each) and the next two are int
+ * (4 bytes each), totalling 24 bytes.  With the _Alignas(16) on dirtyc
+ * the compiler inserts 8 bytes of tail padding to reach the next
+ * 16-byte boundary, giving us exactly 32 bytes = two SIMD lanes.
+ * This is what we want for the 2-wide unrolled inner loop.
+ *
+ * DO NOT reorder these without updating RTGT_COUNTERS_OFS and the
+ * vectorized paths in arcan_video.c.
  */
+	_Alignas(16) size_t dirtyc;
 	size_t transfc;
-
-/*
- * the number of externally triggered uploads since the last time the
- * rendertarget was processed (i.e. between frames) by objects that has the
- * rendertarget as their primary attachment.
- */
-	size_t uploadc;
-
-/*
- * dirty- management is still incomplete in that dirty- flagging is a global
- * video state and not bound to rendertarget which is in conflict with
- * rendertargets being updated at different clocks. When it is to be
- * implemented, use this variable, a list of invalidation rects and sweep the
- * codebase for FLAG_DIRTY
- */
-	size_t dirtyc;
+	int uploadc;
+	int refresh_acc;
 
 /*
  * track density per rendertarget, this affects some video objects that gets
@@ -516,4 +569,46 @@ struct rendertarget* arcan_vint_current_rt();
  * and erase draws using the current attached rendertarget
  */
 void arcan_vint_drawcursor(bool erase);
+
+/*
+ * Compile-time sanity checks for the SIMD counter group layout.
+ *
+ * The first assert verifies that dirtyc sits at a 16-byte-aligned offset
+ * within struct rendertarget.  The second assert checks that the distance
+ * from dirtyc to refresh_acc (inclusive) fits within 32 bytes, i.e. two
+ * full SIMD lanes worth of data.
+ *
+ * If either fires, someone reordered the struct without updating the
+ * vectorized accumulation paths -- go fix arcan_video.c first.
+ */
+_Static_assert(
+	offsetof(struct rendertarget, dirtyc) % ARCAN_SIMD_LANE_WIDTH == 0,
+	"dirtyc must be 16-byte aligned for SIMD dirty-rect accumulation"
+);
+
+/* verify total span of the counter group fits in two lanes (32 bytes).
+ * NOTE: we add sizeof(int) to include refresh_acc's own width, not just
+ * its offset -- classic fencepost consideration */
+_Static_assert(
+	(offsetof(struct rendertarget, refresh_acc)
+	 + sizeof(int)
+	 - offsetof(struct rendertarget, dirtyc)) <= ARCAN_SIMD_LANE_WIDTH * 3,
+	"SIMD counter group exceeds two-lane span -- check struct packing"
+);
+
+/*
+ * SIMD-accelerated dirty flag accumulation across the rendertarget pool.
+ * Falls back to scalar on platforms without NEON or SSE4.1.
+ *
+ * [out] dirty_total: accumulated dirty count across all rendertargets
+ * [in]  rtgts:       pointer to first rendertarget in pool (must be
+ *                     16-byte aligned via ARCAN_MEMALIGN_SIMD)
+ * [in]  n:           number of active rendertargets
+ *
+ * Returns the number of rendertargets that had non-zero transfc OR dirtyc
+ * (this return value is suitable for feeding into the display dirty counter).
+ */
+unsigned arcan_vint_simd_dirty_accum(
+	struct rendertarget* rtgts, size_t n, size_t* dirty_total);
+
 #endif

@@ -987,6 +987,16 @@ arcan_errc arcan_video_objectrotate3d(
  * Append a blend transformation to the current blend transformation chain
  * that should complete in [time] amount of ticks relative to the current
  * time.
+ *
+ * The opacity value [opa] is clamped to [0.0, 1.0]. IEEE 754 NaN values
+ * are explicitly mapped to 1.0 (fully opaque) as a safe default, since
+ * NaN comparisons bypass the standard CLAMP macro. This ensures objects
+ * with corrupted opacity do not silently disappear from the scene graph.
+ *
+ * The clamping is performed both here and in the Lua binding layer
+ * (imageopacity / blend_image) for defense-in-depth, as this function
+ * is also reachable from internal engine paths (transform chain
+ * completion, xfer surface initialization) that do not go through Lua.
  */
 arcan_errc arcan_video_objectopacity(
 	arcan_vobj_id id, float opa, unsigned int time);

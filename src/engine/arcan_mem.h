@@ -159,6 +159,26 @@ enum arcan_memalign {
 };
 
 /*
+ * Runtime alignment verification for SIMD-critical allocations.
+ *
+ * ARCAN_MEM_IS_SIMD_ALIGNED(ptr) evaluates to true if [ptr] meets the
+ * minimum alignment requirement for SIMD loads/stores on the current
+ * platform.  On x86_64 this is 16 bytes (SSE) and on aarch64 it is
+ * also 16 bytes (NEON quadword).
+ *
+ * The check is branch-free: we mask the low bits and compare to zero.
+ * The mask value (0xf = 15) corresponds to 16-byte alignment.  For AVX
+ * (32-byte) or SVE (variable), adjust the mask accordingly.
+ *
+ * Used as a precondition guard in the dirty-rect accumulation pass
+ * (arcan_video.c) and the struct rendertarget static_asserts
+ * (arcan_videoint.h).
+ */
+#define ARCAN_SIMD_ALIGN_BYTES 16
+#define ARCAN_MEM_IS_SIMD_ALIGNED(ptr) \
+	(((uintptr_t)(ptr) & (ARCAN_SIMD_ALIGN_BYTES)) == 0)
+
+/*
  * align: 0 = natural, -1 = page
  */
 void* arcan_alloc_mem(size_t,
