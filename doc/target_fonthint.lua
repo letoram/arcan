@@ -21,7 +21,11 @@
 -- The function returns true if the font was found and was forwarded correctly
 -- to the client, as well as the estimated cell width/height that will currently
 -- be used for size calculations of server-side text in monospaced form with the
--- supplied fonts.
+-- supplied fonts. Note that ref:target_displayhint now returns a full metrics
+-- table (cellw, cellh, density, ppcm) rather than just the bare integer pair,
+-- so prefer using target_displayhint to retrieve cell metrics after a font
+-- change rather than relying on the values returned here (the two-return form
+-- from target_fonthint remains stable but does not include density information).
 -- @note: If -1 is used for *size_mm* and/or *strength*, the recipient
 -- should keep the currently hinted size.
 -- @note: To translate from the Postscript 'point size' to

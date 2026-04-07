@@ -6,6 +6,13 @@
 -- @note: The fields used in proptbl are: (x, y, z, rotation, roll, pitch, yaw,
 -- opa, zv, scalex and scaley).
 -- @note: The values retrieved are expressed in local (object) coordinate space.
+-- @note: For frameserver-backed objects that use tpack rendering, the surface
+-- dimensions reported here reflect the raw backing store, not the logical cell
+-- grid. To obtain the cell grid metrics (cellw, cellh, density, ppcm), use the
+-- table returned by ref:target_displayhint instead. The opa field in proptbl
+-- corresponds to the current blend state, which may differ from the value set
+-- via ref:blend_image if the opacity has been clamped (see blend_image notes
+-- on NaN handling).
 -- @group: image
 -- @cfunction: getimageprop
 -- @related: image_surface_initial_properties, image_surface_resolve_properties,
