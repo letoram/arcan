@@ -57,6 +57,15 @@ struct platform_timing platform_hardware_clockcfg()
 #endif
 }
 
+uint64_t platform_monotonic_ns()
+{
+	struct timespec tp;
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+/* return nanosecond-precision monotonic timestamp for deadline computation.
+ * Careful: tv_sec * 1e9 can overflow on 32-bit but we only target LP64. */
+	return (uint64_t)tp.tv_sec * 1000000000ULL + (uint64_t)tp.tv_nsec;
+}
+
 void arcan_timesleep(unsigned long val)
 {
 	struct timespec req, rem;

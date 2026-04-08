@@ -102,4 +102,21 @@ enum trace_level {
 } while (0);
 #endif
 
+/*
+ * Convenience macro for deadline-related trace points. Emits a oneshot mark
+ * with the computed deadline value and a tag string that distinguishes
+ * between the original and v2 adaptive deadline calculation paths. The
+ * separate macro avoids cluttering callers with the full TRACE_MARK_ONESHOT
+ * argument list when all we vary is the numeric deadline and tag.
+ */
+#ifndef TRACE_MARK_DEADLINE
+#define TRACE_MARK_DEADLINE(deadline_val, tag) do { \
+	if (arcan_trace_enabled){ \
+		arcan_trace_mark("conductor", "deadline", 0, TRACE_SYS_DEFAULT, \
+			0, (uint32_t)(deadline_val), (tag), \
+			__FILE__, __FUNCTION__, __LINE__); \
+	} \
+} while (0);
+#endif
+
 #endif

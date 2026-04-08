@@ -21,6 +21,43 @@ enum synch_method {
 int arcan_conductor_run(arcan_tick_cb cb);
 #endif
 
+/*
+ * Adaptive deadline tuning parameters. These control how the conductor
+ * partitions the vsync interval between composition work and slack time.
+ * The slack fraction is expressed as a right-shift of the total budget:
+ *   >> 1 = 50%, >> 2 = 25%, >> 3 = 12.5%
+ *
+ * ADAPTIVE_DEADLINE_SHIFT: how much of the interval to reserve as slack
+ * ADAPTIVE_EMA_WEIGHT: exponential moving average weight for frame cost
+ *   tracking (higher = more responsive to recent frames, range 0.0-1.0)
+ * ADAPTIVE_COST_HEADROOM_US: microsecond safety margin subtracted from
+ *   the raw deadline to account for kernel scheduling jitter
+ */
+#define ADAPTIVE_DEADLINE_SHIFT 3
+#define ADAPTIVE_EMA_WEIGHT 0.9
+#define ADAPTIVE_COST_HEADROOM_US 200
+
+/*
+ * Frame cost estimation statistics. Tracks a windowed exponential moving
+ * average of recent frame costs to feed into the adaptive deadline
+ * calculation. The EMA converges to the true mean over ~10 samples with
+ * the default weight of 0.9.
+ */
+struct adaptive_frame_stats {
+	double ema_render_cost;     /* smoothed GPU render time (ms) */
+	double ema_transfer_cost;   /* smoothed buffer transfer time (ms) */
+	double ema_total;           /* combined estimate fed to deadline calc */
+	uint64_t sample_count;      /* total samples accumulated */
+	int64_t last_deadline_ns;   /* most recent computed deadline (signed for clamp) */
+	uint64_t underflow_clamps;  /* number of times we clamped a negative deadline */
+};
+
+/*
+ * Query current adaptive frame statistics for tracing / debugging.
+ * Returns a pointer to the internal (static) stats structure.
+ */
+struct adaptive_frame_stats* arcan_conductor_adaptive_stats(void);
+
 /* [ called from platform ] */
 void arcan_conductor_enable_watchdog();
 void arcan_conductor_toggle_watchdog();

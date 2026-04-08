@@ -53,6 +53,24 @@ unsigned long long int arcan_timemicros()
 	return ( (double)time * sf) / 1000;
 }
 
+uint64_t platform_monotonic_ns()
+{
+	uint64_t time = mach_absolute_time();
+	static double sf;
+
+	if (!sf){
+		mach_timebase_info_data_t info;
+		kern_return_t ret = mach_timebase_info(&info);
+		if (ret == 0)
+			sf = (double)info.numer / (double)info.denom;
+		else{
+			sf = 1.0;
+		}
+	}
+/* mach_absolute_time is already in nanoseconds after scaling */
+	return (uint64_t)((double)time * sf);
+}
+
 void arcan_timesleep(unsigned long val)
 {
 	struct timespec req, rem;

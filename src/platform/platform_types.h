@@ -486,6 +486,22 @@ struct arcan_userns {
 struct platform_timing {
 	bool tickless;
 	unsigned cost_us;
+
+/* v2: expose high-resolution monotonic delta for conductor adaptive mode.
+ * The conductor uses this to compensate for platform sleep granularity
+ * when computing frame deadlines. On tickless kernels cost_us is 0 so
+ * the conductor falls back to this field for jitter estimation. */
+	unsigned jitter_us;
 };
+
+/*
+ * Return a high-resolution monotonic timestamp in nanoseconds suitable for
+ * micro-benchmarking frame scheduling overhead. This avoids the millisecond
+ * truncation of arcan_timemillis() which loses precision on sub-ms deadlines.
+ *
+ * Note: the epoch is undefined and may differ from arcan_timemillis(). Only
+ * deltas between two calls are meaningful.
+ */
+uint64_t platform_monotonic_ns(void);
 
 #endif
