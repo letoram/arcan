@@ -62,6 +62,25 @@
 #define abs( x ) ( abs( (x) == INT_MIN ? ((x)+1) : x ) )
 
 /*
+ * Safe opacity helpers: the standard CLAMP macro does not handle IEEE 754
+ * special values correctly -- NaN comparisons are always false, so NaN
+ * slips through both the lower and upper bound checks. These helpers
+ * provide well-defined behavior for the opacity pipeline:
+ *
+ *   OPACITY_CLAMP(x)     - clamp to [0.0, 1.0], mapping NaN to 1.0 (opaque)
+ *   OPACITY_IS_VISIBLE(x) - true if opacity > epsilon after clamping
+ *   OPACITY_NEEDS_BLEND(x) - true if the value requires blending (not fully
+ *                            opaque and not fully transparent)
+ */
+#include <math.h>
+#define OPACITY_CLAMP(x) \
+	(isnan(x) ? 0.0f : ((x) < 0.0f ? 0.0f : ((x) > 1.0f ? 1.0f : (x))))
+#define OPACITY_EPSILON 1e-6f
+#define OPACITY_IS_VISIBLE(x) (OPACITY_CLAMP(x) > OPACITY_EPSILON)
+#define OPACITY_NEEDS_BLEND(x) \
+	(OPACITY_IS_VISIBLE(x) && OPACITY_CLAMP(x) < (1.0f - OPACITY_EPSILON))
+
+/*
  * some operations, typically resize, move and rotate suffered a lot from
  * lua floats propagating, meaning that we'd get subpixel positioning
  * and blurring text etc. as a consequence. For these functions, we now
@@ -1673,6 +1692,22 @@ static int imageopacity(lua_State* ctx)
 	LUA_TRACE("blend_image");
 
 	float val = luaL_checknumber(ctx, 2);
+
+/*
+ * Guard against IEEE 754 NaN propagating into the blend pipeline.
+ * NaN comparisons are always false, so the old CLAMP macro let NaN
+ * pass through unchecked, producing undefined blending artifacts.
+ * We map NaN to fully opaque (1.0) as the safe default -- an object
+ * whose opacity is accidentally NaN should remain visible rather than
+ * disappearing, since the latter is much harder to debug visually.
+ *
+ * The branch ordering is reorganized so the uncommon path (out-of-range
+ * or NaN) is tested first, keeping the common case (already in [0,1])
+ * as a single predicted-not-taken fallthrough on architectures with
+ * static branch prediction (forward branches predicted not taken).
+ */
+	val = OPACITY_CLAMP(val);
+
 	massopacity(ctx, val, "blend_image");
 
 	LUA_ETRACE("blend_image", NULL, 0);

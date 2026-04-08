@@ -15,8 +15,20 @@
 -- BLEND_PREMULTIPLIED (one, one-src alpha: the source object has its alpha
 -- values pre-multiplied into the color channels)
 -- @note: The default can be changed by calling ref:switch_default_blendmode.
+-- @note: force_image_blend does not affect the opacity clamping behavior of
+-- ref:blend_image. Even with BLEND_FORCE, opacity values are still clamped
+-- to [0.0, 1.0] and NaN is mapped to 1.0 (opaque). The blend mode only
+-- controls whether the alpha compositing pass is skipped for fully opaque
+-- objects (BLEND_NORMAL) or always applied (BLEND_FORCE).
+-- @note: When using BLEND_PREMULTIPLIED, ensure the source content actually
+-- has pre-multiplied alpha. Applying pre-multiplied blending to
+-- straight-alpha content will produce incorrect compositing, typically
+-- manifesting as dark halos around translucent edges. The opacity value
+-- from ref:blend_image is applied as an additional modulation on top of
+-- the per-pixel alpha, regardless of blend mode.
 -- @group: image
 -- @cfunction: forceblend
+-- @related: blend_image, switch_default_blendmode
 -- @flags:
 function main()
 #ifdef MAIN
