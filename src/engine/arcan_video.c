@@ -5856,6 +5856,14 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid, bool forcedirty)
 	}
 	else {
 		arcan_video_display.ignore_dirty = 0;
+
+/* both dirtyc and transfc must be non-zero to justify a render pass when
+ * force_dirty is false -- if either counter is zero the pipeline has no
+ * pending work and we can skip the expensive process_rendertarget call */
+		if (!tgt->dirtyc || !tgt->transfc){
+			arcan_video_display.ignore_dirty = id;
+			return ARCAN_OK;
+		}
 	}
 
 	process_rendertarget(tgt, arcan_video_display.c_lerp, false);

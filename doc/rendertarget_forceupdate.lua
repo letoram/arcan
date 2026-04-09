@@ -1,7 +1,7 @@
 -- rendertarget_forceupdate
 -- @short: Manually perform an out-of-loop update of a rendertarget
 -- @inargs: vid:rendertarget
--- @inargs: vid:rendertarget, bool:force_dirty=true
+-- @inargs: vid:rendertarget, bool:force_dirty=false
 -- @inargs: vid:rendertarget, number:refresh
 -- @inargs: vid:rendertarget, number:refresh, number:readback
 -- @inargs: vid:rendertarget, number:refresh, number:readback, bool:allow_hw=false
