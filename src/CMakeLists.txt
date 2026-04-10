@@ -665,12 +665,10 @@ else()
 			set_property(SOURCE engine/arcan_video.c
 				APPEND PROPERTY COMPILE_FLAGS "-march=armv8-a+simd")
 
-# also tag the math source so the aligned-SIMD asserts use 16-byte checks
-# matching the NEON quadword width rather than the SSE 16-byte default
-# (they happen to be the same, but being explicit avoids confusion when
-# SVE/SVE2 support lands later with 128-2048 bit variable lanes)
-			set_property(SOURCE engine/arcan_math.c
-				APPEND PROPERTY COMPILE_DEFINITIONS ARCAN_MATH_SIMD)
+# Do NOT define ARCAN_MATH_SIMD on aarch64: there is no NEON replacement
+# for multiply_matrix / mult_matrix_vecf yet (arcan_math_simd.c is SSE-
+# only). The scalar fallbacks in arcan_math.c auto-vectorize under -O2
+# on aarch64 anyway thanks to the SLP-friendly loop shapes.
 		endif()
 	endif()
 endif()

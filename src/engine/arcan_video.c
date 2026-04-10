@@ -1390,8 +1390,8 @@ void arcan_vint_dirty_all()
 /* vceqq_u64 sets lane to all-1s where counter == 0; we want to increment
  * dirtyc only when BOTH dirtyc AND transfc are already saturated (non-zero).
  * The vmvnq inverts the mask, giving us all-1s where counter != 0. */
-			uint64x2_t is_nonzero = vmvnq_u8(vreinterpretq_u8_u64(
-				vceqq_u64(counters, zerovec)));
+			uint64x2_t is_nonzero = vreinterpretq_u64_u8(vmvnq_u8(
+				vreinterpretq_u8_u64(vceqq_u64(counters, zerovec))));
 
 /* check if ALL lanes are non-zero (both counters saturated) -- if so, skip.
  * we extract lane 0 (dirtyc) and lane 1 (transfc) and AND them; if the

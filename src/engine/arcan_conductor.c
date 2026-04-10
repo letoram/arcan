@@ -148,6 +148,7 @@ static void adaptive_update_ema(double render_sample, double transfer_sample)
  * that get assigned to an unsigned deadline). We clamp to zero to prevent
  * a uint64 wrap to ~2^64 which would set a ~584 year timeout.
  */
+static int estimate_frame_cost(void);
 static uint64_t compute_adaptive_deadline(int next)
 {
 /* Subtract the estimated frame cost from the interval first, then shift

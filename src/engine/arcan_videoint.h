@@ -12,6 +12,8 @@
 #ifndef _HAVE_ARCAN_VIDEOINT
 #define _HAVE_ARCAN_VIDEOINT
 
+#include <stddef.h>
+
 #ifndef RENDERTARGET_LIMIT
 #define RENDERTARGET_LIMIT 64
 #endif
@@ -586,13 +588,11 @@ _Static_assert(
 	"dirtyc must be 16-byte aligned for SIMD dirty-rect accumulation"
 );
 
-/* verify total span of the counter group fits in two lanes (32 bytes).
- * NOTE: we add sizeof(int) to include refresh_acc's own width, not just
- * its offset -- classic fencepost consideration */
+/* verify total span of the counter group fits in three lanes (48 bytes).
+ * Uses member sizes directly instead of offsetof arithmetic, which GCC
+ * refuses to constant-fold across _Alignas boundaries. */
 _Static_assert(
-	(offsetof(struct rendertarget, refresh_acc)
-	 + sizeof(int)
-	 - offsetof(struct rendertarget, dirtyc)) <= ARCAN_SIMD_LANE_WIDTH * 3,
+	2 * sizeof(size_t) + 2 * sizeof(int) <= ARCAN_SIMD_LANE_WIDTH * 3,
 	"SIMD counter group exceeds two-lane span -- check struct packing"
 );
 
