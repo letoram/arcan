@@ -5366,8 +5366,17 @@ static int validvid(lua_State* ctx)
 #endif
 		lua_pushboolean(ctx, vobj && vobj->feed.state.tag == type);
 	}
-	else
-		lua_pushboolean(ctx, arcan_video_getobject(res) != NULL);
+	else {
+/* fast path: direct pool test avoids arcan_video_getobject overhead */
+		struct arcan_video_context* vctx = &vcontext_stack[vcontext_ind];
+		if (res == ARCAN_VIDEO_WORLDID)
+			lua_pushboolean(ctx, true);
+		else
+			lua_pushboolean(ctx,
+				res > 0 && (size_t)res < vctx->vitem_limit &&
+				FL_TEST(&vctx->vitems_pool[res], FL_INUSE)
+			);
+	}
 
 	LUA_ETRACE("valid_vid", NULL, 1);
 }
