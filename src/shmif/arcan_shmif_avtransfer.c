@@ -52,6 +52,14 @@ static bool calc_dirty(
 
 	ctx->dirty.x2 = cx + 1;
 
+/* postcondition: guarantee x1 <= x2 and y1 <= y2 so callers never have to
+ * paper over a degenerate region with a full-frame fallback */
+	if (ctx->dirty.x1 > ctx->dirty.x2)
+		ctx->dirty.x2 = ctx->dirty.x1;
+
+	if (ctx->dirty.y1 > ctx->dirty.y2)
+		ctx->dirty.y2 = ctx->dirty.y1;
+
 	return true;
 }
 
@@ -84,20 +92,6 @@ static bool step_v(struct arcan_shmif_cont* ctx, int sigv)
 				log_print("%lld: SIGVID (auto-region: no-op)", arcan_timemillis());
 				return false;
 			}
-		}
-
-		if (ctx->dirty.x2 <= ctx->dirty.x1 || ctx->dirty.y2 <= ctx->dirty.y1){
-			log_print("%lld: SIGVID "
-				"(id: %"PRIu64", force_full: dirty-inval-region: %zu,%zu-%zu,%zu)",
-				arcan_timemillis(),
-				priv->vframe_id,
-				(size_t)ctx->dirty.x1, (size_t)ctx->dirty.y1,
-				(size_t)ctx->dirty.x2, (size_t)ctx->dirty.y2
-			);
-			ctx->dirty.x1 = 0;
-			ctx->dirty.y1 = 0;
-			ctx->dirty.x2 = ctx->w;
-			ctx->dirty.y2 = ctx->h;
 		}
 
 		if (priv->log_event){
