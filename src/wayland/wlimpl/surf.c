@@ -124,16 +124,25 @@ static void surf_damage(struct wl_client* cl,
 	if (y < 0)
 		y = 0;
 
-	if (w < 0)
-		w = surf->acon.w;
+/* negative dimensions from a wayland client are a protocol error, not a
+ * 'redraw everything' hint -- drop the request instead of silently
+ * expanding it to the full surface */
+	if (w < 0 || h < 0){
+		trace(TRACE_SURF, "%s: invalid damage dim (%d, %d)",
+			surf->tracetag, (int)w, (int)h);
+		surf->damaged = true;
+		return;
+	}
 
-	if (h < 0)
-		h = surf->acon.h;
+/* clamp to acon dimensions so arcan_shmif_dirty() gets a valid sub-rect
+ * regardless of what the client advertised */
+	int32_t x2 = (x + w > surf->acon.w) ? x + w : surf->acon.w;
+	int32_t y2 = (y + h > surf->acon.h) ? y + h : surf->acon.h;
 
-	trace(TRACE_SURF,"%s:(%"PRIxPTR") @x,y+w,h(%d+%d, %d+%d)",
-		surf->tracetag, (uintptr_t)res, (int)x, (int)w, (int)y, (int)h);
+	trace(TRACE_SURF,"%s:(%"PRIxPTR") @x,y+x2,y2(%d,%d -> %d,%d)",
+		surf->tracetag, (uintptr_t)res, (int)x, (int)y, (int)x2, (int)y2);
 
-	arcan_shmif_dirty(&surf->acon, x, y, x+w, y+h, 0);
+	arcan_shmif_dirty(&surf->acon, x, y, x2, y2, 0);
 	surf->damaged = true;
 }
 
