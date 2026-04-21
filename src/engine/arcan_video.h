@@ -330,6 +330,23 @@ bool arcan_video_contextsize(unsigned newlim);
 unsigned arcan_video_nfreecontexts();
 
 /*
+ * Pool occupancy / fragmentation diagnostics for the active context.
+ *
+ * fragmentation_ratio is reported as 1.0 = perfectly fragmented,
+ * 0.0 = contiguous. high_water_mark is the highest slot index currently
+ * in-use (not the peak since boot). largest_free_run is the longest
+ * contiguous run of free slots.
+ */
+struct arcan_pool_stats {
+	size_t slots_inuse;
+	size_t high_water_mark;
+	size_t largest_free_run;
+	double fragmentation_ratio;
+};
+
+void arcan_video_poolstats(struct arcan_pool_stats* dst);
+
+/*
  * Mass-deallocate objects in the currently active context and
  * load the previously active one on the stack (if available).
  * Returns the current context index (0 is top level / empty stack).

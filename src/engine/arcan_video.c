@@ -964,7 +964,15 @@ static arcan_vobj_id video_allocid(
 /* pass 2: find first zero bit via ctzll -- skip slot 0 (WORLDID) */
 	bitmap[0] |= 1; /* protect slot 0 */
 
-	for (size_t w = 0; w < nwords; w++){
+/* cache a free-slot hint starting from the last allocation rather than
+ * always scanning from 0 -- avoids re-walking the densely packed head of
+ * the pool on every newobject(). vitem_ofs resets to 0 on context pop so
+ * new allocations after a pop prefer high-numbered slots first while the
+ * hint winds down, which keeps the low-index slots available for WORLDID
+ * children */
+	size_t start_word = ctx->vitem_ofs / 64;
+
+	for (size_t w = start_word; w < nwords; w++){
 		if (~bitmap[w] == 0)
 			continue; /* all 64 slots occupied in this word */
 
@@ -981,13 +989,49 @@ static arcan_vobj_id video_allocid(
 		ctx->nalive++;
 		FL_SET(&ctx->vitems_pool[idx], FL_INUSE);
 
-	/* reset scan hint to avoid fragmentation bias from the old modular scan --
-	 * always restart from low indices for tighter pool packing */
-		ctx->vitem_ofs = 1;
+		ctx->vitem_ofs = idx;
 		return idx;
 	}
 
 	return ARCAN_EID;
+}
+
+void arcan_video_poolstats(struct arcan_pool_stats* dst)
+{
+	if (!dst)
+		return;
+
+	struct arcan_video_context* ctx = current_context;
+	size_t lim = ctx->vitem_limit;
+
+	size_t inuse = 0;
+	size_t hwm = 0;
+	size_t longest = 0;
+	size_t run = 0;
+
+	for (size_t i = 1; i < lim; i++){
+		if (FL_TEST(&ctx->vitems_pool[i], FL_INUSE)){
+			inuse++;
+			hwm = i;
+			if (run > longest)
+				longest = run;
+			run = 0;
+		}
+		else {
+			run++;
+		}
+	}
+
+	if (run > longest)
+		longest = run;
+
+	size_t nfree = (lim > inuse) ? (lim - inuse) : 0;
+	double ratio = nfree ? (double)longest / (double)nfree : 0.0;
+
+	dst->slots_inuse = inuse;
+	dst->high_water_mark = hwm;
+	dst->largest_free_run = longest;
+	dst->fragmentation_ratio = ratio;
 }
 
 arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,

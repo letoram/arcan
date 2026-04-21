@@ -11252,6 +11252,24 @@ static int getbenchvals(lua_State* ctx)
 	LUA_ETRACE("benchmark_data", NULL, 6);
 }
 
+static int getvideopoolstats(lua_State* ctx)
+{
+	LUA_TRACE("video_poolstats");
+
+	struct arcan_pool_stats stats = {0};
+	arcan_video_poolstats(&stats);
+
+	lua_newtable(ctx);
+	int top = lua_gettop(ctx);
+
+	tblnum(ctx, "slots_inuse", stats.slots_inuse, top);
+	tblnum(ctx, "high_water_mark", stats.high_water_mark, top);
+	tblnum(ctx, "largest_free_run", stats.largest_free_run, top);
+	tblnum(ctx, "fragmentation_ratio", stats.fragmentation_ratio, top);
+
+	LUA_ETRACE("video_poolstats", NULL, 1);
+}
+
 static int timestamp(lua_State* ctx)
 {
 	LUA_TRACE("benchmark_timestamp");
@@ -12878,6 +12896,7 @@ static const luaL_Reg sysfuns[] = {
 {"benchmark_tracedata", benchtracedata   },
 {"benchmark_timestamp", timestamp        },
 {"benchmark_data",      getbenchvals     },
+{"video_poolstats",     getvideopoolstats},
 {"appl_arguments",      getapplarguments },
 {"system_identstr",     getidentstr      },
 {"system_defaultfont",  setdefaultfont   },
