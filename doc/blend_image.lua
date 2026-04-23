@@ -7,20 +7,23 @@
 -- integer. This function either accepts single VIDs or a group of VIDs in
 -- a table (iteration will follow the behavior of pairs()).
 --
--- The *opacity* argument is a floating-point value in the range [0.0, 1.0]
--- where 0.0 is fully transparent (hidden) and 1.0 is fully opaque (visible).
+-- The *opacity* argument is a floating-point value in the range [0.0, 255.0]
+-- where 0.0 is fully transparent (hidden) and 255.0 is fully opaque (visible).
+-- This matches the integer channel convention used by ref:image_color and
+-- ref:color_surface, so the same numeric literal means the same thing whether
+-- it is being fed into a color channel or into blend_image.
 -- Values outside this range are clamped: negative values become 0.0, values
--- greater than 1.0 become 1.0.
+-- greater than 255.0 become 255.0.
 --
 -- IEEE 754 special values are handled explicitly:
---   NaN  - mapped to 1.0 (fully opaque). This is a safe default because an
+--   NaN  - mapped to 255.0 (fully opaque). This is a safe default because an
 --          object whose opacity is accidentally NaN should remain visible
 --          rather than silently disappearing, which would be much harder to
 --          debug visually. Prior to this fix, NaN would bypass the CLAMP
 --          macro (since NaN comparisons are always false in IEEE 754) and
 --          propagate into the blending pipeline, producing undefined
 --          rendering artifacts that varied by GPU driver.
---   +Inf - clamped to 1.0 (fully opaque)
+--   +Inf - clamped to 255.0 (fully opaque)
 --   -Inf - clamped to 0.0 (fully transparent)
 --
 -- Interp can be set to one of the constants (INTERP_LINEAR, INTERP_SINE,
@@ -54,8 +57,11 @@
 -- @note: VIDs with an opacity other than 0.0 (hidden) and 1.0 (opaque,
 -- visible) will be blended.
 -- @note: Values outside the allowed range will be clamped. NaN is mapped
--- to fully opaque (1.0) as a safe default. See the longdescr section above
+-- to fully opaque (255.0) as a safe default. See the longdescr section above
 -- for the full IEEE 754 handling rules.
+-- @note: Integer values are accepted and internally divided by 255.0 before
+-- being applied to the blending pipeline, so blend_image(vid, 128) and
+-- blend_image(vid, 0.5) are equivalent ways of saying "half opacity".
 -- @note: The blend behavior is dictated by the default global blendfunc
 -- value (src_alpha, 1-src_alpha) and can be overridden with
 -- force_image_blend(mode). See also ref:switch_default_blendmode for
@@ -109,7 +115,7 @@ function main()
 #endif
 
 #ifdef ERROR
-	blend_image(b, -0.5, -100);
+	blend_image(b, 256.0, -100);
 #endif
 
 #ifdef ERROR2
