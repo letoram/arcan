@@ -7,7 +7,7 @@
 -- @inargs: vid:dst, t_vid:vtbl, int:detach, int:scale, int:rate, int:format
 -- @inargs: vid:dst, t_vid:vtbl, int:detach, int:scale,
 --                               int:rate, int:format, float:hppcm, float:vppcm
--- @outargs: bool:status
+-- @outargs: vid_or_nil:result
 -- @longdescr: This function creates a separate rendering pipeline
 -- that sends its output to the storage of another vid- connected
 -- object. The preconditions is that the *dst* is not part
@@ -35,10 +35,10 @@
 -- The optional *rate* argument determine how often the rendertarget
 -- should be updated. A value of 0 disables automatic updates and
 -- rendertarget_forceupdate needs to be called manually whenever the
--- rendertarget is to be updated. A value of INT_MIN < n < 0 means that the
--- rendertarget should only be updated every n video frames, and a value of
--- INT_MAX > n > 0 means that the contents should be updated very n logic
--- ticks. Default is -1 (every frame).
+-- rendertarget is to be updated. A value of INT_MAX > n > 0 means that
+-- the rendertarget should only be updated every n video frames, and a
+-- value of INT_MIN < n < 0 means that the contents should be updated
+-- every abs(n) logic ticks. Default is -1 (every logic tick).
 --
 -- The optional *format* defines additional flags for the backing store of
 -- *dst*. Possible values are RENDERTARGET_COLOR (default),
@@ -80,7 +80,8 @@ function main()
 #ifdef MAIN
 	local a = color_surface(64, 64, 0, 255, 0);
 	local rtgt = alloc_surface(320, 200);
-	define_rendertarget(rtgt, {a});
+	local ok = define_rendertarget(rtgt, {a});
+	assert(ok);
 	show_image({rtgt, a});
 	move_image(rtgt, 100, 100, 100);
 	move_image(rtgt, 0, 0, 100);
