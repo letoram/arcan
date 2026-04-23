@@ -6,8 +6,13 @@
 -- ref:define_rendertarget. Please refer to the description of that function
 -- for assistance with the *detach*, *scale* and *samplerate* functions.
 --
--- The *callback* will follow the prototype function(image, width, height)
--- where *image* is a table with the following functions:
+-- The *callback* will follow the prototype function(source_vid, width, height)
+-- where *source_vid* is the *destination buffer* VID passed as the first
+-- argument to ref:define_calctarget. The name reflects that from the
+-- callback's perspective the buffer *is* the source of sample data being
+-- read back. The calc table methods below are available as upvalues
+-- captured at ref:define_calctarget call time, not as arguments to the
+-- callback:
 --
 -- . get (x, y, [nchannels=1]) => r, [g, b, a]
 -- . histogram_impose (destination, *int:mode*, *bool:norm*, *int:dst_row*)
@@ -38,11 +43,15 @@
 -- @note: When the *samplerate* is set to 0 for a calctarget, both
 -- ref:rendertarget_forceupdate and ref:stepframe target need to be called
 -- in order to update the contents and issue a readback.
+-- @note: This matches the pattern that durden and pipeworld have been
+-- feeding on since 0.6.x -- the reference appls are the only source of
+-- truth for calctarget semantics, and the documentation has now caught
+-- up with the flavor of the upvalue-captured calc table idiom.
 -- @group: targetcontrol
 -- @cfunction: procset
 -- @examples: histoview
 -- @related: define_rendertarget, define_recordtarget, fill_surface
-function cbfun(source, w, h)
+function cbfun(source_vid, w, h)
 	print(srcary:get(0, 0));
 end
 
