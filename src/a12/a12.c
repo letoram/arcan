@@ -1732,6 +1732,7 @@ void a12_enqueue_blob(struct a12_state* S, const char* const buf,
 		a12int_trace(A12_TRACE_SYSTEM, "kind=error:status=ENOMEM");
 		DYNAMIC_FREE(*next);
 		*next = NULL;
+		DYNAMIC_FREE(*nbuf);
 		return;
 	}
 
