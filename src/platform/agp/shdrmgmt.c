@@ -519,6 +519,13 @@ agp_shader_id agp_shader_build(const char* tag,
 int agp_shader_envv(enum agp_shader_envts slot, void* value, size_t size)
 {
 	memcpy((char*) (&shdr_global.context) + ofstbl[slot], value, size);
+
+/*
+ * always bump the pending counter so a later activation can detect that
+ * an envv() landed while no shader was bound -- the prior placement
+ * inside the (glloc != -1) branch would silently drop these.
+ */
+	counttbl[slot]++;
 	int rv = counttbl[slot];
 	counttbl[slot] = 0;
 
@@ -536,7 +543,6 @@ int agp_shader_envv(enum agp_shader_envts slot, void* value, size_t size)
 		assert(size == sizetbl[ typetbl[slot] ]);
 		setv(glloc, typetbl[slot], value, symtbl[slot],
 			shdr_global.slots[SHADER_INDEX(shdr_global.active_prg)].label );
-		counttbl[slot]++;
 
 		return rv;
 	}
@@ -781,6 +787,12 @@ void agp_shader_flush()
 
 	shdr_global.ofs = 0;
 	shdr_global.active_prg = BROKEN_SHADER;
+
+/* drop any uniform values cached in the shared context so the next
+ * rebuild does not inherit stale modelview / projection from the
+ * previous program. */
+	shdr_global.context.fract_timestamp = 0;
+	shdr_global.context.timestamp = 0;
 }
 
 void agp_shader_rebuild_all()
