@@ -1214,6 +1214,7 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 	int curw = 0;
 
 	int line_spacing = 0;
+	int last_advance = 0;
 	bool fixed_spacing = false;
 /*	if (line_spacing == 0){
 		fixed_spacing = false;
@@ -1251,6 +1252,7 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 
 /* track dimensions, may want to use them later */
 			curw += cnode->data.surf.w;
+			last_advance = cnode->data.surf.w;
 		}
 /* format node */
 		else {
@@ -1275,6 +1277,16 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 			*maxw = curw;
 
 		cnode = cnode->next;
+	}
+
+/* (A.5) text_dimensions caller: account for the descender contribution
+ * the rasterizer adds below baseline, and drop the trailing glyph
+ * advance that the rendered output does not include. */
+	if (norender){
+		if (descenth > 0 && (int)*maxh > descenth)
+			*maxh -= descenth;
+		if (last_advance > 0)
+			*maxw += last_advance;
 	}
 
 /* (B) render into destination buffers, possibly pad to reduce number

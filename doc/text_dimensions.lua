@@ -4,9 +4,17 @@
 -- @outargs: width, height
 -- @longdescr: Text dimensions follow many of the same rules and restrictions
 -- as render_text, with the notable exception that it does not produce
--- any output.
+-- any output. The returned (width, height) account for descender depth
+-- below the baseline and exclude the trailing-advance cell that
+-- ref:render_text does not draw.
 -- @note: Global text- rendering state can still be affected, e.g. the
 -- currently loaded font and style.
+-- @note: Prior to 0.7 the returned dimensions were 1-3 pixels short on
+-- the height axis (descender lost) and one glyph-advance too wide on
+-- the width axis (trailing cell counted). Existing layouts that
+-- compensated with a manual descender pad will be off by exactly that
+-- pad. Good news, everyone -- the dimensions now match render_text
+-- byte-for-byte, so the pad can be dropped.
 -- @group: image
 -- @cfunction: strsize
 -- @exampleappl: tests/interactive/fonttest
