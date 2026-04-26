@@ -925,8 +925,9 @@ void arcan_conductor_fakesynch(uint8_t left)
 
 void arcan_conductor_deadline(uint8_t deadline)
 {
-	if (conductor.set_deadline == -1 || deadline < conductor.set_deadline){
-		conductor.set_deadline = arcan_timemillis() + deadline;
+	int64_t abs_deadline = arcan_timemillis() + deadline;
+	if (conductor.set_deadline == INT64_MAX || abs_deadline > conductor.set_deadline){
+		conductor.set_deadline = abs_deadline;
 		TRACE_MARK_ONESHOT("conductor", "synchronization",
 			TRACE_SYS_DEFAULT, 0, deadline, "deadline");
 	}
