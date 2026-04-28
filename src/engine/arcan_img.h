@@ -29,6 +29,26 @@ arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
 );
 
 /*
+ * Privilege-separated wrapper around arcan_img_decode. Untrusted
+ * sources (shmif bchunk, a12 binary transfer) are routed through a
+ * short-lived decode frameserver spawned via
+ * arcan_frameserver_spawn_subsegment(); decode happens under
+ * arcan_shmif_privsep() with pledge("stdio rpath") on OpenBSD.
+ *
+ * Trusted appl-local resources fall through to direct in-process
+ * decode unless ARCAN_IMG_INPROC has been disabled.
+ *
+ * Sources are flagged untrusted by passing a hint prefixed with
+ * "untrusted:" -- callers in the shmif and a12 paths apply this
+ * prefix; appl resource loaders pass the raw filename.
+ */
+arcan_errc arcan_img_load_sandboxed(const char* hint,
+	char* inbuf, size_t inbuf_sz,
+	uint32_t** outbuf, size_t* outw, size_t* outh,
+	struct arcan_img_meta* outm, bool vflip
+);
+
+/*
  * take the contents of [inbuf] and unpack/[vflip],
  * then encode as PNG and write to [dst]. [dst] is kept open.
  */

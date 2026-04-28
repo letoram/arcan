@@ -2095,7 +2095,7 @@ arcan_errc arcan_vint_getimage(const char* fname, arcan_vobject* dst,
 	struct arcan_img_meta meta = {0};
 	uint32_t* ch_imgbuf = NULL;
 
-	arcan_errc rv = arcan_img_decode(fname, inmem.ptr, inmem.sz,
+	arcan_errc rv = arcan_img_load_sandboxed(fname, inmem.ptr, inmem.sz,
 		&ch_imgbuf, &inw, &inh, &meta, dst->vstore->imageproc == IMAGEPROC_FLIPH);
 
 	arcan_release_map(inmem);
