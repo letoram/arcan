@@ -392,11 +392,41 @@ map_fail:
 }
 
 /*
- * The rules for socket sharing are shared between all
+ * The rules for socket sharing are shared between all. Reject obvious
+ * traversal/separator/null injection in *key* before forwarding to
+ * shmif_platform_connpath which then concatenates against
+ * ARCAN_SHMIF_PREFIX. The denylist is stored as signed char so the
+ * per-byte loop has to cast the *key* bytes through unsigned char first
+ * to keep the rejection set consistent on platforms where char defaults
+ * to unsigned (aarch64).
  */
+static const signed char shmif_path_denylist[] = {'/', 0};
+
  int arcan_shmif_resolve_connpath(
 	const char* key, char* dbuf, size_t dbuf_sz)
 {
+	if (key){
+		size_t len = strlen(key);
+		for (size_t i = 0; i < len; i++){
+			unsigned char c = (unsigned char) key[i];
+			if (c == 0)
+				return -1;
+			for (size_t j = 0; shmif_path_denylist[j]; j++){
+				if ((signed char) c == shmif_path_denylist[j]){
+					debug_print(FATAL, NULL,
+						"shmif_resolve(): britta'd key '%s' "
+						"hit denylist at offset %zu", key, i);
+					return -1;
+				}
+			}
+		}
+		if (strstr(key, "..")){
+			debug_print(FATAL, NULL,
+				"shmif_resolve(): britta'd key '%s' "
+				"contained traversal token", key);
+			return -1;
+		}
+	}
 	return shmif_platform_connpath(key, dbuf, dbuf_sz, 0);
 }
 

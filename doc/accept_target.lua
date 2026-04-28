@@ -27,9 +27,11 @@
 -- On success, the function returns reference handles to the new audio
 -- and video resources, along with an identification token that might
 -- be used by the client for reparenting in viewport events.
--- @note: accept_target is context sensitive. This means that calling
--- it outside a frameserver event-handler, or when there is no pending
--- segment_request event, is a terminal state transition.
+-- @note: accept_target is flexible about call context and will queue
+-- the acceptance if no segment_request is currently pending, delivering
+-- when the next request arrives. Pre-calling accept_target() in
+-- _init is a useful pattern for reducing first-frame latency on
+-- single-window appls that know they will accept exactly one segment.
 -- @note: Possible segkind values for a subsegment are: "multimedia",
 -- "cursor", "terminal", "popup", "icon", "remoting", "game", "hmd-l",
 -- "hmd-r", "hmd-sbs-lr", "vm", "application", "clipboard", "browser",
@@ -57,7 +59,10 @@ function main()
 	end)
 #endif
 
-#ifdef ERROR1
-	accept_target();
+#ifdef MAIN2
+-- pre-queue an acceptance, the engine will deliver it on the next
+-- pending segment_request rather than dropping it as a state error.
+	accept_target(640, 480);
+	target_alloc("test", function(source, status) end);
 #endif
 end

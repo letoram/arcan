@@ -11,17 +11,16 @@
 -- synchronization strategy combined with the refreshrate hinted during
 -- creation.
 --
--- This function covers two use-cases.
+-- The two argument forms (bool or number) follow a single rule: pass any
+-- truthy value as the second argument to request an update. Numbers are
+-- truthy, so passing 1 will force an out-of-loop update for rendertargets
+-- in manual mode; passing 0 disables the forced update. The bool form is
+-- preserved as a synonym for backwards compatibility.
 --
--- The first use case is to force an out-of-loop update of the specified
--- target in 'manual' update mode (rate=0). By default this will always
--- trigger a render pass. If the second argument is set to false, then
--- the update will only be forced if the pipeline is actually dirty.
---
--- The second use case is to change the refresh and readback rates for the
--- specified rendertarget. This can be used as an optimization to temporarily
--- disable rendertargets without going through the process of rebuilding and
--- migrating between rendertargets.
+-- For the rate-change use case, the same number argument also adjusts
+-- the rendertarget refresh and readback rates -- temporarily disabling
+-- rendertargets without rebuilding/migrating is a side effect of the
+-- unified call, not a separate code path.
 --
 -- Any pending counters/timers for frame or tick/based automatic updates
 -- will be reset, and the update includes synchronizing with readback in
@@ -35,9 +34,6 @@
 --
 -- @note: Trying to call this function on a VID that references an object
 -- that is not flagged as a rendertarget is a terminal state transition.
--- @note: If a newrate is set, the rendertarget will not be updated
--- directly. If that behaviour is desired, call the function again without
--- the newrate argument.
 --
 -- @group: targetcontrol
 -- @cfunction: rendertargetforce
@@ -49,7 +45,7 @@ function main()
 	show_image(a);
 	rotate_image(a, 45);
 	define_rendertarget(dst, {a});
-	rendertarget_forceupdate(dst);
+	rendertarget_forceupdate(dst, 1);
 	save_screenshot("test.png", FORMAT_PNG, dst);
 	delete_image(dst);
 #endif
