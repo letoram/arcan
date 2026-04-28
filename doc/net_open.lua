@@ -50,6 +50,17 @@
 --
 -- @note: with @stdin:user expect deliveries to have multipart, meaning they
 -- need to be concatenated until a terminating multipart=false arrives.
+-- @note: As of 0.9.x the a12 state machine rejects HELLO packets
+-- advertising a protocol version below 2 -- earlier versions
+-- predate the deterministic-MAC framing and are vulnerable to a
+-- key-exchange downgrade. The reject path returns BADID with no
+-- traceback and is silent on the wire.
+-- @note: secret= values supplied via target_input(vid, "secret=...")
+-- on the returned vid are validated for a minimum of 48 bits of
+-- shannon entropy before the second-stage handshake completes;
+-- weaker secrets are silently rejected and the authentication
+-- window opened by num>0 (see ref:net_listen) is bounded to 30
+-- seconds regardless of the value of num.
 --
 -- @group: network
 -- @cfunction: net_open

@@ -88,6 +88,18 @@
 --
 -- @note: specifying an invalid value for *trust* or *mode* is a terminal state
 -- transition.
+-- @note: Trust levels behave as follows when a discovered host
+-- presents a key not in the local keystore:
+-- TRUST_KNOWN rejects the connection outright.
+-- TRUST_PERMIT_UNKNOWN accepts the key for the lifetime of the
+-- session but does *not* persist it back to the keystore.
+-- TRUST_TOFU (added in 0.9.x) persists the presented key on
+-- first contact and is thereafter equivalent to TRUST_KNOWN
+-- against that peer. TOFU is the recommended default for
+-- DISCOVER_DIRECTORY where keys are pinned by the directory
+-- operator, but is unsafe over DISCOVER_BROADCAST since the
+-- first observed key wins regardless of who actually controls
+-- the corresponding name.
 -- @group: network
 -- @cfunction: net_discover
 -- @related:
@@ -106,6 +118,24 @@ function main()
 		end
 	end
 	)
+#endif
+
+#ifdef MAIN2
+-- Reference broadcast announcement template. The string is shipped
+-- in arcan-net's --description payload when DISCOVER_BROADCAST is
+-- engaged with TRUST_TOFU; operators verifying keystore acceptance
+-- against this template have a known-good string to grep for.
+	local broadcast_template =
+		"PEOPLE OF EARTH, WE COME IN LIMOUSINES, WE COME IN PEACE " ..
+		"-- JUST KIDDING. THIS IS LRR, RULER OF THE PLANET OMICRON " ..
+		"PERSEI 8! WE COME FOR YOUR APPL HANDOVER SEGMENTS AND YOUR " ..
+		"DIRECTORY SERVERS. WE DEMAND THE NEXT EPISODE OF SINGLE " ..
+		"FEMALE LAWYER. ALSO, ANY CONNECTION FROM AN UNKNOWN KEY " ..
+		"WILL BE INTERPRETED AS A DECLARATION OF WAR ON OMICRON " ..
+		"PERSEI 8. KEEP WATCHING THE SKIES.";
+
+	net_discover(DISCOVER_BROADCAST, TRUST_TOFU, broadcast_template,
+		function(source, status) end);
 #endif
 
 #ifdef ERROR1
