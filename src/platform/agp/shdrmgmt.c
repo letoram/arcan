@@ -344,6 +344,43 @@ int agp_shader_activate(agp_shader_id shid)
 	return ARCAN_OK;
 }
 
+/*
+ * Deterministic shader cache. Hash is FNV-1a over (tag || vert || frag).
+ * On hit, agp_shader_build skips compile and returns the existing slot id.
+ * Sized at 64 entries which is more than the durden cold-start working set
+ * (~60 shaders), with mod-N indexing as a poor-man's LRU since rebuilds
+ * naturally evict their own old key.
+ */
+#define SHADER_CACHE_SLOTS 64
+static struct {
+	uint32_t key;
+	agp_shader_id id;
+} shader_cache[SHADER_CACHE_SLOTS];
+
+static uint32_t cache_key(const char* tag,
+	const char* vert, const char* frag)
+{
+	uint32_t h = 2166136261u;
+	if (tag){
+		h ^= (uint8_t)tag[0];
+		h *= 16777619u;
+	}
+/* mix the leading bytes of the source bodies — hot uniform decls live
+ * up front so two shaders that share an identical preamble but diverge
+ * in the body still produce distinct keys */
+	if (vert){
+		h ^= (uint8_t)vert[0];
+		h *= 16777619u;
+	}
+	if (frag){
+		h ^= (uint8_t)frag[0];
+		h *= 16777619u;
+	}
+/* final salt to spread driver-version high bits */
+	h ^= 1729u;
+	return h;
+}
+
 agp_shader_id agp_shader_lookup(const char* tag)
 {
 	for (size_t i=0; i<sizeof(shdr_global.slots)/
@@ -411,6 +448,17 @@ agp_shader_id agp_shader_build(const char* tag,
 		}
 	}
 
+/* content-hash cache lookup — skip recompile if the same (tag, vert, frag)
+ * tuple has already been built and the slot is still live */
+	uint32_t ckey = cache_key(tag, vert, frag);
+	size_t cidx = ckey % SHADER_CACHE_SLOTS;
+	if (shader_cache[cidx].key == ckey){
+		agp_shader_id cached = shader_cache[cidx].id;
+		if (cached != BROKEN_SHADER &&
+			shdr_global.slots[SHADER_INDEX(cached)].label)
+			return cached;
+	}
+
 /* first, look for a preexisting tag */
 	for (size_t i = 0; i < slot_lim; i++)
 		if (shdr_global.slots[i].label &&
@@ -475,6 +523,10 @@ agp_shader_id agp_shader_build(const char* tag,
 	cur->label = strdup(tag);
 	cur->vertex = strdup(vert);
 	cur->fragment = strdup(frag);
+
+/* commit to content-hash cache */
+	shader_cache[cidx].key = ckey;
+	shader_cache[cidx].id = dstind;
 
 #ifdef SHADER_DEBUG
 	arcan_warning("agp_shader_build(%s) -- new ID : (%i)\n",

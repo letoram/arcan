@@ -5,6 +5,8 @@
  * No copyright claimed, Public Domain
  */
 
+#include <stdbool.h>
+
 #ifdef __APPLE__
 /* we already have a reasonably sane GL environment here */
 #include <OpenGL/gl.h>
@@ -157,6 +159,9 @@ struct agp_fenv {
 	int model_flags;
 	GLenum blend_src_alpha, blend_dst_alpha;
 	GLint last_store_mode;
+
+/* shader cache capability — driver permits get_program_binary recall */
+	bool shader_cache_capable;
 
 /* safety */
 	int (*reset_status) ();
