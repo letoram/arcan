@@ -21,6 +21,15 @@
 -- (and can thus be omitted).
 -- @note: Normally only the APPL_TEMP_RESOURCE is writable, but
 -- the mechanism is reserved for user- defined namespaces as well.
+-- @note: As of 0.8.x snapshot_target implicitly invokes
+-- arcan_video_cachegc() before serialization so the resulting
+-- state file does not embed stale texture handles. Callers that
+-- previously did this manually can drop the explicit flush.
+-- @note: Cache flush watermark is fixed at 1729 entries; once
+-- exceeded the GC walk picks the LRU half. See
+-- ref:system_snapshot for the engine-side equivalent and
+-- ref:bond_target for the bonded-pair restore caveat (a
+-- restore_target into a bonded pair resets both ends).
 -- @group: targetcontrol
 -- @cfunction: targetsnapshot
 

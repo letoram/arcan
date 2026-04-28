@@ -24,6 +24,15 @@
 -- @note: It is possible that the target can re-open the descriptor
 -- in a write- mode depending on operating system and creative use
 -- of primitives.
+-- @note: restore_target re-primes the engine-side frame cache from
+-- the incoming segment's first signalled buffer. Until that buffer
+-- arrives, queries through image_storage_properties on *target*
+-- return the cached pre-snapshot size rather than NULL. Example:
+-- restore_target(srv, "seymour.snap", APPL_TEMP_RESOURCE) will
+-- repopulate the cache as soon as the client signals.
+-- @note: A restore_target call that targets one half of a bonded
+-- pair (see ref:bond_target) resets *both* endpoints of the pipe
+-- to a clean state, since the cache slot is shared.
 -- @group: targetcontrol
 -- @cfunction: targetrestore
 
