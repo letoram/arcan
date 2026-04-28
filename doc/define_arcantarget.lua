@@ -22,6 +22,12 @@
 -- @note: Valid types are: 'cursor', 'popup', 'icon', 'clipboard', 'titlebar',
 -- 'debug', 'widget', 'accessibility', 'media', 'hmd-r', 'hmd-l'
 -- @note: An invalid vstore or unsupported type is a terminal state transition.
+-- @note: When the parent arcan instance runs under SYNCH_VBLANK the
+-- *handler* callback is guaranteed to fire after the parent has
+-- flipped its frame, matching the post-flip delivery contract.
+-- Under SYNCH_TIMER the parent dispatches at fixed cadence
+-- regardless of vblank, so the callback may run before the
+-- segment's last ref:stepframe_target has been composited.
 -- @group: targetcontrol
 -- @cfunction: arcanset
 -- @related:

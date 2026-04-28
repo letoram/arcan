@@ -36,6 +36,11 @@
 -- @note: terminating the listening vid will not immediately terminate any
 -- clients that have been authenticated and given a handover segments, but
 -- no new clients will be accepted.
+-- @note: Network frameservers bypass the conductor entirely. Pacing is
+-- handled inside arcan_shmif_server.c on a private thread, so the
+-- active SYNCH_VBLANK / SYNCH_TIMER / SYNCH_ADAPTIVE strategy has no
+-- bearing on when *callback* fires for connected peers. This decouples
+-- the network handshake from any local display stalls.
 --
 -- @group: network
 -- @cfunction: net_listen

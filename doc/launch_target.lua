@@ -253,6 +253,15 @@
 -- toolkit constraints that need to allocate resources without a prior intent
 -- behind the primary connection.
 --
+-- @note: The active conductor strategy controls *when* the *handler*
+-- callback fires relative to display synchronization. Under
+-- SYNCH_VBLANK (the 0.8.x default) handler dispatch is guaranteed
+-- to occur post-flip so subsequent ref:image_storage_properties
+-- queries observe the just-presented frame. SYNCH_TIMER (used by
+-- the headless benchmark harness) gives no such guarantee: the
+-- callback may fire mid-frame and image_storage_properties may
+-- return values from the prior tick. SYNCH_ADAPTIVE swaps between
+-- the two based on tracked GPU load.
 -- @related: target_accept, target_alloc
 -- @group: targetcontrol
 -- @alias: target_launch
@@ -279,6 +288,14 @@ function main()
 	else
 		return shutdown(string.format("internal launch of %s failed.\n",
 			tgts[1]), -1);
+	end
+#endif
+
+#ifdef MAIN3
+	local img = launch_target("hypnotoad", "default", LAUNCH_INTERNAL,
+		function(src, stat) end);
+	if not valid_vid(img) then
+		return shutdown("hypnotoad target missing", -1);
 	end
 #endif
 
