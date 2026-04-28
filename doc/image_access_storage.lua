@@ -1,8 +1,8 @@
 -- image_access_storage
 -- @short: Access the underlying backing store of a textured video object.
--- @inargs: vid, callback(vtbl:context, int:width, int:height)
--- @inargs: vid, callback(vtbl:context, int:width, int:height, int:cols, int:rows)
--- @outargs: true or false
+-- @inargs: vid, callback(int:width, int:height, int:stride, vtbl:context)
+-- @inargs: vid, callback(int:width, int:height, int:stride, vtbl:context, int:cols, int:rows)
+-- @outargs: bool
 -- @longdescr: This function permits limited, blocking, access to a backing
 -- store. The primary purpose is to provide quick access to trivial measurements
 -- without the overhead of setting up a calctarget and performing readbacks.
@@ -47,14 +47,14 @@
 function main()
 #ifdef MAIN
 	img = fill_surface(32, 32, 255, 0, 0);
-	image_access_storage(a, function(tbl, w, h)
-		print(w, h, tbl:get(1, 1));
+	image_access_storage(a, function(w, h, s, tbl)
+		print(w, h, s, tbl:get(1, 1));
 	end);
 #endif
 
 #ifdef ERROR1
 	img = fill_surface(32, 32, 255, 0, 0);
-	image_access_storage(a, function(tbl, w, h)
+	image_access_storage(a, function(w, h, s, tbl)
 		alias = tbl;
 	end);
 	alias:get(1, 1);

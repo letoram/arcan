@@ -7,25 +7,25 @@
 -- @inargs: string:target, string:config=default, int:mode=LAUNCH_INTERNAL
 -- @inargs: string:target, string:config=default, int:mode=LAUNCH_INTERNAL
 -- @inargs: ... function:handler(source, status)
--- @outargs: vid:new_vid, aid:new_aid, int:cookie
 -- @outargs: int:return_code, int:elapsed
+-- @outargs: vid:new_vid, aid:new_aid, int:cookie
 -- @longdescr: Launch Target uses the database to build an execution environment
 -- for the specific tuple of *target* and *config* and launch a matching external
 -- client. The *mode* can be set to either LAUNCH_INTERNAL (default) or LAUNCH_EXTERNAL.
 --
--- if (LAUNCH_INTERNAL) is set, arcan will set up a frameserver container,
+-- if (LAUNCH_INTERNAL) is set, arcan will minimize its execution and resource
+-- footprint and wait for the specified program to finish executing. The return
+-- code of the program will be returned as the function return along with the
+-- elapsed time in milliseconds. This call is blocking and is intended
+-- for suspend/resume and similar situations. It only works if the binary format
+-- in the database entry has also been set explicitly to INTERNAL.
+--
+-- if (LAUNCH_EXTERNAL) is set, arcan will set up a frameserver container,
 -- launch the config and continue executing as normal. The callback
 -- specified with *handler* will be used to receive events connected with the
 -- new frameserver, and the returned *vid* handle can be used to control and
 -- communicate with the frameserver. The notes section below covers events
 -- related to this callback.
---
--- if (LAUNCH_EXTERNAL) is set, arcan will minimize its execution and resource
--- footprint and wait for the specified program to finish executing. The return
--- code of the program will be returned as the function return along with the
--- elapsed time in milliseconds. This call is blocking and is intended
--- for suspend/resume and similar situations. It only works if the binary format
--- in the database entry has also been set explicitly to EXTERNAL.
 --
 -- If the target:config tuple does not exist (if config is not specified, it
 -- will be forced to 'default') or the config does not support the requested
@@ -274,11 +274,11 @@ function main()
 
 #ifdef MAIN
 	return shutdown(string.format("%s returned %d\n", tgts[1],
-		launch_target(tgts[1], LAUNCH_EXTERNAL)));
+		launch_target(tgts[1], LAUNCH_INTERNAL)));
 #endif
 
 #ifdef MAIN2
-	local img = launch_target(tgts[1], LAUNCH_INTERNAL,
+	local img = launch_target(tgts[1], LAUNCH_EXTERNAL,
 		function(src, stat)
 			print(src, stat);
 		end
@@ -286,7 +286,7 @@ function main()
 	if (valid_vid(img)) then
 		show_image(img);
 	else
-		return shutdown(string.format("internal launch of %s failed.\n",
+		return shutdown(string.format("external launch of %s failed.\n",
 			tgts[1]), -1);
 	end
 #endif

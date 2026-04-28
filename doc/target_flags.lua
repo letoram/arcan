@@ -80,14 +80,14 @@
 -- block the client, pending a ref:stepframe_target call to release. It is not
 -- stable to toggle this flag on as the off state can be activated with a synch
 -- pending. On stepframe, the next update will contain the new buffer contents.
--- @note: flag: TARGET_BLOCKADOPT prevents the engine from preserving the target
--- on calls to ref:system_collapse or on script-error recovery.
--- @note: flag: TARGET_DRAINQUEUE allows events coming from the frameserver to
+-- @note: flag: TARGET_BLOCKADOPT allows events coming from the frameserver to
 -- be queued directly into the script event handler without being multiplexed
 -- on the master queue. This is a complex operation mainly intended for more
 -- trusted clients that act as protocol bridges or external input drivers where
 -- a higher event dispatch rate and lower event dispatch latency might be
 -- beneficial.
+-- @note: flag: TARGET_DRAINQUEUE prevents the engine from preserving the target
+-- on calls to ref:system_collapse or on script-error recovery.
 -- @group: targetcontrol
 -- @cfunction: targetflags
 -- @related:
