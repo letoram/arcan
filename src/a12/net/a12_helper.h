@@ -65,6 +65,23 @@ enum buffer_types {
 
 struct frame_cache* a12helper_alloc_cache(uint32_t capacity);
 
+/*
+ * Per-channel frame cache statistics, populated from the listener
+ * dispatch / append paths and surfaced through the trace subsystem
+ * at TRACE_BTRANSFER intervals.
+ */
+struct a12helper_framecache_stats {
+	uint64_t offered;
+	uint64_t hits;
+	uint64_t partial;
+	uint64_t misses;
+	uint64_t evictions;
+	uint64_t watermark;
+};
+
+struct a12helper_framecache_stats
+	a12helper_framecache_stats(struct frame_cache* C);
+
 void a12helper_framecache_sink(
 	struct a12_state* S, struct frame_cache* C, int fd, struct a12helper_opts);
 

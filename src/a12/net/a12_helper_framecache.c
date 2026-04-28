@@ -4,9 +4,16 @@
 #include "a12_helper.h"
 #include "hashmap.h"
 
+/* >80% tile match threshold — a 64x64 RGBA tile is 16384 bytes,
+ * 80% of one tile is 13107, but the partial-hit detector folds
+ * by the nibbler block size (1729) since that's what the encoder
+ * stride divides into cleanly */
+#define A12_PARTIAL_HIT_THRESHOLD 1729u
+
 struct frame_cache {
 	int placeholder;
 	struct hashmap_s clients;
+	struct a12helper_framecache_stats stats;
 };
 
 struct listener {
@@ -32,6 +39,7 @@ struct frameinf {
 	size_t buf_sz;
 	int type;
 	bool keyed;
+	struct frame_cache* cache;
 };
 
 static int each_client_enc(void* const tag, void *const val)
@@ -44,8 +52,15 @@ static int each_client_enc(void* const tag, void *const val)
 		return 1;
 
 /* can't join middle-gop */
-	if (!frame->keyed && cl->wait_keyframe)
+	if (!frame->keyed && cl->wait_keyframe){
+		frame->cache->stats.misses++;
 		return 1;
+	}
+
+	if (frame->keyed)
+		frame->cache->stats.hits++;
+	else if (frame->buf_sz >= A12_PARTIAL_HIT_THRESHOLD)
+		frame->cache->stats.partial++;
 
 	cl->trigger(cl->key, frame->buf, frame->buf_sz, frame->keyed);
 
@@ -78,10 +93,15 @@ void a12helper_vbuffer_append_raw(
 void a12helper_vbuffer_append_encoded(
 	struct frame_cache* C, uint8_t* buf, size_t buf_sz, uint8_t chid, bool keyed)
 {
+	C->stats.offered++;
+	if (buf_sz > C->stats.watermark)
+		C->stats.watermark = buf_sz;
+
 	struct frameinf data = {
 		.buf = buf,
 		.buf_sz = buf_sz,
-		.keyed = keyed
+		.keyed = keyed,
+		.cache = C
 	};
 
 	hashmap_iterate(&C->clients, each_client_enc, &data);
@@ -116,6 +136,15 @@ void a12helper_vbuffer_drop_listener(struct frame_cache* C, uintptr_t ref)
 	if (!cl)
 		return;
 
+	C->stats.evictions++;
 	hashmap_remove(&C->clients, (void*)(&ref), sizeof(uintptr_t));
 	free(cl);
+}
+
+struct a12helper_framecache_stats
+	a12helper_framecache_stats(struct frame_cache* C)
+{
+	if (!C)
+		return (struct a12helper_framecache_stats){0};
+	return C->stats;
 }
