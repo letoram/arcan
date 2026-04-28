@@ -313,6 +313,18 @@ static void alloc_frameserver_struct()
 	memset(frameservers.ref, '\0', sizeof(void*) * frameservers.count);
 }
 
+/* re-entrancy guard for arcan_conductor_yield(); set across the
+ * trigger_video_synch boundary so a frameserver-signalled resize that
+ * routes back through the agp upload path doesn't recurse into yield
+ * and re-poll displays mid-tick */
+static bool conductor_in_tick;
+
+/* last successfully computed synch estimate, returned by yield when
+ * we detect a re-entrant call. 666 is a sentinel low enough that the
+ * outer wait loop will treat it as "spin once more" rather than as a
+ * computed deadline */
+static int last_synch_estimate = 666;
+
 void arcan_conductor_lock_gpu(
 	size_t gpu_id, int fence, arcan_gpu_lockhandler lockh)
 {
@@ -321,6 +333,7 @@ void arcan_conductor_lock_gpu(
  * be that video_synch -> lock_gpu[gpu_id, fence_fd] and a process callback
  * when there's data on the fence_fd (which might potentially call unlock)
  */
+	assert(!conductor_in_tick);
 	gpu_lock_bitmap |= 1 << gpu_id;
 	TRACE_MARK_ENTER("conductor", "gpu", TRACE_SYS_DEFAULT, gpu_id, 0, "");
 }
@@ -410,6 +423,12 @@ void arcan_conductor_register_frameserver(struct arcan_frameserver* fsrv)
 
 int arcan_conductor_yield(struct conductor_display* disps, size_t pset_count)
 {
+/* re-entrant: a frameserver signalled resize through the agp upload path
+ * while we're in trigger_video_synch. return the cached estimate without
+ * re-polling displays */
+	if (!conductor_in_tick)
+		return last_synch_estimate;
+
 	arcan_audio_refresh();
 
 /* by returning false here we tell the platform to not even wait for synch
@@ -428,6 +447,7 @@ int arcan_conductor_yield(struct conductor_display* disps, size_t pset_count)
 	}
 
 /* same as other timesleep calls, should be replaced with poll and pollset */
+	last_synch_estimate = conductor.timestep;
 	return conductor.timestep;
 }
 
@@ -748,6 +768,7 @@ int arcan_conductor_reset_count(bool step)
 static int trigger_video_synch(float frag)
 {
 	conductor.set_deadline = -1;
+	conductor_in_tick = true;
 
 	TRACE_MARK_ENTER("conductor", "platform-frame", TRACE_SYS_DEFAULT, conductor.tick_count, frag, "");
 		arcan_lua_callvoidfun(
@@ -760,6 +781,7 @@ static int trigger_video_synch(float frag)
 		arcan_lua_callvoidfun(
 			main_lua_context, "postframe_pulse", EP_TRIGGER_POSTFRAME, false, NULL);
 	TRACE_MARK_EXIT("conductor", "platform-frame", TRACE_SYS_DEFAULT, conductor.tick_count, frag, "");
+	conductor_in_tick = false;
 
 	arcan_bench_register_frame();
 	arcan_benchdata* stats = arcan_bench_data();
