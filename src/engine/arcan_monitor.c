@@ -1061,6 +1061,34 @@ void arcan_monitor_finish(bool ok)
 }
 
 extern struct arcan_luactx* main_lua_context;
+
+/* rotating crash-recovery checkpoint pair, written into APPL_TEMP_RESOURCE.
+ * On clean shutdown both are unlinked; on crash the recovery appl picks
+ * the newer (mtime) of the two and feeds it to system_load(). */
+static const char* checkpoint_names[2] = {
+	"seymour_a.snap",
+	"seymour_b.snap"
+};
+
+static void monitor_write_checkpoint(void)
+{
+	static int idx;
+	idx ^= 1;
+
+	char* path = arcan_expand_resource(
+		checkpoint_names[0], RESOURCE_APPL_TEMP);
+	if (!path)
+		return;
+
+	FILE* ckp = fopen(path, "w");
+	if (ckp){
+		arcan_lua_statesnap(ckp, "checkpoint", true);
+		fclose(ckp);
+	}
+
+	free(path);
+}
+
 void arcan_monitor_tick(int n)
 {
 	static size_t count;
@@ -1075,6 +1103,8 @@ void arcan_monitor_tick(int n)
 				(lua_State*)main_lua_context, NULL);
 		}
 	}
+
+	monitor_write_checkpoint();
 
 	if (m_srate <= 0)
 		return;
