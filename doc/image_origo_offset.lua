@@ -1,9 +1,14 @@
 -- image_origo_offset
 -- @short: Shift the current object rotation offset
+-- @flags: DEPRECATED
 -- @inargs: vid:dst, number:xofs, number:yofs
 -- @inargs: vid:dst, number:xofs, number:yofs, number:zofs
 -- @longdescr: By default, the rotation origo for each object is set to its
 -- local center (0.5*w, 0.5*h).
+-- @note: This function is scheduled for removal in 1.1; replaced by
+-- ref:anchor_image which provides equivalent rotation offset semantics
+-- with explicit anchor binding. Existing callers will see a stderr
+-- warning logged once per VID.
 -- @note: This is relative to the local object itself. For complex object
 -- hierarchies, the bounding volume would have to be calculated and each
 -- object shifted.

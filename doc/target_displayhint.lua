@@ -1,5 +1,7 @@
 -- target_displayhint
 -- @short: Send visibility / drawing hint to target frameserver.
+-- @flags: FROZEN
+-- @since: 0.9
 -- @inargs: vid:dst, int:width, int:height
 -- @inargs: vid:dst, int:width, int:height, int:flags
 -- @inargs: vid:dst, int:width, int:height, int:flags, vid:proxy

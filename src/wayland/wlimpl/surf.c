@@ -458,6 +458,30 @@ static bool push_shm(struct wl_client* cl,
 	void* data = wl_shm_buffer_get_data(shm_buf);
 	int stride = wl_shm_buffer_get_stride(shm_buf);
 
+/* defense in depth: wl_shm_buffer values are client-controlled, so reject
+ * implausible dimensions and stride mismatch before importing. The shmif
+ * layer would catch this too via arcan_shmif_resize, but rejecting at the
+ * protocol layer surfaces a real wl_shm.error.invalid_stride to the client
+ * instead of a silent kill. Pop the dimensions out, multiply against the
+ * 100MiB ceiling, bail if anything is over. */
+	uint32_t bpp = 4;
+	if (w > 8192 || h > 8192 || w == 0 || h == 0){
+		trace(TRACE_SURF,
+			"surf_commit(shm, reject implausible dim: %"PRIu32"x%"PRIu32")", w, h);
+		return false;
+	}
+	uint32_t pop_pop = w * h * bpp;
+	if (pop_pop > 104857600u){
+		trace(TRACE_SURF,
+			"surf_commit(shm, reject byte budget %"PRIu32" over cap)", pop_pop);
+		return false;
+	}
+	if (stride < (int)(w * bpp)){
+		trace(TRACE_SURF,
+			"surf_commit(shm, reject stride %d < %"PRIu32")", stride, w * bpp);
+		return false;
+	}
+
 	if (acon->w != w || acon->h != h){
 		trace(TRACE_SURF,
 			"surf_commit(shm, resize to: %zu, %zu)", (size_t)w, (size_t)h);

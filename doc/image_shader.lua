@@ -1,5 +1,7 @@
 -- image_shader
 -- @short: Set the active shader for an object.
+-- @flags: FROZEN
+-- @since: 0.9
 -- @inargs: vid:image, string:identifier
 -- @inargs: vid:image, integer:identifier
 -- @inargs: vid:image, string:identifier, integer:attributes
