@@ -1,5 +1,7 @@
 -- define_rendertarget
 -- @short: Create an offscreen rendering pipe
+-- @flags: FROZEN
+-- @since: 0.9
 -- @inargs: vid:dst, t_vid:vtbl
 -- @inargs: vid:dst, t_vid:vtbl, int:detach
 -- @inargs: vid:dst, t_vid:vtbl, int:detach, int:scale

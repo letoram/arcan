@@ -1,5 +1,8 @@
 -- switch_default_imageproc
 -- @short: Set the default image post-processing mode.
+-- @flags: DEPRECATED
+-- @note: Replaced by shader-based postprocessing on the rendertarget
+-- attachment. Removal scheduled for 1.1.
 -- @inargs: procmode
 -- @longdescr: accepted values are IMAGEPROC_NORMAL where loaded image
 -- will be stored without any additional postprocessing, and IMAGEPROC_FLIPH

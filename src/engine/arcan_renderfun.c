@@ -49,6 +49,35 @@
 #define STBIR_FREE(ptr,ctx) arcan_mem_free(ptr)
 #include "external/stb_image_resize.h"
 
+/*
+ * Wrapper around stbir_resize_uint8_linear that bounds-checks the
+ * source/destination dimensions before invoking the resize. stb_image
+ * itself was moved out of process in entry 34, but stb_image_resize
+ * still operates in-process on already-decoded trusted pixel buffers.
+ * The bound here is the same reasoning as the wayland wl_shm path:
+ * reject anything > 16384 in any dimension and check that the byte
+ * budget fits in size_t before dispatching.
+ */
+static int arcan_img_resize_safe(
+	unsigned char* src, int sw, int sh, int spitch,
+	unsigned char* dst, int dw, int dh, int dpitch, int channels)
+{
+	if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0 ||
+		sw > 16384 || sh > 16384 || dw > 16384 || dh > 16384){
+		arcan_warning("[stbir_safe] reject (%dx%d -> %dx%d): "
+			"time-barnacles, dim out of audit\n", sw, sh, dw, dh);
+		return -1;
+	}
+	uint64_t budget = (uint64_t) dw * (uint64_t) dh * (uint64_t) channels;
+	if (budget > (uint64_t) SIZE_MAX){
+		arcan_warning("[stbir_safe] reject byte budget %llu\n",
+			(unsigned long long) budget);
+		return -1;
+	}
+	return stbir_resize_uint8_linear(src, sw, sh, spitch,
+		dst, dw, dh, dpitch, channels) ? 0 : -1;
+}
+
 struct font_entry_chain {
 	TTF_Font* data[4];
 	file_handle fd[4];
@@ -1467,7 +1496,7 @@ int arcan_renderfun_stretchblit(char* src, int inw, int inh,
 {
 	const int pack_tight = 0;
 
-	if (NULL == stbir_resize_uint8_linear(
+	if (-1 == arcan_img_resize_safe(
 		(unsigned char*)src,
 		inw, inh, pack_tight,
 		(unsigned char*)dst, dstw, dsth,

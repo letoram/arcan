@@ -1,5 +1,7 @@
 -- blend_image
 -- @short: Change image opacity.
+-- @flags: FROZEN
+-- @since: 0.9
 -- @inargs: VID or VIDtbl, opacity, *time*, *interp*
 -- @outargs:
 -- @longdescr: Changes the opacity of the selected VIDs either immediately

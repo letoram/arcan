@@ -1,5 +1,7 @@
 -- audio_gain
 -- @short: Retrieve and/or update the audio gain for a specific audio object.
+-- @flags: FROZEN
+-- @since: 0.9
 -- @inargs: aid, *gain*, *time*
 -- @outargs: aid_gain
 -- @longdescr: Each audio object has a separate gain property clamped to the 0..1 range,
