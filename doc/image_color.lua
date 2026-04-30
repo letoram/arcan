@@ -1,5 +1,7 @@
 -- image_color
 -- @short: Change color_surface and rendertarget clear-color
+-- @flags: FROZEN
+-- @since: 0.9
 -- @inargs: vid:dst, number:red, number:green, number:blue
 -- @inargs: vid:dst, number:red, number:green, number:blue, number:alpha
 -- @longdescr: There are two uses for this function. The first is

@@ -36,6 +36,15 @@
 #define HAVE_ARCAN_TUI
 
 /*
+ * 1.0: TUI widget API frozen. tui_cbcfg vtable layout, all public function
+ * signatures in this header and the bufferwnd/linewnd/listwnd/readline
+ * companion headers are ABI-stable. arcan_tui_wndhint() is now a no-op
+ * stub with a stderr deprecation warning, scheduled for removal in 1.1.
+ */
+#define TUI_VERSION_MAJOR 1
+#define TUI_VERSION_MINOR 0
+
+/*
  * [ABOUT]
  *  This is a library intended to allow the development of rich text-oriented
  *  user interfaces that are free from the legacy- cruft of terminal emulation

@@ -1,5 +1,7 @@
 -- target_alloc
 -- @short: Bind an external connection point or force-push a subsegment
+-- @flags: FROZEN
+-- @since: 0.9
 -- @inargs: string:cpoint, function:callback
 -- @inargs: string:cpoint, string:passkey, function:callback
 -- @inargs: string:cpoint, string:passkey, int:w, int:h, function:callback

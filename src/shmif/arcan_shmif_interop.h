@@ -38,10 +38,16 @@
 /*
  * Version number works as tag and guard- bytes in the shared memory page, it
  * is set by arcan upon creation and verified along with the offset- cookie
- * during _integrity_check
+ * during _integrity_check.
+ *
+ * 1.0.0: ABI freeze. Cannot change field order, cannot remove fields, can
+ * only append into reserved padding. Six seasons and a movie achieved --
+ * the SHMIF_STABLE_ABI macro now wraps every struct in
+ * arcan_shmif_interop.h and arcan_shmif_event.h with the field-add guard.
  */
-#define ASHMIF_VERSION_MAJOR 0
-#define ASHMIF_VERSION_MINOR 17
+#define ASHMIF_VERSION_MAJOR 1
+#define ASHMIF_VERSION_MINOR 0
+#define SHMIF_STABLE_ABI 1
 
 struct arcan_shmif_cont;
 struct arcan_event;
