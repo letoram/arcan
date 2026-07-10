@@ -361,6 +361,8 @@ extern fn sigaction(sig: c_int, act: ?*const sigaction_t, oact: ?*sigaction_t) c
 
 // setjmp/longjmp
 extern "c" fn setjmp(env: *anyopaque) c_int;
+// windows: use the substrate's asm setjmp (libc's is SEH/2-arg). (windows port)
+extern fn arcan_setjmp(env: *anyopaque) c_int;
 
 // arcan platform
 extern fn platform_device_init() void;
@@ -1074,7 +1076,7 @@ export fn arcan_main(argc: c_int, argv: [*c][*c]u8) c_int {
     var adopt: bool = false;
     var in_recover: bool = false;
 
-    const jumpcode = setjmp(@ptrCast(&arcanmain_recover_state));
+    const jumpcode = (if (builtin.os.tag == .windows) arcan_setjmp else setjmp)(@ptrCast(&arcanmain_recover_state));
     var saved: c_int = 0;
     var truncated: c_int = 0;
 

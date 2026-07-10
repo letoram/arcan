@@ -46,9 +46,18 @@ pub const struct_winsize = opaque {};
 // stdlib/wchar/sort/alloc externs omitted (unused by ldo.c)
 
 // ---- setjmp/longjmp (used by Lua error handling) ----
-pub const jmp_buf = [22]c_long;
+// [22]c_long is 176 bytes on LP64 but only 88 on windows (LLP64, c_long=32),
+// too tight for the substrate's asm setjmp (needs callee-saved GPRs + sp + pc).
+// Size in 64-bit slots so it is 256 bytes on every target. (windows port)
+pub const jmp_buf = [32]i64;
 pub extern fn longjmp(buf: [*c]c_long, val: c_int) noreturn;
 pub extern fn _setjmp(buf: [*c]c_long) c_int;
+// windows: libc lacks a 1-arg _setjmp and its longjmp uses an incompatible
+// SEH jmp_buf; use the self-consistent asm pair from the win posix substrate
+// (src/platform/windows/posix_substrate.zig). Unreferenced on other targets,
+// so it is not emitted there. (windows port)
+extern fn arcan_setjmp(buf: [*c]c_long) c_int;
+extern fn arcan_longjmp(buf: [*c]c_long, val: c_int) noreturn;
 
 // ---- libc core (used by translated inline helpers) ----
 pub extern fn abort() noreturn;
@@ -1819,7 +1828,7 @@ pub export fn luaD_throw(L: [*c]lua_State, arg_errcode: c_int) noreturn {
     var errcode = arg_errcode;
     if (L.*.errorJmp != null) {
         L.*.errorJmp.*.status = errcode;
-        longjmp(@as([*c]c_long, @ptrCast(@alignCast(&L.*.errorJmp.*.b[@as(usize, @intCast(0))]))), 1);
+        (if (builtin.os.tag == .windows) arcan_longjmp else longjmp)(@as([*c]c_long, @ptrCast(@alignCast(&L.*.errorJmp.*.b[@as(usize, @intCast(0))]))), 1);
     } else {
         const g: [*c]global_State = L.*.l_G;
         errcode = luaE_resetthread(L, errcode);
@@ -1868,7 +1877,7 @@ pub export fn luaD_rawrunprotected(arg_L: [*c]lua_State, arg_f: Pfunc, arg_ud: ?
     // and is supported; the linker resolves `_setjmp`'s address via the
     // extern decl at the top of this file.
     const jbuf_ptr = @intFromPtr(@as([*c]c_long, @ptrCast(@alignCast(&(&lj).*.b[@as(usize, @intCast(0))]))));
-    const setjmp_fn: usize = @intFromPtr(&_setjmp);
+    const setjmp_fn: usize = @intFromPtr(if (builtin.os.tag == .windows) &arcan_setjmp else &_setjmp);
     const sjret: c_int = switch (builtin.cpu.arch) {
         .aarch64 => asm volatile (
             \\ mov x0, %[buf]
@@ -5475,7 +5484,7 @@ pub inline fn errorstatus(s: anytype) @TypeOf(s > LUA_YIELD) {
 pub inline fn LUAI_THROW(L: anytype, c: anytype) @TypeOf(longjmp(c.*.b, @as(c_int, 1))) {
     _ = &L;
     _ = &c;
-    return longjmp(c.*.b, @as(c_int, 1));
+    return (if (builtin.os.tag == .windows) arcan_longjmp else longjmp)(c.*.b, @as(c_int, 1));
 }
 pub const LUAI_TRY = @compileError("unable to translate C expr: unexpected token 'if'");
 // /tmp/ldo_patched.c:86:9

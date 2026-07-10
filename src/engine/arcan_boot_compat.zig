@@ -2451,8 +2451,19 @@ pub extern fn dlsym(handle: ?*anyopaque, symbol: [*c]const u8) ?*anyopaque;
 pub extern fn dlclose(handle: ?*anyopaque) c_int;
 pub extern fn dlerror() [*c]u8;
 pub extern fn waitpid(pid: pid_t, status: ?*c_int, options: c_int) pid_t;
-pub extern fn _setjmp(env: [*c]jmp_buf) c_int;
-pub extern fn longjmp(env: [*c]jmp_buf, val: c_int) void;
+// windows: route to the substrate's consistent asm setjmp/longjmp pair so the
+// lua-recovery longjmp (monitor/support/arcan_lua call these via `c.`) matches
+// arcan_main's arcan_setjmp. libc's setjmp/longjmp are SEH/incompatible. (windows port)
+extern fn arcan_setjmp(env: [*c]jmp_buf) c_int;
+extern fn arcan_longjmp(env: [*c]jmp_buf, val: c_int) noreturn;
+extern fn _setjmp_libc(env: [*c]jmp_buf) c_int;
+extern fn longjmp_libc(env: [*c]jmp_buf, val: c_int) void;
+pub const _setjmp = if (builtin.os.tag == .windows) arcan_setjmp else struct {
+    extern fn _setjmp(env: [*c]jmp_buf) c_int;
+}._setjmp;
+pub const longjmp = if (builtin.os.tag == .windows) arcan_longjmp else struct {
+    extern fn longjmp(env: [*c]jmp_buf, val: c_int) void;
+}.longjmp;
 pub extern fn pthread_attr_init(attr: *pthread_attr_t) c_int;
 pub extern fn pthread_attr_setdetachstate(attr: *pthread_attr_t, state: c_int) c_int;
 pub extern fn _errno() *c_int;
