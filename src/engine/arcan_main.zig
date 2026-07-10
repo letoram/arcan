@@ -1239,6 +1239,11 @@ export fn arcan_main(argc: c_int, argv: [*c][*c]u8) c_int {
             const candidates = [_][*:0]const u8{
                 "default.font",
                 "jetbrain_variable.font",
+                // durden's install renames the bundled font to default.ttf
+                // (its appl/durden/fonts holds default.ttf, not the two above),
+                // and resources/fonts also ships default.ttf — so this catches
+                // both whichever dir RESOURCE_SYS_FONT currently resolves to.
+                "default.ttf",
             };
             var picked_fd: c_int = BADFD;
             var picked_name: [*:0]const u8 = "default";
