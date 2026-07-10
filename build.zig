@@ -78,21 +78,41 @@ fn createExe(b: *std.Build, name: []const u8, opts: Opts) *std.Build.Step.Compil
     // src/zig_panic_root.zig installs `pub const panic = std.debug.simple_panic`,
     // bypassing the default DWARF-walking panic handler that recursively crashes
     // on our compressed .zdebug_* sections. See the file for full rationale.
-    const exe = b.addExecutable(.{ .use_llvm = false, .name = name, .root_module = b.createModule(.{
+    const exe = b.addExecutable(.{ .use_llvm = use_llvm_default, .name = name, .root_module = b.createModule(.{
         .root_source_file = b.path("src/zig_panic_root.zig"),
         .target = opts.target, .optimize = opts.optimize,
     }) });
     addLibC(exe, opts);
     addPlatformDefinitions(exe, opts);
     exe.root_module.addCMacro("PLATFORM_HEADER", opts.platform_header);
+    addDarwinLibcBridge(exe, b, opts);
     return exe;
+}
+
+// On macOS every exe needs the glibc↔Darwin libc bridges (stdio globals,
+// __errno_location, __assert_fail, __sigsetjmp, mremap/setfs*). One object
+// per exe — no cross-object symbol collisions.
+fn addDarwinLibcBridge(exe: *std.Build.Step.Compile, b: *std.Build, opts: Opts) void {
+    switch (opts.target.result.os.tag) {
+        .ios, .macos, .watchos, .tvos => {},
+        else => return,
+    }
+    // LLVM backend: the stdio __mod_init_func constructor uses an @export
+    // with an explicit mach-o section, which the self-hosted backend does
+    // not yet implement (ExportOptions.section).
+    const obj = b.addObject(.{ .use_llvm = true, .name = "libc_darwin", .root_module = b.createModule(.{
+        .root_source_file = b.path("src/platform/darwin/libc_darwin.zig"),
+        .target = opts.target, .optimize = opts.optimize,
+    }) });
+    addLibC(obj, opts);
+    exe.addObject(obj);
 }
 
 fn createLibrary(b: *std.Build, name: []const u8, version: std.SemanticVersion, opts: Opts) *std.Build.Step.Compile {
     return b.addLibrary(.{
         .linkage = if (opts.static) .static else .dynamic,
         .name = name, .version = version,
-        .use_llvm = false,
+        .use_llvm = use_llvm_default,
         .root_module = b.createModule(.{
             .target = opts.target, .optimize = opts.optimize, .pic = opts.pic, .strip = opts.strip,
         }),
@@ -111,8 +131,13 @@ fn addIncludes(step: *std.Build.Step.Compile, b: *std.Build, paths: []const []co
 fn useLlvmForSource(b: *std.Build, zig_path: []const u8) ?bool {
     _ = b;
     _ = zig_path;
-    return false;
+    return use_llvm_default;
 }
+
+// Backend selection: self-hosted for the native linux/bsd builds, LLVM when
+// targeting darwin — the SH-backend Mach-O objects trip relocation overflows
+// in the self-hosted linker. Set once at the top of build().
+var use_llvm_default: bool = false;
 
 fn debugPrefixFlag(b: *std.Build) []const u8 {
     return b.fmt("-fdebug-prefix-map={s}/=", .{b.build_root.path orelse "."});
@@ -145,7 +170,20 @@ fn addLibC(step: *std.Build.Step.Compile, opts: Opts) void {
 }
 
 fn linkFsrvStdlib(exe: *std.Build.Step.Compile) void {
-    for ([_][]const u8{ "m", "rt", "dl", "pthread", "atomic" }) |lib| exe.linkSystemLibrary(lib);
+    // On Darwin, m/rt/dl/pthread/atomic/util all live in libSystem (linked via
+    // libc); there are no standalone .dylibs to name, so requesting them fails
+    // the link. Only Linux/BSD split them into separate libraries.
+    switch (exe.rootModuleTarget().os.tag) {
+        .ios, .macos, .watchos, .tvos => {},
+        else => for ([_][]const u8{ "m", "rt", "dl", "pthread", "atomic" }) |lib| exe.linkSystemLibrary(lib),
+    }
+}
+
+fn linkUtil(exe: *std.Build.Step.Compile) void {
+    switch (exe.rootModuleTarget().os.tag) {
+        .ios, .macos, .watchos, .tvos => {}, // forkpty/openpty are in libSystem
+        else => exe.linkSystemLibrary("util"),
+    }
 }
 
 fn createMod(b: *std.Build, path: []const u8, opts: Opts) *std.Build.Module {
@@ -237,7 +275,7 @@ fn addZigObjects(
     includes: *const []const []const u8,
 ) void {
     for (sources) |src| {
-        const obj = b.addObject(.{ .use_llvm = false, .name = src.name, .root_module = b.createModule(.{
+        const obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = src.name, .root_module = b.createModule(.{
             .root_source_file = b.path(src.path), .target = opts.target,
             .optimize = opts.optimize, .imports = imports,
         }) });
@@ -255,7 +293,7 @@ fn addZigObjects(
 // freestanding boot build. Call once per binary — each call produces a
 // distinct Object so Zig's linker can dedupe symbols per-binary.
 fn addLua54AllObject(b: *std.Build, exe: *std.Build.Step.Compile, opts: Opts) void {
-    const lua54_all_obj = b.addObject(.{ .use_llvm = false,
+    const lua54_all_obj = b.addObject(.{ .use_llvm = use_llvm_default,
         .name = "lua54_all",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/lua54/lua_all_embed.zig"),
@@ -323,6 +361,10 @@ pub fn build(b: *std.Build) void {
         .os_tag = .linux,
         .abi = .musl,
     } });
+    use_llvm_default = switch (target.result.os.tag) {
+        .ios, .macos, .watchos, .tvos => true,
+        else => false,
+    };
     // Bug 0162: setting `preferred_optimize_mode = .Debug` here disables
     // user-selectable release modes — the fork's standardOptimizeOption
     // (lib/std/Build.zig:1348) returns the preferred mode whenever
@@ -384,8 +426,8 @@ pub fn build(b: *std.Build) void {
     };
 
     switch (opts.target.result.os.tag) {
-        .linux, .freebsd, .dragonfly, .openbsd, .netbsd => {},
-        else => |t| std.debug.panic("Unsupported platform: {s} — arcan targets Linux/BSD only", .{@tagName(t)}),
+        .linux, .ios, .macos, .watchos, .tvos, .freebsd, .dragonfly, .openbsd, .netbsd => {},
+        else => |t| std.debug.panic("Unsupported platform: {s} — arcan targets Linux/BSD/macOS", .{@tagName(t)}),
     }
 
     // PIC: only forced when caller passes -Dpic=true. qtarcan (now in
@@ -1422,7 +1464,7 @@ pub fn build(b: *std.Build) void {
 
     // callgraph tool
     {
-        const callgraph_exe = b.addExecutable(.{ .use_llvm = false,
+        const callgraph_exe = b.addExecutable(.{ .use_llvm = use_llvm_default,
             .name = "callgraph",
             .root_module = b.createModule(.{
                 .root_source_file = b.path("scripts/callgraph.zig"),
@@ -1497,7 +1539,7 @@ fn buildShmifTests(b: *std.Build, opts: Opts, arcan_shmif: *std.Build.Step.Compi
             test_mod.addImport("posix", cm_test.posix_libc);
             test_mod.addImport("a12_types", cm_test.a12_types);
             test_mod.addImport("anet_types", cm_test.anet_types);
-            const t = b.addTest(.{ .use_llvm = false, .root_module = test_mod });
+            const t = b.addTest(.{ .use_llvm = use_llvm_default, .root_module = test_mod });
             t.linkLibrary(arcan_shmif);
             t.linkLibrary(arcan_shmif_server);
             addLibC(t, opts);
@@ -1548,7 +1590,7 @@ fn buildTtfTests(b: *std.Build, opts: Opts) void {
     const truetype_mod = truetype_dep.module("TrueType");
 
     const test_step = b.step("test-ttf", "Run TrueType font renderer tests");
-    const t = b.addTest(.{ .use_llvm = false, .root_module = b.createModule(.{
+    const t = b.addTest(.{ .use_llvm = use_llvm_default, .root_module = b.createModule(.{
         .root_source_file = b.path("src/engine/arcan_ttf_test.zig"),
         .target = opts.target,
         .optimize = opts.optimize,
@@ -1710,7 +1752,7 @@ fn buildSlugTests(b: *std.Build, opts: Opts) void {
     // Test slug_glyph.zig (curve extraction + band building)
     const test_step = b.step("test-slug", "Run Slug GPU glyph data tests");
     const cm = coreMods(b, opts);
-    const t = b.addTest(.{ .use_llvm = false, .root_module = b.createModule(.{
+    const t = b.addTest(.{ .use_llvm = use_llvm_default, .root_module = b.createModule(.{
         .root_source_file = b.path("src/engine/slug_glyph.zig"),
         .target = opts.target,
         .optimize = opts.optimize,
@@ -1723,7 +1765,7 @@ fn buildSlugTests(b: *std.Build, opts: Opts) void {
     test_step.dependOn(&b.addRunArtifact(t).step);
 
     // Test arcan_raster_gpu.zig (instance data structures — no GPU needed)
-    const t2 = b.addTest(.{ .use_llvm = false, .root_module = b.createModule(.{
+    const t2 = b.addTest(.{ .use_llvm = use_llvm_default, .root_module = b.createModule(.{
         .root_source_file = b.path("src/engine/arcan_raster_gpu.zig"),
         .target = opts.target,
         .optimize = opts.optimize,
@@ -1766,7 +1808,7 @@ fn buildGhosttyBridgeTests(b: *std.Build, opts: Opts) void {
     bridge_mod.addImport("ghostty-vt", ghostty_vt);
 
     const test_step = b.step("test-ghostty", "Run ghostty bridge tests");
-    const t = b.addTest(.{ .use_llvm = false, .root_module = b.createModule(.{
+    const t = b.addTest(.{ .use_llvm = use_llvm_default, .root_module = b.createModule(.{
         .root_source_file = b.path("src/frameserver/terminal/default/ghostty_bridge_test.zig"),
         .target = opts.target,
         .optimize = opts.optimize,
@@ -1785,7 +1827,7 @@ fn buildGhosttyBridgeTests(b: *std.Build, opts: Opts) void {
         \\}
         \\
     );
-    const stub_obj = b.addObject(.{ .use_llvm = false, .name = "tui_stubs", .root_module = b.createModule(.{
+    const stub_obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "tui_stubs", .root_module = b.createModule(.{
         .root_source_file = stub_zig,
         .target = opts.target,
         .optimize = opts.optimize,
@@ -1940,7 +1982,7 @@ fn createArcanFrameserver(b: *std.Build, opts: Opts) *std.Build.Step.Compile {
         const a12_types_mod_cl = createA12TypesMod(b, opts, shmif_types_mod_cl);
         const anet_types_mod_cl = createAnetTypesMod(b, opts, shmif_types_mod_cl, a12_types_mod_cl, posix_libc_mod);
         const fsrv_opts_mod = makeFsrvOpts(b, null, true);
-        const obj = b.addObject(.{ .use_llvm = false,
+        const obj = b.addObject(.{ .use_llvm = use_llvm_default,
             .name = "frameserver",
             .root_module = b.createModule(.{
                 .root_source_file = b.path("src/frameserver/frameserver.zig"),
@@ -1986,7 +2028,7 @@ fn createArcanDb(b: *std.Build, opts: Opts) *std.Build.Step.Compile {
         const shmif_types_mod_db = createMod(b, "src/shmif/shmif_types.zig", opts);
         const a12_types_mod_db = createA12TypesMod(b, opts, shmif_types_mod_db);
         const anet_types_mod_db = createAnetTypesMod(b, opts, shmif_types_mod_db, a12_types_mod_db, posix_libc_mod);
-        const obj = b.addObject(.{ .use_llvm = false,
+        const obj = b.addObject(.{ .use_llvm = use_llvm_default,
             .name = "arcan_db",
             .root_module = b.createModule(.{
                 .root_source_file = b.path("src/engine/arcan_db.zig"),
@@ -2112,7 +2154,7 @@ fn createAclip(b: *std.Build, opts: Opts, arcan_shmif: *std.Build.Step.Compile, 
             .{ .name = "anet_types", .module = cm.anet_types },
         },
     });
-    const exe = b.addExecutable(.{ .use_llvm = false, .name = "aclip", .root_module = b.createModule(.{
+    const exe = b.addExecutable(.{ .use_llvm = use_llvm_default, .name = "aclip", .root_module = b.createModule(.{
         .root_source_file = b.path("src/tools/aclip/aclip.zig"),
         .target = opts.target, .optimize = opts.optimize,
         .imports = &.{
@@ -2152,7 +2194,7 @@ fn createAcfgfs(b: *std.Build, opts: Opts, arcan_shmif: *std.Build.Step.Compile,
     // no pthread/rt/dl deps and no musl↔glibc ABI bridge to worry about.
     const cm = coreMods(b, opts);
     const fuse_types_mod = createMod(b, "src/tools/acfgfs/fuse_types.zig", opts);
-    const exe = b.addExecutable(.{ .use_llvm = false, .name = "arcan_cfgfs", .root_module = b.createModule(.{
+    const exe = b.addExecutable(.{ .use_llvm = use_llvm_default, .name = "arcan_cfgfs", .root_module = b.createModule(.{
         .root_source_file = b.path("src/tools/acfgfs/acfgfs.zig"),
         .target = opts.target, .optimize = opts.optimize,
         .imports = &.{
@@ -2192,7 +2234,10 @@ fn createAfsrvTerminal(
     arcan_tui: *std.Build.Step.Compile,
 ) *std.Build.Step.Compile {
     const exe = createExe(b, "afsrv_terminal", opts);
-    exe.root_module.addCMacro("SALLOW_ST", "");
+    const is_darwin = switch (opts.target.result.os.tag) {
+        .ios, .macos, .watchos, .tvos => true, else => false,
+    };
+    if (!is_darwin) exe.root_module.addCMacro("SALLOW_ST", "");
 
     const term_include_paths: []const String = &.{
         "src/frameserver", "src/frameserver/terminal/default", "src/frameserver/terminal/default/tsm",
@@ -2211,7 +2256,7 @@ fn createAfsrvTerminal(
         "src/shmif/tui/lua/tui_lua.zig", "src/shmif/tui/lua/tui_lua_glob.zig",
         "src/shmif/tui/lua/nbio.zig", "src/shmif/tui/lua/tui_popen.zig",
     }) |zig_path| {
-        const obj = b.addObject(.{ .use_llvm = false, .name = std.fs.path.stem(zig_path), .root_module = b.createModule(.{
+        const obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = std.fs.path.stem(zig_path), .root_module = b.createModule(.{
             .root_source_file = b.path(zig_path), .target = opts.target, .optimize = opts.optimize,
             .imports = &.{
                 .{ .name = "shmif_types", .module = shmif_types_mod_term },
@@ -2226,7 +2271,7 @@ fn createAfsrvTerminal(
         exe.addObject(obj);
     }
     {
-        const bit_obj = b.addObject(.{ .use_llvm = false, .name = "bit", .root_module = b.createModule(.{
+        const bit_obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "bit", .root_module = b.createModule(.{
             .root_source_file = b.path("src/engine/external/bit.zig"), .target = opts.target, .optimize = opts.optimize,
             .imports = &.{
                 .{ .name = "posix", .module = posix_libc_mod_term },
@@ -2268,7 +2313,7 @@ fn createAfsrvTerminal(
             .__zig_use_llvm_override__ = @as(?bool, null),
         })) |dep|
             bridge_mod.addImport("ghostty-vt", dep.module("ghostty-vt"));
-        const obj = b.addObject(.{ .use_llvm = false, .name = "arcterm", .root_module = b.createModule(.{
+        const obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "arcterm", .root_module = b.createModule(.{
             .root_source_file = b.path("src/frameserver/terminal/default/arcterm.zig"),
             .target = opts.target, .optimize = opts.optimize,
             .imports = &.{
@@ -2301,7 +2346,7 @@ fn createAfsrvTerminal(
         };
         const lua54_api_mod_cli = createMod(b, "src/lua54/api.zig", opts);
         for (cli_zig_sources) |src| {
-            const obj = b.addObject(.{ .use_llvm = false, .name = src.name, .root_module = b.createModule(.{
+            const obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = src.name, .root_module = b.createModule(.{
                 .root_source_file = b.path(src.path), .target = opts.target, .optimize = opts.optimize,
                 .imports = &.{
                     .{ .name = "shmif_offsets", .module = offsets_mod },
@@ -2326,7 +2371,7 @@ fn createAfsrvTerminal(
     exe.linkLibrary(arcan_shmif);
     exe.linkLibrary(arcan_shmif_server);
     exe.linkLibrary(arcan_tui);
-    exe.linkSystemLibrary("util");
+    linkUtil(exe);
     linkFsrvStdlib(exe);
     return exe;
 }
@@ -2489,7 +2534,7 @@ fn createArcanNet(
         const shmif_types_mod_ndb = createMod(b, "src/shmif/shmif_types.zig", opts);
         const a12_types_mod_ndb = createA12TypesMod(b, opts, shmif_types_mod_ndb);
         const anet_types_mod_ndb = createAnetTypesMod(b, opts, shmif_types_mod_ndb, a12_types_mod_ndb, posix_libc_mod_db);
-        const db_obj = b.addObject(.{ .use_llvm = false,
+        const db_obj = b.addObject(.{ .use_llvm = use_llvm_default,
             .name = "arcan_db",
             .root_module = b.createModule(.{
                 .root_source_file = b.path("src/engine/arcan_db.zig"),
@@ -2589,7 +2634,7 @@ fn createAfsrvEncode(
     // stb_image / stb_image_write impls: pure-Zig translate-c port that
     // `pub export`s the entry points arcan_img.zig's externs resolve to.
     {
-        const stb_image_obj = b.addObject(.{ .use_llvm = false, .name = "stb_image", .root_module = b.createModule(.{
+        const stb_image_obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "stb_image", .root_module = b.createModule(.{
             .root_source_file = b.path("src/engine/external/stb_image.zig"),
             .target = opts.target, .optimize = opts.optimize, .pic = opts.pic,
         }) });
@@ -2733,7 +2778,7 @@ fn addCompositorCommon(
     } else base_imports;
     for (zig_engine_sources) |src| {
         const imports = if (std.mem.eql(u8, src.name, "arcan_db")) db_imports else if (std.mem.eql(u8, src.name, "arcan_ttf")) ttf_imports else base_imports;
-        const obj = b.addObject(.{ .use_llvm = false, .name = src.name, .root_module = b.createModule(.{
+        const obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = src.name, .root_module = b.createModule(.{
             .root_source_file = b.path(src.path), .target = opts.target, .optimize = opts.optimize,
             .imports = imports,
         }) });
@@ -2769,7 +2814,7 @@ fn addCompositorCommon(
 
     // arcan_lua.zig (Zig port of arcan_lua.c) — compiled as object with same deps as engine sources
     {
-        const obj = b.addObject(.{ .use_llvm = false, .name = "arcan_lua", .root_module = b.createModule(.{
+        const obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "arcan_lua", .root_module = b.createModule(.{
             .root_source_file = b.path("src/engine/arcan_lua.zig"), .target = opts.target, .optimize = opts.optimize,
             .imports = &.{
                 .{ .name = "arcan", .module = types_mod }, .{ .name = "engine_offsets", .module = engine_offsets_mod },
@@ -2790,7 +2835,7 @@ fn addCompositorCommon(
 
     // bit.zig (luaopen_bit) — Zig port; stb_perlin.c stays as C (@cImport wrapper doesn't export C ABI)
     {
-        const bit_obj = b.addObject(.{ .use_llvm = false, .name = "bit", .root_module = b.createModule(.{
+        const bit_obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "bit", .root_module = b.createModule(.{
             .root_source_file = b.path("src/engine/external/bit.zig"), .target = opts.target, .optimize = opts.optimize,
             .imports = &.{
                 .{ .name = "posix", .module = posix_libc_mod_engine },
@@ -2810,13 +2855,13 @@ fn addCompositorCommon(
     // `pub export fn` / `pub export var` so arcan_lua.zig / arcan_img.zig's
     // externs resolve at link. Compiled as objects so they participate in
     // link without dragging C TUs through aro.
-    const stb_perlin_obj = b.addObject(.{ .use_llvm = false, .name = "stb_perlin", .root_module = b.createModule(.{
+    const stb_perlin_obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "stb_perlin", .root_module = b.createModule(.{
         .root_source_file = b.path("src/engine/external/stb_perlin.zig"),
         .target = opts.target, .optimize = opts.optimize, .pic = opts.pic,
     }) });
     addLibC(stb_perlin_obj, opts);
     exe.addObject(stb_perlin_obj);
-    const stb_image_obj = b.addObject(.{ .use_llvm = false, .name = "stb_image", .root_module = b.createModule(.{
+    const stb_image_obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "stb_image", .root_module = b.createModule(.{
         .root_source_file = b.path("src/engine/external/stb_image.zig"),
         .target = opts.target, .optimize = opts.optimize, .pic = opts.pic,
     }) });
@@ -2846,7 +2891,7 @@ fn addCompositorCommon(
     };
     const offsets_mod = createMod(b, "src/shmif/shmif_offsets.zig", opts);
     for (zig_platform_sources) |src| {
-        const obj = b.addObject(.{ .use_llvm = false, .name = src.name, .root_module = b.createModule(.{
+        const obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = src.name, .root_module = b.createModule(.{
             .root_source_file = b.path(src.path), .target = opts.target, .optimize = opts.optimize,
             .imports = &.{
                 .{ .name = "arcan", .module = types_mod },
@@ -2872,7 +2917,7 @@ fn addCompositorCommon(
             .root_source_file = b.path("src/platform/zig_dlopen_api.zig"),
             .target = opts.target, .optimize = opts.optimize,
         });
-        const audio_obj = b.addObject(.{ .use_llvm = false, .name = "platform_audio", .root_module = b.createModule(.{
+        const audio_obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "platform_audio", .root_module = b.createModule(.{
             .root_source_file = b.path("src/platform/audio/ma_alsa/platform_audio.zig"),
             .target = opts.target, .optimize = opts.optimize,
             .imports = &.{
@@ -2908,17 +2953,16 @@ fn addCompositorCommon(
 }
 
 // Vulkan compositor helpers
-const VkModules = struct { vk_mod: *std.Build.Module, vulkan_dep: ?*std.Build.Dependency, zig_dlopen_mod: *std.Build.Module };
+const VkModules = struct { vk_mod: *std.Build.Module, vulkan_mod: *std.Build.Module, zig_dlopen_mod: *std.Build.Module };
 
-/// Shared Vulkan AGP setup: vulkan-zig dependency, vk_mod, vk_shared + vk_shdrmgmt objects.
+/// Shared Vulkan AGP setup: vulkan bindings module, vk_mod, vk_shared + vk_shdrmgmt objects.
 fn addVulkanAgp(exe: *std.Build.Step.Compile, b: *std.Build, opts: Opts, name_suffix: []const u8) VkModules {
-    const vulkan_dep = b.lazyDependency("vulkan_zig", .{
-        .target = opts.target,
-        .optimize = opts.optimize,
-        .registry = @as(std.Build.LazyPath, .{ .cwd_relative = "/usr/share/vulkan/registry/vk.xml" }),
-    });
+    // Pre-generated vulkan-zig bindings, committed at
+    // src/platform/agp/generated/vk.zig. No generator binary to build/run
+    // (which also unbreaks cross-compilation) and no host registry needed.
+    const vulkan_mod = createMod(b, "src/platform/agp/generated/vk.zig", opts);
     const vk_mod = createMod(b, "src/platform/agp/vk.zig", opts);
-    if (vulkan_dep) |dep| vk_mod.addImport("vulkan", dep.module("vulkan-zig"));
+    vk_mod.addImport("vulkan", vulkan_mod);
     // static_vulkan=true statically links a Vulkan ICD into the binary
     // (single-binary builds); the standalone build always loads the system
     // loader/ICD at runtime.
@@ -2961,7 +3005,7 @@ fn addVulkanAgp(exe: *std.Build.Step.Compile, b: *std.Build, opts: Opts, name_su
     }
 
     const cm_vk = coreMods(b, opts);
-    const shared_obj = b.addObject(.{ .use_llvm = false, .name = b.fmt("agp_vk_shared{s}", .{name_suffix}), .root_module = b.createModule(.{
+    const shared_obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = b.fmt("agp_vk_shared{s}", .{name_suffix}), .root_module = b.createModule(.{
         .root_source_file = b.path("src/platform/agp/vk_shared.zig"), .target = opts.target, .optimize = opts.optimize,
         .imports = &.{
             .{ .name = "posix", .module = cm_vk.posix_libc },
@@ -2975,7 +3019,7 @@ fn addVulkanAgp(exe: *std.Build.Step.Compile, b: *std.Build, opts: Opts, name_su
     addIncludes(shared_obj, b, compositor_include_paths);
     exe.addObject(shared_obj);
 
-    const shdrmgmt_obj = b.addObject(.{ .use_llvm = false, .name = b.fmt("agp_vk_shdrmgmt{s}", .{name_suffix}), .root_module = b.createModule(.{
+    const shdrmgmt_obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = b.fmt("agp_vk_shdrmgmt{s}", .{name_suffix}), .root_module = b.createModule(.{
         .root_source_file = b.path("src/platform/agp/vk_shdrmgmt.zig"), .target = opts.target, .optimize = opts.optimize,
         .imports = &.{
             .{ .name = "posix", .module = cm_vk.posix_libc },
@@ -2988,7 +3032,7 @@ fn addVulkanAgp(exe: *std.Build.Step.Compile, b: *std.Build, opts: Opts, name_su
     addIncludes(shdrmgmt_obj, b, compositor_include_paths);
     exe.addObject(shdrmgmt_obj);
 
-    return .{ .vk_mod = vk_mod, .vulkan_dep = vulkan_dep, .zig_dlopen_mod = zig_dlopen_mod };
+    return .{ .vk_mod = vk_mod, .vulkan_mod = vulkan_mod, .zig_dlopen_mod = zig_dlopen_mod };
 }
 
 fn createArcanVk(b: *std.Build, opts: Opts, arcan_shmif: *std.Build.Step.Compile, arcan_shmif_server: *std.Build.Step.Compile) *std.Build.Step.Compile {
@@ -2998,13 +3042,13 @@ fn createArcanVk(b: *std.Build, opts: Opts, arcan_shmif: *std.Build.Step.Compile
 
     // WSI module (swapchain)
     const vk_wsi_mod = createMod(b, "src/platform/agp/vk_wsi.zig", opts);
-    if (vk.vulkan_dep) |dep| vk_wsi_mod.addImport("vulkan", dep.module("vulkan-zig"));
+    vk_wsi_mod.addImport("vulkan", vk.vulkan_mod);
     vk_wsi_mod.addImport("vk.zig", vk.vk_mod);
     for (compositor_include_paths) |dir| vk_wsi_mod.addIncludePath(b.path(dir));
 
     // XCB window module
     const vk_xcb_mod = createMod(b, "src/platform/agp/vk_xcb.zig", opts);
-    if (vk.vulkan_dep) |dep| vk_xcb_mod.addImport("vulkan", dep.module("vulkan-zig"));
+    vk_xcb_mod.addImport("vulkan", vk.vulkan_mod);
     for (compositor_include_paths) |dir| vk_xcb_mod.addIncludePath(b.path(dir));
     // XCB headers for @cImport type definitions (loaded at runtime on musl via zig_dlopen)
     if (opts.ext.xcb) |xcb_lib| {
@@ -3021,14 +3065,14 @@ fn createArcanVk(b: *std.Build, opts: Opts, arcan_shmif: *std.Build.Step.Compile
 
     // Offscreen module (for LWA mode)
     const vk_offscreen_mod = createMod(b, "src/platform/agp/vk_offscreen.zig", opts);
-    if (vk.vulkan_dep) |dep| vk_offscreen_mod.addImport("vulkan", dep.module("vulkan-zig"));
+    vk_offscreen_mod.addImport("vulkan", vk.vulkan_mod);
     vk_offscreen_mod.addImport("vk.zig", vk.vk_mod);
     for (compositor_include_paths) |dir| vk_offscreen_mod.addIncludePath(b.path(dir));
 
     // GBM+KMS direct-to-display module (for Asahi/split-DRM hardware where
     // the Vulkan ICD doesn't implement VK_KHR_display; see vk_gbm_kms.zig).
     const vk_gbm_kms_mod = createMod(b, "src/platform/agp/vk_gbm_kms.zig", opts);
-    if (vk.vulkan_dep) |dep| vk_gbm_kms_mod.addImport("vulkan", dep.module("vulkan-zig"));
+    vk_gbm_kms_mod.addImport("vulkan", vk.vulkan_mod);
     vk_gbm_kms_mod.addImport("vk.zig", vk.vk_mod);
     for (compositor_include_paths) |dir| vk_gbm_kms_mod.addIncludePath(b.path(dir));
     // libdrm headers (xf86drm.h, xf86drmMode.h) for @cImport — from system.
@@ -3036,18 +3080,40 @@ fn createArcanVk(b: *std.Build, opts: Opts, arcan_shmif: *std.Build.Step.Compile
     vk_gbm_kms_mod.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
     vk_gbm_kms_mod.addSystemIncludePath(.{ .cwd_relative = "/usr/include/libdrm" });
 
-    // Platform video.zig (unified: XCB + KHR_display + GBM_KMS + LWA)
+    // Platform video.zig (unified: XCB + KHR_display + GBM_KMS + LWA + Metal)
+    // Metal WSI module (macOS only; comptime-dead elsewhere but the import
+    // name must still resolve under stock zig)
+    const vk_metal_mod = createMod(b, "src/platform/agp/macos/vk_metal.zig", opts);
+    vk_metal_mod.addImport("vulkan", vk.vulkan_mod);
+
+    // macOS: the Cocoa/CAMetalLayer window implementation (exports the
+    // soma_window_* surface that vk_metal.zig externs). Resolves libobjc and
+    // the AppKit/QuartzCore/Metal frameworks via dlopen at runtime, so the
+    // cross-link from Linux needs nothing beyond zig's libSystem stubs.
+    switch (opts.target.result.os.tag) {
+        .ios, .macos, .watchos, .tvos => {
+            const cocoa_obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "cocoa_window", .root_module = b.createModule(.{
+                .root_source_file = b.path("src/platform/agp/macos/cocoa_window.zig"),
+                .target = opts.target, .optimize = opts.optimize,
+            }) });
+            addLibC(cocoa_obj, opts);
+            exe.addObject(cocoa_obj);
+        },
+        else => {},
+    }
+
     const cm_video = coreMods(b, opts);
-    const video_obj = b.addObject(.{ .use_llvm = false, .name = "platform_vk_video", .root_module = b.createModule(.{
+    const video_obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "platform_vk_video", .root_module = b.createModule(.{
         .root_source_file = b.path("src/platform/vk-display/video.zig"), .target = opts.target, .optimize = opts.optimize,
     }) });
     addLibC(video_obj, opts);
-    if (vk.vulkan_dep) |dep| video_obj.root_module.addImport("vulkan", dep.module("vulkan-zig"));
+    video_obj.root_module.addImport("vulkan", vk.vulkan_mod);
     video_obj.root_module.addImport("vk.zig", vk.vk_mod);
     video_obj.root_module.addImport("vk_wsi.zig", vk_wsi_mod);
     video_obj.root_module.addImport("vk_xcb.zig", vk_xcb_mod);
     video_obj.root_module.addImport("vk_offscreen.zig", vk_offscreen_mod);
     video_obj.root_module.addImport("vk_gbm_kms.zig", vk_gbm_kms_mod);
+    video_obj.root_module.addImport("vk_metal.zig", vk_metal_mod);
     video_obj.root_module.addImport("posix", cm_video.posix_libc);
     video_obj.root_module.addImport("shmif_types", cm_video.shmif_types);
     video_obj.root_module.addImport("a12_types", cm_video.a12_types);
@@ -3057,7 +3123,7 @@ fn createArcanVk(b: *std.Build, opts: Opts, arcan_shmif: *std.Build.Step.Compile
 
     // Platform evdev event handling (Zig port)
     const cm_evdev = coreMods(b, opts);
-    const event_obj = b.addObject(.{ .use_llvm = false, .name = "platform_evdev_event", .root_module = b.createModule(.{
+    const event_obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "platform_evdev_event", .root_module = b.createModule(.{
         .root_source_file = b.path("src/platform/evdev/event.zig"), .target = opts.target, .optimize = opts.optimize,
     }) });
     event_obj.root_module.addImport("arcan", createMod(b, "src/engine/arcan_zig_types.zig", opts));
@@ -3076,7 +3142,7 @@ fn createArcanVk(b: *std.Build, opts: Opts, arcan_shmif: *std.Build.Step.Compile
     exe.addObject(event_obj);
     // Keyboard lookup table (replaces deleted C keycode_xlate.h)
     const cm_keymap = coreMods(b, opts);
-    const keymap_obj = b.addObject(.{ .use_llvm = false, .name = "evdev_keymap", .root_module = b.createModule(.{
+    const keymap_obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "evdev_keymap", .root_module = b.createModule(.{
         .root_source_file = b.path("src/platform/evdev/keymap.zig"), .target = opts.target, .optimize = opts.optimize,
         .imports = &.{
             .{ .name = "posix", .module = cm_keymap.posix_libc },
@@ -3104,6 +3170,7 @@ fn addPlatformDefinitions(step: *std.Build.Step.Compile, opts: Opts) void {
     const bsd_platform_definitions = [_][2]String{ .{ "_WITH_GETLINE", "" }, .{ "__UNIX", "" }, .{ "__BSD", "" }, .{ "LIBUSB_BSD", "" } };
     const platform_definitions: []const [2]String = switch (opts.target.result.os.tag) {
         .linux => &.{ .{ "__UNIX", "" }, .{ "__LINUX", "" }, .{ "POSIX_C_SOURCE", "" }, .{ "_GNU_SOURCE", "" } },
+        .ios, .macos, .watchos, .tvos => &.{ .{ "__UNIX", "" }, .{ "POSIX_C_SOURCE", "" }, .{ "__APPLE__", "" }, .{ "ARCAN_SHMIF_OVERCOMMIT", "" }, .{ "_WITH_DPRINTF", "" }, .{ "_GNU_SOURCE", "" } },
         .freebsd => &(bsd_platform_definitions ++ .{.{ "__FreeBSD__", "" }}),
         .dragonfly => &(bsd_platform_definitions ++ .{.{ "__DragonFly__", "" }}),
         .openbsd => &(bsd_platform_definitions ++ .{ .{ "__OpenBSD__", "" }, .{ "CLOCK_MONOTONIC_RAW", "CLOCK_MONOTONIC" } }),
@@ -3115,7 +3182,7 @@ fn addPlatformDefinitions(step: *std.Build.Step.Compile, opts: Opts) void {
 
 fn addEvpackSource(b: *std.Build, step: *std.Build.Step.Compile, opts: Opts) void {
     const cm = coreMods(b, opts);
-    const obj = b.addObject(.{ .use_llvm = false, .name = "arcan_shmif_evpack", .root_module = b.createModule(.{
+    const obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "arcan_shmif_evpack", .root_module = b.createModule(.{
         .root_source_file = b.path("src/shmif/arcan_shmif_evpack.zig"), .target = opts.target, .optimize = opts.optimize,
         .imports = &.{
             .{ .name = "shmif_types", .module = cm.shmif_types },
@@ -3131,7 +3198,7 @@ fn addEvpackSource(b: *std.Build, step: *std.Build.Step.Compile, opts: Opts) voi
 
 fn addArcanMathZig(b: *std.Build, exe: *std.Build.Step.Compile, opts: Opts) void {
     const cm = coreMods(b, opts);
-    const obj = b.addObject(.{ .use_llvm = false, .name = "arcan_math", .root_module = b.createModule(.{
+    const obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "arcan_math", .root_module = b.createModule(.{
         .root_source_file = b.path("src/engine/arcan_math.zig"), .target = opts.target, .optimize = opts.optimize,
         .imports = &.{
             .{ .name = "posix", .module = cm.posix_libc },
@@ -3170,7 +3237,7 @@ fn makeFsrvOpts(b: *std.Build, mode_str: ?[]const u8, is_chainloader: bool) *std
 /// C `main` shim for standalone frameserver exes — frameserver.zig only
 /// exports `frameserver_entry` (see frameserver_main_entry.zig).
 fn addFrameserverEntry(b: *std.Build, exe: *std.Build.Step.Compile, opts: Opts) void {
-    const obj = b.addObject(.{ .use_llvm = false,
+    const obj = b.addObject(.{ .use_llvm = use_llvm_default,
         .name = "frameserver_entry",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/frameserver/frameserver_main_entry.zig"),
@@ -3189,7 +3256,7 @@ fn addFrameserverZig(b: *std.Build, exe: *std.Build.Step.Compile, opts: Opts, en
     const a12_types_mod_fs = createA12TypesMod(b, opts, shmif_types_mod_fs);
     const anet_types_mod_fs = createAnetTypesMod(b, opts, shmif_types_mod_fs, a12_types_mod_fs, posix_libc_mod);
     const fsrv_opts_mod = makeFsrvOpts(b, mode_str, false);
-    const obj = b.addObject(.{ .use_llvm = false,
+    const obj = b.addObject(.{ .use_llvm = use_llvm_default,
         .name = "frameserver",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/frameserver/frameserver.zig"),
@@ -3317,6 +3384,12 @@ fn addShmifPlatformSources(b: *std.Build, lib: *std.Build.Step.Compile, opts: Op
             for ([_]String{ "src/platform/posix/time.zig", "src/platform/posix/sem.zig" }) |zig_src|
                 addShmifZigSource(b, lib, zig_src, opts);
         },
+        .ios, .macos, .watchos, .tvos => {
+            // Darwin needs the mach clock + named-semaphore shims (pure Zig
+            // ports of the old darwin/{time,sem}.c).
+            for ([_]String{ "src/platform/darwin/time.zig", "src/platform/darwin/sem.zig" }) |zig_src|
+                addShmifZigSource(b, lib, zig_src, opts);
+        },
         else => {},
     }
 }
@@ -3338,7 +3411,7 @@ fn addRuntimeDlShims(exe: *std.Build.Step.Compile, b: *std.Build, opts: Opts) vo
         .root_source_file = b.path("src/platform/zig_dlopen_api.zig"),
         .target = opts.target, .optimize = opts.optimize,
     });
-    const zig_dlopen_impl_obj = b.addObject(.{ .use_llvm = false, .name = "dlopen", .root_module = b.createModule(.{
+    const zig_dlopen_impl_obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "dlopen", .root_module = b.createModule(.{
         .root_source_file = b.path("src/platform/zig_dlopen.zig"),
         .target = opts.target, .optimize = opts.optimize,
     }) });
@@ -3352,7 +3425,7 @@ fn addRuntimeDlShims(exe: *std.Build.Step.Compile, b: *std.Build, opts: Opts) vo
         .{ .name = "dl_alsa", .path = "src/platform/dl/dl_alsa.zig" },
     };
     for (shims) |s| {
-        const obj = b.addObject(.{ .use_llvm = false, .name = s.name, .root_module = b.createModule(.{
+        const obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = s.name, .root_module = b.createModule(.{
             .root_source_file = b.path(s.path),
             .target = opts.target, .optimize = opts.optimize,
             .imports = &.{.{ .name = "dlopen", .module = zig_dlopen_api_mod }},
@@ -3364,7 +3437,7 @@ fn addRuntimeDlShims(exe: *std.Build.Step.Compile, b: *std.Build, opts: Opts) vo
 
 fn addPsepOpen(exe: *std.Build.Step.Compile, b: *std.Build, opts: Opts) void {
     const cm = coreMods(b, opts);
-    const obj = b.addObject(.{ .use_llvm = false, .name = "posix_psep_open", .root_module = b.createModule(.{
+    const obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "posix_psep_open", .root_module = b.createModule(.{
         .root_source_file = b.path("src/platform/posix/psep_open.zig"), .target = opts.target, .optimize = opts.optimize,
         .imports = &.{
             .{ .name = "posix", .module = cm.posix_libc },

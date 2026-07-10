@@ -704,16 +704,10 @@ pub fn ensure_flush(L: ?*lua_State, ib: [*c]struct_nonblock_io, timeout_arg: usi
 pub fn connect_trypath(local: [*c]const u8, remote: [*c]const u8, @"type": c_int) callconv(.c) c_int {
     const fd: c_int = socket(1, @"type", 0);
     if (-1 == fd) return fd;
-    var addr_local: struct_sockaddr_un = struct_sockaddr_un{
-        .sun_family = @as(sa_family_t, @bitCast(@as(c_short, @truncate(@as(c_int, 1))))),
-        .sun_path = std.mem.zeroes([108]u8),
-    };
-    _ = snprintf(@ptrCast(&addr_local.sun_path[0]), @sizeOf([108]u8) / @sizeOf(u8), "%s", local);
-    var addr_remote: struct_sockaddr_un = struct_sockaddr_un{
-        .sun_family = @as(sa_family_t, @bitCast(@as(c_short, @truncate(@as(c_int, 1))))),
-        .sun_path = std.mem.zeroes([108]u8),
-    };
-    _ = snprintf(@ptrCast(&addr_remote.sun_path[0]), @sizeOf([108]u8) / @sizeOf(u8), "%s", remote);
+    var addr_local: struct_sockaddr_un = .{ .sun_family = 1 }; // AF_UNIX
+    _ = snprintf(@ptrCast(&addr_local.sun_path[0]), @sizeOf(@TypeOf(addr_local.sun_path)), "%s", local);
+    var addr_remote: struct_sockaddr_un = .{ .sun_family = 1 }; // AF_UNIX
+    _ = snprintf(@ptrCast(&addr_remote.sun_path[0]), @sizeOf(@TypeOf(addr_remote.sun_path)), "%s", remote);
     const rv: c_int = c.bind(fd, constSockaddrCast(&addr_local), @as(socklen_t, @bitCast(@as(c_uint, @truncate(@sizeOf(struct_sockaddr_un))))));
     if (-1 == rv) {
         _ = close(fd);
@@ -1135,11 +1129,8 @@ pub fn build_socket_ipc(pathin: [*c]u8, userns: bool, srv: bool) callconv(.c) st
             res.err = "EINVAL: Couldn't build socket file";
             return res;
         }
-        var addr: struct_sockaddr_un = struct_sockaddr_un{
-            .sun_family = @as(sa_family_t, @bitCast(@as(c_short, @truncate(@as(c_int, 1))))),
-            .sun_path = std.mem.zeroes([108]u8),
-        };
-        const lim: usize = @sizeOf([108]u8) / @sizeOf(u8);
+        var addr: struct_sockaddr_un = .{ .sun_family = 1 }; // AF_UNIX
+        const lim: usize = @sizeOf(@TypeOf(addr.sun_path));
         if (strlen(workpath) > (lim -% 1)) {
             res.err = "ENAMETOOLONG: expanded socket doesn't fit sockaddr";
             arcan_mem_free(@as(?*anyopaque, @ptrCast(workpath)));

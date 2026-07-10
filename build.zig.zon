@@ -14,11 +14,6 @@
             .hash = "libxkbcommon-1.11.0-1-93LaF6pwAgDFoaLfOkR8ioG4RVcDHbBhsDmC_rYwyOEG",
             .lazy = true,
         },
-        .vulkan_zig = .{
-            .url = "git+https://github.com/Snektron/vulkan-zig?ref=zig-0.15-compat#3ada9e2989bab70090a55f0f6fac19ea90d06357",
-            .hash = "vulkan-0.0.0-r7Ytx6FIAwD3QyrrJhvObO0YSZ6WEkMGSCPKbhM__HFd",
-            .lazy = true,
-        },
         .ghostty = .{
             .url = "git+https://github.com/ghostty-org/ghostty#46522a8779ba44e47d4f68ab633ace5382971624",
             .hash = "ghostty-1.3.0-dev-5UdBCziw9wQtyWSBAhSLJeRgNCGbtgC491706Q1Frf6T",

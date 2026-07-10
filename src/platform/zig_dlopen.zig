@@ -11,7 +11,12 @@
 // `dl.zig_dlopen(...)`, while C / `extern fn` callers (e.g.
 // vk_offscreen.zig) link the `export fn` symbols emitted by the impl.
 
-pub const impl = @import("zig_dlopen_linux.zig");
+const builtin = @import("builtin");
+
+pub const impl = switch (builtin.os.tag) {
+    .macos, .ios, .watchos, .tvos => @import("zig_dlopen_macos.zig"),
+    else => @import("zig_dlopen_linux.zig"),
+};
 
 pub const zig_dlopen = impl.zig_dlopen;
 pub const zig_dlsym = impl.zig_dlsym;

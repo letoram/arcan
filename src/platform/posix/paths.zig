@@ -6,11 +6,14 @@ const arcan = @import("arcan");
 
 const posix = std.posix;
 
+const is_darwin = @import("builtin").os.tag.isDarwin();
+
 const c = struct {
     // POSIX
     const stat_t = extern struct {
-        // On aarch64-linux (glibc), struct stat is 128 bytes
-        _pad: [128]u8,
+        // aarch64-linux (glibc): struct stat is 128 bytes.
+        // darwin arm64 (__DARWIN_STRUCT_STAT64): 144 bytes.
+        _pad: [if (is_darwin) 144 else 128]u8,
     };
     extern fn __xstat(ver: c_int, path: [*c]const u8, buf: *stat_t) c_int;
     // stat() on modern glibc is a wrapper, but we can call the libc stat directly
@@ -36,10 +39,15 @@ const c = struct {
     const S_IFIFO: u32 = 0o010000;
     const S_IFSOCK: u32 = 0o140000;
 
-    // stat.st_mode offset: on aarch64-linux glibc, mode is at offset 16
-    const STAT_MODE_OFFSET: usize = 16;
+    // stat.st_mode offset: aarch64-linux glibc has a u32 at 16; darwin
+    // arm64 a u16 at 4.
+    const STAT_MODE_OFFSET: usize = if (is_darwin) 4 else 16;
 
     fn getStatMode(buf: *stat_t) u32 {
+        if (is_darwin) {
+            const ptr: *align(2) const u16 = @ptrCast(@alignCast(&buf._pad[STAT_MODE_OFFSET]));
+            return ptr.*;
+        }
         const ptr: *const u32 = @ptrCast(@alignCast(&buf._pad[STAT_MODE_OFFSET]));
         return ptr.*;
     }
@@ -167,15 +175,23 @@ fn exe_dir() ?[*:0]const u8 {
     };
     if (State.cached) return State.result;
     State.cached = true;
-    const len = c.readlink("/proc/self/exe", &State.dir, State.dir.len - 1);
-    if (len <= 0) return null;
-    const ulen: usize = @intCast(len);
-    State.dir[ulen] = 0;
+    if (comptime @import("builtin").os.tag.isDarwin()) {
+        // no /proc on darwin; dyld tracks the executable path
+        var sz: u32 = State.dir.len - 1;
+        if (_NSGetExecutablePath(&State.dir, &sz) != 0) return null;
+    } else {
+        const len = c.readlink("/proc/self/exe", &State.dir, State.dir.len - 1);
+        if (len <= 0) return null;
+        const ulen: usize = @intCast(len);
+        State.dir[ulen] = 0;
+    }
     const slash = c.strrchr(&State.dir, '/');
     if (slash != null) slash[0] = 0;
     State.result = @ptrCast(&State.dir);
     return State.result;
 }
+
+extern "c" fn _NSGetExecutablePath(buf: [*c]u8, bufsize: *u32) c_int;
 
 fn binpath_unix() [*c]u8 {
     if (exe_dir()) |edir| {

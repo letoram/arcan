@@ -246,7 +246,7 @@ fn do_stat_path(path: [*c]const u8) ?StatResult {
         }
     }
     const s = std.posix.fstatat(std.posix.AT.FDCWD, std.mem.span(@as([*:0]const u8, @ptrCast(path))), 0) catch return null;
-    return .{ .dev = s.dev, .ino = s.ino };
+    return .{ .dev = @intCast(s.dev), .ino = @intCast(s.ino) };
 }
 
 fn do_fstat_fd(fd: c_int) ?StatResult {
@@ -263,7 +263,7 @@ fn do_fstat_fd(fd: c_int) ?StatResult {
         }
     }
     const s = std.posix.fstat(@intCast(fd)) catch return null;
-    return .{ .dev = s.dev, .ino = s.ino };
+    return .{ .dev = @intCast(s.dev), .ino = @intCast(s.ino) };
 }
 
 inline fn do_fileno(stream: ?*FILE) c_int {

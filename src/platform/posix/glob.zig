@@ -58,7 +58,21 @@ const pollfd = extern struct {
     revents: c_short,
 };
 
-const glob_t = extern struct {
+const is_darwin = @import("builtin").os.tag.isDarwin();
+
+const glob_t = if (is_darwin) extern struct {
+    gl_pathc: usize,
+    gl_matchc: c_int,
+    gl_offs: usize,
+    gl_flags: c_int,
+    gl_pathv: [*c][*c]u8,
+    gl_errfunc: ?*anyopaque,
+    gl_closedir: ?*anyopaque,
+    gl_readdir: ?*anyopaque,
+    gl_opendir: ?*anyopaque,
+    gl_lstat: ?*anyopaque,
+    gl_stat: ?*anyopaque,
+} else extern struct {
     gl_pathc: usize,
     gl_pathv: [*c][*c]u8,
     gl_offs: usize,
@@ -70,7 +84,15 @@ const glob_t = extern struct {
     gl_stat: ?*anyopaque,
 };
 
-const dirent = extern struct {
+const dirent = if (is_darwin) extern struct {
+    // arm64 darwin: the plain readdir symbol IS the 64-bit-inode variant
+    d_ino: u64,
+    d_seekoff: u64,
+    d_reclen: u16,
+    d_namlen: u16,
+    d_type: u8,
+    d_name: [1024]u8,
+} else extern struct {
     d_ino: u64,
     d_off: i64,
     d_reclen: u16,

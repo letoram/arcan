@@ -4,6 +4,10 @@
 // a single `const c = @import("shmif_types");` namespace.
 
 const std = @import("std");
+const builtin = @import("builtin");
+// Darwin and Linux disagree on a long tail of constants and struct layouts;
+// every divergent decl below comptime-switches on this.
+const is_darwin = builtin.os.tag.isDarwin();
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Section 1: Arcan struct types
@@ -951,7 +955,10 @@ pub const tui_font = extern struct { _data: [8]u8 = std.mem.zeroes([8]u8) };
 // `align(8)` propagates so the containing field is also 8-byte aligned.
 // See afsrv_terminal SIGBUS at __pthread_mutex_timedlock / a_ll
 // (memory/sh_pthread_mutex_alignment.md).
-pub const pthread_mutex_t = extern struct { _data: [48]u8 align(8) = std.mem.zeroes([48]u8) };
+pub const pthread_mutex_t = if (is_darwin)
+    extern struct { _data: [64]u8 align(8) = std.mem.zeroes([64]u8) } // { long sig; char opaque[56] }
+else
+    extern struct { _data: [48]u8 align(8) = std.mem.zeroes([48]u8) };
 pub const pthread_t = c_ulong;
 pub const pthread_attr_t = extern struct { _data: [8]usize };
 
@@ -1666,7 +1673,29 @@ pub const socklen_t = c_uint;
 
 pub const FILE = opaque {};
 
-pub const struct_stat = extern struct {
+pub const struct_stat = if (is_darwin) extern struct {
+    // __DARWIN_STRUCT_STAT64 (arm64: the plain symbols ARE the 64-bit-inode
+    // variants; no $INODE64 suffixing exists on Apple Silicon)
+    st_dev: i32 = 0,
+    st_mode: u16 = 0,
+    st_nlink: u16 = 0,
+    st_ino: u64 = 0,
+    st_uid: u32 = 0,
+    st_gid: u32 = 0,
+    st_rdev: i32 = 0,
+    _pad0: [4]u8 = std.mem.zeroes([4]u8),
+    st_atim: extern struct { tv_sec: c_long = 0, tv_nsec: c_long = 0 } = .{},
+    st_mtim: extern struct { tv_sec: c_long = 0, tv_nsec: c_long = 0 } = .{},
+    st_ctim: extern struct { tv_sec: c_long = 0, tv_nsec: c_long = 0 } = .{},
+    st_birthtim: extern struct { tv_sec: c_long = 0, tv_nsec: c_long = 0 } = .{},
+    st_size: i64 = 0,
+    st_blocks: i64 = 0,
+    st_blksize: c_int = 0,
+    st_flags: u32 = 0,
+    st_gen: u32 = 0,
+    st_lspare: i32 = 0,
+    st_qspare: [2]i64 = .{ 0, 0 },
+} else extern struct {
     st_dev: u64 = 0,
     st_ino: u64 = 0,
     st_mode: c_uint = 0,
@@ -1686,7 +1715,17 @@ pub const struct_stat = extern struct {
 };
 pub const struct_pollfd = extern struct { fd: c_int = 0, events: c_short = 0, revents: c_short = 0 };
 pub const struct_iovec = extern struct { iov_base: ?*anyopaque = null, iov_len: usize = 0 };
-pub const struct_msghdr = extern struct {
+pub const struct_msghdr = if (is_darwin) extern struct {
+    msg_name: ?*anyopaque = null,
+    msg_namelen: c_uint = 0,
+    _pad0: [4]u8 = .{ 0, 0, 0, 0 },
+    msg_iov: ?*struct_iovec = null,
+    msg_iovlen: c_int = 0,
+    _pad1: [4]u8 = .{ 0, 0, 0, 0 },
+    msg_control: ?*anyopaque = null,
+    msg_controllen: c_uint = 0,
+    msg_flags: c_int = 0,
+} else extern struct {
     msg_name: ?*anyopaque = null,
     msg_namelen: c_uint = 0,
     _pad0: [4]u8 = .{ 0, 0, 0, 0 },
@@ -1697,10 +1736,26 @@ pub const struct_msghdr = extern struct {
     msg_flags: c_int = 0,
     _pad1: [4]u8 = .{ 0, 0, 0, 0 },
 };
-pub const struct_cmsghdr = extern struct { cmsg_len: usize = 0, cmsg_level: c_int = 0, cmsg_type: c_int = 0 };
-pub const struct_sockaddr = extern struct { sa_family: sa_family_t = 0, sa_data: [14]u8 = std.mem.zeroes([14]u8) };
-pub const struct_sockaddr_un = extern struct { sun_family: sa_family_t = 0, sun_path: [108]u8 = std.mem.zeroes([108]u8) };
-pub const struct_sigaction = extern struct {
+pub const struct_cmsghdr = if (is_darwin)
+    extern struct { cmsg_len: c_uint = 0, cmsg_level: c_int = 0, cmsg_type: c_int = 0 }
+else
+    extern struct { cmsg_len: usize = 0, cmsg_level: c_int = 0, cmsg_type: c_int = 0 };
+pub const struct_sockaddr = if (is_darwin)
+    extern struct { sa_len: u8 = 0, sa_family: u8 = 0, sa_data: [14]u8 = std.mem.zeroes([14]u8) }
+else
+    extern struct { sa_family: sa_family_t = 0, sa_data: [14]u8 = std.mem.zeroes([14]u8) };
+pub const struct_sockaddr_un = if (is_darwin)
+    extern struct { sun_len: u8 = 0, sun_family: u8 = 0, sun_path: [104]u8 = std.mem.zeroes([104]u8) }
+else
+    extern struct { sun_family: sa_family_t = 0, sun_path: [108]u8 = std.mem.zeroes([108]u8) };
+pub const struct_sigaction = if (is_darwin) extern struct {
+    __sa_handler: extern union {
+        sa_handler: ?*const fn (c_int) callconv(.c) void,
+        sa_sigaction: ?*const fn (c_int, ?*anyopaque, ?*anyopaque) callconv(.c) void,
+    } = .{ .sa_handler = null },
+    sa_mask: u32 = 0,
+    sa_flags: c_int = 0,
+} else extern struct {
     __sa_handler: extern union {
         sa_handler: ?*const fn (c_int) callconv(.c) void,
         sa_sigaction: ?*const fn (c_int, ?*anyopaque, ?*anyopaque) callconv(.c) void,
@@ -1710,8 +1765,17 @@ pub const struct_sigaction = extern struct {
     _pad0: [4]u8 = std.mem.zeroes([4]u8),
     sa_restorer: ?*const fn () callconv(.c) void = null,
 };
-pub const struct_timeval = extern struct { tv_sec: c_long = 0, tv_usec: c_long = 0 };
-pub const struct_utsname = extern struct {
+pub const struct_timeval = if (is_darwin)
+    extern struct { tv_sec: c_long = 0, tv_usec: c_int = 0, _pad0: [4]u8 = .{ 0, 0, 0, 0 } }
+else
+    extern struct { tv_sec: c_long = 0, tv_usec: c_long = 0 };
+pub const struct_utsname = if (is_darwin) extern struct {
+    sysname: [256]u8 = std.mem.zeroes([256]u8),
+    nodename: [256]u8 = std.mem.zeroes([256]u8),
+    release: [256]u8 = std.mem.zeroes([256]u8),
+    version: [256]u8 = std.mem.zeroes([256]u8),
+    machine: [256]u8 = std.mem.zeroes([256]u8),
+} else extern struct {
     sysname: [65]u8 = std.mem.zeroes([65]u8),
     nodename: [65]u8 = std.mem.zeroes([65]u8),
     release: [65]u8 = std.mem.zeroes([65]u8),
@@ -1719,12 +1783,24 @@ pub const struct_utsname = extern struct {
     machine: [65]u8 = std.mem.zeroes([65]u8),
     domainname: [65]u8 = std.mem.zeroes([65]u8),
 };
-pub const struct_termios = extern struct { _data: [60]u8 = std.mem.zeroes([60]u8) };
+pub const struct_termios = if (is_darwin)
+    extern struct { _data: [72]u8 = std.mem.zeroes([72]u8) } // 4×u64 flags + cc[20] + 2×u64 speed
+else
+    extern struct { _data: [60]u8 = std.mem.zeroes([60]u8) };
 pub const struct_winsize = extern struct { ws_row: c_ushort = 0, ws_col: c_ushort = 0, ws_xpixel: c_ushort = 0, ws_ypixel: c_ushort = 0 };
 pub const struct_group = extern struct { gr_name: [*c]u8 = null, gr_passwd: [*c]u8 = null, gr_gid: gid_t = 0, _pad: [4]u8 = .{ 0, 0, 0, 0 }, gr_mem: [*c][*c]u8 = null };
 pub const struct_passwd = extern struct { pw_name: [*c]u8 = null, pw_passwd: [*c]u8 = null, pw_uid: uid_t = 0, pw_gid: gid_t = 0, pw_gecos: [*c]u8 = null, pw_dir: [*c]u8 = null, pw_shell: [*c]u8 = null };
 
-pub const glob_t = extern struct {
+pub const glob_t = if (is_darwin) extern struct {
+    gl_pathc: usize = 0,
+    gl_matchc: c_int = 0,
+    _pad0: [4]u8 = .{ 0, 0, 0, 0 },
+    gl_offs: usize = 0,
+    gl_flags: c_int = 0,
+    _pad1: [4]u8 = .{ 0, 0, 0, 0 },
+    gl_pathv: [*c][*c]u8 = null,
+    _fns: [7]?*anyopaque = std.mem.zeroes([7]?*anyopaque),
+} else extern struct {
     gl_pathc: usize = 0,
     gl_pathv: [*c][*c]u8 = null,
     gl_offs: usize = 0,
@@ -1736,22 +1812,22 @@ pub const AF_UNIX: c_int = 1;
 pub const PF_UNIX: c_int = 1;
 pub const SOCK_STREAM: c_int = 1;
 pub const SOCK_DGRAM: c_int = 2;
-pub const SOL_SOCKET: c_int = 1;
+pub const SOL_SOCKET: c_int = if (is_darwin) 0xffff else 1;
 pub const SCM_RIGHTS: c_int = 1;
-pub const SO_RCVTIMEO: c_int = 20;
-pub const SO_NOSIGPIPE: c_int = 0; // Linux has no SO_NOSIGPIPE
-pub const MSG_DONTWAIT: c_int = 0x40;
-pub const MSG_NOSIGNAL: c_int = 0x4000;
+pub const SO_RCVTIMEO: c_int = if (is_darwin) 0x1006 else 20;
+pub const SO_NOSIGPIPE: c_int = if (is_darwin) 0x1022 else 0; // Linux has no SO_NOSIGPIPE
+pub const MSG_DONTWAIT: c_int = if (is_darwin) 0x80 else 0x40;
+pub const MSG_NOSIGNAL: c_int = if (is_darwin) 0 else 0x4000; // darwin: SO_NOSIGPIPE instead
 pub const O_RDONLY: c_int = 0;
 pub const O_WRONLY: c_int = 1;
 pub const O_RDWR: c_int = 2;
-pub const O_CREAT: c_int = 64;
-pub const O_TRUNC: c_int = 512;
-pub const O_APPEND: c_int = 1024;
-pub const O_NONBLOCK: c_int = 2048;
-pub const O_NOCTTY: c_int = 256;
-pub const O_CLOEXEC: c_int = 524288;
-pub const O_DIRECTORY: c_int = 65536;
+pub const O_CREAT: c_int = if (is_darwin) 0x200 else 64;
+pub const O_TRUNC: c_int = if (is_darwin) 0x400 else 512;
+pub const O_APPEND: c_int = if (is_darwin) 0x8 else 1024;
+pub const O_NONBLOCK: c_int = if (is_darwin) 0x4 else 2048;
+pub const O_NOCTTY: c_int = if (is_darwin) 0x20000 else 256;
+pub const O_CLOEXEC: c_int = if (is_darwin) 0x1000000 else 524288;
+pub const O_DIRECTORY: c_int = if (is_darwin) 0x100000 else 65536;
 pub const F_GETFD: c_int = 1;
 pub const F_SETFD: c_int = 2;
 pub const F_GETFL: c_int = 3;
@@ -1771,20 +1847,20 @@ pub const POLLOUT: c_short = 4;
 pub const POLLERR: c_short = 8;
 pub const POLLHUP: c_short = 16;
 pub const POLLNVAL: c_short = 32;
-pub const EAGAIN: c_int = 11;
+pub const EAGAIN: c_int = if (is_darwin) 35 else 11;
 pub const EINTR: c_int = 4;
 pub const EINVAL: c_int = 22;
-pub const EWOULDBLOCK: c_int = 11;
-pub const SIGCHLD: c_int = 17;
-pub const SIGCONT: c_int = 18;
+pub const EWOULDBLOCK: c_int = if (is_darwin) 35 else 11;
+pub const SIGCHLD: c_int = if (is_darwin) 20 else 17;
+pub const SIGCONT: c_int = if (is_darwin) 19 else 18;
 pub const SIGHUP: c_int = 1;
 pub const SIGINT: c_int = 2;
 pub const SIGPIPE: c_int = 13;
 pub const SIGKILL: c_int = 9;
 pub const SIGQUIT: c_int = 3;
-pub const SIGSTOP: c_int = 19;
-pub const SIGUSR1: c_int = 10;
-pub const SIGUSR2: c_int = 12;
+pub const SIGSTOP: c_int = if (is_darwin) 17 else 19;
+pub const SIGUSR1: c_int = if (is_darwin) 30 else 10;
+pub const SIGUSR2: c_int = if (is_darwin) 31 else 12;
 pub const EXIT_SUCCESS: c_int = 0;
 pub const EXIT_FAILURE: c_int = 1;
 pub const STDIN_FILENO: c_int = 0;
@@ -1792,27 +1868,29 @@ pub const STDOUT_FILENO: c_int = 1;
 pub const STDERR_FILENO: c_int = 2;
 pub const SHUT_RDWR: c_int = 2;
 pub const TCSANOW: c_int = 0;
-pub const VERASE: c_int = 2;
+pub const VERASE: c_int = if (is_darwin) 3 else 2;
 pub const WNOHANG: c_int = 1;
-pub const AT_FDCWD: c_int = -100;
-pub const AT_SYMLINK_NOFOLLOW: c_int = 0x100;
-pub const PTHREAD_CREATE_DETACHED: c_int = 1;
+pub const AT_FDCWD: c_int = if (is_darwin) -2 else -100;
+pub const AT_SYMLINK_NOFOLLOW: c_int = if (is_darwin) 0x20 else 0x100;
+pub const PTHREAD_CREATE_DETACHED: c_int = if (is_darwin) 2 else 1;
 
 // mmap constants
 pub const PROT_READ: c_int = 1;
 pub const PROT_WRITE: c_int = 2;
 pub const MAP_SHARED: c_int = 1;
-pub const MAP_ANONYMOUS: c_int = 0x20;
+pub const MAP_ANONYMOUS: c_int = if (is_darwin) 0x1000 else 0x20;
 pub const MAP_FAILED: *anyopaque = @ptrFromInt(@as(usize, std.math.maxInt(usize)));
-pub const MADV_DONTDUMP: c_int = 16;
+pub const MADV_DONTDUMP: c_int = if (is_darwin) 0 else 16; // darwin: no-op (MADV_NORMAL)
 
-// ioctl constants (aarch64 Linux)
-pub const TIOCSCTTY: c_ulong = 0x540E;
-pub const TIOCSWINSZ: c_ulong = 0x5414;
+// ioctl constants (aarch64 Linux / Darwin)
+pub const TIOCSCTTY: c_ulong = if (is_darwin) 0x20007461 else 0x540E;
+pub const TIOCSWINSZ: c_ulong = if (is_darwin) 0x80087467 else 0x5414;
 
 // CMSG macros as functions
 pub fn CMSG_ALIGN(len: usize) usize {
-    return (len + @sizeOf(usize) - 1) & ~(@as(usize, @sizeOf(usize)) - 1);
+    // Darwin ancillary data uses 32-bit alignment (__DARWIN_ALIGN32).
+    const a: usize = if (is_darwin) 4 else @sizeOf(usize);
+    return (len + a - 1) & ~(a - 1);
 }
 pub fn CMSG_SPACE(len: usize) usize {
     return CMSG_ALIGN(len) + CMSG_ALIGN(@sizeOf(struct_cmsghdr));

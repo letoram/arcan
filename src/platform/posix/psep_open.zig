@@ -840,6 +840,13 @@ fn drop_privileges() bool {
 // PARENT SIDE: platform_device_init
 
 export fn platform_device_init() void {
+    // Darwin: no DRM/tty/netlink devices to broker, and the fork would
+    // poison XPC in the renderer child (Metal's MTLCompilerService — and
+    // every other Mach service — refuses connections in fork children).
+    if (comptime @import("builtin").os.tag.isDarwin()) {
+        _ = drop_privileges();
+        return;
+    }
     // If other display servers exist or we are a handover child, drop out
     if (c.getenv("ARCAN_CONNPATH") != null or
         c.getenv("ARCAN_SOCKIN_FD") != null or

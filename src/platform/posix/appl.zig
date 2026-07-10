@@ -85,7 +85,7 @@ export fn arcan_verifyload_appl(appl_id: [*c]const u8, errc: *[*c]const u8) bool
     var p_b = arcan.arcan_expand_resource("", arcan.RESOURCE_SYS_APPLSTATE);
     if (p_b == null) {
         arcan.arcan_softoverride_namespace(p_a, arcan.RESOURCE_APPL_STATE);
-    } else if (c.strncmp(p_a, p_b, c.strlen(p_a)) == 0) {
+    } else if (p_a != null and c.strncmp(p_a, p_b, c.strlen(p_a)) == 0) {
         arcan.arcan_softoverride_namespace(p_b, arcan.RESOURCE_APPL_STATE);
     } else {
         arcan.arcan_mem_free(p_b);

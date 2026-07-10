@@ -14,7 +14,13 @@ const vk_wsi = @import("vk_wsi.zig");
 const vk_xcb = @import("vk_xcb.zig");
 const vk_offscreen = @import("vk_offscreen.zig");
 const vk_gbm_kms = @import("vk_gbm_kms.zig");
+const vk_metal = @import("vk_metal.zig");
 const builtin = @import("builtin");
+// macOS runs exclusively in .metal mode; folding this to comptime-false on
+// macOS comptime-kills the xcb/khr_display/gbm_kms arms (and with them every
+// libxcb/libdrm symbol reference). On Linux it folds to true and the original
+// dispatch is unchanged.
+const non_macos = builtin.os.tag != .macos;
 const use_zig_dlopen = (builtin.link_mode == .static and (builtin.abi == .musl or !builtin.link_libc));
 extern fn zig_foreign_begin() callconv(.c) void;
 extern fn zig_foreign_end() callconv(.c) void;
@@ -489,7 +495,7 @@ extern fn evdev_device_lock(devind: c_int, lock_state: bool) void;
 
 // Types
 
-const PlatformMode = enum { xcb, khr_display, gbm_kms, lwa };
+const PlatformMode = enum { xcb, khr_display, gbm_kms, lwa, metal };
 
 const MAX_LWA_DISPLAYS = 8;
 
@@ -522,6 +528,7 @@ var state = struct {
     // Display mode
     swapchain: vk_wsi.Swapchain = .{},
     xcb_window: ?vk_xcb.XcbWindow = null,
+    metal_window: ?vk_metal.MetalWindow = null,
     displays: [8]vk_wsi.DisplayInfo = undefined,
     display_count: u32 = 0,
     drm_display_fd: std.posix.fd_t = -1,
@@ -568,10 +575,14 @@ fn buildOrtho(m: *[16]f32, left: f32, right: f32, bottom: f32, top: f32, near: f
 }
 
 fn detectMode() PlatformMode {
-    // LWA nesting first: a CONNPATH/SOCKIN_FD means we are a client of a
-    // parent arcan (durian under durian) regardless of display system.
+    // LWA nesting first on every OS: a CONNPATH/SOCKIN_FD means we are a
+    // client of a parent arcan (durian under durian) regardless of display
+    // system. Otherwise macOS always takes Cocoa + VK_EXT_metal_surface.
     const has_connpath = std.posix.getenv("ARCAN_CONNPATH") != null;
     const has_sockin = std.posix.getenv("ARCAN_SOCKIN_FD") != null;
+    if (!(has_connpath or has_sockin)) {
+        if (comptime !non_macos) return .metal;
+    }
     if (has_connpath or has_sockin) {
         // When ARCAN_HANDOVER is set, ARCAN_SOCKIN_FD was explicitly given to us
         // by shmif_platform_execve — it's the handover'd socket we MUST use.
@@ -663,13 +674,14 @@ export fn platform_video_preinit() void {}
 /// non-XCB backend (e.g. bare-display vk_wsi). Called from the lua
 /// `set_clipboard(str)` builtin via durian's clipboard hook.
 export fn platform_video_set_clipboard(text: [*c]const u8, len: usize) void {
-    if (state.xcb_window != null) {
+    if ((comptime non_macos) and state.xcb_window != null) {
         const slice = if (text != null and len > 0)
             text[0..len]
         else
             &[_]u8{};
         vk_xcb.setClipboardText(&state.xcb_window.?, slice);
     }
+    // macOS .metal: NSPasteboard bridge not wired yet — host clipboard is a no-op.
 }
 
 /// Issue a CLIPBOARD ConvertSelection on the host X server. The reply
@@ -680,7 +692,7 @@ export fn platform_video_request_clipboard_paste() c_int {
     const sc_open = @extern(*const fn ([*c]const u8, [*c]const u8) callconv(.c) ?*anyopaque, .{ .name = "fopen" });
     const sc_fprintf = @extern(*const fn (?*anyopaque, [*c]const u8, ...) callconv(.c) c_int, .{ .name = "fprintf" });
     const sc_fclose = @extern(*const fn (?*anyopaque) callconv(.c) c_int, .{ .name = "fclose" });
-    if (state.xcb_window != null) {
+    if ((comptime non_macos) and state.xcb_window != null) {
         const ok = vk_xcb.requestClipboardPaste(&state.xcb_window.?);
         if (sc_open("/tmp/clip_xbridge.log", "a")) |f| {
             _ = sc_fprintf(f, "request_clipboard_paste: have_xcb_window=1 issued=%d\n", @as(c_int, if (ok) 1 else 0));
@@ -703,6 +715,30 @@ fn selectIcdFromSysfs() void {
     // Already set by user — respect it
     if (std.posix.getenv("VK_ICD_FILENAMES") != null) return;
     if (std.posix.getenv("VK_DRIVER_FILES") != null) return;
+
+    if (comptime !non_macos) {
+        // macOS: prefer KosmicKrisp (conformant Vulkan 1.3 on Metal, LunarG
+        // SDK), fall back to MoltenVK from homebrew. No sysfs here.
+        const home = std.posix.getenv("HOME") orelse "";
+        var kk_buf: [512]u8 = undefined;
+        const kk_path = std.fmt.bufPrintZ(
+            &kk_buf,
+            "{s}/VulkanSDK/1.4.350.0/macOS/share/vulkan/icd.d/libkosmickrisp_icd.json",
+            .{home},
+        ) catch null;
+        const moltenvk: [:0]const u8 = "/opt/homebrew/etc/vulkan/icd.d/MoltenVK_icd.json";
+        const candidates = [_]?[:0]const u8{ kk_path, moltenvk };
+        for (candidates) |cand| {
+            const path = cand orelse continue;
+            if (std.fs.cwd().access(path, .{})) {
+                std.log.info("vk: selecting macOS ICD: {s}", .{path});
+                _ = c.setenv("VK_ICD_FILENAMES", path.ptr, 1);
+                return;
+            } else |_| {}
+        }
+        std.log.warn("vk: no KosmicKrisp/MoltenVK ICD found, using loader defaults", .{});
+        return;
+    }
 
     const driver_to_icd = [_]struct { driver: []const u8, icd: [*:0]const u8 }{
         .{ .driver = "asahi", .icd = "/usr/share/vulkan/icd.d/asahi_icd.aarch64.json" },
@@ -752,9 +788,55 @@ export fn platform_video_init(
     state.mode = detectMode();
     return switch (state.mode) {
         .lwa => initLwa(width, height, caption),
-        .xcb, .khr_display => initDisplay(width, height, caption),
-        .gbm_kms => initGbmKms(width, height, caption),
+        .xcb, .khr_display => if (comptime non_macos) initDisplay(width, height, caption) else false,
+        .gbm_kms => if (comptime non_macos) initGbmKms(width, height, caption) else false,
+        .metal => if (comptime !non_macos) initMetal(width, height, caption) else false,
     };
+}
+
+// macOS: Cocoa window (cocoa_window.zig via vk_metal.zig) + VK_EXT_metal_surface
+// + the shared vk_wsi swapchain. Mirrors initDisplay's xcb arm.
+fn initMetal(width_in: u16, height_in: u16, caption: ?[*:0]const u8) bool {
+    var w = width_in;
+    var h = height_in;
+    if (w == 0 or h == 0) {
+        w = 1280;
+        h = 800;
+    }
+
+    const extensions = [_][*:0]const u8{ "VK_KHR_surface", "VK_EXT_metal_surface" };
+    state.env = agp_vk.init(&extensions) catch |e| {
+        std.log.err("vk_metal: agp_vk.init failed: {s}", .{@errorName(e)});
+        return false;
+    };
+    const env = state.env.?;
+
+    const title = caption orelse "arcan (Vulkan/Metal)";
+    state.metal_window = vk_metal.createMetalWindow(w, h, title) catch |e| {
+        std.log.err("vk_metal: window create failed: {s}", .{@errorName(e)});
+        return false;
+    };
+    const surface = vk_metal.createMetalSurface(env.vki, env.instance, &state.metal_window.?) catch |e| {
+        std.log.err("vk_metal: metal surface create failed: {s}", .{@errorName(e)});
+        return false;
+    };
+
+    state.swapchain = vk_wsi.createSwapchain(env, surface, w, h) catch |e| {
+        std.log.err("vk_metal: swapchain create failed: {s}", .{@errorName(e)});
+        return false;
+    };
+
+    const sw: u16 = @intCast(state.swapchain.extent.width);
+    const sh: u16 = @intCast(state.swapchain.extent.height);
+    setupCommonState(sw, sh);
+
+    agp_vk.initPhase2(env, state.swapchain.format) catch return false;
+    vk_env_set_swapchain_extent(state.swapchain.extent.width, state.swapchain.extent.height);
+    vk_shared_set_screen_size(state.swapchain.extent.width, state.swapchain.extent.height);
+    std.log.info("vk_metal: init OK — {d}x{d}, {d} swapchain images", .{
+        state.swapchain.extent.width, state.swapchain.extent.height, state.swapchain.image_count,
+    });
+    return true;
 }
 
 fn initGbmKms(width_in: u16, height_in: u16, caption: ?[*:0]const u8) bool {
@@ -1134,6 +1216,95 @@ fn processXcbInput(xcb_win: *vk_xcb.XcbWindow) void {
     }
 }
 
+// Metal (macOS) Input Translation — Cocoa events from cocoa_window.zig's ring,
+// translated into the same engine IO events processXcbInput produces.
+fn processMetalInput(mwin: *vk_metal.MetalWindow) void {
+    const ctx = arcan_event_defaultctx();
+
+    for (mwin.input_events[0..mwin.input_count]) |*ie| {
+        switch (ie.kind) {
+            vk_metal.EV_KEYDOWN, vk_metal.EV_KEYUP => {
+                var ev: arcan_event = undefined;
+                @memset(std.mem.asBytes(&ev), 0);
+                ev.setCategory(EVENT_IO);
+                const io = ev.getIo();
+                io.kind = EVENT_IO_BUTTON;
+                io.datatype = EVENT_IDATATYPE_TRANSLATED;
+                io.devkind = EVENT_IDEVKIND_KEYBOARD;
+                io.unnamed_0.unnamed_0.devid = 0;
+                io.unnamed_0.unnamed_0.subid = @intCast(ie.keycode);
+                io.input.translated.active = if (ie.kind == vk_metal.EV_KEYDOWN) 1 else 0;
+                io.input.translated.scancode = @truncate(ie.keycode);
+                io.input.translated.keysym = vk_metal.macKeyToSdl12(ie.keycode);
+                io.input.translated.modifiers = vk_metal.modsToSdl12(ie.mods);
+                for (0..5) |j| {
+                    io.input.translated.utf8[j] = ie.utf8[j];
+                }
+                _ = arcan_event_enqueue(ctx, &ev);
+            },
+            vk_metal.EV_BTNDOWN, vk_metal.EV_BTNUP => {
+                var ev: arcan_event = undefined;
+                @memset(std.mem.asBytes(&ev), 0);
+                ev.setCategory(EVENT_IO);
+                const io = ev.getIo();
+                io.kind = EVENT_IO_BUTTON;
+                io.datatype = EVENT_IDATATYPE_DIGITAL;
+                io.devkind = EVENT_IDEVKIND_MOUSE;
+                io.unnamed_0.unnamed_0.devid = 0;
+                io.unnamed_0.unnamed_0.subid = @intCast(@max(ie.button, 0));
+                io.input.digital.active = if (ie.kind == vk_metal.EV_BTNDOWN) 1 else 0;
+                _ = arcan_event_enqueue(ctx, &ev);
+            },
+            vk_metal.EV_WHEEL => {
+                if (ie.dy != 0) {
+                    var ev: arcan_event = undefined;
+                    @memset(std.mem.asBytes(&ev), 0);
+                    ev.setCategory(EVENT_IO);
+                    const io = ev.getIo();
+                    io.kind = EVENT_IO_BUTTON;
+                    io.datatype = EVENT_IDATATYPE_DIGITAL;
+                    io.devkind = EVENT_IDEVKIND_MOUSE;
+                    io.unnamed_0.unnamed_0.devid = 0;
+                    io.unnamed_0.unnamed_0.subid = if (ie.dy > 0) 4 else 5;
+                    io.input.digital.active = 1;
+                    _ = arcan_event_enqueue(ctx, &ev);
+                    io.input.digital.active = 0;
+                    _ = arcan_event_enqueue(ctx, &ev);
+                }
+            },
+            vk_metal.EV_MOTION => {
+                const win_w: f32 = @floatFromInt(state.swapchain.extent.width);
+                const win_h: f32 = @floatFromInt(state.swapchain.extent.height);
+                const can_w: f32 = @floatFromInt(state.canvasw);
+                const can_h: f32 = @floatFromInt(state.canvash);
+                const fx = if (win_w > 0) ie.x * can_w / win_w else ie.x;
+                const fy = if (win_h > 0) ie.y * can_h / win_h else ie.y;
+                const sx: i16 = @intFromFloat(std.math.clamp(fx, -32000, 32000));
+                const sy: i16 = @intFromFloat(std.math.clamp(fy, -32000, 32000));
+
+                var ev: arcan_event = undefined;
+                @memset(std.mem.asBytes(&ev), 0);
+                ev.setCategory(EVENT_IO);
+                const io = ev.getIo();
+                io.kind = EVENT_IO_AXIS_MOVE;
+                io.datatype = EVENT_IDATATYPE_ANALOG;
+                io.devkind = EVENT_IDEVKIND_MOUSE;
+                io.unnamed_0.unnamed_0.devid = 0;
+                io.unnamed_0.unnamed_0.subid = 0;
+                io.input.analog.nvalues = 1;
+                io.input.analog.axisval[0] = sx;
+                _ = arcan_event_enqueue(ctx, &ev);
+
+                io.unnamed_0.unnamed_0.subid = 1;
+                io.input.analog.axisval[0] = sy;
+                _ = arcan_event_enqueue(ctx, &ev);
+            },
+            else => {},
+        }
+    }
+    mwin.input_count = 0;
+}
+
 // Synch
 
 export fn platform_video_synch(
@@ -1144,7 +1315,7 @@ export fn platform_video_synch(
 ) void {
     switch (state.mode) {
         .lwa => synchLwa(fract, pre, post),
-        .xcb, .khr_display, .gbm_kms => synchDisplay(fract, pre, post),
+        .xcb, .khr_display, .gbm_kms, .metal => synchDisplay(fract, pre, post),
     }
 }
 
@@ -1172,7 +1343,7 @@ fn synchDisplay(fract: f32, pre: ?*const fn () callconv(.c) void, post: ?*const 
     // nothing changed (one syscall, returns 0 immediately). Only runs
     // in gbm_kms mode — xcb / khr_display / lwa have their own resize
     // paths.
-    if (state.mode == .gbm_kms and state.gbm_acquired.disp_fd < 0) {
+    if ((comptime non_macos) and state.mode == .gbm_kms and state.gbm_acquired.disp_fd < 0) {
         const polled = platform_device_poll(null);
         if (polled == 2) {
             if (state.env) |env| {
@@ -1194,8 +1365,24 @@ fn synchDisplay(fract: f32, pre: ?*const fn () callconv(.c) void, post: ?*const 
     // that calls musl functions. musl's __errno_location uses tpidr_el0 to find TLS —
     // under glibc TLS, it writes errno to glibc's TLS area, corrupting tcache/malloc state.
     // Instead, individual vk_env_* functions have their own TLS wrapping.
+    // Poll Cocoa events before frame (macOS .metal mode)
+    if (comptime !non_macos) {
+        if (state.metal_window) |*mwin| {
+            vk_metal.pollEvents(mwin);
+            processMetalInput(mwin);
+            if (!mwin.alive and !mwin.exit_sent) {
+                mwin.exit_sent = true;
+                var ev: arcan_event = undefined;
+                @memset(std.mem.asBytes(&ev), 0);
+                ev.setCategory(EVENT_SYSTEM);
+                ev.getSys().*.kind = EVENT_SYSTEM_EXIT;
+                _ = arcan_event_enqueue(arcan_event_defaultctx(), &ev);
+            }
+        }
+    }
+
     // Poll XCB events before frame
-    if (state.xcb_window != null) {
+    if ((comptime non_macos) and state.xcb_window != null) {
         const xcb_win = &state.xcb_window.?;
         vk_xcb.pollEvents(xcb_win);
         processXcbInput(xcb_win);
@@ -1310,7 +1497,7 @@ fn synchDisplay(fract: f32, pre: ?*const fn () callconv(.c) void, post: ?*const 
         }
     }
 
-    if (state.mode == .gbm_kms) {
+    if ((comptime non_macos) and state.mode == .gbm_kms) {
         vk_gbm_kms.beginFrame(env, &state.gbm_swapchain, state.clear_color) catch {
             state.last = arcan_frametime();
             if (post) |p| p();
@@ -1366,7 +1553,7 @@ fn synchDisplay(fract: f32, pre: ?*const fn () callconv(.c) void, post: ?*const 
     arcan_vint_drawcursor(false);
     vk_shared_end_all_passes();
     vk_env_set_rendering_active(false);
-    if (state.mode == .gbm_kms) {
+    if ((comptime non_macos) and state.mode == .gbm_kms) {
         vk_gbm_kms.endFrame(env, &state.gbm_swapchain, &state.gbm_acquired) catch {};
     } else {
         vk_wsi.endFrame(env, &state.swapchain) catch {};
@@ -1565,7 +1752,7 @@ export fn platform_video_shutdown() void {
             env.deinit();
             state.env = null;
         }
-        if (state.xcb_window != null) {
+        if ((comptime non_macos) and state.xcb_window != null) {
             vk_xcb.destroyXcbWindow(&state.xcb_window.?);
             state.xcb_window = null;
         }
@@ -1610,7 +1797,7 @@ const lwa_envopts = [_:null]?[*:0]const u8{
 export fn platform_video_envopts() [*]const ?[*:0]const u8 {
     return switch (state.mode) {
         .lwa => &lwa_envopts,
-        .xcb, .khr_display, .gbm_kms => &display_envopts,
+        .xcb, .khr_display, .gbm_kms, .metal => &display_envopts,
     };
 }
 
@@ -1965,6 +2152,7 @@ export fn platform_video_capstr() [*:0]const u8 {
         .xcb => "Video Platform (Vulkan XCB)",
         .khr_display => "Video Platform (Vulkan VK_KHR_display)",
         .gbm_kms => "Video Platform (Vulkan GBM+KMS direct)",
+        .metal => "Video Platform (Vulkan Metal/KosmicKrisp)",
     };
 }
 
@@ -2175,11 +2363,11 @@ fn lwaMapWindow(conn: *struct_arcan_shmif_cont, ctx: ?*struct_arcan_evctx, kind:
 // ══════════════════════════════════════════════════════════════════
 
 export fn platform_event_preinit() void {
-    if (state.mode != .lwa) evdev_event_preinit();
+    if ((comptime non_macos) and state.mode != .lwa) evdev_event_preinit();
 }
 
 export fn platform_event_init(ctx: ?*struct_arcan_evctx) void {
-    if (state.mode != .lwa) evdev_event_init(ctx);
+    if ((comptime non_macos) and state.mode != .lwa) evdev_event_init(ctx);
 }
 
 export fn platform_event_process(ctx: ?*struct_arcan_evctx) void {
@@ -2190,17 +2378,17 @@ export fn platform_event_process(ctx: ?*struct_arcan_evctx) void {
             if (lwa_disp[i].pending > 0 and arcan_timemillis() -| lwa_disp[i].pending < 64)
                 state.signal_pending = true;
         }
-    } else {
+    } else if (comptime non_macos) {
         evdev_event_process(ctx);
     }
 }
 
 export fn platform_event_deinit(ctx: ?*struct_arcan_evctx) void {
-    if (state.mode != .lwa) evdev_event_deinit(ctx);
+    if ((comptime non_macos) and state.mode != .lwa) evdev_event_deinit(ctx);
 }
 
 export fn platform_event_reset(ctx: ?*struct_arcan_evctx) void {
-    if (state.mode != .lwa) evdev_event_reset(ctx);
+    if ((comptime non_macos) and state.mode != .lwa) evdev_event_reset(ctx);
 }
 
 export fn platform_event_analogstate(
@@ -2212,12 +2400,12 @@ export fn platform_event_analogstate(
     kernel_size: ?*c_int,
     mode: ?*c_int,
 ) c_int {
-    if (state.mode == .lwa) return ARCAN_ERRC_NO_SUCH_OBJECT;
+    if ((comptime !non_macos) or state.mode == .lwa) return ARCAN_ERRC_NO_SUCH_OBJECT;
     return evdev_event_analogstate(devid, axisid, lower_bound, upper_bound, deadzone, kernel_size, mode);
 }
 
 export fn platform_event_analogall(enable: bool, mouse: bool) void {
-    if (state.mode != .lwa) evdev_event_analogall(enable, mouse);
+    if ((comptime non_macos) and state.mode != .lwa) evdev_event_analogall(enable, mouse);
 }
 
 export fn platform_event_analogfilter(
@@ -2229,11 +2417,11 @@ export fn platform_event_analogfilter(
     buffer_sz: c_int,
     kind: c_int,
 ) void {
-    if (state.mode != .lwa) evdev_event_analogfilter(devid, axisid, lower_bound, upper_bound, deadzone, buffer_sz, kind);
+    if ((comptime non_macos) and state.mode != .lwa) evdev_event_analogfilter(devid, axisid, lower_bound, upper_bound, deadzone, buffer_sz, kind);
 }
 
 export fn platform_event_keyrepeat(ctx: ?*struct_arcan_evctx, period: ?*c_int, delay: ?*c_int) void {
-    if (state.mode == .lwa) {
+    if ((comptime !non_macos) or state.mode == .lwa) {
         if (period) |p| p.* = 0;
         if (delay) |d| d.* = 0;
     } else {
@@ -2242,11 +2430,11 @@ export fn platform_event_keyrepeat(ctx: ?*struct_arcan_evctx, period: ?*c_int, d
 }
 
 export fn platform_event_samplebase(devid: c_int, xyz: ?[*]f32) void {
-    if (state.mode != .lwa) evdev_event_samplebase(devid, xyz);
+    if ((comptime non_macos) and state.mode != .lwa) evdev_event_samplebase(devid, xyz);
 }
 
 export fn platform_event_devlabel(devid: c_int) [*:0]const u8 {
-    if (state.mode == .lwa) return "no device";
+    if ((comptime !non_macos) or state.mode == .lwa) return "no device";
     // evdev_event_devlabel returns [*c]const u8 (nullable). Returns null
     // when lookup_devnode(devid) misses — happens during DEVICE_ADDED
     // event enqueue if the node-registration order isn't strictly before
@@ -2264,7 +2452,7 @@ export fn platform_event_translation(
     names: ?*?[*:0]const u8,
     err: ?*?[*:0]const u8,
 ) c_int {
-    if (state.mode == .lwa) {
+    if ((comptime !non_macos) or state.mode == .lwa) {
         if (err) |e| e.* = "Not Supported";
         return -1;
     }
@@ -2272,17 +2460,17 @@ export fn platform_event_translation(
 }
 
 export fn platform_event_device_request(space: c_int, path: ?[*:0]const u8) c_int {
-    if (state.mode == .lwa) return -1;
+    if ((comptime !non_macos) or state.mode == .lwa) return -1;
     return evdev_event_device_request(space, path);
 }
 
 export fn platform_event_rescan_idev(ctx: ?*struct_arcan_evctx) void {
-    if (state.mode != .lwa) evdev_event_rescan_idev(ctx);
+    if ((comptime non_macos) and state.mode != .lwa) evdev_event_rescan_idev(ctx);
 }
 
 export fn platform_event_capabilities(out: ?*[*c]const u8) c_uint {
-    if (state.mode == .lwa) {
-        if (out) |o| o.* = @ptrCast("vk-lwa");
+    if ((comptime !non_macos) or state.mode == .lwa) {
+        if (out) |o| o.* = @ptrCast(if (comptime non_macos) "vk-lwa" else "vk-metal");
         return ACAP_TRANSLATED | ACAP_MOUSE | ACAP_TOUCH | ACAP_POSITION | ACAP_ORIENTATION;
     }
     return evdev_event_capabilities(out);
@@ -2291,12 +2479,12 @@ export fn platform_event_capabilities(out: ?*[*c]const u8) c_uint {
 const lwa_event_envopts = [_:null]?[*:0]const u8{null};
 
 export fn platform_event_envopts() [*]const ?[*:0]const u8 {
-    if (state.mode == .lwa) return &lwa_event_envopts;
+    if ((comptime !non_macos) or state.mode == .lwa) return &lwa_event_envopts;
     return @ptrCast(evdev_event_envopts());
 }
 
 export fn platform_device_lock(devind: c_int, lock_state: bool) void {
-    if (state.mode != .lwa) evdev_device_lock(devind, lock_state);
+    if ((comptime non_macos) and state.mode != .lwa) evdev_device_lock(devind, lock_state);
 }
 
 export fn platform_key_repeat(ctx: ?*struct_arcan_evctx, rate: c_uint) void {

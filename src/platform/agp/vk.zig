@@ -122,6 +122,11 @@ pub const VkEnv = struct {
     pipeline_layout: vk.PipelineLayout,
     descriptor_set_layout: vk.DescriptorSetLayout,
 
+    // EDS3 color-blend features present (missing on MoltenVK/KosmicKrisp —
+    // there the pipeline bakes standard alpha blending statically and the
+    // dynamic blend/write-mask calls are skipped)
+    has_eds3_blend: bool = false,
+
     push_constants: PushConstants = .{},
 
     // Phase 2 resources
@@ -746,7 +751,10 @@ fn createGraphicsPipeline(
         .primitive_restart_enable = .false,
     };
 
-    // Dynamic state: viewport/scissor + EDS1 (VK 1.3 core) + EDS3
+    // Dynamic state: viewport/scissor + EDS1 (VK 1.3 core) + EDS3. The EDS3
+    // entries are last so devices without the blend features (MoltenVK /
+    // KosmicKrisp) just truncate the list — blending then comes from the
+    // pipeline's static standard-alpha attachment state below.
     const dynamic_states = [_]vk.DynamicState{
         .viewport,
         .scissor,
@@ -765,7 +773,7 @@ fn createGraphicsPipeline(
         .color_write_mask_ext,
     };
     const dynamic_state = vk.PipelineDynamicStateCreateInfo{
-        .dynamic_state_count = dynamic_states.len,
+        .dynamic_state_count = if (env.has_eds3_blend) dynamic_states.len else dynamic_states.len - 3,
         .p_dynamic_states = &dynamic_states,
     };
 
@@ -2887,7 +2895,24 @@ pub fn init(extra_extensions: []const [*:0]const u8) !*VkEnv {
                 return error.VulkanSymbolMissing,
         ));
     } else blk: {
-        var lib = std.DynLib.open("libvulkan.so.1") catch return error.VulkanLoadFailed;
+        // Darwin: try the LunarG loader first (SDK / homebrew), then
+        // MoltenVK directly — it exports vkGetInstanceProcAddr and
+        // implements VK_EXT_metal_surface itself, no loader needed.
+        const candidates: []const []const u8 = if (comptime builtin.os.tag.isDarwin()) &.{
+            "libvulkan.1.dylib",
+            "libvulkan.dylib",
+            "/opt/homebrew/lib/libvulkan.1.dylib",
+            "/usr/local/lib/libvulkan.1.dylib",
+            "libMoltenVK.dylib",
+            "/opt/homebrew/lib/libMoltenVK.dylib",
+            "/usr/local/lib/libMoltenVK.dylib",
+        } else &.{"libvulkan.so.1"};
+        var lib: std.DynLib = for (candidates) |cand| {
+            if (std.DynLib.open(cand)) |l| {
+                std.log.info("vk.init: loaded {s}", .{cand});
+                break l;
+            } else |_| {}
+        } else return error.VulkanLoadFailed;
         stored_vk_lib = lib;
         break :blk @ptrCast(@alignCast(
             lib.lookup(*const anyopaque, "vkGetInstanceProcAddr") orelse
@@ -2921,6 +2946,15 @@ pub fn init(extra_extensions: []const [*:0]const u8) !*VkEnv {
             ext_count += 1;
         }
     }
+    // Darwin: portability (non-conformant) implementations — MoltenVK — are
+    // hidden by the loader unless the instance opts in via
+    // VK_KHR_portability_enumeration + the enumerate-portability flag.
+    if (comptime builtin.os.tag.isDarwin()) {
+        if (ext_count < extensions.len) {
+            extensions[ext_count] = "VK_KHR_portability_enumeration";
+            ext_count += 1;
+        }
+    }
 
     // Optional: validation layers
     var layer_count: u32 = 0;
@@ -2932,6 +2966,7 @@ pub fn init(extra_extensions: []const [*:0]const u8) !*VkEnv {
 
     std.log.info("vk.init: calling vkCreateInstance with {d} extensions, {d} layers...", .{ ext_count, layer_count });
     const instance = vkb.createInstance(&.{
+        .flags = if (comptime builtin.os.tag.isDarwin()) .{ .enumerate_portability_bit_khr = true } else .{},
         .p_application_info = &app_info,
         .enabled_extension_count = ext_count,
         .pp_enabled_extension_names = if (ext_count > 0) @ptrCast(&extensions) else null,
@@ -2997,37 +3032,74 @@ pub fn init(extra_extensions: []const [*:0]const u8) !*VkEnv {
     // Only request VK_KHR_swapchain when surface extensions were requested
     // (headless/LWA mode passes no instance extensions → no swapchain needed)
     const needs_swapchain = extra_extensions.len > 0;
-    const device_ext_with_swapchain = [_][*:0]const u8{
+    const device_ext_wanted = [_][*:0]const u8{
         "VK_KHR_swapchain",
         "VK_EXT_extended_dynamic_state3",
         "VK_KHR_external_memory_fd",
         "VK_EXT_external_memory_dma_buf",
         "VK_EXT_image_drm_format_modifier",
         // "VK_KHR_pipeline_executable_properties", // Shift 10: TODO — causes crash, needs investigation
+        // Spec-mandatory to request when the implementation advertises it
+        // (portability implementations: MoltenVK / KosmicKrisp on Metal).
+        "VK_KHR_portability_subset",
     };
-    const device_ext_headless = [_][*:0]const u8{
-        "VK_EXT_extended_dynamic_state3",
-        "VK_KHR_external_memory_fd",
-        "VK_EXT_external_memory_dma_buf",
-        "VK_EXT_image_drm_format_modifier",
-        // "VK_KHR_pipeline_executable_properties", // Shift 10: TODO — causes crash, needs investigation
-    };
-    const device_extensions: []const [*:0]const u8 = if (needs_swapchain)
-        &device_ext_with_swapchain
-    else
-        &device_ext_headless;
+    // Intersect wanted with what the device actually offers — the external
+    // memory / dma-buf / drm-modifier trio only exists on Linux drivers and
+    // requesting an absent extension fails vkCreateDevice outright (seen on
+    // MoltenVK/KosmicKrisp).
+    var device_ext_buf: [device_ext_wanted.len][*:0]const u8 = undefined;
+    var device_ext_count: usize = 0;
+    {
+        var avail_count: u32 = 0;
+        _ = vki.enumerateDeviceExtensionProperties(physical_device, null, &avail_count, null) catch return error.DeviceCreateFailed;
+        const avail = std.heap.c_allocator.alloc(vk.ExtensionProperties, avail_count) catch return error.DeviceCreateFailed;
+        defer std.heap.c_allocator.free(avail);
+        _ = vki.enumerateDeviceExtensionProperties(physical_device, null, &avail_count, avail.ptr) catch return error.DeviceCreateFailed;
+        for (device_ext_wanted) |want| {
+            if (!needs_swapchain and std.mem.eql(u8, std.mem.span(want), "VK_KHR_swapchain"))
+                continue;
+            const found = for (avail[0..avail_count]) |*prop| {
+                const name = std.mem.sliceTo(&prop.extension_name, 0);
+                if (std.mem.eql(u8, name, std.mem.span(want))) break true;
+            } else false;
+            if (found) {
+                device_ext_buf[device_ext_count] = want;
+                device_ext_count += 1;
+            } else {
+                std.log.warn("vk.init: device extension {s} unavailable, continuing without", .{want});
+            }
+        }
+    }
+    const device_extensions: []const [*:0]const u8 = device_ext_buf[0..device_ext_count];
+    var has_eds3 = false;
+    for (device_extensions) |e| {
+        if (std.mem.eql(u8, std.mem.span(e), "VK_EXT_extended_dynamic_state3")) has_eds3 = true;
+    }
 
     // EDS3 features — dynamic blend, color write mask, polygon mode
-    const eds3_features = vk.PhysicalDeviceExtendedDynamicState3FeaturesEXT{
-        .extended_dynamic_state_3_color_blend_enable = .true,
-        .extended_dynamic_state_3_color_blend_equation = .true,
-        .extended_dynamic_state_3_color_write_mask = .true,
-        .extended_dynamic_state_3_polygon_mode = .true,
-    };
+    // Query which EDS3 features the device really has (MoltenVK exposes the
+    // extension without the color-blend trio) and request only those.
+    var eds3_features = vk.PhysicalDeviceExtendedDynamicState3FeaturesEXT{};
+    var has_eds3_blend = false;
+    if (has_eds3) {
+        var query_eds3 = vk.PhysicalDeviceExtendedDynamicState3FeaturesEXT{};
+        var feats2 = vk.PhysicalDeviceFeatures2{ .p_next = @ptrCast(&query_eds3), .features = .{} };
+        vki.getPhysicalDeviceFeatures2(physical_device, &feats2);
+        eds3_features.extended_dynamic_state_3_color_blend_enable = query_eds3.extended_dynamic_state_3_color_blend_enable;
+        eds3_features.extended_dynamic_state_3_color_blend_equation = query_eds3.extended_dynamic_state_3_color_blend_equation;
+        eds3_features.extended_dynamic_state_3_color_write_mask = query_eds3.extended_dynamic_state_3_color_write_mask;
+        eds3_features.extended_dynamic_state_3_polygon_mode = query_eds3.extended_dynamic_state_3_polygon_mode;
+        has_eds3_blend = query_eds3.extended_dynamic_state_3_color_blend_enable == .true and
+            query_eds3.extended_dynamic_state_3_color_blend_equation == .true and
+            query_eds3.extended_dynamic_state_3_color_write_mask == .true;
+        if (!has_eds3_blend)
+            std.log.warn("vk.init: EDS3 blend features unavailable — static alpha-blend fallback", .{});
+    }
 
-    // Vulkan 1.3 features — dynamic rendering + synchronization2
+    // Vulkan 1.3 features — dynamic rendering + synchronization2. Only chain
+    // the EDS3 feature struct when the extension was actually requested.
     const vk13_features = vk.PhysicalDeviceVulkan13Features{
-        .p_next = @ptrCast(@constCast(&eds3_features)),
+        .p_next = if (has_eds3) @ptrCast(@constCast(&eds3_features)) else null,
         .dynamic_rendering = .true,
         .synchronization_2 = .true,
     };
@@ -3143,6 +3215,7 @@ pub fn init(extra_extensions: []const [*:0]const u8) !*VkEnv {
         .frame_fence = frame_fence,
         .pipeline_layout = pipeline_layout,
         .descriptor_set_layout = descriptor_set_layout,
+        .has_eds3_blend = has_eds3_blend,
         ._vk_lib = stored_vk_lib,
     };
     // Populate memory properties early — needed by createOffscreen (LWA) before initPhase2
@@ -4392,19 +4465,21 @@ export fn vk_env_draw_quad(verts: ?[*]const f32, n_floats: u32) void {
 
     // Blend mode (EDS3) — set AFTER pipeline bind to ensure dynamic state
     // isn't reset by cmdBindPipeline (MoltenVK may reset EDS3 state on bind)
-    const blend_en: u32 = if (env.blend_mode != 0) 1 else 0;
-    env.vkd.cmdSetColorBlendEnableEXT(env.cmd, 0, 1, @ptrCast(&blend_en));
-    const equation = [_]vk.ColorBlendEquationEXT{getBlendEquation(env.blend_mode, env)};
-    env.vkd.cmdSetColorBlendEquationEXT(env.cmd, 0, 1, &equation);
+    if (env.has_eds3_blend) {
+        const blend_en: u32 = if (env.blend_mode != 0) 1 else 0;
+        env.vkd.cmdSetColorBlendEnableEXT(env.cmd, 0, 1, @ptrCast(&blend_en));
+        const equation = [_]vk.ColorBlendEquationEXT{getBlendEquation(env.blend_mode, env)};
+        env.vkd.cmdSetColorBlendEquationEXT(env.cmd, 0, 1, &equation);
 
-    // Color write mask (disabled during stencil prepare)
-    const write_mask = [_]vk.ColorComponentFlags{
-        if (env.color_write_enabled)
-            .{ .r_bit = true, .g_bit = true, .b_bit = true, .a_bit = true }
-        else
-            .{},
-    };
-    env.vkd.cmdSetColorWriteMaskEXT(env.cmd, 0, 1, &write_mask);
+        // Color write mask (disabled during stencil prepare)
+        const write_mask = [_]vk.ColorComponentFlags{
+            if (env.color_write_enabled)
+                .{ .r_bit = true, .g_bit = true, .b_bit = true, .a_bit = true }
+            else
+                .{},
+        };
+        env.vkd.cmdSetColorWriteMaskEXT(env.cmd, 0, 1, &write_mask);
+    }
 
     // Push constants for ALL draws (engine matrices + opacity used by both built-in
     // and custom vertex/fragment shaders via layout(push_constant))
@@ -4588,14 +4663,16 @@ export fn vk_env_draw_mesh_verts(verts: [*]const u8, byte_size: u32, n_verts: u3
     env.vkd.cmdSetStencilOp(env.cmd, both, .keep, .keep, .keep, .always);
 
     // Blend
-    const blend_en: u32 = if (env.blend_mode != 0) 1 else 0;
-    env.vkd.cmdSetColorBlendEnableEXT(env.cmd, 0, 1, @ptrCast(&blend_en));
-    const equation = [_]vk.ColorBlendEquationEXT{getBlendEquation(env.blend_mode, env)};
-    env.vkd.cmdSetColorBlendEquationEXT(env.cmd, 0, 1, &equation);
-    const write_mask = [_]vk.ColorComponentFlags{
-        .{ .r_bit = true, .g_bit = true, .b_bit = true, .a_bit = true },
-    };
-    env.vkd.cmdSetColorWriteMaskEXT(env.cmd, 0, 1, &write_mask);
+    if (env.has_eds3_blend) {
+        const blend_en: u32 = if (env.blend_mode != 0) 1 else 0;
+        env.vkd.cmdSetColorBlendEnableEXT(env.cmd, 0, 1, @ptrCast(&blend_en));
+        const equation = [_]vk.ColorBlendEquationEXT{getBlendEquation(env.blend_mode, env)};
+        env.vkd.cmdSetColorBlendEquationEXT(env.cmd, 0, 1, &equation);
+        const write_mask = [_]vk.ColorComponentFlags{
+            .{ .r_bit = true, .g_bit = true, .b_bit = true, .a_bit = true },
+        };
+        env.vkd.cmdSetColorWriteMaskEXT(env.cmd, 0, 1, &write_mask);
+    }
 
     // Bind pipeline + descriptors (use basic_2d for now — mesh needs its own pipeline eventually)
     const pipeline = if (env.rt_rendering) env.basic_2d_pipeline_unorm else env.basic_2d_pipeline;

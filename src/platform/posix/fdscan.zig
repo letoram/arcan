@@ -18,7 +18,7 @@ export fn arcan_fdscan(listout: *?[*]c_int) c_int {
         set[i] = .{ .fd = @intCast(i), .events = 0, .revents = 0 };
     }
 
-    if (c.poll(set, lim, 0) == -1) {
+    if (c.poll(set, @intCast(lim), 0) == -1) {
         return -1;
     }
 

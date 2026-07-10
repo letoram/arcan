@@ -8,6 +8,8 @@
 //! stay in the tool's own .zig.
 
 const std = @import("std");
+const builtin = @import("builtin");
+const is_darwin = builtin.os.tag.isDarwin();
 
 // stdio FILE + streams + printf-family
 
@@ -77,7 +79,7 @@ pub const PROT_EXEC: c_int = 4;
 
 pub const MAP_SHARED: c_int = 0x01;
 pub const MAP_PRIVATE: c_int = 0x02;
-pub const MAP_ANONYMOUS: c_int = 0x20;
+pub const MAP_ANONYMOUS: c_int = if (is_darwin) 0x1000 else 0x20;
 pub const MAP_ANON: c_int = MAP_ANONYMOUS;
 pub const MAP_FIXED: c_int = 0x10;
 pub const MAP_FAILED: ?*anyopaque = @ptrFromInt(std.math.maxInt(usize));
@@ -122,27 +124,27 @@ pub const mode_t = c_uint;
 pub const O_RDONLY: c_int = 0;
 pub const O_WRONLY: c_int = 1;
 pub const O_RDWR: c_int = 2;
-pub const O_CREAT: c_int = 0o100;
-pub const O_EXCL: c_int = 0o200;
-pub const O_TRUNC: c_int = 0o1000;
-pub const O_APPEND: c_int = 0o2000;
-pub const O_NONBLOCK: c_int = 0o4000;
-pub const O_DIRECTORY: c_int = switch (@import("builtin").target.cpu.arch) {
+pub const O_CREAT: c_int = if (is_darwin) 0x200 else 0o100;
+pub const O_EXCL: c_int = if (is_darwin) 0x800 else 0o200;
+pub const O_TRUNC: c_int = if (is_darwin) 0x400 else 0o1000;
+pub const O_APPEND: c_int = if (is_darwin) 0x8 else 0o2000;
+pub const O_NONBLOCK: c_int = if (is_darwin) 0x4 else 0o4000;
+pub const O_DIRECTORY: c_int = if (is_darwin) 0x100000 else switch (builtin.target.cpu.arch) {
     .aarch64, .aarch64_be, .arm, .armeb => 0o40000,
     else => 0o200000,
 };
-pub const O_CLOEXEC: c_int = 0o2000000;
+pub const O_CLOEXEC: c_int = if (is_darwin) 0x1000000 else 0o2000000;
 pub const FD_CLOEXEC: c_int = 1;
 pub const F_GETFD: c_int = 1;
 pub const F_SETFD: c_int = 2;
 pub const F_GETFL: c_int = 3;
 pub const F_SETFL: c_int = 4;
 pub const SEEK_SET: c_int = 0;
-pub const EAGAIN: c_int = 11;
+pub const EAGAIN: c_int = if (is_darwin) 35 else 11;
 pub const EINTR: c_int = 4;
 pub const ENOMEM: c_int = 12;
 pub const ESPIPE: c_int = 29;
-pub const EOVERFLOW: c_int = 75;
+pub const EOVERFLOW: c_int = if (is_darwin) 84 else 75;
 pub const EINVAL: c_int = 22;
 pub const EPIPE: c_int = 32;
 pub const ECHILD: c_int = 10;
@@ -231,7 +233,14 @@ pub extern "c" fn open_memstream(ptr: *?[*]u8, sizeloc: *usize) ?*FILE;
 
 // dirent.h — directory traversal
 
-pub const struct_dirent = extern struct {
+pub const struct_dirent = if (is_darwin) extern struct {
+    d_ino: u64 = 0,
+    d_seekoff: u64 = 0,
+    d_reclen: c_ushort = 0,
+    d_namlen: c_ushort = 0,
+    d_type: u8 = 0,
+    d_name: [1024]u8 = std.mem.zeroes([1024]u8),
+} else extern struct {
     d_ino: c_ulong = 0,
     d_off: c_long = 0,
     d_reclen: c_ushort = 0,
@@ -288,7 +297,7 @@ pub const STDERR_FILENO: c_int = 2;
 
 pub const SIGINT: c_int = 2;
 pub const SIGPIPE: c_int = 13;
-pub const SIGCHLD: c_int = 17;
+pub const SIGCHLD: c_int = if (is_darwin) 20 else 17;
 
 // minimal struct sigaction (glibc/aarch64 Linux): 152 bytes. Use an opaque
 // blob of that size — callers just zero it and call sigaction().
@@ -334,7 +343,7 @@ pub extern "c" fn flock(fd: c_int, operation: c_int) c_int;
 pub extern "c" fn mkdirat(dirfd: c_int, pathname: [*c]const u8, mode: mode_t) c_int;
 pub extern "c" fn unlinkat(dirfd: c_int, pathname: [*c]const u8, flags: c_int) c_int;
 // unlinkat flag: remove an empty directory (like rmdir).
-pub const AT_REMOVEDIR: c_int = 0x200;
+pub const AT_REMOVEDIR: c_int = if (is_darwin) 0x80 else 0x200;
 pub extern "c" fn getline(
     lineptr: *?[*]u8,
     n: *usize,
@@ -342,7 +351,7 @@ pub extern "c" fn getline(
 ) isize;
 
 // sysconf names
-pub const _SC_PAGE_SIZE: c_int = 30;
+pub const _SC_PAGE_SIZE: c_int = if (is_darwin) 29 else 30;
 pub const _SC_PAGESIZE: c_int = _SC_PAGE_SIZE;
 
 // rlimit (sys/resource.h) — Linux UAPI values
@@ -357,7 +366,7 @@ pub extern "c" fn getrlimit(resource: c_int, rlim: *struct_rlimit) c_int;
 
 // pthread
 
-pub const PTHREAD_CREATE_DETACHED: c_int = 1;
+pub const PTHREAD_CREATE_DETACHED: c_int = if (is_darwin) 2 else 1;
 pub const pthread_t = c_ulong;
 pub const pthread_attr_t = extern struct {
     _opaque: [8]usize align(@alignOf(usize)),
@@ -368,7 +377,9 @@ comptime {
 
 // pthread_mutex_t — 48 bytes on glibc/aarch64, 40 on musl. Use 48 so both
 // fit; Linux runtime checks initialised fields, not trailing padding.
-pub const pthread_mutex_t = extern struct {
+pub const pthread_mutex_t = if (is_darwin) extern struct {
+    _data: [64]u8 align(@alignOf(usize)) = std.mem.zeroes([64]u8), // { long sig; char opaque[56] }
+} else extern struct {
     _data: [48]u8 align(@alignOf(usize)) = std.mem.zeroes([48]u8),
 };
 
@@ -440,7 +451,7 @@ pub const socklen_t = c_uint;
 pub const AF_UNSPEC: c_int = 0;
 pub const AF_UNIX: c_int = 1;
 pub const AF_INET: c_int = 2;
-pub const AF_INET6: c_int = 10;
+pub const AF_INET6: c_int = if (is_darwin) 30 else 10;
 
 pub const SOCK_STREAM: c_int = 1;
 pub const SOCK_DGRAM: c_int = 2;
@@ -448,15 +459,19 @@ pub const SOCK_DGRAM: c_int = 2;
 pub const IPPROTO_TCP: c_int = 6;
 pub const IPPROTO_UDP: c_int = 17;
 
-pub const SOL_SOCKET: c_int = 1;
-pub const SO_REUSEADDR: c_int = 2;
-pub const SO_REUSEPORT: c_int = 15;
-pub const SO_SNDBUF: c_int = 7;
-pub const SO_RCVBUF: c_int = 8;
+pub const SOL_SOCKET: c_int = if (is_darwin) 0xffff else 1;
+pub const SO_REUSEADDR: c_int = if (is_darwin) 0x4 else 2;
+pub const SO_REUSEPORT: c_int = if (is_darwin) 0x200 else 15;
+pub const SO_SNDBUF: c_int = if (is_darwin) 0x1001 else 7;
+pub const SO_RCVBUF: c_int = if (is_darwin) 0x1002 else 8;
 pub const TCP_NODELAY: c_int = 1;
 
 // struct sockaddr — opaque to callers; only used to take address of.
-pub const struct_sockaddr = extern struct {
+pub const struct_sockaddr = if (is_darwin) extern struct {
+    sa_len: u8 = 0,
+    sa_family: u8 = 0,
+    sa_data: [14]u8 = std.mem.zeroes([14]u8),
+} else extern struct {
     sa_family: c_ushort = 0,
     sa_data: [14]u8 = std.mem.zeroes([14]u8),
 };
@@ -524,22 +539,22 @@ pub extern "c" fn htons(hostshort: u16) u16;
 pub extern "c" fn htonl(hostlong: u32) u32;
 
 // getnameinfo flags
-pub const NI_NUMERICHOST: c_int = 1;
-pub const NI_NUMERICSERV: c_int = 2;
+pub const NI_NUMERICHOST: c_int = if (is_darwin) 2 else 1;
+pub const NI_NUMERICSERV: c_int = if (is_darwin) 8 else 2;
 
 // IPv4/IPv6 constants and addrinfo adjuncts used by beacon discovery.
 pub const INET_ADDRSTRLEN: c_int = 16;
 pub const INET6_ADDRSTRLEN: c_int = 46;
 pub const INADDR_ANY: u32 = 0;
 pub const INADDR_BROADCAST: u32 = 0xffffffff;
-pub const SO_BROADCAST: c_int = 6;
+pub const SO_BROADCAST: c_int = if (is_darwin) 0x20 else 6;
 pub const IPPROTO_IP: c_int = 0;
 pub const IPPROTO_IPV6: c_int = 41;
-pub const IP_PKTINFO: c_int = 8;
-pub const IP_MULTICAST_LOOP: c_int = 34;
-pub const IPV6_MULTICAST_HOPS: c_int = 18;
-pub const IPV6_MULTICAST_LOOP: c_int = 19;
-pub const IPV6_JOIN_GROUP: c_int = 20;
+pub const IP_PKTINFO: c_int = if (is_darwin) 26 else 8;
+pub const IP_MULTICAST_LOOP: c_int = if (is_darwin) 11 else 34;
+pub const IPV6_MULTICAST_HOPS: c_int = if (is_darwin) 10 else 18;
+pub const IPV6_MULTICAST_LOOP: c_int = if (is_darwin) 11 else 19;
+pub const IPV6_JOIN_GROUP: c_int = if (is_darwin) 12 else 20;
 
 // struct in_addr — 32-bit IPv4 address in network byte order.
 pub const struct_in_addr = extern struct {
@@ -554,7 +569,13 @@ pub const struct_in6_addr = extern struct {
 pub const in6_addr = struct_in6_addr;
 
 // struct sockaddr_in — IPv4 socket address.
-pub const struct_sockaddr_in = extern struct {
+pub const struct_sockaddr_in = if (is_darwin) extern struct {
+    sin_len: u8 = 0,
+    sin_family: u8 = 0,
+    sin_port: u16 = 0,
+    sin_addr: struct_in_addr = .{},
+    sin_zero: [8]u8 = std.mem.zeroes([8]u8),
+} else extern struct {
     sin_family: c_ushort = 0,
     sin_port: u16 = 0,
     sin_addr: struct_in_addr = .{},
@@ -563,7 +584,14 @@ pub const struct_sockaddr_in = extern struct {
 pub const sockaddr_in = struct_sockaddr_in;
 
 // struct sockaddr_in6 — IPv6 socket address.
-pub const struct_sockaddr_in6 = extern struct {
+pub const struct_sockaddr_in6 = if (is_darwin) extern struct {
+    sin6_len: u8 = 0,
+    sin6_family: u8 = 0,
+    sin6_port: u16 = 0,
+    sin6_flowinfo: u32 = 0,
+    sin6_addr: struct_in6_addr = .{},
+    sin6_scope_id: u32 = 0,
+} else extern struct {
     sin6_family: c_ushort = 0,
     sin6_port: u16 = 0,
     sin6_flowinfo: u32 = 0,
@@ -592,7 +620,17 @@ pub const ipv6_mreq = struct_ipv6_mreq;
 pub const struct_iovec_libc = struct_iovec;
 
 // struct msghdr — recvmsg(2)/sendmsg(2) message header.
-pub const struct_msghdr = extern struct {
+pub const struct_msghdr = if (is_darwin) extern struct {
+    msg_name: ?*anyopaque = null,
+    msg_namelen: c_uint = 0,
+    _pad0: [4]u8 = .{ 0, 0, 0, 0 },
+    msg_iov: ?*struct_iovec = null,
+    msg_iovlen: c_int = 0,
+    _pad1: [4]u8 = .{ 0, 0, 0, 0 },
+    msg_control: ?*anyopaque = null,
+    msg_controllen: c_uint = 0,
+    msg_flags: c_int = 0,
+} else extern struct {
     msg_name: ?*anyopaque = null,
     msg_namelen: c_uint = 0,
     _pad0: [4]u8 = .{ 0, 0, 0, 0 },
@@ -606,7 +644,11 @@ pub const struct_msghdr = extern struct {
 pub const msghdr = struct_msghdr;
 
 // struct cmsghdr — ancillary control-message header.
-pub const struct_cmsghdr = extern struct {
+pub const struct_cmsghdr = if (is_darwin) extern struct {
+    cmsg_len: c_uint = 0,
+    cmsg_level: c_int = 0,
+    cmsg_type: c_int = 0,
+} else extern struct {
     cmsg_len: usize = 0,
     cmsg_level: c_int = 0,
     cmsg_type: c_int = 0,
@@ -615,7 +657,7 @@ pub const cmsghdr = struct_cmsghdr;
 
 pub extern "c" fn recvmsg(sockfd: c_int, msg: *struct_msghdr, flags: c_int) isize;
 pub extern "c" fn sendmsg(sockfd: c_int, msg: *const struct_msghdr, flags: c_int) isize;
-pub const MSG_DONTWAIT: c_int = 0x40;
+pub const MSG_DONTWAIT: c_int = if (is_darwin) 0x80 else 0x40;
 
 // calloc / exit — additional stdlib entry points
 pub extern "c" fn calloc(nmemb: usize, size: usize) ?*anyopaque;
@@ -629,7 +671,16 @@ pub extern "c" fn writev(fd: c_int, iov: [*c]const struct_iovec, iovcnt: c_int) 
 pub extern "c" fn readv(fd: c_int, iov: [*c]const struct_iovec, iovcnt: c_int) isize;
 
 // termios.h — terminal settings
-pub const struct_termios = extern struct {
+pub const struct_termios = if (is_darwin) extern struct {
+    c_iflag: u64 = 0,
+    c_oflag: u64 = 0,
+    c_cflag: u64 = 0,
+    c_lflag: u64 = 0,
+    c_cc: [20]u8 = std.mem.zeroes([20]u8),
+    _pad0: [4]u8 = .{ 0, 0, 0, 0 },
+    _c_ispeed: u64 = 0,
+    _c_ospeed: u64 = 0,
+} else extern struct {
     c_iflag: u32 = 0,
     c_oflag: u32 = 0,
     c_cflag: u32 = 0,
@@ -648,7 +699,7 @@ pub const struct_winsize = extern struct {
 pub const winsize = struct_winsize;
 
 pub const TCSANOW: c_int = 0;
-pub const VERASE: c_int = 2;
+pub const VERASE: c_int = if (is_darwin) 3 else 2;
 pub const IUTF8: c_uint = 0o040000;
 
 pub extern "c" fn tcgetattr(fd: c_int, attr: *struct_termios) c_int;
@@ -676,13 +727,13 @@ pub extern "c" fn unlockpt(fd: c_int) c_int;
 pub extern "c" fn ptsname(fd: c_int) [*c]u8;
 
 // O_NOCTTY — fcntl flag for open/posix_openpt.
-pub const O_NOCTTY: c_int = 256;
+pub const O_NOCTTY: c_int = if (is_darwin) 0x20000 else 256;
 
 // ioctl + tty control constants
 pub extern "c" fn ioctl(fd: c_int, request: c_ulong, ...) c_int;
-pub const TIOCSCTTY: c_ulong = 0x540E;
-pub const TIOCSWINSZ: c_ulong = 0x5414;
-pub const TIOCGWINSZ: c_ulong = 0x5413;
+pub const TIOCSCTTY: c_ulong = if (is_darwin) 0x20007461 else 0x540E;
+pub const TIOCSWINSZ: c_ulong = if (is_darwin) 0x80087467 else 0x5414;
+pub const TIOCGWINSZ: c_ulong = if (is_darwin) 0x40087468 else 0x5413;
 pub const TIOCSIG: c_ulong = 0x40045436;
 
 // signal set + masking (signal.h)
@@ -692,7 +743,7 @@ pub const sigset_t = extern struct {
 pub const SIG_BLOCK: c_int = 0;
 pub const SIG_UNBLOCK: c_int = 1;
 pub const SIG_SETMASK: c_int = 2;
-pub const SIGUSR1: c_int = 10;
+pub const SIGUSR1: c_int = if (is_darwin) 30 else 10;
 pub extern "c" fn sigemptyset(set: *sigset_t) c_int;
 pub extern "c" fn sigfillset(set: *sigset_t) c_int;
 pub extern "c" fn sigaddset(set: *sigset_t, signo: c_int) c_int;

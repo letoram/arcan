@@ -12,7 +12,6 @@
 // TrueType, arcan_boot_compat, xitdb, shmif_types, shmif_offsets, shmif_monitor.
 
 const std = @import("std");
-const builtin = @import("builtin");
 
 comptime {
     _ = @import("arcan_3dbase.zig");
