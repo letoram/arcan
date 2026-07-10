@@ -242,7 +242,7 @@ fn do_stat_path(path: [*c]const u8) ?StatResult {
             const msg = std.fmt.bufPrint(&buf,
                 "[bug 0125] do_stat_path: about to panic — path={s} errno={d} (see ticket 0125 — `bugs show 0125-arcan-ttf-fstat-unreachable-on-font-replace`)\n",
                 .{ std.mem.span(@as([*:0]const u8, @ptrCast(path))), e }) catch "[bug 0125] do_stat_path: about to panic\n";
-            _ = std.posix.write(2, msg) catch {};
+            std.fs.File.stderr().writeAll(msg) catch {};
         }
     }
     const s = std.posix.fstatat(std.posix.AT.FDCWD, std.mem.span(@as([*:0]const u8, @ptrCast(path))), 0) catch return null;
@@ -259,7 +259,7 @@ fn do_fstat_fd(fd: c_int) ?StatResult {
             const msg = std.fmt.bufPrint(&buf,
                 "[bug 0125] do_fstat_fd: about to panic — fd={d} errno={d} (see ticket 0125 — `bugs show 0125-arcan-ttf-fstat-unreachable-on-font-replace`). Walk back through set_font_slot → setfont → targetfonthint to find the bad-fd source. Do NOT soften this panic.\n",
                 .{ fd, e }) catch "[bug 0125] do_fstat_fd: about to panic\n";
-            _ = std.posix.write(2, msg) catch {};
+            std.fs.File.stderr().writeAll(msg) catch {};
         }
     }
     const s = std.posix.fstat(@intCast(fd)) catch return null;
@@ -545,7 +545,7 @@ export fn TTF_OpenFontIndexRW(
     font.font_bytes = font_bytes;
     font.font_bytes_owned = true;
     // Allow env override for GPU glyph quality testing at high resolution
-    const override_sz = std.posix.getenv("ARCAN_FONT_SIZE_OVERRIDE");
+    const override_sz = @import("shmif_types").getenvSpan("ARCAN_FONT_SIZE_OVERRIDE");
     const effective_ptsize = if (override_sz) |sz_str|
         std.fmt.parseInt(c_int, sz_str, 10) catch ptsize
     else
@@ -559,7 +559,7 @@ export fn TTF_OpenFontIndexRW(
 
     // Set variable font weight from env var (for testing different weights)
     if (tt.isVariable()) {
-        const weight_str = std.posix.getenv("ARCAN_FONT_WEIGHT");
+        const weight_str = @import("shmif_types").getenvSpan("ARCAN_FONT_WEIGHT");
         if (weight_str) |ws| {
             const weight = std.fmt.parseFloat(f32, ws) catch 400.0;
             // Find weight axis (wght)

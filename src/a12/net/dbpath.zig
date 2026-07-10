@@ -11,7 +11,7 @@ const std = @import("std");
 /// Returns null when the HOME environment variable is unset or empty.
 /// Errors from directory creation are ignored (mkdir EEXIST is expected).
 pub fn platform_dbstore_path(allocator: std.mem.Allocator) error{OutOfMemory}!?[]u8 {
-    const home = std.posix.getenv("HOME") orelse return null;
+    const home = @import("shmif_types").getenvSpan("HOME") orelse return null;
     if (home.len == 0) return null;
 
     // Build ~/.arcan and create it (ignore errors — EEXIST is fine).

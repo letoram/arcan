@@ -583,8 +583,8 @@ fn detectMode() PlatformMode {
     // LWA nesting first on every OS: a CONNPATH/SOCKIN_FD means we are a
     // client of a parent arcan (durian under durian) regardless of display
     // system. Otherwise macOS always takes Cocoa + VK_EXT_metal_surface.
-    const has_connpath = std.posix.getenv("ARCAN_CONNPATH") != null;
-    const has_sockin = std.posix.getenv("ARCAN_SOCKIN_FD") != null;
+    const has_connpath = @import("shmif_types").getenvSpan("ARCAN_CONNPATH") != null;
+    const has_sockin = @import("shmif_types").getenvSpan("ARCAN_SOCKIN_FD") != null;
     if (!(has_connpath or has_sockin)) {
         if (comptime is_macos) return .metal;
         if (comptime is_windows) return .win32;
@@ -593,20 +593,20 @@ fn detectMode() PlatformMode {
         // When ARCAN_HANDOVER is set, ARCAN_SOCKIN_FD was explicitly given to us
         // by shmif_platform_execve — it's the handover'd socket we MUST use.
         // Only unset SOCKIN_FD when there's no handover (inherited from parent).
-        const has_handover = std.posix.getenv("ARCAN_HANDOVER") != null;
+        const has_handover = @import("shmif_types").getenvSpan("ARCAN_HANDOVER") != null;
         if (has_connpath and has_sockin and !has_handover) {
             _ = c.unsetenv("ARCAN_SOCKIN_FD");
             _ = c.unsetenv("ARCAN_SOCKIN_MEMFD");
         }
         return .lwa;
     }
-    if (std.posix.getenv("DISPLAY") != null)
+    if (@import("shmif_types").getenvSpan("DISPLAY") != null)
         return .xcb;
     // ARCAN_VIDEO_VK_KHR_DISPLAY=1 forces the Vulkan-ICD-provided display
     // path (works on desktop Intel/AMD/Nvidia). Default is the GBM+KMS
     // backend because the common failure mode on Asahi/Honeykrisp is that
     // VK_KHR_display isn't implemented at all.
-    if (std.posix.getenv("ARCAN_VIDEO_VK_KHR_DISPLAY") != null)
+    if (@import("shmif_types").getenvSpan("ARCAN_VIDEO_VK_KHR_DISPLAY") != null)
         return .khr_display;
     return .gbm_kms;
 }
@@ -719,13 +719,13 @@ export fn platform_video_request_clipboard_paste() c_int {
 /// etc.) which pulls in LLVM and hangs in our custom zig_dlopen linker.
 fn selectIcdFromSysfs() void {
     // Already set by user — respect it
-    if (std.posix.getenv("VK_ICD_FILENAMES") != null) return;
-    if (std.posix.getenv("VK_DRIVER_FILES") != null) return;
+    if (@import("shmif_types").getenvSpan("VK_ICD_FILENAMES") != null) return;
+    if (@import("shmif_types").getenvSpan("VK_DRIVER_FILES") != null) return;
 
     if (comptime is_macos) {
         // macOS: prefer KosmicKrisp (conformant Vulkan 1.3 on Metal, LunarG
         // SDK), fall back to MoltenVK from homebrew. No sysfs here.
-        const home = std.posix.getenv("HOME") orelse "";
+        const home = @import("shmif_types").getenvSpan("HOME") orelse "";
         var kk_buf: [512]u8 = undefined;
         const kk_path = std.fmt.bufPrintZ(
             &kk_buf,
@@ -1061,8 +1061,8 @@ fn initLwa(width_in: u16, height_in: u16, caption: ?[*:0]const u8) bool {
         flags |= SHMIF_NOACTIVATE_RESIZE;
 
     arcan_warning("vk_lwa: opening shmif connection (SOCKIN_FD=%s, CONNPATH=%s)\n",
-        @as([*:0]const u8, std.posix.getenv("ARCAN_SOCKIN_FD") orelse "(null)"),
-        @as([*:0]const u8, std.posix.getenv("ARCAN_CONNPATH") orelse "(null)"));
+        @as([*:0]const u8, @import("shmif_types").getenvSpan("ARCAN_SOCKIN_FD") orelse "(null)"),
+        @as([*:0]const u8, @import("shmif_types").getenvSpan("ARCAN_CONNPATH") orelse "(null)"));
 
     lwa_disp[0].conn = arcan_shmif_open_ext(
         @intCast(flags),

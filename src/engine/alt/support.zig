@@ -451,7 +451,7 @@ fn wraperr(L: ?*lua_State, errc: c_int, src: [*c]const u8) void {
     // stays in place as belt-and-braces until a clean ARCAN_STATEDUMP=1
     // controlled test confirms state_dump no longer SEGVs.  Default runs
     // skip the dump path so durian survives script errors regardless.
-    if (lua_debug_level > 0 or std.posix.getenv("ARCAN_STATEDUMP") != null) {
+    if (lua_debug_level > 0 or @import("shmif_types").getenvSpan("ARCAN_STATEDUMP") != null) {
         arcan_state_dump("crash", mesg, src);
     }
 

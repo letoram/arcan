@@ -905,7 +905,7 @@ pub export fn a12helper_keystore_stateunlink(
 }
 
 pub export fn a12helper_keystore_dirfd(err: ?*[*c]const u8) c_int {
-    const basedir = std.posix.getenv("ARCAN_STATEPATH") orelse {
+    const basedir = @import("shmif_types").getenvSpan("ARCAN_STATEPATH") orelse {
         if (err) |e| e.* = "Missing keystore (set ARCAN_STATEPATH)";
         return -1;
     };
