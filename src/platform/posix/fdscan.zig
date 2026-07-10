@@ -5,6 +5,12 @@ const std = @import("std");
 const c = std.c;
 
 export fn arcan_fdscan(listout: *?[*]c_int) c_int {
+    // fd enumeration via getrlimit(NOFILE)+poll is posix-only; windows inherits
+    // HANDLEs explicitly, so there is no numeric-fd table to scan. (windows port)
+    if (@import("builtin").os.tag == .windows) {
+        listout.* = null;
+        return -1;
+    }
     var rlim: c.rlimit = undefined;
     var lim: usize = 512;
     if (c.getrlimit(.NOFILE, &rlim) == 0) {

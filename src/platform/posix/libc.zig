@@ -118,7 +118,7 @@ pub extern "c" fn exit(status: c_int) noreturn;
 
 // fcntl / unistd / errno
 
-pub const off_t = c_long;
+pub const off_t = if (@import("builtin").os.tag == .windows) i64 else c_long;
 pub const mode_t = c_uint;
 
 pub const O_RDONLY: c_int = 0;

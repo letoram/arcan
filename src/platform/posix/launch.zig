@@ -618,7 +618,7 @@ export fn platform_launch_fork(
             if (f) |fd| {
                 const errno_fn = @extern(*const fn () callconv(.c) *c_int, .{ .name = "__errno_location" });
                 _ = c.fprintf(fd, "atfork ping: dpipe=%d rv=%ld errno=%d iov_len=%zu\n",
-                    dpipe_p, @as(c_long, rv), errno_fn().*, iov.iov_len);
+                    dpipe_p, @as(c_longlong, rv), errno_fn().*, iov.iov_len);
                 _ = c.fclose(fd);
             }
         }

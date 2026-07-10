@@ -234,7 +234,7 @@ const StatResult = struct { dev: dev_t, ino: ino_t };
 // alongside the next coredump self-identifies as this bug.
 fn do_stat_path(path: [*c]const u8) ?StatResult {
     if (is_freestanding) return null;
-    {
+    if (builtin.os.tag != .windows) {
         var probe: c.struct_stat = undefined;
         if (c.stat(path, &probe) != 0) {
             const e = std.c._errno().*;
@@ -245,13 +245,16 @@ fn do_stat_path(path: [*c]const u8) ?StatResult {
             std.fs.File.stderr().writeAll(msg) catch {};
         }
     }
-    const s = std.posix.fstatat(std.posix.AT.FDCWD, std.mem.span(@as([*:0]const u8, @ptrCast(path))), 0) catch return null;
+    // statPath's posix branch is the same std.posix.fstatat — the EBADF
+    // `unreachable` inside it still panics (uncatchable), preserving bug 0125.
+    // On Windows it routes to CRT _stat64. (windows port)
+    const s = @import("shmif_types").statPath(@as([*:0]const u8, @ptrCast(path))) orelse return null;
     return .{ .dev = @intCast(s.dev), .ino = @intCast(s.ino) };
 }
 
 fn do_fstat_fd(fd: c_int) ?StatResult {
     if (is_freestanding) return null;
-    {
+    if (builtin.os.tag != .windows) {
         var probe: c.struct_stat = undefined;
         if (c.fstat(fd, &probe) != 0) {
             const e = std.c._errno().*;
@@ -262,7 +265,9 @@ fn do_fstat_fd(fd: c_int) ?StatResult {
             std.fs.File.stderr().writeAll(msg) catch {};
         }
     }
-    const s = std.posix.fstat(@intCast(fd)) catch return null;
+    // statFd's posix branch is the same std.posix.fstat — bug 0125 EBADF panic
+    // preserved (uncatchable unreachable); Windows routes to CRT _fstat64.
+    const s = @import("shmif_types").statFd(fd) orelse return null;
     return .{ .dev = @intCast(s.dev), .ino = @intCast(s.ino) };
 }
 
@@ -1955,7 +1960,7 @@ fn atlasLookup(font_ptr: *anyopaque, codepoint: u32) ?*const GlyphAtlasEntry {
             Once.n += 1;
             arcan_warning(
                 "[atlas miss] curves.len=0 (font_ptr=0x%lx cp=U+%04X gi=%u verts=%zu)\n",
-                @as(c_ulong, font_hash), codepoint, @intFromEnum(glyph_index), vertices.len,
+                @as(c_ulonglong, font_hash), codepoint, @intFromEnum(glyph_index), vertices.len,
             );
         }
         return null;

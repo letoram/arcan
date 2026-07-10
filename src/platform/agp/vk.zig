@@ -3851,7 +3851,7 @@ export fn vk_env_import_dmabuf_texture(
     };
 
     // Record the DMA-BUF inode before Vulkan takes ownership of the fd
-    const dmabuf_ino = blk: {
+    const dmabuf_ino = if (builtin.os.tag == .windows) @as(u64, 0) else blk: {
         const stat = std.posix.fstat(fd) catch break :blk @as(u64, 0);
         break :blk stat.ino;
     };
@@ -3886,7 +3886,7 @@ export fn vk_env_update_dmabuf_texture(
     const slot = &env.textures[id];
 
     // Identify the incoming DMA-BUF by its inode (unique per buffer).
-    const new_ino = blk: {
+    const new_ino = if (builtin.os.tag == .windows) @as(u64, 0) else blk: {
         const stat = std.posix.fstat(fd) catch break :blk @as(u64, 0);
         break :blk stat.ino;
     };
@@ -4153,7 +4153,7 @@ fn gbmInitDevice() bool {
     if (comptime use_zig_dlopen) zig_foreign_begin();
     defer if (comptime use_zig_dlopen) zig_foreign_end();
 
-    const fd = std.c.open("/dev/dri/renderD128", .{ .ACCMODE = .RDWR }, @as(c_uint, 0));
+    const fd = if (builtin.os.tag == .windows) @as(c_int, -1) else std.c.open("/dev/dri/renderD128", .{ .ACCMODE = .RDWR }, @as(c_uint, 0));
     if (fd < 0) {
         _ = c.printf("[vk_gbm] failed to open /dev/dri/renderD128\n");
         return false;

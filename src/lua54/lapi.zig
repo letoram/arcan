@@ -2759,11 +2759,11 @@ pub export fn lua_gc(L: [*c]lua_State, what: c_int, ...) callconv(.c) c_int {
 }
 // GC control — direct access to GCdebt for stopping/restarting GC.
 // Workaround for lua_gc being a no-op stub.
-var gc_saved_debt: c_long = 0;
+var gc_saved_debt: isize = 0;
 pub export fn gc_control_stop() void {
     if (gc_state_ptr) |g| {
         gc_saved_debt = g.*.GCdebt;
-        g.*.GCdebt = -@as(c_long, 1 << 40); // huge negative = never trigger
+        g.*.GCdebt = -@as(isize, 1 << 40); // huge negative = never trigger
     }
 }
 pub export fn gc_control_restart() void {

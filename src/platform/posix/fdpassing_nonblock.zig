@@ -296,7 +296,7 @@ export fn arcan_pushhandle(source: c_int, channel: c_int) bool {
         const sc_fclose = @extern(*const fn (?*anyopaque) callconv(.c) c_int, .{ .name = "fclose" });
         if (sc_open("/tmp/arcan_lua_trace.log", "a")) |f| {
             _ = sc_fprintf(f, "arcan_pushhandle: channel=%d source_fd=%d rv=%ld errno=%d msg_controllen=%zu iov_base=%p iov_len=%zu outq_after=%d\n",
-                channel, source, @as(c_long, rv), errno_after, msg.msg_controllen,
+                channel, source, @as(c_longlong, rv), errno_after, msg.msg_controllen,
                 nothing_ptr.iov_base, nothing_ptr.iov_len, outq_after);
             _ = sc_fclose(f);
         }

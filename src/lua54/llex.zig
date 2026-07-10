@@ -1886,10 +1886,10 @@ pub fn readhexaesc(arg_ls: [*c]LexState) callconv(.c) c_int {
     };
     return r;
 }
-pub fn readutf8esc(arg_ls: [*c]LexState) callconv(.c) c_ulong {
+pub fn readutf8esc(arg_ls: [*c]LexState) callconv(.c) usize {
     var ls = arg_ls;
     _ = &ls;
-    var r: c_ulong = undefined;
+    var r: usize = undefined;
     _ = &r;
     var i: c_int = 4;
     _ = &i;
@@ -1970,7 +1970,7 @@ pub fn utf8esc(arg_ls: [*c]LexState) callconv(.c) void {
     _ = &ls;
     var buff: [8]u8 = undefined;
     _ = &buff;
-    var n: c_int = luaO_utf8esc(@as([*c]u8, @ptrCast(@alignCast(&buff[@as(usize, @intCast(0))]))), readutf8esc(ls));
+    var n: c_int = luaO_utf8esc(@as([*c]u8, @ptrCast(@alignCast(&buff[@as(usize, @intCast(0))]))), @intCast(readutf8esc(ls)));
     _ = &n;
     while (n > @as(c_int, 0)) : (n -= 1) {
         save(ls, @as(c_int, @bitCast(@as(c_uint, buff[@as(c_uint, @intCast(@as(c_int, 8) - n))]))));

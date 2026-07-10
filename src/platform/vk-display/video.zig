@@ -27,6 +27,7 @@ const is_windows = builtin.os.tag == .windows;
 const unix_display = !is_macos and !is_windows;
 const use_zig_dlopen = (builtin.link_mode == .static and (builtin.abi == .musl or !builtin.link_libc));
 extern fn zig_foreign_begin() callconv(.c) void;
+extern "c" fn _dup(fd: c_int) c_int; // windows CRT int-fd dup (windows port)
 extern fn zig_foreign_end() callconv(.c) void;
 
 const c = @import("posix");
@@ -536,7 +537,7 @@ var state = struct {
     win32_window: ?vk_win32.Win32Window = null,
     displays: [8]vk_wsi.DisplayInfo = undefined,
     display_count: u32 = 0,
-    drm_display_fd: std.posix.fd_t = -1,
+    drm_display_fd: c_int = -1,
     // GBM+KMS direct-display mode (Asahi/Mac Studio): we render into our own
     // VkImages exported as DMA-BUFs and present via drmModePageFlip rather
     // than VK_KHR_swapchain. state.swapchain.extent/format are still mirrored
@@ -1904,8 +1905,10 @@ export fn platform_video_shutdown() void {
             vk_xcb.destroyXcbWindow(&state.xcb_window.?);
             state.xcb_window = null;
         }
-        if (state.drm_display_fd >= 0) {
-            std.posix.close(state.drm_display_fd);
+        if (builtin.os.tag != .windows and state.drm_display_fd >= 0) {
+            // drm_display_fd is a posix fd; std.posix.close wants a HANDLE on
+            // windows. This block is comptime-pruned there (no DRM). (windows port)
+            if (builtin.os.tag != .windows) std.posix.close(state.drm_display_fd);
             state.drm_display_fd = -1;
         }
     }
@@ -2436,7 +2439,7 @@ fn lwaEventProcessDisp(ctx: ?*struct_arcan_evctx, d: *LwaDisplay, did: usize) vo
                 const hint_val = tgt.ioevs[3].iv;
 
                 if (tgt.ioevs[1].iv == 1 and tgt.ioevs[0].iv != -1) {
-                    newfd = std.c.dup(tgt.ioevs[0].iv);
+                    newfd = if (builtin.os.tag == .windows) _dup(tgt.ioevs[0].iv) else std.c.dup(tgt.ioevs[0].iv);
                 }
                 if (tgt.ioevs[2].fv > 0) {
                     font_sz = @intFromFloat(@ceil(d.ppcm * tgt.ioevs[2].fv));

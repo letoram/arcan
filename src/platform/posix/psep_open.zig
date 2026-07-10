@@ -431,18 +431,21 @@ var pkg_queue: [1]Packet = .{std.mem.zeroes(Packet)};
 // Signal handlers
 
 fn sigusr_acq(_: c_int, _: [*c]c.siginfo_t, _: ?*anyopaque) callconv(.c) void {
+    if (@import("builtin").os.tag == .windows) return;
     var pkt = std.mem.zeroes(Packet);
     pkt.cmd_ch = .SYSTEM_STATE_ACQUIRE;
     _ = std.posix.write(child_conn, std.mem.asBytes(&pkt)) catch {};
 }
 
 fn sigusr_rel(_: c_int, _: [*c]c.siginfo_t, _: ?*anyopaque) callconv(.c) void {
+    if (@import("builtin").os.tag == .windows) return;
     var pkt = std.mem.zeroes(Packet);
     pkt.cmd_ch = .SYSTEM_STATE_RELEASE;
     _ = std.posix.write(child_conn, std.mem.asBytes(&pkt)) catch {};
 }
 
 fn sigusr_term(_: c_int) callconv(.c) void {
+    if (@import("builtin").os.tag == .windows) return;
     var pkt = std.mem.zeroes(Packet);
     pkt.cmd_ch = .SYSTEM_STATE_TERMINATE;
     _ = std.posix.write(child_conn, std.mem.asBytes(&pkt)) catch {};
@@ -576,12 +579,14 @@ fn access_device(path_ptr: [*c]const u8, arg: c_int, release: bool, keep: *bool)
         }
 
         // only allow character devices, except linux sysfs paths
-        if (path[0] == '/') {
-            var devst: c.struct_stat = std.mem.zeroes(c.struct_stat);
-            if (c.stat(path, &devst) < 0 or
-                (c.strncmp(path, "/sys", 4) != 0 and (devst.mode & c.S_IFCHR) == 0))
-            {
-                return -1;
+        if (@import("builtin").os.tag != .windows) {
+            if (path[0] == '/') {
+                var devst: c.struct_stat = std.mem.zeroes(c.struct_stat);
+                if (c.stat(path, &devst) < 0 or
+                    (c.strncmp(path, "/sys", 4) != 0 and (devst.mode & c.S_IFCHR) == 0))
+                {
+                    return -1;
+                }
             }
         }
 

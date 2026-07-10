@@ -502,7 +502,7 @@ pub fn nbio_run_outbound(L: ?*lua_State) callconv(.c) void {
     var pv: c_int = undefined;
     if (nbio_jobs.fdout_used == 0) return;
     if ((blk: {
-        const tmp = poll(@ptrCast(@alignCast(&nbio_jobs.fdout[0])), nbio_jobs.fdout_used, 0);
+        const tmp = poll(@ptrCast(@alignCast(&nbio_jobs.fdout[0])), @intCast(nbio_jobs.fdout_used), 0);
         pv = tmp;
         break :blk tmp;
     }) > 0) {

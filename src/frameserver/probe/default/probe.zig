@@ -155,7 +155,7 @@ export fn afsrv_probe(con: ?*c.arcan_shmif_cont, args: ?*c.arg_arr) callconv(.c)
                 // Write a tiny payload so the STORE round-trip actually ships
                 // bytes back through the a12 blob stream.
                 const fd = ev.unnamed_0.unnamed_0.unnamed_0.tgt.ioevs[0].iv;
-                if (fd >= 0) {
+                if (fd >= 0 and @import("builtin").os.tag != .windows) {
                     const payload: []const u8 = "probe-state-v1\n";
                     _ = std.posix.write(fd, payload) catch {};
                     _ = std.posix.close(fd);

@@ -1,5 +1,6 @@
 // ---- C builtins (translate-c) ----
 const std = @import("std");
+const builtin = @import("builtin");
 const c_builtins = std.zig.c_builtins;
 
 // Used by luai_likely/luai_unlikely macro expansions throughout ldo
@@ -1868,18 +1869,34 @@ pub export fn luaD_rawrunprotected(arg_L: [*c]lua_State, arg_f: Pfunc, arg_ud: ?
     // extern decl at the top of this file.
     const jbuf_ptr = @intFromPtr(@as([*c]c_long, @ptrCast(@alignCast(&(&lj).*.b[@as(usize, @intCast(0))]))));
     const setjmp_fn: usize = @intFromPtr(&_setjmp);
-    const sjret: c_int = asm volatile (
-        \\ mov x0, %[buf]
-        \\ blr %[fnp]
-        : [ret] "={w0}" (-> c_int)
-        : [buf] "r" (jbuf_ptr),
-          [fnp] "r" (setjmp_fn),
-        : .{ .x1 = true, .x2 = true, .x3 = true, .x4 = true,
-             .x5 = true, .x6 = true, .x7 = true, .x8 = true,
-             .x9 = true, .x10 = true, .x11 = true, .x12 = true,
-             .x13 = true, .x14 = true, .x15 = true, .x16 = true,
-             .x17 = true, .x18 = true, .x30 = true }
-    );
+    const sjret: c_int = switch (builtin.cpu.arch) {
+        .aarch64 => asm volatile (
+            \\ mov x0, %[buf]
+            \\ blr %[fnp]
+            : [ret] "={w0}" (-> c_int)
+            : [buf] "r" (jbuf_ptr),
+              [fnp] "r" (setjmp_fn),
+            : .{ .x1 = true, .x2 = true, .x3 = true, .x4 = true,
+                 .x5 = true, .x6 = true, .x7 = true, .x8 = true,
+                 .x9 = true, .x10 = true, .x11 = true, .x12 = true,
+                 .x13 = true, .x14 = true, .x15 = true, .x16 = true,
+                 .x17 = true, .x18 = true, .x30 = true }
+        ),
+        // x86_64: Win64 passes arg0 in rcx; MinGW _setjmp takes a 2nd SEH-frame
+        // arg in rdx — pass null (lua needs register save/restore, not SEH
+        // unwinding). Return in eax. Clobber all Win64 caller-saved GPRs so Zig
+        // reloads live values after longjmp "returns" twice. (windows port)
+        .x86_64 => asm volatile (
+            \\ movq %[buf], %%rcx
+            \\ xorq %%rdx, %%rdx
+            \\ callq *%[fnp]
+            : [ret] "={eax}" (-> c_int)
+            : [buf] "r" (jbuf_ptr),
+              [fnp] "r" (setjmp_fn),
+            : .{ .rax = true, .rcx = true, .rdx = true, .r8 = true, .r9 = true, .r10 = true, .r11 = true, .memory = true }
+        ),
+        else => @compileError("luaD_rawrunprotected: unsupported arch for setjmp fast-path"),
+    };
     if (sjret == @as(c_int, 0)) {
         f.?(L, ud);
     }
