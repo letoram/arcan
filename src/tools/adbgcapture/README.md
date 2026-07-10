@@ -30,7 +30,7 @@ the core dump and source binary.
 
 On linux, this typically becomes:
 
-    echo "|/usr/bin/arcan-dbgcapture - root /path/to/runtimedir durden %P" > /proc/sys/kernel/core_pattern
+    echo "|/usr/bin/arcan-dbgcapture - root /path/to/runtimedir durian %P" > /proc/sys/kernel/core_pattern
 
 The core pattern needs an absolute path for the tool to be invoked. You can
 also use it on a preset core file with a pid argument, but that is mainly

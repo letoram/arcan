@@ -50,14 +50,14 @@ There is also a 'service mode' that is easier for testing/debugging/development:
 
 This is also suitable when using 'migration' where you explicitly redirect
 a client to another 'connection point' (myname in the example above). How
-this is activated depends on your window manager. For instance, in durden
+this is activated depends on your window manager. For instance, in durian
 it can be done through the /target/share/migrate=myname path.
 
 There also needs to be something listening on the other end (of course)
 that can bridge to the right arcan instance.
 
     arcan-net -l 6680
-		ARCAN_CONNPATH=durden arcan-net -l 6680
+		ARCAN_CONNPATH=durian arcan-net -l 6680
 
 # Directory
 

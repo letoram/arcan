@@ -1,21 +1,101 @@
 .{
-    .name = "arcan",
+    .name = .arcan,
+    .fingerprint = 0x3f3ba237e84244ec,
     .version = "0.7.0-1", // mirrors /VERSION
-    .minimum_zig_version = "0.13.0",
+    .minimum_zig_version = "0.15.2",
     .dependencies = .{
-        .ffmpeg = .{
-            .url = "https://github.com/allyourcodebase/ffmpeg/archive/8836b829d3cfaf31ec7eaa15eeca84f065bcc423.tar.gz",
-            .hash = "1220b5d387335cb76a0eda4ab3e3c9ed153cbc3d1b5bb63c4899b5dfab3f826f4413",
+        .TrueType = .{
+            .url = "git+https://codeberg.org/andrewrk/TrueType#8b5dbf3a3bfbb84190377385f5e609c8788a5450",
+            .hash = "TrueType-0.0.0-Ne-mWLVxAQAvMshfhjrJh3GbRHBLSNtF-zXZ0Zt_bHGP",
             .lazy = true,
         },
+        .libxkbcommon = .{
+            .url = "git+https://github.com/allyourcodebase/libxkbcommon?ref=1.11.0-1#809157d5118909298f3e086fa8d8103198e938fd",
+            .hash = "libxkbcommon-1.11.0-1-93LaF6pwAgDFoaLfOkR8ioG4RVcDHbBhsDmC_rYwyOEG",
+            .lazy = true,
+        },
+        .vulkan_zig = .{
+            .url = "git+https://github.com/Snektron/vulkan-zig?ref=zig-0.15-compat#3ada9e2989bab70090a55f0f6fac19ea90d06357",
+            .hash = "vulkan-0.0.0-r7Ytx6FIAwD3QyrrJhvObO0YSZ6WEkMGSCPKbhM__HFd",
+            .lazy = true,
+        },
+        .ghostty = .{
+            .url = "git+https://github.com/ghostty-org/ghostty#46522a8779ba44e47d4f68ab633ace5382971624",
+            .hash = "ghostty-1.3.0-dev-5UdBCziw9wQtyWSBAhSLJeRgNCGbtgC491706Q1Frf6T",
+            .lazy = true,
+        },
+        .durden = .{
+            .url = "git+https://codeberg.org/letoram/durden#641f6405332afe3121b019c7c65778ea68ecfa24",
+            .hash = "N-V-__8AAMVOUgBotFAZMIgbzusQg5z6RR-vWe3SbCMR_RUT",
+            .lazy = true,
+        },
+        .cat9 = .{
+            .url = "git+https://codeberg.org/letoram/cat9#8d2b30545c3e87c8f2e161d755b53c23a48bcf05",
+            .hash = "N-V-__8AALF4JwC1bTUd-KxvIRP4ywD9NM6qSYCwLo2sI2QO",
+            .lazy = true,
+        },
+        // LLVM-implicating targets (qtarcan, gamescope, llama-cli, Phase
+        // 3+ afsrv_bun) and their deps live in build_llvm/ as a SEPARATE
+        // Zig project. They are deliberately NOT a sub-package of this
+        // top-level — to build them, `cd build_llvm && zig build <target>`.
+        // This keeps a self-host-only toolchain checking out arcan from
+        // ever seeing or fetching the LLVM dep universe.
+        .xarcan = .{
+            .url = "git+https://github.com/letoram/xarcan#3e1f52252582d9aff5fb9f09ef6f1182813467b2",
+            .hash = "N-V-__8AAFujXwGjtjzWR2rdkZY2v3r9Im3DN-jMFC3paju5",
+            .lazy = true,
+        },
+        .openal_soft = .{
+            .url = "git+https://github.com/letoram/openal#731bdaefeb9cfcc52267bb8fc884248e4420e9ec",
+            .hash = "N-V-__8AAG9XLADwgIn94r5aHJlLwR5XVEcMcHnrNdEqOFu8",
+            .lazy = true,
+        },
+        .libdrm = .{
+            .url = "git+https://gitlab.freedesktop.org/mesa/drm.git#b9dea73dfa310bc945ae6f09004a08fd624952ec",
+            .hash = "N-V-__8AAATcLAC_C3FiOuS8HtDzn3cYQSsC6qkXg7ruXeY5",
+            .lazy = true,
+        },
+        .libxcb = .{
+            .url = "git+https://gitlab.freedesktop.org/xorg/lib/libxcb.git#libxcb-1.16",
+            .hash = "N-V-__8AAKlsCQDGwfVRbQ_hynL1OR9_APMRTAdhzt7Mvutd",
+            .lazy = true,
+        },
+        .libXau = .{
+            .url = "git+https://gitlab.freedesktop.org/xorg/lib/libXau.git#libXau-1.0.11",
+            .hash = "N-V-__8AAFXPAAAIIaU6DUngS-6u1DaEEGjBvp4mlZDe0S0b",
+            .lazy = true,
+        },
+        .xcb_util = .{
+            .url = "git+https://gitlab.freedesktop.org/xorg/lib/libxcb-util.git#xcb-util-0.4.1",
+            .hash = "N-V-__8AAMqcAAAJbLm1g6FLMHYJgB2KAYo7q8nmCBcK_FIa",
+            .lazy = true,
+        },
+        .xcb_util_wm = .{
+            .url = "git+https://gitlab.freedesktop.org/xorg/lib/libxcb-wm.git#xcb-util-wm-0.4.2",
+            .hash = "N-V-__8AAGq3AwDurK9A1GcUSry8yWOp6HVp9f0cMyRr_w6U",
+            .lazy = true,
+        },
+        .xkbcommon_src = .{
+            .url = "git+https://github.com/xkbcommon/libxkbcommon.git#xkbcommon-1.11.0",
+            .hash = "N-V-__8AAFRAZAD02nId1w02lyWXmN-hvo873BSh9wZDxjSN",
+            .lazy = true,
+        },
+        .xitdb = .{
+            .url = "git+https://github.com/xit-vcs/xitdb#83c9bec8b7a8df0b540daf53527740e339e11bbb",
+            .hash = "xitdb-0.0.0-EEFkxsXGBAC7OV88C-DafG4_lNB8QIFhdcoGYh48o-wR",
+        },
+        // Bun lives in build_llvm/build.zig.zon (non-lazy there per
+        // user directive 2026-04-29).
     },
     .paths = .{
         "src",
         "build.zig",
         "build.zig.zon",
+        "build_helpers.zig",
+        "build_external.zig",
+        "build_xarcan.zig",
         "README.md",
         "VERSION",
-        "LICENSE",
+        "COPYING",
     },
-    .dependencies = .{},
 }

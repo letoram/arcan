@@ -3,17 +3,17 @@
 -- generated manually with xxd -i arcan_bootstrap.lua > arcan_bootstrap.h
 --
 -- It is _current_ defined like this (note 5.1 format) to prevent the use
--- of functions deemed unsafe or undesired. Note that we explicitly allow
--- the use of debug (which can infoleak/modify env) and that this is done
--- primarily to restrict us to a subset of Lua force other bits to be run
--- through system_load with a DSO.
+-- of functions deemed unsafe or undesired.
 --
 -- The intent is to keep it like this for the arcan appls running, but to
 -- allow a different set through entirely separate (and possibly process-
 -- separated contexts) with explicit serialization / synchronization with
 -- the normal event loop.
 --
-
+-- Changelog:
+--  - expose full debug table only if DEBUGLEVEL has been set
+--  - allow setfenv/getfenv if DEBUGLEVEL has been set
+--
 local env = {
 	ipairs = ipairs,
 	next = next,
@@ -27,7 +27,6 @@ local env = {
 	select = select,
 	print = print,
 	unpack = unpack,
-	debug = debug,
 	bit = bit,
 	setmetatable = setmetatable,
 	getmetatable = getmetatable,
@@ -102,6 +101,15 @@ local env = {
 		yield = coroutine.yield
 	}
 };
+
+if (DEBUGLEVEL or 0) > 0 then
+	env.setfenv = setfenv
+	env.getfenv = getfenv
+	env.debug = debug
+else
+	env.debug = {traceback = debug.traceback}
+end
+
 env._G = env;
 if (setfenv) then
 	setfenv(0, env);

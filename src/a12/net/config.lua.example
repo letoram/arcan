@@ -5,8 +5,13 @@ local config = _G["config"]
 local active = {}
 
 -- static override any parameters from the config (command-line set),
--- these are only guaranteed write-enabled during init()
+-- these are only guaranteed write-enabled during init().
+
 function init()
+
+-- This determines that the tool should run as a directory server and not a client.
+-- It can only be modified once, and setting it will affect which functions will be
+-- available to you later.
 	config.directory_server = true
 	config.listen_port = 6680
 
@@ -22,19 +27,37 @@ function init()
 --           this is useed by controller scripts that launch dynamic sources
 --
 	config.permissions.source = 'sources,_internal' -- clients allowed to register as a source
-	config.permissions.dir = 'directory' -- clients allowed to register as a linked directory
-	config.permissions.appl = 'developer' -- clients allowed to update appl slots
 	config.permissions.resources = 'shared-content' -- clients allowed to write
+
+--
+-- There are two forms of links, 'unified' (dir) and 'referential' (deference).
+-- Unified is highly privileged and forms a distributed flat namespace.
+-- Reference has low privileges and only lets users of a referenced directory find us.
+--
+	config.permissions.dir = 'directory' -- clients allowed to register as a linked directory
+	config.permissions.reference = '*'
+
+-- These permissions are useful for developing or administrating hosted appls:
+--
+--   'appl'            :- update an existing appl with a new version (if signing tag match)
+--   'appl_install'    :- create a new appl and defining its ownership key
+--   'monitor'         :- collect debugging information and debug controllers
+--   'appl_controller' :- update or set scripts for routing and parsing appl messaging
+--
+	config.permissions.monitor = 'developer'
+	config.permissions.appl = 'developer'
+	config.permissions.appl_install = ''
+	config.permissions.appl_controller = 'developer'
 
 -- mark if a developer requesting bug reports should cause them to flush without intervention.
 -- otherwise this is up to a custom admin interface to perform.
+	config.permissions.admin = ''
 	config.flush_report = false
 
 -- Allow an appl to be hosted server side, this means the server needs an arcan_lwa + afsrv_*
 -- stack to match. Since that is quite expensive to run, this shouldn't be allowed for everyone.
-	config.permissions.applhost = ''
 
--- config.permissions.appl_controller = 'developer' -- clients allowed to update appl controller
+	config.permissions.applhost = ''
 
 -- Calls to store_key, get_key, get_keys, match_keys functions will use this path,
 -- default :memory: means that it is in-memory only and no persistence across restarts.
@@ -106,6 +129,14 @@ end
 function register_unknown(client)
 	print("register_unknown, accept");
 	return true;
+end
+
+-- triggered when all subsystems have initialised:
+--
+-- list_appl, alias_appl are now available.
+-- launch_resolver(applname, "/path/to/external_resolver") can also be used.
+--
+function ready()
 end
 
 function leave(client)

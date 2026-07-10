@@ -791,11 +791,10 @@ local function bhandler(hists, press, id)
 		else
 			if (mstate.click_cnt > 0) then
 				for key, val in ipairs(hists) do
-					local res = linear_find_vid(
-						mstate.handlers.click, val,
-						id == MOUSE_RBUTTON and "rclick" or "click");
+					local sym = id == MOUSE_RBUTTON and "rclick" or "click";
+					local res = linear_find_vid(mstate.handlers.click, val, sym);
 					if (res) then
-						if (res:click(val, mstate.x, mstate.y)) then
+						if (res[sym](val, mstate.x, mstate.y)) then
 							break;
 						end
 					end
@@ -1196,7 +1195,7 @@ function mouse_addlistener(tbl, events)
 -- For use with the fastmap interface that has precedence - basically
 -- 'own' was used to allow dynamically scoped lookup and activation of
 -- sets of events. This made some sense when there was a low amount of
--- mouse handlers, but the pragmatic reality in something like durden
+-- mouse handlers, but the pragmatic reality in something like durian
 -- shows that the most common case is static and there is a high number of
 -- them. To keep legacy until the day a mouse2.lua is written, support both.
 	if tbl.own_vid then

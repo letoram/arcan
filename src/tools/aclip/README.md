@@ -20,7 +20,7 @@ The appl arcan runs must also explicitly expose a connection point which
 accepts a SEGID\_CLIPBOARD as the primary segment type (which no normal window
 would).
 
-In durden, for instance, this needs to be explicitly enabled as it can be used
+In durian, for instance, this needs to be explicitly enabled as it can be used
 to monitor and manipulate global clipboard activity, which should be avoided if
 that is crucial to your threat model. It can be controlled through the
 global/config/system/clipboard bridge menu path.

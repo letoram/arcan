@@ -23,7 +23,7 @@ as the build-system. If those can be found, it shouldn't be more work than:
 Recall that the scripts running server side (appl, window-manager) needs to
 actually expose connection points which permit the tray- kind of behavior.
 
-In Durden, this is enabled and configured by going to (user-facing names):
+In Durian, this is enabled and configured by going to (user-facing names):
 
     /Config/Statusbar/Buttons/Right/Add External
 
@@ -35,7 +35,7 @@ This should allow you to start:
 
     ARCAN_CONNPATH=tray arcan_trayicon /path/to/passive.svg /path/to/alive.svg /some/program/to/run
 
-Which should appear up as an icon in your statusbar tray. Consult the Durden
+Which should appear up as an icon in your statusbar tray. Consult the Durian
 documentation for more specific details on tuning the look and feel.
 
 ## text- mode

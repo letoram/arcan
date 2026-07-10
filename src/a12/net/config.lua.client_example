@@ -1,0 +1,73 @@
+-- this is an example configuration script for a client.
+-- it'd be use combined with either listening mode (-l) or through an outbound tag.
+
+local config = _G["config"]
+local active = {}
+
+function init()
+	config.client = true
+
+-- set for downloaded appls to be stored as .fap and .fap.checksum,
+-- remove and appls will always be downloaded 'fresh'
+	config.paths.fap_cache = env['XDG_CACHE_HOME'] or (env['HOME'] .. "/.arcan/cache")
+	config.paths.unpack_temp = "/tmp"
+	config.paths.binary_cache = env['A12_CACHE_DIR'] or env['XDG_CACHE_HOME'] or '/tmp'
+	config.paths.runner = env['ARCAN_CONNPATH'] and '/usr/bin/arcan_lwa' or '/usr/bin/arcan'
+
+-- point this to another arcan_db managed database to allow launch-targets etc.
+	config.paths.database = ':memory:'
+	config.identity = 'myhandle'
+
+-- absolute path to the store that will run downloaded appls
+	config.runner.block_update = false -- prevent reload / re-download on new appl
+	config.runner.cleanup_exit = true  -- delete the unpacked appl after exit
+	config.runner.reconnect = true     -- don't exit if the connection is terminated
+	config.runner.crash_action = 'send_report' -- 'stderr', 'file', 'exit'
+	config.runner.framerate_limit = 0  -- set to cap framerate
+
+-- args will be added after the default ones set for the runner that are populated
+-- from other config fields (e.g. -1, -O, -M, -p -t -d). e.g.
+--
+-- arcan [default args] [your args] applname
+--
+-- the main ones of interest would be --hook, --fallback --conservative --sync-strat
+-- etc.
+--
+--	table.insert(config.runner.args, "--hook")
+--	table.insert(config.runner.args, "hook/myscript.lua")
+
+-- ONLY the environment provided here will be forwarded to the runner
+	config.runner.env.HOME               = env['HOME']
+	config.runner.env.ARCAN_CONNPATH     = env['ARCAN_CONNPATH']
+	config.runner.env.ARCAN_LOGPATH      = env['ARCAN_LOGPATH']
+	config.runner.env.ARCAN_RENDER_NODE  = env['ARCAN_RENDER_NODE']
+	config.runner.env.ARCAN_SCRIPTPATH   = env['ARCAN_SCRIPTPATH']
+	config.runner.env.ARCAN_RESOURCEPATH = env['ARCAN_RESOURCEPATH']
+	config.runner.env.XDG_RUNTIME_DIR    = env['XDG_RUNTIME_DIR']
+
+-- There is also a complex option that requires access to providing a source to the
+-- directory, this involves the runner handing over monitor stdio to afsrv_terminal
+-- with cat9, connecting to the directory as a source, starting dev builtin with
+-- arcan debug mode and attaching to the monitor stdio. This is equivalent to a
+-- reverse-shell into your machine so not exposed as a simple toggle here.
+
+-- performance / compression tuning
+	config.framecache_soft = 2
+	config.framecache_hard = 5
+
+	config.video.constant_rate_factor = 55
+	config.video.bitrate_kb = 512
+
+-- connection / traffic options
+	config.prefer_tunnel = true -- prefer tunneling over directly accessing directory resources
+	config.prefer_host = false  -- we can run arcan appls so not needed outside testing
+
+	config.security.rekey_kb = 1024          -- rotate keys after n MiB of data
+	config.security.rekey_pqc = false        -- enable post-quantum encryption step-up
+	config.security.keystore_type = "naive"  -- currently only one available
+end
+
+-- dynamic evaluation function to dynamically tune compression options
+-- function video_tuning(kind, baseline, stats)
+--    return baseline
+-- end

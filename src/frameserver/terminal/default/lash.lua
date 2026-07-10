@@ -28,7 +28,7 @@ lash =
 
 -- A lexer for the command line intended to provide some shared building block
 -- the 'simple' mode basically just escapes strings, while the normal provides
--- some operators, primitive types and symbols. This is derived from pipeworld
+-- some operators, primitive types and symbols.
 lash.tokenize_command =
 function(wnd, msg, simple)
 	return
@@ -209,6 +209,10 @@ local function run_usershell(wnd, name)
 		table.insert(dirs, string.format("%s/arcan/lash/", os.getenv('XDG_CONFIG_HOME')))
 	end
 
+	if os.getenv('ARCAN_APPLPATH') then
+		table.insert(dirs, string.format("%s/lash/", os.getenv('ARCAN_APPLPATH')))
+	end
+
 -- prepend the search dirs, reason why we do not substitute them completely is to be able
 -- to have the usershell scripts themselves require other lua modules or luarocks ones
 	if #dirs > 0 then
@@ -218,11 +222,30 @@ local function run_usershell(wnd, name)
 			if file then
 				local fptr, msg = loadfile(v .. name .. ".lua")
 				if not fptr then
+					-- bug 0015: also mirror loadfile failures (syntax error
+					-- in the user shell file) so the harness can detect the
+					-- distinct case from xpcall-runtime failures.
+					if wnd and wnd.message then
+						local m = "usershell:fail:name=" .. tostring(name) ..
+							":err=loadfile:" ..
+							tostring(msg):gsub("[\r\n]", " "):sub(1, 200)
+						pcall(function() wnd:message(m) end)
+					end
 					return false, msg
 				end
 				lash.scriptdir = v
 				local ok, msg = xpcall(fptr, debug.traceback)
 				if not ok then
+					-- bug 0015: emit a single shmif MESSAGE so the harness
+					-- can detect a usershell-load failure without scraping
+					-- the bootstrap shell's rasterised text.  Pass the raw
+					-- traceback (truncated) before the split so the emitted
+					-- string carries the underlying lua error verbatim.
+					if wnd and wnd.message then
+						local m = "usershell:fail:name=" .. tostring(name) .. ":err=" ..
+							tostring(msg):gsub("[\r\n]", " "):sub(1, 200)
+						pcall(function() wnd:message(m) end)
+					end
 					msg = string.split(msg, ": ")
 					local res = {"usershell (" .. name .. ") failed: "}
 					for i,v in ipairs(msg) do
@@ -237,6 +260,14 @@ local function run_usershell(wnd, name)
 		end
 	end
 
+	-- bug 0015: shell-not-found is the most common usershell failure
+	-- (typo in LASH_SHELL or a missing install). Mirror to MESSAGE so
+	-- the harness can detect and disambiguate from xpcall failures.
+	if wnd and wnd.message then
+		local m = "usershell:fail:name=" .. tostring(name) ..
+			":err=not-found"
+		pcall(function() wnd:message(m) end)
+	end
 	return false, "shell " .. name .. " not found in ($LASH_BASE, $HOME/.arcan/lash or $XDG_CONFIG_HOME)"
 end
 

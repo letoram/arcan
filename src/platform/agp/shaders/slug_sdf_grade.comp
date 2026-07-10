@@ -1,0 +1,264 @@
+#version 450
+// SDF atlas grading + ADMM LASSO optimizer (GPU-only, multi-size, 3-param).
+//
+// θ = (ramp, alpha, beta):
+//   ramp  = AA transition width
+//   alpha = horizontal weight scale in CalcCoverage
+//   beta  = vertical weight scale in CalcCoverage
+//
+// Two-phase design (correct ADMM — Jacobian computed ONCE, then iterate):
+//
+//   Phase 1 — ACCUMULATE (mode 0,1,2): Sweep all sizes. For each size + param,
+//             compute one Jacobian column via FD and add to J^T J, J^T r accumulators.
+//             The Jacobian is FIXED after this phase.
+//
+//   Phase 2 — SOLVE (mode 3): Run ADMM iterations on the fixed (J^T J, J^T r).
+//             Pure algebra, no texture reads. Iterate until convergence.
+//
+// Dispatch: one workgroup per glyph, 256 threads.
+
+layout(local_size_x = 256) in;
+
+layout(set = 0, binding = 0) uniform sampler2D sdfAtlas;
+layout(set = 0, binding = 1) uniform sampler2D stbRef;
+layout(set = 0, binding = 5) uniform sampler2D covPlus;
+layout(set = 0, binding = 6) uniform sampler2D covMinus;
+
+struct GlyphQuality {
+    float match_pct;
+    float mse;
+    float ramp;
+    uint  status;
+};
+
+layout(std430, set = 0, binding = 2) buffer QualityBuffer {
+    GlyphQuality qualities[];
+};
+
+struct GlyphRegion {
+    uint codepoint;
+    uint sdf_x, sdf_y, cell_w, cell_h;
+    uint sample_count;
+    uint _pad0, _pad1;
+};
+
+layout(std430, set = 0, binding = 3) readonly buffer RegionBuffer {
+    uint num_glyphs;
+    uint tolerance;
+    uint mode;       // 0,1,2 = accumulate param column; 3 = solve
+    uint _pad;
+    GlyphRegion regions[];
+};
+
+// 96 bytes per glyph
+struct AdmmState {
+    float theta0, theta1, theta2;           // ramp, alpha, beta
+    float z0, z1, z2;                       // splitting variables
+    float u0, u1, u2;                       // scaled dual variables
+    float mu;                                // penalty parameter
+    // J^T J upper triangle (accumulated, FIXED after phase 1)
+    float JtJ_00, JtJ_01, JtJ_02, JtJ_11, JtJ_12, JtJ_22;
+    // J^T r vector (accumulated, FIXED after phase 1)
+    float Jtr_0, Jtr_1, Jtr_2;
+    uint  accum_n;
+    uint  converged;
+    float _pad0, _pad1;
+};
+
+layout(std430, set = 0, binding = 4) buffer AdmmBuffer {
+    AdmmState admm[];
+};
+
+const float ADMM_H       = 0.01;
+const float ADMM_LAMBDA  = 0.01;
+const float ADMM_RHO     = 1.0;   // ADMM penalty (fixed, per Boyd et al.)
+const float ADMM_EPS     = 1e-4;
+// theta = (ramp, dropout_blend, unused)
+// Only 2 active params. Third slot unused but kept for struct alignment.
+const float THETA0[3]    = float[3](0.5, 0.0, 0.0);
+const float THETA_MIN[3] = float[3](0.1, 0.0, 0.0);
+const float THETA_MAX[3] = float[3](2.0, 1.0, 0.0);
+
+shared uint  shared_match;
+shared float s_mse[256];
+shared float s_Jcol[256];
+shared float s_Jr[256];
+
+void main() {
+    uint gi = gl_WorkGroupID.x;
+    if (gi >= num_glyphs) return;
+    uint lid = gl_LocalInvocationID.x;
+
+    // ═══════════════════════════════════════════════════════════════
+    // MODE 3: SOLVE — pure ADMM on fixed (J^T J, J^T r)
+    // Run many iterations. No texture reads. Just algebra.
+    // ═══════════════════════════════════════════════════════════════
+    if (mode == 3u) {
+        if (lid != 0u) return;
+        if (admm[gi].converged == 1u) return;
+        if (admm[gi].accum_n == 0u) return;
+
+        float fn = float(admm[gi].accum_n);
+
+        // Build A = J^T J / n  (diagonal approximation — off-diags are 0)
+        // Build b_base = J^T r / n
+        float A00 = admm[gi].JtJ_00 / fn;
+        float A11 = admm[gi].JtJ_11 / fn;
+        float A22 = admm[gi].JtJ_22 / fn;
+        float b0_base = admm[gi].Jtr_0 / fn;
+        float b1_base = admm[gi].Jtr_1 / fn;
+        float b2_base = admm[gi].Jtr_2 / fn;
+
+        float th[3] = float[3](admm[gi].theta0, admm[gi].theta1, admm[gi].theta2);
+        float zz[3] = float[3](admm[gi].z0, admm[gi].z1, admm[gi].z2);
+        float uu[3] = float[3](admm[gi].u0, admm[gi].u1, admm[gi].u2);
+        float rho   = ADMM_RHO;
+
+        // B = (A^T A + rho * I)^{-1}  — precomputed, diagonal, trivial
+        float B0 = 1.0 / (A00 + rho);
+        float B1 = 1.0 / (A11 + rho);
+        float B2 = 1.0 / (A22 + rho);
+
+        float prev_th[3] = th;
+
+        // ADMM iterations (Boyd et al. Algorithm 2, applied to LASSO)
+        // x(t) = B * (A^T y + rho * (z(t-1) - u(t-1)))
+        // z(t) = S_{lambda/rho}(x(t) + u(t-1) - theta0) + theta0
+        // u(t) = u(t-1) + x(t) - theta0 - z(t)
+        for (int k = 0; k < 200; k++) {
+            // x-update (primal)
+            th[0] = B0 * (b0_base + rho * (zz[0] + THETA0[0] - uu[0]));
+            th[1] = B1 * (b1_base + rho * (zz[1] + THETA0[1] - uu[1]));
+            th[2] = B2 * (b2_base + rho * (zz[2] + THETA0[2] - uu[2]));
+
+            // Clamp to valid range
+            for (int j = 0; j < 3; j++)
+                th[j] = clamp(th[j], THETA_MIN[j], THETA_MAX[j]);
+
+            // z-update (soft thresholding / proximal of L1)
+            float kappa = ADMM_LAMBDA / rho;
+            for (int j = 0; j < 3; j++) {
+                float v = th[j] - THETA0[j] + uu[j];
+                zz[j] = sign(v) * max(abs(v) - kappa, 0.0);
+            }
+
+            // u-update (dual)
+            for (int j = 0; j < 3; j++)
+                uu[j] = uu[j] + th[j] - THETA0[j] - zz[j];
+
+            // Convergence: primal residual
+            float r_pri = 0.0;
+            for (int j = 0; j < 3; j++)
+                r_pri += abs(th[j] - THETA0[j] - zz[j]);
+            if (r_pri < ADMM_EPS) break;
+        }
+
+        // Check if parameters actually moved from previous
+        float delta = abs(th[0]-prev_th[0]) + abs(th[1]-prev_th[1]) + abs(th[2]-prev_th[2]);
+        uint conv = (delta < ADMM_EPS) ? 1u : 0u;
+
+        admm[gi].theta0 = th[0]; admm[gi].theta1 = th[1]; admm[gi].theta2 = th[2];
+        admm[gi].z0 = zz[0]; admm[gi].z1 = zz[1]; admm[gi].z2 = zz[2];
+        admm[gi].u0 = uu[0]; admm[gi].u1 = uu[1]; admm[gi].u2 = uu[2];
+        admm[gi].converged = conv;
+
+        qualities[gi].ramp = th[0];
+        qualities[gi].status = (conv == 1u) ? 3u : 0u;
+        return;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // MODE 0/1/2: ACCUMULATE one Jacobian column for param `mode`
+    // ═══════════════════════════════════════════════════════════════
+    GlyphRegion region = regions[gi];
+    uint n_pixels = region.cell_w * region.cell_h;
+    if (n_pixels == 0) return;
+
+    if (lid == 0u) shared_match = 0;
+    barrier();
+
+    uint local_match = 0;
+    float local_mse = 0.0;
+    float local_Jcol = 0.0;
+    float local_Jr = 0.0;
+
+    for (uint p = lid; p < n_pixels; p += gl_WorkGroupSize.x) {
+        uint px = p % region.cell_w;
+        uint py = p / region.cell_w;
+        uint ax = region.sdf_x + px;
+        uint ay = region.sdf_y + py;
+
+        float sdf_cov   = texelFetch(sdfAtlas, ivec2(ax, ay), 0).r;
+        float stb_cov   = texelFetch(stbRef,   ivec2(ax, ay), 0).r;
+        float plus_cov  = texelFetch(covPlus,  ivec2(ax, ay), 0).r;
+        float minus_cov = texelFetch(covMinus, ivec2(ax, ay), 0).r;
+
+        int sdf_val = int(clamp(sdf_cov * 255.0, 0.0, 255.0));
+        int stb_val = int(clamp(stb_cov * 255.0, 0.0, 255.0));
+        if (abs(sdf_val - stb_val) <= int(tolerance)) local_match++;
+
+        float fdiff = sdf_cov - stb_cov;
+        local_mse += fdiff * fdiff;
+
+        // Hybrid error: structural + coverage magnitude.
+        // - Interior pixels (STB > 0.5): penalize Slug under-coverage directly.
+        //   This catches thin-stroke dropout where Slug has 0.2 but STB has 0.9.
+        // - Exterior pixels (STB < 0.1): penalize any Slug coverage (bleed).
+        // - Boundary pixels (0.1-0.5): low weight (AA differences are expected).
+        float weight = 1.0;
+        float residual;
+        if (stb_cov > 0.5) {
+            // Interior: Slug should match STB's coverage level
+            residual = stb_cov - sdf_cov;  // positive when Slug under-covers
+            weight = 1.5;  // extra penalty for dropout
+        } else if (stb_cov < 0.1) {
+            // Exterior: Slug should be zero too
+            residual = -sdf_cov;  // negative when Slug bleeds
+            weight = 1.0;
+        } else {
+            // AA boundary: accept differences, low weight
+            residual = stb_cov - sdf_cov;
+            weight = 0.1;
+        }
+
+        float J_p = (plus_cov - minus_cov) / (2.0 * ADMM_H);
+        local_Jcol += (J_p * weight) * (J_p * weight);
+        local_Jr   += (J_p * weight) * (residual * weight);
+    }
+
+    atomicAdd(shared_match, local_match);
+    s_mse[lid]  = local_mse;
+    s_Jcol[lid] = local_Jcol;
+    s_Jr[lid]   = local_Jr;
+    barrier();
+
+    for (uint stride = gl_WorkGroupSize.x / 2; stride > 0; stride >>= 1) {
+        if (lid < stride) {
+            s_mse[lid]  += s_mse[lid + stride];
+            s_Jcol[lid] += s_Jcol[lid + stride];
+            s_Jr[lid]   += s_Jr[lid + stride];
+        }
+        barrier();
+    }
+
+    if (lid == 0u) {
+        float fn = float(n_pixels);
+        qualities[gi].match_pct = 100.0 * float(shared_match) / fn;
+        qualities[gi].mse = s_mse[0] / fn;
+        qualities[gi].ramp = admm[gi].theta0;
+
+        uint status = 0u;
+        if (admm[gi].converged == 1u) status = 3u;
+        else if (region.sample_count >= 16u) status = (qualities[gi].match_pct >= 80.0) ? 1u : 2u;
+        qualities[gi].status = status;
+
+        // Accumulate J^T J diagonal and J^T r for column `mode`
+        float Jcol_norm = s_Jcol[0] / fn;
+        float Jr_norm   = s_Jr[0] / fn;
+
+        if (mode == 0u) { admm[gi].JtJ_00 += Jcol_norm; admm[gi].Jtr_0 += Jr_norm; }
+        if (mode == 1u) { admm[gi].JtJ_11 += Jcol_norm; admm[gi].Jtr_1 += Jr_norm; }
+        if (mode == 2u) { admm[gi].JtJ_22 += Jcol_norm; admm[gi].Jtr_2 += Jr_norm; }
+        admm[gi].accum_n += 1u;
+    }
+}

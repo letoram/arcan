@@ -6,7 +6,7 @@ engine features.
 
 ## Acfgfs
 This tools is built separately and provides a virtual filesystem
-for working with the format that durden (and others) provide over
+for working with the format that durian (and others) provide over
 a domain socket as means of accessing configuration 'as a file'.
 It depends on FUSE3 and an OS that has an implementation for it.
 
