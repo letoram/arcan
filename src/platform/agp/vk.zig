@@ -2184,10 +2184,19 @@ fn createTextureInternalFmt(
     swizzle_bgra: bool,
 ) !TextureSlot {
     rcdbg("CTI-entry");
+    // A freshly-connected frameserver (or any not-yet-sized store) asks for a
+    // 0-dimension texture. GL silently accepts that as an incomplete texture,
+    // but Vulkan requires VkExtent >= 1 in every dimension (VUID-...-extent-*)
+    // and MoltenVK/Metal hard-asserts ("MTLTextureDescriptor has width of
+    // zero"). Clamp to a valid 1x1 placeholder; the engine re-creates the
+    // texture once the client supplies real dimensions. The pixel upload below
+    // stays guarded by `pixels != null` (null for these empty stores).
+    const iw = @max(w, 1);
+    const ih = @max(h, 1);
     const image = env.vkd.createImage(env.device, &.{
         .image_type = .@"2d",
         .format = format,
-        .extent = .{ .width = w, .height = h, .depth = 1 },
+        .extent = .{ .width = iw, .height = ih, .depth = 1 },
         .mip_levels = 1,
         .array_layers = 1,
         .samples = .{ .@"1_bit" = true },
@@ -2298,10 +2307,12 @@ fn createTextureInternalFmt(
     }, 0, null);
 
     rcdbg("CTI-descset");
-    // Upload initial pixels if provided
-    if (pixels) |px| {
+    // Upload initial pixels if provided. Skip when either source dimension is
+    // zero: there is nothing to copy and a 0-byte staging buffer is itself
+    // invalid in Vulkan — just leave the 1x1 placeholder in a readable layout.
+    if (pixels != null and w > 0 and h > 0) {
         rcdbg("CTI-preupload");
-        try uploadTexturePixelsFmt(env, image, w, h, px, bytes_per_pixel, swizzle_bgra);
+        try uploadTexturePixelsFmt(env, image, w, h, pixels.?, bytes_per_pixel, swizzle_bgra);
         rcdbg("CTI-postupload");
     } else {
         // Transition to shader_read_only even without data
@@ -2314,8 +2325,8 @@ fn createTextureInternalFmt(
         .view = view,
         .memory = memory,
         .descriptor_set = desc_sets[0],
-        .width = w,
-        .height = h,
+        .width = iw,
+        .height = ih,
         .in_use = true,
     };
 }

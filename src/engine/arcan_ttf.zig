@@ -255,7 +255,7 @@ fn do_fstat_fd(fd: c_int) ?StatResult {
         var probe: c.struct_stat = undefined;
         if (c.fstat(fd, &probe) != 0) {
             const e = std.c._errno().*;
-            var buf: [256]u8 = undefined;
+            var buf: [512]u8 = undefined;
             const msg = std.fmt.bufPrint(&buf,
                 "[bug 0125] do_fstat_fd: about to panic — fd={d} errno={d} (see ticket 0125 — `bugs show 0125-arcan-ttf-fstat-unreachable-on-font-replace`). Walk back through set_font_slot → setfont → targetfonthint to find the bad-fd source. Do NOT soften this panic.\n",
                 .{ fd, e }) catch "[bug 0125] do_fstat_fd: about to panic\n";
@@ -751,8 +751,18 @@ export fn TTF_OpenFontFD(
     _ = fseek(fstream, SEEK_SET, 0);
     const res = TTF_OpenFontIndexRW(fstream, 1, ptsize, hdpi, vdpi, 0) orelse return null;
 
-    // Store the fd for TTF_ReplaceFont
-    if (res.font) |f| f.src_fd = nfd;
+    // Store an independently-owned, still-open dup of the source fd for
+    // TTF_ReplaceFont. Bug 0125: nfd was consumed and fclose()d inside
+    // TTF_OpenFontIndexRW(freesrc=1) above (the font is fully read into
+    // font_bytes), so recording nfd here left src_fd pointing at a
+    // closed descriptor. Once that fd number got recycled to a live fd
+    // (the very next findresource() open during setdefaultfont), the
+    // eventual TTF_CloseFontInternal -> close(src_fd) destroyed an
+    // unrelated live font fd, and the next grab_font size-reopen hit
+    // fstat(EBADF) -> the load-bearing do_fstat_fd panic. Re-dup the
+    // original (still valid within this call) fd so src_fd owns a real,
+    // private descriptor for its whole lifetime.
+    if (res.font) |f| f.src_fd = arcan_shmif_dupfd(fd, -1, true);
 
     if (cached) |ca| {
         ca.font = res.font;
