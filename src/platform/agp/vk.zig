@@ -9,8 +9,15 @@ const vk = @import("vulkan");
 const zig_dlopen = @import("dlopen");
 const build_options = @import("build_options");
 
+// Local cross-platform getenv (vk.zig has no shmif_types import). std.posix.getenv
+// is a @compileError on windows; libc getenv works with ASCII names everywhere.
+fn envSpan(name: [*:0]const u8) ?[:0]const u8 {
+    const p = std.c.getenv(name) orelse return null;
+    return std.mem.span(p);
+}
+
 fn rcdbg(comptime tag: []const u8) void {
-    _ = std.posix.write(2, "RCDBG:" ++ tag ++ "\n") catch {};
+    std.fs.File.stderr().writeAll("RCDBG:" ++ tag ++ "\n") catch {};
 }
 
 pub const std_options: std.Options = .{ .log_level = .warn };
@@ -2964,7 +2971,7 @@ pub fn init(extra_extensions: []const [*:0]const u8) !*VkEnv {
     // Optional: validation layers
     var layer_count: u32 = 0;
     var layers: [1][*:0]const u8 = undefined;
-    if (std.posix.getenv("VK_INSTANCE_LAYERS")) |_| {
+    if (envSpan("VK_INSTANCE_LAYERS")) |_| {
         layers[0] = "VK_LAYER_KHRONOS_validation";
         layer_count = 1;
     }
@@ -5718,11 +5725,11 @@ var slug_dropout_override: f32 = 0.0; // CalcCoverage now matches reference exac
 
 fn initFrameCapture() void {
     // Read config from environment
-    if (std.posix.getenv("ARCAN_FRAME_CAPTURE")) |dir| {
+    if (envSpan("ARCAN_FRAME_CAPTURE")) |dir| {
         @memcpy(capture_dir_buf[0..dir.len], dir);
         capture_dir = capture_dir_buf[0..dir.len];
     }
-    if (std.posix.getenv("ARCAN_CAPTURE_FRAME")) |val| {
+    if (envSpan("ARCAN_CAPTURE_FRAME")) |val| {
         capture_frame_target = std.fmt.parseInt(i32, val, 10) catch -1;
     }
 }

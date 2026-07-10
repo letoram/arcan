@@ -2417,3 +2417,12 @@ pub extern "c" fn alt_nbio_import(L: ?*lua_State, fd: c_int, m: mode_t, dst: ?*?
 // TTF rendering (used by raster.zig)
 pub extern "c" fn TTF_RenderUNICODEglyph(font: ?*TTF_Font, ch: u32, fg: u32, bg: u32, usebg: bool, dst: [*c]u32, pitch: usize, max_w: usize, max_h: usize, dw: *usize, dh: *usize) bool;
 pub extern "c" fn TTF_SetFontStyle(font: ?*TTF_Font, style: c_int) void;
+
+// Cross-platform getenv → optional sentinel slice. std.posix.getenv is a
+// @compileError on Windows (WTF-16 env); libc getenv (declared above) works
+// with ASCII names on all targets. Returns null when unset. (windows port)
+pub fn getenvSpan(name: [*:0]const u8) ?[:0]const u8 {
+    const p = getenv(name); // [*c]u8 (nullable C pointer)
+    if (p == null) return null;
+    return std.mem.span(@as([*:0]const u8, @ptrCast(p)));
+}

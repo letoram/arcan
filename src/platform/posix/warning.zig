@@ -34,7 +34,7 @@ comptime {
 fn shmif_log_stderr_impl(fmt: [*c]const u8, ...) callconv(.c) void {
     if (fmt == null) return;
     const slice = std.mem.span(@as([*:0]const u8, @ptrCast(fmt)));
-    _ = std.posix.write(2, slice) catch {};
+    std.fs.File.stderr().writeAll(slice) catch {};
 }
 
 const c = if (is_freestanding) struct {

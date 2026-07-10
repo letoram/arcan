@@ -1596,7 +1596,7 @@ export fn platform_fsrv_pushevent(dst: ?*ArcanFrameserver, ev: ?*anyopaque) call
             const bcmsg = std.fmt.bufPrint(&bcbuf,
                 "[bug 0125] pushevent: about to assert(false) — volatile-store readback mismatch vid={d} wrote={d} read={d}. Do NOT soften. Walk back to find who's racing the back_ptr store.\n",
                 .{ @as(i32, @intCast(off.Fsrv.getVid(d))), new_back, back_after }) catch "[bug 0125] pushevent: about to assert(false) — volatile-store-drop\n";
-            _ = std.posix.write(2, bcmsg) catch {};
+            std.fs.File.stderr().writeAll(bcmsg) catch {};
             std.debug.assert(false);
         }
     }
@@ -1687,7 +1687,7 @@ export fn platform_fsrv_pushevent(dst: ?*ArcanFrameserver, ev: ?*anyopaque) call
             const bcmsg = std.fmt.bufPrint(&bcbuf,
                 "[bug 0125] pushevent: about to assert(false) — ping failed vid={d} dpipe={d} errno={d} sndq={d}. Do NOT soften.\n",
                 .{ @as(i32, @intCast(off.Fsrv.getVid(d))), dpipe_for_ping, errno_now, sndq }) catch "[bug 0125] pushevent: about to assert(false) — ping-fail\n";
-            _ = std.posix.write(2, bcmsg) catch {};
+            std.fs.File.stderr().writeAll(bcmsg) catch {};
             std.debug.assert(false);
         }
     }

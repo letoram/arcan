@@ -5,7 +5,7 @@
 const std = @import("std");
 
 fn rcdbg(comptime tag: []const u8) void {
-    _ = std.posix.write(2, "RCDBG:" ++ tag ++ "\n") catch {};
+    std.fs.File.stderr().writeAll("RCDBG:" ++ tag ++ "\n") catch {};
 }
 
 // Arcan C types defined inline (no C headers in this pure-Zig codebase)
@@ -1411,7 +1411,7 @@ fn serializeAdmmParams(quality_ptr: [*]const u8, num_glyphs: u32, entries: *cons
     const global_ramp = if (num_glyphs > 0) ramp_sum / @as(f32, @floatFromInt(num_glyphs)) else 0.5;
 
     // Write to ~/.arcan/slug_params/
-    const home = std.posix.getenv("HOME") orelse "/tmp";
+    const home = @import("shmif_types").getenvSpan("HOME") orelse "/tmp";
     var path_buf: [512]u8 = undefined;
     const path = std.fmt.bufPrint(&path_buf, "{s}/.arcan/slug_params", .{home}) catch return error.PathTooLong;
 
@@ -1442,7 +1442,7 @@ fn serializeAdmmParams(quality_ptr: [*]const u8, num_glyphs: u32, entries: *cons
 
 /// Load previously serialized ADMM parameters. Returns global ramp or null if no file.
 fn loadAdmmParams() ?f32 {
-    const home = std.posix.getenv("HOME") orelse return null;
+    const home = @import("shmif_types").getenvSpan("HOME") orelse return null;
     var path_buf: [512]u8 = undefined;
     const path = std.fmt.bufPrint(&path_buf, "{s}/.arcan/slug_params/default_all.bin", .{home}) catch return null;
 

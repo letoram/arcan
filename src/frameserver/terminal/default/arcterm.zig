@@ -1720,7 +1720,7 @@ export fn afsrv_terminal(con: ?*ArcanShmifCont, args: ?*ArgArr) callconv(.c) c_i
     {
         var dbuf: [256]u8 = undefined;
         const msg = std.fmt.bufPrint(&dbuf, "[DIAG arcterm] initial arcan_tui_refresh rc={d}, entering main loop\n", .{init_refresh_rc}) catch "[DIAG arcterm] initial refresh\n";
-        _ = std.posix.write(2, msg) catch {};
+        std.fs.File.stderr().writeAll(msg) catch {};
     }
 
     _ = signal(SIGHUP, &sighuph);
@@ -1808,7 +1808,7 @@ export fn afsrv_terminal(con: ?*ArcanShmifCont, args: ?*ArgArr) callconv(.c) c_i
             const msg = std.fmt.bufPrint(&dbuf, "[DIAG arcterm loop #{d}] tui_refresh rc={d}, process errc={d}, alive={}\n", .{
                 diag_loop_count, refresh_rc, res.errc, @atomicLoad(bool, &term.alive, .seq_cst),
             }) catch "[DIAG arcterm] bufPrint failed\n";
-            _ = std.posix.write(2, msg) catch {};
+            std.fs.File.stderr().writeAll(msg) catch {};
         }
 
         // create restore buffer if terminal died and no restore yet

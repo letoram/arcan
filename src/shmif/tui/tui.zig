@@ -841,7 +841,7 @@ export fn arcan_tui_process(
             .{ Diag.calls, Diag.fast_poll, Diag.fast_poll_signalled,
                cur_timeout, saw_dirty_ctx, saw_pending_sig }) catch "[DIAG tui_process] bufPrint failed\n";
         if (comptime @import("builtin").os.tag != .freestanding) {
-            _ = std.posix.write(2, msg) catch {};
+            std.fs.File.stderr().writeAll(msg) catch {};
         }
     }
 
@@ -919,7 +919,7 @@ export fn arcan_tui_process(
                 "[DIAG tui_poll_revents] sv={d} cur_timeout={d}{s}\n",
                 .{ sv, cur_timeout, buf[0..off_b] }) catch "[DIAG tui_poll_revents] bufPrint failed\n";
             if (comptime @import("builtin").os.tag != .freestanding) {
-                _ = std.posix.write(2, line) catch {};
+                std.fs.File.stderr().writeAll(line) catch {};
             }
         }
     }

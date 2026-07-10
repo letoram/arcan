@@ -216,7 +216,7 @@ fn step_v(ctx: *c.struct_arcan_shmif_cont, sigv: c_int) bool {
             const msg = std.fmt.bufPrint(&dbuf, "[DIAG step_v #{d}] vready={d}, vidp=0x{x}, w={d}, h={d}\n", .{
                 diag.count, dst_i, @intFromPtr(ctx.unnamed_0.vidp), ctx.w, ctx.h,
             }) catch "[DIAG step_v] bufPrint failed\n";
-            _ = std.posix.write(2, msg) catch {};
+            std.fs.File.stderr().writeAll(msg) catch {};
         }
     }
 
@@ -301,7 +301,7 @@ export fn arcan_shmif_signal(C: ?*c.struct_arcan_shmif_cont, mask_in: c_int) c_u
             const msg = std.fmt.bufPrint(&dbuf, "[DIAG CHILD SIGNAL #{d}] vidp=0x{x}, w={d}, h={d}, mask=0x{x}\n", .{
                 diag.count, @intFromPtr(ctx.unnamed_0.vidp), ctx.w, ctx.h, @as(u32, @bitCast(mask_in)),
             }) catch "[DIAG CHILD SIGNAL] bufPrint failed\n";
-            _ = std.posix.write(2, msg) catch {};
+            std.fs.File.stderr().writeAll(msg) catch {};
         }
     }
 

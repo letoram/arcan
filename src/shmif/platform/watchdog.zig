@@ -25,7 +25,7 @@ extern fn getppid() c.pid_t;
 extern fn getpid() c.pid_t;
 
 fn dbg(msg: []const u8) void {
-    _ = std.posix.write(2, msg) catch {};
+    std.fs.File.stderr().writeAll(msg) catch {};
 }
 
 const pthread_t = c.pthread_t;

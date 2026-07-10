@@ -539,7 +539,7 @@ fn resize_cellbuffer(t: *arcan.tui_context) void {
     const raw = malloc(buf_sz) orelse {
         // LOG equivalent — write to stderr
         const msg = "couldn't allocate screen buffers\n";
-        _ = std.posix.write(2, msg) catch {};
+        std.fs.File.stderr().writeAll(msg) catch {};
         return;
     };
 
@@ -1151,7 +1151,7 @@ export fn tui_screen_refresh(tui: ?*arcan.tui_context) c_int {
                 "[DIAG screen_refresh] eagain_skips={d} delivered={d} dirty={d} (SIGVID still outstanding, dirty stays set)\n",
                 .{ Diag.eagain_skips, Diag.delivered, getDirty(t) })
                     catch "[DIAG screen_refresh] bufPrint failed\n";
-            _ = std.posix.write(2, msg) catch {};
+            std.fs.File.stderr().writeAll(msg) catch {};
         }
         setErrnoEagain();  // errno = EAGAIN
         return -1;
@@ -1185,7 +1185,7 @@ export fn tui_screen_refresh(tui: ?*arcan.tui_context) c_int {
         const msg = std.fmt.bufPrint(&dbuf, "[DIAG tui_screen_refresh #{d}] tpack_bytes={d}, nonzero_bytes={d}, vidb=0x{x}, w={d}, h={d}, vbufsize={d}\n", .{
             diag_refresh_count, rv, nonzero, @intFromPtr(vidb), w, h, vbufsize,
         }) catch "DIAG: bufPrint failed\n";
-        _ = std.posix.write(2, msg) catch {};
+        std.fs.File.stderr().writeAll(msg) catch {};
     }
 
     // Optional tpack recording

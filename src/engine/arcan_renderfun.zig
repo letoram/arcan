@@ -1888,7 +1888,7 @@ fn set_font_slot(grp: *fontgroup, slot: usize, fd: c_int) void {
             var buf: [220]u8 = undefined;
             const msg = std.fmt.bufPrintZ(&buf, "[bug 0125] set_font_slot: rejecting bad fd={d} errno={d} slot={d} (existing slot preserved)\n", .{ fd, e, slot }) catch "[bug 0125] set_font_slot: rejecting bad fd\n";
             if (comptime @import("builtin").os.tag != .freestanding) {
-                _ = std.posix.write(2, msg) catch {};
+                std.fs.File.stderr().writeAll(msg) catch {};
             }
             _ = close(fd);
             return;
